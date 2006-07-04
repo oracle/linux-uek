@@ -128,6 +128,13 @@ void sdp_close_sk(struct sock *sk)
 
 	sk->sk_send_head = NULL;
 	skb_queue_purge(&sk->sk_write_queue);
+        /*
+         * If sendmsg cached page exists, toss it.
+         */
+        if (sk->sk_sndmsg_page) {
+                __free_page(sk->sk_sndmsg_page);
+                sk->sk_sndmsg_page = NULL;
+        }
 
 	id = ssk->id;
 	if (ssk->id) {

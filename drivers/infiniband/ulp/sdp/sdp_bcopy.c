@@ -285,9 +285,16 @@ static inline int sdp_sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 
 static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 {
+	struct page *page;
 	sk->sk_send_head = skb->next;
-	if (sk->sk_send_head == (struct sk_buff *)&sk->sk_write_queue)
+	if (sk->sk_send_head == (struct sk_buff *)&sk->sk_write_queue) {
 		sk->sk_send_head = NULL;
+		page = sk->sk_sndmsg_page;
+		if (page) {
+			put_page(page);
+			sk->sk_sndmsg_page = NULL;
+		}
+	}
 }
 
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
