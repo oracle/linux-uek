@@ -978,7 +978,7 @@ new_segment:
 
 			ssk->write_seq += copy;
 			TCP_SKB_CB(skb)->end_seq += copy;
-			skb_shinfo(skb)->tso_segs = 0;
+			/*unused: skb_shinfo(skb)->gso_segs = 0;*/
 
 			from += copy;
 			copied += copy;
