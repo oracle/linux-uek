@@ -102,6 +102,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	};
 	struct ib_device *device = id->device;
 	struct ib_cq *cq;
+	struct ib_pd *mr;
 	struct ib_pd *pd;
 	int rc;
 
@@ -132,13 +133,14 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		goto err_pd;
 	}
 	
-        sdp_sk(sk)->mr = ib_get_dma_mr(pd, IB_ACCESS_LOCAL_WRITE);
-        if (IS_ERR(sdp_sk(sk)->mr)) {
-                rc = PTR_ERR(sdp_sk(sk)->mr);
+        mr = ib_get_dma_mr(pd, IB_ACCESS_LOCAL_WRITE);
+        if (IS_ERR(mr)) {
+                rc = PTR_ERR(mr);
 		sdp_warn(sk, "Unable to get dma MR: %d.\n", rc);
                 goto err_mr;
         }
 
+	sdp_sk(sk)->mr = mr;
 	INIT_WORK(&sdp_sk(sk)->work, sdp_work, sdp_sk(sk));
 
 	cq = ib_create_cq(device, sdp_completion_handler, sdp_cq_event_handler,
