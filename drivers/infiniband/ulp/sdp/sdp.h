@@ -27,6 +27,18 @@ extern int sdp_debug_level;
 	do { (void) (priv); } while (0)
 #endif /* CONFIG_INFINIBAND_SDP_DEBUG */
 
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+extern int sdp_data_debug_level;
+#define sdp_dbg_data(sk, format, arg...)                     \
+	do {                                                 \
+		if (sdp_data_debug_level > 0)                \
+		sdp_printk(KERN_DEBUG, sk, format , ## arg); \
+	} while (0)
+#else
+#define sdp_dbg_data(priv, format, arg...)                   \
+	do { (void) (priv); } while (0)
+#endif
+
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5

@@ -299,7 +299,7 @@ static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
-	/* TODO: nonagle */
+	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
 
@@ -365,9 +365,9 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			wake_up(&ssk->wq);
 		} else {
 			/* TODO: handle msg < bsdh */
-			sdp_dbg(&ssk->isk.sk,
-				"Recv completion. ID %d Length %d\n",
-				(int)wc->wr_id, wc->byte_len);
+			sdp_dbg_data(&ssk->isk.sk,
+				     "Recv completion. ID %d Length %d\n",
+				     (int)wc->wr_id, wc->byte_len);
 			skb->len = wc->byte_len;
 			skb->data_len = wc->byte_len - sizeof(struct sdp_bsdh);
 			if (unlikely(skb->data_len < 0)) {
@@ -449,7 +449,7 @@ void sdp_work(void *data)
 	struct ib_cq *cq;
 	int n, i;
 
-	sdp_dbg(sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "%s\n", __func__);
 
 	cq = ssk->cq;
 	if (unlikely(!cq))

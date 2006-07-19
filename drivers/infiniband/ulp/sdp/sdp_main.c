@@ -73,6 +73,12 @@ int sdp_debug_level;
 module_param_named(debug_level, sdp_debug_level, int, 0644);
 MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0.");
 #endif
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG
+int sdp_data_debug_level;
+
+module_param_named(data_debug_level, sdp_data_debug_level, int, 0644);
+MODULE_PARM_DESC(data_debug_level, "Enable data path debug tracing if > 0.");
+#endif
 
 struct workqueue_struct *sdp_workqueue;
 
@@ -826,7 +832,7 @@ int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	long timeo;
 
 	lock_sock(sk);
-	sdp_dbg(sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "%s\n", __func__);
 
 	flags = msg->msg_flags;
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
@@ -1050,7 +1056,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int urg_data = 0;
 
 	lock_sock(sk);
-	sdp_dbg(sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "%s\n", __func__);
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -1132,21 +1138,21 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			release_sock(sk);
 			lock_sock(sk);
 		} else {
-			sdp_dbg(sk, "%s: sk_wait_data %ld\n", __func__, timeo);
+			sdp_dbg_data(sk, "%s: sk_wait_data %ld\n", __func__, timeo);
 			sk_wait_data(sk, &timeo);
 		}
 		continue;
 
 	found_ok_skb:
-		sdp_dbg(sk, "%s: found_ok_skb len %d\n", __func__, skb->len);
-		sdp_dbg(sk, "%s: len %Zd offset %d\n", __func__, len, offset);
-		sdp_dbg(sk, "%s: copied %d target %d\n", __func__, copied, target);
+		sdp_dbg_data(sk, "%s: found_ok_skb len %d\n", __func__, skb->len);
+		sdp_dbg_data(sk, "%s: len %Zd offset %d\n", __func__, len, offset);
+		sdp_dbg_data(sk, "%s: copied %d target %d\n", __func__, copied, target);
 		urg_data = sdp_has_urgent_data(skb);
 		used = skb->len - offset;
 		if (len < used)
 		       	used = len;
 
-		sdp_dbg(sk, "%s: used %ld\n", __func__, used);
+		sdp_dbg_data(sk, "%s: used %ld\n", __func__, used);
 
 		if (!(flags & MSG_TRUNC)) {
 			int err;
@@ -1167,7 +1173,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
                 copied += used;
                 len -= used;
 		offset += used;
-		sdp_dbg(sk, "%s: done copied %d target %d\n", __func__, copied, target);
+		sdp_dbg_data(sk, "%s: done copied %d target %d\n", __func__, copied, target);
 
 		sdp_rcv_space_adjust(sk);
 
@@ -1276,7 +1282,7 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
 			     struct poll_table_struct *wait)
 {
 	int mask;
-	sdp_dbg(socket->sk, "%s\n", __func__);
+	sdp_dbg_data(socket->sk, "%s\n", __func__);
 
 	mask = datagram_poll(file, socket, wait);
 	/* TODO: Slightly ugly: it would be nicer if there was function
