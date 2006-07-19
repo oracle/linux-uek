@@ -597,8 +597,19 @@ static void sdp_shutdown(struct sock *sk, int how)
 	sdp_post_sends(ssk, 0);
 }
 
+static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
+{
+	TCP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
+	ssk->pushed_seq = ssk->write_seq;
+}
+
 static inline void sdp_push_pending_frames(struct sock *sk)
 {
+	struct sk_buff *skb = sk->sk_write_queue.prev;
+	if (skb) {
+		sdp_mark_push(sdp_sk(sk), skb);
+		sdp_post_sends(sdp_sk(sk), 0);
+	}
 }
 
 /* SOL_SOCKET level options are handled by sock_setsockopt */
@@ -781,12 +792,6 @@ static int forced_push(struct sdp_sock *sk)
 {
 	/* TODO */
 	return 0;
-}
-
-static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
-{
-	TCP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
-	ssk->pushed_seq = ssk->write_seq;
 }
 
 static inline int select_size(struct sock *sk, struct sdp_sock *ssk)

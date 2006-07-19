@@ -297,6 +297,16 @@ static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 	}
 }
 
+static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
+{
+	return (ssk->nonagle & TCP_NAGLE_OFF) ||
+		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
+		skb->len + sizeof(struct sdp_bsdh) >= ssk->xmit_size_goal ||
+		(ssk->tx_tail == ssk->tx_head &&
+		 !(ssk->nonagle & TCP_NAGLE_CORK)) ||
+		(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
+}
+
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
@@ -308,7 +318,8 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 	while (ssk->bufs > SDP_MIN_BUFS &&
 	       ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE &&
-	       (skb = ssk->isk.sk.sk_send_head)) {
+	       (skb = ssk->isk.sk.sk_send_head) &&
+		sdp_nagle_off(ssk, skb)) {
 		update_send_head(&ssk->isk.sk, skb);
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
