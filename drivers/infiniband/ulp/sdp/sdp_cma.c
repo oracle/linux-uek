@@ -102,7 +102,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	};
 	struct ib_device *device = id->device;
 	struct ib_cq *cq;
-	struct ib_pd *mr;
+	struct ib_mr *mr;
 	struct ib_pd *pd;
 	int rc;
 
