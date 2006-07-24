@@ -373,6 +373,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
+		inet_sk(sk)->sport = htons(inet_sk(sk)->num);
 	}
 
 	sdp_dbg(sk, "%s %u.%u.%u.%u:%hu -> %u.%u.%u.%u:%hu\n", __func__,
@@ -1226,6 +1227,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
+		inet_sk(sk)->sport = htons(inet_sk(sk)->num);
 	}
 
 	rc = rdma_listen(ssk->id, backlog);
