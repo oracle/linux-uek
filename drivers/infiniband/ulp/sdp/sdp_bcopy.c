@@ -174,7 +174,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	BUG_ON(!skb);
 	h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
 	for (i = 0; i < SDP_MAX_SEND_SKB_FRAGS; ++i) {
-		page = alloc_pages(GFP_KERNEL, 0);
+		page = alloc_pages(GFP_HIGHUSER, 0);
 		BUG_ON(!page);
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
