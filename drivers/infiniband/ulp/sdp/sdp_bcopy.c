@@ -35,6 +35,7 @@
 #include <linux/dma-mapping.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
+#include <linux/pfn.h>
 #include "sdp.h"
 
 /* Like tcp_fin */
@@ -360,6 +361,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb;
 	struct sdp_bsdh *h;
+	int i;
 
 	if (wc->wr_id & SDP_OP_RECV) {
 		skb = sdp_recv_completion(ssk, wc->wr_id);
@@ -393,17 +395,22 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
 				ntohs(h->bufs);
 
+			skb->truesize = sizeof(struct sdp_bsdh) +
+				PAGE_ALIGN(skb->data_len);
+
+			for (i = PFN_ALIGN(skb->data_len) + 1;
+			     i < SDP_MAX_SEND_SKB_FRAGS; ++i)
+				__free_page(skb_shinfo(skb)->frags[i].page);
+
 			if (likely(h->mid == SDP_MID_DATA) &&
 			    likely(skb->data_len > 0)) {
 				skb_pull(skb, sizeof(struct sdp_bsdh));
 				/* TODO: queue can fail? */
-				/* TODO: free unused fragments */
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
 			} else if (likely(h->mid == SDP_MID_DATA)) {
 				__kfree_skb(skb);
 			} else if (h->mid == SDP_MID_DISCONN) {
 				skb_pull(skb, sizeof(struct sdp_bsdh));
-				/* TODO: free unused fragments */
 				/* this will wake recvmsg */
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
 				sdp_fin(&ssk->isk.sk);
