@@ -397,8 +397,9 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 
 			skb->truesize = sizeof(struct sdp_bsdh) +
 				PAGE_ALIGN(skb->data_len);
+			skb_shinfo(skb)->nr_frags = PFN_ALIGN(skb->data_len);
 
-			for (i = PFN_ALIGN(skb->data_len) + 1;
+			for (i = skb_shinfo(skb)->nr_frags;
 			     i < SDP_MAX_SEND_SKB_FRAGS; ++i)
 				__free_page(skb_shinfo(skb)->frags[i].page);
 
