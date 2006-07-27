@@ -361,7 +361,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb;
 	struct sdp_bsdh *h;
-	int i;
+	int pagesz, i;
 
 	if (wc->wr_id & SDP_OP_RECV) {
 		skb = sdp_recv_completion(ssk, wc->wr_id);
@@ -395,13 +395,13 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
 				ntohs(h->bufs);
 
-			skb->truesize = sizeof(struct sdp_bsdh) +
-				PAGE_ALIGN(skb->data_len);
-			skb_shinfo(skb)->nr_frags = PFN_ALIGN(skb->data_len);
+			pagesz = PAGE_ALIGN(skb->data_len);
+			skb->truesize = sizeof(struct sdp_bsdh) + pagesz;
+			skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
 
 			for (i = skb_shinfo(skb)->nr_frags;
 			     i < SDP_MAX_SEND_SKB_FRAGS; ++i)
-				__free_page(skb_shinfo(skb)->frags[i].page);
+				put_page(skb_shinfo(skb)->frags[i].page);
 
 			if (likely(h->mid == SDP_MID_DATA) &&
 			    likely(skb->data_len > 0)) {
