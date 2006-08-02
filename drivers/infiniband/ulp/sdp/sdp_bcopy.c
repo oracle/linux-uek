@@ -369,13 +369,14 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			return;
 
 		if (unlikely(wc->status)) {
-			if (wc->status != IB_WC_WR_FLUSH_ERR)
+			if (wc->status != IB_WC_WR_FLUSH_ERR) {
 				sdp_dbg(&ssk->isk.sk,
-					"Recv completion with error. "
-					"Status %d\n", wc->status);
+						"Recv completion with error. "
+						"Status %d\n", wc->status);
+				sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+				wake_up(&ssk->wq);
+			}
 			__kfree_skb(skb);
-			sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-			wake_up(&ssk->wq);
 		} else {
 			/* TODO: handle msg < bsdh */
 			sdp_dbg_data(&ssk->isk.sk,
@@ -428,12 +429,13 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			return;
 		sk_stream_free_skb(&ssk->isk.sk, skb);
 		if (unlikely(wc->status)) {
-			if (wc->status != IB_WC_WR_FLUSH_ERR)
+			if (wc->status != IB_WC_WR_FLUSH_ERR) {
 				sdp_dbg(&ssk->isk.sk,
-					"Send completion with error. "
-					"Status %d\n", wc->status);
-			sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-			wake_up(&ssk->wq);
+						"Send completion with error. "
+						"Status %d\n", wc->status);
+				sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+				wake_up(&ssk->wq);
+			}
 		}
 
 		sk_stream_write_space(&ssk->isk.sk);
@@ -461,35 +463,38 @@ void sdp_completion_handler(struct ib_cq *cq, void *cq_context)
 	schedule_work(&ssk->work);
 }
 
+void sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
+{
+	int n, i;
+	do {
+		n = ib_poll_cq(cq, SDP_NUM_WC, ssk->ibwc);
+		for (i = 0; i < n; ++i) {
+			sdp_handle_wc(ssk, ssk->ibwc + i);
+		}
+	} while (n == SDP_NUM_WC);
+}
+
 void sdp_work(void *data)
 {
 	struct sock *sk = (struct sock *)data;
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct ib_cq *cq;
-	int n, i;
 
 	sdp_dbg_data(sk, "%s\n", __func__);
 
+	lock_sock(sk);
 	cq = ssk->cq;
 	if (unlikely(!cq))
-		return;
-
-	do {
-		lock_sock(sk);
-		n = ib_poll_cq(cq, SDP_NUM_WC, ssk->ibwc);
-		for (i = 0; i < n; ++i) {
-			sdp_handle_wc(ssk, ssk->ibwc + i);
-		}
-		release_sock(sk);
-	} while (n == SDP_NUM_WC);
+		goto out;
+	sdp_poll_cq(ssk, cq);
+	release_sock(sk);
 	sk_stream_mem_reclaim(sk);
+	lock_sock(sk);
+	cq = ssk->cq;
+	if (unlikely(!cq))
+		goto out;
 	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
-	do {
-		lock_sock(sk);
-		n = ib_poll_cq(cq, SDP_NUM_WC, ssk->ibwc);
-		for (i = 0; i < n; ++i) {
-			sdp_handle_wc(ssk, ssk->ibwc + i);
-		}
-		release_sock(sk);
-	} while (n == SDP_NUM_WC);
+	sdp_poll_cq(ssk, cq);
+out:
+	release_sock(sk);
 }

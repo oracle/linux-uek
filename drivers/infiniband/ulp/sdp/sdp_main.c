@@ -148,14 +148,13 @@ void sdp_close_sk(struct sock *sk)
 		ssk->id = NULL;
 		release_sock(sk);
 		rdma_destroy_id(id);
-	} else
-		release_sock(sk);
+		lock_sock(sk);
+	}
 
 	if (ssk->qp) {
 		pd = ssk->qp->pd;
 		cq = ssk->cq;
 		sdp_sk(sk)->cq = NULL;
-		flush_scheduled_work();
 		ib_destroy_qp(ssk->qp);
 
 		while (ssk->rx_head != ssk->rx_tail) {
@@ -174,10 +173,8 @@ void sdp_close_sk(struct sock *sk)
 		}
 	}
 
-	if (cq) {
+	if (cq)
 		ib_destroy_cq(cq);
-		flush_scheduled_work();
-	}
 
 	if (ssk->mr)
 		ib_dereg_mr(ssk->mr);
@@ -191,6 +188,9 @@ void sdp_close_sk(struct sock *sk)
 	kfree(sdp_sk(sk)->tx_ring);
 
 	sdp_dbg(sk, "%s done; releasing sock\n", __func__);
+	release_sock(sk);
+
+	flush_scheduled_work();
 }
 
 static void sdp_destruct(struct sock *sk)

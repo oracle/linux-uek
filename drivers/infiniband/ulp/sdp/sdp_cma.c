@@ -482,6 +482,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 done:
 		release_sock(parent);
 		sk_common_release(child);
+	} else if (rc) {
 	}
 	return rc;
 }
