@@ -35,7 +35,6 @@
 #include <linux/dma-mapping.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
-#include <linux/pfn.h>
 #include "sdp.h"
 
 /* Like tcp_fin */
