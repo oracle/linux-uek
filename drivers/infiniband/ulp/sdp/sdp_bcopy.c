@@ -447,11 +447,9 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 
 	if (ssk->time_wait && !ssk->isk.sk.sk_send_head &&
 	    ssk->tx_head == ssk->tx_tail) {
-		ssk->time_wait = 0;
-		ssk->isk.sk.sk_state = TCP_CLOSE;
 		sdp_dbg(&ssk->isk.sk, "%s: destroy in time wait state\n",
 			__func__);
-		queue_work(sdp_workqueue, &ssk->destroy_work);
+		sdp_time_wait_destroy_sk(ssk);
 	}
 }
 

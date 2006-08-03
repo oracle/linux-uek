@@ -108,6 +108,11 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
+	sdp_sk(sk)->tx_head = 1;
+	sdp_sk(sk)->tx_tail = 1;
+	sdp_sk(sk)->rx_head = 1;
+	sdp_sk(sk)->rx_tail = 1;
+
 	sdp_sk(sk)->tx_ring = kmalloc(sizeof *sdp_sk(sk)->tx_ring * SDP_TX_SIZE,
 				      GFP_KERNEL);
 	if (!sdp_sk(sk)->tx_ring) {
@@ -459,8 +464,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_sk(sk)->id = NULL;
 		id->qp = NULL;
 		id->context = NULL;
-		sdp_set_error(sk, rc);
 		parent = sdp_sk(sk)->parent;
+		if (!parent)
+			sdp_reset_sk(sk, rc);
 	}
 
 	release_sock(sk);
@@ -482,7 +488,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 done:
 		release_sock(parent);
 		sk_common_release(child);
-	} else if (rc) {
 	}
 	return rc;
 }

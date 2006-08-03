@@ -120,41 +120,15 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	return 0;
 }
 
-/* TODO: linger? */
-void sdp_close_sk(struct sock *sk)
+static void sdp_destroy_qp(struct sdp_sock *ssk)
 {
-	struct sdp_sock *ssk = sdp_sk(sk);
-	struct rdma_cm_id *id = NULL;
 	struct ib_pd *pd = NULL;
 	struct ib_cq *cq = NULL;
-
-	sdp_dbg(sk, "%s\n", __func__);
-
-	lock_sock(sk);
-
-	sk->sk_send_head = NULL;
-	skb_queue_purge(&sk->sk_write_queue);
-        /*
-         * If sendmsg cached page exists, toss it.
-         */
-        if (sk->sk_sndmsg_page) {
-                __free_page(sk->sk_sndmsg_page);
-                sk->sk_sndmsg_page = NULL;
-        }
-
-	id = ssk->id;
-	if (ssk->id) {
-		id->qp = NULL;
-		ssk->id = NULL;
-		release_sock(sk);
-		rdma_destroy_id(id);
-		lock_sock(sk);
-	}
 
 	if (ssk->qp) {
 		pd = ssk->qp->pd;
 		cq = ssk->cq;
-		sdp_sk(sk)->cq = NULL;
+		ssk->cq = NULL;
 		ib_destroy_qp(ssk->qp);
 
 		while (ssk->rx_head != ssk->rx_tail) {
@@ -182,10 +156,63 @@ void sdp_close_sk(struct sock *sk)
 	if (pd)
 		ib_dealloc_pd(pd);
 
+	kfree(ssk->rx_ring);
+	kfree(ssk->tx_ring);
+}
+
+void sdp_reset_sk(struct sock *sk, int rc)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	sdp_dbg(sk, "%s\n", __func__);
+
+	if (ssk->cq)
+		sdp_poll_cq(ssk, ssk->cq);
+
+	if (!(sk->sk_shutdown & RCV_SHUTDOWN))
+		sdp_set_error(sk, rc);
+
+	sdp_destroy_qp(ssk);
+
+	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
+
+	if (ssk->time_wait) {
+		sdp_dbg(sk, "%s: destroy in time wait state\n", __func__);
+		sdp_time_wait_destroy_sk(ssk);
+	}
+}
+
+/* TODO: linger? */
+static void sdp_close_sk(struct sock *sk)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+	struct rdma_cm_id *id = NULL;
+	sdp_dbg(sk, "%s\n", __func__);
+
+	lock_sock(sk);
+
+	sk->sk_send_head = NULL;
+	skb_queue_purge(&sk->sk_write_queue);
+        /*
+         * If sendmsg cached page exists, toss it.
+         */
+        if (sk->sk_sndmsg_page) {
+                __free_page(sk->sk_sndmsg_page);
+                sk->sk_sndmsg_page = NULL;
+        }
+
+	id = ssk->id;
+	if (ssk->id) {
+		id->qp = NULL;
+		ssk->id = NULL;
+		release_sock(sk);
+		rdma_destroy_id(id);
+		lock_sock(sk);
+	}
+
 	skb_queue_purge(&sk->sk_receive_queue);
 
-	kfree(sdp_sk(sk)->rx_ring);
-	kfree(sdp_sk(sk)->tx_ring);
+	sdp_destroy_qp(ssk);
 
 	sdp_dbg(sk, "%s done; releasing sock\n", __func__);
 	release_sock(sk);
@@ -558,6 +585,13 @@ void sdp_time_wait_work(void *data)
 	sock_put(data);
 }
 
+void sdp_time_wait_destroy_sk(struct sdp_sock *ssk)
+{
+	ssk->time_wait = 0;
+	ssk->isk.sk.sk_state = TCP_CLOSE;
+	queue_work(sdp_workqueue, &ssk->destroy_work);
+}
+
 static int sdp_init_sock(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -569,10 +603,6 @@ static int sdp_init_sock(struct sock *sk)
 	INIT_WORK(&ssk->time_wait_work, sdp_time_wait_work, sk);
 	INIT_WORK(&ssk->destroy_work, sdp_destroy_work, sk);
 
-	ssk->tx_head = 1;
-	ssk->tx_tail = 1;
-	ssk->rx_head = 1;
-	ssk->rx_tail = 1;
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 	return 0;
 }

@@ -86,22 +86,8 @@ struct sdp_sock {
 	struct list_head accept_queue;
 	struct list_head backlog_queue;
 	struct sock *parent;
-	/* rdma specific */
-	struct rdma_cm_id *id;
-	struct ib_qp *qp;
-	struct ib_cq *cq;
-	struct ib_mr *mr;
-	struct device *dma_device;
-	/* Like tcp_sock */
-	__u16 urg_data;
-	int offset; /* like seq in tcp */
 
-	int xmit_size_goal;
-	int write_seq;
-	int pushed_seq;
-	int nonagle;
-
-	/* SDP specific */
+	struct work_struct work;
 	wait_queue_head_t wq;
 
 	struct work_struct time_wait_work;
@@ -109,7 +95,25 @@ struct sdp_sock {
 
 	int time_wait;
 
-	spinlock_t lock;
+	/* Like tcp_sock */
+	__u16 urg_data;
+	int offset; /* like seq in tcp */
+
+	int xmit_size_goal;
+	int write_seq;
+	int pushed_seq;
+
+	int nonagle;
+
+	/* Data below will be reset on error */
+	/* rdma specific */
+	struct rdma_cm_id *id;
+	struct ib_qp *qp;
+	struct ib_cq *cq;
+	struct ib_mr *mr;
+	struct device *dma_device;
+
+	/* SDP specific */
 	struct sdp_buf *rx_ring;
 	struct ib_recv_wr rx_wr;
 	unsigned rx_head;
@@ -119,7 +123,6 @@ struct sdp_sock {
 
 	int               remote_credits;
 
-	spinlock_t        tx_lock;
 	struct sdp_buf   *tx_ring;
 	unsigned          tx_head;
 	unsigned          tx_tail;
@@ -127,7 +130,6 @@ struct sdp_sock {
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];
-	struct work_struct work;
 };
 
 extern struct proto sdp_proto;
@@ -163,7 +165,8 @@ static inline void sdp_set_state(struct sock *sk, int state)
 extern struct workqueue_struct *sdp_workqueue;
 
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
-void sdp_close_sk(struct sock *sk);
+void sdp_reset_sk(struct sock *sk, int rc);
+void sdp_time_wait_destroy_sk(struct sdp_sock *ssk);
 void sdp_completion_handler(struct ib_cq *cq, void *cq_context);
 void sdp_work(void *);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
