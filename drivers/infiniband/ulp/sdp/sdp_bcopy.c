@@ -460,15 +460,18 @@ void sdp_completion_handler(struct ib_cq *cq, void *cq_context)
 	schedule_work(&ssk->work);
 }
 
-void sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
+int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
 {
 	int n, i;
+	int ret = -EAGAIN;
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ssk->ibwc);
 		for (i = 0; i < n; ++i) {
 			sdp_handle_wc(ssk, ssk->ibwc + i);
+			ret = 0;
 		}
 	} while (n == SDP_NUM_WC);
+	return ret;
 }
 
 void sdp_work(void *data)

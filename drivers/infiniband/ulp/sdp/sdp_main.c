@@ -80,6 +80,36 @@ module_param_named(data_debug_level, sdp_data_debug_level, int, 0644);
 MODULE_PARM_DESC(data_debug_level, "Enable data path debug tracing if > 0.");
 #endif
 
+static int send_poll_hit;
+
+module_param_named(send_poll_hit, send_poll_hit, int, 0644);
+MODULE_PARM_DESC(send_poll_hit, "How many times send poll helped.");
+
+static int send_poll_miss;
+
+module_param_named(send_poll_miss, send_poll_miss, int, 0644);
+MODULE_PARM_DESC(send_poll_miss, "How many times send poll missed.");
+
+static int recv_poll_hit;
+
+module_param_named(recv_poll_hit, recv_poll_hit, int, 0644);
+MODULE_PARM_DESC(recv_poll_hit, "How many times recv poll helped.");
+
+static int recv_poll_miss;
+
+module_param_named(recv_poll_miss, recv_poll_miss, int, 0644);
+MODULE_PARM_DESC(recv_poll_miss, "How many times recv poll missed.");
+
+static int send_poll = 100;
+
+module_param_named(send_poll, send_poll, int, 0644);
+MODULE_PARM_DESC(send_poll, "How many times to poll send.");
+
+static int recv_poll = 1000;
+
+module_param_named(recv_poll, recv_poll, int, 0644);
+MODULE_PARM_DESC(recv_poll, "How many times to poll recv.");
+
 struct workqueue_struct *sdp_workqueue;
 
 static int sdp_get_port(struct sock *sk, unsigned short snum)
@@ -852,6 +882,32 @@ void sdp_push_one(struct sock *sk, unsigned int mss_now)
 {
 }
 
+static inline int poll_recv_cq(struct sock *sk)
+{
+	int i;
+	if (sdp_sk(sk)->cq) {
+		for (i = 0; i < recv_poll; ++i)
+			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+				++recv_poll_hit;
+				return 0;
+			}
+		++recv_poll_miss;
+	}
+	return 1;
+}
+
+static inline void poll_send_cq(struct sock *sk)
+{
+	int i;
+	if (sdp_sk(sk)->cq) {
+		for (i = 0; i < send_poll; ++i)
+			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+				++send_poll_hit;
+				return;
+			}
+		++send_poll_miss;
+	}
+}
 /* Like tcp_sendmsg */
 /* TODO: check locking */
 #define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
@@ -1055,6 +1111,7 @@ wait_for_memory:
 out:
 	if (copied)
 		sdp_push(sk, ssk, flags, mss_now, ssk->nonagle);
+	poll_send_cq(sk);
 	release_sock(sk);
 	return copied;
 
@@ -1090,6 +1147,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int offset = sdp_sk(sk)->offset;
 	int copied = 0;
 	int urg_data = 0;
+	int rc;
 
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
@@ -1169,11 +1227,13 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 		}
 
-		if (copied >= target) {
+		rc = poll_recv_cq(sk);
+
+		if (copied >= target && !recv_poll) {
 			/* Do not sleep, just process backlog. */
 			release_sock(sk);
 			lock_sock(sk);
-		} else {
+		} else if (rc) {
 			sdp_dbg_data(sk, "%s: sk_wait_data %ld\n", __func__, timeo);
 			sk_wait_data(sk, &timeo);
 		}
