@@ -72,7 +72,10 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_send_wr *bad_wr;
 
 	h->mid = mid;
-	h->flags = 0; /* TODO: OOB */
+	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
+		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
+	else
+		h->flags = 0;
 	h->bufs = htons(ssk->rx_head - ssk->rx_tail);
 	h->len = htonl(skb->len);
 	h->mseq = htonl(mseq);
@@ -86,7 +89,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 			      skb->data, skb->len - skb->data_len,
 			      DMA_TO_DEVICE);
 	tx_req->mapping[0] = addr;
-	
+
 	/* TODO: proper error handling */
 	BUG_ON(dma_mapping_error(addr));
 
@@ -195,7 +198,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	BUG_ON(dma_mapping_error(addr));
 
 	rx_req->mapping[0] = addr;
-	
+
 	/* TODO: proper error handling */
 	sge->addr = (u64)addr;
 	sge->length = skb_headlen(skb);
@@ -271,10 +274,14 @@ struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 static inline int sdp_sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 {
 	int skb_len;
+	struct sdp_sock *ssk = sdp_sk(sk);
 
 	skb_set_owner_r(skb, sk);
 
 	skb_len = skb->len;
+
+	TCP_SKB_CB(skb)->seq = ssk->rcv_nxt;
+	ssk->rcv_nxt += skb_len;
 
 	skb_queue_tail(&sk->sk_receive_queue, skb);
 
@@ -403,11 +410,16 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			     i < SDP_MAX_SEND_SKB_FRAGS; ++i)
 				put_page(skb_shinfo(skb)->frags[i].page);
 
+			if (unlikely(h->flags & SDP_OOB_PEND))
+				sk_send_sigurg(&ssk->isk.sk);
+
 			if (likely(h->mid == SDP_MID_DATA) &&
 			    likely(skb->data_len > 0)) {
 				skb_pull(skb, sizeof(struct sdp_bsdh));
 				/* TODO: queue can fail? */
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
+				if (unlikely(h->flags & SDP_OOB_PRES))
+					sdp_urg(ssk, skb);
 			} else if (likely(h->mid == SDP_MID_DATA)) {
 				__kfree_skb(skb);
 			} else if (h->mid == SDP_MID_DISCONN) {

@@ -59,6 +59,11 @@ enum sdp_mid {
 	SDP_MID_DATA = 0xFF,
 };
 
+enum sdp_flags {
+        SDP_OOB_PRES = 1 << 0,
+        SDP_OOB_PEND = 1 << 1,
+};
+
 enum {
 	SDP_MIN_BUFS = 2
 };
@@ -93,17 +98,11 @@ struct sdp_sock {
 	struct work_struct time_wait_work;
 	struct work_struct destroy_work;
 
-	int time_wait;
-
 	/* Like tcp_sock */
-	__u16 urg_data;
-	int offset; /* like seq in tcp */
-
 	int xmit_size_goal;
-	int write_seq;
-	int pushed_seq;
-
 	int nonagle;
+
+	int time_wait;
 
 	/* Data below will be reset on error */
 	/* rdma specific */
@@ -120,6 +119,15 @@ struct sdp_sock {
 	unsigned rx_tail;
 	unsigned mseq_ack;
 	unsigned bufs;
+
+	/* Like tcp_sock */
+	__u16 urg_data;
+	u32 urg_seq;
+	u32 copied_seq;
+	u32 rcv_nxt;
+
+	int write_seq;
+	int pushed_seq;
 
 	int               remote_credits;
 
@@ -177,5 +185,6 @@ void sdp_destroy_work(void *data);
 void sdp_time_wait_work(void *data);
 struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id);
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
+void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
 
 #endif

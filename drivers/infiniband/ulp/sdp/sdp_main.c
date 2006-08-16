@@ -574,13 +574,23 @@ out_err:
 
 static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 {
+	struct sdp_sock *ssk = sdp_sk(sk);
+	int answ;
+
 	sdp_dbg(sk, "%s\n", __func__);
+
+	switch (cmd) {
+	case SIOCATMARK:
+		answ = ssk->urg_data && ssk->urg_seq == ssk->copied_seq;
+		break;
+	default:
+		return -ENOIOCTLCMD;
+	}
 	/* TODO: Need to handle:
-	         case SIOCINQ:
-		 case SIOCOUTQ:
-		 case SIOCATMARK:
+	   case SIOCINQ:
+	   case SIOCOUTQ:
 	 */
-	return -ENOIOCTLCMD;
+	return put_user(answ, (int __user *)arg); 
 }
 
 void sdp_destroy_work(void *data)
@@ -831,12 +841,6 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 	return -EAGAIN;
 }
 
-static inline int sdp_has_urgent_data(struct sk_buff *skb)
-{
-	/* TODO: handle inline urgent data */
-	return 0;
-}
-
 static void sdp_rcv_space_adjust(struct sock *sk)
 {
 	sdp_post_recvs(sdp_sk(sk));
@@ -860,9 +864,19 @@ static inline int select_size(struct sock *sk, struct sdp_sock *ssk)
 	return 0;
 }
 
+static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk, int flags)
+{
+	if (unlikely(flags & MSG_OOB)) {
+		struct sk_buff *skb = sk->sk_write_queue.prev;
+		TCP_SKB_CB(skb)->flags |= TCPCB_URG;
+	}
+}
+
 static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags,
 			    int mss_now, int nonagle)
 {
+	if (sk->sk_send_head)
+		sdp_mark_urg(sk, ssk, flags);
 	sdp_post_sends(ssk, nonagle);
 }
 
@@ -991,6 +1005,13 @@ new_segment:
 			if (copy > seglen)
 				copy = seglen;
 
+			/* OOB data byte should be the last byte of
+			   the data payload */
+			if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG) &&
+			    !(flags & MSG_OOB)) {
+				sdp_mark_push(ssk, skb);
+				goto new_segment;
+			}
 			/* Where to copy to? */
 			if (skb_tailroom(skb) > 0) {
 				/* We have some space in skb head. Superb! */
@@ -1136,17 +1157,18 @@ out_err:
 /* Maybe use skb_recv_datagram here? */
 /* Note this does not seem to handle vectored messages. Relevant? */
 static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-					size_t len, int noblock, int flags, 
-					int *addr_len)
+		       size_t len, int noblock, int flags, 
+		       int *addr_len)
 {
 	struct sk_buff *skb = NULL;
+	struct sdp_sock *ssk = sdp_sk(sk);
 	long timeo;
 	int target;
 	unsigned long used;
 	int err;
-	int offset = sdp_sk(sk)->offset;
+	u32 peek_seq;
+	u32 *seq;
 	int copied = 0;
-	int urg_data = 0;
 	int rc;
 
 	lock_sock(sk);
@@ -1161,26 +1183,48 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	if (flags & MSG_OOB)
 		goto recv_urg;
 
+	seq = &ssk->copied_seq;
+	if (flags & MSG_PEEK) {
+		peek_seq = ssk->copied_seq;
+		seq = &peek_seq;
+	}
+
 	target = sock_rcvlowat(sk, flags & MSG_WAITALL, len);
 
 	do {
+		u32 offset;
 
-                /* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
-                if (urg_data) {
-                        if (copied)
-                                break;
-                        if (signal_pending(current)) {
-                                copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
-                                break;
-                        }
-                }
+		/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
+		if (ssk->urg_data && ssk->urg_seq == *seq) {
+			if (copied)
+				break;
+			if (signal_pending(current)) {
+				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
+				break;
+			}
+		}
 
 		skb = skb_peek(&sk->sk_receive_queue);
-		if (skb) {
+		do {
+			if (!skb)
+				break;
+
 			if (skb->h.raw[0] == SDP_MID_DISCONN)
 				goto found_fin_ok;
-			goto found_ok_skb;
-		}
+
+			if (before(*seq, TCP_SKB_CB(skb)->seq)) {
+				printk(KERN_INFO "recvmsg bug: copied %X "
+				       "seq %X\n", *seq, TCP_SKB_CB(skb)->seq);
+				break;
+			}
+
+			offset = *seq - TCP_SKB_CB(skb)->seq;
+			if (offset < skb->len)
+				goto found_ok_skb;
+
+			BUG_TRAP(flags & MSG_PEEK);
+			skb = skb->next;
+		} while (skb != (struct sk_buff *)&sk->sk_receive_queue);
 
 		if (copied >= target)
 			break;
@@ -1243,13 +1287,27 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		sdp_dbg_data(sk, "%s: found_ok_skb len %d\n", __func__, skb->len);
 		sdp_dbg_data(sk, "%s: len %Zd offset %d\n", __func__, len, offset);
 		sdp_dbg_data(sk, "%s: copied %d target %d\n", __func__, copied, target);
-		urg_data = sdp_has_urgent_data(skb);
 		used = skb->len - offset;
 		if (len < used)
-		       	used = len;
+			used = len;
 
 		sdp_dbg_data(sk, "%s: used %ld\n", __func__, used);
 
+		if (ssk->urg_data) {
+			u32 urg_offset = ssk->urg_seq - *seq;
+			if (urg_offset < used) {
+				if (!urg_offset) {
+					if (!sock_flag(sk, SOCK_URGINLINE)) {
+						++*seq;
+						offset++;
+						used--;
+						if (!used)
+							goto skip_copy;
+					}
+				} else
+					used = urg_offset;
+			}
+		}
 		if (!(flags & MSG_TRUNC)) {
 			int err;
 			err = skb_copy_datagram_iovec(skb, offset,
@@ -1266,33 +1324,30 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 		}
 
-                copied += used;
-                len -= used;
-		offset += used;
+		copied += used;
+		len -= used;
+		*seq += used;
+
 		sdp_dbg_data(sk, "%s: done copied %d target %d\n", __func__, copied, target);
 
 		sdp_rcv_space_adjust(sk);
-
-                if (offset < skb->len)
-			continue; /* TODO: break? */
-
-                if (!(flags & MSG_PEEK))
-			sk_eat_skb(sk, skb, 0);
-
+skip_copy:
+		if (ssk->urg_data && after(ssk->copied_seq, ssk->urg_seq))
+			ssk->urg_data = 0;
+		if (used + offset < skb->len)
+			continue;
 		offset = 0;
-		skb = NULL;
+
+		if (!(flags & MSG_PEEK))
+			sk_eat_skb(sk, skb, 0);
 
 		continue;
 found_fin_ok:
 		if (!(flags & MSG_PEEK))
 			sk_eat_skb(sk, skb, 0);
 
-		offset = 0;
-		skb = NULL;
 		break;
 	} while (len > 0);
-
-	sdp_sk(sk)->offset = skb && !(flags & MSG_PEEK) ? offset : 0;
 
 	release_sock(sk);
 	return copied;
@@ -1396,6 +1451,21 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
 static void sdp_enter_memory_pressure(void)
 {
 	sdp_dbg(NULL, "%s\n", __func__);
+}
+
+void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
+{
+	struct sock *sk = &ssk->isk.sk;
+	u8 tmp;
+	u32 ptr = skb->len - 1;
+
+	ssk->urg_seq = TCP_SKB_CB(skb)->seq + ptr;
+
+	if (skb_copy_bits(skb, ptr, &tmp, 1))
+		BUG();
+	ssk->urg_data = TCP_URG_VALID | tmp;
+	if (!sock_flag(sk, SOCK_DEAD))
+		sk->sk_data_ready(sk, 0);
 }
 
 static atomic_t sockets_allocated;
