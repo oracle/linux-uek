@@ -373,6 +373,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
 
+		sdp_sk(sk)->isk.rcv_saddr = ((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
+		sdp_sk(sk)->isk.saddr = sdp_sk(sk)->isk.rcv_saddr;
+
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hh;
 		conn_param.private_data = &hh;
@@ -437,6 +440,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
 		sdp_dbg(sk, "RDMA_CM_EVENT_ESTABLISHED\n");
+		sdp_sk(sk)->isk.rcv_saddr = ((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
+		sdp_sk(sk)->isk.saddr = sdp_sk(sk)->isk.rcv_saddr;
 		rc = sdp_connected_handler(sk, event);
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED:
