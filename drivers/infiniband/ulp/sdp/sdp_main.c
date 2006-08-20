@@ -1343,6 +1343,7 @@ skip_copy:
 
 		continue;
 found_fin_ok:
+		++*seq;
 		if (!(flags & MSG_PEEK))
 			sk_eat_skb(sk, skb, 0);
 
