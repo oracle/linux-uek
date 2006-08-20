@@ -403,12 +403,13 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				ntohs(h->bufs);
 
 			pagesz = PAGE_ALIGN(skb->data_len);
-			skb->truesize = sizeof(struct sdp_bsdh) + pagesz;
 			skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
 
 			for (i = skb_shinfo(skb)->nr_frags;
-			     i < SDP_MAX_SEND_SKB_FRAGS; ++i)
+			     i < SDP_MAX_SEND_SKB_FRAGS; ++i) {
 				put_page(skb_shinfo(skb)->frags[i].page);
+				skb->truesize -= PAGE_SIZE;
+			}
 
 			if (unlikely(h->flags & SDP_OOB_PEND))
 				sk_send_sigurg(&ssk->isk.sk);
