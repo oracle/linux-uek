@@ -99,6 +99,13 @@ struct sdp_sock {
 	struct work_struct destroy_work;
 
 	/* Like tcp_sock */
+	u16 urg_data;
+	u32 urg_seq;
+	u32 copied_seq;
+	u32 rcv_nxt;
+
+	int write_seq;
+	int pushed_seq;
 	int xmit_size_goal;
 	int nonagle;
 
@@ -119,15 +126,6 @@ struct sdp_sock {
 	unsigned rx_tail;
 	unsigned mseq_ack;
 	unsigned bufs;
-
-	/* Like tcp_sock */
-	__u16 urg_data;
-	u32 urg_seq;
-	u32 copied_seq;
-	u32 rcv_nxt;
-
-	int write_seq;
-	int pushed_seq;
 
 	int               remote_credits;
 
