@@ -137,7 +137,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		sdp_warn(sk, "Unable to allocate PD: %d.\n", rc);
 		goto err_pd;
 	}
-	
+
         mr = ib_get_dma_mr(pd, IB_ACCESS_LOCAL_WRITE);
         if (IS_ERR(mr)) {
                 rc = PTR_ERR(mr);
@@ -244,9 +244,11 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	return 0;
 }
 
-static int sdp_response_handler(struct sock *sk, struct rdma_cm_event *event)
+static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
+				struct rdma_cm_event *event)
 {
 	struct sdp_hah *h;
+	struct sockaddr_in *dst_addr;
 	sdp_dbg(sk, "%s\n", __func__);
 
 	sk->sk_state = TCP_ESTABLISHED;
@@ -270,6 +272,11 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_event *event)
 
 	sk->sk_state_change(sk);
 	sk_wake_async(sk, 0, POLL_OUT);
+
+	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
+	inet_sk(sk)->dport = dst_addr->sin_port;
+	inet_sk(sk)->daddr = dst_addr->sin_addr.s_addr;
+
 	return 0;
 }
 
@@ -328,7 +335,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	struct sock *sk;
 	struct sdp_hah hah;
 	struct sdp_hh hh;
-	
+
 	int rc = 0;
 
 	sk = id->context;
@@ -418,7 +425,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_RESPONSE\n");
-		rc = sdp_response_handler(sk, event);
+		rc = sdp_response_handler(sk, id, event);
 		if (rc)
 			rdma_reject(id, NULL, 0);
 		else
