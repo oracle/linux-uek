@@ -572,6 +572,7 @@ out_err:
 	goto out;
 }
 
+/* Like tcp_ioctl */
 static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -580,6 +581,28 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	sdp_dbg(sk, "%s\n", __func__);
 
 	switch (cmd) {
+	case SIOCINQ:
+		if (sk->sk_state == TCP_LISTEN)
+			return -EINVAL;
+
+		lock_sock(sk);
+		if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))
+			answ = 0;
+		else if (sock_flag(sk, SOCK_URGINLINE) ||
+			 !ssk->urg_data ||
+			 before(ssk->urg_seq, ssk->copied_seq) ||
+			 !before(ssk->urg_seq, ssk->rcv_nxt)) {
+			answ = ssk->rcv_nxt - ssk->copied_seq;
+
+			/* Subtract 1, if FIN is in queue. */
+			if (answ && !skb_queue_empty(&sk->sk_receive_queue))
+				answ -=
+		        ((struct sk_buff *)sk->sk_receive_queue.prev)->h.raw[0]
+		        == SDP_MID_DISCONN ? 1 : 0;
+		} else
+			answ = ssk->urg_seq - ssk->copied_seq;
+		release_sock(sk);
+		break;
 	case SIOCATMARK:
 		answ = ssk->urg_data && ssk->urg_seq == ssk->copied_seq;
 		break;
@@ -587,7 +610,6 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		return -ENOIOCTLCMD;
 	}
 	/* TODO: Need to handle:
-	   case SIOCINQ:
 	   case SIOCOUTQ:
 	 */
 	return put_user(answ, (int __user *)arg); 
