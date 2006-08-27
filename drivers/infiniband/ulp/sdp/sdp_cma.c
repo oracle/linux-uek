@@ -475,8 +475,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		id->qp = NULL;
 		id->context = NULL;
 		parent = sdp_sk(sk)->parent;
-		if (!parent)
-			sdp_reset_sk(sk, rc);
+		sdp_reset_sk(sk, rc);
 	}
 
 	release_sock(sk);
@@ -491,13 +490,12 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			goto done;
 		}
 		list_del_init(&sdp_sk(child)->backlog_queue);
-		if (!list_empty(&sdp_sk(child)->accept_queue)) {
-			list_del_init(&sdp_sk(child)->accept_queue);
-			sk_acceptq_removed(parent);
-		}
+		if (!list_empty(&sdp_sk(child)->accept_queue))
+			child = NULL; /* Don't kill the child in accept queue */
 done:
 		release_sock(parent);
-		sk_common_release(child);
+		if (child)
+			sk_common_release(child);
 	}
 	return rc;
 }
