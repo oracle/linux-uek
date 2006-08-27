@@ -557,11 +557,17 @@ static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 	newssk->parent = NULL;
 	sk_acceptq_removed(sk);
 	newsk = &newssk->isk.sk;
-	sdp_dbg(sk, "%s: ib_req_notify_cq\n", __func__);
-	ib_req_notify_cq(newssk->cq, IB_CQ_NEXT_COMP);
-	/* TODO: poll cq here */
 out:
 	release_sock(sk);
+	if (newsk) {
+		lock_sock(newsk);
+		if (newssk->cq) {
+			sdp_dbg(newsk, "%s: ib_req_notify_cq\n", __func__);
+			ib_req_notify_cq(newssk->cq, IB_CQ_NEXT_COMP);
+			sdp_poll_cq(newssk, newssk->cq);
+		}
+		release_sock(newsk);
+	}
 	sdp_dbg(sk, "%s: status %d sk %p newsk %p\n", __func__,
 		*err, sk, newsk);
 	return newsk;
