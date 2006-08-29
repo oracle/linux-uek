@@ -489,9 +489,10 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			sdp_dbg(sk, "parent is going away.\n");
 			goto done;
 		}
-		list_del_init(&sdp_sk(child)->backlog_queue);
-		if (!list_empty(&sdp_sk(child)->accept_queue))
-			child = NULL; /* Don't kill the child in accept queue */
+		if (!list_empty(&sdp_sk(child)->backlog_queue))
+			list_del_init(&sdp_sk(child)->backlog_queue);
+		else
+			child = NULL;
 done:
 		release_sock(parent);
 		if (child)
