@@ -487,6 +487,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		lock_sock(parent);
 		if (!sdp_sk(parent)->id) { /* TODO: look at SOCK_DEAD? */
 			sdp_dbg(sk, "parent is going away.\n");
+			child = NULL;
 			goto done;
 		}
 		if (!list_empty(&sdp_sk(child)->backlog_queue))
