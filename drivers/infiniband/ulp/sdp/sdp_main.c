@@ -704,7 +704,7 @@ static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
 
 static inline void sdp_push_pending_frames(struct sock *sk)
 {
-	struct sk_buff *skb = sk->sk_write_queue.prev;
+	struct sk_buff *skb = sk->sk_send_head;
 	if (skb) {
 		sdp_mark_push(sdp_sk(sk), skb);
 		sdp_post_sends(sdp_sk(sk), 0);
