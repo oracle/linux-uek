@@ -817,6 +817,33 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 	return 0;
 }
 
+static inline int poll_recv_cq(struct sock *sk)
+{
+	int i;
+	if (sdp_sk(sk)->cq) {
+		for (i = 0; i < recv_poll; ++i)
+			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+				++recv_poll_hit;
+				return 0;
+			}
+		++recv_poll_miss;
+	}
+	return 1;
+}
+
+static inline void poll_send_cq(struct sock *sk)
+{
+	int i;
+	if (sdp_sk(sk)->cq) {
+		for (i = 0; i < send_poll; ++i)
+			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+				++send_poll_hit;
+				return;
+			}
+		++send_poll_miss;
+	}
+}
+
 /* Like tcp_recv_urg */
 /*
  *	Handle reading urgent data. BSD has very simple semantics for
@@ -828,6 +855,8 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 			int *addr_len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
+
+	poll_recv_cq(sk);
 
 	/* No URG data to read. */
 	if (sock_flag(sk, SOCK_URGINLINE) || !ssk->urg_data ||
@@ -924,32 +953,6 @@ void sdp_push_one(struct sock *sk, unsigned int mss_now)
 {
 }
 
-static inline int poll_recv_cq(struct sock *sk)
-{
-	int i;
-	if (sdp_sk(sk)->cq) {
-		for (i = 0; i < recv_poll; ++i)
-			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
-				++recv_poll_hit;
-				return 0;
-			}
-		++recv_poll_miss;
-	}
-	return 1;
-}
-
-static inline void poll_send_cq(struct sock *sk)
-{
-	int i;
-	if (sdp_sk(sk)->cq) {
-		for (i = 0; i < send_poll; ++i)
-			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
-				++send_poll_hit;
-				return;
-			}
-		++send_poll_miss;
-	}
-}
 /* Like tcp_sendmsg */
 /* TODO: check locking */
 #define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
