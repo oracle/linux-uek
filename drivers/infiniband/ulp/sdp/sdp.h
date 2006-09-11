@@ -171,6 +171,7 @@ static inline void sdp_set_state(struct sock *sk, int state)
 extern struct workqueue_struct *sdp_workqueue;
 
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
+void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_time_wait_destroy_sk(struct sdp_sock *ssk);
 void sdp_completion_handler(struct ib_cq *cq, void *cq_context);

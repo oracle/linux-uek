@@ -324,8 +324,15 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	struct sk_buff *skb;
 	int c;
 
-	if (unlikely(!ssk->id))
+	if (unlikely(!ssk->id)) {
+		if (ssk->isk.sk.sk_send_head) {
+			sdp_dbg(&ssk->isk.sk,
+				"Send on socket without cmid ECONNRESET.\n");
+			/* TODO: flush send queue? */
+			sdp_reset(&ssk->isk.sk);
+		}
 		return;
+	}
 
 	while (ssk->bufs > SDP_MIN_BUFS &&
 	       ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE &&
@@ -383,8 +390,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				sdp_dbg(&ssk->isk.sk,
 						"Recv completion with error. "
 						"Status %d\n", wc->status);
-				sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-				wake_up(&ssk->wq);
+				sdp_reset(&ssk->isk.sk);
 			}
 			__kfree_skb(skb);
 		} else {

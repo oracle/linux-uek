@@ -210,6 +210,27 @@ void sdp_reset_sk(struct sock *sk, int rc)
 		sdp_dbg(sk, "%s: destroy in time wait state\n", __func__);
 		sdp_time_wait_destroy_sk(ssk);
 	}
+
+	sk->sk_state_change(sk);
+}
+
+/* Like tcp_reset */
+/* When we get a reset (completion with error) we do this. */
+void sdp_reset(struct sock *sk)
+{
+	int err;
+
+	if (sk->sk_state != TCP_ESTABLISHED)
+		return;
+
+	/* We want the right error as BSD sees it (and indeed as we do). */
+
+	/* On fin we currently only set RCV_SHUTDOWN, so .. */
+	err = (sk->sk_shutdown & RCV_SHUTDOWN) ? EPIPE : ECONNRESET;
+
+	sdp_set_error(sk, -err);
+	wake_up(&sdp_sk(sk)->wq);
+	sk->sk_state_change(sk);
 }
 
 /* TODO: linger? */
