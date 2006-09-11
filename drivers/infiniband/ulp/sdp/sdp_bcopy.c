@@ -37,6 +37,10 @@
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
 
+static int rcvbuf_scale = 0x10;
+module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
+MODULE_PARM_DESC(srcvbuf_scale, "Receive buffer size scale factor.");
+
 /* Like tcp_fin */
 static void sdp_fin(struct sock *sk)
 {
@@ -237,7 +241,7 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
 		SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + rmem <
-		ssk->isk.sk.sk_rcvbuf * 0x10) ||
+		ssk->isk.sk.sk_rcvbuf * rcvbuf_scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
 		sdp_post_recv(ssk);
 }
