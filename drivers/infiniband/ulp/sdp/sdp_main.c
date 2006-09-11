@@ -373,6 +373,11 @@ static void sdp_close(struct sock *sk, long timeout)
 		sdp_post_sends(sdp_sk(sk), 0);
 	}
 
+	/* TODO: state should move to CLOSE or CLOSE_WAIT etc on disconnect.
+	   Since it currently doesn't, do it here to avoid blocking below. */
+	if (!sdp_sk(sk)->id)
+		sdp_set_state(sk, TCP_CLOSE);
+
 	sk_stream_wait_close(sk, timeout);
 
 adjudge_to_death:
