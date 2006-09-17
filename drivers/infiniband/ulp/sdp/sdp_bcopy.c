@@ -123,10 +123,14 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	if (unlikely(mid != SDP_MID_DATA))
 		ssk->tx_wr.send_flags |= IB_SEND_SOLICITED;
 	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
-	BUG_ON(rc);
 	++ssk->tx_head;
 	--ssk->bufs;
 	ssk->remote_credits = ssk->rx_head - ssk->rx_tail;
+	if (unlikely(rc)) {
+		sdp_dbg(&ssk->isk.sk, "ib_post_send failed with status %d.\n", rc);
+		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+		wake_up(&ssk->wq);
+	}
 }
 
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
@@ -226,9 +230,11 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	ssk->rx_wr.sg_list = ssk->ibsge;
 	ssk->rx_wr.num_sge = frags + 1;
 	rc = ib_post_recv(ssk->qp, &ssk->rx_wr, &bad_wr);
-	/* TODO */
-	BUG_ON(rc);
 	++ssk->rx_head;
+	if (unlikely(rc)) {
+		sdp_dbg(&ssk->isk.sk, "ib_post_recv failed with status %d\n", rc);
+		sdp_reset(&ssk->isk.sk);
+	}
 }
 
 void sdp_post_recvs(struct sdp_sock *ssk)
