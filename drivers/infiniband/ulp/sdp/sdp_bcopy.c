@@ -239,14 +239,12 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 
 void sdp_post_recvs(struct sdp_sock *ssk)
 {
-	int rmem = atomic_read(&ssk->isk.sk.sk_rmem_alloc);
-
 	if (unlikely(!ssk->id))
 		return;
 
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
-		SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + rmem <
+		SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + ssk->rcv_nxt - ssk->copied_seq <
 		ssk->isk.sk.sk_rcvbuf * rcvbuf_scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
 		sdp_post_recv(ssk);
@@ -286,7 +284,9 @@ static inline int sdp_sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	int skb_len;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	skb_set_owner_r(skb, sk);
+	/* not needed since sk_rmem_alloc is not currently used
+	 * TODO - remove this?
+	skb_set_owner_r(skb, sk); */
 
 	skb_len = skb->len;
 
