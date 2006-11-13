@@ -179,11 +179,11 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
-	skb = sk_stream_alloc_skb(&ssk->isk.sk, sizeof(struct sdp_bsdh),
+	skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
 				  GFP_KERNEL);
 	/* FIXME */
 	BUG_ON(!skb);
-	h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
+	h = (struct sdp_bsdh *)skb->head;
 	for (i = 0; i < SDP_MAX_SEND_SKB_FRAGS; ++i) {
 		page = alloc_pages(GFP_HIGHUSER, 0);
 		BUG_ON(!page);
@@ -201,7 +201,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	rx_req->skb = skb;
 	hwdev = ssk->dma_device;
 	sge = ssk->ibsge;
-	addr = dma_map_single(hwdev, h, skb_headlen(skb),
+	addr = dma_map_single(hwdev, h, SDP_HEAD_SIZE,
 			      DMA_FROM_DEVICE);
 	BUG_ON(dma_mapping_error(addr));
 
@@ -209,7 +209,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 
 	/* TODO: proper error handling */
 	sge->addr = (u64)addr;
-	sge->length = skb_headlen(skb);
+	sge->length = SDP_HEAD_SIZE;
 	sge->lkey = ssk->mr->lkey;
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
@@ -244,7 +244,8 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
-		SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + ssk->rcv_nxt - ssk->copied_seq <
+		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) +
+		ssk->rcv_nxt - ssk->copied_seq <
 		ssk->isk.sk.sk_rcvbuf * rcvbuf_scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
 		sdp_post_recv(ssk);
@@ -279,10 +280,12 @@ struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 }
 
 /* Here because I do not want queue to fail. */
-static inline int sdp_sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
+static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
+						     struct sk_buff *skb)
 {
 	int skb_len;
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sk_buff *tail;
 
 	/* not needed since sk_rmem_alloc is not currently used
 	 * TODO - remove this?
@@ -293,11 +296,17 @@ static inline int sdp_sock_queue_rcv_skb(struct sock *sk, struct sk_buff *skb)
 	TCP_SKB_CB(skb)->seq = ssk->rcv_nxt;
 	ssk->rcv_nxt += skb_len;
 
-	skb_queue_tail(&sk->sk_receive_queue, skb);
+	if (likely(skb_len && (tail = skb_peek_tail(&sk->sk_receive_queue))) &&
+	    unlikely(skb_tailroom(tail) >= skb_len)) {
+		skb_copy_bits(skb, 0, skb_put(tail, skb_len), skb_len);
+		__kfree_skb(skb);
+		skb = tail;
+	} else
+		skb_queue_tail(&sk->sk_receive_queue, skb);
 
 	if (!sock_flag(sk, SOCK_DEAD))
 		sk->sk_data_ready(sk, skb_len);
-	return 0;
+	return skb;
 }
 
 static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
@@ -400,15 +409,22 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			}
 			__kfree_skb(skb);
 		} else {
-			/* TODO: handle msg < bsdh */
 			sdp_dbg_data(&ssk->isk.sk,
 				     "Recv completion. ID %d Length %d\n",
 				     (int)wc->wr_id, wc->byte_len);
-			skb->len = wc->byte_len;
-			skb->data_len = wc->byte_len - sizeof(struct sdp_bsdh);
-			if (unlikely(skb->data_len < 0)) {
-				printk("SDP: FIXME len %d\n", wc->byte_len);
+			if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
+				printk("SDP BUG! byte_len %d < %d\n",
+				       wc->byte_len, sizeof(struct sdp_bsdh));
+				__kfree_skb(skb);
+				return;
 			}
+			skb->len = wc->byte_len;
+			if (likely(wc->byte_len > SDP_HEAD_SIZE))
+				skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
+			else
+				skb->data_len = 0;
+			skb->data = skb->head;
+			skb->tail = skb->head + skb_headlen(skb);
 			h = (struct sdp_bsdh *)skb->data;
 			skb->h.raw = skb->data;
 			ssk->mseq_ack = ntohl(h->mseq);
@@ -430,17 +446,17 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			if (unlikely(h->flags & SDP_OOB_PEND))
 				sk_send_sigurg(&ssk->isk.sk);
 
+			skb_pull(skb, sizeof(struct sdp_bsdh));
+
 			if (likely(h->mid == SDP_MID_DATA) &&
-			    likely(skb->data_len > 0)) {
-				skb_pull(skb, sizeof(struct sdp_bsdh));
-				/* TODO: queue can fail? */
-				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
-				if (unlikely(h->flags & SDP_OOB_PRES))
+			    likely(skb->len > 0)) {
+				int oob = h->flags & SDP_OOB_PRES;
+				skb = sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
+				if (unlikely(oob))
 					sdp_urg(ssk, skb);
 			} else if (likely(h->mid == SDP_MID_DATA)) {
 				__kfree_skb(skb);
 			} else if (h->mid == SDP_MID_DISCONN) {
-				skb_pull(skb, sizeof(struct sdp_bsdh));
 				/* this will wake recvmsg */
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
 				sdp_fin(&ssk->isk.sk);
@@ -449,7 +465,6 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				printk("SDP: FIXME MID %d\n", h->mid);
 				__kfree_skb(skb);
 			}
-			sdp_post_recvs(ssk);
 		}
 	} else {
 		skb = sdp_send_completion(ssk, wc->wr_id);

@@ -377,7 +377,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.bufs = htons(sdp_sk(sk)->remote_credits);
 		hh.majv_minv = SDP_MAJV_MINV;
 		hh.localrcvsz = hh.desremrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS *
-			PAGE_SIZE + sizeof(struct sdp_bsdh));
+			PAGE_SIZE + SDP_HEAD_SIZE); 
 		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
@@ -407,8 +407,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(sdp_sk(child)->remote_credits);
 		hah.majv_minv = SDP_MAJV_MINV;
-		hah.actrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE +
-				     sizeof(struct sdp_bsdh));
+		hah.actrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + SDP_HEAD_SIZE);
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hah;
 		conn_param.private_data = &hah;
