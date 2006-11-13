@@ -39,7 +39,7 @@
 
 static int rcvbuf_scale = 0x10;
 module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
-MODULE_PARM_DESC(srcvbuf_scale, "Receive buffer size scale factor.");
+MODULE_PARM_DESC(rcvbuf_scale, "Receive buffer size scale factor.");
 
 /* Like tcp_fin */
 static void sdp_fin(struct sock *sk)
