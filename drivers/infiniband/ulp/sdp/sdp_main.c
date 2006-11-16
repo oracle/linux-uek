@@ -110,6 +110,11 @@ static int recv_poll = 1000;
 module_param_named(recv_poll, recv_poll, int, 0644);
 MODULE_PARM_DESC(recv_poll, "How many times to poll recv.");
 
+static int send_poll_thresh = 4096;
+
+module_param_named(send_poll_thresh, send_poll_thresh, int, 0644);
+MODULE_PARM_DESC(send_poll_thresh, "Send message size thresh hold over which to start polling.");
+
 struct workqueue_struct *sdp_workqueue;
 
 static int sdp_get_port(struct sock *sk, unsigned short snum)
@@ -1189,7 +1194,8 @@ wait_for_memory:
 out:
 	if (copied)
 		sdp_push(sk, ssk, flags, mss_now, ssk->nonagle);
-	poll_send_cq(sk);
+	if (size > send_poll_thresh)
+		poll_send_cq(sk);
 	release_sock(sk);
 	return copied;
 
