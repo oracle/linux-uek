@@ -1052,7 +1052,7 @@ new_segment:
 				if (sk->sk_route_caps &
 				    (NETIF_F_IP_CSUM | NETIF_F_NO_CSUM |
 				     NETIF_F_HW_CSUM))
-					skb->ip_summed = CHECKSUM_HW;
+					skb->ip_summed = CHECKSUM_PARTIAL;
 
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
