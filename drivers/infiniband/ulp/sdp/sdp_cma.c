@@ -199,10 +199,14 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_dbg(sk, "%s %p -> %p\n", __func__, sdp_sk(sk)->id, id);
 
-        child = sk_clone(sk, GFP_KERNEL);
-        if (!child) {
-                return -ENOMEM;
-	}
+	h = event->private_data;
+
+	if (!h->max_adverts)
+		return -EINVAL;
+
+	child = sk_clone(sk, GFP_KERNEL);
+	if (!child)
+		return -ENOMEM;
 
 	INIT_LIST_HEAD(&sdp_sk(child)->accept_queue);
 	INIT_LIST_HEAD(&sdp_sk(child)->backlog_queue);
@@ -222,7 +226,6 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		return rc;
 	}
 
-	h = event->private_data;
 	sdp_sk(child)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
@@ -375,9 +378,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.bufs = htons(sdp_sk(sk)->remote_credits);
+		hh.bsdh.len = sizeof(hh);
+		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		hh.localrcvsz = hh.desremrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS *
-			PAGE_SIZE + SDP_HEAD_SIZE); 
+						       PAGE_SIZE + SDP_HEAD_SIZE);
 		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
@@ -406,7 +411,10 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(sdp_sk(child)->remote_credits);
+		hah.bsdh.len = sizeof(hah);
 		hah.majv_minv = SDP_MAJV_MINV;
+		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
+					    but just in case */
 		hah.actrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + SDP_HEAD_SIZE);
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hah;
