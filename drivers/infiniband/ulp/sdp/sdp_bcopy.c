@@ -518,10 +518,10 @@ int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
 	return ret;
 }
 
-void sdp_work(void *data)
+void sdp_work(struct work_struct *work)
 {
-	struct sock *sk = (struct sock *)data;
-	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock, work);
+	struct sock *sk = &ssk->isk.sk;
 	struct ib_cq *cq;
 
 	sdp_dbg_data(sk, "%s\n", __func__);

@@ -652,9 +652,10 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	return put_user(answ, (int __user *)arg); 
 }
 
-void sdp_destroy_work(void *data)
+void sdp_destroy_work(struct work_struct *work)
 {
-	struct sock *sk = data;
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock, destroy_work);
+	struct sock *sk = &ssk->isk.sk;
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
 	cancel_delayed_work(&sdp_sk(sk)->time_wait_work);
@@ -663,9 +664,10 @@ void sdp_destroy_work(void *data)
 	sock_put(sk);
 }
 
-void sdp_time_wait_work(void *data)
+void sdp_time_wait_work(struct delayed_work *work)
 {
-	struct sock *sk = data;
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock, time_wait_work);
+	struct sock *sk = &ssk->isk.sk;
 	lock_sock(sk);
 	sdp_dbg(sk, "%s\n", __func__);
 
@@ -681,7 +683,7 @@ void sdp_time_wait_work(void *data)
 	release_sock(sk);
 
 	atomic_dec(sk->sk_prot->orphan_count);
-	sock_put(data);
+	sock_put(sk);
 }
 
 void sdp_time_wait_destroy_sk(struct sdp_sock *ssk)
@@ -699,8 +701,8 @@ static int sdp_init_sock(struct sock *sk)
 
 	INIT_LIST_HEAD(&ssk->accept_queue);
 	INIT_LIST_HEAD(&ssk->backlog_queue);
-	INIT_WORK(&ssk->time_wait_work, sdp_time_wait_work, sk);
-	INIT_WORK(&ssk->destroy_work, sdp_destroy_work, sk);
+	INIT_DELAYED_WORK(&ssk->time_wait_work, sdp_time_wait_work);
+	INIT_WORK(&ssk->destroy_work, sdp_destroy_work);
 
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 	return 0;

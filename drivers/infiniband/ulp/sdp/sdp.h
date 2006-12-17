@@ -95,7 +95,7 @@ struct sdp_sock {
 	struct work_struct work;
 	wait_queue_head_t wq;
 
-	struct work_struct time_wait_work;
+	struct delayed_work time_wait_work;
 	struct work_struct destroy_work;
 
 	/* Like tcp_sock */
@@ -175,13 +175,13 @@ void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_time_wait_destroy_sk(struct sdp_sock *ssk);
 void sdp_completion_handler(struct ib_cq *cq, void *cq_context);
-void sdp_work(void *);
+void sdp_work(struct work_struct *work);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void sdp_post_recvs(struct sdp_sock *ssk);
 int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq);
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
-void sdp_destroy_work(void *data);
-void sdp_time_wait_work(void *data);
+void sdp_destroy_work(struct work_struct *work);
+void sdp_time_wait_work(struct delayed_work *work);
 struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id);
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);

@@ -146,7 +146,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
         }
 
 	sdp_sk(sk)->mr = mr;
-	INIT_WORK(&sdp_sk(sk)->work, sdp_work, sdp_sk(sk));
+	INIT_WORK(&sdp_sk(sk)->work, sdp_work);
 
 	cq = ib_create_cq(device, sdp_completion_handler, sdp_cq_event_handler,
 			  sk, SDP_TX_SIZE + SDP_RX_SIZE);
@@ -194,12 +194,12 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 {
 	struct sockaddr_in *dst_addr;
 	struct sock *child;
-	struct sdp_hh *h;
+	const struct sdp_hh *h;
 	int rc;
 
 	sdp_dbg(sk, "%s %p -> %p\n", __func__, sdp_sk(sk)->id, id);
 
-	h = event->private_data;
+	h = event->param.conn.private_data;
 
 	if (!h->max_adverts)
 		return -EINVAL;
@@ -210,8 +210,8 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	INIT_LIST_HEAD(&sdp_sk(child)->accept_queue);
 	INIT_LIST_HEAD(&sdp_sk(child)->backlog_queue);
-	INIT_WORK(&sdp_sk(child)->time_wait_work, sdp_time_wait_work, child);
-	INIT_WORK(&sdp_sk(child)->destroy_work, sdp_destroy_work, child);
+	INIT_DELAYED_WORK(&sdp_sk(child)->time_wait_work, sdp_time_wait_work);
+	INIT_WORK(&sdp_sk(child)->destroy_work, sdp_destroy_work);
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
 	inet_sk(child)->dport = dst_addr->sin_port;
@@ -250,7 +250,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 				struct rdma_cm_event *event)
 {
-	struct sdp_hah *h;
+	const struct sdp_hah *h;
 	struct sockaddr_in *dst_addr;
 	sdp_dbg(sk, "%s\n", __func__);
 
@@ -262,7 +262,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	if (sock_flag(sk, SOCK_DEAD))
 		return 0;
 
-	h = event->private_data;
+	h = event->param.conn.private_data;
 	sdp_sk(sk)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
