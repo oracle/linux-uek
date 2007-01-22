@@ -515,7 +515,7 @@ static int sdp_disconnect(struct sock *sk, int flags)
 	int rc = 0;
 	int old_state = sk->sk_state;
 	struct sdp_sock *s, *t;
-	struct rdma_cm_id *id = ssk->id;
+	struct rdma_cm_id *id;
 
 	sdp_dbg(sk, "%s\n", __func__);
 	if (ssk->id)
@@ -525,10 +525,11 @@ static int sdp_disconnect(struct sock *sk, int flags)
 		return rc;
 
 	sdp_set_state(sk, TCP_CLOSE);
+	id = ssk->id;
 	ssk->id = NULL;
 	release_sock(sk); /* release socket since locking semantics is parent
 			     inside child */
-	rdma_destroy_id(ssk->id);
+	rdma_destroy_id(id);
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
 		sk_common_release(&s->isk.sk);
