@@ -208,6 +208,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	if (!child)
 		return -ENOMEM;
 
+	sdp_add_sock(sdp_sk(child));
 	INIT_LIST_HEAD(&sdp_sk(child)->accept_queue);
 	INIT_LIST_HEAD(&sdp_sk(child)->backlog_queue);
 	INIT_DELAYED_WORK(&sdp_sk(child)->time_wait_work, sdp_time_wait_work);

@@ -37,6 +37,7 @@
 
 #include <linux/errno.h>
 #include <asm/checksum.h>
+
 static inline
 unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 						 int len, unsigned int sum,
@@ -56,6 +57,7 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <linux/socket.h>
 #include <net/protocol.h>
 #include <net/inet_common.h>
+#include <linux/proc_fs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_verbs.h>
 /* TODO: remove when sdp_socket.h becomes part of include/linux/socket.h */
@@ -116,6 +118,24 @@ module_param_named(send_poll_thresh, send_poll_thresh, int, 0644);
 MODULE_PARM_DESC(send_poll_thresh, "Send message size thresh hold over which to start polling.");
 
 struct workqueue_struct *sdp_workqueue;
+
+static struct list_head sock_list;
+static spinlock_t sock_list_lock;
+
+inline void sdp_add_sock(struct sdp_sock *ssk)
+{
+	spin_lock_irq(&sock_list_lock);
+	list_add_tail(&ssk->sock_list, &sock_list);
+	spin_unlock_irq(&sock_list_lock);
+}
+
+inline void sdp_remove_sock(struct sdp_sock *ssk)
+{
+	spin_lock_irq(&sock_list_lock);
+	BUG_ON(list_empty(&sock_list));
+	list_del_init(&(ssk->sock_list));
+	spin_unlock_irq(&sock_list_lock);
+}
 
 static int sdp_get_port(struct sock *sk, unsigned short snum)
 {
@@ -283,6 +303,8 @@ static void sdp_destruct(struct sock *sk)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
+	sdp_remove_sock(ssk);
+	
 	sdp_close_sk(sk);
 
 	if (ssk->parent)
@@ -294,6 +316,7 @@ static void sdp_destruct(struct sock *sk)
 	list_for_each_entry_safe(s, t, &ssk->accept_queue, accept_queue) {
 		sk_common_release(&s->isk.sk);
 	}
+
 done:
 	sdp_dbg(sk, "%s done\n", __func__);
 }
@@ -1650,8 +1673,186 @@ static int sdp_create_socket(struct socket *sock, int protocol)
 
 	sock->ops = &sdp_proto_ops;
 	sock->state = SS_UNCONNECTED;
+
+	sdp_add_sock(sdp_sk(sk));
+
 	return 0;
 }
+
+#ifdef CONFIG_PROC_FS
+
+static void *sdp_get_idx(struct seq_file *seq, loff_t pos)
+{
+	int i = 0;
+	struct sdp_sock *ssk;
+
+	if (!list_empty(&sock_list))
+		list_for_each_entry(ssk, &sock_list, sock_list) {
+			if (i == pos)
+				return ssk;
+			i++;
+		}
+
+	return NULL;
+}
+
+static void *sdp_seq_start(struct seq_file *seq, loff_t *pos)
+{
+	void *start = NULL;
+	struct sdp_iter_state* st = seq->private;
+
+	st->num = 0;
+
+	if (!*pos)
+		return SEQ_START_TOKEN;
+
+	spin_lock_irq(&sock_list_lock);
+	start = sdp_get_idx(seq, *pos - 1);
+	if (start)
+		sock_hold((struct sock *)start);
+	spin_unlock_irq(&sock_list_lock);
+
+	return start;
+}
+
+static void *sdp_seq_next(struct seq_file *seq, void *v, loff_t *pos)
+{
+	struct sdp_iter_state* st = seq->private;
+	void *next = NULL;
+
+	spin_lock_irq(&sock_list_lock);
+	if (v == SEQ_START_TOKEN)
+		next = sdp_get_idx(seq, 0);
+	else
+		next = sdp_get_idx(seq, *pos);
+	if (next)
+		sock_hold((struct sock *)next);
+	spin_unlock_irq(&sock_list_lock);
+
+	*pos += 1;
+	st->num++;
+
+	return next;
+}
+
+static void sdp_seq_stop(struct seq_file *seq, void *v)
+{
+}
+
+#define TMPSZ 150
+
+static int sdp_seq_show(struct seq_file *seq, void *v)
+{
+	struct sdp_iter_state* st;
+	struct sock *sk = v;
+	char tmpbuf[TMPSZ + 1];
+	unsigned int dest;
+	unsigned int src;
+	__u16 destp;
+	__u16 srcp;
+
+	if (v == SEQ_START_TOKEN) {
+		seq_printf(seq, "%-*s\n", TMPSZ - 1,
+				"  sl  local_address rem_address   ");
+		goto out;
+	}
+
+	st = seq->private;
+
+	dest = inet_sk(sk)->daddr;
+	src = inet_sk(sk)->rcv_saddr;
+	destp = ntohs(inet_sk(sk)->dport);
+	srcp = ntohs(inet_sk(sk)->sport);
+
+	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X", st->num, src, srcp, dest, destp);
+
+	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
+
+	sock_put(sk);
+out:
+	return 0;
+}
+
+static int sdp_seq_open(struct inode *inode, struct file *file)
+{
+	struct sdp_seq_afinfo *afinfo = PDE(inode)->data;
+	struct seq_file *seq;
+	struct sdp_iter_state *s;
+	int rc;
+
+	if (unlikely(afinfo == NULL))
+		return -EINVAL;
+
+	s = kzalloc(sizeof(*s), GFP_KERNEL);
+	if (!s)
+		return -ENOMEM;
+	s->family               = afinfo->family;
+	s->seq_ops.start        = sdp_seq_start;
+	s->seq_ops.next         = sdp_seq_next;
+	s->seq_ops.show         = afinfo->seq_show;
+	s->seq_ops.stop         = sdp_seq_stop;
+
+	rc = seq_open(file, &s->seq_ops);
+	if (rc)
+		goto out_kfree;
+	seq          = file->private_data;
+	seq->private = s;
+out:
+	return rc;
+out_kfree:
+	kfree(s);
+	goto out;
+}
+
+
+static struct file_operations sdp_seq_fops;
+static struct sdp_seq_afinfo sdp_seq_afinfo = {
+	.owner          = THIS_MODULE,
+	.name           = "sdp",
+	.family         = AF_INET_SDP,
+	.seq_show       = sdp_seq_show,
+	.seq_fops       = &sdp_seq_fops,
+};
+
+
+static int __init sdp_proc_init(void)
+{
+	int rc = 0;
+	struct proc_dir_entry *p;
+
+	sdp_seq_afinfo.seq_fops->owner         = sdp_seq_afinfo.owner;
+	sdp_seq_afinfo.seq_fops->open          = sdp_seq_open;
+	sdp_seq_afinfo.seq_fops->read          = seq_read;
+	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
+	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
+
+	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO, sdp_seq_afinfo.seq_fops);
+	if (p)
+		p->data = &sdp_seq_afinfo;
+	else
+		rc = -ENOMEM;
+
+	return rc;
+}
+
+static void sdp_proc_unregister(void)
+{
+	proc_net_remove(sdp_seq_afinfo.name);
+	memset(sdp_seq_afinfo.seq_fops, 0, sizeof(*sdp_seq_afinfo.seq_fops));
+}
+
+#else /* CONFIG_PROC_FS */
+
+static int __init sdp_proc_init(void)
+{
+	return 0;
+}
+
+static void sdp_proc_unregister(void)
+{
+
+}
+#endif /* CONFIG_PROC_FS */
 
 static struct net_proto_family sdp_net_proto = {
 	.family = AF_INET_SDP,
@@ -1662,6 +1863,9 @@ static struct net_proto_family sdp_net_proto = {
 static int __init sdp_init(void)
 {
 	int rc;
+
+	INIT_LIST_HEAD(&sock_list);
+	spin_lock_init(&sock_list_lock);
 
 	sdp_workqueue = create_singlethread_workqueue("sdp");
 	if (!sdp_workqueue) {
@@ -1683,6 +1887,8 @@ static int __init sdp_init(void)
 		return rc;
 	}
 
+	sdp_proc_init();
+
 	return 0;
 }
 
@@ -1696,6 +1902,10 @@ static void __exit sdp_exit(void)
 		       atomic_read(&orphan_count));
 	destroy_workqueue(sdp_workqueue);
 	flush_scheduled_work();
+
+	BUG_ON(!list_empty(&sock_list));
+
+	sdp_proc_unregister();
 }
 
 module_init(sdp_init);

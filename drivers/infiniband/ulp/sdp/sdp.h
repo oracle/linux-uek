@@ -88,6 +88,7 @@ struct sdp_buf {
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
+	struct list_head sock_list;
 	struct list_head accept_queue;
 	struct list_head backlog_queue;
 	struct sock *parent;
@@ -141,6 +142,21 @@ struct sdp_sock {
 extern struct proto sdp_proto;
 extern struct workqueue_struct *sdp_workqueue;
 
+/* just like TCP fs */
+struct sdp_seq_afinfo {
+	struct module           *owner;
+	char                    *name;
+	sa_family_t             family;
+	int                     (*seq_show) (struct seq_file *m, void *v);
+	struct file_operations  *seq_fops;
+};
+
+struct sdp_iter_state {
+	sa_family_t             family;
+	int                     num;
+	struct seq_operations   seq_ops;
+};
+
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 {
 	        return (struct sdp_sock *)sk;
@@ -185,5 +201,7 @@ void sdp_time_wait_work(struct delayed_work *work);
 struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id);
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
+void sdp_add_sock(struct sdp_sock *ssk);
+void sdp_remove_sock(struct sdp_sock *ssk);
 
 #endif
