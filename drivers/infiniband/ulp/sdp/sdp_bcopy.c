@@ -41,6 +41,12 @@ static int rcvbuf_scale = 0x10;
 module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
 MODULE_PARM_DESC(rcvbuf_scale, "Receive buffer size scale factor.");
 
+static int top_mem_usage = 0;
+module_param_named(top_mem_usage, top_mem_usage, int, 0644);
+MODULE_PARM_DESC(top_mem_usage, "Top system wide sdp memory usage for recv (in MB).");
+
+atomic_t current_mem_usage;
+
 /* Like tcp_fin */
 static void sdp_fin(struct sock *sk)
 {
@@ -235,18 +241,25 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		sdp_dbg(&ssk->isk.sk, "ib_post_recv failed with status %d\n", rc);
 		sdp_reset(&ssk->isk.sk);
 	}
+
+	atomic_add(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
 }
 
 void sdp_post_recvs(struct sdp_sock *ssk)
 {
+	int scale = rcvbuf_scale;
 	if (unlikely(!ssk->id))
 		return;
+
+	if (top_mem_usage &&
+	    (top_mem_usage * 0x100000) < atomic_read(&current_mem_usage) * PAGE_SIZE)
+		scale = 1;
 
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
 		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) +
 		ssk->rcv_nxt - ssk->copied_seq <
-		ssk->isk.sk.sk_rcvbuf * rcvbuf_scale) ||
+		ssk->isk.sk.sk_rcvbuf * scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
 		sdp_post_recv(ssk);
 }
@@ -399,6 +412,8 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		skb = sdp_recv_completion(ssk, wc->wr_id);
 		if (unlikely(!skb))
 			return;
+
+		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
 
 		if (unlikely(wc->status)) {
 			if (wc->status != IB_WC_WR_FLUSH_ERR) {

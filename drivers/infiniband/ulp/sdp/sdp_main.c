@@ -122,6 +122,8 @@ struct workqueue_struct *sdp_workqueue;
 static struct list_head sock_list;
 static spinlock_t sock_list_lock;
 
+extern atomic_t current_mem_usage;
+
 inline void sdp_add_sock(struct sdp_sock *ssk)
 {
 	spin_lock_irq(&sock_list_lock);
@@ -191,6 +193,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 			skb = sdp_recv_completion(ssk, ssk->rx_tail);
 			if (!skb)
 				break;
+			atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
 			__kfree_skb(skb);
 		}
 		while (ssk->tx_head != ssk->tx_tail) {
@@ -1890,6 +1893,8 @@ static int __init sdp_init(void)
 
 	sdp_proc_init();
 
+	atomic_set(&current_mem_usage, 0);
+
 	return 0;
 }
 
@@ -1905,6 +1910,10 @@ static void __exit sdp_exit(void)
 	flush_scheduled_work();
 
 	BUG_ON(!list_empty(&sock_list));
+
+	if (atomic_read(&current_mem_usage))
+		printk(KERN_WARNING "%s: current mem usage %d\n", __func__,
+		       atomic_read(&current_mem_usage));
 
 	sdp_proc_unregister();
 }

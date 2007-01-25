@@ -142,6 +142,8 @@ struct sdp_sock {
 extern struct proto sdp_proto;
 extern struct workqueue_struct *sdp_workqueue;
 
+extern atomic_t current_mem_usage;
+
 /* just like TCP fs */
 struct sdp_seq_afinfo {
 	struct module           *owner;
