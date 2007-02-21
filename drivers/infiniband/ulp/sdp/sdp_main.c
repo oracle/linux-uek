@@ -783,6 +783,7 @@ static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	TCP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
 	ssk->pushed_seq = ssk->write_seq;
+	sdp_post_sends(ssk, 0);
 }
 
 static inline void sdp_push_pending_frames(struct sock *sk)
