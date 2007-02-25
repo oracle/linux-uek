@@ -81,6 +81,11 @@ struct sdp_hah {
 	__u32 actrcvsz;
 };
 
+enum {
+	SDP_HH_SIZE = 76,
+	SDP_HAH_SIZE = 180,
+};
+
 static void sdp_cq_event_handler(struct ib_event *event, void *data)
 {
 }
@@ -379,7 +384,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.bufs = htons(sdp_sk(sk)->remote_credits);
-		hh.bsdh.len = sizeof(hh);
+		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		hh.localrcvsz = hh.desremrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS *
@@ -412,7 +417,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(sdp_sk(child)->remote_credits);
-		hah.bsdh.len = sizeof(hah);
+		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HAH_SIZE);
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
 					    but just in case */
