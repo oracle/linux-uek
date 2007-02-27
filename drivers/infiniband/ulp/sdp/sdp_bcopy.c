@@ -280,7 +280,7 @@ struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	hwdev = ssk->dma_device;
         rx_req = &ssk->rx_ring[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
-	dma_unmap_single(hwdev, rx_req->mapping[0], skb_headlen(skb),
+	dma_unmap_single(hwdev, rx_req->mapping[0], SDP_HEAD_SIZE,
 			 DMA_FROM_DEVICE);
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i)
