@@ -1753,12 +1753,14 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	char tmpbuf[TMPSZ + 1];
 	unsigned int dest;
 	unsigned int src;
+	int uid;
+	unsigned long inode;
 	__u16 destp;
 	__u16 srcp;
 
 	if (v == SEQ_START_TOKEN) {
 		seq_printf(seq, "%-*s\n", TMPSZ - 1,
-				"  sl  local_address rem_address   ");
+				"  sl  local_address rem_address        uid inode");
 		goto out;
 	}
 
@@ -1768,8 +1770,10 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	src = inet_sk(sk)->rcv_saddr;
 	destp = ntohs(inet_sk(sk)->dport);
 	srcp = ntohs(inet_sk(sk)->sport);
+	uid = sock_i_uid(sk);
+	inode = sock_i_ino(sk);
 
-	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X", st->num, src, srcp, dest, destp);
+	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu", st->num, src, srcp, dest, destp, uid, inode);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
 
