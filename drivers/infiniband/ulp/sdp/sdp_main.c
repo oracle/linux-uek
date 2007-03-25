@@ -227,7 +227,7 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	if (ssk->cq)
 		sdp_poll_cq(ssk, ssk->cq);
 
-	if (!(sk->sk_shutdown & RCV_SHUTDOWN))
+	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk))
 		sdp_set_error(sk, rc);
 
 	sdp_destroy_qp(ssk);
