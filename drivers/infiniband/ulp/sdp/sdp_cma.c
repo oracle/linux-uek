@@ -171,7 +171,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	}
 	sdp_sk(sk)->cq = cq;
 	sdp_sk(sk)->qp = id->qp;
-	sdp_sk(sk)->dma_device = device->dma_device;
+	sdp_sk(sk)->ib_device = device;
 
 	init_waitqueue_head(&sdp_sk(sk)->wq);
 

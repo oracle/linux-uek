@@ -76,8 +76,8 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
 	unsigned mseq = ssk->tx_head;
 	int i, rc, frags;
-	dma_addr_t addr;
-	struct device *hwdev;
+	u64 addr;
+	struct ib_device *dev;
 	struct ib_sge *sge;
 	struct ib_send_wr *bad_wr;
 
@@ -93,27 +93,26 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 
 	tx_req = &ssk->tx_ring[mseq & (SDP_TX_SIZE - 1)];
 	tx_req->skb = skb;
-	hwdev = ssk->dma_device;
+	dev = ssk->ib_device;
 	sge = ssk->ibsge;
-	addr = dma_map_single(hwdev,
-			      skb->data, skb->len - skb->data_len,
-			      DMA_TO_DEVICE);
+	addr = ib_dma_map_single(dev, skb->data, skb->len - skb->data_len,
+				 DMA_TO_DEVICE);
 	tx_req->mapping[0] = addr;
 
 	/* TODO: proper error handling */
-	BUG_ON(dma_mapping_error(addr));
+	BUG_ON(ib_dma_mapping_error(dev, addr));
 
-	sge->addr = (u64)addr;
+	sge->addr = addr;
 	sge->length = skb->len - skb->data_len;
 	sge->lkey = ssk->mr->lkey;
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
 		++sge;
-		addr = dma_map_page(hwdev, skb_shinfo(skb)->frags[i].page,
-				    skb_shinfo(skb)->frags[i].page_offset,
-				    skb_shinfo(skb)->frags[i].size,
-				    DMA_TO_DEVICE);
-		BUG_ON(dma_mapping_error(addr));
+		addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
+				       skb_shinfo(skb)->frags[i].page_offset,
+				       skb_shinfo(skb)->frags[i].size,
+				       DMA_TO_DEVICE);
+		BUG_ON(ib_dma_mapping_error(dev, addr));
 		tx_req->mapping[i + 1] = addr;
 		sge->addr = addr;
 		sge->length = skb_shinfo(skb)->frags[i].size;
@@ -141,7 +140,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 {
-	struct device *hwdev;
+	struct ib_device *dev;
 	struct sdp_buf *tx_req;
 	struct sk_buff *skb;
 	int i, frags;
@@ -152,16 +151,16 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 		return NULL;
 	}
 
-	hwdev = ssk->dma_device;
+	dev = ssk->ib_device;
         tx_req = &ssk->tx_ring[mseq & (SDP_TX_SIZE - 1)];
 	skb = tx_req->skb;
-	dma_unmap_single(hwdev, tx_req->mapping[0], skb->len - skb->data_len,
-			 DMA_TO_DEVICE);
+	ib_dma_unmap_single(dev, tx_req->mapping[0], skb->len - skb->data_len,
+			    DMA_TO_DEVICE);
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
-		dma_unmap_page(hwdev, tx_req->mapping[i + 1],
-			       skb_shinfo(skb)->frags[i].size,
-			       DMA_TO_DEVICE);
+		ib_dma_unmap_page(dev, tx_req->mapping[i + 1],
+				  skb_shinfo(skb)->frags[i].size,
+				  DMA_TO_DEVICE);
 	}
 
 	++ssk->tx_tail;
@@ -173,8 +172,8 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 {
 	struct sdp_buf *rx_req;
 	int i, rc, frags;
-	dma_addr_t addr;
-	struct device *hwdev;
+	u64 addr;
+	struct ib_device *dev;
 	struct ib_sge *sge;
 	struct ib_recv_wr *bad_wr;
 	struct sk_buff *skb;
@@ -205,11 +204,10 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 
         rx_req = ssk->rx_ring + (id & (SDP_RX_SIZE - 1));
 	rx_req->skb = skb;
-	hwdev = ssk->dma_device;
+	dev = ssk->ib_device;
 	sge = ssk->ibsge;
-	addr = dma_map_single(hwdev, h, SDP_HEAD_SIZE,
-			      DMA_FROM_DEVICE);
-	BUG_ON(dma_mapping_error(addr));
+	addr = ib_dma_map_single(dev, h, SDP_HEAD_SIZE, DMA_FROM_DEVICE);
+	BUG_ON(ib_dma_mapping_error(dev, addr));
 
 	rx_req->mapping[0] = addr;
 
@@ -220,11 +218,11 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
 		++sge;
-		addr = dma_map_page(hwdev, skb_shinfo(skb)->frags[i].page,
-				    skb_shinfo(skb)->frags[i].page_offset,
-				    skb_shinfo(skb)->frags[i].size,
-				    DMA_FROM_DEVICE);
-		BUG_ON(dma_mapping_error(addr));
+		addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
+				       skb_shinfo(skb)->frags[i].page_offset,
+				       skb_shinfo(skb)->frags[i].size,
+				       DMA_FROM_DEVICE);
+		BUG_ON(ib_dma_mapping_error(dev, addr));
 		rx_req->mapping[i + 1] = addr;
 		sge->addr = addr;
 		sge->length = skb_shinfo(skb)->frags[i].size;
@@ -267,7 +265,7 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 {
 	struct sdp_buf *rx_req;
-	struct device *hwdev;
+	struct ib_device *dev;
 	struct sk_buff *skb;
 	int i, frags;
 
@@ -277,16 +275,16 @@ struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 		return NULL;
 	}
 
-	hwdev = ssk->dma_device;
+	dev = ssk->ib_device;
         rx_req = &ssk->rx_ring[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
-	dma_unmap_single(hwdev, rx_req->mapping[0], SDP_HEAD_SIZE,
-			 DMA_FROM_DEVICE);
+	ib_dma_unmap_single(dev, rx_req->mapping[0], SDP_HEAD_SIZE,
+			    DMA_FROM_DEVICE);
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i)
-		dma_unmap_page(hwdev, rx_req->mapping[i + 1],
-			       skb_shinfo(skb)->frags[i].size,
-			       DMA_TO_DEVICE);
+		ib_dma_unmap_page(dev, rx_req->mapping[i + 1],
+				  skb_shinfo(skb)->frags[i].size,
+				  DMA_TO_DEVICE);
 	++ssk->rx_tail;
 	--ssk->remote_credits;
 	return skb;

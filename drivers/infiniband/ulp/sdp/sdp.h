@@ -82,7 +82,7 @@ struct sdp_bsdh {
 
 struct sdp_buf {
         struct sk_buff *skb;
-        dma_addr_t      mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
+        u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
 };
 
 struct sdp_sock {
@@ -118,7 +118,7 @@ struct sdp_sock {
 	struct ib_qp *qp;
 	struct ib_cq *cq;
 	struct ib_mr *mr;
-	struct device *dma_device;
+	struct ib_device *ib_device;
 
 	/* SDP specific */
 	struct sdp_buf *rx_ring;
