@@ -284,7 +284,7 @@ struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	for (i = 0; i < frags; ++i)
 		ib_dma_unmap_page(dev, rx_req->mapping[i + 1],
 				  skb_shinfo(skb)->frags[i].size,
-				  DMA_TO_DEVICE);
+				  DMA_FROM_DEVICE);
 	++ssk->rx_tail;
 	--ssk->remote_credits;
 	return skb;
