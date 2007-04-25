@@ -124,6 +124,8 @@ static spinlock_t sock_list_lock;
 
 extern atomic_t current_mem_usage;
 
+DEFINE_RWLOCK(device_removal_lock);
+
 inline void sdp_add_sock(struct sdp_sock *ssk)
 {
 	spin_lock_irq(&sock_list_lock);
@@ -224,6 +226,8 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
+	read_lock(&device_removal_lock);
+
 	if (ssk->cq)
 		sdp_poll_cq(ssk, ssk->cq);
 
@@ -240,6 +244,8 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	}
 
 	sk->sk_state_change(sk);
+
+	read_unlock(&device_removal_lock);
 }
 
 /* Like tcp_reset */
@@ -1863,10 +1869,26 @@ static void sdp_proc_unregister(void)
 }
 #endif /* CONFIG_PROC_FS */
 
+static void sdp_add_device(struct ib_device *device)
+{
+}
+
+static void sdp_remove_device(struct ib_device *device)
+{
+	write_lock(&device_removal_lock);
+	write_unlock(&device_removal_lock);
+}
+
 static struct net_proto_family sdp_net_proto = {
 	.family = AF_INET_SDP,
 	.create = sdp_create_socket,
 	.owner  = THIS_MODULE,
+};
+
+struct ib_client sdp_client = {
+	.name   = "sdp",
+	.add    = sdp_add_device,
+	.remove = sdp_remove_device
 };
 
 static int __init sdp_init(void)
@@ -1900,6 +1922,8 @@ static int __init sdp_init(void)
 
 	atomic_set(&current_mem_usage, 0);
 
+	ib_register_client(&sdp_client);
+
 	return 0;
 }
 
@@ -1921,6 +1945,8 @@ static void __exit sdp_exit(void)
 		       atomic_read(&current_mem_usage));
 
 	sdp_proc_unregister();
+
+	ib_unregister_client(&sdp_client);
 }
 
 module_init(sdp_init);
