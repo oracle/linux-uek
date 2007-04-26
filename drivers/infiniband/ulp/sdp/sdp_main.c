@@ -112,7 +112,7 @@ static int recv_poll = 1000;
 module_param_named(recv_poll, recv_poll, int, 0644);
 MODULE_PARM_DESC(recv_poll, "How many times to poll recv.");
 
-static int send_poll_thresh = 4096;
+static int send_poll_thresh = 8192;
 
 module_param_named(send_poll_thresh, send_poll_thresh, int, 0644);
 MODULE_PARM_DESC(send_poll_thresh, "Send message size thresh hold over which to start polling.");
