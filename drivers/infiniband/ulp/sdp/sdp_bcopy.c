@@ -125,7 +125,8 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	ssk->tx_wr.num_sge = frags + 1;
 	ssk->tx_wr.opcode = IB_WR_SEND;
 	ssk->tx_wr.send_flags = IB_SEND_SIGNALED;
-	if (unlikely(mid != SDP_MID_DATA))
+	if (unlikely(mid != SDP_MID_DATA) ||
+	    unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
 		ssk->tx_wr.send_flags |= IB_SEND_SOLICITED;
 	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
 	++ssk->tx_head;
