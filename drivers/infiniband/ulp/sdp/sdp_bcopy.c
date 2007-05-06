@@ -427,7 +427,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				     "Recv completion. ID %d Length %d\n",
 				     (int)wc->wr_id, wc->byte_len);
 			if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
-				printk("SDP BUG! byte_len %d < %d\n",
+				printk("SDP BUG! byte_len %d < %zd\n",
 				       wc->byte_len, sizeof(struct sdp_bsdh));
 				__kfree_skb(skb);
 				return;

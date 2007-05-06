@@ -720,9 +720,9 @@ void sdp_destroy_work(struct work_struct *work)
 	sock_put(sk);
 }
 
-void sdp_time_wait_work(struct delayed_work *work)
+void sdp_time_wait_work(struct work_struct *work)
 {
-	struct sdp_sock *ssk = container_of(work, struct sdp_sock, time_wait_work);
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock, time_wait_work.work);
 	struct sock *sk = &ssk->isk.sk;
 	lock_sock(sk);
 	sdp_dbg(sk, "%s\n", __func__);
