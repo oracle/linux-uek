@@ -106,6 +106,7 @@ struct sdp_sock {
 	u32 rcv_nxt;
 
 	int write_seq;
+	int snd_una;
 	int pushed_seq;
 	int xmit_size_goal;
 	int nonagle;

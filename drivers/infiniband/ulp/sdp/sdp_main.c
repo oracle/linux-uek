@@ -699,6 +699,15 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	case SIOCATMARK:
 		answ = ssk->urg_data && ssk->urg_seq == ssk->copied_seq;
 		break;
+	case SIOCOUTQ:
+		if (sk->sk_state == TCP_LISTEN)
+			return -EINVAL;
+
+		if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))
+			answ = 0;
+		else
+			answ = ssk->write_seq - ssk->snd_una;
+		break;
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -1763,10 +1772,12 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	unsigned long inode;
 	__u16 destp;
 	__u16 srcp;
+	__u32 rx_queue, tx_queue;
 
 	if (v == SEQ_START_TOKEN) {
 		seq_printf(seq, "%-*s\n", TMPSZ - 1,
-				"  sl  local_address rem_address        uid inode");
+				"  sl  local_address rem_address        uid inode"
+				"   rx_queue tx_queue");
 		goto out;
 	}
 
@@ -1778,8 +1789,12 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	srcp = ntohs(inet_sk(sk)->sport);
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
+	rx_queue = sdp_sk(sk)->rcv_nxt - sdp_sk(sk)->copied_seq;
+	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->snd_una;
 
-	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu", st->num, src, srcp, dest, destp, uid, inode);
+	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X",
+		st->num, src, srcp, dest, destp, uid, inode,
+		rx_queue, tx_queue);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
 

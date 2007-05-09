@@ -164,6 +164,7 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 				  DMA_TO_DEVICE);
 	}
 
+	ssk->snd_una += TCP_SKB_CB(skb)->end_seq;
 	++ssk->tx_tail;
 	return skb;
 }
