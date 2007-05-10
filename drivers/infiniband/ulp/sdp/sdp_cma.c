@@ -175,6 +175,8 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	init_waitqueue_head(&sdp_sk(sk)->wq);
 
+	sdp_sk(sk)->recv_frags = 0;
+	sdp_sk(sk)->rcvbuf_scale = 1;
 	sdp_post_recvs(sdp_sk(sk));
 
 	sdp_dbg(sk, "%s done\n", __func__);
@@ -235,6 +237,8 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(child)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
+	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
+		PAGE_SIZE;
 
 	sdp_dbg(child, "%s bufs %d xmit_size_goal %d\n", __func__,
 		sdp_sk(child)->bufs,
@@ -272,6 +276,8 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
+	sdp_sk(sk)->send_frags = PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
+		PAGE_SIZE;
 
 	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d\n", __func__,
 		sdp_sk(sk)->bufs,
@@ -387,7 +393,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
-		hh.localrcvsz = hh.desremrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS *
+		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 						       PAGE_SIZE + SDP_HEAD_SIZE);
 		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
@@ -421,7 +427,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
 					    but just in case */
-		hah.actrcvsz = htonl(SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE + SDP_HEAD_SIZE);
+		hah.actrcvsz = htonl(sdp_sk(child)->recv_frags * PAGE_SIZE + SDP_HEAD_SIZE);
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hah;
 		conn_param.private_data = &hah;

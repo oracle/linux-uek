@@ -122,8 +122,6 @@ struct workqueue_struct *sdp_workqueue;
 static struct list_head sock_list;
 static spinlock_t sock_list_lock;
 
-extern atomic_t current_mem_usage;
-
 DEFINE_RWLOCK(device_removal_lock);
 
 inline void sdp_add_sock(struct sdp_sock *ssk)
@@ -195,7 +193,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 			skb = sdp_recv_completion(ssk, ssk->rx_tail);
 			if (!skb)
 				break;
-			atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
+			atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 			__kfree_skb(skb);
 		}
 		while (ssk->tx_head != ssk->tx_tail) {
@@ -215,6 +213,9 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	if (pd)
 		ib_dealloc_pd(pd);
+
+	if (ssk->recv_frags)
+		sdp_remove_large_sock();
 
 	kfree(ssk->rx_ring);
 	kfree(ssk->tx_ring);
@@ -1160,7 +1161,7 @@ new_segment:
 					/* We can extend the last page
 					 * fragment. */
 					merge = 1;
-				} else if (i == SDP_MAX_SEND_SKB_FRAGS ||
+				} else if (i == ssk->send_frags ||
 					   (!i &&
 					   !(sk->sk_route_caps & NETIF_F_SG))) {
 					/* Need to add new fragment and cannot
@@ -1859,6 +1860,9 @@ static int __init sdp_proc_init(void)
 	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO, sdp_seq_afinfo.seq_fops);
 	if (p)
 		p->data = &sdp_seq_afinfo;
+	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO, sdp_seq_afinfo.seq_fops);
+	if (p)
+		p->data = &sdp_seq_afinfo;
 	else
 		rc = -ENOMEM;
 
@@ -1912,6 +1916,7 @@ static int __init sdp_init(void)
 
 	INIT_LIST_HEAD(&sock_list);
 	spin_lock_init(&sock_list_lock);
+	spin_lock_init(&sdp_large_sockets_lock);
 
 	sdp_workqueue = create_singlethread_workqueue("sdp");
 	if (!sdp_workqueue) {
@@ -1935,7 +1940,7 @@ static int __init sdp_init(void)
 
 	sdp_proc_init();
 
-	atomic_set(&current_mem_usage, 0);
+	atomic_set(&sdp_current_mem_usage, 0);
 
 	ib_register_client(&sdp_client);
 
@@ -1955,9 +1960,9 @@ static void __exit sdp_exit(void)
 
 	BUG_ON(!list_empty(&sock_list));
 
-	if (atomic_read(&current_mem_usage))
+	if (atomic_read(&sdp_current_mem_usage))
 		printk(KERN_WARNING "%s: current mem usage %d\n", __func__,
-		       atomic_read(&current_mem_usage));
+		       atomic_read(&sdp_current_mem_usage));
 
 	sdp_proc_unregister();
 

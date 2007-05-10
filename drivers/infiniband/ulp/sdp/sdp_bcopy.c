@@ -37,7 +37,14 @@
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
 
+#define SDP_RESIZE_WAIT 16
+
+struct sdp_chrecvbuf {
+	u32 size;
+};
+
 static int rcvbuf_scale = 0x10;
+
 module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
 MODULE_PARM_DESC(rcvbuf_scale, "Receive buffer size scale factor.");
 
@@ -45,7 +52,37 @@ static int top_mem_usage = 0;
 module_param_named(top_mem_usage, top_mem_usage, int, 0644);
 MODULE_PARM_DESC(top_mem_usage, "Top system wide sdp memory usage for recv (in MB).");
 
-atomic_t current_mem_usage;
+#ifdef CONFIG_PPC
+static int max_large_sockets = 100;
+#else
+static int max_large_sockets = 1000;
+#endif
+module_param_named(max_large_sockets, max_large_sockets, int, 0644);
+MODULE_PARM_DESC(max_large_sockets, "Max number of large sockets (32k buffers).");
+
+static int curr_large_sockets = 0;
+atomic_t sdp_current_mem_usage;
+spinlock_t sdp_large_sockets_lock;
+
+static int sdp_can_resize(void)
+{
+	int count, ret;
+	spin_lock_irq(&sdp_large_sockets_lock);
+	count = curr_large_sockets;
+	ret = curr_large_sockets < max_large_sockets;
+	if (ret)
+		curr_large_sockets++;
+	spin_unlock_irq(&sdp_large_sockets_lock);
+
+	return ret;
+}
+
+void sdp_remove_large_sock(void)
+{
+	spin_lock_irq(&sdp_large_sockets_lock);
+	curr_large_sockets--;
+	spin_unlock_irq(&sdp_large_sockets_lock);
+}
 
 /* Like tcp_fin */
 static void sdp_fin(struct sock *sk)
@@ -86,6 +123,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
 		h->flags = 0;
+
 	h->bufs = htons(ssk->rx_head - ssk->rx_tail);
 	h->len = htonl(skb->len);
 	h->mseq = htonl(mseq);
@@ -191,7 +229,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	/* FIXME */
 	BUG_ON(!skb);
 	h = (struct sdp_bsdh *)skb->head;
-	for (i = 0; i < SDP_MAX_SEND_SKB_FRAGS; ++i) {
+	for (i = 0; i < ssk->recv_frags; ++i) {
 		page = alloc_pages(GFP_HIGHUSER, 0);
 		BUG_ON(!page);
 		frag = &skb_shinfo(skb)->frags[i];
@@ -242,22 +280,22 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		sdp_reset(&ssk->isk.sk);
 	}
 
-	atomic_add(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
+	atomic_add(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 }
 
 void sdp_post_recvs(struct sdp_sock *ssk)
 {
-	int scale = rcvbuf_scale;
+	int scale = ssk->rcvbuf_scale;
 	if (unlikely(!ssk->id))
 		return;
 
 	if (top_mem_usage &&
-	    (top_mem_usage * 0x100000) < atomic_read(&current_mem_usage) * PAGE_SIZE)
+	    (top_mem_usage * 0x100000) < atomic_read(&sdp_current_mem_usage) * PAGE_SIZE)
 		scale = 1;
 
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
-		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) +
+		(SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE) +
 		ssk->rcv_nxt - ssk->copied_seq <
 		ssk->isk.sk.sk_rcvbuf * scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
@@ -362,6 +400,23 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		return;
 	}
 
+	if (ssk->recv_request &&
+	    ssk->rx_tail >= ssk->recv_request_head &&
+	    ssk->bufs >= SDP_MIN_BUFS &&
+	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
+		struct sdp_chrecvbuf *resp_size;
+		ssk->recv_request = 0;
+		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+					  sizeof(struct sdp_bsdh) +
+					  sizeof(*resp_size),
+					  GFP_KERNEL);
+		/* FIXME */
+		BUG_ON(!skb);
+		resp_size = (struct sdp_chrecvbuf *)skb_push(skb, sizeof *resp_size);
+		resp_size->size = htons(ssk->recv_frags * PAGE_SIZE);
+		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
+	}
+
 	while (ssk->bufs > SDP_MIN_BUFS &&
 	       ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE &&
 	       (skb = ssk->isk.sk.sk_send_head) &&
@@ -370,6 +425,25 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
 	}
+
+	if (ssk->bufs == SDP_MIN_BUFS &&
+	    !ssk->sent_request &&
+	    ssk->tx_head > ssk->sent_request_head + SDP_RESIZE_WAIT &&
+	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
+		struct sdp_chrecvbuf *req_size;
+		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+					  sizeof(struct sdp_bsdh) +
+					  sizeof(*req_size),
+					  GFP_KERNEL);
+		/* FIXME */
+		BUG_ON(!skb);
+		ssk->sent_request = SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
+		ssk->sent_request_head = ssk->tx_head;
+		req_size = (struct sdp_chrecvbuf *)skb_push(skb, sizeof *req_size);
+		req_size->size = htons(ssk->sent_request);
+		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF);
+	}
+
 	c = ssk->remote_credits;
 	if (likely(c > SDP_MIN_BUFS))
 		c *= 2;
@@ -402,6 +476,13 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	}
 }
 
+static inline void sdp_resize(struct sdp_sock *ssk, u32 new_size)
+{
+	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE)	/ PAGE_SIZE;
+	if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
+		ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+}
+
 static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb;
@@ -413,7 +494,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		if (unlikely(!skb))
 			return;
 
-		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &current_mem_usage);
+		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 
 		if (unlikely(wc->status)) {
 			if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -424,6 +505,8 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			}
 			__kfree_skb(skb);
 		} else {
+			int frags;
+
 			sdp_dbg_data(&ssk->isk.sk,
 				     "Recv completion. ID %d Length %d\n",
 				     (int)wc->wr_id, wc->byte_len);
@@ -449,11 +532,12 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
 				ntohs(h->bufs);
 
+			frags = skb_shinfo(skb)->nr_frags;
 			pagesz = PAGE_ALIGN(skb->data_len);
 			skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
 
 			for (i = skb_shinfo(skb)->nr_frags;
-			     i < SDP_MAX_SEND_SKB_FRAGS; ++i) {
+			     i < frags; ++i) {
 				put_page(skb_shinfo(skb)->frags[i].page);
 				skb->truesize -= PAGE_SIZE;
 			}
@@ -475,6 +559,30 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				/* this will wake recvmsg */
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
 				sdp_fin(&ssk->isk.sk);
+			} else if (h->mid == SDP_MID_CHRCVBUF) {
+				u32 new_size = *(u32 *)skb->data;
+
+				if (ssk->recv_request || sdp_can_resize()) {
+					ssk->rcvbuf_scale = rcvbuf_scale;
+					sdp_resize(ssk, ntohs(new_size));
+					ssk->recv_request_head = ssk->rx_head + 1;
+				} else
+					ssk->recv_request_head = ssk->rx_tail;
+				ssk->recv_request = 1;
+				__kfree_skb(skb);
+			} else if (h->mid == SDP_MID_CHRCVBUF_ACK) {
+				u32 new_size = *(u32 *)skb->data;
+				new_size = ntohs(new_size);
+
+				if (new_size > ssk->xmit_size_goal) {
+					ssk->sent_request = -1;
+					ssk->xmit_size_goal = new_size;
+					ssk->send_frags =
+						PAGE_ALIGN(ssk->xmit_size_goal) /
+						PAGE_SIZE;
+				} else
+					ssk->sent_request = 0;
+				__kfree_skb(skb);
 			} else {
 				/* TODO: Handle other messages */
 				printk("SDP: FIXME MID %d\n", h->mid);

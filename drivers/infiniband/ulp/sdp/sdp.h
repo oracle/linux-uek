@@ -56,6 +56,8 @@ enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
 	SDP_MID_HELLO_ACK = 0x1,
 	SDP_MID_DISCONN = 0x2,
+	SDP_MID_CHRCVBUF = 0xB,
+	SDP_MID_CHRCVBUF_ACK = 0xC,
 	SDP_MID_DATA = 0xFF,
 };
 
@@ -138,12 +140,22 @@ struct sdp_sock {
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];
+
+	/* SDP slow start */
+	int rcvbuf_scale;
+	int sent_request;
+	int sent_request_head;
+	int recv_request_head;
+	int recv_request;
+	int recv_frags;
+	int send_frags;
 };
 
 extern struct proto sdp_proto;
 extern struct workqueue_struct *sdp_workqueue;
 
-extern atomic_t current_mem_usage;
+extern atomic_t sdp_current_mem_usage;
+extern spinlock_t sdp_large_sockets_lock;
 
 /* just like TCP fs */
 struct sdp_seq_afinfo {
@@ -206,5 +218,6 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
 void sdp_add_sock(struct sdp_sock *ssk);
 void sdp_remove_sock(struct sdp_sock *ssk);
+void sdp_remove_large_sock(void);
 
 #endif
