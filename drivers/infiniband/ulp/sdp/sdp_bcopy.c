@@ -412,7 +412,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 					  GFP_KERNEL);
 		/* FIXME */
 		BUG_ON(!skb);
-		resp_size = (struct sdp_chrecvbuf *)skb_push(skb, sizeof *resp_size);
+		resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
 		resp_size->size = htons(ssk->recv_frags * PAGE_SIZE);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
 	}
@@ -439,7 +439,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		BUG_ON(!skb);
 		ssk->sent_request = SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
 		ssk->sent_request_head = ssk->tx_head;
-		req_size = (struct sdp_chrecvbuf *)skb_push(skb, sizeof *req_size);
+		req_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *req_size);
 		req_size->size = htons(ssk->sent_request);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF);
 	}
