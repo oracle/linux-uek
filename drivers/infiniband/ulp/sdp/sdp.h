@@ -138,9 +138,6 @@ struct sdp_sock {
 	unsigned          tx_tail;
 	struct ib_send_wr tx_wr;
 
-	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
-	struct ib_wc  ibwc[SDP_NUM_WC];
-
 	/* SDP slow start */
 	int rcvbuf_scale;
 	int sent_request;
@@ -149,6 +146,9 @@ struct sdp_sock {
 	int recv_request;
 	int recv_frags;
 	int send_frags;
+
+	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
+	struct ib_wc  ibwc[SDP_NUM_WC];
 };
 
 extern struct proto sdp_proto;
