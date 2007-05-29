@@ -250,6 +250,8 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	list_add_tail(&sdp_sk(child)->backlog_queue, &sdp_sk(sk)->backlog_queue);
 	sdp_sk(child)->parent = sk;
 
+	child->sk_state = TCP_SYN_RECV;
+
 	/* child->sk_write_space(child); */
 	/* child->sk_data_ready(child, 0); */
 	sk->sk_data_ready(sk, 0);
@@ -337,9 +339,23 @@ done:
 	return 0;
 }
 
-void sdp_disconnected_handler(struct sock *sk)
+int sdp_disconnected_handler(struct sock *sk)
 {
+	struct sdp_sock *ssk = sdp_sk(sk);
+
 	sdp_dbg(sk, "%s\n", __func__);
+
+	if (ssk->cq)
+		sdp_poll_cq(ssk, ssk->cq);
+
+	if (sk->sk_state == TCP_SYN_RECV) {
+		sdp_connected_handler(sk, NULL);
+
+		if (ssk->rcv_nxt)
+			return 0;
+	}
+
+	return -ECONNRESET;
 }
 
 int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
@@ -471,12 +487,10 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_DISCONNECTED:
 		sdp_dbg(sk, "RDMA_CM_EVENT_DISCONNECTED\n");
 		rdma_disconnect(id);
-		sdp_disconnected_handler(sk);
-		rc = -ECONNRESET;
+		rc = sdp_disconnected_handler(sk);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		sdp_warn(sk, "RDMA_CM_EVENT_DEVICE_REMOVAL\n");
-		sdp_disconnected_handler(sk);
 		rc = -ENETRESET;
 		break;
 	default:
