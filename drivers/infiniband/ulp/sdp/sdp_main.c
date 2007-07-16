@@ -691,7 +691,7 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 			/* Subtract 1, if FIN is in queue. */
 			if (answ && !skb_queue_empty(&sk->sk_receive_queue))
 				answ -=
-		        ((struct sk_buff *)sk->sk_receive_queue.prev)->h.raw[0]
+			(skb_transport_header(sk->sk_receive_queue.prev))[0]
 		        == SDP_MID_DISCONN ? 1 : 0;
 		} else
 			answ = ssk->urg_seq - ssk->copied_seq;
@@ -1341,7 +1341,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (!skb)
 				break;
 
-			if (skb->h.raw[0] == SDP_MID_DISCONN)
+			if ((skb_transport_header(skb))[0] == SDP_MID_DISCONN)
 				goto found_fin_ok;
 
 			if (before(*seq, TCP_SKB_CB(skb)->seq)) {

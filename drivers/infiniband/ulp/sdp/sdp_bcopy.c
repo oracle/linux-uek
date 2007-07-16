@@ -524,7 +524,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			skb->data = skb->head;
 			skb->tail = skb->head + skb_headlen(skb);
 			h = (struct sdp_bsdh *)skb->data;
-			skb->h.raw = skb->data;
+			skb_reset_transport_header(skb);
 			ssk->mseq_ack = ntohl(h->mseq);
 			if (ssk->mseq_ack != (int)wc->wr_id)
 				printk("SDP BUG! mseq %d != wrid %d\n",
