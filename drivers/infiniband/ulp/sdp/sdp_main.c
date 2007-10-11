@@ -117,12 +117,22 @@ static int send_poll_thresh = 8192;
 module_param_named(send_poll_thresh, send_poll_thresh, int, 0644);
 MODULE_PARM_DESC(send_poll_thresh, "Send message size thresh hold over which to start polling.");
 
+static unsigned int sdp_keepalive_time = SDP_KEEPALIVE_TIME;
+
+module_param_named(sdp_keepalive_time, sdp_keepalive_time, uint, 0644);
+MODULE_PARM_DESC(sdp_keepalive_time, "Default idle time in seconds before keepalive probe sent.");
+
 struct workqueue_struct *sdp_workqueue;
 
 static struct list_head sock_list;
 static spinlock_t sock_list_lock;
 
 DEFINE_RWLOCK(device_removal_lock);
+
+static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
+{
+	return ssk->keepalive_time ? : sdp_keepalive_time;
+}
 
 inline void sdp_add_sock(struct sdp_sock *ssk)
 {
@@ -219,6 +229,86 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	kfree(ssk->rx_ring);
 	kfree(ssk->tx_ring);
+}
+
+
+static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	sdp_dbg(sk, "%s\n", __func__);
+
+	ssk->keepalive_tx_head = ssk->tx_head;
+	ssk->keepalive_rx_head = ssk->rx_head;
+
+	sk_reset_timer(sk, &sk->sk_timer, jiffies + len);
+}
+
+static void sdp_delete_keepalive_timer(struct sock *sk)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	sdp_dbg(sk, "%s\n", __func__);
+
+	ssk->keepalive_tx_head = 0;
+	ssk->keepalive_rx_head = 0;
+
+	sk_stop_timer(sk, &sk->sk_timer);
+}
+
+static void sdp_keepalive_timer(unsigned long data)
+{
+	struct sock *sk = (struct sock *)data;
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	sdp_dbg(sk, "%s\n", __func__);
+
+	/* Only process if the socket is not in use */
+	bh_lock_sock(sk);
+	if (sock_owned_by_user(sk)) {
+		sdp_reset_keepalive_timer(sk, HZ / 20);
+		goto out;
+	}
+
+	if (!sock_flag(sk, SOCK_KEEPOPEN) || sk->sk_state == TCP_LISTEN ||
+	    sk->sk_state == TCP_CLOSE)
+		goto out;
+
+	if (ssk->keepalive_tx_head == ssk->tx_head &&
+	    ssk->keepalive_rx_head == ssk->rx_head)
+		sdp_post_keepalive(ssk);
+
+	sdp_reset_keepalive_timer(sk, sdp_keepalive_time_when(ssk));
+
+out:
+	bh_unlock_sock(sk);
+	sock_put(sk);
+}
+
+static void sdp_init_timer(struct sock *sk)
+{
+	init_timer(&sk->sk_timer);
+
+	sk->sk_timer.function = sdp_keepalive_timer;
+	sk->sk_timer.data = (unsigned long)sk;
+}
+
+static void sdp_set_keepalive(struct sock *sk, int val)
+{
+	sdp_dbg(sk, "%s %d\n", __func__, val);
+
+	if ((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN))
+		return;
+
+	if (val && !sock_flag(sk, SOCK_KEEPOPEN))
+		sdp_start_keepalive_timer(sk);
+	else if (!val)
+		sdp_delete_keepalive_timer(sk);
+}
+
+void sdp_start_keepalive_timer(struct sock *sk)
+{
+	sdp_reset_keepalive_timer(sk, sdp_keepalive_time_when(sdp_sk(sk)));
 }
 
 void sdp_reset_sk(struct sock *sk, int rc)
@@ -364,6 +454,8 @@ static void sdp_close(struct sock *sk, long timeout)
 	lock_sock(sk);
 
 	sdp_dbg(sk, "%s\n", __func__);
+
+	sdp_delete_keepalive_timer(sk);
 
 	sk->sk_shutdown = SHUTDOWN_MASK;
 	if (sk->sk_state == TCP_LISTEN || sk->sk_state == TCP_SYN_SENT) {
@@ -820,9 +912,6 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 	int err = 0;
 
 	sdp_dbg(sk, "%s\n", __func__);
-	if (level != SOL_TCP)
-		return -ENOPROTOOPT;
-
 	if (optlen < sizeof(int))
 		return -EINVAL;
 
@@ -830,6 +919,28 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 		return -EFAULT;
 
 	lock_sock(sk);
+
+	/* SOCK_KEEPALIVE is really a SOL_SOCKET level option but there
+	 * is a problem handling it at that level.  In order to start
+	 * the keepalive timer on an SDP socket, we must call an SDP
+	 * specific routine.  Since sock_setsockopt() can not be modifed
+	 * to understand SDP, the application must pass that option
+	 * through to us.  Since SO_KEEPALIVE and TCP_DEFER_ACCEPT both
+	 * use the same optname, the level must not be SOL_TCP or SOL_SOCKET
+	 */
+	if (level == PF_INET_SDP && optname == SO_KEEPALIVE) {
+		sdp_set_keepalive(sk, val);
+		if (val)
+			sock_set_flag(sk, SOCK_KEEPOPEN);
+		else
+			sock_reset_flag(sk, SOCK_KEEPOPEN);
+		goto out;
+	}
+
+	if (level != SOL_TCP) {
+		err = -ENOPROTOOPT;
+		goto out;
+	}
 
 	switch (optname) {
 	case TCP_NODELAY:
@@ -869,11 +980,23 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 			sdp_push_pending_frames(sk);
 		}
 		break;
+	case TCP_KEEPIDLE:
+		if (val < 1 || val > MAX_TCP_KEEPIDLE)
+			err = -EINVAL;
+		else {
+			ssk->keepalive_time = val * HZ;
+
+			if (sock_flag(sk, SOCK_KEEPOPEN) &&
+			    !((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN)))
+				sdp_reset_keepalive_timer(sk, ssk->keepalive_time);
+		}
+		break;
 	default:
 		err = -ENOPROTOOPT;
 		break;
 	}
 
+out:
 	release_sock(sk);
 	return err;
 }
@@ -905,6 +1028,9 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 		break;
 	case TCP_CORK:
 		val = !!(ssk->nonagle&TCP_NAGLE_CORK);
+		break;
+	case TCP_KEEPIDLE:
+		val = (ssk->keepalive_time ? : sdp_keepalive_time) / HZ;
 		break;
 	default:
 		return -ENOPROTOOPT;
@@ -1691,6 +1817,8 @@ static int sdp_create_socket(struct socket *sock, int protocol)
 	}
 
 	sk->sk_destruct = sdp_destruct;
+
+	sdp_init_timer(sk);
 
 	sock->ops = &sdp_proto_ops;
 	sock->state = SS_UNCONNECTED;

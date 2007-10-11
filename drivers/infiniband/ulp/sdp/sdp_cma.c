@@ -268,8 +268,8 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sk->sk_state = TCP_ESTABLISHED;
 
-	/* TODO: If SOCK_KEEPOPEN set, need to reset and start
-	   keepalive timer here */
+	if (sock_flag(sk, SOCK_KEEPOPEN))
+		sdp_start_keepalive_timer(sk);
 
 	if (sock_flag(sk, SOCK_DEAD))
 		return 0;
@@ -307,8 +307,8 @@ int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 
 	sk->sk_state = TCP_ESTABLISHED;
 
-	/* TODO: If SOCK_KEEPOPEN set, need to reset and start
-	   keepalive timer here */
+	if (sock_flag(sk, SOCK_KEEPOPEN))
+		sdp_start_keepalive_timer(sk);
 
 	if (sock_flag(sk, SOCK_DEAD))
 		return 0;

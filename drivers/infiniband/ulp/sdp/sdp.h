@@ -42,6 +42,7 @@ extern int sdp_data_debug_level;
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5
+#define SDP_KEEPALIVE_TIME (120 * 60 * HZ)
 
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
@@ -51,6 +52,7 @@ extern int sdp_data_debug_level;
 #define SDP_NUM_WC 4
 
 #define SDP_OP_RECV 0x800000000LL
+#define SDP_OP_SEND 0x400000000LL
 
 enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
@@ -114,6 +116,12 @@ struct sdp_sock {
 	int nonagle;
 
 	int time_wait;
+
+	unsigned keepalive_time;
+
+	/* tx_head/rx_head when keepalive timer started */
+	unsigned keepalive_tx_head;
+	unsigned keepalive_rx_head;
 
 	/* Data below will be reset on error */
 	/* rdma specific */
@@ -219,5 +227,7 @@ void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
 void sdp_add_sock(struct sdp_sock *ssk);
 void sdp_remove_sock(struct sdp_sock *ssk);
 void sdp_remove_large_sock(void);
+void sdp_post_keepalive(struct sdp_sock *ssk);
+void sdp_start_keepalive_timer(struct sock *sk);
 
 #endif

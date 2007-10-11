@@ -60,6 +60,12 @@ static int max_large_sockets = 1000;
 module_param_named(max_large_sockets, max_large_sockets, int, 0644);
 MODULE_PARM_DESC(max_large_sockets, "Max number of large sockets (32k buffers).");
 
+#define sdp_cnt(var) do { (var)++; } while (0)
+static unsigned sdp_keepalive_probes_sent = 0;
+
+module_param_named(sdp_keepalive_probes_sent, sdp_keepalive_probes_sent, uint, 0644);
+MODULE_PARM_DESC(sdp_keepalive_probes_sent, "Total number of keepalive probes sent.");
+
 static int curr_large_sockets = 0;
 atomic_t sdp_current_mem_usage;
 spinlock_t sdp_large_sockets_lock;
@@ -105,6 +111,31 @@ static void sdp_fin(struct sock *sk)
 		else
 			sk_wake_async(sk, 1, POLL_IN);
 	}
+}
+
+void sdp_post_keepalive(struct sdp_sock *ssk)
+{
+	int rc;
+	struct ib_send_wr wr, *bad_wr;
+
+	sdp_dbg(&ssk->isk.sk, "%s\n", __func__);
+
+	memset(&wr, 0, sizeof(wr));
+
+	wr.next    = NULL;
+	wr.wr_id   = 0;
+	wr.sg_list = NULL;
+	wr.num_sge = 0;
+	wr.opcode  = IB_WR_RDMA_WRITE;
+
+	rc = ib_post_send(ssk->qp, &wr, &bad_wr);
+	if (rc) {
+		sdp_dbg(&ssk->isk.sk, "ib_post_keepalive failed with status %d.\n", rc);
+		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+		wake_up(&ssk->wq);
+	}
+
+	sdp_cnt(sdp_keepalive_probes_sent);
 }
 
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
@@ -158,7 +189,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	}
 
 	ssk->tx_wr.next = NULL;
-	ssk->tx_wr.wr_id = ssk->tx_head;
+	ssk->tx_wr.wr_id = ssk->tx_head | SDP_OP_SEND;
 	ssk->tx_wr.sg_list = ssk->ibsge;
 	ssk->tx_wr.num_sge = frags + 1;
 	ssk->tx_wr.opcode = IB_WR_SEND;
@@ -589,7 +620,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				__kfree_skb(skb);
 			}
 		}
-	} else {
+	} else if (likely(wc->wr_id & SDP_OP_SEND)) {
 		skb = sdp_send_completion(ssk, wc->wr_id);
 		if (unlikely(!skb))
 			return;
@@ -605,6 +636,22 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		}
 
 		sk_stream_write_space(&ssk->isk.sk);
+	} else {
+		sdp_cnt(sdp_keepalive_probes_sent);
+
+		if (likely(!wc->status))
+			return;
+
+		sdp_dbg(&ssk->isk.sk, " %s consumes KEEPALIVE status %d\n",
+		        __func__, wc->status);
+
+		if (wc->status == IB_WC_WR_FLUSH_ERR)
+			return;
+
+		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+		wake_up(&ssk->wq);
+
+		return;
 	}
 
 	if (likely(!wc->status)) {
