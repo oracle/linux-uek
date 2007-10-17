@@ -820,10 +820,11 @@ static int handle_outgoing_dr_smp(struct ib_mad_agent_private *mad_agent_priv,
 		    opa_smi_check_local_returning_smp(opa_smp, device) == IB_SMI_DISCARD)
 			goto out;
 	} else {
-		if ((ib_get_smp_direction(smp) ? smp->dr_dlid : smp->dr_slid) ==
-		     IB_LID_PERMISSIVE &&
-		     smi_handle_dr_smp_send(smp, rdma_cap_ib_switch(device), port_num) ==
-		     IB_SMI_DISCARD) {
+		if ((ib_get_smp_direction(smp) ? smp->dr_dlid : smp->dr_slid) !=
+		    IB_LID_PERMISSIVE)
+			goto out;
+		if (smi_handle_dr_smp_send(smp, rdma_cap_ib_switch(device), port_num) ==
+		    IB_SMI_DISCARD) {
 			ret = -EINVAL;
 			dev_err(&device->dev, "Invalid directed route\n");
 			goto out;
