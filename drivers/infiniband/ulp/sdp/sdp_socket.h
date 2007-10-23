@@ -8,6 +8,10 @@
 #define PF_INET_SDP AF_INET_SDP
 #endif
 
+#ifndef SDP_ZCOPY_THRESH
+#define SDP_ZCOPY_THRESH 80
+#endif
+
 /* TODO: AF_INET6_SDP ? */
 
 #endif

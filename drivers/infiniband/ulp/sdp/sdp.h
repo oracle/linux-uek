@@ -51,6 +51,9 @@ extern int sdp_data_debug_level;
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
 #define SDP_NUM_WC 4
 
+#define SDP_MIN_ZCOPY_THRESH    1024
+#define SDP_MAX_ZCOPY_THRESH 1048576
+
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
 
@@ -70,6 +73,13 @@ enum sdp_flags {
 
 enum {
 	SDP_MIN_BUFS = 2
+};
+
+enum {
+	SDP_ERR_ERROR   = -4,
+	SDP_ERR_FAULT   = -3,
+	SDP_NEW_SEG     = -2,
+	SDP_DO_WAIT_MEM = -1
 };
 
 struct rdma_cm_id;
@@ -157,6 +167,9 @@ struct sdp_sock {
 	int recv_request; 	/* flag if request to resize was recieved */
 	int recv_frags; 	/* max skb frags in recv packets */
 	int send_frags; 	/* max skb frags in send packets */
+
+	/* ZCOPY data */
+	int zcopy_thresh;
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];
