@@ -257,16 +257,26 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	skb_frag_t *frag;
 	struct sdp_bsdh *h;
 	int id = ssk->rx_head;
+	unsigned int gfp_page;
 
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
-	skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
-				  GFP_KERNEL);
+
+	if (unlikely(ssk->isk.sk.sk_allocation)) {
+		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+					  ssk->isk.sk.sk_allocation);
+		gfp_page = ssk->isk.sk.sk_allocation | __GFP_HIGHMEM;
+	} else {
+		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+					  GFP_KERNEL);
+		gfp_page = GFP_HIGHUSER;
+	}
+
 	/* FIXME */
 	BUG_ON(!skb);
 	h = (struct sdp_bsdh *)skb->head;
 	for (i = 0; i < ssk->recv_frags; ++i) {
-		page = alloc_pages(GFP_HIGHUSER, 0);
+		page = alloc_pages(gfp_page, 0);
 		BUG_ON(!page);
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
@@ -425,6 +435,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
+	int gfp_page;
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {
@@ -436,6 +447,11 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		return;
 	}
 
+	if (unlikely(ssk->isk.sk.sk_allocation))
+		gfp_page = ssk->isk.sk.sk_allocation;
+	else
+		gfp_page = GFP_KERNEL;
+
 	if (ssk->recv_request &&
 	    ssk->rx_tail >= ssk->recv_request_head &&
 	    ssk->bufs >= SDP_MIN_BUFS &&
@@ -445,7 +461,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		skb = sk_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh) +
 					  sizeof(*resp_size),
-					  GFP_KERNEL);
+					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
 		resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
@@ -470,7 +486,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		skb = sk_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh) +
 					  sizeof(*req_size),
-					  GFP_KERNEL);
+					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
 		ssk->sent_request = SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
@@ -501,7 +517,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		ssk->bufs > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
 		skb = sk_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
-					  GFP_KERNEL);
+					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
