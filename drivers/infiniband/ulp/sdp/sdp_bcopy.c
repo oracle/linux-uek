@@ -492,7 +492,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	if (unlikely((1 << ssk->isk.sk.sk_state) &
 			(TCPF_FIN_WAIT1 | TCPF_LAST_ACK)) &&
 		!ssk->isk.sk.sk_send_head &&
-		ssk->bufs) {
+		ssk->bufs > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
 		skb = sk_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  GFP_KERNEL);
