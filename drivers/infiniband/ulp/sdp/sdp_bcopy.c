@@ -70,9 +70,13 @@ static int curr_large_sockets = 0;
 atomic_t sdp_current_mem_usage;
 spinlock_t sdp_large_sockets_lock;
 
-static int sdp_can_resize(void)
+static int sdp_get_large_socket(struct sdp_sock *ssk)
 {
 	int count, ret;
+
+	if (ssk->recv_request)
+		return 1;
+
 	spin_lock_irq(&sdp_large_sockets_lock);
 	count = curr_large_sockets;
 	ret = curr_large_sockets < max_large_sockets;
@@ -83,11 +87,13 @@ static int sdp_can_resize(void)
 	return ret;
 }
 
-void sdp_remove_large_sock(void)
+void sdp_remove_large_sock(struct sdp_sock *ssk)
 {
-	spin_lock_irq(&sdp_large_sockets_lock);
-	curr_large_sockets--;
-	spin_unlock_irq(&sdp_large_sockets_lock);
+	if (ssk->recv_frags) {
+		spin_lock_irq(&sdp_large_sockets_lock);
+		curr_large_sockets--;
+		spin_unlock_irq(&sdp_large_sockets_lock);
+	}
 }
 
 /* Like tcp_fin */
@@ -443,7 +449,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		/* FIXME */
 		BUG_ON(!skb);
 		resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
-		resp_size->size = htons(ssk->recv_frags * PAGE_SIZE);
+		resp_size->size = htonl(ssk->recv_frags * PAGE_SIZE);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
 	}
 
@@ -470,7 +476,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		ssk->sent_request = SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
 		ssk->sent_request_head = ssk->tx_head;
 		req_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *req_size);
-		req_size->size = htons(ssk->sent_request);
+		req_size->size = htonl(ssk->sent_request);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF);
 	}
 
@@ -506,11 +512,42 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	}
 }
 
-static inline void sdp_resize(struct sdp_sock *ssk, u32 new_size)
+int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 {
-	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE)	/ PAGE_SIZE;
-	if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
-		ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+	u32 curr_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
+	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
+
+	if (new_size > curr_size && new_size <= max_size &&
+	    sdp_get_large_socket(ssk)) {
+		ssk->rcvbuf_scale = rcvbuf_scale;
+		ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
+		if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
+			ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+		return 0;
+	} else
+		return -1;
+}
+
+static void sdp_handle_resize_request(struct sdp_sock *ssk, struct sdp_chrecvbuf *buf)
+{
+	if (sdp_resize_buffers(ssk, ntohl(buf->size)) == 0)
+		ssk->recv_request_head = ssk->rx_head + 1;
+	else
+		ssk->recv_request_head = ssk->rx_tail;
+	ssk->recv_request = 1;
+}
+
+static void sdp_handle_resize_ack(struct sdp_sock *ssk, struct sdp_chrecvbuf *buf)
+{
+	u32 new_size = ntohl(buf->size);
+
+	if (new_size > ssk->xmit_size_goal) {
+		ssk->sent_request = -1;
+		ssk->xmit_size_goal = new_size;
+		ssk->send_frags =
+			PAGE_ALIGN(ssk->xmit_size_goal) / PAGE_SIZE;
+	} else
+		ssk->sent_request = 0;
 }
 
 static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
@@ -590,28 +627,10 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
 				sdp_fin(&ssk->isk.sk);
 			} else if (h->mid == SDP_MID_CHRCVBUF) {
-				u32 new_size = *(u32 *)skb->data;
-
-				if (ssk->recv_request || sdp_can_resize()) {
-					ssk->rcvbuf_scale = rcvbuf_scale;
-					sdp_resize(ssk, ntohs(new_size));
-					ssk->recv_request_head = ssk->rx_head + 1;
-				} else
-					ssk->recv_request_head = ssk->rx_tail;
-				ssk->recv_request = 1;
+				sdp_handle_resize_request(ssk, (struct sdp_chrecvbuf *)skb->data);
 				__kfree_skb(skb);
 			} else if (h->mid == SDP_MID_CHRCVBUF_ACK) {
-				u32 new_size = *(u32 *)skb->data;
-				new_size = ntohs(new_size);
-
-				if (new_size > ssk->xmit_size_goal) {
-					ssk->sent_request = -1;
-					ssk->xmit_size_goal = new_size;
-					ssk->send_frags =
-						PAGE_ALIGN(ssk->xmit_size_goal) /
-						PAGE_SIZE;
-				} else
-					ssk->sent_request = 0;
+				sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)skb->data);
 				__kfree_skb(skb);
 			} else {
 				/* TODO: Handle other messages */

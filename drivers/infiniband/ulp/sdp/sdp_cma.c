@@ -239,6 +239,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
 		PAGE_SIZE;
+	sdp_resize_buffers(sdp_sk(child), ntohl(h->desremrcvsz));
 
 	sdp_dbg(child, "%s bufs %d xmit_size_goal %d\n", __func__,
 		sdp_sk(child)->bufs,

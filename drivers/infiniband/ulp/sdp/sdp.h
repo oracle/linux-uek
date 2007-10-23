@@ -147,13 +147,16 @@ struct sdp_sock {
 	struct ib_send_wr tx_wr;
 
 	/* SDP slow start */
-	int rcvbuf_scale;
-	int sent_request;
-	int sent_request_head;
-	int recv_request_head;
-	int recv_request;
-	int recv_frags;
-	int send_frags;
+	int rcvbuf_scale; 	/* local recv buf scale for each socket */
+	int sent_request_head; 	/* mark the tx_head of the last send resize
+				   request */
+	int sent_request; 	/* 0 - not sent yet, 1 - request pending
+				   -1 - resize done succesfully */
+	int recv_request_head; 	/* mark the rx_head when the resize request
+				   was recieved */
+	int recv_request; 	/* flag if request to resize was recieved */
+	int recv_frags; 	/* max skb frags in recv packets */
+	int send_frags; 	/* max skb frags in send packets */
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];
@@ -226,7 +229,8 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
 void sdp_add_sock(struct sdp_sock *ssk);
 void sdp_remove_sock(struct sdp_sock *ssk);
-void sdp_remove_large_sock(void);
+void sdp_remove_large_sock(struct sdp_sock *ssk);
+int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
 

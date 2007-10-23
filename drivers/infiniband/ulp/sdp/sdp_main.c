@@ -224,8 +224,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 	if (pd)
 		ib_dealloc_pd(pd);
 
-	if (ssk->recv_frags)
-		sdp_remove_large_sock();
+	sdp_remove_large_sock(ssk);
 
 	kfree(ssk->rx_ring);
 	kfree(ssk->tx_ring);
