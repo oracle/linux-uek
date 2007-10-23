@@ -29,6 +29,15 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+/*
+ *  This file is based on net/ipv4/tcp.c
+ *  under the following permission notice:
+ *
+ *  This program is free software; you can redistribute it and/or
+ *  modify it under the terms of the GNU General Public License
+ *  as published by the Free Software Foundation; either  version
+ *  2 of the License, or(at your option) any later version.
+ */
 
 #if defined(__ia64__)
 /* csum_partial_copy_from_user is not exported on ia64.
