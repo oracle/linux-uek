@@ -367,6 +367,8 @@ void sdp_reset(struct sock *sk)
 {
 	int err;
 
+	sdp_dbg(sk, "%s state=%d\n", __func__, sk->sk_state);
+
 	if (sk->sk_state != TCP_ESTABLISHED)
 		return;
 
@@ -653,7 +655,8 @@ static int sdp_disconnect(struct sock *sk, int flags)
 	ssk->id = NULL;
 	release_sock(sk); /* release socket since locking semantics is parent
 			     inside child */
-	rdma_destroy_id(id);
+	if (id)
+		rdma_destroy_id(id);
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
 		sk_common_release(&s->isk.sk);
@@ -2231,7 +2234,29 @@ static void sdp_add_device(struct ib_device *device)
 
 static void sdp_remove_device(struct ib_device *device)
 {
+	struct list_head *p;
+	struct sdp_sock  *ssk;
+	struct sock      *sk;
+
 	write_lock(&device_removal_lock);
+
+	spin_lock_irq(&sock_list_lock);
+	list_for_each(p, &sock_list) {
+		ssk = list_entry(p, struct sdp_sock, sock_list);
+		if (ssk->ib_device == device) {
+			sk = &ssk->isk.sk;
+
+			if (ssk->id) {
+				rdma_destroy_id(ssk->id);
+				ssk->id = NULL;
+			}
+
+			sk->sk_shutdown |= RCV_SHUTDOWN;
+			sdp_reset(sk);
+		}
+	}
+	spin_unlock_irq(&sock_list_lock);
+
 	write_unlock(&device_removal_lock);
 }
 
