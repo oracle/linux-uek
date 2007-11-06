@@ -2234,10 +2234,12 @@ static void sdp_add_device(struct ib_device *device)
 
 static void sdp_remove_device(struct ib_device *device)
 {
-	struct list_head *p;
-	struct sdp_sock  *ssk;
-	struct sock      *sk;
+	struct list_head  *p;
+	struct sdp_sock   *ssk;
+	struct sock       *sk;
+	struct rdma_cm_id *id;
 
+do_next:
 	write_lock(&device_removal_lock);
 
 	spin_lock_irq(&sock_list_lock);
@@ -2245,16 +2247,30 @@ static void sdp_remove_device(struct ib_device *device)
 		ssk = list_entry(p, struct sdp_sock, sock_list);
 		if (ssk->ib_device == device) {
 			sk = &ssk->isk.sk;
+			id = ssk->id;
 
-			if (ssk->id) {
-				rdma_destroy_id(ssk->id);
+			if (id) {
 				ssk->id = NULL;
+
+				spin_unlock_irq(&sock_list_lock);
+				write_unlock(&device_removal_lock);
+				rdma_destroy_id(id);
+
+				goto do_next;
 			}
+		}
+	}
+
+	list_for_each(p, &sock_list) {
+		ssk = list_entry(p, struct sdp_sock, sock_list);
+		if (ssk->ib_device == device) {
+			sk = &ssk->isk.sk;
 
 			sk->sk_shutdown |= RCV_SHUTDOWN;
 			sdp_reset(sk);
 		}
 	}
+
 	spin_unlock_irq(&sock_list_lock);
 
 	write_unlock(&device_removal_lock);
