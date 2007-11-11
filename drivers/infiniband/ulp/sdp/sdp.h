@@ -148,6 +148,8 @@ struct sdp_sock {
 	unsigned rx_tail;
 	unsigned mseq_ack;
 	unsigned bufs;
+	unsigned max_bufs;	/* Initial buffers offered by other side */
+	unsigned min_bufs;	/* Low water mark to wake senders */
 
 	int               remote_credits;
 
@@ -168,12 +170,27 @@ struct sdp_sock {
 	int recv_frags; 	/* max skb frags in recv packets */
 	int send_frags; 	/* max skb frags in send packets */
 
-	/* ZCOPY data */
-	int zcopy_thresh;
+	/* BZCOPY data */
+	int   zcopy_thresh;
+	void *zcopy_context;
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];
 };
+
+/* Context used for synchronous zero copy bcopy (BZCOY) */
+struct bzcopy_state {
+	unsigned char __user  *u_base;
+	int                    u_len;
+	int                    left;
+	int                    page_cnt;
+	int                    cur_page;
+	int                    cur_offset;
+	int                    busy;
+	struct sdp_sock      *ssk;
+	struct page         **pages;
+};
+
 
 extern struct proto sdp_proto;
 extern struct workqueue_struct *sdp_workqueue;
@@ -246,5 +263,6 @@ void sdp_remove_large_sock(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
+void sdp_bzcopy_write_space(struct sdp_sock *ssk);
 
 #endif

@@ -240,6 +240,19 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 
 	ssk->snd_una += TCP_SKB_CB(skb)->end_seq;
 	++ssk->tx_tail;
+
+	/* TODO: AIO and real zcopy cdoe; add their context support here */
+	if (ssk->zcopy_context && skb->data_len) {
+		struct bzcopy_state *bz;
+		struct sdp_bsdh *h;
+
+		h = (struct sdp_bsdh *)skb->data;
+		if (h->mid == SDP_MID_DATA) {
+			bz = (struct bzcopy_state *)ssk->zcopy_context;
+			bz->busy--;
+		}
+	}
+
 	return skb;
 }
 
@@ -668,8 +681,6 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 				wake_up(&ssk->wq);
 			}
 		}
-
-		sk_stream_write_space(&ssk->isk.sk);
 	} else {
 		sdp_cnt(sdp_keepalive_probes_sent);
 
@@ -686,11 +697,6 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		wake_up(&ssk->wq);
 
 		return;
-	}
-
-	if (likely(!wc->status)) {
-		sdp_post_recvs(ssk);
-		sdp_post_sends(ssk, 0);
 	}
 
 	if (ssk->time_wait && !ssk->isk.sk.sk_send_head &&
@@ -719,6 +725,21 @@ int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
 			ret = 0;
 		}
 	} while (n == SDP_NUM_WC);
+
+	if (!ret) {
+		struct sock *sk = &ssk->isk.sk;
+
+		sdp_post_recvs(ssk);
+		sdp_post_sends(ssk, 0);
+
+		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
+			if (ssk->zcopy_context)
+				sdp_bzcopy_write_space(ssk);
+			else
+				sk_stream_write_space(&ssk->isk.sk);
+		}
+	}
+
 	return ret;
 }
 
