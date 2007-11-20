@@ -2122,12 +2122,15 @@ static struct proto_ops sdp_proto_ops = {
 	.sendpage   = sock_no_sendpage,
 };
 
-static int sdp_create_socket(struct socket *sock, int protocol)
+static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 {
 	struct sock *sk;
 	int rc;
 
 	sdp_dbg(NULL, "%s: type %d protocol %d\n", __func__, sock->type, protocol);
+
+	if (net != &init_net)
+		return -EAFNOSUPPORT;
 
 	if (sock->type != SOCK_STREAM) {
 		sdp_warn(NULL, "SDP: unsupported type %d.\n", sock->type);
@@ -2140,7 +2143,7 @@ static int sdp_create_socket(struct socket *sock, int protocol)
 		return -EPROTONOSUPPORT;
 	}
 
-	sk = sk_alloc(PF_INET_SDP, GFP_KERNEL, &sdp_proto, 1);
+	sk = sk_alloc(net, PF_INET_SDP, GFP_KERNEL, &sdp_proto);
 	if (!sk) {
 		sdp_warn(NULL, "SDP: failed to allocate socket.\n");
 		return -ENOMEM;
@@ -2324,10 +2327,12 @@ static int __init sdp_proc_init(void)
 	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
 	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
 
-	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO, sdp_seq_afinfo.seq_fops);
+	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
+				 sdp_seq_afinfo.seq_fops);
 	if (p)
 		p->data = &sdp_seq_afinfo;
-	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO, sdp_seq_afinfo.seq_fops);
+	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
+				 sdp_seq_afinfo.seq_fops);
 	if (p)
 		p->data = &sdp_seq_afinfo;
 	else
@@ -2338,7 +2343,7 @@ static int __init sdp_proc_init(void)
 
 static void sdp_proc_unregister(void)
 {
-	proc_net_remove(sdp_seq_afinfo.name);
+	proc_net_remove(&init_net, sdp_seq_afinfo.name);
 	memset(sdp_seq_afinfo.seq_fops, 0, sizeof(*sdp_seq_afinfo.seq_fops));
 }
 
