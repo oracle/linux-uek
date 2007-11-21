@@ -1240,10 +1240,6 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	if (!can_do_mlock())
 		return NULL;
 
-	bz = kzalloc(sizeof(*bz), GFP_KERNEL);
-	if (!bz)
-		return NULL;
-
 	/*
 	 *   Since we use the TCP segmentation fields of the skb to map user
 	 * pages, we must make sure that everything we send in a single chunk
@@ -1251,6 +1247,10 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	 */
 	size_goal = size_goal / PAGE_SIZE + 1;
 	if (size_goal >= MAX_SKB_FRAGS)
+		return NULL;
+
+	bz = kzalloc(sizeof(*bz), GFP_KERNEL);
+	if (!bz)
 		return NULL;
 
 	addr = (unsigned long)base;
