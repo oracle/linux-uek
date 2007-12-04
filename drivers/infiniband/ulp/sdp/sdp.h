@@ -248,6 +248,7 @@ void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_time_wait_destroy_sk(struct sdp_sock *ssk);
 void sdp_completion_handler(struct ib_cq *cq, void *cq_context);
 void sdp_work(struct work_struct *work);
+int sdp_post_credits(struct sdp_sock *ssk);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void sdp_post_recvs(struct sdp_sock *ssk);
 int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq);

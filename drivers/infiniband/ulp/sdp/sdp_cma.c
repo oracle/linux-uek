@@ -472,6 +472,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rdma_reject(id, NULL, 0);
 		else
 			rc = rdma_accept(id, NULL);
+
+		if (!rc)
+			rc = sdp_post_credits(sdp_sk(sk));
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");

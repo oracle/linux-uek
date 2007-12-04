@@ -443,6 +443,21 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
 }
 
+int sdp_post_credits(struct sdp_sock *ssk)
+{
+	if (likely(ssk->bufs > 1) &&
+	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE)) {
+		struct sk_buff *skb;
+		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+					  sizeof(struct sdp_bsdh),
+					  GFP_KERNEL);
+		if (!skb)
+			return -ENOMEM;
+		sdp_post_send(ssk, skb, SDP_MID_DATA);
+	}
+	return 0;
+}
+
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
