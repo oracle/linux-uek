@@ -154,7 +154,7 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	INIT_WORK(&sdp_sk(sk)->work, sdp_work);
 
 	cq = ib_create_cq(device, sdp_completion_handler, sdp_cq_event_handler,
-			  sk, SDP_TX_SIZE + SDP_RX_SIZE);
+			  sk, SDP_TX_SIZE + SDP_RX_SIZE, 0);
 
 	if (IS_ERR(cq)) {
 		rc = PTR_ERR(cq);
