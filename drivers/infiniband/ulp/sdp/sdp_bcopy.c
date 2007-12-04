@@ -633,7 +633,11 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			else
 				skb->data_len = 0;
 			skb->data = skb->head;
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
+			skb->tail = skb_headlen(skb);
+#else
 			skb->tail = skb->head + skb_headlen(skb);
+#endif
 			h = (struct sdp_bsdh *)skb->data;
 			skb_reset_transport_header(skb);
 			ssk->mseq_ack = ntohl(h->mseq);
