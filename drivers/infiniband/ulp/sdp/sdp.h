@@ -172,7 +172,6 @@ struct sdp_sock {
 
 	/* BZCOPY data */
 	int   zcopy_thresh;
-	void *zcopy_context;
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_wc  ibwc[SDP_NUM_WC];

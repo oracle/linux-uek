@@ -218,6 +218,7 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	struct ib_device *dev;
 	struct sdp_buf *tx_req;
 	struct sk_buff *skb;
+	struct bzcopy_state *bz;
 	int i, frags;
 
 	if (unlikely(mseq != ssk->tx_tail)) {
@@ -242,16 +243,9 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	++ssk->tx_tail;
 
 	/* TODO: AIO and real zcopy cdoe; add their context support here */
-	if (ssk->zcopy_context && skb->data_len) {
-		struct bzcopy_state *bz;
-		struct sdp_bsdh *h;
-
-		h = (struct sdp_bsdh *)skb->data;
-		if (h->mid == SDP_MID_DATA) {
-			bz = (struct bzcopy_state *)ssk->zcopy_context;
-			bz->busy--;
-		}
-	}
+	bz = *(struct bzcopy_state **)skb->cb;
+	if (bz)
+		bz->busy--;
 
 	return skb;
 }
@@ -751,12 +745,8 @@ int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
 		sdp_post_recvs(ssk);
 		sdp_post_sends(ssk, 0);
 
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
-			if (ssk->zcopy_context)
-				sdp_bzcopy_write_space(ssk);
-			else
-				sk_stream_write_space(&ssk->isk.sk);
-		}
+		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+			sk_stream_write_space(&ssk->isk.sk);
 	}
 
 	return ret;

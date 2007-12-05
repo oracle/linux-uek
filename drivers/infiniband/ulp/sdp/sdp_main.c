@@ -1205,10 +1205,24 @@ void sdp_push_one(struct sock *sk, unsigned int mss_now)
 
 static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 {
-	int i;
+	int i, max_retry;
 	struct sdp_sock *ssk = (struct sdp_sock *)bz->ssk;
 
-	ssk->zcopy_context = NULL;
+	/* Wait for in-flight sends; should be quick */
+	if (bz->busy) {
+		struct sock *sk = &ssk->isk.sk;
+
+		for (max_retry = 0; max_retry < 10000; max_retry++) {
+			poll_send_cq(sk);
+
+			if (!bz->busy)
+				break;
+		}
+
+		if (bz->busy)
+			sdp_warn(sk, "Could not reap %d in-flight sends\n",
+				 bz->busy);
+	}
 
 	if (bz->pages) {
 		for (i = bz->cur_page; i < bz->page_cnt; i++)
@@ -1282,14 +1296,14 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	}
 
 	up_write(&current->mm->mmap_sem);
-	ssk->zcopy_context = bz;
 
 	return bz;
 
 out_2:
 	up_write(&current->mm->mmap_sem);
+	kfree(bz->pages);
 out_1:
-	sdp_bz_cleanup(bz);
+	kfree(bz);
 
 	return NULL;
 }
@@ -1463,19 +1477,17 @@ static inline int slots_free(struct sdp_sock *ssk)
 };
 
 /* like sk_stream_memory_free - except measures remote credits */
-static inline int sdp_bzcopy_slots_avail(struct sdp_sock *ssk)
+static inline int sdp_bzcopy_slots_avail(struct sdp_sock *ssk,
+					 struct bzcopy_state *bz)
 {
-	struct bzcopy_state *bz = (struct bzcopy_state *)ssk->zcopy_context;
-
-	BUG_ON(!bz);
 	return slots_free(ssk) > bz->busy;
 }
 
 /* like sk_stream_wait_memory - except waits on remote credits */
-static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p)
+static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
+				  struct bzcopy_state *bz)
 {
 	struct sock *sk = &ssk->isk.sk;
-	struct bzcopy_state *bz = (struct bzcopy_state *)ssk->zcopy_context;
 	int err = 0;
 	long vm_wait = 0;
 	long current_timeo = *timeo_p;
@@ -1483,7 +1495,7 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p)
 
 	BUG_ON(!bz);
 
-	if (sdp_bzcopy_slots_avail(ssk))
+	if (sdp_bzcopy_slots_avail(ssk, bz))
 		current_timeo = vm_wait = (net_random() % (HZ / 5)) + 2;
 
 	while (1) {
@@ -1508,13 +1520,13 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p)
 
 		clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
-		if (sdp_bzcopy_slots_avail(ssk))
+		if (sdp_bzcopy_slots_avail(ssk, bz))
 			break;
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
 		sk_wait_event(sk, &current_timeo,
-			sdp_bzcopy_slots_avail(ssk) && vm_wait);
+			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
 		sk->sk_write_pending--;
 
 		if (vm_wait) {
@@ -1605,7 +1617,8 @@ int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			skb = sk->sk_write_queue.prev;
 
 			if (!sk->sk_send_head ||
-			    (copy = size_goal - skb->len) <= 0) {
+			    (copy = size_goal - skb->len) <= 0 ||
+			    bz != *(struct bzcopy_state **)skb->cb) {
 
 new_segment:
 				/*
@@ -1616,7 +1629,7 @@ new_segment:
 				 * receive credits.
 				 */
 				if (bz) {
-					if (!sdp_bzcopy_slots_avail(ssk))
+					if (!sdp_bzcopy_slots_avail(ssk, bz))
 						goto wait_for_sndbuf;
 				} else {
 					if (!sk_stream_memory_free(sk))
@@ -1627,6 +1640,8 @@ new_segment:
 							   0, sk->sk_allocation);
 				if (!skb)
 					goto wait_for_memory;
+
+				*((struct bzcopy_state **)skb->cb) = bz;
 
 				/*
 				 * Check whether we can use HW checksum.
@@ -1693,7 +1708,7 @@ wait_for_memory:
 			if (copied)
 				sdp_push(sk, ssk, flags & ~MSG_MORE, mss_now, TCP_NAGLE_PUSH);
 
-			err = (bz) ? sdp_bzcopy_wait_memory(ssk, &timeo) :
+			err = (bz) ? sdp_bzcopy_wait_memory(ssk, &timeo, bz) :
 				     sk_stream_wait_memory(sk, &timeo);
 			if (err)
 				goto do_error;
@@ -1706,24 +1721,10 @@ wait_for_memory:
 out:
 	if (copied) {
 		sdp_push(sk, ssk, flags, mss_now, ssk->nonagle);
-		if (bz) {
-			int max_retry;
 
-			/* Wait for in-flight sends; should be quick */
-			for (max_retry = 0; max_retry < 10000; max_retry++) {
-				if (!bz->busy)
-					break;
-
-				poll_send_cq(sk);
-			}
-
-			if (bz->busy)
-				sdp_warn(sk,
-					 "Could not reap %d in-flight sends\n",
-					 bz->busy);
-
+		if (bz)
 			bz = sdp_bz_cleanup(bz);
-		} else
+		else
 			if (size > send_poll_thresh)
 				poll_send_cq(sk);
 	}
