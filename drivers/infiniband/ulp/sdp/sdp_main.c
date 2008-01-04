@@ -593,7 +593,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
         if (addr_len < sizeof(struct sockaddr_in))
                 return -EINVAL;
 
-        if (uaddr->sa_family != AF_INET)
+        if (uaddr->sa_family != AF_INET && uaddr->sa_family != AF_INET_SDP)
                 return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
