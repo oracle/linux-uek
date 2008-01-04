@@ -2032,17 +2032,27 @@ static inline unsigned int sdp_listen_poll(const struct sock *sk)
 static unsigned int sdp_poll(struct file *file, struct socket *socket,
 			     struct poll_table_struct *wait)
 {
-	int mask;
+       unsigned int     mask;
+       struct sock     *sk  = socket->sk;
+       struct sdp_sock *ssk = sdp_sk(sk);
+
 	sdp_dbg_data(socket->sk, "%s\n", __func__);
 
 	mask = datagram_poll(file, socket, wait);
+
+       /*
+        * Adjust for memory in later kernels
+        */
+       if (!sk_stream_memory_free(sk) || !slots_free(ssk))
+               mask &= ~(POLLOUT | POLLWRNORM | POLLWRBAND);
+
 	/* TODO: Slightly ugly: it would be nicer if there was function
 	 * like datagram_poll that didn't include poll_wait,
 	 * then we could reverse the order. */
-	if (socket->sk->sk_state == TCP_LISTEN)
-		return sdp_listen_poll(socket->sk);
+       if (sk->sk_state == TCP_LISTEN)
+               return sdp_listen_poll(sk);
 
-	if (sdp_sk(socket->sk)->urg_data & TCP_URG_VALID)
+       if (ssk->urg_data & TCP_URG_VALID)
 		mask |= POLLPRI;
 	return mask;
 }
