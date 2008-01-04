@@ -899,6 +899,15 @@ static void sdp_shutdown(struct sock *sk, int how)
 	else
 		return;
 
+	/*
+	 * Just turn off CORK here.
+	 *   We could check for socket shutting down in main data path,
+	 * but this costs no extra cycles there.
+	 */
+	ssk->nonagle &= ~TCP_NAGLE_CORK;
+	if (ssk->nonagle & TCP_NAGLE_OFF)
+		ssk->nonagle |= TCP_NAGLE_PUSH;
+
 	sdp_post_sends(ssk, 0);
 }
 
