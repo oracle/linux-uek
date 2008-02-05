@@ -131,7 +131,7 @@ static unsigned int sdp_keepalive_time = SDP_KEEPALIVE_TIME;
 module_param_named(sdp_keepalive_time, sdp_keepalive_time, uint, 0644);
 MODULE_PARM_DESC(sdp_keepalive_time, "Default idle time in seconds before keepalive probe sent.");
 
-static int sdp_zcopy_thresh = 0;
+static int sdp_zcopy_thresh = 65536;
 module_param_named(sdp_zcopy_thresh, sdp_zcopy_thresh, int, 0644);
 MODULE_PARM_DESC(sdp_zcopy_thresh, "Zero copy send threshold; 0=0ff.");
 
