@@ -45,6 +45,7 @@
    but for SDP HW checksum is always set, so ... */
 
 #include <linux/errno.h>
+#include <linux/types.h>
 #include <asm/checksum.h>
 
 static inline
