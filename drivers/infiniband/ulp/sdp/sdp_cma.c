@@ -162,6 +162,8 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		goto err_cq;
 	}
 
+	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
+
         qp_init_attr.send_cq = qp_init_attr.recv_cq = cq;
 
 	rc = rdma_create_qp(id, pd, &qp_init_attr);
@@ -292,7 +294,9 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 		sdp_sk(sk)->xmit_size_goal,
 		sdp_sk(sk)->min_bufs);
 
+	sdp_sk(sk)->poll_cq = 1;
 	ib_req_notify_cq(sdp_sk(sk)->cq, IB_CQ_NEXT_COMP);
+	sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq);
 
 	sk->sk_state_change(sk);
 	sk_wake_async(sk, 0, POLL_OUT);

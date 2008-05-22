@@ -764,6 +764,14 @@ void sdp_work(struct work_struct *work)
 	cq = ssk->cq;
 	if (unlikely(!cq))
 		goto out;
+
+	if (unlikely(!ssk->poll_cq)) {
+		struct rdma_cm_id *id = ssk->id;
+		if (id && id->qp)
+			rdma_notify(id, RDMA_CM_EVENT_ESTABLISHED);
+		goto out;
+	}
+
 	sdp_poll_cq(ssk, cq);
 	release_sock(sk);
 	sk_mem_reclaim(sk);

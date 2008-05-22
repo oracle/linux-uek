@@ -152,6 +152,7 @@ struct sdp_sock {
 	unsigned min_bufs;	/* Low water mark to wake senders */
 
 	int               remote_credits;
+	int 		  poll_cq;
 
 	struct sdp_buf   *tx_ring;
 	unsigned          tx_head;

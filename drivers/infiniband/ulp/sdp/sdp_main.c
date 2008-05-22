@@ -759,6 +759,7 @@ out:
 		lock_sock(newsk);
 		if (newssk->cq) {
 			sdp_dbg(newsk, "%s: ib_req_notify_cq\n", __func__);
+			newssk->poll_cq = 1;
 			ib_req_notify_cq(newssk->cq, IB_CQ_NEXT_COMP);
 			sdp_poll_cq(newssk, newssk->cq);
 		}
