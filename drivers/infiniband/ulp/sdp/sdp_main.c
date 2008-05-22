@@ -490,7 +490,7 @@ static void sdp_close(struct sock *sk, long timeout)
 		__kfree_skb(skb);
 	}
 
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 
 	/* As outlined in draft-ietf-tcpimpl-prob-03.txt, section
 	 * 3.10, we send a RST here because data was lost.  To
@@ -1185,7 +1185,7 @@ static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk, int flags
 {
 	if (unlikely(flags & MSG_OOB)) {
 		struct sk_buff *skb = sk->sk_write_queue.prev;
-		TCP_SKB_CB(skb)->flags |= TCPCB_URG;
+		TCP_SKB_CB(skb)->flags |= TCPCB_FLAG_URG;
 	}
 }
 
@@ -1202,7 +1202,8 @@ static inline void skb_entail(struct sock *sk, struct sdp_sock *ssk,
 {
         skb_header_release(skb);
         __skb_queue_tail(&sk->sk_write_queue, skb);
-        sk_charge_skb(sk, skb);
+	sk->sk_wmem_queued += skb->truesize;
+        sk_mem_charge(sk, skb->truesize);
         if (!sk->sk_send_head)
                 sk->sk_send_head = skb;
         if (ssk->nonagle & TCP_NAGLE_PUSH)
@@ -1366,7 +1367,7 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		if (copy > PAGE_SIZE - off)
 			copy = PAGE_SIZE - off;
 
-		if (!sk_stream_wmem_schedule(sk, copy))
+		if (!sk_wmem_schedule(sk, copy))
 			return SDP_DO_WAIT_MEM;
 
 		if (!page) {
@@ -1438,7 +1439,7 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 		if (left <= this_page)
 			this_page = left;
 
-		if (!sk_stream_wmem_schedule(sk, copy))
+		if (!sk_wmem_schedule(sk, copy))
 			return SDP_DO_WAIT_MEM;
 
 		skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
@@ -1646,8 +1647,8 @@ new_segment:
 						goto wait_for_sndbuf;
 				}
 
-				skb = sk_stream_alloc_pskb(sk, select_size(sk, ssk),
-							   0, sk->sk_allocation);
+				skb = sdp_stream_alloc_skb(sk, select_size(sk, ssk),
+							   sk->sk_allocation);
 				if (!skb)
 					goto wait_for_memory;
 
@@ -1671,7 +1672,7 @@ new_segment:
 
 			/* OOB data byte should be the last byte of
 			   the data payload */
-			if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG) &&
+			if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG) &&
 			    !(flags & MSG_OOB)) {
 				sdp_mark_push(ssk, skb);
 				goto new_segment;
@@ -1747,7 +1748,7 @@ do_fault:
 		if (sk->sk_send_head == skb)
 			sk->sk_send_head = NULL;
 		__skb_unlink(skb, &sk->sk_write_queue);
-		sk_stream_free_skb(sk, skb);
+		sk_wmem_free_skb(sk, skb);
 	}
 
 do_error:
@@ -2348,10 +2349,6 @@ static int __init sdp_proc_init(void)
 	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
 	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
 
-	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
-				 sdp_seq_afinfo.seq_fops);
-	if (p)
-		p->data = &sdp_seq_afinfo;
 	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
 				 sdp_seq_afinfo.seq_fops);
 	if (p)

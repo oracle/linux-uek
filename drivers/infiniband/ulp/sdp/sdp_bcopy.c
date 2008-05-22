@@ -105,7 +105,7 @@ static void sdp_fin(struct sock *sk)
 	sock_set_flag(sk, SOCK_DONE);
 
 
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 
 	if (!sock_flag(sk, SOCK_DEAD)) {
 		sk->sk_state_change(sk);
@@ -156,7 +156,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_send_wr *bad_wr;
 
 	h->mid = mid;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
+	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
 		h->flags = 0;
@@ -200,7 +200,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	ssk->tx_wr.num_sge = frags + 1;
 	ssk->tx_wr.opcode = IB_WR_SEND;
 	ssk->tx_wr.send_flags = IB_SEND_SIGNALED;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
+	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		ssk->tx_wr.send_flags |= IB_SEND_SOLICITED;
 	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
 	++ssk->tx_head;
@@ -270,11 +270,11 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	/* TODO: allocate from cache */
 
 	if (unlikely(ssk->isk.sk.sk_allocation)) {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
 					  ssk->isk.sk.sk_allocation);
 		gfp_page = ssk->isk.sk.sk_allocation | __GFP_HIGHMEM;
 	} else {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
 					  GFP_KERNEL);
 		gfp_page = GFP_HIGHUSER;
 	}
@@ -442,7 +442,7 @@ int sdp_post_credits(struct sdp_sock *ssk)
 	if (likely(ssk->bufs > 1) &&
 	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE)) {
 		struct sk_buff *skb;
-		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  GFP_KERNEL);
 		if (!skb)
@@ -480,7 +480,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
 		struct sdp_chrecvbuf *resp_size;
 		ssk->recv_request = 0;
-		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh) +
 					  sizeof(*resp_size),
 					  gfp_page);
@@ -505,7 +505,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	    ssk->tx_head > ssk->sent_request_head + SDP_RESIZE_WAIT &&
 	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
 		struct sdp_chrecvbuf *req_size;
-		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh) +
 					  sizeof(*req_size),
 					  gfp_page);
@@ -525,7 +525,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	if (unlikely(c < ssk->rx_head - ssk->rx_tail) &&
 	    likely(ssk->bufs > 1) &&
 	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE)) {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  GFP_KERNEL);
 		/* FIXME */
@@ -537,7 +537,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 			(TCPF_FIN_WAIT1 | TCPF_LAST_ACK)) &&
 		!ssk->isk.sk.sk_send_head &&
 		ssk->bufs > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  gfp_page);
 		/* FIXME */
@@ -684,7 +684,7 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		skb = sdp_send_completion(ssk, wc->wr_id);
 		if (unlikely(!skb))
 			return;
-		sk_stream_free_skb(&ssk->isk.sk, skb);
+		sk_wmem_free_skb(&ssk->isk.sk, skb);
 		if (unlikely(wc->status)) {
 			if (wc->status != IB_WC_WR_FLUSH_ERR) {
 				sdp_dbg(&ssk->isk.sk,
@@ -766,7 +766,7 @@ void sdp_work(struct work_struct *work)
 		goto out;
 	sdp_poll_cq(ssk, cq);
 	release_sock(sk);
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 	lock_sock(sk);
 	cq = ssk->cq;
 	if (unlikely(!cq))
