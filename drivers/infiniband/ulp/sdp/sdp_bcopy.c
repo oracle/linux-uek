@@ -588,112 +588,135 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk, struct sdp_chrecvbuf *bu
 		ssk->sent_request = 0;
 }
 
-static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
+static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
+	int frags;
 	struct sk_buff *skb;
 	struct sdp_bsdh *h;
 	int pagesz, i;
 
-	if (wc->wr_id & SDP_OP_RECV) {
-		skb = sdp_recv_completion(ssk, wc->wr_id);
-		if (unlikely(!skb))
-			return;
+	skb = sdp_recv_completion(ssk, wc->wr_id);
+	if (unlikely(!skb))
+		return -1;
 
-		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+	atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 
-		if (unlikely(wc->status)) {
-			if (wc->status != IB_WC_WR_FLUSH_ERR) {
-				sdp_dbg(&ssk->isk.sk,
-						"Recv completion with error. "
-						"Status %d\n", wc->status);
-				sdp_reset(&ssk->isk.sk);
-			}
-			__kfree_skb(skb);
-		} else {
-			int frags;
+	if (unlikely(wc->status)) {
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			sdp_dbg(&ssk->isk.sk,
+					"Recv completion with error. "
+					"Status %d\n", wc->status);
+			sdp_reset(&ssk->isk.sk);
+		}
+		__kfree_skb(skb);
+		return 0;
+	}
 
-			sdp_dbg_data(&ssk->isk.sk,
-				     "Recv completion. ID %d Length %d\n",
-				     (int)wc->wr_id, wc->byte_len);
-			if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
-				printk("SDP BUG! byte_len %d < %zd\n",
-				       wc->byte_len, sizeof(struct sdp_bsdh));
-				__kfree_skb(skb);
-				return;
-			}
-			skb->len = wc->byte_len;
-			if (likely(wc->byte_len > SDP_HEAD_SIZE))
-				skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
-			else
-				skb->data_len = 0;
-			skb->data = skb->head;
+	sdp_dbg_data(&ssk->isk.sk, "Recv completion. ID %d Length %d\n",
+			(int)wc->wr_id, wc->byte_len);
+	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
+		printk(KERN_WARNING "SDP BUG! byte_len %d < %zd\n",
+				wc->byte_len, sizeof(struct sdp_bsdh));
+		__kfree_skb(skb);
+		return -1;
+	}
+	skb->len = wc->byte_len;
+	if (likely(wc->byte_len > SDP_HEAD_SIZE))
+		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
+	else
+		skb->data_len = 0;
+	skb->data = skb->head;
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
-			skb->tail = skb_headlen(skb);
+	skb->tail = skb_headlen(skb);
 #else
-			skb->tail = skb->head + skb_headlen(skb);
+	skb->tail = skb->head + skb_headlen(skb);
 #endif
-			h = (struct sdp_bsdh *)skb->data;
-			skb_reset_transport_header(skb);
-			ssk->mseq_ack = ntohl(h->mseq);
-			if (ssk->mseq_ack != (int)wc->wr_id)
-				printk("SDP BUG! mseq %d != wrid %d\n",
-						ssk->mseq_ack, (int)wc->wr_id);
-			ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
-				ntohs(h->bufs);
+	h = (struct sdp_bsdh *)skb->data;
+	skb_reset_transport_header(skb);
+	ssk->mseq_ack = ntohl(h->mseq);
+	if (ssk->mseq_ack != (int)wc->wr_id)
+		printk(KERN_WARNING "SDP BUG! mseq %d != wrid %d\n",
+				ssk->mseq_ack, (int)wc->wr_id);
+	ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
+		ntohs(h->bufs);
 
-			frags = skb_shinfo(skb)->nr_frags;
-			pagesz = PAGE_ALIGN(skb->data_len);
-			skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
+	frags = skb_shinfo(skb)->nr_frags;
+	pagesz = PAGE_ALIGN(skb->data_len);
+	skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
 
-			for (i = skb_shinfo(skb)->nr_frags;
-			     i < frags; ++i) {
-				put_page(skb_shinfo(skb)->frags[i].page);
-				skb->truesize -= PAGE_SIZE;
-			}
+	for (i = skb_shinfo(skb)->nr_frags;
+			i < frags; ++i) {
+		put_page(skb_shinfo(skb)->frags[i].page);
+		skb->truesize -= PAGE_SIZE;
+	}
 
-			if (unlikely(h->flags & SDP_OOB_PEND))
-				sk_send_sigurg(&ssk->isk.sk);
+	if (unlikely(h->flags & SDP_OOB_PEND))
+		sk_send_sigurg(&ssk->isk.sk);
 
-			skb_pull(skb, sizeof(struct sdp_bsdh));
+	skb_pull(skb, sizeof(struct sdp_bsdh));
 
-			if (likely(h->mid == SDP_MID_DATA) &&
-			    likely(skb->len > 0)) {
-				int oob = h->flags & SDP_OOB_PRES;
-				skb = sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
-				if (unlikely(oob))
-					sdp_urg(ssk, skb);
-			} else if (likely(h->mid == SDP_MID_DATA)) {
-				__kfree_skb(skb);
-			} else if (h->mid == SDP_MID_DISCONN) {
-				/* this will wake recvmsg */
-				sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
-				sdp_fin(&ssk->isk.sk);
-			} else if (h->mid == SDP_MID_CHRCVBUF) {
-				sdp_handle_resize_request(ssk, (struct sdp_chrecvbuf *)skb->data);
-				__kfree_skb(skb);
-			} else if (h->mid == SDP_MID_CHRCVBUF_ACK) {
-				sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)skb->data);
-				__kfree_skb(skb);
-			} else {
-				/* TODO: Handle other messages */
-				printk("SDP: FIXME MID %d\n", h->mid);
-				__kfree_skb(skb);
-			}
+	switch (h->mid) {
+	case SDP_MID_DATA:
+		if (unlikely(skb->len <= 0)) {
+			__kfree_skb(skb);
+			break;
 		}
-	} else if (likely(wc->wr_id & SDP_OP_SEND)) {
-		skb = sdp_send_completion(ssk, wc->wr_id);
-		if (unlikely(!skb))
+		skb = sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
+		if (unlikely(h->flags & SDP_OOB_PRES))
+			sdp_urg(ssk, skb);
+		break;
+	case SDP_MID_DISCONN:
+		/* this will wake recvmsg */
+		sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
+		sdp_fin(&ssk->isk.sk);
+		break;
+	case SDP_MID_CHRCVBUF:
+		sdp_handle_resize_request(ssk,
+				(struct sdp_chrecvbuf *)skb->data);
+		__kfree_skb(skb);
+		break;
+
+	case SDP_MID_CHRCVBUF_ACK:
+		sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)skb->data);
+		__kfree_skb(skb);
+		break;
+	default:
+		/* TODO: Handle other messages */
+		printk(KERN_WARNING "SDP: FIXME MID %d\n", h->mid);
+		__kfree_skb(skb);
+	}
+	return 0;
+}
+
+static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
+{
+	struct sk_buff *skb;
+
+	skb = sdp_send_completion(ssk, wc->wr_id);
+	if (unlikely(!skb))
+		return -1;
+	sk_wmem_free_skb(&ssk->isk.sk, skb);
+	if (unlikely(wc->status)) {
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			sdp_dbg(&ssk->isk.sk,
+					"Send completion with error. "
+					"Status %d\n", wc->status);
+			sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+			wake_up(&ssk->wq);
+		}
+	}
+
+	return 0;
+}
+
+static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
+{
+	if (wc->wr_id & SDP_OP_RECV) {
+		if (sdp_handle_recv_comp(ssk, wc))
 			return;
-		sk_wmem_free_skb(&ssk->isk.sk, skb);
-		if (unlikely(wc->status)) {
-			if (wc->status != IB_WC_WR_FLUSH_ERR) {
-				sdp_dbg(&ssk->isk.sk,
-						"Send completion with error. "
-						"Status %d\n", wc->status);
-				sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-				wake_up(&ssk->wq);
-			}
-		}
+	} else if (likely(wc->wr_id & SDP_OP_SEND)) {
+		if (sdp_handle_send_comp(ssk, wc))
+			return;
 	} else {
 		sdp_cnt(sdp_keepalive_probes_sent);
 
