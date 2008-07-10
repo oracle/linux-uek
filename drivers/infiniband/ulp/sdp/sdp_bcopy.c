@@ -96,13 +96,43 @@ void sdp_remove_large_sock(struct sdp_sock *ssk)
 	}
 }
 
-/* Like tcp_fin */
+/* Like tcp_fin - called when SDP_MID_DISCONNECT is received */
 static void sdp_fin(struct sock *sk)
 {
 	sdp_dbg(sk, "%s\n", __func__);
 
 	sk->sk_shutdown |= RCV_SHUTDOWN;
 	sock_set_flag(sk, SOCK_DONE);
+
+	switch (sk->sk_state) {
+	case TCP_SYN_RECV:
+	case TCP_ESTABLISHED:
+		sdp_exch_state(sk, TCPF_SYN_RECV | TCPF_ESTABLISHED,
+				TCP_CLOSE_WAIT);
+		break;
+
+	case TCP_FIN_WAIT1:
+		/* Received a reply FIN - start Infiniband tear down */
+		sdp_dbg(sk, "%s: Starting Infiniband tear down sending DREQ\n",
+				__func__);
+		sdp_exch_state(sk, TCPF_FIN_WAIT1, TCP_TIME_WAIT);
+
+		if (sdp_sk(sk)->id) {
+			rdma_disconnect(sdp_sk(sk)->id);
+		} else {
+			sdp_warn(sk, "%s: sdp_sk(sk)->id is NULL\n", __func__);
+			BUG();
+		}
+		break;
+	case TCP_TIME_WAIT:
+		/* This is a mutual close situation and we've got the DREQ from
+		   the peer before the SDP_MID_DISCONNECT */
+		break;
+	default:
+		sdp_warn(sk, "%s: FIN in unexpected state. sk->sk_state=%d\n",
+				__func__, sk->sk_state);
+		break;
+	}
 
 
 	sk_mem_reclaim(sk);
@@ -389,7 +419,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 {
 	int skb_len;
 	struct sdp_sock *ssk = sdp_sk(sk);
-	struct sk_buff *tail;
+	struct sk_buff *tail = NULL;
 
 	/* not needed since sk_rmem_alloc is not currently used
 	 * TODO - remove this?
@@ -524,7 +554,9 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 	if (unlikely(c < ssk->rx_head - ssk->rx_tail) &&
 	    likely(ssk->bufs > 1) &&
-	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE)) {
+	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) &&
+	    likely((1 << ssk->isk.sk.sk_state) &
+		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  GFP_KERNEL);
@@ -533,20 +565,16 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
 	}
 
-	if (unlikely((1 << ssk->isk.sk.sk_state) &
-			(TCPF_FIN_WAIT1 | TCPF_LAST_ACK)) &&
+	if (unlikely(ssk->sdp_disconnect) &&
 		!ssk->isk.sk.sk_send_head &&
 		ssk->bufs > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
+		ssk->sdp_disconnect = 0;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
 					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
-		if (ssk->isk.sk.sk_state == TCP_FIN_WAIT1)
-			sdp_set_state(&ssk->isk.sk, TCP_FIN_WAIT2);
-		else
-			sdp_set_state(&ssk->isk.sk, TCP_CLOSING);
 	}
 }
 
@@ -590,6 +618,7 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk, struct sdp_chrecvbuf *bu
 
 static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
+	struct sock *sk = &ssk->isk.sk;
 	int frags;
 	struct sk_buff *skb;
 	struct sdp_bsdh *h;
@@ -603,16 +632,15 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 
 	if (unlikely(wc->status)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			sdp_dbg(&ssk->isk.sk,
-					"Recv completion with error. "
-					"Status %d\n", wc->status);
-			sdp_reset(&ssk->isk.sk);
+			sdp_dbg(sk, "Recv completion with error. Status %d\n",
+				wc->status);
+			sdp_reset(sk);
 		}
 		__kfree_skb(skb);
 		return 0;
 	}
 
-	sdp_dbg_data(&ssk->isk.sk, "Recv completion. ID %d Length %d\n",
+	sdp_dbg_data(sk, "Recv completion. ID %d Length %d\n",
 			(int)wc->wr_id, wc->byte_len);
 	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
 		printk(KERN_WARNING "SDP BUG! byte_len %d < %zd\n",
@@ -651,7 +679,7 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 	}
 
 	if (unlikely(h->flags & SDP_OOB_PEND))
-		sk_send_sigurg(&ssk->isk.sk);
+		sk_send_sigurg(sk);
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
 
@@ -661,21 +689,33 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 			__kfree_skb(skb);
 			break;
 		}
-		skb = sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
+
+		if (unlikely(sk->sk_shutdown & RCV_SHUTDOWN)) {
+			/* got data in RCV_SHUTDOWN */
+			if (sk->sk_state == TCP_FIN_WAIT1) {
+				/* go into abortive close */
+				sdp_exch_state(sk, TCPF_FIN_WAIT1,
+					       TCP_TIME_WAIT);
+
+				sk->sk_prot->disconnect(sk, 0);
+			}
+
+			__kfree_skb(skb);
+			break;
+		}
+		skb = sdp_sock_queue_rcv_skb(sk, skb);
 		if (unlikely(h->flags & SDP_OOB_PRES))
 			sdp_urg(ssk, skb);
 		break;
 	case SDP_MID_DISCONN:
-		/* this will wake recvmsg */
-		sdp_sock_queue_rcv_skb(&ssk->isk.sk, skb);
-		sdp_fin(&ssk->isk.sk);
+		__kfree_skb(skb);
+		sdp_fin(sk);
 		break;
 	case SDP_MID_CHRCVBUF:
 		sdp_handle_resize_request(ssk,
-				(struct sdp_chrecvbuf *)skb->data);
+			(struct sdp_chrecvbuf *)skb->data);
 		__kfree_skb(skb);
 		break;
-
 	case SDP_MID_CHRCVBUF_ACK:
 		sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)skb->data);
 		__kfree_skb(skb);
@@ -685,26 +725,45 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		printk(KERN_WARNING "SDP: FIXME MID %d\n", h->mid);
 		__kfree_skb(skb);
 	}
+
 	return 0;
 }
 
 static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb;
+	struct sdp_bsdh *h;
 
 	skb = sdp_send_completion(ssk, wc->wr_id);
 	if (unlikely(!skb))
 		return -1;
-	sk_wmem_free_skb(&ssk->isk.sk, skb);
+
 	if (unlikely(wc->status)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			sdp_dbg(&ssk->isk.sk,
-					"Send completion with error. "
-					"Status %d\n", wc->status);
-			sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+			struct sock *sk = &ssk->isk.sk;
+			sdp_dbg(sk, "Send completion with error. "
+				"Status %d\n", wc->status);
+			sdp_set_error(sk, -ECONNRESET);
 			wake_up(&ssk->wq);
+
+			queue_work(sdp_workqueue, &ssk->destroy_work);
 		}
+		goto out;
 	}
+
+	h = (struct sdp_bsdh *)skb->data;
+
+	if (likely(h->mid != SDP_MID_DISCONN))
+		goto out;
+
+	if ((1 << ssk->isk.sk.sk_state) & ~(TCPF_FIN_WAIT1 | TCPF_LAST_ACK)) {
+		sdp_dbg(&ssk->isk.sk,
+			"%s: sent DISCONNECT from unexpected state %d\n",
+			__func__, ssk->isk.sk.sk_state);
+	}
+
+out:
+	sk_wmem_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
 }
@@ -733,13 +792,6 @@ static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		wake_up(&ssk->wq);
 
 		return;
-	}
-
-	if (ssk->time_wait && !ssk->isk.sk.sk_send_head &&
-	    ssk->tx_head == ssk->tx_tail) {
-		sdp_dbg(&ssk->isk.sk, "%s: destroy in time wait state\n",
-			__func__);
-		sdp_time_wait_destroy_sk(ssk);
 	}
 }
 

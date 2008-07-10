@@ -110,7 +110,7 @@ struct sdp_sock {
 	struct work_struct work;
 	wait_queue_head_t wq;
 
-	struct delayed_work time_wait_work;
+	struct delayed_work dreq_wait_work;
 	struct work_struct destroy_work;
 
 	/* Like tcp_sock */
@@ -125,13 +125,18 @@ struct sdp_sock {
 	int xmit_size_goal;
 	int nonagle;
 
-	int time_wait;
+	int dreq_wait_timeout;
 
 	unsigned keepalive_time;
+
+	spinlock_t lock;
 
 	/* tx_head/rx_head when keepalive timer started */
 	unsigned keepalive_tx_head;
 	unsigned keepalive_rx_head;
+
+	int destructed_already;
+	int sdp_disconnect;
 
 	/* Data below will be reset on error */
 	/* rdma specific */
@@ -218,24 +223,68 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 	        return (struct sdp_sock *)sk;
 }
 
-static inline void sdp_set_state(struct sock *sk, int state)
+static inline char *sdp_state_str(int state)
 {
-	sk->sk_state = state;
+	static char *state_str[] = {
+		[TCP_ESTABLISHED] = "TCP_ESTABLISHED",
+		[TCP_SYN_SENT] = "TCP_SYN_SENT",
+		[TCP_SYN_RECV] = "TCP_SYN_RECV",
+		[TCP_FIN_WAIT1] = "TCP_FIN_WAIT1",
+		[TCP_FIN_WAIT2] = "TCP_FIN_WAIT2",
+		[TCP_TIME_WAIT] = "TCP_TIME_WAIT",
+		[TCP_CLOSE] = "TCP_CLOSE",
+		[TCP_CLOSE_WAIT] = "TCP_CLOSE_WAIT",
+		[TCP_LAST_ACK] = "TCP_LAST_ACK",
+		[TCP_LISTEN] = "TCP_LISTEN",
+		[TCP_CLOSING] = "TCP_CLOSING",
+	};
+
+	if (state < 0 || state >= TCP_MAX_STATES)
+		return "unknown";
+
+	return state_str[state];
 }
+
+static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
+				 int from_states, int state)
+{
+	unsigned long flags;
+	int old;
+
+	spin_lock_irqsave(&sdp_sk(sk)->lock, flags);
+	
+	sdp_dbg(sk, "%s:%d - set state: %s -> %s 0x%x\n", __func__, __LINE__,
+		sdp_state_str(sk->sk_state), sdp_state_str(state), from_states);
+
+	if ((1 << sk->sk_state) & ~from_states) {
+		sdp_warn(sk, "trying to exchange state from unexpected state "
+			"%s to state %s. expected states: 0x%x\n",
+			sdp_state_str(sk->sk_state), sdp_state_str(state),
+			from_states);
+	}
+
+	old = sk->sk_state;
+	sk->sk_state = state;
+
+	spin_unlock_irqrestore(&sdp_sk(sk)->lock, flags);
+
+	return old;
+}
+#define sdp_exch_state(sk, from_states, state) \
+	_sdp_exch_state(__func__, __LINE__, sk, from_states, state)
 
 static inline void sdp_set_error(struct sock *sk, int err)
 {
+	int ib_teardown_states = TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT
+		| TCPF_LAST_ACK;
 	sk->sk_err = -err;
 	if (sk->sk_socket)
-		sk->sk_socket->state = SS_UNCONNECTED;
+		sk->sk_socket->state = SS_DISCONNECTING;
 
-	sdp_set_state(sk, TCP_CLOSE);
-
-	if (sdp_sk(sk)->time_wait) {
-		sdp_dbg(sk, "%s: destroy in time wait state\n", __func__);
-		sdp_sk(sk)->time_wait = 0;
-		queue_work(sdp_workqueue, &sdp_sk(sk)->destroy_work);
-	}
+	if ((1 << sk->sk_state) & ib_teardown_states)
+		sdp_exch_state(sk, ib_teardown_states, TCP_TIME_WAIT);
+	else
+		sdp_exch_state(sk, ~0, TCP_CLOSE);
 
 	sk->sk_error_report(sk);
 }
@@ -245,7 +294,6 @@ extern struct workqueue_struct *sdp_workqueue;
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
-void sdp_time_wait_destroy_sk(struct sdp_sock *ssk);
 void sdp_completion_handler(struct ib_cq *cq, void *cq_context);
 void sdp_work(struct work_struct *work);
 int sdp_post_credits(struct sdp_sock *ssk);
@@ -254,7 +302,8 @@ void sdp_post_recvs(struct sdp_sock *ssk);
 int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq);
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
 void sdp_destroy_work(struct work_struct *work);
-void sdp_time_wait_work(struct work_struct *work);
+void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
+void sdp_dreq_wait_timeout_work(struct work_struct *work);
 struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id);
 struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);

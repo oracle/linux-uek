@@ -220,7 +220,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_add_sock(sdp_sk(child));
 	INIT_LIST_HEAD(&sdp_sk(child)->accept_queue);
 	INIT_LIST_HEAD(&sdp_sk(child)->backlog_queue);
-	INIT_DELAYED_WORK(&sdp_sk(child)->time_wait_work, sdp_time_wait_work);
+	INIT_DELAYED_WORK(&sdp_sk(child)->dreq_wait_work, sdp_dreq_wait_timeout_work);
 	INIT_WORK(&sdp_sk(child)->destroy_work, sdp_destroy_work);
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
@@ -256,7 +256,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	list_add_tail(&sdp_sk(child)->backlog_queue, &sdp_sk(sk)->backlog_queue);
 	sdp_sk(child)->parent = sk;
 
-	sdp_set_state(child, TCP_SYN_RECV);
+	sdp_exch_state(child, TCPF_LISTEN | TCPF_CLOSE, TCP_SYN_RECV);
 
 	/* child->sk_write_space(child); */
 	/* child->sk_data_ready(child, 0); */
@@ -272,7 +272,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	struct sockaddr_in *dst_addr;
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sdp_set_state(sk, TCP_ESTABLISHED);
+	sdp_exch_state(sk, TCPF_SYN_SENT, TCP_ESTABLISHED);
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);
@@ -316,7 +316,7 @@ int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 	parent = sdp_sk(sk)->parent;
 	BUG_ON(!parent);
 
-	sdp_set_state(sk, TCP_ESTABLISHED);
+	sdp_exch_state(sk, TCPF_SYN_RECV, TCP_ESTABLISHED);
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);
@@ -498,9 +498,28 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		rc = sdp_connected_handler(sk, event);
 		break;
-	case RDMA_CM_EVENT_DISCONNECTED:
+	case RDMA_CM_EVENT_DISCONNECTED: /* This means DREQ/DREP received */
 		sdp_dbg(sk, "RDMA_CM_EVENT_DISCONNECTED\n");
+
+		if (sk->sk_state == TCP_LAST_ACK) {
+			if (sdp_sk(sk)->dreq_wait_timeout)
+				sdp_cancel_dreq_wait_timeout(sdp_sk(sk));
+
+			sdp_exch_state(sk, TCPF_LAST_ACK, TCP_TIME_WAIT);
+
+			sdp_dbg(sk, "%s: waiting for Infiniband tear down\n",
+				__func__);
+		}
+
 		rdma_disconnect(id);
+
+		if (sk->sk_state != TCP_TIME_WAIT) {
+			sdp_set_error(sk, EPIPE);
+			rc = sdp_disconnected_handler(sk);
+		}
+		break;
+	case RDMA_CM_EVENT_TIMWAIT_EXIT:
+		sdp_dbg(sk, "RDMA_CM_EVENT_TIMEWAIT_EXIT\n");
 		rc = sdp_disconnected_handler(sk);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -517,6 +536,12 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	sdp_dbg(sk, "%s event %d handled\n", __func__, event->event);
 
 	if (rc && sdp_sk(sk)->id == id) {
+		if (sk->sk_state == TCP_SYN_RECV) {
+			/* sdp_close() will not be called therefore we need
+			   to take a refernce till infiniband teardown is
+			   finished */
+			sock_hold(sk);
+		}
 		child = sk;
 		sdp_sk(sk)->id = NULL;
 		id->qp = NULL;
