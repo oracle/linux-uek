@@ -218,13 +218,18 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 	        return (struct sdp_sock *)sk;
 }
 
+static inline void sdp_set_state(struct sock *sk, int state)
+{
+	sk->sk_state = state;
+}
+
 static inline void sdp_set_error(struct sock *sk, int err)
 {
 	sk->sk_err = -err;
 	if (sk->sk_socket)
 		sk->sk_socket->state = SS_UNCONNECTED;
 
-	sk->sk_state = TCP_CLOSE;
+	sdp_set_state(sk, TCP_CLOSE);
 
 	if (sdp_sk(sk)->time_wait) {
 		sdp_dbg(sk, "%s: destroy in time wait state\n", __func__);
@@ -233,11 +238,6 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	}
 
 	sk->sk_error_report(sk);
-}
-
-static inline void sdp_set_state(struct sock *sk, int state)
-{
-	sk->sk_state = state;
 }
 
 extern struct workqueue_struct *sdp_workqueue;

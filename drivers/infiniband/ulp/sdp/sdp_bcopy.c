@@ -544,9 +544,9 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		BUG_ON(!skb);
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
 		if (ssk->isk.sk.sk_state == TCP_FIN_WAIT1)
-			ssk->isk.sk.sk_state = TCP_FIN_WAIT2;
+			sdp_set_state(&ssk->isk.sk, TCP_FIN_WAIT2);
 		else
-			ssk->isk.sk.sk_state = TCP_CLOSING;
+			sdp_set_state(&ssk->isk.sk, TCP_CLOSING);
 	}
 }
 

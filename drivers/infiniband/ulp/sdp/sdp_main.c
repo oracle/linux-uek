@@ -452,9 +452,9 @@ static int sdp_close_state(struct sock *sk)
 		return 0;
 
 	if (sk->sk_state == TCP_ESTABLISHED)
-		sk->sk_state = TCP_FIN_WAIT1;
+		sdp_set_state(sk, TCP_FIN_WAIT1);
 	else if (sk->sk_state == TCP_CLOSE_WAIT)
-		sk->sk_state = TCP_LAST_ACK;
+		sdp_set_state(sk, TCP_LAST_ACK);
 	else
 		return 0;
 	return 1;
@@ -553,7 +553,7 @@ adjudge_to_death:
 	if (sk->sk_state == TCP_FIN_WAIT2 &&
 		!sk->sk_send_head &&
 		sdp_sk(sk)->tx_head == sdp_sk(sk)->tx_tail) {
-		sk->sk_state = TCP_CLOSE;
+		sdp_set_state(sk, TCP_CLOSE);
 	}
 
 	if ((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_FIN_WAIT2)) {
@@ -622,7 +622,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		return rc;
 	}
 
-	sk->sk_state = TCP_SYN_SENT;
+	sdp_set_state(sk, TCP_SYN_SENT);
 	return 0;
 }
 
@@ -853,7 +853,7 @@ void sdp_time_wait_work(struct work_struct *work)
 
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
-	sk->sk_state = TCP_CLOSE;
+	sdp_set_state(sk, TCP_CLOSE);
 	sdp_sk(sk)->time_wait = 0;
 	release_sock(sk);
 
@@ -864,7 +864,7 @@ void sdp_time_wait_work(struct work_struct *work)
 void sdp_time_wait_destroy_sk(struct sdp_sock *ssk)
 {
 	ssk->time_wait = 0;
-	ssk->isk.sk.sk_state = TCP_CLOSE;
+	sdp_set_state(&ssk->isk.sk, TCP_CLOSE);
 	queue_work(sdp_workqueue, &ssk->destroy_work);
 }
 
@@ -895,9 +895,9 @@ static void sdp_shutdown(struct sock *sk, int how)
 		return;
 
 	if (sk->sk_state == TCP_ESTABLISHED)
-		sk->sk_state = TCP_FIN_WAIT1;
+		sdp_set_state(sk, TCP_FIN_WAIT1);
 	else if (sk->sk_state == TCP_CLOSE_WAIT)
-		sk->sk_state = TCP_LAST_ACK;
+		sdp_set_state(sk, TCP_LAST_ACK);
 	else
 		return;
 
@@ -1991,7 +1991,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 		sdp_warn(sk, "rdma_listen failed: %d\n", rc);
 		sdp_set_error(sk, rc);
 	} else
-		sk->sk_state = TCP_LISTEN;
+		sdp_set_state(sk, TCP_LISTEN);
 	return rc;
 }
 

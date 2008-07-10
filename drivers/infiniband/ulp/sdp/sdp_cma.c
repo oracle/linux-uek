@@ -256,7 +256,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	list_add_tail(&sdp_sk(child)->backlog_queue, &sdp_sk(sk)->backlog_queue);
 	sdp_sk(child)->parent = sk;
 
-	child->sk_state = TCP_SYN_RECV;
+	sdp_set_state(child, TCP_SYN_RECV);
 
 	/* child->sk_write_space(child); */
 	/* child->sk_data_ready(child, 0); */
@@ -272,7 +272,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	struct sockaddr_in *dst_addr;
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sk->sk_state = TCP_ESTABLISHED;
+	sdp_set_state(sk, TCP_ESTABLISHED);
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);
@@ -316,7 +316,7 @@ int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 	parent = sdp_sk(sk)->parent;
 	BUG_ON(!parent);
 
-	sk->sk_state = TCP_ESTABLISHED;
+	sdp_set_state(sk, TCP_ESTABLISHED);
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);
