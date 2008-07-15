@@ -176,10 +176,6 @@ int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	init_waitqueue_head(&sdp_sk(sk)->wq);
 
-	sdp_sk(sk)->recv_frags = 0;
-	sdp_sk(sk)->rcvbuf_scale = 1;
-	sdp_post_recvs(sdp_sk(sk));
-
 	sdp_dbg(sk, "%s done\n", __func__);
 	return 0;
 
@@ -241,7 +237,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
 		PAGE_SIZE;
-	sdp_resize_buffers(sdp_sk(child), ntohl(h->desremrcvsz));
+	sdp_init_buffers(sdp_sk(child), ntohl(h->desremrcvsz));
 
 	sdp_dbg(child, "%s bufs %d xmit_size_goal %d send trigger %d\n",
 		__func__,
@@ -419,6 +415,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
+		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 						       PAGE_SIZE + SDP_HEAD_SIZE);
 		hh.max_adverts = 0x1;

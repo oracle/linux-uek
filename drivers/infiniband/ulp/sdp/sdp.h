@@ -196,6 +196,7 @@ struct bzcopy_state {
 	struct page         **pages;
 };
 
+extern int rcvbuf_initial_size;
 
 extern struct proto sdp_proto;
 extern struct workqueue_struct *sdp_workqueue;
@@ -311,6 +312,7 @@ void sdp_add_sock(struct sdp_sock *ssk);
 void sdp_remove_sock(struct sdp_sock *ssk);
 void sdp_remove_large_sock(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
+int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
 void sdp_bzcopy_write_space(struct sdp_sock *ssk);

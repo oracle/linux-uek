@@ -45,6 +45,10 @@ struct sdp_chrecvbuf {
 
 static int rcvbuf_scale = 0x10;
 
+int rcvbuf_initial_size = SDP_HEAD_SIZE;
+module_param_named(rcvbuf_initial_size, rcvbuf_initial_size, int, 0644);
+MODULE_PARM_DESC(rcvbuf_initial_size, "Receive buffer initial size in bytes.");
+
 module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
 MODULE_PARM_DESC(rcvbuf_scale, "Receive buffer size scale factor.");
 
@@ -576,6 +580,17 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		BUG_ON(!skb);
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
 	}
+}
+
+int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
+{
+	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
+	if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
+		ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+
+	sdp_post_recvs(ssk);
+
+	return 0;
 }
 
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
