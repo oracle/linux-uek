@@ -344,6 +344,8 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	sk->sk_state_change(sk);
 
+	/* Don't destroy socket before destroy work does its job */
+	sock_hold(sk);
 	queue_work(sdp_workqueue, &ssk->destroy_work);
 
 	read_unlock(&device_removal_lock);
@@ -855,6 +857,7 @@ void sdp_destroy_work(struct work_struct *work)
 	   but if a CM connection is dropped below our legs state could
 	   be any state */
 	sdp_exch_state(sk, ~0, TCP_CLOSE);
+	sock_put(sk);
 }
 
 void sdp_dreq_wait_timeout_work(struct work_struct *work)
