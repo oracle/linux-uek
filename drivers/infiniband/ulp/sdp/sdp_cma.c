@@ -518,7 +518,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rc = sdp_disconnected_handler(sk);
 		}
 		break;
-	case RDMA_CM_EVENT_TIMWAIT_EXIT:
+	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
 		sdp_dbg(sk, "RDMA_CM_EVENT_TIMEWAIT_EXIT\n");
 		rc = sdp_disconnected_handler(sk);
 		break;
