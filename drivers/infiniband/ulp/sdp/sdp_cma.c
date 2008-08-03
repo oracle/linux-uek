@@ -31,7 +31,6 @@
  *
  * $Id$
  */
-#include <asm/semaphore.h>
 #include <linux/device.h>
 #include <linux/in.h>
 #include <linux/err.h>

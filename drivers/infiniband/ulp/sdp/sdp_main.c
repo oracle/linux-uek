@@ -523,7 +523,7 @@ static void sdp_close(struct sock *sk, long timeout)
 	if (data_was_unread ||
 		(sock_flag(sk, SOCK_LINGER) && !sk->sk_lingertime)) {
 		/* Unread data was tossed, zap the connection. */
-		NET_INC_STATS_USER(LINUX_MIB_TCPABORTONCLOSE);
+		NET_INC_STATS_USER(sock_net(sk), LINUX_MIB_TCPABORTONCLOSE);
 		sdp_exch_state(sk, TCPF_CLOSE_WAIT | TCPF_ESTABLISHED,
 			       TCP_TIME_WAIT);
 
@@ -1846,7 +1846,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (offset < skb->len)
 				goto found_ok_skb;
 
-			BUG_TRAP(flags & MSG_PEEK);
+			WARN_ON(!(flags & MSG_PEEK));
 			skb = skb->next;
 		} while (skb != (struct sk_buff *)&sk->sk_receive_queue);
 
@@ -2083,9 +2083,9 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
 	return mask;
 }
 
-static void sdp_enter_memory_pressure(void)
+static void sdp_enter_memory_pressure(struct sock *sk)
 {
-	sdp_dbg(NULL, "%s\n", __func__);
+	sdp_dbg(sk, "%s\n", __func__);
 }
 
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
