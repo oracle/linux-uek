@@ -65,6 +65,10 @@ vmlinux_link()
 			-lutil ${1}
 		rm -f linux
 	fi
+	if [ -n "${AFTER_LINK}" ]; then
+		/usr/lib/rpm/debugedit -b ${RPM_BUILD_DIR} -d /usr/src/debug -i ${2} \
+			> ${2}.id
+	fi
 }
 
 
