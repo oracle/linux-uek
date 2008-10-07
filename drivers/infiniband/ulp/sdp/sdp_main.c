@@ -2285,7 +2285,7 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	if (v == SEQ_START_TOKEN) {
 		seq_printf(seq, "%-*s\n", TMPSZ - 1,
 				"  sl  local_address rem_address        uid inode"
-				"   rx_queue tx_queue");
+				"   rx_queue tx_queue state");
 		goto out;
 	}
 
@@ -2300,9 +2300,9 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	rx_queue = sdp_sk(sk)->rcv_nxt - sdp_sk(sk)->copied_seq;
 	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->snd_una;
 
-	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X",
+	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
 		st->num, src, srcp, dest, destp, uid, inode,
-		rx_queue, tx_queue);
+		rx_queue, tx_queue, sk->sk_state);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
 
