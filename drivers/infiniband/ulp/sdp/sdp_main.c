@@ -915,6 +915,8 @@ static void sdp_shutdown(struct sock *sk, int how)
 	if (!sdp_close_state(sk))
 	    return;
 
+	sock_hold(sk);
+
 	/*
 	 * Just turn off CORK here.
 	 *   We could check for socket shutting down in main data path,
