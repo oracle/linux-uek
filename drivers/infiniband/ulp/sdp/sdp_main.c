@@ -295,7 +295,7 @@ static void sdp_keepalive_timer(unsigned long data)
 
 out:
 	bh_unlock_sock(sk);
-	sock_put(sk);
+	sock_put(sk, SOCK_REF_BORN);
 }
 
 static void sdp_init_timer(struct sock *sk)
@@ -345,7 +345,7 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	sk->sk_state_change(sk);
 
 	/* Don't destroy socket before destroy work does its job */
-	sock_hold(sk);
+	sock_hold(sk, SOCK_REF_RESET);
 	queue_work(sdp_workqueue, &ssk->destroy_work);
 
 	read_unlock(&device_removal_lock);
@@ -498,7 +498,7 @@ static void sdp_close(struct sock *sk, long timeout)
 		goto adjudge_to_death;
 	}
 
-	sock_hold(sk);
+	sock_hold(sk, SOCK_REF_CM_TW);
 
 	/*  We need to flush the recv. buffs.  We do this only on the
 	 *  descriptor close, not protocol-sourced closes, because the
@@ -851,13 +851,13 @@ void sdp_destroy_work(struct work_struct *work)
 		sdp_cancel_dreq_wait_timeout(ssk);
 
 	if (sk->sk_state == TCP_TIME_WAIT)
-		sock_put(sk);
+		sock_put(sk, SOCK_REF_CM_TW);
 
 	/* In normal close current state is TCP_TIME_WAIT or TCP_CLOSE
 	   but if a CM connection is dropped below our legs state could
 	   be any state */
 	sdp_exch_state(sk, ~0, TCP_CLOSE);
-	sock_put(sk);
+	sock_put(sk, SOCK_REF_RESET);
 }
 
 void sdp_dreq_wait_timeout_work(struct work_struct *work)
@@ -915,7 +915,7 @@ static void sdp_shutdown(struct sock *sk, int how)
 	if (!sdp_close_state(sk))
 	    return;
 
-	sock_hold(sk);
+	sock_hold(sk, SOCK_REF_CM_TW);
 
 	/*
 	 * Just turn off CORK here.
@@ -2239,7 +2239,7 @@ static void *sdp_seq_start(struct seq_file *seq, loff_t *pos)
 	spin_lock_irq(&sock_list_lock);
 	start = sdp_get_idx(seq, *pos - 1);
 	if (start)
-		sock_hold((struct sock *)start);
+		sock_hold((struct sock *)start, SOCK_REF_SEQ);
 	spin_unlock_irq(&sock_list_lock);
 
 	return start;
@@ -2256,7 +2256,7 @@ static void *sdp_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 	else
 		next = sdp_get_idx(seq, *pos);
 	if (next)
-		sock_hold((struct sock *)next);
+		sock_hold((struct sock *)next, SOCK_REF_SEQ);
 	spin_unlock_irq(&sock_list_lock);
 
 	*pos += 1;
@@ -2308,7 +2308,7 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
 
-	sock_put(sk);
+	sock_put(sk, SOCK_REF_SEQ);
 out:
 	return 0;
 }

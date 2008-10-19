@@ -8,7 +8,8 @@
 #include <rdma/ib_verbs.h>
 
 #define sdp_printk(level, sk, format, arg...)                \
-	printk(level "sdp_sock(%d:%d): " format,             \
+	printk(level "%s:%d sdp_sock(%d:%d): " format,             \
+	       __func__, __LINE__, \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
 	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg)
 #define sdp_warn(sk, format, arg...)                         \
@@ -22,9 +23,30 @@ extern int sdp_debug_level;
 		if (sdp_debug_level > 0)                     \
 		sdp_printk(KERN_DEBUG, sk, format , ## arg); \
 	} while (0)
+
+#define sock_ref(sk, msg, sock_op) ({ \
+	if (!atomic_read(&(sk)->sk_refcnt)) {\
+		sdp_warn(sk, "%s:%d - %s (%s) ref = 0.\n", \
+				 __func__, __LINE__, #sock_op, msg); \
+		WARN_ON(1); \
+	} else { \
+		sdp_dbg(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
+			#sock_op, msg, atomic_read(&(sk)->sk_refcnt)); \
+		sock_op(sk); \
+	}\
+})
+
+#define sk_common_release(sk) do { \
+		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_BORN ") - refcount = %d " \
+			"from withing sk_common_release\n",\
+			__FUNCTION__, __LINE__, atomic_read(&(sk)->sk_refcnt)); \
+		sk_common_release(sk); \
+} while (0)
+
 #else /* CONFIG_INFINIBAND_SDP_DEBUG */
 #define sdp_dbg(priv, format, arg...)                        \
 	do { (void) (priv); } while (0)
+#define sock_ref(sk, msg, sock_op) sock_op(sk)
 #endif /* CONFIG_INFINIBAND_SDP_DEBUG */
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
@@ -38,6 +60,16 @@ extern int sdp_data_debug_level;
 #define sdp_dbg_data(priv, format, arg...)                   \
 	do { (void) (priv); } while (0)
 #endif
+
+#define SOCK_REF_RESET "RESET"
+#define SOCK_REF_BORN "BORN" /* sock_alloc -> destruct_sock */
+#define SOCK_REF_CLONE "CLONE"
+#define SOCK_REF_CM_TW "CM_TW" /* TIMEWAIT_ENTER -> TIMEWAIT_EXIT */
+#define SOCK_REF_SEQ "SEQ" /* during proc read */
+
+#define sock_hold(sk, msg)  sock_ref(sk, msg, sock_hold)
+#define sock_put(sk, msg)  sock_ref(sk, msg, sock_put)
+#define __sock_put(sk, msg)  sock_ref(sk, msg, __sock_put)
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -254,7 +286,7 @@ static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 
 	spin_lock_irqsave(&sdp_sk(sk)->lock, flags);
 	
-	sdp_dbg(sk, "%s:%d - set state: %s -> %s 0x%x\n", __func__, __LINE__,
+	sdp_dbg(sk, "%s:%d - set state: %s -> %s 0x%x\n", func, line,
 		sdp_state_str(sk->sk_state), sdp_state_str(state), from_states);
 
 	if ((1 << sk->sk_state) & ~from_states) {

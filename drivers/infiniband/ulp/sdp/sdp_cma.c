@@ -223,7 +223,7 @@ int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	inet_sk(child)->daddr = dst_addr->sin_addr.s_addr;
 
 	bh_unlock_sock(child);
-	__sock_put(child);
+	__sock_put(child, SOCK_REF_CLONE);
 
 	rc = sdp_init_qp(child, id);
 	if (rc) {
@@ -536,7 +536,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			/* sdp_close() will not be called therefore we need
 			   to take a refernce till infiniband teardown is
 			   finished */
-			sock_hold(sk);
+			sock_hold(sk, SOCK_REF_CM_TW);
 		}
 		child = sk;
 		sdp_sk(sk)->id = NULL;
