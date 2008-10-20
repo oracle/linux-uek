@@ -42,6 +42,10 @@
 
 #include "uverbs.h"
 
+static int allow_weak_ordering;
+module_param(allow_weak_ordering, bool, 0444);
+MODULE_PARM_DESC(allow_weak_ordering,  "Allow weak ordering for data registered memory");
+
 #define IB_UMEM_MAX_PAGE_CHUNK						\
 	((PAGE_SIZE - offsetof(struct ib_umem_chunk, page_list)) /	\
 	 ((void *) &((struct ib_umem_chunk *) 0)->page_list[1] -	\
@@ -162,8 +166,9 @@ static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int d
 	int i;
 
 	list_for_each_entry_safe(chunk, tmp, &umem->chunk_list, list) {
-		ib_dma_unmap_sg(dev, chunk->page_list,
-				chunk->nents, DMA_BIDIRECTIONAL);
+		ib_dma_unmap_sg_attrs(dev, chunk->page_list,
+				      chunk->nents, DMA_BIDIRECTIONAL,
+				      &chunk->attrs);
 		for (i = 0; i < chunk->nents; ++i) {
 			struct page *page = sg_page(&chunk->page_list[i]);
 
@@ -375,6 +380,9 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 
 	if (dmasync)
 		dma_set_attr(DMA_ATTR_WRITE_BARRIER, &attrs);
+	else if (allow_weak_ordering)
+		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &attrs);
+
 
 	if (!can_do_mlock())
 		return ERR_PTR(-EPERM);
@@ -453,6 +461,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 				goto out;
 			}
 
+			chunk->attrs = attrs;
 			chunk->nents = min_t(int, ret, IB_UMEM_MAX_PAGE_CHUNK);
 			sg_init_table(chunk->page_list, chunk->nents);
 			for (i = 0; i < chunk->nents; ++i) {
