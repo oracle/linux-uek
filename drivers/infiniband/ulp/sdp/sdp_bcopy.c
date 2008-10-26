@@ -132,6 +132,11 @@ static void sdp_fin(struct sock *sk)
 		/* This is a mutual close situation and we've got the DREQ from
 		   the peer before the SDP_MID_DISCONNECT */
 		break;
+	case TCP_CLOSE:
+		/* FIN arrived after IB teardown started - do nothing */
+		sdp_dbg(sk, "%s: fin in state %s\n",
+				__func__, sdp_state_str(sk->sk_state));
+		return;
 	default:
 		sdp_warn(sk, "%s: FIN in unexpected state. sk->sk_state=%d\n",
 				__func__, sk->sk_state);
