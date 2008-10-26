@@ -82,6 +82,7 @@ extern int sdp_data_debug_level;
 #define SDP_MAX_SEND_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
 #define SDP_NUM_WC 4
+#define SDP_MAX_PAYLOAD ((1 << 16) - SDP_HEAD_SIZE)
 
 #define SDP_MIN_ZCOPY_THRESH    1024
 #define SDP_MAX_ZCOPY_THRESH 1048576

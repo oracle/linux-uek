@@ -322,11 +322,11 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
 		frag->page_offset         = 0;
-		frag->size                = PAGE_SIZE;
+		frag->size                =  min(PAGE_SIZE, SDP_MAX_PAYLOAD);
 		++skb_shinfo(skb)->nr_frags;
-		skb->len += PAGE_SIZE;
-		skb->data_len += PAGE_SIZE;
-		skb->truesize += PAGE_SIZE;
+		skb->len += frag->size;
+		skb->data_len += frag->size;
+		skb->truesize += frag->size;
 	}
 
         rx_req = ssk->rx_ring + (id & (SDP_RX_SIZE - 1));

@@ -1637,6 +1637,10 @@ int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		iov++;
 
+		/* Limmiting the size_goal is reqired when using 64K pages*/
+		if (size_goal > SDP_MAX_PAYLOAD)
+			size_goal = SDP_MAX_PAYLOAD;
+
 		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
 
 		while (seglen > 0) {
