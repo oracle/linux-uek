@@ -93,7 +93,7 @@ static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
 }
 
-int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
+static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 {
 	struct ib_qp_init_attr qp_init_attr = {
 		.event_handler = sdp_qp_event_handler,
@@ -193,7 +193,7 @@ err_tx:
 	return rc;
 }
 
-int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
+static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		       	struct rdma_cm_event *event)
 {
 	struct sockaddr_in *dst_addr;
@@ -303,7 +303,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	return 0;
 }
 
-int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
+static int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 {
 	struct sock *parent;
 	sdp_dbg(sk, "%s\n", __func__);
@@ -345,7 +345,7 @@ done:
 	return 0;
 }
 
-int sdp_disconnected_handler(struct sock *sk)
+static int sdp_disconnected_handler(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 

@@ -303,7 +303,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	skb_frag_t *frag;
 	struct sdp_bsdh *h;
 	int id = ssk->rx_head;
-	unsigned int gfp_page;
+	gfp_t gfp_page;
 
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
@@ -496,7 +496,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
-	int gfp_page;
+	gfp_t gfp_page;
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {

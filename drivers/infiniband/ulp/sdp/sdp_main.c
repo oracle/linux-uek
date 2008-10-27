@@ -141,7 +141,7 @@ struct workqueue_struct *sdp_workqueue;
 static struct list_head sock_list;
 static spinlock_t sock_list_lock;
 
-DEFINE_RWLOCK(device_removal_lock);
+static DEFINE_RWLOCK(device_removal_lock);
 
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
@@ -1227,7 +1227,7 @@ static inline void skb_entail(struct sock *sk, struct sdp_sock *ssk,
                 ssk->nonagle &= ~TCP_NAGLE_PUSH;
 }
 
-void sdp_push_one(struct sock *sk, unsigned int mss_now)
+static void sdp_push_one(struct sock *sk, unsigned int mss_now)
 {
 }
 
@@ -1593,7 +1593,7 @@ void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 
 /* Like tcp_sendmsg */
 /* TODO: check locking */
-int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		size_t size)
 {
 	struct iovec *iov;
@@ -1939,7 +1939,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 		}
 		if (!(flags & MSG_TRUNC)) {
-			int err;
 			err = skb_copy_datagram_iovec(skb, offset,
 						      /* TODO: skip header? */
 						      msg->msg_iov, used);
@@ -2018,7 +2017,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 /* We almost could use inet_listen, but that calls
    inet_csk_listen_start. Longer term we'll want to add
    a listen callback to struct proto, similiar to bind. */
-int sdp_inet_listen(struct socket *sock, int backlog)
+static int sdp_inet_listen(struct socket *sock, int backlog)
 {
 	struct sock *sk = sock->sk;
 	unsigned char old_state;
@@ -2453,7 +2452,7 @@ static struct net_proto_family sdp_net_proto = {
 	.owner  = THIS_MODULE,
 };
 
-struct ib_client sdp_client = {
+static struct ib_client sdp_client = {
 	.name   = "sdp",
 	.add    = sdp_add_device,
 	.remove = sdp_remove_device
