@@ -498,8 +498,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_dbg(sk, "RDMA_CM_EVENT_DISCONNECTED\n");
 
 		if (sk->sk_state == TCP_LAST_ACK) {
-			if (sdp_sk(sk)->dreq_wait_timeout)
-				sdp_cancel_dreq_wait_timeout(sdp_sk(sk));
+			sdp_cancel_dreq_wait_timeout(sdp_sk(sk));
 
 			sdp_exch_state(sk, TCPF_LAST_ACK, TCP_TIME_WAIT);
 
@@ -510,6 +509,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rdma_disconnect(id);
 
 		if (sk->sk_state != TCP_TIME_WAIT) {
+			if (sk->sk_state == TCP_CLOSE_WAIT) {
+				sdp_dbg(sk, "IB teardown while in TCP_CLOSE_WAIT "
+					    "taking reference to let close() finish the work\n");
+				sock_hold(sk, SOCK_REF_CM_TW);
+			}
 			sdp_set_error(sk, EPIPE);
 			rc = sdp_disconnected_handler(sk);
 		}

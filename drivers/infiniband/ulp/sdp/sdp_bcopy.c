@@ -119,6 +119,9 @@ static void sdp_fin(struct sock *sk)
 		/* Received a reply FIN - start Infiniband tear down */
 		sdp_dbg(sk, "%s: Starting Infiniband tear down sending DREQ\n",
 				__func__);
+
+		sdp_cancel_dreq_wait_timeout(sdp_sk(sk));
+
 		sdp_exch_state(sk, TCPF_FIN_WAIT1, TCP_TIME_WAIT);
 
 		if (sdp_sk(sk)->id) {

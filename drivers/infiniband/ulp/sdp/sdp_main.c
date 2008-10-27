@@ -443,6 +443,10 @@ done:
 
 static void sdp_send_disconnect(struct sock *sk)
 {
+	queue_delayed_work(sdp_workqueue, &sdp_sk(sk)->dreq_wait_work,
+			   SDP_FIN_WAIT_TIMEOUT);
+	sdp_sk(sk)->dreq_wait_timeout = 1;
+
 	sdp_sk(sk)->sdp_disconnect = 1;
 	sdp_post_sends(sdp_sk(sk), 0);
 }
@@ -451,22 +455,19 @@ static void sdp_send_disconnect(struct sock *sk)
  *	State processing on a close.
  *	TCP_ESTABLISHED -> TCP_FIN_WAIT1 -> TCP_CLOSE
  */
-
 static int sdp_close_state(struct sock *sk)
 {
-	if ((1 << sk->sk_state) & ~(TCPF_ESTABLISHED | TCPF_CLOSE_WAIT))
-		return 0;
-
-	if (sk->sk_state == TCP_ESTABLISHED)
+	switch (sk->sk_state) {
+	case TCP_ESTABLISHED:
 		sdp_exch_state(sk, TCPF_ESTABLISHED, TCP_FIN_WAIT1);
-	else if (sk->sk_state == TCP_CLOSE_WAIT) {
+		break;
+	case TCP_CLOSE_WAIT:
 		sdp_exch_state(sk, TCPF_CLOSE_WAIT, TCP_LAST_ACK);
-
-		sdp_sk(sk)->dreq_wait_timeout = 1;
-		queue_delayed_work(sdp_workqueue, &sdp_sk(sk)->dreq_wait_work,
-				   TCP_FIN_TIMEOUT);
-	} else
+		break;
+	default:
 		return 0;
+	}
+
 	return 1;
 }
 
@@ -836,6 +837,11 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 {
+	if (!ssk->dreq_wait_timeout)
+		return;
+
+	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout #####\n");
+
 	ssk->dreq_wait_timeout = 0;
 	cancel_delayed_work(&ssk->dreq_wait_work);
 	atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
@@ -847,8 +853,7 @@ void sdp_destroy_work(struct work_struct *work)
 	struct sock *sk = &ssk->isk.sk;
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
-	if (ssk->dreq_wait_timeout)
-		sdp_cancel_dreq_wait_timeout(ssk);
+	sdp_cancel_dreq_wait_timeout(ssk);
 
 	if (sk->sk_state == TCP_TIME_WAIT)
 		sock_put(sk, SOCK_REF_CM_TW);
@@ -868,15 +873,21 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 
 	lock_sock(sk);
 
-	if (!sdp_sk(sk)->dreq_wait_timeout) {
+	if (!sdp_sk(sk)->dreq_wait_timeout ||
+	    !((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_LAST_ACK))) {
 		release_sock(sk);
 		return;
 	}
 
-	sdp_dbg(sk, "%s: timed out waiting for DREQ\n", __func__);
+	sdp_warn(sk, "timed out waiting for FIN/DREQ. "
+		 "going into abortive close.\n");
 
 	sdp_sk(sk)->dreq_wait_timeout = 0;
-	sdp_exch_state(sk, TCPF_LAST_ACK, TCP_TIME_WAIT);
+
+	if (sk->sk_state == TCP_FIN_WAIT1)
+		atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
+
+	sdp_exch_state(sk, TCPF_LAST_ACK | TCPF_FIN_WAIT1, TCP_TIME_WAIT);
 
 	release_sock(sk);
 
