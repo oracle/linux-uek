@@ -1298,14 +1298,14 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 {
 	struct bzcopy_state *bz;
 	unsigned long addr;
-	int done_pages;
+	int done_pages = 0;
 	int thresh;
+	mm_segment_t cur_fs;
+
+	cur_fs = get_fs();
 
 	thresh = ssk->zcopy_thresh ? : sdp_zcopy_thresh;
-	if (thresh == 0 || len < thresh)
-		return NULL;
-
-	if (!can_do_mlock())
+	if (thresh == 0 || len < thresh || !capable(CAP_IPC_LOCK))
 		return NULL;
 
 	/*
@@ -1319,7 +1319,7 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 
 	bz = kzalloc(sizeof(*bz), GFP_KERNEL);
 	if (!bz)
-		return NULL;
+		return ERR_PTR(-ENOMEM);
 
 	addr = (unsigned long)base;
 
@@ -1332,34 +1332,41 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	bz->page_cnt   = PAGE_ALIGN(len + bz->cur_offset) >> PAGE_SHIFT;
 	bz->pages      = kcalloc(bz->page_cnt, sizeof(struct page *), GFP_KERNEL);
 
-	if (!bz->pages)
-		goto out_1;
-
-	down_write(&current->mm->mmap_sem);
-
-	if (!capable(CAP_IPC_LOCK))
-		goto out_2;
-
-	addr &= PAGE_MASK;
-
-	done_pages = get_user_pages(current, current->mm, addr, bz->page_cnt,
-				    0, 0, bz->pages, NULL);
-	if (unlikely(done_pages != bz->page_cnt)){
-		bz->page_cnt = done_pages;
-		goto out_2;
+	if (!bz->pages) {
+		kfree(bz);
+		return ERR_PTR(-ENOMEM);
 	}
 
-	up_write(&current->mm->mmap_sem);
+
+	addr &= PAGE_MASK;
+	if (segment_eq(cur_fs, KERNEL_DS)) {
+		for (done_pages = 0; done_pages < bz->page_cnt; done_pages++) {
+			bz->pages[done_pages] = virt_to_page(addr);
+			if (!bz->pages[done_pages])
+				break;
+			get_page(bz->pages[done_pages]);
+			addr += PAGE_SIZE;
+		}
+	} else {
+		if (current->mm) {
+			down_write(&current->mm->mmap_sem);
+			done_pages = get_user_pages(current, current->mm, addr,
+					bz->page_cnt, 0, 0, bz->pages, NULL);
+			up_write(&current->mm->mmap_sem);
+		}
+	}
+	if (unlikely(done_pages != bz->page_cnt)){
+		int i;
+		if (done_pages > 0) {
+			for (i = 0; i < done_pages; i++)
+				put_page(bz->pages[i]);
+		}
+		kfree(bz->pages);
+		kfree(bz);
+		bz = ERR_PTR(-EFAULT);
+	}
 
 	return bz;
-
-out_2:
-	up_write(&current->mm->mmap_sem);
-	kfree(bz->pages);
-out_1:
-	kfree(bz);
-
-	return NULL;
 }
 
 
@@ -1485,11 +1492,13 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 		if (!sk_wmem_schedule(sk, copy))
 			return SDP_DO_WAIT_MEM;
 
+		get_page(bz->pages[bz->cur_page]);
 		skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
 				   bz->pages[bz->cur_page], bz->cur_offset,
 				   this_page);
 
 		BUG_ON(skb_shinfo(skb)->nr_frags >= MAX_SKB_FRAGS);
+		BUG_ON(bz->cur_offset > PAGE_SIZE);
 
 		bz->cur_offset += this_page;
 		if (bz->cur_offset == PAGE_SIZE) {
@@ -1497,11 +1506,6 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 			bz->cur_page++;
 
 			BUG_ON(bz->cur_page > bz->page_cnt);
-		} else {
-			BUG_ON(bz->cur_offset > PAGE_SIZE);
-
-			if (bz->cur_page != bz->page_cnt || left != this_page)
-				get_page(bz->pages[bz->cur_page]);
 		}
 
 		left -= this_page;
@@ -1667,7 +1671,14 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		if (size_goal > SDP_MAX_PAYLOAD)
 			size_goal = SDP_MAX_PAYLOAD;
 
+		if (bz)
+			sdp_bz_cleanup(bz);
 		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
+		if (IS_ERR(bz)) {
+			bz = NULL;
+			err = PTR_ERR(bz);
+			goto do_error;
+		}
 
 		while (seglen > 0) {
 			int copy;
