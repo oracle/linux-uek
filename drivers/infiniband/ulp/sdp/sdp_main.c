@@ -443,6 +443,7 @@ done:
 
 static void sdp_send_disconnect(struct sock *sk)
 {
+	sock_hold(sk, SOCK_REF_DREQ_TO);
 	queue_delayed_work(sdp_workqueue, &sdp_sk(sk)->dreq_wait_work,
 			   SDP_FIN_WAIT_TIMEOUT);
 	sdp_sk(sk)->dreq_wait_timeout = 1;
@@ -843,7 +844,10 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout #####\n");
 
 	ssk->dreq_wait_timeout = 0;
-	cancel_delayed_work(&ssk->dreq_wait_work);
+	if (cancel_delayed_work(&ssk->dreq_wait_work)) {
+		/* The timeout hasn't reached - need to clean ref count */
+		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
+	}
 	atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
 }
 
@@ -876,7 +880,7 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 	if (!sdp_sk(sk)->dreq_wait_timeout ||
 	    !((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_LAST_ACK))) {
 		release_sock(sk);
-		return;
+		goto out;
 	}
 
 	sdp_warn(sk, "timed out waiting for FIN/DREQ. "
@@ -893,13 +897,19 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 
 	if (sdp_sk(sk)->id)
 		rdma_disconnect(sdp_sk(sk)->id);
+
+out:
+	sock_put(sk, SOCK_REF_DREQ_TO);
 }
 
 static int sdp_init_sock(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct inet_sock *isk = (struct inet_sock *)sk;
 
 	sdp_dbg(sk, "%s\n", __func__);
+
+	memset(isk + 1, 0, sizeof(struct sdp_sock) - sizeof(*isk));
 
 	INIT_LIST_HEAD(&ssk->accept_queue);
 	INIT_LIST_HEAD(&ssk->backlog_queue);
