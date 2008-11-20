@@ -128,7 +128,7 @@ static void sdp_fin(struct sock *sk)
 			rdma_disconnect(sdp_sk(sk)->id);
 		} else {
 			sdp_warn(sk, "%s: sdp_sk(sk)->id is NULL\n", __func__);
-			BUG();
+			return;
 		}
 		break;
 	case TCP_TIME_WAIT:
