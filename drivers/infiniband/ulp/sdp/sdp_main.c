@@ -933,10 +933,15 @@ static void sdp_shutdown(struct sock *sk, int how)
 	if (!(how & SEND_SHUTDOWN))
 		return;
 
+	/* If we've already sent a FIN, or it's a closed state, skip this. */
+	if (!((1 << sk->sk_state) &
+	    (TCPF_ESTABLISHED | TCPF_SYN_SENT |
+	     TCPF_SYN_RECV | TCPF_CLOSE_WAIT))) {
+		return;
+	}
+
 	if (!sdp_close_state(sk))
 	    return;
-
-	sock_hold(sk, SOCK_REF_CM_TW);
 
 	/*
 	 * Just turn off CORK here.
