@@ -536,12 +536,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	sdp_dbg(sk, "%s event %d handled\n", __func__, event->event);
 
 	if (rc && sdp_sk(sk)->id == id) {
-		if (sk->sk_state == TCP_SYN_RECV) {
-			/* sdp_close() will not be called therefore we need
-			   to take a refernce till infiniband teardown is
-			   finished */
-			sock_hold(sk, SOCK_REF_CM_TW);
-		}
 		child = sk;
 		sdp_sk(sk)->id = NULL;
 		id->qp = NULL;
