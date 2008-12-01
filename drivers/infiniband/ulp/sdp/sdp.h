@@ -351,6 +351,7 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
 void sdp_bzcopy_write_space(struct sdp_sock *ssk);
+int sdp_init_sock(struct sock *sk);
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
 {

@@ -187,8 +187,10 @@ err_mr:
 	ib_dealloc_pd(pd);
 err_pd:
 	kfree(sdp_sk(sk)->rx_ring);
+	sdp_sk(sk)->rx_ring = NULL;
 err_rx:
 	kfree(sdp_sk(sk)->tx_ring);
+	sdp_sk(sk)->tx_ring = NULL;
 err_tx:
 	return rc;
 }
@@ -212,11 +214,9 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	if (!child)
 		return -ENOMEM;
 
+	sdp_init_sock(child);
+
 	sdp_add_sock(sdp_sk(child));
-	INIT_LIST_HEAD(&sdp_sk(child)->accept_queue);
-	INIT_LIST_HEAD(&sdp_sk(child)->backlog_queue);
-	INIT_DELAYED_WORK(&sdp_sk(child)->dreq_wait_work, sdp_dreq_wait_timeout_work);
-	INIT_WORK(&sdp_sk(child)->destroy_work, sdp_destroy_work);
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
 	inet_sk(child)->dport = dst_addr->sin_port;

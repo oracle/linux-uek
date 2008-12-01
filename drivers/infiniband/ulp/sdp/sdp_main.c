@@ -240,8 +240,14 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	sdp_remove_large_sock(ssk);
 
-	kfree(ssk->rx_ring);
-	kfree(ssk->tx_ring);
+	if (ssk->rx_ring) {
+		kfree(ssk->rx_ring);
+		ssk->rx_ring = NULL;
+	}
+	if (ssk->tx_ring) {
+		kfree(ssk->tx_ring);
+		ssk->tx_ring = NULL;
+	}
 }
 
 
@@ -902,14 +908,11 @@ out:
 	sock_put(sk, SOCK_REF_DREQ_TO);
 }
 
-static int sdp_init_sock(struct sock *sk)
+int sdp_init_sock(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	struct inet_sock *isk = (struct inet_sock *)sk;
 
 	sdp_dbg(sk, "%s\n", __func__);
-
-	memset(isk + 1, 0, sizeof(struct sdp_sock) - sizeof(*isk));
 
 	INIT_LIST_HEAD(&ssk->accept_queue);
 	INIT_LIST_HEAD(&ssk->backlog_queue);
@@ -918,6 +921,8 @@ static int sdp_init_sock(struct sock *sk)
 
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 
+	ssk->rx_ring = NULL;
+	ssk->tx_ring = NULL;
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
 	spin_lock_init(&ssk->lock);
@@ -2230,6 +2235,8 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 	sock_init_data(sock, sk);
 	sk->sk_protocol = 0x0 /* TODO: inherit tcp socket to use IPPROTO_TCP */;
 
+	memset((struct inet_sock *)sk + 1, 0,
+			sizeof(struct sdp_sock) - sizeof(struct inet_sock));
 	rc = sdp_init_sock(sk);
 	if (rc) {
 		sdp_warn(sk, "SDP: failed to init sock.\n");
