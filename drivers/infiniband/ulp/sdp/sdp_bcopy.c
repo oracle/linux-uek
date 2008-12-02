@@ -604,7 +604,16 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 {
 	u32 curr_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
+#if defined(__ia64__)
+	/* for huge PAGE_SIZE systems, aka IA64, limit buffers size
+	   [re-]negotiation to a known+working size that will not
+	   trigger a HW error/rc to be interpreted as a IB_WC_LOC_LEN_ERR */
+	u32 max_size = (SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) <=
+		32784 ?
+		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE): 32784;
+#else 
 	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
+#endif
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
