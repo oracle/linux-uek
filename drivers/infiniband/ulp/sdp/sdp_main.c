@@ -901,8 +901,12 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 
 	release_sock(sk);
 
-	if (sdp_sk(sk)->id)
+	if (sdp_sk(sk)->id) {
 		rdma_disconnect(sdp_sk(sk)->id);
+	} else {
+		sdp_warn(sk, "DO NOT SENDING DREQ - no need to wait for timewait exit\n");
+		sock_put(sk, SOCK_REF_CM_TW);
+	}
 
 out:
 	sock_put(sk, SOCK_REF_DREQ_TO);
