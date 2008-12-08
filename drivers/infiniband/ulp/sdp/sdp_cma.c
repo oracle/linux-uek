@@ -216,8 +216,6 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_init_sock(child);
 
-	sdp_add_sock(sdp_sk(child));
-
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
 	inet_sk(child)->dport = dst_addr->sin_port;
 	inet_sk(child)->daddr = dst_addr->sin_addr.s_addr;
@@ -227,9 +225,12 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	rc = sdp_init_qp(child, id);
 	if (rc) {
-		sk_common_release(child);
+		sdp_sk(child)->destructed_already = 1;
+		sk_free(child);
 		return rc;
 	}
+
+	sdp_add_sock(sdp_sk(child));
 
 	sdp_sk(child)->max_bufs = sdp_sk(child)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(child)->min_bufs = sdp_sk(child)->bufs / 4;
