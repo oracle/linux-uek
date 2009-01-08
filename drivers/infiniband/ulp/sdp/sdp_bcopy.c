@@ -380,9 +380,13 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 
 void sdp_post_recvs(struct sdp_sock *ssk)
 {
+	struct sock *sk = &ssk->isk.sk;
 	int scale = ssk->rcvbuf_scale;
-	if (unlikely(!ssk->id))
+
+	if (unlikely(!ssk->id || ((1 << sk->sk_state) & 
+		(TCPF_CLOSE | TCPF_TIME_WAIT)))) {
 		return;
+	}
 
 	if (top_mem_usage &&
 	    (top_mem_usage * 0x100000) < atomic_read(&sdp_current_mem_usage) * PAGE_SIZE)
@@ -391,8 +395,7 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
 		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
 		(SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE) +
-		ssk->rcv_nxt - ssk->copied_seq <
-		ssk->isk.sk.sk_rcvbuf * scale) ||
+		ssk->rcv_nxt - ssk->copied_seq < sk->sk_rcvbuf * scale) ||
 	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
 		sdp_post_recv(ssk);
 }
@@ -595,6 +598,7 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
 	if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
 		ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+	ssk->rcvbuf_scale = rcvbuf_scale;
 
 	sdp_post_recvs(ssk);
 
