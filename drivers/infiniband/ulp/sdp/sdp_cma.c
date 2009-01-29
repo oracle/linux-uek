@@ -131,7 +131,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	if (!sdp_sk(sk)->rx_ring) {
 		rc = -ENOMEM;
 		sdp_warn(sk, "Unable to allocate RX Ring size %zd.\n",
-			 sizeof *sdp_sk(sk)->rx_ring * SDP_TX_SIZE);
+			 sizeof *sdp_sk(sk)->rx_ring * SDP_RX_SIZE);
 		goto err_rx;
 	}
 
