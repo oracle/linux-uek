@@ -173,16 +173,18 @@ struct sdp_sock {
 	int destructed_already;
 	int sdp_disconnect;
 
-	/* Data below will be reset on error */
+	struct sdp_buf *rx_ring;
+	struct sdp_buf   *tx_ring;
+
 	/* rdma specific */
-	struct rdma_cm_id *id;
 	struct ib_qp *qp;
 	struct ib_cq *cq;
 	struct ib_mr *mr;
+	/* Data below will be reset on error */
+	struct rdma_cm_id *id;
 	struct ib_device *ib_device;
 
 	/* SDP specific */
-	struct sdp_buf *rx_ring;
 	struct ib_recv_wr rx_wr;
 	unsigned rx_head;
 	unsigned rx_tail;
@@ -194,7 +196,6 @@ struct sdp_sock {
 	int               remote_credits;
 	int 		  poll_cq;
 
-	struct sdp_buf   *tx_ring;
 	unsigned          tx_head;
 	unsigned          tx_tail;
 	struct ib_send_wr tx_wr;

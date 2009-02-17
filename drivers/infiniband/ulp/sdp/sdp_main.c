@@ -344,8 +344,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk))
 		sdp_set_error(sk, rc);
 
-	sdp_destroy_qp(ssk);
-
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sk->sk_state_change(sk);
