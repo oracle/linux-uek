@@ -143,6 +143,8 @@ static spinlock_t sock_list_lock;
 
 static DEFINE_RWLOCK(device_removal_lock);
 
+static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo);
+
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
 	return ssk->keepalive_time ? : sdp_keepalive_time;
@@ -448,9 +450,7 @@ done:
 static void sdp_send_disconnect(struct sock *sk)
 {
 	sock_hold(sk, SOCK_REF_DREQ_TO);
-	queue_delayed_work(sdp_workqueue, &sdp_sk(sk)->dreq_wait_work,
-			   SDP_FIN_WAIT_TIMEOUT);
-	sdp_sk(sk)->dreq_wait_timeout = 1;
+	sdp_start_dreq_wait_timeout(sdp_sk(sk), SDP_FIN_WAIT_TIMEOUT);
 
 	sdp_sk(sk)->sdp_disconnect = 1;
 	sdp_post_sends(sdp_sk(sk), 0);
@@ -840,18 +840,27 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	return put_user(answ, (int __user *)arg); 
 }
 
+static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
+{
+	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
+
+	queue_delayed_work(sdp_workqueue, &ssk->dreq_wait_work, timeo);
+	ssk->dreq_wait_timeout = 1;
+}
+
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 {
 	if (!ssk->dreq_wait_timeout)
 		return;
 
-	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout #####\n");
+	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout\n");
 
 	ssk->dreq_wait_timeout = 0;
 	if (cancel_delayed_work(&ssk->dreq_wait_work)) {
 		/* The timeout hasn't reached - need to clean ref count */
 		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
 	}
+
 	atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
 }
 
@@ -927,6 +936,7 @@ int sdp_init_sock(struct sock *sk)
 	ssk->tx_ring = NULL;
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
+	ssk->destruct_in_process = 0;
 	spin_lock_init(&ssk->lock);
 
 	return 0;
@@ -2477,13 +2487,31 @@ do_next:
 		}
 	}
 
+kill_socks:
 	list_for_each(p, &sock_list) {
 		ssk = list_entry(p, struct sdp_sock, sock_list);
-		if (ssk->ib_device == device) {
+
+		if (ssk->ib_device == device && !ssk->destruct_in_process) {
+			ssk->destruct_in_process = 1;
 			sk = &ssk->isk.sk;
+
+			sdp_cancel_dreq_wait_timeout(ssk);
+
+			spin_unlock_irq(&sock_list_lock);
 
 			sk->sk_shutdown |= RCV_SHUTDOWN;
 			sdp_reset(sk);
+			if ((1 << sk->sk_state) & 
+				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
+				 TCPF_LAST_ACK | TCPF_TIME_WAIT)) {
+				sock_put(sk, SOCK_REF_CM_TW);
+			}
+			
+			schedule();
+
+			spin_lock_irq(&sock_list_lock);
+
+			goto kill_socks;
 		}
 	}
 

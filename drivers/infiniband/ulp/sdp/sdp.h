@@ -172,6 +172,7 @@ struct sdp_sock {
 
 	int destructed_already;
 	int sdp_disconnect;
+	int destruct_in_process;
 
 	struct sdp_buf *rx_ring;
 	struct sdp_buf   *tx_ring;
