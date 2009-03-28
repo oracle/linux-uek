@@ -57,3 +57,7 @@ config XEN_DEBUG
 	help
 	  Enable various WARN_ON checks in the Xen MMU code.
 	  Enabling this option WILL incur a significant performance overhead.
+
+config MICROCODE_XEN
+       def_bool y
+       depends on XEN_DOM0 && MICROCODE

@@ -105,6 +105,7 @@ obj-$(CONFIG_PCSPKR_PLATFORM)	+= pcspeaker.o
 microcode-y				:= microcode_core.o
 microcode-$(CONFIG_MICROCODE_INTEL)	+= microcode_intel.o
 microcode-$(CONFIG_MICROCODE_AMD)	+= microcode_amd.o
+microcode-$(CONFIG_MICROCODE_XEN)	+= microcode_xen.o
 obj-$(CONFIG_MICROCODE)			+= microcode.o
 
 obj-$(CONFIG_X86_CHECK_BIOS_CORRUPTION) += check.o
