@@ -46,39 +46,7 @@
 #include "sdp_socket.h"
 #include "sdp.h"
 
-union cma_ip_addr {
-        struct in6_addr ip6;
-        struct {
-                __u32 pad[3];
-                __u32 addr;
-        } ip4;
-};
-
 #define SDP_MAJV_MINV 0x22
-
-/* TODO: too much? Can I avoid having the src/dst and port here? */
-struct sdp_hh {
-	struct sdp_bsdh bsdh;
-	u8 majv_minv;
-	u8 ipv_cap;
-	u8 rsvd1;
-	u8 max_adverts;
-	__u32 desremrcvsz;
-	__u32 localrcvsz;
-	__u16 port;
-	__u16 rsvd2;
-	union cma_ip_addr src_addr;
-	union cma_ip_addr dst_addr;
-};
-
-struct sdp_hah {
-	struct sdp_bsdh bsdh;
-	u8 majv_minv;
-	u8 ipv_cap;
-	u8 rsvd1;
-	u8 ext_max_adverts;
-	__u32 actrcvsz;
-};
 
 enum {
 	SDP_HH_SIZE = 76,
@@ -206,6 +174,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_dbg(sk, "%s %p -> %p\n", __func__, sdp_sk(sk)->id, id);
 
 	h = event->param.conn.private_data;
+	SDP_DUMP_PACKET(sk, "RX", NULL, &h->bsdh);
 
 	if (!h->max_adverts)
 		return -EINVAL;
@@ -277,6 +246,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 		return 0;
 
 	h = event->param.conn.private_data;
+	SDP_DUMP_PACKET(sk, "RX", NULL, &h->bsdh);
 	sdp_sk(sk)->max_bufs = sdp_sk(sk)->bufs = ntohs(h->bsdh.bufs);
 	sdp_sk(sk)->min_bufs = sdp_sk(sk)->bufs / 4;
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
@@ -428,6 +398,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.responder_resources = 4 /* TODO */;
 		conn_param.initiator_depth = 4 /* TODO */;
 		conn_param.retry_count = SDP_RETRY_COUNT;
+		SDP_DUMP_PACKET(NULL, "TX", NULL, &hh.bsdh);
 		rc = rdma_connect(id, &conn_param);
 		break;
 	case RDMA_CM_EVENT_ROUTE_ERROR:
@@ -458,6 +429,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.responder_resources = 4 /* TODO */;
 		conn_param.initiator_depth = 4 /* TODO */;
 		conn_param.retry_count = SDP_RETRY_COUNT;
+		SDP_DUMP_PACKET(sk, "TX", NULL, &hah.bsdh);
 		rc = rdma_accept(id, &conn_param);
 		if (rc) {
 			sdp_sk(child)->id = NULL;

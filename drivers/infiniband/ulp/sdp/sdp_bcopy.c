@@ -186,6 +186,64 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 	sdp_cnt(sdp_keepalive_probes_sent);
 }
 
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct sdp_bsdh *h)
+{
+	int len = 0;
+	char buf[256];
+#define ENUM2STR(e) [e] = #e
+	static char *mid2str[] = {
+		ENUM2STR(SDP_MID_HELLO),
+		ENUM2STR(SDP_MID_HELLO_ACK),
+		ENUM2STR(SDP_MID_DISCONN),
+		ENUM2STR(SDP_MID_CHRCVBUF),
+		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
+		ENUM2STR(SDP_MID_DATA),
+	};
+	len += snprintf(buf, 255-len, "skb: %p mid: %2x:%-20s flags: 0x%x bufs: %d "
+		"len: %d mseq: %d mseq_ack: %d",
+		skb, h->mid, mid2str[h->mid], h->flags,
+		ntohs(h->bufs), ntohl(h->len),ntohl(h->mseq),
+		ntohl(h->mseq_ack));
+
+	switch (h->mid) {
+		case SDP_MID_HELLO:
+			{
+				const struct sdp_hh *hh = (struct sdp_hh *)h;
+				len += snprintf(buf + len, 255-len,
+					" | max_adverts: %d  majv_minv: %d localrcvsz: %d "
+					"desremrcvsz: %d |",
+					hh->max_adverts,
+					hh->majv_minv,
+					ntohl(hh->localrcvsz),
+					ntohl(hh->desremrcvsz));
+			}
+			break;
+		case SDP_MID_HELLO_ACK:
+			{
+				const struct sdp_hah *hah = (struct sdp_hah *)h;
+				len += snprintf(buf + len, 255-len, " | actrcvz: %d |",
+						ntohl(hah->actrcvsz));
+			}
+			break;
+		case SDP_MID_CHRCVBUF:
+		case SDP_MID_CHRCVBUF_ACK:
+			{
+				struct sdp_chrecvbuf *req_size = (struct sdp_chrecvbuf *)(h+1);
+				len += snprintf(buf + len, 255-len,
+					" | req_size: %d |", ntohl(req_size->size));
+			}
+			break;
+		case SDP_MID_DATA:
+			len += snprintf(buf + len, 255-len, " | data_len: %ld |", ntohl(h->len) - sizeof(struct sdp_bsdh));
+		default:
+			break;
+	}
+	buf[len] = 0;
+	sdp_warn(sk, "%s: %s\n", str, buf);
+}
+#endif
+
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 {
 	struct sdp_buf *tx_req;
@@ -196,6 +254,9 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_device *dev;
 	struct ib_sge *sge;
 	struct ib_send_wr *bad_wr;
+
+	SDPSTATS_COUNTER_MID_INC(post_send, mid);
+	SDPSTATS_HIST(send_size, skb->len);
 
 	h->mid = mid;
 	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
@@ -208,6 +269,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	h->mseq = htonl(mseq);
 	h->mseq_ack = htonl(ssk->mseq_ack);
 
+	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
 	tx_req = &ssk->tx_ring[mseq & (SDP_TX_SIZE - 1)];
 	tx_req->skb = skb;
 	dev = ssk->ib_device;
@@ -244,6 +306,16 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	ssk->tx_wr.send_flags = IB_SEND_SIGNALED;
 	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		ssk->tx_wr.send_flags |= IB_SEND_SOLICITED;
+	
+	{
+		static unsigned long last_send = 0;
+		int delta = jiffies - last_send;
+		
+		if (likely(last_send)) 
+			SDPSTATS_HIST(send_interval, delta);
+
+		last_send = jiffies;
+	}
 	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
 	++ssk->tx_head;
 	--ssk->bufs;
@@ -291,7 +363,6 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 
 	return skb;
 }
-
 
 static void sdp_post_recv(struct sdp_sock *ssk)
 {
@@ -375,6 +446,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	ssk->rx_wr.sg_list = ssk->ibsge;
 	ssk->rx_wr.num_sge = frags + 1;
 	rc = ib_post_recv(ssk->qp, &ssk->rx_wr, &bad_wr);
+	SDPSTATS_COUNTER_INC(post_recv);
 	++ssk->rx_head;
 	if (unlikely(rc)) {
 		sdp_dbg(&ssk->isk.sk, "ib_post_recv failed with status %d\n", rc);
@@ -583,6 +655,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 					  GFP_KERNEL);
 		/* FIXME */
 		BUG_ON(!skb);
+		SDPSTATS_COUNTER_INC(post_send_credits);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
 	}
 
@@ -701,11 +774,14 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 	skb->tail = skb->head + skb_headlen(skb);
 #endif
 	h = (struct sdp_bsdh *)skb->data;
+	SDP_DUMP_PACKET(&ssk->isk.sk, "RX", skb, h);
 	skb_reset_transport_header(skb);
 	ssk->mseq_ack = ntohl(h->mseq);
 	if (ssk->mseq_ack != (int)wc->wr_id)
 		printk(KERN_WARNING "SDP BUG! mseq %d != wrid %d\n",
 				ssk->mseq_ack, (int)wc->wr_id);
+
+	SDPSTATS_HIST_LINEAR(credits_before_update, ssk->bufs);
 	ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
 		ntohs(h->bufs);
 
@@ -782,7 +858,7 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 	if (unlikely(wc->status)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
 			struct sock *sk = &ssk->isk.sk;
-			sdp_dbg(sk, "Send completion with error. "
+			sdp_warn(sk, "Send completion with error. "
 				"Status %d\n", wc->status);
 			sdp_set_error(sk, -ECONNRESET);
 			wake_up(&ssk->wq);

@@ -67,7 +67,6 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <linux/socket.h>
 #include <net/protocol.h>
 #include <net/inet_common.h>
-#include <linux/proc_fs.h>
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_verbs.h>
 /* TODO: remove when sdp_socket.h becomes part of include/linux/socket.h */
@@ -138,8 +137,8 @@ MODULE_PARM_DESC(sdp_zcopy_thresh, "Zero copy send threshold; 0=0ff.");
 
 struct workqueue_struct *sdp_workqueue;
 
-static struct list_head sock_list;
-static spinlock_t sock_list_lock;
+struct list_head sock_list;
+spinlock_t sock_list_lock;
 
 static DEFINE_RWLOCK(device_removal_lock);
 
@@ -1288,6 +1287,8 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 
 			if (!bz->busy)
 				break;
+
+			SDPSTATS_COUNTER_INC(bzcopy_poll_miss);
 		}
 
 		if (bz->busy)
@@ -1319,11 +1320,14 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	int thresh;
 	mm_segment_t cur_fs;
 
-	cur_fs = get_fs();
-
 	thresh = ssk->zcopy_thresh ? : sdp_zcopy_thresh;
-	if (thresh == 0 || len < thresh || !capable(CAP_IPC_LOCK))
+	if (thresh == 0 || len < thresh || !capable(CAP_IPC_LOCK)) {
+		SDPSTATS_COUNTER_INC(sendmsg_bcopy_segment);
 		return NULL;
+	}
+	SDPSTATS_COUNTER_INC(sendmsg_bzcopy_segment);
+
+	cur_fs = get_fs();
 
 	/*
 	 *   Since we use the TCP segmentation fields of the skb to map user
@@ -1445,6 +1449,8 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		/* Time to copy data. We are close to
 		 * the end! */
+		SDPSTATS_COUNTER_ADD(memcpy_count, copy);
+		sdp_dbg_data(sk, "Copying from: %p offset: %d size: %d\n", from, off, copy);
 		err = skb_copy_to_page(sk, from, skb, page,
 				       off, copy);
 		if (err) {
@@ -1463,6 +1469,8 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 			skb_shinfo(skb)->frags[i - 1].size +=
 							copy;
 		} else {
+			sdp_dbg_data(sk, "Adding to frage %d: page: %p off: %d size: %d\n",
+				i, page, off, copy);
 			skb_fill_page_desc(skb, i, page, off, copy);
 			if (TCP_PAGE(sk)) {
 				get_page(page);
@@ -1651,7 +1659,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
-
+	SDPSTATS_COUNTER_INC(sendmsg);
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
 
@@ -1687,6 +1695,8 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		/* Limmiting the size_goal is reqired when using 64K pages*/
 		if (size_goal > SDP_MAX_PAYLOAD)
 			size_goal = SDP_MAX_PAYLOAD;
+
+		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
 		if (bz)
 			sdp_bz_cleanup(bz);
@@ -1737,8 +1747,14 @@ new_segment:
 				     NETIF_F_HW_CSUM))
 					skb->ip_summed = CHECKSUM_PARTIAL;
 
+				sdp_dbg_data(sk, "entail new skb: %p len = %d\n", skb, skb->len);
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
+			} else {
+				sdp_dbg_data(sk, "adding to existing skb: %p"
+					" len = %d, sk_send_head: %p copy: %d\n",
+					skb, skb->len, sk->sk_send_head, copy);
+			
 			}
 
 			/* Try to append data to the end of skb. */
@@ -1791,6 +1807,7 @@ new_segment:
 wait_for_sndbuf:
 			set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 wait_for_memory:
+			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
 				sdp_push(sk, ssk, flags & ~MSG_MORE, mss_now, TCP_NAGLE_PUSH);
 
@@ -2265,192 +2282,6 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 
 	return 0;
 }
-
-#ifdef CONFIG_PROC_FS
-
-static void *sdp_get_idx(struct seq_file *seq, loff_t pos)
-{
-	int i = 0;
-	struct sdp_sock *ssk;
-
-	if (!list_empty(&sock_list))
-		list_for_each_entry(ssk, &sock_list, sock_list) {
-			if (i == pos)
-				return ssk;
-			i++;
-		}
-
-	return NULL;
-}
-
-static void *sdp_seq_start(struct seq_file *seq, loff_t *pos)
-{
-	void *start = NULL;
-	struct sdp_iter_state* st = seq->private;
-
-	st->num = 0;
-
-	if (!*pos)
-		return SEQ_START_TOKEN;
-
-	spin_lock_irq(&sock_list_lock);
-	start = sdp_get_idx(seq, *pos - 1);
-	if (start)
-		sock_hold((struct sock *)start, SOCK_REF_SEQ);
-	spin_unlock_irq(&sock_list_lock);
-
-	return start;
-}
-
-static void *sdp_seq_next(struct seq_file *seq, void *v, loff_t *pos)
-{
-	struct sdp_iter_state* st = seq->private;
-	void *next = NULL;
-
-	spin_lock_irq(&sock_list_lock);
-	if (v == SEQ_START_TOKEN)
-		next = sdp_get_idx(seq, 0);
-	else
-		next = sdp_get_idx(seq, *pos);
-	if (next)
-		sock_hold((struct sock *)next, SOCK_REF_SEQ);
-	spin_unlock_irq(&sock_list_lock);
-
-	*pos += 1;
-	st->num++;
-
-	return next;
-}
-
-static void sdp_seq_stop(struct seq_file *seq, void *v)
-{
-}
-
-#define TMPSZ 150
-
-static int sdp_seq_show(struct seq_file *seq, void *v)
-{
-	struct sdp_iter_state* st;
-	struct sock *sk = v;
-	char tmpbuf[TMPSZ + 1];
-	unsigned int dest;
-	unsigned int src;
-	int uid;
-	unsigned long inode;
-	__u16 destp;
-	__u16 srcp;
-	__u32 rx_queue, tx_queue;
-
-	if (v == SEQ_START_TOKEN) {
-		seq_printf(seq, "%-*s\n", TMPSZ - 1,
-				"  sl  local_address rem_address        uid inode"
-				"   rx_queue tx_queue state");
-		goto out;
-	}
-
-	st = seq->private;
-
-	dest = inet_sk(sk)->daddr;
-	src = inet_sk(sk)->rcv_saddr;
-	destp = ntohs(inet_sk(sk)->dport);
-	srcp = ntohs(inet_sk(sk)->sport);
-	uid = sock_i_uid(sk);
-	inode = sock_i_ino(sk);
-	rx_queue = sdp_sk(sk)->rcv_nxt - sdp_sk(sk)->copied_seq;
-	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->snd_una;
-
-	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
-		st->num, src, srcp, dest, destp, uid, inode,
-		rx_queue, tx_queue, sk->sk_state);
-
-	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
-
-	sock_put(sk, SOCK_REF_SEQ);
-out:
-	return 0;
-}
-
-static int sdp_seq_open(struct inode *inode, struct file *file)
-{
-	struct sdp_seq_afinfo *afinfo = PDE(inode)->data;
-	struct seq_file *seq;
-	struct sdp_iter_state *s;
-	int rc;
-
-	if (unlikely(afinfo == NULL))
-		return -EINVAL;
-
-	s = kzalloc(sizeof(*s), GFP_KERNEL);
-	if (!s)
-		return -ENOMEM;
-	s->family               = afinfo->family;
-	s->seq_ops.start        = sdp_seq_start;
-	s->seq_ops.next         = sdp_seq_next;
-	s->seq_ops.show         = afinfo->seq_show;
-	s->seq_ops.stop         = sdp_seq_stop;
-
-	rc = seq_open(file, &s->seq_ops);
-	if (rc)
-		goto out_kfree;
-	seq          = file->private_data;
-	seq->private = s;
-out:
-	return rc;
-out_kfree:
-	kfree(s);
-	goto out;
-}
-
-
-static struct file_operations sdp_seq_fops;
-static struct sdp_seq_afinfo sdp_seq_afinfo = {
-	.owner          = THIS_MODULE,
-	.name           = "sdp",
-	.family         = AF_INET_SDP,
-	.seq_show       = sdp_seq_show,
-	.seq_fops       = &sdp_seq_fops,
-};
-
-
-static int __init sdp_proc_init(void)
-{
-	int rc = 0;
-	struct proc_dir_entry *p;
-
-	sdp_seq_afinfo.seq_fops->owner         = sdp_seq_afinfo.owner;
-	sdp_seq_afinfo.seq_fops->open          = sdp_seq_open;
-	sdp_seq_afinfo.seq_fops->read          = seq_read;
-	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
-	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
-
-	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
-				 sdp_seq_afinfo.seq_fops);
-	if (p)
-		p->data = &sdp_seq_afinfo;
-	else
-		rc = -ENOMEM;
-
-	return rc;
-}
-
-static void sdp_proc_unregister(void)
-{
-	proc_net_remove(&init_net, sdp_seq_afinfo.name);
-	memset(sdp_seq_afinfo.seq_fops, 0, sizeof(*sdp_seq_afinfo.seq_fops));
-}
-
-#else /* CONFIG_PROC_FS */
-
-static int __init sdp_proc_init(void)
-{
-	return 0;
-}
-
-static void sdp_proc_unregister(void)
-{
-
-}
-#endif /* CONFIG_PROC_FS */
 
 static void sdp_add_device(struct ib_device *device)
 {

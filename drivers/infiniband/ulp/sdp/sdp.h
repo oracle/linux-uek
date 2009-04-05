@@ -7,9 +7,12 @@
 #include <net/tcp.h> /* For urgent data flags */
 #include <rdma/ib_verbs.h>
 
+#define SDPSTATS_ON
+
 #define sdp_printk(level, sk, format, arg...)                \
-	printk(level "%s:%d sdp_sock(%d:%d): " format,             \
+	printk(level "%s:%d sdp_sock(%d %d:%d): " format,             \
 	       __func__, __LINE__, \
+	       current->pid, \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
 	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg)
 #define sdp_warn(sk, format, arg...)                         \
@@ -50,15 +53,72 @@ extern int sdp_debug_level;
 #endif /* CONFIG_INFINIBAND_SDP_DEBUG */
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+
 extern int sdp_data_debug_level;
 #define sdp_dbg_data(sk, format, arg...)                     \
 	do {                                                 \
-		if (sdp_data_debug_level > 0)                \
+		if (sdp_data_debug_level & 0x2)                \
 		sdp_printk(KERN_DEBUG, sk, format , ## arg); \
 	} while (0)
+#define SDP_DUMP_PACKET(sk, str, skb, h)                     \
+	do {                                                 \
+		if (sdp_data_debug_level & 0x1)                \
+			dump_packet(sk, str, skb, h); \
+	} while (0)
 #else
-#define sdp_dbg_data(priv, format, arg...)                   \
-	do { (void) (priv); } while (0)
+#define sdp_dbg_data(priv, format, arg...)
+//	do { (void) (priv); } while (0)
+#define SDP_DUMP_PACKET(sk, str, skb, h)
+#endif
+
+#ifdef SDPSTATS_ON
+
+struct sdpstats {
+	u32 post_send[256];
+	u32 sendmsg_bcopy_segment;
+	u32 sendmsg_bzcopy_segment;
+	u32 sendmsg;
+	u32 post_send_credits;
+	u32 sendmsg_nagle_skip;
+	u32 sendmsg_seglen[25];
+	u32 send_size[25];
+	u32 post_recv;
+	u32 rx_int_count;
+	u32 tx_int_count;
+	u32 bzcopy_poll_miss;
+	u32 send_wait_for_mem;
+	u32 send_miss_no_credits;
+	u32 rx_poll_miss;
+	u32 tx_poll_miss;
+	u32 memcpy_count;
+	u32 credits_before_update[64];
+	u32 send_interval[25];
+};
+extern struct sdpstats sdpstats;
+
+static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
+{
+	int idx = is_log ? ilog2(val) : val;
+	if (idx > maxidx)
+		idx = maxidx;
+
+	h[idx]++;
+}
+
+#define SDPSTATS_COUNTER_INC(stat) do {sdpstats.stat++;} while (0)
+#define SDPSTATS_COUNTER_ADD(stat, val) do {sdpstats.stat+=val;} while (0)
+#define SDPSTATS_COUNTER_MID_INC(stat, mid) do {sdpstats.stat[mid]++;} while (0)
+#define SDPSTATS_HIST(stat, size) \
+	sdpstats_hist(sdpstats.stat, size, ARRAY_SIZE(sdpstats.stat) - 1, 1)
+
+#define SDPSTATS_HIST_LINEAR(stat, size) \
+	sdpstats_hist(sdpstats.stat, size, ARRAY_SIZE(sdpstats.stat) - 1, 0)
+
+#else
+#define SDPSTATS_COUNTER_INC(stat)
+#define SDPSTATS_COUNTER_ADD(stat, val)
+#define SDPSTATS_COUNTER_MID_INC(stat, mid)
+#define SDPSTATS_HIST(stat, size)
 #endif
 
 #define SOCK_REF_RESET "RESET"
@@ -91,6 +151,9 @@ extern int sdp_data_debug_level;
 
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
+
+extern struct list_head sock_list;
+extern spinlock_t sock_list_lock;
 
 enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
@@ -127,6 +190,38 @@ struct sdp_bsdh {
 	__u32 len;
 	__u32 mseq;
 	__u32 mseq_ack;
+};
+
+union cma_ip_addr {
+        struct in6_addr ip6;
+        struct {
+                __u32 pad[3];
+                __u32 addr;
+        } ip4;
+};
+
+/* TODO: too much? Can I avoid having the src/dst and port here? */
+struct sdp_hh {
+	struct sdp_bsdh bsdh;
+	u8 majv_minv;
+	u8 ipv_cap;
+	u8 rsvd1;
+	u8 max_adverts;
+	__u32 desremrcvsz;
+	__u32 localrcvsz;
+	__u16 port;
+	__u16 rsvd2;
+	union cma_ip_addr src_addr;
+	union cma_ip_addr dst_addr;
+};
+
+struct sdp_hah {
+	struct sdp_bsdh bsdh;
+	u8 majv_minv;
+	u8 ipv_cap;
+	u8 rsvd1;
+	u8 ext_max_adverts;
+	__u32 actrcvsz;
 };
 
 struct sdp_buf {
@@ -329,6 +424,9 @@ static inline void sdp_set_error(struct sock *sk, int err)
 
 extern struct workqueue_struct *sdp_workqueue;
 
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct sdp_bsdh *h);
+#endif
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
@@ -354,6 +452,8 @@ void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
 void sdp_bzcopy_write_space(struct sdp_sock *ssk);
 int sdp_init_sock(struct sock *sk);
+int __init sdp_proc_init(void);
+void sdp_proc_unregister(void);
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
 {
