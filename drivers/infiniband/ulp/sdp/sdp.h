@@ -117,6 +117,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDPSTATS_COUNTER_INC(stat)
 #define SDPSTATS_COUNTER_ADD(stat, val)
 #define SDPSTATS_COUNTER_MID_INC(stat, mid)
+#define SDPSTATS_HIST_LINEAR(stat, size)
 #define SDPSTATS_HIST(stat, size)
 #endif
 
