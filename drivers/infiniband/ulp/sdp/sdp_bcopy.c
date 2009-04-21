@@ -917,6 +917,7 @@ void sdp_completion_handler(struct ib_cq *cq, void *cq_context)
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
 	schedule_work(&ssk->work);
+	SDPSTATS_COUNTER_INC(int_count);
 }
 
 int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)

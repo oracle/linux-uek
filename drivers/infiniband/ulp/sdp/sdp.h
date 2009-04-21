@@ -83,8 +83,7 @@ struct sdpstats {
 	u32 sendmsg_seglen[25];
 	u32 send_size[25];
 	u32 post_recv;
-	u32 rx_int_count;
-	u32 tx_int_count;
+	u32 int_count;
 	u32 bzcopy_poll_miss;
 	u32 send_wait_for_mem;
 	u32 send_miss_no_credits;
@@ -151,6 +150,10 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
+
+#ifndef MIN
+#define MIN(a, b) (a < b ? a : b)
+#endif
 
 extern struct list_head sock_list;
 extern spinlock_t sock_list_lock;

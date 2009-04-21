@@ -129,7 +129,12 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		goto err_cq;
 	}
 
-	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
+	rc = ib_modify_cq(cq, 10, 200);
+	if (rc) {
+		sdp_warn(sk, "Unable to modify RX CQ: %d.\n", rc);
+		goto err_qp;
+	}
+	sdp_warn(sk, "Initialized CQ moderation\n");
 
         qp_init_attr.send_cq = qp_init_attr.recv_cq = cq;
 
@@ -207,10 +212,11 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
 		PAGE_SIZE;
-	sdp_init_buffers(sdp_sk(child), ntohl(h->desremrcvsz));
+        sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
 
-	sdp_dbg(child, "%s bufs %d xmit_size_goal %d send trigger %d\n",
+	sdp_dbg(child, "%s recv_frags: %d bufs %d xmit_size_goal %d send trigger %d\n",
 		__func__,
+		sdp_sk(child)->recv_frags,
 		sdp_sk(child)->bufs,
 		sdp_sk(child)->xmit_size_goal,
 		sdp_sk(child)->min_bufs);
@@ -251,13 +257,16 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->min_bufs = sdp_sk(sk)->bufs / 4;
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
-	sdp_sk(sk)->send_frags = PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
-		PAGE_SIZE;
+ 	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
+ 		PAGE_SIZE, SDP_MAX_SEND_SKB_FRAGS);
+ 	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
+ 		sdp_sk(sk)->send_frags * PAGE_SIZE);
 
-	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d send trigger %d\n",
+	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d send_frags: %d send trigger %d\n",
 		__func__,
 		sdp_sk(sk)->bufs,
 		sdp_sk(sk)->xmit_size_goal,
+ 		sdp_sk(sk)->send_frags,
 		sdp_sk(sk)->min_bufs);
 
 	sdp_sk(sk)->poll_cq = 1;
