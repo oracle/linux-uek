@@ -234,6 +234,22 @@ struct sdp_buf {
         u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
 };
 
+
+struct sdp_tx_ring {
+	struct sdp_buf   *buffer;
+	unsigned          head;
+	unsigned          tail;
+
+	int 		  una_seq;
+	unsigned 	  credits;
+	u16 		  poll_cnt;
+};
+
+static inline int sdp_tx_ring_slots_left(struct sdp_tx_ring *tx_ring)
+{
+	return SDP_TX_SIZE - (tx_ring->head - tx_ring->tail);
+}
+
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
@@ -255,7 +271,6 @@ struct sdp_sock {
 	u32 rcv_nxt;
 
 	int write_seq;
-	int snd_una;
 	int pushed_seq;
 	int xmit_size_goal;
 	int nonagle;
@@ -274,13 +289,8 @@ struct sdp_sock {
 	int sdp_disconnect;
 	int destruct_in_process;
 
-	struct sdp_buf *rx_ring;
-	struct sdp_buf   *tx_ring;
+	
 
-	/* rdma specific */
-	struct ib_qp *qp;
-	struct ib_cq *cq;
-	struct ib_mr *mr;
 	/* Data below will be reset on error */
 	struct rdma_cm_id *id;
 	struct ib_device *ib_device;
@@ -290,15 +300,19 @@ struct sdp_sock {
 	unsigned rx_head;
 	unsigned rx_tail;
 	unsigned mseq_ack;
-	unsigned tx_credits;
 	unsigned max_bufs;	/* Initial buffers offered by other side */
 	unsigned min_bufs;	/* Low water mark to wake senders */
 
 	int               remote_credits;
 	int 		  poll_cq;
 
-	unsigned          tx_head;
-	unsigned          tx_tail;
+	/* rdma specific */
+	struct ib_qp *qp;
+	struct ib_cq *cq;
+	struct ib_mr *mr;
+
+	struct sdp_buf *rx_ring;
+	struct sdp_tx_ring tx_ring;
 	struct ib_send_wr tx_wr;
 
 	/* SDP slow start */
@@ -317,7 +331,6 @@ struct sdp_sock {
 	int   zcopy_thresh;
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
-	struct ib_wc  ibwc[SDP_NUM_WC];
 };
 
 /* Context used for synchronous zero copy bcopy (BZCOY) */
@@ -336,7 +349,7 @@ struct bzcopy_state {
 extern int rcvbuf_initial_size;
 
 extern struct proto sdp_proto;
-extern struct workqueue_struct *sdp_workqueue;
+extern struct workqueue_struct *comp_wq;
 
 extern atomic_t sdp_current_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
@@ -427,7 +440,12 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	sk->sk_error_report(sk);
 }
 
-extern struct workqueue_struct *sdp_workqueue;
+static inline void sdp_arm_cq(struct sock *sk)
+{
+	sdp_dbg_data(sk, "ib_req_notify_cq on cq\n");
+	
+	ib_req_notify_cq(sdp_sk(sk)->cq, IB_CQ_NEXT_COMP);
+}
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct sdp_bsdh *h);

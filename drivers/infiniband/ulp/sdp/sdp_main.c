@@ -135,7 +135,7 @@ static int sdp_zcopy_thresh = 65536;
 module_param_named(sdp_zcopy_thresh, sdp_zcopy_thresh, int, 0644);
 MODULE_PARM_DESC(sdp_zcopy_thresh, "Zero copy send threshold; 0=0ff.");
 
-struct workqueue_struct *sdp_workqueue;
+struct workqueue_struct *comp_wq;
 
 struct list_head sock_list;
 spinlock_t sock_list_lock;
@@ -212,6 +212,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 		cq = ssk->cq;
 		ssk->cq = NULL;
 		ib_destroy_qp(ssk->qp);
+		ssk->qp = NULL;
 
 		while (ssk->rx_head != ssk->rx_tail) {
 			struct sk_buff *skb;
@@ -221,9 +222,9 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 			atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 			__kfree_skb(skb);
 		}
-		while (ssk->tx_head != ssk->tx_tail) {
+		while (ssk->tx_ring.head != ssk->tx_ring.tail) {
 			struct sk_buff *skb;
-			skb = sdp_send_completion(ssk, ssk->tx_tail);
+			skb = sdp_send_completion(ssk, ssk->tx_ring.tail);
 			if (!skb)
 				break;
 			__kfree_skb(skb);
@@ -233,8 +234,10 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 	if (cq)
 		ib_destroy_cq(cq);
 
-	if (ssk->mr)
+	if (ssk->mr) {
 		ib_dereg_mr(ssk->mr);
+		ssk->mr = NULL;
+	}
 
 	if (pd)
 		ib_dealloc_pd(pd);
@@ -245,12 +248,11 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 		kfree(ssk->rx_ring);
 		ssk->rx_ring = NULL;
 	}
-	if (ssk->tx_ring) {
-		kfree(ssk->tx_ring);
-		ssk->tx_ring = NULL;
+	if (ssk->tx_ring.buffer) {
+		kfree(ssk->tx_ring.buffer);
+		ssk->tx_ring.buffer = NULL;
 	}
 }
-
 
 static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
 {
@@ -258,7 +260,7 @@ static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	ssk->keepalive_tx_head = ssk->tx_head;
+	ssk->keepalive_tx_head = ssk->tx_ring.head;
 	ssk->keepalive_rx_head = ssk->rx_head;
 
 	sk_reset_timer(sk, &sk->sk_timer, jiffies + len);
@@ -294,7 +296,7 @@ static void sdp_keepalive_timer(unsigned long data)
 	    sk->sk_state == TCP_CLOSE)
 		goto out;
 
-	if (ssk->keepalive_tx_head == ssk->tx_head &&
+	if (ssk->keepalive_tx_head == ssk->tx_ring.head &&
 	    ssk->keepalive_rx_head == ssk->rx_head)
 		sdp_post_keepalive(ssk);
 
@@ -345,13 +347,15 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk))
 		sdp_set_error(sk, rc);
 
+	sdp_destroy_qp(ssk);
+
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sk->sk_state_change(sk);
 
 	/* Don't destroy socket before destroy work does its job */
 	sock_hold(sk, SOCK_REF_RESET);
-	queue_work(sdp_workqueue, &ssk->destroy_work);
+	queue_work(comp_wq, &ssk->destroy_work);
 
 	read_unlock(&device_removal_lock);
 }
@@ -729,7 +733,7 @@ static int sdp_wait_for_connect(struct sock *sk, long timeo)
 /* Like inet_csk_accept */
 static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 {
-	struct sdp_sock *newssk, *ssk;
+	struct sdp_sock *newssk = NULL, *ssk;
 	struct sock *newsk;
 	int error;
 
@@ -772,7 +776,7 @@ out:
 		if (newssk->cq) {
 			sdp_dbg(newsk, "%s: ib_req_notify_cq\n", __func__);
 			newssk->poll_cq = 1;
-			ib_req_notify_cq(newssk->cq, IB_CQ_NEXT_COMP);
+			sdp_arm_cq(&newssk->isk.sk);
 			sdp_poll_cq(newssk, newssk->cq);
 		}
 		release_sock(newsk);
@@ -828,7 +832,7 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		if ((1 << sk->sk_state) & (TCPF_SYN_SENT | TCPF_SYN_RECV))
 			answ = 0;
 		else
-			answ = ssk->write_seq - ssk->snd_una;
+			answ = ssk->write_seq - ssk->tx_ring.una_seq;
 		break;
 	default:
 		return -ENOIOCTLCMD;
@@ -843,7 +847,7 @@ static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
 {
 	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
 
-	queue_delayed_work(sdp_workqueue, &ssk->dreq_wait_work, timeo);
+	queue_delayed_work(comp_wq, &ssk->dreq_wait_work, timeo);
 	ssk->dreq_wait_timeout = 1;
 }
 
@@ -932,7 +936,7 @@ int sdp_init_sock(struct sock *sk)
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 
 	ssk->rx_ring = NULL;
-	ssk->tx_ring = NULL;
+	ssk->tx_ring.buffer = NULL;
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
 	ssk->destruct_in_process = 0;
@@ -1551,7 +1555,8 @@ static inline int slots_free(struct sdp_sock *ssk)
 {
 	int min_free;
 
-	min_free = MIN(ssk->tx_credits, SDP_TX_SIZE - (ssk->tx_head - ssk->tx_tail));
+	min_free = MIN(ssk->tx_ring.credits,
+			SDP_TX_SIZE - (ssk->tx_ring.head - ssk->tx_ring.tail));
 	if (min_free < SDP_MIN_TX_CREDITS)
 		return 0;
 
@@ -1632,8 +1637,8 @@ void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	struct sock *sk = &ssk->isk.sk;
 	struct socket *sock = sk->sk_socket;
 
-	if (ssk->tx_credits >= ssk->min_bufs &&
-	    ssk->tx_head == ssk->tx_tail &&
+	if (ssk->tx_ring.credits >= ssk->min_bufs &&
+	    ssk->tx_ring.head == ssk->tx_ring.tail &&
 	   sock != NULL) {
 		clear_bit(SOCK_NOSPACE, &sock->flags);
 
@@ -2361,40 +2366,37 @@ static struct ib_client sdp_client = {
 
 static int __init sdp_init(void)
 {
-	int rc;
+	int rc = -ENOMEM;
 
 	INIT_LIST_HEAD(&sock_list);
 	spin_lock_init(&sock_list_lock);
 	spin_lock_init(&sdp_large_sockets_lock);
 
 	sockets_allocated = kmalloc(sizeof(*sockets_allocated), GFP_KERNEL);
+	if (!sockets_allocated)
+		goto no_mem_sockets_allocated;
+
 	orphan_count = kmalloc(sizeof(*orphan_count), GFP_KERNEL);
+	if (!orphan_count)
+		goto no_mem_orphan_count;
+
 	percpu_counter_init(sockets_allocated, 0);
 	percpu_counter_init(orphan_count, 0);
 
 	sdp_proto.sockets_allocated = sockets_allocated;
 	sdp_proto.orphan_count = orphan_count;
 
-
-	sdp_workqueue = create_singlethread_workqueue("sdp");
-	if (!sdp_workqueue) {
-		return -ENOMEM;
-	}
+	comp_wq = create_singlethread_workqueue("comp_wq");
+	if (!comp_wq)
+		goto no_mem_rx_wq;
 
 	rc = proto_register(&sdp_proto, 1);
-	if (rc) {
-		printk(KERN_WARNING "%s: proto_register failed: %d\n", __func__, rc);
-		destroy_workqueue(sdp_workqueue);
-		return rc;
-	}
+	if (rc)
+		goto error_proto_reg;
 
 	rc = sock_register(&sdp_net_proto);
-	if (rc) {
-		printk(KERN_WARNING "%s: sock_register failed: %d\n", __func__, rc);
-		proto_unregister(&sdp_proto);
-		destroy_workqueue(sdp_workqueue);
-		return rc;
-	}
+	if (rc)
+		goto error_sock_reg;
 
 	sdp_proc_init();
 
@@ -2403,6 +2405,17 @@ static int __init sdp_init(void)
 	ib_register_client(&sdp_client);
 
 	return 0;
+
+error_sock_reg:
+	proto_unregister(&sdp_proto);
+error_proto_reg:
+	destroy_workqueue(comp_wq);
+no_mem_rx_wq:
+	kfree(orphan_count);
+no_mem_orphan_count:
+	kfree(sockets_allocated);
+no_mem_sockets_allocated:
+	return rc;
 }
 
 static void __exit sdp_exit(void)
@@ -2413,7 +2426,9 @@ static void __exit sdp_exit(void)
 	if (percpu_counter_read_positive(orphan_count))
 		printk(KERN_WARNING "%s: orphan_count %lld\n", __func__,
 		       percpu_counter_read_positive(orphan_count));
-	destroy_workqueue(sdp_workqueue);
+
+	destroy_workqueue(comp_wq);
+
 	flush_scheduled_work();
 
 	BUG_ON(!list_empty(&sock_list));

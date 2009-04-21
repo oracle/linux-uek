@@ -127,7 +127,7 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
 	rx_queue = sdp_sk(sk)->rcv_nxt - sdp_sk(sk)->copied_seq;
-	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->snd_una;
+	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
 
 	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
 		st->num, src, srcp, dest, destp, uid, inode,

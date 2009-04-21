@@ -80,17 +80,17 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sdp_sk(sk)->tx_head = 1;
-	sdp_sk(sk)->tx_tail = 1;
+	sdp_sk(sk)->tx_ring.head = 1;
+	sdp_sk(sk)->tx_ring.tail = 1;
 	sdp_sk(sk)->rx_head = 1;
 	sdp_sk(sk)->rx_tail = 1;
 
-	sdp_sk(sk)->tx_ring = kmalloc(sizeof *sdp_sk(sk)->tx_ring * SDP_TX_SIZE,
-				      GFP_KERNEL);
-	if (!sdp_sk(sk)->tx_ring) {
+	sdp_sk(sk)->tx_ring.buffer = kmalloc(sizeof(*sdp_sk(sk)->tx_ring.buffer) *
+			(SDP_TX_SIZE + 1), GFP_KERNEL);
+	if (!sdp_sk(sk)->tx_ring.buffer) {
 		rc = -ENOMEM;
 		sdp_warn(sk, "Unable to allocate TX Ring size %zd.\n",
-			 sizeof *sdp_sk(sk)->tx_ring * SDP_TX_SIZE);
+			 sizeof *sdp_sk(sk)->tx_ring.buffer * (SDP_TX_SIZE + 1));
 		goto err_tx;
 	}
 
@@ -162,8 +162,9 @@ err_pd:
 	kfree(sdp_sk(sk)->rx_ring);
 	sdp_sk(sk)->rx_ring = NULL;
 err_rx:
-	kfree(sdp_sk(sk)->tx_ring);
-	sdp_sk(sk)->tx_ring = NULL;
+	WARN_ON(sdp_sk(sk)->tx_ring.head != sdp_sk(sk)->tx_ring.tail);
+	kfree(sdp_sk(sk)->tx_ring.buffer);
+	sdp_sk(sk)->tx_ring.buffer = NULL;
 err_tx:
 	return rc;
 }
@@ -206,19 +207,18 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_add_sock(sdp_sk(child));
 
-	sdp_sk(child)->max_bufs = sdp_sk(child)->tx_credits = ntohs(h->bsdh.bufs);
-	sdp_sk(child)->min_bufs = sdp_sk(child)->tx_credits / 4;
+	sdp_sk(child)->max_bufs = sdp_sk(child)->tx_ring.credits = ntohs(h->bsdh.bufs);
+	sdp_sk(child)->min_bufs = sdp_sk(child)->tx_ring.credits / 4;
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
 		PAGE_SIZE;
         sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
-
 	
 	sdp_dbg(child, "%s recv_frags: %d tx credits %d xmit_size_goal %d send trigger %d\n",
 		__func__,
 		sdp_sk(child)->recv_frags,
-		sdp_sk(child)->tx_credits,
+		sdp_sk(child)->tx_ring.credits,
 		sdp_sk(child)->xmit_size_goal,
 		sdp_sk(child)->min_bufs);
 
@@ -254,8 +254,8 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	h = event->param.conn.private_data;
 	SDP_DUMP_PACKET(sk, "RX", NULL, &h->bsdh);
-	sdp_sk(sk)->max_bufs = sdp_sk(sk)->tx_credits = ntohs(h->bsdh.bufs);
-	sdp_sk(sk)->min_bufs = sdp_sk(sk)->tx_credits / 4;
+	sdp_sk(sk)->max_bufs = sdp_sk(sk)->tx_ring.credits = ntohs(h->bsdh.bufs);
+	sdp_sk(sk)->min_bufs = sdp_sk(sk)->tx_ring.credits / 4;
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
  	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
@@ -265,13 +265,13 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d send_frags: %d send trigger %d\n",
 		__func__,
-		sdp_sk(sk)->tx_credits,
+		sdp_sk(sk)->tx_ring.credits,
 		sdp_sk(sk)->xmit_size_goal,
  		sdp_sk(sk)->send_frags,
 		sdp_sk(sk)->min_bufs);
 
 	sdp_sk(sk)->poll_cq = 1;
-	ib_req_notify_cq(sdp_sk(sk)->cq, IB_CQ_NEXT_COMP);
+	sdp_arm_cq(sk);
 	sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq);
 
 	sk->sk_state_change(sk);
