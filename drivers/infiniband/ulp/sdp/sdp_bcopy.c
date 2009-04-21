@@ -318,7 +318,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	}
 	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
 	++ssk->tx_head;
-	--ssk->bufs;
+	--ssk->tx_credits;
 	ssk->remote_credits = ssk->rx_head - ssk->rx_tail;
 	if (unlikely(rc)) {
 		sdp_dbg(&ssk->isk.sk, "ib_post_send failed with status %d.\n", rc);
@@ -357,7 +357,7 @@ struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	++ssk->tx_tail;
 
 	/* TODO: AIO and real zcopy cdoe; add their context support here */
-	bz = *(struct bzcopy_state **)skb->cb;
+	bz = BZCOPY_STATE(skb);
 	if (bz)
 		bz->busy--;
 
@@ -471,10 +471,10 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 		scale = 1;
 
 	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
-		(ssk->rx_head - ssk->rx_tail - SDP_MIN_BUFS) *
+		(ssk->rx_head - ssk->rx_tail - SDP_MIN_TX_CREDITS) *
 		(SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE) +
 		ssk->rcv_nxt - ssk->copied_seq < sk->sk_rcvbuf * scale) ||
-	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_BUFS))
+	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_TX_CREDITS))
 		sdp_post_recv(ssk);
 }
 
@@ -562,7 +562,7 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 
 int sdp_post_credits(struct sdp_sock *ssk)
 {
-	if (likely(ssk->bufs > 1) &&
+	if (likely(ssk->tx_credits > 1) &&
 	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE)) {
 		struct sk_buff *skb;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
@@ -599,7 +599,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 	if (ssk->recv_request &&
 	    ssk->rx_tail >= ssk->recv_request_head &&
-	    ssk->bufs >= SDP_MIN_BUFS &&
+	    ssk->tx_credits >= SDP_MIN_TX_CREDITS &&
 	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
 		struct sdp_chrecvbuf *resp_size;
 		ssk->recv_request = 0;
@@ -614,7 +614,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
 	}
 
-	while (ssk->bufs > SDP_MIN_BUFS &&
+	while (ssk->tx_credits > SDP_MIN_TX_CREDITS &&
 	       ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE &&
 	       (skb = ssk->isk.sk.sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
@@ -623,7 +623,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
 	}
 
-	if (ssk->bufs == SDP_MIN_BUFS &&
+	if (ssk->tx_credits == SDP_MIN_TX_CREDITS &&
 	    !ssk->sent_request &&
 	    ssk->tx_head > ssk->sent_request_head + SDP_RESIZE_WAIT &&
 	    ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) {
@@ -642,11 +642,11 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	}
 
 	c = ssk->remote_credits;
-	if (likely(c > SDP_MIN_BUFS))
+	if (likely(c > SDP_MIN_TX_CREDITS))
 		c *= 2;
 
 	if (unlikely(c < ssk->rx_head - ssk->rx_tail) &&
-	    likely(ssk->bufs > 1) &&
+	    likely(ssk->tx_credits > 1) &&
 	    likely(ssk->tx_head - ssk->tx_tail < SDP_TX_SIZE) &&
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
@@ -661,7 +661,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 	if (unlikely(ssk->sdp_disconnect) &&
 		!ssk->isk.sk.sk_send_head &&
-		ssk->bufs > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
+		ssk->tx_credits > (ssk->remote_credits >= ssk->rx_head - ssk->rx_tail)) {
 		ssk->sdp_disconnect = 0;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh),
@@ -781,8 +781,8 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		printk(KERN_WARNING "SDP BUG! mseq %d != wrid %d\n",
 				ssk->mseq_ack, (int)wc->wr_id);
 
-	SDPSTATS_HIST_LINEAR(credits_before_update, ssk->bufs);
-	ssk->bufs = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
+	SDPSTATS_HIST_LINEAR(credits_before_update, ssk->tx_credits);
+	ssk->tx_credits = ntohl(h->mseq_ack) - ssk->tx_head + 1 +
 		ntohs(h->bufs);
 
 	frags = skb_shinfo(skb)->nr_frags;
@@ -848,7 +848,7 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 
 static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
-	struct sk_buff *skb;
+	struct sk_buff *skb = NULL;
 	struct sdp_bsdh *h;
 
 	skb = sdp_send_completion(ssk, wc->wr_id);

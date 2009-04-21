@@ -206,18 +206,19 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_add_sock(sdp_sk(child));
 
-	sdp_sk(child)->max_bufs = sdp_sk(child)->bufs = ntohs(h->bsdh.bufs);
-	sdp_sk(child)->min_bufs = sdp_sk(child)->bufs / 4;
+	sdp_sk(child)->max_bufs = sdp_sk(child)->tx_credits = ntohs(h->bsdh.bufs);
+	sdp_sk(child)->min_bufs = sdp_sk(child)->tx_credits / 4;
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
 		PAGE_SIZE;
         sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
 
-	sdp_dbg(child, "%s recv_frags: %d bufs %d xmit_size_goal %d send trigger %d\n",
+	
+	sdp_dbg(child, "%s recv_frags: %d tx credits %d xmit_size_goal %d send trigger %d\n",
 		__func__,
 		sdp_sk(child)->recv_frags,
-		sdp_sk(child)->bufs,
+		sdp_sk(child)->tx_credits,
 		sdp_sk(child)->xmit_size_goal,
 		sdp_sk(child)->min_bufs);
 
@@ -253,8 +254,8 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	h = event->param.conn.private_data;
 	SDP_DUMP_PACKET(sk, "RX", NULL, &h->bsdh);
-	sdp_sk(sk)->max_bufs = sdp_sk(sk)->bufs = ntohs(h->bsdh.bufs);
-	sdp_sk(sk)->min_bufs = sdp_sk(sk)->bufs / 4;
+	sdp_sk(sk)->max_bufs = sdp_sk(sk)->tx_credits = ntohs(h->bsdh.bufs);
+	sdp_sk(sk)->min_bufs = sdp_sk(sk)->tx_credits / 4;
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
  	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
@@ -264,7 +265,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d send_frags: %d send trigger %d\n",
 		__func__,
-		sdp_sk(sk)->bufs,
+		sdp_sk(sk)->tx_credits,
 		sdp_sk(sk)->xmit_size_goal,
  		sdp_sk(sk)->send_frags,
 		sdp_sk(sk)->min_bufs);

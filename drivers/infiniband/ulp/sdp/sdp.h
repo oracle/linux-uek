@@ -151,6 +151,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
 
+#define BZCOPY_STATE(skb) (*(struct bzcopy_state **)(skb->cb))
 #ifndef MIN
 #define MIN(a, b) (a < b ? a : b)
 #endif
@@ -173,7 +174,7 @@ enum sdp_flags {
 };
 
 enum {
-	SDP_MIN_BUFS = 2
+	SDP_MIN_TX_CREDITS = 2
 };
 
 enum {
@@ -288,7 +289,7 @@ struct sdp_sock {
 	unsigned rx_head;
 	unsigned rx_tail;
 	unsigned mseq_ack;
-	unsigned bufs;
+	unsigned tx_credits;
 	unsigned max_bufs;	/* Initial buffers offered by other side */
 	unsigned min_bufs;	/* Low water mark to wake senders */
 

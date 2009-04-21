@@ -1551,12 +1551,11 @@ static inline int slots_free(struct sdp_sock *ssk)
 {
 	int min_free;
 
-	min_free = SDP_TX_SIZE - (ssk->tx_head - ssk->tx_tail);
-	if (ssk->bufs < min_free)
-		min_free = ssk->bufs;
-	min_free -= (min_free < SDP_MIN_BUFS) ? min_free : SDP_MIN_BUFS;
+	min_free = MIN(ssk->tx_credits, SDP_TX_SIZE - (ssk->tx_head - ssk->tx_tail));
+	if (min_free < SDP_MIN_TX_CREDITS)
+		return 0;
 
-	return min_free;
+	return min_free - SDP_MIN_TX_CREDITS;
 };
 
 /* like sk_stream_memory_free - except measures remote credits */
@@ -1633,7 +1632,7 @@ void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	struct sock *sk = &ssk->isk.sk;
 	struct socket *sock = sk->sk_socket;
 
-	if (ssk->bufs >= ssk->min_bufs &&
+	if (ssk->tx_credits >= ssk->min_bufs &&
 	    ssk->tx_head == ssk->tx_tail &&
 	   sock != NULL) {
 		clear_bit(SOCK_NOSPACE, &sock->flags);
@@ -1714,8 +1713,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			if (!sk->sk_send_head ||
 			    (copy = size_goal - skb->len) <= 0 ||
-			    bz != *(struct bzcopy_state **)skb->cb) {
-
+			    bz != BZCOPY_STATE(skb)) {
 new_segment:
 				/*
 				 * Allocate a new segment
@@ -1737,7 +1735,7 @@ new_segment:
 				if (!skb)
 					goto wait_for_memory;
 
-				*((struct bzcopy_state **)skb->cb) = bz;
+				BZCOPY_STATE(skb) = bz;
 
 				/*
 				 * Check whether we can use HW checksum.
