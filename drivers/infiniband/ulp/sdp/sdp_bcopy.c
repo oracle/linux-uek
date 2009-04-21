@@ -244,6 +244,24 @@ void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct s
 }
 #endif
 
+static int sdp_process_tx_cq(struct sdp_sock *ssk);
+
+int sdp_xmit_poll(struct sdp_sock *ssk, int force)
+{
+	int wc_processed = 0;
+
+	/* If we don't have a pending timer, set one up to catch our recent
+	   post in case the interface becomes idle */
+	if (!timer_pending(&ssk->tx_ring.timer))
+		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+
+	/* Poll the CQ every SDP_TX_POLL_MODER packets */
+	if (force || (++ssk->tx_ring.poll_cnt & (SDP_TX_POLL_MODER - 1)) == 0)
+		wc_processed = sdp_process_tx_cq(ssk);
+
+	return wc_processed;	
+}
+
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 {
 	struct sdp_buf *tx_req;
@@ -573,6 +591,7 @@ int sdp_post_credits(struct sdp_sock *ssk)
 		if (!skb)
 			return -ENOMEM;
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
+		sdp_xmit_poll(ssk, 0);
 	}
 	return 0;
 }
@@ -583,6 +602,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	struct sk_buff *skb;
 	int c;
 	gfp_t gfp_page;
+	int post_count = 0;
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {
@@ -602,7 +622,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	if (ssk->recv_request &&
 	    ssk->rx_tail >= ssk->recv_request_head &&
 	    ssk->tx_ring.credits >= SDP_MIN_TX_CREDITS &&
-	    ssk->tx_ring.head - ssk->tx_ring.tail < SDP_TX_SIZE) {
+	    sdp_tx_ring_slots_left(&ssk->tx_ring)) {
 		struct sdp_chrecvbuf *resp_size;
 		ssk->recv_request = 0;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
@@ -614,6 +634,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
 		resp_size->size = htonl(ssk->recv_frags * PAGE_SIZE);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
+		post_count++;
 	}
 
 	if (ssk->tx_ring.credits <= SDP_MIN_TX_CREDITS &&
@@ -634,12 +655,13 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		update_send_head(&ssk->isk.sk, skb);
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
+		post_count++;
 	}
 
 	if (ssk->tx_ring.credits == SDP_MIN_TX_CREDITS &&
 	    !ssk->sent_request &&
 	    ssk->tx_ring.head > ssk->sent_request_head + SDP_RESIZE_WAIT &&
-	    ssk->tx_ring.head - ssk->tx_ring.tail < SDP_TX_SIZE) {
+	    sdp_tx_ring_slots_left(&ssk->tx_ring)) {
 		struct sdp_chrecvbuf *req_size;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
 					  sizeof(struct sdp_bsdh) +
@@ -652,6 +674,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		req_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *req_size);
 		req_size->size = htonl(ssk->sent_request);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF);
+		post_count++;
 	}
 
 	c = ssk->remote_credits;
@@ -660,7 +683,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 	if (unlikely(c < ssk->rx_head - ssk->rx_tail) &&
 	    likely(ssk->tx_ring.credits > 1) &&
-	    likely(ssk->tx_ring.head - ssk->tx_ring.tail < SDP_TX_SIZE) &&
+	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring)) &&
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
@@ -670,6 +693,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		BUG_ON(!skb);
 		SDPSTATS_COUNTER_INC(post_send_credits);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
+		post_count++;
 	}
 
 	/* send DisConn if needed
@@ -687,7 +711,10 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		/* FIXME */
 		BUG_ON(!skb);
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
+		post_count++;
 	}
+	if (post_count)
+		sdp_xmit_poll(ssk, 0);
 }
 
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
@@ -867,7 +894,6 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb = NULL;
-	struct sdp_bsdh *h;
 
 	skb = sdp_send_completion(ssk, wc->wr_id);
 	if (unlikely(!skb))
@@ -881,72 +907,162 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 			sdp_set_error(sk, -ECONNRESET);
 			wake_up(&ssk->wq);
 
-			queue_work(comp_wq, &ssk->destroy_work);
+			queue_work(rx_comp_wq, &ssk->destroy_work);
 		}
-		goto out;
 	}
 
-	h = (struct sdp_bsdh *)skb->data;
-
-	if (likely(h->mid != SDP_MID_DISCONN))
-		goto out;
-
-	if ((1 << ssk->isk.sk.sk_state) & ~(TCPF_FIN_WAIT1 | TCPF_LAST_ACK)) {
-		sdp_dbg(&ssk->isk.sk,
-			"%s: sent DISCONNECT from unexpected state %d\n",
-			__func__, ssk->isk.sk.sk_state);
-	}
-
-out:
-	sk_wmem_free_skb(&ssk->isk.sk, skb);
+	sk_stream_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
 }
 
-static void sdp_handle_wc(struct sdp_sock *ssk, struct ib_wc *wc)
-{
-	if (wc->wr_id & SDP_OP_RECV) {
-		if (sdp_handle_recv_comp(ssk, wc))
-			return;
-	} else if (likely(wc->wr_id & SDP_OP_SEND)) {
-		if (sdp_handle_send_comp(ssk, wc))
-			return;
-	} else {
-		sdp_cnt(sdp_keepalive_probes_sent);
-
-		if (likely(!wc->status))
-			return;
-
-		sdp_dbg(&ssk->isk.sk, " %s consumes KEEPALIVE status %d\n",
-		        __func__, wc->status);
-
-		if (wc->status == IB_WC_WR_FLUSH_ERR)
-			return;
-
-		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-		wake_up(&ssk->wq);
-
-		return;
-	}
-}
-
-void sdp_completion_handler(struct ib_cq *cq, void *cq_context)
+void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
-	schedule_work(&ssk->work);
-	SDPSTATS_COUNTER_INC(int_count);
+
+	WARN_ON(ssk->rx_cq && cq != ssk->rx_cq);
+
+	if (!ssk->rx_cq)
+		sdp_warn(&ssk->isk.sk, "WARNING: rx irq after cq destroyed\n");
+
+	SDPSTATS_COUNTER_INC(rx_int_count);
+
+	queue_work(rx_comp_wq, &ssk->rx_comp_work);
 }
 
-int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
+static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
+{
+	if (likely(wc->wr_id & SDP_OP_SEND)) {
+		sdp_handle_send_comp(ssk, wc);
+		return;
+	}
+
+	sk_wmem_free_skb(&ssk->isk.sk, skb);
+
+	/* Keepalive probe sent cleanup */
+	sdp_cnt(sdp_keepalive_probes_sent);
+
+	if (likely(!wc->status))
+		return;
+
+	sdp_dbg(&ssk->isk.sk, " %s consumes KEEPALIVE status %d\n",
+			__func__, wc->status);
+
+	if (wc->status == IB_WC_WR_FLUSH_ERR)
+		return;
+
+	sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+	wake_up(&ssk->wq);
+}
+
+static int sdp_process_tx_cq(struct sdp_sock *ssk)
 {
 	struct ib_wc ibwc[SDP_NUM_WC];
 	int n, i;
+	int wc_processed = 0;
+
+	if (!ssk->tx_ring.cq) {
+		sdp_warn(&ssk->isk.sk, "WARNING: tx irq when tx_cq is destroyed\n");
+		return 0;
+	}
+	
+	do {
+		n = ib_poll_cq(ssk->tx_ring.cq, SDP_NUM_WC, ibwc);
+		for (i = 0; i < n; ++i) {
+			sdp_process_tx_wc(ssk, ibwc + i);
+			wc_processed++;
+		}
+	} while (n == SDP_NUM_WC);
+
+	sdp_dbg_data(&ssk->isk.sk, "processed %d wc's\n", wc_processed);
+
+	if (wc_processed) {
+		struct sock *sk = &ssk->isk.sk;
+		sdp_post_sends(ssk, 0);
+
+		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+			sk_stream_write_space(&ssk->isk.sk);
+
+	}
+
+	return wc_processed;	
+}
+
+void sdp_poll_tx_cq(unsigned long data)
+{
+	struct sdp_sock *ssk = (struct sdp_sock *)data;
+	struct sock *sk = &ssk->isk.sk;
+	u32 inflight, wc_processed;
+
+	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
+		(u32) ssk->tx_ring.head - ssk->tx_ring.tail);
+
+	/* Only process if the socket is not in use */
+	bh_lock_sock(sk);
+	if (sock_owned_by_user(sk)) {
+		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
+		goto out;
+	}
+
+	if (sk->sk_state == TCP_CLOSE)
+		goto out;
+
+	wc_processed = sdp_process_tx_cq(ssk);
+	if (!wc_processed)
+		SDPSTATS_COUNTER_INC(tx_poll_miss);
+	else
+		SDPSTATS_COUNTER_INC(tx_poll_hit);
+
+	inflight = (u32) ssk->tx_ring.head - ssk->tx_ring.tail;
+
+	/* If there are still packets in flight and the timer has not already
+	 * been scheduled by the Tx routine then schedule it here to guarantee
+	 * completion processing of these packets */
+	if (inflight) { /* TODO: make sure socket is not closed */
+		sdp_dbg_data(sk, "arming timer for more polling\n");
+		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+	}
+
+out:
+	bh_unlock_sock(sk);
+}
+
+
+void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
+{
+	struct sock *sk = cq_context;
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	sdp_warn(sk, "Got tx comp interrupt\n");
+
+	mod_timer(&ssk->tx_ring.timer, jiffies + 1);
+}
+
+
+int sdp_poll_rx_cq(struct sdp_sock *ssk)
+{
+	struct ib_cq *cq = ssk->rx_cq;
+	struct ib_wc ibwc[SDP_NUM_WC];
+	int n, i;
 	int ret = -EAGAIN;
+	int updated_credits = 0;
+
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
 		for (i = 0; i < n; ++i) {
-			sdp_handle_wc(ssk, &ibwc[i]);
+			struct ib_wc *wc = &ibwc[i];
+
+			BUG_ON(!(wc->wr_id & SDP_OP_RECV));
+			sdp_handle_recv_comp(ssk, wc);
+
+			if (!updated_credits) {
+				sdp_post_recvs(ssk);
+				sdp_post_sends(ssk, 0);
+				updated_credits = 1;
+			}
+
 			ret = 0;
 		}
 	} while (n == SDP_NUM_WC);
@@ -968,17 +1084,20 @@ int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq)
 	return ret;
 }
 
-void sdp_work(struct work_struct *work)
+static inline int sdp_tx_qp_empty(struct sdp_sock *ssk)
 {
-	struct sdp_sock *ssk = container_of(work, struct sdp_sock, work);
-	struct sock *sk = &ssk->isk.sk;
-	struct ib_cq *cq;
+	return (ssk->tx_ring.head - ssk->tx_ring.tail) == 0;
+}
 
-	sdp_dbg_data(sk, "%s\n", __func__);
+void sdp_rx_comp_work(struct work_struct *work)
+{
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock, rx_comp_work);
+	struct sock *sk = &ssk->isk.sk;
+	struct ib_cq *rx_cq;
 
 	lock_sock(sk);
-	cq = ssk->cq;
-	if (unlikely(!cq))
+	rx_cq = ssk->rx_cq;
+	if (unlikely(!rx_cq))
 		goto out;
 
 	if (unlikely(!ssk->poll_cq)) {
@@ -988,15 +1107,18 @@ void sdp_work(struct work_struct *work)
 		goto out;
 	}
 
-	sdp_poll_cq(ssk, cq);
+	sdp_poll_rx_cq(ssk);
+	sdp_xmit_poll(ssk,  1); /* if has pending tx because run out of tx_credits - xmit it */
 	release_sock(sk);
 	sk_mem_reclaim(sk);
 	lock_sock(sk);
-	cq = ssk->cq;
-	if (unlikely(!cq))
+	rx_cq = ssk->rx_cq;
+	if (unlikely(!rx_cq))
 		goto out;
-	sdp_arm_cq(sk);
-	sdp_poll_cq(ssk, cq);
+	
+	sdp_arm_rx_cq(sk);
+	sdp_poll_rx_cq(ssk);
+	sdp_xmit_poll(ssk,  1);
 out:
 	release_sock(sk);
 }

@@ -83,12 +83,14 @@ struct sdpstats {
 	u32 sendmsg_seglen[25];
 	u32 send_size[25];
 	u32 post_recv;
-	u32 int_count;
+	u32 rx_int_count;
+	u32 tx_int_count;
 	u32 bzcopy_poll_miss;
 	u32 send_wait_for_mem;
 	u32 send_miss_no_credits;
 	u32 rx_poll_miss;
 	u32 tx_poll_miss;
+	u32 tx_poll_hit;
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 send_interval[25];
@@ -131,6 +133,11 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define sock_hold(sk, msg)  sock_ref(sk, msg, sock_hold)
 #define sock_put(sk, msg)  sock_ref(sk, msg, sock_put)
 #define __sock_put(sk, msg)  sock_ref(sk, msg, __sock_put)
+
+/* Interval between sucessive polls in the Tx routine when polling is used
+   instead of interrupts (in per-core Tx rings) - should be power of 2 */
+#define SDP_TX_POLL_MODER	16
+#define SDP_TX_POLL_TIMEOUT	(HZ / 4)
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -242,7 +249,10 @@ struct sdp_tx_ring {
 
 	int 		  una_seq;
 	unsigned 	  credits;
+
+	struct timer_list timer;
 	u16 		  poll_cnt;
+	struct ib_cq 	 *cq;
 };
 
 static inline int sdp_tx_ring_slots_left(struct sdp_tx_ring *tx_ring)
@@ -258,7 +268,7 @@ struct sdp_sock {
 	struct list_head backlog_queue;
 	struct sock *parent;
 
-	struct work_struct work;
+	struct work_struct rx_comp_work;
 	wait_queue_head_t wq;
 
 	struct delayed_work dreq_wait_work;
@@ -308,7 +318,7 @@ struct sdp_sock {
 
 	/* rdma specific */
 	struct ib_qp *qp;
-	struct ib_cq *cq;
+	struct ib_cq *rx_cq;
 	struct ib_mr *mr;
 
 	struct sdp_buf *rx_ring;
@@ -349,7 +359,7 @@ struct bzcopy_state {
 extern int rcvbuf_initial_size;
 
 extern struct proto sdp_proto;
-extern struct workqueue_struct *comp_wq;
+extern struct workqueue_struct *rx_comp_wq;
 
 extern atomic_t sdp_current_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
@@ -440,11 +450,11 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	sk->sk_error_report(sk);
 }
 
-static inline void sdp_arm_cq(struct sock *sk)
+static inline void sdp_arm_rx_cq(struct sock *sk)
 {
-	sdp_dbg_data(sk, "ib_req_notify_cq on cq\n");
+	sdp_dbg_data(sk, "ib_req_notify_cq on RX cq\n");
 	
-	ib_req_notify_cq(sdp_sk(sk)->cq, IB_CQ_NEXT_COMP);
+	ib_req_notify_cq(sdp_sk(sk)->rx_cq, IB_CQ_NEXT_COMP);
 }
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
@@ -453,12 +463,15 @@ void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct s
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
-void sdp_completion_handler(struct ib_cq *cq, void *cq_context);
-void sdp_work(struct work_struct *work);
+void sdp_rx_irq(struct ib_cq *cq, void *cq_context);
+void sdp_tx_irq(struct ib_cq *cq, void *cq_context);
+void sdp_poll_tx_cq(unsigned long data);
+void sdp_rx_comp_work(struct work_struct *work);
+void sdp_process_tx_wc_work(struct work_struct *work);
 int sdp_post_credits(struct sdp_sock *ssk);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void sdp_post_recvs(struct sdp_sock *ssk);
-int sdp_poll_cq(struct sdp_sock *ssk, struct ib_cq *cq);
+int sdp_poll_rx_cq(struct sdp_sock *ssk);
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
 void sdp_destroy_work(struct work_struct *work);
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
@@ -477,6 +490,7 @@ void sdp_bzcopy_write_space(struct sdp_sock *ssk);
 int sdp_init_sock(struct sock *sk);
 int __init sdp_proc_init(void);
 void sdp_proc_unregister(void);
+int sdp_xmit_poll(struct sdp_sock *ssk, int force);
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
 {

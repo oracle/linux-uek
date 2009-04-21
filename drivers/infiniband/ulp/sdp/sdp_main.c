@@ -135,7 +135,8 @@ static int sdp_zcopy_thresh = 65536;
 module_param_named(sdp_zcopy_thresh, sdp_zcopy_thresh, int, 0644);
 MODULE_PARM_DESC(sdp_zcopy_thresh, "Zero copy send threshold; 0=0ff.");
 
-struct workqueue_struct *comp_wq;
+struct workqueue_struct *sdp_wq;
+struct workqueue_struct *rx_comp_wq;
 
 struct list_head sock_list;
 spinlock_t sock_list_lock;
@@ -205,12 +206,17 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 static void sdp_destroy_qp(struct sdp_sock *ssk)
 {
 	struct ib_pd *pd = NULL;
-	struct ib_cq *cq = NULL;
+	struct ib_cq *rx_cq = NULL;
+	struct ib_cq *tx_cq = NULL;
+
+	del_timer(&ssk->tx_ring.timer);
 
 	if (ssk->qp) {
 		pd = ssk->qp->pd;
-		cq = ssk->cq;
-		ssk->cq = NULL;
+		rx_cq = ssk->rx_cq;
+		ssk->rx_cq = NULL;
+		tx_cq = ssk->tx_ring.cq;
+		ssk->tx_ring.cq = NULL;
 		ib_destroy_qp(ssk->qp);
 		ssk->qp = NULL;
 
@@ -231,8 +237,12 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 		}
 	}
 
-	if (cq)
-		ib_destroy_cq(cq);
+	if (tx_cq) {
+		ib_destroy_cq(tx_cq);
+	}
+
+	if (rx_cq)
+		ib_destroy_cq(rx_cq);
 
 	if (ssk->mr) {
 		ib_dereg_mr(ssk->mr);
@@ -341,8 +351,11 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	read_lock(&device_removal_lock);
 
-	if (ssk->cq)
-		sdp_poll_cq(ssk, ssk->cq);
+	if (ssk->rx_cq)
+		sdp_poll_rx_cq(ssk);
+
+	if (ssk->tx_ring.cq)
+		sdp_xmit_poll(ssk, 1);
 
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk))
 		sdp_set_error(sk, rc);
@@ -355,7 +368,7 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	/* Don't destroy socket before destroy work does its job */
 	sock_hold(sk, SOCK_REF_RESET);
-	queue_work(comp_wq, &ssk->destroy_work);
+	queue_work(sdp_wq, &ssk->destroy_work);
 
 	read_unlock(&device_removal_lock);
 }
@@ -773,11 +786,10 @@ out:
 	release_sock(sk);
 	if (newsk) {
 		lock_sock(newsk);
-		if (newssk->cq) {
-			sdp_dbg(newsk, "%s: ib_req_notify_cq\n", __func__);
+		if (newssk->rx_cq) {
 			newssk->poll_cq = 1;
-			sdp_arm_cq(&newssk->isk.sk);
-			sdp_poll_cq(newssk, newssk->cq);
+			sdp_arm_rx_cq(&newssk->isk.sk);
+			sdp_poll_rx_cq(newssk);
 		}
 		release_sock(newsk);
 	}
@@ -847,7 +859,7 @@ static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
 {
 	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
 
-	queue_delayed_work(comp_wq, &ssk->dreq_wait_work, timeo);
+	queue_delayed_work(sdp_wq, &ssk->dreq_wait_work, timeo);
 	ssk->dreq_wait_timeout = 1;
 }
 
@@ -1143,9 +1155,9 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 static inline int poll_recv_cq(struct sock *sk)
 {
 	int i;
-	if (sdp_sk(sk)->cq) {
+	if (sdp_sk(sk)->rx_cq) {
 		for (i = 0; i < recv_poll; ++i)
-			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+			if (!sdp_poll_rx_cq(sdp_sk(sk))) {
 				++recv_poll_hit;
 				return 0;
 			}
@@ -1157,9 +1169,9 @@ static inline int poll_recv_cq(struct sock *sk)
 static inline void poll_send_cq(struct sock *sk)
 {
 	int i;
-	if (sdp_sk(sk)->cq) {
+	if (sdp_sk(sk)->tx_ring.cq) {
 		for (i = 0; i < send_poll; ++i)
-			if (!sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq)) {
+			if (sdp_xmit_poll(sdp_sk(sk), 1)) {
 				++send_poll_hit;
 				return;
 			}
@@ -1421,12 +1433,9 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 			/* We can extend the last page
 			 * fragment. */
 			merge = 1;
-		} else if (i == ssk->send_frags ||
-			   (!i &&
-			   !(sk->sk_route_caps & NETIF_F_SG))) {
+		} else if (i == ssk->send_frags) {
 			/* Need to add new fragment and cannot
-			 * do this because interface is non-SG,
-			 * or because all the page slots are
+			 * do this because all the page slots are
 			 * busy. */
 			sdp_mark_push(ssk, skb);
 			return SDP_NEW_SEG;
@@ -1649,7 +1658,6 @@ void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	}
 }
 
-
 /* Like tcp_sendmsg */
 /* TODO: check locking */
 static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
@@ -1812,7 +1820,9 @@ wait_for_sndbuf:
 wait_for_memory:
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
-				sdp_push(sk, ssk, flags & ~MSG_MORE, mss_now, TCP_NAGLE_PUSH);
+				sdp_push(sk, ssk, flags & ~MSG_MORE, PAGE_SIZE, TCP_NAGLE_PUSH);
+
+			sdp_xmit_poll(ssk, 1);
 
 			err = (bz) ? sdp_bzcopy_wait_memory(ssk, &timeo, bz) :
 				     sk_stream_wait_memory(sk, &timeo);
@@ -2386,17 +2396,25 @@ static int __init sdp_init(void)
 	sdp_proto.sockets_allocated = sockets_allocated;
 	sdp_proto.orphan_count = orphan_count;
 
-	comp_wq = create_singlethread_workqueue("comp_wq");
-	if (!comp_wq)
+	rx_comp_wq = create_singlethread_workqueue("rx_comp_wq");
+	if (!rx_comp_wq)
 		goto no_mem_rx_wq;
 
+	sdp_wq = create_singlethread_workqueue("sdp_wq");
+	if (!sdp_wq)
+		goto no_mem_sdp_wq;
+
 	rc = proto_register(&sdp_proto, 1);
-	if (rc)
+	if (rc) {
+		printk(KERN_WARNING "%s: proto_register failed: %d\n", __func__, rc);
 		goto error_proto_reg;
+	}
 
 	rc = sock_register(&sdp_net_proto);
-	if (rc)
+	if (rc) {
+		printk(KERN_WARNING "%s: sock_register failed: %d\n", __func__, rc);
 		goto error_sock_reg;
+	}
 
 	sdp_proc_init();
 
@@ -2409,7 +2427,9 @@ static int __init sdp_init(void)
 error_sock_reg:
 	proto_unregister(&sdp_proto);
 error_proto_reg:
-	destroy_workqueue(comp_wq);
+	destroy_workqueue(sdp_wq);
+no_mem_sdp_wq:
+	destroy_workqueue(rx_comp_wq);
 no_mem_rx_wq:
 	kfree(orphan_count);
 no_mem_orphan_count:
@@ -2427,7 +2447,8 @@ static void __exit sdp_exit(void)
 		printk(KERN_WARNING "%s: orphan_count %lld\n", __func__,
 		       percpu_counter_read_positive(orphan_count));
 
-	destroy_workqueue(comp_wq);
+	destroy_workqueue(rx_comp_wq);
+	destroy_workqueue(sdp_wq);
 
 	flush_scheduled_work();
 

@@ -73,7 +73,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
         	.qp_type = IB_QPT_RC,
 	};
 	struct ib_device *device = id->device;
-	struct ib_cq *cq;
+	struct ib_cq *rx_cq, *tx_cq;
 	struct ib_mr *mr;
 	struct ib_pd *pd;
 	int rc;
@@ -118,32 +118,49 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
         }
 
 	sdp_sk(sk)->mr = mr;
-	INIT_WORK(&sdp_sk(sk)->work, sdp_work);
+	INIT_WORK(&sdp_sk(sk)->rx_comp_work, sdp_rx_comp_work);
 
-	cq = ib_create_cq(device, sdp_completion_handler, sdp_cq_event_handler,
-			  sk, SDP_TX_SIZE + SDP_RX_SIZE, 0);
+	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_cq_event_handler,
+			  sk, SDP_RX_SIZE, 0);
 
-	if (IS_ERR(cq)) {
-		rc = PTR_ERR(cq);
-		sdp_warn(sk, "Unable to allocate CQ: %d.\n", rc);
-		goto err_cq;
+	if (IS_ERR(rx_cq)) {
+		rc = PTR_ERR(rx_cq);
+		sdp_warn(sk, "Unable to allocate RX CQ: %d.\n", rc);
+		goto err_rx_cq;
 	}
 
-	rc = ib_modify_cq(cq, 10, 200);
+	rc = ib_modify_cq(rx_cq, 10, 200);
 	if (rc) {
 		sdp_warn(sk, "Unable to modify RX CQ: %d.\n", rc);
-		goto err_qp;
+		goto err_tx_cq;
 	}
 	sdp_warn(sk, "Initialized CQ moderation\n");
+	sdp_sk(sk)->rx_cq = rx_cq;
+	sdp_arm_rx_cq(sk);
+	qp_init_attr.recv_cq = rx_cq;
 
-        qp_init_attr.send_cq = qp_init_attr.recv_cq = cq;
+	tx_cq = ib_create_cq(device, sdp_tx_irq, sdp_cq_event_handler,
+			  sk, SDP_TX_SIZE, 0);
+
+	if (IS_ERR(tx_cq)) {
+		rc = PTR_ERR(tx_cq);
+		sdp_warn(sk, "Unable to allocate TX CQ: %d.\n", rc);
+		goto err_tx_cq;
+	}
+
+	init_timer(&sdp_sk(sk)->tx_ring.timer);
+	sdp_sk(sk)->tx_ring.timer.function = sdp_poll_tx_cq;
+	sdp_sk(sk)->tx_ring.timer.data = (unsigned long) sdp_sk(sk);
+	sdp_sk(sk)->tx_ring.poll_cnt = 0;
+
+	sdp_sk(sk)->tx_ring.cq = tx_cq;
+        qp_init_attr.send_cq = tx_cq;
 
 	rc = rdma_create_qp(id, pd, &qp_init_attr);
 	if (rc) {
 		sdp_warn(sk, "Unable to create QP: %d.\n", rc);
 		goto err_qp;
 	}
-	sdp_sk(sk)->cq = cq;
 	sdp_sk(sk)->qp = id->qp;
 	sdp_sk(sk)->ib_device = device;
 
@@ -153,8 +170,10 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	return 0;
 
 err_qp:
-	ib_destroy_cq(cq);
-err_cq:
+	ib_destroy_cq(tx_cq);
+err_tx_cq:
+	ib_destroy_cq(rx_cq);
+err_rx_cq:
 	ib_dereg_mr(sdp_sk(sk)->mr);
 err_mr:
 	ib_dealloc_pd(pd);
@@ -162,7 +181,6 @@ err_pd:
 	kfree(sdp_sk(sk)->rx_ring);
 	sdp_sk(sk)->rx_ring = NULL;
 err_rx:
-	WARN_ON(sdp_sk(sk)->tx_ring.head != sdp_sk(sk)->tx_ring.tail);
 	kfree(sdp_sk(sk)->tx_ring.buffer);
 	sdp_sk(sk)->tx_ring.buffer = NULL;
 err_tx:
@@ -258,21 +276,20 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->min_bufs = sdp_sk(sk)->tx_ring.credits / 4;
 	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
 		sizeof(struct sdp_bsdh);
- 	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
- 		PAGE_SIZE, SDP_MAX_SEND_SKB_FRAGS);
- 	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
- 		sdp_sk(sk)->send_frags * PAGE_SIZE);
+	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
+		PAGE_SIZE, SDP_MAX_SEND_SKB_FRAGS);
+	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
+		sdp_sk(sk)->send_frags * PAGE_SIZE);
 
-	sdp_dbg(sk, "%s bufs %d xmit_size_goal %d send_frags: %d send trigger %d\n",
-		__func__,
+	sdp_dbg(sk, "tx credits %d xmit_size_goal %d send_frags: %d credits update trigger %d\n",
 		sdp_sk(sk)->tx_ring.credits,
 		sdp_sk(sk)->xmit_size_goal,
- 		sdp_sk(sk)->send_frags,
+		sdp_sk(sk)->send_frags,
 		sdp_sk(sk)->min_bufs);
 
 	sdp_sk(sk)->poll_cq = 1;
-	sdp_arm_cq(sk);
-	sdp_poll_cq(sdp_sk(sk), sdp_sk(sk)->cq);
+	sdp_arm_rx_cq(sk);
+	sdp_poll_rx_cq(sdp_sk(sk));
 
 	sk->sk_state_change(sk);
 	sk_wake_async(sk, 0, POLL_OUT);
@@ -332,8 +349,11 @@ static int sdp_disconnected_handler(struct sock *sk)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	if (ssk->cq)
-		sdp_poll_cq(ssk, ssk->cq);
+	if (ssk->rx_cq)
+		sdp_poll_rx_cq(ssk);
+
+	if (ssk->tx_ring.cq)
+		sdp_xmit_poll(ssk, 1);
 
 	if (sk->sk_state == TCP_SYN_RECV) {
 		sdp_connected_handler(sk, NULL);

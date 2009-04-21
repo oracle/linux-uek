@@ -260,9 +260,11 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 
 	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", sdpstats.rx_poll_miss);
 	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", sdpstats.tx_poll_miss);
+	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", sdpstats.tx_poll_hit);
 
 	seq_printf(seq, "CQ stats:\n");
-	seq_printf(seq, "- interrupts\t\t: %d\n", sdpstats.int_count);
+	seq_printf(seq, "- RX interrupts\t\t: %d\n", sdpstats.rx_int_count);
+	seq_printf(seq, "- TX interrupts\t\t: %d\n", sdpstats.tx_int_count);
 	return 0;
 }
 
