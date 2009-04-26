@@ -8,15 +8,73 @@
 #include <rdma/ib_verbs.h>
 
 #define SDPSTATS_ON
+#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 
-#define sdp_printk(level, sk, format, arg...)                \
+#define _sdp_printk(func, line, level, sk, format, arg...)                \
 	printk(level "%s:%d sdp_sock(%d %d:%d): " format,             \
-	       __func__, __LINE__, \
+	       func, line, \
 	       current->pid, \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
 	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg)
+#define sdp_printk(level, sk, format, arg...)                \
+	_sdp_printk(__func__, __LINE__, level, sk, format, ## arg)
 #define sdp_warn(sk, format, arg...)                         \
 	sdp_printk(KERN_WARNING, sk, format , ## arg)
+
+
+struct sk_buff;
+struct sdpprf_log {
+	int 		idx;
+	int 		pid;
+	int 		sk_num;
+	int 		sk_dport;
+	struct sk_buff 	*skb;
+	char		msg[256];
+
+	unsigned long long time;
+
+	const char 	*func;
+	int 		line;
+};
+
+#define SDPPRF_LOG_SIZE 0x10000 /* must be a power of 2 */
+
+extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
+extern int sdpprf_log_count;
+
+static inline unsigned long long current_nsec(void)
+{
+	struct timespec tv;
+	getnstimeofday(&tv);
+	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
+}
+#if 1
+#define sdp_prf(sk, s, format, arg...) ({ \
+	struct sdpprf_log *l = &sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
+	l->idx = sdpprf_log_count - 1; \
+	l->pid = current->pid; \
+	l->sk_num = (sk) ? inet_sk(sk)->num : -1;                 \
+	l->sk_dport = (sk) ? ntohs(inet_sk(sk)->dport) : -1; \
+	l->skb = s; \
+	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
+	l->time = current_nsec(); \
+	l->func = __func__; \
+	l->line = __LINE__; \
+	1; \
+})
+#else
+#define sdp_prf(sk, s, format, arg...)
+#endif
+
+#if 0
+#if 1
+#define sdp_prf_rx(sk, s, format, arg...) sdp_prf(sk, s, format, ## arg)
+#define sdp_prf_tx(sk, s, format, arg...)
+#else
+#define sdp_prf_rx(sk, s, format, arg...)
+#define sdp_prf_tx(sk, s, format, arg...) sdp_prf(sk, s, format, ## arg)
+#endif
+#endif
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
 extern int sdp_debug_level;
@@ -364,21 +422,6 @@ extern struct workqueue_struct *rx_comp_wq;
 extern atomic_t sdp_current_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
 
-/* just like TCP fs */
-struct sdp_seq_afinfo {
-	struct module           *owner;
-	char                    *name;
-	sa_family_t             family;
-	int                     (*seq_show) (struct seq_file *m, void *v);
-	struct file_operations  *seq_fops;
-};
-
-struct sdp_iter_state {
-	sa_family_t             family;
-	int                     num;
-	struct seq_operations   seq_ops;
-};
-
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 {
 	        return (struct sdp_sock *)sk;
@@ -439,6 +482,7 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	int ib_teardown_states = TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT
 		| TCPF_LAST_ACK;
 	sk->sk_err = -err;
+	dump_stack();
 	if (sk->sk_socket)
 		sk->sk_socket->state = SS_DISCONNECTING;
 
@@ -458,7 +502,9 @@ static inline void sdp_arm_rx_cq(struct sock *sk)
 }
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
-void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct sdp_bsdh *h);
+void _dump_packet(const char *func, int line, struct sock *sk, char *str,
+		struct sk_buff *skb, const struct sdp_bsdh *h);
+#define dump_packet(sk, str, skb, h) _dump_packet(__func__, __LINE__, sk, str, skb, h)
 #endif
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 void sdp_reset(struct sock *sk);
@@ -466,13 +512,15 @@ void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_rx_irq(struct ib_cq *cq, void *cq_context);
 void sdp_tx_irq(struct ib_cq *cq, void *cq_context);
 void sdp_poll_tx_cq(unsigned long data);
+void _sdp_poll_tx_cq(unsigned long data);
 void sdp_rx_comp_work(struct work_struct *work);
 void sdp_process_tx_wc_work(struct work_struct *work);
 int sdp_post_credits(struct sdp_sock *ssk);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void sdp_post_recvs(struct sdp_sock *ssk);
 int sdp_poll_rx_cq(struct sdp_sock *ssk);
-void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
+void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
+#define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
 void sdp_destroy_work(struct work_struct *work);
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
 void sdp_dreq_wait_timeout_work(struct work_struct *work);

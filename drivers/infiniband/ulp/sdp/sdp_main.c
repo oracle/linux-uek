@@ -1748,6 +1748,8 @@ new_segment:
 				if (!skb)
 					goto wait_for_memory;
 
+				sdp_prf(sk, skb, "Created");
+
 				BZCOPY_STATE(skb) = bz;
 
 				/*
@@ -1762,6 +1764,7 @@ new_segment:
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
 			} else {
+				sdp_prf(sk, skb, "adding %d bytes", copy);
 				sdp_dbg_data(sk, "adding to existing skb: %p"
 					" len = %d, sk_send_head: %p copy: %d\n",
 					skb, skb->len, sk->sk_send_head, copy);
@@ -1780,8 +1783,10 @@ new_segment:
 				goto new_segment;
 			}
 
+//			sdp_prf(sk, skb, "before memcpy %d bytes", copy);
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);
+//			sdp_prf(sk, skb, "after memcpy. result: %d", copy);
 			if (unlikely(copy < 0)) {
 				if (!++copy)
 					goto wait_for_memory;
@@ -1818,6 +1823,7 @@ new_segment:
 wait_for_sndbuf:
 			set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 wait_for_memory:
+			sdp_prf(sk, skb, "wait for mem");
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
 				sdp_push(sk, ssk, flags & ~MSG_MORE, PAGE_SIZE, TCP_NAGLE_PUSH);
@@ -1826,6 +1832,7 @@ wait_for_memory:
 
 			err = (bz) ? sdp_bzcopy_wait_memory(ssk, &timeo, bz) :
 				     sk_stream_wait_memory(sk, &timeo);
+			sdp_prf(sk, skb, "finished wait for mem. err: %d", err);
 			if (err)
 				goto do_error;
 
@@ -1849,6 +1856,8 @@ out:
 	return copied;
 
 do_fault:
+	sdp_prf(sk, skb, "prepare fault");
+
 	if (!skb->len) {
 		if (sk->sk_send_head == skb)
 			sk->sk_send_head = NULL;
@@ -1887,6 +1896,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
+
+	sdp_prf(sk, skb, "Read from user");
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -2026,6 +2037,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			err = skb_copy_datagram_iovec(skb, offset,
 						      /* TODO: skip header? */
 						      msg->msg_iov, used);
+			sdp_prf(sk, skb, "Copied to user %ld bytes. err = %d", used, err);
 			if (err) {
 				sdp_dbg(sk, "%s: skb_copy_datagram_iovec failed"
 					"offset %d size %ld status %d\n",

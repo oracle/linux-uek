@@ -187,7 +187,8 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 }
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
-void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct sdp_bsdh *h)
+void _dump_packet(const char *func, int line, struct sock *sk, char *str,
+		struct sk_buff *skb, const struct sdp_bsdh *h)
 {
 	int len = 0;
 	char buf[256];
@@ -240,7 +241,7 @@ void dump_packet(struct sock *sk, char *str, struct sk_buff *skb, const struct s
 			break;
 	}
 	buf[len] = 0;
-	sdp_warn(sk, "%s: %s\n", str, buf);
+	_sdp_printk(func, line, KERN_WARNING, sk, "%s: %s\n", str, buf);
 }
 #endif
 
@@ -249,6 +250,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk);
 int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 {
 	int wc_processed = 0;
+//	sdp_prf(&ssk->isk.sk, NULL, "xmit_poll force = %d", force);
 
 	/* If we don't have a pending timer, set one up to catch our recent
 	   post in case the interface becomes idle */
@@ -272,6 +274,18 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_device *dev;
 	struct ib_sge *sge;
 	struct ib_send_wr *bad_wr;
+
+#define ENUM2STR(e) [e] = #e
+	static char *mid2str[] = {
+		ENUM2STR(SDP_MID_HELLO),
+		ENUM2STR(SDP_MID_HELLO_ACK),
+		ENUM2STR(SDP_MID_DISCONN),
+		ENUM2STR(SDP_MID_CHRCVBUF),
+		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
+		ENUM2STR(SDP_MID_DATA),
+	};
+	sdp_prf(&ssk->isk.sk, skb, "post_send mid = %s, bufs = %d",
+			mid2str[mid], ssk->rx_head - ssk->rx_tail);
 
 	SDPSTATS_COUNTER_MID_INC(post_send, mid);
 	SDPSTATS_HIST(send_size, skb->len);
@@ -342,6 +356,10 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 		sdp_dbg(&ssk->isk.sk, "ib_post_send failed with status %d.\n", rc);
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
 		wake_up(&ssk->wq);
+	}
+
+	if (ssk->tx_ring.credits <= SDP_MIN_TX_CREDITS) {
+		sdp_poll_rx_cq(ssk);
 	}
 }
 
@@ -466,6 +484,7 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 	ssk->rx_wr.sg_list = ssk->ibsge;
 	ssk->rx_wr.num_sge = frags + 1;
 	rc = ib_post_recv(ssk->qp, &ssk->rx_wr, &bad_wr);
+	sdp_prf(&ssk->isk.sk, skb, "rx skb was posted");
 	SDPSTATS_COUNTER_INC(post_recv);
 	++ssk->rx_head;
 	if (unlikely(rc)) {
@@ -582,6 +601,26 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 
 int sdp_post_credits(struct sdp_sock *ssk)
 {
+	int post_count = 0;
+	struct sk_buff *skb;
+
+	sdp_dbg_data(&ssk->isk.sk, "credits: %d remote credits: %d "
+			"tx ring slots left: %d send_head: %p\n",
+		ssk->tx_ring.credits, ssk->remote_credits,
+		sdp_tx_ring_slots_left(&ssk->tx_ring),
+		ssk->isk.sk.sk_send_head);
+
+	if (ssk->tx_ring.credits > SDP_MIN_TX_CREDITS &&
+	       sdp_tx_ring_slots_left(&ssk->tx_ring) &&
+	       (skb = ssk->isk.sk.sk_send_head) &&
+		sdp_nagle_off(ssk, skb)) {
+		update_send_head(&ssk->isk.sk, skb);
+		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
+		sdp_post_send(ssk, skb, SDP_MID_DATA);
+		post_count++;
+		goto out;
+	}
+
 	if (likely(ssk->tx_ring.credits > 1) &&
 	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring))) {
 		struct sk_buff *skb;
@@ -591,18 +630,24 @@ int sdp_post_credits(struct sdp_sock *ssk)
 		if (!skb)
 			return -ENOMEM;
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
-		sdp_xmit_poll(ssk, 0);
+		post_count++;
 	}
-	return 0;
+
+out:
+	if (post_count)
+		sdp_xmit_poll(ssk, 0);
+	return post_count;
 }
 
-void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
+void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
 	gfp_t gfp_page;
 	int post_count = 0;
+
+	sdp_dbg_data(&ssk->isk.sk, "called from %s:%d\n", func, line);
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {
@@ -618,6 +663,15 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		gfp_page = ssk->isk.sk.sk_allocation;
 	else
 		gfp_page = GFP_KERNEL;
+
+	sdp_dbg_data(&ssk->isk.sk, "credits: %d tx ring slots left: %d send_head: %p\n",
+		ssk->tx_ring.credits, sdp_tx_ring_slots_left(&ssk->tx_ring),
+		ssk->isk.sk.sk_send_head);
+
+	if (sdp_tx_ring_slots_left(&ssk->tx_ring) < SDP_TX_SIZE / 2) {
+		int wc_processed = sdp_xmit_poll(ssk,  1);
+		sdp_dbg_data(&ssk->isk.sk, "freed %d\n", wc_processed);
+	}
 
 	if (ssk->recv_request &&
 	    ssk->rx_tail >= ssk->recv_request_head &&
@@ -642,11 +696,8 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	       (skb = ssk->isk.sk.sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
+		sdp_prf(&ssk->isk.sk, skb, "no credits. called from %s:%d", func, line);
 	}
-
-	sdp_dbg_data(&ssk->isk.sk, "credits: %d tx ring slots left: %d send_head: %p\n",
-		ssk->tx_ring.credits, sdp_tx_ring_slots_left(&ssk->tx_ring),
-		ssk->isk.sk.sk_send_head);
 
 	while (ssk->tx_ring.credits > SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(&ssk->tx_ring) &&
@@ -658,7 +709,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		post_count++;
 	}
 
-	if (ssk->tx_ring.credits == SDP_MIN_TX_CREDITS &&
+	if (0 && ssk->tx_ring.credits == SDP_MIN_TX_CREDITS &&
 	    !ssk->sent_request &&
 	    ssk->tx_ring.head > ssk->sent_request_head + SDP_RESIZE_WAIT &&
 	    sdp_tx_ring_slots_left(&ssk->tx_ring)) {
@@ -713,8 +764,11 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
 		post_count++;
 	}
-	if (post_count)
+	if (post_count) {
 		sdp_xmit_poll(ssk, 0);
+
+		sdp_prf(&ssk->isk.sk, NULL, "finshed polling from post_sends");
+	}
 }
 
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
@@ -786,6 +840,8 @@ static int sdp_handle_recv_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 	skb = sdp_recv_completion(ssk, wc->wr_id);
 	if (unlikely(!skb))
 		return -1;
+
+	sdp_prf(sk, skb, "recv completion");	
 
 	atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 
@@ -911,6 +967,7 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		}
 	}
 
+	sdp_prf(&ssk->isk.sk, skb, "tx completion");
 	sk_stream_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
@@ -928,6 +985,9 @@ void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	SDPSTATS_COUNTER_INC(rx_int_count);
 
+	sdp_prf(sk, NULL, "rx completion");
+
+	/* issue sdp_rx_comp_work() */
 	queue_work(rx_comp_wq, &ssk->rx_comp_work);
 }
 
@@ -995,6 +1055,7 @@ void sdp_poll_tx_cq(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
+
 	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
 		(u32) ssk->tx_ring.head - ssk->tx_ring.tail);
 
@@ -1029,6 +1090,16 @@ out:
 	bh_unlock_sock(sk);
 }
 
+void _sdp_poll_tx_cq(unsigned long data)
+{
+	struct sdp_sock *ssk = (struct sdp_sock *)data;
+	struct sock *sk = &ssk->isk.sk;
+
+	sdp_prf(sk, NULL, "sdp poll tx timeout expired");
+
+	sdp_poll_tx_cq(data);
+}
+
 
 void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 {
@@ -1040,6 +1111,25 @@ void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 	mod_timer(&ssk->tx_ring.timer, jiffies + 1);
 }
 
+static inline int credit_update_needed(struct sdp_sock *ssk, int wc_processed)
+{
+	int c;
+
+	c = ssk->remote_credits;
+	if (likely(c > SDP_MIN_TX_CREDITS))
+		c += c/2;
+
+/*	sdp_warn(&ssk->isk.sk, "credits: %d remote credits: %d "
+			"tx ring slots left: %d send_head: %p\n",
+		ssk->tx_ring.credits, ssk->remote_credits,
+		sdp_tx_ring_slots_left(&ssk->tx_ring),
+		ssk->isk.sk.sk_send_head);
+*/
+	return (unlikely(c < ssk->rx_head - ssk->rx_tail + wc_processed) &&
+	    likely(ssk->tx_ring.credits > 1) &&
+	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring)));
+}
+
 
 int sdp_poll_rx_cq(struct sdp_sock *ssk)
 {
@@ -1048,6 +1138,7 @@ int sdp_poll_rx_cq(struct sdp_sock *ssk)
 	int n, i;
 	int ret = -EAGAIN;
 	int updated_credits = 0;
+	int wc_processed = 0;
 
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
@@ -1056,11 +1147,22 @@ int sdp_poll_rx_cq(struct sdp_sock *ssk)
 
 			BUG_ON(!(wc->wr_id & SDP_OP_RECV));
 			sdp_handle_recv_comp(ssk, wc);
+			wc_processed++;
 
-			if (!updated_credits) {
+/*			if (!updated_credits) {
 				sdp_post_recvs(ssk);
 				sdp_post_sends(ssk, 0);
 				updated_credits = 1;
+			}*/
+//sdp_warn(&ssk->isk.sk, "i = %d, wc_processed = %d wr_id = 0x%llx\n", i, wc_processed, wc->wr_id);
+			if (credit_update_needed(ssk, wc_processed)) {
+				sdp_prf(&ssk->isk.sk, NULL, "credit update. remote_credits: %d, avail now: %d processed: %d",
+						ssk->remote_credits,
+						ssk->rx_head - ssk->rx_tail,
+						wc_processed);
+				sdp_post_recvs(ssk);
+				if (sdp_post_credits(ssk))
+					wc_processed = 0;
 			}
 
 			ret = 0;

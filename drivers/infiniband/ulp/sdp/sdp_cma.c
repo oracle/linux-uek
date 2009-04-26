@@ -149,7 +149,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	}
 
 	init_timer(&sdp_sk(sk)->tx_ring.timer);
-	sdp_sk(sk)->tx_ring.timer.function = sdp_poll_tx_cq;
+	sdp_sk(sk)->tx_ring.timer.function = _sdp_poll_tx_cq;
 	sdp_sk(sk)->tx_ring.timer.data = (unsigned long) sdp_sk(sk);
 	sdp_sk(sk)->tx_ring.poll_cnt = 0;
 
@@ -477,7 +477,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rc = rdma_accept(id, NULL);
 
 		if (!rc)
-			rc = sdp_post_credits(sdp_sk(sk));
+			rc = sdp_post_credits(sdp_sk(sk)) < 0 ?: 0;
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");

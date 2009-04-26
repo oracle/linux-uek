@@ -37,6 +37,28 @@
 #ifdef CONFIG_PROC_FS
 
 #define PROC_SDP_STATS "sdpstats"
+#define PROC_SDP_PERF "sdpprf"
+
+struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
+int sdpprf_log_count = 0;
+
+/* just like TCP fs */
+struct sdp_seq_afinfo {
+	struct module           *owner;
+	char                    *name;
+	sa_family_t             family;
+	int                     (*seq_show) (struct seq_file *m, void *v);
+	struct file_operations  *seq_fops;
+};
+
+struct sdp_iter_state {
+	sa_family_t             family;
+	int                     num;
+	struct seq_operations   seq_ops;
+};
+
+//struct sdpprf sdpprf = { { 0 } };
+
 
 static void *sdp_get_idx(struct seq_file *seq, loff_t pos)
 {
@@ -277,10 +299,6 @@ static ssize_t sdpstats_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static const struct seq_operations sdpstats_seq_ops = {
-	.show   = sdpstats_seq_show,
-};
-
 static int sdpstats_seq_open(struct inode *inode, struct file *file)
 {
 	return single_open(file, sdpstats_seq_show, NULL);
@@ -297,10 +315,113 @@ static struct file_operations sdpstats_fops = {
 
 #endif
 
+unsigned long long start_t = 0;
+
+static int sdpprf_show(struct seq_file *m, void *v)
+{
+	struct sdpprf_log *l = v;
+	char ts[TIMESTAMP_SIZE];
+
+	if (!sdpprf_log_count) {
+		seq_printf(m, "No performance logs\n");
+		goto out;
+	}
+
+	nsec_to_timestamp(ts, l->time - start_t);
+
+	seq_printf(m, "%-6d: %s %-50s - [%d %d:%d] skb: %p %s:%d\n",
+			l->idx, ts,
+			l->msg, l->pid, l->sk_num, l->sk_dport,
+			l->skb, l->func, l->line);
+out:
+        return 0;
+}
+
+static void *sdpprf_start(struct seq_file *p, loff_t *pos)
+{
+	int idx = *pos;
+
+	if (!*pos) {
+		if (!sdpprf_log_count)
+			return SEQ_START_TOKEN;
+	}
+	
+	if (*pos >= MIN(sdpprf_log_count, SDPPRF_LOG_SIZE - 1))
+		return NULL;
+
+	if (sdpprf_log_count >= SDPPRF_LOG_SIZE - 1) {
+		int off = sdpprf_log_count & ( SDPPRF_LOG_SIZE - 1);
+		idx = (idx + off) & (SDPPRF_LOG_SIZE - 1);
+
+	}
+
+	if (!start_t)
+		start_t = sdpprf_log[idx].time;
+	return &sdpprf_log[idx];
+}
+
+static void *sdpprf_next(struct seq_file *p, void *v, loff_t *pos)
+{
+	struct sdpprf_log *l = v;
+
+	if (++*pos >= MIN(sdpprf_log_count, SDPPRF_LOG_SIZE - 1))
+		return NULL;
+
+	++l;
+	if (l - &sdpprf_log[0] >= SDPPRF_LOG_SIZE - 1)
+		return &sdpprf_log[0];
+
+        return l;
+}
+
+static void sdpprf_stop(struct seq_file *p, void *v)
+{
+}
+
+
+struct seq_operations sdpprf_ops = {
+	.start = sdpprf_start,
+	.stop = sdpprf_stop,
+	.next = sdpprf_next,
+	.show = sdpprf_show,
+};
+
+static int sdpprf_open(struct inode *inode, struct file *file)
+{
+	int res;
+
+	res = seq_open(file, &sdpprf_ops);
+
+	if (sdpprf_log_count >= SDPPRF_LOG_SIZE - 1) {
+		printk("ATTENTION: performance log was wrapped around! count = %d\n",
+				sdpprf_log_count);
+	}
+
+	return res;
+}
+
+static ssize_t sdpprf_write(struct file *file, const char __user *buf,
+			    size_t count, loff_t *offs)
+{
+	sdpprf_log_count = 0;
+	printk("Cleared sdpprf statistics\n");
+
+	return count;
+}
+
+static struct file_operations sdpprf_fops = {
+        .open           = sdpprf_open,
+        .read           = seq_read,
+        .llseek         = seq_lseek,
+        .release        = seq_release,
+	.write		= sdpprf_write,
+};
+
 int __init sdp_proc_init(void)
 {
 	struct proc_dir_entry *p = NULL;
 	struct proc_dir_entry *sdpstats = NULL;
+	struct proc_dir_entry *sdpprf = NULL;
 
 	sdp_seq_afinfo.seq_fops->owner         = sdp_seq_afinfo.owner;
 	sdp_seq_afinfo.seq_fops->open          = sdp_seq_open;
@@ -322,10 +443,18 @@ int __init sdp_proc_init(void)
 	if (!sdpstats)
 		goto no_mem;;
 
-	return 0;
 #endif
 
+ 	sdpprf = proc_net_fops_create(PROC_SDP_PERF,
+			S_IRUGO | S_IWUGO, &sdpprf_fops); 
+	if (!sdpprf)
+		goto no_mem;
+
+	return 0;
 no_mem:
+	if (sdpprf)
+		proc_net_remove(PROC_SDP_PERF);
+
 	if (sdpstats)
 		proc_net_remove(PROC_SDP_STATS);
 
@@ -343,6 +472,7 @@ void sdp_proc_unregister(void)
 #ifdef SDPSTATS_ON
 	proc_net_remove(PROC_SDP_STATS);
 #endif
+	proc_net_remove(PROC_SDP_PERF);
 }
 
 #else /* CONFIG_PROC_FS */
