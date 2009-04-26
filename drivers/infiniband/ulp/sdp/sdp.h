@@ -222,6 +222,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define MIN(a, b) (a < b ? a : b)
 #endif
 
+extern struct workqueue_struct *sdp_wq;
 extern struct list_head sock_list;
 extern spinlock_t sock_list_lock;
 
@@ -317,6 +318,10 @@ static inline int sdp_tx_ring_slots_left(struct sdp_tx_ring *tx_ring)
 {
 	return SDP_TX_SIZE - (tx_ring->head - tx_ring->tail);
 }
+
+struct sdp_chrecvbuf {
+	u32 size;
+};
 
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
@@ -509,36 +514,38 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 void sdp_reset(struct sock *sk);
 void sdp_reset_sk(struct sock *sk, int rc);
-void sdp_rx_irq(struct ib_cq *cq, void *cq_context);
-void sdp_tx_irq(struct ib_cq *cq, void *cq_context);
-void sdp_poll_tx_cq(unsigned long data);
-void _sdp_poll_tx_cq(unsigned long data);
-void sdp_rx_comp_work(struct work_struct *work);
-void sdp_process_tx_wc_work(struct work_struct *work);
 int sdp_post_credits(struct sdp_sock *ssk);
-void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
-void sdp_post_recvs(struct sdp_sock *ssk);
-int sdp_poll_rx_cq(struct sdp_sock *ssk);
-void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
-#define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
 void sdp_destroy_work(struct work_struct *work);
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
 void sdp_dreq_wait_timeout_work(struct work_struct *work);
-struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id);
-struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq);
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
 void sdp_add_sock(struct sdp_sock *ssk);
 void sdp_remove_sock(struct sdp_sock *ssk);
 void sdp_remove_large_sock(struct sdp_sock *ssk);
-int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
-int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
 void sdp_bzcopy_write_space(struct sdp_sock *ssk);
 int sdp_init_sock(struct sock *sk);
 int __init sdp_proc_init(void);
 void sdp_proc_unregister(void);
+
 int sdp_xmit_poll(struct sdp_sock *ssk, int force);
+void sdp_tx_ring_purge(struct sdp_sock *ssk);
+void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
+void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
+#define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
+void sdp_process_tx_wc_work(struct work_struct *work);
+void sdp_poll_tx_cq(unsigned long data);
+void _sdp_poll_tx_cq(unsigned long data);
+void sdp_tx_irq(struct ib_cq *cq, void *cq_context);
+
+int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
+int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
+void sdp_rx_ring_purge(struct sdp_sock *ssk);
+void sdp_post_recvs(struct sdp_sock *ssk);
+void sdp_rx_comp_work(struct work_struct *work);
+int sdp_poll_rx_cq(struct sdp_sock *ssk);
+void sdp_rx_irq(struct ib_cq *cq, void *cq_context);
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
 {

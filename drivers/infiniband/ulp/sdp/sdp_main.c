@@ -220,21 +220,8 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 		ib_destroy_qp(ssk->qp);
 		ssk->qp = NULL;
 
-		while (ssk->rx_head != ssk->rx_tail) {
-			struct sk_buff *skb;
-			skb = sdp_recv_completion(ssk, ssk->rx_tail);
-			if (!skb)
-				break;
-			atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
-			__kfree_skb(skb);
-		}
-		while (ssk->tx_ring.head != ssk->tx_ring.tail) {
-			struct sk_buff *skb;
-			skb = sdp_send_completion(ssk, ssk->tx_ring.tail);
-			if (!skb)
-				break;
-			__kfree_skb(skb);
-		}
+		sdp_rx_ring_purge(ssk);
+		sdp_tx_ring_purge(ssk);
 	}
 
 	if (tx_cq) {
