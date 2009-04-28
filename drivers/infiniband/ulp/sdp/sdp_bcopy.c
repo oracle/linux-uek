@@ -330,7 +330,13 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
 		frag->page_offset         = 0;
-		frag->size                =  min(PAGE_SIZE, SDP_MAX_PAYLOAD);
+
+		/* Bugzilla 1311 */
+		if ( sizeof(frag->size) < 4 )
+			frag->size = min(PAGE_SIZE, SDP_MAX_PAYLOAD);
+		else
+			frag->size = PAGE_SIZE;
+
 		++skb_shinfo(skb)->nr_frags;
 		skb->len += frag->size;
 		skb->data_len += frag->size;
@@ -607,17 +613,16 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 {
+	skb_frag_t skb_frag;
 	u32 curr_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
-#if defined(__ia64__)
-	/* for huge PAGE_SIZE systems, aka IA64, limit buffers size
-	   [re-]negotiation to a known+working size that will not
-	   trigger a HW error/rc to be interpreted as a IB_WC_LOC_LEN_ERR */
-	u32 max_size = (SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) <=
-		32784 ?
-		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE): 32784;
-#else 
 	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
-#endif
+
+	/* Bugzilla 1311, Kernels using smaller fragments must reject
+	 * re-size requests larger than 32k to prevent being sent
+	 * fragment larger than the receive buffer fragment.
+	 */
+	if ( (sizeof(skb_frag.size) < 4) && (max_size > 0x8000))
+		max_size = 0x8000;
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
