@@ -580,7 +580,7 @@ adjudge_to_death:
 		/* TODO: tcp_fin_time to get timeout */
 		sdp_dbg(sk, "%s: entering time wait refcnt %d\n", __func__,
 			atomic_read(&sk->sk_refcnt));
-		atomic_inc(sk->sk_prot->orphan_count);
+		percpu_counter_inc(sk->sk_prot->orphan_count);
 	}
 
 	/* TODO: limit number of orphaned sockets.
@@ -861,7 +861,7 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
 	}
 
-	atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
+	percpu_counter_dec(ssk->isk.sk.sk_prot->orphan_count);
 }
 
 void sdp_destroy_work(struct work_struct *work)
@@ -902,7 +902,7 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 	sdp_sk(sk)->dreq_wait_timeout = 0;
 
 	if (sk->sk_state == TCP_FIN_WAIT1)
-		atomic_dec(ssk->isk.sk.sk_prot->orphan_count);
+		percpu_counter_dec(ssk->isk.sk.sk_prot->orphan_count);
 
 	sdp_exch_state(sk, TCPF_LAST_ACK | TCPF_FIN_WAIT1, TCP_TIME_WAIT);
 
@@ -2162,9 +2162,9 @@ void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
 		sk->sk_data_ready(sk, 0);
 }
 
-static atomic_t sockets_allocated;
+static struct percpu_counter *sockets_allocated;
 static atomic_t memory_allocated;
-static atomic_t orphan_count;
+static struct percpu_counter *orphan_count;
 static int memory_pressure;
 struct proto sdp_proto = {
         .close       = sdp_close,
@@ -2182,10 +2182,8 @@ struct proto sdp_proto = {
         .get_port    = sdp_get_port,
 	/* Wish we had this: .listen   = sdp_listen */
 	.enter_memory_pressure = sdp_enter_memory_pressure,
-	.sockets_allocated = &sockets_allocated,
 	.memory_allocated = &memory_allocated,
 	.memory_pressure = &memory_pressure,
-	.orphan_count = &orphan_count,
         .sysctl_mem             = sysctl_tcp_mem,
         .sysctl_wmem            = sysctl_tcp_wmem,
         .sysctl_rmem            = sysctl_tcp_rmem,
@@ -2540,6 +2538,15 @@ static int __init sdp_init(void)
 	spin_lock_init(&sock_list_lock);
 	spin_lock_init(&sdp_large_sockets_lock);
 
+	sockets_allocated = kmalloc(sizeof(*sockets_allocated), GFP_KERNEL);
+	orphan_count = kmalloc(sizeof(*orphan_count), GFP_KERNEL);
+	percpu_counter_init(sockets_allocated, 0);
+	percpu_counter_init(orphan_count, 0);
+
+	sdp_proto.sockets_allocated = sockets_allocated;
+	sdp_proto.orphan_count = orphan_count;
+
+
 	sdp_workqueue = create_singlethread_workqueue("sdp");
 	if (!sdp_workqueue) {
 		return -ENOMEM;
@@ -2574,9 +2581,9 @@ static void __exit sdp_exit(void)
 	sock_unregister(PF_INET_SDP);
 	proto_unregister(&sdp_proto);
 
-	if (atomic_read(&orphan_count))
-		printk(KERN_WARNING "%s: orphan_count %d\n", __func__,
-		       atomic_read(&orphan_count));
+	if (percpu_counter_read_positive(orphan_count))
+		printk(KERN_WARNING "%s: orphan_count %lld\n", __func__,
+		       percpu_counter_read_positive(orphan_count));
 	destroy_workqueue(sdp_workqueue);
 	flush_scheduled_work();
 
@@ -2589,6 +2596,8 @@ static void __exit sdp_exit(void)
 	sdp_proc_unregister();
 
 	ib_unregister_client(&sdp_client);
+	kfree(orphan_count);
+	kfree(sockets_allocated);
 }
 
 module_init(sdp_init);
