@@ -96,7 +96,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
-		printk(KERN_WARNING "RDS: DISCONNECT event - dropping connection "
+		printk(KERN_WARNING "RDS/RDMA: DISCONNECT event - dropping connection "
 			"%pI4->%pI4\n", &conn->c_laddr,
 			 &conn->c_faddr);
 		rds_conn_drop(conn);
@@ -128,7 +128,7 @@ static int __init rds_rdma_listen_init(void)
 			       IB_QPT_RC);
 	if (IS_ERR(cm_id)) {
 		ret = PTR_ERR(cm_id);
-		printk(KERN_ERR "RDS: failed to setup listener, "
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
 		       "rdma_create_id() returned %d\n", ret);
 		goto out;
 	}
@@ -143,14 +143,14 @@ static int __init rds_rdma_listen_init(void)
 	 */
 	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
 	if (ret) {
-		printk(KERN_ERR "RDS: failed to setup listener, "
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
 		       "rdma_bind_addr() returned %d\n", ret);
 		goto out;
 	}
 
 	ret = rdma_listen(cm_id, 128);
 	if (ret) {
-		printk(KERN_ERR "RDS: failed to setup listener, "
+		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
 		       "rdma_listen() returned %d\n", ret);
 		goto out;
 	}
