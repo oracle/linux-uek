@@ -206,30 +206,23 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 static void sdp_destroy_qp(struct sdp_sock *ssk)
 {
 	struct ib_pd *pd = NULL;
-	struct ib_cq *rx_cq = NULL;
-	struct ib_cq *tx_cq = NULL;
+	unsigned long flags;
+
+
+	sdp_dbg(&ssk->isk.sk, "destroying qp\n");
 
 	del_timer(&ssk->tx_ring.timer);
 
+	rx_ring_lock(ssk, flags);
+
+	sdp_rx_ring_destroy(ssk);
+	sdp_tx_ring_destroy(ssk);
+
 	if (ssk->qp) {
 		pd = ssk->qp->pd;
-		rx_cq = ssk->rx_cq;
-		ssk->rx_cq = NULL;
-		tx_cq = ssk->tx_ring.cq;
-		ssk->tx_ring.cq = NULL;
 		ib_destroy_qp(ssk->qp);
 		ssk->qp = NULL;
-
-		sdp_rx_ring_purge(ssk);
-		sdp_tx_ring_purge(ssk);
 	}
-
-	if (tx_cq) {
-		ib_destroy_cq(tx_cq);
-	}
-
-	if (rx_cq)
-		ib_destroy_cq(rx_cq);
 
 	if (ssk->mr) {
 		ib_dereg_mr(ssk->mr);
@@ -241,14 +234,8 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	sdp_remove_large_sock(ssk);
 
-	if (ssk->rx_ring) {
-		kfree(ssk->rx_ring);
-		ssk->rx_ring = NULL;
-	}
-	if (ssk->tx_ring.buffer) {
-		kfree(ssk->tx_ring.buffer);
-		ssk->tx_ring.buffer = NULL;
-	}
+	rx_ring_unlock(ssk, flags);
+
 }
 
 static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
@@ -257,8 +244,8 @@ static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	ssk->keepalive_tx_head = ssk->tx_ring.head;
-	ssk->keepalive_rx_head = ssk->rx_head;
+	ssk->keepalive_tx_head = ring_head(ssk->tx_ring);
+	ssk->keepalive_rx_head = ring_head(ssk->rx_ring);
 
 	sk_reset_timer(sk, &sk->sk_timer, jiffies + len);
 }
@@ -293,8 +280,8 @@ static void sdp_keepalive_timer(unsigned long data)
 	    sk->sk_state == TCP_CLOSE)
 		goto out;
 
-	if (ssk->keepalive_tx_head == ssk->tx_ring.head &&
-	    ssk->keepalive_rx_head == ssk->rx_head)
+	if (ssk->keepalive_tx_head == ring_head(ssk->tx_ring) &&
+	    ssk->keepalive_rx_head == ring_head(ssk->rx_ring))
 		sdp_post_keepalive(ssk);
 
 	sdp_reset_keepalive_timer(sk, sdp_keepalive_time_when(ssk));
@@ -338,17 +325,21 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	read_lock(&device_removal_lock);
 
-	if (ssk->rx_cq)
-		sdp_poll_rx_cq(ssk);
+	sdp_process_rx_q(ssk);
 
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
-	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk))
+	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
+		sdp_warn(sk, "setting state to error. shutdown: %d, mem_free: %d\n",
+				!(sk->sk_shutdown & RCV_SHUTDOWN),
+				!sk_stream_memory_free(sk));
 		sdp_set_error(sk, rc);
+	}
 
 	sdp_destroy_qp(ssk);
 
+	sdp_dbg(sk, "memset on sdp_sock\n");
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sk->sk_state_change(sk);
@@ -488,6 +479,7 @@ static void sdp_close(struct sock *sk, long timeout)
 	lock_sock(sk);
 
 	sdp_dbg(sk, "%s\n", __func__);
+	sdp_prf(sk, NULL, __func__);
 
 	sdp_delete_keepalive_timer(sk);
 
@@ -773,10 +765,9 @@ out:
 	release_sock(sk);
 	if (newsk) {
 		lock_sock(newsk);
-		if (newssk->rx_cq) {
+		if (newssk->rx_ring.cq) {
 			newssk->poll_cq = 1;
 			sdp_arm_rx_cq(&newssk->isk.sk);
-			sdp_poll_rx_cq(newssk);
 		}
 		release_sock(newsk);
 	}
@@ -934,7 +925,11 @@ int sdp_init_sock(struct sock *sk)
 
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 
-	ssk->rx_ring = NULL;
+	skb_queue_head_init(&ssk->rx_backlog);
+
+	atomic_set(&ssk->mseq_ack, 0);
+
+	sdp_rx_ring_init(ssk);
 	ssk->tx_ring.buffer = NULL;
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
@@ -1142,14 +1137,13 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 static inline int poll_recv_cq(struct sock *sk)
 {
 	int i;
-	if (sdp_sk(sk)->rx_cq) {
-		for (i = 0; i < recv_poll; ++i)
-			if (!sdp_poll_rx_cq(sdp_sk(sk))) {
-				++recv_poll_hit;
-				return 0;
-			}
-		++recv_poll_miss;
+	for (i = 0; i < recv_poll; ++i) {
+		if (!sdp_process_rx_q(sdp_sk(sk))) {
+			++recv_poll_hit;
+			return 0;
+		}
 	}
+	++recv_poll_miss;
 	return 1;
 }
 
@@ -1551,8 +1545,8 @@ static inline int slots_free(struct sdp_sock *ssk)
 {
 	int min_free;
 
-	min_free = MIN(ssk->tx_ring.credits,
-			SDP_TX_SIZE - (ssk->tx_ring.head - ssk->tx_ring.tail));
+	min_free = MIN(tx_credits(ssk),
+			SDP_TX_SIZE - ring_posted(ssk->tx_ring));
 	if (min_free < SDP_MIN_TX_CREDITS)
 		return 0;
 
@@ -1608,6 +1602,9 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
+		sdp_prf(sk, NULL, "credits: %d, head: %d, tail: %d, busy: %d",
+				tx_credits(ssk), ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring),
+				bz->busy);
 		sk_wait_event(sk, &current_timeo,
 			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
 		sk->sk_write_pending--;
@@ -1625,24 +1622,6 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 
 	finish_wait(sk->sk_sleep, &wait);
 	return err;
-}
-
-/* like sk_stream_write_space - execpt measures remote credits */
-void sdp_bzcopy_write_space(struct sdp_sock *ssk)
-{
-	struct sock *sk = &ssk->isk.sk;
-	struct socket *sock = sk->sk_socket;
-
-	if (ssk->tx_ring.credits >= ssk->min_bufs &&
-	    ssk->tx_ring.head == ssk->tx_ring.tail &&
-	   sock != NULL) {
-		clear_bit(SOCK_NOSPACE, &sock->flags);
-
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-			wake_up_interruptible(sk->sk_sleep);
-		if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
-			sock_wake_async(sock, 2, POLL_OUT);
-	}
 }
 
 /* Like tcp_sendmsg */
@@ -1735,7 +1714,7 @@ new_segment:
 				if (!skb)
 					goto wait_for_memory;
 
-				sdp_prf(sk, skb, "Created");
+//				sdp_prf(sk, skb, "Created");
 
 				BZCOPY_STATE(skb) = bz;
 
@@ -1751,7 +1730,7 @@ new_segment:
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
 			} else {
-				sdp_prf(sk, skb, "adding %d bytes", copy);
+//				sdp_prf(sk, skb, "adding %d bytes", copy);
 				sdp_dbg_data(sk, "adding to existing skb: %p"
 					" len = %d, sk_send_head: %p copy: %d\n",
 					skb, skb->len, sk->sk_send_head, copy);
@@ -1770,10 +1749,8 @@ new_segment:
 				goto new_segment;
 			}
 
-//			sdp_prf(sk, skb, "before memcpy %d bytes", copy);
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);
-//			sdp_prf(sk, skb, "after memcpy. result: %d", copy);
 			if (unlikely(copy < 0)) {
 				if (!++copy)
 					goto wait_for_memory;
@@ -1863,6 +1840,20 @@ out_err:
 	return err;
 }
 
+int dummy_memcpy_toiovec(struct iovec *iov, int len)
+{
+	while (len > 0) {
+		if (iov->iov_len) {
+			int copy = min_t(unsigned int, iov->iov_len, len);
+			len -= copy;
+			iov->iov_len -= copy;
+			iov->iov_base += copy;
+		}
+		iov++;
+	}
+
+	return 0;
+}
 /* Like tcp_recvmsg */
 /* Maybe use skb_recv_datagram here? */
 /* Note this does not seem to handle vectored messages. Relevant? */
@@ -1884,7 +1875,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
 
-	sdp_prf(sk, skb, "Read from user");
+//	sdp_prf(sk, skb, "Read from user");
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -2024,6 +2015,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			err = skb_copy_datagram_iovec(skb, offset,
 						      /* TODO: skip header? */
 						      msg->msg_iov, used);
+//			err = dummy_memcpy_toiovec(msg->msg_iov, used);
 			sdp_prf(sk, skb, "Copied to user %ld bytes. err = %d", used, err);
 			if (err) {
 				sdp_dbg(sk, "%s: skb_copy_datagram_iovec failed"

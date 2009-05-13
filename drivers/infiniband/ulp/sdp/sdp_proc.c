@@ -236,15 +236,6 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n, in
 
 static int sdpstats_seq_show(struct seq_file *seq, void *v)
 {
-#define ENUM2STR(e) [e] = #e
-	static char *mid2str[] = {
-		ENUM2STR(SDP_MID_HELLO),
-		ENUM2STR(SDP_MID_HELLO_ACK),
-		ENUM2STR(SDP_MID_DISCONN),
-		ENUM2STR(SDP_MID_CHRCVBUF),
-		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
-		ENUM2STR(SDP_MID_DATA),
-	};
 	int i;
 
 	seq_printf(seq, "SDP statistics:\n");
@@ -268,9 +259,9 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "memcpy_count       \t\t: %u\n", sdpstats.memcpy_count);
 
 	for (i = 0; i < ARRAY_SIZE(sdpstats.post_send); i++) {
-		if (mid2str[i]) {
+		if (mid2str(i)) {
 			seq_printf(seq, "post_send %-20s\t: %d\n",
-					mid2str[i], sdpstats.post_send[i]);
+					mid2str(i), sdpstats.post_send[i]);
 		}
 	}
 

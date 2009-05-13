@@ -55,8 +55,11 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 
 	/* Poll the CQ every SDP_TX_POLL_MODER packets */
-	if (force || (++ssk->tx_ring.poll_cnt & (SDP_TX_POLL_MODER - 1)) == 0)
+	if (force || (++ssk->tx_ring.poll_cnt & (SDP_TX_POLL_MODER - 1)) == 0) {
 		wc_processed = sdp_process_tx_cq(ssk);
+		sdp_prf(&ssk->isk.sk, NULL, "processed %d wc's. inflight=%d", wc_processed,
+				ring_posted(ssk->tx_ring));
+	}
 
 	return wc_processed;	
 }
@@ -65,24 +68,16 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 {
 	struct sdp_buf *tx_req;
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
-	unsigned mseq = ssk->tx_ring.head;
+	unsigned mseq = ring_head(ssk->tx_ring);
 	int i, rc, frags;
 	u64 addr;
 	struct ib_device *dev;
-	struct ib_sge *sge;
 	struct ib_send_wr *bad_wr;
 
-#define ENUM2STR(e) [e] = #e
-	static char *mid2str[] = {
-		ENUM2STR(SDP_MID_HELLO),
-		ENUM2STR(SDP_MID_HELLO_ACK),
-		ENUM2STR(SDP_MID_DISCONN),
-		ENUM2STR(SDP_MID_CHRCVBUF),
-		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
-		ENUM2STR(SDP_MID_DATA),
-	};
-	sdp_prf(&ssk->isk.sk, skb, "post_send mid = %s, bufs = %d",
-			mid2str[mid], ssk->rx_head - ssk->rx_tail);
+	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
+	struct ib_sge *sge = ibsge;
+	struct ib_send_wr tx_wr = { 0 };
+
 
 	SDPSTATS_COUNTER_MID_INC(post_send, mid);
 	SDPSTATS_HIST(send_size, skb->len);
@@ -93,16 +88,19 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	else
 		h->flags = 0;
 
-	h->bufs = htons(ssk->rx_head - ssk->rx_tail);
+	h->bufs = htons(ring_posted(ssk->rx_ring));
 	h->len = htonl(skb->len);
 	h->mseq = htonl(mseq);
-	h->mseq_ack = htonl(ssk->mseq_ack);
+	h->mseq_ack = htonl(mseq_ack(ssk));
+
+	sdp_prf(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%d ack:%d",
+			mid2str(mid), ring_posted(ssk->rx_ring), mseq, ntohl(h->mseq_ack));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
+
 	tx_req = &ssk->tx_ring.buffer[mseq & (SDP_TX_SIZE - 1)];
 	tx_req->skb = skb;
 	dev = ssk->ib_device;
-	sge = ssk->ibsge;
 	addr = ib_dma_map_single(dev, skb->data, skb->len - skb->data_len,
 				 DMA_TO_DEVICE);
 	tx_req->mapping[0] = addr;
@@ -127,14 +125,14 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 		sge->lkey = ssk->mr->lkey;
 	}
 
-	ssk->tx_wr.next = NULL;
-	ssk->tx_wr.wr_id = ssk->tx_ring.head | SDP_OP_SEND;
-	ssk->tx_wr.sg_list = ssk->ibsge;
-	ssk->tx_wr.num_sge = frags + 1;
-	ssk->tx_wr.opcode = IB_WR_SEND;
-	ssk->tx_wr.send_flags = IB_SEND_SIGNALED;
+	tx_wr.next = NULL;
+	tx_wr.wr_id = ring_head(ssk->tx_ring) | SDP_OP_SEND;
+	tx_wr.sg_list = ibsge;
+	tx_wr.num_sge = frags + 1;
+	tx_wr.opcode = IB_WR_SEND;
+	tx_wr.send_flags = IB_SEND_SIGNALED;
 	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
-		ssk->tx_wr.send_flags |= IB_SEND_SOLICITED;
+		tx_wr.send_flags |= IB_SEND_SOLICITED;
 	
 	{
 		static unsigned long last_send = 0;
@@ -145,18 +143,14 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 
 		last_send = jiffies;
 	}
-	rc = ib_post_send(ssk->qp, &ssk->tx_wr, &bad_wr);
-	++ssk->tx_ring.head;
-	--ssk->tx_ring.credits;
-	ssk->remote_credits = ssk->rx_head - ssk->rx_tail;
+	rc = ib_post_send(ssk->qp, &tx_wr, &bad_wr);
+	atomic_inc(&ssk->tx_ring.head);
+	atomic_dec(&ssk->tx_ring.credits);
+	atomic_set(&ssk->remote_credits, ring_posted(ssk->rx_ring));
 	if (unlikely(rc)) {
 		sdp_dbg(&ssk->isk.sk, "ib_post_send failed with status %d.\n", rc);
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
 		wake_up(&ssk->wq);
-	}
-
-	if (ssk->tx_ring.credits <= SDP_MIN_TX_CREDITS) {
-		sdp_poll_rx_cq(ssk);
 	}
 }
 
@@ -168,9 +162,9 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	struct bzcopy_state *bz;
 	int i, frags;
 	struct sdp_tx_ring *tx_ring = &ssk->tx_ring;
-	if (unlikely(mseq != tx_ring->tail)) {
+	if (unlikely(mseq != ring_tail(*tx_ring))) {
 		printk(KERN_WARNING "Bogus send completion id %d tail %d\n",
-			mseq, tx_ring->tail);
+			mseq, ring_tail(*tx_ring));
 		goto out;
 	}
 
@@ -193,7 +187,7 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	if (bz)
 		bz->busy--;
 
-	++tx_ring->tail;
+	atomic_inc(&tx_ring->tail);
 
 out:
 	return skb;
@@ -219,7 +213,11 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		}
 	}
 
-	sdp_prf(&ssk->isk.sk, skb, "tx completion");
+	{
+		struct sdp_bsdh *h = (struct sdp_bsdh *)skb->data;
+		sdp_prf(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
+	}
+
 	sk_stream_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
@@ -281,15 +279,14 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 	return wc_processed;	
 }
 
-void sdp_poll_tx_cq(unsigned long data)
+static void sdp_poll_tx_timeout(unsigned long data)
 {
 	struct sdp_sock *ssk = (struct sdp_sock *)data;
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
-
 	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
-		(u32) ssk->tx_ring.head - ssk->tx_ring.tail);
+		(u32) ring_posted(ssk->tx_ring));
 
 	/* Only process if the socket is not in use */
 	bh_lock_sock(sk);
@@ -303,12 +300,14 @@ void sdp_poll_tx_cq(unsigned long data)
 		goto out;
 
 	wc_processed = sdp_process_tx_cq(ssk);
+	sdp_prf(&ssk->isk.sk, NULL, "processed %d wc's. inflight=%d", wc_processed,
+		ring_posted(ssk->tx_ring));
 	if (!wc_processed)
 		SDPSTATS_COUNTER_INC(tx_poll_miss);
 	else
 		SDPSTATS_COUNTER_INC(tx_poll_hit);
 
-	inflight = (u32) ssk->tx_ring.head - ssk->tx_ring.tail;
+	inflight = (u32) ring_posted(ssk->tx_ring);
 
 	/* If there are still packets in flight and the timer has not already
 	 * been scheduled by the Tx routine then schedule it here to guarantee
@@ -322,17 +321,7 @@ out:
 	bh_unlock_sock(sk);
 }
 
-void _sdp_poll_tx_cq(unsigned long data)
-{
-	struct sdp_sock *ssk = (struct sdp_sock *)data;
-	struct sock *sk = &ssk->isk.sk;
-
-	sdp_prf(sk, NULL, "sdp poll tx timeout expired");
-
-	sdp_poll_tx_cq(data);
-}
-
-void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
+static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -344,11 +333,9 @@ void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 
 void sdp_tx_ring_purge(struct sdp_sock *ssk)
 {
-	struct sk_buff *skb;
-
-	while (ssk->tx_ring.head != ssk->tx_ring.tail) {
+	while (ring_posted(ssk->tx_ring)) {
 		struct sk_buff *skb;
-		skb = sdp_send_completion(ssk, ssk->tx_ring.tail);
+		skb = sdp_send_completion(ssk, ring_tail(ssk->tx_ring));
 		if (!skb)
 			break;
 		__kfree_skb(skb);
@@ -380,3 +367,66 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 	sdp_cnt(sdp_keepalive_probes_sent);
 }
 
+static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
+{
+}
+
+int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
+{
+	struct ib_cq *tx_cq;
+	int rc = 0;
+
+	atomic_set(&ssk->tx_ring.head, 1);
+	atomic_set(&ssk->tx_ring.tail, 1);
+
+	ssk->tx_ring.buffer = kmalloc(sizeof *ssk->tx_ring.buffer * SDP_TX_SIZE,
+				      GFP_KERNEL);
+	if (!ssk->tx_ring.buffer) {
+		rc = -ENOMEM;
+		sdp_warn(&ssk->isk.sk, "Unable to allocate TX Ring size %zd.\n",
+			 sizeof(*ssk->tx_ring.buffer) * SDP_TX_SIZE);
+
+		goto out;
+	}
+
+	tx_cq = ib_create_cq(device, sdp_tx_irq, sdp_tx_cq_event_handler,
+			  &ssk->isk.sk, SDP_TX_SIZE, 0);
+
+	if (IS_ERR(tx_cq)) {
+		rc = PTR_ERR(tx_cq);
+		sdp_warn(&ssk->isk.sk, "Unable to allocate TX CQ: %d.\n", rc);
+		goto err_cq;
+	}
+
+	sdp_sk(&ssk->isk.sk)->tx_ring.cq = tx_cq;
+
+	init_timer(&ssk->tx_ring.timer);
+	ssk->tx_ring.timer.function = sdp_poll_tx_timeout;
+	ssk->tx_ring.timer.data = (unsigned long) ssk;
+	ssk->tx_ring.poll_cnt = 0;
+
+	return 0;
+
+err_cq:
+	kfree(ssk->tx_ring.buffer);
+	ssk->tx_ring.buffer = NULL;
+out:
+	return rc;
+}
+
+void sdp_tx_ring_destroy(struct sdp_sock *ssk)
+{
+	if (ssk->tx_ring.buffer) {
+		sdp_tx_ring_purge(ssk);
+
+		kfree(ssk->tx_ring.buffer);
+		ssk->tx_ring.buffer = NULL;
+	}
+
+	if (ssk->tx_ring.cq) {
+		ib_destroy_cq(ssk->tx_ring.cq);
+		ssk->tx_ring.cq = NULL;
+	}
+
+	WARN_ON(ring_head(ssk->tx_ring) != ring_tail(ssk->tx_ring));
+}

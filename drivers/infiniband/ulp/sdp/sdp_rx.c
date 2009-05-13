@@ -39,7 +39,7 @@
 
 static int rcvbuf_scale = 0x10;
 
-int rcvbuf_initial_size = SDP_HEAD_SIZE;
+int rcvbuf_initial_size = 32 * 1024;
 module_param_named(rcvbuf_initial_size, rcvbuf_initial_size, int, 0644);
 MODULE_PARM_DESC(rcvbuf_initial_size, "Receive buffer initial size in bytes.");
 
@@ -149,22 +149,28 @@ static void sdp_fin(struct sock *sk)
 	}
 }
 
-
-static void sdp_post_recv(struct sdp_sock *ssk)
+/* lock_sock must be taken before calling this - since rx_ring.head is not 
+ * protected (although being atomic
+ */
+static int sdp_post_recv(struct sdp_sock *ssk)
 {
 	struct sdp_buf *rx_req;
 	int i, rc, frags;
 	u64 addr;
 	struct ib_device *dev;
-	struct ib_sge *sge;
+	struct ib_recv_wr rx_wr = { 0 };
+	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
+	struct ib_sge *sge = ibsge;
 	struct ib_recv_wr *bad_wr;
 	struct sk_buff *skb;
 	struct page *page;
 	skb_frag_t *frag;
 	struct sdp_bsdh *h;
-	int id = ssk->rx_head;
+	int id = ring_head(ssk->rx_ring);
 	gfp_t gfp_page;
+	int ret = 0;
 
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
 
@@ -194,10 +200,9 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		skb->truesize += frag->size;
 	}
 
-        rx_req = ssk->rx_ring + (id & (SDP_RX_SIZE - 1));
+        rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));
 	rx_req->skb = skb;
 	dev = ssk->ib_device;
-	sge = ssk->ibsge;
 	addr = ib_dma_map_single(dev, h, SDP_HEAD_SIZE, DMA_FROM_DEVICE);
 	BUG_ON(ib_dma_mapping_error(dev, addr));
 
@@ -221,26 +226,31 @@ static void sdp_post_recv(struct sdp_sock *ssk)
 		sge->lkey = ssk->mr->lkey;
 	}
 
-	ssk->rx_wr.next = NULL;
-	ssk->rx_wr.wr_id = id | SDP_OP_RECV;
-	ssk->rx_wr.sg_list = ssk->ibsge;
-	ssk->rx_wr.num_sge = frags + 1;
-	rc = ib_post_recv(ssk->qp, &ssk->rx_wr, &bad_wr);
-	sdp_prf(&ssk->isk.sk, skb, "rx skb was posted");
+	rx_wr.next = NULL;
+	rx_wr.wr_id = id | SDP_OP_RECV;
+	rx_wr.sg_list = ibsge;
+	rx_wr.num_sge = frags + 1;
+	rc = ib_post_recv(ssk->qp, &rx_wr, &bad_wr);
 	SDPSTATS_COUNTER_INC(post_recv);
-	++ssk->rx_head;
+	atomic_inc(&ssk->rx_ring.head);
 	if (unlikely(rc)) {
-		sdp_dbg(&ssk->isk.sk, "ib_post_recv failed with status %d\n", rc);
+		sdp_warn(&ssk->isk.sk, "ib_post_recv failed with status %d\n", rc);
 		sdp_reset(&ssk->isk.sk);
+		ret = -1;
 	}
 
 	atomic_add(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+
+	return ret;
 }
 
-void sdp_post_recvs(struct sdp_sock *ssk)
+/* lock_sock must be taken before calling this */
+static void _sdp_post_recvs(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
 	int scale = ssk->rcvbuf_scale;
+
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
 
 	if (unlikely(!ssk->id || ((1 << sk->sk_state) & 
 		(TCPF_CLOSE | TCPF_TIME_WAIT)))) {
@@ -251,12 +261,23 @@ void sdp_post_recvs(struct sdp_sock *ssk)
 	    (top_mem_usage * 0x100000) < atomic_read(&sdp_current_mem_usage) * PAGE_SIZE)
 		scale = 1;
 
-	while ((likely(ssk->rx_head - ssk->rx_tail < SDP_RX_SIZE) &&
-		(ssk->rx_head - ssk->rx_tail - SDP_MIN_TX_CREDITS) *
+	while ((likely(ring_posted(ssk->rx_ring) < SDP_RX_SIZE) &&
+		(ring_posted(ssk->rx_ring) - SDP_MIN_TX_CREDITS) *
 		(SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE) +
 		ssk->rcv_nxt - ssk->copied_seq < sk->sk_rcvbuf * scale) ||
-	       unlikely(ssk->rx_head - ssk->rx_tail < SDP_MIN_TX_CREDITS))
-		sdp_post_recv(ssk);
+	       unlikely(ring_posted(ssk->rx_ring) < SDP_MIN_TX_CREDITS)) {
+		if (sdp_post_recv(ssk))
+			break;
+	}
+}
+
+void sdp_post_recvs(struct sdp_sock *ssk)
+{
+	unsigned long flags;
+
+	rx_ring_lock(ssk, flags);
+	_sdp_post_recvs(ssk);
+	rx_ring_unlock(ssk, flags);
 }
 
 static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
@@ -328,9 +349,9 @@ int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 static void sdp_handle_resize_request(struct sdp_sock *ssk, struct sdp_chrecvbuf *buf)
 {
 	if (sdp_resize_buffers(ssk, ntohl(buf->size)) == 0)
-		ssk->recv_request_head = ssk->rx_head + 1;
+		ssk->recv_request_head = ring_head(ssk->rx_ring) + 1;
 	else
-		ssk->recv_request_head = ssk->rx_tail;
+		ssk->recv_request_head = ring_tail(ssk->rx_ring);
 	ssk->recv_request = 1;
 }
 
@@ -347,23 +368,17 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk, struct sdp_chrecvbuf *bu
 		ssk->sent_request = 0;
 }
 
-static inline int credit_update_needed(struct sdp_sock *ssk, int wc_processed)
+static inline int credit_update_needed(struct sdp_sock *ssk)
 {
 	int c;
 
-	c = ssk->remote_credits;
+	c = remote_credits(ssk);
 	if (likely(c > SDP_MIN_TX_CREDITS))
 		c += c/2;
 
-/*	sdp_warn(&ssk->isk.sk, "credits: %d remote credits: %d "
-			"tx ring slots left: %d send_head: %p\n",
-		ssk->tx_ring.credits, ssk->remote_credits,
-		sdp_tx_ring_slots_left(&ssk->tx_ring),
-		ssk->isk.sk.sk_send_head);
-*/
-	return (unlikely(c < ssk->rx_head - ssk->rx_tail + wc_processed) &&
-	    likely(ssk->tx_ring.credits > 1) &&
-	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring)));
+	return unlikely(c < ring_posted(ssk->rx_ring)) &&
+	    likely(tx_credits(ssk) > 1) &&
+	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring));
 }
 
 
@@ -374,14 +389,16 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	struct sk_buff *skb;
 	int i, frags;
 
-	if (unlikely(id != ssk->rx_tail)) {
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
+
+	if (unlikely(id != ring_tail(ssk->rx_ring))) {
 		printk(KERN_WARNING "Bogus recv completion id %d tail %d\n",
-			id, ssk->rx_tail);
+			id, ring_tail(ssk->rx_ring));
 		return NULL;
 	}
 
 	dev = ssk->ib_device;
-        rx_req = &ssk->rx_ring[id & (SDP_RX_SIZE - 1)];
+        rx_req = &ssk->rx_ring.buffer[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
 	ib_dma_unmap_single(dev, rx_req->mapping[0], SDP_HEAD_SIZE,
 			    DMA_FROM_DEVICE);
@@ -390,67 +407,20 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 		ib_dma_unmap_page(dev, rx_req->mapping[i + 1],
 				  skb_shinfo(skb)->frags[i].size,
 				  DMA_FROM_DEVICE);
-	++ssk->rx_tail;
-	--ssk->remote_credits;
+	atomic_inc(&ssk->rx_ring.tail);
+	atomic_dec(&ssk->remote_credits);
 	return skb;
 }
 
-static int sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
+/* this must be called while sock_lock is taken */
+static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	struct sock *sk = &ssk->isk.sk;
 	int frags;
-	struct sk_buff *skb;
 	struct sdp_bsdh *h;
 	int pagesz, i;
 
-	skb = sdp_recv_completion(ssk, wc->wr_id);
-	if (unlikely(!skb))
-		return -1;
-
-	sdp_prf(sk, skb, "recv completion");	
-
-	atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
-
-	if (unlikely(wc->status)) {
-		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			sdp_dbg(sk, "Recv completion with error. Status %d\n",
-				wc->status);
-			sdp_reset(sk);
-		}
-		__kfree_skb(skb);
-		return 0;
-	}
-
-	sdp_dbg_data(sk, "Recv completion. ID %d Length %d\n",
-			(int)wc->wr_id, wc->byte_len);
-	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
-		printk(KERN_WARNING "SDP BUG! byte_len %d < %zd\n",
-				wc->byte_len, sizeof(struct sdp_bsdh));
-		__kfree_skb(skb);
-		return -1;
-	}
-	skb->len = wc->byte_len;
-	if (likely(wc->byte_len > SDP_HEAD_SIZE))
-		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
-	else
-		skb->data_len = 0;
-	skb->data = skb->head;
-#ifdef NET_SKBUFF_DATA_USES_OFFSET
-	skb->tail = skb_headlen(skb);
-#else
-	skb->tail = skb->head + skb_headlen(skb);
-#endif
 	h = (struct sdp_bsdh *)skb->data;
-	SDP_DUMP_PACKET(&ssk->isk.sk, "RX", skb, h);
-	skb_reset_transport_header(skb);
-	ssk->mseq_ack = ntohl(h->mseq);
-	if (ssk->mseq_ack != (int)wc->wr_id)
-		printk(KERN_WARNING "SDP BUG! mseq %d != wrid %d\n",
-				ssk->mseq_ack, (int)wc->wr_id);
-
-	SDPSTATS_HIST_LINEAR(credits_before_update, ssk->tx_ring.credits);
-	ssk->tx_ring.credits = ntohl(h->mseq_ack) - ssk->tx_ring.head + 1 +
-		ntohs(h->bufs);
 
 	frags = skb_shinfo(skb)->nr_frags;
 	pagesz = PAGE_ALIGN(skb->data_len);
@@ -513,13 +483,105 @@ static int sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	return 0;
 }
 
-int sdp_poll_rx_cq(struct sdp_sock *ssk)
+/* called only from irq */
+static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
-	struct ib_cq *cq = ssk->rx_cq;
+	struct sk_buff *skb;
+	struct sdp_bsdh *h;
+	struct sock *sk = &ssk->isk.sk;
+	int credits_before;
+	
+	skb = sdp_recv_completion(ssk, wc->wr_id);
+	if (unlikely(!skb))
+		return NULL;
+
+	atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+
+	if (unlikely(wc->status)) {
+		if (wc->status != IB_WC_WR_FLUSH_ERR) {
+			sdp_warn(sk, "Recv completion with error. Status %d\n",
+				wc->status);
+			sdp_reset(sk);
+		}
+		__kfree_skb(skb);
+		return NULL;
+	}
+
+	sdp_dbg_data(sk, "Recv completion. ID %d Length %d\n",
+			(int)wc->wr_id, wc->byte_len);
+	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
+		printk(KERN_WARNING "SDP BUG! byte_len %d < %zd\n",
+				wc->byte_len, sizeof(struct sdp_bsdh));
+		__kfree_skb(skb);
+		return NULL;
+	}
+	skb->len = wc->byte_len;
+	if (likely(wc->byte_len > SDP_HEAD_SIZE))
+		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
+	else
+		skb->data_len = 0;
+	skb->data = skb->head;
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
+	skb->tail = skb_headlen(skb);
+#else
+	skb->tail = skb->head + skb_headlen(skb);
+#endif
+	h = (struct sdp_bsdh *)skb->data;
+	SDP_DUMP_PACKET(&ssk->isk.sk, "RX", skb, h);
+	skb_reset_transport_header(skb);
+	atomic_set(&ssk->mseq_ack, ntohl(h->mseq));
+	if (mseq_ack(ssk) != (int)wc->wr_id)
+		printk(KERN_WARNING "SDP BUG! mseq %d != wrid %d\n",
+				mseq_ack(ssk), (int)wc->wr_id);
+
+	SDPSTATS_HIST_LINEAR(credits_before_update, tx_credits(ssk));
+
+	credits_before = tx_credits(ssk);
+	atomic_set(&ssk->tx_ring.credits, ntohl(h->mseq_ack) - ring_head(ssk->tx_ring) + 1 +
+		ntohs(h->bufs));
+
+	sdp_prf(&ssk->isk.sk, skb, "RX %s bufs=%d c before:%d after:%d "
+		"mseq:%d, ack:%d", mid2str(h->mid), ntohs(h->bufs), credits_before, 
+		tx_credits(ssk), ntohl(h->mseq), ntohl(h->mseq_ack));
+
+	return skb;
+}
+
+/* like sk_stream_write_space - execpt measures remote credits */
+static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
+{
+	struct sock *sk = &ssk->isk.sk;
+	struct socket *sock = sk->sk_socket;
+
+	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
+		sdp_prf(&ssk->isk.sk, NULL, "credits: %d, min_bufs: %d. tx_head: %d, tx_tail: %d",
+				tx_credits(ssk), ssk->min_bufs,
+				ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring));
+	}
+
+	if (tx_credits(ssk) >= ssk->min_bufs &&
+	    ring_head(ssk->tx_ring) == ring_tail(ssk->tx_ring) &&
+	   sock != NULL) {
+		clear_bit(SOCK_NOSPACE, &sock->flags);
+
+		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+			wake_up_interruptible(sk->sk_sleep);
+		if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
+			sock_wake_async(sock, 2, POLL_OUT);
+	}
+}
+
+/* only from interrupt.
+ * drain rx cq into rx_backlog queue */
+static int sdp_poll_rx_cq(struct sdp_sock *ssk)
+{
+	struct ib_cq *cq = ssk->rx_ring.cq;
 	struct ib_wc ibwc[SDP_NUM_WC];
 	int n, i;
-	int ret = -EAGAIN;
 	int wc_processed = 0;
+	struct sk_buff *skb;
+
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
 
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
@@ -527,102 +589,224 @@ int sdp_poll_rx_cq(struct sdp_sock *ssk)
 			struct ib_wc *wc = &ibwc[i];
 
 			BUG_ON(!(wc->wr_id & SDP_OP_RECV));
-			sdp_process_rx_wc(ssk, wc);
+			skb = sdp_process_rx_wc(ssk, wc);
+			if (!skb)
+				continue;
+			skb_queue_tail(&ssk->rx_backlog, skb);
 			wc_processed++;
-
-			if (credit_update_needed(ssk, wc_processed)) {
-				sdp_prf(&ssk->isk.sk, NULL, "credit update. remote_credits: %d, avail now: %d processed: %d",
-						ssk->remote_credits,
-						ssk->rx_head - ssk->rx_tail,
-						wc_processed);
-				sdp_post_recvs(ssk);
-				if (sdp_post_credits(ssk))
-					wc_processed = 0;
-			}
-
-			ret = 0;
 		}
 	} while (n == SDP_NUM_WC);
 
-	if (!ret) {
-		struct sock *sk = &ssk->isk.sk;
+	if (wc_processed)
+		sdp_bzcopy_write_space(ssk);
 
-		sdp_post_recvs(ssk);
-
-		/* update credits */
-		sdp_post_sends(ssk, 0);
-
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-			sk_stream_write_space(&ssk->isk.sk);
-	} else {
-		SDPSTATS_COUNTER_INC(rx_poll_miss);
-	}
-
-	return ret;
+	return wc_processed;
 }
 
-void sdp_rx_comp_work(struct work_struct *work)
+int sdp_process_rx_q(struct sdp_sock *ssk)
+{
+	struct sk_buff *skb;
+	struct sock *sk = &ssk->isk.sk;
+	unsigned long flags;
+
+	if (!ssk->rx_backlog.next || !ssk->rx_backlog.prev) {
+		sdp_warn(&ssk->isk.sk, "polling a zeroed rx_backlog!!!! %p\n", &ssk->rx_backlog);
+		return 0;
+	}
+
+	if (skb_queue_empty(&ssk->rx_backlog)) {
+		SDPSTATS_COUNTER_INC(rx_poll_miss);
+		return -EAGAIN;
+	}
+
+	/* update credits */
+	sdp_post_sends(ssk, 0);
+
+	spin_lock_irqsave(&ssk->rx_backlog.lock, flags);
+	while ((skb = __skb_dequeue(&ssk->rx_backlog))) {
+		sdp_process_rx_skb(ssk, skb);
+	}
+	spin_unlock_irqrestore(&ssk->rx_backlog.lock, flags);
+
+	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+		sk_stream_write_space(&ssk->isk.sk);
+
+	return 0;
+}
+
+static void sdp_rx_comp_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk = container_of(work, struct sdp_sock, rx_comp_work);
 	struct sock *sk = &ssk->isk.sk;
 	struct ib_cq *rx_cq;
 
 	lock_sock(sk);
-	rx_cq = ssk->rx_cq;
+	rx_cq = ssk->rx_ring.cq;
 	if (unlikely(!rx_cq))
 		goto out;
 
 	if (unlikely(!ssk->poll_cq)) {
 		struct rdma_cm_id *id = ssk->id;
+		sdp_warn(sk, "poll cq is 0. socket was reset or wasn't initialized\n");
 		if (id && id->qp)
 			rdma_notify(id, RDMA_CM_EVENT_ESTABLISHED);
 		goto out;
 	}
 
-	sdp_poll_rx_cq(ssk);
+	sdp_process_rx_q(ssk);
 	sdp_xmit_poll(ssk,  1); /* if has pending tx because run out of tx_credits - xmit it */
 	release_sock(sk);
 	sk_stream_mem_reclaim(sk);
 	lock_sock(sk);
-	rx_cq = ssk->rx_cq;
+	rx_cq = ssk->rx_ring.cq;
 	if (unlikely(!rx_cq))
 		goto out;
 	
-	sdp_arm_rx_cq(sk);
-	sdp_poll_rx_cq(ssk);
+	sdp_process_rx_q(ssk);
 	sdp_xmit_poll(ssk,  1);
+
 out:
 	release_sock(sk);
 }
 
-void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
+static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
+	unsigned long flags;
+	int wc_processed = 0;
 
-	WARN_ON(ssk->rx_cq && cq != ssk->rx_cq);
+	sdp_dbg_data(&ssk->isk.sk, "rx irq called\n");
 
-	if (!ssk->rx_cq)
-		sdp_warn(&ssk->isk.sk, "WARNING: rx irq after cq destroyed\n");
+	WARN_ON(cq != ssk->rx_ring.cq);
 
 	SDPSTATS_COUNTER_INC(rx_int_count);
 
-	sdp_prf(sk, NULL, "rx completion");
+	sdp_prf(sk, NULL, "rx irq");
 
-	/* issue sdp_rx_comp_work() */
-	queue_work(rx_comp_wq, &ssk->rx_comp_work);
+	rx_ring_lock(ssk, flags);
+
+	if (unlikely(!ssk->poll_cq))
+		sdp_warn(sk, "poll cq is 0. socket was reset or wasn't initialized\n");
+
+	if (!ssk->rx_ring.cq) {
+		sdp_warn(&ssk->isk.sk, "WARNING: rx irq after cq destroyed\n");
+
+		goto out;
+	}
+
+	wc_processed = sdp_poll_rx_cq(ssk);
+	sdp_prf(&ssk->isk.sk, NULL, "processed %d", wc_processed);
+
+	if (wc_processed) {
+		_sdp_post_recvs(ssk);
+
+		/* Best was to send credit update from here */
+/*		sdp_post_credits(ssk); */
+
+		/* issue sdp_rx_comp_work() */
+		queue_work(rx_comp_wq, &ssk->rx_comp_work);
+	}
+
+	sdp_arm_rx_cq(sk);
+
+out:
+	rx_ring_unlock(ssk, flags);
 }
 
-void sdp_rx_ring_purge(struct sdp_sock *ssk)
+static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 {
-	struct sk_buff *skb;
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
 
-	while (ssk->rx_head != ssk->rx_tail) {
+	while (ring_posted(ssk->rx_ring) > 0) {
 		struct sk_buff *skb;
-		skb = sdp_recv_completion(ssk, ssk->rx_tail);
+		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring));
 		if (!skb)
 			break;
 		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
 		__kfree_skb(skb);
 	}
+}
+
+void sdp_rx_ring_init(struct sdp_sock *ssk)
+{
+	ssk->rx_ring.buffer = NULL;
+	spin_lock_init(&ssk->rx_ring.lock);
+}
+
+static void sdp_rx_cq_event_handler(struct ib_event *event, void *data)
+{
+}
+
+int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
+{
+	struct ib_cq *rx_cq;
+	int rc = 0;
+	unsigned long flags;
+
+	rx_ring_lock(ssk, flags);
+
+	atomic_set(&ssk->rx_ring.head, 1);
+	atomic_set(&ssk->rx_ring.tail, 1);
+
+	ssk->rx_ring.buffer = kmalloc(sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE,
+				      GFP_KERNEL);
+	if (!ssk->rx_ring.buffer) {
+		rc = -ENOMEM;
+		sdp_warn(&ssk->isk.sk, "Unable to allocate RX Ring size %zd.\n",
+			 sizeof(*ssk->rx_ring.buffer) * SDP_RX_SIZE);
+
+		goto out;
+	}
+
+	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
+			  &ssk->isk.sk, SDP_RX_SIZE, 0);
+
+	if (IS_ERR(rx_cq)) {
+		rc = PTR_ERR(rx_cq);
+		sdp_warn(&ssk->isk.sk, "Unable to allocate RX CQ: %d.\n", rc);
+		goto err_cq;
+	}
+
+	rc = ib_modify_cq(rx_cq, 10, 200);
+	if (rc) {
+		sdp_warn(&ssk->isk.sk, "Unable to modify RX CQ: %d.\n", rc);
+		goto err_mod;
+	}
+	sdp_warn(&ssk->isk.sk, "Initialized CQ moderation\n");
+	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
+
+	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
+
+	sdp_arm_rx_cq(&ssk->isk.sk);
+
+	goto out;
+
+err_mod:
+	ib_destroy_cq(rx_cq);
+err_cq:
+	kfree(ssk->rx_ring.buffer);
+	ssk->rx_ring.buffer = NULL;
+out:
+	rx_ring_unlock(ssk, flags);
+	return rc;
+}
+
+void sdp_rx_ring_destroy(struct sdp_sock *ssk)
+{
+	WARN_ON_UNLOCKED(&ssk->isk.sk, &ssk->rx_ring.lock);
+
+	if (ssk->rx_ring.buffer) {
+		sdp_rx_ring_purge(ssk);
+
+		kfree(ssk->rx_ring.buffer);
+		ssk->rx_ring.buffer = NULL;
+	}
+
+	if (ssk->rx_ring.cq) {
+		ib_destroy_cq(ssk->rx_ring.cq);
+		ssk->rx_ring.cq = NULL;
+	}
+
+	WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }

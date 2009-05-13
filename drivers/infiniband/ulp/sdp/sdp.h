@@ -7,11 +7,12 @@
 #include <net/tcp.h> /* For urgent data flags */
 #include <rdma/ib_verbs.h>
 
+#undef SDP_LOCKS_CHECK
 #define SDPSTATS_ON
-#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+#define SDP_PROFILING
 
 #define _sdp_printk(func, line, level, sk, format, arg...)                \
-	printk(level "%s:%d sdp_sock(%d %d:%d): " format,             \
+	printk(level "%s:%d sdp_sock(%5d %d:%d): " format,             \
 	       func, line, \
 	       current->pid, \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
@@ -22,6 +23,34 @@
 	sdp_printk(KERN_WARNING, sk, format , ## arg)
 
 
+#ifdef SDP_LOCKS_CHECK
+#define WARN_ON_UNLOCKED(sk, l) do {\
+	if (unlikely(!spin_is_locked(l))) { \
+		sdp_warn(sk, "lock " #l " should be locked\n"); \
+		WARN_ON(1); \
+	} \
+} while (0)
+
+#define WARN_ON_LOCKED(sk, l) do {\
+	if (unlikely(spin_is_locked(l))) { \
+		sdp_warn(sk, "lock " #l " should be unlocked\n"); \
+		WARN_ON(1); \
+	} \
+} while (0)
+#else
+#define WARN_ON_UNLOCKED(sk, l)
+#define WARN_ON_LOCKED(sk, l)
+#endif
+
+#define rx_ring_lock(ssk, f) do { \
+	spin_lock_irqsave(&ssk->rx_ring.lock, f); \
+} while (0)
+
+#define rx_ring_unlock(ssk, f) do { \
+	spin_unlock_irqrestore(&ssk->rx_ring.lock, f); \
+} while (0)
+
+#ifdef SDP_PROFILING
 struct sk_buff;
 struct sdpprf_log {
 	int 		idx;
@@ -37,7 +66,7 @@ struct sdpprf_log {
 	int 		line;
 };
 
-#define SDPPRF_LOG_SIZE 0x10000 /* must be a power of 2 */
+#define SDPPRF_LOG_SIZE 0x20000 /* must be a power of 2 */
 
 extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 extern int sdpprf_log_count;
@@ -48,7 +77,6 @@ static inline unsigned long long current_nsec(void)
 	getnstimeofday(&tv);
 	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
 }
-#if 1
 #define sdp_prf(sk, s, format, arg...) ({ \
 	struct sdpprf_log *l = &sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
 	l->idx = sdpprf_log_count - 1; \
@@ -64,16 +92,6 @@ static inline unsigned long long current_nsec(void)
 })
 #else
 #define sdp_prf(sk, s, format, arg...)
-#endif
-
-#if 0
-#if 1
-#define sdp_prf_rx(sk, s, format, arg...) sdp_prf(sk, s, format, ## arg)
-#define sdp_prf_tx(sk, s, format, arg...)
-#else
-#define sdp_prf_rx(sk, s, format, arg...)
-#define sdp_prf_tx(sk, s, format, arg...) sdp_prf(sk, s, format, ## arg)
-#endif
 #endif
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
@@ -125,7 +143,6 @@ extern int sdp_data_debug_level;
 	} while (0)
 #else
 #define sdp_dbg_data(priv, format, arg...)
-//	do { (void) (priv); } while (0)
 #define SDP_DUMP_PACKET(sk, str, skb, h)
 #endif
 
@@ -300,23 +317,36 @@ struct sdp_buf {
         u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
 };
 
+#define ring_head(ring)   (atomic_read(&(ring).head))
+#define ring_tail(ring)   (atomic_read(&(ring).tail))
+#define ring_posted(ring) (ring_head(ring) - ring_tail(ring))
 
 struct sdp_tx_ring {
 	struct sdp_buf   *buffer;
-	unsigned          head;
-	unsigned          tail;
+	atomic_t          head;
+	atomic_t          tail;
+	struct ib_cq 	 *cq;
 
 	int 		  una_seq;
-	unsigned 	  credits;
+	atomic_t 	  credits;
+#define tx_credits(ssk) (atomic_read(&ssk->tx_ring.credits))
 
 	struct timer_list timer;
 	u16 		  poll_cnt;
+};
+
+struct sdp_rx_ring {
+	struct sdp_buf   *buffer;
+	atomic_t          head;
+	atomic_t          tail;
 	struct ib_cq 	 *cq;
+
+	spinlock_t 	 lock;
 };
 
 static inline int sdp_tx_ring_slots_left(struct sdp_tx_ring *tx_ring)
 {
-	return SDP_TX_SIZE - (tx_ring->head - tx_ring->tail);
+	return SDP_TX_SIZE - ring_posted(*tx_ring);
 }
 
 struct sdp_chrecvbuf {
@@ -329,6 +359,7 @@ struct sdp_sock {
 	struct list_head sock_list;
 	struct list_head accept_queue;
 	struct list_head backlog_queue;
+	struct sk_buff_head rx_backlog;
 	struct sock *parent;
 
 	struct work_struct rx_comp_work;
@@ -362,31 +393,26 @@ struct sdp_sock {
 	int sdp_disconnect;
 	int destruct_in_process;
 
-	
+	struct sdp_rx_ring rx_ring;
+	struct sdp_tx_ring tx_ring;
 
 	/* Data below will be reset on error */
 	struct rdma_cm_id *id;
 	struct ib_device *ib_device;
 
 	/* SDP specific */
-	struct ib_recv_wr rx_wr;
-	unsigned rx_head;
-	unsigned rx_tail;
-	unsigned mseq_ack;
+	atomic_t mseq_ack;
+#define mseq_ack(ssk) (atomic_read(&ssk->mseq_ack))
 	unsigned max_bufs;	/* Initial buffers offered by other side */
 	unsigned min_bufs;	/* Low water mark to wake senders */
 
-	int               remote_credits;
+	atomic_t               remote_credits;
+#define remote_credits(ssk) (atomic_read(&ssk->remote_credits))
 	int 		  poll_cq;
 
 	/* rdma specific */
 	struct ib_qp *qp;
-	struct ib_cq *rx_cq;
 	struct ib_mr *mr;
-
-	struct sdp_buf *rx_ring;
-	struct sdp_tx_ring tx_ring;
-	struct ib_send_wr tx_wr;
 
 	/* SDP slow start */
 	int rcvbuf_scale; 	/* local recv buf scale for each socket */
@@ -402,8 +428,6 @@ struct sdp_sock {
 
 	/* BZCOPY data */
 	int   zcopy_thresh;
-
-	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 };
 
 /* Context used for synchronous zero copy bcopy (BZCOY) */
@@ -499,13 +523,6 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	sk->sk_error_report(sk);
 }
 
-static inline void sdp_arm_rx_cq(struct sock *sk)
-{
-	sdp_dbg_data(sk, "ib_req_notify_cq on RX cq\n");
-	
-	ib_req_notify_cq(sdp_sk(sk)->rx_cq, IB_CQ_NEXT_COMP);
-}
-
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 		struct sk_buff *skb, const struct sdp_bsdh *h);
@@ -524,28 +541,53 @@ void sdp_remove_sock(struct sdp_sock *ssk);
 void sdp_remove_large_sock(struct sdp_sock *ssk);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 void sdp_start_keepalive_timer(struct sock *sk);
-void sdp_bzcopy_write_space(struct sdp_sock *ssk);
 int sdp_init_sock(struct sock *sk);
 int __init sdp_proc_init(void);
 void sdp_proc_unregister(void);
 
+/* sdp_tx.c */
+int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
+void sdp_tx_ring_destroy(struct sdp_sock *ssk);
 int sdp_xmit_poll(struct sdp_sock *ssk, int force);
-void sdp_tx_ring_purge(struct sdp_sock *ssk);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
 #define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
-void sdp_process_tx_wc_work(struct work_struct *work);
-void sdp_poll_tx_cq(unsigned long data);
-void _sdp_poll_tx_cq(unsigned long data);
-void sdp_tx_irq(struct ib_cq *cq, void *cq_context);
 
+/* sdp_rx.c */
+void sdp_rx_ring_init(struct sdp_sock *ssk);
+int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
+void sdp_rx_ring_destroy(struct sdp_sock *ssk);
+int sdp_process_rx_q(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
-void sdp_rx_ring_purge(struct sdp_sock *ssk);
 void sdp_post_recvs(struct sdp_sock *ssk);
-void sdp_rx_comp_work(struct work_struct *work);
-int sdp_poll_rx_cq(struct sdp_sock *ssk);
-void sdp_rx_irq(struct ib_cq *cq, void *cq_context);
+
+static inline void sdp_arm_rx_cq(struct sock *sk)
+{
+	sdp_prf(sk, NULL, "Arming RX cq");
+	sdp_dbg_data(sk, "Arming RX cq\n");
+	
+	ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq, IB_CQ_NEXT_COMP);
+}
+
+/* utilities */
+static inline char *mid2str(int mid)
+{
+#define ENUM2STR(e) [e] = #e
+	static char *mid2str[] = {
+		ENUM2STR(SDP_MID_HELLO),
+		ENUM2STR(SDP_MID_HELLO_ACK),
+		ENUM2STR(SDP_MID_DISCONN),
+		ENUM2STR(SDP_MID_CHRCVBUF),
+		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
+		ENUM2STR(SDP_MID_DATA),
+	};
+
+	if (mid >= ARRAY_SIZE(mid2str))
+		return NULL;
+
+	return mid2str[mid];
+}
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
 {
