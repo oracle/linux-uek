@@ -83,7 +83,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	SDPSTATS_HIST(send_size, skb->len);
 
 	h->mid = mid;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
+	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
 		h->flags = 0;
@@ -131,7 +131,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	tx_wr.num_sge = frags + 1;
 	tx_wr.opcode = IB_WR_SEND;
 	tx_wr.send_flags = IB_SEND_SIGNALED;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_URG))
+	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
 	
 	{
@@ -218,7 +218,7 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		sdp_prf(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
 	}
 
-	sk_stream_free_skb(&ssk->isk.sk, skb);
+	sk_wmem_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
 }

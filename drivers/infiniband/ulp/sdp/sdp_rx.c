@@ -135,7 +135,7 @@ static void sdp_fin(struct sock *sk)
 	}
 
 
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 
 	if (!sock_flag(sk, SOCK_DEAD)) {
 		sk->sk_state_change(sk);
@@ -175,11 +175,11 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	/* TODO: allocate from cache */
 
 	if (unlikely(ssk->isk.sk.sk_allocation)) {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
 					  ssk->isk.sk.sk_allocation);
 		gfp_page = ssk->isk.sk.sk_allocation | __GFP_HIGHMEM;
 	} else {
-		skb = sk_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
 					  GFP_KERNEL);
 		gfp_page = GFP_HIGHUSER;
 	}
@@ -656,7 +656,7 @@ static void sdp_rx_comp_work(struct work_struct *work)
 	sdp_process_rx_q(ssk);
 	sdp_xmit_poll(ssk,  1); /* if has pending tx because run out of tx_credits - xmit it */
 	release_sock(sk);
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 	lock_sock(sk);
 	rx_cq = ssk->rx_ring.cq;
 	if (unlikely(!rx_cq))

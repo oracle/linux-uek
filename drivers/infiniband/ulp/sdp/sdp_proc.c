@@ -311,17 +311,18 @@ unsigned long long start_t = 0;
 static int sdpprf_show(struct seq_file *m, void *v)
 {
 	struct sdpprf_log *l = v;
-	char ts[TIMESTAMP_SIZE];
+	unsigned long nsec_rem, t;
 
 	if (!sdpprf_log_count) {
 		seq_printf(m, "No performance logs\n");
 		goto out;
 	}
 
-	nsec_to_timestamp(ts, l->time - start_t);
+	t = l->time - start_t;
+	nsec_rem = do_div(t, 1000000000);
 
-	seq_printf(m, "%-6d: %s %-50s - [%d %d:%d] skb: %p %s:%d\n",
-			l->idx, ts,
+	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d %d:%d] skb: %p %s:%d\n",
+			l->idx, (unsigned long)t, nsec_rem/1000,
 			l->msg, l->pid, l->sk_num, l->sk_dport,
 			l->skb, l->func, l->line);
 out:
@@ -420,23 +421,23 @@ int __init sdp_proc_init(void)
 	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
 	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
 
-	p = proc_net_fops_create(sdp_seq_afinfo.name, S_IRUGO,
+	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
 				 sdp_seq_afinfo.seq_fops);
 	if (p)
 		p->data = &sdp_seq_afinfo;
 	else
-		goto no_mem;;
+		goto no_mem;
 
 #ifdef SDPSTATS_ON
 
- 	sdpstats = proc_net_fops_create(PROC_SDP_STATS,
+ 	sdpstats = proc_net_fops_create(&init_net, PROC_SDP_STATS,
 			S_IRUGO | S_IWUGO, &sdpstats_fops); 
 	if (!sdpstats)
-		goto no_mem;;
+		goto no_mem;
 
 #endif
 
- 	sdpprf = proc_net_fops_create(PROC_SDP_PERF,
+ 	sdpprf = proc_net_fops_create(&init_net, PROC_SDP_PERF,
 			S_IRUGO | S_IWUGO, &sdpprf_fops); 
 	if (!sdpprf)
 		goto no_mem;
@@ -444,26 +445,26 @@ int __init sdp_proc_init(void)
 	return 0;
 no_mem:
 	if (sdpprf)
-		proc_net_remove(PROC_SDP_PERF);
+		proc_net_remove(&init_net, PROC_SDP_PERF);
 
 	if (sdpstats)
-		proc_net_remove(PROC_SDP_STATS);
+		proc_net_remove(&init_net, PROC_SDP_STATS);
 
 	if (p)
-		proc_net_remove(sdp_seq_afinfo.name);
+		proc_net_remove(&init_net, sdp_seq_afinfo.name);
 
 	return -ENOMEM;
 }
 
 void sdp_proc_unregister(void)
 {
-	proc_net_remove(sdp_seq_afinfo.name);
+	proc_net_remove(&init_net, sdp_seq_afinfo.name);
 	memset(sdp_seq_afinfo.seq_fops, 0, sizeof(*sdp_seq_afinfo.seq_fops));
 
 #ifdef SDPSTATS_ON
-	proc_net_remove(PROC_SDP_STATS);
+	proc_net_remove(&init_net, PROC_SDP_STATS);
 #endif
-	proc_net_remove(PROC_SDP_PERF);
+	proc_net_remove(&init_net, PROC_SDP_PERF);
 }
 
 #else /* CONFIG_PROC_FS */
