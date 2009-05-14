@@ -490,6 +490,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	struct sdp_bsdh *h;
 	struct sock *sk = &ssk->isk.sk;
 	int credits_before;
+	unsigned long mseq_ack;
 	
 	skb = sdp_recv_completion(ssk, wc->wr_id);
 	if (unlikely(!skb))
@@ -536,9 +537,12 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 
 	SDPSTATS_HIST_LINEAR(credits_before_update, tx_credits(ssk));
 
+	mseq_ack = ntohl(h->mseq_ack);
 	credits_before = tx_credits(ssk);
-	atomic_set(&ssk->tx_ring.credits, ntohl(h->mseq_ack) - ring_head(ssk->tx_ring) + 1 +
+	atomic_set(&ssk->tx_ring.credits, mseq_ack - ring_head(ssk->tx_ring) + 1 +
 		ntohs(h->bufs));
+	if (mseq_ack >= ssk->nagle_last_unacked)
+		ssk->nagle_last_unacked = 0;
 
 	sdp_prf(&ssk->isk.sk, skb, "RX %s bufs=%d c before:%d after:%d "
 		"mseq:%d, ack:%d", mid2str(h->mid), ntohs(h->bufs), credits_before, 

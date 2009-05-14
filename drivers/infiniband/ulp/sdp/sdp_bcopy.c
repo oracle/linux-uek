@@ -105,12 +105,54 @@ static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 
 static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 {
-	return (ssk->nonagle & TCP_NAGLE_OFF) ||
+	int send_now =
+		 (ssk->nonagle & TCP_NAGLE_OFF) ||
+		!ssk->nagle_last_unacked ||
 		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
 		skb->len + sizeof(struct sdp_bsdh) >= ssk->xmit_size_goal ||
-		(ring_tail(ssk->tx_ring) == ring_head(ssk->tx_ring) &&
-		 !(ssk->nonagle & TCP_NAGLE_CORK)) ||
 		(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
+
+	if (send_now) {
+		unsigned long mseq = ring_head(ssk->tx_ring);
+		ssk->nagle_last_unacked = mseq;
+
+		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
+		sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
+	}
+	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %ld\n",
+		send_now, ssk->nagle_last_unacked);
+	
+	return send_now;
+}
+
+void sdp_nagle_timeout(unsigned long data)
+{
+	struct sdp_sock *ssk = (struct sdp_sock *)data;
+	struct sock *sk = &ssk->isk.sk;
+
+	sdp_dbg_data(&ssk->isk.sk, "last_unacked = %ld\n", ssk->nagle_last_unacked);
+
+	if (!ssk->nagle_last_unacked)
+		return;
+
+	/* Only process if the socket is not in use */
+	bh_lock_sock(sk);
+	if (sock_owned_by_user(sk)) {
+		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
+		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
+		goto out;
+	}
+
+	if (sk->sk_state == TCP_CLOSE)
+		goto out;
+
+	ssk->nagle_last_unacked = 0;
+	sdp_post_sends(ssk, 0);
+
+	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+		sk_stream_write_space(&ssk->isk.sk);
+out:
+	bh_unlock_sock(sk);
 }
 
 int sdp_post_credits(struct sdp_sock *ssk)

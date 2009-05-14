@@ -213,6 +213,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
 #define SDP_TX_POLL_MODER	16
 #define SDP_TX_POLL_TIMEOUT	(HZ / 4)
+#define SDP_NAGLE_TIMEOUT (HZ / 10) 
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -406,6 +407,9 @@ struct sdp_sock {
 	unsigned max_bufs;	/* Initial buffers offered by other side */
 	unsigned min_bufs;	/* Low water mark to wake senders */
 
+	unsigned long nagle_last_unacked; /* mseq of lastest unacked packet */
+	struct timer_list nagle_timer; /* timeout waiting for ack */
+
 	atomic_t               remote_credits;
 #define remote_credits(ssk) (atomic_read(&ssk->remote_credits))
 	int 		  poll_cq;
@@ -552,6 +556,7 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
 #define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
+void sdp_nagle_timeout(unsigned long data);
 
 /* sdp_rx.c */
 void sdp_rx_ring_init(struct sdp_sock *ssk);

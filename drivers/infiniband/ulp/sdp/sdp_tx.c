@@ -68,7 +68,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 {
 	struct sdp_buf *tx_req;
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
-	unsigned mseq = ring_head(ssk->tx_ring);
+	unsigned long mseq = ring_head(ssk->tx_ring);
 	int i, rc, frags;
 	u64 addr;
 	struct ib_device *dev;
@@ -77,7 +77,6 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_sge *sge = ibsge;
 	struct ib_send_wr tx_wr = { 0 };
-
 
 	SDPSTATS_COUNTER_MID_INC(post_send, mid);
 	SDPSTATS_HIST(send_size, skb->len);
@@ -93,7 +92,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	h->mseq = htonl(mseq);
 	h->mseq_ack = htonl(mseq_ack(ssk));
 
-	sdp_prf(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%d ack:%d",
+	sdp_prf(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
 			mid2str(mid), ring_posted(ssk->rx_ring), mseq, ntohl(h->mseq_ack));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
@@ -405,6 +404,10 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	ssk->tx_ring.timer.data = (unsigned long) ssk;
 	ssk->tx_ring.poll_cnt = 0;
 
+	init_timer(&ssk->nagle_timer);
+	ssk->nagle_timer.function = sdp_nagle_timeout;
+	ssk->nagle_timer.data = (unsigned long) ssk;
+
 	return 0;
 
 err_cq:
@@ -416,6 +419,8 @@ out:
 
 void sdp_tx_ring_destroy(struct sdp_sock *ssk)
 {
+	del_timer(&ssk->nagle_timer);
+
 	if (ssk->tx_ring.buffer) {
 		sdp_tx_ring_purge(ssk);
 
