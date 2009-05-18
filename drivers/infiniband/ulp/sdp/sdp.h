@@ -515,7 +515,6 @@ static inline void sdp_set_error(struct sock *sk, int err)
 	int ib_teardown_states = TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT
 		| TCPF_LAST_ACK;
 	sk->sk_err = -err;
-	dump_stack();
 	if (sk->sk_socket)
 		sk->sk_socket->state = SS_DISCONNECTING;
 
