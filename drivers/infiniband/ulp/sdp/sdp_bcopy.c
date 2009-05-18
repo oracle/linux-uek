@@ -106,6 +106,7 @@ static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	int send_now =
+		BZCOPY_STATE(skb) ||
 		 (ssk->nonagle & TCP_NAGLE_OFF) ||
 		!ssk->nagle_last_unacked ||
 		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
