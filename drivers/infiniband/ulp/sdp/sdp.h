@@ -6,15 +6,22 @@
 #include <net/inet_sock.h>
 #include <net/tcp.h> /* For urgent data flags */
 #include <rdma/ib_verbs.h>
+#include <linux/sched.h>
 
-#undef SDP_LOCKS_CHECK
+#undef SDPSTATS_ON
+#undef SDP_PROFILING
+#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+#undef CONFIG_INFINIBAND_SDP_DEBUG
+
 #define SDPSTATS_ON
 #define SDP_PROFILING
+#define CONFIG_INFINIBAND_SDP_DEBUG_DATA
+#define CONFIG_INFINIBAND_SDP_DEBUG
 
 #define _sdp_printk(func, line, level, sk, format, arg...)                \
-	printk(level "%s:%d sdp_sock(%5d %d:%d): " format,             \
+	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
 	       func, line, \
-	       current->pid, \
+	       current->pid, smp_processor_id(), \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
 	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg)
 #define sdp_printk(level, sk, format, arg...)                \
@@ -22,25 +29,6 @@
 #define sdp_warn(sk, format, arg...)                         \
 	sdp_printk(KERN_WARNING, sk, format , ## arg)
 
-
-#ifdef SDP_LOCKS_CHECK
-#define WARN_ON_UNLOCKED(sk, l) do {\
-	if (unlikely(!spin_is_locked(l))) { \
-		sdp_warn(sk, "lock " #l " should be locked\n"); \
-		WARN_ON(1); \
-	} \
-} while (0)
-
-#define WARN_ON_LOCKED(sk, l) do {\
-	if (unlikely(spin_is_locked(l))) { \
-		sdp_warn(sk, "lock " #l " should be unlocked\n"); \
-		WARN_ON(1); \
-	} \
-} while (0)
-#else
-#define WARN_ON_UNLOCKED(sk, l)
-#define WARN_ON_LOCKED(sk, l)
-#endif
 
 #define rx_ring_lock(ssk, f) do { \
 	spin_lock_irqsave(&ssk->rx_ring.lock, f); \
@@ -55,6 +43,7 @@ struct sk_buff;
 struct sdpprf_log {
 	int 		idx;
 	int 		pid;
+	int 		cpu;
 	int 		sk_num;
 	int 		sk_dport;
 	struct sk_buff 	*skb;
@@ -83,6 +72,7 @@ static inline unsigned long long current_nsec(void)
 	l->pid = current->pid; \
 	l->sk_num = (sk) ? inet_sk(sk)->num : -1;                 \
 	l->sk_dport = (sk) ? ntohs(inet_sk(sk)->dport) : -1; \
+	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
 	l->time = current_nsec(); \
@@ -360,7 +350,7 @@ struct sdp_sock {
 	struct list_head sock_list;
 	struct list_head accept_queue;
 	struct list_head backlog_queue;
-	struct sk_buff_head rx_backlog;
+	struct sk_buff_head rx_ctl_q;
 	struct sock *parent;
 
 	struct work_struct rx_comp_work;
@@ -373,7 +363,8 @@ struct sdp_sock {
 	u16 urg_data;
 	u32 urg_seq;
 	u32 copied_seq;
-	u32 rcv_nxt;
+#define rcv_nxt(ssk) atomic_read(&(ssk->rcv_nxt))
+	atomic_t rcv_nxt;
 
 	int write_seq;
 	int pushed_seq;
@@ -561,10 +552,10 @@ void sdp_nagle_timeout(unsigned long data);
 void sdp_rx_ring_init(struct sdp_sock *ssk);
 int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_rx_ring_destroy(struct sdp_sock *ssk);
-int sdp_process_rx_q(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
-void sdp_post_recvs(struct sdp_sock *ssk);
+void sdp_schedule_post_recvs(struct sdp_sock *ssk);
+void sdp_rx_comp_full(struct sdp_sock *ssk);
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {

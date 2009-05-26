@@ -157,7 +157,8 @@ void sdp_nagle_timeout(unsigned long data)
 out:
 	bh_unlock_sock(sk);
 out2:
-	mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
+	if (sk->sk_send_head) /* If has pending sends - rearm */
+		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
 }
 
 int sdp_post_credits(struct sdp_sock *ssk)

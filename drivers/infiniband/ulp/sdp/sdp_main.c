@@ -325,8 +325,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	read_lock(&device_removal_lock);
 
-	sdp_process_rx_q(ssk);
-
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
@@ -505,7 +503,7 @@ static void sdp_close(struct sock *sk, long timeout)
 	 *  descriptor close, not protocol-sourced closes, because the
 	 *  reader process may not have drained the data yet!
 	 */
-	while ((skb = __skb_dequeue(&sk->sk_receive_queue)) != NULL) {
+	while ((skb = skb_dequeue(&sk->sk_receive_queue)) != NULL) {
 		data_was_unread = 1;
 		__kfree_skb(skb);
 	}
@@ -696,13 +694,9 @@ static int sdp_wait_for_connect(struct sock *sk, long timeo)
 					  TASK_INTERRUPTIBLE);
 		release_sock(sk);
 		if (list_empty(&ssk->accept_queue)) {
-			sdp_dbg(sk, "%s schedule_timeout\n", __func__);
 			timeo = schedule_timeout(timeo);
-			sdp_dbg(sk, "%s schedule_timeout done\n", __func__);
 		}
-		sdp_dbg(sk, "%s lock_sock\n", __func__);
 		lock_sock(sk);
-		sdp_dbg(sk, "%s lock_sock done\n", __func__);
 		err = 0;
 		if (!list_empty(&ssk->accept_queue))
 			break;
@@ -800,8 +794,8 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 		else if (sock_flag(sk, SOCK_URGINLINE) ||
 			 !ssk->urg_data ||
 			 before(ssk->urg_seq, ssk->copied_seq) ||
-			 !before(ssk->urg_seq, ssk->rcv_nxt)) {
-			answ = ssk->rcv_nxt - ssk->copied_seq;
+			 !before(ssk->urg_seq, rcv_nxt(ssk))) {
+			answ = rcv_nxt(ssk) - ssk->copied_seq;
 
 			/* Subtract 1, if FIN is in queue. */
 			if (answ && !skb_queue_empty(&sk->sk_receive_queue))
@@ -925,7 +919,7 @@ int sdp_init_sock(struct sock *sk)
 
 	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
 
-	skb_queue_head_init(&ssk->rx_backlog);
+	skb_queue_head_init(&ssk->rx_ctl_q);
 
 	atomic_set(&ssk->mseq_ack, 0);
 
@@ -1138,7 +1132,7 @@ static inline int poll_recv_cq(struct sock *sk)
 {
 	int i;
 	for (i = 0; i < recv_poll; ++i) {
-		if (!sdp_process_rx_q(sdp_sk(sk))) {
+		if (!skb_queue_empty(&sk->sk_receive_queue)) {
 			++recv_poll_hit;
 			return 0;
 		}
@@ -1212,12 +1206,6 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 	 * Mike <pall@rz.uni-karlsruhe.de>
 	 */
 	return -EAGAIN;
-}
-
-static void sdp_rcv_space_adjust(struct sock *sk)
-{
-	sdp_post_recvs(sdp_sk(sk));
-	sdp_post_sends(sdp_sk(sk), 0);
 }
 
 static unsigned int sdp_current_mss(struct sock *sk, int large_allowed)
@@ -1875,7 +1863,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
 
-//	sdp_prf(sk, skb, "Read from user");
+	sdp_prf(sk, skb, "Read from user");
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -1912,12 +1900,12 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (!skb)
 				break;
 
-			if ((skb_transport_header(skb))[0] == SDP_MID_DISCONN)
-				goto found_fin_ok;
+			BUG_ON((skb_transport_header(skb))[0] != SDP_MID_DATA);
 
 			if (before(*seq, TCP_SKB_CB(skb)->seq)) {
-				printk(KERN_INFO "recvmsg bug: copied %X "
-				       "seq %X\n", *seq, TCP_SKB_CB(skb)->seq);
+				sdp_warn(sk, "recvmsg bug: copied %X seq %X\n",
+					*seq, TCP_SKB_CB(skb)->seq);
+				sdp_reset(sk);
 				break;
 			}
 
@@ -2034,7 +2022,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		sdp_dbg_data(sk, "%s: done copied %d target %d\n", __func__, copied, target);
 
-		sdp_rcv_space_adjust(sk);
+		sdp_schedule_post_recvs(sdp_sk(sk));
 skip_copy:
 		if (ssk->urg_data && after(ssk->copied_seq, ssk->urg_seq))
 			ssk->urg_data = 0;
@@ -2042,21 +2030,13 @@ skip_copy:
 			continue;
 		offset = 0;
 
-		if (!(flags & MSG_PEEK))
-			sk_eat_skb(sk, skb, 0);
-
-		continue;
-found_fin_ok:
-		++*seq;
-		if (!(flags & MSG_PEEK))
-			sk_eat_skb(sk, skb, 0);
-
-		break;
+		if (!(flags & MSG_PEEK)) {
+			skb_unlink(skb, &sk->sk_receive_queue);
+			__kfree_skb(skb);
+		}
 	} while (len > 0);
 
-	release_sock(sk);
-	return copied;
-
+	err = copied;
 out:
 	release_sock(sk);
 	return err;

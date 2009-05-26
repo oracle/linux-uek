@@ -288,15 +288,13 @@ static int sdp_disconnected_handler(struct sock *sk)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sdp_process_rx_q(ssk);
-
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
 	if (sk->sk_state == TCP_SYN_RECV) {
 		sdp_connected_handler(sk, NULL);
 
-		if (ssk->rcv_nxt)
+		if (rcv_nxt(ssk))
 			return 0;
 	}
 

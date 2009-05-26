@@ -287,15 +287,19 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
 		(u32) ring_posted(ssk->tx_ring));
 
+	sdp_prf(&ssk->isk.sk, NULL, "%s. inflight=%d", __func__,
+		(u32) ring_posted(ssk->tx_ring));
+
 	/* Only process if the socket is not in use */
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
+		SDPSTATS_COUNTER_INC(tx_poll_busy);
 		goto out;
 	}
 
-	if (sk->sk_state == TCP_CLOSE)
+	if (unlikely(sk->sk_state == TCP_CLOSE))
 		goto out;
 
 	wc_processed = sdp_process_tx_cq(ssk);

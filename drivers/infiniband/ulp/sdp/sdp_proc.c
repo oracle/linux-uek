@@ -39,9 +39,6 @@
 #define PROC_SDP_STATS "sdpstats"
 #define PROC_SDP_PERF "sdpprf"
 
-struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
-int sdpprf_log_count = 0;
-
 /* just like TCP fs */
 struct sdp_seq_afinfo {
 	struct module           *owner;
@@ -56,9 +53,6 @@ struct sdp_iter_state {
 	int                     num;
 	struct seq_operations   seq_ops;
 };
-
-//struct sdpprf sdpprf = { { 0 } };
-
 
 static void *sdp_get_idx(struct seq_file *seq, loff_t pos)
 {
@@ -148,7 +142,7 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	srcp = ntohs(inet_sk(sk)->sport);
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
-	rx_queue = sdp_sk(sk)->rcv_nxt - sdp_sk(sk)->copied_seq;
+	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
 	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
 
 	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
@@ -273,6 +267,7 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 
 	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", sdpstats.rx_poll_miss);
 	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", sdpstats.tx_poll_miss);
+	seq_printf(seq, "tx_poll_busy      \t\t: %d\n", sdpstats.tx_poll_busy);
 	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", sdpstats.tx_poll_hit);
 
 	seq_printf(seq, "CQ stats:\n");
@@ -306,6 +301,10 @@ static struct file_operations sdpstats_fops = {
 
 #endif
 
+#ifdef SDP_PROFILING
+struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
+int sdpprf_log_count = 0;
+
 unsigned long long start_t = 0;
 
 static int sdpprf_show(struct seq_file *m, void *v)
@@ -321,9 +320,9 @@ static int sdpprf_show(struct seq_file *m, void *v)
 	t = l->time - start_t;
 	nsec_rem = do_div(t, 1000000000);
 
-	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d %d:%d] skb: %p %s:%d\n",
+	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d{%d} %d:%d] skb: %p %s:%d\n",
 			l->idx, (unsigned long)t, nsec_rem/1000,
-			l->msg, l->pid, l->sk_num, l->sk_dport,
+			l->msg, l->pid, l->cpu, l->sk_num, l->sk_dport,
 			l->skb, l->func, l->line);
 out:
         return 0;
@@ -408,6 +407,7 @@ static struct file_operations sdpprf_fops = {
         .release        = seq_release,
 	.write		= sdpprf_write,
 };
+#endif /* SDP_PROFILING */
 
 int __init sdp_proc_init(void)
 {
@@ -437,10 +437,12 @@ int __init sdp_proc_init(void)
 
 #endif
 
+#ifdef SDP_PROFILING
  	sdpprf = proc_net_fops_create(&init_net, PROC_SDP_PERF,
 			S_IRUGO | S_IWUGO, &sdpprf_fops); 
 	if (!sdpprf)
 		goto no_mem;
+#endif
 
 	return 0;
 no_mem:
@@ -464,7 +466,9 @@ void sdp_proc_unregister(void)
 #ifdef SDPSTATS_ON
 	proc_net_remove(&init_net, PROC_SDP_STATS);
 #endif
+#ifdef SDP_PROFILING
 	proc_net_remove(&init_net, PROC_SDP_PERF);
+#endif
 }
 
 #else /* CONFIG_PROC_FS */
