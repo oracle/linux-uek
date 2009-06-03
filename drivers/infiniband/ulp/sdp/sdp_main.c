@@ -210,6 +210,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 
 	sdp_dbg(&ssk->isk.sk, "destroying qp\n");
+	sdp_prf(&ssk->isk.sk, NULL, "destroying qp");
 
 	del_timer(&ssk->tx_ring.timer);
 
@@ -291,7 +292,7 @@ out:
 	sock_put(sk, SOCK_REF_BORN);
 }
 
-static void sdp_init_timer(struct sock *sk)
+static void sdp_init_keepalive_timer(struct sock *sk)
 {
 	init_timer(&sk->sk_timer);
 
@@ -930,6 +931,8 @@ int sdp_init_sock(struct sock *sk)
 	ssk->destruct_in_process = 0;
 	spin_lock_init(&ssk->lock);
 
+	atomic_set(&ssk->somebody_is_doing_posts, 0);
+
 	return 0;
 }
 
@@ -967,7 +970,7 @@ static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	TCP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
 	ssk->pushed_seq = ssk->write_seq;
-	sdp_post_sends(ssk, 0);
+	sdp_do_posts(ssk);
 }
 
 static inline void sdp_push_pending_frames(struct sock *sk)
@@ -975,7 +978,6 @@ static inline void sdp_push_pending_frames(struct sock *sk)
 	struct sk_buff *skb = sk->sk_send_head;
 	if (skb) {
 		sdp_mark_push(sdp_sk(sk), skb);
-		sdp_post_sends(sdp_sk(sk), 0);
 	}
 }
 
@@ -1208,23 +1210,6 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 	return -EAGAIN;
 }
 
-static unsigned int sdp_current_mss(struct sock *sk, int large_allowed)
-{
-	/* TODO */
-	return PAGE_SIZE;
-}
-
-static int forced_push(struct sdp_sock *sk)
-{
-	/* TODO */
-	return 0;
-}
-
-static inline int select_size(struct sock *sk, struct sdp_sock *ssk)
-{
-	return 0;
-}
-
 static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk, int flags)
 {
 	if (unlikely(flags & MSG_OOB)) {
@@ -1233,12 +1218,11 @@ static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk, int flags
 	}
 }
 
-static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags,
-			    int mss_now, int nonagle)
+static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags)
 {
 	if (sk->sk_send_head)
 		sdp_mark_urg(sk, ssk, flags);
-	sdp_post_sends(ssk, nonagle);
+	sdp_do_posts(sdp_sk(sk));
 }
 
 static inline void skb_entail(struct sock *sk, struct sdp_sock *ssk,
@@ -1252,10 +1236,6 @@ static inline void skb_entail(struct sock *sk, struct sdp_sock *ssk,
                 sk->sk_send_head = skb;
         if (ssk->nonagle & TCP_NAGLE_PUSH)
                 ssk->nonagle &= ~TCP_NAGLE_PUSH;
-}
-
-static void sdp_push_one(struct sock *sk, unsigned int mss_now)
-{
 }
 
 static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
@@ -1375,7 +1355,6 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	return bz;
 }
 
-
 #define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
 #define TCP_OFF(sk)	(sk->sk_sndmsg_off)
 static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
@@ -1467,7 +1446,6 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 	return copy;
 }
-
 
 static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 				 unsigned char __user *from, int copy,
@@ -1585,17 +1563,23 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 
 		clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
+		posts_handler_put(ssk);
+
 		if (sdp_bzcopy_slots_avail(ssk, bz))
 			break;
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
-		sdp_prf(sk, NULL, "credits: %d, head: %d, tail: %d, busy: %d",
+		sdp_prf1(sk, NULL, "credits: %d, head: %d, tail: %d, busy: %d",
 				tx_credits(ssk), ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring),
 				bz->busy);
 		sk_wait_event(sk, &current_timeo,
 			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
 		sk->sk_write_pending--;
+		sdp_prf1(sk, NULL, "finished wait for mem");
+
+		posts_handler_get(ssk);
+		sdp_do_posts(ssk);
 
 		if (vm_wait) {
 			vm_wait -= current_timeo;
@@ -1621,13 +1605,15 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sk_buff *skb;
 	int iovlen, flags;
-	int mss_now, size_goal;
+	int size_goal;
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
 	SDPSTATS_COUNTER_INC(sendmsg);
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
+
+	posts_handler_get(ssk);
 
 	flags = msg->msg_flags;
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);
@@ -1640,7 +1626,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	/* This should be in poll */
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
-	mss_now = sdp_current_mss(sk, !(flags&MSG_OOB));
 	size_goal = ssk->xmit_size_goal;
 
 	/* Ok commence sending. */
@@ -1697,12 +1682,9 @@ new_segment:
 						goto wait_for_sndbuf;
 				}
 
-				skb = sdp_stream_alloc_skb(sk, select_size(sk, ssk),
-							   sk->sk_allocation);
+				skb = sdp_stream_alloc_skb(sk, 0, sk->sk_allocation);
 				if (!skb)
 					goto wait_for_memory;
-
-//				sdp_prf(sk, skb, "Created");
 
 				BZCOPY_STATE(skb) = bz;
 
@@ -1718,7 +1700,6 @@ new_segment:
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
 			} else {
-//				sdp_prf(sk, skb, "adding %d bytes", copy);
 				sdp_dbg_data(sk, "adding to existing skb: %p"
 					" len = %d, sk_send_head: %p copy: %d\n",
 					skb, skb->len, sk->sk_send_head, copy);
@@ -1761,15 +1742,8 @@ new_segment:
 			if ((seglen -= copy) == 0 && iovlen == 0)
 				goto out;
 
-			if (skb->len < mss_now || (flags & MSG_OOB))
+			if (skb->len < PAGE_SIZE || (flags & MSG_OOB))
 				continue;
-
-			if (forced_push(ssk)) {
-				sdp_mark_push(ssk, skb);
-				/* TODO: and push pending frames mss_now */
-				/* sdp_push_pending(sk, ssk, mss_now, TCP_NAGLE_PUSH); */
-			} else if (skb == sk->sk_send_head)
-				sdp_push_one(sk, mss_now);
 			continue;
 
 wait_for_sndbuf:
@@ -1778,24 +1752,32 @@ wait_for_memory:
 			sdp_prf(sk, skb, "wait for mem");
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
-				sdp_push(sk, ssk, flags & ~MSG_MORE, PAGE_SIZE, TCP_NAGLE_PUSH);
+				sdp_push(sk, ssk, flags & ~MSG_MORE);
 
 			sdp_xmit_poll(ssk, 1);
 
-			err = (bz) ? sdp_bzcopy_wait_memory(ssk, &timeo, bz) :
-				     sk_stream_wait_memory(sk, &timeo);
-			sdp_prf(sk, skb, "finished wait for mem. err: %d", err);
+			if (bz) {
+				err = sdp_bzcopy_wait_memory(ssk, &timeo, bz);
+			} else {
+				posts_handler_put(ssk);
+
+				err = sk_stream_wait_memory(sk, &timeo);
+
+				sdp_prf1(sk, skb, "finished wait for mem. err: %d", err);
+				posts_handler_get(ssk);
+				sdp_do_posts(ssk);
+			}
+
 			if (err)
 				goto do_error;
 
-			mss_now = sdp_current_mss(sk, !(flags&MSG_OOB));
 			size_goal = ssk->xmit_size_goal;
 		}
 	}
 
 out:
 	if (copied) {
-		sdp_push(sk, ssk, flags, mss_now, ssk->nonagle);
+		sdp_push(sk, ssk, flags);
 
 		if (bz)
 			bz = sdp_bz_cleanup(bz);
@@ -1803,6 +1785,8 @@ out:
 			if (size > send_poll_thresh)
 				poll_send_cq(sk);
 	}
+
+	posts_handler_put(ssk);
 
 	release_sock(sk);
 	return copied;
@@ -1824,6 +1808,9 @@ out_err:
 	if (bz)
 		bz = sdp_bz_cleanup(bz);
 	err = sk_stream_error(sk, flags, err);
+
+	posts_handler_put(ssk);
+
 	release_sock(sk);
 	return err;
 }
@@ -1863,6 +1850,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
 
+	posts_handler_get(ssk);
+
 	sdp_prf(sk, skb, "Read from user");
 
 	err = -ENOTCONN;
@@ -1900,7 +1889,10 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (!skb)
 				break;
 
-			BUG_ON((skb_transport_header(skb))[0] != SDP_MID_DATA);
+			if ((skb_transport_header(skb))[0] == SDP_MID_DISCONN) {
+				sdp_prf(sk, NULL, "Got DISCONN skb - killing it");
+				goto found_fin_ok;
+			}
 
 			if (before(*seq, TCP_SKB_CB(skb)->seq)) {
 				sdp_warn(sk, "recvmsg bug: copied %X seq %X\n",
@@ -1970,7 +1962,17 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			lock_sock(sk);
 		} else if (rc) {
 			sdp_dbg_data(sk, "%s: sk_wait_data %ld\n", __func__, timeo);
+			sdp_prf(sk, NULL, "waiting for data");
+
+			posts_handler_put(ssk);
+
+			/* socket lock is released inside sk_wait_data */
 			sk_wait_data(sk, &timeo);
+
+			posts_handler_get(ssk);
+			sdp_prf(sk, NULL, "got data");
+
+			sdp_do_posts(ssk);
 		}
 		continue;
 
@@ -2022,7 +2024,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		sdp_dbg_data(sk, "%s: done copied %d target %d\n", __func__, copied, target);
 
-		sdp_schedule_post_recvs(sdp_sk(sk));
+		sdp_do_posts(sdp_sk(sk));
 skip_copy:
 		if (ssk->urg_data && after(ssk->copied_seq, ssk->urg_seq))
 			ssk->urg_data = 0;
@@ -2034,10 +2036,22 @@ skip_copy:
 			skb_unlink(skb, &sk->sk_receive_queue);
 			__kfree_skb(skb);
 		}
+		continue;
+found_fin_ok:
+		++*seq;
+		if (!(flags & MSG_PEEK)) {
+			skb_unlink(skb, &sk->sk_receive_queue);
+			__kfree_skb(skb);
+		}
+		break;
+		
 	} while (len > 0);
 
 	err = copied;
 out:
+
+	posts_handler_put(ssk);
+
 	release_sock(sk);
 	return err;
 
@@ -2257,7 +2271,7 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 
 	sk->sk_destruct = sdp_destruct;
 
-	sdp_init_timer(sk);
+	sdp_init_keepalive_timer(sk);
 
 	sock->ops = &sdp_proto_ops;
 	sock->state = SS_UNCONNECTED;

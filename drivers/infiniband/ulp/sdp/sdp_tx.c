@@ -92,7 +92,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	h->mseq = htonl(mseq);
 	h->mseq_ack = htonl(mseq_ack(ssk));
 
-	sdp_prf(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
+	sdp_prf1(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
 			mid2str(mid), ring_posted(ssk->rx_ring), mseq, ntohl(h->mseq_ack));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
@@ -214,7 +214,7 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 
 	{
 		struct sdp_bsdh *h = (struct sdp_bsdh *)skb->data;
-		sdp_prf(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
+		sdp_prf1(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
 	}
 
 	sk_wmem_free_skb(&ssk->isk.sk, skb);
@@ -272,7 +272,6 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 
 		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
 			sk_stream_write_space(&ssk->isk.sk);
-
 	}
 
 	return wc_processed;	

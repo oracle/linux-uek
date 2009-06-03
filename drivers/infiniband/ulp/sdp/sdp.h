@@ -29,7 +29,6 @@
 #define sdp_warn(sk, format, arg...)                         \
 	sdp_printk(KERN_WARNING, sk, format , ## arg)
 
-
 #define rx_ring_lock(ssk, f) do { \
 	spin_lock_irqsave(&ssk->rx_ring.lock, f); \
 } while (0)
@@ -66,7 +65,7 @@ static inline unsigned long long current_nsec(void)
 	getnstimeofday(&tv);
 	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
 }
-#define sdp_prf(sk, s, format, arg...) ({ \
+#define sdp_prf1(sk, s, format, arg...) ({ \
 	struct sdpprf_log *l = &sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
 	l->idx = sdpprf_log_count - 1; \
 	l->pid = current->pid; \
@@ -80,7 +79,11 @@ static inline unsigned long long current_nsec(void)
 	l->line = __LINE__; \
 	1; \
 })
+#define sdp_prf(sk, s, format, arg...)
+//#define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg)
+
 #else
+#define sdp_prf1(sk, s, format, arg...)
 #define sdp_prf(sk, s, format, arg...)
 #endif
 
@@ -156,6 +159,7 @@ struct sdpstats {
 	u32 rx_poll_miss;
 	u32 tx_poll_miss;
 	u32 tx_poll_hit;
+	u32 tx_poll_busy;
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 send_interval[25];
@@ -344,6 +348,21 @@ struct sdp_chrecvbuf {
 	u32 size;
 };
 
+#define posts_handler(ssk) ({\
+	atomic_read(&ssk->somebody_is_doing_posts); \
+})
+
+#define posts_handler_get(ssk) ({\
+	sdp_prf(&ssk->isk.sk, NULL, "posts handler get. %d", posts_handler(ssk)); \
+	atomic_inc(&ssk->somebody_is_doing_posts); \
+})
+
+#define posts_handler_put(ssk) ({\
+	sdp_prf(&ssk->isk.sk, NULL, "posts handler put. %d", posts_handler(ssk)); \
+	atomic_dec(&ssk->somebody_is_doing_posts); \
+	sdp_do_posts(ssk); \
+})
+
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
@@ -358,6 +377,8 @@ struct sdp_sock {
 
 	struct delayed_work dreq_wait_work;
 	struct work_struct destroy_work;
+
+	atomic_t somebody_is_doing_posts;
 
 	/* Like tcp_sock */
 	u16 urg_data;
@@ -554,7 +575,7 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_rx_ring_destroy(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
-void sdp_schedule_post_recvs(struct sdp_sock *ssk);
+void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
