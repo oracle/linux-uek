@@ -91,16 +91,6 @@ module_param_named(data_debug_level, sdp_data_debug_level, int, 0644);
 MODULE_PARM_DESC(data_debug_level, "Enable data path debug tracing if > 0.");
 #endif
 
-static int send_poll_hit;
-
-module_param_named(send_poll_hit, send_poll_hit, int, 0644);
-MODULE_PARM_DESC(send_poll_hit, "How many times send poll helped.");
-
-static int send_poll_miss;
-
-module_param_named(send_poll_miss, send_poll_miss, int, 0644);
-MODULE_PARM_DESC(send_poll_miss, "How many times send poll missed.");
-
 static int recv_poll_hit;
 
 module_param_named(recv_poll_hit, recv_poll_hit, int, 0644);
@@ -111,20 +101,10 @@ static int recv_poll_miss;
 module_param_named(recv_poll_miss, recv_poll_miss, int, 0644);
 MODULE_PARM_DESC(recv_poll_miss, "How many times recv poll missed.");
 
-static int send_poll = 100;
-
-module_param_named(send_poll, send_poll, int, 0644);
-MODULE_PARM_DESC(send_poll, "How many times to poll send.");
-
 static int recv_poll = 1000;
 
 module_param_named(recv_poll, recv_poll, int, 0644);
 MODULE_PARM_DESC(recv_poll, "How many times to poll recv.");
-
-static int send_poll_thresh = 8192;
-
-module_param_named(send_poll_thresh, send_poll_thresh, int, 0644);
-MODULE_PARM_DESC(send_poll_thresh, "Send message size thresh hold over which to start polling.");
 
 static unsigned int sdp_keepalive_time = SDP_KEEPALIVE_TIME;
 
@@ -1143,19 +1123,6 @@ static inline int poll_recv_cq(struct sock *sk)
 	return 1;
 }
 
-static inline void poll_send_cq(struct sock *sk)
-{
-	int i;
-	if (sdp_sk(sk)->tx_ring.cq) {
-		for (i = 0; i < send_poll; ++i)
-			if (sdp_xmit_poll(sdp_sk(sk), 1)) {
-				++send_poll_hit;
-				return;
-			}
-		++send_poll_miss;
-	}
-}
-
 /* Like tcp_recv_urg */
 /*
  *	Handle reading urgent data. BSD has very simple semantics for
@@ -1240,19 +1207,18 @@ static inline void skb_entail(struct sock *sk, struct sdp_sock *ssk,
 
 static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 {
-	int i, max_retry;
+	int i;
 	struct sdp_sock *ssk = (struct sdp_sock *)bz->ssk;
 
 	/* Wait for in-flight sends; should be quick */
 	if (bz->busy) {
 		struct sock *sk = &ssk->isk.sk;
+		unsigned long timeout = jiffies + SDP_BZCOPY_POLL_TIMEOUT;
 
-		for (max_retry = 0; max_retry < 10000; max_retry++) {
-			poll_send_cq(sk);
-
+		while (jiffies < timeout) {
+			sdp_xmit_poll(sdp_sk(sk), 1);
 			if (!bz->busy)
 				break;
-
 			SDPSTATS_COUNTER_INC(bzcopy_poll_miss);
 		}
 

@@ -10,8 +10,8 @@
 
 #undef SDPSTATS_ON
 #undef SDP_PROFILING
-#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
-#undef CONFIG_INFINIBAND_SDP_DEBUG
+//#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
+//#undef CONFIG_INFINIBAND_SDP_DEBUG
 
 #define SDPSTATS_ON
 //#define SDP_PROFILING
@@ -234,6 +234,9 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
+
+/* how long (in jiffies) to block sender till tx completion*/
+#define SDP_BZCOPY_POLL_TIMEOUT (HZ / 10)
 
 #define BZCOPY_STATE(skb) (*(struct bzcopy_state **)(skb->cb))
 #ifndef MIN
