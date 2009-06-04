@@ -116,10 +116,11 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 	if (send_now) {
 		unsigned long mseq = ring_head(ssk->tx_ring);
 		ssk->nagle_last_unacked = mseq;
-
-		if (!timer_pending(&ssk->nagle_timer))
+	} else {
+		if (!timer_pending(&ssk->nagle_timer)) {
 			mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
-		sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
+			sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
+		}
 	}
 	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %ld\n",
 		send_now, ssk->nagle_last_unacked);
