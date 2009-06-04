@@ -1507,7 +1507,11 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 	return copy;
 }
 
-static inline int slots_free(struct sdp_sock *ssk)
+/* return the min of:
+ * - tx credits
+ * - free slots in tx_ring (not including SDP_MIN_TX_CREDITS
+ */
+static inline int tx_slots_free(struct sdp_sock *ssk)
 {
 	int min_free;
 
@@ -1523,7 +1527,7 @@ static inline int slots_free(struct sdp_sock *ssk)
 static inline int sdp_bzcopy_slots_avail(struct sdp_sock *ssk,
 					 struct bzcopy_state *bz)
 {
-	return slots_free(ssk) > bz->busy;
+	return tx_slots_free(ssk) > bz->busy;
 }
 
 /* like sk_stream_wait_memory - except waits on remote credits */
@@ -1573,6 +1577,11 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 		sdp_prf1(sk, NULL, "credits: %d, head: %d, tail: %d, busy: %d",
 				tx_credits(ssk), ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring),
 				bz->busy);
+
+		if (tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+			sdp_arm_tx_cq(sk);
+		}
+
 		sk_wait_event(sk, &current_timeo,
 			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
 		sk->sk_write_pending--;
@@ -1596,6 +1605,9 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 	return err;
 }
 
+//#undef rdtscll
+//#define rdtscll(x) ({ x = current_nsec(); })
+
 /* Like tcp_sendmsg */
 /* TODO: check locking */
 static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
@@ -1609,9 +1621,13 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
+	unsigned long long a, b, c;
+	unsigned long long start, end;
 	SDPSTATS_COUNTER_INC(sendmsg);
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
+
+	rdtscll(start);
 
 	posts_handler_get(ssk);
 
@@ -1649,9 +1665,14 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
+		rdtscll(a);
 		if (bz)
 			sdp_bz_cleanup(bz);
+		rdtscll(b);
 		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
+		rdtscll(c);
+		SDPSTATS_COUNTER_ADD(bz_clean_sum, b - a);
+		SDPSTATS_COUNTER_ADD(bz_setup_sum, c - b);
 		if (IS_ERR(bz)) {
 			bz = NULL;
 			err = PTR_ERR(bz);
@@ -1703,7 +1724,6 @@ new_segment:
 				sdp_dbg_data(sk, "adding to existing skb: %p"
 					" len = %d, sk_send_head: %p copy: %d\n",
 					skb, skb->len, sk->sk_send_head, copy);
-			
 			}
 
 			/* Try to append data to the end of skb. */
@@ -1718,8 +1738,12 @@ new_segment:
 				goto new_segment;
 			}
 
+			rdtscll(a);
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);
+			rdtscll(b);
+			if (copy > 0)
+				SDPSTATS_COUNTER_ADD(tx_copy_sum, b - a);
 			if (unlikely(copy < 0)) {
 				if (!++copy)
 					goto wait_for_memory;
@@ -1760,6 +1784,11 @@ wait_for_memory:
 				err = sdp_bzcopy_wait_memory(ssk, &timeo, bz);
 			} else {
 				posts_handler_put(ssk);
+				sdp_prf1(sk, NULL, "wait for mem. credits: %d, head: %d, tail: %d",
+						tx_credits(ssk), ring_head(ssk->tx_ring),
+						ring_tail(ssk->tx_ring));
+
+				sdp_arm_tx_cq(sk);
 
 				err = sk_stream_wait_memory(sk, &timeo);
 
@@ -1781,13 +1810,12 @@ out:
 
 		if (bz)
 			bz = sdp_bz_cleanup(bz);
-		else
-			if (size > send_poll_thresh)
-				poll_send_cq(sk);
 	}
 
 	posts_handler_put(ssk);
 
+	rdtscll(end);
+	SDPSTATS_COUNTER_ADD(sendmsg_sum, end - start);
 	release_sock(sk);
 	return copied;
 
@@ -2033,6 +2061,10 @@ skip_copy:
 		offset = 0;
 
 		if (!(flags & MSG_PEEK)) {
+			struct sdp_bsdh *h;
+			h = (struct sdp_bsdh *)skb_transport_header(skb);
+			sdp_prf1(sk, skb, "READ finished. mseq: %d mseq_ack:%d",
+				ntohl(h->mseq), ntohl(h->mseq_ack));
 			skb_unlink(skb, &sk->sk_receive_queue);
 			__kfree_skb(skb);
 		}
@@ -2143,7 +2175,7 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
        /*
         * Adjust for memory in later kernels
         */
-       if (!sk_stream_memory_free(sk) || !slots_free(ssk))
+       if (!sk_stream_memory_free(sk) || !tx_slots_free(ssk))
                mask &= ~(POLLOUT | POLLWRNORM | POLLWRBAND);
 
 	/* TODO: Slightly ugly: it would be nicer if there was function

@@ -45,9 +45,11 @@ MODULE_PARM_DESC(sdp_keepalive_probes_sent, "Total number of keepalive probes se
 
 static int sdp_process_tx_cq(struct sdp_sock *ssk);
 
-int sdp_xmit_poll(struct sdp_sock *ssk, int force)
+int _sdp_xmit_poll(const char *func, int line, struct sdp_sock *ssk, int force)
 {
 	int wc_processed = 0;
+
+	sdp_prf(&ssk->isk.sk, NULL, "called from %s:%d", func, line);
 
 	/* If we don't have a pending timer, set one up to catch our recent
 	   post in case the interface becomes idle */
@@ -328,9 +330,9 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_warn(sk, "Got tx comp interrupt\n");
+	sdp_prf1(sk, NULL, "Got tx comp interrupt");
 
-	mod_timer(&ssk->tx_ring.timer, jiffies + 1);
+	mod_timer(&ssk->tx_ring.timer, jiffies);
 }
 
 void sdp_tx_ring_purge(struct sdp_sock *ssk)

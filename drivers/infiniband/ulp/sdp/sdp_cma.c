@@ -62,9 +62,9 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	struct ib_qp_init_attr qp_init_attr = {
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
-		.cap.max_send_sge = SDP_MAX_SEND_SKB_FRAGS + 1, /* TODO */
+		.cap.max_send_sge = SDP_MAX_SEND_SKB_FRAGS,
 		.cap.max_recv_wr = SDP_RX_SIZE,
-		.cap.max_recv_sge = SDP_MAX_SEND_SKB_FRAGS + 1, /* TODO */
+		.cap.max_recv_sge = SDP_MAX_RECV_SKB_FRAGS + 1,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
         	.qp_type = IB_QPT_RC,
 	};
@@ -170,7 +170,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
-		PAGE_SIZE;
+		PAGE_SIZE + 1; /* The +1 is to conpensate on not aligned buffers */
         sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
 	
 	sdp_dbg(child, "%s recv_frags: %d tx credits %d xmit_size_goal %d send trigger %d\n",
@@ -215,10 +215,9 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->max_bufs = ntohs(h->bsdh.bufs);
 	atomic_set(&sdp_sk(sk)->tx_ring.credits, sdp_sk(sk)->max_bufs);
 	sdp_sk(sk)->min_bufs = tx_credits(sdp_sk(sk)) / 4;
-	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) -
-		sizeof(struct sdp_bsdh);
+	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) - SDP_HEAD_SIZE;
 	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
-		PAGE_SIZE, SDP_MAX_SEND_SKB_FRAGS);
+		PAGE_SIZE, MAX_SKB_FRAGS) + 1; /* The +1 is to conpensate on not aligned buffers */
 	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
 		sdp_sk(sk)->send_frags * PAGE_SIZE);
 

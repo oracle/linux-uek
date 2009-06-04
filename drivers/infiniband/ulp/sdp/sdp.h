@@ -14,9 +14,9 @@
 #undef CONFIG_INFINIBAND_SDP_DEBUG
 
 #define SDPSTATS_ON
-#define SDP_PROFILING
-#define CONFIG_INFINIBAND_SDP_DEBUG_DATA
-#define CONFIG_INFINIBAND_SDP_DEBUG
+//#define SDP_PROFILING
+//#define CONFIG_INFINIBAND_SDP_DEBUG_DATA
+//#define CONFIG_INFINIBAND_SDP_DEBUG
 
 #define _sdp_printk(func, line, level, sk, format, arg...)                \
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
@@ -163,6 +163,11 @@ struct sdpstats {
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 send_interval[25];
+
+	u32 bz_clean_sum;
+	u32 bz_setup_sum;
+	u32 tx_copy_sum;
+	u32 sendmsg_sum;
 };
 extern struct sdpstats sdpstats;
 
@@ -218,7 +223,8 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
 
-#define SDP_MAX_SEND_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
+#define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
+#define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
 #define SDP_NUM_WC 4
 #define SDP_MAX_PAYLOAD ((1 << 16) - SDP_HEAD_SIZE)
@@ -563,7 +569,8 @@ void sdp_proc_unregister(void);
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
-int sdp_xmit_poll(struct sdp_sock *ssk, int force);
+int _sdp_xmit_poll(const char *func, int line, struct sdp_sock *ssk, int force);
+#define sdp_xmit_poll(ssk, force) _sdp_xmit_poll(__func__, __LINE__, ssk, force)
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
 void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
 #define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
@@ -584,6 +591,15 @@ static inline void sdp_arm_rx_cq(struct sock *sk)
 	sdp_dbg_data(sk, "Arming RX cq\n");
 	
 	ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq, IB_CQ_NEXT_COMP);
+}
+
+static inline void sdp_arm_tx_cq(struct sock *sk)
+{
+	sdp_prf(sk, NULL, "Arming TX cq");
+	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
+			tx_credits(sdp_sk(sk)), ring_posted(sdp_sk(sk)->tx_ring));
+	
+	ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq, IB_CQ_NEXT_COMP);
 }
 
 /* utilities */

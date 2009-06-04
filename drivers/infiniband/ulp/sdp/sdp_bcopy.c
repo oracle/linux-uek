@@ -269,7 +269,7 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
-		ssk->sent_request = SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
+		ssk->sent_request = (SDP_MAX_SEND_SKB_FRAGS-1) * PAGE_SIZE;
 		ssk->sent_request_head = ring_head(ssk->tx_ring);
 		req_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *req_size);
 		req_size->size = htonl(ssk->sent_request);

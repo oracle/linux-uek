@@ -164,7 +164,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	u64 addr;
 	struct ib_device *dev;
 	struct ib_recv_wr rx_wr = { 0 };
-	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
+	struct ib_sge ibsge[SDP_MAX_RECV_SKB_FRAGS + 1];
 	struct ib_sge *sge = ibsge;
 	struct ib_recv_wr *bad_wr;
 	struct sk_buff *skb;
@@ -248,7 +248,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	}
 
 	SDPSTATS_COUNTER_INC(post_recv);
-	atomic_add(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+	atomic_add(ssk->recv_frags, &sdp_current_mem_usage);
 
 	return ret;
 }
@@ -326,8 +326,8 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 {
 	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
-	if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
-		ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+	if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
+		ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
 	ssk->rcvbuf_scale = rcvbuf_scale;
 
 	sdp_post_recvs(ssk);
@@ -342,19 +342,19 @@ int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 	/* for huge PAGE_SIZE systems, aka IA64, limit buffers size
 	   [re-]negotiation to a known+working size that will not
 	   trigger a HW error/rc to be interpreted as a IB_WC_LOC_LEN_ERR */
-	u32 max_size = (SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE) <=
+	u32 max_size = (SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE) <=
 		32784 ?
-		(SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE): 32784;
+		(SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE): 32784;
 #else 
-	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_SEND_SKB_FRAGS * PAGE_SIZE;
+	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE;
 #endif
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
 		ssk->rcvbuf_scale = rcvbuf_scale;
 		ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
-		if (ssk->recv_frags > SDP_MAX_SEND_SKB_FRAGS)
-			ssk->recv_frags = SDP_MAX_SEND_SKB_FRAGS;
+		if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
+			ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
 		return 0;
 	} else
 		return -1;
@@ -377,7 +377,7 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk, struct sdp_chrecvbuf *bu
 		ssk->sent_request = -1;
 		ssk->xmit_size_goal = new_size;
 		ssk->send_frags =
-			PAGE_ALIGN(ssk->xmit_size_goal) / PAGE_SIZE;
+			PAGE_ALIGN(ssk->xmit_size_goal) / PAGE_SIZE + 1;
 	} else
 		ssk->sent_request = 0;
 }
@@ -545,7 +545,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	if (unlikely(!skb))
 		return NULL;
 
-	atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+	atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
 
 	if (unlikely(wc->status)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
@@ -779,7 +779,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring));
 		if (!skb)
 			break;
-		atomic_sub(SDP_MAX_SEND_SKB_FRAGS, &sdp_current_mem_usage);
+		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
 		__kfree_skb(skb);
 	}
 }
