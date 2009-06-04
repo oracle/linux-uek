@@ -205,6 +205,8 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 	if (unlikely(wc->status)) {
 		if (wc->status != IB_WC_WR_FLUSH_ERR) {
 			struct sock *sk = &ssk->isk.sk;
+			sdp_prf(sk, skb, "Send completion with error. "
+				"Status %d", wc->status);
 			sdp_warn(sk, "Send completion with error. "
 				"Status %d\n", wc->status);
 			sdp_set_error(sk, -ECONNRESET);

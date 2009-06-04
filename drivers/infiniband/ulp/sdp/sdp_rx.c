@@ -753,8 +753,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 				credits_before, tx_credits(ssk));
 
 		if (posts_handler(ssk) || 
-			(!skb_queue_empty(&ssk->rx_ctl_q) &&
-			(sk->sk_socket && (sk->sk_socket->flags & SOCK_ASYNC_WAITDATA)))) {
+			(sk->sk_socket && test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags))) {
 
 			sdp_prf(&ssk->isk.sk, NULL, "Somebody is doing the post work for me. %d",
 				posts_handler(ssk));

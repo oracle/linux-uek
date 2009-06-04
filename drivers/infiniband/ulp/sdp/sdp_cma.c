@@ -215,7 +215,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->max_bufs = ntohs(h->bsdh.bufs);
 	atomic_set(&sdp_sk(sk)->tx_ring.credits, sdp_sk(sk)->max_bufs);
 	sdp_sk(sk)->min_bufs = tx_credits(sdp_sk(sk)) / 4;
-	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) - SDP_HEAD_SIZE;
+	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) - sizeof(struct sdp_bsdh);
 	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
 		PAGE_SIZE, MAX_SKB_FRAGS) + 1; /* The +1 is to conpensate on not aligned buffers */
 	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
@@ -352,7 +352,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
-						       PAGE_SIZE + SDP_HEAD_SIZE);
+						       PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
@@ -385,7 +385,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
 					    but just in case */
-		hah.actrcvsz = htonl(sdp_sk(child)->recv_frags * PAGE_SIZE + SDP_HEAD_SIZE);
+		hah.actrcvsz = htonl(sdp_sk(child)->recv_frags * PAGE_SIZE +
+			sizeof(struct sdp_bsdh));
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hah;
 		conn_param.private_data = &hah;
