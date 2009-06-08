@@ -79,41 +79,33 @@ MODULE_DESCRIPTION("InfiniBand SDP module");
 MODULE_LICENSE("Dual BSD/GPL");
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
-int sdp_debug_level;
-
-module_param_named(debug_level, sdp_debug_level, int, 0644);
-MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0.");
+SDP_MODPARAM_INT(sdp_debug_level, 0, "Enable debug tracing if > 0.");
 #endif
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
-int sdp_data_debug_level;
-
-module_param_named(data_debug_level, sdp_data_debug_level, int, 0644);
-MODULE_PARM_DESC(data_debug_level, "Enable data path debug tracing if > 0.");
+SDP_MODPARAM_INT(sdp_data_debug_level, 0, "Enable data path debug tracing if > 0.");
 #endif
 
-static int recv_poll_hit;
+SDP_MODPARAM_SINT(recv_poll_hit, -1, "How many times recv poll helped.");
+SDP_MODPARAM_SINT(recv_poll_miss, -1, "How many times recv poll missed.");
+SDP_MODPARAM_SINT(recv_poll, 1000, "How many times to poll recv.");
+SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME, 
+	"Default idle time in seconds before keepalive probe sent.");
+SDP_MODPARAM_SINT(sdp_zcopy_thresh, 65536, "Zero copy send threshold; 0=0ff.");
 
-module_param_named(recv_poll_hit, recv_poll_hit, int, 0644);
-MODULE_PARM_DESC(recv_poll_hit, "How many times recv poll helped.");
+#define SDP_RX_COAL_TIME_HIGH 128
+SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
+	"Target number of bytes to coalesce with interrupt moderation (bytes).");
+SDP_MODPARAM_SINT(sdp_rx_coal_time, 0x10, "rx coal time (jiffies).");
+SDP_MODPARAM_SINT(sdp_rx_rate_low, 80000, "rx_rate low (packets/sec).");
+SDP_MODPARAM_SINT(sdp_rx_coal_time_low, 0, "low moderation time val (usec).");
+SDP_MODPARAM_SINT(sdp_rx_rate_high, 100000, "rx_rate high (packets/sec).");
+SDP_MODPARAM_SINT(sdp_rx_coal_time_high, 128, "high moderation time val (usec).");
+SDP_MODPARAM_SINT(sdp_rx_rate_thresh, (200000 / SDP_RX_COAL_TIME_HIGH),
+	"rx rate thresh ().");
+SDP_MODPARAM_SINT(sdp_sample_interval, (HZ / 4), "sample interval (jiffies).");
 
-static int recv_poll_miss;
-
-module_param_named(recv_poll_miss, recv_poll_miss, int, 0644);
-MODULE_PARM_DESC(recv_poll_miss, "How many times recv poll missed.");
-
-static int recv_poll = 1000;
-
-module_param_named(recv_poll, recv_poll, int, 0644);
-MODULE_PARM_DESC(recv_poll, "How many times to poll recv.");
-
-static unsigned int sdp_keepalive_time = SDP_KEEPALIVE_TIME;
-
-module_param_named(sdp_keepalive_time, sdp_keepalive_time, uint, 0644);
-MODULE_PARM_DESC(sdp_keepalive_time, "Default idle time in seconds before keepalive probe sent.");
-
-static int sdp_zcopy_thresh = 65536;
-module_param_named(sdp_zcopy_thresh, sdp_zcopy_thresh, int, 0644);
-MODULE_PARM_DESC(sdp_zcopy_thresh, "Zero copy send threshold; 0=0ff.");
+SDP_MODPARAM_INT(hw_int_mod_count, -1, "forced hw int moderation val. -1 for auto (packets).");
+SDP_MODPARAM_INT(hw_int_mod_usec, -1, "forced hw int moderation val. -1 for auto (usec).");
 
 struct workqueue_struct *sdp_wq;
 struct workqueue_struct *rx_comp_wq;
@@ -296,6 +288,135 @@ static void sdp_set_keepalive(struct sock *sk, int val)
 void sdp_start_keepalive_timer(struct sock *sk)
 {
 	sdp_reset_keepalive_timer(sk, sdp_keepalive_time_when(sdp_sk(sk)));
+}
+
+void sdp_set_default_moderation(struct sdp_sock *ssk)
+{
+	struct sdp_moderation *mod = &ssk->auto_mod;
+	int rx_buf_size;
+
+	if (hw_int_mod_count > -1 || hw_int_mod_usec > -1) {
+		int err;
+
+		mod->adaptive_rx_coal = 0;
+
+		if (hw_int_mod_count > 0 && hw_int_mod_usec > 0) {
+			err = ib_modify_cq(ssk->rx_ring.cq, hw_int_mod_count, hw_int_mod_usec);
+			if (err)
+				sdp_warn(&ssk->isk.sk, "Failed modifying moderation for cq");
+			else 
+				sdp_dbg(&ssk->isk.sk, "Using fixed interrupt moderation\n");
+		}
+		return;
+	}
+
+	mod->adaptive_rx_coal = 1;
+	sdp_dbg(&ssk->isk.sk, "Using adaptive interrupt moderation\n");
+
+	/* If we haven't received a specific coalescing setting
+	 * (module param), we set the moderation paramters as follows:
+	 * - moder_cnt is set to the number of mtu sized packets to
+	 *   satisfy our coelsing target.
+	 * - moder_time is set to a fixed value.
+	 */
+	rx_buf_size = (ssk->recv_frags * PAGE_SIZE) + sizeof(struct sdp_bsdh);
+	mod->moder_cnt = sdp_rx_coal_target / rx_buf_size + 1;
+	mod->moder_time = sdp_rx_coal_time;
+	sdp_dbg(&ssk->isk.sk, "Default coalesing params for buf size:%d - "
+			     "moder_cnt:%d moder_time:%d\n",
+		 rx_buf_size, mod->moder_cnt, mod->moder_time);
+
+	/* Reset auto-moderation params */
+	mod->pkt_rate_low = sdp_rx_rate_low;
+	mod->rx_usecs_low = sdp_rx_coal_time_low;
+	mod->pkt_rate_high = sdp_rx_rate_high;
+	mod->rx_usecs_high = sdp_rx_coal_time_high;
+	mod->sample_interval = sdp_sample_interval;
+	
+	mod->last_moder_time = SDP_AUTO_CONF;
+	mod->last_moder_jiffies = 0;
+	mod->last_moder_packets = 0;
+	mod->last_moder_tx_packets = 0;
+	mod->last_moder_bytes = 0;
+}
+
+static void sdp_auto_moderation(struct sdp_sock *ssk)
+{
+	struct sdp_moderation *mod = &ssk->auto_mod;
+
+	unsigned long period = (unsigned long) (jiffies - mod->last_moder_jiffies);
+	unsigned long packets;
+	unsigned long rate;
+	unsigned long avg_pkt_size;
+	unsigned long tx_pkt_diff;
+	unsigned long rx_pkt_diff;
+	int moder_time;
+	int err;
+
+	if (!mod->adaptive_rx_coal)
+		return;
+
+	if (period < mod->sample_interval)
+		return;
+
+	if (!mod->last_moder_jiffies || !period)
+		goto out;
+
+	tx_pkt_diff = ((unsigned long) (ssk->tx_packets -
+					mod->last_moder_tx_packets));
+	rx_pkt_diff = ((unsigned long) (ssk->rx_packets -
+					mod->last_moder_packets));
+	packets = max(tx_pkt_diff, rx_pkt_diff);
+	rate = packets * HZ / period;
+	avg_pkt_size = packets ? ((unsigned long) (ssk->rx_bytes -
+				 mod->last_moder_bytes)) / packets : 0;
+
+	/* Apply auto-moderation only when packet rate exceeds a rate that
+	 * it matters */
+	if (rate > sdp_rx_rate_thresh) {
+		/* If tx and rx packet rates are not balanced, assume that
+		 * traffic is mainly BW bound and apply maximum moderation.
+		 * Otherwise, moderate according to packet rate */
+		if (2 * tx_pkt_diff > 3 * rx_pkt_diff ||
+		    2 * rx_pkt_diff > 3 * tx_pkt_diff) {
+			moder_time = mod->rx_usecs_high;
+		} else {
+			if (rate < mod->pkt_rate_low) {
+				moder_time = mod->rx_usecs_low;
+			} else if (rate > mod->pkt_rate_high)
+				moder_time = mod->rx_usecs_high;
+			else
+				moder_time = (rate - mod->pkt_rate_low) *
+					(mod->rx_usecs_high - mod->rx_usecs_low) /
+					(mod->pkt_rate_high - mod->pkt_rate_low) +
+					mod->rx_usecs_low;
+		}
+	} else {
+		/* When packet rate is low, use default moderation rather than
+		 * 0 to prevent interrupt storms if traffic suddenly increases */
+		moder_time = mod->moder_time;
+	}
+
+	sdp_dbg_data(&ssk->isk.sk, "tx rate:%lu rx_rate:%lu\n",
+			tx_pkt_diff * HZ / period, rx_pkt_diff * HZ / period);
+
+	sdp_dbg_data(&ssk->isk.sk, "Rx moder_time changed from:%d to %d period:%lu "
+			"[jiff] packets:%lu avg_pkt_size:%lu rate:%lu [p/s])\n",
+			mod->last_moder_time, moder_time, period, packets,
+			avg_pkt_size, rate);
+
+	if (moder_time != mod->last_moder_time) {
+		mod->last_moder_time = moder_time;
+		err = ib_modify_cq(ssk->rx_ring.cq, mod->moder_cnt, moder_time);
+		if (err)
+			sdp_dbg_data(&ssk->isk.sk, "Failed modifying moderation for cq");
+	}
+
+out:
+	mod->last_moder_packets = ssk->rx_packets;
+	mod->last_moder_tx_packets = ssk->tx_packets;
+	mod->last_moder_bytes = ssk->rx_bytes;
+	mod->last_moder_jiffies = jiffies;
 }
 
 void sdp_reset_sk(struct sock *sk, int rc)
@@ -1780,6 +1901,8 @@ out:
 
 	posts_handler_put(ssk);
 
+	sdp_auto_moderation(ssk);
+
 	rdtscll(end);
 	SDPSTATS_COUNTER_ADD(sendmsg_sum, end - start);
 	release_sock(sk);
@@ -2049,6 +2172,8 @@ found_fin_ok:
 out:
 
 	posts_handler_put(ssk);
+
+	sdp_auto_moderation(ssk);
 
 	release_sock(sk);
 	return err;

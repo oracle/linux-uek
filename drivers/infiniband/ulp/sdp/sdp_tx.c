@@ -38,10 +38,8 @@
 #include "sdp.h"
 
 #define sdp_cnt(var) do { (var)++; } while (0)
-static unsigned sdp_keepalive_probes_sent = 0;
 
-module_param_named(sdp_keepalive_probes_sent, sdp_keepalive_probes_sent, uint, 0644);
-MODULE_PARM_DESC(sdp_keepalive_probes_sent, "Total number of keepalive probes sent.");
+SDP_MODPARAM_SINT(sdp_keepalive_probes_sent, 0, "Total number of keepalive probes sent.");
 
 static int sdp_process_tx_cq(struct sdp_sock *ssk);
 
@@ -82,6 +80,9 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 
 	SDPSTATS_COUNTER_MID_INC(post_send, mid);
 	SDPSTATS_HIST(send_size, skb->len);
+
+	ssk->tx_packets++;
+	ssk->tx_bytes += skb->len;
 
 	h->mid = mid;
 	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))

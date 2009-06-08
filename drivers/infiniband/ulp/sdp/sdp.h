@@ -37,6 +37,16 @@
 	spin_unlock_irqrestore(&ssk->rx_ring.lock, f); \
 } while (0)
 
+#define SDP_MODPARAM_SINT(var, def_val, msg) \
+	static int var = def_val; \
+	module_param_named(var, var, int, 0644); \
+	MODULE_PARM_DESC(var, msg " [" #def_val "]"); \
+
+#define SDP_MODPARAM_INT(var, def_val, msg) \
+	int var = def_val; \
+	module_param_named(var, var, int, 0644); \
+	MODULE_PARM_DESC(var, msg " [" #def_val "]"); \
+
 #ifdef SDP_PROFILING
 struct sk_buff;
 struct sdpprf_log {
@@ -238,6 +248,9 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 /* how long (in jiffies) to block sender till tx completion*/
 #define SDP_BZCOPY_POLL_TIMEOUT (HZ / 10)
 
+#define SDP_AUTO_CONF	0xffff
+#define AUTO_MOD_DELAY (HZ / 4)
+
 #define BZCOPY_STATE(skb) (*(struct bzcopy_state **)(skb->cb))
 #ifndef MIN
 #define MIN(a, b) (a < b ? a : b)
@@ -372,6 +385,27 @@ struct sdp_chrecvbuf {
 	sdp_do_posts(ssk); \
 })
 
+struct sdp_moderation {
+	unsigned long last_moder_packets;
+	unsigned long last_moder_tx_packets;
+	unsigned long last_moder_bytes;
+	unsigned long last_moder_jiffies;
+	int last_moder_time;
+	u16 rx_usecs;
+	u16 rx_frames;
+	u16 tx_usecs;
+	u32 pkt_rate_low;
+	u16 rx_usecs_low;
+	u32 pkt_rate_high;
+	u16 rx_usecs_high;
+	u16 sample_interval;
+	u16 adaptive_rx_coal;
+	u32 msg_enable;
+
+	int moder_cnt;
+	int moder_time;
+};
+
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
@@ -450,6 +484,12 @@ struct sdp_sock {
 	int recv_request; 	/* flag if request to resize was recieved */
 	int recv_frags; 	/* max skb frags in recv packets */
 	int send_frags; 	/* max skb frags in send packets */
+
+	unsigned long tx_packets;
+	unsigned long rx_packets;
+	unsigned long tx_bytes;
+	unsigned long rx_bytes;
+	struct sdp_moderation auto_mod;
 
 	/* BZCOPY data */
 	int   zcopy_thresh;
@@ -568,6 +608,8 @@ void sdp_start_keepalive_timer(struct sock *sk);
 int sdp_init_sock(struct sock *sk);
 int __init sdp_proc_init(void);
 void sdp_proc_unregister(void);
+/* sdp_main.c */
+void sdp_set_default_moderation(struct sdp_sock *ssk);
 
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);

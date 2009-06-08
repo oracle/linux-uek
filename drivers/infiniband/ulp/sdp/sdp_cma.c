@@ -203,6 +203,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_dbg(sk, "%s\n", __func__);
 
 	sdp_exch_state(sk, TCPF_SYN_SENT, TCP_ESTABLISHED);
+	sdp_set_default_moderation(sdp_sk(sk));
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);
@@ -248,6 +249,8 @@ static int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 	BUG_ON(!parent);
 
 	sdp_exch_state(sk, TCPF_SYN_RECV, TCP_ESTABLISHED);
+
+	sdp_set_default_moderation(sdp_sk(sk));
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
 		sdp_start_keepalive_timer(sk);

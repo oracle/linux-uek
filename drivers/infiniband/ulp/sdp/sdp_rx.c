@@ -37,34 +37,15 @@
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
 
-static int rcvbuf_scale = 0x10;
-
-int rcvbuf_initial_size = 32 * 1024;
-module_param_named(rcvbuf_initial_size, rcvbuf_initial_size, int, 0644);
-MODULE_PARM_DESC(rcvbuf_initial_size, "Receive buffer initial size in bytes.");
-
-module_param_named(rcvbuf_scale, rcvbuf_scale, int, 0644);
-MODULE_PARM_DESC(rcvbuf_scale, "Receive buffer size scale factor.");
-
-static int top_mem_usage = 0;
-module_param_named(top_mem_usage, top_mem_usage, int, 0644);
-MODULE_PARM_DESC(top_mem_usage, "Top system wide sdp memory usage for recv (in MB).");
-
-static int hw_int_mod_count = 10;
-module_param_named(hw_int_mod_count, hw_int_mod_count, int, 0644);
-MODULE_PARM_DESC(hw_int_mod_count, "HW interrupt moderation. int count");
-
-static int hw_int_mod_msec = 200;
-module_param_named(hw_int_mod_msec, hw_int_mod_msec, int, 0644);
-MODULE_PARM_DESC(hw_int_mod_count, "HW interrupt moderation. mseq");
+SDP_MODPARAM_INT(rcvbuf_initial_size, 32 * 1024, "Receive buffer initial size in bytes.");
+SDP_MODPARAM_SINT(rcvbuf_scale, 0x10, "Receive buffer size scale factor.");
+SDP_MODPARAM_SINT(top_mem_usage, 0, "Top system wide sdp memory usage for recv (in MB).");
 
 #ifdef CONFIG_PPC
-static int max_large_sockets = 100;
+SDP_MODPARAM_SINT(max_large_sockets, 100, "Max number of large sockets (32k buffers).");
 #else
-static int max_large_sockets = 1000;
+SDP_MODPARAM_SINT(max_large_sockets, 1000, "Max number of large sockets (32k buffers).");
 #endif
-module_param_named(max_large_sockets, max_large_sockets, int, 0644);
-MODULE_PARM_DESC(max_large_sockets, "Max number of large sockets (32k buffers).");
 
 static int curr_large_sockets = 0;
 atomic_t sdp_current_mem_usage;
@@ -580,6 +561,9 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	SDP_DUMP_PACKET(&ssk->isk.sk, "RX", skb, h);
 	skb_reset_transport_header(skb);
 
+	ssk->rx_packets++;
+	ssk->rx_bytes += skb->len;
+
 	mseq = ntohl(h->mseq);
 	atomic_set(&ssk->mseq_ack, mseq);
 	if (mseq != (int)wc->wr_id)
@@ -823,12 +807,6 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		goto err_cq;
 	}
 
-	rc = ib_modify_cq(rx_cq, hw_int_mod_count, hw_int_mod_msec);
-	if (rc) {
-		sdp_warn(&ssk->isk.sk, "Unable to modify RX CQ: %d.\n", rc);
-		goto err_mod;
-	}
-	sdp_warn(&ssk->isk.sk, "Initialized CQ moderation\n");
 	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
@@ -837,8 +815,6 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 	goto out;
 
-err_mod:
-	ib_destroy_cq(rx_cq);
 err_cq:
 	kfree(ssk->rx_ring.buffer);
 	ssk->rx_ring.buffer = NULL;
