@@ -274,10 +274,10 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "- RX interrupts\t\t: %d\n", sdpstats.rx_int_count);
 	seq_printf(seq, "- TX interrupts\t\t: %d\n", sdpstats.tx_int_count);
 
-	seq_printf(seq, "bz_clean       \t\t: %d\n", sdpstats.bz_clean_sum / sdpstats.sendmsg);
-	seq_printf(seq, "bz_setup       \t\t: %d\n", sdpstats.bz_setup_sum / sdpstats.sendmsg);
-	seq_printf(seq, "tx_copy        \t\t: %d\n", sdpstats.tx_copy_sum / sdpstats.sendmsg);
-	seq_printf(seq, "sendmsg        \t\t: %d\n", sdpstats.sendmsg_sum / sdpstats.sendmsg);
+	seq_printf(seq, "bz_clean       \t\t: %d\n", sdpstats.sendmsg ? sdpstats.bz_clean_sum / sdpstats.sendmsg : 0);
+	seq_printf(seq, "bz_setup       \t\t: %d\n", sdpstats.sendmsg ? sdpstats.bz_setup_sum / sdpstats.sendmsg : 0);
+	seq_printf(seq, "tx_copy        \t\t: %d\n", sdpstats.sendmsg ? sdpstats.tx_copy_sum / sdpstats.sendmsg : 0);
+	seq_printf(seq, "sendmsg        \t\t: %d\n", sdpstats.sendmsg ? sdpstats.sendmsg_sum / sdpstats.sendmsg : 0);
 	return 0;
 }
 
