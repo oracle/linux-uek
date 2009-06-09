@@ -409,19 +409,19 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg,
 	if (msg_flags & MSG_OOB)
 		goto out;
 
-	/* If there are pending notifications, do those - and nothing else */
-	if (!list_empty(&rs->rs_notify_queue)) {
-		ret = rds_notify_queue_get(rs, msg);
-		goto out;
-	}
-
-	if (rs->rs_cong_notify) {
-		ret = rds_notify_cong(rs, msg);
-		goto out;
-	}
-
 	while (1) {
 		struct iov_iter save;
+		/* If there are pending notifications, do those - and nothing else */
+		if (!list_empty(&rs->rs_notify_queue)) {
+			ret = rds_notify_queue_get(rs, msg);
+			break;
+		}
+
+		if (rs->rs_cong_notify) {
+			ret = rds_notify_cong(rs, msg);
+			break;
+		}
+
 		if (!rds_next_incoming(rs, &inc)) {
 			if (nonblock) {
 				ret = -EAGAIN;
@@ -429,7 +429,9 @@ int rds_recvmsg(struct socket *sock, struct msghdr *msg,
 			}
 
 			timeo = wait_event_interruptible_timeout(*sk_sleep(sk),
-						rds_next_incoming(rs, &inc),
+						(!list_empty(&rs->rs_notify_queue)
+						|| rs->rs_cong_notify
+						|| rds_next_incoming(rs, &inc)),
 						timeo);
 			rdsdebug("recvmsg woke inc %p timeo %ld\n", inc,
 				 timeo);
