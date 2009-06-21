@@ -82,30 +82,33 @@ MODULE_LICENSE("Dual BSD/GPL");
 SDP_MODPARAM_INT(sdp_debug_level, 0, "Enable debug tracing if > 0.");
 #endif
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
-SDP_MODPARAM_INT(sdp_data_debug_level, 0, "Enable data path debug tracing if > 0.");
+SDP_MODPARAM_INT(sdp_data_debug_level, 0,
+		"Enable data path debug tracing if > 0.");
 #endif
 
 SDP_MODPARAM_SINT(recv_poll_hit, -1, "How many times recv poll helped.");
 SDP_MODPARAM_SINT(recv_poll_miss, -1, "How many times recv poll missed.");
 SDP_MODPARAM_SINT(recv_poll, 1000, "How many times to poll recv.");
-SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME, 
+SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
 SDP_MODPARAM_SINT(sdp_zcopy_thresh, 65536, "Zero copy send threshold; 0=0ff.");
 
 #define SDP_RX_COAL_TIME_HIGH 128
 SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
-	"Target number of bytes to coalesce with interrupt moderation (bytes).");
+	"Target number of bytes to coalesce with interrupt moderation.");
 SDP_MODPARAM_SINT(sdp_rx_coal_time, 0x10, "rx coal time (jiffies).");
 SDP_MODPARAM_SINT(sdp_rx_rate_low, 80000, "rx_rate low (packets/sec).");
-SDP_MODPARAM_SINT(sdp_rx_coal_time_low, 0, "low moderation time val (usec).");
+SDP_MODPARAM_SINT(sdp_rx_coal_time_low, 0, "low moderation usec.");
 SDP_MODPARAM_SINT(sdp_rx_rate_high, 100000, "rx_rate high (packets/sec).");
-SDP_MODPARAM_SINT(sdp_rx_coal_time_high, 128, "high moderation time val (usec).");
+SDP_MODPARAM_SINT(sdp_rx_coal_time_high, 128, "high moderation usec.");
 SDP_MODPARAM_SINT(sdp_rx_rate_thresh, (200000 / SDP_RX_COAL_TIME_HIGH),
 	"rx rate thresh ().");
 SDP_MODPARAM_SINT(sdp_sample_interval, (HZ / 4), "sample interval (jiffies).");
 
-SDP_MODPARAM_INT(hw_int_mod_count, -1, "forced hw int moderation val. -1 for auto (packets).");
-SDP_MODPARAM_INT(hw_int_mod_usec, -1, "forced hw int moderation val. -1 for auto (usec).");
+SDP_MODPARAM_INT(hw_int_mod_count, -1,
+		"forced hw int moderation val. -1 for auto (packets).");
+SDP_MODPARAM_INT(hw_int_mod_usec, -1,
+		"forced hw int moderation val. -1 for auto (usec).");
 
 struct workqueue_struct *sdp_wq;
 struct workqueue_struct *rx_comp_wq;
@@ -292,6 +295,7 @@ void sdp_start_keepalive_timer(struct sock *sk)
 
 void sdp_set_default_moderation(struct sdp_sock *ssk)
 {
+	struct sock *sk = &ssk->isk.sk;
 	struct sdp_moderation *mod = &ssk->auto_mod;
 	int rx_buf_size;
 
@@ -301,17 +305,20 @@ void sdp_set_default_moderation(struct sdp_sock *ssk)
 		mod->adaptive_rx_coal = 0;
 
 		if (hw_int_mod_count > 0 && hw_int_mod_usec > 0) {
-			err = ib_modify_cq(ssk->rx_ring.cq, hw_int_mod_count, hw_int_mod_usec);
+			err = ib_modify_cq(ssk->rx_ring.cq, hw_int_mod_count,
+					hw_int_mod_usec);
 			if (err)
-				sdp_warn(&ssk->isk.sk, "Failed modifying moderation for cq");
-			else 
-				sdp_dbg(&ssk->isk.sk, "Using fixed interrupt moderation\n");
+				sdp_warn(sk,
+					"Failed modifying moderation for cq");
+			else
+				sdp_dbg(sk,
+					"Using fixed interrupt moderation\n");
 		}
 		return;
 	}
 
 	mod->adaptive_rx_coal = 1;
-	sdp_dbg(&ssk->isk.sk, "Using adaptive interrupt moderation\n");
+	sdp_dbg(sk, "Using adaptive interrupt moderation\n");
 
 	/* If we haven't received a specific coalescing setting
 	 * (module param), we set the moderation paramters as follows:
@@ -322,7 +329,7 @@ void sdp_set_default_moderation(struct sdp_sock *ssk)
 	rx_buf_size = (ssk->recv_frags * PAGE_SIZE) + sizeof(struct sdp_bsdh);
 	mod->moder_cnt = sdp_rx_coal_target / rx_buf_size + 1;
 	mod->moder_time = sdp_rx_coal_time;
-	sdp_dbg(&ssk->isk.sk, "Default coalesing params for buf size:%d - "
+	sdp_dbg(sk, "Default coalesing params for buf size:%d - "
 			     "moder_cnt:%d moder_time:%d\n",
 		 rx_buf_size, mod->moder_cnt, mod->moder_time);
 
@@ -332,7 +339,7 @@ void sdp_set_default_moderation(struct sdp_sock *ssk)
 	mod->pkt_rate_high = sdp_rx_rate_high;
 	mod->rx_usecs_high = sdp_rx_coal_time_high;
 	mod->sample_interval = sdp_sample_interval;
-	
+
 	mod->last_moder_time = SDP_AUTO_CONF;
 	mod->last_moder_jiffies = 0;
 	mod->last_moder_packets = 0;
@@ -340,11 +347,33 @@ void sdp_set_default_moderation(struct sdp_sock *ssk)
 	mod->last_moder_bytes = 0;
 }
 
+/* If tx and rx packet rates are not balanced, assume that
+ * traffic is mainly BW bound and apply maximum moderation.
+ * Otherwise, moderate according to packet rate */
+static inline int calc_moder_time(int rate, struct sdp_moderation *mod,
+		int tx_pkt_diff, int rx_pkt_diff)
+{
+	if (2 * tx_pkt_diff > 3 * rx_pkt_diff ||
+			2 * rx_pkt_diff > 3 * tx_pkt_diff)
+		return mod->rx_usecs_high;
+
+	if (rate < mod->pkt_rate_low)
+		return mod->rx_usecs_low;
+
+	if (rate > mod->pkt_rate_high)
+		return mod->rx_usecs_high;
+
+	return (rate - mod->pkt_rate_low) *
+		(mod->rx_usecs_high - mod->rx_usecs_low) /
+		(mod->pkt_rate_high - mod->pkt_rate_low) +
+		mod->rx_usecs_low;
+}
+
 static void sdp_auto_moderation(struct sdp_sock *ssk)
 {
 	struct sdp_moderation *mod = &ssk->auto_mod;
 
-	unsigned long period = (unsigned long) (jiffies - mod->last_moder_jiffies);
+	unsigned long period = jiffies - mod->last_moder_jiffies;
 	unsigned long packets;
 	unsigned long rate;
 	unsigned long avg_pkt_size;
@@ -374,42 +403,31 @@ static void sdp_auto_moderation(struct sdp_sock *ssk)
 	/* Apply auto-moderation only when packet rate exceeds a rate that
 	 * it matters */
 	if (rate > sdp_rx_rate_thresh) {
-		/* If tx and rx packet rates are not balanced, assume that
-		 * traffic is mainly BW bound and apply maximum moderation.
-		 * Otherwise, moderate according to packet rate */
-		if (2 * tx_pkt_diff > 3 * rx_pkt_diff ||
-		    2 * rx_pkt_diff > 3 * tx_pkt_diff) {
-			moder_time = mod->rx_usecs_high;
-		} else {
-			if (rate < mod->pkt_rate_low) {
-				moder_time = mod->rx_usecs_low;
-			} else if (rate > mod->pkt_rate_high)
-				moder_time = mod->rx_usecs_high;
-			else
-				moder_time = (rate - mod->pkt_rate_low) *
-					(mod->rx_usecs_high - mod->rx_usecs_low) /
-					(mod->pkt_rate_high - mod->pkt_rate_low) +
-					mod->rx_usecs_low;
-		}
+		moder_time = calc_moder_time(rate, mod, tx_pkt_diff,
+				rx_pkt_diff);
 	} else {
-		/* When packet rate is low, use default moderation rather than
-		 * 0 to prevent interrupt storms if traffic suddenly increases */
+		/* When packet rate is low, use default moderation rather
+		 * than 0 to prevent interrupt storms if traffic suddenly
+		 * increases */
 		moder_time = mod->moder_time;
 	}
 
 	sdp_dbg_data(&ssk->isk.sk, "tx rate:%lu rx_rate:%lu\n",
 			tx_pkt_diff * HZ / period, rx_pkt_diff * HZ / period);
 
-	sdp_dbg_data(&ssk->isk.sk, "Rx moder_time changed from:%d to %d period:%lu "
-			"[jiff] packets:%lu avg_pkt_size:%lu rate:%lu [p/s])\n",
+	sdp_dbg_data(&ssk->isk.sk, "Rx moder_time changed from:%d to %d "
+			"period:%lu [jiff] packets:%lu avg_pkt_size:%lu "
+			"rate:%lu [p/s])\n",
 			mod->last_moder_time, moder_time, period, packets,
 			avg_pkt_size, rate);
 
 	if (moder_time != mod->last_moder_time) {
 		mod->last_moder_time = moder_time;
 		err = ib_modify_cq(ssk->rx_ring.cq, mod->moder_cnt, moder_time);
-		if (err)
-			sdp_dbg_data(&ssk->isk.sk, "Failed modifying moderation for cq");
+		if (err) {
+			sdp_dbg_data(&ssk->isk.sk,
+					"Failed modifying moderation for cq");
+		}
 	}
 
 out:
@@ -431,15 +449,12 @@ void sdp_reset_sk(struct sock *sk, int rc)
 		sdp_xmit_poll(ssk, 1);
 
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
-		sdp_warn(sk, "setting state to error. shutdown: %d, mem_free: %d\n",
-				!(sk->sk_shutdown & RCV_SHUTDOWN),
-				!sk_stream_memory_free(sk));
+		sdp_warn(sk, "setting state to error\n");
 		sdp_set_error(sk, rc);
 	}
 
 	sdp_destroy_qp(ssk);
 
-	sdp_dbg(sk, "memset on sdp_sock\n");
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sk->sk_state_change(sk);
@@ -524,7 +539,7 @@ static void sdp_destruct(struct sock *sk)
 	ssk->destructed_already = 1;
 
 	sdp_remove_sock(ssk);
-	
+
 	sdp_close_sk(sk);
 
 	if (ssk->parent)
@@ -852,7 +867,8 @@ static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 			goto out_err;
 	}
 
-	newssk = list_entry(ssk->accept_queue.next, struct sdp_sock, accept_queue);
+	newssk = list_entry(ssk->accept_queue.next, struct sdp_sock,
+			accept_queue);
 	list_del_init(&newssk->accept_queue);
 	newssk->parent = NULL;
 	sk_acceptq_removed(sk);
@@ -926,7 +942,7 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	/* TODO: Need to handle:
 	   case SIOCOUTQ:
 	 */
-	return put_user(answ, (int __user *)arg); 
+	return put_user(answ, (int __user *)arg);
 }
 
 static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
@@ -955,7 +971,8 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 
 void sdp_destroy_work(struct work_struct *work)
 {
-	struct sdp_sock *ssk = container_of(work, struct sdp_sock, destroy_work);
+	struct sdp_sock *ssk = container_of(work, struct sdp_sock,
+			destroy_work);
 	struct sock *sk = &ssk->isk.sk;
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
@@ -997,12 +1014,10 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 
 	release_sock(sk);
 
-	if (sdp_sk(sk)->id) {
+	if (sdp_sk(sk)->id)
 		rdma_disconnect(sdp_sk(sk)->id);
-	} else {
-		sdp_warn(sk, "NOT SENDING DREQ - no need to wait for timewait exit\n");
+	else
 		sock_put(sk, SOCK_REF_CM_TW);
-	}
 
 out:
 	sock_put(sk, SOCK_REF_DREQ_TO);
@@ -1166,8 +1181,11 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 			ssk->keepalive_time = val * HZ;
 
 			if (sock_flag(sk, SOCK_KEEPOPEN) &&
-			    !((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN)))
-				sdp_reset_keepalive_timer(sk, ssk->keepalive_time);
+			    !((1 << sk->sk_state) &
+				    (TCPF_CLOSE | TCPF_LISTEN))) {
+				sdp_reset_keepalive_timer(sk,
+				ssk->keepalive_time);
+			}
 		}
 		break;
 	case SDP_ZCOPY_THRESH:
@@ -1298,7 +1316,8 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 	return -EAGAIN;
 }
 
-static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk, int flags)
+static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk,
+		int flags)
 {
 	if (unlikely(flags & MSG_OOB)) {
 		struct sk_buff *skb = sk->sk_write_queue.prev;
@@ -1403,7 +1422,8 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	bz->busy       = 0;
 	bz->ssk        = ssk;
 	bz->page_cnt   = PAGE_ALIGN(len + bz->cur_offset) >> PAGE_SHIFT;
-	bz->pages      = kcalloc(bz->page_cnt, sizeof(struct page *), GFP_KERNEL);
+	bz->pages      = kcalloc(bz->page_cnt, sizeof(struct page *),
+			GFP_KERNEL);
 
 	if (!bz->pages) {
 		kfree(bz);
@@ -1498,7 +1518,6 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		/* Time to copy data. We are close to
 		 * the end! */
 		SDPSTATS_COUNTER_ADD(memcpy_count, copy);
-		sdp_dbg_data(sk, "Copying from: %p offset: %d size: %d\n", from, off, copy);
 		err = skb_copy_to_page(sk, from, skb, page,
 				       off, copy);
 		if (err) {
@@ -1517,8 +1536,6 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 			skb_shinfo(skb)->frags[i - 1].size +=
 							copy;
 		} else {
-			sdp_dbg_data(sk, "Adding to frage %d: page: %p off: %d size: %d\n",
-				i, page, off, copy);
 			skb_fill_page_desc(skb, i, page, off, copy);
 			if (TCP_PAGE(sk)) {
 				get_page(page);
@@ -1661,13 +1678,9 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
-		sdp_prf1(sk, NULL, "credits: %d, head: %d, tail: %d, busy: %d",
-				tx_credits(ssk), ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring),
-				bz->busy);
 
-		if (tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+		if (tx_credits(ssk) > SDP_MIN_TX_CREDITS)
 			sdp_arm_tx_cq(sk);
-		}
 
 		sk_wait_event(sk, &current_timeo,
 			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
@@ -1691,9 +1704,6 @@ static int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 	finish_wait(sk->sk_sleep, &wait);
 	return err;
 }
-
-//#undef rdtscll
-//#define rdtscll(x) ({ x = current_nsec(); })
 
 /* Like tcp_sendmsg */
 /* TODO: check locking */
@@ -1790,7 +1800,8 @@ new_segment:
 						goto wait_for_sndbuf;
 				}
 
-				skb = sdp_stream_alloc_skb(sk, 0, sk->sk_allocation);
+				skb = sdp_stream_alloc_skb(sk, 0,
+						sk->sk_allocation);
 				if (!skb)
 					goto wait_for_memory;
 
@@ -1804,12 +1815,12 @@ new_segment:
 				     NETIF_F_HW_CSUM))
 					skb->ip_summed = CHECKSUM_PARTIAL;
 
-				sdp_dbg_data(sk, "entail new skb: %p len = %d\n", skb, skb->len);
 				skb_entail(sk, ssk, skb);
 				copy = size_goal;
 			} else {
 				sdp_dbg_data(sk, "adding to existing skb: %p"
-					" len = %d, sk_send_head: %p copy: %d\n",
+					" len = %d, sk_send_head: %p "
+					"copy: %d\n",
 					skb, skb->len, sk->sk_send_head, copy);
 			}
 
@@ -1871,15 +1882,11 @@ wait_for_memory:
 				err = sdp_bzcopy_wait_memory(ssk, &timeo, bz);
 			} else {
 				posts_handler_put(ssk);
-				sdp_prf1(sk, NULL, "wait for mem. credits: %d, head: %d, tail: %d",
-						tx_credits(ssk), ring_head(ssk->tx_ring),
-						ring_tail(ssk->tx_ring));
 
 				sdp_arm_tx_cq(sk);
 
 				err = sk_stream_wait_memory(sk, &timeo);
 
-				sdp_prf1(sk, skb, "finished wait for mem. err: %d", err);
 				posts_handler_get(ssk);
 				sdp_do_posts(ssk);
 			}
@@ -1932,25 +1939,11 @@ out_err:
 	return err;
 }
 
-int dummy_memcpy_toiovec(struct iovec *iov, int len)
-{
-	while (len > 0) {
-		if (iov->iov_len) {
-			int copy = min_t(unsigned int, iov->iov_len, len);
-			len -= copy;
-			iov->iov_len -= copy;
-			iov->iov_base += copy;
-		}
-		iov++;
-	}
-
-	return 0;
-}
 /* Like tcp_recvmsg */
 /* Maybe use skb_recv_datagram here? */
 /* Note this does not seem to handle vectored messages. Relevant? */
 static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		       size_t len, int noblock, int flags, 
+		       size_t len, int noblock, int flags,
 		       int *addr_len)
 {
 	struct sk_buff *skb = NULL;
@@ -1991,12 +1984,14 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	do {
 		u32 offset;
 
-		/* Are we at urgent data? Stop if we have read anything or have SIGURG pending. */
+		/* Are we at urgent data? Stop if we have read anything or have
+		 * SIGURG pending. */
 		if (ssk->urg_data && ssk->urg_seq == *seq) {
 			if (copied)
 				break;
 			if (signal_pending(current)) {
-				copied = timeo ? sock_intr_errno(timeo) : -EAGAIN;
+				copied = timeo ? sock_intr_errno(timeo) :
+					-EAGAIN;
 				break;
 			}
 		}
@@ -2006,10 +2001,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (!skb)
 				break;
 
-			if ((skb_transport_header(skb))[0] == SDP_MID_DISCONN) {
-				sdp_prf(sk, NULL, "Got DISCONN skb - killing it");
+			if ((skb_transport_header(skb))[0] == SDP_MID_DISCONN)
 				goto found_fin_ok;
-			}
 
 			if (before(*seq, TCP_SKB_CB(skb)->seq)) {
 				sdp_warn(sk, "recvmsg bug: copied %X seq %X\n",
@@ -2078,8 +2071,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			release_sock(sk);
 			lock_sock(sk);
 		} else if (rc) {
-			sdp_dbg_data(sk, "%s: sk_wait_data %ld\n", __func__, timeo);
-			sdp_prf(sk, NULL, "waiting for data");
+			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
 
 			posts_handler_put(ssk);
 
@@ -2094,9 +2086,9 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		continue;
 
 	found_ok_skb:
-		sdp_dbg_data(sk, "%s: found_ok_skb len %d\n", __func__, skb->len);
-		sdp_dbg_data(sk, "%s: len %Zd offset %d\n", __func__, len, offset);
-		sdp_dbg_data(sk, "%s: copied %d target %d\n", __func__, copied, target);
+		sdp_dbg_data(sk, "found_ok_skb len %d\n", skb->len);
+		sdp_dbg_data(sk, "len %Zd offset %d\n", len, offset);
+		sdp_dbg_data(sk, "copied %d target %d\n", copied, target);
 		used = skb->len - offset;
 		if (len < used)
 			used = len;
@@ -2122,8 +2114,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			err = skb_copy_datagram_iovec(skb, offset,
 						      /* TODO: skip header? */
 						      msg->msg_iov, used);
-//			err = dummy_memcpy_toiovec(msg->msg_iov, used);
-			sdp_prf(sk, skb, "Copied to user %ld bytes. err = %d", used, err);
 			if (err) {
 				sdp_dbg(sk, "%s: skb_copy_datagram_iovec failed"
 					"offset %d size %ld status %d\n",
@@ -2139,7 +2129,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		len -= used;
 		*seq += used;
 
-		sdp_dbg_data(sk, "%s: done copied %d target %d\n", __func__, copied, target);
+		sdp_dbg_data(sk, "done copied %d target %d\n", copied, target);
 
 		sdp_do_posts(sdp_sk(sk));
 skip_copy:
@@ -2165,7 +2155,7 @@ found_fin_ok:
 			__kfree_skb(skb);
 		}
 		break;
-		
+
 	} while (len > 0);
 
 	err = copied;
@@ -2266,8 +2256,8 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
        /*
         * Adjust for memory in later kernels
         */
-       if (!sk_stream_memory_free(sk) || !tx_slots_free(ssk))
-               mask &= ~(POLLOUT | POLLWRNORM | POLLWRBAND);
+	if (!sk_stream_memory_free(sk) || !tx_slots_free(ssk))
+		mask &= ~(POLLOUT | POLLWRNORM | POLLWRBAND);
 
 	/* TODO: Slightly ugly: it would be nicer if there was function
 	 * like datagram_poll that didn't include poll_wait,
@@ -2359,7 +2349,7 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 	struct sock *sk;
 	int rc;
 
-	sdp_dbg(NULL, "%s: type %d protocol %d\n", __func__, sock->type, protocol);
+	sdp_dbg(NULL, "type %d protocol %d\n", sock->type, protocol);
 
 	if (net != &init_net)
 		return -EAFNOSUPPORT;
@@ -2451,12 +2441,12 @@ kill_socks:
 
 			sk->sk_shutdown |= RCV_SHUTDOWN;
 			sdp_reset(sk);
-			if ((1 << sk->sk_state) & 
+			if ((1 << sk->sk_state) &
 				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
 				 TCPF_LAST_ACK | TCPF_TIME_WAIT)) {
 				sock_put(sk, SOCK_REF_CM_TW);
 			}
-			
+
 			schedule();
 
 			spin_lock_irq(&sock_list_lock);
@@ -2514,13 +2504,13 @@ static int __init sdp_init(void)
 
 	rc = proto_register(&sdp_proto, 1);
 	if (rc) {
-		printk(KERN_WARNING "%s: proto_register failed: %d\n", __func__, rc);
+		printk(KERN_WARNING "proto_register failed: %d\n", rc);
 		goto error_proto_reg;
 	}
 
 	rc = sock_register(&sdp_net_proto);
 	if (rc) {
-		printk(KERN_WARNING "%s: sock_register failed: %d\n", __func__, rc);
+		printk(KERN_WARNING "sock_register failed: %d\n", rc);
 		goto error_sock_reg;
 	}
 

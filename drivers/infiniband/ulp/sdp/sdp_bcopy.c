@@ -43,46 +43,43 @@
 void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 		struct sk_buff *skb, const struct sdp_bsdh *h)
 {
+	struct sdp_hh *hh;
+	struct sdp_hah *hah;
+	struct sdp_chrecvbuf *req_size;
 	int len = 0;
 	char buf[256];
-	len += snprintf(buf, 255-len, "%s skb: %p mid: %2x:%-20s flags: 0x%x bufs: %d "
-		"len: %d mseq: %d mseq_ack: %d",
-		str, skb, h->mid, mid2str(h->mid), h->flags,
-		ntohs(h->bufs), ntohl(h->len),ntohl(h->mseq),
-		ntohl(h->mseq_ack));
+	len += snprintf(buf, 255-len, "%s skb: %p mid: %2x:%-20s flags: 0x%x "
+			"bufs: %d len: %d mseq: %d mseq_ack: %d | ",
+			str, skb, h->mid, mid2str(h->mid), h->flags,
+			ntohs(h->bufs), ntohl(h->len), ntohl(h->mseq),
+			ntohl(h->mseq_ack));
 
 	switch (h->mid) {
-		case SDP_MID_HELLO:
-			{
-				const struct sdp_hh *hh = (struct sdp_hh *)h;
-				len += snprintf(buf + len, 255-len,
-					" | max_adverts: %d  majv_minv: %d localrcvsz: %d "
-					"desremrcvsz: %d |",
-					hh->max_adverts,
-					hh->majv_minv,
-					ntohl(hh->localrcvsz),
-					ntohl(hh->desremrcvsz));
-			}
-			break;
-		case SDP_MID_HELLO_ACK:
-			{
-				const struct sdp_hah *hah = (struct sdp_hah *)h;
-				len += snprintf(buf + len, 255-len, " | actrcvz: %d |",
-						ntohl(hah->actrcvsz));
-			}
-			break;
-		case SDP_MID_CHRCVBUF:
-		case SDP_MID_CHRCVBUF_ACK:
-			{
-				struct sdp_chrecvbuf *req_size = (struct sdp_chrecvbuf *)(h+1);
-				len += snprintf(buf + len, 255-len,
-					" | req_size: %d |", ntohl(req_size->size));
-			}
-			break;
-		case SDP_MID_DATA:
-			len += snprintf(buf + len, 255-len, " | data_len: %ld |", ntohl(h->len) - sizeof(struct sdp_bsdh));
-		default:
-			break;
+	case SDP_MID_HELLO:
+		hh = (struct sdp_hh *)h;
+		len += snprintf(buf + len, 255-len,
+				"max_adverts: %d  majv_minv: %d "
+				"localrcvsz: %d desremrcvsz: %d |",
+				hh->max_adverts, hh->majv_minv,
+				ntohl(hh->localrcvsz),
+				ntohl(hh->desremrcvsz));
+		break;
+	case SDP_MID_HELLO_ACK:
+		hah = (struct sdp_hah *)h;
+		len += snprintf(buf + len, 255-len, "actrcvz: %d |",
+				ntohl(hah->actrcvsz));
+		break;
+	case SDP_MID_CHRCVBUF:
+	case SDP_MID_CHRCVBUF_ACK:
+		req_size = (struct sdp_chrecvbuf *)(h+1);
+		len += snprintf(buf + len, 255-len, "req_size: %d |",
+				ntohl(req_size->size));
+		break;
+	case SDP_MID_DATA:
+		len += snprintf(buf + len, 255-len, "data_len: %ld |",
+			ntohl(h->len) - sizeof(struct sdp_bsdh));
+	default:
+		break;
 	}
 	buf[len] = 0;
 	_sdp_printk(func, line, KERN_WARNING, sk, "%s: %s\n", str, buf);
@@ -118,13 +115,14 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		ssk->nagle_last_unacked = mseq;
 	} else {
 		if (!timer_pending(&ssk->nagle_timer)) {
-			mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
+			mod_timer(&ssk->nagle_timer,
+					jiffies + SDP_NAGLE_TIMEOUT);
 			sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
 		}
 	}
 	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %ld\n",
 		send_now, ssk->nagle_last_unacked);
-	
+
 	return send_now;
 }
 
@@ -133,7 +131,7 @@ void sdp_nagle_timeout(unsigned long data)
 	struct sdp_sock *ssk = (struct sdp_sock *)data;
 	struct sock *sk = &ssk->isk.sk;
 
-	sdp_dbg_data(&ssk->isk.sk, "last_unacked = %ld\n", ssk->nagle_last_unacked);
+	sdp_dbg_data(sk, "last_unacked = %ld\n", ssk->nagle_last_unacked);
 
 	if (!ssk->nagle_last_unacked)
 		goto out2;
@@ -141,7 +139,7 @@ void sdp_nagle_timeout(unsigned long data)
 	/* Only process if the socket is not in use */
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
-		sdp_dbg_data(&ssk->isk.sk, "socket is busy - will try later\n");
+		sdp_dbg_data(sk, "socket is busy - will try later\n");
 		goto out;
 	}
 
@@ -189,15 +187,13 @@ int sdp_post_credits(struct sdp_sock *ssk)
 	return post_count;
 }
 
-void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle)
+void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
 	gfp_t gfp_page;
 	int post_count = 0;
-
-	sdp_dbg_data(&ssk->isk.sk, "called from %s:%d\n", func, line);
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {
@@ -213,10 +209,6 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 		gfp_page = ssk->isk.sk.sk_allocation;
 	else
 		gfp_page = GFP_KERNEL;
-
-	sdp_dbg_data(&ssk->isk.sk, "credits: %d tx ring slots left: %d send_head: %p\n",
-		tx_credits(ssk), sdp_tx_ring_slots_left(&ssk->tx_ring),
-		ssk->isk.sk.sk_send_head);
 
 	if (sdp_tx_ring_slots_left(&ssk->tx_ring) < SDP_TX_SIZE / 2) {
 		int wc_processed = sdp_xmit_poll(ssk,  1);
@@ -235,7 +227,8 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 					  gfp_page);
 		/* FIXME */
 		BUG_ON(!skb);
-		resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
+		resp_size = (struct sdp_chrecvbuf *)skb_put(skb,
+				sizeof *resp_size);
 		resp_size->size = htonl(ssk->recv_frags * PAGE_SIZE);
 		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
 		post_count++;
@@ -243,10 +236,9 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 
 	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(&ssk->tx_ring) &&
-	       (skb = ssk->isk.sk.sk_send_head) &&
-		sdp_nagle_off(ssk, skb)) {
+	       ssk->isk.sk.sk_send_head &&
+		sdp_nagle_off(ssk, ssk->isk.sk.sk_send_head)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
-		sdp_prf(&ssk->isk.sk, skb, "no credits. called from %s:%d", func, line);
 	}
 
 	while (tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
@@ -256,25 +248,6 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 		update_send_head(&ssk->isk.sk, skb);
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
 		sdp_post_send(ssk, skb, SDP_MID_DATA);
-		post_count++;
-	}
-
-	if (0 && tx_credits(ssk) == SDP_MIN_TX_CREDITS &&
-	    !ssk->sent_request &&
-	    ring_head(ssk->tx_ring) > ssk->sent_request_head + SDP_RESIZE_WAIT &&
-	    sdp_tx_ring_slots_left(&ssk->tx_ring)) {
-		struct sdp_chrecvbuf *req_size;
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh) +
-					  sizeof(*req_size),
-					  gfp_page);
-		/* FIXME */
-		BUG_ON(!skb);
-		ssk->sent_request = (SDP_MAX_SEND_SKB_FRAGS-1) * PAGE_SIZE;
-		ssk->sent_request_head = ring_head(ssk->tx_ring);
-		req_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *req_size);
-		req_size->size = htonl(ssk->sent_request);
-		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF);
 		post_count++;
 	}
 
@@ -298,7 +271,7 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 	}
 
 	/* send DisConn if needed
-	 * Do not send DisConn if there is only 1 credit. Compliance with CA4-82:
+	 * Do not send DisConn if there is only 1 credit. Compliance with CA4-82
 	 * If one credit is available, an implementation shall only send SDP
 	 * messages that provide additional credits and also do not contain ULP
 	 * payload. */
@@ -315,9 +288,6 @@ void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonag
 		post_count++;
 	}
 
-	if (post_count) {
+	if (post_count)
 		sdp_xmit_poll(ssk, 0);
-
-		sdp_prf(&ssk->isk.sk, NULL, "post_sends finished polling [%s:%d].", func, line);
-	}
 }

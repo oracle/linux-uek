@@ -8,15 +8,8 @@
 #include <rdma/ib_verbs.h>
 #include <linux/sched.h>
 
-#undef SDPSTATS_ON
-#undef SDP_PROFILING
-//#undef CONFIG_INFINIBAND_SDP_DEBUG_DATA
-//#undef CONFIG_INFINIBAND_SDP_DEBUG
-
 #define SDPSTATS_ON
-//#define SDP_PROFILING
-//#define CONFIG_INFINIBAND_SDP_DEBUG_DATA
-//#define CONFIG_INFINIBAND_SDP_DEBUG
+/* #define SDP_PROFILING */
 
 #define _sdp_printk(func, line, level, sk, format, arg...)                \
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
@@ -76,7 +69,8 @@ static inline unsigned long long current_nsec(void)
 	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
 }
 #define sdp_prf1(sk, s, format, arg...) ({ \
-	struct sdpprf_log *l = &sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
+	struct sdpprf_log *l = \
+		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
 	l->idx = sdpprf_log_count - 1; \
 	l->pid = current->pid; \
 	l->sk_num = (sk) ? inet_sk(sk)->num : -1;                 \
@@ -90,7 +84,7 @@ static inline unsigned long long current_nsec(void)
 	1; \
 })
 #define sdp_prf(sk, s, format, arg...)
-//#define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg)
+/* #define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg) */
 
 #else
 #define sdp_prf1(sk, s, format, arg...)
@@ -119,9 +113,9 @@ extern int sdp_debug_level;
 })
 
 #define sk_common_release(sk) do { \
-		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_BORN ") - refcount = %d " \
-			"from withing sk_common_release\n",\
-			__FUNCTION__, __LINE__, atomic_read(&(sk)->sk_refcnt)); \
+		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_BORN \
+			") - refcount = %d from withing sk_common_release\n",\
+			__func__, __LINE__, atomic_read(&(sk)->sk_refcnt));\
 		sk_common_release(sk); \
 } while (0)
 
@@ -134,15 +128,15 @@ extern int sdp_debug_level;
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 
 extern int sdp_data_debug_level;
-#define sdp_dbg_data(sk, format, arg...)                     \
-	do {                                                 \
-		if (sdp_data_debug_level & 0x2)                \
-		sdp_printk(KERN_DEBUG, sk, format , ## arg); \
+#define sdp_dbg_data(sk, format, arg...)                     		\
+	do {                                                 		\
+		if (sdp_data_debug_level & 0x2)                		\
+			sdp_printk(KERN_DEBUG, sk, format , ## arg); 	\
 	} while (0)
-#define SDP_DUMP_PACKET(sk, str, skb, h)                     \
-	do {                                                 \
-		if (sdp_data_debug_level & 0x1)                \
-			dump_packet(sk, str, skb, h); \
+#define SDP_DUMP_PACKET(sk, str, skb, h)                     		\
+	do {                                                 		\
+		if (sdp_data_debug_level & 0x1)                		\
+			dump_packet(sk, str, skb, h); 			\
 	} while (0)
 #else
 #define sdp_dbg_data(priv, format, arg...)
@@ -190,9 +184,10 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 	h[idx]++;
 }
 
-#define SDPSTATS_COUNTER_INC(stat) do {sdpstats.stat++;} while (0)
-#define SDPSTATS_COUNTER_ADD(stat, val) do {sdpstats.stat+=val;} while (0)
-#define SDPSTATS_COUNTER_MID_INC(stat, mid) do {sdpstats.stat[mid]++;} while (0)
+#define SDPSTATS_COUNTER_INC(stat) do { sdpstats.stat++; } while (0)
+#define SDPSTATS_COUNTER_ADD(stat, val) do { sdpstats.stat += val; } while (0)
+#define SDPSTATS_COUNTER_MID_INC(stat, mid) do { sdpstats.stat[mid]++; } \
+	while (0)
 #define SDPSTATS_HIST(stat, size) \
 	sdpstats_hist(sdpstats.stat, size, ARRAY_SIZE(sdpstats.stat) - 1, 1)
 
@@ -222,7 +217,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
 #define SDP_TX_POLL_MODER	16
 #define SDP_TX_POLL_TIMEOUT	(HZ / 4)
-#define SDP_NAGLE_TIMEOUT (HZ / 10) 
+#define SDP_NAGLE_TIMEOUT (HZ / 10)
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -298,11 +293,11 @@ struct sdp_bsdh {
 };
 
 union cma_ip_addr {
-        struct in6_addr ip6;
-        struct {
-                __u32 pad[3];
-                __u32 addr;
-        } ip4;
+	struct in6_addr ip6;
+	struct {
+		__u32 pad[3];
+		__u32 addr;
+	} ip4;
 };
 
 /* TODO: too much? Can I avoid having the src/dst and port here? */
@@ -370,20 +365,12 @@ struct sdp_chrecvbuf {
 	u32 size;
 };
 
-#define posts_handler(ssk) ({\
-	atomic_read(&ssk->somebody_is_doing_posts); \
-})
-
-#define posts_handler_get(ssk) ({\
-	sdp_prf(&ssk->isk.sk, NULL, "posts handler get. %d", posts_handler(ssk)); \
-	atomic_inc(&ssk->somebody_is_doing_posts); \
-})
-
-#define posts_handler_put(ssk) ({\
-	sdp_prf(&ssk->isk.sk, NULL, "posts handler put. %d", posts_handler(ssk)); \
+#define posts_handler(ssk) atomic_read(&ssk->somebody_is_doing_posts)
+#define posts_handler_get(ssk) atomic_inc(&ssk->somebody_is_doing_posts)
+#define posts_handler_put(ssk) do {\
 	atomic_dec(&ssk->somebody_is_doing_posts); \
 	sdp_do_posts(ssk); \
-})
+} while (0)
 
 struct sdp_moderation {
 	unsigned long last_moder_packets;
@@ -550,9 +537,10 @@ static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 	int old;
 
 	spin_lock_irqsave(&sdp_sk(sk)->lock, flags);
-	
+
 	sdp_dbg(sk, "%s:%d - set state: %s -> %s 0x%x\n", func, line,
-		sdp_state_str(sk->sk_state), sdp_state_str(state), from_states);
+		sdp_state_str(sk->sk_state),
+		sdp_state_str(state), from_states);
 
 	if ((1 << sk->sk_state) & ~from_states) {
 		sdp_warn(sk, "trying to exchange state from unexpected state "
@@ -590,36 +578,41 @@ static inline void sdp_set_error(struct sock *sk, int err)
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 		struct sk_buff *skb, const struct sdp_bsdh *h);
-#define dump_packet(sk, str, skb, h) _dump_packet(__func__, __LINE__, sk, str, skb, h)
+#define dump_packet(sk, str, skb, h) \
+	_dump_packet(__func__, __LINE__, sk, str, skb, h)
 #endif
-int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
-void sdp_reset(struct sock *sk);
-void sdp_reset_sk(struct sock *sk, int rc);
-int sdp_post_credits(struct sdp_sock *ssk);
-void sdp_destroy_work(struct work_struct *work);
-void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
-void sdp_dreq_wait_timeout_work(struct work_struct *work);
-void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
-void sdp_add_sock(struct sdp_sock *ssk);
-void sdp_remove_sock(struct sdp_sock *ssk);
-void sdp_remove_large_sock(struct sdp_sock *ssk);
-void sdp_post_keepalive(struct sdp_sock *ssk);
-void sdp_start_keepalive_timer(struct sock *sk);
-int sdp_init_sock(struct sock *sk);
-int __init sdp_proc_init(void);
-void sdp_proc_unregister(void);
+
 /* sdp_main.c */
 void sdp_set_default_moderation(struct sdp_sock *ssk);
+int sdp_init_sock(struct sock *sk);
+void sdp_start_keepalive_timer(struct sock *sk);
+void sdp_remove_sock(struct sdp_sock *ssk);
+void sdp_add_sock(struct sdp_sock *ssk);
+void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb);
+void sdp_dreq_wait_timeout_work(struct work_struct *work);
+void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
+void sdp_destroy_work(struct work_struct *work);
+void sdp_reset_sk(struct sock *sk, int rc);
+void sdp_reset(struct sock *sk);
+
+/* sdp_proc.c */
+int __init sdp_proc_init(void);
+void sdp_proc_unregister(void);
+
+/* sdp_cma.c */
+int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
+
+/* sdp_bcopy.c */
+int sdp_post_credits(struct sdp_sock *ssk);
 
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
-int _sdp_xmit_poll(const char *func, int line, struct sdp_sock *ssk, int force);
-#define sdp_xmit_poll(ssk, force) _sdp_xmit_poll(__func__, __LINE__, ssk, force)
+int sdp_xmit_poll(struct sdp_sock *ssk, int force);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
-void _sdp_post_sends(const char *func, int line, struct sdp_sock *ssk, int nonagle);
-#define sdp_post_sends(ssk, nonagle) _sdp_post_sends(__func__, __LINE__, ssk, nonagle)
+void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
 void sdp_nagle_timeout(unsigned long data);
+void sdp_post_keepalive(struct sdp_sock *ssk);
 
 /* sdp_rx.c */
 void sdp_rx_ring_init(struct sdp_sock *ssk);
@@ -629,12 +622,13 @@ int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
+void sdp_remove_large_sock(struct sdp_sock *ssk);
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {
 	sdp_prf(sk, NULL, "Arming RX cq");
 	sdp_dbg_data(sk, "Arming RX cq\n");
-	
+
 	ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq, IB_CQ_NEXT_COMP);
 }
 
@@ -642,8 +636,8 @@ static inline void sdp_arm_tx_cq(struct sock *sk)
 {
 	sdp_prf(sk, NULL, "Arming TX cq");
 	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
-			tx_credits(sdp_sk(sk)), ring_posted(sdp_sk(sk)->tx_ring));
-	
+		tx_credits(sdp_sk(sk)), ring_posted(sdp_sk(sk)->tx_ring));
+
 	ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq, IB_CQ_NEXT_COMP);
 }
 
@@ -666,7 +660,8 @@ static inline char *mid2str(int mid)
 	return mid2str[mid];
 }
 
-static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gfp_t gfp)
+static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
+		gfp_t gfp)
 {
 	struct sk_buff *skb;
 
@@ -690,6 +685,5 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size, gf
 	}
 	return NULL;
 }
-
 
 #endif

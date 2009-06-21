@@ -91,10 +91,12 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_sk(sk)->mr = mr;
 
-	if ((rc = sdp_rx_ring_create(sdp_sk(sk), device)))
+	rc = sdp_rx_ring_create(sdp_sk(sk), device);
+	if (rc)
 		goto err_rx;
 
-	if ((rc = sdp_tx_ring_create(sdp_sk(sk), device)))
+	rc = sdp_tx_ring_create(sdp_sk(sk), device);
+	if (rc)
 		goto err_tx;
 
 	qp_init_attr.recv_cq = sdp_sk(sk)->rx_ring.cq;
@@ -170,20 +172,14 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
 	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
-		PAGE_SIZE + 1; /* The +1 is to conpensate on not aligned buffers */
-        sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
-	
-	sdp_dbg(child, "%s recv_frags: %d tx credits %d xmit_size_goal %d send trigger %d\n",
-		__func__,
-		sdp_sk(child)->recv_frags,
-		tx_credits(sdp_sk(child)),
-		sdp_sk(child)->xmit_size_goal,
-		sdp_sk(child)->min_bufs);
+		PAGE_SIZE + 1; /* +1 to conpensate on not aligned buffers */
+	sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
 
 	id->context = child;
 	sdp_sk(child)->id = id;
 
-	list_add_tail(&sdp_sk(child)->backlog_queue, &sdp_sk(sk)->backlog_queue);
+	list_add_tail(&sdp_sk(child)->backlog_queue,
+			&sdp_sk(sk)->backlog_queue);
 	sdp_sk(child)->parent = sk;
 
 	sdp_exch_state(child, TCPF_LISTEN | TCPF_CLOSE, TCP_SYN_RECV);
@@ -216,17 +212,13 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->max_bufs = ntohs(h->bsdh.bufs);
 	atomic_set(&sdp_sk(sk)->tx_ring.credits, sdp_sk(sk)->max_bufs);
 	sdp_sk(sk)->min_bufs = tx_credits(sdp_sk(sk)) / 4;
-	sdp_sk(sk)->xmit_size_goal = ntohl(h->actrcvsz) - sizeof(struct sdp_bsdh);
+	sdp_sk(sk)->xmit_size_goal =
+		ntohl(h->actrcvsz) - sizeof(struct sdp_bsdh);
 	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
-		PAGE_SIZE, MAX_SKB_FRAGS) + 1; /* The +1 is to conpensate on not aligned buffers */
-	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal, 
+		PAGE_SIZE, MAX_SKB_FRAGS) + 1;  /* +1 to conpensate on not */
+						/* aligned buffers         */
+	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal,
 		sdp_sk(sk)->send_frags * PAGE_SIZE);
-
-	sdp_dbg(sk, "tx credits %d xmit_size_goal %d send_frags: %d credits update trigger %d\n",
-		tx_credits(sdp_sk(sk)),
-		sdp_sk(sk)->xmit_size_goal,
-		sdp_sk(sk)->send_frags,
-		sdp_sk(sk)->min_bufs);
 
 	sdp_sk(sk)->poll_cq = 1;
 
@@ -263,18 +255,12 @@ static int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
 		sdp_dbg(sk, "parent is going away.\n");
 		goto done;
 	}
-#if 0
-	/* TODO: backlog */
-	if (sk_acceptq_is_full(parent)) {
-		sdp_dbg(parent, "%s ECONNREFUSED: parent accept queue full: %d > %d\n", __func__, parent->sk_ack_backlog, parent->sk_max_ack_backlog);
-		release_sock(parent);
-		return -ECONNREFUSED;
-	}
-#endif
+
 	sk_acceptq_added(parent);
 	sdp_dbg(parent, "%s child connection established\n", __func__);
 	list_del_init(&sdp_sk(sk)->backlog_queue);
-	list_add_tail(&sdp_sk(sk)->accept_queue, &sdp_sk(parent)->accept_queue);
+	list_add_tail(&sdp_sk(sk)->accept_queue,
+			&sdp_sk(parent)->accept_queue);
 
 	parent->sk_state_change(parent);
 	sk_wake_async(parent, 0, POLL_OUT);
@@ -346,7 +332,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = sdp_init_qp(sk, id);
 		if (rc)
 			break;
-		atomic_set(&sdp_sk(sk)->remote_credits, ring_posted(sdp_sk(sk)->rx_ring));
+		atomic_set(&sdp_sk(sk)->remote_credits,
+				ring_posted(sdp_sk(sk)->rx_ring));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.bufs = htons(remote_credits(sdp_sk(sk)));
@@ -355,7 +342,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
-						       PAGE_SIZE + sizeof(struct sdp_bsdh));
+				PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
@@ -380,7 +367,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			break;
 		}
 		child = id->context;
-		atomic_set(&sdp_sk(child)->remote_credits, ring_posted(sdp_sk(child)->rx_ring));
+		atomic_set(&sdp_sk(child)->remote_credits,
+				ring_posted(sdp_sk(child)->rx_ring));
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(remote_credits(sdp_sk(child)));
@@ -450,8 +438,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 
 		if (sk->sk_state != TCP_TIME_WAIT) {
 			if (sk->sk_state == TCP_CLOSE_WAIT) {
-				sdp_dbg(sk, "IB teardown while in TCP_CLOSE_WAIT "
-					    "taking reference to let close() finish the work\n");
+				sdp_dbg(sk, "IB teardown while in "
+					"TCP_CLOSE_WAIT taking reference to "
+					"let close() finish the work\n");
 				sock_hold(sk, SOCK_REF_CM_TW);
 			}
 			sdp_set_error(sk, EPIPE);
@@ -489,7 +478,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	sdp_dbg(sk, "event %d done. status %d\n", event->event, rc);
 
 	if (parent) {
-		sdp_dbg(parent, "deleting child %d done. status %d\n", event->event, rc);
 		lock_sock(parent);
 		if (!sdp_sk(parent)->id) { /* TODO: look at SOCK_DEAD? */
 			sdp_dbg(sk, "parent is going away.\n");
