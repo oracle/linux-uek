@@ -279,12 +279,12 @@ again:
 			goto out;
 	}
 
-	sk_stream_mem_reclaim(&ssk->isk.sk);
+	sk_mem_reclaim(&ssk->isk.sk);
 
 	if (sdp_post_recvs_needed(ssk))
 		goto again;
 out:
-	sk_stream_mem_reclaim(&ssk->isk.sk);
+	sk_mem_reclaim(&ssk->isk.sk);
 }
 
 static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
@@ -691,7 +691,7 @@ void sdp_do_posts(struct sdp_sock *ssk)
 
 	sdp_post_sends(ssk, 0);
 
-	sk_stream_mem_reclaim(sk);
+	sk_mem_reclaim(sk);
 
 	xmit_poll_force = sk->sk_write_pending &&
 		(tx_credits(ssk) > SDP_MIN_TX_CREDITS);
