@@ -602,9 +602,6 @@ void sdp_proc_unregister(void);
 /* sdp_cma.c */
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 
-/* sdp_bcopy.c */
-int sdp_post_credits(struct sdp_sock *ssk);
-
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);

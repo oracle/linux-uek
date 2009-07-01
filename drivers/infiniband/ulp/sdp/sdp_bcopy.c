@@ -160,33 +160,6 @@ out2:
 		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
 }
 
-int sdp_post_credits(struct sdp_sock *ssk)
-{
-	int post_count = 0;
-
-	sdp_dbg_data(&ssk->isk.sk, "credits: %d remote credits: %d "
-			"tx ring slots left: %d send_head: %p\n",
-		tx_credits(ssk), remote_credits(ssk),
-		sdp_tx_ring_slots_left(&ssk->tx_ring),
-		ssk->isk.sk.sk_send_head);
-
-	if (likely(tx_credits(ssk) > 1) &&
-	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring))) {
-		struct sk_buff *skb;
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh),
-					  GFP_KERNEL);
-		if (!skb)
-			return -ENOMEM;
-		sdp_post_send(ssk, skb, SDP_MID_DATA);
-		post_count++;
-	}
-
-	if (post_count)
-		sdp_xmit_poll(ssk, 0);
-	return post_count;
-}
-
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */

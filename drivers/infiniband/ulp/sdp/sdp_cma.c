@@ -371,7 +371,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				ring_posted(sdp_sk(child)->rx_ring));
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
-		hah.bsdh.bufs = htons(remote_credits(sdp_sk(child)));
+		hah.bsdh.bufs = htons(ring_posted(sdp_sk(child)->rx_ring));
 		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HAH_SIZE);
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
@@ -400,9 +400,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rdma_reject(id, NULL, 0);
 		else
 			rc = rdma_accept(id, NULL);
-
-		if (!rc)
-			rc = sdp_post_credits(sdp_sk(sk)) < 0 ?: 0;
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");
