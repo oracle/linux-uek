@@ -1368,7 +1368,7 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 	}
 
 	if (bz->pages) {
-		for (i = bz->cur_page; i < bz->page_cnt; i++)
+		for (i = 0; i < bz->cur_page; i++)
 			put_page(bz->pages[i]);
 
 		kfree(bz->pages);
