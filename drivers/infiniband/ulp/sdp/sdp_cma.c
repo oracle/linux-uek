@@ -336,11 +336,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				ring_posted(sdp_sk(sk)->rx_ring));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
-		hh.bsdh.bufs = htons(remote_credits(sdp_sk(sk)));
 		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
+		hh.bsdh.bufs = htons(ring_posted(sdp_sk(sk)->rx_ring));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
