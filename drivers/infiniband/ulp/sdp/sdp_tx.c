@@ -46,7 +46,7 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 {
 	int wc_processed = 0;
 
-	sdp_prf(&ssk->isk.sk, NULL, "called from %s:%d", func, line);
+	sdp_prf(&ssk->isk.sk, NULL, "%s", __func__);
 
 	/* If we don't have a pending timer, set one up to catch our recent
 	   post in case the interface becomes idle */
@@ -84,18 +84,20 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	ssk->tx_bytes += skb->len;
 
 	h->mid = mid;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
+	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
 		h->flags = 0;
 
-	h->bufs = htons(ring_posted(ssk->rx_ring));
+	h->bufs = htons(rx_ring_posted(ssk));
 	h->len = htonl(skb->len);
 	h->mseq = htonl(mseq);
+	if (TX_SRCAVAIL_STATE(skb))
+		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
 	h->mseq_ack = htonl(mseq_ack(ssk));
 
 	sdp_prf1(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
-			mid2str(mid), ring_posted(ssk->rx_ring), mseq,
+			mid2str(mid), rx_ring_posted(ssk), mseq,
 			ntohl(h->mseq_ack));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
@@ -112,7 +114,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 
 	sge->addr = addr;
 	sge->length = skb->len - skb->data_len;
-	sge->lkey = ssk->mr->lkey;
+	sge->lkey = ssk->sdp_dev->mr->lkey;
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
 		++sge;
@@ -124,7 +126,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 		tx_req->mapping[i + 1] = addr;
 		sge->addr = addr;
 		sge->length = skb_shinfo(skb)->frags[i].size;
-		sge->lkey = ssk->mr->lkey;
+		sge->lkey = ssk->sdp_dev->mr->lkey;
 	}
 
 	tx_wr.next = NULL;
@@ -133,7 +135,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	tx_wr.num_sge = frags + 1;
 	tx_wr.opcode = IB_WR_SEND;
 	tx_wr.send_flags = IB_SEND_SIGNALED;
-	if (unlikely(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
+	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
 
 	delta = jiffies - last_send;
@@ -144,7 +146,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	rc = ib_post_send(ssk->qp, &tx_wr, &bad_wr);
 	atomic_inc(&ssk->tx_ring.head);
 	atomic_dec(&ssk->tx_ring.credits);
-	atomic_set(&ssk->remote_credits, ring_posted(ssk->rx_ring));
+	atomic_set(&ssk->remote_credits, rx_ring_posted(ssk));
 	if (unlikely(rc)) {
 		sdp_dbg(&ssk->isk.sk,
 				"ib_post_send failed with status %d.\n", rc);
@@ -158,7 +160,6 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	struct ib_device *dev;
 	struct sdp_buf *tx_req;
 	struct sk_buff *skb = NULL;
-	struct bzcopy_state *bz;
 	int i, frags;
 	struct sdp_tx_ring *tx_ring = &ssk->tx_ring;
 	if (unlikely(mseq != ring_tail(*tx_ring))) {
@@ -179,12 +180,11 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 				  DMA_TO_DEVICE);
 	}
 
-	tx_ring->una_seq += TCP_SKB_CB(skb)->end_seq;
+	tx_ring->una_seq += SDP_SKB_CB(skb)->end_seq;
 
 	/* TODO: AIO and real zcopy code; add their context support here */
-	bz = BZCOPY_STATE(skb);
-	if (bz)
-		bz->busy--;
+	if (BZCOPY_STATE(skb))
+		BZCOPY_STATE(skb)->busy--;
 
 	atomic_inc(&tx_ring->tail);
 
@@ -195,6 +195,7 @@ out:
 static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sk_buff *skb = NULL;
+	struct sdp_bsdh *h;
 
 	skb = sdp_send_completion(ssk, wc->wr_id);
 	if (unlikely(!skb))
@@ -214,12 +215,10 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 		}
 	}
 
-#ifdef SDP_PROFILING
-{
-	struct sdp_bsdh *h = (struct sdp_bsdh *)skb->data;
+	h = (struct sdp_bsdh *)skb->data;
+
 	sdp_prf1(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
-}
-#endif
+
 	sk_wmem_free_skb(&ssk->isk.sk, skb);
 
 	return 0;
@@ -227,8 +226,34 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 
 static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
+	struct sock *sk = &ssk->isk.sk;
+
 	if (likely(wc->wr_id & SDP_OP_SEND)) {
 		sdp_handle_send_comp(ssk, wc);
+		return;
+	}
+
+	if (wc->wr_id & SDP_OP_RDMA) {
+		sdp_dbg_data(sk, "TX comp: RDMA read. status: %d\n", wc->status);
+		sdp_prf1(sk, NULL, "TX comp: RDMA read");
+
+		if (!ssk->tx_ring.rdma_inflight) {
+			sdp_warn(sk, "ERROR: unexpected RDMA read\n");
+			return;
+		}
+
+		if (!ssk->tx_ring.rdma_inflight->busy) {
+			sdp_warn(sk, "ERROR: too many RDMA read completions\n");
+			return;
+		}
+
+ /* Only last RDMA read WR is signalled. Order is guaranteed - therefore
+  * if Last RDMA read WR is completed - all other have, too */
+		ssk->tx_ring.rdma_inflight->busy = 0;
+		if (!ssk->tx_ring.rdma_inflight->busy) {
+			wake_up(ssk->isk.sk.sk_sleep);
+			sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
+		}
 		return;
 	}
 
@@ -267,7 +292,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 		}
 	} while (n == SDP_NUM_WC);
 
-	sdp_dbg_data(&ssk->isk.sk, "processed %d wc's\n", wc_processed);
+//	sdp_dbg_data(&ssk->isk.sk, "processed %d wc's\n", wc_processed);
 
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
@@ -286,17 +311,18 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
-	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
-		(u32) ring_posted(ssk->tx_ring));
+//	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
+//		(u32) tx_ring_posted(ssk));
 
-	sdp_prf(&ssk->isk.sk, NULL, "%s. inflight=%d", __func__,
-		(u32) ring_posted(ssk->tx_ring));
+	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d", 
+		(u32) tx_ring_posted(ssk));
 
 	/* Only process if the socket is not in use */
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
-		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
+//		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
+		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy\n");
 		SDPSTATS_COUNTER_INC(tx_poll_busy);
 		goto out;
 	}
@@ -310,17 +336,22 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	else
 		SDPSTATS_COUNTER_INC(tx_poll_hit);
 
-	inflight = (u32) ring_posted(ssk->tx_ring);
+	inflight = (u32) rx_ring_posted(ssk);
 
 	/* If there are still packets in flight and the timer has not already
 	 * been scheduled by the Tx routine then schedule it here to guarantee
 	 * completion processing of these packets */
 	if (inflight) { /* TODO: make sure socket is not closed */
-		sdp_dbg_data(sk, "arming timer for more polling\n");
+//		sdp_dbg_data(sk, "arming timer for more polling\n");
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 	}
 
 out:
+	if (ssk->tx_ring.rdma_inflight && ssk->tx_ring.rdma_inflight->busy) {
+		sdp_prf1(sk, NULL, "RDMA is inflight - arming irq");
+		sdp_arm_tx_cq(sk);
+	}
+
 	bh_unlock_sock(sk);
 }
 
@@ -329,14 +360,18 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_prf1(sk, NULL, "Got tx comp interrupt");
+	sdp_prf1(sk, NULL, "tx irq");
+	sdp_dbg_data(sk, "Got tx comp interrupt\n");
 
-	mod_timer(&ssk->tx_ring.timer, jiffies);
+	SDPSTATS_COUNTER_INC(tx_int_count);
+
+	mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+	tasklet_schedule(&ssk->tx_ring.tasklet);
 }
 
 void sdp_tx_ring_purge(struct sdp_sock *ssk)
 {
-	while (ring_posted(ssk->tx_ring)) {
+	while (tx_ring_posted(ssk)) {
 		struct sk_buff *skb;
 		skb = sdp_send_completion(ssk, ring_tail(ssk->tx_ring));
 		if (!skb)
@@ -373,6 +408,10 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 
 static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
 {
+	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
+	printk("xx       event called !!!!!!!!!!                   xxxxxx\n");
+	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
+	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
 }
 
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
@@ -408,6 +447,9 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	ssk->tx_ring.timer.function = sdp_poll_tx_timeout;
 	ssk->tx_ring.timer.data = (unsigned long) ssk;
 	ssk->tx_ring.poll_cnt = 0;
+
+	tasklet_init(&ssk->tx_ring.tasklet, sdp_poll_tx_timeout,
+			(unsigned long) ssk);
 
 	init_timer(&ssk->nagle_timer);
 	ssk->nagle_timer.function = sdp_nagle_timeout;

@@ -46,6 +46,8 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	struct sdp_hh *hh;
 	struct sdp_hah *hah;
 	struct sdp_chrecvbuf *req_size;
+	struct sdp_rrch *rrch;
+	struct sdp_srcah *srcah;
 	int len = 0;
 	char buf[256];
 	len += snprintf(buf, 255-len, "%s skb: %p mid: %2x:%-20s flags: 0x%x "
@@ -78,6 +80,25 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	case SDP_MID_DATA:
 		len += snprintf(buf + len, 255-len, "data_len: %ld |",
 			ntohl(h->len) - sizeof(struct sdp_bsdh));
+		break;
+	case SDP_MID_RDMARDCOMPL:
+		rrch = (struct sdp_rrch *)(h+1);
+
+		len += snprintf(buf + len, 255-len, " | len: %d |",
+				ntohl(rrch->len));
+		break;
+	case SDP_MID_SRCAVAIL:
+		srcah = (struct sdp_srcah *)(h+1);
+
+		len += snprintf(buf + len, 255-len, " | data_len: %ld |",
+				ntohl(h->len) - sizeof(struct sdp_bsdh) - 
+				sizeof(struct sdp_srcah));
+
+		len += snprintf(buf + len, 255-len,
+				" | len: %d, rkey: 0x%x, vaddr: 0x%llx |",
+				ntohl(srcah->len), ntohl(srcah->rkey),
+				be64_to_cpu(srcah->vaddr));
+		break;
 	default:
 		break;
 	}
@@ -104,11 +125,12 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	int send_now =
 		BZCOPY_STATE(skb) ||
-		 (ssk->nonagle & TCP_NAGLE_OFF) ||
+		TX_SRCAVAIL_STATE(skb) ||
+		(ssk->nonagle & TCP_NAGLE_OFF) ||
 		!ssk->nagle_last_unacked ||
 		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
 		skb->len + sizeof(struct sdp_bsdh) >= ssk->xmit_size_goal ||
-		(TCP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
+		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
 
 	if (send_now) {
 		unsigned long mseq = ring_head(ssk->tx_ring);
@@ -160,6 +182,33 @@ out2:
 		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
 }
 
+int sdp_post_credits(struct sdp_sock *ssk)
+{
+	int post_count = 0;
+
+	sdp_dbg_data(&ssk->isk.sk, "credits: %d remote credits: %d "
+			"tx ring slots left: %d send_head: %p\n",
+		tx_credits(ssk), remote_credits(ssk),
+		sdp_tx_ring_slots_left(ssk),
+		ssk->isk.sk.sk_send_head);
+
+	if (likely(tx_credits(ssk) > 1) &&
+	    likely(sdp_tx_ring_slots_left(ssk))) {
+		struct sk_buff *skb;
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
+					  sizeof(struct sdp_bsdh),
+					  GFP_KERNEL);
+		if (!skb)
+			return -ENOMEM;
+		sdp_post_send(ssk, skb, SDP_MID_DATA);
+		post_count++;
+	}
+
+	if (post_count)
+		sdp_xmit_poll(ssk, 0);
+	return post_count;
+}
+
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
@@ -183,15 +232,30 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	else
 		gfp_page = GFP_KERNEL;
 
-	if (sdp_tx_ring_slots_left(&ssk->tx_ring) < SDP_TX_SIZE / 2) {
+	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2) {
 		int wc_processed = sdp_xmit_poll(ssk,  1);
 		sdp_dbg_data(&ssk->isk.sk, "freed %d\n", wc_processed);
+	}
+
+	if (ssk->tx_sa && ssk->srcavail_cancel &&
+		tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
+	    sdp_tx_ring_slots_left(ssk)) {
+		sdp_prf1(&ssk->isk.sk, NULL, "Going to send srcavail cancel");
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
+					  sizeof(struct sdp_bsdh),
+					  gfp_page);
+		/* FIXME */
+		BUG_ON(!skb);
+		TX_SRCAVAIL_STATE(skb) = ssk->tx_sa;
+		sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL_CANCEL);
+		post_count++;
+		ssk->srcavail_cancel = 0;
 	}
 
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
 	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
-	    sdp_tx_ring_slots_left(&ssk->tx_ring)) {
+	    sdp_tx_ring_slots_left(ssk)) {
 		struct sdp_chrecvbuf *resp_size;
 		ssk->recv_request = 0;
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
@@ -208,19 +272,29 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	}
 
 	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
-	       sdp_tx_ring_slots_left(&ssk->tx_ring) &&
+	       sdp_tx_ring_slots_left(ssk) &&
 	       ssk->isk.sk.sk_send_head &&
 		sdp_nagle_off(ssk, ssk->isk.sk.sk_send_head)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
 	}
 
 	while (tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
-	       sdp_tx_ring_slots_left(&ssk->tx_ring) &&
+	       sdp_tx_ring_slots_left(ssk) &&
 	       (skb = ssk->isk.sk.sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
+		struct tx_srcavail_state *tx_sa;
 		update_send_head(&ssk->isk.sk, skb);
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
-		sdp_post_send(ssk, skb, SDP_MID_DATA);
+
+		tx_sa = TX_SRCAVAIL_STATE(skb);
+		if (unlikely(tx_sa)) {
+			if (likely(!tx_sa->abort))
+				sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL);
+			else
+				sdp_warn(&ssk->isk.sk, "Not sending aborted SrcAvail\n");	
+		} else {
+			sdp_post_send(ssk, skb, SDP_MID_DATA);
+		}
 		post_count++;
 	}
 
@@ -228,9 +302,9 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	if (likely(c > SDP_MIN_TX_CREDITS))
 		c *= 2;
 
-	if (unlikely(c < ring_posted(ssk->rx_ring)) &&
+	if (unlikely(c < rx_ring_posted(ssk)) &&
 	    likely(tx_credits(ssk) > 1) &&
-	    likely(sdp_tx_ring_slots_left(&ssk->tx_ring)) &&
+	    likely(sdp_tx_ring_slots_left(ssk)) &&
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 		skb = sdp_stream_alloc_skb(&ssk->isk.sk,

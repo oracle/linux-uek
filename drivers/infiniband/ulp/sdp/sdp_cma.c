@@ -62,34 +62,18 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	struct ib_qp_init_attr qp_init_attr = {
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
-		.cap.max_send_sge = SDP_MAX_SEND_SKB_FRAGS,
+		.cap.max_send_sge = SDP_MAX_SEND_SGES /*SDP_MAX_SEND_SKB_FRAGS*/,
 		.cap.max_recv_wr = SDP_RX_SIZE,
 		.cap.max_recv_sge = SDP_MAX_RECV_SKB_FRAGS + 1,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
         	.qp_type = IB_QPT_RC,
 	};
 	struct ib_device *device = id->device;
-	struct ib_mr *mr;
-	struct ib_pd *pd;
 	int rc;
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	pd = ib_alloc_pd(device);
-	if (IS_ERR(pd)) {
-		rc = PTR_ERR(pd);
-		sdp_warn(sk, "Unable to allocate PD: %d.\n", rc);
-		goto err_pd;
-	}
-
-        mr = ib_get_dma_mr(pd, IB_ACCESS_LOCAL_WRITE);
-        if (IS_ERR(mr)) {
-                rc = PTR_ERR(mr);
-		sdp_warn(sk, "Unable to get dma MR: %d.\n", rc);
-                goto err_mr;
-        }
-
-	sdp_sk(sk)->mr = mr;
+	sdp_sk(sk)->sdp_dev = ib_get_client_data(device, &sdp_client);
 
 	rc = sdp_rx_ring_create(sdp_sk(sk), device);
 	if (rc)
@@ -102,13 +86,27 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	qp_init_attr.recv_cq = sdp_sk(sk)->rx_ring.cq;
 	qp_init_attr.send_cq = sdp_sk(sk)->tx_ring.cq;
 
-	rc = rdma_create_qp(id, pd, &qp_init_attr);
+	rc = rdma_create_qp(id, sdp_sk(sk)->sdp_dev->pd, &qp_init_attr);
 	if (rc) {
 		sdp_warn(sk, "Unable to create QP: %d.\n", rc);
 		goto err_qp;
 	}
 	sdp_sk(sk)->qp = id->qp;
 	sdp_sk(sk)->ib_device = device;
+	sdp_sk(sk)->qp_active = 1;
+
+{
+	struct ib_qp_attr qp_attr;
+	struct ib_qp_init_attr qp_init_attr;
+
+	rc = ib_query_qp(sdp_sk(sk)->qp, 
+		&qp_attr,
+		0,
+		&qp_init_attr);
+
+	sdp_sk(sk)->max_send_sge = qp_attr.cap.max_send_sge;
+	sdp_dbg(sk, "max_send_sge = %d\n", sdp_sk(sk)->max_send_sge);
+}
 
 	init_waitqueue_head(&sdp_sk(sk)->wq);
 
@@ -120,10 +118,6 @@ err_qp:
 err_tx:
 	sdp_rx_ring_destroy(sdp_sk(sk));
 err_rx:
-	ib_dereg_mr(sdp_sk(sk)->mr);
-err_mr:
-	ib_dealloc_pd(pd);
-err_pd:
 	return rc;
 }
 
@@ -333,14 +327,14 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		if (rc)
 			break;
 		atomic_set(&sdp_sk(sk)->remote_credits,
-				ring_posted(sdp_sk(sk)->rx_ring));
+				rx_ring_posted(sdp_sk(sk)));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
+		hh.bsdh.bufs = htons(remote_credits(sdp_sk(sk)));
 		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
-		hh.bsdh.bufs = htons(ring_posted(sdp_sk(sk)->rx_ring));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
@@ -354,6 +348,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.retry_count = SDP_RETRY_COUNT;
 		SDP_DUMP_PACKET(NULL, "TX", NULL, &hh.bsdh);
 		rc = rdma_connect(id, &conn_param);
+//		sdp_sk(sk)->qp_active = 1;
 		break;
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_ROUTE_ERROR : %p\n", id);
@@ -363,15 +358,16 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_REQUEST\n");
 		rc = sdp_connect_handler(sk, id, event);
 		if (rc) {
+			sdp_warn(sk, "Destroy qp !!!!\n");
 			rdma_reject(id, NULL, 0);
 			break;
 		}
 		child = id->context;
 		atomic_set(&sdp_sk(child)->remote_credits,
-				ring_posted(sdp_sk(child)->rx_ring));
+				rx_ring_posted(sdp_sk(child)));
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
-		hah.bsdh.bufs = htons(ring_posted(sdp_sk(child)->rx_ring));
+		hah.bsdh.bufs = htons(remote_credits(sdp_sk(child)));
 		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HAH_SIZE);
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
@@ -391,15 +387,24 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			id->qp = NULL;
 			id->context = NULL;
 			parent = sdp_sk(child)->parent; /* TODO: hold ? */
+		} else {
+//			sdp_sk(child)->qp_active = 1;
 		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_RESPONSE\n");
 		rc = sdp_response_handler(sk, id, event);
-		if (rc)
+		if (rc) {
+			sdp_warn(sk, "Destroy qp !!!!\n");
 			rdma_reject(id, NULL, 0);
+		}
 		else
 			rc = rdma_accept(id, NULL);
+
+		if (!rc) {
+//			sdp_sk(sk)->qp_active = 1;
+			rc = sdp_post_credits(sdp_sk(sk)) < 0 ?: 0;
+		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");
@@ -431,6 +436,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				__func__);
 		}
 
+		sdp_sk(sk)->qp_active = 0;
 		rdma_disconnect(id);
 
 		if (sk->sk_state != TCP_TIME_WAIT) {

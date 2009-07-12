@@ -250,6 +250,8 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 		sdpstats.sendmsg_bcopy_segment);
 	seq_printf(seq, "bzcopy segments    \t\t: %d\n",
 		sdpstats.sendmsg_bzcopy_segment);
+	seq_printf(seq, "zcopy segments    \t\t: %d\n",
+		sdpstats.sendmsg_zcopy_segment);
 	seq_printf(seq, "post_send_credits  \t\t: %d\n",
 		sdpstats.post_send_credits);
 	seq_printf(seq, "memcpy_count       \t\t: %u\n",

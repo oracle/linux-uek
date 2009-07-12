@@ -9,7 +9,7 @@
 #include <linux/sched.h>
 
 #define SDPSTATS_ON
-/* #define SDP_PROFILING */
+#define SDP_PROFILING
 
 #define _sdp_printk(func, line, level, sk, format, arg...) do {               \
 	preempt_disable(); \
@@ -24,14 +24,6 @@
 	_sdp_printk(__func__, __LINE__, level, sk, format, ## arg)
 #define sdp_warn(sk, format, arg...)                         \
 	sdp_printk(KERN_WARNING, sk, format , ## arg)
-
-#define rx_ring_lock(ssk, f) do { \
-	spin_lock_irqsave(&ssk->rx_ring.lock, f); \
-} while (0)
-
-#define rx_ring_unlock(ssk, f) do { \
-	spin_unlock_irqrestore(&ssk->rx_ring.lock, f); \
-} while (0)
 
 #define SDP_MODPARAM_SINT(var, def_val, msg) \
 	static int var = def_val; \
@@ -88,8 +80,8 @@ static inline unsigned long long current_nsec(void)
 	preempt_enable(); \
 	1; \
 })
-#define sdp_prf(sk, s, format, arg...)
-/* #define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg) */
+//#define sdp_prf(sk, s, format, arg...)
+#define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg)
 
 #else
 #define sdp_prf1(sk, s, format, arg...)
@@ -102,7 +94,7 @@ extern int sdp_debug_level;
 #define sdp_dbg(sk, format, arg...)                          \
 	do {                                                 \
 		if (sdp_debug_level > 0)                     \
-		sdp_printk(KERN_DEBUG, sk, format , ## arg); \
+		sdp_printk(KERN_WARNING, sk, format , ## arg); \
 	} while (0)
 
 #define sock_ref(sk, msg, sock_op) ({ \
@@ -136,7 +128,7 @@ extern int sdp_data_debug_level;
 #define sdp_dbg_data(sk, format, arg...)                     		\
 	do {                                                 		\
 		if (sdp_data_debug_level & 0x2)                		\
-			sdp_printk(KERN_DEBUG, sk, format , ## arg); 	\
+			sdp_printk(KERN_WARNING, sk, format , ## arg); 	\
 	} while (0)
 #define SDP_DUMP_PACKET(sk, str, skb, h)                     		\
 	do {                                                 		\
@@ -148,12 +140,42 @@ extern int sdp_data_debug_level;
 #define SDP_DUMP_PACKET(sk, str, skb, h)
 #endif
 
+#if 0
+#define lock_sock(sk) do { \
+	sdp_dbg_data(sk, "lock_sock: before lock\n"); \
+	lock_sock(sk); \
+	sdp_dbg_data(sk, "lock_sock: locked\n"); \
+} while (0)
+
+#define release_sock(sk) do { \
+	sdp_dbg_data(sk, "release_sock\n"); \
+	release_sock(sk); \
+} while (0)
+
+
+#undef sk_wait_event
+
+#define sk_wait_event(__sk, __timeo, __condition)		\
+({	int rc;							\
+	release_sock(__sk);					\
+	rc = __condition;					\
+	if (!rc) {						\
+		*(__timeo) = schedule_timeout(*(__timeo));	\
+	}							\
+	lock_sock(__sk);					\
+	rc = __condition;					\
+	rc;							\
+})
+
+#endif
+
 #ifdef SDPSTATS_ON
 
 struct sdpstats {
 	u32 post_send[256];
 	u32 sendmsg_bcopy_segment;
 	u32 sendmsg_bzcopy_segment;
+	u32 sendmsg_zcopy_segment;
 	u32 sendmsg;
 	u32 post_send_credits;
 	u32 sendmsg_nagle_skip;
@@ -219,6 +241,8 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_TX_POLL_TIMEOUT	(HZ / 4)
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
+#define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
+
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5
@@ -228,8 +252,13 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
 
+#define SDP_FMR_SIZE		256
+#define SDP_FMR_POOL_SIZE	1024
+#define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
+
 #define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
+#define SDP_MAX_SEND_SGES 32
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
 #define SDP_NUM_WC 4
 #define SDP_MAX_PAYLOAD ((1 << 16) - SDP_HEAD_SIZE)
@@ -239,6 +268,8 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 
 #define SDP_OP_RECV 0x800000000LL
 #define SDP_OP_SEND 0x400000000LL
+#define SDP_OP_RDMA 0x200000000LL
+#define SDP_OP_NOP  0x100000000LL
 
 /* how long (in jiffies) to block sender till tx completion*/
 #define SDP_BZCOPY_POLL_TIMEOUT (HZ / 10)
@@ -246,7 +277,25 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_AUTO_CONF	0xffff
 #define AUTO_MOD_DELAY (HZ / 4)
 
-#define BZCOPY_STATE(skb) (*(struct bzcopy_state **)(skb->cb))
+struct bzcopy_state;
+struct rx_srcavail_state;
+
+struct sdp_skb_cb {
+	__u32		seq;		/* Starting sequence number	*/
+	__u32		end_seq;	/* SEQ + FIN + SYN + datalen	*/
+	__u8		flags;		/* TCP header flags.		*/
+	struct bzcopy_state      *bz;
+	struct rx_srcavail_state *rx_sa;
+	struct tx_srcavail_state *tx_sa;
+};
+
+#define BZCOPY_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->bz)
+#define RX_SRCAVAIL_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->rx_sa)
+#define TX_SRCAVAIL_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->tx_sa)
+
+#define SDP_SKB_CB(__skb)	((struct sdp_skb_cb *)&((__skb)->cb[0]))
+#undef TCP_SKB_CB
+
 #ifndef MIN
 #define MIN(a, b) (a < b ? a : b)
 #endif
@@ -259,8 +308,13 @@ enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
 	SDP_MID_HELLO_ACK = 0x1,
 	SDP_MID_DISCONN = 0x2,
+	SDP_MID_SENDSM = 0x4,
+	SDP_MID_RDMARDCOMPL = 0x6,
+	SDP_MID_SRCAVAIL_CANCEL = 0x8,
 	SDP_MID_CHRCVBUF = 0xB,
 	SDP_MID_CHRCVBUF_ACK = 0xC,
+	SDP_MID_SRCAVAIL = 0xFD,
+	SDP_MID_SINKAVAIL = 0xFE,
 	SDP_MID_DATA = 0xFF,
 };
 
@@ -324,27 +378,88 @@ struct sdp_hah {
 	__u32 actrcvsz;
 };
 
+struct sdp_rrch {
+	__u32 len;
+};
+
+struct sdp_srcah {
+	__u32 len;
+	__u32 rkey;
+	__u64 vaddr;
+};
+
 struct sdp_buf {
         struct sk_buff *skb;
         u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
+};
+
+/* Context used for synchronous zero copy bcopy (BZCOPY) */
+struct bzcopy_state {
+	unsigned char __user  *u_base;
+	int                    u_len;
+	int                    left;
+	int                    page_cnt;
+	int                    cur_page;
+	int                    cur_offset;
+	int                    busy;
+	struct sdp_sock      *ssk;
+	struct page         **pages;
+};
+
+struct rx_srcavail_state {
+	/* Advertised buffer stuff */
+	u32 mseq;
+	u32 used;
+	u32 len;
+	u32 rkey;
+	u64 vaddr;
+
+	/* Dest buff info */
+	u32 		page_cnt;
+	struct page	**pages;
+	struct ib_sge	*sge;
+
+	/* Utility */
+	u8  busy;
+	u8  aborted;
+};
+
+struct tx_srcavail_state {
+	u8		busy;
+
+	u32 		page_cnt;
+	struct page	**pages;
+	u64		*addrs;
+	struct ib_pool_fmr *fmr;
+	u32		bytes_completed;
+	u32		bytes_total;
+
+	u8 		abort;
+	u32		mseq;
 };
 
 #define ring_head(ring)   (atomic_read(&(ring).head))
 #define ring_tail(ring)   (atomic_read(&(ring).tail))
 #define ring_posted(ring) (ring_head(ring) - ring_tail(ring))
 
-struct sdp_tx_ring {
-	struct sdp_buf   *buffer;
-	atomic_t          head;
-	atomic_t          tail;
-	struct ib_cq 	 *cq;
+#define rx_ring_posted(ssk) ring_posted(ssk->rx_ring)
+#define tx_ring_posted(ssk) (ring_posted(ssk->tx_ring) + \
+	(ssk->tx_ring.rdma_inflight ? ssk->tx_ring.rdma_inflight->busy : 0))
 
-	int 		  una_seq;
-	atomic_t 	  credits;
+struct sdp_tx_ring {
+	struct rx_srcavail_state *rdma_inflight;
+	struct sdp_buf   	*buffer;
+	atomic_t          	head;
+	atomic_t          	tail;
+	struct ib_cq 	 	*cq;
+
+	int 		  	una_seq;
+	atomic_t 	  	credits;
 #define tx_credits(ssk) (atomic_read(&ssk->tx_ring.credits))
 
-	struct timer_list timer;
-	u16 		  poll_cnt;
+	struct timer_list 	timer;
+	struct tasklet_struct 	tasklet;
+	u16 		  	poll_cnt;
 };
 
 struct sdp_rx_ring {
@@ -353,12 +468,34 @@ struct sdp_rx_ring {
 	atomic_t          tail;
 	struct ib_cq 	 *cq;
 
-	spinlock_t 	 lock;
+	int		 destroyed;
+	rwlock_t 	 destroyed_lock;
 };
 
-static inline int sdp_tx_ring_slots_left(struct sdp_tx_ring *tx_ring)
+static inline void rx_ring_unlock(struct sdp_rx_ring *rx_ring,
+		unsigned long *flags)
 {
-	return SDP_TX_SIZE - ring_posted(*tx_ring);
+	read_unlock_irqrestore(&rx_ring->destroyed_lock, *flags);
+}
+
+static inline int rx_ring_trylock(struct sdp_rx_ring *rx_ring,
+		unsigned long *flags)
+{
+	read_lock_irqsave(&rx_ring->destroyed_lock, *flags);
+	if (rx_ring->destroyed) {
+		rx_ring_unlock(rx_ring, flags);
+		return 0;
+	}
+	return 1;
+}
+
+static inline void rx_ring_destroy_lock(struct sdp_rx_ring *rx_ring)
+{
+	unsigned long flags;
+
+	write_lock_irqsave(&rx_ring->destroyed_lock, flags);
+	rx_ring->destroyed = 1;
+	write_unlock_irqrestore(&rx_ring->destroyed_lock, flags);
 }
 
 struct sdp_chrecvbuf {
@@ -393,6 +530,14 @@ struct sdp_moderation {
 	int moder_time;
 };
 
+struct sdp_device {
+	struct ib_pd 		*pd;
+	struct ib_mr 		*mr;
+	struct ib_fmr_pool 	*fmr_pool;
+};
+
+extern struct ib_client sdp_client;
+
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
@@ -401,6 +546,15 @@ struct sdp_sock {
 	struct list_head backlog_queue;
 	struct sk_buff_head rx_ctl_q;
 	struct sock *parent;
+	struct sdp_device *sdp_dev;
+
+	int qp_active;
+	struct tx_srcavail_state *tx_sa;
+	spinlock_t tx_sa_lock;
+	int max_send_sge;
+	int srcavail_cancel;
+	struct delayed_work srcavail_cancel_work;
+	int srcavail_cancel_mseq;
 
 	struct work_struct rx_comp_work;
 	wait_queue_head_t wq;
@@ -458,7 +612,6 @@ struct sdp_sock {
 
 	/* rdma specific */
 	struct ib_qp *qp;
-	struct ib_mr *mr;
 
 	/* SDP slow start */
 	int rcvbuf_scale; 	/* local recv buf scale for each socket */
@@ -479,20 +632,7 @@ struct sdp_sock {
 	struct sdp_moderation auto_mod;
 
 	/* BZCOPY data */
-	int   zcopy_thresh;
-};
-
-/* Context used for synchronous zero copy bcopy (BZCOY) */
-struct bzcopy_state {
-	unsigned char __user  *u_base;
-	int                    u_len;
-	int                    left;
-	int                    page_cnt;
-	int                    cur_page;
-	int                    cur_offset;
-	int                    busy;
-	struct sdp_sock      *ssk;
-	struct page         **pages;
+	int   bzcopy_thresh;
 };
 
 extern int rcvbuf_initial_size;
@@ -594,6 +734,9 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
 void sdp_destroy_work(struct work_struct *work);
 void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_reset(struct sock *sk);
+int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
+				  struct bzcopy_state *bz);
+void skb_entail(struct sock *sk, struct sdp_sock *ssk, struct sk_buff *skb);
 
 /* sdp_proc.c */
 int __init sdp_proc_init(void);
@@ -601,6 +744,9 @@ void sdp_proc_unregister(void);
 
 /* sdp_cma.c */
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
+
+/* sdp_bcopy.c */
+int sdp_post_credits(struct sdp_sock *ssk);
 
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
@@ -620,11 +766,33 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
 void sdp_remove_large_sock(struct sdp_sock *ssk);
+void sdp_handle_disconn(struct sock *sk);
+
+/* sdp_zcopy.c */
+int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
+		size_t size);
+int sdp_handle_srcavail(struct sdp_sock *ssk, struct sdp_srcah *srcah);
+void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack);
+void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
+		u32 bytes_completed);
+int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
+int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
+		int len);
+int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
+		unsigned long addr);
+int sdp_post_rdma_rd_compl(struct sdp_sock *ssk, int copied);
+int sdp_post_sendsm(struct sdp_sock *ssk);
+void srcavail_cancel_timeout(struct work_struct *work);
+
+static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
+{
+	return SDP_TX_SIZE - tx_ring_posted(ssk);
+}
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {
 	sdp_prf(sk, NULL, "Arming RX cq");
-	sdp_dbg_data(sk, "Arming RX cq\n");
+//	sdp_dbg_data(sk, "Arming RX cq\n");
 
 	ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq, IB_CQ_NEXT_COMP);
 }
@@ -633,9 +801,32 @@ static inline void sdp_arm_tx_cq(struct sock *sk)
 {
 	sdp_prf(sk, NULL, "Arming TX cq");
 	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
-		tx_credits(sdp_sk(sk)), ring_posted(sdp_sk(sk)->tx_ring));
+		tx_credits(sdp_sk(sk)), tx_ring_posted(sdp_sk(sk)));
 
 	ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq, IB_CQ_NEXT_COMP);
+}
+
+/* return the min of:
+ * - tx credits
+ * - free slots in tx_ring (not including SDP_MIN_TX_CREDITS
+ */
+static inline int tx_slots_free(struct sdp_sock *ssk)
+{
+	int min_free;
+
+	min_free = MIN(tx_credits(ssk),
+			SDP_TX_SIZE - tx_ring_posted(ssk));
+	if (min_free < SDP_MIN_TX_CREDITS)
+		return 0;
+
+	return min_free - SDP_MIN_TX_CREDITS;
+};
+
+/* like sk_stream_memory_free - except measures remote credits */
+static inline int sdp_bzcopy_slots_avail(struct sdp_sock *ssk,
+					 struct bzcopy_state *bz)
+{
+	return tx_slots_free(ssk) > bz->busy;
 }
 
 /* utilities */
@@ -646,9 +837,14 @@ static inline char *mid2str(int mid)
 		ENUM2STR(SDP_MID_HELLO),
 		ENUM2STR(SDP_MID_HELLO_ACK),
 		ENUM2STR(SDP_MID_DISCONN),
+		ENUM2STR(SDP_MID_SENDSM),
+		ENUM2STR(SDP_MID_RDMARDCOMPL),
+		ENUM2STR(SDP_MID_SRCAVAIL_CANCEL),
 		ENUM2STR(SDP_MID_CHRCVBUF),
 		ENUM2STR(SDP_MID_CHRCVBUF_ACK),
 		ENUM2STR(SDP_MID_DATA),
+		ENUM2STR(SDP_MID_SRCAVAIL),
+		ENUM2STR(SDP_MID_SINKAVAIL),
 	};
 
 	if (mid >= ARRAY_SIZE(mid2str))
