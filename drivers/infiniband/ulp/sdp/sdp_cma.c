@@ -308,7 +308,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			-EINVAL : 0;
 	}
 
-	lock_sock(sk);
+	lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 	sdp_dbg(sk, "%s event %d id %p\n", __func__, event->event, id);
 	if (!sdp_sk(sk)->id) {
 		sdp_dbg(sk, "socket is being torn down\n");

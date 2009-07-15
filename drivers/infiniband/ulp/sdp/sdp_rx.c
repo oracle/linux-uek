@@ -447,12 +447,12 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		break;
 	case SDP_MID_CHRCVBUF:
 		sdp_dbg_data(sk, "Handling RX CHRCVBUF\n");
-		sdp_handle_resize_request(ssk, (struct sdp_chrecvbuf *)h);
+		sdp_handle_resize_request(ssk, (struct sdp_chrecvbuf *)(h+1));
 		__kfree_skb(skb);
 		break;
 	case SDP_MID_CHRCVBUF_ACK:
 		sdp_dbg_data(sk, "Handling RX CHRCVBUF_ACK\n");
-		sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)h);
+		sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)(h+1));
 		__kfree_skb(skb);
 		break;
 	default:
@@ -787,9 +787,6 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 {
 	struct ib_cq *rx_cq;
 	int rc = 0;
-	unsigned long flags;
-
-	rx_ring_lock(ssk, flags);
 
 	atomic_set(&ssk->rx_ring.head, 1);
 	atomic_set(&ssk->rx_ring.tail, 1);
@@ -797,12 +794,11 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	ssk->rx_ring.buffer = kmalloc(
 			sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE, GFP_KERNEL);
 	if (!ssk->rx_ring.buffer) {
-		rc = -ENOMEM;
 		sdp_warn(&ssk->isk.sk,
 			"Unable to allocate RX Ring size %zd.\n",
 			 sizeof(*ssk->rx_ring.buffer) * SDP_RX_SIZE);
 
-		goto out;
+		return -ENOMEM;
 	}
 
 	/* TODO: use vector=IB_CQ_VECTOR_LEAST_ATTACHED when implemented
@@ -822,13 +818,11 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 	sdp_arm_rx_cq(&ssk->isk.sk);
 
-	goto out;
+	return 0;
 
 err_cq:
 	kfree(ssk->rx_ring.buffer);
 	ssk->rx_ring.buffer = NULL;
-out:
-	rx_ring_unlock(ssk, flags);
 	return rc;
 }
 

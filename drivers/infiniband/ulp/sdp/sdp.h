@@ -11,12 +11,15 @@
 #define SDPSTATS_ON
 /* #define SDP_PROFILING */
 
-#define _sdp_printk(func, line, level, sk, format, arg...)                \
+#define _sdp_printk(func, line, level, sk, format, arg...) do {               \
+	preempt_disable(); \
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
 	       func, line, \
 	       current->pid, smp_processor_id(), \
 	       (sk) ? inet_sk(sk)->num : -1,                 \
-	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg)
+	       (sk) ? ntohs(inet_sk(sk)->dport) : -1, ## arg); \
+	preempt_enable(); \
+} while (0)
 #define sdp_printk(level, sk, format, arg...)                \
 	_sdp_printk(__func__, __LINE__, level, sk, format, ## arg)
 #define sdp_warn(sk, format, arg...)                         \
@@ -71,6 +74,7 @@ static inline unsigned long long current_nsec(void)
 #define sdp_prf1(sk, s, format, arg...) ({ \
 	struct sdpprf_log *l = \
 		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
+	preempt_disable(); \
 	l->idx = sdpprf_log_count - 1; \
 	l->pid = current->pid; \
 	l->sk_num = (sk) ? inet_sk(sk)->num : -1;                 \
@@ -81,6 +85,7 @@ static inline unsigned long long current_nsec(void)
 	l->time = current_nsec(); \
 	l->func = __func__; \
 	l->line = __LINE__; \
+	preempt_enable(); \
 	1; \
 })
 #define sdp_prf(sk, s, format, arg...)

@@ -181,7 +181,6 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 static void sdp_destroy_qp(struct sdp_sock *ssk)
 {
 	struct ib_pd *pd = NULL;
-	unsigned long flags;
 
 
 	sdp_dbg(&ssk->isk.sk, "destroying qp\n");
@@ -189,7 +188,6 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	del_timer(&ssk->tx_ring.timer);
 
-	rx_ring_lock(ssk, flags);
 
 	sdp_rx_ring_destroy(ssk);
 	sdp_tx_ring_destroy(ssk);
@@ -209,9 +207,6 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 		ib_dealloc_pd(pd);
 
 	sdp_remove_large_sock(ssk);
-
-	rx_ring_unlock(ssk, flags);
-
 }
 
 static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
@@ -452,10 +447,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 		sdp_warn(sk, "setting state to error\n");
 		sdp_set_error(sk, rc);
 	}
-
-	sdp_destroy_qp(ssk);
-
-	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sk->sk_state_change(sk);
 
@@ -975,6 +966,10 @@ void sdp_destroy_work(struct work_struct *work)
 			destroy_work);
 	struct sock *sk = &ssk->isk.sk;
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
+
+	sdp_destroy_qp(ssk);
+
+	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
 	sdp_cancel_dreq_wait_timeout(ssk);
 
@@ -2559,6 +2554,10 @@ static void __exit sdp_exit(void)
 	sdp_proc_unregister();
 
 	ib_unregister_client(&sdp_client);
+
+	percpu_counter_destroy(sockets_allocated);
+	percpu_counter_destroy(orphan_count);
+
 	kfree(orphan_count);
 	kfree(sockets_allocated);
 }
