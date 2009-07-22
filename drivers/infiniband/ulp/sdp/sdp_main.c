@@ -1713,13 +1713,9 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
-	unsigned long long a, b, c;
-	unsigned long long start, end;
 	SDPSTATS_COUNTER_INC(sendmsg);
 	lock_sock(sk);
 	sdp_dbg_data(sk, "%s\n", __func__);
-
-	rdtscll(start);
 
 	posts_handler_get(ssk);
 
@@ -1757,14 +1753,9 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
-		rdtscll(a);
 		if (bz)
 			sdp_bz_cleanup(bz);
-		rdtscll(b);
 		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
-		rdtscll(c);
-		SDPSTATS_COUNTER_ADD(bz_clean_sum, b - a);
-		SDPSTATS_COUNTER_ADD(bz_setup_sum, c - b);
 		if (IS_ERR(bz)) {
 			bz = NULL;
 			err = PTR_ERR(bz);
@@ -1831,12 +1822,8 @@ new_segment:
 				goto new_segment;
 			}
 
-			rdtscll(a);
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);
-			rdtscll(b);
-			if (copy > 0)
-				SDPSTATS_COUNTER_ADD(tx_copy_sum, b - a);
 			if (unlikely(copy < 0)) {
 				if (!++copy)
 					goto wait_for_memory;
@@ -1905,8 +1892,6 @@ out:
 
 	sdp_auto_moderation(ssk);
 
-	rdtscll(end);
-	SDPSTATS_COUNTER_ADD(sendmsg_sum, end - start);
 	release_sock(sk);
 	return copied;
 

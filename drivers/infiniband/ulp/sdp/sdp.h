@@ -172,11 +172,6 @@ struct sdpstats {
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 send_interval[25];
-
-	u32 bz_clean_sum;
-	u32 bz_setup_sum;
-	u32 tx_copy_sum;
-	u32 sendmsg_sum;
 };
 extern struct sdpstats sdpstats;
 
