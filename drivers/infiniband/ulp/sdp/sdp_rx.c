@@ -484,6 +484,9 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_post_sendsm(ssk);
 		break;
 	case SDP_MID_DISCONN:
+		sdp_dbg_data(sk, "Handling DISCONN\n");
+		sdp_prf(sk, NULL, "Handling DISCONN");
+		sdp_handle_disconn(sk);
 		break;
 	case SDP_MID_CHRCVBUF:
 		sdp_dbg_data(sk, "Handling RX CHRCVBUF\n");
@@ -542,6 +545,12 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
 
+	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
+		/* Credit update is valid even after RCV_SHUTDOWN */
+		__kfree_skb(skb);
+		return 0;
+	}
+
 	if ((h->mid != SDP_MID_DATA && h->mid != SDP_MID_SRCAVAIL &&
 				h->mid != SDP_MID_DISCONN) ||
 			unlikely(sk->sk_shutdown & RCV_SHUTDOWN)) {
@@ -554,11 +563,6 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		}
 		skb_queue_tail(&ssk->rx_ctl_q, skb);
 
-		return 0;
-	}
-
-	if (unlikely(h->mid == SDP_MID_DATA && skb->len <= 0)) {
-		__kfree_skb(skb);
 		return 0;
 	}
 
@@ -889,8 +893,12 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 	}
 
 	if (ssk->rx_ring.cq) {
-		ib_destroy_cq(ssk->rx_ring.cq);
-		ssk->rx_ring.cq = NULL;
+		if (ib_destroy_cq(ssk->rx_ring.cq)) {
+			sdp_warn(&ssk->isk.sk, "destroy cq(%p) failed\n",
+				ssk->rx_ring.cq);
+		} else {
+			ssk->rx_ring.cq = NULL;
+		}
 	}
 
 	WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
