@@ -191,13 +191,13 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 
 	del_timer(&ssk->tx_ring.timer);
 
-	sdp_rx_ring_destroy(ssk);
-	sdp_tx_ring_destroy(ssk);
-
 	if (ssk->qp) {
 		ib_destroy_qp(ssk->qp);
 		ssk->qp = NULL;
 	}
+
+	sdp_rx_ring_destroy(ssk);
+	sdp_tx_ring_destroy(ssk);
 
 	sdp_remove_large_sock(ssk);
 }
