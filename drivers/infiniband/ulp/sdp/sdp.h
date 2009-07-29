@@ -242,6 +242,9 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
+#define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
+
+#define MAX_ZCOPY_SEND_SIZE (512 * 1024)
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -425,11 +428,13 @@ struct rx_srcavail_state {
 };
 
 struct tx_srcavail_state {
-	u8		busy;
-
 	u32 		page_cnt;
 	struct page	**pages;
 	u64		*addrs;
+
+	/* Data below 'busy' will be reset */
+	u8		busy;
+
 	struct ib_pool_fmr *fmr;
 	u32		bytes_completed;
 	u32		bytes_total;
@@ -437,6 +442,12 @@ struct tx_srcavail_state {
 	u8 		abort;
 	u32		mseq;
 };
+
+static inline void tx_sa_reset(struct tx_srcavail_state *tx_sa)
+{
+	memset((void *)&tx_sa->busy, 0,
+			sizeof(*tx_sa) - offsetof(typeof(*tx_sa), busy));
+}
 
 #define ring_head(ring)   (atomic_read(&(ring).head))
 #define ring_tail(ring)   (atomic_read(&(ring).tail))

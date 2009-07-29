@@ -288,10 +288,16 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 
 		tx_sa = TX_SRCAVAIL_STATE(skb);
 		if (unlikely(tx_sa)) {
-			if (likely(!tx_sa->abort))
-				sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL);
-			else
-				sdp_warn(&ssk->isk.sk, "Not sending aborted SrcAvail\n");	
+			if (ssk->tx_sa != tx_sa) {
+				sdp_warn(&ssk->isk.sk, "SrcAvail cancelled "
+						"before being sent!\n");
+				__kfree_skb(skb);
+			} else {
+				if (likely(!tx_sa->abort))
+					sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL);
+				else
+					sdp_warn(&ssk->isk.sk, "Not sending aborted SrcAvail\n");	
+			}
 		} else {
 			sdp_post_send(ssk, skb, SDP_MID_DATA);
 		}

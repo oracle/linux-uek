@@ -1696,7 +1696,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh) {
 		err = sdp_sendmsg_zcopy(iocb, sk, msg, size);
-		if (err != -EAGAIN)
+		if (err != -EAGAIN && err != -ETIME)
 			return err;
 
 		/* Got SendSM/Timedout - fallback to regular send */	
