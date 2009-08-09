@@ -39,7 +39,6 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_fmr_pool.h>
-#include <linux/dmaengine.h>
 #include <linux/pagemap.h>
 #include <net/tcp.h> /* for memcpy_toiovec */
 #include <asm/io.h>
@@ -757,7 +756,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 		int offset, int page_cnt, int len, u64 *addrs)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	unsigned long timeo = SDP_SRCAVAIL_ADV_TIMEOUT; //sock_sndtimeo(sk, 0);
+	long timeo = SDP_SRCAVAIL_ADV_TIMEOUT;
 	unsigned long lock_flags;
 	int rc = 0;
 

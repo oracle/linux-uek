@@ -57,12 +57,6 @@ struct sdpprf_log {
 extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 extern int sdpprf_log_count;
 
-static inline unsigned long long current_nsec(void)
-{
-	struct timespec tv;
-	getnstimeofday(&tv);
-	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
-}
 #define sdp_prf1(sk, s, format, arg...) ({ \
 	struct sdpprf_log *l = \
 		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
@@ -74,7 +68,7 @@ static inline unsigned long long current_nsec(void)
 	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
-	l->time = current_nsec(); \
+	l->time = jiffies_to_usecs(jiffies); \
 	l->func = __func__; \
 	l->line = __LINE__; \
 	preempt_enable(); \
