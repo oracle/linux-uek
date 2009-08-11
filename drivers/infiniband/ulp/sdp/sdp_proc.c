@@ -378,8 +378,7 @@ static void sdpprf_stop(struct seq_file *p, void *v)
 {
 }
 
-
-const struct seq_operations sdpprf_ops = {
+struct seq_operations sdpprf_ops = {
 	.start = sdpprf_start,
 	.stop = sdpprf_stop,
 	.next = sdpprf_next,
@@ -404,7 +403,7 @@ static ssize_t sdpprf_write(struct file *file, const char __user *buf,
 	return count;
 }
 
-static const struct file_operations sdpprf_fops = {
+static struct file_operations sdpprf_fops = {
 	.open           = sdpprf_open,
 	.read           = seq_read,
 	.llseek         = seq_lseek,

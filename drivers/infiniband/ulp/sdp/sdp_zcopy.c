@@ -50,21 +50,25 @@ static struct bzcopy_state dummy_bz = {
 busy: 1,
 };
 
+static int sdp_update_iov_used(struct sock *sk, struct iovec *iov, int len);
+
 static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
-		int off, size_t len)
+		int page_idx, struct iovec *iov, int off, size_t len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sdp_srcah *srcah;
 	struct sk_buff *skb;
+	int payload_len;
 
 	WARN_ON(ssk->tx_sa);
 
 	BUG_ON(!tx_sa);
 	BUG_ON(!tx_sa->fmr || !tx_sa->fmr->fmr->lkey);
 
-	skb = sdp_stream_alloc_skb(&ssk->isk.sk,
+	skb = sk_stream_alloc_skb(&ssk->isk.sk,
 			sizeof(struct sdp_bsdh) +
-			sizeof(struct sdp_srcah),
+			sizeof(struct sdp_srcah) + 
+			SDP_SRCAVAIL_PAYLOAD_LEN,
 			GFP_KERNEL);
 	if (!skb) {
 		return -ENOMEM;
@@ -80,8 +84,31 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 	srcah->rkey = htonl(tx_sa->fmr->fmr->lkey);
 	srcah->vaddr = cpu_to_be64(off);
 
+	if (0) {
+		void *payload;
+		payload = skb_put(skb, SDP_SRCAVAIL_PAYLOAD_LEN);
+		memcpy(payload, iov->iov_base, SDP_SRCAVAIL_PAYLOAD_LEN);
+		payload_len = SDP_SRCAVAIL_PAYLOAD_LEN;
+	} else {
+		/* must have payload inlined in SrcAvail packet in combined mode */
+		payload_len = min(len, PAGE_SIZE - off);
+		get_page(tx_sa->pages[page_idx]);
+		skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
+				tx_sa->pages[page_idx], off, payload_len);
+
+		skb->len             += payload_len;
+		skb->data_len         = payload_len;
+		skb->truesize        += payload_len;
+//		sk->sk_wmem_queued   += payload_len;
+//		sk->sk_forward_alloc -= payload_len;
+
+	}
+
 	skb_entail(sk, ssk, skb);
 	
+	tx_sa->bytes_sent = len;
+	tx_sa->bytes_acked = payload_len;
+
 	/* TODO: pushing the skb into the tx_queue should be enough */
 
 	return 0;
@@ -147,8 +174,13 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 			break;
 		}
 
-		if (tx_sa->bytes_completed >= len)
+		if (tx_sa->bytes_acked == tx_sa->bytes_sent)
 			break;
+		else if (tx_sa->bytes_acked > tx_sa->bytes_sent) {
+			err = -EINVAL;
+			sdp_warn(sk, "acked bytes > sent bytes\n");
+			break;
+		}
 
 		if (tx_sa->abort) {
 			sdp_prf1(sk, NULL, "Aborting SrcAvail sending");
@@ -158,8 +190,10 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 
 		posts_handler_put(ssk);
 
-		sk_wait_event(sk, &current_timeo, tx_sa->abort && 
-				(tx_sa->bytes_completed >= len) && vm_wait);
+		sk_wait_event(sk, &current_timeo,
+				tx_sa->abort && 
+				(tx_sa->bytes_acked < tx_sa->bytes_sent) && 
+				vm_wait);
 		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
 
 		posts_handler_get(ssk);
@@ -181,8 +215,8 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 
 	finish_wait(sk->sk_sleep, &wait);
 
-	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d bytes, abort: %d\n",
-			tx_sa->bytes_completed, tx_sa->abort);
+	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d/%d bytes, abort: %d\n",
+			tx_sa->bytes_acked, tx_sa->bytes_sent, tx_sa->abort);
 
 	if (!ssk->qp_active) {
 		sdp_warn(sk, "QP destroyed while waiting\n");
@@ -240,11 +274,16 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk, long *timeo_p)
 	return err;
 }
 
-int sdp_post_rdma_rd_compl(struct sdp_sock *ssk, int copied)
+int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
+		struct rx_srcavail_state *rx_sa)
 {
 	struct sdp_rrch *rrch;
 	struct sk_buff *skb;
 	gfp_t gfp_page;
+	int copied = rx_sa->used - rx_sa->reported;
+
+	if (rx_sa->used <= rx_sa->reported)
+		return 0;
 
 	if (unlikely(ssk->isk.sk.sk_allocation))
 		gfp_page = ssk->isk.sk.sk_allocation;
@@ -260,6 +299,7 @@ int sdp_post_rdma_rd_compl(struct sdp_sock *ssk, int copied)
 
 	rrch = (struct sdp_rrch *)skb_put(skb, sizeof(*rrch));
 	rrch->len = htonl(copied);
+	rx_sa->reported += copied;
 	/* TODO: What if no tx_credits available? */
 	sdp_post_send(ssk, skb, SDP_MID_RDMARDCOMPL);
 
@@ -371,18 +411,7 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		goto out;
 	}
 
-	if (ssk->tx_sa->bytes_completed > bytes_completed) {
-		sdp_warn(sk, "tx_sa->bytes_total(%d), "
-			"tx_sa->bytes_completed(%d) > bytes_completed(%d)\n",
-				ssk->tx_sa->bytes_total, 
-				ssk->tx_sa->bytes_completed, bytes_completed);
-	}
-	if (ssk->tx_sa->bytes_total < bytes_completed) {
-		sdp_warn(sk, "ssk->tx_sa->bytes_total(%d) < bytes_completed(%d)\n",
-				ssk->tx_sa->bytes_total, bytes_completed);
-	}
-
-	ssk->tx_sa->bytes_completed = bytes_completed;
+	ssk->tx_sa->bytes_acked += bytes_completed;
 
 	wake_up(sk->sk_sleep);
 	sdp_dbg_data(sk, "woke up sleepers\n");
@@ -753,7 +782,7 @@ static inline int wait_for_sndbuf(struct sock *sk, long *timeo_p)
 
 static int sdp_rdma_adv_single(struct sock *sk,
 		struct tx_srcavail_state *tx_sa, struct iovec *iov, 
-		int offset, int page_cnt, int len, u64 *addrs)
+		int p_idx, int page_cnt, int offset, int len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	long timeo = SDP_SRCAVAIL_ADV_TIMEOUT;
@@ -768,16 +797,15 @@ static int sdp_rdma_adv_single(struct sock *sk,
 		}
 	}
 
-	tx_sa->fmr = sdp_map_fmr(sk, page_cnt, addrs);
+	tx_sa->fmr = sdp_map_fmr(sk, page_cnt, &tx_sa->addrs[p_idx]);
 	if (!tx_sa->fmr) {
 		return -ENOMEM;
 	}
 
-	tx_sa->bytes_completed = 0;
-	tx_sa->bytes_total = len;
-	rc = sdp_post_srcavail(sk, tx_sa, offset, len);
+	rc = sdp_post_srcavail(sk, tx_sa, p_idx, iov, offset, len);
 	if (rc)
 		goto err_abort_send;
+
 
 	rc = sdp_wait_rdmardcompl(ssk, &timeo, len, 0);
 	if (unlikely(rc)) {
@@ -811,7 +839,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 	}
 	sdp_prf1(sk, NULL, "got RdmaRdCompl");
 
-	sdp_update_iov_used(sk, iov, tx_sa->bytes_completed);
+	sdp_update_iov_used(sk, iov, tx_sa->bytes_sent);
 
 err_abort_send:
 	ib_fmr_pool_unmap(tx_sa->fmr);
@@ -838,7 +866,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int page_cnt;
 	int bytes_left;
 	int pages_left;
-	u64 *addrs;
+	int p_idx;
 
 	sdp_dbg_data(sk, "%s\n", __func__);
 
@@ -903,19 +931,20 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		bytes_left = iov->iov_len;
 		pages_left = tx_sa->page_cnt;
-		addrs = tx_sa->addrs;
+		p_idx = 0;
 		do {
 			int p_cnt = min(256, pages_left);
 			int len = min_t(int, page_cnt * PAGE_SIZE - offset, bytes_left);
 
 			sdp_dbg_data(sk, "bytes_left: %d\n", bytes_left);
 			rc = sdp_rdma_adv_single(sk, tx_sa, iov,
-					offset, p_cnt, len, addrs);
+					p_idx, p_cnt, offset, len);
+//					offset, p_cnt, len, addrs);
 
 			copied += len;
 			bytes_left -= len;
 			pages_left -= p_cnt;
-			addrs += p_cnt;
+			p_idx += p_cnt;
 			offset = 0;
 		} while (!rc && !tx_sa->abort && pages_left > 0);
 

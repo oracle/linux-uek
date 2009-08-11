@@ -237,6 +237,7 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
+#define SDP_SRCAVAIL_PAYLOAD_LEN 1
 
 #define MAX_ZCOPY_SEND_SIZE (512 * 1024)
 
@@ -305,13 +306,14 @@ enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
 	SDP_MID_HELLO_ACK = 0x1,
 	SDP_MID_DISCONN = 0x2,
+	SDP_MID_ABORT = 0x3,
 	SDP_MID_SENDSM = 0x4,
 	SDP_MID_RDMARDCOMPL = 0x6,
 	SDP_MID_SRCAVAIL_CANCEL = 0x8,
 	SDP_MID_CHRCVBUF = 0xB,
 	SDP_MID_CHRCVBUF_ACK = 0xC,
-	SDP_MID_SRCAVAIL = 0xFD,
-	SDP_MID_SINKAVAIL = 0xFE,
+	SDP_MID_SINKAVAIL = 0xFD,
+	SDP_MID_SRCAVAIL = 0xFE,
 	SDP_MID_DATA = 0xFF,
 };
 
@@ -407,6 +409,7 @@ struct rx_srcavail_state {
 	/* Advertised buffer stuff */
 	u32 mseq;
 	u32 used;
+	u32 reported;
 	u32 len;
 	u32 rkey;
 	u64 vaddr;
@@ -430,8 +433,8 @@ struct tx_srcavail_state {
 	u8		busy;
 
 	struct ib_pool_fmr *fmr;
-	u32		bytes_completed;
-	u32		bytes_total;
+	u32		bytes_sent;
+	u32		bytes_acked;
 
 	u8 		abort;
 	u32		mseq;
@@ -750,9 +753,6 @@ void sdp_proc_unregister(void);
 /* sdp_cma.c */
 int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 
-/* sdp_bcopy.c */
-int sdp_post_credits(struct sdp_sock *ssk);
-
 /* sdp_tx.c */
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
@@ -785,7 +785,8 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		int len);
 int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
 		unsigned long addr);
-int sdp_post_rdma_rd_compl(struct sdp_sock *ssk, int copied);
+int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
+		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sdp_sock *ssk);
 void srcavail_cancel_timeout(struct work_struct *work);
 
@@ -841,6 +842,7 @@ static inline char *mid2str(int mid)
 	static char *mid2str[] = {
 		ENUM2STR(SDP_MID_HELLO),
 		ENUM2STR(SDP_MID_HELLO_ACK),
+		ENUM2STR(SDP_MID_ABORT),
 		ENUM2STR(SDP_MID_DISCONN),
 		ENUM2STR(SDP_MID_SENDSM),
 		ENUM2STR(SDP_MID_RDMARDCOMPL),

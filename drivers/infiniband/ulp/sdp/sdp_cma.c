@@ -46,7 +46,7 @@
 #include "sdp_socket.h"
 #include "sdp.h"
 
-#define SDP_MAJV_MINV 0x22
+#define SDP_MAJV_MINV 0x11
 
 enum {
 	SDP_HH_SIZE = 76,
@@ -330,11 +330,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				rx_ring_posted(sdp_sk(sk)));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
-		hh.bsdh.bufs = htons(remote_credits(sdp_sk(sk)));
 		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
+		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
 		hh.max_adverts = 0x1;
@@ -367,7 +367,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				rx_ring_posted(sdp_sk(child)));
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
-		hah.bsdh.bufs = htons(remote_credits(sdp_sk(child)));
+		hah.bsdh.bufs = htons(rx_ring_posted(sdp_sk(child)));
 		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HAH_SIZE);
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
@@ -397,14 +397,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		if (rc) {
 			sdp_warn(sk, "Destroy qp !!!!\n");
 			rdma_reject(id, NULL, 0);
-		}
-		else
+		} else
 			rc = rdma_accept(id, NULL);
-
-		if (!rc) {
-//			sdp_sk(sk)->qp_active = 1;
-			rc = sdp_post_credits(sdp_sk(sk)) < 0 ?: 0;
-		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");

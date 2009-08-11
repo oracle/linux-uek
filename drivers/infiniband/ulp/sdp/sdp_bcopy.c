@@ -60,7 +60,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	case SDP_MID_HELLO:
 		hh = (struct sdp_hh *)h;
 		len += snprintf(buf + len, 255-len,
-				"max_adverts: %d  majv_minv: %d "
+				"max_adverts: %d  majv_minv: 0x%x "
 				"localrcvsz: %d desremrcvsz: %d |",
 				hh->max_adverts, hh->majv_minv,
 				ntohl(hh->localrcvsz),
@@ -90,12 +90,10 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	case SDP_MID_SRCAVAIL:
 		srcah = (struct sdp_srcah *)(h+1);
 
-		len += snprintf(buf + len, 255-len, " | data_len: %ld |",
+		len += snprintf(buf + len, 255-len, " | payload: %ld, "
+				"len: %d, rkey: 0x%x, vaddr: 0x%llx |",
 				ntohl(h->len) - sizeof(struct sdp_bsdh) - 
-				sizeof(struct sdp_srcah));
-
-		len += snprintf(buf + len, 255-len,
-				" | len: %d, rkey: 0x%x, vaddr: 0x%llx |",
+				sizeof(struct sdp_srcah),
 				ntohl(srcah->len), ntohl(srcah->rkey),
 				be64_to_cpu(srcah->vaddr));
 		break;

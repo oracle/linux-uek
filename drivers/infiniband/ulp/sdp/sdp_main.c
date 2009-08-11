@@ -1992,11 +1992,25 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
 					rx_sa->aborted = 1;
-					sdp_warn(sk, "Ignoring src avail - "
+					sdp_dbg_data(sk, "Ignoring src avail "
 						"due to SrcAvailCancel\n");
 					goto skb_cleanup;
 				}
-				avail_bytes_count = rx_sa->len;
+
+				/* if has payload - handle as if MID_DATA */
+				if (rx_sa->used < skb->len) {
+					sdp_dbg_data(sk, "SrcAvail has "
+							"payload: %d/%d\n",
+							 rx_sa->used,
+						skb->len);
+					avail_bytes_count = skb->len;
+				} else {
+					sdp_dbg_data(sk, "Finished payload. "
+						"RDMAing: %d/%d\n",
+						rx_sa->used, rx_sa->len);
+					avail_bytes_count = rx_sa->len;
+				}
+
 				break;
 
 			case SDP_MID_DATA:
@@ -2015,8 +2029,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 
 			offset = *seq - SDP_SKB_CB(skb)->seq;
-//			sdp_warn(sk, "offset = 0x%x, avail_byte_count = 0x%x\n",
-//					offset, avail_bytes_count);
 			if (offset < avail_bytes_count)
 				goto found_ok_skb;
 
@@ -2116,8 +2128,9 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 		}
 		if (!(flags & MSG_TRUNC)) {
-			if (rx_sa) {
-				sdp_dbg_data(sk, "Got srcavail - using RDMA\n");
+			if (rx_sa && rx_sa->used >= skb->len) {
+				/* No more payload - start rdma copy */
+				sdp_dbg_data(sk, "RDMA copy of %ld bytes\n", used);
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						used);
 				if (err == -EAGAIN) {
@@ -2127,8 +2140,14 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				}
 			} else {
 				err = skb_copy_datagram_iovec(skb, offset,
-						      /* TODO: skip header? */
-						      msg->msg_iov, used);
+						/* TODO: skip header? */
+						msg->msg_iov, used);
+				if (rx_sa) {
+					rx_sa->used += used;
+					rx_sa->reported += used;
+					sdp_dbg_data(sk, "copied %ld from "
+							"payload\n", used);
+				}
 			}
 			if (err) {
 				sdp_dbg(sk, "%s: skb_copy_datagram_iovec failed"
@@ -2155,7 +2174,7 @@ skip_copy:
 
 		if (rx_sa) {
 			if (ssk->srcavail_cancel_mseq < rx_sa->mseq) {
-				rc = sdp_post_rdma_rd_compl(ssk, rx_sa->used);
+				rc = sdp_post_rdma_rd_compl(ssk, rx_sa);
 				BUG_ON(rc);
 			}
 			if (rx_sa->aborted) {

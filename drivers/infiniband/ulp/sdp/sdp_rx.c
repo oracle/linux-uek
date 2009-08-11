@@ -245,10 +245,8 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 	int buffer_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
 	unsigned long max_bytes;
 
-	if (!ssk->qp_active) {
-//		sdp_warn(sk, "post rx while qp is not active\n");
+	if (!ssk->qp_active)
 		return 0;
-	}
 
 	if (top_mem_usage && (top_mem_usage * 0x100000) <
 			atomic_read(&sdp_current_mem_usage) * PAGE_SIZE) {
@@ -321,6 +319,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		sa->rkey = ntohl(srcah->rkey);
 		sa->vaddr = be64_to_cpu(srcah->vaddr);
 
+		atomic_add(skb->len, &ssk->rcv_nxt);
 		sdp_dbg_data(sk, "queueing SrcAvail. skb_len = %d vaddr = %lld\n",
 			skb_len, sa->vaddr);
 	} else {
@@ -483,6 +482,12 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		ssk->srcavail_cancel_mseq = ntohl(h->mseq);
 		sdp_post_sendsm(ssk);
 		break;
+	case SDP_MID_ABORT:
+		sdp_dbg_data(sk, "Handling ABORT\n");
+		sdp_prf(sk, NULL, "Handling ABORT");
+		sdp_reset(sk);
+		__kfree_skb(skb);
+		break;
 	case SDP_MID_DISCONN:
 		sdp_dbg_data(sk, "Handling DISCONN\n");
 		sdp_prf(sk, NULL, "Handling DISCONN");
@@ -544,6 +549,9 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sk_send_sigurg(sk);*/
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
+	if (h->mid == SDP_MID_SRCAVAIL) {
+		skb_pull(skb, sizeof(struct sdp_srcah));
+	}
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
 		/* Credit update is valid even after RCV_SHUTDOWN */
@@ -611,17 +619,24 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 		return NULL;
 	}
 	skb->len = wc->byte_len;
+	skb->data = skb->head;
+
+	h = (struct sdp_bsdh *)skb->data;
+
 	if (likely(wc->byte_len > SDP_HEAD_SIZE))
 		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
 	else
 		skb->data_len = 0;
-	skb->data = skb->head;
+
+
+	if (h->mid == SDP_MID_SRCAVAIL)
+		skb->data_len -= sizeof(struct sdp_srcah);
+
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
 	skb->tail = skb_headlen(skb);
 #else
 	skb->tail = skb->head + skb_headlen(skb);
 #endif
-	h = (struct sdp_bsdh *)skb->data;
 	SDP_DUMP_PACKET(&ssk->isk.sk, "RX", skb, h);
 	skb_reset_transport_header(skb);
 
