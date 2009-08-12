@@ -193,6 +193,7 @@ err_ib_init:
 out:
 	return ret;
 }
+module_init(rds_rdma_init);
 
 void rds_rdma_exit(void)
 {
@@ -200,4 +201,9 @@ void rds_rdma_exit(void)
 	rds_rdma_listen_stop();
 	rds_ib_exit();
 }
+module_exit(rds_rdma_exit);
+
+MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
+MODULE_DESCRIPTION("RDS: IB/iWARP transport");
+MODULE_LICENSE("Dual BSD/GPL");
 
