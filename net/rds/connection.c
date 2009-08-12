@@ -262,12 +262,14 @@ struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
 {
 	return __rds_conn_create(laddr, faddr, trans, gfp, 0);
 }
+EXPORT_SYMBOL_GPL(rds_conn_create);
 
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
 				       struct rds_transport *trans, gfp_t gfp)
 {
 	return __rds_conn_create(laddr, faddr, trans, gfp, 1);
 }
+EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
 
 void rds_conn_destroy(struct rds_connection *conn)
 {
@@ -310,6 +312,7 @@ void rds_conn_destroy(struct rds_connection *conn)
 
 	rds_conn_count--;
 }
+EXPORT_SYMBOL_GPL(rds_conn_destroy);
 
 static void rds_conn_message_info(struct socket *sock, unsigned int len,
 				  struct rds_info_iterator *iter,
@@ -410,6 +413,7 @@ void rds_for_each_conn_info(struct socket *sock, unsigned int len,
 
 	spin_unlock_irqrestore(&rds_conn_lock, flags);
 }
+EXPORT_SYMBOL_GPL(rds_for_each_conn_info);
 
 static int rds_conn_info_visitor(struct rds_connection *conn,
 				  void *buffer)
@@ -485,6 +489,7 @@ void rds_conn_drop(struct rds_connection *conn)
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
 	queue_work(rds_wq, &conn->c_down_w);
 }
+EXPORT_SYMBOL_GPL(rds_conn_drop);
 
 /*
  * An error occurred on the connection
