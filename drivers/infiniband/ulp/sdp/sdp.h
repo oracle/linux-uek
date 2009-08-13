@@ -257,6 +257,8 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
 #define SDP_MAX_SEND_SGES 32
+
+/* payload len - rest will be rx'ed into frags */
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
 #define SDP_NUM_WC 4
 #define SDP_MAX_PAYLOAD ((1 << 16) - SDP_HEAD_SIZE)
@@ -405,6 +407,10 @@ struct bzcopy_state {
 	struct page         **pages;
 };
 
+enum rx_sa_flag {
+	RX_SA_ABORTED    = 2,
+};
+
 struct rx_srcavail_state {
 	/* Advertised buffer stuff */
 	u32 mseq;
@@ -421,7 +427,15 @@ struct rx_srcavail_state {
 
 	/* Utility */
 	u8  busy;
-	u8  aborted;
+	enum rx_sa_flag  flags;
+};
+
+enum tx_sa_flag {
+	TX_SA_SENDSM     = 0x01,
+	TX_SA_CROSS_SEND = 0x02,
+	TX_SA_INTRRUPTED = 0x04,
+	TX_SA_TIMEDOUT   = 0x08,
+	TX_SA_ERROR      = 0x10,
 };
 
 struct tx_srcavail_state {
@@ -436,7 +450,9 @@ struct tx_srcavail_state {
 	u32		bytes_sent;
 	u32		bytes_acked;
 
-	u8 		abort;
+	enum tx_sa_flag	abort_flags;
+	u8		posted;
+
 	u32		mseq;
 };
 
@@ -558,9 +574,9 @@ struct sdp_sock {
 
 	int qp_active;
 	struct tx_srcavail_state *tx_sa;
+	struct rx_srcavail_state *rx_sa;
 	spinlock_t tx_sa_lock;
 	int max_send_sge;
-	int srcavail_cancel;
 	struct delayed_work srcavail_cancel_work;
 	int srcavail_cancel_mseq;
 
@@ -757,7 +773,7 @@ int sdp_cma_handler(struct rdma_cm_id *, struct rdma_cm_event *);
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
 int sdp_xmit_poll(struct sdp_sock *ssk, int force);
-void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid);
+void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb);
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
 void sdp_nagle_timeout(unsigned long data);
 void sdp_post_keepalive(struct sdp_sock *ssk);
@@ -787,13 +803,8 @@ int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
 		unsigned long addr);
 int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 		struct rx_srcavail_state *rx_sa);
-int sdp_post_sendsm(struct sdp_sock *ssk);
+int sdp_post_sendsm(struct sock *sk);
 void srcavail_cancel_timeout(struct work_struct *work);
-
-static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
-{
-	return SDP_TX_SIZE - tx_ring_posted(ssk);
-}
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {
@@ -884,6 +895,97 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
 		sk_stream_moderate_sndbuf(sk);
 	}
 	return NULL;
+}
+
+static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size)
+{
+	struct sdp_bsdh *h;
+	struct sk_buff *skb;
+	gfp_t gfp;
+
+	if (unlikely(sk->sk_allocation))
+		gfp = sk->sk_allocation;
+	else
+		gfp = GFP_KERNEL;
+
+	skb = sk_stream_alloc_skb(sk, sizeof(struct sdp_bsdh) + size, gfp);
+	BUG_ON(!skb);
+
+        skb_header_release(skb);
+
+	h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
+	h->mid = mid;
+
+	skb_reset_transport_header(skb);
+
+	return skb;
+}
+static inline struct sk_buff *sdp_alloc_skb_data(struct sock *sk)
+{
+	return sdp_alloc_skb(sk, SDP_MID_DATA, 0);
+}
+
+static inline struct sk_buff *sdp_alloc_skb_disconnect(struct sock *sk)
+{
+	return sdp_alloc_skb(sk, SDP_MID_DISCONN, 0);
+}
+
+static inline struct sk_buff *sdp_alloc_skb_chrcvbuf_ack(struct sock *sk,
+		int size)
+{
+	struct sk_buff *skb;
+	struct sdp_chrecvbuf *resp_size;
+
+	skb = sdp_alloc_skb(sk, SDP_MID_CHRCVBUF_ACK, sizeof(*resp_size));
+
+	resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
+	resp_size->size = htonl(size);
+
+	return skb;
+}
+
+static inline struct sk_buff *sdp_alloc_skb_srcavail(struct sock *sk,
+	u32 len, u32 rkey, u64 vaddr)
+{
+	struct sk_buff *skb;
+	struct sdp_srcah *srcah;
+
+	skb = sdp_alloc_skb(sk, SDP_MID_SRCAVAIL, sizeof(*srcah));
+
+	srcah = (struct sdp_srcah *)skb_put(skb, sizeof(*srcah));
+	srcah->len = htonl(len);
+	srcah->rkey = htonl(rkey);
+	srcah->vaddr = cpu_to_be64(vaddr);
+
+	return skb;
+}
+
+static inline struct sk_buff *sdp_alloc_skb_srcavail_cancel(struct sock *sk)
+{
+	return sdp_alloc_skb(sk, SDP_MID_SRCAVAIL_CANCEL, 0);
+}
+
+static inline struct sk_buff *sdp_alloc_skb_rdmardcompl(struct sock *sk,
+	u32 len)
+{
+	struct sk_buff *skb;
+	struct sdp_rrch *rrch;
+
+	skb = sdp_alloc_skb(sk, SDP_MID_RDMARDCOMPL, sizeof(*rrch));
+
+	rrch = (struct sdp_rrch *)skb_put(skb, sizeof(*rrch));
+	rrch->len = htonl(len);
+
+	return skb;
+}
+
+static inline struct sk_buff *sdp_alloc_skb_sendsm(struct sock *sk)
+{
+	return sdp_alloc_skb(sk, SDP_MID_SENDSM, 0);
+}
+static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
+{
+	return SDP_TX_SIZE - tx_ring_posted(ssk);
 }
 
 #endif

@@ -56,7 +56,6 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 		int page_idx, struct iovec *iov, int off, size_t len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	struct sdp_srcah *srcah;
 	struct sk_buff *skb;
 	int payload_len;
 
@@ -65,11 +64,9 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 	BUG_ON(!tx_sa);
 	BUG_ON(!tx_sa->fmr || !tx_sa->fmr->fmr->lkey);
 
-	skb = sk_stream_alloc_skb(&ssk->isk.sk,
-			sizeof(struct sdp_bsdh) +
-			sizeof(struct sdp_srcah) + 
-			SDP_SRCAVAIL_PAYLOAD_LEN,
-			GFP_KERNEL);
+	tx_sa->bytes_sent = tx_sa->bytes_acked = 0;
+
+	skb = sdp_alloc_skb_srcavail(sk, len, tx_sa->fmr->fmr->lkey, off);
 	if (!skb) {
 		return -ENOMEM;
 	}
@@ -78,11 +75,6 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 	TX_SRCAVAIL_STATE(skb) = tx_sa; /* tx_sa is hanged on the skb 
 					 * but continue to live after skb is freed */
 	ssk->tx_sa = tx_sa;
-
-	srcah = (struct sdp_srcah *)skb_push(skb, sizeof(*srcah));
-	srcah->len = htonl(len);
-	srcah->rkey = htonl(tx_sa->fmr->fmr->lkey);
-	srcah->vaddr = cpu_to_be64(off);
 
 	if (0) {
 		void *payload;
@@ -106,6 +98,9 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 
 	skb_entail(sk, ssk, skb);
 	
+	ssk->write_seq += payload_len;
+	SDP_SKB_CB(skb)->end_seq += payload_len;
+
 	tx_sa->bytes_sent = len;
 	tx_sa->bytes_acked = payload_len;
 
@@ -117,11 +112,12 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 static int sdp_post_srcavail_cancel(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sk_buff *skb;
 
-	if (!ssk->tx_sa && !ssk->srcavail_cancel)
-		return 0; /* srcavail already serviced */
+	sdp_warn(&ssk->isk.sk, "Posting srcavail cancel\n");
 
-	ssk->srcavail_cancel = 1;
+	skb = sdp_alloc_skb_srcavail_cancel(sk);
+	skb_entail(sk, ssk, skb);
 
 	sdp_post_sends(ssk, 1);
 
@@ -164,34 +160,48 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 
 		if (unlikely(!*timeo_p)) {
 			err = -ETIME;
+			tx_sa->abort_flags |= TX_SA_TIMEDOUT;
 			sdp_prf1(sk, NULL, "timeout");
-			break;
-		}
-
-		if (unlikely(!ignore_signals && signal_pending(current))) {
-			err = -EINTR;
-			sdp_prf1(sk, NULL, "signalled");
 			break;
 		}
 
 		if (tx_sa->bytes_acked == tx_sa->bytes_sent)
 			break;
+
 		else if (tx_sa->bytes_acked > tx_sa->bytes_sent) {
 			err = -EINVAL;
 			sdp_warn(sk, "acked bytes > sent bytes\n");
+			tx_sa->abort_flags |= TX_SA_ERROR;
 			break;
 		}
 
-		if (tx_sa->abort) {
+		if (tx_sa->abort_flags & TX_SA_SENDSM) {
 			sdp_prf1(sk, NULL, "Aborting SrcAvail sending");
 			err = -EAGAIN;
 			break ;
 		}
 
+		if (!ignore_signals) {
+			if (signal_pending(current)) {
+				err = -EINTR;
+				sdp_prf1(sk, NULL, "signalled");
+				tx_sa->abort_flags |= TX_SA_INTRRUPTED;
+				break;
+			}
+
+			if (ssk->rx_sa) {
+				sdp_warn(sk, "Crossing SrcAvail - aborting this\n");
+				tx_sa->abort_flags |= TX_SA_CROSS_SEND;
+				err = -ETIME;
+				break ;
+			}
+		}
+
 		posts_handler_put(ssk);
 
 		sk_wait_event(sk, &current_timeo,
-				tx_sa->abort && 
+				tx_sa->abort_flags &&
+				ssk->rx_sa &&
 				(tx_sa->bytes_acked < tx_sa->bytes_sent) && 
 				vm_wait);
 		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
@@ -215,8 +225,8 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 
 	finish_wait(sk->sk_sleep, &wait);
 
-	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d/%d bytes, abort: %d\n",
-			tx_sa->bytes_acked, tx_sa->bytes_sent, tx_sa->abort);
+	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d/%d bytes, flags: 0x%x\n",
+			tx_sa->bytes_acked, tx_sa->bytes_sent, tx_sa->abort_flags);
 
 	if (!ssk->qp_active) {
 		sdp_warn(sk, "QP destroyed while waiting\n");
@@ -277,52 +287,27 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk, long *timeo_p)
 int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 		struct rx_srcavail_state *rx_sa)
 {
-	struct sdp_rrch *rrch;
 	struct sk_buff *skb;
-	gfp_t gfp_page;
 	int copied = rx_sa->used - rx_sa->reported;
 
 	if (rx_sa->used <= rx_sa->reported)
 		return 0;
 
-	if (unlikely(ssk->isk.sk.sk_allocation))
-		gfp_page = ssk->isk.sk.sk_allocation;
-	else
-		gfp_page = GFP_KERNEL;
+	skb = sdp_alloc_skb_rdmardcompl(&ssk->isk.sk, copied);
 
-	skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-			sizeof(struct sdp_bsdh) +
-			sizeof(struct sdp_rrch),
-			gfp_page);
-	/* FIXME */
-	BUG_ON(!skb);
-
-	rrch = (struct sdp_rrch *)skb_put(skb, sizeof(*rrch));
-	rrch->len = htonl(copied);
 	rx_sa->reported += copied;
+
 	/* TODO: What if no tx_credits available? */
-	sdp_post_send(ssk, skb, SDP_MID_RDMARDCOMPL);
+	sdp_post_send(ssk, skb);
 
 	return 0;
 }
 
-int sdp_post_sendsm(struct sdp_sock *ssk)
+int sdp_post_sendsm(struct sock *sk)
 {
-	struct sk_buff *skb;
-	gfp_t gfp_page;
+	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk);
 
-	if (unlikely(ssk->isk.sk.sk_allocation))
-		gfp_page = ssk->isk.sk.sk_allocation;
-	else
-		gfp_page = GFP_KERNEL;
-
-	skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-			sizeof(struct sdp_bsdh),
-			gfp_page);
-	/* FIXME */
-	BUG_ON(!skb);
-
-	sdp_post_send(ssk, skb, SDP_MID_SENDSM);
+	sdp_post_send(sdp_sk(sk), skb);
 
 	return 0;
 }
@@ -367,20 +352,20 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 		goto out;
 	}
 
-	if (ssk->tx_sa->mseq < mseq_ack) {
-		sdp_prf1(sk, NULL, "SendSM arrived for old SrcAvail. "
-			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x",
+	if (mseq_ack < ssk->tx_sa->mseq) {
+		sdp_warn(sk, "SendSM arrived for old SrcAvail. "
+			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
 		goto out;
 	}
 
-	sdp_prf1(sk, NULL, "Got SendSM - aborting SrcAvail");
+	sdp_warn(sk, "Got SendSM - aborting SrcAvail\n");
 
-	ssk->tx_sa->abort = 1;
+	ssk->tx_sa->abort_flags |= TX_SA_SENDSM;
 	cancel_delayed_work(&ssk->srcavail_cancel_work);
 
 	wake_up(sk->sk_sleep);
-	sdp_dbg_data(sk, "woke up sleepers\n");
+	sdp_warn(sk, "woke up sleepers\n");
 
 out:
 	spin_unlock_irqrestore(&ssk->tx_sa_lock, flags);
@@ -743,7 +728,9 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		 * post sendsm */
 		sdp_warn(sk, "post rdma, wait_for_compl "
 			"or post rdma_rd_comp failed - post sendsm\n");
-		rx_sa->aborted = 1;
+		rx_sa->flags |= RX_SA_ABORTED;
+		ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
+				      the dirty logic from recvmsg */
 	}
 
 	ssk->tx_ring.rdma_inflight = NULL;
@@ -806,18 +793,18 @@ static int sdp_rdma_adv_single(struct sock *sk,
 	if (rc)
 		goto err_abort_send;
 
-
 	rc = sdp_wait_rdmardcompl(ssk, &timeo, len, 0);
 	if (unlikely(rc)) {
-		switch (rc) {
-		case -EAGAIN: /* Got SendSM */
-			sdp_warn(sk, "got SendSM. use SEND verb.\n");
-			break;
+		enum tx_sa_flag f = tx_sa->abort_flags;
 
-		case -ETIME: /* Timedout */
-			sdp_warn(sk, "TX srcavail timedout.\n");
-		case -EINTR: /* interrupted */
-			sdp_prf1(sk, NULL, "Aborting send.");
+		if (f & TX_SA_SENDSM) {
+			sdp_warn(sk, "got SendSM. use SEND verb.\n");
+		} else if (f & TX_SA_ERROR) {
+			sdp_warn(sk, "SrcAvail error completion\n");
+			sdp_reset(sk);
+		} else if (ssk->qp_active) {
+			sdp_warn(sk, "Aborting send. abort_flag = 0x%x.\n", f);
+
 			sdp_post_srcavail_cancel(sk);
 
 			/* Wait for RdmaRdCompl/SendSM to
@@ -826,22 +813,17 @@ static int sdp_rdma_adv_single(struct sock *sk,
 			sdp_warn(sk, "Waiting for SendSM\n");
 			sdp_wait_rdmardcompl(ssk, &timeo, len, 1);
 			sdp_warn(sk, "finished waiting\n");
-
-			break;
-
-		default:
-			sdp_warn(sk, "error sending srcavail. rc = %d\n", rc);
-			/* Socked destroyed while waited */
-			break;
+		} else {
+			sdp_warn(sk, "QP was destroyed while waiting\n");
 		}
 
 		goto err_abort_send;
 	}
 	sdp_prf1(sk, NULL, "got RdmaRdCompl");
 
-	sdp_update_iov_used(sk, iov, tx_sa->bytes_sent);
-
 err_abort_send:
+	sdp_update_iov_used(sk, iov, tx_sa->bytes_acked);
+
 	ib_fmr_pool_unmap(tx_sa->fmr);
 
 	spin_lock_irqsave(&ssk->tx_sa_lock, lock_flags);
@@ -869,6 +851,10 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int p_idx;
 
 	sdp_dbg_data(sk, "%s\n", __func__);
+	if (ssk->rx_sa) {
+		sdp_warn(sk, "Deadlock prevent: crossing SrcAvail\n");
+		return -EAGAIN;
+	}
 
 	lock_sock(sk);
 
@@ -939,14 +925,13 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sdp_dbg_data(sk, "bytes_left: %d\n", bytes_left);
 			rc = sdp_rdma_adv_single(sk, tx_sa, iov,
 					p_idx, p_cnt, offset, len);
-//					offset, p_cnt, len, addrs);
 
 			copied += len;
 			bytes_left -= len;
 			pages_left -= p_cnt;
 			p_idx += p_cnt;
 			offset = 0;
-		} while (!rc && !tx_sa->abort && pages_left > 0);
+		} while (!rc && !tx_sa->abort_flags && pages_left > 0);
 
 		sdp_unmap_dma(sk, tx_sa->addrs, tx_sa->page_cnt);
 err_map_dma:	

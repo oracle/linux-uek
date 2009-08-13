@@ -305,23 +305,30 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 	SDP_SKB_CB(skb)->seq = rcv_nxt(ssk);
 	if (h->mid == SDP_MID_SRCAVAIL) {
 		struct sdp_srcah *srcah = (struct sdp_srcah *)(h+1);
-		struct rx_srcavail_state *sa;
+		struct rx_srcavail_state *rx_sa;
 		
 		ssk->srcavail_cancel_mseq = 0;
 
-		sa = RX_SRCAVAIL_STATE(skb) = kzalloc(
+		ssk->rx_sa = rx_sa = RX_SRCAVAIL_STATE(skb) = kzalloc(
 				sizeof(struct rx_srcavail_state), GFP_ATOMIC);
 
-		sa->mseq = ntohl(h->mseq);
-		sa->aborted = 0;
-		sa->used = 0;
-		sa->len = skb_len = ntohl(srcah->len);
-		sa->rkey = ntohl(srcah->rkey);
-		sa->vaddr = be64_to_cpu(srcah->vaddr);
+		rx_sa->mseq = ntohl(h->mseq);
+		rx_sa->used = 0;
+		rx_sa->len = skb_len = ntohl(srcah->len);
+		rx_sa->rkey = ntohl(srcah->rkey);
+		rx_sa->vaddr = be64_to_cpu(srcah->vaddr);
+		rx_sa->flags = 0;
+
+		if (ssk->tx_sa) {
+			sdp_warn(&ssk->isk.sk, "got RX SrcAvail while waiting "
+					"for TX SrcAvail. waking up TX SrcAvail"
+					"to be aborted\n");
+			wake_up(sk->sk_sleep);
+		}
 
 		atomic_add(skb->len, &ssk->rcv_nxt);
 		sdp_dbg_data(sk, "queueing SrcAvail. skb_len = %d vaddr = %lld\n",
-			skb_len, sa->vaddr);
+			skb_len, rx_sa->vaddr);
 	} else {
 		skb_len = skb->len;
 
@@ -477,11 +484,23 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		__kfree_skb(skb);
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
-		sdp_dbg_data(sk, "Handling SrcAvailCancel - sending SendSM\n");
+		sdp_dbg_data(sk, "Handling SrcAvailCancel\n");
 		sdp_prf(sk, NULL, "Handling SrcAvailCancel");
-		ssk->srcavail_cancel_mseq = ntohl(h->mseq);
-		sdp_post_sendsm(ssk);
+		if (ssk->rx_sa) {
+			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
+			ssk->rx_sa->flags |= RX_SA_ABORTED;
+			ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
+			                      the dirty logic from recvmsg */
+			sdp_post_sendsm(sk);
+		} else {
+			sdp_warn(sk, "Got SrcAvailCancel - "
+					"but no SrcAvail in process\n");
+		}
 		break;
+	case SDP_MID_SINKAVAIL:
+		sdp_dbg_data(sk, "Got SinkAvail - not supported: ignored\n");
+		sdp_prf(sk, NULL, "Got SinkAvail - not supported: ignored");
+		__kfree_skb(skb);
 	case SDP_MID_ABORT:
 		sdp_dbg_data(sk, "Handling ABORT\n");
 		sdp_prf(sk, NULL, "Handling ABORT");
@@ -549,9 +568,9 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sk_send_sigurg(sk);*/
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
-	if (h->mid == SDP_MID_SRCAVAIL) {
+
+	if (h->mid == SDP_MID_SRCAVAIL)
 		skb_pull(skb, sizeof(struct sdp_srcah));
-	}
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
 		/* Credit update is valid even after RCV_SHUTDOWN */
@@ -627,10 +646,6 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
 	else
 		skb->data_len = 0;
-
-
-	if (h->mid == SDP_MID_SRCAVAIL)
-		skb->data_len -= sizeof(struct sdp_srcah);
 
 #ifdef NET_SKBUFF_DATA_USES_OFFSET
 	skb->tail = skb_headlen(skb);

@@ -62,10 +62,10 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 
 static unsigned long last_send;
 
-void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
+void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	struct sdp_buf *tx_req;
-	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_push(skb, sizeof *h);
+	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
 	unsigned long mseq = ring_head(ssk->tx_ring);
 	int i, rc, frags;
 	u64 addr;
@@ -77,13 +77,24 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	struct ib_sge *sge = ibsge;
 	struct ib_send_wr tx_wr = { 0 };
 
-	SDPSTATS_COUNTER_MID_INC(post_send, mid);
+	SDPSTATS_COUNTER_MID_INC(post_send, h->mid);
 	SDPSTATS_HIST(send_size, skb->len);
 
 	ssk->tx_packets++;
 	ssk->tx_bytes += skb->len;
 
-	h->mid = mid;
+	if (unlikely(h->mid == SDP_MID_SRCAVAIL)) {
+		struct tx_srcavail_state *tx_sa = TX_SRCAVAIL_STATE(skb);
+		if (ssk->tx_sa != tx_sa) {
+			sdp_warn(&ssk->isk.sk, "SrcAvail cancelled "
+					"before being sent!\n");
+			WARN_ON(1);
+			__kfree_skb(skb);
+			return;
+		}
+		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
+	}
+
 	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
@@ -92,12 +103,10 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb, u8 mid)
 	h->bufs = htons(rx_ring_posted(ssk));
 	h->len = htonl(skb->len);
 	h->mseq = htonl(mseq);
-	if (TX_SRCAVAIL_STATE(skb))
-		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
 	h->mseq_ack = htonl(mseq_ack(ssk));
 
 	sdp_prf1(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
-			mid2str(mid), rx_ring_posted(ssk), mseq,
+			mid2str(h->mid), rx_ring_posted(ssk), mseq,
 			ntohl(h->mseq_ack));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);

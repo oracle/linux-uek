@@ -607,7 +607,13 @@ static void sdp_close(struct sock *sk, long timeout)
 	 *  reader process may not have drained the data yet!
 	 */
 	while ((skb = skb_dequeue(&sk->sk_receive_queue)) != NULL) {
-		data_was_unread = 1;
+		struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
+		if (h->mid == SDP_MID_DISCONN) {
+				sdp_handle_disconn(sk);
+		} else {
+			sdp_warn(sk, "Data was unread. skb: %p\n", skb);
+			data_was_unread = 1;
+		}
 		__kfree_skb(skb);
 	}
 
@@ -1056,7 +1062,6 @@ int sdp_init_sock(struct sock *sk)
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
 	ssk->destruct_in_process = 0;
-	ssk->srcavail_cancel = 0;
 	spin_lock_init(&ssk->lock);
 	spin_lock_init(&ssk->tx_sa_lock);
 
@@ -1349,7 +1354,6 @@ static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags)
 
 void skb_entail(struct sock *sk, struct sdp_sock *ssk, struct sk_buff *skb)
 {
-        skb_header_release(skb);
         __skb_queue_tail(&sk->sk_write_queue, skb);
 	sk->sk_wmem_queued += skb->truesize;
         sk_mem_charge(sk, skb->truesize);
@@ -1598,7 +1602,7 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 		left -= this_page;
 
 		skb->len             += this_page;
-		skb->data_len         = skb->len;
+		skb->data_len        += this_page;
 		skb->truesize        += this_page;
 		sk->sk_wmem_queued   += this_page;
 		sk->sk_forward_alloc -= this_page;
@@ -1775,8 +1779,7 @@ new_segment:
 						goto wait_for_sndbuf;
 				}
 
-				skb = sdp_stream_alloc_skb(sk, 0,
-						sk->sk_allocation);
+				skb = sdp_alloc_skb_data(sk);
 				if (!skb)
 					goto wait_for_memory;
 
@@ -1990,12 +1993,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			case SDP_MID_SRCAVAIL:
 				rx_sa = RX_SRCAVAIL_STATE(skb);
-				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
-					rx_sa->aborted = 1;
-					sdp_dbg_data(sk, "Ignoring src avail "
-						"due to SrcAvailCancel\n");
-					goto skb_cleanup;
-				}
 
 				/* if has payload - handle as if MID_DATA */
 				if (rx_sa->used < skb->len) {
@@ -2008,6 +2005,18 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					sdp_dbg_data(sk, "Finished payload. "
 						"RDMAing: %d/%d\n",
 						rx_sa->used, rx_sa->len);
+
+					if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
+						rx_sa->flags |= RX_SA_ABORTED;
+						sdp_dbg_data(sk, "Ignoring src avail "
+								"due to SrcAvailCancel\n");
+					}
+
+					if (rx_sa->flags & RX_SA_ABORTED) {
+						sdp_warn(sk, "rx_sa aborted. not rdmaing\n");
+						goto skb_cleanup;
+					}
+
 					avail_bytes_count = rx_sa->len;
 				}
 
@@ -2022,8 +2031,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			}
 
 			if (before(*seq, SDP_SKB_CB(skb)->seq)) {
-				sdp_warn(sk, "recvmsg bug: copied %X seq %X\n",
-					*seq, SDP_SKB_CB(skb)->seq);
+				sdp_warn(sk, "skb: %p recvmsg bug: copied %X seq %X\n",
+					skb, *seq, SDP_SKB_CB(skb)->seq);
 				sdp_reset(sk);
 				break;
 			}
@@ -2173,33 +2182,40 @@ skip_copy:
 
 
 		if (rx_sa) {
-			if (ssk->srcavail_cancel_mseq < rx_sa->mseq) {
-				rc = sdp_post_rdma_rd_compl(ssk, rx_sa);
-				BUG_ON(rc);
-			}
-			if (rx_sa->aborted) {
-				sdp_warn(sk, "RDMA aborted. Sending SendSM\n");
-				rc = sdp_post_sendsm(ssk);
-				BUG_ON(rc);
-			}
+			rc = sdp_post_rdma_rd_compl(ssk, rx_sa);
+			BUG_ON(rc);
+
 		}
 
-		if ((!rx_sa && used + offset < skb->len) ||
-			(rx_sa && !rx_sa->aborted && rx_sa->used < rx_sa->len))
+		if (!rx_sa && used + offset < skb->len)
 			continue;
+
+		if (rx_sa && !(rx_sa->flags & RX_SA_ABORTED) &&
+				rx_sa->used < rx_sa->len)
+			continue;
+
 		offset = 0;
 
 skb_cleanup:
-		if (!(flags & MSG_PEEK) || (rx_sa && rx_sa->aborted)) {
+		if (!(flags & MSG_PEEK) ||
+				(rx_sa && (rx_sa->flags & RX_SA_ABORTED))) {
 			struct sdp_bsdh *h;
 			h = (struct sdp_bsdh *)skb_transport_header(skb);
 			sdp_prf1(sk, skb, "READ finished. mseq: %d mseq_ack:%d",
 				ntohl(h->mseq), ntohl(h->mseq_ack));
+
+			if (rx_sa) {
+				if (!rx_sa->flags) /* else ssk->rx_sa might
+						      point to another rx_sa */
+					ssk->rx_sa = NULL;
+
+				kfree(rx_sa);
+				rx_sa = NULL;
+				
+			}
+
 			skb_unlink(skb, &sk->sk_receive_queue);
 			__kfree_skb(skb);
-
-			kfree(rx_sa);
-			rx_sa = NULL;
 		}
 		continue;
 found_fin_ok:

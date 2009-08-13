@@ -51,7 +51,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	int len = 0;
 	char buf[256];
 	len += snprintf(buf, 255-len, "%s skb: %p mid: %2x:%-20s flags: 0x%x "
-			"bufs: %d len: %d mseq: %d mseq_ack: %d | ",
+			"bufs: 0x%x len: 0x%x mseq: 0x%x mseq_ack: 0x%x | ",
 			str, skb, h->mid, mid2str(h->mid), h->flags,
 			ntohs(h->bufs), ntohl(h->len), ntohl(h->mseq),
 			ntohl(h->mseq_ack));
@@ -61,37 +61,37 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 		hh = (struct sdp_hh *)h;
 		len += snprintf(buf + len, 255-len,
 				"max_adverts: %d  majv_minv: 0x%x "
-				"localrcvsz: %d desremrcvsz: %d |",
+				"localrcvsz: 0x%x desremrcvsz: 0x%x |",
 				hh->max_adverts, hh->majv_minv,
 				ntohl(hh->localrcvsz),
 				ntohl(hh->desremrcvsz));
 		break;
 	case SDP_MID_HELLO_ACK:
 		hah = (struct sdp_hah *)h;
-		len += snprintf(buf + len, 255-len, "actrcvz: %d |",
+		len += snprintf(buf + len, 255-len, "actrcvz: 0x%x |",
 				ntohl(hah->actrcvsz));
 		break;
 	case SDP_MID_CHRCVBUF:
 	case SDP_MID_CHRCVBUF_ACK:
 		req_size = (struct sdp_chrecvbuf *)(h+1);
-		len += snprintf(buf + len, 255-len, "req_size: %d |",
+		len += snprintf(buf + len, 255-len, "req_size: 0x%x |",
 				ntohl(req_size->size));
 		break;
 	case SDP_MID_DATA:
-		len += snprintf(buf + len, 255-len, "data_len: %ld |",
+		len += snprintf(buf + len, 255-len, "data_len: 0x%lx |",
 			ntohl(h->len) - sizeof(struct sdp_bsdh));
 		break;
 	case SDP_MID_RDMARDCOMPL:
 		rrch = (struct sdp_rrch *)(h+1);
 
-		len += snprintf(buf + len, 255-len, " | len: %d |",
+		len += snprintf(buf + len, 255-len, " | len: 0x%x |",
 				ntohl(rrch->len));
 		break;
 	case SDP_MID_SRCAVAIL:
 		srcah = (struct sdp_srcah *)(h+1);
 
-		len += snprintf(buf + len, 255-len, " | payload: %ld, "
-				"len: %d, rkey: 0x%x, vaddr: 0x%llx |",
+		len += snprintf(buf + len, 255-len, " | payload: 0x%lx, "
+				"len: 0x%x, rkey: 0x%x, vaddr: 0x%llx |",
 				ntohl(h->len) - sizeof(struct sdp_bsdh) - 
 				sizeof(struct sdp_srcah),
 				ntohl(srcah->len), ntohl(srcah->rkey),
@@ -180,33 +180,6 @@ out2:
 		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
 }
 
-int sdp_post_credits(struct sdp_sock *ssk)
-{
-	int post_count = 0;
-
-	sdp_dbg_data(&ssk->isk.sk, "credits: %d remote credits: %d "
-			"tx ring slots left: %d send_head: %p\n",
-		tx_credits(ssk), remote_credits(ssk),
-		sdp_tx_ring_slots_left(ssk),
-		ssk->isk.sk.sk_send_head);
-
-	if (likely(tx_credits(ssk) > 1) &&
-	    likely(sdp_tx_ring_slots_left(ssk))) {
-		struct sk_buff *skb;
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh),
-					  GFP_KERNEL);
-		if (!skb)
-			return -ENOMEM;
-		sdp_post_send(ssk, skb, SDP_MID_DATA);
-		post_count++;
-	}
-
-	if (post_count)
-		sdp_xmit_poll(ssk, 0);
-	return post_count;
-}
-
 void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 {
 	/* TODO: nonagle? */
@@ -214,6 +187,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	int c;
 	gfp_t gfp_page;
 	int post_count = 0;
+	struct sock *sk = &ssk->isk.sk;
 
 	if (unlikely(!ssk->id)) {
 		if (ssk->isk.sk.sk_send_head) {
@@ -235,37 +209,16 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		sdp_dbg_data(&ssk->isk.sk, "freed %d\n", wc_processed);
 	}
 
-	if (ssk->tx_sa && ssk->srcavail_cancel &&
-		tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
-	    sdp_tx_ring_slots_left(ssk)) {
-		sdp_prf1(&ssk->isk.sk, NULL, "Going to send srcavail cancel");
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh),
-					  gfp_page);
-		/* FIXME */
-		BUG_ON(!skb);
-		TX_SRCAVAIL_STATE(skb) = ssk->tx_sa;
-		sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL_CANCEL);
-		post_count++;
-		ssk->srcavail_cancel = 0;
-	}
-
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
 	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
 	    sdp_tx_ring_slots_left(ssk)) {
-		struct sdp_chrecvbuf *resp_size;
 		ssk->recv_request = 0;
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh) +
-					  sizeof(*resp_size),
-					  gfp_page);
-		/* FIXME */
-		BUG_ON(!skb);
-		resp_size = (struct sdp_chrecvbuf *)skb_put(skb,
-				sizeof *resp_size);
-		resp_size->size = htonl(ssk->recv_frags * PAGE_SIZE);
-		sdp_post_send(ssk, skb, SDP_MID_CHRCVBUF_ACK);
+
+		skb = sdp_alloc_skb_chrcvbuf_ack(sk, 
+				ssk->recv_frags * PAGE_SIZE);
+
+		sdp_post_send(ssk, skb);
 		post_count++;
 	}
 
@@ -280,25 +233,11 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	       sdp_tx_ring_slots_left(ssk) &&
 	       (skb = ssk->isk.sk.sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
-		struct tx_srcavail_state *tx_sa;
 		update_send_head(&ssk->isk.sk, skb);
 		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
 
-		tx_sa = TX_SRCAVAIL_STATE(skb);
-		if (unlikely(tx_sa)) {
-			if (ssk->tx_sa != tx_sa) {
-				sdp_warn(&ssk->isk.sk, "SrcAvail cancelled "
-						"before being sent!\n");
-				__kfree_skb(skb);
-			} else {
-				if (likely(!tx_sa->abort))
-					sdp_post_send(ssk, skb, SDP_MID_SRCAVAIL);
-				else
-					sdp_warn(&ssk->isk.sk, "Not sending aborted SrcAvail\n");	
-			}
-		} else {
-			sdp_post_send(ssk, skb, SDP_MID_DATA);
-		}
+		sdp_post_send(ssk, skb);
+
 		post_count++;
 	}
 
@@ -311,13 +250,11 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	    likely(sdp_tx_ring_slots_left(ssk)) &&
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh),
-					  GFP_KERNEL);
-		/* FIXME */
-		BUG_ON(!skb);
+
+		skb = sdp_alloc_skb_data(&ssk->isk.sk);
+		sdp_post_send(ssk, skb);
+
 		SDPSTATS_COUNTER_INC(post_send_credits);
-		sdp_post_send(ssk, skb, SDP_MID_DATA);
 		post_count++;
 	}
 
@@ -330,12 +267,10 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 			!ssk->isk.sk.sk_send_head &&
 			tx_credits(ssk) > 1) {
 		ssk->sdp_disconnect = 0;
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk,
-					  sizeof(struct sdp_bsdh),
-					  gfp_page);
-		/* FIXME */
-		BUG_ON(!skb);
-		sdp_post_send(ssk, skb, SDP_MID_DISCONN);
+
+		skb = sdp_alloc_skb_disconnect(sk);
+		sdp_post_send(ssk, skb);
+
 		post_count++;
 	}
 
