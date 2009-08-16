@@ -1382,7 +1382,7 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 	}
 
 	if (bz->pages) {
-		for (i = 0; i < bz->cur_page; i++) {
+		for (i = 0; i < bz->page_cnt; i++) {
 			put_page(bz->pages[i]);
 		}
 
@@ -1578,6 +1578,7 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 		if (!sk_wmem_schedule(sk, copy))
 			return SDP_DO_WAIT_MEM;
 
+		/* put_page in skb_release_data() (called by __kfree_skb) */
 		get_page(bz->pages[bz->cur_page]);
 		skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
 				   bz->pages[bz->cur_page], bz->cur_offset,
