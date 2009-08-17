@@ -702,12 +702,8 @@ static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
-//		sdp_warn(&ssk->isk.sk, "polling: %d\n", n);
 		for (i = 0; i < n; ++i) {
 			struct ib_wc *wc = &ibwc[i];
-/*			sdp_warn(&ssk->isk.sk, "wr_id=0x%lx len %d opcode: 0x%x status: 0x%x\n",
-					wc->wr_id, wc->byte_len,
-					wc->opcode, wc->status);*/
 
 			BUG_ON(!(wc->wr_id & SDP_OP_RECV));
 			skb = sdp_process_rx_wc(ssk, wc);
@@ -800,9 +796,6 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	unsigned long flags;
 	int wc_processed = 0;
 	int credits_before;
-
-//	sdp_dbg_data(&ssk->isk.sk, "rx irq called\n");
-//	sdp_warn(&ssk->isk.sk, "rx irq called\n");
 
 	if (cq != ssk->rx_ring.cq) {
 		sdp_warn(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);

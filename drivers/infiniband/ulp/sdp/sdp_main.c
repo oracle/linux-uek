@@ -1400,7 +1400,7 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 
 
 static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
-					 unsigned char __user *base,
+					 char __user *base,
 					 int len,
 					 int size_goal)
 {
@@ -1466,7 +1466,7 @@ err:
 #define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
 #define TCP_OFF(sk)	(sk->sk_sndmsg_off)
 static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
-				unsigned char __user *from, int copy)
+				char __user *from, int copy)
 {
 	int err;
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -1553,7 +1553,7 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 }
 
 static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
-				 unsigned char __user *from, int copy,
+				 char __user *from, int copy,
 				 struct bzcopy_state *bz)
 {
 	int this_page, left;
@@ -1736,7 +1736,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	while (--iovlen >= 0) {
 		int seglen = iov->iov_len;
-		unsigned char __user *from = iov->iov_base;
+		char __user *from = iov->iov_base;
 
 		iov++;
 

@@ -31,13 +31,7 @@
  *
  * $Id$
  */
-#include <linux/interrupt.h>
-#include <linux/dma-mapping.h>
-#include <rdma/ib_verbs.h>
-#include <rdma/rdma_cm.h>
 #include "sdp.h"
-
-#define SDP_RESIZE_WAIT 16
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 void _dump_packet(const char *func, int line, struct sock *sk, char *str,

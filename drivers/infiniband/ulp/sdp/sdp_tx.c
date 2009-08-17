@@ -60,8 +60,6 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 	return wc_processed;
 }
 
-static unsigned long last_send;
-
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	struct sdp_buf *tx_req;
@@ -71,7 +69,6 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	u64 addr;
 	struct ib_device *dev;
 	struct ib_send_wr *bad_wr;
-	int delta;
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_sge *sge = ibsge;
@@ -146,11 +143,6 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	tx_wr.send_flags = IB_SEND_SIGNALED;
 	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
-
-	delta = jiffies - last_send;
-	if (likely(last_send))
-		SDPSTATS_HIST(send_interval, delta);
-	last_send = jiffies;
 
 	rc = ib_post_send(ssk->qp, &tx_wr, &bad_wr);
 	atomic_inc(&ssk->tx_ring.head);
@@ -256,8 +248,9 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 			return;
 		}
 
- /* Only last RDMA read WR is signalled. Order is guaranteed - therefore
-  * if Last RDMA read WR is completed - all other have, too */
+		/* Only last RDMA read WR is signalled. Order is guaranteed -
+		 * therefore if Last RDMA read WR is completed - all other
+		 * have, too */
 		ssk->tx_ring.rdma_inflight->busy = 0;
 		if (!ssk->tx_ring.rdma_inflight->busy) {
 			wake_up(ssk->isk.sk.sk_sleep);
@@ -301,8 +294,6 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 		}
 	} while (n == SDP_NUM_WC);
 
-//	sdp_dbg_data(&ssk->isk.sk, "processed %d wc's\n", wc_processed);
-
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
 		sdp_post_sends(ssk, 0);
@@ -320,9 +311,6 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
-//	sdp_dbg_data(&ssk->isk.sk, "Polling tx cq. inflight=%d\n",
-//		(u32) tx_ring_posted(ssk));
-
 	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d", 
 		(u32) tx_ring_posted(ssk));
 
@@ -330,7 +318,6 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
-//		sdp_dbg_data(&ssk->isk.sk, "socket is busy - trying later\n");
 		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy\n");
 		SDPSTATS_COUNTER_INC(tx_poll_busy);
 		goto out;
@@ -351,7 +338,6 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	 * been scheduled by the Tx routine then schedule it here to guarantee
 	 * completion processing of these packets */
 	if (inflight) { /* TODO: make sure socket is not closed */
-//		sdp_dbg_data(sk, "arming timer for more polling\n");
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 	}
 
@@ -417,10 +403,6 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 
 static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
 {
-	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
-	printk("xx       event called !!!!!!!!!!                   xxxxxx\n");
-	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
-	printk("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
 }
 
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)

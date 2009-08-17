@@ -46,7 +46,7 @@
 #include "sdp_socket.h"
 #include "sdp.h"
 
-#define SDP_MAJV_MINV 0x11
+#define SDP_MAJV_MINV 0x22
 
 enum {
 	SDP_HH_SIZE = 76,
@@ -62,7 +62,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	struct ib_qp_init_attr qp_init_attr = {
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
-		.cap.max_send_sge = SDP_MAX_SEND_SGES /*SDP_MAX_SEND_SKB_FRAGS*/,
+		.cap.max_send_sge = SDP_MAX_SEND_SGES,
 		.cap.max_recv_wr = SDP_RX_SIZE,
 		.cap.max_recv_sge = SDP_MAX_RECV_SKB_FRAGS + 1,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
@@ -94,19 +94,6 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	sdp_sk(sk)->qp = id->qp;
 	sdp_sk(sk)->ib_device = device;
 	sdp_sk(sk)->qp_active = 1;
-
-{
-	struct ib_qp_attr qp_attr;
-	struct ib_qp_init_attr qp_init_attr;
-
-	rc = ib_query_qp(sdp_sk(sk)->qp, 
-		&qp_attr,
-		0,
-		&qp_init_attr);
-
-	sdp_sk(sk)->max_send_sge = qp_attr.cap.max_send_sge;
-	sdp_dbg(sk, "max_send_sge = %d\n", sdp_sk(sk)->max_send_sge);
-}
 
 	init_waitqueue_head(&sdp_sk(sk)->wq);
 
@@ -330,7 +317,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				rx_ring_posted(sdp_sk(sk)));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
-		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HH_SIZE);
+		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) +
+				sizeof(struct sdp_hh));
 		hh.max_adverts = 1;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
@@ -348,7 +336,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.retry_count = SDP_RETRY_COUNT;
 		SDP_DUMP_PACKET(NULL, "TX", NULL, &hh.bsdh);
 		rc = rdma_connect(id, &conn_param);
-//		sdp_sk(sk)->qp_active = 1;
 		break;
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		sdp_dbg(sk, "RDMA_CM_EVENT_ROUTE_ERROR : %p\n", id);
@@ -368,7 +355,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(rx_ring_posted(sdp_sk(child)));
-		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) + SDP_HAH_SIZE);
+		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) +
+				sizeof(struct sdp_hah));
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
 					    but just in case */
@@ -387,8 +375,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			id->qp = NULL;
 			id->context = NULL;
 			parent = sdp_sk(child)->parent; /* TODO: hold ? */
-		} else {
-//			sdp_sk(child)->qp_active = 1;
 		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
