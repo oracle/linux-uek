@@ -3,6 +3,7 @@
 
 #define SDPSTATS_ON
 #define SDP_PROFILING
+//#define GETNSTIMEODAY_SUPPORTED
 
 #define _sdp_printk(func, line, level, sk, format, arg...) do {               \
 	preempt_disable(); \
@@ -50,6 +51,17 @@ struct sdpprf_log {
 extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 extern int sdpprf_log_count;
 
+#ifdef GETNSTIMEODAY_SUPPORTED
+static inline unsigned long long current_nsec(void)
+{
+	struct timespec tv;
+	getnstimeofday(&tv);
+	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
+}
+#else
+#define current_nsec() jiffies_to_usecs(jiffies)
+#endif
+
 #define sdp_prf1(sk, s, format, arg...) ({ \
 	struct sdpprf_log *l = \
 		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
@@ -61,7 +73,7 @@ extern int sdpprf_log_count;
 	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
-	l->time = jiffies_to_usecs(jiffies); \
+	l->time = current_nsec(); \
 	l->func = __func__; \
 	l->line = __LINE__; \
 	preempt_enable(); \

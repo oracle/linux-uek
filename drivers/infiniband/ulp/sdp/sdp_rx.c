@@ -758,6 +758,11 @@ void sdp_do_posts(struct sdp_sock *ssk)
 	int xmit_poll_force;
 	struct sk_buff *skb;
 
+	if (!ssk->qp_active) {
+		sdp_dbg(sk, "QP is deactivated\n");
+		return;
+	}
+
 	while ((skb = skb_dequeue(&ssk->rx_ctl_q)))
 		sdp_process_rx_ctl_skb(ssk, skb);
 

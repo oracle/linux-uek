@@ -20,8 +20,6 @@
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
 #define SDP_SRCAVAIL_PAYLOAD_LEN 1
 
-#define MAX_ZCOPY_SEND_SIZE (512 * 1024)
-
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5
@@ -31,7 +29,7 @@
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
 
-#define SDP_FMR_SIZE		256
+#define SDP_FMR_SIZE (PAGE_SIZE / sizeof(u64 *))
 #define SDP_FMR_POOL_SIZE	1024
 #define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
 
@@ -589,7 +587,7 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size)
 	else
 		gfp = GFP_KERNEL;
 
-	skb = sk_stream_alloc_skb(sk, sizeof(struct sdp_bsdh) + size, gfp);
+	skb = sdp_stream_alloc_skb(sk, sizeof(struct sdp_bsdh) + size, gfp);
 	BUG_ON(!skb);
 
         skb_header_release(skb);
