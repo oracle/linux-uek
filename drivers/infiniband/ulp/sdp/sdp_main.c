@@ -94,7 +94,7 @@ SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
 SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 65536,
 	"Zero copy send using SEND threshold; 0=0ff.");
-SDP_MODPARAM_SINT(sdp_zcopy_thresh, 128*1024,
+SDP_MODPARAM_SINT(sdp_zcopy_thresh, 0, //128*1024,
 	"Zero copy using RDMA threshold; 0=0ff.");
 #define SDP_RX_COAL_TIME_HIGH 128
 SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
@@ -1064,6 +1064,7 @@ int sdp_init_sock(struct sock *sk)
 	ssk->destruct_in_process = 0;
 	spin_lock_init(&ssk->lock);
 	spin_lock_init(&ssk->tx_sa_lock);
+	ssk->tx_compl_pending = 0;
 
 	atomic_set(&ssk->somebody_is_doing_posts, 0);
 
@@ -1613,9 +1614,12 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
 	return copy;
 }
 
-/* like sk_stream_wait_memory - except waits on remote credits */
-int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
-				  struct bzcopy_state *bz)
+/* like sk_stream_wait_memory - except:
+ * - if credits_needed provided - wait for enough credits
+ * - TX irq will use this (in sendmsg context) to do the actual tx
+ *   comp poll and post
+ */
+int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 {
 	struct sock *sk = &ssk->isk.sk;
 	int err = 0;
@@ -1623,9 +1627,7 @@ int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 	long current_timeo = *timeo_p;
 	DEFINE_WAIT(wait);
 
-	BUG_ON(!bz);
-
-	if (sdp_bzcopy_slots_avail(ssk, bz))
+	if (sk_stream_memory_free(sk))
 		current_timeo = vm_wait = (net_random() % (HZ / 5)) + 2;
 
 	while (1) {
@@ -1633,41 +1635,57 @@ int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 
 		prepare_to_wait(sk->sk_sleep, &wait, TASK_INTERRUPTIBLE);
 
-		if (unlikely(sk->sk_err | (sk->sk_shutdown & SEND_SHUTDOWN))) {
-			err = -EPIPE;
-			break;
-		}
-
-		if (unlikely(!*timeo_p)) {
-			err = -EAGAIN;
-			break;
-		}
-
-		if (unlikely(signal_pending(current))) {
-			err = sock_intr_errno(*timeo_p);
-			break;
-		}
-
+		if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
+			goto do_error;
+		if (!*timeo_p)
+			goto do_nonblock;
+		if (signal_pending(current))
+			goto do_interrupted;
 		clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
-		posts_handler_put(ssk);
+		sdp_do_posts(ssk);
 
-		if (sdp_bzcopy_slots_avail(ssk, bz))
-			break;
+		if (credits_needed) {
+			if (tx_slots_free(ssk) >= *credits_needed)
+				break;
+		} else {
+			if (sk_stream_memory_free(sk) && !vm_wait)
+				break;
+		}
+
+		posts_handler_put(ssk);
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
 
+		sdp_prf1(sk, NULL, "Going to sleep");
+
 		if (tx_credits(ssk) > SDP_MIN_TX_CREDITS)
 			sdp_arm_tx_cq(sk);
 
-		sk_wait_event(sk, &current_timeo,
-			sdp_bzcopy_slots_avail(ssk, bz) && vm_wait);
+		if (credits_needed) {
+			sk_wait_event(sk, &current_timeo,
+					!sk->sk_err && 
+					!(sk->sk_shutdown & SEND_SHUTDOWN) &&
+					!ssk->tx_compl_pending &&
+					tx_slots_free(ssk) >= *credits_needed &&
+					vm_wait);
+		} else {
+			sk_wait_event(sk, &current_timeo,
+					!sk->sk_err && 
+					!(sk->sk_shutdown & SEND_SHUTDOWN) &&
+					!ssk->tx_compl_pending &&
+					sk_stream_memory_free(sk) &&
+					vm_wait);
+		}
+
+		sdp_prf1(sk, NULL, "Woke up");
 		sk->sk_write_pending--;
-		sdp_prf1(sk, NULL, "finished wait for mem");
 
 		posts_handler_get(ssk);
-		sdp_do_posts(ssk);
+
+		if (!ssk->qp_active)
+			goto do_error;
 
 		if (vm_wait) {
 			vm_wait -= current_timeo;
@@ -1679,9 +1697,19 @@ int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
 		}
 		*timeo_p = current_timeo;
 	}
-
+out:
 	finish_wait(sk->sk_sleep, &wait);
 	return err;
+
+do_error:
+	err = -EPIPE;
+	goto out;
+do_nonblock:
+	err = -EAGAIN;
+	goto out;
+do_interrupted:
+	err = sock_intr_errno(*timeo_p);
+	goto out;
 }
 
 /* Like tcp_sendmsg */
@@ -1772,7 +1800,7 @@ new_segment:
 				 * receive credits.
 				 */
 				if (bz) {
-					if (!sdp_bzcopy_slots_avail(ssk, bz))
+					if (tx_slots_free(ssk) < bz->busy)
 						goto wait_for_sndbuf;
 				} else {
 					if (!sk_stream_memory_free(sk))
@@ -1850,21 +1878,8 @@ wait_for_memory:
 			if (copied)
 				sdp_push(sk, ssk, flags & ~MSG_MORE);
 
-			sdp_xmit_poll(ssk, 1);
-
-			if (bz) {
-				err = sdp_bzcopy_wait_memory(ssk, &timeo, bz);
-			} else {
-				posts_handler_put(ssk);
-
-				sdp_arm_tx_cq(sk);
-
-				err = sk_stream_wait_memory(sk, &timeo);
-
-				posts_handler_get(ssk);
-				sdp_do_posts(ssk);
-			}
-
+			err = sdp_tx_wait_memory(ssk, &timeo,
+					bz ? &bz->busy : NULL);
 			if (err)
 				goto do_error;
 

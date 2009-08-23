@@ -53,6 +53,8 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 	if (!timer_pending(&ssk->tx_ring.timer))
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 
+	ssk->tx_compl_pending = 0;
+
 	/* Poll the CQ every SDP_TX_POLL_MODER packets */
 	if (force || (++ssk->tx_ring.poll_cnt & (SDP_TX_POLL_MODER - 1)) == 0)
 		wc_processed = sdp_process_tx_cq(ssk);
@@ -297,12 +299,52 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
 		sdp_post_sends(ssk, 0);
+		sdp_prf1(sk, NULL, "Waking sendmsg. inflight=%d", 
+				(u32) tx_ring_posted(ssk));
+		sk_stream_write_space(&ssk->isk.sk);
+		if (sk->sk_write_pending &&
+				test_bit(SOCK_NOSPACE, &sk->sk_socket->flags) &&
+				tx_ring_posted(ssk)) {
+			/* a write is pending and still no room in tx queue,
+			 * arm tx cq
+			 */
+			sdp_prf(&ssk->isk.sk, NULL, "pending tx - rearming");
+			sdp_arm_tx_cq(sk);
+		}
 
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-			sk_stream_write_space(&ssk->isk.sk);
 	}
 
 	return wc_processed;
+}
+
+/* Select who will handle tx completion:
+ * - a write is pending - wake it up and let it do the poll + post
+ * - post handler is taken - taker will do the poll + post
+ * else return 1 and let the caller do it
+ */  
+static int sdp_tx_handler_select(struct sdp_sock *ssk)
+{
+	struct sock *sk = &ssk->isk.sk;
+
+	if (sk->sk_write_pending) {
+		/* Do the TX posts from sender context */
+		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
+			sdp_prf1(sk, NULL, "Waking up pending sendmsg");
+			wake_up_interruptible(sk->sk_sleep);
+			return 0;
+		} else
+			sdp_prf1(sk, NULL, "Unexpected: sk_sleep=%p, "
+				"waitqueue_active: %d",
+				sk->sk_sleep, waitqueue_active(sk->sk_sleep));
+	}
+
+	if (posts_handler(ssk)) {
+		/* Somebody else available to check for completion */
+		sdp_prf1(sk, NULL, "Somebody else will call do_posts");
+		return 0;
+	} 
+
+	return 1;
 }
 
 static void sdp_poll_tx_timeout(unsigned long data)
@@ -311,14 +353,20 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
-	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d", 
-		(u32) tx_ring_posted(ssk));
+	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d, head=%d tail=%d", 
+		(u32) tx_ring_posted(ssk),
+		ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring));
 
 	/* Only process if the socket is not in use */
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
-		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
-		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy\n");
+		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy");
+
+		if (sdp_tx_handler_select(ssk)) {
+			sdp_prf1(sk, NULL, "schedule a timer");
+			mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+		}
+
 		SDPSTATS_COUNTER_INC(tx_poll_busy);
 		goto out;
 	}
@@ -333,6 +381,8 @@ static void sdp_poll_tx_timeout(unsigned long data)
 		SDPSTATS_COUNTER_INC(tx_poll_hit);
 
 	inflight = (u32) rx_ring_posted(ssk);
+	sdp_prf1(&ssk->isk.sk, NULL, "finished tx proccessing. inflight = %d",
+			tx_ring_posted(ssk));
 
 	/* If there are still packets in flight and the timer has not already
 	 * been scheduled by the Tx routine then schedule it here to guarantee
@@ -360,8 +410,13 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 
 	SDPSTATS_COUNTER_INC(tx_int_count);
 
-	mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
-	tasklet_schedule(&ssk->tx_ring.tasklet);
+	ssk->tx_compl_pending = 1;
+
+	if (sdp_tx_handler_select(ssk)) {
+		sdp_prf1(sk, NULL, "poll and post from tasklet");
+		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+		tasklet_schedule(&ssk->tx_ring.tasklet);
+	}
 }
 
 void sdp_tx_ring_purge(struct sdp_sock *ssk)

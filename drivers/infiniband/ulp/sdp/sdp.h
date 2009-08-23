@@ -13,7 +13,7 @@
 /* Interval between sucessive polls in the Tx routine when polling is used
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
 #define SDP_TX_POLL_MODER	16
-#define SDP_TX_POLL_TIMEOUT	(HZ / 4)
+#define SDP_TX_POLL_TIMEOUT	(HZ / 20)
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
@@ -24,7 +24,7 @@
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5
 #define SDP_KEEPALIVE_TIME (120 * 60 * HZ)
-#define SDP_FIN_WAIT_TIMEOUT (60 * HZ)
+#define SDP_FIN_WAIT_TIMEOUT (10 * HZ)
 
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
@@ -330,6 +330,7 @@ struct sdp_sock {
 	struct delayed_work dreq_wait_work;
 	struct work_struct destroy_work;
 
+	int tx_compl_pending;
 	atomic_t somebody_is_doing_posts;
 
 	/* Like tcp_sock */
@@ -517,13 +518,6 @@ static inline int tx_slots_free(struct sdp_sock *ssk)
 
 	return min_free - SDP_MIN_TX_CREDITS;
 };
-
-/* like sk_stream_memory_free - except measures remote credits */
-static inline int sdp_bzcopy_slots_avail(struct sdp_sock *ssk,
-					 struct bzcopy_state *bz)
-{
-	return tx_slots_free(ssk) > bz->busy;
-}
 
 /* utilities */
 static inline char *mid2str(int mid)
@@ -732,8 +726,7 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk);
 void sdp_destroy_work(struct work_struct *work);
 void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_reset(struct sock *sk);
-int sdp_bzcopy_wait_memory(struct sdp_sock *ssk, long *timeo_p,
-				  struct bzcopy_state *bz);
+int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void skb_entail(struct sock *sk, struct sdp_sock *ssk, struct sk_buff *skb);
 
 /* sdp_proc.c */

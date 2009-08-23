@@ -46,10 +46,6 @@
 #include <linux/delay.h>
 #include "sdp.h"
 
-static struct bzcopy_state dummy_bz = {
-busy: 1,
-};
-
 static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 		int page_idx, int off, size_t len)
 {
@@ -773,6 +769,7 @@ static inline int wait_for_sndbuf(struct sock *sk, long *timeo_p)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int ret = 0;
+	int credits_needed = 1;
 
 	sdp_dbg_data(sk, "Wait for mem\n");
 
@@ -784,7 +781,7 @@ static inline int wait_for_sndbuf(struct sock *sk, long *timeo_p)
 
 	sdp_xmit_poll(ssk, 1);
 
-	ret = sdp_bzcopy_wait_memory(ssk, timeo_p, &dummy_bz);
+	ret = sdp_tx_wait_memory(ssk, timeo_p, &credits_needed);
 
 	return ret;
 }
@@ -801,7 +798,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 	sdp_dbg_data(sk, "off: 0x%x len: 0x%x page_cnt: 0x%x\n",
 		offset, len, page_cnt);
 
-	if (!sdp_bzcopy_slots_avail(ssk, &dummy_bz)) {
+	if (tx_slots_free(ssk) == 0) {
 		rc = wait_for_sndbuf(sk, &timeo);
 		if (rc) {
 			sdp_warn(sk, "Couldn't get send buffer\n");
