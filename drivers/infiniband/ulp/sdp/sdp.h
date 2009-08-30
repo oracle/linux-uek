@@ -29,7 +29,7 @@
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
 
-#define SDP_FMR_SIZE (PAGE_SIZE / sizeof(u64 *))
+#define SDP_FMR_SIZE (PAGE_SIZE / sizeof(u64))
 #define SDP_FMR_POOL_SIZE	1024
 #define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
 
