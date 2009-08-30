@@ -2594,6 +2594,8 @@ kill_socks:
 	write_unlock(&device_removal_lock);
 
 	sdp_dev = ib_get_client_data(device, &sdp_client);
+	if (!sdp_dev)
+		return;
 
 	ib_flush_fmr_pool(sdp_dev->fmr_pool);
 	ib_destroy_fmr_pool(sdp_dev->fmr_pool);
