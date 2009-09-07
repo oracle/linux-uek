@@ -35,7 +35,6 @@
 
 #define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
-#define SDP_MAX_SEND_SGES 32
 
 /* payload len - rest will be rx'ed into frags */
 #define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
@@ -323,6 +322,8 @@ struct sdp_sock {
 	int max_send_sge;
 	struct delayed_work srcavail_cancel_work;
 	int srcavail_cancel_mseq;
+
+	int max_sge;
 
 	struct work_struct rx_comp_work;
 	wait_queue_head_t wq;

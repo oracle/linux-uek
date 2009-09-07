@@ -57,12 +57,27 @@ static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
 }
 
+static int sdp_get_max_send_sge(struct ib_device *dev)
+{
+	struct ib_device_attr attr;
+	static int max_sges = -1;
+
+	if (max_sges > 0)
+		goto out;
+
+	ib_query_device(dev, &attr);
+
+	max_sges = attr.max_sge;
+
+out:
+	return max_sges;
+}
+
 static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 {
 	struct ib_qp_init_attr qp_init_attr = {
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
-		.cap.max_send_sge = SDP_MAX_SEND_SGES,
 		.cap.max_recv_wr = SDP_RX_SIZE,
 		.cap.max_recv_sge = SDP_MAX_RECV_SKB_FRAGS + 1,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
@@ -73,6 +88,17 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
+	sdp_sk(sk)->max_sge = sdp_get_max_send_sge(device);
+	if (sdp_sk(sk)->max_sge < (SDP_MAX_RECV_SKB_FRAGS + 1)) {
+		sdp_warn(sk, "recv sge's. capability: %d needed: %ld\n",
+			sdp_sk(sk)->max_sge, SDP_MAX_RECV_SKB_FRAGS + 1);
+		rc = -ENOMEM;
+		goto err_tx;
+	}
+
+	qp_init_attr.cap.max_send_sge = sdp_sk(sk)->max_sge;
+	sdp_dbg(sk, "Setting max send sge to: %d\n", sdp_sk(sk)->max_sge);
+		
 	sdp_sk(sk)->sdp_dev = ib_get_client_data(device, &sdp_client);
 
 	rc = sdp_rx_ring_create(sdp_sk(sk), device);

@@ -688,7 +688,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	sge_left = rx_sa->page_cnt;
 	do {
 		/* Len error when using sge_cnt > 30 ?? */
-		int sge_cnt = min(sge_left, SDP_MAX_SEND_SGES - 2);
+		int sge_cnt = min(sge_left, ssk->max_sge - 2);
 
 		wr.wr.rdma.remote_addr = rx_sa->vaddr + copied + rx_sa->used;
 		wr.num_sge = sge_cnt;
