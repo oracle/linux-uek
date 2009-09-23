@@ -2,6 +2,7 @@
 #define _RDS_RDS_H
 
 #include <net/sock.h>
+#include <linux/interrupt.h>
 #include <linux/scatterlist.h>
 #include <linux/highmem.h>
 #include <rdma/rdma_cm.h>
