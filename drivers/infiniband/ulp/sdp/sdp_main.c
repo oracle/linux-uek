@@ -2627,16 +2627,13 @@ static int __init sdp_init(void)
 	spin_lock_init(&sock_list_lock);
 	spin_lock_init(&sdp_large_sockets_lock);
 
-	sockets_allocated = kmalloc(sizeof(*sockets_allocated), GFP_KERNEL);
+	sockets_allocated = kzalloc(sizeof(*sockets_allocated), GFP_KERNEL);
 	if (!sockets_allocated)
 		goto no_mem_sockets_allocated;
 
-	orphan_count = kmalloc(sizeof(*orphan_count), GFP_KERNEL);
+	orphan_count = kzalloc(sizeof(*orphan_count), GFP_KERNEL);
 	if (!orphan_count)
 		goto no_mem_orphan_count;
-
-	INIT_LIST_HEAD(&sockets_allocated->list);
-	INIT_LIST_HEAD(&orphan_count->list);
 
 	percpu_counter_init(sockets_allocated, 0);
 	percpu_counter_init(orphan_count, 0);
