@@ -510,6 +510,11 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 			continue;
 		}
 
+		/* ignore gcc's build ID section as it seems to get modified by
+		 * the build process */
+		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
+			continue;
+
 		/* include allocatable loadable sections */
 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)
 			goto include_section;
@@ -860,6 +865,11 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 
 			continue;
 		}
+
+		/* ignore gcc's build ID section as it seems to get modified by
+		 * the build process */
+		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
+			continue;
 
 		/* include allocatable loadable sections */
 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)

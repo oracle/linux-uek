@@ -213,6 +213,11 @@ int module_verify_signature(struct module_verify_data *mvdata,
 			continue;
 		}
 
+		/* ignore gcc's build ID section as it seems to get modified by
+		 * the build process */
+		if (strcmp(sh_name, ".note.gnu.build-id") == 0)
+			continue;
+
 		/* include allocatable loadable sections */
 		if (sh_type != SHT_NOBITS && sh_flags & SHF_ALLOC)
 			goto include_section;
