@@ -378,7 +378,7 @@ static void sdpprf_stop(struct seq_file *p, void *v)
 {
 }
 
-struct seq_operations sdpprf_ops = {
+static struct seq_operations sdpprf_ops = {
 	.start = sdpprf_start,
 	.stop = sdpprf_stop,
 	.next = sdpprf_next,
@@ -415,8 +415,12 @@ static struct file_operations sdpprf_fops = {
 int __init sdp_proc_init(void)
 {
 	struct proc_dir_entry *p = NULL;
-	struct proc_dir_entry *sdpstats = NULL;
-	struct proc_dir_entry *sdpprf = NULL;
+#ifdef SDPSTATS_ON
+	struct proc_dir_entry *stats = NULL;
+#endif
+#ifdef SDP_PROFILING
+	struct proc_dir_entry *prof = NULL;
+#endif
 
 	sdp_seq_afinfo.seq_fops->owner         = sdp_seq_afinfo.owner;
 	sdp_seq_afinfo.seq_fops->open          = sdp_seq_open;
@@ -433,31 +437,34 @@ int __init sdp_proc_init(void)
 
 #ifdef SDPSTATS_ON
 
-	sdpstats = proc_net_fops_create(&init_net, PROC_SDP_STATS,
+	stats = proc_net_fops_create(&init_net, PROC_SDP_STATS,
 			S_IRUGO | S_IWUGO, &sdpstats_fops);
-	if (!sdpstats)
-		goto no_mem;
+	if (!stats)
+		goto no_mem_stats;
 
 #endif
 
 #ifdef SDP_PROFILING
-	sdpprf = proc_net_fops_create(&init_net, PROC_SDP_PERF,
+	prof = proc_net_fops_create(&init_net, PROC_SDP_PERF,
 			S_IRUGO | S_IWUGO, &sdpprf_fops);
-	if (!sdpprf)
-		goto no_mem;
+	if (!prof)
+		goto no_mem_prof;
 #endif
 
 	return 0;
-no_mem:
-	if (sdpprf)
-		proc_net_remove(&init_net, PROC_SDP_PERF);
 
-	if (sdpstats)
-		proc_net_remove(&init_net, PROC_SDP_STATS);
+#ifdef SDP_PROFILING
+no_mem_prof:
+#endif
 
-	if (p)
-		proc_net_remove(&init_net, sdp_seq_afinfo.name);
+#ifdef SDPSTATS_ON
+	proc_net_remove(&init_net, PROC_SDP_STATS);
 
+no_mem_stats:
+#endif
+	proc_net_remove(&init_net, sdp_seq_afinfo.name);
+
+no_mem:	
 	return -ENOMEM;
 }
 

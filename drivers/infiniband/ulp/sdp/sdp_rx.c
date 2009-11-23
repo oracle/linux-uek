@@ -148,7 +148,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	int i, rc, frags;
 	u64 addr;
 	struct ib_device *dev;
-	struct ib_recv_wr rx_wr = { 0 };
+	struct ib_recv_wr rx_wr = { NULL };
 	struct ib_sge ibsge[SDP_MAX_RECV_SKB_FRAGS + 1];
 	struct ib_sge *sge = ibsge;
 	struct ib_recv_wr *bad_wr;
@@ -721,7 +721,7 @@ static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 	return wc_processed;
 }
 
-void sdp_rx_comp_work(struct work_struct *work)
+static void sdp_rx_comp_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk = container_of(work, struct sdp_sock,
 			rx_comp_work);

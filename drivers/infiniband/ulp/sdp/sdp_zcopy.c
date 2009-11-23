@@ -465,7 +465,7 @@ err:
 	return -1;
 }
 
-void sdp_put_pages(struct sock *sk, struct page **pages, int page_cnt)
+static void sdp_put_pages(struct sock *sk, struct page **pages, int page_cnt)
 {
 	int i;
 	sdp_dbg_data(sk, "count: %d\n", page_cnt);
@@ -551,8 +551,9 @@ static int sdp_map_dma_sge(struct sock *sk, struct ib_sge *sge, int page_cnt,
 		}
 		sge[i].addr += o;
 
-		sdp_dbg_data(sk, "mapping %03d: page: %p o: %d l: %d | addr: 0x%llx length: %d\n",
-				i, pages[i], o, l, sge[i].addr, sge[i].length);
+		sdp_dbg_data(sk, "mapping %03d: page: %p o: %d l: %d | "
+			"addr: 0x%llx length: %d\n",
+			i, pages[i], o, l, sge[i].addr, sge[i].length);
 		left -= l;
 	}
 
@@ -636,7 +637,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
 	int rc = 0;
 	struct ib_send_wr *bad_wr;
-	struct ib_send_wr wr = { 0 };
+	struct ib_send_wr wr = { NULL };
 	long timeo;
 	struct ib_sge *sge;
 	int sge_left;

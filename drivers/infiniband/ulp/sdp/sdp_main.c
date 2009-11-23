@@ -108,9 +108,9 @@ SDP_MODPARAM_SINT(sdp_rx_rate_thresh, (200000 / SDP_RX_COAL_TIME_HIGH),
 	"rx rate thresh ().");
 SDP_MODPARAM_SINT(sdp_sample_interval, (HZ / 4), "sample interval (jiffies).");
 
-SDP_MODPARAM_INT(hw_int_mod_count, -1,
+SDP_MODPARAM_SINT(hw_int_mod_count, -1,
 		"forced hw int moderation val. -1 for auto (packets).");
-SDP_MODPARAM_INT(hw_int_mod_usec, -1,
+SDP_MODPARAM_SINT(hw_int_mod_usec, -1,
 		"forced hw int moderation val. -1 for auto (usec).");
 
 struct workqueue_struct *sdp_wq;
@@ -120,8 +120,6 @@ struct list_head sock_list;
 spinlock_t sock_list_lock;
 
 static DEFINE_RWLOCK(device_removal_lock);
-
-static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo);
 
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
@@ -542,6 +540,14 @@ done:
 	sdp_dbg(sk, "%s done\n", __func__);
 }
 
+static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
+{
+	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
+
+	queue_delayed_work(sdp_wq, &ssk->dreq_wait_work, timeo);
+	ssk->dreq_wait_timeout = 1;
+}
+
 static void sdp_send_disconnect(struct sock *sk)
 {
 	sock_hold(sk, SOCK_REF_DREQ_TO);
@@ -937,14 +943,6 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	   case SIOCOUTQ:
 	 */
 	return put_user(answ, (int __user *)arg);
-}
-
-static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
-{
-	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
-
-	queue_delayed_work(sdp_wq, &ssk->dreq_wait_work, timeo);
-	ssk->dreq_wait_timeout = 1;
 }
 
 void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)

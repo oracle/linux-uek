@@ -74,7 +74,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
 	struct ib_sge *sge = ibsge;
-	struct ib_send_wr tx_wr = { 0 };
+	struct ib_send_wr tx_wr = { NULL };
 
 	SDPSTATS_COUNTER_MID_INC(post_send, h->mid);
 	SDPSTATS_HIST(send_size, skb->len);
@@ -419,7 +419,7 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 	}
 }
 
-void sdp_tx_ring_purge(struct sdp_sock *ssk)
+static void sdp_tx_ring_purge(struct sdp_sock *ssk)
 {
 	while (tx_ring_posted(ssk)) {
 		struct sk_buff *skb;
