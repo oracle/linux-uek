@@ -258,7 +258,7 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 	if  (unlikely(rx_ring_posted(ssk) >= SDP_RX_SIZE))
 		return 0;
 
-	if (likely(rx_ring_posted(ssk) > SDP_MIN_TX_CREDITS)) {
+	if (likely(rx_ring_posted(ssk) >= SDP_MIN_TX_CREDITS)) {
 		unsigned long bytes_in_process =
 			(rx_ring_posted(ssk) - SDP_MIN_TX_CREDITS) *
 			buffer_size;
