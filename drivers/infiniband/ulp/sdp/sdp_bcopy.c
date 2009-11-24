@@ -164,7 +164,7 @@ void sdp_nagle_timeout(unsigned long data)
 	}
 
 	ssk->nagle_last_unacked = 0;
-	sdp_post_sends(ssk, 0);
+	sdp_post_sends(ssk, GFP_ATOMIC);
 
 	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
 		sk_stream_write_space(&ssk->isk.sk);
@@ -175,12 +175,11 @@ out2:
 		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
 }
 
-void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
+void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 {
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int c;
-	gfp_t gfp_page;
 	int post_count = 0;
 	struct sock *sk = &ssk->isk.sk;
 
@@ -194,11 +193,6 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		return;
 	}
 
-	if (unlikely(ssk->isk.sk.sk_allocation))
-		gfp_page = ssk->isk.sk.sk_allocation;
-	else
-		gfp_page = GFP_KERNEL;
-
 	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2) {
 		int wc_processed = sdp_xmit_poll(ssk,  1);
 		sdp_dbg_data(&ssk->isk.sk, "freed %d\n", wc_processed);
@@ -211,7 +205,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 		ssk->recv_request = 0;
 
 		skb = sdp_alloc_skb_chrcvbuf_ack(sk, 
-				ssk->recv_frags * PAGE_SIZE);
+				ssk->recv_frags * PAGE_SIZE, gfp);
 
 		sdp_post_send(ssk, skb);
 		post_count++;
@@ -246,7 +240,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 
-		skb = sdp_alloc_skb_data(&ssk->isk.sk);
+		skb = sdp_alloc_skb_data(&ssk->isk.sk, gfp);
 		sdp_post_send(ssk, skb);
 
 		SDPSTATS_COUNTER_INC(post_send_credits);
@@ -263,7 +257,7 @@ void sdp_post_sends(struct sdp_sock *ssk, int nonagle)
 			tx_credits(ssk) > 1) {
 		ssk->sdp_disconnect = 0;
 
-		skb = sdp_alloc_skb_disconnect(sk);
+		skb = sdp_alloc_skb_disconnect(sk, gfp);
 		sdp_post_send(ssk, skb);
 
 		post_count++;

@@ -60,7 +60,7 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa,
 
 	tx_sa->bytes_sent = tx_sa->bytes_acked = 0;
 
-	skb = sdp_alloc_skb_srcavail(sk, len, tx_sa->fmr->fmr->lkey, off);
+	skb = sdp_alloc_skb_srcavail(sk, len, tx_sa->fmr->fmr->lkey, off, 0);
 	if (!skb) {
 		return -ENOMEM;
 	}
@@ -102,10 +102,10 @@ static int sdp_post_srcavail_cancel(struct sock *sk)
 
 	sdp_warn(&ssk->isk.sk, "Posting srcavail cancel\n");
 
-	skb = sdp_alloc_skb_srcavail_cancel(sk);
+	skb = sdp_alloc_skb_srcavail_cancel(sk, 0);
 	skb_entail(sk, ssk, skb);
 
-	sdp_post_sends(ssk, 1);
+	sdp_post_sends(ssk, 0);
 
 	schedule_delayed_work(&ssk->srcavail_cancel_work,
 			SDP_SRCAVAIL_CANCEL_TIMEOUT);
@@ -285,7 +285,7 @@ int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 	if (rx_sa->used <= rx_sa->reported)
 		return 0;
 
-	skb = sdp_alloc_skb_rdmardcompl(&ssk->isk.sk, copied);
+	skb = sdp_alloc_skb_rdmardcompl(&ssk->isk.sk, copied, 0);
 
 	rx_sa->reported += copied;
 
@@ -297,7 +297,7 @@ int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 
 int sdp_post_sendsm(struct sock *sk)
 {
-	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk);
+	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk, 0);
 
 	sdp_post_send(sdp_sk(sk), skb);
 

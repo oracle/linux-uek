@@ -298,7 +298,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
-		sdp_post_sends(ssk, 0);
+		sdp_post_sends(ssk, GFP_ATOMIC);
 		sdp_prf1(sk, NULL, "Waking sendmsg. inflight=%d", 
 				(u32) tx_ring_posted(ssk));
 		sk_stream_write_space(&ssk->isk.sk);

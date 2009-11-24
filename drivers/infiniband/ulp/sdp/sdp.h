@@ -571,16 +571,18 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
 	return NULL;
 }
 
-static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size)
+static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size,
+		gfp_t gfp)
 {
 	struct sdp_bsdh *h;
 	struct sk_buff *skb;
-	gfp_t gfp;
 
-	if (unlikely(sk->sk_allocation))
-		gfp = sk->sk_allocation;
-	else
-		gfp = GFP_KERNEL;
+	if (!gfp) {
+		if (unlikely(sk->sk_allocation))
+			gfp = sk->sk_allocation;
+		else
+			gfp = GFP_KERNEL;
+	}
 
 	skb = sdp_stream_alloc_skb(sk, sizeof(struct sdp_bsdh) + size, gfp);
 	BUG_ON(!skb);
@@ -594,23 +596,24 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size)
 
 	return skb;
 }
-static inline struct sk_buff *sdp_alloc_skb_data(struct sock *sk)
+static inline struct sk_buff *sdp_alloc_skb_data(struct sock *sk, gfp_t gfp)
 {
-	return sdp_alloc_skb(sk, SDP_MID_DATA, 0);
+	return sdp_alloc_skb(sk, SDP_MID_DATA, 0, gfp);
 }
 
-static inline struct sk_buff *sdp_alloc_skb_disconnect(struct sock *sk)
+static inline struct sk_buff *sdp_alloc_skb_disconnect(struct sock *sk,
+		gfp_t gfp)
 {
-	return sdp_alloc_skb(sk, SDP_MID_DISCONN, 0);
+	return sdp_alloc_skb(sk, SDP_MID_DISCONN, 0, gfp);
 }
 
 static inline struct sk_buff *sdp_alloc_skb_chrcvbuf_ack(struct sock *sk,
-		int size)
+		int size, gfp_t gfp)
 {
 	struct sk_buff *skb;
 	struct sdp_chrecvbuf *resp_size;
 
-	skb = sdp_alloc_skb(sk, SDP_MID_CHRCVBUF_ACK, sizeof(*resp_size));
+	skb = sdp_alloc_skb(sk, SDP_MID_CHRCVBUF_ACK, sizeof(*resp_size), gfp);
 
 	resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
 	resp_size->size = htonl(size);
@@ -619,12 +622,12 @@ static inline struct sk_buff *sdp_alloc_skb_chrcvbuf_ack(struct sock *sk,
 }
 
 static inline struct sk_buff *sdp_alloc_skb_srcavail(struct sock *sk,
-	u32 len, u32 rkey, u64 vaddr)
+	u32 len, u32 rkey, u64 vaddr, gfp_t gfp)
 {
 	struct sk_buff *skb;
 	struct sdp_srcah *srcah;
 
-	skb = sdp_alloc_skb(sk, SDP_MID_SRCAVAIL, sizeof(*srcah));
+	skb = sdp_alloc_skb(sk, SDP_MID_SRCAVAIL, sizeof(*srcah), gfp);
 
 	srcah = (struct sdp_srcah *)skb_put(skb, sizeof(*srcah));
 	srcah->len = htonl(len);
@@ -634,18 +637,19 @@ static inline struct sk_buff *sdp_alloc_skb_srcavail(struct sock *sk,
 	return skb;
 }
 
-static inline struct sk_buff *sdp_alloc_skb_srcavail_cancel(struct sock *sk)
+static inline struct sk_buff *sdp_alloc_skb_srcavail_cancel(struct sock *sk,
+		gfp_t gfp)
 {
-	return sdp_alloc_skb(sk, SDP_MID_SRCAVAIL_CANCEL, 0);
+	return sdp_alloc_skb(sk, SDP_MID_SRCAVAIL_CANCEL, 0, gfp);
 }
 
 static inline struct sk_buff *sdp_alloc_skb_rdmardcompl(struct sock *sk,
-	u32 len)
+	u32 len, gfp_t gfp)
 {
 	struct sk_buff *skb;
 	struct sdp_rrch *rrch;
 
-	skb = sdp_alloc_skb(sk, SDP_MID_RDMARDCOMPL, sizeof(*rrch));
+	skb = sdp_alloc_skb(sk, SDP_MID_RDMARDCOMPL, sizeof(*rrch), gfp);
 
 	rrch = (struct sdp_rrch *)skb_put(skb, sizeof(*rrch));
 	rrch->len = htonl(len);
@@ -653,9 +657,9 @@ static inline struct sk_buff *sdp_alloc_skb_rdmardcompl(struct sock *sk,
 	return skb;
 }
 
-static inline struct sk_buff *sdp_alloc_skb_sendsm(struct sock *sk)
+static inline struct sk_buff *sdp_alloc_skb_sendsm(struct sock *sk, gfp_t gfp)
 {
-	return sdp_alloc_skb(sk, SDP_MID_SENDSM, 0);
+	return sdp_alloc_skb(sk, SDP_MID_SENDSM, 0, gfp);
 }
 static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
 {
@@ -742,7 +746,7 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
 int sdp_xmit_poll(struct sdp_sock *ssk, int force);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb);
-void sdp_post_sends(struct sdp_sock *ssk, int nonagle);
+void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp);
 void sdp_nagle_timeout(unsigned long data);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 
