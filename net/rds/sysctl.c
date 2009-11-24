@@ -49,6 +49,13 @@ unsigned int  rds_sysctl_max_unacked_bytes = (16 << 20);
 
 unsigned int rds_sysctl_ping_enable = 1;
 
+/*
+ * We have official values, but must maintain the sysctl interface for existing
+ * software that expects to find these values here.
+ */
+static int rds_sysctl_pf_rds = PF_RDS;
+static int rds_sysctl_sol_rds = SOL_RDS;
+
 static struct ctl_table rds_sysctl_rds_table[] = {
 	{
 		.procname       = "reconnect_min_delay_ms",
@@ -67,6 +74,20 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_doulongvec_ms_jiffies_minmax,
 		.extra1		= &rds_sysctl_reconnect_min_jiffies,
 		.extra2		= &rds_sysctl_reconnect_max,
+	},
+	{
+		.procname       = "pf_rds",
+		.data		= &rds_sysctl_pf_rds,
+		.maxlen         = sizeof(int),
+		.mode           = 0444,
+		.proc_handler   = &proc_dointvec,
+	},
+	{
+		.procname       = "sol_rds",
+		.data		= &rds_sysctl_sol_rds,
+		.maxlen         = sizeof(int),
+		.mode           = 0444,
+		.proc_handler   = &proc_dointvec,
 	},
 	{
 		.procname	= "max_unacked_packets",
