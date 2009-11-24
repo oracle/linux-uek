@@ -166,7 +166,11 @@ static int sdp_seq_open(struct inode *inode, struct file *file)
 	if (unlikely(afinfo == NULL))
 		return -EINVAL;
 
+/* Workaround bogus warning by memtrack */
+#define _kzalloc(size,flags) kzalloc(size,flags)
+#undef kzalloc
 	s = kzalloc(sizeof(*s), GFP_KERNEL);
+#define kzalloc(s,f) _kzalloc(s,f)	
 	if (!s)
 		return -ENOMEM;
 	s->family               = afinfo->family;
