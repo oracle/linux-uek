@@ -92,9 +92,9 @@ SDP_MODPARAM_SINT(recv_poll_miss, -1, "How many times recv poll missed.");
 SDP_MODPARAM_SINT(recv_poll, 1000, "How many times to poll recv.");
 SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
-SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 65536,
+SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 0,
 	"Zero copy send using SEND threshold; 0=0ff.");
-SDP_MODPARAM_SINT(sdp_zcopy_thresh, 0, //128*1024,
+SDP_MODPARAM_SINT(sdp_zcopy_thresh, 64*1024,
 	"Zero copy using RDMA threshold; 0=0ff.");
 #define SDP_RX_COAL_TIME_HIGH 128
 SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
