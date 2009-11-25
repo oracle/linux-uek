@@ -145,6 +145,7 @@ extern int sdp_data_debug_level;
 #define SOCK_REF_CM_TW "CM_TW" /* TIMEWAIT_ENTER -> TIMEWAIT_EXIT */
 #define SOCK_REF_SEQ "SEQ" /* during proc read */
 #define SOCK_REF_DREQ_TO "DREQ_TO" /* dreq timeout is pending */
+#define SOCK_REF_ZCOPY "ZCOPY" /* zcopy send in process */
 
 #define sock_hold(sk, msg)  sock_ref(sk, msg, sock_hold)
 #define sock_put(sk, msg)  sock_ref(sk, msg, sock_put)

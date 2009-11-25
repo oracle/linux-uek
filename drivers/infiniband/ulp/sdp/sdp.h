@@ -777,5 +777,6 @@ int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sock *sk);
 void srcavail_cancel_timeout(struct work_struct *work);
+void sdp_unmap_dma(struct sock *sk, u64 *addrs, int page_cnt);
 
 #endif

@@ -205,10 +205,6 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 		*timeo_p = current_timeo;
 	}
 
-	if (!ssk->qp_active) {
-		sdp_warn(sk, "qp is not active\n");
-	}
-
 	finish_wait(sk->sk_sleep, &wait);
 
 	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d/%d bytes, flags: 0x%x\n",
@@ -513,7 +509,7 @@ err:
 	return -1;
 }
 
-static void sdp_unmap_dma(struct sock *sk, u64 *addrs, int page_cnt)
+void sdp_unmap_dma(struct sock *sk, u64 *addrs, int page_cnt)
 {
 	int i;
 	struct ib_device *dev = sdp_sk(sk)->ib_device;
@@ -891,6 +887,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	}
 
 	lock_sock(sk);
+	sock_hold(&ssk->isk.sk, SOCK_REF_ZCOPY);
 
 	SDPSTATS_COUNTER_INC(sendmsg_zcopy_segment);
 
@@ -961,7 +958,8 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sdp_warn(sk, "Error sending SrcAvail. rc = %d\n", rc);
 
 
-		sdp_unmap_dma(sk, tx_sa->addrs, page_cnt);
+		if (tx_sa->addrs)
+			sdp_unmap_dma(sk, tx_sa->addrs, page_cnt);
 err_map_dma:	
 		sdp_put_pages(sk, tx_sa->pages, page_cnt);
 err_get_pages:
@@ -977,6 +975,7 @@ err:
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy end rc: %d copied: %d", rc, copied);
 	posts_handler_put(ssk);
 	release_sock(sk);
+	sock_put(&ssk->isk.sk, SOCK_REF_ZCOPY);
 
 	return rc ?: copied;
 }

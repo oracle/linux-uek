@@ -434,6 +434,11 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
+	if (ssk->tx_sa) {
+		sdp_unmap_dma(sk, ssk->tx_sa->addrs, ssk->tx_sa->page_cnt);
+		ssk->tx_sa->addrs = NULL;
+	}
+
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
 		sdp_dbg(sk, "setting state to error\n");
 		sdp_set_error(sk, rc);
