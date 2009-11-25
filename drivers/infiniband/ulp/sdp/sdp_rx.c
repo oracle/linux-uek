@@ -619,7 +619,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 
 	if (unlikely(wc->status)) {
 		if (ssk->qp_active) {
-			sdp_warn(sk, "Recv completion with error. "
+			sdp_dbg(sk, "Recv completion with error. "
 					"Status %d, vendor: %d\n",
 				wc->status, wc->vendor_err);
 			sdp_reset(sk);

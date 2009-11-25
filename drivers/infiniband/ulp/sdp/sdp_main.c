@@ -435,7 +435,7 @@ void sdp_reset_sk(struct sock *sk, int rc)
 		sdp_xmit_poll(ssk, 1);
 
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
-		sdp_warn(sk, "setting state to error\n");
+		sdp_dbg(sk, "setting state to error\n");
 		sdp_set_error(sk, rc);
 	}
 
@@ -617,7 +617,7 @@ static void sdp_close(struct sock *sk, long timeout)
 		if (h->mid == SDP_MID_DISCONN) {
 				sdp_handle_disconn(sk);
 		} else {
-			sdp_warn(sk, "Data was unread. skb: %p\n", skb);
+			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
 		}
 		__kfree_skb(skb);
