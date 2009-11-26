@@ -958,7 +958,7 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout\n");
 
 	ssk->dreq_wait_timeout = 0;
-	if (cancel_delayed_work(&ssk->dreq_wait_work)) {
+	if (cancel_delayed_work_sync(&ssk->dreq_wait_work)) {
 		/* The timeout hasn't reached - need to clean ref count */
 		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
 	}
@@ -966,7 +966,7 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 	percpu_counter_dec(ssk->isk.sk.sk_prot->orphan_count);
 }
 
-void sdp_destroy_work(struct work_struct *work)
+static void sdp_destroy_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk = container_of(work, struct sdp_sock,
 			destroy_work);
@@ -974,6 +974,13 @@ void sdp_destroy_work(struct work_struct *work)
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
 	sdp_destroy_qp(ssk);
+
+	/* Can be sure that rx_comp_work won't be queued from here cause
+	 * ssk->rx_ring.cq is NULL from here
+	 */
+	if (cancel_work_sync(&ssk->rx_comp_work)) {
+		sdp_dbg(sk, "RX completion work was queued during destroy\n");
+	}
 
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
@@ -991,15 +998,18 @@ void sdp_destroy_work(struct work_struct *work)
 	sock_put(sk, SOCK_REF_RESET);
 }
 
-void sdp_dreq_wait_timeout_work(struct work_struct *work)
+static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk =
 		container_of(work, struct sdp_sock, dreq_wait_work.work);
 	struct sock *sk = &ssk->isk.sk;
+	
+	if (!ssk->dreq_wait_timeout)
+		goto out;
 
 	lock_sock(sk);
 
-	if (!sdp_sk(sk)->dreq_wait_timeout ||
+	if (!ssk->dreq_wait_timeout ||
 	    !((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_LAST_ACK))) {
 		release_sock(sk);
 		goto out;
@@ -1035,6 +1045,9 @@ out:
 static struct lock_class_key ib_sdp_sk_receive_queue_lock_key;
 
 static struct lock_class_key ib_sdp_sk_callback_lock_key;
+
+static void sdp_destroy_work(struct work_struct *work);
+static void sdp_dreq_wait_timeout_work(struct work_struct *work);
 
 int sdp_init_sock(struct sock *sk)
 {
