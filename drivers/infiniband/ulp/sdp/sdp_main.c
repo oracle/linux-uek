@@ -169,7 +169,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 	rc = rdma_bind_addr(ssk->id, (struct sockaddr *)&addr);
 	if (rc) {
-		sdp_warn(sk, "Destroy qp !!!!\n");
+		sdp_dbg(sk, "Destroying qp\n");
 		rdma_destroy_id(ssk->id);
 		ssk->id = NULL;
 		return rc;
@@ -742,7 +742,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
 			       uaddr, SDP_RESOLVE_TIMEOUT);
 	if (rc) {
-		sdp_warn(sk, "rdma_resolve_addr failed: %d\n", rc);
+		sdp_dbg(sk, "rdma_resolve_addr failed: %d\n", rc);
 		return rc;
 	}
 
@@ -1005,7 +1005,7 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 		goto out;
 	}
 
-	sdp_warn(sk, "timed out waiting for FIN/DREQ. "
+	sdp_dbg(sk, "timed out waiting for FIN/DREQ. "
 		 "going into abortive close.\n");
 
 	sdp_sk(sk)->dreq_wait_timeout = 0;
@@ -1018,7 +1018,7 @@ void sdp_dreq_wait_timeout_work(struct work_struct *work)
 	release_sock(sk);
 
 	if (sdp_sk(sk)->id) {
-		sdp_warn(sk, "Destroyed QP!!!!\n");
+		sdp_dbg(sk, "Destroyed QP\n");
 		sdp_sk(sk)->qp_active = 0;
 		rdma_disconnect(sdp_sk(sk)->id);
 	} else
@@ -2031,7 +2031,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					}
 
 					if (rx_sa->flags & RX_SA_ABORTED) {
-						sdp_warn(sk, "rx_sa aborted. not rdmaing\n");
+						sdp_dbg_data(sk, "rx_sa aborted. not rdmaing\n");
 						goto skb_cleanup;
 					}
 
@@ -2161,7 +2161,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						used);
 				if (err == -EAGAIN) {
-					sdp_warn(sk, "RDMA Read aborted\n");
+					sdp_dbg_data(sk, "RDMA Read aborted\n");
 					used = 0;
 					goto skb_cleanup;
 				}

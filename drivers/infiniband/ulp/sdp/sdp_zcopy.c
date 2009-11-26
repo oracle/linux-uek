@@ -100,7 +100,7 @@ static int sdp_post_srcavail_cancel(struct sock *sk)
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sk_buff *skb;
 
-	sdp_warn(&ssk->isk.sk, "Posting srcavail cancel\n");
+	sdp_dbg_data(&ssk->isk.sk, "Posting srcavail cancel\n");
 
 	skb = sdp_alloc_skb_srcavail_cancel(sk, 0);
 	skb_entail(sk, ssk, skb);
@@ -121,7 +121,7 @@ void srcavail_cancel_timeout(struct work_struct *work)
 
 	lock_sock(sk);
 
-	sdp_warn(sk, "both SrcAvail and SrcAvailCancel timedout."
+	sdp_dbg_data(sk, "both SrcAvail and SrcAvailCancel timedout."
 			" closing connection\n");
 	sdp_set_error(sk, -ECONNRESET);
 	wake_up(&ssk->wq);
@@ -173,7 +173,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 			}
 
 			if (ssk->rx_sa) {
-				sdp_warn(sk, "Crossing SrcAvail - aborting this\n");
+				sdp_dbg_data(sk, "Crossing SrcAvail - aborting this\n");
 				tx_sa->abort_flags |= TX_SA_CROSS_SEND;
 				err = -ETIME;
 				break ;
@@ -211,7 +211,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p, int len,
 			tx_sa->bytes_acked, tx_sa->bytes_sent, tx_sa->abort_flags);
 
 	if (!ssk->qp_active) {
-		sdp_warn(sk, "QP destroyed while waiting\n");
+		sdp_dbg(sk, "QP destroyed while waiting\n");
 		return -EINVAL;
 	}
 	return err;
@@ -230,19 +230,19 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk, long *timeo_p)
 
 		if (unlikely(!ssk->qp_active)) {
 			err = -EPIPE;
-			sdp_warn(sk, "socket closed\n");
+			sdp_dbg(sk, "socket closed\n");
 			break;
 		}
 
 		if (unlikely(!*timeo_p)) {
 			err = -EAGAIN;
-			sdp_warn(sk, "timedout\n");
+			sdp_dbg(sk, "timedout\n");
 			break;
 		}
 
 		if (unlikely(signal_pending(current))) {
 			err = sock_intr_errno(*timeo_p);
-			sdp_warn(sk, "signalled\n");
+			sdp_dbg_data(sk, "signalled\n");
 			break;
 		}
 
@@ -341,19 +341,19 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 	}
 
 	if (mseq_ack < ssk->tx_sa->mseq) {
-		sdp_warn(sk, "SendSM arrived for old SrcAvail. "
+		sdp_dbg_data(sk, "SendSM arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
 		goto out;
 	}
 
-	sdp_warn(sk, "Got SendSM - aborting SrcAvail\n");
+	sdp_dbg_data(sk, "Got SendSM - aborting SrcAvail\n");
 
 	ssk->tx_sa->abort_flags |= TX_SA_SENDSM;
 	cancel_delayed_work(&ssk->srcavail_cancel_work);
 
 	wake_up(sk->sk_sleep);
-	sdp_warn(sk, "woke up sleepers\n");
+	sdp_dbg_data(sk, "woke up sleepers\n");
 
 out:
 	spin_unlock_irqrestore(&ssk->tx_sa_lock, flags);
@@ -373,12 +373,12 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 	BUG_ON(!ssk);
 
 	if (!ssk->tx_sa) {
-		sdp_warn(sk, "Got RdmaRdCompl for aborted SrcAvail\n");
+		sdp_dbg_data(sk, "Got RdmaRdCompl for aborted SrcAvail\n");
 		goto out;
 	}
 
 	if (ssk->tx_sa->mseq < mseq_ack) {
-		sdp_warn(sk, "RdmaRdCompl arrived for old SrcAvail. "
+		sdp_dbg_data(sk, "RdmaRdCompl arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
 		goto out;
@@ -453,7 +453,7 @@ int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
 	return 0;
 
 err:
-	sdp_warn(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
+	sdp_dbg(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
 			done_pages, page_cnt);
 	for (; done_pages > 0; done_pages--)
 		page_cache_release(pages[done_pages - 1]);
@@ -718,7 +718,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		sge += sge_cnt;
 
 		if (unlikely(ssk->srcavail_cancel_mseq > rx_sa->mseq)) {
-			sdp_warn(sk, "got SrcAvailCancel - Aborting RDMA\n");
+			sdp_dbg_data(sk, "got SrcAvailCancel - Aborting RDMA\n");
 			rc = -EAGAIN;
 		}
 	} while (!rc && sge_left > 0);
@@ -741,7 +741,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	if (rc && ssk->qp_active) {
 		/* post rdma, wait_for_compl or post rdma_rd_comp failed - 
 		 * post sendsm */
-		sdp_warn(sk, "post rdma, wait_for_compl "
+		sdp_dbg_data(sk, "post rdma, wait_for_compl "
 			"or post rdma_rd_comp failed - post sendsm\n");
 		rx_sa->flags |= RX_SA_ABORTED;
 		ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
@@ -811,7 +811,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 
 	rc = sdp_post_srcavail(sk, tx_sa, 0, offset, len);
 	if (rc) {
-		sdp_warn(sk, "Error posting SrcAvail\n");
+		sdp_dbg(sk, "Error posting SrcAvail\n");
 		goto err_abort_send;
 	}
 
@@ -820,15 +820,15 @@ static int sdp_rdma_adv_single(struct sock *sk,
 		enum tx_sa_flag f = tx_sa->abort_flags;
 
 		if (f & TX_SA_SENDSM) {
-			sdp_warn(sk, "got SendSM. use SEND verb.\n");
+			sdp_dbg_data(sk, "got SendSM. use SEND verb.\n");
 		} else if (f & TX_SA_ERROR) {
-			sdp_warn(sk, "SrcAvail error completion\n");
+			sdp_dbg_data(sk, "SrcAvail error completion\n");
 			sdp_reset(sk);
 		} else if (ssk->qp_active) {
 			if (f & TX_SA_INTRRUPTED)
 				sdp_dbg_data(sk, "SrcAvail error completion\n");
 			else 
-				sdp_warn(sk, "abort_flag = 0x%x.\n", f);
+				sdp_dbg_data(sk, "abort_flag = 0x%x.\n", f);
 
 			sdp_post_srcavail_cancel(sk);
 
@@ -839,7 +839,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 			sdp_wait_rdmardcompl(ssk, &timeo, len, 1);
 			sdp_dbg_data(sk, "finished waiting\n");
 		} else {
-			sdp_warn(sk, "QP was destroyed while waiting\n");
+			sdp_dbg_data(sk, "QP was destroyed while waiting\n");
 		}
 
 		goto err_abort_send;
@@ -882,7 +882,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	sdp_dbg_data(sk, "%s\n", __func__);
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
-		sdp_warn(sk, "Deadlock prevent: crossing SrcAvail\n");
+		sdp_dbg_data(sk, "Deadlock prevent: crossing SrcAvail\n");
 		return -EAGAIN;
 	}
 
@@ -955,7 +955,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		rc = sdp_rdma_adv_single(sk, tx_sa, iov, page_cnt, off, len);
 		if (rc)
-			sdp_warn(sk, "Error sending SrcAvail. rc = %d\n", rc);
+			sdp_dbg_data(sk, "Error sending SrcAvail. rc = %d\n", rc);
 
 
 		if (tx_sa->addrs)

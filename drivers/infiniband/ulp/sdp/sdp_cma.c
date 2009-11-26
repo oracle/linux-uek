@@ -331,7 +331,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = rdma_resolve_route(id, SDP_ROUTE_TIMEOUT);
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
-		sdp_warn(sk, "RDMA_CM_EVENT_ADDR_ERROR\n");
+		sdp_dbg(sk, "RDMA_CM_EVENT_ADDR_ERROR\n");
 		rc = -ENETUNREACH;
 		break;
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
@@ -371,7 +371,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_REQUEST\n");
 		rc = sdp_connect_handler(sk, id, event);
 		if (rc) {
-			sdp_warn(sk, "Destroy qp !!!!\n");
+			sdp_dbg(sk, "Destroying qp\n");
 			rdma_reject(id, NULL, 0);
 			break;
 		}
@@ -407,7 +407,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_RESPONSE\n");
 		rc = sdp_response_handler(sk, id, event);
 		if (rc) {
-			sdp_warn(sk, "Destroy qp !!!!\n");
+			sdp_dbg(sk, "Destroying qp\n");
 			rdma_reject(id, NULL, 0);
 		} else
 			rc = rdma_accept(id, NULL);
@@ -461,7 +461,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = sdp_disconnected_handler(sk);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		sdp_warn(sk, "RDMA_CM_EVENT_DEVICE_REMOVAL\n");
+		sdp_dbg(sk, "RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		rc = -ENETRESET;
 		break;
 	default:

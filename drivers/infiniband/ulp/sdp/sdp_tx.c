@@ -85,7 +85,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	if (unlikely(h->mid == SDP_MID_SRCAVAIL)) {
 		struct tx_srcavail_state *tx_sa = TX_SRCAVAIL_STATE(skb);
 		if (ssk->tx_sa != tx_sa) {
-			sdp_warn(&ssk->isk.sk, "SrcAvail cancelled "
+			sdp_dbg_data(&ssk->isk.sk, "SrcAvail cancelled "
 					"before being sent!\n");
 			WARN_ON(1);
 			__kfree_skb(skb);
@@ -209,7 +209,7 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 			struct sock *sk = &ssk->isk.sk;
 			sdp_prf(sk, skb, "Send completion with error. "
 				"Status %d", wc->status);
-			sdp_warn(sk, "Send completion with error. "
+			sdp_dbg_data(sk, "Send completion with error. "
 				"Status %d\n", wc->status);
 			sdp_set_error(sk, -ECONNRESET);
 			wake_up(&ssk->wq);
@@ -241,12 +241,12 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		sdp_prf1(sk, NULL, "TX comp: RDMA read");
 
 		if (!ssk->tx_ring.rdma_inflight) {
-			sdp_warn(sk, "ERROR: unexpected RDMA read\n");
+			sdp_dbg(sk, "ERROR: unexpected RDMA read\n");
 			return;
 		}
 
 		if (!ssk->tx_ring.rdma_inflight->busy) {
-			sdp_warn(sk, "ERROR: too many RDMA read completions\n");
+			sdp_dbg(sk, "ERROR: too many RDMA read completions\n");
 			return;
 		}
 
@@ -284,7 +284,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 	int wc_processed = 0;
 
 	if (!ssk->tx_ring.cq) {
-		sdp_warn(&ssk->isk.sk, "tx irq on destroyed tx_cq\n");
+		sdp_dbg(&ssk->isk.sk, "tx irq on destroyed tx_cq\n");
 		return 0;
 	}
 

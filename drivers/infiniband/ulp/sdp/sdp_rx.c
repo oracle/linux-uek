@@ -320,7 +320,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		rx_sa->flags = 0;
 
 		if (ssk->tx_sa) {
-			sdp_warn(&ssk->isk.sk, "got RX SrcAvail while waiting "
+			sdp_dbg_data(&ssk->isk.sk, "got RX SrcAvail while waiting "
 					"for TX SrcAvail. waking up TX SrcAvail"
 					"to be aborted\n");
 			wake_up(sk->sk_sleep);
@@ -457,11 +457,11 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	case SDP_MID_SRCAVAIL:
 		WARN_ON(!(sk->sk_shutdown & RCV_SHUTDOWN));
 
-		sdp_warn(sk, "DATA after socket rcv was shutdown\n");
+		sdp_dbg(sk, "DATA after socket rcv was shutdown\n");
 
 		/* got data in RCV_SHUTDOWN */
 		if (sk->sk_state == TCP_FIN_WAIT1) {
-			sdp_warn(sk, "RX data when state = FIN_WAIT1\n");
+			sdp_dbg(sk, "RX data when state = FIN_WAIT1\n");
 			/* go into abortive close */
 			sdp_exch_state(sk, TCPF_FIN_WAIT1,
 					TCP_TIME_WAIT);
@@ -493,7 +493,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			                      the dirty logic from recvmsg */
 			sdp_post_sendsm(sk);
 		} else {
-			sdp_warn(sk, "Got SrcAvailCancel - "
+			sdp_dbg(sk, "Got SrcAvailCancel - "
 					"but no SrcAvail in process\n");
 		}
 		break;
@@ -583,7 +583,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			unlikely(sk->sk_shutdown & RCV_SHUTDOWN)) {
 		sdp_prf(sk, NULL, "Control skb - queing to control queue");
 		if (h->mid == SDP_MID_SRCAVAIL_CANCEL) {
-			sdp_warn(sk, "Got SrcAvailCancel. "
+			sdp_dbg_data(sk, "Got SrcAvailCancel. "
 					"seq: 0x%d seq_ack: 0x%d\n",
 					ntohl(h->mseq), ntohl(h->mseq_ack));
 			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
@@ -803,7 +803,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	int credits_before;
 
 	if (cq != ssk->rx_ring.cq) {
-		sdp_warn(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
+		sdp_dbg(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
 		return;
 	}
 
@@ -812,7 +812,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	sdp_prf(sk, NULL, "rx irq");
 
 	if (!rx_ring_trylock(&ssk->rx_ring, &flags)) {
-		sdp_warn(&ssk->isk.sk, "ring destroyed. not polling it\n");
+		sdp_dbg(&ssk->isk.sk, "ring destroyed. not polling it\n");
 		return;
 	}
 
