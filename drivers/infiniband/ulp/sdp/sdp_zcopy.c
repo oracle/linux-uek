@@ -230,19 +230,19 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk, long *timeo_p)
 
 		if (unlikely(!ssk->qp_active)) {
 			err = -EPIPE;
-			sdp_dbg(sk, "socket closed\n");
+			sdp_warn(sk, "Socket closed\n");
 			break;
 		}
 
 		if (unlikely(!*timeo_p)) {
 			err = -EAGAIN;
-			sdp_dbg(sk, "timedout\n");
+			sdp_warn(sk, "Timedout\n");
 			break;
 		}
 
 		if (unlikely(signal_pending(current))) {
 			err = sock_intr_errno(*timeo_p);
-			sdp_dbg_data(sk, "signalled\n");
+			sdp_warn(sk, "Signalled\n");
 			break;
 		}
 
@@ -266,8 +266,11 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk, long *timeo_p)
 
 	finish_wait(sk->sk_sleep, &wait);
 
-	sdp_dbg_data(sk, "Finished waiting - rdma's inflight=%d\n",
+	if (ssk->tx_ring.rdma_inflight->busy) {
+		sdp_warn(sk, "RDMA reads are in the air: %d\n",
 			ssk->tx_ring.rdma_inflight->busy);
+	} else 
+		sdp_dbg_data(sk, "Finished waiting - no rdma's inflight\n");
 
 	return err;
 }
@@ -453,7 +456,7 @@ int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
 	return 0;
 
 err:
-	sdp_dbg(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
+	sdp_warn(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
 			done_pages, page_cnt);
 	for (; done_pages > 0; done_pages--)
 		page_cache_release(pages[done_pages - 1]);
@@ -718,7 +721,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		sge += sge_cnt;
 
 		if (unlikely(ssk->srcavail_cancel_mseq > rx_sa->mseq)) {
-			sdp_dbg_data(sk, "got SrcAvailCancel - Aborting RDMA\n");
+			sdp_warn(sk, "got SrcAvailCancel - Aborting RDMA\n");
 			rc = -EAGAIN;
 		}
 	} while (!rc && sge_left > 0);
@@ -738,10 +741,16 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		}
 	}
 
+	if (ssk->tx_ring.rdma_inflight->busy) {
+		sdp_warn(sk, "Aborted waiting for RDMA completion before finished!"
+			"Memory might be corrupted.\n");
+		WARN_ON(1);
+	}
+
 	if (rc && ssk->qp_active) {
 		/* post rdma, wait_for_compl or post rdma_rd_comp failed - 
 		 * post sendsm */
-		sdp_dbg_data(sk, "post rdma, wait_for_compl "
+		sdp_warn(sk, "post rdma, wait_for_compl "
 			"or post rdma_rd_comp failed - post sendsm\n");
 		rx_sa->flags |= RX_SA_ABORTED;
 		ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
@@ -828,7 +837,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 			if (f & TX_SA_INTRRUPTED)
 				sdp_dbg_data(sk, "SrcAvail error completion\n");
 			else 
-				sdp_dbg_data(sk, "abort_flag = 0x%x.\n", f);
+				sdp_warn(sk, "SrcAvail send aborted flag = 0x%x.\n", f);
 
 			sdp_post_srcavail_cancel(sk);
 
@@ -839,7 +848,7 @@ static int sdp_rdma_adv_single(struct sock *sk,
 			sdp_wait_rdmardcompl(ssk, &timeo, len, 1);
 			sdp_dbg_data(sk, "finished waiting\n");
 		} else {
-			sdp_dbg_data(sk, "QP was destroyed while waiting\n");
+			sdp_warn(sk, "QP was destroyed while waiting\n");
 		}
 
 		goto err_abort_send;
