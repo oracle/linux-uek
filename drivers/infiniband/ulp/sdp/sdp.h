@@ -33,6 +33,8 @@
 #define SDP_FMR_POOL_SIZE	1024
 #define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
 
+#define SDP_MAX_RDMA_READ_LEN (PAGE_SIZE * (SDP_FMR_SIZE - 2))
+
 #define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
 
@@ -88,6 +90,7 @@ struct sdp_skb_cb {
 	sdp_do_posts(ssk); \
 } while (0)
 
+extern int sdp_zcopy_thresh;
 extern struct workqueue_struct *sdp_wq;
 extern struct list_head sock_list;
 extern spinlock_t sock_list_lock;
@@ -225,9 +228,8 @@ struct rx_srcavail_state {
 	u64 vaddr;
 
 	/* Dest buff info */
-	u32 		page_cnt;
-	struct page	**pages;
-	struct ib_sge	*sge;
+	struct ib_umem *umem;
+	struct ib_pool_fmr *fmr;
 
 	/* Utility */
 	u8  busy;
@@ -235,14 +237,12 @@ struct rx_srcavail_state {
 };
 
 struct tx_srcavail_state {
-	u32 		page_cnt;
-	struct page	**pages;
-	u64		*addrs;
-
 	/* Data below 'busy' will be reset */
 	u8		busy;
 
+	struct ib_umem *umem;
 	struct ib_pool_fmr *fmr;
+
 	u32		bytes_sent;
 	u32		bytes_acked;
 
@@ -322,6 +322,8 @@ struct sdp_sock {
 	int max_send_sge;
 	struct delayed_work srcavail_cancel_work;
 	int srcavail_cancel_mseq;
+
+	struct ib_ucontext context;
 
 	int max_sge;
 
@@ -769,12 +771,11 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		int len);
-int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
-		unsigned long addr);
 int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sock *sk);
 void srcavail_cancel_timeout(struct work_struct *work);
-void sdp_unmap_dma(struct sock *sk, u64 *addrs, int page_cnt);
+void sdp_abort_srcavail(struct sock *sk);
+void sdp_abort_rdma_read(struct sock *sk);
 
 #endif

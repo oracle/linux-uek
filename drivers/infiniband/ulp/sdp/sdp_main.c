@@ -70,6 +70,7 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_fmr_pool.h>
 #include <rdma/ib_verbs.h>
+#include <linux/pagemap.h>
 /* TODO: remove when sdp_socket.h becomes part of include/linux/socket.h */
 #include "sdp_socket.h"
 #include "sdp.h"
@@ -94,7 +95,7 @@ SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
 SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 0,
 	"Zero copy send using SEND threshold; 0=0ff.");
-SDP_MODPARAM_SINT(sdp_zcopy_thresh, 64*1024,
+SDP_MODPARAM_INT(sdp_zcopy_thresh, 64*1024,
 	"Zero copy using RDMA threshold; 0=0ff.");
 #define SDP_RX_COAL_TIME_HIGH 128
 SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
@@ -434,10 +435,9 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
-	if (ssk->tx_sa) {
-		sdp_unmap_dma(sk, ssk->tx_sa->addrs, ssk->tx_sa->page_cnt);
-		ssk->tx_sa->addrs = NULL;
-	}
+	sdp_abort_srcavail(sk);
+
+	sdp_abort_rdma_read(sk);
 
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
 		sdp_dbg(sk, "setting state to error\n");
@@ -1413,6 +1413,72 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 	return NULL;
 }
 
+static int sdp_get_user_pages(struct page **pages, const unsigned int nr_pages,
+			      unsigned long uaddr, int rw)
+{
+	int res, i;
+
+        /* Try to fault in all of the necessary pages */
+	down_read(&current->mm->mmap_sem);
+        /* rw==READ means read from drive, write into memory area */
+	res = get_user_pages(
+		current,
+		current->mm,
+		uaddr,
+		nr_pages,
+		rw == READ,
+		0, /* don't force */
+		pages,
+		NULL);
+	up_read(&current->mm->mmap_sem);
+
+	/* Errors and no page mapped should return here */
+	if (res < nr_pages)
+		return res;
+
+        for (i=0; i < nr_pages; i++) {
+                /* FIXME: flush superflous for rw==READ,
+                 * probably wrong function for rw==WRITE
+                 */
+		flush_dcache_page(pages[i]);
+        }
+
+	return nr_pages;
+}
+
+static int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
+		unsigned long addr)
+{
+	int done_pages = 0;
+
+	sdp_dbg_data(sk, "count: 0x%x addr: 0x%lx\n", page_cnt, addr);
+
+	addr &= PAGE_MASK;
+	if (segment_eq(get_fs(), KERNEL_DS)) {
+		for (done_pages = 0; done_pages < page_cnt; done_pages++) {
+			pages[done_pages] = virt_to_page(addr);
+			if (!pages[done_pages])
+				break;
+			get_page(pages[done_pages]);
+			addr += PAGE_SIZE;
+		}
+	} else {
+		done_pages = sdp_get_user_pages(pages, page_cnt, addr, WRITE);
+	}
+
+	if (unlikely(done_pages != page_cnt))
+		goto err;
+
+	return 0;
+
+err:
+	sdp_warn(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
+			done_pages, page_cnt);
+	for (; done_pages > 0; done_pages--)
+		page_cache_release(pages[done_pages - 1]);
+
+	return -1;
+}
 
 static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 					 char __user *base,
@@ -1737,16 +1803,26 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int iovlen, flags;
 	int size_goal;
 	int err, copied;
+	int zcopied = 0;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
 	SDPSTATS_COUNTER_INC(sendmsg);
 
 	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh) {
-		err = sdp_sendmsg_zcopy(iocb, sk, msg, size);
-		if (err != -EAGAIN && err != -ETIME)
-			return err;
+		zcopied = sdp_sendmsg_zcopy(iocb, sk, msg, size);
+		if (zcopied == -EAGAIN || zcopied == -ETIME) {
+			sdp_dbg_data(sk, "Got SendSM/Timedout - fallback to regular send\n");
+		} else if (zcopied < 0) {
+			sdp_dbg_data(sk, "ZCopy send err: %d\n", zcopied);
+			return zcopied;
+		}
 
-		/* Got SendSM/Timedout - fallback to regular send */	
+		if (size == zcopied) {
+			return size;
+		}
+
+		sdp_dbg_data(sk, "ZCopied: 0x%x\n", zcopied);
+		sdp_dbg_data(sk, "Continue to BCopy 0x%lx bytes left\n", size - zcopied);
 	}
 
 	lock_sock(sk);
@@ -1914,7 +1990,9 @@ out:
 	posts_handler_put(ssk);
 
 	release_sock(sk);
-	return copied;
+
+	sdp_dbg_data(sk, "BCopied: 0x%x\n", copied);	
+	return copied + zcopied;
 
 do_fault:
 	sdp_prf(sk, skb, "prepare fault");
@@ -2177,14 +2255,15 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					goto skb_cleanup;
 				}
 			} else {
+				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
+						used, offset, msg->msg_iov[0].iov_base);
+
 				err = skb_copy_datagram_iovec(skb, offset,
 						/* TODO: skip header? */
 						msg->msg_iov, used);
 				if (rx_sa) {
 					rx_sa->used += used;
 					rx_sa->reported += used;
-					sdp_dbg_data(sk, "copied %ld from "
-							"payload\n", used);
 				}
 			}
 			if (err) {

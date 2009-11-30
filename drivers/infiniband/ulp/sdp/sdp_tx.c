@@ -237,16 +237,18 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	}
 
 	if (wc->wr_id & SDP_OP_RDMA) {
+		/* TODO: handle failed RDMA read cqe */
+
 		sdp_dbg_data(sk, "TX comp: RDMA read. status: %d\n", wc->status);
 		sdp_prf1(sk, NULL, "TX comp: RDMA read");
 
 		if (!ssk->tx_ring.rdma_inflight) {
-			sdp_dbg(sk, "ERROR: unexpected RDMA read\n");
+			sdp_warn(sk, "ERROR: unexpected RDMA read\n");
 			return;
 		}
 
 		if (!ssk->tx_ring.rdma_inflight->busy) {
-			sdp_dbg(sk, "ERROR: too many RDMA read completions\n");
+			sdp_warn(sk, "ERROR: too many RDMA read completions\n");
 			return;
 		}
 
@@ -334,7 +336,7 @@ static int sdp_tx_handler_select(struct sdp_sock *ssk)
 			return 0;
 		} else
 			sdp_prf1(sk, NULL, "Unexpected: sk_sleep=%p, "
-				"waitqueue_active: %d",
+				"waitqueue_active: %d\n",
 				sk->sk_sleep, waitqueue_active(sk->sk_sleep));
 	}
 
@@ -371,8 +373,10 @@ static void sdp_poll_tx_timeout(unsigned long data)
 		goto out;
 	}
 
-	if (unlikely(sk->sk_state == TCP_CLOSE))
+	if (unlikely(sk->sk_state == TCP_CLOSE)) {
+		sdp_warn(sk, "Socket is closed\n");
 		goto out;
+	}
 
 	wc_processed = sdp_process_tx_cq(ssk);
 	if (!wc_processed)
