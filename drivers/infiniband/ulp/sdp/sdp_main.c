@@ -978,9 +978,7 @@ static void sdp_destroy_work(struct work_struct *work)
 	/* Can be sure that rx_comp_work won't be queued from here cause
 	 * ssk->rx_ring.cq is NULL from here
 	 */
-	if (cancel_work_sync(&ssk->rx_comp_work)) {
-		sdp_dbg(sk, "RX completion work was queued during destroy\n");
-	}
+	cancel_work_sync(&ssk->rx_comp_work);
 
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
 
