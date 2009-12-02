@@ -256,8 +256,6 @@ out:
 
 static void sdp_init_keepalive_timer(struct sock *sk)
 {
-	init_timer(&sk->sk_timer);
-
 	sk->sk_timer.function = sdp_keepalive_timer;
 	sk->sk_timer.data = (unsigned long)sk;
 }
@@ -1083,6 +1081,10 @@ int sdp_init_sock(struct sock *sk)
 	atomic_set(&ssk->somebody_is_doing_posts, 0);
 
 	ssk->tx_ring.rdma_inflight = NULL;
+
+	init_timer(&ssk->tx_ring.timer);
+	init_timer(&ssk->nagle_timer);
+	init_timer(&sk->sk_timer);
 
 	return 0;
 }

@@ -493,7 +493,6 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 	sdp_sk(&ssk->isk.sk)->tx_ring.cq = tx_cq;
 
-	init_timer(&ssk->tx_ring.timer);
 	ssk->tx_ring.timer.function = sdp_poll_tx_timeout;
 	ssk->tx_ring.timer.data = (unsigned long) ssk;
 	ssk->tx_ring.poll_cnt = 0;
@@ -501,7 +500,6 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	tasklet_init(&ssk->tx_ring.tasklet, sdp_poll_tx_timeout,
 			(unsigned long) ssk);
 
-	init_timer(&ssk->nagle_timer);
 	ssk->nagle_timer.function = sdp_nagle_timeout;
 	ssk->nagle_timer.data = (unsigned long) ssk;
 
