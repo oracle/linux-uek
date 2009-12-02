@@ -2,7 +2,10 @@
 #define _SDP_DBG_H_
 
 #define SDPSTATS_ON
+
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 #define SDP_PROFILING
+#endif
 //#define GETNSTIMEODAY_SUPPORTED
 
 #define _sdp_printk(func, line, level, sk, format, arg...) do {               \
