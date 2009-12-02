@@ -172,6 +172,7 @@ struct sdp_hah {
 	u8 rsvd1;
 	u8 ext_max_adverts;
 	__u32 actrcvsz;
+	u8 rsvd2[172]; /* was 156 on SDP 1.0 */
 };
 
 struct sdp_rrch {
