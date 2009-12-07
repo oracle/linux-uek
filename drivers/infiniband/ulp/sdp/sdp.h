@@ -277,6 +277,8 @@ struct sdp_rx_ring {
 
 	int		 destroyed;
 	rwlock_t 	 destroyed_lock;
+
+	struct tasklet_struct 	tasklet;
 };
 
 struct sdp_device {
@@ -414,18 +416,16 @@ static inline void tx_sa_reset(struct tx_srcavail_state *tx_sa)
 			sizeof(*tx_sa) - offsetof(typeof(*tx_sa), busy));
 }
 
-static inline void rx_ring_unlock(struct sdp_rx_ring *rx_ring,
-		unsigned long *flags)
+static inline void rx_ring_unlock(struct sdp_rx_ring *rx_ring)
 {
-	read_unlock_irqrestore(&rx_ring->destroyed_lock, *flags);
+	read_unlock_bh(&rx_ring->destroyed_lock);
 }
 
-static inline int rx_ring_trylock(struct sdp_rx_ring *rx_ring,
-		unsigned long *flags)
+static inline int rx_ring_trylock(struct sdp_rx_ring *rx_ring)
 {
-	read_lock_irqsave(&rx_ring->destroyed_lock, *flags);
+	read_lock_bh(&rx_ring->destroyed_lock);
 	if (rx_ring->destroyed) {
-		rx_ring_unlock(rx_ring, flags);
+		rx_ring_unlock(rx_ring);
 		return 0;
 	}
 	return 1;
@@ -433,11 +433,9 @@ static inline int rx_ring_trylock(struct sdp_rx_ring *rx_ring,
 
 static inline void rx_ring_destroy_lock(struct sdp_rx_ring *rx_ring)
 {
-	unsigned long flags;
-
-	write_lock_irqsave(&rx_ring->destroyed_lock, flags);
+	write_lock_bh(&rx_ring->destroyed_lock);
 	rx_ring->destroyed = 1;
-	write_unlock_irqrestore(&rx_ring->destroyed_lock, flags);
+	write_unlock_bh(&rx_ring->destroyed_lock);
 }
 
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)

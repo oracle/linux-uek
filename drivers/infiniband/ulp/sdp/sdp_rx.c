@@ -798,9 +798,6 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
-	unsigned long flags;
-	int wc_processed = 0;
-	int credits_before;
 
 	if (cq != ssk->rx_ring.cq) {
 		sdp_dbg(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
@@ -811,7 +808,17 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	sdp_prf(sk, NULL, "rx irq");
 
-	if (!rx_ring_trylock(&ssk->rx_ring, &flags)) {
+	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
+}
+
+static void sdp_process_rx(unsigned long data)
+{
+	struct sdp_sock *ssk = (struct sdp_sock *)data;
+	struct sock *sk = &ssk->isk.sk;
+	int wc_processed = 0;
+	int credits_before;
+
+	if (!rx_ring_trylock(&ssk->rx_ring)) {
 		sdp_dbg(&ssk->isk.sk, "ring destroyed. not polling it\n");
 		return;
 	}
@@ -840,7 +847,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	}
 	sdp_arm_rx_cq(sk);
 
-	rx_ring_unlock(&ssk->rx_ring, &flags);
+	rx_ring_unlock(&ssk->rx_ring);
 }
 
 static void sdp_rx_ring_purge(struct sdp_sock *ssk)
@@ -898,6 +905,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
+	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx,
+			(unsigned long) ssk);
 
 	sdp_arm_rx_cq(&ssk->isk.sk);
 
