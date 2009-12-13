@@ -8,6 +8,7 @@
 #include <rdma/ib_verbs.h>
 #include <linux/sched.h>
 #include <rdma/rdma_cm.h>
+#include <rdma/ib_cm.h>
 #include "sdp_dbg.h"
 
 /* Interval between sucessive polls in the Tx routine when polling is used
@@ -140,7 +141,7 @@ struct sdp_bsdh {
 	__u32 len;
 	__u32 mseq;
 	__u32 mseq_ack;
-};
+} __attribute__((__packed__));
 
 union cma_ip_addr {
 	struct in6_addr ip6;
@@ -148,7 +149,7 @@ union cma_ip_addr {
 		__u32 pad[3];
 		__u32 addr;
 	} ip4;
-};
+} __attribute__((__packed__));
 
 /* TODO: too much? Can I avoid having the src/dst and port here? */
 struct sdp_hh {
@@ -163,7 +164,8 @@ struct sdp_hh {
 	__u16 rsvd2;
 	union cma_ip_addr src_addr;
 	union cma_ip_addr dst_addr;
-};
+	u8 rsvd3[IB_CM_REQ_PRIVATE_DATA_SIZE - sizeof(struct sdp_bsdh) - 48];
+} __attribute__((__packed__));
 
 struct sdp_hah {
 	struct sdp_bsdh bsdh;
@@ -172,27 +174,27 @@ struct sdp_hah {
 	u8 rsvd1;
 	u8 ext_max_adverts;
 	__u32 actrcvsz;
-	u8 rsvd2[172]; /* was 156 on SDP 1.0 */
-};
+	u8 rsvd2[IB_CM_REP_PRIVATE_DATA_SIZE - sizeof(struct sdp_bsdh) - 8];
+} __attribute__((__packed__));
 
 struct sdp_rrch {
 	__u32 len;
-};
+} __attribute__((__packed__));
 
 struct sdp_srcah {
 	__u32 len;
 	__u32 rkey;
 	__u64 vaddr;
-};
+} __attribute__((__packed__));
 
 struct sdp_buf {
         struct sk_buff *skb;
         u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
-};
+} __attribute__((__packed__));
 
 struct sdp_chrecvbuf {
 	u32 size;
-};
+} __attribute__((__packed__));
 
 /* Context used for synchronous zero copy bcopy (BZCOPY) */
 struct bzcopy_state {

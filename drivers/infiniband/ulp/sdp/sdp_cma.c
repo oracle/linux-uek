@@ -344,9 +344,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				rx_ring_posted(sdp_sk(sk)));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
-		hh.bsdh.len = htonl(sizeof(struct sdp_bsdh) +
-				sizeof(struct sdp_hh));
+		hh.bsdh.len = htonl(sizeof(struct sdp_hh));
 		hh.max_adverts = 1;
+		hh.ipv_cap = 0x40;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
@@ -382,8 +382,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		memset(&hah, 0, sizeof hah);
 		hah.bsdh.mid = SDP_MID_HELLO_ACK;
 		hah.bsdh.bufs = htons(rx_ring_posted(sdp_sk(child)));
-		hah.bsdh.len = htonl(sizeof(struct sdp_bsdh) +
-				sizeof(struct sdp_hah));
+		hah.bsdh.len = htonl(sizeof(struct sdp_hah));
 		hah.majv_minv = SDP_MAJV_MINV;
 		hah.ext_max_adverts = 1; /* Doesn't seem to be mandated by spec,
 					    but just in case */
