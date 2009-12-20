@@ -771,7 +771,7 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		u32 bytes_completed);
 int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		int len);
+		unsigned long *used);
 int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sock *sk);

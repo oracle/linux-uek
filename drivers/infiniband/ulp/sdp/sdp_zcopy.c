@@ -81,7 +81,8 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	ssk->tx_sa = tx_sa;
 
 	/* must have payload inlined in SrcAvail packet in combined mode */
-	payload_len = tx_sa->umem->page_size - off;
+	payload_len = MIN(tx_sa->umem->page_size - off, len);
+	payload_len = MIN(payload_len, ssk->xmit_size_goal - sizeof(struct sdp_srcah));
 	payload_pg  = sg_page(&chunk->page_list[0]);
 	get_page(payload_pg);
 
@@ -304,7 +305,7 @@ int sdp_post_sendsm(struct sock *sk)
 
 static int sdp_update_iov_used(struct sock *sk, struct iovec *iov, int len)
 {
-	sdp_dbg_data(sk, "updating consumed %d bytes from iov\n", len);
+	sdp_dbg_data(sk, "updating consumed 0x%x bytes from iov\n", len);
 	while (len > 0) {
 		if (iov->iov_len) {
 			int copy = min_t(unsigned int, iov->iov_len, len);
@@ -508,12 +509,13 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa)
 }
 
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		int len)
+		unsigned long *used)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
 	int got_srcavail_cancel;
 	int rc = 0;
+	int len = *used;
 
 	sdp_dbg_data(&ssk->isk.sk, "preparing RDMA read."
 		" len: 0x%x. buffer len: 0x%lx\n", len, iov->iov_len);
@@ -562,6 +564,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		sdp_update_iov_used(sk, iov, copied);
 		rx_sa->used += copied;
 		atomic_add(copied, &ssk->rcv_nxt);
+		*used += copied;
 	}
 
 	ssk->tx_ring.rdma_inflight = NULL;

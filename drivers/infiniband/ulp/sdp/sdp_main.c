@@ -2042,7 +2042,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					/* or advertised for RDMA  */
 
 	lock_sock(sk);
-	sdp_dbg_data(sk, "iovlen: %ld iov_len: %ld flags: 0x%x peek: 0x%x\n",
+	sdp_dbg_data(sk, "iovlen: %ld iov_len: 0x%lx flags: 0x%x peek: 0x%x\n",
 			msg->msg_iovlen, msg->msg_iov[0].iov_len, flags,
 			MSG_PEEK);
 
@@ -2249,11 +2249,9 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (rx_sa && rx_sa->used >= skb->len) {
 				/* No more payload - start rdma copy */
 				sdp_dbg_data(sk, "RDMA copy of %ld bytes\n", used);
-				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
-						used);
+				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb, &used);
 				if (err == -EAGAIN) {
 					sdp_dbg_data(sk, "RDMA Read aborted\n");
-					used = 0;
 					goto skb_cleanup;
 				}
 			} else {
