@@ -564,7 +564,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		sdp_update_iov_used(sk, iov, copied);
 		rx_sa->used += copied;
 		atomic_add(copied, &ssk->rcv_nxt);
-		*used += copied;
+		*used = copied;
 	}
 
 	ssk->tx_ring.rdma_inflight = NULL;
