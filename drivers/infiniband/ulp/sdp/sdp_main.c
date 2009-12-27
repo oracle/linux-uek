@@ -95,8 +95,8 @@ SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
 SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 0,
 	"Zero copy send using SEND threshold; 0=0ff.");
-SDP_MODPARAM_INT(sdp_zcopy_thresh, 64*1024,
-	"Zero copy using RDMA threshold; 0=0ff.");
+SDP_MODPARAM_INT(sdp_zcopy_thresh, SDP_DEF_ZCOPY_THRESH ,
+	"Zero copy using RDMA threshold; 0=Off.");
 #define SDP_RX_COAL_TIME_HIGH 128
 SDP_MODPARAM_SINT(sdp_rx_coal_target, 0x50000,
 	"Target number of bytes to coalesce with interrupt moderation.");
@@ -1810,7 +1810,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	struct bzcopy_state *bz = NULL;
 	SDPSTATS_COUNTER_INC(sendmsg);
 
-	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh) {
+	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh && size > SDP_MIN_ZCOPY_THRESH) {
 		zcopied = sdp_sendmsg_zcopy(iocb, sk, msg, size);
 		if (zcopied == -EAGAIN || zcopied == -ETIME) {
 			sdp_dbg_data(sk, "Got SendSM/Timedout - fallback to regular send\n");
