@@ -68,10 +68,10 @@ struct sdp_skb_cb {
 	struct tx_srcavail_state *tx_sa;
 };
 
-#define BZCOPY_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->bz)
-#define RX_SRCAVAIL_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->rx_sa)
-#define TX_SRCAVAIL_STATE(skb) (((struct sdp_skb_cb *)(skb->cb))->tx_sa)
-#define SDP_SKB_CB(__skb)	((struct sdp_skb_cb *)&((__skb)->cb[0]))
+#define SDP_SKB_CB(__skb)      ((struct sdp_skb_cb *)&((__skb)->cb[0]))
+#define BZCOPY_STATE(skb)      (SDP_SKB_CB(skb)->bz)
+#define RX_SRCAVAIL_STATE(skb) (SDP_SKB_CB(skb)->rx_sa)
+#define TX_SRCAVAIL_STATE(skb) (SDP_SKB_CB(skb)->tx_sa)
 
 #ifndef MIN
 #define MIN(a, b) (a < b ? a : b)

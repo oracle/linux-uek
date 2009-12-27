@@ -1812,16 +1812,15 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh && size > SDP_MIN_ZCOPY_THRESH) {
 		zcopied = sdp_sendmsg_zcopy(iocb, sk, msg, size);
-		if (zcopied == -EAGAIN || zcopied == -ETIME) {
-			sdp_dbg_data(sk, "Got SendSM/Timedout - fallback to regular send\n");
-		} else if (zcopied < 0) {
+
+		if (zcopied < 0) {
 			sdp_dbg_data(sk, "ZCopy send err: %d\n", zcopied);
 			return zcopied;
-		}
-
-		if (size == zcopied) {
+		} else if (size == zcopied) {
 			return size;
 		}
+
+		sdp_dbg_data(sk, "Got SendSM/Timedout - fallback to regular send\n");
 
 		sdp_dbg_data(sk, "ZCopied: 0x%x\n", zcopied);
 		sdp_dbg_data(sk, "Continue to BCopy 0x%lx bytes left\n", size - zcopied);
@@ -2021,6 +2020,19 @@ out_err:
 	return err;
 }
 
+static inline int sdp_abort_rx_srcavail(struct sock *sk, struct sk_buff *skb)
+{
+	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
+
+	sdp_dbg_data(sk, "SrcAvail aborted\n");
+
+	h->mid = SDP_MID_DATA;
+	kfree(RX_SRCAVAIL_STATE(skb));
+	RX_SRCAVAIL_STATE(skb) = NULL;
+
+	return 0;
+}
+
 /* Like tcp_recvmsg */
 /* Maybe use skb_recv_datagram here? */
 /* Note this does not seem to handle vectored messages. Relevant? */
@@ -2103,6 +2115,13 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			case SDP_MID_SRCAVAIL:
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 
+				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
+					sdp_dbg_data(sk, "Ignoring src avail "
+							"due to SrcAvailCancel\n");
+					sdp_abort_rx_srcavail(sk, skb);
+					goto sdp_mid_data;
+				}
+
 				/* if has payload - handle as if MID_DATA */
 				if (rx_sa->used < skb->len) {
 					sdp_dbg_data(sk, "SrcAvail has "
@@ -2115,23 +2134,21 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 						"RDMAing: %d/%d\n",
 						rx_sa->used, rx_sa->len);
 
-					if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
-						rx_sa->flags |= RX_SA_ABORTED;
-						sdp_dbg_data(sk, "Ignoring src avail "
-								"due to SrcAvailCancel\n");
+					if (flags & MSG_PEEK) {
+						sdp_dbg_data(sk, "Peek on RDMA data - "
+								"fallback to BCopy\n");
+						sdp_abort_rx_srcavail(sk, skb);
+						sdp_post_sendsm(sk);
+						rx_sa = NULL;
+					} else {
+						avail_bytes_count = rx_sa->len;
 					}
-
-					if (rx_sa->flags & RX_SA_ABORTED) {
-						sdp_dbg_data(sk, "rx_sa aborted. not rdmaing\n");
-						goto skb_cleanup;
-					}
-
-					avail_bytes_count = rx_sa->len;
 				}
 
 				break;
 
 			case SDP_MID_DATA:
+sdp_mid_data:				
 				rx_sa = NULL;
 				avail_bytes_count = skb->len;
 				break;
@@ -2151,6 +2168,9 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				goto found_ok_skb;
 
 			WARN_ON(!(flags & MSG_PEEK));
+
+			WARN_ON(h->mid == SDP_MID_SRCAVAIL);
+
 			skb = skb->next;
 		} while (skb != (struct sk_buff *)&sk->sk_receive_queue);
 
@@ -2248,8 +2268,9 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		if (!(flags & MSG_TRUNC)) {
 			if (rx_sa && rx_sa->used >= skb->len) {
 				/* No more payload - start rdma copy */
-				sdp_dbg_data(sk, "RDMA copy of %ld bytes\n", used);
+				sdp_dbg_data(sk, "RDMA copy of %lx bytes\n", used);
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb, &used);
+				sdp_dbg_data(sk, "used = %lx bytes\n", used);
 				if (err == -EAGAIN) {
 					sdp_dbg_data(sk, "RDMA Read aborted\n");
 					goto skb_cleanup;
@@ -2261,7 +2282,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				err = skb_copy_datagram_iovec(skb, offset,
 						/* TODO: skip header? */
 						msg->msg_iov, used);
-				if (rx_sa) {
+				if (rx_sa && !(flags & MSG_PEEK)) {
 					rx_sa->used += used;
 					rx_sa->reported += used;
 				}
@@ -2305,8 +2326,7 @@ skip_copy:
 		offset = 0;
 
 skb_cleanup:
-		if (!(flags & MSG_PEEK) ||
-				(rx_sa && (rx_sa->flags & RX_SA_ABORTED))) {
+		if (!(flags & MSG_PEEK)) {
 			struct sdp_bsdh *h;
 			h = (struct sdp_bsdh *)skb_transport_header(skb);
 			sdp_prf1(sk, skb, "READ finished. mseq: %d mseq_ack:%d",
@@ -2322,6 +2342,7 @@ skb_cleanup:
 				
 			}
 
+			sdp_dbg_data(sk, "unlinking skb %p\n", skb);
 			skb_unlink(skb, &sk->sk_receive_queue);
 			__kfree_skb(skb);
 		}
@@ -2344,6 +2365,7 @@ out:
 	sdp_auto_moderation(ssk);
 
 	release_sock(sk);
+	sdp_dbg_data(sk, "recvmsg finished. ret = %d\n", err);	
 	return err;
 
 recv_urg:

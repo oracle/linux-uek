@@ -766,7 +766,10 @@ err:
 
 	sock_put(&ssk->isk.sk, SOCK_REF_ZCOPY);
 
-	return rc ?: copied;
+	if (rc < 0 && rc != -EAGAIN && rc != -ETIME)
+		return rc;
+
+	return copied;
 }
 
 void sdp_abort_srcavail(struct sock *sk)
