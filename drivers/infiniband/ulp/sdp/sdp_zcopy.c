@@ -169,7 +169,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 
 		else if (tx_sa->bytes_acked > tx_sa->bytes_sent) {
 			err = -EINVAL;
-			sdp_warn(sk, "acked bytes > sent bytes\n");
+			sdp_dbg_data(sk, "acked bytes > sent bytes\n");
 			tx_sa->abort_flags |= TX_SA_ERROR;
 			break;
 		}
@@ -249,7 +249,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 		}
 
 		if (!ssk->qp_active) {
-			sdp_warn(sk, "QP destroyed\n");
+			sdp_dbg_data(sk, "QP destroyed\n");
 			break;
 		}
 
@@ -552,7 +552,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 
 	sdp_prf(sk, skb, "Finished waiting(rc=%d)", rc);
 	if (!ssk->qp_active) {
-		sdp_warn(sk, "QP destroyed during RDMA read\n");
+		sdp_dbg_data(sk, "QP destroyed during RDMA read\n");
 		rc = -EPIPE;
 		goto err_post_send;
 	}
@@ -641,9 +641,12 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 		} else if (f & TX_SA_ERROR) {
 			sdp_dbg_data(sk, "SrcAvail error completion\n");
 			sdp_reset(sk);
+			SDPSTATS_COUNTER_INC(zcopy_tx_error);
 		} else if (ssk->qp_active) {
-			if (!(f & TX_SA_INTRRUPTED))
-				sdp_warn(sk, "abort_flag = 0x%x.\n", f);
+			if (!(f & TX_SA_INTRRUPTED)) {
+				sdp_dbg_data(sk, "abort_flag = 0x%x.\n", f);
+				SDPSTATS_COUNTER_INC(zcopy_tx_timeout);
+			}
 
 			sdp_post_srcavail_cancel(sk);
 
@@ -654,7 +657,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 			sdp_wait_rdmardcompl(ssk, timeo, 1);
 			sdp_dbg_data(sk, "finished waiting\n");
 		} else {
-			sdp_warn(sk, "QP was destroyed while waiting\n");
+			sdp_dbg_data(sk, "QP was destroyed while waiting\n");
 		}
 	} else {
 		sdp_dbg_data(sk, "got RdmaRdCompl\n");

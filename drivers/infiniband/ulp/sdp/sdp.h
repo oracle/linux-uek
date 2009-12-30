@@ -694,6 +694,8 @@ struct sdpstats {
 	u32 tx_poll_busy;
 	u32 memcpy_count;
 	u32 credits_before_update[64];
+	u32 zcopy_tx_timeout;
+	u32 zcopy_tx_error;
 };
 
 static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)

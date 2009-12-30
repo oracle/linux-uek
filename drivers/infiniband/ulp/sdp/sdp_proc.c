@@ -285,6 +285,10 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "CQ stats:\n");
 	seq_printf(seq, "- RX interrupts\t\t: %d\n", sdpstats.rx_int_count);
 	seq_printf(seq, "- TX interrupts\t\t: %d\n", sdpstats.tx_int_count);
+
+	seq_printf(seq, "ZCopy stats:\n");
+	seq_printf(seq, "- TX timeout\t\t: %d\n", sdpstats.zcopy_tx_timeout);
+	seq_printf(seq, "- TX error\t\t: %d\n", sdpstats.zcopy_tx_error);
 	return 0;
 }
 
