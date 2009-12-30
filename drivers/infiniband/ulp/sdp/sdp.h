@@ -102,7 +102,9 @@ extern struct workqueue_struct *rx_comp_wq;
 extern atomic_t sdp_current_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
 extern struct ib_client sdp_client;
-extern struct sdpstats sdpstats;
+#ifdef SDPSTATS_ON
+DECLARE_PER_CPU(struct sdpstats, sdpstats);
+#endif
 
 enum sdp_mid {
 	SDP_MID_HELLO = 0x0,
@@ -672,6 +674,7 @@ static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
 
 #ifdef SDPSTATS_ON
 
+#define SDPSTATS_MAX_HIST_SIZE 256
 struct sdpstats {
 	u32 post_send[256];
 	u32 sendmsg_bcopy_segment;
@@ -707,15 +710,15 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 	h[idx]++;
 }
 
-#define SDPSTATS_COUNTER_INC(stat) do { sdpstats.stat++; } while (0)
-#define SDPSTATS_COUNTER_ADD(stat, val) do { sdpstats.stat += val; } while (0)
-#define SDPSTATS_COUNTER_MID_INC(stat, mid) do { sdpstats.stat[mid]++; } \
+#define SDPSTATS_COUNTER_INC(stat) do { __get_cpu_var(sdpstats).stat++; } while (0)
+#define SDPSTATS_COUNTER_ADD(stat, val) do { __get_cpu_var(sdpstats).stat += val; } while (0)
+#define SDPSTATS_COUNTER_MID_INC(stat, mid) do { __get_cpu_var(sdpstats).stat[mid]++; } \
 	while (0)
 #define SDPSTATS_HIST(stat, size) \
-	sdpstats_hist(sdpstats.stat, size, ARRAY_SIZE(sdpstats.stat) - 1, 1)
+	sdpstats_hist(__get_cpu_var(sdpstats).stat, size, ARRAY_SIZE(__get_cpu_var(sdpstats).stat) - 1, 1)
 
 #define SDPSTATS_HIST_LINEAR(stat, size) \
-	sdpstats_hist(sdpstats.stat, size, ARRAY_SIZE(sdpstats.stat) - 1, 0)
+	sdpstats_hist(__get_cpu_var(sdpstats).stat, size, ARRAY_SIZE(__get_cpu_var(sdpstats).stat) - 1, 0)
 
 #else
 #define SDPSTATS_COUNTER_INC(stat)

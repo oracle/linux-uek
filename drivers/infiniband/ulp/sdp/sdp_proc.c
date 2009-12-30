@@ -202,7 +202,7 @@ static struct sdp_seq_afinfo sdp_seq_afinfo = {
 };
 
 #ifdef SDPSTATS_ON
-struct sdpstats sdpstats = { { 0 } };
+DEFINE_PER_CPU(struct sdpstats, sdpstats);
 
 static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 		int is_log)
@@ -233,69 +233,97 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 	}
 }
 
+#define SDPSTATS_COUNTER_GET(var) ({ \
+	u32 __val = 0;						\
+	unsigned int __i;                                       \
+	for_each_possible_cpu(__i)                              \
+		__val += per_cpu(sdpstats, __i).var;		\
+	__val;							\
+})	
+
+#define SDPSTATS_HIST_GET(hist, hist_len, sum) ({ \
+	unsigned int __i;                                       \
+	for_each_possible_cpu(__i) {                            \
+		unsigned int __j;				\
+		u32 *h = per_cpu(sdpstats, __i).hist;		\
+		for (__j = 0; __j < hist_len; __j++) { 		\
+			sum[__j] += h[__j];			\
+		} \
+	} 							\
+})
+
+#define __sdpstats_seq_hist(seq, msg, hist, is_log) ({		\
+	u32 tmp_hist[SDPSTATS_MAX_HIST_SIZE];			\
+	int hist_len = ARRAY_SIZE(__get_cpu_var(sdpstats).hist);\
+	memset(tmp_hist, 0, sizeof(tmp_hist));			\
+	SDPSTATS_HIST_GET(hist, hist_len, tmp_hist);	\
+	sdpstats_seq_hist(seq, msg, tmp_hist, hist_len, is_log);\
+})
+
 static int sdpstats_seq_show(struct seq_file *seq, void *v)
 {
 	int i;
 
 	seq_printf(seq, "SDP statistics:\n");
 
-	sdpstats_seq_hist(seq, "sendmsg_seglen", sdpstats.sendmsg_seglen,
-		ARRAY_SIZE(sdpstats.sendmsg_seglen), 1);
+	__sdpstats_seq_hist(seq, "sendmsg_seglen", sendmsg_seglen, 1);
+	__sdpstats_seq_hist(seq, "send_size", send_size, 1);
+	__sdpstats_seq_hist(seq, "credits_before_update",
+		credits_before_update, 0);
 
-	sdpstats_seq_hist(seq, "send_size", sdpstats.send_size,
-		ARRAY_SIZE(sdpstats.send_size), 1);
-
-	sdpstats_seq_hist(seq, "credits_before_update",
-		sdpstats.credits_before_update,
-		ARRAY_SIZE(sdpstats.credits_before_update), 0);
-
-	seq_printf(seq, "sdp_sendmsg() calls\t\t: %d\n", sdpstats.sendmsg);
+	seq_printf(seq, "sdp_sendmsg() calls\t\t: %d\n",
+		SDPSTATS_COUNTER_GET(sendmsg));
 	seq_printf(seq, "bcopy segments     \t\t: %d\n",
-		sdpstats.sendmsg_bcopy_segment);
+		SDPSTATS_COUNTER_GET(sendmsg_bcopy_segment));
 	seq_printf(seq, "bzcopy segments    \t\t: %d\n",
-		sdpstats.sendmsg_bzcopy_segment);
+		SDPSTATS_COUNTER_GET(sendmsg_bzcopy_segment));
 	seq_printf(seq, "zcopy segments    \t\t: %d\n",
-		sdpstats.sendmsg_zcopy_segment);
+		SDPSTATS_COUNTER_GET(sendmsg_zcopy_segment));
 	seq_printf(seq, "post_send_credits  \t\t: %d\n",
-		sdpstats.post_send_credits);
+		SDPSTATS_COUNTER_GET(post_send_credits));
 	seq_printf(seq, "memcpy_count       \t\t: %u\n",
-		sdpstats.memcpy_count);
+		SDPSTATS_COUNTER_GET(memcpy_count));
 
-	for (i = 0; i < ARRAY_SIZE(sdpstats.post_send); i++) {
-		if (mid2str(i)) {
-			seq_printf(seq, "post_send %-20s\t: %d\n",
-					mid2str(i), sdpstats.post_send[i]);
-		}
-	}
+        for (i = 0; i < ARRAY_SIZE(__get_cpu_var(sdpstats).post_send); i++) {
+                if (mid2str(i)) {
+                        seq_printf(seq, "post_send %-20s\t: %d\n",
+                                        mid2str(i),
+					SDPSTATS_COUNTER_GET(post_send[i]));
+                }
+        }
 
 	seq_printf(seq, "\n");
-	seq_printf(seq, "post_recv         \t\t: %d\n", sdpstats.post_recv);
+	seq_printf(seq, "post_recv         \t\t: %d\n",
+		SDPSTATS_COUNTER_GET(post_recv));
 	seq_printf(seq, "BZCopy poll miss  \t\t: %d\n",
-		sdpstats.bzcopy_poll_miss);
+		SDPSTATS_COUNTER_GET(bzcopy_poll_miss));
 	seq_printf(seq, "send_wait_for_mem \t\t: %d\n",
-		sdpstats.send_wait_for_mem);
+		SDPSTATS_COUNTER_GET(send_wait_for_mem));
 	seq_printf(seq, "send_miss_no_credits\t\t: %d\n",
-		sdpstats.send_miss_no_credits);
+		SDPSTATS_COUNTER_GET(send_miss_no_credits));
 
-	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", sdpstats.rx_poll_miss);
-	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", sdpstats.tx_poll_miss);
-	seq_printf(seq, "tx_poll_busy      \t\t: %d\n", sdpstats.tx_poll_busy);
-	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", sdpstats.tx_poll_hit);
+	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_poll_miss));
+	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_miss));
+	seq_printf(seq, "tx_poll_busy      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_busy));
+	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_hit));
 
 	seq_printf(seq, "CQ stats:\n");
-	seq_printf(seq, "- RX interrupts\t\t: %d\n", sdpstats.rx_int_count);
-	seq_printf(seq, "- TX interrupts\t\t: %d\n", sdpstats.tx_int_count);
+	seq_printf(seq, "- RX interrupts\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_count));
+	seq_printf(seq, "- TX interrupts\t\t: %d\n", SDPSTATS_COUNTER_GET(tx_int_count));
 
 	seq_printf(seq, "ZCopy stats:\n");
-	seq_printf(seq, "- TX timeout\t\t: %d\n", sdpstats.zcopy_tx_timeout);
-	seq_printf(seq, "- TX error\t\t: %d\n", sdpstats.zcopy_tx_error);
+	seq_printf(seq, "- TX timeout\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_timeout));
+	seq_printf(seq, "- TX error\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
 	return 0;
 }
 
 static ssize_t sdpstats_write(struct file *file, const char __user *buf,
 			    size_t count, loff_t *offs)
 {
-	memset(&sdpstats, 0, sizeof(sdpstats));
+	int i;
+
+	for_each_possible_cpu(i)
+		memset(&per_cpu(sdpstats, i), 0, sizeof(struct sdpstats));
 	printk(KERN_WARNING "Cleared sdp statistics\n");
 
 	return count;
