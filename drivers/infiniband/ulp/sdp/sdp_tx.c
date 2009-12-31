@@ -483,7 +483,7 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	}
 
 	tx_cq = ib_create_cq(device, sdp_tx_irq, sdp_tx_cq_event_handler,
-			  &ssk->isk.sk, SDP_TX_SIZE, 0);
+			  &ssk->isk.sk, SDP_TX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
 
 	if (IS_ERR(tx_cq)) {
 		rc = PTR_ERR(tx_cq);

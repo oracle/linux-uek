@@ -891,10 +891,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		return -ENOMEM;
 	}
 
-	/* TODO: use vector=IB_CQ_VECTOR_LEAST_ATTACHED when implemented
-	 * in ofed-1.5 */
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
-			  &ssk->isk.sk, SDP_RX_SIZE, 0);
+			  &ssk->isk.sk, SDP_RX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
 
 	if (IS_ERR(rx_cq)) {
 		rc = PTR_ERR(rx_cq);
