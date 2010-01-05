@@ -246,7 +246,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	ic->i_send_cq = ib_create_cq(dev, rds_ib_send_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
-				     ic->i_send_ring.w_nr + 1, 0);
+				     ic->i_send_ring.w_nr + 1,
+				     IB_CQ_VECTOR_LEAST_ATTACHED);
 	if (IS_ERR(ic->i_send_cq)) {
 		ret = PTR_ERR(ic->i_send_cq);
 		ic->i_send_cq = NULL;
@@ -256,7 +257,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	ic->i_recv_cq = ib_create_cq(dev, rds_ib_recv_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
-				     ic->i_recv_ring.w_nr, 0);
+				     ic->i_recv_ring.w_nr,
+				     IB_CQ_VECTOR_LEAST_ATTACHED);
 	if (IS_ERR(ic->i_recv_cq)) {
 		ret = PTR_ERR(ic->i_recv_cq);
 		ic->i_recv_cq = NULL;
