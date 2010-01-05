@@ -247,6 +247,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = ic->i_send_ring.w_nr + 1;
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
+	cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
+#endif
 	ic->i_send_cq = ib_create_cq(dev, rds_ib_send_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
 				     &cq_attr);
@@ -259,6 +262,9 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = ic->i_recv_ring.w_nr;
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
+	cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
+#endif
 	ic->i_recv_cq = ib_create_cq(dev, rds_ib_recv_cq_comp_handler,
 				     rds_ib_cq_event_handler, conn,
 				     &cq_attr);
