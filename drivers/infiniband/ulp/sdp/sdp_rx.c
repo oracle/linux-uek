@@ -164,11 +164,11 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	/* TODO: allocate from cache */
 
 	if (unlikely(ssk->isk.sk.sk_allocation)) {
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_SKB_HEAD_SIZE,
 					  ssk->isk.sk.sk_allocation);
 		gfp_page = ssk->isk.sk.sk_allocation | __GFP_HIGHMEM;
 	} else {
-		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_HEAD_SIZE,
+		skb = sdp_stream_alloc_skb(&ssk->isk.sk, SDP_SKB_HEAD_SIZE,
 					  GFP_KERNEL);
 		gfp_page = GFP_HIGHUSER;
 	}
@@ -193,14 +193,14 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));
 	rx_req->skb = skb;
 	dev = ssk->ib_device;
-	addr = ib_dma_map_single(dev, h, SDP_HEAD_SIZE, DMA_FROM_DEVICE);
+	addr = ib_dma_map_single(dev, h, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
 	BUG_ON(ib_dma_mapping_error(dev, addr));
 
 	rx_req->mapping[0] = addr;
 
 	/* TODO: proper error handling */
 	sge->addr = (u64)addr;
-	sge->length = SDP_HEAD_SIZE;
+	sge->length = SDP_SKB_HEAD_SIZE;
 	sge->lkey = ssk->sdp_dev->mr->lkey;
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
@@ -242,7 +242,7 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
 	int scale = ssk->rcvbuf_scale;
-	int buffer_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
+	int buffer_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
 	unsigned long max_bytes;
 
 	if (!ssk->qp_active)
@@ -344,7 +344,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 {
-	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) / PAGE_SIZE;
+	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_SKB_HEAD_SIZE) / PAGE_SIZE;
 	if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
 		ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
 	ssk->rcvbuf_scale = rcvbuf_scale;
@@ -356,22 +356,13 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 {
-	u32 curr_size = SDP_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
-#if defined(__ia64__)
-	/* for huge PAGE_SIZE systems, aka IA64, limit buffers size
-	   [re-]negotiation to a known+working size that will not
-	   trigger a HW error/rc to be interpreted as a IB_WC_LOC_LEN_ERR */
-	u32 max_size = (SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE) <=
-		32784 ?
-		(SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE) : 32784;
-#else
-	u32 max_size = SDP_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE;
-#endif
+	u32 curr_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
+	u32 max_size = SDP_SKB_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE;
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
 		ssk->rcvbuf_scale = rcvbuf_scale;
-		ssk->recv_frags = PAGE_ALIGN(new_size - SDP_HEAD_SIZE) /
+		ssk->recv_frags = PAGE_ALIGN(new_size - SDP_SKB_HEAD_SIZE) /
 			PAGE_SIZE;
 		if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
 			ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
@@ -434,7 +425,7 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	dev = ssk->ib_device;
 	rx_req = &ssk->rx_ring.buffer[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
-	ib_dma_unmap_single(dev, rx_req->mapping[0], SDP_HEAD_SIZE,
+	ib_dma_unmap_single(dev, rx_req->mapping[0], SDP_SKB_HEAD_SIZE,
 			    DMA_FROM_DEVICE);
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i)
@@ -642,8 +633,8 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 
 	h = (struct sdp_bsdh *)skb->data;
 
-	if (likely(wc->byte_len > SDP_HEAD_SIZE))
-		skb->data_len = wc->byte_len - SDP_HEAD_SIZE;
+	if (likely(wc->byte_len > SDP_SKB_HEAD_SIZE))
+		skb->data_len = wc->byte_len - SDP_SKB_HEAD_SIZE;
 	else
 		skb->data_len = 0;
 

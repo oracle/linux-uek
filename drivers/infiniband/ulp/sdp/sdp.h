@@ -30,7 +30,7 @@
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
 
-#define SDP_FMR_SIZE (PAGE_SIZE / sizeof(u64))
+#define SDP_FMR_SIZE (MIN(0x1000, PAGE_SIZE) / sizeof(u64))
 #define SDP_FMR_POOL_SIZE	1024
 #define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
 
@@ -39,10 +39,15 @@
 #define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
 #define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
 
-/* payload len - rest will be rx'ed into frags */
-#define SDP_HEAD_SIZE (PAGE_SIZE / 2 + sizeof(struct sdp_bsdh))
+/* skb inlined data len - rest will be rx'ed into frags */
+#define SDP_SKB_HEAD_SIZE (0x500 + sizeof(struct sdp_bsdh))
+
+/* limit tx payload len, if the sink supports bigger buffers than the source
+ * can handle.
+ * or rx fragment size (limited by sge->length size) */
+#define SDP_MAX_PAYLOAD ((1 << 16) - SDP_SKB_HEAD_SIZE)
+
 #define SDP_NUM_WC 4
-#define SDP_MAX_PAYLOAD ((1 << 16) - SDP_HEAD_SIZE)
 
 #define SDP_DEF_ZCOPY_THRESH 64*1024
 #define SDP_MIN_ZCOPY_THRESH PAGE_SIZE
