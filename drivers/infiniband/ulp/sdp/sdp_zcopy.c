@@ -700,7 +700,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
 		sdp_dbg_data(sk, "Deadlock prevent: crossing SrcAvail\n");
-		return -EAGAIN;
+		return 0;
 	}
 
 	lock_sock(sk);
