@@ -93,13 +93,18 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		sdp_warn(sk, "recv sge's. capability: %d needed: %ld\n",
 			sdp_sk(sk)->max_sge, SDP_MAX_RECV_SKB_FRAGS + 1);
 		rc = -ENOMEM;
-		goto err_tx;
+		goto err_rx;
 	}
 
 	qp_init_attr.cap.max_send_sge = sdp_sk(sk)->max_sge;
 	sdp_dbg(sk, "Setting max send sge to: %d\n", sdp_sk(sk)->max_sge);
 		
 	sdp_sk(sk)->sdp_dev = ib_get_client_data(device, &sdp_client);
+	if (!sdp_sk(sk)->sdp_dev) {
+		sdp_warn(sk, "SDP not available on device %s\n", device->name);
+		rc = -ENODEV;
+		goto err_rx;
+	}
 
 	rc = sdp_rx_ring_create(sdp_sk(sk), device);
 	if (rc)
