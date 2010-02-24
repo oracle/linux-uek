@@ -703,6 +703,8 @@ struct sdpstats {
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 zcopy_tx_timeout;
+	u32 zcopy_cross_send;
+	u32 zcopy_tx_aborted;
 	u32 zcopy_tx_error;
 };
 

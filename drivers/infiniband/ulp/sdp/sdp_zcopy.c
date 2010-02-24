@@ -164,6 +164,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 			err = -ETIME;
 			tx_sa->abort_flags |= TX_SA_TIMEDOUT;
 			sdp_prf1(sk, NULL, "timeout");
+			SDPSTATS_COUNTER_INC(zcopy_tx_timeout);
 			break;
 		}
 
@@ -176,6 +177,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 
 		if (tx_sa->abort_flags & TX_SA_SENDSM) {
 			sdp_prf1(sk, NULL, "Aborting SrcAvail sending");
+			SDPSTATS_COUNTER_INC(zcopy_tx_aborted);
 			err = -EAGAIN;
 			break ;
 		}
@@ -191,6 +193,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 			if (ssk->rx_sa) {
 				sdp_dbg_data(sk, "Crossing SrcAvail - aborting this\n");
 				tx_sa->abort_flags |= TX_SA_CROSS_SEND;
+				SDPSTATS_COUNTER_INC(zcopy_cross_send);
 				err = -ETIME;
 				break ;
 			}
@@ -649,11 +652,6 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 			sdp_reset(sk);
 			SDPSTATS_COUNTER_INC(zcopy_tx_error);
 		} else if (ssk->qp_active) {
-			if (!(f & TX_SA_INTRRUPTED)) {
-				sdp_dbg_data(sk, "abort_flag = 0x%x.\n", f);
-				SDPSTATS_COUNTER_INC(zcopy_tx_timeout);
-			}
-
 			sdp_post_srcavail_cancel(sk);
 
 			/* Wait for RdmaRdCompl/SendSM to
