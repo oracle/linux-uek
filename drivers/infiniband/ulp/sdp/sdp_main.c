@@ -2122,11 +2122,18 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			case SDP_MID_SRCAVAIL:
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 
-				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
+				if (rx_sa->flags & RX_SA_ABORTED) {
 					sdp_dbg_data(sk, "Ignoring src avail "
 							"due to SrcAvailCancel\n");
-					sdp_abort_rx_srcavail(sk, skb);
-					goto sdp_mid_data;
+					sdp_post_sendsm(sk);
+					if (rx_sa->used < skb->len) {
+						sdp_abort_rx_srcavail(sk, skb);
+						sdp_prf(sk, skb, "Converted SA to DATA");
+						goto sdp_mid_data;
+					} else {
+						sdp_prf(sk, skb, "Cancelled SA with no payload left");
+						goto skb_cleanup;
+					}
 				}
 
 				/* if has payload - handle as if MID_DATA */
@@ -2174,7 +2181,11 @@ sdp_mid_data:
 			if (offset < avail_bytes_count)
 				goto found_ok_skb;
 
-			WARN_ON(!(flags & MSG_PEEK));
+ 			if (unlikely(!(flags & MSG_PEEK))) {
+				 	sdp_warn(sk, "Trying to read beyond SKB\n");
+				 	sdp_prf(sk, skb, "Aborting recv");
+					goto skb_cleanup;
+			}
 
 			WARN_ON(h->mid == SDP_MID_SRCAVAIL);
 

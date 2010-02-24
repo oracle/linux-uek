@@ -478,7 +478,6 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			ssk->rx_sa->flags |= RX_SA_ABORTED;
 			ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
 			                      the dirty logic from recvmsg */
-			sdp_post_sendsm(sk);
 		} else {
 			sdp_dbg(sk, "Got SrcAvailCancel - "
 					"but no SrcAvail in process\n");
