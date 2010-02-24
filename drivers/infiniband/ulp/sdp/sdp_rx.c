@@ -464,10 +464,6 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		break;
 	case SDP_MID_RDMARDCOMPL:
 		{
-			struct sdp_rrch *rrch = (struct sdp_rrch *)(h+1);
-			sdp_dbg_data(sk, "RdmaRdCompl message arrived\n");
-			sdp_handle_rdma_read_compl(ssk, ntohl(h->mseq_ack),
-					ntohl(rrch->len));
 			__kfree_skb(skb);
 		} break;
 	case SDP_MID_SENDSM:
@@ -579,6 +575,15 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 					ntohl(h->mseq), ntohl(h->mseq_ack));
 			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
 		}
+
+
+		if (h->mid == SDP_MID_RDMARDCOMPL) {
+			struct sdp_rrch *rrch = (struct sdp_rrch *)(h+1);
+			sdp_dbg_data(sk, "RdmaRdCompl message arrived\n");
+			sdp_handle_rdma_read_compl(ssk, ntohl(h->mseq_ack),
+					ntohl(rrch->len));
+		}
+
 		skb_queue_tail(&ssk->rx_ctl_q, skb);
 
 		return 0;

@@ -190,7 +190,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 				break;
 			}
 
-			if (ssk->rx_sa) {
+			if (ssk->rx_sa && (tx_sa->bytes_acked < tx_sa->bytes_sent)) {
 				sdp_dbg_data(sk, "Crossing SrcAvail - aborting this\n");
 				tx_sa->abort_flags |= TX_SA_CROSS_SEND;
 				SDPSTATS_COUNTER_INC(zcopy_cross_send);
@@ -346,7 +346,7 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 		goto out;
 	}
 
-	if (mseq_ack < ssk->tx_sa->mseq) {
+	if (ssk->tx_sa->mseq > mseq_ack) {
 		sdp_dbg_data(sk, "SendSM arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
@@ -383,7 +383,7 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		goto out;
 	}
 
-	if (ssk->tx_sa->mseq < mseq_ack) {
+	if (ssk->tx_sa->mseq > mseq_ack) {
 		sdp_dbg_data(sk, "RdmaRdCompl arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
