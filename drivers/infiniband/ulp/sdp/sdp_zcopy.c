@@ -658,6 +658,8 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 			sdp_dbg_data(sk, "Waiting for SendSM\n");
 			sdp_wait_rdmardcompl(ssk, timeo, 1);
 			sdp_dbg_data(sk, "finished waiting\n");
+
+			cancel_delayed_work(&ssk->srcavail_cancel_work);
 		} else {
 			sdp_dbg_data(sk, "QP was destroyed while waiting\n");
 		}
