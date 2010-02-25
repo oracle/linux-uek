@@ -79,6 +79,9 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	SDPSTATS_COUNTER_MID_INC(post_send, h->mid);
 	SDPSTATS_HIST(send_size, skb->len);
 
+	if (!ssk->qp_active)
+		goto err;
+
 	ssk->tx_packets++;
 	ssk->tx_bytes += skb->len;
 
@@ -156,6 +159,11 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
 		wake_up(&ssk->wq);
 	}
+
+	return;
+
+err:
+	__kfree_skb(skb);		
 }
 
 static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)

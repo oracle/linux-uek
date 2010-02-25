@@ -314,7 +314,7 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "ZCopy stats:\n");
 	seq_printf(seq, "- TX timeout\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_timeout));
 	seq_printf(seq, "- TX cross send\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_cross_send));
-	seq_printf(seq, "- TX aborted by peer\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
+	seq_printf(seq, "- TX aborted by peer\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
 	seq_printf(seq, "- TX error\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
 	return 0;
 }

@@ -2122,7 +2122,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			case SDP_MID_SRCAVAIL:
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 
-				if (rx_sa->flags & RX_SA_ABORTED) {
+				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
 					sdp_dbg_data(sk, "Ignoring src avail "
 							"due to SrcAvailCancel\n");
 					sdp_post_sendsm(sk);
@@ -2337,8 +2337,7 @@ skip_copy:
 		if (!rx_sa && used + offset < skb->len)
 			continue;
 
-		if (rx_sa && !(rx_sa->flags & RX_SA_ABORTED) &&
-				rx_sa->used < rx_sa->len)
+		if (rx_sa && rx_sa->used < rx_sa->len)
 			continue;
 
 		offset = 0;

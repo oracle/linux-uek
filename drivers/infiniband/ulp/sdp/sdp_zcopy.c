@@ -525,6 +525,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	int got_srcavail_cancel;
 	int rc = 0;
 	int len = *used;
+	int copied;
 
 	sdp_dbg_data(&ssk->isk.sk, "preparing RDMA read."
 		" len: 0x%x. buffer len: 0x%lx\n", len, iov->iov_len);
@@ -566,15 +567,12 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		goto err_post_send;
 	}
 
-	/* Ignore any data copied after getting SrcAvailCancel */
-	if (!got_srcavail_cancel) {
-		int copied = rx_sa->umem->length;
+	copied = rx_sa->umem->length;
 
-		sdp_update_iov_used(sk, iov, copied);
-		rx_sa->used += copied;
-		atomic_add(copied, &ssk->rcv_nxt);
-		*used = copied;
-	}
+	sdp_update_iov_used(sk, iov, copied);
+	rx_sa->used += copied;
+	atomic_add(copied, &ssk->rcv_nxt);
+	*used = copied;
 
 	ssk->tx_ring.rdma_inflight = NULL;
 
