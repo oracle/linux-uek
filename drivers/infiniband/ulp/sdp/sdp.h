@@ -776,8 +776,7 @@ void sdp_remove_large_sock(struct sdp_sock *ssk);
 void sdp_handle_disconn(struct sock *sk);
 
 /* sdp_zcopy.c */
-int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		size_t size);
+int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov);
 int sdp_handle_srcavail(struct sdp_sock *ssk, struct sdp_srcah *srcah);
 void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack);
 void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,

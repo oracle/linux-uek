@@ -681,12 +681,9 @@ err_alloc_fmr:
 	return rc;	
 }
 
-int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		size_t size)
+int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	int iovlen, flags;
-	struct iovec *iov = NULL;
 	int rc = 0;
 	long timeo;
 	struct tx_srcavail_state *tx_sa;
@@ -694,52 +691,22 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	size_t bytes_to_copy = 0;
 	int copied = 0;
 
-	sdp_dbg_data(sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "Sending iov: %p, iov_len: 0x%lx\n",
+			iov->iov_base, iov->iov_len);
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
 		sdp_dbg_data(sk, "Deadlock prevent: crossing SrcAvail\n");
 		return 0;
 	}
 
-	lock_sock(sk);
 	sock_hold(&ssk->isk.sk, SOCK_REF_ZCOPY);
 
 	SDPSTATS_COUNTER_INC(sendmsg_zcopy_segment);
 
-	posts_handler_get(ssk);
-
-	flags = msg->msg_flags;
-
-	iovlen = msg->msg_iovlen;
-	iov = msg->msg_iov;
-
 	timeo = SDP_SRCAVAIL_ADV_TIMEOUT ;
-
-	/* Wait for a connection to finish. */
-	if ((1 << sk->sk_state) & ~(TCPF_ESTABLISHED | TCPF_CLOSE_WAIT))
-		if ((rc = sk_stream_wait_connect(sk, &timeo)) != 0)
-			goto err;
-
-	/* This should be in poll */
-	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
 	/* Ok commence sending. */
 	offset = (unsigned long)iov->iov_base & (PAGE_SIZE - 1);
-	sdp_dbg_data(sk, "Sending iov: %p, iovlen: 0x%lx, size: 0x%lx\n",
-			iov->iov_base, iov->iov_len, size);
-
-	SDPSTATS_HIST(sendmsg_seglen, iov->iov_len);
-
-	if (iovlen > 1) {
-		sdp_warn(sk, "iovlen > 1 not supported\n");
-		rc = -ENOTSUPP;
-		goto err;
-	}
-
-	if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN)) {
-		rc = -EPIPE;
-		goto err;
-	}
 
 	tx_sa = kmalloc(sizeof(struct tx_srcavail_state), GFP_KERNEL);
 	if (!tx_sa) {
@@ -754,7 +721,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		rc = do_sdp_sendmsg_zcopy(sk, tx_sa, iov, &timeo);
 
-		if (iov->iov_len < sdp_zcopy_thresh) {
+		if (iov->iov_len && iov->iov_len < sdp_zcopy_thresh) {
 			sdp_dbg_data(sk, "0x%lx bytes left, switching to bcopy\n",
 				iov->iov_len);
 			break;
@@ -763,13 +730,9 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	kfree(tx_sa);
 err_alloc_tx_sa:
-err:
 	copied = bytes_to_copy - iov->iov_len;
 
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy end rc: %d copied: %d", rc, copied);
-	posts_handler_put(ssk);
-
-	release_sock(sk);
 
 	sock_put(&ssk->isk.sk, SOCK_REF_ZCOPY);
 

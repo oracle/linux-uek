@@ -1798,35 +1798,18 @@ do_interrupted:
 static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		size_t size)
 {
-	struct iovec *iov;
+	int i;
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sk_buff *skb;
 	int iovlen, flags;
 	int size_goal;
 	int err, copied;
-	int zcopied = 0;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
 	SDPSTATS_COUNTER_INC(sendmsg);
 
-	if (sdp_zcopy_thresh && size > sdp_zcopy_thresh && size > SDP_MIN_ZCOPY_THRESH) {
-		zcopied = sdp_sendmsg_zcopy(iocb, sk, msg, size);
-
-		if (zcopied < 0) {
-			sdp_dbg_data(sk, "ZCopy send err: %d\n", zcopied);
-			return zcopied;
-		} else if (size == zcopied) {
-			return size;
-		}
-
-		sdp_dbg_data(sk, "Got SendSM/Timedout - fallback to regular send\n");
-
-		sdp_dbg_data(sk, "ZCopied: 0x%x\n", zcopied);
-		sdp_dbg_data(sk, "Continue to BCopy 0x%lx bytes left\n", size - zcopied);
-	}
-
 	lock_sock(sk);
-	sdp_dbg_data(sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "%s size = 0x%lx\n", __func__, size);
 
 	posts_handler_get(ssk);
 
@@ -1845,24 +1828,43 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	/* Ok commence sending. */
 	iovlen = msg->msg_iovlen;
-	iov = msg->msg_iov;
 	copied = 0;
 
 	err = -EPIPE;
 	if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
 		goto do_error;
 
-	while (--iovlen >= 0) {
+	for (i = 0; i < msg->msg_iovlen; i++) {	
+		struct iovec *iov = &msg->msg_iov[i];
 		int seglen = iov->iov_len;
 		char __user *from = iov->iov_base;
 
-		iov++;
-
-		/* Limmiting the size_goal is reqired when using 64K pages*/
-		if (size_goal > SDP_MAX_PAYLOAD)
-			size_goal = SDP_MAX_PAYLOAD;
+		sdp_dbg_data(sk, "Sending iov: %d/%ld %p\n", i, msg->msg_iovlen, from);
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
+
+		if (sdp_zcopy_thresh && seglen > sdp_zcopy_thresh &&
+				seglen > SDP_MIN_ZCOPY_THRESH) {
+			int zcopied = 0;
+
+			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
+
+			if (zcopied < 0) {
+				sdp_dbg_data(sk, "ZCopy send err: %d\n", zcopied);
+				err = zcopied;
+				goto out_err;
+			}
+			
+			copied += zcopied;
+			seglen = iov->iov_len;
+			from = iov->iov_base;
+
+			sdp_dbg_data(sk, "ZCopied: 0x%x/0x%x\n", zcopied, seglen);
+		}
+
+		/* Limiting the size_goal is reqired when using 64K pages*/
+		if (size_goal > SDP_MAX_PAYLOAD)
+			size_goal = SDP_MAX_PAYLOAD;
 
 		if (bz)
 			sdp_bz_cleanup(bz);
@@ -1960,11 +1962,10 @@ new_segment:
 
 			from += copy;
 			copied += copy;
-			if ((seglen -= copy) == 0 && iovlen == 0)
+			seglen -= copy;
+			if (seglen == 0 && iovlen == 0)
 				goto out;
 
-			if (skb->len < PAGE_SIZE || (flags & MSG_OOB))
-				continue;
 			continue;
 
 wait_for_sndbuf:
@@ -1998,8 +1999,8 @@ out:
 
 	release_sock(sk);
 
-	sdp_dbg_data(sk, "BCopied: 0x%x\n", copied);	
-	return copied + zcopied;
+	sdp_dbg_data(sk, "copied: 0x%x\n", copied);	
+	return copied;
 
 do_fault:
 	sdp_prf(sk, skb, "prepare fault");
