@@ -71,8 +71,7 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <rdma/ib_fmr_pool.h>
 #include <rdma/ib_verbs.h>
 #include <linux/pagemap.h>
-/* TODO: remove when sdp_socket.h becomes part of include/linux/socket.h */
-#include "sdp_socket.h"
+#include <rdma/sdp_socket.h>
 #include "sdp.h"
 #include <linux/delay.h>
 

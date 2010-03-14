@@ -43,7 +43,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include <net/tcp_states.h>
-#include "sdp_socket.h"
+#include <rdma/sdp_socket.h>
 #include "sdp.h"
 
 #define SDP_MAJV_MINV 0x22
