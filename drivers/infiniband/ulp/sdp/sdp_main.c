@@ -711,6 +711,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		.sin_addr.s_addr = inet_sk(sk)->saddr,
 	};
 	int rc;
+	flush_workqueue(sdp_wq);
 
         if (addr_len < sizeof(struct sockaddr_in))
                 return -EINVAL;
