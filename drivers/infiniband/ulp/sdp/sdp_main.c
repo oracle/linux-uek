@@ -1845,7 +1845,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
 		if (sdp_zcopy_thresh && seglen > sdp_zcopy_thresh &&
-				seglen > SDP_MIN_ZCOPY_THRESH) {
+				seglen > SDP_MIN_ZCOPY_THRESH && tx_slots_free(ssk)) {
 			int zcopied = 0;
 
 			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
