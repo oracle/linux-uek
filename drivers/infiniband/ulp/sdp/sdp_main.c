@@ -2474,7 +2474,7 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
        /*
         * Adjust for memory in later kernels
         */
-	if (!sk_stream_memory_free(sk) || !tx_slots_free(ssk))
+	if (!sk_stream_memory_free(sk))
 		mask &= ~(POLLOUT | POLLWRNORM | POLLWRBAND);
 
 	/* TODO: Slightly ugly: it would be nicer if there was function
