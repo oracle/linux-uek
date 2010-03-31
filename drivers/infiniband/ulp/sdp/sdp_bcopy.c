@@ -179,7 +179,6 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 {
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
-	int c;
 	int post_count = 0;
 	struct sock *sk = &ssk->isk.sk;
 
@@ -228,13 +227,7 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 		post_count++;
 	}
 
-	c = remote_credits(ssk);
-	if (likely(c > SDP_MIN_TX_CREDITS))
-		c *= 2;
-
-	if (unlikely(c < rx_ring_posted(ssk)) &&
-	    likely(tx_credits(ssk) > 1) &&
-	    likely(sdp_tx_ring_slots_left(ssk)) &&
+	if (credit_update_needed(ssk) &&
 	    likely((1 << ssk->isk.sk.sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 

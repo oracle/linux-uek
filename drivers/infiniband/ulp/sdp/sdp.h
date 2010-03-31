@@ -677,6 +677,19 @@ static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
 	return SDP_TX_SIZE - tx_ring_posted(ssk);
 }
 
+static inline int credit_update_needed(struct sdp_sock *ssk)
+{
+	int c;
+
+	c = remote_credits(ssk);
+	if (likely(c > SDP_MIN_TX_CREDITS))
+		c += c/2;
+	return unlikely(c < rx_ring_posted(ssk)) &&
+	    likely(tx_credits(ssk) > 0) &&
+	    likely(sdp_tx_ring_slots_left(ssk));
+}
+
+
 #ifdef SDPSTATS_ON
 
 #define SDPSTATS_MAX_HIST_SIZE 256

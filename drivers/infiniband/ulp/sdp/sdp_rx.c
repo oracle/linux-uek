@@ -395,20 +395,6 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk,
 		ssk->sent_request = 0;
 }
 
-static inline int credit_update_needed(struct sdp_sock *ssk)
-{
-	int c;
-
-	c = remote_credits(ssk);
-	if (likely(c > SDP_MIN_TX_CREDITS))
-		c += c/2;
-
-	return unlikely(c < rx_ring_posted(ssk)) &&
-	    likely(tx_credits(ssk) > 1) &&
-	    likely(sdp_tx_ring_slots_left(ssk));
-}
-
-
 static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 {
 	struct sdp_buf *rx_req;
