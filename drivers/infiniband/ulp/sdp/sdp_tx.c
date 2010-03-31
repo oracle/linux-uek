@@ -264,10 +264,8 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		 * therefore if Last RDMA read WR is completed - all other
 		 * have, too */
 		ssk->tx_ring.rdma_inflight->busy = 0;
-		if (!ssk->tx_ring.rdma_inflight->busy) {
-			wake_up(ssk->isk.sk.sk_sleep);
-			sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
-		}
+		wake_up(ssk->isk.sk.sk_sleep);
+		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
 		return;
 	}
 
