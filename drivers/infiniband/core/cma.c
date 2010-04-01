@@ -501,7 +501,8 @@ static int cma_has_cm_dev(struct rdma_id_private *id_priv)
 }
 
 struct rdma_cm_id *rdma_create_id(rdma_cm_event_handler event_handler,
-				  void *context, enum rdma_port_space ps)
+				  void *context, enum rdma_port_space ps,
+				  enum ib_qp_type qp_type)
 {
 	struct rdma_id_private *id_priv;
 
@@ -513,6 +514,7 @@ struct rdma_cm_id *rdma_create_id(rdma_cm_event_handler event_handler,
 	id_priv->id.context = context;
 	id_priv->id.event_handler = event_handler;
 	id_priv->id.ps = ps;
+	id_priv->id.qp_type = qp_type;
 	id_priv->alt_path_index = 1;
 	spin_lock_init(&id_priv->lock);
 	spin_lock_init(&id_priv->cm_lock);
@@ -1953,7 +1955,7 @@ static struct rdma_id_private *cma_new_conn_id(struct rdma_cm_id *listen_id,
 		goto err;
 
 	id = rdma_create_id(listen_id->event_handler, listen_id->context,
-			    listen_id->ps);
+			    listen_id->ps, ib_event->param.req_rcvd.qp_type);
 	if (IS_ERR(id))
 		goto err;
 
@@ -2003,7 +2005,7 @@ static struct rdma_id_private *cma_new_udp_id(struct rdma_cm_id *listen_id,
 	int ret;
 
 	id = rdma_create_id(listen_id->event_handler, listen_id->context,
-			    listen_id->ps);
+			    listen_id->ps, IB_QPT_UD);
 	if (IS_ERR(id))
 		return NULL;
 
@@ -2255,7 +2257,7 @@ static int iw_conn_req_handler(struct iw_cm_id *cm_id,
 	/* Create a new RDMA id for the new IW CM ID */
 	new_cm_id = rdma_create_id(listen_id->id.event_handler,
 				   listen_id->id.context,
-				   RDMA_PS_TCP);
+				   RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(new_cm_id)) {
 		ret = -ENOMEM;
 		goto out;
@@ -2411,7 +2413,7 @@ static void cma_listen_on_dev(struct rdma_id_private *id_priv,
 	struct rdma_cm_id *id;
 	int ret;
 
-	id = rdma_create_id(cma_listen_handler, id_priv, id_priv->id.ps);
+	id = rdma_create_id(cma_listen_handler, id_priv, id_priv->id.ps, id_priv->id.qp_type);
 	if (IS_ERR(id))
 		return;
 
