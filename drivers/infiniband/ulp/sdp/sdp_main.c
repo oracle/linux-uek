@@ -167,7 +167,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	if (!memcmp(&addr, &ssk->id->route.addr.src_addr, sizeof addr))
 		return 0;
 
-	rc = rdma_bind_addr(ssk->id, (struct sockaddr *)&addr);
+	rc = ssk->last_bind_err = rdma_bind_addr(ssk->id, (struct sockaddr *)&addr);
 	if (rc) {
 		sdp_dbg(sk, "Destroying qp\n");
 		rdma_destroy_id(ssk->id);
@@ -1086,6 +1086,8 @@ int sdp_init_sock(struct sock *sk)
 	init_timer(&ssk->nagle_timer);
 	init_timer(&sk->sk_timer);
 
+	ssk->last_bind_err = 0;
+
 	return 0;
 }
 
@@ -1274,6 +1276,9 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 		break;
 	case SDP_ZCOPY_THRESH:
 		val = ssk->bzcopy_thresh ? ssk->bzcopy_thresh : sdp_bzcopy_thresh;
+		break;
+	case SDP_LAST_BIND_ERR:
+		val = ssk->last_bind_err;
 		break;
 	default:
 		return -ENOPROTOOPT;

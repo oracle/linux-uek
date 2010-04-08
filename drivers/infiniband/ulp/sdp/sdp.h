@@ -418,6 +418,8 @@ struct sdp_sock {
 
 	/* BZCOPY data */
 	int   bzcopy_thresh;
+
+	int last_bind_err;
 };
 
 static inline void tx_sa_reset(struct tx_srcavail_state *tx_sa)

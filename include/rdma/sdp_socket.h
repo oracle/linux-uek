@@ -12,6 +12,10 @@
 #define SDP_ZCOPY_THRESH 80
 #endif
 
+#ifndef SDP_LAST_BIND_ERR
+#define SDP_LAST_BIND_ERR 81
+#endif
+
 /* TODO: AF_INET6_SDP ? */
 
 #endif
