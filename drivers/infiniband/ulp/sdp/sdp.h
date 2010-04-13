@@ -25,7 +25,7 @@
 #define SDP_ROUTE_TIMEOUT 1000
 #define SDP_RETRY_COUNT 5
 #define SDP_KEEPALIVE_TIME (120 * 60 * HZ)
-#define SDP_FIN_WAIT_TIMEOUT (10 * HZ)
+#define SDP_FIN_WAIT_TIMEOUT (60 * HZ) /* like TCP_FIN_TIMEOUT */
 
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
