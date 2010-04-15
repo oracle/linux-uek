@@ -1887,7 +1887,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			skb = sk->sk_write_queue.prev;
 
 			if (!sk->sk_send_head ||
-			    (copy = size_goal - skb->len) <= 0 ||
+			    (copy = size_goal - (skb->len - sizeof(struct sdp_bsdh))) <= 0 ||
 			    bz != BZCOPY_STATE(skb)) {
 new_segment:
 				/*
@@ -1925,14 +1925,16 @@ new_segment:
 				sdp_dbg_data(sk, "created new skb: %p"
 					" len = %d, sk_send_head: %p "
 					"copy: %d size_goal: %d\n",
-					skb, skb->len, sk->sk_send_head, copy, size_goal);
+					skb, skb->len - sizeof(struct sdp_bsdh),
+					sk->sk_send_head, copy, size_goal);
 
 
 			} else {
 				sdp_dbg_data(sk, "adding to existing skb: %p"
 					" len = %d, sk_send_head: %p "
 					"copy: %d\n",
-					skb, skb->len, sk->sk_send_head, copy);
+					skb, skb->len - sizeof(struct sdp_bsdh),
+				       	sk->sk_send_head, copy);
 			}
 
 			/* Try to append data to the end of skb. */
@@ -2011,7 +2013,7 @@ out:
 do_fault:
 	sdp_prf(sk, skb, "prepare fault");
 
-	if (!skb->len) {
+	if (skb->len <= sizeof(struct sdp_bsdh)) {
 		if (sk->sk_send_head == skb)
 			sk->sk_send_head = NULL;
 		__skb_unlink(skb, &sk->sk_write_queue);
