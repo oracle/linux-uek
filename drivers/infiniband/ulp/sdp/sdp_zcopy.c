@@ -400,6 +400,20 @@ out:
 	return;
 }
 
+static unsigned long sdp_get_max_memlockable_bytes(unsigned long offset)
+{
+	unsigned long avail;
+	unsigned long lock_limit;
+
+	if (capable(CAP_IPC_LOCK))
+		return ULONG_MAX;
+
+	lock_limit = current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur;
+	avail = lock_limit - (current->mm->locked_vm << PAGE_SHIFT);
+
+	return avail - offset;
+}
+
 static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	struct ib_pool_fmr **_fmr, struct ib_umem **_umem)
 {
@@ -410,21 +424,34 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	struct ib_umem_chunk *chunk;
 	int n, j, k;
 	int rc = 0;
+	unsigned long max_lockable_bytes;
 
-	if (len > SDP_MAX_RDMA_READ_LEN) {
+	if (unlikely(len > SDP_MAX_RDMA_READ_LEN)) {
 		sdp_dbg_data(sk, "len:0x%lx > FMR_SIZE: 0x%lx\n",
 			len, SDP_MAX_RDMA_READ_LEN);
 		len = SDP_MAX_RDMA_READ_LEN;
 	}
 
-	sdp_dbg_data(sk, "user buf: %p, len:0x%lx\n", uaddr, len);
+	max_lockable_bytes = sdp_get_max_memlockable_bytes((unsigned long)uaddr & ~PAGE_MASK);
+	if (unlikely(len > max_lockable_bytes)) {
+		sdp_dbg_data(sk, "len:0x%lx > RLIMIT_MEMLOCK available: 0x%lx\n",
+			len, max_lockable_bytes);
+		len = max_lockable_bytes;
+	}
+
+	sdp_dbg_data(sk, "user buf: %p, len:0x%lx max_lockable_bytes: 0x%lx\n",
+			uaddr, len, max_lockable_bytes);
 
 	umem = ib_umem_get(&sdp_sk(sk)->context, (unsigned long)uaddr, len,
 		IB_ACCESS_REMOTE_WRITE, 0);
 
 	if (IS_ERR(umem)) {
 		rc = PTR_ERR(umem);
-		sdp_warn(sk, "Error getting umem: %d\n", rc);
+		sdp_warn(sk, "Error doing umem_get 0x%lx bytes: %d\n", len, rc);
+		sdp_warn(sk, "RLIMIT_MEMLOCK: 0x%lx[cur] 0x%lx[max] CAP_IPC_LOCK: %d\n",
+				current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur,
+				current->signal->rlim[RLIMIT_MEMLOCK].rlim_max,
+				capable(CAP_IPC_LOCK));
 		goto err_umem_get;
 	}
 
