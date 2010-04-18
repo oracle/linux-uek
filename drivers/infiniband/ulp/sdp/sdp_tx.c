@@ -506,8 +506,7 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	tasklet_init(&ssk->tx_ring.tasklet, sdp_poll_tx_timeout,
 			(unsigned long) ssk);
 
-	ssk->nagle_timer.function = sdp_nagle_timeout;
-	ssk->nagle_timer.data = (unsigned long) ssk;
+	setup_timer(&ssk->nagle_timer, sdp_nagle_timeout, (unsigned long) ssk);
 
 	return 0;
 
