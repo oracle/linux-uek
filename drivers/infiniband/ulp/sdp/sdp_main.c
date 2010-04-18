@@ -2715,6 +2715,8 @@ kill_socks:
 
 			sk->sk_shutdown |= RCV_SHUTDOWN;
 			sdp_reset(sk);
+			sdp_close(sk,0);
+
 			if ((1 << sk->sk_state) &
 				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
 				 TCPF_LAST_ACK | TCPF_TIME_WAIT)) {
