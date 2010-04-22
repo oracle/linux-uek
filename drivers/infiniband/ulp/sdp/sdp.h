@@ -36,8 +36,8 @@
 
 #define SDP_MAX_RDMA_READ_LEN (PAGE_SIZE * (SDP_FMR_SIZE - 2))
 
-#define SDP_MAX_RECV_SKB_FRAGS (PAGE_SIZE > 0x8000 ? 1 : 0x8000 / PAGE_SIZE)
-#define SDP_MAX_SEND_SKB_FRAGS (SDP_MAX_RECV_SKB_FRAGS + 1)
+#define SDP_MAX_RECV_SGES 17
+#define SDP_MAX_SEND_SGES 17
 
 /* skb inlined data len - rest will be rx'ed into frags */
 #define SDP_SKB_HEAD_SIZE (0x500 + sizeof(struct sdp_bsdh))
@@ -197,7 +197,7 @@ struct sdp_srcah {
 
 struct sdp_buf {
         struct sk_buff *skb;
-        u64             mapping[SDP_MAX_SEND_SKB_FRAGS + 1];
+        u64             mapping[SDP_MAX_SEND_SGES];
 } __attribute__((__packed__));
 
 struct sdp_chrecvbuf {
@@ -332,7 +332,6 @@ struct sdp_sock {
 	struct tx_srcavail_state *tx_sa;
 	struct rx_srcavail_state *rx_sa;
 	spinlock_t tx_sa_lock;
-	int max_send_sge;
 	struct delayed_work srcavail_cancel_work;
 	int srcavail_cancel_mseq;
 

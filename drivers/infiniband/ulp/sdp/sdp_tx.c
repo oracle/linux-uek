@@ -72,7 +72,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	struct ib_device *dev;
 	struct ib_send_wr *bad_wr;
 
-	struct ib_sge ibsge[SDP_MAX_SEND_SKB_FRAGS + 1];
+	struct ib_sge ibsge[SDP_MAX_SEND_SGES];
 	struct ib_sge *sge = ibsge;
 	struct ib_send_wr tx_wr = { NULL };
 

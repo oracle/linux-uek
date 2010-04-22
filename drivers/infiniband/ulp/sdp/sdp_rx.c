@@ -149,7 +149,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	u64 addr;
 	struct ib_device *dev;
 	struct ib_recv_wr rx_wr = { NULL };
-	struct ib_sge ibsge[SDP_MAX_RECV_SKB_FRAGS + 1];
+	struct ib_sge ibsge[SDP_MAX_RECV_SGES];
 	struct ib_sge *sge = ibsge;
 	struct ib_recv_wr *bad_wr;
 	struct sk_buff *skb;
@@ -339,11 +339,19 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 	return skb;
 }
 
+static int sdp_get_recv_sges(struct sdp_sock *ssk, u32 new_size)
+{
+	int recv_sges = ssk->max_sge - 1; /* 1 sge is dedicated to sdp header */
+
+	recv_sges = MIN(recv_sges, PAGE_ALIGN(new_size) >> PAGE_SHIFT);
+	recv_sges = MIN(recv_sges, SDP_MAX_RECV_SGES - 1);
+
+	return recv_sges;
+}
+
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 {
-	ssk->recv_frags = PAGE_ALIGN(new_size - SDP_SKB_HEAD_SIZE) / PAGE_SIZE;
-	if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
-		ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
+	ssk->recv_frags = sdp_get_recv_sges(ssk, new_size);
 	ssk->rcvbuf_scale = rcvbuf_scale;
 
 	sdp_post_recvs(ssk);
@@ -353,16 +361,13 @@ int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 {
-	u32 curr_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
-	u32 max_size = SDP_SKB_HEAD_SIZE + SDP_MAX_RECV_SKB_FRAGS * PAGE_SIZE;
+	u32 curr_size = ssk->recv_frags << PAGE_SHIFT;
+	u32 max_size = (ssk->max_sge - 1) << PAGE_SHIFT;
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
 		ssk->rcvbuf_scale = rcvbuf_scale;
-		ssk->recv_frags = PAGE_ALIGN(new_size - SDP_SKB_HEAD_SIZE) /
-			PAGE_SIZE;
-		if (ssk->recv_frags > SDP_MAX_RECV_SKB_FRAGS)
-			ssk->recv_frags = SDP_MAX_RECV_SKB_FRAGS;
+		ssk->recv_frags = sdp_get_recv_sges(ssk, new_size);
 		return 0;
 	} else
 		return -1;

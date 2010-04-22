@@ -82,7 +82,6 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
 		.cap.max_recv_wr = SDP_RX_SIZE,
-		.cap.max_recv_sge = SDP_MAX_RECV_SKB_FRAGS + 1,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
         	.qp_type = IB_QPT_RC,
 	};
@@ -92,15 +91,13 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	sdp_dbg(sk, "%s\n", __func__);
 
 	sdp_sk(sk)->max_sge = sdp_get_max_send_sge(device);
-	if (sdp_sk(sk)->max_sge < (SDP_MAX_RECV_SKB_FRAGS + 1)) {
-		sdp_warn(sk, "recv sge's. capability: %d needed: %ld\n",
-			sdp_sk(sk)->max_sge, SDP_MAX_RECV_SKB_FRAGS + 1);
-		rc = -ENOMEM;
-		goto err_rx;
-	}
+	sdp_dbg(sk, "Max sges: %d\n", sdp_sk(sk)->max_sge);
 
-	qp_init_attr.cap.max_send_sge = sdp_sk(sk)->max_sge;
-	sdp_dbg(sk, "Setting max send sge to: %d\n", sdp_sk(sk)->max_sge);
+	qp_init_attr.cap.max_send_sge = MIN(sdp_sk(sk)->max_sge, SDP_MAX_SEND_SGES);
+	sdp_dbg(sk, "Setting max send sge to: %d\n", qp_init_attr.cap.max_send_sge);
+		
+	qp_init_attr.cap.max_recv_sge = MIN(sdp_sk(sk)->max_sge, SDP_MAX_RECV_SGES);
+	sdp_dbg(sk, "Setting max recv sge to: %d\n", qp_init_attr.cap.max_recv_sge);
 		
 	sdp_sk(sk)->sdp_dev = ib_get_client_data(device, &sdp_client);
 	if (!sdp_sk(sk)->sdp_dev) {
@@ -141,6 +138,14 @@ err_tx:
 	sdp_rx_ring_destroy(sdp_sk(sk));
 err_rx:
 	return rc;
+}
+
+static int sdp_get_max_send_frags(u32 buf_size)
+{
+	return MIN(
+		/* +1 to conpensate on not aligned buffers */
+		(PAGE_ALIGN(buf_size) >> PAGE_SHIFT) + 1,
+		SDP_MAX_SEND_SGES - 1);
 }
 
 static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
@@ -187,8 +192,8 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(child)->min_bufs = tx_credits(sdp_sk(child)) / 4;
 	sdp_sk(child)->xmit_size_goal = ntohl(h->localrcvsz) -
 		sizeof(struct sdp_bsdh);
-	sdp_sk(child)->send_frags = PAGE_ALIGN(sdp_sk(child)->xmit_size_goal) /
-		PAGE_SIZE + 1; /* +1 to conpensate on not aligned buffers */
+
+	sdp_sk(child)->send_frags = sdp_get_max_send_frags(sdp_sk(child)->xmit_size_goal);
 	sdp_init_buffers(sdp_sk(child), rcvbuf_initial_size);
 
 	id->context = child;
@@ -230,9 +235,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	sdp_sk(sk)->min_bufs = tx_credits(sdp_sk(sk)) / 4;
 	sdp_sk(sk)->xmit_size_goal =
 		ntohl(h->actrcvsz) - sizeof(struct sdp_bsdh);
-	sdp_sk(sk)->send_frags = MIN(PAGE_ALIGN(sdp_sk(sk)->xmit_size_goal) /
-		PAGE_SIZE, MAX_SKB_FRAGS) + 1;  /* +1 to conpensate on not */
-						/* aligned buffers         */
+	sdp_sk(sk)->send_frags = sdp_get_max_send_frags(sdp_sk(sk)->xmit_size_goal);
 	sdp_sk(sk)->xmit_size_goal = MIN(sdp_sk(sk)->xmit_size_goal,
 		sdp_sk(sk)->send_frags * PAGE_SIZE);
 
