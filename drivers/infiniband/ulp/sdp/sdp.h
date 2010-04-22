@@ -416,8 +416,8 @@ struct sdp_sock {
 	unsigned long rx_bytes;
 	struct sdp_moderation auto_mod;
 
-	/* BZCOPY data */
-	int   bzcopy_thresh;
+	/* ZCOPY data: -1:use global; 0:disable zcopy; >0: zcopy threshold */
+	int zcopy_thresh;
 
 	int last_bind_err;
 };

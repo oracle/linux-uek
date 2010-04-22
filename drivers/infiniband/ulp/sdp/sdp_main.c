@@ -92,8 +92,7 @@ SDP_MODPARAM_SINT(recv_poll_miss, -1, "How many times recv poll missed.");
 SDP_MODPARAM_SINT(recv_poll, 1000, "How many times to poll recv.");
 SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
-SDP_MODPARAM_SINT(sdp_bzcopy_thresh, 0,
-	"Zero copy send using SEND threshold; 0=0ff.");
+static int sdp_bzcopy_thresh = 0;
 SDP_MODPARAM_INT(sdp_zcopy_thresh, SDP_DEF_ZCOPY_THRESH ,
 	"Zero copy using RDMA threshold; 0=Off.");
 #define SDP_RX_COAL_TIME_HIGH 128
@@ -1085,7 +1084,7 @@ int sdp_init_sock(struct sock *sk)
 	init_timer(&ssk->tx_ring.timer);
 	init_timer(&ssk->nagle_timer);
 	init_timer(&sk->sk_timer);
-
+	ssk->zcopy_thresh = -1; /* use global sdp_zcopy_thresh */
 	ssk->last_bind_err = 0;
 
 	return 0;
@@ -1231,7 +1230,7 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 		if (val < SDP_MIN_ZCOPY_THRESH || val > SDP_MAX_ZCOPY_THRESH)
 			err = -EINVAL;
 		else
-			ssk->bzcopy_thresh = val;
+			ssk->zcopy_thresh = val;
 		break;
 	default:
 		err = -ENOPROTOOPT;
@@ -1275,7 +1274,7 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 		val = (ssk->keepalive_time ? : sdp_keepalive_time) / HZ;
 		break;
 	case SDP_ZCOPY_THRESH:
-		val = ssk->bzcopy_thresh ? ssk->bzcopy_thresh : sdp_bzcopy_thresh;
+		val = ssk->zcopy_thresh;
 		break;
 	case SDP_LAST_BIND_ERR:
 		val = ssk->last_bind_err;
@@ -1498,7 +1497,7 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 	mm_segment_t cur_fs;
 	int rc = 0;
 
-	thresh = ssk->bzcopy_thresh ? : sdp_bzcopy_thresh;
+	thresh = sdp_bzcopy_thresh;
 	if (thresh == 0 || len < thresh || !capable(CAP_IPC_LOCK)) {
 		SDPSTATS_COUNTER_INC(sendmsg_bcopy_segment);
 		return NULL;
@@ -1812,6 +1811,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
+	int zcopy_thresh = -1 != ssk->zcopy_thresh ? ssk->zcopy_thresh : sdp_zcopy_thresh;
 	SDPSTATS_COUNTER_INC(sendmsg);
 
 	lock_sock(sk);
@@ -1849,7 +1849,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
-		if (sdp_zcopy_thresh && seglen > sdp_zcopy_thresh &&
+		if (zcopy_thresh && seglen > zcopy_thresh &&
 				seglen > SDP_MIN_ZCOPY_THRESH && tx_slots_free(ssk)) {
 			int zcopied = 0;
 
