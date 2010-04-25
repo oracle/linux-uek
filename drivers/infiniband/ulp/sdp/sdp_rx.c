@@ -158,7 +158,6 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	struct sdp_bsdh *h;
 	int id = ring_head(ssk->rx_ring);
 	gfp_t gfp_page;
-	int ret = 0;
 
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
@@ -221,21 +220,19 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	rx_wr.sg_list = ibsge;
 	rx_wr.num_sge = frags + 1;
 	rc = ib_post_recv(ssk->qp, &rx_wr, &bad_wr);
-	atomic_inc(&ssk->rx_ring.head);
 	if (unlikely(rc)) {
 		sdp_warn(&ssk->isk.sk, "ib_post_recv failed. status %d\n", rc);
 
-		lock_sock(&ssk->isk.sk);
 		sdp_reset(&ssk->isk.sk);
-		release_sock(&ssk->isk.sk);
 
-		ret = -1;
+		return -1;
 	}
 
+	atomic_inc(&ssk->rx_ring.head);
 	SDPSTATS_COUNTER_INC(post_recv);
 	atomic_add(ssk->recv_frags, &sdp_current_mem_usage);
 
-	return ret;
+	return 0;
 }
 
 static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
