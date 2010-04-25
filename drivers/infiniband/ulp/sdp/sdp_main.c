@@ -1923,16 +1923,16 @@ new_segment:
 				copy = size_goal;
 
 				sdp_dbg_data(sk, "created new skb: %p"
-					" len = %d, sk_send_head: %p "
-					"copy: %d size_goal: %d\n",
+					" len = 0x%lx, sk_send_head: %p "
+					"copy: 0x%x size_goal: 0x%x\n",
 					skb, skb->len - sizeof(struct sdp_bsdh),
 					sk->sk_send_head, copy, size_goal);
 
 
 			} else {
 				sdp_dbg_data(sk, "adding to existing skb: %p"
-					" len = %d, sk_send_head: %p "
-					"copy: %d\n",
+					" len = 0x%lx, sk_send_head: %p "
+					"copy: 0x%x\n",
 					skb, skb->len - sizeof(struct sdp_bsdh),
 				       	sk->sk_send_head, copy);
 			}
