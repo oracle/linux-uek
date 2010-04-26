@@ -223,6 +223,9 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	if (unlikely(rc)) {
 		sdp_warn(&ssk->isk.sk, "ib_post_recv failed. status %d\n", rc);
 
+		sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
+		__kfree_skb(skb);
+
 		sdp_reset(&ssk->isk.sk);
 
 		return -1;
@@ -402,7 +405,6 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	struct sdp_buf *rx_req;
 	struct ib_device *dev;
 	struct sk_buff *skb;
-	int i, frags;
 
 	if (unlikely(id != ring_tail(ssk->rx_ring))) {
 		printk(KERN_WARNING "Bogus recv completion id %d tail %d\n",
@@ -413,13 +415,8 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	dev = ssk->ib_device;
 	rx_req = &ssk->rx_ring.buffer[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
-	ib_dma_unmap_single(dev, rx_req->mapping[0], SDP_SKB_HEAD_SIZE,
-			    DMA_FROM_DEVICE);
-	frags = skb_shinfo(skb)->nr_frags;
-	for (i = 0; i < frags; ++i)
-		ib_dma_unmap_page(dev, rx_req->mapping[i + 1],
-				  skb_shinfo(skb)->frags[i].size,
-				  DMA_FROM_DEVICE);
+	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
+
 	atomic_inc(&ssk->rx_ring.tail);
 	atomic_dec(&ssk->remote_credits);
 	return skb;

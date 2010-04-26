@@ -60,7 +60,7 @@ static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
 }
 
-static int sdp_get_max_send_sge(struct ib_device *dev)
+static int sdp_get_max_dev_sge(struct ib_device *dev)
 {
 	struct ib_device_attr attr;
 	static int max_sges = -1;
@@ -90,7 +90,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sdp_sk(sk)->max_sge = sdp_get_max_send_sge(device);
+	sdp_sk(sk)->max_sge = sdp_get_max_dev_sge(device);
 	sdp_dbg(sk, "Max sges: %d\n", sdp_sk(sk)->max_sge);
 
 	qp_init_attr.cap.max_send_sge = MIN(sdp_sk(sk)->max_sge, SDP_MAX_SEND_SGES);

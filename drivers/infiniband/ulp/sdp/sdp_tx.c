@@ -150,15 +150,21 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
 
 	rc = ib_post_send(ssk->qp, &tx_wr, &bad_wr);
-	atomic_inc(&ssk->tx_ring.head);
-	atomic_dec(&ssk->tx_ring.credits);
-	atomic_set(&ssk->remote_credits, rx_ring_posted(ssk));
 	if (unlikely(rc)) {
 		sdp_dbg(&ssk->isk.sk,
 				"ib_post_send failed with status %d.\n", rc);
+
+		sdp_cleanup_sdp_buf(ssk, tx_req, skb->len - skb->data_len, DMA_TO_DEVICE);
+
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
 		wake_up(&ssk->wq);
+
+		goto err;
 	}
+
+	atomic_inc(&ssk->tx_ring.head);
+	atomic_dec(&ssk->tx_ring.credits);
+	atomic_set(&ssk->remote_credits, rx_ring_posted(ssk));
 
 	return;
 
@@ -171,7 +177,6 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	struct ib_device *dev;
 	struct sdp_buf *tx_req;
 	struct sk_buff *skb = NULL;
-	int i, frags;
 	struct sdp_tx_ring *tx_ring = &ssk->tx_ring;
 	if (unlikely(mseq != ring_tail(*tx_ring))) {
 		printk(KERN_WARNING "Bogus send completion id %d tail %d\n",
@@ -182,14 +187,8 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	dev = ssk->ib_device;
 	tx_req = &tx_ring->buffer[mseq & (SDP_TX_SIZE - 1)];
 	skb = tx_req->skb;
-	ib_dma_unmap_single(dev, tx_req->mapping[0], skb->len - skb->data_len,
-			    DMA_TO_DEVICE);
-	frags = skb_shinfo(skb)->nr_frags;
-	for (i = 0; i < frags; ++i) {
-		ib_dma_unmap_page(dev, tx_req->mapping[i + 1],
-				  skb_shinfo(skb)->frags[i].size,
-				  DMA_TO_DEVICE);
-	}
+
+	sdp_cleanup_sdp_buf(ssk, tx_req, skb->len - skb->data_len, DMA_TO_DEVICE);
 
 	tx_ring->una_seq += SDP_SKB_CB(skb)->end_seq;
 

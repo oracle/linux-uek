@@ -36,8 +36,8 @@
 
 #define SDP_MAX_RDMA_READ_LEN (PAGE_SIZE * (SDP_FMR_SIZE - 2))
 
-#define SDP_MAX_RECV_SGES 17
-#define SDP_MAX_SEND_SGES 17
+#define SDP_MAX_RECV_SGES 9 /* 1 for sdp header + 8 for payload */
+#define SDP_MAX_SEND_SGES 9 /* same as above */
 
 /* skb inlined data len - rest will be rx'ed into frags */
 #define SDP_SKB_HEAD_SIZE (0x500 + sizeof(struct sdp_bsdh))
@@ -748,6 +748,24 @@ static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 #define SDPSTATS_HIST_LINEAR(stat, size)
 #define SDPSTATS_HIST(stat, size)
 #endif
+
+static inline void sdp_cleanup_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf,
+		size_t head_size, enum dma_data_direction dir)
+{
+	int i;
+	struct sk_buff *skb;
+	struct ib_device *dev = ssk->ib_device;
+
+	skb = sbuf->skb;
+
+	ib_dma_unmap_single(dev, sbuf->mapping[0], head_size, dir);
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		ib_dma_unmap_page(dev, sbuf->mapping[i + 1],
+				  skb_shinfo(skb)->frags[i].size,
+				  dir);
+	}
+}
 
 /* sdp_main.c */
 void sdp_set_default_moderation(struct sdp_sock *ssk);
