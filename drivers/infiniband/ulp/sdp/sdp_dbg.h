@@ -112,7 +112,7 @@ extern int sdp_debug_level;
 })
 
 #define sk_common_release(sk) do { \
-		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_BORN \
+		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_ALIVE \
 			") - refcount = %d from withing sk_common_release\n",\
 			__func__, __LINE__, atomic_read(&(sk)->sk_refcnt));\
 		sk_common_release(sk); \
@@ -143,7 +143,7 @@ extern int sdp_data_debug_level;
 #endif
 
 #define SOCK_REF_RESET "RESET"
-#define SOCK_REF_BORN "BORN" /* sock_alloc -> destruct_sock */
+#define SOCK_REF_ALIVE "ALIVE" /* sock_alloc -> destruct_sock */
 #define SOCK_REF_CLONE "CLONE"
 #define SOCK_REF_CM_TW "CM_TW" /* TIMEWAIT_ENTER -> TIMEWAIT_EXIT */
 #define SOCK_REF_SEQ "SEQ" /* during proc read */

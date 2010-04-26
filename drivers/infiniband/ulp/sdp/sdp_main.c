@@ -249,7 +249,7 @@ static void sdp_keepalive_timer(unsigned long data)
 
 out:
 	bh_unlock_sock(sk);
-	sock_put(sk, SOCK_REF_BORN);
+	sock_put(sk, SOCK_REF_ALIVE);
 }
 
 static void sdp_init_keepalive_timer(struct sock *sk)
@@ -2715,7 +2715,10 @@ kill_socks:
 
 			sk->sk_shutdown |= RCV_SHUTDOWN;
 			sdp_reset(sk);
+			sock_hold(sk, SOCK_REF_ALIVE);
 			sdp_close(sk,0);
+			sdp_destroy_qp(ssk);
+			ssk->sdp_dev = NULL;
 
 			if ((1 << sk->sk_state) &
 				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
