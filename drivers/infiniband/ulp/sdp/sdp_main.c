@@ -769,13 +769,12 @@ static int sdp_disconnect(struct sock *sk, int flags)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int rc = 0;
-	int old_state = sk->sk_state;
 	struct sdp_sock *s, *t;
 	struct rdma_cm_id *id;
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	if (old_state != TCP_LISTEN) {
+	if (sk->sk_state != TCP_LISTEN) {
 		if (ssk->id) {
 			sdp_sk(sk)->qp_active = 0;
 			rc = rdma_disconnect(ssk->id);
