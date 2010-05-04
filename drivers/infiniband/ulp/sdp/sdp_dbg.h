@@ -145,7 +145,7 @@ extern int sdp_data_debug_level;
 #define SOCK_REF_RESET "RESET"
 #define SOCK_REF_ALIVE "ALIVE" /* sock_alloc -> destruct_sock */
 #define SOCK_REF_CLONE "CLONE"
-#define SOCK_REF_CM_TW "CM_TW" /* TIMEWAIT_ENTER -> TIMEWAIT_EXIT */
+#define SOCK_REF_CMA "CMA" /* sdp_cma_handler() is expected to be invoked */
 #define SOCK_REF_SEQ "SEQ" /* during proc read */
 #define SOCK_REF_DREQ_TO "DREQ_TO" /* dreq timeout is pending */
 #define SOCK_REF_ZCOPY "ZCOPY" /* zcopy send in process */

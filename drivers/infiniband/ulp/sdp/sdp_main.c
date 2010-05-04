@@ -625,7 +625,7 @@ static void sdp_close(struct sock *sk, long timeout)
 		goto adjudge_to_death;
 	}
 
-	sock_hold(sk, SOCK_REF_CM_TW);
+	sock_hold(sk, SOCK_REF_CMA);
 
 	/*  We need to flush the recv. buffs.  We do this only on the
 	 *  descriptor close, not protocol-sourced closes, because the
@@ -1002,7 +1002,7 @@ static void sdp_destroy_work(struct work_struct *work)
 	cancel_delayed_work(&ssk->srcavail_cancel_work);
 
 	if (sk->sk_state == TCP_TIME_WAIT)
-		sock_put(sk, SOCK_REF_CM_TW);
+		sock_put(sk, SOCK_REF_CMA);
 
 	/* In normal close current state is TCP_TIME_WAIT or TCP_CLOSE
 	   but if a CM connection is dropped below our legs state could
@@ -1045,7 +1045,7 @@ static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 		sdp_sk(sk)->qp_active = 0;
 		rdma_disconnect(sdp_sk(sk)->id);
 	} else
-		sock_put(sk, SOCK_REF_CM_TW);
+		sock_put(sk, SOCK_REF_CMA);
 
 out:
 	sock_put(sk, SOCK_REF_DREQ_TO);
@@ -2745,7 +2745,7 @@ kill_socks:
 			if ((1 << sk->sk_state) &
 				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
 				 TCPF_LAST_ACK | TCPF_TIME_WAIT)) {
-				sock_put(sk, SOCK_REF_CM_TW);
+				sock_put(sk, SOCK_REF_CMA);
 			}
 
 			schedule();

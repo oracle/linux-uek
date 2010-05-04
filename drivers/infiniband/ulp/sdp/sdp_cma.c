@@ -474,7 +474,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				sdp_dbg(sk, "IB teardown while in "
 					"TCP_CLOSE_WAIT taking reference to "
 					"let close() finish the work\n");
-				sock_hold(sk, SOCK_REF_CM_TW);
+				sock_hold(sk, SOCK_REF_CMA);
 			}
 			sdp_set_error(sk, EPIPE);
 			rc = sdp_disconnected_handler(sk);
