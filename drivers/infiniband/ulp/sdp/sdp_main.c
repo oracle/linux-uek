@@ -578,6 +578,22 @@ static int sdp_close_state(struct sock *sk)
 	return 1;
 }
 
+/*
+ * In order to prevent asynchronous-events handling after the last reference
+ * count removed, we destroy rdma_id so cma_handler() won't be invoked.
+ * This function should be called under lock_sock(sk).
+ */
+static inline void disable_cma_handler(struct sock *sk)
+{
+	if (sdp_sk(sk)->id) {
+		struct rdma_cm_id *id = sdp_sk(sk)->id;
+		sdp_sk(sk)->id = NULL;
+		release_sock(sk);
+		rdma_destroy_id(id);
+		lock_sock(sk);
+	}
+}
+
 /* Like tcp_close */
 static void sdp_close(struct sock *sk, long timeout)
 {
@@ -596,11 +612,13 @@ static void sdp_close(struct sock *sk, long timeout)
 	if ((1 << sk->sk_state) & (TCPF_TIME_WAIT | TCPF_CLOSE)) {
 		/* this could happen if socket was closed by a CM teardown
 		   and after that the user called close() */
+		disable_cma_handler(sk);
 		goto out;
 	}
 
 	if (sk->sk_state == TCP_LISTEN || sk->sk_state == TCP_SYN_SENT) {
 		sdp_exch_state(sk, TCPF_LISTEN | TCPF_SYN_SENT, TCP_CLOSE);
+		disable_cma_handler(sk);
 
 		/* Special case: stop listening.
 		   This is done by sdp_destruct. */
@@ -2686,17 +2704,21 @@ do_next:
 		ssk = list_entry(p, struct sdp_sock, sock_list);
 		if (ssk->ib_device == device) {
 			sk = &ssk->isk.sk;
+			lock_sock(sk);
+			/* ssk->id must be lock-protected,
+			 * to enable mutex with sdp_close() */
 			id = ssk->id;
 
 			if (id) {
 				ssk->id = NULL;
-
+				release_sock(sk);
 				spin_unlock_irq(&sock_list_lock);
 				write_unlock(&device_removal_lock);
 				rdma_destroy_id(id);
 
 				goto do_next;
 			}
+			release_sock(sk);
 		}
 	}
 
