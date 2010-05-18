@@ -218,8 +218,6 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 			sdp_dbg_data(sk, "Send completion with error. "
 				"Status %d\n", wc->status);
 			sdp_set_error(sk, -ECONNRESET);
-
-			queue_work(sdp_wq, &ssk->destroy_work);
 		}
 	}
 
