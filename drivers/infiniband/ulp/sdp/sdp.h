@@ -472,6 +472,11 @@ static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 			from_states);
 	}
 
+	if (TCP_CLOSE == state)
+		del_timer(&sdp_sk(sk)->tx_ring.timer);
+	/* TODO: make sure that no one will set that timer when status is
+	 * TCP_CLOSE */
+
 	old = sk->sk_state;
 	sk->sk_state = state;
 
