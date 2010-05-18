@@ -127,8 +127,6 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	sdp_sk(sk)->qp_active = 1;
 	sdp_sk(sk)->context.device = device;
 
-	init_waitqueue_head(&sdp_sk(sk)->wq);
-
 	sdp_dbg(sk, "%s done\n", __func__);
 	return 0;
 

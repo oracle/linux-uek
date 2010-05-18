@@ -140,7 +140,6 @@ void srcavail_cancel_timeout(struct work_struct *work)
 	sdp_dbg_data(sk, "both SrcAvail and SrcAvailCancel timedout."
 			" closing connection\n");
 	sdp_set_error(sk, -ECONNRESET);
-	wake_up(&ssk->wq);
 
 	release_sock(sk);
 }
@@ -575,7 +574,6 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	if (unlikely(rc)) {
 		sdp_warn(sk, "ib_post_send failed with status %d.\n", rc);
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-		wake_up(&ssk->wq);
 		goto err_post_send;
 	}
 

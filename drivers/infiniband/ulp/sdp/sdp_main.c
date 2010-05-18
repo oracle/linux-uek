@@ -466,7 +466,6 @@ void sdp_reset(struct sock *sk)
 	err = (sk->sk_shutdown & RCV_SHUTDOWN) ? EPIPE : ECONNRESET;
 
 	sdp_set_error(sk, -err);
-	wake_up(&sdp_sk(sk)->wq);
 	sk->sk_state_change(sk);
 }
 

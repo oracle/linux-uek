@@ -157,7 +157,6 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_cleanup_sdp_buf(ssk, tx_req, skb->len - skb->data_len, DMA_TO_DEVICE);
 
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-		wake_up(&ssk->wq);
 
 		goto err;
 	}
@@ -219,7 +218,6 @@ static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
 			sdp_dbg_data(sk, "Send completion with error. "
 				"Status %d\n", wc->status);
 			sdp_set_error(sk, -ECONNRESET);
-			wake_up(&ssk->wq);
 
 			queue_work(sdp_wq, &ssk->destroy_work);
 		}
@@ -281,7 +279,6 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		return;
 
 	sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-	wake_up(&ssk->wq);
 }
 
 static int sdp_process_tx_cq(struct sdp_sock *ssk)
@@ -459,7 +456,6 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 		sdp_dbg(&ssk->isk.sk,
 			"ib_post_keepalive failed with status %d.\n", rc);
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
-		wake_up(&ssk->wq);
 	}
 
 	sdp_cnt(sdp_keepalive_probes_sent);

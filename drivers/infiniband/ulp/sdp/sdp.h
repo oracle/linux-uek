@@ -340,7 +340,6 @@ struct sdp_sock {
 	int max_sge;
 
 	struct work_struct rx_comp_work;
-	wait_queue_head_t wq;
 
 	struct delayed_work dreq_wait_work;
 	struct work_struct destroy_work;
