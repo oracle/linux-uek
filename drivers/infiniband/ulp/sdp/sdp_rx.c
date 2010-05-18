@@ -54,15 +54,14 @@ static int curr_large_sockets;
 atomic_t sdp_current_mem_usage;
 spinlock_t sdp_large_sockets_lock;
 
-static int sdp_get_large_socket(struct sdp_sock *ssk)
+static int sdp_get_large_socket(const struct sdp_sock *ssk)
 {
-	int count, ret;
+	int ret;
 
 	if (ssk->recv_request)
 		return 1;
 
 	spin_lock_irq(&sdp_large_sockets_lock);
-	count = curr_large_sockets;
 	ret = curr_large_sockets < max_large_sockets;
 	if (ret)
 		curr_large_sockets++;
@@ -71,7 +70,7 @@ static int sdp_get_large_socket(struct sdp_sock *ssk)
 	return ret;
 }
 
-void sdp_remove_large_sock(struct sdp_sock *ssk)
+void sdp_remove_large_sock(const struct sdp_sock *ssk)
 {
 	if (ssk->recv_frags) {
 		spin_lock_irq(&sdp_large_sockets_lock);

@@ -808,7 +808,7 @@ int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size);
 void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
-void sdp_remove_large_sock(struct sdp_sock *ssk);
+void sdp_remove_large_sock(const struct sdp_sock *ssk);
 void sdp_handle_disconn(struct sock *sk);
 
 /* sdp_zcopy.c */
