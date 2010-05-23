@@ -179,6 +179,33 @@ static inline char *sdp_state_str(int state)
 	return state2str[state];
 }
 
+static inline const char* rdma_cm_event_str(int event)
+{
+	static const char* state2str[] = {
+		ENUM2STR(RDMA_CM_EVENT_ADDR_RESOLVED),
+		ENUM2STR(RDMA_CM_EVENT_ADDR_ERROR),
+		ENUM2STR(RDMA_CM_EVENT_ROUTE_RESOLVED),
+		ENUM2STR(RDMA_CM_EVENT_ROUTE_ERROR),
+		ENUM2STR(RDMA_CM_EVENT_CONNECT_REQUEST),
+		ENUM2STR(RDMA_CM_EVENT_CONNECT_RESPONSE),
+		ENUM2STR(RDMA_CM_EVENT_CONNECT_ERROR),
+		ENUM2STR(RDMA_CM_EVENT_UNREACHABLE),
+		ENUM2STR(RDMA_CM_EVENT_REJECTED),
+		ENUM2STR(RDMA_CM_EVENT_ESTABLISHED),
+		ENUM2STR(RDMA_CM_EVENT_DISCONNECTED),
+		ENUM2STR(RDMA_CM_EVENT_DEVICE_REMOVAL),
+		ENUM2STR(RDMA_CM_EVENT_MULTICAST_JOIN),
+		ENUM2STR(RDMA_CM_EVENT_MULTICAST_ERROR),
+		ENUM2STR(RDMA_CM_EVENT_ADDR_CHANGE),
+		ENUM2STR(RDMA_CM_EVENT_TIMEWAIT_EXIT)
+	};
+	if (event < 0 || event >= ARRAY_SIZE(state2str))
+		return "unknown";
+
+	return state2str[event];
+
+}
+
 struct sdp_bsdh;
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 void _dump_packet(const char *func, int line, struct sock *sk, char *str,

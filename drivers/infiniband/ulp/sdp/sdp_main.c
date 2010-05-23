@@ -168,7 +168,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 	rc = ssk->last_bind_err = rdma_bind_addr(ssk->id, (struct sockaddr *)&addr);
 	if (rc) {
-		sdp_dbg(sk, "Destroying qp\n");
+		sdp_dbg(sk, "Destroying rdma id\n");
 		rdma_destroy_id(ssk->id);
 		ssk->id = NULL;
 		return rc;
