@@ -54,9 +54,28 @@
 #define KCS_DEBUG_MSG		2
 #define	KCS_DEBUG_ENABLE	1
 
+/* Timeouts in microseconds. */
+#define IBF_RETRY_TIMEOUT 1000000
+#define OBF_RETRY_TIMEOUT 1000000
+#define MAX_ERROR_RETRIES 10
+#define ERROR0_OBF_WAIT_JIFFIES (2*HZ)
+
 static int kcs_debug;
+static uint kcs_obf_timeout = OBF_RETRY_TIMEOUT;
+static uint kcs_ibf_timeout = IBF_RETRY_TIMEOUT;
+static ushort kcs_err_retries = MAX_ERROR_RETRIES;
+
 module_param(kcs_debug, int, 0644);
 MODULE_PARM_DESC(kcs_debug, "debug bitmask, 1=enable, 2=messages, 4=states");
+
+module_param(kcs_obf_timeout, uint, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(kcs_obf_timeout, "OBF timeout value in microseconds. Default is 1000000.");
+
+module_param(kcs_ibf_timeout, uint, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(kcs_ibf_timeout, "IBF timeout value in microseconds. Default is 1000000.");
+
+module_param(kcs_err_retries, ushort, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(kcs_err_retries, "Number of error retries for kcs device. Default is 10.");
 
 /* The states the KCS driver may be in. */
 enum kcs_states {
@@ -117,11 +136,6 @@ enum kcs_states {
 #define MAX_KCS_READ_SIZE IPMI_MAX_MSG_LENGTH
 #define MAX_KCS_WRITE_SIZE IPMI_MAX_MSG_LENGTH
 
-/* Timeouts in microseconds. */
-#define IBF_RETRY_TIMEOUT 1000000
-#define OBF_RETRY_TIMEOUT 1000000
-#define MAX_ERROR_RETRIES 10
-#define ERROR0_OBF_WAIT_JIFFIES (2*HZ)
 
 struct si_sm_data {
 	enum kcs_states  state;
@@ -151,8 +165,8 @@ static unsigned int init_kcs_data(struct si_sm_data *kcs,
 	kcs->read_pos = 0;
 	kcs->error_retries = 0;
 	kcs->truncated = 0;
-	kcs->ibf_timeout = IBF_RETRY_TIMEOUT;
-	kcs->obf_timeout = OBF_RETRY_TIMEOUT;
+	kcs->ibf_timeout = kcs_ibf_timeout;
+	kcs->obf_timeout = kcs_obf_timeout;
 
 	/* Reserve 2 I/O bytes. */
 	return 2;
@@ -205,7 +219,7 @@ static inline void write_next_byte(struct si_sm_data *kcs)
 static inline void start_error_recovery(struct si_sm_data *kcs, char *reason)
 {
 	(kcs->error_retries)++;
-	if (kcs->error_retries > MAX_ERROR_RETRIES) {
+	if (kcs->error_retries > kcs_err_retries) {
 		if (kcs_debug & KCS_DEBUG_ENABLE)
 			printk(KERN_DEBUG "ipmi_kcs_sm: kcs hosed: %s\n",
 			       reason);
@@ -236,12 +250,12 @@ static inline int check_ibf(struct si_sm_data *kcs, unsigned char status,
 		kcs->ibf_timeout -= time;
 		if (kcs->ibf_timeout < 0) {
 			start_error_recovery(kcs, "IBF not ready in time");
-			kcs->ibf_timeout = IBF_RETRY_TIMEOUT;
+			kcs->ibf_timeout = kcs_ibf_timeout;
 			return 1;
 		}
 		return 0;
 	}
-	kcs->ibf_timeout = IBF_RETRY_TIMEOUT;
+	kcs->ibf_timeout = kcs_ibf_timeout;
 	return 1;
 }
 
@@ -256,7 +270,7 @@ static inline int check_obf(struct si_sm_data *kcs, unsigned char status,
 		}
 		return 0;
 	}
-	kcs->obf_timeout = OBF_RETRY_TIMEOUT;
+	kcs->obf_timeout = kcs_obf_timeout;
 	return 1;
 }
 
@@ -272,8 +286,8 @@ static void restart_kcs_transaction(struct si_sm_data *kcs)
 	kcs->write_pos = 0;
 	kcs->read_pos = 0;
 	kcs->state = KCS_WAIT_WRITE_START;
-	kcs->ibf_timeout = IBF_RETRY_TIMEOUT;
-	kcs->obf_timeout = OBF_RETRY_TIMEOUT;
+	kcs->ibf_timeout = kcs_ibf_timeout;
+	kcs->obf_timeout = kcs_obf_timeout;
 	write_cmd(kcs, KCS_WRITE_START);
 }
 
@@ -303,8 +317,8 @@ static int start_kcs_transaction(struct si_sm_data *kcs, unsigned char *data,
 	kcs->write_pos = 0;
 	kcs->read_pos = 0;
 	kcs->state = KCS_START_OP;
-	kcs->ibf_timeout = IBF_RETRY_TIMEOUT;
-	kcs->obf_timeout = OBF_RETRY_TIMEOUT;
+	kcs->ibf_timeout = kcs_ibf_timeout;
+	kcs->obf_timeout = kcs_obf_timeout;
 	return 0;
 }
 
