@@ -175,14 +175,18 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	bh_unlock_sock(child);
 	__sock_put(child, SOCK_REF_CLONE);
 
+	read_lock(&device_removal_lock);
+
 	rc = sdp_init_qp(child, id);
 	if (rc) {
+		read_unlock(&device_removal_lock);
 		sdp_sk(child)->destructed_already = 1;
 		sk_free(child);
 		return rc;
 	}
 
 	sdp_add_sock(sdp_sk(child));
+	read_unlock(&device_removal_lock);
 
 	sdp_sk(child)->max_bufs = ntohs(h->bsdh.bufs);
 	atomic_set(&sdp_sk(child)->tx_ring.credits, sdp_sk(child)->max_bufs);

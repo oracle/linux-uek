@@ -118,7 +118,7 @@ struct workqueue_struct *rx_comp_wq;
 struct list_head sock_list;
 spinlock_t sock_list_lock;
 
-static DEFINE_RWLOCK(device_removal_lock);
+DEFINE_RWLOCK(device_removal_lock);
 
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
@@ -426,8 +426,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	read_lock(&device_removal_lock);
-
 	if (ssk->tx_ring.cq)
 		sdp_xmit_poll(ssk, 1);
 
@@ -445,8 +443,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	/* Don't destroy socket before destroy work does its job */
 	sock_hold(sk, SOCK_REF_RESET);
 	queue_work(sdp_wq, &ssk->destroy_work);
-
-	read_unlock(&device_removal_lock);
 }
 
 /* Like tcp_reset */
@@ -470,7 +466,7 @@ void sdp_reset(struct sock *sk)
 }
 
 /* TODO: linger? */
-static void sdp_close_sk(struct sock *sk)
+static void sdp_destroy_resources(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rdma_cm_id *id = NULL;
@@ -504,7 +500,6 @@ static void sdp_close_sk(struct sock *sk)
 	sdp_dbg(sk, "%s done; releasing sock\n", __func__);
 	release_sock(sk);
 
-	flush_scheduled_work();
 }
 
 static void sdp_destruct(struct sock *sk)
@@ -522,9 +517,12 @@ static void sdp_destruct(struct sock *sk)
 
 	ssk->destructed_already = 1;
 
+	read_lock(&device_removal_lock);
 	sdp_remove_sock(ssk);
+	sdp_destroy_resources(sk);
+	read_unlock(&device_removal_lock);
 
-	sdp_close_sk(sk);
+	flush_scheduled_work();
 
 	if (ssk->parent)
 		goto done;
@@ -593,6 +591,38 @@ static inline void disable_cma_handler(struct sock *sk)
 	}
 }
 
+static void sdp_cma_timewait_timeout_work(struct work_struct *work)
+{
+	struct sdp_sock *ssk =
+		container_of(work, struct sdp_sock, cma_timewait_work.work);
+	struct sock *sk = &ssk->isk.sk;
+	
+	lock_sock(sk);
+	if (!ssk->cma_timewait_timeout) {
+		release_sock(sk);
+		return;
+	}
+
+	ssk->cma_timewait_timeout = 0;
+	release_sock(sk);
+	sock_put(sk, SOCK_REF_CMA);
+}
+
+static int sdp_cancel_cma_timewait_timeout(struct sdp_sock *ssk)
+{
+	if (!ssk->cma_timewait_timeout)
+		return 1;
+
+	ssk->cma_timewait_timeout = 0;
+	return cancel_delayed_work_sync(&ssk->cma_timewait_work);
+}
+
+static inline void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo)
+{
+	queue_delayed_work(sdp_wq, &ssk->cma_timewait_work, timeo);
+	ssk->cma_timewait_timeout = 1;
+}
+
 /* Like tcp_close */
 static void sdp_close(struct sock *sk, long timeout)
 {
@@ -625,7 +655,8 @@ static void sdp_close(struct sock *sk, long timeout)
 	}
 
 	sock_hold(sk, SOCK_REF_CMA);
-
+	sdp_start_cma_timewait_timeout(sdp_sk(sk), SDP_CMA_TIMEWAIT_TIMEOUT);
+	
 	/*  We need to flush the recv. buffs.  We do this only on the
 	 *  descriptor close, not protocol-sourced closes, because the
 	 *  reader process may not have drained the data yet!
@@ -999,8 +1030,10 @@ static void sdp_destroy_work(struct work_struct *work)
 
 	cancel_delayed_work(&ssk->srcavail_cancel_work);
 
-	if (sk->sk_state == TCP_TIME_WAIT)
-		sock_put(sk, SOCK_REF_CMA);
+	if (sk->sk_state == TCP_TIME_WAIT) {
+		if (sdp_cancel_cma_timewait_timeout(ssk))
+			sock_put(sk, SOCK_REF_CMA);
+	}
 
 	/* In normal close current state is TCP_TIME_WAIT or TCP_CLOSE
 	   but if a CM connection is dropped below our legs state could
@@ -1059,6 +1092,7 @@ static struct lock_class_key ib_sdp_sk_callback_lock_key;
 
 static void sdp_destroy_work(struct work_struct *work);
 static void sdp_dreq_wait_timeout_work(struct work_struct *work);
+static void sdp_cma_timewait_timeout_work(struct work_struct *work);
 
 int sdp_init_sock(struct sock *sk)
 {
@@ -1069,6 +1103,7 @@ int sdp_init_sock(struct sock *sk)
 	INIT_LIST_HEAD(&ssk->accept_queue);
 	INIT_LIST_HEAD(&ssk->backlog_queue);
 	INIT_DELAYED_WORK(&ssk->dreq_wait_work, sdp_dreq_wait_timeout_work);
+	INIT_DELAYED_WORK(&ssk->cma_timewait_work, sdp_cma_timewait_timeout_work);
 	INIT_DELAYED_WORK(&ssk->srcavail_cancel_work, srcavail_cancel_timeout);
 	INIT_WORK(&ssk->destroy_work, sdp_destroy_work);
 
@@ -1088,7 +1123,7 @@ int sdp_init_sock(struct sock *sk)
 	ssk->tx_ring.buffer = NULL;
 	ssk->sdp_disconnect = 0;
 	ssk->destructed_already = 0;
-	ssk->destruct_in_process = 0;
+	ssk->id_destroyed_already = 0;
 	spin_lock_init(&ssk->lock);
 	spin_lock_init(&ssk->tx_sa_lock);
 	ssk->tx_compl_pending = 0;
@@ -2688,66 +2723,57 @@ err_pd_alloc:
 
 static void sdp_remove_device(struct ib_device *device)
 {
-	struct list_head  *p;
 	struct sdp_sock   *ssk;
 	struct sock       *sk;
 	struct rdma_cm_id *id;
 	struct sdp_device *sdp_dev;
 
+	sdp_dev = ib_get_client_data(device, &sdp_client);
+	ib_set_client_data(device, &sdp_client, NULL);
+
+	/* destroy_ids: */
 do_next:
 	write_lock(&device_removal_lock);
 
 	spin_lock_irq(&sock_list_lock);
-	list_for_each(p, &sock_list) {
-		ssk = list_entry(p, struct sdp_sock, sock_list);
-		if (ssk->ib_device == device) {
+	list_for_each_entry(ssk, &sock_list, sock_list) {
+		if (ssk->ib_device == device && !ssk->id_destroyed_already) {
+			spin_unlock_irq(&sock_list_lock);
 			sk = &ssk->isk.sk;
 			lock_sock(sk);
 			/* ssk->id must be lock-protected,
 			 * to enable mutex with sdp_close() */
 			id = ssk->id;
+			ssk->id = NULL;
+			ssk->id_destroyed_already = 1;
 
-			if (id) {
-				ssk->id = NULL;
-				release_sock(sk);
-				spin_unlock_irq(&sock_list_lock);
-				write_unlock(&device_removal_lock);
-				rdma_destroy_id(id);
-
-				goto do_next;
-			}
 			release_sock(sk);
+			write_unlock(&device_removal_lock);
+
+			if (id)
+				rdma_destroy_id(id);
+			schedule();
+			goto do_next;
 		}
 	}
 
+	/* destroy qps: */
 kill_socks:
-	list_for_each(p, &sock_list) {
-		ssk = list_entry(p, struct sdp_sock, sock_list);
-
-		if (ssk->ib_device == device && !ssk->destruct_in_process) {
-			ssk->destruct_in_process = 1;
-			sk = &ssk->isk.sk;
-
-			sdp_cancel_dreq_wait_timeout(ssk);
-			cancel_delayed_work(&ssk->srcavail_cancel_work);
-
+	list_for_each_entry(ssk, &sock_list, sock_list) {
+		if (ssk->ib_device == device) {
 			spin_unlock_irq(&sock_list_lock);
+			sk = &ssk->isk.sk;
+			lock_sock(sk);
 
-			sk->sk_shutdown |= RCV_SHUTDOWN;
-			sdp_reset(sk);
-			sock_hold(sk, SOCK_REF_ALIVE);
-			sdp_close(sk,0);
+			sdp_abort_srcavail(sk);
+			sdp_abort_rdma_read(sk);
 			sdp_destroy_qp(ssk);
+			sdp_set_error(sk, -ENODEV);
+			ssk->ib_device = NULL;
 			ssk->sdp_dev = NULL;
 
-			if ((1 << sk->sk_state) &
-				(TCPF_FIN_WAIT1 | TCPF_CLOSE_WAIT |
-				 TCPF_LAST_ACK | TCPF_TIME_WAIT)) {
-				sock_put(sk, SOCK_REF_CMA);
-			}
-
+			release_sock(sk);
 			schedule();
-
 			spin_lock_irq(&sock_list_lock);
 
 			goto kill_socks;
@@ -2758,7 +2784,6 @@ kill_socks:
 
 	write_unlock(&device_removal_lock);
 
-	sdp_dev = ib_get_client_data(device, &sdp_client);
 	if (!sdp_dev)
 		return;
 

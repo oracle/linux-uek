@@ -26,6 +26,7 @@
 #define SDP_RETRY_COUNT 5
 #define SDP_KEEPALIVE_TIME (120 * 60 * HZ)
 #define SDP_FIN_WAIT_TIMEOUT (60 * HZ) /* like TCP_FIN_TIMEOUT */
+#define SDP_CMA_TIMEWAIT_TIMEOUT (150 * HZ)
 
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
@@ -342,6 +343,7 @@ struct sdp_sock {
 	struct work_struct rx_comp_work;
 
 	struct delayed_work dreq_wait_work;
+	struct delayed_work cma_timewait_work;
 	struct work_struct destroy_work;
 
 	int tx_compl_pending;
@@ -360,6 +362,7 @@ struct sdp_sock {
 	int nonagle;
 
 	int dreq_wait_timeout;
+	int cma_timewait_timeout;
 
 	unsigned keepalive_time;
 
@@ -371,7 +374,7 @@ struct sdp_sock {
 
 	int destructed_already;
 	int sdp_disconnect;
-	int destruct_in_process;
+	int id_destroyed_already; /* for sdp_remove_device() only */
 
 	struct sdp_rx_ring rx_ring;
 	struct sdp_tx_ring tx_ring;
@@ -783,6 +786,7 @@ void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_reset(struct sock *sk);
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void skb_entail(struct sock *sk, struct sdp_sock *ssk, struct sk_buff *skb);
+extern rwlock_t device_removal_lock;
 
 /* sdp_proc.c */
 int __init sdp_proc_init(void);
