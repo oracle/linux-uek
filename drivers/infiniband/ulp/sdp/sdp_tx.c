@@ -107,9 +107,9 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	h->mseq = htonl(mseq);
 	h->mseq_ack = htonl(mseq_ack(ssk));
 
-	sdp_prf1(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d",
+	sdp_prf(&ssk->isk.sk, skb, "TX: %s bufs: %d mseq:%ld ack:%d c: %d",
 			mid2str(h->mid), rx_ring_posted(ssk), mseq,
-			ntohl(h->mseq_ack));
+			ntohl(h->mseq_ack), tx_credits(ssk));
 
 	SDP_DUMP_PACKET(&ssk->isk.sk, "TX", skb, h);
 

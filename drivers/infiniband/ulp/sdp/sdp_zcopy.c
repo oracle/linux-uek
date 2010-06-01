@@ -205,7 +205,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 				ssk->rx_sa &&
 				(tx_sa->bytes_acked < tx_sa->bytes_sent) && 
 				vm_wait);
-		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
+		sdp_prf(&ssk->isk.sk, NULL, "woke up sleepers");
 
 		posts_handler_get(ssk);
 
@@ -663,6 +663,8 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 		sdp_dbg(sk, "Error posting SrcAvail\n");
 		goto err_abort_send;
 	}
+
+	sdp_arm_rx_cq(sk);
 
 	rc = sdp_wait_rdmardcompl(ssk, timeo, 0);
 	if (unlikely(rc)) {

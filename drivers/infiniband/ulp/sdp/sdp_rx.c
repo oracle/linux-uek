@@ -406,7 +406,7 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	struct sk_buff *skb;
 
 	if (unlikely(id != ring_tail(ssk->rx_ring))) {
-		printk(KERN_WARNING "Bogus recv completion id %d tail %d\n",
+		sdp_warn(&ssk->isk.sk, "Bogus recv completion id %d tail %d\n",
 			id, ring_tail(ssk->rx_ring));
 		return NULL;
 	}
@@ -521,7 +521,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	if (mseq_ack >= ssk->nagle_last_unacked)
 		ssk->nagle_last_unacked = 0;
 
-	sdp_prf1(&ssk->isk.sk, skb, "RX %s +%d c:%d->%d mseq:%d ack:%d",
+	sdp_prf1(&ssk->isk.sk, skb, "RX: %s +%d c:%d->%d mseq:%d ack:%d",
 		mid2str(h->mid), ntohs(h->bufs), credits_before,
 		tx_credits(ssk), ntohl(h->mseq), ntohl(h->mseq_ack));
 
@@ -581,7 +581,6 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	return 0;
 }
 
-/* called only from irq */
 static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 		struct ib_wc *wc)
 {
@@ -670,7 +669,6 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	}
 }
 
-/* only from interrupt. */
 static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 {
 	struct ib_cq *cq = ssk->rx_ring.cq;
@@ -742,6 +740,8 @@ void sdp_do_posts(struct sdp_sock *ssk)
 		return;
 	}
 
+	sdp_process_rx(sdp_sk(sk));
+
 	while ((skb = skb_dequeue(&ssk->rx_ctl_q)))
 		sdp_process_rx_ctl_skb(ssk, skb);
 
@@ -790,22 +790,23 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
 }
 
-static void sdp_process_rx(unsigned long data)
+int sdp_process_rx(struct sdp_sock *ssk)
 {
-	struct sdp_sock *ssk = (struct sdp_sock *)data;
 	struct sock *sk = &ssk->isk.sk;
 	int wc_processed = 0;
 	int credits_before;
 
 	if (!rx_ring_trylock(&ssk->rx_ring)) {
 		sdp_dbg(&ssk->isk.sk, "ring destroyed. not polling it\n");
-		return;
+		return 0;
 	}
 
 	credits_before = tx_credits(ssk);
 
 	wc_processed = sdp_poll_rx_cq(ssk);
-	sdp_prf(&ssk->isk.sk, NULL, "processed %d", wc_processed);
+
+	if (wc_processed)
+		sdp_prf(&ssk->isk.sk, NULL, "processed %d", wc_processed);
 
 	if (wc_processed) {
 		sdp_prf(&ssk->isk.sk, NULL, "credits:  %d -> %d",
@@ -824,9 +825,19 @@ static void sdp_process_rx(unsigned long data)
 			queue_work(rx_comp_wq, &ssk->rx_comp_work);
 		}
 	}
-	sdp_arm_rx_cq(sk);
+
+	if (ssk->sdp_disconnect || ssk->tx_sa)
+		sdp_arm_rx_cq(sk);
 
 	rx_ring_unlock(&ssk->rx_ring);
+
+	return wc_processed;
+}
+
+static void sdp_process_rx_tasklet(unsigned long data)
+{
+	struct sdp_sock *ssk = (struct sdp_sock *)data;
+	sdp_process_rx(ssk);
 }
 
 static void sdp_rx_ring_purge(struct sdp_sock *ssk)
@@ -882,7 +893,7 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
-	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx,
+	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx_tasklet,
 			(unsigned long) ssk);
 
 	sdp_arm_rx_cq(&ssk->isk.sk);

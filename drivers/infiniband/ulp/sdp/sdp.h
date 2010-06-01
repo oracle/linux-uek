@@ -685,9 +685,21 @@ static inline int sdp_tx_ring_slots_left(struct sdp_sock *ssk)
 	return SDP_TX_SIZE - tx_ring_posted(ssk);
 }
 
+/* Return true if need to send credit update. Rules are:
+ * - at least half of the RX buffer is available
+ * - 1.5 * c < p
+ * - has TX credits
+ * - has room in tx Q
+ *
+ * p = number of posted buffers
+ * c = current credits count at the peer
+ */
 static inline int credit_update_needed(struct sdp_sock *ssk)
 {
 	int c;
+
+	if (rx_ring_posted(ssk) < (SDP_RX_SIZE >> 1))
+		return 0;
 
 	c = remote_credits(ssk);
 	if (likely(c > SDP_MIN_TX_CREDITS))
@@ -718,6 +730,7 @@ struct sdpstats {
 	u32 send_wait_for_mem;
 	u32 send_miss_no_credits;
 	u32 rx_poll_miss;
+	u32 rx_poll_hit;
 	u32 tx_poll_miss;
 	u32 tx_poll_hit;
 	u32 tx_poll_busy;
@@ -814,6 +827,7 @@ void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
 void sdp_remove_large_sock(const struct sdp_sock *ssk);
 void sdp_handle_disconn(struct sock *sk);
+int sdp_process_rx(struct sdp_sock *ssk);
 
 /* sdp_zcopy.c */
 int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov);

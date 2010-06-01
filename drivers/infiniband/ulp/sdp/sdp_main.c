@@ -87,9 +87,7 @@ SDP_MODPARAM_INT(sdp_data_debug_level, 0,
 		"Enable data path debug tracing if > 0.");
 #endif
 
-SDP_MODPARAM_SINT(recv_poll_hit, -1, "How many times recv poll helped.");
-SDP_MODPARAM_SINT(recv_poll_miss, -1, "How many times recv poll missed.");
-SDP_MODPARAM_SINT(recv_poll, 1000, "How many times to poll recv.");
+SDP_MODPARAM_SINT(recv_poll, 10, "How many msec to poll recv.");
 SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
 static int sdp_bzcopy_thresh = 0;
@@ -553,6 +551,8 @@ static void sdp_send_disconnect(struct sock *sk)
 
 	sdp_sk(sk)->sdp_disconnect = 1;
 	sdp_post_sends(sdp_sk(sk), 0);
+
+	sdp_arm_rx_cq(sk);
 }
 
 /*
@@ -1328,6 +1328,9 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 	case TCP_KEEPIDLE:
 		val = (ssk->keepalive_time ? : sdp_keepalive_time) / HZ;
 		break;
+	case TCP_MAXSEG:
+		val = ssk->xmit_size_goal;
+		break;
 	case SDP_ZCOPY_THRESH:
 		val = ssk->zcopy_thresh;
 		break;
@@ -1347,14 +1350,17 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 
 static inline int poll_recv_cq(struct sock *sk)
 {
-	int i;
-	for (i = 0; i < recv_poll; ++i) {
-		if (!skb_queue_empty(&sk->sk_receive_queue)) {
-			++recv_poll_hit;
+	unsigned long jiffies_end = jiffies + recv_poll * HZ / 1000;
+
+	sdp_prf(sk, NULL, "polling recv");
+
+	while (jiffies <= jiffies_end) {
+		if (sdp_process_rx(sdp_sk(sk))) {
+			SDPSTATS_COUNTER_INC(rx_poll_hit);
 			return 0;
 		}
 	}
-	++recv_poll_miss;
+	SDPSTATS_COUNTER_INC(rx_poll_miss);
 	return 1;
 }
 
@@ -1796,6 +1802,9 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 
 		posts_handler_put(ssk);
 
+		/* Before going to sleep, make sure no credit update is missed */
+		sdp_arm_rx_cq(sk);
+
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
 
@@ -1817,10 +1826,11 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 					!(sk->sk_shutdown & SEND_SHUTDOWN) &&
 					!ssk->tx_compl_pending &&
 					sk_stream_memory_free(sk) &&
+					tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
 					vm_wait);
 		}
 
-		sdp_prf1(sk, NULL, "Woke up");
+		sdp_prf(sk, NULL, "Woke up. memfree: %d", sk_stream_memory_free(sk));
 		sk->sk_write_pending--;
 
 		posts_handler_get(ssk);
@@ -1946,12 +1956,17 @@ new_segment:
 				 * we stop sending once we run out of remote
 				 * receive credits.
 				 */
-				if (bz) {
-					if (tx_slots_free(ssk) < bz->busy)
+#define can_not_tx(__bz) (\
+	( __bz && tx_slots_free(ssk) < __bz->busy) || \
+       	(!__bz && !sk_stream_memory_free(sk)))
+				if (unlikely(can_not_tx(bz))) {
+					if (!poll_recv_cq(sk)) {
+						sdp_do_posts(ssk);
+					}
+					if ((can_not_tx(bz))) {
+						sdp_arm_rx_cq(sk);
 						goto wait_for_sndbuf;
-				} else {
-					if (!sk_stream_memory_free(sk))
-						goto wait_for_sndbuf;
+					}
 				}
 
 				skb = sdp_alloc_skb_data(sk, 0);
@@ -2028,7 +2043,7 @@ new_segment:
 wait_for_sndbuf:
 			set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 wait_for_memory:
-			sdp_prf(sk, skb, "wait for mem");
+			sdp_prf(sk, skb, "wait for mem. credits: %d", tx_credits(ssk));
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
 				sdp_push(sk, ssk, flags & ~MSG_MORE);
@@ -2050,12 +2065,11 @@ out:
 
 	sdp_auto_moderation(ssk);
 
-	posts_handler_put(ssk);
+	err = copied;
 
-	release_sock(sk);
+	sdp_dbg_data(sk, "copied: 0x%x\n", copied);
 
-	sdp_dbg_data(sk, "copied: 0x%x\n", copied);	
-	return copied;
+	goto fin;
 
 do_fault:
 	sdp_prf(sk, skb, "prepare fault");
@@ -2074,7 +2088,9 @@ out_err:
 	if (bz)
 		bz = sdp_bz_cleanup(bz);
 	err = sk_stream_error(sk, flags, err);
+	sdp_dbg_data(sk, "err: %d\n", err);
 
+fin:
 	posts_handler_put(ssk);
 
 	release_sock(sk);
@@ -2293,6 +2309,9 @@ sdp_mid_data:
 		}
 
 		rc = poll_recv_cq(sk);
+		if (!rc) {
+			sdp_do_posts(ssk);
+		}
 
 		if (copied >= target && !recv_poll) {
 			/* Do not sleep, just process backlog. */
@@ -2300,6 +2319,8 @@ sdp_mid_data:
 			lock_sock(sk);
 		} else if (rc) {
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
+			sdp_prf(sk, NULL, "giving up polling");
+			sdp_arm_rx_cq(sk);
 
 			posts_handler_put(ssk);
 
@@ -2521,7 +2542,14 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
        struct sock     *sk  = socket->sk;
        struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_dbg_data(socket->sk, "%s\n", __func__);
+	sdp_dbg_data(sk, "%s\n", __func__);
+
+       if (sk->sk_state == TCP_ESTABLISHED) {
+	       sdp_prf(sk, NULL, "polling");
+	       if (poll_recv_cq(sk)) {
+		       sdp_arm_rx_cq(sk);
+	       }
+       }
 
 	mask = datagram_poll(file, socket, wait);
 
