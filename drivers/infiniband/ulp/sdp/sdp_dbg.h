@@ -8,6 +8,8 @@
 #endif
 //#define GETNSTIMEODAY_SUPPORTED
 
+#define SDP_WARN_ON(x) WARN_ON(x)
+
 #define _sdp_printk(func, line, level, sk, format, arg...) do {               \
 	preempt_disable(); \
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
@@ -103,7 +105,7 @@ extern int sdp_debug_level;
 	if (!atomic_read(&(sk)->sk_refcnt)) {\
 		sdp_warn(sk, "%s:%d - %s (%s) ref = 0.\n", \
 				 __func__, __LINE__, #sock_op, msg); \
-		WARN_ON(1); \
+		SDP_WARN_ON(1); \
 	} else { \
 		sdp_dbg(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
 			#sock_op, msg, atomic_read(&(sk)->sk_refcnt)); \

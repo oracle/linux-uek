@@ -55,7 +55,7 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	int off, len;
 	struct ib_umem_chunk *chunk;
 
-	WARN_ON(ssk->tx_sa);
+	SDP_WARN_ON(ssk->tx_sa);
 
 	BUG_ON(!tx_sa);
 	BUG_ON(!tx_sa->fmr || !tx_sa->fmr->fmr->lkey);
@@ -257,7 +257,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 
 		if (!timeo) {
 			sdp_warn(sk, "Panic: Timed out waiting for RDMA read\n");
-			WARN_ON(1);
+			SDP_WARN_ON(1);
 			break;
 		}
 
@@ -560,7 +560,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 
 	if (len > rx_sa->len) {
 		sdp_warn(sk, "len:0x%x > rx_sa->len: 0x%x\n", len, rx_sa->len);
-		WARN_ON(1);
+		SDP_WARN_ON(1);
 		len = rx_sa->len;
 	}
 

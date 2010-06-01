@@ -2246,7 +2246,7 @@ sdp_mid_data:
 					goto skb_cleanup;
 			}
 
-			WARN_ON(h->mid == SDP_MID_SRCAVAIL);
+			SDP_WARN_ON(h->mid == SDP_MID_SRCAVAIL);
 
 			skb = skb->next;
 		} while (skb != (struct sk_buff *)&sk->sk_receive_queue);

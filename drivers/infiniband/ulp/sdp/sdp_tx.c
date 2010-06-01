@@ -90,7 +90,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		if (ssk->tx_sa != tx_sa) {
 			sdp_dbg_data(&ssk->isk.sk, "SrcAvail cancelled "
 					"before being sent!\n");
-			WARN_ON(1);
+			SDP_WARN_ON(1);
 			__kfree_skb(skb);
 			return;
 		}
@@ -532,5 +532,5 @@ void sdp_tx_ring_destroy(struct sdp_sock *ssk)
 		}
 	}
 
-	WARN_ON(ring_head(ssk->tx_ring) != ring_tail(ssk->tx_ring));
+	SDP_WARN_ON(ring_head(ssk->tx_ring) != ring_tail(ssk->tx_ring));
 }

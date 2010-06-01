@@ -430,7 +430,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	switch (h->mid) {
 	case SDP_MID_DATA:
 	case SDP_MID_SRCAVAIL:
-		WARN_ON(!(sk->sk_shutdown & RCV_SHUTDOWN));
+		SDP_WARN_ON(!(sk->sk_shutdown & RCV_SHUTDOWN));
 
 		sdp_dbg(sk, "DATA after socket rcv was shutdown\n");
 
@@ -915,5 +915,5 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 		}
 	}
 
-	WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
+	SDP_WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }
