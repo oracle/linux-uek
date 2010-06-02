@@ -70,6 +70,7 @@ static int cciss_tape_cmds = 6;
 module_param(cciss_tape_cmds, int, 0644);
 MODULE_PARM_DESC(cciss_tape_cmds, "number of commands to allocate for tape devices (default: 6)");
 
+static DEFINE_MUTEX(cciss_mutex);
 static int cciss_allow_hpsa;
 module_param(cciss_allow_hpsa, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(cciss_allow_hpsa,
@@ -202,7 +203,7 @@ static ctlr_info_t *hba[MAX_CTLR];
 static void do_cciss_request(struct request_queue *q);
 static irqreturn_t do_cciss_intx(int irq, void *dev_id);
 static irqreturn_t do_cciss_msix_intr(int irq, void *dev_id);
-static int cciss_open(struct block_device *bdev, fmode_t mode);
+static int cciss_unlocked_open(struct block_device *bdev, fmode_t mode);
 static int cciss_release(struct gendisk *disk, fmode_t mode);
 static int cciss_ioctl(struct block_device *bdev, fmode_t mode,
 		       unsigned int cmd, unsigned long arg);
@@ -274,7 +275,7 @@ static void cciss_sysfs_stat_inquiry(ctlr_info_t *h, int logvol,
 
 static const struct block_device_operations cciss_fops = {
 	.owner = THIS_MODULE,
-	.open = cciss_open,
+	.open = cciss_unlocked_open,
 	.release = cciss_release,
 	.ioctl = do_ioctl,
 	.getgeo = cciss_getgeo,
@@ -1162,16 +1163,32 @@ static int cciss_open(struct block_device *bdev, fmode_t mode)
 	return 0;
 }
 
+static int cciss_unlocked_open(struct block_device *bdev, fmode_t mode)
+{
+	int ret;
+
+	mutex_lock(&cciss_mutex);
+	ret = cciss_open(bdev, mode);
+	mutex_unlock(&cciss_mutex);
+
+	return ret;
+}
+
 /*
  * Close.  Sync first.
  */
 static int cciss_release(struct gendisk *disk, fmode_t mode)
 {
-	ctlr_info_t *h = get_host(disk);
-	drive_info_struct *drv = get_drv(disk);
+	ctlr_info_t *h;
+	drive_info_struct *drv;
+
+	mutex_lock(&cciss_mutex);
+	h = get_host(disk);
+	drv = get_drv(disk);
 	dev_dbg(&h->pdev->dev, "cciss_release %s\n", disk->disk_name);
 	drv->usage_count--;
 	h->usage_count--;
+	mutex_unlock(&cciss_mutex);
 	return 0;
 }
 
@@ -1179,7 +1196,9 @@ static int do_ioctl(struct block_device *bdev, fmode_t mode,
 		    unsigned cmd, unsigned long arg)
 {
 	int ret;
+	mutex_lock(&cciss_mutex);
 	ret = cciss_ioctl(bdev, mode, cmd, arg);
+	mutex_unlock(&cciss_mutex);
 	return ret;
 }
 
