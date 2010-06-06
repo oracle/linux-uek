@@ -704,6 +704,8 @@ static void sdp_rx_comp_work(struct work_struct *work)
 			rx_comp_work);
 	struct sock *sk = &ssk->isk.sk;
 
+	SDPSTATS_COUNTER_INC(rx_wq);
+
 	sdp_prf(sk, NULL, "%s", __func__);
 
 	if (unlikely(!ssk->qp)) {

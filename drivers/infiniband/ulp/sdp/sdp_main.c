@@ -2130,6 +2130,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int rc;
 	int avail_bytes_count = 0;  	/* Could be inlined in skb */
 					/* or advertised for RDMA  */
+	SDPSTATS_COUNTER_INC(recvmsg);
 
 	lock_sock(sk);
 	sdp_dbg_data(sk, "iovlen: %ld iov_len: 0x%lx flags: 0x%x peek: 0x%x\n",

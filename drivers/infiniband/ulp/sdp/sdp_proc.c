@@ -209,12 +209,19 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 {
 	int i;
 	u32 max = 0;
+	int first = -1, last = n - 1;
 
 	seq_printf(seq, "%s:\n", str);
 
 	for (i = 0; i < n; i++) {
 		if (h[i] > max)
 			max = h[i];
+
+		if (first == -1 && h[i])
+			first = i;
+		
+		if (h[i])
+			last = i;
 	}
 
 	if (max == 0) {
@@ -222,7 +229,7 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 		return;
 	}
 
-	for (i = 0; i < n; i++) {
+	for (i = first; i <= last; i++) {
 		char s[51];
 		int j = 50 * h[i] / max;
 		int val = is_log ? (i == n-1 ? 0 : 1<<i) : i;
@@ -258,6 +265,16 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 	memset(tmp_hist, 0, sizeof(tmp_hist));			\
 	SDPSTATS_HIST_GET(hist, hist_len, tmp_hist);	\
 	sdpstats_seq_hist(seq, msg, tmp_hist, hist_len, is_log);\
+})
+
+#define __sdpstats_seq_hist_pcpu(seq, msg, hist) ({		\
+	u32 h[NR_CPUS];						\
+	unsigned int __i;                                       \
+	memset(h, 0, sizeof(h));				\
+	for_each_possible_cpu(__i) {                            \
+		h[__i] = per_cpu(sdpstats, __i).hist;		\
+	} 							\
+	sdpstats_seq_hist(seq, msg, h, NR_CPUS, 0);		\
 })
 
 static int sdpstats_seq_show(struct seq_file *seq, void *v)
@@ -317,6 +334,13 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "- TX cross send\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_cross_send));
 	seq_printf(seq, "- TX aborted by peer\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
 	seq_printf(seq, "- TX error\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
+
+	__sdpstats_seq_hist_pcpu(seq, "CPU sendmsg", sendmsg);
+	__sdpstats_seq_hist_pcpu(seq, "CPU recvmsg", recvmsg);
+	__sdpstats_seq_hist_pcpu(seq, "CPU rx_irq", rx_int_count);
+	__sdpstats_seq_hist_pcpu(seq, "CPU rx_wq", rx_wq);
+	__sdpstats_seq_hist_pcpu(seq, "CPU tx_irq", tx_int_count);
+
 	return 0;
 }
 

@@ -719,6 +719,7 @@ struct sdpstats {
 	u32 sendmsg_bzcopy_segment;
 	u32 sendmsg_zcopy_segment;
 	u32 sendmsg;
+	u32 recvmsg;
 	u32 post_send_credits;
 	u32 sendmsg_nagle_skip;
 	u32 sendmsg_seglen[25];
@@ -726,6 +727,7 @@ struct sdpstats {
 	u32 post_recv;
 	u32 rx_int_count;
 	u32 tx_int_count;
+	u32 rx_wq;
 	u32 bzcopy_poll_miss;
 	u32 send_wait_for_mem;
 	u32 send_miss_no_credits;
