@@ -614,7 +614,11 @@ static int sdp_cancel_cma_timewait_timeout(struct sdp_sock *ssk)
 		return 1;
 
 	ssk->cma_timewait_timeout = 0;
-	return cancel_delayed_work_sync(&ssk->cma_timewait_work);
+	return cancel_delayed_work(&ssk->cma_timewait_work);
+	/* No need to use the sync'ed function because the socket's refcnt is
+	 * pre-taken and multiple invocations of sock_put() are self sync'ed
+	 * (atomic operation).
+	 */
 }
 
 static inline void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo)
