@@ -1858,7 +1858,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sk_buff *skb;
 	int iovlen, flags;
-	int size_goal;
+	const int size_goal = MIN(ssk->xmit_size_goal, SDP_MAX_PAYLOAD);
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
@@ -1880,8 +1880,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 	/* This should be in poll */
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
-
-	size_goal = ssk->xmit_size_goal;
 
 	/* Ok commence sending. */
 	iovlen = msg->msg_iovlen;
@@ -1918,10 +1916,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			sdp_dbg_data(sk, "ZCopied: 0x%x/0x%x\n", zcopied, seglen);
 		}
-
-		/* Limiting the size_goal is reqired when using 64K pages*/
-		if (size_goal > SDP_MAX_PAYLOAD)
-			size_goal = SDP_MAX_PAYLOAD;
 
 		if (bz)
 			sdp_bz_cleanup(bz);
@@ -2039,8 +2033,6 @@ wait_for_memory:
 					bz ? &bz->busy : NULL);
 			if (err)
 				goto do_error;
-
-			size_goal = ssk->xmit_size_goal;
 		}
 	}
 
