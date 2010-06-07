@@ -199,6 +199,7 @@ struct sdp_srcah {
 struct sdp_buf {
         struct sk_buff *skb;
         u64             mapping[SDP_MAX_SEND_SGES];
+	struct page 	*pages[SDP_MAX_SEND_SGES];
 } __attribute__((__packed__));
 
 struct sdp_chrecvbuf {
@@ -786,6 +787,7 @@ static inline void sdp_cleanup_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbu
 		ib_dma_unmap_page(dev, sbuf->mapping[i + 1],
 				  skb_shinfo(skb)->frags[i].size,
 				  dir);
+		sbuf->mapping[i + 1] = 0;
 	}
 }
 

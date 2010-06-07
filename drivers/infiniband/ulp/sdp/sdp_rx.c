@@ -157,6 +157,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	struct sdp_bsdh *h;
 	int id = ring_head(ssk->rx_ring);
 	gfp_t gfp_page;
+	int pages_alloced = 0;
 
 	/* Now, allocate and repost recv */
 	/* TODO: allocate from cache */
@@ -175,21 +176,29 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	/* FIXME */
 	BUG_ON(!skb);
 	h = (struct sdp_bsdh *)skb->head;
+
+	rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));
+	rx_req->skb = skb;
+
 	for (i = 0; i < ssk->recv_frags; ++i) {
-		page = alloc_pages(gfp_page, 0);
+		if (rx_req->mapping[i + 1])
+			page = rx_req->pages[i + 1];
+		else {
+			rx_req->pages[i + 1] = page = alloc_pages(gfp_page, 0);
+			pages_alloced++;
+		}
+
 		BUG_ON(!page);
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
 		frag->page_offset         = 0;
-		frag->size                =  min(PAGE_SIZE, SDP_MAX_PAYLOAD);
-		++skb_shinfo(skb)->nr_frags;
+		frag->size                = min(PAGE_SIZE, SDP_MAX_PAYLOAD);
 		skb->len += frag->size;
 		skb->data_len += frag->size;
 		skb->truesize += frag->size;
 	}
+	skb_shinfo(skb)->nr_frags = ssk->recv_frags;
 
-	rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));
-	rx_req->skb = skb;
 	dev = ssk->ib_device;
 	addr = ib_dma_map_single(dev, h, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
 	BUG_ON(ib_dma_mapping_error(dev, addr));
@@ -203,12 +212,16 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	frags = skb_shinfo(skb)->nr_frags;
 	for (i = 0; i < frags; ++i) {
 		++sge;
-		addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
+		if (rx_req->mapping[i + 1]) {
+			addr = rx_req->mapping[i + 1];
+		} else {
+			addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
 				       skb_shinfo(skb)->frags[i].page_offset,
 				       skb_shinfo(skb)->frags[i].size,
 				       DMA_FROM_DEVICE);
-		BUG_ON(ib_dma_mapping_error(dev, addr));
-		rx_req->mapping[i + 1] = addr;
+			BUG_ON(ib_dma_mapping_error(dev, addr));
+			rx_req->mapping[i + 1] = addr;
+		}
 		sge->addr = addr;
 		sge->length = skb_shinfo(skb)->frags[i].size;
 		sge->lkey = ssk->sdp_dev->mr->lkey;
@@ -232,7 +245,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 
 	atomic_inc(&ssk->rx_ring.head);
 	SDPSTATS_COUNTER_INC(post_recv);
-	atomic_add(ssk->recv_frags, &sdp_current_mem_usage);
+	atomic_add(pages_alloced, &sdp_current_mem_usage);
 
 	return 0;
 }
@@ -399,7 +412,37 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk,
 		ssk->sent_request = 0;
 }
 
-static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
+static void sdp_reuse_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf, int len)
+{
+	int i;
+	struct sk_buff *skb;
+	struct ib_device *dev = ssk->ib_device;
+	enum dma_data_direction dir = DMA_FROM_DEVICE;
+	int used;
+
+	skb = sbuf->skb;
+
+	ib_dma_unmap_single(dev, sbuf->mapping[0], SDP_SKB_HEAD_SIZE, dir);
+	used = SDP_SKB_HEAD_SIZE;
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		if (used >= len) {
+			skb->truesize -= min(PAGE_SIZE, SDP_MAX_PAYLOAD) *
+				(skb_shinfo(skb)->nr_frags - i);
+			skb_shinfo(skb)->nr_frags = i;
+			break;
+		}
+
+		ib_dma_unmap_page(dev, sbuf->mapping[i + 1],
+				  skb_shinfo(skb)->frags[i].size,
+				  dir);
+		sbuf->mapping[i + 1] = 0;
+
+		used += skb_shinfo(skb)->frags[i].size;
+	}
+}
+
+static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id, int len)
 {
 	struct sdp_buf *rx_req;
 	struct ib_device *dev;
@@ -414,7 +457,7 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id)
 	dev = ssk->ib_device;
 	rx_req = &ssk->rx_ring.buffer[id & (SDP_RX_SIZE - 1)];
 	skb = rx_req->skb;
-	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
+	sdp_reuse_sdp_buf(ssk, rx_req, len);
 
 	atomic_inc(&ssk->rx_ring.tail);
 	atomic_dec(&ssk->remote_credits);
@@ -589,11 +632,12 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 	struct sock *sk = &ssk->isk.sk;
 	int mseq;
 
-	skb = sdp_recv_completion(ssk, wc->wr_id);
+	skb = sdp_recv_completion(ssk, wc->wr_id, wc->byte_len);
 	if (unlikely(!skb))
 		return NULL;
 
-	atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
+	if (unlikely(skb_shinfo(skb)->nr_frags))
+		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
 
 	if (unlikely(wc->status)) {
 		if (ssk->qp_active) {
@@ -844,13 +888,32 @@ static void sdp_process_rx_tasklet(unsigned long data)
 
 static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 {
+	struct ib_device *dev = ssk->ib_device;
+	int id, i;
+
 	while (rx_ring_posted(ssk) > 0) {
 		struct sk_buff *skb;
-		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring));
+		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring), INT_MAX);
 		if (!skb)
 			break;
 		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
 		__kfree_skb(skb);
+	}
+
+	for (id = 0; id < SDP_RX_SIZE; id++) {
+		struct sdp_buf *sbuf = &ssk->rx_ring.buffer[id];
+
+		for (i = 1; i < SDP_MAX_SEND_SGES; i++) {
+			if (!sbuf->mapping[i])
+				continue;
+
+			ib_dma_unmap_page(dev, sbuf->mapping[i],
+					min(PAGE_SIZE, SDP_MAX_PAYLOAD),
+					DMA_FROM_DEVICE);
+			sbuf->mapping[i] = 0;
+			put_page(sbuf->pages[i]);
+			atomic_sub(1, &sdp_current_mem_usage);
+		}
 	}
 }
 
@@ -882,6 +945,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 		return -ENOMEM;
 	}
+
+	memset(ssk->rx_ring.buffer, 0, sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE);
 
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
 			  &ssk->isk.sk, SDP_RX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
