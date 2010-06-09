@@ -604,7 +604,7 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size,
 			gfp = GFP_KERNEL;
 	}
 
-	skb = sdp_stream_alloc_skb(sk, sizeof(struct sdp_bsdh) + size, gfp);
+	skb = sdp_stream_alloc_skb(sk, size, gfp);
 	BUG_ON(!skb);
 
         skb_header_release(skb);
@@ -616,9 +616,9 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size,
 
 	return skb;
 }
-static inline struct sk_buff *sdp_alloc_skb_data(struct sock *sk, gfp_t gfp)
+static inline struct sk_buff *sdp_alloc_skb_data(struct sock *sk, int size, gfp_t gfp)
 {
-	return sdp_alloc_skb(sk, SDP_MID_DATA, 0, gfp);
+	return sdp_alloc_skb(sk, SDP_MID_DATA, size, gfp);
 }
 
 static inline struct sk_buff *sdp_alloc_skb_disconnect(struct sock *sk,
@@ -748,7 +748,7 @@ struct sdpstats {
 static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 {
 	int idx = is_log ? ilog2(val) : val;
-	if (idx > maxidx)
+	if (unlikely(idx > maxidx))
 		idx = maxidx;
 
 	h[idx]++;

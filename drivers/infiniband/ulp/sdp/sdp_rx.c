@@ -193,10 +193,8 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		frag->page                = page;
 		frag->page_offset         = 0;
 		frag->size                = min(PAGE_SIZE, SDP_MAX_PAYLOAD);
-		skb->len += frag->size;
-		skb->data_len += frag->size;
-		skb->truesize += frag->size;
 	}
+	skb->truesize += ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD);
 	skb_shinfo(skb)->nr_frags = ssk->recv_frags;
 
 	dev = ssk->ib_device;
@@ -574,15 +572,15 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	for (i = skb_shinfo(skb)->nr_frags; i < frags; ++i) {
 		put_page(skb_shinfo(skb)->frags[i].page);
-		skb->truesize -= PAGE_SIZE;
 	}
+	skb->truesize -= frags * PAGE_SIZE;
 
 /*	if (unlikely(h->flags & SDP_OOB_PEND))
 		sk_send_sigurg(sk);*/
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
 
-	if (h->mid == SDP_MID_SRCAVAIL)
+	if (unlikely(h->mid == SDP_MID_SRCAVAIL))
 		skb_pull(skb, sizeof(struct sdp_srcah));
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
@@ -682,7 +680,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 
 	mseq = ntohl(h->mseq);
 	atomic_set(&ssk->mseq_ack, mseq);
-	if (mseq != (int)wc->wr_id)
+	if (unlikely(mseq != (int)wc->wr_id))
 		sdp_warn(sk, "SDP BUG! mseq %d != wrid %d\n",
 				mseq, (int)wc->wr_id);
 
@@ -695,22 +693,16 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	struct sock *sk = &ssk->isk.sk;
 	struct socket *sock = sk->sk_socket;
 
-	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
-		sdp_prf1(&ssk->isk.sk, NULL, "credits: %d, min_bufs: %d. "
-			"tx_head: %d, tx_tail: %d",
-			tx_credits(ssk), ssk->min_bufs,
-			ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring));
-	}
+	if (tx_credits(ssk) < ssk->min_bufs || !sock)
+		return;
 
-	if (tx_credits(ssk) >= ssk->min_bufs && sock != NULL) {
-		clear_bit(SOCK_NOSPACE, &sock->flags);
-		sdp_prf1(sk, NULL, "Waking up sleepers");
+	clear_bit(SOCK_NOSPACE, &sock->flags);
+	sdp_prf1(sk, NULL, "Waking up sleepers");
 
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-			wake_up_interruptible(sk->sk_sleep);
-		if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
-			sock_wake_async(sock, 2, POLL_OUT);
-	}
+	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+		wake_up_interruptible(sk->sk_sleep);
+	if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
+		sock_wake_async(sock, 2, POLL_OUT);
 }
 
 static int sdp_poll_rx_cq(struct sdp_sock *ssk)

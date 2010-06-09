@@ -1969,7 +1969,7 @@ new_segment:
 					}
 				}
 
-				skb = sdp_alloc_skb_data(sk, 0);
+				skb = sdp_alloc_skb_data(sk, min(seglen, size_goal), 0);
 				if (!skb)
 					goto wait_for_memory;
 
