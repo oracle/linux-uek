@@ -98,7 +98,7 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 //	sk->sk_wmem_queued   += payload_len;
 //	sk->sk_forward_alloc -= payload_len;
 
-	skb_entail(sk, ssk, skb);
+	sdp_skb_entail(sk, skb);
 	
 	ssk->write_seq += payload_len;
 	SDP_SKB_CB(skb)->end_seq += payload_len;
@@ -119,7 +119,7 @@ static int sdp_post_srcavail_cancel(struct sock *sk)
 	sdp_dbg_data(&ssk->isk.sk, "Posting srcavail cancel\n");
 
 	skb = sdp_alloc_skb_srcavail_cancel(sk, 0);
-	skb_entail(sk, ssk, skb);
+	sdp_skb_entail(sk, skb);
 
 	sdp_post_sends(ssk, 0);
 
@@ -277,7 +277,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 	sdp_dbg_data(sk, "Finished waiting\n");
 }
 
-int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
+int sdp_post_rdma_rd_compl(struct sock *sk,
 		struct rx_srcavail_state *rx_sa)
 {
 	struct sk_buff *skb;
@@ -286,12 +286,13 @@ int sdp_post_rdma_rd_compl(struct sdp_sock *ssk,
 	if (rx_sa->used <= rx_sa->reported)
 		return 0;
 
-	skb = sdp_alloc_skb_rdmardcompl(&ssk->isk.sk, copied, 0);
+	skb = sdp_alloc_skb_rdmardcompl(sk, copied, 0);
+
+	sdp_skb_entail(sk, skb);
 
 	rx_sa->reported += copied;
 
-	/* TODO: What if no tx_credits available? */
-	sdp_post_send(ssk, skb);
+	sdp_post_sends(sdp_sk(sk), 0);
 
 	return 0;
 }
@@ -300,7 +301,9 @@ int sdp_post_sendsm(struct sock *sk)
 {
 	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk, 0);
 
-	sdp_post_send(sdp_sk(sk), skb);
+	sdp_skb_entail(sk, skb);
+
+	sdp_post_sends(sdp_sk(sk), 0);
 
 	return 0;
 }

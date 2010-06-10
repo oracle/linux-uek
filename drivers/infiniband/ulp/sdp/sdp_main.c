@@ -1436,15 +1436,15 @@ static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags)
 	sdp_do_posts(sdp_sk(sk));
 }
 
-void skb_entail(struct sock *sk, struct sdp_sock *ssk, struct sk_buff *skb)
+void sdp_skb_entail(struct sock *sk, struct sk_buff *skb)
 {
         __skb_queue_tail(&sk->sk_write_queue, skb);
 	sk->sk_wmem_queued += skb->truesize;
         sk_mem_charge(sk, skb->truesize);
         if (!sk->sk_send_head)
                 sk->sk_send_head = skb;
-        if (ssk->nonagle & TCP_NAGLE_PUSH)
-                ssk->nonagle &= ~TCP_NAGLE_PUSH;
+        if (sdp_sk(sk)->nonagle & TCP_NAGLE_PUSH)
+                sdp_sk(sk)->nonagle &= ~TCP_NAGLE_PUSH;
 }
 
 static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
@@ -1985,7 +1985,7 @@ new_segment:
 				     NETIF_F_HW_CSUM))
 					skb->ip_summed = CHECKSUM_PARTIAL;
 
-				skb_entail(sk, ssk, skb);
+				sdp_skb_entail(sk, skb);
 				copy = size_goal;
 
 				sdp_dbg_data(sk, "created new skb: %p"
@@ -2408,7 +2408,7 @@ skip_copy:
 
 
 		if (rx_sa) {
-			rc = sdp_post_rdma_rd_compl(ssk, rx_sa);
+			rc = sdp_post_rdma_rd_compl(sk, rx_sa);
 			BUG_ON(rc);
 
 		}

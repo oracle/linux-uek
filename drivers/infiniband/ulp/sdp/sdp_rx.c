@@ -251,35 +251,39 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
-	int scale = ssk->rcvbuf_scale;
 	int buffer_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
 	unsigned long max_bytes;
+	unsigned long bytes_in_process;
+	int posted = rx_ring_posted(ssk);
 
-	if (!ssk->qp_active)
+	if (unlikely(!ssk->qp_active))
 		return 0;
 
-	if (top_mem_usage && (top_mem_usage * 0x100000) <
+	if  (likely(posted >= SDP_RX_SIZE))
+		return 0;
+
+	if (unlikely(posted < SDP_MIN_TX_CREDITS))
+		return 1;
+
+	/* If rcvbuf is very small, must leave at least 1 skb for data,
+	 * in addition to SDP_MIN_TX_CREDITS */
+	max_bytes = max(sk->sk_rcvbuf, (1 + SDP_MIN_TX_CREDITS) * buffer_size);
+
+	if (!top_mem_usage || (top_mem_usage * 0x100000) >=
 			atomic_read(&sdp_current_mem_usage) * PAGE_SIZE) {
-		scale = 1;
+		max_bytes *= ssk->rcvbuf_scale;
 	}
 
-	max_bytes = sk->sk_rcvbuf * scale;
+	/* Bytes posted to HW */
+	bytes_in_process = (posted - SDP_MIN_TX_CREDITS) * buffer_size;
 
-	if  (unlikely(rx_ring_posted(ssk) >= SDP_RX_SIZE))
-		return 0;
+	/* Bytes waiting in socket RX queue */
+	bytes_in_process += rcv_nxt(ssk) - ssk->copied_seq;
 
-	if (likely(rx_ring_posted(ssk) >= SDP_MIN_TX_CREDITS)) {
-		unsigned long bytes_in_process =
-			(rx_ring_posted(ssk) - SDP_MIN_TX_CREDITS) *
-			buffer_size;
-		bytes_in_process += rcv_nxt(ssk) - ssk->copied_seq;
-
-		if (bytes_in_process >= max_bytes) {
-			sdp_prf(sk, NULL,
-				"bytes_in_process:%ld > max_bytes:%ld",
+	if (bytes_in_process >= max_bytes) {
+		sdp_prf(sk, NULL, "bytes_in_process: 0x%lx > max_bytes: 0x%lx",
 				bytes_in_process, max_bytes);
-			return 0;
-		}
+		return 0;
 	}
 
 	return 1;

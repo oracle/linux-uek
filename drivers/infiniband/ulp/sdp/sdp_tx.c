@@ -186,6 +186,8 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	dev = ssk->ib_device;
 	tx_req = &tx_ring->buffer[mseq & (SDP_TX_SIZE - 1)];
 	skb = tx_req->skb;
+	if (!skb)
+		goto skip; /* This slot was used by RDMA WR */
 
 	sdp_cleanup_sdp_buf(ssk, tx_req, skb->len - skb->data_len, DMA_TO_DEVICE);
 
@@ -195,6 +197,7 @@ static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
 	if (BZCOPY_STATE(skb))
 		BZCOPY_STATE(skb)->busy--;
 
+skip:
 	atomic_inc(&tx_ring->tail);
 
 out:
@@ -384,7 +387,7 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	else
 		SDPSTATS_COUNTER_INC(tx_poll_hit);
 
-	inflight = (u32) rx_ring_posted(ssk);
+	inflight = (u32) tx_ring_posted(ssk);
 	sdp_prf1(&ssk->isk.sk, NULL, "finished tx proccessing. inflight = %d",
 			tx_ring_posted(ssk));
 
