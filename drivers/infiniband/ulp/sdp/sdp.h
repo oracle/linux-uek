@@ -289,6 +289,7 @@ struct sdp_rx_ring {
 
 	int		 destroyed;
 	rwlock_t 	 destroyed_lock;
+	spinlock_t	 lock;
 
 	struct tasklet_struct 	tasklet;
 };

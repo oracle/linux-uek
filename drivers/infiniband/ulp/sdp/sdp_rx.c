@@ -712,7 +712,9 @@ static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 	int n, i;
 	int wc_processed = 0;
 	struct sk_buff *skb;
+	unsigned long flags;
 
+	spin_lock_irqsave(&ssk->rx_ring.lock, flags);
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
 		for (i = 0; i < n; ++i) {
@@ -727,6 +729,7 @@ static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 			wc_processed++;
 		}
 	} while (n == SDP_NUM_WC);
+	spin_unlock_irqrestore(&ssk->rx_ring.lock, flags);
 
 	if (wc_processed)
 		sdp_bzcopy_write_space(ssk);
@@ -950,6 +953,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	}
 
 	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
+
+	spin_lock_init(&ssk->rx_ring.lock);
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
 	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx_tasklet,
