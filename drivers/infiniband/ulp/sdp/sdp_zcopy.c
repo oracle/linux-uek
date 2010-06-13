@@ -95,8 +95,6 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	skb->len             += payload_len;
 	skb->data_len         = payload_len;
 	skb->truesize        += payload_len;
-//	sk->sk_wmem_queued   += payload_len;
-//	sk->sk_forward_alloc -= payload_len;
 
 	sdp_skb_entail(sk, skb);
 	
