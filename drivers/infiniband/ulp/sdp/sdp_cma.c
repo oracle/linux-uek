@@ -339,10 +339,10 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		return rc;
 	}
 
+	sdp_dbg(sk, "%s\n", rdma_cm_event_str(event->event));
+
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
-		sdp_dbg(sk, "RDMA_CM_EVENT_ADDR_RESOLVED\n");
-
 		if (sdp_link_layer_ib_only &&
 			rdma_node_get_transport(id->device->node_type) == 
 				RDMA_TRANSPORT_IB &&
@@ -358,11 +358,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = rdma_resolve_route(id, SDP_ROUTE_TIMEOUT);
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
-		sdp_dbg(sk, "RDMA_CM_EVENT_ADDR_ERROR\n");
 		rc = -ENETUNREACH;
 		break;
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
-		sdp_dbg(sk, "RDMA_CM_EVENT_ROUTE_RESOLVED : %p\n", id);
 		rc = sdp_init_qp(sk, id);
 		if (rc)
 			break;
@@ -391,11 +389,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = rdma_connect(id, &conn_param);
 		break;
 	case RDMA_CM_EVENT_ROUTE_ERROR:
-		sdp_dbg(sk, "RDMA_CM_EVENT_ROUTE_ERROR : %p\n", id);
 		rc = -ETIMEDOUT;
 		break;
 	case RDMA_CM_EVENT_CONNECT_REQUEST:
-		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_REQUEST\n");
 		rc = sdp_connect_handler(sk, id, event);
 		if (rc) {
 			sdp_dbg(sk, "Destroying qp\n");
@@ -430,7 +426,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
-		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_RESPONSE\n");
 		rc = sdp_response_handler(sk, id, event);
 		if (rc) {
 			sdp_dbg(sk, "Destroying qp\n");
@@ -439,26 +434,20 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rc = rdma_accept(id, NULL);
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
-		sdp_dbg(sk, "RDMA_CM_EVENT_CONNECT_ERROR\n");
 		rc = -ETIMEDOUT;
 		break;
 	case RDMA_CM_EVENT_UNREACHABLE:
-		sdp_dbg(sk, "RDMA_CM_EVENT_UNREACHABLE\n");
 		rc = -ENETUNREACH;
 		break;
 	case RDMA_CM_EVENT_REJECTED:
-		sdp_dbg(sk, "RDMA_CM_EVENT_REJECTED\n");
 		rc = -ECONNREFUSED;
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
-		sdp_dbg(sk, "RDMA_CM_EVENT_ESTABLISHED\n");
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		rc = sdp_connected_handler(sk, event);
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED: /* This means DREQ/DREP received */
-		sdp_dbg(sk, "RDMA_CM_EVENT_DISCONNECTED\n");
-
 		if (sk->sk_state == TCP_LAST_ACK) {
 			sdp_cancel_dreq_wait_timeout(sdp_sk(sk));
 
@@ -483,11 +472,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		}
 		break;
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT:
-		sdp_dbg(sk, "RDMA_CM_EVENT_TIMEWAIT_EXIT\n");
 		rc = sdp_disconnected_handler(sk);
 		break;
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-		sdp_dbg(sk, "RDMA_CM_EVENT_DEVICE_REMOVAL\n");
 		rc = -ENETRESET;
 		break;
 	default:
