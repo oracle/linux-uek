@@ -735,7 +735,7 @@ adjudge_to_death:
 	 *	consume significant resources. Let's do it with special
 	 *	linger2	option.					--ANK
 	 */
-	if (sk->sk_state == TCP_FIN_WAIT1) {
+	if ((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_TIME_WAIT | TCPF_LAST_ACK)) {
 		/* TODO: liger2 unimplemented.
 		   We should wait 3.5 * rto. How do I know rto? */
 		/* TODO: tcp_fin_time to get timeout */
@@ -1171,6 +1171,8 @@ static void sdp_shutdown(struct sock *sk, int how)
 	ssk->nonagle &= ~TCP_NAGLE_CORK;
 	if (ssk->nonagle & TCP_NAGLE_OFF)
 		ssk->nonagle |= TCP_NAGLE_PUSH;
+
+	percpu_counter_inc(ssk->isk.sk.sk_prot->orphan_count);
 
 	sdp_send_disconnect(sk);
 }
