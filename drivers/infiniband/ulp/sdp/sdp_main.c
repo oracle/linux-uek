@@ -2188,6 +2188,14 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 			switch (h->mid) {
 			case SDP_MID_DISCONN:
+				if (flags & MSG_PEEK) {
+					/* There is no point of handling a
+					 * remote disconnection request while
+					 * MSG_PEEK. The remote disconnection
+					 * request will be handled upon regular
+					 * recv. */
+					goto got_disconn_in_peek;
+				}
 				sdp_dbg(sk, "Handle RX SDP_MID_DISCONN\n");
 				sdp_prf(sk, NULL, "Handle RX SDP_MID_DISCONN");
 				sdp_handle_disconn(sk);
@@ -2453,6 +2461,7 @@ found_fin_ok:
 
 	} while (len > 0);
 
+got_disconn_in_peek:
 	err = copied;
 out:
 
