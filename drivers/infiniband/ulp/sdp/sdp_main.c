@@ -363,6 +363,9 @@ static void sdp_auto_moderation(struct sdp_sock *ssk)
 	int moder_time;
 	int err;
 
+	if (unlikely(!ssk->rx_ring.cq))
+		return;
+
 	if (!mod->adaptive_rx_coal)
 		return;
 
