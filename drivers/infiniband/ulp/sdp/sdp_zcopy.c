@@ -554,6 +554,9 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	int len = *used;
 	int copied;
 
+	while (!iov->iov_len)
+		++iov;
+
 	sdp_dbg_data(&ssk->isk.sk, "preparing RDMA read."
 		" len: 0x%x. buffer len: 0x%lx\n", len, iov->iov_len);
 
