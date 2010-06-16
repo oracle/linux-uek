@@ -195,6 +195,10 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2)
 		sdp_xmit_poll(ssk,  1);
 
+	/* Run out of credits, check if got a credit update */
+	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS))
+		sdp_process_rx(ssk);
+
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
 	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
