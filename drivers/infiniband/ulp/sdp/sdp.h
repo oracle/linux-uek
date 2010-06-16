@@ -375,7 +375,7 @@ struct sdp_sock {
 	unsigned keepalive_rx_head;
 
 	int destructed_already;
-	int sdp_disconnect;
+	int sdp_disconnect; /* Need to send SDP_MID_DISCONNECT */
 	int id_destroyed_already; /* for sdp_remove_device() only */
 
 	struct sdp_rx_ring rx_ring;

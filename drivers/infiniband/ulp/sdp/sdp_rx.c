@@ -871,7 +871,7 @@ int sdp_process_rx(struct sdp_sock *ssk)
 		}
 	}
 
-	if (ssk->sdp_disconnect || ssk->tx_sa)
+	if (unlikely(sk->sk_state != TCP_ESTABLISHED || ssk->tx_sa))
 		sdp_arm_rx_cq(sk);
 
 	rx_ring_unlock(&ssk->rx_ring);
