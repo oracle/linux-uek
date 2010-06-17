@@ -2418,7 +2418,7 @@ skip_copy:
 			ssk->urg_data = 0;
 
 
-		if (rx_sa) {
+		if (rx_sa && !(flags & MSG_PEEK)) {
 			rc = sdp_post_rdma_rd_compl(sk, rx_sa);
 			BUG_ON(rc);
 
