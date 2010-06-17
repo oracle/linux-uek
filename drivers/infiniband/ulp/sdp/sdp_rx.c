@@ -327,7 +327,6 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 				sizeof(struct rx_srcavail_state), GFP_ATOMIC);
 
 		rx_sa->mseq = ntohl(h->mseq);
-		rx_sa->used = 0;
 		rx_sa->len = skb_len = ntohl(srcah->len);
 		rx_sa->rkey = ntohl(srcah->rkey);
 		rx_sa->vaddr = be64_to_cpu(srcah->vaddr);

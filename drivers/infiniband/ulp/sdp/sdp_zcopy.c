@@ -276,12 +276,12 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 }
 
 int sdp_post_rdma_rd_compl(struct sock *sk,
-		struct rx_srcavail_state *rx_sa)
+		struct rx_srcavail_state *rx_sa, u32 offset)
 {
 	struct sk_buff *skb;
-	int copied = rx_sa->used - rx_sa->reported;
+	int copied = offset - rx_sa->reported;
 
-	if (rx_sa->used <= rx_sa->reported)
+	if (offset <= rx_sa->reported)
 		return 0;
 
 	skb = sdp_alloc_skb_rdmardcompl(sk, copied, 0);
@@ -515,7 +515,8 @@ void sdp_free_fmr(struct sock *sk, struct ib_pool_fmr **_fmr, struct ib_umem **_
 	*_umem = NULL;
 }
 
-static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa)
+static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
+		u32 offset)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct ib_send_wr *bad_wr;
@@ -534,7 +535,7 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa)
 	sge.length = rx_sa->umem->length;
 	sge.lkey = rx_sa->fmr->fmr->lkey;
 
-	wr.wr.rdma.remote_addr = rx_sa->vaddr + rx_sa->used;
+	wr.wr.rdma.remote_addr = rx_sa->vaddr + offset;
 	wr.num_sge = 1;
 	wr.sg_list = &sge;
 	rx_sa->busy++;
@@ -545,7 +546,7 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa)
 }
 
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		unsigned long *used)
+		unsigned long *used, u32 offset)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
@@ -574,7 +575,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		goto err_alloc_fmr;
 	}
 
-	rc = sdp_post_rdma_read(sk, rx_sa);
+	rc = sdp_post_rdma_read(sk, rx_sa, offset);
 	if (unlikely(rc)) {
 		sdp_warn(sk, "ib_post_send failed with status %d.\n", rc);
 		sdp_set_error(&ssk->isk.sk, -ECONNRESET);
@@ -599,7 +600,6 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	copied = rx_sa->umem->length;
 
 	sdp_update_iov_used(sk, iov, copied);
-	rx_sa->used += copied;
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
 

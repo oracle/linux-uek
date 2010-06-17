@@ -2185,6 +2185,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			if (!skb)
 				break;
 
+			offset = *seq - SDP_SKB_CB(skb)->seq;
 			avail_bytes_count = 0;
 
 			h = (struct sdp_bsdh *)skb_transport_header(skb);
@@ -2211,7 +2212,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					sdp_dbg_data(sk, "Ignoring src avail "
 							"due to SrcAvailCancel\n");
 					sdp_post_sendsm(sk);
-					if (rx_sa->used < skb->len) {
+					if (offset < skb->len) {
 						sdp_abort_rx_srcavail(sk, skb);
 						sdp_prf(sk, skb, "Converted SA to DATA");
 						goto sdp_mid_data;
@@ -2222,23 +2223,28 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				}
 
 				/* if has payload - handle as if MID_DATA */
-				if (rx_sa->used < skb->len) {
+				if (offset < skb->len) {
 					sdp_dbg_data(sk, "SrcAvail has "
 							"payload: %d/%d\n",
-							 rx_sa->used,
+							 offset,
 						skb->len);
 					avail_bytes_count = skb->len;
 				} else {
 					sdp_dbg_data(sk, "Finished payload. "
 						"RDMAing: %d/%d\n",
-						rx_sa->used, rx_sa->len);
+						offset, rx_sa->len);
 
 					if (flags & MSG_PEEK) {
+						u32 real_offset =
+							ssk->copied_seq -
+							SDP_SKB_CB(skb)->seq;
 						sdp_dbg_data(sk, "Peek on RDMA data - "
 								"fallback to BCopy\n");
 						sdp_abort_rx_srcavail(sk, skb);
 						sdp_post_sendsm(sk);
 						rx_sa = NULL;
+						if (real_offset >= skb->len)
+							goto force_skb_cleanup;
 					} else {
 						avail_bytes_count = rx_sa->len;
 					}
@@ -2262,7 +2268,6 @@ sdp_mid_data:
 				break;
 			}
 
-			offset = *seq - SDP_SKB_CB(skb)->seq;
 			if (offset < avail_bytes_count)
 				goto found_ok_skb;
 
@@ -2374,10 +2379,11 @@ sdp_mid_data:
 			}
 		}
 		if (!(flags & MSG_TRUNC)) {
-			if (rx_sa && rx_sa->used >= skb->len) {
+			if (rx_sa && offset >= skb->len) {
 				/* No more payload - start rdma copy */
 				sdp_dbg_data(sk, "RDMA copy of %lx bytes\n", used);
-				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb, &used);
+				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
+						&used, offset);
 				sdp_dbg_data(sk, "used = %lx bytes\n", used);
 				if (err == -EAGAIN) {
 					sdp_dbg_data(sk, "RDMA Read aborted\n");
@@ -2391,7 +2397,6 @@ sdp_mid_data:
 						/* TODO: skip header? */
 						msg->msg_iov, used);
 				if (rx_sa && !(flags & MSG_PEEK)) {
-					rx_sa->used += used;
 					rx_sa->reported += used;
 				}
 			}
@@ -2409,7 +2414,7 @@ sdp_mid_data:
 		copied += used;
 		len -= used;
 		*seq += used;
-
+		offset = *seq - SDP_SKB_CB(skb)->seq;
 		sdp_dbg_data(sk, "done copied %d target %d\n", copied, target);
 
 		sdp_do_posts(sdp_sk(sk));
@@ -2419,15 +2424,15 @@ skip_copy:
 
 
 		if (rx_sa && !(flags & MSG_PEEK)) {
-			rc = sdp_post_rdma_rd_compl(sk, rx_sa);
+			rc = sdp_post_rdma_rd_compl(sk, rx_sa, offset);
 			BUG_ON(rc);
 
 		}
 
-		if (!rx_sa && used + offset < skb->len)
+		if (!rx_sa && offset < skb->len)
 			continue;
 
-		if (rx_sa && rx_sa->used < rx_sa->len)
+		if (rx_sa && offset < rx_sa->len)
 			continue;
 
 		offset = 0;
@@ -2448,7 +2453,7 @@ skb_cleanup:
 				rx_sa = NULL;
 				
 			}
-
+force_skb_cleanup:
 			sdp_dbg_data(sk, "unlinking skb %p\n", skb);
 			skb_unlink(skb, &sk->sk_receive_queue);
 			__kfree_skb(skb);

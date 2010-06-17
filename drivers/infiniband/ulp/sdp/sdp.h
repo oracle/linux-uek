@@ -234,7 +234,6 @@ enum tx_sa_flag {
 struct rx_srcavail_state {
 	/* Advertised buffer stuff */
 	u32 mseq;
-	u32 used;
 	u32 reported;
 	u32 len;
 	u32 rkey;
@@ -840,9 +839,9 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		u32 bytes_completed);
 int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		unsigned long *used);
+		unsigned long *used, u32 offset);
 int sdp_post_rdma_rd_compl(struct sock *sk,
-		struct rx_srcavail_state *rx_sa);
+		struct rx_srcavail_state *rx_sa, u32 offset);
 int sdp_post_sendsm(struct sock *sk);
 void srcavail_cancel_timeout(struct work_struct *work);
 void sdp_abort_srcavail(struct sock *sk);
