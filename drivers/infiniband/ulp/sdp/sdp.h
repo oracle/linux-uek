@@ -32,8 +32,6 @@
 #define SDP_RX_SIZE 0x40
 
 #define SDP_FMR_SIZE (MIN(0x1000, PAGE_SIZE) / sizeof(u64))
-#define SDP_FMR_POOL_SIZE	1024
-#define SDP_FMR_DIRTY_SIZE	( SDP_FMR_POOL_SIZE / 4 )
 
 #define SDP_MAX_RDMA_READ_LEN (PAGE_SIZE * (SDP_FMR_SIZE - 2))
 
@@ -740,6 +738,7 @@ struct sdpstats {
 	u32 zcopy_cross_send;
 	u32 zcopy_tx_aborted;
 	u32 zcopy_tx_error;
+	u32 fmr_alloc_error;
 };
 
 static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)

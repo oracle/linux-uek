@@ -334,6 +334,7 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	seq_printf(seq, "- TX cross send\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_cross_send));
 	seq_printf(seq, "- TX aborted by peer\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
 	seq_printf(seq, "- TX error\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
+	seq_printf(seq, "- FMR alloc error\t: %d\n", SDPSTATS_COUNTER_GET(fmr_alloc_error));
 
 	__sdpstats_seq_hist_pcpu(seq, "CPU sendmsg", sendmsg);
 	__sdpstats_seq_hist_pcpu(seq, "CPU recvmsg", recvmsg);

@@ -481,7 +481,9 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	fmr = ib_fmr_pool_map_phys(sdp_sk(sk)->sdp_dev->fmr_pool, pages, n, 0);
 	if (IS_ERR(fmr)) {
-		sdp_warn(sk, "Error allocating fmr: %ld\n", PTR_ERR(fmr));
+		sdp_dbg_data(sk, "Error allocating fmr: %ld\n", PTR_ERR(fmr));
+		SDPSTATS_COUNTER_INC(fmr_alloc_error);
+		rc = PTR_ERR(fmr);
 		goto err_fmr_alloc;
 	}
 
@@ -505,8 +507,11 @@ err_umem_get:
 
 void sdp_free_fmr(struct sock *sk, struct ib_pool_fmr **_fmr, struct ib_umem **_umem)
 {
-	if (!sdp_sk(sk)->qp_active)
+	if (!sdp_sk(sk)->qp_active) {
+		sdp_warn(sk, "Trying to free fmr after destroying QP! fmr: %p\n",
+				*_fmr);
 		return;
+	}
 
 	ib_fmr_pool_unmap(*_fmr);
 	*_fmr = NULL;
@@ -571,7 +576,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, len, &rx_sa->fmr, &rx_sa->umem);
 	if (rc) {
-		sdp_warn(sk, "Error allocating fmr: %d\n", rc);
+		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
 	}
 
@@ -610,7 +615,7 @@ err_post_send:
 
 err_alloc_fmr:
 	if (rc && ssk->qp_active) {
-		sdp_warn(sk, "Couldn't do RDMA - post sendsm\n");
+		sdp_dbg_data(sk, "Couldn't do RDMA - post sendsm\n");
 		rx_sa->flags |= RX_SA_ABORTED;
 	}
 
@@ -650,7 +655,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 	rc = sdp_alloc_fmr(sk, iov->iov_base, iov->iov_len,
 			&tx_sa->fmr, &tx_sa->umem);
 	if (rc) {
-		sdp_warn(sk, "Error allocating fmr: %d\n", rc);
+		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
 	}
 

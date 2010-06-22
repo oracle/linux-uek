@@ -87,6 +87,9 @@ SDP_MODPARAM_INT(sdp_data_debug_level, 0,
 		"Enable data path debug tracing if > 0.");
 #endif
 
+SDP_MODPARAM_SINT(sdp_fmr_pool_size, 20, "Number of FMRs to allocate for pool");
+SDP_MODPARAM_SINT(sdp_fmr_dirty_wm, 5, "Watermark to flush fmr pool");
+
 SDP_MODPARAM_SINT(recv_poll, 10, "How many msec to poll recv.");
 SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
@@ -2744,8 +2747,8 @@ static void sdp_add_device(struct ib_device *device)
         }
 
 	memset(&fmr_param, 0, sizeof fmr_param);
-	fmr_param.pool_size	    = SDP_FMR_POOL_SIZE;
-	fmr_param.dirty_watermark   = SDP_FMR_DIRTY_SIZE;
+	fmr_param.pool_size	    = sdp_fmr_pool_size;
+	fmr_param.dirty_watermark   = sdp_fmr_dirty_wm;
 	fmr_param.cache		    = 1;
 	fmr_param.max_pages_per_fmr = SDP_FMR_SIZE;
 	fmr_param.page_shift	    = PAGE_SHIFT;
