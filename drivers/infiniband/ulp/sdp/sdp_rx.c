@@ -784,7 +784,8 @@ void sdp_do_posts(struct sdp_sock *ssk)
 		return;
 	}
 
-	sdp_process_rx(sdp_sk(sk));
+	if (likely(ssk->rx_ring.cq))
+		sdp_process_rx(sdp_sk(sk));
 
 	while ((skb = skb_dequeue(&ssk->rx_ctl_q)))
 		sdp_process_rx_ctl_skb(ssk, skb);
@@ -834,6 +835,13 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
 }
 
+static inline int sdp_should_rearm(struct sock *sk)
+{
+	return sk->sk_state != TCP_ESTABLISHED ||
+		sdp_sk(sk)->tx_sa ||
+		(sk->sk_socket && test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags));
+}
+
 int sdp_process_rx(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
@@ -870,7 +878,7 @@ int sdp_process_rx(struct sdp_sock *ssk)
 		}
 	}
 
-	if (unlikely(sk->sk_state != TCP_ESTABLISHED || ssk->tx_sa))
+	if (unlikely(sdp_should_rearm(sk)))
 		sdp_arm_rx_cq(sk);
 
 	rx_ring_unlock(&ssk->rx_ring);
