@@ -807,7 +807,8 @@ void sdp_abort_rdma_read(struct sock *sk)
 	if (!rx_sa)
 		return;
 
-	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
+	if (rx_sa->fmr)
+		sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
 	ssk->rx_sa = NULL;
 }
