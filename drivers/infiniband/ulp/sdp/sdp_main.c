@@ -2119,12 +2119,22 @@ fin:
 static inline int sdp_abort_rx_srcavail(struct sock *sk, struct sk_buff *skb)
 {
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
+	struct sdp_sock *ssk = sdp_sk(sk);
 
 	sdp_dbg_data(sk, "SrcAvail aborted\n");
 
 	h->mid = SDP_MID_DATA;
+
+	spin_lock_irq(&ssk->rx_ring.lock);
+
+	if (ssk->rx_sa == RX_SRCAVAIL_STATE(skb))
+		ssk->rx_sa = NULL;
+
 	kfree(RX_SRCAVAIL_STATE(skb));
 	RX_SRCAVAIL_STATE(skb) = NULL;
+
+	spin_unlock_irq(&ssk->rx_ring.lock);
+
 
 	return 0;
 }
