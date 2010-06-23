@@ -427,19 +427,19 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	unsigned long max_lockable_bytes;
 
 	if (unlikely(len > SDP_MAX_RDMA_READ_LEN)) {
-		sdp_dbg_data(sk, "len:0x%lx > FMR_SIZE: 0x%lx\n",
+		sdp_dbg_data(sk, "len:0x%zx > FMR_SIZE: 0x%lx\n",
 			len, SDP_MAX_RDMA_READ_LEN);
 		len = SDP_MAX_RDMA_READ_LEN;
 	}
 
 	max_lockable_bytes = sdp_get_max_memlockable_bytes((unsigned long)uaddr & ~PAGE_MASK);
 	if (unlikely(len > max_lockable_bytes)) {
-		sdp_dbg_data(sk, "len:0x%lx > RLIMIT_MEMLOCK available: 0x%lx\n",
+		sdp_dbg_data(sk, "len:0x%zx > RLIMIT_MEMLOCK available: 0x%lx\n",
 			len, max_lockable_bytes);
 		len = max_lockable_bytes;
 	}
 
-	sdp_dbg_data(sk, "user buf: %p, len:0x%lx max_lockable_bytes: 0x%lx\n",
+	sdp_dbg_data(sk, "user buf: %p, len:0x%zx max_lockable_bytes: 0x%lx\n",
 			uaddr, len, max_lockable_bytes);
 
 	umem = ib_umem_get(&sdp_sk(sk)->context, (unsigned long)uaddr, len,
@@ -447,7 +447,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	if (IS_ERR(umem)) {
 		rc = PTR_ERR(umem);
-		sdp_warn(sk, "Error doing umem_get 0x%lx bytes: %d\n", len, rc);
+		sdp_warn(sk, "Error doing umem_get 0x%zx bytes: %d\n", len, rc);
 		sdp_warn(sk, "RLIMIT_MEMLOCK: 0x%lx[cur] 0x%lx[max] CAP_IPC_LOCK: %d\n",
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur,
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_max,
@@ -455,7 +455,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		goto err_umem_get;
 	}
 
-	sdp_dbg_data(sk, "umem->offset = 0x%x, length = 0x%lx\n",
+	sdp_dbg_data(sk, "umem->offset = 0x%x, length = 0x%zx\n",
 		umem->offset, umem->length);
 
 	pages = (u64 *) __get_free_page(GFP_KERNEL);
@@ -564,7 +564,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		++iov;
 
 	sdp_dbg_data(&ssk->isk.sk, "preparing RDMA read."
-		" len: 0x%x. buffer len: 0x%lx\n", len, iov->iov_len);
+		" len: 0x%x. buffer len: 0x%zx\n", len, iov->iov_len);
 
 	sock_hold(sk, SOCK_REF_RDMA_RD);
 
@@ -727,7 +727,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 	size_t bytes_to_copy = 0;
 	int copied = 0;
 
-	sdp_dbg_data(sk, "Sending iov: %p, iov_len: 0x%lx\n",
+	sdp_dbg_data(sk, "Sending iov: %p, iov_len: 0x%zx\n",
 			iov->iov_base, iov->iov_len);
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
@@ -758,7 +758,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 		rc = do_sdp_sendmsg_zcopy(sk, tx_sa, iov, &timeo);
 
 		if (iov->iov_len && iov->iov_len < sdp_zcopy_thresh) {
-			sdp_dbg_data(sk, "0x%lx bytes left, switching to bcopy\n",
+			sdp_dbg_data(sk, "0x%zx bytes left, switching to bcopy\n",
 				iov->iov_len);
 			break;
 		}

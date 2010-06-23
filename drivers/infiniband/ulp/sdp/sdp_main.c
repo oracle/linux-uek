@@ -1898,7 +1898,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	SDPSTATS_COUNTER_INC(sendmsg);
 
 	lock_sock(sk);
-	sdp_dbg_data(sk, "%s size = 0x%lx\n", __func__, size);
+	sdp_dbg_data(sk, "%s size = 0x%zx\n", __func__, size);
 
 	posts_handler_get(ssk);
 
@@ -1926,7 +1926,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		int seglen = iov->iov_len;
 		char __user *from = iov->iov_base;
 
-		sdp_dbg_data(sk, "Sending iov: %d/%ld %p\n", i, msg->msg_iovlen, from);
+		sdp_dbg_data(sk, "Sending iov: 0x%x/0x%zx %p\n", i, msg->msg_iovlen, from);
 
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
@@ -2005,7 +2005,7 @@ new_segment:
 				copy = size_goal;
 
 				sdp_dbg_data(sk, "created new skb: %p"
-					" len = 0x%lx, sk_send_head: %p "
+					" len = 0x%zx, sk_send_head: %p "
 					"copy: 0x%x size_goal: 0x%x\n",
 					skb, skb->len - sizeof(struct sdp_bsdh),
 					sk->sk_send_head, copy, size_goal);
@@ -2013,7 +2013,7 @@ new_segment:
 
 			} else {
 				sdp_dbg_data(sk, "adding to existing skb: %p"
-					" len = 0x%lx, sk_send_head: %p "
+					" len = 0x%zx, sk_send_head: %p "
 					"copy: 0x%x\n",
 					skb, skb->len - sizeof(struct sdp_bsdh),
 				       	sk->sk_send_head, copy);

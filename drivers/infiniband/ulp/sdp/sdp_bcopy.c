@@ -72,7 +72,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 				ntohl(req_size->size));
 		break;
 	case SDP_MID_DATA:
-		len += snprintf(buf + len, 255-len, "data_len: 0x%lx |",
+		len += snprintf(buf + len, 255-len, "data_len: 0x%zx |",
 			ntohl(h->len) - sizeof(struct sdp_bsdh));
 		break;
 	case SDP_MID_RDMARDCOMPL:
@@ -84,8 +84,8 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	case SDP_MID_SRCAVAIL:
 		srcah = (struct sdp_srcah *)(h+1);
 
-		len += snprintf(buf + len, 255-len, " | payload: 0x%lx, "
-				"len: 0x%x, rkey: 0x%x, vaddr: 0x%llx |",
+		len += snprintf(buf + len, 255-len, " | payload: 0x%zx, "
+				"len: 0x%zx, rkey: 0x%x, vaddr: 0x%llx |",
 				ntohl(h->len) - sizeof(struct sdp_bsdh) - 
 				sizeof(struct sdp_srcah),
 				ntohl(srcah->len), ntohl(srcah->rkey),
