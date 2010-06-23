@@ -1027,14 +1027,18 @@ static void sdp_destroy_work(struct work_struct *work)
 	struct sock *sk = &ssk->isk.sk;
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
+	lock_sock(sk);
 	sdp_destroy_qp(ssk);
+	release_sock(sk);
 
 	/* Can be sure that rx_comp_work won't be queued from here cause
 	 * ssk->rx_ring.cq is NULL from here
 	 */
 	cancel_work_sync(&ssk->rx_comp_work);
 
+	lock_sock(sk);
 	memset((void *)&ssk->id, 0, sizeof(*ssk) - offsetof(typeof(*ssk), id));
+	release_sock(sk);
 
 	sdp_cancel_dreq_wait_timeout(ssk);
 
@@ -1045,10 +1049,13 @@ static void sdp_destroy_work(struct work_struct *work)
 			sock_put(sk, SOCK_REF_CMA);
 	}
 
+	lock_sock(sk);
 	/* In normal close current state is TCP_TIME_WAIT or TCP_CLOSE
 	   but if a CM connection is dropped below our legs state could
 	   be any state */
 	sdp_exch_state(sk, ~0, TCP_CLOSE);
+	release_sock(sk);
+
 	sock_put(sk, SOCK_REF_RESET);
 }
 
