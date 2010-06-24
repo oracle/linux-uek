@@ -768,7 +768,14 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		.sin_addr.s_addr = inet_sk(sk)->saddr,
 	};
 	int rc;
+	release_sock(sk);
 	flush_workqueue(sdp_wq);
+	lock_sock(sk);
+	if (sk->sk_err) {
+		sdp_warn(sk, "Can't connect, socket marked with error: %d\n",
+				sk->sk_err);
+		return -sk->sk_err;
+	}
 
         if (addr_len < sizeof(struct sockaddr_in))
                 return -EINVAL;
