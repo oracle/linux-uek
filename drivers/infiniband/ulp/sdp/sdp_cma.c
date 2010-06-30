@@ -467,7 +467,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 					"let close() finish the work\n");
 				sock_hold(sk, SOCK_REF_CMA);
 			}
-			sdp_set_error(sk, EPIPE);
+			sdp_set_error(sk, -EPIPE);
 			rc = sdp_disconnected_handler(sk);
 		}
 		break;
