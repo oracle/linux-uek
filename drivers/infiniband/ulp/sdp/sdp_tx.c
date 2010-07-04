@@ -168,7 +168,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	return;
 
 err:
-	__kfree_skb(skb);		
+	__kfree_skb(skb);
 }
 
 static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
@@ -304,7 +304,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
 		sdp_post_sends(ssk, GFP_ATOMIC);
-		sdp_prf1(sk, NULL, "Waking sendmsg. inflight=%d", 
+		sdp_prf1(sk, NULL, "Waking sendmsg. inflight=%d",
 				(u32) tx_ring_posted(ssk));
 		sk_stream_write_space(&ssk->isk.sk);
 		if (sk->sk_write_pending &&
@@ -326,7 +326,7 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
  * - a write is pending - wake it up and let it do the poll + post
  * - post handler is taken - taker will do the poll + post
  * else return 1 and let the caller do it
- */  
+ */
 static int sdp_tx_handler_select(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
@@ -347,7 +347,7 @@ static int sdp_tx_handler_select(struct sdp_sock *ssk)
 		/* Somebody else available to check for completion */
 		sdp_prf1(sk, NULL, "Somebody else will call do_posts");
 		return 0;
-	} 
+	}
 
 	return 1;
 }
@@ -358,7 +358,7 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 	u32 inflight, wc_processed;
 
-	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d, head=%d tail=%d", 
+	sdp_prf1(&ssk->isk.sk, NULL, "TX timeout: inflight=%d, head=%d tail=%d",
 		(u32) tx_ring_posted(ssk),
 		ring_head(ssk->tx_ring), ring_tail(ssk->tx_ring));
 

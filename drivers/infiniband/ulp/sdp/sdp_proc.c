@@ -170,7 +170,7 @@ static int sdp_seq_open(struct inode *inode, struct file *file)
 #define _kzalloc(size,flags) kzalloc(size,flags)
 #undef kzalloc
 	s = kzalloc(sizeof(*s), GFP_KERNEL);
-#define kzalloc(s,f) _kzalloc(s,f)	
+#define kzalloc(s,f) _kzalloc(s,f)
 	if (!s)
 		return -ENOMEM;
 	s->family               = afinfo->family;
@@ -219,7 +219,7 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 
 		if (first == -1 && h[i])
 			first = i;
-		
+
 		if (h[i])
 			last = i;
 	}
@@ -246,7 +246,7 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 	for_each_possible_cpu(__i)                              \
 		__val += per_cpu(sdpstats, __i).var;		\
 	__val;							\
-})	
+})
 
 #define SDPSTATS_HIST_GET(hist, hist_len, sum) ({ \
 	unsigned int __i;                                       \
@@ -528,7 +528,7 @@ no_mem_stats:
 #endif
 	proc_net_remove(&init_net, sdp_seq_afinfo.name);
 
-no_mem:	
+no_mem:
 	return -ENOMEM;
 }
 

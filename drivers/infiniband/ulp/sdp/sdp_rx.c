@@ -320,7 +320,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 	if (h->mid == SDP_MID_SRCAVAIL) {
 		struct sdp_srcah *srcah = (struct sdp_srcah *)(h+1);
 		struct rx_srcavail_state *rx_sa;
-		
+
 		ssk->srcavail_cancel_mseq = 0;
 
 		ssk->rx_sa = rx_sa = RX_SRCAVAIL_STATE(skb) = kzalloc(
@@ -504,7 +504,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		if (ssk->rx_sa) {
 			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
 			ssk->rx_sa->flags |= RX_SA_ABORTED;
-			ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get 
+			ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get
 			                      the dirty logic from recvmsg */
 		} else {
 			sdp_dbg(sk, "Got SrcAvailCancel - "
@@ -867,7 +867,7 @@ int sdp_process_rx(struct sdp_sock *ssk)
 		if (posts_handler(ssk) || (sk->sk_socket &&
 			test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags))) {
 
-			sdp_prf(&ssk->isk.sk, NULL, 
+			sdp_prf(&ssk->isk.sk, NULL,
 				"Somebody is doing the post work for me. %d",
 				posts_handler(ssk));
 

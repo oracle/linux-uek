@@ -602,7 +602,7 @@ static void sdp_cma_timewait_timeout_work(struct work_struct *work)
 	struct sdp_sock *ssk =
 		container_of(work, struct sdp_sock, cma_timewait_work.work);
 	struct sock *sk = &ssk->isk.sk;
-	
+
 	lock_sock(sk);
 	if (!ssk->cma_timewait_timeout) {
 		release_sock(sk);
@@ -666,7 +666,7 @@ static void sdp_close(struct sock *sk, long timeout)
 
 	sock_hold(sk, SOCK_REF_CMA);
 	sdp_start_cma_timewait_timeout(sdp_sk(sk), SDP_CMA_TIMEWAIT_TIMEOUT);
-	
+
 	/*  We need to flush the recv. buffs.  We do this only on the
 	 *  descriptor close, not protocol-sourced closes, because the
 	 *  reader process may not have drained the data yet!
@@ -1071,7 +1071,7 @@ static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 	struct sdp_sock *ssk =
 		container_of(work, struct sdp_sock, dreq_wait_work.work);
 	struct sock *sk = &ssk->isk.sk;
-	
+
 	if (!ssk->dreq_wait_timeout)
 		goto out;
 
@@ -1840,14 +1840,14 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 
 		if (credits_needed) {
 			sk_wait_event(sk, &current_timeo,
-					!sk->sk_err && 
+					!sk->sk_err &&
 					!(sk->sk_shutdown & SEND_SHUTDOWN) &&
 					!ssk->tx_compl_pending &&
 					tx_slots_free(ssk) >= *credits_needed &&
 					vm_wait);
 		} else {
 			sk_wait_event(sk, &current_timeo,
-					!sk->sk_err && 
+					!sk->sk_err &&
 					!(sk->sk_shutdown & SEND_SHUTDOWN) &&
 					!ssk->tx_compl_pending &&
 					sk_stream_memory_free(sk) &&
@@ -1928,7 +1928,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
 		goto do_error;
 
-	for (i = 0; i < msg->msg_iovlen; i++) {	
+	for (i = 0; i < msg->msg_iovlen; i++) {
 		struct iovec *iov = &msg->msg_iov[i];
 		int seglen = iov->iov_len;
 		char __user *from = iov->iov_base;
@@ -1948,7 +1948,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				err = zcopied;
 				goto out_err;
 			}
-			
+
 			copied += zcopied;
 			seglen = iov->iov_len;
 			from = iov->iov_base;
@@ -2283,7 +2283,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				break;
 
 			case SDP_MID_DATA:
-sdp_mid_data:				
+sdp_mid_data:
 				rx_sa = NULL;
 				avail_bytes_count = skb->len;
 				break;
@@ -2481,7 +2481,7 @@ skb_cleanup:
 
 				kfree(rx_sa);
 				rx_sa = NULL;
-				
+
 			}
 force_skb_cleanup:
 			sdp_dbg_data(sk, "unlinking skb %p\n", skb);

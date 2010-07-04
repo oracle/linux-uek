@@ -86,7 +86,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 
 		len += snprintf(buf + len, 255-len, " | payload: 0x%zx, "
 				"len: 0x%zx, rkey: 0x%x, vaddr: 0x%llx |",
-				ntohl(h->len) - sizeof(struct sdp_bsdh) - 
+				ntohl(h->len) - sizeof(struct sdp_bsdh) -
 				sizeof(struct sdp_srcah),
 				ntohl(srcah->len), ntohl(srcah->rkey),
 				be64_to_cpu(srcah->vaddr));
@@ -205,7 +205,7 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	    sdp_tx_ring_slots_left(ssk)) {
 		ssk->recv_request = 0;
 
-		skb = sdp_alloc_skb_chrcvbuf_ack(sk, 
+		skb = sdp_alloc_skb_chrcvbuf_ack(sk,
 				ssk->recv_frags * PAGE_SIZE, gfp);
 
 		sdp_post_send(ssk, skb);

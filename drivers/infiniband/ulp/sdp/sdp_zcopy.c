@@ -39,7 +39,7 @@
 #include <rdma/rdma_cm.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_fmr_pool.h>
-#include <rdma/ib_umem.h> 
+#include <rdma/ib_umem.h>
 #include <net/tcp.h> /* for memcpy_toiovec */
 #include <asm/io.h>
 #include <asm/uaccess.h>
@@ -75,8 +75,8 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 		return -ENOMEM;
 	}
 	sdp_dbg_data(sk, "sending SrcAvail\n");
-		
-	TX_SRCAVAIL_STATE(skb) = tx_sa; /* tx_sa is hanged on the skb 
+
+	TX_SRCAVAIL_STATE(skb) = tx_sa; /* tx_sa is hanged on the skb
 					 * but continue to live after skb is freed */
 	ssk->tx_sa = tx_sa;
 
@@ -97,7 +97,7 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	skb->truesize        += payload_len;
 
 	sdp_skb_entail(sk, skb);
-	
+
 	ssk->write_seq += payload_len;
 	SDP_SKB_CB(skb)->end_seq += payload_len;
 
@@ -201,7 +201,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 		sk_wait_event(sk, &current_timeo,
 				tx_sa->abort_flags &&
 				ssk->rx_sa &&
-				(tx_sa->bytes_acked < tx_sa->bytes_sent) && 
+				(tx_sa->bytes_acked < tx_sa->bytes_sent) &&
 				vm_wait);
 		sdp_prf(&ssk->isk.sk, NULL, "woke up sleepers");
 
@@ -262,7 +262,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 		posts_handler_put(ssk);
 
 		sdp_prf1(sk, NULL, "Going to sleep");
-		sk_wait_event(sk, &timeo, 
+		sk_wait_event(sk, &timeo,
 			!ssk->tx_ring.rdma_inflight->busy);
 		sdp_prf1(sk, NULL, "Woke up");
 		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
@@ -494,7 +494,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	return 0;
 
-err_fmr_alloc:	
+err_fmr_alloc:
 	free_page((unsigned long) pages);
 
 err_pages_alloc:
@@ -714,7 +714,7 @@ err_no_tx_slots:
 	sdp_free_fmr(sk, &tx_sa->fmr, &tx_sa->umem);
 
 err_alloc_fmr:
-	return rc;	
+	return rc;
 }
 
 int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)

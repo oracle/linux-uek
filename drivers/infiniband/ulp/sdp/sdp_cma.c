@@ -95,10 +95,10 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	qp_init_attr.cap.max_send_sge = MIN(sdp_sk(sk)->max_sge, SDP_MAX_SEND_SGES);
 	sdp_dbg(sk, "Setting max send sge to: %d\n", qp_init_attr.cap.max_send_sge);
-		
+
 	qp_init_attr.cap.max_recv_sge = MIN(sdp_sk(sk)->max_sge, SDP_MAX_RECV_SGES);
 	sdp_dbg(sk, "Setting max recv sge to: %d\n", qp_init_attr.cap.max_recv_sge);
-		
+
 	sdp_sk(sk)->sdp_dev = ib_get_client_data(device, &sdp_client);
 	if (!sdp_sk(sk)->sdp_dev) {
 		sdp_warn(sk, "SDP not available on device %s\n", device->name);
@@ -344,7 +344,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		if (sdp_link_layer_ib_only &&
-			rdma_node_get_transport(id->device->node_type) == 
+			rdma_node_get_transport(id->device->node_type) ==
 				RDMA_TRANSPORT_IB &&
 			rdma_port_link_layer(id->device, id->port_num) !=
 				IB_LINK_LAYER_INFINIBAND) {
