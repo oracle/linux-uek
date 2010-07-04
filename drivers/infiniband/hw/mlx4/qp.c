@@ -439,7 +439,7 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 		return -EINVAL;
 	}
 
-	if (type == IB_QPT_RAW_ETY &&
+	if (type == IB_QPT_RAW_ETHERTYPE &&
 	    cap->max_send_sge + 1 > dev->dev->caps.max_sq_sg) {
 		mlx4_ib_dbg("No space for RAW ETY hdr");
 		return -EINVAL;
@@ -485,7 +485,7 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 	 */
 	if (dev->dev->caps.fw_ver >= MLX4_FW_VER_WQE_CTRL_NEC &&
 	    qp->sq_signal_bits && BITS_PER_LONG == 64 &&
-	    type != IB_QPT_SMI && type != IB_QPT_GSI && type != IB_QPT_RAW_ETY &&
+	    type != IB_QPT_SMI && type != IB_QPT_GSI && type != IB_QPT_RAW_ETHERTYPE &&
 	    type != MLX4_IB_QPT_PROXY_SMI && type != MLX4_IB_QPT_PROXY_GSI &&
 	    type != MLX4_IB_QPT_TUN_SMI)
 		qp->sq.wqe_shift = ilog2(64);
@@ -1004,7 +1004,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 
 		break;
 	}
-	case IB_QPT_RAW_ETY:
+	case IB_QPT_RAW_ETHERTYPE:
 		if (!(dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_RAW_ETY))
 			return ERR_PTR(-ENOSYS);
 	case IB_QPT_SMI:
@@ -1018,7 +1018,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 
 		err = create_qp_common(dev, pd, init_attr, udata,
 				       dev->dev->caps.sqp_start +
-				       (init_attr->qp_type == IB_QPT_RAW_ETY ? 4 :
+				       (init_attr->qp_type == IB_QPT_RAW_ETHERTYPE ? 4 :
 				       (init_attr->qp_type == IB_QPT_SMI ? 0 : 2)) +
 				       init_attr->port_num - 1,
 				       &qp);
@@ -1253,7 +1253,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	}
 
 	if (ibqp->qp_type == IB_QPT_GSI || ibqp->qp_type == IB_QPT_SMI ||
-	    ibqp->qp_type == IB_QPT_RAW_ETY)
+	    ibqp->qp_type == IB_QPT_RAW_ETHERTYPE)
 		context->mtu_msgmax = (IB_MTU_4096 << 5) | 11;
 	else if (ibqp->qp_type == IB_QPT_UD) {
 		if (qp->flags & MLX4_IB_QP_LSO)
@@ -1447,7 +1447,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	if (cur_state == IB_QPS_INIT &&
 	    new_state == IB_QPS_RTR  &&
 	    (ibqp->qp_type == IB_QPT_GSI || ibqp->qp_type == IB_QPT_SMI ||
-	     ibqp->qp_type == IB_QPT_UD || ibqp->qp_type == IB_QPT_RAW_ETY)) {
+	     ibqp->qp_type == IB_QPT_UD || ibqp->qp_type == IB_QPT_RAW_ETHERTYPE)) {
 		context->pri_path.sched_queue = (qp->port - 1) << 6;
 		if (qp->mlx4_ib_qp_type == MLX4_IB_QPT_SMI ||
 		    qp->mlx4_ib_qp_type == MLX4_IB_QPT_PROXY_SMI ||

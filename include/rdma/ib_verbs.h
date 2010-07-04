@@ -602,7 +602,7 @@ enum ib_qp_type {
 	IB_QPT_UD,
 	IB_QPT_XRC,
 	IB_QPT_RAW_IPV6,
-	IB_QPT_RAW_ETY
+	IB_QPT_RAW_ETHERTYPE
 };
 
 enum ib_qp_create_flags {
