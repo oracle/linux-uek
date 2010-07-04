@@ -3,6 +3,7 @@
 
 #include <linux/workqueue.h>
 #include <linux/wait.h>
+#include <linux/rwsem.h>
 #include <net/inet_sock.h>
 #include <net/tcp.h> /* For urgent data flags */
 #include <rdma/ib_verbs.h>
@@ -800,7 +801,7 @@ void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_reset(struct sock *sk);
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void sdp_skb_entail(struct sock *sk, struct sk_buff *skb);
-extern rwlock_t device_removal_lock;
+extern struct rw_semaphore device_removal_lock;
 
 /* sdp_proc.c */
 int __init sdp_proc_init(void);

@@ -119,7 +119,7 @@ struct workqueue_struct *rx_comp_wq;
 struct list_head sock_list;
 spinlock_t sock_list_lock;
 
-DEFINE_RWLOCK(device_removal_lock);
+DECLARE_RWSEM(device_removal_lock);
 
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
@@ -521,10 +521,10 @@ static void sdp_destruct(struct sock *sk)
 
 	ssk->destructed_already = 1;
 
-	read_lock(&device_removal_lock);
+	down_read(&device_removal_lock);
 	sdp_remove_sock(ssk);
 	sdp_destroy_resources(sk);
-	read_unlock(&device_removal_lock);
+	up_read(&device_removal_lock);
 
 	flush_scheduled_work();
 
@@ -2810,7 +2810,7 @@ static void sdp_remove_device(struct ib_device *device)
 
 	/* destroy_ids: */
 do_next:
-	write_lock(&device_removal_lock);
+	down_write(&device_removal_lock);
 
 	spin_lock_irq(&sock_list_lock);
 	list_for_each_entry(ssk, &sock_list, sock_list) {
@@ -2825,7 +2825,7 @@ do_next:
 			ssk->id_destroyed_already = 1;
 
 			release_sock(sk);
-			write_unlock(&device_removal_lock);
+			up_write(&device_removal_lock);
 
 			if (id)
 				rdma_destroy_id(id);
@@ -2859,7 +2859,7 @@ kill_socks:
 
 	spin_unlock_irq(&sock_list_lock);
 
-	write_unlock(&device_removal_lock);
+	up_write(&device_removal_lock);
 
 	if (!sdp_dev)
 		return;
