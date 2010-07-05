@@ -1001,5 +1001,9 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 		}
 	}
 
+	tasklet_kill(&ssk->rx_ring.tasklet);
+	/* rx_cq is destroyed, so no more rx_irq, so no one will schedule this
+	 * tasklet. */
+
 	SDP_WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }
