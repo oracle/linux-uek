@@ -674,7 +674,7 @@ static void sdp_close(struct sock *sk, long timeout)
 	while ((skb = skb_dequeue(&sk->sk_receive_queue)) != NULL) {
 		struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
 		if (h->mid == SDP_MID_DISCONN) {
-				sdp_handle_disconn(sk);
+			sdp_handle_disconn(sk);
 		} else {
 			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
@@ -2142,7 +2142,6 @@ static inline int sdp_abort_rx_srcavail(struct sock *sk, struct sk_buff *skb)
 
 	spin_unlock_irq(&ssk->rx_ring.lock);
 
-
 	return 0;
 }
 
@@ -2303,7 +2302,7 @@ sdp_mid_data:
 
  			if (unlikely(!(flags & MSG_PEEK))) {
 				 	sdp_warn(sk, "Trying to read beyond SKB\n");
-				 	sdp_prf(sk, skb, "Aborting recv");
+					sdp_prf(sk, skb, "Aborting recv");
 					goto skb_cleanup;
 			}
 
