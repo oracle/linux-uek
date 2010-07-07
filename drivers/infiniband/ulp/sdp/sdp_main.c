@@ -527,6 +527,8 @@ static void sdp_destruct(struct sock *sk)
 	up_read(&device_removal_lock);
 
 	flush_scheduled_work();
+	flush_workqueue(rx_comp_wq);
+	/* Consider use cancel_work_sync(&ssk->rx_comp_work) */
 
 	if (ssk->parent)
 		goto done;
@@ -2849,6 +2851,7 @@ kill_socks:
 			ssk->sdp_dev = NULL;
 
 			release_sock(sk);
+			flush_workqueue(rx_comp_wq);
 			schedule();
 			spin_lock_irq(&sock_list_lock);
 
