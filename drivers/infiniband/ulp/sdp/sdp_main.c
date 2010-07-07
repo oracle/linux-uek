@@ -2120,6 +2120,12 @@ out_err:
 fin:
 	posts_handler_put(ssk);
 
+	if (!err && !ssk->qp_active) {
+		err = -EPIPE;
+		sdp_set_error(sk, err);
+		sdp_dbg(sk, "can't send anymore\n");
+	}
+
 	release_sock(sk);
 
 	return err;
@@ -2507,6 +2513,12 @@ out:
 	posts_handler_put(ssk);
 
 	sdp_auto_moderation(ssk);
+	
+	if (!err && !ssk->qp_active) {
+		err = -EPIPE;
+		sdp_set_error(sk, err);
+		sdp_dbg(sk, "data won't be available anymore\n");
+	}
 
 	release_sock(sk);
 	sdp_dbg_data(sk, "recvmsg finished. ret = %d\n", err);
