@@ -431,7 +431,7 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 
 static void sdp_tx_ring_purge(struct sdp_sock *ssk)
 {
-	while (tx_ring_posted(ssk)) {
+	while (ring_posted(ssk->tx_ring)) {
 		struct sk_buff *skb;
 		skb = sdp_send_completion(ssk, ring_tail(ssk->tx_ring));
 		if (!skb)
