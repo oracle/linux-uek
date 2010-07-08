@@ -50,7 +50,7 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 
 	/* If we don't have a pending timer, set one up to catch our recent
 	   post in case the interface becomes idle */
-	if (!timer_pending(&ssk->tx_ring.timer))
+	if (likely(ssk->qp_active) && !timer_pending(&ssk->tx_ring.timer))
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 
 	ssk->tx_compl_pending = 0;
@@ -421,7 +421,10 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 
 	if (sdp_tx_handler_select(ssk)) {
 		sdp_prf1(sk, NULL, "poll and post from tasklet");
-		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+		if (likely(ssk->qp_active)) {
+			mod_timer(&ssk->tx_ring.timer,
+					jiffies + SDP_TX_POLL_TIMEOUT);
+		}
 		tasklet_schedule(&ssk->tx_ring.tasklet);
 	}
 }
