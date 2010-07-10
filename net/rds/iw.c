@@ -286,7 +286,7 @@ struct rds_transport rds_iw_transport = {
 	.t_prefer_loopback	= 1,
 };
 
-int __init rds_iw_init(void)
+int rds_iw_init(void)
 {
 	int ret;
 
