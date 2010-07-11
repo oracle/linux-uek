@@ -508,6 +508,9 @@ static inline void sdp_set_error(struct sock *sk, int err)
 
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {
+	if (unlikely(!sdp_sk(sk)->rx_ring.cq))
+		return;
+
 	sdp_prf(sk, NULL, "Arming RX cq");
 	sdp_dbg_data(sk, "Arming RX cq\n");
 
@@ -516,6 +519,9 @@ static inline void sdp_arm_rx_cq(struct sock *sk)
 
 static inline void sdp_arm_tx_cq(struct sock *sk)
 {
+	if (unlikely(!sdp_sk(sk)->tx_ring.cq))
+		return;
+
 	sdp_prf(sk, NULL, "Arming TX cq");
 	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
 		tx_credits(sdp_sk(sk)), tx_ring_posted(sdp_sk(sk)));
