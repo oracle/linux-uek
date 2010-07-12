@@ -845,7 +845,7 @@ static inline int sdp_should_rearm(struct sock *sk)
 int sdp_process_rx(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
-	int wc_processed = 0;
+	int wc_processed;
 	int credits_before;
 
 	if (!rx_ring_trylock(&ssk->rx_ring)) {
@@ -857,11 +857,9 @@ int sdp_process_rx(struct sdp_sock *ssk)
 
 	wc_processed = sdp_poll_rx_cq(ssk);
 
-	if (wc_processed)
-		sdp_prf(&ssk->isk.sk, NULL, "processed %d", wc_processed);
-
 	if (wc_processed) {
-		sdp_prf(&ssk->isk.sk, NULL, "credits:  %d -> %d",
+		sdp_prf(sk, NULL, "processed %d", wc_processed);
+		sdp_prf(sk, NULL, "credits:  %d -> %d",
 				credits_before, tx_credits(ssk));
 
 		if (posts_handler(ssk) || (sk->sk_socket &&
