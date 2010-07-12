@@ -1158,6 +1158,7 @@ int sdp_init_sock(struct sock *sk)
 
 	ssk->tx_ring.rdma_inflight = NULL;
 
+	init_timer(&ssk->rx_ring.timer);
 	init_timer(&ssk->tx_ring.timer);
 	init_timer(&ssk->nagle_timer);
 	init_timer(&sk->sk_timer);
@@ -1827,10 +1828,9 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 				break;
 		}
 
-		posts_handler_put(ssk);
-
-		/* Before going to sleep, make sure no credit update is missed */
-		sdp_arm_rx_cq(sk);
+		/* Before going to sleep, make sure no credit update is missed,
+		 * rx_cq will be armed now. */
+		posts_handler_put(ssk, 0);
 
 		set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 		sk->sk_write_pending++;
@@ -2118,7 +2118,7 @@ out_err:
 	sdp_dbg_data(sk, "err: %d\n", err);
 
 fin:
-	posts_handler_put(ssk);
+	posts_handler_put(ssk, jiffies + SDP_RX_POLL_TIMEOUT);
 
 	if (!err && !ssk->qp_active) {
 		err = -EPIPE;
@@ -2376,9 +2376,8 @@ sdp_mid_data:
 		} else if (rc) {
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
 			sdp_prf(sk, NULL, "giving up polling");
-			sdp_arm_rx_cq(sk);
 
-			posts_handler_put(ssk);
+			posts_handler_put(ssk, 0);
 
 			/* socket lock is released inside sk_wait_data */
 			sk_wait_data(sk, &timeo);
@@ -2510,7 +2509,7 @@ got_disconn_in_peek:
 	err = copied;
 out:
 
-	posts_handler_put(ssk);
+	posts_handler_put(ssk, jiffies + SDP_RX_POLL_TIMEOUT);
 
 	sdp_auto_moderation(ssk);
 	

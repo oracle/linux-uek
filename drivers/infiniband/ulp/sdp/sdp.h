@@ -18,6 +18,8 @@
 #define SDP_TX_POLL_TIMEOUT	(HZ / 20)
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
+#define SDP_RX_POLL_TIMEOUT	(1 + HZ / 1000)
+
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
 #define SDP_SRCAVAIL_PAYLOAD_LEN 1
@@ -91,11 +93,27 @@ struct sdp_skb_cb {
 	(ssk->tx_ring.rdma_inflight ? ssk->tx_ring.rdma_inflight->busy : 0))
 
 #define posts_handler(ssk) atomic_read(&ssk->somebody_is_doing_posts)
-#define posts_handler_get(ssk) atomic_inc(&ssk->somebody_is_doing_posts)
-#define posts_handler_put(ssk) do {\
-	atomic_dec(&ssk->somebody_is_doing_posts); \
-	sdp_do_posts(ssk); \
-} while (0)
+#define posts_handler_get(ssk)						\
+	do {								\
+		atomic_inc(&ssk->somebody_is_doing_posts);		\
+		/* postpone the rx_ring.timer, there is no need to enable
+		 * interrupts because there will be cq-polling. */ 	\
+		mod_timer(&ssk->rx_ring.timer, MAX_JIFFY_OFFSET);	\
+	} while (0)
+
+#define posts_handler_put(ssk, intr_delay)				\
+	do {								\
+		sdp_do_posts(ssk);					\
+		if (atomic_dec_and_test(&ssk->somebody_is_doing_posts))	{ \
+			if (intr_delay)					\
+				mod_timer(&ssk->rx_ring.timer, intr_delay); \
+			else						\
+				/* There is no point of setting up a timer
+				 * for an immediate cq-arming, better arm it
+				 * now. */				\
+				sdp_arm_rx_cq(&ssk->isk.sk);		\
+		}							\
+	} while (0)
 
 extern int sdp_zcopy_thresh;
 extern struct workqueue_struct *sdp_wq;
@@ -289,7 +307,7 @@ struct sdp_rx_ring {
 	rwlock_t 	 destroyed_lock;
 	spinlock_t	 lock;
 
-	struct tasklet_struct 	tasklet;
+	struct timer_list 	timer;
 };
 
 struct sdp_device {

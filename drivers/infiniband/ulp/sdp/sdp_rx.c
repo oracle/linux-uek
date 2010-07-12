@@ -832,7 +832,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	sdp_prf(sk, NULL, "rx irq");
 
-	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
+	mod_timer(&ssk->rx_ring.timer, 0);
 }
 
 static inline int sdp_should_rearm(struct sock *sk)
@@ -878,7 +878,7 @@ int sdp_process_rx(struct sdp_sock *ssk)
 		}
 	}
 
-	if (unlikely(sdp_should_rearm(sk)))
+	if (unlikely(sdp_should_rearm(sk) || !posts_handler(ssk)))
 		sdp_arm_rx_cq(sk);
 
 	rx_ring_unlock(&ssk->rx_ring);
@@ -886,7 +886,7 @@ int sdp_process_rx(struct sdp_sock *ssk)
 	return wc_processed;
 }
 
-static void sdp_process_rx_tasklet(unsigned long data)
+static void sdp_process_rx_timer(unsigned long data)
 {
 	struct sdp_sock *ssk = (struct sdp_sock *)data;
 	sdp_process_rx(ssk);
@@ -968,8 +968,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	spin_lock_init(&ssk->rx_ring.lock);
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
-	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx_tasklet,
-			(unsigned long) ssk);
+	ssk->rx_ring.timer.function = sdp_process_rx_timer;
+	ssk->rx_ring.timer.data = (unsigned long) ssk;
 
 	sdp_arm_rx_cq(&ssk->isk.sk);
 
@@ -1001,9 +1001,10 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 		}
 	}
 
-	tasklet_kill(&ssk->rx_ring.tasklet);
-	/* rx_cq is destroyed, so no more rx_irq, so no one will schedule this
-	 * tasklet. */
+	/* the timer should be deleted only after the rx_cq is destroyed,
+	 * so there won't be rx_irq any more, meaning the timer will never be
+	 * enabled. */
+	del_timer_sync(&ssk->rx_ring.timer);
 
 	SDP_WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }

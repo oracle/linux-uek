@@ -196,7 +196,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 			}
 		}
 
-		posts_handler_put(ssk);
+		posts_handler_put(ssk, 0);
 
 		sk_wait_event(sk, &current_timeo,
 				tx_sa->abort_flags &&
@@ -259,7 +259,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 			break;
 		}
 
-		posts_handler_put(ssk);
+		posts_handler_put(ssk, 0);
 
 		sdp_prf1(sk, NULL, "Going to sleep");
 		sk_wait_event(sk, &timeo,
