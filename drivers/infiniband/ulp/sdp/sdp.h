@@ -47,7 +47,7 @@
 /* limit tx payload len, if the sink supports bigger buffers than the source
  * can handle.
  * or rx fragment size (limited by sge->length size) */
-#define SDP_MAX_PAYLOAD ((1 << 16) - SDP_SKB_HEAD_SIZE)
+#define SDP_MAX_PAYLOAD ((1UL << 16) - SDP_SKB_HEAD_SIZE)
 
 #define SDP_NUM_WC 4
 
