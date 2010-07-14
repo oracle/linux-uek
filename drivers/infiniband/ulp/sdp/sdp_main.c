@@ -2175,7 +2175,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	SDPSTATS_COUNTER_INC(recvmsg);
 
 	lock_sock(sk);
-	sdp_dbg_data(sk, "iovlen: %ld iov_len: 0x%lx flags: 0x%x peek: 0x%x\n",
+	sdp_dbg_data(sk, "iovlen: %zd iov_len: 0x%zx flags: 0x%x peek: 0x%x\n",
 			msg->msg_iovlen, msg->msg_iov[0].iov_len, flags,
 			MSG_PEEK);
 
