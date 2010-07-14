@@ -98,13 +98,15 @@ struct sdp_skb_cb {
 		atomic_inc(&ssk->somebody_is_doing_posts);		\
 		/* postpone the rx_ring.timer, there is no need to enable
 		 * interrupts because there will be cq-polling. */ 	\
-		mod_timer(&ssk->rx_ring.timer, MAX_JIFFY_OFFSET);	\
+		if (likely(ssk->qp_active))				\
+			mod_timer(&ssk->rx_ring.timer, MAX_JIFFY_OFFSET); \
 	} while (0)
 
 #define posts_handler_put(ssk, intr_delay)				\
 	do {								\
 		sdp_do_posts(ssk);					\
-		if (atomic_dec_and_test(&ssk->somebody_is_doing_posts))	{ \
+		if (atomic_dec_and_test(&ssk->somebody_is_doing_posts) && \
+			likely(ssk->qp_active))	{			\
 			if (intr_delay)					\
 				mod_timer(&ssk->rx_ring.timer, intr_delay); \
 			else						\
