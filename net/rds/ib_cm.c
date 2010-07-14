@@ -650,12 +650,11 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 				ic->i_cm_id, err);
 		}
 
-		/*
-		 * Don't wait for the send ring to be empty -- there may be completed
-		 * non-signaled entries sitting on there. We unmap these below.
-		 */
+		/* quiesce tx and rx completion before tearing down */
 		wait_event(rds_ib_ring_empty_wait,
-			rds_ib_ring_empty(&ic->i_recv_ring));
+			   rds_ib_ring_empty(&ic->i_recv_ring) &&
+			   (atomic_read(&ic->i_signaled_sends) == 0));
+		tasklet_kill(&ic->i_tasklet);
 
 		if (ic->i_send_hdrs)
 			ib_dma_free_coherent(dev,
@@ -761,6 +760,7 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 #ifndef KERNEL_HAS_ATOMIC64
 	spin_lock_init(&ic->i_ack_lock);
 #endif
+	atomic_set(&ic->i_signaled_sends, 0);
 
 	/*
 	 * rds_ib_conn_shutdown() waits for these to be emptied so they
