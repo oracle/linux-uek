@@ -931,9 +931,7 @@ struct file *hugetlb_file_setup(const char *name, size_t size,
 
 	if (creat_flags == HUGETLB_SHMFS_INODE && !can_do_hugetlb_shm()) {
 		*user = current_user();
-		if (user_shm_lock(size, *user)) {
-			printk_once(KERN_WARNING "Using mlock ulimits for SHM_HUGETLB is deprecated\n");
-		} else {
+		if (user_shm_lock(size, *user) == 0) {
 			*user = NULL;
 			return ERR_PTR(-EPERM);
 		}
