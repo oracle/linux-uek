@@ -84,7 +84,6 @@ static inline unsigned long long current_nsec(void)
 	preempt_enable(); \
 	1; \
 })
-//#define sdp_prf(sk, s, format, arg...)
 #define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg)
 
 #else

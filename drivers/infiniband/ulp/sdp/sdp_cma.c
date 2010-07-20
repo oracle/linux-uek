@@ -330,7 +330,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	}
 
 	lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
-	sdp_dbg(sk, "%s event %d id %p\n", __func__, event->event, id);
+	sdp_dbg(sk, "event: %s\n", rdma_cm_event_str(event->event));
 	if (!sdp_sk(sk)->id) {
 		sdp_dbg(sk, "socket is being torn down\n");
 		rc = event->event == RDMA_CM_EVENT_CONNECT_REQUEST ?
@@ -338,8 +338,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		release_sock(sk);
 		return rc;
 	}
-
-	sdp_dbg(sk, "%s\n", rdma_cm_event_str(event->event));
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
