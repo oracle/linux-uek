@@ -520,7 +520,7 @@ static inline void sdp_set_error(struct sock *sk, int err)
 
 	if ((1 << sk->sk_state) & ib_teardown_states)
 		sdp_exch_state(sk, ib_teardown_states, TCP_TIME_WAIT);
-	else
+	else if (TCP_TIME_WAIT != sk->sk_state)
 		sdp_exch_state(sk, ~0, TCP_CLOSE);
 
 	sk->sk_error_report(sk);
