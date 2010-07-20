@@ -312,7 +312,7 @@ void rds_ib_tasklet_fn_recv(unsigned long data)
 	memset(&ack_state, 0, sizeof(ack_state));
 
 	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
-	ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
+	ib_req_notify_cq(ic->i_rcq, IB_CQ_NEXT_COMP);
 	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
 
 	if (ack_state.ack_next_valid)
