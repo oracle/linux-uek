@@ -1940,7 +1940,8 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		SDPSTATS_HIST(sendmsg_seglen, seglen);
 
 		if (zcopy_thresh && seglen > zcopy_thresh &&
-				seglen > SDP_MIN_ZCOPY_THRESH && tx_slots_free(ssk)) {
+				seglen > SDP_MIN_ZCOPY_THRESH &&
+				tx_slots_free(ssk) && ssk->sdp_dev->fmr_pool) {
 			int zcopied = 0;
 
 			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
@@ -2245,9 +2246,11 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			case SDP_MID_SRCAVAIL:
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 
-				if (rx_sa->mseq < ssk->srcavail_cancel_mseq) {
-					sdp_dbg_data(sk, "Ignoring src avail "
-							"due to SrcAvailCancel\n");
+				if (rx_sa->mseq < ssk->srcavail_cancel_mseq ||
+						!ssk->sdp_dev->fmr_pool) {
+					sdp_dbg_data(sk, "Aborting SA "
+							"due to SACancel or "
+							"no fmr pool\n");
 					sdp_post_sendsm(sk);
 					if (offset < skb->len) {
 						sdp_abort_rx_srcavail(sk, skb);
@@ -2795,15 +2798,12 @@ static void sdp_add_device(struct ib_device *device)
 	if (IS_ERR(sdp_dev->fmr_pool)) {
 		printk(KERN_WARNING "Error creating fmr pool\n");
 		sdp_dev->fmr_pool = NULL;
-		goto err_fmr_create;
 	}
 
 	ib_set_client_data(device, &sdp_client, sdp_dev);
 
 	return;
 
-err_fmr_create:
-	ib_dereg_mr(sdp_dev->mr);
 err_mr:
 	ib_dealloc_pd(sdp_dev->pd);
 err_pd_alloc:
@@ -2877,8 +2877,10 @@ kill_socks:
 	if (!sdp_dev)
 		return;
 
-	ib_flush_fmr_pool(sdp_dev->fmr_pool);
-	ib_destroy_fmr_pool(sdp_dev->fmr_pool);
+	if (sdp_dev->fmr_pool) {
+		ib_flush_fmr_pool(sdp_dev->fmr_pool);
+		ib_destroy_fmr_pool(sdp_dev->fmr_pool);
+	}
 
 	ib_dereg_mr(sdp_dev->mr);
 
