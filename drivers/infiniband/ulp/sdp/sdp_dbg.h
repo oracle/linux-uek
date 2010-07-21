@@ -151,6 +151,7 @@ extern int sdp_data_debug_level;
 #define SOCK_REF_DREQ_TO "DREQ_TO" /* dreq timeout is pending */
 #define SOCK_REF_ZCOPY "ZCOPY" /* zcopy send in process */
 #define SOCK_REF_RDMA_RD "RDMA_RD" /* RDMA read in process */
+#define SOCK_REF_KEEPALIVE "KEEPALIVE" /* socket is held by sk_reset_timer */
 
 #define sock_hold(sk, msg)  sock_ref(sk, msg, sock_hold)
 #define sock_put(sk, msg)  sock_ref(sk, msg, sock_put)

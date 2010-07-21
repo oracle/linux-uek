@@ -250,7 +250,7 @@ static void sdp_keepalive_timer(unsigned long data)
 
 out:
 	bh_unlock_sock(sk);
-	sock_put(sk, SOCK_REF_ALIVE);
+	sock_put(sk, SOCK_REF_KEEPALIVE);
 }
 
 static void sdp_init_keepalive_timer(struct sock *sk)
