@@ -253,7 +253,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	return 0;
 }
 
-static int sdp_connected_handler(struct sock *sk, struct rdma_cm_event *event)
+static int sdp_connected_handler(struct sock *sk)
 {
 	struct sock *parent;
 	sdp_dbg(sk, "%s\n", __func__);
@@ -301,7 +301,7 @@ static int sdp_disconnected_handler(struct sock *sk)
 		sdp_xmit_poll(ssk, 1);
 
 	if (sk->sk_state == TCP_SYN_RECV) {
-		sdp_connected_handler(sk, NULL);
+		sdp_connected_handler(sk);
 
 		if (rcv_nxt(ssk))
 			return 0;
@@ -443,7 +443,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_ESTABLISHED:
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
-		rc = sdp_connected_handler(sk, event);
+		rc = sdp_connected_handler(sk);
 		break;
 	case RDMA_CM_EVENT_DISCONNECTED: /* This means DREQ/DREP received */
 		if (sk->sk_state == TCP_LAST_ACK) {
