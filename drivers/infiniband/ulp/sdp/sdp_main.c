@@ -1051,15 +1051,15 @@ static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 	sdp_dbg(sk, "timed out waiting for FIN/DREQ. "
 		 "going into abortive close.\n");
 
-	sdp_sk(sk)->dreq_wait_timeout = 0;
+	ssk->dreq_wait_timeout = 0;
 	sdp_exch_state(sk, TCPF_LAST_ACK | TCPF_FIN_WAIT1, TCP_TIME_WAIT);
 
 	release_sock(sk);
 
-	if (sdp_sk(sk)->id) {
+	if (ssk->id) {
 		sdp_dbg(sk, "Destroyed QP\n");
-		sdp_sk(sk)->qp_active = 0;
-		rdma_disconnect(sdp_sk(sk)->id);
+		ssk->qp_active = 0;
+		rdma_disconnect(ssk->id);
 	} else
 		sock_put(sk, SOCK_REF_CMA);
 
