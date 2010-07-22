@@ -112,13 +112,6 @@ extern int sdp_debug_level;
 	}\
 })
 
-#define sk_common_release(sk) do { \
-		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_ALIVE \
-			") - refcount = %d from withing sk_common_release\n",\
-			__func__, __LINE__, atomic_read(&(sk)->sk_refcnt));\
-		sk_common_release(sk); \
-} while (0)
-
 #else /* CONFIG_INFINIBAND_SDP_DEBUG */
 #define sdp_dbg(priv, format, arg...)                        \
 	do { (void) (priv); } while (0)

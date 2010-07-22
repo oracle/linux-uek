@@ -117,6 +117,14 @@ struct sdp_skb_cb {
 		}							\
 	} while (0)
 
+#define sdp_common_release(sk) do { \
+		sdp_dbg(sk, "%s:%d - sock_put(" SOCK_REF_ALIVE \
+			") - refcount = %d from withing sk_common_release\n",\
+			__func__, __LINE__, atomic_read(&(sk)->sk_refcnt));\
+		percpu_counter_inc((sk)->sk_prot->orphan_count);\
+		sk_common_release(sk); \
+} while (0)
+
 extern int sdp_zcopy_thresh;
 extern struct workqueue_struct *sdp_wq;
 extern struct list_head sock_list;

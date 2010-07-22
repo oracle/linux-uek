@@ -517,6 +517,7 @@ static void sdp_destruct(struct sock *sk)
 		return;
 	}
 
+	percpu_counter_dec(sk->sk_prot->orphan_count);
 	cancel_delayed_work(&ssk->srcavail_cancel_work);
 
 	ssk->destructed_already = 1;
@@ -534,10 +535,10 @@ static void sdp_destruct(struct sock *sk)
 		goto done;
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
-		sk_common_release(&s->isk.sk);
+		sdp_common_release(&s->isk.sk);
 	}
 	list_for_each_entry_safe(s, t, &ssk->accept_queue, accept_queue) {
-		sk_common_release(&s->isk.sk);
+		sdp_common_release(&s->isk.sk);
 	}
 
 done:
@@ -663,7 +664,7 @@ static void sdp_close(struct sock *sk, long timeout)
 
 		/* Special case: stop listening.
 		   This is done by sdp_destruct. */
-		goto adjudge_to_death;
+		goto out;
 	}
 
 	sock_hold(sk, SOCK_REF_CMA);
@@ -719,46 +720,10 @@ static void sdp_close(struct sock *sk, long timeout)
 			       TCPF_CLOSE_WAIT, TCP_CLOSE);
 
 	sk_stream_wait_close(sk, timeout);
-
-adjudge_to_death:
-	/* It is the last release_sock in its life. It will remove backlog. */
-	release_sock(sk);
-	/* Now socket is owned by kernel and we acquire lock
-	   to finish close. No need to check for user refs.
-	 */
-	lock_sock(sk);
-
-	sock_orphan(sk);
-
-	/*	This is a (useful) BSD violating of the RFC. There is a
-	 *	problem with TCP as specified in that the other end could
-	 *	keep a socket open forever with no application left this end.
-	 *	We use a 3 minute timeout (about the same as BSD) then kill
-	 *	our end. If they send after that then tough - BUT: long enough
-	 *	that we won't make the old 4*rto = almost no time - whoops
-	 *	reset mistake.
-	 *
-	 *	Nope, it was not mistake. It is really desired behaviour
-	 *	f.e. on http servers, when such sockets are useless, but
-	 *	consume significant resources. Let's do it with special
-	 *	linger2	option.					--ANK
-	 */
-	if ((1 << sk->sk_state) & (TCPF_FIN_WAIT1 | TCPF_TIME_WAIT | TCPF_LAST_ACK)) {
-		/* TODO: liger2 unimplemented.
-		   We should wait 3.5 * rto. How do I know rto? */
-		/* TODO: tcp_fin_time to get timeout */
-		sdp_dbg(sk, "%s: entering time wait refcnt %d\n", __func__,
-			atomic_read(&sk->sk_refcnt));
-		percpu_counter_inc(sk->sk_prot->orphan_count);
-	}
-
-	/* TODO: limit number of orphaned sockets.
-	   TCP has sysctl_tcp_mem and sysctl_tcp_max_orphans */
-
 out:
 	release_sock(sk);
 
-	sk_common_release(sk);
+	sdp_common_release(sk);
 }
 
 static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
@@ -841,10 +806,10 @@ static int sdp_disconnect(struct sock *sk, int flags)
 		rdma_destroy_id(id);
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
-		sk_common_release(&s->isk.sk);
+		sdp_common_release(&s->isk.sk);
 	}
 	list_for_each_entry_safe(s, t, &ssk->accept_queue, accept_queue) {
-		sk_common_release(&s->isk.sk);
+		sdp_common_release(&s->isk.sk);
 	}
 
 	lock_sock(sk);
@@ -1025,8 +990,6 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 		/* The timeout hasn't reached - need to clean ref count */
 		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
 	}
-
-	percpu_counter_dec(ssk->isk.sk.sk_prot->orphan_count);
 }
 
 static void sdp_destroy_work(struct work_struct *work)
@@ -1089,10 +1052,6 @@ static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 		 "going into abortive close.\n");
 
 	sdp_sk(sk)->dreq_wait_timeout = 0;
-
-	if (sk->sk_state == TCP_FIN_WAIT1)
-		percpu_counter_dec(ssk->isk.sk.sk_prot->orphan_count);
-
 	sdp_exch_state(sk, TCPF_LAST_ACK | TCPF_FIN_WAIT1, TCP_TIME_WAIT);
 
 	release_sock(sk);
@@ -1194,8 +1153,6 @@ static void sdp_shutdown(struct sock *sk, int how)
 	ssk->nonagle &= ~TCP_NAGLE_CORK;
 	if (ssk->nonagle & TCP_NAGLE_OFF)
 		ssk->nonagle |= TCP_NAGLE_PUSH;
-
-	percpu_counter_inc(ssk->isk.sk.sk_prot->orphan_count);
 
 	sdp_send_disconnect(sk);
 }
@@ -2746,7 +2703,7 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 	rc = sdp_init_sock(sk);
 	if (rc) {
 		sdp_warn(sk, "SDP: failed to init sock.\n");
-		sk_common_release(sk);
+		sdp_common_release(sk);
 		return -ENOMEM;
 	}
 
