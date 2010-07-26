@@ -172,9 +172,10 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		gfp_page = GFP_HIGHUSER;
 	}
 
+	if (unlikely(!skb))
+		return -1;
+
 	sdp_prf(&ssk->isk.sk, skb, "Posting skb");
-	/* FIXME */
-	BUG_ON(!skb);
 	h = (struct sdp_bsdh *)skb->head;
 
 	rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));

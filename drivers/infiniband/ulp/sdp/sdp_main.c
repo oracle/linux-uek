@@ -2421,8 +2421,10 @@ skip_copy:
 
 		if (rx_sa && !(flags & MSG_PEEK)) {
 			rc = sdp_post_rdma_rd_compl(sk, rx_sa, offset);
-			BUG_ON(rc);
-
+			if (unlikely(rc)) {
+				err = rc;
+				goto out;
+			}
 		}
 
 		if (!rx_sa && offset < skb->len)

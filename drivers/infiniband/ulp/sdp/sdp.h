@@ -638,7 +638,8 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size,
 	}
 
 	skb = sdp_stream_alloc_skb(sk, size, gfp);
-	BUG_ON(!skb);
+	if (unlikely(!skb))
+		return NULL;
 
         skb_header_release(skb);
 
@@ -667,6 +668,8 @@ static inline struct sk_buff *sdp_alloc_skb_chrcvbuf_ack(struct sock *sk,
 	struct sdp_chrecvbuf *resp_size;
 
 	skb = sdp_alloc_skb(sk, SDP_MID_CHRCVBUF_ACK, sizeof(*resp_size), gfp);
+	if (unlikely(!skb))
+		return NULL;
 
 	resp_size = (struct sdp_chrecvbuf *)skb_put(skb, sizeof *resp_size);
 	resp_size->size = htonl(size);
@@ -681,6 +684,8 @@ static inline struct sk_buff *sdp_alloc_skb_srcavail(struct sock *sk,
 	struct sdp_srcah *srcah;
 
 	skb = sdp_alloc_skb(sk, SDP_MID_SRCAVAIL, sizeof(*srcah), gfp);
+	if (unlikely(!skb))
+		return NULL;
 
 	srcah = (struct sdp_srcah *)skb_put(skb, sizeof(*srcah));
 	srcah->len = htonl(len);
@@ -703,6 +708,8 @@ static inline struct sk_buff *sdp_alloc_skb_rdmardcompl(struct sock *sk,
 	struct sdp_rrch *rrch;
 
 	skb = sdp_alloc_skb(sk, SDP_MID_RDMARDCOMPL, sizeof(*rrch), gfp);
+	if (unlikely(!skb))
+		return NULL;
 
 	rrch = (struct sdp_rrch *)skb_put(skb, sizeof(*rrch));
 	rrch->len = htonl(len);

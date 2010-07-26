@@ -117,6 +117,9 @@ static int sdp_post_srcavail_cancel(struct sock *sk)
 	sdp_dbg_data(&ssk->isk.sk, "Posting srcavail cancel\n");
 
 	skb = sdp_alloc_skb_srcavail_cancel(sk, 0);
+	if (unlikely(!skb))
+		return -ENOMEM;
+
 	sdp_skb_entail(sk, skb);
 
 	sdp_post_sends(ssk, 0);
@@ -285,6 +288,8 @@ int sdp_post_rdma_rd_compl(struct sock *sk,
 		return 0;
 
 	skb = sdp_alloc_skb_rdmardcompl(sk, copied, 0);
+	if (unlikely(!skb))
+		return -ENOMEM;
 
 	sdp_skb_entail(sk, skb);
 
@@ -298,6 +303,9 @@ int sdp_post_rdma_rd_compl(struct sock *sk,
 int sdp_post_sendsm(struct sock *sk)
 {
 	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk, 0);
+
+	if (unlikely(!skb))
+		return -ENOMEM;
 
 	sdp_skb_entail(sk, skb);
 

@@ -203,13 +203,13 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
 	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
 	    sdp_tx_ring_slots_left(ssk)) {
-		ssk->recv_request = 0;
-
 		skb = sdp_alloc_skb_chrcvbuf_ack(sk,
 				ssk->recv_frags * PAGE_SIZE, gfp);
-
-		sdp_post_send(ssk, skb);
-		post_count++;
+		if (likely(skb)) {
+			ssk->recv_request = 0;
+			sdp_post_send(ssk, skb);
+			post_count++;
+		}
 	}
 
 	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
@@ -236,10 +236,11 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 
 		skb = sdp_alloc_skb_data(&ssk->isk.sk, 0, gfp);
-		sdp_post_send(ssk, skb);
-
-		SDPSTATS_COUNTER_INC(post_send_credits);
-		post_count++;
+		if (likely(skb)) {
+			sdp_post_send(ssk, skb);
+			SDPSTATS_COUNTER_INC(post_send_credits);
+			post_count++;
+		}
 	}
 
 	/* send DisConn if needed
@@ -250,12 +251,12 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	if (unlikely(ssk->sdp_disconnect) &&
 			!ssk->isk.sk.sk_send_head &&
 			tx_credits(ssk) > 1) {
-		ssk->sdp_disconnect = 0;
-
 		skb = sdp_alloc_skb_disconnect(sk, gfp);
-		sdp_post_send(ssk, skb);
-
-		post_count++;
+		if (likely(skb)) {
+			ssk->sdp_disconnect = 0;
+			sdp_post_send(ssk, skb);
+			post_count++;
+		}
 	}
 
 	if (post_count)
