@@ -326,6 +326,12 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 
 		ssk->rx_sa = rx_sa = RX_SRCAVAIL_STATE(skb) = kzalloc(
 				sizeof(struct rx_srcavail_state), GFP_ATOMIC);
+		if (unlikely(!rx_sa)) {
+			/* if there is no space, fall to BCopy. */
+			sdp_dbg(sk, "Can't allocate memory for rx_sa\n");
+			h->mid = SDP_MID_DATA;
+			goto mid_data;
+		}
 
 		rx_sa->mseq = ntohl(h->mseq);
 		rx_sa->len = skb_len = ntohl(srcah->len);
@@ -344,6 +350,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		sdp_dbg_data(sk, "queueing SrcAvail. skb_len = %d vaddr = %lld\n",
 			skb_len, rx_sa->vaddr);
 	} else {
+mid_data:
 		skb_len = skb->len;
 
 		atomic_add(skb_len, &ssk->rcv_nxt);
