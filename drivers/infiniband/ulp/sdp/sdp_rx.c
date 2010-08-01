@@ -186,17 +186,17 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 			page = rx_req->pages[i];
 		else {
 			rx_req->pages[i] = page = alloc_pages(gfp_page, 0);
+			if (unlikely(!page))
+				goto err;
 			pages_alloced++;
 		}
-
-		BUG_ON(!page);
 		frag = &skb_shinfo(skb)->frags[i];
 		frag->page                = page;
 		frag->page_offset         = 0;
 		frag->size                = min(PAGE_SIZE, SDP_MAX_PAYLOAD);
+		++skb_shinfo(skb)->nr_frags;
 	}
 	skb->truesize += ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD);
-	skb_shinfo(skb)->nr_frags = ssk->recv_frags;
 
 	dev = ssk->ib_device;
 	addr = ib_dma_map_single(dev, h, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
@@ -233,13 +233,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	rc = ib_post_recv(ssk->qp, &rx_wr, &bad_wr);
 	if (unlikely(rc)) {
 		sdp_warn(&ssk->isk.sk, "ib_post_recv failed. status %d\n", rc);
-
-		sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
-		__kfree_skb(skb);
-
-		sdp_reset(&ssk->isk.sk);
-
-		return -1;
+		goto err;
 	}
 
 	atomic_inc(&ssk->rx_ring.head);
@@ -247,6 +241,12 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	atomic_add(pages_alloced, &sdp_current_mem_usage);
 
 	return 0;
+
+err:
+	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
+	__kfree_skb(skb);
+	sdp_reset(&ssk->isk.sk);
+	return -1;
 }
 
 static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
