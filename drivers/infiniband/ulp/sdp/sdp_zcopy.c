@@ -515,17 +515,15 @@ err_umem_get:
 
 void sdp_free_fmr(struct sock *sk, struct ib_pool_fmr **_fmr, struct ib_umem **_umem)
 {
-	if (!sdp_sk(sk)->qp_active) {
-		sdp_warn(sk, "Trying to free fmr after destroying QP! fmr: %p\n",
-				*_fmr);
-		return;
+	if (*_fmr) {
+		ib_fmr_pool_unmap(*_fmr);
+		*_fmr = NULL;
 	}
 
-	ib_fmr_pool_unmap(*_fmr);
-	*_fmr = NULL;
-
-	ib_umem_release(*_umem);
-	*_umem = NULL;
+	if (*_umem) {
+		ib_umem_release(*_umem);
+		*_umem = NULL;
+	}
 }
 
 static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
