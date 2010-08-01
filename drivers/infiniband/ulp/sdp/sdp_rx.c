@@ -183,9 +183,9 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 
 	for (i = 0; i < ssk->recv_frags; ++i) {
 		if (rx_req->mapping[i + 1])
-			page = rx_req->pages[i + 1];
+			page = rx_req->pages[i];
 		else {
-			rx_req->pages[i + 1] = page = alloc_pages(gfp_page, 0);
+			rx_req->pages[i] = page = alloc_pages(gfp_page, 0);
 			pages_alloced++;
 		}
 
@@ -916,7 +916,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 					min(PAGE_SIZE, SDP_MAX_PAYLOAD),
 					DMA_FROM_DEVICE);
 			sbuf->mapping[i] = 0;
-			put_page(sbuf->pages[i]);
+			put_page(sbuf->pages[i - 1]);
 			atomic_sub(1, &sdp_current_mem_usage);
 		}
 	}

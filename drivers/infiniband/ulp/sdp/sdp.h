@@ -225,8 +225,12 @@ struct sdp_srcah {
 
 struct sdp_buf {
         struct sk_buff *skb;
+	/* The relation of mapping <-> pages is like this:
+	 * mapping[0] doesn't have a correspondent page.
+	 * mapping[i + 1] <-> pages[i]
+	 */
         u64             mapping[SDP_MAX_SEND_SGES];
-	struct page 	*pages[SDP_MAX_SEND_SGES];
+	struct page 	*pages[SDP_MAX_SEND_SGES - 1];
 } __attribute__((__packed__));
 
 struct sdp_chrecvbuf {
