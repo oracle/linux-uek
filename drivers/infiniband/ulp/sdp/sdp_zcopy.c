@@ -732,7 +732,7 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 	long timeo;
 	struct tx_srcavail_state *tx_sa;
 	int offset;
-	size_t bytes_to_copy = 0;
+	size_t bytes_to_copy = iov->iov_len;
 	int copied = 0;
 
 	sdp_dbg_data(sk, "Sending iov: %p, iov_len: 0x%zx\n",
@@ -759,7 +759,6 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 		goto err_alloc_tx_sa;
 	}
 
-	bytes_to_copy = iov->iov_len;
 	do {
 		tx_sa_reset(tx_sa);
 
