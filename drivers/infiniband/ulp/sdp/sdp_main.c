@@ -1898,7 +1898,8 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 
 		if (zcopy_thresh && seglen > zcopy_thresh &&
 				seglen > SDP_MIN_ZCOPY_THRESH &&
-				tx_slots_free(ssk) && ssk->sdp_dev->fmr_pool) {
+				tx_slots_free(ssk) && ssk->sdp_dev &&
+				ssk->sdp_dev->fmr_pool) {
 			int zcopied = 0;
 
 			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
@@ -2204,6 +2205,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				rx_sa = RX_SRCAVAIL_STATE(skb);
 
 				if (rx_sa->mseq < ssk->srcavail_cancel_mseq ||
+						!ssk->sdp_dev ||
 						!ssk->sdp_dev->fmr_pool) {
 					sdp_dbg_data(sk, "Aborting SA "
 							"due to SACancel or "
