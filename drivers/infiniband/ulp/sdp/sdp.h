@@ -322,6 +322,7 @@ struct sdp_rx_ring {
 	spinlock_t	 lock;
 
 	struct timer_list 	timer;
+	struct tasklet_struct	tasklet;
 };
 
 struct sdp_device {

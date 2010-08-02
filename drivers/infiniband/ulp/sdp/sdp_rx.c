@@ -833,7 +833,10 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	sdp_prf(sk, NULL, "rx irq");
 
-	mod_timer(&ssk->rx_ring.timer, 0);
+	/* We could use rx_ring.timer instead, but mod_timer(..., 0)
+	 * measured to add 4ms delay.
+	 */
+	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
 }
 
 static inline int sdp_should_rearm(struct sock *sk)
@@ -969,7 +972,8 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
 	ssk->rx_ring.timer.function = sdp_process_rx_timer;
 	ssk->rx_ring.timer.data = (unsigned long) ssk;
-
+	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx_timer,
+			(unsigned long) ssk);
 	sdp_arm_rx_cq(&ssk->isk.sk);
 
 	return 0;
@@ -1000,10 +1004,11 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 		}
 	}
 
-	/* the timer should be deleted only after the rx_cq is destroyed,
-	 * so there won't be rx_irq any more, meaning the timer will never be
+	/* the tasklet should be killed only after the rx_cq is destroyed,
+	 * so there won't be rx_irq any more, meaning the tasklet will never be
 	 * enabled. */
 	del_timer_sync(&ssk->rx_ring.timer);
+	tasklet_kill(&ssk->rx_ring.tasklet);
 
 	SDP_WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }
