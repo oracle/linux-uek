@@ -506,6 +506,21 @@ static void sdp_destroy_resources(struct sock *sk)
 
 }
 
+static inline void sdp_kill_id_and_release(struct sdp_sock *ssk)
+{
+	struct sock *sk = &ssk->isk.sk;
+	struct rdma_cm_id *id;
+
+	lock_sock(sk);
+	id = ssk->id;
+	ssk->id = NULL;
+	release_sock(sk);
+
+	if (id)
+		rdma_destroy_id(id);
+	sdp_common_release(sk);
+}
+
 static void sdp_destruct(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -535,10 +550,10 @@ static void sdp_destruct(struct sock *sk)
 		goto done;
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
-		sdp_common_release(&s->isk.sk);
+		sdp_kill_id_and_release(s);
 	}
 	list_for_each_entry_safe(s, t, &ssk->accept_queue, accept_queue) {
-		sdp_common_release(&s->isk.sk);
+		sdp_kill_id_and_release(s);
 	}
 
 done:
@@ -806,10 +821,10 @@ static int sdp_disconnect(struct sock *sk, int flags)
 		rdma_destroy_id(id);
 
 	list_for_each_entry_safe(s, t, &ssk->backlog_queue, backlog_queue) {
-		sdp_common_release(&s->isk.sk);
+		sdp_kill_id_and_release(s);
 	}
 	list_for_each_entry_safe(s, t, &ssk->accept_queue, accept_queue) {
-		sdp_common_release(&s->isk.sk);
+		sdp_kill_id_and_release(s);
 	}
 
 	lock_sock(sk);
