@@ -39,6 +39,40 @@
 #include "ib.h"
 #include "tcp.h"
 
+static char *rds_ib_wc_status_strings[] = {
+#define RDS_IB_WC_STATUS_STR(foo) \
+		[IB_WC_##foo] = __stringify(IB_WC_##foo)
+	RDS_IB_WC_STATUS_STR(SUCCESS),
+	RDS_IB_WC_STATUS_STR(LOC_LEN_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_QP_OP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_EEC_OP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_PROT_ERR),
+	RDS_IB_WC_STATUS_STR(WR_FLUSH_ERR),
+	RDS_IB_WC_STATUS_STR(MW_BIND_ERR),
+	RDS_IB_WC_STATUS_STR(BAD_RESP_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_ACCESS_ERR),
+	RDS_IB_WC_STATUS_STR(REM_INV_REQ_ERR),
+	RDS_IB_WC_STATUS_STR(REM_ACCESS_ERR),
+	RDS_IB_WC_STATUS_STR(REM_OP_ERR),
+	RDS_IB_WC_STATUS_STR(RETRY_EXC_ERR),
+	RDS_IB_WC_STATUS_STR(RNR_RETRY_EXC_ERR),
+	RDS_IB_WC_STATUS_STR(LOC_RDD_VIOL_ERR),
+	RDS_IB_WC_STATUS_STR(REM_INV_RD_REQ_ERR),
+	RDS_IB_WC_STATUS_STR(REM_ABORT_ERR),
+	RDS_IB_WC_STATUS_STR(INV_EECN_ERR),
+	RDS_IB_WC_STATUS_STR(INV_EEC_STATE_ERR),
+	RDS_IB_WC_STATUS_STR(FATAL_ERR),
+	RDS_IB_WC_STATUS_STR(RESP_TIMEOUT_ERR),
+	RDS_IB_WC_STATUS_STR(GENERAL_ERR),
+#undef RDS_IB_WC_STATUS_STR
+};
+
+char *rds_ib_wc_status_str(enum ib_wc_status status)
+{
+	return rds_str_array(rds_ib_wc_status_strings,
+			     ARRAY_SIZE(rds_ib_wc_status_strings), status);
+}
+
 /*
  * Convert IB-specific error message to RDS error message and call core
  * completion handler.
@@ -256,8 +290,9 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	u32 i = 0;
 	int nr_sig = 0;
 
-	rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
-		 (unsigned long long)wc->wr_id, wc->status, wc->byte_len,
+	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
+		 (unsigned long long)wc->wr_id, wc->status,
+		 rds_ib_wc_status_str(wc->status), wc->byte_len,
 		 be32_to_cpu(wc->ex.imm_data));
 
 	rds_ib_stats_inc(s_ib_tx_cq_event);
@@ -307,11 +342,13 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
 		rds_ib_conn_error(conn,
-				  "send completion <%pI4,%pI4,%d> status "
-				  "%u vendor_err %u, disconnecting and reconnecting\n",
-				  &conn->c_laddr,
-				  &conn->c_faddr,
-				  conn->c_tos, wc->status, wc->vendor_err);
+			"send completion <%pI4,%pI4,%d> status "
+			"%u vendor_err %u, disconnecting and reconnecting\n",
+			&conn->c_laddr,
+			&conn->c_faddr,
+			conn->c_tos, wc->status, wc->vendor_err);
+		rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
+			rds_ib_wc_status_str(wc->status));
 	} else
 		ic->i_last_migration = 0;
 }
