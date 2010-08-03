@@ -1247,8 +1247,9 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	struct rds_ib_recv_work *recv;
 	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
 
-	rdsdebug("wc wr_id 0x%llx status %u byte_len %u imm_data %u\n",
-		 (unsigned long long)wc->wr_id, wc->status, wc->byte_len,
+	rdsdebug("wc wr_id 0x%llx status %u (%s) byte_len %u imm_data %u\n",
+		 (unsigned long long)wc->wr_id, wc->status,
+		 rds_ib_wc_status_str(wc->status), wc->byte_len,
 		 be32_to_cpu(wc->ex.imm_data));
 
 	rds_ib_stats_inc(s_ib_rx_cq_event);
@@ -1268,7 +1269,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 			rds_ib_process_recv(conn, recv, wc->byte_len, state);
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
-		if (rds_conn_up(conn) || rds_conn_connecting(conn))
+		if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
 			rds_ib_conn_error(conn, "recv completion "
 					"<%pI4,%pI4,%d> had "
 					"status %u, disconnecting and "
@@ -1277,6 +1278,9 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 					&conn->c_faddr,
 					conn->c_tos,
 					wc->status);
+			rds_rtd(RDS_RTD_ERR, "status %u => %s\n", wc->status,
+				rds_ib_wc_status_str(wc->status));
+		}
 	}
 
 	/*
