@@ -42,7 +42,8 @@
 #include "tcp.h"
 
 static char *rds_ib_event_type_strings[] = {
-#define RDS_IB_EVENT_STRING(foo)[IB_EVENT_##foo] = __stringify(foo)
+#define RDS_IB_EVENT_STRING(foo) \
+		[IB_EVENT_##foo] = __stringify(IB_EVENT_##foo)
 	RDS_IB_EVENT_STRING(CQ_ERR),
 	RDS_IB_EVENT_STRING(QP_FATAL),
 	RDS_IB_EVENT_STRING(QP_REQ_ERR),
@@ -61,16 +62,14 @@ static char *rds_ib_event_type_strings[] = {
 	RDS_IB_EVENT_STRING(SRQ_LIMIT_REACHED),
 	RDS_IB_EVENT_STRING(QP_LAST_WQE_REACHED),
 	RDS_IB_EVENT_STRING(CLIENT_REREGISTER),
+	RDS_IB_EVENT_STRING(GID_CHANGE),
 #undef RDS_IB_EVENT_STRING
 };
 
 static char *rds_ib_event_str(enum ib_event_type type)
 {
-	if (type < ARRAY_SIZE(rds_ib_event_type_strings) &&
-	    rds_ib_event_type_strings[type])
-		return rds_ib_event_type_strings[type];
-	else
-		return "unknown";
+	return rds_str_array(rds_ib_event_type_strings,
+			     ARRAY_SIZE(rds_ib_event_type_strings), type);
 };
 
 /*
