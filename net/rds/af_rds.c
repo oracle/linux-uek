@@ -57,6 +57,15 @@ MODULE_PARM_DESC(rds_qos_threshold_action,
 
 static unsigned long rds_qos_threshold_tbl[256];
 
+char *rds_str_array(char **array, size_t elements, size_t index)
+{
+	if ((index < elements) && array[index])
+		return array[index];
+	else
+		return "unknown";
+}
+EXPORT_SYMBOL(rds_str_array);
+
 /* this is just used for stats gathering :/ */
 static DEFINE_SPINLOCK(rds_sock_lock);
 static unsigned long rds_sock_count;
