@@ -50,8 +50,10 @@ int sdp_xmit_poll(struct sdp_sock *ssk, int force)
 
 	/* If we don't have a pending timer, set one up to catch our recent
 	   post in case the interface becomes idle */
-	if (likely(ssk->qp_active) && !timer_pending(&ssk->tx_ring.timer))
+	if (likely(ssk->qp_active && ssk->isk.sk.sk_state != TCP_CLOSE) &&
+			!timer_pending(&ssk->tx_ring.timer)) {
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
+	}
 
 	ssk->tx_compl_pending = 0;
 
@@ -367,7 +369,7 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	if (sock_owned_by_user(sk)) {
 		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy");
 
-		if (sdp_tx_handler_select(ssk)) {
+		if (sdp_tx_handler_select(ssk) && sk->sk_state != TCP_CLOSE) {
 			sdp_prf1(sk, NULL, "schedule a timer");
 			mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 		}
@@ -376,10 +378,8 @@ static void sdp_poll_tx_timeout(unsigned long data)
 		goto out;
 	}
 
-	if (unlikely(sk->sk_state == TCP_CLOSE)) {
-		sdp_warn(sk, "Socket is closed\n");
+	if (unlikely(sk->sk_state == TCP_CLOSE))
 		goto out;
-	}
 
 	wc_processed = sdp_process_tx_cq(ssk);
 	if (!wc_processed)
@@ -394,9 +394,8 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	/* If there are still packets in flight and the timer has not already
 	 * been scheduled by the Tx routine then schedule it here to guarantee
 	 * completion processing of these packets */
-	if (inflight) { /* TODO: make sure socket is not closed */
+	if (inflight)
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
-	}
 
 out:
 	if (ssk->tx_ring.rdma_inflight && ssk->tx_ring.rdma_inflight->busy) {
@@ -419,12 +418,10 @@ static void sdp_tx_irq(struct ib_cq *cq, void *cq_context)
 
 	ssk->tx_compl_pending = 1;
 
-	if (sdp_tx_handler_select(ssk)) {
+	if (sdp_tx_handler_select(ssk) && likely(ssk->qp_active &&
+				sk->sk_state != TCP_CLOSE)) {
 		sdp_prf1(sk, NULL, "poll and post from tasklet");
-		if (likely(ssk->qp_active)) {
-			mod_timer(&ssk->tx_ring.timer,
-					jiffies + SDP_TX_POLL_TIMEOUT);
-		}
+		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 		tasklet_schedule(&ssk->tx_ring.tasklet);
 	}
 }
