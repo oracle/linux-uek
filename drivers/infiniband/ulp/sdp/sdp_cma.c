@@ -172,21 +172,18 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	inet_sk(child)->dport = dst_addr->sin_port;
 	inet_sk(child)->daddr = dst_addr->sin_addr.s_addr;
 
-	bh_unlock_sock(child);
 	__sock_put(child, SOCK_REF_CLONE);
 
 	down_read(&device_removal_lock);
 
 	rc = sdp_init_qp(child, id);
 	if (rc) {
+		bh_unlock_sock(child);
 		up_read(&device_removal_lock);
 		sdp_sk(child)->destructed_already = 1;
 		sk_free(child);
 		return rc;
 	}
-
-	sdp_add_sock(sdp_sk(child));
-	up_read(&device_removal_lock);
 
 	sdp_sk(child)->max_bufs = ntohs(h->bsdh.bufs);
 	atomic_set(&sdp_sk(child)->tx_ring.credits, sdp_sk(child)->max_bufs);
@@ -204,6 +201,10 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	list_add_tail(&sdp_sk(child)->backlog_queue,
 			&sdp_sk(sk)->backlog_queue);
 	sdp_sk(child)->parent = sk;
+
+	bh_unlock_sock(child);
+	sdp_add_sock(sdp_sk(child));
+	up_read(&device_removal_lock);
 
 	sdp_exch_state(child, TCPF_LISTEN | TCPF_CLOSE, TCP_SYN_RECV);
 

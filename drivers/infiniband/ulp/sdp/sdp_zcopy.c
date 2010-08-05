@@ -427,12 +427,15 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 {
 	struct ib_pool_fmr *fmr;
 	struct ib_umem *umem;
-	struct ib_device *dev;
+	struct ib_device *dev = sdp_sk(sk)->ib_device;
 	u64 *pages;
 	struct ib_umem_chunk *chunk;
 	int n, j, k;
 	int rc = 0;
 	unsigned long max_lockable_bytes;
+
+	if (unlikely(!dev))
+		return -ENODEV;
 
 	if (unlikely(len > SDP_MAX_RDMA_READ_LEN)) {
 		sdp_dbg_data(sk, "len:0x%zx > FMR_SIZE: 0x%lx\n",
@@ -472,7 +475,6 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	n = 0;
 
-	dev = sdp_sk(sk)->ib_device;
 	list_for_each_entry(chunk, &umem->chunk_list, list) {
 		for (j = 0; j < chunk->nmap; ++j) {
 			len = ib_sg_dma_len(dev,
