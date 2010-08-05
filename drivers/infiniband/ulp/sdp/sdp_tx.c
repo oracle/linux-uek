@@ -517,7 +517,7 @@ void sdp_tx_ring_destroy(struct sdp_sock *ssk)
 {
 
 	if (ssk->nagle_timer.function)
-		del_timer(&ssk->nagle_timer);
+		del_timer_sync(&ssk->nagle_timer);
 
 	if (ssk->tx_ring.buffer) {
 		sdp_tx_ring_purge(ssk);

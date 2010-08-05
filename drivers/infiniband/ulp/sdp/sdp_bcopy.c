@@ -129,7 +129,7 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		unsigned long mseq = ring_head(ssk->tx_ring);
 		ssk->nagle_last_unacked = mseq;
 	} else {
-		if (!timer_pending(&ssk->nagle_timer)) {
+		if (!timer_pending(&ssk->nagle_timer) && ssk->qp_active) {
 			mod_timer(&ssk->nagle_timer,
 					jiffies + SDP_NAGLE_TIMEOUT);
 			sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
@@ -171,8 +171,10 @@ void sdp_nagle_timeout(unsigned long data)
 out:
 	bh_unlock_sock(sk);
 out2:
-	if (sk->sk_send_head) /* If has pending sends - rearm */
+	if (sk->sk_send_head && ssk->qp_active) {
+		/* If has pending sends - rearm */
 		mod_timer(&ssk->nagle_timer, jiffies + SDP_NAGLE_TIMEOUT);
+	}
 }
 
 void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
