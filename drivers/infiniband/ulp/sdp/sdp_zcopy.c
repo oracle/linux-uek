@@ -132,7 +132,6 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 {
 	struct sock *sk = &ssk->isk.sk;
 	int err = 0;
-	long vm_wait = 0;
 	long current_timeo = *timeo_p;
 	struct tx_srcavail_state *tx_sa = ssk->tx_sa;
 	DEFINE_WAIT(wait);
@@ -186,8 +185,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 		sk_wait_event(sk, &current_timeo,
 				tx_sa->abort_flags &&
 				ssk->rx_sa &&
-				(tx_sa->bytes_acked < tx_sa->bytes_sent) &&
-				vm_wait);
+				(tx_sa->bytes_acked < tx_sa->bytes_sent));
 		sdp_prf(&ssk->isk.sk, NULL, "woke up sleepers");
 
 		posts_handler_get(ssk);
@@ -195,14 +193,6 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 		if (tx_sa->bytes_acked == tx_sa->bytes_sent)
 			break;
 
-		if (vm_wait) {
-			vm_wait -= current_timeo;
-			current_timeo = *timeo_p;
-			if (current_timeo != MAX_SCHEDULE_TIMEOUT &&
-			    (current_timeo -= vm_wait) < 0)
-				current_timeo = 0;
-			vm_wait = 0;
-		}
 		*timeo_p = current_timeo;
 	}
 
