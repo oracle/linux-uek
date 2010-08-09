@@ -435,8 +435,6 @@ void sdp_reset_sk(struct sock *sk, int rc)
 
 	sdp_abort_srcavail(sk);
 
-	sdp_abort_rdma_read(sk);
-
 	if (!(sk->sk_shutdown & RCV_SHUTDOWN) || !sk_stream_memory_free(sk)) {
 		sdp_dbg(sk, "setting state to error\n");
 		sdp_set_error(sk, rc);
@@ -533,8 +531,6 @@ static void sdp_destruct(struct sock *sk)
 	}
 
 	percpu_counter_dec(sk->sk_prot->orphan_count);
-	cancel_delayed_work(&ssk->srcavail_cancel_work);
-
 	ssk->destructed_already = 1;
 
 	down_read(&device_removal_lock);
@@ -542,7 +538,6 @@ static void sdp_destruct(struct sock *sk)
 	sdp_destroy_resources(sk);
 	up_read(&device_removal_lock);
 
-	flush_scheduled_work();
 	flush_workqueue(rx_comp_wq);
 	/* Consider use cancel_work_sync(&ssk->rx_comp_work) */
 
@@ -1029,8 +1024,6 @@ static void sdp_destroy_work(struct work_struct *work)
 
 	sdp_cancel_dreq_wait_timeout(ssk);
 
-	cancel_delayed_work(&ssk->srcavail_cancel_work);
-
 	if (sk->sk_state == TCP_TIME_WAIT) {
 		if (sdp_cancel_cma_timewait_timeout(ssk))
 			sock_put(sk, SOCK_REF_CMA);
@@ -1104,7 +1097,6 @@ int sdp_init_sock(struct sock *sk)
 	INIT_LIST_HEAD(&ssk->backlog_queue);
 	INIT_DELAYED_WORK(&ssk->dreq_wait_work, sdp_dreq_wait_timeout_work);
 	INIT_DELAYED_WORK(&ssk->cma_timewait_work, sdp_cma_timewait_timeout_work);
-	INIT_DELAYED_WORK(&ssk->srcavail_cancel_work, srcavail_cancel_timeout);
 	INIT_WORK(&ssk->destroy_work, sdp_destroy_work);
 
 	lockdep_set_class(&sk->sk_receive_queue.lock,
@@ -1136,6 +1128,7 @@ int sdp_init_sock(struct sock *sk)
 	init_timer(&ssk->tx_ring.timer);
 	init_timer(&ssk->nagle_timer);
 	init_timer(&sk->sk_timer);
+	ssk->sa_cancel_arrived = 0;
 	ssk->zcopy_thresh = -1; /* use global sdp_zcopy_thresh */
 	ssk->last_bind_err = 0;
 
@@ -2105,10 +2098,11 @@ fin:
 	return err;
 }
 
-static inline int sdp_abort_rx_srcavail(struct sock *sk, struct sk_buff *skb)
+static inline int sdp_abort_rx_srcavail(struct sock *sk)
 {
-	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sdp_bsdh *h =
+		(struct sdp_bsdh *)skb_transport_header(ssk->rx_sa->skb);
 
 	sdp_dbg_data(sk, "SrcAvail aborted\n");
 
@@ -2116,11 +2110,9 @@ static inline int sdp_abort_rx_srcavail(struct sock *sk, struct sk_buff *skb)
 
 	spin_lock_irq(&ssk->rx_ring.lock);
 
-	if (ssk->rx_sa == RX_SRCAVAIL_STATE(skb))
-		ssk->rx_sa = NULL;
-
-	kfree(RX_SRCAVAIL_STATE(skb));
-	RX_SRCAVAIL_STATE(skb) = NULL;
+	RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
+	kfree(ssk->rx_sa);
+	ssk->rx_sa = NULL;
 
 	spin_unlock_irq(&ssk->rx_ring.lock);
 
@@ -2154,8 +2146,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			MSG_PEEK);
 
 	posts_handler_get(ssk);
-
-	sdp_prf(sk, skb, "Read from user");
 
 	err = -ENOTCONN;
 	if (sk->sk_state == TCP_LISTEN)
@@ -2217,17 +2207,28 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				goto found_fin_ok;
 
 			case SDP_MID_SRCAVAIL:
+				spin_lock_irq(&ssk->rx_ring.lock);
 				rx_sa = RX_SRCAVAIL_STATE(skb);
+				if (unlikely(!rx_sa)) {
+					/* SrcAvailCancel arrived and handled */
+					h->mid = SDP_MID_DATA;
+					spin_unlock_irq(&ssk->rx_ring.lock);
+					goto sdp_mid_data;
+				}
 
-				if (rx_sa->mseq < ssk->srcavail_cancel_mseq ||
+				rx_sa->is_treated = 1;
+				spin_unlock_irq(&ssk->rx_ring.lock);
+
+				if (sdp_chk_sa_cancel(ssk, rx_sa) ||
 						!ssk->sdp_dev ||
 						!ssk->sdp_dev->fmr_pool) {
 					sdp_dbg_data(sk, "Aborting SA "
 							"due to SACancel or "
 							"no fmr pool\n");
 					sdp_post_sendsm(sk);
+					sdp_abort_rx_srcavail(sk);
+					rx_sa = NULL;
 					if (offset < skb->len) {
-						sdp_abort_rx_srcavail(sk, skb);
 						sdp_prf(sk, skb, "Converted SA to DATA");
 						goto sdp_mid_data;
 					} else {
@@ -2254,7 +2255,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 							SDP_SKB_CB(skb)->seq;
 						sdp_dbg_data(sk, "Peek on RDMA data - "
 								"fallback to BCopy\n");
-						sdp_abort_rx_srcavail(sk, skb);
+						sdp_abort_rx_srcavail(sk);
 						sdp_post_sendsm(sk);
 						rx_sa = NULL;
 						if (real_offset >= skb->len)
@@ -2397,10 +2398,15 @@ sdp_mid_data:
 				sdp_dbg_data(sk, "RDMA copy of %lx bytes\n", used);
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						&used, offset);
-				sdp_dbg_data(sk, "used = %lx bytes\n", used);
-				if (err == -EAGAIN) {
-					sdp_dbg_data(sk, "RDMA Read aborted\n");
-					goto skb_cleanup;
+				if (unlikely(err)) {
+					sdp_post_sendsm(sk);
+					sdp_abort_rx_srcavail(sk);
+					rx_sa = NULL;
+					if (err == -EAGAIN || err == -ETIME)
+						goto skb_cleanup;
+					sdp_warn(sk, "err from rdma %d - sendSM\n", err);
+					skb_unlink(skb, &sk->sk_receive_queue);
+					__kfree_skb(skb);
 				}
 			} else {
 				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
@@ -2414,12 +2420,12 @@ sdp_mid_data:
 				}
 			}
 			if (err) {
-				sdp_dbg(sk, "%s: skb_copy_datagram_iovec failed"
+				sdp_dbg(sk, "%s: data copy failed"
 					"offset %d size %ld status %d\n",
 					__func__, offset, used, err);
 				/* Exception. Bailout! */
 				if (!copied)
-					copied = -EFAULT;
+					copied = err;
 				break;
 			}
 		}
@@ -2439,6 +2445,8 @@ skip_copy:
 		if (rx_sa && !(flags & MSG_PEEK)) {
 			rc = sdp_post_rdma_rd_compl(sk, rx_sa, offset);
 			if (unlikely(rc)) {
+				sdp_abort_rx_srcavail(sk);
+				rx_sa = NULL;
 				err = rc;
 				goto out;
 			}
@@ -2460,13 +2468,8 @@ skb_cleanup:
 				ntohl(h->mseq), ntohl(h->mseq_ack));
 
 			if (rx_sa) {
-				if (!rx_sa->flags) /* else ssk->rx_sa might
-						      point to another rx_sa */
-					ssk->rx_sa = NULL;
-
-				kfree(rx_sa);
+				sdp_abort_rx_srcavail(sk);
 				rx_sa = NULL;
-
 			}
 force_skb_cleanup:
 			sdp_dbg_data(sk, "unlinking skb %p\n", skb);
@@ -2952,8 +2955,6 @@ static void __exit sdp_exit(void)
 
 	destroy_workqueue(rx_comp_wq);
 	destroy_workqueue(sdp_wq);
-
-	flush_scheduled_work();
 
 	BUG_ON(!list_empty(&sock_list));
 

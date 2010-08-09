@@ -251,7 +251,8 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 		sdp_prf1(sk, NULL, "TX comp: RDMA read");
 
 		if (!ssk->tx_ring.rdma_inflight) {
-			sdp_warn(sk, "ERROR: unexpected RDMA read\n");
+			sdp_dbg(sk, "unexpected RDMA read, "
+					"probably was canceled\n");
 			return;
 		}
 

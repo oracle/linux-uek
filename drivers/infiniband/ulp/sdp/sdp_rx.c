@@ -322,8 +322,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		struct sdp_srcah *srcah = (struct sdp_srcah *)(h+1);
 		struct rx_srcavail_state *rx_sa;
 
-		ssk->srcavail_cancel_mseq = 0;
-
+		SDP_WARN_ON(ssk->rx_sa);
 		ssk->rx_sa = rx_sa = RX_SRCAVAIL_STATE(skb) = kzalloc(
 				sizeof(struct rx_srcavail_state), GFP_ATOMIC);
 		if (unlikely(!rx_sa)) {
@@ -337,7 +336,8 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		rx_sa->len = skb_len = ntohl(srcah->len);
 		rx_sa->rkey = ntohl(srcah->rkey);
 		rx_sa->vaddr = be64_to_cpu(srcah->vaddr);
-		rx_sa->flags = 0;
+		rx_sa->skb = skb;
+		rx_sa->is_treated = 0;
 
 		if (ssk->tx_sa) {
 			sdp_dbg_data(&ssk->isk.sk, "got RX SrcAvail while waiting "
@@ -507,17 +507,19 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		__kfree_skb(skb);
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
-		sdp_dbg_data(sk, "Handling SrcAvailCancel\n");
-		sdp_prf(sk, NULL, "Handling SrcAvailCancel");
-		if (ssk->rx_sa) {
-			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
-			ssk->rx_sa->flags |= RX_SA_ABORTED;
-			ssk->rx_sa = NULL; /* TODO: change it into SDP_MID_DATA and get
-			                      the dirty logic from recvmsg */
-		} else {
-			sdp_dbg(sk, "Got SrcAvailCancel - "
-					"but no SrcAvail in process\n");
+		spin_lock_irq(&ssk->rx_ring.lock);
+		if (ssk->rx_sa && !ssk->rx_sa->is_treated &&
+				after(ntohl(h->mseq), ssk->rx_sa->mseq)) {
+			sdp_dbg(sk, "Handling SrcAvailCancel - post SendSM\n");
+			RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
+			kfree(ssk->rx_sa);
+			ssk->rx_sa = NULL;
+			spin_unlock_irq(&ssk->rx_ring.lock);
+			sdp_post_sendsm(sk);
+			break;
 		}
+
+		spin_unlock_irq(&ssk->rx_ring.lock);
 		break;
 	case SDP_MID_SINKAVAIL:
 		sdp_dbg_data(sk, "Got SinkAvail - not supported: ignored\n");
@@ -608,7 +610,10 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(sk, "Got SrcAvailCancel. "
 					"seq: 0x%d seq_ack: 0x%d\n",
 					ntohl(h->mseq), ntohl(h->mseq_ack));
-			ssk->srcavail_cancel_mseq = ntohl(h->mseq);
+			ssk->sa_cancel_mseq = ntohl(h->mseq);
+			ssk->sa_cancel_arrived = 1;
+			if (ssk->rx_sa && ssk->rx_sa->is_treated)
+				wake_up(sk->sk_sleep);
 		}
 
 

@@ -19,6 +19,7 @@
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
 #define SDP_RX_POLL_TIMEOUT	(1 + HZ / 1000)
+#define SDP_RDMA_READ_TIMEOUT	(5 * HZ)
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
@@ -250,10 +251,6 @@ struct bzcopy_state {
 	struct page         **pages;
 };
 
-enum rx_sa_flag {
-	RX_SA_ABORTED    = 2,
-};
-
 enum tx_sa_flag {
 	TX_SA_SENDSM     = 0x01,
 	TX_SA_CROSS_SEND = 0x02,
@@ -276,7 +273,8 @@ struct rx_srcavail_state {
 
 	/* Utility */
 	u8  busy;
-	enum rx_sa_flag  flags;
+	struct sk_buff *skb; /* SrcAvail skb */
+	int is_treated; /* recvmsg() is RDMA-reading now */
 };
 
 struct tx_srcavail_state {
@@ -363,11 +361,14 @@ struct sdp_sock {
 	struct sdp_device *sdp_dev;
 
 	int qp_active;
-	struct tx_srcavail_state *tx_sa;
-	struct rx_srcavail_state *rx_sa;
 	spinlock_t tx_sa_lock;
-	struct delayed_work srcavail_cancel_work;
-	int srcavail_cancel_mseq;
+	struct tx_srcavail_state *tx_sa;
+
+	/* set when SrcAvail received, reset when SendSM/RdmaRdCompl sent */
+	struct rx_srcavail_state *rx_sa;
+
+	u32 sa_cancel_mseq;
+	int sa_cancel_arrived; /* is 'sa_cancel_mseq' relevant or not, sticky */
 
 	struct ib_ucontext context;
 
@@ -482,6 +483,18 @@ static inline void rx_ring_destroy_lock(struct sdp_rx_ring *rx_ring)
 	write_lock_bh(&rx_ring->destroyed_lock);
 	rx_ring->destroyed = 1;
 	write_unlock_bh(&rx_ring->destroyed_lock);
+}
+
+static inline int sdp_chk_sa_cancel(struct sdp_sock *ssk, struct rx_srcavail_state *rx_sa)
+{
+	int res;
+
+	spin_lock_irq(&ssk->rx_ring.lock);
+	res = ssk->sa_cancel_arrived &&
+		before(rx_sa->mseq, ssk->sa_cancel_mseq);
+	spin_unlock_irq(&ssk->rx_ring.lock);
+
+	return res;
 }
 
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)
@@ -887,7 +900,6 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 int sdp_post_rdma_rd_compl(struct sock *sk,
 		struct rx_srcavail_state *rx_sa, u32 offset);
 int sdp_post_sendsm(struct sock *sk);
-void srcavail_cancel_timeout(struct work_struct *work);
 void sdp_abort_srcavail(struct sock *sk);
 void sdp_abort_rdma_read(struct sock *sk);
 

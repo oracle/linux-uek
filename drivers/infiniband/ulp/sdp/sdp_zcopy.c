@@ -124,25 +124,7 @@ static int sdp_post_srcavail_cancel(struct sock *sk)
 
 	sdp_post_sends(ssk, 0);
 
-	schedule_delayed_work(&ssk->srcavail_cancel_work,
-			SDP_SRCAVAIL_CANCEL_TIMEOUT);
-
 	return 0;
-}
-
-void srcavail_cancel_timeout(struct work_struct *work)
-{
-	struct sdp_sock *ssk =
-		container_of(work, struct sdp_sock, srcavail_cancel_work.work);
-	struct sock *sk = &ssk->isk.sk;
-
-	lock_sock(sk);
-
-	sdp_dbg_data(sk, "both SrcAvail and SrcAvailCancel timedout."
-			" closing connection\n");
-	sdp_set_error(sk, -ECONNRESET);
-
-	release_sock(sk);
 }
 
 static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
@@ -236,10 +218,12 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 	return err;
 }
 
-static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
+static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk,
+		struct rx_srcavail_state *rx_sa)
 {
 	struct sock *sk = &ssk->isk.sk;
-	long timeo = HZ * 5; /* Timeout for for RDMA read */
+	long timeo = SDP_RDMA_READ_TIMEOUT;
+	int rc = 0;
 	DEFINE_WAIT(wait);
 
 	sdp_dbg_data(sk, "Sleep till RDMA wr finished.\n");
@@ -251,14 +235,21 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 			break;
 		}
 
+		if (sdp_chk_sa_cancel(ssk, rx_sa)) {
+			sdp_dbg_data(sk, "got SrcAvailCancel\n");
+			rc = -EAGAIN; /* fall to BCopy */
+			break;
+		}
+
 		if (!ssk->qp_active) {
 			sdp_dbg_data(sk, "QP destroyed\n");
+			rc = -EPIPE;
 			break;
 		}
 
 		if (!timeo) {
-			sdp_warn(sk, "Panic: Timed out waiting for RDMA read\n");
-			SDP_WARN_ON(1);
+			sdp_warn(sk, "Timed out waiting for RDMA read\n");
+			rc = -ETIME;
 			break;
 		}
 
@@ -266,7 +257,9 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 
 		sdp_prf1(sk, NULL, "Going to sleep");
 		sk_wait_event(sk, &timeo,
-			!ssk->tx_ring.rdma_inflight->busy);
+			!ssk->tx_ring.rdma_inflight->busy ||
+			sdp_chk_sa_cancel(ssk, rx_sa) ||
+			!ssk->qp_active);
 		sdp_prf1(sk, NULL, "Woke up");
 		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
 
@@ -276,6 +269,7 @@ static void sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 	finish_wait(sk->sk_sleep, &wait);
 
 	sdp_dbg_data(sk, "Finished waiting\n");
+	return rc;
 }
 
 int sdp_post_rdma_rd_compl(struct sock *sk,
@@ -364,8 +358,6 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 	sdp_dbg_data(sk, "Got SendSM - aborting SrcAvail\n");
 
 	ssk->tx_sa->abort_flags |= TX_SA_SENDSM;
-	cancel_delayed_work(&ssk->srcavail_cancel_work);
-
 	wake_up(sk->sk_sleep);
 	sdp_dbg_data(sk, "woke up sleepers\n");
 
@@ -563,7 +555,6 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
-	int got_srcavail_cancel;
 	int rc = 0;
 	int len = *used;
 	int copied;
@@ -595,20 +586,12 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		goto err_post_send;
 	}
 
-	sdp_prf(sk, skb, "Finished posting(rc=%d), now to wait", rc);
-
-	got_srcavail_cancel = ssk->srcavail_cancel_mseq > rx_sa->mseq;
-
+	sdp_prf(sk, skb, "Finished posting, now to wait");
 	sdp_arm_tx_cq(sk);
 
-	sdp_wait_rdma_wr_finished(ssk);
-
-	sdp_prf(sk, skb, "Finished waiting(rc=%d)", rc);
-	if (!ssk->qp_active) {
-		sdp_dbg_data(sk, "QP destroyed during RDMA read\n");
-		rc = -EPIPE;
-		goto err_post_send;
-	}
+	rc = sdp_wait_rdma_wr_finished(ssk, rx_sa);
+	if (unlikely(rc))
+		goto err_wait;
 
 	copied = rx_sa->umem->length;
 
@@ -616,17 +599,13 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
 
+err_wait:
 	ssk->tx_ring.rdma_inflight = NULL;
 
 err_post_send:
 	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
 err_alloc_fmr:
-	if (rc && ssk->qp_active) {
-		sdp_dbg_data(sk, "Couldn't do RDMA - post sendsm\n");
-		rx_sa->flags |= RX_SA_ABORTED;
-	}
-
 	sock_put(sk, SOCK_REF_RDMA_RD);
 
 	return rc;
@@ -698,12 +677,15 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 
 			/* Wait for RdmaRdCompl/SendSM to
 			 * finish the transaction */
-			*timeo = 2 * HZ;
-			sdp_dbg_data(sk, "Waiting for SendSM\n");
-			sdp_wait_rdmardcompl(ssk, timeo, 1);
-			sdp_dbg_data(sk, "finished waiting\n");
-
-			cancel_delayed_work(&ssk->srcavail_cancel_work);
+			*timeo = SDP_SRCAVAIL_CANCEL_TIMEOUT;
+			rc = sdp_wait_rdmardcompl(ssk, timeo, 1);
+			if (unlikely(rc == -ETIME || rc == -EINVAL)) {
+				/* didn't get RdmaRdCompl/SendSM after sending
+				 * SrcAvailCancel - There is a connection
+				 * problem. */
+				sdp_reset(sk);
+				rc = -sk->sk_err;
+			}
 		} else {
 			sdp_dbg_data(sk, "QP was destroyed while waiting\n");
 		}
@@ -739,6 +721,11 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 			iov->iov_base, iov->iov_len);
 	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
+		/* Don't want both sides to send SrcAvail because both of them
+		 * will wait on sendmsg() until timeout.
+		 * Don't need to lock 'rx_ring.lock' because when SrcAvail is
+		 * received, sk_sleep'ers are woken up.
+		 */
 		sdp_dbg_data(sk, "Deadlock prevent: crossing SrcAvail\n");
 		return 0;
 	}
@@ -794,9 +781,6 @@ void sdp_abort_srcavail(struct sock *sk)
 	if (!tx_sa)
 		return;
 
-	cancel_delayed_work(&ssk->srcavail_cancel_work);
-	flush_scheduled_work();
-
 	spin_lock_irqsave(&ssk->tx_sa_lock, flags);
 
 	sdp_free_fmr(sk, &tx_sa->fmr, &tx_sa->umem);
@@ -809,13 +793,18 @@ void sdp_abort_srcavail(struct sock *sk)
 void sdp_abort_rdma_read(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	struct rx_srcavail_state *rx_sa = ssk->rx_sa;
+	struct rx_srcavail_state *rx_sa;
 
+	spin_lock_irq(&ssk->rx_ring.lock);
+	rx_sa = ssk->rx_sa;
 	if (!rx_sa)
-		return;
+		goto out;
 
-	if (rx_sa->fmr)
-		sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
+	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
-	ssk->rx_sa = NULL;
+	/* kfree(rx_sa) and posting SendSM will be handled in the nornal
+	 * flows.
+	 */
+out:
+	spin_unlock_irq(&ssk->rx_ring.lock);
 }
