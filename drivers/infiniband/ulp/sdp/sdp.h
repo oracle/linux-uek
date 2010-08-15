@@ -526,9 +526,6 @@ static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 
 	spin_unlock_irqrestore(&sdp_sk(sk)->lock, flags);
 
-	if (TCP_CLOSE == state)
-		del_timer_sync(&sdp_sk(sk)->tx_ring.timer);
-
 	return old;
 }
 #define sdp_exch_state(sk, from_states, state) \
