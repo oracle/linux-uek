@@ -480,6 +480,9 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
 	struct sock *sk = &ssk->isk.sk;
 
+	sdp_dbg_data(sk, "Handling %s\n", mid2str(h->mid));
+	sdp_prf(sk, skb, "Handling %s", mid2str(h->mid));
+
 	switch (h->mid) {
 	case SDP_MID_DATA:
 	case SDP_MID_SRCAVAIL:
@@ -496,16 +499,12 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 			sk->sk_prot->disconnect(sk, 0);
 		}
-		__kfree_skb(skb);
-
 		break;
 	case SDP_MID_RDMARDCOMPL:
-		{
-			__kfree_skb(skb);
-		} break;
+		sdp_warn(sk, "Handling RdmaRdCompl - ERROR\n");
+		break;
 	case SDP_MID_SENDSM:
 		sdp_handle_sendsm(ssk, ntohl(h->mseq_ack));
-		__kfree_skb(skb);
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
 		spin_lock_irq(&ssk->rx_ring.lock);
@@ -523,36 +522,24 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		spin_unlock_irq(&ssk->rx_ring.lock);
 		break;
 	case SDP_MID_SINKAVAIL:
-		sdp_dbg_data(sk, "Got SinkAvail - not supported: ignored\n");
-		sdp_prf(sk, NULL, "Got SinkAvail - not supported: ignored");
-		__kfree_skb(skb);
 	case SDP_MID_ABORT:
-		sdp_dbg_data(sk, "Handling ABORT\n");
-		sdp_prf(sk, NULL, "Handling ABORT");
 		sdp_reset(sk);
-		__kfree_skb(skb);
 		break;
 	case SDP_MID_DISCONN:
-		sdp_dbg_data(sk, "Handling DISCONN\n");
-		sdp_prf(sk, NULL, "Handling DISCONN");
 		sdp_handle_disconn(sk);
 		break;
 	case SDP_MID_CHRCVBUF:
-		sdp_dbg_data(sk, "Handling RX CHRCVBUF\n");
 		sdp_handle_resize_request(ssk, (struct sdp_chrecvbuf *)(h+1));
-		__kfree_skb(skb);
 		break;
 	case SDP_MID_CHRCVBUF_ACK:
-		sdp_dbg_data(sk, "Handling RX CHRCVBUF_ACK\n");
 		sdp_handle_resize_ack(ssk, (struct sdp_chrecvbuf *)(h+1));
-		__kfree_skb(skb);
 		break;
 	default:
 		/* TODO: Handle other messages */
 		sdp_warn(sk, "SDP: FIXME MID %d\n", h->mid);
-		__kfree_skb(skb);
 	}
 
+	__kfree_skb(skb);
 	return 0;
 }
 
@@ -615,17 +602,16 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			ssk->sa_cancel_arrived = 1;
 			if (ssk->rx_sa && ssk->rx_sa->is_treated)
 				wake_up(sk->sk_sleep);
-		}
 
-
-		if (h->mid == SDP_MID_RDMARDCOMPL) {
+			skb_queue_tail(&ssk->rx_ctl_q, skb);
+		} else if (h->mid == SDP_MID_RDMARDCOMPL) {
 			struct sdp_rrch *rrch = (struct sdp_rrch *)(h+1);
 			sdp_dbg_data(sk, "RdmaRdCompl message arrived\n");
 			sdp_handle_rdma_read_compl(ssk, ntohl(h->mseq_ack),
 					ntohl(rrch->len));
-		}
-
-		skb_queue_tail(&ssk->rx_ctl_q, skb);
+			__kfree_skb(skb);
+		} else
+			skb_queue_tail(&ssk->rx_ctl_q, skb);
 
 		return 0;
 	}

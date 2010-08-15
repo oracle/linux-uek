@@ -504,6 +504,7 @@ static void sdp_destroy_resources(struct sock *sk)
 		sdp_abort_rx_srcavail(sk);
 
 	skb_queue_purge(&sk->sk_receive_queue);
+	skb_queue_purge(&ssk->rx_ctl_q);
 
 	sdp_dbg(sk, "%s done; releasing sock\n", __func__);
 	release_sock(sk);
