@@ -121,6 +121,8 @@ spinlock_t sock_list_lock;
 
 DECLARE_RWSEM(device_removal_lock);
 
+static inline int sdp_abort_rx_srcavail(struct sock *sk);
+
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
 	return ssk->keepalive_time ? : sdp_keepalive_time;
@@ -495,13 +497,16 @@ static void sdp_destroy_resources(struct sock *sk)
 		lock_sock(sk);
 	}
 
-	skb_queue_purge(&sk->sk_receive_queue);
-
 	sdp_destroy_qp(ssk);
+
+	/* QP is destroyed, so no one will queue skbs anymore. */
+	if (ssk->rx_sa)
+		sdp_abort_rx_srcavail(sk);
+
+	skb_queue_purge(&sk->sk_receive_queue);
 
 	sdp_dbg(sk, "%s done; releasing sock\n", __func__);
 	release_sock(sk);
-
 }
 
 static inline void sdp_kill_id_and_release(struct sdp_sock *ssk)
@@ -689,6 +694,11 @@ static void sdp_close(struct sock *sk, long timeout)
 		if (h->mid == SDP_MID_DISCONN) {
 			sdp_handle_disconn(sk);
 		} else {
+			if (h->mid == SDP_MID_SRCAVAIL && sdp_sk(sk)->rx_sa) {
+				sdp_abort_rx_srcavail(sk);
+				sdp_post_sendsm(sk);
+			}
+
 			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
 		}
