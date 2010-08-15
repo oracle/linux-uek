@@ -96,6 +96,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	}
 	buf[len] = 0;
 	_sdp_printk(func, line, KERN_WARNING, sk, "%s: %s\n", str, buf);
+	_sdp_prf(sk, skb, func, line, "%s: %s", str, buf);
 }
 #endif
 

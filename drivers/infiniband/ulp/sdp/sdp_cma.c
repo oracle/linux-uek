@@ -324,8 +324,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 
 	sk = id->context;
 	if (!sk) {
-		sdp_dbg(NULL, "cm_id is being torn down, event %d\n",
-		       	event->event);
+		sdp_dbg(NULL, "cm_id is being torn down, event %s\n",
+		       	rdma_cm_event_str(event->event));
 		return event->event == RDMA_CM_EVENT_CONNECT_REQUEST ?
 			-EINVAL : 0;
 	}
@@ -483,7 +483,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		break;
 	}
 
-	sdp_dbg(sk, "%s event %d handled\n", __func__, event->event);
+	sdp_dbg(sk, "event: %s handled\n", rdma_cm_event_str(event->event));
 
 	if (rc && sdp_sk(sk)->id == id) {
 		child = sk;
@@ -496,7 +496,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 
 	release_sock(sk);
 
-	sdp_dbg(sk, "event %d done. status %d\n", event->event, rc);
+	sdp_dbg(sk, "event: %s done. status %d\n",
+			rdma_cm_event_str(event->event), rc);
 
 	if (parent) {
 		lock_sock(parent);

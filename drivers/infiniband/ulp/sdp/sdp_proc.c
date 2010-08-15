@@ -379,6 +379,15 @@ int sdpprf_log_count;
 
 static unsigned long long start_t;
 
+static inline void remove_newline(char *s)
+{
+	while (*s) {
+		if (*s == '\n')
+			*s = '\0';
+		++s;
+	}
+}
+
 static int sdpprf_show(struct seq_file *m, void *v)
 {
 	struct sdpprf_log *l = v;
@@ -391,7 +400,7 @@ static int sdpprf_show(struct seq_file *m, void *v)
 
 	t = l->time - start_t;
 	nsec_rem = do_div(t, 1000000000);
-
+	remove_newline(l->msg);
 	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d{%d} %d:%d] "
 			"skb: %p %s:%d\n",
 			l->idx, (unsigned long)t, nsec_rem/1000,

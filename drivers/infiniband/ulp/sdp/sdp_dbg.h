@@ -21,8 +21,11 @@
 } while (0)
 #define sdp_printk(level, sk, format, arg...)                \
 	_sdp_printk(__func__, __LINE__, level, sk, format, ## arg)
-#define sdp_warn(sk, format, arg...)                         \
-	sdp_printk(KERN_WARNING, sk, format , ## arg)
+#define sdp_warn(sk, format, arg...)					\
+	do {								\
+		sdp_printk(KERN_WARNING, sk, "\t%lx: " format , jiffies, ## arg); \
+		sdp_prf(sk, NULL, format , ## arg);			\
+	} while (0)
 
 #define SDP_MODPARAM_SINT(var, def_val, msg) \
 	static int var = def_val; \
@@ -67,7 +70,7 @@ static inline unsigned long long current_nsec(void)
 #define current_nsec() jiffies_to_usecs(jiffies)
 #endif
 
-#define sdp_prf1(sk, s, format, arg...) ({ \
+#define _sdp_prf(sk, s, _func, _line, format, arg...) ({ \
 	struct sdpprf_log *l = \
 		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
 	preempt_disable(); \
@@ -79,14 +82,17 @@ static inline unsigned long long current_nsec(void)
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
 	l->time = current_nsec(); \
-	l->func = __func__; \
-	l->line = __LINE__; \
+	l->func = _func; \
+	l->line = _line; \
 	preempt_enable(); \
 	1; \
 })
+#define sdp_prf1(sk, s, format, arg...)	\
+	_sdp_prf(sk, s, __func__, __LINE__, format, ## arg)
 #define sdp_prf(sk, s, format, arg...) sdp_prf1(sk, s, format, ## arg)
 
 #else
+#define _sdp_prf(sk, s, _func, _line, format, arg...)
 #define sdp_prf1(sk, s, format, arg...)
 #define sdp_prf(sk, s, format, arg...)
 #endif
@@ -94,10 +100,11 @@ static inline unsigned long long current_nsec(void)
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
 extern int sdp_debug_level;
 
-#define sdp_dbg(sk, format, arg...)                          \
-	do {                                                 \
-		if (sdp_debug_level > 0)                     \
-		sdp_printk(KERN_WARNING, sk, format , ## arg); \
+#define sdp_dbg(sk, format, arg...)					\
+	do {								\
+		if (sdp_debug_level > 0)				\
+			sdp_printk(KERN_WARNING, sk, format , ## arg);	\
+		sdp_prf(sk, NULL, format , ## arg);			\
 	} while (0)
 
 #define sock_ref(sk, msg, sock_op) ({ \
@@ -121,15 +128,16 @@ extern int sdp_debug_level;
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 
 extern int sdp_data_debug_level;
-#define sdp_dbg_data(sk, format, arg...)                     		\
-	do {                                                 		\
-		if (sdp_data_debug_level & 0x2)                		\
-			sdp_printk(KERN_WARNING, sk, format , ## arg); 	\
+#define sdp_dbg_data(sk, format, arg...)				\
+	do {								\
+		if (sdp_data_debug_level & 0x2)				\
+			sdp_printk(KERN_WARNING, sk, format , ## arg);	\
+		sdp_prf(sk, NULL, format , ## arg);			\
 	} while (0)
 #define SDP_DUMP_PACKET(sk, str, skb, h)                     		\
 	do {                                                 		\
-		if (sdp_data_debug_level & 0x1)                		\
-			dump_packet(sk, str, skb, h); 			\
+		if (sdp_data_debug_level & 0x1)				\
+			dump_packet(sk, str, skb, h);			\
 	} while (0)
 #else
 #define sdp_dbg_data(priv, format, arg...)

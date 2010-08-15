@@ -515,10 +515,10 @@ static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 		sdp_state_str(state), from_states);
 
 	if ((1 << sk->sk_state) & ~from_states) {
-		sdp_warn(sk, "trying to exchange state from unexpected state "
-			"%s to state %s. expected states: 0x%x\n",
-			sdp_state_str(sk->sk_state), sdp_state_str(state),
-			from_states);
+		sdp_warn(sk, "%s:%d: trying to exchange state from unexpected "
+				"state %s to state %s. expected states: 0x%x\n",
+				func, line, sdp_state_str(sk->sk_state),
+				sdp_state_str(state), from_states);
 	}
 
 	old = sk->sk_state;
