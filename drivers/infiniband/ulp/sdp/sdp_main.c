@@ -241,7 +241,7 @@ static void sdp_keepalive_timer(unsigned long data)
 	}
 
 	if (!sock_flag(sk, SOCK_KEEPOPEN) || sk->sk_state == TCP_LISTEN ||
-	    sk->sk_state == TCP_CLOSE)
+	    sk->sk_state == TCP_CLOSE || !ssk->qp)
 		goto out;
 
 	if (ssk->keepalive_tx_head == ring_head(ssk->tx_ring) &&

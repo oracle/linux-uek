@@ -416,9 +416,6 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	int rc = 0;
 	unsigned long max_lockable_bytes;
 
-	if (unlikely(!dev))
-		return -ENODEV;
-
 	if (unlikely(len > SDP_MAX_RDMA_READ_LEN)) {
 		sdp_dbg_data(sk, "len:0x%zx > FMR_SIZE: 0x%lx\n",
 			len, SDP_MAX_RDMA_READ_LEN);
@@ -548,6 +545,9 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	int rc = 0;
 	int len = *used;
 	int copied;
+
+	if (unlikely(!ssk->ib_device))
+		return -ENODEV;
 
 	while (!iov->iov_len)
 		++iov;

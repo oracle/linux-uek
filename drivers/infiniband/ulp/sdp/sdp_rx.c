@@ -107,7 +107,8 @@ void sdp_handle_disconn(struct sock *sk)
 			sdp_sk(sk)->qp_active = 0;
 			rdma_disconnect(sdp_sk(sk)->id);
 		} else {
-			sdp_warn(sk, "%s: sdp_sk(sk)->id is NULL\n", __func__);
+			/* possible in a case of device removal */
+			sdp_dbg(sk, "sdp_sk(sk)->id is NULL\n");
 			return;
 		}
 		break;
