@@ -1940,8 +1940,8 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sdp_bz_cleanup(bz);
 		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
 		if (IS_ERR(bz)) {
-			bz = NULL;
 			err = PTR_ERR(bz);
+			bz = NULL;
 			goto do_error;
 		}
 
