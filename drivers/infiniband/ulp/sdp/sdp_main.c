@@ -1179,7 +1179,6 @@ static void sdp_shutdown(struct sock *sk, int how)
 static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
 {
 	SDP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
-	ssk->pushed_seq = ssk->write_seq;
 	sdp_do_posts(ssk);
 }
 
@@ -1422,8 +1421,7 @@ static int sdp_recv_urg(struct sock *sk, long timeo,
 	return -EAGAIN;
 }
 
-static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk,
-		int flags)
+static inline void sdp_mark_urg(struct sock *sk, int flags)
 {
 	if (unlikely(flags & MSG_OOB)) {
 		struct sk_buff *skb = sk->sk_write_queue.prev;
@@ -1431,10 +1429,10 @@ static inline void sdp_mark_urg(struct sock *sk, struct sdp_sock *ssk,
 	}
 }
 
-static inline void sdp_push(struct sock *sk, struct sdp_sock *ssk, int flags)
+static inline void sdp_push(struct sock *sk, int flags)
 {
 	if (sk->sk_send_head)
-		sdp_mark_urg(sk, ssk, flags);
+		sdp_mark_urg(sk, flags);
 	sdp_do_posts(sdp_sk(sk));
 }
 
@@ -1874,7 +1872,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int i;
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sk_buff *skb;
-	int iovlen, flags;
+	int flags;
 	const int size_goal = MIN(ssk->xmit_size_goal, SDP_MAX_PAYLOAD);
 	int err, copied;
 	long timeo;
@@ -1899,7 +1897,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	clear_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
 	/* Ok commence sending. */
-	iovlen = msg->msg_iovlen;
 	copied = 0;
 
 	err = -EPIPE;
@@ -2040,9 +2037,6 @@ new_segment:
 			from += copy;
 			copied += copy;
 			seglen -= copy;
-			if (seglen == 0 && iovlen == 0)
-				goto out;
-
 			continue;
 
 wait_for_sndbuf:
@@ -2051,7 +2045,7 @@ wait_for_memory:
 			sdp_prf(sk, skb, "wait for mem. credits: %d", tx_credits(ssk));
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
-				sdp_push(sk, ssk, flags & ~MSG_MORE);
+				sdp_push(sk, flags & ~MSG_MORE);
 
 			err = sdp_tx_wait_memory(ssk, &timeo,
 					bz ? &bz->busy : NULL);
@@ -2062,7 +2056,7 @@ wait_for_memory:
 
 out:
 	if (copied) {
-		sdp_push(sk, ssk, flags);
+		sdp_push(sk, flags);
 
 		if (bz)
 			bz = sdp_bz_cleanup(bz);

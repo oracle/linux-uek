@@ -391,7 +391,6 @@ struct sdp_sock {
 	atomic_t rcv_nxt;
 
 	int write_seq;
-	int pushed_seq;
 	int xmit_size_goal;
 	int nonagle;
 
