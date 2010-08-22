@@ -1915,7 +1915,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 		if (zcopy_thresh && seglen > zcopy_thresh &&
 				seglen > SDP_MIN_ZCOPY_THRESH &&
 				tx_slots_free(ssk) && ssk->sdp_dev &&
-				ssk->sdp_dev->fmr_pool) {
+				ssk->sdp_dev->fmr_pool && !(flags & MSG_OOB)) {
 			int zcopied = 0;
 
 			zcopied = sdp_sendmsg_zcopy(iocb, sk, iov);
@@ -2006,14 +2006,6 @@ new_segment:
 			/* Try to append data to the end of skb. */
 			if (copy > seglen)
 				copy = seglen;
-
-			/* OOB data byte should be the last byte of
-			   the data payload */
-			if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG) &&
-			    !(flags & MSG_OOB)) {
-				sdp_mark_push(ssk, skb);
-				goto new_segment;
-			}
 
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);

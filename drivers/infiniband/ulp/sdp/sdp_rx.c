@@ -319,6 +319,9 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 	skb_set_owner_r(skb, sk); */
 
 	SDP_SKB_CB(skb)->seq = rcv_nxt(ssk);
+	if (unlikely(h->flags & SDP_OOB_PRES))
+		sdp_urg(ssk, skb);
+
 	if (h->mid == SDP_MID_SRCAVAIL) {
 		struct sdp_srcah *srcah = (struct sdp_srcah *)(h+1);
 		struct rx_srcavail_state *rx_sa;
@@ -576,8 +579,8 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	}
 	skb->truesize -= frags * PAGE_SIZE;
 
-/*	if (unlikely(h->flags & SDP_OOB_PEND))
-		sk_send_sigurg(sk);*/
+	if (unlikely(h->flags & SDP_OOB_PEND))
+		sk_send_sigurg(sk);
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
 
@@ -618,9 +621,6 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	sdp_prf(sk, NULL, "queueing %s skb", mid2str(h->mid));
 	skb = sdp_sock_queue_rcv_skb(sk, skb);
-
-/*	if (unlikely(h->flags & SDP_OOB_PRES))
-		sdp_urg(ssk, skb);*/
 
 	return 0;
 }

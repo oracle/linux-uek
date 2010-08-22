@@ -124,7 +124,8 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		!ssk->nagle_last_unacked ||
 		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
 		skb->len + sizeof(struct sdp_bsdh) >= ssk->xmit_size_goal ||
-		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH);
+		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH) ||
+		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG);
 
 	if (send_now) {
 		unsigned long mseq = ring_head(ssk->tx_ring);
