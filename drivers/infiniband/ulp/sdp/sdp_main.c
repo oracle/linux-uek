@@ -1357,12 +1357,12 @@ static inline int poll_recv_cq(struct sock *sk)
 	if (unlikely(!sdp_sk(sk)->rx_ring.cq))
 		return 0;
 
-	while (jiffies <= jiffies_end) {
+	do {
 		if (sdp_process_rx(sdp_sk(sk))) {
 			SDPSTATS_COUNTER_INC(rx_poll_hit);
 			return 0;
 		}
-	}
+	} while (jiffies < jiffies_end);
 	SDPSTATS_COUNTER_INC(rx_poll_miss);
 	return 1;
 }
