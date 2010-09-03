@@ -544,6 +544,7 @@ struct iov_iter_ops {
 	void (*ii_advance)(struct iov_iter *, size_t);
 	int (*ii_fault_in_readable)(struct iov_iter *, size_t);
 	size_t (*ii_single_seg_count)(struct iov_iter *);
+	int (*ii_shorten)(struct iov_iter *, size_t);
 };
 
 static inline size_t iov_iter_copy_to_user_atomic(struct page *page,
@@ -577,6 +578,10 @@ static inline int iov_iter_fault_in_readable(struct iov_iter *i, size_t bytes)
 static inline size_t iov_iter_single_seg_count(struct iov_iter *i)
 {
 	return i->ops->ii_single_seg_count(i);
+}
+static inline int iov_iter_shorten(struct iov_iter *i, size_t count)
+{
+	return i->ops->ii_shorten(i, count);
 }
 
 extern struct iov_iter_ops ii_bvec_ops;
