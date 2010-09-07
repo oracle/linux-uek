@@ -324,7 +324,7 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 			goto out;
 	}
 
-	WARN_ON(recv->r_frag); /* leak! */
+	WARN_ON_ONCE(recv->r_frag); /* leak! */
 	recv->r_frag = rds_ib_refill_one_frag(ic, slab_mask, page_mask);
 	if (!recv->r_frag)
 		goto out;
