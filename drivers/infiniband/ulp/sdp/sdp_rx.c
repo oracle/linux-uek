@@ -510,19 +510,14 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_handle_sendsm(ssk, ntohl(h->mseq_ack));
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
-		spin_lock_irq(&ssk->rx_ring.lock);
 		if (ssk->rx_sa && !ssk->rx_sa->is_treated &&
 				after(ntohl(h->mseq), ssk->rx_sa->mseq)) {
 			sdp_dbg(sk, "Handling SrcAvailCancel - post SendSM\n");
 			RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
 			kfree(ssk->rx_sa);
 			ssk->rx_sa = NULL;
-			spin_unlock_irq(&ssk->rx_ring.lock);
 			sdp_post_sendsm(sk);
-			break;
 		}
-
-		spin_unlock_irq(&ssk->rx_ring.lock);
 		break;
 	case SDP_MID_SINKAVAIL:
 	case SDP_MID_ABORT:
@@ -708,16 +703,14 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 		sock_wake_async(sock, 2, POLL_OUT);
 }
 
-static int sdp_poll_rx_cq(struct sdp_sock *ssk)
+int sdp_poll_rx_cq(struct sdp_sock *ssk)
 {
 	struct ib_cq *cq = ssk->rx_ring.cq;
 	struct ib_wc ibwc[SDP_NUM_WC];
 	int n, i;
 	int wc_processed = 0;
 	struct sk_buff *skb;
-	unsigned long flags;
 
-	spin_lock_irqsave(&ssk->rx_ring.lock, flags);
 	do {
 		n = ib_poll_cq(cq, SDP_NUM_WC, ibwc);
 		for (i = 0; i < n; ++i) {
@@ -732,10 +725,11 @@ static int sdp_poll_rx_cq(struct sdp_sock *ssk)
 			wc_processed++;
 		}
 	} while (n == SDP_NUM_WC);
-	spin_unlock_irqrestore(&ssk->rx_ring.lock, flags);
 
-	if (wc_processed)
+	if (wc_processed) {
+		sdp_prf(&ssk->isk.sk, NULL, "processed %d", wc_processed);
 		sdp_bzcopy_write_space(ssk);
+	}
 
 	return wc_processed;
 }
@@ -768,8 +762,9 @@ static void sdp_rx_comp_work(struct work_struct *work)
 
 	lock_sock(sk);
 
+	posts_handler_get(ssk);
 	sdp_do_posts(ssk);
-
+	posts_handler_put(ssk, SDP_RX_ARMING_DELAY);
 	release_sock(sk);
 }
 
@@ -785,7 +780,7 @@ void sdp_do_posts(struct sdp_sock *ssk)
 	}
 
 	if (likely(ssk->rx_ring.cq))
-		sdp_process_rx(sdp_sk(sk));
+		sdp_poll_rx_cq(ssk);
 
 	while ((skb = skb_dequeue(&ssk->rx_ctl_q)))
 		sdp_process_rx_ctl_skb(ssk, skb);
@@ -818,13 +813,19 @@ void sdp_do_posts(struct sdp_sock *ssk)
 
 }
 
+static inline int should_wake_up(struct sock *sk)
+{
+	return sk->sk_sleep && waitqueue_active(sk->sk_sleep) &&
+		(posts_handler(sdp_sk(sk)) || somebody_is_waiting(sk));
+}
+
 static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	if (cq != ssk->rx_ring.cq) {
-		sdp_dbg(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
+	if (unlikely(cq != ssk->rx_ring.cq)) {
+		sdp_warn(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
 		return;
 	}
 
@@ -832,65 +833,15 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	sdp_prf(sk, NULL, "rx irq");
 
-	/* We could use rx_ring.timer instead, but mod_timer(..., 0)
-	 * measured to add 4ms delay.
-	 */
-	tasklet_hi_schedule(&ssk->rx_ring.tasklet);
-}
-
-static inline int sdp_should_rearm(struct sock *sk)
-{
-	return sk->sk_state != TCP_ESTABLISHED ||
-		sdp_sk(sk)->tx_sa ||
-		(sk->sk_socket && test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags));
-}
-
-int sdp_process_rx(struct sdp_sock *ssk)
-{
-	struct sock *sk = &ssk->isk.sk;
-	int wc_processed;
-	int credits_before;
-
-	if (!rx_ring_trylock(&ssk->rx_ring)) {
-		sdp_dbg(&ssk->isk.sk, "ring destroyed. not polling it\n");
-		return 0;
+	if (should_wake_up(sk)) {
+		wake_up_interruptible(sk->sk_sleep);
+		SDPSTATS_COUNTER_INC(rx_int_wake_up);
+	} else {
+		if (queue_work_on(ssk->cpu, rx_comp_wq, &ssk->rx_comp_work))
+			SDPSTATS_COUNTER_INC(rx_int_queue);
+		else
+			SDPSTATS_COUNTER_INC(rx_int_no_op);
 	}
-
-	credits_before = tx_credits(ssk);
-
-	wc_processed = sdp_poll_rx_cq(ssk);
-
-	if (wc_processed) {
-		sdp_prf(sk, NULL, "processed %d", wc_processed);
-		sdp_prf(sk, NULL, "credits:  %d -> %d",
-				credits_before, tx_credits(ssk));
-
-		if (posts_handler(ssk) || (sk->sk_socket &&
-			test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags))) {
-
-			sdp_prf(&ssk->isk.sk, NULL,
-				"Somebody is doing the post work for me. %d",
-				posts_handler(ssk));
-
-		} else {
-			sdp_prf(&ssk->isk.sk, NULL, "Queuing work. ctl_q: %d",
-					!skb_queue_empty(&ssk->rx_ctl_q));
-			queue_work(rx_comp_wq, &ssk->rx_comp_work);
-		}
-	}
-
-	if (unlikely(sdp_should_rearm(sk) || !posts_handler(ssk)))
-		sdp_arm_rx_cq(sk);
-
-	rx_ring_unlock(&ssk->rx_ring);
-
-	return wc_processed;
-}
-
-static void sdp_process_rx_timer(unsigned long data)
-{
-	struct sdp_sock *ssk = (struct sdp_sock *)data;
-	sdp_process_rx(ssk);
 }
 
 static void sdp_rx_ring_purge(struct sdp_sock *ssk)
@@ -924,15 +875,16 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 	}
 }
 
-void sdp_rx_ring_init(struct sdp_sock *ssk)
-{
-	ssk->rx_ring.buffer = NULL;
-	ssk->rx_ring.destroyed = 0;
-	rwlock_init(&ssk->rx_ring.destroyed_lock);
-}
-
 static void sdp_rx_cq_event_handler(struct ib_event *event, void *data)
 {
+}
+
+static void sdp_arm_cq_timer(unsigned long data)
+{
+  	struct sdp_sock *ssk = (struct sdp_sock *)data;
+
+	SDPSTATS_COUNTER_INC(rx_cq_arm_timer);
+	sdp_arm_rx_cq(&ssk->isk.sk);
 }
 
 int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
@@ -966,13 +918,9 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
 
-	spin_lock_init(&ssk->rx_ring.lock);
-
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
-	ssk->rx_ring.timer.function = sdp_process_rx_timer;
-	ssk->rx_ring.timer.data = (unsigned long) ssk;
-	tasklet_init(&ssk->rx_ring.tasklet, sdp_process_rx_timer,
-			(unsigned long) ssk);
+	setup_timer(&ssk->rx_ring.cq_arm_timer, sdp_arm_cq_timer,
+			(unsigned long)ssk);
 	sdp_arm_rx_cq(&ssk->isk.sk);
 
 	return 0;
@@ -985,7 +933,7 @@ err_cq:
 
 void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 {
-	rx_ring_destroy_lock(&ssk->rx_ring);
+	del_timer_sync(&ssk->rx_ring.cq_arm_timer);
 
 	if (ssk->rx_ring.buffer) {
 		sdp_rx_ring_purge(ssk);
@@ -1002,12 +950,6 @@ void sdp_rx_ring_destroy(struct sdp_sock *ssk)
 			ssk->rx_ring.cq = NULL;
 		}
 	}
-
-	/* the tasklet should be killed only after the rx_cq is destroyed,
-	 * so there won't be rx_irq any more, meaning the tasklet will never be
-	 * enabled. */
-	del_timer_sync(&ssk->rx_ring.timer);
-	tasklet_kill(&ssk->rx_ring.tasklet);
 
 	SDP_WARN_ON(ring_head(ssk->rx_ring) != ring_tail(ssk->rx_ring));
 }

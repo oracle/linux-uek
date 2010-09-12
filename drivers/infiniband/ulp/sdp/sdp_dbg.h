@@ -23,7 +23,7 @@
 	_sdp_printk(__func__, __LINE__, level, sk, format, ## arg)
 #define sdp_warn(sk, format, arg...)					\
 	do {								\
-		sdp_printk(KERN_WARNING, sk, "\t%lx: " format , jiffies, ## arg); \
+		sdp_printk(KERN_WARNING, sk, format, ## arg); \
 		sdp_prf(sk, NULL, format , ## arg);			\
 	} while (0)
 

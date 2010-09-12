@@ -370,7 +370,8 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	if (sock_owned_by_user(sk)) {
 		sdp_prf(&ssk->isk.sk, NULL, "TX comp: socket is busy");
 
-		if (sdp_tx_handler_select(ssk) && sk->sk_state != TCP_CLOSE) {
+		if (sdp_tx_handler_select(ssk) && sk->sk_state != TCP_CLOSE &&
+				likely(ssk->qp_active)) {
 			sdp_prf1(sk, NULL, "schedule a timer");
 			mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 		}
@@ -379,8 +380,10 @@ static void sdp_poll_tx_timeout(unsigned long data)
 		goto out;
 	}
 
-	if (unlikely(sk->sk_state == TCP_CLOSE))
+	if (unlikely(!ssk->qp || sk->sk_state == TCP_CLOSE)) {
+		SDPSTATS_COUNTER_INC(tx_poll_no_op);
 		goto out;
+	}
 
 	wc_processed = sdp_process_tx_cq(ssk);
 	if (!wc_processed)
@@ -395,7 +398,7 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	/* If there are still packets in flight and the timer has not already
 	 * been scheduled by the Tx routine then schedule it here to guarantee
 	 * completion processing of these packets */
-	if (inflight)
+	if (inflight && likely(ssk->qp_active))
 		mod_timer(&ssk->tx_ring.timer, jiffies + SDP_TX_POLL_TIMEOUT);
 
 out:
@@ -496,8 +499,8 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 	sdp_sk(&ssk->isk.sk)->tx_ring.cq = tx_cq;
 
-	ssk->tx_ring.timer.function = sdp_poll_tx_timeout;
-	ssk->tx_ring.timer.data = (unsigned long) ssk;
+	setup_timer(&ssk->tx_ring.timer, sdp_poll_tx_timeout,
+			(unsigned long)ssk);
 	ssk->tx_ring.poll_cnt = 0;
 
 	tasklet_init(&ssk->tx_ring.tasklet, sdp_poll_tx_timeout,
@@ -516,6 +519,7 @@ out:
 
 void sdp_tx_ring_destroy(struct sdp_sock *ssk)
 {
+	del_timer_sync(&ssk->tx_ring.timer);
 
 	if (ssk->nagle_timer.function)
 		del_timer_sync(&ssk->nagle_timer);

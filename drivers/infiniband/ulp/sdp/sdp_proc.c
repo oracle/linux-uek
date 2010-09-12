@@ -236,7 +236,7 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 		memset(s, '*', j);
 		s[j] = '\0';
 
-		seq_printf(seq, "%10d | %-50s - %d\n", val, s, h[i]);
+		seq_printf(seq, "%10d | %-50s - %u\n", val, s, h[i]);
 	}
 }
 
@@ -310,6 +310,8 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
         }
 
 	seq_printf(seq, "\n");
+	seq_printf(seq, "sdp_recvmsg() calls\t\t: %d\n",
+		SDPSTATS_COUNTER_GET(recvmsg));
 	seq_printf(seq, "post_recv         \t\t: %d\n",
 		SDPSTATS_COUNTER_GET(post_recv));
 	seq_printf(seq, "BZCopy poll miss  \t\t: %d\n",
@@ -321,12 +323,26 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 
 	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_poll_miss));
 	seq_printf(seq, "rx_poll_hit       \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_poll_hit));
+	__sdpstats_seq_hist(seq, "poll_hit_usec", poll_hit_usec, 1);
+	seq_printf(seq, "rx_cq_arm_timer      \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_cq_arm_timer));
+
 	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_miss));
 	seq_printf(seq, "tx_poll_busy      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_busy));
 	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_hit));
+	seq_printf(seq, "tx_poll_no_op     \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_no_op));
+
+	seq_printf(seq, "keepalive timer   \t\t: %d\n", SDPSTATS_COUNTER_GET(keepalive_timer));
+	seq_printf(seq, "nagle timer       \t\t: %d\n", SDPSTATS_COUNTER_GET(nagle_timer));
 
 	seq_printf(seq, "CQ stats:\n");
-	seq_printf(seq, "- RX interrupts\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_count));
+	seq_printf(seq, "- RX irq armed  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_arm));
+	seq_printf(seq, "- RX interrupts \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_count));
+	seq_printf(seq, "- RX int wake up\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_wake_up));
+	seq_printf(seq, "- RX int queue  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_queue));
+	seq_printf(seq, "- RX int no op  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_no_op));
+	seq_printf(seq, "- RX cq modified\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_cq_modified));
+
+	seq_printf(seq, "- TX irq armed\t\t: %d\n", SDPSTATS_COUNTER_GET(tx_int_arm));
 	seq_printf(seq, "- TX interrupts\t\t: %d\n", SDPSTATS_COUNTER_GET(tx_int_count));
 
 	seq_printf(seq, "ZCopy stats:\n");

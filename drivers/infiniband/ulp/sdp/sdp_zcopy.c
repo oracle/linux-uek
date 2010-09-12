@@ -366,8 +366,6 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 
 	spin_lock_irqsave(&ssk->tx_sa_lock, flags);
 
-	BUG_ON(!ssk);
-
 	if (!ssk->tx_sa) {
 		sdp_dbg_data(sk, "Got RdmaRdCompl for aborted SrcAvail\n");
 		goto out;
@@ -631,26 +629,24 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, iov->iov_len,
 			&tx_sa->fmr, &tx_sa->umem);
-	if (rc) {
+	if (unlikely(rc)) {
 		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
 	}
 
 	if (tx_slots_free(ssk) == 0) {
 		rc = wait_for_sndbuf(sk, timeo);
-		if (rc) {
+		if (unlikely(rc)) {
 			sdp_warn(sk, "Couldn't get send buffer\n");
 			goto err_no_tx_slots;
 		}
 	}
 
 	rc = sdp_post_srcavail(sk, tx_sa);
-	if (rc) {
+	if (unlikely(rc)) {
 		sdp_dbg(sk, "Error posting SrcAvail\n");
 		goto err_abort_send;
 	}
-
-	sdp_arm_rx_cq(sk);
 
 	rc = sdp_wait_rdmardcompl(ssk, timeo, 0);
 	if (unlikely(rc)) {
@@ -785,16 +781,13 @@ void sdp_abort_rdma_read(struct sock *sk)
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa;
 
-	spin_lock_irq(&ssk->rx_ring.lock);
 	rx_sa = ssk->rx_sa;
 	if (!rx_sa)
-		goto out;
+		return;
 
 	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
 	/* kfree(rx_sa) and posting SendSM will be handled in the nornal
 	 * flows.
 	 */
-out:
-	spin_unlock_irq(&ssk->rx_ring.lock);
 }

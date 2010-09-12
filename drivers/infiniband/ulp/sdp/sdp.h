@@ -18,7 +18,7 @@
 #define SDP_TX_POLL_TIMEOUT	(HZ / 20)
 #define SDP_NAGLE_TIMEOUT (HZ / 10)
 
-#define SDP_RX_POLL_TIMEOUT	(1 + HZ / 1000)
+#define SDP_RX_ARMING_DELAY	(msecs_to_jiffies(10))
 #define SDP_RDMA_READ_TIMEOUT	(5 * HZ)
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
@@ -97,25 +97,15 @@ struct sdp_skb_cb {
 #define posts_handler_get(ssk)						\
 	do {								\
 		atomic_inc(&ssk->somebody_is_doing_posts);		\
-		/* postpone the rx_ring.timer, there is no need to enable
-		 * interrupts because there will be cq-polling. */ 	\
-		if (likely(ssk->qp_active))				\
-			mod_timer(&ssk->rx_ring.timer, MAX_JIFFY_OFFSET); \
+		sdp_postpone_rx_timer(ssk);				\
 	} while (0)
 
 #define posts_handler_put(ssk, intr_delay)				\
 	do {								\
 		sdp_do_posts(ssk);					\
 		if (atomic_dec_and_test(&ssk->somebody_is_doing_posts) && \
-			likely(ssk->qp_active))	{			\
-			if (intr_delay)					\
-				mod_timer(&ssk->rx_ring.timer, intr_delay); \
-			else						\
-				/* There is no point of setting up a timer
-				 * for an immediate cq-arming, better arm it
-				 * now. */				\
-				sdp_arm_rx_cq(&ssk->isk.sk);		\
-		}							\
+			likely(ssk->qp_active))				\
+				sdp_schedule_arm_rx_cq(ssk, intr_delay);\
 	} while (0)
 
 #define sdp_common_release(sk) do { \
@@ -315,12 +305,7 @@ struct sdp_rx_ring {
 	atomic_t          tail;
 	struct ib_cq 	 *cq;
 
-	int		 destroyed;
-	rwlock_t 	 destroyed_lock;
-	spinlock_t	 lock;
-
-	struct timer_list 	timer;
-	struct tasklet_struct	tasklet;
+	struct timer_list	cq_arm_timer;
 };
 
 struct sdp_device {
@@ -359,6 +344,7 @@ struct sdp_sock {
 	struct sk_buff_head rx_ctl_q;
 	struct sock *parent;
 	struct sdp_device *sdp_dev;
+	int cpu;
 
 	int qp_active;
 	spinlock_t tx_sa_lock;
@@ -462,38 +448,10 @@ static inline void tx_sa_reset(struct tx_srcavail_state *tx_sa)
 			sizeof(*tx_sa) - offsetof(typeof(*tx_sa), busy));
 }
 
-static inline void rx_ring_unlock(struct sdp_rx_ring *rx_ring)
-{
-	read_unlock_bh(&rx_ring->destroyed_lock);
-}
-
-static inline int rx_ring_trylock(struct sdp_rx_ring *rx_ring)
-{
-	read_lock_bh(&rx_ring->destroyed_lock);
-	if (rx_ring->destroyed) {
-		rx_ring_unlock(rx_ring);
-		return 0;
-	}
-	return 1;
-}
-
-static inline void rx_ring_destroy_lock(struct sdp_rx_ring *rx_ring)
-{
-	write_lock_bh(&rx_ring->destroyed_lock);
-	rx_ring->destroyed = 1;
-	write_unlock_bh(&rx_ring->destroyed_lock);
-}
-
 static inline int sdp_chk_sa_cancel(struct sdp_sock *ssk, struct rx_srcavail_state *rx_sa)
 {
-	int res;
-
-	spin_lock_irq(&ssk->rx_ring.lock);
-	res = ssk->sa_cancel_arrived &&
+	return ssk->sa_cancel_arrived &&
 		before(rx_sa->mseq, ssk->sa_cancel_mseq);
-	spin_unlock_irq(&ssk->rx_ring.lock);
-
-	return res;
 }
 
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)
@@ -544,29 +502,6 @@ static inline void sdp_set_error(struct sock *sk, int err)
 		sdp_exch_state(sk, ~0, TCP_CLOSE);
 
 	sk->sk_error_report(sk);
-}
-
-static inline void sdp_arm_rx_cq(struct sock *sk)
-{
-	if (unlikely(!sdp_sk(sk)->rx_ring.cq))
-		return;
-
-	sdp_prf(sk, NULL, "Arming RX cq");
-	sdp_dbg_data(sk, "Arming RX cq\n");
-
-	ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq, IB_CQ_NEXT_COMP);
-}
-
-static inline void sdp_arm_tx_cq(struct sock *sk)
-{
-	if (unlikely(!sdp_sk(sk)->tx_ring.cq))
-		return;
-
-	sdp_prf(sk, NULL, "Arming TX cq");
-	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
-		tx_credits(sdp_sk(sk)), tx_ring_posted(sdp_sk(sk)));
-
-	ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq, IB_CQ_NEXT_COMP);
 }
 
 /* return the min of:
@@ -771,21 +706,29 @@ struct sdpstats {
 	u32 sendmsg;
 	u32 recvmsg;
 	u32 post_send_credits;
-	u32 sendmsg_nagle_skip;
 	u32 sendmsg_seglen[25];
 	u32 send_size[25];
 	u32 post_recv;
+	u32 rx_int_arm;
+	u32 tx_int_arm;
 	u32 rx_int_count;
 	u32 tx_int_count;
+	u32 rx_int_wake_up;
+	u32 rx_int_queue;
+	u32 rx_int_no_op;
+	u32 rx_cq_modified;
+	u32 rx_cq_arm_timer;
 	u32 rx_wq;
 	u32 bzcopy_poll_miss;
 	u32 send_wait_for_mem;
 	u32 send_miss_no_credits;
 	u32 rx_poll_miss;
 	u32 rx_poll_hit;
+	u32 poll_hit_usec[16];
 	u32 tx_poll_miss;
 	u32 tx_poll_hit;
 	u32 tx_poll_busy;
+	u32 tx_poll_no_op;
 	u32 memcpy_count;
 	u32 credits_before_update[64];
 	u32 zcopy_tx_timeout;
@@ -793,6 +736,8 @@ struct sdpstats {
 	u32 zcopy_tx_aborted;
 	u32 zcopy_tx_error;
 	u32 fmr_alloc_error;
+	u32 keepalive_timer;
+	u32 nagle_timer;
 };
 
 static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
@@ -842,6 +787,60 @@ static inline void sdp_cleanup_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbu
 	}
 }
 
+static inline void sdp_arm_rx_cq(struct sock *sk)
+{
+	if (unlikely(!sdp_sk(sk)->rx_ring.cq))
+		return;
+
+	SDPSTATS_COUNTER_INC(rx_int_arm);
+	sdp_dbg_data(sk, "Arming RX cq\n");
+
+	if (unlikely(0 > ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq,
+					IB_CQ_NEXT_COMP)))
+		sdp_warn(sk, "error arming rx cq\n");
+}
+
+static inline void sdp_arm_tx_cq(struct sock *sk)
+{
+	if (unlikely(!sdp_sk(sk)->tx_ring.cq))
+		return;
+
+	SDPSTATS_COUNTER_INC(tx_int_arm);
+	sdp_dbg_data(sk, "Arming TX cq. credits: %d, posted: %d\n",
+		tx_credits(sdp_sk(sk)), tx_ring_posted(sdp_sk(sk)));
+
+	if (unlikely(0 > ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq,
+					IB_CQ_NEXT_COMP)))
+		sdp_warn(sk, "error arming tx cq\n");
+}
+
+static inline void sdp_postpone_rx_timer(struct sdp_sock *ssk)
+{
+	if (timer_pending(&ssk->rx_ring.cq_arm_timer) && ssk->qp_active)
+		mod_timer(&ssk->rx_ring.cq_arm_timer, MAX_JIFFY_OFFSET);
+}
+
+static inline void sdp_schedule_arm_rx_cq(struct sdp_sock *ssk,
+		unsigned long delay)
+{
+	if (unlikely(!ssk->rx_ring.cq))
+		return;
+
+	if (delay && ssk->qp_active)
+		mod_timer(&ssk->rx_ring.cq_arm_timer, jiffies + delay);
+	else {
+		/* There is no point of setting up a timer for an immediate
+		 * cq-arming, better arm it now. */
+		sdp_arm_rx_cq(&ssk->isk.sk);
+	}
+}
+
+static inline int somebody_is_waiting(struct sock *sk)
+{
+	return sk->sk_socket &&
+		test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags);
+}
+
 /* sdp_main.c */
 void sdp_set_default_moderation(struct sdp_sock *ssk);
 int sdp_init_sock(struct sock *sk);
@@ -873,7 +872,6 @@ void sdp_nagle_timeout(unsigned long data);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 
 /* sdp_rx.c */
-void sdp_rx_ring_init(struct sdp_sock *ssk);
 int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_rx_ring_destroy(struct sdp_sock *ssk);
 int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size);
@@ -882,7 +880,7 @@ void sdp_do_posts(struct sdp_sock *ssk);
 void sdp_rx_comp_full(struct sdp_sock *ssk);
 void sdp_remove_large_sock(const struct sdp_sock *ssk);
 void sdp_handle_disconn(struct sock *sk);
-int sdp_process_rx(struct sdp_sock *ssk);
+int sdp_poll_rx_cq(struct sdp_sock *ssk);
 
 /* sdp_zcopy.c */
 int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov);

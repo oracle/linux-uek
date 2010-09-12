@@ -85,7 +85,7 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 		srcah = (struct sdp_srcah *)(h+1);
 
 		len += snprintf(buf + len, 255-len, " | payload: 0x%zx, "
-				"len: 0x%zx, rkey: 0x%x, vaddr: 0x%llx |",
+				"len: 0x%x, rkey: 0x%x, vaddr: 0x%llx |",
 				ntohl(h->len) - sizeof(struct sdp_bsdh) -
 				sizeof(struct sdp_srcah),
 				ntohl(srcah->len), ntohl(srcah->rkey),
@@ -148,6 +148,7 @@ void sdp_nagle_timeout(unsigned long data)
 	struct sdp_sock *ssk = (struct sdp_sock *)data;
 	struct sock *sk = &ssk->isk.sk;
 
+	SDPSTATS_COUNTER_INC(nagle_timer);
 	sdp_dbg_data(sk, "last_unacked = %ld\n", ssk->nagle_last_unacked);
 
 	if (!ssk->nagle_last_unacked)
@@ -179,6 +180,12 @@ out2:
 	}
 }
 
+static inline int sdp_should_rearm(struct sock *sk)
+{
+	return sk->sk_state != TCP_ESTABLISHED || sdp_sk(sk)->tx_sa ||
+		somebody_is_waiting(sk);
+}
+
 void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 {
 	/* TODO: nonagle? */
@@ -200,8 +207,12 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 		sdp_xmit_poll(ssk,  1);
 
 	/* Run out of credits, check if got a credit update */
-	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS))
-		sdp_process_rx(ssk);
+	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
+		sdp_poll_rx_cq(ssk);
+
+		if (unlikely(sdp_should_rearm(sk) || !posts_handler(ssk)))
+			sdp_arm_rx_cq(sk);
+	}
 
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
