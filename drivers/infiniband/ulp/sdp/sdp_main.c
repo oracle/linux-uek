@@ -1140,6 +1140,7 @@ int sdp_init_sock(struct sock *sk)
 	init_timer(&ssk->tx_ring.timer);
 	init_timer(&ssk->nagle_timer);
 	init_timer(&sk->sk_timer);
+	setup_timer(&sk->sk_timer, sdp_keepalive_timer, (unsigned long)sk);
 	ssk->sa_cancel_arrived = 0;
 	ssk->zcopy_thresh = -1; /* use global sdp_zcopy_thresh */
 	ssk->last_bind_err = 0;
@@ -2760,9 +2761,6 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 	}
 
 	sk->sk_destruct = sdp_destruct;
-
-	setup_timer(&sk->sk_timer, sdp_keepalive_timer, (unsigned long)sk);
-
 	sock->ops = &sdp_proto_ops;
 	sock->state = SS_UNCONNECTED;
 
