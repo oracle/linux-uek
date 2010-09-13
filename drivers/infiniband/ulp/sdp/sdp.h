@@ -743,7 +743,11 @@ struct sdpstats {
 static inline void sdpstats_hist(u32 *h, u32 val, u32 maxidx, int is_log)
 {
 	int idx = is_log ? ilog2(val) : val;
-	if (unlikely(idx > maxidx))
+
+	/* ilog2(0) == -1 */
+	if (idx < 0)
+		idx = 0;
+	else if (unlikely(idx > maxidx))
 		idx = maxidx;
 
 	h[idx]++;
