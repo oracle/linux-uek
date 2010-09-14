@@ -1360,10 +1360,32 @@ static inline int cycles_before(cycles_t a, cycles_t b)
 		return (s64)(a - b) < 0;
 }
 
+static inline cycles_t sdp_usec_to_cycles(int usecs)
+{
+#ifdef CONFIG_PPC
+	return usecs * tb_ticks_per_usec;
+#elif defined(__ia64__)
+	return usecs * local_cpu_data->cyc_per_usec;
+#else
+	return usecs * cpu_khz / 1000;
+#endif
+}
+
+static inline unsigned sdp_cycles_to_usecs(cycles_t c)
+{
+#ifdef CONFIG_PPC
+	return c / tb_ticks_per_usec;
+#elif defined(__ia64__)
+	return c / local_cpu_data->cyc_per_usec;
+#else
+	return c * 1000 / cpu_khz;
+#endif
+}
+
 static inline int poll_recv_cq(struct sock *sk)
 {
 	cycles_t start = get_cycles();
-	cycles_t end =  start + recv_poll * cpu_khz / 1000;
+	cycles_t end =  start + sdp_usec_to_cycles(recv_poll);
 
 	sdp_prf(sk, NULL, "polling recv");
 
@@ -1373,9 +1395,8 @@ static inline int poll_recv_cq(struct sock *sk)
 	do {
 		if (sdp_poll_rx_cq(sdp_sk(sk))) {
 			SDPSTATS_COUNTER_INC(rx_poll_hit);
-			SDPSTATS_HIST(poll_hit_usec,
-					(get_cycles() - start) *
-					1000 / cpu_khz);
+			SDPSTATS_HIST(poll_hit_usec, sdp_cycles_to_usecs(
+					(get_cycles() - start)));
 			return 0;
 		}
 	} while (cycles_before(get_cycles(), end));
