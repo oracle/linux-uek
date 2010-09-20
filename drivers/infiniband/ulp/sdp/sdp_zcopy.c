@@ -613,7 +613,8 @@ static inline int wait_for_sndbuf(struct sock *sk, long *timeo_p)
 
 	sdp_do_posts(ssk);
 
-	sdp_xmit_poll(ssk, 1);
+	if (sdp_xmit_poll(ssk, 1))
+		sdp_post_sends(ssk, 0);
 
 	ret = sdp_tx_wait_memory(ssk, timeo_p, &credits_needed);
 

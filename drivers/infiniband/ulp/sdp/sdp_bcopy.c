@@ -202,7 +202,7 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 		}
 		return;
 	}
-
+again:
 	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2)
 		sdp_xmit_poll(ssk,  1);
 
@@ -274,6 +274,8 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 		}
 	}
 
-	if (post_count)
-		sdp_xmit_poll(ssk, 0);
+	if (!sdp_tx_ring_slots_left(ssk) || post_count) {
+		if (sdp_xmit_poll(ssk, 1))
+			goto again;
+	}
 }

@@ -299,7 +299,8 @@ static int sdp_disconnected_handler(struct sock *sk)
 	sdp_dbg(sk, "%s\n", __func__);
 
 	if (ssk->tx_ring.cq)
-		sdp_xmit_poll(ssk, 1);
+		if (sdp_xmit_poll(ssk, 1))
+			sdp_post_sends(ssk, 0);
 
 	if (sk->sk_state == TCP_SYN_RECV) {
 		sdp_connected_handler(sk);

@@ -306,7 +306,6 @@ static int sdp_process_tx_cq(struct sdp_sock *ssk)
 
 	if (wc_processed) {
 		struct sock *sk = &ssk->isk.sk;
-		sdp_post_sends(ssk, GFP_ATOMIC);
 		sdp_prf1(sk, NULL, "Waking sendmsg. inflight=%d",
 				(u32) tx_ring_posted(ssk));
 		sk_stream_write_space(&ssk->isk.sk);
@@ -388,8 +387,10 @@ static void sdp_poll_tx_timeout(unsigned long data)
 	wc_processed = sdp_process_tx_cq(ssk);
 	if (!wc_processed)
 		SDPSTATS_COUNTER_INC(tx_poll_miss);
-	else
+	else {
+		sdp_post_sends(ssk, GFP_ATOMIC);
 		SDPSTATS_COUNTER_INC(tx_poll_hit);
+	}
 
 	inflight = (u32) tx_ring_posted(ssk);
 	sdp_prf1(&ssk->isk.sk, NULL, "finished tx proccessing. inflight = %d",

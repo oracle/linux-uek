@@ -428,7 +428,8 @@ void sdp_reset_sk(struct sock *sk, int rc)
 	sdp_dbg(sk, "%s\n", __func__);
 
 	if (ssk->tx_ring.cq)
-		sdp_xmit_poll(ssk, 1);
+		if (sdp_xmit_poll(ssk, 1))
+			sdp_post_sends(ssk, 0);
 
 	sdp_abort_srcavail(sk);
 
@@ -1497,7 +1498,8 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 		unsigned long timeout = jiffies + SDP_BZCOPY_POLL_TIMEOUT;
 
 		while (jiffies < timeout) {
-			sdp_xmit_poll(sdp_sk(sk), 1);
+			if (sdp_xmit_poll(sdp_sk(sk), 1))
+				sdp_post_sends(ssk, 0);
 			if (!bz->busy)
 				break;
 			SDPSTATS_COUNTER_INC(bzcopy_poll_miss);
