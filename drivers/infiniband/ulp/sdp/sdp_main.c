@@ -1373,7 +1373,7 @@ static inline cycles_t sdp_usec_to_cycles(int usecs)
 #endif
 }
 
-static inline unsigned sdp_cycles_to_usecs(cycles_t c)
+static inline unsigned sdp_cycles_to_usecs(unsigned long c)
 {
 #ifdef CONFIG_PPC
 	return c / tb_ticks_per_usec;
@@ -1398,7 +1398,7 @@ static inline int poll_recv_cq(struct sock *sk)
 		if (sdp_poll_rx_cq(sdp_sk(sk))) {
 			SDPSTATS_COUNTER_INC(rx_poll_hit);
 			SDPSTATS_HIST(poll_hit_usec, sdp_cycles_to_usecs(
-					(get_cycles() - start)));
+					(unsigned long)(get_cycles() - start)));
 			return 0;
 		}
 	} while (cycles_before(get_cycles(), end));
