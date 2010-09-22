@@ -402,7 +402,7 @@ int blk_integrity_register(struct gendisk *disk, struct blk_integrity *template)
 
 		kobject_uevent(&bi->kobj, KOBJ_ADD);
 
-		bi->flags |= INTEGRITY_FLAG_READ | INTEGRITY_FLAG_WRITE;
+		bi->flags = 0;	/* Disable checking by default */
 		bi->sector_size = queue_logical_block_size(disk->queue);
 		disk->integrity = bi;
 	} else
