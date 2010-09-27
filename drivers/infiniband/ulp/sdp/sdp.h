@@ -539,8 +539,10 @@ static inline char *mid2str(int mid)
 		ENUM2STR(SDP_MID_SINKAVAIL),
 	};
 
-	if (mid >= ARRAY_SIZE(mid2str))
+	if (mid < 0 || mid >= ARRAY_SIZE(mid2str)) {
+		printk(KERN_WARNING "mid %d is illegal\n", mid);
 		return NULL;
+	}
 
 	return mid2str[mid];
 }

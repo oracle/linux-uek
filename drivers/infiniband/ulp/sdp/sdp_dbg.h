@@ -176,8 +176,10 @@ static inline char *sdp_state_str(int state)
 		ENUM2STR(TCP_CLOSING),
 	};
 
-	if (state < 0 || state >= ARRAY_SIZE(state2str))
-		return "unknown";
+	if (state < 0 || state >= ARRAY_SIZE(state2str)) {
+		printk(KERN_WARNING "state %d is illegal\n", state);
+		return NULL;
+	}
 
 	return state2str[state];
 }
@@ -202,11 +204,13 @@ static inline const char* rdma_cm_event_str(int event)
 		ENUM2STR(RDMA_CM_EVENT_ADDR_CHANGE),
 		ENUM2STR(RDMA_CM_EVENT_TIMEWAIT_EXIT)
 	};
-	if (event < 0 || event >= ARRAY_SIZE(state2str))
-		return "unknown";
+
+	if (event < 0 || event >= ARRAY_SIZE(state2str)) {
+		printk(KERN_WARNING "event %d is illegal\n", event);
+		return NULL;
+	}
 
 	return state2str[event];
-
 }
 
 struct sdp_bsdh;
