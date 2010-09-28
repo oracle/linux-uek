@@ -51,11 +51,6 @@
 SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 1, "Support only link layer of "
 		"type Infiniband");
 
-enum {
-	SDP_HH_SIZE = 76,
-	SDP_HAH_SIZE = 180,
-};
-
 static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
 }
@@ -385,7 +380,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.responder_resources = 4 /* TODO */;
 		conn_param.initiator_depth = 4 /* TODO */;
 		conn_param.retry_count = SDP_RETRY_COUNT;
-		SDP_DUMP_PACKET(NULL, "TX", NULL, &hh.bsdh);
+		SDP_DUMP_PACKET(sk, "TX", NULL, &hh.bsdh);
 		rc = rdma_connect(id, &conn_param);
 		break;
 	case RDMA_CM_EVENT_ROUTE_ERROR:

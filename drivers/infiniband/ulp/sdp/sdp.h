@@ -23,7 +23,6 @@
 
 #define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
-#define SDP_SRCAVAIL_PAYLOAD_LEN 1
 
 #define SDP_RESOLVE_TIMEOUT 1000
 #define SDP_ROUTE_TIMEOUT 1000
@@ -65,7 +64,6 @@
 #define SDP_BZCOPY_POLL_TIMEOUT (HZ / 10)
 
 #define SDP_AUTO_CONF	0xffff
-#define AUTO_MOD_DELAY (HZ / 4)
 
 struct sdp_skb_cb {
 	__u32		seq;		/* Starting sequence number	*/
@@ -290,7 +288,7 @@ struct sdp_tx_ring {
 	atomic_t          	tail;
 	struct ib_cq 	 	*cq;
 
-	int 		  	una_seq;
+	u32 		  	una_seq;
 	atomic_t 	  	credits;
 #define tx_credits(ssk) (atomic_read(&ssk->tx_ring.credits))
 
@@ -376,7 +374,7 @@ struct sdp_sock {
 #define rcv_nxt(ssk) atomic_read(&(ssk->rcv_nxt))
 	atomic_t rcv_nxt;
 
-	int write_seq;
+	u32 write_seq;
 	int xmit_size_goal;
 	int nonagle;
 
@@ -408,7 +406,7 @@ struct sdp_sock {
 	unsigned max_bufs;	/* Initial buffers offered by other side */
 	unsigned min_bufs;	/* Low water mark to wake senders */
 
-	unsigned long nagle_last_unacked; /* mseq of lastest unacked packet */
+	u32 nagle_last_unacked; /* mseq of lastest unacked packet */
 	struct timer_list nagle_timer; /* timeout waiting for ack */
 
 	atomic_t               remote_credits;

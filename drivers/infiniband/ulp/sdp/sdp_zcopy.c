@@ -338,7 +338,7 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 		goto out;
 	}
 
-	if (ssk->tx_sa->mseq > mseq_ack) {
+	if (after(ssk->tx_sa->mseq, mseq_ack)) {
 		sdp_dbg_data(sk, "SendSM arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
@@ -371,7 +371,7 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		goto out;
 	}
 
-	if (ssk->tx_sa->mseq > mseq_ack) {
+	if (after(ssk->tx_sa->mseq, mseq_ack)) {
 		sdp_dbg_data(sk, "RdmaRdCompl arrived for old SrcAvail. "
 			"SendSM mseq_ack: 0x%x, SrcAvail mseq: 0x%x\n",
 			mseq_ack, ssk->tx_sa->mseq);
@@ -385,7 +385,6 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 
 out:
 	spin_unlock_irqrestore(&ssk->tx_sa_lock, flags);
-	return;
 }
 
 static unsigned long sdp_get_max_memlockable_bytes(unsigned long offset)

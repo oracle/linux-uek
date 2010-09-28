@@ -558,7 +558,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	credits_before = tx_credits(ssk);
 	atomic_set(&ssk->tx_ring.credits, mseq_ack - ring_head(ssk->tx_ring) +
 			1 + ntohs(h->bufs));
-	if (mseq_ack >= ssk->nagle_last_unacked)
+	if (!before(mseq_ack, ssk->nagle_last_unacked))
 		ssk->nagle_last_unacked = 0;
 
 	sdp_prf1(&ssk->isk.sk, skb, "RX: %s +%d c:%d->%d mseq:%d ack:%d",

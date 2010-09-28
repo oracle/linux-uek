@@ -137,7 +137,7 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
 		}
 	}
-	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %ld\n",
+	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %u\n",
 		send_now, ssk->nagle_last_unacked);
 
 	return send_now;
@@ -149,7 +149,7 @@ void sdp_nagle_timeout(unsigned long data)
 	struct sock *sk = &ssk->isk.sk;
 
 	SDPSTATS_COUNTER_INC(nagle_timer);
-	sdp_dbg_data(sk, "last_unacked = %ld\n", ssk->nagle_last_unacked);
+	sdp_dbg_data(sk, "last_unacked = %u\n", ssk->nagle_last_unacked);
 
 	if (!ssk->nagle_last_unacked)
 		goto out2;
@@ -170,7 +170,7 @@ void sdp_nagle_timeout(unsigned long data)
 	sdp_post_sends(ssk, GFP_ATOMIC);
 
 	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-		sk_stream_write_space(&ssk->isk.sk);
+		sk_stream_write_space(sk);
 out:
 	bh_unlock_sock(sk);
 out2:
@@ -194,17 +194,16 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	struct sock *sk = &ssk->isk.sk;
 
 	if (unlikely(!ssk->id)) {
-		if (ssk->isk.sk.sk_send_head) {
-			sdp_dbg(&ssk->isk.sk,
-				"Send on socket without cmid ECONNRESET.\n");
+		if (sk->sk_send_head) {
+			sdp_dbg(sk, "Send on socket without cmid ECONNRESET\n");
 			/* TODO: flush send queue? */
-			sdp_reset(&ssk->isk.sk);
+			sdp_reset(sk);
 		}
 		return;
 	}
 again:
 	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2)
-		sdp_xmit_poll(ssk,  1);
+		sdp_xmit_poll(ssk, 1);
 
 	/* Run out of credits, check if got a credit update */
 	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
@@ -229,17 +228,17 @@ again:
 
 	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(ssk) &&
-	       ssk->isk.sk.sk_send_head &&
-		sdp_nagle_off(ssk, ssk->isk.sk.sk_send_head)) {
+	       sk->sk_send_head &&
+		sdp_nagle_off(ssk, sk->sk_send_head)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
 	}
 
 	while (tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(ssk) &&
-	       (skb = ssk->isk.sk.sk_send_head) &&
+	       (skb = sk->sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
-		update_send_head(&ssk->isk.sk, skb);
-		__skb_dequeue(&ssk->isk.sk.sk_write_queue);
+		update_send_head(sk, skb);
+		__skb_dequeue(&sk->sk_write_queue);
 
 		sdp_post_send(ssk, skb);
 
@@ -247,10 +246,10 @@ again:
 	}
 
 	if (credit_update_needed(ssk) &&
-	    likely((1 << ssk->isk.sk.sk_state) &
+	    likely((1 << sk->sk_state) &
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 
-		skb = sdp_alloc_skb_data(&ssk->isk.sk, 0, gfp);
+		skb = sdp_alloc_skb_data(sk, 0, gfp);
 		if (likely(skb)) {
 			sdp_post_send(ssk, skb);
 			SDPSTATS_COUNTER_INC(post_send_credits);
@@ -264,7 +263,7 @@ again:
 	 * messages that provide additional credits and also do not contain ULP
 	 * payload. */
 	if (unlikely(ssk->sdp_disconnect) &&
-			!ssk->isk.sk.sk_send_head &&
+			!sk->sk_send_head &&
 			tx_credits(ssk) > 1) {
 		skb = sdp_alloc_skb_disconnect(sk, gfp);
 		if (likely(skb)) {
