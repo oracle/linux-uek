@@ -393,7 +393,7 @@ static struct file_operations sdpstats_fops = {
 struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 int sdpprf_log_count;
 
-static unsigned long long start_t;
+static cycles_t start_t;
 
 static inline void remove_newline(char *s)
 {
@@ -407,19 +407,19 @@ static inline void remove_newline(char *s)
 static int sdpprf_show(struct seq_file *m, void *v)
 {
 	struct sdpprf_log *l = v;
-	unsigned long nsec_rem, t;
+	unsigned long usec_rem, t;
 
 	if (!sdpprf_log_count) {
 		seq_printf(m, "No performance logs\n");
 		goto out;
 	}
 
-	t = l->time - start_t;
-	nsec_rem = do_div(t, 1000000000);
+	t = sdp_cycles_to_usecs(l->time - start_t);
+	usec_rem = do_div(t, USEC_PER_SEC);
 	remove_newline(l->msg);
 	seq_printf(m, "%-6d: [%5lu.%06lu] %-50s - [%d{%d} %d:%d] "
 			"skb: %p %s:%d\n",
-			l->idx, (unsigned long)t, nsec_rem/1000,
+			l->idx, t, usec_rem,
 			l->msg, l->pid, l->cpu, l->sk_num, l->sk_dport,
 			l->skb, l->func, l->line);
 out:

@@ -1373,17 +1373,6 @@ static inline cycles_t sdp_usec_to_cycles(int usecs)
 #endif
 }
 
-static inline unsigned sdp_cycles_to_usecs(unsigned long c)
-{
-#ifdef CONFIG_PPC
-	return c / tb_ticks_per_usec;
-#elif defined(__ia64__)
-	return c / local_cpu_data->cyc_per_usec;
-#else
-	return c * 1000 / cpu_khz;
-#endif
-}
-
 static inline int poll_recv_cq(struct sock *sk)
 {
 	cycles_t start = get_cycles();

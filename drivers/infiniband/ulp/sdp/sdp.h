@@ -518,6 +518,17 @@ static inline int tx_slots_free(struct sdp_sock *ssk)
 	return min_free - SDP_MIN_TX_CREDITS;
 };
 
+static inline unsigned sdp_cycles_to_usecs(unsigned long c)
+{
+#ifdef CONFIG_PPC
+	return c / tb_ticks_per_usec;
+#elif defined(__ia64__)
+	return c / local_cpu_data->cyc_per_usec;
+#else
+	return c * 1000 / cpu_khz;
+#endif
+}
+
 /* utilities */
 static inline char *mid2str(int mid)
 {

@@ -6,7 +6,6 @@
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 #define SDP_PROFILING
 #endif
-//#define GETNSTIMEODAY_SUPPORTED
 
 #define SDP_WARN_ON(x) WARN_ON(x)
 
@@ -48,7 +47,7 @@ struct sdpprf_log {
 	struct sk_buff 	*skb;
 	char		msg[256];
 
-	unsigned long long time;
+	cycles_t time;
 
 	const char 	*func;
 	int 		line;
@@ -58,17 +57,6 @@ struct sdpprf_log {
 
 extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 extern int sdpprf_log_count;
-
-#ifdef GETNSTIMEODAY_SUPPORTED
-static inline unsigned long long current_nsec(void)
-{
-	struct timespec tv;
-	getnstimeofday(&tv);
-	return tv.tv_sec * NSEC_PER_SEC + tv.tv_nsec;
-}
-#else
-#define current_nsec() jiffies_to_usecs(jiffies)
-#endif
 
 #define _sdp_prf(sk, s, _func, _line, format, arg...) ({ \
 	struct sdpprf_log *l = \
@@ -81,7 +69,7 @@ static inline unsigned long long current_nsec(void)
 	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
-	l->time = current_nsec(); \
+	l->time = get_cycles(); \
 	l->func = _func; \
 	l->line = _line; \
 	preempt_enable(); \
