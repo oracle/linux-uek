@@ -2611,12 +2611,12 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
 	sdp_sk(sk)->cpu = smp_processor_id();
 
 	if (sk->sk_state == TCP_ESTABLISHED) {
-		sdp_prf(sk, NULL, "polling");
-		posts_handler_get(sdp_sk(sk));
-		poll_recv_cq(sk);
-		posts_handler_put(sdp_sk(sk), 0);
+		sdp_prf(sk, NULL, "posting\n");
+		sdp_do_posts(sdp_sk(sk));
 	}
 	mask = datagram_poll(file, socket, wait);
+	if (!(mask & POLLIN))
+		sdp_arm_rx_cq(sk);
 
        /*
         * Adjust for memory in later kernels
