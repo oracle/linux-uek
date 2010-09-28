@@ -802,6 +802,12 @@ static inline void sdp_cleanup_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbu
 	}
 }
 
+static inline void sdp_postpone_rx_timer(struct sdp_sock *ssk)
+{
+	if (timer_pending(&ssk->rx_ring.cq_arm_timer) && ssk->qp_active)
+		mod_timer(&ssk->rx_ring.cq_arm_timer, MAX_JIFFY_OFFSET);
+}
+
 static inline void sdp_arm_rx_cq(struct sock *sk)
 {
 	if (unlikely(!sdp_sk(sk)->rx_ring.cq))
@@ -809,6 +815,8 @@ static inline void sdp_arm_rx_cq(struct sock *sk)
 
 	SDPSTATS_COUNTER_INC(rx_int_arm);
 	sdp_dbg_data(sk, "Arming RX cq\n");
+
+	sdp_postpone_rx_timer(sdp_sk(sk));
 
 	if (unlikely(0 > ib_req_notify_cq(sdp_sk(sk)->rx_ring.cq,
 					IB_CQ_NEXT_COMP)))
@@ -827,12 +835,6 @@ static inline void sdp_arm_tx_cq(struct sock *sk)
 	if (unlikely(0 > ib_req_notify_cq(sdp_sk(sk)->tx_ring.cq,
 					IB_CQ_NEXT_COMP)))
 		sdp_warn(sk, "error arming tx cq\n");
-}
-
-static inline void sdp_postpone_rx_timer(struct sdp_sock *ssk)
-{
-	if (timer_pending(&ssk->rx_ring.cq_arm_timer) && ssk->qp_active)
-		mod_timer(&ssk->rx_ring.cq_arm_timer, MAX_JIFFY_OFFSET);
 }
 
 static inline void sdp_schedule_arm_rx_cq(struct sdp_sock *ssk,
