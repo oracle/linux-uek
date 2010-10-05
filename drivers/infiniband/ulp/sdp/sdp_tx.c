@@ -498,7 +498,7 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		goto err_cq;
 	}
 
-	sdp_sk(&ssk->isk.sk)->tx_ring.cq = tx_cq;
+	ssk->tx_ring.cq = tx_cq;
 
 	setup_timer(&ssk->tx_ring.timer, sdp_poll_tx_timeout,
 			(unsigned long)ssk);

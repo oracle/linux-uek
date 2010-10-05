@@ -53,6 +53,8 @@ SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 1, "Support only link layer of "
 
 static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
+	sdp_warn(NULL, "unexpected invocation: event: %d, data=%p\n",
+			event->event, data);
 }
 
 static int sdp_get_max_dev_sge(struct ib_device *dev)
@@ -371,7 +373,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
-		hh.max_adverts = 0x1;
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		memset(&conn_param, 0, sizeof conn_param);

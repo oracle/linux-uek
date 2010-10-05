@@ -783,11 +783,6 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 		NIPQUAD(((struct sockaddr_in *)uaddr)->sin_addr.s_addr),
 		ntohs(((struct sockaddr_in *)uaddr)->sin_port));
 
-	if (!ssk->id) {
-		printk("??? ssk->id == NULL. Ohh\n");
-		return -EINVAL;
-	}
-
 	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
 			       uaddr, SDP_RESOLVE_TIMEOUT);
 	if (rc) {

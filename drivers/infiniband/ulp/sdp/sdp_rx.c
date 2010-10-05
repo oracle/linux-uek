@@ -895,7 +895,7 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	atomic_set(&ssk->rx_ring.head, 1);
 	atomic_set(&ssk->rx_ring.tail, 1);
 
-	ssk->rx_ring.buffer = kmalloc(
+	ssk->rx_ring.buffer = kzalloc(
 			sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE, GFP_KERNEL);
 	if (!ssk->rx_ring.buffer) {
 		sdp_warn(&ssk->isk.sk,
@@ -904,8 +904,6 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 
 		return -ENOMEM;
 	}
-
-	memset(ssk->rx_ring.buffer, 0, sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE);
 
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
 			  &ssk->isk.sk, SDP_RX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
@@ -916,7 +914,7 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		goto err_cq;
 	}
 
-	sdp_sk(&ssk->isk.sk)->rx_ring.cq = rx_cq;
+	ssk->rx_ring.cq = rx_cq;
 
 	INIT_WORK(&ssk->rx_comp_work, sdp_rx_comp_work);
 	setup_timer(&ssk->rx_ring.cq_arm_timer, sdp_arm_cq_timer,
