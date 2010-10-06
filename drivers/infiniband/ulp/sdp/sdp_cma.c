@@ -328,6 +328,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			-EINVAL : 0;
 	}
 
+	sdp_add_to_history(sk, rdma_cm_event_str(event->event));
+
 	lock_sock_nested(sk, SINGLE_DEPTH_NESTING);
 	sdp_dbg(sk, "event: %s\n", rdma_cm_event_str(event->event));
 	if (!sdp_sk(sk)->id) {

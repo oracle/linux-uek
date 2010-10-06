@@ -3,6 +3,10 @@
 
 #define SDPSTATS_ON
 
+#ifdef CONFIG_INFINIBAND_SDP_DEBUG
+#define SDP_SOCK_HISTORY
+#endif
+
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG_DATA
 #define SDP_PROFILING
 #endif
@@ -99,6 +103,7 @@ extern int sdp_debug_level;
 	if (!atomic_read(&(sk)->sk_refcnt)) {\
 		sdp_warn(sk, "%s:%d - %s (%s) ref = 0.\n", \
 				 __func__, __LINE__, #sock_op, msg); \
+		sdp_print_history(sk);					\
 		SDP_WARN_ON(1); \
 	} else { \
 		sdp_dbg(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
@@ -132,19 +137,44 @@ extern int sdp_data_debug_level;
 #define SDP_DUMP_PACKET(sk, str, skb, h)
 #endif
 
-#define SOCK_REF_RESET "RESET"
-#define SOCK_REF_ALIVE "ALIVE" /* sock_alloc -> destruct_sock */
-#define SOCK_REF_CLONE "CLONE"
-#define SOCK_REF_CMA "CMA" /* sdp_cma_handler() is expected to be invoked */
-#define SOCK_REF_SEQ "SEQ" /* during proc read */
-#define SOCK_REF_DREQ_TO "DREQ_TO" /* dreq timeout is pending */
-#define SOCK_REF_ZCOPY "ZCOPY" /* zcopy send in process */
-#define SOCK_REF_RDMA_RD "RDMA_RD" /* RDMA read in process */
-#define SOCK_REF_KEEPALIVE "KEEPALIVE" /* socket is held by sk_reset_timer */
+enum sdp_ref {
+	SOCK_REF_RESET,
+	SOCK_REF_ALIVE,		/* sock_alloc -> destruct_sock */
+	SOCK_REF_CLONE,
+	SOCK_REF_CMA,		/* sdp_cma_handler is expected to be invoked */
+	SOCK_REF_SEQ,		/* during proc read */
+	SOCK_REF_DREQ_TO,	/* dreq timeout is pending */
+	SOCK_REF_ZCOPY,		/* zcopy send in process */
+	SOCK_REF_RDMA_RD,	/* RDMA read in process */
+	SOCK_REF_KEEPALIVE	/* socket is held by sk_reset_timer */
+};
 
-#define sock_hold(sk, msg)  sock_ref(sk, msg, sock_hold)
-#define sock_put(sk, msg)  sock_ref(sk, msg, sock_put)
-#define __sock_put(sk, msg)  sock_ref(sk, msg, __sock_put)
+#ifdef SDP_SOCK_HISTORY
+#define sock_hold(sk, msg)						\
+	do {								\
+		_sdp_add_to_history(sk, #msg, __func__, __LINE__,	\
+				HOLD_REF, msg);				\
+		sock_ref(sk, #msg, sock_hold);				\
+	} while (0)
+
+#define sock_put(sk, msg)						\
+	do {								\
+		_sdp_add_to_history(sk, #msg, __func__, __LINE__,	\
+				PUT_REF, msg);				\
+		sock_ref(sk, #msg, sock_put);				\
+	} while (0)
+
+#define __sock_put(sk, msg)						\
+	do {								\
+		_sdp_add_to_history(sk, #msg, __func__, __LINE__,	\
+				__PUT_REF, msg);			\
+		sock_ref(sk, #msg, __sock_put);				\
+	} while (0)
+#else
+#define sock_hold(sk, msg)	sock_ref(sk, #msg, sock_hold)
+#define sock_put(sk, msg)	sock_ref(sk, #msg, sock_put)
+#define __sock_put(sk, msg)	sock_ref(sk, #msg, __sock_put)
+#endif /* SDP_SOCK_HISTORY */
 
 #define ENUM2STR(e) [e] = #e
 

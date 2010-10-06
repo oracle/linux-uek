@@ -155,6 +155,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 		.sin_addr.s_addr = inet_sk(sk)->rcv_saddr,
 	};
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s: %u.%u.%u.%u:%hu\n", __func__,
 		NIPQUAD(addr.sin_addr.s_addr), ntohs(addr.sin_port));
 
@@ -187,6 +188,7 @@ static void sdp_destroy_qp(struct sdp_sock *ssk)
 	sdp_dbg(&ssk->isk.sk, "destroying qp\n");
 	sdp_prf(&ssk->isk.sk, NULL, "destroying qp");
 
+	sdp_add_to_history(&ssk->isk.sk, __func__);
 	ssk->qp_active = 0;
 
 	if (ssk->qp) {
@@ -532,6 +534,7 @@ static void sdp_destruct(struct sock *sk)
 		return;
 	}
 
+	sdp_add_to_history(sk, __func__);
 	percpu_counter_dec(sk->sk_prot->orphan_count);
 	ssk->destructed_already = 1;
 
@@ -654,6 +657,7 @@ static void sdp_close(struct sock *sk, long timeout)
 	struct sk_buff *skb;
 	int data_was_unread = 0;
 
+	sdp_add_to_history(sk, __func__);
 	lock_sock(sk);
 
 	sdp_dbg(sk, "%s\n", __func__);
@@ -754,6 +758,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	};
 	int rc;
 
+	sdp_add_to_history(sk, __func__);
 	ssk->cpu = smp_processor_id();
 	release_sock(sk);
 	flush_workqueue(sdp_wq);
@@ -889,6 +894,7 @@ static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 	struct sock *newsk;
 	int error;
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s state %d expected %d *err %d\n", __func__,
 		sk->sk_state, TCP_LISTEN, *err);
 
@@ -949,6 +955,7 @@ static int sdp_ioctl(struct sock *sk, int cmd, unsigned long arg)
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int answ;
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s\n", __func__);
 
 	switch (cmd) {
@@ -1142,6 +1149,12 @@ int sdp_init_sock(struct sock *sk)
 	ssk->zcopy_thresh = -1; /* use global sdp_zcopy_thresh */
 	ssk->last_bind_err = 0;
 
+#ifdef SDP_SOCK_HISTORY
+	memset(ssk->hst, 0, sizeof ssk->hst);
+	ssk->hst_idx = 0;
+	spin_lock_init(&ssk->hst_lock);
+#endif
+
 	return 0;
 }
 
@@ -1149,6 +1162,7 @@ static void sdp_shutdown(struct sock *sk, int how)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s\n", __func__);
 	if (!(how & SEND_SHUTDOWN))
 		return;
@@ -1197,6 +1211,7 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 	int val;
 	int err = 0;
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s\n", __func__);
 	if (optlen < sizeof(int))
 		return -EINVAL;
@@ -1305,6 +1320,7 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int val, len;
 
+	sdp_add_to_history(sk, __func__);
 	sdp_dbg(sk, "%s\n", __func__);
 
 	if (level != SOL_TCP)
@@ -2531,6 +2547,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 	int rc;
 
 	sdp_dbg(sk, "%s\n", __func__);
+	sdp_add_to_history(sk, __func__);
 
 	if (!ssk->id) {
 		rc = sdp_get_port(sk, 0);
@@ -2747,6 +2764,7 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 		return -ENOMEM;
 	}
 
+	sdp_add_to_history(sk, __func__);
 	sk->sk_destruct = sdp_destruct;
 	sock->ops = &sdp_proto_ops;
 	sock->state = SS_UNCONNECTED;
@@ -2823,6 +2841,7 @@ do_next:
 		if (ssk->ib_device == device && !ssk->id_destroyed_already) {
 			spin_unlock_irq(&sock_list_lock);
 			sk = &ssk->isk.sk;
+			sdp_add_to_history(sk, __func__);
 			lock_sock(sk);
 			/* ssk->id must be lock-protected,
 			 * to enable mutex with sdp_close() */
