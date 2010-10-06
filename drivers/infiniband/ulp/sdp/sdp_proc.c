@@ -69,6 +69,14 @@ static void *sdp_get_idx(struct seq_file *seq, loff_t pos)
 	return NULL;
 }
 
+#define sdp_sock_hold_return(sk, msg)					\
+	({								\
+	_sdp_add_to_history(sk, #msg, __func__, __LINE__, HOLD_REF, msg); \
+	sdp_dbg(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
+		"sock_hold", #msg, atomic_read(&(sk)->sk_refcnt)); \
+	atomic_inc_return(&(sk)->sk_refcnt);				\
+	})
+
 static void *sdp_seq_start(struct seq_file *seq, loff_t *pos)
 {
 	void *start = NULL;
@@ -81,8 +89,12 @@ static void *sdp_seq_start(struct seq_file *seq, loff_t *pos)
 
 	spin_lock_irq(&sock_list_lock);
 	start = sdp_get_idx(seq, *pos - 1);
-	if (start)
-		sock_hold((struct sock *)start, SOCK_REF_SEQ);
+	if (!start)
+		goto out;
+
+	if (sdp_sock_hold_return((struct sock *)start, SOCK_REF_SEQ) < 2)
+		start = NULL;
+out:
 	spin_unlock_irq(&sock_list_lock);
 
 	return start;
@@ -98,10 +110,13 @@ static void *sdp_seq_next(struct seq_file *seq, void *v, loff_t *pos)
 		next = sdp_get_idx(seq, 0);
 	else
 		next = sdp_get_idx(seq, *pos);
-	if (next)
-		sock_hold((struct sock *)next, SOCK_REF_SEQ);
-	spin_unlock_irq(&sock_list_lock);
+	if (!next)
+		goto out;
 
+	if (sdp_sock_hold_return((struct sock *)next, SOCK_REF_SEQ) < 2)
+		next = NULL;
+out:
+	spin_unlock_irq(&sock_list_lock);
 	*pos += 1;
 	st->num++;
 
