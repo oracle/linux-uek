@@ -2373,29 +2373,16 @@ sdp_mid_data:
 			}
 		}
 
-		rc = poll_recv_cq(sk);
-		if (!rc) {
-			sdp_do_posts(ssk);
-		}
-
-		if (copied >= target && !recv_poll) {
-			/* Do not sleep, just process backlog. */
-			release_sock(sk);
-			lock_sock(sk);
-		} else if (rc) {
+		if (poll_recv_cq(sk)) {
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
-			sdp_prf(sk, NULL, "giving up polling");
 
 			posts_handler_put(ssk, 0);
-
-			/* socket lock is released inside sk_wait_data */
 			sk_wait_data(sk, &timeo);
-
 			posts_handler_get(ssk);
-			sdp_prf(sk, NULL, "got data");
 
-			sdp_do_posts(ssk);
+			sdp_dbg_data(sk, "got data/timeout\n");
 		}
+		sdp_do_posts(ssk);
 		continue;
 
 	found_ok_skb:
