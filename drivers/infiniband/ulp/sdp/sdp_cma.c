@@ -48,7 +48,7 @@
 
 #define SDP_MAJV_MINV 0x22
 
-SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 1, "Support only link layer of "
+SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 0, "Support only link layer of "
 		"type Infiniband");
 
 static void sdp_qp_event_handler(struct ib_event *event, void *data)
