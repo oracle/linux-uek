@@ -2256,8 +2256,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					sdp_dbg_data(sk, "Aborting SA "
 							"due to SACancel or "
 							"no fmr pool\n");
-					sdp_post_sendsm(sk);
 					sdp_abort_rx_srcavail(sk);
+					sdp_post_sendsm(sk);
 					rx_sa = NULL;
 					if (offset < skb->len) {
 						sdp_prf(sk, skb, "Converted SA to DATA");
@@ -2417,8 +2417,8 @@ sdp_mid_data:
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						&used, offset);
 				if (unlikely(err)) {
-					sdp_post_sendsm(sk);
 					sdp_abort_rx_srcavail(sk);
+					sdp_post_sendsm(sk);
 					rx_sa = NULL;
 					if (err == -EAGAIN || err == -ETIME)
 						goto skb_cleanup;
