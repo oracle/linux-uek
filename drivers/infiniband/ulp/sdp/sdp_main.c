@@ -2245,10 +2245,8 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 				if (unlikely(!rx_sa)) {
 					/* SrcAvailCancel arrived and handled */
 					h->mid = SDP_MID_DATA;
-					goto sdp_mid_data;
+					goto check_srcavail_skb;
 				}
-
-				rx_sa->is_treated = 1;
 
 				if (sdp_chk_sa_cancel(ssk, rx_sa) ||
 						!ssk->sdp_dev ||
@@ -2259,6 +2257,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					sdp_abort_rx_srcavail(sk);
 					sdp_post_sendsm(sk);
 					rx_sa = NULL;
+check_srcavail_skb:
 					if (offset < skb->len) {
 						sdp_prf(sk, skb, "Converted SA to DATA");
 						goto sdp_mid_data;

@@ -269,7 +269,6 @@ struct rx_srcavail_state {
 	/* Utility */
 	u8  busy;
 	struct sk_buff *skb; /* SrcAvail skb */
-	int is_treated; /* recvmsg() is RDMA-reading now */
 };
 
 struct tx_srcavail_state {

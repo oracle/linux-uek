@@ -341,7 +341,6 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 		rx_sa->rkey = ntohl(srcah->rkey);
 		rx_sa->vaddr = be64_to_cpu(srcah->vaddr);
 		rx_sa->skb = skb;
-		rx_sa->is_treated = 0;
 
 		if (ssk->tx_sa) {
 			sdp_dbg_data(&ssk->isk.sk, "got RX SrcAvail while waiting "
@@ -510,8 +509,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_handle_sendsm(ssk, ntohl(h->mseq_ack));
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
-		if (ssk->rx_sa && !ssk->rx_sa->is_treated &&
-				after(ntohl(h->mseq), ssk->rx_sa->mseq)) {
+		if (ssk->rx_sa && after(ntohl(h->mseq), ssk->rx_sa->mseq)) {
 			sdp_dbg(sk, "Handling SrcAvailCancel - post SendSM\n");
 			RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
 			kfree(ssk->rx_sa);
@@ -598,7 +596,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 					ntohl(h->mseq), ntohl(h->mseq_ack));
 			ssk->sa_cancel_mseq = ntohl(h->mseq);
 			ssk->sa_cancel_arrived = 1;
-			if (ssk->rx_sa && ssk->rx_sa->is_treated)
+			if (ssk->rx_sa)
 				wake_up(sk->sk_sleep);
 
 			skb_queue_tail(&ssk->rx_ctl_q, skb);
