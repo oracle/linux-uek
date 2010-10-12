@@ -1927,6 +1927,7 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	sdp_dbg_data(sk, "%s size = 0x%zx\n", __func__, size);
 
 	posts_handler_get(ssk);
+	SDP_WARN_ON(ssk->tx_sa);
 
 	flags = msg->msg_flags;
 	timeo = sock_sndtimeo(sk, flags & MSG_DONTWAIT);

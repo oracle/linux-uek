@@ -55,7 +55,17 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 	int off, len;
 	struct ib_umem_chunk *chunk;
 
-	SDP_WARN_ON(ssk->tx_sa);
+	if (ssk->tx_sa) {
+		/* ssk->tx_sa might already be there in a case of
+		 * multithreading: user thread initiated Zcopy and went to
+		 * sleep, and now another user thread tries to ZCopy.
+		 * Fallback to BCopy - data might be mixed.
+		 * TODO: Fix it. fallback to BCopy is not enough because recv
+		 * side has seq warnings.
+		 */
+		sdp_dbg_data(sk, "user already initiated ZCopy transmission\n");
+		return -EAGAIN;
+	}
 
 	BUG_ON(!tx_sa);
 	BUG_ON(!tx_sa->fmr || !tx_sa->fmr->fmr->lkey);
@@ -644,7 +654,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 
 	rc = sdp_post_srcavail(sk, tx_sa);
 	if (unlikely(rc)) {
-		sdp_dbg(sk, "Error posting SrcAvail\n");
+		sdp_dbg(sk, "Error posting SrcAvail: %d\n", rc);
 		goto err_abort_send;
 	}
 
