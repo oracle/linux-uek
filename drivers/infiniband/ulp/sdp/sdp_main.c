@@ -2417,8 +2417,12 @@ sdp_mid_data:
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						&used, offset);
 				if (unlikely(err)) {
-					sdp_abort_rx_srcavail(sk);
-					sdp_post_sendsm(sk);
+					/* ssk->rx_sa might had been freed when
+					 * we slept. */
+					if (ssk->rx_sa) {
+						sdp_abort_rx_srcavail(sk);
+						sdp_post_sendsm(sk);
+					}
 					rx_sa = NULL;
 					if (err == -EAGAIN || err == -ETIME)
 						goto skb_cleanup;
@@ -2486,7 +2490,10 @@ skb_cleanup:
 				ntohl(h->mseq), ntohl(h->mseq_ack));
 
 			if (rx_sa) {
-				sdp_abort_rx_srcavail(sk);
+				/* ssk->rx_sa might had been freed when we slept.
+				 */
+				if (ssk->rx_sa)
+					sdp_abort_rx_srcavail(sk);
 				rx_sa = NULL;
 			}
 force_skb_cleanup:
