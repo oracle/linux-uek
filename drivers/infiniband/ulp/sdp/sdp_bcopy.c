@@ -44,9 +44,9 @@ void _dump_packet(const char *func, int line, struct sock *sk, char *str,
 	struct sdp_srcah *srcah;
 	int len = 0;
 	char buf[256];
-	len += snprintf(buf, 255-len, "%s skb: %p mid: %2x:%-20s flags: 0x%x "
+	len += snprintf(buf, 255-len, "mid: %-20s flags: 0x%x "
 			"bufs: 0x%x len: 0x%x mseq: 0x%x mseq_ack: 0x%x | ",
-			str, skb, h->mid, mid2str(h->mid), h->flags,
+			mid2str(h->mid), h->flags,
 			ntohs(h->bufs), ntohl(h->len), ntohl(h->mseq),
 			ntohl(h->mseq_ack));
 
