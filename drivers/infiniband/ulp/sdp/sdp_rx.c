@@ -509,7 +509,9 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_handle_sendsm(ssk, ntohl(h->mseq_ack));
 		break;
 	case SDP_MID_SRCAVAIL_CANCEL:
-		if (ssk->rx_sa && after(ntohl(h->mseq), ssk->rx_sa->mseq)) {
+		if (ssk->rx_sa && after(ntohl(h->mseq), ssk->rx_sa->mseq) &&
+				(!ssk->tx_ring.rdma_inflight ||
+				 !ssk->tx_ring.rdma_inflight->busy)) {
 			sdp_dbg(sk, "Handling SrcAvailCancel - post SendSM\n");
 			RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
 			kfree(ssk->rx_sa);

@@ -218,8 +218,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 	return err;
 }
 
-static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk,
-		struct rx_srcavail_state *rx_sa)
+static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
 	long timeo = SDP_RDMA_READ_TIMEOUT;
@@ -232,12 +231,6 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk,
 
 		if (!ssk->tx_ring.rdma_inflight->busy) {
 			sdp_dbg_data(sk, "got rdma cqe\n");
-			break;
-		}
-
-		if (sdp_chk_sa_cancel(ssk, rx_sa)) {
-			sdp_dbg_data(sk, "got SrcAvailCancel\n");
-			rc = -EAGAIN; /* fall to BCopy */
 			break;
 		}
 
@@ -258,7 +251,6 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk,
 		sdp_prf1(sk, NULL, "Going to sleep");
 		sk_wait_event(sk, &timeo,
 			!ssk->tx_ring.rdma_inflight->busy ||
-			sdp_chk_sa_cancel(ssk, rx_sa) ||
 			!ssk->qp_active);
 		sdp_prf1(sk, NULL, "Woke up");
 		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
@@ -586,9 +578,9 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	sdp_prf(sk, skb, "Finished posting, now to wait");
 	sdp_arm_tx_cq(sk);
 
-	rc = sdp_wait_rdma_wr_finished(ssk, rx_sa);
+	rc = sdp_wait_rdma_wr_finished(ssk);
 	if (unlikely(rc))
-		goto err_wait;
+		goto err_post_send;
 
 	copied = rx_sa->umem->length;
 
@@ -596,10 +588,8 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
 
-err_wait:
-	ssk->tx_ring.rdma_inflight = NULL;
-
 err_post_send:
+	ssk->tx_ring.rdma_inflight = NULL;
 	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
 err_alloc_fmr:
