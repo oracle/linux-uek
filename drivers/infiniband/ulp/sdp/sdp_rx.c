@@ -122,8 +122,8 @@ void sdp_handle_disconn(struct sock *sk)
 				__func__, sdp_state_str(sk->sk_state));
 		return;
 	default:
-		sdp_warn(sk, "%s: FIN in unexpected state. sk->sk_state=%d\n",
-				__func__, sk->sk_state);
+		sdp_warn(sk, "%s: FIN in unexpected state. sk->sk_state=%s\n",
+				__func__, sdp_state_str(sk->sk_state));
 		break;
 	}
 

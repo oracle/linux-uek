@@ -462,7 +462,6 @@ struct sdp_sock {
 
 	unsigned long tx_packets;
 	unsigned long rx_packets;
-	unsigned long tx_bytes;
 	unsigned long rx_bytes;
 	struct sdp_moderation auto_mod;
 

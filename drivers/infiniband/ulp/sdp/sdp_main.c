@@ -453,7 +453,7 @@ void sdp_reset(struct sock *sk)
 {
 	int err;
 
-	sdp_dbg(sk, "%s state=%d\n", __func__, sk->sk_state);
+	sdp_dbg(sk, "%s state=%s\n", __func__, sdp_state_str(sk->sk_state));
 
 	if (sk->sk_state != TCP_ESTABLISHED)
 		return;
@@ -895,8 +895,8 @@ static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 	int error;
 
 	sdp_add_to_history(sk, __func__);
-	sdp_dbg(sk, "%s state %d expected %d *err %d\n", __func__,
-		sk->sk_state, TCP_LISTEN, *err);
+	sdp_dbg(sk, "%s state %s expected %s *err %d\n", __func__,
+		sdp_state_str(sk->sk_state), "TCP_LISTEN", *err);
 
 	ssk = sdp_sk(sk);
 	lock_sock(sk);
@@ -2413,7 +2413,7 @@ sdp_mid_data:
 		if (!(flags & MSG_TRUNC)) {
 			if (rx_sa && offset >= skb->len) {
 				/* No more payload - start rdma copy */
-				sdp_dbg_data(sk, "RDMA copy of %lx bytes\n", used);
+				sdp_dbg_data(sk, "RDMA copy of 0x%lx bytes\n", used);
 				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
 						&used, offset);
 				if (unlikely(err)) {

@@ -85,7 +85,6 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		goto err;
 
 	ssk->tx_packets++;
-	ssk->tx_bytes += skb->len;
 
 	if (unlikely(h->mid == SDP_MID_SRCAVAIL)) {
 		struct tx_srcavail_state *tx_sa = TX_SRCAVAIL_STATE(skb);

@@ -411,7 +411,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 	struct ib_device *dev = sdp_sk(sk)->ib_device;
 	u64 *pages;
 	struct ib_umem_chunk *chunk;
-	int n, j, k;
+	int n = 0, j, k;
 	int rc = 0;
 	unsigned long max_lockable_bytes;
 
@@ -448,10 +448,10 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		umem->offset, umem->length);
 
 	pages = (u64 *) __get_free_page(GFP_KERNEL);
-	if (!pages)
+	if (!pages) {
+		rc = -ENOMEM;
 		goto err_pages_alloc;
-
-	n = 0;
+	}
 
 	list_for_each_entry(chunk, &umem->chunk_list, list) {
 		for (j = 0; j < chunk->nmap; ++j) {
@@ -493,7 +493,8 @@ err_umem_get:
 	return rc;
 }
 
-void sdp_free_fmr(struct sock *sk, struct ib_pool_fmr **_fmr, struct ib_umem **_umem)
+static inline void sdp_free_fmr(struct sock *sk, struct ib_pool_fmr **_fmr,
+		struct ib_umem **_umem)
 {
 	if (*_fmr) {
 		ib_fmr_pool_unmap(*_fmr);
@@ -697,33 +698,25 @@ int sdp_sendmsg_zcopy(struct kiocb *iocb, struct sock *sk, struct iovec *iov)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int rc = 0;
-	long timeo;
+	long timeo = SDP_SRCAVAIL_ADV_TIMEOUT;
 	struct tx_srcavail_state *tx_sa;
-	int offset;
 	size_t bytes_to_copy = iov->iov_len;
 	int copied = 0;
 
-	sdp_dbg_data(sk, "Sending iov: %p, iov_len: 0x%zx\n",
+	sdp_dbg_data(sk, "Sending ZCopy iov: %p, iov_len: 0x%zx\n",
 			iov->iov_base, iov->iov_len);
-	sdp_prf1(sk, NULL, "sdp_sendmsg_zcopy start");
 	if (ssk->rx_sa) {
 		/* Don't want both sides to send SrcAvail because both of them
 		 * will wait on sendmsg() until timeout.
-		 * Don't need to lock 'rx_ring.lock' because when SrcAvail is
-		 * received, sk_sleep'ers are woken up.
 		 */
 		sdp_dbg_data(sk, "Deadlock prevent: crossing SrcAvail\n");
 		return 0;
 	}
 
 	sock_hold(&ssk->isk.sk, SOCK_REF_ZCOPY);
-
 	SDPSTATS_COUNTER_INC(sendmsg_zcopy_segment);
 
-	timeo = SDP_SRCAVAIL_ADV_TIMEOUT ;
-
 	/* Ok commence sending. */
-	offset = (unsigned long)iov->iov_base & (PAGE_SIZE - 1);
 
 	tx_sa = kmalloc(sizeof(struct tx_srcavail_state), GFP_KERNEL);
 	if (!tx_sa) {
