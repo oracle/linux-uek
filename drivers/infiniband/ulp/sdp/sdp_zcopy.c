@@ -404,7 +404,7 @@ static unsigned long sdp_get_max_memlockable_bytes(unsigned long offset)
 }
 
 static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
-	struct ib_pool_fmr **_fmr, struct ib_umem **_umem)
+	struct ib_pool_fmr **_fmr, struct ib_umem **_umem, int access)
 {
 	struct ib_pool_fmr *fmr;
 	struct ib_umem *umem;
@@ -432,7 +432,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 			uaddr, len, max_lockable_bytes);
 
 	umem = ib_umem_get(&sdp_sk(sk)->context, (unsigned long)uaddr, len,
-		IB_ACCESS_REMOTE_WRITE, 0);
+		access, 0);
 
 	if (IS_ERR(umem)) {
 		rc = PTR_ERR(umem);
@@ -462,7 +462,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 				pages[n++] = ib_sg_dma_address(dev,
 						&chunk->page_list[j]) +
 					umem->page_size * k;
-
+				BUG_ON(n >= SDP_FMR_SIZE);
 			}
 		}
 	}
@@ -563,7 +563,8 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 		len = rx_sa->len;
 	}
 
-	rc = sdp_alloc_fmr(sk, iov->iov_base, len, &rx_sa->fmr, &rx_sa->umem);
+	rc = sdp_alloc_fmr(sk, iov->iov_base, len, &rx_sa->fmr, &rx_sa->umem,
+			IB_ACCESS_LOCAL_WRITE);
 	if (rc) {
 		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
@@ -629,7 +630,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 	unsigned long lock_flags;
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, iov->iov_len,
-			&tx_sa->fmr, &tx_sa->umem);
+			&tx_sa->fmr, &tx_sa->umem, IB_ACCESS_REMOTE_READ);
 	if (unlikely(rc)) {
 		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
