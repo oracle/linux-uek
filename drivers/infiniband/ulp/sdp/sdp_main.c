@@ -2977,9 +2977,9 @@ static void __exit sdp_exit(void)
 	sock_unregister(PF_INET_SDP);
 	proto_unregister(&sdp_proto);
 
-	if (percpu_counter_read_positive(orphan_count))
+	if (percpu_counter_sum(orphan_count))
 		printk(KERN_WARNING "%s: orphan_count %lld\n", __func__,
-		       percpu_counter_read_positive(orphan_count));
+				percpu_counter_sum(orphan_count));
 
 	destroy_workqueue(rx_comp_wq);
 	destroy_workqueue(sdp_wq);
