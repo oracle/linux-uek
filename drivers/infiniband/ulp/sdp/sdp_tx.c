@@ -205,83 +205,41 @@ out:
 	return skb;
 }
 
-static int sdp_handle_send_comp(struct sdp_sock *ssk, struct ib_wc *wc)
-{
-	struct sk_buff *skb = NULL;
-	struct sdp_bsdh *h;
-
-	skb = sdp_send_completion(ssk, wc->wr_id);
-	if (unlikely(!skb))
-		return -1;
-
-	if (unlikely(wc->status)) {
-		if (wc->status != IB_WC_WR_FLUSH_ERR) {
-			struct sock *sk = &ssk->isk.sk;
-			sdp_prf(sk, skb, "Send completion with error. "
-				"Status %d", wc->status);
-			sdp_dbg_data(sk, "Send completion with error. "
-				"Status %d\n", wc->status);
-			sdp_set_error(sk, -ECONNRESET);
-		}
-	}
-
-	h = (struct sdp_bsdh *)skb->data;
-
-	sdp_prf1(&ssk->isk.sk, skb, "tx completion. mseq:%d", ntohl(h->mseq));
-
-	sk_wmem_free_skb(&ssk->isk.sk, skb);
-
-	return 0;
-}
-
 static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 {
 	struct sock *sk = &ssk->isk.sk;
 
 	if (likely(wc->wr_id & SDP_OP_SEND)) {
-		sdp_handle_send_comp(ssk, wc);
-		return;
-	}
+		struct sk_buff *skb;
 
-	if (wc->wr_id & SDP_OP_RDMA) {
-		/* TODO: handle failed RDMA read cqe */
-
-		sdp_dbg_data(sk, "TX comp: RDMA read. status: %d\n", wc->status);
-		sdp_prf1(sk, NULL, "TX comp: RDMA read");
-
-		if (!ssk->tx_ring.rdma_inflight) {
-			sdp_dbg(sk, "unexpected RDMA read, "
-					"probably was canceled\n");
-			return;
+		skb = sdp_send_completion(ssk, wc->wr_id);
+		if (likely(skb))
+			sk_wmem_free_skb(sk, skb);
+	} else if (wc->wr_id & SDP_OP_RDMA) {
+		if (ssk->tx_ring.rdma_inflight &&
+				ssk->tx_ring.rdma_inflight->busy) {
+			/* Only last RDMA read WR is signalled. Order is guaranteed -
+			 * therefore if Last RDMA read WR is completed - all other
+			 * have, too */
+			ssk->tx_ring.rdma_inflight->busy = 0;
+		} else {
+			sdp_warn(sk, "Unexpected RDMA read completion, "
+					"probably was canceled already\n");
 		}
 
-		if (!ssk->tx_ring.rdma_inflight->busy) {
-			sdp_warn(sk, "ERROR: too many RDMA read completions\n");
-			return;
-		}
-
-		/* Only last RDMA read WR is signalled. Order is guaranteed -
-		 * therefore if Last RDMA read WR is completed - all other
-		 * have, too */
-		ssk->tx_ring.rdma_inflight->busy = 0;
-		wake_up(ssk->isk.sk.sk_sleep);
-		sdp_dbg_data(&ssk->isk.sk, "woke up sleepers\n");
-		return;
+		wake_up(sk->sk_sleep);
+	} else {
+		/* Keepalive probe sent cleanup */
+		sdp_cnt(sdp_keepalive_probes_sent);
 	}
 
-	/* Keepalive probe sent cleanup */
-	sdp_cnt(sdp_keepalive_probes_sent);
-
-	if (likely(!wc->status))
+	if (likely(!wc->status) || wc->status == IB_WC_WR_FLUSH_ERR)
 		return;
 
-	sdp_dbg(&ssk->isk.sk, " %s consumes KEEPALIVE status %d\n",
-			__func__, wc->status);
+	sdp_dbg_data(sk, "Send completion with error. wr_id 0x%x Status %d\n", 
+			wc->wr_id, wc->status);
 
-	if (wc->status == IB_WC_WR_FLUSH_ERR)
-		return;
-
-	sdp_set_error(&ssk->isk.sk, -ECONNRESET);
+	sdp_set_error(sk, -ECONNRESET);
 }
 
 static int sdp_process_tx_cq(struct sdp_sock *ssk)
