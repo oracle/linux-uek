@@ -515,6 +515,7 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
 	struct ib_send_wr *bad_wr;
 	struct ib_send_wr wr = { NULL };
 	struct ib_sge sge;
+	int rc;
 
 	wr.opcode = IB_WR_RDMA_READ;
 	wr.next = NULL;
@@ -535,7 +536,13 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
 
 	wr.send_flags = IB_SEND_SIGNALED;
 
-	return ib_post_send(ssk->qp, &wr, &bad_wr);
+	rc = ib_post_send(ssk->qp, &wr, &bad_wr);
+	if (unlikely(rc)) {
+		rx_sa->busy--;
+		ssk->tx_ring.rdma_inflight = NULL;
+	}
+
+	return rc;
 }
 
 int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
@@ -583,7 +590,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 
 	rc = sdp_wait_rdma_wr_finished(ssk);
 	if (unlikely(rc))
-		goto err_post_send;
+		goto err_wait;
 
 	copied = rx_sa->umem->length;
 
@@ -591,8 +598,10 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
 
-err_post_send:
+err_wait:
 	ssk->tx_ring.rdma_inflight = NULL;
+
+err_post_send:
 	sdp_free_fmr(sk, &rx_sa->fmr, &rx_sa->umem);
 
 err_alloc_fmr:
