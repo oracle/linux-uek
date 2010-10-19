@@ -241,8 +241,9 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 		}
 
 		if (!timeo) {
-			sdp_warn(sk, "Timed out waiting for RDMA read\n");
-			rc = -ETIME;
+			sdp_warn(sk, "Fatal: no RDMA read completion\n");
+			rc = -EIO;
+			sdp_set_error(sk, rc);
 			break;
 		}
 
