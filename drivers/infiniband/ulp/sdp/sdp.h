@@ -614,10 +614,7 @@ out:
 #define sdp_add_to_history(sk, str)	\
 	_sdp_add_to_history(sk, str, __func__, __LINE__, 0, 0)
 #else
-static inline void _sdp_add_to_history(struct sock *sk, const char *str,
-				const char *func, int line, int ref_type, int ref_enum)
-{
-}
+#define _sdp_add_to_history(sk, str, func, line, ref_type, ref_enum)
 #define sdp_add_to_history(sk, str)
 #endif /* SDP_SOCK_HISTORY */
 
