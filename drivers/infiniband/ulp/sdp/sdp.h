@@ -129,6 +129,7 @@ extern int rcvbuf_initial_size;
 extern struct proto sdp_proto;
 extern struct workqueue_struct *rx_comp_wq;
 extern atomic_t sdp_current_mem_usage;
+extern int top_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
 extern struct ib_client sdp_client;
 #ifdef SDPSTATS_ON
@@ -692,6 +693,14 @@ static inline unsigned sdp_cycles_to_usecs(unsigned long c)
 #endif
 }
 
+static inline int sdp_has_free_mem(void)
+{
+	/* TODO: count also kmalloc's and skb's allocations. */
+
+	return !top_mem_usage || atomic_read(&sdp_current_mem_usage) <
+		top_mem_usage << (20 - PAGE_SHIFT);
+}
+
 /* utilities */
 static inline char *mid2str(int mid)
 {
@@ -717,6 +726,14 @@ static inline char *mid2str(int mid)
 	}
 
 	return mid2str[mid];
+}
+
+static inline void sdp_free_skb(struct sk_buff *skb)
+{
+	if (unlikely(skb_shinfo(skb)->nr_frags))
+		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
+
+	__kfree_skb(skb);
 }
 
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,

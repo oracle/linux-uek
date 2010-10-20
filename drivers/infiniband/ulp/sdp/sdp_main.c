@@ -484,6 +484,7 @@ static void sdp_destroy_resources(struct sock *sk)
         if (sk->sk_sndmsg_page) {
                 __free_page(sk->sk_sndmsg_page);
                 sk->sk_sndmsg_page = NULL;
+		atomic_dec(&sdp_current_mem_usage);
         }
 
 	id = ssk->id;
@@ -704,7 +705,7 @@ static void sdp_close(struct sock *sk, long timeout)
 			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
 		}
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 	}
 
 	sk_mem_reclaim(sk);
@@ -1706,7 +1707,12 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		if (!page) {
 			/* Allocate new cache page. */
-			if (!(page = sk_stream_alloc_page(sk)))
+			if (sdp_has_free_mem()) {
+				page = sk_stream_alloc_page(sk);
+				if (!page)
+					return SDP_DO_WAIT_MEM;
+				atomic_inc(&sdp_current_mem_usage);
+			} else
 				return SDP_DO_WAIT_MEM;
 		}
 
@@ -2430,7 +2436,7 @@ sdp_mid_data:
 						goto skb_cleanup;
 					sdp_warn(sk, "err from rdma %d - sendSM\n", err);
 					skb_unlink(skb, &sk->sk_receive_queue);
-					__kfree_skb(skb);
+					sdp_free_skb(skb);
 				}
 			} else {
 				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
@@ -2501,14 +2507,14 @@ skb_cleanup:
 force_skb_cleanup:
 			sdp_dbg_data(sk, "unlinking skb %p\n", skb);
 			skb_unlink(skb, &sk->sk_receive_queue);
-			__kfree_skb(skb);
+			sdp_free_skb(skb);
 		}
 		continue;
 found_fin_ok:
 		++*seq;
 		if (!(flags & MSG_PEEK)) {
 			skb_unlink(skb, &sk->sk_receive_queue);
-			__kfree_skb(skb);
+			sdp_free_skb(skb);
 		}
 		break;
 

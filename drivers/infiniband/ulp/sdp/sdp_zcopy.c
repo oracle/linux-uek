@@ -101,6 +101,13 @@ static int sdp_post_srcavail(struct sock *sk, struct tx_srcavail_state *tx_sa)
 
 	skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
 			payload_pg, off, payload_len);
+	/* Need to increase mem_usage counter even thought this page was not
+	 * allocated.
+	 * The reason is that when freeing this skb, we are decreasing the same
+	 * counter according to nr_frags. we don't want to check h->mid since
+	 * h->mid is not always a valid value.
+	 */
+	atomic_add(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
 
 	skb->len             += payload_len;
 	skb->data_len         = payload_len;

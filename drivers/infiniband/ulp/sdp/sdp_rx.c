@@ -39,7 +39,7 @@ SDP_MODPARAM_INT(rcvbuf_initial_size, 32 * 1024,
 		"Receive buffer initial size in bytes.");
 SDP_MODPARAM_SINT(rcvbuf_scale, 0x10,
 		"Receive buffer size scale factor.");
-SDP_MODPARAM_SINT(top_mem_usage, 0,
+SDP_MODPARAM_INT(top_mem_usage, 0,
 		"Top system wide sdp memory usage for recv (in MB).");
 
 #ifdef CONFIG_PPC
@@ -186,6 +186,8 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		if (rx_req->mapping[i + 1])
 			page = rx_req->pages[i];
 		else {
+			if (unlikely(!sdp_has_free_mem()))
+				goto err;
 			rx_req->pages[i] = page = alloc_pages(gfp_page, 0);
 			if (unlikely(!page))
 				goto err;
@@ -244,8 +246,9 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	return 0;
 
 err:
+	atomic_add(pages_alloced, &sdp_current_mem_usage);
 	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
-	__kfree_skb(skb);
+	sdp_free_skb(skb);
 	sdp_reset(&ssk->isk.sk);
 	return -1;
 }
@@ -254,11 +257,11 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 {
 	struct sock *sk = &ssk->isk.sk;
 	int buffer_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
-	unsigned long max_bytes;
+	unsigned long max_bytes = ssk->rcvbuf_scale;
 	unsigned long bytes_in_process;
 	int posted = rx_ring_posted(ssk);
 
-	if (unlikely(!ssk->qp_active))
+	if (unlikely(!ssk->qp_active || !sdp_has_free_mem()))
 		return 0;
 
 	if  (likely(posted >= SDP_RX_SIZE))
@@ -269,12 +272,7 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 
 	/* If rcvbuf is very small, must leave at least 1 skb for data,
 	 * in addition to SDP_MIN_TX_CREDITS */
-	max_bytes = max(sk->sk_rcvbuf, (1 + SDP_MIN_TX_CREDITS) * buffer_size);
-
-	if (!top_mem_usage || (top_mem_usage * 0x100000) >=
-			atomic_read(&sdp_current_mem_usage) * PAGE_SIZE) {
-		max_bytes *= ssk->rcvbuf_scale;
-	}
+	max_bytes *= max(sk->sk_rcvbuf, (1 + SDP_MIN_TX_CREDITS) * buffer_size);
 
 	/* Bytes posted to HW */
 	bytes_in_process = (posted - SDP_MIN_TX_CREDITS) * buffer_size;
@@ -536,7 +534,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_warn(sk, "SDP: FIXME MID %d\n", h->mid);
 	}
 
-	__kfree_skb(skb);
+	sdp_free_skb(skb);
 	return 0;
 }
 
@@ -583,7 +581,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
 		/* Credit update is valid even after RCV_SHUTDOWN */
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 		return 0;
 	}
 
@@ -606,7 +604,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(sk, "RdmaRdCompl message arrived\n");
 			sdp_handle_rdma_read_compl(ssk, ntohl(h->mseq_ack),
 					ntohl(rrch->len));
-			__kfree_skb(skb);
+			sdp_free_skb(skb);
 		} else
 			skb_queue_tail(&ssk->rx_ctl_q, skb);
 
@@ -631,9 +629,6 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 	if (unlikely(!skb))
 		return NULL;
 
-	if (unlikely(skb_shinfo(skb)->nr_frags))
-		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
-
 	if (unlikely(wc->status)) {
 		if (ssk->qp_active) {
 			sdp_dbg(sk, "Recv completion with error. "
@@ -642,7 +637,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 			sdp_reset(sk);
 			ssk->qp_active = 0;
 		}
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 		return NULL;
 	}
 
@@ -651,7 +646,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
 		sdp_warn(sk, "SDP BUG! byte_len %d < %zd\n",
 				wc->byte_len, sizeof(struct sdp_bsdh));
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 		return NULL;
 	}
 	skb->len = wc->byte_len;
@@ -853,8 +848,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring), INT_MAX);
 		if (!skb)
 			break;
-		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 	}
 
 	for (id = 0; id < SDP_RX_SIZE; id++) {
@@ -869,7 +863,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 					DMA_FROM_DEVICE);
 			sbuf->mapping[i] = 0;
 			put_page(sbuf->pages[i - 1]);
-			atomic_sub(1, &sdp_current_mem_usage);
+			atomic_dec(&sdp_current_mem_usage);
 		}
 	}
 }

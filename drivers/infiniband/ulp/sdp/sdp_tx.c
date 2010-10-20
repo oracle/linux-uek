@@ -92,7 +92,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(&ssk->isk.sk, "SrcAvail cancelled "
 					"before being sent!\n");
 			SDP_WARN_ON(1);
-			__kfree_skb(skb);
+			sdp_free_skb(skb);
 			return;
 		}
 		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
@@ -169,7 +169,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	return;
 
 err:
-	__kfree_skb(skb);
+	sdp_free_skb(skb);
 }
 
 static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
@@ -395,7 +395,7 @@ static void sdp_tx_ring_purge(struct sdp_sock *ssk)
 		skb = sdp_send_completion(ssk, ring_tail(ssk->tx_ring));
 		if (!skb)
 			break;
-		__kfree_skb(skb);
+		sdp_free_skb(skb);
 	}
 }
 
