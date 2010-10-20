@@ -636,7 +636,7 @@ static void sdp_cma_timewait_timeout_work(struct work_struct *work)
 static int sdp_cancel_cma_timewait_timeout(struct sdp_sock *ssk)
 {
 	if (!ssk->cma_timewait_timeout)
-		return 1;
+		return 0;
 
 	ssk->cma_timewait_timeout = 0;
 	return cancel_delayed_work(&ssk->cma_timewait_work);
@@ -1042,12 +1042,12 @@ static void sdp_destroy_work(struct work_struct *work)
 
 	sdp_cancel_dreq_wait_timeout(ssk);
 
+	lock_sock(sk);
 	if (sk->sk_state == TCP_TIME_WAIT) {
 		if (sdp_cancel_cma_timewait_timeout(ssk))
 			sock_put(sk, SOCK_REF_CMA);
 	}
 
-	lock_sock(sk);
 	/* In normal close current state is TCP_TIME_WAIT or TCP_CLOSE
 	   but if a CM connection is dropped below our legs state could
 	   be any state */
