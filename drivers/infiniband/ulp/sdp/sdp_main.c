@@ -2389,6 +2389,17 @@ sdp_mid_data:
 
 		if (poll_recv_cq(sk)) {
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
+			if (remote_credits(ssk) <= SDP_MIN_TX_CREDITS) {
+				/* Remote host can not send, so there is no
+				 * point of waiting for data.
+				 * This situation is possible if current host
+				 * can not send credits-update due to lack of
+				 * memory.
+				 */
+				if (!copied)
+					copied = -ENOMEM;
+				break;
+			}
 
 			posts_handler_put(ssk, 0);
 			sk_wait_data(sk, &timeo);
