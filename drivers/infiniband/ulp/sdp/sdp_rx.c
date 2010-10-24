@@ -280,13 +280,7 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 	/* Bytes waiting in socket RX queue */
 	bytes_in_process += rcv_nxt(ssk) - ssk->copied_seq;
 
-	if (bytes_in_process >= max_bytes) {
-		sdp_prf(sk, NULL, "bytes_in_process: 0x%lx > max_bytes: 0x%lx",
-				bytes_in_process, max_bytes);
-		return 0;
-	}
-
-	return 1;
+	return bytes_in_process < max_bytes;
 }
 
 static inline void sdp_post_recvs(struct sdp_sock *ssk)

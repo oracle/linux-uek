@@ -486,7 +486,7 @@ static inline int sdp_chk_sa_cancel(struct sdp_sock *ssk, struct rx_srcavail_sta
 
 static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 {
-	        return (struct sdp_sock *)sk;
+	return (struct sdp_sock *)sk;
 }
 
 #ifdef SDP_SOCK_HISTORY

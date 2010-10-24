@@ -1734,8 +1734,7 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		/* Update the skb. */
 		if (merge) {
-			skb_shinfo(skb)->frags[i - 1].size +=
-							copy;
+			skb_shinfo(skb)->frags[i - 1].size += copy;
 		} else {
 			skb_fill_page_desc(skb, i, page, off, copy);
 			if (TCP_PAGE(sk)) {
@@ -1927,7 +1926,9 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	int err, copied;
 	long timeo;
 	struct bzcopy_state *bz = NULL;
-	int zcopy_thresh = -1 != ssk->zcopy_thresh ? ssk->zcopy_thresh : sdp_zcopy_thresh;
+	int zcopy_thresh =
+		-1 != ssk->zcopy_thresh ? ssk->zcopy_thresh : sdp_zcopy_thresh;
+
 	SDPSTATS_COUNTER_INC(sendmsg);
 
 	lock_sock(sk);
