@@ -2022,8 +2022,10 @@ new_segment:
 				}
 
 				skb = sdp_alloc_skb_data(sk, min(seglen, size_goal), 0);
-				if (!skb)
-					goto wait_for_memory;
+				if (!skb) {
+					err = -ENOMEM;
+					goto do_error;
+				}
 
 				BZCOPY_STATE(skb) = bz;
 
@@ -2060,13 +2062,17 @@ new_segment:
 			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
 				      sdp_bcopy_get(sk, skb, from, copy);
 			if (unlikely(copy < 0)) {
-				if (!++copy)
-					goto wait_for_memory;
-				if (!++copy)
-					goto new_segment;
-				if (!++copy)
-					goto do_fault;
-				goto do_error;
+				switch (copy) {
+					case SDP_DO_WAIT_MEM:
+						err = -ENOMEM;
+						goto do_error;
+					case SDP_NEW_SEG:
+						goto new_segment;
+					case SDP_ERR_FAULT:
+						goto do_fault;
+					default:
+						goto do_error;
+				}
 			}
 
 			if (!copied)
@@ -2083,7 +2089,6 @@ new_segment:
 
 wait_for_sndbuf:
 			set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
-wait_for_memory:
 			sdp_prf(sk, skb, "wait for mem. credits: %d", tx_credits(ssk));
 			SDPSTATS_COUNTER_INC(send_wait_for_mem);
 			if (copied)
