@@ -408,7 +408,7 @@ static unsigned long sdp_get_max_memlockable_bytes(unsigned long offset)
 	lock_limit = current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur;
 	avail = lock_limit - (current->mm->locked_vm << PAGE_SHIFT);
 
-	return avail - offset;
+	return avail < offset ? 0 : avail - offset;
 }
 
 static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
@@ -435,6 +435,9 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 			len, max_lockable_bytes);
 		len = max_lockable_bytes;
 	}
+
+	if (unlikely(len == 0))
+		return -EAGAIN;
 
 	sdp_dbg_data(sk, "user buf: %p, len:0x%zx max_lockable_bytes: 0x%lx\n",
 			uaddr, len, max_lockable_bytes);
