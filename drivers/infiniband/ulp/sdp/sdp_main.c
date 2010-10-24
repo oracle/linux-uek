@@ -772,8 +772,10 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
         if (addr_len < sizeof(struct sockaddr_in))
                 return -EINVAL;
 
-        if (uaddr->sa_family != AF_INET && uaddr->sa_family != AF_INET_SDP)
-                return -EAFNOSUPPORT;
+	if (uaddr->sa_family == AF_INET_SDP)
+		uaddr->sa_family = AF_INET;
+	else if (uaddr->sa_family != AF_INET)
+		return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
 		rc = sdp_get_port(sk, 0);
