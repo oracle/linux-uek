@@ -537,6 +537,7 @@ static void sdp_destruct(struct sock *sk)
 
 	sdp_add_to_history(sk, __func__);
 	percpu_counter_dec(sk->sk_prot->orphan_count);
+	percpu_counter_dec(sk->sk_prot->sockets_allocated);
 	ssk->destructed_already = 1;
 
 	down_read(&device_removal_lock);
@@ -2773,6 +2774,7 @@ static int sdp_create_socket(struct net *net, struct socket *sock, int protocol)
 	}
 	sock_init_data(sock, sk);
 	sk->sk_protocol = 0x0 /* TODO: inherit tcp socket to use IPPROTO_TCP */;
+	percpu_counter_inc(sk->sk_prot->sockets_allocated);
 
 	memset((struct inet_sock *)sk + 1, 0,
 			sizeof(struct sdp_sock) - sizeof(struct inet_sock));
@@ -3014,6 +3016,10 @@ static void __exit sdp_exit(void)
 	if (atomic_read(&sdp_current_mem_usage))
 		printk(KERN_WARNING "%s: current mem usage %d\n", __func__,
 		       atomic_read(&sdp_current_mem_usage));
+
+	if (percpu_counter_sum(sockets_allocated))
+		printk(KERN_WARNING "%s: sockets_allocated %lld\n", __func__,
+				percpu_counter_sum(sockets_allocated));
 
 	sdp_proc_unregister();
 
