@@ -466,10 +466,14 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	list_for_each_entry(chunk, &umem->chunk_list, list) {
 		for (j = 0; j < chunk->nmap; ++j) {
-			len = ib_sg_dma_len(dev,
+			unsigned len2;
+			len2 = ib_sg_dma_len(dev,
 					&chunk->page_list[j]) >> PAGE_SHIFT;
+			
+			SDP_WARN_ON(len2 > len);
+			len -= len2;
 
-			for (k = 0; k < len; ++k) {
+			for (k = 0; k < len2; ++k) {
 				pages[n++] = ib_sg_dma_address(dev,
 						&chunk->page_list[j]) +
 					umem->page_size * k;
