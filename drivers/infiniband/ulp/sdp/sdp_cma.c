@@ -363,8 +363,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = sdp_init_qp(sk, id);
 		if (rc)
 			break;
-		atomic_set(&sdp_sk(sk)->remote_credits,
-				rx_ring_posted(sdp_sk(sk)));
 		memset(&hh, 0, sizeof hh);
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.len = htonl(sizeof(struct sdp_hh));
@@ -373,6 +371,8 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
+		atomic_set(&sdp_sk(sk)->remote_credits,
+				rx_ring_posted(sdp_sk(sk)));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
 		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
