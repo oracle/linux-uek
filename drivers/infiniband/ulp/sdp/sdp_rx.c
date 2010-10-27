@@ -570,8 +570,15 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	skb_pull(skb, sizeof(struct sdp_bsdh));
 
-	if (unlikely(h->mid == SDP_MID_SRCAVAIL))
-		skb_pull(skb, sizeof(struct sdp_srcah));
+	if (unlikely(h->mid == SDP_MID_SRCAVAIL)) {
+		if (ssk->rx_sa) {
+			sdp_dbg_data(sk, "SrcAvail in the middle of another SrcAvail. Aborting\n");
+			h->mid = SDP_MID_DATA;
+			sdp_post_sendsm(sk);
+		} else {
+			skb_pull(skb, sizeof(struct sdp_srcah));
+		}
+	}
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
 		/* Credit update is valid even after RCV_SHUTDOWN */

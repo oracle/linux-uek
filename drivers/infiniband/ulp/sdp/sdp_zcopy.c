@@ -412,7 +412,7 @@ static unsigned long sdp_get_max_memlockable_bytes(unsigned long offset)
 }
 
 static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
-	struct ib_pool_fmr **_fmr, struct ib_umem **_umem, int access)
+	struct ib_pool_fmr **_fmr, struct ib_umem **_umem, int access, int min_len)
 {
 	struct ib_pool_fmr *fmr;
 	struct ib_umem *umem;
@@ -436,7 +436,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		len = max_lockable_bytes;
 	}
 
-	if (unlikely(len == 0))
+	if (unlikely(len <= min_len))
 		return -EAGAIN;
 
 	sdp_dbg_data(sk, "user buf: %p, len:0x%zx max_lockable_bytes: 0x%lx\n",
@@ -446,9 +446,9 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 		access, 0);
 
 	if (IS_ERR(umem)) {
-		rc = PTR_ERR(umem);
-		sdp_warn(sk, "Error doing umem_get 0x%zx bytes: %d\n", len, rc);
-		sdp_warn(sk, "RLIMIT_MEMLOCK: 0x%lx[cur] 0x%lx[max] CAP_IPC_LOCK: %d\n",
+		rc = -EAGAIN;
+		sdp_dbg_data(sk, "Error doing umem_get 0x%zx bytes: %d\n", len, rc);
+		sdp_dbg_data(sk, "RLIMIT_MEMLOCK: 0x%lx[cur] 0x%lx[max] CAP_IPC_LOCK: %d\n",
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur,
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_max,
 				capable(CAP_IPC_LOCK));
@@ -586,7 +586,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	}
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, len, &rx_sa->fmr, &rx_sa->umem,
-			IB_ACCESS_LOCAL_WRITE);
+			IB_ACCESS_LOCAL_WRITE, 0);
 	if (rc) {
 		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
@@ -654,7 +654,7 @@ static int do_sdp_sendmsg_zcopy(struct sock *sk, struct tx_srcavail_state *tx_sa
 	unsigned long lock_flags;
 
 	rc = sdp_alloc_fmr(sk, iov->iov_base, iov->iov_len,
-			&tx_sa->fmr, &tx_sa->umem, IB_ACCESS_REMOTE_READ);
+			&tx_sa->fmr, &tx_sa->umem, IB_ACCESS_REMOTE_READ, sdp_zcopy_thresh);
 	if (unlikely(rc)) {
 		sdp_dbg_data(sk, "Error allocating fmr: %d\n", rc);
 		goto err_alloc_fmr;
