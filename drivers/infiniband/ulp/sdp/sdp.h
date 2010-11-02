@@ -12,6 +12,8 @@
 #include <rdma/ib_cm.h>
 #include "sdp_dbg.h"
 
+#define sk_ssk(ssk) ((struct sock *)ssk)
+
 /* Interval between sucessive polls in the Tx routine when polling is used
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
 #define SDP_TX_POLL_MODER	16
@@ -1028,7 +1030,7 @@ static inline void sdp_schedule_arm_rx_cq(struct sdp_sock *ssk,
 	else {
 		/* There is no point of setting up a timer for an immediate
 		 * cq-arming, better arm it now. */
-		sdp_arm_rx_cq(&ssk->isk.sk);
+		sdp_arm_rx_cq(sk_ssk(ssk));
 	}
 }
 

@@ -185,10 +185,10 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 static void sdp_destroy_qp(struct sdp_sock *ssk)
 {
-	sdp_dbg(&ssk->isk.sk, "destroying qp\n");
-	sdp_prf(&ssk->isk.sk, NULL, "destroying qp");
+	sdp_dbg(sk_ssk(ssk), "destroying qp\n");
+	sdp_prf(sk_ssk(ssk), NULL, "destroying qp");
 
-	sdp_add_to_history(&ssk->isk.sk, __func__);
+	sdp_add_to_history(sk_ssk(ssk), __func__);
 	ssk->qp_active = 0;
 
 	if (ssk->qp) {
@@ -276,7 +276,7 @@ void sdp_start_keepalive_timer(struct sock *sk)
 
 void sdp_set_default_moderation(struct sdp_sock *ssk)
 {
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 	struct sdp_moderation *mod = &ssk->auto_mod;
 	int rx_buf_size;
 
@@ -397,10 +397,10 @@ static void sdp_auto_moderation(struct sdp_sock *ssk)
 		moder_time = mod->moder_time;
 	}
 
-	sdp_dbg_data(&ssk->isk.sk, "tx rate:%lu rx_rate:%lu\n",
+	sdp_dbg_data(sk_ssk(ssk), "tx rate:%lu rx_rate:%lu\n",
 			tx_pkt_diff * HZ / period, rx_pkt_diff * HZ / period);
 
-	sdp_dbg_data(&ssk->isk.sk, "Rx moder_time changed from:%d to %d "
+	sdp_dbg_data(sk_ssk(ssk), "Rx moder_time changed from:%d to %d "
 			"period:%lu [jiff] packets:%lu avg_pkt_size:%lu "
 			"rate:%lu [p/s])\n",
 			mod->last_moder_time, moder_time, period, packets,
@@ -410,7 +410,7 @@ static void sdp_auto_moderation(struct sdp_sock *ssk)
 		mod->last_moder_time = moder_time;
 		err = ib_modify_cq(ssk->rx_ring.cq, mod->moder_cnt, moder_time);
 		if (unlikely(err)) {
-			sdp_dbg_data(&ssk->isk.sk,
+			sdp_dbg_data(sk_ssk(ssk),
 					"Failed modifying moderation for cq");
 		}
 		SDPSTATS_COUNTER_INC(rx_cq_modified);
@@ -511,7 +511,7 @@ static void sdp_destroy_resources(struct sock *sk)
 
 static inline void sdp_kill_id_and_release(struct sdp_sock *ssk)
 {
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 	struct rdma_cm_id *id;
 
 	lock_sock(sk);
@@ -564,7 +564,7 @@ done:
 
 static inline void sdp_start_dreq_wait_timeout(struct sdp_sock *ssk, int timeo)
 {
-	sdp_dbg(&ssk->isk.sk, "Starting dreq wait timeout\n");
+	sdp_dbg(sk_ssk(ssk), "Starting dreq wait timeout\n");
 
 	queue_delayed_work(sdp_wq, &ssk->dreq_wait_work, timeo);
 	ssk->dreq_wait_timeout = 1;
@@ -621,7 +621,7 @@ static void sdp_cma_timewait_timeout_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk =
 		container_of(work, struct sdp_sock, cma_timewait_work.work);
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 
 	lock_sock(sk);
 	if (!ssk->cma_timewait_timeout) {
@@ -932,14 +932,14 @@ static struct sock *sdp_accept(struct sock *sk, int flags, int *err)
 	list_del_init(&newssk->accept_queue);
 	newssk->parent = NULL;
 	sk_acceptq_removed(sk);
-	newsk = &newssk->isk.sk;
+	newsk = sk_ssk(newssk);
 out:
 	release_sock(sk);
 	if (newsk) {
 		lock_sock(newsk);
 		if (newssk->rx_ring.cq) {
 			newssk->poll_cq = 1;
-			sdp_arm_rx_cq(&newssk->isk.sk);
+			sdp_arm_rx_cq(sk_ssk(newssk));
 		}
 		release_sock(newsk);
 	}
@@ -1012,12 +1012,12 @@ void sdp_cancel_dreq_wait_timeout(struct sdp_sock *ssk)
 	if (!ssk->dreq_wait_timeout)
 		return;
 
-	sdp_dbg(&ssk->isk.sk, "cancelling dreq wait timeout\n");
+	sdp_dbg(sk_ssk(ssk), "cancelling dreq wait timeout\n");
 
 	ssk->dreq_wait_timeout = 0;
 	if (cancel_delayed_work_sync(&ssk->dreq_wait_work)) {
 		/* The timeout hasn't reached - need to clean ref count */
-		sock_put(&ssk->isk.sk, SOCK_REF_DREQ_TO);
+		sock_put(sk_ssk(ssk), SOCK_REF_DREQ_TO);
 	}
 }
 
@@ -1025,7 +1025,7 @@ static void sdp_destroy_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk = container_of(work, struct sdp_sock,
 			destroy_work);
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 	sdp_dbg(sk, "%s: refcnt %d\n", __func__, atomic_read(&sk->sk_refcnt));
 
 	lock_sock(sk);
@@ -1062,7 +1062,7 @@ static void sdp_dreq_wait_timeout_work(struct work_struct *work)
 {
 	struct sdp_sock *ssk =
 		container_of(work, struct sdp_sock, dreq_wait_work.work);
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 
 	if (!ssk->dreq_wait_timeout)
 		goto out;
@@ -1499,7 +1499,7 @@ static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
 
 	/* Wait for in-flight sends; should be quick */
 	if (bz->busy) {
-		struct sock *sk = &ssk->isk.sk;
+		struct sock *sk = sk_ssk(ssk);
 		unsigned long timeout = jiffies + SDP_BZCOPY_POLL_TIMEOUT;
 
 		while (jiffies < timeout) {
@@ -1645,7 +1645,7 @@ static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
 		return ERR_PTR(-ENOMEM);
 	}
 
-	rc = sdp_get_pages(&ssk->isk.sk, bz->pages, bz->page_cnt,
+	rc = sdp_get_pages(sk_ssk(ssk), bz->pages, bz->page_cnt,
 			(unsigned long)base);
 
 	if (unlikely(rc))
@@ -1820,7 +1820,7 @@ static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
  */
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 {
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 	int err = 0;
 	long vm_wait = 0;
 	long current_timeo = *timeo_p;
@@ -2679,7 +2679,7 @@ static void sdp_enter_memory_pressure(struct sock *sk)
 
 void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
 {
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 	u8 tmp;
 	u32 ptr = skb->len - 1;
 
@@ -2861,7 +2861,7 @@ do_next:
 	list_for_each_entry(ssk, &sock_list, sock_list) {
 		if (ssk->ib_device == device && !ssk->id_destroyed_already) {
 			spin_unlock_irq(&sock_list_lock);
-			sk = &ssk->isk.sk;
+			sk = sk_ssk(ssk);
 			sdp_add_to_history(sk, __func__);
 			lock_sock(sk);
 			/* ssk->id must be lock-protected,
@@ -2885,7 +2885,7 @@ kill_socks:
 	list_for_each_entry(ssk, &sock_list, sock_list) {
 		if (ssk->ib_device == device) {
 			spin_unlock_irq(&sock_list_lock);
-			sk = &ssk->isk.sk;
+			sk = sk_ssk(ssk);
 			lock_sock(sk);
 
 			sdp_abort_srcavail(sk);

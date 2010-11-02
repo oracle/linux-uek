@@ -122,7 +122,7 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		unlikely(h->mid != SDP_MID_DATA) ||
 		(ssk->nonagle & TCP_NAGLE_OFF) ||
 		!ssk->nagle_last_unacked ||
-		skb->next != (struct sk_buff *)&ssk->isk.sk.sk_write_queue ||
+		skb->next != (struct sk_buff *)&sk_ssk(ssk)->sk_write_queue ||
 		skb->len + sizeof(struct sdp_bsdh) >= ssk->xmit_size_goal ||
 		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_PSH) ||
 		(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG);
@@ -134,10 +134,10 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 		if (!timer_pending(&ssk->nagle_timer) && ssk->qp_active) {
 			mod_timer(&ssk->nagle_timer,
 					jiffies + SDP_NAGLE_TIMEOUT);
-			sdp_dbg_data(&ssk->isk.sk, "Starting nagle timer\n");
+			sdp_dbg_data(sk_ssk(ssk), "Starting nagle timer\n");
 		}
 	}
-	sdp_dbg_data(&ssk->isk.sk, "send_now = %d last_unacked = %u\n",
+	sdp_dbg_data(sk_ssk(ssk), "send_now = %d last_unacked = %u\n",
 		send_now, ssk->nagle_last_unacked);
 
 	return send_now;
@@ -146,7 +146,7 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 void sdp_nagle_timeout(unsigned long data)
 {
 	struct sdp_sock *ssk = (struct sdp_sock *)data;
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 
 	SDPSTATS_COUNTER_INC(nagle_timer);
 	sdp_dbg_data(sk, "last_unacked = %u\n", ssk->nagle_last_unacked);
@@ -191,7 +191,7 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int post_count = 0;
-	struct sock *sk = &ssk->isk.sk;
+	struct sock *sk = sk_ssk(ssk);
 
 	if (unlikely(!ssk->id)) {
 		if (sk->sk_send_head) {
