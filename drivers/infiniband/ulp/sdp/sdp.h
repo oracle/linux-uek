@@ -62,10 +62,6 @@
 #define SDP_OP_RDMA 0x200000000LL
 #define SDP_OP_NOP  0x100000000LL
 
-#ifdef SDP_SOCK_HISTORY
-#define SDP_SOCK_HISTORY_LEN 128
-#endif
-
 /* how long (in jiffies) to block sender till tx completion*/
 #define SDP_BZCOPY_POLL_TIMEOUT (HZ / 10)
 
@@ -342,26 +338,6 @@ struct sdp_moderation {
 	int moder_time;
 };
 
-#ifdef SDP_SOCK_HISTORY
-enum sdp_ref_type {
-	NOT_REF,
-	HOLD_REF,
-	PUT_REF,
-	__PUT_REF,
-	BOTH_REF
-};
-
-struct sdp_sock_hist {
-	char *str;
-	char *func;
-	int line;
-	int pid;
-	u8 cnt;
-	u8 ref_type;	/* enum sdp_ref_type */
-	u8 ref_enum;	/* enum sdp_ref */
-};
-#endif /* SDP_SOCK_HISTORY */
-
 struct sdp_sock {
 	/* sk has to be the first member of inet_sock */
 	struct inet_sock isk;
@@ -373,10 +349,13 @@ struct sdp_sock {
 	struct sdp_device *sdp_dev;
 	int cpu;
 
+	unsigned int sk_id;
+
 #ifdef SDP_SOCK_HISTORY
 	struct sdp_sock_hist hst[SDP_SOCK_HISTORY_LEN];
-	unsigned hst_idx; /* next free slot */
+	unsigned long hst_idx; /* next free slot */
 	spinlock_t hst_lock;
+	struct dentry *hst_dentr;
 #endif /* SDP_SOCK_HISTORY */
 
 	int qp_active;
@@ -490,136 +469,6 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk)
 {
 	return (struct sdp_sock *)sk;
 }
-
-#ifdef SDP_SOCK_HISTORY
-static inline char *reftype2str(int reftype)
-{
-#define ENUM2STR(e) [e] = #e
-	static char *enum2str[] = {
-		ENUM2STR(NOT_REF),
-		ENUM2STR(HOLD_REF),
-		ENUM2STR(PUT_REF),
-		ENUM2STR(__PUT_REF),
-		ENUM2STR(BOTH_REF)
-	};
-
-	if (reftype < 0 || reftype >= ARRAY_SIZE(enum2str)) {
-		printk(KERN_WARNING "reftype %d is illegal\n", reftype);
-		return NULL;
-	}
-
-	return enum2str[reftype];
-}
-
-static inline void sdp_print_history(struct sock *sk)
-{
-	struct sdp_sock *ssk = sdp_sk(sk);
-	unsigned i;
-	unsigned long flags;
-
-	spin_lock_irqsave(&ssk->hst_lock, flags);
-
-	sdp_warn(sk, "############## %p %s %u/%lu ##############\n",
-			sk, sdp_state_str(sk->sk_state),
-			ssk->hst_idx, ARRAY_SIZE(ssk->hst));
-
-	for (i = 0; i < ssk->hst_idx; ++i) {
-		struct sdp_sock_hist *hst = &ssk->hst[i];
-		char *ref_str = reftype2str(hst->ref_type);
-
-		if (hst->ref_type == NOT_REF)
-			ref_str = "";
-
-		if (hst->cnt != 1) {
-			sdp_warn(sk, "[%s:%d pid: %d] %s %s : %d\n",
-					hst->func, hst->line, hst->pid,
-					ref_str, hst->str, hst->cnt);
-		} else {
-			sdp_warn(sk, "[%s:%d pid: %d] %s %s\n",
-					hst->func, hst->line, hst->pid,
-					ref_str, hst->str);
-		}
-	}
-
-	spin_unlock_irqrestore(&ssk->hst_lock, flags);
-}
-
-static inline void _sdp_add_to_history(struct sock *sk, const char *str,
-		const char *func, int line, int ref_type, int ref_enum)
-{
-	struct sdp_sock *ssk = sdp_sk(sk);
-	unsigned i;
-	unsigned long flags;
-	struct sdp_sock_hist *hst;
-
- 	spin_lock_irqsave(&ssk->hst_lock, flags);
-
-	i = ssk->hst_idx;
-
-	if (i >= ARRAY_SIZE(ssk->hst)) {
-		//sdp_warn(sk, "overflow, drop: %s\n", s);
-		++ssk->hst_idx;
-		goto out;
-	}
-
-	if (ssk->hst[i].str)
-		sdp_warn(sk, "overwriting %s\n", ssk->hst[i].str);
-
-	switch (ref_type) {
-		case NOT_REF:
-		case HOLD_REF:
-simple_add:
-			hst = &ssk->hst[i];
-			hst->str = (char *)str;
-			hst->func = (char *)func;
-			hst->line = line;
-			hst->ref_type = ref_type;
-			hst->ref_enum = ref_enum;
-			hst->cnt = 1;
-			hst->pid = current->pid;
-			++ssk->hst_idx;
-			break;
-		case PUT_REF:
-		case __PUT_REF:
-			/* Try to shrink history by attaching HOLD+PUT
-			 * together */
-			hst = i > 0 ? &ssk->hst[i - 1] : NULL;
-			if (hst && hst->ref_type == HOLD_REF &&
-					hst->ref_enum == ref_enum) {
-				hst->ref_type = BOTH_REF;
-				hst->func = (char *)func;
-				hst->line = line;
-				hst->pid = current->pid;
-
-				/* try to shrink some more - by summing up */
-				--i;
-				hst = i > 0 ? &ssk->hst[i - 1] : NULL;
-				if (hst && hst->ref_type == BOTH_REF &&
-						hst->ref_enum == ref_enum) {
-					++hst->cnt;
-					hst->func = (char *)func;
-					hst->line = line;
-					hst->pid = current->pid;
-					ssk->hst[i].str = NULL;
-
-					--ssk->hst_idx;
-				}
-			} else
-				goto simple_add;
-			break;
-		default:
-			sdp_warn(sk, "error\n");
-	}
-out:
-	spin_unlock_irqrestore(&ssk->hst_lock, flags);
-}
-
-#define sdp_add_to_history(sk, str)	\
-	_sdp_add_to_history(sk, str, __func__, __LINE__, 0, 0)
-#else
-#define _sdp_add_to_history(sk, str, func, line, ref_type, ref_enum)
-#define sdp_add_to_history(sk, str)
-#endif /* SDP_SOCK_HISTORY */
 
 static inline int _sdp_exch_state(const char *func, int line, struct sock *sk,
 				 int from_states, int state)

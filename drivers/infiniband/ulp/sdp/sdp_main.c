@@ -180,6 +180,9 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 	src_addr = (struct sockaddr_in *)&(ssk->id->route.addr.src_addr);
 	inet_sk(sk)->num = ntohs(src_addr->sin_port);
+#ifdef SDP_SOCK_HISTORY
+	sdp_ssk_hist_rename(sk);
+#endif
 	return 0;
 }
 
@@ -544,6 +547,11 @@ static void sdp_destruct(struct sock *sk)
 	sdp_remove_sock(ssk);
 	sdp_destroy_resources(sk);
 	up_read(&device_removal_lock);
+
+#ifdef SDP_SOCK_HISTORY
+	sdp_add_to_history(sk, __func__);
+	sdp_ssk_hist_close(sk);
+#endif
 
 	flush_workqueue(rx_comp_wq);
 	/* Consider use cancel_work_sync(&ssk->rx_comp_work) */
@@ -1107,11 +1115,15 @@ static void sdp_destroy_work(struct work_struct *work);
 static void sdp_dreq_wait_timeout_work(struct work_struct *work);
 static void sdp_cma_timewait_timeout_work(struct work_struct *work);
 
+atomic_t socket_idx = ATOMIC_INIT(0);
+
 int sdp_init_sock(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 
 	sdp_dbg(sk, "%s\n", __func__);
+
+	ssk->sk_id = atomic_inc_return(&socket_idx);
 
 	INIT_LIST_HEAD(&ssk->accept_queue);
 	INIT_LIST_HEAD(&ssk->backlog_queue);
@@ -1157,6 +1169,7 @@ int sdp_init_sock(struct sock *sk)
 	memset(ssk->hst, 0, sizeof ssk->hst);
 	ssk->hst_idx = 0;
 	spin_lock_init(&ssk->hst_lock);
+	sdp_ssk_hist_open(sk);
 #endif
 
 	return 0;

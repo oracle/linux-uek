@@ -31,13 +31,22 @@
  */
 
 #include <linux/proc_fs.h>
+#include <linux/debugfs.h>
 #include <rdma/sdp_socket.h>
 #include "sdp.h"
 
 #ifdef CONFIG_PROC_FS
 
+#define DEBUGFS_SDP_BASE "sdp"
 #define PROC_SDP_STATS "sdpstats"
 #define PROC_SDP_PERF "sdpprf"
+
+#if defined(SDP_SOCK_HISTORY) || defined(SDP_PROFILING)
+struct dentry *sdp_dbgfs_base;
+#endif
+#ifdef SDP_PROFILING
+struct dentry *sdp_prof_file = NULL;
+#endif
 
 /* just like TCP fs */
 struct sdp_seq_afinfo {
@@ -516,14 +525,221 @@ static struct file_operations sdpprf_fops = {
 };
 #endif /* SDP_PROFILING */
 
+#ifdef SDP_SOCK_HISTORY
+
+void sdp_print_history(struct sock *sk)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+	unsigned i;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ssk->hst_lock, flags);
+
+	sdp_warn(sk, "############## %p %s %lu/%zu ##############\n",
+			sk, sdp_state_str(sk->sk_state),
+			ssk->hst_idx, ARRAY_SIZE(ssk->hst));
+
+	for (i = 0; i < ssk->hst_idx; ++i) {
+		struct sdp_sock_hist *hst = &ssk->hst[i];
+		char *ref_str = reftype2str(hst->ref_type);
+
+		if (hst->ref_type == NOT_REF)
+			ref_str = "";
+
+		if (hst->cnt != 1) {
+			sdp_warn(sk, "[%s:%d pid: %d] %s %s : %d\n",
+					hst->func, hst->line, hst->pid,
+					ref_str, hst->str, hst->cnt);
+		} else {
+			sdp_warn(sk, "[%s:%d pid: %d] %s %s\n",
+					hst->func, hst->line, hst->pid,
+					ref_str, hst->str);
+		}
+	}
+
+	spin_unlock_irqrestore(&ssk->hst_lock, flags);
+}
+
+void _sdp_add_to_history(struct sock *sk, const char *str,
+		const char *func, int line, int ref_type, int ref_enum)
+{
+	struct sdp_sock *ssk = sdp_sk(sk);
+	unsigned i;
+	unsigned long flags;
+	struct sdp_sock_hist *hst;
+
+ 	spin_lock_irqsave(&ssk->hst_lock, flags);
+
+	i = ssk->hst_idx;
+
+	if (i >= ARRAY_SIZE(ssk->hst)) {
+		//sdp_warn(sk, "overflow, drop: %s\n", s);
+		++ssk->hst_idx;
+		goto out;
+	}
+
+	if (ssk->hst[i].str)
+		sdp_warn(sk, "overwriting %s\n", ssk->hst[i].str);
+
+	switch (ref_type) {
+		case NOT_REF:
+		case HOLD_REF:
+simple_add:
+			hst = &ssk->hst[i];
+			hst->str = (char *)str;
+			hst->func = (char *)func;
+			hst->line = line;
+			hst->ref_type = ref_type;
+			hst->ref_enum = ref_enum;
+			hst->cnt = 1;
+			hst->pid = current->pid;
+			++ssk->hst_idx;
+			break;
+		case PUT_REF:
+		case __PUT_REF:
+			/* Try to shrink history by attaching HOLD+PUT
+			 * together */
+			hst = i > 0 ? &ssk->hst[i - 1] : NULL;
+			if (hst && hst->ref_type == HOLD_REF &&
+					hst->ref_enum == ref_enum) {
+				hst->ref_type = BOTH_REF;
+				hst->func = (char *)func;
+				hst->line = line;
+				hst->pid = current->pid;
+
+				/* try to shrink some more - by summing up */
+				--i;
+				hst = i > 0 ? &ssk->hst[i - 1] : NULL;
+				if (hst && hst->ref_type == BOTH_REF &&
+						hst->ref_enum == ref_enum) {
+					++hst->cnt;
+					hst->func = (char *)func;
+					hst->line = line;
+					hst->pid = current->pid;
+					ssk->hst[i].str = NULL;
+
+					--ssk->hst_idx;
+				}
+			} else
+				goto simple_add;
+			break;
+		default:
+			sdp_warn(sk, "error\n");
+	}
+out:
+	spin_unlock_irqrestore(&ssk->hst_lock, flags);
+}
+static int sdp_ssk_hist_seq_show(struct seq_file *seq, void *v)
+{
+	struct sock *sk = seq->private;
+	struct sdp_sock *ssk = sdp_sk(sk);
+	unsigned i;
+	unsigned long flags;
+
+	spin_lock_irqsave(&ssk->hst_lock, flags);
+
+	seq_printf(seq, "############## %p %s %lu/%zu ##############\n",
+			sk, sdp_state_str(sk->sk_state),
+			ssk->hst_idx, ARRAY_SIZE(ssk->hst));
+
+	for (i = 0; i < ssk->hst_idx; ++i) {
+		struct sdp_sock_hist *hst = &ssk->hst[i];
+		char *ref_str = reftype2str(hst->ref_type);
+
+		if (hst->ref_type == NOT_REF)
+			ref_str = "";
+
+		if (hst->cnt != 1) {
+			seq_printf(seq, "[%30s:%-5d pid: %-6d] %s %s : %d\n",
+					hst->func, hst->line, hst->pid,
+					ref_str, hst->str, hst->cnt);
+		} else {
+			seq_printf(seq, "[%30s:%-5d pid: %-6d] %s %s\n",
+					hst->func, hst->line, hst->pid,
+					ref_str, hst->str);
+		}
+	}
+
+	spin_unlock_irqrestore(&ssk->hst_lock, flags);
+	return 0;
+}
+
+static int sdp_ssk_hist_seq_open(struct inode *inode, struct file *file)
+{
+	struct sock *sk = inode->i_private;
+
+	return single_open(file, sdp_ssk_hist_seq_show, sk);
+}
+
+static struct file_operations ssk_hist_fops = {
+	.owner	 = THIS_MODULE,
+	.open	 = sdp_ssk_hist_seq_open,
+	.read	 = seq_read,
+	.llseek	 = seq_lseek,
+	.release = single_release,
+};
+
+static void sdp_ssk_hist_name(char *sk_name, int len, struct sock *sk)
+{
+	int lport = inet_sk(sk)->num;
+	int rport = ntohs(inet_sk(sk)->dport);
+
+	snprintf(sk_name, len, "%05x_%d:%d",
+			sdp_sk(sk)->sk_id, lport, rport);
+}
+
+int sdp_ssk_hist_open(struct sock *sk)
+{
+	int ret = 0;
+	char sk_name[256];
+	struct sdp_sock *ssk = sdp_sk(sk);
+
+	if (!sdp_dbgfs_base) {
+		return 0;
+	}
+
+	sdp_ssk_hist_name(sk_name, sizeof(sk_name), sk);
+
+	ssk->hst_dentr = debugfs_create_file(sk_name, S_IRUGO | S_IWUGO, 
+			sdp_dbgfs_base, sk, &ssk_hist_fops);
+	if (IS_ERR(ssk->hst_dentr)) {
+		ret = PTR_ERR(ssk->hst_dentr);
+		ssk->hst_dentr = NULL;
+	}
+
+	return ret;
+}
+
+int sdp_ssk_hist_close(struct sock *sk)
+{
+	if (sk && sdp_sk(sk)->hst_dentr)
+		debugfs_remove(sdp_sk(sk)->hst_dentr);
+	return 0;
+}
+
+int sdp_ssk_hist_rename(struct sock *sk)
+{
+	char sk_name[256];
+	struct dentry *d;
+
+	if (!sk || !sdp_sk(sk)->hst_dentr)
+		return 0;
+
+	sdp_ssk_hist_name(sk_name, sizeof(sk_name), sk);
+
+	d = debugfs_rename(sdp_dbgfs_base, sdp_sk(sk)->hst_dentr, sdp_dbgfs_base, sk_name);
+	if (IS_ERR(d))
+		return PTR_ERR(d);
+
+	return 0;
+}
+#endif
+
 int __init sdp_proc_init(void)
 {
 	struct proc_dir_entry *p = NULL;
 #ifdef SDPSTATS_ON
 	struct proc_dir_entry *stats = NULL;
-#endif
-#ifdef SDP_PROFILING
-	struct proc_dir_entry *prof = NULL;
 #endif
 
 	sdp_seq_afinfo.seq_fops->owner         = sdp_seq_afinfo.owner;
@@ -531,6 +747,19 @@ int __init sdp_proc_init(void)
 	sdp_seq_afinfo.seq_fops->read          = seq_read;
 	sdp_seq_afinfo.seq_fops->llseek        = seq_lseek;
 	sdp_seq_afinfo.seq_fops->release       = seq_release_private;
+
+#if defined(SDP_PROFILING) || defined(SDP_SOCK_HISTORY)
+	sdp_dbgfs_base = debugfs_create_dir(DEBUGFS_SDP_BASE, NULL);
+	if (!sdp_dbgfs_base || IS_ERR(sdp_dbgfs_base)) {
+		if (PTR_ERR(sdp_dbgfs_base) == -ENODEV)
+			printk(KERN_WARNING "sdp: debugfs is not supported.\n");
+		else {
+			printk(KERN_ERR "sdp: error creating debugfs information %ld\n",
+					PTR_ERR(sdp_dbgfs_base));
+			return -EINVAL;
+		}
+	}
+#endif
 
 	p = proc_net_fops_create(&init_net, sdp_seq_afinfo.name, S_IRUGO,
 				 sdp_seq_afinfo.seq_fops);
@@ -549,9 +778,9 @@ int __init sdp_proc_init(void)
 #endif
 
 #ifdef SDP_PROFILING
-	prof = proc_net_fops_create(&init_net, PROC_SDP_PERF,
-			S_IRUGO | S_IWUGO, &sdpprf_fops);
-	if (!prof)
+	sdp_prof_file = debugfs_create_file(PROC_SDP_PERF, S_IRUGO | S_IWUGO, 
+			sdp_dbgfs_base, NULL, &sdpprf_fops);
+	if (!sdp_prof_file)
 		goto no_mem_prof;
 #endif
 
@@ -581,7 +810,10 @@ void sdp_proc_unregister(void)
 	proc_net_remove(&init_net, PROC_SDP_STATS);
 #endif
 #ifdef SDP_PROFILING
-	proc_net_remove(&init_net, PROC_SDP_PERF);
+	debugfs_remove(sdp_prof_file);
+#endif
+#if defined(SDP_PROFILING) || defined(SDP_SOCK_HISTORY)
+	debugfs_remove(sdp_dbgfs_base);
 #endif
 }
 

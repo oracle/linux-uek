@@ -12,6 +12,7 @@
 #endif
 
 #define SDP_WARN_ON(x) WARN_ON(x)
+static inline struct sdp_sock *sdp_sk(const struct sock *sk);
 
 #define _sdp_printk(func, line, level, sk, format, arg...) do {               \
 	preempt_disable(); \
@@ -150,6 +151,52 @@ enum sdp_ref {
 };
 
 #ifdef SDP_SOCK_HISTORY
+#define SDP_SOCK_HISTORY_LEN 128
+
+enum sdp_ref_type {
+	NOT_REF,
+	HOLD_REF,
+	PUT_REF,
+	__PUT_REF,
+	BOTH_REF
+};
+
+struct sdp_sock_hist {
+	char *str;
+	char *func;
+	int line;
+	int pid;
+	u8 cnt;
+	u8 ref_type;	/* enum sdp_ref_type */
+	u8 ref_enum;	/* enum sdp_ref */
+};
+
+static inline char *reftype2str(int reftype)
+{
+#define ENUM2STR(e) [e] = #e
+	static char *enum2str[] = {
+		ENUM2STR(NOT_REF),
+		ENUM2STR(HOLD_REF),
+		ENUM2STR(PUT_REF),
+		ENUM2STR(__PUT_REF),
+		ENUM2STR(BOTH_REF)
+	};
+
+	if (reftype < 0 || reftype >= ARRAY_SIZE(enum2str)) {
+		printk(KERN_WARNING "reftype %d is illegal\n", reftype);
+		return NULL;
+	}
+
+	return enum2str[reftype];
+}
+
+void _sdp_add_to_history(struct sock *sk, const char *str,
+		const char *func, int line, int ref_type, int ref_enum);
+void sdp_print_history(struct sock *sk);
+
+#define sdp_add_to_history(sk, str)	\
+	_sdp_add_to_history(sk, str, __func__, __LINE__, 0, 0)
+
 #define sock_hold(sk, msg)						\
 	do {								\
 		_sdp_add_to_history(sk, #msg, __func__, __LINE__,	\
@@ -170,10 +217,20 @@ enum sdp_ref {
 				__PUT_REF, msg);			\
 		sock_ref(sk, #msg, __sock_put);				\
 	} while (0)
+
+int sdp_ssk_hist_open(struct sock *sk);
+int sdp_ssk_hist_close(struct sock *sk);
+int sdp_ssk_hist_rename(struct sock *sk);
+
 #else
 #define sock_hold(sk, msg)	sock_ref(sk, #msg, sock_hold)
 #define sock_put(sk, msg)	sock_ref(sk, #msg, sock_put)
 #define __sock_put(sk, msg)	sock_ref(sk, #msg, __sock_put)
+
+#define _sdp_add_to_history(sk, str, func, line, ref_type, ref_enum)
+#define sdp_add_to_history(sk, str)
+#define sdp_print_history(sk)
+
 #endif /* SDP_SOCK_HISTORY */
 
 #define ENUM2STR(e) [e] = #e

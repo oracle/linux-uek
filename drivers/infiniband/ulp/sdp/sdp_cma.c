@@ -169,6 +169,9 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	inet_sk(child)->dport = dst_addr->sin_port;
 	inet_sk(child)->daddr = dst_addr->sin_addr.s_addr;
 
+#ifdef SDP_SOCK_HISTORY
+	sdp_ssk_hist_rename(sk);
+#endif
 	__sock_put(child, SOCK_REF_CLONE);
 
 	down_read(&device_removal_lock);
@@ -248,6 +251,9 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 	inet_sk(sk)->dport = dst_addr->sin_port;
 	inet_sk(sk)->daddr = dst_addr->sin_addr.s_addr;
 
+#ifdef SDP_SOCK_HISTORY
+	sdp_ssk_hist_rename(sk);
+#endif
 	return 0;
 }
 
@@ -261,6 +267,9 @@ static int sdp_connected_handler(struct sock *sk)
 
 	sdp_exch_state(sk, TCPF_SYN_RECV, TCP_ESTABLISHED);
 
+#ifdef SDP_SOCK_HISTORY
+	sdp_ssk_hist_rename(sk);
+#endif
 	sdp_set_default_moderation(sdp_sk(sk));
 
 	if (sock_flag(sk, SOCK_KEEPOPEN))
