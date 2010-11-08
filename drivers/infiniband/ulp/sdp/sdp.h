@@ -35,6 +35,7 @@
 
 #define SDP_TX_SIZE 0x40
 #define SDP_RX_SIZE 0x40
+#define SDP_DEF_INLINE_THRESH 256
 
 #define SDP_FMR_SIZE (MIN(0x1000, PAGE_SIZE) / sizeof(u64))
 
@@ -119,6 +120,7 @@ struct sdp_skb_cb {
 		sk_common_release(sk); \
 } while (0)
 
+extern int sdp_inline_thresh;
 extern int sdp_zcopy_thresh;
 extern struct workqueue_struct *sdp_wq;
 extern struct list_head sock_list;
@@ -449,6 +451,7 @@ struct sdp_sock {
 
 	/* ZCOPY data: -1:use global; 0:disable zcopy; >0: zcopy threshold */
 	int zcopy_thresh;
+	int inline_thresh;
 
 	int last_bind_err;
 };
@@ -742,6 +745,7 @@ static inline int credit_update_needed(struct sdp_sock *ssk)
 #define SDPSTATS_MAX_HIST_SIZE 256
 struct sdpstats {
 	u32 post_send[256];
+	u32 inline_sends;
 	u32 sendmsg_bcopy_segment;
 	u32 sendmsg_bzcopy_segment;
 	u32 sendmsg_zcopy_segment;
@@ -822,6 +826,9 @@ static inline void sdp_cleanup_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbu
 
 	skb = sbuf->skb;
 	sbuf->skb = NULL;
+
+	if (!sbuf->mapping[0])
+		return; /* Inlined send - nothing to cleanup */
 
 	ib_dma_unmap_single(dev, sbuf->mapping[0], head_size, dir);
 

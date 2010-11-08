@@ -77,6 +77,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	struct ib_sge ibsge[SDP_MAX_SEND_SGES];
 	struct ib_sge *sge = ibsge;
 	struct ib_send_wr tx_wr = { NULL };
+	u32 send_flags = IB_SEND_SIGNALED;
 
 	SDPSTATS_COUNTER_MID_INC(post_send, h->mid);
 	SDPSTATS_HIST(send_size, skb->len);
@@ -117,28 +118,39 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	tx_req = &ssk->tx_ring.buffer[mseq & (SDP_TX_SIZE - 1)];
 	tx_req->skb = skb;
 	dev = ssk->ib_device;
-	addr = ib_dma_map_single(dev, skb->data, skb->len - skb->data_len,
-				 DMA_TO_DEVICE);
-	tx_req->mapping[0] = addr;
 
-	/* TODO: proper error handling */
-	BUG_ON(ib_dma_mapping_error(dev, addr));
+	if (skb->len <= ssk->inline_thresh && !skb_shinfo(skb)->nr_frags) {
+		SDPSTATS_COUNTER_INC(inline_sends);
+		sge->addr = (u64) skb->data;
+		sge->length = skb->len;
+		sge->lkey = 0;
+		frags = 0;
+		tx_req->mapping[0] = 0; /* Nothing to be cleaned up by sdp_cleanup_sdp_buf() */
+		send_flags |= IB_SEND_INLINE;
+	} else {
+		addr = ib_dma_map_single(dev, skb->data, skb->len - skb->data_len,
+				DMA_TO_DEVICE);
+		tx_req->mapping[0] = addr;
 
-	sge->addr = addr;
-	sge->length = skb->len - skb->data_len;
-	sge->lkey = ssk->sdp_dev->mr->lkey;
-	frags = skb_shinfo(skb)->nr_frags;
-	for (i = 0; i < frags; ++i) {
-		++sge;
-		addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
-				       skb_shinfo(skb)->frags[i].page_offset,
-				       skb_shinfo(skb)->frags[i].size,
-				       DMA_TO_DEVICE);
+		/* TODO: proper error handling */
 		BUG_ON(ib_dma_mapping_error(dev, addr));
-		tx_req->mapping[i + 1] = addr;
+
 		sge->addr = addr;
-		sge->length = skb_shinfo(skb)->frags[i].size;
+		sge->length = skb->len - skb->data_len;
 		sge->lkey = ssk->sdp_dev->mr->lkey;
+		frags = skb_shinfo(skb)->nr_frags;
+		for (i = 0; i < frags; ++i) {
+			++sge;
+			addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
+					skb_shinfo(skb)->frags[i].page_offset,
+					skb_shinfo(skb)->frags[i].size,
+					DMA_TO_DEVICE);
+			BUG_ON(ib_dma_mapping_error(dev, addr));
+			tx_req->mapping[i + 1] = addr;
+			sge->addr = addr;
+			sge->length = skb_shinfo(skb)->frags[i].size;
+			sge->lkey = ssk->sdp_dev->mr->lkey;
+		}
 	}
 
 	tx_wr.next = NULL;
@@ -146,7 +158,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	tx_wr.sg_list = ibsge;
 	tx_wr.num_sge = frags + 1;
 	tx_wr.opcode = IB_WR_SEND;
-	tx_wr.send_flags = IB_SEND_SIGNALED;
+	tx_wr.send_flags = send_flags;
 	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
 

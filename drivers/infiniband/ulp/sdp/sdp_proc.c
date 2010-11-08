@@ -316,6 +316,8 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 		SDPSTATS_COUNTER_GET(sendmsg));
 	seq_printf(seq, "bcopy segments     \t\t: %d\n",
 		SDPSTATS_COUNTER_GET(sendmsg_bcopy_segment));
+	seq_printf(seq, "inline sends       \t\t: %d\n",
+		SDPSTATS_COUNTER_GET(inline_sends));
 	seq_printf(seq, "bzcopy segments    \t\t: %d\n",
 		SDPSTATS_COUNTER_GET(sendmsg_bzcopy_segment));
 	seq_printf(seq, "zcopy segments    \t\t: %d\n",

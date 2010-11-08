@@ -79,6 +79,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 		.event_handler = sdp_qp_event_handler,
 		.cap.max_send_wr = SDP_TX_SIZE,
 		.cap.max_recv_wr = SDP_RX_SIZE,
+		.cap.max_inline_data = sdp_inline_thresh,
         	.sq_sig_type = IB_SIGNAL_REQ_WR,
         	.qp_type = IB_QPT_RC,
 	};
@@ -86,6 +87,8 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	int rc;
 
 	sdp_dbg(sk, "%s\n", __func__);
+
+	sdp_sk(sk)->inline_thresh = sdp_inline_thresh;
 
 	sdp_sk(sk)->max_sge = sdp_get_max_dev_sge(device);
 	sdp_dbg(sk, "Max sges: %d\n", sdp_sk(sk)->max_sge);

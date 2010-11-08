@@ -93,6 +93,10 @@ SDP_MODPARAM_SINT(sdp_fmr_dirty_wm, 5, "Watermark to flush fmr pool");
 SDP_MODPARAM_SINT(recv_poll, 700, "usecs to poll recv before arming interrupt.");
 SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 	"Default idle time in seconds before keepalive probe sent.");
+
+SDP_MODPARAM_INT(sdp_inline_thresh, SDP_DEF_INLINE_THRESH,
+	"Inline copy threshold. effective to new sockets only; 0=Off.");
+
 static int sdp_bzcopy_thresh = 0;
 SDP_MODPARAM_INT(sdp_zcopy_thresh, SDP_DEF_ZCOPY_THRESH ,
 	"Zero copy using RDMA threshold; 0=Off.");
