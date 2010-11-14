@@ -88,8 +88,6 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 
 	sdp_dbg(sk, "%s\n", __func__);
 
-	sdp_sk(sk)->inline_thresh = sdp_inline_thresh;
-
 	sdp_sk(sk)->max_sge = sdp_get_max_dev_sge(device);
 	sdp_dbg(sk, "Max sges: %d\n", sdp_sk(sk)->max_sge);
 
@@ -126,6 +124,7 @@ static int sdp_init_qp(struct sock *sk, struct rdma_cm_id *id)
 	sdp_sk(sk)->ib_device = device;
 	sdp_sk(sk)->qp_active = 1;
 	sdp_sk(sk)->context.device = device;
+	sdp_sk(sk)->inline_thresh = qp_init_attr.cap.max_inline_data;
 
 	sdp_dbg(sk, "%s done\n", __func__);
 	return 0;
@@ -184,6 +183,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		bh_unlock_sock(child);
 		up_read(&device_removal_lock);
 		sdp_sk(child)->destructed_already = 1;
+		sdp_ssk_hist_close(child);
 		sk_free(child);
 		return rc;
 	}
