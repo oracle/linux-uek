@@ -476,6 +476,9 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 					"TCP_CLOSE_WAIT taking reference to "
 					"let close() finish the work\n");
 				sock_hold(sk, SOCK_REF_CMA);
+				sdp_start_cma_timewait_timeout(sdp_sk(sk),
+						SDP_CMA_TIMEWAIT_TIMEOUT);
+
 			}
 			sdp_set_error(sk, -EPIPE);
 			rc = sdp_disconnected_handler(sk);

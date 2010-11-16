@@ -659,7 +659,7 @@ static int sdp_cancel_cma_timewait_timeout(struct sdp_sock *ssk)
 	 */
 }
 
-static inline void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo)
+void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo)
 {
 	queue_delayed_work(sdp_wq, &ssk->cma_timewait_work, timeo);
 	ssk->cma_timewait_timeout = 1;

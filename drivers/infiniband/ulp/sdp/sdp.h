@@ -908,6 +908,7 @@ void sdp_reset_sk(struct sock *sk, int rc);
 void sdp_reset(struct sock *sk);
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void sdp_skb_entail(struct sock *sk, struct sk_buff *skb);
+void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo);
 extern struct rw_semaphore device_removal_lock;
 
 /* sdp_proc.c */
