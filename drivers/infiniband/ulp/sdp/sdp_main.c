@@ -1318,7 +1318,8 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 		}
 		break;
 	case SDP_ZCOPY_THRESH:
-		if (val < SDP_MIN_ZCOPY_THRESH || val > SDP_MAX_ZCOPY_THRESH)
+		if (val != 0 && (val < SDP_MIN_ZCOPY_THRESH || 
+					val > SDP_MAX_ZCOPY_THRESH))
 			err = -EINVAL;
 		else
 			ssk->zcopy_thresh = val;
