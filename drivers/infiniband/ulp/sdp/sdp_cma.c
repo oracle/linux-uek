@@ -183,7 +183,9 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		bh_unlock_sock(child);
 		up_read(&device_removal_lock);
 		sdp_sk(child)->destructed_already = 1;
+#ifdef SDP_SOCK_HISTORY
 		sdp_ssk_hist_close(child);
+#endif
 		sk_free(child);
 		return rc;
 	}
