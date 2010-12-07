@@ -238,6 +238,8 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 
 		if (!ssk->tx_ring.rdma_inflight->busy) {
 			sdp_dbg_data(sk, "got rdma cqe\n");
+			if (sk->sk_err == ECONNRESET)
+				rc = -EPIPE;
 			break;
 		}
 

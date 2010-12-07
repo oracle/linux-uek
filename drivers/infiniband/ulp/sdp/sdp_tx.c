@@ -248,7 +248,7 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	if (likely(!wc->status) || wc->status == IB_WC_WR_FLUSH_ERR)
 		return;
 
-	sdp_dbg_data(sk, "Send completion with error. wr_id 0x%llx Status %d\n", 
+	sdp_warn(sk, "Send completion with error. wr_id 0x%llx Status %d\n", 
 			wc->wr_id, wc->status);
 
 	sdp_set_error(sk, -ECONNRESET);
