@@ -2354,8 +2354,8 @@ sdp_mid_data:
 				goto found_ok_skb;
 
  			if (unlikely(!(flags & MSG_PEEK))) {
-				 	sdp_warn(sk, "Trying to read beyond SKB\n");
-					sdp_prf(sk, skb, "Aborting recv");
+					/* Could happen when SrcAvail was canceled
+					 * and transformed into DATA SKB */
 					goto skb_cleanup;
 			}
 
@@ -2507,6 +2507,10 @@ sdp_mid_data:
 		sdp_dbg_data(sk, "done copied %d target %d\n", copied, target);
 
 		sdp_do_posts(sdp_sk(sk));
+		if (rx_sa && !ssk->rx_sa) {
+			/* SrcAvail canceled. Must not access local rx_sa */
+			rx_sa = NULL;
+		}
 skip_copy:
 		if (ssk->urg_data && after(ssk->copied_seq, ssk->urg_seq))
 			ssk->urg_data = 0;
