@@ -417,7 +417,7 @@ static struct file_operations sdpstats_fops = {
 
 #ifdef SDP_PROFILING
 struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
-int sdpprf_log_count;
+atomic_t sdpprf_log_count;
 
 static cycles_t start_t;
 
@@ -435,7 +435,7 @@ static int sdpprf_show(struct seq_file *m, void *v)
 	struct sdpprf_log *l = v;
 	unsigned long usec_rem, t;
 
-	if (!sdpprf_log_count) {
+	if (!atomic_read(&sdpprf_log_count)) {
 		seq_printf(m, "No performance logs\n");
 		goto out;
 	}
@@ -457,15 +457,15 @@ static void *sdpprf_start(struct seq_file *p, loff_t *pos)
 	int idx = *pos;
 
 	if (!*pos) {
-		if (!sdpprf_log_count)
+		if (!atomic_read(&sdpprf_log_count))
 			return SEQ_START_TOKEN;
 	}
 
-	if (*pos >= MIN(sdpprf_log_count, SDPPRF_LOG_SIZE - 1))
+	if (*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE - 1))
 		return NULL;
 
-	if (sdpprf_log_count >= SDPPRF_LOG_SIZE - 1) {
-		int off = sdpprf_log_count & (SDPPRF_LOG_SIZE - 1);
+	if (atomic_read(&sdpprf_log_count) >= SDPPRF_LOG_SIZE - 1) {
+		int off = atomic_read(&sdpprf_log_count) & (SDPPRF_LOG_SIZE - 1);
 		idx = (idx + off) & (SDPPRF_LOG_SIZE - 1);
 
 	}
@@ -479,7 +479,7 @@ static void *sdpprf_next(struct seq_file *p, void *v, loff_t *pos)
 {
 	struct sdpprf_log *l = v;
 
-	if (++*pos >= MIN(sdpprf_log_count, SDPPRF_LOG_SIZE - 1))
+	if (++*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE - 1))
 		return NULL;
 
 	++l;
@@ -512,7 +512,7 @@ static int sdpprf_open(struct inode *inode, struct file *file)
 static ssize_t sdpprf_write(struct file *file, const char __user *buf,
 			    size_t count, loff_t *offs)
 {
-	sdpprf_log_count = 0;
+	atomic_set(&sdpprf_log_count,  0);
 	printk(KERN_INFO "Cleared sdpprf statistics\n");
 
 	return count;

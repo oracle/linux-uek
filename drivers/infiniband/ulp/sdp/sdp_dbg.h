@@ -61,13 +61,14 @@ struct sdpprf_log {
 #define SDPPRF_LOG_SIZE 0x20000 /* must be a power of 2 */
 
 extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
-extern int sdpprf_log_count;
+extern atomic_t sdpprf_log_count;
 
 #define _sdp_prf(sk, s, _func, _line, format, arg...) ({ \
+	int idx = atomic_add_return(1, &sdpprf_log_count); \
 	struct sdpprf_log *l = \
-		&sdpprf_log[sdpprf_log_count++ & (SDPPRF_LOG_SIZE - 1)]; \
+		&sdpprf_log[idx & (SDPPRF_LOG_SIZE - 1)]; \
 	preempt_disable(); \
-	l->idx = sdpprf_log_count - 1; \
+	l->idx = idx; \
 	l->pid = current->pid; \
 	l->sk_num = (sk) ? inet_sk(sk)->num : -1;                 \
 	l->sk_dport = (sk) ? ntohs(inet_sk(sk)->dport) : -1; \
