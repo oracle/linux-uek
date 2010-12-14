@@ -125,8 +125,6 @@ spinlock_t sock_list_lock;
 
 DECLARE_RWSEM(device_removal_lock);
 
-static inline int sdp_abort_rx_srcavail(struct sock *sk);
-
 static inline unsigned int sdp_keepalive_time_when(const struct sdp_sock *ssk)
 {
 	return ssk->keepalive_time ? : sdp_keepalive_time;
@@ -2169,7 +2167,7 @@ fin:
 	return err;
 }
 
-static inline int sdp_abort_rx_srcavail(struct sock *sk)
+int sdp_abort_rx_srcavail(struct sock *sk)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sdp_bsdh *h =
@@ -2178,6 +2176,11 @@ static inline int sdp_abort_rx_srcavail(struct sock *sk)
 	sdp_dbg_data(sk, "SrcAvail aborted\n");
 
 	h->mid = SDP_MID_DATA;
+
+	if (sdp_post_rdma_rd_compl(sk, ssk->rx_sa)) {
+		sdp_warn(sk, "Couldn't send RdmaRdComp - "
+				"data corruption might occur\n");
+	}
 
 	RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
 	kfree(ssk->rx_sa);
@@ -2458,7 +2461,7 @@ sdp_mid_data:
 			if (rx_sa && offset >= skb->len) {
 				/* No more payload - start rdma copy */
 				sdp_dbg_data(sk, "RDMA copy of 0x%lx bytes\n", used);
-				err = sdp_rdma_to_iovec(sk, msg->msg_iov, skb,
+				err = sdp_rdma_to_iovec(sk, msg->msg_iov, msg->msg_iovlen, skb,
 						&used, offset);
 				if (unlikely(err)) {
 					/* ssk->rx_sa might had been freed when
@@ -2482,6 +2485,7 @@ sdp_mid_data:
 						/* TODO: skip header? */
 						msg->msg_iov, used);
 				if (rx_sa && !(flags & MSG_PEEK)) {
+					rx_sa->copied += used;
 					rx_sa->reported += used;
 				}
 			}
@@ -2509,7 +2513,7 @@ skip_copy:
 
 
 		if (rx_sa && !(flags & MSG_PEEK)) {
-			rc = sdp_post_rdma_rd_compl(sk, rx_sa, offset);
+			rc = sdp_post_rdma_rd_compl(sk, rx_sa);
 			if (unlikely(rc)) {
 				sdp_abort_rx_srcavail(sk);
 				rx_sa = NULL;

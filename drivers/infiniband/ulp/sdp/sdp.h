@@ -259,6 +259,7 @@ struct rx_srcavail_state {
 	/* Advertised buffer stuff */
 	u32 mseq;
 	u32 reported;
+	u32 copied;
 	u32 len;
 	u32 rkey;
 	u64 vaddr;
@@ -909,6 +910,7 @@ void sdp_reset(struct sock *sk);
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void sdp_skb_entail(struct sock *sk, struct sk_buff *skb);
 void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo);
+int sdp_abort_rx_srcavail(struct sock *sk);
 extern struct rw_semaphore device_removal_lock;
 
 /* sdp_proc.c */
@@ -945,10 +947,10 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack);
 void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 		u32 bytes_completed);
 int sdp_handle_rdma_read_cqe(struct sdp_sock *ssk);
-int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		unsigned long *used, u32 offset);
+int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, int msg_iovlen,
+	       	struct sk_buff *skb, unsigned long *used, u32 offset);
 int sdp_post_rdma_rd_compl(struct sock *sk,
-		struct rx_srcavail_state *rx_sa, u32 offset);
+		struct rx_srcavail_state *rx_sa);
 int sdp_post_sendsm(struct sock *sk);
 void sdp_abort_srcavail(struct sock *sk);
 void sdp_abort_rdma_read(struct sock *sk);

@@ -274,22 +274,21 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 	return rc;
 }
 
-int sdp_post_rdma_rd_compl(struct sock *sk,
-		struct rx_srcavail_state *rx_sa, u32 offset)
+int sdp_post_rdma_rd_compl(struct sock *sk, struct rx_srcavail_state *rx_sa)
 {
 	struct sk_buff *skb;
-	int copied = offset - rx_sa->reported;
+	int unreported = rx_sa->copied - rx_sa->reported;
 
-	if (offset <= rx_sa->reported)
+	if (rx_sa->copied <= rx_sa->reported)
 		return 0;
 
-	skb = sdp_alloc_skb_rdmardcompl(sk, copied, 0);
+	skb = sdp_alloc_skb_rdmardcompl(sk, unreported, 0);
 	if (unlikely(!skb))
 		return -ENOMEM;
 
 	sdp_skb_entail(sk, skb);
 
-	rx_sa->reported += copied;
+	rx_sa->reported += unreported;
 
 	sdp_post_sends(sdp_sk(sk), 0);
 
@@ -561,20 +560,24 @@ static int sdp_post_rdma_read(struct sock *sk, struct rx_srcavail_state *rx_sa,
 	return rc;
 }
 
-int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
-		unsigned long *used, u32 offset)
+int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, int msg_iovlen,
+	       	struct sk_buff *skb, unsigned long *used, u32 offset)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct rx_srcavail_state *rx_sa = RX_SRCAVAIL_STATE(skb);
 	int rc = 0;
 	int len = *used;
 	int copied;
+	int i = 0;
 
 	if (unlikely(!ssk->ib_device))
 		return -ENODEV;
 
-	while (!iov->iov_len)
+	while (!iov->iov_len) {
 		++iov;
+		i++;
+	}
+	WARN_ON(i >= msg_iovlen);
 
 	sdp_dbg_data(sk_ssk(ssk), "preparing RDMA read."
 		" len: 0x%x. buffer len: 0x%zx\n", len, iov->iov_len);
@@ -613,6 +616,7 @@ int sdp_rdma_to_iovec(struct sock *sk, struct iovec *iov, struct sk_buff *skb,
 	sdp_update_iov_used(sk, iov, copied);
 	atomic_add(copied, &ssk->rcv_nxt);
 	*used = copied;
+	rx_sa->copied += copied;
 
 err_wait:
 	ssk->tx_ring.rdma_inflight = NULL;
