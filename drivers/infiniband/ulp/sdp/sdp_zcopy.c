@@ -448,7 +448,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 
 	if (IS_ERR(umem)) {
 		rc = -EAGAIN;
-		sdp_dbg_data(sk, "Error doing umem_get 0x%zx bytes: %d\n", len, rc);
+		sdp_dbg_data(sk, "Error doing umem_get 0x%zx bytes: %ld\n", len, PTR_ERR(umem));
 		sdp_dbg_data(sk, "RLIMIT_MEMLOCK: 0x%lx[cur] 0x%lx[max] CAP_IPC_LOCK: %d\n",
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur,
 				current->signal->rlim[RLIMIT_MEMLOCK].rlim_max,
