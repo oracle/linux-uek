@@ -33,6 +33,7 @@
 #include <linux/proc_fs.h>
 #include <linux/debugfs.h>
 #include <rdma/sdp_socket.h>
+#include <linux/vmalloc.h>
 #include "sdp.h"
 
 #ifdef CONFIG_PROC_FS
@@ -284,17 +285,15 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 })
 
 #define __sdpstats_seq_hist(seq, msg, hist, is_log) ({		\
-	u32 tmp_hist[SDPSTATS_MAX_HIST_SIZE];			\
 	int hist_len = ARRAY_SIZE(__get_cpu_var(sdpstats).hist);\
-	memset(tmp_hist, 0, sizeof(tmp_hist));			\
-	SDPSTATS_HIST_GET(hist, hist_len, tmp_hist);	\
-	sdpstats_seq_hist(seq, msg, tmp_hist, hist_len, is_log);\
+	memset(h, 0, sizeof(*h) * h_len);			\
+	SDPSTATS_HIST_GET(hist, hist_len, h);	\
+	sdpstats_seq_hist(seq, msg, h, hist_len, is_log);\
 })
 
 #define __sdpstats_seq_hist_pcpu(seq, msg, hist) ({		\
-	u32 h[NR_CPUS];						\
 	unsigned int __i;                                       \
-	memset(h, 0, sizeof(h));				\
+	memset(h, 0, sizeof(*h) * h_len);				\
 	for_each_possible_cpu(__i) {                            \
 		h[__i] = per_cpu(sdpstats, __i).hist;		\
 	} 							\
@@ -304,6 +303,11 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 static int sdpstats_seq_show(struct seq_file *seq, void *v)
 {
 	int i;
+	size_t h_len = max(NR_CPUS, SDPSTATS_MAX_HIST_SIZE);
+	u32 *h;
+
+	if (!(h = vmalloc(h_len * sizeof(*h))))
+		return -ENOMEM;
 
 	seq_printf(seq, "SDP statistics:\n");
 
@@ -383,6 +387,8 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	__sdpstats_seq_hist_pcpu(seq, "CPU rx_irq", rx_int_count);
 	__sdpstats_seq_hist_pcpu(seq, "CPU rx_wq", rx_wq);
 	__sdpstats_seq_hist_pcpu(seq, "CPU tx_irq", tx_int_count);
+
+	vfree(h);
 
 	return 0;
 }
