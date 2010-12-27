@@ -139,10 +139,8 @@ static void sdp_seq_stop(struct seq_file *seq, void *v)
 
 #define TMPSZ 150
 
-static int sdp_seq_show(struct seq_file *seq, void *v)
+static int sdp_v4_seq_show(struct seq_file *seq, int num, struct sock *sk)
 {
-	struct sdp_iter_state *st;
-	struct sock *sk = v;
 	char tmpbuf[TMPSZ + 1];
 	unsigned int dest;
 	unsigned int src;
@@ -151,15 +149,6 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	__u16 destp;
 	__u16 srcp;
 	__u32 rx_queue, tx_queue;
-
-	if (v == SEQ_START_TOKEN) {
-		seq_printf(seq, "%-*s\n", TMPSZ - 1,
-				"  sl  local_address rem_address        "
-				"uid inode   rx_queue tx_queue state");
-		goto out;
-	}
-
-	st = seq->private;
 
 	dest = inet_sk(sk)->daddr;
 	src = inet_sk(sk)->rcv_saddr;
@@ -171,10 +160,70 @@ static int sdp_seq_show(struct seq_file *seq, void *v)
 	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
 
 	sprintf(tmpbuf, "%4d: %08X:%04X %08X:%04X %5d %lu	%08X:%08X %X",
-		st->num, src, srcp, dest, destp, uid, inode,
+		num, src, srcp, dest, destp, uid, inode,
 		rx_queue, tx_queue, sk->sk_state);
 
 	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
+
+	return 0;
+}
+
+static int sdp_v6_seq_show(struct seq_file *seq, int num, struct sock *sk)
+{
+	char tmpbuf[TMPSZ + 1];
+	struct in6_addr *src;
+	struct in6_addr *dest;
+	int uid;
+	unsigned long inode;
+	__u16 destp;
+	__u16 srcp;
+	__u32 rx_queue, tx_queue;
+
+	dest = &inet6_sk(sk)->daddr;
+	src = &inet6_sk(sk)->rcv_saddr;
+	destp = ntohs(inet_sk(sk)->dport);
+	srcp = ntohs(inet_sk(sk)->sport);
+	uid = sock_i_uid(sk);
+	inode = sock_i_ino(sk);
+	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
+	tx_queue = sdp_sk(sk)->write_seq - sdp_sk(sk)->tx_ring.una_seq;
+
+	sprintf(tmpbuf,
+	           "%4d: %08X%08X%08X%08X:%04X %08X%08X%08X%08X:%04X "
+		   "%5d %lu	%08X:%08X %X",
+		   num,
+		   src->s6_addr32[0], src->s6_addr32[1],
+		   src->s6_addr32[2], src->s6_addr32[3],
+		   srcp,
+		   dest->s6_addr32[0], dest->s6_addr32[1],
+		   dest->s6_addr32[2], dest->s6_addr32[3],
+		   destp,
+		   uid, inode,
+		   rx_queue, tx_queue, sk->sk_state);
+
+	seq_printf(seq, "%-*s\n", TMPSZ - 1, tmpbuf);
+
+	return 0;
+}
+
+static int sdp_seq_show(struct seq_file *seq, void *v)
+{
+	struct sdp_iter_state *st;
+	struct sock *sk = v;
+
+	if (v == SEQ_START_TOKEN) {
+		seq_printf(seq, "%-*s\n", TMPSZ - 1,
+				"  sl  local_address rem_address        "
+				"uid inode   rx_queue tx_queue state");
+		goto out;
+	}
+
+	st = seq->private;
+
+	if (inet6_sk(sk))
+		sdp_v6_seq_show(seq, st->num, sk);
+	else
+		sdp_v4_seq_show(seq, st->num, sk);
 
 	sock_put(sk, SOCK_REF_SEQ);
 out:

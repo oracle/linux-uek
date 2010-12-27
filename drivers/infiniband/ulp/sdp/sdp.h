@@ -12,6 +12,36 @@
 #include <rdma/ib_cm.h>
 #include "sdp_dbg.h"
 
+#ifndef NIPQUAD
+#define NIPQUAD(addr) \
+        ((unsigned char *)&addr)[0], \
+        ((unsigned char *)&addr)[1], \
+        ((unsigned char *)&addr)[2], \
+        ((unsigned char *)&addr)[3]
+#endif
+
+#ifndef NIPQUAD_FMT
+#define NIPQUAD_FMT "%u.%u.%u.%u"
+#endif
+
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#ifndef NIP6
+#define NIP6(addr) \
+        ntohs((addr).s6_addr16[0]), \
+        ntohs((addr).s6_addr16[1]), \
+        ntohs((addr).s6_addr16[2]), \
+        ntohs((addr).s6_addr16[3]), \
+        ntohs((addr).s6_addr16[4]), \
+        ntohs((addr).s6_addr16[5]), \
+        ntohs((addr).s6_addr16[6]), \
+        ntohs((addr).s6_addr16[7])
+#endif
+
+#ifndef NIP6_FMT
+#define NIP6_FMT "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x"
+#endif
+#endif
+
 #define sk_ssk(ssk) ((struct sock *)ssk)
 
 /* Interval between sucessive polls in the Tx routine when polling is used
@@ -455,6 +485,9 @@ struct sdp_sock {
 	int inline_thresh;
 
 	int last_bind_err;
+
+	/* ipv6_pinfo has to be the last member of tcp6_sock, see inet6_sk_generic */
+	struct ipv6_pinfo inet6;
 };
 
 static inline void tx_sa_reset(struct tx_srcavail_state *tx_sa)

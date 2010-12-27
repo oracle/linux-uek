@@ -381,7 +381,12 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.len = htonl(sizeof(struct sdp_hh));
 		hh.max_adverts = 1;
-		hh.ipv_cap = 0x40;
+	
+		hh.ipv_cap = 
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+			inet6_sk(sk) ? 0x60 : 
+#endif
+			0x40;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
@@ -389,8 +394,17 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				rx_ring_posted(sdp_sk(sk)));
 		hh.localrcvsz = hh.desremrcvsz = htonl(sdp_sk(sk)->recv_frags *
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
-		inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
-			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+		if (inet6_sk(sk)) {
+			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr =
+				((struct sockaddr_in6 *)&id->route.addr.src_addr)->sin6_addr;
+		}
+			else 
+#endif
+		{
+			inet_sk(sk)->saddr = inet_sk(sk)->rcv_saddr =
+				((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
+		}
 		memset(&conn_param, 0, sizeof conn_param);
 		conn_param.private_data_len = sizeof hh;
 		conn_param.private_data = &hh;
