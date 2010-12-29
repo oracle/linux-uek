@@ -154,6 +154,8 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	int rc;
 
 	struct sockaddr_storage addr;
+	struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addr;
+	struct sockaddr_in *addr4 = (struct sockaddr_in *)&addr;
 
 	sdp_add_to_history(sk, __func__);
 
@@ -165,26 +167,31 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	if (inet6_sk(sk)) {
-		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)&addr;
-		addr6->sin6_family = AF_INET6,
-		addr6->sin6_port = htons(snum),
-		ipv6_addr_copy(&addr6->sin6_addr, &inet6_sk(sk)->rcv_saddr);
-
-		addr_len = sizeof addr6;
+		int addr_type = ipv6_addr_type(&inet6_sk(sk)->rcv_saddr);
+		if (addr_type == IPV6_ADDR_MAPPED) {
+			addr4->sin_family = AF_INET;
+			addr4->sin_port = htons(snum);
+			addr4->sin_addr.s_addr = inet6_sk(sk)->rcv_saddr.s6_addr32[3];
+			addr_len = sizeof(*addr4);
+		} else {
+			addr6->sin6_family = AF_INET6;
+			addr6->sin6_port = htons(snum);
+			ipv6_addr_copy(&addr6->sin6_addr, &inet6_sk(sk)->rcv_saddr);
+			addr_len = sizeof(*addr6);
+		}
 
 		sdp_dbg(sk, "%s: " NIP6_FMT ":%u\n", __func__,
-				NIP6(addr6->sin6_addr), ntohs(addr6->sin6_port));
+				NIP6(inet6_sk(sk)->rcv_saddr), snum);
 	}
 		else 
 #endif
 	{
-		struct sockaddr_in *addr4 = (struct sockaddr_in *)&addr;
 
-		addr4->sin_family = AF_INET,
-		addr4->sin_port = htons(snum),
+		addr4->sin_family = AF_INET;
+		addr4->sin_port = htons(snum);
 		addr4->sin_addr.s_addr = inet_sk(sk)->rcv_saddr;
 
-		addr_len = sizeof addr4;
+		addr_len = sizeof(*addr4);
 
 		sdp_dbg(sk, "%s: " NIPQUAD_FMT ":%u\n", __func__,
 				NIPQUAD(addr4->sin_addr.s_addr), ntohs(addr4->sin_port));
@@ -197,7 +204,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 	rc = ssk->last_bind_err = rdma_bind_addr(ssk->id, (struct sockaddr *)&addr);
 	if (rc) {
-		sdp_dbg(sk, "Destroying rdma id\n");
+		sdp_dbg(sk, "Destroying rdma id rc = %d\n", rc);
 		rdma_destroy_id(ssk->id);
 		ssk->id = NULL;
 		return rc;
@@ -835,8 +842,6 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	};
 	int rc;
 
-	sdp_warn(sk, "Connecting. addr_len = %d\n", addr_len);
-
         if (addr_len < sizeof(struct sockaddr_in))
                 return -EINVAL;
 
@@ -874,7 +879,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	flush_workqueue(sdp_wq);
 	lock_sock(sk);
 	if (sk->sk_err) {
-		sdp_warn(sk, "Can't connect, socket marked with error: %d\n",
+		sdp_dbg(sk, "Can't connect, socket marked with error: %d\n",
 				sk->sk_err);
 		return -sk->sk_err;
 	}
@@ -885,6 +890,19 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	else if (uaddr->sa_family == AF_INET6_SDP)
 		uaddr->sa_family = AF_INET6;
+
+	if (uaddr->sa_family == AF_INET6) {
+		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)uaddr;
+		int addr_type = ipv6_addr_type(&(addr6->sin6_addr));
+
+		if (addr_type == IPV6_ADDR_MAPPED) {
+			struct sockaddr_in *addr4 = (struct sockaddr_in *)uaddr;
+
+			addr4->sin_addr.s_addr = addr6->sin6_addr.s6_addr32[3];
+			addr4->sin_family = AF_INET;
+			addr_len = sizeof(*addr4);
+		}
+	}
 #endif
 
 	if (uaddr->sa_family == AF_INET)
@@ -2720,7 +2738,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 
 	rc = rdma_listen(ssk->id, backlog);
 	if (rc) {
-		sdp_warn(sk, "rdma_listen failed: %d\n", rc);
+		sdp_dbg(sk, "rdma_listen failed: %d\n", rc);
 		sdp_set_error(sk, rc);
 	} else
 		sdp_exch_state(sk, TCPF_CLOSE, TCP_LISTEN);
@@ -2865,7 +2883,7 @@ struct proto sdp_proto = {
 	.name	     = "SDP",
 };
 
-static struct proto_ops sdp_proto_ops = {
+static struct proto_ops sdp_ipv4_proto_ops = {
 	.family     = PF_INET,
 	.owner      = THIS_MODULE,
 	.release    = inet_release,
@@ -2888,7 +2906,42 @@ static struct proto_ops sdp_proto_ops = {
 	.sendpage   = sock_no_sendpage,
 };
 
-static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int protocol)
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+static struct proto_ops sdp_ipv6_proto_ops = {
+	.family     = PF_INET6,
+	.owner      = THIS_MODULE,
+	.release    = inet6_release,
+	.bind       = sdp_bind,
+	.connect    = inet_stream_connect, /* TODO: inet_datagram connect would
+					      autobind, but need to fix get_port
+					      with port 0 first. */
+	.socketpair = sock_no_socketpair,
+	.accept     = inet_accept,
+	.getname    = inet6_getname,
+	.poll       = sdp_poll,
+	.ioctl      = inet6_ioctl,
+	.listen     = sdp_inet_listen,
+	.shutdown   = inet_shutdown,
+	.setsockopt = sock_common_setsockopt,
+	.getsockopt = sock_common_getsockopt,
+	.sendmsg    = inet_sendmsg,
+	.recvmsg    = sock_common_recvmsg,
+	.mmap       = sock_no_mmap,
+	.sendpage   = sock_no_sendpage,
+};
+#endif
+
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+static inline struct ipv6_pinfo *inet6_sk_generic(struct sock *sk)
+{
+	const int offset = sk->sk_prot->obj_size - sizeof(struct ipv6_pinfo);
+
+	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
+}
+#endif
+
+static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int protocol,
+	       	struct proto_ops *proto_ops)
 {
 	struct sock *sk;
 	int rc;
@@ -2929,7 +2982,13 @@ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int prot
 
 	sdp_add_to_history(sk, __func__);
 	sk->sk_destruct = sdp_destruct;
-	sock->ops = &sdp_proto_ops;
+	sock->ops = proto_ops;
+
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+	if (proto_ops->family == PF_INET6)
+		inet_sk(sock->sk)->pinet6 = inet6_sk_generic(sock->sk);
+#endif
+
 	sock->state = SS_UNCONNECTED;
 
 	sdp_add_sock(sdp_sk(sk));
@@ -2938,28 +2997,15 @@ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int prot
 }
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static inline struct ipv6_pinfo *inet6_sk_generic(struct sock *sk)
-{
-	const int offset = sk->sk_prot->obj_size - sizeof(struct ipv6_pinfo);
-
-	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
-}
-
 static int sdp_create_v6_socket(struct net *net, struct socket *sock, int protocol)
 {
-	int rc;
-
-	rc = sdp_create_ipvx_socket(net, sock, protocol);
-	if (!rc)
-		inet_sk(sock->sk)->pinet6 = inet6_sk_generic(sock->sk);
-
-	return rc;
+	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops);
 }
 #endif
 
 static int sdp_create_v4_socket(struct net *net, struct socket *sock, int protocol)
 {
-	return sdp_create_ipvx_socket(net, sock, protocol);
+	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops);
 }
 
 static void sdp_add_device(struct ib_device *device)
