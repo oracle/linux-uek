@@ -846,6 +846,10 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
                 return -EINVAL;
 
 	if (!ssk->id) {
+		/* If IPv4 over IPv6, make sure rdma_bind will expect ipv4 address */
+		if (inet6_sk(sk))
+			inet6_sk(sk)->rcv_saddr.s6_addr32[2] = htonl(0x0000ffff);
+
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
