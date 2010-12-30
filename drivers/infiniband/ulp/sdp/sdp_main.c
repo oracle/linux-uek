@@ -863,7 +863,7 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		return rc;
 	}
 
-	sdp_dbg(sk, "%s %u.%u.%u.%u:%hu -> %u.%u.%u.%u:%hu\n", __func__,
+	sdp_dbg(sk, "%s NIPQUAD_FMT:%hu -> NIPQUAD_FMT:%hu\n", __func__,
 		NIPQUAD(src_addr.sin_addr.s_addr),
 		ntohs(src_addr.sin_port),
 		NIPQUAD(((struct sockaddr_in *)uaddr)->sin_addr.s_addr),
