@@ -2705,6 +2705,17 @@ static int sdp_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len)
 	int rc = -EAFNOSUPPORT; 
 
 	switch (uaddr->sa_family) {
+		case AF_INET_SDP:
+			uaddr->sa_family = AF_INET;
+			break;
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+		case AF_INET6_SDP:
+			uaddr->sa_family = AF_INET6;
+			break;
+#endif
+	}
+
+	switch (uaddr->sa_family) {
 		case AF_INET:
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 			if (inet6_sk(sk))
