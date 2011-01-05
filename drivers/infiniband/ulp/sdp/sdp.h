@@ -14,10 +14,10 @@
 
 #ifndef NIPQUAD
 #define NIPQUAD(addr) \
-        ((unsigned char *)&addr)[0], \
-        ((unsigned char *)&addr)[1], \
-        ((unsigned char *)&addr)[2], \
-        ((unsigned char *)&addr)[3]
+        ((unsigned char *)&(addr))[0], \
+        ((unsigned char *)&(addr))[1], \
+        ((unsigned char *)&(addr))[2], \
+        ((unsigned char *)&(addr))[3]
 #endif
 
 #ifndef NIPQUAD_FMT
@@ -214,6 +214,9 @@ union cma_ip_addr {
 	} ip4;
 } __attribute__((__packed__));
 
+#define HH_IPV_MASK 0xf0
+#define HH_IPV4     0x40
+#define HH_IPV6     0x60
 /* TODO: too much? Can I avoid having the src/dst and port here? */
 struct sdp_hh {
 	struct sdp_bsdh bsdh;
@@ -929,6 +932,15 @@ static inline int somebody_is_waiting(struct sock *sk)
 	return sk->sk_socket &&
 		test_bit(SOCK_ASYNC_WAITDATA, &sk->sk_socket->flags);
 }
+
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+static inline struct ipv6_pinfo *sdp_inet6_sk_generic(struct sock *sk)
+{
+	const int offset = sk->sk_prot->obj_size - sizeof(struct ipv6_pinfo);
+
+	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
+}
+#endif
 
 /* sdp_main.c */
 void sdp_set_default_moderation(struct sdp_sock *ssk);

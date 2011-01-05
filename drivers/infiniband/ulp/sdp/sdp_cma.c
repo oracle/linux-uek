@@ -44,6 +44,10 @@
 #include <rdma/rdma_cm.h>
 #include <net/tcp_states.h>
 #include <rdma/sdp_socket.h>
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+#include <net/ipv6.h>
+#include <net/transp_v6.h>
+#endif
 #include "sdp.h"
 
 #define SDP_MAJV_MINV 0x22
@@ -151,12 +155,19 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 	struct sockaddr_in *dst_addr;
 	struct sock *child;
 	const struct sdp_hh *h;
-	int rc;
+	struct inet_sock *newinet;
+	int rc = 0;
 
 	sdp_dbg(sk, "%s %p -> %p\n", __func__, sdp_sk(sk)->id, id);
 
 	h = event->param.conn.private_data;
 	SDP_DUMP_PACKET(sk, "RX", NULL, &h->bsdh);
+
+	if (h->ipv_cap & HH_IPV_MASK & ~(HH_IPV4 | HH_IPV6)) {
+		sdp_warn(sk, "Bad IPV field in SDP Hello header: 0x%x\n",
+				h->ipv_cap & HH_IPV_MASK);
+		return -EINVAL;
+	}
 
 	if (!h->max_adverts)
 		return -EINVAL;
@@ -167,9 +178,46 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	sdp_init_sock(child);
 
+	newinet = inet_sk(child);
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
-	inet_sk(child)->dport = dst_addr->sin_port;
-	inet_sk(child)->daddr = dst_addr->sin_addr.s_addr;
+	newinet->dport = dst_addr->sin_port;
+
+#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
+	if (inet6_sk(sk)) {
+		struct ipv6_pinfo *newnp;
+	       
+		newnp = newinet->pinet6 = sdp_inet6_sk_generic(child);
+
+		memcpy(newnp, inet6_sk(sk), sizeof(struct ipv6_pinfo));
+
+		if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV4) {
+			/* V6 mapped */
+			newinet->daddr = dst_addr->sin_addr.s_addr;
+			ipv6_addr_set(&newnp->daddr, 0, 0, htonl(0x0000FFFF),
+					h->src_addr.ip4.addr);
+
+			ipv6_addr_set(&newnp->saddr, 0, 0, htonl(0x0000FFFF),
+					h->dst_addr.ip4.addr);
+
+			ipv6_addr_copy(&newnp->rcv_saddr, &newnp->saddr);
+		} else if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV6) {
+			struct sockaddr_in6 *dst_addr6 = (struct sockaddr_in6 *)dst_addr;
+			struct sockaddr_in6 *src_addr6 = 
+				(struct sockaddr_in6 *)&id->route.addr.src_addr;
+
+			ipv6_addr_copy(&newnp->daddr, &dst_addr6->sin6_addr);
+			ipv6_addr_copy(&newnp->saddr, &src_addr6->sin6_addr);
+			ipv6_addr_copy(&newnp->rcv_saddr, &src_addr6->sin6_addr);
+		} else {
+			sdp_warn(child, "Bad IPV field: 0x%x\n", h->ipv_cap & HH_IPV_MASK);
+		}
+
+		newinet->daddr = newinet->saddr = newinet->rcv_saddr = LOOPBACK4_IPV6;
+	} else 
+#endif
+	{
+		newinet->daddr = dst_addr->sin_addr.s_addr;
+	}
 
 #ifdef SDP_SOCK_HISTORY
 	sdp_ssk_hist_rename(sk);
@@ -382,11 +430,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.len = htonl(sizeof(struct sdp_hh));
 		hh.max_adverts = 1;
 	
-		hh.ipv_cap = 
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-			inet6_sk(sk) ? 0x60 : 
-#endif
-			0x40;
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
@@ -396,8 +439,18 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				PAGE_SIZE + sizeof(struct sdp_bsdh));
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 		if (inet6_sk(sk)) {
-			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr =
-				((struct sockaddr_in6 *)&id->route.addr.src_addr)->sin6_addr;
+			struct sockaddr *src_addr = (struct sockaddr *)&id->route.addr.src_addr;
+			struct sockaddr_in *addr4 = (struct sockaddr_in *)src_addr;
+			struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)src_addr;
+
+			if (src_addr->sa_family == AF_INET) {
+				/* IPv4 over IPv6 */
+				ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0xFFFF),
+						addr4->sin_addr.s_addr);
+			} else {
+				inet6_sk(sk)->rcv_saddr = inet6_sk(sk)->rcv_saddr = addr6->sin6_addr;
+			}
+			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr;
 		}
 			else 
 #endif
