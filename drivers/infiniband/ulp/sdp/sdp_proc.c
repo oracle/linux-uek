@@ -150,10 +150,10 @@ static int sdp_v4_seq_show(struct seq_file *seq, int num, struct sock *sk)
 	__u16 srcp;
 	__u32 rx_queue, tx_queue;
 
-	dest = inet_sk(sk)->daddr;
-	src = inet_sk(sk)->rcv_saddr;
-	destp = ntohs(inet_sk(sk)->dport);
-	srcp = ntohs(inet_sk(sk)->sport);
+	dest = inet_daddr(sk);
+	src = inet_rcv_saddr(sk);
+	destp = ntohs(inet_dport(sk));
+	srcp = ntohs(inet_sport(sk));
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
 	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
@@ -181,8 +181,8 @@ static int sdp_v6_seq_show(struct seq_file *seq, int num, struct sock *sk)
 
 	dest = &inet6_sk(sk)->daddr;
 	src = &inet6_sk(sk)->rcv_saddr;
-	destp = ntohs(inet_sk(sk)->dport);
-	srcp = ntohs(inet_sk(sk)->sport);
+	destp = ntohs(inet_dport(sk));
+	srcp = ntohs(inet_sport(sk));
 	uid = sock_i_uid(sk);
 	inode = sock_i_ino(sk);
 	rx_queue = rcv_nxt(sdp_sk(sk)) - sdp_sk(sk)->copied_seq;
@@ -738,8 +738,8 @@ static struct file_operations ssk_hist_fops = {
 
 static void sdp_ssk_hist_name(char *sk_name, int len, struct sock *sk)
 {
-	int lport = inet_sk(sk)->num;
-	int rport = ntohs(inet_sk(sk)->dport);
+	int lport = inet_num(sk);
+	int rport = ntohs(inet_dport(sk));
 
 	snprintf(sk_name, len, "%05x_%d:%d",
 			sdp_sk(sk)->sk_id, lport, rport);

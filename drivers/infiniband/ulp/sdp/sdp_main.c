@@ -186,7 +186,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 		addr4->sin_family = AF_INET;
 		addr4->sin_port = htons(snum);
-		addr4->sin_addr.s_addr = inet_sk(sk)->rcv_saddr;
+		addr4->sin_addr.s_addr = inet_rcv_saddr(sk);
 
 		addr_len = sizeof(*addr4);
 
@@ -208,7 +208,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	}
 
 	src_addr = (struct sockaddr_in *)&(ssk->id->route.addr.src_addr);
-	inet_sk(sk)->num = ntohs(src_addr->sin_port);
+	inet_num(sk) = ntohs(src_addr->sin_port);
 #ifdef SDP_SOCK_HISTORY
 	sdp_ssk_hist_rename(sk);
 #endif
@@ -794,7 +794,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	struct sockaddr_in6 *usin = (struct sockaddr_in6 *)uaddr;
 	struct sockaddr_in6 src_addr = {
 		.sin6_family = AF_INET6,
-		.sin6_port = htons(inet_sk(sk)->sport),
+		.sin6_port = htons(inet_sport(sk)),
 	};
 	int rc;
 	int addr_type;
@@ -826,7 +826,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
-		inet_sk(sk)->sport = htons(inet_sk(sk)->num);
+		inet_sport(sk) = htons(inet_num(sk));
 	}
 
 	ipv6_addr_copy(&inet6_sk(sk)->daddr, &usin->sin6_addr);
@@ -861,8 +861,8 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sockaddr_in src_addr = {
 		.sin_family = AF_INET,
-		.sin_port = htons(inet_sk(sk)->sport),
-		.sin_addr.s_addr = inet_sk(sk)->saddr,
+		.sin_port = htons(inet_sport(sk)),
+		.sin_addr.s_addr = inet_saddr(sk),
 	};
 	int rc;
 
@@ -876,7 +876,7 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
-		inet_sk(sk)->sport = htons(inet_sk(sk)->num);
+		inet_sport(sk) = htons(inet_num(sk));
 	}
 
 	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
@@ -2710,7 +2710,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
-		inet_sk(sk)->sport = htons(inet_sk(sk)->num);
+		inet_sport(sk) = htons(inet_num(sk));
 	}
 
 	rc = rdma_listen(ssk->id, backlog);
