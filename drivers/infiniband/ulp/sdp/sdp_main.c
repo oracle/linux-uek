@@ -806,6 +806,9 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	if (uaddr->sa_family == AF_INET6_SDP)
 		uaddr->sa_family = AF_INET6;
 
+	if (uaddr->sa_family != AF_INET6)
+		return -EAFNOSUPPORT;
+
 	/*
   	 *	connect() to INADDR_ANY means loopback (BSD'ism).
   	 */
@@ -836,6 +839,9 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	if (addr_type == IPV6_ADDR_MAPPED) {
 		struct sockaddr_in *addr4 = (struct sockaddr_in *)uaddr;
 		struct sockaddr_in6 *addr6 = (struct sockaddr_in6 *)uaddr;
+
+		if (__ipv6_only_sock(sk))
+			return -ENETUNREACH;
 
 		addr4->sin_addr.s_addr = addr6->sin6_addr.s6_addr32[3];
 		addr4->sin_family = AF_INET;
@@ -873,6 +879,9 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 
 	if (uaddr->sa_family == AF_INET_SDP)
 		uaddr->sa_family = AF_INET;
+
+	if (uaddr->sa_family != AF_INET)
+		return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
 		rc = sdp_get_port(sk, 0);
