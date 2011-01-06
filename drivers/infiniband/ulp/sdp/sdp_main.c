@@ -176,6 +176,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 		} else {
 			addr6->sin6_family = AF_INET6;
 			addr6->sin6_port = htons(snum);
+			addr6->sin6_scope_id = sk->sk_bound_dev_if;
 			ipv6_addr_copy(&addr6->sin6_addr, &inet6_sk(sk)->rcv_saddr);
 			addr_len = sizeof(*addr6);
 		}
@@ -816,6 +817,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	if(addr_type & IPV6_ADDR_MULTICAST)
 		return -ENETUNREACH;
 
+	sk->sk_bound_dev_if = usin->sin6_scope_id;
 	src_addr.sin6_addr = inet6_sk(sk)->saddr;
 
 	if (!ssk->id) {
