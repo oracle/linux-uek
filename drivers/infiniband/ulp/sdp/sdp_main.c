@@ -823,12 +823,19 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 	sk->sk_bound_dev_if = usin->sin6_scope_id;
 	src_addr.sin6_addr = inet6_sk(sk)->saddr;
 
+	if (ssk->id && (addr_type != ipv6_addr_type(&inet6_sk(sk)->rcv_saddr))) {
+		sdp_dbg(sk, "Existing address type is different for the "
+				"requested. rebinding socket\n");
+		rdma_destroy_id(ssk->id);
+		ssk->id = NULL;
+	}
+
 	if (!ssk->id) {
 		/* If IPv4 over IPv6, make sure rdma_bind will expect ipv4 address */
 		if (addr_type == IPV6_ADDR_MAPPED)
 			ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0x0000FFFF), 0);
 
-		rc = sdp_get_port(sk, 0);
+		rc = sdp_get_port(sk, htons(inet_sport(sk)));
 		if (rc)
 			return rc;
 		inet_sport(sk) = htons(inet_num(sk));
@@ -884,7 +891,7 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
-		rc = sdp_get_port(sk, 0);
+		rc = sdp_get_port(sk, htons(inet_num(sk)));
 		if (rc)
 			return rc;
 		inet_sport(sk) = htons(inet_num(sk));
