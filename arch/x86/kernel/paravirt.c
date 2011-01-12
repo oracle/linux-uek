@@ -231,16 +231,28 @@ static DEFINE_PER_CPU(enum paravirt_lazy_mode, paravirt_lazy_mode) = PARAVIRT_LA
 
 static inline void enter_lazy(enum paravirt_lazy_mode mode)
 {
-	BUG_ON(percpu_read(paravirt_lazy_mode) != PARAVIRT_LAZY_NONE);
+	/*
+	 * Switch modes only if we are not in an interrupt context.
+	 * Lazy mode is ignored while handling an interrupt.
+	 */
+	if (!in_interrupt()) {
+		BUG_ON(percpu_read(paravirt_lazy_mode) != PARAVIRT_LAZY_NONE);
 
-	percpu_write(paravirt_lazy_mode, mode);
+		percpu_write(paravirt_lazy_mode, mode);
+	}
 }
 
 static void leave_lazy(enum paravirt_lazy_mode mode)
 {
-	BUG_ON(percpu_read(paravirt_lazy_mode) != mode);
+	/*
+	 * Switch modes only if we are not in an interrupt context.
+	 * Lazy mode is ignored while handling an interrupt.
+	 */
+	if (!in_interrupt()) {
+		BUG_ON(percpu_read(paravirt_lazy_mode) != mode);
 
-	percpu_write(paravirt_lazy_mode, PARAVIRT_LAZY_NONE);
+		percpu_write(paravirt_lazy_mode, PARAVIRT_LAZY_NONE);
+	}
 }
 
 void paravirt_enter_lazy_mmu(void)
