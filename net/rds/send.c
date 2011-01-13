@@ -134,6 +134,7 @@ int rds_send_xmit(struct rds_connection *conn)
 	struct scatterlist *sg;
 	int ret = 0;
 	LIST_HEAD(to_be_dropped);
+	int same_rm = 0;
 
 restart:
 
@@ -170,6 +171,18 @@ restart:
 	while (1) {
 
 		rm = conn->c_xmit_rm;
+
+		if (!rm) {
+			same_rm = 0;
+		} else {
+			same_rm++;
+			if ((same_rm >= 4096) && printk_ratelimit()) {
+				printk(KERN_ERR "RDS: Stuck rm\n");
+				cond_resched();
+				ret = -EAGAIN;
+				break;
+			}
+		}
 
 		/*
 		 * If between sending messages, we can send a pending congestion
