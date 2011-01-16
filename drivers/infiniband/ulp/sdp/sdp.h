@@ -407,7 +407,9 @@ struct sdp_sock {
 
 	/* set when SrcAvail received, reset when SendSM/RdmaRdCompl sent */
 	struct rx_srcavail_state *rx_sa;
-
+	int sa_post_sendsm; /* Need to send SendSM */
+	int sa_post_rdma_rd_compl; /* Number of finished RDMA read bytes not reported */
+				   /* If > 0, need to send RdmaRdCompl */
 	u32 sa_cancel_mseq;
 	int sa_cancel_arrived; /* is 'sa_cancel_mseq' relevant or not, sticky */
 
@@ -962,7 +964,7 @@ void sdp_reset(struct sock *sk);
 int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed);
 void sdp_skb_entail(struct sock *sk, struct sk_buff *skb);
 void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo);
-int sdp_abort_rx_srcavail(struct sock *sk);
+int sdp_abort_rx_srcavail(struct sock *sk, int post_sendsm);
 extern struct rw_semaphore device_removal_lock;
 
 /* sdp_proc.c */
@@ -977,7 +979,7 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device);
 void sdp_tx_ring_destroy(struct sdp_sock *ssk);
 int sdp_xmit_poll(struct sdp_sock *ssk, int force);
 void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb);
-void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp);
+int sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp);
 void sdp_nagle_timeout(unsigned long data);
 void sdp_post_keepalive(struct sdp_sock *ssk);
 

@@ -533,7 +533,7 @@ static void sdp_destroy_resources(struct sock *sk)
 
 	/* QP is destroyed, so no one will queue skbs anymore. */
 	if (ssk->rx_sa)
-		sdp_abort_rx_srcavail(sk);
+		sdp_abort_rx_srcavail(sk, 0);
 
 	skb_queue_purge(&sk->sk_receive_queue);
 	skb_queue_purge(&ssk->rx_ctl_q);
@@ -736,10 +736,8 @@ static void sdp_close(struct sock *sk, long timeout)
 		if (h->mid == SDP_MID_DISCONN) {
 			sdp_handle_disconn(sk);
 		} else {
-			if (h->mid == SDP_MID_SRCAVAIL && sdp_sk(sk)->rx_sa) {
-				sdp_abort_rx_srcavail(sk);
-				sdp_post_sendsm(sk);
-			}
+			if (h->mid == SDP_MID_SRCAVAIL && sdp_sk(sk)->rx_sa)
+				sdp_abort_rx_srcavail(sk, 1);
 
 			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
@@ -2296,7 +2294,7 @@ fin:
 	return err;
 }
 
-int sdp_abort_rx_srcavail(struct sock *sk)
+int sdp_abort_rx_srcavail(struct sock *sk, int post_sendsm)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sdp_bsdh *h =
@@ -2306,10 +2304,10 @@ int sdp_abort_rx_srcavail(struct sock *sk)
 
 	h->mid = SDP_MID_DATA;
 
-	if (sdp_post_rdma_rd_compl(sk, ssk->rx_sa)) {
-		sdp_warn(sk, "Couldn't send RdmaRdComp - "
-				"data corruption might occur\n");
-	}
+	sdp_post_rdma_rd_compl(sk, ssk->rx_sa);
+	if (post_sendsm)
+		sdp_post_sendsm(sk);
+	sdp_do_posts(ssk);
 
 	RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
 	kfree(ssk->rx_sa);
@@ -2334,7 +2332,6 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	u32 peek_seq;
 	u32 *seq;
 	int copied = 0;
-	int rc;
 	int avail_bytes_count = 0;  	/* Could be inlined in skb */
 					/* or advertised for RDMA  */
 	SDPSTATS_COUNTER_INC(recvmsg);
@@ -2420,8 +2417,7 @@ static int sdp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 					sdp_dbg_data(sk, "Aborting SA "
 							"due to SACancel or "
 							"no fmr pool\n");
-					sdp_abort_rx_srcavail(sk);
-					sdp_post_sendsm(sk);
+					sdp_abort_rx_srcavail(sk, 1);
 					rx_sa = NULL;
 check_srcavail_skb:
 					if (offset < skb->len) {
@@ -2451,8 +2447,7 @@ check_srcavail_skb:
 							SDP_SKB_CB(skb)->seq;
 						sdp_dbg_data(sk, "Peek on RDMA data - "
 								"fallback to BCopy\n");
-						sdp_abort_rx_srcavail(sk);
-						sdp_post_sendsm(sk);
+						sdp_abort_rx_srcavail(sk, 1);
 						rx_sa = NULL;
 						if (real_offset >= skb->len)
 							goto force_skb_cleanup;
@@ -2595,10 +2590,8 @@ sdp_mid_data:
 				if (unlikely(err)) {
 					/* ssk->rx_sa might had been freed when
 					 * we slept. */
-					if (ssk->rx_sa) {
-						sdp_abort_rx_srcavail(sk);
-						sdp_post_sendsm(sk);
-					}
+					if (ssk->rx_sa)
+						sdp_abort_rx_srcavail(sk, 1);
 					rx_sa = NULL;
 					if (err == -EAGAIN || err == -ETIME)
 						goto skb_cleanup;
@@ -2633,7 +2626,7 @@ sdp_mid_data:
 		len -= used;
 		*seq += used;
 		offset = *seq - SDP_SKB_CB(skb)->seq;
-		sdp_dbg_data(sk, "done copied %d target %d\n", copied, target);
+		sdp_dbg_data(sk, "done copied 0x%x target 0x%x\n", copied, target);
 
 		sdp_do_posts(sdp_sk(sk));
 		if (rx_sa && !ssk->rx_sa) {
@@ -2646,12 +2639,16 @@ skip_copy:
 
 
 		if (rx_sa && !(flags & MSG_PEEK)) {
-			rc = sdp_post_rdma_rd_compl(sk, rx_sa);
-			if (unlikely(rc)) {
-				sdp_abort_rx_srcavail(sk);
+
+			if (likely(tx_credits(ssk) > (SDP_MIN_TX_CREDITS + 2))) {
+				sdp_post_rdma_rd_compl(sk, rx_sa);
+				sdp_post_sends(ssk, 0);
+			} else {
+				sdp_dbg_data(sk, "Run out of credits. Aborting RX "
+					"SrcAvail - or else won't be able to "
+					"send RdmaRdCompl/SendSM\n");
+				sdp_abort_rx_srcavail(sk, 1);
 				rx_sa = NULL;
-				err = rc;
-				goto out;
 			}
 		}
 
@@ -2674,7 +2671,7 @@ skb_cleanup:
 				/* ssk->rx_sa might had been freed when we slept.
 				 */
 				if (ssk->rx_sa)
-					sdp_abort_rx_srcavail(sk);
+					sdp_abort_rx_srcavail(sk, 0);
 				rx_sa = NULL;
 			}
 force_skb_cleanup:

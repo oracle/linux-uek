@@ -276,35 +276,22 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 
 int sdp_post_rdma_rd_compl(struct sock *sk, struct rx_srcavail_state *rx_sa)
 {
-	struct sk_buff *skb;
 	int unreported = rx_sa->copied - rx_sa->reported;
 
 	if (rx_sa->copied <= rx_sa->reported)
 		return 0;
 
-	skb = sdp_alloc_skb_rdmardcompl(sk, unreported, 0);
-	if (unlikely(!skb))
-		return -ENOMEM;
-
-	sdp_skb_entail(sk, skb);
-
+	sdp_sk(sk)->sa_post_rdma_rd_compl += unreported;
 	rx_sa->reported += unreported;
-
-	sdp_post_sends(sdp_sk(sk), 0);
 
 	return 0;
 }
 
 int sdp_post_sendsm(struct sock *sk)
 {
-	struct sk_buff *skb = sdp_alloc_skb_sendsm(sk, 0);
+	struct sdp_sock *ssk = sdp_sk(sk);
 
-	if (unlikely(!skb))
-		return -ENOMEM;
-
-	sdp_skb_entail(sk, skb);
-
-	sdp_post_sends(sdp_sk(sk), 0);
+	ssk->sa_post_sendsm = 1;
 
 	return 0;
 }

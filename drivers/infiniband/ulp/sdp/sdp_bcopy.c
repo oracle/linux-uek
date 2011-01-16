@@ -186,12 +186,16 @@ static inline int sdp_should_rearm(struct sock *sk)
 		somebody_is_waiting(sk);
 }
 
-void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
+int sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 {
 	/* TODO: nonagle? */
 	struct sk_buff *skb;
 	int post_count = 0;
 	struct sock *sk = sk_ssk(ssk);
+	int min_credits = SDP_MIN_TX_CREDITS;
+
+	if (ssk->rx_sa)
+		min_credits += 2; /* Save 2 credits, one for RdmaRdCompl and one for SendSM */
 
 	if (unlikely(!ssk->id)) {
 		if (sk->sk_send_head) {
@@ -199,41 +203,68 @@ void sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 			/* TODO: flush send queue? */
 			sdp_reset(sk);
 		}
-		return;
+		return -ECONNRESET;
 	}
 again:
 	if (sdp_tx_ring_slots_left(ssk) < SDP_TX_SIZE / 2)
 		sdp_xmit_poll(ssk, 1);
 
 	/* Run out of credits, check if got a credit update */
-	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
+	if (unlikely(tx_credits(ssk) <= min_credits)) {
 		sdp_poll_rx_cq(ssk);
 
 		if (unlikely(sdp_should_rearm(sk) || !posts_handler(ssk)))
 			sdp_arm_rx_cq(sk);
 	}
 
+	if (unlikely((ssk->sa_post_rdma_rd_compl || ssk->sa_post_sendsm) && 
+			tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
+		sdp_warn(sk, "Run out of credits, can't abort SrcAvail. "
+			"RdmaRdCompl: %d SendSm: %d\n",
+			ssk->sa_post_rdma_rd_compl, ssk->sa_post_sendsm);
+	}
+
+	if (ssk->sa_post_rdma_rd_compl && tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+		int unreported = ssk->sa_post_rdma_rd_compl;
+
+		skb = sdp_alloc_skb_rdmardcompl(sk, unreported, 0);
+		if (!skb)
+			goto no_mem;
+		sdp_post_send(ssk, skb);
+		post_count++;
+		ssk->sa_post_rdma_rd_compl = 0;
+	}
+
+	if (ssk->sa_post_sendsm && tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+		skb = sdp_alloc_skb_sendsm(sk, 0);
+		if (unlikely(!skb))
+			goto no_mem;
+		sdp_post_send(ssk, skb);
+		ssk->sa_post_sendsm = 0;
+		post_count++;
+	}
+
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
-	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
+	    tx_credits(ssk) >= min_credits &&
 	    sdp_tx_ring_slots_left(ssk)) {
 		skb = sdp_alloc_skb_chrcvbuf_ack(sk,
 				ssk->recv_frags * PAGE_SIZE, gfp);
-		if (likely(skb)) {
-			ssk->recv_request = 0;
-			sdp_post_send(ssk, skb);
-			post_count++;
-		}
+		if (!skb)
+			goto no_mem;
+		ssk->recv_request = 0;
+		sdp_post_send(ssk, skb);
+		post_count++;
 	}
 
-	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
+	if (tx_credits(ssk) <= min_credits &&
 	       sdp_tx_ring_slots_left(ssk) &&
 	       sk->sk_send_head &&
 		sdp_nagle_off(ssk, sk->sk_send_head)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
 	}
 
-	while (tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
+	while (tx_credits(ssk) > min_credits &&
 	       sdp_tx_ring_slots_left(ssk) &&
 	       (skb = sk->sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
@@ -250,11 +281,11 @@ again:
 		    (TCPF_ESTABLISHED | TCPF_FIN_WAIT1))) {
 
 		skb = sdp_alloc_skb_data(sk, 0, gfp);
-		if (likely(skb)) {
-			sdp_post_send(ssk, skb);
-			SDPSTATS_COUNTER_INC(post_send_credits);
-			post_count++;
-		}
+		if (!skb)
+			goto no_mem;
+		sdp_post_send(ssk, skb);
+		SDPSTATS_COUNTER_INC(post_send_credits);
+		post_count++;
 	}
 
 	/* send DisConn if needed
@@ -266,15 +297,18 @@ again:
 			!sk->sk_send_head &&
 			tx_credits(ssk) > 1) {
 		skb = sdp_alloc_skb_disconnect(sk, gfp);
-		if (likely(skb)) {
-			ssk->sdp_disconnect = 0;
-			sdp_post_send(ssk, skb);
-			post_count++;
-		}
+		if (!skb)
+			goto no_mem;
+		ssk->sdp_disconnect = 0;
+		sdp_post_send(ssk, skb);
+		post_count++;
 	}
 
 	if (!sdp_tx_ring_slots_left(ssk) || post_count) {
 		if (sdp_xmit_poll(ssk, 1))
 			goto again;
 	}
+
+no_mem:
+	return post_count;
 }
