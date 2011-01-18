@@ -2297,21 +2297,30 @@ fin:
 int sdp_abort_rx_srcavail(struct sock *sk, int post_sendsm)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct rx_srcavail_state *rx_sa = ssk->rx_sa;
+	struct sk_buff *skb = rx_sa->skb;
 	struct sdp_bsdh *h =
-		(struct sdp_bsdh *)skb_transport_header(ssk->rx_sa->skb);
+		(struct sdp_bsdh *)skb_transport_header(skb);
 
 	sdp_dbg_data(sk, "SrcAvail aborted\n");
 
+	ssk->rx_sa = NULL;
+
 	h->mid = SDP_MID_DATA;
 
-	sdp_post_rdma_rd_compl(sk, ssk->rx_sa);
+	sdp_post_rdma_rd_compl(sk, rx_sa);
 	if (post_sendsm)
 		sdp_post_sendsm(sk);
+
+	/* arriving SrcAvailCancel might be handled by sdp_do_posts(). Must set
+	 * ssk->rx_sa to NULL before, to prevent it from reentering this
+	 * function.
+	 * XXX: Coming to think of that, Why to call sdp_do_posts() and not
+	 *      sdp_post_sends()? */
 	sdp_do_posts(ssk);
 
-	RX_SRCAVAIL_STATE(ssk->rx_sa->skb) = NULL;
-	kfree(ssk->rx_sa);
-	ssk->rx_sa = NULL;
+	RX_SRCAVAIL_STATE(skb) = NULL;
+	kfree(rx_sa);
 
 	return 0;
 }
