@@ -57,6 +57,10 @@ SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 0, "Support only link layer of "
 
 static void sdp_qp_event_handler(struct ib_event *event, void *data)
 {
+	if (event->event == IB_EVENT_PATH_MIG) {
+		sdp_dbg(NULL, "Path migration event\n");
+		return;
+	}
 	sdp_warn(NULL, "unexpected invocation: event: %d, data=%p\n",
 			event->event, data);
 }
@@ -414,6 +418,12 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			break;
 		}
 
+		if (sdp_apm_enable) {
+			rc = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
+			if (rc)
+				sdp_warn(sk, "APM couldn't be enabled: %d\n", rc);
+		}
+
 		rc = rdma_resolve_route(id, SDP_ROUTE_TIMEOUT);
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
@@ -465,6 +475,15 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		SDP_DUMP_PACKET(sk, "TX", NULL, &hh.bsdh);
 		rc = rdma_connect(id, &conn_param);
 		break;
+
+	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
+		sdp_dbg(sk, "alt route was resolved slid=%d, dlid=%d\n",
+				id->route.path_rec[1].slid, id->route.path_rec[1].dlid);
+		break;
+	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
+		sdp_warn(sk, "alt route resolve error\n");
+		break;
+		
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		rc = -ETIMEDOUT;
 		break;

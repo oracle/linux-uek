@@ -966,6 +966,7 @@ void sdp_skb_entail(struct sock *sk, struct sk_buff *skb);
 void sdp_start_cma_timewait_timeout(struct sdp_sock *ssk, int timeo);
 int sdp_abort_rx_srcavail(struct sock *sk, int post_sendsm);
 extern struct rw_semaphore device_removal_lock;
+extern int sdp_apm_enable;
 
 /* sdp_proc.c */
 int __init sdp_proc_init(void);

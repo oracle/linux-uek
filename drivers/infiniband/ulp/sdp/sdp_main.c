@@ -88,6 +88,7 @@ SDP_MODPARAM_INT(sdp_data_debug_level, 0,
 		"Enable data path debug tracing if > 0.");
 #endif
 
+SDP_MODPARAM_INT(sdp_apm_enable, 1, "Enable APM.");
 SDP_MODPARAM_SINT(sdp_fmr_pool_size, 20, "Number of FMRs to allocate for pool");
 SDP_MODPARAM_SINT(sdp_fmr_dirty_wm, 5, "Watermark to flush fmr pool");
 
@@ -787,14 +788,12 @@ out:
 }
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
+static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
+		struct sockaddr *uaddr, int addr_len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sockaddr_in6 *usin = (struct sockaddr_in6 *)uaddr;
-	struct sockaddr_in6 src_addr = {
-		.sin6_family = AF_INET6,
-		.sin6_port = htons(inet_sport(sk)),
-	};
+	struct sockaddr_in6 *src_addr = (struct sockaddr_in6 *)saddr;
 	int rc;
 	int addr_type;
 
@@ -819,7 +818,10 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		return -ENETUNREACH;
 
 	sk->sk_bound_dev_if = usin->sin6_scope_id;
-	src_addr.sin6_addr = inet6_sk(sk)->saddr;
+
+	src_addr->sin6_family = AF_INET6;
+	src_addr->sin6_port = htons(inet_sport(sk));
+	src_addr->sin6_addr = inet6_sk(sk)->saddr;
 
 	if (ssk->id && (addr_type != ipv6_addr_type(&inet6_sk(sk)->rcv_saddr))) {
 		sdp_dbg(sk, "Existing address type is different for the "
@@ -852,16 +854,9 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		addr4->sin_family = AF_INET;
 	}
 
-	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
-			       uaddr, SDP_RESOLVE_TIMEOUT);
-	if (rc) {
-		sdp_dbg(sk, "rdma_resolve_addr failed: %d\n", rc);
-		return rc;
-	}
-
 	sdp_dbg(sk, "%s " NIP6_FMT ":%hu -> " NIP6_FMT ":%hu\n", __func__,
-		NIP6(src_addr.sin6_addr),
-		ntohs(src_addr.sin6_port),
+		NIP6(src_addr->sin6_addr),
+		ntohs(src_addr->sin6_port),
 		NIP6(((struct sockaddr_in6 *)uaddr)->sin6_addr),
 		ntohs(((struct sockaddr_in6 *)uaddr)->sin6_port));
 
@@ -869,14 +864,11 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 }
 #endif
 
-static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
+static int sdp_ipv4_connect(struct sock *sk, struct sockaddr_storage *saddr, 
+		struct sockaddr *uaddr, int addr_len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
-	struct sockaddr_in src_addr = {
-		.sin_family = AF_INET,
-		.sin_port = htons(inet_sport(sk)),
-		.sin_addr.s_addr = inet_saddr(sk),
-	};
+	struct sockaddr_in *src_addr = (struct sockaddr_in *)saddr;
 	int rc;
 
         if (addr_len < sizeof(struct sockaddr_in))
@@ -895,16 +887,13 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 		inet_sport(sk) = htons(inet_num(sk));
 	}
 
-	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
-			       uaddr, SDP_RESOLVE_TIMEOUT);
-	if (rc) {
-		sdp_dbg(sk, "rdma_resolve_addr failed: %d\n", rc);
-		return rc;
-	}
+	src_addr->sin_family = AF_INET;
+	src_addr->sin_port = htons(inet_sport(sk));
+	src_addr->sin_addr.s_addr = inet_saddr(sk);
 
 	sdp_dbg(sk, "%s " NIPQUAD_FMT ":%hu -> " NIPQUAD_FMT ":%hu\n", __func__,
-		NIPQUAD(src_addr.sin_addr.s_addr),
-		ntohs(src_addr.sin_port),
+		NIPQUAD(src_addr->sin_addr.s_addr),
+		ntohs(src_addr->sin_port),
 		NIPQUAD(((struct sockaddr_in *)uaddr)->sin_addr.s_addr),
 		ntohs(((struct sockaddr_in *)uaddr)->sin_port));
 
@@ -914,6 +903,7 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr *uaddr, int addr_le
 static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct sockaddr_storage src_addr = { 0 };
 	int rc;
 
 	sdp_add_to_history(sk, __func__);
@@ -929,14 +919,27 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	if (inet6_sk(sk))
-		rc = sdp_ipv6_connect(sk, uaddr, addr_len);
+		rc = sdp_ipv6_connect(sk, &src_addr, uaddr, addr_len);
 	else
 #endif
-		rc = sdp_ipv4_connect(sk, uaddr, addr_len);
+		rc = sdp_ipv4_connect(sk, &src_addr, uaddr, addr_len);
 
-	if (!rc)
-		sdp_exch_state(sk, TCPF_CLOSE, TCP_SYN_SENT);
+	if (rc)
+		goto err;
 
+	rc = rdma_resolve_addr(ssk->id, (struct sockaddr *)&src_addr,
+			       uaddr, SDP_RESOLVE_TIMEOUT);
+	if (rc) {
+		sdp_dbg(sk, "rdma_resolve_addr failed: %d\n", rc);
+		goto err;
+	}
+
+	sdp_exch_state(sk, TCPF_CLOSE, TCP_SYN_SENT);
+
+	return rc;
+
+err:
+	sdp_warn(sk, "Error: rc = %d\n", rc);
 	return rc;
 }
 
