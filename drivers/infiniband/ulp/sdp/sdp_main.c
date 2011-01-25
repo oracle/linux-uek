@@ -939,7 +939,7 @@ static int sdp_connect(struct sock *sk, struct sockaddr *uaddr, int addr_len)
 	return rc;
 
 err:
-	sdp_warn(sk, "Error: rc = %d\n", rc);
+	sdp_dbg(sk, "Error: rc = %d\n", rc);
 	return rc;
 }
 
