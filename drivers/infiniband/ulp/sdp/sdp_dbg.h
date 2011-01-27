@@ -108,7 +108,7 @@ extern int sdp_debug_level;
 		sdp_print_history(sk);					\
 		SDP_WARN_ON(1); \
 	} else { \
-		sdp_dbg(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
+		sdp_dbg_data(sk, "%s:%d - %s (%s) ref = %d.\n", __func__, __LINE__, \
 			#sock_op, msg, atomic_read(&(sk)->sk_refcnt)); \
 		sock_op(sk); \
 	}\

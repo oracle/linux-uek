@@ -60,7 +60,7 @@
 #define SDP_RX_ARMING_DELAY	(msecs_to_jiffies(10))
 #define SDP_RDMA_READ_TIMEOUT	(60 * HZ) /* timeout - fatal hw error */
 
-#define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 5)
+#define SDP_SRCAVAIL_CANCEL_TIMEOUT (HZ * 60)
 #define SDP_SRCAVAIL_ADV_TIMEOUT (1 * HZ)
 
 #define SDP_RESOLVE_TIMEOUT 1000

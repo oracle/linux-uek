@@ -418,12 +418,6 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			break;
 		}
 
-		if (sdp_apm_enable) {
-			rc = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
-			if (rc)
-				sdp_warn(sk, "APM couldn't be enabled: %d\n", rc);
-		}
-
 		rc = rdma_resolve_route(id, SDP_ROUTE_TIMEOUT);
 		break;
 	case RDMA_CM_EVENT_ADDR_ERROR:
@@ -473,6 +467,13 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.initiator_depth = 4 /* TODO */;
 		conn_param.retry_count = SDP_RETRY_COUNT;
 		SDP_DUMP_PACKET(sk, "TX", NULL, &hh.bsdh);
+
+		if (sdp_apm_enable) {
+			rc = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
+			if (rc)
+				sdp_warn(sk, "APM couldn't be enabled: %d\n", rc);
+		}
+
 		rc = rdma_connect(id, &conn_param);
 		break;
 
