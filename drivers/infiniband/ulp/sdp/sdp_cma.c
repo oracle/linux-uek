@@ -577,6 +577,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		rc = -ENETRESET;
 		break;
+
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+		sdp_dbg(sk, "Got Address change event\n");
+		rc = 0;
+		break;
 	default:
 		printk(KERN_ERR "SDP: Unexpected CMA event: %d\n",
 		       event->event);
