@@ -365,71 +365,71 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 	__sdpstats_seq_hist(seq, "credits_before_update",
 		credits_before_update, 0);
 
-	seq_printf(seq, "sdp_sendmsg() calls\t\t: %d\n",
+	seq_printf(seq, "sdp_sendmsg() calls\t\t: %u\n",
 		SDPSTATS_COUNTER_GET(sendmsg));
-	seq_printf(seq, "bcopy segments     \t\t: %d\n",
+	seq_printf(seq, "bcopy segments     \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(sendmsg_bcopy_segment));
-	seq_printf(seq, "inline sends       \t\t: %d\n",
+	seq_printf(seq, "inline sends       \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(inline_sends));
-	seq_printf(seq, "bzcopy segments    \t\t: %d\n",
+	seq_printf(seq, "bzcopy segments    \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(sendmsg_bzcopy_segment));
-	seq_printf(seq, "zcopy segments    \t\t: %d\n",
+	seq_printf(seq, "zcopy segments    \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(sendmsg_zcopy_segment));
-	seq_printf(seq, "post_send_credits  \t\t: %d\n",
+	seq_printf(seq, "post_send_credits  \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(post_send_credits));
 	seq_printf(seq, "memcpy_count       \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(memcpy_count));
 
         for (i = 0; i < ARRAY_SIZE(__get_cpu_var(sdpstats).post_send); i++) {
                 if (mid2str(i)) {
-                        seq_printf(seq, "post_send %-20s\t: %d\n",
+                        seq_printf(seq, "post_send %-20s\t: %u\n",
                                         mid2str(i),
 					SDPSTATS_COUNTER_GET(post_send[i]));
                 }
         }
 
 	seq_printf(seq, "\n");
-	seq_printf(seq, "sdp_recvmsg() calls\t\t: %d\n",
+	seq_printf(seq, "sdp_recvmsg() calls\t\t: %u\n",
 		SDPSTATS_COUNTER_GET(recvmsg));
-	seq_printf(seq, "post_recv         \t\t: %d\n",
+	seq_printf(seq, "post_recv         \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(post_recv));
-	seq_printf(seq, "BZCopy poll miss  \t\t: %d\n",
+	seq_printf(seq, "BZCopy poll miss  \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(bzcopy_poll_miss));
-	seq_printf(seq, "send_wait_for_mem \t\t: %d\n",
+	seq_printf(seq, "send_wait_for_mem \t\t: %u\n",
 		SDPSTATS_COUNTER_GET(send_wait_for_mem));
-	seq_printf(seq, "send_miss_no_credits\t\t: %d\n",
+	seq_printf(seq, "send_miss_no_credits\t\t: %u\n",
 		SDPSTATS_COUNTER_GET(send_miss_no_credits));
 
-	seq_printf(seq, "rx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_poll_miss));
-	seq_printf(seq, "rx_poll_hit       \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_poll_hit));
+	seq_printf(seq, "rx_poll_miss      \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_poll_miss));
+	seq_printf(seq, "rx_poll_hit       \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_poll_hit));
 	__sdpstats_seq_hist(seq, "poll_hit_usec", poll_hit_usec, 1);
-	seq_printf(seq, "rx_cq_arm_timer      \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_cq_arm_timer));
+	seq_printf(seq, "rx_cq_arm_timer      \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_cq_arm_timer));
 
-	seq_printf(seq, "tx_poll_miss      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_miss));
-	seq_printf(seq, "tx_poll_busy      \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_busy));
-	seq_printf(seq, "tx_poll_hit       \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_hit));
-	seq_printf(seq, "tx_poll_no_op     \t\t: %d\n", SDPSTATS_COUNTER_GET(tx_poll_no_op));
+	seq_printf(seq, "tx_poll_miss      \t\t: %u\n", SDPSTATS_COUNTER_GET(tx_poll_miss));
+	seq_printf(seq, "tx_poll_busy      \t\t: %u\n", SDPSTATS_COUNTER_GET(tx_poll_busy));
+	seq_printf(seq, "tx_poll_hit       \t\t: %u\n", SDPSTATS_COUNTER_GET(tx_poll_hit));
+	seq_printf(seq, "tx_poll_no_op     \t\t: %u\n", SDPSTATS_COUNTER_GET(tx_poll_no_op));
 
-	seq_printf(seq, "keepalive timer   \t\t: %d\n", SDPSTATS_COUNTER_GET(keepalive_timer));
-	seq_printf(seq, "nagle timer       \t\t: %d\n", SDPSTATS_COUNTER_GET(nagle_timer));
+	seq_printf(seq, "keepalive timer   \t\t: %u\n", SDPSTATS_COUNTER_GET(keepalive_timer));
+	seq_printf(seq, "nagle timer       \t\t: %u\n", SDPSTATS_COUNTER_GET(nagle_timer));
 
 	seq_printf(seq, "CQ stats:\n");
-	seq_printf(seq, "- RX irq armed  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_arm));
-	seq_printf(seq, "- RX interrupts \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_count));
-	seq_printf(seq, "- RX int wake up\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_wake_up));
-	seq_printf(seq, "- RX int queue  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_queue));
-	seq_printf(seq, "- RX int no op  \t\t: %d\n", SDPSTATS_COUNTER_GET(rx_int_no_op));
-	seq_printf(seq, "- RX cq modified\t\t: %d\n", SDPSTATS_COUNTER_GET(rx_cq_modified));
+	seq_printf(seq, "- RX irq armed  \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_int_arm));
+	seq_printf(seq, "- RX interrupts \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_int_count));
+	seq_printf(seq, "- RX int wake up\t\t: %u\n", SDPSTATS_COUNTER_GET(rx_int_wake_up));
+	seq_printf(seq, "- RX int queue  \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_int_queue));
+	seq_printf(seq, "- RX int no op  \t\t: %u\n", SDPSTATS_COUNTER_GET(rx_int_no_op));
+	seq_printf(seq, "- RX cq modified\t\t: %u\n", SDPSTATS_COUNTER_GET(rx_cq_modified));
 
-	seq_printf(seq, "- TX irq armed\t\t: %d\n", SDPSTATS_COUNTER_GET(tx_int_arm));
-	seq_printf(seq, "- TX interrupts\t\t: %d\n", SDPSTATS_COUNTER_GET(tx_int_count));
+	seq_printf(seq, "- TX irq armed\t\t: %u\n", SDPSTATS_COUNTER_GET(tx_int_arm));
+	seq_printf(seq, "- TX interrupts\t\t: %u\n", SDPSTATS_COUNTER_GET(tx_int_count));
 
 	seq_printf(seq, "ZCopy stats:\n");
-	seq_printf(seq, "- TX timeout\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_timeout));
-	seq_printf(seq, "- TX cross send\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_cross_send));
-	seq_printf(seq, "- TX aborted by peer\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
-	seq_printf(seq, "- TX error\t\t: %d\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
-	seq_printf(seq, "- FMR alloc error\t: %d\n", SDPSTATS_COUNTER_GET(fmr_alloc_error));
+	seq_printf(seq, "- TX timeout\t\t: %u\n", SDPSTATS_COUNTER_GET(zcopy_tx_timeout));
+	seq_printf(seq, "- TX cross send\t\t: %u\n", SDPSTATS_COUNTER_GET(zcopy_cross_send));
+	seq_printf(seq, "- TX aborted by peer\t: %u\n", SDPSTATS_COUNTER_GET(zcopy_tx_aborted));
+	seq_printf(seq, "- TX error\t\t: %u\n", SDPSTATS_COUNTER_GET(zcopy_tx_error));
+	seq_printf(seq, "- FMR alloc error\t: %u\n", SDPSTATS_COUNTER_GET(fmr_alloc_error));
 
 	__sdpstats_seq_hist_pcpu(seq, "CPU sendmsg", sendmsg);
 	__sdpstats_seq_hist_pcpu(seq, "CPU recvmsg", recvmsg);
