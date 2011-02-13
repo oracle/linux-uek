@@ -52,6 +52,8 @@
 
 #define SDP_MAJV_MINV 0x22
 
+SDP_MODPARAM_SINT(sdp_retry_count, 5, "IB layer retry count");
+
 SDP_MODPARAM_SINT(sdp_link_layer_ib_only, 0, "Support only link layer of "
 		"type Infiniband");
 
@@ -465,7 +467,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.private_data = &hh;
 		conn_param.responder_resources = 4 /* TODO */;
 		conn_param.initiator_depth = 4 /* TODO */;
-		conn_param.retry_count = SDP_RETRY_COUNT;
+		conn_param.retry_count = sdp_retry_count;
 		SDP_DUMP_PACKET(sk, "TX", NULL, &hh.bsdh);
 
 		if (sdp_apm_enable) {
@@ -512,7 +514,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.private_data = &hah;
 		conn_param.responder_resources = 4 /* TODO */;
 		conn_param.initiator_depth = 4 /* TODO */;
-		conn_param.retry_count = SDP_RETRY_COUNT;
+		conn_param.retry_count = sdp_retry_count;
 		SDP_DUMP_PACKET(sk, "TX", NULL, &hah.bsdh);
 		rc = rdma_accept(id, &conn_param);
 		if (rc) {
