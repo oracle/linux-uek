@@ -516,7 +516,7 @@ static void *sdpprf_start(struct seq_file *p, loff_t *pos)
 			return SEQ_START_TOKEN;
 	}
 
-	if (*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE - 1))
+	if (*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE))
 		return NULL;
 
 	if (atomic_read(&sdpprf_log_count) >= SDPPRF_LOG_SIZE - 1) {
@@ -534,7 +534,8 @@ static void *sdpprf_next(struct seq_file *p, void *v, loff_t *pos)
 {
 	struct sdpprf_log *l = v;
 
-	if (++*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE - 1))
+	(*pos)++;
+	if (*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE))
 		return NULL;
 
 	++l;

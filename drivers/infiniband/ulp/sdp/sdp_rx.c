@@ -39,8 +39,6 @@ SDP_MODPARAM_INT(rcvbuf_initial_size, 32 * 1024,
 		"Receive buffer initial size in bytes.");
 SDP_MODPARAM_SINT(rcvbuf_scale, 0x10,
 		"Receive buffer size scale factor.");
-SDP_MODPARAM_INT(top_mem_usage, 0,
-		"Top system wide sdp memory usage for recv (in MB).");
 
 #ifdef CONFIG_PPC
 SDP_MODPARAM_SINT(max_large_sockets, 100,
@@ -51,7 +49,6 @@ SDP_MODPARAM_SINT(max_large_sockets, 1000,
 #endif
 
 static int curr_large_sockets;
-atomic_t sdp_current_mem_usage;
 spinlock_t sdp_large_sockets_lock;
 
 static int sdp_get_large_socket(const struct sdp_sock *ssk)
@@ -127,9 +124,6 @@ void sdp_handle_disconn(struct sock *sk)
 		break;
 	}
 
-
-	sk_mem_reclaim(sk);
-
 	if (!sock_flag(sk, SOCK_DEAD)) {
 		sk->sk_state_change(sk);
 
@@ -140,6 +134,14 @@ void sdp_handle_disconn(struct sock *sk)
 		else
 			sk_wake_async(sk, 1, POLL_IN);
 	}
+}
+
+static void sdp_sock_rfree(struct sk_buff *skb)
+{
+        struct sock *sk = skb->sk;
+
+        atomic_sub(skb->truesize, &sk->sk_rmem_alloc);
+        sk_mem_uncharge(sk, skb->truesize);
 }
 
 static int sdp_post_recv(struct sdp_sock *ssk)
@@ -165,11 +167,11 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 
 	if (unlikely(sk_ssk(ssk)->sk_allocation)) {
 		skb = sdp_stream_alloc_skb(sk_ssk(ssk), SDP_SKB_HEAD_SIZE,
-					  sk_ssk(ssk)->sk_allocation);
+					  sk_ssk(ssk)->sk_allocation, SK_MEM_RECV);
 		gfp_page = sk_ssk(ssk)->sk_allocation | __GFP_HIGHMEM;
 	} else {
 		skb = sdp_stream_alloc_skb(sk_ssk(ssk), SDP_SKB_HEAD_SIZE,
-					  GFP_KERNEL);
+					  GFP_KERNEL, SK_MEM_RECV);
 		gfp_page = GFP_HIGHUSER;
 	}
 
@@ -186,8 +188,6 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		if (rx_req->mapping[i + 1])
 			page = rx_req->pages[i];
 		else {
-			if (unlikely(!sdp_has_free_mem()))
-				goto err;
 			rx_req->pages[i] = page = alloc_pages(gfp_page, 0);
 			if (unlikely(!page))
 				goto err;
@@ -239,16 +239,17 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		goto err;
 	}
 
+	skb_set_owner_r(skb, sk_ssk(ssk));
+	skb->destructor=sdp_sock_rfree;
+
 	atomic_inc(&ssk->rx_ring.head);
 	SDPSTATS_COUNTER_INC(post_recv);
-	atomic_add(pages_alloced, &sdp_current_mem_usage);
 
 	return 0;
 
 err:
-	atomic_add(pages_alloced, &sdp_current_mem_usage);
 	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
-	sdp_free_skb(skb);
+	__kfree_skb(skb);
 	sdp_reset(sk_ssk(ssk));
 	return -1;
 }
@@ -256,12 +257,10 @@ err:
 static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 {
 	struct sock *sk = sk_ssk(ssk);
-	int buffer_size = SDP_SKB_HEAD_SIZE + ssk->recv_frags * PAGE_SIZE;
-	unsigned long max_bytes = ssk->rcvbuf_scale;
-	unsigned long bytes_in_process;
+	int buffer_size = ssk->recv_frags * PAGE_SIZE;
 	int posted = rx_ring_posted(ssk);
 
-	if (unlikely(!ssk->qp_active || !sdp_has_free_mem()))
+	if (unlikely(!ssk->qp_active))
 		return 0;
 
 	if  (likely(posted >= SDP_RX_SIZE))
@@ -270,17 +269,12 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 	if (unlikely(posted < SDP_MIN_TX_CREDITS))
 		return 1;
 
-	/* If rcvbuf is very small, must leave at least 1 skb for data,
-	 * in addition to SDP_MIN_TX_CREDITS */
-	max_bytes *= max(sk->sk_rcvbuf, (1 + SDP_MIN_TX_CREDITS) * buffer_size);
+	if (rcv_nxt(ssk) - ssk->copied_seq + (posted - SDP_MIN_TX_CREDITS) *
+			buffer_size >= sk->sk_rcvbuf) {
+		return 0;
+	}
 
-	/* Bytes posted to HW */
-	bytes_in_process = (posted - SDP_MIN_TX_CREDITS) * buffer_size;
-
-	/* Bytes waiting in socket RX queue */
-	bytes_in_process += rcv_nxt(ssk) - ssk->copied_seq;
-
-	return bytes_in_process < max_bytes;
+	return 1;
 }
 
 static inline void sdp_post_recvs(struct sdp_sock *ssk)
@@ -288,15 +282,11 @@ static inline void sdp_post_recvs(struct sdp_sock *ssk)
 again:
 	while (sdp_post_recvs_needed(ssk)) {
 		if (sdp_post_recv(ssk))
-			goto out;
+			return;
 	}
-
-	sk_mem_reclaim(sk_ssk(ssk));
 
 	if (sdp_post_recvs_needed(ssk))
 		goto again;
-out:
-	sk_mem_reclaim(sk_ssk(ssk));
 }
 
 static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
@@ -305,10 +295,6 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 	int skb_len;
 	struct sdp_sock *ssk = sdp_sk(sk);
 	struct sdp_bsdh *h = (struct sdp_bsdh *)skb_transport_header(skb);
-
-	/* not needed since sk_rmem_alloc is not currently used
-	 * TODO - remove this?
-	skb_set_owner_r(skb, sk); */
 
 	SDP_SKB_CB(skb)->seq = rcv_nxt(ssk);
 	if (unlikely(h->flags & SDP_OOB_PRES))
@@ -418,10 +404,12 @@ static void sdp_handle_resize_ack(struct sdp_sock *ssk,
 
 static void sdp_reuse_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf, int len)
 {
+	struct sock *sk = sk_ssk(ssk);
 	int i;
 	struct sk_buff *skb;
 	struct ib_device *dev = ssk->ib_device;
 	enum dma_data_direction dir = DMA_FROM_DEVICE;
+	int bytes_reused = 0;
 	int used;
 
 	skb = sbuf->skb;
@@ -431,9 +419,12 @@ static void sdp_reuse_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf, int le
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		if (used >= len) {
-			skb->truesize -= min(PAGE_SIZE, SDP_MAX_PAYLOAD) *
+			int count = min(PAGE_SIZE, SDP_MAX_PAYLOAD) *
 				(skb_shinfo(skb)->nr_frags - i);
+			skb->truesize -= count;
+			
 			skb_shinfo(skb)->nr_frags = i;
+			bytes_reused += count;
 			break;
 		}
 
@@ -444,6 +435,9 @@ static void sdp_reuse_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf, int le
 
 		used += skb_shinfo(skb)->frags[i].size;
 	}
+	atomic_sub(bytes_reused, &sk->sk_rmem_alloc);
+	sk_mem_uncharge(sk, bytes_reused);
+
 }
 
 static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id, int len)
@@ -524,7 +518,7 @@ static int sdp_process_rx_ctl_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 		sdp_warn(sk, "SDP: FIXME MID %d\n", h->mid);
 	}
 
-	sdp_free_skb(skb);
+	__kfree_skb(skb);
 	return 0;
 }
 
@@ -559,7 +553,6 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	for (i = skb_shinfo(skb)->nr_frags; i < frags; ++i) {
 		put_page(skb_shinfo(skb)->frags[i].page);
 	}
-	skb->truesize -= frags * PAGE_SIZE;
 
 	if (unlikely(h->flags & SDP_OOB_PEND))
 		sk_send_sigurg(sk);
@@ -579,7 +572,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	if (unlikely(h->mid == SDP_MID_DATA && skb->len == 0)) {
 		/* Credit update is valid even after RCV_SHUTDOWN */
-		sdp_free_skb(skb);
+		__kfree_skb(skb);
 		return 0;
 	}
 
@@ -602,7 +595,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(sk, "RdmaRdCompl message arrived\n");
 			sdp_handle_rdma_read_compl(ssk, ntohl(h->mseq_ack),
 					ntohl(rrch->len));
-			sdp_free_skb(skb);
+			__kfree_skb(skb);
 		} else
 			skb_queue_tail(&ssk->rx_ctl_q, skb);
 
@@ -635,7 +628,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 			sdp_reset(sk);
 			ssk->qp_active = 0;
 		}
-		sdp_free_skb(skb);
+		__kfree_skb(skb);
 		return NULL;
 	}
 
@@ -644,7 +637,7 @@ static struct sk_buff *sdp_process_rx_wc(struct sdp_sock *ssk,
 	if (unlikely(wc->byte_len < sizeof(struct sdp_bsdh))) {
 		sdp_warn(sk, "SDP BUG! byte_len %d < %zd\n",
 				wc->byte_len, sizeof(struct sdp_bsdh));
-		sdp_free_skb(skb);
+		__kfree_skb(skb);
 		return NULL;
 	}
 	skb->len = wc->byte_len;
@@ -790,8 +783,6 @@ void sdp_do_posts(struct sdp_sock *ssk)
 
 	sdp_post_sends(ssk, 0);
 
-	sk_mem_reclaim(sk);
-
 	xmit_poll_force = sk->sk_write_pending &&
 		(tx_credits(ssk) > SDP_MIN_TX_CREDITS);
 
@@ -846,7 +837,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 		skb = sdp_recv_completion(ssk, ring_tail(ssk->rx_ring), INT_MAX);
 		if (!skb)
 			break;
-		sdp_free_skb(skb);
+		__kfree_skb(skb);
 	}
 
 	for (id = 0; id < SDP_RX_SIZE; id++) {
@@ -861,7 +852,6 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 					DMA_FROM_DEVICE);
 			sbuf->mapping[i] = 0;
 			put_page(sbuf->pages[i - 1]);
-			atomic_dec(&sdp_current_mem_usage);
 		}
 	}
 }

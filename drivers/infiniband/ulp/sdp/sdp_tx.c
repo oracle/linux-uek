@@ -87,13 +87,22 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	ssk->tx_packets++;
 
+	if (h->mid != SDP_MID_SRCAVAIL && 
+			h->mid != SDP_MID_DATA && 
+			h->mid != SDP_MID_SRCAVAIL_CANCEL) {
+		struct sock *sk = sk_ssk(ssk);
+
+		sk->sk_wmem_queued += skb->truesize;
+		sk_mem_charge(sk, skb->truesize);
+	}
+
 	if (unlikely(h->mid == SDP_MID_SRCAVAIL)) {
 		struct tx_srcavail_state *tx_sa = TX_SRCAVAIL_STATE(skb);
 		if (ssk->tx_sa != tx_sa) {
 			sdp_dbg_data(sk_ssk(ssk), "SrcAvail cancelled "
 					"before being sent!\n");
 			SDP_WARN_ON(1);
-			sdp_free_skb(skb);
+			sk_wmem_free_skb(sk_ssk(ssk), skb);
 			return;
 		}
 		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
@@ -181,7 +190,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	return;
 
 err:
-	sdp_free_skb(skb);
+	sk_wmem_free_skb(sk_ssk(ssk), skb);
 }
 
 static struct sk_buff *sdp_send_completion(struct sdp_sock *ssk, int mseq)
@@ -407,7 +416,7 @@ static void sdp_tx_ring_purge(struct sdp_sock *ssk)
 		skb = sdp_send_completion(ssk, ring_tail(ssk->tx_ring));
 		if (!skb)
 			break;
-		sdp_free_skb(skb);
+		sk_wmem_free_skb(sk_ssk(ssk), skb);
 	}
 }
 

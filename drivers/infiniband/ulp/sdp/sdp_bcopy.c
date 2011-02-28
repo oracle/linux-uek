@@ -283,6 +283,10 @@ again:
 		skb = sdp_alloc_skb_data(sk, 0, gfp);
 		if (!skb)
 			goto no_mem;
+
+		sk->sk_wmem_queued += skb->truesize;
+		sk_mem_charge(sk, skb->truesize);
+
 		sdp_post_send(ssk, skb);
 		SDPSTATS_COUNTER_INC(post_send_credits);
 		post_count++;

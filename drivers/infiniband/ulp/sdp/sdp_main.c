@@ -99,7 +99,6 @@ SDP_MODPARAM_SINT(sdp_keepalive_time, SDP_KEEPALIVE_TIME,
 SDP_MODPARAM_INT(sdp_inline_thresh, SDP_DEF_INLINE_THRESH,
 	"Inline copy threshold. effective to new sockets only; 0=Off.");
 
-static int sdp_bzcopy_thresh = 0;
 SDP_MODPARAM_INT(sdp_zcopy_thresh, SDP_DEF_ZCOPY_THRESH ,
 	"Zero copy using RDMA threshold; 0=Off.");
 #define SDP_RX_COAL_TIME_HIGH 128
@@ -518,7 +517,6 @@ static void sdp_destroy_resources(struct sock *sk)
         if (sk->sk_sndmsg_page) {
                 __free_page(sk->sk_sndmsg_page);
                 sk->sk_sndmsg_page = NULL;
-		atomic_dec(&sdp_current_mem_usage);
         }
 
 	id = ssk->id;
@@ -586,6 +584,14 @@ static void sdp_destruct(struct sock *sk)
 
 	flush_workqueue(rx_comp_wq);
 	/* Consider use cancel_work_sync(&ssk->rx_comp_work) */
+
+	sk_mem_reclaim(sk);
+
+	if (sk->sk_wmem_queued || atomic_read(&sk->sk_rmem_alloc) || sk->sk_forward_alloc) {
+		sdp_warn(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x proto: 0x%x\n", 
+				sk->sk_wmem_queued, atomic_read(&sk->sk_rmem_alloc), sk->sk_forward_alloc,  
+				atomic_read(sk->sk_prot->memory_allocated));
+	}
 
 	if (ssk->parent)
 		goto done;
@@ -743,7 +749,7 @@ static void sdp_close(struct sock *sk, long timeout)
 			sdp_dbg(sk, "Data was unread. skb: %p\n", skb);
 			data_was_unread = 1;
 		}
-		sdp_free_skb(skb);
+		__kfree_skb(skb);
 	}
 
 	sk_mem_reclaim(sk);
@@ -1638,173 +1644,6 @@ void sdp_skb_entail(struct sock *sk, struct sk_buff *skb)
                 sdp_sk(sk)->nonagle &= ~TCP_NAGLE_PUSH;
 }
 
-static inline struct bzcopy_state *sdp_bz_cleanup(struct bzcopy_state *bz)
-{
-	int i;
-	struct sdp_sock *ssk = (struct sdp_sock *)bz->ssk;
-
-	/* Wait for in-flight sends; should be quick */
-	if (bz->busy) {
-		struct sock *sk = sk_ssk(ssk);
-		unsigned long timeout = jiffies + SDP_BZCOPY_POLL_TIMEOUT;
-
-		while (jiffies < timeout) {
-			if (sdp_xmit_poll(sdp_sk(sk), 1))
-				sdp_post_sends(ssk, 0);
-			if (!bz->busy)
-				break;
-			SDPSTATS_COUNTER_INC(bzcopy_poll_miss);
-		}
-
-		if (bz->busy)
-			sdp_warn(sk, "Could not reap %d in-flight sends\n",
-				 bz->busy);
-	}
-
-	if (bz->pages) {
-		for (i = 0; i < bz->page_cnt; i++) {
-			put_page(bz->pages[i]);
-		}
-
-		kfree(bz->pages);
-	}
-
-	kfree(bz);
-
-	return NULL;
-}
-
-static int sdp_get_user_pages(struct page **pages, const unsigned int nr_pages,
-			      unsigned long uaddr, int rw)
-{
-	int res, i;
-
-        /* Try to fault in all of the necessary pages */
-	down_read(&current->mm->mmap_sem);
-        /* rw==READ means read from drive, write into memory area */
-	res = get_user_pages(
-		current,
-		current->mm,
-		uaddr,
-		nr_pages,
-		rw == READ,
-		0, /* don't force */
-		pages,
-		NULL);
-	up_read(&current->mm->mmap_sem);
-
-	/* Errors and no page mapped should return here */
-	if (res < nr_pages)
-		return res;
-
-        for (i=0; i < nr_pages; i++) {
-                /* FIXME: flush superflous for rw==READ,
-                 * probably wrong function for rw==WRITE
-                 */
-		flush_dcache_page(pages[i]);
-        }
-
-	return nr_pages;
-}
-
-static int sdp_get_pages(struct sock *sk, struct page **pages, int page_cnt,
-		unsigned long addr)
-{
-	int done_pages = 0;
-
-	sdp_dbg_data(sk, "count: 0x%x addr: 0x%lx\n", page_cnt, addr);
-
-	addr &= PAGE_MASK;
-	if (segment_eq(get_fs(), KERNEL_DS)) {
-		for (done_pages = 0; done_pages < page_cnt; done_pages++) {
-			pages[done_pages] = virt_to_page(addr);
-			if (!pages[done_pages])
-				break;
-			get_page(pages[done_pages]);
-			addr += PAGE_SIZE;
-		}
-	} else {
-		done_pages = sdp_get_user_pages(pages, page_cnt, addr, WRITE);
-	}
-
-	if (unlikely(done_pages != page_cnt))
-		goto err;
-
-	return 0;
-
-err:
-	sdp_warn(sk, "Error getting pages. done_pages: %d page_cnt: %d\n",
-			done_pages, page_cnt);
-	for (; done_pages > 0; done_pages--)
-		page_cache_release(pages[done_pages - 1]);
-
-	return -1;
-}
-
-static struct bzcopy_state *sdp_bz_setup(struct sdp_sock *ssk,
-					 char __user *base,
-					 int len,
-					 int size_goal)
-{
-	struct bzcopy_state *bz;
-	unsigned long addr;
-	int thresh;
-	mm_segment_t cur_fs;
-	int rc = 0;
-
-	thresh = sdp_bzcopy_thresh;
-	if (thresh == 0 || len < thresh || !capable(CAP_IPC_LOCK)) {
-		SDPSTATS_COUNTER_INC(sendmsg_bcopy_segment);
-		return NULL;
-	}
-	SDPSTATS_COUNTER_INC(sendmsg_bzcopy_segment);
-
-	cur_fs = get_fs();
-
-	/*
-	 *   Since we use the TCP segmentation fields of the skb to map user
-	 * pages, we must make sure that everything we send in a single chunk
-	 * fits into the frags array in the skb.
-	 */
-	size_goal = size_goal / PAGE_SIZE + 1;
-	if (size_goal >= MAX_SKB_FRAGS)
-		return NULL;
-
-	bz = kzalloc(sizeof(*bz), GFP_KERNEL);
-	if (!bz)
-		return ERR_PTR(-ENOMEM);
-
-	addr = (unsigned long)base;
-
-	bz->u_base     = base;
-	bz->u_len      = len;
-	bz->left       = len;
-	bz->cur_offset = addr & ~PAGE_MASK;
-	bz->busy       = 0;
-	bz->ssk        = ssk;
-	bz->page_cnt   = PAGE_ALIGN(len + bz->cur_offset) >> PAGE_SHIFT;
-	bz->pages      = kcalloc(bz->page_cnt, sizeof(struct page *),
-			GFP_KERNEL);
-
-	if (!bz->pages) {
-		kfree(bz);
-		return ERR_PTR(-ENOMEM);
-	}
-
-	rc = sdp_get_pages(sk_ssk(ssk), bz->pages, bz->page_cnt,
-			(unsigned long)base);
-
-	if (unlikely(rc))
-		goto err;
-
-	return bz;
-
-err:
-	kfree(bz->pages);
-	kfree(bz);
-	return ERR_PTR(-EFAULT);
-}
-
 #define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
 #define TCP_OFF(sk)	(sk->sk_sndmsg_off)
 static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
@@ -1821,6 +1660,7 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		if ((err = skb_add_data(skb, from, copy)) != 0)
 			return SDP_ERR_FAULT;
 	} else {
+		/* Put data in skb->frags */
 		int merge = 0;
 		int i = skb_shinfo(skb)->nr_frags;
 		struct page *page = TCP_PAGE(sk);
@@ -1854,12 +1694,8 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		if (!page) {
 			/* Allocate new cache page. */
-			if (sdp_has_free_mem()) {
-				page = sk_stream_alloc_page(sk);
-				if (!page)
-					return SDP_DO_WAIT_MEM;
-				atomic_inc(&sdp_current_mem_usage);
-			} else
+			page = sk_stream_alloc_page(sk);
+			if (!page)
 				return SDP_DO_WAIT_MEM;
 		}
 
@@ -1895,67 +1731,6 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		TCP_OFF(sk) = off + copy;
 	}
 
-	return copy;
-}
-
-static inline int sdp_bzcopy_get(struct sock *sk, struct sk_buff *skb,
-				 char __user *from, int copy,
-				 struct bzcopy_state *bz)
-{
-	int this_page, left;
-	struct sdp_sock *ssk = sdp_sk(sk);
-
-	/* Push the first chunk to page align all following - TODO: review */
-	if (skb_shinfo(skb)->nr_frags == ssk->send_frags) {
-		sdp_mark_push(ssk, skb);
-		return SDP_NEW_SEG;
-	}
-
-	left = copy;
-	BUG_ON(left > bz->left);
-
-	while (left) {
-		if (skb_shinfo(skb)->nr_frags == ssk->send_frags) {
-			copy = copy - left;
-			break;
-		}
-
-		this_page = PAGE_SIZE - bz->cur_offset;
-
-		if (left <= this_page)
-			this_page = left;
-
-		if (!sk_wmem_schedule(sk, copy))
-			return SDP_DO_WAIT_MEM;
-
-		/* put_page in skb_release_data() (called by __kfree_skb) */
-		get_page(bz->pages[bz->cur_page]);
-		skb_fill_page_desc(skb, skb_shinfo(skb)->nr_frags,
-				   bz->pages[bz->cur_page], bz->cur_offset,
-				   this_page);
-
-		BUG_ON(skb_shinfo(skb)->nr_frags >= MAX_SKB_FRAGS);
-		BUG_ON(bz->cur_offset > PAGE_SIZE);
-
-		bz->cur_offset += this_page;
-		if (bz->cur_offset == PAGE_SIZE) {
-			bz->cur_offset = 0;
-			bz->cur_page++;
-
-			BUG_ON(bz->cur_page > bz->page_cnt);
-		}
-
-		left -= this_page;
-
-		skb->len             += this_page;
-		skb->data_len        += this_page;
-		skb->truesize        += this_page;
-		sk->sk_wmem_queued   += this_page;
-		sk->sk_forward_alloc -= this_page;
-	}
-
-	bz->left -= copy;
-	bz->busy++;
 	return copy;
 }
 
@@ -2072,7 +1847,6 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 	const int size_goal = MIN(ssk->xmit_size_goal, SDP_MAX_PAYLOAD);
 	int err, copied;
 	long timeo;
-	struct bzcopy_state *bz = NULL;
 	int zcopy_thresh =
 		-1 != ssk->zcopy_thresh ? ssk->zcopy_thresh : sdp_zcopy_thresh;
 
@@ -2133,23 +1907,13 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sdp_dbg_data(sk, "ZCopied: 0x%x/0x%x\n", zcopied, seglen);
 		}
 
-		if (bz)
-			sdp_bz_cleanup(bz);
-		bz = sdp_bz_setup(ssk, from, seglen, size_goal);
-		if (IS_ERR(bz)) {
-			err = PTR_ERR(bz);
-			bz = NULL;
-			goto do_error;
-		}
-
 		while (seglen > 0) {
 			int copy;
 
 			skb = sk->sk_write_queue.prev;
 
 			if (!sk->sk_send_head ||
-			    (copy = size_goal - (skb->len - sizeof(struct sdp_bsdh))) <= 0 ||
-			    bz != BZCOPY_STATE(skb)) {
+			    (copy = size_goal - (skb->len - sizeof(struct sdp_bsdh))) <= 0) {
 new_segment:
 				/*
 				 * Allocate a new segment
@@ -2158,13 +1922,10 @@ new_segment:
 				 * we stop sending once we run out of remote
 				 * receive credits.
 				 */
-#define can_not_tx(__bz) (\
-	( __bz && tx_slots_free(ssk) < __bz->busy) || \
-       	(!__bz && !sk_stream_memory_free(sk)))
-				if (unlikely(can_not_tx(bz))) {
+				if (unlikely(!sk_stream_memory_free(sk))) {
 					if (!poll_recv_cq(sk))
 						sdp_do_posts(ssk);
-					if ((can_not_tx(bz)))
+					if ((!sk_stream_memory_free(sk)))
 						goto wait_for_sndbuf;
 				}
 
@@ -2173,8 +1934,6 @@ new_segment:
 					err = -ENOMEM;
 					goto do_error;
 				}
-
-				BZCOPY_STATE(skb) = bz;
 
 				/*
 				 * Check whether we can use HW checksum.
@@ -2206,13 +1965,12 @@ new_segment:
 			if (copy > seglen)
 				copy = seglen;
 
-			copy = (bz) ? sdp_bzcopy_get(sk, skb, from, copy, bz) :
-				      sdp_bcopy_get(sk, skb, from, copy);
+			copy = sdp_bcopy_get(sk, skb, from, copy);
+
 			if (unlikely(copy < 0)) {
 				switch (copy) {
 					case SDP_DO_WAIT_MEM:
-						err = -ENOMEM;
-						goto do_error;
+						goto wait_for_sndbuf;
 					case SDP_NEW_SEG:
 						goto new_segment;
 					case SDP_ERR_FAULT:
@@ -2241,20 +1999,15 @@ wait_for_sndbuf:
 			if (copied)
 				sdp_push(sk, flags & ~MSG_MORE);
 
-			err = sdp_tx_wait_memory(ssk, &timeo,
-					bz ? &bz->busy : NULL);
+			err = sdp_tx_wait_memory(ssk, &timeo, NULL);
 			if (err)
 				goto do_error;
 		}
 	}
 
 out:
-	if (copied) {
+	if (copied)
 		sdp_push(sk, flags);
-
-		if (bz)
-			bz = sdp_bz_cleanup(bz);
-	}
 
 	sdp_auto_moderation(ssk);
 
@@ -2278,8 +2031,6 @@ do_error:
 	if (copied)
 		goto out;
 out_err:
-	if (bz)
-		bz = sdp_bz_cleanup(bz);
 	err = sk_stream_error(sk, flags, err);
 	sdp_dbg_data(sk, "err: %d\n", err);
 
@@ -2609,7 +2360,7 @@ sdp_mid_data:
 						goto skb_cleanup;
 					sdp_warn(sk, "err from rdma %d - sendSM\n", err);
 					skb_unlink(skb, &sk->sk_receive_queue);
-					sdp_free_skb(skb);
+					__kfree_skb(skb);
 				}
 			} else {
 				sdp_dbg_data(sk, "memcpy 0x%lx bytes +0x%x -> %p\n",
@@ -2689,14 +2440,14 @@ skb_cleanup:
 force_skb_cleanup:
 			sdp_dbg_data(sk, "unlinking skb %p\n", skb);
 			skb_unlink(skb, &sk->sk_receive_queue);
-			sdp_free_skb(skb);
+			__kfree_skb(skb);
 		}
 		continue;
 found_fin_ok:
 		++*seq;
 		if (!(flags & MSG_PEEK)) {
 			skb_unlink(skb, &sk->sk_receive_queue);
-			sdp_free_skb(skb);
+			__kfree_skb(skb);
 		}
 		break;
 
@@ -3203,8 +2954,6 @@ static int __init sdp_init(void)
 
 	sdp_proc_init();
 
-	atomic_set(&sdp_current_mem_usage, 0);
-
 	ib_register_client(&sdp_client);
 
 	return 0;
@@ -3242,9 +2991,9 @@ static void __exit sdp_exit(void)
 
 	BUG_ON(!list_empty(&sock_list));
 
-	if (atomic_read(&sdp_current_mem_usage))
-		printk(KERN_WARNING "%s: current mem usage %d\n", __func__,
-		       atomic_read(&sdp_current_mem_usage));
+	if (atomic_read(&memory_allocated))
+		printk(KERN_WARNING "SDP detected memory leak. Memory_allocated: %d\n",
+		       atomic_read(&memory_allocated));
 
 	if (percpu_counter_sum(sockets_allocated))
 		printk(KERN_WARNING "%s: sockets_allocated %lld\n", __func__,
@@ -3254,11 +3003,9 @@ static void __exit sdp_exit(void)
 
 	ib_unregister_client(&sdp_client);
 
-	percpu_counter_destroy(sockets_allocated);
 	percpu_counter_destroy(orphan_count);
 
 	kfree(orphan_count);
-	kfree(sockets_allocated);
 }
 
 module_init(sdp_init);

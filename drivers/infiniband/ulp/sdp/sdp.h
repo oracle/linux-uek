@@ -164,8 +164,6 @@ extern spinlock_t sock_list_lock;
 extern int rcvbuf_initial_size;
 extern struct proto sdp_proto;
 extern struct workqueue_struct *rx_comp_wq;
-extern atomic_t sdp_current_mem_usage;
-extern int top_mem_usage;
 extern spinlock_t sdp_large_sockets_lock;
 extern struct ib_client sdp_client;
 #ifdef SDPSTATS_ON
@@ -592,14 +590,6 @@ static inline unsigned sdp_cycles_to_usecs(unsigned long c)
 #endif
 }
 
-static inline int sdp_has_free_mem(void)
-{
-	/* TODO: count also kmalloc's and skb's allocations. */
-
-	return !top_mem_usage || atomic_read(&sdp_current_mem_usage) <
-		top_mem_usage << (20 - PAGE_SHIFT);
-}
-
 /* utilities */
 static inline char *mid2str(int mid)
 {
@@ -627,16 +617,8 @@ static inline char *mid2str(int mid)
 	return mid2str[mid];
 }
 
-static inline void sdp_free_skb(struct sk_buff *skb)
-{
-	if (unlikely(skb_shinfo(skb)->nr_frags))
-		atomic_sub(skb_shinfo(skb)->nr_frags, &sdp_current_mem_usage);
-
-	__kfree_skb(skb);
-}
-
 static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
-		gfp_t gfp)
+		gfp_t gfp, int kind)
 {
 	struct sk_buff *skb;
 
@@ -645,7 +627,9 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
 
 	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
 	if (skb) {
-		if (sk_wmem_schedule(sk, skb->truesize)) {
+
+		if ((kind == SK_MEM_RECV && sk_rmem_schedule(sk, skb->truesize)) ||
+				(kind == SK_MEM_SEND && sk_wmem_schedule(sk, skb->truesize))) {
 			/*
 			 * Make sure that we have exactly size bytes
 			 * available to the caller, no more, no less.
@@ -674,7 +658,7 @@ static inline struct sk_buff *sdp_alloc_skb(struct sock *sk, u8 mid, int size,
 			gfp = GFP_KERNEL;
 	}
 
-	skb = sdp_stream_alloc_skb(sk, size, gfp);
+	skb = sdp_stream_alloc_skb(sk, size, gfp, SK_MEM_SEND);
 	if (unlikely(!skb))
 		return NULL;
 
