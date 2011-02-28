@@ -326,9 +326,9 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 	unsigned int __i;                                       \
 	for_each_possible_cpu(__i) {                            \
 		unsigned int __j;				\
-		u32 *h = per_cpu(sdpstats, __i).hist;		\
+		u32 *hh = per_cpu(sdpstats, __i).hist;		\
 		for (__j = 0; __j < hist_len; __j++) { 		\
-			sum[__j] += h[__j];			\
+			sum[__j] += hh[__j];			\
 		} \
 	} 							\
 })
