@@ -144,8 +144,10 @@ static void sdp_sock_rfree(struct sk_buff *skb)
 
 static int sdp_post_recv(struct sdp_sock *ssk)
 {
+	struct sock *sk = sk_ssk(ssk);
 	struct sdp_buf *rx_req;
-	int i, rc, frags;
+	int i, frags;
+	int rc = 0;
 	u64 addr;
 	struct ib_device *dev;
 	struct ib_recv_wr rx_wr = { NULL };
@@ -198,6 +200,12 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		++skb_shinfo(skb)->nr_frags;
 	}
 	skb->truesize += ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD);
+	if (!sk_rmem_schedule(sk, ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD))) {
+		sdp_dbg(sk, "RX couldn't post, rx posted = %d.",
+				rx_ring_posted(sdp_sk(sk)));
+		sdp_dbg(sk, "Out of memory\n");
+		goto err;
+	}
 
 	dev = ssk->ib_device;
 	addr = ib_dma_map_single(dev, h, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
@@ -248,7 +256,9 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 err:
 	sdp_cleanup_sdp_buf(ssk, rx_req, SDP_SKB_HEAD_SIZE, DMA_FROM_DEVICE);
 	__kfree_skb(skb);
-	sdp_reset(sk_ssk(ssk));
+
+	if (rc)
+		sdp_reset(sk_ssk(ssk));
 	return -1;
 }
 
