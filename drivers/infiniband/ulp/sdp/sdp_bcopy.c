@@ -216,13 +216,13 @@ again:
 	}
 
 	if (unlikely((ssk->sa_post_rdma_rd_compl || ssk->sa_post_sendsm) && 
-			tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
-		sdp_warn(sk, "Run out of credits, can't abort SrcAvail. "
+			tx_credits(ssk) < SDP_MIN_TX_CREDITS)) {
+		sdp_dbg_data(sk, "Run out of credits, can't abort SrcAvail. "
 			"RdmaRdCompl: %d SendSm: %d\n",
 			ssk->sa_post_rdma_rd_compl, ssk->sa_post_sendsm);
 	}
 
-	if (ssk->sa_post_rdma_rd_compl && tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+	if (ssk->sa_post_rdma_rd_compl && tx_credits(ssk) >= SDP_MIN_TX_CREDITS) {
 		int unreported = ssk->sa_post_rdma_rd_compl;
 
 		skb = sdp_alloc_skb_rdmardcompl(sk, unreported, 0);
@@ -233,7 +233,7 @@ again:
 		ssk->sa_post_rdma_rd_compl = 0;
 	}
 
-	if (ssk->sa_post_sendsm && tx_credits(ssk) > SDP_MIN_TX_CREDITS) {
+	if (ssk->sa_post_sendsm && tx_credits(ssk) >= SDP_MIN_TX_CREDITS) {
 		skb = sdp_alloc_skb_sendsm(sk, 0);
 		if (unlikely(!skb))
 			goto no_mem;
@@ -243,7 +243,7 @@ again:
 	}
 
 	if (ssk->recv_request &&
-	    ring_tail(ssk->rx_ring) >= ssk->recv_request_head &&
+	    ring_tail(ssk->rx_ring) >= SDP_MIN_TX_CREDITS &&
 	    tx_credits(ssk) >= min_credits &&
 	    sdp_tx_ring_slots_left(ssk)) {
 		skb = sdp_alloc_skb_chrcvbuf_ack(sk,
@@ -297,7 +297,7 @@ again:
 	 * payload. */
 	if (unlikely(ssk->sdp_disconnect) &&
 			!sk->sk_send_head &&
-			tx_credits(ssk) > 1) {
+			tx_credits(ssk) >= SDP_MIN_TX_CREDITS) {
 		skb = sdp_alloc_skb_disconnect(sk, gfp);
 		if (!skb)
 			goto no_mem;
