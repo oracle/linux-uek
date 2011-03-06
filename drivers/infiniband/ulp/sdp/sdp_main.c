@@ -2405,17 +2405,8 @@ skip_copy:
 
 
 		if (rx_sa && !(flags & MSG_PEEK)) {
-
-			if (likely(tx_credits(ssk) > (SDP_MIN_TX_CREDITS + 2))) {
-				sdp_post_rdma_rd_compl(sk, rx_sa);
-				sdp_post_sends(ssk, 0);
-			} else {
-				sdp_dbg_data(sk, "Run out of credits. Aborting RX "
-					"SrcAvail - or else won't be able to "
-					"send RdmaRdCompl/SendSM\n");
-				sdp_abort_rx_srcavail(sk, 1);
-				rx_sa = NULL;
-			}
+			sdp_post_rdma_rd_compl(sk, rx_sa);
+			sdp_post_sends(ssk, 0);
 		}
 
 		if (!rx_sa && offset < skb->len)

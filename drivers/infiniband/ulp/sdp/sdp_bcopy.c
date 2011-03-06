@@ -190,10 +190,6 @@ int sdp_post_sends(struct sdp_sock *ssk, gfp_t gfp)
 	struct sk_buff *skb;
 	int post_count = 0;
 	struct sock *sk = sk_ssk(ssk);
-	int min_credits = SDP_MIN_TX_CREDITS;
-
-	if (ssk->rx_sa)
-		min_credits += 2; /* Save 2 credits, one for RdmaRdCompl and one for SendSM */
 
 	if (unlikely(!ssk->id)) {
 		if (sk->sk_send_head) {
@@ -208,7 +204,7 @@ again:
 		sdp_xmit_poll(ssk, 1);
 
 	/* Run out of credits, check if got a credit update */
-	if (unlikely(tx_credits(ssk) <= min_credits)) {
+	if (unlikely(tx_credits(ssk) <= SDP_MIN_TX_CREDITS)) {
 		sdp_poll_rx_cq(ssk);
 
 		if (unlikely(sdp_should_rearm(sk) || !posts_handler(ssk)))
@@ -244,7 +240,7 @@ again:
 
 	if (ssk->recv_request &&
 	    ring_tail(ssk->rx_ring) >= SDP_MIN_TX_CREDITS &&
-	    tx_credits(ssk) >= min_credits &&
+	    tx_credits(ssk) >= SDP_MIN_TX_CREDITS &&
 	    sdp_tx_ring_slots_left(ssk)) {
 		skb = sdp_alloc_skb_chrcvbuf_ack(sk,
 				ssk->recv_frags * PAGE_SIZE, gfp);
@@ -255,14 +251,14 @@ again:
 		post_count++;
 	}
 
-	if (tx_credits(ssk) <= min_credits &&
+	if (tx_credits(ssk) <= SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(ssk) &&
 	       sk->sk_send_head &&
 		sdp_nagle_off(ssk, sk->sk_send_head)) {
 		SDPSTATS_COUNTER_INC(send_miss_no_credits);
 	}
 
-	while (tx_credits(ssk) > min_credits &&
+	while (tx_credits(ssk) > SDP_MIN_TX_CREDITS &&
 	       sdp_tx_ring_slots_left(ssk) &&
 	       (skb = sk->sk_send_head) &&
 		sdp_nagle_off(ssk, skb)) {
