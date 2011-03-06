@@ -700,7 +700,15 @@ static int sdp_ssk_hist_seq_show(struct seq_file *seq, void *v)
 			sk, sdp_state_str(sk->sk_state),
 			ssk->hst_idx, ARRAY_SIZE(ssk->hst));
 
-	for (i = 0; i < ssk->hst_idx; ++i) {
+	seq_printf(seq, "rmem: %d wmem: %d wqueue: %d "
+			"fw: %d prot->alloc: %d\n",
+			atomic_read(&sk->sk_rmem_alloc),
+			atomic_read(&sk->sk_wmem_alloc),
+			sk->sk_wmem_queued,
+			sk->sk_forward_alloc,
+			atomic_read(sk->sk_prot->memory_allocated));
+			
+	for (i = 0; i < min(ssk->hst_idx, ARRAY_SIZE(ssk->hst)); ++i) {
 		struct sdp_sock_hist *hst = &ssk->hst[i];
 		char *ref_str = reftype2str(hst->ref_type);
 
