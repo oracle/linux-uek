@@ -137,8 +137,6 @@ static inline int sdp_nagle_off(struct sdp_sock *ssk, struct sk_buff *skb)
 			sdp_dbg_data(sk_ssk(ssk), "Starting nagle timer\n");
 		}
 	}
-	sdp_dbg_data(sk_ssk(ssk), "send_now = %d last_unacked = %u\n",
-		send_now, ssk->nagle_last_unacked);
 
 	return send_now;
 }

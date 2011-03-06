@@ -880,7 +880,6 @@ static inline void sdp_arm_rx_cq(struct sock *sk)
 		return;
 
 	SDPSTATS_COUNTER_INC(rx_int_arm);
-	sdp_dbg_data(sk, "Arming RX cq\n");
 
 	sdp_postpone_rx_timer(sdp_sk(sk));
 

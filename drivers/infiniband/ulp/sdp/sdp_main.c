@@ -2553,13 +2553,10 @@ static unsigned int sdp_poll(struct file *file, struct socket *socket,
 	unsigned int	mask;
 	struct sock	*sk  = socket->sk;
 
-	sdp_dbg_data(sk, "%s\n", __func__);
-
 	lock_sock(sk);
 	sdp_sk(sk)->cpu = smp_processor_id();
 
 	if (sk->sk_state == TCP_ESTABLISHED) {
-		sdp_prf(sk, NULL, "posting\n");
 		sdp_do_posts(sdp_sk(sk));
 	}
 	mask = datagram_poll(file, socket, wait);

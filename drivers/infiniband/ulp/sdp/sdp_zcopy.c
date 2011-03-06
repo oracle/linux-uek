@@ -195,7 +195,6 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 				tx_sa->abort_flags &&
 				ssk->rx_sa &&
 				(tx_sa->bytes_acked < tx_sa->bytes_sent));
-		sdp_prf(sk_ssk(ssk), NULL, "woke up sleepers");
 
 		posts_handler_get(ssk);
 
