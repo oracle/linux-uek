@@ -2043,6 +2043,9 @@ fin:
 		sdp_dbg(sk, "can't send anymore\n");
 	}
 
+
+	sk_mem_reclaim(sk);
+
 	release_sock(sk);
 
 	return err;
@@ -2466,6 +2469,9 @@ out:
 		sdp_set_error(sk, err);
 		sdp_dbg(sk, "data won't be available anymore\n");
 	}
+
+
+	sk_mem_reclaim(sk);
 
 	release_sock(sk);
 	sdp_dbg_data(sk, "recvmsg finished. ret = %d\n", err);

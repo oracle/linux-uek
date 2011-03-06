@@ -709,6 +709,9 @@ int sdp_poll_rx_cq(struct sdp_sock *ssk)
 
 	if (wc_processed) {
 		sdp_prf(sk_ssk(ssk), NULL, "processed %d", wc_processed);
+
+		sk_mem_reclaim(sk_ssk(ssk));
+
 		sdp_bzcopy_write_space(ssk);
 	}
 
