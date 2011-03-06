@@ -473,7 +473,6 @@ struct sdp_sock {
 	struct ib_qp *qp;
 
 	/* SDP slow start */
-	int rcvbuf_scale; 	/* local recv buf scale for each socket */
 	int sent_request_head; 	/* mark the tx_head of the last send resize
 				   request */
 	int sent_request; 	/* 0 - not sent yet, 1 - request pending

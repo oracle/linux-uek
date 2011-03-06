@@ -37,8 +37,6 @@
 
 SDP_MODPARAM_INT(rcvbuf_initial_size, 32 * 1024,
 		"Receive buffer initial size in bytes.");
-SDP_MODPARAM_SINT(rcvbuf_scale, 0x10,
-		"Receive buffer size scale factor.");
 
 #ifdef CONFIG_PPC
 SDP_MODPARAM_SINT(max_large_sockets, 100,
@@ -357,7 +355,6 @@ static int sdp_get_recv_sges(struct sdp_sock *ssk, u32 new_size)
 int sdp_init_buffers(struct sdp_sock *ssk, u32 new_size)
 {
 	ssk->recv_frags = sdp_get_recv_sges(ssk, new_size);
-	ssk->rcvbuf_scale = rcvbuf_scale;
 
 	sdp_post_recvs(ssk);
 
@@ -371,7 +368,6 @@ int sdp_resize_buffers(struct sdp_sock *ssk, u32 new_size)
 
 	if (new_size > curr_size && new_size <= max_size &&
 	    sdp_get_large_socket(ssk)) {
-		ssk->rcvbuf_scale = rcvbuf_scale;
 		ssk->recv_frags = sdp_get_recv_sges(ssk, new_size);
 		return 0;
 	} else
