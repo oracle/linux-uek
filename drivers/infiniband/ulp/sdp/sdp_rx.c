@@ -181,7 +181,7 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 	sdp_prf(sk_ssk(ssk), skb, "Posting skb");
 	h = (struct sdp_bsdh *)skb->head;
 
-	rx_req = ssk->rx_ring.buffer + (id & (SDP_RX_SIZE - 1));
+	rx_req = ssk->rx_ring.buffer + (id & (sdp_rx_size - 1));
 	rx_req->skb = skb;
 
 	for (i = 0; i < ssk->recv_frags; ++i) {
@@ -271,7 +271,7 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 	if (unlikely(!ssk->qp_active))
 		return 0;
 
-	if  (likely(posted >= SDP_RX_SIZE))
+	if  (likely(posted >= sdp_rx_size))
 		return 0;
 
 	if (unlikely(posted < SDP_MIN_TX_CREDITS))
@@ -459,7 +459,7 @@ static struct sk_buff *sdp_recv_completion(struct sdp_sock *ssk, int id, int len
 	}
 
 	dev = ssk->ib_device;
-	rx_req = &ssk->rx_ring.buffer[id & (SDP_RX_SIZE - 1)];
+	rx_req = &ssk->rx_ring.buffer[id & (sdp_rx_size - 1)];
 	skb = rx_req->skb;
 	sdp_reuse_sdp_buf(ssk, rx_req, len);
 
@@ -849,7 +849,7 @@ static void sdp_rx_ring_purge(struct sdp_sock *ssk)
 		__kfree_skb(skb);
 	}
 
-	for (id = 0; id < SDP_RX_SIZE; id++) {
+	for (id = 0; id < sdp_rx_size; id++) {
 		struct sdp_buf *sbuf = &ssk->rx_ring.buffer[id];
 
 		for (i = 1; i < SDP_MAX_SEND_SGES; i++) {
@@ -886,17 +886,17 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 	atomic_set(&ssk->rx_ring.tail, 1);
 
 	ssk->rx_ring.buffer = kzalloc(
-			sizeof *ssk->rx_ring.buffer * SDP_RX_SIZE, GFP_KERNEL);
+			sizeof *ssk->rx_ring.buffer * sdp_rx_size, GFP_KERNEL);
 	if (!ssk->rx_ring.buffer) {
 		sdp_warn(sk_ssk(ssk),
 			"Unable to allocate RX Ring size %zd.\n",
-			 sizeof(*ssk->rx_ring.buffer) * SDP_RX_SIZE);
+			 sizeof(*ssk->rx_ring.buffer) * sdp_rx_size);
 
 		return -ENOMEM;
 	}
 
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
-			  sk_ssk(ssk), SDP_RX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
+			  sk_ssk(ssk), sdp_rx_size, IB_CQ_VECTOR_LEAST_ATTACHED);
 
 	if (IS_ERR(rx_cq)) {
 		rc = PTR_ERR(rx_cq);

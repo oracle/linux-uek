@@ -69,8 +69,8 @@
 #define SDP_FIN_WAIT_TIMEOUT (60 * HZ) /* like TCP_FIN_TIMEOUT */
 #define SDP_CMA_TIMEWAIT_TIMEOUT (150 * HZ)
 
+extern int sdp_rx_size;
 #define SDP_TX_SIZE 0x40
-#define SDP_RX_SIZE 0x40
 #define SDP_DEF_INLINE_THRESH 256
 
 #define SDP_FMR_SIZE (MIN(0x1000, PAGE_SIZE) / sizeof(u64))
