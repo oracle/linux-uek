@@ -282,6 +282,9 @@ static inline int sdp_post_recvs_needed(struct sdp_sock *ssk)
 		return 0;
 	}
 
+	if (atomic_read(&sk->sk_rmem_alloc) >= sk->sk_prot->sysctl_rmem[2])
+		return 0;
+
 	return 1;
 }
 
