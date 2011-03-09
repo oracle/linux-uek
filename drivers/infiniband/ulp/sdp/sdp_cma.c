@@ -455,7 +455,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 				ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0xFFFF),
 						addr4->sin_addr.s_addr);
 			} else {
-				inet6_sk(sk)->rcv_saddr = inet6_sk(sk)->rcv_saddr = addr6->sin6_addr;
+				inet6_sk(sk)->rcv_saddr = addr6->sin6_addr;
 			}
 			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr;
 		}
