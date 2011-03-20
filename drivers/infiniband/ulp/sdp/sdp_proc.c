@@ -510,25 +510,26 @@ out:
 static void *sdpprf_start(struct seq_file *p, loff_t *pos)
 {
 	int idx = *pos;
+	struct sdpprf_log *l = NULL;
 
-	if (!*pos) {
-		if (!atomic_read(&sdpprf_log_count))
+	if (!*pos && !atomic_read(&sdpprf_log_count))
 			return SEQ_START_TOKEN;
-	}
+	if (*pos >= atomic_read(&sdpprf_log_count))
+		return NULL;
 
-	if (atomic_read(&sdpprf_log_count) > 0 && 
+	if (atomic_read(&sdpprf_log_count) > 0 &&
 			*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE))
 		return NULL;
 
-	if (atomic_read(&sdpprf_log_count) >= SDPPRF_LOG_SIZE - 1) {
-		int off = atomic_read(&sdpprf_log_count) & (SDPPRF_LOG_SIZE - 1);
-		idx = (idx + off) & (SDPPRF_LOG_SIZE - 1);
+	if (atomic_read(&sdpprf_log_count) > SDPPRF_LOG_SIZE)
+		idx = atomic_read(&sdpprf_log_count) - SDPPRF_LOG_SIZE;
 
-	}
+	l = &sdpprf_log[idx & (SDPPRF_LOG_SIZE - 1)];
 
-	if (!start_t)
-		start_t = sdpprf_log[idx].time;
-	return &sdpprf_log[idx];
+	if (*pos == 0)
+		start_t = l->time;
+
+	return l;
 }
 
 static void *sdpprf_next(struct seq_file *p, void *v, loff_t *pos)
@@ -540,7 +541,7 @@ static void *sdpprf_next(struct seq_file *p, void *v, loff_t *pos)
 		return NULL;
 
 	++l;
-	if (l - &sdpprf_log[0] >= SDPPRF_LOG_SIZE - 1)
+	if (l - &sdpprf_log[0] >= SDPPRF_LOG_SIZE)
 		return &sdpprf_log[0];
 
 	return l;
@@ -708,7 +709,7 @@ static int sdp_ssk_hist_seq_show(struct seq_file *seq, void *v)
 			sk->sk_wmem_queued,
 			sk->sk_forward_alloc,
 			atomic_read(sk->sk_prot->memory_allocated));
-			
+
 	for (i = 0; i < min(ssk->hst_idx, ARRAY_SIZE(ssk->hst)); ++i) {
 		struct sdp_sock_hist *hst = &ssk->hst[i];
 		char *ref_str = reftype2str(hst->ref_type);
@@ -767,7 +768,7 @@ int sdp_ssk_hist_open(struct sock *sk)
 
 	sdp_ssk_hist_name(sk_name, sizeof(sk_name), sk);
 
-	ssk->hst_dentr = debugfs_create_file(sk_name, S_IRUGO | S_IWUGO, 
+	ssk->hst_dentr = debugfs_create_file(sk_name, S_IRUGO | S_IWUGO,
 			sdp_dbgfs_base, sk, &ssk_hist_fops);
 	if (IS_ERR(ssk->hst_dentr)) {
 		ret = PTR_ERR(ssk->hst_dentr);
@@ -845,7 +846,7 @@ int __init sdp_proc_init(void)
 #endif
 
 #ifdef SDP_PROFILING
-	sdp_prof_file = debugfs_create_file(PROC_SDP_PERF, S_IRUGO | S_IWUGO, 
+	sdp_prof_file = debugfs_create_file(PROC_SDP_PERF, S_IRUGO | S_IWUGO,
 			sdp_dbgfs_base, NULL, &sdpprf_fops);
 	if (!sdp_prof_file)
 		goto no_mem_prof;

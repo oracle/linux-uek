@@ -64,7 +64,7 @@ extern struct sdpprf_log sdpprf_log[SDPPRF_LOG_SIZE];
 extern atomic_t sdpprf_log_count;
 
 #define _sdp_prf(sk, s, _func, _line, format, arg...) ({ \
-	int idx = atomic_add_return(1, &sdpprf_log_count); \
+	int idx = atomic_add_return(1, &sdpprf_log_count) - 1; \
 	struct sdpprf_log *l = \
 		&sdpprf_log[idx & (SDPPRF_LOG_SIZE - 1)]; \
 	preempt_disable(); \
