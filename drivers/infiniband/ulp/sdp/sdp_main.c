@@ -1907,6 +1907,8 @@ static int sdp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
 			sdp_dbg_data(sk, "ZCopied: 0x%x/0x%x\n", zcopied, seglen);
 		}
 
+		SDPSTATS_COUNTER_INC(sendmsg_bcopy_segment);
+
 		while (seglen > 0) {
 			int copy;
 
@@ -2301,7 +2303,9 @@ sdp_mid_data:
 
 		if (poll_recv_cq(sk)) {
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
-			if (remote_credits(ssk) < SDP_MIN_TX_CREDITS) {
+			posts_handler_put(ssk, 0);
+
+			if (remote_credits(ssk) <= SDP_MIN_TX_CREDITS) {
 				/* Remote host can not send, so there is no
 				 * point of waiting for data.
 				 * This situation is possible if current host
@@ -2312,10 +2316,10 @@ sdp_mid_data:
 					copied = -ENOMEM;
 					sdp_warn(sk, "out of credits\n");
 				}
+				posts_handler_get(ssk);
 				break;
 			}
 
-			posts_handler_put(ssk, 0);
 			sk_wait_data(sk, &timeo);
 			posts_handler_get(ssk);
 
