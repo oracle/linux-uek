@@ -87,8 +87,8 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 
 	ssk->tx_packets++;
 
-	if (h->mid != SDP_MID_SRCAVAIL && 
-			h->mid != SDP_MID_DATA && 
+	if (h->mid != SDP_MID_SRCAVAIL &&
+			h->mid != SDP_MID_DATA &&
 			h->mid != SDP_MID_SRCAVAIL_CANCEL) {
 		struct sock *sk = sk_ssk(ssk);
 
@@ -257,7 +257,7 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 	if (likely(!wc->status) || wc->status == IB_WC_WR_FLUSH_ERR)
 		return;
 
-	sdp_warn(sk, "Send completion with error. wr_id 0x%llx Status %d\n", 
+	sdp_warn(sk, "Send completion with error. wr_id 0x%llx Status %d\n",
 			wc->wr_id, wc->status);
 
 	sdp_set_error(sk, -ECONNRESET);

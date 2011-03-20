@@ -211,7 +211,7 @@ again:
 			sdp_arm_rx_cq(sk);
 	}
 
-	if (unlikely((ssk->sa_post_rdma_rd_compl || ssk->sa_post_sendsm) && 
+	if (unlikely((ssk->sa_post_rdma_rd_compl || ssk->sa_post_sendsm) &&
 			tx_credits(ssk) < SDP_MIN_TX_CREDITS)) {
 		sdp_dbg_data(sk, "Run out of credits, can't abort SrcAvail. "
 			"RdmaRdCompl: %d SendSm: %d\n",

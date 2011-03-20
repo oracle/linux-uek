@@ -448,7 +448,7 @@ static int sdp_alloc_fmr(struct sock *sk, void *uaddr, size_t len,
 			unsigned len2;
 			len2 = ib_sg_dma_len(dev,
 					&chunk->page_list[j]) >> PAGE_SHIFT;
-			
+
 			SDP_WARN_ON(len2 > len);
 			len -= len2;
 

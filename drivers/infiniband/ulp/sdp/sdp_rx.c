@@ -431,7 +431,7 @@ static void sdp_reuse_sdp_buf(struct sdp_sock *ssk, struct sdp_buf *sbuf, int le
 			int count = min(PAGE_SIZE, SDP_MAX_PAYLOAD) *
 				(skb_shinfo(skb)->nr_frags - i);
 			skb->truesize -= count;
-			
+
 			skb_shinfo(skb)->nr_frags = i;
 			bytes_reused += count;
 			break;

@@ -181,7 +181,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 			addr_len = sizeof(*addr6);
 		}
 	}
-		else 
+		else
 #endif
 	{
 
@@ -588,8 +588,8 @@ static void sdp_destruct(struct sock *sk)
 	sk_mem_reclaim(sk);
 
 	if (sk->sk_wmem_queued || atomic_read(&sk->sk_rmem_alloc) || sk->sk_forward_alloc) {
-		sdp_warn(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x proto: 0x%x\n", 
-				sk->sk_wmem_queued, atomic_read(&sk->sk_rmem_alloc), sk->sk_forward_alloc,  
+		sdp_warn(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x proto: 0x%x\n",
+				sk->sk_wmem_queued, atomic_read(&sk->sk_rmem_alloc), sk->sk_forward_alloc,
 				atomic_read(sk->sk_prot->memory_allocated));
 	}
 
@@ -803,7 +803,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 	int rc;
 	int addr_type;
 
-	if (addr_len < SIN6_LEN_RFC2133) 
+	if (addr_len < SIN6_LEN_RFC2133)
 		return -EINVAL;
 
 	if (uaddr->sa_family == AF_INET6_SDP)
@@ -816,7 +816,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
   	 *	connect() to INADDR_ANY means loopback (BSD'ism).
   	 */
   	if(ipv6_addr_any(&usin->sin6_addr))
-		usin->sin6_addr.s6_addr[15] = 0x1; 
+		usin->sin6_addr.s6_addr[15] = 0x1;
 
 	addr_type = ipv6_addr_type(&usin->sin6_addr);
 
@@ -870,7 +870,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 }
 #endif
 
-static int sdp_ipv4_connect(struct sock *sk, struct sockaddr_storage *saddr, 
+static int sdp_ipv4_connect(struct sock *sk, struct sockaddr_storage *saddr,
 		struct sockaddr *uaddr, int addr_len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
@@ -1452,7 +1452,7 @@ static int sdp_setsockopt(struct sock *sk, int level, int optname,
 		}
 		break;
 	case SDP_ZCOPY_THRESH:
-		if (val != 0 && (val < SDP_MIN_ZCOPY_THRESH || 
+		if (val != 0 && (val < SDP_MIN_ZCOPY_THRESH ||
 					val > SDP_MAX_ZCOPY_THRESH))
 			err = -EINVAL;
 		else
@@ -1523,7 +1523,7 @@ static int sdp_getsockopt(struct sock *sk, int level, int optname,
 static inline int cycles_before(cycles_t a, cycles_t b)
 {
 	/* cycles_t is unsigned, but may be int/long/long long. */
-	 
+
 	if (sizeof(cycles_t) == 4)
 		return before(a, b);
 	else
@@ -2460,7 +2460,7 @@ out:
 	posts_handler_put(ssk, SDP_RX_ARMING_DELAY);
 
 	sdp_auto_moderation(ssk);
-	
+
 	if (!err && !ssk->qp_active) {
 		err = -EPIPE;
 		sdp_set_error(sk, err);

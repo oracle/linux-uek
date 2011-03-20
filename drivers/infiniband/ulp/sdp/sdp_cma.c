@@ -192,7 +192,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	if (inet6_sk(sk)) {
 		struct ipv6_pinfo *newnp;
-	       
+
 		newnp = inet_sk(child)->pinet6 = sdp_inet6_sk_generic(child);
 
 		memcpy(newnp, inet6_sk(sk), sizeof(struct ipv6_pinfo));
@@ -209,7 +209,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 			ipv6_addr_copy(&newnp->rcv_saddr, &newnp->saddr);
 		} else if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV6) {
 			struct sockaddr_in6 *dst_addr6 = (struct sockaddr_in6 *)dst_addr;
-			struct sockaddr_in6 *src_addr6 = 
+			struct sockaddr_in6 *src_addr6 =
 				(struct sockaddr_in6 *)&id->route.addr.src_addr;
 
 			ipv6_addr_copy(&newnp->daddr, &dst_addr6->sin6_addr);
@@ -220,7 +220,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 		}
 
 		inet_daddr(child) =inet_saddr(child) = inet_rcv_saddr(child) = LOOPBACK4_IPV6;
-	} else 
+	} else
 #endif
 	{
 		inet_daddr(child) = dst_addr->sin_addr.s_addr;
@@ -436,7 +436,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		hh.bsdh.mid = SDP_MID_HELLO;
 		hh.bsdh.len = htonl(sizeof(struct sdp_hh));
 		hh.max_adverts = 1;
-	
+
 		hh.majv_minv = SDP_MAJV_MINV;
 		sdp_init_buffers(sdp_sk(sk), rcvbuf_initial_size);
 		hh.bsdh.bufs = htons(rx_ring_posted(sdp_sk(sk)));
@@ -459,7 +459,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			}
 			inet6_sk(sk)->saddr = inet6_sk(sk)->rcv_saddr;
 		}
-			else 
+			else
 #endif
 		{
 			inet_saddr(sk) = inet_rcv_saddr(sk) =
@@ -489,7 +489,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
 		sdp_warn(sk, "alt route resolve error\n");
 		break;
-		
+
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		rc = -ETIMEDOUT;
 		break;
