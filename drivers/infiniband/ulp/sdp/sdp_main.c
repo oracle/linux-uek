@@ -3006,6 +3006,7 @@ static void __exit sdp_exit(void)
 	percpu_counter_destroy(orphan_count);
 
 	kfree(orphan_count);
+	kfree(sockets_allocated);
 }
 
 module_init(sdp_init);
