@@ -3004,6 +3004,7 @@ static void __exit sdp_exit(void)
 	ib_unregister_client(&sdp_client);
 
 	percpu_counter_destroy(orphan_count);
+	percpu_counter_destroy(sockets_allocated);
 
 	kfree(orphan_count);
 	kfree(sockets_allocated);
