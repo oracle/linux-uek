@@ -1360,7 +1360,7 @@ static inline void sdp_push_pending_frames(struct sock *sk)
 
 /* SOL_SOCKET level options are handled by sock_setsockopt */
 static int sdp_setsockopt(struct sock *sk, int level, int optname,
-			  char __user *optval, int optlen)
+			  char __user *optval, unsigned optlen)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 	int val;
