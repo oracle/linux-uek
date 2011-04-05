@@ -392,7 +392,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	struct sdp_hah hah;
 	struct sdp_hh hh;
 
-	int rc = 0;
+	int rc = 0, rc2;
 
 	sk = id->context;
 	if (!sk) {
@@ -481,7 +481,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		if (sdp_apm_enable) {
 			rc = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
 			if (rc)
-				sdp_warn(sk, "APM couldn't be enabled: %d\n", rc);
+				sdp_warn(sk, "APM couldn't be enabled for active side: %d\n", rc);
 		}
 
 		rc = rdma_connect(id, &conn_param);
@@ -530,6 +530,10 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			id->qp = NULL;
 			id->context = NULL;
 			parent = sdp_sk(child)->parent; /* TODO: hold ? */
+		} else if (sdp_apm_enable) {
+				rc2 = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
+				if (rc2)
+					sdp_warn(sk, "APM couldn't be enabled for passive side: %d\n", rc2);
 		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
@@ -537,8 +541,14 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		if (rc) {
 			sdp_dbg(sk, "Destroying qp\n");
 			rdma_reject(id, NULL, 0);
-		} else
+		} else {
 			rc = rdma_accept(id, NULL);
+			if (!rc && sdp_apm_enable) {
+				rc2 = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
+				if (rc2)
+					sdp_warn(sk, "APM couldn't be enabled for passive side:%d \n", rc2);
+			}
+		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 		rc = -ETIMEDOUT;
