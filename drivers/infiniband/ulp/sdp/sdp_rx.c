@@ -612,7 +612,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	}
 
 	sdp_prf(sk, NULL, "queueing %s skb", mid2str(h->mid));
-	skb = sdp_sock_queue_rcv_skb(sk, skb);
+	sdp_sock_queue_rcv_skb(sk, skb);
 
 	return 0;
 }

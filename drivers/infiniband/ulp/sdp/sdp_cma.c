@@ -74,11 +74,16 @@ static int sdp_get_max_dev_sge(struct ib_device *dev)
 {
 	struct ib_device_attr attr;
 	static int max_sges = -1;
+	int rc;
 
 	if (max_sges > 0)
 		goto out;
 
-	ib_query_device(dev, &attr);
+	rc = ib_query_device(dev, &attr);
+	if (rc) {
+		sdp_warn(NULL, "ib_query_device failed: %d\n", rc);
+		goto out;
+	}
 
 	max_sges = attr.max_sge;
 

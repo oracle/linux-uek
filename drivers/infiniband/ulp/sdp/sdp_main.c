@@ -2954,9 +2954,16 @@ static int __init sdp_init(void)
 
 	sdp_proc_init();
 
-	ib_register_client(&sdp_client);
+	rc = ib_register_client(&sdp_client);
+	if (rc) {
+		printk(KERN_WARNING "ib_register_client failed: %d\n", rc);
+		goto error_ib_reg;
+	}
 
 	return 0;
+
+error_ib_reg:
+	sdp_proc_unregister();
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 error_sock_reg6:
