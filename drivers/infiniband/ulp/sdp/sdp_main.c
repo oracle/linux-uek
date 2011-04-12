@@ -2305,21 +2305,6 @@ sdp_mid_data:
 			sdp_dbg_data(sk, "sk_wait_data %ld\n", timeo);
 			posts_handler_put(ssk, 0);
 
-			if (remote_credits(ssk) <= SDP_MIN_TX_CREDITS) {
-				/* Remote host can not send, so there is no
-				 * point of waiting for data.
-				 * This situation is possible if current host
-				 * can not send credits-update due to lack of
-				 * memory.
-				 */
-				if (!copied) {
-					copied = -ENOMEM;
-					sdp_warn(sk, "out of credits\n");
-				}
-				posts_handler_get(ssk);
-				break;
-			}
-
 			sk_wait_data(sk, &timeo);
 			posts_handler_get(ssk);
 
