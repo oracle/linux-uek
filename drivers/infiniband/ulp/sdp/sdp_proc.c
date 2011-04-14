@@ -485,12 +485,23 @@ static inline void remove_newline(char *s)
 	}
 }
 
+static int inline sdpprf_first_idx(int count)
+{
+	return max(0, count - SDPPRF_LOG_SIZE) & (SDPPRF_LOG_SIZE - 1);
+}
+
 static int sdpprf_show(struct seq_file *m, void *v)
 {
 	struct sdpprf_log *l = v;
 	unsigned long usec_rem, t;
+	int count = atomic_read(&sdpprf_log_count);
+	int first = sdpprf_first_idx(count);
+	int idx = l - &sdpprf_log[0];
 
-	if (!atomic_read(&sdpprf_log_count)) {
+	if (idx == first)
+		seq_printf(m, "Num log entries: %d\n", count);
+
+	if (!count) {
 		seq_printf(m, "No performance logs\n");
 		goto out;
 	}
@@ -509,25 +520,20 @@ out:
 
 static void *sdpprf_start(struct seq_file *p, loff_t *pos)
 {
-	int idx = *pos;
+	int count = atomic_read(&sdpprf_log_count);
+	int first = sdpprf_first_idx(count);
 	struct sdpprf_log *l = NULL;
 
-	if (!*pos && !atomic_read(&sdpprf_log_count))
-			return SEQ_START_TOKEN;
-	if (*pos >= atomic_read(&sdpprf_log_count))
+	if (!count)
+		return SEQ_START_TOKEN;
+
+	if (*pos >= MIN(count, SDPPRF_LOG_SIZE))
 		return NULL;
 
-	if (atomic_read(&sdpprf_log_count) > 0 &&
-			*pos >= MIN(atomic_read(&sdpprf_log_count), SDPPRF_LOG_SIZE))
-		return NULL;
+	l = &sdpprf_log[(first + *pos) & (SDPPRF_LOG_SIZE - 1)];
 
-	if (atomic_read(&sdpprf_log_count) > SDPPRF_LOG_SIZE)
-		idx = atomic_read(&sdpprf_log_count) - SDPPRF_LOG_SIZE;
+	start_t = l->time;
 
-	l = &sdpprf_log[idx & (SDPPRF_LOG_SIZE - 1)];
-
-	if (*pos == 0)
-		start_t = l->time;
 
 	return l;
 }

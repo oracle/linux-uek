@@ -131,7 +131,6 @@ extern int sdp_data_debug_level;
 	} while (0)
 #define SDP_DUMP_PACKET(sk, str, skb, h)                     		\
 	do {                                                 		\
-		if (sdp_data_debug_level & 0x1)				\
 			dump_packet(sk, str, skb, h);			\
 	} while (0)
 #else
