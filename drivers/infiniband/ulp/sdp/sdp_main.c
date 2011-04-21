@@ -588,8 +588,10 @@ static void sdp_destruct(struct sock *sk)
 	sk_mem_reclaim(sk);
 
 	if (sk->sk_wmem_queued || atomic_read(&sk->sk_rmem_alloc) || sk->sk_forward_alloc) {
-		sdp_warn(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x proto: 0x%x\n",
-				sk->sk_wmem_queued, atomic_read(&sk->sk_rmem_alloc), sk->sk_forward_alloc,
+		sdp_dbg(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x "
+				"proto: 0x%x\n", sk->sk_wmem_queued,
+				atomic_read(&sk->sk_rmem_alloc),
+				sk->sk_forward_alloc,
 				atomic_read(sk->sk_prot->memory_allocated));
 	}
 
