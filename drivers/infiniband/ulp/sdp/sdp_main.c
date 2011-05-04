@@ -2986,7 +2986,7 @@ static void __exit sdp_exit(void)
 	BUG_ON(!list_empty(&sock_list));
 
 	if (atomic_read(&memory_allocated))
-		printk(KERN_WARNING "SDP detected memory leak. Memory_allocated: %d\n",
+		sdp_dbg(NULL, "SDP detected memory leak. Memory_allocated: %d\n",
 		       atomic_read(&memory_allocated));
 
 	if (percpu_counter_sum(sockets_allocated))
