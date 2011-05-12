@@ -1602,6 +1602,14 @@ struct task_struct {
 #endif
 #ifdef CONFIG_HAVE_HW_BREAKPOINT
 	atomic_t ptrace_bp_refcnt;
+#ifdef CONFIG_DTRACE
+	uint32_t predcache;
+	ktime_t dtrace_vtime;
+	ktime_t dtrace_start;
+	uint8_t dtrace_stop;
+	uint8_t dtrace_sig;
+
+	void *dtrace_helpers;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task *utask;

@@ -312,6 +312,12 @@ ktime_t ktime_get(void)
 }
 EXPORT_SYMBOL_GPL(ktime_get);
 
+ktime_t ktime_get_nongpl(void)
+{
+	return ktime_get();
+}
+EXPORT_SYMBOL(ktime_get_nongpl);
+
 /**
  * ktime_get_ts - get the monotonic clock in timespec format
  * @ts:		pointer to timespec variable

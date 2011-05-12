@@ -70,6 +70,7 @@
 #include <linux/perf_event.h>
 #include <linux/file.h>
 #include <linux/ptrace.h>
+#include <linux/sdt.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -638,6 +639,10 @@ asmlinkage void __init start_kernel(void)
 	}
 
 	ftrace_init();
+
+#if defined(CONFIG_DT_SDT) || defined(CONFIG_DT_SDT_MODULE)
+	dtrace_register_builtins();
+#endif
 
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();

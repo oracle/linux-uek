@@ -324,6 +324,7 @@ static inline void timerfd_clock_was_set(void) { }
 extern void hrtimers_resume(void);
 
 extern ktime_t ktime_get(void);
+extern ktime_t ktime_get_nongpl(void);
 extern ktime_t ktime_get_real(void);
 extern ktime_t ktime_get_boottime(void);
 extern ktime_t ktime_get_monotonic_offset(void);
