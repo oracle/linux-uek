@@ -1,0 +1,70 @@
+#
+# DTrace Configuration
+#
+
+menuconfig DTRACE
+	bool "DTrace (Dynamic Tracing) Support"
+	default y
+	depends on X86_64
+	select KALLSYMS
+	help
+	  To be written.
+
+if DTRACE
+
+config DT_CORE
+	tristate "DTrace core"
+	default m
+	help
+	  To be written.
+
+if DT_CORE
+
+config DT_FASTTRAP
+	tristate "Fasttrap Tracing"
+	default m
+	help
+	  To be written.
+
+config DT_FBT
+	tristate "Function Boundary Tracing"
+	default m
+	help
+	  To be written.
+
+config DT_LOCKSTAT
+	tristate "Lock Statistics"
+	default m
+	help
+	  To be written.
+
+config DT_PROFILE
+	tristate "Profile Interrupt Tracing"
+	default m
+	help
+	  To be written.
+
+config DT_SDT
+	tristate "Statically Defined Tracing"
+	default m
+	select KALLSYMS
+	help
+	  To be written.
+
+config DT_SYSTRACE
+	tristate "System Call Tracing"
+	default m
+	help
+	  To be written.
+
+config DT_DEBUG
+	bool "DTrace debugging"
+	default m
+	help
+	  This controls the inclusion of various piece of code that perform
+	  internal checks within the DTrace core.  It also enables all the
+	  assertions within the DTrace code.
+
+endif	# DT_CORE
+
+endif   #DTRACE

@@ -1068,7 +1068,15 @@ struct task_struct {
 	/* Number of pages to reclaim on returning to userland: */
 	unsigned int			memcg_nr_pages_over_high;
 #endif
+#ifdef CONFIG_DTRACE
+	uint32_t predcache;
+	ktime_t dtrace_vtime;
+	ktime_t dtrace_start;
+	uint8_t dtrace_stop;
+	uint8_t dtrace_sig;
 
+	void *dtrace_helpers;
+#endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task		*utask;
 #endif
