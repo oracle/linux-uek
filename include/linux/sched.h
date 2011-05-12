@@ -1713,6 +1713,14 @@ struct task_struct {
 		int order;
 		unsigned int may_oom:1;
 	} memcg_oom;
+#ifdef CONFIG_DTRACE
+	uint32_t predcache;
+	ktime_t dtrace_vtime;
+	ktime_t dtrace_start;
+	uint8_t dtrace_stop;
+	uint8_t dtrace_sig;
+
+	void *dtrace_helpers;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task *utask;
