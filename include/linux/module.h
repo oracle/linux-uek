@@ -458,6 +458,11 @@ struct module {
 	struct klp_modinfo *klp_info;
 #endif
 
+#if defined(CONFIG_DTRACE) || defined(CONFIG_DTRACE_MODULE)
+	struct sdt_probedesc *sdt_probes;
+	unsigned int num_dtrace_probes;
+#endif
+
 #ifdef CONFIG_MODULE_UNLOAD
 	/* What modules depend on me? */
 	struct list_head source_list;
