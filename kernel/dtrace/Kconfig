@@ -8,8 +8,7 @@ menuconfig DTRACE
 	depends on X86_64
 	select KALLSYMS
 	help
-	  To be written.  Essentially a port of the OpenSolaris DTrace
-	  implementation for Linux.
+	  To be written.
 
 if DTRACE
 
