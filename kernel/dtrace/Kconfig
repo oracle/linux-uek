@@ -8,7 +8,7 @@ menuconfig DTRACE
 	depends on X86_64
 	select KALLSYMS
 	help
-	  To be written.
+	  To be written.  Test 3.
 
 if DTRACE
 
