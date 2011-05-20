@@ -674,7 +674,7 @@ asmlinkage __visible void __init start_kernel(void)
 
 	ftrace_init();
 
-#if defined(CONFIG_DT_SDT) || defined(CONFIG_DT_SDT_MODULE)
+#if defined(CONFIG_DT_SDT)
 	dtrace_register_builtins();
 #endif
 
