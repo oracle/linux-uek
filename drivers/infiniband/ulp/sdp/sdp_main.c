@@ -2775,7 +2775,6 @@ static void sdp_add_device(struct ib_device *device)
 
 	sdp_dev->fmr_pool = ib_create_fmr_pool(sdp_dev->pd, &fmr_param);
 	if (IS_ERR(sdp_dev->fmr_pool)) {
-		printk(KERN_WARNING "Error creating fmr pool\n");
 		sdp_dev->fmr_pool = NULL;
 	}
 
