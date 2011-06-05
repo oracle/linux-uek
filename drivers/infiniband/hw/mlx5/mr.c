@@ -2398,6 +2398,73 @@ struct ib_mr *mlx5_ib_alloc_mr_integrity(struct ib_pd *pd,
 				  max_num_meta_sg);
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct mlx5_ib_shpd {
+	struct ib_shpd ibshpd;
+	u32 pdn;
+};
+
+struct ib_shpd *mlx5_ib_alloc_shpd(struct ib_device *ibdev,
+				   struct ib_pd *pd)
+{
+	struct mlx5_ib_shpd *shpd_p;
+
+	shpd_p = kzalloc(sizeof(*shpd_p), GFP_KERNEL);
+	if (!shpd_p)
+		return ERR_PTR(-ENOMEM);
+
+	shpd_p->pdn = to_mpd(pd)->pdn;
+
+	return &shpd_p->ibshpd;
+}
+
+struct ib_pd *mlx5_ib_share_pd(struct ib_device *ibdev,
+			       struct ib_ucontext *context,
+			       struct ib_udata *udata,
+			       struct ib_shpd *ibshpd)
+{
+	struct mlx5_ib_shpd *shpd_p = container_of(ibshpd, struct mlx5_ib_shpd,
+						   ibshpd);
+	struct mlx5_ib_pd *pd_p;
+
+	pd_p = kzalloc(sizeof(*pd_p), GFP_KERNEL);
+	if (!pd_p)
+		return ERR_PTR(-ENOMEM);
+
+	pd_p->pdn = shpd_p->pdn;
+
+	if (context) {
+		if (ib_copy_to_udata(udata, &pd_p->pdn, sizeof(pd_p->pdn))) {
+			kfree(pd_p);
+			return ERR_PTR(-EFAULT);
+		}
+	}
+
+	return &pd_p->ibpd;
+}
+
+int mlx5_ib_remove_shpd(struct ib_device *ibdev,
+			struct ib_shpd *ibshpd,
+			int atinit)
+{
+	struct mlx5_ib_shpd *shpd_p = container_of(ibshpd, struct mlx5_ib_shpd,
+						   ibshpd);
+
+	/*
+	 * if remove shpd is called during shpd creation time itself, then
+	 * pd should not be freed from device. it will be freed when dealloc_pd
+	 * is called
+	 */
+	if (!atinit)
+		mlx5_core_dealloc_pd(to_mdev(ibdev)->mdev, shpd_p->pdn);
+	kfree(ibshpd);
+
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_ib_alloc_mw(struct ib_mw *ibmw, struct ib_udata *udata)
 {
 	struct mlx5_ib_dev *dev = to_mdev(ibmw->device);
