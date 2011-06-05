@@ -73,6 +73,13 @@ enum {
 
 static dev_t dynamic_uverbs_dev;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+DEFINE_IDR(ib_uverbs_shpd_idr);
+DEFINE_MUTEX(ib_uverbs_shpd_idr_lock);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static DEFINE_IDA(uverbs_ida);
 static int ib_uverbs_add_one(struct ib_device *device);
 static void ib_uverbs_remove_one(struct ib_device *device, void *client_data);

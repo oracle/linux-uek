@@ -95,6 +95,13 @@ struct mlx4_ib_pd {
 	u32			pdn;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct mlx4_ib_shpd {
+	struct ib_shpd		ibshpd;
+	u32			pdn;
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 struct mlx4_ib_xrcd {
 	struct ib_xrcd		ibxrcd;
 	u32			xrcdn;
@@ -681,6 +688,15 @@ static inline struct mlx4_ib_pd *to_mpd(struct ib_pd *ibpd)
 {
 	return container_of(ibpd, struct mlx4_ib_pd, ibpd);
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static inline struct mlx4_ib_shpd *to_mshpd(struct ib_shpd *ibshpd)
+{
+	return container_of(ibshpd, struct mlx4_ib_shpd, ibshpd);
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static inline struct mlx4_ib_xrcd *to_mxrcd(struct ib_xrcd *ibxrcd)
 {
