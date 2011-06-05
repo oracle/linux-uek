@@ -194,11 +194,23 @@ static int uverbs_free_pd(struct ib_uobject *uobject,
 	struct ib_pd *pd = uobject->object;
 	int ret;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_shpd *shpd = pd->shpd;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	ret = ib_destroy_usecnt(&pd->usecnt, why, uobject);
 	if (ret)
 		return ret;
 
 	ib_dealloc_pd_user(pd, &attrs->driver_udata);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+	if (shpd)
+		ib_uverbs_deref_shpd(shpd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	return 0;
 }
 

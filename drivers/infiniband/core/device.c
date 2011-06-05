@@ -2581,6 +2581,9 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, alloc_mw);
 	SET_DEVICE_OP(dev_ops, alloc_pd);
 	SET_DEVICE_OP(dev_ops, alloc_rdma_netdev);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, alloc_shpd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, alloc_ucontext);
 	SET_DEVICE_OP(dev_ops, alloc_xrcd);
 	SET_DEVICE_OP(dev_ops, attach_mcast);
@@ -2671,12 +2674,18 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, read_counters);
 	SET_DEVICE_OP(dev_ops, reg_dm_mr);
 	SET_DEVICE_OP(dev_ops, reg_user_mr);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, remove_shpd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, req_ncomp_notif);
 	SET_DEVICE_OP(dev_ops, req_notify_cq);
 	SET_DEVICE_OP(dev_ops, rereg_user_mr);
 	SET_DEVICE_OP(dev_ops, resize_cq);
 	SET_DEVICE_OP(dev_ops, set_vf_guid);
 	SET_DEVICE_OP(dev_ops, set_vf_link_state);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, share_pd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, unmap_fmr);
 
 	SET_OBJ_SIZE(dev_ops, ib_ah);

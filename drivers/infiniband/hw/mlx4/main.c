@@ -1196,9 +1196,79 @@ static int mlx4_ib_alloc_pd(struct ib_pd *ibpd, struct ib_udata *udata)
 	return 0;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+static struct ib_shpd *mlx4_ib_alloc_shpd(struct ib_device *ibdev,
+					  struct ib_pd *pd)
+{
+	struct mlx4_ib_shpd *shpd;
+
+	shpd = kzalloc(sizeof(*shpd), GFP_KERNEL);
+	if (!shpd)
+		return ERR_PTR(-ENOMEM);
+
+	shpd->pdn = to_mpd(pd)->pdn;
+
+	return &shpd->ibshpd;
+}
+
+static struct ib_pd *mlx4_ib_share_pd(struct ib_device *ibdev,
+				      struct ib_ucontext *context,
+				      struct ib_udata *udata,
+				      struct ib_shpd *shpd)
+{
+	struct mlx4_ib_pd *pd;
+
+	pd = kzalloc(sizeof(*pd), GFP_KERNEL);
+	if (!pd)
+		return ERR_PTR(-ENOMEM);
+
+	pd->pdn = to_mshpd(shpd)->pdn;
+
+	if (context)
+		if (ib_copy_to_udata(udata, &pd->pdn, sizeof(__u32))) {
+			kfree(pd);
+			return ERR_PTR(-EFAULT);
+		}
+
+	return &pd->ibpd;
+}
+
+static int mlx4_ib_remove_shpd(struct ib_device *ibdev,
+			       struct ib_shpd *shpd, int atinit)
+{
+
+	/*
+	 * if remove shpd is called during shpd creation time itself, then
+	 * pd should not be freed from device. it will be freed when deall_pd
+	 * is called
+	 */
+	if (!atinit)
+		mlx4_pd_free(to_mdev(ibdev)->dev, to_mshpd(shpd)->pdn);
+	kfree(shpd);
+
+	return 0;
+}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static void mlx4_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 	mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+	/*
+	 * if pd is shared, pd number will be freed by remove_shpd call
+	 */
+	if (!pd->shpd) {
+		mlx4_pd_free(to_mdev(pd->device)->dev, to_mpd(pd)->pdn);
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 }
 
 static struct ib_xrcd *mlx4_ib_alloc_xrcd(struct ib_device *ibdev,
@@ -2518,6 +2588,9 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.add_gid = mlx4_ib_add_gid,
 	.alloc_mr = mlx4_ib_alloc_mr,
 	.alloc_pd = mlx4_ib_alloc_pd,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.alloc_shpd = mlx4_ib_alloc_shpd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.alloc_ucontext = mlx4_ib_alloc_ucontext,
 	.attach_mcast = mlx4_ib_mcg_attach,
 	.create_ah = mlx4_ib_create_ah,
@@ -2560,10 +2633,16 @@ static const struct ib_device_ops mlx4_ib_dev_ops = {
 	.query_port = mlx4_ib_query_port,
 	.query_qp = mlx4_ib_query_qp,
 	.query_srq = mlx4_ib_query_srq,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.remove_shpd = mlx4_ib_remove_shpd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.reg_user_mr = mlx4_ib_reg_user_mr,
 	.req_notify_cq = mlx4_ib_arm_cq,
 	.rereg_user_mr = mlx4_ib_rereg_user_mr,
 	.resize_cq = mlx4_ib_resize_cq,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.share_pd = mlx4_ib_share_pd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, mlx4_ib_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_cq, mlx4_ib_cq, ibcq),
@@ -2681,7 +2760,13 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		(1ull << IB_USER_VERBS_CMD_ALLOC_SHPD)		|
+		(1ull << IB_USER_VERBS_CMD_SHARE_PD);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
+		0;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	ib_set_device_ops(&ibdev->ib_dev, &mlx4_ib_dev_ops);
 	ibdev->ib_dev.uverbs_ex_cmd_mask |=
