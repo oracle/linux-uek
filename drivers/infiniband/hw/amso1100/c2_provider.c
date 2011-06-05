@@ -835,6 +835,10 @@ int c2_register_device(struct c2_dev *dev)
 	dev->ibdev.post_send = c2_post_send;
 	dev->ibdev.post_recv = c2_post_receive;
 
+	dev->ibdev.alloc_shpd		= NULL;
+	dev->ibdev.share_pd		= NULL;
+	dev->ibdev.remove_shpd		= NULL;
+
 	dev->ibdev.iwcm = kmalloc(sizeof(*dev->ibdev.iwcm), GFP_KERNEL);
 	if (dev->ibdev.iwcm == NULL) {
 		ret = -ENOMEM;

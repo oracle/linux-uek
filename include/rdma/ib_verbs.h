@@ -1200,7 +1200,16 @@ struct ib_udata {
 struct ib_pd {
 	struct ib_device       *device;
 	struct ib_uobject      *uobject;
+	struct ib_shpd         *shpd;    /* global uobj id if this
+					    pd is shared */
 	atomic_t          	usecnt; /* count all resources */
+};
+
+struct ib_shpd {
+	struct ib_device       *device;
+	struct ib_uobject      *uobject;
+	atomic_t		shared; /* count procs sharing the pd*/
+	u64			share_key;
 };
 
 struct ib_xrcd {
@@ -1658,6 +1667,15 @@ struct ib_device {
 	int			   (*destroy_flow)(struct ib_flow *flow_id);
 	int			   (*check_mr_status)(struct ib_mr *mr, u32 check_mask,
 						      struct ib_mr_status *mr_status);
+	struct ib_shpd		  *(*alloc_shpd)(struct ib_device *ibdev,
+						 struct ib_pd *pd);
+	struct ib_pd		  *(*share_pd)(struct ib_device *ibdev,
+					       struct ib_ucontext *context,
+					       struct ib_udata *udata,
+					       struct ib_shpd *shpd);
+	int			   (*remove_shpd)(struct ib_device *ibdev,
+						  struct ib_shpd *shpd,
+						  int atinit);
 
 	struct ib_dma_mapping_ops   *dma_ops;
 

@@ -165,6 +165,7 @@ struct ib_ucq_object {
 
 extern spinlock_t ib_uverbs_idr_lock;
 extern struct idr ib_uverbs_pd_idr;
+extern struct idr ib_uverbs_shpd_idr;
 extern struct idr ib_uverbs_mr_idr;
 extern struct idr ib_uverbs_mw_idr;
 extern struct idr ib_uverbs_ah_idr;
@@ -250,6 +251,8 @@ IB_UVERBS_DECLARE_CMD(destroy_srq);
 IB_UVERBS_DECLARE_CMD(create_xsrq);
 IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
+IB_UVERBS_DECLARE_CMD(alloc_shpd);
+IB_UVERBS_DECLARE_CMD(share_pd);
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
 	int ib_uverbs_ex_##name(struct ib_uverbs_file *file,	\

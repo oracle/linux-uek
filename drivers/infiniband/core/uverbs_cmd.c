@@ -49,6 +49,7 @@ struct uverbs_lock_class {
 };
 
 static struct uverbs_lock_class pd_lock_class	= { .name = "PD-uobj" };
+static struct uverbs_lock_class shpd_lock_class = { .name = "SHPD-uobj" };
 static struct uverbs_lock_class mr_lock_class	= { .name = "MR-uobj" };
 static struct uverbs_lock_class mw_lock_class	= { .name = "MW-uobj" };
 static struct uverbs_lock_class cq_lock_class	= { .name = "CQ-uobj" };
@@ -214,6 +215,11 @@ static struct ib_pd *idr_read_pd(int pd_handle, struct ib_ucontext *context)
 static void put_pd_read(struct ib_pd *pd)
 {
 	put_uobj_read(pd->uobject);
+}
+
+static void put_pd_write(struct ib_pd *pd)
+{
+	put_uobj_write(pd->uobject);
 }
 
 static struct ib_cq *idr_read_cq(int cq_handle, struct ib_ucontext *context, int nested)
@@ -561,6 +567,7 @@ ssize_t ib_uverbs_alloc_pd(struct ib_uverbs_file *file,
 
 	pd->device  = file->device->ib_dev;
 	pd->uobject = uobj;
+	pd->shpd  = NULL;    /* will be filled in when pd is shared */
 	atomic_set(&pd->usecnt, 0);
 
 	uobj->object = pd;
@@ -598,24 +605,263 @@ err:
 	return ret;
 }
 
+ssize_t ib_uverbs_alloc_shpd(struct ib_uverbs_file *file,
+			     const char __user *buf,
+			     int in_len, int out_len)
+{
+	struct ib_uverbs_alloc_shpd cmd;
+	struct ib_uverbs_alloc_shpd_resp resp;
+	struct ib_udata                udata;
+	struct ib_uobject       *uobj;
+	struct ib_uobject       *shuobj = NULL;
+	struct ib_pd              *pd;
+	struct ib_shpd          *shpd = NULL;
+	int                       ret;
+
+	if (!file->device->ib_dev->alloc_shpd ||
+			!file->device->ib_dev->share_pd ||
+			!file->device->ib_dev->remove_shpd)
+		return -ENOSYS;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	INIT_UDATA(&udata, buf + sizeof(cmd),
+		   (unsigned long) cmd.response + sizeof(resp),
+		   in_len - sizeof(cmd), out_len - sizeof(resp));
+
+	uobj = idr_write_uobj(&ib_uverbs_pd_idr, cmd.pd_handle, file->ucontext);
+	if (!uobj)
+		return -EINVAL;
+
+	pd = uobj->object;
+
+	/* pd can be shared only once */
+	if (pd->shpd) {
+		ret = -EINVAL;
+		goto err_pd;
+	}
+
+
+	/* create a new uobj */
+	shuobj = kmalloc(sizeof(*shuobj), GFP_KERNEL);
+	if (!shuobj) {
+		ret = -ENOMEM;
+		goto err_pd;
+	}
+
+	init_uobj(shuobj, 0, 0/* global */, &shpd_lock_class);
+	down_write(&shuobj->mutex);
+
+	/* alloc shared pd from device driver */
+	shpd = file->device->ib_dev->alloc_shpd(file->device->ib_dev, pd);
+	if (IS_ERR(shpd)) {
+		ret = PTR_ERR(shpd);
+		goto err_shobj;
+	}
+
+	shpd->device = file->device->ib_dev;
+	shpd->uobject = shuobj;
+	shpd->share_key = cmd.share_key;
+
+	shuobj->object = shpd;
+
+	/* link new uobj to device level list */
+	ret = idr_add_uobj(&ib_uverbs_shpd_idr, shuobj);
+	if (ret)
+		goto err_idr;
+
+	/* return pd_handle */
+	memset(&resp, 0, sizeof(resp));
+	resp.shpd_handle = shuobj->id;
+
+	if (copy_to_user((void __user *) (unsigned long) cmd.response,
+			 &resp, sizeof(resp))) {
+		ret = -EFAULT;
+		goto err_copy;
+	}
+
+	shuobj->live = 1;
+
+	/* mark pd as shared */
+	pd->shpd = shpd;
+
+	up_write(&shuobj->mutex);
+	put_pd_write(pd);
+
+	return in_len;
+
+err_copy:
+	idr_remove_uobj(&ib_uverbs_shpd_idr, shuobj);
+
+err_idr:
+	file->device->ib_dev->remove_shpd(file->device->ib_dev, shpd, 1);
+
+err_shobj:
+	put_uobj_write(shuobj);
+
+err_pd:
+	put_pd_write(pd);
+
+	return ret;
+}
+
+ssize_t ib_uverbs_share_pd(struct ib_uverbs_file *file,
+			   const char __user *buf,
+			   int in_len, int out_len)
+{
+	struct ib_uverbs_share_pd cmd;
+	struct ib_uverbs_share_pd_resp resp;
+	struct ib_udata                udata;
+	struct ib_uobject       *uobj = NULL;
+	struct ib_uobject       *shuobj;
+	struct ib_pd              *pd;
+	struct ib_shpd          *shpd;
+	int                       ret;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	INIT_UDATA(&udata, buf + sizeof(cmd),
+		   (unsigned long) cmd.response + sizeof(resp),
+		   in_len - sizeof(cmd), out_len - sizeof(resp));
+
+	/* get global uobject for the shared pd */
+	shuobj = idr_read_uobj(&ib_uverbs_shpd_idr, cmd.shpd_handle,
+			       0/* global */, 0);
+	if (!shuobj)
+		return -EINVAL;
+
+	shpd = shuobj->object;
+
+	/* check if the key matches */
+	if (shpd->share_key != cmd.share_key) {
+		pr_warn("WARNING : invalid shared pd key\n");
+		ret = -EINVAL;
+		goto err_putshpd;
+	}
+
+	/* check if the devices match */
+	if (strncmp(file->device->ib_dev->name, shpd->device->name,
+		    IB_DEVICE_NAME_MAX)) {
+		ret = -EINVAL;
+		goto err_putshpd;
+	}
+
+	/* allocate a new user object */
+	uobj = kmalloc(sizeof(*uobj), GFP_KERNEL);
+	if (!uobj) {
+		ret = -ENOMEM;
+		goto err_putshpd;
+	}
+
+
+	init_uobj(uobj, 0, file->ucontext, &pd_lock_class);
+	down_write(&uobj->mutex);
+
+	/* share the pd at device driver level */
+	pd = file->device->ib_dev->share_pd(file->device->ib_dev,
+			file->ucontext, &udata, shpd);
+	if (IS_ERR(pd)) {
+		ret = PTR_ERR(pd);
+		goto err_putuobj;
+	}
+
+	pd->device  = file->device->ib_dev;
+	pd->uobject = uobj;
+	pd->shpd  = shpd;
+	atomic_set(&pd->usecnt, 0);
+
+	/* initialize uobj and return pd_handle */
+	uobj->object = pd;
+	ret = idr_add_uobj(&ib_uverbs_pd_idr, uobj);
+	if (ret)
+		goto err_idr;
+
+	memset(&resp, 0, sizeof(resp));
+	resp.pd_handle = uobj->id;
+
+	if (copy_to_user((void __user *) (unsigned long) cmd.response,
+			 &resp, sizeof(resp))) {
+		ret = -EFAULT;
+		goto err_copy;
+	}
+
+	mutex_lock(&file->mutex);
+	list_add_tail(&uobj->list, &file->ucontext->pd_list);
+	mutex_unlock(&file->mutex);
+
+	uobj->live = 1;
+	atomic_inc(&shpd->shared);
+
+	up_write(&uobj->mutex);
+
+	put_uobj_read(shuobj);
+
+	return in_len;
+
+err_copy:
+	idr_remove_uobj(&ib_uverbs_pd_idr, uobj);
+
+err_idr:
+	ib_dealloc_pd(pd);
+
+err_putuobj:
+
+	put_uobj_write(uobj);
+
+err_putshpd:
+	put_uobj_read(shuobj);
+
+	return ret;
+}
+
 ssize_t ib_uverbs_dealloc_pd(struct ib_uverbs_file *file,
 			     const char __user *buf,
 			     int in_len, int out_len)
 {
 	struct ib_uverbs_dealloc_pd cmd;
 	struct ib_uobject          *uobj;
-	int                         ret;
+	int                         ret = 0;
+	struct ib_uobject          *shuobj = 0;
+	struct ib_pd               *pd = NULL;
+	struct ib_shpd             *shpd = NULL;
 
-	if (copy_from_user(&cmd, buf, sizeof cmd))
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
 		return -EFAULT;
 
 	uobj = idr_write_uobj(&ib_uverbs_pd_idr, cmd.pd_handle, file->ucontext);
 	if (!uobj)
 		return -EINVAL;
 
+	pd = uobj->object;
+
+	/* is pd shared ?*/
+	if (pd->shpd) {
+		shpd = pd->shpd;
+		shuobj = shpd->uobject;
+	}
+
 	ret = ib_dealloc_pd(uobj->object);
 	if (!ret)
 		uobj->live = 0;
+
+	if (!ret && shpd) {
+		down_write(&shuobj->mutex);
+		atomic_dec(&shpd->shared);
+
+		/* if this shpd is no longer shared */
+		if (!atomic_read(&shpd->shared)) {
+			/* free the shpd info from device driver */
+			file->device->ib_dev->remove_shpd(file->device->ib_dev,
+							  shpd, 0);
+			shuobj->live = 0;
+			up_write(&shuobj->mutex);
+			idr_remove_uobj(&ib_uverbs_shpd_idr, shuobj);
+			put_uobj(shuobj);
+		} else
+			up_write(&shuobj->mutex);
+	}
 
 	put_uobj_write(uobj);
 

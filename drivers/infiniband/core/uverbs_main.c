@@ -66,6 +66,7 @@ static struct class *uverbs_class;
 
 DEFINE_SPINLOCK(ib_uverbs_idr_lock);
 DEFINE_IDR(ib_uverbs_pd_idr);
+DEFINE_IDR(ib_uverbs_shpd_idr);
 DEFINE_IDR(ib_uverbs_mr_idr);
 DEFINE_IDR(ib_uverbs_mw_idr);
 DEFINE_IDR(ib_uverbs_ah_idr);
@@ -116,6 +117,13 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_CLOSE_XRCD]		= ib_uverbs_close_xrcd,
 	[IB_USER_VERBS_CMD_CREATE_XSRQ]		= ib_uverbs_create_xsrq,
 	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp,
+	/*
+	 * Upstream verbs index 0-40 above.
+	 * Oracle additions to verbs start here with some
+	 * space (index 46)
+	 */
+	[IB_USER_VERBS_CMD_ALLOC_SHPD]		= ib_uverbs_alloc_shpd,
+	[IB_USER_VERBS_CMD_SHARE_PD]		= ib_uverbs_share_pd,
 };
 
 static int (*uverbs_ex_cmd_table[])(struct ib_uverbs_file *file,
@@ -1058,6 +1066,7 @@ static void __exit ib_uverbs_cleanup(void)
 	if (overflow_maj)
 		unregister_chrdev_region(overflow_maj, IB_UVERBS_MAX_DEVICES);
 	idr_destroy(&ib_uverbs_pd_idr);
+	idr_destroy(&ib_uverbs_shpd_idr);
 	idr_destroy(&ib_uverbs_mr_idr);
 	idr_destroy(&ib_uverbs_mw_idr);
 	idr_destroy(&ib_uverbs_ah_idr);

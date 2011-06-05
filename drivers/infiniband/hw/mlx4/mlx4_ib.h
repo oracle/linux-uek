@@ -85,6 +85,11 @@ struct mlx4_ib_pd {
 	u32			pdn;
 };
 
+struct mlx4_ib_shpd {
+	struct ib_shpd		ibshpd;
+	u32			pdn;
+};
+
 struct mlx4_ib_xrcd {
 	struct ib_xrcd		ibxrcd;
 	u32			xrcdn;
@@ -571,6 +576,11 @@ static inline struct mlx4_ib_ucontext *to_mucontext(struct ib_ucontext *ibuconte
 static inline struct mlx4_ib_pd *to_mpd(struct ib_pd *ibpd)
 {
 	return container_of(ibpd, struct mlx4_ib_pd, ibpd);
+}
+
+static inline struct mlx4_ib_shpd *to_mshpd(struct ib_shpd *ibshpd)
+{
+	return container_of(ibshpd, struct mlx4_ib_shpd, ibshpd);
 }
 
 static inline struct mlx4_ib_xrcd *to_mxrcd(struct ib_xrcd *ibxrcd)
