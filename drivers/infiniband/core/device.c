@@ -641,7 +641,13 @@ struct ib_device *_ib_alloc_device(size_t size)
 		BIT_ULL(IB_USER_VERBS_CMD_QUERY_SRQ) |
 		BIT_ULL(IB_USER_VERBS_CMD_REG_MR) |
 		BIT_ULL(IB_USER_VERBS_CMD_REREG_MR) |
-		BIT_ULL(IB_USER_VERBS_CMD_RESIZE_CQ);
+		BIT_ULL(IB_USER_VERBS_CMD_RESIZE_CQ) |
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		BIT_ULL(IB_USER_VERBS_CMD_ALLOC_SHPD) |
+		BIT_ULL(IB_USER_VERBS_CMD_SHARE_PD);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
+		0;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	mutex_init(&device->subdev_lock);
 	INIT_LIST_HEAD(&device->subdev_list_head);
@@ -2651,6 +2657,9 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, alloc_mw);
 	SET_DEVICE_OP(dev_ops, alloc_pd);
 	SET_DEVICE_OP(dev_ops, alloc_rdma_netdev);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, alloc_shpd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, alloc_ucontext);
 	SET_DEVICE_OP(dev_ops, alloc_xrcd);
 	SET_DEVICE_OP(dev_ops, attach_mcast);
@@ -2754,11 +2763,17 @@ void ib_set_device_ops(struct ib_device *dev, const struct ib_device_ops *ops)
 	SET_DEVICE_OP(dev_ops, reg_dm_mr);
 	SET_DEVICE_OP(dev_ops, reg_user_mr);
 	SET_DEVICE_OP(dev_ops, reg_user_mr_dmabuf);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, remove_shpd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	SET_DEVICE_OP(dev_ops, req_notify_cq);
 	SET_DEVICE_OP(dev_ops, rereg_user_mr);
 	SET_DEVICE_OP(dev_ops, resize_cq);
 	SET_DEVICE_OP(dev_ops, set_vf_guid);
 	SET_DEVICE_OP(dev_ops, set_vf_link_state);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	SET_DEVICE_OP(dev_ops, share_pd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	SET_OBJ_SIZE(dev_ops, ib_ah);
 	SET_OBJ_SIZE(dev_ops, ib_counters);

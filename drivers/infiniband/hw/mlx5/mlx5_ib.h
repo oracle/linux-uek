@@ -1375,6 +1375,19 @@ struct ib_mr *mlx5_ib_alloc_mr_integrity(struct ib_pd *pd,
 					 u32 max_num_meta_sg);
 int mlx5_ib_map_mr_sg(struct ib_mr *ibmr, struct scatterlist *sg, int sg_nents,
 		      unsigned int *sg_offset);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_shpd *mlx5_ib_alloc_shpd(struct ib_device *ibdev,
+				   struct ib_pd *pd);
+struct ib_pd *mlx5_ib_share_pd(struct ib_device *ibdev,
+			       struct ib_ucontext *context,
+			       struct ib_udata *udata,
+			       struct ib_shpd *shpd);
+int mlx5_ib_remove_shpd(struct ib_device *ibdev,
+			struct ib_shpd *shpd,
+			int atinit);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_ib_map_mr_sg_pi(struct ib_mr *ibmr, struct scatterlist *data_sg,
 			 int data_sg_nents, unsigned int *data_sg_offset,
 			 struct scatterlist *meta_sg, int meta_sg_nents,

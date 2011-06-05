@@ -272,6 +272,9 @@ struct ib_pd *__ib_alloc_pd(struct ib_device *device, unsigned int flags,
 
 	pd->device = device;
 	pd->flags = flags;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	pd->shpd = NULL;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	rdma_restrack_new(&pd->res, RDMA_RESTRACK_PD);
 	rdma_restrack_set_name(&pd->res, caller);
