@@ -1940,8 +1940,24 @@ static int mlx5_ib_dealloc_pd(struct ib_pd *pd)
 	struct mlx5_ib_dev *mdev = to_mdev(pd->device);
 	struct mlx5_ib_pd *mpd = to_mpd(pd);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
+
 	mlx5_core_dealloc_pd(mdev->mdev, mpd->pdn);
 	kfree(mpd);
+
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+
+	if (pd->shpd) {
+		/*
+		 * if pd is shared, pd number will be freed by remove_shpd call
+		 */
+		kfree(mpd);
+	} else {
+		mlx5_core_dealloc_pd(mdev->mdev, mpd->pdn);
+		kfree(mpd);
+	}
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	return 0;
 }
@@ -4519,7 +4535,13 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		(1ull << IB_USER_VERBS_CMD_ALLOC_SHPD)		|
+		(1ull << IB_USER_VERBS_CMD_SHARE_PD);
+#else /* WITHOUT_ORACLE_EXTENSIONS */
+		0;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	dev->ib_dev.uverbs_ex_cmd_mask =
 		(1ull << IB_USER_VERBS_EX_CMD_QUERY_DEVICE)	|
 		(1ull << IB_USER_VERBS_EX_CMD_CREATE_CQ)	|
@@ -4588,6 +4610,12 @@ static void *mlx5_ib_add(struct mlx5_core_dev *mdev)
 		dev->ib_dev.get_vf_stats	= mlx5_ib_get_vf_stats;
 		dev->ib_dev.set_vf_guid		= mlx5_ib_set_vf_guid;
 	}
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	dev->ib_dev.alloc_shpd   = mlx5_ib_alloc_shpd;
+	dev->ib_dev.share_pd     = mlx5_ib_share_pd;
+	dev->ib_dev.remove_shpd  = mlx5_ib_remove_shpd;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	dev->ib_dev.disassociate_ucontext = mlx5_ib_disassociate_ucontext;
 

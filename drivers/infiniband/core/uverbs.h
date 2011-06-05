@@ -192,6 +192,17 @@ struct ib_ucq_object {
 	u32			async_events_reported;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/* global uverbs IDR resources */
+
+extern struct idr ib_uverbs_shpd_idr;
+extern struct mutex ib_uverbs_shpd_idr_lock;
+
+void ib_uverbs_deref_shpd(struct ib_shpd *shpd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 extern const struct file_operations uverbs_event_fops;
 void ib_uverbs_init_event_queue(struct ib_uverbs_event_queue *ev_queue);
 struct file *ib_uverbs_alloc_async_event_file(struct ib_uverbs_file *uverbs_file,
@@ -281,6 +292,11 @@ IB_UVERBS_DECLARE_CMD(destroy_srq);
 IB_UVERBS_DECLARE_CMD(create_xsrq);
 IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+IB_UVERBS_DECLARE_CMD(alloc_shpd);
+IB_UVERBS_DECLARE_CMD(share_pd);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
 	int ib_uverbs_ex_##name(struct ib_uverbs_file *file,	\

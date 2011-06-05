@@ -1534,6 +1534,9 @@ struct ib_pd {
 	u32			flags;
 	struct ib_device       *device;
 	struct ib_uobject      *uobject;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_shpd         *shpd;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	atomic_t          	usecnt; /* count all resources */
 
 	u32			unsafe_global_rkey;
@@ -1543,6 +1546,15 @@ struct ib_pd {
 	 */
 	struct ib_mr	       *__internal_mr;
 };
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_shpd {
+	int			idr_id;
+	struct ib_device       *device;
+	int			ref_count; /* count procs sharing the pd*/
+	u64			share_key;
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_xrcd {
 	struct ib_device       *device;
@@ -2355,6 +2367,19 @@ struct ib_device {
 					const char *name,
 					unsigned char name_assign_type,
 					void (*setup)(struct net_device *));
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	struct ib_shpd		  *(*alloc_shpd)(struct ib_device *ibdev,
+						 struct ib_pd *pd,
+						 struct ib_udata *udata);
+	struct ib_pd		  *(*share_pd)(struct ib_device *ibdev,
+					       struct ib_ucontext *context,
+					       struct ib_udata *udata,
+					       struct ib_shpd *shpd);
+	int			   (*remove_shpd)(struct ib_device *ibdev,
+						  struct ib_shpd *shpd,
+						  int atinit);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	struct module               *owner;
 	struct device                dev;

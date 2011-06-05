@@ -932,6 +932,20 @@ struct ib_mr *mlx5_ib_alloc_mr(struct ib_pd *pd,
 			       u32 max_num_sg);
 int mlx5_ib_map_mr_sg(struct ib_mr *ibmr, struct scatterlist *sg, int sg_nents,
 		      unsigned int *sg_offset);
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+struct ib_shpd *mlx5_ib_alloc_shpd(struct ib_device *ibdev,
+				   struct ib_pd *pd,
+				   struct ib_udata *udata);
+struct ib_pd *mlx5_ib_share_pd(struct ib_device *ibdev,
+			       struct ib_ucontext *context,
+			       struct ib_udata *udata,
+			       struct ib_shpd *shpd);
+int mlx5_ib_remove_shpd(struct ib_device *ibdev,
+			struct ib_shpd *shpd,
+			int atinit);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int mlx5_ib_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 			const struct ib_wc *in_wc, const struct ib_grh *in_grh,
 			const struct ib_mad_hdr *in, size_t in_mad_size,
