@@ -214,6 +214,17 @@ struct ib_ucq_object {
 	u32			comp_events_reported;
 };
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+/* global uverbs IDR resources */
+
+extern struct idr ib_uverbs_shpd_idr;
+extern struct mutex ib_uverbs_shpd_idr_lock;
+
+void ib_uverbs_deref_shpd(struct ib_shpd *shpd);
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 extern const struct file_operations uverbs_event_fops;
 extern const struct file_operations uverbs_async_event_fops;
 void ib_uverbs_init_event_queue(struct ib_uverbs_event_queue *ev_queue);
