@@ -2462,7 +2462,17 @@ static int mlx5_ib_dealloc_pd(struct ib_pd *pd, struct ib_udata *udata)
 	struct mlx5_ib_dev *mdev = to_mdev(pd->device);
 	struct mlx5_ib_pd *mpd = to_mpd(pd);
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	return mlx5_cmd_dealloc_pd(mdev->mdev, mpd->pdn, mpd->uid);
+#else /* !WITHOUT_ORACLE_EXTENSIONS */
+	/*
+	 * if pd is shared, pd number will be freed by remove_shpd call
+	 */
+	if (!pd->shpd) {
+		return mlx5_cmd_dealloc_pd(mdev->mdev, mpd->pdn, mpd->uid);
+	}
+	return 0;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static int mlx5_ib_mcg_attach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
@@ -4083,6 +4093,9 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.alloc_mr = mlx5_ib_alloc_mr,
 	.alloc_mr_integrity = mlx5_ib_alloc_mr_integrity,
 	.alloc_pd = mlx5_ib_alloc_pd,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.alloc_shpd   = mlx5_ib_alloc_shpd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.alloc_ucontext = mlx5_ib_alloc_ucontext,
 	.attach_mcast = mlx5_ib_mcg_attach,
 	.check_mr_status = mlx5_ib_check_mr_status,
@@ -4131,9 +4144,15 @@ static const struct ib_device_ops mlx5_ib_dev_ops = {
 	.query_ucontext = mlx5_ib_query_ucontext,
 	.reg_user_mr = mlx5_ib_reg_user_mr,
 	.reg_user_mr_dmabuf = mlx5_ib_reg_user_mr_dmabuf,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.remove_shpd  = mlx5_ib_remove_shpd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	.req_notify_cq = mlx5_ib_arm_cq,
 	.rereg_user_mr = mlx5_ib_rereg_user_mr,
 	.resize_cq = mlx5_ib_resize_cq,
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	.share_pd     = mlx5_ib_share_pd,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	INIT_RDMA_OBJ_SIZE(ib_ah, mlx5_ib_ah, ibah),
 	INIT_RDMA_OBJ_SIZE(ib_counters, mlx5_ib_mcounters, ibcntrs),

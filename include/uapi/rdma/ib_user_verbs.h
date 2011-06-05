@@ -88,6 +88,59 @@ enum ib_uverbs_write_cmds {
 	IB_USER_VERBS_CMD_CLOSE_XRCD,
 	IB_USER_VERBS_CMD_CREATE_XSRQ,
 	IB_USER_VERBS_CMD_OPEN_QP,
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/*
+	 * Note: 0-40 verbs defined above
+	 * Start oracle verb additions leaving a gap
+	 * for upstream verbs growth.
+	 *
+	 * We start at 46 which is the starting value used
+	 * for these verbs in UEK2 and add them in same
+	 * order.
+	 *
+	 * (Even if we dont care about aligning with UEK2 values,
+	 *  cannot go beyond 63 because of "struct ib_device"
+	 *  has uverbs_cmd_mask which is 64 bits wide!)
+	 *
+	 * ATTENTION!!!
+	 * This ABI was broken itentionally.
+	 * Originally the Oracle CMD ids were defined as:
+	 *
+	 * IB_USER_VERBS_CMD_REG_MR_RELAXED   = 48
+	 * IB_USER_VERBS_CMD_DEREG_MR_RELAXED = 49
+	 * IB_USER_VERBS_CMD_FLUSH_RELAXED_MR = 50
+	 *
+	 * Please note that there's a conflict with the definition
+	 * of IB_USER_VERBS_CMD_THRESHOLD = 50
+	 * which makes the experimental command
+	 * IB_USER_VERBS_EX_CMD_CREATE_FLOW = 50
+	 * as well.
+	 *
+	 * That's obviously broken and leaves us with a condondrum:
+	 * a) Break the compatibility of the experimental ABI by
+	 *    changing IB_USER_VERBS_CMD_THRESHOLD to something like 60
+	 * b) Break the compatibility of the Oracle verb
+	 *    IB_USER_VERBS_CMD_FLUSH_RELAXED_MR.
+	 *
+	 * I went with option b) for the following reason:
+	 * + Option a) makes many more verbs incompatible and
+	 *   my random guess is that they're more extensively used
+	 *   than the Oracle verb flush_relaxed_mr.
+	 * + What supports that theory is that this collision remained
+	 *   undetected for years!
+	 *
+	 * So all the relaxed-memory related Oracle verbs
+	 * moved to begin at ID = 43
+	 *
+	 */
+	IB_USER_VERBS_CMD_REG_MR_RELAXED   = 43,
+	IB_USER_VERBS_CMD_DEREG_MR_RELAXED = 44,
+	IB_USER_VERBS_CMD_FLUSH_RELAXED_MR = 45,
+
+	IB_USER_VERBS_CMD_ALLOC_SHPD = 46,
+	IB_USER_VERBS_CMD_SHARE_PD = 47,
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 };
 
 #ifndef WITHOUT_ORACLE_EXTENSIONS
@@ -331,6 +384,32 @@ struct ib_uverbs_alloc_pd_resp {
 	__u32 pd_handle;
 	__u32 driver_data[];
 };
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+
+struct ib_uverbs_alloc_shpd {
+	__aligned_u64 response;
+	__u32 pd_handle;
+	__aligned_u64 share_key;
+};
+
+struct ib_uverbs_alloc_shpd_resp {
+	__u32 shpd_handle;
+};
+
+struct ib_uverbs_share_pd {
+	__aligned_u64 response;
+	__u32 shpd_handle;
+	__aligned_u64 share_key;
+	__aligned_u64 driver_data[0];
+};
+
+struct ib_uverbs_share_pd_resp {
+	__u32 pd_handle;
+	__aligned_u64 driver_data[0];
+};
+
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 struct ib_uverbs_dealloc_pd {
 	__u32 pd_handle;
