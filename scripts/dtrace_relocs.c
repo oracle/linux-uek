@@ -16,6 +16,9 @@
 #include <ctype.h>
 #include <elf.h>
 
+//#define INFO	1
+//#define SCANF	1
+
 struct sym_entry {
 	unsigned long long addr;
 	unsigned char is_section;
@@ -31,7 +34,7 @@ struct text_range {
 	unsigned long long start, end;
 };
 
-static unsigned long long _text; // TBD: need this from System.map
+static unsigned long long _text, _stext;	// from System.map
 
 static struct sym_entry *table;
 static unsigned int table_size, table_cnt;
@@ -210,6 +213,35 @@ static int get_symbol_info(char buf[500], struct sym_entry *s)
 	return 0;
 }
 
+static void get_text_addr(char buf[500], char *str_match,
+			unsigned long long *_adr)
+{
+	int rc;
+	unsigned long long adr;
+	char relo_type[100];
+	char symbol_name[200];
+
+	rc = sscanf(buf, "%llx %s %s\n",
+		&adr, (char *)&relo_type,
+		(char *)&symbol_name);
+#ifdef SCANF
+	fprintf(stderr, "%s: sscanf.1 rc= %d\n", __func__, rc);
+#endif
+	if (rc != 3)
+		return;
+
+	if (strcmp(relo_type, "T"))
+		return;
+	if (strcmp(symbol_name, str_match))
+		return;
+
+	*_adr = adr;
+#ifdef INFO
+	fprintf(stderr, "found '%s':_addr/offset=0x%llx, type=%s, name=%s\n",
+		str_match, adr, relo_type, symbol_name);
+#endif
+}
+
 static void read_info(FILE *fin)
 {
 	char buf[500];
@@ -251,9 +283,14 @@ static void read_info(FILE *fin)
 			continue;
 		}
 
-		if (in_symbols)
+		if (in_symbols) {
 			if (get_symbol_info(buf, &table[table_cnt]) == 0)
 				table_cnt++;
+			else if (_text == 0)
+				get_text_addr(buf, "_text", &_text);
+			else if (_stext == 0)
+				get_text_addr(buf, "_stext", &_stext);
+		}
 	}
 }
 
@@ -285,6 +322,10 @@ static void write_relocs(FILE *fout)
 	fprintf(fout, "\tPTR\t%d\n", relocs_count);
 	fprintf(fout, "\n");
 
+	fprintf(fout, "_text_\t= 0x%llx\n", _text);
+	fprintf(fout, "_stext_\t= 0x%llx\n", _stext);
+	fprintf(fout, "\n");
+
 	/*
 	 * Provide proper symbols relocatability by their '_text'
 	 * relativeness.  The symbol names cannot be used to construct
@@ -295,20 +336,11 @@ static void write_relocs(FILE *fout)
 	 */
 	output_label(fout, "dtrace_relocs");
 	for (i = 0; i < table_cnt; i++) {
-#if 0
-		if (_text <= table[i].addr)
-			fprintf(fout, "\tPTR\t_text + %#llx\n",
-				table[i].addr - _text);
-		else
-			fprintf(fout, "\tPTR\t_text - %#llx\n",
-				_text - table[i].addr);
-#endif
 		// for reloc symbols (not sections):
 		// print symbol relative address, section base address,
 		// call target string length, call target string/name;
-		// TBD: figure out how to find the next 4-tuple;
 		if (!table[i].is_section) {
-			fprintf(fout, "\tPTR\t%#llx\n", table[i].addr);
+			fprintf(fout, "\tPTR\t%#llx\n", _stext + table[i].addr);
 			fprintf(fout, "\tPTR\t%#llx\n", table[i].section_base);
 			fprintf(fout, "\tPTR\t%d\n", table[i].len);
 			fprintf(fout, "\t.asciz\t\"%s\"\n", table[i].sym);
@@ -325,43 +357,6 @@ static void write_relocs(FILE *fout)
 		exit(3);
 	}
 }
-
-#if 0
-/* guess for "linker script provide" symbol */
-static int may_be_linker_script_provide_symbol(const struct sym_entry *se)
-{
-	const char *symbol = (char *)se->sym + 1;
-	int len = se->len - 1;
-
-	if (len < 8)
-		return 0;
-
-	if (symbol[0] != '_' || symbol[1] != '_')
-		return 0;
-
-	/* __start_XXXXX */
-	if (!memcmp(symbol + 2, "start_", 6))
-		return 1;
-
-	/* __stop_XXXXX */
-	if (!memcmp(symbol + 2, "stop_", 5))
-		return 1;
-
-	/* __end_XXXXX */
-	if (!memcmp(symbol + 2, "end_", 4))
-		return 1;
-
-	/* __XXXXX_start */
-	if (!memcmp(symbol + len - 6, "_start", 6))
-		return 1;
-
-	/* __XXXXX_end */
-	if (!memcmp(symbol + len - 4, "_end", 4))
-		return 1;
-
-	return 0;
-}
-#endif
 
 int main(int argc, char *argv[])
 {
