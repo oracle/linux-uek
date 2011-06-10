@@ -2102,7 +2102,7 @@ static void end_bio_extent_readpage(struct bio *bio, int err)
 			if (tree->ops && tree->ops->readpage_io_failed_hook)
 				ret = tree->ops->readpage_io_failed_hook(
 						bio, page, start, end,
-						failed_mirror, NULL);
+						failed_mirror, state);
 			else
 				ret = bio_readpage_error(bio, page, start, end,
 							 failed_mirror, NULL);
