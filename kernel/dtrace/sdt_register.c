@@ -107,7 +107,7 @@ void dtrace_register_builtins(void)
 				__func__, ri->probe_name);
 
 		nextri = (void *)ri + sizeof(struct reloc_info)
-			+ roundup(ri->probe_name_len, BITS_PER_LONG / 8);
+			+ roundup(ri->probe_name_len + 1, BITS_PER_LONG / 8);
 		ri = nextri;
 		DPRINTK("SDT relocs: next entry at 0x%p\n", ri);
 	}
