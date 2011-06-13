@@ -10,6 +10,10 @@ obj-$(CONFIG_DT_PROFILE)	+= profile.o
 obj-$(CONFIG_DT_SDT)		+= sdt.o sdt_register.o
 obj-$(CONFIG_DT_SYSTRACE)	+= systrace.o
 
+ifdef CONFIG_DT_CORE
+obj-y				+= dtrace_os.o
+endif
+
 dtrace-y			:= dtrace_mod.o dtrace_dev.o \
 				   dtrace_asm.o dtrace_isa.o \
 				   dtrace_actdesc.o dtrace_anon.o \
@@ -19,8 +23,7 @@ dtrace-y			:= dtrace_mod.o dtrace_dev.o \
 				   dtrace_match.o dtrace_priv.o \
 				   dtrace_probe.o dtrace_probe_ctx.o \
 				   dtrace_ptofapi.o dtrace_predicate.o \
-				   dtrace_spec.o dtrace_state.o dtrace_util.o \
-				   cyclic.o
+				   dtrace_spec.o dtrace_state.o dtrace_util.o
 fasttrap-y			:= fasttrap_mod.o fasttrap_dev.o
 fbt-y				:= fbt_mod.o fbt_dev.o
 lockstat-y			:= lockstat_mod.o lockstat_dev.o
