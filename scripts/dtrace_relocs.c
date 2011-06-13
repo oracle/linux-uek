@@ -286,10 +286,12 @@ static void read_info(FILE *fin)
 		if (in_symbols) {
 			if (get_symbol_info(buf, &table[table_cnt]) == 0)
 				table_cnt++;
-			else if (_text == 0)
-				get_text_addr(buf, "_text", &_text);
-			else if (_stext == 0)
-				get_text_addr(buf, "_stext", &_stext);
+			else {
+				if (_text == 0)
+					get_text_addr(buf, "_text", &_text);
+				if (_stext == 0)
+					get_text_addr(buf, "_stext", &_stext);
+			}
 		}
 	}
 }
