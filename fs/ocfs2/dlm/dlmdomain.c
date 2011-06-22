@@ -2131,13 +2131,6 @@ struct dlm_ctxt * dlm_register_domain(const char *domain,
 		goto leave;
 	}
 
-	if (!o2hb_check_local_node_heartbeating()) {
-		mlog(ML_ERROR, "the local node has not been configured, or is "
-		     "not heartbeating\n");
-		ret = -EPROTO;
-		goto leave;
-	}
-
 	mlog(0, "register called for domain \"%s\"\n", domain);
 
 retry:
