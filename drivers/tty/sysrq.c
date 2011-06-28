@@ -31,6 +31,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/suspend.h>
+#include <linux/sdt.h>
 #include <linux/writeback.h>
 #include <linux/swap.h>
 #include <linux/spinlock.h>
@@ -516,6 +517,9 @@ void __handle_sysrq(int key, bool check_mask)
 	printk(KERN_INFO "SysRq : ");
 
         op_p = __sysrq_get_key_op(key);
+	DTRACE_PROBE3(__handle_sysrq,
+		int, key, int, check_mask,
+		int, orig_log_level);
         if (op_p) {
 		/*
 		 * Should we check for enabled operations (/proc/sysrq-trigger
