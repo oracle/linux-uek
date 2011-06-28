@@ -1,10 +1,8 @@
 /* Generate assembler source containing __dtrace_probe_* calls (reloc info)
  *
- * Based on scripts/kallsyms.c
- * Copyright 2002       by Kai Germaschewski
+ * inspired by scripts/kallsyms.c
  *
- * This software may be used and distributed according to the terms
- * of the GNU General Public License, incorporated herein by reference.
+ * (C) 2011 Oracle Corporation
  *
  * Usage: dtrace_relocs input_file_text output_file_elf
  */
