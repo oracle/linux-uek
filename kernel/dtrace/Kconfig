@@ -54,6 +54,8 @@ config DT_SDT
 config DT_SYSTRACE
 	tristate "System Call Tracing"
 	default m
+	select FTRACE
+	select FTRACE_SYSCALLS
 	help
 	  To be written.
 
