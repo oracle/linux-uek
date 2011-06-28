@@ -1,0 +1,39 @@
+DTRACE STATIC PROBE POINTS DIRECTORY
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+======================================================================
+MISCELLANEOUS:
+
+__handle_sysrq:
+	any time that a sysrq key is used or someone does:
+		echo key > /proc/sysrq-trigger
+
+check_hung_task:
+	when check_hung_task() finds a task that has been blocked
+	for more than /proc/sys/kernel/hung_task_timeout_secs seconds
+
+oom_kill_process:
+	when the oom-killer is invoked
+
+======================================================================
+MODULES:
+
+init_module:
+	when a loadable module load is attempted
+
+delete_module:
+	when a loadable module unload is attempted
+
+======================================================================
+SIGNALS:
+
+get_signal_to_deliver:
+	when a fatal signal occurs, usually causing a core dump
+
+handle_signal:
+	(x86 only) when an application handles a signal
+
+signal_fault:
+	(x86 only) when an application does not handle a signal
+
+### END ###
