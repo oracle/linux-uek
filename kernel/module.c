@@ -47,6 +47,7 @@
 #include <linux/string.h>
 #include <linux/mutex.h>
 #include <linux/rculist.h>
+#include <linux/sdt.h>
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
 #include <linux/set_memory.h>
