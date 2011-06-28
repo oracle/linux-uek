@@ -43,6 +43,7 @@
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/sdt.h>
 
 #include <asm/param.h>
 #include <linux/uaccess.h>
@@ -2317,6 +2318,11 @@ relock:
 			if (print_fatal_signals)
 				print_fatal_signal(ksig->info.si_signo);
 			proc_coredump_connector(current);
+			DTRACE_PROBE4(get_signal_to_deliver,
+				int, ksig->info.si_signo,
+				struct pt_regs *, regs,
+				char *, current->comm,
+				int, task_pid_nr(current));
 			/*
 			 * If it was able to dump core, this kills all
 			 * other threads in the group and synchronizes with
