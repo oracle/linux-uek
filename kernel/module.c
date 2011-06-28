@@ -958,6 +958,10 @@ SYSCALL_DEFINE2(delete_module, const char __user *, name_user,
 	char name[MODULE_NAME_LEN];
 	int ret, forced = 0;
 
+	DTRACE_PROBE2(delete_module,
+		const char __user *, name_user,
+		unsigned int, flags);
+
 	if (!capable(CAP_SYS_MODULE) || modules_disabled)
 		return -EPERM;
 
@@ -3818,6 +3822,10 @@ SYSCALL_DEFINE3(init_module, void __user *, umod,
 {
 	int err;
 	struct load_info info = { };
+
+	DTRACE_PROBE3(init_module,
+		void __user *, umod,
+		unsigned long, len, const char __user *, uargs);
 
 	err = may_init_module();
 	if (err)
