@@ -7,6 +7,7 @@
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <asm-generic/bitsperlong.h>
+#include <asm-generic/sections.h>
 
 ///#include <sys/types.h>
 ///#include <sys/param.h>
@@ -57,6 +58,19 @@ static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
 	}
 	memcpy(sdp->sdpd_name, symname, strlen(symname) + 1);
 
+	/* FIXME:
+	 * instr is still relative, not absolute; for some reason,
+	 * vmlinux_info.S shows absolute addresses but it is not being
+	 * rebuilt again when needed, so vmlinux_info.o still contains
+	 * relative addresses.
+	 * Hack this for now by adding _stext to instr, but this should
+	 * not be necessary.
+	 */
+	/* convert relative instr to absolute */
+	if ((unsigned long)instr < 0x1000000000000000UL)
+		instr = (uint8_t *)((unsigned long)instr +
+					(unsigned long)_stext);
+
 	/* TBD: use a kernel list? */
 	sdp->sdpd_offset = (uintptr_t)instr;
 	sdp->sdpd_next = mp->sdt_probes;
@@ -65,12 +79,10 @@ static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
 	DPRINTK("sdt_probes -> 0x%p\n", mp->sdt_probes);
 	DPRINTK("this probe: instr offset=0x%lx, next ptr=0x%p, probe_name=%s\n",
 		sdp->sdpd_offset, sdp->sdpd_next, sdp->sdpd_name);
-#if 0
-	// NOT YET SAFE, since instr is relative, not absolute //
+
 	/* TBD: need a safer write-to-exec-memory ? */
 	for (i = 0; i < SDT_NOPS; i++)
 		instr[i - 1] = SDT_NOP;
-#endif
 
 	return 0;
 }
