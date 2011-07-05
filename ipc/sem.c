@@ -572,6 +572,25 @@ static void wake_up_sem_queue_do(struct list_head *pt)
 		preempt_enable();
 }
 
+/*
+ * sorting helper for struct sem_queues in a list.  This is used to
+ * sort by the CPU they are likely to be on when waking them.
+ */
+int list_comp(void *priv, struct list_head *a, struct list_head *b)
+{
+	struct sem_queue *qa;
+	struct sem_queue *qb;
+
+	qa = list_entry(a, struct sem_queue, list);
+	qb = list_entry(b, struct sem_queue, list);
+
+	if (qa->sleep_cpu < qb->sleep_cpu)
+		return -1;
+	if (qa->sleep_cpu > qb->sleep_cpu)
+		return 1;
+	return 0;
+}
+
 /**
  * update_queue(sma, semnum): Look for tasks that can be completed.
  * @sma: semaphore array.
@@ -591,6 +610,7 @@ static int update_queue(struct sem_array *sma, struct list_head *pt,
 	struct sem_queue *q;
 	LIST_HEAD(new_pending);
 	LIST_HEAD(work_list);
+	LIST_HEAD(wake_list);
 	int semop_completed = 0;
 
 	/*
@@ -630,13 +650,24 @@ again:
 		if (!error)
 			semop_completed = 1;
 
-		wake_up_sem_queue_prepare(pt, q, error);
+		if (error)
+			wake_up_sem_queue_prepare(pt, q, error);
+		else
+			list_add_tail(&q->list, &wake_list);
 
 		if (!list_empty(&new_pending)) {
 			list_splice_init(&new_pending, &work_list);
 			goto again;
 		}
 	}
+
+	list_sort(NULL, &wake_list, list_comp);
+	while (!list_empty(&wake_list)) {
+		q = list_entry(wake_list.next, struct sem_queue, list);
+		list_del_init(&q->list);
+		wake_up_sem_queue_prepare(pt, q, 0);
+	}
+
 	return semop_completed;
 }
 
@@ -1551,6 +1582,12 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	queue.alter = alter;
 	queue.status = -EINTR;
 	queue.sleeper = current;
+
+	/*
+	 * the sleep_cpu number allows sorting by the CPU we expect
+	 * their runqueue entry to be on..hopefully faster for waking up
+	 */
+	queue.sleep_cpu = my_cpu_offset;
 	current->state = TASK_INTERRUPTIBLE;
 
 	/*
