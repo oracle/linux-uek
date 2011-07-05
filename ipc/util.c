@@ -259,14 +259,14 @@ int ipc_addid(struct ipc_ids* ids, struct kern_ipc_perm* new, int size)
 	if (ids->in_use >= size)
 		return -ENOSPC;
 
-	spin_lock_init(&new->lock);
+	rwlock_init(&new->lock);
 	new->deleted = 0;
 	rcu_read_lock();
-	spin_lock(&new->lock);
+	write_lock(&new->lock);
 
 	err = idr_get_new(&ids->ipcs_idr, new, &id);
 	if (err) {
-		spin_unlock(&new->lock);
+		write_unlock(&new->lock);
 		rcu_read_unlock();
 		return err;
 	}
@@ -481,7 +481,7 @@ void ipc_free(void* ptr, int size)
  */
 struct ipc_rcu_hdr
 {
-	int refcount;
+	atomic_t refcount;
 	int is_vmalloc;
 	void *data[0];
 };
@@ -535,14 +535,14 @@ void* ipc_rcu_alloc(int size)
 		if (out) {
 			out += HDRLEN_VMALLOC;
 			container_of(out, struct ipc_rcu_hdr, data)->is_vmalloc = 1;
-			container_of(out, struct ipc_rcu_hdr, data)->refcount = 1;
+			atomic_set(&container_of(out, struct ipc_rcu_hdr, data)->refcount, 1);
 		}
 	} else {
 		out = kmalloc(HDRLEN_KMALLOC + size, GFP_KERNEL);
 		if (out) {
 			out += HDRLEN_KMALLOC;
 			container_of(out, struct ipc_rcu_hdr, data)->is_vmalloc = 0;
-			container_of(out, struct ipc_rcu_hdr, data)->refcount = 1;
+			atomic_set(&container_of(out, struct ipc_rcu_hdr, data)->refcount, 1);
 		}
 	}
 
@@ -551,7 +551,7 @@ void* ipc_rcu_alloc(int size)
 
 void ipc_rcu_getref(void *ptr)
 {
-	container_of(ptr, struct ipc_rcu_hdr, data)->refcount++;
+	atomic_inc(&container_of(ptr, struct ipc_rcu_hdr, data)->refcount);
 }
 
 static void ipc_do_vfree(struct work_struct *work)
@@ -594,7 +594,7 @@ static void ipc_immediate_free(struct rcu_head *head)
 
 void ipc_rcu_putref(void *ptr)
 {
-	if (--container_of(ptr, struct ipc_rcu_hdr, data)->refcount > 0)
+	if (!atomic_dec_and_test(&container_of(ptr, struct ipc_rcu_hdr, data)->refcount))
 		return;
 
 	if (container_of(ptr, struct ipc_rcu_hdr, data)->is_vmalloc) {
@@ -707,13 +707,39 @@ struct kern_ipc_perm *ipc_lock(struct ipc_ids *ids, int id)
 		return ERR_PTR(-EINVAL);
 	}
 
-	spin_lock(&out->lock);
+	write_lock(&out->lock);
 	
 	/* ipc_rmid() may have already freed the ID while ipc_lock
 	 * was spinning: here verify that the structure is still valid
 	 */
 	if (out->deleted) {
-		spin_unlock(&out->lock);
+		write_unlock(&out->lock);
+		rcu_read_unlock();
+		return ERR_PTR(-EINVAL);
+	}
+
+	return out;
+}
+
+struct kern_ipc_perm *ipc_read_lock(struct ipc_ids *ids, int id)
+{
+	struct kern_ipc_perm *out;
+	int lid = ipcid_to_idx(id);
+
+	rcu_read_lock();
+	out = idr_find(&ids->ipcs_idr, lid);
+	if (out == NULL) {
+		rcu_read_unlock();
+		return ERR_PTR(-EINVAL);
+	}
+
+	read_lock(&out->lock);
+	
+	/* ipc_rmid() may have already freed the ID while ipc_lock
+	 * was spinning: here verify that the structure is still valid
+	 */
+	if (out->deleted) {
+		read_unlock(&out->lock);
 		rcu_read_unlock();
 		return ERR_PTR(-EINVAL);
 	}
@@ -731,6 +757,22 @@ struct kern_ipc_perm *ipc_lock_check(struct ipc_ids *ids, int id)
 
 	if (ipc_checkid(out, id)) {
 		ipc_unlock(out);
+		return ERR_PTR(-EIDRM);
+	}
+
+	return out;
+}
+
+struct kern_ipc_perm *ipc_read_lock_check(struct ipc_ids *ids, int id)
+{
+	struct kern_ipc_perm *out;
+
+	out = ipc_read_lock(ids, id);
+	if (IS_ERR(out))
+		return out;
+
+	if (ipc_checkid(out, id)) {
+		ipc_read_unlock(out);
 		return ERR_PTR(-EIDRM);
 	}
 
