@@ -87,7 +87,7 @@ struct task_struct;
 struct sem {
 	int	semval;		/* current value */
 	int	sempid;		/* pid of last operation */
-	spinlock_t		lock;
+	spinlock_t		lock; /* protects semval and sem_pending */
 	struct list_head sem_pending; /* pending single-sop operations */
 };
 
@@ -100,6 +100,7 @@ struct sem_array {
 	struct sem		*sem_base;	/* ptr to first semaphore in array */
 	struct list_head	list_id;	/* undo requests on this array */
 	int			sem_nsems;	/* no. of semaphores in array */
+	atomic_long_t		sequence;	/* keeps FIFO track for waiters */
 };
 
 /* One queue for each sleeping process in the system. */
@@ -108,6 +109,7 @@ struct sem_queue {
 	struct task_struct	*sleeper; /* this process */
 	unsigned long		sleep_cpu;
 	struct sem_undo		*undo;	 /* undo structure */
+	long			sequence; /* preserve FIFO as we hop lists */
 	int    			pid;	 /* process id of requesting process */
 	int    			status;	 /* completion status of operation */
 	struct sembuf		*sops;	 /* array of pending operations */
