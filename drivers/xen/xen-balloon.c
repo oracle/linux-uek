@@ -103,6 +103,8 @@ static int __init balloon_init(void)
 
 	register_balloon(&balloon_sysdev);
 
+	register_xen_selfballooning(&balloon_sysdev);
+
 
 	register_xenstore_notifier(&xenstore_notifier);
 
