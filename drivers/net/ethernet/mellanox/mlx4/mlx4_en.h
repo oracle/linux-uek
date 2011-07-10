@@ -128,7 +128,7 @@ enum {
 #define MLX4_EN_SMALL_PKT_SIZE		64
 #define MLX4_EN_MAX_TX_RING_P_UP	32
 #define MLX4_EN_NUM_UP			8
-#define MLX4_EN_DEF_TX_RING_SIZE	512
+#define MLX4_EN_DEF_TX_RING_SIZE	1024
 #define MLX4_EN_DEF_RX_RING_SIZE  	1024
 
 /* Target number of bytes to coalesce with interrupt moderation */
