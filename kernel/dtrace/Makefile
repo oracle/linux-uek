@@ -9,6 +9,7 @@ obj-$(CONFIG_DT_LOCKSTAT)	+= lockstat.o
 obj-$(CONFIG_DT_PROFILE)	+= profile.o
 obj-$(CONFIG_DT_SDT)		+= sdt.o
 obj-$(CONFIG_DT_SYSTRACE)	+= systrace.o
+obj-$(CONFIG_DT_DT_TEST)	+= dt_test.o
 
 ifdef CONFIG_DT_CORE
 obj-y				+= dtrace_os.o sdt_register.o
@@ -30,3 +31,4 @@ lockstat-y			:= lockstat_mod.o lockstat_dev.o
 profile-y			:= profile_mod.o profile_dev.o
 sdt-y				:= sdt_mod.o sdt_dev.o
 systrace-y			:= systrace_mod.o systrace_dev.o
+dt_test-y			:= dt_test_mod.o dt_test_dev.o
