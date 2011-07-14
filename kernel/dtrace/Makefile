@@ -2,6 +2,8 @@
 # Makefile for DTrace
 #
 
+GCOV_PROFILE := y
+
 obj-$(CONFIG_DT_CORE)		+= dtrace.o
 obj-$(CONFIG_DT_FASTTRAP)	+= fasttrap.o
 obj-$(CONFIG_DT_FBT)		+= fbt.o
