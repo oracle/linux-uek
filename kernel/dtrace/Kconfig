@@ -59,6 +59,12 @@ config DT_SYSTRACE
 	help
 	  To be written.
 
+config DT_DT_TEST
+	tristate "DTrace Test Probe"
+	default m
+	help
+	  To be written.
+
 config DT_DEBUG
 	bool "DTrace debugging"
 	default m
