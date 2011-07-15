@@ -460,7 +460,9 @@ struct module {
 
 #if defined(CONFIG_DTRACE) || defined(CONFIG_DTRACE_MODULE)
 	struct sdt_probedesc *sdt_probes;
-	unsigned int num_dtrace_probes;
+	unsigned int num_dtrace_probes;	/* from kernel build */
+	size_t sdt_nprobes;		/* managed at probe load time */
+	int mod_nenabled;	/* # of enabled dtrace probes in module */
 #endif
 
 #ifdef CONFIG_MODULE_UNLOAD
