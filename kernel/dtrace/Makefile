@@ -31,6 +31,6 @@ fasttrap-y			:= fasttrap_mod.o fasttrap_dev.o
 fbt-y				:= fbt_mod.o fbt_dev.o
 lockstat-y			:= lockstat_mod.o lockstat_dev.o
 profile-y			:= profile_mod.o profile_dev.o
-sdt-y				:= sdt_mod.o sdt_dev.o
+sdt-y				:= sdt_mod.o sdt_dev.o sdt_subr.o
 systrace-y			:= systrace_mod.o systrace_dev.o
 dt_test-y			:= dt_test_mod.o dt_test_dev.o
