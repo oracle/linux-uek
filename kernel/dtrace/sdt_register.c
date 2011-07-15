@@ -6,6 +6,7 @@
 #include <linux/module.h>
 #include <linux/sdt.h>
 #include <linux/slab.h>
+#include <linux/string.h>
 #include <asm-generic/bitsperlong.h>
 #include <asm-generic/sections.h>
 
@@ -100,6 +101,8 @@ void dtrace_register_builtins(void)
 			__func__);
 		return;
 	}
+	kernmod->state = MODULE_STATE_LIVE;
+	strlcpy(kernmod->name, "kernel_builtins", MODULE_NAME_LEN);
 
 	DPRINTK("%lu SDT relocation entries beg. @0x%p\n",
 		dtrace_relocs_count, &dtrace_relocs);
