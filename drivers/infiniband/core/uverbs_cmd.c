@@ -663,6 +663,8 @@ ssize_t ib_uverbs_alloc_shpd(struct ib_uverbs_file *file,
 	shpd->device = file->device->ib_dev;
 	shpd->uobject = shuobj;
 	shpd->share_key = cmd.share_key;
+       /* initialize shared count for this shpd */
+	atomic_set(&shpd->shared, 1);
 
 	shuobj->object = shpd;
 
@@ -848,10 +850,9 @@ ssize_t ib_uverbs_dealloc_pd(struct ib_uverbs_file *file,
 
 	if (!ret && shpd) {
 		down_write(&shuobj->mutex);
-		atomic_dec(&shpd->shared);
 
 		/* if this shpd is no longer shared */
-		if (!atomic_read(&shpd->shared)) {
+		if (atomic_dec_and_test(&shpd->shared)) {
 			/* free the shpd info from device driver */
 			file->device->ib_dev->remove_shpd(file->device->ib_dev,
 							  shpd, 0);

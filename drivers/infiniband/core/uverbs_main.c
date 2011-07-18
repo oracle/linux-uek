@@ -137,6 +137,16 @@ static int (*uverbs_ex_cmd_table[])(struct ib_uverbs_file *file,
 static void ib_uverbs_add_one(struct ib_device *device);
 static void ib_uverbs_remove_one(struct ib_device *device);
 
+static void release_uobj(struct kref *kref)
+{
+	kfree(container_of(kref, struct ib_uobject, ref));
+}
+
+static void put_uobj(struct ib_uobject *uobj)
+{
+	kref_put(&uobj->ref, release_uobj);
+}
+
 static void ib_uverbs_release_dev(struct kref *ref)
 {
 	struct ib_uverbs_device *dev =
@@ -304,9 +314,39 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 	list_for_each_entry_safe(uobj, tmp, &context->pd_list, list) {
 		struct ib_pd *pd = uobj->object;
+		struct ib_uobject          *shuobj = NULL;
+		struct ib_shpd             *shpd = NULL;
 
 		idr_remove_uobj(&ib_uverbs_pd_idr, uobj);
+
+		/* is pd shared ?*/
+		if (pd->shpd) {
+			shpd = pd->shpd;
+			shuobj = shpd->uobject;
+		}
+
 		ib_dealloc_pd(pd);
+
+		if (shpd) {
+
+			down_write(&shuobj->mutex);
+
+			/* if this shpd is no longer shared */
+			if (atomic_dec_and_test(&shpd->shared)) {
+				/* free the shpd info from device driver */
+				file->device->ib_dev->remove_shpd(
+					  file->device->ib_dev, shpd, 0);
+				shuobj->live = 0;
+				up_write(&shuobj->mutex);
+				idr_remove_uobj(&ib_uverbs_shpd_idr, shuobj);
+				/*
+				 * there could some one waiting to
+				 * lock this shared object
+				 */
+				put_uobj(shuobj);
+			} else
+				up_write(&shuobj->mutex);
+		}
 		kfree(uobj);
 	}
 
