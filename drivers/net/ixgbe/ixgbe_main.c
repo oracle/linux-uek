@@ -4480,7 +4480,7 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
-		if (num_tcs == 8) {
+		if (num_tcs > 4) {
 			if (tc < 3) {
 				*tx = tc << 5;
 				*rx = tc << 4;
@@ -4491,7 +4491,7 @@ static void ixgbe_get_first_reg_idx(struct ixgbe_adapter *adapter, u8 tc,
 				*tx = ((tc + 8) << 3);
 				*rx = tc << 4;
 			}
-		} else if (num_tcs == 4) {
+		} else {
 			*rx =  tc << 5;
 			switch (tc) {
 			case 0:
