@@ -901,6 +901,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	ew32(IMC, 0xFFFFFFFF);
+	E1000_WRITE_FLUSH();
 	msleep(10);
 
 	/* Test each interrupt */
@@ -919,6 +920,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
 			adapter->test_icr = 0;
 			ew32(IMC, mask);
 			ew32(ICS, mask);
+			E1000_WRITE_FLUSH();
 			msleep(10);
 
 			if (adapter->test_icr & mask) {
@@ -936,6 +938,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
 		adapter->test_icr = 0;
 		ew32(IMS, mask);
 		ew32(ICS, mask);
+		E1000_WRITE_FLUSH();
 		msleep(10);
 
 		if (!(adapter->test_icr & mask)) {
@@ -953,6 +956,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
 			adapter->test_icr = 0;
 			ew32(IMC, ~mask & 0x00007FFF);
 			ew32(ICS, ~mask & 0x00007FFF);
+			E1000_WRITE_FLUSH();
 			msleep(10);
 
 			if (adapter->test_icr) {
@@ -964,6 +968,7 @@ static int e1000_intr_test(struct e1000_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	ew32(IMC, 0xFFFFFFFF);
+	E1000_WRITE_FLUSH();
 	msleep(10);
 
 	/* Unhook test interrupt handler */
@@ -1457,6 +1462,7 @@ static int e1000_run_loopback_test(struct e1000_adapter *adapter)
 			if (unlikely(++k == txdr->count)) k = 0;
 		}
 		ew32(TDT, k);
+		E1000_WRITE_FLUSH();
 		msleep(200);
 		time = jiffies; /* set the start time for the receive */
 		good_cnt = 0;

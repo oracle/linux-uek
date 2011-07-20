@@ -1433,6 +1433,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFFFFFF);
+	IXGBE_WRITE_FLUSH(&adapter->hw);
 	usleep_range(10000, 20000);
 
 	/* Test each interrupt */
@@ -1453,6 +1454,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			                ~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
 			                ~mask & 0x00007FFF);
+			IXGBE_WRITE_FLUSH(&adapter->hw);
 			usleep_range(10000, 20000);
 
 			if (adapter->test_icr & mask) {
@@ -1470,6 +1472,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 		adapter->test_icr = 0;
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMS, mask);
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS, mask);
+		IXGBE_WRITE_FLUSH(&adapter->hw);
 		usleep_range(10000, 20000);
 
 		if (!(adapter->test_icr &mask)) {
@@ -1490,6 +1493,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 			                ~mask & 0x00007FFF);
 			IXGBE_WRITE_REG(&adapter->hw, IXGBE_EICS,
 			                ~mask & 0x00007FFF);
+			IXGBE_WRITE_FLUSH(&adapter->hw);
 			usleep_range(10000, 20000);
 
 			if (adapter->test_icr) {
@@ -1501,6 +1505,7 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_EIMC, 0xFFFFFFFF);
+	IXGBE_WRITE_FLUSH(&adapter->hw);
 	usleep_range(10000, 20000);
 
 	/* Unhook test interrupt handler */
