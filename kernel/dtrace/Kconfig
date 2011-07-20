@@ -73,6 +73,18 @@ config DT_DEBUG
 	  internal checks within the DTrace core.  It also enables all the
 	  assertions within the DTrace code.
 
+if DT_DEBUG
+
+config DT_DEBUG_MUTEX
+	bool "DTrace mutex debugging"
+	default n
+	help
+	  This controls the use of DTrace specific wrappers to output debug
+	  messages whenever a mutex is locked or unlocked within the DTrace
+	  code (core and providers).
+
+endif	# DT_DEBUG
+
 endif	# DT_CORE
 
 endif   #DTRACE
