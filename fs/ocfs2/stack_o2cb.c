@@ -258,7 +258,7 @@ static void o2cb_dump_lksb(struct ocfs2_dlm_lksb *lksb)
 
 /*
  * Check if this node is heartbeating and is connected to all other
- * heartbeating nodes. Return 1 if true, else 0.
+ * heartbeating nodes.
  */
 static int o2cb_cluster_check(void)
 {
@@ -270,26 +270,36 @@ static int o2cb_cluster_check(void)
 	node_num = o2nm_this_node();
 	if (node_num == O2NM_MAX_NODES) {
 		printk(KERN_ERR "o2cb: This node has not been configured.\n");
-		return 0;
-	}
-
-	o2hb_fill_node_map(hbmap, sizeof(hbmap));
-	if (!test_bit(node_num, hbmap)) {
-		printk(KERN_ERR "o2cb: %s heartbeat has not been started.\n",
-		       (o2hb_global_heartbeat_active() ? "Global" : "Local"));
-		return 0;
+		return -EINVAL;
 	}
 
 	/*
-	 * As o2net does not make a loopback connection, the bit for this node
-	 * is not set. Force set it before comparing it to hbmap.
+	 * o2dlm expects o2net sockets to be created. If not, then
+	 * dlm_join_domain() fails with a stack of errors which are both cryptic
+	 * and incomplete. The idea here is to detect upfront whether we have
+	 * managed to connect to all nodes or not. If not, then list the nodes
+	 * to allow the user to check the configuration (incorrect IP, firewall,
+	 * etc.) Yes, this is racy. But its not the end of the world.
 	 */
-	o2net_fill_node_map(netmap, sizeof(netmap));
-	set_bit(node_num, netmap);
-	if (!memcmp(hbmap, netmap, sizeof(hbmap)))
-		return 1;
+#define	O2CB_MAP_STABILIZE_COUNT	60
+	for (i = 0; i < O2CB_MAP_STABILIZE_COUNT; ++i) {
+		o2hb_fill_node_map(hbmap, sizeof(hbmap));
+		if (!test_bit(node_num, hbmap)) {
+			printk(KERN_ERR "o2cb: %s heartbeat has not been "
+			       "started.\n", (o2hb_global_heartbeat_active() ?
+					      "Global" : "Local"));
+			return -EINVAL;
+		}
+		o2net_fill_node_map(netmap, sizeof(netmap));
+		/* Force set the current node to allow easy compare */
+		set_bit(node_num, netmap);
+		if (!memcmp(hbmap, netmap, sizeof(hbmap)))
+			return 0;
+		if (i < O2CB_MAP_STABILIZE_COUNT)
+			msleep(1000);
+	}
 
-	printk(KERN_ERR "o2cb: This node is not connected to nodes:");
+	printk(KERN_ERR "o2cb: This node could not connect to nodes:");
 	i = -1;
 	while ((i = find_next_bit(hbmap, O2NM_MAX_NODES,
 				  i + 1)) < O2NM_MAX_NODES) {
@@ -298,7 +308,7 @@ static int o2cb_cluster_check(void)
 	}
 	printk(".\n");
 
-	return 0;
+	return -ENOTCONN;
 }
 
 /*
@@ -327,10 +337,10 @@ static int o2cb_cluster_connect(struct ocfs2_cluster_connection *conn)
 	BUG_ON(conn->cc_proto == NULL);
 
 	/* Ensure cluster stack is up and all nodes are connected */
-	if (!o2cb_cluster_check()) {
+	rc = o2cb_cluster_check();
+	if (rc) {
 		printk(KERN_ERR "o2cb: Cluster check failed. Fix errors "
 		       "before retrying.\n");
-		rc = -EINVAL;
 		goto out;
 	}
 
