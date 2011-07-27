@@ -2652,6 +2652,11 @@ struct ring_info {
 	DEFINE_DMA_UNMAP_ADDR(mapping);
 };
 
+struct tg3_tx_ring_info {
+	struct sk_buff			*skb;
+	DEFINE_DMA_UNMAP_ADDR(mapping);
+};
+
 struct tg3_link_config {
 	/* Describes what we're trying to get. */
 	u32				advertising;
@@ -2813,7 +2818,7 @@ struct tg3_napi {
 	u32				tx_pending;
 	u32				prodmbox;
 	struct tg3_tx_buffer_desc	*tx_ring;
-	struct ring_info		*tx_buffers;
+	struct tg3_tx_ring_info		*tx_buffers;
 
 	dma_addr_t			status_mapping;
 	dma_addr_t			rx_rcb_mapping;
