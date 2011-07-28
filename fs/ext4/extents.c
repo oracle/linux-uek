@@ -3838,7 +3838,7 @@ retry:
 						blkbits) >> blkbits))
 			new_size = offset + len;
 		else
-			new_size = (map.m_lblk + ret) << blkbits;
+			new_size = ((loff_t) map.m_lblk + ret) << blkbits;
 
 		ext4_falloc_update_inode(inode, mode, new_size,
 					 (map.m_flags & EXT4_MAP_NEW));
