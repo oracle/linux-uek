@@ -1,0 +1,211 @@
+# CONFIG_ISA is not set
+# CONFIG_ISAPNP is not set
+# CONFIG_I2C_PCA_ISA is not set
+
+# CONFIG_SCSI_BUSLOGIC is not set
+# CONFIG_SCSI_INIA100 is not set
+# CONFIG_SCSI_ADVANSYS is not set
+# CONFIG_SCSI_AHA1542 is not set
+# CONFIG_SCSI_FUTURE_DOMAIN is not set
+# CONFIG_SCSI_IN2000 is not set
+# CONFIG_SCSI_QLOGIC_FAS is not set
+# CONFIG_SCSI_DC390T is not set
+
+# CONFIG_ATALK is not set
+# CONFIG_DEV_APPLETALK is not set
+# CONFIG_LTPC is not set
+# CONFIG_COPS is not set
+# CONFIG_IPX is not set
+# CONFIG_IPDDP is not set
+# CONFIG_DECNET is not set
+# CONFIG_PLIP is not set
+
+# CONFIG_PCMCIA_AHA152X is not set
+# CONFIG_PCMCIA_NINJA_SCSI is not set
+# CONFIG_PCMCIA_QLOGIC is not set
+# CONFIG_PCMCIA_SYM53C500 is not set
+
+# CONFIG_EL2 is not set
+# CONFIG_ELPLUS is not set
+# CONFIG_WD80x3 is not set
+# CONFIG_I82092 is not set
+# CONFIG_YELLOWFIN is not set
+# CONFIG_SUNDANCE is not set
+# CONFIG_ULTRA is not set
+# CONFIG_SKFP is not set
+# CONFIG_DE600 is not set
+# CONFIG_DE620 is not set
+# CONFIG_CS89x0 is not set
+# CONFIG_AC3200 is not set
+# CONFIG_NI52 is not set
+# CONFIG_NI65 is not set
+# CONFIG_LANCE is not set
+# CONFIG_EL16 is not set
+# CONFIG_EL3 is not set
+# CONFIG_3C515 is not set
+# CONFIG_HAMACHI is not set
+# CONFIG_HP100 is not set
+# CONFIG_EQUALIZER is not set
+# CONFIG_NET_SB1000 is not set
+# CONFIG_DEPCA is not set
+# CONFIG_ATP is not set
+
+# CONFIG_TR is not set
+
+# CONFIG_GAMEPORT is not set
+
+# CONFIG_SND_AD1816A is not set
+# CONFIG_SND_AD1848 is not set
+# CONFIG_SND_CS4231 is not set
+# CONFIG_SND_CS4232 is not set
+# CONFIG_SND_CS4236 is not set
+# CONFIG_SND_ES968 is not set
+# CONFIG_SND_ES1688 is not set
+# CONFIG_SND_ES18XX is not set
+# CONFIG_SND_GUSCLASSIC is not set
+# CONFIG_SND_GUSEXTREME is not set
+# CONFIG_SND_GUSMAX is not set
+# CONFIG_SND_INTERWAVE is not set
+# CONFIG_SND_INTERWAVE_STB is not set
+# CONFIG_SND_OPTI92X_AD1848 is not set
+# CONFIG_SND_OPTI92X_CS4231 is not set
+# CONFIG_SND_OPTI93X is not set
+# CONFIG_SND_MIRO is not set
+# CONFIG_SND_SB8 is not set
+# CONFIG_SND_SB16 is not set
+# CONFIG_SND_SBAWE is not set
+# CONFIG_SND_SB16_CSP is not set
+# CONFIG_SND_WAVEFRONT is not set
+# CONFIG_SND_ALS100 is not set
+# CONFIG_SND_AZT2320 is not set
+# CONFIG_SND_CMI8330 is not set
+# CONFIG_SND_DT019X is not set
+# CONFIG_SND_OPL3SA2 is not set
+# CONFIG_SND_SGALAXY is not set
+# CONFIG_SND_SSCAPE is not set
+
+# CONFIG_WAN_ROUTER is not set
+
+# CONFIG_BINFMT_AOUT is not set
+
+# CONFIG_DRM_TDFX is not set
+# CONFIG_DRM_SIS is not set
+
+# CONFIG_BLK_DEV_UMEM is not set
+# CONFIG_BLK_DEV_NBD is not set
+# CONFIG_BLK_DEV_DAC960 is not set
+
+# CONFIG_PARIDE is not set
+
+# CONFIG_I2O is not set
+
+# CONFIG_MWAVE is not set
+
+# CONFIG_ROCKETPORT is not set
+# CONFIG_R3964 is not set
+# CONFIG_TIPAR is not set
+
+# CONFIG_JOYSTICK_ANALOG is not set
+# CONFIG_JOYSTICK_A3D is not set
+# CONFIG_JOYSTICK_ADI is not set
+# CONFIG_JOYSTICK_COBRA is not set
+# CONFIG_JOYSTICK_GF2K is not set
+# CONFIG_JOYSTICK_GRIP is not set
+# CONFIG_JOYSTICK_GRIP_MP is not set
+# CONFIG_JOYSTICK_GUILLEMOT is not set
+# CONFIG_JOYSTICK_INTERACT is not set
+# CONFIG_JOYSTICK_SIDEWINDER is not set
+# CONFIG_JOYSTICK_TMDC is not set
+# CONFIG_JOYSTICK_IFORCE is not set
+# CONFIG_JOYSTICK_IFORCE_USB=y
+# CONFIG_JOYSTICK_IFORCE_232=y
+# CONFIG_JOYSTICK_WARRIOR is not set
+# CONFIG_JOYSTICK_MAGELLAN is not set
+# CONFIG_JOYSTICK_SPACEORB is not set
+# CONFIG_JOYSTICK_SPACEBALL is not set
+# CONFIG_JOYSTICK_STINGER is not set
+# CONFIG_JOYSTICK_DB9 is not set
+# CONFIG_JOYSTICK_GAMECON is not set
+# CONFIG_JOYSTICK_TURBOGRAFX is not set
+
+# CONFIG_RADIO_CADET is not set
+# CONFIG_RADIO_RTRACK is not set
+# CONFIG_RADIO_RTRACK2 is not set
+# CONFIG_RADIO_AZTECH is not set
+# CONFIG_RADIO_GEMTEK is not set
+# CONFIG_RADIO_GEMTEK_PCI is not set
+# CONFIG_RADIO_MAXIRADIO is not set
+# CONFIG_RADIO_MAESTRO is not set
+# CONFIG_RADIO_MIROPCM20 is not set
+# CONFIG_RADIO_MIROPCM20_RDS is not set
+# CONFIG_RADIO_SF16FMI is not set
+# CONFIG_RADIO_SF16FMR2 is not set
+# CONFIG_RADIO_TERRATEC is not set
+# CONFIG_RADIO_TRUST is not set
+# CONFIG_RADIO_TYPHOON is not set
+# CONFIG_RADIO_ZOLTRIX is not set
+
+# CONFIG_TUNER_3036 is not set
+
+# CONFIG_VIDEO_PMS is not set
+# CONFIG_VIDEO_BWQCAM is not set
+# CONFIG_VIDEO_CQCAM is not set
+# CONFIG_VIDEO_W9966 is not set
+# CONFIG_VIDEO_CPIA is not set
+# CONFIG_VIDEO_CPIA_PP is not set
+# CONFIG_VIDEO_CPIA_USB is not set
+# CONFIG_VIDEO_SAA5249 is not set
+# CONFIG_VIDEO_STRADIS is not set
+# CONFIG_VIDEO_ZORAN is not set
+# CONFIG_VIDEO_ZORAN_BUZ is not set
+# CONFIG_VIDEO_ZORAN_DC10 is not set
+# CONFIG_VIDEO_ZORAN_DC30 is not set
+# CONFIG_VIDEO_ZORAN_LML33 is not set
+# CONFIG_VIDEO_ZORAN_LML33R10 is not set
+# CONFIG_VIDEO_MEYE is not set
+# CONFIG_VIDEO_SAA7134 is not set
+# CONFIG_VIDEO_MXB is not set
+# CONFIG_VIDEO_DPC is not set
+# CONFIG_VIDEO_HEXIUM_ORION is not set
+# CONFIG_VIDEO_HEXIUM_GEMINI is not set
+# CONFIG_VIDEO_CX88 is not set
+# CONFIG_VIDEO_SAA5246A is not set
+
+# CONFIG_INFTL is not set
+# CONFIG_MTD_DOC2000 is not set
+# CONFIG_MTD_DOC2001PLUS is not set
+# CONFIG_MTD_PMC551 is not set
+# CONFIG_MTD_COMPLEX_MAPPINGS is not set
+# CONFIG_MTD_PCI is not set
+
+# CONFIG_FB_MATROX is not set
+# CONFIG_FB_3DFX is not set
+# CONFIG_FB_HGA is not set
+# CONFIG_FB_ATY is not set
+# CONFIG_FB_TRIDENT is not set
+# CONFIG_FB_VOODOO1 is not set
+# CONFIG_FB_ATY128 is not set
+# CONFIG_FB_RADEON is not set
+# CONFIG_FB_NEOMAGIC is not set
+# CONFIG_FB_ASILIANT is not set
+# CONFIG_FB_HGA_ACCEL is not set
+# CONFIG_FB_3DFX_ACCEL is not set
+# CONFIG_FB_TRIDENT_ACCEL is not set
+
+# CONFIG_JFS_FS is not set
+# CONFIG_NCP_FS is not set
+# CONFIG_CODA_FS is not set
+# CONFIG_REISERFS_FS is not set
+# CONFIG_AFFS_FS is not set
+# CONFIG_BEFS_FS is not set
+# CONFIG_EFS_FS is not set
+# CONFIG_BFS_FS is not set
+# CONFIG_QNX4FS_FS is not set
+# CONFIG_SYSV_FS is not set
+# CONFIG_UFS_FS is not set
+# CONFIG_ROMFS_FS is not set
+# CONFIG_MINIX_FS is not set
+# CONFIG_9P_FS is not set
+# CONFIG_HFS_FS is not set
+# CONFIG_HFSPLUS_FS is not set
+
