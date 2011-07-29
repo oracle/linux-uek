@@ -36,6 +36,7 @@
 #include <linux/pagemap.h>
 #include <linux/delay.h>
 #include <linux/netdevice.h>
+#include <linux/interrupt.h>
 #include <linux/tcp.h>
 #include <linux/ipv6.h>
 #include <linux/slab.h>
