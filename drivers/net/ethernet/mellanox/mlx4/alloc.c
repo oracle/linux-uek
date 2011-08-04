@@ -139,6 +139,9 @@ int mlx4_bitmap_init(struct mlx4_bitmap *bitmap, u32 num, u32 mask,
 	if (num != roundup_pow_of_two(num))
 		return -EINVAL;
 
+	if (reserved_bot + reserved_top >= num)
+		return -EINVAL;
+
 	bitmap->last = 0;
 	bitmap->top  = 0;
 	bitmap->max  = num - reserved_top;
