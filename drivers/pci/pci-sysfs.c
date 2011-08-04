@@ -26,6 +26,7 @@
 #include <linux/security.h>
 #include <linux/pci-aspm.h>
 #include <linux/slab.h>
+#include <linux/msi.h>
 #include "pci.h"
 
 static int sysfs_initialized;	/* = 0 */
@@ -281,6 +282,24 @@ msi_bus_store(struct device *dev, struct device_attribute *attr,
 	return count;
 }
 
+#ifdef CONFIG_PCI_MSI
+static ssize_t
+msi_irqs_show(struct device *dev, struct device_attribute *attr, char *buf)
+{
+	struct pci_dev *pdev = to_pci_dev(dev);
+	struct msi_desc *entry;
+	ssize_t ret = 0;
+
+	list_for_each_entry(entry, &pdev->msi_list, list)
+		ret += sprintf(buf + ret, "%u ", entry->irq);
+
+	if (ret)
+		ret += sprintf(buf + ret, "\n");
+
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_HOTPLUG
 static DEFINE_MUTEX(pci_remove_rescan_mutex);
 static ssize_t bus_rescan_store(struct bus_type *bus, const char *buf,
@@ -393,6 +412,9 @@ struct device_attribute pci_dev_attrs[] = {
 	__ATTR(broken_parity_status,(S_IRUGO|S_IWUSR),
 		broken_parity_status_show,broken_parity_status_store),
 	__ATTR(msi_bus, 0644, msi_bus_show, msi_bus_store),
+#ifdef CONFIG_PCI_MSI
+	__ATTR_RO(msi_irqs),
+#endif
 #ifdef CONFIG_HOTPLUG
 	__ATTR(remove, (S_IWUSR|S_IWGRP), NULL, remove_store),
 	__ATTR(rescan, (S_IWUSR|S_IWGRP), NULL, dev_rescan_store),
