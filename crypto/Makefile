@@ -89,7 +89,8 @@ obj-$(CONFIG_CRYPTO_USER_API) += af_alg.o
 obj-$(CONFIG_CRYPTO_USER_API_HASH) += algif_hash.o
 obj-$(CONFIG_CRYPTO_USER_API_SKCIPHER) += algif_skcipher.o
 obj-$(CONFIG_CRYPTO_MPILIB) += mpi/
- 
+obj-$(CONFIG_CRYPTO_SIGNATURE) += signature/
+
 #
 # generic algorithms and the async_tx api
 #

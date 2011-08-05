@@ -863,6 +863,19 @@ config CRYPTO_MPILIB
 	help
 	  Multiprecision maths library from GnuPG
 
+config CRYPTO_SIGNATURE
+	bool "In-kernel signature checker (EXPERIMENTAL)"
+	depends on CRYPTO
+	help
+	  Signature checker (used for module sig checking).
+
+config CRYPTO_SIGNATURE_DSA
+	bool "Handle DSA signatures (EXPERIMENTAL)"
+	depends on CRYPTO_SIGNATURE
+	select CRYPTO_MPILIB
+	help
+	  DSA Signature checker.
+
 source "drivers/crypto/Kconfig"
 
 endif	# if CRYPTO
