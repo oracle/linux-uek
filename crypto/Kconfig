@@ -857,6 +857,12 @@ config CRYPTO_USER_API_SKCIPHER
 	  This option enables the user-spaces interface for symmetric
 	  key cipher algorithms.
 
+config CRYPTO_MPILIB
+	bool "Multiprecision maths library (EXPERIMENTAL)"
+	depends on CRYPTO
+	help
+	  Multiprecision maths library from GnuPG
+
 source "drivers/crypto/Kconfig"
 
 endif	# if CRYPTO
