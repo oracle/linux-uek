@@ -1986,14 +1986,16 @@ static void
 vmxnet3_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 {
 	struct vmxnet3_adapter *adapter = netdev_priv(netdev);
-	u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
-	unsigned long flags;
+	if (!(netdev->flags & IFF_PROMISC)) {
+		u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
+		unsigned long flags;
 
-	VMXNET3_SET_VFTABLE_ENTRY(vfTable, vid);
-	spin_lock_irqsave(&adapter->cmd_lock, flags);
-	VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
-			       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
-	spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+		VMXNET3_SET_VFTABLE_ENTRY(vfTable, vid);
+		spin_lock_irqsave(&adapter->cmd_lock, flags);
+		VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
+				       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
+		spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+	}
 }
 
 
@@ -2001,14 +2003,16 @@ static void
 vmxnet3_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 {
 	struct vmxnet3_adapter *adapter = netdev_priv(netdev);
-	u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
-	unsigned long flags;
+	if (!(netdev->flags & IFF_PROMISC)) {
+		u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
+		unsigned long flags;
 
-	VMXNET3_CLEAR_VFTABLE_ENTRY(vfTable, vid);
-	spin_lock_irqsave(&adapter->cmd_lock, flags);
-	VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
-			       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
-	spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+		VMXNET3_CLEAR_VFTABLE_ENTRY(vfTable, vid);
+		spin_lock_irqsave(&adapter->cmd_lock, flags);
+		VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
+				       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
+		spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+	}
 }
 
 
