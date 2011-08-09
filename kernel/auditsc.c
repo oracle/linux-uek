@@ -72,7 +72,7 @@
 
 /* AUDIT_NAMES is the number of slots we reserve in the audit_context
  * for saving names from getname(). */
-#define AUDIT_NAMES    20
+#define AUDIT_NAMES   1024 
 
 /* Indicates that audit should log the full pathname. */
 #define AUDIT_NAME_FULL -1
@@ -1902,14 +1902,16 @@ static int audit_inc_name_count(struct audit_context *context,
 {
 	if (context->name_count >= AUDIT_NAMES) {
 		if (inode)
-			printk(KERN_DEBUG "audit: name_count maxed, losing inode data: "
+			printk(KERN_DEBUG "audit: name_count maxed(%d/%d), losing inode data: "
 			       "dev=%02x:%02x, inode=%lu\n",
+			       context->name_count, AUDIT_NAMES,
 			       MAJOR(inode->i_sb->s_dev),
 			       MINOR(inode->i_sb->s_dev),
 			       inode->i_ino);
 
 		else
-			printk(KERN_DEBUG "name_count maxed, losing inode data\n");
+			printk(KERN_DEBUG "name_count maxed(%d/%d), losing inode data\n", 
+					context->name_count, AUDIT_NAMES);
 		return 1;
 	}
 	context->name_count++;
