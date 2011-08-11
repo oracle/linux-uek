@@ -5,7 +5,7 @@
 menuconfig DTRACE
 	bool "DTrace (Dynamic Tracing) Support"
 	default y
-	depends on X86_64
+	depends on X86_64 && !DEBUG_LOCK_ALLOC
 	select KALLSYMS
 	help
 	  To be written.
