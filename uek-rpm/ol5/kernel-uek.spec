@@ -18,7 +18,7 @@ Summary: The Linux kernel
 %define rhel 1
 %if %{rhel}
 %define distro_build 100
-%define signmodules 1
+%define signmodules 0
 %else
 
 # fedora_build defines which build revision of this kernel version we're
@@ -368,9 +368,9 @@ Summary: The Linux kernel
 %if %{nopatches}%{using_upstream_branch}
 # Ignore unknown options in our config-* files.
 # Some options go with patches we're not applying.
-%define oldconfig_target loose_nonint_oldconfig
+%define oldconfig_target oldconfig
 %else
-%define oldconfig_target nonint_oldconfig
+%define oldconfig_target oldconfig
 %endif
 
 # To temporarily exclude an architecture from being built, add it to
@@ -589,7 +589,7 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 #Patch02: git-linus.diff
 
 # we always need nonintconfig, even for -vanilla kernels
-Patch03: nonint_oldconfig_2632rc7.patch
+#Patch03: nonint_oldconfig_2632rc7.patch
 
 # we also need compile fixes for -vanilla
 #Patch04: linux-2.6-compile-fixes.patch
@@ -846,6 +846,19 @@ ApplyPatch()
   *.gz) gunzip < "$RPM_SOURCE_DIR/$patch" | $patch_command ${1+"$@"} ;;
   *) $patch_command ${1+"$@"} < "$RPM_SOURCE_DIR/$patch" ;;
   esac
+}
+
+test_config_file()
+{
+  TestConfig=$1
+  Arch=`head -1 .config | cut -b 3-`
+  if [ `make ARCH=$Arch listnewconfig 2>/dev/null | grep -c CONFIG`  -ne 0 ]; then 
+	echo "Following config options are unconfigured"
+	make ARCH=$Arch listnewconfig 2> /dev/null
+	echo "Error: Kernel version and config file missmatch"
+	echo "Please fix $TestConfig"
+	exit 1
+  fi
 }
 
 # First we unpack the kernel tarball.

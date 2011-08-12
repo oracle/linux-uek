@@ -25,7 +25,7 @@ Summary: The Linux kernel
 %define rhel 1
 %if %{rhel}
 %define distro_build 100
-%define signmodules 1
+%define signmodules 0
 %else
 
 # fedora_build defines which build revision of this kernel version we're
@@ -103,7 +103,7 @@ Summary: The Linux kernel
 # kernel-headers
 %define with_headers   1
 # kernel-firmware
-%define with_firmware  0
+%define with_firmware  1
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -120,7 +120,7 @@ Summary: The Linux kernel
 %endif
 
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk 1
+%define with_kabichk 0
 
 # Additional options for user-friendly one-off kernel building:
 #
@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.13.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -370,9 +370,9 @@ Summary: The Linux kernel
 %if %{nopatches}%{using_upstream_branch}
 # Ignore unknown options in our config-* files.
 # Some options go with patches we're not applying.
-%define oldconfig_target loose_nonint_oldconfig
+%define oldconfig_target oldconfig
 %else
-%define oldconfig_target nonint_oldconfig
+%define oldconfig_target oldconfig
 %endif
 
 # To temporarily exclude an architecture from being built, add it to
@@ -597,7 +597,7 @@ Patch00: patch-2.6.%{base_sublevel}-git%{gitrev}.bz2
 #Patch02: git-linus.diff
 
 # we always need nonintconfig, even for -vanilla kernels
-Patch03: nonint_oldconfig_2632rc7.patch
+#Patch03: nonint_oldconfig_2632rc7.patch
 
 # we also need compile fixes for -vanilla
 #Patch04: linux-2.6-compile-fixes.patch
@@ -856,6 +856,19 @@ ApplyPatch()
   esac
 }
 
+test_config_file()
+{
+  TestConfig=$1
+  Arch=`head -1 .config | cut -b 3-`
+  if [ `make ARCH=$Arch listnewconfig 2>/dev/null | grep -c CONFIG`  -ne 0 ]; then 
+	echo "Following config options are unconfigured"
+	make ARCH=$Arch listnewconfig 2> /dev/null
+	echo "Error: Kernel version and config file missmatch"
+	echo "Please fix $TestConfig"
+	exit 1
+  fi
+}
+
 # First we unpack the kernel tarball.
 # If this isn't the first make prep, we use links to the existing clean tarball
 # which speeds things up quite a bit.
@@ -1000,7 +1013,7 @@ make -f %{SOURCE20} VERSION=%{version} configs
 # This patch adds a "make nonint_oldconfig" which is non-interactive and
 # also gives a list of missing options at the end. Useful for automated
 # builds (as used in the buildsystem).
-ApplyPatch nonint_oldconfig_2632rc7.patch
+#ApplyPatch nonint_oldconfig_2632rc7.patch
 
 %if !%{nopatches}
 
@@ -1180,6 +1193,7 @@ rm -f kernel-%{version}-*debug.config
 for i in *.config
 do
   mv $i .config
+  test_config_file $i
   Arch=`head -1 .config | cut -b 3-`
   make ARCH=$Arch %{oldconfig_target} > /dev/null
   echo "# $Arch" > configs/$i
@@ -1192,14 +1206,18 @@ done
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %if %{signmodules}
   cp %{SOURCE19} .
-  gpg --homedir . --batch --gen-key %{SOURCE11}
+  pwd
+  rm -rf ./gpg_gen
+  mkdir ./gpg_gen
+  chmod 700 ./gpg_gen
+  gpg --homedir ./gpg_gen --batch --gen-key %{SOURCE11}
 # if there're external keys to be included
   if [ -s %{SOURCE19} ]; then
-      gpg --homedir . --no-default-keyring --keyring kernel.pub --import %{SOURCE19}
+      gpg --homedir . --no-default-keyring --keyring ./gpg_gen/kernel.pub --import %{SOURCE19}
   fi
-  gpg --homedir . --export --keyring ./kernel.pub Oracle > extract.pub
+  gpg --homedir . --export --keyring ./gpg_gen/kernel.pub Oracle > ./gpg_gen/extract.pub
   gcc -o scripts/bin2c scripts/bin2c.c
-  scripts/bin2c ksign_def_public_key __initdata <extract.pub >crypto/signature/key.h
+  scripts/bin2c ksign_def_public_key __initdata <./gpg_gen/extract.pub >crypto/signature/key.h
 %endif
  	  	 
 
@@ -1390,7 +1408,7 @@ hwcap 0 nosegneg"
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     cd include
     cp -a acpi config crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
-    asmdir=$(readlink asm)
+    asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
     pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     ln -s $asmdir asm
