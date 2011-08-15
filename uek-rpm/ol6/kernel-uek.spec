@@ -1862,7 +1862,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
-* Thu Jul 29 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.1.el6]
+* Thu  Aug 11 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.2.el6uek]
+- [AUDIT/workaround] Increase AUDIT_NAMES array len (Maxim Uvarov)
+- Increase kernel log buffer to 1MB (SHIFT=20)
+- export list of msi irqs into sysfs (Chris Mason)
+- memcg: mark init_section_page_cgroup() properly (Namhyung Kim)
+- memcg: fix init_page_cgroup nid with sparsemem (KAMEZAWA Hiroyuki)
+
+* Thu Jul 29 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.1.el6uek]
 - Linux 2.6.39.3
 - ipc semaphores: reduce ipc_lock contention in semtimedop
 - ipc semaphores: order wakeups based on waiter CPU
