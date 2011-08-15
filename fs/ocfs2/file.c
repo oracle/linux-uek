@@ -2455,6 +2455,14 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 
 	if (direct_io && !is_sync_kiocb(iocb) &&
 	    ocfs2_is_io_unaligned(inode, count, iocb->ki_pos)) {
+		static unsigned long unaligned_warn_time;
+
+		/* Warn about this once per day */
+		if (printk_timed_ratelimit(&unaligned_warn_time, 60*60*24*HZ))
+			printk(KERN_NOTICE "ocfs2: Unaligned AIO/DIO on inode "
+			       "%lld on device %s by %s\n",
+				(unsigned long long)OCFS2_I(inode)->ip_blkno,
+				inode->i_sb->s_id, current->comm);
 		/*
 		 * Make it a sync io if it's an unaligned aio.
 		 */
