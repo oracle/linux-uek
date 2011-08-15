@@ -2321,6 +2321,14 @@ relock:
 	}
 
 	if (unaligned_dio) {
+		static unsigned long unaligned_warn_time;
+
+		/* Warn about this once per day */
+		if (printk_timed_ratelimit(&unaligned_warn_time, 60*60*24*HZ))
+			printk(KERN_NOTICE "ocfs2: Unaligned AIO/DIO on inode "
+			       "%lld on device %s by %s\n",
+				(unsigned long long)OCFS2_I(inode)->ip_blkno,
+				inode->i_sb->s_id, current->comm);
 		/*
 		 * Wait on previous unaligned aio to complete before
 		 * proceeding.
