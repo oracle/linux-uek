@@ -104,7 +104,7 @@ Summary: The Linux kernel
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk 1
+%define with_kabichk	0
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.2%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1005,7 +1005,7 @@ make -f %{SOURCE20} VERSION=%{version} configs
 # This patch adds a "make nonint_oldconfig" which is non-interactive and
 # also gives a list of missing options at the end. Useful for automated
 # builds (as used in the buildsystem).
-ApplyPatch nonint_oldconfig_2632rc7.patch
+#ApplyPatch nonint_oldconfig_2632rc7.patch
 
 #ApplyPatch linux-2.6-makefile-after_link.patch
 
@@ -1216,6 +1216,7 @@ rm -f kernel-%{version}-*debug.config
 for i in *.config
 do
   mv $i .config
+  test_config_file $i
   Arch=`head -1 .config | cut -b 3-`
   make ARCH=$Arch %{oldconfig_target} > /dev/null
   echo "# $Arch" > configs/$i
@@ -1228,14 +1229,18 @@ done
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %if %{signmodules}
   cp %{SOURCE19} .
-  gpg --homedir . --batch --gen-key %{SOURCE11}
+  pwd
+  rm -rf ./gpg_gen
+  mkdir ./gpg_gen
+  chmod 700 ./gpg_gen
+  gpg --homedir ./gpg_gen --batch --gen-key %{SOURCE11}
 # if there're external keys to be included
   if [ -s %{SOURCE19} ]; then
       gpg --homedir . --no-default-keyring --keyring kernel.pub --import %{SOURCE19}
   fi
-  gpg --homedir . --export --keyring ./kernel.pub Oracle > extract.pub
+  gpg --homedir . --export --keyring ./kernel.pub Oracle > ./gpg_gen/extract.pub
   gcc -o scripts/bin2c scripts/bin2c.c
-  scripts/bin2c ksign_def_public_key __initdata <extract.pub >crypto/signature/key.h
+  scripts/bin2c ksign_def_public_key __initdata <./gpg_gen/extract.pub >crypto/signature/key.h
 %endif
  	  	 
 
@@ -1425,7 +1430,7 @@ hwcap 0 nosegneg"
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     cd include
     cp -a acpi config crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
-    asmdir=$(readlink asm)
+    asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
     pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     ln -s $asmdir asm
