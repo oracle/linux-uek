@@ -344,6 +344,9 @@ struct module
 
 	unsigned int taints;	/* same bits as kernel:tainted */
 
+	/* Is this module GPG signed */
+	int gpgsig_ok;
+
 #ifdef CONFIG_GENERIC_BUG
 	/* Support for BUG */
 	unsigned num_bugs;

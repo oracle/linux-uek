@@ -1383,8 +1383,9 @@ $(clean-dirs):
 	$(Q)$(MAKE) $(clean)=$(patsubst _clean_%,%,$@)
 
 clean:	rm-dirs := $(MODVERDIR)
-clean: rm-files := $(KBUILD_EXTMOD)/Module.symvers
-
+clean: rm-files := $(KBUILD_EXTMOD)/Module.symvers \
+                   $(KBUILD_EXTMOD)/Module.markers \
+                   $(KBUILD_EXTMOD)/modules.order
 help:
 	@echo  '  Building external modules.'
 	@echo  '  Syntax: make -C path/to/kernel/src M=$$PWD target'
@@ -1404,7 +1405,7 @@ clean: $(clean-dirs)
 	$(call cmd,rmdirs)
 	$(call cmd,rmfiles)
 	@find $(if $(KBUILD_EXTMOD), $(KBUILD_EXTMOD), .) $(RCS_FIND_IGNORE) \
-		\( -name '*.[oas]' -o -name '*.ko' -o -name '.*.cmd' \
+		\( -name '*.[oas]' -o -name '*.ko' -o -name '*.ko.*' -o -name '.*.cmd' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
 		-o -name modules.builtin -o -name '.tmp_*.o.*' \
