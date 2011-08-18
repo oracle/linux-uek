@@ -365,13 +365,7 @@ Summary: The Linux kernel
 %define vdso_arches ppc ppc64
 %endif
 
-%if %{nopatches}%{using_upstream_branch}
-# Ignore unknown options in our config-* files.
-# Some options go with patches we're not applying.
-%define oldconfig_target oldconfig
-%else
-%define oldconfig_target oldconfig
-%endif
+%define oldconfig_target oldnoconfig
 
 # To temporarily exclude an architecture from being built, add it to
 # %nobuildarches. Do _NOT_ use the ExclusiveArch: line, because if we
@@ -855,9 +849,8 @@ test_config_file()
   if [ `make ARCH=$Arch listnewconfig 2>/dev/null | grep -c CONFIG`  -ne 0 ]; then 
 	echo "Following config options are unconfigured"
 	make ARCH=$Arch listnewconfig 2> /dev/null
-	echo "Error: Kernel version and config file missmatch"
-	echo "Please fix $TestConfig"
-	exit 1
+	echo "WARNING: Kernel version and config file missmatch"
+	echo "WARNING: This options will be unset by default in config file"
   fi
 }
 
@@ -1627,11 +1620,13 @@ rm -rf $RPM_BUILD_ROOT/usr/include/drm
 
 %if %{with_firmware}
 mkdir -p $RPM_BUILD_ROOT/lib/firmware
-make INSTALL_FW_PATH=$RPM_BUILD_ROOT/lib/firmware firmware_install
+Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
+make ARCH=$Arch INSTALL_FW_PATH=$RPM_BUILD_ROOT/lib/firmware firmware_install
 %endif
 
 %if %{with_bootwrapper}
-make DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
+Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
+make ARCH=$Arch DESTDIR=$RPM_BUILD_ROOT bootwrapper_install WRAPPER_OBJDIR=%{_libdir}/kernel-wrapper WRAPPER_DTSDIR=%{_libdir}/kernel-wrapper/dts
 %endif
 
 ###
