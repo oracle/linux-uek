@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.2%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.3%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1857,6 +1857,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed  Aug 24 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.3.el6uek]
+- Rebase to linux-3.0.3
+
 * Thu  Aug 11 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.2.el6uek]
 - [AUDIT/workaround] Increase AUDIT_NAMES array len (Maxim Uvarov)
 - Increase kernel log buffer to 1MB (SHIFT=20)
