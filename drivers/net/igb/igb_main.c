@@ -413,7 +413,7 @@ static void igb_dump(struct igb_adapter *adapter)
 			"leng  ntw timestamp        bi->skb\n");
 
 		for (i = 0; tx_ring->desc && (i < tx_ring->count); i++) {
-			tx_desc = E1000_TX_DESC_ADV(*tx_ring, i);
+			tx_desc = IGB_TX_DESC(tx_ring, i);
 			buffer_info = &tx_ring->buffer_info[i];
 			u0 = (struct my_u0 *)tx_desc;
 			printk(KERN_INFO "T [0x%03X]    %016llX %016llX %016llX"
@@ -494,7 +494,7 @@ rx_ring_summary:
 
 		for (i = 0; i < rx_ring->count; i++) {
 			buffer_info = &rx_ring->buffer_info[i];
-			rx_desc = E1000_RX_DESC_ADV(*rx_ring, i);
+			rx_desc = IGB_RX_DESC(rx_ring, i);
 			u0 = (struct my_u0 *)rx_desc;
 			staterr = le32_to_cpu(rx_desc->wb.upper.status_error);
 			if (staterr & E1000_RXD_STAT_DD) {
@@ -3994,7 +3994,7 @@ static inline int igb_tso_adv(struct igb_ring *tx_ring,
 	i = tx_ring->next_to_use;
 
 	buffer_info = &tx_ring->buffer_info[i];
-	context_desc = E1000_TX_CTXTDESC_ADV(*tx_ring, i);
+	context_desc = IGB_TX_CTXTDESC(tx_ring, i);
 	/* VLAN MACLEN IPLEN */
 	if (tx_flags & IGB_TX_FLAGS_VLAN)
 		info |= (tx_flags & IGB_TX_FLAGS_VLAN_MASK);
@@ -4049,7 +4049,7 @@ static inline bool igb_tx_csum_adv(struct igb_ring *tx_ring,
 	    (tx_flags & IGB_TX_FLAGS_VLAN)) {
 		i = tx_ring->next_to_use;
 		buffer_info = &tx_ring->buffer_info[i];
-		context_desc = E1000_TX_CTXTDESC_ADV(*tx_ring, i);
+		context_desc = IGB_TX_CTXTDESC(tx_ring, i);
 
 		if (tx_flags & IGB_TX_FLAGS_VLAN)
 			info |= (tx_flags & IGB_TX_FLAGS_VLAN_MASK);
@@ -4242,7 +4242,7 @@ static inline void igb_tx_queue_adv(struct igb_ring *tx_ring,
 
 	do {
 		buffer_info = &tx_ring->buffer_info[i];
-		tx_desc = E1000_TX_DESC_ADV(*tx_ring, i);
+		tx_desc = IGB_TX_DESC(tx_ring, i);
 		tx_desc->read.buffer_addr = cpu_to_le64(buffer_info->dma);
 		tx_desc->read.cmd_type_len =
 			cpu_to_le32(cmd_type_len | buffer_info->length);
@@ -5584,13 +5584,13 @@ static bool igb_clean_tx_irq(struct igb_q_vector *q_vector)
 
 	i = tx_ring->next_to_clean;
 	eop = tx_ring->buffer_info[i].next_to_watch;
-	eop_desc = E1000_TX_DESC_ADV(*tx_ring, eop);
+	eop_desc = IGB_TX_DESC(tx_ring, eop);
 
 	while ((eop_desc->wb.status & cpu_to_le32(E1000_TXD_STAT_DD)) &&
 	       (count < tx_ring->count)) {
 		rmb();	/* read buffer_info after eop_desc status */
 		for (cleaned = false; !cleaned; count++) {
-			tx_desc = E1000_TX_DESC_ADV(*tx_ring, i);
+			tx_desc = IGB_TX_DESC(tx_ring, i);
 			buffer_info = &tx_ring->buffer_info[i];
 			cleaned = (i == eop);
 
@@ -5609,7 +5609,7 @@ static bool igb_clean_tx_irq(struct igb_q_vector *q_vector)
 				i = 0;
 		}
 		eop = tx_ring->buffer_info[i].next_to_watch;
-		eop_desc = E1000_TX_DESC_ADV(*tx_ring, eop);
+		eop_desc = IGB_TX_DESC(tx_ring, eop);
 	}
 
 	tx_ring->next_to_clean = i;
@@ -5764,7 +5764,7 @@ static bool igb_clean_rx_irq_adv(struct igb_q_vector *q_vector, int budget)
 	u16 cleaned_count = igb_desc_unused(rx_ring);
 	u16 i = rx_ring->next_to_clean;
 
-	rx_desc = E1000_RX_DESC_ADV(*rx_ring, i);
+	rx_desc = IGB_RX_DESC(rx_ring, i);
 	staterr = le32_to_cpu(rx_desc->wb.upper.status_error);
 
 	while (staterr & E1000_RXD_STAT_DD) {
@@ -5779,7 +5779,7 @@ static bool igb_clean_rx_irq_adv(struct igb_q_vector *q_vector, int budget)
 		if (i == rx_ring->count)
 			i = 0;
 
-		next_rxd = E1000_RX_DESC_ADV(*rx_ring, i);
+		next_rxd = IGB_RX_DESC(rx_ring, i);
 		prefetch(next_rxd);
 
 		/*
@@ -5959,7 +5959,7 @@ void igb_alloc_rx_buffers_adv(struct igb_ring *rx_ring, u16 cleaned_count)
 	struct igb_buffer *bi;
 	u16 i = rx_ring->next_to_use;
 
-	rx_desc = E1000_RX_DESC_ADV(*rx_ring, i);
+	rx_desc = IGB_RX_DESC(rx_ring, i);
 	bi = &rx_ring->buffer_info[i];
 	i -= rx_ring->count;
 
@@ -5980,7 +5980,7 @@ void igb_alloc_rx_buffers_adv(struct igb_ring *rx_ring, u16 cleaned_count)
 		bi++;
 		i++;
 		if (unlikely(!i)) {
-			rx_desc = E1000_RX_DESC_ADV(*rx_ring, 0);
+			rx_desc = IGB_RX_DESC(rx_ring, 0);
 			bi = rx_ring->buffer_info;
 			i -= rx_ring->count;
 		}
