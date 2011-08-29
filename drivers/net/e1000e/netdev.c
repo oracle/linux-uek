@@ -4789,7 +4789,7 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
 
 		frag = &skb_shinfo(skb)->frags[f];
 		len = frag->size;
-		offset = frag->page_offset;
+		offset = 0;
 
 		while (len) {
 			i++;
@@ -4802,9 +4802,8 @@ static int e1000_tx_map(struct e1000_ring *tx_ring, struct sk_buff *skb,
 			buffer_info->length = size;
 			buffer_info->time_stamp = jiffies;
 			buffer_info->next_to_watch = i;
-			buffer_info->dma = dma_map_page(&pdev->dev, frag->page,
-							offset, size,
-							DMA_TO_DEVICE);
+			buffer_info->dma = skb_frag_dma_map(&pdev->dev, frag,
+						offset, size, DMA_TO_DEVICE);
 			buffer_info->mapped_as_page = true;
 			if (dma_mapping_error(&pdev->dev, buffer_info->dma))
 				goto dma_error;
