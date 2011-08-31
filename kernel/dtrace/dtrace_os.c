@@ -8,8 +8,10 @@
 #include <linux/hrtimer.h>
 #include <linux/module.h>
 #include <linux/vmalloc.h>
+#include <asm/unistd.h>
 
 #include "cyclic.h"
+#include "systrace.h"
 
 /*
  * Very basic implementation of cyclics, merely enough to support dtrace.
@@ -132,3 +134,62 @@ void cyclic_remove(cyclic_id_t id)
 	mutex_unlock(&cyclic_lock);
 }
 EXPORT_SYMBOL(cyclic_remove);
+
+static systrace_info_t	systrace_info;
+
+void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+		       uintptr_t, uintptr_t);
+
+void systrace_stub(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+		   uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
+		   uintptr_t arg5)
+{
+}
+
+asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1,
+				 uintptr_t arg2, uintptr_t arg3,
+				 uintptr_t arg4, uintptr_t arg5)
+{
+	long			rc;
+	unsigned long		sysnum;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	asm volatile("movq %%rax,%0" : "=m"(sysnum));
+
+	sc = &systrace_info.sysent[sysnum];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	if (sc->stsy_underlying != NULL)
+		rc = (*sc->stsy_underlying)(arg0, arg1, arg2, arg3, arg4,
+					    arg5);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
+
+	return rc;
+}
+
+systrace_info_t *dtrace_syscalls_init() {
+	int			i;
+	extern sys_call_ptr_t	sys_call_table[NR_syscalls];
+
+	systrace_info.probep = &systrace_probe;
+	systrace_info.stub = systrace_stub;
+	systrace_info.syscall = systrace_syscall;
+
+	for (i = 0; i < NR_syscalls; i++) {
+		systrace_info.sysent[i].stsy_tblent = &sys_call_table[i];
+		systrace_info.sysent[i].stsy_underlying =
+					(dt_sys_call_t)sys_call_table[i];
+	}
+
+	return &systrace_info;
+}
+EXPORT_SYMBOL(dtrace_syscalls_init);
