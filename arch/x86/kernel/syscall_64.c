@@ -22,7 +22,11 @@
 
 extern void sys_ni_syscall(void);
 
+#if defined(CONFIG_DT_SYSTRACE) || defined(CONFIG_DT_SYSTRACE_MODULE)
+asmlinkage sys_call_ptr_t sys_call_table[__NR_syscall_max+1] = {
+#else
 asmlinkage const sys_call_ptr_t sys_call_table[__NR_syscall_max+1] = {
+#endif /* CONFIG_DT_SYSTRACE || CONFIG_DT_SYSTRACE_MODULE */
 	/*
 	 * Smells like a compiler bug -- it doesn't work
 	 * when the & below is removed.
