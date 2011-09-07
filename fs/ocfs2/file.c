@@ -2322,9 +2322,11 @@ relock:
 
 	if (unaligned_dio) {
 		static unsigned long unaligned_warn_time;
-
-		/* Warn about this once per day */
-		if (printk_timed_ratelimit(&unaligned_warn_time, 60*60*24*HZ))
+		/*
+		 * Warn max once per day. This should be enough to warn users
+		 * about the loss in performance.
+		 */
+		if (printk_timed_ratelimit(&unaligned_warn_time, 24*60*60*1000))
 			printk(KERN_NOTICE "ocfs2: Unaligned AIO/DIO on inode "
 			       "%lld on device %s by %s\n",
 				(unsigned long long)OCFS2_I(inode)->ip_blkno,
