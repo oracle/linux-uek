@@ -262,7 +262,4 @@ config AVERAGE
 
 	  If unsure, say N.
 
-config LLIST
-	bool
-
 endmenu
