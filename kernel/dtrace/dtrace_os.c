@@ -14,6 +14,30 @@
 #include "systrace.h"
 
 /*
+ * Return a high resolution timer value that is guaranteed to always increase.
+ */
+ktime_t dtrace_gethrtime(void)
+{
+	struct timespec ts;
+
+	getrawmonotonic(&ts);
+	return timespec_to_ktime(ts);
+}
+EXPORT_SYMBOL(dtrace_gethrtime);
+
+/*
+ * Return the current wall-clock time, in nanoseconds since the epoch.
+ */
+ktime_t dtrace_getwalltime(void)
+{
+	struct timespec ts;
+
+	getnstimeofday(&ts);
+	return timespec_to_ktime(ts);
+}
+EXPORT_SYMBOL(dtrace_getwalltime);
+
+/*
  * Very basic implementation of cyclics, merely enough to support dtrace.
  */
 typedef union cyclic	cyclic_t;
