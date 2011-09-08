@@ -14,6 +14,15 @@
 #include "systrace.h"
 
 /*
+ * Return a high resolution timer value that is guaranteed to always increase.
+ */
+ktime_t dtrace_gethrtime(void)
+{
+	return ktime_get();
+}
+EXPORT_SYMBOL(dtrace_gethrtime);
+
+/*
  * Very basic implementation of cyclics, merely enough to support dtrace.
  */
 typedef union cyclic	cyclic_t;
