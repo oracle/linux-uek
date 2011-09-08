@@ -201,10 +201,9 @@ void acpi_table_print_madt_entry(struct acpi_subtable_header *header)
 
 
 int __init
-acpi_table_parse_entries(char *id,
+acpi_table_parse_entries_array(char *id,
 			     unsigned long table_size,
-			     int entry_id,
-			     acpi_table_entry_handler handler,
+			     struct acpi_subtable_proc *proc, int proc_num,
 			     unsigned int max_entries)
 {
 	struct acpi_table_header *table_header = NULL;
@@ -212,12 +211,12 @@ acpi_table_parse_entries(char *id,
 	unsigned int count = 0;
 	unsigned long table_end;
 	acpi_size tbl_size;
+	int i;
 
-	if (acpi_disabled)
+	if (acpi_disabled) {
+		proc[0].count = -ENODEV;
 		return -ENODEV;
-
-	if (!handler)
-		return -EINVAL;
+	}
 
 	if (strncmp(id, ACPI_SIG_MADT, 4) == 0)
 		acpi_get_table_with_size(id, acpi_apic_instance, &table_header, &tbl_size);
@@ -226,6 +225,7 @@ acpi_table_parse_entries(char *id,
 
 	if (!table_header) {
 		printk(KERN_WARNING PREFIX "%4.4s not present\n", id);
+		proc[0].count = -ENODEV;
 		return -ENODEV;
 	}
 
@@ -238,23 +238,54 @@ acpi_table_parse_entries(char *id,
 
 	while (((unsigned long)entry) + sizeof(struct acpi_subtable_header) <
 	       table_end) {
-		if (entry->type == entry_id
-		    && (!max_entries || count++ < max_entries))
-			if (handler(entry, table_end)) {
-				early_acpi_os_unmap_memory((char *)table_header, tbl_size);
+		for (i = 0; i < proc_num; i++) {
+			if (entry->type != proc[i].id)
+				continue;
+			if (max_entries && count++ >= max_entries)
+				continue;
+			if (proc[i].handler(entry, table_end)) {
+				early_acpi_os_unmap_memory((char *)table_header,
+								 tbl_size);
+				proc[i].count = -EINVAL;
 				return -EINVAL;
 			}
+			proc[i].count++;
+			break;
+		}
 
 		entry = (struct acpi_subtable_header *)
 		    ((unsigned long)entry + entry->length);
 	}
 	if (max_entries && count > max_entries) {
-		printk(KERN_WARNING PREFIX "[%4.4s:0x%02x] ignored %i entries of "
-		       "%i found\n", id, entry_id, count - max_entries, count);
+		printk(KERN_WARNING PREFIX "[%4.4s:0x%02x ", id, proc[0].id);
+		for (i = 1; i < proc_num; i++)
+			printk(KERN_CONT " 0x%02x", proc[i].id);
+		printk(KERN_CONT "] ignored %i entries of %i found\n",
+		       count-max_entries, count);
 	}
 
 	early_acpi_os_unmap_memory((char *)table_header, tbl_size);
 	return count;
+}
+
+int __init
+acpi_table_parse_entries(char *id,
+			     unsigned long table_size,
+			     int entry_id,
+			     acpi_table_entry_handler handler,
+			     unsigned int max_entries)
+{
+	struct acpi_subtable_proc proc[1];
+
+	if (!handler)
+		return -EINVAL;
+
+	memset(proc, 0, sizeof(proc));
+	proc[0].id = entry_id;
+	proc[0].handler = handler;
+
+	return acpi_table_parse_entries_array(id, table_size, proc, 1,
+						 max_entries);
 }
 
 int __init
