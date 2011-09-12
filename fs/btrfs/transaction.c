@@ -1762,7 +1762,7 @@ int btrfs_clean_old_snapshots(struct btrfs_root *root)
 		    BTRFS_MIXED_BACKREF_REV)
 			ret = btrfs_drop_snapshot(root, NULL, 0, 0);
 		else
-			ret =btrfs_drop_snapshot(root, NULL, 1, 0);
+			ret = btrfs_drop_snapshot(root, NULL, 1, 0);
 		BUG_ON(ret < 0);
 	}
 	return 0;

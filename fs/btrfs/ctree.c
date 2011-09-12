@@ -4665,7 +4665,6 @@ static noinline void btrfs_del_leaf(struct btrfs_trans_handle *trans,
 
 	extent_buffer_get(leaf);
 	btrfs_free_tree_block(trans, root, leaf, 0, 1);
-	btrfs_free_tree_block(trans, root, leaf, 0, 1, 0);
 	free_extent_buffer_stale(leaf);
 }
 /*
