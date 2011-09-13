@@ -85,7 +85,7 @@ struct ipc_kludge {
 /* used by in-kernel data structures */
 struct kern_ipc_perm
 {
-	rwlock_t	lock;
+	spinlock_t	lock;
 	int		deleted;
 	int		id;
 	key_t		key;
