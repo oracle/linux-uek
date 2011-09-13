@@ -164,12 +164,6 @@ static inline void ipc_lock_by_ptr(struct kern_ipc_perm *perm)
 	write_lock(&perm->lock);
 }
 
-static inline void ipc_read_lock_by_ptr(struct kern_ipc_perm *perm)
-{
-	rcu_read_lock();
-	read_lock(&perm->lock);
-}
-
 static inline void ipc_unlock(struct kern_ipc_perm *perm)
 {
 	write_unlock(&perm->lock);

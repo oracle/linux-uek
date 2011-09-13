@@ -196,12 +196,6 @@ static inline void sem_lock_and_putref(struct sem_array *sma)
 	ipc_rcu_putref(sma);
 }
 
-static inline void sem_read_lock_and_putref(struct sem_array *sma)
-{
-	ipc_read_lock_by_ptr(&sma->sem_perm);
-	ipc_rcu_putref(sma);
-}
-
 static inline void sem_getref_and_unlock(struct sem_array *sma)
 {
 	ipc_rcu_getref(sma);
@@ -1023,9 +1017,8 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 	ushort* sem_io = fast_sem_io;
 	int nsems;
 	struct list_head tasks;
-	int write_locked = 0;
 
-	sma = sem_read_lock_check(ns, semid);
+	sma = sem_lock_check(ns, semid);
 	if (IS_ERR(sma))
 		return PTR_ERR(sma);
 
@@ -1049,7 +1042,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		int i;
 
 		if(nsems > SEMMSL_FAST) {
-			sem_getref_and_read_unlock(sma);
+			sem_getref_and_unlock(sma);
 
 			sem_io = ipc_alloc(sizeof(ushort)*nsems);
 			if(sem_io == NULL) {
@@ -1057,16 +1050,17 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 				return -ENOMEM;
 			}
 
-			sem_read_lock_and_putref(sma);
+			sem_lock_and_putref(sma);
 			if (sma->sem_perm.deleted) {
+				sem_unlock(sma);
 				err = -EIDRM;
-				goto out_unlock;
+				goto out_free;
 			}
 		}
 
 		for (i = 0; i < sma->sem_nsems; i++)
 			sem_io[i] = sma->sem_base[i].semval;
-		sem_read_unlock(sma);
+		sem_unlock(sma);
 		err = 0;
 		if(copy_to_user(array, sem_io, nsems*sizeof(ushort)))
 			err = -EFAULT;
@@ -1078,7 +1072,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		struct sem_undo *un;
 		LIST_HEAD(pending);
 
-		sem_getref_and_read_unlock(sma);
+		sem_getref_and_unlock(sma);
 
 		if(nsems > SEMMSL_FAST) {
 			sem_io = ipc_alloc(sizeof(ushort)*nsems);
@@ -1101,19 +1095,11 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 				goto out_free;
 			}
 		}
-		sem_read_lock_and_putref(sma);
-
-		/* no new undos can come in while we have the read lock
-		 * but we have to take the write lock if there are any
-		 */
-		if (!list_empty(&sma->list_id)) {
-			sem_getref_and_read_unlock(sma);
-			sem_lock_and_putref(sma);
-			write_locked = 1;
-		}
+		sem_lock_and_putref(sma);
 		if (sma->sem_perm.deleted) {
+			sem_unlock(sma);
 			err = -EIDRM;
-			goto out_unlock;
+			goto out_free;
 		}
 
 		for (i = 0; i < nsems; i++) {
@@ -1168,16 +1154,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 		if (val > SEMVMX || val < 0)
 			goto out_unlock;
 
-		if (!list_empty(&sma->list_id)) {
-			sem_getref_and_read_unlock(sma);
-			sem_lock_and_putref(sma);
-			write_locked = 1;
-		}
-		if (sma->sem_perm.deleted) {
-			err = -EIDRM;
-			goto out_unlock;
-		}
-
+		//assert_spin_locked(&sma->sem_perm.lock);
 		list_for_each_entry(un, &sma->list_id, list_id)
 			un->semadj[semnum] = 0;
 
@@ -1196,10 +1173,7 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 	}
 	}
 out_unlock:
-	if (write_locked)
-		sem_unlock(sma);
-	else
-		sem_read_unlock(sma);
+	sem_unlock(sma);
 	wake_up_sem_queue_do(&tasks);
 
 out_free:
