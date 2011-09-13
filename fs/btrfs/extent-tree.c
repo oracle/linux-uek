@@ -2293,11 +2293,6 @@ static noinline int run_clustered_refs(struct btrfs_trans_handle *trans,
 		extent_op = locked_ref->extent_op;
 		locked_ref->extent_op = NULL;
 
-		/*
-		 * locked_ref is the head node, so we have to go one
-		 * node back for any delayed ref updates
-		 */
-		ref = select_delayed_ref(locked_ref);
 		if (!ref) {
 			/* All delayed refs have been processed, Go ahead
 			 * and send the head node to run_one_delayed_ref,
