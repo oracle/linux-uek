@@ -2824,23 +2824,25 @@ again:
 			goto again;
 		}
 	} else {
-		if (p->slots[0] >= btrfs_header_nritems(leaf)) {
-			/* we're sitting on an invalid slot */
-			if (p->slots[0] == 0) {
-				ret = btrfs_prev_leaf(root, p);
-				if (ret <= 0)
-					return ret;
-				if (!return_any)
-					return 1;
-				/*
-				 * no lower item found, return the next
-				 * higher instead
-				 */
-				return_any = 0;
-				find_higher = 1;
-				btrfs_release_path(p);
-				goto again;
+		if (p->slots[0] == 0) {
+			ret = btrfs_prev_leaf(root, p);
+			if (ret < 0)
+				return ret;
+			if (!ret) {
+				p->slots[0] = btrfs_header_nritems(leaf) - 1;
+				return 0;
 			}
+			if (!return_any)
+				return 1;
+			/*
+			 * no lower item found, return the next
+			 * higher instead
+			 */
+			return_any = 0;
+			find_higher = 1;
+			btrfs_release_path(p);
+			goto again;
+		} else {
 			--p->slots[0];
 		}
 	}
