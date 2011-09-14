@@ -337,7 +337,8 @@ static noinline int btrfs_ioctl_fitrim(struct file *file, void __user *arg)
 static noinline int create_subvol(struct btrfs_root *root,
 				  struct dentry *dentry,
 				  char *name, int namelen,
-				  u64 *async_transid)
+				  u64 *async_transid,
+				  struct btrfs_qgroup_inherit **inherit)
 {
 	struct btrfs_trans_handle *trans;
 	struct btrfs_key key;
@@ -372,6 +373,11 @@ static noinline int create_subvol(struct btrfs_root *root,
 		dput(parent);
 		return PTR_ERR(trans);
 	}
+
+	ret = btrfs_qgroup_inherit(trans, root->fs_info, 0, objectid,
+				   inherit ? *inherit : NULL);
+	if (ret)
+		goto fail;
 
 	leaf = btrfs_alloc_free_block(trans, root, root->leafsize,
 				      0, objectid, NULL, 0, 0, 0);
@@ -490,7 +496,7 @@ fail:
 
 static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 			   char *name, int namelen, u64 *async_transid,
-			   bool readonly)
+			   bool readonly, struct btrfs_qgroup_inherit **inherit)
 {
 	struct inode *inode;
 	struct dentry *parent;
@@ -509,6 +515,10 @@ static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 	pending_snapshot->dentry = dentry;
 	pending_snapshot->root = root;
 	pending_snapshot->readonly = readonly;
+	if (inherit) {
+		pending_snapshot->inherit = *inherit;
+		*inherit = NULL;	/* take responsibility to free it */
+	}
 
 	trans = btrfs_start_transaction(root->fs_info->extent_root, 5);
 	if (IS_ERR(trans)) {
@@ -644,7 +654,8 @@ static inline int btrfs_may_create(struct inode *dir, struct dentry *child)
 static noinline int btrfs_mksubvol(struct path *parent,
 				   char *name, int namelen,
 				   struct btrfs_root *snap_src,
-				   u64 *async_transid, bool readonly)
+				   u64 *async_transid, bool readonly,
+				   struct btrfs_qgroup_inherit **inherit)
 {
 	struct inode *dir  = parent->dentry->d_inode;
 	struct dentry *dentry;
@@ -675,11 +686,11 @@ static noinline int btrfs_mksubvol(struct path *parent,
 		goto out_up_read;
 
 	if (snap_src) {
-		error = create_snapshot(snap_src, dentry,
-					name, namelen, async_transid, readonly);
+		error = create_snapshot(snap_src, dentry, name, namelen,
+					async_transid, readonly, inherit);
 	} else {
 		error = create_subvol(BTRFS_I(dir)->root, dentry,
-				      name, namelen, async_transid);
+				      name, namelen, async_transid, inherit);
 	}
 	if (!error)
 		fsnotify_mkdir(dir, dentry);
@@ -1399,11 +1410,9 @@ out_unlock:
 }
 
 static noinline int btrfs_ioctl_snap_create_transid(struct file *file,
-						    char *name,
-						    unsigned long fd,
-						    int subvol,
-						    u64 *transid,
-						    bool readonly)
+				char *name, unsigned long fd, int subvol,
+				u64 *transid, bool readonly,
+				struct btrfs_qgroup_inherit **inherit)
 {
 	struct btrfs_root *root = BTRFS_I(fdentry(file)->d_inode)->root;
 	struct file *src_file;
@@ -1427,7 +1436,7 @@ static noinline int btrfs_ioctl_snap_create_transid(struct file *file,
 
 	if (subvol) {
 		ret = btrfs_mksubvol(&file->f_path, name, namelen,
-				     NULL, transid, readonly);
+				     NULL, transid, readonly, inherit);
 	} else {
 		struct inode *src_inode;
 		src_file = fget(fd);
@@ -1446,7 +1455,7 @@ static noinline int btrfs_ioctl_snap_create_transid(struct file *file,
 		}
 		ret = btrfs_mksubvol(&file->f_path, name, namelen,
 				     BTRFS_I(src_inode)->root,
-				     transid, readonly);
+				     transid, readonly, inherit);
 		fput(src_file);
 	}
 out:
@@ -1466,7 +1475,7 @@ static noinline int btrfs_ioctl_snap_create(struct file *file,
 
 	ret = btrfs_ioctl_snap_create_transid(file, vol_args->name,
 					      vol_args->fd, subvol,
-					      NULL, false);
+					      NULL, false, NULL);
 
 	kfree(vol_args);
 	return ret;
@@ -1480,6 +1489,7 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 	u64 transid = 0;
 	u64 *ptr = NULL;
 	bool readonly = false;
+	struct btrfs_qgroup_inherit *inherit = NULL;
 
 	vol_args = memdup_user(arg, sizeof(*vol_args));
 	if (IS_ERR(vol_args))
@@ -1487,7 +1497,8 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 	vol_args->name[BTRFS_SUBVOL_NAME_MAX] = '\0';
 
 	if (vol_args->flags &
-	    ~(BTRFS_SUBVOL_CREATE_ASYNC | BTRFS_SUBVOL_RDONLY)) {
+	    ~(BTRFS_SUBVOL_CREATE_ASYNC | BTRFS_SUBVOL_RDONLY |
+	      BTRFS_SUBVOL_QGROUP_INHERIT)) {
 		ret = -EOPNOTSUPP;
 		goto out;
 	}
@@ -1496,10 +1507,21 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 		ptr = &transid;
 	if (vol_args->flags & BTRFS_SUBVOL_RDONLY)
 		readonly = true;
+	if (vol_args->flags & BTRFS_SUBVOL_QGROUP_INHERIT) {
+		if (vol_args->size > PAGE_CACHE_SIZE) {
+			ret = -EINVAL;
+			goto out;
+		}
+		inherit = memdup_user(vol_args->qgroup_inherit, vol_args->size);
+		if (IS_ERR(inherit)) {
+			ret = PTR_ERR(inherit);
+			goto out;
+		}
+	}
 
 	ret = btrfs_ioctl_snap_create_transid(file, vol_args->name,
-					      vol_args->fd, subvol,
-					      ptr, readonly);
+					      vol_args->fd, subvol, ptr,
+					      readonly, &inherit);
 
 	if (ret == 0 && ptr &&
 	    copy_to_user(arg +
@@ -1508,6 +1530,7 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 		ret = -EFAULT;
 out:
 	kfree(vol_args);
+	kfree(inherit);
 	return ret;
 }
 
@@ -3246,6 +3269,8 @@ long btrfs_ioctl(struct file *file, unsigned int
 		return btrfs_ioctl_snap_create_v2(file, argp, 0);
 	case BTRFS_IOC_SUBVOL_CREATE:
 		return btrfs_ioctl_snap_create(file, argp, 1);
+	case BTRFS_IOC_SUBVOL_CREATE_V2:
+		return btrfs_ioctl_snap_create_v2(file, argp, 1);
 	case BTRFS_IOC_SNAP_DESTROY:
 		return btrfs_ioctl_snap_destroy(file, argp);
 	case BTRFS_IOC_SUBVOL_GETFLAGS:
