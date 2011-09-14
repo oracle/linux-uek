@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.4%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1878,6 +1878,95 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Sep 13 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.5.el5uek]
+- xen: allow enable use of VGA console on dom0
+- xen: prepare tmem shim to handle frontswap
+- xen: Add __attribute__((format(printf... where appropriate
+- xen: Populate xenbus device attributes
+- xen: Add module alias to autoload backend drivers
+- xen: tmem: self-ballooning and frontswap-selfshrinking
+- xen/pci: Shuffle code around.
+- xen/pci: Update comments and fix empty spaces.
+- xen/pci: Provide #ifdef CONFIG_ACPI to easy code squashing.
+- xen/pci: In xen_register_pirq bind the GSI to the IRQ after the hypercall.
+- xen/pci: Use the xen_register_pirq for HVM and initial domain users
+- xen/pci: Squash pci_xen_initial_domain and xen_setup_pirqs together.
+- xen/pci: Move the allocation of IRQs when there are no IOAPIC's to the end
+- xen/pci: Retire unnecessary #ifdef CONFIG_ACPI
+- xen/pci: Remove 'xen_allocate_pirq_gsi'.
+- xen/pci: Use 'acpi_gsi_to_irq' value unconditionally.
+- xen/pciback: xen pci backend driver.
+- xen/pciback: Cleanup the driver based on checkpatch warnings and errors.
+- xen/pciback: Register the owner (domain) of the PCI device.
+- xen/pciback: guest SR-IOV support for PV guest
+- xen/pciback: Disable MSI/MSI-X when reseting a device
+- xen/pciback: Allocate IRQ handler for device that is shared with guest.
+- xen/pciback: Fine-grain the spinlocks and fix BUG: scheduling while atomic cases.
+- xen: rename pciback module to xen-pciback.
+- xen/pciback: Don't setup an fake IRQ handler for SR-IOV devices.
+- xen/pciback: Print out the MSI/MSI-X (PIRQ) values
+- xen/pciback: Drop two backends, squash and cleanup some code.
+- xen/pciback: Remove the DEBUG option.
+- xen/pciback: Have 'passthrough' option instead of XEN_PCIDEV_BACKEND_PASS and XEN_PCIDEV_BACKEND_VPCI
+- mm: frontswap: swap data structure changes
+- mm: frontswap: core code
+- mm: frontswap: add swap hooks and extend try_to_unuse
+- mm: frontswap: config and doc files
+- xen:pvhvm: Modpost section mismatch fix
+- xen/pciback: remove duplicated #include
+- trace/xen: add skeleton for Xen trace events
+- xen/multicalls: remove debugfs stats
+- xen/trace: set up tracepoint skeleton
+- xen/trace: add multicall tracing
+- xen/trace: add mmu tracepoints
+- xen/trace: add ptpage alloc/release tracepoints
+- xen/trace: add xen_pgd_(un)pin tracepoints
+- xen/trace: add segment desc tracing
+- xen/trace: add tlb flush tracepoints
+- xen/mmu: use extend_args for more mmuext updates
+- xen/mmu: tune pgtable alloc/release
+- xen/multicalls: disable MC_DEBUG
+- xen/multicalls: add unlikely around slowpath in __xen_mc_entry()
+- xen/multicall: special-case singleton hypercalls
+- xen/multicall: move *idx fields to start of mc_buffer
+- xen/trace: convert mmu events to use DECLARE_EVENT_CLASS()/DEFINE_EVENT()
+- xen/trace: use class for multicall trace
+- xen/tracing: fix compile errors when tracing is disabled.
+- xen/tracing: it looks like we wanted CONFIG_FTRACE
+- xen/trace: Fix compile error when CONFIG_XEN_PRIVILEGED_GUEST is not set
+- xen/tracing: Fix tracing config option properly
+- Input: xen-kbdfront - enable driver for HVM guests
+- xen/balloon: memory hotplug support for Xen balloon driver
+- mm: extend memory hotplug API to allow memory hotplug in virtual machines
+- xen/blkback: Add module alias for autoloading
+- xen/blkback: Don't let in-flight requests defer pending ones.
+- xen/netback: Add module alias for autoloading
+- xen: convert to 64 bit stats interface
+- xen/balloon: Fix compile errors - missing header files.
+- xen/self-balloon: Add dependency on tmem.
+- xen: xen-selfballoon.c needs more header files
+- xen/grant: Fix compile warning.
+- xen: Fix printk() format in xen/setup.c
+- xen: Fix misleading WARN message at xen_release_chunk
+- xen/x86: replace order-based range checking of M2P table by linear one
+- xen: Do not enable PV IPIs when vector callback not present
+- xen-blkfront: Fix one off warning about name clash
+- xen-blkfront: Drop name and minor adjustments for emulated scsi devices
+- xen/blkback: Make description more obvious.
+- xen-blkback: fixed indentation and comments
+- SCSI: Fix oops dereferencing queue
+- xen: use maximum reservation to limit amount of usable RAM
+- xen: x86_32: do not enable iterrupts when returning from exception in interrupt context
+- xen/smp: Warn user why they keel over - nosmp or noapic and what to use instead.
+- xen: disable PV spinlocks on HVM
+- xen/e820: if there is no dom0_mem=, don't tweak extra_pages.
+- config: from 6.1 and review
+- Revert "IPC reduce lock contention in semctl"
+- Revert "IPC lock reduction corners"
+- Revert "use rwlocks for ipc"
+- Revert "ipc semaphores: order wakeups based on waiter CPU"
+- Revert "ipc semaphores: reduce ipc_lock contention in semtimedop
+
 * Thu Aug 25 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.4.el5uek]
 - revert makefile to 2.6.39
 
