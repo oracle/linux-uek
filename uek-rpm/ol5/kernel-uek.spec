@@ -91,6 +91,8 @@ Summary: The Linux kernel
 %define with_kdump     0
 # kernel-debug
 %define with_debug     1
+%define with_paravirt  1
+%define with_paravirt_debug  1
 # kernel-doc
 %define with_doc       1
 # kernel-headers
@@ -382,6 +384,8 @@ Summary: The Linux kernel
 %define with_up 0
 %define with_smp 0
 %define with_pae 0
+%define with_paravirt 0
+%define with_paravirt_debug 0
 %define with_kdump 0
 %define with_debuginfo 0
 %define _enable_debug_packages 0
@@ -521,6 +525,7 @@ Source23: config-generic
 Source24: config-rhel-generic
 Source25: Module.kabi_i686
 Source28: Module.kabi_x86_64
+Source29: config-generic-paravirt
 
 Source30: config-x86-generic
 ##Source31: config-i586
@@ -806,6 +811,18 @@ on kernel bugs, as some of these options impact performance noticably.
 This package includes a kdump version of the Linux kernel. It is
 required only on machines which will use the kexec-based kernel crash dump
 mechanism.
+
+%define variant_summary Paravitrualized kernel
+%kernel_variant_package paravirt
+%description paravirt
+This package includes a paravirt version of the Linux kernel.
+CONFIG_PARAVIRT_SPINLOCKS=y
+
+%define variant_summary Paravitrualized debug kernel
+%kernel_variant_package paravirt_debug
+%description paravirt_debug
+This package includes a paravirt version of the Linux kernel with debug info.
+CONFIG_PARAVIRT_SPINLOCKS=y
 
 
 %prep
@@ -1505,6 +1522,14 @@ mkdir -p $RPM_BUILD_ROOT/boot
 
 cd linux-%{kversion}.%{_target_cpu}
 
+%if %{with_paravirt}
+BuildKernel %make_target %kernel_image paravirt 
+%endif
+
+%if %{with_paravirt_debug}
+BuildKernel %make_target %kernel_image paravirt_debug 
+%endif
+
 %if %{with_debug}
 %if %{with_up}
 BuildKernel %make_target %kernel_image debug
@@ -1779,6 +1804,15 @@ fi\
 %kernel_variant_preun PAEdebug
 %kernel_variant_pre PAEdebug
 
+%kernel_variant_post -v paravirt -r (kernel-smp|kernel-xen|kernel-uek)
+%kernel_variant_preun paravirt
+%kernel_variant_pre paravirt
+
+%kernel_variant_post -v paravirt_debug -r (kernel-smp|kernel-xen|kernel-uek)
+%kernel_variant_preun paravirt_debug
+%kernel_variant_pre paravirt_debug
+
+
 if [ -x /sbin/ldconfig ]
 then
     /sbin/ldconfig -X || exit $?
@@ -1868,6 +1902,8 @@ fi
 %{nil}
 
 
+%kernel_variant_files %{with_paravirt} paravirt
+%kernel_variant_files %{with_paravirt_debug} paravirt_debug
 %kernel_variant_files %{with_up}
 %kernel_variant_files %{with_smp} smp
 %if %{with_up}
