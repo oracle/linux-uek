@@ -200,7 +200,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1700,6 +1700,18 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Sep 19 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.6.el6uek]
+- rebase to 3.0.4
+- Build paravirt and paravirt-debug kernels
+- Remove commented out patches from spec
+- Specfile: build OCFS2
+- make XEN_MAX_DOMAIN_MEMORY selectable
+- config-debug: enable LOCKDEP and more debug options
+- Turn on CONFIG_CRYPTO_FIPS (Maxim Uvarov) 
+- CONFIG: enable sysfs(el5) and xen memory hotplug
+- scsi: bump up SD_MAX_DISKS (Dave Kleikamp) 
+- x86, acpi: Handle xapic/x2apic entries in MADT at same time (Yinghai Lu)
+
 * Tue Sep 13 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.5.el6uek]
 - xen: allow enable use of VGA console on dom0
 - xen: prepare tmem shim to handle frontswap
