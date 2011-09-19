@@ -268,6 +268,8 @@ Summary: The Linux kernel
 %ifarch noarch
 %define with_up 0
 %define with_headers 0
+%define with_paravirt 0
+%define with_paravirt_debug 0
 %define all_arch_configs kernel-%{version}-*.config
 %define with_firmware  %{?_without_firmware:  0} %{?!_without_firmware:  1}
 %endif
@@ -389,6 +391,8 @@ Summary: The Linux kernel
 %define with_kdump 0
 %define with_debuginfo 0
 %define _enable_debug_packages 0
+%define with_paravirt 0
+%define with_paravirt_debug 0
 %endif
 
 %define with_pae_debug 0

@@ -270,6 +270,8 @@ Summary: The Linux kernel
 %ifarch noarch
 %define with_up 0
 %define with_headers 0
+%define with_paravirt 0
+%define with_paravirt_debug 0
 %define all_arch_configs kernel-%{version}-*.config
 %define with_firmware  %{?_without_firmware:  0} %{?!_without_firmware:  1}
 %endif
@@ -391,6 +393,8 @@ Summary: The Linux kernel
 %define with_kdump 0
 %define with_debuginfo 0
 %define _enable_debug_packages 0
+%define with_paravirt 0
+%define with_paravirt_debug 0
 %endif
 
 %define with_pae_debug 0
@@ -486,7 +490,7 @@ Version: %{rpmversion}
 Release: %{pkg_release}
 # DO NOT CHANGE THE 'ExclusiveArch' LINE TO TEMPORARILY EXCLUDE AN ARCHITECTURE BUILD.
 # SET %%nobuildarches (ABOVE) INSTEAD
-ExclusiveArch: noarch %{all_x86} x86_64 ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm}
+ExclusiveArch: noarch %{all_x86} x86_64 paravirt paravirt-debug ppc ppc64 ia64 sparc sparc64 s390x alpha alphaev56 %{arm}
 ExclusiveOS: Linux
 
 %kernel_reqprovconf
