@@ -8208,12 +8208,10 @@ abort_lso:
 	    !mss && skb->len > VLAN_ETH_FRAME_LEN)
 		base_flags |= TXD_FLAG_JMB_PKT;
 
-#ifdef BCM_KERNEL_SUPPORTS_8021Q
 	if (vlan_tx_tag_present(skb)) {
 		base_flags |= TXD_FLAG_VLAN;
 		vlan = vlan_tx_tag_get(skb);
 	}
-#endif
 
 #ifdef BCM_KERNEL_SUPPORTS_TIMESTAMPING
 	if ((unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) &&
