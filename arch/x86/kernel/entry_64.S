@@ -660,7 +660,7 @@ int_signal:
 	jz 1f
 	movq %rsp,%rdi		# &ptregs -> arg1
 	xorl %esi,%esi		# oldset -> arg2
-	call do_notify_resume
+	call clear_stack_do_notify_resume
 1:	movl $_TIF_WORK_MASK,%edi
 int_restore_rest:
 	RESTORE_REST
@@ -919,7 +919,7 @@ retint_signal:
 	movq $-1,ORIG_RAX(%rsp)
 	xorl %esi,%esi		# oldset
 	movq %rsp,%rdi		# &pt_regs
-	call do_notify_resume
+	call clear_stack_do_notify_resume
 	RESTORE_REST
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
@@ -1387,7 +1387,7 @@ paranoid_userspace:
 	ENABLE_INTERRUPTS(CLBR_NONE)
 	xorl %esi,%esi 			/* arg2: oldset */
 	movq %rsp,%rdi 			/* arg1: &pt_regs */
-	call do_notify_resume
+	call clear_stack_do_notify_resume
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	TRACE_IRQS_OFF
 	jmp paranoid_userspace
@@ -1521,7 +1521,7 @@ nmi_userspace:
 	ENABLE_INTERRUPTS(CLBR_NONE)
 	xorl %esi,%esi 			/* arg2: oldset */
 	movq %rsp,%rdi 			/* arg1: &pt_regs */
-	call do_notify_resume
+	call clear_stack_do_notify_resume
 	DISABLE_INTERRUPTS(CLBR_NONE)
 	jmp nmi_userspace
 nmi_schedule:
@@ -1542,6 +1542,28 @@ ENTRY(ignore_sysret)
 	sysret
 	CFI_ENDPROC
 END(ignore_sysret)
+
+	# Clear the stack before handling signals
+#define STACK_CLEAR_WORDS	0x80
+ENTRY(clear_stack_do_notify_resume)
+	testl $_TIF_SIGPENDING, %edx
+	jnz do_notify_resume
+
+	pushq %rdi
+
+	movq %rsp, %rdi
+	subq $8, %rdi
+	movl $STACK_CLEAR_WORDS, %ecx
+	xorq %rax, %rax
+
+	std
+	rep stosq
+	cld
+
+	popq %rdi
+
+	jmp do_notify_resume
+END(clear_stack_do_notify_resume)
 
 /*
  * End of kprobes section
