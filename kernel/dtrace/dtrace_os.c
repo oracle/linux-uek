@@ -159,8 +159,6 @@ void cyclic_remove(cyclic_id_t id)
 }
 EXPORT_SYMBOL(cyclic_remove);
 
-static systrace_info_t	systrace_info;
-
 void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 		       uintptr_t, uintptr_t);
 
@@ -170,11 +168,32 @@ void systrace_stub(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 {
 }
 
+asmlinkage long systrace_syscall(uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t);
+
+static systrace_info_t	systrace_info = {
+					    &systrace_probe,
+					    systrace_stub,
+					    systrace_syscall,
+					    {
+/*
+ * Need to remove the define for _ASM_X86_UNISTD_64_H in order for unistd_64
+ * to be included here because it was already included indirectly.
+ */
+#undef __SYSCALL
+#define __SYSCALL(nr, sym)			[nr] { __stringify(sym), },
+#undef _ASM_X86_UNISTD_64_H
+#include <asm/unistd_64.h>
+					    }
+					};
+
+
 asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1,
 				 uintptr_t arg2, uintptr_t arg3,
 				 uintptr_t arg4, uintptr_t arg5)
 {
-	long			rc;
+	long			rc = 0;
 	unsigned long		sysnum;
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
