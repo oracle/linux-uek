@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.7%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1691,6 +1691,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Sep 20 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.7.el5uek]
+- fix --noarch build
+- CONFIG: Add support for Large files - 32bit orabug 12984979
+
 * Mon Sep 19 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.6.el5uek]
 - rebase to 3.0.4
 - Build paravirt and paravirt-debug kernels
