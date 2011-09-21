@@ -63,7 +63,42 @@ fw-shipped-$(CONFIG_DRM_RADEON) += radeon/R100_cp.bin radeon/R200_cp.bin \
 				   radeon/RS780_pfp.bin radeon/RS780_me.bin \
 				   radeon/RV770_pfp.bin radeon/RV770_me.bin \
 				   radeon/RV730_pfp.bin radeon/RV730_me.bin \
-				   radeon/RV710_pfp.bin radeon/RV710_me.bin
+				   radeon/RV710_pfp.bin radeon/RV710_me.bin \
+				   radeon/BARTS_mc.bin \
+				   radeon/BARTS_me.bin \
+				   radeon/BARTS_pfp.bin \
+				   radeon/BTC_rlc.bin \
+				   radeon/CAICOS_mc.bin \
+				   radeon/CAICOS_me.bin \
+				   radeon/CAICOS_pfp.bin \
+				   radeon/CAYMAN_mc.bin \
+				   radeon/CAYMAN_me.bin \
+				   radeon/CAYMAN_pfp.bin \
+				   radeon/CAYMAN_rlc.bin \
+				   radeon/CEDAR_me.bin \
+				   radeon/CEDAR_pfp.bin \
+				   radeon/CEDAR_rlc.bin \
+				   radeon/CYPRESS_me.bin \
+				   radeon/CYPRESS_pfp.bin \
+				   radeon/CYPRESS_rlc.bin \
+				   radeon/JUNIPER_me.bin \
+				   radeon/JUNIPER_pfp.bin \
+				   radeon/JUNIPER_rlc.bin \
+				   radeon/PALM_me.bin \
+				   radeon/PALM_pfp.bin \
+				   radeon/R600_rlc.bin \
+				   radeon/R700_rlc.bin \
+				   radeon/REDWOOD_me.bin \
+				   radeon/REDWOOD_pfp.bin \
+				   radeon/REDWOOD_rlc.bin \
+				   radeon/SUMO2_me.bin \
+				   radeon/SUMO2_pfp.bin \
+				   radeon/SUMO_me.bin \
+				   radeon/SUMO_pfp.bin \
+				   radeon/SUMO_rlc.bin \
+				   radeon/TURKS_mc.bin \
+				   radeon/TURKS_me.bin \
+				   radeon/TURKS_pfp.bin
 fw-shipped-$(CONFIG_DVB_AV7110) += av7110/bootcode.bin
 fw-shipped-$(CONFIG_DVB_TTUSB_BUDGET) += ttusb-budget/dspbootcode.bin
 fw-shipped-$(CONFIG_E100) += e100/d101m_ucode.bin e100/d101s_ucode.bin \
