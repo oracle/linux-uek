@@ -200,7 +200,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.7%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.8%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1492,16 +1492,16 @@ fi\
 #	%%kernel_variant_post [-v <subpackage>] [-r <replace>]
 # More text can follow to go at the end of this variant's %%post.
 #
-%define kernel_variant_post(v:r:) \
-%{expand:%%kernel_devel_post %{?-v*}}\
-%{expand:%%kernel_variant_posttrans %{?-v*}}\
-%{expand:%%post %{?-v*}}\
+%define kernel_variant_post(uv:r:) \
+%{expand:%%kernel_devel_post %{!-u:%{?-v*}}}\
+%{expand:%%kernel_variant_posttrans %{!-u:%{?-v*}}}\
+%{expand:%%post %{!-u:%{?-v*}}}\
 %{-r:\
 if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
    [ -f /etc/sysconfig/kernel ]; then\
   /bin/sed -r -i -e 's/^DEFAULTKERNEL=%{-r*}$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
-/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{?-v:.%{-v*}} || exit $?\
+/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 %{nil}
 
 #
@@ -1573,9 +1573,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -r (kernel-smp|kernel-xen|kernel-uek)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen)
 %else
-%kernel_variant_post -r (kernel-smp|kernel-uek)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen)
 %endif
 
 %kernel_variant_pre smp
@@ -1704,6 +1704,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Sep 21 2011 Kevin Lyons [2.6.39-100.0.8.el5uek]
+- Add -u parameter to kernel_variant_post to make it work
+  properly for uek [orabug 12965870]
+
 * Tue Sep 20 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.7.el6uek]
 - fix --noarch build
 - CONFIG: Add support for Large files - 32bit orabug 12984979
