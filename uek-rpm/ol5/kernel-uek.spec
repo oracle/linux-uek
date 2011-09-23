@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.8%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.9%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1214,9 +1214,15 @@ hwcap 0 nosegneg"
     if [ -d arch/%{asmarch}/include ]; then
       cp -a --parents arch/%{asmarch}/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     fi
+    cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+    cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/ 
+    
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     cd include
-    cp -a acpi config crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
+    cp -a acpi config generated crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
     pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
@@ -1691,6 +1697,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Sep 22 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.9
+.el5uek]
+- generate -paravirt configs more accurate [orabug 13002151]
+- radeon: add missed firmwares [orabug 12981553]
+- ksplice: Clear garbage data on the kernel stack when handling signals
+- Add devel headers [orabug 13000607]
+
 * Wed Sep 21 2011 Kevin Lyons [2.6.39-100.0.8.el5uek]
 - Add -u parameter to kernel_variant_post to make it work
   properly for uek [orabug 12965870]
