@@ -2024,6 +2024,21 @@ _base_static_config_pages(struct MPT2SAS_ADAPTER *ioc)
 	if (ioc->ir_firmware)
 		mpt2sas_config_get_manufacturing_pg10(ioc, &mpi_reply,
 		    &ioc->manu_pg10);
+
+	/*
+	 * Ensure correct T10 PI operation if vendor left EEDPTagMode
+	 * flag unset in NVDATA.
+	 */
+	mpt2sas_config_get_manufacturing_pg11(ioc, &mpi_reply, &ioc->manu_pg11);
+	if (ioc->manu_pg11.EEDPTagMode == 0) {
+		printk(KERN_ERR "%s: overriding NVDATA EEDPTagMode setting\n",
+		       ioc->name);
+		ioc->manu_pg11.EEDPTagMode &= ~0x3;
+		ioc->manu_pg11.EEDPTagMode |= 0x1;
+		mpt2sas_config_set_manufacturing_pg11(ioc, &mpi_reply,
+						      &ioc->manu_pg11);
+	}
+
 	mpt2sas_config_get_bios_pg2(ioc, &mpi_reply, &ioc->bios_pg2);
 	mpt2sas_config_get_bios_pg3(ioc, &mpi_reply, &ioc->bios_pg3);
 	mpt2sas_config_get_ioc_pg8(ioc, &mpi_reply, &ioc->ioc_pg8);

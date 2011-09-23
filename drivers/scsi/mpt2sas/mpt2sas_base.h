@@ -280,6 +280,19 @@ typedef struct _MPI2_CONFIG_PAGE_MAN_10 {
 #define MFG_PAGE10_EXPOSE_ALL_DISKS	(0x01)
 #define MFG_PAGE10_HIDE_IF_VOL_PRESENT	(0x02)
 
+/* Miscellaneous options */
+typedef struct _MPI2_CONFIG_PAGE_MAN_11 {
+    MPI2_CONFIG_PAGE_HEADER Header;                                 /* 00h */
+    U32                     Reserved1;                              /* 04h */
+    U8                      Reserved2;                              /* 08h */
+    U8                      EEDPTagMode;                            /* 09h */
+    U8                      Reserved3;                              /* 0Ah */
+    U8                      Reserved4;                              /* 0Bh */
+    U32                     Reserved5[23];                          /* 0Ch-60h*/
+} MPI2_CONFIG_PAGE_MAN_11,
+  MPI2_POINTER PTR_MPI2_CONFIG_PAGE_MAN_11,
+  Mpi2ManufacturingPage11_t, MPI2_POINTER pMpi2ManufacturingPage11_t;
+
 
 struct MPT2SAS_DEVICE {
 	struct MPT2SAS_TARGET *sas_target;
@@ -649,6 +662,7 @@ struct mpt2sas_port_facts {
  * @pfacts: static port facts data
  * @manu_pg0: static manufacturing page 0
  * @manu_pg10: static manufacturing page 10
+ * @manu_pg11: static manufacturing page 11
  * @bios_pg2: static bios page 2
  * @bios_pg3: static bios page 3
  * @ioc_pg8: static ioc page 8
@@ -909,6 +923,7 @@ struct MPT2SAS_ADAPTER {
 	u8		diag_buffer_status[MPI2_DIAG_BUF_TYPE_COUNT];
 	u32		unique_id[MPI2_DIAG_BUF_TYPE_COUNT];
 	Mpi2ManufacturingPage10_t manu_pg10;
+	Mpi2ManufacturingPage11_t manu_pg11;
 	u32		product_specific[MPI2_DIAG_BUF_TYPE_COUNT][23];
 	u32		diagnostic_flags[MPI2_DIAG_BUF_TYPE_COUNT];
 	u32		ring_buffer_offset;
@@ -1002,6 +1017,10 @@ int mpt2sas_config_get_manufacturing_pg0(struct MPT2SAS_ADAPTER *ioc,
     Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage0_t *config_page);
 int mpt2sas_config_get_manufacturing_pg10(struct MPT2SAS_ADAPTER *ioc,
     Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage10_t *config_page);
+int mpt2sas_config_get_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
+    Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage11_t *config_page);
+int mpt2sas_config_set_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
+    Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage11_t *config_page);
 int mpt2sas_config_get_bios_pg2(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
     *mpi_reply, Mpi2BiosPage2_t *config_page);
 int mpt2sas_config_get_bios_pg3(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
