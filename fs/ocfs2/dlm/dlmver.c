@@ -28,7 +28,7 @@
 
 #include "dlmver.h"
 
-#define DLM_BUILD_VERSION "1.5.0"
+#define DLM_BUILD_VERSION "1.8.0"
 
 #define VERSION_STR "OCFS2 DLM " DLM_BUILD_VERSION
 
