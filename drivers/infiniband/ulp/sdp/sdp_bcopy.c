@@ -222,7 +222,7 @@ again:
 	if (ssk->sa_post_rdma_rd_compl && tx_credits(ssk) >= SDP_MIN_TX_CREDITS) {
 		int unreported = ssk->sa_post_rdma_rd_compl;
 
-		skb = sdp_alloc_skb_rdmardcompl(sk, unreported, 0);
+		skb = sdp_alloc_skb_rdmardcompl(sk, unreported, gfp);
 		if (!skb)
 			goto no_mem;
 		sdp_post_send(ssk, skb);
@@ -231,7 +231,7 @@ again:
 	}
 
 	if (ssk->sa_post_sendsm && tx_credits(ssk) >= SDP_MIN_TX_CREDITS) {
-		skb = sdp_alloc_skb_sendsm(sk, 0);
+		skb = sdp_alloc_skb_sendsm(sk, gfp);
 		if (unlikely(!skb))
 			goto no_mem;
 		sdp_post_send(ssk, skb);
