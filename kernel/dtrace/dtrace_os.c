@@ -23,6 +23,18 @@ ktime_t dtrace_gethrtime(void)
 EXPORT_SYMBOL(dtrace_gethrtime);
 
 /*
+ * Return the current wall-clock time, in nanoseconds since the epoch.
+ */
+ktime_t dtrace_getwalltime(void)
+{
+	struct timespec tv;
+
+	getnstimeofday(&tv);
+	return timespec_to_ktime(tv);
+}
+EXPORT_SYMBOL(dtrace_getwalltime);
+
+/*
  * Very basic implementation of cyclics, merely enough to support dtrace.
  */
 typedef union cyclic	cyclic_t;
