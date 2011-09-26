@@ -2028,7 +2028,7 @@ bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 		req->errors = 0;
 
 	if (error && req->cmd_type == REQ_TYPE_FS &&
-	    !(req->cmd_flags & REQ_QUIET)) {
+	    !(req->cmd_flags & REQ_QUIET) && printk_ratelimit()) {
 		char *error_type;
 
 		switch (error) {
