@@ -93,6 +93,12 @@ static unsigned int selfballoon_uphysteresis __read_mostly = 1;
 /* In HZ, controls frequency of worker invocation. */
 static unsigned int selfballoon_interval __read_mostly = 5;
 
+/*
+ * Scale factor for safety margin for minimum selfballooning target for balloon.
+ * Default adds about 3% (4/128) of max_pfn.
+ */
+static unsigned int selfballoon_safety_margin = 4;
+
 static void selfballoon_process(struct work_struct *work);
 static DECLARE_DELAYED_WORK(selfballoon_worker, selfballoon_process);
 
@@ -195,14 +201,13 @@ __setup("selfballooning", xen_selfballooning_setup);
  */
 static void selfballoon_process(struct work_struct *work)
 {
-	unsigned long cur_pages, goal_pages, tgt_pages;
+	unsigned long cur_pages, goal_pages, tgt_pages, floor_pages;
 	bool reset_timer = false;
 
 	if (xen_selfballooning_enabled) {
-		cur_pages = balloon_stats.current_pages;
+		cur_pages = totalram_pages;
 		tgt_pages = cur_pages; /* default is no change */
-		goal_pages = percpu_counter_read_positive(&vm_committed_as) +
-			balloon_stats.current_pages - totalram_pages;
+		goal_pages = percpu_counter_read_positive(&vm_committed_as);
 #ifdef CONFIG_FRONTSWAP
 		/* allow space for frontswap pages to be repatriated */
 		if (frontswap_selfshrinking && frontswap_enabled)
@@ -217,7 +222,13 @@ static void selfballoon_process(struct work_struct *work)
 				((goal_pages - cur_pages) /
 				  selfballoon_uphysteresis);
 		/* else if cur_pages == goal_pages, no change */
-		balloon_set_new_target(tgt_pages);
+		floor_pages = totalreserve_pages +
+			((roundup_pow_of_two(max_pfn) / 128) *
+				selfballoon_safety_margin);
+		if (tgt_pages < floor_pages)
+			tgt_pages = floor_pages;
+		balloon_set_new_target(tgt_pages +
+			balloon_stats.current_pages - totalram_pages);
 		reset_timer = true;
 	}
 #ifdef CONFIG_FRONTSWAP
@@ -340,6 +351,30 @@ static ssize_t store_selfballoon_uphys(struct sys_device *dev,
 static SYSDEV_ATTR(selfballoon_uphysteresis, S_IRUGO | S_IWUSR,
 		   show_selfballoon_uphys, store_selfballoon_uphys);
 
+SELFBALLOON_SHOW(selfballoon_safety_margin, "%d\n", selfballoon_safety_margin);
+
+static ssize_t store_selfballoon_safety_margin(struct sys_device *dev,
+					       struct sysdev_attribute *attr,
+					       const char *buf,
+					       size_t count)
+{
+	unsigned long val;
+	int err;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+	err = strict_strtoul(buf, 10, &val);
+	if (err || val == 0 || val > 128)
+		return -EINVAL;
+	selfballoon_safety_margin = val;
+	return count;
+}
+
+static SYSDEV_ATTR(selfballoon_safety_margin, S_IRUGO | S_IWUSR,
+		   show_selfballoon_safety_margin,
+		   store_selfballoon_safety_margin);
+
+
 #ifdef CONFIG_FRONTSWAP
 SELFBALLOON_SHOW(frontswap_selfshrinking, "%d\n", frontswap_selfshrinking);
 
@@ -421,6 +456,7 @@ static struct attribute *selfballoon_attrs[] = {
 	&attr_selfballoon_interval.attr,
 	&attr_selfballoon_downhysteresis.attr,
 	&attr_selfballoon_uphysteresis.attr,
+	&attr_selfballoon_safety_margin.attr,
 #ifdef CONFIG_FRONTSWAP
 	&attr_frontswap_selfshrinking.attr,
 	&attr_frontswap_hysteresis.attr,
