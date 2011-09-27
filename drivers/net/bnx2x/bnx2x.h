@@ -1182,6 +1182,7 @@ struct bnx2x {
 	struct cmng_struct_per_port cmng;
 	u32			vn_weight_sum;
 	u32			mf_config[E1HVN_MAX];
+	bool			prev_max_cfg_invalid[E1HVN_MAX];
 	u32			mf2_config[E2_FUNC_MAX];
 	u32			path_has_ovlan; /* E3 */
 	u16			mf_ov;
