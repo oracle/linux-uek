@@ -1968,7 +1968,7 @@ static void bnx2x_init_vn_minmax(struct bnx2x *bp, int vn)
 		vn_max_rate = 0;
 
 	} else {
-		u32 maxCfg = bnx2x_extract_max_cfg(bp, vn_cfg);
+		u32 maxCfg = bnx2x_extract_max_cfg(bp, vn);
 
 		vn_min_rate = ((vn_cfg & FUNC_MF_CFG_MIN_BW_MASK) >>
 				FUNC_MF_CFG_MIN_BW_SHIFT) * 100;

@@ -785,8 +785,7 @@ u16 bnx2x_get_mf_speed(struct bnx2x *bp)
 {
 	u16 line_speed = bp->link_vars.line_speed;
 	if (IS_MF(bp)) {
-		u16 maxCfg = bnx2x_extract_max_cfg(bp,
-						   bp->mf_config[BP_VN(bp)]);
+		u16 maxCfg = bnx2x_extract_max_cfg(bp, BP_VN(bp));
 
 		/* Calculate the current MAX line speed limit for the MF
 		 * devices
@@ -1090,7 +1089,7 @@ void bnx2x_update_max_mf_config(struct bnx2x *bp, u32 value)
 	/* load old values */
 	u32 mf_cfg = bp->mf_config[BP_VN(bp)];
 
-	if (value != bnx2x_extract_max_cfg(bp, mf_cfg)) {
+	if (value != bnx2x_extract_max_cfg(bp, BP_VN(bp))) {
 		/* leave all but MAX value */
 		mf_cfg &= ~FUNC_MF_CFG_MAX_BW_MASK;
 

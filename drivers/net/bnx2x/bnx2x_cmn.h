@@ -1111,22 +1111,23 @@ void bnx2x_acquire_phy_lock(struct bnx2x *bp);
 void bnx2x_release_phy_lock(struct bnx2x *bp);
 
 /**
- * bnx2x_extract_max_cfg - extract MAX BW part from MF configuration.
- *
- * @bp:		driver handle
- * @mf_cfg:	MF configuration
- *
- */
-static inline u16 bnx2x_extract_max_cfg(struct bnx2x *bp, u32 mf_cfg)
+  * bnx2x_extract_max_cfg - extract MAX BW part from MF configuration.
+  *
+  * @bp:               driver handle
+  * @vn:               vnic index
+  *
+  */
+static inline u16 bnx2x_extract_max_cfg(struct bnx2x *bp, int vn)
 {
-	u16 max_cfg = (mf_cfg & FUNC_MF_CFG_MAX_BW_MASK) >>
-			      FUNC_MF_CFG_MAX_BW_SHIFT;
-	if (!max_cfg) {
-		BNX2X_ERR("Illegal configuration detected for Max BW - "
-			  "using 100 instead\n");
-		max_cfg = 100;
-	}
-	return max_cfg;
+	u16 max_cfg = (bp->mf_config[vn] & FUNC_MF_CFG_MAX_BW_MASK) >>
+					   FUNC_MF_CFG_MAX_BW_SHIFT;
+
+	if (!max_cfg && !bp->prev_max_cfg_invalid[vn])
+		BNX2X_ERR("Illegal configuration detected for Max BW "
+			  "on vn %d - using 100 instead\n", vn);
+	bp->prev_max_cfg_invalid[vn] = !max_cfg;
+
+	return max_cfg ?: 100;
 }
 
 #endif /* BNX2X_CMN_H */

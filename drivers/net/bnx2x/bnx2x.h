@@ -1054,6 +1054,7 @@ struct bnx2x {
 	u32			vn_weight_sum;
 
 	u32			mf_config[E1HVN_MAX];
+	bool			prev_max_cfg_invalid[E1HVN_MAX];
 	u32			mf2_config[E2_FUNC_MAX];
 	u16			mf_ov;
 	u8			mf_mode;
