@@ -5300,9 +5300,14 @@ static void tg3_process_error(struct tg3 *tp)
 {
 	u32 val;
 	bool real_error = false;
+	bool dump = true;
 
 	if (tg3_flag(tp, ERROR_PROCESSED))
 		return;
+
+	/* If interface not ready then dont dump error */
+	if (!netif_carrier_ok(tp->dev))
+		dump = false;
 
 	/* Check Flow Attention register */
 	val = tr32(HOSTCC_FLOW_ATTN);
@@ -5317,14 +5322,16 @@ static void tg3_process_error(struct tg3 *tp)
 	}
 
 	if (tr32(RDMAC_STATUS) || tr32(WDMAC_STATUS)) {
-		netdev_err(tp->dev, "DMA Status error.  Resetting chip.\n");
+		if (dump)
+			netdev_err(tp->dev, "DMA Status error.  Resetting chip.\n");
 		real_error = true;
 	}
 
 	if (!real_error)
 		return;
 
-	tg3_dump_state(tp);
+	if (dump)
+		tg3_dump_state(tp);
 
 	tg3_flag_set(tp, ERROR_PROCESSED);
 	schedule_work(&tp->reset_task);
