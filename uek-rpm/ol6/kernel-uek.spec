@@ -200,7 +200,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.9%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.10%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1710,6 +1710,21 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Sep 28 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.10.el6uek]
+- mpt2sas: Add a module parameter that permits overriding protection capabilities
+- mpt2sas: Return the correct sense key for DIF errors 
+- mpt2sas: Do not check DIF for unwritten blocks
+- Revert "xen/e820: if there is no dom0_mem=, don't tweak extra_pages."
+- Revert "[AUDIT/workaround] Increase AUDIT_NAMES array len" [orabug 13034299]
+- block: Rate-limit failed I/O error message  [orabug 13007648]
+- config: disable panic on hardlockup [orabug 13007648]
+- ocfs2: update ocfs2 version [orabug 13017352]
+- x86/paravirt: PTE updates in k(un)map_atomic need to be synchronous, regardless of lazy_mmu mode
+- bnx2x: prevent flooded warnning kernel info [orabug 12687487]
+- tg3: Dont dump DMA error when interface not ready [orabug 12981473]
+- xen: Fix selfballooning and ensure it doesn't go too far
+- ocfs2: Add datavolume mount option [orabug 13017352]
+
 * Thu Sep 22 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.9.el6uek]
 - generate -paravirt configs more accurate [orabug 13002151]
 - radeon: add missed firmwares [orabug 12981553]
