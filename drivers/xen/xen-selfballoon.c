@@ -68,6 +68,7 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/bootmem.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/module.h>
