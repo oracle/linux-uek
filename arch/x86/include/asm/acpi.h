@@ -98,6 +98,10 @@ void acpi_pic_sci_set_trigger(unsigned int, u16);
 extern int (*__acpi_register_gsi)(struct device *dev, u32 gsi,
 				  int trigger, int polarity);
 
+extern int (*__acpi_override_sleep)(u8 sleep_state, u32 pm1a_ctrl,
+				    u32 pm1b_ctrl, bool *skip_rest) \
+				    __attribute__ ((unused));
+
 static inline void disable_acpi(void)
 {
 	acpi_disabled = 1;

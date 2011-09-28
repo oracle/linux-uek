@@ -552,6 +552,10 @@ static int acpi_register_gsi_ioapic(struct device *dev, u32 gsi,
 int (*__acpi_register_gsi)(struct device *dev, u32 gsi,
 			   int trigger, int polarity) = acpi_register_gsi_pic;
 
+int (*__acpi_override_sleep)(u8 sleep_state, u32 pm1a_ctrl,
+			     u32 pm1b_ctrl, bool *skip_rest) \
+			   __attribute__ ((unused)) = NULL;
+
 /*
  * success: return IRQ number (>=0)
  * failure: return < 0
