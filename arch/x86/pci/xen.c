@@ -241,6 +241,17 @@ static int xen_initdom_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 out:
 	return ret;
 }
+
+static void xen_initdom_restore_msi_irqs(struct pci_dev *dev, int irq)
+{
+	int ret = 0;
+	struct physdev_restore_msi restore;
+
+	restore.bus = dev->bus->number;
+	restore.devfn = dev->devfn;
+	ret = HYPERVISOR_physdev_op(PHYSDEVOP_restore_msi, &restore);
+	WARN(ret && ret != -ENOSYS, "restore_msi -> %d\n", ret);
+}
 #endif
 #endif
 
@@ -458,6 +469,7 @@ static int __init pci_xen_initial_domain(void)
 #ifdef CONFIG_PCI_MSI
 	x86_msi.setup_msi_irqs = xen_initdom_setup_msi_irqs;
 	x86_msi.teardown_msi_irq = xen_teardown_msi_irq;
+	x86_msi.restore_msi_irqs = xen_initdom_restore_msi_irqs;
 #endif
 	xen_setup_acpi_sci();
 	__acpi_register_gsi = acpi_register_gsi_xen;
