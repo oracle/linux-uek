@@ -184,6 +184,7 @@ enum {
 	Opt_coherency_full,
 	Opt_resv_level,
 	Opt_dir_resv_level,
+	Opt_datavolume,
 	Opt_err,
 };
 
@@ -215,6 +216,7 @@ static const match_table_t tokens = {
 	{Opt_coherency_full, "coherency=full"},
 	{Opt_resv_level, "resv_level=%u"},
 	{Opt_dir_resv_level, "dir_resv_level=%u"},
+	{Opt_datavolume, "datavolume"},
 	{Opt_err, NULL}
 };
 
@@ -1070,7 +1072,11 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 	if (status)
 		goto read_super_error;
 
-	sb->s_magic = OCFS2_SUPER_MAGIC;
+# define OCFS_SUPER_MAGIC      0xa156f7eb
+	if (osb->s_mount_opt & OCFS2_MOUNT_COMPAT_OCFS)
+		sb->s_magic = OCFS_SUPER_MAGIC;
+	else
+		sb->s_magic = OCFS2_SUPER_MAGIC;
 
 	sb->s_flags = (sb->s_flags & ~(MS_POSIXACL | MS_NOSEC)) |
 		((osb->s_mount_opt & OCFS2_MOUNT_POSIX_ACL) ? MS_POSIXACL : 0);
@@ -1506,6 +1512,15 @@ static int ocfs2_parse_options(struct super_block *sb,
 			    option < OCFS2_MAX_RESV_LEVEL)
 				mopt->dir_resv_level = option;
 			break;
+		case Opt_datavolume:
+			if (is_remount) {
+				mlog(ML_ERROR, "Cannot specify datavolume "
+				     "on remount.\n");
+				status = 0;
+				goto bail;
+			}
+			mopt->mount_opt |= OCFS2_MOUNT_COMPAT_OCFS;
+			break;
 		default:
 			mlog(ML_ERROR,
 			     "Unrecognized mount option \"%s\" "
@@ -1612,6 +1627,9 @@ static int ocfs2_show_options(struct seq_file *s, struct vfsmount *mnt)
 
 	if (osb->osb_dir_resv_level != osb->osb_resv_level)
 		seq_printf(s, ",dir_resv_level=%d", osb->osb_resv_level);
+
+	if (opts & OCFS2_MOUNT_COMPAT_OCFS)
+		seq_printf(s, ",datavolume");
 
 	return 0;
 }
@@ -1721,7 +1739,10 @@ static int ocfs2_statfs(struct dentry *dentry, struct kstatfs *buf)
 	numbits = le32_to_cpu(bm_lock->id1.bitmap1.i_total);
 	freebits = numbits - le32_to_cpu(bm_lock->id1.bitmap1.i_used);
 
-	buf->f_type = OCFS2_SUPER_MAGIC;
+	if (osb->s_mount_opt & OCFS2_MOUNT_COMPAT_OCFS)
+		buf->f_type = OCFS_SUPER_MAGIC;
+	else 
+		buf->f_type = OCFS2_SUPER_MAGIC;
 	buf->f_bsize = dentry->d_sb->s_blocksize;
 	buf->f_namelen = OCFS2_MAX_FILENAME_LEN;
 	buf->f_blocks = ((sector_t) numbits) *
