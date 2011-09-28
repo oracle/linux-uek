@@ -44,6 +44,7 @@
 #include <asm/mpspec.h>
 #include <asm/smp.h>
 
+#include "sleep.h" /* To include x86_acpi_suspend_lowlevel */
 static int __initdata acpi_force = 0;
 u32 acpi_rsdt_forced;
 int acpi_disabled;
@@ -556,6 +557,7 @@ int (*__acpi_override_sleep)(u8 sleep_state, u32 pm1a_ctrl,
 			     u32 pm1b_ctrl, bool *skip_rest) \
 			   __attribute__ ((unused)) = NULL;
 
+int (*acpi_suspend_lowlevel)(void) = x86_acpi_suspend_lowlevel;
 /*
  * success: return IRQ number (>=0)
  * failure: return < 0
