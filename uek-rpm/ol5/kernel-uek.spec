@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.10%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.11%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -638,6 +638,8 @@ glibc package.
 %package firmware
 Summary: Firmware files used by the Linux kernel
 Group: Development/System
+Obsoletes: kernel-firmware
+Obsoletes: kernel-uek-firmware < 2.6.39
 # This is... complicated.
 # Look at the WHENCE file.
 License: GPL+ and GPLv2+ and MIT and Redistributable, no modification permitted
@@ -1697,6 +1699,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Sep 28 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.11.el5uek]
+- xen:  Add  bootmem.h in xen-selfballoon.c
+
 * Wed Sep 28 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.10.el5uek]
 - mpt2sas: Add a module parameter that permits overriding protection capabilities
 - mpt2sas: Return the correct sense key for DIF errors
