@@ -185,6 +185,8 @@ static void xen_teardown_msi_irq(unsigned int irq)
 }
 
 #ifdef CONFIG_XEN_DOM0
+static bool __read_mostly pci_seg_supported = true;
+
 static int xen_initdom_setup_msi_irqs(struct pci_dev *dev, int nvec, int type)
 {
 	int ret = 0;
@@ -245,12 +247,27 @@ out:
 static void xen_initdom_restore_msi_irqs(struct pci_dev *dev, int irq)
 {
 	int ret = 0;
-	struct physdev_restore_msi restore;
 
-	restore.bus = dev->bus->number;
-	restore.devfn = dev->devfn;
-	ret = HYPERVISOR_physdev_op(PHYSDEVOP_restore_msi, &restore);
-	WARN(ret && ret != -ENOSYS, "restore_msi -> %d\n", ret);
+	if (pci_seg_supported) {
+		struct physdev_pci_device restore_ext;
+
+		restore_ext.seg = pci_domain_nr(dev->bus);
+		restore_ext.bus = dev->bus->number;
+		restore_ext.devfn = dev->devfn;
+		ret = HYPERVISOR_physdev_op(PHYSDEVOP_restore_msi_ext,
+					    &restore_ext);
+		if (ret == -ENOSYS)
+			pci_seg_supported = false;
+		WARN(ret && ret != -ENOSYS, "restore_msi_ext -> %d\n", ret);
+	}
+	if (!pci_seg_supported) {
+		struct physdev_restore_msi restore;
+
+		restore.bus = dev->bus->number;
+		restore.devfn = dev->devfn;
+		ret = HYPERVISOR_physdev_op(PHYSDEVOP_restore_msi, &restore);
+		WARN(ret && ret != -ENOSYS, "restore_msi -> %d\n", ret);
+	}
 }
 #endif
 #endif

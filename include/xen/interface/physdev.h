@@ -205,6 +205,14 @@ struct physdev_get_free_pirq {
     uint32_t pirq;
 };
 
+#define PHYSDEVOP_restore_msi_ext       27
+struct physdev_pci_device {
+	/* IN */
+	uint16_t seg;
+	uint8_t bus;
+	uint8_t devfn;
+};
+
 /*
  * Notify that some PIRQ-bound event channels have been unmasked.
  * ** This command is obsolete since interface version 0x00030202 and is **
