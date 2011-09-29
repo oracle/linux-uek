@@ -200,7 +200,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.11%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.12%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1712,6 +1712,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Sep 29 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.12.el6uek]
+- audit: dynamically allocate audit_names when not enough spaceis in the names array [orabug 13038425]
+- update btrfs 3.0
+
 * Wed Sep 28 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.11.el6uek]
 - xen:  Add  bootmem.h in xen-selfballoon.c 
 
