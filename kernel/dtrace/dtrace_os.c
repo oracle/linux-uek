@@ -2,7 +2,7 @@
  * FILE:	dtrace_os.c
  * DESCRIPTION:	Dynamic Tracing: OS support functions - part of kernel core
  *
- * Copyright (C) 2010 Oracle Corporation
+ * Copyright (C) 2010, 2011 Oracle Corporation
  */
 
 #include <linux/hrtimer.h>
