@@ -34,7 +34,7 @@
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("Profile Interrupt Tracing");
 MODULE_VERSION("v0.1");
-MODULE_LICENSE("Proprietary");
+MODULE_LICENSE("CDDL");
 
 static const dtrace_pattr_t profile_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
