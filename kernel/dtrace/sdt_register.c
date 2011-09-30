@@ -1,3 +1,5 @@
+/* Copyright (C) 2010, 2011 Oracle Corporation */
+
 /* register static dtrace probe points */
 
 #define DEBUG	1
