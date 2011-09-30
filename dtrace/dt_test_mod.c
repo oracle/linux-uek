@@ -34,7 +34,7 @@
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("DTrace Test Probe");
 MODULE_VERSION("v0.1");
-MODULE_LICENSE("Proprietary");
+MODULE_LICENSE("CDDL");
 
 static const dtrace_pattr_t dt_test_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },

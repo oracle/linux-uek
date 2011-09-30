@@ -34,7 +34,7 @@
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("System Call Tracing");
 MODULE_VERSION("v0.1");
-MODULE_LICENSE("Proprietary");
+MODULE_LICENSE("CDDL");
 
 static const dtrace_pattr_t syscall_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
