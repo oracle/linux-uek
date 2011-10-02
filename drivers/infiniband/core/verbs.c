@@ -1252,3 +1252,21 @@ int ib_dealloc_xrcd(struct ib_xrcd *xrcd)
 	return xrcd->device->dealloc_xrcd(xrcd);
 }
 EXPORT_SYMBOL(ib_dealloc_xrcd);
+
+int ib_attach_flow(struct ib_qp *qp, struct ib_flow_spec *spec, int priority)
+{
+	if (!qp->device->attach_flow)
+		return -ENOSYS;
+
+	return qp->device->attach_flow(qp, spec, priority);
+}
+EXPORT_SYMBOL(ib_attach_flow);
+
+int ib_detach_flow(struct ib_qp *qp, struct ib_flow_spec *spec, int priority)
+{
+	if (!qp->device->detach_flow)
+		return -ENOSYS;
+
+	return qp->device->detach_flow(qp, spec, priority);
+}
+EXPORT_SYMBOL(ib_detach_flow);

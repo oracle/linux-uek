@@ -768,6 +768,20 @@ enum ib_send_flags {
 	IB_SEND_IP_CSUM		= (1<<4)
 };
 
+enum ib_flow_types {
+	IB_FLOW_ETH = 0,
+	IB_FLOW_IB_UC = 1,
+	IB_FLOW_IB_MC_IPV4 = 2,
+	IB_FLOW_IB_MC_IPV6 = 3
+};
+
+enum {
+	IB_FLOW_L4_NONE = 0,
+	IB_FLOW_L4_OTHER = 3,
+	IB_FLOW_L4_UDP = 5,
+	IB_FLOW_L4_TCP = 6
+};
+
 struct ib_sge {
 	u64	addr;
 	u32	length;
@@ -1001,6 +1015,31 @@ struct ib_fmr {
 	u32			rkey;
 };
 
+struct ib_flow_spec {
+	enum ib_flow_types type;
+	union {
+		struct {
+			__be16 ethertype;
+			__be16 vlan;
+			u8 vlan_present;
+			u8  mac[6];
+			u8  port;
+		} eth;
+		struct {
+			__be32 qpn;
+		} ib_uc;
+		struct {
+			u8  mgid[16];
+		} ib_mc;
+	} l2_id;
+	__be32 src_ip;
+	__be32 dst_ip;
+	__be16 src_port;
+	__be16 dst_port;
+	u8 l4_protocol;
+	u8 block_mc_loopback;
+};
+
 struct ib_mad;
 struct ib_grh;
 
@@ -1232,6 +1271,12 @@ struct ib_device {
 						 struct ib_ucontext *ucontext,
 						 struct ib_udata *udata);
 	int			   (*dealloc_xrcd)(struct ib_xrcd *xrcd);
+	int                        (*attach_flow)(struct ib_qp *qp,
+						  struct ib_flow_spec *spec,
+						  int priority);
+	int                        (*detach_flow)(struct ib_qp *qp,
+						  struct ib_flow_spec *spec,
+						  int priority);
 
 	struct ib_dma_mapping_ops   *dma_ops;
 
@@ -2173,5 +2218,8 @@ struct ib_xrcd *ib_alloc_xrcd(struct ib_device *device);
  * @xrcd: The XRC domain to deallocate.
  */
 int ib_dealloc_xrcd(struct ib_xrcd *xrcd);
+
+int ib_attach_flow(struct ib_qp *qp, struct ib_flow_spec *spec, int priority);
+int ib_detach_flow(struct ib_qp *qp, struct ib_flow_spec *spec, int priority);
 
 #endif /* IB_VERBS_H */
