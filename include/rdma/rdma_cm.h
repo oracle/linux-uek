@@ -112,6 +112,16 @@ struct rdma_cm_event {
 	} param;
 };
 
+struct rdma_netdev_l2_params {
+	enum ib_flow_types type;
+	u32 reserved;
+	union {
+		u8  mac[6];
+		__be32 qpn;
+		union ib_gid mgid;
+	} l2_id;
+};
+
 enum rdma_cm_state {
 	RDMA_CM_IDLE,
 	RDMA_CM_ADDR_QUERY,
@@ -332,6 +342,13 @@ int rdma_join_multicast(struct rdma_cm_id *id, struct sockaddr *addr,
  *   address.
  */
 void rdma_leave_multicast(struct rdma_cm_id *id, struct sockaddr *addr);
+
+/**
+ * rdma_netdev_get_l2 -
+ *
+ */
+int rdma_netdev_get_l2(struct rdma_cm_id *id,
+		       struct rdma_netdev_l2_params *params);
 
 /**
  * rdma_set_service_type - Set the type of service associated with a

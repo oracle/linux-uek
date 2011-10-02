@@ -61,7 +61,8 @@ enum {
 	RDMA_USER_CM_CMD_NOTIFY,
 	RDMA_USER_CM_CMD_JOIN_MCAST,
 	RDMA_USER_CM_CMD_LEAVE_MCAST,
-	RDMA_USER_CM_CMD_MIGRATE_ID
+	RDMA_USER_CM_CMD_MIGRATE_ID,
+	RDMA_USER_CM_CMD_NETDEV_GET_L2
 };
 
 /*
@@ -196,6 +197,21 @@ struct rdma_ucm_join_mcast {
 	__u64 response;		/* rdma_ucm_create_id_resp */
 	__u64 uid;
 	struct sockaddr_in6 addr;
+	__u32 id;
+};
+
+struct rdma_ucm_netdev_get_l2_resp {
+	__u32 type;
+	__u32 reserved;
+	union {
+		__u8  mac[6];
+		__be32 qpn;
+		__u8  mgid[16];
+	} l2_id;
+};
+
+struct rdma_ucm_netdev_get_l2 {
+	__u64 response;
 	__u32 id;
 };
 
