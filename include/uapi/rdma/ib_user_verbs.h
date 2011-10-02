@@ -85,7 +85,9 @@ enum {
 	IB_USER_VERBS_CMD_OPEN_XRCD,
 	IB_USER_VERBS_CMD_CLOSE_XRCD,
 	IB_USER_VERBS_CMD_CREATE_XSRQ,
-	IB_USER_VERBS_CMD_OPEN_QP
+	IB_USER_VERBS_CMD_OPEN_QP,
+	IB_USER_VERBS_CMD_ATTACH_FLOW,
+	IB_USER_VERBS_CMD_DETACH_FLOW
 };
 
 /*
@@ -591,6 +593,16 @@ struct ib_uverbs_send_wr {
 	} wr;
 };
 
+struct ibv_uverbs_flow_spec {
+	__u32  type;
+	__be32 src_ip;
+	__be32 dst_ip;
+	__be16 src_port;
+	__be16 dst_port;
+	__u8   l4_protocol;
+	__u8   block_mc_loopback;
+};
+
 struct ib_uverbs_post_send {
 	__u64 response;
 	__u32 qp_handle;
@@ -666,6 +678,45 @@ struct ib_uverbs_detach_mcast {
 	__u16 mlid;
 	__u16 reserved;
 	__u64 driver_data[0];
+};
+
+struct ibv_kern_flow_spec {
+	__u32  type;
+	__u32  reserved1;
+	union {
+		struct {
+			__be16 ethertype;
+			__be16 vlan;
+			__u8 vlan_present;
+			__u8  mac[6];
+			__u8  port;
+		} eth;
+		struct {
+			__be32 qpn;
+		} ib_uc;
+		struct {
+			__u8  mgid[16];
+		} ib_mc;
+	} l2_id;
+	__be32 src_ip;
+	__be32 dst_ip;
+	__be16 src_port;
+	__be16 dst_port;
+	__u8   l4_protocol;
+	__u8   block_mc_loopback;
+	__u8   reserved[2];
+};
+
+struct ib_uverbs_attach_flow {
+	__u32 qp_handle;
+	__u32 priority;
+	struct ibv_kern_flow_spec spec;
+};
+
+struct ib_uverbs_detach_flow {
+	__u32 qp_handle;
+	__u32 priority;
+	struct ibv_kern_flow_spec spec;
 };
 
 struct ib_uverbs_create_srq {

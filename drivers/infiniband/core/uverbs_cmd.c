@@ -1471,6 +1471,7 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 	obj->uevent.events_reported     = 0;
 	INIT_LIST_HEAD(&obj->uevent.event_list);
 	INIT_LIST_HEAD(&obj->mcast_list);
+	INIT_LIST_HEAD(&obj->flow_list);
 
 	if (cmd.qp_type == IB_QPT_XRC_TGT)
 		qp = ib_create_qp(pd, &attr);
@@ -1885,7 +1886,7 @@ ssize_t ib_uverbs_destroy_qp(struct ib_uverbs_file *file,
 	qp  = uobj->object;
 	obj = container_of(uobj, struct ib_uqp_object, uevent.uobject);
 
-	if (!list_empty(&obj->mcast_list)) {
+	if (!list_empty(&obj->mcast_list) || !list_empty(&obj->flow_list)) {
 		put_uobj_write(uobj);
 		return -EBUSY;
 	}
@@ -2464,6 +2465,90 @@ ssize_t ib_uverbs_detach_mcast(struct ib_uverbs_file *file,
 out_put:
 	put_qp_write(qp);
 
+	return ret ? ret : in_len;
+}
+
+ssize_t ib_uverbs_attach_flow(struct ib_uverbs_file *file,
+			      const char __user *buf, int in_len,
+			      int out_len)
+{
+	struct ib_uverbs_attach_flow cmd;
+	struct ib_uqp_object         *obj;
+	struct ib_qp                 *qp;
+	struct ib_uverbs_flow_entry  *flow;
+	int                          ret;
+
+	if (copy_from_user(&cmd, buf, sizeof cmd))
+		return -EFAULT;
+
+	qp = idr_read_qp(cmd.qp_handle, file->ucontext);
+	if (!qp)
+		return -EINVAL;
+
+	obj = container_of(qp->uobject, struct ib_uqp_object, uevent.uobject);
+
+	list_for_each_entry(flow, &obj->flow_list, list) {
+		if (!memcmp(&cmd.spec, &flow->spec, sizeof flow->spec)) {
+			ret = 0;
+			goto out_put;
+		}
+	}
+
+	flow = kmalloc(sizeof *flow, GFP_KERNEL);
+	if (!flow) {
+		ret = -ENOMEM;
+		goto out_put;
+	}
+
+	memcpy(&flow->spec, &cmd.spec, sizeof flow->spec);
+	flow->priority = cmd.priority;
+
+	ret = ib_attach_flow(qp, &flow->spec, flow->priority);
+	if (!ret)
+		list_add_tail(&flow->list, &obj->flow_list);
+	else
+		kfree(flow);
+
+out_put:
+	put_qp_read(qp);
+	return ret ? ret : in_len;
+}
+
+ssize_t ib_uverbs_detach_flow(struct ib_uverbs_file *file,
+			      const char __user *buf, int in_len,
+			      int out_len)
+{
+	struct ib_uverbs_attach_flow cmd;
+	struct ib_uqp_object         *obj;
+	struct ib_qp                 *qp;
+	struct ib_uverbs_flow_entry  *flow;
+	int                          ret;
+
+	if (copy_from_user(&cmd, buf, sizeof cmd))
+		return -EFAULT;
+
+	qp = idr_read_qp(cmd.qp_handle, file->ucontext);
+	if (!qp)
+		return -EINVAL;
+
+	ret = ib_detach_flow(qp, (struct ib_flow_spec *)(&cmd.spec),
+			     cmd.priority);
+	if (ret)
+		goto out_put;
+
+	obj = container_of(qp->uobject, struct ib_uqp_object, uevent.uobject);
+
+	list_for_each_entry(flow, &obj->flow_list, list) {
+		if (flow->priority == cmd.priority &&
+		    !memcmp(&cmd.spec, &flow->spec, sizeof flow->spec)) {
+			list_del(&flow->list);
+			kfree(flow);
+			break;
+		}
+	}
+
+out_put:
+	put_qp_read(qp);
 	return ret ? ret : in_len;
 }
 
