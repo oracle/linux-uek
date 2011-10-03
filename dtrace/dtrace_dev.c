@@ -26,6 +26,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dtrace_ioctl.h>
 #include <linux/fs.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
@@ -36,7 +37,6 @@
 #include "ctf_api.h"
 #include "dtrace.h"
 #include "dtrace_dev.h"
-#include "dtrace_ioctl.h"
 
 uint32_t			dtrace_helptrace_next = 0;
 uint32_t			dtrace_helptrace_nlocals;
