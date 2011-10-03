@@ -11,7 +11,7 @@
 #include <asm/unistd.h>
 
 #include "cyclic.h"
-#include "systrace.h"
+#include "systrace_os.h"
 
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
