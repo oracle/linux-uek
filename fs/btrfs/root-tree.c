@@ -137,7 +137,9 @@ int btrfs_update_root(struct btrfs_trans_handle *trans, struct btrfs_root
 	int old_len;
 
 	path = btrfs_alloc_path();
-	BUG_ON(!path);
+	if (!path)
+		return -ENOMEM;
+
 	ret = btrfs_search_slot(trans, root, key, path, 0, 1);
 	if (ret < 0)
 		goto out_abort;
