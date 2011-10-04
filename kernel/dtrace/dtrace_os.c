@@ -5,12 +5,12 @@
  * Copyright (C) 2010, 2011 Oracle Corporation
  */
 
+#include <linux/cyclic.h>
 #include <linux/hrtimer.h>
 #include <linux/module.h>
 #include <linux/vmalloc.h>
 #include <asm/unistd.h>
 
-#include "cyclic.h"
 #include "systrace_os.h"
 
 /*
