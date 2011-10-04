@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2010, 2011 Oracle Corporation
+ */
+
 #ifndef _CYCLIC_H_
 #define _CYCLIC_H_
 
