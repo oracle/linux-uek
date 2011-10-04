@@ -61,6 +61,14 @@ static struct rb_node *tree_insert(struct rb_root *root, u64 file_offset,
 	return NULL;
 }
 
+static void ordered_data_tree_panic(struct inode *inode, int errno,
+					       u64 offset)
+{
+	struct btrfs_fs_info *fs_info = btrfs_sb(inode->i_sb);
+	btrfs_panic(fs_info, errno, "Inconsistency in ordered tree at offset "
+		    "%llu\n", (unsigned long long)offset);
+}
+
 /*
  * look for a given offset in the tree, and if it can't be found return the
  * first lesser offset
@@ -224,7 +232,6 @@ static int __btrfs_add_ordered_extent(struct inode *inode, u64 file_offset,
 		      &BTRFS_I(inode)->root->fs_info->ordered_extents);
 	spin_unlock(&BTRFS_I(inode)->root->fs_info->ordered_extent_lock);
 
-	BUG_ON(node);
 	return 0;
 }
 
@@ -525,8 +532,6 @@ void btrfs_remove_ordered_extent(struct inode *inode,
 	}
 	spin_unlock(&root->fs_info->ordered_extent_lock);
 	wake_up(&entry->wait);
-
-	return ret;
 }
 
 static void btrfs_run_ordered_extent_work(struct btrfs_work *work)
@@ -717,7 +722,7 @@ void btrfs_wait_ordered_range(struct inode *inode, u64 start, u64 len)
 		if (orig_end > INT_LIMIT(loff_t))
 			orig_end = INT_LIMIT(loff_t);
 	}
-again:
+
 	/* start IO across the range first to instantiate any delalloc
 	 * extents
 	 */
