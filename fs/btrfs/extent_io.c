@@ -2323,6 +2323,7 @@ error_handled:
 				if (ret == 0)
 					goto error_handled;
 			}
+			BUG_ON(ret < 0);
 		}
 
 		if (uptodate) {
@@ -2461,8 +2462,10 @@ static int submit_extent_page(int rw, struct extent_io_tree *tree,
 
 	if (bio_ret)
 		*bio_ret = bio;
-	else
+	else {
 		ret = submit_one_bio(rw, bio, mirror_num, bio_flags);
+		BUG_ON(ret < 0);
+	}
 
 	return ret;
 }
@@ -2676,8 +2679,10 @@ int extent_read_full_page(struct extent_io_tree *tree, struct page *page,
 
 	ret = __extent_read_full_page(tree, page, get_extent, &bio, mirror_num,
 				      &bio_flags);
-	if (bio)
+	if (bio) {
 		ret = submit_one_bio(READ, bio, mirror_num, bio_flags);
+		BUG_ON(ret < 0);
+	}
 	return ret;
 }
 
@@ -3095,6 +3100,9 @@ retry:
 static void flush_epd_write_bio(struct extent_page_data *epd)
 {
 	if (epd->bio) {
+		int rw = WRITE;
+		int ret;
+
 		if (epd->sync_io)
 			ret = submit_one_bio(WRITE_SYNC, epd->bio, 0, 0);
 		else
@@ -3216,8 +3224,10 @@ int extent_readpages(struct extent_io_tree *tree,
 		page_cache_release(page);
 	}
 	BUG_ON(!list_empty(pages));
-	if (bio)
-		return submit_one_bio(READ, bio, 0, bio_flags);
+	if (bio) {
+		int ret = submit_one_bio(READ, bio, 0, bio_flags);
+		BUG_ON(ret < 0);
+	}
 	return 0;
 }
 
