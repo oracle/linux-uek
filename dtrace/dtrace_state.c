@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/cyclic.h>
 #include <linux/fs.h>
 #include <linux/idr.h>
 #include <linux/slab.h>
@@ -32,7 +33,6 @@
 #include <linux/vmalloc.h>
 #include <asm/cmpxchg.h>
 
-#include "cyclic.h"
 #include "dtrace.h"
 
 struct kmem_cache	*dtrace_state_cache;

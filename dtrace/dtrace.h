@@ -2,6 +2,7 @@
 #define _DTRACE_H_
 
 #include <linux/cred.h>
+#include <linux/cyclic.h>
 #include <linux/idr.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
@@ -11,8 +12,6 @@
 #include <asm/bitsperlong.h>
 #include <asm/ptrace.h>
 #include <asm/sections.h>
-
-#include "cyclic.h"
 
 #define UINT8_MAX		(0xff)
 #define UINT8_MIN		0
