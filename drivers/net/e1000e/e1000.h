@@ -471,6 +471,7 @@ struct e1000_info {
 enum e1000_state_t {
 	__E1000_TESTING,
 	__E1000_RESETTING,
+	__E1000_ACCESS_SHARED_RESOURCE,
 	__E1000_DOWN
 };
 
