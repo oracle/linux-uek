@@ -2535,7 +2535,7 @@ megasas_deplete_reply_queue(struct megasas_instance *instance,
 						instance->reg_set)
 						) == 0) {
 		/* Hardware may not set outbound_intr_status in MSI-X mode */
-		if (!instance->msi_flag)
+		if (!instance->msix_vectors)
 			return IRQ_NONE;
 	}
 
@@ -2593,15 +2593,13 @@ megasas_deplete_reply_queue(struct megasas_instance *instance,
  */
 static irqreturn_t megasas_isr(int irq, void *devp)
 {
-	struct megasas_instance *instance;
+	struct megasas_irq_context *irq_context = devp;
+	struct megasas_instance *instance = irq_context->instance;
 	unsigned long flags;
 	irqreturn_t	rc;
 
-	if (atomic_read(
-		&(((struct megasas_instance *)devp)->fw_reset_no_pci_access)))
+	if (atomic_read(&instance->fw_reset_no_pci_access))
 		return IRQ_HANDLED;
-
-	instance = (struct megasas_instance *)devp;
 
 	spin_lock_irqsave(&instance->hba_lock, flags);
 	rc =  megasas_deplete_reply_queue(instance, DID_OK);
@@ -3487,6 +3485,7 @@ static int megasas_init_fw(struct megasas_instance *instance)
 	struct megasas_register_set __iomem *reg_set;
 	struct megasas_ctrl_info *ctrl_info;
 	unsigned long bar_list;
+	int i;
 
 	/* Find first memory bar */
 	bar_list = pci_select_bars(instance->pdev, IORESOURCE_MEM);
@@ -3540,9 +3539,33 @@ static int megasas_init_fw(struct megasas_instance *instance)
 	/* Check if MSI-X is supported while in ready state */
 	msix_enable = (instance->instancet->read_fw_status_reg(reg_set) &
 		       0x4000000) >> 0x1a;
-	if (msix_enable && !msix_disable &&
-	    !pci_enable_msix(instance->pdev, &instance->msixentry, 1))
-		instance->msi_flag = 1;
+	if (msix_enable && !msix_disable) {
+		/* Check max MSI-X vectors */
+		if ((instance->pdev->device == PCI_DEVICE_ID_LSI_FUSION) ||
+		    (instance->pdev->device == PCI_DEVICE_ID_LSI_INVADER)) {
+			instance->msix_vectors = (readl(&instance->reg_set->
+							outbound_scratch_pad_2
+							  ) & 0x1F) + 1;
+		} else
+			instance->msix_vectors = 1;
+		/* Don't bother allocating more MSI-X vectors than cpus */
+		instance->msix_vectors = min(instance->msix_vectors,
+					     (unsigned int)num_online_cpus());
+		for (i = 0; i < instance->msix_vectors; i++)
+			instance->msixentry[i].entry = i;
+		i = pci_enable_msix(instance->pdev, instance->msixentry,
+				    instance->msix_vectors);
+		if (i >= 0) {
+			if (i) {
+				if (!pci_enable_msix(instance->pdev,
+						     instance->msixentry, i))
+					instance->msix_vectors = i;
+				else
+					instance->msix_vectors = 0;
+			}
+		} else
+			instance->msix_vectors = 0;
+	}
 
 	/* Get operational params, sge flags, send init cmd to controller */
 	if (instance->instancet->init_adapter(instance))
@@ -3957,7 +3980,7 @@ fail_set_dma_mask:
 static int __devinit
 megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	int rval, pos;
+	int rval, pos, i, j;
 	struct Scsi_Host *host;
 	struct megasas_instance *instance;
 	u16 control = 0;
@@ -4124,11 +4147,32 @@ megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	/*
 	 * Register IRQ
 	 */
-	if (request_irq(instance->msi_flag ? instance->msixentry.vector :
-			pdev->irq, instance->instancet->service_isr,
-			IRQF_SHARED, "megasas", instance)) {
-		printk(KERN_DEBUG "megasas: Failed to register IRQ\n");
-		goto fail_irq;
+	if (instance->msix_vectors) {
+		for (i = 0 ; i < instance->msix_vectors; i++) {
+			instance->irq_context[i].instance = instance;
+			instance->irq_context[i].MSIxIndex = i;
+			if (request_irq(instance->msixentry[i].vector,
+					instance->instancet->service_isr, 0,
+					"megasas",
+					&instance->irq_context[i])) {
+				printk(KERN_DEBUG "megasas: Failed to "
+				       "register IRQ for vector %d.\n", i);
+				for (j = 0 ; j < i ; j++)
+					free_irq(
+						instance->msixentry[j].vector,
+						&instance->irq_context[j]);
+				goto fail_irq;
+			}
+		}
+	} else {
+		instance->irq_context[0].instance = instance;
+		instance->irq_context[0].MSIxIndex = 0;
+		if (request_irq(pdev->irq, instance->instancet->service_isr,
+				IRQF_SHARED, "megasas",
+				&instance->irq_context[0])) {
+			printk(KERN_DEBUG "megasas: Failed to register IRQ\n");
+			goto fail_irq;
+		}
 	}
 
 	instance->instancet->enable_intr(instance->reg_set);
@@ -4172,8 +4216,12 @@ megasas_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	pci_set_drvdata(pdev, NULL);
 	instance->instancet->disable_intr(instance->reg_set);
-	free_irq(instance->msi_flag ? instance->msixentry.vector :
-		 instance->pdev->irq, instance);
+	if (instance->msix_vectors)
+		for (i = 0 ; i < instance->msix_vectors; i++)
+			free_irq(instance->msixentry[i].vector,
+				 &instance->irq_context[i]);
+	else
+		free_irq(instance->pdev->irq, &instance->irq_context[0]);
 fail_irq:
 	if ((instance->pdev->device == PCI_DEVICE_ID_LSI_FUSION) ||
 	    (instance->pdev->device == PCI_DEVICE_ID_LSI_INVADER))
@@ -4181,7 +4229,7 @@ fail_irq:
 	else
 		megasas_release_mfi(instance);
       fail_init_mfi:
-	if (instance->msi_flag)
+	if (instance->msix_vectors)
 		pci_disable_msix(instance->pdev);
       fail_alloc_dma_buf:
 	if (instance->evt_detail)
@@ -4297,6 +4345,7 @@ megasas_suspend(struct pci_dev *pdev, pm_message_t state)
 {
 	struct Scsi_Host *host;
 	struct megasas_instance *instance;
+	int i;
 
 	instance = pci_get_drvdata(pdev);
 	host = instance->host;
@@ -4320,9 +4369,14 @@ megasas_suspend(struct pci_dev *pdev, pm_message_t state)
 
 	pci_set_drvdata(instance->pdev, instance);
 	instance->instancet->disable_intr(instance->reg_set);
-	free_irq(instance->msi_flag ? instance->msixentry.vector :
-		 instance->pdev->irq, instance);
-	if (instance->msi_flag)
+
+	if (instance->msix_vectors)
+		for (i = 0 ; i < instance->msix_vectors; i++)
+			free_irq(instance->msixentry[i].vector,
+				 &instance->irq_context[i]);
+	else
+		free_irq(instance->pdev->irq, &instance->irq_context[0]);
+	if (instance->msix_vectors)
 		pci_disable_msix(instance->pdev);
 
 	pci_save_state(pdev);
@@ -4340,7 +4394,7 @@ megasas_suspend(struct pci_dev *pdev, pm_message_t state)
 static int
 megasas_resume(struct pci_dev *pdev)
 {
-	int rval;
+	int rval, i, j;
 	struct Scsi_Host *host;
 	struct megasas_instance *instance;
 
@@ -4378,8 +4432,9 @@ megasas_resume(struct pci_dev *pdev)
 		goto fail_ready_state;
 
 	/* Now re-enable MSI-X */
-	if (instance->msi_flag)
-		pci_enable_msix(instance->pdev, &instance->msixentry, 1);
+	if (instance->msix_vectors)
+		pci_enable_msix(instance->pdev, instance->msixentry,
+				instance->msix_vectors);
 
 	switch (instance->pdev->device) {
 	case PCI_DEVICE_ID_LSI_FUSION:
@@ -4409,11 +4464,32 @@ megasas_resume(struct pci_dev *pdev)
 	/*
 	 * Register IRQ
 	 */
-	if (request_irq(instance->msi_flag ? instance->msixentry.vector :
-			pdev->irq, instance->instancet->service_isr,
-			IRQF_SHARED, "megasas", instance)) {
-		printk(KERN_ERR "megasas: Failed to register IRQ\n");
-		goto fail_irq;
+	if (instance->msix_vectors) {
+		for (i = 0 ; i < instance->msix_vectors; i++) {
+			instance->irq_context[i].instance = instance;
+			instance->irq_context[i].MSIxIndex = i;
+			if (request_irq(instance->msixentry[i].vector,
+					instance->instancet->service_isr, 0,
+					"megasas",
+					&instance->irq_context[i])) {
+				printk(KERN_DEBUG "megasas: Failed to "
+				       "register IRQ for vector %d.\n", i);
+				for (j = 0 ; j < i ; j++)
+					free_irq(
+						instance->msixentry[j].vector,
+						&instance->irq_context[j]);
+				goto fail_irq;
+			}
+		}
+	} else {
+		instance->irq_context[0].instance = instance;
+		instance->irq_context[0].MSIxIndex = 0;
+		if (request_irq(pdev->irq, instance->instancet->service_isr,
+				IRQF_SHARED, "megasas",
+				&instance->irq_context[0])) {
+			printk(KERN_DEBUG "megasas: Failed to register IRQ\n");
+			goto fail_irq;
+		}
 	}
 
 	instance->instancet->enable_intr(instance->reg_set);
@@ -4510,9 +4586,13 @@ static void __devexit megasas_detach_one(struct pci_dev *pdev)
 
 	instance->instancet->disable_intr(instance->reg_set);
 
-	free_irq(instance->msi_flag ? instance->msixentry.vector :
-		 instance->pdev->irq, instance);
-	if (instance->msi_flag)
+	if (instance->msix_vectors)
+		for (i = 0 ; i < instance->msix_vectors; i++)
+			free_irq(instance->msixentry[i].vector,
+				 &instance->irq_context[i]);
+	else
+		free_irq(instance->pdev->irq, &instance->irq_context[0]);
+	if (instance->msix_vectors)
 		pci_disable_msix(instance->pdev);
 
 	switch (instance->pdev->device) {
@@ -4558,14 +4638,20 @@ static void __devexit megasas_detach_one(struct pci_dev *pdev)
  */
 static void megasas_shutdown(struct pci_dev *pdev)
 {
+	int i;
 	struct megasas_instance *instance = pci_get_drvdata(pdev);
+
 	instance->unload = 1;
 	megasas_flush_cache(instance);
 	megasas_shutdown_controller(instance, MR_DCMD_CTRL_SHUTDOWN);
 	instance->instancet->disable_intr(instance->reg_set);
-	free_irq(instance->msi_flag ? instance->msixentry.vector :
-		 instance->pdev->irq, instance);
-	if (instance->msi_flag)
+	if (instance->msix_vectors)
+		for (i = 0 ; i < instance->msix_vectors; i++)
+			free_irq(instance->msixentry[i].vector,
+				 &instance->irq_context[i]);
+	else
+		free_irq(instance->pdev->irq, &instance->irq_context[0]);
+	if (instance->msix_vectors)
 		pci_disable_msix(instance->pdev);
 }
 
