@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.12%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.13%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
