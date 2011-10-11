@@ -514,7 +514,6 @@ CONFIG_X86_MCE_AMD=y
 
 CONFIG_ACERHDF=m
 
-# CONFIG_LBDAF is not set
 # CONFIG_X86_MRST is not set
 # CONFIG_X86_32_IRIS is not set
 # CONFIG_MCA is not set
