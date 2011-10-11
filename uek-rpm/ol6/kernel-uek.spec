@@ -25,7 +25,7 @@ Summary: The Linux kernel
 %define rhel 1
 %if %{rhel}
 %define distro_build 100
-%define signmodules 0
+%define signmodules 1
 %else
 
 # fedora_build defines which build revision of this kernel version we're
