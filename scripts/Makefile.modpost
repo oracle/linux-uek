@@ -132,7 +132,7 @@ targets += $(modules)
 else
 quiet_cmd_ld_ko_unsigned_o = LD [M]  $@
       cmd_ld_ko_unsigned_o = \
-		$(LD) -r $(LDFLAGS) $(LDFLAGS_MODULE) -o $@ \
+		$(LD) -r $(LDFLAGS) $(KBUILD_LDFLAGS_MODULE) $(LDFLAGS_MODULE) -o $@ \
 			$(filter-out FORCE,$^) \
 		$(if $(AFTER_LINK),; $(AFTER_LINK))
 
