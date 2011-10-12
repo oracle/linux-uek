@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.13%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.14%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1699,7 +1699,16 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
-* Thu Oct 10 2011 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.13.el5uek]
+* Wed Oct 12 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.14.el5uek]
+- Apply signature checking to modules on module load (David Howells)
+- Don't include .note.gnu.build-id in the digest (David Howells)
+- config: turn on module sign (Maxim Uvarov)
+- fix modpost port bug for module signatures  (Maxim Uvarov)
+- xen: Fix selfballooning and ensure it doesn't go too far (Dan Magenheimer)
+- config: disable XEN_BALLOON_MEMORY_HOTPLUG
+- apic, i386/bigsmp: Fix false warnings regarding logical APIC ID mismatches (Jan Beulich)
+
+* Mon Oct 10 2011 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.13.el5uek]
 - fix btrfs compilation for 32 bit
 - ext4 turn on CONFIG_LBDAF for 32bit kernel [orabug 12965485]
 - exec: do not call request_module() twice from search_binary_handler()
