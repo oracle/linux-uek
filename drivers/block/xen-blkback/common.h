@@ -70,7 +70,7 @@ struct blkif_x86_32_request_rw {
 } __attribute__((__packed__));
 
 struct blkif_x86_32_request_discard {
-	uint8_t        nr_segments;  /* number of segments                   */
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
 	blkif_vdev_t   _pad1;        /* was "handle" for read/write requests */
 	uint64_t       id;           /* private guest value, echoed in resp  */
 	blkif_sector_t sector_number;/* start sector idx on disk (r/w only)  */
@@ -105,7 +105,7 @@ struct blkif_x86_64_request_rw {
 } __attribute__((__packed__));
 
 struct blkif_x86_64_request_discard {
-	uint8_t        nr_segments;  /* number of segments                   */
+	uint8_t        flag;         /* BLKIF_DISCARD_SECURE or zero         */
 	blkif_vdev_t   _pad1;        /* was "handle" for read/write requests */
         uint32_t       _pad2;        /* offsetof(blkif_..,u.discard.id)==8   */
 	uint64_t       id;
@@ -165,6 +165,7 @@ struct xen_vbd {
 	/* Cached size parameter. */
 	sector_t		size;
 	bool			flush_support;
+	bool			discard_secure;
 };
 
 struct backend_info;
@@ -265,6 +266,7 @@ static inline void blkif_get_x86_32_req(struct blkif_request *dst,
 			dst->u.rw.seg[i] = src->u.rw.seg[i];
 		break;
 	case BLKIF_OP_DISCARD:
+		dst->u.discard.flag = src->u.discard.flag;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;
@@ -294,6 +296,7 @@ static inline void blkif_get_x86_64_req(struct blkif_request *dst,
 			dst->u.rw.seg[i] = src->u.rw.seg[i];
 		break;
 	case BLKIF_OP_DISCARD:
+		dst->u.discard.flag = src->u.discard.flag;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;
