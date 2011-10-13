@@ -27,9 +27,6 @@
 
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
-#if 0
-#include <trace/syscall.h>
-#endif
 #include <asm/unistd.h>
 
 #include "dtrace.h"
@@ -60,31 +57,25 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 		return;
 
 	for (i = 0; i < NR_syscalls; i++) {
-#if 0
-		struct syscall_metadata	*sm = syscall_nr_to_meta(i);
-		const char		*nm;
-
-		if (sm == NULL)
-			continue;
-#else
 		const char		*nm = systrace_info->sysent[i].name;
 		int			sz;
-#endif
-printk(KERN_INFO "systrace_provide: [%d] = %s\n", i, nm);
+
 		if (nm == NULL)
 			continue;
 
 		if (systrace_info->sysent[i].stsy_underlying == NULL)
 			continue;
 
-#if 0
-		nm = sm->name;
-#endif
 		sz = strlen(nm);
 		if (sz > 4 && memcmp(nm, "sys_", 4) == 0)
 			nm += 4;
+#if 0
 		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
 			nm += 5;
+#else
+		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
+			continue;
+#endif
 
 		if (dtrace_probe_lookup(syscall_id, NULL, nm, "entry") != 0)
 			continue;
