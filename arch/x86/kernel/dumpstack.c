@@ -155,17 +155,9 @@ static void print_trace_address(void *data, unsigned long addr, int reliable)
 }
 
 static const struct stacktrace_ops print_trace_ops = {
-<<<<<<< HEAD
 	.stack			= print_trace_stack,
 	.address		= print_trace_address,
 	.walk_stack		= print_context_stack,
-=======
-	.warning = print_trace_warning,
-	.warning_symbol = print_trace_warning_symbol,
-	.stack = print_trace_stack,
-	.address = print_trace_address,
-	.walk_stack = print_context_stack,
->>>>>>> a99218c... Initial import of DTrace kernelspace code.
 };
 
 void
