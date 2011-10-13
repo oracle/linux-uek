@@ -3041,7 +3041,6 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 						&skb_shinfo(skb)->frags[i - 1];
 					frag->size -= tail;
 					skb->data_len -= tail;
-					skb->truesize -= tail;
 				}
 				return 0;
 			}
@@ -3073,7 +3072,7 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 
 			frag_size -= frag_len;
 			skb->data_len += frag_len;
-			skb->truesize += frag_len;
+			skb->truesize += PAGE_SIZE;
 			skb->len += frag_len;
 
 			pg_prod = NEXT_RX_BD(pg_prod);
