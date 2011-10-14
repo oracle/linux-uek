@@ -1,9 +1,12 @@
 /* Copyright (C) 2011 Oracle Corporation */
 
-#ifndef _SYSTRACE_OS_H_
-#define _SYSTRACE_OS_H_
+#ifndef _DTRACE_OS_H_
+#define _DTRACE_OS_H_
+
+#include <asm/unistd.h>
 
 typedef uint32_t dtrace_id_t;
+
 #define DTRACE_IDNONE 0
 
 typedef void (*sys_call_ptr_t)(void);
@@ -31,4 +34,18 @@ typedef struct systrace_info {
 
 extern systrace_info_t *dtrace_syscalls_init(void);
 
-#endif /* _SYSTRACE_OS_H_ */
+#define STACKTRACE_KERNEL	0x01
+#define STACKTRACE_USER		0x02
+#define STACKTRACE_SKIP		0x10
+
+typedef struct stacktrace_state {
+	uint64_t	*pcs;
+	uint64_t	*fps;
+	int		limit;
+	int		depth;
+	int		flags;
+} stacktrace_state_t;
+
+extern void dtrace_stacktrace(stacktrace_state_t *);
+
+#endif /* _DTRACE_OS_H_ */
