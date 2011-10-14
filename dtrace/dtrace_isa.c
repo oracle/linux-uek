@@ -363,6 +363,7 @@ ktime_t dtrace_gethrestime(void)
 	return dtrace_gethrtime();
 }
 
+#if 0
 #define STACKTRACE_KERNEL	0x01
 #define STACKTRACE_USER		0x02
 #define STACKTRACE_SKIP		0x10
@@ -374,15 +375,6 @@ struct stacktrace_state {
 	int		depth;
 	int		flags;
 };
-
-static void dtrace_stacktrace_warning(void *data, char *msg)
-{
-}
-
-static void dtrace_stacktrace_warning_symbol(void *data, char *msg,
-					     unsigned long symbol)
-{
-}
 
 static int dtrace_stacktrace_stack(void *data, char *name)
 {
@@ -466,12 +458,17 @@ static unsigned long dtrace_stacktrace_walk_stack(
 }
 
 static const struct stacktrace_ops	dtrace_tracetrace_ops = {
-	.warning	= dtrace_stacktrace_warning,
-	.warning_symbol	= dtrace_stacktrace_warning_symbol,
 	.stack		= dtrace_stacktrace_stack,
 	.address	= dtrace_stacktrace_address,
 	.walk_stack	= print_context_stack
 };
+
+static const struct stacktrace_ops	dtrace_tracetrace_ops_alt = {
+	.stack		= dtrace_stacktrace_stack,
+	.address	= dtrace_stacktrace_address,
+	.walk_stack	= dtrace_stacktrace_walk_stack
+};
+#endif
 
 void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 		       uint32_t *intrpc)
@@ -484,7 +481,11 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 					STACKTRACE_KERNEL
 				     };
 
+#if 0
 	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
+#else
+	dtrace_stacktrace(&st);
+#endif
 
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
@@ -500,19 +501,15 @@ void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 					STACKTRACE_USER
 				     };
 
+#if 0
 	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
+#else
+	dtrace_stacktrace(&st);
+#endif
 
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
 }
-
-static const struct stacktrace_ops	dtrace_tracetrace_ops_alt = {
-	.warning	= dtrace_stacktrace_warning,
-	.warning_symbol	= dtrace_stacktrace_warning_symbol,
-	.stack		= dtrace_stacktrace_stack,
-	.address	= dtrace_stacktrace_address,
-	.walk_stack	= dtrace_stacktrace_walk_stack
-};
 
 void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 			int pcstack_limit)
@@ -525,7 +522,11 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 					STACKTRACE_USER
 				     };
 
+#if 0
 	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops_alt, &st);
+#else
+	dtrace_stacktrace(&st);
+#endif
 
 	while (st.depth < st.limit) {
 		fpstack[st.depth] = 0;
@@ -543,7 +544,11 @@ int dtrace_getstackdepth(int aframes)
 					STACKTRACE_KERNEL
 				     };
 
+#if 0
 	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
+#else
+	dtrace_stacktrace(&st);
+#endif
 
 	if (st.depth <= aframes)
 		return 0;
@@ -561,7 +566,11 @@ int dtrace_getustackdepth(void)
 					STACKTRACE_USER
 				     };
 
+#if 0
 	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
+#else
+	dtrace_stacktrace(&st);
+#endif
 
 	return st.depth;
 }
