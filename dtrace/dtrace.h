@@ -3,6 +3,7 @@
 
 #include <linux/cred.h>
 #include <linux/cyclic.h>
+#include <linux/dtrace_os.h>
 #include <linux/idr.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
@@ -349,7 +350,8 @@ typedef struct dtrace_providerdesc {
 	dtrace_ppriv_t dtvd_priv;
 } dtrace_providerdesc_t;
 
-typedef uint32_t dtrace_id_t;
+// Defined in <linux/dtrace_os.h>.
+// typedef uint32_t dtrace_id_t;
 
 typedef struct dtrace_probedesc {
 	dtrace_id_t dtpd_id;
