@@ -154,7 +154,7 @@ static int get_section_info(FILE *fin, char buf[500], struct sym_entry *sect)
 	sect->section_used = false;
 	sect->section_index = sect_index;
 	sect->len = sect_size;
-	sect->sym = malloc(strlen(sect_name));
+	sect->sym = malloc(strlen(sect_name) + 1);
 	if (!sect->sym) {
 		fprintf(stderr, "relocs failure: "
 			"unable to allocate required amount of memory\n");
@@ -163,8 +163,8 @@ static int get_section_info(FILE *fin, char buf[500], struct sym_entry *sect)
 	strcpy((char *)sect->sym, sect_name);
 
 #ifdef INFO
-	fprintf(stderr, "sect: index=%d, name=%s, addr/offset=0x%llx, sect_size=0x%x, align=%s, vma=0x%llx, lma=0x%llx, flags=%s\n",
-		sect_index, sect->sym, sect->addr, sect->len, sect_align,
+	fprintf(stderr, "sect: index=%d, name=%s (%d), addr/offset=0x%llx, sect_size=0x%x, align=%s, vma=0x%llx, lma=0x%llx, flags=%s\n",
+		sect_index, sect->sym, strlen(sect->sym), sect->addr, sect->len, sect_align,
 		vma, lma, flags);
 #endif
 

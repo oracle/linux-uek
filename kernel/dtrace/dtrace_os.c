@@ -6,12 +6,11 @@
  */
 
 #include <linux/cyclic.h>
+#include <linux/dtrace_os.h>
 #include <linux/hrtimer.h>
 #include <linux/module.h>
 #include <linux/vmalloc.h>
-#include <asm/unistd.h>
-
-#include "systrace_os.h"
+#include <asm/stacktrace.h>
 
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
@@ -183,8 +182,8 @@ static systrace_info_t	systrace_info = {
  */
 #undef __SYSCALL
 #define __SYSCALL(nr, sym)			[nr] { __stringify(sym), },
-#undef _ASM_X86_UNISTD_64_H
-#include <asm/unistd_64.h>
+# undef _ASM_X86_UNISTD_64_H
+#include <asm/unistd.h>
 					    }
 					};
 
@@ -236,3 +235,109 @@ systrace_info_t *dtrace_syscalls_init() {
 	return &systrace_info;
 }
 EXPORT_SYMBOL(dtrace_syscalls_init);
+
+static int dtrace_stacktrace_stack(void *data, char *name)
+{
+	stacktrace_state_t	*st = (stacktrace_state_t *)data;
+
+	/*
+	 * We do not skip anything for non-user stack analysis.
+	 */
+	if (!(st->flags & STACKTRACE_USER))
+		return 0;
+
+	if (name != NULL && strlen(name) > 3) {
+		/*
+		 * Sadly, the dump stack code calls us with both <EOE> and EOI.
+		 * Consistency would be much nicer.
+		 */
+		if ((name[0] == '<' && name[1] == 'E' && name[2] == 'O') ||
+		    (name[0] == 'E' && name[2] == 'O'))
+			st->flags &= ~STACKTRACE_SKIP;
+	}
+
+	return 0;
+}
+
+static void dtrace_stacktrace_address(void *data, unsigned long addr,
+				       int reliable)
+{
+	stacktrace_state_t	*st = (stacktrace_state_t *)data;
+
+	if (st->flags & STACKTRACE_SKIP)
+		return;
+
+	if (reliable == 2) {
+		if (st->fps)
+			st->fps[st->depth] = addr;
+	} else {
+		if (st->pcs != NULL) {
+			if (st->depth < st->limit)
+				st->pcs[st->depth++] = addr;
+		} else
+			st->depth++;
+	}
+}
+
+static inline int valid_sp(struct thread_info *tinfo, void *p,
+			   unsigned int size, void *end)
+{
+	void	*t = tinfo;
+
+	if (end) {
+		if (p < end && p >= (end - THREAD_SIZE))
+			return 1;
+		else
+			return 0;
+	}
+
+	return p > t && p < t + THREAD_SIZE - size;
+}
+
+struct frame {
+	struct frame	*fr_savfp;
+	unsigned long	fr_savpc;
+} __attribute__((packed));
+
+static unsigned long dtrace_stacktrace_walk_stack(
+					struct thread_info *tinfo,
+					unsigned long *stack,
+					unsigned long bp,
+					const struct stacktrace_ops *ops,
+					void *data, unsigned long *end,
+					int *graph)
+{
+	struct frame	*fr = (struct frame *)bp;
+	unsigned long	*pcp = &(fr->fr_savpc);
+
+	while (valid_sp(tinfo, pcp, sizeof(*pcp), end)) {
+		unsigned long	addr = *pcp;
+
+		fr = fr->fr_savfp;
+		ops->address(data, (unsigned long)fr, 2);
+		ops->address(data, addr, 1);
+		pcp = &(fr->fr_savpc);
+	}
+
+	return (unsigned long)fr;
+}
+
+static const struct stacktrace_ops	dtrace_stacktrace_ops = {
+	.stack		= dtrace_stacktrace_stack,
+	.address	= dtrace_stacktrace_address,
+	.walk_stack	= print_context_stack
+};
+
+static const struct stacktrace_ops	dtrace_fpstacktrace_ops = {
+	.stack		= dtrace_stacktrace_stack,
+	.address	= dtrace_stacktrace_address,
+	.walk_stack	= dtrace_stacktrace_walk_stack
+};
+
+void dtrace_stacktrace(stacktrace_state_t *st)
+{
+	dump_trace(NULL, NULL, NULL, 0,
+		   st->fps != NULL ? &dtrace_fpstacktrace_ops
+				   : &dtrace_stacktrace_ops, st);
+}
+EXPORT_SYMBOL(dtrace_stacktrace);
