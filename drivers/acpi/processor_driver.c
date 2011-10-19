@@ -90,6 +90,11 @@ static const struct acpi_device_id processor_device_ids[] = {
 };
 MODULE_DEVICE_TABLE(acpi, processor_device_ids);
 
+int (*__acpi_processor_register_driver)(void) = acpi_processor_register_driver;
+void (*__acpi_processor_unregister_driver)(void) \
+	= acpi_processor_unregister_driver;
+
+
 static struct acpi_driver acpi_processor_driver = {
 	.name = "processor",
 	.class = ACPI_PROCESSOR_CLASS,
@@ -780,6 +785,29 @@ void acpi_processor_uninstall_hotplug_notify(void)
 	unregister_hotcpu_notifier(&acpi_cpu_notifier);
 }
 
+int acpi_processor_register_driver(void)
+{
+	int result = 0;
+	if (!cpuidle_register_driver(&acpi_idle_driver)) {
+		printk(KERN_DEBUG "ACPI: %s registered with cpuidle\n",
+			acpi_idle_driver.name);
+	} else {
+		printk(KERN_DEBUG "ACPI: acpi_idle yielding to %s\n",
+			cpuidle_get_driver()->name);
+	}
+
+	result = acpi_bus_register_driver(&acpi_processor_driver);
+	return result;
+}
+
+void acpi_processor_unregister_driver(void)
+{
+	acpi_bus_unregister_driver(&acpi_processor_driver);
+
+	cpuidle_unregister_driver(&acpi_idle_driver);
+
+	return;
+}
 /*
  * We keep the driver loaded even when ACPI is not running.
  * This is needed for the powernow-k8 driver, that works even without
@@ -795,17 +823,11 @@ static int __init acpi_processor_init(void)
 
 	memset(&errata, 0, sizeof(errata));
 
-	if (!cpuidle_register_driver(&acpi_idle_driver)) {
-		printk(KERN_DEBUG "ACPI: %s registered with cpuidle\n",
-			acpi_idle_driver.name);
-	} else {
-		printk(KERN_DEBUG "ACPI: acpi_idle yielding to %s\n",
-			cpuidle_get_driver()->name);
+	if (__acpi_processor_register_driver) {
+		result = __acpi_processor_register_driver();
+		if (result < 0)
+			goto out_cpuidle;
 	}
-
-	result = acpi_bus_register_driver(&acpi_processor_driver);
-	if (result < 0)
-		goto out_cpuidle;
 
 	acpi_processor_install_hotplug_notify();
 
@@ -823,6 +845,7 @@ out_cpuidle:
 	return result;
 }
 
+
 static void __exit acpi_processor_exit(void)
 {
 	if (acpi_disabled)
@@ -834,9 +857,8 @@ static void __exit acpi_processor_exit(void)
 
 	acpi_processor_uninstall_hotplug_notify();
 
-	acpi_bus_unregister_driver(&acpi_processor_driver);
-
-	cpuidle_unregister_driver(&acpi_idle_driver);
+	if (__acpi_processor_unregister_driver)
+		__acpi_processor_unregister_driver();
 
 	return;
 }
