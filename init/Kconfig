@@ -29,6 +29,12 @@ config IRQ_WORK
 
 menu "General setup"
 
+config UEK5
+	bool "Kernel for Oracle Unbreakable Enterprise Linux 5"
+	default y
+	---help---
+	  Kernel for Oracle Unbreakable Enterprise Linux 5
+
 config EXPERIMENTAL
 	bool "Prompt for development and/or incomplete code/drivers"
 	---help---
