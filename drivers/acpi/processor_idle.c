@@ -1077,7 +1077,7 @@ int acpi_processor_cst_has_changed(struct acpi_processor *pr)
 	cpuidle_pause_and_lock();
 	cpuidle_disable_device(&pr->power.dev);
 	acpi_processor_get_power_info(pr);
-	if (pr->flags.power) {
+	if (pr->flags.power && (cpuidle_get_driver() == &acpi_idle_driver)) {
 		acpi_processor_setup_cpuidle(pr);
 		ret = cpuidle_enable_device(&pr->power.dev);
 	}
@@ -1125,7 +1125,7 @@ int __cpuinit acpi_processor_power_init(struct acpi_processor *pr,
 	 * Note that we use previously set idle handler will be used on
 	 * platforms that only support C1.
 	 */
-	if (pr->flags.power) {
+	if (pr->flags.power && (cpuidle_get_driver() == &acpi_idle_driver)) {
 		acpi_processor_setup_cpuidle(pr);
 		if (cpuidle_register_device(&pr->power.dev))
 			return -EIO;
