@@ -427,7 +427,7 @@ static int acpi_processor_get_power_info_cst(struct acpi_processor *pr)
 		if (reg->space_id != ACPI_ADR_SPACE_SYSTEM_IO &&
 		    (reg->space_id != ACPI_ADR_SPACE_FIXED_HARDWARE))
 			continue;
-
+		memcpy(&(cx.reg), reg, sizeof(*reg));
 		/* There should be an easy way to extract an integer... */
 		obj = &(element->package.elements[1]);
 		if (obj->type != ACPI_TYPE_INTEGER)

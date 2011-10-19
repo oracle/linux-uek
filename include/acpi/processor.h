@@ -65,6 +65,7 @@ struct acpi_processor_cx {
 	u64 time;
 	u8 bm_sts_skip;
 	char desc[ACPI_CX_DESC_LEN];
+	struct acpi_power_register reg;
 };
 
 struct acpi_processor_power {
