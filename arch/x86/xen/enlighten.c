@@ -42,6 +42,7 @@
 #include <xen/page.h>
 #include <xen/hvm.h>
 #include <xen/hvc-console.h>
+#include <xen/acpi.h>
 
 #include <asm/paravirt.h>
 #include <asm/apic.h>
@@ -1250,6 +1251,8 @@ asmlinkage void __init xen_start_kernel(void)
 	} else {
 		/* Make sure ACS will be enabled */
 		pci_request_acs();
+
+		xen_acpi_sleep_register();
 	}
 		
 
