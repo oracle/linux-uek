@@ -79,9 +79,6 @@ MODULE_AUTHOR("Paul Diefenbaugh");
 MODULE_DESCRIPTION("ACPI Processor Driver");
 MODULE_LICENSE("GPL");
 
-static int acpi_processor_add(struct acpi_device *device);
-static int acpi_processor_remove(struct acpi_device *device, int type);
-static void acpi_processor_notify(struct acpi_device *device, u32 event);
 static acpi_status acpi_processor_hotadd_init(acpi_handle handle, int *p_cpu);
 static int acpi_processor_handle_eject(struct acpi_processor *pr);
 
@@ -378,7 +375,7 @@ static int acpi_processor_get_info(struct acpi_device *device)
 
 static DEFINE_PER_CPU(void *, processor_device_array);
 
-static void acpi_processor_notify(struct acpi_device *device, u32 event)
+void acpi_processor_notify(struct acpi_device *device, u32 event)
 {
 	struct acpi_processor *pr = acpi_driver_data(device);
 	int saved;
@@ -442,7 +439,7 @@ static struct notifier_block acpi_cpu_notifier =
 	    .notifier_call = acpi_cpu_soft_notify,
 };
 
-static int __cpuinit acpi_processor_add(struct acpi_device *device)
+int __cpuinit acpi_processor_add(struct acpi_device *device)
 {
 	struct acpi_processor *pr = NULL;
 	int result = 0;
@@ -546,7 +543,7 @@ err_free_cpumask:
 	return result;
 }
 
-static int acpi_processor_remove(struct acpi_device *device, int type)
+int acpi_processor_remove(struct acpi_device *device, int type)
 {
 	struct acpi_processor *pr = NULL;
 
@@ -759,7 +756,6 @@ static int acpi_processor_handle_eject(struct acpi_processor *pr)
 }
 #endif
 
-static
 void acpi_processor_install_hotplug_notify(void)
 {
 #ifdef CONFIG_ACPI_HOTPLUG_CPU
@@ -772,7 +768,6 @@ void acpi_processor_install_hotplug_notify(void)
 	register_hotcpu_notifier(&acpi_cpu_notifier);
 }
 
-static
 void acpi_processor_uninstall_hotplug_notify(void)
 {
 #ifdef CONFIG_ACPI_HOTPLUG_CPU

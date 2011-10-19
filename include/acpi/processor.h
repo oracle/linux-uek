@@ -239,6 +239,12 @@ extern void acpi_processor_unregister_performance(struct
          if a _PPC object exists, rmmod is disallowed then */
 int acpi_processor_notify_smm(struct module *calling_module);
 
+void acpi_processor_install_hotplug_notify(void);
+void acpi_processor_uninstall_hotplug_notify(void);
+
+int acpi_processor_add(struct acpi_device *device);
+int acpi_processor_remove(struct acpi_device *device, int type);
+void acpi_processor_notify(struct acpi_device *device, u32 event);
 /* for communication between multiple parts of the processor kernel module */
 DECLARE_PER_CPU(struct acpi_processor *, processors);
 extern struct acpi_processor_errata errata;
@@ -278,7 +284,9 @@ static inline void acpi_processor_ffh_cstate_enter(struct acpi_processor_cx
 void acpi_processor_ppc_init(void);
 void acpi_processor_ppc_exit(void);
 int acpi_processor_ppc_has_changed(struct acpi_processor *pr, int event_flag);
-extern int acpi_processor_get_bios_limit(int cpu, unsigned int *limit);
+int acpi_processor_get_performance_info(struct acpi_processor *pr);
+int acpi_processor_get_psd(struct acpi_processor *pr);
+int acpi_processor_get_bios_limit(int cpu, unsigned int *limit);
 #else
 static inline void acpi_processor_ppc_init(void)
 {
