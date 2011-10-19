@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.14%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.15%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1699,6 +1699,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Oct 19 2011 Joe Jin <joe.jin@oracle.com> [2.6.39-100.0.15.el5uek]
+- [scsi] cciss: Use cciss for some Smart Array controller when build for OL5
+- [Kconfig]: Add CONFIG_UEK5 option.
+
 * Wed Oct 12 2011 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.14.el5uek]
 - Apply signature checking to modules on module load (David Howells)
 - Don't include .note.gnu.build-id in the digest (David Howells)
