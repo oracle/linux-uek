@@ -287,6 +287,7 @@ extern void xen_processor_driver_register(void);
 /* in processor_perflib.c */
 
 #ifdef CONFIG_CPU_FREQ
+extern int ignore_ppc;
 void acpi_processor_ppc_init(void);
 void acpi_processor_ppc_exit(void);
 int acpi_processor_ppc_has_changed(struct acpi_processor *pr, int event_flag);

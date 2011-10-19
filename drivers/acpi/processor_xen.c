@@ -216,12 +216,14 @@ int xen_acpi_processor_init(void)
 	if (result < 0)
 		return result;
 		/* mark ready for handling ppc */
+	ignore_ppc = 0;
 
 	return 0;
 }
 
 void xen_acpi_processor_exit(void)
 {
+	ignore_ppc = -1;
 
 	acpi_bus_unregister_driver(&xen_acpi_processor_driver);
 }
