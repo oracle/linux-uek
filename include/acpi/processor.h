@@ -280,6 +280,10 @@ static inline void acpi_processor_ffh_cstate_enter(struct acpi_processor_cx
 }
 #endif
 
+/* in processor_xen.c */
+extern void xen_processor_driver_register(void);
+
+
 /* in processor_perflib.c */
 
 #ifdef CONFIG_CPU_FREQ

@@ -823,6 +823,8 @@ static int __init acpi_processor_init(void)
 
 	memset(&errata, 0, sizeof(errata));
 
+	xen_processor_driver_register();
+
 	if (__acpi_processor_register_driver) {
 		result = __acpi_processor_register_driver();
 		if (result < 0)
