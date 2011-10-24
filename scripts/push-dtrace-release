@@ -69,7 +69,7 @@ if [[ "x$1" = "x--old-release" ]]; then
     shift
 fi
 
-if [[ $# -ne 3 ]] && [[ $# -ne 4 ]]; then
+if [[ $# -lt 2 ]] || [[ $# -gt 4 ]]; then
     usage
 fi
 
