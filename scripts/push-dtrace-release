@@ -120,9 +120,6 @@ if ! git merge-base $RELEASE $MASTER >/dev/null 2>&1; then
     exit 1
 fi
 
-echo url is $URL
-exit 0
-
 # Clone the tree into a new, temporary location, sharing objects
 # with the original.
 splitdir="$(get_dir_name)"
