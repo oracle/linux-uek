@@ -113,8 +113,10 @@ fi
 # with the original.
 splitdir="$(get_dir_name)"
 origdir=$(pwd)
-git clone --shared $origdir --branch $RELEASE $splitdir
+git clone --shared $origdir --no-checkout $splitdir
 cd $splitdir
+git branch $RELEASE origin/$RELEASE
+git checkout $RELEASE
 
 # Kernel tree push. GPL.
 if [[ -z $MODULE ]]; then
