@@ -15,13 +15,14 @@ usage()
 
 Syntax:
 
-push-dtrace-release {--module|--kernel} [--old-release] \\
+push-dtrace-release {--module|--kernel} [-u username] [--old-release] \\
                     release-branch master-branch [remote-branch] [url]
 
 Push a module or kernel release branch to a named git URL.
 
 --module: Specify if this is a push of the CDDLed dtrace module.
 --kernel: Specify if this is a push of the GPLed kernel plus GPLed dtrace bits.
+-u username: Username on remote git server. Required if url is not specified.
 --old-release: Specify if this is an old release, which should not update the
                'master' branch on the remote as well.
 
@@ -30,7 +31,7 @@ master-branch: Name of the master branch from which this release branch is
                derived
 remote-branch: Name of the release branch in the remote repository (optional).
 url: URL of the remote git repository to push to (optional, by default
-     derived from --module or --kernel).
+     derived from --module or --kernel iff username is specified).
 
 (If only one of remote-branch and url are provided, heuristic hacks are used
 to work out which it is.  These heuristics prevent use of paths with colons
@@ -56,6 +57,7 @@ get_dir_name()
 
 MODULE=
 OLD_RELEASE=
+USERNMAE=
 
 case "x$1" in
   x--module) MODULE=t;;
@@ -64,10 +66,15 @@ case "x$1" in
 esac
 shift
 
-if [[ "x$1" = "x--old-release" ]]; then
-    OLD_RELEASE=t
+while [[ "$#" -gt 0 ]]; do
+    case "x$1" in
+        "x--old-release") OLD_RELEASE=t;;
+        "x-u") shift;
+               USERNAME=$1;;
+       *) break;;
+    esac
     shift
-fi
+done
 
 if [[ $# -lt 2 ]] || [[ $# -gt 4 ]]; then
     usage
@@ -86,10 +93,14 @@ fi
 
 # Default the URL.
 if [[ -z $URL ]]; then
+    if [[ -z $USERNAME ]]; then
+        echo '-u <username> must be passed if URL is not specified.' >&2
+        exit 1
+    fi
     if [[ -z $MODULE ]]; then
-        URL="git://oss.oracle.com/git/linux-2.6-dtrace-unbreakable-beta.git"
+        URL="ssh://$USERNAME@oss.oracle.com/home/sourcebo/git/linux-2.6-dtrace-unbreakable-beta.git"
     else
-        URL="git://oss.oracle.com/git/linux-2.6-dtrace-modules-beta.git"
+        URL="ssh://$USERNAME@oss.oracle.com/home/sourcebo/git/linux-2.6-dtrace-modules-beta.git"
     fi
 fi
 
@@ -108,6 +119,9 @@ if ! git merge-base $RELEASE $MASTER >/dev/null 2>&1; then
     echo "Release branch $RELEASE and master branch $MASTER have no ancestry in common." >&2
     exit 1
 fi
+
+echo url is $URL
+exit 0
 
 # Clone the tree into a new, temporary location, sharing objects
 # with the original.
