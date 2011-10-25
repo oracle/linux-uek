@@ -16,7 +16,9 @@ usage()
 Syntax:
 
 push-dtrace-release {--module|--kernel} [-u username] [--old-release] \\
-                    release-branch master-branch [remote-branch] [url]
+                    [--dtrace-dir-point SHA1] \\
+                    release-branch master-branch upstream-branch
+                    [remote-branch] [url]
 
 Push a module or kernel release branch to a named git URL.
 
@@ -25,10 +27,20 @@ Push a module or kernel release branch to a named git URL.
 -u username: Username on remote git server. Required if url is not specified.
 --old-release: Specify if this is an old release, which should not update the
                'master' branch on the remote as well.
+--dtrace-dir-point: If the branchpoint between the release and master branches
+                     does not contain a split dtrace/ directory, this lets you
+                     specify a point that does. It is unlikely to be necessary
+                     except when pushing releases of very old dtraces,
+                     predating the split.
 
 release-branch: Name of the release branch
 master-branch: Name of the master branch from which this release branch is
                derived
+upstream-branch: Name of the upstream branch from which the DTrace kernel
+                 is forked. (Used to isolate those commits that might
+                 contain DTrace changes in the presence of repeated merges
+                 from upstream.)
+
 remote-branch: Name of the release branch in the remote repository (optional).
 url: URL of the remote git repository to push to (optional, by default
      derived from --module or --kernel iff username is specified).
@@ -58,6 +70,7 @@ get_dir_name()
 MODULE=
 OLD_RELEASE=
 USERNMAE=
+DTRACE_DIR_POINT=
 
 case "x$1" in
   x--module) MODULE=t;;
@@ -68,22 +81,25 @@ shift
 
 while [[ "$#" -gt 0 ]]; do
     case "x$1" in
-        "x--old-release") OLD_RELEASE=t;;
-        "x-u") shift;
-               USERNAME=$1;;
+        x--old-release) OLD_RELEASE=t;;
+        x--dtrace-dir-point) shift;
+                             DTRACE_DIR_POINT=$1;;
+        x-u) shift;
+             USERNAME=$1;;
        *) break;;
     esac
     shift
 done
 
-if [[ $# -lt 2 ]] || [[ $# -gt 4 ]]; then
+if [[ $# -lt 3 ]] || [[ $# -gt 5 ]]; then
     usage
 fi
 
 RELEASE="$1"
 MASTER="$2"
-RBRANCH="$3"
-URL="$4"
+UPSTREAM="$3"
+RBRANCH="$4"
+URL="$5"
 
 # Detect URL without remote branch.
 if [[ -z $URL ]] && { [[ $RBRANCH =~ : ]] || [[ $RBRANCH =~ ^/ ]]; }; then
@@ -115,9 +131,16 @@ if [[ ! -e .git/refs/heads/$MASTER ]]; then
     exit 1
 fi
 
-if ! git merge-base $RELEASE $MASTER >/dev/null 2>&1; then
-    echo "Release branch $RELEASE and master branch $MASTER have no ancestry in common." >&2
+if [[ ! -e .git/refs/heads/$UPSTREAM ]]; then
+    echo "Local branch $UPSTREAM does not exist." >&2
     exit 1
+fi
+
+if [[ -z $DTRACE_DIR_POINT ]]; then
+    if ! git merge-base $RELEASE $MASTER >/dev/null 2>&1; then
+        echo "Release branch $RELEASE and master branch $MASTER have no ancestry in common." >&2
+        exit 1
+    fi
 fi
 
 # Clone the tree into a new, temporary location, sharing objects
@@ -134,8 +157,12 @@ if [[ -z $MODULE ]]; then
 
     # Check out the point at which the release branch split from the
     # development trunk: we assume that this point precedes any cleanup
-    # deletions of broken CDDLed code.
-    git checkout $(git merge-base $RELEASE origin/$MASTER)
+    # deletions of broken CDDLed code.  (If not, you should use --dtrace-dir-point.)
+    if [[ -z $DTRACE_DIR_POINT ]]; then
+        git checkout $(git merge-base $RELEASE origin/$MASTER)
+    else
+        git checkout $DTRACE_DIR_POINT
+    fi
 
     if [[ ! -d dtrace ]]; then
         echo "Error: master tree at point of release does not contain a " >&2
@@ -158,32 +185,27 @@ if [[ -z $MODULE ]]; then
     # WARNING: changing this line will change history on oss.oracle.com,
     # and break everyone pulling from it without -f!
     git filter-branch --index-filter "git rm -r --cached --ignore-unmatch config-dtrace dtrace $(for name in $(git ls-files 'dtrace/*.[chS]'); do echo -n "kernel/$name "; done)" \
-                      --tag-name-filter cat --prune-empty -- $(git describe ':/Initial import of DTrace kernelspace code')'^'..$RELEASE
-
-    # Prune tags we don't want. The kernel loses only the junk CVS-conversion
-    # tags and the userspace tags.
-    git show-ref --tag | grep -E 'refs/tags/(INITIAL|dtrace-base|dtrace-user-.*|latest-cvs)$' | \
-        sed 's,^.*refs/tags/,,' | xargs git tag -d
+                      --tag-name-filter cat --prune-empty -- $(git describe ':/Initial import of DTrace kernelspace code')'^'..$RELEASE ^origin/$UPSTREAM
 
 else # dtrace module push. CDDL.
     git filter-branch --tag-name-filter cat --subdirectory-filter dtrace $RELEASE
-
-    # Prune tags we don't want. The module loses the junk CVS-conversion
-    # tags, the userspace tags, Linus's tags, and a dtrace release tag
-    # from before the CDDL/GPL split.
-    #
-    # WARNING: changing this line will change history on oss.oracle.com,
-    # and break everyone pulling from it without -f!
-    git show-ref --tag | grep -E 'refs/tags/(INITIAL|dtrace-base|dtrace-user-.*|latest-cvs|dtrace-kernel-0.1-20111005|v[0-9].*)$' | \
-        sed 's,^.*refs/tags/,,' | xargs git tag -d
 fi
+
+# Erase all tags not reachable from the current commit.
+comm -13 <(git log --decorate=full --simplify-by-decoration --pretty=oneline $RELEASE | \
+           sed -r -e 's@^[^\(]*\(([^\)]*)\).*$@\1@' -e 's@,@\n@g' | \
+           grep 'tag:' | sed -r -e 's@[[:space:]]*tag:[[:space:]]*@@' | sort -u) \
+         <(git show-ref --tag | sed 's,^.*/,,' | sort -u) | \
+    xargs git tag -d
 
 # Now push content and all surviving tags.
 
 git remote add oss-remote $URL
-git push oss-remote $RELEASE${RBRANCH:+:}${RBRANCH:-} --tags
+git push --force oss-remote $RELEASE${RBRANCH:+:}${RBRANCH:-} --tags
 
-# Finally, if this is not an old release, push the master branch.
+# Finally, if this is not an old release, erase then push the master branch.
+# This will fail if the remote repository has receive.denyNonFastForwards set:
+# the only fix is to unset it.
 
 if [[ -z $OLD_RELEASE ]]; then
     git push --force oss-remote $RELEASE:refs/heads/master
