@@ -4166,7 +4166,6 @@ reinit_after_soft_reset:
 		return -ENOMEM;
 
 	h->pdev = pdev;
-	h->busy_initializing = 1;
 	h->intr_mode = hpsa_simple_mode ? SIMPLE_MODE_INT : PERF_MODE_INT;
 	INIT_LIST_HEAD(&h->cmpQ);
 	INIT_LIST_HEAD(&h->reqQ);
@@ -4275,7 +4274,6 @@ reinit_after_soft_reset:
 
 	hpsa_hba_inquiry(h);
 	hpsa_register_scsi(h);	/* hook ourselves into SCSI subsystem */
-	h->busy_initializing = 0;
 	return 1;
 
 clean4:
@@ -4284,7 +4282,6 @@ clean4:
 	free_irq(h->intr[h->intr_mode], h);
 clean2:
 clean1:
-	h->busy_initializing = 0;
 	kfree(h);
 	return rc;
 }
