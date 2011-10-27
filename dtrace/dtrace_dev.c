@@ -109,7 +109,6 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_providerdesc_t	pvd;
 		dtrace_provider_t	*pvp;
 
-printk(KERN_INFO "IOCTL provider\n");
 		if (copy_from_user(&pvd, argp, sizeof(pvd)) != 0)
 			return -EFAULT;
 
@@ -146,26 +145,21 @@ printk(KERN_INFO "IOCTL provider\n");
 		uint8_t			*dest;
 		int			nrecs;
 
-printk(KERN_INFO "IOCTL eprobe\n");
 		if (copy_from_user(&epdesc, argp, sizeof(epdesc)) != 0)
 			return -EFAULT;
 
 		mutex_lock(&dtrace_lock);
 
-printk(KERN_INFO "    Looking for ECB %ld\n", epdesc.dtepd_epid);
 		if ((ecb = dtrace_epid2ecb(state, epdesc.dtepd_epid)) == NULL) {
 			mutex_unlock(&dtrace_lock);
-printk(KERN_INFO "    ECB not found\n");
 			return -EINVAL;
 		}
 
 		if (ecb->dte_probe == NULL) {
 			mutex_unlock(&dtrace_lock);
-printk(KERN_INFO "    ECB has no probe\n");
 			return -EINVAL;
 		}
 
-printk(KERN_INFO "    ECB has probe %ld\n", ecb->dte_probe->dtpr_id);
 		epdesc.dtepd_probeid = ecb->dte_probe->dtpr_id;
 		epdesc.dtepd_uarg = ecb->dte_uarg;
 		epdesc.dtepd_size = ecb->dte_size;
@@ -228,7 +222,6 @@ printk(KERN_INFO "    ECB has probe %ld\n", ecb->dte_probe->dtpr_id);
 		size_t			size;
 		uint8_t			*dest;
 
-printk(KERN_INFO "IOCTL aggdesc\n");
 		if (copy_from_user(&aggdesc, argp, sizeof(aggdesc)) != 0)
 			return -EFAULT;
 
@@ -238,7 +231,6 @@ printk(KERN_INFO "IOCTL aggdesc\n");
 			mutex_unlock(&dtrace_lock);
 			return -EINVAL;
 		}
-printk(KERN_INFO "IOCTL aggdesc: Found agg %lu, ECB %lu\n", agg->dtag_id, agg->dtag_ecb->dte_epid);
 
 		aggdesc.dtagd_epid = agg->dtag_ecb->dte_epid;
 
@@ -330,7 +322,6 @@ printk(KERN_INFO "IOCTL aggdesc: Found agg %lu, ECB %lu\n", agg->dtag_id, agg->d
 		int			err = 0;
 		int			rv;
 
-printk(KERN_INFO "IOCTL enable\n");
 		rv = 0;
 
 		/*
@@ -391,7 +382,6 @@ printk(KERN_INFO "IOCTL enable\n");
 		dtrace_probedesc_t	*create = &desc.dtrpd_create;
 		int			err;
 
-printk(KERN_INFO "IOCTL replicate\n");
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -420,7 +410,6 @@ printk(KERN_INFO "IOCTL replicate\n");
 		uint32_t		priv;
 		uid_t			uid;
 
-printk(KERN_INFO "IOCTL %s\n", cmd == DTRACEIOC_PROBEMATCH ? "probematch" : "probes");
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -443,7 +432,6 @@ printk(KERN_INFO "IOCTL %s\n", cmd == DTRACEIOC_PROBEMATCH ? "probematch" : "pro
 			dtrace_probekey(&desc, &pkey);
 			pkey.dtpk_id = DTRACE_IDNONE;
 		}
-printk(KERN_INFO "IOCTL %s: id[%d] p[%s] m[%s] f[%s] n[%s]\n", cmd == DTRACEIOC_PROBEMATCH ? "probematch" : "probes", desc.dtpd_id, desc.dtpd_provider, desc.dtpd_mod, desc.dtpd_func, desc.dtpd_name);
 
 		dtrace_cred2priv(file->f_cred, &priv, &uid);
 
@@ -483,7 +471,6 @@ printk(KERN_INFO "IOCTL %s: id[%d] p[%s] m[%s] f[%s] n[%s]\n", cmd == DTRACEIOC_
 		dtrace_probe_description(probe, &desc);
 		mutex_unlock(&dtrace_lock);
 
-printk(KERN_INFO "Returning probe [%s]\n", desc.dtpd_name);
 		if (copy_to_user(argp, &desc, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -495,7 +482,6 @@ printk(KERN_INFO "Returning probe [%s]\n", desc.dtpd_name);
 		dtrace_probe_t		*probe;
 		dtrace_provider_t	*prov;
 
-printk(KERN_INFO "IOCTL probearg\n");
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -550,7 +536,6 @@ printk(KERN_INFO "IOCTL probearg\n");
 	case DTRACEIOC_GO: {
 		processorid_t	cpuid;
 
-printk(KERN_INFO "IOCTL go\n");
 		rval = dtrace_state_go(state, &cpuid);
 
 		if (rval != 0)
@@ -565,7 +550,6 @@ printk(KERN_INFO "IOCTL go\n");
 	case DTRACEIOC_STOP: {
 		processorid_t	cpuid;
 
-printk(KERN_INFO "IOCTL stop\n");
 		mutex_lock(&dtrace_lock);
 		rval = dtrace_state_stop(state, &cpuid);
 		mutex_unlock(&dtrace_lock);
@@ -583,7 +567,6 @@ printk(KERN_INFO "IOCTL stop\n");
 		dof_hdr_t	hdr, *dof;
 		uint64_t	len;
 
-printk(KERN_INFO "IOCTL dofget\n");
 		if (copy_from_user(&hdr, argp, sizeof(hdr)) != 0)
 			return -EFAULT;
 
@@ -604,7 +587,6 @@ printk(KERN_INFO "IOCTL dofget\n");
 		caddr_t			cached;
 		dtrace_buffer_t		*buf;
 
-printk(KERN_INFO "IOCTL %s\n", cmd == DTRACEIOC_AGGSNAP ? "aggsnap" : "bufsnap");
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -731,7 +713,6 @@ printk(KERN_INFO "IOCTL %s\n", cmd == DTRACEIOC_AGGSNAP ? "aggsnap" : "bufsnap")
 	case DTRACEIOC_CONF: {
 		dtrace_conf_t	conf;
 
-printk(KERN_INFO "IOCTL conf\n");
 		memset(&conf, 0, sizeof(conf));
 		conf.dtc_difversion = DIF_VERSION;
 		conf.dtc_difintregs = DIF_DIR_NREGS;
@@ -751,7 +732,6 @@ printk(KERN_INFO "IOCTL conf\n");
 		int		i, j;
 		uint64_t	nerrs;
 
-printk(KERN_INFO "IOCTL status\n");
 		/*
 		 * See the comment in dtrace_state_deadman() for the reason
 		 * for setting dts_laststatus to INT64_MAX before setting
@@ -819,7 +799,6 @@ printk(KERN_INFO "IOCTL status\n");
 		char			*str;
 		int			len;
 
-printk(KERN_INFO "IOCTL format\n");
 		if (copy_from_user(&fmt, argp, sizeof (fmt)) != 0)
 			return -EFAULT;
 

@@ -26,8 +26,11 @@
  */
 
 #include <linux/fs.h>
+#include <linux/ktime.h>
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
+#include <asm/irq_regs.h>
+#include <asm/ptrace.h>
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
@@ -84,8 +87,64 @@ static atomic_t	profile_total;		/* current number of profile probes */
 static void profile_tick(void *arg)
 {
 	profile_probe_t	*prof = arg;
+	struct pt_regs	*regs = get_irq_regs();
+	unsigned long	pc = 0, upc = 0;
 
-	dtrace_probe(prof->prof_id, 0, 0, 0, 0, 0); /* FIXME */
+	if (user_mode(regs))
+		upc = GET_IP(regs);
+	else
+		pc = GET_IP(regs);
+
+	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
+}
+
+static void profile_prof(void *arg)
+{
+	profile_probe_percpu_t	*pcpu = arg;
+	profile_probe_t		*prof = pcpu->profc_probe;
+	ktime_t			late;
+	struct pt_regs		*regs = get_irq_regs();
+	unsigned long		pc = 0, upc = 0;
+
+	late = ktime_sub(dtrace_gethrtime(), pcpu->profc_expected);
+	pcpu->profc_expected = ktime_add(pcpu->profc_expected,
+					 pcpu->profc_interval);
+
+	if (user_mode(regs))
+		upc = GET_IP(regs);
+	else
+		pc = GET_IP(regs);
+
+	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
+}
+
+static void profile_online(void *arg, processorid_t cpu, cyc_handler_t *hdlr,
+			   cyc_time_t *when)
+{
+	profile_probe_t		*prof = arg;
+	profile_probe_percpu_t	*pcpu;
+
+	pcpu = kzalloc(sizeof(profile_probe_percpu_t), GFP_KERNEL);
+	pcpu->profc_probe = prof;
+
+	hdlr->cyh_func = profile_prof;
+	hdlr->cyh_arg = pcpu;
+	hdlr->cyh_level = CY_HIGH_LEVEL;
+
+	when->cyt_interval = prof->prof_interval;
+	when->cyt_when = ktime_add(dtrace_gethrtime(), when->cyt_interval);
+
+	pcpu->profc_expected = when->cyt_when;
+	pcpu->profc_interval = when->cyt_interval;
+}
+
+static void profile_offline(void *arg, processorid_t cpu, void *oarg)
+{
+	profile_probe_percpu_t	*pcpu = oarg;
+
+	ASSERT(pcpu->profc_probe == arg);
+
+	kfree(pcpu);
 }
 
 static void profile_create(ktime_t interval, const char *name, int kind)
@@ -262,9 +321,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 int profile_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t		*prof = parg;
-#ifdef FIXME
 	cyc_omni_handler_t	omni;
-#endif
 	cyc_handler_t		hdlr;
 	cyc_time_t		when;
 
@@ -283,16 +340,11 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg)
 	} else {
 		ASSERT(prof->prof_kind == PROF_PROFILE);	
 
-#ifdef FIXME
 		omni.cyo_online = profile_online;
 		omni.cyo_offline = profile_offline;
 		omni.cyo_arg = prof;
 
 		prof->prof_cyclic = cyclic_add_omni(&omni);
-#else
-		prof->prof_cyclic = CYCLIC_NONE;
-		return -ENOTSUPP;
-#endif
 	}
 
 	return 0;
