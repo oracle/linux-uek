@@ -31,7 +31,14 @@ typedef struct cyc_time {
 	ktime_t cyt_interval;
 } cyc_time_t;
 
+typedef struct cyc_omni_handler {
+	void (*cyo_online)(void *, uint32_t, cyc_handler_t *, cyc_time_t *);
+	void (*cyo_offline)(void *, uint32_t, void *);
+	void *cyo_arg;
+} cyc_omni_handler_t;
+
 extern cyclic_id_t cyclic_add(cyc_handler_t *, cyc_time_t *);
+extern cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *);
 extern void cyclic_remove(cyclic_id_t);
 
 #endif /* _CYCLIC_H_ */
