@@ -90,10 +90,12 @@ static void profile_tick(void *arg)
 	struct pt_regs	*regs = get_irq_regs();
 	unsigned long	pc = 0, upc = 0;
 
+if (regs) {
 	if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
+}
 
 	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
 }
@@ -110,10 +112,12 @@ static void profile_prof(void *arg)
 	pcpu->profc_expected = ktime_add(pcpu->profc_expected,
 					 pcpu->profc_interval);
 
+if (regs) {
 	if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
+}
 
 	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
 }
