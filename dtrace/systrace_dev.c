@@ -115,7 +115,7 @@ int systrace_enable(void *arg, dtrace_id_t id, void *parg)
 	int		enabled =
 		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
 		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
-	dt_sys_call_t	intercept = get_intercept(sysnum);;
+	dt_sys_call_t	intercept = get_intercept(sysnum);
 
 	if (!enabled) {
 		if (cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
@@ -141,7 +141,7 @@ void systrace_disable(void *arg, dtrace_id_t id, void *parg)
 	int		enabled =
 		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
 		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
-	dt_sys_call_t	intercept = get_intercept(sysnum);;
+	dt_sys_call_t	intercept = get_intercept(sysnum);
 
 	if (enabled)
 		(void)cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
