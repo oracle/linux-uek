@@ -12,6 +12,10 @@
 #include <linux/vmalloc.h>
 #include <asm/stacktrace.h>
 
+#include <linux/fs.h>
+#include <linux/sched.h>
+#include <asm/syscalls.h>
+
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
  */
@@ -141,6 +145,18 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
 EXPORT_SYMBOL(cyclic_add);
 
 /*
+ * Add a new omnipresent cyclic to the system.
+ */
+cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
+{
+	if (omni == NULL)
+		return CYCLIC_NONE;
+
+	return CYCLIC_NONE;
+}
+EXPORT_SYMBOL(cyclic_add_omni);
+
+/*
  * Remove a specific cyclic from the system.
  */
 void cyclic_remove(cyclic_id_t id)
@@ -157,84 +173,6 @@ void cyclic_remove(cyclic_id_t id)
 	mutex_unlock(&cyclic_lock);
 }
 EXPORT_SYMBOL(cyclic_remove);
-
-void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
-		       uintptr_t, uintptr_t);
-
-void systrace_stub(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
-		   uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
-		   uintptr_t arg5)
-{
-}
-
-asmlinkage long systrace_syscall(uintptr_t, uintptr_t,
-				 uintptr_t, uintptr_t,
-				 uintptr_t, uintptr_t);
-
-static systrace_info_t	systrace_info = {
-					    &systrace_probe,
-					    systrace_stub,
-					    systrace_syscall,
-					    {
-/*
- * Need to remove the define for _ASM_X86_UNISTD_64_H in order for unistd_64
- * to be included here because it was already included indirectly.
- */
-#undef __SYSCALL
-#define __SYSCALL(nr, sym)			[nr] { __stringify(sym), },
-# undef _ASM_X86_UNISTD_64_H
-#include <asm/unistd.h>
-					    }
-					};
-
-
-asmlinkage long systrace_syscall(uintptr_t arg0, uintptr_t arg1,
-				 uintptr_t arg2, uintptr_t arg3,
-				 uintptr_t arg4, uintptr_t arg5)
-{
-	long			rc = 0;
-	unsigned long		sysnum;
-	dtrace_id_t		id;
-	dtrace_syscalls_t	*sc;
-
-	asm volatile("movq %%rax,%0" : "=m"(sysnum));
-
-	sc = &systrace_info.sysent[sysnum];
-
-	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
-		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
-
-	/*
-	 * FIXME: Add stop functionality for DTrace.
-	 */
-
-	if (sc->stsy_underlying != NULL)
-		rc = (*sc->stsy_underlying)(arg0, arg1, arg2, arg3, arg4,
-					    arg5);
-
-	if ((id = sc->stsy_return) != DTRACE_IDNONE)
-		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
-
-	return rc;
-}
-
-systrace_info_t *dtrace_syscalls_init() {
-	int			i;
-	extern sys_call_ptr_t	sys_call_table[NR_syscalls];
-
-	systrace_info.probep = &systrace_probe;
-	systrace_info.stub = systrace_stub;
-	systrace_info.syscall = systrace_syscall;
-
-	for (i = 0; i < NR_syscalls; i++) {
-		systrace_info.sysent[i].stsy_tblent = &sys_call_table[i];
-		systrace_info.sysent[i].stsy_underlying =
-					(dt_sys_call_t)sys_call_table[i];
-	}
-
-	return &systrace_info;
-}
-EXPORT_SYMBOL(dtrace_syscalls_init);
 
 static int dtrace_stacktrace_stack(void *data, char *name)
 {
@@ -341,3 +279,317 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 				   : &dtrace_stacktrace_ops, st);
 }
 EXPORT_SYMBOL(dtrace_stacktrace);
+
+void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+		       uintptr_t, uintptr_t);
+
+void systrace_stub(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
+		   uintptr_t arg2, uintptr_t arg3, uintptr_t arg4,
+		   uintptr_t arg5)
+{
+}
+
+asmlinkage long systrace_syscall(uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_clone(uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_fork(uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_vfork(uintptr_t, uintptr_t,
+				  uintptr_t, uintptr_t,
+				  uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_sigaltstack(uintptr_t, uintptr_t,
+					uintptr_t, uintptr_t,
+					uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_iopl(uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t,
+				 uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_execve(uintptr_t, uintptr_t,
+				   uintptr_t, uintptr_t,
+				   uintptr_t, uintptr_t);
+asmlinkage long dtrace_stub_rt_sigreturn(uintptr_t, uintptr_t,
+					 uintptr_t, uintptr_t,
+					 uintptr_t, uintptr_t);
+
+static systrace_info_t	systrace_info =
+		{
+			&systrace_probe,
+			systrace_stub,
+			systrace_syscall,
+			{
+			    [SCE_CLONE] dtrace_stub_clone,
+			    [SCE_FORK] dtrace_stub_fork,
+			    [SCE_VFORK] dtrace_stub_vfork,
+			    [SCE_SIGALTSTACK] dtrace_stub_sigaltstack,
+			    [SCE_IOPL] dtrace_stub_iopl,
+			    [SCE_EXECVE] dtrace_stub_execve,
+			    [SCE_RT_SIGRETURN] dtrace_stub_rt_sigreturn,
+			},
+			{
+/*
+ * Need to remove the define for _ASM_X86_UNISTD_64_H in order for unistd_64
+ * to be included here because it was already included indirectly.
+ */
+#undef __SYSCALL
+#define __SYSCALL(nr, sym)	[nr] { __stringify(sym), },
+# undef _ASM_X86_UNISTD_64_H
+#include <asm/unistd.h>
+			}
+		};
+
+
+long systrace_syscall(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
+		      uintptr_t arg3, uintptr_t arg4, uintptr_t arg5)
+{
+	long			rc = 0;
+	unsigned long		sysnum;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	asm volatile("movq %%rax,%0" : "=m"(sysnum));
+
+	sc = &systrace_info.sysent[sysnum];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, arg0, arg1, arg2, arg3, arg4, arg5);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	if (sc->stsy_underlying != NULL)
+		rc = (*sc->stsy_underlying)(arg0, arg1, arg2, arg3, arg4,
+					    arg5);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+systrace_info_t *dtrace_syscalls_init() {
+	int			i;
+	extern sys_call_ptr_t	sys_call_table[NR_syscalls];
+
+	for (i = 0; i < NR_syscalls; i++) {
+		systrace_info.sysent[i].stsy_tblent = &sys_call_table[i];
+		systrace_info.sysent[i].stsy_underlying =
+					(dt_sys_call_t)sys_call_table[i];
+	}
+
+	return &systrace_info;
+}
+EXPORT_SYMBOL(dtrace_syscalls_init);
+
+long dtrace_clone(unsigned long clone_flags, unsigned long newsp,
+		  void __user *parent_tid, void __user *child_tid,
+		  struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	if (!newsp)
+		newsp = regs->sp;
+
+	sc = &systrace_info.sysent[__NR_clone];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, clone_flags, newsp,
+				  (uintptr_t)parent_tid, (uintptr_t)child_tid,
+				  (uintptr_t)regs, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	rc = do_fork(clone_flags, newsp, regs, 0, parent_tid, child_tid);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_fork(struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	sc = &systrace_info.sysent[__NR_fork];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)regs, 0, 0, 0, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	rc = do_fork(SIGCHLD, regs->sp, regs, 0, NULL, NULL);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_vfork(struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	sc = &systrace_info.sysent[__NR_vfork];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)regs, 0, 0, 0, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	rc = do_fork(CLONE_VFORK | CLONE_VM | SIGCHLD, regs->sp, regs, 0,
+		     NULL, NULL);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_execve(const char __user *name,
+		   const char __user *const __user *argv,
+		   const char __user *const __user *envp, struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+	char			*filename;
+
+	sc = &systrace_info.sysent[__NR_execve];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)name, (uintptr_t)argv,
+				  (uintptr_t)envp, (uintptr_t)regs, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	filename = getname(name);
+	rc = PTR_ERR(filename);
+	if (IS_ERR(filename))
+		goto out;
+
+	rc = do_execve(filename, argv, envp, regs);
+
+	putname(filename);
+
+out:
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_sigaltstack(const stack_t __user *uss, stack_t __user *uoss,
+			struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	sc = &systrace_info.sysent[__NR_sigaltstack];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)uss, (uintptr_t)uoss,
+				  (uintptr_t)regs, 0, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+        rc =  do_sigaltstack(uss, uoss, regs->sp);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_iopl(unsigned int level, struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+	unsigned int		old = (regs->flags >> 12) & 3;
+	struct thread_struct	*t = &current->thread;
+
+	sc = &systrace_info.sysent[__NR_iopl];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)level, (uintptr_t)regs,
+				  0, 0, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	if (level > 3) {
+		rc = -EINVAL;
+		goto out;
+	}
+
+	/* Trying to gain more privileges? */
+	if (level > old) {
+		if (!capable(CAP_SYS_RAWIO)) {
+			rc = -EPERM;
+			goto out;
+		}
+	}
+
+	regs->flags = (regs->flags & ~X86_EFLAGS_IOPL) | (level << 12);
+	t->iopl = level << 12;
+	set_iopl_mask(t->iopl);
+
+out:
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+long dtrace_rt_sigreturn(struct pt_regs *regs)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+
+	sc = &systrace_info.sysent[__NR_rt_sigreturn];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)regs, 0, 0, 0, 0, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	rc = sys_rt_sigreturn(regs);
+
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}

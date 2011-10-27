@@ -9,6 +9,15 @@ typedef uint32_t dtrace_id_t;
 
 #define DTRACE_IDNONE 0
 
+#define SCE_CLONE		0
+#define SCE_FORK		1
+#define SCE_VFORK		2
+#define SCE_SIGALTSTACK		3
+#define SCE_IOPL		4
+#define SCE_EXECVE		5
+#define SCE_RT_SIGRETURN	6
+#define SCE_nr_stubs		7
+
 typedef void (*sys_call_ptr_t)(void);
 typedef long (*dt_sys_call_t)(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 			      uintptr_t, uintptr_t);
@@ -29,6 +38,7 @@ typedef struct systrace_info {
 	dtrace_systrace_probe_t	*probep;
 	dtrace_systrace_probe_t	stub;
 	dt_sys_call_t		syscall;
+	dt_sys_call_t		stubs[SCE_nr_stubs];
 	dtrace_syscalls_t	sysent[NR_syscalls];
 } systrace_info_t;
 
