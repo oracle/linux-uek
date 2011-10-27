@@ -96,7 +96,6 @@ again:
 	if (provider != dtrace_provider)
 		mutex_unlock(&dtrace_lock);
 
-printk(KERN_INFO "probe_create(%s, %s, %s, %s) -> %d\n", provider->dtpv_name, mod, func, name, id);
 	return id;
 }
 EXPORT_SYMBOL(dtrace_probe_create);
@@ -118,7 +117,7 @@ int dtrace_probe_enable(const dtrace_probedesc_t *desc, dtrace_enabling_t *enab)
 	dtrace_probekey(desc, &pkey);
 	dtrace_cred2priv(enab->dten_vstate->dtvs_state->dts_cred.dcr_cred,
 			 &priv, &uid);
-printk(KERN_INFO "probe_enable(%d, %s, %s, %s, %s)\n", pkey.dtpk_id, pkey.dtpk_prov, pkey.dtpk_mod, pkey.dtpk_func, pkey.dtpk_name);
+
 	return dtrace_match(&pkey, priv, uid, dtrace_ecb_create_enable, enab);
 }
 

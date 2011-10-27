@@ -481,7 +481,6 @@ static int dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf,
 	ASSERT(state->dts_activity == DTRACE_ACTIVITY_INACTIVE ||
 	       (state == dtrace_anon.dta_state &&
 	       state->dts_activity == DTRACE_ACTIVITY_ACTIVE));
-printk(KERN_INFO "state_buffer(%p, %p, %d) opt[%d] = %lld\n", state, buf, which, which, opt[which]);
 
 	if (opt[which] == DTRACEOPT_UNSET || opt[which] == 0)
 		return 0;
@@ -493,7 +492,6 @@ printk(KERN_INFO "state_buffer(%p, %p, %d) opt[%d] = %lld\n", state, buf, which,
 		flags |= DTRACEBUF_NOSWITCH;
 
 	if (which == DTRACEOPT_BUFSIZE) {
-printk(KERN_INFO "state_buffer(%p, %p, %d) opt[CPU] = %lld, opt[BUFPOLICY] = %lld, sta_state = %p\n", state, buf, which, opt[DTRACEOPT_CPU], opt[DTRACEOPT_BUFPOLICY], dtrace_anon.dta_state);
 		if (opt[DTRACEOPT_BUFPOLICY] == DTRACEOPT_BUFPOLICY_RING)
 			flags |= DTRACEBUF_RING;
 
@@ -503,7 +501,6 @@ printk(KERN_INFO "state_buffer(%p, %p, %d) opt[CPU] = %lld, opt[BUFPOLICY] = %ll
 		if (state != dtrace_anon.dta_state ||
 		    state->dts_activity != DTRACE_ACTIVITY_ACTIVE)
 			flags |= DTRACEBUF_INACTIVE;
-printk(KERN_INFO "state_buffer(%p, %p, %d) flags = %08x\n", state, buf, which, flags);
 	}
 
 	for (size = opt[which]; size >= sizeof (uint64_t); size >>= 1) {
@@ -525,7 +522,6 @@ printk(KERN_INFO "state_buffer(%p, %p, %d) flags = %08x\n", state, buf, which, f
 		}
 
 		rval = dtrace_buffer_alloc(buf, size, flags, cpu);
-printk(KERN_INFO "state_buffer: Alloc %d buffer: tomax %p xamot %p\n", which, buf->dtb_tomax, buf->dtb_xamot);
 
 		if (rval != -ENOMEM) {
 			opt[which] = size;
@@ -600,7 +596,6 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
 
-printk(KERN_INFO "state_go(1): dts_activity = %d (vs warmup %d or draining %d)\n", state->dts_activity, DTRACE_ACTIVITY_WARMUP, DTRACE_ACTIVITY_DRAINING);
 	if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE) {
 		rval = -EBUSY;
 		goto out;
@@ -633,7 +628,6 @@ printk(KERN_INFO "state_go(1): dts_activity = %d (vs warmup %d or draining %d)\n
 	}
 
 	spec = kzalloc(nspec * sizeof(dtrace_speculation_t), GFP_KERNEL);
-printk(KERN_INFO "state_go: nspec = %d, spec = %p (%lld bytes)\n", (int)nspec, spec, nspec * sizeof(dtrace_speculation_t));
 	if (spec == NULL) {
 		rval = -ENOMEM;
 		goto out;
@@ -648,7 +642,6 @@ printk(KERN_INFO "state_go: nspec = %d, spec = %p (%lld bytes)\n", (int)nspec, s
 			goto err;
 		}
 
-printk(KERN_INFO "state_go: spec[%d].buf = %p (%d bytes)\n", i, buf, bufsize);
 		spec[i].dtsp_buffer = buf;
 	}
 
@@ -790,7 +783,6 @@ printk(KERN_INFO "state_go: spec[%d].buf = %p (%d bytes)\n", i, buf, bufsize);
 	state->dts_deadman = cyclic_add(&hdlr, &when);
 
 	state->dts_activity = DTRACE_ACTIVITY_WARMUP;
-printk(KERN_INFO "state_go(2): dts_activity = %d (vs warmup %d or draining %d)\n", state->dts_activity, DTRACE_ACTIVITY_WARMUP, DTRACE_ACTIVITY_DRAINING);
 
 	/*
 	 * Now it's time to actually fire the BEGIN probe.  We need to disable
@@ -811,7 +803,6 @@ printk(KERN_INFO "state_go(2): dts_activity = %d (vs warmup %d or draining %d)\n
 	 * We may have had an exit action from a BEGIN probe; only change our
 	 * state to ACTIVE if we're still in WARMUP.
 	 */
-printk(KERN_INFO "state_go(3): dts_activity = %d (vs warmup %d or draining %d)\n", state->dts_activity, DTRACE_ACTIVITY_WARMUP, DTRACE_ACTIVITY_DRAINING);
 	ASSERT(state->dts_activity == DTRACE_ACTIVITY_WARMUP ||
 	       state->dts_activity == DTRACE_ACTIVITY_DRAINING);
 
@@ -993,7 +984,6 @@ void dtrace_state_destroy(dtrace_state_t *state)
 		 * issue a sync to be sure that everyone is out of probe
 		 * context before we start blowing away ECBs.
 		 */
-printk(KERN_INFO "state_destroy: Setting dts_activity from %d to %d (KILLED)\n", state->dts_activity, DTRACE_ACTIVITY_KILLED);
 		state->dts_activity = DTRACE_ACTIVITY_KILLED;
 		dtrace_sync();
 	}

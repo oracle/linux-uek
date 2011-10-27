@@ -148,7 +148,6 @@ uint64_t dtrace_getarg(int arg, int aframes)
 #endif
 	int		nreg = sizeof(regmap) / sizeof(regmap[0]) - 1;
 
-printk(KERN_INFO "getarg(%d, %d) -> nreg = %d\n", arg, aframes, nreg);
 	for (i = 1; i <= aframes; i++) {
 		fp = fp->fr_savfp;
 
@@ -173,7 +172,6 @@ printk(KERN_INFO "getarg(%d, %d) -> nreg = %d\n", arg, aframes, nreg);
 	arg++;
 
 #ifndef __i386__
-printk(KERN_INFO "getarg(%d, %d) [!i386]-> nreg = %d\n", arg, aframes, nreg);
 	if (arg <= nreg) {
 		/*
 		 * This should not happen.  If the argument was passed in a

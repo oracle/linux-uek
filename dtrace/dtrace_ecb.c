@@ -148,7 +148,6 @@ again:
 	}
 
 	agg->dtag_id = aggid;
-printk(KERN_INFO "New aggregation: %u (for ECB %u)\n", aggid, ecb->dte_epid);
 
 	frec = &agg->dtag_first->dta_rec;
 	if (frec->dtrd_alignment < sizeof(dtrace_aggid_t))
@@ -574,7 +573,6 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 
 	state->dts_ecbs[(ecb->dte_epid = epid) - 1] = ecb;
 
-printk(KERN_INFO "ecb_add: ECB %u for probe ID %u\n", epid, probe ? probe->dtpr_id : 0xffff);
 	return ecb;
 }
 

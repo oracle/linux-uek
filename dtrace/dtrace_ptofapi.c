@@ -242,7 +242,6 @@ int dtrace_unregister(dtrace_provider_id_t id)
 					NULL
 				     };
 
-printk(KERN_INFO "unregister(%p)\n", old);
 	if (old->dtpv_pops.dtps_enable ==
 	    (int (*)(void *, dtrace_id_t, void *))dtrace_enable_nullop) {
 		/*
@@ -273,7 +272,6 @@ printk(KERN_INFO "unregister(%p)\n", old);
 	 * are anonymous probes that are still enabled, we refuse to deregister
 	 * providers, unless the provider has been invalidated explicitly.
 	 */
-printk(KERN_INFO "unregister(%p) %d opens\n", old, dtrace_opens);
 	if (!old->dtpv_defunct &&
 	    (dtrace_opens || (dtrace_anon.dta_state != NULL &&
 	     dtrace_anon.dta_state->dts_necbs > 0))) {
@@ -293,7 +291,6 @@ printk(KERN_INFO "unregister(%p) %d opens\n", old, dtrace_opens);
 	 */
 	st.prov = old;
 	err = dtrace_probe_for_each(dtrace_unregister_check, &st);
-printk(KERN_INFO "unregister(%p) check -> %d\n", old, err);
 	if (err < 0) {
 		if (!self) {
 			mutex_unlock(&dtrace_lock);
@@ -310,7 +307,6 @@ printk(KERN_INFO "unregister(%p) check -> %d\n", old, err);
 	 * We chain all the probes together for further processing.
 	 */
 	dtrace_probe_for_each(dtrace_unregister_probe, &st);
-printk(KERN_INFO "unregister(%p) unregister_probe done\n", old);
 
 	/*
 	 * The probes associated with the provider have been removed.  Ensure
@@ -326,7 +322,6 @@ printk(KERN_INFO "unregister(%p) unregister_probe done\n", old);
 
 		st.first = probe->dtpr_nextmod;
 
-printk(KERN_INFO "unregister(%p) Destroying probe %d\n", old, probe_id);
 		old->dtpv_pops.dtps_destroy(old->dtpv_arg, probe_id,
 					    probe->dtpr_arg);
 

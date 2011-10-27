@@ -69,13 +69,8 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 		sz = strlen(nm);
 		if (sz > 4 && memcmp(nm, "sys_", 4) == 0)
 			nm += 4;
-#if 0
 		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
 			nm += 5;
-#else
-		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
-			continue;
-#endif
 
 		if (dtrace_probe_lookup(syscall_id, NULL, nm, "entry") != 0)
 			continue;
@@ -92,59 +87,65 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 	}
 }
 
+static dt_sys_call_t get_intercept(int sysnum)
+{
+	switch (sysnum) {
+	default:
+		return systrace_info->syscall;
+	case __NR_clone:
+		return systrace_info->stubs[SCE_CLONE];
+	case __NR_fork:
+		return systrace_info->stubs[SCE_FORK];
+	case __NR_vfork:
+		return systrace_info->stubs[SCE_VFORK];
+	case __NR_sigaltstack:
+		return systrace_info->stubs[SCE_SIGALTSTACK];
+	case __NR_iopl:
+		return systrace_info->stubs[SCE_IOPL];
+	case __NR_execve:
+		return systrace_info->stubs[SCE_EXECVE];
+	case __NR_rt_sigreturn:
+		return systrace_info->stubs[SCE_RT_SIGRETURN];
+	}
+}
+
 int systrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
-	int	sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
-	int	enabled =
+	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
+	int		enabled =
 		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
 		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
+	dt_sys_call_t	intercept = get_intercept(sysnum);;
 
-#if 0
-	if (SYSTRACE_ISENTRY((uintptr_t)parg))
-		systrace_info->sysent[sysnum].stsy_entry = id;
-	else
-		systrace_info->sysent[sysnum].stsy_return = id;
-
-	if (enabled) {
-		ASSERT((void *)*(systrace_info->sysent[sysnum].stsy_tblent) ==
-		       (void *)systrace_info->syscall);
-
-		return 0;
-	}
-
-	(void)cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
-		      systrace_info->sysent[sysnum].stsy_underlying,
-		      systrace_info->syscall);
-#else
 	if (!enabled) {
 		if (cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
 			    systrace_info->sysent[sysnum].stsy_underlying,
-			    systrace_info->syscall) !=
+			    intercept) !=
 		    systrace_info->sysent[sysnum].stsy_underlying)
 			return 0;
 	} else
 		ASSERT((void *)*(systrace_info->sysent[sysnum].stsy_tblent) ==
-		       (void *)systrace_info->syscall);
+		       (void *)intercept);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))
 		systrace_info->sysent[sysnum].stsy_entry = id;
 	else
 		systrace_info->sysent[sysnum].stsy_return = id;
-#endif
 
 	return 0;
 }
 
 void systrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
-	int	sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
-	int	enabled =
+	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
+	int		enabled =
 		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
 		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
+	dt_sys_call_t	intercept = get_intercept(sysnum);;
 
 	if (enabled)
 		(void)cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
-			      systrace_info->syscall,
+			      intercept,
 			      systrace_info->sysent[sysnum].stsy_underlying);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))

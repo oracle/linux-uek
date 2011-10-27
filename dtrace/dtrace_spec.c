@@ -94,7 +94,6 @@ void dtrace_speculation_commit(dtrace_state_t *state, processorid_t cpu,
 	if (which == 0)
 		return;
 
-printk(KERN_INFO "spec-commit: CPU#%d, which %d\n", cpu, which);
 	if (which > state->dts_nspeculations) {
 		cpu_core[cpu].cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
 		return;
@@ -105,7 +104,6 @@ printk(KERN_INFO "spec-commit: CPU#%d, which %d\n", cpu, which);
 	dest = &state->dts_buffer[cpu];
 
 	do {
-printk(KERN_INFO "spec-commit: a) CPU#%d, which %d, spec-state %d\n", cpu, which, spec->dtsp_state);
 		curr = spec->dtsp_state;
 
 		if (curr == DTRACESPEC_COMMITTINGMANY)
@@ -152,7 +150,6 @@ printk(KERN_INFO "spec-commit: a) CPU#%d, which %d, spec-state %d\n", cpu, which
 		default:
 			ASSERT(0);
 		}
-printk(KERN_INFO "spec-commit: a) CPU#%d, which %d, spec-state %d -> %d\n", cpu, which, curr, new);
 	} while (cmpxchg((uint32_t *)&spec->dtsp_state, curr, new) !=
 		 curr);
 
