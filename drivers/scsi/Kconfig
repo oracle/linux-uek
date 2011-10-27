@@ -1909,6 +1909,22 @@ config SCSI_BFA_FC
 	  To compile this driver as a module, choose M here. The module will
 	  be called bfa.
 
+config XEN_SCSI_FRONTEND
+        tristate "Xen PVSCSI frontend driver"
+        depends on XEN && SCSI
+        default m
+        help
+          The SCSI frontend driver allows the kernel to access SCSI Devices
+          within another guest OS.
+
+config XEN_SCSI_BACKEND
+        tristate "Xen PVSCSI backend driver"
+        depends on XEN_BACKEND && SCSI
+        default m
+        help
+          The PVSCSI backend driver allows the kernel to export its SCSI Devices
+          to other Xen guests via a high-performance shared-memory interface.
+
 endif # SCSI_LOWLEVEL
 
 source "drivers/scsi/pcmcia/Kconfig"

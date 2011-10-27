@@ -363,6 +363,8 @@ DEFINE_GUEST_HANDLE_STRUCT(gnttab_query_size);
 #define GNTST_permission_denied (-8) /* Not enough privilege for operation.  */
 #define GNTST_bad_page         (-9) /* Specified page was invalid for op.    */
 #define GNTST_bad_copy_arg    (-10) /* copy arguments cross page boundary */
+#define GNTST_address_too_big (-11) /* transfer page address too large.      */
+#define GNTST_eagain          (-12) /* Could not map at the moment. Retry.   */
 
 #define GNTTABOP_error_msgs {                   \
     "okay",                                     \
@@ -376,6 +378,8 @@ DEFINE_GUEST_HANDLE_STRUCT(gnttab_query_size);
     "permission denied",                        \
     "bad page",                                 \
     "copy arguments cross page boundary"        \
+    "page address size too large",              \
+    "could not map at the moment, retry"        \
 }
 
 #endif /* __XEN_PUBLIC_GRANT_TABLE_H__ */
