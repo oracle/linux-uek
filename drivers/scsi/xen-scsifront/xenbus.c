@@ -401,6 +401,7 @@ MODULE_ALIAS("xen:vscsi");
 
 static struct xenbus_driver scsifront_driver = {
 	.name			= "vscsi",
+	.owner			= THIS_MODULE,
 	.ids			= scsifront_ids,
 	.probe			= scsifront_probe,
 	.remove			= scsifront_remove,
