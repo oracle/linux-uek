@@ -8,17 +8,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -27,16 +27,9 @@
  * FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
  * IN THE SOFTWARE.
  */
- 
 
 #include <linux/version.h>
 #include "common.h"
-
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2,6,11)
-  #define DEFAULT_TASK_COMM_LEN	16
-#else
-  #define DEFAULT_TASK_COMM_LEN	TASK_COMM_LEN
-#endif
 
 extern struct scsi_host_template scsifront_sht;
 
@@ -44,13 +37,8 @@ static void scsifront_free(struct vscsifrnt_info *info)
 {
 	struct Scsi_Host *host = info->host;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,14)
-	if (host->shost_state != SHOST_DEL) {
-#else
-	if (!test_bit(SHOST_DEL, &host->shost_state)) {
-#endif
+	if (host->shost_state != SHOST_DEL)
 		scsi_remove_host(info->host);
-	}
 
 	if (info->ring_ref != GRANT_INVALID_REF) {
 		gnttab_end_foreign_access(info->ring_ref,
@@ -94,8 +82,12 @@ static int scsifront_alloc_ring(struct vscsifrnt_info *info)
 	}
 	info->ring_ref = err;
 
+	err = xenbus_alloc_evtchn(dev, &info->evtchn);
+	if (err)
+		goto free_sring;
+
 	err = bind_evtchn_to_irqhandler(
-			dev->otherend_id, scsifront_intr,
+			info->evtchn, scsifront_intr,
 			IRQF_SAMPLE_RANDOM, "scsifront", info);
 
 	if (err <= 0) {
@@ -163,7 +155,7 @@ fail:
 free_sring:
 	/* free resource */
 	scsifront_free(info);
-	
+
 	return err;
 }
 
@@ -174,7 +166,7 @@ static int scsifront_probe(struct xenbus_device *dev,
 	struct vscsifrnt_info *info;
 	struct Scsi_Host *host;
 	int i, err = -ENOMEM;
-	char name[DEFAULT_TASK_COMM_LEN];
+	char name[TASK_COMM_LEN];
 
 	host = scsi_host_alloc(&scsifront_sht, sizeof(*info));
 	if (!host) {
@@ -205,7 +197,7 @@ static int scsifront_probe(struct xenbus_device *dev,
 	spin_lock_init(&info->io_lock);
 	spin_lock_init(&info->shadow_lock);
 
-	snprintf(name, DEFAULT_TASK_COMM_LEN, "vscsiif.%d", info->host->host_no);
+	snprintf(name, TASK_COMM_LEN, "vscsiif.%d", info->host->host_no);
 
 	info->kthread = kthread_run(scsifront_schedule, info, name);
 	if (IS_ERR(info->kthread)) {
@@ -248,7 +240,7 @@ static int scsifront_remove(struct xenbus_device *dev)
 	}
 
 	scsifront_free(info);
-	
+
 	return 0;
 }
 
@@ -260,9 +252,9 @@ static int scsifront_disconnect(struct vscsifrnt_info *info)
 
 	DPRINTK("%s: %s disconnect\n",__FUNCTION__ ,dev->nodename);
 
-	/* 
-	  When this function is executed,  all devices of 
-	  Frontend have been deleted. 
+	/*
+	  When this function is executed,  all devices of
+	  Frontend have been deleted.
 	  Therefore, it need not block I/O before remove_host.
 	*/
 
@@ -297,7 +289,7 @@ static void scsifront_do_lun_hotplug(struct vscsifrnt_info *info, int op)
 			&device_state);
 		if (XENBUS_EXIST_ERR(err))
 			continue;
-		
+
 		/* virtual SCSI device */
 		snprintf(str, sizeof(str), "vscsi-devs/%s/v-dev", dir[i]);
 		err = xenbus_scanf(XBT_NIL, dev->otherend, str,
@@ -339,7 +331,7 @@ static void scsifront_do_lun_hotplug(struct vscsifrnt_info *info, int op)
 			break;
 		}
 	}
-	
+
 	kfree(dir);
 	return;
 }
@@ -369,10 +361,10 @@ static void scsifront_backend_changed(struct xenbus_device *dev,
 			XenbusStateInitialised) {
 			scsifront_do_lun_hotplug(info, VSCSIFRONT_OP_ADD_LUN);
 		}
-		
+
 		if (dev->state == XenbusStateConnected)
 			break;
-			
+
 		xenbus_switch_state(dev, XenbusStateConnected);
 		break;
 

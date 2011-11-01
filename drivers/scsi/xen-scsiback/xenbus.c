@@ -10,17 +10,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -60,8 +60,8 @@ static int __vscsiif_name(struct backend_info *be, char *buf)
 static int scsiback_map(struct backend_info *be)
 {
 	struct xenbus_device *dev = be->dev;
-	unsigned long ring_ref;
-	unsigned int evtchn;
+	unsigned long ring_ref = 0;
+	unsigned int evtchn = 0;
 	int err;
 	char name[TASK_COMM_LEN];
 
@@ -72,7 +72,6 @@ static int scsiback_map(struct backend_info *be)
 		xenbus_dev_fatal(dev, err, "reading %s ring", dev->otherend);
 		return err;
 	}
-
 	err = scsiback_init_sring(be->info, ring_ref, evtchn);
 	if (err)
 		return err;
@@ -138,7 +137,6 @@ static void scsiback_do_lun_hotplug(struct backend_info *be, int op)
 		return;
 
 	for (i = 0; i < dir_n; i++) {
-		
 		/* read status */
 		snprintf(state_str, sizeof(state_str), "vscsi-devs/%s/state", dir[i]);
 		err = xenbus_scanf(XBT_NIL, dev->nodename, state_str, "%u",
@@ -171,19 +169,19 @@ static void scsiback_do_lun_hotplug(struct backend_info *be, int op)
 			if (device_state == XenbusStateInitialising) {
 				sdev = scsiback_get_scsi_device(&phy);
 				if (!sdev)
-					xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+					xenbus_printf(XBT_NIL, dev->nodename, state_str,
 							    "%d", XenbusStateClosed);
 				else {
 					err = scsiback_add_translation_entry(be->info, sdev, &vir);
 					if (!err) {
-						if (xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+						if (xenbus_printf(XBT_NIL, dev->nodename, state_str,
 								    "%d", XenbusStateInitialised)) {
 							printk(KERN_ERR "scsiback: xenbus_printf error %s\n", state_str);
 							scsiback_del_translation_entry(be->info, &vir);
 						}
 					} else {
 						scsi_device_put(sdev);
-						xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+						xenbus_printf(XBT_NIL, dev->nodename, state_str,
 								    "%d", XenbusStateClosed);
 					}
 				}
@@ -191,7 +189,7 @@ static void scsiback_do_lun_hotplug(struct backend_info *be, int op)
 
 			if (device_state == XenbusStateClosing) {
 				if (!scsiback_del_translation_entry(be->info, &vir)) {
-					if (xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+					if (xenbus_printf(XBT_NIL, dev->nodename, state_str,
 							    "%d", XenbusStateClosed))
 						printk(KERN_ERR "scsiback: xenbus_printf error %s\n", state_str);
 				}
@@ -201,11 +199,11 @@ static void scsiback_do_lun_hotplug(struct backend_info *be, int op)
 		case VSCSIBACK_OP_UPDATEDEV_STATE:
 			if (device_state == XenbusStateInitialised) {
 				/* modify vscsi-devs/dev-x/state */
-				if (xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+				if (xenbus_printf(XBT_NIL, dev->nodename, state_str,
 						    "%d", XenbusStateConnected)) {
 					printk(KERN_ERR "scsiback: xenbus_printf error %s\n", state_str);
 					scsiback_del_translation_entry(be->info, &vir);
-					xenbus_printf(XBT_NIL, dev->nodename, state_str, 
+					xenbus_printf(XBT_NIL, dev->nodename, state_str,
 							    "%d", XenbusStateClosed);
 				}
 			}
@@ -306,8 +304,6 @@ static int scsiback_probe(struct xenbus_device *dev,
 	struct backend_info *be = kzalloc(sizeof(struct backend_info),
 					  GFP_KERNEL);
 
-	DPRINTK("%p %d\n", dev, dev->otherend_id);
-
 	if (!be) {
 		xenbus_dev_fatal(dev, -ENOMEM,
 				 "allocating backend structure");
@@ -346,7 +342,7 @@ static int scsiback_probe(struct xenbus_device *dev,
 
 
 fail:
-	printk(KERN_WARNING "scsiback: %s failed\n",__FUNCTION__);
+	printk(KERN_WARNING "scsiback: %s failed\n",__func__);
 	scsiback_remove(dev);
 
 	return err;

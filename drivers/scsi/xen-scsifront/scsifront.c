@@ -244,11 +244,10 @@ static int map_data_for_request(struct vscsifrnt_info *info,
 		struct scsi_cmnd *sc, vscsiif_request_t *ring_req, uint32_t id)
 {
 	grant_ref_t gref_head;
-	struct page *page;
 	int err, ref, ref_cnt = 0;
 	int write = (sc->sc_data_direction == DMA_TO_DEVICE);
 	unsigned int i, nr_pages, off, len, bytes;
-	unsigned long buffer_pfn;
+	unsigned long buffer_mfn, buffer_pfn;
 
 	if (sc->sc_data_direction == DMA_NONE)
 		return 0;
@@ -272,12 +271,10 @@ static int map_data_for_request(struct vscsifrnt_info *info,
 		}
 
 		for_each_sg (sgl, sg, scsi_sg_count(sc), i) {
-			page = sg_page(sg);
 			off = sg->offset;
 			len = sg->length;
 
-			buffer_pfn = page_to_phys(page) >> PAGE_SHIFT;
-
+			buffer_pfn = page_to_pfn(sg_page(sg));
 			while (len > 0 && data_len > 0) {
 				/*
 				 * sg sends a scatterlist that is larger than
@@ -290,15 +287,16 @@ static int map_data_for_request(struct vscsifrnt_info *info,
 				ref = gnttab_claim_grant_reference(&gref_head);
 				BUG_ON(ref == -ENOSPC);
 
+				buffer_mfn = pfn_to_mfn(buffer_pfn);
 				gnttab_grant_foreign_access_ref(ref, info->dev->otherend_id,
-					buffer_pfn, write);
+					buffer_mfn, write);
 
 				info->shadow[id].gref[ref_cnt]  = ref;
 				ring_req->seg[ref_cnt].gref     = ref;
 				ring_req->seg[ref_cnt].offset   = (uint16_t)off;
 				ring_req->seg[ref_cnt].length   = (uint16_t)bytes;
 
-				buffer_pfn++;
+				buffer_pfn ++;
 				len -= bytes;
 				data_len -= bytes;
 				off = 0;
@@ -339,7 +337,7 @@ static int scsifront_queuecommand(struct Scsi_Host *h, struct scsi_cmnd *sc)
 
 	BUG_ON(sc->cmd_len > VSCSIIF_MAX_COMMAND_SIZE);
 
-	if ( sc->cmd_len )
+	if (sc->cmd_len)
 		memcpy(ring_req->cmnd, sc->cmnd, sc->cmd_len);
 	else
 		memset(ring_req->cmnd, 0, VSCSIIF_MAX_COMMAND_SIZE);
@@ -394,9 +392,7 @@ static int scsifront_dev_reset_handler(struct scsi_cmnd *sc)
 	uint16_t rqid;
 	int err;
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12)
 	spin_lock_irq(host->host_lock);
-#endif
 
 	ring_req      = scsifront_pre_request(info);
 	ring_req->act = VSCSIIF_ACT_SCSI_RESET;
@@ -429,9 +425,7 @@ static int scsifront_dev_reset_handler(struct scsi_cmnd *sc)
 
 	add_id_to_freelist(info, rqid);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,12)
 	spin_unlock_irq(host->host_lock);
-#endif
 	return (err);
 }
 

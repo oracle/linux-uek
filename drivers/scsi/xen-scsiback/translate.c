@@ -8,17 +8,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -54,7 +54,7 @@ int scsiback_add_translation_entry(struct vscsibk_info *info,
 	struct v2p_entry *new;
 	struct list_head *head = &(info->v2p_entry_lists);
 	unsigned long flags;
-	
+
 	spin_lock_irqsave(&info->v2p_lock, flags);
 
 	/* Check double assignment to identical virtual ID */
@@ -80,7 +80,7 @@ int scsiback_add_translation_entry(struct vscsibk_info *info,
 	new->sdev = sdev;
 	list_add_tail(&new->l, head);
 
-out:	
+out:
 	spin_unlock_irqrestore(&info->v2p_lock, flags);
 	return err;
 }

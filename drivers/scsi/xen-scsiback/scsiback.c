@@ -54,7 +54,7 @@ int vscsiif_reqs = VSCSIIF_BACK_MAX_PENDING_REQS;
 module_param_named(reqs, vscsiif_reqs, int, 0);
 MODULE_PARM_DESC(reqs, "Number of scsiback requests to allocate");
 
-static unsigned int log_print_stat = 0;
+static unsigned int log_print_stat;
 module_param(log_print_stat, int, 0644);
 
 #define SCSIBACK_INVALID_HANDLE (~0)
@@ -259,7 +259,7 @@ static int scsiback_gnttab_data_map(vscsiif_request_t *ring_req,
 	struct gnttab_map_grant_ref map[VSCSIIF_SG_TABLESIZE];
 	struct vscsibk_info *info   = pending_req->info;
 
-	int data_dir = (int)pending_req->sc_data_direction;
+	int data_dir = pending_req->sc_data_direction;
 	unsigned int nr_segments = (unsigned int)pending_req->nr_segments;
 
 	write = (data_dir == DMA_TO_DEVICE);
@@ -281,6 +281,7 @@ static int scsiback_gnttab_data_map(vscsiif_request_t *ring_req,
 			flags = GNTMAP_host_map;
 			if (write)
 				flags |= GNTMAP_readonly;
+
 			gnttab_set_map_op(&map[i], vaddr(pending_req, i), flags,
 						ring_req->seg[i].gref,
 						info->domid);
@@ -293,7 +294,7 @@ static int scsiback_gnttab_data_map(vscsiif_request_t *ring_req,
 		for(i=0; i < nr_segments; i++) {
 		    while(unlikely(map[i].status == GNTST_eagain))
 		    {
-			msleep(10);
+				msleep(10);
 				err = HYPERVISOR_grant_table_op(GNTTABOP_map_grant_ref,
 							&map[i],
 							1);
@@ -305,7 +306,8 @@ static int scsiback_gnttab_data_map(vscsiif_request_t *ring_req,
 			struct page *pg;
 
 			if (unlikely(map[i].status != 0)) {
-				printk(KERN_ERR "scsiback: invalid buffer -- could not remap it\n");
+				printk(KERN_ERR "scsiback: invalid buffer -- could not remap it: " \
+					"%d/%d, err:%d\n", i, nr_segments, map[i].status);
 				map[i].handle = SCSIBACK_INVALID_HANDLE;
 				err |= 1;
 			}
@@ -318,10 +320,6 @@ static int scsiback_gnttab_data_map(vscsiif_request_t *ring_req,
 			pg = pending_pages[vaddr_pagenr(pending_req, i)];
 
 			m2p_add_override(PFN_DOWN(map[i].dev_bus_addr), pg, false);
-#if 0
-			set_phys_to_machine(page_to_pfn(pg),
-				FOREIGN_FRAME(map[i].dev_bus_addr >> PAGE_SHIFT));
-#endif
 			sg_set_page(sg, pg, ring_req->seg[i].length,
 				    ring_req->seg[i].offset);
 			data_len += sg->length;
@@ -694,12 +692,16 @@ static int __init scsiback_init(void)
 	if (!pending_reqs || !pending_grant_handles || !pending_pages)
 		goto out_of_memory;
 
-	for (i = 0; i < mmap_pages; i++)
+	for (i = 0; i < mmap_pages; i++) {
 		pending_grant_handles[i] = SCSIBACK_INVALID_HANDLE;
-
+		pending_pages[i] = alloc_page(GFP_KERNEL);
+		if (pending_pages[i] == NULL)
+			goto out_of_memory;
+	}
 	if (scsiback_interface_init() < 0)
 		goto out_of_kmem;
 
+	memset(pending_reqs, 0, sizeof(pending_reqs));
 	INIT_LIST_HEAD(&pending_free);
 
 	for (i = 0; i < vscsiif_reqs; i++)
@@ -717,30 +719,39 @@ out_of_xenbus:
 out_of_kmem:
 	scsiback_interface_exit();
 out_of_memory:
+	if (pending_pages) {
+		for (i = 0; i < mmap_pages; i++) {
+			if (pending_pages[i])
+				__free_page(pending_pages[i]);
+		}
+		kfree(pending_pages);
+	}
 	kfree(pending_reqs);
 	kfree(pending_grant_handles);
-	kfree(pending_pages);
 	printk(KERN_ERR "scsiback: %s: out of memory\n", __FUNCTION__);
 	return -ENOMEM;
 }
 
-#if 0
+
 static void __exit scsiback_exit(void)
 {
 	scsiback_xenbus_unregister();
 	scsiback_interface_exit();
 	kfree(pending_reqs);
 	kfree(pending_grant_handles);
-	kfree(pending_pages);
-
+	if (pending_pages) {
+		unsigned int i;
+		unsigned int mmap_pages = vscsiif_reqs * VSCSIIF_SG_TABLESIZE;
+		for (i = 0; i < mmap_pages; i++) {
+			if (pending_pages[i])
+				__free_page(pending_pages[i]);
+		}
+		kfree(pending_pages);
+	}
 }
-#endif
 
 module_init(scsiback_init);
-
-#if 0
 module_exit(scsiback_exit);
-#endif
 
 MODULE_DESCRIPTION("Xen SCSI backend driver");
 MODULE_LICENSE("Dual BSD/GPL");

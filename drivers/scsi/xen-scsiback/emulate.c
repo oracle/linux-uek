@@ -8,17 +8,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -139,7 +139,7 @@ static int __copy_to_sg(struct scatterlist *sgl, unsigned int nr_sg,
 		if (from_rest == 0) {
 			return 0;
 		}
-		
+
 		from += copy_size;
 	}
 
@@ -147,7 +147,7 @@ static int __copy_to_sg(struct scatterlist *sgl, unsigned int nr_sg,
 	       __FUNCTION__);
 	return -ENOMEM;
 }
-
+#if 0
 static int __copy_from_sg(struct scatterlist *sgl, unsigned int nr_sg,
 		 void *buf, unsigned int buflen)
 {
@@ -186,7 +186,7 @@ static int __copy_from_sg(struct scatterlist *sgl, unsigned int nr_sg,
 
 	return 0;
 }
-
+#endif
 static int __nr_luns_under_host(struct vscsibk_info *info)
 {
 	struct v2p_entry *entry;
@@ -216,7 +216,7 @@ static void __report_luns(pending_req_t *pending_req, void *data)
 	unsigned int        target  = pending_req->v_tgt;
 	unsigned int        nr_seg  = pending_req->nr_segments;
 	unsigned char *cmd = (unsigned char *)pending_req->cmnd;
-	
+
 	unsigned char *buff = NULL;
 	unsigned char alloc_len;
 	unsigned int alloc_luns = 0;
@@ -225,11 +225,11 @@ static void __report_luns(pending_req_t *pending_req, void *data)
 	unsigned int retry_cnt = 0;
 	int select_report = (int)cmd[2];
 	int i, lun_cnt = 0, lun, upper, err = 0;
-	
+
 	struct v2p_entry *entry;
 	struct list_head *head = &(info->v2p_entry_lists);
 	unsigned long flags;
-	
+
 	struct scsi_lun *one_lun;
 
 	req_bufflen = cmd[9] + (cmd[8] << 8) + (cmd[7] << 16) + (cmd[6] << 24);
@@ -250,7 +250,6 @@ retry:
 	list_for_each_entry(entry, head, l) {
 		if ((entry->v.chn == channel) &&
 		    (entry->v.tgt == target)) {
-			
 			/* check overflow */
 			if (lun_cnt >= alloc_luns) {
 				spin_unlock_irqrestore(&info->v2p_lock,
@@ -280,13 +279,13 @@ retry:
 	buff[2] = ((sizeof(struct scsi_lun) * lun_cnt) >> 8) & 0xff;
 	buff[3] = (sizeof(struct scsi_lun) * lun_cnt) & 0xff;
 
-	actual_len = lun_cnt * sizeof(struct scsi_lun) 
+	actual_len = lun_cnt * sizeof(struct scsi_lun)
 				+ VSCSI_REPORT_LUNS_HEADER;
 	req_bufflen = 0;
 	for (i = 0; i < nr_seg; i++)
 		req_bufflen += pending_req->sgl[i].length;
 
-	err = __copy_to_sg(pending_req->sgl, nr_seg, buff, 
+	err = __copy_to_sg(pending_req->sgl, nr_seg, buff,
 				min(req_bufflen, actual_len));
 	if (err)
 		goto fail;
@@ -321,7 +320,7 @@ int __pre_do_emulation(pending_req_t *pending_req, void *data)
 
 	/*
 	    0: no need for native driver call, so should return immediately.
-	    1: non emulation or should call native driver 
+	    1: non emulation or should call native driver
 	       after modifing the request buffer.
 	*/
 	return !!(bitmap[op_code] & VSCSIIF_NEED_CMD_EXEC);
@@ -362,7 +361,7 @@ void scsiback_emulation_init(void)
 
 	/* Initialize to default state */
 	for (i = 0; i < VSCSI_MAX_SCSI_OP_CODE; i++) {
-		bitmap[i]        = (VSCSIIF_NEED_EMULATE_REQBUF | 
+		bitmap[i]        = (VSCSIIF_NEED_EMULATE_REQBUF |
 					VSCSIIF_NEED_EMULATE_RSPBUF);
 		pre_function[i]  = resp_not_supported_cmd;
 		post_function[i] = NULL;
@@ -464,7 +463,7 @@ void scsiback_emulation_init(void)
 	  Following commands require emulation.
 	*/
 	pre_function[REPORT_LUNS] = __report_luns;
-	bitmap[REPORT_LUNS] = (VSCSIIF_NEED_EMULATE_REQBUF | 
+	bitmap[REPORT_LUNS] = (VSCSIIF_NEED_EMULATE_REQBUF |
 					VSCSIIF_NEED_EMULATE_RSPBUF);
 
 	return;

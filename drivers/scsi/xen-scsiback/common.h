@@ -8,17 +8,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -92,9 +92,7 @@ struct vscsibk_info {
 	int feature;
 
 	struct vscsiif_back_ring  ring;
-	struct vm_struct *ring_area;
-	grant_handle_t shmem_handle;
-	grant_ref_t shmem_ref;
+	void  *ring_area;
 
 	spinlock_t ring_lock;
 	atomic_t nr_unreplied_reqs;
@@ -116,7 +114,7 @@ typedef struct {
 	struct scsi_device *sdev;
 
 	uint16_t rqid;
-	
+
 	uint16_t v_chn, v_tgt;
 
 	uint8_t nr_segments;
@@ -125,7 +123,7 @@ typedef struct {
 
 	uint8_t sc_data_direction;
 	uint16_t timeout_per_command;
-	
+
 	uint32_t request_bufflen;
 	struct scatterlist *sgl;
 	grant_ref_t gref[VSCSIIF_SG_TABLESIZE];

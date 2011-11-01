@@ -8,17 +8,17 @@
  * as published by the Free Software Foundation; or, when distributed
  * separately from the Linux kernel or incorporated into other
  * software packages, subject to the following license:
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this source file (the "Software"), to deal in the Software without
  * restriction, including without limitation the rights to use, copy, modify,
  * merge, publish, distribute, sublicense, and/or sell copies of the Software,
  * and to permit persons to whom the Software is furnished to do so, subject to
  * the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in
  * all copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -77,21 +77,21 @@
 
 struct vscsifrnt_shadow {
 	uint16_t next_free;
-	
+
 	/* command between backend and frontend
 	 * VSCSIIF_ACT_SCSI_CDB or VSCSIIF_ACT_SCSI_RESET */
 	unsigned char act;
-	
+
 	/* do reset function */
 	wait_queue_head_t wq_reset;	/* reset work queue           */
 	int wait_reset;			/* reset work queue condition */
 	int32_t rslt_reset;		/* reset response status      */
 					/* (SUCESS or FAILED)         */
 
-	/* for DMA_TO_DEVICE(1), DMA_FROM_DEVICE(2), DMA_NONE(3) 
+	/* for DMA_TO_DEVICE(1), DMA_FROM_DEVICE(2), DMA_NONE(3)
 	   requests */
 	unsigned int sc_data_direction;
-	
+
 	/* Number of pieces of scatter-gather */
 	unsigned int nr_segments;
 

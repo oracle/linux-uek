@@ -1,8 +1,8 @@
 /******************************************************************************
  * vscsiif.h
- * 
+ *
  * Based on the blkif.h code.
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
  * deal in the Software without restriction, including without limitation the
@@ -42,7 +42,7 @@
  * Maximum scatter/gather segments per request.
  *
  * Considering balance between allocating al least 16 "vscsiif_request"
- * structures on one page (4096bytes) and number of scatter gather 
+ * structures on one page (4096bytes) and number of scatter gather
  * needed, we decided to use 26 as a magic number.
  */
 #define VSCSIIF_SG_TABLESIZE             26
@@ -60,7 +60,7 @@ struct vscsiif_request {
     uint8_t cmd_len;
 
     uint8_t cmnd[VSCSIIF_MAX_COMMAND_SIZE];
-    uint16_t timeout_per_command;     /* The command is issued by twice 
+    uint16_t timeout_per_command;     /* The command is issued by twice
                                          the value in Backend. */
     uint16_t channel, id, lun;
     uint16_t padding;
@@ -84,7 +84,7 @@ struct vscsiif_response {
     uint8_t sense_len;
     uint8_t sense_buffer[VSCSIIF_SENSE_BUFFERSIZE];
     int32_t rslt;
-    uint32_t residual_len;     /* request bufflen - 
+    uint32_t residual_len;     /* request bufflen -
                                   return the value from physical device */
     uint32_t reserved[36];
 };
