@@ -902,7 +902,7 @@ static int dtrace_open(struct inode *inode, struct file *file)
 
 static int dtrace_close(struct inode *inode, struct file *file)
 {
-	dtrace_state_t	*state;
+	dtrace_state_t	*state = file->private_data;
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
@@ -910,7 +910,6 @@ static int dtrace_close(struct inode *inode, struct file *file)
 	/*
 	 * If there is anonymous state, destroy that first.
 	 */
-	state = file->private_data;
 	if (state->dts_anon) {
 		ASSERT(dtrace_anon.dta_state == NULL);
 
@@ -1285,8 +1284,7 @@ int dtrace_dev_init(void)
 	if (dtrace_helptrace_enabled) {
 		ASSERT(dtrace_helptrace_buffer == NULL);
 
-		dtrace_helptrace_buffer = dtrace_vzalloc(
-						dtrace_helptrace_bufsize);
+		dtrace_helptrace_buffer = vzalloc(dtrace_helptrace_bufsize);
 		dtrace_helptrace_next = 0;
 	}
 

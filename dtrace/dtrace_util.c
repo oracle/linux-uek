@@ -46,21 +46,9 @@ int dtrace_badattr(const dtrace_attribute_t *a)
 void *dtrace_vzalloc_try(unsigned long size)
 {
 	return __vmalloc(size,
-			 __GFP_IO | __GFP_FS | __GFP_NORETRY | __GFP_ZERO,
+			 __GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_NORETRY |
+			 __GFP_ZERO,
 			 PAGE_KERNEL);
-}
-
-/*
- * Allocate a chunk of virtual memory in kernel space, and zero it out.
- */
-void *dtrace_vzalloc(unsigned long size)
-{
-	void	*ptr = vmalloc(size);
-
-	if (ptr == NULL)
-		return NULL;
-
-	return memset(ptr, 0, size);
 }
 
 /*
