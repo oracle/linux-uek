@@ -169,7 +169,7 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 	if (size < (min = dstate->dtds_chunksize + sizeof (dtrace_dynhash_t)))
 		size = min;
 
-	if ((base = dtrace_vzalloc(size)) == NULL)
+	if ((base = dtrace_vzalloc_try(size)) == NULL)
 		return -ENOMEM;
 
 	dstate->dtds_size = size;

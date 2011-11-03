@@ -36,6 +36,9 @@
 #include "dtrace_dev.h"
 #include "profile.h"
 
+/* #define OMNI_CYCLICS */
+/* #define PROBE_PCS */
+
 #define PROF_NAMELEN		15
 #define PROF_PROFILE		0
 #define PROF_TICK		1
@@ -59,12 +62,14 @@ typedef struct profile_probe_percpu {
 static ktime_t	profile_interval_min = KTIME_INIT(0, NANOSEC / 5000);
 static int	profile_aframes = 0;
 
+#ifdef OMNI_CYCLICS
 static int	profile_rates[] = {
 				    97, 199, 499, 997, 1999,
 				    4001, 4999, 0, 0, 0,
 				    0, 0, 0, 0, 0,
 				    0, 0, 0, 0, 0,
 				  };
+#endif
 static int	profile_ticks[] = {
 				    1, 10, 100, 500, 1000,
 				    5000, 0, 0, 0, 0,
@@ -90,16 +95,17 @@ static void profile_tick(void *arg)
 	struct pt_regs	*regs = get_irq_regs();
 	unsigned long	pc = 0, upc = 0;
 
-if (regs) {
+#ifdef PROBE_PCS
 	if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
-}
+#endif
 
 	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
 }
 
+#ifdef OMNI_CYCLICS
 static void profile_prof(void *arg)
 {
 	profile_probe_percpu_t	*pcpu = arg;
@@ -112,12 +118,12 @@ static void profile_prof(void *arg)
 	pcpu->profc_expected = ktime_add(pcpu->profc_expected,
 					 pcpu->profc_interval);
 
-if (regs) {
+#ifdef PROBE_PCS
 	if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
-}
+#endif
 
 	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
 }
@@ -150,6 +156,7 @@ static void profile_offline(void *arg, processorid_t cpu, void *oarg)
 
 	kfree(pcpu);
 }
+#endif
 
 static void profile_create(ktime_t interval, const char *name, int kind)
 {
@@ -190,7 +197,9 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 			char	*prefix;
 			int	kind;
 	} types[] = {
+#ifdef OMNI_CYCLIC
 			{ PROF_PREFIX_PROFILE, PROF_PROFILE },
+#endif
 			{ PROF_PREFIX_TICK, PROF_TICK },
 			{ NULL, 0 },
 		    };
@@ -224,6 +233,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 		/*
 		 * If no description was provided, provide all of our probes.
 		 */
+#ifdef OMNI_CYCLICS
 		for (i = 0; i < sizeof(profile_rates) / sizeof(int); i++) {
 			if ((rate = profile_rates[i]) == 0)
 				continue;
@@ -233,6 +243,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 			profile_create(ktime_set(0, NANOSEC / rate),
 				       n, PROF_PROFILE);
 		}
+#endif
 
 		for (i = 0; i < sizeof(profile_ticks) / sizeof(int); i++) {
 			if ((rate = profile_ticks[i]) == 0)
@@ -341,6 +352,7 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg)
 		when.cyt_when = ktime_set(0, 0);
 
 		prof->prof_cyclic = cyclic_add(&hdlr, &when);
+#ifdef OMNI_CYCLICS
 	} else {
 		ASSERT(prof->prof_kind == PROF_PROFILE);	
 
@@ -349,6 +361,7 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg)
 		omni.cyo_arg = prof;
 
 		prof->prof_cyclic = cyclic_add_omni(&omni);
+#endif
 	}
 
 	return 0;
@@ -358,7 +371,6 @@ void profile_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t	*prof = parg;
 
-if (prof->prof_cyclic == CYCLIC_NONE) return;
 	ASSERT(prof->prof_cyclic != CYCLIC_NONE);
 	ASSERT(mutex_is_locked(&cpu_lock));
 
