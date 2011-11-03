@@ -2219,6 +2219,7 @@ fail_chunk_root:
 	free_extent_buffer(chunk_root->commit_root);
 fail_sb_buffer:
 	btrfs_stop_workers(&fs_info->generic_worker);
+	btrfs_stop_workers(&fs_info->readahead_workers);
 	btrfs_stop_workers(&fs_info->fixup_workers);
 	btrfs_stop_workers(&fs_info->delalloc_workers);
 	btrfs_stop_workers(&fs_info->workers);
