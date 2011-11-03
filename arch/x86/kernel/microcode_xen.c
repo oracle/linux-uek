@@ -157,7 +157,7 @@ static enum ucode_state xen_request_microcode_user(int cpu,
 	ret = UCODE_OK;
 
 out:
-	if (ret == 0)
+	if (ret == UCODE_OK)
 		uci->mc = uc;
 	else
 		vfree(uc);
