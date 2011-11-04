@@ -54,6 +54,7 @@ extern unsigned long native_calibrate_tsc(void);
 #ifdef CONFIG_X86_64
 extern cycles_t vread_tsc(void);
 #endif
+extern int tsc_clocksource_reliable;
 
 /*
  * Boot-time check whether the TSCs are synchronized across
