@@ -2448,6 +2448,7 @@ static int ocfs2_block_group_clear_bits(handle_t *handle,
 	u16 contig_bits;
 	struct ocfs2_group_desc *undo_bg = NULL;
 	struct journal_head *jh;
+	unsigned int bits_cleared = 0;
 
 	/* The caller got this descriptor from
 	 * ocfs2_read_group_descriptor().  Any corruption is a code bug. */
@@ -2475,13 +2476,26 @@ static int ocfs2_block_group_clear_bits(handle_t *handle,
 
 	tmp = num_bits;
 	while(tmp--) {
-		ocfs2_clear_bit((bit_off + tmp),
-				(unsigned long *) bg->bg_bitmap);
+		if (ocfs2_test_bit((bit_off + tmp),
+				   (unsigned long *) bg->bg_bitmap)) {
+			ocfs2_clear_bit((bit_off + tmp),
+					(unsigned long *) bg->bg_bitmap);
+			bits_cleared++;
+		}
 		if (undo_fn)
 			undo_fn(bit_off + tmp,
 				(unsigned long *) undo_bg->bg_bitmap);
 	}
-	le16_add_cpu(&bg->bg_free_bits_count, num_bits);
+	le16_add_cpu(&bg->bg_free_bits_count, bits_cleared);
+
+	if (num_bits != bits_cleared) {
+		printk(KERN_NOTICE "ocfs2: Trying to clear %u bits at "
+		       "offset %u in group descriptor # %llu (device %s), "
+		       "needed to clear %u bits\n", num_bits, bit_off,
+		       (unsigned long long)le64_to_cpu(bg->bg_blkno),
+		       alloc_inode->i_sb->s_id, bits_cleared);
+	}
+
 	if (le16_to_cpu(bg->bg_free_bits_count) > le16_to_cpu(bg->bg_bits)) {
 		if (undo_fn)
 			spin_unlock(&jh->b_state_lock);
