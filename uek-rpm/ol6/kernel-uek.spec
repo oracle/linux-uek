@@ -1509,7 +1509,11 @@ if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
    [ -f /etc/sysconfig/kernel ]; then\
   /bin/sed -r -i -e 's/^DEFAULTKERNEL=%{-r*}$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
+if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
+  sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
+fi\
 /sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
 #
@@ -1581,9 +1585,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen|kernel-debug|kernel-uek-debug)
 %else
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen|kernel-debug|kernel-uek-debug)
 %endif
 
 %kernel_variant_pre smp

@@ -1497,6 +1497,7 @@ if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 fi\
+ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
 #
@@ -1568,9 +1569,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen|kernel-debug|kernel-uek-debug)
 %else
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen)
+%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen|kernel-debug|kernel-uek-debug)
 %endif
 
 %kernel_variant_pre smp
