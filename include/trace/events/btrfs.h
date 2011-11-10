@@ -17,6 +17,8 @@ struct btrfs_delayed_ref_node;
 struct btrfs_delayed_tree_ref;
 struct btrfs_delayed_data_ref;
 struct btrfs_delayed_ref_head;
+struct btrfs_block_group_cache;
+struct btrfs_free_cluster;
 struct map_lookup;
 struct extent_buffer;
 
