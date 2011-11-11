@@ -32,7 +32,7 @@ struct text_range {
 	unsigned long long start, end;
 };
 
-static unsigned long long _text, _stext;	// from System.map
+static unsigned long long _stext;	// from System.map
 
 static struct sym_entry *table;
 static unsigned int table_size, table_cnt;
@@ -285,8 +285,6 @@ static void read_info(FILE *fin)
 			if (get_symbol_info(buf, &table[table_cnt]) == 0)
 				table_cnt++;
 			else {
-				if (_text == 0)
-					get_text_addr(buf, "_text", &_text);
 				if (_stext == 0)
 					get_text_addr(buf, "_stext", &_stext);
 			}
@@ -322,12 +320,8 @@ static void write_relocs(FILE *fout)
 	fprintf(fout, "\tPTR\t%d\n", relocs_count);
 	fprintf(fout, "\n");
 
-	fprintf(fout, "_text_\t= 0x%llx\n", _text);
-	fprintf(fout, "_stext_\t= 0x%llx\n", _stext);
-	fprintf(fout, "\n");
-
 	/*
-	 * Provide proper symbols relocatability by their '_text'
+	 * Provide proper symbols relocatability by their '_stext'
 	 * relativeness.  The symbol names cannot be used to construct
 	 * normal symbol references as the list of symbols contains
 	 * symbols that are declared static and are private to their
