@@ -5,38 +5,27 @@
 #define DEBUG	1
 
 #include <linux/kernel.h>
+#include <linux/memory.h>
 #include <linux/module.h>
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <asm-generic/bitsperlong.h>
 #include <asm-generic/sections.h>
-
-///#include <sys/types.h>
-///#include <sys/param.h>
-///#include <sys/sysmacros.h>
-///#include <sys/systm.h>
-///#include <sys/user.h>
-///#include <sys/bootconf.h>
-///#include <sys/modctl.h>
-///#include <sys/elf.h>
-///#include <sys/kobj.h>
-///#include <sys/kobj_impl.h>
-///#include "reloc.h"
-
-#define LOAD_ADDR	0xffffffff00000000ULL	/* temporary */
+#include <asm/alternative.h>
 
 #define	SDT_NOP		0x90
-#define	SDT_NOPS	5
+#define	SDT_NOP_SIZE	5
 
 const char		*sdt_prefix = "__dtrace_probe_";
 
 static struct module	*kernmod; /* for kernel builtins; TBD: temporary ??? */
 
-static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
+static int sdt_reloc_resolve(struct module *mp, char *symname,
+			     uintptr_t offset, uintptr_t base, void *nops)
 {
 	sdt_probedesc_t *sdp;
-	int i;
+	uint8_t *instr;
 
 	/*
 	 * The "statically defined tracing" (SDT) provider for DTrace uses
@@ -54,6 +43,7 @@ static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
 	sdp = kmalloc(sizeof(sdt_probedesc_t), GFP_KERNEL);
 	if (!sdp)
 		return 1;
+
 	sdp->sdpd_name = kmalloc(strlen(symname) + 1, GFP_KERNEL);
 	if (!sdp->sdpd_name) {
 		kfree(sdp);
@@ -70,9 +60,7 @@ static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
 	 * not be necessary.
 	 */
 	/* convert relative instr to absolute */
-	if ((unsigned long)instr < 0x1000000000000000UL)
-		instr = (uint8_t *)((unsigned long)instr +
-					(unsigned long)_stext);
+	instr = (uint8_t *)((uintptr_t)_text + base + offset - 1);
 
 	/* TBD: use a kernel list? */
 	sdp->sdpd_offset = (uintptr_t)instr;
@@ -83,9 +71,10 @@ static int sdt_reloc_resolve(struct module *mp, char *symname, uint8_t *instr)
 	DPRINTK("this probe: instr offset=0x%lx, next ptr=0x%p, probe_name=%s\n",
 		sdp->sdpd_offset, sdp->sdpd_next, sdp->sdpd_name);
 
-	/* TBD: need a safer write-to-exec-memory ? */
-	for (i = 0; i < SDT_NOPS; i++)
-		instr[i - 1] = SDT_NOP;
+	mutex_lock(&text_mutex);
+	text_poke(instr, nops, SDT_NOP_SIZE);
+	mutex_unlock(&text_mutex);
+	DPRINTK(" %02x %02x %02x %02x %02x\n", instr[0], instr[1], instr[2], instr[3], instr[4]);
 
 	return 0;
 }
@@ -95,6 +84,9 @@ void dtrace_register_builtins(void)
 	unsigned long cnt;
 	struct reloc_info *ri = (struct reloc_info *)&dtrace_relocs;
 	void *nextri;
+	uint8_t nops[SDT_NOP_SIZE];
+
+	add_nops(nops, SDT_NOP_SIZE);
 
 	kernmod = kzalloc(sizeof(struct module), GFP_KERNEL);
 	if (!kernmod) {
@@ -119,7 +111,8 @@ void dtrace_register_builtins(void)
 			cnt, ri->probe_offset, ri->section_base,
 			ri->probe_name_len, ri->probe_name);
 		if (sdt_reloc_resolve(kernmod, ri->probe_name,
-		    (uint8_t *)ri->probe_offset))
+				      ri->probe_offset, ri->section_base,
+				      nops))
 			printk(KERN_WARNING "%s: cannot resolve %s\n",
 				__func__, ri->probe_name);
 
@@ -133,3 +126,4 @@ void dtrace_register_builtins(void)
 	dtrace_module_loaded(kernmod);
 #endif
 }
+EXPORT_SYMBOL(dtrace_register_builtins);
