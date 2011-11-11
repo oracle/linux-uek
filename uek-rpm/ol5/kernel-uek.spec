@@ -192,7 +192,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.15%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.16%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1700,6 +1700,89 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Nov 11 2011 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.16.el5uek]
+- SPEC: fixes for spec file [orabugs 13359985, 13339700, 13348381]
+- config: enable IP_PNP
+- Merge branch 'uek2-merge' of git://oss.oracle.com/git/kwilk/xen into uek2-stable
+- ocfs2: Fix cleancache initialization call to correctly pass uuid
+- Merge branch 'stable/xen-block.rebase' into uek2-merge
+- xen/blkback: Fix two races in the handling of barrier requests.
+- xen/blkback: Check for proper operation.
+- xen/blkback: Fix the inhibition to map pages when discarding sector ranges.
+- xen/blkback: Report VBD_WSECT (wr_sect) properly.
+- xen/blkback: Support 'feature-barrier' aka old-style BARRIER requests.
+- xen-blkfront: plug device number leak in xlblk_init() error path
+- xen-blkfront: If no barrier or flush is supported, use invalid operation.
+- xen-blkback: use kzalloc() in favor of kmalloc()+memset()
+- xen-blkback: fixed indentation and comments
+- xen-blkfront: fix a deadlock while handling discard response
+- xen-blkfront: Handle discard requests.
+- xen-blkback: Implement discard requests ('feature-discard')
+- xen-blkfront: add BLKIF_OP_DISCARD and discard request struct
+- xen/blkback: Add module alias for autoloading
+- xen/blkback: Don't let in-flight requests defer pending ones.
+- Merge branch 'stable/xen-settime' into uek2-merge
+- Merge branch 'stable/e820-3.2.rebased' into uek2-merge
+- Merge branch 'stable/mmu.fixes.rebased' into uek2-merge
+- Merge branch 'stable/drivers-3.2.rebased' into uek2-merge
+- Merge branch 'stable/cleanups-3.2.rebased' into uek2-merge
+- Merge branch 'stable/pci.fixes-3.2' of git://oss.oracle.com/git/kwilk/xen into uek2-merge
+- Merge branch 'stable/bug.fixes-3.2.rebased' of git://oss.oracle.com/git/kwilk/xen into uek2-merge
+- Merge branch 'stable/xen-pciback-0.6.3.bugfixes' of git://oss.oracle.com/git/kwilk/xen into uek2-merge
+- xen/irq: If we fail during msi_capability_init return proper error code.
+- xen: remove XEN_PLATFORM_PCI config option
+- xen: XEN_PVHVM depends on PCI
+- xen/p2m/debugfs: Make type_name more obvious.
+- xen/p2m/debugfs: Fix potential pointer exception.
+- xen/enlighten: Fix compile warnings and set cx to known value.
+- xen/xenbus: Remove the unnecessary check.
+- xen/events: Don't check the info for NULL as it is already done.
+- xen/pci: Use 'acpi_gsi_to_irq' value unconditionally.
+- xen/pci: Remove 'xen_allocate_pirq_gsi'.
+- xen/pci: Retire unnecessary #ifdef CONFIG_ACPI
+- xen/pci: Move the allocation of IRQs when there are no IOAPIC's to the end
+- xen/pci: Squash pci_xen_initial_domain and xen_setup_pirqs together.
+- xen/pci: Use the xen_register_pirq for HVM and initial domain users
+- xen/pci: In xen_register_pirq bind the GSI to the IRQ after the hypercall.
+- xen/pci: Provide #ifdef CONFIG_ACPI to easy code squashing.
+- xen/pci: Update comments and fix empty spaces.
+- xen/pci: Shuffle code around.
+- xen/dom0: set wallclock time in Xen
+- xen: add dom0_op hypercall
+- xen/acpi: Domain0 acpi parser related platform hypercall
+- xen: release all pages within 1-1 p2m mappings
+- xen: allow extra memory to be in multiple regions
+- xen: allow balloon driver to use more than one memory region
+- xen/balloon: simplify test for the end of usable RAM
+- xen/balloon: account for pages released during memory setup
+- xen/e820: if there is no dom0_mem=, don't tweak extra_pages.
+- Revert "xen/e820: if there is no dom0_mem=, don't tweak extra_pages."
+- xen/e820: if there is no dom0_mem=, don't tweak extra_pages.
+- xen: use maximum reservation to limit amount of usable RAM
+- xen: Fix misleading WARN message at xen_release_chunk
+- xen: Fix printk() format in xen/setup.c
+- xen/gntdev: Fix sleep-inside-spinlock
+- xen: modify kernel mappings corresponding to granted pages
+- xen: add an "highmem" parameter to alloc_xenballooned_pages
+- xen/p2m: Use SetPagePrivate and its friends for M2P overrides.
+- xen/p2m: Make debug/xen/mmu/p2m visible again.
+- Revert "xen/debug: WARN_ON when identity PFN has no _PAGE_IOMAP flag set."
+- xen/pciback: Check if the device is found instead of blindly assuming so.
+- xen/pciback: Do not dereference psdev during printk when it is NULL.
+- xen/pciback: double lock typo
+- xen/pciback: use mutex rather than spinlock in vpci backend
+- xen/pciback: Use mutexes when working with Xenbus state transitions.
+- xen/pciback: miscellaneous adjustments
+- xen/pciback: use mutex rather than spinlock in passthrough backend
+- xen/pciback: use resource_size()
+- xen: use static initializers in xen-balloon.c
+- Xen: fix braces and tabs coding style issue in xenbus_probe.c
+- Xen: fix braces coding style issue in xenbus_probe.h
+- Xen: fix whitespaces,tabs coding style issue in drivers/xen/pci.c
+- Xen: fix braces coding style issue in gntdev.c and grant-table.c
+- Xen: fix whitespaces,tabs coding style issue in drivers/xen/events.c
+- Xen: fix whitespaces,tabs coding style issue in drivers/xen/balloon.c
+
 * Wed Oct 19 2011 Joe Jin <joe.jin@oracle.com> [2.6.39-100.0.15.el5uek]
 - [scsi] cciss: Use cciss for some Smart Array controller when build for OL5
 - [Kconfig]: Add CONFIG_UEK5 option.
