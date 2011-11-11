@@ -435,6 +435,8 @@ typedef struct sdt_probedesc {
 	struct sdt_probedesc	*sdpd_next;	/* next static probe */
 } sdt_probedesc_t;
 
+extern void dtrace_register_builtins(void);
+
 #ifdef	__cplusplus
 }
 #endif
