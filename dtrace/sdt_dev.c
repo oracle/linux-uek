@@ -27,6 +27,7 @@
 
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
+#include <linux/sdt.h>
 
 #include "dtrace_dev.h"
 
@@ -38,6 +39,8 @@ static long sdt_ioctl(struct file *file,
 
 static int sdt_open(struct inode *inode, struct file *file)
 {
+	/* Temporary call to assist testing SDT. */
+	dtrace_register_builtins();
 	return -EAGAIN;
 }
 
