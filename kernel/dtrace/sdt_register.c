@@ -121,9 +121,4 @@ void dtrace_register_builtins(void)
 		ri = nextri;
 		DPRINTK("SDT relocs: next entry at 0x%p\n", ri);
 	}
-
-#if 0
-	dtrace_module_loaded(kernmod);
-#endif
 }
-EXPORT_SYMBOL(dtrace_register_builtins);
