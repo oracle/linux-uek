@@ -133,7 +133,7 @@ struct reloc_info {
 void dtrace_register_builtins(void);
 
 #ifdef DEBUG
-#define DPRINTK(fmt, args...) printk(KERN_DEBUG "%s: " fmt, __func__, ## args)
+#define DPRINTK(fmt, args...) printk(KERN_INFO "%s: " fmt, __func__, ## args)
 #else
 #define DPRINTK(fmt, args...)
 #endif
