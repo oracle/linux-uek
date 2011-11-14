@@ -28,6 +28,11 @@
  * IN THE SOFTWARE.
  */
 
+/*
+* Patched to support >2TB drives + allow tape & autoloader operations
+* 2010, Samuel Kvasnica, IMS Nanofabrication AG
+*/
+
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_device.h>
@@ -380,85 +385,88 @@ void scsiback_emulation_init(void)
 	/*
 	  Following commands do not require emulation.
 	*/
-	NO_EMULATE(TEST_UNIT_READY);       /*0x00*/
-	NO_EMULATE(REZERO_UNIT);           /*0x01*/
+	NO_EMULATE(TEST_UNIT_READY);       /*0x00*/ /* sd,st */
+	NO_EMULATE(REZERO_UNIT);           /*0x01*/ /* st */
 	NO_EMULATE(REQUEST_SENSE);         /*0x03*/
 	NO_EMULATE(FORMAT_UNIT);           /*0x04*/
-	NO_EMULATE(READ_BLOCK_LIMITS);     /*0x05*/
+	NO_EMULATE(READ_BLOCK_LIMITS);     /*0x05*/ /* st */
 	/*NO_EMULATE(REASSIGN_BLOCKS);       *//*0x07*/
-	/*NO_EMULATE(INITIALIZE_ELEMENT_STATUS); *//*0x07*/
-	NO_EMULATE(READ_6);                /*0x08*/
-	NO_EMULATE(WRITE_6);               /*0x0a*/
-	/*NO_EMULATE(SEEK_6);                *//*0x0b*/
+	NO_EMULATE(INITIALIZE_ELEMENT_STATUS); /*0x07*/ /* ch */
+	NO_EMULATE(READ_6);                /*0x08*/ /* sd,st */
+	NO_EMULATE(WRITE_6);               /*0x0a*/ /* sd,st */
+	NO_EMULATE(SEEK_6);                /*0x0b*/
 	/*NO_EMULATE(READ_REVERSE);          *//*0x0f*/
-	NO_EMULATE(WRITE_FILEMARKS);       /*0x10*/
-	NO_EMULATE(SPACE);                 /*0x11*/
+	NO_EMULATE(WRITE_FILEMARKS);       /*0x10*/ /* st */
+	NO_EMULATE(SPACE);                 /*0x11*/ /* st */
 	NO_EMULATE(INQUIRY);               /*0x12*/
 	/*NO_EMULATE(RECOVER_BUFFERED_DATA); *//*0x14*/
-	/*NO_EMULATE(MODE_SELECT);           *//*0x15*/
+	NO_EMULATE(MODE_SELECT);           /*0x15*/ /* st */
 	/*NO_EMULATE(RESERVE);               *//*0x16*/
 	/*NO_EMULATE(RELEASE);               *//*0x17*/
 	/*NO_EMULATE(COPY);                  *//*0x18*/
-	NO_EMULATE(ERASE);                 /*0x19*/
-	NO_EMULATE(MODE_SENSE);            /*0x1a*/
-	/*NO_EMULATE(START_STOP);            *//*0x1b*/
-	/*NO_EMULATE(RECEIVE_DIAGNOSTIC);    *//*0x1c*/
+	NO_EMULATE(ERASE);                 /*0x19*/ /* st */
+	NO_EMULATE(MODE_SENSE);            /*0x1a*/ /* st */
+	NO_EMULATE(START_STOP);            /*0x1b*/ /* sd,st */
+	NO_EMULATE(RECEIVE_DIAGNOSTIC);    /*0x1c*/
 	NO_EMULATE(SEND_DIAGNOSTIC);       /*0x1d*/
-	/*NO_EMULATE(ALLOW_MEDIUM_REMOVAL);  *//*0x1e*/
+	NO_EMULATE(ALLOW_MEDIUM_REMOVAL);  /*0x1e*/
 
 	/*NO_EMULATE(SET_WINDOW);            *//*0x24*/
-	NO_EMULATE(READ_CAPACITY);         /*0x25*/
-	NO_EMULATE(READ_10);               /*0x28*/
-	NO_EMULATE(WRITE_10);              /*0x2a*/
-	/*NO_EMULATE(SEEK_10);               *//*0x2b*/
-	/*NO_EMULATE(POSITION_TO_ELEMENT);   *//*0x2b*/
+	NO_EMULATE(READ_CAPACITY);         /*0x25*/ /* sd */
+	NO_EMULATE(READ_10);               /*0x28*/ /* sd */
+	NO_EMULATE(WRITE_10);              /*0x2a*/ /* sd */
+	NO_EMULATE(SEEK_10);               /*0x2b*/ /* st */
+	NO_EMULATE(POSITION_TO_ELEMENT);   /*0x2b*/ /* ch */
 	/*NO_EMULATE(WRITE_VERIFY);          *//*0x2e*/
 	/*NO_EMULATE(VERIFY);                *//*0x2f*/
 	/*NO_EMULATE(SEARCH_HIGH);           *//*0x30*/
 	/*NO_EMULATE(SEARCH_EQUAL);          *//*0x31*/
 	/*NO_EMULATE(SEARCH_LOW);            *//*0x32*/
-	/*NO_EMULATE(SET_LIMITS);            *//*0x33*/
-	/*NO_EMULATE(PRE_FETCH);             *//*0x34*/
-	/*NO_EMULATE(READ_POSITION);         *//*0x34*/
-	/*NO_EMULATE(SYNCHRONIZE_CACHE);     *//*0x35*/
-	/*NO_EMULATE(LOCK_UNLOCK_CACHE);     *//*0x36*/
-	/*NO_EMULATE(READ_DEFECT_DATA);      *//*0x37*/
-	/*NO_EMULATE(MEDIUM_SCAN);           *//*0x38*/
+	NO_EMULATE(SET_LIMITS);            /*0x33*/
+	NO_EMULATE(PRE_FETCH);             /*0x34*/ /* st! */
+	NO_EMULATE(READ_POSITION);          /*0x34*/ /* st */
+	NO_EMULATE(SYNCHRONIZE_CACHE);      /*0x35*/ /* sd */
+	NO_EMULATE(LOCK_UNLOCK_CACHE);     /*0x36*/
+	NO_EMULATE(READ_DEFECT_DATA);      /*0x37*/
+	NO_EMULATE(MEDIUM_SCAN);           /*0x38*/
 	/*NO_EMULATE(COMPARE);               *//*0x39*/
 	/*NO_EMULATE(COPY_VERIFY);           *//*0x3a*/
-	/*NO_EMULATE(WRITE_BUFFER);          *//*0x3b*/
-	/*NO_EMULATE(READ_BUFFER);           *//*0x3c*/
+	NO_EMULATE(WRITE_BUFFER);          /*0x3b*/
+	NO_EMULATE(READ_BUFFER);           /*0x3c*/ /* osst */
 	/*NO_EMULATE(UPDATE_BLOCK);          *//*0x3d*/
 	/*NO_EMULATE(READ_LONG);             *//*0x3e*/
 	/*NO_EMULATE(WRITE_LONG);            *//*0x3f*/
 	/*NO_EMULATE(CHANGE_DEFINITION);     *//*0x40*/
 	/*NO_EMULATE(WRITE_SAME);            *//*0x41*/
-	/*NO_EMULATE(READ_TOC);              *//*0x43*/
-	/*NO_EMULATE(LOG_SELECT);            *//*0x4c*/
-	/*NO_EMULATE(LOG_SENSE);             *//*0x4d*/
+	NO_EMULATE(READ_TOC);              /*0x43*/ /* sr */
+	NO_EMULATE(LOG_SELECT);            /*0x4c*/
+	NO_EMULATE(LOG_SENSE);             /*0x4d*/ /* st! */
 	/*NO_EMULATE(MODE_SELECT_10);        *//*0x55*/
 	/*NO_EMULATE(RESERVE_10);            *//*0x56*/
 	/*NO_EMULATE(RELEASE_10);            *//*0x57*/
-	/*NO_EMULATE(MODE_SENSE_10);         *//*0x5a*/
+	NO_EMULATE(MODE_SENSE_10);         /*0x5a*/ /* scsi_lib */
 	/*NO_EMULATE(PERSISTENT_RESERVE_IN); *//*0x5e*/
 	/*NO_EMULATE(PERSISTENT_RESERVE_OUT); *//*0x5f*/
 	/*           REPORT_LUNS             *//*0xa0*//*Full emulaiton*/
-	/*NO_EMULATE(MOVE_MEDIUM);           *//*0xa5*/
-	/*NO_EMULATE(EXCHANGE_MEDIUM);       *//*0xa6*/
+	NO_EMULATE(MAINTENANCE_IN);           /*0xa3*/ /* IFT alua */
+	NO_EMULATE(MAINTENANCE_OUT);       /*0xa4*/ /* IFT alua */
+	NO_EMULATE(MOVE_MEDIUM);           /*0xa5*/ /* ch */
+	NO_EMULATE(EXCHANGE_MEDIUM);       /*0xa6*/ /* ch */
 	/*NO_EMULATE(READ_12);               *//*0xa8*/
 	/*NO_EMULATE(WRITE_12);              *//*0xaa*/
 	/*NO_EMULATE(WRITE_VERIFY_12);       *//*0xae*/
 	/*NO_EMULATE(SEARCH_HIGH_12);        *//*0xb0*/
 	/*NO_EMULATE(SEARCH_EQUAL_12);       *//*0xb1*/
 	/*NO_EMULATE(SEARCH_LOW_12);         *//*0xb2*/
-	/*NO_EMULATE(READ_ELEMENT_STATUS);   *//*0xb8*/
-	/*NO_EMULATE(SEND_VOLUME_TAG);       *//*0xb6*/
+	NO_EMULATE(READ_ELEMENT_STATUS);   /*0xb8*/ /* ch */
+	NO_EMULATE(SEND_VOLUME_TAG);       /*0xb6*/ /* ch */
 	/*NO_EMULATE(WRITE_LONG_2);          *//*0xea*/
-	/*NO_EMULATE(READ_16);               *//*0x88*/
-	/*NO_EMULATE(WRITE_16);              *//*0x8a*/
-	/*NO_EMULATE(VERIFY_16);	      *//*0x8f*/
-	/*NO_EMULATE(SERVICE_ACTION_IN);     *//*0x9e*/
+	NO_EMULATE(READ_16);               /*0x88*/ /* sd >2TB */
+	NO_EMULATE(WRITE_16);              /*0x8a*/ /* sd >2TB */
+	NO_EMULATE(VERIFY_16);	           /*0x8f*/
+	NO_EMULATE(SERVICE_ACTION_IN);     /*0x9e*/ /* sd >2TB */
 
+/* st: QFA_REQUEST_BLOCK, QFA_SEEK_BLOCK might be needed ? */
 	/*
 	  Following commands require emulation.
 	*/
