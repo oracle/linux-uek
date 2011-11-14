@@ -707,7 +707,7 @@ asmlinkage __visible void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
-#if defined(CONFIG_DT_SDT)
+#if defined(CONFIG_DT_SDT) || defined(CONFIG_DT_SDT_MODULE)
 	dtrace_register_builtins();
 #endif
 
