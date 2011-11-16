@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.16%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.17%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1664,6 +1664,16 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Nov 16 2011 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.17.el5uek]
+- Update Btrfs
+- turn on CONFIG_PARAVIRT_SPINLOCKS for bare metal
+- xen-gntalloc: signedness bug in add_grefs()
+- xen-gntalloc: integer overflow in gntalloc_ioctl_alloc()
+- xen-gntdev: integer overflow in gntdev_alloc_map()
+- xen:pvhvm: enable PVHVM VCPU placement when using more than 32 CPUs.
+- xen/balloon: Avoid OOM when requesting highmem
+- xen: Remove hanging references to CONFIG_XEN_PLATFORM_PCI
+
 * Fri Nov 11 2011 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.16.el5uek]
 - SPEC: fixes for spec file [orabugs 13359985, 13339700, 13348381]
 - config: enable IP_PNP
