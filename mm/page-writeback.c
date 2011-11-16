@@ -566,7 +566,7 @@ static void balance_dirty_pages(struct address_space *mapping,
 				break;		/* We've done our duty */
 		}
 		trace_wbc_balance_dirty_wait(&wbc, bdi);
-		__set_current_state(TASK_UNINTERRUPTIBLE);
+		__set_current_state(TASK_KILLABLE);
 		io_schedule_timeout(pause);
 
 		/*
@@ -576,6 +576,9 @@ static void balance_dirty_pages(struct address_space *mapping,
 		pause <<= 1;
 		if (pause > HZ / 10)
 			pause = HZ / 10;
+
+		if (fatal_signal_pending(current))
+			break;
 	}
 
 	if (!dirty_exceeded && bdi->dirty_exceeded)
