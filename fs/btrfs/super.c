@@ -1139,12 +1139,6 @@ static struct dentry *btrfs_mount(struct file_system_type *fs_type, int flags,
 	if (!fs_info)
 		return ERR_PTR(-ENOMEM);
 
-	fs_info->tree_root = kzalloc(sizeof(struct btrfs_root), GFP_NOFS);
-	if (!fs_info->tree_root) {
-		error = -ENOMEM;
-		goto error_fs_info;
-	}
-	fs_info->tree_root->fs_info = fs_info;
 	fs_info->fs_devices = fs_devices;
 
 	fs_info->super_copy = kzalloc(BTRFS_SUPER_INFO_SIZE, GFP_NOFS);
