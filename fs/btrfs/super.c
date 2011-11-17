@@ -954,9 +954,10 @@ static int btrfs_test_super(struct super_block *s, void *data)
 
 static int btrfs_set_super(struct super_block *s, void *data)
 {
-	s->s_fs_info = data;
-
-	return set_anon_super(s, data);
+	int err = set_anon_super(s, data);
+	if (!err)
+		s->s_fs_info = data;
+	return err;
 }
 
 /*
