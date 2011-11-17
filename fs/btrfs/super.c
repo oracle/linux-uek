@@ -774,9 +774,8 @@ static int btrfs_fill_super(struct super_block *sb,
 	err = open_ctree(sb, fs_devices, (char *)data);
 	if (err) {
 		printk("btrfs: open_ctree failed\n");
-		return PTR_ERR(tree_root);
+		return err;
 	}
-	sb->s_fs_info = tree_root;
 
 	key.objectid = BTRFS_FIRST_FREE_OBJECTID;
 	key.type = BTRFS_INODE_ITEM_KEY;
