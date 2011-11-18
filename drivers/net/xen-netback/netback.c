@@ -1008,7 +1008,7 @@ static int xen_netbk_tx_check_gop(struct xen_netbk *netbk,
 		pending_idx = *((u16 *)skb->data);
 		xen_netbk_idx_release(netbk, pending_idx);
 		for (j = start; j < i; j++) {
-			pending_idx = (unsigned long)shinfo->frags[i].page;
+			pending_idx = (unsigned long)shinfo->frags[j].page;
 			xen_netbk_idx_release(netbk, pending_idx);
 		}
 
