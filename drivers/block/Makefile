@@ -43,3 +43,5 @@ null_blk-$(CONFIG_BLK_DEV_ZONED) += null_blk_zoned.o
 
 skd-y		:= skd_main.o
 swim_mod-y	:= swim.o swim_asm.o
+
+obj-$(CONFIG_ORACLEASM)		+= oracleasm/
