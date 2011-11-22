@@ -544,4 +544,6 @@ config BLK_DEV_RBD
 
 	  If unsure, say N.
 
+source "drivers/block/oracleasm/Kconfig"
+
 endif # BLK_DEV
