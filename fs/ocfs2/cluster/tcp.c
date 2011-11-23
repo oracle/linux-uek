@@ -1039,14 +1039,14 @@ static int o2net_tx_can_proceed(struct o2net_node *nn,
 void o2net_fill_node_map(unsigned long *map, unsigned bytes)
 {
 	struct o2net_sock_container *sc;
-	int node, ret;
+	int node, err, ret;
 
 	BUG_ON(bytes < (BITS_TO_LONGS(O2NM_MAX_NODES) * sizeof(unsigned long)));
 
 	memset(map, 0, bytes);
 	for (node = 0; node < O2NM_MAX_NODES; ++node) {
-		o2net_tx_can_proceed(o2net_nn_from_num(node), &sc, &ret);
-		if (!ret) {
+		ret = o2net_tx_can_proceed(o2net_nn_from_num(node), &sc, &err);
+		if (ret && !err) {
 			set_bit(node, map);
 			sc_put(sc);
 		}
