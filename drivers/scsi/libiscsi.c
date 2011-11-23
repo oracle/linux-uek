@@ -2822,6 +2822,7 @@ void iscsi_session_teardown(struct iscsi_cls_session *cls_session)
 	kfree(session->username);
 	kfree(session->username_in);
 	kfree(session->targetname);
+	kfree(session->targetalias);
 	kfree(session->initiatorname);
 	kfree(session->ifacename);
 
@@ -3257,6 +3258,8 @@ int iscsi_set_param(struct iscsi_cls_conn *cls_conn,
 		return iscsi_switch_str_param(&session->password_in, buf);
 	case ISCSI_PARAM_TARGET_NAME:
 		return iscsi_switch_str_param(&session->targetname, buf);
+	case ISCSI_PARAM_TARGET_ALIAS:
+		return iscsi_switch_str_param(&session->targetalias, buf);
 	case ISCSI_PARAM_TPGT:
 		sscanf(buf, "%d", &session->tpgt);
 		break;
@@ -3322,6 +3325,9 @@ int iscsi_session_get_param(struct iscsi_cls_session *cls_session,
 		break;
 	case ISCSI_PARAM_TARGET_NAME:
 		len = sprintf(buf, "%s\n", session->targetname);
+		break;
+	case ISCSI_PARAM_TARGET_ALIAS:
+		len = sprintf(buf, "%s\n", session->targetalias);
 		break;
 	case ISCSI_PARAM_TPGT:
 		len = sprintf(buf, "%d\n", session->tpgt);
