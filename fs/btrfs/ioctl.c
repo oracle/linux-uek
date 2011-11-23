@@ -2058,7 +2058,7 @@ static noinline int btrfs_ioctl_snap_destroy(struct file *file,
 		goto out;
 	}
 
-	err = mnt_want_write(file->f_path.mnt);
+	err = mnt_want_write_file(file);
 	if (err)
 		goto out;
 
@@ -2217,11 +2217,8 @@ static int btrfs_ioctl_defrag(struct file *file, void __user *argp)
 	int ret;
 
 	ret = mnt_want_write_file(file);
-	if (ret) {
-		atomic_set(&root->fs_info->mutually_exclusive_operation_running,
-			   0);
+	if (ret)
 		return ret;
-	}
 
 	if (btrfs_root_readonly(root)) {
 		ret = -EROFS;
@@ -2468,7 +2465,7 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 	if (btrfs_root_readonly(root))
 		return -EROFS;
 
-	ret = mnt_want_write(file->f_path.mnt);
+	ret = mnt_want_write_file(file);
 	if (ret)
 		return ret;
 
@@ -2861,7 +2858,7 @@ static long btrfs_ioctl_trans_start(struct file *file)
 	if (btrfs_root_readonly(root))
 		goto out;
 
-	ret = mnt_want_write(file->f_path.mnt);
+	ret = mnt_want_write_file(file);
 	if (ret)
 		goto out;
 
