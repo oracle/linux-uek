@@ -36,4 +36,6 @@ int propagate_umount(struct list_head *);
 int propagate_mount_busy(struct vfsmount *, int);
 void mnt_release_group_id(struct vfsmount *);
 int get_dominating_id(struct vfsmount *mnt, const struct path *root);
+bool is_path_reachable(struct vfsmount *, struct dentry *,
+			 const struct path *root);
 #endif /* _LINUX_PNODE_H */
