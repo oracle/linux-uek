@@ -1002,17 +1002,14 @@ find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %if %{signmodules}
   cp %{SOURCE19} .
   pwd
-  rm -rf ./gpg_gen
-  mkdir ./gpg_gen
-  chmod 700 ./gpg_gen
-  gpg --homedir ./gpg_gen --batch --gen-key %{SOURCE11}
+  gpg --homedir . --batch --gen-key %{SOURCE11}
 # if there're external keys to be included
   if [ -s %{SOURCE19} ]; then
       gpg --homedir . --no-default-keyring --keyring kernel.pub --import %{SOURCE19}
   fi
-  gpg --homedir . --export --keyring ./kernel.pub Oracle > ./gpg_gen/extract.pub
+  gpg --homedir . --export --keyring kernel.pub Oracle > extract.pub
   gcc -o scripts/bin2c scripts/bin2c.c
-  scripts/bin2c ksign_def_public_key __initdata <./gpg_gen/extract.pub >crypto/signature/key.h
+  scripts/bin2c ksign_def_public_key __initdata < extract.pub >crypto/signature/key.h
 %endif
  	  	 
 

@@ -149,6 +149,7 @@ ifdef MODKEYNAME
 KEYFLAGS += --default-key $(MODKEYNAME)
 endif
 
+ifeq ($(wildcard $(MODSECKEY))+$(wildcard $(MODPUBKEY)),$(MODSECKEY)+$(MODPUBKEY))
 quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
       cmd_sign_ko_ko_unsigned = \
 		scripts/mod/mod-extract $< $@.digest && \
@@ -157,6 +158,11 @@ quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
 		sh scripts/mod/modsign-note.sh $@.digest.sig | \
 		  $(CC) -x assembler-with-cpp $(c_flags) $(CFLAGS_MODULE) -c -o $@.note.o - && \
 		$(LD) -r -o $@ $< $@.note.o
+else
+quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
+      cmd_sign_ko_ko_unsigned = \
+        cp $< $@
+endif
 
 $(modules): %.ko :%.ko.unsigned FORCE
 	$(call if_changed,sign_ko_ko_unsigned)
