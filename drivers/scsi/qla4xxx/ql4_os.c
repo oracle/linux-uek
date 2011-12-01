@@ -3998,7 +3998,8 @@ continue_next_st:
 	}
 
 	/* Wait to ensure all sendtargets are done for min 12 sec wait */
-	tmo = ((ha->def_timeout < LOGIN_TOV) ? LOGIN_TOV : ha->def_timeout);
+	tmo = ((ha->def_timeout > LOGIN_TOV) && (ha->def_timeout < LOGIN_TOV * 10) ?
+		ha->def_timeout : LOGIN_TOV);
 	DEBUG2(ql4_printk(KERN_INFO, ha,
 			  "Default time to wait for build ddb %d\n", tmo));
 
@@ -4020,6 +4021,9 @@ continue_next_st:
 				vfree(st_ddb_idx);
 			}
 		}
+
+		if (list_empty(&list_st))
+			break;
 		schedule_timeout_uninterruptible(HZ / 10);
 	} while (time_after(wtime, jiffies));
 
