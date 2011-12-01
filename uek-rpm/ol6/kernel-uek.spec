@@ -1216,7 +1216,7 @@ hwcap 0 nosegneg"
     
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     cd include
-    cp -a acpi config generated crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
+    cp -a acpi config generated crypto keys linux math-emu media mtd net pcmcia rdma rxrpc scsi sound trace video asm-generic drm xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
     pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
