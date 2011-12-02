@@ -3974,9 +3974,6 @@ void qla4xxx_build_ddb_list(struct scsi_qla_host *ha, int is_reset)
 		if (ret == QLA_ERROR)
 			break;
 
-		if (qla4xxx_verify_boot_idx(ha, idx) != QLA_SUCCESS)
-			goto continue_next_st;
-
 		/* Check if ST, add to the list_st */
 		if (strlen((char *) fw_ddb_entry->iscsi_name) != 0)
 			goto continue_next_st;
