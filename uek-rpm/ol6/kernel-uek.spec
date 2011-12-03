@@ -1413,9 +1413,9 @@ rm -rf $RPM_BUILD_ROOT/usr/include/drm
 %endif
 
 %if %{with_firmware}
-mkdir -p $RPM_BUILD_ROOT/lib/firmware
+mkdir -p $RPM_BUILD_ROOT/lib/firmware/%{rpmversion}-%{pkg_release}
 Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
-make ARCH=$Arch INSTALL_FW_PATH=$RPM_BUILD_ROOT/lib/firmware firmware_install
+make ARCH=$Arch INSTALL_FW_PATH=$RPM_BUILD_ROOT/lib/firmware/%{rpmversion}-%{pkg_release} firmware_install
 %endif
 
 %if %{with_bootwrapper}
