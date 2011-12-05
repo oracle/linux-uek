@@ -55,6 +55,7 @@
 #include <linux/pipe_fs_i.h>
 #include <linux/oom.h>
 #include <linux/compat.h>
+#include <linux/sdt.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1499,6 +1500,8 @@ static int do_execve_common(const char *filename,
 	clear_in_exec = retval;
 	current->in_execve = 1;
 
+	DTRACE_PROC1(exec, char *, filename);
+
 	file = open_exec(filename);
 	retval = PTR_ERR(file);
 	if (IS_ERR(file))
@@ -1550,6 +1553,8 @@ static int do_execve_common(const char *filename,
 	free_bprm(bprm);
 	if (displaced)
 		put_files_struct(displaced);
+
+	DTRACE_PROC(exec__success);
 	return retval;
 
 out:
@@ -1576,6 +1581,7 @@ out_files:
 	if (displaced)
 		reset_files_struct(displaced);
 out_ret:
+	DTRACE_PROC1(exec__failure, int, retval);
 	return retval;
 }
 

@@ -120,15 +120,21 @@ extern "C" {
  * vmlinux dtrace_probe__ caller reloc info;
  * comes from vmlinux_info.S
  */
-extern unsigned long dtrace_relocs_count __attribute__((weak));
-extern void *dtrace_relocs __attribute__((weak));
+typedef uint8_t	sdt_instr_t;
 
-struct reloc_info {
-	unsigned long probe_offset;
-	unsigned long section_base;
-	unsigned long probe_name_len;
-	char probe_name[0];
-} __aligned(sizeof(unsigned long));
+extern unsigned long dtrace_sdt_nprobes __attribute__((weak));
+extern void *dtrace_sdt_probes __attribute__((weak));
+
+extern void sdt_probe_enable(sdt_instr_t *);
+extern void sdt_probe_disable(sdt_instr_t *);
+
+typedef struct dtrace_sdt_probeinfo {
+	unsigned long offset;
+	unsigned long base;
+	unsigned long name_len;
+	unsigned long func_len;
+	char name[0];
+} __aligned(sizeof(unsigned long)) dtrace_sdt_probeinfo_t;
 
 void dtrace_register_builtins(void);
 
@@ -430,7 +436,8 @@ void dtrace_register_builtins(void);
 extern const char *sdt_prefix;
 
 typedef struct sdt_probedesc {
-	char			*sdpd_name;	/* name of this probe */
+	char			*sdpd_name;	/* probe name */
+	char			*sdpd_func;	/* probe function */
 	unsigned long		sdpd_offset;	/* offset of call in text */
 	struct sdt_probedesc	*sdpd_next;	/* next static probe */
 } sdt_probedesc_t;
