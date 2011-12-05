@@ -75,6 +75,7 @@
 #include <linux/aio.h>
 #include <linux/compiler.h>
 #include <linux/sysctl.h>
+#include <linux/sdt.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -1738,6 +1739,7 @@ long do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
+		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}
