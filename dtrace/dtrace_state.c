@@ -461,7 +461,7 @@ again:
 		}
 	}
 #else
-	state->dts_cred.dcr_visible = DTRACE_CRV_ALLPROC;
+	state->dts_cred.dcr_visible = DTRACE_CRV_ALLPROC | DTRACE_CRV_KERNEL;
 	state->dts_cred.dcr_action = DTRACE_CRA_ALL;
 #endif
 

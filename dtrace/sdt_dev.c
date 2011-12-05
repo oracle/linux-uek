@@ -28,8 +28,149 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <linux/sdt.h>
+#include <linux/slab.h>
 
+#include "dtrace.h"
 #include "dtrace_dev.h"
+#include "sdt_impl.h"
+
+#define SDT_PATCHVAL		0xf0
+#define SDT_ADDR2NDX(addr)	((((uintptr_t)(addr)) >> 4) & sdt_probetab_mask)
+#define SDT_PROBETAB_SIZE	0x1000		/* 4k entries -- 16K total */
+
+static sdt_probe_t	**sdt_probetab;
+static int		sdt_probetab_size;
+static int		sdt_probetab_mask;
+
+static int sdt_invop(struct pt_regs *regs)
+{
+	sdt_probe_t	*sdt = sdt_probetab[SDT_ADDR2NDX(regs->ip)];
+
+	for (; sdt != NULL; sdt = sdt->sdp_hashnext) {
+		if ((uintptr_t)sdt->sdp_patchpoint == regs->ip) {
+			dtrace_probe(sdt->sdp_id, regs->di, regs->si,
+				     regs->dx, regs->cx, regs->r8);
+			return DTRACE_INVOP_NOP;
+		}
+	}
+
+	return 0;
+}
+
+void sdt_provide_module(void *arg, struct module *mp)
+{
+	char			*modname = mp->name;
+	dtrace_mprovider_t	*prov;
+	sdt_probedesc_t		*sdpd;
+	sdt_probe_t		*sdp, *prv;
+	int			len;
+
+	/*
+	 * Do not provide any probes unless all SDT providers have been created
+	 * for this meta-provider.
+	 */
+	for (prov = sdt_providers; prov->dtmp_name != NULL; prov++) {
+		if (prov->dtmp_id == DTRACE_PROVNONE)
+			return;
+	}
+
+	/*
+	 * Nothing to do if the module SDT probes were already created.
+	 */
+	if (mp->sdt_nprobes != 0)
+		return;
+
+	for (sdpd = mp->sdt_probes; sdpd != NULL; sdpd = sdpd->sdpd_next) {
+		char			*name = sdpd->sdpd_name, *nname;
+		int			i, j;
+		dtrace_mprovider_t	*prov;
+		dtrace_id_t		id;
+
+		for (prov = sdt_providers; prov->dtmp_pref != NULL; prov++) {
+			char	*prefix = prov->dtmp_pref;
+			int	len = strlen(prefix);
+
+			if (strncmp(name, prefix, len) == 0) {
+				name += len;
+				break;
+			}
+		}
+
+		nname = kmalloc(len = strlen(name) + 1, GFP_KERNEL);
+
+		for (i = j = 0; name[j] != '\0'; i++) {
+			if (name[j] == '_' && name[j + 1] == '_') {
+				nname[i] = '-';
+				j += 2;
+			} else
+				nname[i] = name[j++];
+		}
+
+		nname[i] = '\0';
+
+		sdp = kzalloc(sizeof(sdt_probe_t), GFP_KERNEL);
+		sdp->sdp_loadcnt = 1; /* FIXME */
+		sdp->sdp_module = mp;
+		sdp->sdp_name = nname;
+		sdp->sdp_namelen = len;
+		sdp->sdp_provider = prov;
+
+		if ((id = dtrace_probe_lookup(prov->dtmp_id, modname,
+					      sdpd->sdpd_func, nname)) !=
+				DTRACE_IDNONE) {
+			prv = dtrace_probe_arg(prov->dtmp_id, id);
+			ASSERT(prv != NULL);
+
+			sdp->sdp_next = prv->sdp_next;
+			sdp->sdp_id = id;
+			prv->sdp_next = sdp;
+		} else {
+			sdp->sdp_id = dtrace_probe_create(prov->dtmp_id,
+							  modname,
+							  sdpd->sdpd_func,
+							  nname, 3, sdp);
+			mp->sdt_nprobes++;
+		}
+
+		sdp->sdp_hashnext = sdt_probetab[
+					SDT_ADDR2NDX(sdpd->sdpd_offset)];
+		sdt_probetab[SDT_ADDR2NDX(sdpd->sdpd_offset)] = sdp;
+
+		sdp->sdp_patchval = SDT_PATCHVAL;
+		sdp->sdp_patchpoint = (uint8_t *)sdpd->sdpd_offset;
+		sdp->sdp_savedval = *sdp->sdp_patchpoint;
+	}
+}
+
+int sdt_enable(void *arg, dtrace_id_t id, void *parg)
+{
+	sdt_probe_t	*sdp = parg;
+
+	sdt_probe_enable(sdp->sdp_patchpoint);
+	return 0;
+}
+
+void sdt_disable(void *arg, dtrace_id_t id, void *parg)
+{
+	sdt_probe_t	*sdp = parg;
+
+	sdt_probe_disable(sdp->sdp_patchpoint);
+}
+
+void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
+		    dtrace_argdesc_t *desc)
+{
+}
+
+uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
+		    int aframes)
+{
+	return 0;
+}
+
+void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
+{
+}
 
 static long sdt_ioctl(struct file *file,
 			 unsigned int cmd, unsigned long arg)
@@ -70,10 +211,23 @@ int sdt_dev_init(void)
 		pr_err("%s: Can't register misc device %d\n",
 		       sdt_dev.name, sdt_dev.minor);
 
+	dtrace_register_builtins();	/* FIXME */
+
+	if (sdt_probetab_size == 0)
+		sdt_probetab_size = SDT_PROBETAB_SIZE;
+
+	sdt_probetab_mask = sdt_probetab_size - 1;
+	sdt_probetab = vzalloc(sdt_probetab_size * sizeof(sdt_probe_t *));
+
+	dtrace_invop_add(sdt_invop);
+
 	return ret;
 }
 
 void sdt_dev_exit(void)
 {
+	dtrace_invop_remove(sdt_invop);
+	vfree(sdt_probetab);
+
 	misc_deregister(&sdt_dev);
 }

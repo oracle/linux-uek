@@ -32,6 +32,7 @@
 #include <asm/cmpxchg.h>
 
 #include "dtrace.h"
+#include "sdt_impl.h"
 
 ktime_t				dtrace_chill_interval =
 					KTIME_INIT(1, 0);
@@ -171,6 +172,14 @@ void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 	do {
 		prv->dtpv_pops.dtps_provide(prv->dtpv_arg, desc);
 
+		/*
+		 * In Linux, the kernel proper is not a module and therefore is
+		 * not listed in the list of modules.  Since the kernel proper
+		 * can have probe points (and e.g. has a lot of SDT ones), we
+		 * use a pseudo-kernel module to collect them so that there is
+		 * no need for code duplication in handling such probe points.
+		 */
+		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, dtrace_kmod);
 #ifdef FIXME
 /*
  * This needs work because (so far) I have not found a way to get access to the
