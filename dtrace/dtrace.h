@@ -2138,7 +2138,7 @@ extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 									\
   static int __init name##_init(void)					\
   {									\
-	int ret = 0;							\
+	int	ret = 0;						\
 									\
 	ret = name##_dev_init();					\
 	if (ret)							\
@@ -2158,6 +2158,61 @@ extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
   static void __exit name##_exit(void)					\
   {									\
 	dtrace_unregister(name##_id);					\
+	name##_dev_exit();						\
+  }									\
+									\
+  module_init(name##_init);						\
+  module_exit(name##_exit);
+
+typedef struct dtrace_mprovider {
+	char			*dtmp_name;
+	char			*dtmp_pref;
+	dtrace_pattr_t		*dtmp_attr;
+	uint32_t		dtmp_priv;
+	dtrace_pops_t		*dtmp_pops;
+	dtrace_provider_id_t	dtmp_id;
+} dtrace_mprovider_t;
+
+#define DT_META_PROVIDER_MODULE(name)					\
+  static int __init name##_init(void)					\
+  {									\
+	int		ret = 0;					\
+	dtrace_mprovider_t	*prov;						\
+									\
+	ret = name##_dev_init();					\
+	if (ret)							\
+		goto failed;						\
+									\
+	for (prov = name##_providers; prov->dtmp_name != NULL; prov++) {\
+		if (dtrace_register(prov->dtmp_name, prov->dtmp_attr,	\
+				    prov->dtmp_priv, NULL,		\
+				    prov->dtmp_pops, prov,		\
+				    &prov->dtmp_id) != 0)		\
+			pr_warning("Failed to register sdt provider %s",\
+				   prov->dtmp_name);			\
+	}								\
+									\
+	return 0;							\
+									\
+  failed:								\
+	return ret;							\
+  }									\
+									\
+  static void __exit name##_exit(void)					\
+  {									\
+	int			ret = 0;				\
+	dtrace_mprovider_t	*prov;					\
+									\
+	for (prov = name##_providers; prov->dtmp_name != NULL; prov++) {\
+		if (prov->dtmp_id != DTRACE_PROVNONE) {			\
+			ret = dtrace_unregister(prov->dtmp_id);		\
+			if (ret != 0)					\
+				return;					\
+									\
+			prov->dtmp_id = DTRACE_PROVNONE;		\
+		}							\
+	}								\
+									\
 	name##_dev_exit();						\
   }									\
 									\
