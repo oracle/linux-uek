@@ -90,6 +90,7 @@
 #include <linux/kcov.h>
 #include <linux/livepatch.h>
 #include <linux/thread_info.h>
+#include <linux/sdt.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -2083,6 +2084,7 @@ long _do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
+		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}

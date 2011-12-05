@@ -708,7 +708,9 @@ asmlinkage __visible void __init start_kernel(void)
 	}
 
 #if defined(CONFIG_DT_SDT) || defined(CONFIG_DT_SDT_MODULE)
+# if FIXME
 	dtrace_register_builtins();
+# endif
 #endif
 
 	/* Do the rest non-__init'ed, we're now alive */
