@@ -8,6 +8,7 @@
 #include <linux/cyclic.h>
 #include <linux/dtrace_os.h>
 #include <linux/hrtimer.h>
+#include <linux/kdebug.h>
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -41,9 +42,9 @@ ktime_t dtrace_getwalltime(void)
 }
 EXPORT_SYMBOL(dtrace_getwalltime);
 
-/*
- * Very basic implementation of cyclics, merely enough to support dtrace.
- */
+/*---------------------------------------------------------------------------*\
+(* CYCLICS                                                                   *)
+\*---------------------------------------------------------------------------*/
 typedef union cyclic	cyclic_t;
 union cyclic {
 	struct {
@@ -121,6 +122,9 @@ void cyclic_remove(cyclic_id_t id)
 }
 EXPORT_SYMBOL(cyclic_remove);
 
+/*---------------------------------------------------------------------------*\
+(* STACK TRACES                                                              *)
+\*---------------------------------------------------------------------------*/
 static int dtrace_stacktrace_stack(void *data, char *name)
 {
 	stacktrace_state_t	*st = (stacktrace_state_t *)data;
@@ -227,6 +231,99 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 }
 EXPORT_SYMBOL(dtrace_stacktrace);
 
+/*---------------------------------------------------------------------------*\
+(* INVALID OPCODE HANDLING                                                   *)
+\*---------------------------------------------------------------------------*/
+typedef struct dtrace_invop_hdlr {
+	int				(*dtih_func)(struct pt_regs *);
+	struct dtrace_invop_hdlr	*dtih_next;
+} dtrace_invop_hdlr_t;
+
+static dtrace_invop_hdlr_t	*dtrace_invop_hdlrs;
+
+static int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
+			       void *args)
+{
+	struct die_args		*dargs = args;
+	dtrace_invop_hdlr_t	*hdlr;
+	int			rval = 0;
+
+	if (val != DIE_TRAP || dargs->trapnr != 6)
+		return NOTIFY_DONE;
+
+printk(KERN_INFO "dtrace_die_notifier: TRAP %d, IP %lx\n", dargs->trapnr, dargs->regs->ip);
+
+	for (hdlr = dtrace_invop_hdlrs; hdlr != NULL; hdlr = hdlr->dtih_next) {
+		if ((rval = hdlr->dtih_func(dargs->regs)) != 0)
+			break;
+	}
+
+	if (rval != 0) {
+		dargs->regs->ip++;
+
+printk(KERN_INFO "dtrace_die_notifier: TRAP %d, New IP %lx\n", dargs->trapnr, dargs->regs->ip);
+		return NOTIFY_OK | NOTIFY_STOP_MASK;
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block	dtrace_die = {
+	.notifier_call = dtrace_die_notifier,
+};
+
+void dtrace_invop_add(int (*func)(struct pt_regs *))
+{
+	dtrace_invop_hdlr_t	*hdlr;
+
+	hdlr = kmalloc(sizeof(dtrace_invop_hdlr_t), GFP_KERNEL);
+	hdlr->dtih_func = func;
+	hdlr->dtih_next = dtrace_invop_hdlrs;
+	dtrace_invop_hdlrs = hdlr;
+
+	/*
+	 * If this is the first DTrace invalid opcode handling, register the
+	 * die notifier with the kernel notifier core.
+	 */
+	if (hdlr->dtih_next == NULL)
+		register_die_notifier(&dtrace_die);
+}
+EXPORT_SYMBOL(dtrace_invop_add);
+
+void dtrace_invop_remove(int (*func)(struct pt_regs *))
+{
+	dtrace_invop_hdlr_t	*hdlr = dtrace_invop_hdlrs, *prev = NULL;
+
+	for (;;) {
+		if (hdlr == NULL)
+			pr_err("attempt to remove non-existant invop handler");
+
+		if (hdlr->dtih_func == func)
+			break;
+
+		prev = hdlr;
+		hdlr = hdlr->dtih_next;
+	}
+
+	if (prev == NULL) {
+		dtrace_invop_hdlrs = hdlr->dtih_next;
+
+		/*
+		 * If there are no invalid opcode handlers left, unregister
+		 * from the kernel notifier core.
+		 */
+		if (dtrace_invop_hdlrs == NULL)
+			unregister_die_notifier(&dtrace_die);
+	} else
+		prev->dtih_next = hdlr->dtih_next;
+
+	kfree(hdlr);
+}
+EXPORT_SYMBOL(dtrace_invop_remove);
+
+/*---------------------------------------------------------------------------*\
+(* SYSTEM CALL PROBING SUPPORT                                               *)
+\*---------------------------------------------------------------------------*/
 void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 		       uintptr_t, uintptr_t);
 

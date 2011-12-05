@@ -1092,6 +1092,7 @@ out_set:
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
 ret:
+	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
 	trace_signal_generate(sig, info, t, group, result);
 	return ret;
 }
@@ -2320,11 +2321,6 @@ relock:
 			if (print_fatal_signals)
 				print_fatal_signal(ksig->info.si_signo);
 			proc_coredump_connector(current);
-			DTRACE_PROBE4(get_signal_to_deliver,
-				int, ksig->info.si_signo,
-				struct pt_regs *, regs,
-				char *, current->comm,
-				int, task_pid_nr(current));
 			/*
 			 * If it was able to dump core, this kills all
 			 * other threads in the group and synchronizes with
@@ -2344,6 +2340,12 @@ relock:
 	}
 	spin_unlock_irq(&sighand->siglock);
 
+	if (signr != 0) {
+		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
+			     ksig->ka.sa.sa_handler != SIG_DFL ? NULL :
+			     &ksig->info, void (*)(void),
+			     ksig->ka.sa.sa_handler);
+	}
 	ksig->sig = signr;
 	return ksig->sig > 0;
 }
