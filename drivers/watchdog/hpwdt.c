@@ -320,6 +320,8 @@ static int __devinit detect_cru_service(void)
 	if (p == NULL)
 		return -ENOMEM;
 
+	set_memory_x((unsigned long)p & PAGE_MASK, ROM_SIZE >> PAGE_SHIFT);
+
 	for (q = p; q < p + ROM_SIZE; q += 16) {
 		rc = bios32_present(q);
 		if (!rc)
