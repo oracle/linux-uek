@@ -2927,6 +2927,7 @@ static void bnx2x_drv_info_ether_stat(struct bnx2x *bp)
 
 static void bnx2x_drv_info_fcoe_stat(struct bnx2x *bp)
 {
+#ifdef BCM_CNIC
 	struct bnx2x_dcbx_app_params *app = &bp->dcbx_port_params.app;
 	struct fcoe_stats_info *fcoe_stat =
 		&bp->slowpath->drv_info_to_mcp.fcoe_stat;
@@ -3010,7 +3011,6 @@ static void bnx2x_drv_info_fcoe_stat(struct bnx2x *bp)
 		       fcoe_q_xstorm_stats->mcast_pkts_sent);
 	}
 
-#ifdef BCM_CNIC
 	/* ask L5 driver to add data to the struct */
 	bnx2x_cnic_notify(bp, CNIC_CTL_FCOE_STATS_GET_CMD);
 #endif
@@ -3018,6 +3018,7 @@ static void bnx2x_drv_info_fcoe_stat(struct bnx2x *bp)
 
 static void bnx2x_drv_info_iscsi_stat(struct bnx2x *bp)
 {
+#ifdef BCM_CNIC
 	struct bnx2x_dcbx_app_params *app = &bp->dcbx_port_params.app;
 	struct iscsi_stats_info *iscsi_stat =
 		&bp->slowpath->drv_info_to_mcp.iscsi_stat;
@@ -3027,7 +3028,6 @@ static void bnx2x_drv_info_iscsi_stat(struct bnx2x *bp)
 	iscsi_stat->qos_priority =
 		app->traffic_type_priority[LLFC_TRAFFIC_TYPE_ISCSI];
 
-#ifdef BCM_CNIC
 	/* ask L5 driver to add data to the struct */
 	bnx2x_cnic_notify(bp, CNIC_CTL_ISCSI_STATS_GET_CMD);
 #endif
