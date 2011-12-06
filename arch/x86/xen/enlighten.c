@@ -521,7 +521,7 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 	 * Look for known traps using IST, and substitute them
 	 * appropriately.  The debugger ones are the only ones we care
 	 * about.  Xen will handle faults like double_fault and
-	 * machine_check, so we should never see them.  Warn if
+	 * nmi, so we should never see them.  Warn if
 	 * there's an unexpected IST-using fault handler.
 	 */
 	if (addr == (unsigned long)debug)
@@ -536,7 +536,10 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 		return 0;
 #ifdef CONFIG_X86_MCE
 	} else if (addr == (unsigned long)machine_check) {
-		return 0;
+		if (xen_initial_domain())
+			addr = (unsigned long)machine_check;
+		else
+			return 0;
 #endif
 	} else {
 		/* Some other trap using IST? */
