@@ -414,7 +414,7 @@ Summary: The Linux kernel
 # integration in the distro harder than needed.
 #
 ##%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, iwl4965-firmware < 228.57.2, selinux-policy-targeted < 1.25.3-14, squashfs-tools < 4.0, wireless-tools < 29-3
-%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14
+%define package_conflicts initscripts < 7.23, udev < 095-14.27.0.1.el5_7.1, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14
 
 #
 # The ld.so.conf.d file we install uses syntax older ldconfig's don't grok.
