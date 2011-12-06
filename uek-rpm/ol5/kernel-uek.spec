@@ -440,7 +440,7 @@ Summary: The Linux kernel
 # scripts use them.
 #
 ##%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, mkinitrd >= 6.0.61-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-61.0.2, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, ql2xxx-firmware, oraclelinux-release
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-71.0.10, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, ql2xxx-firmware, oraclelinux-release
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
