@@ -443,7 +443,7 @@ Summary: The Linux kernel
 # scripts use them.
 #
 %define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-uek-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, ql23xx-firmware
-%define initrd_prereq  dracut-kernel >= 002-18.git413bcf78
+%define initrd_prereq  dracut-kernel >= 004-242.0.3
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
