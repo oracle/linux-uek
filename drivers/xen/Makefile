@@ -1,4 +1,4 @@
-obj-y	+= grant-table.o features.o events.o manage.o balloon.o
+obj-y	+= grant-table.o features.o events.o manage.o balloon.o pcpu.o
 obj-y	+= xenbus/
 obj-y	+= tmem.o
 
