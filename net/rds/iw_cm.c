@@ -157,7 +157,7 @@ static void rds_iw_qp_event_handler(struct ib_event *event, void *data)
 	case IB_EVENT_QP_FATAL:
 	default:
 		rdsdebug("Fatal QP Event %u "
-			"- connection $pI4->%pI4, reconnecting\n",
+			"- connection %pI4->%pI4, reconnecting\n",
 			event->event, &conn->c_laddr,
 			&conn->c_faddr);
 		rds_conn_drop(conn);
