@@ -3662,7 +3662,7 @@ LPFC_ATTR_R(enable_hba_heartbeat, 0, 0, 1, "Enable HBA Heartbeat.");
 #       1  = BlockGuard enabled
 # Value range is [0,1]. Default value is 0.
 */
-LPFC_ATTR_R(enable_bg, 0, 0, 1, "Enable BlockGuard Support");
+LPFC_ATTR_R(enable_bg, 1, 0, 1, "Enable BlockGuard Support");
 
 /*
 # lpfc_prot_mask: i
