@@ -1619,6 +1619,7 @@ long do_fork(unsigned long clone_flags,
 			if (!wait_for_vfork_done(p, &vfork))
 				ptrace_event(PTRACE_EVENT_VFORK_DONE, nr);
 		}
+		DTRACE_PROC1(lwp_create, struct task_struct *, p);
 		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
