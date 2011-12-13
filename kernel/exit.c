@@ -850,6 +850,7 @@ void __noreturn do_exit(long code)
 	tsk->exit_code = code;
 	taskstats_exit(tsk, group_dead);
 
+	DTRACE_PROC(lwp__exit);
 	DTRACE_PROC1(exit, int, code);
 
 	exit_mm();
