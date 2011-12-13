@@ -38,6 +38,10 @@ static int pte_testbit(pte_t pte)
 {
 	return pte_flags(pte) & _PAGE_UNUSED1;
 }
+static int pte_testhuge(pte_t pte)
+{
+	return pte_val(pte) & _PAGE_PSE;
+}
 
 struct split_state {
 	long lpg, gpg, spg, exec;
@@ -181,7 +185,7 @@ static int pageattr_test(void)
 		}
 
 		pte = lookup_address(addr[i], &level);
-		if (!pte || !pte_testbit(*pte) || pte_huge(*pte)) {
+		if (!pte || !pte_testbit(*pte) || pte_testhuge(*pte)) {
 			printk(KERN_ERR "CPA %lx: bad pte %Lx\n", addr[i],
 				pte ? (u64)pte_val(*pte) : 0ULL);
 			failed++;

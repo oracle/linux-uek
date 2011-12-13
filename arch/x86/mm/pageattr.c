@@ -651,7 +651,7 @@ repeat:
 
 	if (level == PG_LEVEL_4K) {
 		pte_t new_pte;
-		pgprot_t new_prot = pte_pgprot(old_pte);
+		pgprot_t new_prot = pte_attrs(old_pte);
 		unsigned long pfn = pte_pfn(old_pte);
 
 		pgprot_val(new_prot) &= ~pgprot_val(cpa->mask_clr);
