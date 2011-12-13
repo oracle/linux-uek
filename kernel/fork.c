@@ -2083,7 +2083,7 @@ long _do_fork(unsigned long clone_flags,
 		}
 
 		put_pid(pid);
-		DTRACE_PROC1(lwp_create, struct task_struct *, p);
+		DTRACE_PROC1(lwp__create, struct task_struct *, p);
 		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
