@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
 #include <linux/hardirq.h>
 #include <linux/smp.h>
 #include <asm/stacktrace.h>
@@ -35,8 +36,6 @@
 uintptr_t _userlimit = 0x00007fffffffffffLL;
 uintptr_t kernelbase = 0xffff880000000000LL;
 
-cpu_core_t	cpu_core[NR_CPUS];
-EXPORT_SYMBOL(cpu_core);
 EXPORT_SYMBOL(dtrace_getfp);
 
 DEFINE_MUTEX(cpu_lock);
@@ -53,14 +52,14 @@ static int dtrace_copycheck(uintptr_t uaddr, uintptr_t kaddr, size_t size)
 #else
 	if (kaddr < kernelbase || kaddr + size < kaddr) {
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-		cpu_core[smp_processor_id()].cpuc_dtrace_illval = kaddr;
+		this_cpu_core->cpuc_dtrace_illval = kaddr;
 		return 0;
 	}
 #endif
 
 	if (uaddr + size >= kernelbase || uaddr + size < uaddr) {
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-		cpu_core[smp_processor_id()].cpuc_dtrace_illval = uaddr;
+		this_cpu_core->cpuc_dtrace_illval = uaddr;
 		return 0;
 	}
 
@@ -102,8 +101,7 @@ void dtrace_copyoutstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
 									      \
 		if ((uintptr_t)uaddr > _userlimit) {			      \
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);		      \
-			cpu_core[smp_processor_id()].cpuc_dtrace_illval =     \
-							(uintptr_t)uaddr;     \
+			this_cpu_core->cpuc_dtrace_illval = (uintptr_t)uaddr; \
 			return 0;					      \
 		}							      \
 									      \

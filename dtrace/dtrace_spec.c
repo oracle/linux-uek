@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
 #include <linux/smp.h>
 #include <asm/cmpxchg.h>
 
@@ -95,7 +96,7 @@ void dtrace_speculation_commit(dtrace_state_t *state, processorid_t cpu,
 		return;
 
 	if (which > state->dts_nspeculations) {
-		cpu_core[cpu].cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
+		per_cpu_core(cpu)->cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
 		return;
 	}
 
@@ -238,7 +239,7 @@ void dtrace_speculation_discard(dtrace_state_t *state, processorid_t cpu,
 		return;
 
 	if (which > state->dts_nspeculations) {
-		cpu_core[cpu].cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
+		per_cpu_core(cpu)->cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
 		return;
 	}
 
@@ -379,7 +380,7 @@ void dtrace_speculation_clean(dtrace_state_t *state)
  * atomically transitioned into the ACTIVEMANY state.
  */
 dtrace_buffer_t *dtrace_speculation_buffer(dtrace_state_t *state,
-					   processorid_t cpuid,
+					   processorid_t cpu,
 					   dtrace_specid_t which)
 {
 	dtrace_speculation_t		*spec;
@@ -390,12 +391,12 @@ dtrace_buffer_t *dtrace_speculation_buffer(dtrace_state_t *state,
 		return NULL;
 
 	if (which > state->dts_nspeculations) {
-		cpu_core[cpuid].cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
+		per_cpu_core(cpu)->cpuc_dtrace_flags |= CPU_DTRACE_ILLOP;
 		return NULL;
 	}
 
 	spec = &state->dts_speculations[which - 1];
-	buf = &spec->dtsp_buffer[cpuid];
+	buf = &spec->dtsp_buffer[cpu];
 
 	do {
 		curr = spec->dtsp_state;

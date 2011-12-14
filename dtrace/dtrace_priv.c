@@ -25,6 +25,8 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
+
 #include "dtrace.h"
 
 /*
