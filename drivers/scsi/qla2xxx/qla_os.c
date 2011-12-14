@@ -145,7 +145,7 @@ MODULE_PARM_DESC(ql2xmultique_tag,
 		"Default is 0 for no affinity of request and response IO. "
 		"Set it to 1 to turn on the cpu affinity.");
 
-int ql2xfwloadbin = 0;
+int ql2xfwloadbin;
 module_param(ql2xfwloadbin, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(ql2xfwloadbin,
 		"Option to specify location from which to load ISP firmware:.\n"
