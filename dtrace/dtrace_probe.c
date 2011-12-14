@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
 #include <linux/hardirq.h>
 #include <linux/idr.h>
 #include <linux/module.h>
@@ -375,7 +376,7 @@ static void dtrace_action_chill(dtrace_mstate_t *mstate, ktime_t val)
 {
 	ktime_t			now;
 	volatile uint16_t	*flags;
-	cpu_core_t		*cpu = &cpu_core[smp_processor_id()];
+	cpu_core_t		*cpu = this_cpu_core;
 
 	if (dtrace_destructive_disallow)
 		return;
@@ -428,9 +429,7 @@ static void dtrace_action_ustack(dtrace_mstate_t *mstate,
 	char		*str = (char *)&pcs[nframes];
 	int		size, offs = 0, i, j;
 	uintptr_t	old = mstate->dtms_scratch_ptr, saved;
-	uint16_t	*flags = &cpu_core[
-					smp_processor_id()
-				  ].cpuc_dtrace_flags;
+	uint16_t	*flags = &this_cpu_core->cpuc_dtrace_flags;
 	char		*sym;
 
 	/*
@@ -599,7 +598,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	mstate.dtms_arg[3] = arg3;
 	mstate.dtms_arg[4] = arg4;
 
-	flags = (volatile uint16_t *)&cpu_core[cpuid].cpuc_dtrace_flags;
+	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
 
 	for (ecb = probe->dtpr_ecb; ecb != NULL; ecb = ecb->dte_next) {
 		dtrace_predicate_t	*pred = ecb->dte_predicate;
@@ -1139,7 +1138,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					?  mstate.dtms_fltoffs
 					: -1,
 				DTRACE_FLAGS2FLT(*flags),
-				cpu_core[cpuid].cpuc_dtrace_illval);
+				this_cpu_core->cpuc_dtrace_illval);
 
 			continue;
 		}

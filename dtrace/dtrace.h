@@ -2224,53 +2224,7 @@ typedef struct dtrace_mprovider {
 
 typedef unsigned long	dtrace_icookie_t;
 
-#define DTRACE_CPUFLAG_ISSET(flag) \
-	(cpu_core[smp_processor_id()].cpuc_dtrace_flags & (flag))
-
-#define DTRACE_CPUFLAG_SET(flag) \
-	(cpu_core[smp_processor_id()].cpuc_dtrace_flags |= (flag))
-
-#define DTRACE_CPUFLAG_CLEAR(flag) \
-	(cpu_core[smp_processor_id()].cpuc_dtrace_flags &= ~(flag))
-
-#define CPU_DTRACE_NOFAULT	0x0001
-#define CPU_DTRACE_DROP		0x0002
-#define CPU_DTRACE_BADADDR	0x0004
-#define CPU_DTRACE_BADALIGN	0x0008
-#define CPU_DTRACE_DIVZERO	0x0010
-#define CPU_DTRACE_ILLOP	0x0020
-#define CPU_DTRACE_NOSCRATCH	0x0040
-#define CPU_DTRACE_KPRIV	0x0080
-#define CPU_DTRACE_UPRIV	0x0100
-#define CPU_DTRACE_TUPOFLOW	0x0200
-#define CPU_DTRACE_ENTRY	0x0800
-#define CPU_DTRACE_BADSTACK	0x1000
-
-#define CPU_DTRACE_FAULT	(CPU_DTRACE_BADADDR | CPU_DTRACE_BADALIGN | \
-				 CPU_DTRACE_DIVZERO | CPU_DTRACE_ILLOP | \
-				 CPU_DTRACE_NOSCRATCH | CPU_DTRACE_KPRIV | \
-				 CPU_DTRACE_UPRIV | CPU_DTRACE_TUPOFLOW | \
-				 CPU_DTRACE_BADSTACK)
-#define CPU_DTRACE_ERROR	(CPU_DTRACE_FAULT | CPU_DTRACE_DROP)
-
-#define CPUC_SIZE	(sizeof (uint16_t) + sizeof(uint8_t) + \
-			 sizeof(uintptr_t) + sizeof(struct mutex))
-#define CPUC_PADSIZE	(192 - CPUC_SIZE)
-
-typedef struct cpu_core {
-	uint16_t cpuc_dtrace_flags;
-	uint8_t cpuc_dcpc_intr_state;
-	uint8_t cpuc_pad[CPUC_PADSIZE];
-	uintptr_t cpuc_dtrace_illval;
-	struct mutex cpuc_pid_lock;
-
-	uintptr_t cpu_dtrace_caller;
-	ktime_t cpu_dtrace_chillmark;
-	ktime_t cpu_dtrace_chilled;
-} cpu_core_t;
-
-extern cpu_core_t		cpu_core[];
-extern struct mutex		cpu_lock;
+extern struct mutex	cpu_lock;
 
 extern void dtrace_sync(void);
 extern void dtrace_toxic_ranges(void (*)(uintptr_t, uintptr_t));
