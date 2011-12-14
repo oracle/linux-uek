@@ -844,8 +844,13 @@ no_context(struct pt_regs *regs, unsigned long error_code,
 
 	/*
 	 * Oops. The kernel tried to access some bad page. We'll have to
-	 * terminate things with extreme prejudice:
+	 * terminate things with extreme prejudice, unless a notifier decides
+	 * to let this one slide.
 	 */
+	if (notify_die(DIE_PAGE_FAULT, "page fault", regs, error_code, 14,
+		       SIGKILL) == NOTIFY_STOP)
+		return;
+
 	flags = oops_begin();
 
 	show_fault_oops(regs, error_code, address);
