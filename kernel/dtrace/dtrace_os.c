@@ -6,16 +6,17 @@
  */
 
 #include <linux/cyclic.h>
+#include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
+#include <linux/fs.h>
 #include <linux/hrtimer.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
+#include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <asm/insn.h>
 #include <asm/stacktrace.h>
-
-#include <linux/fs.h>
-#include <linux/sched.h>
 #include <asm/syscalls.h>
 
 /*
@@ -248,10 +249,42 @@ static int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 	dtrace_invop_hdlr_t	*hdlr;
 	int			rval = 0;
 
+	if (val == DIE_PAGE_FAULT) {
+		unsigned long	addr = read_cr2();
+		struct insn	insn;
+
+		if (!DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOFAULT))
+			return NOTIFY_DONE;
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
+		this_cpu_core->cpuc_dtrace_illval = addr;
+
+		kernel_insn_init(&insn, (void *)dargs->regs->ip);
+		insn_get_length(&insn);
+
+		dargs->regs->ip += insn.length;
+
+		return NOTIFY_OK | NOTIFY_STOP_MASK;
+	}
+	if (val == DIE_GPF) {
+		struct insn	insn;
+
+		if (!DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOFAULT))
+			return NOTIFY_DONE;
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
+
+		kernel_insn_init(&insn, (void *)dargs->regs->ip);
+		insn_get_length(&insn);
+
+		dargs->regs->ip += insn.length;
+
+		return NOTIFY_DONE;
+	}
+
 	if (val != DIE_TRAP || dargs->trapnr != 6)
 		return NOTIFY_DONE;
 
-printk(KERN_INFO "dtrace_die_notifier: TRAP %d, IP %lx\n", dargs->trapnr, dargs->regs->ip);
 
 	for (hdlr = dtrace_invop_hdlrs; hdlr != NULL; hdlr = hdlr->dtih_next) {
 		if ((rval = hdlr->dtih_func(dargs->regs)) != 0)
@@ -261,7 +294,6 @@ printk(KERN_INFO "dtrace_die_notifier: TRAP %d, IP %lx\n", dargs->trapnr, dargs-
 	if (rval != 0) {
 		dargs->regs->ip++;
 
-printk(KERN_INFO "dtrace_die_notifier: TRAP %d, New IP %lx\n", dargs->trapnr, dargs->regs->ip);
 		return NOTIFY_OK | NOTIFY_STOP_MASK;
 	}
 
