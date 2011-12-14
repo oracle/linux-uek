@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
 #include <linux/hardirq.h>
 #include <linux/in6.h>
 #include <linux/inet.h>
@@ -909,9 +910,8 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 		size_t			size = bits / NBBY;		\
 		uint##bits##_t		rval;				\
 		int			i;				\
-		int			cpu = smp_processor_id();	\
 		volatile uint16_t	*flags = (volatile uint16_t *)	\
-			    &cpu_core[cpu].cpuc_dtrace_flags;		\
+			    &this_cpu_core->cpuc_dtrace_flags;		\
 									\
 		/*							\
 		 * Deviation from the OpenSolaris code...  Protect	\
@@ -920,7 +920,7 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 		 */							\
 		if (addr == 0) {					\
 			*flags |= CPU_DTRACE_BADADDR;			\
-			cpu_core[cpu].cpuc_dtrace_illval = addr;	\
+			this_cpu_core->cpuc_dtrace_illval = addr;	\
 			return 0;					\
 		}							\
 									\
@@ -932,12 +932,12 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 									\
 			if (addr + size <= dtrace_toxrange[i].dtt_base)	\
 				continue;				\
-								\
+									\
 			/*						\
 			 * This address falls within a toxic region.	\
 			 */						\
 			*flags |= CPU_DTRACE_BADADDR;			\
-			cpu_core[cpu].cpuc_dtrace_illval = addr;	\
+			this_cpu_core->cpuc_dtrace_illval = addr;	\
 			return 0;					\
 		}							\
 									\
@@ -1089,8 +1089,7 @@ static int
 dtrace_canload(uint64_t addr, size_t sz, dtrace_mstate_t *mstate,
     dtrace_vstate_t *vstate)
 {
-	int			cpu = smp_processor_id();
-	volatile uintptr_t	*illval = &cpu_core[cpu].cpuc_dtrace_illval;
+	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;
 
 	/*
 	 * If we hold the privilege to read from kernel memory, then
@@ -1243,8 +1242,7 @@ static int dtrace_bcmp(const void *s1, const void *s2, size_t len)
 {
 	volatile uint16_t	*flags;
 
-	flags = (volatile uint16_t *)&cpu_core[
-					smp_processor_id()].cpuc_dtrace_flags;
+	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
 
 	if (s1 == s2)
 		return 0;
@@ -2173,12 +2171,8 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 			    dtrace_key_t *tupregs, int nargs,
 			    dtrace_mstate_t *mstate, dtrace_state_t *state)
 {
-	volatile uint16_t	*flags = &cpu_core[
-						smp_processor_id()
-					  ].cpuc_dtrace_flags;
-	volatile uintptr_t	*illval = &cpu_core[
-						smp_processor_id()
-					   ].cpuc_dtrace_illval;
+	volatile uint16_t	*flags = &this_cpu_core->cpuc_dtrace_flags;
+	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;
 	dtrace_vstate_t		*vstate = &state->dts_vstate;
 
 	union {
@@ -2476,6 +2470,9 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 				rval = 1;
 				break;
 			}
+
+			if (p == p->real_parent)
+				break;
 		}
 
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
@@ -3667,13 +3664,12 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 	const char		*strtab = difo->dtdo_strtab;
 	const uint64_t		*inttab = difo->dtdo_inttab;
 
-	int			cpu = smp_processor_id();
 	uint64_t		rval = 0;
 	dtrace_statvar_t	*svar;
 	dtrace_dstate_t		*dstate = &vstate->dtvs_dynvars;
 	dtrace_difv_t		*v;
-	volatile uint16_t	*flags = &cpu_core[cpu].cpuc_dtrace_flags;
-	volatile uintptr_t	*illval = &cpu_core[cpu].cpuc_dtrace_illval;
+	volatile uint16_t	*flags = &this_cpu_core->cpuc_dtrace_flags;
+	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;
 
 	dtrace_key_t		tupregs[DIF_DTR_NREGS + 2];
 						/* +2 for thread and id */

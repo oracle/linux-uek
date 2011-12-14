@@ -25,6 +25,7 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
 #include <linux/vmalloc.h>
 
 #include "dtrace.h"
@@ -71,8 +72,7 @@ int dtrace_strncmp(char *s1, char *s2, size_t limit)
 	if (s1 == s2 || limit == 0)
 		return 0;
 
-	flags = (volatile uint16_t *)
-		&cpu_core[smp_processor_id()].cpuc_dtrace_flags;
+	flags = (volatile uint16_t *)&this_cpu_core->cpuc_dtrace_flags;
 
 	do {
 		if (s1 == NULL)

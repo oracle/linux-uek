@@ -25,6 +25,8 @@
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_cpu.h>
+
 #include "dtrace.h"
 
 static uint32_t	dtrace_helptrace_next = 0;
@@ -44,9 +46,7 @@ static void dtrace_helper_trace(dtrace_helper_action_t *helper,
 {
 	uint32_t		size, next, nnext, i;
 	dtrace_helptrace_t	*ent;
-	uint16_t		flags = cpu_core[
-					    smp_processor_id()
-					].cpuc_dtrace_flags;
+	uint16_t		flags = this_cpu_core->cpuc_dtrace_flags;
 
 	if (!dtrace_helptrace_enabled)
 		return;
@@ -87,7 +87,7 @@ static void dtrace_helper_trace(dtrace_helper_action_t *helper,
 				?  mstate->dtms_fltoffs
 				: -1;
 	ent->dtht_fault = DTRACE_FLAGS2FLT(flags);
-	ent->dtht_illval = cpu_core[smp_processor_id()].cpuc_dtrace_illval;
+	ent->dtht_illval = this_cpu_core->cpuc_dtrace_illval;
 
 	for (i = 0; i < vstate->dtvs_nlocals; i++) {
 		dtrace_statvar_t	*svar;
@@ -105,9 +105,7 @@ static void dtrace_helper_trace(dtrace_helper_action_t *helper,
 uint64_t dtrace_helper(int which, dtrace_mstate_t *mstate,
 		       dtrace_state_t *state, uint64_t arg0, uint64_t arg1)
 {
-	uint16_t		*flags = &cpu_core[
-						smp_processor_id()
-					  ].cpuc_dtrace_flags;
+	uint16_t		*flags = &this_cpu_core->cpuc_dtrace_flags;
 	uint64_t		sarg0 = mstate->dtms_arg[0];
 	uint64_t		sarg1 = mstate->dtms_arg[1];
 	uint64_t		rval = 0;

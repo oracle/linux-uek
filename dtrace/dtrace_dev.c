@@ -26,6 +26,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dtrace_cpu.h>
 #include <linux/dtrace_ioctl.h>
 #include <linux/fs.h>
 #include <linux/jiffies.h>
@@ -1152,13 +1153,13 @@ int dtrace_istoxic(uintptr_t kaddr, size_t size)
 
 		if (kaddr - taddr < tsize) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-			cpu_core[smp_processor_id()].cpuc_dtrace_illval = kaddr;
+			this_cpu_core->cpuc_dtrace_illval = kaddr;
 			return 1;
 		}
 
 		if (taddr - kaddr < size) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-			cpu_core[smp_processor_id()].cpuc_dtrace_illval = taddr;
+			this_cpu_core->cpuc_dtrace_illval = kaddr;
 			return 1;
 		}
 	}
