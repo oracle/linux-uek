@@ -670,6 +670,7 @@ struct scsi_qla_host {
 #define DDB_DMA_BLOCK_SIZE 512
 	uint16_t pri_ddb_idx;
 	uint16_t sec_ddb_idx;
+	uint16_t temperature;
 	int is_reset;
 };
 
