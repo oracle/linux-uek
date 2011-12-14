@@ -969,10 +969,8 @@ qla81xx_reset_mpi(scsi_qla_host_t *vha)
 {
 	uint16_t mb[4] = {0x1010, 0, 1, 0};
 
-	if (IS_QLA83XX(vha->hw)) {
-		/* waiting for details of procedure to reset 83xx 'mpi' */
-		return QLA_FUNCTION_FAILED;
-	}
+	if (!IS_QLA81XX(vha->hw))
+	    return QLA_SUCCESS;
 
 	return qla81xx_write_mpi_register(vha, mb);
 }
