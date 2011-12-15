@@ -349,6 +349,11 @@ static inline pgprot_t pgprot_modify(pgprot_t oldprot, pgprot_t newprot)
 	return __pgprot(preservebits | addbits);
 }
 
+static inline pgprot_t pte_attrs(pte_t pte)
+{
+	return __pgprot(pte_val(pte) & PTE_FLAGS_MASK);
+}
+
 #define pte_pgprot(x) __pgprot(pte_flags(x) & PTE_FLAGS_MASK)
 
 #define canon_pgprot(p) __pgprot(massage_pgprot(p))
