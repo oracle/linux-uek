@@ -4551,11 +4551,18 @@ static int btrfs_mknod(struct inode *dir, struct dentry *dentry,
 		goto out_unlock;
 	}
 
+	/*
+	* If the active LSM wants to access the inode during
+	* d_instantiate it needs these. Smack checks to see
+	* if the filesystem supports xattrs by looking at the
+	* ops vector.
+	*/
+
+	inode->i_op = &btrfs_special_inode_operations;
 	err = btrfs_add_nondir(trans, dir, dentry, inode, 0, index);
 	if (err)
 		drop_inode = 1;
 	else {
-		inode->i_op = &btrfs_special_inode_operations;
 		init_special_inode(inode, inode->i_mode, rdev);
 		btrfs_update_inode(trans, root, inode);
 	}
@@ -4609,14 +4616,21 @@ static int btrfs_create(struct inode *dir, struct dentry *dentry,
 		goto out_unlock;
 	}
 
+	/*
+	* If the active LSM wants to access the inode during
+	* d_instantiate it needs these. Smack checks to see
+	* if the filesystem supports xattrs by looking at the
+	* ops vector.
+	*/
+	inode->i_fop = &btrfs_file_operations;
+	inode->i_op = &btrfs_file_inode_operations;
+
 	err = btrfs_add_nondir(trans, dir, dentry, inode, 0, index);
 	if (err)
 		drop_inode = 1;
 	else {
 		inode->i_mapping->a_ops = &btrfs_aops;
 		inode->i_mapping->backing_dev_info = &root->fs_info->bdi;
-		inode->i_fop = &btrfs_file_operations;
-		inode->i_op = &btrfs_file_inode_operations;
 		BTRFS_I(inode)->io_tree.ops = &btrfs_extent_io_ops;
 	}
 out_unlock:
@@ -7074,14 +7088,21 @@ static int btrfs_symlink(struct inode *dir, struct dentry *dentry,
 		goto out_unlock;
 	}
 
+	/*
+	* If the active LSM wants to access the inode during
+	* d_instantiate it needs these. Smack checks to see
+	* if the filesystem supports xattrs by looking at the
+	* ops vector.
+	*/
+	inode->i_fop = &btrfs_file_operations;
+	inode->i_op = &btrfs_file_inode_operations;
+
 	err = btrfs_add_nondir(trans, dir, dentry, inode, 0, index);
 	if (err)
 		drop_inode = 1;
 	else {
 		inode->i_mapping->a_ops = &btrfs_aops;
 		inode->i_mapping->backing_dev_info = &root->fs_info->bdi;
-		inode->i_fop = &btrfs_file_operations;
-		inode->i_op = &btrfs_file_inode_operations;
 		BTRFS_I(inode)->io_tree.ops = &btrfs_extent_io_ops;
 	}
 	if (drop_inode)
