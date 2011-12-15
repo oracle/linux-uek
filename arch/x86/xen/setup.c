@@ -166,6 +166,30 @@ static unsigned long __init xen_set_identity_and_release(
 	return released;
 }
 
+static unsigned long __init xen_get_max_pages(void)
+{
+	unsigned long max_pages = MAX_DOMAIN_PAGES;
+	domid_t domid = DOMID_SELF;
+	int ret;
+
+	/*
+	 * For the initial domain we use the maximum reservation as
+	 * the maximum page.
+	 *
+	 * For guest domains the current maximum reservation reflects
+	 * the current maximum rather than the static maximum. In this
+	 * case the e820 map provided to us will cover the static
+	 * maximum region.
+	 */
+	if (xen_initial_domain()) {
+		ret = HYPERVISOR_memory_op(XENMEM_maximum_reservation, &domid);
+		if (ret > 0)
+			max_pages = ret;
+	}
+
+	return min(max_pages, MAX_DOMAIN_PAGES);
+}
+
 static void xen_align_and_add_e820_region(u64 start, u64 size, int type)
 {
 	u64 end = start + size;
@@ -177,18 +201,6 @@ static void xen_align_and_add_e820_region(u64 start, u64 size, int type)
 	}
 
 	e820_add_region(start, end - start, type);
-}
-
-static unsigned long __init xen_get_max_pages(void)
-{
-	unsigned long max_pages = MAX_DOMAIN_PAGES;
-	domid_t domid = DOMID_SELF;
-	int ret;
-
-	ret = HYPERVISOR_memory_op(XENMEM_maximum_reservation, &domid);
-	if (ret > 0)
-		max_pages = ret;
-	return min(max_pages, MAX_DOMAIN_PAGES);
 }
 
 /**
