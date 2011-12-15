@@ -91,8 +91,10 @@ static irqreturn_t netxen_intr(int irq, void *data);
 static irqreturn_t netxen_msi_intr(int irq, void *data);
 static irqreturn_t netxen_msix_intr(int irq, void *data);
 
-static void netxen_config_indev_addr(struct net_device *dev, unsigned long);
-static struct net_device_stats *netxen_nic_get_stats(struct net_device *netdev);
+static void netxen_free_vlan_ip_list(struct netxen_adapter *);
+static void netxen_restore_indev_addr(struct net_device *dev, unsigned long);
+static struct rtnl_link_stats64 *netxen_nic_get_stats(struct net_device *dev,
+						      struct rtnl_link_stats64 *stats);
 static int netxen_nic_set_mac(struct net_device *netdev, void *p);
 
 /*  PCI Device ID Table  */
@@ -398,6 +400,63 @@ static void netxen_set_port_mode(struct netxen_adapter *adapter)
 	}
 }
 
+#define PCI_CAP_ID_GEN  0x10
+
+static void netxen_pcie_strap_init(struct netxen_adapter *adapter)
+{
+	u32 pdevfuncsave;
+	u32 c8c9value = 0;
+	u32 chicken = 0;
+	u32 control = 0;
+	int i, pos;
+	struct pci_dev *pdev;
+
+	pdev = adapter->pdev;
+
+	chicken = NXRD32(adapter, NETXEN_PCIE_REG(PCIE_CHICKEN3));
+	/* clear chicken3.25:24 */
+	chicken &= 0xFCFFFFFF;
+	/*
+	 * if gen1 and B0, set F1020 - if gen 2, do nothing
+	 * if gen2 set to F1000
+	 */
+	pos = pci_find_capability(pdev, PCI_CAP_ID_GEN);
+	if (pos == 0xC0) {
+		pci_read_config_dword(pdev, pos + 0x10, &control);
+		if ((control & 0x000F0000) != 0x00020000) {
+			/*  set chicken3.24 if gen1 */
+			chicken |= 0x01000000;
+		}
+		dev_info(&adapter->pdev->dev, "Gen2 strapping detected\n");
+		c8c9value = 0xF1000;
+	} else {
+		/* set chicken3.24 if gen1 */
+		chicken |= 0x01000000;
+		dev_info(&adapter->pdev->dev, "Gen1 strapping detected\n");
+		if (adapter->ahw.revision_id == NX_P3_B0)
+			c8c9value = 0xF1020;
+		else
+			c8c9value = 0;
+	}
+
+	NXWR32(adapter, NETXEN_PCIE_REG(PCIE_CHICKEN3), chicken);
+
+	if (!c8c9value)
+		return;
+
+	pdevfuncsave = pdev->devfn;
+	if (pdevfuncsave & 0x07)
+		return;
+
+	for (i = 0; i < 8; i++) {
+		pci_read_config_dword(pdev, pos + 8, &control);
+		pci_read_config_dword(pdev, pos + 8, &control);
+		pci_write_config_dword(pdev, pos + 8, c8c9value);
+		pdev->devfn++;
+	}
+	pdev->devfn = pdevfuncsave;
+}
+
 static void netxen_set_msix_bit(struct pci_dev *pdev, int enable)
 {
 	u32 control;
@@ -520,9 +579,9 @@ static const struct net_device_ops netxen_netdev_ops = {
 	.ndo_open	   = netxen_nic_open,
 	.ndo_stop	   = netxen_nic_close,
 	.ndo_start_xmit    = netxen_nic_xmit_frame,
-	.ndo_get_stats	   = netxen_nic_get_stats,
+	.ndo_get_stats64   = netxen_nic_get_stats,
 	.ndo_validate_addr = eth_validate_addr,
-	.ndo_set_multicast_list = netxen_set_multicast_list,
+	.ndo_set_rx_mode = netxen_set_multicast_list,
 	.ndo_set_mac_address    = netxen_nic_set_mac,
 	.ndo_change_mtu	   = netxen_nic_change_mtu,
 	.ndo_tx_timeout	   = netxen_tx_timeout,
@@ -865,7 +924,7 @@ netxen_start_firmware(struct netxen_adapter *adapter)
 	if (err < 0)
 		goto err_out;
 	if (err == 0)
-		goto wait_init;
+		goto pcie_strap_init;
 
 	if (first_boot != 0x55555555) {
 		NXWR32(adapter, CRB_CMDPEG_STATE, 0);
@@ -907,6 +966,10 @@ netxen_start_firmware(struct netxen_adapter *adapter)
 		| ((_NETXEN_NIC_LINUX_MINOR << 8))
 		| (_NETXEN_NIC_LINUX_SUBVERSION);
 	NXWR32(adapter, CRB_DRIVER_VERSION, val);
+
+pcie_strap_init:
+	if (NX_IS_REVISION_P3(adapter->ahw.revision_id))
+		netxen_pcie_strap_init(adapter);
 
 wait_init:
 	/* Handshake with the card before we register the devices. */
@@ -1358,6 +1421,7 @@ netxen_nic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	spin_lock_init(&adapter->tx_clean_lock);
 	INIT_LIST_HEAD(&adapter->mac_list);
+	INIT_LIST_HEAD(&adapter->vlan_ip_list);
 
 	err = netxen_setup_pci_map(adapter);
 	if (err)
@@ -1386,6 +1450,10 @@ netxen_nic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	default:
 		break;
 	}
+
+	err = netxen_check_flash_fw_compatibility(adapter);
+	if (err)
+		goto err_out_iounmap;
 
 	if (adapter->portnum == 0) {
 		val = NXRD32(adapter, NX_CRB_DEV_REF_COUNT);
@@ -1476,6 +1544,7 @@ static void __devexit netxen_nic_remove(struct pci_dev *pdev)
 
 	cancel_work_sync(&adapter->tx_timeout_task);
 
+	netxen_free_vlan_ip_list(adapter);
 	netxen_nic_detach(adapter);
 
 	nx_decr_dev_ref_cnt(adapter);
@@ -1558,7 +1627,7 @@ static int netxen_nic_attach_func(struct pci_dev *pdev)
 		if (err)
 			goto err_out_detach;
 
-		netxen_config_indev_addr(netdev, NETDEV_UP);
+		netxen_restore_indev_addr(netdev, NETDEV_UP);
 	}
 
 	netif_device_attach(netdev);
@@ -2110,10 +2179,10 @@ request_reset:
 	clear_bit(__NX_RESETTING, &adapter->state);
 }
 
-static struct net_device_stats *netxen_nic_get_stats(struct net_device *netdev)
+static struct rtnl_link_stats64 *netxen_nic_get_stats(struct net_device *netdev,
+						      struct rtnl_link_stats64 *stats)
 {
 	struct netxen_adapter *adapter = netdev_priv(netdev);
-	struct net_device_stats *stats = &netdev->stats;
 
 	stats->rx_packets = adapter->stats.rx_pkts + adapter->stats.lro_pkts;
 	stats->tx_packets = adapter->stats.xmitfinished;
@@ -2369,7 +2438,7 @@ netxen_attach_work(struct work_struct *work)
 			goto done;
 		}
 
-		netxen_config_indev_addr(netdev, NETDEV_UP);
+		netxen_restore_indev_addr(netdev, NETDEV_UP);
 	}
 
 	netif_device_attach(netdev);
@@ -2843,10 +2912,70 @@ netxen_destip_supported(struct netxen_adapter *adapter)
 }
 
 static void
-netxen_config_indev_addr(struct net_device *dev, unsigned long event)
+netxen_free_vlan_ip_list(struct netxen_adapter *adapter)
+{
+	struct nx_vlan_ip_list  *cur;
+	struct list_head *head = &adapter->vlan_ip_list;
+
+	while (!list_empty(head)) {
+		cur = list_entry(head->next, struct nx_vlan_ip_list, list);
+		netxen_config_ipaddr(adapter, cur->ip_addr, NX_IP_DOWN);
+		list_del(&cur->list);
+		kfree(cur);
+	}
+
+}
+static void
+netxen_list_config_vlan_ip(struct netxen_adapter *adapter,
+		struct in_ifaddr *ifa, unsigned long event)
+{
+	struct net_device *dev;
+	struct nx_vlan_ip_list *cur, *tmp_cur;
+	struct list_head *head;
+
+	dev = ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
+
+	if (dev == NULL)
+		return;
+
+	if (!is_vlan_dev(dev))
+		return;
+
+	switch (event) {
+	case NX_IP_UP:
+		list_for_each(head, &adapter->vlan_ip_list) {
+			cur = list_entry(head, struct nx_vlan_ip_list, list);
+
+			if (cur->ip_addr == ifa->ifa_address)
+				return;
+		}
+
+		cur = kzalloc(sizeof(struct nx_vlan_ip_list), GFP_ATOMIC);
+		if (cur == NULL) {
+			printk(KERN_ERR "%s: failed to add vlan ip to list\n",
+					adapter->netdev->name);
+			return;
+		}
+
+		cur->ip_addr = ifa->ifa_address;
+		list_add_tail(&cur->list, &adapter->vlan_ip_list);
+		break;
+	case NX_IP_DOWN:
+		list_for_each_entry_safe(cur, tmp_cur,
+					&adapter->vlan_ip_list, list) {
+			if (cur->ip_addr == ifa->ifa_address) {
+				list_del(&cur->list);
+				kfree(cur);
+				break;
+			}
+		}
+	}
+}
+static void
+netxen_config_indev_addr(struct netxen_adapter *adapter,
+		struct net_device *dev, unsigned long event)
 {
 	struct in_device *indev;
-	struct netxen_adapter *adapter = netdev_priv(dev);
 
 	if (!netxen_destip_supported(adapter))
 		return;
@@ -2860,10 +2989,12 @@ netxen_config_indev_addr(struct net_device *dev, unsigned long event)
 		case NETDEV_UP:
 			netxen_config_ipaddr(adapter,
 					ifa->ifa_address, NX_IP_UP);
+			netxen_list_config_vlan_ip(adapter, ifa, NX_IP_UP);
 			break;
 		case NETDEV_DOWN:
 			netxen_config_ipaddr(adapter,
 					ifa->ifa_address, NX_IP_DOWN);
+			netxen_list_config_vlan_ip(adapter, ifa, NX_IP_DOWN);
 			break;
 		default:
 			break;
@@ -2873,11 +3004,28 @@ netxen_config_indev_addr(struct net_device *dev, unsigned long event)
 	in_dev_put(indev);
 }
 
+static void
+netxen_restore_indev_addr(struct net_device *netdev, unsigned long event)
+
+{
+	struct netxen_adapter *adapter = netdev_priv(netdev);
+	struct nx_vlan_ip_list *pos, *tmp_pos;
+	unsigned long ip_event;
+
+	ip_event = (event == NETDEV_UP) ? NX_IP_UP : NX_IP_DOWN;
+	netxen_config_indev_addr(adapter, netdev, event);
+
+	list_for_each_entry_safe(pos, tmp_pos, &adapter->vlan_ip_list, list) {
+		netxen_config_ipaddr(adapter, pos->ip_addr, ip_event);
+	}
+}
+
 static int netxen_netdev_event(struct notifier_block *this,
 				 unsigned long event, void *ptr)
 {
 	struct netxen_adapter *adapter;
 	struct net_device *dev = (struct net_device *)ptr;
+	struct net_device *orig_dev = dev;
 
 recheck:
 	if (dev == NULL)
@@ -2899,7 +3047,7 @@ recheck:
 	if (adapter->is_up != NETXEN_ADAPTER_UP_MAGIC)
 		goto done;
 
-	netxen_config_indev_addr(dev, event);
+	netxen_config_indev_addr(adapter, orig_dev, event);
 done:
 	return NOTIFY_DONE;
 }
@@ -2916,7 +3064,7 @@ netxen_inetaddr_event(struct notifier_block *this,
 	dev = ifa->ifa_dev ? ifa->ifa_dev->dev : NULL;
 
 recheck:
-	if (dev == NULL || !netif_running(dev))
+	if (dev == NULL)
 		goto done;
 
 	if (dev->priv_flags & IFF_802_1Q_VLAN) {
@@ -2938,9 +3086,11 @@ recheck:
 	switch (event) {
 	case NETDEV_UP:
 		netxen_config_ipaddr(adapter, ifa->ifa_address, NX_IP_UP);
+		netxen_list_config_vlan_ip(adapter, ifa, NX_IP_UP);
 		break;
 	case NETDEV_DOWN:
 		netxen_config_ipaddr(adapter, ifa->ifa_address, NX_IP_DOWN);
+		netxen_list_config_vlan_ip(adapter, ifa, NX_IP_DOWN);
 		break;
 	default:
 		break;
@@ -2959,7 +3109,10 @@ static struct notifier_block netxen_inetaddr_cb = {
 };
 #else
 static void
-netxen_config_indev_addr(struct net_device *dev, unsigned long event)
+netxen_restore_indev_addr(struct net_device *dev, unsigned long event)
+{ }
+static void
+netxen_free_vlan_ip_list(struct netxen_adapter *adapter)
 { }
 #endif
 
