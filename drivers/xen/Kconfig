@@ -39,6 +39,7 @@ config XEN_BACKEND
 
 config XENFS
 	tristate "Xen filesystem"
+	select XEN_PRIVCMD
 	default y
 	help
 	  The xen filesystem provides a way for domains to share
@@ -104,5 +105,11 @@ config SWIOTLB_XEN
 	def_bool y
 	depends on PCI
 	select SWIOTLB
+
+
+config XEN_PRIVCMD
+	tristate
+	depends on XEN
+	default m
 
 endmenu
