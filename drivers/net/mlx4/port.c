@@ -65,7 +65,7 @@ void mlx4_init_vlan_table(struct mlx4_dev *dev, struct mlx4_vlan_table *table)
 		table->entries[i] = 0;
 		table->refs[i]	 = 0;
 	}
-	table->max   = 1 << dev->caps.log_num_vlans;
+	table->max   = (1 << dev->caps.log_num_vlans) - MLX4_VLAN_REGULAR;
 	table->total = 0;
 }
 
@@ -146,24 +146,28 @@ int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *qpn, u8 wrap)
 	int i, err = 0;
 	int free = -1;
 
-	if (dev->caps.vep_uc_steering) {
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER) {
 		err = mlx4_uc_steer_add(dev, port, mac, qpn, 1);
-		if (!err) {
-			entry = kmalloc(sizeof *entry, GFP_KERNEL);
-			if (!entry) {
-				mlx4_uc_steer_release(dev, port, mac, *qpn, 1);
-				return -ENOMEM;
-			}
-			entry->mac = mac;
-			err = radix_tree_insert(&info->mac_tree, *qpn, entry);
-			if (err) {
-				mlx4_uc_steer_release(dev, port, mac, *qpn, 1);
-				return err;
-			}
-		} else
+		if (err)
 			return err;
+
+		entry = kmalloc(sizeof *entry, GFP_KERNEL);
+		if (!entry) {
+			mlx4_uc_steer_release(dev, port, mac, *qpn, 1);
+			return -ENOMEM;
+		}
+
+		entry->mac = mac;
+		err = radix_tree_insert(&info->mac_tree, *qpn, entry);
+		if (err) {
+			kfree(entry);
+			mlx4_uc_steer_release(dev, port, mac, *qpn, 1);
+			return err;
+		}
 	}
+
 	mlx4_dbg(dev, "Registering MAC: 0x%llx\n", (unsigned long long) mac);
+
 	mutex_lock(&table->mutex);
 	for (i = 0; i < MLX4_MAX_MAC_NUM - 1; i++) {
 		if (free < 0 && !table->refs[i]) {
@@ -203,7 +207,7 @@ int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac, int *qpn, u8 wrap)
 		goto out;
 	}
 
-	if (!dev->caps.vep_uc_steering)
+	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER))
 		*qpn = info->base_qpn + free;
 	++table->total;
 out:
@@ -243,7 +247,7 @@ void mlx4_unregister_mac(struct mlx4_dev *dev, u8 port, int qpn)
 	int index = qpn - info->base_qpn;
 	struct mlx4_mac_entry *entry;
 
-	if (dev->caps.vep_uc_steering) {
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER) {
 		entry = radix_tree_lookup(&info->mac_tree, qpn);
 		if (entry) {
 			mlx4_uc_steer_release(dev, port, entry->mac, qpn, 1);
@@ -258,9 +262,12 @@ void mlx4_unregister_mac(struct mlx4_dev *dev, u8 port, int qpn)
 	if (validate_index(dev, table, index))
 		goto out;
 
-	table->entries[index] = 0;
-	mlx4_set_port_mac_table(dev, port, table->entries);
-	--table->total;
+	/* Check whether this address has reference count */
+	if (!(--table->refs[index])) {
+		table->entries[index] = 0;
+		mlx4_set_port_mac_table(dev, port, table->entries);
+		--table->total;
+	}
 out:
 	mutex_unlock(&table->mutex);
 }
@@ -274,7 +281,7 @@ int mlx4_replace_mac(struct mlx4_dev *dev, u8 port, int qpn, u64 new_mac, u8 wra
 	struct mlx4_mac_entry *entry;
 	int err;
 
-	if (dev->caps.vep_uc_steering) {
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER) {
 		entry = radix_tree_lookup(&info->mac_tree, qpn);
 		if (!entry)
 			return -EINVAL;
@@ -351,6 +358,13 @@ int mlx4_register_vlan(struct mlx4_dev *dev, u8 port, u16 vlan, int *index)
 	int free = -1;
 
 	mutex_lock(&table->mutex);
+
+	if (table->total == table->max) {
+		/* No free vlan entries */
+		err = -ENOSPC;
+		goto out;
+	}
+
 	for (i = MLX4_VLAN_REGULAR; i < MLX4_MAX_VLAN_NUM; i++) {
 		if (free < 0 && (table->refs[i] == 0)) {
 			free = i;
@@ -369,12 +383,6 @@ int mlx4_register_vlan(struct mlx4_dev *dev, u8 port, u16 vlan, int *index)
 
 	if (free < 0) {
 		err = -ENOMEM;
-		goto out;
-	}
-
-	if (table->total == table->max) {
-		/* No free vlan entries */
-		err = -ENOSPC;
 		goto out;
 	}
 

@@ -34,10 +34,12 @@
 #ifndef _MLX4_EN_H_
 #define _MLX4_EN_H_
 
+#include <linux/bitops.h>
 #include <linux/compiler.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/netdevice.h>
+#include <linux/if_vlan.h>
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/qp.h>
@@ -49,8 +51,8 @@
 #include "en_port.h"
 
 #define DRV_NAME	"mlx4_en"
-#define DRV_VERSION	"1.5.4.1"
-#define DRV_RELDATE	"March 2011"
+#define DRV_VERSION	"1.5.4.2"
+#define DRV_RELDATE	"October 2011"
 
 #define MLX4_EN_MSG_LEVEL	(NETIF_MSG_LINK | NETIF_MSG_IFDOWN)
 
@@ -247,6 +249,7 @@ struct mlx4_en_tx_ring {
 	struct mlx4_srq dummy;
 	unsigned long bytes;
 	unsigned long packets;
+	unsigned long tx_csum;
 	spinlock_t comp_lock;
 	struct mlx4_bf bf;
 	bool bf_enabled;
@@ -269,10 +272,13 @@ struct mlx4_en_rx_ring {
 	u32 prod;
 	u32 cons;
 	u32 buf_size;
+	u8  fcs_del;
 	void *buf;
 	void *rx_info;
 	unsigned long bytes;
 	unsigned long packets;
+	unsigned long csum_ok;
+	unsigned long csum_none;
 };
 
 
@@ -418,17 +424,17 @@ struct mlx4_en_priv {
 	struct mlx4_en_dev *mdev;
 	struct mlx4_en_port_profile *prof;
 	struct net_device *dev;
-	struct vlan_group *vlgrp;
+	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 	struct net_device_stats stats;
 	struct net_device_stats ret_stats;
 	struct mlx4_en_port_state port_state;
 	spinlock_t stats_lock;
 
-	unsigned long last_moder_packets;
+	unsigned long last_moder_packets[MAX_RX_RINGS];
 	unsigned long last_moder_tx_packets;
-	unsigned long last_moder_bytes;
+	unsigned long last_moder_bytes[MAX_RX_RINGS];
 	unsigned long last_moder_jiffies;
-	int last_moder_time;
+	int last_moder_time[MAX_RX_RINGS];
 	u16 rx_usecs;
 	u16 rx_frames;
 	u16 tx_usecs;
@@ -457,6 +463,7 @@ struct mlx4_en_priv {
 	int base_qpn;
 
 	struct mlx4_en_rss_map rss_map;
+	u32 ctrl_flags;
 	u32 flags;
 #define MLX4_EN_FLAG_PROMISC	0x1
 #define MLX4_EN_FLAG_MC_PROMISC	0x2
@@ -468,7 +475,6 @@ struct mlx4_en_priv {
 	u16 log_rx_info;
 
 	struct mlx4_en_tx_ring tx_ring[MAX_TX_RINGS];
-	int tx_vector;
 	struct mlx4_en_rx_ring rx_ring[MAX_RX_RINGS];
 	struct mlx4_en_cq tx_cq[MAX_TX_RINGS];
 	struct mlx4_en_cq rx_cq[MAX_RX_RINGS];
@@ -501,14 +507,14 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 int mlx4_en_start_port(struct net_device *dev);
 void mlx4_en_stop_port(struct net_device *dev);
 
-void mlx4_en_free_resources(struct mlx4_en_priv *priv, bool reserve_vectors);
+void mlx4_en_free_resources(struct mlx4_en_priv *priv);
 int mlx4_en_alloc_resources(struct mlx4_en_priv *priv);
 
 int mlx4_en_create_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
 		      int entries, int ring, enum cq_type mode);
-void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
-			bool reserve_vectors);
-int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
+void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
+int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
+			int cq_idx);
 void mlx4_en_deactivate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
 int mlx4_en_set_cq_moder(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
 int mlx4_en_arm_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
@@ -553,7 +559,7 @@ int mlx4_en_free_tx_buf(struct net_device *dev, struct mlx4_en_tx_ring *ring);
 void mlx4_en_rx_irq(struct mlx4_cq *mcq);
 
 int mlx4_SET_MCAST_FLTR(struct mlx4_dev *dev, u8 port, u64 mac, u64 clear, u8 mode);
-int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, u8 port, struct vlan_group *grp);
+int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, struct mlx4_en_priv *priv);
 int mlx4_SET_PORT_general(struct mlx4_dev *dev, u8 port, int mtu,
 			  u8 pptx, u8 pfctx, u8 pprx, u8 pfcrx);
 int mlx4_SET_PORT_qpn_calc(struct mlx4_dev *dev, u8 port, u32 base_qpn,

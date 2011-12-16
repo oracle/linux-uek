@@ -48,7 +48,7 @@ int mlx4_SET_MCAST_FLTR(struct mlx4_dev *dev, u8 port,
 			MLX4_CMD_SET_MCAST_FLTR, MLX4_CMD_TIME_CLASS_B);
 }
 
-int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, u8 port, struct vlan_group *grp)
+int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, struct mlx4_en_priv *priv)
 {
 	struct mlx4_cmd_mailbox *mailbox;
 	struct mlx4_set_vlan_fltr_mbox *filter;
@@ -63,20 +63,15 @@ int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, u8 port, struct vlan_group *grp)
 		return PTR_ERR(mailbox);
 
 	filter = mailbox->buf;
-	if (grp) {
-		memset(filter, 0, sizeof *filter);
-		for (i = VLAN_FLTR_SIZE - 1; i >= 0; i--) {
-			entry = 0;
-			for (j = 0; j < 32; j++)
-				if (vlan_group_get_device(grp, index++))
-					entry |= 1 << j;
-			filter->entry[i] = cpu_to_be32(entry);
-		}
-	} else {
-		/* When no vlans are configured we block all vlans */
-		memset(filter, 0, sizeof(*filter));
+	memset(filter, 0, sizeof(*filter));
+	for (i = VLAN_FLTR_SIZE - 1; i >= 0; i--) {
+		entry = 0;
+		for (j = 0; j < 32; j++)
+			if (test_bit(index++, priv->active_vlans))
+				entry |= 1 << j;
+		filter->entry[i] = cpu_to_be32(entry);
 	}
-	err = mlx4_cmd(dev, mailbox->dma, port, 0, MLX4_CMD_SET_VLAN_FLTR,
+	err = mlx4_cmd(dev, mailbox->dma, priv->port, 0, MLX4_CMD_SET_VLAN_FLTR,
 		       MLX4_CMD_TIME_CLASS_B);
 	mlx4_free_cmd_mailbox(dev, mailbox);
 	return err;
@@ -119,9 +114,11 @@ int mlx4_SET_PORT_qpn_calc(struct mlx4_dev *dev, u8 port, u32 base_qpn,
 	struct mlx4_set_port_rqp_calc_context *context;
 	int err;
 	u32 in_mod;
-	u32 m_promisc = (dev->caps.vep_mc_steering) ? MCAST_DIRECT : MCAST_DEFAULT;
+	u32 m_promisc = (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_MC_STEER) ?
+						MCAST_DIRECT : MCAST_DEFAULT;
 
-	if (dev->caps.vep_mc_steering && dev->caps.vep_uc_steering)
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_MC_STEER  &&
+			dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER)
 		return 0;
 
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
@@ -131,7 +128,7 @@ int mlx4_SET_PORT_qpn_calc(struct mlx4_dev *dev, u8 port, u32 base_qpn,
 	memset(context, 0, sizeof *context);
 
 	context->base_qpn = cpu_to_be32(base_qpn);
-	context->n_mac = 0x7;
+	context->n_mac = dev->caps.log_num_macs;
 	context->promisc = cpu_to_be32(promisc << SET_PORT_PROMISC_SHIFT |
 				       base_qpn);
 	context->mcast = cpu_to_be32(m_promisc << SET_PORT_MC_PROMISC_SHIFT |
@@ -170,11 +167,21 @@ int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port)
 	/* This command is always accessed from Ethtool context
 	 * already synchronized, no need in locking */
 	state->link_state = !!(qport_context->link_up & MLX4_EN_LINK_UP_MASK);
-	if ((qport_context->link_speed & MLX4_EN_SPEED_MASK) ==
-	    MLX4_EN_1G_SPEED)
+	switch (qport_context->link_speed & MLX4_EN_SPEED_MASK) {
+	case MLX4_EN_1G_SPEED:
 		state->link_speed = 1000;
-	else
+		break;
+	case MLX4_EN_10G_SPEED_XAUI:
+	case MLX4_EN_10G_SPEED_XFI:
 		state->link_speed = 10000;
+		break;
+	case MLX4_EN_40G_SPEED:
+		state->link_speed = 40000;
+		break;
+	default:
+		state->link_speed = -1;
+		break;
+	}
 	state->transciver = qport_context->transceiver;
 
 out:
@@ -207,15 +214,21 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 
 	stats->rx_packets = 0;
 	stats->rx_bytes = 0;
+	priv->port_stats.rx_chksum_good = 0;
+	priv->port_stats.rx_chksum_none = 0;
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		stats->rx_packets += priv->rx_ring[i].packets;
 		stats->rx_bytes += priv->rx_ring[i].bytes;
+		priv->port_stats.rx_chksum_good += priv->rx_ring[i].csum_ok;
+		priv->port_stats.rx_chksum_none += priv->rx_ring[i].csum_none;
 	}
 	stats->tx_packets = 0;
 	stats->tx_bytes = 0;
+	priv->port_stats.tx_chksum_offload = 0;
 	for (i = 0; i < priv->tx_ring_num; i++) {
 		stats->tx_packets += priv->tx_ring[i].packets;
 		stats->tx_bytes += priv->tx_ring[i].bytes;
+		priv->port_stats.tx_chksum_offload += priv->tx_ring[i].tx_csum;
 	}
 
 	stats->rx_errors = be64_to_cpu(mlx4_en_stats->PCS) +

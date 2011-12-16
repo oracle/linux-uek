@@ -51,10 +51,7 @@ int mlx4_en_create_cq(struct mlx4_en_priv *priv,
 	int err;
 
 	cq->size = entries;
-	if (mode == RX)
-		cq->buf_size = cq->size * sizeof(struct mlx4_cqe);
-	else
-		cq->buf_size = sizeof(struct mlx4_cqe);
+	cq->buf_size = cq->size * sizeof(struct mlx4_cqe);
 
 	cq->ring = ring;
 	cq->is_tx = mode;
@@ -74,7 +71,8 @@ int mlx4_en_create_cq(struct mlx4_en_priv *priv,
 	return err;
 }
 
-int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
+int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
+			int cq_idx)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int err = 0;
@@ -90,13 +88,15 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
 	if (cq->is_tx == RX) {
 		if (mdev->dev->caps.comp_pool) {
 			if (!cq->vector) {
-				sprintf(name , "%s-rx-%d", priv->dev->name, cq->ring);
+				sprintf(name, "%s-%d", priv->dev->name,
+					cq->ring);
+				/* Set IRQ for specific name (per ring) */
 				if (mlx4_assign_eq(mdev->dev, name, &cq->vector)) {
-					cq->vector = (cq->ring + 1 + priv->port) %
-						mdev->dev->caps.num_comp_vectors;
+					cq->vector = (cq->ring + 1 + priv->port)
+					    % mdev->dev->caps.num_comp_vectors;
 					mlx4_warn(mdev, "Failed Assigning an EQ to "
-						  "%s_rx-%d ,Falling back to legacy EQ's\n",
-						  priv->dev->name, cq->ring);
+						  "%s ,Falling back to legacy EQ's\n",
+						  name);
 				}
 			}
 		} else {
@@ -104,17 +104,20 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
 				mdev->dev->caps.num_comp_vectors;
 		}
 	} else {
-		if (!cq->vector || !mdev->dev->caps.comp_pool) {
-			/*Fallback to legacy pool in case of error*/
-			cq->vector   = 0;
-		}
+		/* For TX we use the same irq per
+		ring we assigned for the RX    */
+		struct mlx4_en_cq *rx_cq;
+
+		cq_idx = cq_idx % priv->rx_ring_num;
+		rx_cq = &priv->rx_cq[cq_idx];
+		cq->vector = rx_cq->vector;
 	}
 
 	if (!cq->is_tx)
 		cq->size = priv->rx_ring[cq->ring].actual_size;
 
 	err = mlx4_cq_alloc(mdev->dev, cq->size, &cq->wqres.mtt, &mdev->priv_uar,
-			    cq->wqres.db.dma, &cq->mcq, cq->vector, cq->is_tx);
+			    cq->wqres.db.dma, &cq->mcq, cq->vector, 0);
 	if (err)
 		return err;
 
@@ -133,14 +136,13 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
 	return 0;
 }
 
-void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
-			bool reserve_vectors)
+void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 
 	mlx4_en_unmap_buffer(&cq->wqres.buf);
 	mlx4_free_hwq_res(mdev->dev, &cq->wqres, cq->buf_size);
-	if (priv->mdev->dev->caps.comp_pool && cq->vector && !reserve_vectors)
+	if (priv->mdev->dev->caps.comp_pool && cq->vector)
 		mlx4_release_eq(priv->mdev->dev, cq->vector);
 	cq->buf_size = 0;
 	cq->buf = NULL;

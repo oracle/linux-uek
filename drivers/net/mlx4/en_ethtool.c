@@ -103,8 +103,17 @@ static void mlx4_en_get_wol(struct net_device *netdev,
 	struct mlx4_en_priv *priv = netdev_priv(netdev);
 	int err = 0;
 	u64 config = 0;
+	u64 mask;
 
-	if (!priv->mdev->dev->caps.wol) {
+	if ((priv->port < 1) || (priv->port > 2)) {
+		en_err(priv, "Failed to get WoL information\n");
+		return;
+	}
+
+	mask = (priv->port == 1) ? MLX4_DEV_CAP_FLAG_WOL_PORT1 :
+		MLX4_DEV_CAP_FLAG_WOL_PORT2;
+
+	if (!(priv->mdev->dev->caps.flags & mask)) {
 		wol->supported = 0;
 		wol->wolopts = 0;
 		return;
@@ -133,8 +142,15 @@ static int mlx4_en_set_wol(struct net_device *netdev,
 	struct mlx4_en_priv *priv = netdev_priv(netdev);
 	u64 config = 0;
 	int err = 0;
+	u64 mask;
 
-	if (!priv->mdev->dev->caps.wol)
+	if ((priv->port < 1) || (priv->port > 2))
+		return -EOPNOTSUPP;
+
+	mask = (priv->port == 1) ? MLX4_DEV_CAP_FLAG_WOL_PORT1 :
+		MLX4_DEV_CAP_FLAG_WOL_PORT2;
+
+	if (!(priv->mdev->dev->caps.flags & mask))
 		return -EOPNOTSUPP;
 
 	if (wol->supported & ~WAKE_MAGIC)
@@ -170,7 +186,8 @@ static int mlx4_en_get_sset_count(struct net_device *dev, int sset)
 		return NUM_ALL_STATS +
 			(priv->tx_ring_num + priv->rx_ring_num) * 2;
 	case ETH_SS_TEST:
-		return MLX4_EN_NUM_SELF_TEST - !(priv->mdev->dev->caps.loopback_support) * 2;
+		return MLX4_EN_NUM_SELF_TEST - !(priv->mdev->dev->caps.flags
+					& MLX4_DEV_CAP_FLAG_UC_LOOPBACK) * 2;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -220,7 +237,7 @@ static void mlx4_en_get_strings(struct net_device *dev,
 	case ETH_SS_TEST:
 		for (i = 0; i < MLX4_EN_NUM_SELF_TEST - 2; i++)
 			strcpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i]);
-		if (priv->mdev->dev->caps.loopback_support)
+		if (priv->mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_UC_LOOPBACK)
 			for (; i < MLX4_EN_NUM_SELF_TEST; i++)
 				strcpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i]);
 		break;
@@ -341,13 +358,13 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	priv->rx_usecs_high = coal->rx_coalesce_usecs_high;
 	priv->sample_interval = coal->rate_sample_interval;
 	priv->adaptive_rx_coal = coal->use_adaptive_rx_coalesce;
-	priv->last_moder_time = MLX4_EN_AUTO_CONF;
 	if (priv->adaptive_rx_coal)
 		return 0;
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		priv->rx_cq[i].moder_cnt = priv->rx_frames;
 		priv->rx_cq[i].moder_time = priv->rx_usecs;
+		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
 		err = mlx4_en_set_cq_moder(priv, &priv->rx_cq[i]);
 		if (err)
 			return err;
@@ -393,6 +410,7 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	u32 rx_size, tx_size;
 	int port_up = 0;
 	int err = 0;
+	int i;
 
 	if (param->rx_jumbo_pending || param->rx_mini_pending)
 		return -EINVAL;
@@ -415,7 +433,7 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 		mlx4_en_stop_port(dev);
 	}
 
-	mlx4_en_free_resources(priv, true);
+	mlx4_en_free_resources(priv);
 
 	priv->prof->tx_ring_size = tx_size;
 	priv->prof->rx_ring_size = rx_size;
@@ -429,6 +447,15 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 		err = mlx4_en_start_port(dev);
 		if (err)
 			en_err(priv, "Failed starting port\n");
+	}
+
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		priv->rx_cq[i].moder_cnt = priv->rx_frames;
+		priv->rx_cq[i].moder_time = priv->rx_usecs;
+		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+		err = mlx4_en_set_cq_moder(priv, &priv->rx_cq[i]);
+		if (err)
+			goto out;
 	}
 
 out:

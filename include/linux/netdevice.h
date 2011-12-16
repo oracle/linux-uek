@@ -980,6 +980,7 @@ struct net_device_ops {
 						    u32 features);
 };
 
+typedef u32 netdev_features_t;
 /*
  *	The DEVICE structure.
  *	Actually, this whole structure is a big mistake.  It mixes I/O

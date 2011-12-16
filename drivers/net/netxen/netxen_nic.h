@@ -53,8 +53,8 @@
 
 #define _NETXEN_NIC_LINUX_MAJOR 4
 #define _NETXEN_NIC_LINUX_MINOR 0
-#define _NETXEN_NIC_LINUX_SUBVERSION 75
-#define NETXEN_NIC_LINUX_VERSIONID  "4.0.75"
+#define _NETXEN_NIC_LINUX_SUBVERSION 77
+#define NETXEN_NIC_LINUX_VERSIONID  "4.0.77"
 
 #define NETXEN_VERSION_CODE(a, b, c)	(((a) << 24) + ((b) << 16) + (c))
 #define _major(v)	(((v) >> 24) & 0xff)
@@ -940,6 +940,11 @@ typedef struct nx_mac_list_s {
 	uint8_t mac_addr[ETH_ALEN+2];
 } nx_mac_list_t;
 
+struct nx_vlan_ip_list {
+	struct list_head list;
+	u32 ip_addr;
+};
+
 /*
  * Interrupt coalescing defaults. The defaults are for 1500 MTU. It is
  * adjusted based on configured MTU.
@@ -1165,6 +1170,7 @@ struct netxen_adapter {
 	struct net_device *netdev;
 	struct pci_dev *pdev;
 	struct list_head mac_list;
+	struct list_head vlan_ip_list;
 
 	spinlock_t tx_clean_lock;
 
@@ -1302,6 +1308,7 @@ int netxen_nic_wol_supported(struct netxen_adapter *adapter);
 int netxen_init_dummy_dma(struct netxen_adapter *adapter);
 void netxen_free_dummy_dma(struct netxen_adapter *adapter);
 
+int netxen_check_flash_fw_compatibility(struct netxen_adapter *adapter);
 int netxen_phantom_init(struct netxen_adapter *adapter, int pegtune_val);
 int netxen_load_firmware(struct netxen_adapter *adapter);
 int netxen_need_fw_reset(struct netxen_adapter *adapter);

@@ -226,11 +226,6 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.bmme_flags	     = dev_cap->bmme_flags;
 	dev->caps.reserved_lkey	     = dev_cap->reserved_lkey;
 	dev->caps.stat_rate_support  = dev_cap->stat_rate_support;
-	dev->caps.udp_rss	     = dev_cap->udp_rss;
-	dev->caps.loopback_support   = dev_cap->loopback_support;
-	dev->caps.vep_uc_steering    = dev_cap->vep_uc_steering;
-	dev->caps.vep_mc_steering    = dev_cap->vep_mc_steering;
-	dev->caps.wol		     = dev_cap->wol;
 	dev->caps.max_gso_sz	     = dev_cap->max_gso_sz;
 
 	dev->caps.log_num_macs  = log_num_mac;
@@ -1071,6 +1066,8 @@ static int mlx4_init_port_info(struct mlx4_dev *dev, int port)
 	info->port = port;
 	mlx4_init_mac_table(dev, &info->mac_table);
 	mlx4_init_vlan_table(dev, &info->vlan_table);
+	info->base_qpn = dev->caps.reserved_qps_base[MLX4_QP_REGION_ETH_ADDR] +
+			(port - 1) * (1 << log_num_mac);
 
 	sprintf(info->dev_name, "mlx4_port%d", port);
 	info->port_attr.attr.name = info->dev_name;
@@ -1230,10 +1227,10 @@ static int __mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&priv->pgdir_list);
 	mutex_init(&priv->pgdir_mutex);
 
-	pci_read_config_byte(pdev, PCI_REVISION_ID, &dev->rev_id);
-
 	INIT_LIST_HEAD(&priv->bf_list);
 	mutex_init(&priv->bf_mutex);
+
+	dev->rev_id = pdev->revision;
 
 	/*
 	 * Now reset the HCA before we touch the PCI capabilities or

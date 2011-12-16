@@ -404,10 +404,11 @@ void mlx4_en_deactivate_rx_ring(struct mlx4_en_priv *priv,
 static int mlx4_en_complete_rx_desc(struct mlx4_en_priv *priv,
 				    struct mlx4_en_rx_desc *rx_desc,
 				    struct skb_frag_struct *skb_frags,
-				    struct skb_frag_struct *skb_frags_rx,
+				    struct sk_buff *skb,
 				    struct mlx4_en_rx_alloc *page_alloc,
 				    int length)
 {
+	struct skb_frag_struct *skb_frags_rx = skb_shinfo(skb)->frags;
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_frag_info *frag_info;
 	int nr;
@@ -423,6 +424,7 @@ static int mlx4_en_complete_rx_desc(struct mlx4_en_priv *priv,
 		skb_frags_rx[nr].page = skb_frags[nr].page;
 		skb_frags_rx[nr].size = skb_frags[nr].size;
 		skb_frags_rx[nr].page_offset = skb_frags[nr].page_offset;
+		skb->truesize += frag_info->frag_stride;
 		dma = be64_to_cpu(rx_desc->data[nr].addr);
 
 		/* Allocate a replacement page */
@@ -470,7 +472,6 @@ static struct sk_buff *mlx4_en_rx_skb(struct mlx4_en_priv *priv,
 	skb->dev = priv->dev;
 	skb_reserve(skb, NET_IP_ALIGN);
 	skb->len = length;
-	skb->truesize = length + sizeof(struct sk_buff);
 
 	/* Get pointer to first fragment so we could copy the headers into the
 	 * (linear part of the) skb */
@@ -490,8 +491,7 @@ static struct sk_buff *mlx4_en_rx_skb(struct mlx4_en_priv *priv,
 
 		/* Move relevant fragments to skb */
 		used_frags = mlx4_en_complete_rx_desc(priv, rx_desc, skb_frags,
-						      skb_shinfo(skb)->frags,
-						      page_alloc, length);
+						      skb, page_alloc, length);
 		if (unlikely(!used_frags)) {
 			kfree_skb(skb);
 			return NULL;
@@ -581,13 +581,14 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		 * Packet is OK - process it.
 		 */
 		length = be32_to_cpu(cqe->byte_cnt);
+		length -= ring->fcs_del;
 		ring->bytes += length;
 		ring->packets++;
 
 		if (likely(dev->features & NETIF_F_RXCSUM)) {
 			if ((cqe->status & cpu_to_be16(MLX4_CQE_STATUS_IPOK)) &&
 			    (cqe->checksum == cpu_to_be16(0xffff))) {
-				priv->port_stats.rx_chksum_good++;
+				ring->csum_ok++;
 				/* This packet is eligible for LRO if it is:
 				 * - DIX Ethernet (type interpretation)
 				 * - TCP/IP (v4)
@@ -600,7 +601,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 
 					nr = mlx4_en_complete_rx_desc(
 						priv, rx_desc,
-						skb_frags, skb_shinfo(gro_skb)->frags,
+						skb_frags, gro_skb,
 						ring->page_alloc, length);
 					if (!nr)
 						goto next;
@@ -608,14 +609,20 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					skb_shinfo(gro_skb)->nr_frags = nr;
 					gro_skb->len = length;
 					gro_skb->data_len = length;
-					gro_skb->truesize += length;
 					gro_skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-					if (priv->vlgrp && (cqe->vlan_my_qpn &
-							    cpu_to_be32(MLX4_CQE_VLAN_PRESENT_MASK)))
-						vlan_gro_frags(&cq->napi, priv->vlgrp, be16_to_cpu(cqe->sl_vid));
-					else
-						napi_gro_frags(&cq->napi);
+					if (cqe->vlan_my_qpn &
+					    cpu_to_be32(MLX4_CQE_VLAN_PRESENT_MASK)) {
+						u16 vid = be16_to_cpu(cqe->sl_vid);
+
+						__vlan_hwaccel_put_tag(gro_skb, vid);
+					}
+
+					if (dev->features & NETIF_F_RXHASH)
+						gro_skb->rxhash = be32_to_cpu(cqe->immed_rss_invalid);
+
+					skb_record_rx_queue(gro_skb, cq->ring);
+					napi_gro_frags(&cq->napi);
 
 					goto next;
 				}
@@ -624,11 +631,11 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 				ip_summed = CHECKSUM_UNNECESSARY;
 			} else {
 				ip_summed = CHECKSUM_NONE;
-				priv->port_stats.rx_chksum_none++;
+				ring->csum_none++;
 			}
 		} else {
 			ip_summed = CHECKSUM_NONE;
-			priv->port_stats.rx_chksum_none++;
+			ring->csum_none++;
 		}
 
 		skb = mlx4_en_rx_skb(priv, rx_desc, skb_frags,
@@ -647,13 +654,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		skb->protocol = eth_type_trans(skb, dev);
 		skb_record_rx_queue(skb, cq->ring);
 
+		if (dev->features & NETIF_F_RXHASH)
+			skb->rxhash = be32_to_cpu(cqe->immed_rss_invalid);
+
+		if (be32_to_cpu(cqe->vlan_my_qpn) &
+		    MLX4_CQE_VLAN_PRESENT_MASK)
+			__vlan_hwaccel_put_tag(skb, be16_to_cpu(cqe->sl_vid));
+
 		/* Push it up the stack */
-		if (priv->vlgrp && (be32_to_cpu(cqe->vlan_my_qpn) &
-				    MLX4_CQE_VLAN_PRESENT_MASK)) {
-			vlan_hwaccel_receive_skb(skb, priv->vlgrp,
-						be16_to_cpu(cqe->sl_vid));
-		} else
-			netif_receive_skb(skb);
+		netif_receive_skb(skb);
 
 next:
 		++cq->mcq.cons_index;
@@ -804,6 +813,13 @@ static int mlx4_en_config_rss_qp(struct mlx4_en_priv *priv, int qpn,
 				qpn, ring->cqn, context);
 	context->db_rec_addr = cpu_to_be64(ring->wqres.db.dma);
 
+	/* Cancel FCS removal if FW allows */
+	if (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_FCS_KEEP) {
+		context->param3 |= cpu_to_be32(1 << 29);
+		ring->fcs_del = ETH_FCS_LEN;
+	} else
+		ring->fcs_del = 0;
+
 	err = mlx4_qp_to_ready(mdev->dev, &ring->wqres.mtt, context, qp, state);
 	if (err) {
 		mlx4_qp_remove(mdev->dev, qp);
@@ -827,6 +843,9 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	int i, qpn;
 	int err = 0;
 	int good_qps = 0;
+	static const u32 rsskey[10] = { 0xD181C62C, 0xF7F4DB5B, 0x1983A2FC,
+				0x943E1ADB, 0xD9389E6B, 0xD1039C2C, 0xA74499AD,
+				0x593D56D9, 0xF3253C06, 0x2ADC1FFC};
 
 	en_dbg(DRV, priv, "Configuring rss steering\n");
 	err = mlx4_qp_reserve_range(mdev->dev, priv->rx_ring_num,
@@ -864,6 +883,9 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 					    (rss_map->base_qpn));
 	rss_context->default_qpn = cpu_to_be32(rss_map->base_qpn);
 	rss_context->flags = rss_mask;
+	rss_context->hash_fn = 1;
+	for (i = 0; i < 10; i++)
+		rss_context->rss_key[i] = rsskey[i];
 
 	if (priv->mdev->profile.udp_rss)
 		rss_context->base_qpn_udp = rss_context->default_qpn;
