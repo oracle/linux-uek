@@ -82,6 +82,7 @@ u32 evergreen_page_flip(struct radeon_device *rdev, int crtc_id, u64 crtc_base)
 {
 	struct radeon_crtc *radeon_crtc = rdev->mode_info.crtcs[crtc_id];
 	u32 tmp = RREG32(EVERGREEN_GRPH_UPDATE + radeon_crtc->crtc_offset);
+	int i;
 
 	/* Lock the graphics update lock */
 	tmp |= EVERGREEN_GRPH_UPDATE_LOCK;
@@ -99,7 +100,11 @@ u32 evergreen_page_flip(struct radeon_device *rdev, int crtc_id, u64 crtc_base)
 	       (u32)crtc_base);
 
 	/* Wait for update_pending to go high. */
-	while (!(RREG32(EVERGREEN_GRPH_UPDATE + radeon_crtc->crtc_offset) & EVERGREEN_GRPH_SURFACE_UPDATE_PENDING));
+	for (i = 0; i < rdev->usec_timeout; i++) {
+		if (RREG32(EVERGREEN_GRPH_UPDATE + radeon_crtc->crtc_offset) & EVERGREEN_GRPH_SURFACE_UPDATE_PENDING)
+			break;
+		udelay(1);
+	}
 	DRM_DEBUG("Update pending now high. Unlocking vupdate_lock.\n");
 
 	/* Unlock the lock, so double-buffering can take place inside vblank */
@@ -353,6 +358,7 @@ void evergreen_hpd_init(struct radeon_device *rdev)
 		default:
 			break;
 		}
+		radeon_hpd_set_polarity(rdev, radeon_connector->hpd.hpd);
 	}
 	if (rdev->irq.installed)
 		evergreen_irq_set(rdev);
@@ -1593,48 +1599,6 @@ static u32 evergreen_get_tile_pipe_to_backend_map(struct radeon_device *rdev,
 	return backend_map;
 }
 
-static void evergreen_program_channel_remap(struct radeon_device *rdev)
-{
-	u32 tcp_chan_steer_lo, tcp_chan_steer_hi, mc_shared_chremap, tmp;
-
-	tmp = RREG32(MC_SHARED_CHMAP);
-	switch ((tmp & NOOFCHAN_MASK) >> NOOFCHAN_SHIFT) {
-	case 0:
-	case 1:
-	case 2:
-	case 3:
-	default:
-		/* default mapping */
-		mc_shared_chremap = 0x00fac688;
-		break;
-	}
-
-	switch (rdev->family) {
-	case CHIP_HEMLOCK:
-	case CHIP_CYPRESS:
-	case CHIP_BARTS:
-		tcp_chan_steer_lo = 0x54763210;
-		tcp_chan_steer_hi = 0x0000ba98;
-		break;
-	case CHIP_JUNIPER:
-	case CHIP_REDWOOD:
-	case CHIP_CEDAR:
-	case CHIP_PALM:
-	case CHIP_SUMO:
-	case CHIP_SUMO2:
-	case CHIP_TURKS:
-	case CHIP_CAICOS:
-	default:
-		tcp_chan_steer_lo = 0x76543210;
-		tcp_chan_steer_hi = 0x0000ba98;
-		break;
-	}
-
-	WREG32(TCP_CHAN_STEER_LO, tcp_chan_steer_lo);
-	WREG32(TCP_CHAN_STEER_HI, tcp_chan_steer_hi);
-	WREG32(MC_SHARED_CHREMAP, mc_shared_chremap);
-}
-
 static void evergreen_gpu_init(struct radeon_device *rdev)
 {
 	u32 cc_rb_backend_disable = 0;
@@ -2079,8 +2043,6 @@ static void evergreen_gpu_init(struct radeon_device *rdev)
 	WREG32(GB_ADDR_CONFIG, gb_addr_config);
 	WREG32(DMIF_ADDR_CONFIG, gb_addr_config);
 	WREG32(HDP_ADDR_CONFIG, gb_addr_config);
-
-	evergreen_program_channel_remap(rdev);
 
 	num_shader_engines = ((RREG32(GB_ADDR_CONFIG) & NUM_SHADER_ENGINES(3)) >> 12) + 1;
 	grbm_gfx_index = INSTANCE_BROADCAST_WRITES;

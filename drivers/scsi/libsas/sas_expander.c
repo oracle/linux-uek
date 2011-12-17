@@ -199,6 +199,8 @@ static void sas_set_ex_phy(struct domain_device *dev, int phy_id,
 	phy->virtual = dr->virtual;
 	phy->last_da_index = -1;
 
+	phy->phy->identify.sas_address = SAS_ADDR(phy->attached_sas_addr);
+	phy->phy->identify.device_type = phy->attached_dev_type;
 	phy->phy->identify.initiator_port_protocols = phy->attached_iproto;
 	phy->phy->identify.target_port_protocols = phy->attached_tproto;
 	phy->phy->identify.phy_identifier = phy_id;
@@ -1769,10 +1771,12 @@ static void sas_unregister_devs_sas_addr(struct domain_device *parent,
 		sas_disable_routing(parent, phy->attached_sas_addr);
 	}
 	memset(phy->attached_sas_addr, 0, SAS_ADDR_SIZE);
-	sas_port_delete_phy(phy->port, phy->phy);
-	if (phy->port->num_phys == 0)
-		sas_port_delete(phy->port);
-	phy->port = NULL;
+	if (phy->port) {
+		sas_port_delete_phy(phy->port, phy->phy);
+		if (phy->port->num_phys == 0)
+			sas_port_delete(phy->port);
+		phy->port = NULL;
+	}
 }
 
 static int sas_discover_bfs_by_root_level(struct domain_device *root,
