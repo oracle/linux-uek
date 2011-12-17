@@ -26,38 +26,18 @@ struct be_ethtool_stat {
 	int offset;
 };
 
-enum {NETSTAT, DRVSTAT_TX, DRVSTAT_RX, ERXSTAT,
-			DRVSTAT};
+enum {DRVSTAT_TX, DRVSTAT_RX, DRVSTAT};
 #define FIELDINFO(_struct, field) FIELD_SIZEOF(_struct, field), \
 					offsetof(_struct, field)
-#define NETSTAT_INFO(field) 	#field, NETSTAT,\
-					FIELDINFO(struct net_device_stats,\
-						field)
 #define DRVSTAT_TX_INFO(field)	#field, DRVSTAT_TX,\
 					FIELDINFO(struct be_tx_stats, field)
 #define DRVSTAT_RX_INFO(field)	#field, DRVSTAT_RX,\
 					FIELDINFO(struct be_rx_stats, field)
-#define ERXSTAT_INFO(field)	#field, ERXSTAT,\
-					FIELDINFO(struct be_erx_stats_v1, field)
 #define	DRVSTAT_INFO(field)	#field, DRVSTAT,\
-					FIELDINFO(struct be_drv_stats, \
-						field)
+					FIELDINFO(struct be_drv_stats, field)
 
 static const struct be_ethtool_stat et_stats[] = {
-	{NETSTAT_INFO(rx_packets)},
-	{NETSTAT_INFO(tx_packets)},
-	{NETSTAT_INFO(rx_bytes)},
-	{NETSTAT_INFO(tx_bytes)},
-	{NETSTAT_INFO(rx_errors)},
-	{NETSTAT_INFO(tx_errors)},
-	{NETSTAT_INFO(rx_dropped)},
-	{NETSTAT_INFO(tx_dropped)},
-	{DRVSTAT_TX_INFO(be_tx_rate)},
-	{DRVSTAT_TX_INFO(be_tx_reqs)},
-	{DRVSTAT_TX_INFO(be_tx_wrbs)},
-	{DRVSTAT_TX_INFO(be_tx_stops)},
-	{DRVSTAT_TX_INFO(be_tx_events)},
-	{DRVSTAT_TX_INFO(be_tx_compl)},
+	{DRVSTAT_INFO(tx_events)},
 	{DRVSTAT_INFO(rx_crc_errors)},
 	{DRVSTAT_INFO(rx_alignment_symbol_errors)},
 	{DRVSTAT_INFO(rx_pause_frames)},
@@ -76,9 +56,6 @@ static const struct be_ethtool_stat et_stats[] = {
 	{DRVSTAT_INFO(rx_ip_checksum_errs)},
 	{DRVSTAT_INFO(rx_tcp_checksum_errs)},
 	{DRVSTAT_INFO(rx_udp_checksum_errs)},
-	{DRVSTAT_INFO(rx_switched_unicast_packets)},
-	{DRVSTAT_INFO(rx_switched_multicast_packets)},
-	{DRVSTAT_INFO(rx_switched_broadcast_packets)},
 	{DRVSTAT_INFO(tx_pauseframes)},
 	{DRVSTAT_INFO(tx_controlframes)},
 	{DRVSTAT_INFO(rx_priority_pause_frames)},
@@ -97,19 +74,35 @@ static const struct be_ethtool_stat et_stats[] = {
 };
 #define ETHTOOL_STATS_NUM ARRAY_SIZE(et_stats)
 
-/* Stats related to multi RX queues */
+/* Stats related to multi RX queues: get_stats routine assumes bytes, pkts
+ * are first and second members respectively.
+ */
 static const struct be_ethtool_stat et_rx_stats[] = {
-	{DRVSTAT_RX_INFO(rx_bytes)},
-	{DRVSTAT_RX_INFO(rx_pkts)},
-	{DRVSTAT_RX_INFO(rx_rate)},
+	{DRVSTAT_RX_INFO(rx_bytes)},/* If moving this member see above note */
+	{DRVSTAT_RX_INFO(rx_pkts)}, /* If moving this member see above note */
 	{DRVSTAT_RX_INFO(rx_polls)},
 	{DRVSTAT_RX_INFO(rx_events)},
 	{DRVSTAT_RX_INFO(rx_compl)},
 	{DRVSTAT_RX_INFO(rx_mcast_pkts)},
 	{DRVSTAT_RX_INFO(rx_post_fail)},
-	{ERXSTAT_INFO(rx_drops_no_fragments)}
+	{DRVSTAT_RX_INFO(rx_drops_no_skbs)},
+	{DRVSTAT_RX_INFO(rx_drops_no_frags)}
 };
 #define ETHTOOL_RXSTATS_NUM (ARRAY_SIZE(et_rx_stats))
+
+/* Stats related to multi TX queues: get_stats routine assumes compl is the
+ * first member
+ */
+static const struct be_ethtool_stat et_tx_stats[] = {
+	{DRVSTAT_TX_INFO(tx_compl)}, /* If moving this member see above note */
+	{DRVSTAT_TX_INFO(tx_bytes)},
+	{DRVSTAT_TX_INFO(tx_pkts)},
+	{DRVSTAT_TX_INFO(tx_reqs)},
+	{DRVSTAT_TX_INFO(tx_wrbs)},
+	{DRVSTAT_TX_INFO(tx_compl)},
+	{DRVSTAT_TX_INFO(tx_stops)}
+};
+#define ETHTOOL_TXSTATS_NUM (ARRAY_SIZE(et_tx_stats))
 
 static const char et_self_tests[][ETH_GSTRING_LEN] = {
 	"MAC Loopback test",
@@ -125,18 +118,86 @@ static const char et_self_tests[][ETH_GSTRING_LEN] = {
 #define BE_ONE_PORT_EXT_LOOPBACK 0x2
 #define BE_NO_LOOPBACK 0xff
 
-static void
-be_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
+static void be_get_drvinfo(struct net_device *netdev,
+				struct ethtool_drvinfo *drvinfo)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
+	char fw_on_flash[FW_VER_LEN];
+
+	memset(fw_on_flash, 0 , sizeof(fw_on_flash));
+	be_cmd_get_fw_ver(adapter, adapter->fw_ver, fw_on_flash);
 
 	strcpy(drvinfo->driver, DRV_NAME);
 	strcpy(drvinfo->version, DRV_VER);
 	strncpy(drvinfo->fw_version, adapter->fw_ver, FW_VER_LEN);
+	if (memcmp(adapter->fw_ver, fw_on_flash, FW_VER_LEN) != 0) {
+		strcat(drvinfo->fw_version, " [");
+		strcat(drvinfo->fw_version, fw_on_flash);
+		strcat(drvinfo->fw_version, "]");
+	}
+
 	strcpy(drvinfo->bus_info, pci_name(adapter->pdev));
 	drvinfo->testinfo_len = 0;
 	drvinfo->regdump_len = 0;
 	drvinfo->eedump_len = 0;
+}
+
+static u32
+lancer_cmd_get_file_len(struct be_adapter *adapter, u8 *file_name)
+{
+	u32 data_read = 0, eof;
+	u8 addn_status;
+	struct be_dma_mem data_len_cmd;
+	int status;
+
+	memset(&data_len_cmd, 0, sizeof(data_len_cmd));
+	/* data_offset and data_size should be 0 to get reg len */
+	status = lancer_cmd_read_object(adapter, &data_len_cmd, 0, 0,
+				file_name, &data_read, &eof, &addn_status);
+
+	return data_read;
+}
+
+static int
+lancer_cmd_read_file(struct be_adapter *adapter, u8 *file_name,
+		u32 buf_len, void *buf)
+{
+	struct be_dma_mem read_cmd;
+	u32 read_len = 0, total_read_len = 0, chunk_size;
+	u32 eof = 0;
+	u8 addn_status;
+	int status = 0;
+
+	read_cmd.size = LANCER_READ_FILE_CHUNK;
+	read_cmd.va = pci_alloc_consistent(adapter->pdev, read_cmd.size,
+			&read_cmd.dma);
+
+	if (!read_cmd.va) {
+		dev_err(&adapter->pdev->dev,
+				"Memory allocation failure while reading dump\n");
+		return -ENOMEM;
+	}
+
+	while ((total_read_len < buf_len) && !eof) {
+		chunk_size = min_t(u32, (buf_len - total_read_len),
+				LANCER_READ_FILE_CHUNK);
+		chunk_size = ALIGN(chunk_size, 4);
+		status = lancer_cmd_read_object(adapter, &read_cmd, chunk_size,
+				total_read_len, file_name, &read_len,
+				&eof, &addn_status);
+		if (!status) {
+			memcpy(buf + total_read_len, read_cmd.va, read_len);
+			total_read_len += read_len;
+			eof &= LANCER_READ_FILE_EOF_MASK;
+		} else {
+			status = -EIO;
+			break;
+		}
+	}
+	pci_free_consistent(adapter->pdev, read_cmd.size, read_cmd.va,
+			read_cmd.dma);
+
+	return status;
 }
 
 static int
@@ -145,9 +206,13 @@ be_get_reg_len(struct net_device *netdev)
 	struct be_adapter *adapter = netdev_priv(netdev);
 	u32 log_size = 0;
 
-	if (be_physfn(adapter))
-		be_cmd_get_reg_len(adapter, &log_size);
-
+	if (be_physfn(adapter)) {
+		if (lancer_chip(adapter))
+			log_size = lancer_cmd_get_file_len(adapter,
+					LANCER_FW_DUMP_FILE);
+		else
+			be_cmd_get_reg_len(adapter, &log_size);
+	}
 	return log_size;
 }
 
@@ -158,7 +223,11 @@ be_get_regs(struct net_device *netdev, struct ethtool_regs *regs, void *buf)
 
 	if (be_physfn(adapter)) {
 		memset(buf, 0, regs->len);
-		be_cmd_get_regs(adapter, regs->len, buf);
+		if (lancer_chip(adapter))
+			lancer_cmd_read_file(adapter, LANCER_FW_DUMP_FILE,
+					regs->len, buf);
+		else
+			be_cmd_get_regs(adapter, regs->len, buf);
 	}
 }
 
@@ -253,42 +322,50 @@ be_get_ethtool_stats(struct net_device *netdev,
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
 	struct be_rx_obj *rxo;
-	void *p = NULL;
-	int i, j;
+	struct be_tx_obj *txo;
+	void *p;
+	unsigned int i, j, base = 0, start;
 
 	for (i = 0; i < ETHTOOL_STATS_NUM; i++) {
-		switch (et_stats[i].type) {
-		case NETSTAT:
-			p = &netdev->stats;
-			break;
-		case DRVSTAT_TX:
-			p = &adapter->tx_stats;
-			break;
-		case DRVSTAT:
-			p = &adapter->drv_stats;
-			break;
-		}
-
-		p = (u8 *)p + et_stats[i].offset;
-		data[i] = (et_stats[i].size == sizeof(u64)) ?
-				*(u64 *)p: *(u32 *)p;
+		p = (u8 *)&adapter->drv_stats + et_stats[i].offset;
+		data[i] = *(u32 *)p;
 	}
+	base += ETHTOOL_STATS_NUM;
 
 	for_all_rx_queues(adapter, rxo, j) {
-		for (i = 0; i < ETHTOOL_RXSTATS_NUM; i++) {
-			switch (et_rx_stats[i].type) {
-			case DRVSTAT_RX:
-				p = (u8 *)&rxo->stats + et_rx_stats[i].offset;
-				break;
-			case ERXSTAT:
-				p = (u32 *)be_erx_stats_from_cmd(adapter) +
-								rxo->q.id;
-				break;
-			}
-			data[ETHTOOL_STATS_NUM + j * ETHTOOL_RXSTATS_NUM + i] =
-				(et_rx_stats[i].size == sizeof(u64)) ?
-					*(u64 *)p: *(u32 *)p;
+		struct be_rx_stats *stats = rx_stats(rxo);
+
+		do {
+			start = u64_stats_fetch_begin_bh(&stats->sync);
+			data[base] = stats->rx_bytes;
+			data[base + 1] = stats->rx_pkts;
+		} while (u64_stats_fetch_retry_bh(&stats->sync, start));
+
+		for (i = 2; i < ETHTOOL_RXSTATS_NUM; i++) {
+			p = (u8 *)stats + et_rx_stats[i].offset;
+			data[base + i] = *(u32 *)p;
 		}
+		base += ETHTOOL_RXSTATS_NUM;
+	}
+
+	for_all_tx_queues(adapter, txo, j) {
+		struct be_tx_stats *stats = tx_stats(txo);
+
+		do {
+			start = u64_stats_fetch_begin_bh(&stats->sync_compl);
+			data[base] = stats->tx_compl;
+		} while (u64_stats_fetch_retry_bh(&stats->sync_compl, start));
+
+		do {
+			start = u64_stats_fetch_begin_bh(&stats->sync);
+			for (i = 1; i < ETHTOOL_TXSTATS_NUM; i++) {
+				p = (u8 *)stats + et_tx_stats[i].offset;
+				data[base + i] =
+					(et_tx_stats[i].size == sizeof(u64)) ?
+						*(u64 *)p : *(u32 *)p;
+			}
+		} while (u64_stats_fetch_retry_bh(&stats->sync, start));
+		base += ETHTOOL_TXSTATS_NUM;
 	}
 }
 
@@ -312,6 +389,13 @@ be_get_stat_strings(struct net_device *netdev, uint32_t stringset,
 				data += ETH_GSTRING_LEN;
 			}
 		}
+		for (i = 0; i < adapter->num_tx_qs; i++) {
+			for (j = 0; j < ETHTOOL_TXSTATS_NUM; j++) {
+				sprintf(data, "txq%d: %s", i,
+					et_tx_stats[j].desc);
+				data += ETH_GSTRING_LEN;
+			}
+		}
 		break;
 	case ETH_SS_TEST:
 		for (i = 0; i < ETHTOOL_TESTS_NUM; i++) {
@@ -331,7 +415,8 @@ static int be_get_sset_count(struct net_device *netdev, int stringset)
 		return ETHTOOL_TESTS_NUM;
 	case ETH_SS_STATS:
 		return ETHTOOL_STATS_NUM +
-			adapter->num_rx_qs * ETHTOOL_RXSTATS_NUM;
+			adapter->num_rx_qs * ETHTOOL_RXSTATS_NUM +
+			adapter->num_tx_qs * ETHTOOL_TXSTATS_NUM;
 	default:
 		return -EINVAL;
 	}
@@ -340,19 +425,15 @@ static int be_get_sset_count(struct net_device *netdev, int stringset)
 static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
-	struct be_dma_mem phy_cmd;
-	struct be_cmd_resp_get_phy_info *resp;
+	struct be_phy_info phy_info;
 	u8 mac_speed = 0;
 	u16 link_speed = 0;
-	bool link_up = false;
 	int status;
-	u16 intf_type;
 
 	if ((adapter->link_speed < 0) || (!(netdev->flags & IFF_UP))) {
-		status = be_cmd_link_status_query(adapter, &link_up,
-						&mac_speed, &link_speed, 0);
+		status = be_cmd_link_status_query(adapter, &mac_speed,
+						&link_speed, 0);
 
-		be_link_status_update(adapter, link_up);
 		/* link_speed is in units of 10 Mbps */
 		if (link_speed) {
 			ethtool_cmd_speed_set(ecmd, link_speed*10);
@@ -376,20 +457,9 @@ static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 			}
 		}
 
-		phy_cmd.size = sizeof(struct be_cmd_req_get_phy_info);
-		phy_cmd.va = dma_alloc_coherent(&adapter->pdev->dev,
-						phy_cmd.size, &phy_cmd.dma,
-						GFP_KERNEL);
-		if (!phy_cmd.va) {
-			dev_err(&adapter->pdev->dev, "Memory alloc failure\n");
-			return -ENOMEM;
-		}
-		status = be_cmd_get_phy_info(adapter, &phy_cmd);
+		status = be_cmd_get_phy_info(adapter, &phy_info);
 		if (!status) {
-			resp = (struct be_cmd_resp_get_phy_info *) phy_cmd.va;
-			intf_type = le16_to_cpu(resp->interface_type);
-
-			switch (intf_type) {
+			switch (phy_info.interface_type) {
 			case PHY_TYPE_XFP_10GB:
 			case PHY_TYPE_SFP_1GB:
 			case PHY_TYPE_SFP_PLUS_10GB:
@@ -400,7 +470,7 @@ static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 				break;
 			}
 
-			switch (intf_type) {
+			switch (phy_info.interface_type) {
 			case PHY_TYPE_KR_10GB:
 			case PHY_TYPE_KX4_10GB:
 				ecmd->autoneg = AUTONEG_ENABLE;
@@ -418,8 +488,6 @@ static int be_get_settings(struct net_device *netdev, struct ethtool_cmd *ecmd)
 		adapter->port_type = ecmd->port;
 		adapter->transceiver = ecmd->transceiver;
 		adapter->autoneg = ecmd->autoneg;
-		dma_free_coherent(&adapter->pdev->dev, phy_cmd.size, phy_cmd.va,
-				  phy_cmd.dma);
 	} else {
 		ethtool_cmd_speed_set(ecmd, adapter->link_speed);
 		ecmd->port = adapter->port_type;
@@ -457,10 +525,10 @@ be_get_ringparam(struct net_device *netdev, struct ethtool_ringparam *ring)
 	struct be_adapter *adapter = netdev_priv(netdev);
 
 	ring->rx_max_pending = adapter->rx_obj[0].q.len;
-	ring->tx_max_pending = adapter->tx_obj.q.len;
+	ring->tx_max_pending = adapter->tx_obj[0].q.len;
 
 	ring->rx_pending = atomic_read(&adapter->rx_obj[0].q.used);
-	ring->tx_pending = atomic_read(&adapter->tx_obj.q.used);
+	ring->tx_pending = atomic_read(&adapter->tx_obj[0].q.used);
 }
 
 static void
@@ -608,7 +676,6 @@ static void
 be_self_test(struct net_device *netdev, struct ethtool_test *test, u64 *data)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
-	bool link_up;
 	u8 mac_speed = 0;
 	u16 qos_link_speed = 0;
 
@@ -634,7 +701,7 @@ be_self_test(struct net_device *netdev, struct ethtool_test *test, u64 *data)
 		test->flags |= ETH_TEST_FL_FAILED;
 	}
 
-	if (be_cmd_link_status_query(adapter, &link_up, &mac_speed,
+	if (be_cmd_link_status_query(adapter, &mac_speed,
 				&qos_link_speed, 0) != 0) {
 		test->flags |= ETH_TEST_FL_FAILED;
 		data[4] = -1;
@@ -659,7 +726,17 @@ be_do_flash(struct net_device *netdev, struct ethtool_flash *efl)
 static int
 be_get_eeprom_len(struct net_device *netdev)
 {
-	return BE_READ_SEEPROM_LEN;
+	struct be_adapter *adapter = netdev_priv(netdev);
+	if (lancer_chip(adapter)) {
+		if (be_physfn(adapter))
+			return lancer_cmd_get_file_len(adapter,
+					LANCER_VPD_PF_FILE);
+		else
+			return lancer_cmd_get_file_len(adapter,
+					LANCER_VPD_VF_FILE);
+	} else {
+		return BE_READ_SEEPROM_LEN;
+	}
 }
 
 static int
@@ -673,6 +750,15 @@ be_read_eeprom(struct net_device *netdev, struct ethtool_eeprom *eeprom,
 
 	if (!eeprom->len)
 		return -EINVAL;
+
+	if (lancer_chip(adapter)) {
+		if (be_physfn(adapter))
+			return lancer_cmd_read_file(adapter, LANCER_VPD_PF_FILE,
+					eeprom->len, data);
+		else
+			return lancer_cmd_read_file(adapter, LANCER_VPD_VF_FILE,
+					eeprom->len, data);
+	}
 
 	eeprom->magic = BE_VENDOR_ID | (adapter->pdev->device<<16);
 

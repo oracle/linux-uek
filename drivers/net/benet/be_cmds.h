@@ -51,17 +51,12 @@ struct be_mcc_wrb {
 
 /* Completion Status */
 enum {
-	MCC_STATUS_SUCCESS = 0x0,
-/* The client does not have sufficient privileges to execute the command */
-	MCC_STATUS_INSUFFICIENT_PRIVILEGES = 0x1,
-/* A parameter in the command was invalid. */
-	MCC_STATUS_INVALID_PARAMETER = 0x2,
-/* There are insufficient chip resources to execute the command */
-	MCC_STATUS_INSUFFICIENT_RESOURCES = 0x3,
-/* The command is completing because the queue was getting flushed */
-	MCC_STATUS_QUEUE_FLUSHING = 0x4,
-/* The command is completing with a DMA error */
-	MCC_STATUS_DMA_FAILED = 0x5,
+	MCC_STATUS_SUCCESS = 0,
+	MCC_STATUS_FAILED = 1,
+	MCC_STATUS_ILLEGAL_REQUEST = 2,
+	MCC_STATUS_ILLEGAL_FIELD = 3,
+	MCC_STATUS_INSUFFICIENT_BUFFER = 4,
+	MCC_STATUS_UNAUTHORIZED_REQUEST = 5,
 	MCC_STATUS_NOT_SUPPORTED = 66
 };
 
@@ -94,9 +89,10 @@ struct be_async_event_trailer {
 };
 
 enum {
-	ASYNC_EVENT_LINK_DOWN 	= 0x0,
-	ASYNC_EVENT_LINK_UP 	= 0x1
+	LINK_DOWN	= 0x0,
+	LINK_UP		= 0x1
 };
+#define LINK_STATUS_MASK			0x1
 
 /* When the event code of an async trailer is link-state, the mcc_compl
  * must be interpreted as follows
@@ -193,6 +189,9 @@ struct be_mcc_mailbox {
 #define OPCODE_COMMON_GET_PHY_DETAILS			102
 #define OPCODE_COMMON_SET_DRIVER_FUNCTION_CAP		103
 #define OPCODE_COMMON_GET_CNTL_ADDITIONAL_ATTRIBUTES	121
+#define OPCODE_COMMON_GET_MAC_LIST			147
+#define OPCODE_COMMON_SET_MAC_LIST			148
+#define OPCODE_COMMON_READ_OBJECT			171
 #define OPCODE_COMMON_WRITE_OBJECT			172
 
 #define OPCODE_ETH_RSS_CONFIG				1
@@ -298,6 +297,7 @@ struct be_cmd_req_mac_query {
 	u8 type;
 	u8 permanent;
 	u16 if_id;
+	u32 pmac_id;
 } __packed;
 
 struct be_cmd_resp_mac_query {
@@ -431,6 +431,14 @@ struct amap_mcc_context_lancer {
 } __packed;
 
 struct be_cmd_req_mcc_create {
+	struct be_cmd_req_hdr hdr;
+	u16 num_pages;
+	u16 cq_id;
+	u8 context[sizeof(struct amap_mcc_context_be) / 8];
+	struct phys_addr pages[8];
+} __packed;
+
+struct be_cmd_req_mcc_ext_create {
 	struct be_cmd_req_hdr hdr;
 	u16 num_pages;
 	u16 cq_id;
@@ -690,8 +698,7 @@ struct be_cmd_resp_get_stats_v0 {
 	struct be_hw_stats_v0 hw_stats;
 };
 
-#define make_64bit_val(hi_32, lo_32)	(((u64)hi_32<<32) | lo_32)
-struct lancer_cmd_pport_stats {
+struct lancer_pport_stats {
 	u32 tx_packets_lo;
 	u32 tx_packets_hi;
 	u32 tx_unicast_packets_lo;
@@ -868,16 +875,16 @@ struct lancer_cmd_req_pport_stats {
 	struct be_cmd_req_hdr hdr;
 	union {
 		struct pport_stats_params params;
-		u8 rsvd[sizeof(struct lancer_cmd_pport_stats)];
+		u8 rsvd[sizeof(struct lancer_pport_stats)];
 	} cmd_params;
 };
 
 struct lancer_cmd_resp_pport_stats {
 	struct be_cmd_resp_hdr hdr;
-	struct lancer_cmd_pport_stats pport_stats;
+	struct lancer_pport_stats pport_stats;
 };
 
-static inline  struct lancer_cmd_pport_stats*
+static inline struct lancer_pport_stats*
 	pport_stats_from_cmd(struct be_adapter *adapter)
 {
 	struct lancer_cmd_resp_pport_stats *cmd = adapter->stats_cmd.va;
@@ -907,21 +914,12 @@ struct be_cmd_req_vlan_config {
 	u16 normal_vlan[64];
 } __packed;
 
-/******************** Multicast MAC Config *******************/
+/******************* RX FILTER ******************************/
 #define BE_MAX_MC		64 /* set mcast promisc if > 64 */
 struct macaddr {
 	u8 byte[ETH_ALEN];
 };
 
-struct be_cmd_req_mcast_mac_config {
-	struct be_cmd_req_hdr hdr;
-	u16 num_mac;
-	u8 promiscuous;
-	u8 interface_id;
-	struct macaddr mac[BE_MAX_MC];
-} __packed;
-
-/******************* RX FILTER ******************************/
 struct be_cmd_req_rx_filter {
 	struct be_cmd_req_hdr hdr;
 	u32 global_flags_mask;
@@ -929,10 +927,9 @@ struct be_cmd_req_rx_filter {
 	u32 if_flags_mask;
 	u32 if_flags;
 	u32 if_id;
-	u32 multicast_num;
-	struct macaddr mac[BE_MAX_MC];
+	u32 mcast_num;
+	struct macaddr mcast_mac[BE_MAX_MC];
 };
-
 
 /******************** Link Status Query *******************/
 struct be_cmd_req_link_status {
@@ -1053,6 +1050,12 @@ struct be_cmd_resp_modify_eq_delay {
 
 /******************** Get FW Config *******************/
 #define BE_FUNCTION_CAPS_RSS			0x2
+/* The HW can come up in either of the following multi-channel modes
+ * based on the skew/IPL.
+ */
+#define FLEX10_MODE				0x400
+#define VNIC_MODE				0x20000
+#define UMC_ENABLED				0x1000000
 struct be_cmd_req_query_fw_cfg {
 	struct be_cmd_req_hdr hdr;
 	u32 rsvd[31];
@@ -1162,6 +1165,38 @@ struct lancer_cmd_resp_write_object {
 	u32 actual_write_len;
 };
 
+/************************ Lancer Read FW info **************/
+#define LANCER_READ_FILE_CHUNK			(32*1024)
+#define LANCER_READ_FILE_EOF_MASK		0x80000000
+
+#define LANCER_FW_DUMP_FILE			"/dbg/dump.bin"
+#define LANCER_VPD_PF_FILE			"/vpd/ntr_pf.vpd"
+#define LANCER_VPD_VF_FILE			"/vpd/ntr_vf.vpd"
+
+struct lancer_cmd_req_read_object {
+	struct be_cmd_req_hdr hdr;
+	u32 desired_read_len;
+	u32 read_offset;
+	u8 object_name[104];
+	u32 descriptor_count;
+	u32 buf_len;
+	u32 addr_low;
+	u32 addr_high;
+};
+
+struct lancer_cmd_resp_read_object {
+	u8 opcode;
+	u8 subsystem;
+	u8 rsvd1[2];
+	u8 status;
+	u8 additional_status;
+	u8 rsvd2[2];
+	u32 resp_len;
+	u32 actual_resp_len;
+	u32 actual_read_len;
+	u32 eof;
+};
+
 /************************ WOL *******************************/
 struct be_cmd_req_acpi_wol_magic_config{
 	struct be_cmd_req_hdr hdr;
@@ -1251,12 +1286,17 @@ struct be_cmd_req_get_phy_info {
 	struct be_cmd_req_hdr hdr;
 	u8 rsvd0[24];
 };
-struct be_cmd_resp_get_phy_info {
-	struct be_cmd_req_hdr hdr;
+
+struct be_phy_info {
 	u16 phy_type;
 	u16 interface_type;
 	u32 misc_params;
 	u32 future_use[4];
+};
+
+struct be_cmd_resp_get_phy_info {
+	struct be_cmd_req_hdr hdr;
+	struct be_phy_info phy_info;
 };
 
 /*********************** Set QOS ***********************/
@@ -1302,6 +1342,34 @@ struct be_cmd_resp_set_func_cap {
 	u32 cap_flags;
 	u8 rsvd[212];
 };
+
+/******************** GET/SET_MACLIST  **************************/
+#define BE_MAX_MAC			64
+struct amap_get_mac_list_context {
+	u8 macid[31];
+	u8 act;
+} __packed;
+
+struct be_cmd_req_get_mac_list {
+	struct be_cmd_req_hdr hdr;
+	u32 rsvd;
+} __packed;
+
+struct be_cmd_resp_get_mac_list {
+	struct be_cmd_resp_hdr hdr;
+	u8 mac_count;
+	u8 rsvd1;
+	u16 rsvd2;
+	u8 context[sizeof(struct amap_get_mac_list_context) / 8][BE_MAX_MAC];
+} __packed;
+
+struct be_cmd_req_set_mac_list {
+	struct be_cmd_req_hdr hdr;
+	u8 mac_count;
+	u8 rsvd1;
+	u16 rsvd2;
+	struct macaddr mac[BE_MAX_MAC];
+} __packed;
 
 /*************** HW Stats Get v1 **********************************/
 #define BE_TXP_SW_SZ			48
@@ -1380,8 +1448,7 @@ struct be_cmd_resp_get_stats_v1 {
 	struct be_hw_stats_v1 hw_stats;
 };
 
-static inline void *
-hw_stats_from_cmd(struct be_adapter *adapter)
+static inline void *hw_stats_from_cmd(struct be_adapter *adapter)
 {
 	if (adapter->generation == BE_GEN3) {
 		struct be_cmd_resp_get_stats_v1 *cmd = adapter->stats_cmd.va;
@@ -1391,34 +1458,6 @@ hw_stats_from_cmd(struct be_adapter *adapter)
 		struct be_cmd_resp_get_stats_v0 *cmd = adapter->stats_cmd.va;
 
 		return &cmd->hw_stats;
-	}
-}
-
-static inline void *be_port_rxf_stats_from_cmd(struct be_adapter *adapter)
-{
-	if (adapter->generation == BE_GEN3) {
-		struct be_hw_stats_v1 *hw_stats = hw_stats_from_cmd(adapter);
-		struct be_rxf_stats_v1 *rxf_stats = &hw_stats->rxf;
-
-		return &rxf_stats->port[adapter->port_num];
-	} else {
-		struct be_hw_stats_v0 *hw_stats = hw_stats_from_cmd(adapter);
-		struct be_rxf_stats_v0 *rxf_stats = &hw_stats->rxf;
-
-		return &rxf_stats->port[adapter->port_num];
-	}
-}
-
-static inline void *be_rxf_stats_from_cmd(struct be_adapter *adapter)
-{
-	if (adapter->generation == BE_GEN3) {
-		struct be_hw_stats_v1 *hw_stats = hw_stats_from_cmd(adapter);
-
-		return &hw_stats->rxf;
-	} else {
-		struct be_hw_stats_v0 *hw_stats = hw_stats_from_cmd(adapter);
-
-		return &hw_stats->rxf;
 	}
 }
 
@@ -1435,31 +1474,18 @@ static inline void *be_erx_stats_from_cmd(struct be_adapter *adapter)
 	}
 }
 
-static inline void *be_pmem_stats_from_cmd(struct be_adapter *adapter)
-{
-	if (adapter->generation == BE_GEN3) {
-		struct be_hw_stats_v1 *hw_stats = hw_stats_from_cmd(adapter);
-
-		return &hw_stats->pmem;
-	} else {
-		struct be_hw_stats_v0 *hw_stats = hw_stats_from_cmd(adapter);
-
-		return &hw_stats->pmem;
-	}
-}
-
 extern int be_pci_fnum_get(struct be_adapter *adapter);
 extern int be_cmd_POST(struct be_adapter *adapter);
 extern int be_cmd_mac_addr_query(struct be_adapter *adapter, u8 *mac_addr,
-			u8 type, bool permanent, u32 if_handle);
+			u8 type, bool permanent, u32 if_handle, u32 pmac_id);
 extern int be_cmd_pmac_add(struct be_adapter *adapter, u8 *mac_addr,
 			u32 if_id, u32 *pmac_id, u32 domain);
 extern int be_cmd_pmac_del(struct be_adapter *adapter, u32 if_id,
-			u32 pmac_id, u32 domain);
+			int pmac_id, u32 domain);
 extern int be_cmd_if_create(struct be_adapter *adapter, u32 cap_flags,
-			u32 en_flags, u8 *mac, bool pmac_invalid,
-			u32 *if_handle, u32 *pmac_id, u32 domain);
-extern int be_cmd_if_destroy(struct be_adapter *adapter, u32 if_handle,
+			u32 en_flags, u8 *mac, u32 *if_handle, u32 *pmac_id,
+			u32 domain);
+extern int be_cmd_if_destroy(struct be_adapter *adapter, int if_handle,
 			u32 domain);
 extern int be_cmd_eq_create(struct be_adapter *adapter,
 			struct be_queue_info *eq, int eq_delay);
@@ -1479,22 +1505,23 @@ extern int be_cmd_rxq_create(struct be_adapter *adapter,
 			u32 rss, u8 *rss_id);
 extern int be_cmd_q_destroy(struct be_adapter *adapter, struct be_queue_info *q,
 			int type);
+extern int be_cmd_rxq_destroy(struct be_adapter *adapter,
+			struct be_queue_info *q);
 extern int be_cmd_link_status_query(struct be_adapter *adapter,
-			bool *link_up, u8 *mac_speed, u16 *link_speed, u32 dom);
+			u8 *mac_speed, u16 *link_speed, u32 dom);
 extern int be_cmd_reset(struct be_adapter *adapter);
 extern int be_cmd_get_stats(struct be_adapter *adapter,
 			struct be_dma_mem *nonemb_cmd);
 extern int lancer_cmd_get_pport_stats(struct be_adapter *adapter,
 			struct be_dma_mem *nonemb_cmd);
-extern int be_cmd_get_fw_ver(struct be_adapter *adapter, char *fw_ver);
+extern int be_cmd_get_fw_ver(struct be_adapter *adapter, char *fw_ver,
+		char *fw_on_flash);
 
 extern int be_cmd_modify_eqd(struct be_adapter *adapter, u32 eq_id, u32 eqd);
 extern int be_cmd_vlan_config(struct be_adapter *adapter, u32 if_id,
 			u16 *vtag_array, u32 num, bool untagged,
 			bool promiscuous);
-extern int be_cmd_promiscuous_config(struct be_adapter *adapter, bool en);
-extern int be_cmd_multicast_set(struct be_adapter *adapter, u32 if_id,
-			struct net_device *netdev, struct be_dma_mem *mem);
+extern int be_cmd_rx_filter(struct be_adapter *adapter, u32 flags, u32 status);
 extern int be_cmd_set_flow_control(struct be_adapter *adapter,
 			u32 tx_fc, u32 rx_fc);
 extern int be_cmd_get_flow_control(struct be_adapter *adapter,
@@ -1517,6 +1544,9 @@ extern int lancer_cmd_write_object(struct be_adapter *adapter,
 				u32 data_size, u32 data_offset,
 				const char *obj_name,
 				u32 *data_written, u8 *addn_status);
+int lancer_cmd_read_object(struct be_adapter *adapter, struct be_dma_mem *cmd,
+		u32 data_size, u32 data_offset, const char *obj_name,
+		u32 *data_read, u32 *eof, u8 *addn_status);
 int be_cmd_get_flash_crc(struct be_adapter *adapter, u8 *flashed_crc,
 				int offset);
 extern int be_cmd_enable_magic_wol(struct be_adapter *adapter, u8 *mac,
@@ -1535,12 +1565,16 @@ extern int be_cmd_get_seeprom_data(struct be_adapter *adapter,
 extern int be_cmd_set_loopback(struct be_adapter *adapter, u8 port_num,
 				u8 loopback_type, u8 enable);
 extern int be_cmd_get_phy_info(struct be_adapter *adapter,
-		struct be_dma_mem *cmd);
+				struct be_phy_info *phy_info);
 extern int be_cmd_set_qos(struct be_adapter *adapter, u32 bps, u32 domain);
 extern void be_detect_dump_ue(struct be_adapter *adapter);
 extern int be_cmd_get_die_temperature(struct be_adapter *adapter);
 extern int be_cmd_get_cntl_attributes(struct be_adapter *adapter);
-extern int be_cmd_check_native_mode(struct be_adapter *adapter);
+extern int be_cmd_req_native_mode(struct be_adapter *adapter);
 extern int be_cmd_get_reg_len(struct be_adapter *adapter, u32 *log_size);
 extern void be_cmd_get_regs(struct be_adapter *adapter, u32 buf_len, void *buf);
+extern int be_cmd_get_mac_from_list(struct be_adapter *adapter, u32 domain,
+							u32 *pmac_id);
+extern int be_cmd_set_mac_list(struct be_adapter *adapter, u8 *mac_array,
+						u8 mac_count, u32 domain);
 
