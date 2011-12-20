@@ -1828,44 +1828,43 @@ qla2x00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	uint32_t sense_len;
 	uint8_t *sense_ptr;
 
+	if (!sp || !GET_CMD_SENSE_LEN(sp))
+		return;
+
 	sense_len = GET_CMD_SENSE_LEN(sp);
 	sense_ptr = GET_CMD_SENSE_PTR(sp);
 
-	if (sp != NULL && sense_len != 0) {
-		cp = GET_CMD_SP(sp);
-		if (cp == NULL) {
-			ql_log(ql_log_warn, vha, 0x3025,
-			    "cmd is NULL: already returned to OS (sp=%p).\n",
-			    sp);
+	cp = GET_CMD_SP(sp);
+	if (cp == NULL) {
+		ql_log(ql_log_warn, vha, 0x3025,
+		    "cmd is NULL: already returned to OS (sp=%p).\n", sp);
 
-			rsp->status_srb = NULL;
-			return;
-		}
+		rsp->status_srb = NULL;
+		return;
+	}
 
-		if (sense_len > sizeof(pkt->data)) {
-			sense_sz = sizeof(pkt->data);
-		} else {
-			sense_sz = sense_len;
-		}
+	if (sense_len > sizeof(pkt->data))
+		sense_sz = sizeof(pkt->data);
+	else
+		sense_sz = sense_len;
 
-		/* Move sense data. */
-		if (IS_FWI2_CAPABLE(ha))
-			host_to_fcp_swap(pkt->data, sizeof(pkt->data));
-		memcpy(sense_ptr, pkt->data, sense_sz);
-		ql_dump_buffer(ql_dbg_io + ql_dbg_buffer, vha, 0x302c,
-			sense_ptr, sense_sz);
+	/* Move sense data. */
+	if (IS_FWI2_CAPABLE(ha))
+		host_to_fcp_swap(pkt->data, sizeof(pkt->data));
+	memcpy(sense_ptr, pkt->data, sense_sz);
+	ql_dump_buffer(ql_dbg_io + ql_dbg_buffer, vha, 0x302c,
+		sense_ptr, sense_sz);
 
-		sense_len =- sense_sz;
-		sense_ptr += sense_sz;
+	sense_len -= sense_sz;
+	sense_ptr += sense_sz;
 
-		SET_CMD_SENSE_PTR(sp, sense_ptr);
-		SET_CMD_SENSE_LEN(sp, sense_len);
+	SET_CMD_SENSE_PTR(sp, sense_ptr);
+	SET_CMD_SENSE_LEN(sp, sense_len);
 
-		/* Place command on done queue. */
-		if (sense_len == 0) {
-			rsp->status_srb = NULL;
-			sp->done(ha, sp, 0);
-		}
+	/* Place command on done queue. */
+	if (sense_len == 0) {
+		rsp->status_srb = NULL;
+		sp->done(ha, sp, 0);
 	}
 }
 
