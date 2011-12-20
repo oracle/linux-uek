@@ -150,9 +150,6 @@
 #define QL4_SESS_RECOVERY_TMO		120	/* iSCSI session */
 						/* recovery timeout */
 
-#define QL4_SCSI_ADAPTER_RESET		1
-#define QL4_SCSI_FIRMWARE_RESET		2
-
 #define LSDW(x) ((u32)((u64)(x)))
 #define MSDW(x) ((u32)((((u64)(x)) >> 16) >> 16))
 
