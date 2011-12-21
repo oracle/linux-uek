@@ -386,21 +386,18 @@ static void scsifront_backend_changed(struct xenbus_device *dev,
 }
 
 
-static struct xenbus_device_id scsifront_ids[] = {
+static const struct xenbus_device_id scsifront_ids[] = {
 	{ "vscsi" },
 	{ "" }
 };
 MODULE_ALIAS("xen:vscsi");
 
-static struct xenbus_driver scsifront_driver = {
-	.name			= "vscsi",
-	.owner			= THIS_MODULE,
-	.ids			= scsifront_ids,
+static DEFINE_XENBUS_DRIVER(scsifront, ,
 	.probe			= scsifront_probe,
 	.remove			= scsifront_remove,
 /* 	.resume			= scsifront_resume, */
 	.otherend_changed	= scsifront_backend_changed,
-};
+);
 
 int scsifront_xenbus_init(void)
 {
