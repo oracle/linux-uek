@@ -738,6 +738,8 @@ qla2xxx_get_flt_info(scsi_qla_host_t *vha, uint32_t flt_addr)
 			ha->flt_region_boot = start;
 			break;
 		case FLT_REG_VPD_0:
+			if (IS_QLA8031(ha))
+				break;
 			ha->flt_region_vpd_nvram = start;
 			if (IS_QLA82XX(ha))
 				break;
@@ -745,16 +747,20 @@ qla2xxx_get_flt_info(scsi_qla_host_t *vha, uint32_t flt_addr)
 				ha->flt_region_vpd = start;
 			break;
 		case FLT_REG_VPD_1:
-			if (IS_QLA82XX(ha))
+			if (IS_QLA82XX(ha) || IS_QLA8031(ha))
 				break;
 			if (!ha->flags.port0)
 				ha->flt_region_vpd = start;
 			break;
 		case FLT_REG_NVRAM_0:
+			if (IS_QLA8031(ha))
+				break;
 			if (ha->flags.port0)
 				ha->flt_region_nvram = start;
 			break;
 		case FLT_REG_NVRAM_1:
+			if (IS_QLA8031(ha))
+				break;
 			if (!ha->flags.port0)
 				ha->flt_region_nvram = start;
 			break;
@@ -794,6 +800,31 @@ qla2xxx_get_flt_info(scsi_qla_host_t *vha, uint32_t flt_addr)
 			break;
 		case FLT_REG_VPD_82XX:
 			ha->flt_region_vpd = start;
+			break;
+		case FLT_REG_FCOE_VPD_0:
+			if (!IS_QLA8031(ha))
+				break;
+			ha->flt_region_vpd_nvram = start;
+			if (ha->flags.port0)
+				ha->flt_region_vpd = start;
+			break;
+		case FLT_REG_FCOE_VPD_1:
+			if (!IS_QLA8031(ha))
+				break;
+			if (!ha->flags.port0)
+				ha->flt_region_vpd = start;
+			break;
+		case FLT_REG_FCOE_NVRAM_0:
+			if (!IS_QLA8031(ha))
+				break;
+			if (ha->flags.port0)
+				ha->flt_region_nvram = start;
+			break;
+		case FLT_REG_FCOE_NVRAM_1:
+			if (!IS_QLA8031(ha))
+				break;
+			if (!ha->flags.port0)
+				ha->flt_region_nvram = start;
 			break;
 		}
 	}
