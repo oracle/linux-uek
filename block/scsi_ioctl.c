@@ -691,9 +691,43 @@ int scsi_cmd_ioctl(struct request_queue *q, struct gendisk *bd_disk, fmode_t mod
 }
 EXPORT_SYMBOL(scsi_cmd_ioctl);
 
+int scsi_verify_blk_ioctl(struct block_device *bd, unsigned int cmd)
+{
+	if (bd && bd == bd->bd_contains)
+		return 0;
+
+	/* Actually none of this is particularly useful on a partition
+	 * device, but let's play it safe.
+	 */
+	switch (cmd) {
+	case SCSI_IOCTL_GET_IDLUN:
+	case SCSI_IOCTL_GET_BUS_NUMBER:
+	case SCSI_IOCTL_GET_PCI:
+	case SCSI_IOCTL_PROBE_HOST:
+	case SG_GET_VERSION_NUM:
+	case SG_SET_TIMEOUT:
+	case SG_GET_TIMEOUT:
+	case SG_GET_RESERVED_SIZE:
+	case SG_SET_RESERVED_SIZE:
+	case SG_EMULATED_HOST:
+		return 0;
+	default:
+		break;
+	}
+	/* In particular, rule out all resets and host-specific ioctls.  */
+	return -ENOTTY;
+}
+EXPORT_SYMBOL(scsi_verify_blk_ioctl);
+
 int scsi_cmd_blk_ioctl(struct block_device *bd, fmode_t mode,
 		       unsigned int cmd, void __user *arg)
 {
+	int ret;
+
+	ret = scsi_verify_blk_ioctl(bd, cmd);
+	if (ret < 0)
+		return ret;
+
 	return scsi_cmd_ioctl(bd->bd_disk->queue, bd->bd_disk, mode, cmd, arg);
 }
 EXPORT_SYMBOL(scsi_cmd_blk_ioctl);
