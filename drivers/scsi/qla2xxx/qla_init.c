@@ -125,9 +125,9 @@ qla2x00_async_login_sp_done(void *data, void *ptr, int res)
 	struct scsi_qla_host *vha = (scsi_qla_host_t *)data;
 
 	if (!test_bit(UNLOADING, &vha->dpc_flags))
-		qla2x00_post_async_login_done_work(vha, sp->fcport,
+		qla2x00_post_async_login_done_work(sp->fcport->vha, sp->fcport,
 		    lio->u.logio.data);
-	sp->free(vha, sp);
+	sp->free(sp->fcport->vha, sp);
 }
 
 int
@@ -164,7 +164,7 @@ qla2x00_async_login(struct scsi_qla_host *vha, fc_port_t *fcport,
 	return rval;
 
 done_free_sp:
-	sp->free(vha, sp);
+	sp->free(fcport->vha, sp);
 done:
 	return rval;
 }
@@ -177,9 +177,9 @@ qla2x00_async_logout_sp_done(void *data, void *ptr, int res)
 	struct scsi_qla_host *vha = (scsi_qla_host_t *)data;
 
 	if (!test_bit(UNLOADING, &vha->dpc_flags))
-		qla2x00_post_async_logout_done_work(vha, sp->fcport,
+		qla2x00_post_async_logout_done_work(sp->fcport->vha, sp->fcport,
 		    lio->u.logio.data);
-	sp->free(vha, sp);
+	sp->free(sp->fcport->vha, sp);
 }
 
 int
@@ -212,7 +212,7 @@ qla2x00_async_logout(struct scsi_qla_host *vha, fc_port_t *fcport)
 	return rval;
 
 done_free_sp:
-	sp->free(vha, sp);
+	sp->free(fcport->vha, sp);
 done:
 	return rval;
 }
@@ -225,9 +225,9 @@ qla2x00_async_adisc_sp_done(void *data, void *ptr, int res)
 	struct scsi_qla_host *vha = (scsi_qla_host_t *)data;
 
 	if (!test_bit(UNLOADING, &vha->dpc_flags))
-		qla2x00_post_async_adisc_done_work(vha, sp->fcport,
+		qla2x00_post_async_adisc_done_work(sp->fcport->vha, sp->fcport,
 		    lio->u.logio.data);
-	sp->free(vha, sp);
+	sp->free(sp->fcport->vha, sp);
 }
 
 int
@@ -262,7 +262,7 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 	return rval;
 
 done_free_sp:
-	sp->free(vha, sp);
+	sp->free(fcport->vha, sp);
 done:
 	return rval;
 }
@@ -291,7 +291,7 @@ qla2x00_async_tm_cmd_done(void *data, void *ptr, int res)
 			    "TM IOCB failed (%x).\n", rval);
 		}
 	}
-	sp->free(vha, sp);
+	sp->free(sp->fcport->vha, sp);
 }
 
 int
@@ -330,7 +330,7 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t tm_flags, uint32_t lun,
 	return rval;
 
 done_free_sp:
-	sp->free(vha, sp);
+	sp->free(fcport->vha, sp);
 done:
 	return rval;
 }
