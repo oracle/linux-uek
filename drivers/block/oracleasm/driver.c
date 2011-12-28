@@ -1044,6 +1044,9 @@ static struct asm_request *asm_request_alloc(void)
 
 	r = kmem_cache_zalloc(asm_request_cachep, GFP_KERNEL);
 
+	if (r)
+		r->r_status = ASM_SUBMITTED;
+
 	return r;
 }  /* asm_request_alloc() */
 
@@ -2821,7 +2824,7 @@ static struct dentry *asmfs_mount(struct file_system_type *fs_type,
 				       int flags, const char *dev_name,
 				       void *data)
 {
-	return mount_bdev(fs_type, flags, dev_name, data, asmfs_fill_super);
+	return mount_nodev(fs_type, flags, data, asmfs_fill_super);
 }
 
 static struct file_system_type asmfs_fs_type = {
