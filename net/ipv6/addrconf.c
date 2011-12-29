@@ -808,7 +808,7 @@ static void ipv6_del_addr(struct inet6_ifaddr *ifp)
 				ip6_del_rt(rt);
 				rt = NULL;
 			} else if (!(rt->rt6i_flags & RTF_EXPIRES)) {
-				rt->rt6i_expires = expires;
+				rt->dst.expires = expires;
 				rt->rt6i_flags |= RTF_EXPIRES;
 			}
 		}
@@ -1849,11 +1849,11 @@ void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len)
 				rt = NULL;
 			} else if (addrconf_finite_timeout(rt_expires)) {
 				/* not infinity */
-				rt->rt6i_expires = jiffies + rt_expires;
+				rt->dst.expires = jiffies + rt_expires;
 				rt->rt6i_flags |= RTF_EXPIRES;
 			} else {
 				rt->rt6i_flags &= ~RTF_EXPIRES;
-				rt->rt6i_expires = 0;
+				rt->dst.expires = 0;
 			}
 		} else if (valid_lft) {
 			clock_t expires = 0;
