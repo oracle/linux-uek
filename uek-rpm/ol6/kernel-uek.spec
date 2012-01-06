@@ -642,8 +642,6 @@ glibc package.
 %package firmware
 Summary: Firmware files used by the Linux kernel
 Group: Development/System
-Obsoletes: kernel-firmware 
-Obsoletes: kernel-uek-firmware <  2.6.39
 # This is... complicated.
 # Look at the WHENCE file.
 License: GPL+ and GPLv2+ and MIT and Redistributable, no modification permitted
