@@ -2155,7 +2155,7 @@ static void nfs4_xdr_enc_open(struct rpc_rqst *req, struct xdr_stream *xdr,
 	encode_getfh(xdr, &hdr);
 	encode_getfattr(xdr, args->bitmask, &hdr);
 	encode_restorefh(xdr, &hdr);
-	encode_getfattr(xdr, args->bitmask, &hdr);
+	encode_getfattr(xdr, args->dir_bitmask, &hdr);
 	encode_nops(&hdr);
 }
 
@@ -3572,7 +3572,8 @@ out_overflow:
 }
 
 static int decode_attr_owner(struct xdr_stream *xdr, uint32_t *bitmap,
-		const struct nfs_server *server, uint32_t *uid, int may_sleep)
+		const struct nfs_server *server, uint32_t *uid,
+		struct nfs4_string *owner_name)
 {
 	uint32_t len;
 	__be32 *p;
@@ -3589,8 +3590,12 @@ static int decode_attr_owner(struct xdr_stream *xdr, uint32_t *bitmap,
 		p = xdr_inline_decode(xdr, len);
 		if (unlikely(!p))
 			goto out_overflow;
-		if (!may_sleep) {
-			/* do nothing */
+		if (owner_name != NULL) {
+			owner_name->data = kmemdup(p, len, GFP_NOWAIT);
+			if (owner_name->data != NULL) {
+				owner_name->len = len;
+				ret = NFS_ATTR_FATTR_OWNER_NAME;
+			}
 		} else if (len < XDR_MAX_NETOBJ) {
 			if (nfs_map_name_to_uid(server, (char *)p, len, uid) == 0)
 				ret = NFS_ATTR_FATTR_OWNER;
@@ -3610,7 +3615,8 @@ out_overflow:
 }
 
 static int decode_attr_group(struct xdr_stream *xdr, uint32_t *bitmap,
-		const struct nfs_server *server, uint32_t *gid, int may_sleep)
+		const struct nfs_server *server, uint32_t *gid,
+		struct nfs4_string *group_name)
 {
 	uint32_t len;
 	__be32 *p;
@@ -3627,8 +3633,12 @@ static int decode_attr_group(struct xdr_stream *xdr, uint32_t *bitmap,
 		p = xdr_inline_decode(xdr, len);
 		if (unlikely(!p))
 			goto out_overflow;
-		if (!may_sleep) {
-			/* do nothing */
+		if (group_name != NULL) {
+			group_name->data = kmemdup(p, len, GFP_NOWAIT);
+			if (group_name->data != NULL) {
+				group_name->len = len;
+				ret = NFS_ATTR_FATTR_GROUP_NAME;
+			}
 		} else if (len < XDR_MAX_NETOBJ) {
 			if (nfs_map_group_to_gid(server, (char *)p, len, gid) == 0)
 				ret = NFS_ATTR_FATTR_GROUP;
@@ -4065,7 +4075,7 @@ xdr_error:
 
 static int decode_getfattr_attrs(struct xdr_stream *xdr, uint32_t *bitmap,
 		struct nfs_fattr *fattr, struct nfs_fh *fh,
-		const struct nfs_server *server, int may_sleep)
+		const struct nfs_server *server)
 {
 	int status;
 	umode_t fmode = 0;
@@ -4132,12 +4142,12 @@ static int decode_getfattr_attrs(struct xdr_stream *xdr, uint32_t *bitmap,
 		goto xdr_error;
 	fattr->valid |= status;
 
-	status = decode_attr_owner(xdr, bitmap, server, &fattr->uid, may_sleep);
+	status = decode_attr_owner(xdr, bitmap, server, &fattr->uid, fattr->owner_name);
 	if (status < 0)
 		goto xdr_error;
 	fattr->valid |= status;
 
-	status = decode_attr_group(xdr, bitmap, server, &fattr->gid, may_sleep);
+	status = decode_attr_group(xdr, bitmap, server, &fattr->gid, fattr->group_name);
 	if (status < 0)
 		goto xdr_error;
 	fattr->valid |= status;
@@ -4178,7 +4188,7 @@ xdr_error:
 }
 
 static int decode_getfattr_generic(struct xdr_stream *xdr, struct nfs_fattr *fattr,
-		struct nfs_fh *fh, const struct nfs_server *server, int may_sleep)
+		struct nfs_fh *fh, const struct nfs_server *server)
 {
 	__be32 *savep;
 	uint32_t attrlen,
@@ -4197,7 +4207,7 @@ static int decode_getfattr_generic(struct xdr_stream *xdr, struct nfs_fattr *fat
 	if (status < 0)
 		goto xdr_error;
 
-	status = decode_getfattr_attrs(xdr, bitmap, fattr, fh, server, may_sleep);
+	status = decode_getfattr_attrs(xdr, bitmap, fattr, fh, server);
 	if (status < 0)
 		goto xdr_error;
 
@@ -4208,9 +4218,9 @@ xdr_error:
 }
 
 static int decode_getfattr(struct xdr_stream *xdr, struct nfs_fattr *fattr,
-		const struct nfs_server *server, int may_sleep)
+		const struct nfs_server *server)
 {
-	return decode_getfattr_generic(xdr, fattr, NULL, server, may_sleep);
+	return decode_getfattr_generic(xdr, fattr, NULL, server);
 }
 
 /*
@@ -5350,8 +5360,7 @@ static int nfs4_xdr_dec_open_downgrade(struct rpc_rqst *rqstp,
 	status = decode_open_downgrade(xdr, res);
 	if (status != 0)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5377,8 +5386,7 @@ static int nfs4_xdr_dec_access(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	status = decode_access(xdr, res);
 	if (status != 0)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5407,8 +5415,7 @@ static int nfs4_xdr_dec_lookup(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	status = decode_getfh(xdr, res->fh);
 	if (status)
 		goto out;
-	status = decode_getfattr(xdr, res->fattr, res->server
-			,!RPC_IS_ASYNC(rqstp->rq_task));
+	status = decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5434,8 +5441,7 @@ static int nfs4_xdr_dec_lookup_root(struct rpc_rqst *rqstp,
 		goto out;
 	status = decode_getfh(xdr, res->fh);
 	if (status == 0)
-		status = decode_getfattr(xdr, res->fattr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task));
+		status = decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5461,8 +5467,7 @@ static int nfs4_xdr_dec_remove(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	status = decode_remove(xdr, &res->cinfo);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->dir_attr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->dir_attr, res->server);
 out:
 	return status;
 }
@@ -5495,14 +5500,12 @@ static int nfs4_xdr_dec_rename(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	if (status)
 		goto out;
 	/* Current FH is target directory */
-	if (decode_getfattr(xdr, res->new_fattr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task)) != 0)
+	if (decode_getfattr(xdr, res->new_fattr, res->server))
 		goto out;
 	status = decode_restorefh(xdr);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->old_fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->old_fattr, res->server);
 out:
 	return status;
 }
@@ -5538,14 +5541,12 @@ static int nfs4_xdr_dec_link(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	 * Note order: OP_LINK leaves the directory as the current
 	 *             filehandle.
 	 */
-	if (decode_getfattr(xdr, res->dir_attr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task)) != 0)
+	if (decode_getfattr(xdr, res->dir_attr, res->server))
 		goto out;
 	status = decode_restorefh(xdr);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5577,14 +5578,12 @@ static int nfs4_xdr_dec_create(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	status = decode_getfh(xdr, res->fh);
 	if (status)
 		goto out;
-	if (decode_getfattr(xdr, res->fattr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task)) != 0)
+	if (decode_getfattr(xdr, res->fattr, res->server))
 		goto out;
 	status = decode_restorefh(xdr);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->dir_fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->dir_fattr, res->server);
 out:
 	return status;
 }
@@ -5616,8 +5615,7 @@ static int nfs4_xdr_dec_getattr(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	status = decode_putfh(xdr);
 	if (status)
 		goto out;
-	status = decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	status = decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5715,8 +5713,7 @@ static int nfs4_xdr_dec_close(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	 * 	an ESTALE error. Shouldn't be a problem,
 	 * 	though, since fattr->valid will remain unset.
 	 */
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -5747,13 +5744,11 @@ static int nfs4_xdr_dec_open(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 		goto out;
 	if (decode_getfh(xdr, &res->fh) != 0)
 		goto out;
-	if (decode_getfattr(xdr, res->f_attr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task)) != 0)
+	if (decode_getfattr(xdr, res->f_attr, res->server) != 0)
 		goto out;
 	if (decode_restorefh(xdr) != 0)
 		goto out;
-	decode_getfattr(xdr, res->dir_attr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->dir_attr, res->server);
 out:
 	return status;
 }
@@ -5801,8 +5796,7 @@ static int nfs4_xdr_dec_open_noattr(struct rpc_rqst *rqstp,
 	status = decode_open(xdr, res);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->f_attr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->f_attr, res->server);
 out:
 	return status;
 }
@@ -5829,8 +5823,7 @@ static int nfs4_xdr_dec_setattr(struct rpc_rqst *rqstp,
 	status = decode_setattr(xdr);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -6010,8 +6003,7 @@ static int nfs4_xdr_dec_write(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	if (status)
 		goto out;
 	if (res->fattr)
-		decode_getfattr(xdr, res->fattr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task));
+		decode_getfattr(xdr, res->fattr, res->server);
 	if (!status)
 		status = res->count;
 out:
@@ -6040,8 +6032,7 @@ static int nfs4_xdr_dec_commit(struct rpc_rqst *rqstp, struct xdr_stream *xdr,
 	if (status)
 		goto out;
 	if (res->fattr)
-		decode_getfattr(xdr, res->fattr, res->server,
-				!RPC_IS_ASYNC(rqstp->rq_task));
+		decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -6200,8 +6191,7 @@ static int nfs4_xdr_dec_delegreturn(struct rpc_rqst *rqstp,
 	status = decode_delegreturn(xdr);
 	if (status != 0)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -6230,8 +6220,7 @@ static int nfs4_xdr_dec_fs_locations(struct rpc_rqst *req,
 		goto out;
 	xdr_enter_page(xdr, PAGE_SIZE);
 	status = decode_getfattr(xdr, &res->fs_locations->fattr,
-				 res->fs_locations->server,
-				 !RPC_IS_ASYNC(req->rq_task));
+				 res->fs_locations->server);
 out:
 	return status;
 }
@@ -6456,8 +6445,7 @@ static int nfs4_xdr_dec_layoutcommit(struct rpc_rqst *rqstp,
 	status = decode_layoutcommit(xdr, rqstp, res);
 	if (status)
 		goto out;
-	decode_getfattr(xdr, res->fattr, res->server,
-			!RPC_IS_ASYNC(rqstp->rq_task));
+	decode_getfattr(xdr, res->fattr, res->server);
 out:
 	return status;
 }
@@ -6522,7 +6510,7 @@ int nfs4_decode_dirent(struct xdr_stream *xdr, struct nfs_entry *entry,
 		goto out_overflow;
 
 	if (decode_getfattr_attrs(xdr, bitmap, entry->fattr, entry->fh,
-					entry->server, 1) < 0)
+					entry->server) < 0)
 		goto out_overflow;
 	if (entry->fattr->valid & NFS_ATTR_FATTR_MOUNTED_ON_FILEID)
 		entry->ino = entry->fattr->mounted_on_fileid;
