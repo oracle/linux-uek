@@ -18,6 +18,9 @@ typedef uint32_t dtrace_id_t;
 #define SCE_RT_SIGRETURN	6
 #define SCE_nr_stubs		7
 
+extern void dtrace_enable(void);
+extern void dtrace_disable(void);
+
 extern void dtrace_invop_add(int (*func)(struct pt_regs *));
 extern void dtrace_invop_remove(int (*func)(struct pt_regs *));
 
