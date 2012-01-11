@@ -1097,6 +1097,27 @@ static struct dio *dio_alloc_init(int flags, int rw, struct kiocb *iocb,
 	return dio;
 }
 
+static void sdio_init(struct dio_submit *sdio, struct inode *inode,
+		      loff_t offset, unsigned blkbits, get_block_t get_block,
+		      dio_submit_t *submit_io)
+{
+	sdio->blkbits = blkbits;
+	sdio->blkfactor = inode->i_blkbits - blkbits;
+	sdio->block_in_file = offset >> blkbits;
+
+	sdio->get_block = get_block;
+	sdio->submit_io = submit_io;
+	sdio->final_block_in_bio = -1;
+	sdio->next_block_for_io = -1;
+
+	/*
+	 * In case of non-aligned buffers, we may need 2 more
+	 * pages since we need to zero out first and last block.
+	 */
+	if (unlikely(sdio->blkfactor))
+		sdio->pages_in_io = 2;
+}
+
 /*
  * This is a library function for use by filesystem drivers.
  *
@@ -1186,21 +1207,7 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 
 	retval = 0;
 
-	sdio.blkbits = blkbits;
-	sdio.blkfactor = inode->i_blkbits - blkbits;
-	sdio.block_in_file = offset >> blkbits;
-
-	sdio.get_block = get_block;
-	sdio.submit_io = submit_io;
-	sdio.final_block_in_bio = -1;
-	sdio.next_block_for_io = -1;
-
-	/*
-	 * In case of non-aligned buffers, we may need 2 more
-	 * pages since we need to zero out first and last block.
-	 */
-	if (unlikely(sdio.blkfactor))
-		sdio.pages_in_io = 2;
+	sdio_init(&sdio, inode, offset, blkbits, get_block, submit_io);
 
 	for (seg = 0; seg < nr_segs; seg++) {
 		user_addr = (unsigned long)iov[seg].iov_base;
