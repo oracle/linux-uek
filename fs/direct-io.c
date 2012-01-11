@@ -1056,6 +1056,47 @@ static int dio_aligned(unsigned long offset, unsigned *blkbits,
 	return 1;
 }
 
+static struct dio *dio_alloc_init(int flags, int rw, struct kiocb *iocb,
+				  struct inode *inode, dio_iodone_t end_io,
+				  loff_t end)
+{
+	struct dio *dio;
+
+	dio = kmem_cache_alloc(dio_cache, GFP_KERNEL);
+	if (!dio)
+		return NULL;
+
+	/*
+	 * Believe it or not, zeroing out the page array caused a .5%
+	 * performance regression in a database benchmark.  So, we take
+	 * care to only zero out what's needed.
+	 */
+	memset(dio, 0, offsetof(struct dio, pages));
+
+	dio->flags = flags;
+	/*
+	 * For file extending writes updating i_size before data
+	 * writeouts complete can expose uninitialized blocks. So
+	 * even for AIO, we need to wait for i/o to complete before
+	 * returning in this case.
+	 */
+	dio->is_async = !is_sync_kiocb(iocb) && !((rw & WRITE) &&
+		(end > i_size_read(inode)));
+
+	dio->inode = inode;
+	dio->rw = rw;
+
+	dio->end_io = end_io;
+
+	dio->iocb = iocb;
+	dio->i_size = i_size_read(inode);
+
+	spin_lock_init(&dio->bio_lock);
+	dio->refcount = 1;
+
+	return dio;
+}
+
 /*
  * This is a library function for use by filesystem drivers.
  *
@@ -1113,18 +1154,11 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 			goto out;
 	}
 
-	dio = kmem_cache_alloc(dio_cache, GFP_KERNEL);
+	dio = dio_alloc_init(flags, rw, iocb, inode, end_io, end);
 	retval = -ENOMEM;
 	if (!dio)
 		goto out;
-	/*
-	 * Believe it or not, zeroing out the page array caused a .5%
-	 * performance regression in a database benchmark.  So, we take
-	 * care to only zero out what's needed.
-	 */
-	memset(dio, 0, offsetof(struct dio, pages));
 
-	dio->flags = flags;
 	if (dio->flags & DIO_LOCKING) {
 		/* watch out for a 0 len io from a tricksy fs */
 		if (rw == READ && end > offset) {
@@ -1150,34 +1184,16 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 		down_read_non_owner(&inode->i_alloc_sem);
 	}
 
-	/*
-	 * For file extending writes updating i_size before data
-	 * writeouts complete can expose uninitialized blocks. So
-	 * even for AIO, we need to wait for i/o to complete before
-	 * returning in this case.
-	 */
-	dio->is_async = !is_sync_kiocb(iocb) && !((rw & WRITE) &&
-		(end > i_size_read(inode)));
-
 	retval = 0;
 
-	dio->inode = inode;
-	dio->rw = rw;
 	sdio.blkbits = blkbits;
 	sdio.blkfactor = inode->i_blkbits - blkbits;
 	sdio.block_in_file = offset >> blkbits;
 
 	sdio.get_block = get_block;
-	dio->end_io = end_io;
 	sdio.submit_io = submit_io;
 	sdio.final_block_in_bio = -1;
 	sdio.next_block_for_io = -1;
-
-	dio->iocb = iocb;
-	dio->i_size = i_size_read(inode);
-
-	spin_lock_init(&dio->bio_lock);
-	dio->refcount = 1;
 
 	/*
 	 * In case of non-aligned buffers, we may need 2 more
