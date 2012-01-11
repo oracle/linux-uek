@@ -1299,6 +1299,7 @@ int dtrace_dev_init(void)
 	 * the first provider causing the core to be loaded.
 	 */
 #endif
+	dtrace_enable();
 
 	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&dtrace_lock);
@@ -1308,6 +1309,8 @@ int dtrace_dev_init(void)
 
 void dtrace_dev_exit(void)
 {
+	dtrace_disable();
+
 	kmem_cache_destroy(dtrace_state_cache);
 	misc_deregister(&dtrace_dev);
 
