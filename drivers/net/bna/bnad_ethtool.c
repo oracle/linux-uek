@@ -29,14 +29,14 @@
 
 #define BNAD_NUM_TXF_COUNTERS 12
 #define BNAD_NUM_RXF_COUNTERS 10
-#define BNAD_NUM_CQ_COUNTERS 3
+#define BNAD_NUM_CQ_COUNTERS (3 + 5)
 #define BNAD_NUM_RXQ_COUNTERS 6
 #define BNAD_NUM_TXQ_COUNTERS 5
 
 #define BNAD_ETHTOOL_STATS_NUM						\
-	(sizeof(struct rtnl_link_stats64) / sizeof(u64) +	\
+	(sizeof(struct net_device_stats) / sizeof(unsigned long) +	\
 	sizeof(struct bnad_drv_stats) / sizeof(u64) +		\
-	offsetof(struct bfi_ll_stats, rxf_stats[0]) / sizeof(u64))
+	offsetof(struct bfi_enet_stats, rxf_stats[0]) / sizeof(u64))
 
 static char *bnad_net_stats_strings[BNAD_ETHTOOL_STATS_NUM] = {
 	"rx_packets",
@@ -75,14 +75,25 @@ static char *bnad_net_stats_strings[BNAD_ETHTOOL_STATS_NUM] = {
 	"tcpcsum_offload",
 	"udpcsum_offload",
 	"csum_help",
-	"csum_help_err",
+	"tx_skb_too_short",
+	"tx_skb_stopping",
+	"tx_skb_max_vectors",
+	"tx_skb_mss_too_long",
+	"tx_skb_tso_too_short",
+	"tx_skb_tso_prepare",
+	"tx_skb_non_tso_too_long",
+	"tx_skb_tcp_hdr",
+	"tx_skb_udp_hdr",
+	"tx_skb_csum_err",
+	"tx_skb_headlen_too_long",
+	"tx_skb_headlen_zero",
+	"tx_skb_frag_zero",
+	"tx_skb_len_mismatch",
 	"hw_stats_updates",
-	"netif_rx_schedule",
-	"netif_rx_complete",
 	"netif_rx_dropped",
 
 	"link_toggle",
-	"cee_up",
+	"cee_toggle",
 
 	"rxp_info_alloc_failed",
 	"mbox_intr_disabled",
@@ -201,6 +212,20 @@ static char *bnad_net_stats_strings[BNAD_ETHTOOL_STATS_NUM] = {
 	"rad_rx_bcast_vlan",
 	"rad_rx_drops",
 
+	"rlb_rad_rx_frames",
+	"rlb_rad_rx_octets",
+	"rlb_rad_rx_vlan_frames",
+	"rlb_rad_rx_ucast",
+	"rlb_rad_rx_ucast_octets",
+	"rlb_rad_rx_ucast_vlan",
+	"rlb_rad_rx_mcast",
+	"rlb_rad_rx_mcast_octets",
+	"rlb_rad_rx_mcast_vlan",
+	"rlb_rad_rx_bcast",
+	"rlb_rad_rx_bcast_octets",
+	"rlb_rad_rx_bcast_vlan",
+	"rlb_rad_rx_drops",
+
 	"fc_rx_ucast_octets",
 	"fc_rx_ucast",
 	"fc_rx_ucast_vlan",
@@ -277,7 +302,7 @@ bnad_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
 	ioc_attr = kzalloc(sizeof(*ioc_attr), GFP_KERNEL);
 	if (ioc_attr) {
 		spin_lock_irqsave(&bnad->bna_lock, flags);
-		bfa_nw_ioc_get_attr(&bnad->bna.device.ioc, ioc_attr);
+		bfa_nw_ioc_get_attr(&bnad->bna.ioceth.ioc, ioc_attr);
 		spin_unlock_irqrestore(&bnad->bna_lock, flags);
 
 		strncpy(drvinfo->fw_version, ioc_attr->adapter_attr.fw_ver,
@@ -286,323 +311,6 @@ bnad_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
 	}
 
 	strncpy(drvinfo->bus_info, pci_name(bnad->pcidev), ETHTOOL_BUSINFO_LEN);
-}
-
-static int
-get_regs(struct bnad *bnad, u32 * regs)
-{
-	int num = 0, i;
-	u32 reg_addr;
-	unsigned long flags;
-
-#define BNAD_GET_REG(addr) 					\
-do {								\
-	if (regs)						\
-		regs[num++] = readl(bnad->bar0 + (addr));	\
-	else							\
-		num++;						\
-} while (0)
-
-	spin_lock_irqsave(&bnad->bna_lock, flags);
-
-	/* DMA Block Internal Registers */
-	BNAD_GET_REG(DMA_CTRL_REG0);
-	BNAD_GET_REG(DMA_CTRL_REG1);
-	BNAD_GET_REG(DMA_ERR_INT_STATUS);
-	BNAD_GET_REG(DMA_ERR_INT_ENABLE);
-	BNAD_GET_REG(DMA_ERR_INT_STATUS_SET);
-
-	/* APP Block Register Address Offset from BAR0 */
-	BNAD_GET_REG(HOSTFN0_INT_STATUS);
-	BNAD_GET_REG(HOSTFN0_INT_MASK);
-	BNAD_GET_REG(HOST_PAGE_NUM_FN0);
-	BNAD_GET_REG(HOST_MSIX_ERR_INDEX_FN0);
-	BNAD_GET_REG(FN0_PCIE_ERR_REG);
-	BNAD_GET_REG(FN0_ERR_TYPE_STATUS_REG);
-	BNAD_GET_REG(FN0_ERR_TYPE_MSK_STATUS_REG);
-
-	BNAD_GET_REG(HOSTFN1_INT_STATUS);
-	BNAD_GET_REG(HOSTFN1_INT_MASK);
-	BNAD_GET_REG(HOST_PAGE_NUM_FN1);
-	BNAD_GET_REG(HOST_MSIX_ERR_INDEX_FN1);
-	BNAD_GET_REG(FN1_PCIE_ERR_REG);
-	BNAD_GET_REG(FN1_ERR_TYPE_STATUS_REG);
-	BNAD_GET_REG(FN1_ERR_TYPE_MSK_STATUS_REG);
-
-	BNAD_GET_REG(PCIE_MISC_REG);
-
-	BNAD_GET_REG(HOST_SEM0_INFO_REG);
-	BNAD_GET_REG(HOST_SEM1_INFO_REG);
-	BNAD_GET_REG(HOST_SEM2_INFO_REG);
-	BNAD_GET_REG(HOST_SEM3_INFO_REG);
-
-	BNAD_GET_REG(TEMPSENSE_CNTL_REG);
-	BNAD_GET_REG(TEMPSENSE_STAT_REG);
-
-	BNAD_GET_REG(APP_LOCAL_ERR_STAT);
-	BNAD_GET_REG(APP_LOCAL_ERR_MSK);
-
-	BNAD_GET_REG(PCIE_LNK_ERR_STAT);
-	BNAD_GET_REG(PCIE_LNK_ERR_MSK);
-
-	BNAD_GET_REG(FCOE_FIP_ETH_TYPE);
-	BNAD_GET_REG(RESV_ETH_TYPE);
-
-	BNAD_GET_REG(HOSTFN2_INT_STATUS);
-	BNAD_GET_REG(HOSTFN2_INT_MASK);
-	BNAD_GET_REG(HOST_PAGE_NUM_FN2);
-	BNAD_GET_REG(HOST_MSIX_ERR_INDEX_FN2);
-	BNAD_GET_REG(FN2_PCIE_ERR_REG);
-	BNAD_GET_REG(FN2_ERR_TYPE_STATUS_REG);
-	BNAD_GET_REG(FN2_ERR_TYPE_MSK_STATUS_REG);
-
-	BNAD_GET_REG(HOSTFN3_INT_STATUS);
-	BNAD_GET_REG(HOSTFN3_INT_MASK);
-	BNAD_GET_REG(HOST_PAGE_NUM_FN3);
-	BNAD_GET_REG(HOST_MSIX_ERR_INDEX_FN3);
-	BNAD_GET_REG(FN3_PCIE_ERR_REG);
-	BNAD_GET_REG(FN3_ERR_TYPE_STATUS_REG);
-	BNAD_GET_REG(FN3_ERR_TYPE_MSK_STATUS_REG);
-
-	/* Host Command Status Registers */
-	reg_addr = HOST_CMDSTS0_CLR_REG;
-	for (i = 0; i < 16; i++) {
-		BNAD_GET_REG(reg_addr);
-		BNAD_GET_REG(reg_addr + 4);
-		BNAD_GET_REG(reg_addr + 8);
-		reg_addr += 0x10;
-	}
-
-	/* Function ID register */
-	BNAD_GET_REG(FNC_ID_REG);
-
-	/* Function personality register */
-	BNAD_GET_REG(FNC_PERS_REG);
-
-	/* Operation mode register */
-	BNAD_GET_REG(OP_MODE);
-
-	/* LPU0 Registers */
-	BNAD_GET_REG(LPU0_MBOX_CTL_REG);
-	BNAD_GET_REG(LPU0_MBOX_CMD_REG);
-	BNAD_GET_REG(LPU0_MBOX_LINK_0REG);
-	BNAD_GET_REG(LPU1_MBOX_LINK_0REG);
-	BNAD_GET_REG(LPU0_MBOX_STATUS_0REG);
-	BNAD_GET_REG(LPU1_MBOX_STATUS_0REG);
-	BNAD_GET_REG(LPU0_ERR_STATUS_REG);
-	BNAD_GET_REG(LPU0_ERR_SET_REG);
-
-	/* LPU1 Registers */
-	BNAD_GET_REG(LPU1_MBOX_CTL_REG);
-	BNAD_GET_REG(LPU1_MBOX_CMD_REG);
-	BNAD_GET_REG(LPU0_MBOX_LINK_1REG);
-	BNAD_GET_REG(LPU1_MBOX_LINK_1REG);
-	BNAD_GET_REG(LPU0_MBOX_STATUS_1REG);
-	BNAD_GET_REG(LPU1_MBOX_STATUS_1REG);
-	BNAD_GET_REG(LPU1_ERR_STATUS_REG);
-	BNAD_GET_REG(LPU1_ERR_SET_REG);
-
-	/* PSS Registers */
-	BNAD_GET_REG(PSS_CTL_REG);
-	BNAD_GET_REG(PSS_ERR_STATUS_REG);
-	BNAD_GET_REG(ERR_STATUS_SET);
-	BNAD_GET_REG(PSS_RAM_ERR_STATUS_REG);
-
-	/* Catapult CPQ Registers */
-	BNAD_GET_REG(HOSTFN0_LPU0_MBOX0_CMD_STAT);
-	BNAD_GET_REG(HOSTFN0_LPU1_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN0_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN0_MBOX0_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN0_LPU0_MBOX1_CMD_STAT);
-	BNAD_GET_REG(HOSTFN0_LPU1_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN0_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN0_MBOX1_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN1_LPU0_MBOX0_CMD_STAT);
-	BNAD_GET_REG(HOSTFN1_LPU1_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN1_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN1_MBOX0_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN1_LPU0_MBOX1_CMD_STAT);
-	BNAD_GET_REG(HOSTFN1_LPU1_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN1_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN1_MBOX1_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN2_LPU0_MBOX0_CMD_STAT);
-	BNAD_GET_REG(HOSTFN2_LPU1_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN2_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN2_MBOX0_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN2_LPU0_MBOX1_CMD_STAT);
-	BNAD_GET_REG(HOSTFN2_LPU1_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN2_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN2_MBOX1_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN3_LPU0_MBOX0_CMD_STAT);
-	BNAD_GET_REG(HOSTFN3_LPU1_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN3_MBOX0_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN3_MBOX0_CMD_STAT);
-
-	BNAD_GET_REG(HOSTFN3_LPU0_MBOX1_CMD_STAT);
-	BNAD_GET_REG(HOSTFN3_LPU1_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU0_HOSTFN3_MBOX1_CMD_STAT);
-	BNAD_GET_REG(LPU1_HOSTFN3_MBOX1_CMD_STAT);
-
-	/* Host Function Force Parity Error Registers */
-	BNAD_GET_REG(HOSTFN0_LPU_FORCE_PERR);
-	BNAD_GET_REG(HOSTFN1_LPU_FORCE_PERR);
-	BNAD_GET_REG(HOSTFN2_LPU_FORCE_PERR);
-	BNAD_GET_REG(HOSTFN3_LPU_FORCE_PERR);
-
-	/* LL Port[0|1] Halt Mask Registers */
-	BNAD_GET_REG(LL_HALT_MSK_P0);
-	BNAD_GET_REG(LL_HALT_MSK_P1);
-
-	/* LL Port[0|1] Error Mask Registers */
-	BNAD_GET_REG(LL_ERR_MSK_P0);
-	BNAD_GET_REG(LL_ERR_MSK_P1);
-
-	/* EMC FLI Registers */
-	BNAD_GET_REG(FLI_CMD_REG);
-	BNAD_GET_REG(FLI_ADDR_REG);
-	BNAD_GET_REG(FLI_CTL_REG);
-	BNAD_GET_REG(FLI_WRDATA_REG);
-	BNAD_GET_REG(FLI_RDDATA_REG);
-	BNAD_GET_REG(FLI_DEV_STATUS_REG);
-	BNAD_GET_REG(FLI_SIG_WD_REG);
-
-	BNAD_GET_REG(FLI_DEV_VENDOR_REG);
-	BNAD_GET_REG(FLI_ERR_STATUS_REG);
-
-	/* RxAdm 0 Registers */
-	BNAD_GET_REG(RAD0_CTL_REG);
-	BNAD_GET_REG(RAD0_PE_PARM_REG);
-	BNAD_GET_REG(RAD0_BCN_REG);
-	BNAD_GET_REG(RAD0_DEFAULT_REG);
-	BNAD_GET_REG(RAD0_PROMISC_REG);
-	BNAD_GET_REG(RAD0_BCNQ_REG);
-	BNAD_GET_REG(RAD0_DEFAULTQ_REG);
-
-	BNAD_GET_REG(RAD0_ERR_STS);
-	BNAD_GET_REG(RAD0_SET_ERR_STS);
-	BNAD_GET_REG(RAD0_ERR_INT_EN);
-	BNAD_GET_REG(RAD0_FIRST_ERR);
-	BNAD_GET_REG(RAD0_FORCE_ERR);
-
-	BNAD_GET_REG(RAD0_MAC_MAN_1H);
-	BNAD_GET_REG(RAD0_MAC_MAN_1L);
-	BNAD_GET_REG(RAD0_MAC_MAN_2H);
-	BNAD_GET_REG(RAD0_MAC_MAN_2L);
-	BNAD_GET_REG(RAD0_MAC_MAN_3H);
-	BNAD_GET_REG(RAD0_MAC_MAN_3L);
-	BNAD_GET_REG(RAD0_MAC_MAN_4H);
-	BNAD_GET_REG(RAD0_MAC_MAN_4L);
-
-	BNAD_GET_REG(RAD0_LAST4_IP);
-
-	/* RxAdm 1 Registers */
-	BNAD_GET_REG(RAD1_CTL_REG);
-	BNAD_GET_REG(RAD1_PE_PARM_REG);
-	BNAD_GET_REG(RAD1_BCN_REG);
-	BNAD_GET_REG(RAD1_DEFAULT_REG);
-	BNAD_GET_REG(RAD1_PROMISC_REG);
-	BNAD_GET_REG(RAD1_BCNQ_REG);
-	BNAD_GET_REG(RAD1_DEFAULTQ_REG);
-
-	BNAD_GET_REG(RAD1_ERR_STS);
-	BNAD_GET_REG(RAD1_SET_ERR_STS);
-	BNAD_GET_REG(RAD1_ERR_INT_EN);
-
-	/* TxA0 Registers */
-	BNAD_GET_REG(TXA0_CTRL_REG);
-	/* TxA0 TSO Sequence # Registers (RO) */
-	for (i = 0; i < 8; i++) {
-		BNAD_GET_REG(TXA0_TSO_TCP_SEQ_REG(i));
-		BNAD_GET_REG(TXA0_TSO_IP_INFO_REG(i));
-	}
-
-	/* TxA1 Registers */
-	BNAD_GET_REG(TXA1_CTRL_REG);
-	/* TxA1 TSO Sequence # Registers (RO) */
-	for (i = 0; i < 8; i++) {
-		BNAD_GET_REG(TXA1_TSO_TCP_SEQ_REG(i));
-		BNAD_GET_REG(TXA1_TSO_IP_INFO_REG(i));
-	}
-
-	/* RxA Registers */
-	BNAD_GET_REG(RXA0_CTL_REG);
-	BNAD_GET_REG(RXA1_CTL_REG);
-
-	/* PLB0 Registers */
-	BNAD_GET_REG(PLB0_ECM_TIMER_REG);
-	BNAD_GET_REG(PLB0_RL_CTL);
-	for (i = 0; i < 8; i++)
-		BNAD_GET_REG(PLB0_RL_MAX_BC(i));
-	BNAD_GET_REG(PLB0_RL_TU_PRIO);
-	for (i = 0; i < 8; i++)
-		BNAD_GET_REG(PLB0_RL_BYTE_CNT(i));
-	BNAD_GET_REG(PLB0_RL_MIN_REG);
-	BNAD_GET_REG(PLB0_RL_MAX_REG);
-	BNAD_GET_REG(PLB0_EMS_ADD_REG);
-
-	/* PLB1 Registers */
-	BNAD_GET_REG(PLB1_ECM_TIMER_REG);
-	BNAD_GET_REG(PLB1_RL_CTL);
-	for (i = 0; i < 8; i++)
-		BNAD_GET_REG(PLB1_RL_MAX_BC(i));
-	BNAD_GET_REG(PLB1_RL_TU_PRIO);
-	for (i = 0; i < 8; i++)
-		BNAD_GET_REG(PLB1_RL_BYTE_CNT(i));
-	BNAD_GET_REG(PLB1_RL_MIN_REG);
-	BNAD_GET_REG(PLB1_RL_MAX_REG);
-	BNAD_GET_REG(PLB1_EMS_ADD_REG);
-
-	/* HQM Control Register */
-	BNAD_GET_REG(HQM0_CTL_REG);
-	BNAD_GET_REG(HQM0_RXQ_STOP_SEM);
-	BNAD_GET_REG(HQM0_TXQ_STOP_SEM);
-	BNAD_GET_REG(HQM1_CTL_REG);
-	BNAD_GET_REG(HQM1_RXQ_STOP_SEM);
-	BNAD_GET_REG(HQM1_TXQ_STOP_SEM);
-
-	/* LUT Registers */
-	BNAD_GET_REG(LUT0_ERR_STS);
-	BNAD_GET_REG(LUT0_SET_ERR_STS);
-	BNAD_GET_REG(LUT1_ERR_STS);
-	BNAD_GET_REG(LUT1_SET_ERR_STS);
-
-	/* TRC Registers */
-	BNAD_GET_REG(TRC_CTL_REG);
-	BNAD_GET_REG(TRC_MODS_REG);
-	BNAD_GET_REG(TRC_TRGC_REG);
-	BNAD_GET_REG(TRC_CNT1_REG);
-	BNAD_GET_REG(TRC_CNT2_REG);
-	BNAD_GET_REG(TRC_NXTS_REG);
-	BNAD_GET_REG(TRC_DIRR_REG);
-	for (i = 0; i < 10; i++)
-		BNAD_GET_REG(TRC_TRGM_REG(i));
-	for (i = 0; i < 10; i++)
-		BNAD_GET_REG(TRC_NXTM_REG(i));
-	for (i = 0; i < 10; i++)
-		BNAD_GET_REG(TRC_STRM_REG(i));
-
-	spin_unlock_irqrestore(&bnad->bna_lock, flags);
-#undef BNAD_GET_REG
-	return num;
-}
-static int
-bnad_get_regs_len(struct net_device *netdev)
-{
-	int ret = get_regs(netdev_priv(netdev), NULL) * sizeof(u32);
-	return ret;
-}
-
-static void
-bnad_get_regs(struct net_device *netdev, struct ethtool_regs *regs, void *buf)
-{
-	memset(buf, 0, bnad_get_regs_len(netdev));
-	get_regs(netdev_priv(netdev), buf);
 }
 
 static void
@@ -638,7 +346,7 @@ bnad_set_coalesce(struct net_device *netdev, struct ethtool_coalesce *coalesce)
 {
 	struct bnad *bnad = netdev_priv(netdev);
 	unsigned long flags;
-	int dim_timer_del = 0;
+	int to_del = 0;
 
 	if (coalesce->rx_coalesce_usecs == 0 ||
 	    coalesce->rx_coalesce_usecs >
@@ -665,14 +373,17 @@ bnad_set_coalesce(struct net_device *netdev, struct ethtool_coalesce *coalesce)
 	} else {
 		if (bnad->cfg_flags & BNAD_CF_DIM_ENABLED) {
 			bnad->cfg_flags &= ~BNAD_CF_DIM_ENABLED;
-			dim_timer_del = bnad_dim_timer_running(bnad);
-			if (dim_timer_del) {
+			if (bnad->cfg_flags & BNAD_CF_DIM_ENABLED &&
+			    test_bit(BNAD_RF_DIM_TIMER_RUNNING,
+			    &bnad->run_flags)) {
 				clear_bit(BNAD_RF_DIM_TIMER_RUNNING,
 							&bnad->run_flags);
-				spin_unlock_irqrestore(&bnad->bna_lock, flags);
-				del_timer_sync(&bnad->dim_timer);
-				spin_lock_irqsave(&bnad->bna_lock, flags);
+				to_del = 1;
 			}
+			spin_unlock_irqrestore(&bnad->bna_lock, flags);
+			if (to_del)
+				del_timer_sync(&bnad->dim_timer);
+			spin_lock_irqsave(&bnad->bna_lock, flags);
 			bnad_rx_coalescing_timeo_set(bnad);
 		}
 	}
@@ -707,10 +418,10 @@ bnad_get_ringparam(struct net_device *netdev,
 {
 	struct bnad *bnad = netdev_priv(netdev);
 
-	ringparam->rx_max_pending = BNAD_MAX_Q_DEPTH / bnad_rxqs_per_cq;
+	ringparam->rx_max_pending = BNAD_MAX_RXQ_DEPTH;
 	ringparam->rx_mini_max_pending = 0;
 	ringparam->rx_jumbo_max_pending = 0;
-	ringparam->tx_max_pending = BNAD_MAX_Q_DEPTH;
+	ringparam->tx_max_pending = BNAD_MAX_TXQ_DEPTH;
 
 	ringparam->rx_pending = bnad->rxq_depth;
 	ringparam->rx_mini_max_pending = 0;
@@ -724,6 +435,7 @@ bnad_set_ringparam(struct net_device *netdev,
 {
 	int i, current_err, err = 0;
 	struct bnad *bnad = netdev_priv(netdev);
+	unsigned long flags;
 
 	mutex_lock(&bnad->conf_mutex);
 	if (ringparam->rx_pending == bnad->rxq_depth &&
@@ -733,13 +445,13 @@ bnad_set_ringparam(struct net_device *netdev,
 	}
 
 	if (ringparam->rx_pending < BNAD_MIN_Q_DEPTH ||
-	    ringparam->rx_pending > BNAD_MAX_Q_DEPTH / bnad_rxqs_per_cq ||
+	    ringparam->rx_pending > BNAD_MAX_RXQ_DEPTH ||
 	    !BNA_POWER_OF_2(ringparam->rx_pending)) {
 		mutex_unlock(&bnad->conf_mutex);
 		return -EINVAL;
 	}
 	if (ringparam->tx_pending < BNAD_MIN_Q_DEPTH ||
-	    ringparam->tx_pending > BNAD_MAX_Q_DEPTH ||
+	    ringparam->tx_pending > BNAD_MAX_TXQ_DEPTH ||
 	    !BNA_POWER_OF_2(ringparam->tx_pending)) {
 		mutex_unlock(&bnad->conf_mutex);
 		return -EINVAL;
@@ -747,6 +459,11 @@ bnad_set_ringparam(struct net_device *netdev,
 
 	if (ringparam->rx_pending != bnad->rxq_depth) {
 		bnad->rxq_depth = ringparam->rx_pending;
+		if (!netif_running(netdev)) {
+			mutex_unlock(&bnad->conf_mutex);
+			return 0;
+		}
+
 		for (i = 0; i < bnad->num_rx; i++) {
 			if (!bnad->rx_info[i].rx)
 				continue;
@@ -755,9 +472,26 @@ bnad_set_ringparam(struct net_device *netdev,
 			if (current_err && !err)
 				err = current_err;
 		}
+
+		if (!err && bnad->rx_info[0].rx) {
+			/* restore rx configuration */
+			bnad_restore_vlans(bnad, 0);
+			bnad_enable_default_bcast(bnad);
+			spin_lock_irqsave(&bnad->bna_lock, flags);
+			bnad_mac_addr_set_locked(bnad, netdev->dev_addr);
+			spin_unlock_irqrestore(&bnad->bna_lock, flags);
+			bnad->cfg_flags &= ~(BNAD_CF_ALLMULTI |
+					     BNAD_CF_PROMISC);
+			bnad_set_rx_mode(netdev);
+		}
 	}
 	if (ringparam->tx_pending != bnad->txq_depth) {
 		bnad->txq_depth = ringparam->tx_pending;
+		if (!netif_running(netdev)) {
+			mutex_unlock(&bnad->conf_mutex);
+			return 0;
+		}
+
 		for (i = 0; i < bnad->num_tx; i++) {
 			if (!bnad->tx_info[i].tx)
 				continue;
@@ -779,8 +513,8 @@ bnad_get_pauseparam(struct net_device *netdev,
 	struct bnad *bnad = netdev_priv(netdev);
 
 	pauseparam->autoneg = 0;
-	pauseparam->rx_pause = bnad->bna.port.pause_config.rx_pause;
-	pauseparam->tx_pause = bnad->bna.port.pause_config.tx_pause;
+	pauseparam->rx_pause = bnad->bna.enet.pause_config.rx_pause;
+	pauseparam->tx_pause = bnad->bna.enet.pause_config.tx_pause;
 }
 
 static int
@@ -795,13 +529,68 @@ bnad_set_pauseparam(struct net_device *netdev,
 		return -EINVAL;
 
 	mutex_lock(&bnad->conf_mutex);
-	if (pauseparam->rx_pause != bnad->bna.port.pause_config.rx_pause ||
-	    pauseparam->tx_pause != bnad->bna.port.pause_config.tx_pause) {
+	if (pauseparam->rx_pause != bnad->bna.enet.pause_config.rx_pause ||
+	    pauseparam->tx_pause != bnad->bna.enet.pause_config.tx_pause) {
 		pause_config.rx_pause = pauseparam->rx_pause;
 		pause_config.tx_pause = pauseparam->tx_pause;
 		spin_lock_irqsave(&bnad->bna_lock, flags);
-		bna_port_pause_config(&bnad->bna.port, &pause_config, NULL);
+		bna_enet_pause_config(&bnad->bna.enet, &pause_config, NULL);
 		spin_unlock_irqrestore(&bnad->bna_lock, flags);
+	}
+	mutex_unlock(&bnad->conf_mutex);
+	return 0;
+}
+
+static u32
+bnad_get_rx_csum(struct net_device *netdev)
+{
+	u32 rx_csum;
+	struct bnad *bnad = netdev_priv(netdev);
+
+	rx_csum = bnad->rx_csum;
+	return rx_csum;
+}
+
+static int
+bnad_set_rx_csum(struct net_device *netdev, u32 rx_csum)
+{
+	struct bnad *bnad = netdev_priv(netdev);
+
+	mutex_lock(&bnad->conf_mutex);
+	bnad->rx_csum = rx_csum;
+	mutex_unlock(&bnad->conf_mutex);
+	return 0;
+}
+
+static int
+bnad_set_tx_csum(struct net_device *netdev, u32 tx_csum)
+{
+	struct bnad *bnad = netdev_priv(netdev);
+
+	mutex_lock(&bnad->conf_mutex);
+	if (tx_csum) {
+		netdev->features |= NETIF_F_IP_CSUM;
+		netdev->features |= NETIF_F_IPV6_CSUM;
+	} else {
+		netdev->features &= ~NETIF_F_IP_CSUM;
+		netdev->features &= ~NETIF_F_IPV6_CSUM;
+	}
+	mutex_unlock(&bnad->conf_mutex);
+	return 0;
+}
+
+static int
+bnad_set_tso(struct net_device *netdev, u32 tso)
+{
+	struct bnad *bnad = netdev_priv(netdev);
+
+	mutex_lock(&bnad->conf_mutex);
+	if (tso) {
+		netdev->features |= NETIF_F_TSO;
+		netdev->features |= NETIF_F_TSO6;
+	} else {
+		netdev->features &= ~NETIF_F_TSO;
+		netdev->features &= ~NETIF_F_TSO6;
 	}
 	mutex_unlock(&bnad->conf_mutex);
 	return 0;
@@ -812,7 +601,7 @@ bnad_get_strings(struct net_device *netdev, u32 stringset, u8 * string)
 {
 	struct bnad *bnad = netdev_priv(netdev);
 	int i, j, q_num;
-	u64 bmap;
+	u32 bmap;
 
 	mutex_lock(&bnad->conf_mutex);
 
@@ -825,9 +614,8 @@ bnad_get_strings(struct net_device *netdev, u32 stringset, u8 * string)
 			       ETH_GSTRING_LEN);
 			string += ETH_GSTRING_LEN;
 		}
-		bmap = (u64)bnad->bna.tx_mod.txf_bmap[0] |
-			((u64)bnad->bna.tx_mod.txf_bmap[1] << 32);
-		for (i = 0; bmap && (i < BFI_LL_TXF_ID_MAX); i++) {
+		bmap = bna_tx_rid_mask(&bnad->bna);
+		for (i = 0; bmap; i++) {
 			if (bmap & 1) {
 				sprintf(string, "txf%d_ucast_octets", i);
 				string += ETH_GSTRING_LEN;
@@ -857,9 +645,8 @@ bnad_get_strings(struct net_device *netdev, u32 stringset, u8 * string)
 			bmap >>= 1;
 		}
 
-		bmap = (u64)bnad->bna.rx_mod.rxf_bmap[0] |
-			((u64)bnad->bna.rx_mod.rxf_bmap[1] << 32);
-		for (i = 0; bmap && (i < BFI_LL_RXF_ID_MAX); i++) {
+		bmap = bna_rx_rid_mask(&bnad->bna);
+		for (i = 0; bmap; i++) {
 			if (bmap & 1) {
 				sprintf(string, "rxf%d_ucast_octets", i);
 				string += ETH_GSTRING_LEN;
@@ -896,6 +683,16 @@ bnad_get_strings(struct net_device *netdev, u32 stringset, u8 * string)
 				string += ETH_GSTRING_LEN;
 				sprintf(string, "cq%d_hw_producer_index",
 					q_num);
+				string += ETH_GSTRING_LEN;
+				sprintf(string, "cq%d_intr", q_num);
+				string += ETH_GSTRING_LEN;
+				sprintf(string, "cq%d_poll", q_num);
+				string += ETH_GSTRING_LEN;
+				sprintf(string, "cq%d_schedule", q_num);
+				string += ETH_GSTRING_LEN;
+				sprintf(string, "cq%d_keep_poll", q_num);
+				string += ETH_GSTRING_LEN;
+				sprintf(string, "cq%d_complete", q_num);
 				string += ETH_GSTRING_LEN;
 				q_num++;
 			}
@@ -979,19 +776,17 @@ static int
 bnad_get_stats_count_locked(struct net_device *netdev)
 {
 	struct bnad *bnad = netdev_priv(netdev);
-	int i, j, count, rxf_active_num = 0, txf_active_num = 0;
-	u64 bmap;
+	int i, j, count = 0, rxf_active_num = 0, txf_active_num = 0;
+	u32 bmap;
 
-	bmap = (u64)bnad->bna.tx_mod.txf_bmap[0] |
-			((u64)bnad->bna.tx_mod.txf_bmap[1] << 32);
-	for (i = 0; bmap && (i < BFI_LL_TXF_ID_MAX); i++) {
+	bmap = bna_tx_rid_mask(&bnad->bna);
+	for (i = 0; bmap; i++) {
 		if (bmap & 1)
 			txf_active_num++;
 		bmap >>= 1;
 	}
-	bmap = (u64)bnad->bna.rx_mod.rxf_bmap[0] |
-			((u64)bnad->bna.rx_mod.rxf_bmap[1] << 32);
-	for (i = 0; bmap && (i < BFI_LL_RXF_ID_MAX); i++) {
+	bmap = bna_rx_rid_mask(&bnad->bna);
+	for (i = 0; bmap; i++) {
 		if (bmap & 1)
 			rxf_active_num++;
 		bmap >>= 1;
@@ -1039,6 +834,17 @@ bnad_per_q_stats_fill(struct bnad *bnad, u64 *buf, int bi)
 				buf[bi++] = 0; /* ccb->consumer_index */
 				buf[bi++] = *(bnad->rx_info[i].rx_ctrl[j].
 						ccb->hw_producer_index);
+
+				buf[bi++] = bnad->rx_info[i].
+						rx_ctrl[j].rx_intr_ctr;
+				buf[bi++] = bnad->rx_info[i].
+						rx_ctrl[j].rx_poll_ctr;
+				buf[bi++] = bnad->rx_info[i].
+						rx_ctrl[j].rx_schedule;
+				buf[bi++] = bnad->rx_info[i].
+						rx_ctrl[j].rx_keep_poll;
+				buf[bi++] = bnad->rx_info[i].
+						rx_ctrl[j].rx_complete;
 			}
 	}
 	for (i = 0; i < bnad->num_rx; i++) {
@@ -1102,9 +908,9 @@ bnad_get_ethtool_stats(struct net_device *netdev, struct ethtool_stats *stats,
 	struct bnad *bnad = netdev_priv(netdev);
 	int i, j, bi;
 	unsigned long flags;
-	struct rtnl_link_stats64 *net_stats64;
+	struct net_device_stats *net_stats;
 	u64 *stats64;
-	u64 bmap;
+	u32 bmap;
 
 	mutex_lock(&bnad->conf_mutex);
 	if (bnad_get_stats_count_locked(netdev) != stats->n_stats) {
@@ -1120,11 +926,11 @@ bnad_get_ethtool_stats(struct net_device *netdev, struct ethtool_stats *stats,
 	bi = 0;
 	memset(buf, 0, stats->n_stats * sizeof(u64));
 
-	net_stats64 = (struct rtnl_link_stats64 *)buf;
-	bnad_netdev_qstats_fill(bnad, net_stats64);
-	bnad_netdev_hwstats_fill(bnad, net_stats64);
+	net_stats = (struct net_device_stats *)buf;
+	bnad_netdev_qstats_fill(bnad, net_stats);
+	bnad_netdev_hwstats_fill(bnad, net_stats);
 
-	bi = sizeof(*net_stats64) / sizeof(u64);
+	bi = sizeof(*net_stats) / sizeof(unsigned long);
 
 	/* Get netif_queue_stopped from stack */
 	bnad->stats.drv_stats.netif_queue_stopped = netif_queue_stopped(netdev);
@@ -1135,20 +941,20 @@ bnad_get_ethtool_stats(struct net_device *netdev, struct ethtool_stats *stats,
 		buf[bi++] = stats64[i];
 
 	/* Fill hardware stats excluding the rxf/txf into ethtool bufs */
-	stats64 = (u64 *) bnad->stats.bna_stats->hw_stats;
+	stats64 = (u64 *) &bnad->stats.bna_stats->hw_stats;
 	for (i = 0;
-	     i < offsetof(struct bfi_ll_stats, rxf_stats[0]) / sizeof(u64);
+	     i < offsetof(struct bfi_enet_stats, rxf_stats[0]) /
+		sizeof(u64);
 	     i++)
 		buf[bi++] = stats64[i];
 
 	/* Fill txf stats into ethtool buffers */
-	bmap = (u64)bnad->bna.tx_mod.txf_bmap[0] |
-			((u64)bnad->bna.tx_mod.txf_bmap[1] << 32);
-	for (i = 0; bmap && (i < BFI_LL_TXF_ID_MAX); i++) {
+	bmap = bna_tx_rid_mask(&bnad->bna);
+	for (i = 0; bmap; i++) {
 		if (bmap & 1) {
 			stats64 = (u64 *)&bnad->stats.bna_stats->
-						hw_stats->txf_stats[i];
-			for (j = 0; j < sizeof(struct bfi_ll_stats_txf) /
+						hw_stats.txf_stats[i];
+			for (j = 0; j < sizeof(struct bfi_enet_stats_txf) /
 					sizeof(u64); j++)
 				buf[bi++] = stats64[j];
 		}
@@ -1156,13 +962,12 @@ bnad_get_ethtool_stats(struct net_device *netdev, struct ethtool_stats *stats,
 	}
 
 	/*  Fill rxf stats into ethtool buffers */
-	bmap = (u64)bnad->bna.rx_mod.rxf_bmap[0] |
-			((u64)bnad->bna.rx_mod.rxf_bmap[1] << 32);
-	for (i = 0; bmap && (i < BFI_LL_RXF_ID_MAX); i++) {
+	bmap = bna_rx_rid_mask(&bnad->bna);
+	for (i = 0; bmap; i++) {
 		if (bmap & 1) {
 			stats64 = (u64 *)&bnad->stats.bna_stats->
-						hw_stats->rxf_stats[i];
-			for (j = 0; j < sizeof(struct bfi_ll_stats_rxf) /
+						hw_stats.rxf_stats[i];
+			for (j = 0; j < sizeof(struct bfi_enet_stats_rxf) /
 					sizeof(u64); j++)
 				buf[bi++] = stats64[j];
 		}
@@ -1192,8 +997,6 @@ static struct ethtool_ops bnad_ethtool_ops = {
 	.get_settings = bnad_get_settings,
 	.set_settings = bnad_set_settings,
 	.get_drvinfo = bnad_get_drvinfo,
-	.get_regs_len = bnad_get_regs_len,
-	.get_regs = bnad_get_regs,
 	.get_wol = bnad_get_wol,
 	.get_link = ethtool_op_get_link,
 	.get_coalesce = bnad_get_coalesce,
@@ -1202,6 +1005,14 @@ static struct ethtool_ops bnad_ethtool_ops = {
 	.set_ringparam = bnad_set_ringparam,
 	.get_pauseparam = bnad_get_pauseparam,
 	.set_pauseparam = bnad_set_pauseparam,
+	.get_rx_csum = bnad_get_rx_csum,
+	.set_rx_csum = bnad_set_rx_csum,
+	.get_tx_csum = ethtool_op_get_tx_csum,
+	.set_tx_csum = bnad_set_tx_csum,
+	.get_sg = ethtool_op_get_sg,
+	.set_sg = ethtool_op_set_sg,
+	.get_tso = ethtool_op_get_tso,
+	.set_tso = bnad_set_tso,
 	.get_strings = bnad_get_strings,
 	.get_ethtool_stats = bnad_get_ethtool_stats,
 	.get_sset_count = bnad_get_sset_count

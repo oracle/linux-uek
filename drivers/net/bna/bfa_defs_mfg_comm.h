@@ -18,12 +18,12 @@
 #ifndef __BFA_DEFS_MFG_COMM_H__
 #define __BFA_DEFS_MFG_COMM_H__
 
-#include "cna.h"
+#include "bfa_defs.h"
 
 /**
  * Manufacturing block version
  */
-#define BFA_MFG_VERSION				2
+#define BFA_MFG_VERSION				3
 #define BFA_MFG_VERSION_UNINIT			0xFF
 
 /**
@@ -60,18 +60,15 @@ enum {
 	BFA_MFG_TYPE_ASTRA    = 807,	 /*!< Astra mezz card		*/
 	BFA_MFG_TYPE_LIGHTNING_P0 = 902, /*!< Lightning mezz card - old	*/
 	BFA_MFG_TYPE_LIGHTNING = 1741,	 /*!< Lightning mezz card	*/
+	BFA_MFG_TYPE_PROWLER_F = 1560,	 /*!< Prowler FC only cards	*/
+	BFA_MFG_TYPE_PROWLER_N = 1410,	 /*!< Prowler NIC only cards	*/
+	BFA_MFG_TYPE_PROWLER_C = 1710,	 /*!< Prowler CNA only cards	*/
+	BFA_MFG_TYPE_PROWLER_D = 1860,	 /*!< Prowler Dual cards	*/
+	BFA_MFG_TYPE_CHINOOK   = 1867,	 /*!< Chinook cards		*/
 	BFA_MFG_TYPE_INVALID = 0,	 /*!< Invalid card type		*/
 };
 
 #pragma pack(1)
-
-/**
- * Check if 1-port card
- */
-#define bfa_mfg_is_1port(type) (( \
-	(type) == BFA_MFG_TYPE_FC8P1 || \
-	(type) == BFA_MFG_TYPE_FC4P1 || \
-	(type) == BFA_MFG_TYPE_CNA10P1))
 
 /**
  * Check if Mezz card
@@ -81,7 +78,8 @@ enum {
 	(type) == BFA_MFG_TYPE_WANCHESE || \
 	(type) == BFA_MFG_TYPE_ASTRA || \
 	(type) == BFA_MFG_TYPE_LIGHTNING_P0 || \
-	(type) == BFA_MFG_TYPE_LIGHTNING))
+	(type) == BFA_MFG_TYPE_LIGHTNING || \
+	(type) == BFA_MFG_TYPE_CHINOOK))
 
 /**
  * Check if card type valid
@@ -93,28 +91,19 @@ enum {
 	(type) == BFA_MFG_TYPE_FC4P1 || \
 	(type) == BFA_MFG_TYPE_CNA10P2 || \
 	(type) == BFA_MFG_TYPE_CNA10P1 || \
+	(type) == BFA_MFG_TYPE_PROWLER_F || \
+	(type) == BFA_MFG_TYPE_PROWLER_N || \
+	(type) == BFA_MFG_TYPE_PROWLER_C || \
+	(type) == BFA_MFG_TYPE_PROWLER_D || \
 	bfa_mfg_is_mezz(type)))
 
-#define bfa_mfg_adapter_prop_init_flash(card_type, prop)	\
+#define bfa_mfg_adapter_prop_init_flash_ct(mfgblk, prop)	\
 do {								\
-	switch ((card_type)) {					\
-	case BFA_MFG_TYPE_FC8P2:				\
+	switch ((mfgblk)->card_type) {				\
 	case BFA_MFG_TYPE_JAYHAWK:				\
 	case BFA_MFG_TYPE_ASTRA:				\
 		(prop) = BFI_ADAPTER_SETP(NPORTS, 2) |		\
 			BFI_ADAPTER_SETP(SPEED, 8);		\
-		break;						\
-	case BFA_MFG_TYPE_FC8P1:				\
-		(prop) = BFI_ADAPTER_SETP(NPORTS, 1) |		\
-			BFI_ADAPTER_SETP(SPEED, 8);		\
-		break;						\
-	case BFA_MFG_TYPE_FC4P2:				\
-		(prop) = BFI_ADAPTER_SETP(NPORTS, 2) |		\
-			BFI_ADAPTER_SETP(SPEED, 4);		\
-		break;						\
-	case BFA_MFG_TYPE_FC4P1:				\
-		(prop) = BFI_ADAPTER_SETP(NPORTS, 1) |		\
-			BFI_ADAPTER_SETP(SPEED, 4);		\
 		break;						\
 	case BFA_MFG_TYPE_CNA10P2:				\
 	case BFA_MFG_TYPE_WANCHESE:				\
@@ -130,6 +119,29 @@ do {								\
 	default:						\
 		(prop) = BFI_ADAPTER_UNSUPP;			\
 	}							\
+} while (0)
+
+#define bfa_mfg_adapter_prop_init_flash_ct2(mfgblk, prop)	\
+do {								\
+	int sp, np = (mfgblk)->mfg_nports;			\
+	switch ((mfgblk)->card_type) {				\
+	case BFA_MFG_TYPE_PROWLER_F:				\
+	case BFA_MFG_TYPE_CHINOOK:				\
+		sp = 16;					\
+		break;						\
+	case BFA_MFG_TYPE_PROWLER_N:				\
+	case BFA_MFG_TYPE_PROWLER_C:				\
+		sp = 10;					\
+		break;						\
+	case BFA_MFG_TYPE_PROWLER_D:				\
+		sp = ((mfgblk)->cap_hba == 'y' ||		\
+			(mfgblk)->cap_fc16g == 'y') ? 16 : 10;	\
+		break;						\
+	default:						\
+		sp = 0;						\
+	}							\
+	(prop) = BFI_ADAPTER_SETP(NPORTS, np) |			\
+		BFI_ADAPTER_SETP(SPEED, sp);			\
 } while (0)
 
 enum {
@@ -192,14 +204,14 @@ do {								\
  * VPD vendor tag
  */
 enum {
-	BFA_MFG_VPD_UNKNOWN	= 0,     /*!< vendor unknown 		*/
-	BFA_MFG_VPD_IBM 	= 1,     /*!< vendor IBM 		*/
-	BFA_MFG_VPD_HP  	= 2,     /*!< vendor HP  		*/
-	BFA_MFG_VPD_DELL  	= 3,     /*!< vendor DELL  		*/
-	BFA_MFG_VPD_PCI_IBM 	= 0x08,  /*!< PCI VPD IBM     		*/
-	BFA_MFG_VPD_PCI_HP  	= 0x10,  /*!< PCI VPD HP		*/
-	BFA_MFG_VPD_PCI_DELL  	= 0x20,  /*!< PCI VPD DELL		*/
-	BFA_MFG_VPD_PCI_BRCD 	= 0xf8,  /*!< PCI VPD Brocade 		*/
+	BFA_MFG_VPD_UNKNOWN	= 0,     /*!< vendor unknown		*/
+	BFA_MFG_VPD_IBM		= 1,     /*!< vendor IBM		*/
+	BFA_MFG_VPD_HP		= 2,     /*!< vendor HP			*/
+	BFA_MFG_VPD_DELL	= 3,     /*!< vendor DELL		*/
+	BFA_MFG_VPD_PCI_IBM	= 0x08,  /*!< PCI VPD IBM		*/
+	BFA_MFG_VPD_PCI_HP	= 0x10,  /*!< PCI VPD HP		*/
+	BFA_MFG_VPD_PCI_DELL	= 0x20,  /*!< PCI VPD DELL		*/
+	BFA_MFG_VPD_PCI_BRCD	= 0xf8,  /*!< PCI VPD Brocade		*/
 };
 
 /**
@@ -212,8 +224,8 @@ struct bfa_mfg_vpd {
 	u8		vpd_sig[3];	/*!< characters 'V', 'P', 'D' */
 	u8		chksum;		/*!< u8 checksum */
 	u8		vendor;		/*!< vendor */
-	u8 	len;		/*!< vpd data length excluding header */
-	u8 	rsv;
+	u8	len;		/*!< vpd data length excluding header */
+	u8	rsv;
 	u8		data[BFA_MFG_VPD_LEN];	/*!< vpd data */
 };
 

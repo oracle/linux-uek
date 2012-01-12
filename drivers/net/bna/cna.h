@@ -22,26 +22,24 @@
 #include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/types.h>
+#include <linux/mutex.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
 #include <linux/bitops.h>
 #include <linux/timer.h>
 #include <linux/interrupt.h>
+#include <linux/if_vlan.h>
 #include <linux/if_ether.h>
-#include <asm/page.h>
-#include <asm/io.h>
-#include <asm/string.h>
 
-#include <linux/list.h>
-
-#define bfa_sm_fault(__mod, __event)    do {                            \
-	pr_err("SM Assertion failure: %s: %d: event = %d", __FILE__, __LINE__, \
-		__event); \
+#define bfa_sm_fault(__event)    do {                            \
+	pr_err("SM Assertion failure: %s: %d: event = %d\n",	\
+		 __FILE__, __LINE__, __event);			\
 } while (0)
 
 extern char bfa_version[];
 
-#define	CNA_FW_FILE_CT	"ctfw_cna.bin"
+#define	CNA_FW_FILE_CT	"ctfw.bin"
+#define	CNA_FW_FILE_CT2	"ct2fw.bin"
 #define FC_SYMNAME_MAX	256	/*!< max name server symbolic name size */
 
 #pragma pack(1)
@@ -76,6 +74,35 @@ typedef struct mac { u8 mac[MAC_ADDRLEN]; } mac_t;
 	} else {							\
 		*((struct list_head **) (_qe)) = (struct list_head *) NULL; \
 	}								\
+}
+
+/*
+ * bfa_q_deq_tail - dequeue an element from tail of the queue
+ */
+#define bfa_q_deq_tail(_q, _qe) {					\
+	if (!list_empty(_q)) {						\
+		*((struct list_head **) (_qe)) = bfa_q_prev(_q);	\
+		bfa_q_next(bfa_q_prev(*((struct list_head **) _qe))) =  \
+						(struct list_head *) (_q); \
+		bfa_q_prev(_q) = bfa_q_prev(*(struct list_head **) _qe);\
+		bfa_q_qe_init(*((struct list_head **) _qe));		\
+	} else {							\
+		*((struct list_head **) (_qe)) = (struct list_head *) NULL; \
+	}								\
+}
+
+/*
+ * bfa_add_tail_head - enqueue an element at the head of queue
+ */
+#define bfa_q_enq_head(_q, _qe) {					\
+	if (!(bfa_q_next(_qe) == NULL) && (bfa_q_prev(_qe) == NULL))	\
+		pr_err("Assertion failure: %s:%d: %d",			\
+			__FILE__, __LINE__,				\
+		(bfa_q_next(_qe) == NULL) && (bfa_q_prev(_qe) == NULL));\
+	bfa_q_next(_qe) = bfa_q_next(_q);				\
+	bfa_q_prev(_qe) = (struct list_head *) (_q);			\
+	bfa_q_prev(bfa_q_next(_q)) = (struct list_head *) (_qe);	\
+	bfa_q_next(_q) = (struct list_head *) (_qe);			\
 }
 
 #endif /* __CNA_H__ */

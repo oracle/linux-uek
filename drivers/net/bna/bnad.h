@@ -37,12 +37,12 @@
 #define BNAD_TXQ_DEPTH		2048
 #define BNAD_RXQ_DEPTH		2048
 
-#define BNAD_MAX_TXS		1
+#define BNAD_MAX_TX		1
 #define BNAD_MAX_TXQ_PER_TX	8	/* 8 priority queues */
-#define BNAD_TXQ_NUM		1
 
-#define BNAD_MAX_RXS		1
-#define BNAD_MAX_RXPS_PER_RX	16
+#define BNAD_MAX_RX		1
+#define BNAD_MAX_RXP_PER_RX	16
+#define BNAD_MAX_RXQ_PER_RXP	2
 
 /*
  * Control structure pointed to ccb->ctrl, which
@@ -51,13 +51,17 @@
  */
 struct bnad_rx_ctrl {
 	struct bna_ccb *ccb;
+	struct bnad *bnad;
 	unsigned long  flags;
 	struct napi_struct	napi;
+	u64		rx_intr_ctr;
+	u64		rx_poll_ctr;
+	u64		rx_schedule;
+	u64		rx_keep_poll;
+	u64		rx_complete;
 };
 
 #define BNAD_RXMODE_PROMISC_DEFAULT	BNA_RXMODE_PROMISC
-
-#define BNAD_GET_TX_ID(_skb)	(0)
 
 /*
  * GLOBAL #defines (CONSTANTS)
@@ -65,15 +69,24 @@ struct bnad_rx_ctrl {
 #define BNAD_NAME			"bna"
 #define BNAD_NAME_LEN			64
 
-#define BNAD_VERSION			"2.3.2.3"
+#define BNAD_VERSION			"3.0.2.2"
 
+#define BNAD_MAILBOX_MSIX_INDEX		0
 #define BNAD_MAILBOX_MSIX_VECTORS	1
+#define BNAD_INTX_TX_IB_BITMASK		0x1
+#define BNAD_INTX_RX_IB_BITMASK		0x2
 
-#define BNAD_STATS_TIMER_FREQ		1000 	/* in msecs */
-#define BNAD_DIM_TIMER_FREQ		1000 	/* in msecs */
+#define BNAD_STATS_TIMER_FREQ		1000	/* in msecs */
+#define BNAD_DIM_TIMER_FREQ		1000	/* in msecs */
+
+#define BNAD_IOCETH_TIMEOUT	     10000
 
 #define BNAD_MAX_Q_DEPTH		0x10000
 #define BNAD_MIN_Q_DEPTH		0x200
+
+#define BNAD_MAX_RXQ_DEPTH		(BNAD_MAX_Q_DEPTH / bnad_rxqs_per_cq)
+/* keeping MAX TX and RX Q depth equal */
+#define BNAD_MAX_TXQ_DEPTH		BNAD_MAX_RXQ_DEPTH
 
 #define BNAD_JUMBO_MTU			9000
 
@@ -88,6 +101,14 @@ struct bnad_rx_ctrl {
 /* Bit positions for rcb->flags */
 #define BNAD_RXQ_REFILL			0
 #define BNAD_RXQ_STARTED		1
+#define BNAD_RXQ_POST_OK		2
+
+/* Resource limits */
+#define BNAD_MAX_TXQ			(BNAD_MAX_TX * BNAD_MAX_TXQ_PER_TX)
+#define BNAD_MAX_RXP			(BNAD_MAX_RX * BNAD_MAX_RXP_PER_RX)
+
+#define BNAD_NUM_TXQ			(bnad->num_tx * bnad->num_txq_per_tx)
+#define BNAD_NUM_RXP			(bnad->num_rx * bnad->num_rxp_per_rx)
 
 /*
  * DATA STRUCTURES
@@ -101,17 +122,18 @@ enum bnad_intr_source {
 
 enum bnad_link_state {
 	BNAD_LS_DOWN		= 0,
-	BNAD_LS_UP 		= 1
+	BNAD_LS_UP		= 1
 };
 
 struct bnad_completion {
-	struct completion 	ioc_comp;
-	struct completion 	ucast_comp;
+	struct completion	ioc_comp;
+	struct completion	ucast_comp;
 	struct completion	mcast_comp;
 	struct completion	tx_comp;
 	struct completion	rx_comp;
 	struct completion	stats_comp;
-	struct completion	port_comp;
+	struct completion	enet_comp;
+	struct completion	mtu_comp;
 
 	u8			ioc_comp_status;
 	u8			ucast_comp_status;
@@ -120,11 +142,12 @@ struct bnad_completion {
 	u8			rx_comp_status;
 	u8			stats_comp_status;
 	u8			port_comp_status;
+	u8			mtu_comp_status;
 };
 
 /* Tx Rx Control Stats */
 struct bnad_drv_stats {
-	u64 		netif_queue_stop;
+	u64		netif_queue_stop;
 	u64		netif_queue_wakeup;
 	u64		netif_queue_stopped;
 	u64		tso4;
@@ -133,15 +156,26 @@ struct bnad_drv_stats {
 	u64		tcpcsum_offload;
 	u64		udpcsum_offload;
 	u64		csum_help;
-	u64		csum_help_err;
+	u64		tx_skb_too_short;
+	u64		tx_skb_stopping;
+	u64		tx_skb_max_vectors;
+	u64		tx_skb_mss_too_long;
+	u64		tx_skb_tso_too_short;
+	u64		tx_skb_tso_prepare;
+	u64		tx_skb_non_tso_too_long;
+	u64		tx_skb_tcp_hdr;
+	u64		tx_skb_udp_hdr;
+	u64		tx_skb_csum_err;
+	u64		tx_skb_headlen_too_long;
+	u64		tx_skb_headlen_zero;
+	u64		tx_skb_frag_zero;
+	u64		tx_skb_len_mismatch;
 
 	u64		hw_stats_updates;
-	u64		netif_rx_schedule;
-	u64		netif_rx_complete;
 	u64		netif_rx_dropped;
 
 	u64		link_toggle;
-	u64		cee_up;
+	u64		cee_toggle;
 
 	u64		rxp_info_alloc_failed;
 	u64		mbox_intr_disabled;
@@ -170,24 +204,26 @@ struct bnad_rx_res_info {
 struct bnad_tx_info {
 	struct bna_tx *tx; /* 1:1 between tx_info & tx */
 	struct bna_tcb *tcb[BNAD_MAX_TXQ_PER_TX];
+	u32 tx_id;
 } ____cacheline_aligned;
 
 struct bnad_rx_info {
 	struct bna_rx *rx; /* 1:1 between rx_info & rx */
 
-	struct bnad_rx_ctrl rx_ctrl[BNAD_MAX_RXPS_PER_RX];
+	struct bnad_rx_ctrl rx_ctrl[BNAD_MAX_RXP_PER_RX];
+	u32 rx_id;
 } ____cacheline_aligned;
 
 /* Unmap queues for Tx / Rx cleanup */
 struct bnad_skb_unmap {
 	struct sk_buff		*skb;
-	DEFINE_DMA_UNMAP_ADDR(dma_addr);
+	DECLARE_PCI_UNMAP_ADDR(dma_addr)
 };
 
 struct bnad_unmap_q {
 	u32		producer_index;
 	u32		consumer_index;
-	u32 		q_depth;
+	u32		q_depth;
 	/* This should be the last one */
 	struct bnad_skb_unmap unmap_array[1];
 };
@@ -201,20 +237,34 @@ struct bnad_unmap_q {
 /* Defines for run_flags bit-mask */
 /* Set, tested & cleared using xxx_bit() functions */
 /* Values indicated bit positions */
-#define	BNAD_RF_CEE_RUNNING		1
+#define BNAD_RF_CEE_RUNNING		0
+#define BNAD_RF_MTU_SET		1
 #define BNAD_RF_MBOX_IRQ_DISABLED	2
-#define BNAD_RF_RX_STARTED		3
+#define BNAD_RF_NETDEV_REGISTERED	3
 #define BNAD_RF_DIM_TIMER_RUNNING	4
 #define BNAD_RF_STATS_TIMER_RUNNING	5
-#define BNAD_RF_TX_SHUTDOWN_DELAYED	6
-#define BNAD_RF_RX_SHUTDOWN_DELAYED	7
+#define BNAD_RF_TX_PRIO_SET		6
+
+
+/* Define for Fast Path flags */
+/* Defined as bit positions */
+#define BNAD_FP_IN_RX_PATH	      0
+
+/*
+ * Deep Inspection : Checks if packet is ISCSI based on
+ * standard iSCSI port
+ */
+#define BNAD_TCP_ISCSI_PORT 3260
+#define BNAD_IS_ISCSI_PKT(_tch)				\
+(((_tch)->source == ntohs(BNAD_TCP_ISCSI_PORT)) ||	\
+	((_tch)->dest == ntohs(BNAD_TCP_ISCSI_PORT)))
 
 struct bnad {
-	struct net_device 	*netdev;
+	struct net_device	*netdev;
 
 	/* Data path */
-	struct bnad_tx_info tx_info[BNAD_MAX_TXS];
-	struct bnad_rx_info rx_info[BNAD_MAX_RXS];
+	struct bnad_tx_info tx_info[BNAD_MAX_TX];
+	struct bnad_rx_info rx_info[BNAD_MAX_RX];
 
 	struct vlan_group	*vlan_grp;
 	/*
@@ -234,8 +284,10 @@ struct bnad {
 	u8			tx_coalescing_timeo;
 	u8			rx_coalescing_timeo;
 
-	struct bna_rx_config rx_config[BNAD_MAX_RXS];
-	struct bna_tx_config tx_config[BNAD_MAX_TXS];
+	struct bna_rx_config rx_config[BNAD_MAX_RX];
+	struct bna_tx_config tx_config[BNAD_MAX_TX];
+
+	u32		rx_csum;
 
 	void __iomem		*bar0;	/* BAR0 address */
 
@@ -244,7 +296,7 @@ struct bnad {
 	u32		cfg_flags;
 	unsigned long		run_flags;
 
-	struct pci_dev 		*pcidev;
+	struct pci_dev		*pcidev;
 	u64		mmio_start;
 	u64		mmio_len;
 
@@ -261,8 +313,9 @@ struct bnad {
 
 	/* Control path resources, memory & irq */
 	struct bna_res_info res_info[BNA_RES_T_MAX];
-	struct bnad_tx_res_info tx_res_info[BNAD_MAX_TXS];
-	struct bnad_rx_res_info rx_res_info[BNAD_MAX_RXS];
+	struct bna_res_info mod_res_info[BNA_MOD_RES_T_MAX];
+	struct bnad_tx_res_info tx_res_info[BNAD_MAX_TX];
+	struct bnad_rx_res_info rx_res_info[BNAD_MAX_RX];
 
 	struct bnad_completion bnad_completions;
 
@@ -277,7 +330,7 @@ struct bnad {
 	struct bnad_diag *diag;
 
 	char			adapter_name[BNAD_NAME_LEN];
-	char 			port_name[BNAD_NAME_LEN];
+	char			port_name[BNAD_NAME_LEN];
 	char			mbox_irq_name[BNAD_NAME_LEN];
 };
 
@@ -285,32 +338,38 @@ struct bnad {
  * EXTERN VARIABLES
  */
 extern struct firmware *bfi_fw;
-extern u32 		bnad_rxqs_per_cq;
+extern u32		bnad_rxqs_per_cq;
 
 /*
  * EXTERN PROTOTYPES
  */
 extern u32 *cna_get_firmware_buf(struct pci_dev *pdev);
 /* Netdev entry point prototypes */
+extern void bnad_set_rx_mode(struct net_device *netdev);
+extern struct net_device_stats *bnad_get_netdev_stats(
+				struct net_device *netdev);
+extern int bnad_mac_addr_set_locked(struct bnad *bnad, u8 *mac_addr);
+extern int bnad_enable_default_bcast(struct bnad *bnad);
+extern void bnad_restore_vlans(struct bnad *bnad, u32 rx_id);
 extern void bnad_set_ethtool_ops(struct net_device *netdev);
 
 /* Configuration & setup */
 extern void bnad_tx_coalescing_timeo_set(struct bnad *bnad);
 extern void bnad_rx_coalescing_timeo_set(struct bnad *bnad);
 
-extern int bnad_setup_rx(struct bnad *bnad, uint rx_id);
-extern int bnad_setup_tx(struct bnad *bnad, uint tx_id);
-extern void bnad_cleanup_tx(struct bnad *bnad, uint tx_id);
-extern void bnad_cleanup_rx(struct bnad *bnad, uint rx_id);
+extern int bnad_setup_rx(struct bnad *bnad, u32 rx_id);
+extern int bnad_setup_tx(struct bnad *bnad, u32 tx_id);
+extern void bnad_cleanup_tx(struct bnad *bnad, u32 tx_id);
+extern void bnad_cleanup_rx(struct bnad *bnad, u32 rx_id);
 
 /* Timer start/stop protos */
 extern void bnad_dim_timer_start(struct bnad *bnad);
 
 /* Statistics */
 extern void bnad_netdev_qstats_fill(struct bnad *bnad,
-		struct rtnl_link_stats64 *stats);
+		struct net_device_stats *stats);
 extern void bnad_netdev_hwstats_fill(struct bnad *bnad,
-		struct rtnl_link_stats64 *stats);
+		struct net_device_stats *stats);
 
 /**
  * MACROS
@@ -321,17 +380,19 @@ extern void bnad_netdev_hwstats_fill(struct bnad *bnad,
 
 #define BNAD_GET_CTR(_bnad, _ctr) ((_bnad)->stats.drv_stats._ctr)
 
+#define BNAD_VLAN_PRIO_SHIFT 13
+#define BNAD_VLAN_PRIO_MASK 0x0e000
+//#ifndef PCI_DEVICE_ID_BROCADE_CT2
+//	#define PCI_DEVICE_ID_BROCADE_CT2      0x0022
+//#endif
+
 #define bnad_enable_rx_irq_unsafe(_ccb)			\
 {							\
-	if (likely(test_bit(BNAD_RXQ_STARTED, &ccb->rcb[0]->flags))) {\
+	if (likely(test_bit(BNAD_RXQ_STARTED, &(_ccb)->rcb[0]->flags))) {\
 		bna_ib_coalescing_timer_set((_ccb)->i_dbell,	\
 			(_ccb)->rx_coalescing_timeo);		\
 		bna_ib_ack((_ccb)->i_dbell, 0);			\
 	}							\
 }
-
-#define bnad_dim_timer_running(_bnad)				\
-	(((_bnad)->cfg_flags & BNAD_CF_DIM_ENABLED) && 		\
-	(test_bit(BNAD_RF_DIM_TIMER_RUNNING, &((_bnad)->run_flags))))
 
 #endif /* __BNAD_H__ */

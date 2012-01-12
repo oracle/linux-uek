@@ -26,6 +26,17 @@
 #define BFA_STRING_32	32
 #define BFA_VERSION_LEN 64
 
+#ifndef PCI_DEVICE_ID_BROCADE_CT
+#define PCI_DEVICE_ID_BROCADE_CT	0X0014
+#endif
+
+#ifndef PCI_DEVICE_ID_BROCADE_CT_FC
+#define PCI_DEVICE_ID_BROCADE_CT_FC	0X0021
+#endif
+
+#ifndef PCI_DEVICE_ID_BROCADE_CT2
+#define PCI_DEVICE_ID_BROCADE_CT2      0x0022
+#endif
 /**
  * ---------------------- adapter definitions ------------
  */
@@ -80,7 +91,7 @@ struct bfa_adapter_attr {
 
 enum {
 	BFA_IOC_DRIVER_LEN	= 16,
-	BFA_IOC_CHIP_REV_LEN 	= 8,
+	BFA_IOC_CHIP_REV_LEN	= 8,
 };
 
 /**
@@ -124,6 +135,8 @@ enum bfa_ioc_state {
 	BFA_IOC_DISABLED	= 10,	/*!< IOC is disabled */
 	BFA_IOC_FWMISMATCH	= 11,	/*!< IOC f/w different from drivers */
 	BFA_IOC_ENABLING	= 12,	/*!< IOC is being enabled */
+	BFA_IOC_HWFAIL		= 13,	/*!< PCI mapping doesn't exist */
+	BFA_IOC_ACQ_ADDR	= 14,	/*!< Acquiring addr from fabric */
 };
 
 /**
@@ -153,6 +166,7 @@ struct bfa_ioc_drv_stats {
 	u32	enable_reqs;
 	u32	disable_replies;
 	u32	enable_replies;
+	u32	rsvd;
 };
 
 /**
@@ -174,12 +188,24 @@ enum bfa_ioc_type {
  */
 struct bfa_ioc_attr {
 	enum bfa_ioc_type ioc_type;
-	enum bfa_ioc_state 		state;		/*!< IOC state      */
+	enum bfa_ioc_state		state;		/*!< IOC state      */
 	struct bfa_adapter_attr adapter_attr;	/*!< HBA attributes */
 	struct bfa_ioc_driver_attr driver_attr;	/*!< driver attr    */
 	struct bfa_ioc_pci_attr pci_attr;
-	u8				port_id;	/*!< port number    */
-	u8				rsvd[7];	/*!< 64bit align    */
+	u8				port_id;	/*!< port number */
+	u8				port_mode;	/*!< enum bfa_mode */
+	u8				cap_bm;		/*!< capability */
+	u8				port_mode_cfg;	/*!< enum bfa_mode */
+	u8				rsvd[4];	/*!< 64bit align */
+};
+
+/**
+ * Adapter capability mask definition
+ */
+enum {
+	BFA_CM_HBA	=	0x01,
+	BFA_CM_CNA	=	0x02,
+	BFA_CM_NIC	=	0x04,
 };
 
 /**
@@ -227,8 +253,18 @@ struct bfa_mfg_block {
 	mac_t		mfg_mac;	/*!< mac address */
 	u8		num_mac;	/*!< number of mac addresses */
 	u8		rsv2;
-	u32	mfg_type;	/*!< card type */
-	u8		rsv3[108];
+	u32		card_type;	/*!< card type */
+	char		cap_nic;	/*!< capability nic */
+	char		cap_cna;	/*!< capability cna */
+	char		cap_hba;	/*!< capability hba */
+	char		cap_fc16g;	/*!< capability fc 16g */
+	char		cap_sriov;	/*!< capability sriov */
+	char		cap_mezz;	/*!< capability mezz */
+	u8		rsv3;
+	u8		mfg_nports;	/*!< number of ports */
+	char		media[8];	/*!< xfi/xaui */
+	char		initial_mode[8];/*!< initial mode: hba/cna/nic */
+	u8		rsv4[84];
 	u8		md5_chksum[BFA_MFG_CHKSUM_SIZE]; /*!< md5 checksum */
 };
 
@@ -238,8 +274,28 @@ struct bfa_mfg_block {
  * ---------------------- pci definitions ------------
  */
 
-#define bfa_asic_id_ct(devid)			\
-	((devid) == PCI_DEVICE_ID_BROCADE_CT ||	\
-	(devid) == PCI_DEVICE_ID_BROCADE_CT_FC)
+#define bfa_asic_id_ct(device)			\
+	((device) == PCI_DEVICE_ID_BROCADE_CT ||	\
+	 (device) == PCI_DEVICE_ID_BROCADE_CT_FC)
+#define bfa_asic_id_ct2(device)			\
+	((device) == PCI_DEVICE_ID_BROCADE_CT2)
+#define bfa_asic_id_ctc(device)			\
+	(bfa_asic_id_ct(device) || bfa_asic_id_ct2(device))
+
+/**
+ * PCI sub-system device and vendor ID information
+ */
+enum {
+	BFA_PCI_FCOE_SSDEVICE_ID	= 0x14,
+	BFA_PCI_CT2_SSID_FCoE		= 0x22,
+	BFA_PCI_CT2_SSID_ETH		= 0x23,
+	BFA_PCI_CT2_SSID_FC		= 0x24,
+};
+
+enum bfa_mode {
+	BFA_MODE_HBA		= 1,
+	BFA_MODE_CNA		= 2,
+	BFA_MODE_NIC		= 3
+};
 
 #endif /* __BFA_DEFS_H__ */
