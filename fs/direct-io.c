@@ -125,6 +125,7 @@ struct dio {
 	spinlock_t bio_lock;		/* protects BIO fields below */
 	int page_errors;		/* errno from get_user_pages() */
 	int is_async;			/* is IO async ? */
+	int should_dirty;		/* should we mark read pages dirty? */
 	int io_error;			/* IO error in completion path */
 	unsigned long refcount;		/* direct_io_worker() and bios */
 	struct bio *bio_list;		/* singly linked via bi_private */
@@ -377,7 +378,7 @@ static inline void dio_bio_submit(struct dio *dio, struct dio_submit *sdio)
 	dio->refcount++;
 	spin_unlock_irqrestore(&dio->bio_lock, flags);
 
-	if (dio->is_async && dio->rw == READ)
+	if (dio->is_async && dio->rw == READ && dio->should_dirty)
 		bio_set_pages_dirty(bio);
 
 	if (sdio->submit_io)
@@ -448,13 +449,14 @@ static int dio_bio_complete(struct dio *dio, struct bio *bio)
 	if (!uptodate)
 		dio->io_error = -EIO;
 
-	if (dio->is_async && dio->rw == READ) {
+	if (dio->is_async && dio->rw == READ && dio->should_dirty) {
 		bio_check_pages_dirty(bio);	/* transfers ownership */
 	} else {
 		for (page_no = 0; page_no < bio->bi_vcnt; page_no++) {
 			struct page *page = bvec[page_no].bv_page;
 
-			if (dio->rw == READ && !PageCompound(page))
+			if (dio->rw == READ && !PageCompound(page) &&
+			    dio->should_dirty)
 				set_page_dirty_lock(page);
 			page_cache_release(page);
 		}
@@ -1291,6 +1293,8 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 				PAGE_SIZE - user_addr / PAGE_SIZE);
 	}
 
+	dio->should_dirty = 1;
+
 	for (seg = 0; seg < nr_segs; seg++) {
 		user_addr = (unsigned long)iov[seg].iov_base;
 		sdio.size += bytes = iov[seg].iov_len;
@@ -1354,6 +1358,84 @@ __blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 }
 
 EXPORT_SYMBOL(__blockdev_direct_IO);
+
+ssize_t
+__blockdev_direct_IO_bvec(int rw, struct kiocb *iocb, struct inode *inode,
+	struct block_device *bdev, struct bio_vec *bvec, loff_t offset,
+	unsigned long bvec_len, get_block_t get_block,
+	dio_iodone_t end_io, dio_submit_t submit_io, int flags)
+{
+	unsigned blkbits = inode->i_blkbits;
+	ssize_t retval = -EINVAL;
+	loff_t end = offset;
+	struct dio *dio;
+	struct dio_submit sdio = { 0, };
+	unsigned long i;
+	struct buffer_head map_bh = { 0, };
+
+	if (rw & WRITE)
+		rw = WRITE_ODIRECT;
+
+	if (!dio_aligned(offset, &blkbits, bdev))
+		goto out;
+
+	/* Check the memory alignment.  Blocks cannot straddle pages */
+	for (i = 0; i < bvec_len; i++) {
+		end += bvec[i].bv_len;
+		if (!dio_aligned(bvec[i].bv_len | bvec[i].bv_offset,
+				 &blkbits, bdev))
+			goto out;
+	}
+
+	dio = dio_alloc_init(flags, rw, iocb, inode, end_io, end);
+	retval = -ENOMEM;
+	if (!dio)
+		goto out;
+
+	retval = dio_lock_and_flush(dio, offset, end);
+	if (retval) {
+		kmem_cache_free(dio_cache, dio);
+		goto out;
+	}
+
+	sdio_init(&sdio, inode, offset, blkbits, get_block, submit_io);
+
+	sdio.pages_in_io = bvec_len;
+
+	for (i = 0; i < bvec_len; i++) {
+		sdio.size += bvec[i].bv_len;
+
+		/* Index into the first page of the first block */
+		sdio.first_block_in_page = bvec[i].bv_offset >> blkbits;
+		sdio.final_block_in_request = sdio.block_in_file +
+						(bvec[i].bv_len  >> blkbits);
+		/* Page fetching state */
+		sdio.curr_page = 0;
+		page_cache_get(bvec[i].bv_page);
+		dio->pages[0] = bvec[i].bv_page;
+		sdio.head = 0;
+		sdio.tail = 1;
+
+		sdio.total_pages = 1;
+		sdio.curr_user_address = 0;
+
+		retval = do_direct_IO(dio, &sdio, &map_bh);
+
+		dio->result += bvec[i].bv_len -
+			((sdio.final_block_in_request - sdio.block_in_file) <<
+					blkbits);
+
+		if (retval) {
+			dio_cleanup(dio, &sdio);
+			break;
+		}
+	}
+
+	retval = dio_post_submission(rw, offset, dio, &sdio, &map_bh, retval);
+out:
+	return retval;
+}
+EXPORT_SYMBOL(__blockdev_direct_IO_bvec);
 
 static __init int dio_init(void)
 {
