@@ -322,8 +322,10 @@ static int	dtrace_enabled = 0;
 
 void dtrace_enable(void)
 {
-	if (!dtrace_enabled)
+	if (!dtrace_enabled) {
 		register_die_notifier(&dtrace_die);
+		dtrace_enabled = 1;
+	}
 }
 EXPORT_SYMBOL(dtrace_enable);
 
@@ -333,6 +335,7 @@ void dtrace_disable(void)
 		return;
 
 	unregister_die_notifier(&dtrace_die);
+	dtrace_enabled = 0;
 }
 EXPORT_SYMBOL(dtrace_disable);
 
