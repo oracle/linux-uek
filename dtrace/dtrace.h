@@ -23,6 +23,7 @@
 #define UINT64_MAX		(~0ULL)
 #define UINT64_MIN		(0)
 #define INT64_MAX		((long long)(~0ULL>>1))
+#define INT64_MIN		(-INT64_MAX - 1LL)
 
 #define NBBY			(__BITS_PER_LONG / sizeof (long))
 
@@ -798,6 +799,7 @@ struct dtrace_state {
 	dtrace_speculation_t *dts_speculations;
 	int dts_nspeculations;
 	struct idr dts_agg_idr;
+	int dts_naggs;
 	uint64_t dts_errors;
 	uint32_t dts_speculations_busy;
 	uint32_t dts_speculations_unavail;
