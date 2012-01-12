@@ -323,8 +323,6 @@ typedef typeof(((struct pt_regs *)0)->ip)	pc_t;
 #define ktime_nz(t0)		((t0).tv64 != 0LL)
 #define ktime_cp(t0, t1)	((t0).tv64 = (t1).tv64)
 
-#define idr_empty(idp)		((idp)->top == NULL)
-
 typedef struct dtrace_ppriv {
 	uint32_t dtpp_flags;
 	uid_t dtpp_uid;
