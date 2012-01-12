@@ -50,12 +50,12 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 
 	switch (desc->dtad_kind) {
 	case DTRACEAGG_MIN:
-		agg->dtag_initial = UINT64_MAX;
+		agg->dtag_initial = INT64_MAX;
 		agg->dtag_aggregate = dtrace_aggregate_min;
 		break;
 
 	case DTRACEAGG_MAX:
-		agg->dtag_initial = UINT64_MIN;
+		agg->dtag_initial = INT64_MIN;
 		agg->dtag_aggregate = dtrace_aggregate_max;
 		break;
 
