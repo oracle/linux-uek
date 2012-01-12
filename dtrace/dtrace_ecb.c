@@ -147,6 +147,7 @@ again:
 		goto again;
 	}
 
+	state->dts_naggs++;
 	agg->dtag_id = aggid;
 
 	frec = &agg->dtag_first->dta_rec;
@@ -170,6 +171,7 @@ void dtrace_ecb_aggregation_destroy(dtrace_ecb_t *ecb, dtrace_action_t *act)
 	ASSERT(DTRACEACT_ISAGG(act->dta_kind));
 
 	idr_remove(&state->dts_agg_idr, agg->dtag_id);
+	state->dts_naggs--;
 
 	kfree(agg);
 }
