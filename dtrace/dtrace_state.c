@@ -339,6 +339,7 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	state->dts_buffer = kzalloc(bufsize, GFP_KERNEL);
 	state->dts_aggbuffer = kzalloc(bufsize, GFP_KERNEL);
 	idr_init(&state->dts_agg_idr);
+	state->dts_naggs = 0;
 	state->dts_cleaner = 0;
 	state->dts_deadman = 0;
 	state->dts_vstate.dtvs_state = state;
@@ -682,7 +683,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 
 	if (opt[DTRACEOPT_AGGSIZE] != DTRACEOPT_UNSET &&
 	    opt[DTRACEOPT_AGGSIZE] != 0) {
-		if (idr_empty(&state->dts_agg_idr)) {
+		if (state->dts_naggs == 0) {
 			/*
 			 * We're not going to create an aggregation buffer
 			 * because we don't have any ECBs that contain
@@ -718,7 +719,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 
 	if ((state->dts_needed != 0 && opt[DTRACEOPT_BUFSIZE] < sz) ||
 	    (state->dts_speculates && opt[DTRACEOPT_SPECSIZE] < sz) ||
-	    (!idr_empty(&state->dts_agg_idr) && opt[DTRACEOPT_AGGSIZE] < sz)) {
+	    (state->dts_naggs != 0 && opt[DTRACEOPT_AGGSIZE] < sz)) {
 		/*
 		 * A buffer size has been explicitly set to 0 (or to a size
 		 * that will be adjusted to 0) and we need the space -- we
@@ -1050,10 +1051,8 @@ void dtrace_state_destroy(dtrace_state_t *state)
 	 * If there were aggregations allocated, they should have been cleaned
 	 * up by now, so we can get rid of the idr.
 	 */
-	if (!idr_empty(&state->dts_agg_idr)) {
-		idr_remove_all(&state->dts_agg_idr);
-		idr_destroy(&state->dts_agg_idr);
-	}
+	idr_remove_all(&state->dts_agg_idr);
+	idr_destroy(&state->dts_agg_idr);
 
 	kfree(state->dts_buffer);
 	kfree(state->dts_aggbuffer);
