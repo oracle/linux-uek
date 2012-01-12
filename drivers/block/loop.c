@@ -75,6 +75,7 @@
 #include <linux/kthread.h>
 #include <linux/splice.h>
 #include <linux/sysfs.h>
+#include <linux/aio.h>
 
 #include <asm/uaccess.h>
 
@@ -268,6 +269,46 @@ out:
 fail:
 	ret = -1;
 	goto out;
+}
+
+void lo_rw_aio_complete(u64 data, long res)
+{
+	struct bio *bio = (struct bio *)data;
+
+	if (res > 0)
+		res = 0;
+	else if (res < 0)
+		res = -EIO;
+
+	bio_endio(bio, res);
+}
+
+static int lo_rw_aio(struct loop_device *lo, struct bio *bio)
+{
+	struct file *file = lo->lo_backing_file;
+	struct kiocb *iocb;
+	unsigned short op;
+	struct iov_iter iter;
+	struct bio_vec *bvec;
+	size_t nr_segs;
+	loff_t pos = ((loff_t) bio->bi_sector << 9) + lo->lo_offset;
+
+	iocb = aio_kernel_alloc(GFP_NOIO);
+	if (!iocb)
+		return -ENOMEM;
+
+	if (bio_rw(bio) & WRITE)
+		op = IOCB_CMD_WRITE_ITER;
+	else
+		op = IOCB_CMD_READ_ITER;
+
+	bvec = bio_iovec_idx(bio, bio->bi_idx);
+	nr_segs = bio_segments(bio);
+	iov_iter_init_bvec(&iter, bvec, nr_segs, bvec_length(bvec, nr_segs), 0);
+	aio_kernel_init_iter(iocb, file, op, &iter, pos);
+	aio_kernel_init_callback(iocb, lo_rw_aio_complete, (u64)bio);
+
+	return aio_kernel_submit(iocb);
 }
 
 /**
@@ -553,7 +594,14 @@ static inline void loop_handle_bio(struct loop_device *lo, struct bio *bio)
 		do_loop_switch(lo, bio->bi_private);
 		bio_put(bio);
 	} else {
-		int ret = do_bio_filebacked(lo, bio);
+		int ret;
+		if (lo->lo_flags & LO_FLAGS_USE_AIO &&
+		    lo->transfer == transfer_none) {
+			ret = lo_rw_aio(lo, bio);
+			if (ret == 0)
+				return;
+		} else
+			ret = do_bio_filebacked(lo, bio);
 		bio_endio(bio, ret);
 	}
 }
@@ -867,6 +915,11 @@ static int loop_set_fd(struct loop_device *lo, fmode_t mode,
 			lo_flags |= LO_FLAGS_USE_AOPS;
 		if (!(lo_flags & LO_FLAGS_USE_AOPS) && !file->f_op->write)
 			lo_flags |= LO_FLAGS_READ_ONLY;
+
+ 		if (file->f_op->write_iter && file->f_op->read_iter) {
+ 			file->f_flags |= O_DIRECT;
+ 			lo_flags |= LO_FLAGS_USE_AIO;
+		}
 
 		lo_blocksize = S_ISBLK(inode->i_mode) ?
 			inode->i_bdev->bd_block_size : PAGE_SIZE;
