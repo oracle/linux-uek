@@ -896,6 +896,15 @@ static int dtrace_open(struct inode *inode, struct file *file)
 
 	file->private_data = state;
 
+	/*
+	 * We only want to enable trap handling once, so we'll do it for the
+	 * first open of the DTrace core device file.
+	 * FIXME: If anonymous tracing is enabled, that would have enabled trap
+	 *	  handling already, so we should not do it here again.
+	 */
+	if (dtrace_opens == 1)
+		dtrace_enable();
+
 	mutex_unlock(&dtrace_lock);
 
 	return 0;
@@ -924,7 +933,15 @@ static int dtrace_close(struct inode *inode, struct file *file)
 	if (--dtrace_opens == 0 && dtrace_anon.dta_enabling == NULL)
 		(void)kdi_dtrace_set(KDI_DTSET_DTRACE_DEACTIVATE);
 #else
-	--dtrace_opens;
+	/*
+	 * Once the last user of DTrace is gone, we can safely disable trap
+	 * handling.
+	 * FIXME: We should not disable it if anonymous tracing is enabled as
+	 *	  we still have probes running in that case even without any
+	 *	  client holding the device file open.
+	 */
+	if (--dtrace_opens == 0)
+		dtrace_disable();
 #endif
 
 	mutex_unlock(&dtrace_lock);
@@ -1299,8 +1316,6 @@ int dtrace_dev_init(void)
 	 * the first provider causing the core to be loaded.
 	 */
 #endif
-	dtrace_enable();
-
 	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&dtrace_lock);
 
@@ -1309,8 +1324,6 @@ int dtrace_dev_init(void)
 
 void dtrace_dev_exit(void)
 {
-	dtrace_disable();
-
 	kmem_cache_destroy(dtrace_state_cache);
 	misc_deregister(&dtrace_dev);
 
