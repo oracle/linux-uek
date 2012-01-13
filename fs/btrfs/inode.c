@@ -6444,8 +6444,8 @@ out_unlock:
 	if (!ret)
 		return VM_FAULT_LOCKED;
 	unlock_page(page);
-	btrfs_delalloc_release_space(inode, PAGE_CACHE_SIZE);
 out:
+	btrfs_delalloc_release_space(inode, PAGE_CACHE_SIZE);
 	return ret;
 }
 
