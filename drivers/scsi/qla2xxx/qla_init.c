@@ -2575,15 +2575,8 @@ qla2x00_configure_loop(scsi_qla_host_t *vha)
 			ql_dbg(ql_dbg_disc, vha, 0x2015,
 			    "Loop resync needed, failing.\n");
 			rval = QLA_FUNCTION_FAILED;
-		} else {
-			/*
-			 * Set the maximum number of targets to
-			 * MAX_FIBRE_DEVICE_LOOP only if we are an NL_PORT
-			 */
-			if (ha->current_topology == ISP_CFG_NL)
-				ha->max_fibre_devices = MAX_FIBRE_DEVICES_LOOP;
+		} else
 			rval = qla2x00_configure_local_loop(vha);
-		}
 	}
 
 	if (rval == QLA_SUCCESS && test_bit(RSCN_UPDATE, &flags)) {
@@ -2656,7 +2649,7 @@ qla2x00_configure_local_loop(scsi_qla_host_t *vha)
 
 	found_devs = 0;
 	new_fcport = NULL;
-	entries = ha->max_fibre_devices;
+	entries = MAX_FIBRE_DEVICES_LOOP;
 
 	ql_dbg(ql_dbg_disc, vha, 0x2016,
 	    "Getting FCAL position map.\n");
