@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.19%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.20%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1675,6 +1675,27 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jan 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.20.el6uek]
+- Enable Kabi Check (Guru Anbalagane)
+- net/bna driver update from 2.3.2.3 to 3.0.2.2 (Maxim Uvarov)
+- scsi/bfa driver update from 2.3.2.3 to 3.0.2.2 (Maxim Uvarov)
+- Updated version to 5.02.00.00.06.02-uek1 (Tej Parkash)
+- qla4xxx: Added error logging for firmware abort (Nilesh Javali)
+- qla4xxx: Disable generating pause frames in case of FW hung (Giridhar
+  Malavali)
+- qla4xxx: Temperature monitoring for ISP82XX core. (Mike Hernandez)
+- qla4xxx: check for FW alive before calling chip_reset (Shyam Sunder)
+- qla4xxx: Remove the unused macros (Tej Parkash)
+- qla4xxx: cleanup, make qla4xxx_build_ddb_list short (Lalit Chandivade)
+- qla4xxx: clear the RISC interrupt bit during firmware init (Sarang Radke)
+- qla4xxx: clear the SCSI COMPLETION INTERRUPT bit during firmware init
+  (Prasanna Mumbai)
+- qla4xxx: Fixed BFS with sendtargets as boot index. (Manish Rangankar)
+- qla4xxx: Correct the default relogin timeout value (Nilesh Javali)
+- qla4xxx: Limit the ACB Default Timeout value to 12s (Nilesh Javali)
+- bond_alb: don't disable softirq under bond_alb_xmit (Maxim Uvarov)
+- fix kernel version (Guru Anbalagane)
+
 * Tue Jan 10 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.19.el6uek]
 - scripts/git-changelog: generate rpm changelog script (Maxim Uvarov)
 - Revert "hpwd watchdog mark page executable" (Maxim Uvarov)
