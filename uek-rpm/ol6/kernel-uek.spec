@@ -120,7 +120,7 @@ Summary: The Linux kernel
 %endif
 
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk 0
+%define with_kabichk 1
 
 # Additional options for user-friendly one-off kernel building:
 #
