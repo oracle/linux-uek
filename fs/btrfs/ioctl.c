@@ -3528,6 +3528,20 @@ locked:
 			ret = PTR_ERR(bargs);
 			goto out_unlock;
 		}
+
+		if (bargs->flags & BTRFS_BALANCE_RESUME) {
+			if (!fs_info->balance_ctl) {
+				ret = -ENOTCONN;
+				goto out_bargs;
+			}
+
+			bctl = fs_info->balance_ctl;
+			spin_lock(&fs_info->balance_lock);
+			bctl->flags |= BTRFS_BALANCE_RESUME;
+			spin_unlock(&fs_info->balance_lock);
+
+			goto do_balance;
+		}
 	} else {
 		bargs = NULL;
 	}
