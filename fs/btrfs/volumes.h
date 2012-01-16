@@ -213,6 +213,9 @@ struct map_lookup {
 #define BTRFS_BALANCE_TYPE_MASK		(BTRFS_BALANCE_DATA |	    \
 					 BTRFS_BALANCE_SYSTEM |	    \
 					 BTRFS_BALANCE_METADATA)
+
+#define BTRFS_BALANCE_FORCE		(1ULL << 3)
+
 /*
  * Balance filters
  */
@@ -221,6 +224,8 @@ struct map_lookup {
 #define BTRFS_BALANCE_ARGS_DEVID	(1ULL << 2)
 #define BTRFS_BALANCE_ARGS_DRANGE	(1ULL << 3)
 #define BTRFS_BALANCE_ARGS_VRANGE	(1ULL << 4)
+
+#define BTRFS_BALANCE_ARGS_CONVERT	(1ULL << 8)
 
 struct btrfs_balance_args;
 struct btrfs_balance_control {
