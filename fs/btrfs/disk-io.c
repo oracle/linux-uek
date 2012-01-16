@@ -2477,9 +2477,6 @@ retry_root_backup:
 
 	fs_info->generation = generation;
 	fs_info->last_trans_committed = generation;
-	fs_info->data_alloc_profile = (u64)-1;
-	fs_info->metadata_alloc_profile = (u64)-1;
-	fs_info->system_alloc_profile = fs_info->metadata_alloc_profile;
 
 	ret = btrfs_init_dev_stats(fs_info);
 	if (ret) {
