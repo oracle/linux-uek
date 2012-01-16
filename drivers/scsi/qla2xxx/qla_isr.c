@@ -1343,7 +1343,7 @@ qla2x00_process_response_queue(struct rsp_que *rsp)
 
 static inline void
 qla2x00_handle_sense(srb_t *sp, uint8_t *sense_data, uint32_t par_sense_len,
-    uint32_t sense_len, struct rsp_que *rsp)
+    uint32_t sense_len, struct rsp_que *rsp, int res)
 {
 	struct scsi_qla_host *vha = sp->fcport->vha;
 	struct scsi_cmnd *cp = GET_CMD_SP(sp);
@@ -1365,8 +1365,10 @@ qla2x00_handle_sense(srb_t *sp, uint8_t *sense_data, uint32_t par_sense_len,
 	track_sense_len -= sense_len;
 	SET_CMD_SENSE_LEN(sp, track_sense_len);
 
-	if (track_sense_len != 0)
+	if (track_sense_len != 0) {
 		rsp->status_srb = sp;
+		cp->result = res;
+	}
 
 	if (sense_len) {
 		ql_dbg(ql_dbg_io + ql_dbg_buffer, vha, 0x301c,
@@ -1683,7 +1685,7 @@ qla2x00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 			break;
 
 		qla2x00_handle_sense(sp, sense_data, par_sense_len, sense_len,
-		    rsp);
+		    rsp, res);
 		break;
 
 	case CS_DATA_UNDERRUN:
@@ -1744,7 +1746,7 @@ check_scsi_status:
 				break;
 
 			qla2x00_handle_sense(sp, sense_data, par_sense_len,
-			    sense_len, rsp);
+			    sense_len, rsp, res);
 		}
 		break;
 
@@ -1864,7 +1866,7 @@ qla2x00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	/* Place command on done queue. */
 	if (sense_len == 0) {
 		rsp->status_srb = NULL;
-		sp->done(ha, sp, 0);
+		sp->done(ha, sp, cp->result);
 	}
 }
 

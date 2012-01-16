@@ -612,8 +612,7 @@ qla2x00_sp_compl(void *data, void *ptr, int res)
 	srb_t *sp = (srb_t*)ptr;
 	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
 
-	if (res)
-		cmd->result = res;
+	cmd->result = res;
 
 	if (atomic_read(&sp->ref_count) == 0) {
 		ql_dbg(ql_dbg_io, sp->fcport->vha, 0x3015,
