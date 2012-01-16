@@ -3409,6 +3409,8 @@ void update_ioctl_balance_args(struct btrfs_fs_info *fs_info,
 		bargs->state |= BTRFS_BALANCE_STATE_RUNNING;
 	if (atomic_read(&fs_info->balance_pause_req))
 		bargs->state |= BTRFS_BALANCE_STATE_PAUSE_REQ;
+	if (atomic_read(&fs_info->balance_cancel_req))
+		bargs->state |= BTRFS_BALANCE_STATE_CANCEL_REQ;
 
 	memcpy(&bargs->data, &bctl->data, sizeof(bargs->data));
 	memcpy(&bargs->meta, &bctl->meta, sizeof(bargs->meta));
@@ -3490,6 +3492,8 @@ static long btrfs_ioctl_balance_ctl(struct btrfs_root *root, int cmd)
 	switch (cmd) {
 	case BTRFS_BALANCE_CTL_PAUSE:
 		return btrfs_pause_balance(root->fs_info);
+	case BTRFS_BALANCE_CTL_CANCEL:
+		return btrfs_cancel_balance(root->fs_info);
 	}
 
 	return -EINVAL;
