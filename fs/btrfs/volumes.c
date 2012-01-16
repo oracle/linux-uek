@@ -3281,6 +3281,9 @@ static int __btrfs_map_block(struct btrfs_fs_info *fs_info, int rw,
 	map = (struct map_lookup *)em->bdev;
 	offset = logical - em->start;
 
+	if (mirror_num > map->num_stripes)
+		mirror_num = 0;
+
 	stripe_nr = offset;
 	/*
 	 * stripe_nr counts the total number of stripes we have to stride
@@ -3296,10 +3299,7 @@ static int __btrfs_map_block(struct btrfs_fs_info *fs_info, int rw,
 
 	if (rw & REQ_DISCARD)
 		*length = min_t(u64, em->len - offset, *length);
-	else if (map->type & (BTRFS_BLOCK_GROUP_RAID0 |
-			      BTRFS_BLOCK_GROUP_RAID1 |
-			      BTRFS_BLOCK_GROUP_RAID10 |
-			      BTRFS_BLOCK_GROUP_DUP)) {
+	else if (map->type & BTRFS_BLOCK_GROUP_PROFILE_MASK) {
 		/* we limit the length of each bio to what fits in a stripe */
 		*length = min_t(u64, em->len - offset,
 				map->stripe_len - stripe_offset);
