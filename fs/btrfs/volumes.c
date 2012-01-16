@@ -1418,7 +1418,6 @@ int btrfs_rm_device(struct btrfs_root *root, char *device_path)
 	bool clear_super = false;
 
 	mutex_lock(&uuid_mutex);
-	mutex_lock(&root->fs_info->volume_mutex);
 
 	all_avail = root->fs_info->avail_data_alloc_bits |
 		root->fs_info->avail_system_alloc_bits |
@@ -1601,7 +1600,6 @@ error_brelse:
 	if (bdev)
 		blkdev_put(bdev, FMODE_READ | FMODE_EXCL);
 out:
-	mutex_unlock(&root->fs_info->volume_mutex);
 	mutex_unlock(&uuid_mutex);
 	return ret;
 error_undo:
@@ -1839,7 +1837,6 @@ int btrfs_init_new_device(struct btrfs_root *root, char *device_path)
 	}
 
 	filemap_write_and_wait(bdev->bd_inode->i_mapping);
-	mutex_lock(&root->fs_info->volume_mutex);
 
 	devices = &root->fs_info->fs_devices->devices;
 
@@ -1993,8 +1990,7 @@ int btrfs_init_new_device(struct btrfs_root *root, char *device_path)
 		}
 		ret = btrfs_commit_transaction(trans, root);
 	}
-out:
-	mutex_unlock(&root->fs_info->volume_mutex);
+
 	return ret;
 
 error_trans:
@@ -2008,7 +2004,7 @@ error:
 		mutex_unlock(&uuid_mutex);
 		up_write(&sb->s_umount);
 	}
-	goto out;
+	return ret;
 }
 
 static noinline int btrfs_update_device(struct btrfs_trans_handle *trans,
@@ -2330,6 +2326,35 @@ error:
 	return ret;
 }
 
+/*
+ * Should be called with both balance and volume mutexes held to
+ * serialize other volume operations (add_dev/rm_dev/resize) with
+ * restriper.  Same goes for unset_balance_control.
+ */
+static void set_balance_control(struct btrfs_balance_control *bctl)
+{
+	struct btrfs_fs_info *fs_info = bctl->fs_info;
+
+	BUG_ON(fs_info->balance_ctl);
+
+	spin_lock(&fs_info->balance_lock);
+	fs_info->balance_ctl = bctl;
+	spin_unlock(&fs_info->balance_lock);
+}
+
+static void unset_balance_control(struct btrfs_fs_info *fs_info)
+{
+	struct btrfs_balance_control *bctl = fs_info->balance_ctl;
+
+	BUG_ON(!fs_info->balance_ctl);
+
+	spin_lock(&fs_info->balance_lock);
+	fs_info->balance_ctl = NULL;
+	spin_unlock(&fs_info->balance_lock);
+
+	kfree(bctl);
+}
+
 static u64 div_factor(u64 num, int factor)
 {
 	if (factor == 10)
@@ -2339,29 +2364,23 @@ static u64 div_factor(u64 num, int factor)
 	return num;
 }
 
-int btrfs_balance(struct btrfs_root *dev_root)
+static int __btrfs_balance(struct btrfs_fs_info *fs_info)
 {
-	int ret;
-	struct list_head *devices = &dev_root->fs_info->fs_devices->devices;
+	struct btrfs_root *chunk_root = fs_info->chunk_root;
+	struct btrfs_root *dev_root = fs_info->dev_root;
+	struct list_head *devices;
 	struct btrfs_device *device;
 	u64 old_size;
 	u64 size_to_free;
 	struct btrfs_path *path;
 	struct btrfs_key key;
-	struct btrfs_root *chunk_root = dev_root->fs_info->chunk_root;
-	struct btrfs_trans_handle *trans;
 	struct btrfs_key found_key;
-
-	if (dev_root->fs_info->sb->s_flags & MS_RDONLY)
-		return -EROFS;
-
-	if (!capable(CAP_SYS_ADMIN))
-		return -EPERM;
-
-	mutex_lock(&dev_root->fs_info->volume_mutex);
-	dev_root = dev_root->fs_info->dev_root;
+	struct btrfs_trans_handle *trans;
+	int ret;
+	int enospc_errors = 0;
 
 	/* step one make some room on all the devices */
+	devices = &fs_info->fs_devices->devices;
 	list_for_each_entry(device, devices, dev_list) {
 		old_size = device->total_bytes;
 		size_to_free = div_factor(old_size, 1);
@@ -2405,12 +2424,14 @@ int btrfs_balance(struct btrfs_root *dev_root)
 		 * failed
 		 */
 		if (ret == 0)
-			break;
+			BUG(); /* FIXME break ? */
 
 		ret = btrfs_previous_item(chunk_root, path, 0,
 					  BTRFS_CHUNK_ITEM_KEY);
-		if (ret)
+		if (ret) {
+			ret = 0;
 			break;
+		}
 
 		btrfs_item_key_to_cpu(path->nodes[0], &found_key,
 				      path->slots[0]);
@@ -2428,12 +2449,63 @@ int btrfs_balance(struct btrfs_root *dev_root)
 					   found_key.offset);
 		if (ret && ret != -ENOSPC)
 			goto error;
+		if (ret == -ENOSPC)
+			enospc_errors++;
 		key.offset = found_key.offset - 1;
 	}
-	ret = 0;
+
 error:
 	btrfs_free_path(path);
-	mutex_unlock(&dev_root->fs_info->volume_mutex);
+	if (enospc_errors) {
+		printk(KERN_INFO "btrfs: %d enospc errors during balance\n",
+		       enospc_errors);
+		if (!ret)
+			ret = -ENOSPC;
+	}
+
+	return ret;
+}
+
+static void __cancel_balance(struct btrfs_fs_info *fs_info)
+{
+	unset_balance_control(fs_info);
+}
+
+void update_ioctl_balance_args(struct btrfs_fs_info *fs_info,
+			       struct btrfs_ioctl_balance_args *bargs);
+
+/*
+ * Should be called with both balance and volume mutexes held
+ */
+int btrfs_balance(struct btrfs_balance_control *bctl,
+		  struct btrfs_ioctl_balance_args *bargs)
+{
+	struct btrfs_fs_info *fs_info = bctl->fs_info;
+	int ret;
+
+	if (btrfs_fs_closing(fs_info)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	set_balance_control(bctl);
+
+	mutex_unlock(&fs_info->balance_mutex);
+
+	ret = __btrfs_balance(fs_info);
+
+	mutex_lock(&fs_info->balance_mutex);
+
+	if (bargs) {
+		memset(bargs, 0, sizeof(*bargs));
+		update_ioctl_balance_args(fs_info, bargs);
+	}
+
+	__cancel_balance(fs_info);
+
+	return ret;
+out:
+	kfree(bctl);
 	return ret;
 }
 

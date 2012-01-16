@@ -1078,6 +1078,7 @@ enum btrfs_orphan_cleanup_state {
 struct reloc_control;
 struct btrfs_device;
 struct btrfs_fs_devices;
+struct btrfs_balance_control;
 struct btrfs_delayed_root;
 struct btrfs_fs_info {
 	u8 fsid[BTRFS_FSID_SIZE];
@@ -1321,6 +1322,11 @@ struct btrfs_fs_info {
 	u64 avail_data_alloc_bits;
 	u64 avail_metadata_alloc_bits;
 	u64 avail_system_alloc_bits;
+
+	/* restriper state */
+	spinlock_t balance_lock;
+	struct mutex balance_mutex;
+	struct btrfs_balance_control *balance_ctl;
 
 	unsigned data_chunk_allocations;
 	unsigned metadata_ratio;
