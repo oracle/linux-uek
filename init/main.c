@@ -707,6 +707,10 @@ asmlinkage __visible void __init start_kernel(void)
 		efi_free_boot_services();
 	}
 
+#ifdef CONFIG_DTRACE
+	dtrace_register_builtins();                                             
+#endif                                                                        
+
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
