@@ -307,6 +307,9 @@ static int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 		}
 
 		if (rval != 0) {
+			kernel_insn_init(&insn, (void *)dargs->regs->ip);
+			insn_get_length(&insn);
+
 			dargs->regs->ip += insn.length;
 
 			return NOTIFY_OK | NOTIFY_STOP_MASK;
