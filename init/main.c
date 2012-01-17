@@ -640,6 +640,10 @@ asmlinkage void __init start_kernel(void)
 
 	ftrace_init();
 
+#ifdef CONFIG_DTRACE
+	dtrace_register_builtins();                                             
+#endif                                                                        
+
 	/* Do the rest non-__init'ed, we're now alive */
 	rest_init();
 }
