@@ -3729,6 +3729,8 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				regs[rd] = 0;
 				*flags |= CPU_DTRACE_DIVZERO;
 			} else {
+				int	neg = 0;
+
 				/*
 				 * We cannot simply do a 64-bit division, since
 				 * gcc translates it into a call to a function
@@ -3737,8 +3739,19 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				 * regs[rd] = (int64_t)regs[r1] /
 				 *	      (int64_t)regs[r2];
 				 */
-				regs[rd] = (int64_t)regs[r1];
-				do_div(regs[rd], (int64_t)regs[r2]);
+				if ((int64_t)regs[r1] < 0) {
+					neg = !neg;
+					regs[r1] = -(int64_t)regs[r1];
+				}
+				if ((int64_t)regs[r2] < 0) {
+					neg = !neg;
+					regs[r2] = -(int64_t)regs[r2];
+				}
+				regs[rd] = regs[r1];
+				do_div(regs[rd], regs[r2]);
+
+				if (neg)
+					regs[rd] = -(int64_t)regs[rd];
 			}
 			break;
 
@@ -3764,6 +3777,8 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				regs[rd] = 0;
 				*flags |= CPU_DTRACE_DIVZERO;
 			} else {
+				int	neg = 0;
+
 				/*
 				 * We cannot simply do a 64-bit division, since
 				 * gcc translates it into a call to a function
@@ -3772,8 +3787,19 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 				 * regs[rd] = (int64_t)regs[r1] %
 				 *	      (int64_t)regs[r2];
 				 */
-				regs[rd] = (int64_t)regs[r1];
-				regs[rd] = do_div(regs[rd], (int64_t)regs[r2]);
+				if ((int64_t)regs[r1] < 0) {
+					neg = !neg;
+					regs[r1] = -(int64_t)regs[r1];
+				}
+				if ((int64_t)regs[r2] < 0) {
+					neg = !neg;
+					regs[r2] = -(int64_t)regs[r2];
+				}
+				regs[rd] = regs[r1];
+				regs[rd] = do_div(regs[rd], regs[r2]);
+
+				if (neg)
+					regs[rd] = -(int64_t)regs[rd];
 			}
 			break;
 
