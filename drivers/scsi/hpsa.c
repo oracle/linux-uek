@@ -56,6 +56,7 @@
 /* HPSA_DRIVER_VERSION must be 3 byte values (0-255) separated by '.' */
 #define HPSA_DRIVER_VERSION "2.0.2-1"
 #define DRIVER_NAME "HP HPSA Driver (v " HPSA_DRIVER_VERSION ")"
+#define HPSA "hpsa"
 
 /* How long to wait (in milliseconds) for board to go into simple mode */
 #define MAX_CONFIG_WAIT 30000
@@ -220,15 +221,15 @@ static int check_for_unit_attention(struct ctlr_info *h,
 
 	switch (c->err_info->SenseInfo[12]) {
 	case STATE_CHANGED:
-		dev_warn(&h->pdev->dev, "hpsa%d: a state change "
+		dev_warn(&h->pdev->dev, HPSA "%d: a state change "
 			"detected, command retried\n", h->ctlr);
 		break;
 	case LUN_FAILED:
-		dev_warn(&h->pdev->dev, "hpsa%d: LUN failure "
+		dev_warn(&h->pdev->dev, HPSA "%d: LUN failure "
 			"detected, action required\n", h->ctlr);
 		break;
 	case REPORT_LUNS_CHANGED:
-		dev_warn(&h->pdev->dev, "hpsa%d: report LUN data "
+		dev_warn(&h->pdev->dev, HPSA "%d: report LUN data "
 			"changed, action required\n", h->ctlr);
 	/*
 	 * Note: this REPORT_LUNS_CHANGED condition only occurs on the external
@@ -236,15 +237,15 @@ static int check_for_unit_attention(struct ctlr_info *h,
 	 */
 		break;
 	case POWER_OR_RESET:
-		dev_warn(&h->pdev->dev, "hpsa%d: a power on "
+		dev_warn(&h->pdev->dev, HPSA "%d: a power on "
 			"or device reset detected\n", h->ctlr);
 		break;
 	case UNIT_ATTENTION_CLEARED:
-		dev_warn(&h->pdev->dev, "hpsa%d: unit attention "
+		dev_warn(&h->pdev->dev, HPSA "%d: unit attention "
 		    "cleared by another initiator\n", h->ctlr);
 		break;
 	default:
-		dev_warn(&h->pdev->dev, "hpsa%d: unknown "
+		dev_warn(&h->pdev->dev, HPSA "%d: unknown "
 			"unit attention detected\n", h->ctlr);
 		break;
 	}
@@ -506,8 +507,8 @@ static struct device_attribute *hpsa_shost_attrs[] = {
 
 static struct scsi_host_template hpsa_driver_template = {
 	.module			= THIS_MODULE,
-	.name			= "hpsa",
-	.proc_name		= "hpsa",
+	.name			= HPSA,
+	.proc_name		= HPSA,
 	.queuecommand		= hpsa_scsi_queue_command,
 	.scan_start		= hpsa_scan_start,
 	.scan_finished		= hpsa_scan_finished,
@@ -3383,7 +3384,7 @@ static int hpsa_controller_hard_reset(struct pci_dev *pdev,
 static __devinit void init_driver_version(char *driver_version, int len)
 {
 	memset(driver_version, 0, len);
-	strncpy(driver_version, "hpsa " HPSA_DRIVER_VERSION, len - 1);
+	strncpy(driver_version, HPSA " " HPSA_DRIVER_VERSION, len - 1);
 }
 
 static __devinit int write_driver_ver_to_cfgtable(
@@ -3966,7 +3967,7 @@ static int __devinit hpsa_pci_init(struct ctlr_info *h)
 		return err;
 	}
 
-	err = pci_request_regions(h->pdev, "hpsa");
+	err = pci_request_regions(h->pdev, HPSA);
 	if (err) {
 		dev_err(&h->pdev->dev,
 			"cannot obtain PCI resources, aborting\n");
@@ -4284,7 +4285,7 @@ static void start_controller_lockup_detector(struct ctlr_info *h)
 		spin_lock_init(&lockup_detector_lock);
 		hpsa_lockup_detector =
 			kthread_run(detect_controller_lockup_thread,
-						NULL, "hpsa");
+						NULL, HPSA);
 	}
 	if (!hpsa_lockup_detector) {
 		dev_warn(&h->pdev->dev,
@@ -4356,7 +4357,7 @@ reinit_after_soft_reset:
 	if (rc != 0)
 		goto clean1;
 
-	sprintf(h->devname, "hpsa%d", number_of_controllers);
+	sprintf(h->devname, HPSA "%d", number_of_controllers);
 	h->ctlr = number_of_controllers;
 	number_of_controllers++;
 
@@ -4570,7 +4571,7 @@ static int hpsa_resume(__attribute__((unused)) struct pci_dev *pdev)
 }
 
 static struct pci_driver hpsa_pci_driver = {
-	.name = "hpsa",
+	.name = HPSA,
 	.probe = hpsa_init_one,
 	.remove = __devexit_p(hpsa_remove_one),
 	.id_table = hpsa_pci_device_id,	/* id_table */
