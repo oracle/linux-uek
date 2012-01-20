@@ -43,7 +43,9 @@
 #include <xen/features.h>
 #include <xen/page.h>
 
-#define PAGES2KB(_p) ((_p)<<(PAGE_SHIFT-10))
+extern int balloon_order;
+
+#define PAGES2KB(_p) ((_p)<<(PAGE_SHIFT+balloon_order-10))
 
 #define BALLOON_CLASS_NAME "xen_memory"
 
@@ -67,7 +69,8 @@ static void watch_target(struct xenbus_watch *watch,
 	/* The given memory/target value is in KiB, so it needs converting to
 	 * pages. PAGE_SHIFT converts bytes to pages, hence PAGE_SHIFT - 10.
 	 */
-	balloon_set_new_target(new_target >> (PAGE_SHIFT - 10));
+	balloon_set_new_target(new_target >>
+		((PAGE_SHIFT - 10) + balloon_order));
 }
 static struct xenbus_watch target_watch = {
 	.node = "memory/target",
@@ -154,7 +157,8 @@ static ssize_t store_target_kb(struct device *dev,
 
 	target_bytes = simple_strtoull(buf, &endchar, 0) * 1024;
 
-	balloon_set_new_target(target_bytes >> PAGE_SHIFT);
+	balloon_set_new_target(target_bytes >>
+		(PAGE_SHIFT + balloon_order));
 
 	return count;
 }
@@ -168,7 +172,7 @@ static ssize_t show_target(struct device *dev, struct device_attribute *attr,
 {
 	return sprintf(buf, "%llu\n",
 		       (unsigned long long)balloon_stats.target_pages
-		       << PAGE_SHIFT);
+		       << (PAGE_SHIFT + balloon_order));
 }
 
 static ssize_t store_target(struct device *dev,
@@ -184,7 +188,8 @@ static ssize_t store_target(struct device *dev,
 
 	target_bytes = memparse(buf, &endchar);
 
-	balloon_set_new_target(target_bytes >> PAGE_SHIFT);
+	balloon_set_new_target(target_bytes >>
+			       (PAGE_SHIFT + balloon_order));
 
 	return count;
 }
