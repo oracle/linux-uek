@@ -117,6 +117,9 @@ int huge_pmd_unshare(struct mm_struct *mm, unsigned long *addr, pte_t *ptep)
 	pgd_t *pgd = pgd_offset(mm, *addr);
 	pud_t *pud = pud_offset(pgd, *addr);
 
+	if (xen_pv_domain())
+		return 0;
+
 	BUG_ON(page_count(virt_to_page(ptep)) == 0);
 	if (page_count(virt_to_page(ptep)) == 1)
 		return 0;
@@ -141,7 +144,7 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 			pte = (pte_t *)pud;
 		} else {
 			BUG_ON(sz != PMD_SIZE);
-			if (pud_none(*pud))
+			if (!xen_pv_domain() && pud_none(*pud))
 				huge_pmd_share(mm, addr, pud);
 			pte = (pte_t *) pmd_alloc(mm, pud, addr);
 		}

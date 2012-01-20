@@ -2371,3 +2371,48 @@ out:
 	return err;
 }
 EXPORT_SYMBOL_GPL(xen_remap_domain_mfn_range);
+
+int xen_prepare_hugepage(struct page *page)
+{
+	struct mmuext_op op;
+	unsigned long pfn, mfn, m;
+	int i;
+	int rc;
+
+	if (!xen_pv_domain())
+		return 0;
+
+	pfn = page_to_pfn(page);
+	mfn = pfn_to_mfn(pfn);
+	if (mfn & ((HPAGE_SIZE/PAGE_SIZE)-1)) {
+		printk("Guest pages are not properly aligned to use hugepages\n");
+		return 1;
+	}
+	for (i = 0, m = mfn; i < HPAGE_SIZE/PAGE_SIZE; i++, pfn++, m++) {
+		if (pfn_to_mfn(pfn) != m) {
+			printk("Guest pages are not properly aligned to use hugepages\n");
+			return 1;
+		}
+	}
+
+	op.cmd = MMUEXT_MARK_SUPER;
+	op.arg1.mfn = mfn;
+	rc = HYPERVISOR_mmuext_op(&op, 1, NULL, DOMID_SELF);
+	if (rc) {
+		printk("Xen hypervisor is not configured to allow hugepages\n");
+		return 1;
+	}
+	return 0;
+}
+
+void xen_release_hugepage(struct page *page)
+{
+	struct mmuext_op op;
+
+	if (!xen_pv_domain())
+		return;
+
+	op.cmd = MMUEXT_UNMARK_SUPER;
+	op.arg1.mfn = pfn_to_mfn(page_to_pfn(page));
+	HYPERVISOR_mmuext_op(&op, 1, NULL, DOMID_SELF);
+}
