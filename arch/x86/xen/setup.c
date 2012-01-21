@@ -190,7 +190,7 @@ static unsigned long __init xen_get_max_pages(void)
 	return min(max_pages, MAX_DOMAIN_PAGES);
 }
 
-static void xen_align_and_add_e820_region(u64 start, u64 size, int type)
+static void __init xen_align_and_add_e820_region(u64 start, u64 size, int type)
 {
 	u64 end = start + size;
 

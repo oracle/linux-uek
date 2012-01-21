@@ -1262,7 +1262,7 @@ static void iommu_apply_resume_quirks(struct amd_iommu *iommu)
  * This function finally enables all IOMMUs found in the system after
  * they have been initialized
  */
-static void enable_iommus(void)
+static void __init enable_iommus(void)
 {
 	struct amd_iommu *iommu;
 
@@ -1292,7 +1292,7 @@ static void disable_iommus(void)
  * disable suspend until real resume implemented
  */
 
-static void amd_iommu_resume(void)
+static void __init amd_iommu_resume(void)
 {
 	struct amd_iommu *iommu;
 

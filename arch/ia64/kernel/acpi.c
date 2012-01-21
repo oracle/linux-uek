@@ -804,7 +804,7 @@ int acpi_isa_irq_to_gsi(unsigned isa_irq, u32 *gsi)
  */
 #ifdef CONFIG_ACPI_HOTPLUG_CPU
 static __cpuinit
-int acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
+int __cpuinit acpi_map_cpu2node(acpi_handle handle, int cpu, int physid)
 {
 #ifdef CONFIG_ACPI_NUMA
 	int pxm_id;
