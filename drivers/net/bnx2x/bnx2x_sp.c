@@ -51,6 +51,7 @@ static inline void bnx2x_exe_queue_init(struct bnx2x *bp,
 					int exe_len,
 					union bnx2x_qable_obj *owner,
 					exe_q_validate validate,
+					exe_q_remove remove,
 					exe_q_optimize optimize,
 					exe_q_execute exec,
 					exe_q_get get)
@@ -67,6 +68,7 @@ static inline void bnx2x_exe_queue_init(struct bnx2x *bp,
 
 	/* Owner specific callbacks */
 	o->validate      = validate;
+	o->remove        = remove;
 	o->optimize      = optimize;
 	o->execute       = exec;
 	o->get           = get;
@@ -1341,6 +1343,35 @@ static int bnx2x_validate_vlan_mac(struct bnx2x *bp,
 	}
 }
 
+static int bnx2x_remove_vlan_mac(struct bnx2x *bp,
+				  union bnx2x_qable_obj *qo,
+				  struct bnx2x_exeq_elem *elem)
+{
+	int rc = 0;
+
+	/* If consumption wasn't required, nothing to do */
+	if (test_bit(BNX2X_DONT_CONSUME_CAM_CREDIT,
+		     &elem->cmd_data.vlan_mac.vlan_mac_flags))
+		return 0;
+
+	switch (elem->cmd_data.vlan_mac.cmd) {
+	case BNX2X_VLAN_MAC_ADD:
+	case BNX2X_VLAN_MAC_MOVE:
+		rc = qo->vlan_mac.put_credit(&qo->vlan_mac);
+		break;
+	case BNX2X_VLAN_MAC_DEL:
+		rc = qo->vlan_mac.get_credit(&qo->vlan_mac);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (rc != true)
+		return -EINVAL;
+
+	return 0;
+}
+
 /**
  * bnx2x_wait_vlan_mac - passivly wait for 5 seconds until all work completes.
  *
@@ -1802,8 +1833,14 @@ static int bnx2x_vlan_mac_del_all(struct bnx2x *bp,
 
 	list_for_each_entry_safe(exeq_pos, exeq_pos_n, &exeq->exe_queue, link) {
 		if (exeq_pos->cmd_data.vlan_mac.vlan_mac_flags ==
-		    *vlan_mac_flags)
+		    *vlan_mac_flags) {
+			rc = exeq->remove(bp, exeq->owner, exeq_pos);
+			if (rc) {
+				BNX2X_ERR("Failed to remove command\n");
+				return rc;
+			}
 			list_del(&exeq_pos->link);
+		}
 	}
 
 	spin_unlock_bh(&exeq->lock);
@@ -1909,6 +1946,7 @@ void bnx2x_init_mac_obj(struct bnx2x *bp,
 		bnx2x_exe_queue_init(bp,
 				     &mac_obj->exe_queue, 1, qable_obj,
 				     bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_mac);
@@ -1925,6 +1963,7 @@ void bnx2x_init_mac_obj(struct bnx2x *bp,
 		bnx2x_exe_queue_init(bp,
 				     &mac_obj->exe_queue, CLASSIFY_RULES_COUNT,
 				     qable_obj, bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_mac);
@@ -1964,6 +2003,7 @@ void bnx2x_init_vlan_obj(struct bnx2x *bp,
 		bnx2x_exe_queue_init(bp,
 				     &vlan_obj->exe_queue, CLASSIFY_RULES_COUNT,
 				     qable_obj, bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_vlan);
@@ -2010,6 +2050,7 @@ void bnx2x_init_vlan_mac_obj(struct bnx2x *bp,
 		bnx2x_exe_queue_init(bp,
 				     &vlan_mac_obj->exe_queue, 1, qable_obj,
 				     bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_vlan_mac);
@@ -2026,6 +2067,7 @@ void bnx2x_init_vlan_mac_obj(struct bnx2x *bp,
 				     &vlan_mac_obj->exe_queue,
 				     CLASSIFY_RULES_COUNT,
 				     qable_obj, bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_vlan_mac);
