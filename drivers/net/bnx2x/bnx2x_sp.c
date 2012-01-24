@@ -1837,6 +1837,7 @@ static int bnx2x_vlan_mac_del_all(struct bnx2x *bp,
 			rc = exeq->remove(bp, exeq->owner, exeq_pos);
 			if (rc) {
 				BNX2X_ERR("Failed to remove command\n");
+				spin_unlock_bh(&exeq->lock);
 				return rc;
 			}
 			list_del(&exeq_pos->link);
