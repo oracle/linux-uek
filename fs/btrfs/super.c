@@ -1315,9 +1315,6 @@ static void btrfs_fs_dirty_inode(struct inode *inode, int flags)
 	int ret;
 
 	ret = btrfs_dirty_inode(inode);
-	if (ret)
-		printk_ratelimited(KERN_ERR "btrfs: fail to dirty inode %Lu "
-				   "error %d\n", btrfs_ino(inode), ret);
 }
 
 static const struct super_operations btrfs_super_ops = {
