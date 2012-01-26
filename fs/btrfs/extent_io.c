@@ -4541,6 +4541,8 @@ int extent_range_uptodate(struct extent_io_tree *tree,
 	while (start <= end) {
 		index = start >> PAGE_CACHE_SHIFT;
 		page = find_get_page(tree->mapping, index);
+		if (!page)
+			return 1;
 		uptodate = PageUptodate(page);
 		page_cache_release(page);
 		if (!uptodate) {
