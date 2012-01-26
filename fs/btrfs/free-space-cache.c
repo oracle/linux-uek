@@ -2244,6 +2244,7 @@ u64 btrfs_alloc_from_cluster(struct btrfs_block_group_cache *block_group,
 						 offset_index);
 				continue;
 			}
+			cluster->window_start += bytes;
 		} else {
 			ret = entry->offset;
 
