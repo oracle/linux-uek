@@ -10473,6 +10473,7 @@ static int __devinit bnx2x_init_dev(struct pci_dev *pdev,
 {
 	struct bnx2x *bp;
 	int rc;
+	u32 pci_cfg_dword;
 	bool chip_is_e1x = (board_type == BCM57710 ||
 			    board_type == BCM57711 ||
 			    board_type == BCM57711E);
@@ -10483,7 +10484,6 @@ static int __devinit bnx2x_init_dev(struct pci_dev *pdev,
 	bp->dev = dev;
 	bp->pdev = pdev;
 	bp->flags = 0;
-	bp->pf_num = PCI_FUNC(pdev->devfn);
 
 	rc = pci_enable_device(pdev);
 	if (rc) {
@@ -10549,6 +10549,21 @@ static int __devinit bnx2x_init_dev(struct pci_dev *pdev,
 		rc = -ENOMEM;
 		goto err_out_release;
 	}
+
+	/* In E1/E1H use pci device function given by kernel.
+	 * In E2/E3 read physical function from ME register since these chips
+	 * support Physical Device Assignment where kernel BDF maybe arbitrary
+	 * (depending on hypervisor).
+	 */
+	if (chip_is_e1x)
+		bp->pf_num = PCI_FUNC(pdev->devfn);
+	else {/* chip is E2/3*/
+		pci_read_config_dword(bp->pdev,
+				      PCICFG_ME_REGISTER, &pci_cfg_dword);
+		bp->pf_num = (u8)((pci_cfg_dword & ME_REG_ABS_PF_NUM) >>
+		    ME_REG_ABS_PF_NUM_SHIFT);
+	}
+	DP(BNX2X_MSG_SP, "me reg PF num: %d\n", bp->pf_num);
 
 	bnx2x_set_power_state(bp, PCI_D0);
 
