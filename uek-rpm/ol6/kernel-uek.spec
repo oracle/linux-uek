@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.20%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.21%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1675,6 +1675,47 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jan 26 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.21.el6uek]
+- git-changelog: add Orabug and CVE (Maxim Uvarov) [Add parsing Orabug and
+  CVE.]
+- qla2xxx: Update the driver version to 8.03.07.12.39.0-k. (Giridhar Malavali)
+- Add support for pv hugepages and support for huge balloon pages. (Dave
+  McCracken)
+- Btrfs: remove some verbose warnings (Chris Mason)
+- Btrfs: fix reservations in btrfs_page_mkwrite (Chris Mason)
+- Btrfs: use larger system chunks (Chris Mason)
+- Btrfs: add a delalloc mutex to inodes for delalloc reservations (Josef Bacik)
+- Btrfs: protect orphan block rsv with spin_lock (Josef Bacik)
+- Btrfs: don't call btrfs_throttle in file write (Josef Bacik)
+- Btrfs: release space on error in page_mkwrite (Josef Bacik)
+- Btrfs: fix btrfsck error 400 when truncating a compressed (Miao Xie)
+- Btrfs: do not use btrfs_end_transaction_throttle everywhere (Josef Bacik)
+- Btrfs: fix possible deadlock when opening a seed device (Li Zefan)
+- Btrfs: update global block_rsv when creating a new block group (Li Zefan)
+- Btrfs: rewrite btrfs_trim_block_group() (Li Zefan)
+- Btrfs: simplfy calculation of stripe length for discard operation (Li Zefan)
+- Btrfs: don't pre-allocate btrfs bio (Li Zefan)
+- Btrfs: don't pass a trans handle unnecessarily in volumes.c (Li Zefan)
+- Btrfs: reserve metadata space in btrfs_ioctl_setflags() (Li Zefan)
+- Btrfs: remove BUG_ON()s in btrfs_ioctl_setflags() (Li Zefan)
+- Btrfs: check the return value of io_ctl_init() (Li Zefan)
+- Btrfs: avoid possible NULL deref in io_ctl_drop_pages() (Li Zefan)
+- Btrfs: add pinned extents to on-disk free space cache correctly (Li Zefan)
+- Btrfs: revamp clustered allocation logic (Alexandre Oliva)
+- Btrfs: don't set up allocation result twice (Alexandre Oliva)
+- Btrfs: test free space only for unclustered allocation (Alexandre Oliva)
+- Btrfs: use bigger metadata chunks on bigger filesystems (Chris Mason)
+- Btrfs: lower the bar for chunk allocation (Chris Mason)
+- Btrfs: run chunk allocations while we do delayed refs (Chris Mason)
+- Btrfs: call d_instantiate after all ops are setup (Al Viro)
+- Btrfs: fix worker lock misuse in find_worker (Chris Mason)
+- xen/config: turn CONFIG_XEN_DEBUG_FS off. (Konrad Rzeszutek Wilk)
+- proc: clean up and fix /proc/<pid>/mem handling (Maxim Uvarov) [Orabug:
+  13618927] CVE-2012-0056
+- set XEN_MAX_DOMAIN_MEMORY for 512 (Maxim Uvarov)
+- add __init arguments to init functions (Maxim Uvarov)
+- hpwdt: clean up set_memory_x call for 32 bit (Maxim Uvarov)
+
 * Tue Jan 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-100.0.20.el6uek]
 - Enable Kabi Check (Guru Anbalagane)
 - net/bna driver update from 2.3.2.3 to 3.0.2.2 (Maxim Uvarov)
