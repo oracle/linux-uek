@@ -14,20 +14,18 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/elf.h>
-#include <linux/scatterlist.h>
-#include <linux/crypto.h>
 #include <linux/crypto/ksign.h>
 #include <linux/modsign.h>
-#include <linux/module-verify.h>
-#include <linux/module-verify-elf.h>
+#include "module-verify.h"
 
-#undef MODSIGN_DEBUG
+int modsign_debug;
+core_param(modsign_debug, modsign_debug, bool, 0644);
 
-#ifdef MODSIGN_DEBUG
-#define _debug(FMT, ...) printk(FMT, ##__VA_ARGS__)
-#else
-#define _debug(FMT, ...) do {} while (0)
-#endif
+#define _debug(FMT, ...)			    \
+	do {					    \
+		if (unlikely(modsign_debug))	    \
+			printk(FMT, ##__VA_ARGS__); \
+	} while(0)
 
 #ifdef MODSIGN_DEBUG
 #define count_and_csum(C, __p, __n)			\
@@ -48,22 +46,18 @@ do {						\
 
 #define crypto_digest_update_data(C, PTR, N)			\
 do {								\
-	struct scatterlist sg;					\
 	uint8_t *__p = (uint8_t *)(PTR);			\
 	size_t __n = (N);					\
 	count_and_csum((C), __p, __n);				\
-	sg_init_one(&sg, __p, __n);				\
-	crypto_hash_update(&(C)->hash, &sg, __n);		\
+	crypto_shash_update((C)->hash, __p, __n);		\
 } while (0)
 
-#define crypto_digest_update_val(C, VAL)				\
+#define crypto_digest_update_val(C, VAL)			\
 do {								\
-	struct scatterlist sg;					\
 	uint8_t *__p = (uint8_t *)&(VAL);			\
 	size_t __n = sizeof(VAL);				\
 	count_and_csum((C), __p, __n);				\
-	sg_init_one(&sg, __p, __n);				\
-	crypto_hash_update(&(C)->hash, &sg, __n);		\
+	crypto_shash_update((C)->hash, __p, __n);		\
 } while (0)
 
 static int module_verify_canonicalise(struct module_verify_data *mvdata);
@@ -101,18 +95,21 @@ int module_verify_signature(struct module_verify_data *mvdata,
 			    int *_gpgsig_ok)
 {
 	const struct elf_note *note;
+	struct crypto_shash *tfm;
 	const Elf_Shdr *sechdrs = mvdata->sections;
 	const char *secstrings = mvdata->secstrings;
 	const char *sig;
 	unsigned note_size, sig_size, note_namesz;
-	int i, ret;
+	int loop, ret;
 
-	for (i = 1; i < mvdata->nsects; i++) {
-		switch (sechdrs[i].sh_type) {
+	_debug("looking for sig section '%s'\n", modsign_note_section);
+
+	for (loop = 1; loop < mvdata->nsects; loop++) {
+		switch (sechdrs[loop].sh_type) {
 		case SHT_NOTE:
-			if (strcmp(mvdata->secstrings + sechdrs[i].sh_name,
+			if (strcmp(mvdata->secstrings + sechdrs[loop].sh_name,
 				   modsign_note_section) == 0)
-				mvdata->sig_index = i;
+				mvdata->sig_index = loop;
 			break;
 		}
 	}
@@ -150,29 +147,43 @@ int module_verify_signature(struct module_verify_data *mvdata,
 	/* grab an SHA1 transformation context
 	 * - !!! if this tries to load the sha1.ko module, we will deadlock!!!
 	 */
-	mvdata->hash.tfm = crypto_alloc_hash("sha1", 0, 0);
-	if (!mvdata->hash.tfm) {
-		printk("Couldn't load module - SHA1 transform unavailable\n");
+	tfm = crypto_alloc_shash("sha1", 0, 0);
+	if (!tfm) {
+		printk(KERN_ERR
+		       "Couldn't load module - SHA1 transform unavailable\n");
 		return -EPERM;
 	}
 
-	crypto_hash_init(&mvdata->hash);
+	mvdata->hash = kmalloc(sizeof(*mvdata->hash) +
+			       crypto_shash_descsize(tfm),
+			       GFP_KERNEL);
+	if (!mvdata->hash) {
+		crypto_free_shash(tfm);
+		return -ENOMEM;
+	}
+
+	mvdata->hash->tfm = tfm;
+	mvdata->hash->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+	ret = crypto_shash_init(mvdata->hash);
+	if (ret < 0) {
+		crypto_free_shash(mvdata->hash->tfm);
+		kfree(mvdata->hash);
+		return -ENOMEM;
+	}
 
 #ifdef MODSIGN_DEBUG
 	mvdata->xcsum = 0;
 #endif
 
 	/* load data from each relevant section into the digest */
-	for (i = 1; i < mvdata->nsects; i++) {
-		unsigned long sh_type = sechdrs[i].sh_type;
-		unsigned long sh_info = sechdrs[i].sh_info;
-		unsigned long sh_size = sechdrs[i].sh_size;
-		unsigned long sh_flags = sechdrs[i].sh_flags;
-		const char *sh_name = secstrings + sechdrs[i].sh_name;
-		const void *data = mvdata->buffer + sechdrs[i].sh_offset;
-
-		if (i == mvdata->sig_index)
-			continue;
+	for (loop = 0; loop < mvdata->ncanon; loop++) {
+		int sect = mvdata->canonlist[loop];
+		unsigned long sh_type = sechdrs[sect].sh_type;
+		unsigned long sh_info = sechdrs[sect].sh_info;
+		unsigned long sh_size = sechdrs[sect].sh_size;
+		unsigned long sh_flags = sechdrs[sect].sh_flags;
+		const char *sh_name = secstrings + sechdrs[sect].sh_name;
+		const void *data = mvdata->buffer + sechdrs[sect].sh_offset;
 
 #ifdef MODSIGN_DEBUG
 		mvdata->csum = 0;
@@ -183,34 +194,41 @@ int module_verify_signature(struct module_verify_data *mvdata,
 		 * contents, because the symtab gets changed when sections are
 		 * added or removed */
 		if (sh_type == SHT_REL || sh_type == SHT_RELA) {
-			if (mvdata->canonlist[sh_info]) {
-				uint32_t xsh_info = mvdata->canonmap[sh_info];
+			uint32_t xsh_info = mvdata->canonmap[sh_info];
 
-				crypto_digest_update_data(mvdata, sh_name, strlen(sh_name));
-				crypto_digest_update_val(mvdata, sechdrs[i].sh_type);
-				crypto_digest_update_val(mvdata, sechdrs[i].sh_flags);
-				crypto_digest_update_val(mvdata, sechdrs[i].sh_size);
-				crypto_digest_update_val(mvdata, sechdrs[i].sh_addralign);
-				crypto_digest_update_val(mvdata, xsh_info);
+			crypto_digest_update_data(mvdata, sh_name, strlen(sh_name));
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_type);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_flags);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_size);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_addralign);
+			crypto_digest_update_val(mvdata, xsh_info);
 
-				if (sh_type == SHT_RELA)
-					ret = extract_elf_rela(
-						mvdata, i,
-						data,
-						sh_size / sizeof(Elf_Rela),
-						sh_name);
-				else
-					ret = extract_elf_rel(
-						mvdata, i,
-						data,
-						sh_size / sizeof(Elf_Rel),
-						sh_name);
+			if (sh_type == SHT_RELA)
+				ret = extract_elf_rela(
+					mvdata, sect,
+					data,
+					sh_size / sizeof(Elf_Rela),
+					sh_name);
+			else
+				ret = extract_elf_rel(
+					mvdata, sect,
+					data,
+					sh_size / sizeof(Elf_Rel),
+					sh_name);
 
-				if (ret < 0)
-					goto format_error;
-			}
-
+			if (ret < 0)
+				goto format_error;
 			continue;
+		}
+
+		/* include the headers of BSS sections */
+		if (sh_type == SHT_NOBITS && sh_flags & SHF_ALLOC) {
+			crypto_digest_update_data(mvdata, sh_name, strlen(sh_name));
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_type);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_flags);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_size);
+			crypto_digest_update_val(mvdata, sechdrs[sect].sh_addralign);
+			goto digested;
 		}
 
 		/* ignore gcc's build ID section as it seems to get modified by
@@ -226,23 +244,26 @@ int module_verify_signature(struct module_verify_data *mvdata,
 
 	include_section:
 		crypto_digest_update_data(mvdata, sh_name, strlen(sh_name));
-		crypto_digest_update_val(mvdata, sechdrs[i].sh_type);
-		crypto_digest_update_val(mvdata, sechdrs[i].sh_flags);
-		crypto_digest_update_val(mvdata, sechdrs[i].sh_size);
-		crypto_digest_update_val(mvdata, sechdrs[i].sh_addralign);
+		crypto_digest_update_val(mvdata, sechdrs[sect].sh_type);
+		crypto_digest_update_val(mvdata, sechdrs[sect].sh_flags);
+		crypto_digest_update_val(mvdata, sechdrs[sect].sh_size);
+		crypto_digest_update_val(mvdata, sechdrs[sect].sh_addralign);
+
 		crypto_digest_update_data(mvdata, data, sh_size);
 
+	digested:
 		_debug("%08zx %02x digested the %s section, size %ld\n",
 		       mvdata->signed_size, mvdata->csum, sh_name, sh_size);
-
-		mvdata->canonlist[i] = 1;
 	}
 
 	_debug("Contributed %zu bytes to the digest (csum 0x%02x)\n",
 	       mvdata->signed_size, mvdata->xcsum);
 
 	/* do the actual signature verification */
-	ret = ksign_verify_signature(sig, sig_size, mvdata->hash.tfm);
+	ret = ksign_verify_signature(sig, sig_size, mvdata->hash);
+
+	crypto_free_shash(mvdata->hash->tfm);
+	kfree(mvdata->hash);
 
 	_debug("verify-sig : %d\n", ret);
 
@@ -263,13 +284,15 @@ int module_verify_signature(struct module_verify_data *mvdata,
 	return ret;
 
 format_error:
-	crypto_free_hash(mvdata->hash.tfm);
+	crypto_free_shash(mvdata->hash->tfm);
+	kfree(mvdata->hash);
 format_error_no_free:
 	printk(KERN_ERR "Module format error encountered\n");
 	return -ELIBBAD;
 
 	/* deal with the case of an unsigned module */
 no_signature:
+	_debug("no signature found\n");
 	if (!signedonly)
 		return 0;
 	printk(KERN_ERR "An attempt to load unsigned module was rejected\n");
@@ -297,11 +320,16 @@ static int module_verify_canonicalise(struct module_verify_data *mvdata)
 	for (loop = 1; loop < mvdata->nsects; loop++) {
 		const Elf_Shdr *section = mvdata->sections + loop;
 
-		if (loop != mvdata->sig_index) {
-			/* we only need to canonicalise allocatable sections */
-			if (section->sh_flags & SHF_ALLOC)
-				mvdata->canonlist[canon++] = loop;
-		}
+		if (loop == mvdata->sig_index)
+			continue;
+
+		/* we only need to canonicalise allocatable sections */
+		if (section->sh_flags & SHF_ALLOC)
+			mvdata->canonlist[canon++] = loop;
+		else if ((section->sh_type == SHT_REL ||
+			  section->sh_type == SHT_RELA) &&
+			 mvdata->sections[section->sh_info].sh_flags & SHF_ALLOC)
+			mvdata->canonlist[canon++] = loop;
 	}
 
 	/* canonicalise the index numbers of the contributing section */
@@ -329,7 +357,7 @@ static int module_verify_canonicalise(struct module_verify_data *mvdata)
 
 	for (loop = 0; loop < canon; loop++)
 		mvdata->canonmap[mvdata->canonlist[loop]] = loop + 1;
-
+	mvdata->ncanon = canon;
 	return 0;
 }
 

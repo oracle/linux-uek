@@ -10,12 +10,12 @@
  */
 
 #include <linux/types.h>
-#include <linux/crypto.h>
+#include <crypto/hash.h>
 #include <asm/module.h>
 
 #ifdef CONFIG_MODULE_VERIFY
 struct module_verify_data {
-	struct hash_desc	hash;		/* module signature digest */
+	struct shash_desc	*hash;		/* module signature digest (SHA1) */
 	const void		*buffer;	/* module buffer */
 	const Elf_Ehdr		*hdr;		/* ELF header */
 	const Elf_Shdr		*sections;	/* ELF section table */
@@ -30,6 +30,7 @@ struct module_verify_data {
 	size_t			signed_size;	/* count of bytes contributed to digest */
 	int			*canonlist;	/* list of canonicalised sections */
 	int			*canonmap;	/* section canonicalisation map */
+	int			ncanon;		/* number of canonicalised sections */
 	int			sig_index;	/* module signature section index */
 	uint8_t			xcsum;		/* checksum of bytes contributed to digest */
 	uint8_t			csum;		/* checksum of bytes representing a section */

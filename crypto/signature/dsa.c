@@ -94,3 +94,4 @@ cleanup:
 	mpi_free(v);
 	return rc;
 }
+EXPORT_SYMBOL_GPL(DSA_verify);

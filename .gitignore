@@ -19,6 +19,9 @@
 *.so.dbg
 *.mod.c
 *.i
+*.ko.unsigned
+*.ko.digest.sig
+*.ko.digest
 *.lst
 *.symtypes
 *.order

@@ -12,11 +12,12 @@
 #ifndef _LINUX_CRYPTO_KSIGN_H
 #define _LINUX_CRYPTO_KSIGN_H
 
-#include <linux/types.h>
-
 #ifdef CONFIG_CRYPTO_SIGNATURE
+
+#include <crypto/hash.h>
+
 extern int ksign_verify_signature(const char *sig, unsigned sig_size,
-				  struct crypto_hash *sha1);
+				  struct shash_desc *digest);
 #endif
 
 #endif /* _LINUX_CRYPTO_KSIGN_H */

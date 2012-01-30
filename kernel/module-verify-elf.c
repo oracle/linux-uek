@@ -13,9 +13,7 @@
 #include <linux/slab.h>
 #include <linux/elf.h>
 #include <linux/ctype.h>
-#include <linux/module-verify.h>
-#include <linux/elf.h>
-#include <linux/module-verify-elf.h>
+#include "module-verify.h"
 
 #if 0
 #define _debug(FMT, ...) printk(FMT, ##__VA_ARGS__)

@@ -33,39 +33,39 @@ struct byteorder {
 	void (*set64)(uint64_t *, uint64_t);
 };
 
-uint16_t get16_le(const uint16_t *p) { return __le16_to_cpu(*p); }
-uint32_t get32_le(const uint32_t *p) { return __le32_to_cpu(*p); }
-uint64_t get64_le(const uint64_t *p) { return __le64_to_cpu(*p); }
-uint16_t get16_be(const uint16_t *p) { return __be16_to_cpu(*p); }
-uint32_t get32_be(const uint32_t *p) { return __be32_to_cpu(*p); }
-uint64_t get64_be(const uint64_t *p) { return __be64_to_cpu(*p); }
+static uint16_t get16_le(const uint16_t *p) { return __le16_to_cpu(*p); }
+static uint32_t get32_le(const uint32_t *p) { return __le32_to_cpu(*p); }
+static uint64_t get64_le(const uint64_t *p) { return __le64_to_cpu(*p); }
+static uint16_t get16_be(const uint16_t *p) { return __be16_to_cpu(*p); }
+static uint32_t get32_be(const uint32_t *p) { return __be32_to_cpu(*p); }
+static uint64_t get64_be(const uint64_t *p) { return __be64_to_cpu(*p); }
 
-void set16_le(uint16_t *p, uint16_t n) { *p = __cpu_to_le16(n); }
-void set32_le(uint32_t *p, uint32_t n) { *p = __cpu_to_le32(n); }
-void set64_le(uint64_t *p, uint64_t n) { *p = __cpu_to_le64(n); }
-void set16_be(uint16_t *p, uint16_t n) { *p = __cpu_to_be16(n); }
-void set32_be(uint32_t *p, uint32_t n) { *p = __cpu_to_be32(n); }
-void set64_be(uint64_t *p, uint64_t n) { *p = __cpu_to_be64(n); }
+static void set16_le(uint16_t *p, uint16_t n) { *p = __cpu_to_le16(n); }
+static void set32_le(uint32_t *p, uint32_t n) { *p = __cpu_to_le32(n); }
+static void set64_le(uint64_t *p, uint64_t n) { *p = __cpu_to_le64(n); }
+static void set16_be(uint16_t *p, uint16_t n) { *p = __cpu_to_be16(n); }
+static void set32_be(uint32_t *p, uint32_t n) { *p = __cpu_to_be32(n); }
+static void set64_be(uint64_t *p, uint64_t n) { *p = __cpu_to_be64(n); }
 
-const struct byteorder byteorder_le = {
+static const struct byteorder byteorder_le = {
 	get16_le, get32_le, get64_le,
 	set16_le, set32_le, set64_le
 };
-const struct byteorder byteorder_be = {
+static const struct byteorder byteorder_be = {
 	get16_be, get32_be, get64_be,
 	set16_be, set32_be, set64_be
 };
-const struct byteorder *order;
+static const struct byteorder *order;
 
-uint16_t get16(const uint16_t *p) { return order->get16(p); }
-uint32_t get32(const uint32_t *p) { return order->get32(p); }
-uint64_t get64(const uint64_t *p) { return order->get64(p); }
-void set16(uint16_t *p, uint16_t n) { order->set16(p, n); }
-void set32(uint32_t *p, uint32_t n) { order->set32(p, n); }
-void set64(uint64_t *p, uint64_t n) { order->set64(p, n); }
+static inline uint16_t get16(const uint16_t *p) { return order->get16(p); }
+static inline uint32_t get32(const uint32_t *p) { return order->get32(p); }
+static inline uint64_t get64(const uint64_t *p) { return order->get64(p); }
+static inline void set16(uint16_t *p, uint16_t n) { order->set16(p, n); }
+static inline void set32(uint32_t *p, uint32_t n) { order->set32(p, n); }
+static inline void set64(uint64_t *p, uint64_t n) { order->set64(p, n); }
 
-FILE *outfd;
-uint8_t csum, xcsum;
+static FILE *outfd;
+static uint8_t csum, xcsum;
 
 static void write_out(const void *data, size_t size)
 {
@@ -235,8 +235,8 @@ static void extract_elf64_rela(const void *buffer, int secix, int targetix,
 		set32(&relocation.r_type, ELF64_R_TYPE(r_info));
 
 		if (ELF64_R_SYM(r_info) >= nsyms) {
-			fprintf(stderr, "Invalid symbol ID %lx in relocation %zu\n",
-				ELF64_R_SYM(r_info), loop);
+			fprintf(stderr, "Invalid symbol ID %zx in relocation %zu\n",
+				(size_t)ELF64_R_SYM(r_info), loop);
 			exit(1);
 		}
 
@@ -302,8 +302,8 @@ static void extract_elf64_rel(const void *buffer, int secix, int targetix,
 		set32(&relocation.r_type, ELF64_R_TYPE(r_info));
 
 		if (ELF64_R_SYM(r_info) >= nsyms) {
-			fprintf(stderr, "Invalid symbol ID %lx in relocation %zi\n",
-				ELF64_R_SYM(r_info), loop);
+			fprintf(stderr, "Invalid symbol ID %zx in relocation %zu\n",
+				(size_t)ELF64_R_SYM(r_info), loop);
 			exit(1);
 		}
 
@@ -369,6 +369,7 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 		Elf64_Word  sh_type	= get32(&sections[loop].sh_type);
 		Elf64_Xword sh_size	= get64(&sections[loop].sh_size);
 		Elf64_Xword sh_flags	= get64(&sections[loop].sh_flags);
+		Elf64_Word  sh_info	= get32(&sections[loop].sh_info);
 		Elf64_Off   sh_offset	= get64(&sections[loop].sh_offset);
 		void *data = buffer + sh_offset;
 
@@ -380,6 +381,9 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 
 		/* we only need to canonicalise allocatable sections */
 		if (sh_flags & SHF_ALLOC)
+			canonlist[canon++] = loop;
+		else if ((sh_type == SHT_REL || sh_type == SHT_RELA) &&
+			 get64(&sections[sh_info].sh_flags) & SHF_ALLOC)
 			canonlist[canon++] = loop;
 
 		/* keep track of certain special sections */
@@ -447,27 +451,28 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 		}
 	}
 
-	memset(canonlist, 0, sizeof(int) * shnum);
-
 	/* iterate through the section table looking for sections we want to
 	 * contribute to the signature */
 	verbose("\n");
-	verbose("FILE POS CS SECT NAME\n");
-	verbose("======== == ==== ==============================\n");
+	verbose("CAN FILE POS CS SECT NAME\n");
+	verbose("=== ======== == ==== ==============================\n");
 
-	for (loop = 1; loop < shnum; loop++) {
-		const char *sh_name = secstrings + get32(&sections[loop].sh_name);
-		Elf64_Word  sh_type	= get32(&sections[loop].sh_type);
-		Elf64_Xword sh_size	= get64(&sections[loop].sh_size);
-		Elf64_Xword sh_flags	= get64(&sections[loop].sh_flags);
-		Elf64_Word  sh_info	= get32(&sections[loop].sh_info);
-		Elf64_Off   sh_offset	= get64(&sections[loop].sh_offset);
+	for (loop = 0; loop < canon; loop++) {
+		int sect = canonlist[loop];
+		const char *sh_name = secstrings + get32(&sections[sect].sh_name);
+		Elf64_Word  sh_type	= get32(&sections[sect].sh_type);
+		Elf64_Xword sh_size	= get64(&sections[sect].sh_size);
+		Elf64_Xword sh_flags	= get64(&sections[sect].sh_flags);
+		Elf64_Word  sh_info	= get32(&sections[sect].sh_info);
+		Elf64_Off   sh_offset	= get64(&sections[sect].sh_offset);
 		void *data = buffer + sh_offset;
 
 		csum = 0;
 
 		/* include canonicalised relocation sections */
 		if (sh_type == SHT_REL || sh_type == SHT_RELA) {
+			Elf32_Word canon_sh_info;
+
 			if (sh_info <= 0 && sh_info >= hdr->e_shnum) {
 				fprintf(stderr,
 					"Invalid ELF - REL/RELA sh_info does"
@@ -475,39 +480,47 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 				exit(3);
 			}
 
-			if (canonlist[sh_info]) {
-				Elf32_Word xsh_info;
+			verbose("%3u %08lx ", loop, ftell(outfd));
 
-				verbose("%08lx ", ftell(outfd));
+			set32(&canon_sh_info, canonmap[sh_info]);
 
-				set32(&xsh_info, canonmap[sh_info]);
+			/* write out selected portions of the section header */
+			write_out(sh_name, strlen(sh_name));
+			write_out_val(sections[sect].sh_type);
+			write_out_val(sections[sect].sh_flags);
+			write_out_val(sections[sect].sh_size);
+			write_out_val(sections[sect].sh_addralign);
+			write_out_val(canon_sh_info);
 
-				/* write out selected portions of the section
-				 * header */
-				write_out(sh_name, strlen(sh_name));
-				write_out_val(sections[loop].sh_type);
-				write_out_val(sections[loop].sh_flags);
-				write_out_val(sections[loop].sh_size);
-				write_out_val(sections[loop].sh_addralign);
-				write_out_val(xsh_info);
-
-				if (sh_type == SHT_RELA)
-					extract_elf64_rela(buffer, loop, sh_info,
-							   data, sh_size / sizeof(Elf64_Rela),
-							   symbols, nsyms,
-							   sections, shnum, canonmap,
-							   strings, nstrings,
-							   sh_name);
-				else
-					extract_elf64_rel(buffer, loop, sh_info,
-							  data, sh_size / sizeof(Elf64_Rel),
-							  symbols, nsyms,
-							  sections, shnum, canonmap,
-							  strings, nstrings,
-							  sh_name);
-			}
-
+			if (sh_type == SHT_RELA)
+				extract_elf64_rela(buffer, sect, sh_info,
+						   data, sh_size / sizeof(Elf64_Rela),
+						   symbols, nsyms,
+						   sections, shnum, canonmap,
+						   strings, nstrings,
+						   sh_name);
+			else
+				extract_elf64_rel(buffer, sect, sh_info,
+						  data, sh_size / sizeof(Elf64_Rel),
+						  symbols, nsyms,
+						  sections, shnum, canonmap,
+						  strings, nstrings,
+						  sh_name);
 			continue;
+		}
+
+		/* include the headers of BSS sections */
+		if (sh_type == SHT_NOBITS && sh_flags & SHF_ALLOC) {
+			verbose("%3u %08lx ", loop, ftell(outfd));
+
+			/* write out selected portions of the section header */
+			write_out(sh_name, strlen(sh_name));
+			write_out_val(sections[sect].sh_type);
+			write_out_val(sections[sect].sh_flags);
+			write_out_val(sections[sect].sh_size);
+			write_out_val(sections[sect].sh_addralign);
+
+			verbose("%02x %4d %s\n", csum, sect, sh_name);
 		}
 
 		/* ignore gcc's build ID section as it seems to get modified by
@@ -523,22 +536,19 @@ static void extract_elf64(void *buffer, size_t len, Elf64_Ehdr *hdr)
 		continue;
 
 	include_section:
-		verbose("%08lx ", ftell(outfd));
+		verbose("%3u %08lx ", loop, ftell(outfd));
 
 		/* write out selected portions of the section header */
 		write_out(sh_name, strlen(sh_name));
-		write_out_val(sections[loop].sh_type);
-		write_out_val(sections[loop].sh_flags);
-		write_out_val(sections[loop].sh_size);
-		write_out_val(sections[loop].sh_addralign);
+		write_out_val(sections[sect].sh_type);
+		write_out_val(sections[sect].sh_flags);
+		write_out_val(sections[sect].sh_size);
+		write_out_val(sections[sect].sh_addralign);
 
 		/* write out the section data */
 		write_out(data, sh_size);
 
-		verbose("%02x %4d %s\n", csum, loop, sh_name);
-
-		/* note the section has been written */
-		canonlist[loop] = 1;
+		verbose("%02x %4d %s\n", csum, sect, sh_name);
 	}
 
 	verbose("%08lx         (%lu bytes csum 0x%02x)\n",
@@ -720,6 +730,7 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 		Elf32_Word  sh_type	= get32(&sections[loop].sh_type);
 		Elf32_Xword sh_size	= get32(&sections[loop].sh_size);
 		Elf32_Xword sh_flags	= get32(&sections[loop].sh_flags);
+		Elf64_Word  sh_info	= get32(&sections[loop].sh_info);
 		Elf32_Off   sh_offset	= get32(&sections[loop].sh_offset);
 		void *data = buffer + sh_offset;
 
@@ -731,6 +742,9 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 
 		/* we only need to canonicalise allocatable sections */
 		if (sh_flags & SHF_ALLOC)
+			canonlist[canon++] = loop;
+		else if ((sh_type == SHT_REL || sh_type == SHT_RELA) &&
+			 get32(&sections[sh_info].sh_flags) & SHF_ALLOC)
 			canonlist[canon++] = loop;
 
 		/* keep track of certain special sections */
@@ -798,21 +812,20 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 		}
 	}
 
-	memset(canonlist, 0, sizeof(int) * shnum);
-
 	/* iterate through the section table looking for sections we want to
 	 * contribute to the signature */
 	verbose("\n");
-	verbose("FILE POS CS SECT NAME\n");
-	verbose("======== == ==== ==============================\n");
+	verbose("CAN FILE POS CS SECT NAME\n");
+	verbose("=== ======== == ==== ==============================\n");
 
-	for (loop = 1; loop < shnum; loop++) {
-		const char *sh_name = secstrings + get32(&sections[loop].sh_name);
-		Elf32_Word  sh_type	= get32(&sections[loop].sh_type);
-		Elf32_Xword sh_size	= get32(&sections[loop].sh_size);
-		Elf32_Xword sh_flags	= get32(&sections[loop].sh_flags);
-		Elf32_Word  sh_info	= get32(&sections[loop].sh_info);
-		Elf32_Off   sh_offset	= get32(&sections[loop].sh_offset);
+	for (loop = 0; loop < canon; loop++) {
+		int sect = canonlist[loop];
+		const char *sh_name = secstrings + get32(&sections[sect].sh_name);
+		Elf32_Word  sh_type	= get32(&sections[sect].sh_type);
+		Elf32_Xword sh_size	= get32(&sections[sect].sh_size);
+		Elf32_Xword sh_flags	= get32(&sections[sect].sh_flags);
+		Elf32_Word  sh_info	= get32(&sections[sect].sh_info);
+		Elf32_Off   sh_offset	= get32(&sections[sect].sh_offset);
 		void *data = buffer + sh_offset;
 
 		csum = 0;
@@ -825,6 +838,8 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 
 		/* include canonicalised relocation sections */
 		if (sh_type == SHT_REL || sh_type == SHT_RELA) {
+			Elf32_Word canon_sh_info;
+
 			if (sh_info <= 0 && sh_info >= hdr->e_shnum) {
 				fprintf(stderr,
 					"Invalid ELF - REL/RELA sh_info does"
@@ -832,38 +847,47 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 				exit(3);
 			}
 
-			if (canonlist[sh_info]) {
-				Elf32_Word xsh_info;
+			verbose("%3u %08lx ", loop, ftell(outfd));
 
-				verbose("%08lx ", ftell(outfd));
+			set32(&canon_sh_info, canonmap[sh_info]);
 
-				set32(&xsh_info, canonmap[sh_info]);
+			/* write out selected portions of the section header */
+			write_out(sh_name, strlen(sh_name));
+			write_out_val(sections[sect].sh_type);
+			write_out_val(sections[sect].sh_flags);
+			write_out_val(sections[sect].sh_size);
+			write_out_val(sections[sect].sh_addralign);
+			write_out_val(canon_sh_info);
 
-				/* write out selected portions of the section header */
-				write_out(sh_name, strlen(sh_name));
-				write_out_val(sections[loop].sh_type);
-				write_out_val(sections[loop].sh_flags);
-				write_out_val(sections[loop].sh_size);
-				write_out_val(sections[loop].sh_addralign);
-				write_out_val(xsh_info);
-
-				if (sh_type == SHT_RELA)
-					extract_elf32_rela(buffer, loop, sh_info,
-							   data, sh_size / sizeof(Elf32_Rela),
-							   symbols, nsyms,
-							   sections, shnum, canonmap,
-							   strings, nstrings,
-							   sh_name);
-				else
-					extract_elf32_rel(buffer, loop, sh_info,
-							  data, sh_size / sizeof(Elf32_Rel),
-							  symbols, nsyms,
-							  sections, shnum, canonmap,
-							  strings, nstrings,
-							  sh_name);
-			}
-
+			if (sh_type == SHT_RELA)
+				extract_elf32_rela(buffer, sect, sh_info,
+						   data, sh_size / sizeof(Elf32_Rela),
+						   symbols, nsyms,
+						   sections, shnum, canonmap,
+						   strings, nstrings,
+						   sh_name);
+			else
+				extract_elf32_rel(buffer, sect, sh_info,
+						  data, sh_size / sizeof(Elf32_Rel),
+						  symbols, nsyms,
+						  sections, shnum, canonmap,
+						  strings, nstrings,
+						  sh_name);
 			continue;
+		}
+
+		/* include the headers of BSS sections */
+		if (sh_type == SHT_NOBITS && sh_flags & SHF_ALLOC) {
+			verbose("%3u %08lx ", loop, ftell(outfd));
+
+			/* write out selected portions of the section header */
+			write_out(sh_name, strlen(sh_name));
+			write_out_val(sections[sect].sh_type);
+			write_out_val(sections[sect].sh_flags);
+			write_out_val(sections[sect].sh_size);
+			write_out_val(sections[sect].sh_addralign);
+
+			verbose("%02x %4d %s\n", csum, sect, sh_name);
 		}
 
 		/* ignore gcc's build ID section as it seems to get modified by
@@ -879,22 +903,19 @@ static void extract_elf32(void *buffer, size_t len, Elf32_Ehdr *hdr)
 		continue;
 
 	include_section:
-		verbose("%08lx ", ftell(outfd));
+		verbose("%3u %08lx ", loop, ftell(outfd));
 
 		/* write out selected portions of the section header */
 		write_out(sh_name, strlen(sh_name));
-		write_out_val(sections[loop].sh_type);
-		write_out_val(sections[loop].sh_flags);
-		write_out_val(sections[loop].sh_size);
-		write_out_val(sections[loop].sh_addralign);
+		write_out_val(sections[sect].sh_type);
+		write_out_val(sections[sect].sh_flags);
+		write_out_val(sections[sect].sh_size);
+		write_out_val(sections[sect].sh_addralign);
 
 		/* write out the section data */
 		write_out(data, sh_size);
 
-		verbose("%02x %4d %s\n", csum, loop, sh_name);
-
-		/* note the section has been written */
-		canonlist[loop] = 1;
+		verbose("%02x %4d %s\n", csum, sect, sh_name);
 	}
 
 	verbose("%08lx         (%lu bytes csum 0x%02x)\n",
