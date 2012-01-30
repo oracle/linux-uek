@@ -4383,7 +4383,7 @@ qla24xx_nvram_config(scsi_qla_host_t *vha)
 
 	/* Set host adapter parameters. */
 	ha->flags.disable_risc_code_load = 0;
-	ha->flags.enable_lip_reset = 1;
+	ha->flags.enable_lip_reset = 0;
 	ha->flags.enable_lip_full_login =
 	    le32_to_cpu(nv->host_p) & BIT_10 ? 1: 0;
 	ha->flags.enable_target_reset =
@@ -5151,7 +5151,7 @@ qla81xx_nvram_config(scsi_qla_host_t *vha)
 
 	/* Set host adapter parameters. */
 	ha->flags.disable_risc_code_load = 0;
-	ha->flags.enable_lip_reset = 1;
+	ha->flags.enable_lip_reset = 0;
 	ha->flags.enable_lip_full_login =
 	    le32_to_cpu(nv->host_p) & BIT_10 ? 1: 0;
 	ha->flags.enable_target_reset =

@@ -1525,7 +1525,7 @@ qla2x00_lip_reset(scsi_qla_host_t *vha)
 
 	ql_dbg(ql_dbg_mbx, vha, 0x105a, "Entered %s.\n", __func__);
 
-	if (IS_CNA_CAPABLE(vha->hw) || IS_QLA2031(vha->hw)) {
+	if (IS_CNA_CAPABLE(vha->hw)) {
 		/* Logout across all FCFs. */
 		mcp->mb[0] = MBC_LIP_FULL_LOGIN;
 		mcp->mb[1] = BIT_1;
