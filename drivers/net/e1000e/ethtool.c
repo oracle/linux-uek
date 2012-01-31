@@ -1090,7 +1090,7 @@ static int e1000_setup_desc_rings(struct e1000_adapter *adapter)
 	tx_ring->buffer_info = kcalloc(tx_ring->count,
 				       sizeof(struct e1000_buffer),
 				       GFP_KERNEL);
-	if (!(tx_ring->buffer_info)) {
+	if (!tx_ring->buffer_info) {
 		ret_val = 1;
 		goto err_nomem;
 	}
@@ -1152,7 +1152,7 @@ static int e1000_setup_desc_rings(struct e1000_adapter *adapter)
 	rx_ring->buffer_info = kcalloc(rx_ring->count,
 				       sizeof(struct e1000_buffer),
 				       GFP_KERNEL);
-	if (!(rx_ring->buffer_info)) {
+	if (!rx_ring->buffer_info) {
 		ret_val = 5;
 		goto err_nomem;
 	}
