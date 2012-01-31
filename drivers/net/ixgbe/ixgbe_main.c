@@ -363,7 +363,7 @@ static void ixgbe_dump(struct ixgbe_adapter *adapter)
 			"leng  ntw timestamp        bi->skb\n");
 
 		for (i = 0; tx_ring->desc && (i < tx_ring->count); i++) {
-			tx_desc = IXGBE_TX_DESC_ADV(tx_ring, i);
+			tx_desc = IXGBE_TX_DESC(tx_ring, i);
 			tx_buffer_info = &tx_ring->tx_buffer_info[i];
 			u0 = (struct my_u0 *)tx_desc;
 			pr_info("T [0x%03X]    %016llX %016llX %016llX"
@@ -444,7 +444,7 @@ rx_ring_summary:
 
 		for (i = 0; i < rx_ring->count; i++) {
 			rx_buffer_info = &rx_ring->rx_buffer_info[i];
-			rx_desc = IXGBE_RX_DESC_ADV(rx_ring, i);
+			rx_desc = IXGBE_RX_DESC(rx_ring, i);
 			u0 = (struct my_u0 *)rx_desc;
 			staterr = le32_to_cpu(rx_desc->wb.upper.status_error);
 			if (staterr & IXGBE_RXD_STAT_DD) {
@@ -751,7 +751,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 	u16 i = tx_ring->next_to_clean;
 
 	tx_buffer = &tx_ring->tx_buffer_info[i];
-	tx_desc = IXGBE_TX_DESC_ADV(tx_ring, i);
+	tx_desc = IXGBE_TX_DESC(tx_ring, i);
 
 	for (; budget; budget--) {
 		union ixgbe_adv_tx_desc *eop_desc = tx_buffer->next_to_watch;
@@ -792,7 +792,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 				i = 0;
 
 				tx_buffer = tx_ring->tx_buffer_info;
-				tx_desc = IXGBE_TX_DESC_ADV(tx_ring, 0);
+				tx_desc = IXGBE_TX_DESC(tx_ring, 0);
 			}
 
 		} while (eop_desc);
@@ -809,7 +809,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 	if (check_for_tx_hang(tx_ring) && ixgbe_check_tx_hang(tx_ring)) {
 		/* schedule immediate reset if we believe we hung */
 		struct ixgbe_hw *hw = &adapter->hw;
-		tx_desc = IXGBE_TX_DESC_ADV(tx_ring, i);
+		tx_desc = IXGBE_TX_DESC(tx_ring, i);
 		e_err(drv, "Detected Tx Unit Hang\n"
 			"  Tx Queue             <%d>\n"
 			"  TDH, TDT             <%x>, <%x>\n"
@@ -1177,7 +1177,7 @@ void ixgbe_alloc_rx_buffers(struct ixgbe_ring *rx_ring, u16 cleaned_count)
 	if (!cleaned_count || !rx_ring->netdev)
 		return;
 
-	rx_desc = IXGBE_RX_DESC_ADV(rx_ring, i);
+	rx_desc = IXGBE_RX_DESC(rx_ring, i);
 	bi = &rx_ring->rx_buffer_info[i];
 	i -= rx_ring->count;
 
@@ -1203,7 +1203,7 @@ void ixgbe_alloc_rx_buffers(struct ixgbe_ring *rx_ring, u16 cleaned_count)
 		bi++;
 		i++;
 		if (unlikely(!i)) {
-			rx_desc = IXGBE_RX_DESC_ADV(rx_ring, 0);
+			rx_desc = IXGBE_RX_DESC(rx_ring, 0);
 			bi = rx_ring->rx_buffer_info;
 			i -= rx_ring->count;
 		}
@@ -1466,7 +1466,7 @@ static bool ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 	u16 cleaned_count = 0;
 
 	i = rx_ring->next_to_clean;
-	rx_desc = IXGBE_RX_DESC_ADV(rx_ring, i);
+	rx_desc = IXGBE_RX_DESC(rx_ring, i);
 
 	while (ixgbe_test_staterr(rx_desc, IXGBE_RXD_STAT_DD)) {
 		u32 upper_len = 0;
@@ -1540,7 +1540,7 @@ static bool ixgbe_clean_rx_irq(struct ixgbe_q_vector *q_vector,
 		if (i == rx_ring->count)
 			i = 0;
 
-		next_rxd = IXGBE_RX_DESC_ADV(rx_ring, i);
+		next_rxd = IXGBE_RX_DESC(rx_ring, i);
 		prefetch(next_rxd);
 		cleaned_count++;
 
@@ -6462,7 +6462,7 @@ void ixgbe_tx_ctxtdesc(struct ixgbe_ring *tx_ring, u32 vlan_macip_lens,
 	struct ixgbe_adv_tx_context_desc *context_desc;
 	u16 i = tx_ring->next_to_use;
 
-	context_desc = IXGBE_TX_CTXTDESC_ADV(tx_ring, i);
+	context_desc = IXGBE_TX_CTXTDESC(tx_ring, i);
 
 	i++;
 	tx_ring->next_to_use = (i < tx_ring->count) ? i : 0;
@@ -6695,7 +6695,7 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 	cmd_type = ixgbe_tx_cmd_type(tx_flags);
 	olinfo_status = ixgbe_tx_olinfo_status(tx_flags, paylen);
 
-	tx_desc = IXGBE_TX_DESC_ADV(tx_ring, i);
+	tx_desc = IXGBE_TX_DESC(tx_ring, i);
 
 	for (;;) {
 		while (size > IXGBE_MAX_DATA_PER_TXD) {
@@ -6710,7 +6710,7 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 			tx_desc++;
 			i++;
 			if (i == tx_ring->count) {
-				tx_desc = IXGBE_TX_DESC_ADV(tx_ring, 0);
+				tx_desc = IXGBE_TX_DESC(tx_ring, 0);
 				i = 0;
 			}
 		}
@@ -6746,7 +6746,7 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 		tx_desc++;
 		i++;
 		if (i == tx_ring->count) {
-			tx_desc = IXGBE_TX_DESC_ADV(tx_ring, 0);
+			tx_desc = IXGBE_TX_DESC(tx_ring, 0);
 			i = 0;
 		}
 	}
