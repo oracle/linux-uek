@@ -47,8 +47,8 @@ int dtrace_badattr(const dtrace_attribute_t *a)
 void *dtrace_vzalloc_try(unsigned long size)
 {
 	return __vmalloc(size,
-			 __GFP_WAIT | __GFP_IO | __GFP_FS | __GFP_NORETRY |
-			 __GFP_ZERO,
+			 GFP_NOWAIT | __GFP_FS | __GFP_IO | __GFP_NOMEMALLOC |
+			 __GFP_NORETRY | __GFP_NOWARN | __GFP_ZERO,
 			 PAGE_KERNEL);
 }
 
