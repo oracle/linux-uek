@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.21%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.22%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -440,7 +440,7 @@ Summary: The Linux kernel
 # scripts use them.
 #
 ##%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, mkinitrd >= 6.0.61-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-71.0.10, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, ql2xxx-firmware, oraclelinux-release
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-71.0.10, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, ql2xxx-firmware, oraclelinux-release
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
@@ -1659,6 +1659,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jan 31 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.22.el5uek]
+- xfs: fix acl count validation in xfs_acl_from_disk() (Dan Carpenter)
+  CVE-2012-0038
+- Updated driver version to 5.02.00.00.06.02-uek2 (Tej Parkash)
+- ocfs2: use spinlock irqsave for downconvert lock.patch (Srinivas Eeda)
+- dm-nfs-for-uek2 (Adnan Misherfi)
+
 * Thu Jan 26 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.21.el5uek]
 - git-changelog: add Orabug and CVE (Maxim Uvarov) [Add parsing Orabug and
   CVE.]
