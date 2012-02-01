@@ -936,7 +936,11 @@ static irqreturn_t ixgbevf_msix_mbx(int irq, void *data)
 		if (msg & IXGBE_VT_MSGTYPE_NACK)
 			pr_warn("Last Request of type %2.2x to PF Nacked\n",
 				msg & 0xFF);
-		goto out;
+		/*
+		 * Restore the PFSTS bit in case someone is polling for a
+		 * return message from the PF
+		 */
+		hw->mbx.v2p_mailbox |= IXGBE_VFMAILBOX_PFSTS;
 	}
 
 	/*
@@ -946,7 +950,7 @@ static irqreturn_t ixgbevf_msix_mbx(int irq, void *data)
 	 */
 	if (got_ack)
 		hw->mbx.v2p_mailbox |= IXGBE_VFMAILBOX_PFACK;
-out:
+
 	return IRQ_HANDLED;
 }
 
