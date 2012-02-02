@@ -23,5 +23,5 @@ obj-$(CONFIG_XEN_PCIDEV_BACKEND)	+= xen-pciback/
 xen-evtchn-y				:= evtchn.o
 xen-gntdev-y				:= gntdev.o
 xen-gntalloc-y				:= gntalloc.o
-sxen-privcmd-y				:= privcmd.o
+xen-privcmd-y				:= privcmd.o
 xen-platform-pci-y			:= platform-pci.o
