@@ -193,7 +193,6 @@ restart:
 			same_rm++;
 			if ((same_rm >= 4096) && printk_ratelimit()) {
 				printk(KERN_ERR "RDS: Stuck rm\n");
-				cond_resched();
 				ret = -EAGAIN;
 				break;
 			}
@@ -421,18 +420,8 @@ over_batch:
 		smp_mb();
 		if (!list_empty(&conn->c_send_queue) &&
 		    send_gen == conn->c_send_gen) {
-			cond_resched();
-			/*
-			 * repeat our check after the resched in case
-			 * someone else was kind enough to empty or process
-			 * the queue
-			 */
-			smp_mb();
-			if (!list_empty(&conn->c_send_queue) &&
-			    send_gen == conn->c_send_gen) {
-				rds_stats_inc(s_send_lock_queue_raced);
-				goto restart;
-			}
+			rds_stats_inc(s_send_lock_queue_raced);
+			goto restart;
 		}
 	}
 out:
