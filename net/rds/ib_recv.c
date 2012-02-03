@@ -382,6 +382,8 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	unsigned int posted = 0;
 	int ret = 0;
 	int must_wake = 0;	
+	int ring_low = 0;
+	int ring_empty = 0;
 	u32 pos;
 
 	/*
@@ -391,6 +393,22 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	 */
 	if (!acquire_refill(conn))
 		return;
+
+	ring_low = rds_ib_ring_low(&ic->i_recv_ring);
+	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
+
+	/* If we ever end up with a really empty receive ring, we're
+	 * in deep trouble, as the sender will definitely see RNR
+	 * timeouts. */
+	if (ring_empty)
+		rds_ib_stats_inc(s_ib_rx_ring_empty);
+
+	/*
+	 * if we're called from the tasklet, can_wait will be zero.  We only
+	 * want to refill if we're getting low in this case
+	 */
+	if (!ring_low && !can_wait)
+		goto release_out;
 
 	while ((prefill || rds_conn_up(conn))
 			&& rds_ib_ring_alloc(&ic->i_recv_ring, 1, &pos)) {
@@ -427,6 +445,10 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 		}
 	}
 
+	/* read ring_low and ring_empty before we drop our lock */
+	ring_low = rds_ib_ring_low(&ic->i_recv_ring);
+	ring_empty = rds_ib_ring_empty(&ic->i_recv_ring);
+
 	/* We're doing flow control - update the window. */
 	if (ic->i_flowctl && posted)
 		rds_ib_advertise_credits(conn, posted);
@@ -434,6 +456,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	if (ret)
 		rds_ib_ring_unalloc(&ic->i_recv_ring, 1);
 
+release_out:
 	release_refill(conn);
 
 	/* if we're called from the softirq handler, we'll be GFP_NOWAIT.
@@ -447,9 +470,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	 * if we should requeue.
 	 */
 	if (rds_conn_up(conn) &&
-	   (must_wake ||
-	   (can_wait && rds_ib_ring_low(&ic->i_recv_ring)) ||
-	   rds_ib_ring_empty(&ic->i_recv_ring))) {
+	   (must_wake || (can_wait && ring_low) || ring_empty)) {
 		queue_delayed_work(rds_wq, &conn->c_recv_w, 1);
 	}
 	if (can_wait)
@@ -1005,14 +1026,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	}
 	rds_ib_ring_free(&ic->i_recv_ring, 1);
 
-	/* If we ever end up with a really empty receive ring, we're
-	 * in deep trouble, as the sender will definitely see RNR
-	 * timeouts. */
-	if (rds_ib_ring_empty(&ic->i_recv_ring))
-		rds_ib_stats_inc(s_ib_rx_ring_empty);
-
-	if (rds_ib_ring_low(&ic->i_recv_ring))
-		rds_ib_recv_refill(conn, 0, 0);
+	rds_ib_recv_refill(conn, 0, 0);
 }
 
 int rds_ib_recv(struct rds_connection *conn)
