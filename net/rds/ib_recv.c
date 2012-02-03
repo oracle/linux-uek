@@ -381,6 +381,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	struct ib_recv_wr *failed_wr;
 	unsigned int posted = 0;
 	int ret = 0;
+	int must_wake = 0;	
 	u32 pos;
 
 	/*
@@ -419,6 +420,11 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 		}
 
 		posted++;
+
+		if ((posted > 128 && need_resched()) || posted > 8192) {
+			must_wake = 1;
+			break;
+		}
 	}
 
 	/* We're doing flow control - update the window. */
@@ -441,10 +447,13 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 	 * if we should requeue.
 	 */
 	if (rds_conn_up(conn) &&
-	   ((can_wait && rds_ib_ring_low(&ic->i_recv_ring)) ||
+	   (must_wake ||
+	   (can_wait && rds_ib_ring_low(&ic->i_recv_ring)) ||
 	   rds_ib_ring_empty(&ic->i_recv_ring))) {
 		queue_delayed_work(rds_wq, &conn->c_recv_w, 1);
 	}
+	if (can_wait)
+		cond_resched();
 }
 
 /*
