@@ -132,6 +132,12 @@ struct rds_connection {
 
 	/* Protocol version */
 	unsigned int		c_version;
+
+	/* Re-connect stall diagnostics */
+	unsigned long           c_reconnect_start;
+	unsigned long           c_reconnect_drops;
+	int                     c_reconnect_warn;
+	int                     c_reconnect_err;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
