@@ -200,7 +200,28 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 
 static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
-	return -ENOIOCTLCMD;
+        struct rds_sock *rs = rds_sk_to_rs(sock->sk);
+        rds_tos_t tos;
+        unsigned long flags;
+
+        if (get_user(tos, (rds_tos_t __user *)arg))
+                return -EFAULT;
+
+        switch (cmd) {
+        case RDS_IOC_SET_TOS:
+                spin_lock_irqsave(&rds_sock_lock, flags);
+                if (rs->rs_tos || rs->rs_conn) {
+                        spin_unlock_irqrestore(&rds_sock_lock, flags);
+                        return -EINVAL;
+                }
+                rs->rs_tos = tos;
+                spin_unlock_irqrestore(&rds_sock_lock, flags);
+                break;
+        default:
+                return -ENOPROTOOPT;
+        }
+
+        return 0;
 }
 
 static int rds_cancel_sent_to(struct rds_sock *rs, char __user *optval,
@@ -261,6 +282,32 @@ static int rds_cong_monitor(struct rds_sock *rs, char __user *optval,
 	return ret;
 }
 
+static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
+{
+        struct rds_reset reset;
+        struct rds_connection *conn;
+
+        if (optlen != sizeof(struct rds_reset))
+                return -EINVAL;
+
+        if (copy_from_user(&reset, (struct rds_reset __user *)optval,
+                                sizeof(struct rds_reset)))
+                return -EFAULT;
+
+        conn = rds_conn_find(reset.src.s_addr, reset.dst.s_addr,
+                        rs->rs_transport, reset.tos);
+
+        if (conn) {
+                printk(KERN_NOTICE "Resetting RDS/IB connection "
+                                "<%pI4,%pI4,%d>\n",
+                                &reset.src.s_addr,
+                                &reset.dst.s_addr, conn->c_tos);
+                rds_conn_drop(conn);
+        }
+
+        return 0;
+}
+
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
@@ -291,6 +338,9 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 	case RDS_CONG_MONITOR:
 		ret = rds_cong_monitor(rs, optval, optlen);
 		break;
+        case RDS_CONN_RESET:
+                ret = rds_user_reset(rs, optval, optlen);
+                break;
 	default:
 		ret = -ENOPROTOOPT;
 	}
@@ -425,6 +475,8 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	spin_lock_init(&rs->rs_rdma_lock);
 	rs->rs_rdma_keys = RB_ROOT;
 	rs->poison = 0xABABABAB;
+	rs->rs_tos = 0;
+	rs->rs_conn = 0;
 
 	if (rs->rs_bound_addr) {
 printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
