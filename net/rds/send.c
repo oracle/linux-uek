@@ -477,7 +477,7 @@ void rds_rdma_send_complete(struct rds_message *rm, int status)
 	 && ro->op_active && ro->op_notify && ro->op_notifier) {
 		notifier = ro->op_notifier;
 		rs = rm->m_rs;
-		sock_hold(rds_rs_to_sk(rs));
+		debug_sock_hold(rds_rs_to_sk(rs));
 
 		notifier->n_status = status;
 		spin_lock(&rs->rs_lock);
@@ -491,7 +491,7 @@ void rds_rdma_send_complete(struct rds_message *rm, int status)
 
 	if (rs) {
 		rds_wake_sk_sleep(rs);
-		sock_put(rds_rs_to_sk(rs));
+		debug_sock_put(rds_rs_to_sk(rs));
 	}
 }
 EXPORT_SYMBOL_GPL(rds_rdma_send_complete);
@@ -513,7 +513,7 @@ void rds_atomic_send_complete(struct rds_message *rm, int status)
 	    && ao->op_active && ao->op_notify && ao->op_notifier) {
 		notifier = ao->op_notifier;
 		rs = rm->m_rs;
-		sock_hold(rds_rs_to_sk(rs));
+		debug_sock_hold(rds_rs_to_sk(rs));
 
 		notifier->n_status = status;
 		spin_lock(&rs->rs_lock);
@@ -527,7 +527,7 @@ void rds_atomic_send_complete(struct rds_message *rm, int status)
 
 	if (rs) {
 		rds_wake_sk_sleep(rs);
-		sock_put(rds_rs_to_sk(rs));
+		debug_sock_put(rds_rs_to_sk(rs));
 	}
 }
 EXPORT_SYMBOL_GPL(rds_atomic_send_complete);
@@ -634,10 +634,10 @@ void rds_send_remove_from_sock(struct list_head *messages, int status)
 		if (rs != rm->m_rs) {
 			if (rs) {
 				rds_wake_sk_sleep(rs);
-				sock_put(rds_rs_to_sk(rs));
+				debug_sock_put(rds_rs_to_sk(rs));
 			}
 			rs = rm->m_rs;
-			sock_hold(rds_rs_to_sk(rs));
+			debug_sock_hold(rds_rs_to_sk(rs));
 		}
 		spin_lock(&rs->rs_lock);
 
@@ -671,7 +671,7 @@ unlock_and_drop:
 
 	if (rs) {
 		rds_wake_sk_sleep(rs);
-		sock_put(rds_rs_to_sk(rs));
+		debug_sock_put(rds_rs_to_sk(rs));
 	}
 }
 
