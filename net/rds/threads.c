@@ -89,6 +89,7 @@ void rds_connect_complete(struct rds_connection *conn)
 	set_bit(0, &conn->c_map_queued);
 	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
 	queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
+	conn->c_connection_start = get_seconds();
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
@@ -143,6 +144,12 @@ void rds_connect_worker(struct work_struct *work)
 
 	clear_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
 	if (rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
+		/*
+		 * record the time we started trying to connect so that we can
+		 * drop the connection if it doesn't work out after a while
+		 */
+		conn->c_connection_start = get_seconds();
+
 		ret = conn->c_trans->conn_connect(conn);
 		rdsdebug("conn %p for %pI4 to %pI4 dispatched, ret %d\n",
 			conn, &conn->c_laddr, &conn->c_faddr, ret);
