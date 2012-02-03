@@ -294,7 +294,7 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state);
-	ib_req_notify_cq(ic->i_scq, IB_CQ_SOLICITED);
+	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state);
 
 	if (rds_conn_up(conn) &&
@@ -314,7 +314,7 @@ void rds_ib_tasklet_fn_recv(unsigned long data)
 	memset(&ack_state, 0, sizeof(ack_state));
 
 	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
-	ib_req_notify_cq(ic->i_rcq, IB_CQ_NEXT_COMP);
+	ib_req_notify_cq(ic->i_rcq, IB_CQ_SOLICITED);
 	poll_cq(ic, ic->i_rcq, ic->i_recv_wc, &ack_state);
 
 	if (ack_state.ack_next_valid)
@@ -412,7 +412,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	ret = ib_req_notify_cq(ic->i_scq, IB_CQ_SOLICITED);
+	ret = ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	if (ret) {
 		rdsdebug("ib_req_notify_cq send failed: %d\n", ret);
 		goto out;
