@@ -57,6 +57,15 @@
 #define RDS_RECVERR			5
 #define RDS_CONG_MONITOR		6
 #define RDS_GET_MR_FOR_DEST		7
+#define RDS_CONN_RESET                  8
+
+/*
+ * ioctl commands for SOL_RDS
+*/
+#define RDS_IOC_SET_TOS                 1
+
+typedef u_int8_t         rds_tos_t;
+
 
 /*
  * Control message types for SOL_RDS.
@@ -117,6 +126,7 @@ struct rds_info_connection {
 	__be32		faddr;
 	u_int8_t	transport[TRANSNAMSIZ];		/* null term ascii */
 	u_int8_t	flags;
+        u_int8_t        tos;
 } __attribute__((packed));
 
 struct rds_info_flow {
@@ -138,6 +148,7 @@ struct rds_info_message {
 	__be16		lport;
 	__be16		fport;
 	u_int8_t	flags;
+        u_int8_t        tos;
 } __attribute__((packed));
 
 struct rds_info_socket {
@@ -174,6 +185,9 @@ struct rds_info_rdma_connection {
 	uint32_t	max_send_sge;
 	uint32_t	rdma_mr_max;
 	uint32_t	rdma_mr_size;
+        uint8_t         tos;
+        uint8_t         sl;
+        uint32_t        cache_allocs;
 };
 
 /*
@@ -256,6 +270,12 @@ struct rds_atomic_args {
 	uint64_t	compare;
 	u_int64_t	flags;
 	u_int64_t	user_token;
+};
+
+struct rds_reset {
+        u_int8_t        tos;
+        struct in_addr  src;
+        struct in_addr  dst;
 };
 
 struct rds_rdma_notify {
