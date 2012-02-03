@@ -105,4 +105,19 @@ config SWIOTLB_XEN
 	depends on PCI
 	select SWIOTLB
 
+config CPU_FREQ_GOV_XEN
+	tristate "'xen' governor for hypervisor scaling"
+	depends on XEN && X86 && ACPI_PROCESSOR && CPU_FREQ
+	default m
+	help
+          This cpufreq governor leaves the frequency decision to the Xen hypervisor.
+
+	  To do that the driver parses the Power Management data and uploads said
+	  information to the Xen hypervisor. Then the Xen hypervisor can select the
+          proper Cx and Pxx states.
+
+          To compile this driver as a module, choose M here: the
+          module will be called cpufreq_xen.  If you do not know what to choose,
+          select M here.
+
 endmenu
