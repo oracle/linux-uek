@@ -40,6 +40,11 @@
 
 #include "rds.h"
 
+/* UNUSED for backwards compat only */
+static unsigned int rds_ib_retry_count = 0xdead;
+module_param(rds_ib_retry_count, int, 0444);
+MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
+
 /* this is just used for stats gathering :/ */
 static DEFINE_SPINLOCK(rds_sock_lock);
 static unsigned long rds_sock_count;
