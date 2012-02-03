@@ -71,7 +71,7 @@ static int rds_tcp_accept_one(struct socket *sock)
 		 &inet->inet_daddr, ntohs(inet->inet_dport));
 
 	conn = rds_conn_create(inet->inet_saddr, inet->inet_daddr, &rds_tcp_transport,
-			       GFP_KERNEL);
+			       0, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		ret = PTR_ERR(conn);
 		goto out;
