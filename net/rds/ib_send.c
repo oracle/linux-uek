@@ -512,10 +512,19 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 
 	work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
 	if (work_alloc == 0) {
+		/* there is a window right here where someone could
+		 * have freed up entries on the ring.  Lets make
+		 * sure it really really really is full.
+		 */
 		set_bit(RDS_LL_SEND_FULL, &conn->c_flags);
-		rds_ib_stats_inc(s_ib_tx_ring_full);
-		ret = -ENOMEM;
-		goto out;
+		smp_mb();
+		work_alloc = rds_ib_ring_alloc(&ic->i_send_ring, i, &pos);
+		if (work_alloc == 0) {
+			rds_ib_stats_inc(s_ib_tx_ring_full);
+			ret = -ENOMEM;
+			goto out;
+		}
+		clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 	}
 
 	if (ic->i_flowctl) {
