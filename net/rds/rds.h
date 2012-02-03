@@ -507,6 +507,7 @@ struct rds_sock {
 	/* Socket options - in case there will be more */
 	unsigned char		rs_recverr,
 				rs_cong_monitor;
+	int poison;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -581,6 +582,8 @@ static inline void __rds_wake_sk_sleep(struct sock *sk)
 }
 extern wait_queue_head_t rds_poll_waitq;
 
+void debug_sock_hold(struct sock *sock);
+void debug_sock_put(struct sock *sock);
 
 /* bind.c */
 int rds_bind(struct socket *sock, struct sockaddr *uaddr, int addr_len);
