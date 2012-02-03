@@ -125,6 +125,12 @@ static int rds_ib_add_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 	return 0;
 }
 
+static void ipaddr_free_cb(struct rcu_head *rp)
+{
+	struct rds_ib_ipaddr *ipaddr = container_of(rp, struct rds_ib_ipaddr, rcu_head);
+	kfree(ipaddr);
+}
+
 static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 {
 	struct rds_ib_ipaddr *i_ipaddr;
@@ -141,10 +147,8 @@ static void rds_ib_remove_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
 	}
 	spin_unlock_irq(&rds_ibdev->spinlock);
 
-	if (to_free) {
-		synchronize_rcu();
-		kfree(to_free);
-	}
+	if (to_free)
+		call_rcu(&to_free->rcu_head, ipaddr_free_cb);
 }
 
 int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr)
