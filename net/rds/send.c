@@ -1047,11 +1047,12 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	/* rds_conn_create has a spinlock that runs with IRQ off.
 	 * Caching the conn in the socket helps a lot. */
-	if (rs->rs_conn && rs->rs_conn->c_faddr == daddr)
+        if (rs->rs_conn && rs->rs_conn->c_faddr == daddr &&
+                        rs->rs_tos == rs->rs_conn->c_tos)
 		conn = rs->rs_conn;
 	else {
 		conn = rds_conn_create_outgoing(rs->rs_bound_addr, daddr,
-					rs->rs_transport,
+					rs->rs_transport, rs->rs_tos,
 					sock->sk->sk_allocation);
 		if (IS_ERR(conn)) {
 			ret = PTR_ERR(conn);
