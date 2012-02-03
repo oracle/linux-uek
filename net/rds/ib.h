@@ -329,9 +329,11 @@ void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
 void rds_ib_sync_mr(void *trans_private, int dir);
 void rds_ib_free_mr(void *trans_private, int invalidate);
 void rds_ib_flush_mrs(void);
+int __init rds_ib_fmr_init(void);
+void __exit rds_ib_fmr_exit(void);
 
 /* ib_recv.c */
-void __init rds_ib_recv_init(void);
+int __init rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
