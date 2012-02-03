@@ -924,23 +924,22 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 
 	ib_dma_unmap_sg(ic->i_cm_id->device, &recv->r_frag->f_sg, 1, DMA_FROM_DEVICE);
 
-	/*
-	 * Also process recvs in connecting state because it is possible
-	 * to get a recv completion _before_ the rdmacm ESTABLISHED
-	 * event is processed.
-	 */
-	if (rds_conn_up(conn) || rds_conn_connecting(conn)) {
+	if (wc->status == IB_WC_SUCCESS) {
+		rds_ib_process_recv(conn, recv, wc->byte_len, state);
+	} else {
 		/* We expect errors as the qp is drained during shutdown */
-		if (wc->status == IB_WC_SUCCESS) {
-			rds_ib_process_recv(conn, recv, wc->byte_len, state);
-		} else {
+		if (rds_conn_up(conn) || rds_conn_connecting(conn))
 			rds_ib_conn_error(conn, "recv completion on "
 					  "%pI4 had status %u, disconnecting and "
 					  "reconnecting\n", &conn->c_faddr,
 					  wc->status);
-		}
 	}
 
+	/*
+	 * It's very important that we only free this ring entry if we've truly
+	 * freed the resources allocated to the entry.  The refilling path can
+	 * leak if we don't.
+	 */
 	rds_ib_ring_free(&ic->i_recv_ring, 1);
 
 	/* If we ever end up with a really empty receive ring, we're
@@ -965,7 +964,7 @@ int rds_ib_recv(struct rds_connection *conn)
 	return ret;
 }
 
-void __init rds_ib_recv_init(void)
+int __init rds_ib_recv_init(void)
 {
 	struct sysinfo si;
 
@@ -975,10 +974,19 @@ void __init rds_ib_recv_init(void)
 
 	rds_ib_incoming_slab = kmem_cache_create("rds_ib_incoming",
 					sizeof(struct rds_ib_incoming),
-					SLAB_HWCACHE_ALIGN|SLAB_PANIC, 0, NULL);
+					SLAB_HWCACHE_ALIGN, 0, NULL);
+	if (!rds_ib_incoming_slab)
+		return -ENOMEM;
+
 	rds_ib_frag_slab = kmem_cache_create("rds_ib_frag",
 					sizeof(struct rds_page_frag),
-					SLAB_HWCACHE_ALIGN|SLAB_PANIC, 0, NULL);
+					SLAB_HWCACHE_ALIGN, 0, NULL);
+	if (!rds_ib_frag_slab) {
+		kmem_cache_destroy(rds_ib_incoming_slab);
+		rds_ib_incoming_slab = NULL;
+		return -ENOMEM;
+	}
+	return 0;
 }
 
 void rds_ib_recv_exit(void)
