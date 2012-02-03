@@ -118,6 +118,7 @@ void rds_ib_ring_free(struct rds_ib_work_ring *ring, u32 val)
 {
 	ring->w_free_ptr = (ring->w_free_ptr + val) % ring->w_nr;
 	atomic_add(val, &ring->w_free_ctr);
+	smp_mb();
 
 	if (__rds_ib_ring_empty(ring) &&
 	    waitqueue_active(&rds_ib_ring_empty_wait))
