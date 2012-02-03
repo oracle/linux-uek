@@ -199,7 +199,7 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 	struct rds_tcp_connection *tc;
 
 	tc = kmem_cache_alloc(rds_tcp_conn_slab, gfp);
-	if (tc == NULL)
+	if (!tc)
 		return -ENOMEM;
 
 	tc->t_sock = NULL;
@@ -257,7 +257,6 @@ struct rds_transport rds_tcp_transport = {
 	.laddr_check		= rds_tcp_laddr_check,
 	.xmit_prepare		= rds_tcp_xmit_prepare,
 	.xmit_complete		= rds_tcp_xmit_complete,
-	.xmit_cong_map		= rds_tcp_xmit_cong_map,
 	.xmit			= rds_tcp_xmit,
 	.recv			= rds_tcp_recv,
 	.conn_alloc		= rds_tcp_conn_alloc,
@@ -265,7 +264,6 @@ struct rds_transport rds_tcp_transport = {
 	.conn_connect		= rds_tcp_conn_connect,
 	.conn_shutdown		= rds_tcp_conn_shutdown,
 	.inc_copy_to_user	= rds_tcp_inc_copy_to_user,
-	.inc_purge		= rds_tcp_inc_purge,
 	.inc_free		= rds_tcp_inc_free,
 	.stats_info_copy	= rds_tcp_stats_info_copy,
 	.exit			= rds_tcp_exit,
@@ -282,7 +280,7 @@ int __init rds_tcp_init(void)
 	rds_tcp_conn_slab = kmem_cache_create("rds_tcp_connection",
 					      sizeof(struct rds_tcp_connection),
 					      0, 0, NULL);
-	if (rds_tcp_conn_slab == NULL) {
+	if (!rds_tcp_conn_slab) {
 		ret = -ENOMEM;
 		goto out;
 	}
