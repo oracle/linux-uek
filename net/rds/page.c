@@ -58,6 +58,14 @@ int rds_page_copy_user(struct page *page, unsigned long offset,
 	void *addr;
 
 	if (to_user)
+		ret = access_ok(VERIFY_WRITE, ptr, bytes);
+	else
+		ret = access_ok(VERIFY_READ, ptr, bytes);
+
+	if (!ret)
+		return -EFAULT;
+
+	if (to_user)
 		rds_stats_add(s_copy_to_user, bytes);
 	else
 		rds_stats_add(s_copy_from_user, bytes);
