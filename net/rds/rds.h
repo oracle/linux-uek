@@ -16,7 +16,8 @@
  */
 #define RDS_PROTOCOL_3_0	0x0300
 #define RDS_PROTOCOL_3_1	0x0301
-#define RDS_PROTOCOL_VERSION	RDS_PROTOCOL_3_1
+#define RDS_PROTOCOL_3_2        0x0302
+#define RDS_PROTOCOL_VERSION    RDS_PROTOCOL_3_2
 #define RDS_PROTOCOL_MAJOR(v)	((v) >> 8)
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
@@ -135,9 +136,12 @@ struct rds_connection {
 
 	/* Re-connect stall diagnostics */
 	unsigned long           c_reconnect_start;
-	unsigned long           c_reconnect_drops;
+	unsigned int            c_reconnect_drops;
 	int                     c_reconnect_warn;
 	int                     c_reconnect_err;
+
+        /* Qos support */
+        u8                      c_tos;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
@@ -514,6 +518,8 @@ struct rds_sock {
 	unsigned char		rs_recverr,
 				rs_cong_monitor;
 	int poison;
+
+	u8                      rs_tos;
 };
 
 static inline struct rds_sock *rds_sk_to_rs(const struct sock *sk)
@@ -615,9 +621,13 @@ struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 int rds_conn_init(void);
 void rds_conn_exit(void);
 struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
-				       struct rds_transport *trans, gfp_t gfp);
+                                       struct rds_transport *trans,
+                                       u8 tos, gfp_t gfp);
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
-			       struct rds_transport *trans, gfp_t gfp);
+                               struct rds_transport *trans,
+                               u8 tos, gfp_t gfp);
+struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
+                                     struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn);
 void rds_conn_destroy(struct rds_connection *conn);
 void rds_conn_reset(struct rds_connection *conn);
