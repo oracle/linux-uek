@@ -315,6 +315,8 @@ struct xenpf_pcpuinfo {
 };
 typedef struct xenpf_pcpuinfo xenpf_pcpuinfo_t;
 DEFINE_GUEST_HANDLE_STRUCT(xenpf_pcpuinfo_t);
+DEFINE_GUEST_HANDLE_STRUCT(xenpf_pcpuinfo);
+
 
 #define XENPF_cpu_online    56
 #define XENPF_cpu_offline   57
