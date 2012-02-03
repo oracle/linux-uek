@@ -98,7 +98,19 @@ static int rds_release(struct socket *sock)
 	rds_trans_put(rs->rs_transport);
 
 	sock->sk = NULL;
-	sock_put(sk);
+	if ((refcount_read(&sk->sk_refcnt) == 0)) {
+		printk(KERN_CRIT "zero refcnt on sock put release\n");
+		WARN_ON(1);
+	}
+
+	if (refcount_dec_and_test(&sk->sk_refcnt)) {
+		if (rs->poison != 0xABABABAB) {
+			printk(KERN_CRIT "bad poison on put release %x\n", rs->poison);
+			WARN_ON(1);
+		}
+		rs->poison = 0xDEADBEEF;
+		sk_free(sk);
+	}
 out:
 	return 0;
 }
@@ -430,6 +442,11 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	INIT_LIST_HEAD(&rs->rs_cong_list);
 	spin_lock_init(&rs->rs_rdma_lock);
 	rs->rs_rdma_keys = RB_ROOT;
+	rs->poison = 0xABABABAB;
+
+	if (rs->rs_bound_addr) {
+printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
+	}
 
 	spin_lock_irqsave(&rds_sock_lock, flags);
 	list_add_tail(&rs->rs_item, &rds_sock_list);
@@ -453,14 +470,47 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 	return __rds_create(sock, sk, protocol);
 }
 
+void debug_sock_hold(struct sock *sk)
+{
+	struct rds_sock *rs = rds_sk_to_rs(sk);
+	if ((refcount_read(&sk->sk_refcnt) == 0)) {
+		printk(KERN_CRIT "zero refcnt on sock hold\n");
+		WARN_ON(1);
+	}
+	if (rs->poison != 0xABABABAB) {
+		printk(KERN_CRIT "bad poison on hold %x\n", rs->poison);
+		WARN_ON(1);
+	}
+	sock_hold(sk);
+}
+
+
 void rds_sock_addref(struct rds_sock *rs)
 {
-	sock_hold(rds_rs_to_sk(rs));
+	debug_sock_hold(rds_rs_to_sk(rs));
 }
+
+void debug_sock_put(struct sock *sk)
+{
+	if ((refcount_read(&sk->sk_refcnt) == 0)) {
+		printk(KERN_CRIT "zero refcnt on sock put\n");
+		WARN_ON(1);
+	}
+	if (refcount_dec_and_test(&sk->sk_refcnt)) {
+		struct rds_sock *rs = rds_sk_to_rs(sk);
+		if (rs->poison != 0xABABABAB) {
+			printk(KERN_CRIT "bad poison on put %x\n", rs->poison);
+			WARN_ON(1);
+		}
+		rs->poison = 0xDEADBEEF;
+		sk_free(sk);
+	}
+}
+
 
 void rds_sock_put(struct rds_sock *rs)
 {
-	sock_put(rds_rs_to_sk(rs));
+	debug_sock_put(rds_rs_to_sk(rs));
 }
 
 static struct net_proto_family rds_family_ops = {
