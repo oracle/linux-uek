@@ -41,6 +41,7 @@
 static struct kmem_cache *rds_ib_incoming_slab;
 static struct kmem_cache *rds_ib_frag_slab;
 static atomic_t	rds_ib_allocation = ATOMIC_INIT(0);
+static unsigned long rds_ib_allocation_warn = 1;
 
 void rds_ib_recv_init_ring(struct rds_ib_connection *ic)
 {
@@ -242,21 +243,13 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 {
 	struct rds_ib_incoming *ibinc;
 	struct list_head *cache_item;
-	int avail_allocs;
 
 	cache_item = rds_ib_recv_cache_get(&ic->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
 	} else {
-		avail_allocs = atomic_add_unless(&rds_ib_allocation,
-						 1, rds_ib_sysctl_max_recv_allocation);
-		if (!avail_allocs) {
-			rds_ib_stats_inc(s_ib_rx_alloc_limit);
-			return NULL;
-		}
 		ibinc = kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!ibinc) {
-			atomic_dec(&rds_ib_allocation);
 			return NULL;
 		}
 	}
@@ -272,6 +265,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	struct rds_page_frag *frag;
 	struct list_head *cache_item;
 	int ret;
+	int avail_allocs;
 
 	cache_item = rds_ib_recv_cache_get(&ic->i_cache_frags);
 	if (cache_item) {
@@ -281,11 +275,25 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 		if (!frag)
 			return NULL;
 
+		avail_allocs = atomic_add_unless(&rds_ib_allocation,
+				1, rds_ib_sysctl_max_recv_allocation);
+
+		if (!avail_allocs) {
+			if (test_and_clear_bit(0, &rds_ib_allocation_warn)) {
+			  printk(KERN_NOTICE "RDS/IB: WARNING - "
+		               "recv memory exceeded max_recv_allocation %d\n",
+			       atomic_read(&rds_ib_allocation));
+	             }
+		     rds_ib_stats_inc(s_ib_rx_alloc_limit);
+		     return NULL;
+		}
+
 		sg_init_table(&frag->f_sg, 1);
 		ret = rds_page_remainder_alloc(&frag->f_sg,
 					       RDS_FRAG_SIZE, page_mask);
 		if (ret) {
 			kmem_cache_free(rds_ib_frag_slab, frag);
+			atomic_dec(&rds_ib_allocation);
 			return NULL;
 		}
 	}
