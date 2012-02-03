@@ -296,7 +296,8 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 }
 
 static int rds_ib_recv_refill_one(struct rds_connection *conn,
-				  struct rds_ib_recv_work *recv, int prefill)
+				  struct rds_ib_recv_work *recv,
+				  int can_wait)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct ib_sge *sge;
@@ -304,7 +305,7 @@ static int rds_ib_recv_refill_one(struct rds_connection *conn,
 	gfp_t slab_mask = GFP_NOWAIT;
 	gfp_t page_mask = GFP_NOWAIT;
 
-	if (prefill) {
+	if (can_wait) {
 		slab_mask = GFP_KERNEL;
 		page_mask = GFP_HIGHUSER;
 	}
@@ -346,6 +347,26 @@ out:
 	return ret;
 }
 
+static int acquire_refill(struct rds_connection *conn)
+{
+	return test_and_set_bit(RDS_RECV_REFILL, &conn->c_flags) == 0;
+}
+
+static void release_refill(struct rds_connection *conn)
+{
+	clear_bit(RDS_RECV_REFILL, &conn->c_flags);
+	smp_mb__after_atomic();
+	/*
+	 * We don't use wait_on_bit()/wake_up_bit() because our waking is in a
+	 * hot path and finding waiters is very rare.  We don't want to walk
+	 * the system-wide hashed waitqueue buckets in the fast path only to
+	 * almost never find waiters.
+	 */
+	if (waitqueue_active(&conn->c_waitq))
+		wake_up_all(&conn->c_waitq);
+}
+
+
 /*
  * This tries to allocate and post unused work requests after making sure that
  * they have all the allocations they need to queue received fragments into
@@ -353,7 +374,7 @@ out:
  *
  * -1 is returned if posting fails due to temporary resource exhaustion.
  */
-void rds_ib_recv_refill(struct rds_connection *conn, int prefill)
+void rds_ib_recv_refill(struct rds_connection *conn, int prefill, int can_wait)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct rds_ib_recv_work *recv;
@@ -361,6 +382,14 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill)
 	unsigned int posted = 0;
 	int ret = 0;
 	u32 pos;
+
+	/*
+	 * the goal here is to just make sure that someone, somewhere
+	 * is posting buffers.  If we can't get the refill lock,
+	 * let them do their thing
+	 */
+	if (!acquire_refill(conn))
+		return;
 
 	while ((prefill || rds_conn_up(conn))
 			&& rds_ib_ring_alloc(&ic->i_recv_ring, 1, &pos)) {
@@ -371,7 +400,7 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill)
 		}
 
 		recv = &ic->i_recvs[pos];
-		ret = rds_ib_recv_refill_one(conn, recv, prefill);
+		ret = rds_ib_recv_refill_one(conn, recv, can_wait);
 		if (ret) {
 			break;
 		}
@@ -398,6 +427,24 @@ void rds_ib_recv_refill(struct rds_connection *conn, int prefill)
 
 	if (ret)
 		rds_ib_ring_unalloc(&ic->i_recv_ring, 1);
+
+	release_refill(conn);
+
+	/* if we're called from the softirq handler, we'll be GFP_NOWAIT.
+	 * in this case the ring being low is going to lead to more interrupts
+	 * and we can safely let the softirq code take care of it unless the
+	 * ring is completely empty.
+	 *
+	 * if we're called from krdsd, we'll be GFP_KERNEL.  In this case
+	 * we might have raced with the softirq code while we had the refill
+	 * lock held.  Use rds_ib_ring_low() instead of ring_empty to decide
+	 * if we should requeue.
+	 */
+	if (rds_conn_up(conn) &&
+	   ((can_wait && rds_ib_ring_low(&ic->i_recv_ring)) ||
+	   rds_ib_ring_empty(&ic->i_recv_ring))) {
+		queue_delayed_work(rds_wq, &conn->c_recv_w, 1);
+	}
 }
 
 /*
@@ -956,7 +1003,7 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 		rds_ib_stats_inc(s_ib_rx_ring_empty);
 
 	if (rds_ib_ring_low(&ic->i_recv_ring))
-		rds_ib_recv_refill(conn, 0);
+		rds_ib_recv_refill(conn, 0, 0);
 }
 
 int rds_ib_recv(struct rds_connection *conn)
@@ -965,8 +1012,10 @@ int rds_ib_recv(struct rds_connection *conn)
 	int ret = 0;
 
 	rdsdebug("conn %p\n", conn);
-	if (rds_conn_up(conn))
+	if (rds_conn_up(conn)) {
 		rds_ib_attempt_ack(ic);
+		rds_ib_recv_refill(conn, 0, 1);
+	}
 
 	return ret;
 }
