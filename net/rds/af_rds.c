@@ -78,13 +78,7 @@ static int rds_release(struct socket *sock)
 	rds_clear_recv_queue(rs);
 	rds_cong_remove_socket(rs);
 
-	/*
-	 * the binding lookup hash uses rcu, we need to
-	 * make sure we sychronize_rcu before we free our
-	 * entry
-	 */
 	rds_remove_bound(rs);
-	synchronize_rcu();
 
 	rds_send_drop_to(rs, NULL);
 	rds_rdma_drop_keys(rs);
@@ -98,19 +92,7 @@ static int rds_release(struct socket *sock)
 	rds_trans_put(rs->rs_transport);
 
 	sock->sk = NULL;
-	if ((refcount_read(&sk->sk_refcnt) == 0)) {
-		printk(KERN_CRIT "zero refcnt on sock put release\n");
-		WARN_ON(1);
-	}
-
-	if (refcount_dec_and_test(&sk->sk_refcnt)) {
-		if (rs->poison != 0xABABABAB) {
-			printk(KERN_CRIT "bad poison on put release %x\n", rs->poison);
-			WARN_ON(1);
-		}
-		rs->poison = 0xDEADBEEF;
-		sk_free(sk);
-	}
+	debug_sock_put(sk);
 out:
 	return 0;
 }
