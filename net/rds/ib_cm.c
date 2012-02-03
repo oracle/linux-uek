@@ -141,31 +141,59 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	if (conn->c_version < RDS_PROTOCOL(3,1)) {
-		printk(KERN_NOTICE "RDS/IB: Connection to %pI4 version %u.%u failed,"
-		       " no longer supported\n",
-		       &conn->c_faddr,
-		       RDS_PROTOCOL_MAJOR(conn->c_version),
-		       RDS_PROTOCOL_MINOR(conn->c_version));
-		rds_conn_destroy(conn);
-		return;
-	} else {
-		printk(KERN_NOTICE "RDS/IB: connected to %pI4 version %u.%u%s\n",
-		       &conn->c_faddr,
-		       RDS_PROTOCOL_MAJOR(conn->c_version),
-		       RDS_PROTOCOL_MINOR(conn->c_version),
-		       ic->i_flowctl ? ", flow control" : "");
-	}
+        if (conn->c_version < RDS_PROTOCOL(3,2)) {
+                if (conn->c_version == RDS_PROTOCOL(3,1)) {
+                        if (conn->c_tos) {
+                                printk(KERN_NOTICE "RDS: Connection to"
+                                        " %pI4 version %u.%u Tos %d"
+                                        " failed, not supporting QoS\n",
+                                        &conn->c_faddr,
+                                        RDS_PROTOCOL_MAJOR(conn->c_version),
+                                        RDS_PROTOCOL_MINOR(conn->c_version),
+                                        conn->c_tos);
+                                rds_conn_drop(conn);
+                                return;
+                        }
+                } else {
+                        /*
+                         * BUG: destroying connection here can deadlock with
+                         * the CM event handler on the c_cm_lock.
+                         */
+                        printk(KERN_NOTICE "RDS/IB: Connection to"
+                                " %pI4 version %u.%u failed,"
+                                " no longer supported\n",
+                                &conn->c_faddr,
+                                RDS_PROTOCOL_MAJOR(conn->c_version),
+                                RDS_PROTOCOL_MINOR(conn->c_version));
+                        rds_conn_destroy(conn);
+                        return;
+                }
+        }
+
+        printk(KERN_NOTICE
+               "RDS/IB: connected to %pI4 version %u.%u%s Tos %d\n",
+               &conn->c_faddr,
+               RDS_PROTOCOL_MAJOR(conn->c_version),
+               RDS_PROTOCOL_MINOR(conn->c_version),
+               ic->i_flowctl ? ", flow control" : "",
+               conn->c_tos);
+
+        ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 
 	/*
 	 * Init rings and fill recv. this needs to wait until protocol negotiation
 	 * is complete, since ring layout is different from 3.0 to 3.1.
 	 */
 	rds_ib_send_init_ring(ic);
-	rds_ib_recv_init_ring(ic);
+
+        if (!ic->conn->c_tos)
+                rds_ib_recv_init_ring(ic);
+
 	/* Post receive buffers - as a side effect, this will update
 	 * the posted credit count. */
-	rds_ib_recv_refill(conn, 1, 1);
+        if (!ic->conn->c_tos) {
+                rds_ib_recv_refill(conn, 1, 1);
+        }
 
 	/* Tune RNR behavior */
 	rds_ib_tune_rnr(ic, &qp_attr);
@@ -216,6 +244,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
 		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
 		dp->dp_ack_seq = rds_ib_piggyb_ack(ic);
+		dp->dp_tos = conn->c_tos;
 
 		/* Advertise flow control */
 		if (ic->i_flowctl) {
@@ -308,6 +337,9 @@ void rds_ib_tasklet_fn_recv(unsigned long data)
 	struct rds_ib_connection *ic = (struct rds_ib_connection *) data;
 	struct rds_connection *conn = ic->conn;
 	struct rds_ib_ack_state ack_state;
+	struct rds_ib_device *rds_ibdev = ic->rds_ibdev;
+
+	BUG_ON(conn->c_tos && !rds_ibdev);
 
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
@@ -325,6 +357,14 @@ void rds_ib_tasklet_fn_recv(unsigned long data)
 	}
 	if (rds_conn_up(conn))
 		rds_ib_attempt_ack(ic);
+
+        if (conn->c_tos) {
+                if ((atomic_read(&rds_ibdev->srq->s_num_posted) <
+                                        rds_ib_srq_refill_wr) &&
+                     !test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
+                                queue_delayed_work(rds_wq, &rds_ibdev->srq->s_refill_w,0);
+
+        }
 }
 
 static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
@@ -339,6 +379,9 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 	case IB_EVENT_COMM_EST:
 		rdma_notify(ic->i_cm_id, IB_EVENT_COMM_EST);
 		break;
+        case IB_EVENT_QP_LAST_WQE_REACHED:
+                complete(&ic->i_last_wqe_complete);
+                break;
 	default:
 		rdsdebug("Fatal QP Event %u (%s) "
 			"- connection %pI4->%pI4, reconnecting\n",
@@ -398,13 +441,23 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	}
 
 	memset(&cq_attr, 0, sizeof(cq_attr));
-	cq_attr.cqe = ic->i_recv_ring.w_nr;
+        if (ic->conn->c_tos) {
+		cq_attr.cqe = rds_ib_srq_max_wr - 1;
 #ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
-	cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
+		cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
 #endif
-	ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
-				 rds_ib_cq_event_handler, conn,
-				 &cq_attr);
+                ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
+					 rds_ib_cq_event_handler, conn,
+					 &cq_attr);
+        } else {
+		cq_attr.cqe = ic->i_recv_ring.w_nr;
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
+		cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
+#endif
+                ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
+					 rds_ib_cq_event_handler, conn,
+					 &cq_attr);
+	}
 	if (IS_ERR(ic->i_rcq)) {
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
@@ -438,6 +491,11 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	qp_attr.send_cq = ic->i_scq;
 	qp_attr.recv_cq = ic->i_rcq;
 
+        if (ic->conn->c_tos) {
+                qp_attr.cap.max_recv_wr = 0;
+                qp_attr.srq = rds_ibdev->srq->s_srq;
+        }
+
 	/*
 	 * XXX this can fail if max_*_wr is too large?  Are we supposed
 	 * to back off until we get a value that the hardware can support?
@@ -458,15 +516,17 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		goto out;
 	}
 
-	ic->i_recv_hdrs = ib_dma_alloc_coherent(dev,
-					   ic->i_recv_ring.w_nr *
-						sizeof(struct rds_header),
-					   &ic->i_recv_hdrs_dma, GFP_KERNEL);
-	if (!ic->i_recv_hdrs) {
-		ret = -ENOMEM;
-		rdsdebug("ib_dma_alloc_coherent recv failed\n");
-		goto out;
-	}
+        if (!ic->conn->c_tos) {
+                ic->i_recv_hdrs = ib_dma_alloc_coherent(dev,
+                                           ic->i_recv_ring.w_nr *
+                                                sizeof(struct rds_header),
+                                           &ic->i_recv_hdrs_dma, GFP_KERNEL);
+                if (!ic->i_recv_hdrs) {
+                        ret = -ENOMEM;
+                        rdsdebug("ib_dma_alloc_coherent recv failed\n");
+                        goto out;
+                }
+        }
 
 	ic->i_ack = ib_dma_alloc_coherent(dev, sizeof(struct rds_header),
 				       &ic->i_ack_dma, GFP_KERNEL);
@@ -485,14 +545,16 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	}
 	memset(ic->i_sends, 0, ic->i_send_ring.w_nr * sizeof(struct rds_ib_send_work));
 
-	ic->i_recvs = vmalloc_node(ic->i_recv_ring.w_nr * sizeof(struct rds_ib_recv_work),
-				   ibdev_to_node(dev));
-	if (!ic->i_recvs) {
-		ret = -ENOMEM;
-		rdsdebug("recv allocation failed\n");
-		goto out;
-	}
-	memset(ic->i_recvs, 0, ic->i_recv_ring.w_nr * sizeof(struct rds_ib_recv_work));
+        if (!ic->conn->c_tos) {
+                ic->i_recvs = vmalloc(ic->i_recv_ring.w_nr *
+                        sizeof(struct rds_ib_recv_work));
+                if (!ic->i_recvs) {
+                        ret = -ENOMEM;
+                        rdsdebug("recv allocation failed\n");
+                        goto out;
+                }
+                memset(ic->i_recvs, 0, ic->i_recv_ring.w_nr * sizeof(struct rds_ib_recv_work));
+        }
 
 	rds_ib_recv_init_ack(ic);
 
@@ -572,7 +634,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 (unsigned long long)be64_to_cpu(fguid));
 
 	conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr, &rds_ib_transport,
-			       GFP_KERNEL);
+			       dp->dp_tos, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
 		conn = NULL;
@@ -775,6 +837,13 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 			 */
 			rdsdebug("failed to disconnect, cm: %p err %d\n",
 				ic->i_cm_id, err);
+                } else if (ic->conn->c_tos && ic->rds_ibdev) {
+                        /*
+                         * wait for the last wqe to complete, then schedule
+                         * the recv tasklet to drain the RX CQ.
+                         */
+                        wait_for_completion(&ic->i_last_wqe_complete);
+                        tasklet_schedule(&ic->i_rtasklet);
 		}
 
 		/* quiesce tx and rx completion before tearing down */
@@ -867,8 +936,12 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 
 	vfree(ic->i_sends);
 	ic->i_sends = NULL;
-	vfree(ic->i_recvs);
+        if (!ic->conn->c_tos)
+                vfree(ic->i_recvs);
+
 	ic->i_recvs = NULL;
+	
+	init_completion(&ic->i_last_wqe_complete);
 }
 
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
@@ -906,6 +979,8 @@ int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 
 	ic->conn = conn;
 	conn->c_transport_data = ic;
+	
+	init_completion(&ic->i_last_wqe_complete);
 
 	spin_lock_irqsave(&ib_nodev_conns_lock, flags);
 	list_add_tail(&ic->ib_node, &ib_nodev_conns);
