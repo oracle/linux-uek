@@ -499,6 +499,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	rdsdebug("conn %p pd %p mr %p cq %p\n", conn, ic->i_pd, ic->i_mr, ic->i_rcq);
 
 out:
+	conn->c_reconnect_err = ret;
 	rds_ib_dev_put(rds_ibdev);
 	return ret;
 }

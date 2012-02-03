@@ -198,6 +198,11 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	atomic_set(&conn->c_state, RDS_CONN_DOWN);
 	conn->c_send_gen = 0;
 	conn->c_reconnect_jiffies = 0;
+	conn->c_reconnect_start = get_seconds();
+	conn->c_reconnect_warn = 1;
+	conn->c_reconnect_drops = 0;
+	conn->c_reconnect_err = 0;
+
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&conn->c_conn_w, rds_connect_worker);
@@ -550,6 +555,23 @@ void rds_conn_exit(void)
  */
 void rds_conn_drop(struct rds_connection *conn)
 {
+	unsigned long now = get_seconds();
+
+	if (rds_conn_state(conn) == RDS_CONN_UP) {
+		conn->c_reconnect_start = now;
+		conn->c_reconnect_warn = 1;
+		conn->c_reconnect_drops = 0;
+		conn->c_reconnect_err = 0;
+	} else if ((conn->c_reconnect_warn) &&
+		   (now - conn->c_reconnect_start > 60)) {
+		printk(KERN_INFO "RDS/IB: re-connect to %pI4 is "
+			"stalling for more than 1 min...(drops=%lu err=%d)\n",
+			&conn->c_faddr, conn->c_reconnect_drops,
+			conn->c_reconnect_err);
+		conn->c_reconnect_warn = 0;
+	}
+	conn->c_reconnect_drops++;
+
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
 	queue_work(rds_wq, &conn->c_down_w);
 }
