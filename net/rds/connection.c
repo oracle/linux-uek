@@ -64,13 +64,15 @@ static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 /* rcu read lock must be held or the connection spinlock */
 static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 					      __be32 laddr, __be32 faddr,
-					      struct rds_transport *trans)
+                                              struct rds_transport *trans,
+                                              u8 tos)
 {
 	struct rds_connection *conn, *ret = NULL;
 	struct hlist_node *pos;
 
 	hlist_for_each_entry_rcu(conn, pos, head, c_hash_node) {
 		if (conn->c_faddr == faddr && conn->c_laddr == laddr &&
+				conn->c_tos == tos &&
 				conn->c_trans == trans) {
 			ret = conn;
 			break;
@@ -112,6 +114,7 @@ void rds_conn_reset(struct rds_connection *conn)
  */
 static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 				       struct rds_transport *trans, gfp_t gfp,
+				       u8 tos,
 				       int is_outgoing)
 {
 	struct rds_connection *conn, *parent = NULL;
@@ -121,7 +124,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	int ret;
 
 	rcu_read_lock();
-	conn = rds_conn_lookup(head, laddr, faddr, trans);
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
 	if (conn
 	 && conn->c_loopback
 	 && conn->c_trans != &rds_loop_transport
@@ -155,6 +158,8 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	init_waitqueue_head(&conn->c_waitq);
 	INIT_LIST_HEAD(&conn->c_send_queue);
 	INIT_LIST_HEAD(&conn->c_retrans);
+
+	conn->c_tos = tos;
 
 	ret = rds_cong_get_maps(conn);
 	if (ret) {
@@ -233,7 +238,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		found = rds_conn_lookup(head, laddr, faddr, trans);
+		found = rds_conn_lookup(head, laddr, faddr, trans, tos);
 		if (found) {
 			trans->conn_free(conn->c_transport_data);
 			kmem_cache_free(rds_conn_slab, conn);
@@ -251,18 +256,34 @@ out:
 }
 
 struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
-				       struct rds_transport *trans, gfp_t gfp)
+                                       struct rds_transport *trans,
+                                       u8 tos, gfp_t gfp)
 {
-	return __rds_conn_create(laddr, faddr, trans, gfp, 0);
+	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 0);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create);
 
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
-				       struct rds_transport *trans, gfp_t gfp)
+                                       struct rds_transport *trans,
+                                       u8 tos, gfp_t gfp)
 {
-	return __rds_conn_create(laddr, faddr, trans, gfp, 1);
+	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 1);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
+
+struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
+                                        struct rds_transport *trans, u8 tos)
+{
+        struct rds_connection *conn;
+        struct hlist_head *head = rds_conn_bucket(laddr, faddr);
+
+        rcu_read_lock();
+        conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+        rcu_read_unlock();
+
+        return conn;
+}
+EXPORT_SYMBOL_GPL(rds_conn_find);
 
 void rds_conn_shutdown(struct rds_connection *conn)
 {
@@ -490,6 +511,7 @@ static int rds_conn_info_visitor(struct rds_connection *conn,
 	cinfo->next_rx_seq = conn->c_next_rx_seq;
 	cinfo->laddr = conn->c_laddr;
 	cinfo->faddr = conn->c_faddr;
+	cinfo->tos = conn->c_tos;
 	strncpy(cinfo->transport, conn->c_trans->t_name,
 		sizeof(cinfo->transport));
 	cinfo->flags = 0;
@@ -562,7 +584,7 @@ void rds_conn_drop(struct rds_connection *conn)
 	} else if ((conn->c_reconnect_warn) &&
 		   (now - conn->c_reconnect_start > 60)) {
 		printk(KERN_INFO "RDS/IB: re-connect to %u.%u.%u.%u is "
-			"stalling for more than 1 min...(drops=%d err=%d)\n",
+			"stalling for more than 1 min...(drops=%u err=%d)\n",
 			NIPQUAD(conn->c_faddr), conn->c_reconnect_drops,
 			conn->c_reconnect_err);
 		conn->c_reconnect_warn = 0;
