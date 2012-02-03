@@ -585,19 +585,48 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	 */
 	mutex_lock(&conn->c_cm_lock);
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
+		/*
+		 * in both of the cases below, the conn is half setup.
+		 * we need to make sure the lower layers don't destroy it
+		 */
+		ic = conn->c_transport_data;
+		if (ic && ic->i_cm_id == cm_id)
+			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
 			rdsdebug("incoming connect while connecting\n");
 			rds_conn_drop(conn);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
-		} else
-		if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
-			/* Wait and see - our connect may still be succeeding */
-			rds_ib_stats_inc(s_ib_connect_raced);
+		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
+			unsigned long now = get_seconds();
+
+			/*
+			 * after 15 seconds, give up on existing connection
+			 * attempts and make them try again.  At this point
+			 * it's no longer a race but something has gone
+			 * horribly wrong
+			 */
+			if (now > conn->c_connection_start &&
+			    now - conn->c_connection_start > 15) {
+				printk(KERN_CRIT "rds connection racing for 15s, forcing reset "
+				         "connection %pI4->%pI4\n",
+					 &conn->c_laddr, &conn->c_faddr);
+				rds_conn_drop(conn);
+				rds_ib_stats_inc(s_ib_listen_closed_stale);
+			} else {
+				/* Wait and see - our connect may still be succeeding */
+				rds_ib_stats_inc(s_ib_connect_raced);
+			}
 		}
 		goto out;
 	}
 
 	ic = conn->c_transport_data;
+
+	/*
+	 * record the time we started trying to connect so that we can
+	 * drop the connection if it doesn't work out after a while
+	 */
+	conn->c_connection_start = get_seconds();
 
 	rds_ib_set_protocol(conn, version);
 	rds_ib_set_flow_control(conn, be32_to_cpu(dp->dp_credit));
