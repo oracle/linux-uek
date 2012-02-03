@@ -33,6 +33,7 @@
 #include <rdma/rdma_cm.h>
 
 #include "rdma_transport.h"
+#include "ib.h"
 
 static struct rdma_cm_id *rds_listen_id;
 
@@ -73,6 +74,22 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
 					 RDS_RDMA_RESOLVE_TIMEOUT_MS);
+		if (ret) {
+			/*
+			 * The cm_id will get destroyed by addr_handler
+			 * in RDMA CM when we return from here.
+			 */
+			if (conn) {
+				struct rds_ib_connection *ibic;
+
+				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure"
+				       "connection %pI4->%pI4\n", &conn->c_laddr, &conn->c_faddr);
+				ibic = conn->c_transport_data;
+				if (ibic && ibic->i_cm_id == cm_id) 
+					ibic->i_cm_id = NULL;
+				rds_conn_drop(conn);
+			}
+		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
