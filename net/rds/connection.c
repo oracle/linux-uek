@@ -130,6 +130,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	if (conn
 	 && conn->c_loopback
 	 && conn->c_trans != &rds_loop_transport
+	 && laddr == faddr
 	 && !is_outgoing) {
 		/* This is a looped back IB connection, and we're
 		 * called by the code handling the incoming connect.
