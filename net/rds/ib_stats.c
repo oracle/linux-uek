@@ -42,14 +42,14 @@ DEFINE_PER_CPU(struct rds_ib_statistics, rds_ib_stats) ____cacheline_aligned;
 static char *rds_ib_stat_names[] = {
 	"ib_connect_raced",
 	"ib_listen_closed_stale",
-	"ib_tx_cq_call",
+	"ib_evt_handler_call",
+	"ib_tasklet_call",
 	"ib_tx_cq_event",
 	"ib_tx_ring_full",
 	"ib_tx_throttle",
 	"ib_tx_sg_mapping_failure",
 	"ib_tx_stalled",
 	"ib_tx_credit_updates",
-	"ib_rx_cq_call",
 	"ib_rx_cq_event",
 	"ib_rx_ring_empty",
 	"ib_rx_refill_from_cq",
@@ -67,6 +67,8 @@ static char *rds_ib_stat_names[] = {
 	"ib_rdma_mr_pool_flush",
 	"ib_rdma_mr_pool_wait",
 	"ib_rdma_mr_pool_depleted",
+	"ib_atomic_cswp",
+	"ib_atomic_fadd",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
