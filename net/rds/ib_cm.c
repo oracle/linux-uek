@@ -264,10 +264,8 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	ib_req_notify_cq(ic->i_scq, IB_CQ_SOLICITED);
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state);
 
-	if (rds_conn_up(conn)) {
-		clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
+	if (rds_conn_up(conn) && !test_bit(RDS_LL_SEND_FULL, &conn->c_flags))
 		rds_send_xmit(ic->conn);
-	}
 }
 
 void rds_ib_tasklet_fn_recv(unsigned long data)
