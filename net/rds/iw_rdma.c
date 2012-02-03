@@ -33,7 +33,6 @@
 #include <linux/kernel.h>
 
 #include "rds.h"
-#include "rdma.h"
 #include "iw.h"
 
 
