@@ -101,6 +101,8 @@ static void rds_ib_dev_free(struct work_struct *work)
 		ib_dereg_mr(rds_ibdev->mr);
 	if (rds_ibdev->pd)
 		ib_dealloc_pd(rds_ibdev->pd);
+        if (rds_ibdev->srq)
+                kfree(rds_ibdev->srq);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
 		list_del(&i_ipaddr->list);
@@ -173,6 +175,10 @@ void rds_ib_add_one(struct ib_device *device)
 		rds_ibdev->mr_pool = NULL;
 		goto put_dev;
 	}
+
+        rds_ibdev->srq = kmalloc(sizeof(struct rds_ib_srq), GFP_KERNEL);
+        if (!rds_ibdev->srq)
+                goto free_attr;
 
 	INIT_LIST_HEAD(&rds_ibdev->ipaddr_list);
 	INIT_LIST_HEAD(&rds_ibdev->conn_list);
@@ -291,6 +297,9 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		iinfo->max_recv_wr = ic->i_recv_ring.w_nr;
 		iinfo->max_send_sge = rds_ibdev->max_sge;
 		rds_ib_get_mr_info(rds_ibdev, iinfo);
+                iinfo->tos = ic->conn->c_tos;
+                iinfo->sl = ic->i_sl;
+                iinfo->cache_allocs = atomic_read(&ic->i_cache_allocs);
 	}
 	return 1;
 }
@@ -361,6 +370,7 @@ void rds_ib_exit(void)
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
 	rds_ib_sysctl_exit();
+	rds_ib_srqs_exit();
 	rds_ib_recv_exit();
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
@@ -415,14 +425,22 @@ int rds_ib_init(void)
 	if (ret)
 		goto out_sysctl;
 
+        ret = rds_ib_srqs_init();
+        if (ret) {
+                printk(KERN_ERR "rds_ib_srqs_init failed.\n");
+                goto out_recv;
+        }
+
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
-		goto out_recv;
+		goto out_srq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
 	goto out;
 
+out_srq:
+        rds_ib_srqs_exit();
 out_recv:
 	rds_ib_recv_exit();
 out_sysctl:
