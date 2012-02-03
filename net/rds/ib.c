@@ -350,6 +350,7 @@ void rds_ib_exit(void)
 	rds_ib_sysctl_exit();
 	rds_ib_recv_exit();
 	rds_trans_unregister(&rds_ib_transport);
+	rds_ib_fmr_exit();
 }
 
 struct rds_transport rds_ib_transport = {
@@ -385,15 +386,21 @@ int __init rds_ib_init(void)
 
 	INIT_LIST_HEAD(&rds_ib_devices);
 
-	ret = ib_register_client(&rds_ib_client);
+	ret = rds_ib_fmr_init();
 	if (ret)
 		goto out;
+
+	ret = ib_register_client(&rds_ib_client);
+	if (ret)
+		goto out_fmr_exit;
 
 	ret = rds_ib_sysctl_init();
 	if (ret)
 		goto out_ibreg;
 
-	rds_ib_recv_init();
+	ret = rds_ib_recv_init();
+	if (ret)
+		goto out_sysctl;
 
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
@@ -405,9 +412,12 @@ int __init rds_ib_init(void)
 
 out_recv:
 	rds_ib_recv_exit();
+out_sysctl:
 	rds_ib_sysctl_exit();
 out_ibreg:
 	rds_ib_unregister_client();
+out_fmr_exit:
+	rds_ib_fmr_exit();
 out:
 	return ret;
 }
