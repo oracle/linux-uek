@@ -61,6 +61,7 @@ static struct rds_sock *rds_bind_lookup(__be32 addr, __be16 port,
 		      be16_to_cpu(rs->rs_bound_port);
 
 		if (cmp == needle) {
+			rds_sock_addref(rs);
 			rcu_read_unlock();
 			return rs;
 		}
@@ -95,10 +96,10 @@ struct rds_sock *rds_find_bound(__be32 addr, __be16 port)
 
 	rs = rds_bind_lookup(addr, port, NULL);
 
-	if (rs && !sock_flag(rds_rs_to_sk(rs), SOCK_DEAD))
-		rds_sock_addref(rs);
-	else
+	if (rs && sock_flag(rds_rs_to_sk(rs), SOCK_DEAD)) {
+		rds_sock_put(rs);
 		rs = NULL;
+	}
 
 	rdsdebug("returning rs %p for %pI4:%u\n", rs, &addr,
 		ntohs(port));
@@ -123,15 +124,18 @@ static int rds_add_bound(struct rds_sock *rs, __be32 addr, __be16 *port)
 	spin_lock_irqsave(&rds_bind_lock, flags);
 
 	do {
+		struct rds_sock *rrs;
 		if (rover == 0)
 			rover++;
-		if (!rds_bind_lookup(addr, cpu_to_be16(rover), rs)) {
+		if (!(rrs = rds_bind_lookup(addr, cpu_to_be16(rover), rs))) {
 			*port = rs->rs_bound_port;
 			ret = 0;
 			rdsdebug("rs %p binding to %pI4:%d\n",
 			  rs, &addr, (int)ntohs(*port));
 			break;
 		}
+		else
+			rds_sock_put(rrs);
 	} while (rover++ != last);
 
 	spin_unlock_irqrestore(&rds_bind_lock, flags);
