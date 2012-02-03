@@ -124,6 +124,7 @@ struct rds_connection {
 
 	struct list_head	c_map_item;
 	unsigned long		c_map_queued;
+	unsigned long		c_connection_start; /* when was this connection started */
 
 	unsigned int		c_unacked_packets;
 	unsigned int		c_unacked_bytes;
