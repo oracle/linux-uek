@@ -189,6 +189,7 @@ struct rds_ib_connection {
 struct rds_ib_ipaddr {
 	struct list_head	list;
 	__be32			ipaddr;
+	struct rcu_head		rcu_head;
 };
 
 struct rds_ib_device {
