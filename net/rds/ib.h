@@ -22,6 +22,7 @@
 #define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
 
 #define RDS_IB_RECYCLE_BATCH_COUNT	32
+#define RDS_WC_MAX 32
 
 extern struct list_head rds_ib_devices;
 
@@ -117,10 +118,14 @@ struct rds_ib_connection {
 	struct rdma_cm_id	*i_cm_id;
 	struct ib_pd		*i_pd;
 	struct ib_mr		*i_mr;
-	struct ib_cq		*i_cq;
+	struct ib_cq		*i_scq;
+	struct ib_cq		*i_rcq;
+	struct ib_wc		i_send_wc[RDS_WC_MAX];
+	struct ib_wc		i_recv_wc[RDS_WC_MAX];
 
 	/* interrupt handling */
-	struct tasklet_struct	i_tasklet;
+	struct tasklet_struct	i_stasklet;
+	struct tasklet_struct	i_rtasklet;
 
 	/* tx */
 	struct rds_ib_work_ring	i_send_ring;
