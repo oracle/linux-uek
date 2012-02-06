@@ -1284,6 +1284,7 @@ static int igb_intr_test(struct igb_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	wr32(E1000_IMC, ~0);
+	wrfl();
 	msleep(10);
 
 	/* Define all writable bits for ICS */
@@ -1327,6 +1328,7 @@ static int igb_intr_test(struct igb_adapter *adapter, u64 *data)
 
 			wr32(E1000_IMC, mask);
 			wr32(E1000_ICS, mask);
+			wrfl();
 			msleep(10);
 
 			if (adapter->test_icr & mask) {
@@ -1348,6 +1350,7 @@ static int igb_intr_test(struct igb_adapter *adapter, u64 *data)
 
 		wr32(E1000_IMS, mask);
 		wr32(E1000_ICS, mask);
+		wrfl();
 		msleep(10);
 
 		if (!(adapter->test_icr & mask)) {
@@ -1369,6 +1372,7 @@ static int igb_intr_test(struct igb_adapter *adapter, u64 *data)
 
 			wr32(E1000_IMC, ~mask);
 			wr32(E1000_ICS, ~mask);
+			wrfl();
 			msleep(10);
 
 			if (adapter->test_icr & mask) {
@@ -1380,6 +1384,7 @@ static int igb_intr_test(struct igb_adapter *adapter, u64 *data)
 
 	/* Disable all the interrupts */
 	wr32(E1000_IMC, ~0);
+	wrfl();
 	msleep(10);
 
 	/* Unhook test interrupt handler */
