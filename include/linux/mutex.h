@@ -228,4 +228,16 @@ mutex_trylock_recursive(struct mutex *lock)
 	return mutex_trylock(lock);
 }
 
+#ifdef CONFIG_SMP
+static inline int mutex_owned(struct mutex *lock)
+{
+	return lock->owner == current;
+}
+#else
+static inline int mutex_owned(struct mutex *lock)
+{
+	return mutex_is_locked(lock);
+}
+#endif
+
 #endif /* __LINUX_MUTEX_H */
