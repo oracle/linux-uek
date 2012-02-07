@@ -578,3 +578,26 @@ config USB_OCTEON_OHCI
 config USB_OCTEON2_COMMON
 	bool
 	default y if USB_OCTEON_EHCI || USB_OCTEON_OHCI
+
+config XEN_USBDEV_FRONTEND
+	tristate "Xen pvusb device frontend driver"
+	depends on XEN && USB
+	select XEN_XENBUS_FRONTEND
+	default m
+	help
+	  The pvusb device frontend driver allows the kernel to
+	  access usb devices exported exported by a virtual
+	  machine containing a physical usb device driver. The
+	  frontend driver is intended for unprivileged guest domains;
+	  if you are compiling a kernel for a Xen guest, you almost
+	  certainly want to enable this.
+
+config XEN_USBDEV_BACKEND
+	tristate "PVUSB device backend driver"
+	depends on XEN_BACKEND && USB
+	default m
+	help
+	  The pvusb backend driver allows the kernel to export its usb
+	  devices to other guests via a high-performance shared-memory
+	  interface. This requires the guest to have the pvusb frontend
+	  available.
