@@ -59,7 +59,7 @@ dof_hdr_t *dtrace_dof_create(dtrace_state_t *state)
 				 roundup(sizeof(dof_sec_t), sizeof(uint64_t)) +
 				 sizeof(dof_optdesc_t) * DTRACEOPT_MAX;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	dof = kmalloc(len, GFP_KERNEL);
 	dof->dofh_ident[DOF_ID_MAG0] = DOF_MAG_MAG0;
@@ -111,10 +111,7 @@ dof_hdr_t *dtrace_dof_copyin(void __user *argp, int *errp)
 {
 	dof_hdr_t	hdr, *dof;
 
-#ifdef FIXME
-	/* This seems to be unnecessary and actually wrong). */
-	ASSERT(!mutex_is_locked(&dtrace_lock));
-#endif
+	ASSERT(!MUTEX_HELD(&dtrace_lock));
 
 	/*
 	 * First, we're going to copyin() the sizeof(dof_hdr_t).
@@ -816,7 +813,7 @@ int dtrace_dof_slurp(dof_hdr_t *dof, dtrace_vstate_t *vstate, const cred_t *cr,
 	dtrace_enabling_t	*enab;
 	uint_t			i;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dof->dofh_loadsz >= sizeof(dof_hdr_t));
 
 	/*

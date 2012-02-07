@@ -671,7 +671,7 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 	int	i, oldsvars, osz, nsz, otlocals, ntlocals;
 	uint_t	id;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dp->dtdo_buf != NULL && dp->dtdo_len != 0);
 
 	for (i = 0; i < dp->dtdo_varlen; i++) {
@@ -845,7 +845,7 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 {
 	int	i;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dp->dtdo_refcnt != 0);
 
 	for (i = 0; i < dp->dtdo_varlen; i++) {
@@ -2199,11 +2199,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		}
 
 		m.mx = dtrace_load64(tupregs[0].dttk_value);
-#ifdef CONFIG_SMP
-		regs[rd] = m.mi.owner != NULL;
-#else
-		regs[rd] = mutex_is_locked(&m.mi);
-#endif
+		regs[rd] = mutex_owned(&m.mi);
 		break;
 
 	case DIF_SUBR_MUTEX_OWNER:

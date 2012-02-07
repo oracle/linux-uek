@@ -35,7 +35,7 @@ dtrace_predicate_t *dtrace_predicate_create(dtrace_difo_t *dp)
 {
 	dtrace_predicate_t	*pred;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dp->dtdo_refcnt != 0);
 
 	pred = kzalloc(sizeof (dtrace_predicate_t), GFP_KERNEL);
@@ -63,7 +63,7 @@ dtrace_predicate_t *dtrace_predicate_create(dtrace_difo_t *dp)
 
 void dtrace_predicate_hold(dtrace_predicate_t *pred)
 {
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(pred->dtp_difo != NULL && pred->dtp_difo->dtdo_refcnt != 0);
 	ASSERT(pred->dtp_refcnt > 0);
 
@@ -75,7 +75,7 @@ void dtrace_predicate_release(dtrace_predicate_t *pred,
 {
 	dtrace_difo_t *dp = pred->dtp_difo;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dp != NULL && dp->dtdo_refcnt != 0);
 	ASSERT(pred->dtp_refcnt > 0);
 

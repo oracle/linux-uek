@@ -158,7 +158,7 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 	dtrace_dynvar_t	*dvar, *next, *start;
 	int		i;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(dstate->dtds_base == NULL && dstate->dtds_percpu == NULL);
 
 	memset(dstate, 0, sizeof (dtrace_dstate_t));
@@ -250,7 +250,7 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 
 void dtrace_dstate_fini(dtrace_dstate_t *dstate)
 {
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	if (dstate->dtds_base == NULL)
 		return;
@@ -328,8 +328,8 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	int		err;
 	dtrace_aggid_t	aggid;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	state = kzalloc(sizeof (dtrace_state_t), GFP_KERNEL);
 	state->dts_epid = DTRACE_EPIDNONE + 1;
@@ -476,8 +476,8 @@ static int dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf,
 	processorid_t	cpu = DTRACE_CPUALL;
 	int		flags = 0, rval;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 	ASSERT(which < DTRACEOPT_MAX);
 	ASSERT(state->dts_activity == DTRACE_ACTIVITY_INACTIVE ||
 	       (state == dtrace_anon.dta_state &&
@@ -857,7 +857,7 @@ int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 {
 	dtrace_icookie_t	cookie;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
 	    state->dts_activity != DTRACE_ACTIVITY_DRAINING)
@@ -907,7 +907,7 @@ int dtrace_state_stop(dtrace_state_t *state, processorid_t *cpu)
 int dtrace_state_option(dtrace_state_t *state, dtrace_optid_t option,
 			dtrace_optval_t val)
 {
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE)
 		return -EBUSY;
@@ -965,8 +965,8 @@ void dtrace_state_destroy(dtrace_state_t *state)
 	int			nspec = state->dts_nspeculations;
 	uint32_t		match;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	/*
 	 * First, retract any retained enablings for this state.
