@@ -341,7 +341,7 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg)
 	cyc_time_t		when;
 
 	ASSERT(ktime_nz(prof->prof_interval));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	if (prof->prof_kind == PROF_TICK) {
 		hdlr.cyh_func = profile_tick;
@@ -372,7 +372,7 @@ void profile_disable(void *arg, dtrace_id_t id, void *parg)
 	profile_probe_t	*prof = parg;
 
 	ASSERT(prof->prof_cyclic != CYCLIC_NONE);
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	cyclic_remove(prof->prof_cyclic);
 	prof->prof_cyclic = CYCLIC_NONE;

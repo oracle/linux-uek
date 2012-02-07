@@ -129,8 +129,8 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 	*idp = (dtrace_provider_id_t)provider;
 
 	if (pops == &dtrace_provider_ops) {
-		ASSERT(mutex_is_locked(&dtrace_provider_lock));
-		ASSERT(mutex_is_locked(&dtrace_lock));
+		ASSERT(MUTEX_HELD(&dtrace_provider_lock));
+		ASSERT(MUTEX_HELD(&dtrace_lock));
 		ASSERT(dtrace_anon.dta_enabling == NULL);
 
 		/*
@@ -249,8 +249,8 @@ int dtrace_unregister(dtrace_provider_id_t id)
 		 * with locks already held.
 		 */
 		ASSERT(old == dtrace_provider);
-		ASSERT(mutex_is_locked(&dtrace_provider_lock));
-		ASSERT(mutex_is_locked(&dtrace_lock));
+		ASSERT(MUTEX_HELD(&dtrace_provider_lock));
+		ASSERT(MUTEX_HELD(&dtrace_lock));
 
 		self = 1;
 

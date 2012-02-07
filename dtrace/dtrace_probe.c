@@ -68,7 +68,7 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	 * held when we enter this function.
 	 */
 	if (provider == dtrace_provider) {
-		ASSERT(mutex_is_locked(&dtrace_lock));
+		ASSERT(MUTEX_HELD(&dtrace_lock));
 		mutex_unlock(&dtrace_lock);
 	}
 
@@ -1216,12 +1216,6 @@ dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t prid, const char *mod,
 	dtrace_probekey_t	pkey;
 	dtrace_id_t		id;
 	int			match;
-
-	/* FIXME: Maybe?  We really should protect against this. */
-	if (mutex_is_locked(&dtrace_lock)) {
-		WARN(1, "dtrace_probe_lookup() called with dtrace_lock held!");
-		return 0;
-	}
 
 	pkey.dtpk_prov = ((dtrace_provider_t *)prid)->dtpv_name;
 	pkey.dtpk_pmatch = &dtrace_match_string;

@@ -97,8 +97,8 @@ int dtrace_buffer_alloc(dtrace_buffer_t *bufs, size_t size, int flags,
 	processorid_t	cpu;
 	dtrace_buffer_t	*buf;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 #ifdef FIXME
 	if (size > dtrace_nonroot_maxsize &&
@@ -405,7 +405,7 @@ out:
 void dtrace_buffer_polish(dtrace_buffer_t *buf)
 {
 	ASSERT(buf->dtb_flags & DTRACEBUF_RING);
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (!(buf->dtb_flags & DTRACEBUF_WRAPPED))
 		return;

@@ -187,7 +187,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 	dtrace_optval_t		*opt = state->dts_options, nframes, strsize;
 	uint64_t		arg = desc->dtad_arg;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(ecb->dte_action == NULL || ecb->dte_action->dta_refcnt == 1);
 
 	if (DTRACEACT_ISAGG(desc->dtad_kind)) {
@@ -450,7 +450,7 @@ void dtrace_ecb_disable(dtrace_ecb_t *ecb)
 	dtrace_ecb_t	*pecb, *prev = NULL;
 	dtrace_probe_t	*probe = ecb->dte_probe;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (probe == NULL)
 		return;
@@ -525,7 +525,7 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 	dtrace_ecb_t	*ecb;
 	dtrace_epid_t	epid;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	ecb = kzalloc(sizeof(dtrace_ecb_t), GFP_KERNEL);
 	ecb->dte_predicate = NULL;
@@ -588,7 +588,7 @@ static dtrace_ecb_t *dtrace_ecb_create(dtrace_state_t *state,
 	dtrace_provider_t	*prov;
 	dtrace_ecbdesc_t	*desc = enab->dten_current;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(state != NULL);
 
 	ecb = dtrace_ecb_add(state, probe);
@@ -668,7 +668,7 @@ void dtrace_ecb_destroy(dtrace_ecb_t *ecb)
 	dtrace_predicate_t	*pred;
 	dtrace_epid_t		epid = ecb->dte_epid;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(ecb->dte_next == NULL);
 	ASSERT(ecb->dte_probe == NULL || ecb->dte_probe->dtpr_ecb != ecb);
 
@@ -808,8 +808,8 @@ int dtrace_ecb_enable(dtrace_ecb_t *ecb)
 {
 	dtrace_probe_t	*probe = ecb->dte_probe;
 
-	ASSERT(mutex_is_locked(&cpu_lock));
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(ecb->dte_next == NULL);
 
 	if (probe == NULL)
@@ -844,7 +844,7 @@ dtrace_ecb_t *dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 {
 	dtrace_ecb_t *ecb;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if (id == 0 || id > state->dts_necbs)
 		return NULL;
@@ -859,7 +859,7 @@ dtrace_ecb_t *dtrace_epid2ecb(dtrace_state_t *state, dtrace_epid_t id)
 dtrace_aggregation_t *dtrace_aggid2agg(dtrace_state_t *state,
 				       dtrace_aggid_t id)
 {
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	return idr_find(&state->dts_agg_idr, id);
 }

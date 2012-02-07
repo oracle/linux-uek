@@ -7,6 +7,7 @@
 #include <linux/idr.h>
 #include <linux/ktime.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/sched.h>
 #include <linux/stringify.h>
 #include <linux/types.h>
@@ -2362,5 +2363,7 @@ extern void debug_enter(char *);
 				    _mutex_unlock(x);			      \
 				} while (0)
 #endif
+
+#define MUTEX_HELD(lock)	mutex_owned(lock)
 
 #endif /* _DTRACE_H_ */
