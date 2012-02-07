@@ -33,7 +33,7 @@ dtrace_state_t *dtrace_anon_grab(void)
 {
 	dtrace_state_t	*state;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	if ((state = dtrace_anon.dta_state) == NULL) {
 		ASSERT(dtrace_anon.dta_enabling == NULL);
@@ -58,8 +58,8 @@ void dtrace_anon_property(void)
 	dof_hdr_t	*dof;
 	char		c[32];             /* enough for "dof-data-" + digits */
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
-	ASSERT(mutex_is_locked(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	for (i = 0; ; i++) {
 		snprintf(c, sizeof (c), "dof-data-%d", i);

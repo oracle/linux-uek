@@ -128,7 +128,7 @@ void dtrace_enabling_destroy(dtrace_enabling_t *enab)
 	dtrace_ecbdesc_t	*ep;
 	dtrace_vstate_t		*vstate = enab->dten_vstate;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	for (i = 0; i < enab->dten_ndesc; i++) {
 		dtrace_actdesc_t	*act, *next;
@@ -186,7 +186,7 @@ int dtrace_enabling_retain(dtrace_enabling_t *enab)
 {
 	dtrace_state_t	*state;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(enab->dten_next == NULL && enab->dten_prev == NULL);
 	ASSERT(enab->dten_vstate != NULL);
 
@@ -220,7 +220,7 @@ int dtrace_enabling_replicate(dtrace_state_t *state, dtrace_probedesc_t *match,
 	dtrace_enabling_t	*new, *enab;
 	int			found = 0, err = -ENOENT;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(strlen(match->dtpd_provider) < DTRACE_PROVNAMELEN);
 	ASSERT(strlen(match->dtpd_mod) < DTRACE_MODNAMELEN);
 	ASSERT(strlen(match->dtpd_func) < DTRACE_FUNCNAMELEN);
@@ -285,7 +285,7 @@ void dtrace_enabling_retract(dtrace_state_t *state)
 {
 	dtrace_enabling_t	*enab, *next;
 
-	ASSERT(mutex_is_locked(&dtrace_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	/*
 	 * Iterate over all retained enablings, destroy the enablings retained
