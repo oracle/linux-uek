@@ -153,18 +153,12 @@ extern int DSA_verify(const MPI datahash, const MPI sig[], const MPI pkey[]);
  * - we _know_ the data is locked into kernel memory, so we don't want to have
  *   to kmap() it
  */
-static inline void SHA1_putc(struct hash_desc *sha1, uint8_t ch)
+static inline void SHA1_putc(struct shash_desc *digest, uint8_t ch)
 {
-	struct scatterlist sg;
-
-	sg_init_one(&sg, &ch, 1);
-	crypto_hash_update(sha1, &sg, 1);
+	crypto_shash_update(digest, &ch, 1);
 }
 
-static inline void SHA1_write(struct hash_desc *sha1, const void *s, size_t n)
+static inline void SHA1_write(struct shash_desc *digest, const void *s, size_t n)
 {
-	struct scatterlist sg;
-
-	sg_init_one(&sg, s, n);
-	crypto_hash_update(sha1, &sg, n);
+	crypto_shash_update(digest, s, n);
 }

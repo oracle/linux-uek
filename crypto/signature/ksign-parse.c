@@ -83,7 +83,7 @@ void ksign_free_user_id(struct ksign_user_id *uid)
 /*
  *
  */
-static void ksign_calc_pk_keyid(struct hash_desc *sha1,
+static void ksign_calc_pk_keyid(struct shash_desc *digest,
 				struct ksign_public_key *pk)
 {
 	unsigned n;
@@ -94,8 +94,6 @@ static void ksign_calc_pk_keyid(struct hash_desc *sha1,
 	int i;
 	int npkey = DSA_NPKEY;
 
-	crypto_hash_init(sha1);
-
 	n = pk->version < 4 ? 8 : 6;
 	for (i = 0; i < npkey; i++) {
 		nb[i] = mpi_get_nbits(pk->pkey[i]);
@@ -103,20 +101,20 @@ static void ksign_calc_pk_keyid(struct hash_desc *sha1,
 		n += 2 + nn[i];
 	}
 
-	SHA1_putc(sha1, 0x99);     /* ctb */
-	SHA1_putc(sha1, n >> 8);   /* 2 uint8_t length header */
-	SHA1_putc(sha1, n);
+	SHA1_putc(digest, 0x99);     /* ctb */
+	SHA1_putc(digest, n >> 8);   /* 2 uint8_t length header */
+	SHA1_putc(digest, n);
 
 	if (pk->version < 4)
-		SHA1_putc(sha1, 3);
+		SHA1_putc(digest, 3);
 	else
-		SHA1_putc(sha1, 4);
+		SHA1_putc(digest, 4);
 
 	a32 = pk->timestamp;
-	SHA1_putc(sha1, a32 >> 24 );
-	SHA1_putc(sha1, a32 >> 16 );
-	SHA1_putc(sha1, a32 >>  8 );
-	SHA1_putc(sha1, a32 >>  0 );
+	SHA1_putc(digest, a32 >> 24 );
+	SHA1_putc(digest, a32 >> 16 );
+	SHA1_putc(digest, a32 >>  8 );
+	SHA1_putc(digest, a32 >>  0 );
 
 	if (pk->version < 4) {
 		uint16_t a16;
@@ -126,16 +124,16 @@ static void ksign_calc_pk_keyid(struct hash_desc *sha1,
 				((pk->expiredate - pk->timestamp) / 86400L);
 		else
 			a16 = 0;
-		SHA1_putc(sha1, a16 >> 8);
-		SHA1_putc(sha1, a16 >> 0);
+		SHA1_putc(digest, a16 >> 8);
+		SHA1_putc(digest, a16 >> 0);
 	}
 
-	SHA1_putc(sha1, PUBKEY_ALGO_DSA);
+	SHA1_putc(digest, PUBKEY_ALGO_DSA);
 
 	for (i = 0; i < npkey; i++) {
-		SHA1_putc(sha1, nb[i] >> 8);
-		SHA1_putc(sha1, nb[i]);
-		SHA1_write(sha1, pp[i], nn[i]);
+		SHA1_putc(digest, nb[i] >> 8);
+		SHA1_putc(digest, nb[i]);
+		SHA1_write(digest, pp[i], nn[i]);
 		kfree(pp[i]);
 	}
 }
@@ -180,9 +178,10 @@ static int ksign_parse_key(const uint8_t *datap, const uint8_t *endp,
 			   ksign_public_key_actor_t pkfnx, void *fnxdata)
 {
 	struct ksign_public_key *pk;
-	struct hash_desc sha1;
+	struct crypto_shash *tfm;
+	struct shash_desc *digest;
 	unsigned long timestamp, expiredate;
-	uint8_t hash[SHA1_DIGEST_SIZE];
+	uint8_t sha1[SHA1_DIGEST_SIZE];
 	int i, version;
 	int is_v4 = 0;
 	int rc = 0;
@@ -242,23 +241,39 @@ static int ksign_parse_key(const uint8_t *datap, const uint8_t *endp,
 
 	rc = -ENOMEM;
 
-	sha1.tfm = crypto_alloc_hash("sha1", 0, 0);
-	if (!sha1.tfm)
-		goto cleanup;
-	sha1.flags = 0;
+	tfm = crypto_alloc_shash("sha1", 0, 0);
+	if (!tfm)
+		goto cleanup_pubkey;
 
-	ksign_calc_pk_keyid(&sha1, pk);
-	crypto_hash_final(&sha1, hash);
-	crypto_free_hash(sha1.tfm);
+	digest = kmalloc(sizeof(*digest) + crypto_shash_descsize(tfm),
+			 GFP_KERNEL);
+	if (!digest)
+		goto cleanup_tfm;
 
-	pk->keyid[0] = hash[12] << 24 | hash[13] << 16 | hash[14] << 8 | hash[15];
-	pk->keyid[1] = hash[16] << 24 | hash[17] << 16 | hash[18] << 8 | hash[19];
+	digest->tfm = tfm;
+	digest->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
+	rc = crypto_shash_init(digest);
+	if (rc < 0)
+		goto cleanup_sha1;
+
+	ksign_calc_pk_keyid(digest, pk);
+
+	rc = crypto_shash_final(digest, sha1);
+	if (rc < 0)
+		goto cleanup_sha1;
+
+	pk->keyid[0] = sha1[12] << 24 | sha1[13] << 16 | sha1[14] << 8 | sha1[15];
+	pk->keyid[1] = sha1[16] << 24 | sha1[17] << 16 | sha1[18] << 8 | sha1[19];
 
 	rc = 0;
 	if (pkfnx)
 		rc = pkfnx(pk, fnxdata);
 
-cleanup:
+cleanup_sha1:
+	kfree(digest);
+cleanup_tfm:
+	crypto_free_shash(tfm);
+cleanup_pubkey:
 	ksign_put_public_key(pk);
 	return rc;
 }

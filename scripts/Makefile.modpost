@@ -139,7 +139,7 @@ quiet_cmd_ld_ko_unsigned_o = LD [M]  $@
 $(modules:.ko=.ko.unsigned): %.ko.unsigned :%.o %.mod.o FORCE
 	$(call if_changed,ld_ko_unsigned_o)
 
-targets += $(modules)
+targets += $(modules:.ko=.ko.unsigned)
 
 # Step 7), sign the modules
 MODSECKEY = ./kernel.sec
@@ -150,14 +150,31 @@ KEYFLAGS += --default-key $(MODKEYNAME)
 endif
 
 ifeq ($(wildcard $(MODSECKEY))+$(wildcard $(MODPUBKEY)),$(MODSECKEY)+$(MODPUBKEY))
+ifeq ($(KBUILD_SRC),)
+	# no O= is being used
+	SCRIPTS_DIR := scripts
+else
+	SCRIPTS_DIR := $(KBUILD_SRC)/scripts
+endif
+SIGN_MODULES := 1
+else
+SIGN_MODULES := 0
+endif
+
+# only sign if it's an in-tree module
+ifneq ($(KBUILD_EXTMOD),)
+SIGN_MODULES := 0
+endif
+
+ifeq ($(SIGN_MODULES),1)
 quiet_cmd_sign_ko_ko_unsigned = SIGN [M] $@
       cmd_sign_ko_ko_unsigned = \
 		scripts/mod/mod-extract $< $@.digest && \
 		rm -f $@.digest.sig && \
 		gpg --batch --no-greeting $(KEYFLAGS) -b $@.digest && \
-		sh scripts/mod/modsign-note.sh $@.digest.sig | \
+		sh $(SCRIPTS_DIR)/mod/modsign-note.sh $@.digest.sig | \
 		  $(CC) -x assembler-with-cpp $(c_flags) $(CFLAGS_MODULE) -c -o $@.note.o - && \
-		$(LD) -r -o $@ $< $@.note.o
+		$(LD) -r $(LDFLAGS) -o $@ $< $@.note.o
 else
 quiet_cmd_sign_ko_ko_unsigned = NO SIGN [M] $@
       cmd_sign_ko_ko_unsigned = \

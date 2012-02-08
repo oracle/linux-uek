@@ -1009,20 +1009,36 @@ done
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 %if %{signmodules}
-  cp %{SOURCE19} .
-  pwd
-  gpg --homedir . --batch --gen-key %{SOURCE11}
+cp %{SOURCE19} .
+cat <<EOF
+###
+### Now generating a PGP key pair to be used for signing modules.
+###
+### If this takes a long time, you might wish to run rngd in the background to
+### keep the supply of entropy topped up.  It needs to be run as root, and
+### should use a hardware random number generator if one is available, eg:
+###
+###     rngd -r /dev/hwrandom
+###
+### If one isn't available, the pseudo-random number generator can be used:
+###
+###     rngd -r /dev/urandom
+###
+EOF
+gpg --homedir . --batch --gen-key %{SOURCE11}
+cat <<EOF
+###
+### Key pair generated.
+###
+EOF
 # if there're external keys to be included
-  if [ -s %{SOURCE19} ]; then
-      gpg --homedir . --no-default-keyring --keyring kernel.pub --import %{SOURCE19}
-  fi
-  gpg --homedir . --export --keyring kernel.pub Oracle > extract.pub
-  gcc -o scripts/bin2c scripts/bin2c.c
-  scripts/bin2c ksign_def_public_key __initdata < extract.pub >crypto/signature/key.h
+if [ -s %{SOURCE19} ]; then
+        gpg --homedir . --no-default-keyring --keyring kernel.pub --import %{SOURCE19}
+fi
+gpg --homedir . --export --keyring ./kernel.pub Oracle > extract.pub
+gcc -o scripts/bin2c scripts/bin2c.c
+scripts/bin2c ksign_def_public_key __initdata <extract.pub >crypto/signature/key.h
 %endif
- 	  	 
-
-cd ..
 
 ###
 ### build

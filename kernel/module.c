@@ -58,7 +58,7 @@
 #include <linux/jump_label.h>
 #include <linux/pfn.h>
 #include <linux/bsearch.h>
-#include <linux/module-verify.h>
+#include "module-verify.h"
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/module.h>
