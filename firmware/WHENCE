@@ -682,6 +682,9 @@ Driver: bnx2x: Broadcom Everest
 File: bnx2x/bnx2x-e1-6.2.9.0.fw
 File: bnx2x/bnx2x-e1h-6.2.9.0.fw
 File: bnx2x/bnx2x-e2-6.2.9.0.fw
+File: bnx2x/bnx2x-e2-7.0.20.0.fw
+File: bnx2x/bnx2x-e1-7.0.20.0.fw
+File: bnx2x/bnx2x-e1h-7.0.20.0.fw
 
 License:
   Copyright (c) 2007-2011 Broadcom Corporation
