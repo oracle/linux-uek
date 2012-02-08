@@ -2826,7 +2826,7 @@ static int gem_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
 			rc = 0;
 		}
 		break;
-	};
+	}
 
 	spin_lock_irqsave(&gp->lock, flags);
 	gem_put_cell(gp);
