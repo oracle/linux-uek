@@ -140,8 +140,8 @@ struct rds_connection {
 	int                     c_reconnect_warn;
 	int                     c_reconnect_err;
 
-        /* Qos support */
-        u8                      c_tos;
+	/* Qos support */
+	u8                      c_tos;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
@@ -621,13 +621,13 @@ struct rds_message *rds_cong_update_alloc(struct rds_connection *conn);
 int rds_conn_init(void);
 void rds_conn_exit(void);
 struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
-                                       struct rds_transport *trans,
-                                       u8 tos, gfp_t gfp);
+					struct rds_transport *trans,
+					u8 tos, gfp_t gfp);
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
-                               struct rds_transport *trans,
-                               u8 tos, gfp_t gfp);
+				struct rds_transport *trans,
+				u8 tos, gfp_t gfp);
 struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
-                                     struct rds_transport *trans, u8 tos);
+					struct rds_transport *trans, u8 tos);
 void rds_conn_shutdown(struct rds_connection *conn);
 void rds_conn_destroy(struct rds_connection *conn);
 void rds_conn_reset(struct rds_connection *conn);
