@@ -70,8 +70,8 @@ static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 /* rcu read lock must be held or the connection spinlock */
 static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 					      __be32 laddr, __be32 faddr,
-                                              struct rds_transport *trans,
-                                              u8 tos)
+					      struct rds_transport *trans,
+					      u8 tos)
 {
 	struct rds_connection *conn, *ret = NULL;
 
@@ -261,32 +261,32 @@ out:
 }
 
 struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
-                                       struct rds_transport *trans,
-                                       u8 tos, gfp_t gfp)
+					struct rds_transport *trans,
+					u8 tos, gfp_t gfp)
 {
 	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 0);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create);
 
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
-                                       struct rds_transport *trans,
-                                       u8 tos, gfp_t gfp)
+					struct rds_transport *trans,
+					u8 tos, gfp_t gfp)
 {
 	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 1);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
 
 struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
-                                        struct rds_transport *trans, u8 tos)
+					struct rds_transport *trans, u8 tos)
 {
-        struct rds_connection *conn;
-        struct hlist_head *head = rds_conn_bucket(laddr, faddr);
+	struct rds_connection *conn;
+	struct hlist_head *head = rds_conn_bucket(laddr, faddr);
 
-        rcu_read_lock();
-        conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
-        rcu_read_unlock();
+	rcu_read_lock();
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+	rcu_read_unlock();
 
-        return conn;
+	return conn;
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 

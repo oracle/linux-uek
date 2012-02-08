@@ -587,7 +587,7 @@ static void list_append_to_xlist(struct rds_ib_mr_pool *pool,
  * to free as many MRs as needed to get back to this limit.
  */
 static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
-			        int free_all, struct rds_ib_mr **ibmr_ret)
+				int free_all, struct rds_ib_mr **ibmr_ret)
 {
 	struct rds_ib_mr *ibmr, *next;
 	struct xlist_head clean_xlist;
@@ -602,7 +602,7 @@ static int rds_ib_flush_mr_pool(struct rds_ib_mr_pool *pool,
 
 	if (ibmr_ret) {
 		DEFINE_WAIT(wait);
-		while(!mutex_trylock(&pool->flush_lock)) {
+		while (!mutex_trylock(&pool->flush_lock)) {
 			ibmr = rds_ib_reuse_fmr(pool);
 			if (ibmr) {
 				*ibmr_ret = ibmr;
