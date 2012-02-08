@@ -129,14 +129,15 @@ static int rds_add_bound(struct rds_sock *rs, __be32 addr, __be16 *port)
 		struct rds_sock *rrs;
 		if (rover == 0)
 			rover++;
-		if (!(rrs = rds_bind_lookup(addr, cpu_to_be16(rover), rs))) {
+		rrs = rds_bind_lookup(addr, cpu_to_be16(rover), rs);
+
+		if (!rrs) {
 			*port = rs->rs_bound_port;
 			ret = 0;
 			rdsdebug("rs %p binding to %pI4:%d\n",
 			  rs, &addr, (int)ntohs(*port));
 			break;
-		}
-		else
+		} else
 			rds_sock_put(rrs);
 	} while (rover++ != last);
 
