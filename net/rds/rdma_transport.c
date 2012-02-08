@@ -88,7 +88,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure"
 				       "connection %pI4->%pI4\n", &conn->c_laddr, &conn->c_faddr);
 				ibic = conn->c_transport_data;
-				if (ibic && ibic->i_cm_id == cm_id) 
+				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn);
 			}
