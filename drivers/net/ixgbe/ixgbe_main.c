@@ -4263,8 +4263,6 @@ static inline bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 		adapter->num_rx_queues = f->indices;
 		adapter->num_tx_queues = f->indices;
 		ret = true;
-	} else {
-		ret = false;
 	}
 
 	return ret;
@@ -4285,7 +4283,7 @@ static inline bool ixgbe_set_fdir_queues(struct ixgbe_adapter *adapter)
 	bool ret = false;
 	struct ixgbe_ring_feature *f_fdir = &adapter->ring_feature[RING_F_FDIR];
 
-	f_fdir->indices = min((int)num_online_cpus(), f_fdir->indices);
+	f_fdir->indices = min_t(int, num_online_cpus(), f_fdir->indices);
 	f_fdir->mask = 0;
 
 	/*
