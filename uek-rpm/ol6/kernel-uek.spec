@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.22%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.1.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1691,6 +1691,211 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Feb  7 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.1.1.el6uek]
+- mm: compaction: check pfn_valid when entering a new MAX_ORDER_NR_PAGES block
+  during isolation for migration (Mel Gorman)
+- block: Disable autoprotect (Martin K. Petersen)
+- enic: do vlan cleanup (Jiri Pirko)
+- enic: Add support to configure hardware interrupt coalesce timers in a
+  platform independent way (Vasanthy Kolluri)
+- enic: Partial: Bug Fix: Fix hardware transmit queue indexing in
+  enic_poll_controller (Vasanthy Kolluri)
+- enic: Get/Set interrupt resource index for transmit and receive queues
+  (Vasanthy Kolluri)
+- enic: Log device configuration in detail during driver load (Vasanthy
+  Kolluri)
+- enic: Pass 802.1p bits for packets tagged with vlan zero (Vasanthy Kolluri)
+- enic: update to support 64 bit stats (stephen hemminger)
+- enic: Add support for MTU change via port profile on a dynamic vnic (Roopa
+  Prabhu)
+- drivers/net: Remove unnecessary semicolons (Joe Perches)
+- [SCSI] megaraid_sas Version to 5.40-rc1 and Changelog update (Adam Radford)
+- [SCSI] megaraid_sas: Add .change_queue_depth support (Adam Radford)
+- [SCSI] megaraid_sas: Fix FastPath I/O to work on degraded raid 1 (Adam
+  Radford)
+- bnx2x: add missing break in bnx2x_dcbnl_get_cap (Shmulik Ravid)
+- bnx2x: fix hw attention handling (Dmitry Kravkov)
+- bnx2x: prevent flooded warnning kernel info (Joe Jin)
+- Btrfs: don't reserve data with extents locked in btrfs_fallocate (Chris
+  Mason)
+- watchdog: hpwdt: prevent multiple "NMI occurred" messages (Naga Chumbalkar)
+- watchdog: hpwdt: add next gen HP servers (Thomas Mingarelli)
+- bnx2fc: Update copyright and bump version to 1.0.4 (Bhanu Prakash Gollapudi)
+- bnx2fc: Tx BDs cache in write tasks (Bhanu Prakash Gollapudi)
+- bnx2fc: Do not arm CQ when there are no CQEs (Bhanu Prakash Gollapudi)
+- bnx2fc: hold tgt lock when calling cmd_release (Bhanu Prakash Gollapudi)
+- bnx2fc: Enable support for sequence level error recovery (Bhanu Prakash
+  Gollapudi)
+- bnx2fc: HSI changes for tape (Bhanu Prakash Gollapudi)
+- bnx2fc: Handle REC_TOV error code from firmware (Bhanu Prakash Gollapudi)
+- bnx2fc: REC/SRR link service request and response handling (Bhanu Prakash
+  Gollapudi)
+- bnx2fc: Support 'sequence cleanup' task (Bhanu Prakash Gollapudi)
+- bnx2fc: Enable REC & CONF support for the session (Bhanu Prakash Gollapudi)
+- bnx2fc: Introduce interface structure for each vlan interface (Bhanu Prakash
+  Gollapudi)
+- bnx2fc: Replace printks with KERN_ALERT to KERN_ERR/KERN_INFO (Bhanu Prakash
+  Gollapudi)
+- cnic: Add VLAN ID as a parameter during netevent upcall (Michael Chan)
+- bnx2i: Updated copyright and bump version (Eddie Wai)
+- bnx2i: Modified to skip CNIC registration if iSCSI is not supported (Eddie
+  Wai)
+- bnx2i: Added the use of kthreads to handle SCSI cmd completion (Eddie Wai)
+- iscsi: Use struct scsi_lun in iscsi structs instead of u8[8] (Andy Grover)
+- cnic: Wait for all Context IDs to be deleted before sending FCOE_DESTROY_FUNC
+  (Michael Chan)
+- cnic: Fix Context ID space calculation (Michael Chan)
+- bnx2x: Implementation for netdev->ndo_fcoe_get_wwn (Vladislav Zolotarov)
+- bnx2: Fix endian swapping on firmware version string (Michael Chan)
+- bnx2: Close device if tx_timeout reset fails (Michael Chan)
+- bnx2: Read iSCSI config from shared memory during ->probe() (Michael Chan)
+- bnx2: Add MCP dump (Jeffrey Huang)
+- bnx2: remove unnecessary read of PCI_CAP_ID_EXP (Jon Mason)
+- cnic: Return proper error code if we fail to send netlink message (Michael
+  Chan)
+- cnic: Fix ring setup/shutdown code (Michael Chan)
+- cnic: Fix port_mode setting (Michael Chan)
+- cnic: Replace get_random_bytes() with random32() (Michael Chan)
+- cnic, bnx2i: Add support for new devices - 57800, 57810, and 57840 (Michael
+  Chan)
+- drivers/net: Remove casts of void * (Joe Perches)
+- bnx2fc: Fix kernel panic when deleting NPIV ports (Bhanu Prakash Gollapudi)
+- bnx2fc: scsi_dma_unmap() not invoked on IO completions (Bhanu Prakash
+  Gollapudi)
+- bnx2fc: host stats show the link speed 'unknown' on NIC partitioned
+  interfaces (Bhanu Prakash Gollapudi)
+- bnx2x: Update date to 2011/06/13 and version to 1.70.00-0 (Vladislav
+  Zolotarov)
+- bnx2x: PFC support for 578xx (Dmitry Kravkov)
+- bnx2x: Rename LASI registers to definitions in mdio.h (Yaniv Rosner)
+- bnx2x: Add a periodic task for link PHY events (Yaniv Rosner)
+- bnx2x: Adjust BCM84833 to BCM578xx (Yaniv Rosner)
+- bnx2x: Adjust ETS to 578xx (Yaniv Rosner)
+- bnx2x: Add new PHY 54616s (Yaniv Rosner)
+- bnx2x: Add Warpcore support for 578xx (Yaniv Rosner)
+- bnx2x: Add new MAC support for 578xx (Yaniv Rosner)
+- bnx2x: Cosmetic changes. (Dmitry Kravkov)
+- bnx2x: update DCB data during PMF migration (Dmitry Kravkov)
+- bnx2x: 57712 parity handling (Vladislav Zolotarov)
+- New 7.0 FW: bnx2x, cnic, bnx2i, bnx2fc (Vlad Zolotarov)
+- cnic: Move indexing function pointers to struct kcq_info (Michael Chan)
+- linux-firmware: Add a new FW 7.0.20.0 (Vladislav Zolotarov)
+- ixgbe: Fix FCOE memory leak for DDP packets (Alexander Duyck)
+- ixgbe: fix PHY link setup for 82599 (Emil Tantilov)
+- ixgbe: fix __ixgbe_notify_dca() bail out code (Don Skidmore)
+- ixgbe: convert to ndo_fix_features (Don Skidmore)
+- ixgbe: only enable WoL for magic packet by default (Andy Gospodarek)
+- ixgbe: remove ifdef check for non-existent define (Emil Tantilov)
+- ixgbe: Pass staterr instead of re-reading status and error bits from
+  descriptor (Alexander Duyck)
+- ixgbe: Move interrupt related values out of ring and into q_vector (Alexander
+  Duyck)
+- ixgbe: add structure for containing RX/TX rings to q_vector (Alexander Duyck)
+- ixgbe: inline the ixgbe_maybe_stop_tx function (Alexander Duyck)
+- ixgbe: Update ATR to use recorded TX queues instead of CPU for routing
+  (Alexander Duyck)
+- ixgbe: Make certain to initialize the fdir_perfect_lock in all cases
+  (Alexander Duyck)
+- e1000: always call e1000_check_for_link() on e1000_ce4100 MACs. (Nicolas
+  Schichan)
+- e1000: do vlan cleanup (Jiri Pirko)
+- e1000: convert to ndo_fix_features (Michał Mirosław)
+- e1000: remove unnecessary code (Greg Dietsche)
+- igbvf: do vlan cleanup (Jiri Pirko)
+- ixgbe: A fix to VF TX rate limit (Lior Levy)
+- ixgbe: Update method used for determining descriptor count for an skb
+  (Alexander Duyck)
+- ixgbe: Add one function that handles most of context descriptor setup
+  (Alexander Duyck)
+- ixgbe: Move all values that deal with count, next_to_use, next_to_clean to
+  u16 (Alexander Duyck)
+- ixgbe: Convert IXGBE_DESC_UNUSED from macro to static inline function
+  (Alexander Duyck)
+- ixgbe: pass adapter struct instead of netdev for interrupt data (Alexander
+  Duyck)
+- ixgbe: update driver version string (Don Skidmore)
+- ixgbe: fix ring assignment issues for SR-IOV and drop cases (Alexander Duyck)
+- ixgbe: disable RSC when Rx checksum is off (Emil Tantilov)
+- ixgbe: move reset code into a separate function (Emil Tantilov)
+- ixgbe: move setting RSC into a separate function (Emil Tantilov)
+- ixgbe: add support for nfc addition and removal of filters (Alexander Duyck)
+- ixgbe: add support for displaying ntuple filters via the nfc interface
+  (Alexander Duyck)
+- ixgbe: add basic support for setting and getting nfc controls (Alexander
+  Duyck)
+- ixgbe: update perfect filter framework to support retaining filters
+  (Alexander Duyck)
+- ixgbe: fix flags relating to perfect filters to support coexistence
+  (Alexander Duyck)
+- ixgbe: remove ntuple filtering (Alexander Duyck)
+- ixgbe: setup per CPU PCI pool for FCoE DDP (Vasu Dev)
+- ixgbe: add support for Dell CEM (Emil Tantilov)
+- bnx2x: Created bnx2x_sp (Vladislav Zolotarov)
+- bnx2x: removed unused variables (Dmitry Kravkov)
+- bnx2x: use bnx2x_reload_if_running (Dmitry Kravkov)
+- bnx2x: dump FW memory when appropriate msglvl is raised (Dmitry Kravkov)
+- bnx2x: do not call link update without HW notification (Yaniv Rosner)
+- bnx2x: disable fairness if ETS is enabled (Dmitry Kravkov)
+- bnx2x: avoid release of unrequested irqs (Dmitry Kravkov)
+- bnx2x: put start bd csum in separate function (Dmitry Kravkov)
+- bnx2x: remove references to intr_sem (Dmitry Kravkov)
+- bnx2x: do not allocate FCoE ring if disabled (Dmitry Kravkov)
+- bnx2x: Improve cl45 access methods (Yaniv Rosner)
+- bnx2x: Modify XGXS functions (Yaniv Rosner)
+- bnx2x: Fix link status sync (Yaniv Rosner)
+- bnx2x: Adjust BCM8726 module detection settings (Yaniv Rosner)
+- bnx2x: Fix grammar and relocate code (Yaniv Rosner)
+- bnx2x: Fix BCM84833 settings (Yaniv Rosner)
+- bnx2x: Fix over current port display (Yaniv Rosner)
+- bnx2x: Add TX fault check for fiber PHYs (Yaniv Rosner)
+- bnx2x: Change return status type (Yaniv Rosner)
+- bnx2x: Fix port type display (Yaniv Rosner)
+- bnx2x: Add new phy BCM8722 (Yaniv Rosner)
+- Revert "bnx2fc: Fix kernel panic when deleting NPIV ports" (Bob Picco)
+- Revert "bnx2fc: scsi_dma_unmap() not invoked on IO completions" (Bob Picco)
+- Revert "bnx2x: prevent flooded warnning kernel info" (Bob Picco)
+- Revert "bnx2x: fix hw attention handling" (Bob Picco)
+- Revert "bnx2x: add missing break in bnx2x_dcbnl_get_cap" (Bob Picco)
+- ixgbe: DCB and perfect filters can coexist (John Fastabend)
+- ixgbe: fix bit mask for DCB version (John Fastabend)
+- ixgbe: setup redirection table for multiple packet buffers (John Fastabend)
+- ixgbe: DCB 82598 devices, tx_idx and rx_idx swapped (John Fastabend)
+- ixgbe: DCB use existing TX and RX queues (John Fastabend)
+- ixgbe: configure minimal packet buffers to support TC (John Fastabend)
+- ixgbe: consolidate MRQC and MTQC handling (John Fastabend)
+- ixgbe: consolidate packet buffer allocation (John Fastabend)
+- ixgbe: dcbnl reduce duplicated code and indentation (John Fastabend)
+- ixgbevf: do vlan cleanup (Jiri Pirko)
+- ixgbevf: remove unnecessary ampersands (Stephen Hemminger)
+- ixgbevf: Fix bungled declaration of ixgbevf_mbx_ops (Greg Rose)
+- ixgbevf: Update the driver string (Greg Rose)
+- e1000e: workaround invalid Tx/Rx tail descriptor register write (Bruce Allan)
+- e1000e: Spurious interrupts & dropped packets with 82577/8/9 in half-duplex
+  (Bruce Allan)
+- e1000e: increase driver version number (Bruce Allan)
+- e1000e: alternate MAC address update (Bruce Allan)
+- e1000e: do not disable receiver on 82574/82583 (Bruce Allan)
+- e1000e: minor re-order of #include files (Bruce Allan)
+- e1000e: remove unnecessary check for NULL pointer (Bruce Allan)
+- intel drivers: repair missing flush operations (Jesse Brandeburg)
+- e1000e: use GFP_KERNEL allocations at init time (Jeff Kirsher)
+- e1000e: Add Jumbo Frame support to 82583 devices (Carolyn Wyborny)
+- e1000e: remove e1000_queue_stats (Eric Dumazet)
+- net: e1000e: Use is_multicast_ether_addr helper (Tobias Klauser)
+- e1000e: remove unnecessary reads of PCI_CAP_ID_EXP (Jon Mason)
+- e1000e: update driver version (Bruce Allan)
+- e1000e: Clear host wakeup bit on 82577/8 without touching PHY page 800 (Bruce
+  Allan)
+- e1000e: access multiple PHY registers on same page at the same time (Bruce
+  Allan)
+- e1000e: do not schedule the Tx queue until ready (Bruce Allan)
+- e1000e: log when swflag is cleared unexpectedly on ICH/PCH devices (Bruce
+  Allan)
+- e1000e: 82579 intermittently disabled during S0->Sx (Bruce Allan)
+- e1000e: disable far-end loopback mode on ESB2 (Bruce Allan)
+- net: introduce __netdev_alloc_skb_ip_align (Eric Dumazet)
+- update modsign (Maxim Uvarov) [Orabug: 13615815]
+
 * Tue Jan 31 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.0.22.el6uek]
 - xfs: fix acl count validation in xfs_acl_from_disk() (Dan Carpenter)
   CVE-2012-0038
