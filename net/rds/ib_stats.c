@@ -55,8 +55,8 @@ static char *rds_ib_stat_names[] = {
 	"ib_rx_refill_from_cq",
 	"ib_rx_refill_from_thread",
 	"ib_rx_alloc_limit",
-        "ib_rx_total_frags",
-        "ib_rx_total_incs",
+	"ib_rx_total_frags",
+	"ib_rx_total_incs",
 	"ib_rx_credit_updates",
 	"ib_ack_sent",
 	"ib_ack_send_failure",
@@ -71,9 +71,9 @@ static char *rds_ib_stat_names[] = {
 	"ib_rdma_mr_pool_depleted",
 	"ib_atomic_cswp",
 	"ib_atomic_fadd",
-        "ib_srq_lows",
-        "ib_srq_refills",
-        "ib_srq_empty_refills",
+	"ib_srq_lows",
+	"ib_srq_refills",
+	"ib_srq_empty_refills",
 };
 
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
