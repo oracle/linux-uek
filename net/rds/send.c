@@ -117,9 +117,9 @@ static void release_in_xmit(struct rds_connection *conn)
  * down the connection at a time.
  *   Pro:
  *      - tx queueing is a simple fifo list
- *   	- reassembly is optional and easily done by transports per conn
+ *      - reassembly is optional and easily done by transports per conn
  *      - no per flow rx lookup at all, straight to the socket
- *   	- less per-frag memory and wire overhead
+ *	- less per-frag memory and wire overhead
  *   Con:
  *      - queued acks can be delayed behind large messages
  *   Depends:
@@ -1047,8 +1047,8 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 
 	/* rds_conn_create has a spinlock that runs with IRQ off.
 	 * Caching the conn in the socket helps a lot. */
-        if (rs->rs_conn && rs->rs_conn->c_faddr == daddr &&
-                        rs->rs_tos == rs->rs_conn->c_tos)
+	if (rs->rs_conn && rs->rs_conn->c_faddr == daddr &&
+			rs->rs_tos == rs->rs_conn->c_tos)
 		conn = rs->rs_conn;
 	else {
 		conn = rds_conn_create_outgoing(rs->rs_bound_addr, daddr,
