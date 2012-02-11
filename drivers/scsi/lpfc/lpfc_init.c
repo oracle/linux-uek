@@ -9045,7 +9045,7 @@ lpfc_sli4_get_els_iocb_cnt(struct lpfc_hba *phba)
 int
 lpfc_write_firmware(struct lpfc_hba *phba, const struct firmware *fw)
 {
-	char fwrev[32];
+	char fwrev[FW_REV_STR_SIZE];
 	struct lpfc_grp_hdr *image = (struct lpfc_grp_hdr *)fw->data;
 	struct list_head dma_buffer_list;
 	int i, rc = 0;
