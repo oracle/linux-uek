@@ -8099,6 +8099,9 @@ lpfc_unset_hba(struct lpfc_hba *phba)
 	vport->load_flag |= FC_UNLOADING;
 	spin_unlock_irq(shost->host_lock);
 
+	kfree(phba->vpi_bmask);
+	kfree(phba->vpi_ids);
+
 	lpfc_stop_hba_timers(phba);
 
 	phba->pport->work_port_events = 0;
@@ -8630,6 +8633,9 @@ lpfc_pci_remove_one_s3(struct pci_dev *pdev)
 	kthread_stop(phba->worker_thread);
 	/* Final cleanup of txcmplq and reset the HBA */
 	lpfc_sli_brdrestart(phba);
+
+	kfree(phba->vpi_bmask);
+	kfree(phba->vpi_ids);
 
 	lpfc_stop_hba_timers(phba);
 	spin_lock_irq(&phba->hbalock);
