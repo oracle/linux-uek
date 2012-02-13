@@ -1161,11 +1161,11 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	status = ocfs2_mount_volume(sb);
-	if (osb->root_inode)
-		inode = igrab(osb->root_inode);
-
 	if (status < 0)
 		goto read_super_error;
+
+	if (osb->root_inode)
+		inode = igrab(osb->root_inode);
 
 	if (!inode) {
 		status = -EIO;
@@ -1175,6 +1175,7 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 
 	root = d_alloc_root(inode);
 	if (!root) {
+		iput(inode);
 		status = -ENOMEM;
 		mlog_errno(status);
 		goto read_super_error;
@@ -1226,9 +1227,6 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 
 read_super_error:
 	brelse(bh);
-
-	if (inode)
-		iput(inode);
 
 	if (osb) {
 		atomic_set(&osb->vol_state, VOLUME_DISABLED);
