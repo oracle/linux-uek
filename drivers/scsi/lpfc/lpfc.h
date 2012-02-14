@@ -848,7 +848,7 @@ struct lpfc_hba {
 	uint32_t lpfc_injerr_rapp_cnt;
 	uint32_t lpfc_injerr_rref_cnt;
 	sector_t lpfc_injerr_lba;
-#define LPFC_INJERR_LBA_OFF	(sector_t)0xffffffffffffffff
+#define LPFC_INJERR_LBA_OFF	(sector_t)(-1)
 
 	struct dentry *debug_slow_ring_trc;
 	struct lpfc_debugfs_trc *slow_ring_trc;

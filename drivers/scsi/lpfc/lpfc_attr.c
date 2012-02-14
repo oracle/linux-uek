@@ -351,7 +351,7 @@ lpfc_fwrev_show(struct device *dev, struct device_attribute *attr,
 	struct lpfc_hba   *phba = vport->phba;
 	uint32_t if_type;
 	uint8_t sli_family;
-	char fwrev[32];
+	char fwrev[FW_REV_STR_SIZE];
 	int len;
 
 	lpfc_decode_firmware_rev(phba, fwrev, 1);

@@ -2805,7 +2805,7 @@ lpfc_bsg_diag_loopback_run(struct fc_bsg_job *job)
 	struct lpfc_dmabufext *txbuffer = NULL;
 	struct list_head head;
 	struct lpfc_dmabuf  *curr;
-	uint16_t txxri, rxxri;
+	uint16_t txxri = 0, rxxri;
 	uint32_t num_bde;
 	uint8_t *ptr = NULL, *rx_databuf = NULL;
 	int rc = 0;

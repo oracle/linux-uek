@@ -8099,6 +8099,9 @@ lpfc_unset_hba(struct lpfc_hba *phba)
 	vport->load_flag |= FC_UNLOADING;
 	spin_unlock_irq(shost->host_lock);
 
+	kfree(phba->vpi_bmask);
+	kfree(phba->vpi_ids);
+
 	lpfc_stop_hba_timers(phba);
 
 	phba->pport->work_port_events = 0;
@@ -8631,6 +8634,9 @@ lpfc_pci_remove_one_s3(struct pci_dev *pdev)
 	/* Final cleanup of txcmplq and reset the HBA */
 	lpfc_sli_brdrestart(phba);
 
+	kfree(phba->vpi_bmask);
+	kfree(phba->vpi_ids);
+
 	lpfc_stop_hba_timers(phba);
 	spin_lock_irq(&phba->hbalock);
 	list_del_init(&vport->listentry);
@@ -9045,7 +9051,7 @@ lpfc_sli4_get_els_iocb_cnt(struct lpfc_hba *phba)
 int
 lpfc_write_firmware(struct lpfc_hba *phba, const struct firmware *fw)
 {
-	char fwrev[32];
+	char fwrev[FW_REV_STR_SIZE];
 	struct lpfc_grp_hdr *image = (struct lpfc_grp_hdr *)fw->data;
 	struct list_head dma_buffer_list;
 	int i, rc = 0;
