@@ -46,14 +46,14 @@ void dt_test_provide(void *arg, const dtrace_probedesc_t *desc)
 				  "dt_test", NULL, "test", 0, NULL);
 }
 
-int dt_test_enable(void *arg, dtrace_id_t id, void *parg)
+int _dt_test_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	enabled = 1;
 
 	return 0;
 }
 
-void dt_test_disable(void *arg, dtrace_id_t id, void *parg)
+void _dt_test_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	enabled = 0;
 }

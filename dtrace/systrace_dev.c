@@ -109,7 +109,7 @@ static dt_sys_call_t get_intercept(int sysnum)
 	}
 }
 
-int systrace_enable(void *arg, dtrace_id_t id, void *parg)
+int _systrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
 	int		enabled =
@@ -135,7 +135,7 @@ int systrace_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void systrace_disable(void *arg, dtrace_id_t id, void *parg)
+void _systrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
 	int		enabled =

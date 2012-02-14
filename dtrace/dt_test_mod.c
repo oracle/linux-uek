@@ -44,6 +44,8 @@ static const dtrace_pattr_t dt_test_attr = {
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
 
+DT_PROVIDER_POPS(dt_test)
+
 static dtrace_pops_t dt_test_pops = {
 	dt_test_provide,
 	NULL,
@@ -57,4 +59,4 @@ static dtrace_pops_t dt_test_pops = {
 	dt_test_destroy
 };
 
-DT_PROVIDER_MODULE(dt_test, DTRACE_PRIV_USER);
+DT_PROVIDER_MODULE(dt_test, DTRACE_PRIV_USER)

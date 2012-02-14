@@ -333,7 +333,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 	profile_create(interval, name, kind);
 }
 
-int profile_enable(void *arg, dtrace_id_t id, void *parg)
+int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t		*prof = parg;
 	cyc_omni_handler_t	omni;
@@ -367,7 +367,7 @@ int profile_enable(void *arg, dtrace_id_t id, void *parg)
 	return 0;
 }
 
-void profile_disable(void *arg, dtrace_id_t id, void *parg)
+void _profile_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t	*prof = parg;
 
