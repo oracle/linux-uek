@@ -32,12 +32,12 @@ static struct kmem_cache *srb_cachep;
 /*
  * Module parameter information and variables
  */
-int ql4xdisablesysfsboot = 1;
+int ql4xdisablesysfsboot;
 module_param(ql4xdisablesysfsboot, int, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(ql4xdisablesysfsboot,
 		"Set to disable exporting boot targets to sysfs\n"
-		" 0 - Export boot targets\n"
-		" 1 - Do not export boot targets (Default)");
+		" 0 - Export boot targets (Default)"
+		" 1 - Do not export boot targets");
 
 int ql4xdontresethba = 0;
 module_param(ql4xdontresethba, int, S_IRUGO | S_IWUSR);
