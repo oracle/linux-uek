@@ -23,8 +23,8 @@ typedef struct sdt_probe {
 extern dtrace_mprovider_t sdt_providers[];
 
 extern void sdt_provide_module(void *, struct module *);
-extern int sdt_enable(void *, dtrace_id_t, void *);
-extern void sdt_disable(void *, dtrace_id_t, void *);
+extern int _sdt_enable(void *, dtrace_id_t, void *);
+extern void _sdt_disable(void *, dtrace_id_t, void *);
 extern void sdt_getargdesc(void *, dtrace_id_t, void *, dtrace_argdesc_t *);
 extern uint64_t sdt_getarg(void *, dtrace_id_t, void *, int, int);
 extern void sdt_destroy(void *, dtrace_id_t, void *);

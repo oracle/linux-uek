@@ -2135,8 +2135,36 @@ extern int dtrace_badattr(const dtrace_attribute_t *);
 extern int dtrace_badname(const char *);
 extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 
+#define DT_PROVIDER_POPS(name)						\
+  static unsigned int	name##_refc = 0;				\
+									\
+  static int name##_enable(void *arg, dtrace_id_t id, void *parg)	\
+  {									\
+	int		rc = 0;						\
+									\
+	if (name##_refc++ == 0)	{					\
+		if ((rc = try_module_get(THIS_MODULE)) == 0)		\
+			return 0;					\
+	}								\
+									\
+	if ((rc  = _##name##_enable(arg, id, parg)) != 0) {		\
+		if (--name##_refc == 0)					\
+			module_put(THIS_MODULE);			\
+	}								\
+									\
+	return rc;							\
+  }									\
+									\
+  static void name##_disable(void *arg, dtrace_id_t id, void *parg)	\
+  {									\
+	_##name##_disable(arg, id, parg);				\
+									\
+	if (--name##_refc == 0)						\
+		module_put(THIS_MODULE);				\
+  }
+
 #define DT_PROVIDER_MODULE(name, priv)					\
-  dtrace_provider_id_t name##_id;					\
+  dtrace_provider_id_t	name##_id;					\
 									\
   static int __init name##_init(void)					\
   {									\

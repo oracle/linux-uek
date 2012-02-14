@@ -109,6 +109,8 @@ static dtrace_pattr_t iscsi_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_ISA },
 };
 
+DT_PROVIDER_POPS(sdt)
+
 static dtrace_pops_t sdt_pops = {
 	NULL,
 	sdt_provide_module,

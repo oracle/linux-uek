@@ -27,8 +27,8 @@
 #include "dtrace.h"
 
 extern void systrace_provide(void *, const dtrace_probedesc_t *);
-extern int systrace_enable(void *arg, dtrace_id_t, void *);
-extern void systrace_disable(void *arg, dtrace_id_t, void *);
+extern int _systrace_enable(void *arg, dtrace_id_t, void *);
+extern void _systrace_disable(void *arg, dtrace_id_t, void *);
 extern void systrace_destroy(void *, dtrace_id_t, void *);
 
 extern dtrace_provider_id_t	syscall_id;
