@@ -200,7 +200,7 @@ DEFINE_GUEST_HANDLE_STRUCT(xenpf_getidletime_t);
 #define XEN_PM_CX   0
 #define XEN_PM_PX   1
 #define XEN_PM_TX   2
-
+#define XEN_PM_PDC  3
 /* Px sub info type */
 #define XEN_PX_PCT   1
 #define XEN_PX_PSS   2
@@ -286,6 +286,7 @@ struct xen_processor_performance {
 };
 DEFINE_GUEST_HANDLE_STRUCT(xen_processor_performance);
 
+DEFINE_GUEST_HANDLE(uint32_t);
 struct xenpf_set_processor_pminfo {
 	/* IN variables */
 	uint32_t id;    /* ACPI CPU ID */
@@ -293,6 +294,7 @@ struct xenpf_set_processor_pminfo {
 	union {
 		struct xen_processor_power          power;/* Cx: _CST/_CSD */
 		struct xen_processor_performance    perf; /* Px: _PPC/_PCT/_PSS/_PSD */
+		GUEST_HANDLE(uint32_t)              pdc;
 	};
 };
 DEFINE_GUEST_HANDLE_STRUCT(xenpf_set_processor_pminfo);
