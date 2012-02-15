@@ -1481,13 +1481,11 @@ void rds_ib_srq_rearm(struct work_struct *work)
 static void rds_ib_srq_event(struct ib_event *event,
 				void *ctx)
 {
-	struct ib_srq_attr srq_attr;
 	struct rds_ib_device *rds_ibdev = ctx;
 
 	switch (event->event) {
 	case IB_EVENT_SRQ_ERR:
-		printk(KERN_ERR "RDS: event IB_EVENT_SRQ_ERR unhandled\n",
-				event->event);
+		printk(KERN_ERR "RDS: event IB_EVENT_SRQ_ERR unhandled\n");
 		break;
 	case IB_EVENT_SRQ_LIMIT_REACHED:
 		rds_ib_stats_inc(s_ib_srq_lows);
@@ -1520,8 +1518,8 @@ int rds_ib_srq_init(struct rds_ib_device *rds_ibdev)
 				&srq_init_attr);
 
 	if (IS_ERR(rds_ibdev->srq->s_srq)) {
-		printk(KERN_WARNING "RDS: ib_create_srq failed %d\n",
-			ERR_PTR(rds_ibdev->srq->s_srq));
+		printk(KERN_WARNING "RDS: ib_create_srq failed %ld\n",
+			PTR_ERR(rds_ibdev->srq->s_srq));
 		return 1;
 	}
 
