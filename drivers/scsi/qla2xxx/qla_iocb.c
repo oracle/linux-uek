@@ -384,9 +384,10 @@ qla2x00_start_scsi(srb_t *sp)
 		else
 			req->cnt = req->length -
 			    (req->ring_index - cnt);
+		/* If still no head room then bail out */
+		if (req->cnt < (req_cnt + 2))
+			goto queuing_error;
 	}
-	if (req->cnt < (req_cnt + 2))
-		goto queuing_error;
 
 	/* Build command packet */
 	req->current_outstanding_cmd = handle;
@@ -1499,9 +1500,9 @@ qla24xx_start_scsi(srb_t *sp)
 		else
 			req->cnt = req->length -
 				(req->ring_index - cnt);
+		if (req->cnt < (req_cnt + 2))
+			goto queuing_error;
 	}
-	if (req->cnt < (req_cnt + 2))
-		goto queuing_error;
 
 	/* Build command packet. */
 	req->current_outstanding_cmd = handle;
@@ -1714,10 +1715,9 @@ qla24xx_dif_start_scsi(srb_t *sp)
 		else
 			req->cnt = req->length -
 				(req->ring_index - cnt);
+		if (req->cnt < (req_cnt + 2))
+			goto queuing_error;
 	}
-
-	if (req->cnt < (req_cnt + 2))
-		goto queuing_error;
 
 	status |= QDSS_GOT_Q_SPACE;
 
@@ -2341,10 +2341,9 @@ sufficient_dsds:
 			else
 				req->cnt = req->length -
 					(req->ring_index - cnt);
+			if (req->cnt < (req_cnt + 2))
+				goto queuing_error;
 		}
-
-		if (req->cnt < (req_cnt + 2))
-			goto queuing_error;
 
 		ctx = sp->u.scmd.ctx =
 		    mempool_alloc(ha->ctx_mempool, GFP_ATOMIC);
