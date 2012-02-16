@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.1.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.2.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1691,6 +1691,15 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Feb 14 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.2.1.el6uek]
+- config: enable dm-nfs (Guru Anbalagane)
+- Update lpfc version for 8.3.5.58.2p driver release (Chuck Anderson)
+- Fix build warning with uninitialized variable (Chuck Anderson)
+- Fix warning on i386 system (CR 123966) (Chuck Anderson)
+- Fix mailbox and vpi memory leaks causing crashes (CR 126818) (Chuck Anderson)
+- Fixed unbounded firmware revision string from port caused the system panic
+  (CR 126560) (Chuck Anderson)
+
 * Tue Feb  7 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.1.1.el6uek]
 - mm: compaction: check pfn_valid when entering a new MAX_ORDER_NR_PAGES block
   during isolation for migration (Mel Gorman)
