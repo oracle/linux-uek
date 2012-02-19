@@ -83,16 +83,19 @@ typedef u_int8_t         rds_tos_t;
  *	R_Key along in an RDS extension header.
  *	The cmsg_data is a struct rds_get_mr_args,
  *	the same as for the GET_MR setsockopt.
- * RDS_CMSG_RDMA_STATUS (recvmsg)
- *	Returns the status of a completed RDMA operation.
+ * RDS_CMSG_RDMA_SEND_STATUS (recvmsg)
+ *	Returns the status of a completed RDMA/async send operation.
  */
 #define RDS_CMSG_RDMA_ARGS		1
 #define RDS_CMSG_RDMA_DEST		2
 #define RDS_CMSG_RDMA_MAP		3
-#define RDS_CMSG_RDMA_STATUS		4
+#define RDS_CMSG_RDMA_SEND_STATUS	4
 #define RDS_CMSG_CONG_UPDATE		5
 #define RDS_CMSG_ATOMIC_FADD		6
 #define RDS_CMSG_ATOMIC_CSWP		7
+#define RDS_CMSG_MASKED_ATOMIC_FADD     8
+#define RDS_CMSG_MASKED_ATOMIC_CSWP     9
+#define RDS_CMSG_ASYNC_SEND             10
 
 #define RDS_INFO_FIRST			10000
 #define RDS_INFO_COUNTERS		10000
@@ -278,16 +281,20 @@ struct rds_reset {
 	struct in_addr	dst;
 };
 
-struct rds_rdma_notify {
+struct rds_asend_args {
+	u_int64_t       user_token;
+};
+
+struct rds_rdma_send_notify {
 	u_int64_t	user_token;
 	int32_t		status;
 };
 
-#define RDS_RDMA_SUCCESS	0
+#define RDS_RDMA_SEND_SUCCESS	0
 #define RDS_RDMA_REMOTE_ERROR	1
-#define RDS_RDMA_CANCELED	2
-#define RDS_RDMA_DROPPED	3
-#define RDS_RDMA_OTHER_ERROR	4
+#define RDS_RDMA_SEND_CANCELED	2
+#define RDS_RDMA_SEND_DROPPED	3
+#define RDS_RDMA_SEND_OTHER_ERROR	4
 
 /*
  * Common set of flags for all RDMA related structs
