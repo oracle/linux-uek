@@ -48,7 +48,7 @@ static void rds_iw_send_rdma_complete(struct rds_message *rm,
 		return;
 
 	case IB_WC_SUCCESS:
-		notify_status = RDS_RDMA_SUCCESS;
+		notify_status = RDS_RDMA_SEND_SUCCESS;
 		break;
 
 	case IB_WC_REM_ACCESS_ERR:
@@ -56,7 +56,7 @@ static void rds_iw_send_rdma_complete(struct rds_message *rm,
 		break;
 
 	default:
-		notify_status = RDS_RDMA_OTHER_ERROR;
+		notify_status = RDS_RDMA_SEND_OTHER_ERROR;
 		break;
 	}
 	rds_rdma_send_complete(rm, notify_status);
