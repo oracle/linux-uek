@@ -53,7 +53,7 @@ static void rds_ib_send_complete(struct rds_message *rm,
 		return;
 
 	case IB_WC_SUCCESS:
-		notify_status = RDS_RDMA_SUCCESS;
+		notify_status = RDS_RDMA_SEND_SUCCESS;
 		break;
 
 	case IB_WC_REM_ACCESS_ERR:
@@ -61,7 +61,7 @@ static void rds_ib_send_complete(struct rds_message *rm,
 		break;
 
 	default:
-		notify_status = RDS_RDMA_OTHER_ERROR;
+		notify_status = RDS_RDMA_SEND_OTHER_ERROR;
 		break;
 	}
 	complete(rm, notify_status);
@@ -75,6 +75,10 @@ static void rds_ib_send_unmap_data(struct rds_ib_connection *ic,
 		ib_dma_unmap_sg(ic->i_cm_id->device,
 				op->op_sg, op->op_nents,
 				DMA_TO_DEVICE);
+
+	if (op->op_notifier)
+		rds_ib_send_complete(container_of(op, struct rds_message, data),
+			wc_status, rds_asend_complete);
 }
 
 static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
