@@ -295,7 +295,7 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 {
 	struct rds_notifier *notifier;
-	struct rds_rdma_notify cmsg;
+	struct rds_rdma_send_notify cmsg;
 	unsigned int count = 0, max_messages = ~0U;
 	unsigned long flags;
 	LIST_HEAD(copy);
@@ -319,7 +319,7 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 	while (!list_empty(&rs->rs_notify_queue) && count < max_messages) {
 		notifier = list_entry(rs->rs_notify_queue.next,
 				struct rds_notifier, n_list);
-		list_move(&notifier->n_list, &copy);
+		list_move_tail(&notifier->n_list, &copy);
 		count++;
 	}
 	spin_unlock_irqrestore(&rs->rs_lock, flags);
@@ -334,11 +334,18 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 			cmsg.user_token = notifier->n_user_token;
 			cmsg.status = notifier->n_status;
 
-			err = put_cmsg(msghdr, SOL_RDS, RDS_CMSG_RDMA_STATUS,
+			err = put_cmsg(msghdr, SOL_RDS,
+					RDS_CMSG_RDMA_SEND_STATUS,
 				       sizeof(cmsg), &cmsg);
 			if (err)
 				break;
 		}
+
+		/* If this is the last failed op, re-open the connection for
+		   traffic */
+		if (notifier->n_conn &&
+			notifier->n_conn->c_last_failed_op == notifier)
+				notifier->n_conn->c_last_failed_op = NULL;
 
 		list_del_init(&notifier->n_list);
 		kfree(notifier);
