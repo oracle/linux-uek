@@ -569,13 +569,13 @@ int rds_cmsg_rdma_args(struct rds_sock *rs, struct rds_message *rm,
 		 * would have to use GFP_ATOMIC there, and don't want to deal
 		 * with failed allocations.
 		 */
-		op->op_notifier = kmalloc(sizeof(struct rds_notifier), GFP_KERNEL);
+		op->op_notifier = kzalloc(sizeof(struct rds_notifier), GFP_KERNEL);
 		if (!op->op_notifier) {
 			ret = -ENOMEM;
 			goto out;
 		}
 		op->op_notifier->n_user_token = args->user_token;
-		op->op_notifier->n_status = RDS_RDMA_SUCCESS;
+		op->op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
 	}
 
 	/* The cookie contains the R_Key of the remote memory region, and
@@ -774,14 +774,14 @@ int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
 		 * would have to use GFP_ATOMIC there, and don't want to deal
 		 * with failed allocations.
 		 */
-		rm->atomic.op_notifier = kmalloc(sizeof(*rm->atomic.op_notifier), GFP_KERNEL);
+		rm->atomic.op_notifier = kzalloc(sizeof(*rm->atomic.op_notifier), GFP_KERNEL);
 		if (!rm->atomic.op_notifier) {
 			ret = -ENOMEM;
 			goto err;
 		}
 
 		rm->atomic.op_notifier->n_user_token = args->user_token;
-		rm->atomic.op_notifier->n_status = RDS_RDMA_SUCCESS;
+		rm->atomic.op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
 	}
 
 	rm->atomic.op_rkey = rds_rdma_cookie_key(args->cookie);
