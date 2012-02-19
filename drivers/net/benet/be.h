@@ -296,6 +296,8 @@ struct be_vf_cfg {
 	u32 vf_tx_rate;
 };
 
+#define BE_FLAGS_LINK_STATUS_INIT		1
+
 struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
@@ -344,6 +346,7 @@ struct be_adapter {
 	struct delayed_work work;
 	u16 work_counter;
 
+	u32 flags;
 	/* Ethtool knobs and info */
 	char fw_ver[FW_VER_LEN];
 	int if_handle;		/* Used to configure filtering */
@@ -531,7 +534,7 @@ static inline bool be_error(struct be_adapter *adapter)
 
 extern void be_cq_notify(struct be_adapter *adapter, u16 qid, bool arm,
 		u16 num_popped);
-extern void be_link_status_update(struct be_adapter *adapter, u32 link_status);
+extern void be_link_status_update(struct be_adapter *adapter, u8 link_status);
 extern void be_parse_stats(struct be_adapter *adapter);
 extern int be_load_fw(struct be_adapter *adapter, u8 *func);
 #endif				/* BE_H */
