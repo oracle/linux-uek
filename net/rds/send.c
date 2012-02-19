@@ -59,6 +59,7 @@ void rds_send_reset(struct rds_connection *conn)
 {
 	struct rds_message *rm, *tmp;
 	unsigned long flags;
+	int     failed_op = 0;
 
 	if (conn->c_xmit_rm) {
 		rm = conn->c_xmit_rm;
@@ -88,8 +89,34 @@ void rds_send_reset(struct rds_connection *conn)
 	list_for_each_entry_safe(rm, tmp, &conn->c_retrans, m_conn_item) {
 		set_bit(RDS_MSG_ACK_REQUIRED, &rm->m_flags);
 		set_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags);
+
+		/* check for failed op */
+		if (!failed_op && (rm->rdma.op_active ||
+			(rm->data.op_active && rm->data.op_notifier)))
+				failed_op = 1;
 	}
 	list_splice_init(&conn->c_retrans, &conn->c_send_queue);
+
+	/* if there was a failed op, flush all async ops */
+	if (failed_op) {
+		list_for_each_entry_safe(rm, tmp, &conn->c_send_queue,
+				m_conn_item) {
+			if (rm->rdma.op_active && rm->rdma.op_notifier) {
+				conn->c_last_failed_op =
+					rm->rdma.op_notifier;
+				rm->rdma.op_notifier->n_conn = conn;
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+			}
+
+			if (rm->data.op_active && rm->data.op_notifier) {
+				conn->c_last_failed_op =
+					rm->data.op_notifier;
+				rm->data.op_notifier->n_conn = conn;
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+			}
+		}
+	}
+
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 }
 
@@ -253,18 +280,10 @@ restart:
 			if (!rm)
 				break;
 
-			/* Unfortunately, the way Infiniband deals with
-			 * RDMA to a bad MR key is by moving the entire
-			 * queue pair to error state. We cold possibly
-			 * recover from that, but right now we drop the
-			 * connection.
-			 * Therefore, we never retransmit messages with RDMA ops.
-			 */
-			if (rm->rdma.op_active
-			 && test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags)) {
+			if (test_bit(RDS_MSG_FLUSH, &rm->m_flags)) {
 				spin_lock_irqsave(&conn->c_lock, flags);
 				if (test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags))
-					list_move(&rm->m_conn_item, &to_be_dropped);
+					list_move_tail(&rm->m_conn_item, &to_be_dropped);
 				spin_unlock_irqrestore(&conn->c_lock, flags);
 				continue;
 			}
@@ -404,7 +423,7 @@ over_batch:
 		/* irqs on here, so we can put(), unlike above */
 		list_for_each_entry(rm, &to_be_dropped, m_conn_item)
 			rds_message_put(rm);
-		rds_send_remove_from_sock(&to_be_dropped, RDS_RDMA_DROPPED);
+		rds_send_remove_from_sock(&to_be_dropped, RDS_RDMA_SEND_DROPPED);
 	}
 
 	/*
@@ -458,6 +477,39 @@ static inline int rds_send_is_acked(struct rds_message *rm, u64 ack,
 		return is_acked(rm, ack);
 	return be64_to_cpu(rm->m_inc.i_hdr.h_sequence) <= ack;
 }
+
+void rds_asend_complete(struct rds_message *rm, int status)
+{
+	struct rds_sock *rs = NULL;
+	struct rm_data_op *so;
+	struct rds_notifier *notifier;
+	unsigned long flags;
+
+	spin_lock_irqsave(&rm->m_rs_lock, flags);
+
+	so = &rm->data;
+	if (test_bit(RDS_MSG_ON_SOCK, &rm->m_flags)
+		&& so->op_active && so->op_notifier) {
+		notifier = so->op_notifier;
+		rs = rm->m_rs;
+		debug_sock_hold(rds_rs_to_sk(rs));
+
+		notifier->n_status = status;
+		spin_lock(&rs->rs_lock);
+		list_add_tail(&notifier->n_list, &rs->rs_notify_queue);
+		spin_unlock(&rs->rs_lock);
+
+		so->op_notifier = NULL;
+	}
+
+	spin_unlock_irqrestore(&rm->m_rs_lock, flags);
+
+	if (rs) {
+		rds_wake_sk_sleep(rs);
+		debug_sock_put(rds_rs_to_sk(rs));
+	}
+}
+EXPORT_SYMBOL_GPL(rds_asend_complete);
 
 /*
  * This is pretty similar to what happens below in the ACK
@@ -544,6 +596,7 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm, int status)
 {
 	struct rm_rdma_op *ro;
 	struct rm_atomic_op *ao;
+	struct rm_data_op *so;
 
 	ro = &rm->rdma;
 	if (ro->op_active && ro->op_notify && ro->op_notifier) {
@@ -557,6 +610,13 @@ __rds_send_complete(struct rds_sock *rs, struct rds_message *rm, int status)
 		ao->op_notifier->n_status = status;
 		list_add_tail(&ao->op_notifier->n_list, &rs->rs_notify_queue);
 		ao->op_notifier = NULL;
+	}
+
+	so = &rm->data;
+	if (so->op_active && so->op_notifier) {
+		so->op_notifier->n_status = status;
+		list_add_tail(&so->op_notifier->n_list, &rs->rs_notify_queue);
+		so->op_notifier = NULL;
 	}
 
 	/* No need to wake the app - caller does this */
@@ -644,21 +704,34 @@ void rds_send_remove_from_sock(struct list_head *messages, int status)
 		spin_lock(&rs->rs_lock);
 
 		if (test_and_clear_bit(RDS_MSG_ON_SOCK, &rm->m_flags)) {
-			struct rm_rdma_op *ro = &rm->rdma;
-			struct rds_notifier *notifier;
-
 			list_del_init(&rm->m_sock_item);
 			rds_send_sndbuf_remove(rs, rm);
 
-			if (ro->op_active && ro->op_notifier
-			    && (ro->op_notify || (ro->op_recverr && status))) {
-				notifier = ro->op_notifier;
+			if (rm->rdma.op_active && rm->rdma.op_notifier) {
+				struct rm_rdma_op *ro = &rm->rdma;
+				struct rds_notifier *notifier;
+
+				if (ro->op_notify
+					|| (ro->op_recverr && status)) {
+					notifier = ro->op_notifier;
+					list_add_tail(&notifier->n_list,
+							&rs->rs_notify_queue);
+					if (!notifier->n_status)
+						notifier->n_status = status;
+					rm->rdma.op_notifier = NULL;
+				}
+			} else if (rm->data.op_active && rm->data.op_notifier) {
+				struct rm_data_op *so = &rm->data;
+				struct rds_notifier *notifier;
+
+				notifier = so->op_notifier;
 				list_add_tail(&notifier->n_list,
 						&rs->rs_notify_queue);
 				if (!notifier->n_status)
 					notifier->n_status = status;
-				rm->rdma.op_notifier = NULL;
+				rm->data.op_notifier = NULL;
 			}
+
 			was_on_sock = 1;
 			rm->m_rs = NULL;
 		}
@@ -712,7 +785,7 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 
 	/* now remove the messages from the sock list as needed */
-	rds_send_remove_from_sock(&list, RDS_RDMA_SUCCESS);
+	rds_send_remove_from_sock(&list, RDS_RDMA_SEND_SUCCESS);
 }
 EXPORT_SYMBOL_GPL(rds_send_drop_acked);
 
@@ -769,7 +842,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 		spin_lock_irqsave(&rm->m_rs_lock, flags);
 
 		spin_lock(&rs->rs_lock);
-		__rds_send_complete(rs, rm, RDS_RDMA_CANCELED);
+		__rds_send_complete(rs, rm, RDS_RDMA_SEND_CANCELED);
 		spin_unlock(&rs->rs_lock);
 
 		rm->m_rs = NULL;
@@ -794,7 +867,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 		spin_lock_irqsave(&rm->m_rs_lock, flags);
 
 		spin_lock(&rs->rs_lock);
-		__rds_send_complete(rs, rm, RDS_RDMA_CANCELED);
+		__rds_send_complete(rs, rm, RDS_RDMA_SEND_CANCELED);
 		spin_unlock(&rs->rs_lock);
 
 		rm->m_rs = NULL;
@@ -859,6 +932,26 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		rm->m_inc.i_hdr.h_sequence = cpu_to_be64(conn->c_next_tx_seq++);
 		list_add_tail(&rm->m_conn_item, &conn->c_send_queue);
 		set_bit(RDS_MSG_ON_CONN, &rm->m_flags);
+
+		/* This can race with rds_send_reset. If an async op sneaked
+		 * in after resetting the send state, flush it too.
+		 */
+		if (conn->c_last_failed_op) {
+			if (rm->rdma.op_active && rm->rdma.op_notifier) {
+				conn->c_last_failed_op =
+					rm->rdma.op_notifier;
+				rm->rdma.op_notifier->n_conn = conn;
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+			}
+
+			if (rm->data.op_active && rm->data.op_notifier) {
+				conn->c_last_failed_op =
+					rm->data.op_notifier;
+				rm->data.op_notifier->n_conn = conn;
+				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+			}
+		}
+
 		spin_unlock(&conn->c_lock);
 
 		rdsdebug("queued msg %p len %d, rs %p bytes %d seq %llu\n",
@@ -913,6 +1006,10 @@ static int rds_rm_size(struct msghdr *msg, int data_len)
 			size += sizeof(struct scatterlist);
 			break;
 
+		case RDS_CMSG_ASYNC_SEND:
+			cmsg_groups |= 4;
+			break;
+
 		default:
 			return -EINVAL;
 		}
@@ -922,10 +1019,29 @@ static int rds_rm_size(struct msghdr *msg, int data_len)
 	size += ceil(data_len, PAGE_SIZE) * sizeof(struct scatterlist);
 
 	/* Ensure (DEST, MAP) are never used with (ARGS, ATOMIC) */
-	if (cmsg_groups == 3)
+	if (cmsg_groups == 3 || cmsg_groups > 4)
 		return -EINVAL;
 
 	return size;
+}
+
+static int rds_cmsg_asend(struct rds_sock *rs, struct rds_message *rm,
+		struct cmsghdr *cmsg)
+{
+	struct rds_asend_args *args;
+
+	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct rds_asend_args)))
+		return -EINVAL;
+
+	args = CMSG_DATA(cmsg);
+	rm->data.op_notifier = kzalloc(sizeof(*rm->data.op_notifier), GFP_KERNEL);
+	if (!rm->data.op_notifier)
+		return -ENOMEM;
+
+	rm->data.op_notifier->n_user_token = args->user_token;
+	rm->data.op_notifier->n_status = RDS_RDMA_SEND_SUCCESS;
+
+	return 0;
 }
 
 static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
@@ -961,6 +1077,10 @@ static int rds_cmsg_send(struct rds_sock *rs, struct rds_message *rm,
 		case RDS_CMSG_ATOMIC_CSWP:
 		case RDS_CMSG_ATOMIC_FADD:
 			ret = rds_cmsg_atomic(rs, rm, cmsg);
+			break;
+
+		case RDS_CMSG_ASYNC_SEND:
+			ret = rds_cmsg_asend(rs, rm, cmsg);
 			break;
 
 		default:
@@ -1059,6 +1179,12 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			goto out;
 		}
 		rs->rs_conn = conn;
+	}
+
+	/* Not accepting new sends until all the failed ops have been reaped */
+	if (conn->c_last_failed_op) {
+		ret = -EAGAIN;
+		goto out;
 	}
 
 	if (rm->rdma.op_active && !conn->c_trans->xmit_rdma) {

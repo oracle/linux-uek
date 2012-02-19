@@ -142,6 +142,8 @@ struct rds_connection {
 
 	/* Qos support */
 	u8                      c_tos;
+
+	struct rds_notifier     *c_last_failed_op;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
@@ -299,6 +301,7 @@ static inline u32 rds_rdma_cookie_offset(rds_rdma_cookie_t cookie)
 #define RDS_MSG_RETRANSMITTED	5
 #define RDS_MSG_MAPPED		6
 #define RDS_MSG_PAGEVEC		7
+#define RDS_MSG_FLUSH           8
 
 struct rds_message {
 	atomic_t		m_refcount;
@@ -365,6 +368,7 @@ struct rds_message {
 		} rdma;
 		struct rm_data_op {
 			unsigned int		op_active:1;
+			struct rds_notifier     *op_notifier;
 			unsigned int		op_nents;
 			unsigned int		op_count;
 			struct scatterlist	*op_sg;
@@ -383,6 +387,7 @@ struct rds_notifier {
 	struct list_head	n_list;
 	uint64_t		n_user_token;
 	int			n_status;
+	struct rds_connection   *n_conn;
 };
 
 /**
@@ -760,6 +765,7 @@ void rds_rdma_free_op(struct rm_rdma_op *ro);
 void rds_atomic_free_op(struct rm_atomic_op *ao);
 void rds_rdma_send_complete(struct rds_message *rm, int wc_status);
 void rds_atomic_send_complete(struct rds_message *rm, int wc_status);
+void rds_asend_complete(struct rds_message *rm, int wc_status);
 int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
 		    struct cmsghdr *cmsg);
 
