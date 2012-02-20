@@ -48,6 +48,7 @@
 #include <linux/memblock.h>
 #include <linux/seq_file.h>
 #include <linux/crash_dump.h>
+#include <linux/hugetlb.h>
 
 #include <trace/events/xen.h>
 
@@ -766,6 +767,9 @@ static int __xen_pgd_walk(struct mm_struct *mm, pgd_t *pgd,
 					goto out;
 
 				if (pmd_none(pmd[pmdidx]))
+					continue;
+
+				if (pmd_huge(pmd[pmdidx]))
 					continue;
 
 				pte = pmd_page(pmd[pmdidx]);
