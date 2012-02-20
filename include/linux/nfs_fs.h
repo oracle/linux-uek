@@ -459,6 +459,10 @@ extern ssize_t nfs_file_direct_read(struct kiocb *iocb,
 extern ssize_t nfs_file_direct_write(struct kiocb *iocb,
 			const struct iovec *iov, unsigned long nr_segs,
 			loff_t pos);
+extern ssize_t nfs_file_direct_read_iter(struct kiocb *iocb,
+					 struct iov_iter *iter, loff_t pos);
+extern ssize_t nfs_file_direct_write_iter(struct kiocb *iocb,
+					  struct iov_iter *iter, loff_t pos);
 
 /*
  * linux/fs/nfs/dir.c
