@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.2.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.3.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1675,6 +1675,18 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Feb 22 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.3.1.el5uek]
+- Btrfs: clear the extent uptodate bits during parent transid failures (Chris
+  Mason)
+- Btrfs: add extra sanity checks on the path names in btrfs_mksubvol (Chris
+  Mason)
+- Btrfs: make sure we update latest_bdev (Chris Mason)
+- Btrfs: improve error handling for btrfs_insert_dir_item callers (Chris Mason)
+- fnic: return zero on fnic_reset() success (Joe Jin)
+- [SCSI] libfc: improve flogi retries to avoid lport stuck (Vasu Dev)
+- [SCSI] libfc: avoid exchanges collision during lport reset (Vasu Dev)
+- igbvf: update version number (Williams, Mitch A)
+
 * Tue Feb 14 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.2.1.el5uek]
 - config: enable dm-nfs (Guru Anbalagane)
 - Update lpfc version for 8.3.5.58.2p driver release (Chuck Anderson)
