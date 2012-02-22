@@ -104,6 +104,9 @@ enum {
 	IB_USER_VERBS_CMD_ALLOC_SHPD = IB_USER_VERBS_CMD_ORACLE_ADDS_START,
 					/* =46 */
 	IB_USER_VERBS_CMD_SHARE_PD, /* =47 */
+	IB_USER_VERBS_CMD_REG_MR_RELAXED, /* =48 */
+	IB_USER_VERBS_CMD_DEREG_MR_RELAXED, /* =49 */
+	IB_USER_VERBS_CMD_FLUSH_RELAXED_MR, /* =50 */
 };
 
 enum {
@@ -372,6 +375,11 @@ struct ib_uverbs_alloc_mw_resp {
 struct ib_uverbs_dealloc_mw {
 	__u32 mw_handle;
 };
+
+struct ib_uverbs_flush_relaxed_mr {
+	__u32 pd_handle;
+};
+
 
 struct ib_uverbs_create_comp_channel {
 	__u64 response;

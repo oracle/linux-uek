@@ -293,6 +293,8 @@ int ib_register_device(struct ib_device *device,
 	INIT_LIST_HEAD(&device->client_data_list);
 	spin_lock_init(&device->event_handler_lock);
 	spin_lock_init(&device->client_data_lock);
+	device->relaxed_pd = NULL;
+	INIT_LIST_HEAD(&device->relaxed_pool_list);
 
 	ret = read_port_table_lengths(device);
 	if (ret) {

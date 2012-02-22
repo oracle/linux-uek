@@ -1282,7 +1282,7 @@ static int srp_map_finish_fmr(struct srp_map_state *state,
 	u64 io_addr = 0;
 
 	fmr = ib_fmr_pool_map_phys(ch->fmr_pool, state->pages,
-				   state->npages, io_addr);
+				   state->npages, io_addr, NULL);
 	if (IS_ERR(fmr))
 		return PTR_ERR(fmr);
 
