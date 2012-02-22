@@ -785,6 +785,7 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev);
 
 struct ib_fmr *mlx4_ib_fmr_alloc(struct ib_pd *pd, int mr_access_flags,
 				  struct ib_fmr_attr *fmr_attr);
+int mlx4_ib_set_fmr_pd(struct ib_fmr *ibfmr, struct ib_pd *pd);
 int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list, int npages,
 			 u64 iova);
 int mlx4_ib_unmap_fmr(struct list_head *fmr_list);
