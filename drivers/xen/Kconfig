@@ -118,11 +118,6 @@ config XEN_SYS_HYPERVISOR
 	 virtual environment, /sys/hypervisor will still be present,
 	 but will have no xen contents.
 
-config ACPI_PROCESSOR_XEN
-	tristate
-	depends on XEN_DOM0 && ACPI_PROCESSOR && CPU_FREQ
-	default m
-
 config XEN_XENBUS_FRONTEND
 	tristate
 

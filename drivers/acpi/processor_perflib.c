@@ -65,7 +65,7 @@ static DEFINE_MUTEX(performance_mutex);
  *  0 -> cpufreq low level drivers initialized -> consider _PPC values
  *  1 -> ignore _PPC totally -> forced by user through boot param
  */
-int ignore_ppc = -1;
+static int ignore_ppc = -1;
 module_param(ignore_ppc, int, 0644);
 MODULE_PARM_DESC(ignore_ppc, "If the frequency of your machine gets wrongly" \
 		 "limited by BIOS, this should help");
@@ -386,7 +386,7 @@ static int acpi_processor_get_performance_states(struct acpi_processor *pr)
 	return result;
 }
 
-int acpi_processor_get_performance_info(struct acpi_processor *pr)
+static int acpi_processor_get_performance_info(struct acpi_processor *pr)
 {
 	int result = 0;
 	acpi_status status = AE_OK;
@@ -492,7 +492,7 @@ int acpi_processor_notify_smm(struct module *calling_module)
 
 EXPORT_SYMBOL(acpi_processor_notify_smm);
 
-int acpi_processor_get_psd(struct acpi_processor	*pr)
+static int acpi_processor_get_psd(struct acpi_processor	*pr)
 {
 	int result = 0;
 	acpi_status status = AE_OK;

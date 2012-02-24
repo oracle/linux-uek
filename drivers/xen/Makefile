@@ -20,9 +20,6 @@ obj-$(CONFIG_SWIOTLB_XEN)		+= swiotlb-xen.o
 obj-$(CONFIG_XEN_DOM0)			+= pci.o
 obj-$(CONFIG_XEN_PRIVCMD)		+= xen-privcmd.o
 obj-$(CONFIG_XEN_PCIDEV_BACKEND)	+= xen-pciback/
-ifdef CONFIG_ACPI_PROCESSOR_XEN
-obj-$(CONFIG_ACPI_PROCESSOR)		+= acpi_processor.o
-endif
 
 xen-evtchn-y				:= evtchn.o
 xen-gntdev-y				:= gntdev.o

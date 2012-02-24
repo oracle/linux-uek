@@ -65,7 +65,6 @@ struct acpi_processor_cx {
 	u64 time;
 	u8 bm_sts_skip;
 	char desc[ACPI_CX_DESC_LEN];
-	struct acpi_power_register reg;
 };
 
 struct acpi_processor_power {
@@ -240,13 +239,6 @@ extern void acpi_processor_unregister_performance(struct
          if a _PPC object exists, rmmod is disallowed then */
 int acpi_processor_notify_smm(struct module *calling_module);
 
-void acpi_processor_install_hotplug_notify(void);
-void acpi_processor_uninstall_hotplug_notify(void);
-int acpi_processor_register_driver(void);
-void acpi_processor_unregister_driver(void);
-int acpi_processor_add(struct acpi_device *device);
-int acpi_processor_remove(struct acpi_device *device, int type);
-void acpi_processor_notify(struct acpi_device *device, u32 event);
 /* for communication between multiple parts of the processor kernel module */
 DECLARE_PER_CPU(struct acpi_processor *, processors);
 extern struct acpi_processor_errata errata;
@@ -280,20 +272,13 @@ static inline void acpi_processor_ffh_cstate_enter(struct acpi_processor_cx
 }
 #endif
 
-/* in processor_xen.c */
-extern void xen_processor_driver_register(void);
-
-
 /* in processor_perflib.c */
 
 #ifdef CONFIG_CPU_FREQ
-extern int ignore_ppc;
 void acpi_processor_ppc_init(void);
 void acpi_processor_ppc_exit(void);
 int acpi_processor_ppc_has_changed(struct acpi_processor *pr, int event_flag);
-int acpi_processor_get_performance_info(struct acpi_processor *pr);
-int acpi_processor_get_psd(struct acpi_processor *pr);
-int acpi_processor_get_bios_limit(int cpu, unsigned int *limit);
+extern int acpi_processor_get_bios_limit(int cpu, unsigned int *limit);
 #else
 static inline void acpi_processor_ppc_init(void)
 {

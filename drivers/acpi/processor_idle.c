@@ -427,7 +427,7 @@ static int acpi_processor_get_power_info_cst(struct acpi_processor *pr)
 		if (reg->space_id != ACPI_ADR_SPACE_SYSTEM_IO &&
 		    (reg->space_id != ACPI_ADR_SPACE_FIXED_HARDWARE))
 			continue;
-		memcpy(&(cx.reg), reg, sizeof(*reg));
+
 		/* There should be an easy way to extract an integer... */
 		obj = &(element->package.elements[1]);
 		if (obj->type != ACPI_TYPE_INTEGER)
@@ -1077,7 +1077,7 @@ int acpi_processor_cst_has_changed(struct acpi_processor *pr)
 	cpuidle_pause_and_lock();
 	cpuidle_disable_device(&pr->power.dev);
 	acpi_processor_get_power_info(pr);
-	if (pr->flags.power && (cpuidle_get_driver() == &acpi_idle_driver)) {
+	if (pr->flags.power) {
 		acpi_processor_setup_cpuidle(pr);
 		ret = cpuidle_enable_device(&pr->power.dev);
 	}
@@ -1125,7 +1125,7 @@ int __cpuinit acpi_processor_power_init(struct acpi_processor *pr,
 	 * Note that we use previously set idle handler will be used on
 	 * platforms that only support C1.
 	 */
-	if (pr->flags.power && (cpuidle_get_driver() == &acpi_idle_driver)) {
+	if (pr->flags.power) {
 		acpi_processor_setup_cpuidle(pr);
 		if (cpuidle_register_device(&pr->power.dev))
 			return -EIO;
