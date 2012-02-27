@@ -12,7 +12,7 @@
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
  * | Module Init and Probe        |       0x0116       |     0xfa 	|
- * | Mailbox commands             |       0x1129       |		|
+ * | Mailbox commands             |       0x112b       |		|
  * | Device Discovery             |       0x2084       |		|
  * | Queue Command and IO tracing |       0x302f       | 0x3008,0x302d  |
  * |			          |                    |     0x302e     |
