@@ -19,7 +19,6 @@
 
 #include <linux/cpumask.h>
 #include <linux/cpufreq.h>
-#include <linux/freezer.h>
 #include <linux/kernel.h>
 #include <linux/kthread.h>
 #include <linux/init.h>
@@ -386,21 +385,30 @@ err_out:
  * and CPUfreq drivers to load up and parse the Pxx and Cxx information
  * before we attempt to read it.
  */
+static void xen_processor_timeout(unsigned long arg)
+{
+	wake_up_process((struct task_struct *)arg);
+}
 static int xen_processor_thread_func(void *dummy)
 {
+	struct timer_list timer;
 	int err = 0;
-	unsigned long t = POLL_TIMER;
 
-	set_freezable();
-	for (;;) {
-		long timeout = schedule_timeout_interruptible(t);
-
-		if (timeout == -ERESTARTSYS || kthread_should_stop())
+	setup_deferrable_timer_on_stack(&timer, xen_processor_timeout,
+					(unsigned long)current);
+	do {
+		__set_current_state(TASK_INTERRUPTIBLE);
+		mod_timer(&timer, jiffies + POLL_TIMER);
+		schedule();
+		err = xen_processor_check();
+		if (err != -EBUSY)
 			break;
-		try_to_freeze();
-		if (xen_processor_check() != -EBUSY)
-			t = MAX_SCHEDULE_TIMEOUT;
-	}
+	} while (!kthread_should_stop());
+
+	if (err)
+		pr_err(DRV_NAME ": Failed to upload data (%d)!\n", err);
+	del_timer_sync(&timer);
+	destroy_timer_on_stack(&timer);
 	return 0;
 }
 
