@@ -1512,6 +1512,7 @@ ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --remove-kernel %{KVERREL}%{?1:.%{1}} || exit $?\
+   rm -f /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 fi\
 %{nil}
 
