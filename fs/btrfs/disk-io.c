@@ -1125,8 +1125,8 @@ struct extent_buffer *read_tree_block(struct btrfs_root *root, u64 bytenr,
 
 }
 
-int clean_tree_block(struct btrfs_trans_handle *trans, struct btrfs_root *root,
-		     struct extent_buffer *buf)
+void clean_tree_block(struct btrfs_trans_handle *trans, struct btrfs_root *root,
+		      struct extent_buffer *buf)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
 
@@ -1143,7 +1143,6 @@ int clean_tree_block(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 			clear_extent_buffer_dirty(buf);
 		}
 	}
-	return 0;
 }
 
 static void __setup_root(u32 nodesize, u32 leafsize, u32 sectorsize,
