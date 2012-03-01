@@ -259,8 +259,8 @@ int btrfs_add_ordered_extent_compress(struct inode *inode, u64 file_offset,
  * ordered extent, it is split across multiples.
  */
 void btrfs_add_ordered_sum(struct inode *inode,
-			  struct btrfs_ordered_extent *entry,
-			  struct btrfs_ordered_sum *sum)
+			   struct btrfs_ordered_extent *entry,
+			   struct btrfs_ordered_sum *sum)
 {
 	struct btrfs_ordered_inode_tree *tree;
 
@@ -470,7 +470,7 @@ void btrfs_free_logged_extents(struct btrfs_root *log, u64 transid)
  * used to drop a reference on an ordered extent.  This will free
  * the extent if the last reference is dropped
  */
-int btrfs_put_ordered_extent(struct btrfs_ordered_extent *entry)
+void btrfs_put_ordered_extent(struct btrfs_ordered_extent *entry)
 {
 	struct list_head *cur;
 	struct btrfs_ordered_sum *sum;
@@ -488,7 +488,6 @@ int btrfs_put_ordered_extent(struct btrfs_ordered_extent *entry)
 		}
 		kmem_cache_free(btrfs_ordered_extent_cache, entry);
 	}
-	return 0;
 }
 
 /*
@@ -705,7 +704,7 @@ void btrfs_start_ordered_extent(struct inode *inode,
 /*
  * Used to wait on ordered extents across a large range of bytes.
  */
-int btrfs_wait_ordered_range(struct inode *inode, u64 start, u64 len)
+void btrfs_wait_ordered_range(struct inode *inode, u64 start, u64 len)
 {
 	u64 end;
 	u64 orig_end;
@@ -764,7 +763,6 @@ again:
 			break;
 		end--;
 	}
-	return 0;
 }
 
 /*
@@ -1030,8 +1028,7 @@ out:
  * is already flushing things and force the IO down ourselves.
  */
 void btrfs_add_ordered_operation(struct btrfs_trans_handle *trans,
-				struct btrfs_root *root,
-				struct inode *inode)
+				 struct btrfs_root *root, struct inode *inode)
 {
 	struct btrfs_transaction *cur_trans = trans->transaction;
 	u64 last_mod;
@@ -1043,7 +1040,7 @@ void btrfs_add_ordered_operation(struct btrfs_trans_handle *trans,
 	 * commit, we can safely return without doing anything
 	 */
 	if (last_mod < root->fs_info->last_trans_committed)
-		return 0;
+		return;
 
 	spin_lock(&root->fs_info->ordered_extent_lock);
 	if (list_empty(&BTRFS_I(inode)->ordered_operations)) {

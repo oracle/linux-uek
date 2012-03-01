@@ -215,14 +215,13 @@ int btrfs_pin_log_trans(struct btrfs_root *root)
  * indicate we're done making changes to the log tree
  * and wake up anyone waiting to do a sync
  */
-int btrfs_end_log_trans(struct btrfs_root *root)
+void btrfs_end_log_trans(struct btrfs_root *root)
 {
 	if (atomic_dec_and_test(&root->log_writers)) {
 		smp_mb();
 		if (waitqueue_active(&root->log_writer_wait))
 			wake_up(&root->log_writer_wait);
 	}
-	return 0;
 }
 
 
@@ -380,12 +379,11 @@ insert:
 		u32 found_size;
 		found_size = btrfs_item_size_nr(path->nodes[0],
 						path->slots[0]);
-		if (found_size > item_size) {
+		if (found_size > item_size)
 			btrfs_truncate_item(trans, root, path, item_size, 1);
-		} else if (found_size < item_size) {
-			ret = btrfs_extend_item(trans, root, path,
-						item_size - found_size);
-		}
+		else if (found_size < item_size)
+			btrfs_extend_item(trans, root, path,
+					  item_size - found_size);
 	} else if (ret) {
 		return ret;
 	}
@@ -2243,8 +2241,8 @@ static int wait_log_commit(struct btrfs_trans_handle *trans,
 	return 0;
 }
 
-static int wait_for_writer(struct btrfs_trans_handle *trans,
-			   struct btrfs_root *root)
+static void wait_for_writer(struct btrfs_trans_handle *trans,
+			    struct btrfs_root *root)
 {
 	DEFINE_WAIT(wait);
 	while (root->fs_info->last_trans_log_full_commit !=
@@ -2258,7 +2256,6 @@ static int wait_for_writer(struct btrfs_trans_handle *trans,
 		mutex_lock(&root->log_mutex);
 		finish_wait(&root->log_writer_wait, &wait);
 	}
-	return 0;
 }
 
 /*

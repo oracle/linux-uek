@@ -1554,8 +1554,6 @@ static void scrub_submit(struct scrub_ctx *sctx)
 	scrub_pending_bio_inc(sctx);
 
 	submit_bio(READ, sbio->bio);
-
-	return 0;
 }
 
 static int scrub_add_page_to_bio(struct scrub_ctx *sctx,

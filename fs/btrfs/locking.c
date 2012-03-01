@@ -204,6 +204,7 @@ again:
 	WARN_ON(atomic_read(&eb->spinning_writers));
 	atomic_inc(&eb->spinning_writers);
 	atomic_inc(&eb->write_locks);
+	eb->lock_owner = current->pid;
 }
 
 /*
