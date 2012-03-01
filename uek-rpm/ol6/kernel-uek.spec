@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.3.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.4.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,11 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Mar  1 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.4.1.el6uek]
+- sysfs: restore upstream sysfs code (Guru Anbalagane)
+- rpm: remove symlink on uninstall (Maxim Uvarov) [Orabug: 13791936]
+- Btrfs: fix casting error in scrub reada code (Chris Mason)
+
 * Wed Feb 22 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.3.1.el6uek]
 - Btrfs: clear the extent uptodate bits during parent transid failures (Chris
   Mason)
