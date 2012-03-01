@@ -479,8 +479,7 @@ void extent_io_tree_panic(struct extent_io_tree *tree, int err)
  *
  * the range [start, end] is inclusive.
  *
- * This takes the tree lock, and returns < 0 on error, > 0 if any of the
- * bits were already set, or zero if none of the bits were already set.
+ * This takes the tree lock, and returns 0 on success and < 0 on error.
  */
 int clear_extent_bit(struct extent_io_tree *tree, u64 start, u64 end,
 		     int bits, int wake, int delete,
@@ -493,7 +492,6 @@ int clear_extent_bit(struct extent_io_tree *tree, u64 start, u64 end,
 	struct rb_node *node;
 	u64 last_end;
 	int err;
-	int set = 0;
 	int clear = 0;
 
 	if (delete)
@@ -596,7 +594,7 @@ hit_next:
 		if (wake)
 			wake_up(&state->wq);
 
-		set |= clear_state_bit(tree, prealloc, &bits, wake);
+		clear_state_bit(tree, prealloc, &bits, wake);
 
 		prealloc = NULL;
 		goto out;
@@ -616,7 +614,7 @@ out:
 	if (prealloc)
 		free_extent_state(prealloc);
 
-	return set;
+	return 0;
 
 search_again:
 	if (start > end)
@@ -1113,8 +1111,6 @@ hit_next:
 		set_state_bits(tree, prealloc, &bits);
 		cache_state(prealloc, cached_state);
 		clear_state_bit(tree, prealloc, &clear_bits, 0);
-
-		merge_state(tree, prealloc);
 		prealloc = NULL;
 		goto out;
 	}
