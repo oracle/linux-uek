@@ -759,29 +759,6 @@ static int device_add_class_symlinks(struct device *dev)
 			goto out_subsys;
 	}
 
-#ifdef CONFIG_SYSFS_DEPRECATED
-	if (dev->parent && device_is_not_partition(dev)) {
-		struct device *parent = dev->parent;
-		char *class_name;
-
-		/*
-		 * stacked class devices have the 'device' link
-		 * pointing to the bus device instead of the parent
-		 */
-		while (parent->class && !parent->bus && parent->parent)
-			parent = parent->parent;
-
-		class_name = make_class_name(dev->class->name,
-						&dev->kobj);
-		if (class_name)
-			error = sysfs_create_link(&dev->parent->kobj,
-						&dev->kobj, class_name);
-		kfree(class_name);
-		if (error)
-			goto out_subsys;
-	}
-#endif
-
 #ifdef CONFIG_BLOCK
 	/* /sys/block has directories and does not need symlinks */
 	if (sysfs_deprecated && dev->class == &block_class)
@@ -810,18 +787,6 @@ static void device_remove_class_symlinks(struct device *dev)
 	if (!dev->class)
 		return;
 
-#ifdef CONFIG_SYSFS_DEPRECATED
-       if (dev->parent && device_is_not_partition(dev)) {
-               char *class_name;
-
-               class_name = make_class_name(dev->class->name, &dev->kobj);
-               if (class_name) {
-                       sysfs_remove_link(&dev->parent->kobj, class_name);
-                       kfree(class_name);
-               }
-               sysfs_remove_link(&dev->kobj, "device");
-       }
-#endif
 	if (dev->parent && device_is_not_partition(dev))
 		sysfs_remove_link(&dev->kobj, "device");
 	sysfs_remove_link(&dev->kobj, "subsystem");
