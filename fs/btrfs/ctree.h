@@ -2763,8 +2763,9 @@ ssize_t btrfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
 /* super.c */
 int btrfs_parse_options(struct btrfs_root *root, char *options);
 int btrfs_sync_fs(struct super_block *sb, int wait);
+void btrfs_printk(struct btrfs_fs_info *fs_info, const char *fmt, ...);
 void __btrfs_std_error(struct btrfs_fs_info *fs_info, const char *function,
-		     unsigned int line, int errno);
+		     unsigned int line, int errno, const char *fmt, ...);
 
 void __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root, const char *function,
@@ -2779,7 +2780,14 @@ do {								\
 #define btrfs_std_error(fs_info, errno)				\
 do {								\
 	if ((errno))						\
-		__btrfs_std_error((fs_info), __func__, __LINE__, (errno));\
+		__btrfs_std_error((fs_info), __func__,		\
+				   __LINE__, (errno), NULL);	\
+} while (0)
+
+#define btrfs_error(fs_info, errno, fmt, args...)		\
+do {								\
+	__btrfs_std_error((fs_info), __func__, __LINE__,	\
+			  (errno), fmt, ##args);		\
 } while (0)
 
 /* acl.c */
