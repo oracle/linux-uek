@@ -1060,27 +1060,7 @@ again:
 	page_end = page_offset(pages[i_done - 1]) + PAGE_CACHE_SIZE;
 
 	lock_extent_bits(&BTRFS_I(inode)->io_tree,
-			 page_start, page_end - 1, 0, &cached_state,
-			 GFP_NOFS);
-	ordered = btrfs_lookup_first_ordered_extent(inode, page_end - 1);
-	if (ordered &&
-	    ordered->file_offset + ordered->len > page_start &&
-	    ordered->file_offset < page_end) {
-		btrfs_put_ordered_extent(ordered);
-		unlock_extent_cached(&BTRFS_I(inode)->io_tree,
-				     page_start, page_end - 1,
-				     &cached_state, GFP_NOFS);
-		for (i = 0; i < i_done; i++) {
-			unlock_page(pages[i]);
-			page_cache_release(pages[i]);
-		}
-		btrfs_wait_ordered_range(inode, page_start,
-					 page_end - page_start);
-		goto again;
-	}
-	if (ordered)
-		btrfs_put_ordered_extent(ordered);
-
+			 page_start, page_end - 1, 0, &cached_state);
 	clear_extent_bit(&BTRFS_I(inode)->io_tree, page_start,
 			  page_end - 1, EXTENT_DIRTY | EXTENT_DELALLOC |
 			  EXTENT_DO_ACCOUNTING | EXTENT_DEFRAG, 0, 0,
@@ -2565,13 +2545,13 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 	   another, and lock file content */
 	while (1) {
 		struct btrfs_ordered_extent *ordered;
-		lock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
+		lock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1);
 		ordered = btrfs_lookup_first_ordered_extent(src, off + len - 1);
 		if (!ordered &&
 		    !test_range_bit(&BTRFS_I(src)->io_tree, off, off + len - 1,
 				    EXTENT_DELALLOC, 0, NULL))
 			break;
-		unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
+		unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1);
 		if (ordered)
 			btrfs_put_ordered_extent(ordered);
 		btrfs_wait_ordered_range(src, off, len);
@@ -2824,7 +2804,7 @@ next:
 	ret = 0;
 out:
 	btrfs_release_path(path);
-	unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
+	unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1);
 out_unlock:
 	mutex_unlock(&src->i_mutex);
 	mutex_unlock(&inode->i_mutex);
