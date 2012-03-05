@@ -47,7 +47,7 @@
 static struct extent_io_ops btree_extent_io_ops;
 static void end_workqueue_fn(struct btrfs_work *work);
 static void free_fs_root(struct btrfs_root *root);
-static void btrfs_check_super_valid(struct btrfs_fs_info *fs_info,
+static int btrfs_check_super_valid(struct btrfs_fs_info *fs_info,
 				    int read_only);
 static int btrfs_destroy_ordered_operations(struct btrfs_root *root);
 static int btrfs_destroy_ordered_extents(struct btrfs_root *root);
@@ -2033,7 +2033,12 @@ struct btrfs_root *open_ctree(struct super_block *sb,
 	/* check FS state, whether FS is broken. */
 	fs_info->fs_state |= btrfs_super_flags(disk_super);
 
-	btrfs_check_super_valid(fs_info, sb->s_flags & MS_RDONLY);
+	ret = btrfs_check_super_valid(fs_info, sb->s_flags & MS_RDONLY);
+	if (ret) {
+		printk(KERN_ERR "btrfs: superblock contains fatal errors\n");
+		err = ret;
+		goto fail_alloc;
+	}
 
 	/*
 	 * run through our array of backup supers and setup
@@ -3221,15 +3226,23 @@ out:
 	return 0;
 }
 
-static void btrfs_check_super_valid(struct btrfs_fs_info *fs_info,
+static int btrfs_check_super_valid(struct btrfs_fs_info *fs_info,
 			      int read_only)
 {
-	if (read_only)
-		return;
+	if (btrfs_super_csum_type(fs_info->super_copy) >= ARRAY_SIZE(btrfs_csum_sizes)) {
+		printk(KERN_ERR "btrfs: unsupported checksum algorithm\n");
+		return -EINVAL;
+	}
 
-	if (fs_info->fs_state & BTRFS_SUPER_FLAG_ERROR)
+	if (read_only)
+		return 0;
+
+	if (fs_info->fs_state & BTRFS_SUPER_FLAG_ERROR) {
 		printk(KERN_WARNING "warning: mount fs with errors, "
 		       "running btrfsck is recommended\n");
+	}
+
+	return 0;
 }
 
 int btrfs_error_commit_super(struct btrfs_root *root)
