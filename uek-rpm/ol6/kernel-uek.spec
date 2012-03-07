@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.4.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.5.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,11 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Mar  6 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.5.1.el6uek]
+- proc: make sure mem_open() doesn't pin the target's memory (Oleg Nesterov) 
+- proc: mem_release() should check mm != NULL (Oleg Nesterov) [orabug 13811116]
+- proc: unify mem_read() and mem_write() (Oleg Nesterov)
+
 * Thu Mar  1 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.4.1.el6uek]
 - sysfs: restore upstream sysfs code (Guru Anbalagane)
 - rpm: remove symlink on uninstall (Maxim Uvarov) [Orabug: 13791936]
