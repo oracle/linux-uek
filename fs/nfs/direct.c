@@ -88,6 +88,7 @@ struct nfs_direct_req {
 	int			flags;
 #define NFS_ODIRECT_DO_COMMIT		(1)	/* an unstable reply was received */
 #define NFS_ODIRECT_RESCHED_WRITES	(2)	/* write verification failed */
+#define NFS_ODIRECT_MARK_DIRTY		(4)	/* mark pages dirty */
 	struct nfs_writeverf	verf;		/* unstable write verifier */
 };
 
@@ -254,9 +255,10 @@ static void nfs_direct_read_release(void *calldata)
 	} else {
 		dreq->count += data->res.count;
 		spin_unlock(&dreq->lock);
-		nfs_direct_dirty_pages(data->pagevec,
-				data->args.pgbase,
-				data->res.count);
+		if (dreq->flags & NFS_ODIRECT_MARK_DIRTY)
+			nfs_direct_dirty_pages(data->pagevec,
+					       data->args.pgbase,
+					       data->res.count);
 	}
 	nfs_direct_release_pages(data->pagevec, data->npages);
 
@@ -459,6 +461,7 @@ static ssize_t nfs_direct_read(struct kiocb *iocb, const struct iovec *iov,
 		goto out_release;
 	if (!is_sync_kiocb(iocb))
 		dreq->iocb = iocb;
+	dreq->flags = NFS_ODIRECT_MARK_DIRTY;
 
 	result = nfs_direct_read_schedule_iovec(dreq, iov, nr_segs, pos);
 	if (!result)
