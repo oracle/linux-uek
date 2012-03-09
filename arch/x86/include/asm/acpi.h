@@ -98,6 +98,10 @@ void acpi_pic_sci_set_trigger(unsigned int, u16);
 extern int (*__acpi_register_gsi)(struct device *dev, u32 gsi,
 				  int trigger, int polarity);
 
+extern int (*__acpi_override_sleep)(u8 sleep_state, u32 pm1a_ctrl,
+				    u32 pm1b_ctrl, bool *skip_rest) \
+				    __attribute__ ((unused));
+
 static inline void disable_acpi(void)
 {
 	acpi_disabled = 1;
@@ -115,7 +119,7 @@ static inline void acpi_disable_pci(void)
 }
 
 /* Low-level suspend routine. */
-extern int acpi_suspend_lowlevel(void);
+extern int (*acpi_suspend_lowlevel)(void);
 
 extern const unsigned char acpi_wakeup_code[];
 #define acpi_wakeup_address (__pa(TRAMPOLINE_SYM(acpi_wakeup_code)))

@@ -56,3 +56,7 @@ config XEN_DEBUG_FS
 config MICROCODE_XEN
        def_bool y
        depends on XEN_DOM0 && MICROCODE
+
+config MICROCODE_XEN
+       def_bool y
+       depends on XEN_DOM0 && MICROCODE

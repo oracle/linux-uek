@@ -1,4 +1,4 @@
-obj-y	+= grant-table.o features.o events.o manage.o balloon.o
+obj-y	+= grant-table.o features.o events.o manage.o balloon.o pcpu.o
 obj-y	+= xenbus/
 
 nostackp := $(call cc-option, -fno-stack-protector)
@@ -14,15 +14,15 @@ obj-$(CONFIG_XEN_GNTDEV)		+= xen-gntdev.o
 obj-$(CONFIG_XEN_GRANT_DEV_ALLOC)	+= xen-gntalloc.o
 obj-$(CONFIG_XENFS)			+= xenfs/
 obj-$(CONFIG_XEN_SYS_HYPERVISOR)	+= sys-hypervisor.o
-obj-$(CONFIG_XEN_PVHVM)			+= platform-pci.o
+obj-$(CONFIG_XEN_MCE_LOG)		+= mcelog.o
 obj-$(CONFIG_XEN_TMEM)			+= tmem.o
 obj-$(CONFIG_SWIOTLB_XEN)		+= swiotlb-xen.o
-obj-$(CONFIG_XEN_DOM0)			+= pci.o
+obj-$(CONFIG_XEN_DOM0)			+= pci.o acpi.o
+obj-$(CONFIG_XEN_PRIVCMD)		+= xen-privcmd.o
+obj-$(CONFIG_CPU_FREQ_GOV_XEN)		+= cpufreq_xen.o
 obj-$(CONFIG_XEN_PCIDEV_BACKEND)	+= xen-pciback/
-ifdef CONFIG_ACPI_PROCESSOR_XEN
-obj-$(CONFIG_ACPI_PROCESSOR)		+= acpi_processor.o
-endif
-
 xen-evtchn-y				:= evtchn.o
 xen-gntdev-y				:= gntdev.o
 xen-gntalloc-y				:= gntalloc.o
+xen-privcmd-y				:= privcmd.o
+xen-platform-pci-y			:= platform-pci.o

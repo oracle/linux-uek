@@ -200,7 +200,7 @@ DEFINE_GUEST_HANDLE_STRUCT(xenpf_getidletime_t);
 #define XEN_PM_CX   0
 #define XEN_PM_PX   1
 #define XEN_PM_TX   2
-
+#define XEN_PM_PDC  3
 /* Px sub info type */
 #define XEN_PX_PCT   1
 #define XEN_PX_PSS   2
@@ -286,6 +286,7 @@ struct xen_processor_performance {
 };
 DEFINE_GUEST_HANDLE_STRUCT(xen_processor_performance);
 
+DEFINE_GUEST_HANDLE(uint32_t);
 struct xenpf_set_processor_pminfo {
 	/* IN variables */
 	uint32_t id;    /* ACPI CPU ID */
@@ -293,9 +294,35 @@ struct xenpf_set_processor_pminfo {
 	union {
 		struct xen_processor_power          power;/* Cx: _CST/_CSD */
 		struct xen_processor_performance    perf; /* Px: _PPC/_PCT/_PSS/_PSD */
+		GUEST_HANDLE(uint32_t)              pdc;
 	};
 };
 DEFINE_GUEST_HANDLE_STRUCT(xenpf_set_processor_pminfo);
+
+#define XENPF_get_cpuinfo 55
+struct xenpf_pcpuinfo {
+	/* IN */
+	uint32_t xen_cpuid;
+	/* OUT */
+	/* The maxium cpu_id that is present */
+	uint32_t max_present;
+#define XEN_PCPU_FLAGS_ONLINE   1
+	/* Correponding xen_cpuid is not present*/
+#define XEN_PCPU_FLAGS_INVALID  2
+	uint32_t flags;
+	uint32_t apic_id;
+	uint32_t acpi_id;
+};
+typedef struct xenpf_pcpuinfo xenpf_pcpuinfo_t;
+DEFINE_GUEST_HANDLE_STRUCT(xenpf_pcpuinfo_t);
+
+#define XENPF_cpu_online    56
+#define XENPF_cpu_offline   57
+struct xenpf_cpu_ol {
+    uint32_t cpuid;
+};
+typedef struct xenpf_cpu_ol xenpf_cpu_ol_t;
+DEFINE_GUEST_HANDLE_STRUCT(xenpf_cpu_ol_t);
 
 struct xen_platform_op {
 	uint32_t cmd;
@@ -312,9 +339,12 @@ struct xen_platform_op {
 		struct xenpf_change_freq       change_freq;
 		struct xenpf_getidletime       getidletime;
 		struct xenpf_set_processor_pminfo set_pminfo;
+		struct xenpf_pcpuinfo          pcpu_info;
+		struct xenpf_cpu_ol            cpu_ol;
 		uint8_t                        pad[128];
 	} u;
 };
+typedef struct xen_platform_op xen_platform_op_t;
 DEFINE_GUEST_HANDLE_STRUCT(xen_platform_op_t);
 
 #endif /* __XEN_PUBLIC_PLATFORM_H__ */
