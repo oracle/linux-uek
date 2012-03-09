@@ -54,6 +54,10 @@ static ssize_t nfs_file_splice_write(struct pipe_inode_info *pipe,
 					size_t count, unsigned int flags);
 static ssize_t nfs_file_write(struct kiocb *, const struct iovec *iov,
 				unsigned long nr_segs, loff_t pos);
+static ssize_t nfs_file_read_iter(struct kiocb *iocb, struct iov_iter *iter,
+				  loff_t pos);
+static ssize_t nfs_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
+				   loff_t pos);
 static int  nfs_file_flush(struct file *, fl_owner_t id);
 static int  nfs_file_fsync(struct file *, int datasync);
 static int nfs_check_flags(int flags);
@@ -69,6 +73,8 @@ const struct file_operations nfs_file_operations = {
 	.write		= do_sync_write,
 	.aio_read	= nfs_file_read,
 	.aio_write	= nfs_file_write,
+	.read_iter	= nfs_file_read_iter,
+	.write_iter	= nfs_file_write_iter,
 	.mmap		= nfs_file_mmap,
 	.open		= nfs_file_open,
 	.flush		= nfs_file_flush,
@@ -687,6 +693,82 @@ static ssize_t nfs_file_splice_write(struct pipe_inode_info *pipe,
 	return ret;
 }
 
+ssize_t nfs_file_read_iter(struct kiocb *iocb, struct iov_iter *iter,
+			   loff_t pos)
+{
+	struct dentry * dentry = iocb->ki_filp->f_path.dentry;
+	struct inode * inode = dentry->d_inode;
+	ssize_t result;
+	size_t count = iov_iter_count(iter);
+
+	if (iocb->ki_filp->f_flags & O_DIRECT)
+		return nfs_file_direct_read_iter(iocb, iter, pos);
+
+	dprintk("NFS: read_iter(%s/%s, %lu@%lu)\n",
+		dentry->d_parent->d_name.name, dentry->d_name.name,
+		(unsigned long) count, (unsigned long) pos);
+
+	result = nfs_revalidate_mapping(inode, iocb->ki_filp->f_mapping);
+	if (!result) {
+		result = generic_file_read_iter(iocb, iter, pos);
+		if (result > 0)
+			nfs_add_stats(inode, NFSIOS_NORMALREADBYTES, result);
+	}
+	return result;
+}
+
+ssize_t nfs_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
+			    loff_t pos)
+{
+	struct dentry * dentry = iocb->ki_filp->f_path.dentry;
+	struct inode * inode = dentry->d_inode;
+	unsigned long written = 0;
+	ssize_t result;
+	size_t count = iov_iter_count(iter);
+
+	if (iocb->ki_filp->f_flags & O_DIRECT)
+		return nfs_file_direct_write_iter(iocb, iter, pos);
+
+	dprintk("NFS: write_iter(%s/%s, %lu@%Ld)\n",
+		dentry->d_parent->d_name.name, dentry->d_name.name,
+		(unsigned long) count, (long long) pos);
+
+	result = -EBUSY;
+	if (IS_SWAPFILE(inode))
+		goto out_swapfile;
+	/*
+	 * O_APPEND implies that we must revalidate the file length.
+	 */
+	if (iocb->ki_filp->f_flags & O_APPEND) {
+		result = nfs_revalidate_file_size(inode, iocb->ki_filp);
+		if (result)
+			goto out;
+	}
+
+	result = count;
+	if (!count)
+		goto out;
+
+	result = generic_file_write_iter(iocb, iter, pos);
+	if (result > 0)
+		written = result;
+
+	/* Return error values for O_DSYNC and IS_SYNC() */
+	if (result >= 0 && nfs_need_sync_write(iocb->ki_filp, inode)) {
+		int err = vfs_fsync(iocb->ki_filp, 0);
+		if (err < 0)
+			result = err;
+	}
+	if (result > 0)
+		nfs_add_stats(inode, NFSIOS_NORMALWRITTENBYTES, written);
+out:
+	return result;
+
+out_swapfile:
+	printk(KERN_INFO "NFS: attempt to write to active swap file!\n");
+	goto out;
+}
+
 static int
 do_getlk(struct file *filp, int cmd, struct file_lock *fl, int is_local)
 {
@@ -906,6 +988,8 @@ const struct file_operations nfs4_file_operations = {
 	.write		= do_sync_write,
 	.aio_read	= nfs_file_read,
 	.aio_write	= nfs_file_write,
+	.read_iter	= nfs_file_read_iter,
+	.write_iter	= nfs_file_write_iter,
 	.mmap		= nfs_file_mmap,
 	.open		= nfs4_file_open,
 	.flush		= nfs_file_flush,

@@ -1772,6 +1772,70 @@ static int ext3_releasepage(struct page *page, gfp_t wait)
 	return journal_try_to_free_buffers(journal, page, wait);
 }
 
+static ssize_t ext3_journal_orphan_add(struct inode *inode)
+{
+	struct ext3_inode_info *ei = EXT3_I(inode);
+	handle_t *handle;
+	ssize_t ret;
+
+	/* Credits for sb + inode write */
+	handle = ext3_journal_start(inode, 2);
+	if (IS_ERR(handle)) {
+		ret = PTR_ERR(handle);
+		goto out;
+	}
+	ret = ext3_orphan_add(handle, inode);
+	if (ret) {
+		ext3_journal_stop(handle);
+		goto out;
+	}
+	ei->i_disksize = inode->i_size;
+	ext3_journal_stop(handle);
+out:
+	return ret;
+}
+
+static ssize_t ext3_journal_orphan_del(struct inode *inode, ssize_t ret,
+				       loff_t offset)
+{
+	struct ext3_inode_info *ei = EXT3_I(inode);
+	handle_t *handle;
+	int err;
+
+	/* Credits for sb + inode write */
+	handle = ext3_journal_start(inode, 2);
+	if (IS_ERR(handle)) {
+		/* This is really bad luck. We've written the data
+		 * but cannot extend i_size. Bail out and pretend
+		 * the write failed... */
+		ext3_truncate(inode);
+		ret = PTR_ERR(handle);
+		goto out;
+	}
+	if (inode->i_nlink)
+		ext3_orphan_del(handle, inode);
+	if (ret > 0) {
+		loff_t end = offset + ret;
+		if (end > inode->i_size) {
+			ei->i_disksize = end;
+			i_size_write(inode, end);
+			/*
+			 * We're going to return a positive `ret'
+			 * here due to non-zero-length I/O, so there's
+			 * no way of reporting error returns from
+			 * ext3_mark_inode_dirty() to userspace.  So
+			 * ignore it.
+			 */
+			ext3_mark_inode_dirty(handle, inode);
+		}
+	}
+	err = ext3_journal_stop(handle);
+	if (ret == 0)
+		ret = err;
+out:
+	return ret;
+}
+
 /*
  * If the O_DIRECT write will extend the file then add this inode to the
  * orphan list.  So recovery will truncate it back to the original size
@@ -1787,8 +1851,6 @@ static ssize_t ext3_direct_IO(int rw, struct kiocb *iocb,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
-	struct ext3_inode_info *ei = EXT3_I(inode);
-	handle_t *handle;
 	ssize_t ret;
 	int orphan = 0;
 	size_t count = iov_length(iov, nr_segs);
@@ -1798,20 +1860,10 @@ static ssize_t ext3_direct_IO(int rw, struct kiocb *iocb,
 		loff_t final_size = offset + count;
 
 		if (final_size > inode->i_size) {
-			/* Credits for sb + inode write */
-			handle = ext3_journal_start(inode, 2);
-			if (IS_ERR(handle)) {
-				ret = PTR_ERR(handle);
+			ret = ext3_journal_orphan_add(inode);
+			if (ret)
 				goto out;
-			}
-			ret = ext3_orphan_add(handle, inode);
-			if (ret) {
-				ext3_journal_stop(handle);
-				goto out;
-			}
 			orphan = 1;
-			ei->i_disksize = inode->i_size;
-			ext3_journal_stop(handle);
 		}
 	}
 
@@ -1833,40 +1885,43 @@ retry:
 	if (ret == -ENOSPC && ext3_should_retry_alloc(inode->i_sb, &retries))
 		goto retry;
 
-	if (orphan) {
-		int err;
+	if (orphan)
+		ret = ext3_journal_orphan_del(inode, ret, offset);
+out:
+	return ret;
+}
 
-		/* Credits for sb + inode write */
-		handle = ext3_journal_start(inode, 2);
-		if (IS_ERR(handle)) {
-			/* This is really bad luck. We've written the data
-			 * but cannot extend i_size. Truncate allocated blocks
-			 * and pretend the write failed... */
-			ext3_truncate(inode);
-			ret = PTR_ERR(handle);
-			goto out;
+static ssize_t ext3_direct_IO_bvec(int rw, struct kiocb *iocb,
+				   struct bio_vec *bvec, loff_t offset,
+				   unsigned long bvec_len)
+{
+	struct file *file = iocb->ki_filp;
+	struct inode *inode = file->f_mapping->host;
+	ssize_t ret;
+	int orphan = 0;
+	size_t count = bvec_length(bvec, bvec_len);
+	int retries = 0;
+
+	if (rw == WRITE) {
+		loff_t final_size = offset + count;
+
+		if (final_size > inode->i_size) {
+			ret = ext3_journal_orphan_add(inode);
+			if (ret)
+				goto out;
+			orphan = 1;
 		}
-		if (inode->i_nlink)
-			ext3_orphan_del(handle, inode);
-		if (ret > 0) {
-			loff_t end = offset + ret;
-			if (end > inode->i_size) {
-				ei->i_disksize = end;
-				i_size_write(inode, end);
-				/*
-				 * We're going to return a positive `ret'
-				 * here due to non-zero-length I/O, so there's
-				 * no way of reporting error returns from
-				 * ext3_mark_inode_dirty() to userspace.  So
-				 * ignore it.
-				 */
-				ext3_mark_inode_dirty(handle, inode);
-			}
-		}
-		err = ext3_journal_stop(handle);
-		if (ret == 0)
-			ret = err;
 	}
+
+retry:
+	ret = blockdev_direct_IO_bvec(rw, iocb, inode, inode->i_sb->s_bdev,
+				      bvec, offset, bvec_len, ext3_get_block,
+				      NULL);
+	if (ret == -ENOSPC && ext3_should_retry_alloc(inode->i_sb, &retries))
+		goto retry;
+
+	if (orphan)
+		ret = ext3_journal_orphan_del(inode, ret, offset);
 out:
 	return ret;
 }
@@ -1900,6 +1955,7 @@ static const struct address_space_operations ext3_ordered_aops = {
 	.invalidatepage		= ext3_invalidatepage,
 	.releasepage		= ext3_releasepage,
 	.direct_IO		= ext3_direct_IO,
+	.direct_IO_bvec		= ext3_direct_IO_bvec,
 	.migratepage		= buffer_migrate_page,
 	.is_partially_uptodate  = block_is_partially_uptodate,
 	.error_remove_page	= generic_error_remove_page,
@@ -1915,6 +1971,7 @@ static const struct address_space_operations ext3_writeback_aops = {
 	.invalidatepage		= ext3_invalidatepage,
 	.releasepage		= ext3_releasepage,
 	.direct_IO		= ext3_direct_IO,
+	.direct_IO_bvec		= ext3_direct_IO_bvec,
 	.migratepage		= buffer_migrate_page,
 	.is_partially_uptodate  = block_is_partially_uptodate,
 	.error_remove_page	= generic_error_remove_page,
