@@ -17,7 +17,7 @@ Summary: The Linux kernel
 
 %define rhel 1
 %if %{rhel}
-%define distro_build 100
+%define distro_build 200
 %define signmodules 1
 %else
 
@@ -104,7 +104,7 @@ Summary: The Linux kernel
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk	1
+%define with_kabichk	0
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.5.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1676,6 +1676,147 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Sun Mar 11 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.1.el5uek]
+- disable kabicheck for uek2 update 1 beta
+- nfs: only dirty user pages in direct read code (Dave Kleikamp)
+- config: Enable Xen's PV USB, SCSI, MCE and Xen CPU freq driver (Konrad
+  Rzeszutek Wilk)
+- [CPUFREQ] xen: governor for Xen hypervisor frequency scaling. (Konrad
+  Rzeszutek Wilk)
+- xen/enlighten: Expose MWAIT and MWAIT_LEAF if hypervisor OKs it. (Konrad
+  Rzeszutek Wilk)
+- Revert "Merge branch 'stable/processor-passthru.v5.rebased' into uek2-merge"
+  (Konrad Rzeszutek Wilk)
+- xen/processor-passthru: threads aren't suppose to leave on their own. (Konrad
+  Rzeszutek Wilk)
+- config: Enable Xen's PV USB, SCSI, MCE and Processor-Passthru (Konrad
+  Rzeszutek Wilk)
+- Xen: Export host physical CPU information to dom0 (Liu Jinsong)
+- xen/mce: Change the machine check point (Liu Jinsong)
+- Add mcelog support from xen platform (Liu Jinsong)
+- usb: xen pvusb driver (Nathanael Rensen)
+- xen/processor-passthru: Provide an driver that passes struct acpi_processor
+  data to the hypervisor. (Konrad Rzeszutek Wilk)
+- xen/enlighten: Expose MWAIT and MWAIT_LEAF if hypervisor OKs it. (Konrad
+  Rzeszutek Wilk)
+- xen/setup/pm/acpi: Remove the call to boot_option_idle_override. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi: Domain0 acpi parser related platform hypercall (Yu Ke)
+- xen/pm_idle: Make pm_idle be default_idle under Xen. (Konrad Rzeszutek Wilk)
+- cpuidle: stop depending on pm_idle (Len Brown)
+- cpuidle: replace xen access to x86 pm_idle and default_idle (Len Brown)
+- cpuidle: create bootparam "cpuidle.off=1" (Len Brown)
+- Revert "Merge branch 'stable/acpi-cpufreq.v3.rebased' into uek2-merge"
+  (Konrad Rzeszutek Wilk)
+- x86/microcode: check proper return code. (Ben Guthro)
+- xen: add CPU microcode update driver (Jeremy Fitzhardinge)
+- xen: add dom0_op hypercall (Jeremy Fitzhardinge)
+- xen/acpi: Domain0 acpi parser related platform hypercall (Yu Ke)
+- nfs: add support for read_iter, write_iter (Dave Kleikamp)
+- xenbus_dev: add missing error check to watch handling (Jan Beulich)
+- xen/pci[front|back]: Use %d instead of %1x for displaying PCI devfn. (Konrad
+  Rzeszutek Wilk)
+- xen pvhvm: do not remap pirqs onto evtchns if !xen_have_vector_callback
+  (Stefano Stabellini)
+- xen/smp: Fix CPU online/offline bug triggering a BUG: scheduling while
+  atomic. (Konrad Rzeszutek Wilk)
+- xen/bootup: During bootup suppress XENBUS: Unable to read cpu state (Konrad
+  Rzeszutek Wilk)
+- Merge conflict resolved. Somehow the letter 's' slipped in the Makefile. This
+  fixes the compile issues. (Konrad Rzeszutek Wilk)
+- xen/events: BUG() when we can't allocate our event->irq array. (Konrad
+  Rzeszutek Wilk)
+- xen/granttable: Disable grant v2 for HVM domains. (Konrad Rzeszutek Wilk)
+- xen-blkfront: Use kcalloc instead of kzalloc to allocate array (Thomas Meyer)
+- xen/pciback: Expand the warning message to include domain id. (Konrad
+  Rzeszutek Wilk)
+- xen/pciback: Fix "device has been assigned to X domain!" warning (Konrad
+  Rzeszutek Wilk)
+- xen/xenbus: don't reimplement kvasprintf via a fixed size buffer (Ian
+  Campbell)
+- xenbus: maximum buffer size is XENSTORE_PAYLOAD_MAX (Ian Campbell)
+- xen/xenbus: Reject replies with payload > XENSTORE_PAYLOAD_MAX. (Ian
+  Campbell)
+- Xen: consolidate and simplify struct xenbus_driver instantiation (Jan
+  Beulich)
+- xen-gntalloc: introduce missing kfree (Julia Lawall)
+- xen/xenbus: Fix compile error - missing header for xen_initial_domain()
+  (Konrad Rzeszutek Wilk)
+- xen/netback: Enable netback on HVM guests (Daniel De Graaf)
+- xen/grant-table: Support mappings required by blkback (Daniel De Graaf)
+- xenbus: Use grant-table wrapper functions (Daniel De Graaf)
+- xenbus: Support HVM backends (Daniel De Graaf)
+- xen/xenbus-frontend: Fix compile error with randconfig (Konrad Rzeszutek
+  Wilk)
+- xen/xenbus-frontend: Make error message more clear (Bastian Blank)
+- xen/privcmd: Remove unused support for arch specific privcmp mmap (Bastian
+  Blank)
+- xen: Add xenbus_backend device (Bastian Blank)
+- xen: Add xenbus device driver (Bastian Blank)
+- xen: Add privcmd device driver (Bastian Blank)
+- xen/gntalloc: fix reference counts on multi-page mappings (Daniel De Graaf)
+- xen/gntalloc: release grant references on page free (Daniel De Graaf)
+- xen/events: prevent calling evtchn_get on invalid channels (Daniel De Graaf)
+- xen/granttable: Support transitive grants (Annie Li)
+- xen/granttable: Support sub-page grants (Annie Li)
+- xen/granttable: Improve comments for function pointers (Annie Li)
+- xen/ia64: fix build breakage because of conflicting u64 guest handles (Tony
+  Luck)
+- xen/granttable: Keep code format clean (Annie Li)
+- xen/granttable: Grant tables V2 implementation (Annie Li)
+- xen/granttable: Refactor some code (Annie Li)
+- xen/granttable: Introducing grant table V2 stucture (Annie Li)
+- Xen: update MAINTAINER info (Jeremy Fitzhardinge)
+- xen/event: Add reference counting to event channels (Daniel De Graaf)
+- xen/gnt{dev,alloc}: reserve event channels for notify (Daniel De Graaf)
+- xen/gntalloc: Change gref_lock to a mutex (Daniel De Graaf)
+- xen: document backend sysfs files (David Vrabel)
+- xen: document balloon driver sysfs files (David Vrabel)
+- btrfs: add support for read_iter, write_iter, and direct_IO_bvec (Dave
+  Kleikamp)
+- ext4: add support for read_iter, write_iter, and direct_IO_bvec (Dave
+  Kleikamp)
+- ocfs2: add support for read_iter, write_iter, and direct_IO_bvec (Dave
+  Kleikamp)
+- ext3: add support for .read_iter and .write_iter (Dave Kleikamp)
+- bio: add bvec_length(), like iov_length() (Dave Kleikamp)
+- aio: add aio support for iov_iter arguments (Zach Brown)
+- aio: add aio_kernel_() interface (Dave Kleikamp)
+- fs: pull iov_iter use higher up the stack (Dave Kleikamp)
+- dio: add __blockdev_direct_IO_bdev() (Dave Kleikamp)
+- dio: add dio_post_submission() helper function (Dave Kleikamp)
+- dio: add dio_lock_and_flush() helper (Dave Kleikamp)
+- dio: add sdio_init() helper function (Dave Kleikamp)
+- dio: add dio_alloc_init() helper function (Dave Kleikamp)
+- dio: create a dio_aligned() helper function (Zach Brown)
+- iov_iter: let callers extract iovecs and bio_vecs (Zach Brown)
+- iov_iter: add a shorten call (Zach Brown)
+- iov_iter: add bvec support (Zach Brown)
+- iov_iter: hide iovec details behind ops function pointers (Zach Brown)
+- fuse: convert fuse to use iov_iter_copy_[to|from]_user (Dave Kleikamp)
+- iov_iter: add copy_to_user support (Zach Brown)
+- iov_iter: move into its own file (Zach Brown)
+- xen/scsi[front|back]: consolidate and simplify struct xenbus_driver
+  instantiation (Konrad Rzeszutek Wilk)
+- xen/scsiback: allow RESERVE/RELEASE commands (James Harper)
+- xen/scsiback: vscsi >2TB patch (Samuel Kvasnica)
+- xen-scsi[front|back]: Fix warnings and bugs. (Konrad Rzeszutek Wilk)
+- xen/scsi[front|back]: Forgot .owner attribute. (Konrad Rzeszutek Wilk)
+- xen/scsi[front|back]: Initial commit from Novell SLES11SP1 2.6.32 tree.
+  (Konrad Rzeszutek Wilk)
+- xen/pci:use hypercall PHYSDEVOP_restore_msi_ext to restore MSI/MSI-X vectors
+  (Liang Tang)
+- xen/acpi/sleep: Register to the acpi_suspend_lowlevel a callback. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi/sleep: Enable ACPI sleep via the __acpi_override_sleep (Konrad
+  Rzeszutek Wilk)
+- xen/acpi: Domain0 acpi parser related platform hypercall (Yu Ke)
+- xen: Utilize the restore_msi_irqs hook. (Konrad Rzeszutek Wilk)
+- x86/acpi/sleep: Provide registration for acpi_suspend_lowlevel. (Liang Tang)
+- x86, acpi, tboot: Have a ACPI sleep override instead of calling tboot_sleep.
+  (Konrad Rzeszutek Wilk)
+- x86: Expand the x86_msi_ops to have a restore MSIs. (Konrad Rzeszutek Wilk)
+
 * Tue Mar  6 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-100.5.1.el5uek]
 - proc: make sure mem_open() doesn't pin the target's memory (Oleg Nesterov) 
 - proc: mem_release() should check mm != NULL (Oleg Nesterov) [orabug 13811116]
