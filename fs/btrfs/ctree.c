@@ -351,14 +351,14 @@ static noinline int update_ref_for_cow(struct btrfs_trans_handle *trans,
 		     root->root_key.objectid == BTRFS_TREE_RELOC_OBJECTID) &&
 		    !(flags & BTRFS_BLOCK_FLAG_FULL_BACKREF)) {
 			ret = btrfs_inc_ref(trans, root, buf, 1);
-			BUG_ON(ret);
+			BUG_ON(ret); /* -ENOMEM */
 
 			if (root->root_key.objectid ==
 			    BTRFS_TREE_RELOC_OBJECTID) {
 				ret = btrfs_dec_ref(trans, root, buf, 0);
-				BUG_ON(ret);
+				BUG_ON(ret); /* -ENOMEM */
 				ret = btrfs_inc_ref(trans, root, cow, 1);
-				BUG_ON(ret);
+				BUG_ON(ret); /* -ENOMEM */
 			}
 			new_flags |= BTRFS_BLOCK_FLAG_FULL_BACKREF;
 		} else {
@@ -368,7 +368,7 @@ static noinline int update_ref_for_cow(struct btrfs_trans_handle *trans,
 				ret = btrfs_inc_ref(trans, root, cow, 1);
 			else
 				ret = btrfs_inc_ref(trans, root, cow, 0);
-			BUG_ON(ret);
+			BUG_ON(ret); /* -ENOMEM */
 		}
 		if (new_flags != 0) {
 			ret = btrfs_set_disk_extent_flags(trans, root,
@@ -384,9 +384,9 @@ static noinline int update_ref_for_cow(struct btrfs_trans_handle *trans,
 				ret = btrfs_inc_ref(trans, root, cow, 1);
 			else
 				ret = btrfs_inc_ref(trans, root, cow, 0);
-			BUG_ON(ret);
+			BUG_ON(ret); /* -ENOMEM */
 			ret = btrfs_dec_ref(trans, root, buf, 1);
-			BUG_ON(ret);
+			BUG_ON(ret); /* -ENOMEM */
 		}
 		clean_tree_block(trans, root, buf);
 		*last_ref = 1;
@@ -467,7 +467,11 @@ static noinline int __btrfs_cow_block(struct btrfs_trans_handle *trans,
 			    (unsigned long)btrfs_header_fsid(cow),
 			    BTRFS_FSID_SIZE);
 
-	update_ref_for_cow(trans, root, buf, cow, &last_ref);
+	ret = update_ref_for_cow(trans, root, buf, cow, &last_ref);
+	if (ret) {
+		btrfs_abort_transaction(trans, root, ret);
+		return ret;
+	}
 
 	if (root->ref_cows)
 		btrfs_reloc_cow_block(trans, root, buf, cow);
@@ -2716,7 +2720,8 @@ static int push_leaf_left(struct btrfs_trans_handle *trans, struct btrfs_root
 			      path->nodes[1], slot - 1, &left);
 	if (ret) {
 		/* we hit -ENOSPC, but it isn't fatal here */
-		ret = 1;
+		if (ret == -ENOSPC)
+			ret = 1;
 		goto out;
 	}
 
@@ -4064,7 +4069,7 @@ find_next_key:
 		}
 		btrfs_set_path_blocking(path);
 		cur = read_node_slot(root, cur, slot);
-		BUG_ON(!cur);
+		BUG_ON(!cur); /* -ENOMEM */
 
 		btrfs_tree_read_lock(cur);
 
