@@ -394,6 +394,15 @@ static int split_state(struct extent_io_tree *tree, struct extent_state *orig,
 	return 0;
 }
 
+static struct extent_state *next_state(struct extent_state *state)
+{
+	struct rb_node *next = rb_next(&state->rb_node);
+	if (next)
+		return rb_entry(next, struct extent_state, rb_node);
+	else
+		return NULL;
+}
+
 /*
  * utility function to clear some bits in an extent state struct.
  * it will optionally wake up any one waiting on this state (wake == 1)
@@ -401,10 +410,11 @@ static int split_state(struct extent_io_tree *tree, struct extent_state *orig,
  * If no bits are set on the state struct after clearing things, the
  * struct is freed and removed from the tree
  */
-static void clear_state_bit(struct extent_io_tree *tree,
-			    struct extent_state *state,
-			    int *bits, int wake)
+static struct extent_state *clear_state_bit(struct extent_io_tree *tree,
+					    struct extent_state *state,
+					    int *bits, int wake)
 {
+	struct extent_state *next;
 	int bits_to_clear = *bits & ~EXTENT_CTLBITS;
 
 	if ((bits_to_clear & EXTENT_DIRTY) && (state->state & EXTENT_DIRTY)) {
@@ -417,6 +427,7 @@ static void clear_state_bit(struct extent_io_tree *tree,
 	if (wake)
 		wake_up(&state->wq);
 	if (state->state == 0) {
+		next = next_state(state);
 		if (state->tree) {
 			rb_erase(&state->rb_node, &tree->state);
 			state->tree = NULL;
@@ -426,7 +437,9 @@ static void clear_state_bit(struct extent_io_tree *tree,
 		}
 	} else {
 		merge_state(tree, state);
+		next = next_state(state);
 	}
+	return next;
 }
 
 static struct extent_state *
@@ -459,7 +472,6 @@ int clear_extent_bit(struct extent_io_tree *tree, u64 start, u64 end,
 	struct extent_state *state;
 	struct extent_state *cached;
 	struct extent_state *prealloc = NULL;
-	struct rb_node *next_node;
 	struct rb_node *node;
 	u64 last_end;
 	int err;
@@ -511,6 +523,12 @@ hit_next:
 		goto out;
 	WARN_ON(state->end < start);
 	last_end = state->end;
+
+	/* the state doesn't have the wanted bits, go ahead */
+	if (!(state->state & bits)) {
+		state = next_state(state);
+		goto next;
+	}
 
 	/*
 	 *     | ---- desired range ---- |
@@ -564,21 +582,13 @@ hit_next:
 		goto out;
 	}
 
-	if (state->end < end && prealloc && !need_resched())
-		next_node = rb_next(&state->rb_node);
-	else
-		next_node = NULL;
-
-	set |= clear_state_bit(tree, state, &bits, wake);
+	state = clear_state_bit(tree, state, &bits, wake);
+next:
 	if (last_end == (u64)-1)
 		goto out;
 	start = last_end + 1;
-	if (start <= end && next_node) {
-		state = rb_entry(next_node, struct extent_state,
-				 rb_node);
-		if (state->start == start)
-			goto hit_next;
-	}
+	if (start <= end && state && !need_resched())
+		goto hit_next;
 	goto search_again;
 
 out:
