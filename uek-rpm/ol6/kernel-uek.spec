@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.2%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Mar 14 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.2.el5uek]
+- xen: make page table walk hugepages aware (Dave McCracken) [Orabug: 13719997]
+- x86/PCI: Preserve existing pci=bfsort whitelist for Dell systems (Narendra_K)
+
 * Sun Mar 11 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.1.el6uek]
 - disable kabicheck for uek2 update 1 beta
 - nfs: only dirty user pages in direct read code (Dave Kleikamp)
