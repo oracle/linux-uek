@@ -10918,6 +10918,7 @@ init_ops_alloc_err:
 	kfree(bp->init_data);
 request_firmware_exit:
 	release_firmware(bp->firmware);
+	bp->firmware = NULL;
 
 	return rc;
 }
