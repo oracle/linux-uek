@@ -231,8 +231,11 @@ int mlx4_mtt_init(struct mlx4_dev *dev, int npages, int page_shift,
 		++mtt->order;
 
 	mtt->offset = mlx4_alloc_mtt_range(dev, mtt->order);
-	if (mtt->offset == -1)
+	if (mtt->offset == -1) {
+		mlx4_err(dev, "Failed to allocate mtts for %d pages(order %d)\n",
+			 npages, mtt->order);
 		return -ENOMEM;
+	}
 
 	return 0;
 }
