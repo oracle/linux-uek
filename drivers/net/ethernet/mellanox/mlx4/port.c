@@ -830,6 +830,15 @@ enum {
 	MLX4_CHANGE_PORT_MTU_CAP = 22,
 };
 
+#define	CX3_PPF_DEV_ID 0x1003
+static int vl_cap_start(struct mlx4_dev *dev)
+{
+	/* for non CX3 devices, start with 4 VLs to avoid errors in syslog */
+	if (dev->pdev->device != CX3_PPF_DEV_ID)
+		return 4;
+	return 8;
+}
+
 int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port, int pkey_tbl_sz)
 {
 	struct mlx4_cmd_mailbox *mailbox;
@@ -852,7 +861,7 @@ int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port, int pkey_tbl_sz)
 	}
 
 	/* IB VL CAP enum isn't used by the firmware, just numerical values */
-	for (vl_cap = 8; vl_cap >= 1; vl_cap >>= 1) {
+	for (vl_cap = vl_cap_start(dev); vl_cap >= 1; vl_cap >>= 1) {
 		((__be32 *) mailbox->buf)[0] = cpu_to_be32(
 			(1 << MLX4_CHANGE_PORT_MTU_CAP) |
 			(1 << MLX4_CHANGE_PORT_VL_CAP)  |
