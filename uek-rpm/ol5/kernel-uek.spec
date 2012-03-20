@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.2%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.3%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1676,6 +1676,19 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Mar 19 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.3.el5uek]
+- xen/blkback: Disable DISCARD support for loopback device (but leave for phy).
+  (Konrad Rzeszutek Wilk)
+- block: fix patch import error in max_discard_sectors check (Jens Axboe)
+- block: eliminate potential for infinite loop in blkdev_issue_discard (Mike
+  Snitzer)
+- config: Use the xen-acpi-processor instead of the cpufreq-xen driver. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi-processor: C and P-state driver that uploads said data to
+  hypervisor. (Konrad Rzeszutek Wilk)
+- Revert "Merge branch 'stable/cpufreq-xen.v6.rebased' into uek2-merge" (Konrad
+  Rzeszutek Wilk)
+
 * Wed Mar 14 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.2.el5uek]
 - xen: make page table walk hugepages aware (Dave McCracken) [Orabug: 13719997]
 - x86/PCI: Preserve existing pci=bfsort whitelist for Dell systems (Narendra_K)
