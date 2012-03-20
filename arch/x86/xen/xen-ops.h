@@ -87,6 +87,10 @@ static inline void xen_uninit_lock_cpu(int cpu)
 }
 #endif
 
+void __init xen_init_apic(void);
+{
+}
+static inline void __init xen_init_apic(void)
 /* Declare an asm function, along with symbols needed to make it
    inlineable */
 #define DECL_ASM(ret, name, ...)		\

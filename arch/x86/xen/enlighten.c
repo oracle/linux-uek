@@ -1305,6 +1305,8 @@ asmlinkage void __init xen_start_kernel(void)
 		if (pci_xen)
 			x86_init.pci.arch_init = pci_xen_init;
 	} else {
+		xen_init_apic();
+
 		/* Make sure ACS will be enabled */
 		pci_request_acs();
 	}
