@@ -2893,10 +2893,14 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 				}
 			}
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 			if (mlx4_is_mfunc(dev))
 				dev->caps.port_ib_mtu[port] = IB_MTU_2048;
 			else
 				dev->caps.port_ib_mtu[port] = IB_MTU_4096;
+#else
+			dev->caps.port_ib_mtu[port] = IB_MTU_2048;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 			err = mlx4_SET_PORT(dev, port, mlx4_is_master(dev) ?
 					    dev->caps.pkey_table_len[port] : -1);
