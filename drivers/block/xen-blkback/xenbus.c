@@ -397,7 +397,11 @@ int xen_blkbk_discard(struct xenbus_transaction xbt, struct backend_info *be)
 	type = xenbus_read(XBT_NIL, dev->nodename, "type", NULL);
 	if (!IS_ERR(type)) {
 		if (strncmp(type, "file", 4) == 0) {
-			state = 1;
+			/* For this to work properly (so that discard-* attr
+			 * are propagated to the guest), we should back-port
+			 * loop request_queue discard support.
+			 */
+			state = 0;
 			blkif->blk_backend_type = BLKIF_BACKEND_FILE;
 		}
 		if (strncmp(type, "phy", 3) == 0) {

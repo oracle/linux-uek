@@ -151,21 +151,20 @@ config XEN_MCE_LOG
 	  Allow kernel fetching mce log from xen platform and
 	  converting it into linux mcelog format for mcelog tools
 
-config CPU_FREQ_GOV_XEN
-	tristate "'xen' governor for hypervisor scaling"
-	depends on XEN && X86 && ACPI_PROCESSOR && CPU_FREQ
-	default m
+
+config XEN_PROCESSOR_PASSTHRU
+	tristate "Processor passthrough driver for Xen"
+	depends on XEN
+	depends on ACPI_PROCESSOR
+	depends on X86
+	depends on CPU_FREQ
 	help
-          This cpufreq governor leaves the frequency decision to the Xen hypervisor.
+	  This driver parses the processor structure and passes the information
+	  to the Xen hypervisor. It is used to allow the Xen hypervisor to have the
+	  full power management data and be able to select proper Cx and Pxx states.
 
-	  To do that the driver parses the Power Management data and uploads said
-	  information to the Xen hypervisor. Then the Xen hypervisor can select the
-          proper Cx and Pxx states.
-
-          To compile this driver as a module, choose M here: the
-          module will be called cpufreq_xen.  If you do not know what to choose,
-          select M here.
-
+	  The driver should be loaded after acpi processor and cpufreq drivers have
+	  been loaded. If you do not know what to choose, select M here.
 
 
 config XEN_PRIVCMD
@@ -202,4 +201,21 @@ config XEN_PCIDEV_BACKEND
 	  xen-pciback.hide=(03:00.0)(04:00.0)
 
 	  If in doubt, say m.
+config XEN_ACPI_PROCESSOR
+	tristate "Xen ACPI processor"
+	depends on XEN && X86 && ACPI_PROCESSOR
+	default y if (X86_ACPI_CPUFREQ = y || X86_POWERNOW_K8 = y)
+	default m if (X86_ACPI_CPUFREQ = m || X86_POWERNOW_K8 = m)
+	help
+          This ACPI processor uploads Power Management information to the Xen hypervisor.
+
+	  To do that the driver parses the Power Management data and uploads said
+	  information to the Xen hypervisor. Then the Xen hypervisor can select the
+          proper Cx and Pxx states. It also registers itslef as the SMM so that
+          other drivers (such as ACPI cpufreq scaling driver) will not load.
+
+          To compile this driver as a module, choose M here: the
+          module will be called xen_acpi_processor  If you do not know what to choose,
+          select M here. If the CPUFREQ drivers are built in, select Y here.
+
 endmenu
