@@ -3003,6 +3003,7 @@ struct tg3 {
 	u32				rx_std_max_post;
 	u32				rx_offset;
 	u32				rx_pkt_map_sz;
+	bool				rx_refill;
 
 
 	/* begin "everything else" cacheline(s) section */
