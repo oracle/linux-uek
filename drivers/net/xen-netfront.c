@@ -47,6 +47,7 @@
 #include <xen/xenbus.h>
 #include <xen/events.h>
 #include <xen/page.h>
+#include <xen/platform_pci.h>
 #include <xen/grant_table.h>
 
 #include <xen/interface/io/netif.h>
@@ -1888,6 +1889,9 @@ static int __init netif_init(void)
 
 	if (xen_initial_domain())
 		return 0;
+
+	if (!xen_platform_pci_unplug)
+		return -ENODEV;
 
 	printk(KERN_INFO "Initialising Xen virtual ethernet driver.\n");
 
