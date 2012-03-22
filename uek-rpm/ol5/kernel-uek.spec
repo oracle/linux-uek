@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.3%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.4%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1676,6 +1676,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Mar 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.4.el5uek]
+- ocfs2/trivial: Print message indicating unaligned aio+dio write (Sunil
+  Mushran)
+- ocfs2: Avoid livelock in ocfs2_readpage() (Jan Kara)
+- ocfs2: serialize unaligned aio (Mark Fasheh)
+- ocfs2: null deref on allocation error (Dan Carpenter)
+- ocfs2: Bugfix for hard readonly mount (Tiger Yang)
+
 * Mon Mar 19 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.0.3.el5uek]
 - xen/blkback: Disable DISCARD support for loopback device (but leave for phy).
   (Konrad Rzeszutek Wilk)
