@@ -6126,6 +6126,33 @@ out:
 	return retval;
 }
 
+static ssize_t check_direct_IO_bvec(struct btrfs_root *root, int rw,
+				    struct kiocb *iocb, struct bio_vec *bvec,
+				    loff_t offset, unsigned long nr_segs)
+{
+	int seg;
+	size_t size;
+	unsigned long addr;
+	unsigned blocksize_mask = root->sectorsize - 1;
+	ssize_t retval = -EINVAL;
+	loff_t end = offset;
+
+	if (offset & blocksize_mask)
+		goto out;
+
+	/* Check the memory alignment.  Blocks cannot straddle pages */
+	for (seg = 0; seg < nr_segs; seg++) {
+		addr = (unsigned long)bvec[seg].bv_offset;
+		size = bvec[seg].bv_len;
+		end += size;
+		if ((addr & blocksize_mask) || (size & blocksize_mask))
+			goto out;
+	}
+	retval = 0;
+out:
+	return retval;
+}
+
 static ssize_t btrfs_pre_direct_IO(int writing,  loff_t offset, size_t count,
 				   struct inode *inode, int *write_bits)
 {
@@ -6245,6 +6272,10 @@ static ssize_t btrfs_direct_IO_bvec(int rw, struct kiocb *iocb,
 	int writing = rw & WRITE;
 	int write_bits = 0;
 	size_t count = bvec_length(bvec, bvec_len);
+
+	if (check_direct_IO_bvec(BTRFS_I(inode)->root, rw, iocb, bvec,
+				 offset, bvec_len))
+		return 0;
 
 	ret = btrfs_pre_direct_IO(writing, offset, count, inode, &write_bits);
 	if (ret)
