@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.4%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1676,6 +1676,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Mar 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.5.el5uek]
+- btrfs: create btrfs_file_write_iter() (Dave Kleikamp)
+
 * Mon Mar 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.4.el5uek]
 - ocfs2/trivial: Print message indicating unaligned aio+dio write (Sunil
   Mushran)
