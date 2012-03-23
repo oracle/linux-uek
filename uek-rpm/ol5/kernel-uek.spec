@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1676,6 +1676,28 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Mar 22 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.6.el5uek]
+- ocfs2: Rollback commit ea455f8ab68338ba69f5d3362b342c115bea8e13 (Sunil
+  Mushran) [orabug: 13555276]
+- ocfs2: Rollback commit f7b1aa69be138ad9d7d3f31fa56f4c9407f56b6a (Sunil
+  Mushran) [orabug: 13555276]
+- ocfs2: Rollback commit 5fd131893793567c361ae64cbeb28a2a753bbe35 (Sunil
+  Mushran) [orabug: 13555276]
+- ocfs2/cluster: Fix o2net_fill_node_map() (Sunil Mushran)
+- ocfs2/cluster: Add new function o2net_fill_node_map() (Sunil Mushran)
+- ocfs2: Tighten free bit calculation in the global bitmap (Sunil Mushran)
+- ocfs2/trivial: Limit unaligned aio+dio write messages to once per day (Sunil
+  Mushran)
+- btrfs: btrfs_direct_IO_bvec() needs to check for sector alignment (Dave
+  Kleikamp)
+- loop: increase default number of loop devices to 512 (Dave Kleikamp)
+- xen/merge error: Re-introduce xen-platform-pci driver. (Konrad Rzeszutek
+  Wilk)
+- x86/PCI: reduce severity of host bridge window conflict warnings (Bjorn
+  Helgaas)
+- xen/acpi: Remove the WARN's as they just create noise. (Konrad Rzeszutek
+  Wilk)
+
 * Mon Mar 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.5.el5uek]
 - btrfs: create btrfs_file_write_iter() (Dave Kleikamp)
 
