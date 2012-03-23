@@ -1245,26 +1245,13 @@ static struct dentry *ocfs2_mount(struct file_system_type *fs_type,
 	return mount_bdev(fs_type, flags, dev_name, data, ocfs2_fill_super);
 }
 
-static void ocfs2_kill_sb(struct super_block *sb)
-{
-	struct ocfs2_super *osb = OCFS2_SB(sb);
-
-	/* Prevent further queueing of inode drop events */
-	spin_lock(&dentry_list_lock);
-	ocfs2_set_osb_flag(osb, OCFS2_OSB_DROP_DENTRY_LOCK_IMMED);
-	spin_unlock(&dentry_list_lock);
-	/* Wait for work to finish and/or remove it */
-	cancel_work_sync(&osb->dentry_lock_work);
-
-	kill_block_super(sb);
-}
-
 static struct file_system_type ocfs2_fs_type = {
 	.owner          = THIS_MODULE,
 	.name           = "ocfs2",
 	.mount          = ocfs2_mount,
-	.kill_sb        = ocfs2_kill_sb,
-
+	.kill_sb        = kill_block_super, /* set to the generic one
+					     * right now, but do we
+					     * need to change that? */
 	.fs_flags       = FS_REQUIRES_DEV|FS_RENAME_DOES_D_MOVE,
 	.next           = NULL
 };
@@ -1950,12 +1937,6 @@ static void ocfs2_dismount_volume(struct super_block *sb, int mnt_err)
 	BUG_ON(!osb);
 
 	debugfs_remove(osb->osb_ctxt);
-
-	/*
-	 * Flush inode dropping work queue so that deletes are
-	 * performed while the filesystem is still working
-	 */
-	ocfs2_drop_all_dl_inodes(osb);
 
 	/* Orphan scan should be stopped as early as possible */
 	ocfs2_orphan_scan_stop(osb);
