@@ -563,7 +563,6 @@ static void acm_tty_hangup(struct tty_struct *tty)
 		goto out;
 
 	tty_port_hangup(&acm->port);
-	mutex_lock(&open_mutex);
 	acm_port_down(acm);
 
 out:
