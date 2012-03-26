@@ -1478,7 +1478,11 @@ if [ `uname -i` == "x86_64" -o `uname -i` == "i386" ] &&\
    [ -f /etc/sysconfig/kernel ]; then\
   /bin/sed -r -i -e 's/^DEFAULTKERNEL=%{-r*}$/DEFAULTKERNEL=kernel%{?-v:-%{-v*}}/' /etc/sysconfig/kernel || exit $?\
 fi}\
-/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+if [ -e /proc/xen/xsd_kva ]; then\
+    /sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --depmod --multiboot=/%{image_install_path}/xen.gz --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+else\
+    /sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --mkinitrd --depmod --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+fi\
 if [ -x /sbin/weak-modules ]\
 then\
     /sbin/weak-modules --add-kernel %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
