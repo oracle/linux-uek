@@ -6841,7 +6841,6 @@ static u64 update_block_group_flags(struct btrfs_root *root, u64 flags)
 		if (flags & (BTRFS_BLOCK_GROUP_RAID1 |
 			     BTRFS_BLOCK_GROUP_RAID10))
 			return stripped | BTRFS_BLOCK_GROUP_DUP;
-		return flags;
 	} else {
 		/* they already had raid on here, just return */
 		if (flags & stripped)
@@ -6854,9 +6853,9 @@ static u64 update_block_group_flags(struct btrfs_root *root, u64 flags)
 		if (flags & BTRFS_BLOCK_GROUP_DUP)
 			return stripped | BTRFS_BLOCK_GROUP_RAID1;
 
-		/* turn single device chunks into raid0 */
-		return stripped | BTRFS_BLOCK_GROUP_RAID0;
+		/* this is drive concat, leave it alone */
 	}
+
 	return flags;
 }
 
