@@ -32,7 +32,6 @@
 #include <linux/semaphore.h>
 #endif
 
-DECLARE_MUTEX(hpidebuglock);
 int hpi_debug_init = 0;
 uint64_t hpi_debug_level = 0;
 
