@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.8%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Mar 27 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.8.el5uek]
+- loop: set default number of loop devices to 200 (Maxim Uvarov)
+- SPEC OL5: fix xen support (Maxim Uvarov)
+
 * Thu Mar 22 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.6.el5uek]
 - ocfs2: Rollback commit ea455f8ab68338ba69f5d3362b342c115bea8e13 (Sunil
   Mushran) [orabug: 13555276]
