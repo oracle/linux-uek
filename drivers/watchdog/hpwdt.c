@@ -249,7 +249,8 @@ static int __devinit cru_detect(unsigned long map_entry,
 			cru_rom_addr =
 				ioremap(cru_physical_address, cru_length);
 			if (cru_rom_addr) {
-				set_memory_x((unsigned long)cru_rom_addr & PAGE_MASK, cru_length >> PAGE_SHIFT);
+				set_memory_x((unsigned long)cru_rom_addr & PAGE_MASK,
+					(cru_length + PAGE_SIZE - 1) >> PAGE_SHIFT);
 				retval = 0;
 			}
 		}

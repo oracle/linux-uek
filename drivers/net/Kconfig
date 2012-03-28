@@ -2927,6 +2927,8 @@ source "drivers/net/sfc/Kconfig"
 
 source "drivers/net/benet/Kconfig"
 
+source "drivers/net/hxge/Kconfig"
+
 endif # NETDEV_10000
 
 source "drivers/net/tokenring/Kconfig"
