@@ -654,6 +654,7 @@ bool set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 
 	return true;
 }
+EXPORT_SYMBOL_GPL(set_phys_to_machine);
 
 #define M2P_OVERRIDE_HASH_SHIFT	10
 #define M2P_OVERRIDE_HASH	(1 << M2P_OVERRIDE_HASH_SHIFT)
