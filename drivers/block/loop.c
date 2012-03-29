@@ -1767,7 +1767,7 @@ static int __init loop_init(void)
 		nr = max_loop;
 		range = max_loop << part_shift;
 	} else {
-		nr = 200;
+		nr = 512;
 		range = 1UL << MINORBITS;
 	}
 
