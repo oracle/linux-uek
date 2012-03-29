@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.8%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.9%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,23 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Mar 29 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.9.el6uek]
+- Revert "loop: increase default number of loop devices to 512" (Maxim Uvarov)
+- Revert "loop: set default number of loop devices to 200" (Maxim Uvarov)
+- ocfs2/dlm: dlmlock_remote() needs to account for remastery (Sunil Mushran)
+- ocfs2/dlm: Take inflight reference count for remotely mastered resources too
+  (Maxim Uvarov)
+- ocfs2/dlm: Clean up refmap helpers (Maxim Uvarov)
+- ocfs2/dlm: Cleanup dlm_wait_for_node_death() and dlm_wait_for_node_recovery()
+  (Sunil Mushran)
+- ocfs2/dlm: Cleanup up dlm_finish_local_lockres_recovery() (Sunil Mushran)
+- ocfs2/dlm: Trace insert/remove of resource to/from hash (Sunil Mushran)
+- ocfs2/dlm: Clean up messages in o2dlm (Sunil Mushran)
+- ocfs2/cluster: Cluster up now includes network connections too (Sunil
+  Mushran)
+- ocfs2/cluster: Clean up messages in o2net (Sunil Mushran)
+- ocfs2/cluster: Abort heartbeat start on hard-ro devices (Sunil Mushran)
+
 * Tue Mar 27 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.8.el5uek]
 - loop: set default number of loop devices to 200 (Maxim Uvarov)
 - SPEC OL5: fix xen support (Maxim Uvarov)
