@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.9%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.10%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Mar 29 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.10.el6uek]
+- ocfs2/cluster: Fix output in file elapsed_time_in_ms (Sunil Mushran)
+
 * Thu Mar 29 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.9.el6uek]
 - Revert "loop: increase default number of loop devices to 512" (Maxim Uvarov)
 - Revert "loop: set default number of loop devices to 200" (Maxim Uvarov)
