@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,38 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thue Mar 29 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.1.el6uek]
+- Add an additional signing key for signing Ksplice modules for modsign.
+  (Nelson Elhage)
+- Revert "loop: increase default number of loop devices to 512" (Maxim Uvarov)
+- Revert "loop: set default number of loop devices to 200" (Maxim Uvarov)
+- ocfs2/dlm: dlmlock_remote() needs to account for remastery (Sunil Mushran)
+- ocfs2/dlm: Take inflight reference count for remotely mastered resources too
+  (Maxim Uvarov)
+- ocfs2/dlm: Clean up refmap helpers (Maxim Uvarov)
+- ocfs2/dlm: Cleanup dlm_wait_for_node_death() and dlm_wait_for_node_recovery()
+  (Sunil Mushran)
+- ocfs2/dlm: Cleanup up dlm_finish_local_lockres_recovery() (Sunil Mushran)
+- ocfs2/dlm: Trace insert/remove of resource to/from hash (Sunil Mushran)
+- ocfs2/dlm: Clean up messages in o2dlm (Sunil Mushran)
+- ocfs2/cluster: Cluster up now includes network connections too (Sunil
+  Mushran)
+- ocfs2/cluster: Clean up messages in o2net (Sunil Mushran)
+- ocfs2/cluster: Abort heartbeat start on hard-ro devices (Sunil Mushran)
+- ocfs2/cluster: Fix output in file elapsed_time_in_ms (Sunil Mushran)
+- Linux 3.0.26 (Greg Kroah-Hartman)
+- powerpc/pmac: Fix SMP kernels on pre-core99 UP machines (Benjamin
+  Herrenschmidt)
+- iwl3945: fix possible il->txq NULL pointer dereference in delayed works
+  (Stanislaw Gruszka)
+- ipv6: Don't dev_hold(dev) in ip6_mc_find_dev_rcu. (RongQing.Li)
+- tcp: fix syncookie regression (Eric Dumazet)
+- perf tools: Incorrect use of snprintf results in SEGV (Anton Blanchard)
+- afs: Remote abort can cause BUG in rxrpc code (Anton Blanchard)
+- afs: Read of file returns EBADMSG (Anton Blanchard)
+- nilfs2: fix NULL pointer dereference in nilfs_load_super_block() (Ryusuke
+  Konishi
+
 * Wed Mar 28 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.0.el6uek]
 - remove unused mutex hpidebuglock (Maxim Uvarov)
 - add hxge-1.3.3 driver (Maxim Uvarov)
