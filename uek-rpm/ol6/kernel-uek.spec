@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.10%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.11%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,12 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Mar 30 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.11.el6uek]
+- vlan: allow nested vlan_do_receive() (Maxim Uvarov)
+- net: allow vlan traffic to be received under bond (John Fastabend)
+- net: vlan: goto another_round instead of calling __netif_receive_skb (Jiri
+  Pirko)
+
 * Thu Mar 29 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.10.el6uek]
 - ocfs2/cluster: Fix output in file elapsed_time_in_ms (Sunil Mushran)
 
