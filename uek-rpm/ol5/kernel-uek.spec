@@ -104,7 +104,7 @@ Summary: The Linux kernel
 # Want to build a the vsdo directories installed
 %define with_vdso_install %{?_without_vdso_install: 0} %{?!_without_vdso_install: 1}
 # Control whether we perform a compat. check against published ABI.
-%define with_kabichk	0
+%define with_kabichk	1
 
 # Build the kernel-doc package, but don't fail the build if it botches.
 # Here "true" means "continue" and "false" means "fail the build".
