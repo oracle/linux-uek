@@ -72,12 +72,11 @@ static void ext4_aiodio_wait(struct inode *inode)
  * or one thread will zero the other's data, causing corruption.
  */
 static int
-ext4_unaligned_aio(struct inode *inode, const struct iovec *iov,
-		   unsigned long nr_segs, loff_t pos)
+ext4_unaligned_aio(struct inode *inode, struct iov_iter *iter, loff_t pos)
 {
 	struct super_block *sb = inode->i_sb;
 	int blockmask = sb->s_blocksize - 1;
-	size_t count = iov_length(iov, nr_segs);
+	size_t count = iov_iter_count(iter);
 	loff_t final_size = pos + count;
 
 	if (pos >= inode->i_size)
@@ -90,8 +89,7 @@ ext4_unaligned_aio(struct inode *inode, const struct iovec *iov,
 }
 
 static ssize_t
-ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
-		unsigned long nr_segs, loff_t pos)
+ext4_file_write_iter(struct kiocb *iocb, struct iov_iter *iter, loff_t pos)
 {
 	struct inode *inode = iocb->ki_filp->f_path.dentry->d_inode;
 	int unaligned_aio = 0;
@@ -104,19 +102,21 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 
 	if (!(ext4_test_inode_flag(inode, EXT4_INODE_EXTENTS))) {
 		struct ext4_sb_info *sbi = EXT4_SB(inode->i_sb);
-		size_t length = iov_length(iov, nr_segs);
+		size_t length = iov_iter_count(iter);
 
 		if ((pos > sbi->s_bitmap_maxbytes ||
 		    (pos == sbi->s_bitmap_maxbytes && length > 0)))
 			return -EFBIG;
 
 		if (pos + length > sbi->s_bitmap_maxbytes) {
-			nr_segs = iov_shorten((struct iovec *)iov, nr_segs,
-					      sbi->s_bitmap_maxbytes - pos);
+			ret = iov_iter_shorten(iter,
+					       sbi->s_bitmap_maxbytes - pos);
+			if (ret)
+				return ret;
 		}
 	} else if (unlikely((iocb->ki_filp->f_flags & O_DIRECT) &&
 		   !is_sync_kiocb(iocb))) {
-		unaligned_aio = ext4_unaligned_aio(inode, iov, nr_segs, pos);
+		unaligned_aio = ext4_unaligned_aio(inode, iter, pos);
 	}
 
 	/* Unaligned direct AIO must be serialized; see comment above */
@@ -133,12 +133,29 @@ ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
 		ext4_aiodio_wait(inode);
 	}
 
-	ret = generic_file_aio_write(iocb, iov, nr_segs, pos);
+	ret = generic_file_write_iter(iocb, iter, pos);
 
 	if (unaligned_aio)
 		mutex_unlock(ext4_aio_mutex(inode));
 
 	return ret;
+}
+
+static ssize_t
+ext4_file_write(struct kiocb *iocb, const struct iovec *iov,
+		unsigned long nr_segs, loff_t pos)
+{
+	struct iov_iter i;
+	int ret;
+	size_t count;
+
+	ret = generic_segment_checks(iov, &nr_segs, &count, VERIFY_WRITE);
+	if (ret)
+		return ret;
+
+	iov_iter_init(&i, iov, nr_segs, count, 0);
+
+	return ext4_file_write_iter(iocb, &i, pos);
 }
 
 static const struct vm_operations_struct ext4_file_vm_ops = {
@@ -257,9 +274,9 @@ const struct file_operations ext4_file_operations = {
 	.read		= do_sync_read,
 	.write		= do_sync_write,
 	.aio_read	= generic_file_aio_read,
-	.aio_write	= ext4_file_write,
 	.read_iter	= generic_file_read_iter,
-	.write_iter	= generic_file_write_iter,
+	.aio_write	= ext4_file_write,
+	.write_iter	= ext4_file_write_iter,
 	.unlocked_ioctl = ext4_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= ext4_compat_ioctl,
