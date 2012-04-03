@@ -2018,6 +2018,8 @@ out:
 	err = copied;
 
 	sdp_dbg_data(sk, "copied: 0x%x\n", copied);
+	if (copied > 0)
+		SDPSTATS_COUNTER_ADD(tx_bytes, copied);
 
 	goto fin;
 
@@ -2442,6 +2444,8 @@ found_fin_ok:
 
 got_disconn_in_peek:
 	err = copied;
+	if (copied > 0)
+		SDPSTATS_COUNTER_ADD(rx_bytes, copied);
 out:
 
 	posts_handler_put(ssk, SDP_RX_ARMING_DELAY);

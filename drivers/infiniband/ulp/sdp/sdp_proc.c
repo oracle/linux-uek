@@ -314,13 +314,15 @@ static void sdpstats_seq_hist(struct seq_file *seq, char *str, u32 *h, int n,
 	}
 }
 
-#define SDPSTATS_COUNTER_GET(var) ({ \
-	u32 __val = 0;						\
+#define _SDPSTATS_COUNTER_GET(var, _type) ({ \
+	_type __val = 0;						\
 	unsigned int __i;                                       \
 	for_each_possible_cpu(__i)                              \
 		__val += per_cpu(sdpstats, __i).var;		\
 	__val;							\
 })
+#define SDPSTATS_COUNTER_GET(var) _SDPSTATS_COUNTER_GET(var, u32)
+#define SDPSTATS_COUNTER_GET64(var) _SDPSTATS_COUNTER_GET(var, u64)
 
 #define SDPSTATS_HIST_GET(hist, hist_len, sum) ({ \
 	unsigned int __i;                                       \
@@ -359,6 +361,11 @@ static int sdpstats_seq_show(struct seq_file *seq, void *v)
 		return -ENOMEM;
 
 	seq_printf(seq, "SDP statistics:\n");
+
+	seq_printf(seq, "rx_bytes\t\t: %llu\n",
+		SDPSTATS_COUNTER_GET64(rx_bytes));
+	seq_printf(seq, "tx_bytes\t\t: %llu\n",
+		SDPSTATS_COUNTER_GET64(tx_bytes));
 
 	__sdpstats_seq_hist(seq, "sendmsg_seglen", sendmsg_seglen, 1);
 	__sdpstats_seq_hist(seq, "send_size", send_size, 1);

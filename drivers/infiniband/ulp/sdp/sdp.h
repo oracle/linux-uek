@@ -772,6 +772,8 @@ static inline int credit_update_needed(struct sdp_sock *ssk)
 
 #define SDPSTATS_MAX_HIST_SIZE 256
 struct sdpstats {
+	u64 rx_bytes;
+	u64 tx_bytes;
 	u32 post_send[256];
 	u32 inline_sends;
 	u32 sendmsg_bcopy_segment;
