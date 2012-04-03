@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.12%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.13%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Apr 2 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.13.el5uek]
+- fix git merge: vlan: allow nested vlan_do_receive() (Maxim Uvarov)
+- SPEC: update and turn on kabi (Maxim Uvarov)
+
 * Mon Apr 2 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.12.el5uek]
 - remove unused mutex hpidebuglock (Maxim Uvarov)
 - add hxge-1.3.3 driver (Maxim Uvarov)
