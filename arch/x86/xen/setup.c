@@ -282,11 +282,29 @@ static unsigned long __init xen_get_max_pages(void)
 	 * the current maximum rather than the static maximum. In this
 	 * case the e820 map provided to us will cover the static
 	 * maximum region.
+	 *
+	 * The dom0_mem=min:X,max:Y tweaks options differently depending
+	 * on the version, but in general this is what we get:
+	 *                | XENMEM_maximum_reser  | nr_pages
+	 * --------------++-----------------------+-------------------
+	 *  no dom0_mem   | INT_MAX               | max_phys_pfn
+	 *  =3G           | INT_MAX               | 786432
+	 *  =max:3G       | 786432                | 786432
+	 *  =min:1G,max:3G| INT_MAX               | max_phys_fn
+	 *  =1G,max:3G    | INT_MAX               | 262144
+	 *  =min:1G,max:3G,2G | INT_MAX           | max_phys_fn
+	 *
+	 * The =3G is often used and it lead to us initially setting
+	 * 786432 and allowing dom0 to balloon up to the max_physical_pfn.
+	 * This is at odd with the classic XenOClassic so lets emulate
+	 * the classic behavior.
 	 */
 	if (xen_initial_domain()) {
 		ret = HYPERVISOR_memory_op(XENMEM_maximum_reservation, &domid);
 		if (ret > 0)
 			max_pages = ret;
+		if (ret == -1UL)
+			max_pages = xen_start_info->nr_pages;
 	}
 
 	return min(max_pages, MAX_DOMAIN_PAGES);
