@@ -42,6 +42,21 @@ static sdt_probe_t	**sdt_probetab;
 static int		sdt_probetab_size;
 static int		sdt_probetab_mask;
 
+static sdt_argdesc_t	sdt_args[] = {
+	{ "proc", "create", 0, 0, "struct task_struct *", },
+	{ "proc", "exec", 0, 0, "char *", },
+	{ "proc", "exec-failure", 0, 0, "int", },
+	{ "proc", "exit", 0, 0, "int", },
+	{ "proc", "lwp_create", 0, 0, "struct task_struct *", },
+	{ "proc", "lwp_exit", 0, 0, "int", },
+	{ "proc", "signal-handle", 0, 0, "int" },
+	{ "proc", "signal-handle", 1, 0 /* 1 */, "siginfo_t *" },
+	{ "proc", "signal-handle", 2, 0 /* 2 */, "void (*)(void)" },
+	{ "proc", "signal-send", 0, 0, "struct task_struct *", },
+	{ "proc", "signal-send", 1, 0, "int", },
+	{ NULL, }
+};
+
 static int sdt_invop(struct pt_regs *regs)
 {
 	sdt_probe_t	*sdt = sdt_probetab[SDT_ADDR2NDX(regs->ip)];
@@ -160,6 +175,37 @@ void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
 		    dtrace_argdesc_t *desc)
 {
+	sdt_probe_t	*sdp = parg;
+	int		i;
+
+	desc->dtargd_native[0] = '\0';
+	desc->dtargd_xlate[0] = '\0';
+
+	for (i = 0; sdt_args[i].sda_provider != NULL; i++) {
+		sdt_argdesc_t	*a = &sdt_args[i];
+
+		if (strcmp(sdp->sdp_provider->dtmp_name, a->sda_provider) != 0)
+			continue;
+
+		if (a->sda_name != NULL &&
+		    strcmp(sdp->sdp_name, a->sda_name) != 0)
+				continue;
+
+		if (desc->dtargd_ndx != a->sda_ndx)
+			continue;
+
+		if (a->sda_native != NULL)
+			strcpy(desc->dtargd_native, a->sda_native);
+
+		if (a->sda_xlate != NULL)
+			strcpy(desc->dtargd_xlate, a->sda_xlate);
+
+		desc->dtargd_mapping = a->sda_mapping;
+
+		return;
+	}
+
+	desc->dtargd_ndx = DTRACE_ARGNONE;
 }
 
 uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
