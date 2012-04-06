@@ -85,6 +85,9 @@ struct dst_entry {
 		struct rt6_info		*rt6_next;
 		struct dn_route __rcu	*dn_next;
 	};
+#ifndef __GENKSYMS__
+	struct dst_entry        *from;
+#endif
 };
 
 static inline struct neighbour *dst_get_neighbour(struct dst_entry *dst)
