@@ -4266,13 +4266,13 @@ static void task_move_group_fair(struct task_struct *p, int on_rq)
 	 * When !on_rq, vruntime of the task has usually NOT been normalized.
 	 * But there are some cases where it has already been normalized:
 	 *
-	 * - Moving a forked child which is waiting for being woken up by
-	 *   wake_up_new_task().
+	 * - Moving a task which has been woken up by try_to_wake_up() and
+	 *   waiting for actually being woken up by sched_ttwu_pending().
 	 *
 	 * To prevent boost or penalty in the new cfs_rq caused by delta
 	 * min_vruntime between the two cfs_rqs, we skip vruntime adjustment.
 	 */
-	if (!on_rq && !p->se.sum_exec_runtime)
+	if (!on_rq && (!p->se.sum_exec_runtime || p->state == TASK_WAKING))
 		on_rq = 1;
 
 	if (!on_rq)
