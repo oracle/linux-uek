@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.13%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.14%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,22 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Apr 6 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.14.el5uek]
+- update kabi (Maxim Uvarov)
+- adjust kernel configs (Maxim Uvarov)
+- usb: fix number of mapped SG DMA entries (Clemens Ladisch)
+- svcrpc: destroy server sockets all at once (J. Bruce Fields)
+- PCI: Rework ASPM disable code (Matthew Garrett)
+- net: fix NULL dereferences in check_peer_redir() (Eric Dumazet)
+- lib: proportion: lower PROP_MAX_SHIFT to 32 on 64-bit kernel (Wu Fengguang)
+- writeback: fix dereferencing NULL bdi->dev on trace_writeback_queue (Wu
+  Fengguang)
+- net: Make qdisc_skb_cb upper size bound explicit. (David S. Miller)
+- ipv4: Save nexthop address of LSRR/SSRR option to IPCB. (Maxim Uvarov)
+- compat: use sys_sendfile64() implementation for sendfile syscall (Chris
+  Metcalf)
+- ext4: implement ext4_file_write_iter (Dave Kleikamp)
+
 * Mon Apr 2 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.13.el5uek]
 - fix git merge: vlan: allow nested vlan_do_receive() (Maxim Uvarov)
 - SPEC: update and turn on kabi (Maxim Uvarov)
