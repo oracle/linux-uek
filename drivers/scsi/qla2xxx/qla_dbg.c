@@ -12,8 +12,8 @@
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
  * | Module Init and Probe        |       0x0120       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x113a       |              |
- * | Device Discovery             |       0x2085       | 0x2020-0x2022  |
+ * | Mailbox commands             |       0x113e       |              |
+ * | Device Discovery             |       0x2086       | 0x2020-0x2022  |
  * | Queue Command and IO tracing |       0x302f       | 0x3006,0x3008  |
  * |                              |                    | 0x302d,0x302e  |
  * | DPC Thread                   |       0x401c       |		|
