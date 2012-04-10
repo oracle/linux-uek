@@ -22,6 +22,8 @@
  * | Timer Routines               |       0x6011       | 0x600e-0x600f  |
  * | User Space Interactions      |       0x709f       | 0x7018,0x702e  |
  * |                              |                    | 0x7039,0x7045  |
+ * |                              |                    | 0x7073-0x7075  |
+ * |                              |                    | 0x708c         |
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x900f       |              |
