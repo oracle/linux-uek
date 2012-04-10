@@ -260,7 +260,7 @@ static int blkif_ioctl(struct block_device *bdev, fmode_t mode,
 static int blkif_queue_request(struct request *req)
 {
 	struct blkfront_info *info = req->rq_disk->private_data;
-	unsigned long buffer_mfn;
+	unsigned long buffer_mfn, buffer_pfn;
 	struct blkif_request *ring_req;
 	unsigned long id;
 	unsigned int fsect, lsect;
@@ -319,7 +319,8 @@ static int blkif_queue_request(struct request *req)
 		       BLKIF_MAX_SEGMENTS_PER_REQUEST);
 
 		for_each_sg(info->sg, sg, ring_req->u.rw.nr_segments, i) {
-			buffer_mfn = pfn_to_mfn(page_to_pfn(sg_page(sg)));
+			buffer_pfn = page_to_pfn(sg_page(sg));
+			buffer_mfn = pfn_to_mfn(buffer_pfn);
 			fsect = sg->offset >> 9;
 			lsect = fsect + (sg->length >> 9) - 1;
 			/* install a grant reference. */
@@ -338,6 +339,17 @@ static int blkif_queue_request(struct request *req)
 						.gref       = ref,
 						.first_sect = fsect,
 						.last_sect  = lsect };
+			/* 
+			 * Set the page as foreign, considering that we are giving
+			 * it to a foreign domain.
+			 * This is important in case the destination domain is
+			 * ourselves, so that we can more easily recognize the
+			 * source pfn from destination pfn, both mapping to the same
+			 * mfn.
+			 */
+			if (xen_pv_domain())
+				set_phys_to_machine(buffer_pfn,
+						FOREIGN_FRAME(buffer_mfn));
 		}
 	}
 
@@ -713,8 +725,12 @@ static void blkif_completion(struct blk_shadow *s)
 	int i;
 	/* Do not let BLKIF_OP_DISCARD as nr_segment is in the same place
 	 * flag. */
-	for (i = 0; i < s->req.u.rw.nr_segments; i++)
+	for (i = 0; i < s->req.u.rw.nr_segments; i++) {
 		gnttab_end_foreign_access(s->req.u.rw.seg[i].gref, 0, 0UL);
+		if (xen_pv_domain())
+			set_phys_to_machine(s->frame[i],
+					get_phys_to_machine(s->frame[i]) & ~FOREIGN_FRAME_BIT);
+	}
 }
 
 static irqreturn_t blkif_interrupt(int irq, void *dev_id)
@@ -1050,13 +1066,20 @@ static int blkif_recover(struct blkfront_info *info)
 		memcpy(&info->shadow[req->u.rw.id], &copy[i], sizeof(copy[i]));
 
 		if (req->operation != BLKIF_OP_DISCARD) {
+			unsigned long buffer_pfn;
+			unsigned long buffer_mfn;
 		/* Rewrite any grant references invalidated by susp/resume. */
-			for (j = 0; j < req->u.rw.nr_segments; j++)
+			for (j = 0; j < req->u.rw.nr_segments; j++) {
+				buffer_pfn = info->shadow[req->u.rw.id].frame[j];
+				buffer_mfn = pfn_to_mfn(buffer_pfn);
 				gnttab_grant_foreign_access_ref(
 					req->u.rw.seg[j].gref,
 					info->xbdev->otherend_id,
-					pfn_to_mfn(info->shadow[req->u.rw.id].frame[j]),
+					buffer_mfn,
 					rq_data_dir(info->shadow[req->u.rw.id].request));
+				if (xen_pv_domain())
+					set_phys_to_machine(buffer_pfn, FOREIGN_FRAME(buffer_mfn));
+			}
 		}
 		info->shadow[req->u.rw.id].req = *req;
 
