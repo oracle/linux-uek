@@ -39,6 +39,15 @@
 
 #define MLX4_INVALID_LKEY	0x100
 
+enum ib_m_qp_attr_mask {
+	IB_M_EXT_CLASS_1 = 1 << 28,
+	IB_M_EXT_CLASS_2 = 1 << 29,
+	IB_M_EXT_CLASS_3 = 1 << 30,
+
+	IB_M_QP_MOD_VEND_MASK = (IB_M_EXT_CLASS_1 | IB_M_EXT_CLASS_2 |
+				 IB_M_EXT_CLASS_3)
+};
+
 enum mlx4_qp_optpar {
 	MLX4_QP_OPTPAR_ALT_ADDR_PATH		= 1 << 0,
 	MLX4_QP_OPTPAR_RRE			= 1 << 1,
@@ -95,6 +104,9 @@ enum {
 	MLX4_QP_BIT_RWE				= 1 << 14,
 	MLX4_QP_BIT_RAE				= 1 << 13,
 	MLX4_QP_BIT_RIC				= 1 <<	4,
+	MLX4_QP_BIT_COLL_SYNC_RQ                = 1 <<  2,
+	MLX4_QP_BIT_COLL_SYNC_SQ                = 1 <<  1,
+	MLX4_QP_BIT_COLL_MASTER                 = 1 <<  0
 };
 
 enum {

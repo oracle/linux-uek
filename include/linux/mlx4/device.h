@@ -419,6 +419,7 @@ struct mlx4_caps {
 	u32			max_counters;
 	u8			port_ib_mtu[MLX4_MAX_PORTS + 1];
 	u16			sqp_demux;
+	u32			sync_qp;
 };
 
 struct mlx4_buf_list {

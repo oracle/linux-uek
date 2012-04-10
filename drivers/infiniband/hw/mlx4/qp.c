@@ -1514,6 +1514,18 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 		optpar |= MLX4_QP_OPTPAR_RWE | MLX4_QP_OPTPAR_RRE | MLX4_QP_OPTPAR_RAE;
 	}
 
+	if (attr_mask & IB_M_EXT_CLASS_1)
+		context->params2 |= cpu_to_be32(MLX4_QP_BIT_COLL_MASTER);
+
+	/* for now we enable also sqe on send */
+	if (attr_mask & IB_M_EXT_CLASS_2) {
+		context->params2 |= cpu_to_be32(MLX4_QP_BIT_COLL_SYNC_SQ);
+		context->params2 |= cpu_to_be32(MLX4_QP_BIT_COLL_MASTER);
+	}
+
+	if (attr_mask & IB_M_EXT_CLASS_3)
+		context->params2 |= cpu_to_be32(MLX4_QP_BIT_COLL_SYNC_RQ);
+
 	if (ibqp->srq)
 		context->params2 |= cpu_to_be32(MLX4_QP_BIT_RIC);
 
@@ -1730,12 +1742,19 @@ int mlx4_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	cur_state = attr_mask & IB_QP_CUR_STATE ? attr->cur_qp_state : qp->state;
 	new_state = attr_mask & IB_QP_STATE ? attr->qp_state : cur_state;
 
-	if (!ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type, attr_mask)) {
+	if (!ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type,
+				attr_mask & ~IB_M_QP_MOD_VEND_MASK)) {
 		pr_debug("qpn 0x%x: invalid attribute mask specified "
 			 "for transition %d to %d. qp_type %d,"
 			 " attr_mask 0x%x\n",
 			 ibqp->qp_num, cur_state, new_state,
 			 ibqp->qp_type, attr_mask);
+		goto out;
+	}
+
+	if ((attr_mask & IB_M_QP_MOD_VEND_MASK) && !dev->dev->caps.sync_qp) {
+		printk(KERN_ERR "extended verbs are not supported by %s\n",
+			dev->ib_dev.name);
 		goto out;
 	}
 
