@@ -205,8 +205,7 @@ extern int
 qla2x00_execute_fw(scsi_qla_host_t *, uint32_t);
 
 extern int
-qla2x00_get_fw_version(scsi_qla_host_t *, uint16_t *, uint16_t *, uint16_t *,
-    uint16_t *, uint32_t *, uint8_t *, uint32_t *, uint8_t *);
+qla2x00_get_fw_version(scsi_qla_host_t *);
 
 extern int
 qla2x00_get_fw_options(scsi_qla_host_t *, uint16_t *);
@@ -409,8 +408,11 @@ extern void qla2x00_beacon_blink(struct scsi_qla_host *);
 extern int qla24xx_beacon_on(struct scsi_qla_host *);
 extern int qla24xx_beacon_off(struct scsi_qla_host *);
 extern void qla24xx_beacon_blink(struct scsi_qla_host *);
+extern void qla83xx_beacon_blink(struct scsi_qla_host *);
 extern int qla82xx_beacon_on(struct scsi_qla_host *);
 extern int qla82xx_beacon_off(struct scsi_qla_host *);
+extern int qla83xx_write_remote_reg(scsi_qla_host_t *ha, uint32_t reg,
+    uint32_t data);
 
 extern uint8_t *qla2x00_read_optrom_data(struct scsi_qla_host *, uint8_t *,
     uint32_t, uint32_t);
@@ -576,8 +578,10 @@ extern void qla82xx_start_iocbs(scsi_qla_host_t *);
 extern int qla82xx_fcoe_ctx_reset(scsi_qla_host_t *);
 extern int qla82xx_check_md_needed(scsi_qla_host_t *);
 extern void qla82xx_chip_reset_cleanup(scsi_qla_host_t *);
-extern int qla82xx_mbx_beacon_ctl(scsi_qla_host_t *, int);
+extern int qla81xx_set_led_config(scsi_qla_host_t *, uint16_t *);
+extern int qla81xx_get_led_config(scsi_qla_host_t *, uint16_t *);
 extern char *qdev_state(uint32_t);
+extern int qla82xx_mbx_beacon_ctl(scsi_qla_host_t *, int);
 
 /* BSG related functions */
 extern int qla24xx_bsg_request(struct fc_bsg_job *);
@@ -587,6 +591,10 @@ extern int qla2x00_issue_iocb_timeout(scsi_qla_host_t *, void *,
 	dma_addr_t, size_t, uint32_t);
 extern int qla2x00_get_idma_speed(scsi_qla_host_t *, uint16_t,
 	uint16_t *, uint16_t *);
+
+/* 83xx related functions */
+extern void qla83xx_fw_dump(scsi_qla_host_t *, int);
+extern int qla83xx_configure_vfs(scsi_qla_host_t *);
 
 /* Minidump related functions */
 extern int qla82xx_md_get_template_size(scsi_qla_host_t *);

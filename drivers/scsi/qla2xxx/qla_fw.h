@@ -1327,6 +1327,7 @@ struct qla_flt_header {
 #define FLT_REG_GOLD_FW		0x2f
 #define FLT_REG_FCP_PRIO_0	0x87
 #define FLT_REG_FCP_PRIO_1	0x88
+#define FLT_REG_FCOE_FW		0xA4
 
 struct qla_flt_region {
 	uint32_t code;
@@ -1493,6 +1494,11 @@ struct access_chip_rsp_84xx {
 #define MBC_FLASH_ACCESS_CTRL	0x3e	/* Control flash access. */
 #define MBC_GET_XGMAC_STATS	0x7a
 #define MBC_GET_DCBX_PARAMS	0x51
+
+/*
+ * ISP83xx mailbox commands
+ */
+#define MBC_WRITE_REMOTE_REG 0x0001 /* Write remote register */
 
 /* Flash access control option field bit definitions */
 #define FAC_OPT_FORCE_SEMAPHORE		BIT_15
@@ -1874,5 +1880,8 @@ struct qla_fcp_prio_cfg {
 #define FA_HW_EVENT1_ADDR_81	0xDC400
 #define FA_NPIV_CONF0_ADDR_81	0xD1000
 #define FA_NPIV_CONF1_ADDR_81	0xD2000
+
+/* 83XX Flash locations -- occupies second 8MB region. */
+#define FA_FLASH_LAYOUT_ADDR_83	0xFC400
 
 #endif
