@@ -194,3 +194,10 @@ qla2x00_init_scmd(srb_t *sp, struct scsi_cmnd *cmd)
 	sp->done = qla2x00_sp_compl;
 	return QLA_SUCCESS;
 }
+
+static inline int
+qla2x00_gid_list_size(struct qla_hw_data *ha)
+{
+	return (sizeof(struct gid_list_info) * ha->max_fibre_devices);
+}
+
