@@ -155,7 +155,7 @@ qla2x00_get_sp(scsi_qla_host_t *vha, fc_port_t *fcport, gfp_t flag)
 	uint8_t bail;
 
 	QLA_VHA_MARK_BUSY(vha, bail);
-	if (bail)
+	if (unlikely(bail))
 		return NULL;
 
 	sp = mempool_alloc(ha->srb_mempool, flag);
@@ -171,7 +171,7 @@ done:
 	return sp;
 }
 
-static inline int
+static inline void
 qla2x00_init_timer(srb_t *sp, unsigned long tmo)
 {
 	init_timer(&sp->u.iocb_cmd.timer);
@@ -180,19 +180,6 @@ qla2x00_init_timer(srb_t *sp, unsigned long tmo)
 	sp->u.iocb_cmd.timer.function = qla2x00_sp_timeout;
 	add_timer(&sp->u.iocb_cmd.timer);
 	sp->free = qla2x00_sp_free;
-	return QLA_SUCCESS;
-}
-
-static inline int
-qla2x00_init_scmd(srb_t *sp, struct scsi_cmnd *cmd)
-{
-	sp->u.scmd.cmd = cmd;
-	sp->type = SRB_SCSI_CMD;
-	atomic_set(&sp->ref_count, 1);
-	CMD_SP(cmd) = (void *)sp;
-	sp->free = qla2x00_sp_free_dma;
-	sp->done = qla2x00_sp_compl;
-	return QLA_SUCCESS;
 }
 
 static inline int

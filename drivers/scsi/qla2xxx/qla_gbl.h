@@ -154,7 +154,6 @@ extern void qla2x00_do_dpc_all_vps(scsi_qla_host_t *);
 extern int qla24xx_vport_create_req_sanity_check(struct fc_vport *);
 extern scsi_qla_host_t * qla24xx_create_vhost(struct fc_vport *);
 
-extern void qla2x00_sp_compl(void *, void *, int);
 extern void qla2x00_sp_free_dma(void *, void *);
 extern char *qla2x00_get_fw_version_str(struct scsi_qla_host *, char *);
 

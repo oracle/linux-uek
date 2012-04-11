@@ -137,8 +137,6 @@ qla2x00_async_login(struct scsi_qla_host *vha, fc_port_t *fcport,
 	srb_t *sp;
 	struct srb_iocb *lio;
 	int rval;
-	unsigned long flags;
-	struct qla_hw_data *ha = vha->hw;
 
 	rval = QLA_FUNCTION_FAILED;
 	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
@@ -166,9 +164,7 @@ qla2x00_async_login(struct scsi_qla_host *vha, fc_port_t *fcport,
 	return rval;
 
 done_free_sp:
-	spin_lock_irqsave(&ha->hardware_lock, flags);
 	sp->free(vha, sp);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 done:
 	return rval;
 }
@@ -192,8 +188,6 @@ qla2x00_async_logout(struct scsi_qla_host *vha, fc_port_t *fcport)
 	srb_t *sp;
 	struct srb_iocb *lio;
 	int rval;
-	unsigned long flags;
-	struct qla_hw_data *ha = vha->hw;
 
 	rval = QLA_FUNCTION_FAILED;
 	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
@@ -218,9 +212,7 @@ qla2x00_async_logout(struct scsi_qla_host *vha, fc_port_t *fcport)
 	return rval;
 
 done_free_sp:
-	spin_lock_irqsave(&ha->hardware_lock, flags);
 	sp->free(vha, sp);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 done:
 	return rval;
 }
@@ -245,8 +237,6 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 	srb_t *sp;
 	struct srb_iocb *lio;
 	int rval;
-	struct qla_hw_data *ha = vha->hw;
-	unsigned long flags;
 
 	rval = QLA_FUNCTION_FAILED;
 	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
@@ -272,9 +262,7 @@ qla2x00_async_adisc(struct scsi_qla_host *vha, fc_port_t *fcport,
 	return rval;
 
 done_free_sp:
-	spin_lock_irqsave(&ha->hardware_lock, flags);
 	sp->free(vha, sp);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 done:
 	return rval;
 }
@@ -314,8 +302,6 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t tm_flags, uint32_t lun,
 	srb_t *sp;
 	struct srb_iocb *tcf;
 	int rval;
-	struct qla_hw_data *ha = vha->hw;
-	unsigned long flags;
 
 	rval = QLA_FUNCTION_FAILED;
 	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
@@ -324,13 +310,7 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t tm_flags, uint32_t lun,
 
 	sp->type = SRB_TM_CMD;
 	sp->name = "tmf";
-	if (qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2)) {
-		spin_lock_irqsave(&ha->hardware_lock, flags);
-		mempool_free(sp, ha->srb_mempool);
-		spin_unlock_irqrestore(&ha->hardware_lock, flags);
-		sp = NULL;
-		goto done;
-	}
+	qla2x00_init_timer(sp, qla2x00_get_async_timeout(vha) + 2);
 
 	tcf = &sp->u.iocb_cmd;
 	tcf->u.tmf.flags = tm_flags;
@@ -350,9 +330,7 @@ qla2x00_async_tm_cmd(fc_port_t *fcport, uint32_t tm_flags, uint32_t lun,
 	return rval;
 
 done_free_sp:
-	spin_lock_irqsave(&ha->hardware_lock, flags);
 	sp->free(vha, sp);
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 done:
 	return rval;
 }

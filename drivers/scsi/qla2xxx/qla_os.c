@@ -558,6 +558,78 @@ qla24xx_fw_version_str(struct scsi_qla_host *vha, char *str)
 	return str;
 }
 
+void
+qla2x00_sp_free_dma(void *vha, void *ptr)
+{
+	srb_t *sp = (srb_t *)ptr;
+	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
+	struct qla_hw_data *ha = sp->fcport->vha->hw;
+	void *ctx = GET_CMD_CTX_SP(sp);
+
+	if (sp->flags & SRB_DMA_VALID) {
+		scsi_dma_unmap(cmd);
+		sp->flags &= ~SRB_DMA_VALID;
+	}
+
+	if (sp->flags & SRB_CRC_PROT_DMA_VALID) {
+		dma_unmap_sg(&ha->pdev->dev, scsi_prot_sglist(cmd),
+		    scsi_prot_sg_count(cmd), cmd->sc_data_direction);
+		sp->flags &= ~SRB_CRC_PROT_DMA_VALID;
+	}
+
+	if (sp->flags & SRB_CRC_CTX_DSD_VALID) {
+		/* List assured to be having elements */
+		qla2x00_clean_dsd_pool(ha, sp);
+		sp->flags &= ~SRB_CRC_CTX_DSD_VALID;
+	}
+
+	if (sp->flags & SRB_CRC_CTX_DMA_VALID) {
+		dma_pool_free(ha->dl_dma_pool, ctx,
+		    ((struct crc_context *)ctx)->crc_ctx_dma);
+		sp->flags &= ~SRB_CRC_CTX_DMA_VALID;
+	}
+
+	if (sp->flags & SRB_FCP_CMND_DMA_VALID) {
+		struct ct6_dsd *ctx1 = (struct ct6_dsd *)ctx;
+
+		dma_pool_free(ha->fcp_cmnd_dma_pool, ctx1->fcp_cmnd,
+			ctx1->fcp_cmnd_dma);
+		list_splice(&ctx1->dsd_list, &ha->gbl_dsd_list);
+		ha->gbl_dsd_inuse -= ctx1->dsd_use_cnt;
+		ha->gbl_dsd_avail += ctx1->dsd_use_cnt;
+		mempool_free(ctx1, ha->ctx_mempool);
+		ctx1 = NULL;
+	}
+
+	CMD_SP(cmd) = NULL;
+	mempool_free(sp, ha->srb_mempool);
+}
+
+static void
+qla2x00_sp_compl(void *data, void *ptr, int res)
+{
+	struct qla_hw_data *ha = (struct qla_hw_data *)data;
+	srb_t *sp = (srb_t*)ptr;
+	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
+
+	if (res)
+		cmd->result = res;
+
+	if (atomic_read(&sp->ref_count) == 0) {
+		ql_dbg(ql_dbg_io, sp->fcport->vha, 0x3015,
+		    "SP reference-count to ZERO -- sp=%p cmd=%p.\n",
+		    sp, GET_CMD_SP(sp));
+		if (ql2xextended_error_logging & ql_dbg_io)
+			BUG();
+		return;
+	}
+	if (!atomic_dec_and_test(&sp->ref_count))
+		return;
+
+	qla2x00_sp_free_dma(ha, sp);
+	cmd->scsi_done(cmd);
+}
+
 static int
 qla2xxx_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 {
@@ -623,10 +695,12 @@ qla2xxx_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *cmd)
 	if (!sp)
 		goto qc24_host_busy;
 
-	if (qla2x00_init_scmd(sp, cmd)) {
-		mempool_free(sp, ha->srb_mempool);
-		goto qc24_host_busy;
-	}
+	sp->u.scmd.cmd = cmd;
+	sp->type = SRB_SCSI_CMD;
+	atomic_set(&sp->ref_count, 1);
+	CMD_SP(cmd) = (void *)sp;
+	sp->free = qla2x00_sp_free_dma;
+	sp->done = qla2x00_sp_compl;
 
 	rval = ha->isp_ops->start_scsi(sp);
 	if (rval != QLA_SUCCESS) {
@@ -3778,78 +3852,6 @@ qla2x00_rst_aen(scsi_qla_host_t *vha)
 		} while (!atomic_read(&vha->loop_down_timer) &&
 		    (test_bit(RESET_MARKER_NEEDED, &vha->dpc_flags)));
 	}
-}
-
-void
-qla2x00_sp_free_dma(void *vha, void *ptr)
-{
-	srb_t *sp = (srb_t *)ptr;
-	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
-	struct qla_hw_data *ha = sp->fcport->vha->hw;
-	void *ctx = GET_CMD_CTX_SP(sp);
-
-	if (sp->flags & SRB_DMA_VALID) {
-		scsi_dma_unmap(cmd);
-		sp->flags &= ~SRB_DMA_VALID;
-	}
-
-	if (sp->flags & SRB_CRC_PROT_DMA_VALID) {
-		dma_unmap_sg(&ha->pdev->dev, scsi_prot_sglist(cmd),
-		    scsi_prot_sg_count(cmd), cmd->sc_data_direction);
-		sp->flags &= ~SRB_CRC_PROT_DMA_VALID;
-	}
-
-	if (sp->flags & SRB_CRC_CTX_DSD_VALID) {
-		/* List assured to be having elements */
-		qla2x00_clean_dsd_pool(ha, sp);
-		sp->flags &= ~SRB_CRC_CTX_DSD_VALID;
-	}
-
-	if (sp->flags & SRB_CRC_CTX_DMA_VALID) {
-		dma_pool_free(ha->dl_dma_pool, ctx,
-		    ((struct crc_context *)ctx)->crc_ctx_dma);
-		sp->flags &= ~SRB_CRC_CTX_DMA_VALID;
-	}
-
-	if (sp->flags & SRB_FCP_CMND_DMA_VALID) {
-		struct ct6_dsd *ctx1 = (struct ct6_dsd *)ctx;
-
-		dma_pool_free(ha->fcp_cmnd_dma_pool, ctx1->fcp_cmnd,
-			ctx1->fcp_cmnd_dma);
-		list_splice(&ctx1->dsd_list, &ha->gbl_dsd_list);
-		ha->gbl_dsd_inuse -= ctx1->dsd_use_cnt;
-		ha->gbl_dsd_avail += ctx1->dsd_use_cnt;
-		mempool_free(ctx1, ha->ctx_mempool);
-		ctx1 = NULL;
-	}
-
-	CMD_SP(cmd) = NULL;
-	mempool_free(sp, ha->srb_mempool);
-}
-
-void
-qla2x00_sp_compl(void *data, void *ptr, int res)
-{
-	struct qla_hw_data *ha = (struct qla_hw_data *)data;
-	srb_t *sp = (srb_t*)ptr;
-	struct scsi_cmnd *cmd = GET_CMD_SP(sp);
-
-	if (res)
-		cmd->result = res;
-
-	if (atomic_read(&sp->ref_count) == 0) {
-		ql_dbg(ql_dbg_io, sp->fcport->vha, 0x3015,
-		    "SP reference-count to ZERO -- sp=%p cmd=%p.\n",
-		    sp, GET_CMD_SP(sp));
-		if (ql2xextended_error_logging & ql_dbg_io)
-			BUG();
-		return;
-	}
-	if (!atomic_dec_and_test(&sp->ref_count))
-		return;
-
-	qla2x00_sp_free_dma(ha, sp);
-	cmd->scsi_done(cmd);
 }
 
 /**************************************************************************
