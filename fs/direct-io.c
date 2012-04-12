@@ -1400,7 +1400,7 @@ __blockdev_direct_IO_bvec(int rw, struct kiocb *iocb, struct inode *inode,
 
 	sdio_init(&sdio, inode, offset, blkbits, get_block, submit_io);
 
-	sdio.pages_in_io = bvec_len;
+	sdio.pages_in_io += bvec_len;
 
 	for (i = 0; i < bvec_len; i++) {
 		sdio.size += bvec[i].bv_len;
