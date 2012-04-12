@@ -1307,6 +1307,10 @@ struct task_struct {
 				 * execve */
 	unsigned in_iowait:1;
 
+#ifndef __GENKSYMS__
+	/* task may not gain privileges */
+	unsigned no_new_privs:1;
+#endif /* __GENKSYMS__ */
 
 	/* Revert to default priority/policy when forking */
 	unsigned sched_reset_on_fork:1;
