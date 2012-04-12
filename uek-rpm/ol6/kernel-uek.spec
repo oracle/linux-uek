@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.14%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.15%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Apr 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.15.el6uek]
+- directio: account for extra page IOs for unaligned request (Dave Kleikamp) 
+  [Orabug: 13916031]
+
 * Fri Apr 6 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.14.el6uek]
 - update kabi (Maxim Uvarov)
 - adjust kernel configs (Maxim Uvarov)
