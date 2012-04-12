@@ -1083,8 +1083,7 @@ int ocfs2_ioctl_move_extents(struct file *filp, void __user *argp)
 	context->file = filp;
 
 	if (argp) {
-		if (copy_from_user(&range, (struct ocfs2_move_extents *)argp,
-				   sizeof(range))) {
+		if (copy_from_user(&range, argp, sizeof(range))) {
 			status = -EFAULT;
 			goto out;
 		}
@@ -1139,8 +1138,7 @@ out:
 	 * length and new_offset even if failure happens somewhere.
 	 */
 	if (argp) {
-		if (copy_to_user((struct ocfs2_move_extents *)argp, &range,
-				sizeof(range)))
+		if (copy_to_user(argp, &range, sizeof(range)))
 			status = -EFAULT;
 	}
 
