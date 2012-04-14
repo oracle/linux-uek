@@ -119,6 +119,7 @@ struct rds_info_counter {
 #define RDS_INFO_CONNECTION_FLAG_SENDING	0x01
 #define RDS_INFO_CONNECTION_FLAG_CONNECTING	0x02
 #define RDS_INFO_CONNECTION_FLAG_CONNECTED	0x04
+#define RDS_INFO_CONNECTION_FLAG_ERROR          0x08
 
 #define TRANSNAMSIZ	16
 
@@ -283,6 +284,7 @@ struct rds_reset {
 
 struct rds_asend_args {
 	u_int64_t       user_token;
+	u_int64_t       flags;
 };
 
 struct rds_rdma_send_notify {
@@ -306,5 +308,8 @@ struct rds_rdma_send_notify {
 #define RDS_RDMA_DONTWAIT	0x0010	/* Don't wait in SET_BARRIER */
 #define RDS_RDMA_NOTIFY_ME	0x0020	/* Notify when operation completes */
 #define RDS_RDMA_SILENT		0x0040	/* Do not interrupt remote */
+#define RDS_RDMA_REMOTE_COMPLETE 0x0080 /* Notify when data is available */
+#define RDS_SEND_NOTIFY_ME      0x0100  /* Notify when operation completes */
+
 
 #endif /* IB_RDS_H */
