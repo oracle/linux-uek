@@ -67,18 +67,27 @@ static void rds_ib_send_complete(struct rds_message *rm,
 	complete(rm, notify_status);
 }
 
+static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
+		struct rm_rdma_op *op,
+		int wc_status);
+
 static void rds_ib_send_unmap_data(struct rds_ib_connection *ic,
 				   struct rm_data_op *op,
 				   int wc_status)
 {
+	struct rds_message *rm;
+
+	rm = container_of(op, struct rds_message, data);
+
 	if (op->op_nents)
 		ib_dma_unmap_sg(ic->i_cm_id->device,
 				op->op_sg, op->op_nents,
 				DMA_TO_DEVICE);
 
-	if (op->op_notifier)
-		rds_ib_send_complete(container_of(op, struct rds_message, data),
-			wc_status, rds_asend_complete);
+	if (rm->data.op_async)
+		rds_ib_send_complete(rm, wc_status, rds_asend_complete);
+	else if (rm->rdma.op_active && rm->rdma.op_remote_complete)
+		rds_ib_send_unmap_rdma(ic, &rm->rdma, wc_status);
 }
 
 static void rds_ib_send_unmap_rdma(struct rds_ib_connection *ic,
@@ -699,7 +708,8 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 	if (scat == &rm->data.op_sg[rm->data.op_count]) {
 		prev->s_op = ic->i_data_op;
 		prev->s_wr.send_flags |= IB_SEND_SOLICITED;
-		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED)) {
+		if (!(prev->s_wr.send_flags & IB_SEND_SIGNALED) ||
+		     (rm->rdma.op_active && rm->rdma.op_remote_complete)) {
 			ic->i_unsignaled_wrs = rds_ib_sysctl_max_unsig_wrs;
 			prev->s_wr.send_flags |= IB_SEND_SIGNALED;
 			nr_sig++;
@@ -895,7 +905,8 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 		send->s_queued = jiffies;
 		send->s_op = NULL;
 
-		nr_sig += rds_ib_set_wr_signal_state(ic, send, op->op_notify);
+		if (!op->op_remote_complete)
+			nr_sig += rds_ib_set_wr_signal_state(ic, send, op->op_notify);
 
 		send->s_wr.opcode = op->op_write ? IB_WR_RDMA_WRITE : IB_WR_RDMA_READ;
 		send->s_rdma_wr.remote_addr = remote_addr;
@@ -935,15 +946,49 @@ int rds_ib_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op)
 			send = ic->i_sends;
 	}
 
-	/* give a reference to the last op */
-	if (scat == &op->op_sg[op->op_count]) {
-		prev->s_op = op;
-		rds_message_addref(container_of(op, struct rds_message, rdma));
-	}
-
 	if (i < work_alloc) {
 		rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc - i);
 		work_alloc = i;
+	}
+
+	/* give a reference to the last op */
+	if (scat == &op->op_sg[op->op_count]) {
+		if (op->op_write && op->op_silent && op->op_remote_complete) {
+			int rcomp_alloc, rcomp_pos;
+			struct rds_ib_send_work *rcomp;
+
+			rcomp_alloc = rds_ib_ring_alloc(&ic->i_send_ring, 1,
+					&rcomp_pos);
+			if (rcomp_alloc != 1) {
+				ib_dma_unmap_sg(ic->i_cm_id->device,
+						op->op_sg, op->op_nents,
+						op->op_write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+				op->op_mapped = 0;
+				rds_ib_ring_unalloc(&ic->i_send_ring, work_alloc);
+				rds_ib_stats_inc(s_ib_tx_ring_full);
+				ret = -ENOMEM;
+				goto out;
+			}
+			rcomp = &ic->i_sends[rcomp_pos];
+			rcomp->s_sge[0] = prev->s_sge[prev->s_wr.num_sge-1];
+			rcomp->s_sge[0].addr +=
+				(rcomp->s_sge[0].length - sizeof(u8));
+			rcomp->s_sge[0].length = sizeof(u8);
+
+			rcomp->s_wr.num_sge = 1;
+			rcomp->s_wr.opcode = IB_WR_RDMA_READ;
+			rcomp->s_wr.next = NULL;
+			rcomp->s_rdma_wr.remote_addr =
+				remote_addr - sizeof(u8);
+			rcomp->s_rdma_wr.rkey = op->op_rkey;
+			prev->s_wr.next = &rcomp->s_wr;
+			prev = rcomp;
+			rcomp->s_wr.send_flags = IB_SEND_SIGNALED;
+			nr_sig++;
+		}
+
+		prev->s_op = op;
+		rds_message_addref(container_of(op, struct rds_message, rdma));
 	}
 
 	if (nr_sig)

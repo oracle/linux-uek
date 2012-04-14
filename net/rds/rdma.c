@@ -433,9 +433,10 @@ void rds_rdma_unuse(struct rds_sock *rs, u32 r_key, int force)
 
 	/* If the MR was marked as invalidate, this will
 	 * trigger an async flush. */
-	if (zot_me)
+	if (zot_me) {
 		rds_destroy_mr(mr);
-	rds_mr_put(mr);
+		rds_mr_put(mr);
+	}
 }
 
 void rds_rdma_free_op(struct rm_rdma_op *ro)
@@ -558,6 +559,7 @@ int rds_cmsg_rdma_args(struct rds_sock *rs, struct rds_message *rm,
 	op->op_fence = !!(args->flags & RDS_RDMA_FENCE);
 	op->op_notify = !!(args->flags & RDS_RDMA_NOTIFY_ME);
 	op->op_silent = !!(args->flags & RDS_RDMA_SILENT);
+	op->op_remote_complete = !!(args->flags & RDS_RDMA_REMOTE_COMPLETE);
 	op->op_active = 1;
 	op->op_recverr = rs->rs_recverr;
 	WARN_ON(!nr_pages);
@@ -691,9 +693,10 @@ int rds_cmsg_rdma_dest(struct rds_sock *rs, struct rds_message *rm,
 
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	mr = rds_mr_tree_walk(&rs->rs_rdma_keys, r_key, NULL);
-	if (!mr)
+	if (!mr) {
+		printk(KERN_ERR "rds_cmsg_rdma_dest: key %x\n", r_key);
 		err = -EINVAL;	/* invalid r_key */
-	else
+	} else
 		atomic_inc(&mr->r_refcount);
 	spin_unlock_irqrestore(&rs->rs_rdma_lock, flags);
 
@@ -713,11 +716,15 @@ int rds_cmsg_rdma_dest(struct rds_sock *rs, struct rds_message *rm,
 int rds_cmsg_rdma_map(struct rds_sock *rs, struct rds_message *rm,
 			  struct cmsghdr *cmsg)
 {
+	int ret;
 	if (cmsg->cmsg_len < CMSG_LEN(sizeof(struct rds_get_mr_args))
 	 || rm->m_rdma_cookie != 0)
 		return -EINVAL;
 
-	return __rds_rdma_map(rs, CMSG_DATA(cmsg), &rm->m_rdma_cookie, &rm->rdma.op_rdma_mr);
+	ret = __rds_rdma_map(rs, CMSG_DATA(cmsg), &rm->m_rdma_cookie, &rm->rdma.op_rdma_mr);
+	if (!ret)
+		rm->rdma.op_implicit_mr = 1;
+	return ret;
 }
 
 /*
