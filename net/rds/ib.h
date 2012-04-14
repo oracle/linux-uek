@@ -437,6 +437,7 @@ unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 extern unsigned int rds_ib_srq_max_wr;
 extern unsigned int rds_ib_srq_refill_wr;
 extern unsigned int rds_ib_srq_low_wr;
+extern unsigned int rds_ib_srq_enabled;
 
 /* ib_sysctl.c */
 int rds_ib_sysctl_init(void);
