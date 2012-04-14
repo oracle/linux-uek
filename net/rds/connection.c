@@ -528,6 +528,8 @@ static int rds_conn_info_visitor(struct rds_connection *conn,
 	rds_conn_info_set(cinfo->flags,
 			  atomic_read(&conn->c_state) == RDS_CONN_UP,
 			  CONNECTED);
+	rds_conn_info_set(cinfo->flags, conn->c_last_failed_op != NULL,
+			  ERROR);
 	return 1;
 }
 
