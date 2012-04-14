@@ -88,8 +88,7 @@ void rds_connect_complete(struct rds_connection *conn)
 	conn->c_reconnect_jiffies = 0;
 	set_bit(0, &conn->c_map_queued);
 	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
-	if (!conn->c_tos)
-		queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
+	queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
 
 	conn->c_connection_start = get_seconds();
 }
