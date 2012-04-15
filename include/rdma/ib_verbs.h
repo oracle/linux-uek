@@ -1279,6 +1279,10 @@ struct ib_device {
 						  struct ib_flow_spec *spec,
 						  int priority);
 
+	unsigned long		   (*get_unmapped_area)(struct file *file,
+					unsigned long addr,
+					unsigned long len, unsigned long pgoff,
+					unsigned long flags);
 	struct ib_dma_mapping_ops   *dma_ops;
 
 	struct module               *owner;

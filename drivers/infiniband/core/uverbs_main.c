@@ -617,6 +617,25 @@ static int ib_uverbs_mmap(struct file *filp, struct vm_area_struct *vma)
 		return file->device->ib_dev->mmap(file->ucontext, vma);
 }
 
+static unsigned long ib_uverbs_get_unmapped_area(struct file *filp,
+		unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags)
+{
+	struct ib_uverbs_file *file = filp->private_data;
+
+	if (!file->ucontext)
+		return -ENODEV;
+	else {
+		if (!file->device->ib_dev->get_unmapped_area)
+			return current->mm->get_unmapped_area(filp, addr, len,
+								pgoff, flags);
+
+		return file->device->ib_dev->get_unmapped_area(filp, addr, len,
+								pgoff, flags);
+	}
+}
+
+
 /*
  * ib_uverbs_open() does not need the BKL:
  *
@@ -697,6 +716,7 @@ static const struct file_operations uverbs_mmap_fops = {
 	.open	 = ib_uverbs_open,
 	.release = ib_uverbs_close,
 	.llseek	 = no_llseek,
+	.get_unmapped_area = ib_uverbs_get_unmapped_area,
 };
 
 static struct ib_client uverbs_client = {
