@@ -1906,6 +1906,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 
 		context->alt_path.pkey_index = attr->alt_pkey_index;
 		context->alt_path.ackto = attr->alt_timeout << 3;
+		context->alt_path.counter_index = dev->counters[attr->alt_port_num - 1];
 		optpar |= MLX4_QP_OPTPAR_ALT_ADDR_PATH;
 	}
 
