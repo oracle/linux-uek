@@ -115,6 +115,7 @@ enum ib_device_cap_flags {
 	IB_DEVICE_XRC			= (1<<20),
 	IB_DEVICE_MEM_MGT_EXTENSIONS	= (1<<21),
 	IB_DEVICE_BLOCK_MULTICAST_LOOPBACK = (1<<22),
+	IB_DEVICE_MR_ALLOCATE		= (1<<23)
 };
 
 enum ib_atomic_cap {
@@ -854,7 +855,8 @@ enum ib_access_flags {
 	IB_ACCESS_REMOTE_WRITE	= (1<<1),
 	IB_ACCESS_REMOTE_READ	= (1<<2),
 	IB_ACCESS_REMOTE_ATOMIC	= (1<<3),
-	IB_ACCESS_MW_BIND	= (1<<4)
+	IB_ACCESS_MW_BIND	= (1<<4),
+	IB_ACCESS_ALLOCATE_MR	= (1<<5)
 };
 
 struct ib_phys_buf {
