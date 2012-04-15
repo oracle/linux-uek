@@ -46,7 +46,7 @@
 
 #include <linux/mlx4/driver.h>
 #include <linux/mlx4/cmd.h>
-
+#include <linux/sched.h>
 #include "mlx4_ib.h"
 #include "user.h"
 #include "wc.h"
@@ -605,6 +605,59 @@ static int mlx4_ib_dealloc_ucontext(struct ib_ucontext *ibcontext)
 	kfree(context);
 
 	return 0;
+}
+
+static unsigned long mlx4_ib_get_unmapped_area(struct file *file,
+			unsigned long addr,
+			unsigned long len, unsigned long pgoff,
+			unsigned long flags)
+{
+	struct mm_struct *mm;
+	struct vm_area_struct *vma;
+	unsigned long start_addr;
+	unsigned long page_size_order;
+	unsigned long  command;
+
+	mm = current->mm;
+	if (addr)
+		return current->mm->get_unmapped_area(file, addr, len,
+						pgoff, flags);
+
+	/* Last 3 bits hold the  command others are data per that command */
+	command = pgoff & MLX4_IB_MMAP_CMD_MASK;
+	if (command != MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES)
+		return current->mm->get_unmapped_area(file, addr, len,
+						pgoff, flags);
+
+	page_size_order = pgoff >> MLX4_IB_MMAP_CMD_BITS;
+	/* code is based on the huge-pages get_unmapped_area code */
+	start_addr = mm->free_area_cache;
+
+	if (len <= mm->cached_hole_size)
+		start_addr = TASK_UNMAPPED_BASE;
+
+
+full_search:
+	addr = ALIGN(start_addr, 1 << page_size_order);
+
+	for (vma = find_vma(mm, addr); ; vma = vma->vm_next) {
+		/* At this point:  (!vma || addr < vma->vm_end). */
+		if (TASK_SIZE - len < addr) {
+			/*
+			 * Start a new search - just in case we missed
+			 * some holes.
+			 */
+			if (start_addr != TASK_UNMAPPED_BASE) {
+				start_addr = TASK_UNMAPPED_BASE;
+				goto full_search;
+			}
+			return -ENOMEM;
+		}
+
+		if (!vma || addr + len <= vma->vm_start)
+			return addr;
+		addr = ALIGN(vma->vm_end, 1 << page_size_order);
+	}
 }
 
 static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
@@ -1731,6 +1784,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.alloc_ucontext	= mlx4_ib_alloc_ucontext;
 	ibdev->ib_dev.dealloc_ucontext	= mlx4_ib_dealloc_ucontext;
 	ibdev->ib_dev.mmap		= mlx4_ib_mmap;
+	ibdev->ib_dev.get_unmapped_area = mlx4_ib_get_unmapped_area;
 	ibdev->ib_dev.alloc_pd		= mlx4_ib_alloc_pd;
 	ibdev->ib_dev.dealloc_pd	= mlx4_ib_dealloc_pd;
 	ibdev->ib_dev.create_ah		= mlx4_ib_create_ah;
