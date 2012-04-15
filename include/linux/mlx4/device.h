@@ -266,6 +266,10 @@ enum {
 	MLX4_MTT_FLAG_PRESENT		= 1
 };
 
+enum {
+	MLX4_MAX_MTT_SHIFT		= 31
+};
+
 enum mlx4_qp_region {
 	MLX4_QP_REGION_FW = 0,
 	MLX4_QP_REGION_ETH_ADDR,
