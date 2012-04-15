@@ -610,18 +610,25 @@ static int mlx4_ib_dealloc_ucontext(struct ib_ucontext *ibcontext)
 static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 {
 	struct mlx4_ib_dev *dev = to_mdev(context->device);
+	int err;
 
-	if (vma->vm_end - vma->vm_start != PAGE_SIZE)
-		return -EINVAL;
+	/* Last 3 bits hold the  command others are data per that command */
+	unsigned long  command = vma->vm_pgoff & MLX4_IB_MMAP_CMD_MASK;
 
-	if (vma->vm_pgoff == 0) {
+	if (command < MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES) {
+		/* compatability handling for commands 0 & 1*/
+		if (vma->vm_end - vma->vm_start != PAGE_SIZE)
+			return -EINVAL;
+	}
+	if (command == MLX4_IB_MMAP_UAR_PAGE) {
 		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
 
 		if (io_remap_pfn_range(vma, vma->vm_start,
 				       to_mucontext(context)->uar.pfn,
 				       PAGE_SIZE, vma->vm_page_prot))
 			return -EAGAIN;
-	} else if (vma->vm_pgoff == 1 && dev->dev->caps.bf_reg_size != 0) {
+	} else if (command == MLX4_IB_MMAP_BLUE_FLAME_PAGE &&
+			dev->dev->caps.bf_reg_size != 0) {
 		vma->vm_page_prot = pgprot_wc(vma->vm_page_prot);
 
 		if (io_remap_pfn_range(vma, vma->vm_start,
@@ -629,6 +636,25 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 				       dev->dev->caps.num_uars,
 				       PAGE_SIZE, vma->vm_page_prot))
 			return -EAGAIN;
+	} else if (command == MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES) {
+		/* Getting contiguous physical pages */
+		unsigned long total_size = vma->vm_end - vma->vm_start;
+		unsigned long page_size_order = (vma->vm_pgoff) >>
+						MLX4_IB_MMAP_CMD_BITS;
+		struct ib_cmem *ib_cmem;
+		ib_cmem = ib_cmem_alloc_contiguous_pages(context, total_size,
+							page_size_order);
+		if (IS_ERR(ib_cmem)) {
+			err = PTR_ERR(ib_cmem);
+			return err;
+		}
+
+		err = ib_cmem_map_contiguous_pages_to_vma(ib_cmem, vma);
+		if (err) {
+			ib_cmem_release_contiguous_pages(ib_cmem);
+			return err;
+		}
+		return 0;
 	} else
 		return -EINVAL;
 

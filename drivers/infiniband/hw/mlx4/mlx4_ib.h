@@ -70,6 +70,10 @@ extern int mlx4_ib_sm_guid_assign;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
 
+
+#define MLX4_IB_MMAP_CMD_MASK 0x07
+#define MLX4_IB_MMAP_CMD_BITS 3
+
 struct mlx4_ib_ucontext {
 	struct ib_ucontext	ibucontext;
 	struct mlx4_uar		uar;
@@ -153,6 +157,12 @@ struct mlx4_ib_gid_entry {
 	union ib_gid		gid;
 	int			added;
 	u8			port;
+};
+
+enum mlx4_ib_mmap_cmd {
+	MLX4_IB_MMAP_UAR_PAGE		= 0,
+	MLX4_IB_MMAP_BLUE_FLAME_PAGE	= 1,
+	MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES	= 2,
 };
 
 enum mlx4_ib_qp_type {
