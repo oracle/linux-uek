@@ -1228,7 +1228,8 @@ struct ib_device {
 						  u64 start, u64 length,
 						  u64 virt_addr,
 						  int mr_access_flags,
-						  struct ib_udata *udata);
+						  struct ib_udata *udata,
+						  int mr_id);
 	int                        (*query_mr)(struct ib_mr *mr,
 					       struct ib_mr_attr *mr_attr);
 	int                        (*dereg_mr)(struct ib_mr *mr);

@@ -963,7 +963,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 		goto err_put;
 
 	mr = pd->device->reg_user_mr(pd, cmd.start, cmd.length, cmd.hca_va,
-				     cmd.access_flags, &udata);
+				     cmd.access_flags, &udata, uobj->id);
 	if (IS_ERR(mr)) {
 		ret = PTR_ERR(mr);
 		goto err_remove_uobj;
