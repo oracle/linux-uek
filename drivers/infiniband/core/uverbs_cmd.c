@@ -955,12 +955,18 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 		ret = -EINVAL;
 		goto err_free;
 	}
+	/* We first get a new "obj id" to be passed later to reg mr for
+	    further use as mr_id.
+	*/
+	ret = idr_add_uobj(&ib_uverbs_mr_idr, uobj);
+	if (ret)
+		goto err_put;
 
 	mr = pd->device->reg_user_mr(pd, cmd.start, cmd.length, cmd.hca_va,
 				     cmd.access_flags, &udata);
 	if (IS_ERR(mr)) {
 		ret = PTR_ERR(mr);
-		goto err_put;
+		goto err_remove_uobj;
 	}
 
 	mr->device  = pd->device;
@@ -970,9 +976,6 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	atomic_set(&mr->usecnt, 0);
 
 	uobj->object = mr;
-	ret = idr_add_uobj(&ib_uverbs_mr_idr, uobj);
-	if (ret)
-		goto err_unreg;
 
 	memset(&resp, 0, sizeof resp);
 	resp.lkey      = mr->lkey;
@@ -998,10 +1001,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	return in_len;
 
 err_copy:
-	idr_remove_uobj(&ib_uverbs_mr_idr, uobj);
-
-err_unreg:
 	ib_dereg_mr(mr);
+
+err_remove_uobj:
+	idr_remove_uobj(&ib_uverbs_mr_idr, uobj);
 
 err_put:
 	put_pd_read(pd);
