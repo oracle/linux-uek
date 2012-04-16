@@ -394,10 +394,10 @@ RW_ATTR(threshold_limit);
 RW_ATTR(error_count);
 
 static struct attribute *default_attrs[] = {
-	&interrupt_enable.attr,
 	&threshold_limit.attr,
 	&error_count.attr,
-	NULL
+	NULL,	/* possibly interrupt_enable if supported, see below */
+	NULL,
 };
 
 #define to_block(k)	container_of(k, struct threshold_block, kobj)
@@ -472,6 +472,11 @@ static __cpuinit int allocate_threshold_blocks(unsigned int cpu,
 	b->address		= address;
 	b->interrupt_enable	= 0;
 	b->threshold_limit	= THRESHOLD_MAX;
+
+	if (b->interrupt_capable)
+		threshold_ktype.default_attrs[2] = &interrupt_enable.attr;
+	else
+		threshold_ktype.default_attrs[2] = NULL;
 
 	INIT_LIST_HEAD(&b->miscj);
 
