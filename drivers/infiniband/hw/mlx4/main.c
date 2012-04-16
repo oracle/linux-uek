@@ -32,6 +32,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/proc_fs.h>
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/errno.h>
@@ -55,12 +56,18 @@
 #define DRV_VERSION	"1.0"
 #define DRV_RELDATE	"April 4, 2008"
 
+#define MLX4_IB_DRIVER_PROC_DIR_NAME "driver/mlx4_ib"
+#define MLX4_IB_MRS_PROC_DIR_NAME "mrs"
+
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("Mellanox ConnectX HCA InfiniBand driver");
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_VERSION(DRV_VERSION);
 
 int mlx4_ib_sm_guid_assign = 1;
+struct proc_dir_entry *mlx4_mrs_dir_entry;
+static struct proc_dir_entry *mlx4_ib_driver_dir_entry;
+
 module_param_named(sm_guid_assign, mlx4_ib_sm_guid_assign, int, 0444);
 MODULE_PARM_DESC(sm_guid_assign, "Enable SM alias_GUID assignment if sm_guid_assign > 0 (Default: 1)");
 
@@ -1697,6 +1704,41 @@ static struct attribute_group diag_counters_group = {
 	.attrs  = diag_rprt_attrs
 };
 
+static int mlx4_ib_proc_init(void)
+{
+	/* Creating procfs directories /proc/drivers/mlx4_ib/ &&
+	      /proc/drivers/mlx4_ib/mrs for further use by the driver.
+	*/
+	int err;
+
+	mlx4_ib_driver_dir_entry = proc_mkdir(MLX4_IB_DRIVER_PROC_DIR_NAME,
+				NULL);
+
+	if (!mlx4_ib_driver_dir_entry) {
+		printk(KERN_ERR "mlx4_ib_proc_init has failed for %s\n",
+			MLX4_IB_DRIVER_PROC_DIR_NAME);
+		err = -ENODEV;
+		goto error;
+	}
+
+	mlx4_mrs_dir_entry = proc_mkdir(MLX4_IB_MRS_PROC_DIR_NAME,
+					mlx4_ib_driver_dir_entry);
+	if (!mlx4_mrs_dir_entry) {
+		printk(KERN_ERR "mlx4_ib_proc_init has failed for %s\n",
+			MLX4_IB_MRS_PROC_DIR_NAME);
+		err = -ENODEV;
+		goto remove_entry;
+	}
+
+	return 0;
+
+remove_entry:
+	remove_proc_entry(MLX4_IB_DRIVER_PROC_DIR_NAME,
+				NULL);
+error:
+	return err;
+}
+
 static void *mlx4_ib_add(struct mlx4_dev *dev)
 {
 	struct mlx4_ib_dev *ibdev;
@@ -2154,9 +2196,14 @@ static int __init mlx4_ib_init(void)
 	if (!wq)
 		return -ENOMEM;
 
+	err = mlx4_ib_proc_init();
+	if (err)
+		goto clean_wq;
+
 	err = mlx4_ib_mcg_init();
 	if (err)
 		goto clean_wq;
+
 
 	err = mlx4_register_interface(&mlx4_ib_interface);
 	if (err)
@@ -2177,6 +2224,12 @@ static void __exit mlx4_ib_cleanup(void)
 	mlx4_unregister_interface(&mlx4_ib_interface);
 	mlx4_ib_mcg_destroy();
 	destroy_workqueue(wq);
+
+	/* Remove proc entries */
+	remove_proc_entry(MLX4_IB_MRS_PROC_DIR_NAME,
+				mlx4_ib_driver_dir_entry);
+	remove_proc_entry(MLX4_IB_DRIVER_PROC_DIR_NAME, NULL);
+
 }
 
 module_init(mlx4_ib_init);

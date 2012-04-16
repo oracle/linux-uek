@@ -67,6 +67,7 @@ enum {
 
 /*module param to indicate if SM assigns the alias_GUID*/
 extern int mlx4_ib_sm_guid_assign;
+extern struct proc_dir_entry *mlx4_mrs_dir_entry;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
 
