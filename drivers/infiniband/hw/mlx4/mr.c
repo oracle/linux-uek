@@ -47,6 +47,47 @@ static u32 convert_access(int acc)
 	       (acc & IB_ACCESS_LOCAL_WRITE   ? MLX4_PERM_LOCAL_WRITE  : 0) |
 	       MLX4_PERM_LOCAL_READ;
 }
+static ssize_t shared_mr_proc_read(struct file *file,
+			  char __user *buffer,
+			  size_t len,
+			  loff_t *offset)
+{
+
+	return -ENOSYS;
+
+}
+
+static ssize_t shared_mr_proc_write(struct file *file,
+			   const char __user *buffer,
+			   size_t len,
+			   loff_t *offset)
+{
+
+	return -ENOSYS;
+}
+
+static int shared_mr_mmap(struct file *filep, struct vm_area_struct *vma)
+{
+
+	struct proc_dir_entry *pde = PDE(filep->f_path.dentry->d_inode);
+	struct mlx4_shared_mr_info *smr_info =
+		(struct mlx4_shared_mr_info *)pde->data;
+
+	/* Prevent any mapping not on start of area */
+	if (vma->vm_pgoff != 0)
+		return -EINVAL;
+
+	return ib_umem_map_to_vma(smr_info->umem,
+					vma);
+
+}
+
+static const struct file_operations shared_mr_proc_ops = {
+	.owner	= THIS_MODULE,
+	.read	= shared_mr_proc_read,
+	.write	= shared_mr_proc_write,
+	.mmap	= shared_mr_mmap
+};
 
 static mode_t convert_shared_access(int acc)
 {
@@ -404,7 +445,7 @@ static int prepare_shared_mr(struct mlx4_ib_mr *mr, int access_flags, int mr_id)
 
 	mr_proc_entry = proc_create_data(name_buff, mode,
 				mlx4_mrs_dir_entry,
-				NULL,
+				&shared_mr_proc_ops,
 				mr->smr_info);
 
 	if (!mr_proc_entry) {

@@ -115,7 +115,8 @@ enum ib_device_cap_flags {
 	IB_DEVICE_XRC			= (1<<20),
 	IB_DEVICE_MEM_MGT_EXTENSIONS	= (1<<21),
 	IB_DEVICE_BLOCK_MULTICAST_LOOPBACK = (1<<22),
-	IB_DEVICE_MR_ALLOCATE		= (1<<23)
+	IB_DEVICE_MR_ALLOCATE		= (1<<23),
+	IB_DEVICE_SHARED_MR             = (1<<24)
 };
 
 enum ib_atomic_cap {
