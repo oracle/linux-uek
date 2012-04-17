@@ -32,6 +32,10 @@
  */
 
 #include <linux/slab.h>
+#include <linux/proc_fs.h>
+#include <linux/module.h>
+#include <linux/sched.h>
+#include <linux/cred.h>
 
 #include "mlx4_ib.h"
 
@@ -44,12 +48,24 @@ static u32 convert_access(int acc)
 	       MLX4_PERM_LOCAL_READ;
 }
 
+static mode_t convert_shared_access(int acc)
+{
+
+	return (acc & IB_ACCESS_SHARED_MR_USER_READ ? S_IRUSR       : 0) |
+	       (acc & IB_ACCESS_SHARED_MR_USER_WRITE  ? S_IWUSR : 0) |
+	       (acc & IB_ACCESS_SHARED_MR_GROUP_READ   ? S_IRGRP  : 0) |
+	       (acc & IB_ACCESS_SHARED_MR_GROUP_WRITE   ? S_IWGRP  : 0) |
+	       (acc & IB_ACCESS_SHARED_MR_OTHER_READ   ? S_IROTH  : 0) |
+	       (acc & IB_ACCESS_SHARED_MR_OTHER_WRITE   ? S_IWOTH  : 0);
+
+}
+
 struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc)
 {
 	struct mlx4_ib_mr *mr;
 	int err;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
@@ -372,6 +388,51 @@ end:
 	return block_shift;
 }
 
+
+static int prepare_shared_mr(struct mlx4_ib_mr *mr, int access_flags, int mr_id)
+{
+
+	struct proc_dir_entry *mr_proc_entry;
+	mode_t mode = S_IFREG;
+	char name_buff[16];
+
+	mode |= convert_shared_access(access_flags);
+	sprintf(name_buff, "%X", mr_id);
+	mr->smr_info = kmalloc(sizeof(struct mlx4_shared_mr_info), GFP_KERNEL);
+	mr->smr_info->mr_id = mr_id;
+	mr->smr_info->umem = mr->umem;
+
+	mr_proc_entry = proc_create_data(name_buff, mode,
+				mlx4_mrs_dir_entry,
+				NULL,
+				mr->smr_info);
+
+	if (!mr_proc_entry) {
+		printk(KERN_ERR "mlx4_ib:prepare_shared_mr failed via proc\n");
+		kfree(mr->smr_info);
+		return -ENODEV;
+	}
+
+	current_uid_gid(&(mr_proc_entry->uid), &(mr_proc_entry->gid));
+	mr_proc_entry->size = mr->umem->length;
+	return 0;
+
+}
+static int is_shared_mr(int access_flags)
+{
+	/* We should check whether IB_ACCESS_SHARED_MR_USER_READ or
+	other shared bits were turned on.
+	*/
+	return !!(access_flags & (IB_ACCESS_SHARED_MR_USER_READ |
+				IB_ACCESS_SHARED_MR_USER_WRITE |
+				IB_ACCESS_SHARED_MR_GROUP_READ |
+				IB_ACCESS_SHARED_MR_GROUP_WRITE |
+				IB_ACCESS_SHARED_MR_OTHER_READ |
+				IB_ACCESS_SHARED_MR_OTHER_WRITE));
+
+}
+
+
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata,
@@ -383,7 +444,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	int err;
 	int n;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
@@ -411,7 +472,19 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 		goto err_mr;
 
 	mr->ibmr.rkey = mr->ibmr.lkey = mr->mmr.key;
+	/* Check whether MR should be shared */
+	if (is_shared_mr(access_flags)) {
+	/* start address and length must be aligned to page size in order
+	    to map a full page and preventing leakage of data */
+		if (mr->umem->offset || (length & ~PAGE_MASK)) {
+		        err = -EINVAL;
+		        goto err_mr;
+		}
 
+		err = prepare_shared_mr(mr, access_flags, mr_id);
+		if (err)
+			goto err_mr;
+	}
 	return &mr->ibmr;
 
 err_mr:
@@ -426,13 +499,34 @@ err_free:
 	return ERR_PTR(err);
 }
 
+
 int mlx4_ib_dereg_mr(struct ib_mr *ibmr)
 {
 	struct mlx4_ib_mr *mr = to_mmr(ibmr);
 
 	mlx4_mr_free(to_mdev(ibmr->device)->dev, &mr->mmr);
+	if (mr->smr_info) {
+		/* When master/parent shared mr is dereged there is
+		no ability to share this mr any more - its mr_id will be
+		returned to the kernel as part of ib_uverbs_dereg_mr
+		and may be allocated again as part of other reg_mr.
+		*/
+		char name_buff[16];
+
+		sprintf(name_buff, "%X", mr->smr_info->mr_id);
+		/* Remove proc entry is checking internally that no operation
+		    was strated on that proc fs file and if in the middle
+		    current process will wait till end of operation.
+		    That's why no sync mechanism is needed when we release
+		    below the shared umem.
+		*/
+		remove_proc_entry(name_buff, mlx4_mrs_dir_entry);
+		kfree(mr->smr_info);
+	}
+
 	if (mr->umem)
 		ib_umem_release(mr->umem);
+
 	kfree(mr);
 
 	return 0;
@@ -445,7 +539,7 @@ struct ib_mr *mlx4_ib_alloc_fast_reg_mr(struct ib_pd *pd,
 	struct mlx4_ib_mr *mr;
 	int err;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 

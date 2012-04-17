@@ -104,6 +104,11 @@ struct mlx4_ib_cq_resize {
 	int			cqe;
 };
 
+struct mlx4_shared_mr_info {
+	int mr_id;
+	struct ib_umem	       *umem;
+};
+
 struct mlx4_ib_cq {
 	struct ib_cq		ibcq;
 	struct mlx4_cq		mcq;
@@ -120,6 +125,7 @@ struct mlx4_ib_mr {
 	struct ib_mr		ibmr;
 	struct mlx4_mr		mmr;
 	struct ib_umem	       *umem;
+	struct mlx4_shared_mr_info	*smr_info;
 };
 
 struct mlx4_ib_fast_reg_page_list {
