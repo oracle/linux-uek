@@ -103,6 +103,8 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 				unsigned long total_size,
 				unsigned long page_size_order);
 void ib_cmem_release_contiguous_pages(struct ib_cmem *cmem);
+int ib_umem_map_to_vma(struct ib_umem *umem,
+				struct vm_area_struct *vma);
 
 #else /* CONFIG_INFINIBAND_USER_MEM */
 

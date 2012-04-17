@@ -47,7 +47,85 @@
 	 ((void *) &((struct ib_umem_chunk *) 0)->page_list[1] -	\
 	  (void *) &((struct ib_umem_chunk *) 0)->page_list[0]))
 
+static void umem_vma_open(struct vm_area_struct *area)
+{
+	/* Empty implementation to prevent high level from merging some
+	VMAs in case of unmap/mmap on part of memory area.
+	*/
 
+	return;
+}
+
+static void umem_vma_close(struct vm_area_struct *area)
+{
+	/* Empty implementation to prevent high level from merging some
+	VMAs in case of unmap/mmap on part of memory area.
+	*/
+
+	return;
+}
+
+static const struct vm_operations_struct umem_vm_ops = {
+	.open = umem_vma_open,
+	.close = umem_vma_close
+};
+
+int ib_umem_map_to_vma(struct ib_umem *umem,
+				struct vm_area_struct *vma)
+{
+
+	int ret;
+	unsigned long ntotal_pages;
+	unsigned long total_size;
+	struct page *page;
+	unsigned long vma_entry_number = 0;
+	struct ib_umem_chunk *chunk;
+	int i;
+
+	/* Total size expects to be already page aligned - verifying anyway */
+	total_size = vma->vm_end - vma->vm_start;
+	/* umem length expexts to be equal to the given vma*/
+	if (umem->length != total_size)
+		return -EINVAL;
+
+	ntotal_pages = PAGE_ALIGN(total_size) >> PAGE_SHIFT;
+
+	list_for_each_entry(chunk, &umem->chunk_list, list) {
+		for (i = 0; i < chunk->nents; ++i) {
+			/* We reached end of vma - going out from both loops */
+			if (vma_entry_number >= ntotal_pages)
+				goto end;
+			page = sg_page(&chunk->page_list[i]);
+			ret = vm_insert_page(vma, vma->vm_start +
+				(vma_entry_number << PAGE_SHIFT), page);
+			if (ret < 0)
+				goto err_vm_insert;
+
+			vma_entry_number++;
+		}
+	}
+
+end:
+	/* We expect to have enough pages   */
+	if (vma_entry_number >= ntotal_pages) {
+		vma->vm_ops =  &umem_vm_ops;
+		return 0;
+	}
+	/* Not expected but if we reached here
+	    not enough pages were available to be mapped into vma.
+	*/
+	ret = -EINVAL;
+	WARN(1, KERN_WARNING
+		"ib_umem_map_to_vma: number of pages mismatched(%lu,%lu)\n",
+				vma_entry_number, ntotal_pages);
+
+err_vm_insert:
+
+	zap_vma_ptes(vma, vma->vm_start, total_size);
+	return ret;
+
+}
+EXPORT_SYMBOL(ib_umem_map_to_vma);
 
 static void ib_cmem_release(struct kref *ref)
 {
