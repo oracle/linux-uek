@@ -56,12 +56,25 @@ class ChangeLog:
 			    "--pretty=format:%b", commit],
 			    stdout=subprocess.PIPE,
 			    stderr=subprocess.PIPE).communicate()
-
-	ret = proc[0].strip('\n').split('\n')
-	if len(ret[0]) > 0 and len(ret[0]) > 7 and ret[0].find("Orabug") != -1:
-		return "[%s]" % ret[0]
-	else: 
-		return "" 
+	bugz = []
+	m = re.search("Orabug:.*$", proc[0], re.MULTILINE)
+	if m:
+		bugz.append(m.group())
+	ret = ""
+	if len(bugz) > 0:
+		for bug in bugz:
+			ret += "%s " % bug
+	bugz = []
+	m = re.search("Oracle bug:.*$", proc[0], re.MULTILINE)
+	if m:
+		bugz.append(m.group())
+	if len(bugz) > 0:
+		for bug in bugz:
+			ret += "%s " % bug
+	if len(ret) > 0:
+		return "[%s]" % ret.rstrip()
+	else:
+		return ret 
 
     def _get_cve(self, commit):
     	proc = subprocess.Popen(['git', 'log', '-1',
