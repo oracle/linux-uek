@@ -89,8 +89,10 @@ class ChangeLog:
 	ret = ""
 	if len(cves) > 0:
 		for cve in cves:
-			ret += "%s " % cve	
-	return ret
+			ret += "%s " % cve
+		return "{%s}" %	ret.rstrip()
+	else:
+		return ret
 
     def getLog(self):
         range = "%s.." % (self.tag)
