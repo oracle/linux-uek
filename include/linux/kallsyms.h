@@ -8,6 +8,7 @@
 
 #include <linux/errno.h>
 #include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/stddef.h>
 
 #define KSYM_NAME_LEN 128
@@ -17,6 +18,17 @@
 struct module;
 
 #ifdef CONFIG_KALLSYMS
+/* To avoid using get_symbol_offset for every symbol, we carry prefix along. */
+struct kallsym_iter {
+	loff_t pos;
+	unsigned long value;
+	unsigned int nameoff; /* If iterating in core kernel symbols. */
+	char type;
+	char name[KSYM_NAME_LEN];
+	char module_name[MODULE_NAME_LEN];
+	int exported;
+};
+
 /* Lookup the address for a symbol. Returns 0 if not found. */
 unsigned long kallsyms_lookup_name(const char *name);
 
@@ -46,6 +58,8 @@ extern void __print_symbol(const char *fmt, unsigned long address);
 int lookup_symbol_name(unsigned long addr, char *symname);
 int lookup_symbol_attrs(unsigned long addr, unsigned long *size, unsigned long *offset, char *modname, char *name);
 
+extern void kallsyms_iter_reset(struct kallsym_iter *, loff_t);
+extern int kallsyms_iter_update(struct kallsym_iter *, loff_t);
 #else /* !CONFIG_KALLSYMS */
 
 static inline unsigned long kallsyms_lookup_name(const char *name)

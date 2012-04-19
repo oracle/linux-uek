@@ -15,9 +15,48 @@
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <linux/kallsyms.h>
 #include <asm/insn.h>
 #include <asm/stacktrace.h>
 #include <asm/syscalls.h>
+
+/*
+ * Perform OS specific DTrace setup.
+ */
+struct module	*dtrace_kmod = NULL;
+EXPORT_SYMBOL(dtrace_kmod);
+
+void dtrace_os_init(void)
+{
+	if (dtrace_kmod != NULL) {
+		pr_warning("%s: cannot be called twice\n", __func__);
+		return;
+	}
+
+	dtrace_kmod = kzalloc(sizeof(struct module), GFP_KERNEL);
+	if (dtrace_kmod == NULL) {
+		pr_warning("%s: cannot allocate kernel pseudo-module\n",
+			   __func__);
+		return;
+	}
+
+	dtrace_kmod->state = MODULE_STATE_LIVE;
+	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
+}
+EXPORT_SYMBOL(dtrace_os_init);
+
+void dtrace_os_exit(void)
+{
+	if (dtrace_kmod == NULL) {
+		pr_warning("%s: kernel pseudo-module not allocated\n",
+			   __func__);
+		return;
+	}
+
+	kfree(dtrace_kmod);
+	dtrace_kmod = NULL;
+}
+EXPORT_SYMBOL(dtrace_os_exit);
 
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
@@ -381,7 +420,7 @@ void dtrace_invop_remove(int (*func)(struct pt_regs *))
 EXPORT_SYMBOL(dtrace_invop_remove);
 
 /*---------------------------------------------------------------------------*\
-(* SYSTEM CALL PROBING SUPPORT                                               *)
+(* SYSTEM CALL TRACING SUPPORT                                               *)
 \*---------------------------------------------------------------------------*/
 void (*systrace_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t, uintptr_t,
 		       uintptr_t, uintptr_t);
@@ -696,3 +735,62 @@ long dtrace_rt_sigreturn(struct pt_regs *regs)
 
 	return rc;
 }
+
+/*---------------------------------------------------------------------------*\
+(* FUNCTION BOUNDARY TRACING (FBT) SUPPORT                                   *)
+\*---------------------------------------------------------------------------*/
+
+void dtrace_fbt_init(fbt_provide_fn *pfn)
+{
+	loff_t			pos = 0;
+	struct kallsym_iter	iter, sym;
+
+	kallsyms_iter_update(&iter, 0);
+	if (!kallsyms_iter_update(&iter, pos++))
+		return;
+
+	while (pos > 0) {
+		sym = iter;
+		if (!kallsyms_iter_update(&iter, pos++))
+			pos = 0;
+
+		if (sym.module_name[0] != '\0')
+			break;
+
+		if (sym.type == 'T' || sym.type == 't' || sym.type == 'W') {
+			uint8_t	*addr, *end;
+
+			addr = (uint8_t *)sym.value;
+			end = (uint8_t *)iter.value;
+
+			if (*addr == FBT_PUSHL_EBP) {
+				struct insn	insn;
+				void		*pfbt = NULL;
+
+				(*pfn)(dtrace_kmod, sym.name, FBT_PUSHL_EBP,
+				       addr, NULL);
+
+				while (addr < end) {
+					uint8_t	opc;
+
+					insn_init(&insn, addr, 1);
+					insn_get_opcode(&insn);
+
+					opc = insn.opcode.bytes[0];
+
+					if (opc == FBT_RET ||
+					    opc == FBT_RET_IMM16) {
+						pfbt = (*pfn)(dtrace_kmod,
+							      sym.name, opc,
+							      addr, pfbt);
+					}
+
+					insn_get_length(&insn);
+
+					addr += insn.length;
+				}
+			}
+		}
+	}
+}
+EXPORT_SYMBOL(dtrace_fbt_init);
