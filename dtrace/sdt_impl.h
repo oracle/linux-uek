@@ -20,6 +20,15 @@ typedef struct sdt_probe {
 	struct sdt_probe	*sdp_hashnext;	/* next on hash */
 } sdt_probe_t;
 
+typedef struct sdt_argdesc  {
+	char			*sda_provider;
+	char			*sda_name;
+	int			sda_ndx;
+	int			sda_mapping;
+	char			*sda_native;
+	char			*sda_xlate;
+} sdt_argdesc_t;
+
 extern dtrace_mprovider_t sdt_providers[];
 
 extern void sdt_provide_module(void *, struct module *);
