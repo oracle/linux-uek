@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.15%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,87 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Apr 19 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.2.0.el5uek]
+- regset: Return -EFAULT, not -EIO, on host-side memory fault (H. Peter Anvin)
+  {CVE-2012-1097}
+- regset: Prevent null pointer reference on readonly regsets (H. Peter Anvin)
+  {CVE-2012-1097}
+- cifs: fix dentry refcount leak when opening a FIFO on lookup (Jeff Layton)
+  {CVE-2012-1090}
+- git-changelog: add brackets around cve (Maxim Uvarov)
+- git-changelog: parse Oracle bug (Maxim Uvarov)
+- NFSv4: Save the owner/group name string when doing open (Trond Myklebust)
+  [Oracle bug: 13842440 (from 13459986)]
+- ext4: flush any pending end_io requests before DIO reads w/dioread_nolock
+  (Jiaying Zhang)
+- NFSv4: Return the delegation if the server returns NFS4ERR_OPENMODE (Trond
+  Myklebust)
+- NFS: Properly handle the case where the delegation is revoked (Trond
+  Myklebust)
+- nfsd: don't allow zero length strings in cache_parse() (Dan Carpenter)
+- x86, tls: Off by one limit check (Dan Carpenter)
+- x86, tsc: Skip refined tsc calibration on systems with reliable TSC (Alok
+  Kataria)
+- lockd: fix arg parsing for grace_period and timeout. (NeilBrown)
+- xfrm: Access the replay notify functions via the registered callbacks
+  (Steffen Klassert)
+- Remove printk from rds_sendmsg (Dave Jones)
+- net: fix napi_reuse_skb() skb reserve (Eric Dumazet)
+- net: fix a potential rcu_read_lock() imbalance in rt6_fill_node() (Eric
+  Dumazet)
+- Fix pppol2tp getsockname() (Benjamin LaHaise)
+- slub: Do not hold slub_lock when calling sysfs_slab_add() (Christoph Lameter)
+- xfs: Fix oops on IO error during xlog_recover_process_iunlinks() (Jan Kara)
+- dm exception store: fix init error path (Andrei Warkentin)
+- dm crypt: add missing error handling (Mikulas Patocka)
+- dm crypt: fix mempool deadlock (Mikulas Patocka)
+- vfs: fix d_ancestor() case in d_materialize_unique (Michel Lespinasse)
+- udf: Fix deadlock in udf_release_file() (Jan Kara)
+- ext4: check for zero length extent (Theodore Ts'o)
+- ext4: ignore EXT4_INODE_JOURNAL_DATA flag with delalloc (Lukas Czerner)
+- jbd2: clear BH_Delay & BH_Unwritten in journal_unmap_buffer (Eric Sandeen)
+- e1000e: Avoid wrong check on TX hang (Jeff Kirsher)
+- hwmon: (fam15h_power) Correct sign extension of running_avg_capture (Andreas
+  Herrmann)
+- proc-ns: use d_set_d_op() API to set dentry ops in proc_ns_instantiate().
+  (Pravin B Shelar)
+- x86-32: Fix endless loop when processing signals for kernel tasks (Dmitry
+  Adamushko)
+- usbnet: don't clear urb->dev in tx_complete (tom.leiming)
+- SUNRPC: We must not use list_for_each_entry_safe() in rpc_wake_up() (Trond
+  Myklebust)
+- cifs: fix issue mounting of DFS ROOT when redirecting from one domain
+  controller to the next (Jeff Layton)
+- xfs: fix inode lookup race (Dave Chinner)
+- firewire: ohci: fix too-early completion of IR multichannel buffers (Clemens
+  Ladisch)
+- pata_legacy: correctly mask recovery field for HT6560B (Sergei Shtylyov)
+- target: Fix 16-bit target ports for SET TARGET PORT GROUPS emulation (Roland
+  Dreier)
+- target: Don't set WBUS16 or SYNC bits in INQUIRY response (Roland Dreier)
+- md/raid1,raid10: avoid deadlock during resync/recovery. (NeilBrown)
+- md/bitmap: ensure to load bitmap when creating via sysfs. (NeilBrown)
+- tcm_fc: Fix fc_exch memory leak in ft_send_resp_status (Nicholas Bellinger)
+- hugetlbfs: avoid taking i_mutex from hugetlbfs_read() (Aneesh Kumar K.V)
+- bootmem/sparsemem: remove limit constraint in alloc_bootmem_section (Nishanth
+  Aravamudan)
+- mm: thp: fix pmd_bad() triggering in code paths holding mmap_sem read mode
+  (Andrea Arcangeli)  {CVE-2012-1179}
+- x86/ioapic: Add register level checks to detect bogus io-apic entries (Suresh
+  Siddha)
+- rtc: Disable the alarm in the hardware (v2) (Rabin Vincent)
+- genirq: Fix incorrect check for forced IRQ thread handler (Alexander Gordeev)
+- genirq: Fix long-term regression in genirq irq_set_irq_type() handling
+  (Russell King)
+- uevent: send events in correct order according to seqnum (v3) (Andrew Vagin)
+- ntp: Fix integer overflow when setting time (Sasha Levin)
+- math: Introduce div64_long (Sasha Levin)
+- sysfs: Fix memory leak in sysfs_sd_setsecdata(). (Masami Ichikawa)
+- futex: Cover all PI opcodes with cmpxchg enabled check (Thomas Gleixner)
+- usb: musb: Reselect index reg in interrupt context (Supriya Karanth)
+- USB: ftdi_sio: fix problem when the manufacture is a NULL string (Greg Kroah-
+  Hartman)
+
 * Thu Apr 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.0.15.el5uek]
 - directio: account for extra page IOs for unaligned request (Dave Kleikamp) 
   [Orabug: 13916031]
