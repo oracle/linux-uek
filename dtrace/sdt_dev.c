@@ -54,6 +54,9 @@ static sdt_argdesc_t	sdt_args[] = {
 	{ "proc", "signal-handle", 2, 0 /* 2 */, "void (*)(void)" },
 	{ "proc", "signal-send", 0, 0, "struct task_struct *", },
 	{ "proc", "signal-send", 1, 0, "int", },
+
+	{ "sched", "tick", 0, 0, "struct task_struct *", },
+
 	{ NULL, }
 };
 
