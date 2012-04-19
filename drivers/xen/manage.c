@@ -131,6 +131,7 @@ static void do_suspend(void)
 	err = dpm_suspend_noirq(PMSG_FREEZE);
 	if (err) {
 		printk(KERN_ERR "dpm_suspend_noirq failed: %d\n", err);
+		si.cancelled = 0;
 		goto out_resume;
 	}
 
