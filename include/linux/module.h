@@ -23,6 +23,9 @@
 #include <linux/percpu.h>
 #include <asm/module.h>
 
+#include <trace/events/module.h>
+#include <linux/sdt.h>
+
 /* In stripped ARM and x86-64 modules, ~ is surprisingly rare. */
 #define MODULE_SIG_STRING "~Module signature appended~\n"
 
@@ -459,7 +462,9 @@ struct module {
 #endif
 
 #if defined(CONFIG_DTRACE) || defined(CONFIG_DTRACE_MODULE)
-	struct sdt_probedesc *sdt_probes;
+	size_t fbt_nprobes;
+
+	sdt_probedesc_t *sdt_probes;
 	unsigned int num_dtrace_probes;	/* from kernel build */
 	size_t sdt_nprobes;		/* managed at probe load time */
 	int mod_nenabled;	/* # of enabled dtrace probes in module */

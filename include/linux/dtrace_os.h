@@ -18,6 +18,11 @@ typedef uint32_t dtrace_id_t;
 #define SCE_RT_SIGRETURN	6
 #define SCE_nr_stubs		7
 
+extern struct module	*dtrace_kmod;
+
+extern void dtrace_os_init(void);
+extern void dtrace_os_exit(void);
+
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
@@ -63,5 +68,14 @@ typedef struct stacktrace_state {
 } stacktrace_state_t;
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
+
+#define FBT_PUSHL_EBP	0x55
+#define FBT_RET		0xc3
+#define FBT_RET_IMM16	0xc2
+
+typedef void		*(fbt_provide_fn)(struct module *, char *, uint8_t,
+					  uint8_t *, void *);
+
+extern void dtrace_fbt_init(fbt_provide_fn);
 
 #endif /* _DTRACE_OS_H_ */

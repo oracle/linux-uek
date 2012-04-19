@@ -44,6 +44,7 @@
 #include <linux/sched/debug.h>
 #include <linux/slab.h>
 #include <linux/compat.h>
+#include <linux/sdt.h>
 
 #include <linux/uaccess.h>
 #include <asm/unistd.h>
@@ -1583,6 +1584,8 @@ static inline int collect_expired_timers(struct timer_base *base,
 void update_process_times(int user_tick)
 {
 	struct task_struct *p = current;
+
+	DTRACE_SCHED1(tick, struct task_struct *, p);
 
 	/* Note: this timer irq context must be accounted for as well. */
 	account_process_tick(p, user_tick);

@@ -2,11 +2,10 @@
 
 /* register static dtrace probe points */
 
-#define DEBUG	1
-
 #include <linux/kernel.h>
 #include <linux/memory.h>
 #include <linux/module.h>
+#include <linux/dtrace_os.h>
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <linux/string.h>
@@ -19,9 +18,6 @@
 #define	SDT_NOP_SIZE	5
 
 const char		*sdt_prefix = "__dtrace_probe_";
-
-struct module		*dtrace_kmod;
-EXPORT_SYMBOL(dtrace_kmod);
 
 void sdt_probe_enable(sdt_instr_t *addr)
 {
@@ -78,6 +74,15 @@ void dtrace_register_builtins(void)
 	void			*nextpi;
 	uint8_t			nops[SDT_NOP_SIZE];
 
+	if (dtrace_kmod == NULL) {
+		pr_warning("%s: no kernel pseudo-module allocated\n",
+			   __func__);
+		return;
+	}
+
+	if (dtrace_sdt_nprobes == 0)
+		return;
+
 	/*
 	 * A little unusual, but potentially necessary.  While we could use a
 	 * single NOP sequence of length SDT_NOP_SIZE, we need to consider the
@@ -88,18 +93,6 @@ void dtrace_register_builtins(void)
 	 */
 	add_nops(nops, 1);
 	add_nops(nops + 1, SDT_NOP_SIZE - 1);
-
-	dtrace_kmod = kzalloc(sizeof(struct module), GFP_KERNEL);
-	if (!dtrace_kmod) {
-		pr_warning("%s: cannot allocate kernel pseudo-module\n",
-			   __func__);
-		return;
-	}
-	dtrace_kmod->state = MODULE_STATE_LIVE;
-	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
-
-	if (dtrace_sdt_nprobes == 0)
-		return;
 
 	for (cnt = 0; cnt < dtrace_sdt_nprobes; cnt++) {
 		char	*func = pi->name + pi->name_len + 1;
