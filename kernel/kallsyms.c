@@ -273,6 +273,7 @@ int kallsyms_lookup_size_offset(unsigned long addr, unsigned long *symbolsize,
 
 	return !!module_address_lookup(addr, symbolsize, offset, NULL, namebuf);
 }
+EXPORT_SYMBOL_GPL(kallsyms_lookup_size_offset);
 
 /*
  * Lookup an address
@@ -433,17 +434,6 @@ void __print_symbol(const char *fmt, unsigned long address)
 }
 EXPORT_SYMBOL(__print_symbol);
 
-/* To avoid using get_symbol_offset for every symbol, we carry prefix along. */
-struct kallsym_iter {
-	loff_t pos;
-	unsigned long value;
-	unsigned int nameoff; /* If iterating in core kernel symbols. */
-	char type;
-	char name[KSYM_NAME_LEN];
-	char module_name[MODULE_NAME_LEN];
-	int exported;
-};
-
 static int get_ksymbol_mod(struct kallsym_iter *iter)
 {
 	if (module_get_kallsym(iter->pos - kallsyms_num_syms, &iter->value,
@@ -468,15 +458,16 @@ static unsigned long get_ksymbol_core(struct kallsym_iter *iter)
 	return off - iter->nameoff;
 }
 
-static void reset_iter(struct kallsym_iter *iter, loff_t new_pos)
+void kallsyms_iter_reset(struct kallsym_iter *iter, loff_t new_pos)
 {
 	iter->name[0] = '\0';
 	iter->nameoff = get_symbol_offset(new_pos);
 	iter->pos = new_pos;
 }
+EXPORT_SYMBOL_GPL(kallsyms_iter_reset);
 
 /* Returns false if pos at or past end of file. */
-static int update_iter(struct kallsym_iter *iter, loff_t pos)
+int kallsyms_iter_update(struct kallsym_iter *iter, loff_t pos)
 {
 	/* Module symbols can be accessed randomly. */
 	if (pos >= kallsyms_num_syms) {
@@ -486,26 +477,27 @@ static int update_iter(struct kallsym_iter *iter, loff_t pos)
 
 	/* If we're not on the desired position, reset to new position. */
 	if (pos != iter->pos)
-		reset_iter(iter, pos);
+		kallsyms_iter_reset(iter, pos);
 
 	iter->nameoff += get_ksymbol_core(iter);
 	iter->pos++;
 
 	return 1;
 }
+EXPORT_SYMBOL_GPL(kallsyms_iter_update);
 
 static void *s_next(struct seq_file *m, void *p, loff_t *pos)
 {
 	(*pos)++;
 
-	if (!update_iter(m->private, *pos))
+	if (!kallsyms_iter_update(m->private, *pos))
 		return NULL;
 	return p;
 }
 
 static void *s_start(struct seq_file *m, loff_t *pos)
 {
-	if (!update_iter(m->private, *pos))
+	if (!kallsyms_iter_update(m->private, *pos))
 		return NULL;
 	return m->private;
 }
@@ -559,7 +551,7 @@ static int kallsyms_open(struct inode *inode, struct file *file)
 	iter = kmalloc(sizeof(*iter), GFP_KERNEL);
 	if (!iter)
 		return -ENOMEM;
-	reset_iter(iter, 0);
+	kallsyms_iter_reset(iter, 0);
 
 	ret = seq_open(file, &kallsyms_op);
 	if (ret == 0)
@@ -576,10 +568,10 @@ const char *kdb_walk_kallsyms(loff_t *pos)
 	if (*pos == 0) {
 		memset(&kdb_walk_kallsyms_iter, 0,
 		       sizeof(kdb_walk_kallsyms_iter));
-		reset_iter(&kdb_walk_kallsyms_iter, 0);
+		kallsyms_iter_reset(&kdb_walk_kallsyms_iter, 0);
 	}
 	while (1) {
-		if (!update_iter(&kdb_walk_kallsyms_iter, *pos))
+		if (!kallsyms_iter_update(&kdb_walk_kallsyms_iter, *pos))
 			return NULL;
 		++*pos;
 		/* Some debugging symbols have no name.  Ignore them. */
