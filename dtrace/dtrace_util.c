@@ -51,6 +51,7 @@ void *dtrace_vzalloc_try(unsigned long size)
 			 __GFP_NORETRY | __GFP_NOWARN | __GFP_ZERO,
 			 PAGE_KERNEL);
 }
+EXPORT_SYMBOL(dtrace_vzalloc_try);
 
 /*
  * Return a duplicate copy of a string.  If the specified string is NULL, this

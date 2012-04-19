@@ -29,17 +29,38 @@
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
-#include "fbt.h"
+#include "fbt_impl.h"
 
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("Function Boundary Tracing");
 MODULE_VERSION("v0.1");
+#if 0
 MODULE_LICENSE("CDDL");
+#else
+MODULE_LICENSE("GPL"); /* FIXME - Cheating */
+#endif
 
 static const dtrace_pattr_t fbt_attr = {
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
+{ DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
+{ DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_ISA },
 };
+
+DT_PROVIDER_POPS(fbt)
 
 static dtrace_pops_t fbt_pops = {
+	NULL,
+	fbt_provide_module,
+	fbt_enable,
+	fbt_disable,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	NULL,
+	fbt_destroy
 };
 
-DT_PROVIDER_MODULE(fbt, DTRACE_PRIV_KERNEL);
+DT_PROVIDER_MODULE(fbt, DTRACE_PRIV_KERNEL)
