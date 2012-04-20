@@ -66,6 +66,7 @@
 
 #include "xen-ops.h"
 #include "mmu.h"
+#include "smp.h"
 #include "multicalls.h"
 
 EXPORT_SYMBOL_GPL(hypercall_page);
@@ -792,6 +793,14 @@ static void set_xen_basic_apic_ops(void)
 	apic->safe_wait_icr_idle = xen_safe_apic_wait_icr_idle;
 	apic->set_apic_id = xen_set_apic_id;
 	apic->get_apic_id = xen_get_apic_id;
+
+#ifdef CONFIG_SMP
+	apic->send_IPI_allbutself = xen_send_IPI_allbutself;
+	apic->send_IPI_mask_allbutself = xen_send_IPI_mask_allbutself;
+	apic->send_IPI_mask = xen_send_IPI_mask;
+	apic->send_IPI_all = xen_send_IPI_all;
+	apic->send_IPI_self = xen_send_IPI_self;
+#endif
 }
 
 #endif
