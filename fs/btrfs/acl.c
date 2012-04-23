@@ -262,8 +262,12 @@ int btrfs_init_acl(struct btrfs_trans_handle *trans,
 				ret = btrfs_set_acl(trans, inode, clone,
 						    ACL_TYPE_ACCESS);
 			}
+		} else {
+			cache_no_acl(inode);
 		}
 		posix_acl_release(clone);
+	} else {
+		cache_no_acl(inode);
 	}
 failed:
 	posix_acl_release(acl);
