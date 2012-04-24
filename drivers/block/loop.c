@@ -623,6 +623,8 @@ static int loop_thread(void *data)
 	struct loop_device *lo = data;
 	struct bio *bio;
 
+	current->flags |= PF_LESS_THROTTLE;
+
 	set_user_nice(current, -20);
 
 	while (!kthread_should_stop() || !bio_list_empty(&lo->lo_bio_list)) {
