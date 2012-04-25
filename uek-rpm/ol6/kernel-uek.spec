@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Apr 25 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.3.0.el6uek]
+- loop: loop_thread needs to set the PF_LESS_THROTTLE flag (Dave Kleikamp)
+- iov_iter: missing assignment of ii_bvec_ops.ii_shorten (Dave Kleikamp)
+
 * Thu Apr 19 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.2.0.el6uek]
 - regset: Return -EFAULT, not -EIO, on host-side memory fault (H. Peter Anvin)
   {CVE-2012-1097}
