@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,68 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Apr 25 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.4.0.el6uek]
+- Revert "xen/p2m: m2p_find_override: use list_for_each_entry_safe" (Konrad
+  Rzeszutek Wilk)
+- xen/blkback: Fix warning error. (Konrad Rzeszutek Wilk)
+- xen/blkback: Make optional features be really optional. (Konrad Rzeszutek
+  Wilk)
+- xen-blkfront: module exit handling adjustments (Jan Beulich)
+- xen-blkfront: properly name all devices (Jan Beulich)
+- xen-blkfront: set pages are FOREIGN_FRAME when sharing them (Stefano
+  Stabellini)
+- xen: EXPORT_SYMBOL set_phys_to_machine (Stefano Stabellini)
+- xen-blkfront: make blkif_io_lock spinlock per-device (Steven Noonan)
+- xen/blkfront: don't put bdev right after getting it (Andrew Jones)
+- xen-blkfront: use bitmap_set() and bitmap_clear() (Akinobu Mita)
+- xen/blkback: Enable blkback on HVM guests (Daniel De Graaf)
+- xen/blkback: use grant-table.c hypercall wrappers (Daniel De Graaf)
+- xen/p2m: m2p_find_override: use list_for_each_entry_safe (Stefano Stabellini)
+- xen/gntdev: do not set VM_PFNMAP (Stefano Stabellini)
+- xen/grant-table: add error-handling code on failure of gnttab_resume (Julia
+  Lawall)
+- xen: only check xen_platform_pci_unplug if hvm (Igor Mammedov)
+- xen: initialize platform-pci even if xen_emul_unplug=never (Igor Mammedov)
+- xen kconfig: relax INPUT_XEN_KBDDEV_FRONTEND deps (Andrew Jones)
+- xen: support pirq_eoi_map (Stefano Stabellini)
+- xen/smp: Remove unnecessary call to smp_processor_id() (Srivatsa S. Bhat)
+- xen/smp: Fix bringup bug in AP code. (Konrad Rzeszutek Wilk)
+- xen/tmem: cleanup (Jan Beulich)
+- xen: constify all instances of "struct attribute_group" (Jan Beulich)
+- xen/xenbus: ignore console/0 (Stefano Stabellini)
+- hvc_xen: introduce HVC_XEN_FRONTEND (Stefano Stabellini)
+- hvc_xen: implement multiconsole support (Stefano Stabellini)
+- hvc_xen: support PV on HVM consoles (Stefano Stabellini)
+- xen: use this_cpu_xxx replace percpu_xxx funcs (Alex Shi)
+- xenbus: don't free other end details too early (Jan Beulich)
+- xen/resume: Fix compile warnings. (Konrad Rzeszutek Wilk)
+- xen/xenbus: Add quirk to deal with misconfigured backends. (Konrad Rzeszutek
+  Wilk)
+- xenbus: address compiler warnings (Jan Beulich)
+- xen/pcifront: avoid pci_frontend_enable_msix() falsely returning success (Jan
+  Beulich)
+- xen/pciback: fix XEN_PCI_OP_enable_msix result (Jan Beulich)
+- xen/pciback: Support pci_reset_function, aka FLR or D3 support. (Konrad
+  Rzeszutek Wilk)
+- PCI: Introduce __pci_reset_function_locked to be used when holding
+  device_lock. (Konrad Rzeszutek Wilk)
+- xen/acpi: Fix Kconfig dependency on CPU_FREQ (Konrad Rzeszutek Wilk)
+- xen/acpi-processor: Do not depend on CPU frequency scaling drivers. (Konrad
+  Rzeszutek Wilk)
+- xen/cpufreq: Disable the cpu frequency scaling drivers from loading. (Konrad
+  Rzeszutek Wilk)
+- provide disable_cpufreq() function to disable the API. (Konrad Rzeszutek
+  Wilk)
+- xen-netback: make ops structs const (stephen hemminger)
+- netback: fix typo in comment (Wei Liu)
+- netback: remove redundant assignment (Wei Liu)
+- netback: Fix alert message. (Wei Liu)
+- xen-netback: use correct index for invalidation in xen_netbk_tx_check_gop()
+  (Jan Beulich)
+- net: xen-netback: correctly restart Tx after a VM restore/migrate (David
+  Vrabel)
+- xen/netback: Add module alias for autoloading (Bastian Blank)
+
 * Wed Apr 25 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.3.0.el6uek]
 - loop: loop_thread needs to set the PF_LESS_THROTTLE flag (Dave Kleikamp)
 - iov_iter: missing assignment of ii_bvec_ops.ii_shorten (Dave Kleikamp)
