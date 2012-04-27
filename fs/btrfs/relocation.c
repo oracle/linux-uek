@@ -1254,7 +1254,9 @@ static int __update_reloc_root(struct btrfs_root *root, int del)
 		spin_unlock(&rc->reloc_root_tree.lock);
 		BUG_ON(rb_node);
 	} else {
+		spin_lock(&root->fs_info->trans_lock);
 		list_del_init(&root->root_list);
+		spin_unlock(&root->fs_info->trans_lock);
 		kfree(node);
 	}
 	return 0;
