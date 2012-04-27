@@ -3780,7 +3780,7 @@ restart:
 
 		ret = btrfs_block_rsv_check(rc->extent_root, rc->block_rsv, 5);
 		if (ret < 0) {
-			if (ret != -EAGAIN) {
+			if (ret != -ENOSPC) {
 				err = ret;
 				WARN_ON(1);
 				break;
