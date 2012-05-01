@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.5.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue May 1 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.5.0.el5uek]
+- be2net: query link status in be_open() (Sarveshwar Bandi) [Orabug: 13231]
+
 * Wed Apr 25 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.4.0.el5uek]
 - Revert "xen/p2m: m2p_find_override: use list_for_each_entry_safe" (Konrad
   Rzeszutek Wilk)
