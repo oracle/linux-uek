@@ -2481,6 +2481,36 @@ static int __init mlx4_verify_params(void)
 		port_type_array[0] = true;
 	}
 
+	if (mod_param_profile.num_qp < 12 || mod_param_profile.num_qp > 23) {
+		pr_warning("mlx4_core: bad log_num_qp: %d\n",
+			   mod_param_profile.num_qp);
+		return -1;
+	}
+
+	if (mod_param_profile.num_srq < 10) {
+		pr_warning("mlx4_core: too low log_num_srq: %d\n",
+			   mod_param_profile.num_srq);
+		return -1;
+	}
+
+	if (mod_param_profile.num_cq < 10) {
+		pr_warning("mlx4_core: too low log_num_cq: %d\n",
+			   mod_param_profile.num_cq);
+		return -1;
+	}
+
+	if (mod_param_profile.num_mpt < 10) {
+		pr_warning("mlx4_core: too low log_num_mpt: %d\n",
+			   mod_param_profile.num_mpt);
+		return -1;
+	}
+
+	if (mod_param_profile.num_mtt && mod_param_profile.num_mtt < 15) {
+		pr_warning("mlx4_core: too low log_num_mtt: %d\n",
+			   mod_param_profile.num_mtt);
+		return -1;
+	}
+
 	return 0;
 }
 
