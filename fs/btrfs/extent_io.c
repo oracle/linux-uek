@@ -1151,9 +1151,8 @@ int set_extent_uptodate(struct extent_io_tree *tree, u64 start, u64 end,
 			      NULL, cached_state, mask);
 }
 
-static int clear_extent_uptodate(struct extent_io_tree *tree, u64 start,
-				 u64 end, struct extent_state **cached_state,
-				 gfp_t mask)
+int clear_extent_uptodate(struct extent_io_tree *tree, u64 start, u64 end,
+			  struct extent_state **cached_state, gfp_t mask)
 {
 	return clear_extent_bit(tree, start, end, EXTENT_UPTODATE, 0, 0,
 				cached_state, mask);
@@ -2192,6 +2191,28 @@ static int bio_readpage_error(struct bio *failed_bio, struct page *page,
 }
 
 /* lots and lots of room for performance fixes in the end_bio funcs */
+
+int end_extent_writepage(struct page *page, int err, u64 start, u64 end)
+{
+	int uptodate = (err == 0);
+	struct extent_io_tree *tree;
+	int ret;
+
+	tree = &BTRFS_I(page->mapping->host)->io_tree;
+
+	if (tree->ops && tree->ops->writepage_end_io_hook) {
+		ret = tree->ops->writepage_end_io_hook(page, start,
+					       end, NULL, uptodate);
+		if (ret)
+			uptodate = 0;
+	}
+
+	if (!uptodate) {
+		ClearPageUptodate(page);
+		SetPageError(page);
+	}
+	return 0;
+}
 
 /*
  * after a writepage IO is done, we need to:
