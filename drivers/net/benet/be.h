@@ -34,7 +34,7 @@
 
 #include "be_hw.h"
 
-#define DRV_VER			"4.1.297o"
+#define DRV_VER			"4.2.220o"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"ServerEngines BladeEngine2 10Gbps NIC"
 #define BE3_NAME		"ServerEngines BladeEngine3 10Gbps NIC"
