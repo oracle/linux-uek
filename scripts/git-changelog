@@ -25,6 +25,7 @@ import re
 import subprocess
 import sys
 import textwrap
+import datetime
 from optparse import OptionParser
 
 
@@ -123,6 +124,24 @@ class ChangeLog:
 
         return log
 
+    def get_date(self):
+    	proc = subprocess.Popen(['git', 'config', '--get-all',
+			    "user.name"],
+			    stdout=subprocess.PIPE,
+			    stderr=subprocess.PIPE).communicate()
+	name = proc[0].rstrip()
+
+	proc = subprocess.Popen(['git', 'config', '--get-all',
+			    "user.email"],
+			    stdout=subprocess.PIPE,
+			    stderr=subprocess.PIPE).communicate()
+	email = proc[0].rstrip()
+
+	date = datetime.datetime.now().strftime("%a %B %d %Y")
+
+	ret = "* %s %s <%s>" % (date, name, email)
+	return ret
+
     def formatLog(self):
         s = ""
         for msg in self.getLog():
@@ -142,6 +161,8 @@ def main():
     (options, args) = parser.parse_args()
 
     cl = ChangeLog(options.tag)
+
+    print cl.get_date()
     print cl.formatLog()
 
 if __name__ == "__main__":
