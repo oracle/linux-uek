@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.5.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.6.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,16 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri May 04 2012 Maxim Uvarov <maxim.uvarov@oracle.com>  [2.6.39-200.6.0.el6uek]
+- [USB] cdc-acm: Increase number of devices to 64 (Joe Jin) [Orabug: 13693812]
+- git-changelog: generate date entry (Maxim Uvarov)
+- [scsi] hpsa: Remove some PCI IDs if for OL5. (Joe Jin)
+- [block] cciss: fix incorrect PCI IDs and add two new ones (Joe Jin)
+- [scsi] hpsa: add some older controllers to the kdump blacklist (Joe Jin)
+- [block] cciss: Add IRQF_SHARED back in for the non-MSI(X) interrupt handler
+  (Joe Jin)
+- [block] cciss: add some older controllers to the kdump blacklist (Joe Jin)
+
 * Tue May 1 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.5.0.el6uek]
 - be2net: query link status in be_open() (Sarveshwar Bandi) [Orabug: 13231]
 
