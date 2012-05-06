@@ -440,6 +440,7 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct net_device *dev = cm_id->context;
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_rx *p;
+	struct ipoib_cm_data *data = event->private_data;
 	unsigned psn;
 	int ret;
 
@@ -452,6 +453,10 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	cm_id->context = p;
 	p->state = IPOIB_CM_RX_LIVE;
 	p->jiffies = jiffies;
+
+	/* used to keep track of base qpn in CM mode */
+	p->qpn = be32_to_cpu(data->qpn);
+
 	INIT_LIST_HEAD(&p->list);
 
 	p->qp = ipoib_cm_create_rx_qp(dev, p);
@@ -669,6 +674,10 @@ copied:
 	skb->dev = dev;
 	/* XXX get correct PACKET_ type here */
 	skb->pkt_type = PACKET_HOST;
+	/* if handler is registered on top of ipoib, set skb oob data. */
+        if (skb->dev->priv_flags & IFF_EIPOIB_VIF)
+		set_skb_oob_cb_data(skb, wc, NULL);
+
 	netif_receive_skb(skb);
 
 repost:

@@ -52,6 +52,7 @@
 #include <rdma/ib_pack.h>
 #include <rdma/ib_sa.h>
 #include <linux/sched.h>
+#include <rdma/e_ipoib.h>
 
 /* constants */
 
@@ -215,6 +216,7 @@ struct ipoib_cm_rx {
 	unsigned long		jiffies;
 	enum ipoib_cm_state	state;
 	int			recv_count;
+	u32			qpn;
 };
 
 struct ipoib_cm_tx {
@@ -729,6 +731,10 @@ extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;
 
 extern struct ib_sa_client ipoib_sa_client;
+
+
+inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
+				struct napi_struct *napi);
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 extern int ipoib_debug_level;

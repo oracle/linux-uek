@@ -93,6 +93,32 @@ static struct ib_client ipoib_client = {
 	.remove = ipoib_remove_one
 };
 
+inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
+				struct napi_struct *napi)
+{
+	struct ipoib_cm_rx *p_cm_ctx = NULL;
+	union skb_cb_data *data = NULL;
+	struct ib_grh *grh = NULL;
+
+	p_cm_ctx = wc->qp->qp_context;
+	data = IPOIB_HANDLER_CB(skb);
+
+	data->rx.slid = wc->slid;
+	data->rx.sqpn = wc->src_qp;
+	data->rx.napi = napi;
+
+	/*TODO: add mcast support.*/
+	/*if dqpn is mcast, fetch the dgid*/
+	grh = (struct ib_grh *)(skb->data - IB_GRH_BYTES - IPOIB_ENCAP_LEN);
+
+	if ((wc->wc_flags & IB_WC_GRH) && grh)
+		memcpy(data->rx.dgid, grh->dgid.raw, 16);
+
+	/* in CM mode, use the "base" qpn as sqpn */
+	if (p_cm_ctx)
+		data->rx.sqpn = p_cm_ctx->qpn;
+}
+
 int ipoib_open(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
@@ -1622,6 +1648,9 @@ static struct net_device *ipoib_add_port(const char *format,
 		       hca->name, port, result);
 		goto event_failed;
 	}
+
+	/*indicates pif port*/
+	priv->dev->priv_flags |= IFF_EIPOIB_PIF;
 
 	result = register_netdev(priv->dev);
 	if (result) {
