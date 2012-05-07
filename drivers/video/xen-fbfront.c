@@ -365,7 +365,7 @@ static int __devinit xenfb_probe(struct xenbus_device *dev,
 	struct fb_info *fb_info;
 	int fb_size;
 	int val;
-	int ret;
+	int ret = 0;
 
 	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (info == NULL) {
