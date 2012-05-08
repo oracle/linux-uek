@@ -4560,7 +4560,12 @@ lpfc_bsg_issue_mbox(struct lpfc_hba *phba, struct fc_bsg_job *job,
 							+ sizeof(MAILBOX_t));
 		}
 	} else if (phba->sli_rev == LPFC_SLI_REV4) {
-		if (pmb->mbxCommand == MBX_DUMP_MEMORY) {
+		/* Let type 4 (well known data) through because the data is
+		 * returned in varwords[4-8]
+		 * otherwise check the recieve length and fetch the buffer addr
+		 */
+		if ((pmb->mbxCommand == MBX_DUMP_MEMORY) &&
+			(pmb->un.varDmp.type != DMP_WELL_KNOWN)) {
 			/* rebuild the command for sli4 using our own buffers
 			* like we do for biu diags
 			*/
