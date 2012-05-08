@@ -715,12 +715,20 @@ struct lpfc_register {
 #define lpfc_eqcq_doorbell_eqci_SHIFT		9
 #define lpfc_eqcq_doorbell_eqci_MASK		0x0001
 #define lpfc_eqcq_doorbell_eqci_WORD		word0
-#define lpfc_eqcq_doorbell_cqid_SHIFT		0
-#define lpfc_eqcq_doorbell_cqid_MASK		0x03FF
-#define lpfc_eqcq_doorbell_cqid_WORD		word0
-#define lpfc_eqcq_doorbell_eqid_SHIFT		0
-#define lpfc_eqcq_doorbell_eqid_MASK		0x01FF
-#define lpfc_eqcq_doorbell_eqid_WORD		word0
+#define lpfc_eqcq_doorbell_cqid_lo_SHIFT	0
+#define lpfc_eqcq_doorbell_cqid_lo_MASK		0x03FF
+#define lpfc_eqcq_doorbell_cqid_lo_WORD		word0
+#define lpfc_eqcq_doorbell_cqid_hi_SHIFT	11
+#define lpfc_eqcq_doorbell_cqid_hi_MASK		0x001F
+#define lpfc_eqcq_doorbell_cqid_hi_WORD		word0
+#define lpfc_eqcq_doorbell_eqid_lo_SHIFT	0
+#define lpfc_eqcq_doorbell_eqid_lo_MASK		0x01FF
+#define lpfc_eqcq_doorbell_eqid_lo_WORD		word0
+#define lpfc_eqcq_doorbell_eqid_hi_SHIFT	11
+#define lpfc_eqcq_doorbell_eqid_hi_MASK		0x001F
+#define lpfc_eqcq_doorbell_eqid_hi_WORD		word0
+#define LPFC_CQID_HI_FIELD_SHIFT		10
+#define LPFC_EQID_HI_FIELD_SHIFT		9
 
 #define LPFC_BMBX			0x0160
 #define lpfc_bmbx_addr_SHIFT		2
