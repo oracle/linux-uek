@@ -1773,7 +1773,7 @@ lpfc_sli4_bsg_set_internal_loopback(struct lpfc_hba *phba)
 	bf_set(lpfc_mbx_set_diag_state_link_type,
 	       &link_diag_loopback->u.req, phba->sli4_hba.lnk_info.lnk_tp);
 	bf_set(lpfc_mbx_set_diag_lpbk_type, &link_diag_loopback->u.req,
-	       LPFC_DIAG_LOOPBACK_TYPE_SERDES);
+	       LPFC_DIAG_LOOPBACK_TYPE_INTERNAL);
 
 	mbxstatus = lpfc_sli_issue_mbox_wait(phba, pmboxq, LPFC_MBOX_TMO);
 	if ((mbxstatus != MBX_SUCCESS) || (pmboxq->u.mb.mbxStatus)) {
