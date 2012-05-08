@@ -1708,14 +1708,14 @@ lpfc_sli4_bsg_set_link_diag_state(struct lpfc_hba *phba, uint32_t diag)
 	}
 	lpfc_printf_log(phba, KERN_INFO, LOG_LIBDFC,
 			"3128 Set link to diagnostic state:x%x (x%x/x%x)\n",
-			diag, phba->sli4_hba.link_state.type,
-			phba->sli4_hba.link_state.number);
+			diag, phba->sli4_hba.lnk_info.lnk_tp,
+			phba->sli4_hba.lnk_info.lnk_no);
 
 	link_diag_state = &pmboxq->u.mqe.un.link_diag_state;
 	bf_set(lpfc_mbx_set_diag_state_link_num, &link_diag_state->u.req,
-	       phba->sli4_hba.link_state.number);
+	       phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_set_diag_state_link_type, &link_diag_state->u.req,
-	       phba->sli4_hba.link_state.type);
+	       phba->sli4_hba.lnk_info.lnk_tp);
 	if (diag)
 		bf_set(lpfc_mbx_set_diag_state_diag,
 		       &link_diag_state->u.req, 1);
@@ -2165,9 +2165,9 @@ lpfc_sli4_bsg_link_diag_test(struct fc_bsg_job *job)
 	}
 	run_link_diag_test = &pmboxq->u.mqe.un.link_diag_test;
 	bf_set(lpfc_mbx_run_diag_test_link_num, &run_link_diag_test->u.req,
-	       phba->sli4_hba.link_state.number);
+	       phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_run_diag_test_link_type, &run_link_diag_test->u.req,
-	       phba->sli4_hba.link_state.type);
+	       phba->sli4_hba.lnk_info.lnk_tp);
 	bf_set(lpfc_mbx_run_diag_test_test_id, &run_link_diag_test->u.req,
 	       link_diag_test_cmd->test_id);
 	bf_set(lpfc_mbx_run_diag_test_loops, &run_link_diag_test->u.req,
