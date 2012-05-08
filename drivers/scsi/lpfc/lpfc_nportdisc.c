@@ -385,6 +385,8 @@ lpfc_rcv_plogi(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp,
 	if (!mbox)
 		goto out;
 
+	lpfc_unreg_rpi(vport, ndlp);
+
 	rc = lpfc_reg_rpi(phba, vport->vpi, icmd->un.rcvels.remoteID,
 			    (uint8_t *) sp, mbox, ndlp->nlp_rpi);
 	if (rc) {
