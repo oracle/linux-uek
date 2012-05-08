@@ -2502,6 +2502,42 @@ lpfc_block_mgmt_io(struct lpfc_hba * phba)
 }
 
 /**
+ * lpfc_sli4_node_prep - Assign RPIs for active nodes.
+ * @phba: pointer to lpfc hba data structure.
+ *
+ * Allocate RPIs for all active remote nodes. This is needed whenever
+ * an SLI4 adapter is reset and the driver is not unloading. Its purpose
+ * is to fixup the temporary rpi assignments.
+ **/
+void
+lpfc_sli4_node_prep(struct lpfc_hba *phba)
+{
+	struct lpfc_nodelist  *ndlp, *next_ndlp;
+	struct lpfc_vport **vports;
+	int i;
+
+	if (phba->sli_rev != LPFC_SLI_REV4)
+		return;
+
+	vports = lpfc_create_vport_work_array(phba);
+	if (vports != NULL) {
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
+			if (vports[i]->load_flag & FC_UNLOADING)
+				continue;
+
+			list_for_each_entry_safe(ndlp, next_ndlp,
+						 &vports[i]->fc_nodes,
+						 nlp_listp) {
+				if (NLP_CHK_NODE_ACT(ndlp))
+					ndlp->nlp_rpi =
+						lpfc_sli4_alloc_rpi(phba);
+			}
+		}
+	}
+	lpfc_destroy_vport_work_array(phba, vports);
+}
+
+/**
  * lpfc_online - Initialize and bring a HBA online
  * @phba: pointer to lpfc hba data structure.
  *
@@ -2642,6 +2678,15 @@ lpfc_offline_prep(struct lpfc_hba * phba)
 				}
 				spin_lock_irq(shost->host_lock);
 				ndlp->nlp_flag &= ~NLP_NPR_ADISC;
+
+				/*
+				 * Whenever an SLI4 port goes offline, free the
+				 * RPI.  A new RPI when the adapter port comes 
+				 * back online.
+				 */
+				if (phba->sli_rev == LPFC_SLI_REV4)
+					lpfc_sli4_free_rpi(phba, ndlp->nlp_rpi);
+
 				spin_unlock_irq(shost->host_lock);
 				lpfc_unreg_rpi(vports[i], ndlp);
 			}

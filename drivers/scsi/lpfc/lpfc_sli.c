@@ -5600,6 +5600,8 @@ lpfc_sli4_alloc_resource_identifiers(struct lpfc_hba *phba)
 		for (i = 0; i < count; i++)
 			phba->sli4_hba.rpi_ids[i] = base + i;
 
+		lpfc_sli4_node_prep(phba);
+
 		/* VPIs. */
 		count = phba->sli4_hba.max_cfg_param.max_vpi;
 		base = phba->sli4_hba.max_cfg_param.vpi_base;
