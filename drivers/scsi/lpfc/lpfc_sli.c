@@ -7561,6 +7561,8 @@ lpfc_sli4_bpl2sgl(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq,
 
 	sgl  = (struct sli4_sge *)sglq->sgl;
 	icmd = &piocbq->iocb;
+	if (icmd->ulpCommand == CMD_XMIT_BLS_RSP64_CX)
+		return sglq->sli4_xritag;
 	if (icmd->un.genreq64.bdl.bdeFlags == BUFF_TYPE_BLP_64) {
 		numBdes = icmd->un.genreq64.bdl.bdeSize /
 				sizeof(struct ulp_bde64);
@@ -7989,6 +7991,7 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		xritag = 0;
 		break;
 	case CMD_XMIT_BLS_RSP64_CX:
+		ndlp = (struct lpfc_nodelist *)iocbq->context1;
 		/* As BLS ABTS RSP WQE is very different from other WQEs,
 		 * we re-construct this WQE here based on information in
 		 * iocbq from scratch.
@@ -8015,8 +8018,15 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		}
 		bf_set(xmit_bls_rsp64_seqcnthi, &wqe->xmit_bls_rsp, 0xffff);
 		bf_set(wqe_xmit_bls_pt, &wqe->xmit_bls_rsp.wqe_dest, 0x1);
+
+		/* Use CT=VPI */
+		bf_set(wqe_els_did, &wqe->xmit_bls_rsp.wqe_dest,
+			ndlp->nlp_DID);
+		bf_set(xmit_bls_rsp64_temprpi, &wqe->xmit_bls_rsp,
+			iocbq->iocb.ulpContext);
+		bf_set(wqe_ct, &wqe->xmit_bls_rsp.wqe_com, 1);
 		bf_set(wqe_ctxt_tag, &wqe->xmit_bls_rsp.wqe_com,
-		       iocbq->iocb.ulpContext);
+			phba->vpi_ids[phba->pport->vpi]);
 		bf_set(wqe_qosd, &wqe->xmit_bls_rsp.wqe_com, 1);
 		bf_set(wqe_lenloc, &wqe->xmit_bls_rsp.wqe_com,
 		       LPFC_WQE_LENLOC_NONE);
@@ -8080,8 +8090,7 @@ __lpfc_sli_issue_iocb_s4(struct lpfc_hba *phba, uint32_t ring_number,
 
 	if (piocb->sli4_xritag == NO_XRI) {
 		if (piocb->iocb.ulpCommand == CMD_ABORT_XRI_CN ||
-		    piocb->iocb.ulpCommand == CMD_CLOSE_XRI_CN ||
-		    piocb->iocb.ulpCommand == CMD_XMIT_BLS_RSP64_CX)
+		    piocb->iocb.ulpCommand == CMD_CLOSE_XRI_CN)
 			sglq = NULL;
 		else {
 			if (pring->txq_cnt) {
@@ -14052,6 +14061,13 @@ lpfc_sli4_seq_abort_rsp_cmpl(struct lpfc_hba *phba,
 {
 	if (cmd_iocbq)
 		lpfc_sli_release_iocbq(phba, cmd_iocbq);
+
+	/* Failure means BLS ABORT RSP did not get delivered to remote node*/
+	if (rsp_iocbq && rsp_iocbq->iocb.ulpStatus)
+		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+			"3154 BLS ABORT RSP failed, data:  x%x/x%x\n",
+			rsp_iocbq->iocb.ulpStatus,
+			rsp_iocbq->iocb.un.ulpWord[4]);
 }
 
 /**
