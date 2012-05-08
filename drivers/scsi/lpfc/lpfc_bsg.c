@@ -590,7 +590,10 @@ lpfc_bsg_rport_els(struct fc_bsg_job *job)
 	}
 	cmdiocbq->iocb.un.elsreq64.bdl.bdeSize =
 		(request_nseg + reply_nseg) * sizeof(struct ulp_bde64);
-	cmdiocbq->iocb.ulpContext = rpi;
+	if (phba->sli_rev == LPFC_SLI_REV4)
+		cmdiocbq->iocb.ulpContext = phba->sli4_hba.rpi_ids[rpi];
+	else
+		cmdiocbq->iocb.ulpContext = rpi;
 	cmdiocbq->iocb_flag |= LPFC_IO_LIBDFC;
 	cmdiocbq->context1 = NULL;
 	cmdiocbq->context2 = NULL;
