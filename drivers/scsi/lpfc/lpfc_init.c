@@ -7210,19 +7210,17 @@ lpfc_pci_function_reset(struct lpfc_hba *phba)
 					rc = -ENODEV;
 					goto out;
 				}
+				if (bf_get(lpfc_sliport_status_rn, &reg_data))
+					reset_again++;
 				if (bf_get(lpfc_sliport_status_rdy, &reg_data))
 					break;
-				if (bf_get(lpfc_sliport_status_rn, &reg_data)) {
-					reset_again++;
-					break;
-				}
 			}
 
 			/*
 			 * If the port responds to the init request with
 			 * reset needed, delay for a bit and restart the loop.
 			 */
-			if (reset_again) {
+			if (reset_again && (rdy_chk < 1000)) {
 				msleep(10);
 				reset_again = 0;
 				continue;
