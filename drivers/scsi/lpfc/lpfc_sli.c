@@ -8385,10 +8385,13 @@ lpfc_sli4_abts_err_handler(struct lpfc_hba *phba,
 {
 	struct lpfc_vport *vport;
 
-	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp))
+	if (!ndlp || !NLP_CHK_NODE_ACT(ndlp)) {
 		lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
 				"3115 Node Context not found, driver "
 				"ignoring abts err event\n");
+		return;
+	}
+
 	vport = ndlp->vport;
 	lpfc_printf_log(phba, KERN_WARNING, LOG_SLI,
 			"3116 Port generated FCP XRI ABORT event on "
