@@ -72,8 +72,8 @@ extern struct proc_dir_entry *mlx4_mrs_dir_entry;
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
 
 
-#define MLX4_IB_MMAP_CMD_MASK 0x07
-#define MLX4_IB_MMAP_CMD_BITS 3
+#define MLX4_IB_MMAP_CMD_MASK 0xFF
+#define MLX4_IB_MMAP_CMD_BITS 8
 
 struct mlx4_ib_ucontext {
 	struct ib_ucontext	ibucontext;

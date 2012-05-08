@@ -632,7 +632,7 @@ static unsigned long mlx4_ib_get_unmapped_area(struct file *file,
 		return current->mm->get_unmapped_area(file, addr, len,
 						pgoff, flags);
 
-	/* Last 3 bits hold the  command others are data per that command */
+	/* Last 8 bits hold the  command others are data per that command */
 	command = pgoff & MLX4_IB_MMAP_CMD_MASK;
 	if (command != MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES)
 		return current->mm->get_unmapped_area(file, addr, len,
@@ -674,7 +674,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 	struct mlx4_ib_dev *dev = to_mdev(context->device);
 	int err;
 
-	/* Last 3 bits hold the  command others are data per that command */
+	/* Last 8 bits hold the  command others are data per that command */
 	unsigned long  command = vma->vm_pgoff & MLX4_IB_MMAP_CMD_MASK;
 
 	if (command < MLX4_IB_MMAP_GET_CONTIGUOUS_PAGES) {
