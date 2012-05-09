@@ -590,7 +590,10 @@ lpfc_bsg_rport_els(struct fc_bsg_job *job)
 	}
 	cmdiocbq->iocb.un.elsreq64.bdl.bdeSize =
 		(request_nseg + reply_nseg) * sizeof(struct ulp_bde64);
-	cmdiocbq->iocb.ulpContext = rpi;
+	if (phba->sli_rev == LPFC_SLI_REV4)
+		cmdiocbq->iocb.ulpContext = phba->sli4_hba.rpi_ids[rpi];
+	else
+		cmdiocbq->iocb.ulpContext = rpi;
 	cmdiocbq->iocb_flag |= LPFC_IO_LIBDFC;
 	cmdiocbq->context1 = NULL;
 	cmdiocbq->context2 = NULL;
@@ -1708,14 +1711,14 @@ lpfc_sli4_bsg_set_link_diag_state(struct lpfc_hba *phba, uint32_t diag)
 	}
 	lpfc_printf_log(phba, KERN_INFO, LOG_LIBDFC,
 			"3128 Set link to diagnostic state:x%x (x%x/x%x)\n",
-			diag, phba->sli4_hba.link_state.type,
-			phba->sli4_hba.link_state.number);
+			diag, phba->sli4_hba.lnk_info.lnk_tp,
+			phba->sli4_hba.lnk_info.lnk_no);
 
 	link_diag_state = &pmboxq->u.mqe.un.link_diag_state;
 	bf_set(lpfc_mbx_set_diag_state_link_num, &link_diag_state->u.req,
-	       phba->sli4_hba.link_state.number);
+	       phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_set_diag_state_link_type, &link_diag_state->u.req,
-	       phba->sli4_hba.link_state.type);
+	       phba->sli4_hba.lnk_info.lnk_tp);
 	if (diag)
 		bf_set(lpfc_mbx_set_diag_state_diag,
 		       &link_diag_state->u.req, 1);
@@ -1766,11 +1769,11 @@ lpfc_sli4_bsg_set_internal_loopback(struct lpfc_hba *phba)
 	}
 	link_diag_loopback = &pmboxq->u.mqe.un.link_diag_loopback;
 	bf_set(lpfc_mbx_set_diag_state_link_num,
-	       &link_diag_loopback->u.req, phba->sli4_hba.link_state.number);
+	       &link_diag_loopback->u.req, phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_set_diag_state_link_type,
-	       &link_diag_loopback->u.req, phba->sli4_hba.link_state.type);
+	       &link_diag_loopback->u.req, phba->sli4_hba.lnk_info.lnk_tp);
 	bf_set(lpfc_mbx_set_diag_lpbk_type, &link_diag_loopback->u.req,
-	       LPFC_DIAG_LOOPBACK_TYPE_SERDES);
+	       LPFC_DIAG_LOOPBACK_TYPE_INTERNAL);
 
 	mbxstatus = lpfc_sli_issue_mbox_wait(phba, pmboxq, LPFC_MBOX_TMO);
 	if ((mbxstatus != MBX_SUCCESS) || (pmboxq->u.mb.mbxStatus)) {
@@ -2165,9 +2168,9 @@ lpfc_sli4_bsg_link_diag_test(struct fc_bsg_job *job)
 	}
 	run_link_diag_test = &pmboxq->u.mqe.un.link_diag_test;
 	bf_set(lpfc_mbx_run_diag_test_link_num, &run_link_diag_test->u.req,
-	       phba->sli4_hba.link_state.number);
+	       phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_run_diag_test_link_type, &run_link_diag_test->u.req,
-	       phba->sli4_hba.link_state.type);
+	       phba->sli4_hba.lnk_info.lnk_tp);
 	bf_set(lpfc_mbx_run_diag_test_test_id, &run_link_diag_test->u.req,
 	       link_diag_test_cmd->test_id);
 	bf_set(lpfc_mbx_run_diag_test_loops, &run_link_diag_test->u.req,
@@ -4557,7 +4560,12 @@ lpfc_bsg_issue_mbox(struct lpfc_hba *phba, struct fc_bsg_job *job,
 							+ sizeof(MAILBOX_t));
 		}
 	} else if (phba->sli_rev == LPFC_SLI_REV4) {
-		if (pmb->mbxCommand == MBX_DUMP_MEMORY) {
+		/* Let type 4 (well known data) through because the data is
+		 * returned in varwords[4-8]
+		 * otherwise check the recieve length and fetch the buffer addr
+		 */
+		if ((pmb->mbxCommand == MBX_DUMP_MEMORY) &&
+			(pmb->un.varDmp.type != DMP_WELL_KNOWN)) {
 			/* rebuild the command for sli4 using our own buffers
 			* like we do for biu diags
 			*/
