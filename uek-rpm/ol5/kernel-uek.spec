@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.6.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,234 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed May 09 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.7.0.el5uek]
+- Revert "x86/ioapic: Add register level checks to detect bogus io-apic
+  entries" (Maxim Uvarov)
+- qla2xxx: Updated the driver version to 8.04.00.03.39.0-k. (Giridhar Malavali)
+- qla2xxx: Don't attach driver with function. (Giridhar Malavali)
+- qla2xxx: Proper detection of firmware abort error code for ISP82xx. (Giridhar
+  Malavali)
+- qla2xxx: Fix typo in bus-reset handler. (Andrew Vasquez)
+- qla2xxx: Correct link-reset regressions introduced during 83xx porting.
+  (Andrew Vasquez)
+- qla2xxx: Handle device mapping changes due to device logout. (Arun Easi)
+- qla2xxx: Avoid invalid request queue dereference for bad response packets.
+  (Arun Easi)
+- qla2xxx: Stop iteration after first failure in *_id functions. (Arun Easi)
+- qla2xxx: Fix incorrect register access in qla2x00_start_iocbs(). (Arun Easi)
+- qla2xxx: Fix to update proper command completion upon command retries.
+  (Andrew Vasquez)
+- qla2xxx: Hard code the number of loop entries at 128. (Chad Dupuis)
+- Revert "qla2xxx: Return N-port id to firmware on logout." (Giridhar Malavali)
+- qla2xxx: Reference proper scsi_qla_host structure for processing non-scsi SRB
+  commands. (Giridhar Malavali)
+- qla2xxx: Fix wrong decrement, null sp access. (Arun Easi)
+- qla2xxx: Further consolidation of SRB related code changes. (Giridhar
+  Malavali)
+- qla2xxx: Complete mailbox command timedout to avoid initialization failures
+  during next reset cycle. (Giridhar Malavali)
+- qla2xxx: Add ha->max_fibre_devices to keep track of the maximum number of
+  targets. (Chad Dupuis)
+- qla2xxx: Cache swl during fabric discovery. (Andrew Vasquez)
+- qla2xxx: Remove EDC sysfs interface. (Joe Carnuccio)
+- qla2xxx: Perform firmware dump procedure on mailbox command timeout. (Chad
+  Dupuis)
+- qla2xxx: Change the log message when previous dump is available to retrieve
+  for ISP82xx. (Giridhar Malavali)
+- qla2xxx: Log messages to use correct vha. (Arun Easi)
+- qla2xxx: Add new message when a new loopid is assigned. (Chad Dupuis)
+- qla2xxx: Fix ql_dbg arguments. (Arun Easi)
+- qla2xxx: Use ql_log* #define's in ql_log() and ql_log_pci(). (Chad Dupuis)
+- qla2xxx: Convert remaining printk's to ql_log format. (Chad Dupuis)
+- qla2xxx: Print mailbox command opcode and return code when a command times
+  out. (Chad Dupuis)
+- qla2xxx: Remove check for null fcport from host reset handler. (Michael
+  Christie)
+- qla2xxx: Correct out of bounds read of ISP2200 mailbox registers. (Andrew
+  Vasquez)
+- qla2xxx: Remove errant clearing of MBX_INTERRUPT flag during CT-IOCB
+  processing. (Andrew Vasquez)
+- qla2xxx: Reduce mbx-command timeout for Login/Logout requests. (Andrew
+  Vasquez)
+- qla2xxx: Clear options-flags while issuing stop-firmware mbx command. (Andrew
+  Vasquez)
+- qla2xxx: Prep zero-length BSG data-transfer requests. (Andrew Vasquez)
+- qla2xxx: Perform implicit logout during rport tear-down. (Andrew Vasquez)
+- qla2xxx: Return N-port id to firmware on logout. (Joe Carnuccio)
+- qla2xxx: Handle failure cases during fabric_login (Chad Dupuis)
+- qla2xxx: Increase speed of flash access in ISP82xx adapters to improve
+  firmware load speed. (Chad Dupuis)
+- qla2xxx: Handle change notifications based on switch scan results. (Arun
+  Easi)
+- qla2xxx: Correct print format for edc ql_log() calls. (Joe Carnuccio)
+- qla2xxx: Use consistent DL mask for ELS/CT passthru requests. (Andrew
+  Vasquez)
+- qla2xxx: Consolidation of SRB processing. (Giridhar Malavali)
+- qla2xxx: Use proper VPD/NVRAM regions with ISP8031 parts. (Andrew Vasquez)
+- qla2xxx: Remove ql2xfwloadbin assignment to 0. (Chad Dupuis)
+- qla2xxx: Call MPI reset for 81xx adapters only. (Andrew Vasquez)
+- qla2xxx: Driver need to do HotReset instead of FundamentalReset for ISP83XX
+  (Andrew Vasquez)
+- qla2xxx: Use default semantic for firmware load. (Saurav Kashyap)
+- qla2xxx: Enhancements to support ISP83xx. (Giridhar Malavali)
+- qla2xxx: Enhanced the dump routines to capture multiple request and response
+  queues. (Giridhar Malavali)
+- qla2xxx: Update the driver version to 8.03.07.13.39.0-k. (Saurav Kashyap)
+- qla2xxx: Fixed typos and misc issues. (Saurav Kashyap)
+- qla2xxx: Fix byte swapping in IPE print statement. (Chad Dupuis)
+- qla2xxx: Add an "is reset active" helper. (Andrew Vasquez)
+- qla2xxx: Disable generating pause frames when firmware hang detected for
+  ISP82xx. (Giridhar Malavali)
+- qla2xxx: Use a valid enode-mac if none defined. (Andrew Vasquez)
+- qla2xxx: Remove resetting memory during device initialization for ISP82xx.
+  (Shyam Sundar)
+- qla2xxx: Propagate up abort failures. (Arun Easi)
+- qla2xxx: Add check for null fcport references in qla2xxx_queuecommand. (Chad
+  Dupuis)
+- [mpt2sas] Bump driver vesion to 13.100.00.00 (Nagalakshmi Nandigama) [Orabug:
+  14040678]
+- [mpt2sas] fix NULL pointer at ioc->pfacts (Nagalakshmi Nandigama) [Orabug:
+  14040678]
+- [mpt2sas] A hard drive is going OFFLINE when there is a hard reset issued and
+  simultaneously another hard drive is hot unplugged (Nagalakshmi Nandigama)
+  [Orabug: 14040678]
+- [mpt2sas] Set the phy identifier of the end device to to the phy number of
+  the parent device it is linked to (Nagalakshmi Nandigama) [Orabug: 14040678]
+- [mpt2sas] While enabling phy, read the current port number from sas iounit
+  page 0 instead of page 1 (Nagalakshmi Nandigama) [Orabug: 14040678]
+- [mpt2sas] Fix several endian issues found by runing sparse (Nagalakshmi
+  Nandigama) [Orabug: 14040678]
+- [mpt2sas] Modify the source code as per the findings reported by the source
+  code analysis tool (Nagalakshmi Nandigama) [Orabug: 14040678]
+- [mpt2sas] Improvement were made to better protect the sas_device,
+  raid_device, and expander_device lists (Nagalakshmi Nandigama)
+- [mpt2sas] Perform Target Reset instead of HBA reset when a SATA_PASSTHROUGH
+  cmd timeout happens (Nagalakshmi Nandigama) [Orabug: 14040678]
+- [mpt2sas] Added multisegment mode support for Linux BSG Driver (Nagalakshmi
+  Nandigama) [Orabug: 14040678]
+- [mpt2sas] remove the global mutex (Nagalakshmi Nandigama) [Orabug: 14040678]
+- [mpt2sas] MPI next revision header update (Nagalakshmi Nandigama) [Orabug:
+  14040678]
+- Update lpfc version for 8.3.5.68.4p driver release (Vaios Papadimitriou)
+- Fix bug with mailbox handling of REG_VFI and cable pull (CR 127762) (Vaios
+  Papadimitriou)
+- Use PCI configure space read to flush PCI function reset register write to
+  avoid MMIO issues (CR 128101) (Vaios Papadimitriou)
+- Fixed system panic when extents enabled with large number of small blocks (CR
+  128010) (Vaios Papadimitriou)
+- Fixed the system panic during EEH recovery (CR 127062) (Vaios Papadimitriou)
+- Fix resource leak when acc fails for received plogi (CR 127847) (Vaios
+  Papadimitriou)
+- Fixed SLI4 driver module load and unload test in a loop crashes the system
+  (CR 126397) (Vaios Papadimitriou)
+- Fixed missing CVL event causing round-robin FCF failover process to stop (CR
+  123367) (Vaios Papadimitriou)
+- Fix deadlock during adapter offline request (CR 127217) (Vaios Papadimitriou)
+- Fix same RPI registered multiple times after HBA reset (CR 127176) (Vaios
+  Papadimitriou)
+- Fix driver handling of XRI Aborted CQE response (CR 127345) (Vaios
+  Papadimitriou)
+- Fixed port and system failure in handling SLI4 FC port function reset (CR
+  126551) (Vaios Papadimitriou)
+- Fix bug with driver not sending a LOGO with vport delete (CR 126625) (Vaios
+  Papadimitriou)
+- Fix for SLI4 Port delivery for BLS ABORT ACC (CR 126289) (Vaios
+  Papadimitriou)
+- Fix ndlp nodelist not empty wait timeout during driver unloading (CR 127052)
+  (Vaios Papadimitriou)
+- Fix mailbox and vpi memory leaks (CR 126818) (Vaios Papadimitriou)
+- Fix management communication issues by creating character device to take a
+  reference on the driver (CR 126082) (Vaios Papadimitriou)
+- Fix for FDISC failures after firmware reset or link bounce (CR 126779) (Vaios
+  Papadimitriou)
+- Fix for driver using duplicate RPIs after LPe16000 port reset (CR 126723)
+  (Vaios Papadimitriou)
+- Fix discovery problem when in pt2pt (CR 126887) (Vaios Papadimitriou)
+- Fixed failure in handling large CQ/EQ identifiers in an IOV environment (CR
+  126856) (Vaios Papadimitriou)
+- Fix Locking code raising IRQ twice (Vaios Papadimitriou)
+- Fix driver not returning when bad ndlp found in abts error event handling (CR
+  126209) (Vaios Papadimitriou)
+- Fix bug with driver returning the wrong ndlp (CR 125743) (Vaios
+  Papadimitriou)
+- Fix driver behavior when receiving an ADISC (CR 126654) (Vaios Papadimitriou)
+- Fix bug with driver processing dump command type 4 using 16Gb FC Adapter (CR
+  126406) (Vaios Papadimitriou)
+- Fix driver does not reset port when reset is needed during fw_dump (CR
+  125807) (Vaios Papadimitriou)
+- Fix ELS FDISC failing with local reject / invalid RPI (CR 126350) (Vaios
+  Papadimitriou)
+- Fix SLI4 FC port internal loopback (CR 126409) (Vaios Papadimitriou)
+- Fix REG_RPI fails on SLI4 HBA putting NPort into NPR state (CR 126230) (Vaios
+  Papadimitriou)
+- Fix bug with driver processing an els command using 16Gb FC Adapter (CR
+  126345) (Vaios Papadimitriou)
+- Fix NMI seen due to CQE starvation (CR 126149) (Vaios Papadimitriou)
+- Fixed SLI4 FC port obtained link type and number dependent on link connection
+  (CR 126264) (Vaios Papadimitriou)
+- Fixed SLI4 FC port internal loopback without SFP and external link/loopback
+  plug (CR 125843) (Vaios Papadimitriou)
+- Fix driver incorrectly building fcpCdb during scsi command prep (CR 126209)
+  (Vaios Papadimitriou)
+- be2net: make be_vlan_add_vid() void (Maxim Uvarov)
+- be2net: Record receive queue index in skb to aid RPS. (Somnath Kotur)
+- be2net: Fix FW download for BE (Padmanabh Ratnakar)
+- be2net: Fix traffic stall INTx mode (Padmanabh Ratnakar)
+- be2net: fix ethtool get settings (Ajit Khaparde)
+- be2net: fix programming of VLAN tags for VF (Ajit Khaparde)
+- be2net: reset queue address after freeing (Sathya Perla)
+- be2net: fix tx completion cleanup (Sathya Perla)
+- be2net: refactor/cleanup vf configuration code (Maxim Uvarov)
+- be2net: event queue re-design (Maxim Uvarov)
+- be2net: update the driver version (Sarveshwar Bandi)
+- be2net: Fix EEH error reset before a flash dump completes (Somnath Kotur)
+- be2net: Ignore status of some ioctls during driver load (Ajit Khaparde)
+- be2net: Fix wrong status getting returned for MCC commands (Padmanabh
+  Ratnakar)
+- be2net: Fix Lancer statistics (Padmanabh Ratnakar)
+- be2net: Fix ethtool self test for Lancer (Padmanabh Ratnakar)
+- be2net: Fix FW download in Lancer (Padmanabh Ratnakar)
+- be2net: Fix VLAN/multicast packet reception (Padmanabh Ratnakar)
+- be2net: Fix number of vlan slots in flex mode (Ajit Khaparde)
+- be2net: enable WOL by default if h/w supports it (Ajit Khaparde)
+- be2net: Remove unused OFFSET_IN_PAGE() macro (Roland Dreier)
+- be2net: enable RSS for ipv6 pkts (Sathya Perla)
+- be2net: Use new implementation of get mac list command (Padmanabh Ratnakar)
+- be2net: Fix link status query command (Padmanabh Ratnakar)
+- ethtool: Null-terminate filename passed to ethtool_ops::flash_device (Ben
+  Hutchings)
+- be2net: add descriptions for stat counters reported via ethtool (Sathya
+  Perla)
+- be2net: allocate more headroom in incoming skbs (Eric Dumazet)
+- netdev: make net_device_ops const (stephen hemminger)
+- be2net: fix be_vlan_add/rem_vid (Ajit Khaparde)
+- be2net: Fix INTx processing for Lancer (Padmanabh Ratnakar)
+- be2net: Add support for Skyhawk cards (Ajit Khaparde)
+- be2net: fix ethtool ringparam reporting (Sathya Perla)
+- be2net: workaround to fix a bug in BE (Ajit Khaparde)
+- be2net: update some counters to display via ethtool (Ajit Khaparde)
+- net: make vlan ndo_vlan_rx_[add/kill]_vid return error value (Jiri Pirko)
+- be2net: netpoll support (Ivan Vecera)
+- xen/pci: don't use PCI BIOS service for configuration space accesses (David
+  Vrabel)
+- xen/Kconfig: fix Kconfig layout (Andrew Morton)
+- xen/pte: Fix crashes when trying to see non-existent PGD/PMD/PUD/PTEs (Konrad
+  Rzeszutek Wilk)
+- xen/apic: Return the APIC ID (and version) for CPU 0. (Konrad Rzeszutek Wilk)
+- drivers/video/xen-fbfront.c: add missing cleanup code (Julia Lawall)
+- xen/x86: Workaround 'x86/ioapic: Add register level checks to detect bogus
+  io-apic entries' (Konrad Rzeszutek Wilk)
+- xen/acpi: Workaround broken BIOSes exporting non-existing C-states. (Konrad
+  Rzeszutek Wilk)
+- xen/enlighten: Disable MWAIT_LEAF so that acpi-pad won't be loaded. (Konrad
+  Rzeszutek Wilk)
+- drivers/video/xen-fbfront.c: add missing cleanup code (Julia Lawall)
+- xen: correctly check for pending events when restoring irq flags (David
+  Vrabel)
+- xen/smp: Fix crash when booting with ACPI hotplug CPUs. (Konrad Rzeszutek
+  Wilk)
+- xen: use the pirq number to check the pirq_eoi_map (Stefano Stabellini)
+
 * Fri May 04 2012 Maxim Uvarov <maxim.uvarov@oracle.com>  [2.6.39-200.6.0.el5uek]
 - [USB] cdc-acm: Increase number of devices to 64 (Joe Jin) [Orabug: 13693812]
 - git-changelog: generate date entry (Maxim Uvarov)
