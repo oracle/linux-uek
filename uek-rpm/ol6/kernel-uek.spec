@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed May 09 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.8.0.el6uek]
+- Revert "xen-blkfront: set pages are FOREIGN_FRAME when sharing them" (Konrad
+  Rzeszutek Wilk)
+
 * Wed May 09 2012 Maxim Uvarov <maxim.uvarov@oracle.com>  [2.6.39-200.7.0.el6uek]
 - Revert "x86/ioapic: Add register level checks to detect bogus io-apic
   entries" (Maxim Uvarov)
