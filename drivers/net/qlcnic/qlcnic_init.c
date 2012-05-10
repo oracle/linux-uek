@@ -1369,7 +1369,13 @@ qlcnic_handle_linkevent(struct qlcnic_adapter *adapter,
 
 	adapter->module_type = module;
 	adapter->link_autoneg = autoneg;
-	adapter->link_speed = link_speed;
+
+	if (link_status) {
+		adapter->link_speed = link_speed;
+	} else {
+		adapter->link_speed = SPEED_UNKNOWN;
+		adapter->link_duplex = DUPLEX_UNKNOWN;
+	}
 }
 
 static void
@@ -1647,6 +1653,9 @@ qlcnic_process_lro(struct qlcnic_adapter *adapter,
 	th->seq = htonl(seq_number);
 
 	length = skb->len;
+
+	if (adapter->flags & QLCNIC_FW_LRO_MSS_CAP)
+		skb_shinfo(skb)->gso_size = qlcnic_get_lro_sts_mss(sts_data1);
 
 	if (vid != 0xffff)
 		__vlan_hwaccel_put_tag(skb, vid);

@@ -78,8 +78,46 @@ static const char qlcnic_device_gstrings_stats[][ETH_GSTRING_LEN] = {
 	"tx numbytes",
 };
 
-#define QLCNIC_STATS_LEN	ARRAY_SIZE(qlcnic_gstrings_stats)
+static const char qlcnic_mac_stats_strings [][ETH_GSTRING_LEN] = {
+	"mac_tx_frames",
+	"mac_tx_bytes",
+	"mac_tx_mcast_pkts",
+	"mac_tx_bcast_pkts",
+	"mac_tx_pause_cnt",
+	"mac_tx_ctrl_pkt",
+	"mac_tx_lt_64b_pkts",
+	"mac_tx_lt_127b_pkts",
+	"mac_tx_lt_255b_pkts",
+	"mac_tx_lt_511b_pkts",
+	"mac_tx_lt_1023b_pkts",
+	"mac_tx_lt_1518b_pkts",
+	"mac_tx_gt_1518b_pkts",
+	"mac_rx_frames",
+	"mac_rx_bytes",
+	"mac_rx_mcast_pkts",
+	"mac_rx_bcast_pkts",
+	"mac_rx_pause_cnt",
+	"mac_rx_ctrl_pkt",
+	"mac_rx_lt_64b_pkts",
+	"mac_rx_lt_127b_pkts",
+	"mac_rx_lt_255b_pkts",
+	"mac_rx_lt_511b_pkts",
+	"mac_rx_lt_1023b_pkts",
+	"mac_rx_lt_1518b_pkts",
+	"mac_rx_gt_1518b_pkts",
+	"mac_rx_length_error",
+	"mac_rx_length_small",
+	"mac_rx_length_large",
+	"mac_rx_jabber",
+	"mac_rx_dropped",
+	"mac_rx_crc_error",
+	"mac_align_error",
+};
+
+#define QLCNIC_STATS_LEN ARRAY_SIZE(qlcnic_gstrings_stats)
+#define QLCNIC_MAC_STATS_LEN ARRAY_SIZE(qlcnic_mac_stats_strings)
 #define QLCNIC_DEVICE_STATS_LEN	ARRAY_SIZE(qlcnic_device_gstrings_stats)
+#define QLCNIC_TOTAL_STATS_LEN QLCNIC_STATS_LEN + QLCNIC_MAC_STATS_LEN
 
 static const char qlcnic_gstrings_test[][ETH_GSTRING_LEN] = {
 	"Register_Test_on_offline",
@@ -139,11 +177,14 @@ qlcnic_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
 	fw_major = QLCRD32(adapter, QLCNIC_FW_VERSION_MAJOR);
 	fw_minor = QLCRD32(adapter, QLCNIC_FW_VERSION_MINOR);
 	fw_build = QLCRD32(adapter, QLCNIC_FW_VERSION_SUB);
-	sprintf(drvinfo->fw_version, "%d.%d.%d", fw_major, fw_minor, fw_build);
+	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version),
+		"%d.%d.%d", fw_major, fw_minor, fw_build);
 
-	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
-	strlcpy(drvinfo->driver, qlcnic_driver_name, 32);
-	strlcpy(drvinfo->version, QLCNIC_LINUX_VERSIONID, 32);
+	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
+		sizeof(drvinfo->bus_info));
+	strlcpy(drvinfo->driver, qlcnic_driver_name, sizeof(drvinfo->driver));
+	strlcpy(drvinfo->version, QLCNIC_LINUX_VERSIONID,
+		sizeof(drvinfo->version));
 }
 
 static int
@@ -151,7 +192,6 @@ qlcnic_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(dev);
 	int check_sfp_module = 0;
-	u16 pcifn = adapter->ahw->pci_func;
 
 	/* read which mode */
 	if (adapter->ahw->port_type == QLCNIC_GBE) {
@@ -190,10 +230,8 @@ qlcnic_get_settings(struct net_device *dev, struct ethtool_cmd *ecmd)
 			goto skip;
 		}
 
-		val = QLCRD32(adapter, P3P_LINK_SPEED_REG(pcifn));
-		ethtool_cmd_speed_set(ecmd, P3P_LINK_SPEED_MHZ *
-				      P3P_LINK_SPEED_VAL(pcifn, val));
-		ecmd->duplex = DUPLEX_FULL;
+		ethtool_cmd_speed_set(ecmd, SPEED_UNKNOWN);
+		ecmd->duplex = DUPLEX_UNKNOWN;
 		ecmd->autoneg = AUTONEG_DISABLE;
 	} else
 		return -EIO;
@@ -417,9 +455,6 @@ qlcnic_get_ringparam(struct net_device *dev,
 	ring->rx_max_pending = adapter->max_rxd;
 	ring->rx_jumbo_max_pending = adapter->max_jumbo_rxd;
 	ring->tx_max_pending = MAX_CMD_DESCRIPTORS;
-
-	ring->rx_mini_max_pending = 0;
-	ring->rx_mini_pending = 0;
 }
 
 static u32
@@ -646,8 +681,8 @@ static int qlcnic_get_sset_count(struct net_device *dev, int sset)
 		return QLCNIC_TEST_LEN;
 	case ETH_SS_STATS:
 		if (adapter->flags & QLCNIC_ESWITCH_ENABLED)
-			return QLCNIC_STATS_LEN + QLCNIC_DEVICE_STATS_LEN;
-		return QLCNIC_STATS_LEN;
+			return QLCNIC_TOTAL_STATS_LEN + QLCNIC_DEVICE_STATS_LEN;
+		return QLCNIC_TOTAL_STATS_LEN;
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -848,7 +883,7 @@ static void
 qlcnic_get_strings(struct net_device *dev, u32 stringset, u8 * data)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(dev);
-	int index, i;
+	int index, i, j;
 
 	switch (stringset) {
 	case ETH_SS_TEST:
@@ -861,6 +896,11 @@ qlcnic_get_strings(struct net_device *dev, u32 stringset, u8 * data)
 			       qlcnic_gstrings_stats[index].stat_string,
 			       ETH_GSTRING_LEN);
 		}
+		for (j = 0; j < QLCNIC_MAC_STATS_LEN; index++, j++) {
+			memcpy(data + index * ETH_GSTRING_LEN,
+			       qlcnic_mac_stats_strings[j],
+			       ETH_GSTRING_LEN);
+		}
 		if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED))
 			return;
 		for (i = 0; i < QLCNIC_DEVICE_STATS_LEN; index++, i++) {
@@ -871,22 +911,64 @@ qlcnic_get_strings(struct net_device *dev, u32 stringset, u8 * data)
 	}
 }
 
-#define QLCNIC_FILL_ESWITCH_STATS(VAL1) \
-	(((VAL1) == QLCNIC_ESW_STATS_NOT_AVAIL) ? 0 : VAL1)
-
 static void
-qlcnic_fill_device_stats(int *index, u64 *data,
-		struct __qlcnic_esw_statistics *stats)
+qlcnic_fill_stats(int *index, u64 *data, void *stats, int type)
 {
 	int ind = *index;
 
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->unicast_frames);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->multicast_frames);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->broadcast_frames);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->dropped_frames);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->errors);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->local_frames);
-	data[ind++] = QLCNIC_FILL_ESWITCH_STATS(stats->numbytes);
+	if (type == QLCNIC_MAC_STATS) {
+		struct qlcnic_mac_statistics *mac_stats =
+					(struct qlcnic_mac_statistics *)stats;
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_frames);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_bytes);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_mcast_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_bcast_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_pause_cnt);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_ctrl_pkt);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_64b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_127b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_255b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_511b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_1023b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_tx_lt_1518b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_tx_gt_1518b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_frames);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_bytes);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_mcast_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_bcast_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_pause_cnt);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_ctrl_pkt);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_64b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_127b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_255b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_511b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_1023b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_rx_lt_1518b_pkts);
+		data[ind++] =
+			QLCNIC_FILL_STATS(mac_stats->mac_rx_gt_1518b_pkts);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_length_error);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_length_small);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_length_large);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_jabber);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_dropped);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_rx_crc_error);
+		data[ind++] = QLCNIC_FILL_STATS(mac_stats->mac_align_error);
+	} else if (type == QLCNIC_ESW_STATS) {
+		struct __qlcnic_esw_statistics *esw_stats =
+				(struct __qlcnic_esw_statistics *)stats;
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->unicast_frames);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->multicast_frames);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->broadcast_frames);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->dropped_frames);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->errors);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->local_frames);
+		data[ind++] = QLCNIC_FILL_STATS(esw_stats->numbytes);
+	}
 
 	*index = ind;
 }
@@ -897,6 +979,7 @@ qlcnic_get_ethtool_stats(struct net_device *dev,
 {
 	struct qlcnic_adapter *adapter = netdev_priv(dev);
 	struct qlcnic_esw_statistics port_stats;
+	struct qlcnic_mac_statistics mac_stats;
 	int index, ret;
 
 	for (index = 0; index < QLCNIC_STATS_LEN; index++) {
@@ -908,6 +991,11 @@ qlcnic_get_ethtool_stats(struct net_device *dev,
 		     sizeof(u64)) ? *(u64 *)p:(*(u32 *)p);
 	}
 
+	/* Retrieve MAC statistics from firmware */
+	memset(&mac_stats, 0, sizeof(struct qlcnic_mac_statistics));
+	qlcnic_get_mac_stats(adapter, &mac_stats);
+	qlcnic_fill_stats(&index, data, &mac_stats, QLCNIC_MAC_STATS);
+
 	if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED))
 		return;
 
@@ -917,14 +1005,14 @@ qlcnic_get_ethtool_stats(struct net_device *dev,
 	if (ret)
 		return;
 
-	qlcnic_fill_device_stats(&index, data, &port_stats.rx);
+	qlcnic_fill_stats(&index, data, &port_stats.rx, QLCNIC_ESW_STATS);
 
 	ret = qlcnic_get_port_stats(adapter, adapter->ahw->pci_func,
 			QLCNIC_QUERY_TX_COUNTER, &port_stats.tx);
 	if (ret)
 		return;
 
-	qlcnic_fill_device_stats(&index, data, &port_stats.tx);
+	qlcnic_fill_stats(&index, data, &port_stats.tx, QLCNIC_ESW_STATS);
 }
 
 static int qlcnic_set_led(struct net_device *dev,
@@ -1149,8 +1237,7 @@ qlcnic_get_dump_data(struct net_device *netdev, struct ethtool_dump *dump,
 
 	if (!fw_dump->clr) {
 		netdev_info(netdev, "Dump not available\n");
-		qlcnic_api_unlock(adapter);
-		return -EINVAL;
+		return 0;
 	}
 	/* Copy template header first */
 	copy_sz = fw_dump->tmpl_hdr->size;
@@ -1168,7 +1255,7 @@ qlcnic_get_dump_data(struct net_device *netdev, struct ethtool_dump *dump,
 	vfree(fw_dump->data);
 	fw_dump->data = NULL;
 	fw_dump->clr = 0;
-
+	netdev_info(netdev, "extracted the FW dump Successfully\n");
 	return 0;
 }
 
@@ -1186,7 +1273,7 @@ qlcnic_set_dump(struct net_device *netdev, struct ethtool_dump *val)
 			return ret;
 		}
 		if (fw_dump->clr) {
-			dev_info(&adapter->pdev->dev,
+			netdev_info(netdev,
 			"Previous dump not cleared, not forcing dump\n");
 			return ret;
 		}
@@ -1255,4 +1342,11 @@ const struct ethtool_ops qlcnic_ethtool_ops = {
 	.get_dump_flag = qlcnic_get_dump_flag,
 	.get_dump_data = qlcnic_get_dump_data,
 	.set_dump = qlcnic_set_dump,
+};
+
+const struct ethtool_ops qlcnic_ethtool_failed_ops = {
+	.get_settings = qlcnic_get_settings,
+	.get_drvinfo = qlcnic_get_drvinfo,
+	.set_msglevel = qlcnic_set_msglevel,
+	.get_msglevel = qlcnic_get_msglevel,
 };

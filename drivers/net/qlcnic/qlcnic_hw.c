@@ -1775,7 +1775,7 @@ int qlcnic_dump_fw(struct qlcnic_adapter *adapter)
 		fw_dump->clr = 1;
 		snprintf(mesg, sizeof(mesg), "FW_DUMP=%s",
 			adapter->netdev->name);
-		dev_info(&adapter->pdev->dev, "Dump data, %d bytes captured\n",
+		netdev_info(adapter->netdev, "Dump data, %d bytes captured\n",
 			fw_dump->size);
 		/* Send a udev event to notify availability of FW dump */
 		kobject_uevent_env(&adapter->pdev->dev.kobj, KOBJ_CHANGE, msg);
