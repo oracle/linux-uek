@@ -313,7 +313,7 @@ unsigned int xen_netbk_count_skb_slots(struct xenvif *vif, struct sk_buff *skb)
 	int i, copy_off;
 
 	count = DIV_ROUND_UP(
-			offset_in_page(skb->data)+skb_headlen(skb), PAGE_SIZE);
+			offset_in_page(skb->data + skb_headlen(skb)), PAGE_SIZE);
 
 	copy_off = skb_headlen(skb) % PAGE_SIZE;
 
