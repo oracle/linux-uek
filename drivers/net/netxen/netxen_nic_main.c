@@ -82,7 +82,6 @@ static void netxen_create_sysfs_entries(struct netxen_adapter *adapter);
 static void netxen_remove_sysfs_entries(struct netxen_adapter *adapter);
 static void netxen_create_diag_entries(struct netxen_adapter *adapter);
 static void netxen_remove_diag_entries(struct netxen_adapter *adapter);
-
 static int nx_dev_request_aer(struct netxen_adapter *adapter);
 static int nx_decr_dev_ref_cnt(struct netxen_adapter *adapter);
 static int netxen_can_start_firmware(struct netxen_adapter *adapter);
@@ -96,6 +95,7 @@ static void netxen_restore_indev_addr(struct net_device *dev, unsigned long);
 static struct rtnl_link_stats64 *netxen_nic_get_stats(struct net_device *dev,
 						      struct rtnl_link_stats64 *stats);
 static int netxen_nic_set_mac(struct net_device *netdev, void *p);
+int nx_dev_request_reset(struct netxen_adapter *adapter);
 
 /*  PCI Device ID Table  */
 #define ENTRY(device) \
@@ -800,10 +800,10 @@ err_out:
 static void
 netxen_check_options(struct netxen_adapter *adapter)
 {
-	u32 fw_major, fw_minor, fw_build;
+	u32 fw_major, fw_minor, fw_build, prev_fw_version;
 	char brd_name[NETXEN_MAX_SHORT_NAME];
 	char serial_num[32];
-	int i, offset, val;
+	int i, offset, val, err;
 	int *ptr32;
 	struct pci_dev *pdev = adapter->pdev;
 
@@ -824,8 +824,21 @@ netxen_check_options(struct netxen_adapter *adapter)
 	fw_major = NXRD32(adapter, NETXEN_FW_VERSION_MAJOR);
 	fw_minor = NXRD32(adapter, NETXEN_FW_VERSION_MINOR);
 	fw_build = NXRD32(adapter, NETXEN_FW_VERSION_SUB);
-
+	prev_fw_version = adapter->fw_version;
 	adapter->fw_version = NETXEN_VERSION_CODE(fw_major, fw_minor, fw_build);
+
+	/* Get FW Mini Coredump template and store it */
+	 if (NX_IS_REVISION_P3(adapter->ahw.revision_id)) {
+		if (adapter->mdump.md_template == NULL ||
+				adapter->fw_version > prev_fw_version) {
+			kfree(adapter->mdump.md_template);
+			adapter->mdump.md_template = NULL;
+			err = netxen_setup_minidump(adapter);
+			if (err)
+				dev_err(&adapter->pdev->dev,
+				"Failed to setup minidump rcode = %d\n", err);
+		}
+	}
 
 	if (adapter->portnum == 0) {
 		get_brd_name_by_type(adapter->ahw.board_type, brd_name);
@@ -899,7 +912,7 @@ netxen_check_options(struct netxen_adapter *adapter)
 static int
 netxen_start_firmware(struct netxen_adapter *adapter)
 {
-	int val, err, first_boot;
+	int val, err, first_boot, state;
 	struct pci_dev *pdev = adapter->pdev;
 
 	/* required for NX2031 dummy dma */
@@ -907,7 +920,12 @@ netxen_start_firmware(struct netxen_adapter *adapter)
 	if (err)
 		return err;
 
-	if (!netxen_can_start_firmware(adapter))
+	err = netxen_can_start_firmware(adapter);
+
+	if (err < 0)
+		return err;
+
+	if (!err)
 		goto wait_init;
 
 	first_boot = NXRD32(adapter, NETXEN_CAM_RAM(0x1fc));
@@ -979,7 +997,15 @@ wait_init:
 		goto err_out;
 	}
 
+	if (netxen_api_lock(adapter))
+		return -EIO;
+	state = NXRD32(adapter, NX_CRB_DEV_STATE);
+
+	if (state == NX_DEV_FAILED)
+		return 1;
+
 	NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_READY);
+	netxen_api_unlock(adapter);
 
 	nx_update_dma_mask(adapter);
 
@@ -1401,7 +1427,6 @@ netxen_nic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	netdev = alloc_etherdev(sizeof(struct netxen_adapter));
 	if(!netdev) {
-		dev_err(&pdev->dev, "failed to allocate net_device\n");
 		err = -ENOMEM;
 		goto err_out_free_res;
 	}
@@ -1527,6 +1552,18 @@ err_out_disable_pdev:
 	return err;
 }
 
+static
+void netxen_cleanup_minidump(struct netxen_adapter *adapter)
+{
+	kfree(adapter->mdump.md_template);
+	adapter->mdump.md_template = NULL;
+
+	if (adapter->mdump.md_capture_buff) {
+		vfree(adapter->mdump.md_capture_buff);
+		adapter->mdump.md_capture_buff = NULL;
+	}
+}
+
 static void __devexit netxen_nic_remove(struct pci_dev *pdev)
 {
 	struct netxen_adapter *adapter;
@@ -1562,8 +1599,10 @@ static void __devexit netxen_nic_remove(struct pci_dev *pdev)
 
 	netxen_release_firmware(adapter);
 
-	if (NX_IS_REVISION_P3(pdev->revision))
+	if (NX_IS_REVISION_P3(pdev->revision)) {
+		netxen_cleanup_minidump(adapter);
 		pci_disable_pcie_error_reporting(pdev);
+	}
 
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
@@ -2315,7 +2354,7 @@ nx_incr_dev_ref_cnt(struct netxen_adapter *adapter)
 static int
 nx_decr_dev_ref_cnt(struct netxen_adapter *adapter)
 {
-	int count;
+	int count, state;
 	if (netxen_api_lock(adapter))
 		return -EIO;
 
@@ -2323,8 +2362,9 @@ nx_decr_dev_ref_cnt(struct netxen_adapter *adapter)
 	WARN_ON(count == 0);
 
 	NXWR32(adapter, NX_CRB_DEV_REF_COUNT, --count);
+	state = NXRD32(adapter, NX_CRB_DEV_STATE);
 
-	if (count == 0)
+	if (count == 0 && state != NX_DEV_FAILED)
 		NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_COLD);
 
 	netxen_api_unlock(adapter);
@@ -2353,7 +2393,7 @@ nx_dev_request_aer(struct netxen_adapter *adapter)
 	return ret;
 }
 
-static int
+int
 nx_dev_request_reset(struct netxen_adapter *adapter)
 {
 	u32 state;
@@ -2364,10 +2404,11 @@ nx_dev_request_reset(struct netxen_adapter *adapter)
 
 	state = NXRD32(adapter, NX_CRB_DEV_STATE);
 
-	if (state == NX_DEV_NEED_RESET)
+	if (state == NX_DEV_NEED_RESET || state == NX_DEV_FAILED)
 		ret = 0;
 	else if (state != NX_DEV_INITALIZING && state != NX_DEV_NEED_AER) {
 		NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_NEED_RESET);
+		adapter->flags |= NETXEN_FW_RESET_OWNER;
 		ret = 0;
 	}
 
@@ -2382,8 +2423,10 @@ netxen_can_start_firmware(struct netxen_adapter *adapter)
 	int count;
 	int can_start = 0;
 
-	if (netxen_api_lock(adapter))
-		return 0;
+	if (netxen_api_lock(adapter)) {
+		nx_incr_dev_ref_cnt(adapter);
+		return -1;
+	}
 
 	count = NXRD32(adapter, NX_CRB_DEV_REF_COUNT);
 
@@ -2455,8 +2498,31 @@ netxen_fwinit_work(struct work_struct *work)
 	struct netxen_adapter *adapter = container_of(work,
 				struct netxen_adapter, fw_work.work);
 	int dev_state;
-
+	int count;
 	dev_state = NXRD32(adapter, NX_CRB_DEV_STATE);
+	if (adapter->flags & NETXEN_FW_RESET_OWNER) {
+		count = NXRD32(adapter, NX_CRB_DEV_REF_COUNT);
+		WARN_ON(count == 0);
+		if (count == 1) {
+			if (adapter->mdump.md_enabled) {
+				rtnl_lock();
+				netxen_dump_fw(adapter);
+				rtnl_unlock();
+			}
+			adapter->flags &= ~NETXEN_FW_RESET_OWNER;
+			if (netxen_api_lock(adapter)) {
+				clear_bit(__NX_RESETTING, &adapter->state);
+				NXWR32(adapter, NX_CRB_DEV_STATE,
+						NX_DEV_FAILED);
+				return;
+			}
+			count = NXRD32(adapter, NX_CRB_DEV_REF_COUNT);
+			NXWR32(adapter, NX_CRB_DEV_REF_COUNT, --count);
+			NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_COLD);
+			dev_state = NX_DEV_COLD;
+			netxen_api_unlock(adapter);
+		}
+	}
 
 	switch (dev_state) {
 	case NX_DEV_COLD:
@@ -2469,17 +2535,24 @@ netxen_fwinit_work(struct work_struct *work)
 
 	case NX_DEV_NEED_RESET:
 	case NX_DEV_INITALIZING:
-		if (++adapter->fw_wait_cnt < FW_POLL_THRESH) {
 			netxen_schedule_work(adapter,
 					netxen_fwinit_work, 2 * FW_POLL_DELAY);
 			return;
-		}
 
 	case NX_DEV_FAILED:
 	default:
 		nx_incr_dev_ref_cnt(adapter);
 		break;
 	}
+
+	if (netxen_api_lock(adapter)) {
+		clear_bit(__NX_RESETTING, &adapter->state);
+		return;
+	}
+	NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_FAILED);
+	netxen_api_unlock(adapter);
+	dev_err(&adapter->pdev->dev, "%s: Device initialization Failed\n",
+				adapter->netdev->name);
 
 	clear_bit(__NX_RESETTING, &adapter->state);
 }
@@ -2490,7 +2563,7 @@ netxen_detach_work(struct work_struct *work)
 	struct netxen_adapter *adapter = container_of(work,
 				struct netxen_adapter, fw_work.work);
 	struct net_device *netdev = adapter->netdev;
-	int ref_cnt, delay;
+	int ref_cnt = 0, delay;
 	u32 status;
 
 	netif_device_detach(netdev);
@@ -2509,7 +2582,8 @@ netxen_detach_work(struct work_struct *work)
 	if (adapter->temp == NX_TEMP_PANIC)
 		goto err_ret;
 
-	ref_cnt = nx_decr_dev_ref_cnt(adapter);
+	if (!(adapter->flags & NETXEN_FW_RESET_OWNER))
+		ref_cnt = nx_decr_dev_ref_cnt(adapter);
 
 	if (ref_cnt == -EIO)
 		goto err_ret;
@@ -2529,6 +2603,7 @@ static int
 netxen_check_health(struct netxen_adapter *adapter)
 {
 	u32 state, heartbit;
+	u32 peg_status;
 	struct net_device *netdev = adapter->netdev;
 
 	state = NXRD32(adapter, NX_CRB_DEV_STATE);
@@ -2549,7 +2624,7 @@ netxen_check_health(struct netxen_adapter *adapter)
 	 * Send request to destroy context in case of tx timeout only
 	 * and doesn't required in case of Fw hang
 	 */
-	if (state == NX_DEV_NEED_RESET) {
+	if (state == NX_DEV_NEED_RESET || state == NX_DEV_FAILED) {
 		adapter->need_fw_reset = 1;
 		if (NX_IS_REVISION_P2(adapter->ahw.revision_id))
 			goto detach;
@@ -2575,8 +2650,24 @@ netxen_check_health(struct netxen_adapter *adapter)
 
 	clear_bit(__NX_FW_ATTACHED, &adapter->state);
 
-	dev_info(&netdev->dev, "firmware hang detected\n");
-
+	dev_err(&netdev->dev, "firmware hang detected\n");
+	peg_status = NXRD32(adapter, NETXEN_PEG_HALT_STATUS1);
+	dev_err(&adapter->pdev->dev, "Dumping hw/fw registers\n"
+			"PEG_HALT_STATUS1: 0x%x, PEG_HALT_STATUS2: 0x%x,\n"
+			"PEG_NET_0_PC: 0x%x, PEG_NET_1_PC: 0x%x,\n"
+			"PEG_NET_2_PC: 0x%x, PEG_NET_3_PC: 0x%x,\n"
+			"PEG_NET_4_PC: 0x%x\n",
+			peg_status,
+			NXRD32(adapter, NETXEN_PEG_HALT_STATUS2),
+			NXRD32(adapter, NETXEN_CRB_PEG_NET_0 + 0x3c),
+			NXRD32(adapter, NETXEN_CRB_PEG_NET_1 + 0x3c),
+			NXRD32(adapter, NETXEN_CRB_PEG_NET_2 + 0x3c),
+			NXRD32(adapter, NETXEN_CRB_PEG_NET_3 + 0x3c),
+			NXRD32(adapter, NETXEN_CRB_PEG_NET_4 + 0x3c));
+	if (NX_FWERROR_PEGSTAT1(peg_status) == 0x67)
+		dev_err(&adapter->pdev->dev,
+			"Firmware aborted with error code 0x00006700. "
+				"Device is being reset.\n");
 detach:
 	if ((auto_fw_reset == AUTO_FW_RESET_ENABLED) &&
 			!test_and_set_bit(__NX_RESETTING, &adapter->state))
@@ -2682,6 +2773,183 @@ netxen_show_diag_mode(struct device *dev,
 	return sprintf(buf, "%d\n",
 			!!(adapter->flags & NETXEN_NIC_DIAG_ENABLED));
 }
+
+static ssize_t
+netxen_sysfs_read_fw_dump(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *attr,
+			char *buf, loff_t offset, size_t size)
+{
+	int ret;
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+
+	if ((!adapter->fw_mdump_rdy) || (!adapter->mdump.md_capture_buff))
+		return 0;
+
+	ret = memory_read_from_buffer(buf, size, &offset,
+				adapter->mdump.md_capture_buff,
+					adapter->mdump.md_dump_size);
+	if (offset == adapter->mdump.md_dump_size) {
+		adapter->mdump.md_dump_size = 0;
+		adapter->fw_mdump_rdy = 0;
+		if (adapter->mdump.md_capture_buff) {
+			vfree(adapter->mdump.md_capture_buff);
+			adapter->mdump.md_capture_buff = NULL;
+		}
+
+	dev_info(&adapter->pdev->dev, "%s: extracted the Fw Dump successfully\n",
+			adapter->netdev->name);
+	}
+	return ret;
+}
+
+
+static ssize_t
+netxen_sysfs_write_fw_dump(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *attr,
+			char *buf, loff_t offset, size_t size)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	struct netxen_minidump *mdump = &adapter->mdump;
+	unsigned long data;
+
+	data = simple_strtoul(buf, NULL, 16);
+	rtnl_lock();
+	switch (data) {
+	case NX_FORCE_FW_DUMP_KEY:
+		if (!mdump->md_enabled)
+			mdump->md_enabled = 1;
+		if (adapter->fw_mdump_rdy) {
+			dev_info(&adapter->pdev->dev, "%s: Previous dump not "
+				"cleared, not forcing dump\n",
+					adapter->netdev->name);
+			goto out;
+		}
+		dev_info(&adapter->pdev->dev, "%s: Forcing a fw dump\n",
+				adapter->netdev->name);
+		nx_dev_request_reset(adapter);
+		break;
+	case NX_DISABLE_FW_DUMP:
+		if (mdump->md_enabled) {
+			dev_info(&adapter->pdev->dev, "%s: Disabling FW Dump\n",
+				adapter->netdev->name);
+			mdump->md_enabled = 0;
+		}
+		break;
+	case NX_ENABLE_FW_DUMP:
+		if (!mdump->md_enabled) {
+			dev_info(&adapter->pdev->dev, "%s: Enabling FW dump\n",
+				adapter->netdev->name);
+			mdump->md_enabled = 1;
+		}
+		break;
+	case NX_FORCE_FW_RESET:
+		dev_info(&adapter->pdev->dev, "%s: Forcing FW reset\n",
+				adapter->netdev->name);
+		nx_dev_request_reset(adapter);
+		adapter->flags &= ~NETXEN_FW_RESET_OWNER;
+		break;
+	default:
+		dev_info(dev, "Invalid dump key, 0x%lx\n", data);
+		break;
+	}
+
+out:
+	rtnl_unlock();
+	return size;
+}
+
+static ssize_t
+netxen_show_fwdump_size(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 size = 0;
+
+	if (adapter->fw_mdump_rdy)
+		size = adapter->mdump.md_dump_size;
+	return sprintf(buf, "%u\n", size);
+}
+
+static ssize_t
+netxen_store_fwdump_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	return -EIO;
+}
+
+static ssize_t
+netxen_show_fwdump_level(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 size = adapter->mdump.md_capture_mask;
+	return sprintf(buf, "%u\n", size);
+}
+
+static ssize_t
+netxen_store_fwdump_level(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	unsigned long int val;
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+
+	val = simple_strtoul(buf, NULL, 16);
+
+	if (val <= NX_DUMP_MASK_MAX && val >= NX_DUMP_MASK_MIN) {
+		rtnl_lock();
+		adapter->mdump.md_capture_mask = val & 0xff;
+		rtnl_unlock();
+		dev_info(&adapter->pdev->dev, "%s: Driver mask changed to: 0x%x\n",
+				 adapter->netdev->name,
+					adapter->mdump.md_capture_mask);
+	} else
+		dev_info(dev, "Invalid Dump Level: 0x%lx\n",
+				(unsigned long int) val);
+	return size;
+}
+
+static ssize_t
+netxen_show_fwdump_state(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 state = adapter->mdump.md_enabled;
+	return sprintf(buf, "%u\n", state);
+}
+
+static ssize_t
+netxen_store_fwdump_state(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	return -EIO;
+}
+
+static struct bin_attribute bin_attr_fw_dump = {
+	.attr = {.name = "fw_dump", .mode = (S_IRUGO | S_IWUSR)},
+	.size = 0,
+	.read = netxen_sysfs_read_fw_dump,
+	.write = netxen_sysfs_write_fw_dump,
+};
+
+static struct device_attribute dev_attr_fwdump_size = {
+	.attr = {.name = "fwdump_size", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_size,
+	.store = netxen_store_fwdump_size,
+};
+
+static struct device_attribute dev_attr_fwdump_level = {
+	.attr = {.name = "fwdump_level", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_level,
+	.store = netxen_store_fwdump_level,
+};
+
+static struct device_attribute dev_attr_fwdump_state = {
+	.attr = {.name = "fwdump_state", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_state,
+	.store = netxen_store_fwdump_state,
+};
 
 static struct device_attribute dev_attr_diag_mode = {
 	.attr = {.name = "diag_mode", .mode = (S_IRUGO | S_IWUSR)},
@@ -2846,13 +3114,12 @@ static struct bin_attribute bin_attr_mem = {
 static void
 netxen_create_sysfs_entries(struct netxen_adapter *adapter)
 {
-	struct net_device *netdev = adapter->netdev;
-	struct device *dev = &netdev->dev;
+	struct device *dev = &adapter->pdev->dev;
 
 	if (adapter->capabilities & NX_FW_CAPABILITY_BDG) {
 		/* bridged_mode control */
 		if (device_create_file(dev, &dev_attr_bridged_mode)) {
-			dev_warn(&netdev->dev,
+			dev_warn(dev,
 				"failed to create bridged_mode sysfs entry\n");
 		}
 	}
@@ -2861,8 +3128,7 @@ netxen_create_sysfs_entries(struct netxen_adapter *adapter)
 static void
 netxen_remove_sysfs_entries(struct netxen_adapter *adapter)
 {
-	struct net_device *netdev = adapter->netdev;
-	struct device *dev = &netdev->dev;
+	struct device *dev = &adapter->pdev->dev;
 
 	if (adapter->capabilities & NX_FW_CAPABILITY_BDG)
 		device_remove_file(dev, &dev_attr_bridged_mode);
@@ -2875,6 +3141,18 @@ netxen_create_diag_entries(struct netxen_adapter *adapter)
 	struct device *dev;
 
 	dev = &pdev->dev;
+	if (adapter->mdump.md_template) {
+		dev_info(&pdev->dev, "%s: Supports Fw Dump Capability\n",
+				adapter->netdev->name);
+		if (device_create_file(dev, &dev_attr_fwdump_state))
+			dev_info(dev, "failed to create fwdump_state sysfs entry\n");
+		if (device_create_bin_file(dev, &bin_attr_fw_dump))
+			dev_info(dev, "failed to create fw_dump sysfs entry\n");
+		if (device_create_file(dev, &dev_attr_fwdump_size))
+			dev_info(dev, "failed to create fwdump_size sysfs entry\n");
+		if (device_create_file(dev, &dev_attr_fwdump_level))
+			dev_info(dev, "failed to create fwdump_level sysfs entry\n");
+	}
 	if (device_create_file(dev, &dev_attr_diag_mode))
 		dev_info(dev, "failed to create diag_mode sysfs entry\n");
 	if (device_create_bin_file(dev, &bin_attr_crb))
@@ -2893,6 +3171,13 @@ netxen_remove_diag_entries(struct netxen_adapter *adapter)
 	device_remove_file(dev, &dev_attr_diag_mode);
 	device_remove_bin_file(dev, &bin_attr_crb);
 	device_remove_bin_file(dev, &bin_attr_mem);
+
+	if (adapter->mdump.md_template) {
+		device_remove_bin_file(dev, &bin_attr_fw_dump);
+		device_remove_file(dev, &dev_attr_fwdump_size);
+		device_remove_file(dev, &dev_attr_fwdump_level);
+		device_remove_file(dev, &dev_attr_fwdump_state);
+	}
 }
 
 #ifdef CONFIG_INET
