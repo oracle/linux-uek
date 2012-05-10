@@ -1,0 +1,6 @@
+config SXGEVF 
+        tristate "SXGEVF SOL ethernet driver "
+        depends on PCI
+        ---help---
+          This driver supports the SXGEVF SOL 40Gb Ethernet driver.  
+

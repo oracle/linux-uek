@@ -39,6 +39,8 @@ obj-$(CONFIG_BE2NET) += benet/
 obj-$(CONFIG_VMXNET3) += vmxnet3/
 obj-$(CONFIG_BNA) += bna/
 obj-$(CONFIG_HXGE) += hxge/
+obj-$(CONFIG_SXGE) += sxge/
+obj-$(CONFIG_SXGEVF) += sxgevf/
 gianfar_driver-objs := gianfar.o \
 		gianfar_ethtool.o \
 		gianfar_sysfs.o
