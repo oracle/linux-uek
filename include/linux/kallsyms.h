@@ -26,6 +26,7 @@ struct kallsym_iter {
 	char type;
 	char name[KSYM_NAME_LEN];
 	char module_name[MODULE_NAME_LEN];
+	int builtin_module;
 	int exported;
 };
 

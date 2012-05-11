@@ -54,9 +54,13 @@ iptables               1.4.2            iptables -V
 openssl & libcrypto    1.0.0            openssl version
 bc                     1.06.95          bc --version
 Sphinx\ [#f1]_	       1.3		sphinx-build --version
+elfutils\ [#f2]_       0.156		eu-readelf --version
+pkg-config\ [#f2]_     0.16		pkg-config --version
+glib\ [#f2]_           2.x		pkg-config --exists glib-2.0 && echo present
 ====================== ===============  ========================================
 
 .. [#f1] Sphinx is needed only to build the Kernel documentation
+.. [#f2] This is needed at build-time when CTF or DTrace are enabled
 
 Kernel compilation
 ******************
@@ -449,6 +453,21 @@ NFS-Utils
 ---------
 
 - <http://nfs.sourceforge.net/>
+
+elfutils
+--------
+
+- <https://fedorahosted.org/elfutils/>
+
+pkg-config
+----------
+
+- <http://www.freedesktop.org/wiki/Software/pkg-config>
+
+glib 2.x
+--------
+
+- <http://www.gtk.org/>
 
 Kernel documentation
 ********************
