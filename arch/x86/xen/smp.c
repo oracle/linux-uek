@@ -16,6 +16,7 @@
 #include <linux/err.h>
 #include <linux/slab.h>
 #include <linux/smp.h>
+#include <linux/irq_work.h>
 
 #include <asm/paravirt.h>
 #include <asm/desc.h>
@@ -41,10 +42,12 @@ cpumask_var_t xen_cpu_initialized_map;
 static DEFINE_PER_CPU(int, xen_resched_irq);
 static DEFINE_PER_CPU(int, xen_callfunc_irq);
 static DEFINE_PER_CPU(int, xen_callfuncsingle_irq);
+static DEFINE_PER_CPU(int, xen_irq_work);
 static DEFINE_PER_CPU(int, xen_debug_irq) = -1;
 
 static irqreturn_t xen_call_function_interrupt(int irq, void *dev_id);
 static irqreturn_t xen_call_function_single_interrupt(int irq, void *dev_id);
+static irqreturn_t xen_irq_work_interrupt(int irq, void *dev_id);
 
 /*
  * Reschedule call back.
@@ -143,6 +146,17 @@ static int xen_smp_intr_init(unsigned int cpu)
 		goto fail;
 	per_cpu(xen_callfuncsingle_irq, cpu) = rc;
 
+	callfunc_name = kasprintf(GFP_KERNEL, "irqwork%d", cpu);
+	rc = bind_ipi_to_irqhandler(XEN_IRQ_WORK_VECTOR,
+				    cpu,
+				    xen_irq_work_interrupt,
+				    IRQF_DISABLED|IRQF_PERCPU|IRQF_NOBALANCING,
+				    callfunc_name,
+				    NULL);
+	if (rc < 0)
+		goto fail;
+	per_cpu(xen_irq_work, cpu) = rc;
+
 	return 0;
 
  fail:
@@ -155,6 +169,8 @@ static int xen_smp_intr_init(unsigned int cpu)
 	if (per_cpu(xen_callfuncsingle_irq, cpu) >= 0)
 		unbind_from_irqhandler(per_cpu(xen_callfuncsingle_irq, cpu),
 				       NULL);
+	if (per_cpu(xen_irq_work, cpu) >= 0)
+		unbind_from_irqhandler(per_cpu(xen_irq_work, cpu), NULL);
 
 	return rc;
 }
@@ -480,8 +496,8 @@ static void xen_smp_send_reschedule(int cpu)
 	xen_send_IPI_one(cpu, XEN_RESCHEDULE_VECTOR);
 }
 
-static void xen_send_IPI_mask(const struct cpumask *mask,
-			      enum ipi_vector vector)
+static void __xen_send_IPI_mask(const struct cpumask *mask,
+			      int vector)
 {
 	unsigned cpu;
 
@@ -493,7 +509,7 @@ static void xen_smp_send_call_function_ipi(const struct cpumask *mask)
 {
 	int cpu;
 
-	xen_send_IPI_mask(mask, XEN_CALL_FUNCTION_VECTOR);
+	__xen_send_IPI_mask(mask, XEN_CALL_FUNCTION_VECTOR);
 
 	/* Make sure other vcpus get a chance to run if they need to. */
 	for_each_cpu(cpu, mask) {
@@ -506,8 +522,84 @@ static void xen_smp_send_call_function_ipi(const struct cpumask *mask)
 
 static void xen_smp_send_call_function_single_ipi(int cpu)
 {
-	xen_send_IPI_mask(cpumask_of(cpu),
+	__xen_send_IPI_mask(cpumask_of(cpu),
 			  XEN_CALL_FUNCTION_SINGLE_VECTOR);
+}
+
+static inline int xen_map_vector(int vector)
+{
+	int xen_vector;
+
+	switch (vector) {
+	case RESCHEDULE_VECTOR:
+		xen_vector = XEN_RESCHEDULE_VECTOR;
+		break;
+	case CALL_FUNCTION_VECTOR:
+		xen_vector = XEN_CALL_FUNCTION_VECTOR;
+		break;
+	case CALL_FUNCTION_SINGLE_VECTOR:
+		xen_vector = XEN_CALL_FUNCTION_SINGLE_VECTOR;
+		break;
+	case IRQ_WORK_VECTOR:
+		xen_vector = XEN_IRQ_WORK_VECTOR;
+		break;
+	default:
+		xen_vector = -1;
+		printk(KERN_ERR "xen: vector 0x%x is not implemented\n",
+			vector);
+	}
+
+	return xen_vector;
+}
+
+void xen_send_IPI_mask(const struct cpumask *mask,
+			      int vector)
+{
+	int xen_vector = xen_map_vector(vector);
+
+	if (xen_vector >= 0)
+		__xen_send_IPI_mask(mask, xen_vector);
+}
+
+void xen_send_IPI_all(int vector)
+{
+	int xen_vector = xen_map_vector(vector);
+
+	if (xen_vector >= 0)
+		__xen_send_IPI_mask(cpu_online_mask, xen_vector);
+}
+
+void xen_send_IPI_self(int vector)
+{
+	int xen_vector = xen_map_vector(vector);
+
+	if (xen_vector >= 0)
+		xen_send_IPI_one(smp_processor_id(), xen_vector);
+}
+
+void xen_send_IPI_mask_allbutself(const struct cpumask *mask,
+				int vector)
+{
+	unsigned cpu;
+	unsigned int this_cpu = smp_processor_id();
+
+	if (!(num_online_cpus() > 1))
+		return;
+
+	for_each_cpu_and(cpu, mask, cpu_online_mask) {
+		if (this_cpu == cpu)
+			continue;
+
+		xen_smp_send_call_function_single_ipi(cpu);
+	}
+}
+
+void xen_send_IPI_allbutself(int vector)
+{
+	int xen_vector = xen_map_vector(vector);
+
+	if (xen_vector >= 0)
+		xen_send_IPI_mask_allbutself(cpu_online_mask, xen_vector);
 }
 
 static irqreturn_t xen_call_function_interrupt(int irq, void *dev_id)
@@ -525,6 +617,16 @@ static irqreturn_t xen_call_function_single_interrupt(int irq, void *dev_id)
 	irq_enter();
 	generic_smp_call_function_single_interrupt();
 	inc_irq_stat(irq_call_count);
+	irq_exit();
+
+	return IRQ_HANDLED;
+}
+
+static irqreturn_t xen_irq_work_interrupt(int irq, void *dev_id)
+{
+	irq_enter();
+	irq_work_run();
+	inc_irq_stat(apic_irq_work_irqs);
 	irq_exit();
 
 	return IRQ_HANDLED;
@@ -576,6 +678,7 @@ static void xen_hvm_cpu_die(unsigned int cpu)
 	unbind_from_irqhandler(per_cpu(xen_callfunc_irq, cpu), NULL);
 	unbind_from_irqhandler(per_cpu(xen_debug_irq, cpu), NULL);
 	unbind_from_irqhandler(per_cpu(xen_callfuncsingle_irq, cpu), NULL);
+	unbind_from_irqhandler(per_cpu(xen_irq_work, cpu), NULL);
 	native_cpu_die(cpu);
 }
 
