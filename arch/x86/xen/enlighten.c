@@ -337,9 +337,7 @@ static void __init xen_init_cpuid_mask(void)
 
 	if (!xen_initial_domain())
 		cpuid_leaf1_edx_mask &=
-			~((1 << X86_FEATURE_MCE)  |  /* disable MCE */
-			  (1 << X86_FEATURE_MCA)  |  /* disable MCA */
-			  (1 << X86_FEATURE_APIC) |  /* disable local APIC */
+			~((1 << X86_FEATURE_APIC) |  /* disable local APIC */
 			  (1 << X86_FEATURE_ACPI));  /* disable ACPI */
 	ax = 1;
 	cx = 0;
@@ -618,8 +616,8 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 	/*
 	 * Look for known traps using IST, and substitute them
 	 * appropriately.  The debugger ones are the only ones we care
-	 * about.  Xen will handle faults like double_fault and
-	 * nmi, so we should never see them.  Warn if
+	 * about.  Xen will handle faults like double_fault,
+	 * so we should never see them.  Warn if
 	 * there's an unexpected IST-using fault handler.
 	 */
 	if (addr == (unsigned long)debug)
@@ -634,10 +632,11 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 		return 0;
 #ifdef CONFIG_X86_MCE
 	} else if (addr == (unsigned long)machine_check) {
-		if (xen_initial_domain())
-			addr = (unsigned long)machine_check;
-		else
-			return 0;
+		/*
+		 * when xen hyeprvisor inject vMCE to guest,
+		 * use native mce handler to handle it
+		 */
+		;
 #endif
 	} else {
 		/* Some other trap using IST? */
