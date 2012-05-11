@@ -40,6 +40,7 @@ build_docproc: scripts/docproc FORCE
 
 subdir-$(CONFIG_MODVERSIONS) += genksyms
 subdir-y                     += mod
+subdir-$(CONFIG_DTRACE)      += dwarf2ctf
 subdir-$(CONFIG_SECURITY_SELINUX) += selinux
 subdir-$(CONFIG_DTC)         += dtc
 

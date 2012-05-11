@@ -84,6 +84,15 @@ config DT_DEBUG_MUTEX
 	  messages whenever a mutex is locked or unlocked within the DTrace
 	  code (core and providers).
 
+config DT_DISABLE_CTF
+	bool "Disable CTF generation"
+	default n
+	help
+	  Disables the time-consuming generation of CTF information.  This is
+	  quite a time-consuming process and may not always be desirable.
+	  (The modules will still contain CTF sections, but they will be
+	  empty.)
+
 endif	# DT_DEBUG
 
 endif	# DT_CORE

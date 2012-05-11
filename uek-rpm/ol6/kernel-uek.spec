@@ -514,6 +514,7 @@ BuildRequires: hmaccalc
 BuildRequires: pkgconfig
 BuildRequires: glib2-devel
 BuildRequires: elfutils-devel
+BuildRequires: libdtrace-ctf
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
