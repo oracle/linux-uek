@@ -3455,8 +3455,9 @@ void update_ioctl_balance_args(struct btrfs_fs_info *fs_info, int lock,
 	}
 }
 
-static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
+static long btrfs_ioctl_balance(struct file *file, void __user *arg)
 {
+	struct btrfs_root *root = BTRFS_I(fdentry(file)->d_inode)->root;
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_ioctl_balance_args *bargs;
 	struct btrfs_balance_control *bctl;
@@ -3467,8 +3468,9 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	if (fs_info->sb->s_flags & MS_RDONLY)
-		return -EROFS;
+	ret = mnt_want_write(file->f_path.mnt);
+	if (ret)
+		return ret;
 
 again:
 	if (!atomic_xchg(&fs_info->mutually_exclusive_operation_running, 1)) {
@@ -3738,7 +3740,7 @@ long btrfs_ioctl(struct file *file, unsigned int
 	case BTRFS_IOC_DEV_INFO:
 		return btrfs_ioctl_dev_info(root, argp);
 	case BTRFS_IOC_BALANCE:
-		return btrfs_ioctl_balance(root, NULL);
+		return btrfs_ioctl_balance(file, NULL);
 	case BTRFS_IOC_CLONE:
 		return btrfs_ioctl_clone(file, arg, 0, 0, 0);
 	case BTRFS_IOC_CLONE_RANGE:
@@ -3771,7 +3773,7 @@ long btrfs_ioctl(struct file *file, unsigned int
 	case BTRFS_IOC_SCRUB_PROGRESS:
 		return btrfs_ioctl_scrub_progress(root, argp);
 	case BTRFS_IOC_BALANCE_V2:
-		return btrfs_ioctl_balance(root, argp);
+		return btrfs_ioctl_balance(file, argp);
 	case BTRFS_IOC_BALANCE_CTL:
 		return btrfs_ioctl_balance_ctl(root, arg);
 	case BTRFS_IOC_BALANCE_PROGRESS:
