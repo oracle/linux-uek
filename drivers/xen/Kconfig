@@ -152,21 +152,6 @@ config XEN_MCE_LOG
 	  converting it into linux mcelog format for mcelog tools
 
 
-config XEN_PROCESSOR_PASSTHRU
-	tristate "Processor passthrough driver for Xen"
-	depends on XEN
-	depends on ACPI_PROCESSOR
-	depends on X86
-	depends on CPU_FREQ
-	help
-	  This driver parses the processor structure and passes the information
-	  to the Xen hypervisor. It is used to allow the Xen hypervisor to have the
-	  full power management data and be able to select proper Cx and Pxx states.
-
-	  The driver should be loaded after acpi processor and cpufreq drivers have
-	  been loaded. If you do not know what to choose, select M here.
-
-
 config XEN_PRIVCMD
 	tristate
 	depends on XEN
