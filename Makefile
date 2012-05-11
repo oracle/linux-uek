@@ -1207,10 +1207,27 @@ all: modules
 # using awk while concatenating to the final file.
 
 PHONY += modules
-modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin
+modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin objects.builtin
 	$(Q)$(AWK) '!x[$$0]++' $(vmlinux-dirs:%=$(objtree)/%/modules.order) > $(objtree)/modules.order
 	@$(kecho) '  Building modules, stage 2.';
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
+
+ifdef CONFIG_DTRACE
+# This contains all the object files that are unconditionally built into the
+# kernel, for consumption by dwarf2ctf in Makefile.modpost.
+# This is made doubly annoying by the presence of '.o' files which are actually
+# empty ar archives.
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+	@echo $(vmlinux-all) | tr " " "\n" | grep "\.o$$" | xargs file | \
+		grep ELF | cut -d: -f1 > objects.builtin
+	@for archive in $$(echo $(vmlinux-all) | tr " " "\n" | grep "\.a$$"); do \
+	    ar t "$$archive" | grep '\.o$$' | \
+		 sed "s,^,$${archive%/*}/," >> objects.builtin; \
+	done
+else
+PHONY += objects.builtin
+objects.builtin:
+endif
 
 # Target to prepare building external modules
 PHONY += modules_prepare
@@ -1279,7 +1296,7 @@ modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
 # make distclean Remove editor backup files, patch leftover files and the like
 
 # Directories & files removed with 'make clean'
-CLEAN_DIRS  += $(MODVERDIR)
+CLEAN_DIRS  += $(MODVERDIR) .ctf
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config usr/include include/generated          \
@@ -1555,8 +1572,8 @@ clean: $(clean-dirs)
 		-o -name '*.su'  \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
-		-o -name modules.builtin -o -name '.tmp_*.o.*' \
-		-o -name '*.c.[012]*.*' \
+		-o -name modules.builtin -o -name 'objects.builtin' \
+		-o -name '.tmp_*.o.*' -o -name '*.c.[012]*.*' \
 		-o -name '*.ll' \
 		-o -name '*.gcno' \) -type f -print | xargs rm -f
 
