@@ -48,6 +48,8 @@ __attribute__((weak, section(".rodata")));
 
 extern const u8 kallsyms_token_table[] __attribute__((weak));
 extern const u16 kallsyms_token_index[] __attribute__((weak));
+extern const char kallsyms_modules[] __attribute__((weak));
+extern const u32 kallsyms_symbol_modules[] __attribute__((weak));
 
 extern const unsigned long kallsyms_markers[] __attribute__((weak));
 
@@ -436,6 +438,7 @@ EXPORT_SYMBOL(__print_symbol);
 
 static int get_ksymbol_mod(struct kallsym_iter *iter)
 {
+	iter->builtin_module = 0;
 	if (module_get_kallsym(iter->pos - kallsyms_num_syms, &iter->value,
 				&iter->type, iter->name, iter->module_name,
 				&iter->exported) < 0)
@@ -447,8 +450,16 @@ static int get_ksymbol_mod(struct kallsym_iter *iter)
 static unsigned long get_ksymbol_core(struct kallsym_iter *iter)
 {
 	unsigned off = iter->nameoff;
+	u32 mod_index = kallsyms_symbol_modules[iter->pos];
 
-	iter->module_name[0] = '\0';
+	if (mod_index == 0) {
+		iter->module_name[0] = '\0';
+		iter->builtin_module = 0;
+	} else {
+		strcpy(iter->module_name, &kallsyms_modules[mod_index]);
+		iter->builtin_module = 1;
+	}
+	iter->exported = 0;
 	iter->value = kallsyms_addresses[iter->pos];
 
 	iter->type = kallsyms_get_symbol_type(off);
@@ -506,7 +517,7 @@ static void s_stop(struct seq_file *m, void *p)
 {
 }
 
-static int s_show(struct seq_file *m, void *p)
+static int s_show_internal(struct seq_file *m, void *p, int builtin_modules)
 {
 	struct kallsym_iter *iter = m->private;
 
@@ -514,7 +525,9 @@ static int s_show(struct seq_file *m, void *p)
 	if (!iter->name[0])
 		return 0;
 
-	if (iter->module_name[0]) {
+	if ((iter->builtin_module == 0 && iter->module_name[0]) ||
+	    (iter->builtin_module != 0 && iter->module_name[0] &&
+	     builtin_modules != 0)) {
 		char type;
 
 		/*
@@ -525,10 +538,21 @@ static int s_show(struct seq_file *m, void *p)
 					tolower(iter->type);
 		seq_printf(m, "%pK %c %s\t[%s]\n", (void *)iter->value,
 			   type, iter->name, iter->module_name);
-	} else
+	} else {
 		seq_printf(m, "%pK %c %s\n", (void *)iter->value,
 			   iter->type, iter->name);
+	}
 	return 0;
+}
+
+static int s_show(struct seq_file *m, void *p)
+{
+	return s_show_internal(m, p, 0);
+}
+
+static int s_mod_show(struct seq_file *m, void *p)
+{
+	return s_show_internal(m, p, 1);
 }
 
 static const struct seq_operations kallsyms_op = {
@@ -538,7 +562,15 @@ static const struct seq_operations kallsyms_op = {
 	.show = s_show
 };
 
-static int kallsyms_open(struct inode *inode, struct file *file)
+static const struct seq_operations kallmodsyms_op = {
+	.start = s_start,
+	.next = s_next,
+	.stop = s_stop,
+	.show = s_mod_show
+};
+
+static int kallsyms_open_internal(struct inode *inode, struct file *file,
+	const struct seq_operations *ops)
 {
 	/*
 	 * We keep iterator in m->private, since normal case is to
@@ -553,12 +585,22 @@ static int kallsyms_open(struct inode *inode, struct file *file)
 		return -ENOMEM;
 	kallsyms_iter_reset(iter, 0);
 
-	ret = seq_open(file, &kallsyms_op);
+	ret = seq_open(file, ops);
 	if (ret == 0)
 		((struct seq_file *)file->private_data)->private = iter;
 	else
 		kfree(iter);
 	return ret;
+}
+
+static int kallsyms_open(struct inode *inode, struct file *file)
+{
+	return kallsyms_open_internal(inode, file, &kallsyms_op);
+}
+
+static int kallmodsyms_open(struct inode *inode, struct file *file)
+{
+	return kallsyms_open_internal(inode, file, &kallmodsyms_op);
 }
 
 #ifdef	CONFIG_KGDB_KDB
@@ -588,9 +630,17 @@ static const struct file_operations kallsyms_operations = {
 	.release = seq_release_private,
 };
 
+static const struct file_operations kallmodsyms_operations = {
+	.open = kallmodsyms_open,
+	.read = seq_read,
+	.llseek = seq_lseek,
+	.release = seq_release_private,
+};
+
 static int __init kallsyms_init(void)
 {
 	proc_create("kallsyms", 0444, NULL, &kallsyms_operations);
+	proc_create("kallmodsyms", 0444, NULL, &kallmodsyms_operations);
 	return 0;
 }
 device_initcall(kallsyms_init);

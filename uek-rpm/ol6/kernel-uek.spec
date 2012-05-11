@@ -80,6 +80,8 @@ Summary: The Linux kernel
 %define with_doc       1
 # kernel-headers
 %define with_headers   1
+# dtrace
+%define with_dtrace    0
 # kernel-firmware
 %define with_firmware  0
 # kernel-debuginfo
@@ -261,6 +263,11 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # sparse blows up on ppc64 alpha and sparc64
 %ifarch ppc64 ppc alpha sparc64
 %define with_sparse 0
+%endif
+
+# Only x86_64 does dtrace
+%ifarch x86_64
+%define with_dtrace 1
 %endif
 
 # Per-arch tweaks
@@ -502,6 +509,12 @@ BuildRequires: openssl
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
+%endif
+%if %{with_dtrace}
+BuildRequires: pkgconfig
+BuildRequires: glib2-devel
+BuildRequires: elfutils-devel
+BuildRequires: dtrace-user
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
