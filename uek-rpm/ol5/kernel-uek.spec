@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,38 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu May 10 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.9.0.el5uek]
+- [SCSI] scsi_dh_rdac: Fix for unbalanced reference count (Moger, Babu)
+  [Orabug: 14059970]
+- [SCSI] scsi_dh_rdac: Adding couple more vendor product ids (Moger, Babu)
+  [Orabug: 14059970]
+- [SCSI] dh_rdac: Associate HBA and storage in rdac_controller to support
+  partitions in storage (Chandra Seetharaman) [Orabug: 14059970]
+- [SCSI] dh_rdac: Use WWID from C8 page instead of Subsystem id from C4 page to
+  identify storage (Chandra Seetharaman) [Orabug: 14059970]
+- kernel config: turn on sxge and sxgevf drivers (Maxim Uvarov)
+- sxge/sxgevf: add new driver (Maxim Uvarov) [Orabug: 13444150]
+- be2iscsi: adding functionality to change network settings using iscsiadm
+  (root)
+- be2iscsi: Adding bsg interface for be2iscsi (root)
+- be2iscsi: Get Initiator Name for the iSCSI_Host (root)
+- be2iscsi: Return async handle of unknown opcode to free list. (root)
+- be2iscsi: Check ASYNC PDU Handle corresponds to HDR/DATA Handle (root)
+- be2iscsi:Bump the driver Version (root)
+- be2iscsi: Update in Copyright information (root)
+- be2iscsi:Fix the function return values. (root)
+- be2iscsi:Code cleanup, removing the goto statement (root)
+- be2iscsi:Fix double free of MCCQ info memory. (root)
+- be2iscsi:Set num_cpu = 1 if pci_enable_msix fails (root)
+- be2iscsi:Fix typo function name mismatch (root)
+- be2iscsi:Freeing of WRB and SGL Handle in cleanup task (root)
+- be2iscsi: WRB Initialization and Failure code path change (root)
+- be2iscsi: Fix in the Asynchronous Code Path (root)
+- be2iscsi: cleanup a min_t() call (root)
+- qlge: driver update to v1.0.0.30 (Maxim Uvarov) [Orabug: 14045380]
+- netxen: driver update to v4.0.78 (Maxim Uvarov) [Orabug: 14045367]
+- qlcnic: driver update to v5.0.28.1 (Maxim Uvarov) [Orabug: 14055720]
+
 * Wed May 09 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.8.0.el5uek]
 - Revert "xen-blkfront: set pages are FOREIGN_FRAME when sharing them" (Konrad
   Rzeszutek Wilk)
