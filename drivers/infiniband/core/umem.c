@@ -39,12 +39,12 @@
 #include <linux/hugetlb.h>
 #include <linux/dma-attrs.h>
 #include <linux/slab.h>
-
+#include <linux/module.h>
 #include "uverbs.h"
 
 static int allow_weak_ordering;
-module_param(allow_weak_ordering, bool, 0444);
-MODULE_PARM_DESC(allow_weak_ordering,  "Allow weak ordering for data registered memory");
+module_param_named(weak_ordering, allow_weak_ordering, int, 0444);
+MODULE_PARM_DESC(weak_ordering,  "Allow weak ordering for data registered memory");
 
 #define IB_UMEM_MAX_PAGE_CHUNK						\
 	((PAGE_SIZE - offsetof(struct ib_umem_chunk, page_list)) /	\
