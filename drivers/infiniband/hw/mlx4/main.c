@@ -49,6 +49,7 @@
 
 #include "mlx4_ib.h"
 #include "user.h"
+#include "wc.h"
 
 #define DRV_NAME	MLX4_IB_DRV_NAME
 #define DRV_VERSION	"1.0"
@@ -621,7 +622,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 				       PAGE_SIZE, vma->vm_page_prot))
 			return -EAGAIN;
 	} else if (vma->vm_pgoff == 1 && dev->dev->caps.bf_reg_size != 0) {
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+		vma->vm_page_prot = pgprot_wc(vma->vm_page_prot);
 
 		if (io_remap_pfn_range(vma, vma->vm_start,
 				       to_mucontext(context)->uar.pfn +
