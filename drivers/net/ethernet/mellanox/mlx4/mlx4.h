@@ -230,6 +230,7 @@ do {									\
 
 extern int mlx4_log_num_mgm_entry_size;
 extern int log_mtts_per_seg;
+extern int mlx4_blck_lb;
 
 #define MLX4_MAX_NUM_SLAVES	(MLX4_MAX_NUM_PF + MLX4_MAX_NUM_VF)
 #define ALL_SLAVES 0xff

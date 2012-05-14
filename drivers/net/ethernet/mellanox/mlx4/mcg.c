@@ -959,11 +959,8 @@ int mlx4_qp_attach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 			goto out;
 		}
 
-	if (block_mcast_loopback)
-		mgm->qp[members_count++] = cpu_to_be32((qp->qpn & MGM_QPN_MASK) |
-						       (1U << MGM_BLCK_LB_BIT));
-	else
-		mgm->qp[members_count++] = cpu_to_be32(qp->qpn & MGM_QPN_MASK);
+	mgm->qp[members_count++] = cpu_to_be32((qp->qpn & MGM_QPN_MASK) |
+					       (!!mlx4_blck_lb << MGM_BLCK_LB_BIT));
 
 	mgm->members_count = cpu_to_be32(members_count | (u32) prot << 30);
 
