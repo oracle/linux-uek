@@ -764,7 +764,7 @@ quiet_cmd_link-vmlinux = LINK    $@
 
 # Include targets which we want to
 # execute if the rest of the kernel build went well.
-vmlinux: scripts/link-vmlinux.sh $(vmlinux-deps) FORCE
+vmlinux: scripts/link-vmlinux.sh $(vmlinux-deps) modules.builtin FORCE
 ifdef CONFIG_HEADERS_CHECK
 	$(Q)$(MAKE) -f $(srctree)/Makefile headers_check
 endif
@@ -944,13 +944,6 @@ modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_modbuild
 
-modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
-	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
-
-%/modules.builtin: include/config/auto.conf
-	$(Q)$(MAKE) $(modbuiltin)=$*
-
-
 # Target to prepare building external modules
 PHONY += modules_prepare
 modules_prepare: prepare scripts
@@ -1001,6 +994,14 @@ modules modules_install: FORCE
 	@exit 1
 
 endif # CONFIG_MODULES
+
+# modules.builtin is used by kallsyms as well.
+
+modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
+	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
+
+%/modules.builtin: include/config/auto.conf
+	$(Q)$(MAKE) $(modbuiltin)=$*
 
 ###
 # Cleaning is done on three levels.
