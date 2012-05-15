@@ -5928,6 +5928,18 @@ static int tg3_poll_work(struct tg3_napi *tnapi, int work_done, int budget)
 	return work_done;
 }
 
+static inline void tg3_reset_task_schedule(struct tg3 *tp)
+{
+	if (!test_and_set_bit(TG3_FLAG_RESET_TASK_PENDING, tp->tg3_flags))
+		schedule_work(&tp->reset_task);
+}
+
+static inline void tg3_reset_task_cancel(struct tg3 *tp)
+{
+	cancel_work_sync(&tp->reset_task);
+	tg3_flag_clear(tp, RESET_TASK_PENDING);
+}
+
 static int tg3_poll_msix(struct napi_struct *napi, int budget)
 {
 	struct tg3_napi *tnapi = container_of(napi, struct tg3_napi, napi);
@@ -5968,7 +5980,7 @@ static int tg3_poll_msix(struct napi_struct *napi, int budget)
 tx_recovery:
 	/* work_done is guaranteed to be less than budget. */
 	napi_complete(napi);
-	schedule_work(&tp->reset_task);
+	tg3_reset_task_schedule(tp);
 	return work_done;
 }
 
@@ -6010,7 +6022,7 @@ static void tg3_process_error(struct tg3 *tp)
 		tg3_dump_state(tp);
 
 	tg3_flag_set(tp, ERROR_PROCESSED);
-	schedule_work(&tp->reset_task);
+	tg3_reset_task_schedule(tp);
 }
 
 static int tg3_poll(struct napi_struct *napi, int budget)
@@ -6057,7 +6069,7 @@ static int tg3_poll(struct napi_struct *napi, int budget)
 tx_recovery:
 	/* work_done is guaranteed to be less than budget. */
 	napi_complete(napi);
-	schedule_work(&tp->reset_task);
+	tg3_reset_task_schedule(tp);
 	return work_done;
 }
 
@@ -6351,6 +6363,7 @@ static void tg3_reset_task(struct work_struct *work)
 	tg3_full_lock(tp, 0);
 
 	if (!netif_running(tp->dev)) {
+		tg3_flag_clear(tp, RESET_TASK_PENDING);
 		tg3_full_unlock(tp);
 		return;
 	}
@@ -6388,6 +6401,8 @@ out:
 
 	if (!err)
 		tg3_phy_start(tp);
+
+	tg3_flag_clear(tp, RESET_TASK_PENDING);
 }
 
 static void tg3_tx_timeout(struct net_device *dev)
@@ -6399,7 +6414,7 @@ static void tg3_tx_timeout(struct net_device *dev)
 		tg3_dump_state(tp);
 	}
 
-	schedule_work(&tp->reset_task);
+	tg3_reset_task_schedule(tp);
 }
 
 /* Test for DMA buffers crossing any 4GB boundaries: 4G, 8G, etc */
@@ -9236,7 +9251,7 @@ static void tg3_timer(unsigned long __opaque)
 		if (!(tr32(WDMAC_MODE) & WDMAC_MODE_ENABLE)) {
 			tg3_flag_set(tp, RESTART_TIMER);
 			spin_unlock(&tp->lock);
-			schedule_work(&tp->reset_task);
+			tg3_reset_task_schedule(tp);
 			return;
 		}
 	}
@@ -9793,7 +9808,7 @@ static int tg3_close(struct net_device *dev)
 	struct tg3 *tp = netdev_priv(dev);
 
 	tg3_napi_disable(tp);
-	cancel_work_sync(&tp->reset_task);
+	tg3_reset_task_cancel(tp);
 
 	netif_tx_stop_all_queues(dev);
 
@@ -15693,7 +15708,7 @@ static void __devexit tg3_remove_one(struct pci_dev *pdev)
 		if (tp->fw)
 			release_firmware(tp->fw);
 
-		cancel_work_sync(&tp->reset_task);
+		tg3_reset_task_cancel(tp);
 
 		if (tg3_flag(tp, USE_PHYLIB)) {
 			tg3_phy_fini(tp);
@@ -15727,7 +15742,7 @@ static int tg3_suspend(struct device *device)
 	if (!netif_running(dev))
 		return 0;
 
-	flush_work_sync(&tp->reset_task);
+	tg3_reset_task_cancel(tp);
 	tg3_phy_stop(tp);
 	tg3_netif_stop(tp);
 
@@ -15843,7 +15858,7 @@ static pci_ers_result_t tg3_io_error_detected(struct pci_dev *pdev,
 	tg3_flag_clear(tp, RESTART_TIMER);
 
 	/* Want to make sure that the reset task doesn't run */
-	cancel_work_sync(&tp->reset_task);
+	tg3_reset_task_cancel(tp);
 	tg3_flag_clear(tp, TX_RECOVERY_PENDING);
 	tg3_flag_clear(tp, RESTART_TIMER);
 
