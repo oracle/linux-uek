@@ -168,6 +168,7 @@ void mlx4_uar_free(struct mlx4_dev *dev, struct mlx4_uar *uar)
 }
 EXPORT_SYMBOL_GPL(mlx4_uar_free);
 
+#ifndef CONFIG_PPC
 int mlx4_bf_alloc(struct mlx4_dev *dev, struct mlx4_bf *bf)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
@@ -263,6 +264,21 @@ void mlx4_bf_free(struct mlx4_dev *dev, struct mlx4_bf *bf)
 	mutex_unlock(&priv->bf_mutex);
 }
 EXPORT_SYMBOL_GPL(mlx4_bf_free);
+
+#else
+int mlx4_bf_alloc(struct mlx4_dev *dev, struct mlx4_bf *bf)
+{
+	memset(bf, 0, sizeof *bf);
+	return -ENOSYS;
+}
+EXPORT_SYMBOL_GPL(mlx4_bf_alloc);
+
+void mlx4_bf_free(struct mlx4_dev *dev, struct mlx4_bf *bf)
+{
+       return;
+}
+EXPORT_SYMBOL_GPL(mlx4_bf_free);
+#endif
 
 int mlx4_init_uar_table(struct mlx4_dev *dev)
 {
