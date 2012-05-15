@@ -38,6 +38,9 @@
 #include "mlx4_ib.h"
 #include "user.h"
 
+/* Which firmware version adds support for Resize CQ */
+#define MLX4_FW_VER_RESIZE_CQ  mlx4_fw_ver(2, 5, 0)
+
 static void mlx4_ib_cq_comp(struct mlx4_cq *cq)
 {
 	struct ib_cq *ibcq = &to_mibcq(cq)->ibcq;
@@ -361,6 +364,9 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	struct mlx4_mtt mtt;
 	int outst_cqe;
 	int err;
+
+	if (dev->dev->caps.fw_ver < MLX4_FW_VER_RESIZE_CQ)
+		return -ENOSYS;
 
 	mutex_lock(&cq->resize_mutex);
 
