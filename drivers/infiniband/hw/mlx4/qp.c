@@ -1648,6 +1648,29 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	if (is_sqp(dev, qp))
 		store_sqp_attrs(to_msqp(qp), attr, attr_mask);
 
+	/* Set 'ignore_cq_overrun' bits for collectives offload */
+	if (cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT) {
+		if (attr_mask & (IB_M_EXT_CLASS_2 | IB_M_EXT_CLASS_3)) {
+			err = mlx4_ib_ignore_overrun_cq(ibqp->send_cq);
+			if (err) {
+				printk(KERN_ERR "Failed to set ignore CQ "
+				       "overrun for QP 0x%x's send CQ\n",
+				       ibqp->qp_num);
+				goto out;
+			}
+
+			if (ibqp->recv_cq != ibqp->send_cq) {
+				err = mlx4_ib_ignore_overrun_cq(ibqp->recv_cq);
+				if (err) {
+					printk(KERN_ERR "Failed to set ignore "
+					       "CQ overrun for QP 0x%x's recv "
+					       "CQ\n", ibqp->qp_num);
+					goto out;
+				}
+			}
+		}
+	}
+
 	/*
 	 * If we moved QP0 to RTR, bring the IB link up; if we moved
 	 * QP0 to RESET or ERROR, bring the link back down.

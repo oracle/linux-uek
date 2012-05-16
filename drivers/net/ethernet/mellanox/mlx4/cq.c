@@ -168,6 +168,28 @@ int mlx4_cq_resize(struct mlx4_dev *dev, struct mlx4_cq *cq,
 }
 EXPORT_SYMBOL_GPL(mlx4_cq_resize);
 
+int mlx4_cq_ignore_overrun(struct mlx4_dev *dev, struct mlx4_cq *cq)
+{
+	struct mlx4_cmd_mailbox *mailbox;
+	struct mlx4_cq_context *cq_context;
+	int err;
+
+	mailbox = mlx4_alloc_cmd_mailbox(dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+
+	cq_context = mailbox->buf;
+	memset(cq_context, 0, sizeof *cq_context);
+
+	cq_context->flags |= cpu_to_be32(MLX4_CQ_FLAG_OI);
+
+	err = mlx4_MODIFY_CQ(dev, mailbox, cq->cqn, 3);
+
+	mlx4_free_cmd_mailbox(dev, mailbox);
+	return err;
+}
+EXPORT_SYMBOL_GPL(mlx4_cq_ignore_overrun);
+
 int __mlx4_cq_alloc_icm(struct mlx4_dev *dev, int *cqn)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);

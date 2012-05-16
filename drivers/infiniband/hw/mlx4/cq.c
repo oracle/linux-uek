@@ -40,6 +40,7 @@
 
 /* Which firmware version adds support for Resize CQ */
 #define MLX4_FW_VER_RESIZE_CQ  mlx4_fw_ver(2, 5, 0)
+#define MLX4_FW_VER_IGNORE_OVERRUN_CQ mlx4_fw_ver(2, 7, 8200)
 
 static void mlx4_ib_cq_comp(struct mlx4_cq *cq)
 {
@@ -455,6 +456,17 @@ out:
 	mutex_unlock(&cq->resize_mutex);
 
 	return err;
+}
+
+int mlx4_ib_ignore_overrun_cq(struct ib_cq *ibcq)
+{
+	struct mlx4_ib_dev *dev = to_mdev(ibcq->device);
+	struct mlx4_ib_cq *cq = to_mcq(ibcq);
+
+	if (dev->dev->caps.fw_ver < MLX4_FW_VER_IGNORE_OVERRUN_CQ)
+		return -ENOSYS;
+
+	return mlx4_cq_ignore_overrun(dev->dev, &cq->mcq);
 }
 
 int mlx4_ib_destroy_cq(struct ib_cq *cq)

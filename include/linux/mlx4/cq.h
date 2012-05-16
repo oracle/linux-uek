@@ -146,5 +146,5 @@ int mlx4_cq_modify(struct mlx4_dev *dev, struct mlx4_cq *cq,
 		   u16 count, u16 period);
 int mlx4_cq_resize(struct mlx4_dev *dev, struct mlx4_cq *cq,
 		   int entries, struct mlx4_mtt *mtt);
-
+int mlx4_cq_ignore_overrun(struct mlx4_dev *dev, struct mlx4_cq *cq);
 #endif /* MLX4_CQ_H */
