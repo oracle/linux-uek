@@ -83,6 +83,8 @@ void exit_thread(void)
 		put_cpu();
 		kfree(bp);
 	}
+
+	drop_fpu(me);
 }
 
 void show_regs(struct pt_regs *regs)
@@ -123,12 +125,7 @@ void flush_thread(void)
 
 	flush_ptrace_hw_breakpoint(tsk);
 	memset(tsk->thread.tls_array, 0, sizeof(tsk->thread.tls_array));
-	/*
-	 * Forget coprocessor state..
-	 */
-	tsk->fpu_counter = 0;
-	clear_fpu(tsk);
-	clear_used_math();
+	drop_fpu(tsk);
 }
 
 static void hard_disable_TSC(void)
