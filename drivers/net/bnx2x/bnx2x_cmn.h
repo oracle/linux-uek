@@ -1490,4 +1490,14 @@ static inline u16 bnx2x_extract_max_cfg(struct bnx2x *bp, int vn)
 	return max_cfg ?: 100;
 }
 
+#ifdef BCM_CNIC
+/**
+ * bnx2x_get_iscsi_info - update iSCSI params according to licensing info.
+ *
+ * @bp:		driver handle
+ *
+ */
+void bnx2x_get_iscsi_info(struct bnx2x *bp);
+#endif
+
 #endif /* BNX2X_CMN_H */
