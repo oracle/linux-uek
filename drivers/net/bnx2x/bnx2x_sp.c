@@ -16,6 +16,9 @@
  * Written by: Vladislav Zolotarov
  *
  */
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/crc32.h>
