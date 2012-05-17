@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu May 17 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.11.0.el6uek]
+- [dm] do not forward ioctls from logical volumes to the underlying device (Joe
+  Jin)  {CVE-2011-4127}
+- [block] fail SCSI passthrough ioctls on partition devices (Joe Jin)
+  {CVE-2011-4127}
+- [block] add and use scsi_blk_cmd_ioctl (Joe Jin) [Orabug: 14056755]
+  {CVE-2011-4127}
+
 * Wed May 16 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.10.0.el6uek]
 - net: ipv4: relax AF_INET check in bind() (Eric Dumazet) [Orabug: 14054411]
 - xen-netback: fix the number of skb slots calculation. (Adnan Misherfi)
