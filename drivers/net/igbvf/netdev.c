@@ -1192,11 +1192,6 @@ static void igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
 
-	igbvf_irq_disable(adapter);
-
-	if (!test_bit(__IGBVF_DOWN, &adapter->state))
-		igbvf_irq_enable(adapter);
-
 	if (hw->mac.ops.set_vfta(hw, vid, false))
 		dev_err(&adapter->pdev->dev,
 		        "Failed to remove vlan id %d\n", vid);
