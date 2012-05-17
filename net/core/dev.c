@@ -4479,9 +4479,7 @@ void __dev_set_rx_mode(struct net_device *dev)
 	if (!netif_device_present(dev))
 		return;
 
-	if (ops->ndo_set_rx_mode)
-		ops->ndo_set_rx_mode(dev);
-	else {
+	if (!(dev->priv_flags & IFF_UNICAST_FLT)) {
 		/* Unicast addresses changes may only happen under the rtnl,
 		 * therefore calling __dev_set_promiscuity here is safe.
 		 */
@@ -4492,10 +4490,12 @@ void __dev_set_rx_mode(struct net_device *dev)
 			__dev_set_promiscuity(dev, -1);
 			dev->uc_promisc = 0;
 		}
-
-		if (ops->ndo_set_multicast_list)
-			ops->ndo_set_multicast_list(dev);
 	}
+
+	if (ops->ndo_set_rx_mode)
+		ops->ndo_set_rx_mode(dev);
+	else if (ops->ndo_set_multicast_list)
+		ops->ndo_set_multicast_list(dev);
 }
 
 void dev_set_rx_mode(struct net_device *dev)

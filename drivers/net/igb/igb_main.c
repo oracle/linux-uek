@@ -38,6 +38,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/mii.h>
 #include <linux/ethtool.h>
+#include <linux/if.h>
 #include <linux/if_vlan.h>
 #include <linux/pci.h>
 #include <linux/pci-aspm.h>
@@ -1935,6 +1936,8 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 
 	if (hw->mac.type >= e1000_82576)
 		netdev->features |= NETIF_F_SCTP_CSUM;
+
+	netdev->priv_flags |= IFF_UNICAST_FLT;
 
 	adapter->en_mng_pt = igb_enable_mng_pass_thru(hw);
 
