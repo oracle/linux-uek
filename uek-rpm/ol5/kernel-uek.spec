@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed May 16 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.10.0.el5uek]
+- net: ipv4: relax AF_INET check in bind() (Eric Dumazet) [Orabug: 14054411]
+- xen-netback: fix the number of skb slots calculation. (Adnan Misherfi)
+- KVM: Ensure all vcpus are consistent with in-kernel irqchip settings (Avi
+  Kivity)  {CVE-2012-1601}
+- kabi update whitelist for OCFS (Maxim Uvarov) [Orabug: 14055758]
+
 * Thu May 10 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.9.0.el5uek]
 - [SCSI] scsi_dh_rdac: Fix for unbalanced reference count (Moger, Babu)
   [Orabug: 14059970]
