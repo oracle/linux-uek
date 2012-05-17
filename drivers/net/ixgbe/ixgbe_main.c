@@ -7421,52 +7421,53 @@ void ixgbe_do_reset(struct net_device *netdev)
 		ixgbe_reset(adapter);
 }
 
-static u32 ixgbe_fix_features(struct net_device *netdev, u32 data)
+static netdev_features_t ixgbe_fix_features(struct net_device *netdev,
+					    netdev_features_t features)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
 #ifdef CONFIG_DCB
 	if (adapter->flags & IXGBE_FLAG_DCB_ENABLED)
-		data &= ~NETIF_F_HW_VLAN_RX;
+		features &= ~NETIF_F_HW_VLAN_RX;
 #endif
 
 	/* return error if RXHASH is being enabled when RSS is not supported */
 	if (!(adapter->flags & IXGBE_FLAG_RSS_ENABLED))
-		data &= ~NETIF_F_RXHASH;
+		features &= ~NETIF_F_RXHASH;
 
 	/* If Rx checksum is disabled, then RSC/LRO should also be disabled */
-	if (!(data & NETIF_F_RXCSUM))
-		data &= ~NETIF_F_LRO;
+	if (!(features & NETIF_F_RXCSUM))
+		features &= ~NETIF_F_LRO;
 
-	/* Turn off LRO if not RSC capable or invalid ITR settings */
-	if (!(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE)) {
-		data &= ~NETIF_F_LRO;
-	} else if (!(adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED) &&
-		   (adapter->rx_itr_setting != 1 &&
-		    adapter->rx_itr_setting > IXGBE_MAX_RSC_INT_RATE)) {
-		data &= ~NETIF_F_LRO;
-		e_info(probe, "rx-usecs set too low, not enabling RSC\n");
-	}
+	/* Turn off LRO if not RSC capable */
+	if (!(adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE))
+		features &= ~NETIF_F_LRO;
+	
 
-	return data;
+	return features;
 }
 
-static int ixgbe_set_features(struct net_device *netdev, u32 data)
+static int ixgbe_set_features(struct net_device *netdev,
+			      netdev_features_t features)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	netdev_features_t changed = netdev->features ^ features;
 	bool need_reset = false;
 
 	/* Make sure RSC matches LRO, reset if change */
-	if (!!(data & NETIF_F_LRO) !=
-	     !!(adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)) {
-		adapter->flags2 ^= IXGBE_FLAG2_RSC_ENABLED;
-		switch (adapter->hw.mac.type) {
-		case ixgbe_mac_X540:
-		case ixgbe_mac_82599EB:
+	if (!(features & NETIF_F_LRO)) {
+		if (adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)
 			need_reset = true;
-			break;
-		default:
-			break;
+		adapter->flags2 &= ~IXGBE_FLAG2_RSC_ENABLED;
+	} else if ((adapter->flags2 & IXGBE_FLAG2_RSC_CAPABLE) &&
+		   !(adapter->flags2 & IXGBE_FLAG2_RSC_ENABLED)) {
+		if (adapter->rx_itr_setting == 1 ||
+		    adapter->rx_itr_setting > IXGBE_MIN_RSC_ITR) {
+			adapter->flags2 |= IXGBE_FLAG2_RSC_ENABLED;
+			need_reset = true;
+		} else if ((changed ^ features) & NETIF_F_LRO) {
+			e_info(probe, "rx-usecs set too low, "
+			       "disabling RSC\n");
 		}
 	}
 
@@ -7474,22 +7475,23 @@ static int ixgbe_set_features(struct net_device *netdev, u32 data)
 	 * Check if Flow Director n-tuple support was enabled or disabled.  If
 	 * the state changed, we need to reset.
 	 */
-	if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
-		/* turn off ATR, enable perfect filters and reset */
-		if (data & NETIF_F_NTUPLE) {
-			adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
-			adapter->flags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
+	if (!(features & NETIF_F_NTUPLE)) {
+		if (adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE) {
+			/* turn off Flow Director, set ATR and reset */
+			if ((adapter->flags & IXGBE_FLAG_RSS_ENABLED) &&
+			    !(adapter->flags & IXGBE_FLAG_DCB_ENABLED))
+				adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
 			need_reset = true;
 		}
-	} else if (!(data & NETIF_F_NTUPLE)) {
-		/* turn off Flow Director, set ATR and reset */
 		adapter->flags &= ~IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
-		if ((adapter->flags &  IXGBE_FLAG_RSS_ENABLED) &&
-		    !(adapter->flags &  IXGBE_FLAG_DCB_ENABLED))
-			adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
+	} else if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE)) {
+		/* turn off ATR, enable perfect filters and reset */
+		adapter->flags &= ~IXGBE_FLAG_FDIR_HASH_CAPABLE;
+		adapter->flags |= IXGBE_FLAG_FDIR_PERFECT_CAPABLE;
 		need_reset = true;
 	}
 
+	netdev->features = features;
 	if (need_reset)
 		ixgbe_do_reset(netdev);
 
@@ -7533,7 +7535,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 };
 
 static void __devinit ixgbe_probe_vf(struct ixgbe_adapter *adapter,
-			   const struct ixgbe_info *ii)
+				     const struct ixgbe_info *ii)
 {
 #ifdef CONFIG_PCI_IOV
 	struct ixgbe_hw *hw = &adapter->hw;
