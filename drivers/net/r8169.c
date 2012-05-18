@@ -5521,6 +5521,8 @@ static netdev_tx_t rtl8169_start_xmit(struct sk_buff *skb,
 
 	txd->opts2 = cpu_to_le32(opts[1]);
 
+	skb_tx_timestamp(skb);
+
 	wmb();
 
 	/* Anti gcc 2.95.3 bugware (sic) */
