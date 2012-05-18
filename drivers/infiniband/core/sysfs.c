@@ -39,6 +39,7 @@
 #include <linux/string.h>
 
 #include <rdma/ib_mad.h>
+#include <rdma/ib_pma.h>
 
 struct ib_port {
 	struct kobject         kobj;
@@ -311,14 +312,8 @@ static ssize_t show_port_pkey(struct ib_port *p, struct port_attribute *attr,
 	return sprintf(buf, "0x%04x\n", pkey);
 }
 
-#define PORT_PMA_ATTR(_name, _counter, _width, _offset)			\
-struct port_table_attribute port_pma_attr_##_name = {			\
-	.attr  = __ATTR(_name, S_IRUGO, show_pma_counter, NULL),	\
-	.index = (_offset) | ((_width) << 16) | ((_counter) << 24)	\
-}
-
-static ssize_t show_pma_counter(struct ib_port *p, struct port_attribute *attr,
-				char *buf)
+static ssize_t get_pma_counters(struct ib_port *p, struct port_attribute *attr,
+				char *buf, int c_ext)
 {
 	struct port_table_attribute *tab_attr =
 		container_of(attr, struct port_table_attribute, attr);
@@ -329,7 +324,7 @@ static ssize_t show_pma_counter(struct ib_port *p, struct port_attribute *attr,
 	ssize_t ret;
 
 	if (!p->ibdev->process_mad)
-		return sprintf(buf, "N/A (no PMA)\n");
+		return -ENXIO;
 
 	in_mad  = kzalloc(sizeof *in_mad, GFP_KERNEL);
 	out_mad = kmalloc(sizeof *out_mad, GFP_KERNEL);
@@ -342,7 +337,10 @@ static ssize_t show_pma_counter(struct ib_port *p, struct port_attribute *attr,
 	in_mad->mad_hdr.mgmt_class    = IB_MGMT_CLASS_PERF_MGMT;
 	in_mad->mad_hdr.class_version = 1;
 	in_mad->mad_hdr.method        = IB_MGMT_METHOD_GET;
-	in_mad->mad_hdr.attr_id       = cpu_to_be16(0x12); /* PortCounters */
+	if (c_ext)
+		in_mad->mad_hdr.attr_id = IB_PMA_PORT_COUNTERS_EXT;
+	else
+		in_mad->mad_hdr.attr_id = IB_PMA_PORT_COUNTERS;
 
 	in_mad->data[41] = p->port_num;	/* PortSelect field */
 
@@ -370,6 +368,10 @@ static ssize_t show_pma_counter(struct ib_port *p, struct port_attribute *attr,
 		ret = sprintf(buf, "%u\n",
 			      be32_to_cpup((__be32 *)(out_mad->data + 40 + offset / 8)));
 		break;
+	case 64:
+		ret = sprintf(buf, "%llu\n",
+			      be64_to_cpup((__be64 *)(out_mad->data + 40 + offset / 8)));
+		break;
 	default:
 		ret = 0;
 	}
@@ -379,6 +381,18 @@ out:
 	kfree(out_mad);
 
 	return ret;
+}
+
+#define PORT_PMA_ATTR(_name, _counter, _width, _offset)			\
+struct port_table_attribute port_pma_attr_##_name = {			\
+	.attr  = __ATTR(_name, S_IRUGO, show_pma_counter, NULL),	\
+	.index = (_offset) | ((_width) << 16) | ((_counter) << 24)	\
+}
+
+static ssize_t show_pma_counter(struct ib_port *p, struct port_attribute *attr,
+				char *buf)
+{
+	return get_pma_counters(p, attr, buf, 0);
 }
 
 static PORT_PMA_ATTR(symbol_error		    ,  0, 16,  32);
@@ -421,6 +435,44 @@ static struct attribute *pma_attrs[] = {
 static struct attribute_group pma_group = {
 	.name  = "counters",
 	.attrs  = pma_attrs
+};
+
+#define PORT_PMA_ATTR_EXT(_name, _counter, _width, _offset)		\
+struct port_table_attribute port_pma_attr_ext_##_name = {		\
+	.attr  = __ATTR(_name, S_IRUGO, show_pma_counter_ext, NULL),	\
+	.index = (_offset) | ((_width) << 16) | ((_counter) << 24)	\
+}
+
+static ssize_t show_pma_counter_ext(struct ib_port *p,
+				    struct port_attribute *attr, char *buf)
+{
+	return get_pma_counters(p, attr, buf, 1);
+}
+
+static PORT_PMA_ATTR_EXT(port_xmit_data_64	     ,  0, 64,  64);
+static PORT_PMA_ATTR_EXT(port_rcv_data_64	     ,  0, 64,  128);
+static PORT_PMA_ATTR_EXT(port_xmit_packets_64	     ,  0, 64,  192);
+static PORT_PMA_ATTR_EXT(port_rcv_packets_64	     ,  0, 64,  256);
+static PORT_PMA_ATTR_EXT(port_unicast_xmit_packets   ,  0, 64,  320);
+static PORT_PMA_ATTR_EXT(port_unicast_rcv_packets    ,  0, 64,  384);
+static PORT_PMA_ATTR_EXT(port_multicast_xmit_packets ,  0, 64,  448);
+static PORT_PMA_ATTR_EXT(port_multicast_rcv_packets  ,  0, 64,  512);
+
+static struct attribute *pma_attrs_ext[] = {
+	&port_pma_attr_ext_port_xmit_data_64.attr.attr,
+	&port_pma_attr_ext_port_rcv_data_64.attr.attr,
+	&port_pma_attr_ext_port_xmit_packets_64.attr.attr,
+	&port_pma_attr_ext_port_rcv_packets_64.attr.attr,
+	&port_pma_attr_ext_port_unicast_xmit_packets.attr.attr,
+	&port_pma_attr_ext_port_unicast_rcv_packets.attr.attr,
+	&port_pma_attr_ext_port_multicast_xmit_packets.attr.attr,
+	&port_pma_attr_ext_port_multicast_rcv_packets.attr.attr,
+	NULL
+};
+
+static struct attribute_group pma_ext_group = {
+	.name  = "counters_ext",
+	.attrs  = pma_attrs_ext
 };
 
 static void ib_port_release(struct kobject *kobj)
@@ -543,10 +595,14 @@ static int add_port(struct ib_device *device, int port_num,
 	if (ret)
 		goto err_put;
 
+	ret = sysfs_create_group(&p->kobj, &pma_ext_group);
+	if (ret)
+		goto err_remove_pma;
+
 	p->gid_group.name  = "gids";
 	p->gid_group.attrs = alloc_group_attrs(show_port_gid, attr.gid_tbl_len);
 	if (!p->gid_group.attrs)
-		goto err_remove_pma;
+		goto err_remove_pma_ext;
 
 	ret = sysfs_create_group(&p->kobj, &p->gid_group);
 	if (ret)
@@ -590,6 +646,9 @@ err_free_gid:
 		kfree(p->gid_group.attrs[i]);
 
 	kfree(p->gid_group.attrs);
+
+err_remove_pma_ext:
+	sysfs_remove_group(&p->kobj, &pma_ext_group);
 
 err_remove_pma:
 	sysfs_remove_group(&p->kobj, &pma_group);
