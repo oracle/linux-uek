@@ -554,8 +554,7 @@ void __init efi_enter_virtual_mode(void)
 	efi_status_t status;
 	unsigned long size;
 	u64 end, systab, addr, npages, end_pfn;
-	void *p, *va, *new_memmap = NULL;
-	int count = 0;
+	void *p, *va;
 
 	efi.systab = NULL;
 
@@ -624,21 +623,15 @@ void __init efi_enter_virtual_mode(void)
 			systab += md->virt_addr - md->phys_addr;
 			efi.systab = (efi_system_table_t *) (unsigned long) systab;
 		}
-		new_memmap = krealloc(new_memmap,
-				      (count + 1) * memmap.desc_size,
-				      GFP_KERNEL);
-		memcpy(new_memmap + (count * memmap.desc_size), md,
-		       memmap.desc_size);
-		count++;
 	}
 
 	BUG_ON(!efi.systab);
 
 	status = phys_efi_set_virtual_address_map(
-		memmap.desc_size * count,
+		memmap.desc_size * memmap.nr_map,
 		memmap.desc_size,
 		memmap.desc_version,
-		(efi_memory_desc_t *)__pa(new_memmap));
+		memmap.phys_map);
 
 	if (status != EFI_SUCCESS) {
 		printk(KERN_ALERT "Unable to switch EFI into virtual mode "
@@ -673,7 +666,6 @@ void __init efi_enter_virtual_mode(void)
 		runtime_code_page_mkexec();
 	early_iounmap(memmap.map, memmap.nr_map * memmap.desc_size);
 	memmap.map = NULL;
-	kfree(new_memmap);
 }
 
 /*
