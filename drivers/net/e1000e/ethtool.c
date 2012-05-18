@@ -1977,7 +1977,7 @@ static void e1000_get_strings(struct net_device *netdev, u32 stringset,
 }
 
 static int e1000_get_rxnfc(struct net_device *netdev,
-			   struct ethtool_rxnfc *info, u32 *rule_locs)
+			   struct ethtool_rxnfc *info, void *rule_locs)
 {
 	info->data = 0;
 
