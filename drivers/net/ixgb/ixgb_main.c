@@ -228,7 +228,7 @@ ixgb_up(struct ixgb_adapter *adapter)
 	if (IXGB_READ_REG(&adapter->hw, STATUS) & IXGB_STATUS_PCIX_MODE) {
 		err = pci_enable_msi(adapter->pdev);
 		if (!err) {
-			adapter->have_msi = 1;
+			adapter->have_msi = true;
 			irq_flags = 0;
 		}
 		/* proceed to try to request regular interrupt */
@@ -325,6 +325,41 @@ ixgb_reset(struct ixgb_adapter *adapter)
 	}
 }
 
+static u32
+ixgb_fix_features(struct net_device *netdev, u32 features)
+{
+	/*
+	 * Tx VLAN insertion does not work per HW design when Rx stripping is
+	 * disabled.
+	 */
+	if (!(features & NETIF_F_HW_VLAN_RX))
+		features &= ~NETIF_F_HW_VLAN_TX;
+
+	return features;
+}
+
+static int
+ixgb_set_features(struct net_device *netdev, u32 features)
+{
+	struct ixgb_adapter *adapter = netdev_priv(netdev);
+	u32 changed = features ^ netdev->features;
+
+	if (!(changed & (NETIF_F_RXCSUM|NETIF_F_HW_VLAN_RX)))
+		return 0;
+
+	adapter->rx_csum = !!(features & NETIF_F_RXCSUM);
+
+	if (netif_running(netdev)) {
+		ixgb_down(adapter, true);
+		ixgb_up(adapter);
+		ixgb_set_speed_duplex(netdev);
+	} else
+		ixgb_reset(adapter);
+
+	return 0;
+}
+
+
 static const struct net_device_ops ixgb_netdev_ops = {
 	.ndo_open 		= ixgb_open,
 	.ndo_stop		= ixgb_close,
@@ -340,6 +375,8 @@ static const struct net_device_ops ixgb_netdev_ops = {
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= ixgb_netpoll,
 #endif
+	.ndo_fix_features       = ixgb_fix_features,
+	.ndo_set_features       = ixgb_set_features,
 };
 
 /**
@@ -439,12 +476,14 @@ ixgb_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (err)
 		goto err_sw_init;
 
-	netdev->features = NETIF_F_SG |
+	netdev->hw_features = NETIF_F_SG |
+			   NETIF_F_TSO |
 			   NETIF_F_HW_CSUM |
 			   NETIF_F_HW_VLAN_TX |
-			   NETIF_F_HW_VLAN_RX |
+			   NETIF_F_HW_VLAN_RX;
+	netdev->features = netdev->hw_features |
 			   NETIF_F_HW_VLAN_FILTER;
-	netdev->features |= NETIF_F_TSO;
+	netdev->hw_features |= NETIF_F_RXCSUM;
 
 	if (pci_using_dac) {
 		netdev->features |= NETIF_F_HIGHDMA;
@@ -1068,7 +1107,6 @@ ixgb_set_multi(struct net_device *netdev)
 	struct ixgb_hw *hw = &adapter->hw;
 	struct netdev_hw_addr *ha;
 	u32 rctl;
-	int i;
 
 	/* Check for Promiscuous and All Multicast modes */
 
@@ -1095,19 +1133,27 @@ ixgb_set_multi(struct net_device *netdev)
 		rctl |= IXGB_RCTL_MPE;
 		IXGB_WRITE_REG(hw, RCTL, rctl);
 	} else {
-		u8 mta[IXGB_MAX_NUM_MULTICAST_ADDRESSES *
-			    IXGB_ETH_LENGTH_OF_ADDRESS];
+		u8 *mta = kmalloc(IXGB_MAX_NUM_MULTICAST_ADDRESSES *
+			      ETH_ALEN, GFP_ATOMIC);
+		u8 *addr;
+		if (!mta) {
+			pr_err("allocation of multicast memory failed\n");
+			goto alloc_failed;
+		}
 
 		IXGB_WRITE_REG(hw, RCTL, rctl);
 
-		i = 0;
-		netdev_for_each_mc_addr(ha, netdev)
-			memcpy(&mta[i++ * IXGB_ETH_LENGTH_OF_ADDRESS],
-			       ha->addr, IXGB_ETH_LENGTH_OF_ADDRESS);
+		addr = mta;
+		netdev_for_each_mc_addr(ha, netdev) {
+			memcpy(addr, ha->addr, ETH_ALEN);
+			addr += ETH_ALEN;
+		}
 
 		ixgb_mc_addr_list_update(hw, mta, netdev_mc_count(netdev), 0);
+		kfree(mta);
 	}
 
+alloc_failed:
 	if (netdev->features & NETIF_F_HW_VLAN_RX)
 		ixgb_vlan_strip_enable(adapter);
 	else
@@ -1341,7 +1387,7 @@ ixgb_tx_map(struct ixgb_adapter *adapter, struct sk_buff *skb,
 
 		frag = &skb_shinfo(skb)->frags[f];
 		len = frag->size;
-		offset = frag->page_offset;
+		offset = 0;
 
 		while (len) {
 			i++;
@@ -1361,8 +1407,8 @@ ixgb_tx_map(struct ixgb_adapter *adapter, struct sk_buff *skb,
 			buffer_info->time_stamp = jiffies;
 			buffer_info->mapped_as_page = true;
 			buffer_info->dma =
-				dma_map_page(&pdev->dev, frag->page,
-					     offset, size, DMA_TO_DEVICE);
+				skb_frag_dma_map(&pdev->dev, frag, offset, size,
+						 DMA_TO_DEVICE);
 			if (dma_mapping_error(&pdev->dev, buffer_info->dma))
 				goto dma_error;
 			buffer_info->next_to_watch = 0;
@@ -2024,8 +2070,8 @@ ixgb_clean_rx_irq(struct ixgb_adapter *adapter, int *work_done, int work_to_do)
 
 			/* All receives must fit into a single buffer */
 
-			IXGB_DBG("Receive packet consumed multiple buffers "
-					 "length<%x>\n", length);
+			pr_debug("Receive packet consumed multiple buffers length<%x>\n",
+				 length);
 
 			dev_kfree_skb_irq(skb);
 			goto rxdesc_done;

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 82599 Virtual Function driver
-  Copyright(c) 1999 - 2010 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,6 +29,9 @@
 /******************************************************************************
  Copyright (c)2006 - 2007 Myricom, Inc. for some LRO specific code
 ******************************************************************************/
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/types.h>
 #include <linux/bitops.h>
 #include <linux/module.h>
@@ -44,19 +47,20 @@
 #include <net/checksum.h>
 #include <net/ip6_checksum.h>
 #include <linux/ethtool.h>
+#include <linux/if.h>
 #include <linux/if_vlan.h>
 #include <linux/prefetch.h>
 
 #include "ixgbevf.h"
 
-char ixgbevf_driver_name[] = "ixgbevf";
+const char ixgbevf_driver_name[] = "ixgbevf";
 static const char ixgbevf_driver_string[] =
 	"Intel(R) 10 Gigabit PCI Express Virtual Function Network Driver";
 
-#define DRV_VERSION "2.1.0-k"
+#define DRV_VERSION "2.2.0-k"
 const char ixgbevf_driver_version[] = DRV_VERSION;
 static char ixgbevf_copyright[] =
-	"Copyright (c) 2009 - 2010 Intel Corporation.";
+	"Copyright (c) 2009 - 2012 Intel Corporation.";
 
 static const struct ixgbevf_info *ixgbevf_info_tbl[] = {
 	[board_82599_vf] = &ixgbevf_82599_vf_info,
@@ -202,6 +206,9 @@ static bool ixgbevf_clean_tx_irq(struct ixgbevf_adapter *adapter,
 	       (count < tx_ring->work_limit)) {
 		bool cleaned = false;
 		rmb(); /* read buffer_info after eop_desc */
+		/* eop could change between read and DD-check */
+		if (unlikely(eop != tx_ring->tx_buffer_info[i].next_to_watch))
+			goto cont_loop;
 		for ( ; !cleaned; count++) {
 			struct sk_buff *skb;
 			tx_desc = IXGBE_TX_DESC_ADV(*tx_ring, i);
@@ -231,6 +238,7 @@ static bool ixgbevf_clean_tx_irq(struct ixgbevf_adapter *adapter,
 				i = 0;
 		}
 
+cont_loop:
 		eop = tx_ring->tx_buffer_info[i].next_to_watch;
 		eop_desc = IXGBE_TX_DESC_ADV(*tx_ring, eop);
 	}
@@ -289,12 +297,10 @@ static void ixgbevf_receive_skb(struct ixgbevf_q_vector *q_vector,
 {
 	struct ixgbevf_adapter *adapter = q_vector->adapter;
 	bool is_vlan = (status & IXGBE_RXD_STAT_VP);
+	u16 tag = le16_to_cpu(rx_desc->wb.upper.vlan);
 
-	if (is_vlan) {
-		u16 tag = le16_to_cpu(rx_desc->wb.upper.vlan);
-
+	if (is_vlan && test_bit(tag, adapter->active_vlans))
 		__vlan_hwaccel_put_tag(skb, tag);
-	}
 
 	if (!(adapter->flags & IXGBE_FLAG_IN_NETPOLL))
 			napi_gro_receive(&q_vector->napi, skb);
@@ -912,32 +918,39 @@ static irqreturn_t ixgbevf_msix_mbx(int irq, void *data)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 eicr;
 	u32 msg;
+	bool got_ack = false;
 
 	eicr = IXGBE_READ_REG(hw, IXGBE_VTEICS);
 	IXGBE_WRITE_REG(hw, IXGBE_VTEICR, eicr);
 
-	if (!hw->mbx.ops.check_for_ack(hw)) {
+	if (!hw->mbx.ops.check_for_ack(hw))
+		got_ack = true;
+
+	if (!hw->mbx.ops.check_for_msg(hw)) {
+		hw->mbx.ops.read(hw, &msg, 1);
+
+		if ((msg & IXGBE_MBVFICR_VFREQ_MASK) == IXGBE_PF_CONTROL_MSG)
+			mod_timer(&adapter->watchdog_timer,
+				  round_jiffies(jiffies + 1));
+
+		if (msg & IXGBE_VT_MSGTYPE_NACK)
+			pr_warn("Last Request of type %2.2x to PF Nacked\n",
+				msg & 0xFF);
 		/*
-		 * checking for the ack clears the PFACK bit.  Place
-		 * it back in the v2p_mailbox cache so that anyone
-		 * polling for an ack will not miss it.  Also
-		 * avoid the read below because the code to read
-		 * the mailbox will also clear the ack bit.  This was
-		 * causing lost acks.  Just cache the bit and exit
-		 * the IRQ handler.
+		 * Restore the PFSTS bit in case someone is polling for a
+		 * return message from the PF
 		 */
-		hw->mbx.v2p_mailbox |= IXGBE_VFMAILBOX_PFACK;
-		goto out;
+		hw->mbx.v2p_mailbox |= IXGBE_VFMAILBOX_PFSTS;
 	}
 
-	/* Not an ack interrupt, go ahead and read the message */
-	hw->mbx.ops.read(hw, &msg, 1);
+	/*
+	 * checking for the ack clears the PFACK bit.  Place
+	 * it back in the v2p_mailbox cache so that anyone
+	 * polling for an ack will not miss it
+	 */
+	if (got_ack)
+		hw->mbx.v2p_mailbox |= IXGBE_VFMAILBOX_PFACK;
 
-	if ((msg & IXGBE_MBVFICR_VFREQ_MASK) == IXGBE_PF_CONTROL_MSG)
-		mod_timer(&adapter->watchdog_timer,
-			  round_jiffies(jiffies + 1));
-
-out:
 	return IRQ_HANDLED;
 }
 
@@ -1435,7 +1448,7 @@ static int ixgbevf_write_uc_addr_list(struct net_device *netdev)
 	int count = 0;
 
 	if ((netdev_uc_count(netdev)) > 10) {
-		printk(KERN_ERR "Too many unicast filters - No Space\n");
+		pr_err("Too many unicast filters - No Space\n");
 		return -ENOSPC;
 	}
 
@@ -2133,7 +2146,7 @@ static int ixgbevf_init_interrupt_scheme(struct ixgbevf_adapter *adapter)
 
 	err = ixgbevf_alloc_queues(adapter);
 	if (err) {
-		printk(KERN_ERR "Unable to allocate memory for queues\n");
+		pr_err("Unable to allocate memory for queues\n");
 		goto err_alloc_queues;
 	}
 
@@ -2183,13 +2196,17 @@ static int __devinit ixgbevf_sw_init(struct ixgbevf_adapter *adapter)
 	if (err) {
 		dev_info(&pdev->dev,
 		         "PF still in reset state, assigning new address\n");
-		dev_hw_addr_random(adapter->netdev, hw->mac.addr);
+		eth_hw_addr_random(adapter->netdev);
+		memcpy(adapter->hw.mac.addr, adapter->netdev->dev_addr,
+			adapter->netdev->addr_len);
 	} else {
 		err = hw->mac.ops.init_hw(hw);
 		if (err) {
-			printk(KERN_ERR "init_shared_code failed: %d\n", err);
+			pr_err("init_shared_code failed: %d\n", err);
 			goto out;
 		}
+		memcpy(adapter->netdev->dev_addr, adapter->hw.mac.addr,
+			adapter->netdev->addr_len);
 	}
 
 	/* Enable dynamic interrupt throttling rates */
@@ -2208,6 +2225,7 @@ static int __devinit ixgbevf_sw_init(struct ixgbevf_adapter *adapter)
 	adapter->flags |= IXGBE_FLAG_RX_CSUM_ENABLED;
 
 	set_bit(__IXGBEVF_DOWN, &adapter->state);
+	return 0;
 
 out:
 	return err;
@@ -2632,8 +2650,8 @@ static int ixgbevf_open(struct net_device *netdev)
 		 * the vf can't start. */
 		if (hw->adapter_stopped) {
 			err = IXGBE_ERR_MBX;
-			printk(KERN_ERR "Unable to start - perhaps the PF"
-			       " Driver isn't up yet\n");
+			pr_err("Unable to start - perhaps the PF Driver isn't "
+			       "up yet\n");
 			goto err_setup_reset;
 		}
 	}
@@ -2844,10 +2862,8 @@ static bool ixgbevf_tx_csum(struct ixgbevf_adapter *adapter,
 				break;
 			default:
 				if (unlikely(net_ratelimit())) {
-					printk(KERN_WARNING
-					       "partial checksum but "
-					       "proto=%x!\n",
-					       skb->protocol);
+					pr_warn("partial checksum but "
+						"proto=%x!\n", skb->protocol);
 				}
 				break;
 			}
@@ -2918,18 +2934,16 @@ static int ixgbevf_tx_map(struct ixgbevf_adapter *adapter,
 
 		frag = &skb_shinfo(skb)->frags[f];
 		len = min((unsigned int)frag->size, total);
-		offset = frag->page_offset;
+		offset = 0;
 
 		while (len) {
 			tx_buffer_info = &tx_ring->tx_buffer_info[i];
 			size = min(len, (unsigned int)IXGBE_MAX_DATA_PER_TXD);
 
 			tx_buffer_info->length = size;
-			tx_buffer_info->dma = dma_map_page(&adapter->pdev->dev,
-							   frag->page,
-							   offset,
-							   size,
-							   DMA_TO_DEVICE);
+			tx_buffer_info->dma =
+				skb_frag_dma_map(&adapter->pdev->dev, frag,
+						 offset, size, DMA_TO_DEVICE);
 			tx_buffer_info->mapped_as_page = true;
 			if (dma_mapping_error(&pdev->dev, tx_buffer_info->dma))
 				goto dma_error;
@@ -3215,6 +3229,18 @@ static void ixgbevf_shutdown(struct pci_dev *pdev)
 	pci_disable_device(pdev);
 }
 
+static int ixgbevf_set_features(struct net_device *netdev, u32 features)
+{
+	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
+
+	if (features & NETIF_F_RXCSUM)
+		adapter->flags |= IXGBE_FLAG_RX_CSUM_ENABLED;
+	else
+		adapter->flags &= ~IXGBE_FLAG_RX_CSUM_ENABLED;
+
+	return 0;
+}
+
 static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_open		= ixgbevf_open,
 	.ndo_stop		= ixgbevf_close,
@@ -3227,6 +3253,7 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_tx_timeout		= ixgbevf_tx_timeout,
 	.ndo_vlan_rx_add_vid	= ixgbevf_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= ixgbevf_vlan_rx_kill_vid,
+	.ndo_set_features	= ixgbevf_set_features,
 };
 
 static void ixgbevf_assign_netdev_ops(struct net_device *dev)
@@ -3338,17 +3365,30 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 
 	/* setup the private structure */
 	err = ixgbevf_sw_init(adapter);
+	if (err)
+		goto err_sw_init;
 
-	netdev->features = NETIF_F_SG |
+	/* The HW MAC address was set and/or determined in sw_init */
+	memcpy(netdev->perm_addr, adapter->hw.mac.addr, netdev->addr_len);
+
+	if (!is_valid_ether_addr(netdev->dev_addr)) {
+		pr_err("invalid MAC address\n");
+		err = -EIO;
+		goto err_sw_init;
+	}
+
+	netdev->hw_features = NETIF_F_SG |
 			   NETIF_F_IP_CSUM |
+			   NETIF_F_IPV6_CSUM |
+			   NETIF_F_TSO |
+			   NETIF_F_TSO6 |
+			   NETIF_F_RXCSUM;
+
+	netdev->features = netdev->hw_features |
 			   NETIF_F_HW_VLAN_TX |
 			   NETIF_F_HW_VLAN_RX |
 			   NETIF_F_HW_VLAN_FILTER;
 
-	netdev->features |= NETIF_F_IPV6_CSUM;
-	netdev->features |= NETIF_F_TSO;
-	netdev->features |= NETIF_F_TSO6;
-	netdev->features |= NETIF_F_GRO;
 	netdev->vlan_features |= NETIF_F_TSO;
 	netdev->vlan_features |= NETIF_F_TSO6;
 	netdev->vlan_features |= NETIF_F_IP_CSUM;
@@ -3358,15 +3398,7 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 	if (pci_using_dac)
 		netdev->features |= NETIF_F_HIGHDMA;
 
-	/* The HW MAC address was set and/or determined in sw_init */
-	memcpy(netdev->dev_addr, adapter->hw.mac.addr, netdev->addr_len);
-	memcpy(netdev->perm_addr, adapter->hw.mac.addr, netdev->addr_len);
-
-	if (!is_valid_ether_addr(netdev->dev_addr)) {
-		printk(KERN_ERR "invalid MAC address\n");
-		err = -EIO;
-		goto err_sw_init;
-	}
+	netdev->priv_flags |= IFF_UNICAST_FLT;
 
 	init_timer(&adapter->watchdog_timer);
 	adapter->watchdog_timer.function = ixgbevf_watchdog;
@@ -3396,13 +3428,7 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 	ixgbevf_init_last_counter_stats(adapter);
 
 	/* print the MAC address */
-	hw_dbg(hw, "%2.2x:%2.2x:%2.2x:%2.2x:%2.2x:%2.2x\n",
-	       netdev->dev_addr[0],
-	       netdev->dev_addr[1],
-	       netdev->dev_addr[2],
-	       netdev->dev_addr[3],
-	       netdev->dev_addr[4],
-	       netdev->dev_addr[5]);
+	hw_dbg(hw, "%pM\n", netdev->dev_addr);
 
 	hw_dbg(hw, "MAC: %d\n", hw->mac.type);
 
@@ -3484,10 +3510,10 @@ static struct pci_driver ixgbevf_driver = {
 static int __init ixgbevf_init_module(void)
 {
 	int ret;
-	printk(KERN_INFO "ixgbevf: %s - version %s\n", ixgbevf_driver_string,
-	       ixgbevf_driver_version);
+	pr_info("%s - version %s\n", ixgbevf_driver_string,
+		ixgbevf_driver_version);
 
-	printk(KERN_INFO "%s\n", ixgbevf_copyright);
+	pr_info("%s\n", ixgbevf_copyright);
 
 	ret = pci_register_driver(&ixgbevf_driver);
 	return ret;

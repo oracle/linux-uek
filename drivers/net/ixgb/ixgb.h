@@ -75,18 +75,6 @@ struct ixgb_adapter;
 #include "ixgb_ee.h"
 #include "ixgb_ids.h"
 
-#define PFX "ixgb: "
-
-#ifdef _DEBUG_DRIVER_
-#define IXGB_DBG(fmt, args...) printk(KERN_DEBUG PFX fmt, ##args)
-#else
-#define IXGB_DBG(fmt, args...)				\
-do {							\
-	if (0)						\
-		printk(KERN_DEBUG PFX fmt, ##args);	\
-} while (0)
-#endif
-
 /* TX/RX descriptor defines */
 #define DEFAULT_TXD      256
 #define MAX_TXD         4096
@@ -203,6 +191,8 @@ extern void ixgb_check_options(struct ixgb_adapter *adapter);
 extern void ixgb_set_ethtool_ops(struct net_device *netdev);
 extern char ixgb_driver_name[];
 extern const char ixgb_driver_version[];
+
+extern void ixgb_set_speed_duplex(struct net_device *netdev);
 
 extern int ixgb_up(struct ixgb_adapter *adapter);
 extern void ixgb_down(struct ixgb_adapter *adapter, bool kill_watchdog);

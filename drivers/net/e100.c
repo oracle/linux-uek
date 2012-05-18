@@ -615,6 +615,7 @@ struct nic {
 	u32 rx_fc_pause;
 	u32 rx_fc_unsupported;
 	u32 rx_tco_frames;
+	u32 rx_short_frame_errors;
 	u32 rx_over_length_errors;
 
 	u16 eeprom_wc;
@@ -1605,7 +1606,9 @@ static void e100_update_stats(struct nic *nic)
 		ns->collisions += nic->tx_collisions;
 		ns->tx_errors += le32_to_cpu(s->tx_max_collisions) +
 			le32_to_cpu(s->tx_lost_crs);
-		ns->rx_length_errors += le32_to_cpu(s->rx_short_frame_errors) +
+		nic->rx_short_frame_errors +=
+			le32_to_cpu(s->rx_short_frame_errors);
+		ns->rx_length_errors = nic->rx_short_frame_errors +
 			nic->rx_over_length_errors;
 		ns->rx_crc_errors += le32_to_cpu(s->rx_crc_errors);
 		ns->rx_frame_errors += le32_to_cpu(s->rx_alignment_errors);
@@ -2500,12 +2503,8 @@ static void e100_get_ringparam(struct net_device *netdev,
 
 	ring->rx_max_pending = rfds->max;
 	ring->tx_max_pending = cbs->max;
-	ring->rx_mini_max_pending = 0;
-	ring->rx_jumbo_max_pending = 0;
 	ring->rx_pending = rfds->count;
 	ring->tx_pending = cbs->count;
-	ring->rx_mini_pending = 0;
-	ring->rx_jumbo_pending = 0;
 }
 
 static int e100_set_ringparam(struct net_device *netdev,
@@ -2620,6 +2619,7 @@ static const char e100_gstrings_stats[][ETH_GSTRING_LEN] = {
 	"tx_deferred", "tx_single_collisions", "tx_multi_collisions",
 	"tx_flow_control_pause", "rx_flow_control_pause",
 	"rx_flow_control_unsupported", "tx_tco_packets", "rx_tco_packets",
+	"rx_short_frame_errors", "rx_over_length_errors",
 };
 #define E100_NET_STATS_LEN	21
 #define E100_STATS_LEN	ARRAY_SIZE(e100_gstrings_stats)
@@ -2653,6 +2653,8 @@ static void e100_get_ethtool_stats(struct net_device *netdev,
 	data[i++] = nic->rx_fc_unsupported;
 	data[i++] = nic->tx_tco_frames;
 	data[i++] = nic->rx_tco_frames;
+	data[i++] = nic->rx_short_frame_errors;
+	data[i++] = nic->rx_over_length_errors;
 }
 
 static void e100_get_strings(struct net_device *netdev, u32 stringset, u8 *data)
@@ -2753,11 +2755,8 @@ static int __devinit e100_probe(struct pci_dev *pdev,
 	struct nic *nic;
 	int err;
 
-	if (!(netdev = alloc_etherdev(sizeof(struct nic)))) {
-		if (((1 << debug) - 1) & NETIF_MSG_PROBE)
-			pr_err("Etherdev alloc failed, aborting\n");
+	if (!(netdev = alloc_etherdev(sizeof(struct nic))))
 		return -ENOMEM;
-	}
 
 	netdev->netdev_ops = &e100_netdev_ops;
 	SET_ETHTOOL_OPS(netdev, &e100_ethtool_ops);
@@ -2811,6 +2810,10 @@ static int __devinit e100_probe(struct pci_dev *pdev,
 		nic->flags &= ~ich;
 
 	e100_get_defaults(nic);
+
+	/* D100 MAC doesn't allow rx of vlan packets with normal MTU */
+	if (nic->mac < mac_82558_D101_A4)
+		netdev->features |= NETIF_F_VLAN_CHALLENGED;
 
 	/* locks must be initialized before calling hw_reset */
 	spin_lock_init(&nic->cb_lock);

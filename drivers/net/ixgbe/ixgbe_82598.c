@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -213,15 +213,15 @@ static s32 ixgbe_start_hw_82598(struct ixgbe_hw *hw)
 	for (i = 0; ((i < hw->mac.max_tx_queues) &&
 	     (i < IXGBE_DCA_MAX_QUEUES_82598)); i++) {
 		regval = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
-		regval &= ~IXGBE_DCA_TXCTRL_TX_WB_RO_EN;
+		regval &= ~IXGBE_DCA_TXCTRL_DESC_WRO_EN;
 		IXGBE_WRITE_REG(hw, IXGBE_DCA_TXCTRL(i), regval);
 	}
 
 	for (i = 0; ((i < hw->mac.max_rx_queues) &&
 	     (i < IXGBE_DCA_MAX_QUEUES_82598)); i++) {
 		regval = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
-		regval &= ~(IXGBE_DCA_RXCTRL_DESC_WRO_EN |
-			    IXGBE_DCA_RXCTRL_DESC_HSRO_EN);
+		regval &= ~(IXGBE_DCA_RXCTRL_DATA_WRO_EN |
+			    IXGBE_DCA_RXCTRL_HEAD_WRO_EN);
 		IXGBE_WRITE_REG(hw, IXGBE_DCA_RXCTRL(i), regval);
 	}
 
@@ -307,7 +307,6 @@ static enum ixgbe_media_type ixgbe_get_media_type_82598(struct ixgbe_hw *hw)
 	switch (hw->phy.type) {
 	case ixgbe_phy_cu_unknown:
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 		media_type = ixgbe_media_type_copper;
 		goto out;
 	default:
@@ -358,7 +357,6 @@ static s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw, s32 packetbuf_num)
 	u32 fctrl_reg;
 	u32 rmcs_reg;
 	u32 reg;
-	u32 rx_pba_size;
 	u32 link_speed = 0;
 	bool link_up;
 
@@ -461,16 +459,13 @@ static s32 ixgbe_fc_enable_82598(struct ixgbe_hw *hw, s32 packetbuf_num)
 
 	/* Set up and enable Rx high/low water mark thresholds, enable XON. */
 	if (hw->fc.current_mode & ixgbe_fc_tx_pause) {
-		rx_pba_size = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(packetbuf_num));
-		rx_pba_size >>= IXGBE_RXPBSIZE_SHIFT;
-
-		reg = (rx_pba_size - hw->fc.low_water) << 6;
+		reg = hw->fc.low_water << 6;
 		if (hw->fc.send_xon)
 			reg |= IXGBE_FCRTL_XONE;
 
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTL(packetbuf_num), reg);
 
-		reg = (rx_pba_size - hw->fc.high_water) << 6;
+		reg = hw->fc.high_water[packetbuf_num] << 6;
 		reg |= IXGBE_FCRTH_FCEN;
 
 		IXGBE_WRITE_REG(hw, IXGBE_FCRTH(packetbuf_num), reg);
@@ -654,11 +649,6 @@ static s32 ixgbe_check_mac_link_82598(struct ixgbe_hw *hw,
 	    (ixgbe_validate_link_ready(hw) != 0))
 		*link_up = false;
 
-	/* if link is down, zero out the current_mode */
-	if (*link_up == false) {
-		hw->fc.current_mode = ixgbe_fc_none;
-		hw->fc.fc_was_autonegged = false;
-	}
 out:
 	return 0;
 }
@@ -759,7 +749,9 @@ static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 	u8  analog_val;
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
-	hw->mac.ops.stop_adapter(hw);
+	status = hw->mac.ops.stop_adapter(hw);
+	if (status != 0)
+		goto reset_hw_out;
 
 	/*
 	 * Power up the Atlas Tx lanes if they are currently powered down.
@@ -802,26 +794,19 @@ static s32 ixgbe_reset_hw_82598(struct ixgbe_hw *hw)
 		phy_status = hw->phy.ops.init(hw);
 		if (phy_status == IXGBE_ERR_SFP_NOT_SUPPORTED)
 			goto reset_hw_out;
-		else if (phy_status == IXGBE_ERR_SFP_NOT_PRESENT)
-			goto no_phy_reset;
+		if (phy_status == IXGBE_ERR_SFP_NOT_PRESENT)
+			goto mac_reset_top;
 
 		hw->phy.ops.reset(hw);
 	}
-
-no_phy_reset:
-	/*
-	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
-	 * access and verify no pending requests before reset
-	 */
-	ixgbe_disable_pcie_master(hw);
 
 mac_reset_top:
 	/*
 	 * Issue global reset to the MAC.  This needs to be a SW reset.
 	 * If link reset is used, it might reset the MAC when mng is using it
 	 */
-	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL, (ctrl | IXGBE_CTRL_RST));
+	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL) | IXGBE_CTRL_RST;
+	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Poll for reset bit to self-clear indicating reset is complete */
@@ -836,20 +821,17 @@ mac_reset_top:
 		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
 
+	msleep(50);
+
 	/*
 	 * Double resets are required for recovery from certain error
 	 * conditions.  Between resets, it is necessary to stall to allow time
-	 * for any pending HW events to complete.  We use 1usec since that is
-	 * what is needed for ixgbe_disable_pcie_master().  The second reset
-	 * then clears out any effects of those events.
+	 * for any pending HW events to complete.
 	 */
 	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
 		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
-		udelay(1);
 		goto mac_reset_top;
 	}
-
-	msleep(50);
 
 	gheccr = IXGBE_READ_REG(hw, IXGBE_GHECCR);
 	gheccr &= ~((1 << 21) | (1 << 18) | (1 << 9) | (1 << 6));
@@ -1129,7 +1111,6 @@ static u32 ixgbe_get_supported_physical_layer_82598(struct ixgbe_hw *hw)
 	 * physical layer because 10GBase-T PHYs use LMS = KX4/KX */
 	switch (hw->phy.type) {
 	case ixgbe_phy_tn:
-	case ixgbe_phy_aq:
 	case ixgbe_phy_cu_unknown:
 		hw->phy.ops.read_reg(hw, MDIO_PMA_EXTABLE,
 		MDIO_MMD_PMAPMD, &ext_ability);
@@ -1324,6 +1305,8 @@ static struct ixgbe_mac_operations mac_ops_82598 = {
 static struct ixgbe_eeprom_operations eeprom_ops_82598 = {
 	.init_params		= &ixgbe_init_eeprom_params_generic,
 	.read			= &ixgbe_read_eerd_generic,
+	.write			= &ixgbe_write_eeprom_generic,
+	.write_buffer		= &ixgbe_write_eeprom_buffer_bit_bang_generic,
 	.read_buffer		= &ixgbe_read_eerd_buffer_generic,
 	.calc_checksum          = &ixgbe_calc_eeprom_checksum_generic,
 	.validate_checksum	= &ixgbe_validate_eeprom_checksum_generic,

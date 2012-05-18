@@ -563,7 +563,7 @@ int bnx2i_send_iscsi_nopout(struct bnx2i_conn *bnx2i_conn,
 	nopout_wqe->itt = ((u16)task->itt |
 			   (ISCSI_TASK_TYPE_MPATH <<
 			    ISCSI_TMF_REQUEST_TYPE_SHIFT));
-	nopout_wqe->ttt = nopout_hdr->ttt;
+	nopout_wqe->ttt = be32_to_cpu(nopout_hdr->ttt);
 	nopout_wqe->flags = 0;
 	if (!unsol)
 		nopout_wqe->flags = ISCSI_NOP_OUT_REQUEST_LOCAL_COMPLETION;
@@ -1312,14 +1312,18 @@ int bnx2i_send_fw_iscsi_init_msg(struct bnx2i_hba *hba)
 		  ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_EXP_DATASN) |
 		/* EMC */
 		(1ULL << ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_LUN));
-	if (error_mask1)
+	if (error_mask1) {
 		iscsi_init2.error_bit_map[0] = error_mask1;
-	else
+		mask64 &= (u32)(~mask64);
+		mask64 |= error_mask1;
+	} else
 		iscsi_init2.error_bit_map[0] = (u32) mask64;
 
-	if (error_mask2)
+	if (error_mask2) {
 		iscsi_init2.error_bit_map[1] = error_mask2;
-	else
+		mask64 &= 0xffffffff;
+		mask64 |= ((u64)error_mask2 << 32);
+	} else
 		iscsi_init2.error_bit_map[1] = (u32) (mask64 >> 32);
 
 	iscsi_error_mask = mask64;
@@ -1901,18 +1905,25 @@ static int bnx2i_queue_scsi_cmd_resp(struct iscsi_session *session,
 	struct iscsi_task *task;
 	struct scsi_cmnd *sc;
 	int rc = 0;
+	int cpu;
 
 	spin_lock(&session->lock);
 	task = iscsi_itt_to_task(bnx2i_conn->cls_conn->dd_data,
 				 cqe->itt & ISCSI_CMD_RESPONSE_INDEX);
-	if (!task) {
+	if (!task || !task->sc) {
 		spin_unlock(&session->lock);
 		return -EINVAL;
 	}
 	sc = task->sc;
+
+	if (!blk_rq_cpu_valid(sc->request))
+		cpu = smp_processor_id();
+	else
+		cpu = sc->request->cpu;
+
 	spin_unlock(&session->lock);
 
-	p = &per_cpu(bnx2i_percpu, sc->request->cpu);
+	p = &per_cpu(bnx2i_percpu, cpu);
 	spin_lock(&p->p_work_lock);
 	if (unlikely(!p->iothread)) {
 		rc = -EINVAL;

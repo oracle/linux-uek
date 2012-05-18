@@ -373,7 +373,7 @@ struct bnx2x_bd_chain_next {
 #define BNX2X_ISCSI_PBL_NOT_CACHED	0xff
 #define BNX2X_ISCSI_PDU_HEADER_NOT_CACHED	0xff
 
-#define BNX2X_FCOE_NUM_CONNECTIONS	128
+#define BNX2X_FCOE_NUM_CONNECTIONS	1024
 
 #define BNX2X_FCOE_L5_CID_BASE		MAX_ISCSI_TBL_SZ
 
@@ -473,6 +473,8 @@ struct bnx2x_bd_chain_next {
 	 ((BNX2X_CHIP_IS_E2_PLUS((cp)->chip_id)) ? MAX_STAT_COUNTER_ID_E2 :\
 	  MAX_STAT_COUNTER_ID_E1))
 #endif
+
+#define CNIC_RAMROD_TMO			(HZ / 4)
 
 #endif
 
