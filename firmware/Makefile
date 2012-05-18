@@ -120,6 +120,15 @@ fw-shipped-$(CONFIG_PCMCIA_PCNET) += cis/LA-PCM.cis cis/PCMLM28.cis \
 				     cis/PE520.cis
 fw-shipped-$(CONFIG_PCMCIA_3C589) += cis/3CXEM556.cis
 fw-shipped-$(CONFIG_PCMCIA_3C574) += cis/3CCFEM556.cis
+fw-shipped-$(CONFIG_R8169) += rtl_nic/rtl8105e-1.fw \
+			      rtl_nic/rtl8168d-1.fw \
+			      rtl_nic/rtl8168d-2.fw \
+			      rtl_nic/rtl8168e-1.fw \
+			      rtl_nic/rtl8168e-2.fw \
+			      rtl_nic/rtl8168e-3.fw \
+			      rtl_nic/rtl8168f-1.fw \
+			      rtl_nic/rtl8168f-2.fw
+
 fw-shipped-$(CONFIG_SERIAL_8250_CS) += cis/MT5634ZLX.cis cis/RS-COM-2P.cis \
 				       cis/COMpad2.cis cis/COMpad4.cis \
 				       cis/SW_555_SER.cis cis/SW_7xx_SER.cis \
