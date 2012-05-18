@@ -767,13 +767,40 @@ static int ib_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 	return IB_MAD_RESULT_SUCCESS | IB_MAD_RESULT_REPLY;
 }
 
-static void edit_counter(struct mlx4_counter *cnt,
-					struct ib_pma_portcounters *pma_cnt)
+static void edit_counter(struct mlx4_counter *cnt, void *counters,
+			 __be16	attr_id)
 {
-	pma_cnt->port_xmit_data = cpu_to_be32((be64_to_cpu(cnt->tx_bytes)>>2));
-	pma_cnt->port_rcv_data  = cpu_to_be32((be64_to_cpu(cnt->rx_bytes)>>2));
-	pma_cnt->port_xmit_packets = cpu_to_be32(be64_to_cpu(cnt->tx_frames));
-	pma_cnt->port_rcv_packets  = cpu_to_be32(be64_to_cpu(cnt->rx_frames));
+	switch (attr_id) {
+	case IB_PMA_PORT_COUNTERS:
+	{
+		struct ib_pma_portcounters *pma_cnt =
+				(struct ib_pma_portcounters *) counters;
+
+		pma_cnt->port_xmit_data =
+			cpu_to_be32((be64_to_cpu(cnt->tx_bytes) >> 2));
+		pma_cnt->port_rcv_data  =
+			cpu_to_be32((be64_to_cpu(cnt->rx_bytes) >> 2));
+		pma_cnt->port_xmit_packets =
+			cpu_to_be32(be64_to_cpu(cnt->tx_frames));
+		pma_cnt->port_rcv_packets  =
+			cpu_to_be32(be64_to_cpu(cnt->rx_frames));
+		break;
+	}
+	case IB_PMA_PORT_COUNTERS_EXT:
+	{
+		struct ib_pma_portcounters_ext *pma_cnt_ext =
+				(struct ib_pma_portcounters_ext *) counters;
+
+		pma_cnt_ext->port_xmit_data = cnt->tx_bytes >> 2;
+		pma_cnt_ext->port_rcv_data  = cnt->rx_bytes >> 2;
+		pma_cnt_ext->port_xmit_packets = cnt->tx_frames;
+		pma_cnt_ext->port_rcv_packets  = cnt->rx_frames;
+		break;
+	}
+	default:
+		printk(KERN_WARNING "Unsupported attr_id 0x%x\n", attr_id);
+		break;
+	}
 }
 
 static int iboe_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
@@ -804,7 +831,8 @@ static int iboe_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 		switch (mode & 0xf) {
 		case 0:
 			edit_counter(mailbox->buf,
-						(void *)(out_mad->data + 40));
+				     (void *)(out_mad->data + 40),
+				     in_mad->mad_hdr.attr_id);
 			err = IB_MAD_RESULT_SUCCESS | IB_MAD_RESULT_REPLY;
 			break;
 		default:
