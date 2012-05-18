@@ -931,7 +931,7 @@ static int bnx2x_acquire_nvram_lock(struct bnx2x *bp)
 {
 	int port = BP_PORT(bp);
 	int count, i;
-	u32 val;
+	u32 val = 0;
 
 	/* acquire HW lock: protect against other PFs in PF Direct Assignment */
 	bnx2x_acquire_hw_lock(bp, HW_LOCK_RESOURCE_NVRAM);
@@ -965,7 +965,7 @@ static int bnx2x_release_nvram_lock(struct bnx2x *bp)
 {
 	int port = BP_PORT(bp);
 	int count, i;
-	u32 val;
+	u32 val = 0;
 
 	/* adjust timeout for emulation/FPGA */
 	count = BNX2X_NVRAM_TIMEOUT_COUNT;
