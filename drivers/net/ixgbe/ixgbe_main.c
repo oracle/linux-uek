@@ -6662,7 +6662,7 @@ static __le32 ixgbe_tx_olinfo_status(u32 tx_flags, unsigned int paylen)
 		olinfo_status |= cpu_to_le32(IXGBE_ADVTXD_POPTS_TXSM);
 
 	/* enble IPv4 checksum for TSO */
-	if (tx_flags & IXGBE_TX_FLAGS_IPV4)
+	if ((tx_flags & IXGBE_TX_FLAGS_TSO) && (tx_flags & IXGBE_TX_FLAGS_IPV4))
 		olinfo_status |= cpu_to_le32(IXGBE_ADVTXD_POPTS_IXSM);
 
 	/* use index 1 context for TSO/FSO/FCOE */
