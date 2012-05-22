@@ -1455,6 +1455,7 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 		device = pd->device;
 	}
 
+	memset(&attr, 0, sizeof attr);
 	attr.event_handler = ib_uverbs_qp_event_handler;
 	attr.qp_context    = file;
 	attr.send_cq       = scq;
