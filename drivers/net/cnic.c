@@ -47,7 +47,7 @@
 #include "bnx2x/bnx2x_hsi.h"
 #include "../scsi/bnx2i/57xx_iscsi_constants.h"
 #include "../scsi/bnx2i/57xx_iscsi_hsi.h"
-#include "../scsi/bnx2i/bnx2fc_constants.h"
+#include "../scsi/bnx2fc/bnx2fc_constants.h"
 #include "cnic.h"
 #include "cnic_defs.h"
 
