@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.12.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,15 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed May 23 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.12.0.el6uek]
+- Revert "x86, efi: Pass a minimal map to SetVirtualAddressMap()" (Maxim
+  Uvarov) [Orabug: 14076004]
+- config: turn on CONFIG_HVC_XEN_FRONTEND (Maxim Uvarov) [Orabug: 14064174]
+- xen/hvc: Check HVM_PARAM_CONSOLE_[EVTCHN|PFN] for correctness. (Konrad
+  Rzeszutek Wilk)
+- xen/hvc: Fix error cases around HVM_PARAM_CONSOLE_PFN (Konrad Rzeszutek Wilk)
+- xen/hvc: Collapse error logic. (Konrad Rzeszutek Wilk)
+
 * Thu May 17 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.11.0.el6uek]
 - [dm] do not forward ioctls from logical volumes to the underlying device (Joe
   Jin)  {CVE-2011-4127}
