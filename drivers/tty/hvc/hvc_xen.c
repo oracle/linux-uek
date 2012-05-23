@@ -216,12 +216,12 @@ static int xen_hvm_console_init(void)
 		return 0;
 
 	r = hvm_get_parameter(HVM_PARAM_CONSOLE_EVTCHN, &v);
-	if (r < 0)
+	if (r < 0 || v == 0)
 		goto err;
 	info->evtchn = v;
 	v = 0;
 	r = hvm_get_parameter(HVM_PARAM_CONSOLE_PFN, &v);
-	if (r < 0)
+	if (r < 0 || v == 0)
 		goto err;
 	mfn = v;
 	info->intf = ioremap(mfn << PAGE_SHIFT, PAGE_SIZE);
