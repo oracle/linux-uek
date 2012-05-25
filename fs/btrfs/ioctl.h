@@ -354,16 +354,6 @@ struct btrfs_ioctl_timespec {
 	__u32 nsec;
 };
 
-struct btrfs_ioctl_received_subvol_args {
-	char	uuid[BTRFS_UUID_SIZE];	/* in */
-	__u64	stransid;		/* in */
-	__u64	rtransid;		/* out */
-	struct btrfs_ioctl_timespec stime; /* in */
-	struct btrfs_ioctl_timespec rtime; /* out */
-	__u64	flags;			/* in */
-	__u64	reserved[16];		/* in */
-};
-
 #define BTRFS_IOC_SNAP_CREATE _IOW(BTRFS_IOCTL_MAGIC, 1, \
 				   struct btrfs_ioctl_vol_args)
 #define BTRFS_IOC_DEFRAG _IOW(BTRFS_IOCTL_MAGIC, 2, \
