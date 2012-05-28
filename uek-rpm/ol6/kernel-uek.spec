@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.12.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.13.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,12 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon May 28 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.13.0.el6uek]
+- drm/i915: fix integer overflow in i915_gem_do_execbuffer() (Xi Wang) [Orabug:
+  14107456] {CVE-2012-2384}
+- drm/i915: fix integer overflow in i915_gem_execbuffer2() (Xi Wang) [Orabug:
+  14107445] {CVE-2012-2383}
+
 * Wed May 23 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.12.0.el6uek]
 - Revert "x86, efi: Pass a minimal map to SetVirtualAddressMap()" (Maxim
   Uvarov) [Orabug: 14076004]
