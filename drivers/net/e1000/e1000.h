@@ -150,6 +150,8 @@ struct e1000_buffer {
 	unsigned long time_stamp;
 	u16 length;
 	u16 next_to_watch;
+	unsigned int segs;
+	unsigned int bytecount;
 	u16 mapped_as_page;
 };
 
@@ -212,9 +214,6 @@ struct e1000_rx_ring {
 /* board specific private data structure */
 
 struct e1000_adapter {
-	struct timer_list tx_fifo_stall_timer;
-	struct timer_list watchdog_timer;
-	struct timer_list phy_info_timer;
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
 	u16 mng_vlan_id;
 	u32 bd_number;
@@ -235,7 +234,6 @@ struct e1000_adapter {
 	u16 tx_itr;
 	u16 rx_itr;
 
-	struct work_struct reset_task;
 	u8 fc_autoneg;
 
 	/* TX */
@@ -256,6 +254,7 @@ struct e1000_adapter {
 	atomic_t tx_fifo_stall;
 	bool pcix_82544;
 	bool detect_tx_hung;
+	bool dump_buffers;
 
 	/* RX */
 	bool (*clean_rx)(struct e1000_adapter *adapter,
@@ -308,8 +307,12 @@ struct e1000_adapter {
 
 	bool discarding;
 
-	struct work_struct fifo_stall_task;
-	struct work_struct phy_info_task;
+	struct work_struct reset_task;
+	struct delayed_work watchdog_task;
+	struct delayed_work fifo_stall_task;
+	struct delayed_work phy_info_task;
+
+	struct mutex mutex;
 };
 
 enum e1000_state_t {

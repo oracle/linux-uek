@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 82576 Virtual Function Linux driver
-  Copyright(c) 2009 - 2010 Intel Corporation.
+  Copyright(c) 2009 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -128,55 +128,6 @@ static int igbvf_set_pauseparam(struct net_device *netdev,
 	return -EOPNOTSUPP;
 }
 
-static u32 igbvf_get_rx_csum(struct net_device *netdev)
-{
-	struct igbvf_adapter *adapter = netdev_priv(netdev);
-	return !(adapter->flags & IGBVF_FLAG_RX_CSUM_DISABLED);
-}
-
-static int igbvf_set_rx_csum(struct net_device *netdev, u32 data)
-{
-	struct igbvf_adapter *adapter = netdev_priv(netdev);
-
-	if (data)
-		adapter->flags &= ~IGBVF_FLAG_RX_CSUM_DISABLED;
-	else
-		adapter->flags |= IGBVF_FLAG_RX_CSUM_DISABLED;
-
-	return 0;
-}
-
-static u32 igbvf_get_tx_csum(struct net_device *netdev)
-{
-	return (netdev->features & NETIF_F_IP_CSUM) != 0;
-}
-
-static int igbvf_set_tx_csum(struct net_device *netdev, u32 data)
-{
-	if (data)
-		netdev->features |= (NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-	else
-		netdev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-	return 0;
-}
-
-static int igbvf_set_tso(struct net_device *netdev, u32 data)
-{
-	struct igbvf_adapter *adapter = netdev_priv(netdev);
-
-	if (data) {
-		netdev->features |= NETIF_F_TSO;
-		netdev->features |= NETIF_F_TSO6;
-	} else {
-		netdev->features &= ~NETIF_F_TSO;
-		netdev->features &= ~NETIF_F_TSO6;
-	}
-
-	dev_info(&adapter->pdev->dev, "TSO is %s\n",
-	         data ? "Enabled" : "Disabled");
-	return 0;
-}
-
 static u32 igbvf_get_msglevel(struct net_device *netdev)
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
@@ -259,12 +210,8 @@ static void igbvf_get_ringparam(struct net_device *netdev,
 
 	ring->rx_max_pending = IGBVF_MAX_RXD;
 	ring->tx_max_pending = IGBVF_MAX_TXD;
-	ring->rx_mini_max_pending = 0;
-	ring->rx_jumbo_max_pending = 0;
 	ring->rx_pending = rx_ring->count;
 	ring->tx_pending = tx_ring->count;
-	ring->rx_mini_pending = 0;
-	ring->rx_jumbo_pending = 0;
 }
 
 static int igbvf_set_ringparam(struct net_device *netdev,
@@ -396,10 +343,10 @@ static int igbvf_get_coalesce(struct net_device *netdev,
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 
-	if (adapter->itr_setting <= 3)
-		ec->rx_coalesce_usecs = adapter->itr_setting;
+	if (adapter->requested_itr <= 3)
+		ec->rx_coalesce_usecs = adapter->requested_itr;
 	else
-		ec->rx_coalesce_usecs = adapter->itr_setting >> 2;
+		ec->rx_coalesce_usecs = adapter->current_itr >> 2;
 
 	return 0;
 }
@@ -418,15 +365,16 @@ static int igbvf_set_coalesce(struct net_device *netdev,
 
 	/* convert to rate of irq's per second */
 	if (ec->rx_coalesce_usecs && ec->rx_coalesce_usecs <= 3) {
-		adapter->itr = IGBVF_START_ITR;
-		adapter->itr_setting = ec->rx_coalesce_usecs;
+		adapter->current_itr = IGBVF_START_ITR;
+		adapter->requested_itr = ec->rx_coalesce_usecs;
 	} else {
-		adapter->itr = ec->rx_coalesce_usecs << 2;
-		adapter->itr_setting = adapter->itr;
+		adapter->current_itr = ec->rx_coalesce_usecs << 2;
+		adapter->requested_itr = 1000000000 /
+					(adapter->current_itr * 256);
 	}
 
-	writel(adapter->itr,
-	       hw->hw_addr + adapter->rx_ring[0].itr_register);
+	writel(adapter->current_itr,
+	       hw->hw_addr + adapter->rx_ring->itr_register);
 
 	return 0;
 }
@@ -511,14 +459,6 @@ static const struct ethtool_ops igbvf_ethtool_ops = {
 	.set_ringparam		= igbvf_set_ringparam,
 	.get_pauseparam		= igbvf_get_pauseparam,
 	.set_pauseparam		= igbvf_set_pauseparam,
-	.get_rx_csum            = igbvf_get_rx_csum,
-	.set_rx_csum            = igbvf_set_rx_csum,
-	.get_tx_csum		= igbvf_get_tx_csum,
-	.set_tx_csum		= igbvf_set_tx_csum,
-	.get_sg			= ethtool_op_get_sg,
-	.set_sg			= ethtool_op_set_sg,
-	.get_tso		= ethtool_op_get_tso,
-	.set_tso		= igbvf_set_tso,
 	.self_test		= igbvf_diag_test,
 	.get_sset_count		= igbvf_get_sset_count,
 	.get_strings		= igbvf_get_strings,
@@ -529,6 +469,5 @@ static const struct ethtool_ops igbvf_ethtool_ops = {
 
 void igbvf_set_ethtool_ops(struct net_device *netdev)
 {
-	/* have to "undeclare" const on this struct to remove warnings */
-	SET_ETHTOOL_OPS(netdev, (struct ethtool_ops *)&igbvf_ethtool_ops);
+	SET_ETHTOOL_OPS(netdev, &igbvf_ethtool_ops);
 }

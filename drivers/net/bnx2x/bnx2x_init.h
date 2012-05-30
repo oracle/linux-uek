@@ -1,7 +1,7 @@
 /* bnx2x_init.h: Broadcom Everest network driver.
  *               Structures and macroes needed during the initialization.
  *
- * Copyright (c) 2007-2011 Broadcom Corporation
+ * Copyright (c) 2007-2012 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -128,11 +128,10 @@ enum {
 	MODE_MF_NIV                    = 0x00000800,
 	MODE_E3_A0                     = 0x00001000,
 	MODE_E3_B0                     = 0x00002000,
-	MODE_COS_BC                    = 0x00004000,
-	MODE_COS3                      = 0x00008000,
-	MODE_COS6                      = 0x00010000,
-	MODE_LITTLE_ENDIAN             = 0x00020000,
-	MODE_BIG_ENDIAN                = 0x00040000,
+	MODE_COS3                      = 0x00004000,
+	MODE_COS6                      = 0x00008000,
+	MODE_LITTLE_ENDIAN             = 0x00010000,
+	MODE_BIG_ENDIAN                = 0x00020000,
 };
 
 /* Init Blocks */
@@ -179,7 +178,7 @@ enum {
 #define BNX2X_TOE_Q		3
 #define BNX2X_TOE_ACK_Q		6
 #define BNX2X_ISCSI_Q		9
-#define BNX2X_ISCSI_ACK_Q	8
+#define BNX2X_ISCSI_ACK_Q	11
 #define BNX2X_FCOE_Q		10
 
 /* Vnics per mode */
@@ -257,14 +256,16 @@ static inline void bnx2x_map_q_cos(struct bnx2x *bp, u32 q_num, u32 new_cos)
 }
 
 /* Configures the QM according to the specified per-traffic-type COSes */
-static inline void bnx2x_dcb_config_qm(struct bnx2x *bp,
+static inline void bnx2x_dcb_config_qm(struct bnx2x *bp, enum cos_mode mode,
 				       struct priority_cos *traffic_cos)
 {
 	bnx2x_map_q_cos(bp, BNX2X_FCOE_Q,
 			traffic_cos[LLFC_TRAFFIC_TYPE_FCOE].cos);
 	bnx2x_map_q_cos(bp, BNX2X_ISCSI_Q,
 			traffic_cos[LLFC_TRAFFIC_TYPE_ISCSI].cos);
-	if (INIT_MODE_FLAGS(bp) & MODE_COS_BC) {
+	bnx2x_map_q_cos(bp, BNX2X_ISCSI_ACK_Q,
+		traffic_cos[LLFC_TRAFFIC_TYPE_ISCSI].cos);
+	if (mode != STATIC_COS) {
 		/* required only in backward compatible COS mode */
 		bnx2x_map_q_cos(bp, BNX2X_ETH_Q,
 				traffic_cos[LLFC_TRAFFIC_TYPE_NW].cos);
@@ -272,8 +273,6 @@ static inline void bnx2x_dcb_config_qm(struct bnx2x *bp,
 				traffic_cos[LLFC_TRAFFIC_TYPE_NW].cos);
 		bnx2x_map_q_cos(bp, BNX2X_TOE_ACK_Q,
 				traffic_cos[LLFC_TRAFFIC_TYPE_NW].cos);
-		bnx2x_map_q_cos(bp, BNX2X_ISCSI_ACK_Q,
-				traffic_cos[LLFC_TRAFFIC_TYPE_ISCSI].cos);
 	}
 }
 
@@ -327,25 +326,25 @@ struct src_ent {
 /****************************************************************************
 * Parity configuration
 ****************************************************************************/
-#define BLOCK_PRTY_INFO(block, en_mask, m1, m1h, m2) \
+#define BLOCK_PRTY_INFO(block, en_mask, m1, m1h, m2, m3) \
 { \
 	block##_REG_##block##_PRTY_MASK, \
 	block##_REG_##block##_PRTY_STS_CLR, \
-	en_mask, {m1, m1h, m2}, #block \
+	en_mask, {m1, m1h, m2, m3}, #block \
 }
 
-#define BLOCK_PRTY_INFO_0(block, en_mask, m1, m1h, m2) \
+#define BLOCK_PRTY_INFO_0(block, en_mask, m1, m1h, m2, m3) \
 { \
 	block##_REG_##block##_PRTY_MASK_0, \
 	block##_REG_##block##_PRTY_STS_CLR_0, \
-	en_mask, {m1, m1h, m2}, #block"_0" \
+	en_mask, {m1, m1h, m2, m3}, #block"_0" \
 }
 
-#define BLOCK_PRTY_INFO_1(block, en_mask, m1, m1h, m2) \
+#define BLOCK_PRTY_INFO_1(block, en_mask, m1, m1h, m2, m3) \
 { \
 	block##_REG_##block##_PRTY_MASK_1, \
 	block##_REG_##block##_PRTY_STS_CLR_1, \
-	en_mask, {m1, m1h, m2}, #block"_1" \
+	en_mask, {m1, m1h, m2, m3}, #block"_1" \
 }
 
 static const struct {
@@ -356,6 +355,7 @@ static const struct {
 		u32 e1;		/* 57710 */
 		u32 e1h;	/* 57711 */
 		u32 e2;		/* 57712 */
+		u32 e3;		/* 578xx */
 	} reg_mask;		/* Register mask (all valid bits) */
 	char name[7];		/* Block's longest name is 6 characters long
 				 * (name + suffix)
@@ -373,48 +373,56 @@ static const struct {
 	/* Block IGU, MISC, PXP and PXP2 parity errors as long as we don't
 	 * want to handle "system kill" flow at the moment.
 	 */
-	BLOCK_PRTY_INFO(PXP, 0x7ffffff, 0x3ffffff, 0x3ffffff, 0x7ffffff),
-	BLOCK_PRTY_INFO_0(PXP2,	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff),
-	BLOCK_PRTY_INFO_1(PXP2,	0x7ff, 0x7f, 0x7f, 0x7ff),
-	BLOCK_PRTY_INFO(HC, 0x7, 0x7, 0x7, 0),
-	BLOCK_PRTY_INFO(NIG, 0xffffffff, 0x3fffffff, 0xffffffff, 0),
-	BLOCK_PRTY_INFO_0(NIG,	0xffffffff, 0, 0, 0xffffffff),
-	BLOCK_PRTY_INFO_1(NIG,	0xffff, 0, 0, 0xffff),
-	BLOCK_PRTY_INFO(IGU, 0x7ff, 0, 0, 0x7ff),
-	BLOCK_PRTY_INFO(MISC, 0x1, 0x1, 0x1, 0x1),
-	BLOCK_PRTY_INFO(QM, 0, 0x1ff, 0xfff, 0xfff),
-	BLOCK_PRTY_INFO(DORQ, 0, 0x3, 0x3, 0x3),
+	BLOCK_PRTY_INFO(PXP, 0x7ffffff, 0x3ffffff, 0x3ffffff, 0x7ffffff,
+			0x7ffffff),
+	BLOCK_PRTY_INFO_0(PXP2,	0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
+			  0xffffffff),
+	BLOCK_PRTY_INFO_1(PXP2,	0x1ffffff, 0x7f, 0x7f, 0x7ff, 0x1ffffff),
+	BLOCK_PRTY_INFO(HC, 0x7, 0x7, 0x7, 0, 0),
+	BLOCK_PRTY_INFO(NIG, 0xffffffff, 0x3fffffff, 0xffffffff, 0, 0),
+	BLOCK_PRTY_INFO_0(NIG,	0xffffffff, 0, 0, 0xffffffff, 0xffffffff),
+	BLOCK_PRTY_INFO_1(NIG,	0xffff, 0, 0, 0xff, 0xffff),
+	BLOCK_PRTY_INFO(IGU, 0x7ff, 0, 0, 0x7ff, 0x7ff),
+	BLOCK_PRTY_INFO(MISC, 0x1, 0x1, 0x1, 0x1, 0x1),
+	BLOCK_PRTY_INFO(QM, 0, 0x1ff, 0xfff, 0xfff, 0xfff),
+	BLOCK_PRTY_INFO(ATC, 0x1f, 0, 0, 0x1f, 0x1f),
+	BLOCK_PRTY_INFO(PGLUE_B, 0x3, 0, 0, 0x3, 0x3),
+	BLOCK_PRTY_INFO(DORQ, 0, 0x3, 0x3, 0x3, 0x3),
 	{GRCBASE_UPB + PB_REG_PB_PRTY_MASK,
 		GRCBASE_UPB + PB_REG_PB_PRTY_STS_CLR, 0xf,
-		{0xf, 0xf, 0xf}, "UPB"},
+		{0xf, 0xf, 0xf, 0xf}, "UPB"},
 	{GRCBASE_XPB + PB_REG_PB_PRTY_MASK,
 		GRCBASE_XPB + PB_REG_PB_PRTY_STS_CLR, 0,
-		{0xf, 0xf, 0xf}, "XPB"},
-	BLOCK_PRTY_INFO(SRC, 0x4, 0x7, 0x7, 0x7),
-	BLOCK_PRTY_INFO(CDU, 0, 0x1f, 0x1f, 0x1f),
-	BLOCK_PRTY_INFO(CFC, 0, 0xf, 0xf, 0xf),
-	BLOCK_PRTY_INFO(DBG, 0, 0x1, 0x1, 0x1),
-	BLOCK_PRTY_INFO(DMAE, 0, 0xf, 0xf, 0xf),
-	BLOCK_PRTY_INFO(BRB1, 0, 0xf, 0xf, 0xf),
-	BLOCK_PRTY_INFO(PRS, (1<<6), 0xff, 0xff, 0xff),
-	BLOCK_PRTY_INFO(PBF, 0, 0, 0x3ffff, 0xfffffff),
-	BLOCK_PRTY_INFO(TM, 0, 0, 0x7f, 0x7f),
-	BLOCK_PRTY_INFO(TSDM, 0x18, 0x7ff, 0x7ff, 0x7ff),
-	BLOCK_PRTY_INFO(CSDM, 0x8, 0x7ff, 0x7ff, 0x7ff),
-	BLOCK_PRTY_INFO(USDM, 0x38, 0x7ff, 0x7ff, 0x7ff),
-	BLOCK_PRTY_INFO(XSDM, 0x8, 0x7ff, 0x7ff, 0x7ff),
-	BLOCK_PRTY_INFO(TCM, 0, 0, 0x7ffffff, 0x7ffffff),
-	BLOCK_PRTY_INFO(CCM, 0, 0, 0x7ffffff, 0x7ffffff),
-	BLOCK_PRTY_INFO(UCM, 0, 0, 0x7ffffff, 0x7ffffff),
-	BLOCK_PRTY_INFO(XCM, 0, 0, 0x3fffffff, 0x3fffffff),
-	BLOCK_PRTY_INFO_0(TSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff),
-	BLOCK_PRTY_INFO_1(TSEM, 0, 0x3, 0x1f, 0x3f),
-	BLOCK_PRTY_INFO_0(USEM, 0, 0xffffffff, 0xffffffff, 0xffffffff),
-	BLOCK_PRTY_INFO_1(USEM, 0, 0x3, 0x1f, 0x1f),
-	BLOCK_PRTY_INFO_0(CSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff),
-	BLOCK_PRTY_INFO_1(CSEM, 0, 0x3, 0x1f, 0x1f),
-	BLOCK_PRTY_INFO_0(XSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff),
-	BLOCK_PRTY_INFO_1(XSEM, 0, 0x3, 0x1f, 0x3f),
+		{0xf, 0xf, 0xf, 0xf}, "XPB"},
+	BLOCK_PRTY_INFO(SRC, 0x4, 0x7, 0x7, 0x7, 0x7),
+	BLOCK_PRTY_INFO(CDU, 0, 0x1f, 0x1f, 0x1f, 0x1f),
+	BLOCK_PRTY_INFO(CFC, 0, 0xf, 0xf, 0xf, 0x3f),
+	BLOCK_PRTY_INFO(DBG, 0, 0x1, 0x1, 0x1, 0x1),
+	BLOCK_PRTY_INFO(DMAE, 0, 0xf, 0xf, 0xf, 0xf),
+	BLOCK_PRTY_INFO(BRB1, 0, 0xf, 0xf, 0xf, 0xf),
+	BLOCK_PRTY_INFO(PRS, (1<<6), 0xff, 0xff, 0xff, 0xff),
+	BLOCK_PRTY_INFO(PBF, 0, 0, 0x3ffff, 0xfffff, 0xfffffff),
+	BLOCK_PRTY_INFO(TM, 0, 0, 0x7f, 0x7f, 0x7f),
+	BLOCK_PRTY_INFO(TSDM, 0x18, 0x7ff, 0x7ff, 0x7ff, 0x7ff),
+	BLOCK_PRTY_INFO(CSDM, 0x8, 0x7ff, 0x7ff, 0x7ff, 0x7ff),
+	BLOCK_PRTY_INFO(USDM, 0x38, 0x7ff, 0x7ff, 0x7ff, 0x7ff),
+	BLOCK_PRTY_INFO(XSDM, 0x8, 0x7ff, 0x7ff, 0x7ff, 0x7ff),
+	BLOCK_PRTY_INFO(TCM, 0, 0, 0x7ffffff, 0x7ffffff, 0x7ffffff),
+	BLOCK_PRTY_INFO(CCM, 0, 0, 0x7ffffff, 0x7ffffff, 0x7ffffff),
+	BLOCK_PRTY_INFO(UCM, 0, 0, 0x7ffffff, 0x7ffffff, 0x7ffffff),
+	BLOCK_PRTY_INFO(XCM, 0, 0, 0x3fffffff, 0x3fffffff, 0x3fffffff),
+	BLOCK_PRTY_INFO_0(TSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff,
+			  0xffffffff),
+	BLOCK_PRTY_INFO_1(TSEM, 0, 0x3, 0x1f, 0x3f, 0x3f),
+	BLOCK_PRTY_INFO_0(USEM, 0, 0xffffffff, 0xffffffff, 0xffffffff,
+			  0xffffffff),
+	BLOCK_PRTY_INFO_1(USEM, 0, 0x3, 0x1f, 0x1f, 0x1f),
+	BLOCK_PRTY_INFO_0(CSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff,
+			  0xffffffff),
+	BLOCK_PRTY_INFO_1(CSEM, 0, 0x3, 0x1f, 0x1f, 0x1f),
+	BLOCK_PRTY_INFO_0(XSEM, 0, 0xffffffff, 0xffffffff, 0xffffffff,
+			  0xffffffff),
+	BLOCK_PRTY_INFO_1(XSEM, 0, 0x3, 0x1f, 0x3f, 0x3f),
 };
 
 
@@ -465,8 +473,10 @@ static inline u32 bnx2x_parity_reg_mask(struct bnx2x *bp, int idx)
 		return bnx2x_blocks_parity_data[idx].reg_mask.e1;
 	else if (CHIP_IS_E1H(bp))
 		return bnx2x_blocks_parity_data[idx].reg_mask.e1h;
-	else
+	else if (CHIP_IS_E2(bp))
 		return bnx2x_blocks_parity_data[idx].reg_mask.e2;
+	else /* CHIP_IS_E3 */
+		return bnx2x_blocks_parity_data[idx].reg_mask.e3;
 }
 
 static inline void bnx2x_disable_blocks_parity(struct bnx2x *bp)

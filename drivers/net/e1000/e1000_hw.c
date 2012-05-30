@@ -5253,6 +5253,78 @@ static s32 e1000_check_downshift(struct e1000_hw *hw)
 	return E1000_SUCCESS;
 }
 
+static const u16 dsp_reg_array[IGP01E1000_PHY_CHANNEL_NUM] = {
+	IGP01E1000_PHY_AGC_PARAM_A,
+	IGP01E1000_PHY_AGC_PARAM_B,
+	IGP01E1000_PHY_AGC_PARAM_C,
+	IGP01E1000_PHY_AGC_PARAM_D
+};
+
+static s32 e1000_1000Mb_check_cable_length(struct e1000_hw *hw)
+{
+	u16 min_length, max_length;
+	u16 phy_data, i;
+	s32 ret_val;
+
+	ret_val = e1000_get_cable_length(hw, &min_length, &max_length);
+	if (ret_val)
+		return ret_val;
+
+	if (hw->dsp_config_state != e1000_dsp_config_enabled)
+		return 0;
+
+	if (min_length >= e1000_igp_cable_length_50) {
+		for (i = 0; i < IGP01E1000_PHY_CHANNEL_NUM; i++) {
+			ret_val = e1000_read_phy_reg(hw, dsp_reg_array[i],
+						     &phy_data);
+			if (ret_val)
+				return ret_val;
+
+			phy_data &= ~IGP01E1000_PHY_EDAC_MU_INDEX;
+
+			ret_val = e1000_write_phy_reg(hw, dsp_reg_array[i],
+						      phy_data);
+			if (ret_val)
+				return ret_val;
+		}
+		hw->dsp_config_state = e1000_dsp_config_activated;
+	} else {
+		u16 ffe_idle_err_timeout = FFE_IDLE_ERR_COUNT_TIMEOUT_20;
+		u32 idle_errs = 0;
+
+		/* clear previous idle error counts */
+		ret_val = e1000_read_phy_reg(hw, PHY_1000T_STATUS, &phy_data);
+		if (ret_val)
+			return ret_val;
+
+		for (i = 0; i < ffe_idle_err_timeout; i++) {
+			udelay(1000);
+			ret_val = e1000_read_phy_reg(hw, PHY_1000T_STATUS,
+						     &phy_data);
+			if (ret_val)
+				return ret_val;
+
+			idle_errs += (phy_data & SR_1000T_IDLE_ERROR_CNT);
+			if (idle_errs > SR_1000T_PHY_EXCESSIVE_IDLE_ERR_COUNT) {
+				hw->ffe_config_state = e1000_ffe_config_active;
+
+				ret_val = e1000_write_phy_reg(hw,
+					      IGP01E1000_PHY_DSP_FFE,
+					      IGP01E1000_PHY_DSP_FFE_CM_CP);
+				if (ret_val)
+					return ret_val;
+				break;
+			}
+
+			if (idle_errs)
+				ffe_idle_err_timeout =
+					    FFE_IDLE_ERR_COUNT_TIMEOUT_100;
+		}
+	}
+
+	return 0;
+}
+
 /**
  * e1000_config_dsp_after_link_change
  * @hw: Struct containing variables accessed by shared code
@@ -5269,13 +5341,6 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 {
 	s32 ret_val;
 	u16 phy_data, phy_saved_data, speed, duplex, i;
-	static const u16 dsp_reg_array[IGP01E1000_PHY_CHANNEL_NUM] = {
-	       IGP01E1000_PHY_AGC_PARAM_A,
-	       IGP01E1000_PHY_AGC_PARAM_B,
-	       IGP01E1000_PHY_AGC_PARAM_C,
-	       IGP01E1000_PHY_AGC_PARAM_D
-	};
-	u16 min_length, max_length;
 
 	e_dbg("e1000_config_dsp_after_link_change");
 
@@ -5290,84 +5355,9 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 		}
 
 		if (speed == SPEED_1000) {
-
-			ret_val =
-			    e1000_get_cable_length(hw, &min_length,
-						   &max_length);
+			ret_val = e1000_1000Mb_check_cable_length(hw);
 			if (ret_val)
 				return ret_val;
-
-			if ((hw->dsp_config_state == e1000_dsp_config_enabled)
-			    && min_length >= e1000_igp_cable_length_50) {
-
-				for (i = 0; i < IGP01E1000_PHY_CHANNEL_NUM; i++) {
-					ret_val =
-					    e1000_read_phy_reg(hw,
-							       dsp_reg_array[i],
-							       &phy_data);
-					if (ret_val)
-						return ret_val;
-
-					phy_data &=
-					    ~IGP01E1000_PHY_EDAC_MU_INDEX;
-
-					ret_val =
-					    e1000_write_phy_reg(hw,
-								dsp_reg_array
-								[i], phy_data);
-					if (ret_val)
-						return ret_val;
-				}
-				hw->dsp_config_state =
-				    e1000_dsp_config_activated;
-			}
-
-			if ((hw->ffe_config_state == e1000_ffe_config_enabled)
-			    && (min_length < e1000_igp_cable_length_50)) {
-
-				u16 ffe_idle_err_timeout =
-				    FFE_IDLE_ERR_COUNT_TIMEOUT_20;
-				u32 idle_errs = 0;
-
-				/* clear previous idle error counts */
-				ret_val =
-				    e1000_read_phy_reg(hw, PHY_1000T_STATUS,
-						       &phy_data);
-				if (ret_val)
-					return ret_val;
-
-				for (i = 0; i < ffe_idle_err_timeout; i++) {
-					udelay(1000);
-					ret_val =
-					    e1000_read_phy_reg(hw,
-							       PHY_1000T_STATUS,
-							       &phy_data);
-					if (ret_val)
-						return ret_val;
-
-					idle_errs +=
-					    (phy_data &
-					     SR_1000T_IDLE_ERROR_CNT);
-					if (idle_errs >
-					    SR_1000T_PHY_EXCESSIVE_IDLE_ERR_COUNT)
-					{
-						hw->ffe_config_state =
-						    e1000_ffe_config_active;
-
-						ret_val =
-						    e1000_write_phy_reg(hw,
-									IGP01E1000_PHY_DSP_FFE,
-									IGP01E1000_PHY_DSP_FFE_CM_CP);
-						if (ret_val)
-							return ret_val;
-						break;
-					}
-
-					if (idle_errs)
-						ffe_idle_err_timeout =
-						    FFE_IDLE_ERR_COUNT_TIMEOUT_100;
-				}
-			}
 		}
 	} else {
 		if (hw->dsp_config_state == e1000_dsp_config_activated) {
@@ -5385,7 +5375,7 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 			if (ret_val)
 				return ret_val;
 
-			mdelay(20);
+			msleep(20);
 
 			ret_val = e1000_write_phy_reg(hw, 0x0000,
 						      IGP01E1000_IEEE_FORCE_GIGA);
@@ -5413,7 +5403,7 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 			if (ret_val)
 				return ret_val;
 
-			mdelay(20);
+			msleep(20);
 
 			/* Now enable the transmitter */
 			ret_val =
@@ -5440,7 +5430,7 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 			if (ret_val)
 				return ret_val;
 
-			mdelay(20);
+			msleep(20);
 
 			ret_val = e1000_write_phy_reg(hw, 0x0000,
 						      IGP01E1000_IEEE_FORCE_GIGA);
@@ -5457,7 +5447,7 @@ static s32 e1000_config_dsp_after_link_change(struct e1000_hw *hw, bool link_up)
 			if (ret_val)
 				return ret_val;
 
-			mdelay(20);
+			msleep(20);
 
 			/* Now enable the transmitter */
 			ret_val =
@@ -5750,26 +5740,26 @@ static s32 e1000_polarity_reversal_workaround(struct e1000_hw *hw)
 
 		if ((mii_status_reg & ~MII_SR_LINK_STATUS) == 0)
 			break;
-		mdelay(100);
+		msleep(100);
 	}
 
 	/* Recommended delay time after link has been lost */
-	mdelay(1000);
+	msleep(1000);
 
 	/* Now we will re-enable th transmitter on the PHY */
 
 	ret_val = e1000_write_phy_reg(hw, M88E1000_PHY_PAGE_SELECT, 0x0019);
 	if (ret_val)
 		return ret_val;
-	mdelay(50);
+	msleep(50);
 	ret_val = e1000_write_phy_reg(hw, M88E1000_PHY_GEN_CONTROL, 0xFFF0);
 	if (ret_val)
 		return ret_val;
-	mdelay(50);
+	msleep(50);
 	ret_val = e1000_write_phy_reg(hw, M88E1000_PHY_GEN_CONTROL, 0xFF00);
 	if (ret_val)
 		return ret_val;
-	mdelay(50);
+	msleep(50);
 	ret_val = e1000_write_phy_reg(hw, M88E1000_PHY_GEN_CONTROL, 0x0000);
 	if (ret_val)
 		return ret_val;
@@ -5794,7 +5784,7 @@ static s32 e1000_polarity_reversal_workaround(struct e1000_hw *hw)
 
 		if (mii_status_reg & MII_SR_LINK_STATUS)
 			break;
-		mdelay(100);
+		msleep(100);
 	}
 	return E1000_SUCCESS;
 }
@@ -5825,6 +5815,6 @@ static s32 e1000_get_auto_rd_done(struct e1000_hw *hw)
 static s32 e1000_get_phy_cfg_done(struct e1000_hw *hw)
 {
 	e_dbg("e1000_get_phy_cfg_done");
-	mdelay(10);
+	msleep(10);
 	return E1000_SUCCESS;
 }

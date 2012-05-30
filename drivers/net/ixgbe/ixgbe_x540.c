@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -93,78 +93,46 @@ static s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw,
  **/
 static s32 ixgbe_reset_hw_X540(struct ixgbe_hw *hw)
 {
-	ixgbe_link_speed link_speed;
-	s32 status = 0;
-	u32 ctrl;
-	u32 ctrl_ext;
-	u32 reset_bit;
-	u32 i;
-	u32 autoc;
-	u32 autoc2;
-	bool link_up = false;
+	s32 status;
+	u32 ctrl, i;
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
-	hw->mac.ops.stop_adapter(hw);
+	status = hw->mac.ops.stop_adapter(hw);
+	if (status != 0)
+		goto reset_hw_out;
 
-	/*
-	 * Prevent the PCI-E bus from from hanging by disabling PCI-E master
-	 * access and verify no pending requests before reset
-	 */
-	ixgbe_disable_pcie_master(hw);
+	/* flush pending Tx transactions */
+	ixgbe_clear_tx_pending(hw);
 
 mac_reset_top:
-	/*
-	 * Issue global reset to the MAC.  Needs to be SW reset if link is up.
-	 * If link reset is used when link is up, it might reset the PHY when
-	 * mng is using it.  If link is down or the flag to force full link
-	 * reset is set, then perform link reset.
-	 */
-	if (hw->force_full_reset) {
-		reset_bit = IXGBE_CTRL_LNK_RST;
-	} else {
-		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
-		if (!link_up)
-			reset_bit = IXGBE_CTRL_LNK_RST;
-		else
-			reset_bit = IXGBE_CTRL_RST;
-	}
-
-	ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL, (ctrl | reset_bit));
+	ctrl = IXGBE_CTRL_RST;
+	ctrl |= IXGBE_READ_REG(hw, IXGBE_CTRL);
+	IXGBE_WRITE_REG(hw, IXGBE_CTRL, ctrl);
 	IXGBE_WRITE_FLUSH(hw);
 
 	/* Poll for reset bit to self-clear indicating reset is complete */
 	for (i = 0; i < 10; i++) {
 		udelay(1);
 		ctrl = IXGBE_READ_REG(hw, IXGBE_CTRL);
-		if (!(ctrl & reset_bit))
+		if (!(ctrl & IXGBE_CTRL_RST_MASK))
 			break;
 	}
-	if (ctrl & reset_bit) {
+
+	if (ctrl & IXGBE_CTRL_RST_MASK) {
 		status = IXGBE_ERR_RESET_FAILED;
 		hw_dbg(hw, "Reset polling failed to complete.\n");
 	}
+	msleep(100);
 
 	/*
 	 * Double resets are required for recovery from certain error
 	 * conditions.  Between resets, it is necessary to stall to allow time
-	 * for any pending HW events to complete.  We use 1usec since that is
-	 * what is needed for ixgbe_disable_pcie_master().  The second reset
-	 * then clears out any effects of those events.
+	 * for any pending HW events to complete.
 	 */
 	if (hw->mac.flags & IXGBE_FLAGS_DOUBLE_RESET_REQUIRED) {
 		hw->mac.flags &= ~IXGBE_FLAGS_DOUBLE_RESET_REQUIRED;
-		udelay(1);
 		goto mac_reset_top;
 	}
-
-	/* Clear PF Reset Done bit so PF/VF Mail Ops can work */
-	ctrl_ext = IXGBE_READ_REG(hw, IXGBE_CTRL_EXT);
-	ctrl_ext |= IXGBE_CTRL_EXT_PFRSTD;
-	IXGBE_WRITE_REG(hw, IXGBE_CTRL_EXT, ctrl_ext);
-	IXGBE_WRITE_FLUSH(hw);
-
-	msleep(50);
 
 	/* Set the Rx packet buffer size. */
 	IXGBE_WRITE_REG(hw, IXGBE_RXPBSIZE(0), 384 << IXGBE_RXPBSIZE_SHIFT);
@@ -173,40 +141,12 @@ mac_reset_top:
 	hw->mac.ops.get_mac_addr(hw, hw->mac.perm_addr);
 
 	/*
-	 * Store the original AUTOC/AUTOC2 values if they have not been
-	 * stored off yet.  Otherwise restore the stored original
-	 * values since the reset operation sets back to defaults.
-	 */
-	autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
-	autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
-	if (hw->mac.orig_link_settings_stored == false) {
-		hw->mac.orig_autoc = autoc;
-		hw->mac.orig_autoc2 = autoc2;
-		hw->mac.orig_link_settings_stored = true;
-	} else {
-		if (autoc != hw->mac.orig_autoc)
-			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (hw->mac.orig_autoc |
-			                IXGBE_AUTOC_AN_RESTART));
-
-		if ((autoc2 & IXGBE_AUTOC2_UPPER_MASK) !=
-		    (hw->mac.orig_autoc2 & IXGBE_AUTOC2_UPPER_MASK)) {
-			autoc2 &= ~IXGBE_AUTOC2_UPPER_MASK;
-			autoc2 |= (hw->mac.orig_autoc2 &
-			           IXGBE_AUTOC2_UPPER_MASK);
-			IXGBE_WRITE_REG(hw, IXGBE_AUTOC2, autoc2);
-		}
-	}
-
-	/*
 	 * Store MAC address from RAR0, clear receive address registers, and
 	 * clear the multicast table.  Also reset num_rar_entries to 128,
 	 * since we modify this value when programming the SAN MAC address.
 	 */
 	hw->mac.num_rar_entries = IXGBE_X540_MAX_TX_QUEUES;
 	hw->mac.ops.init_rx_addrs(hw);
-
-	/* Store the permanent mac address */
-	hw->mac.ops.get_mac_addr(hw, hw->mac.perm_addr);
 
 	/* Store the permanent SAN mac address */
 	hw->mac.ops.get_san_mac_addr(hw, hw->mac.san_addr);
@@ -224,6 +164,7 @@ mac_reset_top:
 	hw->mac.ops.get_wwn_prefix(hw, &hw->mac.wwnn_prefix,
 	                           &hw->mac.wwpn_prefix);
 
+reset_hw_out:
 	return status;
 }
 
@@ -810,16 +751,20 @@ static s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index)
 {
 	u32 macc_reg;
 	u32 ledctl_reg;
+	ixgbe_link_speed speed;
+	bool link_up;
 
 	/*
-	 * In order for the blink bit in the LED control register
-	 * to work, link and speed must be forced in the MAC. We
-	 * will reverse this when we stop the blinking.
+	 * Link should be up in order for the blink bit in the LED control
+	 * register to work. Force link and speed in the MAC if link is down.
+	 * This will be reversed when we stop the blinking.
 	 */
-	macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
-	macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
-	IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
-
+	hw->mac.ops.check_link(hw, &speed, &link_up, false);
+	if (link_up == false) {
+		macc_reg = IXGBE_READ_REG(hw, IXGBE_MACC);
+		macc_reg |= IXGBE_MACC_FLU | IXGBE_MACC_FSV_10G | IXGBE_MACC_FS;
+		IXGBE_WRITE_REG(hw, IXGBE_MACC, macc_reg);
+	}
 	/* Set the LED to LINK_UP + BLINK. */
 	ledctl_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 	ledctl_reg &= ~IXGBE_LED_MODE_MASK(index);
@@ -902,6 +847,8 @@ static struct ixgbe_mac_operations mac_ops_X540 = {
 	.set_vlan_anti_spoofing = &ixgbe_set_vlan_anti_spoofing,
 	.acquire_swfw_sync      = &ixgbe_acquire_swfw_sync_X540,
 	.release_swfw_sync      = &ixgbe_release_swfw_sync_X540,
+	.disable_rx_buff	= &ixgbe_disable_rx_buff_generic,
+	.enable_rx_buff		= &ixgbe_enable_rx_buff_generic,
 };
 
 static struct ixgbe_eeprom_operations eeprom_ops_X540 = {
@@ -929,6 +876,7 @@ static struct ixgbe_phy_operations phy_ops_X540 = {
 	.read_i2c_eeprom        = &ixgbe_read_i2c_eeprom_generic,
 	.write_i2c_eeprom       = &ixgbe_write_i2c_eeprom_generic,
 	.check_overtemp         = &ixgbe_tn_check_overtemp,
+	.get_firmware_version   = &ixgbe_get_phy_firmware_version_generic,
 };
 
 struct ixgbe_info ixgbe_X540_info = {

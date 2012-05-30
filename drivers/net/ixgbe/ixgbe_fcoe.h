@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -73,8 +73,9 @@ struct ixgbe_fcoe {
 	unsigned char *extra_ddp_buffer;
 	dma_addr_t extra_ddp_buffer_dma;
 	unsigned long mode;
+	u64 __percpu *pcpu_noddp;
+	u64 __percpu *pcpu_noddp_ext_buff;
 #ifdef CONFIG_IXGBE_DCB
-	u8 tc;
 	u8 up;
 #endif
 };
