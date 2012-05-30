@@ -1560,9 +1560,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-xen|kernel-debug|kernel-uek-debug)
+%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug)
 %else
-%kernel_variant_post -u -v uek -r (kernel|kernel-smp|kernel-PAE|kernel-xen|kernel-debug|kernel-uek-debug)
+%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug)
 %endif
 
 %kernel_variant_pre smp
