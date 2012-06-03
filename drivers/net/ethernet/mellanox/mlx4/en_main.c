@@ -227,7 +227,11 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 static void mlx4_en_remove(struct mlx4_dev *dev, void *endev_ptr)
 {
 	struct mlx4_en_dev *mdev = endev_ptr;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int i;
+#else
+	int i, ret;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	mutex_lock(&mdev->state_lock);
 	mdev->device_up = false;
@@ -239,7 +243,13 @@ static void mlx4_en_remove(struct mlx4_dev *dev, void *endev_ptr)
 
 	flush_workqueue(mdev->workqueue);
 	destroy_workqueue(mdev->workqueue);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	(void) mlx4_mr_free(dev, &mdev->mr);
+#else
+	ret = mlx4_mr_free(dev, &mdev->mr);
+	if (ret)
+		mlx4_err(mdev, "Error deregistering MR. The system may have become unstable.");
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	iounmap(mdev->uar_map);
 	mlx4_uar_free(dev, &mdev->priv_uar);
 	mlx4_pd_free(dev, mdev->priv_pdn);
@@ -337,7 +347,12 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 	return mdev;
 
 err_mr:
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	(void) mlx4_mr_free(dev, &mdev->mr);
+#else
+	if (mlx4_mr_free(dev, &mdev->mr))
+		mlx4_err(mdev, "Error deregistering MR. The system may have become unstable.");
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 err_map:
 	if (mdev->uar_map)
 		iounmap(mdev->uar_map);

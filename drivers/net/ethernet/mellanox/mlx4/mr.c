@@ -1049,7 +1049,11 @@ int mlx4_fmr_alloc(struct mlx4_dev *dev, u32 pd, u32 access, int max_pages,
 		   int max_maps, u8 page_shift, struct mlx4_fmr *fmr)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int err = -ENOMEM;
+#else
+	int err = -ENOMEM, ret;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	if (max_maps > dev->caps.max_fmr_maps)
 		return -EINVAL;
@@ -1083,7 +1087,13 @@ int mlx4_fmr_alloc(struct mlx4_dev *dev, u32 pd, u32 access, int max_pages,
 	return 0;
 
 err_free:
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	(void) mlx4_mr_free(dev, &fmr->mr);
+#else
+	ret = mlx4_mr_free(dev, &fmr->mr);
+	if (ret)
+		mlx4_err(dev, "Error deregistering MR. The system may have become unstable.");
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_alloc);
