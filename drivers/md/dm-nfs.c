@@ -197,6 +197,9 @@ static int dm_nfs_io_get_file(struct dm_target *ti, uid_t uid)
 	filp = filp_open(nc->path, flags, 0);
 	if (IS_ERR(filp))
 		return PTR_ERR(filp);
+
+	/* Force random reference */
+	filp->f_mode |= FMODE_RANDOM;
 	nc->filp = filp;
 
 	r = _check_file(ti);
