@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.15.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.16.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jun 05 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.16.0.el5uek]
+- xen/gntdev: Fix merge error. (Konrad Rzeszutek Wilk)
+
 * Fri Jun 01 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.15.0.el5uek]
 - xen: expose host uuid via sysfs. (Zhigang Wang)
 
