@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.16.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.17.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,18 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Jun 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.17.0.el6uek]
+- mm: reduce the amount of work done when updating min_free_kbytes (Mel Gorman)
+  [Orabug: 14073214]
+- ocfs2: clear unaligned io flag when dio fails (Junxiao Bi) [Orabug: 14063941]
+- aio: make kiocb->private NUll in init_sync_kiocb() (Junxiao Bi) [Orabug:
+  14063941]
+- vmxnet3: cap copy length at size of skb to prevent dropped frames on tx (Neil
+  Horman) [Orabug: 14159701]
+- mm/mempolicy.c: refix mbind_range() vma issue (KOSAKI Motohiro) [Orabug:
+  14149364]
+- mm/mempolicy.c: fix pgoff in mbind vma merge (Caspar Zhang) [Orabug:14149364]
+
 * Tue Jun 05 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.16.0.el5uek]
 - xen/gntdev: Fix merge error. (Konrad Rzeszutek Wilk)
 
