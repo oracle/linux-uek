@@ -61,8 +61,6 @@ static DEFINE_MUTEX(mce_read_mutex);
 
 int mce_disabled __read_mostly;
 
-#define MISC_MCELOG_MINOR	227
-
 #define SPINUNIT 100	/* 100ns */
 
 atomic_t mce_entry;
@@ -2136,8 +2134,7 @@ static __init int mcheck_init_device(void)
 
 	return err;
 }
-
-device_initcall(mcheck_init_device);
+device_initcall_sync(mcheck_init_device);
 
 /*
  * Old style boot options parsing. Only for compatibility.

@@ -124,4 +124,12 @@ config XEN_PCIDEV_BACKEND
 	  xen-pciback.hide=(03:00.0)(04:00.0)
 
 	  If in doubt, say m.
+config XEN_MCE_LOG
+	bool "Xen platform mcelog"
+	depends on XEN_DOM0 && X86_64 && X86_MCE
+	default n
+	help
+	  Allow kernel fetching MCE error from Xen platform and
+	  converting it into Linux mcelog format for mcelog tools
+
 endmenu
