@@ -1567,7 +1567,7 @@ int rds_ib_srqs_init(void)
 	int ret;
 
 	if (!rds_ib_srq_enabled)
-		return;
+		return 0;
 
 	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
 		ret = rds_ib_srq_init(rds_ibdev);

@@ -294,8 +294,8 @@ restart:
 			 * with RDMA ops.
 			 */
 
-			if (rm->rdma.op_active
-			 && test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags)
+			if ((rm->rdma.op_active
+			 && test_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags))
 			 || test_bit(RDS_MSG_FLUSH, &rm->m_flags)) {
 				spin_lock_irqsave(&conn->c_lock, flags);
 				if (test_and_clear_bit(RDS_MSG_ON_CONN, &rm->m_flags))

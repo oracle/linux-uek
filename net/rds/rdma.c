@@ -694,7 +694,7 @@ int rds_cmsg_rdma_dest(struct rds_sock *rs, struct rds_message *rm,
 	spin_lock_irqsave(&rs->rs_rdma_lock, flags);
 	mr = rds_mr_tree_walk(&rs->rs_rdma_keys, r_key, NULL);
 	if (!mr) {
-		printk(KERN_ERR "rds_cmsg_rdma_dest: key %Lx\n", r_key);
+		printk(KERN_ERR "rds_cmsg_rdma_dest: key %x\n", r_key);
 		err = -EINVAL;	/* invalid r_key */
 	} else
 		atomic_inc(&mr->r_refcount);
