@@ -61,6 +61,8 @@ char e1000e_driver_name[] = "e1000e";
 const char e1000e_driver_version[] = DRV_VERSION;
 
 static void e1000e_disable_aspm(struct pci_dev *pdev, u16 state);
+static int e1000_set_features(struct net_device *netdev,
+			      netdev_features_t features);
 
 static const struct e1000_info *e1000_info_tbl[] = {
 	[board_82571]		= &e1000_82571_info,
@@ -5215,8 +5217,15 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
 		 */
 		if ((netdev->features & NETIF_F_RXCSUM) &&
 		    (netdev->features & NETIF_F_RXHASH)) {
-			e_err("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled.  Disable one of the receive offload features before enabling jumbos.\n");
-			return -EINVAL;
+			/* Disable receive hashing */
+			netdev_features_t features;
+
+			features = netdev->features & (~NETIF_F_RXHASH);
+			if (e1000_set_features(netdev, features)) {
+				e_err("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled.  Disable one of the receive offload features before enabling jumbos.\n");
+				return -EINVAL;
+			}
+			e_info("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled. Disabling Receive Hashing.\n");
 		}
 	}
 
