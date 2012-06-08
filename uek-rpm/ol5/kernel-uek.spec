@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.17.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.18.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,7 +1680,11 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
-* Wed Jun 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.17.0.el6uek]
+* Fri Jun 08 2012 Maxim Uvarov <maxim.uvarov@oracle.com>  [2.6.39-200.18.0.el5uek]
+- e1000e: disable rxhash when try to enable jumbo frame also rxhash and rxcsum
+  have enabled (Joe Jin)
+
+* Wed Jun 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.17.0.el5uek]
 - mm: reduce the amount of work done when updating min_free_kbytes (Mel Gorman)
   [Orabug: 14073214]
 - ocfs2: clear unaligned io flag when dio fails (Junxiao Bi) [Orabug: 14063941]
