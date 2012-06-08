@@ -423,13 +423,8 @@ int btrfs_put_ordered_extent(struct btrfs_ordered_extent *entry)
  * remove an ordered extent from the tree.  No references are dropped
  * and waiters are woken up.
  */
-<<<<<<< HEAD
-static int __btrfs_remove_ordered_extent(struct inode *inode,
-				struct btrfs_ordered_extent *entry)
-=======
 void btrfs_remove_ordered_extent(struct inode *inode,
 				 struct btrfs_ordered_extent *entry)
->>>>>>> 5fd0204... Btrfs: finish ordered extents in their own thread
 {
 	struct btrfs_ordered_inode_tree *tree;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
@@ -458,27 +453,6 @@ void btrfs_remove_ordered_extent(struct inode *inode,
 		list_del_init(&BTRFS_I(inode)->ordered_operations);
 	}
 	spin_unlock(&root->fs_info->ordered_extent_lock);
-<<<<<<< HEAD
-
-	return 0;
-}
-
-/*
- * remove an ordered extent from the tree.  No references are dropped
- * but any waiters are woken.
- */
-int btrfs_remove_ordered_extent(struct inode *inode,
-				struct btrfs_ordered_extent *entry)
-{
-	struct btrfs_ordered_inode_tree *tree;
-	int ret;
-
-	tree = &BTRFS_I(inode)->ordered_tree;
-	spin_lock(&tree->lock);
-	ret = __btrfs_remove_ordered_extent(inode, entry);
-	spin_unlock(&tree->lock);
-=======
->>>>>>> 5fd0204... Btrfs: finish ordered extents in their own thread
 	wake_up(&entry->wait);
 
 	return ret;
@@ -654,11 +628,23 @@ again:
 	 */
 	filemap_fdatawrite_range(inode->i_mapping, start, orig_end);
 
-	/* The compression code will leave pages locked but return from
-	 * writepage without setting the page writeback.  Starting again
-	 * with WB_SYNC_ALL will end up waiting for the IO to actually start.
+	/*
+	 * So with compression we will find and lock a dirty page and clear the
+	 * first one as dirty, setup an async extent, and immediately return
+	 * with the entire range locked but with nobody actually marked with
+	 * writeback.  So we can't just filemap_write_and_wait_range() and
+	 * expect it to work since it will just kick off a thread to do the
+	 * actual work.  So we need to call filemap_fdatawrite_range _again_
+	 * since it will wait on the page lock, which won't be unlocked until
+	 * after the pages have been marked as writeback and so we're good to go
+	 * from there.  We have to do this otherwise we'll miss the ordered
+	 * extents and that results in badness.  Please Josef, do not think you
+	 * know better and pull this out at some point in the future, it is
+	 * right and you are wrong.
 	 */
-	filemap_fdatawrite_range(inode->i_mapping, start, orig_end);
+	if (test_bit(BTRFS_INODE_HAS_ASYNC_EXTENT,
+		     &BTRFS_I(inode)->runtime_flags))
+		filemap_fdatawrite_range(inode->i_mapping, start, orig_end);
 
 	filemap_fdatawait_range(inode->i_mapping, start, orig_end);
 
@@ -683,11 +669,6 @@ again:
 		if (end == 0 || end == start)
 			break;
 		end--;
-	}
-	if (found || test_range_bit(&BTRFS_I(inode)->io_tree, start, orig_end,
-			   EXTENT_DELALLOC, 0, NULL)) {
-		schedule_timeout(1);
-		goto again;
 	}
 	return 0;
 }
