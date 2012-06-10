@@ -298,6 +298,7 @@ struct mlx4_en_rx_ring {
 	u32 cons;
 	u32 buf_size;
 	u8  fcs_del;
+	int qpn;
 	void *buf;
 	void *rx_info;
 	unsigned long bytes;
@@ -545,6 +546,7 @@ struct mlx4_en_priv {
 	int vids[128];
 	bool wol;
 	struct device *ddev;
+	struct dentry *dev_root;
 	int base_tx_qpn;
 	struct hwtstamp_config hwtstamp_config;
 	u32 counter_index;
@@ -641,6 +643,11 @@ int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, struct mlx4_en_priv *priv);
 
 int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset);
 int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port);
+
+void mlx4_en_create_debug_files(struct mlx4_en_priv *priv);
+void mlx4_en_delete_debug_files(struct mlx4_en_priv *priv);
+int mlx4_en_register_debugfs(void);
+void mlx4_en_unregister_debugfs(void);
 
 #ifdef CONFIG_MLX4_EN_DCB
 extern const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops;

@@ -960,7 +960,7 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	void *ptr;
 	u8 rss_mask = (MLX4_RSS_IPV4 | MLX4_RSS_TCP_IPV4 | MLX4_RSS_IPV6 |
 			MLX4_RSS_TCP_IPV6);
-	int i, qpn;
+	int i;
 	int err = 0;
 	int good_qps = 0;
 	static const u32 rsskey[10] = { 0xD181C62C, 0xF7F4DB5B, 0x1983A2FC,
@@ -977,8 +977,9 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	}
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		qpn = rss_map->base_qpn + i;
-		err = mlx4_en_config_rss_qp(priv, qpn, priv->rx_ring[i],
+		priv->rx_ring[i]->qpn = rss_map->base_qpn + i;
+		err = mlx4_en_config_rss_qp(priv, priv->rx_ring[i]->qpn,
+					    priv->rx_ring[i],
 					    &rss_map->state[i],
 					    &rss_map->qps[i]);
 		if (err)

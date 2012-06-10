@@ -563,6 +563,8 @@ struct mlx4_cq {
 
 	atomic_t		refcount;
 	struct completion	free;
+	int			eqn;
+	u16			irq;
 };
 
 struct mlx4_qp {

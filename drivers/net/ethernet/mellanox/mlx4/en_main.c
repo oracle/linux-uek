@@ -312,12 +312,20 @@ static struct mlx4_interface mlx4_en_interface = {
 
 static int __init mlx4_en_init(void)
 {
+#ifdef CONFIG_DEBUG_FS
+	int err = mlx4_en_register_debugfs();
+	if (err)
+		pr_err(KERN_ERR "Failed to register debugfs\n");
+#endif
 	return mlx4_register_interface(&mlx4_en_interface);
 }
 
 static void __exit mlx4_en_cleanup(void)
 {
 	mlx4_unregister_interface(&mlx4_en_interface);
+#ifdef CONFIG_DEBUG_FS
+	mlx4_en_unregister_debugfs();
+#endif
 }
 
 module_init(mlx4_en_init);

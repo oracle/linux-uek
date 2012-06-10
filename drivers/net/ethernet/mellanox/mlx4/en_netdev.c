@@ -1179,6 +1179,9 @@ int mlx4_en_start_port(struct net_device *dev)
 
 	priv->port_up = true;
 	netif_tx_start_all_queues(dev);
+#ifdef CONFIG_DEBUG_FS
+	mlx4_en_create_debug_files(priv);
+#endif
 	return 0;
 
 tx_err:
@@ -1214,6 +1217,10 @@ void mlx4_en_stop_port(struct net_device *dev)
 		en_dbg(DRV, priv, "stop port called while port already down\n");
 		return;
 	}
+
+#ifdef CONFIG_DEBUG_FS
+	mlx4_en_delete_debug_files(priv);
+#endif
 
 	/* close port*/
 	mlx4_CLOSE_PORT(mdev->dev, priv->port);
