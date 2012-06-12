@@ -2082,8 +2082,12 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto device_init_failed;
 	}
 
-	if (ipoib_set_dev_features(priv, hca))
+	result = ipoib_set_dev_features(priv, hca);
+	if (result) {
+		printk(KERN_WARNING "%s: couldn't set features for ipoib port %d; error %d\n",
+		       hca->name, port, result);
 		goto device_init_failed;
+	}
 
 	/*
 	 * Set the full membership bit, so that we join the right
@@ -2130,6 +2134,8 @@ static struct net_device *ipoib_add_port(const char *format,
 	}
 
 	ipoib_create_debug_files(priv->dev);
+
+	result = -ENOMEM;
 
 	if (ipoib_cm_add_mode_attr(priv->dev))
 		goto sysfs_failed;
