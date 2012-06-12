@@ -105,12 +105,4 @@ config SWIOTLB_XEN
 	depends on PCI
 	select SWIOTLB
 
-config XEN_MCE_LOG
-	bool "Xen platform mcelog"
-	depends on XEN_DOM0 && X86_64 && X86_MCE
-	default n
-	help
-	  Allow kernel fetching MCE error from Xen platform and
-	  converting it into Linux mcelog format for mcelog tools
-
 endmenu
