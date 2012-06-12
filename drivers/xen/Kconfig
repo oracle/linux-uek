@@ -143,13 +143,6 @@ config SWIOTLB_XEN
 	depends on PCI
 	select SWIOTLB
 
-config XEN_MCE_LOG
-	bool "Xen platform mcelog"
-	depends on XEN_DOM0 && X86_64 && X86_MCE
-	default n
-	help
-	  Allow kernel fetching MCE error from Xen platform and
-	  converting it into Linux mcelog format for mcelog tools
 
 config XEN_PRIVCMD
 	tristate
@@ -202,5 +195,4 @@ config XEN_ACPI_PROCESSOR
           To compile this driver as a module, choose M here: the module will be
 	  called xen_acpi_processor  If you do not know what to choose, select
 	  M here. If the CPUFREQ drivers are built in, select Y here.
-
 endmenu
