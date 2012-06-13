@@ -387,8 +387,10 @@ void sd_dif_prepare(struct request *rq, sector_t hw_sector,
 		struct bio_vec *iv;
 
 		/* Already remapped? */
-		if (bio_flagged(bio, BIO_MAPPED_INTEGRITY))
-			break;
+		if (bio_flagged(bio, BIO_MAPPED_INTEGRITY)) {
+			phys += bio_sectors(bio);
+			continue;
+		}
 
 		virt = bio->bi_integrity->bip_sector & 0xffffffff;
 
@@ -408,7 +410,7 @@ void sd_dif_prepare(struct request *rq, sector_t hw_sector,
 			kunmap_atomic(sdt, KM_USER0);
 		}
 
-		bio->bi_flags |= BIO_MAPPED_INTEGRITY;
+		bio->bi_flags |= (1 << BIO_MAPPED_INTEGRITY);
 	}
 }
 
