@@ -25,7 +25,7 @@
 #ifndef _ASM_MODULE_VERSION_H
 #define _ASM_MODULE_VERSION_H
 
-#define ASM_MODULE_VERSION "2.0.7"
+#define ASM_MODULE_VERSION "2.0.8"
 
 #endif  /* _ASM_MODULE_VERSION */
 

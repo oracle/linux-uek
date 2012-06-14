@@ -77,12 +77,14 @@
  * Defines
  */
 
-#define ASM_ABI_VERSION_V2	2UL
-#define ASM_ABI_VERSION		ASM_ABI_VERSION_V2
+#define ASM_ABI_VERSION_V2		2UL
+#define ASM_ABI_VERSION			ASM_ABI_VERSION_V2
 
 enum asm_abi_magic {
-	ASMFS_MAGIC		= 0x958459f6,
-	ASM_ABI_MAGIC		= 0x41534DU,
+	ASMFS_MAGIC			= 0x958459f6,
+	ASM_ABI_MAGIC			= 0x41534DU,
+	ASM_INTEGRITY_MAGIC		= 0x444958,
+	ASM_INTEGRITY_TAG		= 0x4F52,
 };
 
 /*
@@ -115,19 +117,17 @@ enum asm_operation_types
 # endif  /* BITS_PER_LONG == 64 */
 #endif  /* BITS_PER_LONG == 32 */
 
-
-
 /*
  * Structures
  */
 
 struct oracleasm_abi_info
 {
-/*00*/	__u32		ai_magic;	/* ASM_ABI_MAGIC */
-	__u16		ai_version;	/* ABI version */
-	__u16		ai_type;	/* Type of operation */
-	__u32		ai_size;	/* Size of passed structure */
-	__u32		ai_status;	/* Did it succeed */
+/*00*/	__u32				ai_magic;	/* ASM_ABI_MAGIC */
+	__u16				ai_version;	/* ABI version */
+	__u16				ai_type;	/* Type of operation */
+	__u32				ai_size;	/* Size of passed struct */
+	__u32				ai_status;	/* Did it succeed */
 /*10*/	
 };
 
@@ -150,14 +150,39 @@ struct oracleasm_io_v2
 /*50*/
 };
 
+struct oracleasm_integrity_v2
+{
+	__u32				it_magic;
+	__u8				it_format;
+	__u8				it_flags;
+	__u16				it_bytes;
+	__u64				it_buf;
+};
+
+enum oracleasm_integrity_handling_flags {
+	ASM_IFLAG_REMAPPED		= 1,	/* PI has been remapped */
+	ASM_IFLAG_IP_CHECKSUM		= 2,	/* IP checksum instead of CRC */
+};
+
 struct oracleasm_query_disk_v2
 {
 /*00*/	struct oracleasm_abi_info	qd_abi;
 /*10*/	__u32				qd_fd;
 	__u32				qd_max_sectors;
 	__u32				qd_hardsect_size;
-	__u32				qd_pad1;	/* Pad to 64bit aligned size */
+	__u32				qd_feature;
 /*20*/
+};
+
+enum oracleasm_feature_integrity {
+	ASM_IMODE_NONE			= 0,	/* 00: No data integrity */
+	ASM_IMODE_512_512		= 1,	/* 01: lbs = 512, asmbs = 512 */
+	ASM_IMODE_512_4K		= 2,	/* 02: lbs = 512, asmbs = 4KB */
+	ASM_IMODE_4K_4K			= 3,	/* 03: lbs = 4KB, asmbs = 4KB */
+	ASM_IMODE_MASK			= 3,	/* Interleaving mode mask */
+	ASM_IFMT_IP_CHECKSUM		= 4,	/* 0: T10 CRC, 1: IP checksum */
+	ASM_INTEGRITY_HANDLE_MASK	= 7,	/* Integrity handle mask */
+	ASM_INTEGRITY_QDF_MASK		= 0xff, /* Querydisk feature mask */
 };
 
 struct oracleasm_open_disk_v2
