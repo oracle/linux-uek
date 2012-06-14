@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.2%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.3%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,151 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jun 14 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.3.el5uek]
+- Revert "xen/mce: Add mcelog support for Xen platform" (Konrad Rzeszutek Wilk)
+- Revert "xen/mce: Register native mce handler as vMCE bounce back point"
+  (Konrad Rzeszutek Wilk)
+- xen/mce: schedule a workqueue to avoid sleep in atomic context (Liu, Jinsong)
+- xen/mce: Register native mce handler as vMCE bounce back point (Liu, Jinsong)
+- x86, MCE, AMD: Adjust initcall sequence for xen (Liu, Jinsong)
+- xen/mce: Add mcelog support for Xen platform (Liu, Jinsong)
+- xen/blkback: Copy id field when doing BLKIF_DISCARD. (Konrad Rzeszutek Wilk)
+- xen/balloon: Subtract from xen_released_pages the count that is populated.
+  (Konrad Rzeszutek Wilk)
+- xen/events: Add WARN_ON when quick lookup found invalid type. (Konrad
+  Rzeszutek Wilk)
+- xen/hvc: Check HVM_PARAM_CONSOLE_[EVTCHN|PFN] for correctness. (Konrad
+  Rzeszutek Wilk)
+- xen/hvc: Fix error cases around HVM_PARAM_CONSOLE_PFN (Konrad Rzeszutek Wilk)
+- xen/hvc: Collapse error logic. (Konrad Rzeszutek Wilk)
+- hvc_xen: NULL dereference on allocation failure (Dan Carpenter)
+- xen: do not map the same GSI twice in PVHVM guests. (Stefano Stabellini)
+- xen/setup: Work properly with 'dom0_mem=X' or with not dom0_mem. (Konrad
+  Rzeszutek Wilk)
+- xenbus: Add support for xenbus backend in stub domain (Daniel De Graaf)
+- xen/smp: unbind irqworkX when unplugging vCPUs. (Konrad Rzeszutek Wilk)
+- xen/mce: Register native mce handler as vMCE bounce back point (Liu, Jinsong)
+- xen/mce: Add mcelog support for Xen platform (Liu, Jinsong)
+- Revert "Add mcelog support from xen platform" (Konrad Rzeszutek Wilk)
+- Revert "xen/mce: Change the machine check point" (Konrad Rzeszutek Wilk)
+- xen/processor-passthru: Remove the Kconfig entry that points to non-existent
+  driver. (Konrad Rzeszutek Wilk)
+- xen/gntdev: Fix merge error. (Konrad Rzeszutek Wilk)
+- x86/apic: Fix UP boot crash (Ingo Molnar)
+- xen/apic: implement io apic read with hypercall (Lin Ming)
+- xen/x86: Implement x86_apic_ops (Konrad Rzeszutek Wilk)
+- x86/apic: Replace io_apic_ops with x86_io_apic_ops. (Konrad Rzeszutek Wilk)
+- x86/ioapic: Add io_apic_ops driver layer to allow interception (Jeremy
+  Fitzhardinge)
+- xen: implement IRQ_WORK_VECTOR handler (Lin Ming)
+- xen: implement apic ipi interface (Ben Guthro)
+- xen/gnttab: add deferred freeing logic (Jan Beulich)
+- xen: enter/exit lazy_mmu_mode around m2p_override calls (Stefano Stabellini)
+- xen/setup: update VA mapping when releasing memory during setup (David
+  Vrabel)
+- xen/setup: Combine the two hypercall functions - since they are quite
+  similar. (Konrad Rzeszutek Wilk)
+- xen/setup: Populate freed MFNs from non-RAM E820 entries and gaps to E820 RAM
+  (Konrad Rzeszutek Wilk)
+- xen/setup: Only print "Freeing XXX-YYY pfn range: Z pages freed" if Z > 0
+  (Konrad Rzeszutek Wilk)
+- xen/p2m: An early bootup variant of set_phys_to_machine (Konrad Rzeszutek
+  Wilk)
+- xen/p2m: Collapse early_alloc_p2m_middle redundant checks. (Konrad Rzeszutek
+  Wilk)
+- xen/p2m: Allow alloc_p2m_middle to call reserve_brk depending on argument
+  (Konrad Rzeszutek Wilk)
+- xen/p2m: Move code around to allow for better re-usage. (Konrad Rzeszutek
+  Wilk)
+- xen: only limit memory map to maximum reservation for domain 0. (Ian
+  Campbell)
+- xen: release all pages within 1-1 p2m mappings (David Vrabel)
+- xen: allow extra memory to be in multiple regions (David Vrabel)
+- xen: allow balloon driver to use more than one memory region (David Vrabel)
+- Add support for pv hugepages and support for huge balloon pages. (Dave
+  McCracken)
+- Revert "xen-blkfront: set pages are FOREIGN_FRAME when sharing them" (Konrad
+  Rzeszutek Wilk)
+- xen/pci: don't use PCI BIOS service for configuration space accesses (David
+  Vrabel)
+- xen/Kconfig: fix Kconfig layout (Andrew Morton)
+- xen/pte: Fix crashes when trying to see non-existent PGD/PMD/PUD/PTEs (Konrad
+  Rzeszutek Wilk)
+- xen/apic: Return the APIC ID (and version) for CPU 0. (Konrad Rzeszutek Wilk)
+- drivers/video/xen-fbfront.c: add missing cleanup code (Julia Lawall)
+- xen/x86: Workaround 'x86/ioapic: Add register level checks to detect bogus
+  io-apic entries' (Konrad Rzeszutek Wilk)
+- xen/acpi: Workaround broken BIOSes exporting non-existing C-states. (Konrad
+  Rzeszutek Wilk)
+- xen/enlighten: Disable MWAIT_LEAF so that acpi-pad won't be loaded. (Konrad
+  Rzeszutek Wilk)
+- drivers/video/xen-fbfront.c: add missing cleanup code (Julia Lawall)
+- xen: correctly check for pending events when restoring irq flags (David
+  Vrabel)
+- xen/smp: Fix crash when booting with ACPI hotplug CPUs. (Konrad Rzeszutek
+  Wilk)
+- xen: use the pirq number to check the pirq_eoi_map (Stefano Stabellini)
+- Revert "xen/p2m: m2p_find_override: use list_for_each_entry_safe" (Konrad
+  Rzeszutek Wilk)
+- xen/blkback: Fix warning error. (Konrad Rzeszutek Wilk)
+- xen/blkback: Make optional features be really optional. (Konrad Rzeszutek
+  Wilk)
+- xen-blkfront: module exit handling adjustments (Jan Beulich)
+- xen-blkfront: properly name all devices (Jan Beulich)
+- xen-blkfront: set pages are FOREIGN_FRAME when sharing them (Stefano
+  Stabellini)
+- xen: EXPORT_SYMBOL set_phys_to_machine (Stefano Stabellini)
+- xen-blkfront: make blkif_io_lock spinlock per-device (Steven Noonan)
+- xen/blkfront: don't put bdev right after getting it (Andrew Jones)
+- xen-blkfront: use bitmap_set() and bitmap_clear() (Akinobu Mita)
+- xen/blkback: Enable blkback on HVM guests (Daniel De Graaf)
+- xen/blkback: use grant-table.c hypercall wrappers (Daniel De Graaf)
+- xen/p2m: m2p_find_override: use list_for_each_entry_safe (Stefano Stabellini)
+- xen/gntdev: do not set VM_PFNMAP (Stefano Stabellini)
+- xen/grant-table: add error-handling code on failure of gnttab_resume (Julia
+  Lawall)
+- xen: only check xen_platform_pci_unplug if hvm (Igor Mammedov)
+- xen: initialize platform-pci even if xen_emul_unplug=never (Igor Mammedov)
+- xen kconfig: relax INPUT_XEN_KBDDEV_FRONTEND deps (Andrew Jones)
+- xen: support pirq_eoi_map (Stefano Stabellini)
+- xen/smp: Remove unnecessary call to smp_processor_id() (Srivatsa S. Bhat)
+- xen/smp: Fix bringup bug in AP code. (Konrad Rzeszutek Wilk)
+- xen/tmem: cleanup (Jan Beulich)
+- xen: constify all instances of "struct attribute_group" (Jan Beulich)
+- xen/xenbus: ignore console/0 (Stefano Stabellini)
+- hvc_xen: introduce HVC_XEN_FRONTEND (Stefano Stabellini)
+- hvc_xen: implement multiconsole support (Stefano Stabellini)
+- hvc_xen: support PV on HVM consoles (Stefano Stabellini)
+- xen: use this_cpu_xxx replace percpu_xxx funcs (Alex Shi)
+- xenbus: don't free other end details too early (Jan Beulich)
+- xen/resume: Fix compile warnings. (Konrad Rzeszutek Wilk)
+- xen/xenbus: Add quirk to deal with misconfigured backends. (Konrad Rzeszutek
+  Wilk)
+- xenbus: address compiler warnings (Jan Beulich)
+- xen/pcifront: avoid pci_frontend_enable_msix() falsely returning success (Jan
+  Beulich)
+- xen/pciback: fix XEN_PCI_OP_enable_msix result (Jan Beulich)
+- xen/pciback: Support pci_reset_function, aka FLR or D3 support. (Konrad
+  Rzeszutek Wilk)
+- PCI: Introduce __pci_reset_function_locked to be used when holding
+  device_lock. (Konrad Rzeszutek Wilk)
+- xen/acpi: Fix Kconfig dependency on CPU_FREQ (Konrad Rzeszutek Wilk)
+- xen/acpi-processor: Do not depend on CPU frequency scaling drivers. (Konrad
+  Rzeszutek Wilk)
+- xen/cpufreq: Disable the cpu frequency scaling drivers from loading. (Konrad
+  Rzeszutek Wilk)
+- provide disable_cpufreq() function to disable the API. (Konrad Rzeszutek
+  Wilk)
+- xen-netback: make ops structs const (stephen hemminger)
+- netback: fix typo in comment (Wei Liu)
+- netback: remove redundant assignment (Wei Liu)
+- netback: Fix alert message. (Wei Liu)
+- xen-netback: use correct index for invalidation in xen_netbk_tx_check_gop()
+  (Jan Beulich)
+- net: xen-netback: correctly restart Tx after a VM restore/migrate (David
+  Vrabel)
+- xen/netback: Add module alias for autoloading (Bastian Blank)
+
 * Fri Mar 30 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.2.el5uek]
 - vlan: allow nested vlan_do_receive() (Maxim Uvarov)
 - net: allow vlan traffic to be received under bond (John Fastabend)
