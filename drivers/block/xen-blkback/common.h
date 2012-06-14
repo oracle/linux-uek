@@ -264,6 +264,7 @@ static inline void blkif_get_x86_32_req(struct blkif_request *dst,
 		break;
 	case BLKIF_OP_DISCARD:
 		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.id = src->u.discard.id;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;
@@ -294,6 +295,7 @@ static inline void blkif_get_x86_64_req(struct blkif_request *dst,
 		break;
 	case BLKIF_OP_DISCARD:
 		dst->u.discard.flag = src->u.discard.flag;
+		dst->u.discard.id = src->u.discard.id;
 		dst->u.discard.sector_number = src->u.discard.sector_number;
 		dst->u.discard.nr_sectors = src->u.discard.nr_sectors;
 		break;

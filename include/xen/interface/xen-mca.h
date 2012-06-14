@@ -1,10 +1,12 @@
 /******************************************************************************
  * arch-x86/mca.h
+ * Guest OS machine check interface to x86 Xen.
  *
  * Contributed by Advanced Micro Devices, Inc.
  * Author: Christoph Egger <Christoph.Egger@amd.com>
  *
- * Guest OS machine check interface to x86 Xen.
+ * Updated by Intel Corporation
+ * Author: Liu, Jinsong <jinsong.liu@intel.com>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to
@@ -25,106 +27,61 @@
  * DEALINGS IN THE SOFTWARE.
  */
 
-/* Full MCA functionality has the following Usecases from the guest side:
- *
- * Must have's:
- * 1. Dom0 and DomU register machine check trap callback handlers
- *    (already done via "set_trap_table" hypercall)
- * 2. Dom0 registers machine check event callback handler
- *    (doable via EVTCHNOP_bind_virq)
- * 3. Dom0 and DomU fetches machine check data
- * 4. Dom0 wants Xen to notify a DomU
- * 5. Dom0 gets DomU ID from physical address
- * 6. Dom0 wants Xen to kill DomU (already done for "xm destroy")
- *
- * Nice to have's:
- * 7. Dom0 wants Xen to deactivate a physical CPU
- *    This is better done as separate task, physical CPU hotplugging,
- *    and hypercall(s) should be sysctl's
- * 8. Page migration proposed from Xen NUMA work, where Dom0 can tell Xen to
- *    move a DomU (or Dom0 itself) away from a malicious page
- *    producing correctable errors.
- * 9. offlining physical page:
- *    Xen free's and never re-uses a certain physical page.
- * 10. Testfacility: Allow Dom0 to write values into machine check MSR's
- *     and tell Xen to trigger a machine check
- */
-
 #ifndef __XEN_PUBLIC_ARCH_X86_MCA_H__
 #define __XEN_PUBLIC_ARCH_X86_MCA_H__
 
 /* Hypercall */
 #define __HYPERVISOR_mca __HYPERVISOR_arch_0
 
-/*
- * The xen-unstable repo has interface version 0x03000001; out interface
- * is incompatible with that and any future minor revisions, so we
- * choose a different version number range that is numerically less
- * than that used in xen-unstable.
- */
-#define XEN_MCA_INTERFACE_VERSION 0x01ecc003
+#define XEN_MCA_INTERFACE_VERSION	0x01ecc003
 
 /* IN: Dom0 calls hypercall to retrieve nonurgent error log entry */
-#define XEN_MC_NONURGENT  0x0001
-/* IN: Dom0/DomU calls hypercall to retrieve urgent error log entry */
-#define XEN_MC_URGENT     0x0002
+#define XEN_MC_NONURGENT	0x1
+/* IN: Dom0 calls hypercall to retrieve urgent error log entry */
+#define XEN_MC_URGENT		0x2
 /* IN: Dom0 acknowledges previosly-fetched error log entry */
-#define XEN_MC_ACK        0x0004
+#define XEN_MC_ACK		0x4
 
 /* OUT: All is ok */
-#define XEN_MC_OK           0x0
+#define XEN_MC_OK		0x0
 /* OUT: Domain could not fetch data. */
-#define XEN_MC_FETCHFAILED  0x1
+#define XEN_MC_FETCHFAILED	0x1
 /* OUT: There was no machine check data to fetch. */
-#define XEN_MC_NODATA       0x2
-/* OUT: Between notification time and this hypercall an other
- *  (most likely) correctable error happened. The fetched data,
- *  does not match the original machine check data. */
-#define XEN_MC_NOMATCH      0x4
-
-/* OUT: DomU did not register MC NMI handler. Try something else. */
-#define XEN_MC_CANNOTHANDLE 0x8
-/* OUT: Notifying DomU failed. Retry later or try something else. */
-#define XEN_MC_NOTDELIVERED 0x10
-/* Note, XEN_MC_CANNOTHANDLE and XEN_MC_NOTDELIVERED are mutually exclusive. */
-
+#define XEN_MC_NODATA		0x2
 
 #ifndef __ASSEMBLY__
-
-#define VIRQ_MCA VIRQ_ARCH_0 /* G. (DOM0) Machine Check Architecture */
+/* vIRQ injected to Dom0 */
+#define VIRQ_MCA VIRQ_ARCH_0
 
 /*
- * Machine Check Architecure:
- * structs are read-only and used to report all kinds of
- * correctable and uncorrectable errors detected by the HW.
- * Dom0 and DomU: register a handler to get notified.
- * Dom0 only: Correctable errors are reported via VIRQ_MCA
+ * mc_info entry types
+ * mca machine check info are recorded in mc_info entries.
+ * when fetch mca info, it can use MC_TYPE_... to distinguish
+ * different mca info.
  */
-#define MC_TYPE_GLOBAL          0
-#define MC_TYPE_BANK            1
-#define MC_TYPE_EXTENDED        2
-#define MC_TYPE_RECOVERY        3
+#define MC_TYPE_GLOBAL		0
+#define MC_TYPE_BANK		1
+#define MC_TYPE_EXTENDED	2
+#define MC_TYPE_RECOVERY	3
 
 struct mcinfo_common {
-	uint16_t type;      /* structure type */
-	uint16_t size;      /* size of this struct in bytes */
+	uint16_t type; /* structure type */
+	uint16_t size; /* size of this struct in bytes */
 };
 
-
-#define MC_FLAG_CORRECTABLE     (1 << 0)
-#define MC_FLAG_UNCORRECTABLE   (1 << 1)
+#define MC_FLAG_CORRECTABLE	(1 << 0)
+#define MC_FLAG_UNCORRECTABLE	(1 << 1)
 #define MC_FLAG_RECOVERABLE	(1 << 2)
 #define MC_FLAG_POLLED		(1 << 3)
 #define MC_FLAG_RESET		(1 << 4)
 #define MC_FLAG_CMCI		(1 << 5)
 #define MC_FLAG_MCE		(1 << 6)
-/* contains global x86 mc information */
+
+/* contains x86 global mc information */
 struct mcinfo_global {
 	struct mcinfo_common common;
 
-	/* running domain at the time in error (most likely
-	 * the impacted one) */
-	uint16_t mc_domid;
+	uint16_t mc_domid; /* running domain at the time in error */
 	uint16_t mc_vcpuid; /* virtual cpu scheduled for mc_domid */
 	uint32_t mc_socketid; /* physical socket of the physical core */
 	uint16_t mc_coreid; /* physical impacted core */
@@ -134,37 +91,27 @@ struct mcinfo_global {
 	uint64_t mc_gstatus; /* global status */
 };
 
-/* contains bank local x86 mc information */
+/* contains x86 bank mc information */
 struct mcinfo_bank {
 	struct mcinfo_common common;
 
 	uint16_t mc_bank; /* bank nr */
-	uint16_t mc_domid; /* Usecase 5: domain referenced by mc_addr on
-			* privileged pv-ops dom and if mc_addr is valid.
-			* Never valid on DomU. */
+	uint16_t mc_domid; /* domain referenced by mc_addr if valid */
 	uint64_t mc_status; /* bank status */
-	uint64_t mc_addr;   /* bank address, only valid
-					 * if addr bit is set in mc_status */
+	uint64_t mc_addr; /* bank address */
 	uint64_t mc_misc;
 	uint64_t mc_ctrl2;
 	uint64_t mc_tsc;
 };
 
-
 struct mcinfo_msr {
-	uint64_t reg;   /* MSR */
+	uint64_t reg; /* MSR */
 	uint64_t value; /* MSR value */
 };
 
-/* contains mc information from other
- * or additional mc MSRs */
+/* contains mc information from other or additional mc MSRs */
 struct mcinfo_extended {
 	struct mcinfo_common common;
-
-	/* You can fill up to five registers.
-	 * If you need more, then use this structure
-	 * multiple times. */
-
 	uint32_t mc_msrs; /* Number of msr with valid values. */
 	/*
 	 * Currently Intel extended MSR (32/64) include all gp registers
@@ -183,7 +130,8 @@ struct mcinfo_extended {
 /* It's possible DOM0 might take action ownership in some case */
 #define REC_ACTION_NEED_RESET (0x1 << 2)
 
-/* Different Recovery Action types, if the action is performed successfully,
+/*
+ * Different Recovery Action types, if the action is performed successfully,
  * REC_ACTION_RECOVERED flag will be returned.
  */
 
@@ -194,13 +142,10 @@ struct mcinfo_extended {
 /* L3 cache disable Action */
 #define MC_ACTION_CACHE_SHRINK (0x1 << 2)
 
-/* Below interface used between XEN/DOM0 for passing XEN's recovery action
+/*
+ * Below interface used between XEN/DOM0 for passing XEN's recovery action
  * information to DOM0.
- * usage Senario: After offlining broken page, XEN might pass its page offline
- * recovery action result to DOM0. DOM0 will save the information in
- * non-volatile memory for further proactive actions, such as offlining the
- * easy broken page earlier when doing next reboot.
-*/
+ */
 struct page_offline_action {
 	/* Params for passing the offlined page number to DOM0 */
 	uint64_t mfn;
@@ -218,13 +163,8 @@ struct cpu_offline_action {
 struct mcinfo_recovery {
 	struct mcinfo_common common;
 	uint16_t mc_bank; /* bank nr */
-	/* Recovery Action Flags defined above such as REC_ACTION_DONE */
 	uint8_t action_flags;
-	/* Recovery Action types defined above such as MC_ACTION_PAGE_OFFLINE */
 	uint8_t action_types;
-	/* In future if more than one recovery action permitted per error bank,
-	 * a mcinfo_recovery data array will be returned
-	 */
 	union {
 		struct page_offline_action page_retire;
 		struct cpu_offline_action cpu_offline;
@@ -233,29 +173,19 @@ struct mcinfo_recovery {
 };
 
 
-#define MCINFO_HYPERCALLSIZE	1024
-#define MCINFO_MAXSIZE		768
-
+#define MCINFO_MAXSIZE 768
 struct mc_info {
 	/* Number of mcinfo_* entries in mi_data */
 	uint32_t mi_nentries;
-	uint32_t _pad0;
+	uint32_t flags;
 	uint64_t mi_data[(MCINFO_MAXSIZE - 1) / 8];
 };
-typedef struct mc_info mc_info_t;
 DEFINE_GUEST_HANDLE_STRUCT(mc_info);
 
 #define __MC_MSR_ARRAYSIZE 8
+#define __MC_MSR_MCGCAP 0
 #define __MC_NMSRS 1
-#define MC_NCAPS	7	/* 7 CPU feature flag words */
-#define MC_CAPS_STD_EDX	0	/* cpuid level 0x00000001 (%edx) */
-#define MC_CAPS_AMD_EDX	1	/* cpuid level 0x80000001 (%edx) */
-#define MC_CAPS_TM	2	/* cpuid level 0x80860001 (TransMeta) */
-#define MC_CAPS_LINUX	3	/* Linux-defined */
-#define MC_CAPS_STD_ECX	4	/* cpuid level 0x00000001 (%ecx) */
-#define MC_CAPS_VIA	5	/* cpuid level 0xc0000001 */
-#define MC_CAPS_AMD_ECX	6	/* cpuid level 0x80000001 (%ecx) */
-
+#define MC_NCAPS 7
 struct mcinfo_logical_cpu {
 	uint32_t mc_cpunr;
 	uint32_t mc_chipid;
@@ -266,7 +196,7 @@ struct mcinfo_logical_cpu {
 	uint32_t mc_ncores;
 	uint32_t mc_ncores_active;
 	uint32_t mc_nthreads;
-	int32_t mc_cpuid_level;
+	uint32_t mc_cpuid_level;
 	uint32_t mc_family;
 	uint32_t mc_vendor;
 	uint32_t mc_model;
@@ -276,50 +206,45 @@ struct mcinfo_logical_cpu {
 	uint32_t mc_cpu_caps[MC_NCAPS];
 	uint32_t mc_cache_size;
 	uint32_t mc_cache_alignment;
-	int32_t mc_nmsrvals;
+	uint32_t mc_nmsrvals;
 	struct mcinfo_msr mc_msrvalues[__MC_MSR_ARRAYSIZE];
 };
-typedef struct mcinfo_logical_cpu mcinfo_logical_cpu_t;
 DEFINE_GUEST_HANDLE_STRUCT(mcinfo_logical_cpu);
 
-
 /*
- * OS's should use these instead of writing their own lookup function
- * each with its own bugs and drawbacks.
- * We use macros instead of static inline functions to allow guests
- * to include this header in assembly files (*.S).
- */
-/* Prototype:
+ * Prototype:
  *    uint32_t x86_mcinfo_nentries(struct mc_info *mi);
  */
 #define x86_mcinfo_nentries(_mi)    \
-    ((_mi)->mi_nentries)
-/* Prototype:
+	((_mi)->mi_nentries)
+/*
+ * Prototype:
  *    struct mcinfo_common *x86_mcinfo_first(struct mc_info *mi);
  */
 #define x86_mcinfo_first(_mi)       \
-    ((struct mcinfo_common *)(_mi)->mi_data)
-/* Prototype:
+	((struct mcinfo_common *)(_mi)->mi_data)
+/*
+ * Prototype:
  *    struct mcinfo_common *x86_mcinfo_next(struct mcinfo_common *mic);
  */
 #define x86_mcinfo_next(_mic)       \
-    ((struct mcinfo_common *)((uint8_t *)(_mic) + (_mic)->size))
+	((struct mcinfo_common *)((uint8_t *)(_mic) + (_mic)->size))
 
-/* Prototype:
+/*
+ * Prototype:
  *    void x86_mcinfo_lookup(void *ret, struct mc_info *mi, uint16_t type);
  */
-
-static inline void x86_mcinfo_lookup
-	(struct mcinfo_common **ret, struct mc_info *mi, uint16_t type)
+static inline void x86_mcinfo_lookup(struct mcinfo_common **ret,
+				     struct mc_info *mi, uint16_t type)
 {
-	uint32_t found = 0, i;
+	uint32_t i;
 	struct mcinfo_common *mic;
+	bool found = 0;
 
-	*ret = NULL;
-	if (!mi)
+	if (!ret || !mi)
 		return;
-	mic = x86_mcinfo_first(mi);
 
+	mic = x86_mcinfo_first(mi);
 	for (i = 0; i < x86_mcinfo_nentries(mi); i++) {
 		if (mic->type == type) {
 			found = 1;
@@ -330,28 +255,17 @@ static inline void x86_mcinfo_lookup
 
 	*ret = found ? mic : NULL;
 }
-/* Usecase 1
- * Register machine check trap callback handler
- *    (already done via "set_trap_table" hypercall)
- */
 
-/* Usecase 2
- * Dom0 registers machine check event callback handler
- * done by EVTCHNOP_bind_virq
- */
-
-/* Usecase 3
+/*
  * Fetch machine check data from hypervisor.
- * Note, this hypercall is special, because both Dom0 and DomU must use this.
  */
-#define XEN_MC_fetch            1
+#define XEN_MC_fetch		1
 struct xen_mc_fetch {
-    /* IN/OUT variables.
+	/*
 	 * IN: XEN_MC_NONURGENT, XEN_MC_URGENT,
 	 * XEN_MC_ACK if ack'king an earlier fetch
-	 * OUT: XEN_MC_OK, XEN_MC_FETCHAILED,
-	 * XEN_MC_NODATA, XEN_MC_NOMATCH
-	*/
+	 * OUT: XEN_MC_OK, XEN_MC_FETCHAILED, XEN_MC_NODATA
+	 */
 	uint32_t flags;
 	uint32_t _pad0;
 	/* OUT: id for ack, IN: id we are ack'ing */
@@ -360,29 +274,24 @@ struct xen_mc_fetch {
 	/* OUT variables. */
 	GUEST_HANDLE(mc_info) data;
 };
-typedef struct xen_mc_fetch xen_mc_fetch_t;
 DEFINE_GUEST_HANDLE_STRUCT(xen_mc_fetch);
 
 
-/* Usecase 4
+/*
  * This tells the hypervisor to notify a DomU about the machine check error
  */
-#define XEN_MC_notifydomain     2
+#define XEN_MC_notifydomain	2
 struct xen_mc_notifydomain {
-	/* IN variables. */
-	uint16_t mc_domid;/* The unprivileged domain to notify. */
-	uint16_t mc_vcpuid;/* The vcpu in mc_domid to notify.
-			* Usually echo'd value from the fetch hypercall. */
+	/* IN variables */
+	uint16_t mc_domid; /* The unprivileged domain to notify */
+	uint16_t mc_vcpuid; /* The vcpu in mc_domid to notify */
 
-	/* IN/OUT variables. */
+	/* IN/OUT variables */
 	uint32_t flags;
-
-/* OUT: XEN_MC_OK, XEN_MC_CANNOTHANDLE, XEN_MC_NOTDELIVERED, XEN_MC_NOMATCH */
 };
-typedef struct xen_mc_notifydomain xen_mc_notifydomain_t;
 DEFINE_GUEST_HANDLE_STRUCT(xen_mc_notifydomain);
 
-#define XEN_MC_physcpuinfo 3
+#define XEN_MC_physcpuinfo	3
 struct xen_mc_physcpuinfo {
 	/* IN/OUT */
 	uint32_t ncpus;
@@ -391,23 +300,23 @@ struct xen_mc_physcpuinfo {
 	GUEST_HANDLE(mcinfo_logical_cpu) info;
 };
 
-#define XEN_MC_msrinject    4
-#define MC_MSRINJ_MAXMSRS       8
+#define XEN_MC_msrinject	4
+#define MC_MSRINJ_MAXMSRS	8
 struct xen_mc_msrinject {
 	/* IN */
-	uint32_t mcinj_cpunr;/* target processor id */
-	uint32_t mcinj_flags;/* see MC_MSRINJ_F_* below */
-	uint32_t mcinj_count;/* 0 .. count-1 in array are valid */
+	uint32_t mcinj_cpunr; /* target processor id */
+	uint32_t mcinj_flags; /* see MC_MSRINJ_F_* below */
+	uint32_t mcinj_count; /* 0 .. count-1 in array are valid */
 	uint32_t _pad0;
 	struct mcinfo_msr mcinj_msr[MC_MSRINJ_MAXMSRS];
 };
 
 /* Flags for mcinj_flags above; bits 16-31 are reserved */
-#define MC_MSRINJ_F_INTERPOSE   0x1
+#define MC_MSRINJ_F_INTERPOSE	0x1
 
-#define XEN_MC_mceinject    5
+#define XEN_MC_mceinject	5
 struct xen_mc_mceinject {
-	unsigned int mceinj_cpunr;      /* target processor id */
+	unsigned int mceinj_cpunr; /* target processor id */
 };
 
 struct xen_mc {
@@ -421,9 +330,56 @@ struct xen_mc {
 		struct xen_mc_mceinject    mc_mceinject;
 	} u;
 };
-typedef struct xen_mc xen_mc_t;
 DEFINE_GUEST_HANDLE_STRUCT(xen_mc);
 
-#endif /* __ASSEMBLY__ */
+/* Fields are zero when not available */
+struct xen_mce {
+	__u64 status;
+	__u64 misc;
+	__u64 addr;
+	__u64 mcgstatus;
+	__u64 ip;
+	__u64 tsc;	/* cpu time stamp counter */
+	__u64 time;	/* wall time_t when error was detected */
+	__u8  cpuvendor;	/* cpu vendor as encoded in system.h */
+	__u8  inject_flags;	/* software inject flags */
+	__u16  pad;
+	__u32 cpuid;	/* CPUID 1 EAX */
+	__u8  cs;		/* code segment */
+	__u8  bank;	/* machine check bank */
+	__u8  cpu;	/* cpu number; obsolete; use extcpu now */
+	__u8  finished;   /* entry is valid */
+	__u32 extcpu;	/* linux cpu number that detected the error */
+	__u32 socketid;	/* CPU socket ID */
+	__u32 apicid;	/* CPU initial apic ID */
+	__u64 mcgcap;	/* MCGCAP MSR: machine check capabilities of CPU */
+};
 
+/*
+ * This structure contains all data related to the MCE log.  Also
+ * carries a signature to make it easier to find from external
+ * debugging tools.  Each entry is only valid when its finished flag
+ * is set.
+ */
+
+#define XEN_MCE_LOG_LEN 32
+
+struct xen_mce_log {
+	char signature[12]; /* "MACHINECHECK" */
+	unsigned len;	    /* = XEN_MCE_LOG_LEN */
+	unsigned next;
+	unsigned flags;
+	unsigned recordlen;	/* length of struct xen_mce */
+	struct xen_mce entry[XEN_MCE_LOG_LEN];
+};
+
+#define XEN_MCE_OVERFLOW 0		/* bit 0 in flags means overflow */
+
+#define XEN_MCE_LOG_SIGNATURE	"MACHINECHECK"
+
+#define MCE_GET_RECORD_LEN   _IOR('M', 1, int)
+#define MCE_GET_LOG_LEN      _IOR('M', 2, int)
+#define MCE_GETCLEAR_FLAGS   _IOR('M', 3, int)
+
+#endif /* __ASSEMBLY__ */
 #endif /* __XEN_PUBLIC_ARCH_X86_MCA_H__ */

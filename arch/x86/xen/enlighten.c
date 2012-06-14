@@ -38,6 +38,7 @@
 #include <xen/interface/physdev.h>
 #include <xen/interface/vcpu.h>
 #include <xen/interface/memory.h>
+#include <xen/interface/xen-mca.h>
 #include <xen/features.h>
 #include <xen/page.h>
 #include <xen/hvm.h>
@@ -64,6 +65,7 @@
 #include <asm/stackprotector.h>
 #include <asm/hypervisor.h>
 #include <asm/mwait.h>
+#include <asm/pci_x86.h>
 
 #ifdef CONFIG_ACPI
 #include <asm/acpi.h>
@@ -74,6 +76,7 @@
 
 #include "xen-ops.h"
 #include "mmu.h"
+#include "smp.h"
 #include "multicalls.h"
 
 EXPORT_SYMBOL_GPL(hypercall_page);
@@ -261,7 +264,8 @@ static void xen_cpuid(unsigned int *ax, unsigned int *bx,
 
 static bool __init xen_check_mwait(void)
 {
-#if CONFIG_ACPI
+#if defined(CONFIG_ACPI) && !defined(CONFIG_ACPI_PROCESSOR_AGGREGATOR) && \
+	!defined(CONFIG_ACPI_PROCESSOR_AGGREGATOR_MODULE)
 	struct xen_platform_op op = {
 		.cmd			= XENPF_set_processor_pminfo,
 		.u.set_pminfo.id	= -1,
@@ -334,9 +338,7 @@ static void __init xen_init_cpuid_mask(void)
 
 	if (!xen_initial_domain())
 		cpuid_leaf1_edx_mask &=
-			~((1 << X86_FEATURE_MCE)  |  /* disable MCE */
-			  (1 << X86_FEATURE_MCA)  |  /* disable MCA */
-			  (1 << X86_FEATURE_APIC) |  /* disable local APIC */
+			~((1 << X86_FEATURE_APIC) |  /* disable local APIC */
 			  (1 << X86_FEATURE_ACPI));  /* disable ACPI */
 	ax = 1;
 	cx = 0;
@@ -349,7 +351,6 @@ static void __init xen_init_cpuid_mask(void)
 	/* Xen will set CR4.OSXSAVE if supported and not disabled by force */
 	if ((cx & xsave_mask) != xsave_mask)
 		cpuid_leaf1_ecx_mask &= ~xsave_mask; /* disable XSAVE & OSXSAVE */
-
 	if (xen_check_mwait())
 		cpuid_leaf1_ecx_set_mask = (1 << (X86_FEATURE_MWAIT % 32));
 }
@@ -616,8 +617,8 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 	/*
 	 * Look for known traps using IST, and substitute them
 	 * appropriately.  The debugger ones are the only ones we care
-	 * about.  Xen will handle faults like double_fault and
-	 * nmi, so we should never see them.  Warn if
+	 * about.  Xen will handle faults like double_fault,
+	 * so we should never see them.  Warn if
 	 * there's an unexpected IST-using fault handler.
 	 */
 	if (addr == (unsigned long)debug)
@@ -632,10 +633,11 @@ static int cvt_gate_to_trap(int vector, const gate_desc *val,
 		return 0;
 #ifdef CONFIG_X86_MCE
 	} else if (addr == (unsigned long)machine_check) {
-		if (xen_initial_domain())
-			addr = (unsigned long)machine_check;
-		else
-			return 0;
+		/*
+		 * when xen hypervisor inject vMCE to guest,
+		 * use native mce handler to handle it
+		 */
+		;
 #endif
 	} else {
 		/* Some other trap using IST? */
@@ -812,9 +814,40 @@ static void xen_io_delay(void)
 }
 
 #ifdef CONFIG_X86_LOCAL_APIC
+static unsigned long xen_set_apic_id(unsigned int x)
+{
+	WARN_ON(1);
+	return x;
+}
+static unsigned int xen_get_apic_id(unsigned long x)
+{
+	return ((x)>>24) & 0xFFu;
+}
 static u32 xen_apic_read(u32 reg)
 {
-	return 0;
+	struct xen_platform_op op = {
+		.cmd = XENPF_get_cpuinfo,
+		.interface_version = XENPF_INTERFACE_VERSION,
+		.u.pcpu_info.xen_cpuid = 0,
+	};
+	int ret = 0;
+
+	/* Shouldn't need this as APIC is turned off for PV, and we only
+	 * get called on the bootup processor. But just in case. */
+	if (!xen_initial_domain() || smp_processor_id())
+		return 0;
+
+	if (reg == APIC_LVR)
+		return 0x10;
+
+	if (reg != APIC_ID)
+		return 0;
+
+	ret = HYPERVISOR_dom0_op(&op);
+	if (ret)
+		return 0;
+
+	return op.u.pcpu_info.apic_id << 24;
 }
 
 static void xen_apic_write(u32 reg, u32 val)
@@ -852,6 +885,16 @@ static void set_xen_basic_apic_ops(void)
 	apic->icr_write = xen_apic_icr_write;
 	apic->wait_icr_idle = xen_apic_wait_icr_idle;
 	apic->safe_wait_icr_idle = xen_safe_apic_wait_icr_idle;
+	apic->set_apic_id = xen_set_apic_id;
+	apic->get_apic_id = xen_get_apic_id;
+
+#ifdef CONFIG_SMP
+	apic->send_IPI_allbutself = xen_send_IPI_allbutself;
+	apic->send_IPI_mask_allbutself = xen_send_IPI_mask_allbutself;
+	apic->send_IPI_mask = xen_send_IPI_mask;
+	apic->send_IPI_all = xen_send_IPI_all;
+	apic->send_IPI_self = xen_send_IPI_self;
+#endif
 }
 
 #endif
@@ -871,11 +914,11 @@ static DEFINE_PER_CPU(unsigned long, xen_cr0_value);
 
 static unsigned long xen_read_cr0(void)
 {
-	unsigned long cr0 = percpu_read(xen_cr0_value);
+	unsigned long cr0 = this_cpu_read(xen_cr0_value);
 
 	if (unlikely(cr0 == 0)) {
 		cr0 = native_read_cr0();
-		percpu_write(xen_cr0_value, cr0);
+		this_cpu_write(xen_cr0_value, cr0);
 	}
 
 	return cr0;
@@ -885,7 +928,7 @@ static void xen_write_cr0(unsigned long cr0)
 {
 	struct multicall_space mcs;
 
-	percpu_write(xen_cr0_value, cr0);
+	this_cpu_write(xen_cr0_value, cr0);
 
 	/* Only pay attention to cr0.TS; everything else is
 	   ignored. */
@@ -1309,7 +1352,6 @@ asmlinkage void __init xen_start_kernel(void)
 
 	xen_raw_console_write("mapping kernel into physical memory\n");
 	pgd = xen_setup_kernel_pagetable(pgd, xen_start_info->nr_pages);
-	xen_ident_map_ISA();
 
 	/* Allocate and initialize top and mid mfn levels for p2m structure */
 	xen_build_mfn_list_list();
@@ -1367,11 +1409,14 @@ asmlinkage void __init xen_start_kernel(void)
 
 		/* Make sure ACS will be enabled */
 		pci_request_acs();
-
+		
+		xen_init_apic();
 		xen_acpi_sleep_register();
 	}
-		
-
+#ifdef CONFIG_PCI
+	/* PCI BIOS service won't work from a PV guest. */
+	pci_probe &= ~PCI_PROBE_BIOS;
+#endif
 	xen_raw_console_write("about to get started...\n");
 
 	xen_setup_runstate_info(0);
