@@ -1,0 +1,9 @@
+header-y += abi.h
+header-y += abi_compat.h
+header-y += compat32.h
+header-y += disk.h
+header-y += error.h
+header-y += kernel.h
+header-y += manager.h
+header-y += manager_compat.h
+header-y += module_version.h

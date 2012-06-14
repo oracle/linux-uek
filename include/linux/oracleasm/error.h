@@ -82,6 +82,7 @@ enum _ASMErrors
     ASM_ERR_IO          = 3,    /* I/O error */
     ASM_ERR_DSCVR       = 4,    /* Bad discovery string */
     ASM_ERR_NODEV       = 5,    /* Invalid device */
+    ASM_ERR_INTEGRITY	= 6,	/* Data integrity error */
 };
 
 #endif  /* _ORACLEASM_ERROR_H */
