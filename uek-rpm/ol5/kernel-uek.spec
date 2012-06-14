@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.18.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.19.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jun 14 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.19.0.el5uek]
+- xen/netback: Calculate the number of SKB slots required correctly (Simon
+  Graham)
+
 * Fri Jun 08 2012 Maxim Uvarov <maxim.uvarov@oracle.com>  [2.6.39-200.18.0.el5uek]
 - e1000e: disable rxhash when try to enable jumbo frame also rxhash and rxcsum
   have enabled (Joe Jin)
