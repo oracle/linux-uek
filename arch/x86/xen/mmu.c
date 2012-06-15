@@ -2268,10 +2268,10 @@ static int remap_area_mfn_pte_fn(pte_t *ptep, pgtable_t token,
 	return 0;
 }
 
-int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
-			       unsigned long addr,
-			       unsigned long mfn, int nr,
-			       pgprot_t prot, unsigned domid)
+static int __xen_remap_domain_mfn_range(struct mm_struct *mm,
+                               unsigned long addr,
+                               unsigned long mfn, int nr,
+                               pgprot_t prot, unsigned domid)
 {
 	struct remap_data rmd;
 	struct mmu_update mmu_update[REMAP_BATCH_SIZE];
@@ -2281,9 +2281,6 @@ int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
 
 	prot = __pgprot(pgprot_val(prot) | _PAGE_IOMAP);
 
-	BUG_ON(!((vma->vm_flags & (VM_PFNMAP | VM_RESERVED | VM_IO)) ==
-				(VM_PFNMAP | VM_RESERVED | VM_IO)));
-
 	rmd.mfn = mfn;
 	rmd.prot = prot;
 
@@ -2292,14 +2289,16 @@ int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
 		range = (unsigned long)batch << PAGE_SHIFT;
 
 		rmd.mmu_update = mmu_update;
-		err = apply_to_page_range(vma->vm_mm, addr, range,
+
+		err = apply_to_page_range(mm, addr, range,
 					  remap_area_mfn_pte_fn, &rmd);
 		if (err)
 			goto out;
 
-		err = -EFAULT;
-		if (HYPERVISOR_mmu_update(mmu_update, batch, NULL, domid) < 0)
+		if (HYPERVISOR_mmu_update(mmu_update, batch, NULL, domid) < 0) {
+			err = -EFAULT;
 			goto out;
+		}
 
 		nr -= batch;
 		addr += range;
@@ -2312,7 +2311,28 @@ out:
 
 	return err;
 }
+
+int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
+                               unsigned long addr,
+                               unsigned long mfn, int nr,
+                               pgprot_t prot, unsigned domid)
+{
+
+	vma->vm_flags |= VM_IO | VM_RESERVED | VM_PFNMAP;
+
+	return __xen_remap_domain_mfn_range(vma->vm_mm, addr, 
+	                                    mfn, nr, prot, domid);
+}
 EXPORT_SYMBOL_GPL(xen_remap_domain_mfn_range);
+
+int xen_remap_domain_kernel_mfn_range(unsigned long addr,
+                                      unsigned long mfn, int nr,
+                                      pgprot_t prot, unsigned domid)
+{
+	return __xen_remap_domain_mfn_range(&init_mm, addr, 
+	                                    mfn, nr, prot, domid);
+}
+EXPORT_SYMBOL_GPL(xen_remap_domain_kernel_mfn_range);
 
 #ifdef CONFIG_XEN_DEBUG_FS
 static int p2m_dump_open(struct inode *inode, struct file *filp)

@@ -30,6 +30,11 @@ void wake_up_buffer_waiter(void);
 #define INVALID_COOKIE ~0UL
 #define NO_COOKIE 0UL
 
+#ifdef CONFIG_XEN
+#define XEN_COORDINATOR_DOMAIN -1
+#endif
+
+
 extern const struct file_operations event_buffer_fops;
 
 /* mutex between sync_cpu_buffers() and the

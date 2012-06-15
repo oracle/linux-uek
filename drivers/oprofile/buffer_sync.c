@@ -43,6 +43,10 @@ static cpumask_var_t marked_cpus;
 static DEFINE_SPINLOCK(task_mortuary);
 static void process_task_mortuary(void);
 
+#ifdef CONFIG_XEN
+static int cpu_current_xen_domain[NR_CPUS];
+#endif
+
 /* Take ownership of the task struct and place it on the
  * list for processing. Only after two full buffer syncs
  * does the task eventually get freed, because by then
@@ -151,6 +155,13 @@ static void free_all_tasks(void)
 int sync_start(void)
 {
 	int err;
+
+#ifdef CONFIG_XEN
+	int i;
+
+	for (i = 0; i < NR_CPUS; i++)
+		cpu_current_xen_domain[i] = XEN_COORDINATOR_DOMAIN;
+#endif
 
 	if (!zalloc_cpumask_var(&marked_cpus, GFP_KERNEL))
 		return -ENOMEM;
@@ -287,14 +298,37 @@ static void add_cpu_switch(int i)
 	last_cookie = INVALID_COOKIE;
 }
 
-static void add_kernel_ctx_switch(unsigned int in_kernel)
+static void add_cpu_mode_switch(unsigned int cpu_mode)
 {
 	add_event_entry(ESCAPE_CODE);
-	if (in_kernel)
-		add_event_entry(KERNEL_ENTER_SWITCH_CODE);
-	else
-		add_event_entry(KERNEL_EXIT_SWITCH_CODE);
+	switch(cpu_mode)
+	{
+		case CPU_MODE_USER:
+			add_event_entry(USER_ENTER_SWITCH_CODE);
+			break;
+		case CPU_MODE_KERNEL:
+			add_event_entry(KERNEL_ENTER_SWITCH_CODE);
+			break;
+#ifdef CONFIG_XEN
+		case CPU_MODE_XEN:
+			add_event_entry(XEN_ENTER_SWITCH_CODE);
+			break;
+#endif
+		default:
+			break;
+	}
+
+	return;
 }
+
+#ifdef CONFIG_XEN
+static void add_xen_domain_switch(unsigned long domain_id)
+{
+	add_event_entry(ESCAPE_CODE);
+	add_event_entry(XEN_DOMAIN_SWITCH_CODE);
+	add_event_entry(domain_id);
+}
+#endif
 
 static void
 add_user_ctx_switch(struct task_struct const *task, unsigned long cookie)
@@ -374,12 +408,12 @@ static inline void add_sample_entry(unsigned long offset, unsigned long event)
  * for later lookup from userspace. Return 0 on failure.
  */
 static int
-add_sample(struct mm_struct *mm, struct op_sample *s, int in_kernel)
+add_sample(struct mm_struct *mm, struct op_sample *s, int cpu_mode)
 {
 	unsigned long cookie;
 	off_t offset;
 
-	if (in_kernel) {
+	if (cpu_mode >= CPU_MODE_KERNEL) {
 		add_sample_entry(s->eip, s->event);
 		return 1;
 	}
@@ -504,7 +538,7 @@ void sync_buffer(int cpu)
 	unsigned long val;
 	struct task_struct *new;
 	unsigned long cookie = 0;
-	int in_kernel = 1;
+	int cpu_mode = CPU_MODE_KERNEL;
 	sync_buffer_state state = sb_buffer_start;
 	unsigned int i;
 	unsigned long available;
@@ -515,6 +549,13 @@ void sync_buffer(int cpu)
 	mutex_lock(&buffer_mutex);
 
 	add_cpu_switch(cpu);
+
+#ifdef CONFIG_XEN
+	/* We need to assign the first samples in this CPU buffer to the
+	 * same domain that we were processing at the last sync_buffer */
+	if(cpu_current_xen_domain[cpu] != XEN_COORDINATOR_DOMAIN)
+		add_xen_domain_switch(cpu_current_xen_domain[cpu]);
+#endif
 
 	op_cpu_buffer_reset(cpu);
 	available = op_cpu_buffer_entries(cpu);
@@ -532,10 +573,11 @@ void sync_buffer(int cpu)
 			}
 			if (flags & KERNEL_CTX_SWITCH) {
 				/* kernel/userspace switch */
-				in_kernel = flags & IS_KERNEL;
+				/* XXX: crap change this to use cpu_mode explicitly */
+				cpu_mode = flags & CPU_MODE_MASK;
 				if (state == sb_buffer_start)
 					state = sb_sample_start;
-				add_kernel_ctx_switch(flags & IS_KERNEL);
+				add_cpu_mode_switch(cpu_mode);
 			}
 			if (flags & USER_CTX_SWITCH
 			    && op_cpu_buffer_get_data(&entry, &val)) {
@@ -548,16 +590,32 @@ void sync_buffer(int cpu)
 					cookie = get_exec_dcookie(mm);
 				add_user_ctx_switch(new, cookie);
 			}
+#ifdef CONFIG_XEN
+			/* xen domain switch */
+			if (flags & XEN_DOMAIN_SWITCH
+				&& op_cpu_buffer_get_data(&entry, &val)) {
+				cpu_current_xen_domain[cpu] = val;
+				add_xen_domain_switch(val);
+			}
+#endif
 			if (op_cpu_buffer_get_size(&entry))
 				add_data(&entry, mm);
 			continue;
 		}
 
+#ifdef CONFIG_XEN
+		if(cpu_current_xen_domain[cpu] != XEN_COORDINATOR_DOMAIN)
+		{
+			add_sample_entry(sample->eip, sample->event);
+			continue;
+		}
+#endif
+			
 		if (state < sb_bt_start)
 			/* ignore sample */
 			continue;
 
-		if (add_sample(mm, sample, in_kernel))
+		if (add_sample(mm, sample, cpu_mode))
 			continue;
 
 		/* ignore backtraces if failed to add a sample */

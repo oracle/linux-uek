@@ -28,4 +28,7 @@ int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
 			       unsigned long mfn, int nr,
 			       pgprot_t prot, unsigned domid);
 
+int xen_remap_domain_kernel_mfn_range(unsigned long addr,
+			       unsigned long mfn, int nr,
+			       pgprot_t prot, unsigned domid);
 #endif /* INCLUDE_XEN_OPS_H */
