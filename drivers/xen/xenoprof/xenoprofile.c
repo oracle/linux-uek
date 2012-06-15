@@ -19,10 +19,10 @@
 #include <linux/notifier.h>
 #include <linux/smp.h>
 #include <linux/oprofile.h>
-#include <linux/sysdev.h>
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/vmalloc.h>
+#include <linux/syscore_ops.h>
 #include <asm/pgtable.h>
 #include <xen/evtchn.h>
 #include <xen/events.h>
@@ -62,52 +62,36 @@ static char cpu_type[XENOPROF_CPU_TYPE_SIZE];
 
 #ifdef CONFIG_PM
 
-#ifndef CONFIG_ARCH_NO_SYSDEV_OPS
-static int xenoprof_suspend(struct sys_device * dev, pm_message_t state)
+static void xenoprof_suspend(void)
 {
 	if (xenoprof_enabled == 1)
 		xenoprof_stop();
-	return 0;
 }
 
 
-static int xenoprof_resume(struct sys_device * dev)
+static void xenoprof_resume(void)
 {
 	if (xenoprof_enabled == 1)
 		xenoprof_start();
-	return 0;
 }
-#endif
 
 
-static struct sysdev_class oprofile_sysclass = {
-	.name 		= "oprofile",
-#ifndef CONFIG_ARCH_NO_SYSDEV_OPS
-	// .resume	= xenoprof_resume,
-	// .suspend	= xenoprof_suspend
-#endif
+static struct syscore_ops xen_oprofile_syscore_ops = {
+	.resume	= xenoprof_resume,
+	.suspend= xenoprof_suspend
 };
 
 
-static struct sys_device device_oprofile = {
-	.id	= 0,
-	.cls	= &oprofile_sysclass,
-};
 
-
-static int __init init_driverfs(void)
+static void __init init_driverfs(void)
 {
-	int error;
-	if (!(error = sysdev_class_register(&oprofile_sysclass)))
-		error = sysdev_register(&device_oprofile);
-	return error;
+	register_syscore_ops(&xen_oprofile_syscore_ops);
 }
 
 
 static void exit_driverfs(void)
 {
-	sysdev_unregister(&device_oprofile);
-	sysdev_class_unregister(&oprofile_sysclass);
+	unregister_syscore_ops(&xen_oprofile_syscore_ops);
 }
 
 #else
