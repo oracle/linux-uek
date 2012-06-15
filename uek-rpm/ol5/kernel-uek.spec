@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.19.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.20.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,16 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Jun 15 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.20.0.el5uek]
+- Update lpfc version for 8.3.5.68.6p driver release (Martin K. Petersen)
+- Fix system hang due to bad protection module parameters (CR 130769) (Martin
+  K. Petersen)
+- oracleasm: Data integrity support (Martin K. Petersen)
+- sd: Allow protection_type to be overridden (Martin K. Petersen)
+- SCSI: Fix two bugs in DIX retry handling (Martin K. Petersen)
+- sd: Avoid remapping bad reference tags (Martin K. Petersen)
+- block: Fix bad range check in bio_sector_offset (Martin K. Petersen)
+
 * Thu Jun 14 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.19.0.el5uek]
 - xen/netback: Calculate the number of SKB slots required correctly (Simon
   Graham)
