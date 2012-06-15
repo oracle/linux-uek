@@ -1552,8 +1552,8 @@ sector_t bio_sector_offset(struct bio *bio, unsigned short index,
 	sector_sz = queue_logical_block_size(bio->bi_bdev->bd_disk->queue);
 	sectors = 0;
 
-	if (index >= bio->bi_idx)
-		index = bio->bi_vcnt - 1;
+	if (index > bio->bi_vcnt)
+		return 0;
 
 	__bio_for_each_segment(bv, bio, i, 0) {
 		if (i == index) {
