@@ -878,6 +878,13 @@ static void read_module_symbols(unsigned int module_name,
 	Dwarf_Die *tu = NULL;
 	Dwarf_Addr junk;
 	unsigned int *module_idx = NULL;
+	GHashTable *this_module_symbol_seen;
+	GHashTableIter copying_iter;
+	void *copying_name;
+	void *copying_dummy_value;
+
+	this_module_symbol_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
+							free, NULL);
 
 	while ((tu = dwfl_nextcu(dwfl, tu, &junk)) != NULL) {
 		Dwarf_Die toplevel;
@@ -901,7 +908,8 @@ static void read_module_symbols(unsigned int module_name,
 		}
 
 		do {
-			if (dwarf_tag(&toplevel) == DW_TAG_subprogram) {
+			if ((dwarf_tag(&toplevel) == DW_TAG_subprogram) ||
+			    (dwarf_tag(&toplevel) == DW_TAG_variable)) {
 				if (module_idx == NULL) {
 					module_idx = malloc(sizeof(unsigned int));
 					if (module_idx == NULL) {
@@ -912,24 +920,32 @@ static void read_module_symbols(unsigned int module_name,
 					*module_idx = module_name;
 				}
 				/*
-				 * If we have never seen this symbol before, we
-				 * note that we have seen it, and track it in
-				 * the symbol_to_module mapping.  Otherwise, we
-				 * *remove* it from that mapping, if it is
-				 * present there.
+				 * If we have never seen this symbol before
+				 * outside of this module, we note that we have
+				 * now seen it in this module, and track it in
+				 * the symbol_to_module mapping.  Otherwise,
+				 * this symbol appears in multiple modules and
+				 * is not a per-module symbol: *remove* it from
+				 * that mapping, if it is present there.
 				 */
 
 				if (!g_hash_table_lookup_extended(module_symbol_seen,
 								  dwarf_diename(&toplevel),
 								  NULL, NULL)) {
 
-					g_hash_table_insert(module_symbol_seen,
-							    strdup(dwarf_diename(&toplevel)),
-							    NULL);
+					if (!g_hash_table_lookup_extended (symbol_to_module,
+									   dwarf_diename(&toplevel),
+									   NULL, NULL))
+						g_hash_table_insert(symbol_to_module,
+								    strdup(dwarf_diename(&toplevel)),
+								    module_idx);
 
-					g_hash_table_insert(symbol_to_module,
-							    strdup(dwarf_diename(&toplevel)),
-							    module_idx);
+					if (!g_hash_table_lookup_extended (this_module_symbol_seen,
+									   dwarf_diename(&toplevel),
+									   NULL, NULL))
+						g_hash_table_insert(this_module_symbol_seen,
+								    strdup(dwarf_diename(&toplevel)),
+								    NULL);
 				} else {
 					g_hash_table_remove(symbol_to_module,
 							    strdup(dwarf_diename(&toplevel)));
@@ -944,6 +960,19 @@ static void read_module_symbols(unsigned int module_name,
 		}
 	}
 	private_dwfl_free(dwfl);
+
+	/*
+	 * Work over all the symbols seen in this module and note that in future
+	 * they are to be considered symbols that were seen in some other
+	 * module.
+	 */
+	g_hash_table_iter_init(&copying_iter, this_module_symbol_seen);
+	while (g_hash_table_iter_next(&copying_iter, &copying_name,
+				      &copying_dummy_value))
+		g_hash_table_insert(module_symbol_seen,
+				    strdup((char *) copying_name), NULL);
+
+	g_hash_table_destroy(this_module_symbol_seen);
 }
 
 /*
