@@ -54,7 +54,7 @@
 
 static inline int enter_yield(int cpu)
 {
-	if (!need_resched() && !cpu_is_offline(cpu))
+	if (!need_resched() && !cpu_is_offline(cpu) && !rcu_needs_cpu(cpu))
 		return 1;
 	else
 		return 0;
