@@ -287,7 +287,8 @@ static int __init oprofile_init(void)
 		oprofile_arch_exit_func = oprofile_arch_exit;
 	}
 
-	err = oprofile_arch_init(&oprofile_ops);
+
+	err = oprofile_arch_init_func(&oprofile_ops);
 	if (err < 0 || timer) {
 		printk(KERN_INFO "oprofile: using timer interrupt.\n");
 		err = oprofile_timer_init(&oprofile_ops);
