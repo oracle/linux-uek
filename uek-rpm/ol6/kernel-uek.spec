@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.20.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.21.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,21 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jun 19 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.21.0.el6uek]
+- KVM: Fix buffer overflow in kvm_set_irq() (Avi Kivity) [Bugdb: 13966]
+  {CVE-2012-2137}
+- net: sock: validate data_len before allocating skb in sock_alloc_send_pskb()
+  (Jason Wang) [Bugdb: 13966] {CVE-2012-2136}
+- mm: pmd_read_atomic: fix 32bit PAE pmd walk vs pmd_populate SMP race
+  condition (Andrea Arcangeli) [Bugdb: 13966] {CVE-2012-2373}
+- KVM: lock slots_lock around device assignment (Alex Williamson) [Bugdb:
+  13966] {CVE-2012-2121}
+- KVM: unmap pages from the iommu when slots are removed (Alex Williamson)
+  [Bugdb: 13966] {CVE-2012-2121}
+- KVM: introduce kvm_for_each_memslot macro (Xiao Guangrong) [Bugdb: 13966]
+- fcaps: clear the same personality flags as suid when fcaps are used (Eric
+  Paris) [Bugdb: 13966] {CVE-2012-2123}
+
 * Fri Jun 15 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.20.0.el6uek]
 - Update lpfc version for 8.3.5.68.6p driver release (Martin K. Petersen)
 - Fix system hang due to bad protection module parameters (CR 130769) (Martin
