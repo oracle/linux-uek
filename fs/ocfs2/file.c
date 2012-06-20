@@ -2223,7 +2223,7 @@ static ssize_t ocfs2_file_write_iter(struct kiocb *iocb,
 	int ret, direct_io, appending, rw_level, have_alloc_sem  = 0;
 	int can_do_direct, has_refcount = 0;
 	ssize_t written = 0;
-	size_t count;		/* after file limit checks */
+	size_t count, ocount;
 	loff_t old_size, *ppos = &iocb->ki_pos;
 	u32 old_clusters;
 	struct file *file = iocb->ki_filp;
@@ -2352,7 +2352,7 @@ relock:
 	ocfs2_iocb_set_rw_locked(iocb, rw_level);
 
 
-	count = iov_iter_count(iter);
+	ocount = count = iov_iter_count(iter);
 	ret = generic_write_checks(file, ppos, &count,
 				   S_ISBLK(inode->i_mode));
 	if (ret)
@@ -2366,6 +2366,9 @@ relock:
 			goto out_dio;
 		}
 	} else {
+		if (count != ocount)
+			iov_iter_shorten(iter, count);
+
 		current->backing_dev_info = file->f_mapping->backing_dev_info;
 		written = generic_file_buffered_write_iter(iocb, iter, *ppos,
 							   ppos, 0);
