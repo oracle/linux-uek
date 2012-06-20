@@ -266,6 +266,42 @@ queue_rq_affinity_store(struct request_queue *q, const char *page, size_t count)
 	return ret;
 }
 
+static ssize_t
+queue_rq_timeout_store(struct request_queue *q, const char *page, size_t count)
+{
+	unsigned long rq_timeout;
+	ssize_t ret = queue_var_store(&rq_timeout, page, count);
+
+	q->rq_timeout = rq_timeout * HZ;
+
+	return ret;
+}
+
+static ssize_t queue_rq_timeout_show(struct request_queue *q, char *page)
+{
+	int rq_timeout = q->rq_timeout / HZ;
+
+	return queue_var_show(rq_timeout, (page));
+}
+
+static ssize_t
+queue_eh_timeout_store(struct request_queue *q, const char *page, size_t count)
+{
+	unsigned long eh_timeout;
+	ssize_t ret = queue_var_store(&eh_timeout, page, count);
+
+	q->eh_timeout = eh_timeout * HZ;
+
+	return ret;
+}
+
+static ssize_t queue_eh_timeout_show(struct request_queue *q, char *page)
+{
+	int eh_timeout = q->eh_timeout / HZ;
+
+	return queue_var_show(eh_timeout, (page));
+}
+
 static struct queue_sysfs_entry queue_requests_entry = {
 	.attr = {.name = "nr_requests", .mode = S_IRUGO | S_IWUSR },
 	.show = queue_requests_show,
@@ -380,6 +416,18 @@ static struct queue_sysfs_entry queue_random_entry = {
 	.store = queue_store_random,
 };
 
+static struct queue_sysfs_entry queue_rq_timeout_entry = {
+	.attr = {.name = "rq_timeout_secs", .mode = S_IRUGO | S_IWUSR },
+	.show = queue_rq_timeout_show,
+	.store = queue_rq_timeout_store,
+};
+
+static struct queue_sysfs_entry queue_eh_timeout_entry = {
+	.attr = {.name = "eh_timeout_secs", .mode = S_IRUGO | S_IWUSR },
+	.show = queue_eh_timeout_show,
+	.store = queue_eh_timeout_store,
+};
+
 static struct attribute *default_attrs[] = {
 	&queue_requests_entry.attr,
 	&queue_ra_entry.attr,
@@ -402,6 +450,8 @@ static struct attribute *default_attrs[] = {
 	&queue_rq_affinity_entry.attr,
 	&queue_iostats_entry.attr,
 	&queue_random_entry.attr,
+	&queue_rq_timeout_entry.attr,
+	&queue_eh_timeout_entry.attr,
 	NULL,
 };
 

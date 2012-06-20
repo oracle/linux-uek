@@ -348,6 +348,7 @@ struct request_queue
 	unsigned int		in_flight[2];
 
 	unsigned int		rq_timeout;
+	unsigned int		eh_timeout;
 	struct timer_list	timeout;
 	struct list_head	timeout_list;
 
@@ -850,6 +851,7 @@ extern void blk_queue_rq_timed_out(struct request_queue *, rq_timed_out_fn *);
 extern void blk_queue_rq_timeout(struct request_queue *, unsigned int);
 extern void blk_queue_flush(struct request_queue *q, unsigned int flush);
 extern void blk_queue_flush_queueable(struct request_queue *q, bool queueable);
+extern void blk_queue_eh_timeout(struct request_queue *, unsigned int);
 extern struct backing_dev_info *blk_get_backing_dev_info(struct block_device *bdev);
 
 extern int blk_rq_map_sg(struct request_queue *, struct request *, struct scatterlist *);

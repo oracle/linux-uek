@@ -1691,6 +1691,9 @@ struct request_queue *__scsi_alloc_queue(struct Scsi_Host *shost,
 	 */
 	blk_queue_dma_alignment(q, 0x03);
 
+	blk_queue_rq_timeout(q, SCSI_DEFAULT_RQ_TIMEOUT);
+	blk_queue_eh_timeout(q, SCSI_DEFAULT_EH_TIMEOUT);
+
 	return q;
 }
 EXPORT_SYMBOL(__scsi_alloc_queue);
