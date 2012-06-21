@@ -24,10 +24,6 @@
 #define __XEN_XENOPROF_H__
 #ifdef CONFIG_XEN
 
-#if 0
-#include <asm/xenoprof.h>
-#endif
-
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
 /* xenoprof x86 specific */
 struct super_block;
@@ -62,8 +58,11 @@ struct xenoprof_shared_buffer {
 	struct xenoprof_arch_shared_buffer	arch;
 };
 #else
-#define xenoprofile_init(ops)	(-ENOSYS)
-#define xenoprofile_exit()	do { } while (0)
+static int xenoprofile_init(struct oprofile_operations *ops)
+{
+	return -ENOSYS;
+}
+static void xenoprofile_exit(void) { }
 
 #endif /* CONFIG_XEN */
 #endif /* __XEN_XENOPROF_H__ */
