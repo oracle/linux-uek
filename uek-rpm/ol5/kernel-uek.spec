@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.21.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.22.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jun 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.22.1.el5uek]
+- NFSv4: include bitmap in nfsv4 get acl data (Andy Adamson)  {CVE-2011-4131}
+- ocfs2:btrfs: aio-dio-loop changes broke setrlimit behavior [orabug 14207636]
+  (Dave Kleikamp)
+- Add Oracle VM guest messaging driver (Zhigang Wang)
+- thp: avoid atomic64_read in pmd_read_atomic for 32bit PAE (Andrea Arcangeli)
+  [Orabug: 14217003]
+
 * Tue Jun 19 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.21.0.el5uek]
 - KVM: Fix buffer overflow in kvm_set_irq() (Avi Kivity) [Bugdb: 13966]
   {CVE-2012-2137}
