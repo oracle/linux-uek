@@ -1338,13 +1338,13 @@ static ssize_t btrfs_file_write_iter(struct kiocb *iocb,
 	u64 start_pos;
 	ssize_t num_written = 0;
 	ssize_t err = 0;
-	size_t count;
+	size_t count, ocount;
 
 	vfs_check_frozen(inode->i_sb, SB_FREEZE_WRITE);
 
 	mutex_lock(&inode->i_mutex);
 
-	count = iov_iter_count(iter);
+	ocount = count = iov_iter_count(iter);
 
 	current->backing_dev_info = inode->i_mapping->backing_dev_info;
 	err = generic_write_checks(file, &pos, &count, S_ISBLK(inode->i_mode));
@@ -1396,6 +1396,9 @@ static ssize_t btrfs_file_write_iter(struct kiocb *iocb,
 		num_written = __btrfs_direct_write(iocb, iter, pos, ppos,
 						   count);
 	} else {
+		if (count != ocount)
+			iov_iter_shorten(iter, count);
+
 		num_written = __btrfs_buffered_write(file, iter, pos);
 		if (num_written > 0)
 			*ppos = pos + num_written;
