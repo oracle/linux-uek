@@ -3007,7 +3007,7 @@ static void insert_ptr(struct btrfs_trans_handle *trans,
 	if (nritems == BTRFS_NODEPTRS_PER_BLOCK(root))
 		BUG();
 	if (slot != nritems) {
-		if (tree_mod_log && level)
+		if (level)
 			tree_mod_log_eb_move(root->fs_info, lower, slot + 1,
 					     slot, nritems - slot);
 		memmove_extent_buffer(lower,
@@ -3015,7 +3015,7 @@ static void insert_ptr(struct btrfs_trans_handle *trans,
 			      btrfs_node_key_ptr_offset(slot),
 			      (nritems - slot) * sizeof(struct btrfs_key_ptr));
 	}
-	if (tree_mod_log && level) {
+	if (level) {
 		ret = tree_mod_log_insert_key(root->fs_info, lower, slot,
 					      MOD_LOG_KEY_ADD);
 		BUG_ON(ret < 0);
@@ -3105,8 +3105,7 @@ static noinline int split_node(struct btrfs_trans_handle *trans,
 	btrfs_mark_buffer_dirty(split);
 
 	insert_ptr(trans, root, path, &disk_key, split->start,
-			  path->slots[level + 1] + 1,
-			  level + 1);
+		   path->slots[level + 1] + 1, level + 1);
 
 	if (path->slots[level] >= mid) {
 		path->slots[level] -= mid;
@@ -3651,7 +3650,7 @@ static noinline int copy_for_split(struct btrfs_trans_handle *trans,
 	ret = 0;
 	btrfs_item_key(right, &disk_key, 0);
 	insert_ptr(trans, root, path, &disk_key, right->start,
-			  path->slots[1] + 1, 1);
+		   path->slots[1] + 1, 1);
 
 	btrfs_mark_buffer_dirty(right);
 	btrfs_mark_buffer_dirty(l);
@@ -3859,9 +3858,8 @@ again:
 	if (split == 0) {
 		if (mid <= slot) {
 			btrfs_set_header_nritems(right, 0);
-			insert_ptr(trans, root, path,
-					  &disk_key, right->start,
-					  path->slots[1] + 1, 1);
+			insert_ptr(trans, root, path, &disk_key, right->start,
+				   path->slots[1] + 1, 1);
 			btrfs_tree_unlock(path->nodes[0]);
 			free_extent_buffer(path->nodes[0]);
 			path->nodes[0] = right;
@@ -3869,9 +3867,7 @@ again:
 			path->slots[1] += 1;
 		} else {
 			btrfs_set_header_nritems(right, 0);
-			insert_ptr(trans, root, path,
-					  &disk_key,
-					  right->start,
+			insert_ptr(trans, root, path, &disk_key, right->start,
 					  path->slots[1], 1);
 			btrfs_tree_unlock(path->nodes[0]);
 			free_extent_buffer(path->nodes[0]);
