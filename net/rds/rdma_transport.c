@@ -149,7 +149,7 @@ static int rds_rdma_listen_init(void)
 		ret = PTR_ERR(cm_id);
 		printk(KERN_ERR "RDS/RDMA: failed to setup listener, "
 		       "rdma_create_id() returned %d\n", ret);
-		goto out;
+		return ret;
 	}
 
 	sin.sin_family = PF_INET,
