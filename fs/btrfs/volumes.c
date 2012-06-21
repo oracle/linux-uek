@@ -430,6 +430,7 @@ static struct btrfs_fs_devices *clone_fs_devices(struct btrfs_fs_devices *orig)
 	mutex_init(&fs_devices->device_list_mutex);
 	fs_devices->latest_devid = orig->latest_devid;
 	fs_devices->latest_trans = orig->latest_trans;
+	fs_devices->total_devices = orig->total_devices;
 	memcpy(fs_devices->fsid, orig->fsid, sizeof(fs_devices->fsid));
 
 	/* We have held the volume lock, it is safe to get the devices. */
@@ -741,6 +742,7 @@ int btrfs_scan_one_device(const char *path, fmode_t flags, void *holder,
 	int ret;
 	u64 devid;
 	u64 transid;
+	u64 total_devices;
 
 	mutex_lock(&uuid_mutex);
 
@@ -763,6 +765,7 @@ int btrfs_scan_one_device(const char *path, fmode_t flags, void *holder,
 	disk_super = (struct btrfs_super_block *)bh->b_data;
 	devid = btrfs_stack_device_id(&disk_super->dev_item);
 	transid = btrfs_super_generation(disk_super);
+	total_devices = btrfs_super_num_devices(disk_super);
 	if (disk_super->label[0])
 		printk(KERN_INFO "device label %s ", disk_super->label);
 	else
@@ -770,7 +773,8 @@ int btrfs_scan_one_device(const char *path, fmode_t flags, void *holder,
 	printk(KERN_CONT "devid %llu transid %llu %s\n",
 	       (unsigned long long)devid, (unsigned long long)transid, path);
 	ret = device_list_add(path, disk_super, devid, fs_devices_ret);
-
+	if (!ret && fs_devices_ret)
+		(*fs_devices_ret)->total_devices = total_devices;
 	brelse(bh);
 error_close:
 	blkdev_put(bdev, flags);
@@ -1435,6 +1439,7 @@ int btrfs_rm_device(struct btrfs_root *root, char *device_path)
 	list_del_rcu(&device->dev_list);
 
 	device->fs_devices->num_devices--;
+	device->fs_devices->total_devices--;
 
 	if (device->missing)
 		root->fs_info->fs_devices->missing_devices--;
@@ -1553,6 +1558,7 @@ static int btrfs_prepare_sprout(struct btrfs_root *root)
 	fs_devices->seeding = 0;
 	fs_devices->num_devices = 0;
 	fs_devices->open_devices = 0;
+	fs_devices->total_devices = 0;
 	fs_devices->seed = seed_devices;
 
 	generate_random_uuid(fs_devices->fsid);
@@ -1753,6 +1759,7 @@ int btrfs_init_new_device(struct btrfs_root *root, char *device_path)
 	root->fs_info->fs_devices->num_devices++;
 	root->fs_info->fs_devices->open_devices++;
 	root->fs_info->fs_devices->rw_devices++;
+	root->fs_info->fs_devices->total_devices++;
 	if (device->can_discard)
 		root->fs_info->fs_devices->num_can_discard++;
 	root->fs_info->fs_devices->total_rw_bytes += device->total_bytes;
