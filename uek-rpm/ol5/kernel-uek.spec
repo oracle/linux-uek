@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.22.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.23.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jun 21 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.23.1.el5uek]
+- SPEC: add block/net modules to list used by installer (Guru Anbalagane)
+  [Orabug: 14224837]
+
 * Thu Jun 21 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.22.1.el5uek]
 - NFSv4: include bitmap in nfsv4 get acl data (Andy Adamson)  {CVE-2011-4131}
 - ocfs2:btrfs: aio-dio-loop changes broke setrlimit behavior [orabug 14207636]
