@@ -1269,9 +1269,9 @@ hwcap 0 nosegneg"
     }
 
     collect_modules_list networking \
-    			 'register_netdev|ieee80211_register_hw|usbnet_probe'
+    			 'register_netdev|ieee80211_register_hw|usbnet_probe|phy_driver_register|register_netdevice'
     collect_modules_list block \
-    			 'ata_scsi_ioctl|scsi_add_host|blk_init_queue|register_mtd_blktrans|scsi_esp_register'
+    			 'ata_scsi_ioctl|scsi_add_host|scsi_add_host_with_dma|blk_init_queue|register_mtd_blktrans|scsi_esp_register|scsi_register_device_handler|blk_queue_physical_block_size'
     collect_modules_list drm \
     			 'drm_open|drm_init'
     collect_modules_list modesetting \
