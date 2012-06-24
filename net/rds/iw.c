@@ -226,7 +226,7 @@ static int rds_iw_laddr_check(__be32 addr)
 	 * IB and iWARP capable NICs.
 	 */
 	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP);
-	if (!cm_id)
+	if (IS_ERR(cm_id))
 		return -EADDRNOTAVAIL;
 
 	memset(&sin, 0, sizeof(sin));
