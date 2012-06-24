@@ -843,8 +843,9 @@ int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port, int pkey_tbl_sz)
 {
 	struct mlx4_cmd_mailbox *mailbox;
 	int err, vl_cap, pkey_tbl_flag = 0;
+	u32 in_mod;
 
-	if (dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH)
+	if (dev->caps.port_type[port] == MLX4_PORT_TYPE_NONE)
 		return 0;
 
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
@@ -853,25 +854,32 @@ int mlx4_SET_PORT(struct mlx4_dev *dev, u8 port, int pkey_tbl_sz)
 
 	memset(mailbox->buf, 0, 256);
 
-	((__be32 *) mailbox->buf)[1] = dev->caps.ib_port_def_cap[port];
+	if (dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH) {
+		in_mod = MLX4_SET_PORT_GENERAL << 8 | port;
+		err = mlx4_cmd(dev, mailbox->dma, in_mod, 1,
+			       MLX4_CMD_SET_PORT, MLX4_CMD_TIME_CLASS_B,
+			       MLX4_CMD_WRAPPED);
+	} else {
+		((__be32 *) mailbox->buf)[1] = dev->caps.ib_port_def_cap[port];
 
-	if (pkey_tbl_sz >= 0 && mlx4_is_master(dev)) {
-		pkey_tbl_flag = 1;
-		((__be16 *) mailbox->buf)[20] = cpu_to_be16(pkey_tbl_sz);
-	}
+		if (pkey_tbl_sz >= 0 && mlx4_is_master(dev)) {
+			pkey_tbl_flag = 1;
+			((__be16 *) mailbox->buf)[20] = cpu_to_be16(pkey_tbl_sz);
+		}
 
-	/* IB VL CAP enum isn't used by the firmware, just numerical values */
-	for (vl_cap = vl_cap_start(dev); vl_cap >= 1; vl_cap >>= 1) {
-		((__be32 *) mailbox->buf)[0] = cpu_to_be32(
-			(1 << MLX4_CHANGE_PORT_MTU_CAP) |
-			(1 << MLX4_CHANGE_PORT_VL_CAP)  |
-			(pkey_tbl_flag << MLX4_CHANGE_PORT_PKEY_TBL_SZ) |
-			(dev->caps.port_ib_mtu[port] << MLX4_SET_PORT_MTU_CAP) |
-			(vl_cap << MLX4_SET_PORT_VL_CAP));
-		err = mlx4_cmd(dev, mailbox->dma, port, 0, MLX4_CMD_SET_PORT,
-				MLX4_CMD_TIME_CLASS_B, MLX4_CMD_WRAPPED);
-		if (err != -ENOMEM)
-			break;
+		/* IB VL CAP enum isn't used by the firmware, just numerical values */
+		for (vl_cap = vl_cap_start(dev); vl_cap >= 1; vl_cap >>= 1) {
+			((__be32 *) mailbox->buf)[0] = cpu_to_be32(
+				(1 << MLX4_CHANGE_PORT_MTU_CAP) |
+				(1 << MLX4_CHANGE_PORT_VL_CAP)  |
+				(pkey_tbl_flag << MLX4_CHANGE_PORT_PKEY_TBL_SZ) |
+				(dev->caps.port_ib_mtu[port] << MLX4_SET_PORT_MTU_CAP) |
+				(vl_cap << MLX4_SET_PORT_VL_CAP));
+			err = mlx4_cmd(dev, mailbox->dma, port, 0, MLX4_CMD_SET_PORT,
+					MLX4_CMD_TIME_CLASS_B, MLX4_CMD_WRAPPED);
+			if (err != -ENOMEM)
+				break;
+		}
 	}
 
 	mlx4_free_cmd_mailbox(dev, mailbox);
