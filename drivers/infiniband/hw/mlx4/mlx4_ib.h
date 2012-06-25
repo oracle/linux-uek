@@ -611,6 +611,9 @@ void mlx4_ib_db_unmap_user(struct mlx4_ib_ucontext *context, struct mlx4_db *db)
 struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc);
 int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 			   struct ib_umem *umem);
+int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem,
+						u64 start_va,
+						int *num_of_mtts);
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata, int mr_id);

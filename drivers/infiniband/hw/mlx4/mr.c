@@ -311,7 +311,7 @@ static int mlx4_ib_umem_calc_block_mtt(u64 next_block_start,
     All chunks in the middle already handled as part of mtt shift calculation
     for both their start & end addresses.
 */
-static int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem,
+int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem,
 						u64 start_va,
 						int *num_of_mtts)
 {
