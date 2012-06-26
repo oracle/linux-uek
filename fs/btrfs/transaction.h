@@ -57,12 +57,7 @@ struct btrfs_trans_handle {
 	struct btrfs_block_rsv *block_rsv;
 	struct btrfs_block_rsv *orig_rsv;
 	int aborted;
-	/*
-	 * this root is only needed to validate that the root passed to
-	 * start_transaction is the same as the one passed to end_transaction.
-	 * Subvolume quota depends on this
-	 */
-	struct btrfs_root *root;
+	int adding_csums;
 };
 
 struct btrfs_pending_snapshot {
