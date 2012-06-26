@@ -116,7 +116,10 @@ enum ib_device_cap_flags {
 	IB_DEVICE_MEM_MGT_EXTENSIONS	= (1<<21),
 	IB_DEVICE_BLOCK_MULTICAST_LOOPBACK = (1<<22),
 	IB_DEVICE_MR_ALLOCATE		= (1<<23),
-	IB_DEVICE_SHARED_MR             = (1<<24)
+	IB_DEVICE_SHARED_MR             = (1<<24),
+	IB_DEVICE_QPG			= (1<<25),
+	IB_DEVICE_UD_RSS		= (1<<26),
+	IB_DEVICE_UD_TSS		= (1<<27)
 };
 
 enum ib_atomic_cap {
@@ -164,6 +167,7 @@ struct ib_device_attr {
 	int			max_srq_wr;
 	int			max_srq_sge;
 	unsigned int		max_fast_reg_page_list_len;
+	int			max_rss_tbl_sz;
 	u16			max_pkeys;
 	u8			local_ca_ack_delay;
 };
@@ -586,6 +590,7 @@ struct ib_qp_cap {
 	u32	max_send_sge;
 	u32	max_recv_sge;
 	u32	max_inline_data;
+	u32	qpg_tss_mask_sz;
 };
 
 enum ib_sig_type {
@@ -622,6 +627,18 @@ enum ib_qp_create_flags {
 	IB_QP_CREATE_RESERVED_END		= 1 << 31,
 };
 
+enum ib_qpg_type {
+	IB_QPG_NONE	= 0,
+	IB_QPG_PARENT	= (1<<0),
+	IB_QPG_CHILD_RX = (1<<1),
+	IB_QPG_CHILD_TX = (1<<2)
+};
+
+struct ib_qpg_init_attrib {
+	u32 tss_child_count;
+	u32 rss_child_count;
+};
+
 struct ib_qp_init_attr {
 	void                  (*event_handler)(struct ib_event *, void *);
 	void		       *qp_context;
@@ -630,9 +647,14 @@ struct ib_qp_init_attr {
 	struct ib_srq	       *srq;
 	struct ib_xrcd	       *xrcd;     /* XRC TGT QPs only */
 	struct ib_qp_cap	cap;
+	union {
+		struct ib_qp *qpg_parent; /* see qpg_type */
+		struct ib_qpg_init_attrib parent_attrib;
+	};
 	enum ib_sig_type	sq_sig_type;
 	enum ib_qp_type		qp_type;
 	enum ib_qp_create_flags	create_flags;
+	enum ib_qpg_type	qpg_type;
 	u8			port_num; /* special QP types only */
 };
 
@@ -699,7 +721,8 @@ enum ib_qp_attr_mask {
 	IB_QP_MAX_DEST_RD_ATOMIC	= (1<<17),
 	IB_QP_PATH_MIG_STATE		= (1<<18),
 	IB_QP_CAP			= (1<<19),
-	IB_QP_DEST_QPN			= (1<<20)
+	IB_QP_DEST_QPN			= (1<<20),
+	IB_QP_GROUP_RSS			= (1<<21)
 };
 
 enum ib_qp_state {
@@ -1000,6 +1023,7 @@ struct ib_qp {
 	void		       *qp_context;
 	u32			qp_num;
 	enum ib_qp_type		qp_type;
+	enum ib_qpg_type	qpg_type;
 };
 
 struct ib_mr {

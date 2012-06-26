@@ -1033,6 +1033,9 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	      init_attr->qp_type > IB_QPT_GSI)))
 		return ERR_PTR(-EINVAL);
 
+	if (init_attr->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	switch (init_attr->qp_type) {
 	case IB_QPT_XRC_TGT:
 		pd = to_mxrcd(init_attr->xrcd)->pd;

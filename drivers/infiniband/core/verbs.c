@@ -496,6 +496,9 @@ static const struct {
 						IB_QP_QKEY),
 				[IB_QPT_GSI] = (IB_QP_PKEY_INDEX		|
 						IB_QP_QKEY),
+			},
+			.opt_param = {
+				[IB_QPT_UD]  = IB_QP_GROUP_RSS
 			}
 		},
 	},

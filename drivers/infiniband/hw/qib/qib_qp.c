@@ -985,6 +985,11 @@ struct ib_qp *qib_create_qp(struct ib_pd *ibpd,
 		goto bail;
 	}
 
+	if (init_attr->qpg_type != IB_QPG_NONE) {
+		ret = ERR_PTR(-ENOSYS);
+		goto bail;
+	}
+
 	/* Check receive queue parameters if no SRQ is specified. */
 	if (!init_attr->srq) {
 		if (init_attr->cap.max_recv_sge > ib_qib_max_sges ||
