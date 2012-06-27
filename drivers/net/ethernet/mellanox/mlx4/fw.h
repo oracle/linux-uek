@@ -121,6 +121,7 @@ struct mlx4_dev_cap {
 	u8  log_max_vlans[MLX4_MAX_PORTS + 1];
 	u32 max_counters;
 	u32 sync_qp;
+	u8  timestamp_support;
 };
 
 struct mlx4_func_cap {
