@@ -184,11 +184,20 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 		goto out;
 	prefetchw(skb);
 
-	size = SKB_DATA_ALIGN(size);
-	data = kmalloc_node_track_caller(size + sizeof(struct skb_shared_info),
-			gfp_mask, node);
+	/* We do our best to align skb_shared_info on a separate cache
+	 * line. It usually works because kmalloc(X > SMP_CACHE_BYTES) gives
+	 * aligned memory blocks, unless SLUB/SLAB debug is enabled.
+	 * Both skb->head and skb_shared_info are cache line aligned.
+	 */
+	size += SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+	data = kmalloc_node_track_caller(size, gfp_mask, node);
 	if (!data)
 		goto nodata;
+	/* kmalloc(size) might give us more room than requested.
+	 * Put skb_shared_info exactly at the end of allocated zone,
+	 * to allow max possible filling before reallocation.
+	 */
+	size = SKB_WITH_OVERHEAD(ksize(data));
 	prefetchw(data + size);
 
 	/*
@@ -197,7 +206,8 @@ struct sk_buff *__alloc_skb(unsigned int size, gfp_t gfp_mask,
 	 * the tail pointer in struct sk_buff!
 	 */
 	memset(skb, 0, offsetof(struct sk_buff, tail));
-	skb->truesize = size + sizeof(struct sk_buff);
+	/* Account for allocated memory : skb + skb->head */
+	skb->truesize = SKB_TRUESIZE(size);
 	atomic_set(&skb->users, 1);
 	skb->head = data;
 	skb->data = data;
@@ -232,6 +242,55 @@ nodata:
 	goto out;
 }
 EXPORT_SYMBOL(__alloc_skb);
+
+/**
+ * build_skb - build a network buffer
+ * @data: data buffer provided by caller
+ *
+ * Allocate a new &sk_buff. Caller provides space holding head and
+ * skb_shared_info. @data must have been allocated by kmalloc()
+ * The return is the new skb buffer.
+ * On a failure the return is %NULL, and @data is not freed.
+ * Notes :
+ *  Before IO, driver allocates only data buffer where NIC put incoming frame
+ *  Driver should add room at head (NET_SKB_PAD) and
+ *  MUST add room at tail (SKB_DATA_ALIGN(skb_shared_info))
+ *  After IO, driver calls build_skb(), to allocate sk_buff and populate it
+ *  before giving packet to stack.
+ *  RX rings only contains data buffers, not full skbs.
+ */
+struct sk_buff *build_skb(void *data)
+{
+	struct skb_shared_info *shinfo;
+	struct sk_buff *skb;
+	unsigned int size;
+
+	skb = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC);
+	if (!skb)
+		return NULL;
+
+	size = ksize(data) - SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
+
+	memset(skb, 0, offsetof(struct sk_buff, tail));
+	skb->truesize = SKB_TRUESIZE(size);
+	atomic_set(&skb->users, 1);
+	skb->head = data;
+	skb->data = data;
+	skb_reset_tail_pointer(skb);
+	skb->end = skb->tail + size;
+#ifdef NET_SKBUFF_DATA_USES_OFFSET
+	skb->mac_header = ~0U;
+#endif
+
+	/* make sure we initialize shinfo sequentially */
+	shinfo = skb_shinfo(skb);
+	memset(shinfo, 0, offsetof(struct skb_shared_info, dataref));
+	atomic_set(&shinfo->dataref, 1);
+	kmemcheck_annotate_variable(shinfo->destructor_arg);
+
+	return skb;
+}
+EXPORT_SYMBOL(build_skb);
 
 /**
  *	__netdev_alloc_skb - allocate an skbuff for rx on a specific device

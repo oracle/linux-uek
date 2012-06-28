@@ -1,0 +1,6 @@
+config SXGE 
+        tristate "SXGE SOL ethernet driver "
+        depends on PCI
+        ---help---
+          This driver supports the SXGE SOL 40Gb Ethernet driver.  
+

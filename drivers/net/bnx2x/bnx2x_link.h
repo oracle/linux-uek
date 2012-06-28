@@ -1,4 +1,4 @@
-/* Copyright 2008-2011 Broadcom Corporation
+/* Copyright 2008-2012 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -145,6 +145,8 @@ struct bnx2x_phy {
 #define FLAGS_SFP_NOT_APPROVED		(1<<7)
 #define FLAGS_MDC_MDIO_WA		(1<<8)
 #define FLAGS_DUMMY_READ		(1<<9)
+#define FLAGS_MDC_MDIO_WA_B0		(1<<10)
+#define FLAGS_TX_ERROR_CHECK		(1<<12)
 
 	/* preemphasis values for the rx side */
 	u16 rx_preemphasis[4];
@@ -250,6 +252,8 @@ struct link_params {
 #define FEATURE_CONFIG_PFC_ENABLED			(1<<1)
 #define FEATURE_CONFIG_BC_SUPPORTS_OPT_MDL_VRFY		(1<<2)
 #define FEATURE_CONFIG_BC_SUPPORTS_DUAL_PHY_OPT_MDL_VRFY	(1<<3)
+#define FEATURE_CONFIG_AUTOGREEEN_ENABLED			(1<<9)
+#define FEATURE_CONFIG_BC_SUPPORTS_SFP_TX_DISABLED		(1<<10)
 	/* Will be populated during common init */
 	struct bnx2x_phy phy[MAX_PHYS];
 
@@ -274,7 +278,6 @@ struct link_vars {
 #define PHY_PHYSICAL_LINK_FLAG		(1<<2)
 #define PHY_HALF_OPEN_CONN_FLAG		(1<<3)
 #define PHY_OVER_CURRENT_FLAG		(1<<4)
-#define PHY_TX_ERROR_CHECK_FLAG		(1<<5)
 
 	u8 mac_type;
 #define MAC_TYPE_NONE		0
@@ -300,6 +303,9 @@ struct link_vars {
 #define PERIODIC_FLAGS_LINK_EVENT	0x0001
 
 	u32 aeu_int_mask;
+	u8 rx_tx_asic_rst;
+	u8 turn_to_run_wc_rt;
+	u16 rsrv2;
 };
 
 /***********************************************************/
@@ -473,7 +479,7 @@ int bnx2x_ets_strict(const struct link_params *params, const u8 strict_cos);
 /*  Configure the COS to ETS according to BW and SP settings.*/
 int bnx2x_ets_e3b0_config(const struct link_params *params,
 			 const struct link_vars *vars,
-			 const struct bnx2x_ets_params *ets_params);
+			 struct bnx2x_ets_params *ets_params);
 /* Read pfc statistic*/
 void bnx2x_pfc_statistic(struct link_params *params, struct link_vars *vars,
 						 u32 pfc_frames_sent[2],

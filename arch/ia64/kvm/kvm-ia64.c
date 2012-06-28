@@ -1168,6 +1168,11 @@ out:
 
 #define PALE_RESET_ENTRY    0x80000000ffffffb0UL
 
+bool kvm_vcpu_compatible(struct kvm_vcpu *vcpu)
+{
+	return irqchip_in_kernel(vcpu->kcm) == (vcpu->arch.apic != NULL);
+}
+
 int kvm_arch_vcpu_init(struct kvm_vcpu *vcpu)
 {
 	struct kvm_vcpu *v;
@@ -1365,14 +1370,12 @@ static void kvm_release_vm_pages(struct kvm *kvm)
 {
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *memslot;
-	int i, j;
+	int j;
 	unsigned long base_gfn;
 
 	slots = kvm_memslots(kvm);
-	for (i = 0; i < slots->nmemslots; i++) {
-		memslot = &slots->memslots[i];
+	kvm_for_each_memslot(memslot, slots) {
 		base_gfn = memslot->base_gfn;
-
 		for (j = 0; j < memslot->npages; j++) {
 			if (memslot->rmap[j])
 				put_page((struct page *)memslot->rmap[j]);

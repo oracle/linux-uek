@@ -2612,6 +2612,7 @@ static int __devinit cxgb4vf_pci_probe(struct pci_dev *pdev,
 		if (pci_using_dac)
 			netdev->features |= NETIF_F_HIGHDMA;
 
+		netdev->priv_flags |= IFF_UNICAST_FLT;
 #ifdef HAVE_NET_DEVICE_OPS
 		netdev->netdev_ops = &cxgb4vf_netdev_ops;
 #else

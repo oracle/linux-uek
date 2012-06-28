@@ -31,7 +31,7 @@ static const char hxge_driver_string[] = "Sun Microsystems(R) 10 Gigabit  Networ
 #else
 #define DRIVERNAPI "-NAPI"
 #endif
-#define DRV_VERSION "1.3.3"
+#define DRV_VERSION "1.3.4"
 const char hxge_driver_version[] = DRV_VERSION;
 static const char hxge_copyright[] = "Copyright (c) 2009, 2011 Oracle America.";
 

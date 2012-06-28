@@ -1,6 +1,6 @@
 /* bnx2x_stats.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2011 Broadcom Corporation
+ * Copyright (c) 2007-2012 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -193,6 +193,16 @@ struct bnx2x_eth_stats {
 	u32 total_tpa_aggregated_frames_lo;
 	u32 total_tpa_bytes_hi;
 	u32 total_tpa_bytes_lo;
+
+	/* PFC */
+	u32 pfc_frames_received_hi;
+	u32 pfc_frames_received_lo;
+	u32 pfc_frames_sent_hi;
+	u32 pfc_frames_sent_lo;
+
+	/* Recovery */
+	u32 recoverable_error;
+	u32 unrecoverable_error;
 };
 
 

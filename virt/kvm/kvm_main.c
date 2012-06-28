@@ -541,11 +541,11 @@ static void kvm_free_physmem_slot(struct kvm_memory_slot *free,
 
 void kvm_free_physmem(struct kvm *kvm)
 {
-	int i;
 	struct kvm_memslots *slots = kvm->memslots;
+	struct kvm_memory_slot *memslot;
 
-	for (i = 0; i < slots->nmemslots; ++i)
-		kvm_free_physmem_slot(&slots->memslots[i], NULL);
+	kvm_for_each_memslot(memslot, slots)
+		kvm_free_physmem_slot(memslot, NULL);
 
 	kfree(kvm->memslots);
 }
@@ -796,12 +796,13 @@ skip_lpage:
 	if (r)
 		goto out_free;
 
-	/* map the pages in iommu page table */
+	/* map/unmap the pages in iommu page table */
 	if (npages) {
 		r = kvm_iommu_map_pages(kvm, &new);
 		if (r)
 			goto out_free;
-	}
+	} else
+		kvm_iommu_unmap_pages(kvm, &old);
 
 	r = -ENOMEM;
 	slots = kzalloc(sizeof(struct kvm_memslots), GFP_KERNEL);
@@ -941,15 +942,13 @@ EXPORT_SYMBOL_GPL(kvm_is_error_hva);
 static struct kvm_memory_slot *__gfn_to_memslot(struct kvm_memslots *slots,
 						gfn_t gfn)
 {
-	int i;
+	struct kvm_memory_slot *memslot;
 
-	for (i = 0; i < slots->nmemslots; ++i) {
-		struct kvm_memory_slot *memslot = &slots->memslots[i];
-
+	kvm_for_each_memslot(memslot, slots)
 		if (gfn >= memslot->base_gfn
 		    && gfn < memslot->base_gfn + memslot->npages)
 			return memslot;
-	}
+
 	return NULL;
 }
 
@@ -1618,6 +1617,10 @@ static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
 		return r;
 
 	mutex_lock(&kvm->lock);
+	if (!kvm_vcpu_compatible(vcpu)) {
+		r = -EINVAL;
+		goto vcpu_destroy;
+	}
 	if (atomic_read(&kvm->online_vcpus) == KVM_MAX_VCPUS) {
 		r = -EINVAL;
 		goto vcpu_destroy;

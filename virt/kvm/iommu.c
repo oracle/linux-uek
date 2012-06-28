@@ -126,14 +126,15 @@ unmap_pages:
 
 static int kvm_iommu_map_memslots(struct kvm *kvm)
 {
-	int i, idx, r = 0;
+	int idx, r = 0;
 	struct kvm_memslots *slots;
+	struct kvm_memory_slot *memslot;
 
 	idx = srcu_read_lock(&kvm->srcu);
 	slots = kvm_memslots(kvm);
 
-	for (i = 0; i < slots->nmemslots; i++) {
-		r = kvm_iommu_map_pages(kvm, &slots->memslots[i]);
+	kvm_for_each_memslot(memslot, slots) {
+		r = kvm_iommu_map_pages(kvm, memslot);
 		if (r)
 			break;
 	}
@@ -181,6 +182,8 @@ int kvm_assign_device(struct kvm *kvm,
 			goto out_unmap;
 	}
 
+	pdev->dev_flags |= PCI_DEV_FLAGS_ASSIGNED;
+
 	printk(KERN_DEBUG "assign device %x:%x:%x.%x\n",
 		assigned_dev->host_segnr,
 		assigned_dev->host_busnr,
@@ -209,6 +212,8 @@ int kvm_deassign_device(struct kvm *kvm,
 
 	iommu_detach_device(domain, &pdev->dev);
 
+	pdev->dev_flags &= ~PCI_DEV_FLAGS_ASSIGNED;
+
 	printk(KERN_DEBUG "deassign device %x:%x:%x.%x\n",
 		assigned_dev->host_segnr,
 		assigned_dev->host_busnr,
@@ -227,18 +232,18 @@ int kvm_iommu_map_guest(struct kvm *kvm)
 		return -ENODEV;
 	}
 
+
+	mutex_lock(&kvm->slots_lock);
 	kvm->arch.iommu_domain = iommu_domain_alloc();
 	if (!kvm->arch.iommu_domain)
-		return -ENOMEM;
+		goto out_unlock;
 
 	r = kvm_iommu_map_memslots(kvm);
 	if (r)
-		goto out_unmap;
+		kvm_iommu_unmap_memslots(kvm);
 
-	return 0;
-
-out_unmap:
-	kvm_iommu_unmap_memslots(kvm);
+out_unlock:
+	mutex_unlock(&kvm->slots_lock);
 	return r;
 }
 
@@ -285,18 +290,23 @@ static void kvm_iommu_put_pages(struct kvm *kvm,
 	}
 }
 
+void kvm_iommu_unmap_pages(struct kvm *kvm, struct kvm_memory_slot *slot)
+{
+	kvm_iommu_put_pages(kvm, slot->base_gfn, slot->npages);
+}
+
 static int kvm_iommu_unmap_memslots(struct kvm *kvm)
 {
-	int i, idx;
+	int idx;
 	struct kvm_memslots *slots;
+	struct kvm_memory_slot *memslot;
 
 	idx = srcu_read_lock(&kvm->srcu);
 	slots = kvm_memslots(kvm);
 
-	for (i = 0; i < slots->nmemslots; i++) {
-		kvm_iommu_put_pages(kvm, slots->memslots[i].base_gfn,
-				    slots->memslots[i].npages);
-	}
+	kvm_for_each_memslot(memslot, slots)
+		kvm_iommu_unmap_pages(kvm, memslot);
+
 	srcu_read_unlock(&kvm->srcu, idx);
 
 	return 0;
@@ -310,7 +320,11 @@ int kvm_iommu_unmap_guest(struct kvm *kvm)
 	if (!domain)
 		return 0;
 
+	mutex_lock(&kvm->slots_lock);
 	kvm_iommu_unmap_memslots(kvm);
+	kvm->arch.iommu_domain = NULL;
+	mutex_unlock(&kvm->slots_lock);
+
 	iommu_domain_free(domain);
 	return 0;
 }

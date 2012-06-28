@@ -210,6 +210,7 @@ struct iov_iter_ops ii_bvec_ops = {
 	.ii_advance = ii_bvec_advance,
 	.ii_fault_in_readable = ii_bvec_fault_in_readable,
 	.ii_single_seg_count = ii_bvec_single_seg_count,
+	.ii_shorten = ii_bvec_shorten,
 };
 EXPORT_SYMBOL(ii_bvec_ops);
 
@@ -357,6 +358,7 @@ static int ii_iovec_shorten(struct iov_iter *i, size_t count)
 {
 	struct iovec *iov = (struct iovec *)i->data;
 	i->nr_segs = iov_shorten(iov, i->nr_segs, count);
+	i->count = count;
 	return 0;
 }
 

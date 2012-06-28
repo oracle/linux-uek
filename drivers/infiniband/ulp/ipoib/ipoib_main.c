@@ -819,6 +819,8 @@ static int ipoib_hard_header(struct sk_buff *skb,
 			     const void *daddr, const void *saddr, unsigned len)
 {
 	struct ipoib_header *header;
+	struct dst_entry *dst;
+	struct neighbour *n;
 
 	header = (struct ipoib_header *) skb_push(skb, sizeof *header);
 
@@ -830,9 +832,14 @@ static int ipoib_hard_header(struct sk_buff *skb,
 	 * destination address into skb->cb so we can figure out where
 	 * to send the packet later.
 	 */
-	if (!skb_dst(skb)) {
-		struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
-		memcpy(cb->hwaddr, daddr, INFINIBAND_ALEN);
+	dst = skb_dst(skb);
+	n = NULL;
+	if (dst)
+		n = dst_get_neighbour_raw(dst);
+	if ((!dst || !n) && daddr) {
+		struct ipoib_pseudoheader *phdr =
+			(struct ipoib_pseudoheader *) skb_push(skb, sizeof *phdr);
+		memcpy(phdr->hwaddr, daddr, INFINIBAND_ALEN);
 	}
 
 	return 0;

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2009 Intel Corporation.
+  Copyright(c) 2007-2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -28,6 +28,8 @@
 /* e1000_82575
  * e1000_82576
  */
+
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
 #include <linux/types.h>
 #include <linux/if_ether.h>
@@ -66,10 +68,6 @@ static s32  igb_set_pcie_completion_timeout(struct e1000_hw *hw);
 static s32  igb_reset_mdicnfg_82580(struct e1000_hw *hw);
 static s32  igb_validate_nvm_checksum_82580(struct e1000_hw *hw);
 static s32  igb_update_nvm_checksum_82580(struct e1000_hw *hw);
-static s32  igb_update_nvm_checksum_with_offset(struct e1000_hw *hw,
-						u16 offset);
-static s32 igb_validate_nvm_checksum_with_offset(struct e1000_hw *hw,
-						u16 offset);
 static s32 igb_validate_nvm_checksum_i350(struct e1000_hw *hw);
 static s32 igb_update_nvm_checksum_i350(struct e1000_hw *hw);
 static const u16 e1000_82580_rxpbs_table[] =
@@ -248,8 +246,7 @@ static s32 igb_get_invariants_82575(struct e1000_hw *hw)
 	 * Check for invalid size
 	 */
 	if ((hw->mac.type == e1000_82576) && (size > 15)) {
-		printk("igb: The NVM size is not valid, "
-			"defaulting to 32K.\n");
+		pr_notice("The NVM size is not valid, defaulting to 32K\n");
 		size = 15;
 	}
 	nvm->word_size = 1 << size;
@@ -1055,7 +1052,10 @@ static s32 igb_init_hw_82575(struct e1000_hw *hw)
 
 	/* Disabling VLAN filtering */
 	hw_dbg("Initializing the IEEE VLAN\n");
-	igb_clear_vfta(hw);
+	if (hw->mac.type == e1000_i350)
+		igb_clear_vfta_i350(hw);
+	else
+		igb_clear_vfta(hw);
 
 	/* Setup the receive address */
 	igb_init_rx_addrs(hw, rar_count);
@@ -1156,10 +1156,13 @@ static s32 igb_setup_serdes_link_82575(struct e1000_hw *hw)
 {
 	u32 ctrl_ext, ctrl_reg, reg;
 	bool pcs_autoneg;
+	s32 ret_val = E1000_SUCCESS;
+	u16 data;
 
 	if ((hw->phy.media_type != e1000_media_type_internal_serdes) &&
 	    !igb_sgmii_active_82575(hw))
-		return 0;
+		return ret_val;
+
 
 	/*
 	 * On the 82575, SerDes loopback mode persists until it is
@@ -1203,6 +1206,18 @@ static s32 igb_setup_serdes_link_82575(struct e1000_hw *hw)
 		/* disable PCS autoneg and support parallel detect only */
 		pcs_autoneg = false;
 	default:
+		if (hw->mac.type == e1000_82575 ||
+		    hw->mac.type == e1000_82576) {
+			ret_val = hw->nvm.ops.read(hw, NVM_COMPAT, 1, &data);
+			if (ret_val) {
+				printk(KERN_DEBUG "NVM Read Error\n\n");
+				return ret_val;
+			}
+
+			if (data & E1000_EEPROM_PCS_AUTONEG_DISABLE_BIT)
+				pcs_autoneg = false;
+		}
+
 		/*
 		 * non-SGMII modes only supports a speed of 1000/Full for the
 		 * link so it is best to just force the MAC and let the pcs
@@ -1250,7 +1265,7 @@ static s32 igb_setup_serdes_link_82575(struct e1000_hw *hw)
 	if (!igb_sgmii_active_82575(hw))
 		igb_force_mac_fc(hw);
 
-	return 0;
+	return ret_val;
 }
 
 /**
@@ -1569,14 +1584,31 @@ void igb_vmdq_set_anti_spoofing_pf(struct e1000_hw *hw, bool enable, int pf)
  **/
 void igb_vmdq_set_loopback_pf(struct e1000_hw *hw, bool enable)
 {
-	u32 dtxswc = rd32(E1000_DTXSWC);
+	u32 dtxswc;
 
-	if (enable)
-		dtxswc |= E1000_DTXSWC_VMDQ_LOOPBACK_EN;
-	else
-		dtxswc &= ~E1000_DTXSWC_VMDQ_LOOPBACK_EN;
+	switch (hw->mac.type) {
+	case e1000_82576:
+		dtxswc = rd32(E1000_DTXSWC);
+		if (enable)
+			dtxswc |= E1000_DTXSWC_VMDQ_LOOPBACK_EN;
+		else
+			dtxswc &= ~E1000_DTXSWC_VMDQ_LOOPBACK_EN;
+		wr32(E1000_DTXSWC, dtxswc);
+		break;
+	case e1000_i350:
+		dtxswc = rd32(E1000_TXSWC);
+		if (enable)
+			dtxswc |= E1000_DTXSWC_VMDQ_LOOPBACK_EN;
+		else
+			dtxswc &= ~E1000_DTXSWC_VMDQ_LOOPBACK_EN;
+		wr32(E1000_TXSWC, dtxswc);
+		break;
+	default:
+		/* Currently no other hardware supports loopback */
+		break;
+	}
 
-	wr32(E1000_DTXSWC, dtxswc);
+
 }
 
 /**
@@ -1805,7 +1837,8 @@ u16 igb_rxpbs_adjust_82580(u32 data)
  *  Calculates the EEPROM checksum by reading/adding each word of the EEPROM
  *  and then verifies that the sum of the EEPROM is equal to 0xBABA.
  **/
-s32 igb_validate_nvm_checksum_with_offset(struct e1000_hw *hw, u16 offset)
+static s32 igb_validate_nvm_checksum_with_offset(struct e1000_hw *hw,
+						 u16 offset)
 {
 	s32 ret_val = 0;
 	u16 checksum = 0;
@@ -1840,7 +1873,7 @@ out:
  *  up to the checksum.  Then calculates the EEPROM checksum and writes the
  *  value to the EEPROM.
  **/
-s32 igb_update_nvm_checksum_with_offset(struct e1000_hw *hw, u16 offset)
+static s32 igb_update_nvm_checksum_with_offset(struct e1000_hw *hw, u16 offset)
 {
 	s32 ret_val;
 	u16 checksum = 0;

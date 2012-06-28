@@ -908,27 +908,37 @@ qla82xx_wait_rom_done(struct qla_hw_data *ha)
 	return 0;
 }
 
+int
+qla82xx_md_rw_32(struct qla_hw_data *ha, uint32_t off, u32 data, uint8_t flag)
+{
+	uint32_t  off_value, rval = 0;
+
+	WRT_REG_DWORD((void *)(CRB_WINDOW_2M + ha->nx_pcibase),
+	    (off & 0xFFFF0000));
+
+	/* Read back value to make sure write has gone through */
+	RD_REG_DWORD((void *)(CRB_WINDOW_2M + ha->nx_pcibase));
+	off_value  = (off & 0x0000FFFF);
+
+	if (flag)
+		WRT_REG_DWORD((void *)
+		    (off_value + CRB_INDIRECT_2M + ha->nx_pcibase),
+		    data);
+	else
+		rval = RD_REG_DWORD((void *)
+		    (off_value + CRB_INDIRECT_2M + ha->nx_pcibase));
+
+	return rval;
+}
+
 static int
 qla82xx_do_rom_fast_read(struct qla_hw_data *ha, int addr, int *valp)
 {
-	scsi_qla_host_t *vha = pci_get_drvdata(ha->pdev);
+	/* Dword reads to flash. */
+	qla82xx_md_rw_32(ha, MD_DIRECT_ROM_WINDOW, (addr & 0xFFFF0000), 1);
+	*valp = qla82xx_md_rw_32(ha, MD_DIRECT_ROM_READ_BASE +
+	    (addr & 0x0000FFFF), 0, 0);
 
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_ADDRESS, addr);
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_DUMMY_BYTE_CNT, 0);
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_ABYTE_CNT, 3);
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_INSTR_OPCODE, 0xb);
-	qla82xx_wait_rom_busy(ha);
-	if (qla82xx_wait_rom_done(ha)) {
-		ql_log(ql_log_fatal, vha, 0x00ba,
-		    "Error waiting for rom done.\n");
-		return -1;
-	}
-	/* Reset abyte_cnt and dummy_byte_cnt */
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_DUMMY_BYTE_CNT, 0);
-	udelay(10);
-	cond_resched();
-	qla82xx_wr_32(ha, QLA82XX_ROMUSB_ROM_ABYTE_CNT, 0);
-	*valp = qla82xx_rd_32(ha, QLA82XX_ROMUSB_ROM_RDATA);
 	return 0;
 }
 
@@ -1165,19 +1175,6 @@ qla82xx_pinit_from_rom(scsi_qla_host_t *vha)
 		qla82xx_wr_32(ha, QLA82XX_ROMUSB_GLB_SW_RESET, 0xfeffffff);
 	else
 		qla82xx_wr_32(ha, QLA82XX_ROMUSB_GLB_SW_RESET, 0xffffffff);
-
-	/* reset ms */
-	val = qla82xx_rd_32(ha, QLA82XX_CRB_QDR_NET + 0xe4);
-	val |= (1 << 1);
-	qla82xx_wr_32(ha, QLA82XX_CRB_QDR_NET + 0xe4, val);
-	msleep(20);
-
-	/* unreset ms */
-	val = qla82xx_rd_32(ha, QLA82XX_CRB_QDR_NET + 0xe4);
-	val &= ~(1 << 1);
-	qla82xx_wr_32(ha, QLA82XX_CRB_QDR_NET + 0xe4, val);
-	msleep(20);
-
 	qla82xx_rom_unlock(ha);
 
 	/* Read the signature value from the flash.
@@ -1193,12 +1190,12 @@ qla82xx_pinit_from_rom(scsi_qla_host_t *vha)
 	}
 
 	/* Offset in flash = lower 16 bits
-	 * Number of enteries = upper 16 bits
+	 * Number of entries = upper 16 bits
 	 */
 	offset = n & 0xffffU;
 	n = (n >> 16) & 0xffffU;
 
-	/* number of addr/value pair should not exceed 1024 enteries */
+	/* number of addr/value pair should not exceed 1024 entries */
 	if (n  >= 1024) {
 		ql_log(ql_log_fatal, vha, 0x0071,
 		    "Card flash not initialized:n=0x%x.\n", n);
@@ -2053,8 +2050,8 @@ qla82xx_intr_handler(int irq, void *dev_id)
 
 	rsp = (struct rsp_que *) dev_id;
 	if (!rsp) {
-		printk(KERN_INFO
-			"%s(): NULL response queue pointer.\n", __func__);
+		ql_log(ql_log_info, NULL, 0xb053,
+		    "%s: NULL response queue pointer.\n", __func__);
 		return IRQ_NONE;
 	}
 	ha = rsp->hw;
@@ -2449,7 +2446,7 @@ qla82xx_load_fw(scsi_qla_host_t *vha)
 
 	if (qla82xx_fw_load_from_flash(ha) == QLA_SUCCESS) {
 		ql_log(ql_log_info, vha, 0x00a1,
-		    "Firmware loaded successully from flash.\n");
+		    "Firmware loaded successfully from flash.\n");
 		return QLA_SUCCESS;
 	} else {
 		ql_log(ql_log_warn, vha, 0x0108,
@@ -2464,7 +2461,7 @@ try_blob_fw:
 	blob = ha->hablob = qla2x00_request_firmware(vha);
 	if (!blob) {
 		ql_log(ql_log_fatal, vha, 0x00a3,
-		    "Firmware image not preset.\n");
+		    "Firmware image not present.\n");
 		goto fw_load_failed;
 	}
 
@@ -2692,7 +2689,7 @@ qla82xx_write_flash_data(struct scsi_qla_host *vha, uint32_t *dwptr,
 		if (!optrom) {
 			ql_log(ql_log_warn, vha, 0xb01b,
 			    "Unable to allocate memory "
-			    "for optron burst write (%x KB).\n",
+			    "for optrom burst write (%x KB).\n",
 			    OPTROM_BURST_SIZE / 1024);
 		}
 	}
@@ -3149,12 +3146,7 @@ qla82xx_check_md_needed(scsi_qla_host_t *vha)
 	fw_minor_version = ha->fw_minor_version;
 	fw_subminor_version = ha->fw_subminor_version;
 
-	rval = qla2x00_get_fw_version(vha, &ha->fw_major_version,
-	    &ha->fw_minor_version, &ha->fw_subminor_version,
-	    &ha->fw_attributes, &ha->fw_memory_size,
-	    ha->mpi_version, &ha->mpi_capabilities,
-	    ha->phy_version);
-
+	rval = qla2x00_get_fw_version(vha);
 	if (rval != QLA_SUCCESS)
 		return rval;
 
@@ -3163,7 +3155,6 @@ qla82xx_check_md_needed(scsi_qla_host_t *vha)
 			if (fw_major_version != ha->fw_major_version ||
 			    fw_minor_version != ha->fw_minor_version ||
 			    fw_subminor_version != ha->fw_subminor_version) {
-
 				ql_log(ql_log_info, vha, 0xb02d,
 				    "Firmware version differs "
 				    "Previous version: %d:%d:%d - "
@@ -3355,9 +3346,13 @@ void qla82xx_watchdog(scsi_qla_host_t *vha)
 			qla2xxx_wake_dpc(vha);
 		} else {
 			if (qla82xx_check_fw_alive(vha)) {
+				ql_dbg(ql_dbg_timer, vha, 0x6011,
+				    "disabling pause transmit on port 0 & 1.\n");
+				qla82xx_wr_32(ha, QLA82XX_CRB_NIU + 0x98,
+				    CRB_NIU_XG_PAUSE_CTL_P0|CRB_NIU_XG_PAUSE_CTL_P1);
 				halt_status = qla82xx_rd_32(ha,
 				    QLA82XX_PEG_HALT_STATUS1);
-				ql_dbg(ql_dbg_timer, vha, 0x6005,
+				ql_log(ql_log_info, vha, 0x6005,
 				    "dumping hw/fw registers:.\n "
 				    " PEG_HALT_STATUS1: 0x%x, PEG_HALT_STATUS2: 0x%x,.\n "
 				    " PEG_NET_0_PC: 0x%x, PEG_NET_1_PC: 0x%x,.\n "
@@ -3374,7 +3369,7 @@ void qla82xx_watchdog(scsi_qla_host_t *vha)
 					    QLA82XX_CRB_PEG_NET_3 + 0x3c),
 				    qla82xx_rd_32(ha,
 					    QLA82XX_CRB_PEG_NET_4 + 0x3c));
-				if(LSW(MSB(halt_status)) == 0x67)
+				if (((halt_status & 0x1fffff00) >> 8) == 0x67)
 					ql_log(ql_log_warn, vha, 0xb052,
 					    "Firmware aborted with "
 					    "error code 0x00006700. Device is "
@@ -3623,7 +3618,7 @@ qla82xx_chip_reset_cleanup(scsi_qla_host_t *vha)
 			for (cnt = 1; cnt < MAX_OUTSTANDING_COMMANDS; cnt++) {
 				sp = req->outstanding_cmds[cnt];
 				if (sp) {
-					if (!sp->ctx ||
+					if (!sp->u.scmd.ctx ||
 					    (sp->flags & SRB_FCP_CMND_DMA_VALID)) {
 						spin_unlock_irqrestore(
 						    &ha->hardware_lock, flags);
@@ -3654,29 +3649,6 @@ qla82xx_chip_reset_cleanup(scsi_qla_host_t *vha)
 }
 
 /* Minidump related functions */
-int
-qla82xx_md_rw_32(struct qla_hw_data *ha, uint32_t off, u32 data, uint8_t flag)
-{
-	uint32_t  off_value, rval = 0;
-
-	WRT_REG_DWORD((void *)(CRB_WINDOW_2M + ha->nx_pcibase),
-	    (off & 0xFFFF0000));
-
-	/* Read back value to make sure write has gone through */
-	RD_REG_DWORD((void *)(CRB_WINDOW_2M + ha->nx_pcibase));
-	off_value  = (off & 0x0000FFFF);
-
-	if (flag)
-		WRT_REG_DWORD((void *)
-		    (off_value + CRB_INDIRECT_2M + ha->nx_pcibase),
-		    data);
-	else
-		rval = RD_REG_DWORD((void *)
-		    (off_value + CRB_INDIRECT_2M + ha->nx_pcibase));
-
-	return rval;
-}
-
 static int
 qla82xx_minidump_process_control(scsi_qla_host_t *vha,
 	qla82xx_md_entry_hdr_t *entry_hdr, uint32_t **d_ptr)
@@ -4126,8 +4098,9 @@ qla82xx_md_collect(scsi_qla_host_t *vha)
 	data_ptr = (uint32_t *)ha->md_dump;
 
 	if (ha->fw_dumped) {
-		ql_log(ql_log_info, vha, 0xb037,
-		    "Firmware dump available to retrive\n");
+		ql_log(ql_log_warn, vha, 0xb037,
+		    "Firmware has been previously dumped (%p) "
+		    "-- ignoring request.\n", ha->fw_dump);
 		goto md_failed;
 	}
 
@@ -4170,7 +4143,7 @@ qla82xx_md_collect(scsi_qla_host_t *vha)
 
 	total_data_size = ha->md_dump_size;
 
-	ql_dbg(ql_log_info, vha, 0xb03d,
+	ql_dbg(ql_dbg_p3p, vha, 0xb03d,
 	    "Total minidump data_size 0x%x to be captured\n", total_data_size);
 
 	/* Check whether template obtained is valid */
@@ -4293,7 +4266,7 @@ skip_nxt_entry:
 	}
 
 	if (data_collected != total_data_size) {
-		ql_dbg(ql_log_warn, vha, 0xb043,
+		ql_dbg(ql_dbg_p3p, vha, 0xb043,
 		    "MiniDump data mismatch: Data collected: [0x%x],"
 		    "total_data_size:[0x%x]\n",
 		    data_collected, total_data_size);

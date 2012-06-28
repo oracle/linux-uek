@@ -2115,7 +2115,6 @@ config E1000
 
 config E1000E
 	tristate "Intel(R) PRO/1000 PCI-Express Gigabit Ethernet support"
-	select CRC32
 	depends on PCI && (!SPARC32 || BROKEN)
 	select CRC32
 	---help---
@@ -2928,6 +2927,9 @@ source "drivers/net/sfc/Kconfig"
 source "drivers/net/benet/Kconfig"
 
 source "drivers/net/hxge/Kconfig"
+
+source "drivers/net/sxge/Kconfig"
+source "drivers/net/sxgevf/Kconfig"
 
 endif # NETDEV_10000
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2009 Intel Corporation.
+  Copyright(c) 2007-2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,6 +29,7 @@
 #include <linux/delay.h>
 #include <linux/pci.h>
 #include <linux/netdevice.h>
+#include <linux/etherdevice.h>
 
 #include "e1000_mac.h"
 
@@ -116,6 +117,50 @@ static void igb_write_vfta(struct e1000_hw *hw, u32 offset, u32 value)
 	wrfl();
 }
 
+/* Due to a hw errata, if the host tries to  configure the VFTA register
+ * while performing queries from the BMC or DMA, then the VFTA in some
+ * cases won't be written.
+ */
+
+/**
+ *  igb_clear_vfta_i350 - Clear VLAN filter table
+ *  @hw: pointer to the HW structure
+ *
+ *  Clears the register array which contains the VLAN filter table by
+ *  setting all the values to 0.
+ **/
+void igb_clear_vfta_i350(struct e1000_hw *hw)
+{
+	u32 offset;
+	int i;
+
+	for (offset = 0; offset < E1000_VLAN_FILTER_TBL_SIZE; offset++) {
+		for (i = 0; i < 10; i++)
+			array_wr32(E1000_VFTA, offset, 0);
+
+		wrfl();
+	}
+}
+
+/**
+ *  igb_write_vfta_i350 - Write value to VLAN filter table
+ *  @hw: pointer to the HW structure
+ *  @offset: register offset in VLAN filter table
+ *  @value: register value written to VLAN filter table
+ *
+ *  Writes value at the given offset in the register array which stores
+ *  the VLAN filter table.
+ **/
+static void igb_write_vfta_i350(struct e1000_hw *hw, u32 offset, u32 value)
+{
+	int i;
+
+	for (i = 0; i < 10; i++)
+		array_wr32(E1000_VFTA, offset, value);
+
+	wrfl();
+}
+
 /**
  *  igb_init_rx_addrs - Initialize receive address's
  *  @hw: pointer to the HW structure
@@ -154,8 +199,11 @@ s32 igb_vfta_set(struct e1000_hw *hw, u32 vid, bool add)
 {
 	u32 index = (vid >> E1000_VFTA_ENTRY_SHIFT) & E1000_VFTA_ENTRY_MASK;
 	u32 mask = 1 << (vid & E1000_VFTA_ENTRY_BIT_SHIFT_MASK);
-	u32 vfta = array_rd32(E1000_VFTA, index);
+	u32 vfta;
+	struct igb_adapter *adapter = hw->back;
 	s32 ret_val = 0;
+
+	vfta = adapter->shadow_vfta[index];
 
 	/* bit was set/cleared before we started */
 	if ((!!(vfta & mask)) == add) {
@@ -166,8 +214,11 @@ s32 igb_vfta_set(struct e1000_hw *hw, u32 vid, bool add)
 		else
 			vfta &= ~mask;
 	}
-
-	igb_write_vfta(hw, index, vfta);
+	if (hw->mac.type == e1000_i350)
+		igb_write_vfta_i350(hw, index, vfta);
+	else
+		igb_write_vfta(hw, index, vfta);
+	adapter->shadow_vfta[index] = vfta;
 
 	return ret_val;
 }
@@ -190,6 +241,13 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 	u16 offset, nvm_alt_mac_addr_offset, nvm_data;
 	u8 alt_mac_addr[ETH_ALEN];
 
+	/*
+	 * Alternate MAC address is handled by the option ROM for 82580
+	 * and newer. SW support not required.
+	 */
+	if (hw->mac.type >= e1000_82580)
+		goto out;
+
 	ret_val = hw->nvm.ops.read(hw, NVM_ALT_MAC_ADDR_PTR, 1,
 				 &nvm_alt_mac_addr_offset);
 	if (ret_val) {
@@ -197,13 +255,18 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 		goto out;
 	}
 
-	if (nvm_alt_mac_addr_offset == 0xFFFF) {
+	if ((nvm_alt_mac_addr_offset == 0xFFFF) ||
+	    (nvm_alt_mac_addr_offset == 0x0000))
 		/* There is no Alternate MAC Address */
 		goto out;
-	}
 
 	if (hw->bus.func == E1000_FUNC_1)
 		nvm_alt_mac_addr_offset += E1000_ALT_MAC_ADDRESS_OFFSET_LAN1;
+	if (hw->bus.func == E1000_FUNC_2)
+		nvm_alt_mac_addr_offset += E1000_ALT_MAC_ADDRESS_OFFSET_LAN2;
+
+	if (hw->bus.func == E1000_FUNC_3)
+		nvm_alt_mac_addr_offset += E1000_ALT_MAC_ADDRESS_OFFSET_LAN3;
 	for (i = 0; i < ETH_ALEN; i += 2) {
 		offset = nvm_alt_mac_addr_offset + (i >> 1);
 		ret_val = hw->nvm.ops.read(hw, offset, 1, &nvm_data);
@@ -217,7 +280,7 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 	}
 
 	/* if multicast bit is set, the alternate address will not be used */
-	if (alt_mac_addr[0] & 0x01) {
+	if (is_multicast_ether_addr(alt_mac_addr)) {
 		hw_dbg("Ignoring Alternate Mac Address with MC bit set\n");
 		goto out;
 	}

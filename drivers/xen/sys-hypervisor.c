@@ -147,6 +147,41 @@ static void xen_sysfs_uuid_destroy(void)
 	sysfs_remove_file(hypervisor_kobj, &uuid_attr.attr);
 }
 
+/* Host UUID */
+
+static ssize_t host_uuid_show(struct hyp_sysfs_attr *attr, char *buffer)
+{
+	char *vm, *val;
+	int ret;
+	extern int xenstored_ready;
+
+	if (!xenstored_ready)
+		return -EBUSY;
+
+	vm = xenbus_read(XBT_NIL, "vm", "", NULL);
+	if (IS_ERR(vm))
+		return PTR_ERR(vm);
+	val = xenbus_read(XBT_NIL, vm, "host_uuid", NULL);
+	kfree(vm);
+	if (IS_ERR(val))
+		return PTR_ERR(val);
+	ret = sprintf(buffer, "%s\n", val);
+	kfree(val);
+	return ret;
+}
+
+HYPERVISOR_ATTR_RO(host_uuid);
+
+static int __init xen_sysfs_host_uuid_init(void)
+{
+	return sysfs_create_file(hypervisor_kobj, &host_uuid_attr.attr);
+}
+
+static void xen_sysfs_host_uuid_destroy(void)
+{
+	sysfs_remove_file(hypervisor_kobj, &host_uuid_attr.attr);
+}
+
 /* xen compilation attributes */
 
 static ssize_t compiler_show(struct hyp_sysfs_attr *attr, char *buffer)
@@ -374,6 +409,9 @@ static int __init hyper_sysfs_init(void)
 	ret = xen_sysfs_uuid_init();
 	if (ret)
 		goto uuid_out;
+	ret = xen_sysfs_host_uuid_init();
+	if (ret)
+		goto host_uuid_out;
 	ret = xen_properties_init();
 	if (ret)
 		goto prop_out;
@@ -383,6 +421,8 @@ static int __init hyper_sysfs_init(void)
 prop_out:
 	xen_sysfs_uuid_destroy();
 uuid_out:
+	xen_sysfs_host_uuid_destroy();
+host_uuid_out:
 	xen_compilation_destroy();
 comp_out:
 	xen_sysfs_version_destroy();
@@ -397,6 +437,7 @@ static void __exit hyper_sysfs_exit(void)
 	xen_properties_destroy();
 	xen_compilation_destroy();
 	xen_sysfs_uuid_destroy();
+	xen_sysfs_host_uuid_destroy();
 	xen_sysfs_version_destroy();
 	xen_sysfs_type_destroy();
 

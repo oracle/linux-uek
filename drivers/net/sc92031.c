@@ -30,6 +30,7 @@
 #include <linux/netdevice.h>
 #include <linux/etherdevice.h>
 #include <linux/ethtool.h>
+#include <linux/mii.h>
 #include <linux/crc32.h>
 
 #include <asm/irq.h>
@@ -115,16 +116,9 @@ enum  silan_registers {
    TestD8     = 0xD8,
 };
 
-#define MII_BMCR            0        // Basic mode control register
-#define MII_BMSR            1        // Basic mode status register
 #define MII_JAB             16
 #define MII_OutputStatus    24
 
-#define BMCR_FULLDPLX       0x0100    // Full duplex
-#define BMCR_ANRESTART      0x0200    // Auto negotiation restart
-#define BMCR_ANENABLE       0x1000    // Enable auto negotiation
-#define BMCR_SPEED100       0x2000    // Select 100Mbps
-#define BMSR_LSTATUS        0x0004    // Link status
 #define PHY_16_JAB_ENB      0x1000
 #define PHY_16_PORT_ENB     0x1
 
@@ -1389,7 +1383,7 @@ static const struct net_device_ops sc92031_netdev_ops = {
 	.ndo_start_xmit		= sc92031_start_xmit,
 	.ndo_open		= sc92031_open,
 	.ndo_stop		= sc92031_stop,
-	.ndo_set_multicast_list	= sc92031_set_multicast_list,
+	.ndo_set_rx_mode	= sc92031_set_multicast_list,
 	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_set_mac_address 	= eth_mac_addr,

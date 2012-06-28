@@ -83,14 +83,18 @@ netxen_nic_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
 	u32 fw_minor = 0;
 	u32 fw_build = 0;
 
-	strncpy(drvinfo->driver, netxen_nic_driver_name, 32);
-	strncpy(drvinfo->version, NETXEN_NIC_LINUX_VERSIONID, 32);
+	strlcpy(drvinfo->driver, netxen_nic_driver_name,
+		sizeof(drvinfo->driver));
+	strlcpy(drvinfo->version, NETXEN_NIC_LINUX_VERSIONID,
+		sizeof(drvinfo->version));
 	fw_major = NXRD32(adapter, NETXEN_FW_VERSION_MAJOR);
 	fw_minor = NXRD32(adapter, NETXEN_FW_VERSION_MINOR);
 	fw_build = NXRD32(adapter, NETXEN_FW_VERSION_SUB);
-	sprintf(drvinfo->fw_version, "%d.%d.%d", fw_major, fw_minor, fw_build);
+	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version),
+		"%d.%d.%d", fw_major, fw_minor, fw_build);
 
-	strncpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
+	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
+		sizeof(drvinfo->bus_info));
 	drvinfo->regdump_len = NETXEN_NIC_REGS_LEN;
 	drvinfo->eedump_len = netxen_nic_get_eeprom_len(dev);
 }
@@ -242,6 +246,11 @@ skip:
 		default:
 			ecmd->port = -1;
 		}
+	}
+
+	if (!netif_running(dev) || !adapter->ahw.linkup) {
+		ecmd->duplex = DUPLEX_UNKNOWN;
+		ethtool_cmd_speed_set(ecmd, SPEED_UNKNOWN);
 	}
 
 	return 0;
@@ -413,9 +422,6 @@ netxen_nic_get_ringparam(struct net_device *dev,
 	}
 
 	ring->tx_max_pending = MAX_CMD_DESCRIPTORS;
-
-	ring->rx_mini_max_pending = 0;
-	ring->rx_mini_pending = 0;
 }
 
 static u32
@@ -811,6 +817,107 @@ static int netxen_get_intr_coalesce(struct net_device *netdev,
 	return 0;
 }
 
+static int
+netxen_get_dump_flag(struct net_device *netdev, struct ethtool_dump *dump)
+{
+	struct netxen_adapter *adapter = netdev_priv(netdev);
+	struct netxen_minidump *mdump = &adapter->mdump;
+	if (adapter->fw_mdump_rdy)
+		dump->len = mdump->md_dump_size;
+	else
+		dump->len = 0;
+	dump->flag = mdump->md_capture_mask;
+	dump->version = adapter->fw_version;
+	return 0;
+}
+
+static int
+netxen_set_dump(struct net_device *netdev, struct ethtool_dump *val)
+{
+	int ret = 0;
+	struct netxen_adapter *adapter = netdev_priv(netdev);
+	struct netxen_minidump *mdump = &adapter->mdump;
+
+	switch (val->flag) {
+	case NX_FORCE_FW_DUMP_KEY:
+		if (!mdump->md_enabled)
+			mdump->md_enabled = 1;
+		if (adapter->fw_mdump_rdy) {
+			netdev_info(netdev, "Previous dump not cleared, not forcing dump\n");
+			return ret;
+		}
+		netdev_info(netdev, "Forcing a fw dump\n");
+		nx_dev_request_reset(adapter);
+		break;
+	case NX_DISABLE_FW_DUMP:
+		if (mdump->md_enabled) {
+			netdev_info(netdev, "Disabling FW Dump\n");
+			mdump->md_enabled = 0;
+		}
+		break;
+	case NX_ENABLE_FW_DUMP:
+		if (!mdump->md_enabled) {
+			netdev_info(netdev, "Enabling FW dump\n");
+			mdump->md_enabled = 1;
+		}
+		break;
+	case NX_FORCE_FW_RESET:
+		netdev_info(netdev, "Forcing FW reset\n");
+		nx_dev_request_reset(adapter);
+		adapter->flags &= ~NETXEN_FW_RESET_OWNER;
+		break;
+	default:
+		if (val->flag <= NX_DUMP_MASK_MAX &&
+			val->flag >= NX_DUMP_MASK_MIN) {
+			mdump->md_capture_mask = val->flag & 0xff;
+			netdev_info(netdev, "Driver mask changed to: 0x%x\n",
+					mdump->md_capture_mask);
+			break;
+		}
+		netdev_info(netdev,
+			"Invalid dump level: 0x%x\n", val->flag);
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+static int
+netxen_get_dump_data(struct net_device *netdev, struct ethtool_dump *dump,
+			void *buffer)
+{
+	int i, copy_sz;
+	u32 *hdr_ptr, *data;
+	struct netxen_adapter *adapter = netdev_priv(netdev);
+	struct netxen_minidump *mdump = &adapter->mdump;
+
+
+	if (!adapter->fw_mdump_rdy) {
+		netdev_info(netdev, "Dump not available\n");
+		return 0;
+	}
+	/* Copy template header first */
+	copy_sz = mdump->md_template_size;
+	hdr_ptr = (u32 *) mdump->md_template;
+	data = buffer;
+	for (i = 0; i < copy_sz/sizeof(u32); i++)
+		*data++ = cpu_to_le32(*hdr_ptr++);
+
+	/* Copy captured dump data */
+	memcpy(buffer + copy_sz,
+		mdump->md_capture_buff + mdump->md_template_size,
+			mdump->md_capture_size);
+	dump->len = copy_sz + mdump->md_capture_size;
+	dump->flag = mdump->md_capture_mask;
+
+	/* Free dump area once data has been captured */
+	vfree(mdump->md_capture_buff);
+	mdump->md_capture_buff = NULL;
+	adapter->fw_mdump_rdy = 0;
+	netdev_info(netdev, "extracted the fw dump Successfully\n");
+	return 0;
+}
+
 const struct ethtool_ops netxen_nic_ethtool_ops = {
 	.get_settings = netxen_nic_get_settings,
 	.set_settings = netxen_nic_set_settings,
@@ -832,4 +939,7 @@ const struct ethtool_ops netxen_nic_ethtool_ops = {
 	.get_sset_count = netxen_get_sset_count,
 	.get_coalesce = netxen_get_intr_coalesce,
 	.set_coalesce = netxen_set_intr_coalesce,
+	.get_dump_flag = netxen_get_dump_flag,
+	.get_dump_data = netxen_get_dump_data,
+	.set_dump = netxen_set_dump,
 };

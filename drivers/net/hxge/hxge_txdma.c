@@ -1479,9 +1479,9 @@ int hxge_tx_ring(struct sk_buff *skb, struct net_device *netdev)
 			{
 				char fn[25];
 				if (ret == COPY_DESC_FAILED)
-					strcpy(fn, "copy_skbdata_to_descs");
+					strncpy(fn, "copy_skbdata_to_descs",21);
 				else
-					strcpy(fn, "map_skbdata_to_descs");
+					strncpy(fn, "map_skbdata_to_descs",20);
 					
 				HXGE_ERR(hxgep, "%s failed", fn);
 				FREE_SKB(skb);
@@ -2079,7 +2079,6 @@ static tdc_stat_t process_tx_status(struct hxge_ldv *ldvp, int ldf0, int ldf1)
 			stats->oerrors++;
 		}
 
-		BUG();
 		/* Update discarded-packets counts from Hydra's counters */
 		update_tx_err_stats(handle, tx_ring);
 	

@@ -973,6 +973,15 @@ void svc_close_all(struct svc_serv *serv)
 	BUG_ON(!list_empty(&serv->sv_tempsocks));
 }
 
+void svc_close_all(struct svc_serv *serv)
+{
+	svc_close_list(&serv->sv_tempsocks);
+	svc_close_list(&serv->sv_permsocks);
+	BUG_ON(!list_empty(&serv->sv_permsocks));
+	BUG_ON(!list_empty(&serv->sv_tempsocks));
+
+}
+
 /*
  * Handle defer and revisit of requests
  */

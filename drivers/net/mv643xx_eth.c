@@ -1497,10 +1497,11 @@ mv643xx_eth_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 static void mv643xx_eth_get_drvinfo(struct net_device *dev,
 				    struct ethtool_drvinfo *drvinfo)
 {
-	strncpy(drvinfo->driver,  mv643xx_eth_driver_name, 32);
-	strncpy(drvinfo->version, mv643xx_eth_driver_version, 32);
-	strncpy(drvinfo->fw_version, "N/A", 32);
-	strncpy(drvinfo->bus_info, "platform", 32);
+	strlcpy(drvinfo->driver, mv643xx_eth_driver_name, sizeof(info->driver));
+	strlcpy(drvinfo->version, mv643xx_eth_driver_version,
+		sizeof(info->version));
+	strlcpy(drvinfo->fw_version, "N/A", sizeof(info->fw_version));
+	strlcpy(drvinfo->bus_info, "platform", sizeof(info->bus_info));
 	drvinfo->n_stats = ARRAY_SIZE(mv643xx_eth_stats);
 }
 
@@ -2918,6 +2919,8 @@ static int mv643xx_eth_probe(struct platform_device *pdev)
 		NETIF_F_RXCSUM | NETIF_F_LRO;
 	dev->features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
 	dev->vlan_features = NETIF_F_SG | NETIF_F_IP_CSUM;
+
+	dev->priv_flags |= IFF_UNICAST_FLT;
 
 	SET_NETDEV_DEV(dev, &pdev->dev);
 

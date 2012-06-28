@@ -24,6 +24,7 @@
 #include <linux/interrupt.h>
 #include <linux/types.h>
 #include <linux/pci.h>
+#include <linux/pci-aspm.h>
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
@@ -68,6 +69,10 @@ static int cciss_tape_cmds = 6;
 module_param(cciss_tape_cmds, int, 0644);
 MODULE_PARM_DESC(cciss_tape_cmds,
 	"number of commands to allocate for tape devices (default: 6)");
+static int cciss_simple_mode;
+module_param(cciss_simple_mode, int, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(cciss_simple_mode,
+	"Use 'simple mode' rather than 'performant mode'");
 
 static DEFINE_MUTEX(cciss_mutex);
 static struct proc_dir_entry *proc_cciss;
@@ -106,11 +111,13 @@ static const struct pci_device_id cciss_pci_device_id[] = {
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3249},
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x324A},
 	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x324B},
-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3250},
-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3251},
-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3252},
-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3253},
-	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSE,     0x103C, 0x3254},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3350},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3351},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3352},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3353},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3354},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3355},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSF,     0x103C, 0x3356},
 #endif
 	{0,}
 };
@@ -152,11 +159,13 @@ static struct board_type products[] = {
 	{0x3249103C, "Smart Array P812", &SA5_access},
 	{0x324A103C, "Smart Array P712m", &SA5_access},
 	{0x324B103C, "Smart Array P711m", &SA5_access},
-	{0x3250103C, "Smart Array", &SA5_access},
-	{0x3251103C, "Smart Array", &SA5_access},
-	{0x3252103C, "Smart Array", &SA5_access},
-	{0x3253103C, "Smart Array", &SA5_access},
-	{0x3254103C, "Smart Array", &SA5_access},
+	{0x3350103C, "Smart Array P222", &SA5_access},
+	{0x3351103C, "Smart Array P420", &SA5_access},
+	{0x3352103C, "Smart Array P421", &SA5_access},
+	{0x3353103C, "Smart Array", &SA5_access},
+	{0x3354103C, "Smart Array P420i", &SA5_access},
+	{0x3355103C, "Smart Array P220i", &SA5_access},
+	{0x3356103C, "Smart Array", &SA5_access},
 #endif
 };
 
@@ -204,6 +213,7 @@ static void cciss_geometry_inquiry(ctlr_info_t *h, int logvol,
 			unsigned int block_size, InquiryData_struct *inq_buff,
 				   drive_info_struct *drv);
 static void __devinit cciss_interrupt_mode(ctlr_info_t *);
+static int __devinit cciss_enter_simple_mode(struct ctlr_info *h);
 static void start_io(ctlr_info_t *h);
 static int sendcmd_withirq(ctlr_info_t *h, __u8 cmd, void *buff, size_t size,
 			__u8 page_code, unsigned char scsi3addr[],
@@ -416,7 +426,7 @@ static void cciss_seq_show_header(struct seq_file *seq)
 		h->product_name,
 		(unsigned long)h->board_id,
 		h->firm_ver[0], h->firm_ver[1], h->firm_ver[2],
-		h->firm_ver[3], (unsigned int)h->intr[PERF_MODE_INT],
+		h->firm_ver[3], (unsigned int)h->intr[h->intr_mode],
 		h->num_luns,
 		h->Qdepth, h->commands_outstanding,
 		h->maxQsinceinit, h->max_outstanding, h->maxSG);
@@ -604,14 +614,28 @@ static u32 unresettable_controller[] = {
 	0x3215103C, /* Smart Array E200i */
 	0x3237103C, /* Smart Array E500 */
 	0x323D103C, /* Smart Array P700m */
+	0x40800E11, /* Smart Array 5i */
 	0x409C0E11, /* Smart Array 6400 */
 	0x409D0E11, /* Smart Array 6400 EM */
+	0x40700E11, /* Smart Array 5300 */
+	0x40820E11, /* Smart Array 532 */
+	0x40830E11, /* Smart Array 5312 */
+	0x409A0E11, /* Smart Array 641 */
+	0x409B0E11, /* Smart Array 642 */
+	0x40910E11, /* Smart Array 6i */
 };
 
 /* List of controllers which cannot even be soft reset */
 static u32 soft_unresettable_controller[] = {
+	0x40800E11, /* Smart Array 5i */
 	0x409C0E11, /* Smart Array 6400 */
 	0x409D0E11, /* Smart Array 6400 EM */
+	0x40700E11, /* Smart Array 5300 */
+	0x40820E11, /* Smart Array 532 */
+	0x40830E11, /* Smart Array 5312 */
+	0x409A0E11, /* Smart Array 641 */
+	0x409B0E11, /* Smart Array 642 */
+	0x40910E11, /* Smart Array 6i */
 };
 
 static int ctlr_is_hard_resettable(u32 board_id)
@@ -663,6 +687,18 @@ static ssize_t host_store_rescan(struct device *dev,
 	return count;
 }
 static DEVICE_ATTR(rescan, S_IWUSR, NULL, host_store_rescan);
+
+static ssize_t host_show_transport_mode(struct device *dev,
+				 struct device_attribute *attr,
+				 char *buf)
+{
+	struct ctlr_info *h = to_hba(dev);
+
+	return snprintf(buf, 20, "%s\n",
+		h->transMethod & CFGTBL_Trans_Performant ?
+			"performant" : "simple");
+}
+static DEVICE_ATTR(transport_mode, S_IRUGO, host_show_transport_mode, NULL);
 
 static ssize_t dev_show_unique_id(struct device *dev,
 				 struct device_attribute *attr,
@@ -836,6 +872,7 @@ static DEVICE_ATTR(usage_count, S_IRUGO, cciss_show_usage_count, NULL);
 static struct attribute *cciss_host_attrs[] = {
 	&dev_attr_rescan.attr,
 	&dev_attr_resettable.attr,
+	&dev_attr_transport_mode.attr,
 	NULL
 };
 
@@ -2610,6 +2647,8 @@ static int fill_cmd(ctlr_info_t *h, CommandList_struct *c, __u8 cmd, void *buff,
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = BMIC_WRITE;
 			c->Request.CDB[6] = BMIC_CACHE_FLUSH;
+			c->Request.CDB[7] = (size >> 8) & 0xFF;
+			c->Request.CDB[8] = size & 0xFF;
 			break;
 		case TEST_UNIT_READY:
 			c->Request.CDBLen = 6;
@@ -4012,6 +4051,9 @@ static void __devinit cciss_put_controller_into_performant_mode(ctlr_info_t *h)
 {
 	__u32 trans_support;
 
+	if (cciss_simple_mode)
+		return;
+
 	dev_dbg(&h->pdev->dev, "Trying to put board into Performant mode\n");
 	/* Attempt to put controller into performant mode if supported */
 	/* Does board support performant mode? */
@@ -4109,7 +4151,7 @@ static void __devinit cciss_interrupt_mode(ctlr_info_t *h)
 default_int_mode:
 #endif				/* CONFIG_PCI_MSI */
 	/* if we get here we're going to use the default interrupt mode */
-	h->intr[PERF_MODE_INT] = h->pdev->irq;
+	h->intr[h->intr_mode] = h->pdev->irq;
 	return;
 }
 
@@ -4326,6 +4368,10 @@ static int __devinit cciss_pci_init(ctlr_info_t *h)
 		dev_warn(&h->pdev->dev, "controller appears to be disabled\n");
 		return -ENODEV;
 	}
+
+	pci_disable_link_state(h->pdev, PCIE_LINK_STATE_L0S |
+				PCIE_LINK_STATE_L1 | PCIE_LINK_STATE_CLKPM);
+
 	err = pci_enable_device(h->pdev);
 	if (err) {
 		dev_warn(&h->pdev->dev, "Unable to Enable PCI device\n");
@@ -4369,6 +4415,9 @@ static int __devinit cciss_pci_init(ctlr_info_t *h)
 	}
 	cciss_enable_scsi_prefetch(h);
 	cciss_p600_dma_prefetch_quirk(h);
+	err = cciss_enter_simple_mode(h);
+	if (err)
+		goto err_out_free_res;
 	cciss_put_controller_into_performant_mode(h);
 	return 0;
 
@@ -4878,20 +4927,20 @@ static int cciss_request_irq(ctlr_info_t *h,
 	irqreturn_t (*intxhandler)(int, void *))
 {
 	if (h->msix_vector || h->msi_vector) {
-		if (!request_irq(h->intr[PERF_MODE_INT], msixhandler,
+		if (!request_irq(h->intr[h->intr_mode], msixhandler,
 				IRQF_DISABLED, h->devname, h))
 			return 0;
 		dev_err(&h->pdev->dev, "Unable to get msi irq %d"
-			" for %s\n", h->intr[PERF_MODE_INT],
+			" for %s\n", h->intr[h->intr_mode],
 			h->devname);
 		return -1;
 	}
 
-	if (!request_irq(h->intr[PERF_MODE_INT], intxhandler,
-			IRQF_DISABLED, h->devname, h))
+	if (!request_irq(h->intr[h->intr_mode], intxhandler,
+			IRQF_DISABLED | IRQF_SHARED, h->devname, h))
 		return 0;
 	dev_err(&h->pdev->dev, "Unable to get irq %d for %s\n",
-		h->intr[PERF_MODE_INT], h->devname);
+		h->intr[h->intr_mode], h->devname);
 	return -1;
 }
 
@@ -4922,7 +4971,7 @@ static void cciss_undo_allocations_after_kdump_soft_reset(ctlr_info_t *h)
 {
 	int ctlr = h->ctlr;
 
-	free_irq(h->intr[PERF_MODE_INT], h);
+	free_irq(h->intr[h->intr_mode], h);
 #ifdef CONFIG_PCI_MSI
 	if (h->msix_vector)
 		pci_disable_msix(h->pdev);
@@ -4988,6 +5037,7 @@ reinit_after_soft_reset:
 	h = hba[i];
 	h->pdev = pdev;
 	h->busy_initializing = 1;
+	h->intr_mode = cciss_simple_mode ? SIMPLE_MODE_INT : PERF_MODE_INT;
 	INIT_LIST_HEAD(&h->cmpQ);
 	INIT_LIST_HEAD(&h->reqQ);
 	mutex_init(&h->busy_shutting_down);
@@ -5044,7 +5094,7 @@ reinit_after_soft_reset:
 
 	dev_info(&h->pdev->dev, "%s: <0x%x> at PCI %s IRQ %d%s using DAC\n",
 	       h->devname, pdev->device, pci_name(pdev),
-	       h->intr[PERF_MODE_INT], dac ? "" : " not");
+	       h->intr[h->intr_mode], dac ? "" : " not");
 
 	if (cciss_allocate_cmd_pool(h))
 		goto clean4;
@@ -5091,7 +5141,7 @@ reinit_after_soft_reset:
 		spin_lock_irqsave(&h->lock, flags);
 		h->access.set_intr_mask(h, CCISS_INTR_OFF);
 		spin_unlock_irqrestore(&h->lock, flags);
-		free_irq(h->intr[PERF_MODE_INT], h);
+		free_irq(h->intr[h->intr_mode], h);
 		rc = cciss_request_irq(h, cciss_msix_discard_completions,
 					cciss_intx_discard_completions);
 		if (rc) {
@@ -5161,6 +5211,7 @@ reinit_after_soft_reset:
 	h->cciss_max_sectors = 8192;
 
 	rebuild_lun_table(h, 1, 0);
+	cciss_engage_scsi(h);
 	h->busy_initializing = 0;
 	return 1;
 
@@ -5168,7 +5219,7 @@ clean4:
 	cciss_free_cmd_pool(h);
 	cciss_free_scatterlists(h);
 	cciss_free_sg_chain_blocks(h->cmd_sg_list, h->nr_cmds);
-	free_irq(h->intr[PERF_MODE_INT], h);
+	free_irq(h->intr[h->intr_mode], h);
 clean2:
 	unregister_blkdev(h->major, h->devname);
 clean1:
@@ -5207,8 +5258,30 @@ static void cciss_shutdown(struct pci_dev *pdev)
 	if (return_code != IO_OK)
 		dev_warn(&h->pdev->dev, "Error flushing cache\n");
 	h->access.set_intr_mask(h, CCISS_INTR_OFF);
-	free_irq(h->intr[PERF_MODE_INT], h);
+	free_irq(h->intr[h->intr_mode], h);
 }
+
+static int __devinit cciss_enter_simple_mode(struct ctlr_info *h)
+{
+	u32 trans_support;
+
+	trans_support = readl(&(h->cfgtable->TransportSupport));
+	if (!(trans_support & SIMPLE_MODE))
+		return -ENOTSUPP;
+
+	h->max_commands = readl(&(h->cfgtable->CmdsOutMax));
+	writel(CFGTBL_Trans_Simple, &(h->cfgtable->HostWrite.TransportRequest));
+	writel(CFGTBL_ChangeReq, h->vaddr + SA5_DOORBELL);
+	cciss_wait_for_mode_change_ack(h);
+	print_cfg_table(h);
+	if (!(readl(&(h->cfgtable->TransportActive)) & CFGTBL_Trans_Simple)) {
+		dev_warn(&h->pdev->dev, "unable to get board into simple mode\n");
+		return -ENODEV;
+	}
+	h->transMethod = CFGTBL_Trans_Simple;
+	return 0;
+}
+
 
 static void __devexit cciss_remove_one(struct pci_dev *pdev)
 {

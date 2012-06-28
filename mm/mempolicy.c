@@ -511,7 +511,7 @@ static inline int check_pmd_range(struct vm_area_struct *vma, pud_t *pud,
 	do {
 		next = pmd_addr_end(addr, end);
 		split_huge_page_pmd(vma->vm_mm, pmd);
-		if (pmd_none_or_clear_bad(pmd))
+		if (pmd_none_or_trans_huge_or_clear_bad(pmd))
 			continue;
 		if (check_pte_range(vma, pmd, addr, next, nodes,
 				    flags, private))
@@ -643,14 +643,22 @@ static int mbind_range(struct mm_struct *mm, unsigned long start,
 	if (!vma || vma->vm_start > start)
 		return -EFAULT;
 
+	if (start > vma->vm_start)
+		prev = vma;
+
 	for (; vma && vma->vm_start < end; prev = vma, vma = next) {
 		next = vma->vm_next;
 		vmstart = max(start, vma->vm_start);
 		vmend   = min(end, vma->vm_end);
 
-		pgoff = vma->vm_pgoff + ((start - vma->vm_start) >> PAGE_SHIFT);
+		if (mpol_equal(vma_policy(vma), new_pol))
+			continue;
+
+		pgoff = vma->vm_pgoff +
+			((vmstart - vma->vm_start) >> PAGE_SHIFT);
 		prev = vma_merge(mm, prev, vmstart, vmend, vma->vm_flags,
-				  vma->anon_vma, vma->vm_file, pgoff, new_pol);
+				  vma->anon_vma, vma->vm_file, pgoff,
+				  new_pol);
 		if (prev) {
 			vma = prev;
 			next = vma->vm_next;

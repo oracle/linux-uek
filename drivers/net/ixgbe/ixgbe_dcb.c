@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2011 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -40,7 +40,8 @@
  * hardware. The IEEE 802.1Qaz specification do not use bandwidth
  * groups so this is much simplified from the CEE case.
  */
-s32 ixgbe_ieee_credits(__u8 *bw, __u16 *refill, __u16 *max, int max_frame)
+static s32 ixgbe_ieee_credits(__u8 *bw, __u16 *refill,
+			      __u16 *max, int max_frame)
 {
 	int min_percent = 100;
 	int min_credit, multiplier;
@@ -183,7 +184,7 @@ void ixgbe_dcb_unpack_pfc(struct ixgbe_dcb_config *cfg, u8 *pfc_en)
 
 	*pfc_en = 0;
 	for (i = 0; i < MAX_TRAFFIC_CLASS; i++)
-		*pfc_en |= (cfg->tc_config[i].dcb_pfc & 0xF) << i;
+		*pfc_en |= !!(cfg->tc_config[i].dcb_pfc & 0xF) << i;
 }
 
 void ixgbe_dcb_unpack_refill(struct ixgbe_dcb_config *cfg, int direction,
@@ -230,6 +231,18 @@ void ixgbe_dcb_unpack_prio(struct ixgbe_dcb_config *cfg, int direction,
 	}
 }
 
+void ixgbe_dcb_unpack_map(struct ixgbe_dcb_config *cfg, int direction, u8 *map)
+{
+	int i, up;
+	unsigned long bitmap;
+
+	for (i = 0; i < MAX_TRAFFIC_CLASS; i++) {
+		bitmap = cfg->tc_config[i].path[direction].up_to_tc_bitmap;
+		for_each_set_bit(up, &bitmap, MAX_USER_PRIORITY)
+			map[up] = i;
+	}
+}
+
 /**
  * ixgbe_dcb_hw_config - Config and enable DCB
  * @hw: pointer to hardware structure
@@ -244,10 +257,9 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw,
 	u8 pfc_en;
 	u8 ptype[MAX_TRAFFIC_CLASS];
 	u8 bwgid[MAX_TRAFFIC_CLASS];
+	u8 prio_tc[MAX_TRAFFIC_CLASS];
 	u16 refill[MAX_TRAFFIC_CLASS];
 	u16 max[MAX_TRAFFIC_CLASS];
-	/* CEE does not define a priority to tc mapping so map 1:1 */
-	u8 prio_tc[MAX_TRAFFIC_CLASS] = {0, 1, 2, 3, 4, 5, 6, 7};
 
 	/* Unpack CEE standard containers */
 	ixgbe_dcb_unpack_pfc(dcb_config, &pfc_en);
@@ -255,6 +267,7 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw,
 	ixgbe_dcb_unpack_max(dcb_config, max);
 	ixgbe_dcb_unpack_bwgid(dcb_config, DCB_TX_CONFIG, bwgid);
 	ixgbe_dcb_unpack_prio(dcb_config, DCB_TX_CONFIG, ptype);
+	ixgbe_dcb_unpack_map(dcb_config, DCB_TX_CONFIG, prio_tc);
 
 	switch (hw->mac.type) {
 	case ixgbe_mac_82598EB:
@@ -273,7 +286,7 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw,
 }
 
 /* Helper routines to abstract HW specifics from DCB netlink ops */
-s32 ixgbe_dcb_hw_pfc_config(struct ixgbe_hw *hw, u8 pfc_en)
+s32 ixgbe_dcb_hw_pfc_config(struct ixgbe_hw *hw, u8 pfc_en, u8 *prio_tc)
 {
 	int ret = -EINVAL;
 
@@ -283,12 +296,45 @@ s32 ixgbe_dcb_hw_pfc_config(struct ixgbe_hw *hw, u8 pfc_en)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
-		ret = ixgbe_dcb_config_pfc_82599(hw, pfc_en);
+		ret = ixgbe_dcb_config_pfc_82599(hw, pfc_en, prio_tc);
 		break;
 	default:
 		break;
 	}
 	return ret;
+}
+
+s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame)
+{
+	__u16 refill[IEEE_8021QAZ_MAX_TCS], max[IEEE_8021QAZ_MAX_TCS];
+	__u8 prio_type[IEEE_8021QAZ_MAX_TCS];
+	int i;
+
+	/* naively give each TC a bwg to map onto CEE hardware */
+	__u8 bwg_id[IEEE_8021QAZ_MAX_TCS] = {0, 1, 2, 3, 4, 5, 6, 7};
+
+	/* Map TSA onto CEE prio type */
+	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
+		switch (ets->tc_tsa[i]) {
+		case IEEE_8021QAZ_TSA_STRICT:
+			prio_type[i] = 2;
+			break;
+		case IEEE_8021QAZ_TSA_ETS:
+			prio_type[i] = 0;
+			break;
+		default:
+			/* Hardware only supports priority strict or
+			 * ETS transmission selection algorithms if
+			 * we receive some other value from dcbnl
+			 * throw an error
+			 */
+			return -EINVAL;
+		}
+	}
+
+	ixgbe_ieee_credits(ets->tc_tx_bw, refill, max, max_frame);
+	return ixgbe_dcb_hw_ets_config(hw, refill, max,
+				       bwg_id, prio_type, ets->prio_tc);
 }
 
 s32 ixgbe_dcb_hw_ets_config(struct ixgbe_hw *hw,

@@ -1818,6 +1818,7 @@ static const struct block_device_operations ub_bd_fops = {
 	.release	= ub_bd_release,
 	.ioctl		= ub_bd_ioctl,
 	.check_events	= ub_bd_check_events,
+	.media_changed	= ub_bd_media_changed,
 	.revalidate_disk = ub_bd_revalidate,
 };
 
