@@ -230,12 +230,59 @@ int kallsyms_on_each_symbol(int (*fn)(void *, const char *, struct module *,
 }
 EXPORT_SYMBOL_GPL(kallsyms_on_each_symbol);
 
+static unsigned long get_symbol_size(unsigned long kallsyms_addr)
+{
+	unsigned long size = 0;
+	unsigned long sym_addr = kallsyms_sym_address(kallsyms_addr);
+	unsigned long used_i = 0;
+	unsigned long used_i_addr = 0;
+
+	/*
+	 * __per_cpu_end always has size zero.
+	 */
+	if (sym_addr == (unsigned long)__per_cpu_end)
+		return 0;
+
+	/*
+	 * Search for next non-aliased symbol.  Aliased symbols are symbols with
+	 * the same address.
+	 */
+	if (kallsyms_addr < (kallsyms_num_syms - 1)) {
+		unsigned long i;
+
+		for (i = kallsyms_addr + 1; i < kallsyms_num_syms; i++) {
+			if (kallsyms_sym_address(i) > sym_addr) {
+				size = kallsyms_sym_address(i) - sym_addr;
+				used_i = i;
+				used_i_addr = kallsyms_sym_address(i);
+				break;
+			}
+		}
+	}
+
+	/* If we found no next symbol, we use the end of the section. */
+	if (!size) {
+		unsigned long symbol_end;
+
+		if (is_kernel_inittext(sym_addr))
+			symbol_end = (unsigned long)_einittext;
+		else if (IS_ENABLED(CONFIG_KALLSYMS_ALL))
+			symbol_end = (unsigned long)_end;
+		else
+			symbol_end = (unsigned long)_etext;
+
+		size = symbol_end - sym_addr;
+	}
+
+	return size;
+}
+
+
 static unsigned long get_symbol_pos(unsigned long addr,
 				    unsigned long *symbolsize,
 				    unsigned long *offset)
 {
-	unsigned long symbol_start = 0, symbol_end = 0;
-	unsigned long i, low, high, mid;
+	unsigned long low, high, mid;
 
 	/* This kernel should never had been booted. */
 	if (!IS_ENABLED(CONFIG_KALLSYMS_BASE_RELATIVE))
@@ -256,36 +303,15 @@ static unsigned long get_symbol_pos(unsigned long addr,
 	}
 
 	/*
-	 * Search for the first aliased symbol. Aliased
-	 * symbols are symbols with the same address.
+	 * Search for the first aliased symbol.
 	 */
 	while (low && kallsyms_sym_address(low-1) == kallsyms_sym_address(low))
 		--low;
 
-	symbol_start = kallsyms_sym_address(low);
-
-	/* Search for next non-aliased symbol. */
-	for (i = low + 1; i < kallsyms_num_syms; i++) {
-		if (kallsyms_sym_address(i) > symbol_start) {
-			symbol_end = kallsyms_sym_address(i);
-			break;
-		}
-	}
-
-	/* If we found no next symbol, we use the end of the section. */
-	if (!symbol_end) {
-		if (is_kernel_inittext(addr))
-			symbol_end = (unsigned long)_einittext;
-		else if (IS_ENABLED(CONFIG_KALLSYMS_ALL))
-			symbol_end = (unsigned long)_end;
-		else
-			symbol_end = (unsigned long)_etext;
-	}
-
 	if (symbolsize)
-		*symbolsize = symbol_end - symbol_start;
+		*symbolsize = get_symbol_size(low);
 	if (offset)
-		*offset = addr - symbol_start;
+		*offset = addr - kallsyms_sym_address(low);
 
 	return low;
 }
@@ -479,7 +505,7 @@ static int get_ksymbol_mod(struct kallsym_iter *iter)
 	int ret = module_get_kallsym(iter->pos - kallsyms_num_syms,
 				     &iter->value, &iter->type,
 				     iter->name, iter->module_name,
-				     &iter->exported);
+				     &iter->size, &iter->exported);
 	if (ret < 0) {
 		iter->pos_mod_end = iter->pos;
 		return 0;
@@ -513,6 +539,7 @@ static unsigned long get_ksymbol_core(struct kallsym_iter *iter)
 	iter->exported = 0;
 	iter->value = kallsyms_sym_address(iter->pos);
 
+	iter->size = get_symbol_size(iter->pos);
 	iter->type = kallsyms_get_symbol_type(off);
 
 	off = kallsyms_expand_symbol(off, iter->name, ARRAY_SIZE(iter->name));
@@ -601,12 +628,18 @@ static int s_show_internal(struct seq_file *m, void *p, int builtin_modules)
 		 */
 		type = iter->exported ? toupper(iter->type) :
 					tolower(iter->type);
-		seq_printf(m, "%pK %c %s\t[%s]\n", (void *)iter->value,
-			   type, iter->name, iter->module_name);
-	} else {
+		if (builtin_modules)
+			seq_printf(m, "%pK %lx %c %s\t[%s]\n", (void *)iter->value,
+				   iter->size, type, iter->name, iter->module_name);
+		else
+			seq_printf(m, "%pK %c %s\t[%s]\n", (void *)iter->value,
+				   type, iter->name, iter->module_name);
+	} else if (builtin_modules)
+		seq_printf(m, "%pK %lx %c %s\n", (void *)iter->value,
+			   iter->size, iter->type, iter->name);
+	else
 		seq_printf(m, "%pK %c %s\n", (void *)iter->value,
 			   iter->type, iter->name);
-	}
 	return 0;
 }
 

@@ -23,11 +23,12 @@ struct kallsym_iter {
 	loff_t pos;
 	unsigned long value;
 	unsigned int nameoff; /* If iterating in core kernel symbols. */
+	unsigned long size;
+	int builtin_module;
+	int exported;
 	char type;
 	char name[KSYM_NAME_LEN];
 	char module_name[MODULE_NAME_LEN];
-	int builtin_module;
-	int exported;
 };
 
 /* Lookup the address for a symbol. Returns 0 if not found. */
