@@ -58,6 +58,40 @@ struct resource crashk_res = {
 	.flags = IORESOURCE_BUSY | IORESOURCE_MEM
 };
 
+static unsigned long generic_page_to_pfn(struct page *page)
+{
+	return page_to_pfn(page);
+}
+
+static struct page *generic_pfn_to_page(unsigned long pfn)
+{
+	return pfn_to_page(pfn);
+}
+
+static unsigned long generic_virt_to_phys(volatile void *address)
+{
+	return virt_to_phys(address);
+}
+
+static void *generic_phys_to_virt(unsigned long address)
+{
+	return phys_to_virt(address);
+}
+
+struct kexec_ops kexec_ops = {
+	.always_use_normal_alloc = false,
+	.page_to_pfn = generic_page_to_pfn,
+	.pfn_to_page = generic_pfn_to_page,
+	.virt_to_phys = generic_virt_to_phys,
+	.phys_to_virt = generic_phys_to_virt,
+	.machine_kexec_prepare = machine_kexec_prepare,
+	.machine_kexec_load = NULL,
+	.machine_kexec_cleanup = machine_kexec_cleanup,
+	.machine_kexec_unload = NULL,
+	.machine_kexec_shutdown = machine_shutdown,
+	.machine_kexec = machine_kexec
+};
+
 int kexec_should_crash(struct task_struct *p)
 {
 	if (in_interrupt() || !p->pid || is_global_init(p) || panic_on_oops)
@@ -430,7 +464,7 @@ static struct page *kimage_alloc_normal_control_pages(struct kimage *image,
 		pages = kimage_alloc_pages(GFP_KERNEL, order);
 		if (!pages)
 			break;
-		pfn   = page_to_pfn(pages);
+		pfn   = (*kexec_ops.page_to_pfn)(pages);
 		epfn  = pfn + count;
 		addr  = pfn << PAGE_SHIFT;
 		eaddr = epfn << PAGE_SHIFT;
@@ -517,7 +551,7 @@ static struct page *kimage_alloc_crash_control_pages(struct kimage *image,
 		}
 		/* If I don't overlap any segments I have found my hole! */
 		if (i == image->nr_segments) {
-			pages = pfn_to_page(hole_start >> PAGE_SHIFT);
+			pages = (*kexec_ops.pfn_to_page)(hole_start >> PAGE_SHIFT);
 			break;
 		}
 	}
@@ -534,12 +568,13 @@ struct page *kimage_alloc_control_pages(struct kimage *image,
 	struct page *pages = NULL;
 
 	switch (image->type) {
+	case KEXEC_TYPE_CRASH:
+		if (!kexec_ops.always_use_normal_alloc) {
+			pages = kimage_alloc_crash_control_pages(image, order);
+			break;
+		}
 	case KEXEC_TYPE_DEFAULT:
 		pages = kimage_alloc_normal_control_pages(image, order);
-		break;
-	case KEXEC_TYPE_CRASH:
-		pages = kimage_alloc_crash_control_pages(image, order);
-		break;
 	}
 
 	return pages;
@@ -559,7 +594,7 @@ static int kimage_add_entry(struct kimage *image, kimage_entry_t entry)
 			return -ENOMEM;
 
 		ind_page = page_address(page);
-		*image->entry = virt_to_phys(ind_page) | IND_INDIRECTION;
+		*image->entry = (*kexec_ops.virt_to_phys)(ind_page) | IND_INDIRECTION;
 		image->entry = ind_page;
 		image->last_entry = ind_page +
 				      ((PAGE_SIZE/sizeof(kimage_entry_t)) - 1);
@@ -618,13 +653,13 @@ static void kimage_terminate(struct kimage *image)
 #define for_each_kimage_entry(image, ptr, entry) \
 	for (ptr = &image->head; (entry = *ptr) && !(entry & IND_DONE); \
 		ptr = (entry & IND_INDIRECTION)? \
-			phys_to_virt((entry & PAGE_MASK)): ptr +1)
+			(*kexec_ops.phys_to_virt)((entry & PAGE_MASK)): ptr +1)
 
 static void kimage_free_entry(kimage_entry_t entry)
 {
 	struct page *page;
 
-	page = pfn_to_page(entry >> PAGE_SHIFT);
+	page = (*kexec_ops.pfn_to_page)(entry >> PAGE_SHIFT);
 	kimage_free_pages(page);
 }
 
@@ -655,7 +690,7 @@ static void kimage_free(struct kimage *image)
 		kimage_free_entry(ind);
 
 	/* Handle any machine specific cleanup */
-	machine_kexec_cleanup(image);
+	(*kexec_ops.machine_kexec_cleanup)(image);
 
 	/* Free the kexec control pages... */
 	kimage_free_page_list(&image->control_pages);
@@ -711,7 +746,7 @@ static struct page *kimage_alloc_page(struct kimage *image,
 	 * have a match.
 	 */
 	list_for_each_entry(page, &image->dest_pages, lru) {
-		addr = page_to_pfn(page) << PAGE_SHIFT;
+		addr = (*kexec_ops.page_to_pfn)(page) << PAGE_SHIFT;
 		if (addr == destination) {
 			list_del(&page->lru);
 			return page;
@@ -726,12 +761,12 @@ static struct page *kimage_alloc_page(struct kimage *image,
 		if (!page)
 			return NULL;
 		/* If the page cannot be used file it away */
-		if (page_to_pfn(page) >
+		if ((*kexec_ops.page_to_pfn)(page) >
 				(KEXEC_SOURCE_MEMORY_LIMIT >> PAGE_SHIFT)) {
 			list_add(&page->lru, &image->unuseable_pages);
 			continue;
 		}
-		addr = page_to_pfn(page) << PAGE_SHIFT;
+		addr = (*kexec_ops.page_to_pfn)(page) << PAGE_SHIFT;
 
 		/* If it is the destination page we want use it */
 		if (addr == destination)
@@ -754,7 +789,7 @@ static struct page *kimage_alloc_page(struct kimage *image,
 			struct page *old_page;
 
 			old_addr = *old & PAGE_MASK;
-			old_page = pfn_to_page(old_addr >> PAGE_SHIFT);
+			old_page = (*kexec_ops.pfn_to_page)(old_addr >> PAGE_SHIFT);
 			copy_highpage(page, old_page);
 			*old = addr | (*old & ~PAGE_MASK);
 
@@ -810,7 +845,7 @@ static int kimage_load_normal_segment(struct kimage *image,
 			result  = -ENOMEM;
 			goto out;
 		}
-		result = kimage_add_page(image, page_to_pfn(page)
+		result = kimage_add_page(image, (*kexec_ops.page_to_pfn)(page)
 								<< PAGE_SHIFT);
 		if (result < 0)
 			goto out;
@@ -864,7 +899,7 @@ static int kimage_load_crash_segment(struct kimage *image,
 		char *ptr;
 		size_t uchunk, mchunk;
 
-		page = pfn_to_page(maddr >> PAGE_SHIFT);
+		page = (*kexec_ops.pfn_to_page)(maddr >> PAGE_SHIFT);
 		if (!page) {
 			result  = -ENOMEM;
 			goto out;
@@ -903,12 +938,13 @@ static int kimage_load_segment(struct kimage *image,
 	int result = -ENOMEM;
 
 	switch (image->type) {
+	case KEXEC_TYPE_CRASH:
+		if (!kexec_ops.always_use_normal_alloc) {
+			result = kimage_load_crash_segment(image, segment);
+			break;
+		}
 	case KEXEC_TYPE_DEFAULT:
 		result = kimage_load_normal_segment(image, segment);
-		break;
-	case KEXEC_TYPE_CRASH:
-		result = kimage_load_crash_segment(image, segment);
-		break;
 	}
 
 	return result;
@@ -996,6 +1032,8 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 			/* Free any current crash dump kernel before
 			 * we corrupt it.
 			 */
+			if (kexec_ops.machine_kexec_unload)
+				(*kexec_ops.machine_kexec_unload)(image);
 			kimage_free(xchg(&kexec_crash_image, NULL));
 			result = kimage_crash_alloc(&image, entry,
 						     nr_segments, segments);
@@ -1005,7 +1043,7 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 
 		if (flags & KEXEC_PRESERVE_CONTEXT)
 			image->preserve_context = 1;
-		result = machine_kexec_prepare(image);
+		result = (*kexec_ops.machine_kexec_prepare)(image);
 		if (result)
 			goto out;
 
@@ -1016,11 +1054,23 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 		}
 		kimage_terminate(image);
 	}
+
+	if (kexec_ops.machine_kexec_load) {
+		result = (*kexec_ops.machine_kexec_load)(image);
+
+		if (result)
+			goto out;
+	}
+
 	/* Install the new kernel, and  Uninstall the old */
 	image = xchg(dest_image, image);
 
 out:
 	mutex_unlock(&kexec_mutex);
+
+	if (kexec_ops.machine_kexec_unload)
+		(*kexec_ops.machine_kexec_unload)(image);
+
 	kimage_free(image);
 
 	return result;
@@ -1084,7 +1134,7 @@ void crash_kexec(struct pt_regs *regs)
 			crash_setup_regs(&fixed_regs, regs);
 			crash_save_vmcoreinfo();
 			machine_crash_shutdown(&fixed_regs);
-			machine_kexec(kexec_crash_image);
+			(*kexec_ops.machine_kexec)(kexec_crash_image);
 		}
 		mutex_unlock(&kexec_mutex);
 	}
@@ -1106,8 +1156,8 @@ void __weak crash_free_reserved_phys_range(unsigned long begin,
 	unsigned long addr;
 
 	for (addr = begin; addr < end; addr += PAGE_SIZE) {
-		ClearPageReserved(pfn_to_page(addr >> PAGE_SHIFT));
-		init_page_count(pfn_to_page(addr >> PAGE_SHIFT));
+		ClearPageReserved((*kexec_ops.pfn_to_page)(addr >> PAGE_SHIFT));
+		init_page_count((*kexec_ops.pfn_to_page)(addr >> PAGE_SHIFT));
 		free_page((unsigned long)__va(addr));
 		totalram_pages++;
 	}
@@ -1539,10 +1589,10 @@ int kernel_kexec(void)
 	{
 		kernel_restart_prepare(NULL);
 		printk(KERN_EMERG "Starting new kernel\n");
-		machine_shutdown();
+		(*kexec_ops.machine_kexec_shutdown)();
 	}
 
-	machine_kexec(kexec_image);
+	(*kexec_ops.machine_kexec)(kexec_image);
 
 #ifdef CONFIG_KEXEC_JUMP
 	if (kexec_image->preserve_context) {
