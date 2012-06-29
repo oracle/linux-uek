@@ -1231,7 +1231,6 @@ asmlinkage void __init xen_start_kernel(void)
 {
 	struct physdev_set_iopl set_iopl;
 	int rc;
-	pgd_t *pgd;
 
 	if (!xen_start_info)
 		return;
@@ -1321,8 +1320,6 @@ asmlinkage void __init xen_start_kernel(void)
 	acpi_numa = -1;
 #endif
 
-	pgd = (pgd_t *)xen_start_info->pt_base;
-
 	if (!xen_initial_domain())
 		__supported_pte_mask &= ~(_PAGE_PWT | _PAGE_PCD);
 
@@ -1337,7 +1334,7 @@ asmlinkage void __init xen_start_kernel(void)
 	memblock_init();
 
 	xen_raw_console_write("mapping kernel into physical memory\n");
-	pgd = xen_setup_kernel_pagetable(pgd, xen_start_info->nr_pages);
+	xen_setup_kernel_pagetable((pgd_t *)xen_start_info->pt_base, xen_start_info->nr_pages);
 
 	xen_reserve_internals();
 	/* Allocate and initialize top and mid mfn levels for p2m structure */
