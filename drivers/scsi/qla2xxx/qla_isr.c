@@ -1721,7 +1721,7 @@ qla25xx_process_bidir_status_iocb(scsi_qla_host_t *vha, void *pkt, struct req_qu
 	uint16_t	comp_status;
 	uint16_t	scsi_status;
 	uint16_t thread_id;
-	uint32_t rval;
+	uint32_t rval = EXT_STATUS_OK;
 	struct fc_bsg_job *bsg_job = NULL;
 	sts_entry_t *sts;
 	struct sts_entry_24xx *sts24;
