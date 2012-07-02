@@ -239,20 +239,12 @@ static unsigned long get_symbol_size(unsigned long kallsyms_addr)
 	if (!size) {
 		unsigned long symbol_end;
 
-		if (is_kernel_inittext(sym_addr)) {
+		if (is_kernel_inittext(sym_addr))
 			symbol_end = (unsigned long)_einittext;
-			printk (KERN_INFO "defaulting with symbol_end == _einittext\n");
-		}
-		else if (all_var) {
+		else if (all_var)
 			symbol_end = (unsigned long)_end;
-			printk (KERN_INFO "defaulting with symbol_end == _end\n");
-		} else {
+		else
 			symbol_end = (unsigned long)_etext;
-			printk (KERN_INFO "defaulting with symbol_end == _etext\n");
-		}
-
-		printk (KERN_INFO "defaulting: sym_addr = %lx, symbol_end = %lx, size = %lx\n",
-			sym_addr, symbol_end, size);
 
 		size = symbol_end - sym_addr;
 	}
