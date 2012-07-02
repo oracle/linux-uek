@@ -746,13 +746,27 @@ static inline void retrigger_next_event(void *arg) { }
  * resolution timer interrupts. On UP we just disable interrupts and
  * call the high resolution interrupt code.
  */
-void clock_was_set(void)
+static void do_clock_was_set(struct work_struct *work)
 {
 #ifdef CONFIG_HIGH_RES_TIMERS
 	/* Retrigger the CPU local events everywhere */
 	on_each_cpu(retrigger_next_event, NULL, 1);
 #endif
 	timerfd_clock_was_set();
+}
+static DECLARE_WORK(clock_was_set_work, do_clock_was_set);
+
+void clock_was_set(void)
+{
+	/*
+	 * We can't call on_each_cpu() from atomic context,
+	 * so if we're in_atomic, schedule the clock_was_set
+	 * for later.
+	 */
+	if (in_atomic())
+		schedule_work(&clock_was_set_work);
+	else
+		do_clock_was_set(NULL);
 }
 
 /*
