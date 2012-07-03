@@ -39,7 +39,7 @@
 #include <net/sock.h>
 
 #include "rds.h"
-
+#include "tcp.h"
 /* UNUSED for backwards compat only */
 static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
@@ -166,7 +166,7 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 	unsigned int mask = 0;
 	unsigned long flags;
 
-	poll_wait(file, sk->sk_sleep, wait);
+	poll_wait(file, sk_sleep(sk), wait);
 
 	if (rs->rs_seen_congestion)
 		poll_wait(file, &rds_poll_waitq, wait);
@@ -489,7 +489,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	return 0;
 }
 
-static int rds_create(struct net *net, struct socket *sock, int protocol)
+static int rds_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
 	struct sock *sk;
 

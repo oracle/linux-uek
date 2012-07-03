@@ -58,7 +58,6 @@ static int rds_sysctl_sol_rds = SOL_RDS;
 
 static ctl_table rds_sysctl_rds_table[] = {
 	{
-		.ctl_name       = CTL_UNNUMBERED,
 		.procname       = "reconnect_min_delay_ms",
 		.data		= &rds_sysctl_reconnect_min_jiffies,
 		.maxlen         = sizeof(unsigned long),
@@ -68,7 +67,6 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.extra2		= &rds_sysctl_reconnect_max_jiffies,
 	},
 	{
-		.ctl_name       = CTL_UNNUMBERED,
 		.procname       = "reconnect_max_delay_ms",
 		.data		= &rds_sysctl_reconnect_max_jiffies,
 		.maxlen         = sizeof(unsigned long),
@@ -78,7 +76,6 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.extra2		= &rds_sysctl_reconnect_max,
 	},
 	{
-		.ctl_name       = CTL_UNNUMBERED,
 		.procname       = "pf_rds",
 		.data		= &rds_sysctl_pf_rds,
 		.maxlen         = sizeof(int),
@@ -86,7 +83,6 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_dointvec,
 	},
 	{
-		.ctl_name       = CTL_UNNUMBERED,
 		.procname       = "sol_rds",
 		.data		= &rds_sysctl_sol_rds,
 		.maxlen         = sizeof(int),
@@ -94,7 +90,6 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "max_unacked_packets",
 		.data		= &rds_sysctl_max_unacked_packets,
 		.maxlen         = sizeof(unsigned long),
@@ -102,7 +97,6 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "max_unacked_bytes",
 		.data		= &rds_sysctl_max_unacked_bytes,
 		.maxlen         = sizeof(unsigned long),
@@ -110,19 +104,18 @@ static ctl_table rds_sysctl_rds_table[] = {
 		.proc_handler   = &proc_dointvec,
 	},
 	{
-		.ctl_name	= CTL_UNNUMBERED,
 		.procname	= "ping_enable",
 		.data		= &rds_sysctl_ping_enable,
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
 		.proc_handler   = &proc_dointvec,
 	},
-	{ .ctl_name = 0}
+	{ }
 };
 
 static struct ctl_path rds_sysctl_path[] = {
-	{ .procname = "net", .ctl_name = CTL_NET, },
-	{ .procname = "rds", .ctl_name = CTL_UNNUMBERED, },
+	{ .procname = "net", },
+	{ .procname = "rds", },
 	{ }
 };
 

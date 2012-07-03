@@ -67,10 +67,10 @@ static int rds_tcp_accept_one(struct socket *sock)
 	inet = inet_sk(new_sock->sk);
 
 	rdsdebug("accepted tcp %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u\n",
-		  NIPQUAD(inet->saddr), ntohs(inet->sport),
-		  NIPQUAD(inet->daddr), ntohs(inet->dport));
+		  NIPQUAD(inet->inet_saddr), ntohs(inet->inet_sport),
+		  NIPQUAD(inet->inet_daddr), ntohs(inet->inet_dport));
 
-	conn = rds_conn_create(inet->saddr, inet->daddr, &rds_tcp_transport,
+	conn = rds_conn_create(inet->inet_saddr, inet->inet_daddr, &rds_tcp_transport,
 			       0, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		ret = PTR_ERR(conn);
