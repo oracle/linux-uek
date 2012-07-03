@@ -114,8 +114,8 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 };
 
 static struct ctl_path rds_sysctl_path[] = {
-	{ .procname = "net" },
-	{ .procname = "rds" },
+	{ .procname = "net", },
+	{ .procname = "rds", },
 	{ }
 };
 
