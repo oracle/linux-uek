@@ -36,6 +36,7 @@
 
 #include "rds.h"
 #include "loop.h"
+#include "tcp.h"
 
 #define RDS_CONNECTION_HASH_BITS 12
 #define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
