@@ -45,6 +45,7 @@
 
 #include "rds.h"
 #include "ib.h"
+#include "tcp.h"
 #include <linux/time.h>
 
 unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;

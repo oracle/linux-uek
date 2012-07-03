@@ -39,7 +39,7 @@
 #include <net/sock.h>
 
 #include "rds.h"
-
+#include "tcp.h"
 /* UNUSED for backwards compat only */
 static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
