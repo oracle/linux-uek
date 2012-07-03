@@ -697,13 +697,8 @@ int scsi_verify_blk_ioctl(struct block_device *bd, unsigned int cmd)
 	if (bd && bd == bd->bd_contains)
 		return 0;
 
-<<<<<<< HEAD
 	/* Actually none of these is particularly useful on a partition,
 	 * but they are safe.
-=======
-	/* Actually none of this is particularly useful on a partition
-	 * device, but let's play it safe.
->>>>>>> acd92ae52cc861cfd30589404aed0dc2aafd44d0
 	 */
 	switch (cmd) {
 	case SCSI_IOCTL_GET_IDLUN:
@@ -717,7 +712,6 @@ int scsi_verify_blk_ioctl(struct block_device *bd, unsigned int cmd)
 	case SG_SET_RESERVED_SIZE:
 	case SG_EMULATED_HOST:
 		return 0;
-<<<<<<< HEAD
 	case CDROM_GET_CAPABILITY:
 		/* Keep this until we remove the printk below.  udev sends it
 		 * and we do not want to spam dmesg about it.   CD-ROMs do
@@ -733,13 +727,6 @@ int scsi_verify_blk_ioctl(struct block_device *bd, unsigned int cmd)
 			   "%s: sending ioctl %x to a partition!\n", current->comm, cmd);
 
 	return capable(CAP_SYS_RAWIO) ? 0 : -ENOTTY;
-=======
-	default:
-		break;
-	}
-	/* In particular, rule out all resets and host-specific ioctls.  */
-	return -ENOTTY;
->>>>>>> acd92ae52cc861cfd30589404aed0dc2aafd44d0
 }
 EXPORT_SYMBOL(scsi_verify_blk_ioctl);
 
