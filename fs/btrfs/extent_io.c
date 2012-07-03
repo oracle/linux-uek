@@ -1904,7 +1904,7 @@ int repair_io_failure(struct btrfs_mapping_tree *map_tree, u64 start,
 		return -EIO;
 	}
 
-	printk_in_rcu(KERN_INFO "btrfs read error corrected: ino %lu off %llu "
+	printk(KERN_INFO "btrfs read error corrected: ino %lu off %llu "
 		      "(dev %s sector %llu)\n", page->mapping->host->i_ino,
 		      start, rcu_str_deref(dev->name), sector);
 
@@ -3154,7 +3154,7 @@ static int write_one_eb(struct extent_buffer *eb,
 	u64 offset = eb->start;
 	unsigned long i, num_pages;
 	int rw = (epd->sync_io ? WRITE_SYNC : WRITE);
-	int ret;
+	int ret = 0;
 
 	clear_bit(EXTENT_BUFFER_IOERR, &eb->bflags);
 	num_pages = num_extent_pages(eb->start, eb->len);
