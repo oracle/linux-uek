@@ -35,6 +35,8 @@
 #include "rdma_transport.h"
 #include "ib.h"
 #include "net/arp.h"
+#include "tcp.h"
+
 #include <net/sock.h>
 #include <net/inet_common.h>
 #include <linux/version.h>
