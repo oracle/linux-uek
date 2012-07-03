@@ -108,7 +108,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 		TX_SRCAVAIL_STATE(skb)->mseq = mseq;
 	}
 
-	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
+	if (unlikely(SDP_SKB_CB(skb)->flags & TCPHDR_URG))
 		h->flags = SDP_OOB_PRES | SDP_OOB_PEND;
 	else
 		h->flags = 0;
@@ -168,7 +168,7 @@ void sdp_post_send(struct sdp_sock *ssk, struct sk_buff *skb)
 	tx_wr.num_sge = frags + 1;
 	tx_wr.opcode = IB_WR_SEND;
 	tx_wr.send_flags = send_flags;
-	if (unlikely(SDP_SKB_CB(skb)->flags & TCPCB_FLAG_URG))
+	if (unlikely(SDP_SKB_CB(skb)->flags & TCPHDR_URG))
 		tx_wr.send_flags |= IB_SEND_SOLICITED;
 
 	rc = ib_post_send(ssk->qp, &tx_wr, &bad_wr);

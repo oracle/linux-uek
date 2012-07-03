@@ -42,14 +42,14 @@
 #endif
 #endif
 
-#define inet_num(sk) inet_sk(sk)->num
-#define inet_sport(sk) inet_sk(sk)->sport
-#define inet_dport(sk) inet_sk(sk)->dport
-#define inet_saddr(sk) inet_sk(sk)->saddr
-#define sdp_inet_daddr(sk) inet_sk(sk)->daddr
-#define sdp_inet_rcv_saddr(sk) inet_sk(sk)->rcv_saddr
+#define inet_num(sk) inet_sk(sk)->inet_num
+#define inet_sport(sk) inet_sk(sk)->inet_sport
+#define inet_dport(sk) inet_sk(sk)->inet_dport
+#define inet_saddr(sk) inet_sk(sk)->inet_saddr
+#define sdp_inet_daddr(sk) inet_sk(sk)->inet_daddr
+#define sdp_inet_rcv_saddr(sk) inet_sk(sk)->inet_rcv_saddr
 
-#define sdp_sk_sleep(sk) (sk)->sk_sleep
+#define sdp_sk_sleep(sk) sk_sleep(sk)
 #define sk_ssk(ssk) ((struct sock *)ssk)
 
 /* Interval between sucessive polls in the Tx routine when polling is used

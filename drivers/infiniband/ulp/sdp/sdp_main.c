@@ -589,10 +589,10 @@ static void sdp_destruct(struct sock *sk)
 
 	if (sk->sk_wmem_queued || atomic_read(&sk->sk_rmem_alloc) || sk->sk_forward_alloc) {
 		sdp_dbg(sk, "wmem_queued: 0x%x rmem_alloc: 0x%x forward: 0x%x "
-				"proto: 0x%x\n", sk->sk_wmem_queued,
+				"proto: 0x%lx\n", sk->sk_wmem_queued,
 				atomic_read(&sk->sk_rmem_alloc),
 				sk->sk_forward_alloc,
-				atomic_read(sk->sk_prot->memory_allocated));
+				atomic_long_read(sk->sk_prot->memory_allocated));
 	}
 
 	if (ssk->parent)
@@ -1348,7 +1348,7 @@ static void sdp_shutdown(struct sock *sk, int how)
 
 static void sdp_mark_push(struct sdp_sock *ssk, struct sk_buff *skb)
 {
-	SDP_SKB_CB(skb)->flags |= TCPCB_FLAG_PSH;
+	SDP_SKB_CB(skb)->flags |= TCPHDR_PSH;
 	sdp_do_posts(ssk);
 }
 
@@ -1624,7 +1624,7 @@ static inline void sdp_mark_urg(struct sock *sk, int flags)
 {
 	if (unlikely(flags & MSG_OOB)) {
 		struct sk_buff *skb = sk->sk_write_queue.prev;
-		SDP_SKB_CB(skb)->flags |= TCPCB_FLAG_URG;
+		SDP_SKB_CB(skb)->flags |= TCPHDR_URG;
 	}
 }
 
@@ -1985,7 +1985,7 @@ new_segment:
 			}
 
 			if (!copied)
-				SDP_SKB_CB(skb)->flags &= ~TCPCB_FLAG_PSH;
+				SDP_SKB_CB(skb)->flags &= ~TCPHDR_PSH;
 
 			ssk->write_seq += copy;
 			SDP_SKB_CB(skb)->end_seq += copy;
@@ -2599,7 +2599,7 @@ void sdp_urg(struct sdp_sock *ssk, struct sk_buff *skb)
 }
 
 static struct percpu_counter *sockets_allocated;
-static atomic_t memory_allocated;
+static atomic_long_t memory_allocated;
 static struct percpu_counter *orphan_count;
 static int memory_pressure;
 struct proto sdp_proto = {
@@ -2734,13 +2734,15 @@ static int sdp_create_ipvx_socket(struct net *net, struct socket *sock, int prot
 }
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-static int sdp_create_v6_socket(struct net *net, struct socket *sock, int protocol)
+static int sdp_create_v6_socket(struct net *net, struct socket *sock, int protocol,
+				int kern)
 {
 	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv6_proto_ops);
 }
 #endif
 
-static int sdp_create_v4_socket(struct net *net, struct socket *sock, int protocol)
+static int sdp_create_v4_socket(struct net *net, struct socket *sock, int protocol,
+				int kern)
 {
 	return sdp_create_ipvx_socket(net, sock, protocol, &sdp_ipv4_proto_ops);
 }
@@ -2988,9 +2990,9 @@ static void __exit sdp_exit(void)
 
 	BUG_ON(!list_empty(&sock_list));
 
-	if (atomic_read(&memory_allocated))
-		sdp_dbg(NULL, "SDP detected memory leak. Memory_allocated: %d\n",
-		       atomic_read(&memory_allocated));
+	if (atomic_long_read(&memory_allocated))
+		sdp_dbg(NULL, "SDP detected memory leak. Memory_allocated: %ld\n",
+		       atomic_long_read(&memory_allocated));
 
 	if (percpu_counter_sum(sockets_allocated))
 		printk(KERN_WARNING "%s: sockets_allocated %lld\n", __func__,

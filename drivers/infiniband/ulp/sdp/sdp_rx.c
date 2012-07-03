@@ -31,6 +31,7 @@
  */
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/rcupdate.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
@@ -684,6 +685,7 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 {
 	struct sock *sk = sk_ssk(ssk);
 	struct socket *sock = sk->sk_socket;
+	struct socket_wq *wq;
 
 	if (tx_credits(ssk) < ssk->min_bufs || !sock)
 		return;
@@ -691,10 +693,13 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	clear_bit(SOCK_NOSPACE, &sock->flags);
 	sdp_prf1(sk, NULL, "Waking up sleepers");
 
-	if (sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk)))
-		wake_up_interruptible(sdp_sk_sleep(sk));
-	if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
+	rcu_read_lock();
+	wq = rcu_dereference(sk->sk_wq);
+	if (wq_has_sleeper(wq))
+		wake_up_interruptible(&wq->wait);
+	if (wq && wq->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
 		sock_wake_async(sock, 2, POLL_OUT);
+	rcu_read_unlock();
 }
 
 int sdp_poll_rx_cq(struct sdp_sock *ssk)
