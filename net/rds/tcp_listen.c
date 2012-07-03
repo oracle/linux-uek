@@ -67,8 +67,8 @@ static int rds_tcp_accept_one(struct socket *sock)
 	inet = inet_sk(new_sock->sk);
 
 	rdsdebug("accepted tcp %pI4:%u -> %pI4:%u\n",
-		 &inet->inet_saddr, ntohs(inet->inet_sport),
-		 &inet->inet_daddr, ntohs(inet->inet_dport));
+		  &inet->inet_saddr, ntohs(inet->inet_sport),
+		  &inet->inet_daddr, ntohs(inet->inet_dport));
 
 	conn = rds_conn_create(inet->inet_saddr, inet->inet_daddr, &rds_tcp_transport,
 			       0, GFP_KERNEL);
