@@ -39,6 +39,7 @@
 
 #include "rds.h"
 #include "ib.h"
+#include "tcp.h"
 
 static char *rds_ib_event_type_strings[] = {
 #define RDS_IB_EVENT_STRING(foo)[IB_EVENT_##foo] = __stringify(foo)

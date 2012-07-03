@@ -37,7 +37,7 @@
 
 #include "rds.h"
 #include "ib.h"
-
+#include "tcp.h"
 /*
  * Convert IB-specific error message to RDS error message and call core
  * completion handler.
