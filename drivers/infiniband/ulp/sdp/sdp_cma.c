@@ -204,7 +204,7 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 
 		if ((h->ipv_cap & HH_IPV_MASK) == HH_IPV4) {
 			/* V6 mapped */
-			inet_daddr(child) = dst_addr->sin_addr.s_addr;
+			sdp_inet_daddr(child) = dst_addr->sin_addr.s_addr;
 			ipv6_addr_set(&newnp->daddr, 0, 0, htonl(0x0000FFFF),
 					h->src_addr.ip4.addr);
 
@@ -224,11 +224,11 @@ static int sdp_connect_handler(struct sock *sk, struct rdma_cm_id *id,
 			sdp_warn(child, "Bad IPV field: 0x%x\n", h->ipv_cap & HH_IPV_MASK);
 		}
 
-		inet_daddr(child) =inet_saddr(child) = inet_rcv_saddr(child) = LOOPBACK4_IPV6;
+		sdp_inet_daddr(child) = inet_saddr(child) = sdp_inet_rcv_saddr(child) = LOOPBACK4_IPV6;
 	} else
 #endif
 	{
-		inet_daddr(child) = dst_addr->sin_addr.s_addr;
+		sdp_inet_daddr(child) = dst_addr->sin_addr.s_addr;
 	}
 
 #ifdef SDP_SOCK_HISTORY
@@ -314,7 +314,7 @@ static int sdp_response_handler(struct sock *sk, struct rdma_cm_id *id,
 
 	dst_addr = (struct sockaddr_in *)&id->route.addr.dst_addr;
 	inet_dport(sk) = dst_addr->sin_port;
-	inet_daddr(sk) = dst_addr->sin_addr.s_addr;
+	sdp_inet_daddr(sk) = dst_addr->sin_addr.s_addr;
 
 #ifdef SDP_SOCK_HISTORY
 	sdp_ssk_hist_rename(sk);
@@ -467,7 +467,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			else
 #endif
 		{
-			inet_saddr(sk) = inet_rcv_saddr(sk) =
+			inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
 				((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		}
 		memset(&conn_param, 0, sizeof conn_param);
@@ -560,7 +560,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		rc = -ECONNREFUSED;
 		break;
 	case RDMA_CM_EVENT_ESTABLISHED:
-		inet_saddr(sk) = inet_rcv_saddr(sk) =
+		inet_saddr(sk) = sdp_inet_rcv_saddr(sk) =
 			((struct sockaddr_in *)&id->route.addr.src_addr)->sin_addr.s_addr;
 		rc = sdp_connected_handler(sk);
 		break;

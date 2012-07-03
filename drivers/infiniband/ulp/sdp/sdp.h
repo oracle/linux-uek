@@ -46,8 +46,8 @@
 #define inet_sport(sk) inet_sk(sk)->sport
 #define inet_dport(sk) inet_sk(sk)->dport
 #define inet_saddr(sk) inet_sk(sk)->saddr
-#define inet_daddr(sk) inet_sk(sk)->daddr
-#define inet_rcv_saddr(sk) inet_sk(sk)->rcv_saddr
+#define sdp_inet_daddr(sk) inet_sk(sk)->daddr
+#define sdp_inet_rcv_saddr(sk) inet_sk(sk)->rcv_saddr
 
 #define sk_ssk(ssk) ((struct sock *)ssk)
 

@@ -187,7 +187,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 
 		addr4->sin_family = AF_INET;
 		addr4->sin_port = htons(snum);
-		addr4->sin_addr.s_addr = inet_rcv_saddr(sk);
+		addr4->sin_addr.s_addr = sdp_inet_rcv_saddr(sk);
 
 		addr_len = sizeof(*addr4);
 

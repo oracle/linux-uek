@@ -150,8 +150,8 @@ static int sdp_v4_seq_show(struct seq_file *seq, int num, struct sock *sk)
 	__u16 srcp;
 	__u32 rx_queue, tx_queue;
 
-	dest = inet_daddr(sk);
-	src = inet_rcv_saddr(sk);
+	dest = sdp_inet_daddr(sk);
+	src = sdp_inet_rcv_saddr(sk);
 	destp = ntohs(inet_dport(sk));
 	srcp = ntohs(inet_sport(sk));
 	uid = sock_i_uid(sk);
