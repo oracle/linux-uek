@@ -49,6 +49,7 @@
 #define sdp_inet_daddr(sk) inet_sk(sk)->daddr
 #define sdp_inet_rcv_saddr(sk) inet_sk(sk)->rcv_saddr
 
+#define sdp_sk_sleep(sk) (sk)->sk_sleep
 #define sk_ssk(ssk) ((struct sock *)ssk)
 
 /* Interval between sucessive polls in the Tx routine when polling is used

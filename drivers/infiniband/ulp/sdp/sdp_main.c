@@ -1013,7 +1013,7 @@ static int sdp_wait_for_connect(struct sock *sk, long timeo)
 	 * having to remove and re-insert us on the wait queue.
 	 */
 	for (;;) {
-		prepare_to_wait_exclusive(sk->sk_sleep, &wait,
+		prepare_to_wait_exclusive(sdp_sk_sleep(sk), &wait,
 					  TASK_INTERRUPTIBLE);
 		release_sock(sk);
 		if (list_empty(&ssk->accept_queue)) {
@@ -1033,7 +1033,7 @@ static int sdp_wait_for_connect(struct sock *sk, long timeo)
 		if (!timeo)
 			break;
 	}
-	finish_wait(sk->sk_sleep, &wait);
+	finish_wait(sdp_sk_sleep(sk), &wait);
 	sdp_dbg(sk, "%s returns %d\n", __func__, err);
 	return err;
 }
@@ -1755,7 +1755,7 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 	while (1) {
 		set_bit(SOCK_ASYNC_NOSPACE, &sk->sk_socket->flags);
 
-		prepare_to_wait(sk->sk_sleep, &wait, TASK_INTERRUPTIBLE);
+		prepare_to_wait(sdp_sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
 
 		if (sk->sk_err || (sk->sk_shutdown & SEND_SHUTDOWN))
 			goto do_error;
@@ -1823,7 +1823,7 @@ int sdp_tx_wait_memory(struct sdp_sock *ssk, long *timeo_p, int *credits_needed)
 		*timeo_p = current_timeo;
 	}
 out:
-	finish_wait(sk->sk_sleep, &wait);
+	finish_wait(sdp_sk_sleep(sk), &wait);
 	return err;
 
 do_error:

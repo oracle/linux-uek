@@ -335,7 +335,7 @@ static inline struct sk_buff *sdp_sock_queue_rcv_skb(struct sock *sk,
 			sdp_dbg_data(sk_ssk(ssk), "got RX SrcAvail while waiting "
 					"for TX SrcAvail. waking up TX SrcAvail"
 					"to be aborted\n");
-			wake_up(sk->sk_sleep);
+			wake_up(sdp_sk_sleep(sk));
 		}
 
 		atomic_add(skb->len, &ssk->rcv_nxt);
@@ -596,7 +596,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 			ssk->sa_cancel_mseq = ntohl(h->mseq);
 			ssk->sa_cancel_arrived = 1;
 			if (ssk->rx_sa)
-				wake_up(sk->sk_sleep);
+				wake_up(sdp_sk_sleep(sk));
 
 			skb_queue_tail(&ssk->rx_ctl_q, skb);
 		} else if (h->mid == SDP_MID_RDMARDCOMPL) {
@@ -691,8 +691,8 @@ static void sdp_bzcopy_write_space(struct sdp_sock *ssk)
 	clear_bit(SOCK_NOSPACE, &sock->flags);
 	sdp_prf1(sk, NULL, "Waking up sleepers");
 
-	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
-		wake_up_interruptible(sk->sk_sleep);
+	if (sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk)))
+		wake_up_interruptible(sdp_sk_sleep(sk));
 	if (sock->fasync_list && !(sk->sk_shutdown & SEND_SHUTDOWN))
 		sock_wake_async(sock, 2, POLL_OUT);
 }
@@ -810,7 +810,7 @@ void sdp_do_posts(struct sdp_sock *ssk)
 
 static inline int should_wake_up(struct sock *sk)
 {
-	return sk->sk_sleep && waitqueue_active(sk->sk_sleep) &&
+	return sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk)) &&
 		(posts_handler(sdp_sk(sk)) || somebody_is_waiting(sk));
 }
 
@@ -829,7 +829,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 	sdp_prf(sk, NULL, "rx irq");
 
 	if (should_wake_up(sk)) {
-		wake_up_interruptible(sk->sk_sleep);
+		wake_up_interruptible(sdp_sk_sleep(sk));
 		SDPSTATS_COUNTER_INC(rx_int_wake_up);
 	} else {
 		if (queue_work_on(ssk->cpu, rx_comp_wq, &ssk->rx_comp_work))

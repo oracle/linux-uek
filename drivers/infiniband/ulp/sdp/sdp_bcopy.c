@@ -168,7 +168,7 @@ void sdp_nagle_timeout(unsigned long data)
 	ssk->nagle_last_unacked = 0;
 	sdp_post_sends(ssk, GFP_ATOMIC);
 
-	if (sk->sk_sleep && waitqueue_active(sk->sk_sleep))
+	if (sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk)))
 		sk_stream_write_space(sk);
 out:
 	bh_unlock_sock(sk);

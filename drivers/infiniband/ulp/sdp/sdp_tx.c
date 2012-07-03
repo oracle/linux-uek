@@ -248,7 +248,7 @@ static inline void sdp_process_tx_wc(struct sdp_sock *ssk, struct ib_wc *wc)
 					"probably was canceled already\n");
 		}
 
-		wake_up(sk->sk_sleep);
+		wake_up(sdp_sk_sleep(sk));
 	} else {
 		/* Keepalive probe sent cleanup */
 		sdp_cnt(sdp_keepalive_probes_sent);
@@ -316,14 +316,14 @@ static int sdp_tx_handler_select(struct sdp_sock *ssk)
 
 	if (sk->sk_write_pending) {
 		/* Do the TX posts from sender context */
-		if (sk->sk_sleep && waitqueue_active(sk->sk_sleep)) {
+		if (sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk))) {
 			sdp_prf1(sk, NULL, "Waking up pending sendmsg");
-			wake_up_interruptible(sk->sk_sleep);
+			wake_up_interruptible(sdp_sk_sleep(sk));
 			return 0;
 		} else
 			sdp_prf1(sk, NULL, "Unexpected: sk_sleep=%p, "
 				"waitqueue_active: %d\n",
-				sk->sk_sleep, waitqueue_active(sk->sk_sleep));
+				sdp_sk_sleep(sk), waitqueue_active(sdp_sk_sleep(sk)));
 	}
 
 	if (posts_handler(ssk)) {

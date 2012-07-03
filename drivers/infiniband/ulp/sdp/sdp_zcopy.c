@@ -148,7 +148,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 	sdp_dbg_data(sk, "sleep till RdmaRdCompl. timeo = %ld.\n", *timeo_p);
 	sdp_prf1(sk, NULL, "Going to sleep");
 	while (ssk->qp_active) {
-		prepare_to_wait(sk->sk_sleep, &wait, TASK_INTERRUPTIBLE);
+		prepare_to_wait(sdp_sk_sleep(sk), &wait, TASK_INTERRUPTIBLE);
 
 		if (unlikely(!*timeo_p)) {
 			err = -ETIME;
@@ -204,7 +204,7 @@ static int sdp_wait_rdmardcompl(struct sdp_sock *ssk, long *timeo_p,
 		*timeo_p = current_timeo;
 	}
 
-	finish_wait(sk->sk_sleep, &wait);
+	finish_wait(sdp_sk_sleep(sk), &wait);
 
 	sdp_dbg_data(sk, "Finished waiting - RdmaRdCompl: %d/%d bytes, flags: 0x%x\n",
 			tx_sa->bytes_acked, tx_sa->bytes_sent, tx_sa->abort_flags);
@@ -225,7 +225,7 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 
 	sdp_dbg_data(sk, "Sleep till RDMA wr finished.\n");
 	while (1) {
-		prepare_to_wait(sk->sk_sleep, &wait, TASK_UNINTERRUPTIBLE);
+		prepare_to_wait(sdp_sk_sleep(sk), &wait, TASK_UNINTERRUPTIBLE);
 
 		if (!ssk->tx_ring.rdma_inflight->busy) {
 			sdp_dbg_data(sk, "got rdma cqe\n");
@@ -259,7 +259,7 @@ static int sdp_wait_rdma_wr_finished(struct sdp_sock *ssk)
 		posts_handler_get(ssk);
 	}
 
-	finish_wait(sk->sk_sleep, &wait);
+	finish_wait(sdp_sk_sleep(sk), &wait);
 
 	sdp_dbg_data(sk, "Finished waiting\n");
 	return rc;
@@ -337,7 +337,7 @@ void sdp_handle_sendsm(struct sdp_sock *ssk, u32 mseq_ack)
 	sdp_dbg_data(sk, "Got SendSM - aborting SrcAvail\n");
 
 	ssk->tx_sa->abort_flags |= TX_SA_SENDSM;
-	wake_up(sk->sk_sleep);
+	wake_up(sdp_sk_sleep(sk));
 	sdp_dbg_data(sk, "woke up sleepers\n");
 
 out:
@@ -369,7 +369,7 @@ void sdp_handle_rdma_read_compl(struct sdp_sock *ssk, u32 mseq_ack,
 
 	ssk->tx_sa->bytes_acked += bytes_completed;
 
-	wake_up(sk->sk_sleep);
+	wake_up(sdp_sk_sleep(sk));
 	sdp_dbg_data(sk, "woke up sleepers\n");
 
 out:
