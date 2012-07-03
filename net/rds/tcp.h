@@ -87,4 +87,16 @@ DECLARE_PER_CPU(struct rds_tcp_statistics, rds_tcp_stats);
 unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 				     unsigned int avail);
 
+#ifndef NIPQUAD
+#define NIPQUAD(addr) \
+	((unsigned char *)&(addr))[0], \
+	((unsigned char *)&(addr))[1], \
+	((unsigned char *)&(addr))[2], \
+	((unsigned char *)&(addr))[3]
+#endif
+
+#ifndef NIPQUAD_FMT
+#define NIPQUAD_FMT "%u.%u.%u.%u"
+#endif
+
 #endif
