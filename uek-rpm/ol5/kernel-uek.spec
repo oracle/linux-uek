@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.24.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.25.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Jul 04 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.25.1.el5uek]
+- dm-nfs: force random mode for the backend file (Joe Jin) [Orabug: 14092678]
+
 * Fri Jun 22 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.24.1.el5uek]
 - Revert "Add Oracle VM guest messaging driver" (Guru Anbalagane) [Orabug: 14233627} 
 
