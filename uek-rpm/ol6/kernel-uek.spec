@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.26.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.27.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jul 05 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-200.27.1.el6uek]
+- SPEC: replace kernel-ovs to kernel-uek (Guru Anbalagane) [Orabug: 14238939]
+
 * Thu Jul 05 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-200.26.1.el6uek]
 - Fix leapsecond triggered hrtimer/futex load spike issue (John Stultz)
 - Fix clock_was_set so it is safe to call from atomic (John Stultz)
