@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.28.1%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.29.1%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
 
@@ -1680,6 +1680,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Jul 06 2012 Joe Jin <joe.jin@oracle.come> [2.6.39-200.29.1.el5uek]
+- 3.0.x: hrtimer: Update hrtimer base offsets each hrtimer_interrupt (John Stultz)
+- 3.0.x: time: Fix leapsecond triggered hrtimer/futex load spike issue (John Stultz)
+- 3.0.x: hrtimer: Fix clock_was_set so it is safe to call from irq context (John Stultz)
+- Revert "Fix clock_was_set so it is safe to call from atomic"
+- Revert "Fix leapsecond triggered hrtimer/futex load spike issue"
+- Revert "3.0.x: hrtimer: Update hrtimer base offsets each hrtimer_interrupt"
+
 * Fri Jul 06 2012 Joe Jin <joe.jin@oracle.come> [2.6.39-200.28.1.el5uek]
 - Update hrtimer base offsets each hrtimer_interrupt(John Stultz) [Orabug: 14264454]
 
