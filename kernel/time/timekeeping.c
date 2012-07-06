@@ -176,7 +176,6 @@ void timekeeping_leap_insert(int leapsecond)
 	wall_to_monotonic.tv_sec -= leapsecond;
 	update_vsyscall(&xtime, &wall_to_monotonic, timekeeper.clock,
 			timekeeper.mult);
-	clock_was_set();
 }
 
 /**
