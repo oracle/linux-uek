@@ -746,13 +746,28 @@ static inline void retrigger_next_event(void *arg) { }
  * resolution timer interrupts. On UP we just disable interrupts and
  * call the high resolution interrupt code.
  */
-void clock_was_set(void)
+static void do_clock_was_set(unsigned long data)
 {
 #ifdef CONFIG_HIGH_RES_TIMERS
 	/* Retrigger the CPU local events everywhere */
 	on_each_cpu(retrigger_next_event, NULL, 1);
 #endif
 	timerfd_clock_was_set();
+}
+
+static DEFINE_TIMER(clock_was_set_timer, do_clock_was_set , 0, 0);
+
+void clock_was_set(void)
+{
+	/*
+	 * We can't call on_each_cpu() from irq context,
+	 * so if irqs are disabled , schedule the clock_was_set
+	 * via a timer_list timer for right after.
+	 */
+	if (irqs_disabled())
+		mod_timer(&clock_was_set_timer, jiffies);
+	else
+		do_clock_was_set(0);
 }
 
 /*
@@ -1243,18 +1258,26 @@ static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 void hrtimer_interrupt(struct clock_event_device *dev)
 {
 	struct hrtimer_cpu_base *cpu_base = &__get_cpu_var(hrtimer_bases);
-	ktime_t expires_next, now, entry_time, delta;
+	ktime_t expires_next, now, entry_time, delta, real_offset, sleep_offset;
 	int i, retries = 0;
 
 	BUG_ON(!cpu_base->hres_active);
 	cpu_base->nr_events++;
 	dev->next_event.tv64 = KTIME_MAX;
 
-	entry_time = now = ktime_get();
+
+	ktime_get_and_real_and_sleep_offset(&now, &real_offset, &sleep_offset);
+
+	entry_time = now;
 retry:
 	expires_next.tv64 = KTIME_MAX;
 
 	raw_spin_lock(&cpu_base->lock);
+
+	/* Update base offsets, to avoid early wakeups */
+	cpu_base->clock_base[HRTIMER_BASE_REALTIME].offset = real_offset;
+	cpu_base->clock_base[HRTIMER_BASE_BOOTTIME].offset = sleep_offset;
+
 	/*
 	 * We set expires_next to KTIME_MAX here with cpu_base->lock
 	 * held to prevent that a timer is enqueued in our queue via
@@ -1331,7 +1354,7 @@ retry:
 	 * interrupt routine. We give it 3 attempts to avoid
 	 * overreacting on some spurious event.
 	 */
-	now = ktime_get();
+	ktime_get_and_real_and_sleep_offset(&now, &real_offset, &sleep_offset);
 	cpu_base->nr_retries++;
 	if (++retries < 3)
 		goto retry;
