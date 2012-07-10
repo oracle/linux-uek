@@ -4074,7 +4074,6 @@ static int btrfs_init_locked_inode(struct inode *inode, void *p)
 	struct btrfs_iget_args *args = p;
 	inode->i_ino = args->ino;
 	BTRFS_I(inode)->root = args->root;
-	btrfs_set_inode_space_info(args->root, inode);
 	return 0;
 }
 
@@ -4665,7 +4664,6 @@ static struct inode *btrfs_new_inode(struct btrfs_trans_handle *trans,
 	BTRFS_I(inode)->root = root;
 	BTRFS_I(inode)->generation = trans->transid;
 	inode->i_generation = BTRFS_I(inode)->generation;
-	btrfs_set_inode_space_info(root, inode);
 
 	if (S_ISDIR(mode))
 		owner = 0;
@@ -6973,7 +6971,6 @@ struct inode *btrfs_alloc_inode(struct super_block *sb)
 		return NULL;
 
 	ei->root = NULL;
-	ei->space_info = NULL;
 	ei->generation = 0;
 	ei->last_trans = 0;
 	ei->last_sub_trans = 0;

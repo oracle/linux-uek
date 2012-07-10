@@ -3156,6 +3156,8 @@ static int update_space_info(struct btrfs_fs_info *info, u64 flags,
 	init_waitqueue_head(&found->wait);
 	*space_info = found;
 	list_add_rcu(&found->list, &info->space_info);
+	if (flags & BTRFS_BLOCK_GROUP_DATA)
+		info->data_sinfo = found;
 	return 0;
 }
 
@@ -3237,12 +3239,6 @@ u64 btrfs_get_alloc_profile(struct btrfs_root *root, int data)
 	return get_alloc_profile(root, flags);
 }
 
-void btrfs_set_inode_space_info(struct btrfs_root *root, struct inode *inode)
-{
-	BTRFS_I(inode)->space_info = __find_space_info(root->fs_info,
-						       BTRFS_BLOCK_GROUP_DATA);
-}
-
 /*
  * This will check the space that the inode allocates from to make sure we have
  * enough space for bytes.
@@ -3251,6 +3247,7 @@ int btrfs_check_data_free_space(struct inode *inode, u64 bytes)
 {
 	struct btrfs_space_info *data_sinfo;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
+	struct btrfs_fs_info *fs_info = root->fs_info;
 	u64 used;
 	int ret = 0, committed = 0, alloc_chunk = 1;
 
@@ -3263,7 +3260,7 @@ int btrfs_check_data_free_space(struct inode *inode, u64 bytes)
 		committed = 1;
 	}
 
-	data_sinfo = BTRFS_I(inode)->space_info;
+	data_sinfo = fs_info->data_sinfo;
 	if (!data_sinfo)
 		goto alloc;
 
@@ -3304,10 +3301,9 @@ alloc:
 					goto commit_trans;
 			}
 
-			if (!data_sinfo) {
-				btrfs_set_inode_space_info(root, inode);
-				data_sinfo = BTRFS_I(inode)->space_info;
-			}
+			if (!data_sinfo)
+				data_sinfo = fs_info->data_sinfo;
+
 			goto again;
 		}
 
@@ -3352,7 +3348,7 @@ void btrfs_free_reserved_data_space(struct inode *inode, u64 bytes)
 	/* make sure bytes are sectorsize aligned */
 	bytes = (bytes + root->sectorsize - 1) & ~((u64)root->sectorsize - 1);
 
-	data_sinfo = BTRFS_I(inode)->space_info;
+	data_sinfo = root->fs_info->data_sinfo;
 	spin_lock(&data_sinfo->lock);
 	data_sinfo->bytes_may_use -= bytes;
 	spin_unlock(&data_sinfo->lock);
