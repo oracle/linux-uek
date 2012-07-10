@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.4%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jul 10 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.5.el6uek]
+- tg3: fix VLAN tagging regression (Kasper Pedersen)
+- thp: avoid atomic64_read in pmd_read_atomic for 32bit PAE (Andrea Arcangeli)
+  [Orabug: 14300370]
+- [SCSI] libfc: fcoe_transport_create fails in single-CPU environment (Steven
+  Clark) [Orabug: 14239242]
+
 * Mon Jul 09 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.4.el6uek]
 - Revert "mm: mempolicy: Let vma_merge and vma_split handle vma->vm_policy
   linkages" (Guangyu Sun)
