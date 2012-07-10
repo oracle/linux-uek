@@ -2276,7 +2276,7 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 		err = mlx4_reset(dev);
 		if (err) {
 			mlx4_err(dev, "Failed to reset HCA, aborting.\n");
-			goto err_rel_own;
+			goto err_sriov;
 		}
 	}
 
@@ -2422,7 +2422,6 @@ err_sriov:
 	if (dev->flags & MLX4_FLAG_SRIOV)
 		pci_disable_sriov(pdev);
 
-err_rel_own:
 	if (!mlx4_is_slave(dev))
 		mlx4_free_ownership(dev);
 
