@@ -1750,6 +1750,7 @@ err_copy:
 
 err_unreg:
 	ib_fmr_pool_unmap(fmr);
+	atomic_dec(&pd->usecnt);
 
 err_free_sg:
 	 /* if mapped already, this will be freed while flushing */

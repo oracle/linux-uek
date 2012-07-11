@@ -299,8 +299,8 @@ static int ib_fmr_cleanup_thread(void *pool_ptr)
 		set_current_state(TASK_INTERRUPTIBLE);
 		if (atomic_read(&pool->flush_ser) - atomic_read(&pool->req_ser) >= 0 &&
 		    !kthread_should_stop()) {
-			/* run once in 1 sec */
-			time_left = schedule_timeout((HZ/FMR_SPLIT_COUNT)/20);
+			/* run once in 50 mills */
+			time_left = schedule_timeout(msecs_to_jiffies(50));
 		}
 		__set_current_state(TASK_RUNNING);
 	} while (!kthread_should_stop());
