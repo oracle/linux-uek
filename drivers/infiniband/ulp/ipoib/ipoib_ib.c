@@ -524,10 +524,7 @@ void ipoib_ib_completion(struct ib_cq *cq, void *ctx_ptr)
 
 static void drain_tx_cq(struct ipoib_send_ring *send_ring)
 {
-	struct netdev_queue *txq;
-
-	txq = netdev_get_tx_queue(send_ring->dev, send_ring->index);
-	__netif_tx_lock(txq, smp_processor_id());
+	netif_tx_lock_bh(send_ring->dev);
 
 	while (poll_tx_ring(send_ring))
 		; /* nothing */
@@ -535,7 +532,7 @@ static void drain_tx_cq(struct ipoib_send_ring *send_ring)
 	if (__netif_subqueue_stopped(send_ring->dev, send_ring->index))
 		mod_timer(&send_ring->poll_timer, jiffies + 1);
 
-	__netif_tx_unlock(txq);
+	netif_tx_unlock_bh(send_ring->dev);
 }
 
 void ipoib_send_comp_handler(struct ib_cq *cq, void *ctx_ptr)

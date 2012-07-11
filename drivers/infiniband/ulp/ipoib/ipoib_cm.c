@@ -818,7 +818,7 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 
 	dev_kfree_skb_any(tx_req->skb);
 
-	netif_tx_lock(dev);
+	netif_tx_lock_bh(dev);
 
 	++tx->tx_tail;
 	if (unlikely(--send_ring->tx_outstanding == ipoib_sendq_size >> 1) &&
@@ -855,7 +855,7 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 		spin_unlock_irqrestore(&priv->lock, flags);
 	}
 
-	netif_tx_unlock(dev);
+	netif_tx_unlock_bh(dev);
 }
 
 int ipoib_cm_dev_open(struct net_device *dev)
@@ -1050,15 +1050,9 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.qp_type		= IB_QPT_RC,
 		.qp_context		= tx
 	};
-	int index;
 
 	/* CM uses ipoib_ib_completion for TX completion and work using NAPI */
-	index = priv->cm.tx_cq_ind;
-	if (index >= priv->num_rx_queues)
-		index = 0;
-
-	priv->cm.tx_cq_ind = index + 1;
-	attr.send_cq = attr.recv_cq = priv->recv_ring[index].recv_cq;
+	attr.send_cq = attr.recv_cq = priv->recv_ring[tx->neigh->index].recv_cq;
 
 	return ib_create_qp(priv->pd, &attr);
 }

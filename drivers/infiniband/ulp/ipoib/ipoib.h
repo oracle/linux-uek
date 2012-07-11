@@ -262,7 +262,6 @@ struct ipoib_cm_dev_priv {
 	int			max_cm_mtu;
 	int			num_frags;
 	u32			rx_cq_ind;
-	u32			tx_cq_ind;
 };
 
 struct ipoib_ethtool_st {
