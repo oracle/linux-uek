@@ -22,7 +22,7 @@
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/vmalloc.h>
-#include <linux/syscore_ops.h>
+#include <linux/platform_device.h>
 #include <asm/pgtable.h>
 #include <xen/evtchn.h>
 #include <xen/events.h>
@@ -62,36 +62,53 @@ static char cpu_type[XENOPROF_CPU_TYPE_SIZE];
 
 #ifdef CONFIG_PM
 
-static void xenoprof_suspend(void)
+static int xenoprof_suspend(struct platform_device *dev, pm_message_t state)
 {
-	if (xenoprof_enabled == 1)
+	if (xenoprof_enabled)
 		xenoprof_stop();
+	return 0;
 }
 
-
-static void xenoprof_resume(void)
+static int xenoprof_resume(struct platform_device *dev)
 {
-	if (xenoprof_enabled == 1)
+	if (xenoprof_enabled)
 		xenoprof_start();
+	return 0;
 }
 
-
-static struct syscore_ops xen_oprofile_syscore_ops = {
-	.resume	= xenoprof_resume,
-	.suspend= xenoprof_suspend
+static struct platform_driver oprofile_driver = {
+	.driver		= {
+		.name		= "oprofile-xen",
+	},
+	.resume		= xenoprof_resume,
+	.suspend	= xenoprof_suspend,
 };
 
-
+static struct platform_device *oprofile_pdev;
 
 static void __init init_driverfs(void)
 {
-	register_syscore_ops(&xen_oprofile_syscore_ops);
+	int ret;
+
+	ret = platform_driver_register(&oprofile_driver);
+	if (ret)
+		return ret;
+
+	oprofile_pdev =	platform_device_register_simple(
+				oprofile_driver.driver.name, 0, NULL, 0);
+	if (IS_ERR(oprofile_pdev)) {
+		ret = PTR_ERR(oprofile_pdev);
+		platform_driver_unregister(&oprofile_driver);
+	}
+
+	return ret;
 }
 
 
 static void exit_driverfs(void)
 {
-	unregister_syscore_ops(&xen_oprofile_syscore_ops);
+	platform_device_unregister(oprofile_pdev);
+	platform_driver_unregister(&oprofile_driver);
 }
 
 #else
