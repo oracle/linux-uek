@@ -54,6 +54,18 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("InfiniBand userspace verbs access");
 MODULE_LICENSE("Dual BSD/GPL");
 
+module_param(ufmr_pool1_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_blocksize, "Block size for Usermode FMR Pool 1");
+
+module_param(ufmr_pool1_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_nelems, "No of FMRs in Usermode FMR Pool 1");
+
+module_param(ufmr_pool2_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_blocksize, "Block size for Usermode FMR Pool 2");
+
+module_param(ufmr_pool2_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_nelems, "No of FMRs in Usermode FMR Pool 2");
+
 enum {
 	IB_UVERBS_MAJOR       = 231,
 	IB_UVERBS_BASE_MINOR  = 192,

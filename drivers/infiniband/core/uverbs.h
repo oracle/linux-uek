@@ -259,6 +259,12 @@ IB_UVERBS_DECLARE_CMD(reg_mr_relaxed);
 IB_UVERBS_DECLARE_CMD(dereg_mr_relaxed);
 IB_UVERBS_DECLARE_CMD(flush_relaxed_mr);
 
+/* UFMR parameters */
+extern int ufmr_pool1_blocksize;
+extern int ufmr_pool1_nelems;
+extern int ufmr_pool2_blocksize;
+extern int ufmr_pool2_nelems;
+
 #define IB_UVERBS_DECLARE_EX_CMD(name)				\
 	int ib_uverbs_ex_##name(struct ib_uverbs_file *file,	\
 				struct ib_udata *ucore,		\

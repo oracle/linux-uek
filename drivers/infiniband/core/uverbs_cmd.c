@@ -43,6 +43,16 @@
 #include "uverbs.h"
 #include "core_priv.h"
 
+/* UFMR parameters */
+/* default Pool 1 block size */
+int ufmr_pool1_blocksize = 8 * 1024;
+/* default  no of fmrs in Pool 1 */
+int ufmr_pool1_nelems = 32 * 1024;
+/* default Pool 2 block size */
+int ufmr_pool2_blocksize = 1 * 1024 * 1024;
+/* default  no of fmrs in Pool 2 */
+int ufmr_pool2_nelems = 4 * 1024;
+
 struct uverbs_lock_class {
 	struct lock_class_key	key;
 	char			name[16];
@@ -326,7 +336,7 @@ static int fmr_pin_pages(unsigned long user_addr, unsigned int nr_pages,
 	return ret;
 }
 
-static int create_fmr_pool(struct ib_pd *pd, int pages,  u32 access)
+static int create_fmr_pool(struct ib_pd *pd, int pages, int size, u32 access)
 {
 
 	int ret = 0;
@@ -338,7 +348,7 @@ static int create_fmr_pool(struct ib_pd *pd, int pages,  u32 access)
 
 	/*create pools - 32k fmrs of 8k buf, 4k fmrs of 1meg  */
 	memset(&fmr_param, 0, sizeof(fmr_param));
-	fmr_param.pool_size	    = (pages > 20) ? 8 * 1024 : 32*1024;
+	fmr_param.pool_size	    = size;
 	fmr_param.dirty_watermark   = 512;
 	fmr_param.cache		    = 0;
 	fmr_param.relaxed           = 1;
@@ -1580,17 +1590,21 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 	}
 
 	if (!found) {
-		int pagesin8K = (8*1024 + PAGE_SIZE) >> PAGE_SHIFT;
-		int pagesin1M = (1024*1024 + PAGE_SIZE) >> PAGE_SHIFT;
+		int pool1pages =
+			(ufmr_pool1_blocksize + PAGE_SIZE) >> PAGE_SHIFT;
+		int pool2pages =
+			(ufmr_pool2_blocksize + PAGE_SIZE) >> PAGE_SHIFT;
 		struct ib_pd *pool_pd = file->device->ib_dev->relaxed_pd;
 
 		/* Create pool for 8kb buffers */
-		ret = create_fmr_pool(pool_pd, pagesin8K, cmd.access_flags);
+		ret = create_fmr_pool(pool_pd, pool1pages, ufmr_pool1_nelems,
+					 cmd.access_flags);
 		if (ret < 0)
 			goto err_put;
 
 		/* Create pool for 1mb buffers */
-		ret = create_fmr_pool(pool_pd, pagesin1M, cmd.access_flags);
+		ret = create_fmr_pool(pool_pd, pool2pages, ufmr_pool2_nelems,
+					cmd.access_flags);
 		if (ret < 0)
 			goto err_put;
 
