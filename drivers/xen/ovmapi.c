@@ -983,7 +983,7 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 		if (!name)
 			return -ENOMEM;
 		value = kmalloc(message.value_size, GFP_ATOMIC);
-		strncpy(name, message.name, message.value_size);
+		strncpy(name, message.name,OVMM_MAX_NAME_LEN);
 		if (copy_from_user(value, message.value, message.value_size))
 			return -EFAULT;
 		status = ovmapi_send_dom0_message(&ovmapi_info, name, value,
@@ -1001,6 +1001,7 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 			return -EINVAL;
 		status = ovmapi_delete_parameter(&ovmapi_info, argp);
 		return status;
+
 	case IOCTL_XENPCI_POST_EVENT:
 		if (!arg)
 			return -EINVAL;
