@@ -1,4 +1,4 @@
-Summary: The Linux kernel
+5Summary: The Linux kernel
 
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
