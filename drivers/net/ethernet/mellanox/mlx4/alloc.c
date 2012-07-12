@@ -173,6 +173,12 @@ void mlx4_bitmap_free_range(struct mlx4_bitmap *bitmap, u32 obj, int cnt,
 int mlx4_bitmap_init(struct mlx4_bitmap *bitmap, u32 num, u32 mask,
 		     u32 reserved_bot, u32 reserved_top)
 {
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* sanity check */
+	if (num <= (u64)reserved_top + reserved_bot)
+		return -EINVAL;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	/* num must be a power of 2 */
 	if (num != roundup_pow_of_two(num))
 		return -EINVAL;
