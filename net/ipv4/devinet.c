@@ -922,6 +922,7 @@ rarok:
 	ret = copy_to_user(arg, &ifr, sizeof(struct ifreq)) ? -EFAULT : 0;
 	goto out;
 }
+EXPORT_SYMBOL(devinet_ioctl);
 
 static int inet_gifconf(struct net_device *dev, char __user *buf, int len)
 {
