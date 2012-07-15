@@ -1741,6 +1741,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	if (cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT) {
 		context->sq_size_stride |= !!qp->sq_no_prefetch << 7;
 		context->xrcd = cpu_to_be32((u32) qp->xrcdn);
+		context->param3 |= cpu_to_be32(1 << 30);
 	}
 
 	if (qp->ibqp.uobject)
