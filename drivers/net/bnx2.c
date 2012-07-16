@@ -6387,6 +6387,7 @@ bnx2_reset_task(struct work_struct *work)
 {
 	struct bnx2 *bp = container_of(work, struct bnx2, reset_task);
 	int rc;
+	u16 pcicmd;
 
 	rtnl_lock();
 	if (!netif_running(bp->dev)) {
@@ -6396,6 +6397,12 @@ bnx2_reset_task(struct work_struct *work)
 
 	bnx2_netif_stop(bp, true);
 
+	pci_read_config_word(bp->pdev, PCI_COMMAND, &pcicmd);
+	if (!(pcicmd & PCI_COMMAND_MEMORY)) {
+		/* in case PCI block has reset */
+		pci_restore_state(bp->pdev);
+		pci_save_state(bp->pdev);
+	}
 	rc = bnx2_init_nic(bp, 1);
 	if (rc) {
 		netdev_err(bp->dev, "failed to reset NIC, closing\n");
