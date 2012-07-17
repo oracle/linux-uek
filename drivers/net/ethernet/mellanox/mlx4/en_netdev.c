@@ -1218,6 +1218,22 @@ void mlx4_en_stop_port(struct net_device *dev)
 	/* Set port as not active */
 	priv->port_up = false;
 
+	/* Promsicuous mode */
+	if (priv->flags & MLX4_EN_FLAG_PROMISC) {
+		priv->flags &= ~MLX4_EN_FLAG_PROMISC;
+
+		/* Disable promiscouos mode */
+		mlx4_unicast_promisc_remove(mdev->dev, priv->base_qpn,
+					    priv->port);
+
+		/* Disable Multicast promisc */
+		if (priv->flags & MLX4_EN_FLAG_MC_PROMISC) {
+			mlx4_multicast_promisc_remove(mdev->dev, priv->base_qpn,
+						      priv->port);
+			priv->flags &= ~MLX4_EN_FLAG_MC_PROMISC;
+		}
+	}
+
 	/* Detach All multicasts */
 	memset(&mc_list[10], 0xff, ETH_ALEN);
 	mc_list[5] = priv->port; /* needed for B0 steering support */
