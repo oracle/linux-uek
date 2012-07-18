@@ -954,67 +954,81 @@ struct mlx4_cm_steering {
 static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flow_spec,
 				  struct list_head *rule_list_h)
 {
-	struct mlx4_spec_list *cur;
-	struct list_head * indx;
-	u64 mac_msk = cpu_to_be64(0xffffffffffff << 16);
+	struct mlx4_spec_list *spec_l2, *spec_l3, *spec_l4;
+	u64 mac_msk = cpu_to_be64(MLX4_MAC_MASK << 16);
 
-	indx = rule_list_h->next;
-	cur = list_entry(indx, struct mlx4_spec_list, list);
+	spec_l2 = kzalloc(sizeof *spec_l2, GFP_KERNEL);
+	if (!spec_l2)
+		return -ENOMEM;
 
 	switch (flow_spec->type) {
 	case IB_FLOW_ETH:
-		cur->id = MLX4_NET_TRANS_RULE_ID_ETH;
-		memcpy(cur->eth.dst_mac, flow_spec->l2_id.eth.mac, ETH_ALEN);
-		memcpy(cur->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
+		spec_l2->id = MLX4_NET_TRANS_RULE_ID_ETH;
+		memcpy(spec_l2->eth.dst_mac, flow_spec->l2_id.eth.mac, ETH_ALEN);
+		memcpy(spec_l2->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
+		spec_l2->eth.ether_type = flow_spec->l2_id.eth.ethertype;
 		break;
 	case IB_FLOW_IB_UC:
-		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
-		cur->ib.r_u_qpn = cpu_to_be32(1 << 30);
+		spec_l2->id = MLX4_NET_TRANS_RULE_ID_IB;
+		spec_l2->ib.r_u_qpn = cpu_to_be32(1 << 30);
 		break;
 	case IB_FLOW_IB_MC_IPV4:
 	case IB_FLOW_IB_MC_IPV6:
-		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
-		memcpy(cur->ib.dst_gid, flow_spec->l2_id.ib_mc.mgid, 16);
-		memset(cur->ib.dst_gid_msk, 0xff, 16);
+		spec_l2->id = MLX4_NET_TRANS_RULE_ID_IB;
+		memcpy(spec_l2->ib.dst_gid, flow_spec->l2_id.ib_mc.mgid, 16);
+		memset(spec_l2->ib.dst_gid_msk, 0xff, 16);
 		break;
 	}
 
-	indx = indx->next;
-	cur = list_entry(indx, struct mlx4_spec_list, list);
 
-	cur->id = MLX4_NET_TRANS_RULE_ID_IPV4;
-	cur->ipv4.src_ip = flow_spec->src_ip;
-	if (flow_spec->type != IB_FLOW_IB_MC_IPV4 &&
-			flow_spec->type != IB_FLOW_IB_MC_IPV6)
-		cur->ipv4.dst_ip = flow_spec->dst_ip;
+	list_add_tail(&spec_l2->list, rule_list_h);
 
-	if (cur->ipv4.src_ip)
-		cur->ipv4.src_ip_msk = mac_msk;
-	if (cur->ipv4.dst_ip)
-		cur->ipv4.dst_ip_msk = mac_msk;
+	if (flow_spec->l2_id.eth.ethertype == cpu_to_be16(ETH_P_IP) ||
+	    flow_spec->type != IB_FLOW_ETH) {
+		spec_l3 = kzalloc(sizeof *spec_l3, GFP_KERNEL);
+		if (!spec_l3)
+			return -ENOMEM;
 
-	indx = indx->next;
-	cur = list_entry(indx, struct mlx4_spec_list, list);
+		spec_l3->id = MLX4_NET_TRANS_RULE_ID_IPV4;
+		spec_l3->ipv4.src_ip = flow_spec->src_ip;
+		if (flow_spec->type != IB_FLOW_IB_MC_IPV4 &&
+		    flow_spec->type != IB_FLOW_IB_MC_IPV6)
+			spec_l3->ipv4.dst_ip = flow_spec->dst_ip;
 
-	cur->tcp_udp.src_port = flow_spec->src_port;
-	cur->tcp_udp.dst_port = flow_spec->dst_port;
-	if (cur->tcp_udp.src_port)
-		cur->tcp_udp.src_port_msk = cpu_to_be16(0xffff);
-	if (cur->tcp_udp.dst_port)
-		cur->tcp_udp.dst_port_msk = cpu_to_be16(0xffff);
+		if (spec_l3->ipv4.src_ip)
+			spec_l3->ipv4.src_ip_msk = mac_msk;
+		if (spec_l3->ipv4.dst_ip)
+			spec_l3->ipv4.dst_ip_msk = mac_msk;
 
-	switch(flow_spec->l4_protocol) {
-	case IBV_FLOW_L4_UDP:
-		cur->id = MLX4_NET_TRANS_RULE_ID_UDP;
-		break;
-	case IBV_FLOW_L4_TCP:
-		cur->id = MLX4_NET_TRANS_RULE_ID_TCP;
-		break;
-	default:
-		dev_err(dev->dma_device, "Unsupported l4 protocol.\n");
-		return -EPROTONOSUPPORT;
+		list_add_tail(&spec_l3->list, rule_list_h);
+
+		if (flow_spec->l4_protocol) {
+			spec_l4 = kzalloc(sizeof *spec_l4, GFP_KERNEL);
+			if (!spec_l4)
+				return -ENOMEM;
+
+			spec_l4->tcp_udp.src_port = flow_spec->src_port;
+			spec_l4->tcp_udp.dst_port = flow_spec->dst_port;
+			if (spec_l4->tcp_udp.src_port)
+				spec_l4->tcp_udp.src_port_msk = cpu_to_be16(0xffff);
+			if (spec_l4->tcp_udp.dst_port)
+				spec_l4->tcp_udp.dst_port_msk = cpu_to_be16(0xffff);
+
+			switch(flow_spec->l4_protocol) {
+			case IBV_FLOW_L4_UDP:
+				spec_l4->id = MLX4_NET_TRANS_RULE_ID_UDP;
+				break;
+			case IBV_FLOW_L4_TCP:
+				spec_l4->id = MLX4_NET_TRANS_RULE_ID_TCP;
+				break;
+			default:
+				dev_err(dev->dma_device,
+					"Unsupported l4 protocol.\n");
+				return -EPROTONOSUPPORT;
+			}
+			list_add_tail(&spec_l4->list, rule_list_h);
+		}
 	}
-
 	return 0;
 }
 
@@ -1024,9 +1038,9 @@ static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
 	struct mlx4_ib_qp *mqp = to_mqp(qp);
 	u64 reg_id = 0;
-	int err;
+	int err = 0;
 	struct mlx4_cm_steering *cm_flow;
-	struct mlx4_spec_list spec_l2 = {{0}}, spec_l3 = {{0}}, spec_l4 = {{0}};
+	struct mlx4_spec_list *spec, *tmp_spec;
 
 	struct mlx4_net_trans_rule rule =
 	{	.queue_mode = MLX4_NET_TRANS_Q_FIFO,
@@ -1039,9 +1053,6 @@ static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 	rule.priority = MLX4_DOMAIN_UVERBS | priority;
 	rule.qpn = mqp->mqp.qpn;
 	INIT_LIST_HEAD(&rule.list);
-	list_add_tail(&spec_l2.list, &rule.list);
-	list_add_tail(&spec_l3.list, &rule.list);
-	list_add_tail(&spec_l4.list, &rule.list);
 
 	cm_flow = kmalloc(sizeof(*cm_flow), GFP_KERNEL);
 	if (!cm_flow)
@@ -1049,11 +1060,11 @@ static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 
 	err = flow_spec_to_net_rule(&mdev->ib_dev, flow_spec, &rule.list);
 	if (err)
-		goto out;
+		goto free_list;
 
 	err = mlx4_flow_attach(mdev->dev, &rule, &reg_id);
 	if (err)
-		goto out;
+		goto free_list;
 
 	memcpy(&cm_flow->spec, flow_spec, sizeof(*flow_spec));
 	cm_flow->reg_id = reg_id;
@@ -1062,10 +1073,16 @@ static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 	list_add(&cm_flow->list, &mqp->rules_list);
 	mutex_unlock(&mqp->mutex);
 
-	return 0;
-out:
-	kfree(cm_flow);
-	dev_err(mdev->ib_dev.dma_device, "Fail to attach rdmacm flow steering rule\n");
+free_list:
+	list_for_each_entry_safe(spec, tmp_spec, &rule.list, list) {
+		list_del(&spec->list);
+		kfree(spec);
+	}
+	if (err) {
+		kfree(cm_flow);
+		dev_err(mdev->ib_dev.dma_device,
+			"Fail to attach flow steering rule\n");
+	}
 	return err;
 }
 
