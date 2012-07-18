@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.5%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Jul 18 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.6.el6uek]
+- export devinet_ioctl (Maxim Uvarov) [Orabug: 14306942]
+- Changed length for strncpy to OVMM_MAX_NAME_LEN (Cathy Avery) [Orabug:
+  14233627]
+- Add Oracle VM guest messaging driver (Maxim Uvarov)
+- epoll: clear the tfile_check_list on -ELOOP (Guangyu Sun) [Orabug: 14306496]
+- SPEC: v2.6.39-300.0.5 (Maxim Uvarov)
+
 * Tue Jul 10 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.5.el6uek]
 - tg3: fix VLAN tagging regression (Kasper Pedersen)
 - thp: avoid atomic64_read in pmd_read_atomic for 32bit PAE (Andrea Arcangeli)
