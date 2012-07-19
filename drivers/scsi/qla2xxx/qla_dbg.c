@@ -12,11 +12,11 @@
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
  * | Module Init and Probe        |       0x0120       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x113e       |              |
+ * | Mailbox commands             |       0x113e       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2086       | 0x2020-0x2022  |
  * | Queue Command and IO tracing |       0x302f       | 0x3006,0x3008  |
  * |                              |                    | 0x302d,0x302e  |
- * | DPC Thread                   |       0x401c       |		|
+ * | DPC Thread                   |       0x401c       | 0x4002,0x4013  |
  * | Async Events                 |       0x505d       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
  * | Timer Routines               |       0x6011       |		|
@@ -26,9 +26,9 @@
  * |                              |                    | 0x708c         |
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |				  |		       | 0x800b,0x8039 |
- * | AER/EEH                      |       0x900f       | 0x9001        |
+ * | AER/EEH                      |       0x9011       |               |
  * | Virtual Port                 |       0xa008       |              |
- * | ISP82XX Specific             |       0xb053       |              |
+ * | ISP82XX Specific             |       0xb053       | 0xb024         | 
  * | MultiQ                       |       0xc00c       |              |
  * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------
