@@ -30,8 +30,8 @@
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x9011       |               |
- * | Virtual Port                 |       0xa008       |              |
- * | ISP82XX Specific             |       0xb081       | 0xb024         |
+ * | Virtual Port                 |       0xa008       |               |
+ * | ISP82XX Specific             |       0xb081       | 0xb002,0xb024 |
  * | MultiQ                       |       0xc00c       |              |
  * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------
