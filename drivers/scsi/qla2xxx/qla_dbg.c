@@ -11,16 +11,16 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0121       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x113e       | 0x111a-0x111b  |
+ * | Module Init and Probe        |       0x0122       | 0x4b,0xba,0xfa |
+ * | Mailbox commands             |       0x114a       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2087       | 0x2020-0x2022  |
  * | Queue Command and IO tracing |       0x3030       | 0x3006,0x3008  |
  * |                              |                    | 0x302d,0x302e  |
  * | DPC Thread                   |       0x401c       | 0x4002,0x4013  |
- * | Async Events                 |       0x505f       | 0x502b-0x502f  |
+ * | Async Events                 |       0x506c       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
  * | Timer Routines               |       0x6011       |		|
- * | User Space Interactions      |       0x70bb       | 0x7018,0x702e  |
+ * | User Space Interactions      |       0x70bd       | 0x7018,0x702e  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
  * |                              |                    | 0x708c,        |
@@ -31,7 +31,7 @@
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x9011       |               |
  * | Virtual Port                 |       0xa008       |              |
- * | ISP82XX Specific             |       0xb055       | 0xb024         |
+ * | ISP82XX Specific             |       0xb080       | 0xb024         |
  * | MultiQ                       |       0xc00c       |              |
  * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------
