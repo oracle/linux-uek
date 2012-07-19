@@ -3324,6 +3324,43 @@ exit:
 	return rval;
 }
 
+static int qla82xx_check_temp(scsi_qla_host_t *vha)
+{
+	uint32_t temp, temp_state, temp_val;
+	struct qla_hw_data *ha = vha->hw;
+
+	temp = qla82xx_rd_32(ha, CRB_TEMP_STATE);
+	temp_state = qla82xx_get_temp_state(temp);
+	temp_val = qla82xx_get_temp_val(temp);
+
+	if (temp_state == QLA82XX_TEMP_PANIC) {
+		ql_log(ql_log_warn, vha, 0x600e,
+		    "Device temperature %d degrees C exceeds "
+		    " maximum allowed. Hardware has been shut down.\n",
+		    temp_val);
+		return 1;
+	} else if (temp_state == QLA82XX_TEMP_WARN) {
+		ql_log(ql_log_warn, vha, 0x600f,
+		    "Device temperature %d degrees C exceeds "
+		    "operating range. Immediate action needed.\n",
+		    temp_val);
+	}
+	return 0;
+}
+
+void qla82xx_clear_pending_mbx(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	if (ha->flags.mbox_busy) {
+		ha->flags.mbox_int = 1;
+		ql_log(ql_log_warn, vha, 0x6010,
+		    "Doing premature completion of mbx command.\n");
+		if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags))
+			complete(&ha->mbx_intr_comp);
+	}
+}
+
 void qla82xx_watchdog(scsi_qla_host_t *vha)
 {
 	uint32_t dev_state, halt_status;
@@ -3332,7 +3369,11 @@ void qla82xx_watchdog(scsi_qla_host_t *vha)
 	/* don't poll if reset is going on */
 	if (!ha->flags.isp82xx_reset_hdlr_active) {
 		dev_state = qla82xx_rd_32(ha, QLA82XX_CRB_DEV_STATE);
-		if (dev_state == QLA82XX_DEV_NEED_RESET &&
+		if (qla82xx_check_temp(vha)) {
+			set_bit(ISP_UNRECOVERABLE, &vha->dpc_flags);
+			ha->flags.isp82xx_fw_hung = 1;
+			qla82xx_clear_pending_mbx(vha);
+		} else if (dev_state == QLA82XX_DEV_NEED_RESET &&
 		    !test_bit(ISP_ABORT_NEEDED, &vha->dpc_flags)) {
 			ql_log(ql_log_warn, vha, 0x6001,
 			    "Adapter reset needed.\n");
@@ -3394,19 +3435,6 @@ int qla82xx_load_risc(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 	int rval;
 	rval = qla82xx_device_state_handler(vha);
 	return rval;
-}
-
-void qla82xx_clear_pending_mbx(scsi_qla_host_t *vha)
-{
-	struct qla_hw_data *ha = vha->hw;
-
-	if (ha->flags.mbox_busy) {
-		ha->flags.mbox_int = 1;
-		ql_log(ql_log_warn, vha, 0x6010,
-		    "Doing premature completion of mbx command.\n");
-		if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags))
-			complete(&ha->mbx_intr_comp);
-	}
 }
 
 void
