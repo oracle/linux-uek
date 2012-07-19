@@ -26,7 +26,7 @@
  * |                              |                    | 0x708c         |
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
  * |				  |		       | 0x800b,0x8039 |
- * | AER/EEH                      |       0x900f       |              |
+ * | AER/EEH                      |       0x900f       | 0x9001        |
  * | Virtual Port                 |       0xa008       |              |
  * | ISP82XX Specific             |       0xb053       |              |
  * | MultiQ                       |       0xc00c       |              |

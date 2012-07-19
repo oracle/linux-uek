@@ -3382,16 +3382,8 @@ void qla82xx_watchdog(scsi_qla_host_t *vha)
 					    &vha->dpc_flags);
 				}
 				ha->flags.isp82xx_fw_hung = 1;
-				if (ha->flags.mbox_busy) {
-					ha->flags.mbox_int = 1;
-					ql_log(ql_log_warn, vha, 0x6007,
-					    "Due to FW hung, doing "
-					    "premature completion of mbx "
-					    "command.\n");
-					if (test_bit(MBX_INTR_WAIT,
-					    &ha->mbx_cmd_flags))
-						complete(&ha->mbx_intr_comp);
-				}
+				ql_log(ql_log_warn, vha, 0x6007, "Firmware hung.\n");
+				qla82xx_clear_pending_mbx(vha);
 			}
 		}
 	}
@@ -3402,6 +3394,19 @@ int qla82xx_load_risc(scsi_qla_host_t *vha, uint32_t *srisc_addr)
 	int rval;
 	rval = qla82xx_device_state_handler(vha);
 	return rval;
+}
+
+void qla82xx_clear_pending_mbx(scsi_qla_host_t *vha)
+{
+	struct qla_hw_data *ha = vha->hw;
+
+	if (ha->flags.mbox_busy) {
+		ha->flags.mbox_int = 1;
+		ql_log(ql_log_warn, vha, 0x6010,
+		    "Doing premature completion of mbx command.\n");
+		if (test_bit(MBX_INTR_WAIT, &ha->mbx_cmd_flags))
+			complete(&ha->mbx_intr_comp);
+	}
 }
 
 void
@@ -3586,13 +3591,7 @@ qla82xx_chip_reset_cleanup(scsi_qla_host_t *vha)
 			msleep(1000);
 			if (qla82xx_check_fw_alive(vha)) {
 				ha->flags.isp82xx_fw_hung = 1;
-				if (ha->flags.mbox_busy) {
-					ha->flags.mbox_int = 1;
-					if (test_bit(MBX_INTR_WAIT,
-					    &ha->mbx_cmd_flags)) {
-						complete(&ha->mbx_intr_comp);
-					}
-				}
+				qla82xx_clear_pending_mbx(vha);
 				break;
 			}
 		}
