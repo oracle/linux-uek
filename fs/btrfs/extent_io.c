@@ -4297,7 +4297,7 @@ static inline void btrfs_release_extent_buffer_rcu(struct rcu_head *head)
 }
 
 /* Expects to have eb->eb_lock already held */
-static void release_extent_buffer(struct extent_buffer *eb, gfp_t mask)
+static int release_extent_buffer(struct extent_buffer *eb, gfp_t mask)
 {
 	WARN_ON(atomic_read(&eb->refs) == 0);
 	if (atomic_dec_and_test(&eb->refs)) {
@@ -4318,9 +4318,11 @@ static void release_extent_buffer(struct extent_buffer *eb, gfp_t mask)
 		btrfs_release_extent_buffer_page(eb, 0);
 
 		call_rcu(&eb->rcu_head, btrfs_release_extent_buffer_rcu);
-		return;
+		return 1;
 	}
 	spin_unlock(&eb->refs_lock);
+
+	return 0;
 }
 
 void free_extent_buffer(struct extent_buffer *eb)
@@ -4959,7 +4961,6 @@ int try_release_extent_buffer(struct page *page, gfp_t mask)
 		spin_unlock(&eb->refs_lock);
 		return 0;
 	}
-	release_extent_buffer(eb, mask);
 
-	return 1;
+	return release_extent_buffer(eb, mask);
 }
