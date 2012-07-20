@@ -76,11 +76,13 @@ MODULE_PARM_DESC(cciss_simple_mode,
 
 static DEFINE_MUTEX(cciss_mutex);
 static struct proc_dir_entry *proc_cciss;
-static int cciss_allow_hpsa;
+#ifdef CONFIG_UEK5
+static int cciss_allow_hpsa = 0;
 module_param(cciss_allow_hpsa, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(cciss_allow_hpsa,
 	"Prevent cciss driver from accessing hardware known to be "
-	" supported by the hpsa driver");
+	" supported by the hpsa driver. Default: 0 - disabled");
+#endif
 
 #include "cciss_cmd.h"
 #include "cciss.h"
@@ -4172,8 +4174,10 @@ static int __devinit cciss_lookup_board_id(struct pci_dev *pdev, u32 *board_id)
 
 	for (i = 0; i < ARRAY_SIZE(products); i++) {
 		/* Stand aside for hpsa driver on request */
+#ifdef CONFIG_UEK5
 		if (cciss_allow_hpsa && products[i].board_id == HPSA_BOUNDARY)
 			return -ENODEV;
+#endif
 		if (*board_id == products[i].board_id)
 			return i;
 	}
