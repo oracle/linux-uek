@@ -1214,6 +1214,7 @@ int dtrace_dev_init(void)
 	}
 
 	dtrace_os_init();
+	dtrace_ctf_forceload();
 
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
