@@ -2246,7 +2246,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		break;
 
 	case DIF_SUBR_RW_READ_HELD: {
-		if (!dtrace_canload(tupregs[0].dttk_value, sizeof(uintptr_t),
+		if (!dtrace_canload(tupregs[0].dttk_value, sizeof(rwlock_t),
 		    mstate, vstate)) {
 			regs[rd] = 0;
 			break;
