@@ -11,3 +11,9 @@ MODULE_AUTHOR("Nick Alcock <nick.alcock@oracle.com>");
 MODULE_DESCRIPTION("CTF container module, not for modprobing");
 MODULE_VERSION("v0.1");
 MODULE_LICENSE("GPL");
+
+void dtrace_ctf_forceload(void) {
+	/* nothing doing */
+}
+
+EXPORT_SYMBOL(dtrace_ctf_forceload);
