@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.6%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.0.7%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,94 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Jul 23 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.7.el5uek]
+- qla2xxx: Updated the driver version to 8.04.00.06.39.0-k. (Saurav Kashyap)
+- qla2xxx: Dont call nic restart firmware if it is already active and running.
+  (Saurav Kashyap)
+- qla2xxx: Wrong PCIe(2.5Gb/s x8) speed in the kerenel message for QLE8242.
+  (Atul Deshmukh)
+- qla2xxx: Perform ROM mbx cmd access only after ISP soft-reset during f/w
+  recovery. (Santosh Vernekar)
+- qla2xxx: Fix rval may be used uninitialized in this function warning. (Saurav
+  Kashyap)
+- qla2xxx: Implement beacon support for ISP83xx CNA. (Chad Dupuis)
+- qla2xxx: Fix for continuous rescan attempts in arbitrated loop topology.
+  (Arun Easi)
+- qla2xxx: Only enable link up on the correct interrupt event. (Chad Dupuis)
+- qla2xxx: Don't register to legacy interrupt for ISP82xx. (Giridhar Malavali)
+- qla2xxx: Changes for ISP83xx CNA loopback support. (Chad Dupuis)
+- qla2xxx: Add bit to identify Sensei card for thermal temp. (Joe Carnuccio)
+- qla2xxx: Implemetation of mctp. (Saurav Kashyap)
+- qla2xxx: IDC implementation for ISP83xx. (Santosh Vernekar)
+- qla2xxx: Add FW DUMP SIZE sysfs attribute. (Harish Zunjarrao)
+- qla2xxx: Implementation of bidirectional. (Saurav Kashyap)
+- qla2xxx: Use bitmap to store loop_id's for fcports. (Chad Dupuis)
+- qla2xxx: Display mailbox failure by default. (Saurav Kashyap)
+- qla2xxx: Fix typo in qla2xxx files (Masanari Iida)
+- qla2xxx: Remove redundant NULL check before release_firmware() call. (Jesper
+  Juhl)
+- qla2xxx: Add check in qla82xx_watchdog for failed hardware state. (Chad
+  Dupuis)
+- qla2xxx: Add I2C BSG interface. (Joe Carnuccio)
+- Revert "qla2xxx: During loopdown perform Diagnostic loopback." (Chad Dupuis)
+- qla2xxx: Display proper firmware version when new minidump template is
+  gathered for ISP82xx. (Giridhar Malavali)
+- qla2xxx: Properly check for current state after the fabric-login request.
+  (Saurav Kashyap)
+- qla2xxx: Proper completion to scsi-ml for scsi status task_set_full and busy.
+  (Giridhar Malavali)
+- qla2xxx: Don't capture minidump for ISP82xx on flash update from application.
+  (Giridhar Malavali)
+- qla2xxx: Print link up and link down messages. (Chad Dupuis)
+- qla2xxx: More trivial fixups. (Chad Dupuis)
+- qla2xxx: Avoid losing any fc ports when loop id's are exhausted. (Joe
+  Carnuccio)
+- qla2xxx: Optimize existing port name server query matching. (Joe Carnuccio)
+- qla2xxx: Remove mirrored field vp_idx from struct fc_port. (Joe Carnuccio)
+- qla2xxx: Fixups for ISP83xx CNA. (Nigel Kirkland)
+- qla2xxx: Display proper supported speeds for 16G FC adapters. (Giridhar
+  Malavali)
+- qla2xxx: handle default case in qla2x00_request_firmware() (Dan Carpenter)
+- qla2xxx: Fix reset time out as qla2xxx not ack to reset request. (Vikas
+  Chaudhary)
+- qla2xxx: Fix typo in qla_mbx.c (Masanari Iida)
+- qla2xxx: Micro optimization in queuecommand handler (Chetan Loke)
+- qla2xxx: Fix typo in qla_init.c (Raul Porcel)
+- qla2xxx: Fix typo in qla_bsg.c (Masanari Iida)
+- qla2xxx: Stats should be different from physical and virtual ports (Saurav
+  Kashyap)
+- qla2xxx: Add ql_dbg_verbose logging level. (Saurav Kashyap)
+- qla2xxx: Block flash access from application when device is initialized for
+  ISP82xx. (Giridhar Malavali)
+- qla2xxx: Handle interrupt registration failures more gracefully. (Chad
+  Dupuis)
+- qla2xxx: Change "Done" to "Entering" in the debug print statement in
+  qla2x00_port_logout. (Chad Dupuis)
+- qla2xxx: Logic to detect overheat condition and fail ISP82xx. (Giridhar
+  Malavali)
+- qla2xxx: Encapsulate prematurely completing mailbox commands during ISP82xx
+  firmware hang. (Chad Dupuis)
+- qla2xxx: Remove unneeded DPC wakeups from qla82xx_watchdog. (Chad Dupuis)
+- xen/setup: filter APERFMPERF cpuid feature out (Andre Przywara)
+- xen/acpi: Fix potential memory leak. (Konrad Rzeszutek Wilk)
+- xen PVonHVM: move shared_info to MMIO before kexec (Olaf Hering)
+- xen: simplify init_hvm_pv_info (Olaf Hering)
+- xen: remove cast from HYPERVISOR_shared_info assignment (Olaf Hering)
+- xen: enable platform-pci only in a Xen guest (Olaf Hering)
+- xen/pv-on-hvm kexec: shutdown watches from old kernel (Olaf Hering)
+- Revert "xen/pv-on-hvm kexec: add xs_reset_watches to shutdown watches from
+  old kernel" (Konrad Rzeszutek Wilk)
+- xen/hvc: Fix up checks when the info is allocated. (Konrad Rzeszutek Wilk)
+- xen/mm: zero PTEs for non-present MFNs in the initial page table (David
+  Vrabel)
+- xen/mm: do direct hypercall in xen_set_pte() if batching is unavailable
+  (David Vrabel)
+- xen/x86: add desc_equal() to compare GDT descriptors (David Vrabel)
+- x86/xen: avoid updating TLS descriptors if they haven't changed (David
+  Vrabel)
+- xen: populate correct number of pages when across mem boundary (v2)
+  (zhenzhong.duan)
+
 * Wed Jul 18 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.6.el5uek]
 - export devinet_ioctl (Maxim Uvarov) [Orabug: 14306942]
 - Changed length for strncpy to OVMM_MAX_NAME_LEN (Cathy Avery) [Orabug:
