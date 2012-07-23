@@ -41,6 +41,12 @@
 
 #include "uverbs.h"
 
+static int disable_raw_qp_enforcement;
+module_param_named(disable_raw_qp_enforcement, disable_raw_qp_enforcement, int,
+		   0444);
+MODULE_PARM_DESC(disable_raw_qp_enforcement,  "Disable RAW QP enforcement for "
+		 "being opened by root (default: 0)");
+
 struct uverbs_lock_class {
 	struct lock_class_key	key;
 	char			name[16];
@@ -1402,7 +1408,8 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
 
-	if (cmd.qp_type == IB_QPT_RAW_PACKET && !capable(CAP_NET_RAW))
+	if (!disable_raw_qp_enforcement &&
+	    cmd.qp_type == IB_QPT_RAW_PACKET && !capable(CAP_NET_RAW))
 		return -EPERM;
 
 	INIT_UDATA(&udata, buf + sizeof cmd,
