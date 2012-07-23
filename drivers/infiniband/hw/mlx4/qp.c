@@ -1309,6 +1309,28 @@ static int check_qpg_attr(struct mlx4_ib_dev *dev,
 	return 0;
 }
 
+#define RESERVED_FLAGS_MASK ((((unsigned int)IB_QP_CREATE_RESERVED_END - 1) | IB_QP_CREATE_RESERVED_END)   \
+							& ~(IB_QP_CREATE_RESERVED_START - 1))
+
+static enum mlx4_ib_qp_flags to_mlx4_ib_qp_flags(enum ib_qp_create_flags ib_qp_flags)
+{
+	enum mlx4_ib_qp_flags mlx4_ib_qp_flags = 0;
+
+	if (ib_qp_flags & IB_QP_CREATE_IPOIB_UD_LSO)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_LSO;
+
+	if (ib_qp_flags & IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK;
+
+	if (ib_qp_flags & IB_QP_CREATE_NETIF_QP)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_NETIF;
+
+	/* reserved flags */
+	mlx4_ib_qp_flags |= (ib_qp_flags & RESERVED_FLAGS_MASK);
+
+	return mlx4_ib_qp_flags;
+}
+
 struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 				struct ib_qp_init_attr *init_attr,
 				struct ib_udata *udata)
@@ -1316,15 +1338,15 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	struct mlx4_ib_qp *qp = NULL;
 	int err;
 	u16 xrcdn = 0;
-
+	enum mlx4_ib_qp_flags mlx4_qp_flags = to_mlx4_ib_qp_flags(init_attr->create_flags);
 	/*
 	 * We only support LSO, vendor flag1, and multicast loopback blocking,
 	 * and only for kernel UD QPs.
 	 */
-	if (init_attr->create_flags & ~(MLX4_IB_QP_LSO |
+	if (mlx4_qp_flags & ~(MLX4_IB_QP_LSO |
 					MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK |
 					MLX4_IB_SRIOV_TUNNEL_QP | MLX4_IB_SRIOV_SQP |
-					IB_QP_CREATE_NETIF_QP))
+					MLX4_IB_QP_NETIF))
 		return ERR_PTR(-EINVAL);
 
 	if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
@@ -1334,9 +1356,9 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 
 	if (init_attr->create_flags &&
 	    (udata ||
-	     ((init_attr->create_flags & ~MLX4_IB_SRIOV_SQP) &&
+	     ((mlx4_qp_flags & ~MLX4_IB_SRIOV_SQP) &&
 	      init_attr->qp_type != IB_QPT_UD) ||
-	     ((init_attr->create_flags & MLX4_IB_SRIOV_SQP) &&
+	     ((mlx4_qp_flags & MLX4_IB_SRIOV_SQP) &&
 	      init_attr->qp_type > IB_QPT_GSI)))
 		return ERR_PTR(-EINVAL);
 
