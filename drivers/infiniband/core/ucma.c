@@ -54,6 +54,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 static unsigned int max_backlog = 1024;
 
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 static struct ctl_table_header *ucma_ctl_table_hdr;
 static ctl_table ucma_ctl_table[] = {
 	{
@@ -65,6 +66,7 @@ static ctl_table ucma_ctl_table[] = {
 	},
 	{ }
 };
+#endif
 
 struct ucma_file {
 	struct mutex		mut;
@@ -1421,15 +1423,19 @@ static int __init ucma_init(void)
 		goto err1;
 	}
 
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 	ucma_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_ucm", ucma_ctl_table);
 	if (!ucma_ctl_table_hdr) {
 		printk(KERN_ERR "rdma_ucm: couldn't register sysctl paths\n");
 		ret = -ENOMEM;
 		goto err2;
 	}
+#endif
 	return 0;
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 err2:
 	device_remove_file(ucma_misc.this_device, &dev_attr_abi_version);
+#endif
 err1:
 	misc_deregister(&ucma_misc);
 	return ret;
@@ -1437,7 +1443,9 @@ err1:
 
 static void __exit ucma_cleanup(void)
 {
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 	unregister_net_sysctl_table(ucma_ctl_table_hdr);
+#endif
 	device_remove_file(ucma_misc.this_device, &dev_attr_abi_version);
 	misc_deregister(&ucma_misc);
 	idr_destroy(&ctx_idr);
