@@ -498,7 +498,14 @@ static bool alloc_p2m(unsigned long pfn)
 
 	return true;
 }
-
+#include <asm/sections.h>
+bool __init can_extend_brk()
+{
+	/* Always reserve one for the DMI extend_brk call. */
+	if ((char *)(_brk_end + 2 * PAGE_SIZE) > __brk_limit)
+		return false;
+	return true;
+}
 static bool __init early_alloc_p2m_middle(unsigned long pfn, bool check_boundary)
 {
 	unsigned topidx, mididx, idx;
@@ -524,6 +531,9 @@ static bool __init early_alloc_p2m_middle(unsigned long pfn, bool check_boundary
 		return false;
 
 	/* Boundary cross-over for the edges: */
+	if (!can_extend_brk())
+		return false;
+
 	p2m = extend_brk(PAGE_SIZE, PAGE_SIZE);
 
 	p2m_init(p2m);
@@ -540,7 +550,6 @@ static bool __init early_alloc_p2m_middle(unsigned long pfn, bool check_boundary
 
 	return true;
 }
-
 static bool __init early_alloc_p2m(unsigned long pfn)
 {
 	unsigned topidx = p2m_top_index(pfn);
@@ -550,6 +559,8 @@ static bool __init early_alloc_p2m(unsigned long pfn)
 	mid = p2m_top[topidx];
 	mid_mfn_p = p2m_top_mfn_p[topidx];
 	if (mid == p2m_mid_missing) {
+		if (!can_extend_brk())
+			return false;
 		mid = extend_brk(PAGE_SIZE, PAGE_SIZE);
 
 		p2m_mid_init(mid);
@@ -560,6 +571,8 @@ static bool __init early_alloc_p2m(unsigned long pfn)
 	}
 	/* And the save/restore P2M tables.. */
 	if (mid_mfn_p == p2m_mid_missing_mfn) {
+		if (!can_extend_brk())
+			return false;
 		mid_mfn_p = extend_brk(PAGE_SIZE, PAGE_SIZE);
 		p2m_mid_mfn_init(mid_mfn_p);
 
