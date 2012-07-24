@@ -253,8 +253,8 @@
 #define LOOP_DOWN_TIME			255	/* 240 */
 #define	LOOP_DOWN_RESET			(LOOP_DOWN_TIME - 30)
 
-/* Maximum outstanding commands in ISP queues (1-65535) */
-#define MAX_OUTSTANDING_COMMANDS	1024
+#define DEFAULT_OUTSTANDING_COMMANDS	1024
+#define MIN_OUTSTANDING_COMMANDS	128
 
 /* ISP request and response entry counts (37-65535) */
 #define REQUEST_ENTRY_CNT_2100		128	/* Number of request entries. */
@@ -2513,8 +2513,9 @@ struct req_que {
 	uint16_t  qos;
 	uint16_t  vp_idx;
 	struct rsp_que *rsp;
-	srb_t *outstanding_cmds[MAX_OUTSTANDING_COMMANDS];
+	srb_t **outstanding_cmds;
 	uint32_t current_outstanding_cmd;
+	uint16_t num_outstanding_cmds;
 	int max_q_depth;
 };
 
@@ -2832,6 +2833,7 @@ struct qla_hw_data {
 #define RISC_START_ADDRESS_2300 0x800
 #define RISC_START_ADDRESS_2400 0x100000
 	uint16_t	fw_xcb_count;
+	uint16_t	fw_iocb_count;
 
 	uint16_t	fw_options[16];         /* slots: 1,2,3,10,11 */
 	uint8_t		fw_seriallink_options[4];
@@ -3180,8 +3182,6 @@ typedef struct scsi_qla_host {
 #define QLA_ALREADY_REGISTERED		0x109
 
 #define NVRAM_DELAY()		udelay(10)
-
-#define INVALID_HANDLE	(MAX_OUTSTANDING_COMMANDS+1)
 
 /*
  * Flash support definitions

@@ -512,6 +512,7 @@ qla25xx_free_req_que(struct scsi_qla_host *vha, struct req_que *req)
 		clear_bit(que_id, ha->req_qid_map);
 		mutex_unlock(&ha->vport_lock);
 	}
+	kfree(req->outstanding_cmds);
 	kfree(req);
 	req = NULL;
 }
@@ -638,6 +639,10 @@ qla25xx_create_req_que(struct qla_hw_data *ha, uint16_t options,
 		goto que_failed;
 	}
 
+	ret = qla2x00_alloc_outstanding_cmds(ha, req);
+	if (ret != QLA_SUCCESS)
+		goto que_failed;
+
 	mutex_lock(&ha->vport_lock);
 	que_id = find_first_zero_bit(ha->req_qid_map, ha->max_req_queues);
 	if (que_id >= ha->max_req_queues) {
@@ -674,7 +679,7 @@ qla25xx_create_req_que(struct qla_hw_data *ha, uint16_t options,
 	    "options=0x%x.\n", req->options);
 	ql_dbg(ql_dbg_init, base_vha, 0x00dd,
 	    "options=0x%x.\n", req->options);
-	for (cnt = 1; cnt < MAX_OUTSTANDING_COMMANDS; cnt++)
+	for (cnt = 1; cnt < req->num_outstanding_cmds; cnt++)
 		req->outstanding_cmds[cnt] = NULL;
 	req->current_outstanding_cmd = 1;
 
