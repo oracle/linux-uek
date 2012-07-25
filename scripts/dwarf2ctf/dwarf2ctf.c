@@ -334,13 +334,14 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * sub-entities can be skipped, but translation of the containing type should
  * continue.  Setting it to SKIP_CONTINUE indicates no error.
  *
- * Recurse_ctf calls these functions repeatedly for every child of the requested
- * DIE: the CTF ID eventually returned is whatever ID is returned by the last
- * such function, and parent_ctf_id is repeatedly replaced with the ID returned
- * by the last assembly function.  Thus, assembly functions that augment an
- * already-present ctf_id should return parent_ctf_id: assembly functions that
- * wrap it in a new ctf_id referring to the parent_ctf_id should return the new
- * ID.  (Assembly functions should never entirely disregard the parent_ctf_id.)
+ * recurse_ctf() calls these functions repeatedly for every child of the
+ * requested DIE: the CTF ID eventually returned is whatever ID is returned by
+ * the last such function, and parent_ctf_id is repeatedly replaced with the ID
+ * returned by the last assembly function.  Thus, assembly functions that
+ * augment an already-present ctf_id should return parent_ctf_id: assembly
+ * functions that wrap it in a new ctf_id referring to the parent_ctf_id should
+ * return the new ID.  (Assembly functions should never entirely disregard the
+ * parent_ctf_id.)
  */
 typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     const char *file_name,
@@ -429,7 +430,7 @@ static void init_assembly_tab(void);
 /*
  * A mapping from sizeof() to CTF type encoding.
  */
-struct type_encoding_t {
+struct type_encoding_tab {
 	size_t size;
 	int ctf_encoding;
 };
@@ -438,7 +439,7 @@ struct type_encoding_t {
  * Given a type encoding table, and a size, return the CTF encoding for that
  * type, or 0 if none.
  */
-static int find_ctf_encoding(struct type_encoding_t *type_tab, size_t size);
+static int find_ctf_encoding(struct type_encoding_tab *type_tab, size_t size);
 
 /*
  * Count the number of members of a DWARF aggregate.
@@ -652,8 +653,7 @@ static void run(int starting_argv, char *argv[])
 	}
 
 	/*
-	 * Now construct CTF out of the types, writing out the .ctf files as we
-	 * go.
+	 * Now construct CTF out of the types.
 	 */
 	dw_ctf_trace("CTF construction.\n");
 	for (name = &argv[starting_argv]; *name; name++)
@@ -894,8 +894,8 @@ static void init_tu_to_modules(void)
 	 */
 	for (i = 0; i < builtin_objects_cnt; i++) {
 		/*
-		 * Walk over the translation units in this module and construct
-		 * mappings from each TU to "vmlinux".
+		 * Walk over the translation units in the object files and
+		 * construct mappings from each TU to "vmlinux".
 		 */
 
 		Dwfl *dwfl = private_dwfl_new(builtin_objects[i]);
@@ -947,9 +947,9 @@ static void init_tu_to_modules(void)
 /*
  * Type ID computation.
  *
- * A type ID is a constant, recursively-constructed string describing a given
- * DWARF DIE in such a way that any DWARF file containing the same type will
- * have the same type ID.
+ * A type ID is a constant, recursively-constructed, dynamically-allocated
+ * string describing a given DWARF DIE in such a way that any DWARF file
+ * containing the same type will have the same type ID.
  *
  * Optionally, call a callback with the computed ID once we know it (this is a
  * recursive process, so the callback can be called multiple times as the ID is
@@ -986,9 +986,9 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	/*
 	 * If we have a type DIE, generate it first.
 	 *
-	 * If we don't have a type DIE, note the location of this DIE, providing
-	 * scoping information for all types based upon this one.  Location
-	 * elements are separated by //, an element impossible in a Linux path.
+	 * Otherwise, note the location of this DIE, providing scoping
+	 * information for all types based upon this one.  Location elements are
+	 * separated by //, an element impossible in a Linux path.
 	 */
 	if (dwarf_tag(die) != DW_TAG_base_type)
 		id = type_id(private_dwarf_type(die, &type_die), fun, data);
@@ -1350,7 +1350,7 @@ static void detect_duplicates_done(const char *module_name,
  * type with the same ID already exists in another module.
  *
  * This pass also constructs the id_to_module table, so is essential even when
- * deduplication is disabled (though then, it need be run only once.)
+ * deduplication is disabled (though then it need be run only once.)
  */
 
 static void detect_duplicates(const char *module_name,
@@ -1387,7 +1387,6 @@ static void detect_duplicates(const char *module_name,
 	 * is unavoidable, because pass 3 requires re-marking structures that
 	 * have already been marked, to pick up unmarked intermediate types.)
 	 */
-
 	const char *existing_type_module;
 
 	existing_type_module = g_hash_table_lookup(id_to_module, id);
@@ -1426,8 +1425,8 @@ static void mark_duplicate(Dwarf_Die *die, const char *id,
 	const char *existing_module;
 
 	/*
-	 * Base case.  Trigger type_id for its recursive callback, throwing the
-	 * result away.
+	 * Non-recursive call.  Trigger type_id for its recursive callback,
+	 * throwing the result away.
 	 */
 	if (id == NULL) {
 		free(type_id(die, mark_duplicate, state));
@@ -1487,12 +1486,21 @@ static void mark_duplicate(Dwarf_Die *die, const char *id,
 }
 
 /*
- * Detect duplicates alias fixup pass.  Once the first pass is complete, we
+ * Duplicate detection alias fixup pass.  Once the first pass is complete, we
  * may have marked an opaque 'struct foo' for sharing but not caught the
- * non-opaque instance, because no users of the non-opaque instance appeared
- * in the DWARF after the opaque copy was detected as a duplicate.
+ * non-opaque instance, because no users of the non-opaque instance appeared in
+ * the DWARF after the opaque copy was detected as a duplicate.
+ *
+ * (The inverse case of a non-opaque structure detected as a duplicate after the
+ * last usage of its opaque alias will be caught by this trap too.)
  *
  * This detects such cases, and marks their members as duplicates too.
+ *
+ * Warning: this routine directly computes type_id()s without access to the
+ * corresponding type, and as such is dependent on the format of type_id()s.
+ * (This is why it must run over non-opaque structures: given a non-opaque
+ * structure, its opaque alias is easy to compute, but the converse is not
+ * true.)
  */
 static void detect_duplicates_alias_fixup(const char *module_name,
 					  const char *file_name,
@@ -1546,7 +1554,7 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 
 	/*
 	 * We don't have the opaque type's DIE, so we can't use
-	 * mark_duplicate().  Instead, do it by hand: this is simple as member
+	 * mark_duplicate().  Instead, do it by hand: this is simple, as member
 	 * recursion is guaranteed not to be required for an opaque type.
 	 */
 	if (transparent_shared && !opaque_shared)
@@ -1562,8 +1570,10 @@ static void detect_duplicates_alias_fixup(const char *module_name,
  *
  * Given a DWARF DIE corresponding to a top-level type, call the appropriate
  * construction function, passing it the appropriate ctf_file_t, constructing it
- * if necessary, and stashing them in the module_to_ctf_file hash.  Return the
- * ctf_id_t of this type.
+ * if necessary, and stashing them in the appropriate hashes.  Return the
+ * ctf_file_t and ctf_id_t of this type.
+ *
+ * Indirectly recursively called for types depending on other types.
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
@@ -1781,8 +1791,8 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 		/*
 		 * Add newly-added non-skipped top-level structure or union CTF
 		 * IDs to the type table at once.  This allows circular type
-		 * references via pointers referenced in structure/union member
-		 * DIEs to be looked up correctly.
+		 * references via pointers in structure/union member DIEs to be
+		 * looked up correctly.
 		 */
 		if (top_level_type && (*skip == SKIP_CONTINUE) &&
 		    ((dwarf_tag(die) == DW_TAG_structure_type) ||
@@ -1843,7 +1853,7 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 		/*
 		 * Walk siblings of non-top-level types only: the sibling walk
 		 * of top-level types is done by process_file(), so that
-		 * construct_ctf() gets a chance to put each such type in the
+		 * construct_ctf_id() gets a chance to put each such type in the
 		 * right CTF file.
 		 */
 	} while (*skip != SKIP_ABORT && !top_level_type &&
@@ -1882,14 +1892,13 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	Dwarf_Die cu_die;
 	ctf_full_id_t *type_ref;
 
+	/*
+	 * Pointers to functions and void are special cases: there is only one
+	 * of each of these in CTF, so we can use global singletons.
+	 */
+
 	if (type_die == NULL)
 		return ctf_void_type;
-
-	/*
-	 * Pointers to functions are special cases: there is only one of
-	 * these in CTF, and it applies to all functions, so we can use a
-	 * global singleton.
-	 */
 
 	if (dwarf_tag(type_die) == DW_TAG_subroutine_type)
 		return ctf_funcptr_type;
@@ -1911,7 +1920,6 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	/*
 	 * Pass any error back up.
 	 */
-
 	if (type_ref == NULL) {
 		fprintf(stderr, "%s: type lookup failed.\n", locerrstr);
 		return -1;
@@ -1980,22 +1988,22 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 		Dwarf_Word encoding;
 		ctf_add_fun func;
 		uint_t encoding_fixed;
-		struct type_encoding_t *size_lookup;
+		struct type_encoding_tab *size_lookup;
 	};
 
-	struct type_encoding_t float_encoding[] =
+	struct type_encoding_tab float_encoding[] =
 		{{sizeof (float), CTF_FP_SINGLE },
 		 {sizeof (double), CTF_FP_DOUBLE },
 		 {sizeof (long double), CTF_FP_LDOUBLE },
 		 {0, 0}};
 
-	struct type_encoding_t float_cplx_encoding[] =
+	struct type_encoding_tab float_cplx_encoding[] =
 		{{sizeof (float), CTF_FP_CPLX },
 		 {sizeof (double), CTF_FP_DCPLX },
 		 {sizeof (long double), CTF_FP_LDCPLX },
 		 {0, 0}};
 
-	struct type_encoding_t float_imagry_encoding[] =
+	struct type_encoding_tab float_imagry_encoding[] =
 		{{sizeof (float), CTF_FP_IMAGRY },
 		 {sizeof (double), CTF_FP_DIMAGRY },
 		 {sizeof (long double), CTF_FP_LDIMAGRY },
@@ -2115,7 +2123,7 @@ static ctf_id_t assemble_ctf_array(const char *module_name,
 }
 
 /*
- * Assemble an array dimension, wrapping an array round the parent_ctf_type and
+ * Assemble an array dimension, wrapping an array round the parent_ctf_id and
  * replacing it.
  */
 static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
@@ -2149,8 +2157,7 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 	}
 
 	/*
-	 * Force number of elements to zero for a flexible array member:
-	 * otherwise, count them.
+	 * Force number of elements to zero for a flexible array member.
 	 */
 
 	if ((!dwarf_hasattr(die, DW_AT_type)) ||
@@ -2367,7 +2374,7 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 /*
  * Assemble a structure or union member.
  *
- * We only assemble a member by a given name if a member by that name does not
+ * We only assemble a member of a given name if a member by that name does not
  * already exist.
  */
 static ctf_id_t assemble_ctf_su_member(const char *module_name,
@@ -2478,10 +2485,10 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			size_t nlocs;
 
 			/*
-			 * DWARF 2 data_member_location.  This can be quite
-			 * complicated in some situations (notably C++ virtual
-			 * bases), but for normal structure members it is
-			 * simple.  FIXME for userspace tracing of C++.
+			 * DWARF 2 block-based data_member_location.  This can
+			 * be quite complicated in some situations (notably C++
+			 * virtual bases), but for normal structure members it
+			 * is simple.  FIXME for userspace tracing of C++.
 			 *
 			 * This is thoroughly specific to the forms of DWARF2
 			 * emitted by GCC.  We don't need to feel guilty about
@@ -2536,9 +2543,9 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				  offset) < 0) {
 		/*
 		 * If we have seen this member before, as part of another
-		 * definition somewhere else, that's fine.  We cannot
-		 * recurse from this point, so we can just return the parent CTF
-		 * ID, the ID of the containing structure.
+		 * definition somewhere else, that's fine.  We cannot recurse
+		 * from this point, so we can just return the parent CTF ID, the
+		 * ID of the containing structure.
 		 */
 		if (ctf_errno(ctf) == ECTF_DUPMEMBER)
 			return parent_ctf_id;
@@ -2722,8 +2729,6 @@ static char *xstrdup(const char *s)
 
 /*
  * A string appender working on dynamic strings.
- *
- * FIXME: slightly inefficient, doing two strlen(s)'s.
  */
 static char *str_append(char *s, const char *append)
 {
@@ -2796,7 +2801,7 @@ static char *fn_to_module(const char *file_name)
  * Given a type encoding table, and a size, return the CTF encoding for that
  * type, or 0 if none.
  */
-static int find_ctf_encoding(struct type_encoding_t *type_tab, size_t size)
+static int find_ctf_encoding(struct type_encoding_tab *type_tab, size_t size)
 {
 	size_t i;
 
