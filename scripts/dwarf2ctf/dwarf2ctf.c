@@ -871,6 +871,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 				ctf_errmsg(ctf_errno(ctf_file)));
 			exit(1);
 		}
+		ctf_parent_name_set(ctf_file, "dtrace_ctf");
 	}
 
 	dw_ctf_trace("Created CTF file for module %s: %p\n",
