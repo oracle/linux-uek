@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.0.7%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jul 26 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.1.0.el6uek]
+- xen/p2m: Check __brk_limit before allocating. (Konrad Rzeszutek Wilk)
+
 * Mon Jul 23 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.0.7.el6uek]
 - qla2xxx: Updated the driver version to 8.04.00.06.39.0-k. (Saurav Kashyap)
 - qla2xxx: Dont call nic restart firmware if it is already active and running.
