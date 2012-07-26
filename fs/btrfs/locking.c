@@ -57,6 +57,14 @@ void btrfs_set_lock_blocking_rw(struct extent_buffer *eb, int rw)
  */
 void btrfs_clear_lock_blocking_rw(struct extent_buffer *eb, int rw)
 {
+	if (eb->lock_nested) {
+		read_lock(&eb->lock);
+		if (eb->lock_nested && current->pid == eb->lock_owner) {
+			read_unlock(&eb->lock);
+			return;
+		}
+		read_unlock(&eb->lock);
+	}
 	if (rw == BTRFS_WRITE_LOCK_BLOCKING) {
 		BUG_ON(atomic_read(&eb->blocking_writers) != 1);
 		write_lock(&eb->lock);
