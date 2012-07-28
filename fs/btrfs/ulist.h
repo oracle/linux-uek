@@ -33,7 +33,7 @@ struct ulist_iterator {
  */
 struct ulist_node {
 	u64 val;		/* value to store */
-	unsigned long aux;	/* auxiliary value saved along with the val */
+	u64 aux;		/* auxiliary value saved along with the val */
 };
 
 struct ulist {
