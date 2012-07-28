@@ -202,21 +202,13 @@ static void process_file(const char *file_name,
  */
 static void process_tu_func(const char *module_name,
 			    const char *file_name,
-			    Dwarf_Die *tu_die,
+			    Dwarf_Die *parent_die,
 			    Dwarf_Die *die,
 			    void (*dwarf_process)(const char *module_name,
 						  const char *file_name,
 						  Dwarf_Die *die,
 						  Dwarf_Die *parent_die,
 						  void *data),
-			    void (*tu_init)(const char *module_name,
-					    const char *file_name,
-					    Dwarf_Die *tu_die,
-					    void *data),
-			    void (*tu_done)(const char *module_name,
-					    const char *file_name,
-					    Dwarf_Die *tu_die,
-					    void *data),
 			    void *data);
 
 /*
@@ -317,12 +309,13 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * ID of the top-level piece of generated CTF (only relevant for aggregates).
  *
  * The parent_ctf_id is the ID of the CTF entity that was or is being generated
- * from the enclosing DWARF DIE, or -1 if none.  The parent_die is the parent of
- * the current DWARF DIE, and is always populated (even if just with the CU's
- * DIE).  The parent_ctf_id is always in the same CTF file as the ctf_id, just
- * as the parent DWARF DIE is always in the same DWARF CU: this is lexical
- * scope, not dynamic, so referenced types themselves located at the top level
- * have the CU as their parent.
+ * from the enclosing DWARF DIE, or 0 if population succeeded but did not yield
+ * a type ID (e.g. for variable assembly), or -1 on error.  The parent_die is
+ * the parent of the current DWARF DIE, and is always populated (even if just
+ * with the CU's DIE).  The parent_ctf_id is always in the same CTF file as the
+ * ctf_id, just as the parent DWARF DIE is always in the same DWARF CU: this is
+ * lexical scope, not dynamic, so referenced types themselves located at the top
+ * level have the CU as their parent.
  *
  * Returning an error value (see below) indicates that no CTF was generated from
  * this DWARF DIE.
@@ -353,7 +346,7 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     int top_level_type,
 				     enum skip_type *skip);
 
-#define ASSEMBLY_FUN(name)					      \
+#define ASSEMBLY_FUN(name)					     \
 	static ctf_id_t assemble_ctf_##name(const char *module_name, \
 					    const char *file_name,    \
 					    Dwarf_Die *die,	      \
@@ -377,13 +370,38 @@ ASSEMBLY_FUN(pointer);
 ASSEMBLY_FUN(struct_union);
 ASSEMBLY_FUN(su_member);
 ASSEMBLY_FUN(typedef);
+ASSEMBLY_FUN(variable);
+
+/*
+ * An assembly filter is an optional function called with the DIE and parent DIE
+ * of a top-level type alone, before calling down into the process_file()
+ * processing function: it can be used to rapidly determine that this DIE is not
+ * worth processing.  (It should return 0 in this case, and nonzero otherwise.)
+ */
+typedef int (*ctf_assembly_filter_fun)(Dwarf_Die *die,
+				       Dwarf_Die *parent_die);
+
+/*
+ * A CTF assembly filter function which excludes all types not at the global
+ * scope (i.e. whose immediate parent is not a CU DIE).
+ */
+static int filter_ctf_file_scope(Dwarf_Die *die __unused__,
+				 Dwarf_Die *parent_die);
+
+/*
+ * A CTF assembly filter function which excludes all names not at the global
+ * scope, all static symbols, and all names whose names are unlikely to be
+ * interesting.  (DTrace userspace contains a similar list, but the two lists
+ * need not be in sync.)
+ */
+static int filter_ctf_uninteresting(Dwarf_Die *die,
+				    Dwarf_Die *parent_die);
 
 /*
  * Error return values from CTF assembly functions.  These differ only in that
  * recurse_ctf() reports the ctf_errmsg() if CTF_NO_ERROR_REPORTED is returned,
  * but says nothing in the CTF_ERROR_REPORTED case.
  */
-
 #define CTF_NO_ERROR_REPORTED CTF_ERR
 #define CTF_ERROR_REPORTED (-2L)
 
@@ -400,30 +418,34 @@ static long num_errors;
 static struct assembly_tab_t
 {
 	int tag;
+	ctf_assembly_filter_fun filter;
 	ctf_assembly_fun fun;
-} assembly_tab_init[] = {{ DW_TAG_base_type, assemble_ctf_base },
-			 { DW_TAG_array_type, assemble_ctf_array },
-			 { DW_TAG_subrange_type, assemble_ctf_array_dimension },
-			 { DW_TAG_const_type, assemble_ctf_cvr_qual },
-			 { DW_TAG_restrict_type, assemble_ctf_cvr_qual },
-			 { DW_TAG_enumeration_type, assemble_ctf_enumeration },
-			 { DW_TAG_enumerator, assemble_ctf_enumerator },
-			 { DW_TAG_pointer_type, assemble_ctf_pointer },
-			 { DW_TAG_structure_type, assemble_ctf_struct_union },
-			 { DW_TAG_union_type, assemble_ctf_struct_union },
-			 { DW_TAG_member, assemble_ctf_su_member },
-			 { DW_TAG_typedef, assemble_ctf_typedef },
-			 { DW_TAG_volatile_type, assemble_ctf_cvr_qual },
-			 { 0, NULL }};
+} assembly_tab_init[] =
+{{ DW_TAG_base_type, filter_ctf_file_scope, assemble_ctf_base },
+ { DW_TAG_array_type, filter_ctf_file_scope, assemble_ctf_array },
+ { DW_TAG_subrange_type, NULL, assemble_ctf_array_dimension },
+ { DW_TAG_const_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
+ { DW_TAG_restrict_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
+ { DW_TAG_enumeration_type, filter_ctf_file_scope, assemble_ctf_enumeration },
+ { DW_TAG_enumerator, NULL, assemble_ctf_enumerator },
+ { DW_TAG_pointer_type, filter_ctf_file_scope, assemble_ctf_pointer },
+ { DW_TAG_structure_type, NULL, assemble_ctf_struct_union },
+ { DW_TAG_union_type, NULL, assemble_ctf_struct_union },
+ { DW_TAG_member, NULL, assemble_ctf_su_member },
+ { DW_TAG_typedef, NULL, assemble_ctf_typedef },
+ { DW_TAG_variable, filter_ctf_uninteresting, assemble_ctf_variable },
+ { DW_TAG_volatile_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
+ { 0, NULL }};
 
 /*
- * The CTF assembly lookup table, in constructed form.
+ * The CTF assembly and filter lookup tables, in constructed form.
  */
 static ctf_assembly_fun *assembly_tab;
+static ctf_assembly_filter_fun *assembly_filter_tab;
 static size_t assembly_len;
 
 /*
- * Populate the assembly_tab from the assembly_tab_init.
+ * Populate the assembly_tab and assembly_filter_tab from the assembly_tab_init.
  */
 static void init_assembly_tab(void);
 
@@ -501,7 +523,6 @@ static char *fn_to_module(const char *file_name);
 /*
  * Stub libdwfl callback, use only the ELF handle passed in.
  */
-
 static int no_debuginfo(Dwfl_Module *mod __unused__,
 			void **userdata __unused__,
 			const char *modname __unused__,
@@ -786,7 +807,8 @@ static void init_builtin(const char *builtin_objects_file,
 }
 
 /*
- * Translate the assembly lookup table into an array.
+ * Translate the assembly lookup table into the assembly_tab and
+ * assembly_filter_tab arrays.
  */
 static void init_assembly_tab(void)
 {
@@ -803,8 +825,17 @@ static void init_assembly_tab(void)
 		exit(1);
 	}
 
-	for (walk = assembly_tab_init; walk->fun != NULL; walk++)
+	if ((assembly_filter_tab = calloc(sizeof (ctf_assembly_filter_fun *),
+				   assembly_len + 1)) == NULL) {
+		fprintf(stderr, "Out of memory allocating assembly filter "
+			"table\n");
+		exit(1);
+	}
+
+	for (walk = assembly_tab_init; walk->fun != NULL; walk++) {
 		assembly_tab[walk->tag] = walk->fun;
+		assembly_filter_tab[walk->tag] = walk->filter;
+	}
 }
 
 /*
@@ -950,7 +981,9 @@ static void init_tu_to_modules(void)
  *
  * A type ID is a constant, recursively-constructed, dynamically-allocated
  * string describing a given DWARF DIE in such a way that any DWARF file
- * containing the same type will have the same type ID.
+ * containing the same type will have the same type ID.  (It even works for
+ * variables!  Variables of the same name and referring to the same type have
+ * the same ID...)
  *
  * Optionally, call a callback with the computed ID once we know it (this is a
  * recursive process, so the callback can be called multiple times as the ID is
@@ -1227,7 +1260,7 @@ static void process_file(const char *file_name,
 			tu_init(module_name, file_name, tu_die, data);
 
 		process_tu_func(module_name, file_name, tu_die, &die,
-				dwarf_process, tu_init, tu_done, data);
+				dwarf_process, data);
 
 		if (tu_done != NULL)
 			tu_done(module_name, file_name, tu_die, data);
@@ -1251,39 +1284,33 @@ static void process_file(const char *file_name,
  */
 static void process_tu_func(const char *module_name,
 			    const char *file_name,
-			    Dwarf_Die *tu_die,
+			    Dwarf_Die *parent_die,
 			    Dwarf_Die *die,
 			    void (*dwarf_process)(const char *module_name,
 						  const char *file_name,
 						  Dwarf_Die *die,
 						  Dwarf_Die *parent_die,
 						  void *data),
-			    void (*tu_init)(const char *module_name,
-					    const char *file_name,
-					    Dwarf_Die *tu_die,
-					    void *data),
-			    void (*tu_done)(const char *module_name,
-					    const char *file_name,
-					    Dwarf_Die *tu_die,
-					    void *data),
 			    void *data)
 {
 	const char *err;
 	int sib_ret;
 
 	/*
-	 * We are only interested in definitions for which we can
-	 * (eventually) emit CTF: call the processing function for all
-	 * such.  Recurse into subprograms to catch type declarations there as
-	 * well, since there may be definitions of aggregates referred to
-	 * outside this function only opaquely.
+	 * We are only interested in definitions for which we can (eventually)
+	 * emit CTF: call the processing function for all such.  Recurse into
+	 * subprograms to catch type declarations there as well, since there may
+	 * be definitions of aggregates referred to outside this function only
+	 * opaquely.
 	 */
 	do {
 		if ((dwarf_tag(die) <= assembly_len) &&
-		    (assembly_tab[dwarf_tag(die)] != NULL)) {
+		    (assembly_filter_tab[dwarf_tag(die)] == NULL ||
+		     assembly_filter_tab[dwarf_tag(die)](die, parent_die)) &&
+		    (assembly_tab[dwarf_tag(die)] != NULL))
 			dwarf_process(module_name, file_name, die,
-				      tu_die, data);
-		}
+				      parent_die, data);
+
 		if ((dwarf_tag(die) == DW_TAG_subprogram) ||
 		    (dwarf_tag(die) == DW_TAG_lexical_block)) {
 			Dwarf_Die subroutine_die;
@@ -1297,9 +1324,8 @@ static void process_tu_func(const char *module_name,
 			default: /* Child DIEs exist.  */
 				break;
 			}
-			process_tu_func(module_name, file_name, tu_die,
-					&subroutine_die, dwarf_process, tu_init,
-					tu_done, data);
+			process_tu_func(module_name, file_name, die,
+					&subroutine_die, dwarf_process, data);
 		}
 	} while ((sib_ret = dwarf_siblingof(die, die)) == 0);
 
@@ -1574,7 +1600,10 @@ static void detect_duplicates_alias_fixup(const char *module_name,
  * if necessary, and stashing them in the appropriate hashes.  Return the
  * ctf_file_t and ctf_id_t of this type.
  *
- * Indirectly recursively called for types depending on other types.
+ * Indirectly recursively called for types depending on other types, and for
+ * the types of variables (which for the sake of argument we call 'types' here
+ * too, since we treat them exactly like types, and dealing with types is our
+ * most important function.)
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
@@ -1594,7 +1623,8 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	 */
 	ctf_full_id_t *ctf_id;
 	if ((ctf_id = g_hash_table_lookup(id_to_type, id)) != NULL) {
-		dw_ctf_trace("    %p: found in module %s, file %s\n", &id,
+		dw_ctf_trace("    %p: %p:%i found in module %s, file %s\n", &id,
+			     ctf_id->ctf_file, (int) ctf_id->ctf_id,
 			     ctf_id->module_name, ctf_id->file_name);
 		free(id);
 		return ctf_id;
@@ -1670,7 +1700,6 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 		strcpy(ctf_id->module_name, module_name);
 		strcpy(ctf_id->file_name, file_name);
 #endif
-
 		g_hash_table_replace(id_to_type, id, ctf_id);
 
 		dw_ctf_trace("    %lx: %s: new type added, CTF ID %p:%i\n",
@@ -1745,10 +1774,11 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 		snprintf(locerrstr, sizeof (locerrstr), "%s:%i:%s",
 			 decl_file_name, decl_line_num, id_name);
 
-		dw_ctf_trace("Working over %s:%s:%s:%lx with CTF file %p\n",
+		dw_ctf_trace("Working over %s:%s:%s:%lx:%x with CTF file %p\n",
 			     module_name, file_name,
 			     dwarf_diename(die)==NULL?"NULL":dwarf_diename(die),
-			     (unsigned long) dwarf_dieoffset(die), ctf);
+			     (unsigned long) dwarf_dieoffset(die),
+			     dwarf_tag(die), ctf);
 
 		/*
 		 * Only process a given node, or its children, if we know how to
@@ -1773,6 +1803,9 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 							   locerrstr,
 							   top_level_type,
 							   skip);
+		dw_ctf_trace("%s: out of assembly function for tag %lx with "
+			     "type ID %li\n", locerrstr,
+			     (unsigned long) dwarf_tag(die), this_ctf_id);
 
 		if (this_ctf_id < 0) {
 			if ((this_ctf_id == CTF_NO_ERROR_REPORTED) &&
@@ -1813,7 +1846,8 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 			}
 
 			dw_ctf_trace("    recurse_ctf(): immediate addition of "
-				     "%s in module %s, file %s\n", id,
+				     "%s, CTF ID %p:%li in module %s, file %s\n",
+				     id, full_ctf_id.ctf_file, full_ctf_id.ctf_id,
 				     module_name, file_name);
 			*ctf_id = full_ctf_id;
 
@@ -1910,10 +1944,11 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 
 	dwarf_diecu(type_die, &cu_die, NULL, NULL);
 
-	dw_ctf_trace("    %s: Looking up dependent type for type %s "
-		     "at module %s, file %s named %s\n", locerrstr,
-		     dwarf_diename(die), module_name, file_name,
-		     dwarf_diename(type_die));
+	dw_ctf_trace("    %s: Looking up dependent type at offset %lx "
+		     "for type %s at module %s, file %s\n", locerrstr,
+		     (unsigned long) dwarf_dieoffset(type_die),
+		     dwarf_diename(die) ? dwarf_diename(die) : "NULL",
+		     module_name, file_name);
 
 	type_ref = construct_ctf_id(module_name, file_name,
 				    type_die, &cu_die);
@@ -1965,6 +2000,59 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 			return CTF_ERROR_REPORTED;				\
 		}								\
 	} while (0)
+
+/*
+ * A CTF assembly filter function which excludes all types not at the global
+ * scope (i.e. whose immediate parent is not a CU DIE).
+ */
+static int filter_ctf_file_scope(Dwarf_Die *die __unused__, Dwarf_Die *parent_die)
+{
+	return (dwarf_tag(parent_die) == DW_TAG_compile_unit);
+}
+
+/*
+ * A CTF assembly filter function which excludes all names not at the global
+ * scope, all static symbols, and all names whose names are unlikely to be
+ * interesting.  (DTrace userspace contains a similar list, but the two lists
+ * need not be in sync.)
+ */
+static int filter_ctf_uninteresting(Dwarf_Die *die,
+				    Dwarf_Die *parent_die)
+{
+	const char *sym_name = dwarf_diename(die);
+
+	/*
+	 * 'Variables' with no name are not interesting.
+	 */
+	if (sym_name == NULL)
+		return 0;
+
+#define strstarts(var, x) (strncmp(var, x, strlen (x)) == 0)
+	return ((dwarf_tag(parent_die) == DW_TAG_compile_unit) &&
+		(dwarf_hasattr(die, DW_AT_external)) &&
+		!((strcmp(sym_name, "__per_cpu_start") == 0) ||
+		  (strcmp(sym_name, "__per_cpu_end") == 0) ||
+		  (strstarts(sym_name, "__crc_")) ||
+		  (strstarts(sym_name, "__ksymtab_")) ||
+		  (strstarts(sym_name, "__kcrctab_")) ||
+		  (strstarts(sym_name, "__kstrtab_")) ||
+		  (strstarts(sym_name, "__param_")) ||
+		  (strstarts(sym_name, "__syscall_meta__")) ||
+		  (strstarts(sym_name, "__p_syscall_meta__")) ||
+		  (strstarts(sym_name, "__event_")) ||
+		  (strstarts(sym_name, "event_")) ||
+		  (strstarts(sym_name, "ftrace_event_")) ||
+		  (strstarts(sym_name, "types__")) ||
+		  (strstarts(sym_name, "args__")) ||
+		  (strstarts(sym_name, "__tracepoint_")) ||
+		  (strstarts(sym_name, "__tpstrtab_")) ||
+		  (strstarts(sym_name, "__tpstrtab__")) ||
+		  (strstarts(sym_name, "__initcall_")) ||
+		  (strstarts(sym_name, "__setup_")) ||
+		  (strstarts(sym_name, "__pci_fixup_")) ||
+		  (strstr(sym_name, ".") != NULL)));
+#undef strstarts
+}
 
 /*
  * Assemble base types.
@@ -2354,6 +2442,11 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 		free(structized_name);
 
 		if (existing >= 0) {
+			dw_ctf_trace("%s: already exists (with ID %li) with "
+				     "%li members versus current %li members\n",
+				     locerrstr, existing, count_ctf_members(ctf, existing),
+				     count_dwarf_members(die));
+
 			if (count_ctf_members(ctf, existing) <
 			    count_dwarf_members(die))
 				return existing;
@@ -2363,6 +2456,7 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 		}
 	}
 
+	dw_ctf_trace("%s: adding structure %s\n", locerrstr, name);
 	if (is_union)
 		ctf_add_sou = ctf_add_union;
 	else
@@ -2548,21 +2642,21 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		 * from this point, so we can just return the parent CTF ID, the
 		 * ID of the containing structure.
 		 */
-		if (ctf_errno(ctf) == ECTF_DUPMEMBER)
+		if (ctf_errno(ctf) == ECTF_DUPLICATE)
 			return parent_ctf_id;
 
 		if (ctf_errno(ctf) == ECTF_BADID) {
 #ifdef DEBUG
-			fprintf(stderr, "%s: Internal error: bad ID %s:%s:%i "
+			fprintf(stderr, "%s: Internal error: bad ID %s:%s:%p:%i "
 				"on member addition to ctf_file %p.\n",
 				locerrstr, new_type->module_name,
-				new_type->file_name, (int) new_type->ctf_id,
-				new_type->ctf_file);
+				new_type->file_name, new_type->ctf_file,
+				(int) new_type->ctf_id, ctf);
 #else
-			fprintf(stderr, "%s: Internal error: bad ID %i on "
+			fprintf(stderr, "%s: Internal error: bad ID %p:%i on "
 				"member addition to ctf_file %p.\n",
-				locerrstr, (int) new_type->ctf_id,
-				new_type->ctf_file);
+				locerrstr, new_type->ctf_file,
+				(int) new_type->ctf_id, ctf);
 #endif
 			return CTF_ERROR_REPORTED;
 		}
@@ -2574,6 +2668,56 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	}
 
 	return parent_ctf_id;
+}
+
+/*
+ * Assemble a variable.
+ */
+static ctf_id_t assemble_ctf_variable(const char *module_name,
+				      const char *file_name,
+				      Dwarf_Die *die,
+				      Dwarf_Die *parent_die,
+				      ctf_file_t *ctf,
+				      ctf_id_t parent_ctf_id,
+				      const char *locerrstr,
+				      int top_level_type,
+				      enum skip_type *skip)
+{
+	const char *name = dwarf_diename(die);
+	ctf_id_t type_ref;
+	int err;
+
+	CTF_DW_ENFORCE(name);
+
+	if ((type_ref = lookup_ctf_type(module_name, file_name, die, ctf,
+					locerrstr)) < 0) {
+		*skip = SKIP_ABORT;
+		return CTF_ERROR_REPORTED;
+	}
+
+	/*
+	 * This isn't a type: full DWARF child recursion and type-id addition is
+	 * not called for.
+	 */
+	*skip = SKIP_SKIP;
+
+	err = ctf_add_variable(ctf, name, type_ref);
+
+	if (err == 0)
+		dw_ctf_trace("%p: Added variable %s, type %i\n", ctf, name,
+			     (int)type_ref);
+
+	/*
+	 * Variable references to opaque versus non-opaque structures could only
+	 * get deduplicated with yet another deduplication pass.  This seems
+	 * pointlessly expensive when nothing can refer to them: just skip
+	 * duplicates instead.
+	 */
+	if ((err < 0) && (ctf_errno(ctf) == ECTF_DUPLICATE))
+		return 0;
+
+	return err;
+
 }
 
 /* Writeout.  */
