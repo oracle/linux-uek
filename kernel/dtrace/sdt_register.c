@@ -31,8 +31,8 @@ void sdt_probe_disable(sdt_instr_t *addr)
 }
 EXPORT_SYMBOL(sdt_probe_disable);
 
-static int sdt_probe_resolve(struct module *mp, char *name, char *func,
-			     uintptr_t offset, uintptr_t base, void *nops)
+static int sdt_probe_add(struct module *mp, char *name, char *func,
+			 uintptr_t addr, void *nops)
 {
 	sdt_probedesc_t *sdp;
 	uint8_t *instr;
@@ -51,8 +51,8 @@ static int sdt_probe_resolve(struct module *mp, char *name, char *func,
 		return 1;
 	}
 
-	/* convert relative instr to absolute */
-	instr = (uint8_t *)((uintptr_t)_text + base + offset - 1);
+	/* adjust relocation address to beginning of call instruction */
+	instr = (uint8_t *)(addr - 1);
 
 	/* TBD: use a kernel list? */
 	sdp->sdpd_offset = (uintptr_t)instr;
@@ -97,9 +97,8 @@ void dtrace_register_builtins(void)
 	for (cnt = 0; cnt < dtrace_sdt_nprobes; cnt++) {
 		char	*func = pi->name + pi->name_len + 1;
 
-		if (sdt_probe_resolve(dtrace_kmod, pi->name, func,
-				      pi->offset, pi->base, nops))
-			pr_warning("%s: cannot resolve %s\n",
+		if (sdt_probe_add(dtrace_kmod, pi->name, func, pi->addr, nops))
+			pr_warning("%s: failed to add SDT probe %s\n",
 				   __func__, pi->name);
 
 		nextpi = (void *)pi + sizeof(dtrace_sdt_probeinfo_t)
