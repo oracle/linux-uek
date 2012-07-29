@@ -1795,6 +1795,8 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	trace_sched_switch(prev, next);
 	sched_info_switch(prev, next);
 	perf_event_task_sched_out(prev, next);
+	DTRACE_SCHED2(off__cpu, struct task_struct *, next,
+				struct task_struct *, next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
@@ -1841,6 +1843,7 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	finish_lock_switch(rq, prev);
 	finish_arch_post_lock_switch();
 
+	DTRACE_SCHED(on__cpu);
 	fire_sched_in_preempt_notifiers(current);
 	if (mm)
 		mmdrop(mm);
