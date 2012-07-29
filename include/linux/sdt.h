@@ -129,8 +129,7 @@ extern void sdt_probe_enable(sdt_instr_t *);
 extern void sdt_probe_disable(sdt_instr_t *);
 
 typedef struct dtrace_sdt_probeinfo {
-	unsigned long offset;
-	unsigned long base;
+	unsigned long addr;
 	unsigned long name_len;
 	unsigned long func_len;
 	char name[0];
