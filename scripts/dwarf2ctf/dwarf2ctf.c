@@ -212,22 +212,56 @@ static void process_tu_func(const char *module_name,
 			    void *data);
 
 /*
- * Detect duplicate types and determine which CTF file they should be located
- * in; determine the mapping from translation unit name to module name.
+ * Scan and identify duplicates across the entire set of object files.
+ */
+static void scan_duplicates(int starting_argv, char *argv[]);
+
+/*
+ * Recursively detect duplicate types and types referenced by them, and
+ * determine which CTF file they should be located in, and request a
+ * detect_duplicates_alias_fixup() pass if any structures are shared.
+ * Determine the mapping from translation unit name to module name.
  */
 static void detect_duplicates(const char *module_name, const char *file_name,
 			      Dwarf_Die *die, Dwarf_Die *parent_die,
 			      void *data);
 
 /*
+ * Mark any aggregates contained within a particular type DIE as seen.  This is
+ * needed since even nameless aggregates contained within other aggregates can
+ * be used as the type of members of the outer aggregate (though they cannot
+ * possibly be found in a module different from that of their containing
+ * aggregate, any more than a structure member can).
+ */
+static void mark_seen_contained(Dwarf_Die *die, const char *module_name);
+
+/*
  * Second duplication detection pass, checking for opaque/nonopaque structure
- * alias sharing.
+ * aliasing, marking all aliases as shared, and requesting a new
+ * detect_duplicates() pass if any was found.
  */
 static void detect_duplicates_alias_fixup(const char *module_name,
 					  const char *file_name,
 					  Dwarf_Die *die,
 					  Dwarf_Die *parent_die,
 					  void *data);
+/*
+ * Determine if some type (whose ultimate base type is an non-opaque structure,
+ * alias, or enum) has an opaque equivalent which is shared, and mark it and
+ * all its bases as shared too if so.
+ *
+ * A type_id() callback.
+ */
+static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
+						   const char *id, void *data);
+
+/*
+ * Determine if a type is a named struct, union, or enum.
+ *
+ * A type_id() callback.
+ */
+static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
+				       void *data);
 
 /*
  * Set up state for detect_duplicates().  A tu_init() callback.
@@ -248,15 +282,27 @@ static void detect_duplicates_done(const char *module_name,
 /*
  * Mark a type (optionally, with an already-known ID) as duplicated and located
  * in the shared CTF table.
+ *
+ * A type_id() callback (though also called directly).
  */
-static void mark_duplicate(Dwarf_Die *die, const char *id,
-			   void *data);
+static void mark_shared(Dwarf_Die *die, const char *id,
+			void *data);
 
 /*
- * The structure used as the data argument for detect_duplicates().
+ * The structure used as the data argument for detect_duplicates() and
+ * detect_duplicates_alias_fixup().
+ *
+ * structs_seen tracks the IDs of structures marked as duplicates within a given
+ * translation unit, in order that recursion terminates if two such structures
+ * have pointers to each other.
+ *
+ * repeat_detection is set by each phase if it considers that another round of
+ * alias fixup detection is needed.
  */
 struct detect_duplicates_state {
+	const char *module_name;
 	GHashTable *structs_seen;
+	int repeat_detection;
 };
 
 /*
@@ -630,53 +676,7 @@ static void run(int starting_argv, char *argv[])
 	if (builtin_modules != NULL)
 		init_ctf_table("dtrace_ctf");
 
-	/*
-	 * First, determine which types are referenced by more than one
-	 * translation unit, and construct the mapping from translation unit to
-	 * non-builtin module name.
-	 *
-	 * The first pass detects duplicated types, without considering
-	 * opaque/transparent structure/union aliasing.
-	 *
-	 * We must do this even when deduplication is disabled, because we need
-	 * the TU->module-name mapping, even if in this case it is trivial.
-	 */
-	dw_ctf_trace("Duplicate elimination.\n");
-	for (name = &argv[starting_argv]; *name; name++) {
-		struct detect_duplicates_state state;
-
-		process_file(*name, detect_duplicates, detect_duplicates_init,
-			     detect_duplicates_done, &state);
-	}
-
-	if (builtin_modules != NULL) {
-		/*
-		 * The second pass recognizes that opaque structures must be
-		 * shared if the transparent equivalents are, and vice versa.
-		 */
-		dw_ctf_trace("Duplicate elimination, pass 2.\n");
-		for (name = &argv[starting_argv]; *name; name++) {
-			struct detect_duplicates_state state;
-
-			process_file(*name, detect_duplicates_alias_fixup,
-				     detect_duplicates_init,
-				     detect_duplicates_done, &state);
-		}
-
-		/*
-		 * The third pass handles shared structures which reference
-		 * types whose base type is a structure marked shared in pass 2:
-		 * those intermediate types are not marked shared yet.
-		 */
-		dw_ctf_trace("Duplicate elimination, pass 3.\n");
-		for (name = &argv[starting_argv]; *name; name++) {
-			struct detect_duplicates_state state;
-
-			process_file(*name, detect_duplicates,
-				     detect_duplicates_init,
-				     detect_duplicates_done, &state);
-		}
-	}
+	scan_duplicates(starting_argv, argv);
 
 	/*
 	 * Now construct CTF out of the types.
@@ -1386,6 +1386,63 @@ static void process_tu_func(const char *module_name,
 	exit(1);
 }
 
+/* Duplicate detection. */
+
+/*
+ * Scan and identify duplicates across the entire set of object files.
+ */
+static void scan_duplicates(int starting_argv, char *argv[])
+{
+	char **name;
+
+	/*
+	 * First, determine which types are referenced by more than one
+	 * translation unit, and construct the mapping from translation unit to
+	 * non-builtin module name.
+	 *
+	 * The first pass detects duplicated types in need of sharing, without
+	 * considering opaque/transparent structure/union aliasing.  It requests
+	 * an alias detection pass if any structures, or typedefs to them, are
+	 * newly marked as shared.
+	 *
+	 * We must do this even when deduplication is disabled, because we need
+	 * the TU->module-name mapping, even if in this case it is trivial.
+	 */
+
+	struct detect_duplicates_state state;
+
+	dw_ctf_trace("Duplicate detection: primary pass.\n");
+
+	state.repeat_detection = 0;
+	for (name = &argv[starting_argv]; *name; name++)
+		process_file(*name, detect_duplicates,
+			     detect_duplicates_init,
+			     detect_duplicates_done, &state);
+
+	if ((!state.repeat_detection) || (builtin_modules == NULL))
+		return;
+
+	do {
+		/*
+		 * The second pass recognizes that opaque structures must be
+		 * shared if the transparent equivalents are, and vice versa,
+		 * and re-traces all transparent types that need sharing.
+		 *
+		 * It requests another alias detection pass if any non-opaque
+		 * structures are newly marked as shared.
+		 */
+		dw_ctf_trace("Duplicate detection: alias fixup pass.\n");
+
+		state.repeat_detection = 0;
+
+		for (name = &argv[starting_argv]; *name; name++)
+			process_file(*name, detect_duplicates_alias_fixup,
+				     detect_duplicates_init,
+				     detect_duplicates_done, &state);
+	} while (state.repeat_detection);
+	dw_ctf_trace("Duplicate detection: complete.\n");
+}
+
 /*
  * Set up state for detect_duplicates().  A tu_init() callback.
  */
@@ -1396,6 +1453,7 @@ static void detect_duplicates_init(const char *module_name,
 {
 	struct detect_duplicates_state *state = data;
 
+	state->module_name = module_name;
 	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
 						    free, free);
 }
@@ -1465,8 +1523,10 @@ static void detect_duplicates(const char *module_name,
 
 	if (existing_type_module != NULL) {
 		if ((strcmp(existing_type_module, module_name) != 0) &&
-		    (builtin_modules != NULL))
-			mark_duplicate(die, NULL, data);
+		    (builtin_modules != NULL)) {
+			mark_shared(die, NULL, data);
+			mark_seen_contained(die, "dtrace_ctf");
+		}
 
 		/*
 		 * A duplicated type, but in the same module, or deduplication
@@ -1483,15 +1543,81 @@ static void detect_duplicates(const char *module_name,
 	 * Record that we have seen this type in this module.
 	 */
 
+	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
 	g_hash_table_replace(id_to_module, id, xstrdup(module_name));
+	mark_seen_contained(die, module_name);
+}
+
+/*
+ * Mark any aggregates contained within a particular type DIE as seen.  This is
+ * needed since even nameless aggregates contained within other aggregates can
+ * be used as the type of members of the outer aggregate (though they cannot
+ * possibly be found in a module different from that of their containing
+ * aggregate, any more than a structure member can).
+ */
+static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
+{
+	const char *err;
+	Dwarf_Die child;
+
+	if ((dwarf_tag(die) != DW_TAG_structure_type) &&
+	    (dwarf_tag(die) != DW_TAG_union_type))
+		return;
+
+	switch (dwarf_child(die, &child)) {
+	case -1:
+		err = "fetch first child of aggregate";
+		goto fail;
+	case 1: /* No DIEs at all in this aggregate */
+		return;
+	default: /* Child DIEs exist.  */
+		break;
+	}
+
+	/*
+	 * We are only interested in children of type DW_TAG_structure_type,
+	 * DW_TAG_union_type, or DW_TAG_enumeration_type (and only the former
+	 * two require further recursion, since only they can have members).
+	 */
+	int sib_ret;
+
+	do
+		switch (dwarf_tag(&child)) {
+		case DW_TAG_structure_type:
+		case DW_TAG_union_type:
+			mark_seen_contained(&child, module_name);
+			/* fall through */
+		case DW_TAG_enumeration_type: {
+			char *id = type_id(&child, NULL, NULL);
+
+			dw_ctf_trace("Marking %s as seen in %s\n", id,
+				     module_name);
+			g_hash_table_replace(id_to_module, id,
+					     xstrdup(module_name));
+		}
+		}
+	while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
+
+	if (sib_ret == -1) {
+		err = "iterate over members";
+		goto fail;
+	}
+
+	return;
+
+ fail:
+	fprintf(stderr, "Cannot %s while marking aggregates as seen: %s\n",
+		err, dwfl_errmsg(dwfl_errno()));
+	exit(1);
 }
 
 /*
  * Mark a type as duplicated and located in the shared CTF table.  Recursive,
  * via the type_id() callback mechanism.
+ *
+ * A type_id() callback (though also called directly).
  */
-static void mark_duplicate(Dwarf_Die *die, const char *id,
-			   void *data)
+static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 {
 	struct detect_duplicates_state *state = data;
 	const char *existing_module;
@@ -1501,19 +1627,36 @@ static void mark_duplicate(Dwarf_Die *die, const char *id,
 	 * throwing the result away.
 	 */
 	if (id == NULL) {
-		free(type_id(die, mark_duplicate, state));
+		free(type_id(die, mark_shared, state));
 		return;
 	}
 
 	existing_module = g_hash_table_lookup(id_to_module, id);
 
 	if ((existing_module == NULL) ||
-	    (strcmp(existing_module, "dtrace_ctf") != 0))
+	    (strcmp(existing_module, "dtrace_ctf") != 0)) {
+
+		dw_ctf_trace("Marking %s as duplicate\n", id);
 		g_hash_table_replace(id_to_module, xstrdup(id),
 				     xstrdup("dtrace_ctf"));
 
+		/*
+		 * Newly-marked structures or unions must trigger a new
+		 * duplicate detection pass (even if they are opaque).
+		 */
+
+		if (((dwarf_tag(die) == DW_TAG_structure_type) ||
+		     (dwarf_tag(die) == DW_TAG_union_type)) &&
+		    (!state->repeat_detection)) {
+			dw_ctf_trace("Requesting another duplicate detection "
+				     "pass.\n");
+			state->repeat_detection = 1;
+		}
+	}
+
 	/*
 	 * If this is a structure or union, mark its members as duplicates too.
+	 *
 	 * Do this even if we've seen this structure before, as this instance of
 	 * the structure may have more members than the last we saw.  However,
 	 * if we have seen this structure before *in this translation unit*,
@@ -1541,9 +1684,9 @@ static void mark_duplicate(Dwarf_Die *die, const char *id,
 		 */
 		int sib_ret;
 
-		do {
-			free(type_id(&child, mark_duplicate, state));
-		} while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
+		do
+			free(type_id(&child, mark_shared, state));
+		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
 			goto fail;
@@ -1563,16 +1706,13 @@ static void mark_duplicate(Dwarf_Die *die, const char *id,
  * non-opaque instance, because no users of the non-opaque instance appeared in
  * the DWARF after the opaque copy was detected as a duplicate.
  *
- * (The inverse case of a non-opaque structure detected as a duplicate after the
- * last usage of its opaque alias will be caught by this trap too.)
+ * (The inverse case of a non-opaque structure/union/enum detected as a
+ * duplicate after the last usage of its opaque alias will be caught by this
+ * trap too.)
  *
  * This detects such cases, and marks their members as duplicates too.
- *
- * Warning: this routine directly computes type_id()s without access to the
- * corresponding type, and as such is dependent on the format of type_id()s.
- * (This is why it must run over non-opaque structures: given a non-opaque
- * structure, its opaque alias is easy to compute, but the converse is not
- * true.)
+ * (Structures, unions, and enums with no name are skipped, because they cannot
+ * have opaque equivalents, so must have been marked in the primary pass.)
  */
 static void detect_duplicates_alias_fixup(const char *module_name,
 					  const char *file_name,
@@ -1580,35 +1720,95 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 					  Dwarf_Die *parent_die,
 					  void *data)
 {
-	int transparent_shared = 0;
-	int opaque_shared = 0;
+	int is_sou = 0;
 
 	/*
-	 * We only do anything for structures and unions that are not opaque.
-	 * For these, we compute the corresponding opaque variant and check to
-	 * see if either is marked shared, then mark both as shared if either
-	 * is.
+	 * We only do anything for structures and unions that are not opaque,
+	 * and that have names.
 	 */
 
-	if ((dwarf_tag(die) != DW_TAG_structure_type) &&
-	    (dwarf_tag(die) != DW_TAG_union_type))
-		return;
+	char *id = type_id(die, is_named_struct_union_enum, &is_sou);
 
-	char *id = type_id(die, NULL, NULL);
-
-	if (strncmp(id, "////", strlen("////")) == 0) {
+	if ((strncmp(id, "////", strlen("////")) == 0) || !is_sou) {
 		free(id);
 		return;
 	}
+	free(id);
 
-	char *opaque_id = xstrdup("////");
+	free(type_id(die, detect_duplicates_alias_fixup_internal, data));
+}
 
-	if (dwarf_tag(die) == DW_TAG_structure_type)
-		opaque_id = str_append(opaque_id, "struct ");
-	else
-		opaque_id = str_append(opaque_id, "union ");
+/*
+ * Determine if a type is a named struct, union, or enum.
+ *
+ * A type_id() callback.
+ */
+static void is_named_struct_union_enum(Dwarf_Die *die, const char *unused,
+				       void *data)
+{
+	int *is_sou = data;
 
-	opaque_id = str_append(opaque_id, dwarf_diename(die));
+	if (((dwarf_tag(die) == DW_TAG_structure_type) ||
+	     (dwarf_tag(die) == DW_TAG_union_type) ||
+	     (dwarf_tag(die) == DW_TAG_enumeration_type)) &&
+	    (dwarf_hasattr(die, DW_AT_name)))
+		*is_sou = 1;
+}
+
+/*
+ * Determine if some type (whose ultimate base type is an non-opaque structure,
+ * alias, or enum) has an opaque equivalent which is shared, and mark it and
+ * all its bases as shared too if so.
+ *
+ * A type_id() callback.
+ *
+ * Warning: this routine directly computes type_id()s without access to the
+ * corresponding type DIE, and as such is dependent on the format of type_id()s.
+ * (This is why it must run over non-opaque structures: given a non-opaque
+ * structure, its opaque alias is easy to compute, but the converse is not
+ * true.)
+ */
+static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
+						   const char *id, void *data)
+{
+	int transparent_shared = 0;
+	int opaque_shared = 0;
+
+	char *opaque_id;
+	const char *line_num;
+	const char *type_name;
+
+	/*
+	 * We don't care about array index types, which will never be structures
+	 * in C.
+	 */
+	if (id[0] == '[')
+		return;
+
+	/*
+	 * Compute the opaque variant corresponding to this transparent type,
+	 * and check to see if either is marked shared, then mark both as shared
+	 * if either is.  (Unfortunately this means a double recursion in such
+	 * cases, but this is unavoidable.)
+	 */
+
+	line_num = strstr(id, "//");
+	if (!line_num) {
+		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
+			id);
+		exit(1);
+	}
+
+	type_name = strstr(line_num + 1, "//");
+	if (!type_name) {
+		fprintf(stderr, "Internal error: type ID %s is corrupt.\n",
+			id);
+		exit(1);
+	}
+	type_name += 2;
+
+	opaque_id = xstrdup("////");
+	opaque_id = str_append(opaque_id, type_name);
 
 	const char *transparent_module = g_hash_table_lookup(id_to_module,
 							     id);
@@ -1621,19 +1821,29 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 	opaque_shared = ((opaque_module != NULL) &&
 			 (strcmp(opaque_module, "dtrace_ctf") == 0));
 
+	/*
+	 * Transparent type needs sharing.
+	 */
 	if (opaque_shared && !transparent_shared)
-		mark_duplicate(die, NULL, data);
+		mark_shared(die, NULL, data);
 
 	/*
-	 * We don't have the opaque type's DIE, so we can't use
-	 * mark_duplicate().  Instead, do it by hand: this is simple, as member
-	 * recursion is guaranteed not to be required for an opaque type.
+	 * We don't have the opaque type's DIE, so we can't use mark_shared():
+	 * this is also good since this triggers another duplicate detection
+	 * pass, and we don't want to trigger another pass merely because of a
+	 * nonshared opaque type (since they don't have members that may have
+	 * structure or union type themselves and thus force more unshared
+	 * types to become shared).
+	 *
+	 * Instead, do it by hand: this is simple, as member recursion is
+	 * guaranteed not to be required for an opaque type.
 	 */
-	if (transparent_shared && !opaque_shared)
+	if (transparent_shared && !opaque_shared) {
+		dw_ctf_trace("Marking %s as duplicate\n", opaque_id);
 		g_hash_table_replace(id_to_module, xstrdup(opaque_id),
 				     xstrdup("dtrace_ctf"));
+	}
 
-	free(id);
 	free(opaque_id);
 }
 
@@ -1688,6 +1898,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 			"type at DIE offset %lx with ID %s was not already "
 			"noted by detect_duplicates().\n", file_name,
 			module_name, (unsigned long) dwarf_dieoffset(die), id);
+		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
 	}
 
@@ -1697,6 +1908,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 			"type at DIE offset %lx with ID %s is in a different "
 			"non-shared module, %s.\n", file_name, module_name,
 			(unsigned long) dwarf_dieoffset(die), id, ctf_module);
+		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
 	}
 
@@ -2018,6 +2230,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 		fprintf(stderr, "%s: Internal error: lookup found in different "
 			"file.\n", locerrstr);
 #endif
+		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
 	}
 
@@ -2026,7 +2239,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 
 /* Assembly functions.  */
 
-#define CTF_DW_ENFORCE(attribute) do { 						\
+#define CTF_DW_ENFORCE(attribute) do 						\
 		if (!dwarf_hasattr(die, (DW_AT_##attribute))) {			\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"present.\n", locerrstr, __func__,		\
@@ -2034,9 +2247,9 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 			*skip = SKIP_ABORT;					\
 			return CTF_ERROR_REPORTED;				\
 		}								\
-	} while (0)
+	while (0)
 
-#define CTF_DW_ENFORCE_NOT(attribute) do {					\
+#define CTF_DW_ENFORCE_NOT(attribute) do					\
 		if (dwarf_hasattr(die, (DW_AT_##attribute))) {			\
 			fprintf(stderr, "%s: %s: %lx: skipping type, %s attribute not "	\
 				"supported.\n", locerrstr, __func__,		\
@@ -2044,7 +2257,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 			*skip = SKIP_ABORT;					\
 			return CTF_ERROR_REPORTED;				\
 		}								\
-	} while (0)
+	while (0)
 
 /*
  * A CTF assembly filter function which excludes all types not at the global
@@ -2538,6 +2751,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 			"for member %s yields a different CTF file: %p versus "
 			"%p", locerrstr, dwarf_diename(&cu_die),
 			dwarf_diename(die), ctf, new_type->ctf_file);
+		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
 	}
 
@@ -3062,10 +3276,10 @@ static long count_dwarf_members(Dwarf_Die *d)
 	int sib_ret;
 	long count = 0;
 
-	do {
+	do
 		if (dwarf_tag(&die) == DW_TAG_member)
 			count++;
-	} while ((sib_ret = dwarf_siblingof(&die, &die)) == 0);
+	while ((sib_ret = dwarf_siblingof(&die, &die)) == 0);
 
 	if (sib_ret == -1) {
 		err = "count members";
