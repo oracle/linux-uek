@@ -2943,9 +2943,21 @@ ssize_t btrfs_listxattr(struct dentry *dentry, char *buffer, size_t size);
 /* super.c */
 int btrfs_parse_options(struct btrfs_root *root, char *options);
 int btrfs_sync_fs(struct super_block *sb, int wait);
+
+#ifdef CONFIG_PRINTK
+__printf(2, 3)
 void btrfs_printk(struct btrfs_fs_info *fs_info, const char *fmt, ...);
+#else
+static inline __printf(2, 3)
+void btrfs_printk(struct btrfs_fs_info *fs_info, const char *fmt, ...)
+{
+}
+#endif
+
+__printf(5, 6)
 void __btrfs_std_error(struct btrfs_fs_info *fs_info, const char *function,
 		     unsigned int line, int errno, const char *fmt, ...);
+
 
 void __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
 			       struct btrfs_root *root, const char *function,
@@ -2985,6 +2997,17 @@ do {								\
 do {								\
 	__btrfs_std_error((fs_info), __func__, __LINE__,	\
 			  (errno), fmt, ##args);		\
+} while (0)
+
+__printf(5, 6)
+void __btrfs_panic(struct btrfs_fs_info *fs_info, const char *function,
+		   unsigned int line, int errno, const char *fmt, ...);
+
+#define btrfs_panic(fs_info, errno, fmt, args...)			\
+do {									\
+	struct btrfs_fs_info *_i = (fs_info);				\
+	__btrfs_panic(_i, __func__, __LINE__, errno, fmt, ##args);	\
+	BUG_ON(!(_i->mount_opt & BTRFS_MOUNT_PANIC_ON_FATAL_ERROR));	\
 } while (0)
 
 /* acl.c */

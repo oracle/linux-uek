@@ -1110,8 +1110,6 @@ int clean_tree_block(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 			spin_lock(&root->fs_info->delalloc_lock);
 			if (root->fs_info->dirty_metadata_bytes >= buf->len)
 				root->fs_info->dirty_metadata_bytes -= buf->len;
-			else
-				WARN_ON(1);
 			spin_unlock(&root->fs_info->delalloc_lock);
 		}
 
