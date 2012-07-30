@@ -128,7 +128,7 @@ lfn="$2"
 	     print "dtrace_sdt_probes:";
 	 }
 
-	 NF < 4 {
+	 $2 ~ /^[tT]$/ {
 	     fun = $3;
 
 	     if (fun in prdata) {
