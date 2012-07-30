@@ -188,8 +188,8 @@ module-ctfs-modular = $(addprefix .ctf/,$(notdir $*.mod.ctf))
 module-ctf-flags = $(if $(filter dtrace_ctf.ko,$(notdir $@)), \
 		   --strip-debug \
                    $(foreach builtin,$(wildcard .ctf/*.builtin.ctf), \
-                             --add-section $(patsubst %.builtin.ctf,.SUNW_ctf.%,$(notdir $(builtin)))=$(builtin)), \
-                   --add-section .SUNW_ctf=$(addprefix .ctf/,$(notdir $(basename $@)).mod.ctf))
+                             --add-section $(patsubst %.builtin.ctf,.dtrace_ctf.%,$(notdir $(builtin)))=$(builtin)), \
+                   --add-section .dtrace_ctf=$(addprefix .ctf/,$(notdir $(basename $@)).mod.ctf))
 
 # We have to put content in our dummy no-CTF files because --add-section
 # in binutils 2.20 silently fails if asked to add an empty file as a section.
