@@ -1688,7 +1688,7 @@ DEVICE_DIAG_RPRT_ATTR(num_cqovf		, 0x1A0, 2);
 DEVICE_DIAG_RPRT_ATTR(num_eqovf		, 0x1A4, 2);
 DEVICE_DIAG_RPRT_ATTR(num_baddb		, 0x1A8, 2);
 
-static DEVICE_ATTR(clear_diag, S_IWUGO, NULL, clear_diag_counters);
+static DEVICE_ATTR(clear_diag, S_IWUSR, NULL, clear_diag_counters);
 
 static struct attribute *diag_rprt_attrs[] = {
 	&dev_attr_rq_num_lle.attr,
