@@ -497,6 +497,11 @@ static void private_dwfl_free(Dwfl *dwfl);
 static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die);
 
 /*
+ * Determine the dimensions of an array subrange, or 0 if variable.
+ */
+static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die);
+
+/*
  * A string appender working on dynamic strings.
  */
 static char *str_append(char *s, const char *append)
@@ -990,6 +995,14 @@ static void init_tu_to_modules(void)
  * built up).
  *
  * An ID of NULL indicates that this DIE has no ID and need not be considered.
+ *
+ * It is probably an error for two DWARF DIEs representing top-level types to
+ * return the same ID, but for certain other DIEs (notably those representing the
+ * members of structures or unions), it is expected that they return the same
+ * ID as their type DIE.
+ *
+ * This function is the hottest hot spot in dwarf2ctf, so is somewhat
+ * aggressively optimized.
  */
 static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 						 const char *id,
@@ -998,6 +1011,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 {
 	char *id = NULL;
 	int no_type_id = 0;
+	int decorated = 1;
 	Dwarf_Die type_die;
 
 	/*
@@ -1023,31 +1037,59 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	 * Otherwise, note the location of this DIE, providing scoping
 	 * information for all types based upon this one.  Location elements are
 	 * separated by //, an element impossible in a Linux path.
+	 *
+	 * Array dimensions get none of this: they must be contained within
+	 * another DIE, so will always have a location attached via that DIE,
+	 * and get their type chased further down (so as to arrange that they
+	 * appear inside an [].)
 	 */
-	if (dwarf_tag(die) != DW_TAG_base_type)
-		id = type_id(private_dwarf_type(die, &type_die), fun, data);
+	if (dwarf_tag(die) != DW_TAG_subrange_type) {
+		if (dwarf_tag(die) != DW_TAG_base_type)
+			id = type_id(private_dwarf_type(die, &type_die), fun, data);
 
-	if (id == NULL) {
-		const char *decl_file_name = dwarf_decl_file(die);
-		int decl_line_num;
+		/*
+		 * Location information.  Here in particular we value speed over
+		 * clarity, caching the result of realpath() to minimize system
+		 * calls, and going to some length to keep the number of calls
+		 * to str_append*() down.
+		 */
+		if (id == NULL) {
+			static GHashTable *abs_file_names;
 
-		no_type_id = 1;
-		if (decl_file_name != NULL) {
-			char abspath[PATH_MAX];
-			if (realpath(decl_file_name, abspath) != NULL)
-				id = xstrdup(abspath);
-			else
-				id = xstrdup(decl_file_name);
+			if (abs_file_names == NULL)
+				abs_file_names = g_hash_table_new_full(g_str_hash,
+								       g_str_equal,
+								       free, free);
+
+			const char *decl_file_name = dwarf_decl_file(die);
+			int decl_line_num;
+			const char *fname = "";
+			char line_num[21] = "";  /* bigger than 2^64's digit count */
+
+			no_type_id = 1;
+			if (decl_file_name != NULL) {
+
+				fname = g_hash_table_lookup(abs_file_names,
+							    decl_file_name);
+
+				if (fname == NULL) {
+					char abspath[PATH_MAX] = "";
+					if (realpath(decl_file_name, abspath) == NULL)
+						strcpy(abspath, decl_file_name);
+					g_hash_table_replace(abs_file_names,
+							     xstrdup(decl_file_name),
+							     xstrdup(abspath));
+					fname = g_hash_table_lookup(abs_file_names,
+								    decl_file_name);
+				}
+			}
+
+			if (dwarf_decl_line(die, &decl_line_num) >= 0) {
+				snprintf(line_num, sizeof (line_num), "%i",
+					 decl_line_num);
+			}
+			id = str_appendn(id, fname, "//", line_num, "//", NULL);
 		}
-		id = str_append(id, "//");
-
-		if (dwarf_decl_line(die, &decl_line_num) >= 0) {
-			char line_num[21];  /* bigger than 2^64's digit count */
-			snprintf(line_num, sizeof (line_num), "%i",
-				 decl_line_num);
-			id = str_append(id, line_num);
-		}
-		id = str_append(id, "//");
 	}
 
 	/*
@@ -1055,43 +1097,46 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 	 * like the assembly_tab, simply because most cases are so small that
 	 * splitting them into separate functions would do more harm than good
 	 * to readability.
+	 *
+	 * WARNING: The spaces in the strings in this switch statement are not
+	 * just for appearance: types with spaces in their names are impossible
+	 * in C.  If you move those spaces around for appearance's sake, please
+	 * adjust detect_duplicates_alias_fixup() and
+	 * detect_duplicates_alias_fixup_internal(), which construct structure/
+	 * union type names by hand.
 	 */
 	switch (dwarf_tag(die)) {
 	case DW_TAG_base_type:
-		id = str_append(id, dwarf_diename(die));
+		id = str_appendn(id, dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_enumeration_type:
-		id = str_append(id, "enum ");
-		id = str_append(id, dwarf_diename(die));
+		id = str_appendn(id, "enum ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_structure_type:
-		id = str_append(id, "struct ");
-		id = str_append(id, dwarf_diename(die));
+		id = str_appendn(id, "struct ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_union_type:
-		id = str_append(id, "union ");
-		id = str_append(id, dwarf_diename(die));
+		id = str_appendn(id, "union ", dwarf_diename(die), " ", NULL);
+		break;
+	case DW_TAG_variable:
+		id = str_appendn(id, "var ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_typedef:
-		id = str_append(id, " typedef ");
-		id = str_append(id, dwarf_diename(die));
+		id = str_appendn(id, "typedef ", dwarf_diename(die), " ", NULL);
 		break;
 	case DW_TAG_const_type:
-		id = str_append(id, " ");
-		id = str_append(id, "const");
+		id = str_append(id, "const ");
 		break;
 	case DW_TAG_restrict_type:
-		id = str_append(id, " ");
-		id = str_append(id, "restrict");
+		id = str_append(id, "restrict ");
 		break;
 	case DW_TAG_volatile_type:
-		id = str_append(id, " ");
-		id = str_append(id, "volatile");
+		id = str_append(id, "volatile ");
 		break;
 	case DW_TAG_pointer_type:
 		if (no_type_id)
-			id = str_append(id, "void");
-		id = str_append(id, " *");
+			id = str_append(id, "void ");
+		id = str_append(id, "* ");
 		break;
 
 	case DW_TAG_array_type: {
@@ -1119,12 +1164,11 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 		if (!dimens)
 			break;
 
-		while ((sib_ret = dwarf_siblingof(&dim_die, &dim_die)) == 0) {
+		do {
 			char *sub_id = type_id(&dim_die, fun, data);
-			id = str_append(id, " ");
-			id = str_append(id, sub_id);
+			id = str_appendn(id, " ", sub_id, NULL);
 			free(sub_id);
-		}
+		} while ((sib_ret = dwarf_siblingof(&dim_die, &dim_die)) == 0);
 
 		if (sib_ret == -1) {
 			fprintf(stderr, "Corrupt DWARF: Cannot get array "
@@ -1134,32 +1178,33 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 		break;
 	}
 	case DW_TAG_subrange_type: {
-		Dwarf_Attribute nelem_attr;
-		Dwarf_Word nelems;
-
-		char elems[21];		    /* bigger than 2^64's digit count */
+		Dwarf_Word nelems = private_subrange_dimensions(die);
 
 		id = str_append(id, "[");
-		if ((dwarf_hasattr(die, DW_AT_type)) &&
-		    (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr)) != NULL) ||
-		     ((dwarf_attr(die, DW_AT_count, &nelem_attr))) != NULL)) {
+
+		if (nelems > 0)
+		{
+			char elems[22];	    /* bigger than 2^64's digit count */
 			char *sub_id = type_id(private_dwarf_type(die, &type_die),
 					       fun, data);
 
-			id = str_append(id, sub_id);
-			id = str_append(id, " ");
+			snprintf(elems, sizeof (elems), " %li", nelems);
+			id = str_appendn(id, sub_id, elems, NULL);
 			free(sub_id);
-
-			dwarf_formudata(&nelem_attr, &nelems);
-			snprintf(elems, sizeof (elems), "%li", nelems);
-			id = str_append(id, elems);
 		}
 		id = str_append(id, "]");
 		break;
 	}
+	default:
+		/*
+		 * Some tags (e.g. structure members) get the same ID as their
+		 * associated type.  We don't need to call the hook function
+		 * again for such tags.
+		 */
+		decorated = 0;
 	}
 
-	if (fun)
+	if (fun && decorated)
 		fun(die, id, data);
 
 	return id;
@@ -2226,9 +2271,6 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 					     enum skip_type *skip)
 {
 	ctf_arinfo_t arinfo;
-	Dwarf_Attribute nelem_attr;
-	Dwarf_Word nelems;
-	long flexible_array = 0;
 
 	CTF_DW_ENFORCE_NOT(bit_size);
 	CTF_DW_ENFORCE_NOT(byte_size);
@@ -2245,27 +2287,7 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 		return CTF_ERROR_REPORTED;
 	}
 
-	/*
-	 * Force number of elements to zero for a flexible array member.
-	 */
-
-	if ((!dwarf_hasattr(die, DW_AT_type)) ||
-	    (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr)) == NULL) &&
-	     ((dwarf_attr(die, DW_AT_count, &nelem_attr))) == NULL)) {
-			arinfo.ctr_nelems = 0;
-			flexible_array = 1;
-		}
-
-	/*
-	 * Since we don't support lower_bound, strides, or offset-1-based
-	 * languages, we can treat upper_bound and count identically.
-	 *
-	 * FIXME: userspace tracing probably has to support these.
-	 */
-	if (!flexible_array) {
-		dwarf_formudata(&nelem_attr, &nelems);
-		arinfo.ctr_nelems = nelems;
-	}
+	arinfo.ctr_nelems = private_subrange_dimensions(die);
 
 	/*
 	 * For each array dimension, construct an appropriate array of the
@@ -2858,6 +2880,40 @@ static Dwarf_Die *private_dwarf_type(Dwarf_Die *die, Dwarf_Die *target_die)
 }
 
 /*
+ * Determine the dimensions of an array subrange, or 0 if variable.
+ */
+static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
+{
+	int flexible_array = 0;
+	Dwarf_Attribute nelem_attr;
+	Dwarf_Word nelems;
+
+	if ((!dwarf_hasattr(die, DW_AT_type)) &&
+	    (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr)) == NULL) &&
+	     ((dwarf_attr(die, DW_AT_count, &nelem_attr))) == NULL))
+		flexible_array = 1;
+
+	if (!flexible_array)
+		switch (dwarf_whatform(&nelem_attr)) {
+		case DW_FORM_data1:
+		case DW_FORM_data2:
+		case DW_FORM_data4:
+		case DW_FORM_data8:
+		case DW_FORM_udata:
+			break;
+		default:
+			flexible_array = 1;
+		}
+
+	if (flexible_array)
+		return 0;
+
+	nelems = dwarf_formudata(&nelem_attr, &nelems);
+
+	return nelems;
+}
+
+/*
  * An error checking strdup().
  */
 static char *xstrdup(const char *s)
@@ -2877,7 +2933,6 @@ static char *xstrdup(const char *s)
  */
 static char *str_append(char *s, const char *append)
 {
-	char *d;
 	size_t s_len = 0;
 
 	if (append == NULL)
@@ -2886,20 +2941,21 @@ static char *str_append(char *s, const char *append)
 	if (s != NULL)
 		s_len = strlen(s);
 
-	d = realloc(s, s_len + strlen(append) + 1);
+	size_t append_len = strlen(append);
 
-	if (d == NULL) {
+	s = realloc(s, s_len + append_len + 1);
+
+	if (s == NULL) {
 		fprintf(stderr, "Out of memory appending a string of length "
 			"%li to a string of length %li\n", strlen(append),
 			s_len);
 		exit(1);
 	}
 
-	if (s == NULL)
-		d[0] = '\0';
+	memcpy(s + s_len, append, append_len);
+	s[s_len+append_len]='\0';
 
-	strcat(d, append);
-	return d;
+	return s;
 }
 
 /*
@@ -2909,16 +2965,41 @@ static char *str_appendn(char *s, ...)
 {
 	va_list ap;
 	const char *append;
+	size_t len, s_len = 0;
 
 	va_start(ap, s);
+	if (s)
+		s_len = strlen(s);
+	len = s_len;
 
 	append = va_arg(ap, const char *);
 	while (append != NULL) {
-		s = str_append(s, append);
+		len += strlen(append);
 		append = va_arg(ap, char *);
 	}
-
 	va_end(ap);
+
+	s = realloc(s, len + 1);
+	if (s == NULL) {
+		fprintf(stderr, "Out of memory appending a string of length "
+			"%li to a string of length %li\n", strlen(append),
+			s_len);
+		exit(1);
+	}
+
+	va_start(ap, s);
+	append = va_arg(ap, const char *);
+	while (append != NULL) {
+		size_t append_len = strlen(append);
+
+		memcpy(s + s_len, append, append_len);
+		s_len += append_len;
+
+		append = va_arg(ap, char *);
+	}
+	s[len] = '\0';
+	va_end(ap);
+
 	return s;
 }
 
