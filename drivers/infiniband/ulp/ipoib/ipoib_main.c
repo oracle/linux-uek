@@ -1805,7 +1805,7 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 	int ret;
 
 	flags = dev->flags;
-	ipoib_stop(dev);
+	dev_close(dev);
 	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags))
 		ib_unregister_event_handler(&priv->event_handler);
 	ipoib_dev_uninit(dev);
@@ -1838,10 +1838,9 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 			pr_warn("%s: failed to rereg port %d (ret = %d)\n",
 			priv->ca->name, priv->port, ret);
 	}
-	dev->flags = flags;
 	/* if the device was up bring it up again */
 	if (flags & IFF_UP) {
-		ret = ipoib_open(dev);
+		ret = dev_open(dev);
 		if (ret)
 			pr_warn("%s: failed to reopen port %d (ret = %d)\n",
 			       priv->ca->name, priv->port, ret);
