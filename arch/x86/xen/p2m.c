@@ -22,7 +22,7 @@
  *
  * P2M_PER_PAGE depends on the architecture, as a mfn is always
  * unsigned long (8 bytes on 64-bit, 4 bytes on 32), leading to
- * 512 and 1024 entries respectively. 
+ * 512 and 1024 entries respectively.
  *
  * In short, these structures contain the Machine Frame Number (MFN) of the PFN.
  *
@@ -139,11 +139,11 @@
  *      /    | ~0, ~0, ....  |
  *     |     \---------------/
  *     |
- *     p2m_missing             p2m_missing
- * /------------------\     /------------\
- * | [p2m_mid_missing]+---->| ~0, ~0, ~0 |
- * | [p2m_mid_missing]+---->| ..., ~0    |
- * \------------------/     \------------/
+ *   p2m_mid_missing           p2m_missing
+ * /-----------------\     /------------\
+ * | [p2m_missing]   +---->| ~0, ~0, ~0 |
+ * | [p2m_missing]   +---->| ..., ~0    |
+ * \-----------------/     \------------/
  *
  * where ~0 is INVALID_P2M_ENTRY. IDENTITY is (PFN | IDENTITY_BIT)
  */
@@ -194,6 +194,11 @@ RESERVE_BRK(p2m_mid_mfn, PAGE_SIZE * (MAX_DOMAIN_PAGES / (P2M_PER_PAGE * P2M_MID
  * boundary violation will require three middle nodes. */
 RESERVE_BRK(p2m_mid_identity, PAGE_SIZE * 2 * 3);
 
+/* When we populate back during bootup, the amount of pages can vary. The
+ * max we have is seen is 395979, but that does not mean it can't be more.
+ * But some machines can have 3GB I/O holes even. So lets reserve enough
+ * for 4GB of I/O and E820 holes. */
+RESERVE_BRK(p2m_populated, PMD_SIZE * 4);
 static inline unsigned p2m_top_index(unsigned long pfn)
 {
 	BUG_ON(pfn >= MAX_P2M_PFN);
@@ -388,8 +393,83 @@ void __init xen_build_dynamic_phys_to_machine(void)
 	}
 
 	m2p_override_init();
-}
 
+	/* NOTE: We cannot call memblock_reserve here for the mfn_list as there
+	 * isn't enough pieces to make it work (for one - we are still using the
+	 * Xen provided pagetable). Do it later in xen_reserve_internals.
+	 */
+}
+#ifdef CONFIG_X86_64
+#include <linux/bootmem.h>
+unsigned long __init xen_revector_p2m_tree(void)
+{
+	unsigned long va_start;
+	unsigned long va_end;
+	unsigned long pfn;
+	unsigned long *mfn_list = NULL;
+	unsigned long size;
+
+	va_start = xen_start_info->mfn_list;
+	/*We copy in increments of P2M_PER_PAGE * sizeof(unsigned long),
+	 * so make sure it is rounded up to that */
+	size = PAGE_ALIGN(xen_start_info->nr_pages * sizeof(unsigned long));
+	va_end = va_start + size;
+
+	/* If we were revectored already, don't do it again. */
+	if (va_start <= __START_KERNEL_map && va_start >= __PAGE_OFFSET)
+		return 0;
+
+	mfn_list = alloc_bootmem_align(size, PAGE_SIZE);
+	if (!mfn_list) {
+		pr_warn("Could not allocate space for a new P2M tree!\n");
+		return xen_start_info->mfn_list;
+	}
+	/* Fill it out with INVALID_P2M_ENTRY value */
+	memset(mfn_list, 0xFF, size);
+
+	for (pfn = 0; pfn < ALIGN(MAX_DOMAIN_PAGES, P2M_PER_PAGE); pfn += P2M_PER_PAGE) {
+		unsigned topidx = p2m_top_index(pfn);
+		unsigned mididx;
+		unsigned long *mid_p;
+
+		if (!p2m_top[topidx])
+			continue;
+
+		if (p2m_top[topidx] == p2m_mid_missing)
+			continue;
+
+		mididx = p2m_mid_index(pfn);
+		mid_p = p2m_top[topidx][mididx];
+		if (!mid_p)
+			continue;
+		if ((mid_p == p2m_missing) || (mid_p == p2m_identity))
+			continue;
+
+		if ((unsigned long)mid_p == INVALID_P2M_ENTRY)
+			continue;
+
+		/* The old va. Rebase it on mfn_list */
+		if (mid_p >= (unsigned long *)va_start && mid_p <= (unsigned long *)va_end) {
+			unsigned long *new;
+
+			new = &mfn_list[pfn];
+
+			copy_page(new, mid_p);
+			p2m_top[topidx][mididx] = &mfn_list[pfn];
+			p2m_top_mfn_p[topidx][mididx] = virt_to_mfn(&mfn_list[pfn]);
+
+		}
+		/* This should be the leafs allocated for identity from _brk. */
+	}
+	return (unsigned long)mfn_list;
+
+}
+#else
+unsigned long __init xen_revector_p2m_tree(void)
+{
+	return 0;
+}
+#endif
 unsigned long get_phys_to_machine(unsigned long pfn)
 {
 	unsigned topidx, mididx, idx;
@@ -423,7 +503,7 @@ static void free_p2m_page(void *p)
 	free_page((unsigned long)p);
 }
 
-/* 
+/*
  * Fully allocate the p2m structure for a given pfn.  We need to check
  * that both the top and mid levels are allocated, and make sure the
  * parallel mfn tree is kept in sync.  We may race with other cpus, so
