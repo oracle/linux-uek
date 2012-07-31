@@ -2854,7 +2854,7 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 {
 	struct mlx4_ib_qp *qp = to_mqp(ibqp);
 	void *wqe;
-	struct mlx4_wqe_ctrl_seg *ctrl;
+	struct mlx4_wqe_ctrl_seg *uninitialized_var(ctrl);
 	struct mlx4_wqe_data_seg *dseg;
 	unsigned long flags;
 	int nreq;
