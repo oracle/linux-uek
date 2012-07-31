@@ -943,7 +943,7 @@ static void __init xen_reserve_mfn(unsigned long mfn)
 		return;
 	pfn = mfn_to_pfn(mfn);
 	if (phys_to_machine_mapping_valid(pfn))
-		memblock_x86_reserve_range(PFN_PHYS(pfn), PAGE_SIZE, "XEN MFN");
+		memblock_x86_reserve_range(PFN_PHYS(pfn), PFN_PHYS(pfn) + PAGE_SIZE, "XEN MFN");
 }
 static void __init xen_reserve_internals(void)
 {
@@ -954,7 +954,7 @@ static void __init xen_reserve_internals(void)
 
 	/* xen_start_info does not exist in the M2P, hence can't use
 	 * xen_reserve_mfn. */
-	memblock_x86_reserve_range(__pa(xen_start_info), PAGE_SIZE, "XEN START INFO");
+	memblock_x86_reserve_range(__pa(xen_start_info), __pa(xen_start_info) + PAGE_SIZE, "XEN START INFO");
 
 	xen_reserve_mfn(PFN_DOWN(xen_start_info->shared_info));
 	xen_reserve_mfn(xen_start_info->store_mfn);
@@ -975,7 +975,8 @@ static void __init xen_reserve_internals(void)
 	/* We could use xen_reserve_mfn here, but would end up looping quite
 	 * a lot (and call memblock_reserve for each PAGE), so lets just use
 	 * the easy way and reserve it wholesale. */
-	memblock_x86_reserve_range(__pa(xen_start_info->mfn_list), size, "P2M ARRAY");
+	memblock_x86_reserve_range(__pa(xen_start_info->mfn_list),
+				   __pa(xen_start_info->mfn_list) + size, "P2M ARRAY");
 
 	/* The pagetables are reserved in mmu.c */
 }

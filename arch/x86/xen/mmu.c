@@ -1922,7 +1922,7 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 		check_pt_base(&pt_base, &pt_end, addr[i]);
 
 	/* Our (by three pages) smaller Xen pagetable that we are using */
-	memblock_x86_reserve_range(PFN_PHYS(pt_base), (pt_end - pt_base) * PAGE_SIZE, "XEN PAGETABLES");
+	memblock_x86_reserve_range(PFN_PHYS(pt_base), PFN_PHYS(pt_end), "XEN PAGETABLES");
 	/* Revector the xen_start_info */
 	xen_start_info = (struct start_info *)__va(__pa(xen_start_info));
 }
