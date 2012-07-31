@@ -1155,7 +1155,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 				"dimensions: %s\n", dwarf_errmsg(dwarf_errno()));
 			exit(1);
 		case 1: /* No dimensions.  */
-			id = str_append(id, "[]");
+			id = str_append(id, "[] ");
 			break;
 		default:
 			dimens = 1;
@@ -1166,7 +1166,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 
 		do {
 			char *sub_id = type_id(&dim_die, fun, data);
-			id = str_appendn(id, " ", sub_id, NULL);
+			id = str_append(id, sub_id);
 			free(sub_id);
 		} while ((sib_ret = dwarf_siblingof(&dim_die, &dim_die)) == 0);
 
@@ -1192,7 +1192,7 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 			id = str_appendn(id, sub_id, elems, NULL);
 			free(sub_id);
 		}
-		id = str_append(id, "]");
+		id = str_append(id, "] ");
 		break;
 	}
 	default:
@@ -3102,9 +3102,9 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	Dwarf_Attribute nelem_attr;
 	Dwarf_Word nelems;
 
-	if ((!dwarf_hasattr(die, DW_AT_type)) &&
-	    (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr)) == NULL) &&
-	     ((dwarf_attr(die, DW_AT_count, &nelem_attr))) == NULL))
+	if (((dwarf_attr(die, DW_AT_upper_bound, &nelem_attr) == NULL) &&
+	     (dwarf_attr(die, DW_AT_count, &nelem_attr) == NULL)) ||
+	    (!dwarf_hasattr(die, DW_AT_type)))
 		flexible_array = 1;
 
 	if (!flexible_array)
@@ -3122,8 +3122,7 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 	if (flexible_array)
 		return 0;
 
-	nelems = dwarf_formudata(&nelem_attr, &nelems);
-
+	dwarf_formudata(&nelem_attr, &nelems);
 	return nelems;
 }
 
