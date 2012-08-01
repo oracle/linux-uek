@@ -1387,10 +1387,10 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 	}
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		if (priv->rx_ring)
+		if (priv->rx_ring[i])
 			mlx4_en_destroy_rx_ring(priv, &priv->rx_ring[i],
 				priv->prof->rx_ring_size, priv->stride);
-		if (priv->rx_cq)
+		if (priv->rx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
 	}
 
