@@ -24,7 +24,7 @@ lfn="$2"
 		 next;
 	     }
 
-	     / F / {
+	     $3 == "F" {
 		 printf "%16s %s F %s\n", $4, $1, $6;
 
 		 if (!lfn)
@@ -46,6 +46,7 @@ lfn="$2"
 		 printf "%16s %s R %s %s\n", sect, $1, $3, sectbase[sect];
 		 next;
 	     }' | \
+tee /tmp/sdt.log | \
 	sort
     [ "x${lfn}" != "x" ] && nm ${lfn}
 ) | \
@@ -131,34 +132,44 @@ lfn="$2"
 	 $2 ~ /^[tT]$/ {
 	     fun = $3;
 
-	     if (fun in prdata) {
+	     if (fun in probes) {
 		 baseaddr = $1;
 		 sub(/^0+/, "", baseaddr);
 
-		 $0 = prdata[fun];
-		 sub(/^0+/, "", $1);
-		 sub(/^0+/, "", $4);
+		 $0 = probes[fun];
 
-		 print "\tPTR\t0x" addl(baseaddr, subl($1, $4));
-		 print "\tPTR\t" length($3);
-		 print "\tPTR\t" length(fun);
-		 print "\t.asciz\t\042" $3 "\042";
-		 print "\t.asciz\t\042" fun "\042";
-		 print "\tALGN";
+		 for (i = 1; i <= NF; i++) {
+		     prb = $i;
 
-		 probec++;
+		     print "\tPTR\t0x" addl(baseaddr, poffst[prb]);
+		     print "\tPTR\t" length(prb);
+		     print "\tPTR\t" length(fun);
+		     print "\t.asciz\t\042" prb "\042";
+		     print "\t.asciz\t\042" fun "\042";
+		     print "\tALGN";
+
+		     probec++;
+		 }
 	     }
+
 	     next;
 	 }
 
 	 $3 == "F" {
 	     fun = $4;
 	     addr = $2;
+
+	     sub(/^0+/, "", addr);
+
 	     next;
 	 }
 
 	 $3 == "R" {
-	     prdata[fun] = $2 " " $5 " " $4 " " addr;
+	     sub(/^0+/, "", $2);
+
+	     probes[fun] = $4 " " probes[fun];
+	     poffst[$4] = subl($2, addr);
+
 	     next;
 	 }
 
