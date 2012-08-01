@@ -1770,76 +1770,76 @@ qla25xx_process_bidir_status_iocb(scsi_qla_host_t *vha, void *pkt, struct req_qu
 		goto done;
 
 	case CS_DATA_OVERRUN:
-		ql_log(ql_log_warn, vha, 0x70b1,
+		ql_dbg(ql_dbg_user, vha, 0x70b1,
 		    "Command completed with date overrun thread_id=%d\n",
 		    thread_id);
 		rval = EXT_STATUS_DATA_OVERRUN;
 		break;
 
 	case CS_DATA_UNDERRUN:
-		ql_log(ql_log_warn, vha, 0x70b2,
+		ql_dbg(ql_dbg_user, vha, 0x70b2,
 		    "Command completed with date underrun thread_id=%d\n",
 		    thread_id);
 		rval = EXT_STATUS_DATA_UNDERRUN;
 		break;
 	case CS_BIDIR_RD_OVERRUN:
-		ql_log(ql_log_warn, vha, 0x70b3,
+		ql_dbg(ql_dbg_user, vha, 0x70b3,
 		    "Command completed with read data overrun thread_id=%d\n",
 		    thread_id);
 		rval = EXT_STATUS_DATA_OVERRUN;
 		break;
 
 	case CS_BIDIR_RD_WR_OVERRUN:
-		ql_log(ql_log_warn, vha, 0x70b4,
+		ql_dbg(ql_dbg_user, vha, 0x70b4,
 		    "Command completed with read and write data overrun "
 		    "thread_id=%d\n", thread_id);
 		rval = EXT_STATUS_DATA_OVERRUN;
 		break;
 
 	case CS_BIDIR_RD_OVERRUN_WR_UNDERRUN:
-		ql_log(ql_log_warn, vha, 0x70b5,
+		ql_dbg(ql_dbg_user, vha, 0x70b5,
 		    "Command completed with read data over and write data "
 		    "underrun thread_id=%d\n", thread_id);
 		rval = EXT_STATUS_DATA_OVERRUN;
 		break;
 
 	case CS_BIDIR_RD_UNDERRUN:
-		ql_log(ql_log_warn, vha, 0x70b6,
+		ql_dbg(ql_dbg_user, vha, 0x70b6,
 		    "Command completed with read data data underrun "
 		    "thread_id=%d\n", thread_id);
 		rval = EXT_STATUS_DATA_UNDERRUN;
 		break;
 
 	case CS_BIDIR_RD_UNDERRUN_WR_OVERRUN:
-		ql_log(ql_log_warn, vha, 0x70b7,
+		ql_dbg(ql_dbg_user, vha, 0x70b7,
 		    "Command completed with read data under and write data "
 		    "overrun thread_id=%d\n", thread_id);
 		rval = EXT_STATUS_DATA_UNDERRUN;
 		break;
 
 	case CS_BIDIR_RD_WR_UNDERRUN:
-		ql_log(ql_log_warn, vha, 0x70b8,
+		ql_dbg(ql_dbg_user, vha, 0x70b8,
 		    "Command completed with read and write data underrun "
 		    "thread_id=%d\n", thread_id);
 		rval = EXT_STATUS_DATA_UNDERRUN;
 		break;
 
 	case CS_BIDIR_DMA:
-		ql_log(ql_log_warn, vha, 0x70b9,
+		ql_dbg(ql_dbg_user, vha, 0x70b9,
 		    "Command completed with data DMA error thread_id=%d\n",
 		    thread_id);
 		rval = EXT_STATUS_DMA_ERR;
 		break;
 
 	case CS_TIMEOUT:
-		ql_log(ql_log_warn, vha, 0x70ba,
+		ql_dbg(ql_dbg_user, vha, 0x70ba,
 		    "Command completed with timeout thread_id=%d\n",
 		    thread_id);
 		ha->isp_ops->fw_dump(vha, 1);
 		rval = EXT_STATUS_TIMEOUT;
 		break;
 	default:
-		ql_log(ql_log_warn, vha, 0x70bb,
+		ql_dbg(ql_dbg_user, vha, 0x70bb,
 		    "Command completed with completion status=0x%x "
 		    "thread_id=%d\n", comp_status, thread_id);
 		rval = EXT_STATUS_ERR;
