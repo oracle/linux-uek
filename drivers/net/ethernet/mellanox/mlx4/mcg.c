@@ -542,8 +542,12 @@ static int remove_promisc_qp(struct mlx4_dev *dev, u8 port,
 					goto out_mailbox;
 			members_count = be32_to_cpu(mgm->members_count) & 0xffffff;
 			for (loc = -1, i = 0; i < members_count; ++i)
-				if ((be32_to_cpu(mgm->qp[i]) & MGM_QPN_MASK) == qpn)
+				if ((be32_to_cpu(mgm->qp[i]) & MGM_QPN_MASK) == qpn) {
 					loc = i;
+					break;
+				}
+
+			BUG_ON(loc < 0);
 
 			mgm->members_count = cpu_to_be32(--members_count |
 							 (MLX4_PROT_ETH << 30));
