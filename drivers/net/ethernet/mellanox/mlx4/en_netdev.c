@@ -1226,6 +1226,7 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Synchronize with tx routine */
 	netif_tx_lock_bh(dev);
+	netif_carrier_off(dev);
 	netif_tx_stop_all_queues(dev);
 	netif_tx_unlock_bh(dev);
 
