@@ -300,6 +300,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 				"recv memory exceeded max_recv_allocation %d\n",
 				atomic_read(&rds_ib_allocation));
 			}
+			kmem_cache_free(rds_ib_frag_slab, frag);
 			rds_ib_stats_inc(s_ib_rx_alloc_limit);
 			return NULL;
 		}
