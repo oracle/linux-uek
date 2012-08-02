@@ -4117,7 +4117,7 @@ qla2xxx_mctp_dump(scsi_qla_host_t *vha)
 		ha->mctp_dumped = 1;
 	}
 
-        if (!ha->flags.nic_core_reset_hdlr_active) {
+        if (!ha->flags.nic_core_reset_hdlr_active && !ha->portnum) {
                 ha->flags.nic_core_reset_hdlr_active = 1;
                 if ((rval = qla83xx_restart_nic_firmware(vha)))
                         /* NIC Core reset failed. */
