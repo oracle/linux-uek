@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,29 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Aug 02 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.2.0.el5uek]
+- xen/mmu/enlighten: Fix memblock_x86_reserve_range downport. (Konrad Rzeszutek
+  Wilk)
+- xen/p2m: Reserve 8MB of _brk space for P2M leafs when populating back.
+  (Konrad Rzeszutek Wilk)
+- xen/mmu: Remove from __ka space PMD entries for pagetables. (Konrad Rzeszutek
+  Wilk)
+- xen/mmu: Copy and revector the P2M tree. (Konrad Rzeszutek Wilk)
+- xen/p2m: Add logic to revector a P2M tree to use __va leafs. (Konrad
+  Rzeszutek Wilk)
+- xen/mmu: Recycle the Xen provided L4, L3, and L2 pages (Konrad Rzeszutek
+  Wilk)
+- xen/mmu: For 64-bit do not call xen_map_identity_early (Konrad Rzeszutek
+  Wilk)
+- xen/mmu: use copy_page instead of memcpy. (Konrad Rzeszutek Wilk)
+- xen/mmu: Provide comments describing the _ka and _va aliasing issue (Konrad
+  Rzeszutek Wilk)
+- xen/mmu: The xen_setup_kernel_pagetable doesn't need to return anything.
+  (Konrad Rzeszutek Wilk)
+- xen/x86: Use memblock_reserve for sensitive areas. (Konrad Rzeszutek Wilk)
+- xen/p2m: Fix the comment describing the P2M tree. (Konrad Rzeszutek Wilk)
+- xen/perf: Define .glob for the different hypercalls. (Konrad Rzeszutek Wilk)
+
 * Thu Jul 26 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.1.0.el5uek]
 - xen/p2m: Check __brk_limit before allocating. (Konrad Rzeszutek Wilk)
 
