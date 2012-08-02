@@ -70,6 +70,10 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 MODULE_DEVICE_TABLE(pci, enic_id_table);
 
+static int disable_vlan0 = 1;
+module_param(disable_vlan0, bool, 0644);
+MODULE_PARM_DESC(disable_vlan0, "Disable VLAN 0");
+
 struct enic_stat {
 	char name[ETH_GSTRING_LEN];
 	unsigned int offset;
@@ -1256,8 +1260,9 @@ static void enic_rq_indicate_buf(struct vnic_rq *rq,
 
 		skb->dev = netdev;
 
-		if (vlan_stripped)
-			__vlan_hwaccel_put_tag(skb, vlan_tci);
+		if ((vlan_stripped) && (!(disable_vlan0) || 
+                       (vlan_tci & CQ_ENET_RQ_DESC_VLAN_TCI_VLAN_MASK)))
+			   __vlan_hwaccel_put_tag(skb, vlan_tci);
 
 		if (netdev->features & NETIF_F_GRO)
 			napi_gro_receive(&enic->napi[q_number], skb);
