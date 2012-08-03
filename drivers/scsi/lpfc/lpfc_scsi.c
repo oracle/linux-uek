@@ -4254,9 +4254,11 @@ void lpfc_poll_timeout(unsigned long ptr)
  *   SCSI_MLQUEUE_HOST_BUSY - Block all devices served by this host temporarily.
  **/
 static int
-lpfc_queuecommand_lck(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
+lpfc_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *cmnd)
 {
+#ifndef DEF_SCSI_QCMD
 	struct Scsi_Host  *shost = cmnd->device->host;
+#endif
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
 	struct lpfc_rport_data *rdata = cmnd->device->hostdata;
@@ -4321,7 +4323,9 @@ lpfc_queuecommand_lck(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	lpfc_cmd->timeout = 0;
 	lpfc_cmd->start_time = jiffies;
 	cmnd->host_scribble = (unsigned char *)lpfc_cmd;
+#ifndef DEF_SCSI_QCMD
 	cmnd->scsi_done = done;
+#endif
 
 	if (scsi_get_prot_op(cmnd) != SCSI_PROT_NORMAL) {
 		if (vport->phba->cfg_enable_bg) {
@@ -4382,11 +4386,9 @@ lpfc_queuecommand_lck(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	return SCSI_MLQUEUE_TARGET_BUSY;
 
  out_fail_command:
-	done(cmnd);
+	cmnd->scsi_done(cmnd);
 	return 0;
 }
-
-static DEF_SCSI_QCMD(lpfc_queuecommand)
 
 /**
  * lpfc_abort_handler - scsi_host_template eh_abort_handler entry point
