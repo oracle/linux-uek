@@ -7833,7 +7833,7 @@ lpfc_sli4_bpl2sgl(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq,
  *
  * Return: index into SLI4 fast-path FCP queue index.
  **/
-static uint32_t
+static inline uint32_t
 lpfc_sli4_scmd_to_wqidx_distr(struct lpfc_hba *phba)
 {
 	int i;
@@ -8446,17 +8446,17 @@ int
 lpfc_sli_issue_iocb(struct lpfc_hba *phba, uint32_t ring_number,
 		    struct lpfc_iocbq *piocb, uint32_t flag)
 {
-	struct lpfc_sli_ring *pring = &phba->sli.ring[LPFC_ELS_RING];
+	struct lpfc_sli_ring *pring;
 	unsigned long iflags;
-	int rc;
+	int rc, idx;
 
 	if (phba->sli_rev == LPFC_SLI_REV4) {
 		if (piocb->iocb_flag &  LPFC_IO_FCP) {
 			if (unlikely(!phba->sli4_hba.fcp_wq))
 				return IOCB_ERROR;
-			piocb->fcp_wqidx = lpfc_sli4_scmd_to_wqidx_distr(phba);
-			ring_number = MAX_SLI3_CONFIGURED_RINGS +
-				piocb->fcp_wqidx;
+			idx = lpfc_sli4_scmd_to_wqidx_distr(phba);
+			piocb->fcp_wqidx = idx;
+			ring_number = MAX_SLI3_CONFIGURED_RINGS + idx;
 		}
 		pring = &phba->sli.ring[ring_number];
 		spin_lock_irqsave(&pring->ring_lock, iflags);
