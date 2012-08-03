@@ -2148,6 +2148,7 @@ check_scsi_status:
 
 	case CS_DIF_ERROR:
 		logit = qla2x00_handle_dif_error(sp, sts24);
+		res = cp->result;
 		break;
 
 	case CS_TRANSPORT:
