@@ -545,18 +545,18 @@ lpfc_debugfs_dumpSLIqinfo_data(struct lpfc_hba *phba, char *buf, int size)
 		phba->sli.slistat.sli_intr);
 
 	/* Fast-path event queue */
-	if (phba->sli4_hba.fp_eq && phba->cfg_fcp_eq_count) {
-		cnt = phba->cfg_fcp_eq_count;
+	if (phba->sli4_hba.hba_eq && phba->cfg_fcp_io_channel) {
+		cnt = phba->cfg_fcp_io_channel;
 
 		for (x = 0; x < cnt; x++) {
 
 			/* Fast-path EQ */
-			qp = phba->sli4_hba.fp_eq[x];
+			qp = phba->sli4_hba.hba_eq[x];
 			if (!qp)
 				goto proc_cq;
 
 			len +=  snprintf(buf+len, size-len,
-				"FCP EQ:%d cnt:%d  rpst:%d idx: "
+				"HBA EQ:%d cnt:%d  rpst:%d idx: "
 				"host %d hba %d\n",
 				qp->queue_id, qp->entry_count, qp->entry_repost,
 				qp->host_index, qp->hba_index);
@@ -633,193 +633,188 @@ proc_cq:
 			len +=  snprintf(buf+len, size-len, "\n");
 			if (len >= max_cnt)
 				goto too_big;
-		}
-	}
 
-	/* Slow-path EQ */
-	qp = phba->sli4_hba.sp_eq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"EQ:%d cnt:%d rpst:%d idx: host %d hba %d\n",
-			qp->queue_id, qp->entry_count, qp->entry_repost,
-			qp->host_index, qp->hba_index);
+			if (x)
+				continue;
 
-		len +=  snprintf(buf+len, size-len,
-			"EQ stat: max: x%x noE:x%x "
-			"bs: x%x proc: x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_2, qp->q_cnt_3, qp->q_cnt_4);
+			/* Only EQ 0 has slow path CQs configured */
 
-		/* Reset max counter */
-		qp->EQ_max_eqe = 0;
+			/* Slow-path mailbox CQ */
+			qp = phba->sli4_hba.mbx_cq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"   MBOX CQ:%d assQ:%d cnt:%d rpst:"
+					"%d idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count, qp->entry_repost,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
-#ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"EQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
-#endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
-
-	/* Slow-path mailbox CQ */
-	qp = phba->sli4_hba.mbx_cq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"      MBOX CQ:%d assQ:%d cnt:%d rpst:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->entry_repost, qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
-
-		len +=  snprintf(buf+len, size-len,
-			"   CQ stat: mbox: x%x relw:x%x "
-			"xabt: x%x wq: x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_2, qp->q_cnt_3, qp->q_cnt_4);
+				len +=  snprintf(buf+len, size-len,
+					"   CQ stat: mbox: x%x relw:x%x "
+					"xabt: x%x wq: x%llx\n",
+					qp->q_cnt_1, qp->q_cnt_2,
+					qp->q_cnt_3, qp->q_cnt_4);
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"   CQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"   CQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
+				len +=  snprintf(buf+len, size-len, "\n");
+				if (len >= max_cnt)
+					goto too_big;
+			}
 
-	/* Slow-path MBOX WQ */
-	qp = phba->sli4_hba.mbx_wq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"      MBOX WQ:%d assQ:%d cnt:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
+			/* Slow-path MBOX WQ */
+			qp = phba->sli4_hba.mbx_wq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"      MBOX WQ:%d assQ:%d cnt:%d "
+					"idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"      WQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"      WQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
+				len +=  snprintf(buf+len, size-len, "\n");
+				if (len >= max_cnt)
+					goto too_big;
+			}
 
-	/* Slow-path ELS response CQ */
-	qp = phba->sli4_hba.els_cq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"   ELS CQ:%d assQ:%d cnt:%d rpst:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->entry_repost, qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
+			/* Slow-path ELS response CQ */
+			qp = phba->sli4_hba.els_cq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"   ELS CQ:%d assQ:%d cnt:%d rpst:%d "
+					"idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count, qp->entry_repost,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
-		len +=  snprintf(buf+len, size-len,
-			"   CQ stat: max: x%x relw:x%x "
-			"xabt: x%x wq: x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_2, qp->q_cnt_3, qp->q_cnt_4);
+				len +=  snprintf(buf+len, size-len,
+					"   CQ stat: max: x%x relw:x%x "
+					"xabt: x%x wq: x%llx\n",
+					qp->q_cnt_1, qp->q_cnt_2,
+					qp->q_cnt_3, qp->q_cnt_4);
 
-		/* Reset max counter */
-		qp->CQ_max_cqe = 0;
+				/* Reset max counter */
+				qp->CQ_max_cqe = 0;
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"   CQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"   CQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
+				len +=  snprintf(buf+len, size-len, "\n");
+				if (len >= max_cnt)
+					goto too_big;
+			}
 
-	/* Slow-path ELS WQ */
-	qp = phba->sli4_hba.els_wq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"      ELS WQ:%d assQ:%d cnt:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
+			/* Slow-path ELS WQ */
+			qp = phba->sli4_hba.els_wq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"      ELS WQ:%d assQ:%d cnt:%d "
+					"idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
-		len +=  snprintf(buf+len, size-len,
-			"      WQ stat: oflow: x%x posted:x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_4);
+				len +=  snprintf(buf+len, size-len,
+					"      WQ stat: oflow: x%x "
+					"posted:x%llx\n",
+					qp->q_cnt_1, qp->q_cnt_4);
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"      WQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"      WQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
+				len +=  snprintf(buf+len, size-len, "\n");
+				if (len >= max_cnt)
+					goto too_big;
+			}
 
-	/* Slow-path RQ Header */
-	qp = phba->sli4_hba.hdr_rq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"      Hdr RQ:%d assQ:%d cnt:%d rpst:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->entry_repost, qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
+			/* Slow-path RQ Header */
+			qp = phba->sli4_hba.hdr_rq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"      Hdr RQ:%d assQ:%d cnt:%d rpst:"
+					"%d idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count, qp->entry_repost,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
-		len +=  snprintf(buf+len, size-len,
-			"      RQ stat: nopost: x%x nobuf:x%x "
-			"trunc: x%x rcv: x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_2, qp->q_cnt_3, qp->q_cnt_4);
+				len +=  snprintf(buf+len, size-len,
+					"      RQ stat: nopost: x%x nobuf:x%x "
+					"trunc: x%x rcv: x%llx\n",
+					qp->q_cnt_1, qp->q_cnt_2,
+					qp->q_cnt_3, qp->q_cnt_4);
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"      RQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"      RQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
-		if (len >= max_cnt)
-			goto too_big;
-	}
+				len +=  snprintf(buf+len, size-len, "\n");
+				if (len >= max_cnt)
+					goto too_big;
+			}
 
-	/* Slow-path RQ data */
-	qp = phba->sli4_hba.dat_rq;
-	if (qp) {
-		len +=  snprintf(buf+len, size-len,
-			"      Data RQ:%d assQ:%d cnt:%d rpst:%d "
-			"idx: host %d hba %d type %d/%d\n",
-			qp->queue_id, qp->assoc_qid, qp->entry_count,
-			qp->entry_repost, qp->host_index, qp->hba_index,
-			qp->type, qp->subtype);
+			/* Slow-path RQ data */
+			qp = phba->sli4_hba.dat_rq;
+			if (qp) {
+				len +=  snprintf(buf+len, size-len,
+					"      Data RQ:%d assQ:%d cnt:%d rpst:"
+					"%d idx: host %d hba %d type %d/%d\n",
+					qp->queue_id, qp->assoc_qid,
+					qp->entry_count, qp->entry_repost,
+					qp->host_index, qp->hba_index,
+					qp->type, qp->subtype);
 
-		len +=  snprintf(buf+len, size-len,
-			"      RQ stat: cnt1: x%x cnt2:x%x "
-			"cnt3: x%x rcv: x%llx\n",
-			qp->q_cnt_1, qp->q_cnt_2, qp->q_cnt_3, qp->q_cnt_4);
+				len +=  snprintf(buf+len, size-len,
+					"      RQ stat: cnt1: x%x cnt2:x%x "
+					"cnt3: x%x rcv: x%llx\n",
+					qp->q_cnt_1, qp->q_cnt_2,
+					qp->q_cnt_3, qp->q_cnt_4);
 
 #ifdef DUMP_Q_ADDR
-		list_for_each_entry(dmabuf, &qp->page_list, list) {
-			len +=  snprintf(buf+len, size-len,
-				"      RQ v:%p p:%llx\n",
-				dmabuf->virt, dmabuf->phys);
-		}
+				list_for_each_entry(dmabuf, &qp->page_list,
+					list) {
+					len +=  snprintf(buf+len, size-len,
+						"      RQ v:%p p:%llx\n",
+						dmabuf->virt, dmabuf->phys);
+				}
 #endif
-		len +=  snprintf(buf+len, size-len, "\n");
+				len +=  snprintf(buf+len, size-len, "\n");
+			}
+		}
 	}
+
 	spin_unlock_irq(&phba->hbalock);
 	return len;
 
@@ -2390,38 +2385,23 @@ lpfc_idiag_queinfo_read(struct file *file, char __user *buf, size_t nbytes,
 	if (*ppos)
 		return 0;
 
-	/* Get slow-path event queue information */
-	len += snprintf(pbuffer+len, LPFC_QUE_INFO_GET_BUF_SIZE-len,
-			"Slow-path EQ information:\n");
-	if (phba->sli4_hba.sp_eq) {
-		len += snprintf(pbuffer+len, LPFC_QUE_INFO_GET_BUF_SIZE-len,
-			"\tEQID[%02d], "
-			"QE-COUNT[%04d], QE-SIZE[%04d], "
-			"HOST-INDEX[%04d], PORT-INDEX[%04d]\n\n",
-			phba->sli4_hba.sp_eq->queue_id,
-			phba->sli4_hba.sp_eq->entry_count,
-			phba->sli4_hba.sp_eq->entry_size,
-			phba->sli4_hba.sp_eq->host_index,
-			phba->sli4_hba.sp_eq->hba_index);
-	}
-
 	/* Get fast-path event queue information */
 	len += snprintf(pbuffer+len, LPFC_QUE_INFO_GET_BUF_SIZE-len,
-			"Fast-path EQ information:\n");
-	if (phba->sli4_hba.fp_eq) {
-		for (fcp_qidx = 0; fcp_qidx < phba->cfg_fcp_eq_count;
+			"HBA EQ information:\n");
+	if (phba->sli4_hba.hba_eq) {
+		for (fcp_qidx = 0; fcp_qidx < phba->cfg_fcp_io_channel;
 		     fcp_qidx++) {
-			if (phba->sli4_hba.fp_eq[fcp_qidx]) {
+			if (phba->sli4_hba.hba_eq[fcp_qidx]) {
 				len += snprintf(pbuffer+len,
 					LPFC_QUE_INFO_GET_BUF_SIZE-len,
 				"\tEQID[%02d], "
 				"QE-COUNT[%04d], QE-SIZE[%04d], "
 				"HOST-INDEX[%04d], PORT-INDEX[%04d]\n",
-				phba->sli4_hba.fp_eq[fcp_qidx]->queue_id,
-				phba->sli4_hba.fp_eq[fcp_qidx]->entry_count,
-				phba->sli4_hba.fp_eq[fcp_qidx]->entry_size,
-				phba->sli4_hba.fp_eq[fcp_qidx]->host_index,
-				phba->sli4_hba.fp_eq[fcp_qidx]->hba_index);
+				phba->sli4_hba.hba_eq[fcp_qidx]->queue_id,
+				phba->sli4_hba.hba_eq[fcp_qidx]->entry_count,
+				phba->sli4_hba.hba_eq[fcp_qidx]->entry_size,
+				phba->sli4_hba.hba_eq[fcp_qidx]->host_index,
+				phba->sli4_hba.hba_eq[fcp_qidx]->hba_index);
 			}
 		}
 	}
@@ -2485,7 +2465,7 @@ lpfc_idiag_queinfo_read(struct file *file, char __user *buf, size_t nbytes,
 				phba->sli4_hba.fcp_cq[fcp_qidx]->host_index,
 				phba->sli4_hba.fcp_cq[fcp_qidx]->hba_index);
 			}
-		} while (++fcp_qidx < phba->cfg_fcp_eq_count);
+		} while (++fcp_qidx < phba->cfg_fcp_io_channel);
 		len += snprintf(pbuffer+len,
 				LPFC_QUE_INFO_GET_BUF_SIZE-len, "\n");
 	}
@@ -2530,7 +2510,7 @@ lpfc_idiag_queinfo_read(struct file *file, char __user *buf, size_t nbytes,
 	len += snprintf(pbuffer+len, LPFC_QUE_INFO_GET_BUF_SIZE-len,
 			"Fast-path FCP WQ information:\n");
 	if (phba->sli4_hba.fcp_wq) {
-		for (fcp_qidx = 0; fcp_qidx < phba->cfg_fcp_wq_count;
+		for (fcp_qidx = 0; fcp_qidx < phba->cfg_fcp_io_channel;
 		     fcp_qidx++) {
 			if (!phba->sli4_hba.fcp_wq[fcp_qidx])
 				continue;
@@ -2787,31 +2767,21 @@ lpfc_idiag_queacc_write(struct file *file, const char __user *buf,
 
 	switch (quetp) {
 	case LPFC_IDIAG_EQ:
-		/* Slow-path event queue */
-		if (phba->sli4_hba.sp_eq &&
-		    phba->sli4_hba.sp_eq->queue_id == queid) {
-			/* Sanity check */
-			rc = lpfc_idiag_que_param_check(
-					phba->sli4_hba.sp_eq, index, count);
-			if (rc)
-				goto error_out;
-			idiag.ptr_private = phba->sli4_hba.sp_eq;
-			goto pass_check;
-		}
-		/* Fast-path event queue */
-		if (phba->sli4_hba.fp_eq) {
-			for (qidx = 0; qidx < phba->cfg_fcp_eq_count; qidx++) {
-				if (phba->sli4_hba.fp_eq[qidx] &&
-				    phba->sli4_hba.fp_eq[qidx]->queue_id ==
+		/* HBA event queue */
+		if (phba->sli4_hba.hba_eq) {
+			for (qidx = 0; qidx < phba->cfg_fcp_io_channel;
+				qidx++) {
+				if (phba->sli4_hba.hba_eq[qidx] &&
+				    phba->sli4_hba.hba_eq[qidx]->queue_id ==
 				    queid) {
 					/* Sanity check */
 					rc = lpfc_idiag_que_param_check(
-						phba->sli4_hba.fp_eq[qidx],
+						phba->sli4_hba.hba_eq[qidx],
 						index, count);
 					if (rc)
 						goto error_out;
 					idiag.ptr_private =
-						phba->sli4_hba.fp_eq[qidx];
+						phba->sli4_hba.hba_eq[qidx];
 					goto pass_check;
 				}
 			}
@@ -2858,7 +2828,7 @@ lpfc_idiag_queacc_write(struct file *file, const char __user *buf,
 						phba->sli4_hba.fcp_cq[qidx];
 					goto pass_check;
 				}
-			} while (++qidx < phba->cfg_fcp_eq_count);
+			} while (++qidx < phba->cfg_fcp_io_channel);
 		}
 		goto error_out;
 		break;
@@ -2890,7 +2860,8 @@ lpfc_idiag_queacc_write(struct file *file, const char __user *buf,
 		}
 		/* FCP work queue */
 		if (phba->sli4_hba.fcp_wq) {
-			for (qidx = 0; qidx < phba->cfg_fcp_wq_count; qidx++) {
+			for (qidx = 0; qidx < phba->cfg_fcp_io_channel;
+				qidx++) {
 				if (!phba->sli4_hba.fcp_wq[qidx])
 					continue;
 				if (phba->sli4_hba.fcp_wq[qidx]->queue_id ==
@@ -4899,7 +4870,7 @@ lpfc_debug_dump_all_queues(struct lpfc_hba *phba)
 	lpfc_debug_dump_mbx_wq(phba);
 	lpfc_debug_dump_els_wq(phba);
 
-	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_wq_count; fcp_wqidx++)
+	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_io_channel; fcp_wqidx++)
 		lpfc_debug_dump_fcp_wq(phba, fcp_wqidx);
 
 	lpfc_debug_dump_hdr_rq(phba);
@@ -4910,14 +4881,12 @@ lpfc_debug_dump_all_queues(struct lpfc_hba *phba)
 	lpfc_debug_dump_mbx_cq(phba);
 	lpfc_debug_dump_els_cq(phba);
 
-	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_wq_count; fcp_wqidx++)
+	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_io_channel; fcp_wqidx++)
 		lpfc_debug_dump_fcp_cq(phba, fcp_wqidx);
 
 	/*
 	 * Dump Event Queues (EQs)
 	 */
-	lpfc_debug_dump_sp_eq(phba);
-
-	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_wq_count; fcp_wqidx++)
-		lpfc_debug_dump_fcp_eq(phba, fcp_wqidx);
+	for (fcp_wqidx = 0; fcp_wqidx < phba->cfg_fcp_io_channel; fcp_wqidx++)
+		lpfc_debug_dump_hba_eq(phba, fcp_wqidx);
 }
