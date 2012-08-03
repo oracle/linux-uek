@@ -2847,8 +2847,8 @@ lpfc_sli_rsp_pointers_error(struct lpfc_hba *phba, struct lpfc_sli_ring *pring)
 void lpfc_poll_eratt(unsigned long ptr)
 {
 	struct lpfc_hba *phba;
-	uint32_t eratt = 0;
-	uint64_t sli_intr;
+	uint32_t eratt = 0, rem;
+	uint64_t sli_intr, cnt;
 
 	phba = (struct lpfc_hba *)ptr;
 
@@ -2856,14 +2856,14 @@ void lpfc_poll_eratt(unsigned long ptr)
 	sli_intr = phba->sli.slistat.sli_intr;
 
 	if (phba->sli.slistat.sli_prev_intr > sli_intr)
-		phba->sli.slistat.sli_ips =
-			(((uint64_t)(-1) - phba->sli.slistat.sli_prev_intr) +
-			sli_intr) /
-			LPFC_ERATT_POLL_INTERVAL;
+		cnt = (((uint64_t)(-1) - phba->sli.slistat.sli_prev_intr) +
+			sli_intr);
 	else
-		phba->sli.slistat.sli_ips =
-			(sli_intr - phba->sli.slistat.sli_prev_intr) /
-			LPFC_ERATT_POLL_INTERVAL;
+		cnt = (sli_intr - phba->sli.slistat.sli_prev_intr);
+
+	/* 64-bit integer division not supported on 32-bit x86 - use do_div */
+	rem = do_div(cnt, LPFC_ERATT_POLL_INTERVAL);
+	phba->sli.slistat.sli_ips = cnt;
 
 	phba->sli.slistat.sli_prev_intr = sli_intr;
 
