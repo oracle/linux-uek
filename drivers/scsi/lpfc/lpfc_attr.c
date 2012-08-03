@@ -3738,7 +3738,7 @@ lpfc_fcp_imax_store(struct device *dev, struct device_attribute *attr,
 # lpfc_fcp_imax: The maximum number of fast-path FCP interrupts per second
 # for the HBA.
 #
-# Value range is [5,000 to 5,000,000]. Default value is 200,000.
+# Value range is [5,000 to 5,000,000]. Default value is 50,000.
 */
 static int lpfc_fcp_imax = LPFC_DEF_IMAX;
 module_param(lpfc_fcp_imax, int, S_IRUGO|S_IWUSR);
