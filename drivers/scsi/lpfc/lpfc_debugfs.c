@@ -539,6 +539,11 @@ lpfc_debugfs_dumpSLIqinfo_data(struct lpfc_hba *phba, char *buf, int size)
 
 	max_cnt = LPFC_DUMPSLIQINFO_SIZE - 128;
 
+	len +=  snprintf(buf+len, size-len,
+		"ISR ips %lld cnt %lld\n",
+		phba->sli.slistat.sli_ips,
+		phba->sli.slistat.sli_intr);
+
 	/* Fast-path event queue */
 	if (phba->sli4_hba.fp_eq && phba->cfg_fcp_eq_count) {
 		cnt = phba->cfg_fcp_eq_count;

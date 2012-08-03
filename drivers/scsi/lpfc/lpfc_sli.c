@@ -2827,8 +2827,24 @@ void lpfc_poll_eratt(unsigned long ptr)
 {
 	struct lpfc_hba *phba;
 	uint32_t eratt = 0;
+	uint64_t sli_intr;
 
 	phba = (struct lpfc_hba *)ptr;
+
+	/* Here we will also keep track of interrupts per sec of the hba */
+	sli_intr = phba->sli.slistat.sli_intr;
+
+	if (phba->sli.slistat.sli_prev_intr > sli_intr)
+		phba->sli.slistat.sli_ips =
+			(((uint64_t)(-1) - phba->sli.slistat.sli_prev_intr) +
+			sli_intr) /
+			LPFC_ERATT_POLL_INTERVAL;
+	else
+		phba->sli.slistat.sli_ips =
+			(sli_intr - phba->sli.slistat.sli_prev_intr) /
+			LPFC_ERATT_POLL_INTERVAL;
+
+	phba->sli.slistat.sli_prev_intr = sli_intr;
 
 	/* Check chip HA register for error event */
 	eratt = lpfc_sli_check_eratt(phba);
