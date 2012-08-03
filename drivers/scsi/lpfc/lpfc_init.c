@@ -4817,8 +4817,10 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	lpfc_get_cfgparam(phba);
 	phba->max_vpi = LPFC_MAX_VPI;
 
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	/* Eventually cfg_fcp_eq_count / cfg_fcp_wq_count will be depricated */
 	phba->cfg_fcp_io_channel = phba->cfg_fcp_eq_count;
+#endif
 
 	/* This will be set to correct value after the read_config mbox */
 	phba->max_vports = 0;
@@ -6663,7 +6665,11 @@ lpfc_sli4_queue_verify(struct lpfc_hba *phba)
 	 */
 
 	/* Sanity check on HBA EQ parameters */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	cfg_fcp_io_channel = phba->cfg_fcp_eq_count;
+#else
+	cfg_fcp_io_channel = phba->cfg_fcp_io_channel;
+#endif
 	if (cfg_fcp_io_channel >
 	    phba->sli4_hba.max_cfg_param.max_eq) {
 		cfg_fcp_io_channel = phba->sli4_hba.max_cfg_param.max_eq;
@@ -6673,7 +6679,7 @@ lpfc_sli4_queue_verify(struct lpfc_hba *phba)
 					"pci function for supporting FCP "
 					"EQs (%d)\n",
 					phba->sli4_hba.max_cfg_param.max_eq,
-					phba->cfg_fcp_eq_count);
+					phba->cfg_fcp_io_channel);
 			goto out_error;
 		}
 		lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
@@ -6682,14 +6688,16 @@ lpfc_sli4_queue_verify(struct lpfc_hba *phba)
 				"FCP EQs (%d), the actual FCP EQs can "
 				"be supported: %d\n",
 				phba->sli4_hba.max_cfg_param.max_eq,
-				phba->cfg_fcp_eq_count, cfg_fcp_io_channel);
+				phba->cfg_fcp_io_channel, cfg_fcp_io_channel);
 	}
 
 	/* Eventually cfg_fcp_eq_count / cfg_fcp_wq_count will be depricated */
 
 	/* The actual number of FCP event queues adopted */
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	phba->cfg_fcp_eq_count = cfg_fcp_io_channel;
 	phba->cfg_fcp_wq_count = cfg_fcp_io_channel;
+#endif
 	phba->cfg_fcp_io_channel = cfg_fcp_io_channel;
 	phba->sli4_hba.cfg_eqn = cfg_fcp_io_channel;
 

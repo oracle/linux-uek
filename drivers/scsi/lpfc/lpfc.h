@@ -699,8 +699,10 @@ struct lpfc_hba {
 	uint32_t cfg_poll_tmo;
 	uint32_t cfg_use_msi;
 	uint32_t cfg_fcp_imax;
+#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	uint32_t cfg_fcp_wq_count;
 	uint32_t cfg_fcp_eq_count;
+#endif
 	uint32_t cfg_fcp_io_channel;
 	uint32_t cfg_sg_seg_cnt;
 	uint32_t cfg_prot_sg_seg_cnt;
