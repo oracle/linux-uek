@@ -1835,7 +1835,6 @@ qla25xx_process_bidir_status_iocb(scsi_qla_host_t *vha, void *pkt, struct req_qu
 		ql_dbg(ql_dbg_user, vha, 0x70ba,
 		    "Command completed with timeout thread_id=%d\n",
 		    thread_id);
-		ha->isp_ops->fw_dump(vha, 1);
 		rval = EXT_STATUS_TIMEOUT;
 		break;
 	default:
