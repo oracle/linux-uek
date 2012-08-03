@@ -4386,7 +4386,11 @@ lpfc_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *cmnd)
 	return SCSI_MLQUEUE_TARGET_BUSY;
 
  out_fail_command:
+#ifdef DEF_SCSI_QCMD
 	cmnd->scsi_done(cmnd);
+#else
+	done(cmnd);
+#endif
 	return 0;
 }
 
