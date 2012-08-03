@@ -3932,7 +3932,6 @@ LPFC_ATTR_RW(poll_tmo, 10, 1, 255,
 LPFC_ATTR_R(use_msi, 2, 0, 2, "Use Message Signaled Interrupts (1) or "
 	    "MSI-X (2), if possible");
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 /*
 # lpfc_fcp_wq_count: Set the number of fast-path FCP work queues
 # This parameter is ignored and will eventually be depricated
@@ -3951,7 +3950,6 @@ LPFC_ATTR_R(fcp_wq_count, LPFC_FCP_IO_CHAN_DEF, LPFC_FCP_IO_CHAN_MIN,
 LPFC_ATTR_R(fcp_eq_count, LPFC_FCP_IO_CHAN_DEF, LPFC_FCP_IO_CHAN_MIN,
 	    LPFC_FCP_IO_CHAN_MAX,
 	    "Set the number of fast-path FCP event queues, if possible");
-#else
 
 /*
 # lpfc_fcp_io_channel: Set the number of FCP EQ/CQ/WQ IO channels
@@ -3961,7 +3959,6 @@ LPFC_ATTR_R(fcp_eq_count, LPFC_FCP_IO_CHAN_DEF, LPFC_FCP_IO_CHAN_MIN,
 LPFC_ATTR_R(fcp_io_channel, LPFC_FCP_IO_CHAN_DEF, LPFC_FCP_IO_CHAN_MIN,
 	    LPFC_FCP_IO_CHAN_MAX,
 	    "Set the number of FCP I/O channels");
-#endif
 
 /*
 # lpfc_enable_hba_reset: Allow or prevent HBA resets to the hardware.
@@ -4123,12 +4120,9 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_poll_tmo,
 	&dev_attr_lpfc_use_msi,
 	&dev_attr_lpfc_fcp_imax,
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	&dev_attr_lpfc_fcp_wq_count,
 	&dev_attr_lpfc_fcp_eq_count,
-#else
 	&dev_attr_lpfc_fcp_io_channel,
-#endif
 	&dev_attr_lpfc_enable_bg,
 	&dev_attr_lpfc_soft_wwnn,
 	&dev_attr_lpfc_soft_wwpn,
@@ -5107,12 +5101,9 @@ lpfc_get_cfgparam(struct lpfc_hba *phba)
 	lpfc_enable_rrq_init(phba, lpfc_enable_rrq);
 	lpfc_use_msi_init(phba, lpfc_use_msi);
 	lpfc_fcp_imax_init(phba, lpfc_fcp_imax);
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2, 6, 32)
 	lpfc_fcp_wq_count_init(phba, lpfc_fcp_wq_count);
 	lpfc_fcp_eq_count_init(phba, lpfc_fcp_eq_count);
-#else
 	lpfc_fcp_io_channel_init(phba, lpfc_fcp_io_channel);
-#endif
 	lpfc_enable_hba_reset_init(phba, lpfc_enable_hba_reset);
 	lpfc_enable_hba_heartbeat_init(phba, lpfc_enable_hba_heartbeat);
 	lpfc_enable_bg_init(phba, lpfc_enable_bg);
