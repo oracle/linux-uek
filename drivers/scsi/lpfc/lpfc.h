@@ -849,6 +849,7 @@ struct lpfc_hba {
 	struct dentry *debug_hbqinfo;
 	struct dentry *debug_dumpHostSlim;
 	struct dentry *debug_dumpHBASlim;
+	struct dentry *debug_dumpSLIqinfo;
 	struct dentry *debug_dumpData;   /* BlockGuard BPL */
 	struct dentry *debug_dumpDif;    /* BlockGuard BPL */
 	struct dentry *debug_InjErrLBA;  /* LBA to inject errors at */
