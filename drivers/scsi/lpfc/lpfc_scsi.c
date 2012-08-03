@@ -3929,12 +3929,12 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	int_to_scsilun(lpfc_cmd->pCmd->device->lun,
 			&lpfc_cmd->fcp_cmnd->fcp_lun);
 
-	ptr = &fcp_cmnd->fcpCdb[0]; 
-	memcpy(ptr, scsi_cmnd->cmnd, scsi_cmnd->cmd_len); 
-	if (scsi_cmnd->cmd_len < LPFC_FCP_CDB_LEN) { 
-		ptr += scsi_cmnd->cmd_len; 
-		memset(ptr, 0, (LPFC_FCP_CDB_LEN - scsi_cmnd->cmd_len)); 
-	} 
+	ptr = &fcp_cmnd->fcpCdb[0];
+	memcpy(ptr, scsi_cmnd->cmnd, scsi_cmnd->cmd_len);
+	if (scsi_cmnd->cmd_len < LPFC_FCP_CDB_LEN) {
+		ptr += scsi_cmnd->cmd_len;
+		memset(ptr, 0, (LPFC_FCP_CDB_LEN - scsi_cmnd->cmd_len));
+	}
 
 	if (scsi_populate_tag_msg(scsi_cmnd, tag)) {
 		switch (tag[0]) {

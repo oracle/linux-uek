@@ -102,7 +102,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	temp_wqe = q->qe[q->host_index].wqe;
 
 	/* If the host has not yet processed the next entry then we are done */
-	idx = ((q->host_index + 1) % q->entry_count); 
+	idx = ((q->host_index + 1) % q->entry_count);
 	if (idx == q->hba_index) {
 		q->WQ_overflow++;
 		return -ENOMEM;
@@ -117,6 +117,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 
 	/* Update the host index before invoking device */
 	host_index = q->host_index;
+
 	q->host_index = idx;
 
 	/* Ring Doorbell */
@@ -248,8 +249,8 @@ lpfc_sli4_eq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_eqe_valid, eqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	idx = ((q->hba_index + 1) % q->entry_count); 
-	if (idx == q->host_index) 
+	idx = ((q->hba_index + 1) % q->entry_count);
+	if (idx == q->host_index)
 		return NULL;
 
 	q->hba_index = idx;
@@ -333,8 +334,8 @@ lpfc_sli4_cq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_cqe_valid, q->qe[q->hba_index].cqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	idx = ((q->hba_index + 1) % q->entry_count); 
-	if (idx == q->host_index) 
+	idx = ((q->hba_index + 1) % q->entry_count);
+	if (idx == q->host_index)
 		return NULL;
 
 	cqe = q->qe[q->hba_index].cqe;
