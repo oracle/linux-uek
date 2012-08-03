@@ -6712,14 +6712,17 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	int unlock_bits = EXTENT_LOCKED;
 	int ret;
 
-	lockstart = start;
-	lockend = start + len - 1;
 	if (create) {
 		ret = btrfs_delalloc_reserve_space(inode, len);
 		if (ret)
 			return ret;
 		unlock_bits |= EXTENT_DELALLOC | EXTENT_DIRTY;
+	} else {
+		len = min_t(u64, len, root->sectorsize);
 	}
+
+	lockstart = start;
+	lockend = start + len - 1;
 
 	/*
 	 * If this errors out it's because we couldn't invalidate pagecache for
@@ -6884,7 +6887,6 @@ struct btrfs_dio_private {
 	u64 logical_offset;
 	u64 disk_bytenr;
 	u64 bytes;
-	u32 *csums;
 	void *private;
 
 	/* number of bios pending for this dio */
@@ -6904,7 +6906,6 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 	struct inode *inode = dip->inode;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 	u64 start;
-	u32 *private = dip->csums;
 
 	start = dip->logical_offset;
 	do {
@@ -6912,8 +6913,12 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 			struct page *page = bvec->bv_page;
 			char *kaddr;
 			u32 csum = ~(u32)0;
+			u64 private = ~(u32)0;
 			unsigned long flags;
 
+			if (get_state_private(&BTRFS_I(inode)->io_tree,
+					      start, &private))
+				goto failed;
 			local_irq_save(flags);
 			kaddr = kmap_atomic(page, KM_IRQ0);
 			csum = btrfs_csum_data(root, kaddr + bvec->bv_offset,
@@ -6923,18 +6928,18 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 			local_irq_restore(flags);
 
 			flush_dcache_page(bvec->bv_page);
-			if (csum != *private) {
+			if (csum != private) {
+failed:
 				printk(KERN_ERR "btrfs csum failed ino %llu off"
 				      " %llu csum %u private %u\n",
 				      (unsigned long long)btrfs_ino(inode),
 				      (unsigned long long)start,
-				      csum, *private);
+				      csum, (unsigned)private);
 				err = -EIO;
 			}
 		}
 
 		start += bvec->bv_len;
-		private++;
 		bvec++;
 	} while (bvec <= bvec_end);
 
@@ -6942,7 +6947,6 @@ static void btrfs_endio_direct_read(struct bio *bio, int err)
 		      dip->logical_offset + dip->bytes - 1, GFP_NOFS);
 	bio->bi_private = dip->private;
 
-	kfree(dip->csums);
 	kfree(dip);
 
 	/* If we had a csum failure make sure to clear the uptodate flag */
@@ -7048,7 +7052,7 @@ static struct bio *btrfs_dio_bio_alloc(struct block_device *bdev,
 
 static inline int __btrfs_submit_dio_bio(struct bio *bio, struct inode *inode,
 					 int rw, u64 file_offset, int skip_sum,
-					 u32 *csums, int async_submit)
+					 int async_submit)
 {
 	int write = rw & REQ_WRITE;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
@@ -7084,8 +7088,7 @@ static inline int __btrfs_submit_dio_bio(struct bio *bio, struct inode *inode,
 		if (ret)
 			goto err;
 	} else if (!skip_sum) {
-		ret = btrfs_lookup_bio_sums_dio(root, inode, bio,
-					  file_offset, csums);
+		ret = btrfs_lookup_bio_sums_dio(root, inode, bio, file_offset);
 		if (ret)
 			goto err;
 	}
@@ -7110,10 +7113,8 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 	u64 submit_len = 0;
 	u64 map_length;
 	int nr_pages = 0;
-	u32 *csums = dip->csums;
 	int ret = 0;
 	int async_submit = 0;
-	int write = rw & REQ_WRITE;
 
 	map_length = orig_bio->bi_size;
 	ret = btrfs_map_block(root->fs_info, READ, start_sector << 9,
@@ -7149,16 +7150,13 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 			atomic_inc(&dip->pending_bios);
 			ret = __btrfs_submit_dio_bio(bio, inode, rw,
 						     file_offset, skip_sum,
-						     csums, async_submit);
+						     async_submit);
 			if (ret) {
 				bio_put(bio);
 				atomic_dec(&dip->pending_bios);
 				goto out_err;
 			}
 
-			/* Write's use the ordered csums */
-			if (!write && !skip_sum)
-				csums = csums + nr_pages;
 			start_sector += submit_len >> 9;
 			file_offset += submit_len;
 
@@ -7189,7 +7187,7 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 
 submit:
 	ret = __btrfs_submit_dio_bio(bio, inode, rw, file_offset, skip_sum,
-				     csums, async_submit);
+				     async_submit);
 	if (!ret)
 		return 0;
 
@@ -7224,17 +7222,6 @@ static void btrfs_submit_direct(int rw, struct bio *bio, struct inode *inode,
 	if (!dip) {
 		ret = -ENOMEM;
 		goto free_ordered;
-	}
-	dip->csums = NULL;
-
-	/* Write's use the ordered csum stuff, so we don't need dip->csums */
-	if (!write && !skip_sum) {
-		dip->csums = kmalloc(sizeof(u32) * bio->bi_vcnt, GFP_NOFS);
-		if (!dip->csums) {
-			kfree(dip);
-			ret = -ENOMEM;
-			goto free_ordered;
-		}
 	}
 
 	dip->private = bio->bi_private;
