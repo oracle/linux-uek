@@ -3711,7 +3711,7 @@ lpfc_fcp_imax_store(struct device *dev, struct device_attribute *attr,
 	int val = 0, i;
 
 	/* fcp_imax is only valid for SLI4 */
-	if (phba->sli_rev == LPFC_SLI_REV4)
+	if (phba->sli_rev != LPFC_SLI_REV4)
 		return -EINVAL;
 
 	/* Sanity check on user data */
