@@ -34,11 +34,7 @@
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("Function Boundary Tracing");
 MODULE_VERSION("v0.1");
-#if 0
 MODULE_LICENSE("CDDL");
-#else
-MODULE_LICENSE("GPL"); /* FIXME - Cheating */
-#endif
 
 static const dtrace_pattr_t fbt_attr = {
 { DTRACE_STABILITY_EVOLVING, DTRACE_STABILITY_EVOLVING, DTRACE_CLASS_COMMON },
