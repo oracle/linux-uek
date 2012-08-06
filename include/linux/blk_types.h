@@ -55,6 +55,9 @@ struct bio {
 						 * accessors.
 						 */
 	unsigned short		bi_flags;	/* status, etc and bvec pool number */
+#ifdef CONFIG_DTRACE
+	struct block_device     *bi_bdev_orig;  /* bdev before remapping */
+#endif
 	unsigned short		bi_ioprio;
 	unsigned short		bi_write_hint;
 	blk_status_t		bi_status;
