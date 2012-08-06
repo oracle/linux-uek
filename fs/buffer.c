@@ -122,7 +122,11 @@ EXPORT_SYMBOL(buffer_check_dirty_writeback);
  */
 void __wait_on_buffer(struct buffer_head * bh)
 {
+	DTRACE_IO3(wait__start, struct buffer_head *, bh,
+		   struct block_device *, bh->b_bdev, void *, NULL);
 	wait_on_bit_io(&bh->b_state, BH_Lock, TASK_UNINTERRUPTIBLE);
+	DTRACE_IO3(wait__done, struct buffer_head *, bh,
+		   struct block_device *, bh->b_bdev, void *, NULL);
 }
 EXPORT_SYMBOL(__wait_on_buffer);
 
@@ -3034,6 +3038,7 @@ static void end_bio_bh_io_sync(struct bio *bio)
 	if (unlikely(bio_flagged(bio, BIO_QUIET)))
 		set_bit(BH_Quiet, &bh->b_state);
 
+	DTRACE_IO2(done, struct buffer_head *, bh, int, bio_op(bio));
 	bh->b_end_io(bh, !bio->bi_status);
 	bio_put(bio);
 }
@@ -3133,6 +3138,7 @@ static int submit_bh_wbc(int op, int op_flags, struct buffer_head *bh,
 		op_flags |= REQ_PRIO;
 	bio_set_op_attrs(bio, op, op_flags);
 
+	DTRACE_IO2(start, struct buffer_head *, bh, int, op);
 	submit_bio(bio);
 	return 0;
 }
