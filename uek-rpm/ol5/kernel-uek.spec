@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Aug 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.3.0.el5uek]
+- dl2k: Clean up rio_ioctl (Jeff Mahoney) [Orabug: 14126896] {CVE-2012-2313}
+- dl2k: use standard #defines from mii.h (Guangyu Sun)
+- [SCSI] vmw_pvscsi: Try setting host->max_id as suggested by the device.
+  (Arvind Kumar)
+- dl2k: Clean up rio_ioctl (Jeff Mahoney) [Orabug: 14126896] {CVE-2012-2313}
+
 * Thu Aug 02 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.2.0.el5uek]
 - xen/mmu/enlighten: Fix memblock_x86_reserve_range downport. (Konrad Rzeszutek
   Wilk)
