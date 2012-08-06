@@ -721,6 +721,8 @@ static void set_load_weight(struct task_struct *p)
 
 static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	DTRACE_SCHED3(enqueue, struct task_struct *, p,
+			       struct task_struct *, p, void *, NULL);
 	update_rq_clock(rq);
 	sched_info_queued(p);
 	p->sched_class->enqueue_task(rq, p, flags);
@@ -728,6 +730,8 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
+	DTRACE_SCHED4(dequeue, struct task_struct *, p,
+			       struct task_struct *, p, void *, NULL, int, 0);
 	update_rq_clock(rq);
 	sched_info_dequeued(p);
 	p->sched_class->dequeue_task(rq, p, flags);
@@ -1503,6 +1507,8 @@ static void try_to_wake_up_local(struct task_struct *p)
 	if (!(p->state & TASK_NORMAL))
 		goto out;
 
+	DTRACE_SCHED2(wakeup, struct task_struct *, p,
+			      struct task_struct *, p);
 	if (!p->on_rq)
 		ttwu_activate(rq, p, ENQUEUE_WAKEUP);
 
@@ -2906,6 +2912,8 @@ need_resched:
 
 	raw_spin_lock_irq(&rq->lock);
 
+	DTRACE_SCHED1(preempt, long, prev->state);
+
 	switch_count = &prev->nivcsw;
 	if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
 		if (unlikely(signal_pending_state(prev->state, prev))) {
@@ -2954,8 +2962,10 @@ need_resched:
 		 */
 		cpu = smp_processor_id();
 		rq = cpu_rq(cpu);
-	} else
+	} else {
+		DTRACE_SCHED(remain__cpu);
 		raw_spin_unlock_irq(&rq->lock);
+	}
 
 	post_schedule(rq);
 
@@ -3612,6 +3622,9 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
+	DTRACE_SCHED3(change__pri, struct task_struct *, p,
+				   struct task_struct *, p, int, old_prio);
+
 	if (on_rq) {
 		enqueue_task(rq, p, 0);
 		/*
@@ -4252,6 +4265,9 @@ SYSCALL_DEFINE0(sched_yield)
 	schedstat_inc(rq, yld_count);
 	current->sched_class->yield_task(rq);
 
+	DTRACE_SCHED2(surrender, struct task_struct *, current,
+				 struct task_struct *, current);
+
 	/*
 	 * Since we are going to call schedule() anyway, there's
 	 * no need to preempt or enable interrupts:
@@ -4400,6 +4416,9 @@ again:
 
 	yielded = curr->sched_class->yield_to_task(rq, p, preempt);
 	if (yielded) {
+		DTRACE_SCHED2(surrender, struct task_struct *, curr,
+					 struct task_struct *, curr);
+
 		schedstat_inc(rq, yld_count);
 		/*
 		 * Make p's CPU reschedule; pick_next_entity takes care of
