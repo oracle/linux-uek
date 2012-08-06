@@ -734,8 +734,6 @@ int btrfs_add_delayed_extent_op(struct btrfs_fs_info *fs_info,
 				   extent_op->is_data);
 	BUG_ON(ret);
 
-	if (waitqueue_active(&fs_info->tree_mod_seq_wait))
-		wake_up(&fs_info->tree_mod_seq_wait);
 	spin_unlock(&delayed_refs->lock);
 	return 0;
 }
