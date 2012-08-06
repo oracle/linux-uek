@@ -472,7 +472,7 @@ static struct assembly_tab_t
  { DW_TAG_subrange_type, NULL, assemble_ctf_array_dimension },
  { DW_TAG_const_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
  { DW_TAG_restrict_type, filter_ctf_file_scope, assemble_ctf_cvr_qual },
- { DW_TAG_enumeration_type, filter_ctf_file_scope, assemble_ctf_enumeration },
+ { DW_TAG_enumeration_type, NULL, assemble_ctf_enumeration },
  { DW_TAG_enumerator, NULL, assemble_ctf_enumerator },
  { DW_TAG_pointer_type, filter_ctf_file_scope, assemble_ctf_pointer },
  { DW_TAG_structure_type, NULL, assemble_ctf_struct_union },
