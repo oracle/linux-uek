@@ -1699,6 +1699,9 @@ static inline void blk_partition_remap(struct bio *bio)
 	if (bio_sectors(bio) && bdev != bdev->bd_contains) {
 		struct hd_struct *p = bdev->bd_part;
 
+#ifdef CONFIG_DTRACE
+		bio->bi_bdev_orig = bdev;
+#endif
 		bio->bi_iter.bi_sector += p->start_sect;
 		bio->bi_bdev = bdev->bd_contains;
 
