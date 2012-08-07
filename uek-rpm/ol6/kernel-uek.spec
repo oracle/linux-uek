@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,14 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Aug 07 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.4.0.el6uek]
+- cciss: only enable cciss_allow_hpsa when for ol5 (Joe Jin) [Orabug: 14106006]
+- Revert "cciss: remove controllers supported by hpsa" (Joe Jin) [Orabug:
+  14106006]
+- [scsi] hpsa: add all support devices for ol5 (Joe Jin) [Orabug: 14106006]
+- Disable VLAN 0 tagging for none VLAN traffic (Adnan Misherfi) [Orabug:
+  14406424]
+
 * Mon Aug 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.3.0.el6uek]
 - dl2k: Clean up rio_ioctl (Jeff Mahoney) [Orabug: 14126896] {CVE-2012-2313}
 - dl2k: use standard #defines from mii.h (Guangyu Sun)
