@@ -129,6 +129,25 @@ static void init_builtin(const char *builtin_objects_file,
 			 const char *builtin_module_file);
 
 /*
+ * The deduplication blacklist bans specific modules that do notably insane
+ * things with the preprocessor from participating in deduplication.  The list
+ * of sins is short: things like #including two different source files that
+ * proceed to add or remove members from structures depending on which source
+ * file they were included from.
+ *
+ * These modules still share types with the rest of the kernel, but types that
+ * only they share with other modules will not be shared for that reason alone.
+ *
+ * This is, of course, only used if deduplication is turned on.
+ */
+static GHashTable *dedup_blacklist;
+
+/*
+ * Populate the deduplication blacklist from the dedup_blacklist file.
+ */
+static void init_blacklist(const char *dedup_blacklist_file);
+
+/*
  * A mapping from translation unit name to the name of the module that
  * translation unit is part of.  Module names have no trailing suffix.
  *
@@ -592,8 +611,6 @@ static void private_ctf_free(void *ctf_file);
 
 int main(int argc, char *argv[])
 {
-	char *builtin_objects_file;
-	char *builtin_module_file;
 	int starting_argv = 2;
 
 	trace = getenv("DWARF2CTF_TRACE");
@@ -623,10 +640,16 @@ int main(int argc, char *argv[])
 	 * independently invoked with every argument.
 	 */
 	if (strcmp(argv[1], "-e") != 0) {
+		char *builtin_objects_file;
+		char *builtin_module_file;
+		char *dedup_blacklist_file;
+
 		builtin_objects_file = argv[1];
 		builtin_module_file = argv[2];
-		starting_argv = 3;
+		dedup_blacklist_file = argv[3];
+		starting_argv = 4;
 		init_builtin(builtin_objects_file, builtin_module_file);
+		init_blacklist(dedup_blacklist_file);
 
 		run(starting_argv, argv);
 	} else {
@@ -841,6 +864,45 @@ static void init_assembly_tab(void)
 		assembly_tab[walk->tag] = walk->fun;
 		assembly_filter_tab[walk->tag] = walk->filter;
 	}
+}
+
+/*
+ * Populate the deduplication blacklist from the dedup_blacklist file.
+ */
+static void init_blacklist(const char *dedup_blacklist_file)
+{
+	FILE *f;
+	char *line = NULL;
+	size_t line_size = 0;
+
+	/*
+	 * Not having a deduplication blacklist is not an error.
+	 */
+	if ((f = fopen(dedup_blacklist_file, "r")) == NULL)
+		return;
+
+	dedup_blacklist = g_hash_table_new(g_str_hash, g_str_equal);
+
+	while (getline(&line, &line_size, f) >= 0) {
+		size_t len = strlen(line);
+
+		if (len == 0)
+			continue;
+
+		if (line[len-1] == '\n')
+			line[len-1] = '\0';
+
+
+		g_hash_table_insert(dedup_blacklist, strdup(line), NULL);
+	}
+
+	if (ferror(f)) {
+		fprintf(stderr, "Error reading from %s: %s\n",
+			dedup_blacklist_file, strerror(errno));
+		exit(1);
+	}
+
+	fclose(f);
 }
 
 /*
@@ -1516,6 +1578,9 @@ static void detect_duplicates(const char *module_name,
 	 * (This means that duplicated types are repeatedly so marked: this
 	 * is unavoidable, because pass 3 requires re-marking structures that
 	 * have already been marked, to pick up unmarked intermediate types.)
+	 *
+	 * We never consider types in modules on the deduplication blacklist
+	 * to introduce duplicates.
 	 */
 	const char *existing_type_module;
 
@@ -1523,7 +1588,10 @@ static void detect_duplicates(const char *module_name,
 
 	if (existing_type_module != NULL) {
 		if ((strcmp(existing_type_module, module_name) != 0) &&
-		    (builtin_modules != NULL)) {
+		    (builtin_modules != NULL) &&
+		    (dedup_blacklist == NULL ||
+		     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
+						   NULL, NULL))) {
 			mark_shared(die, NULL, data);
 			mark_seen_contained(die, "dtrace_ctf");
 		}
@@ -1721,6 +1789,15 @@ static void detect_duplicates_alias_fixup(const char *module_name,
 					  void *data)
 {
 	int is_sou = 0;
+
+	/*
+	 * We skip this for all modules in the deduplication blacklist, if there
+	 * is one.
+	 */
+	if (dedup_blacklist != NULL &&
+	    g_hash_table_lookup_extended(dedup_blacklist, module_name,
+					 NULL, NULL))
+		return;
 
 	/*
 	 * We only do anything for structures and unions that are not opaque,
@@ -2749,7 +2826,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 						       "dtrace_ctf"))) {
 		fprintf(stderr, "%s:%s: internal error: referenced type lookup "
 			"for member %s yields a different CTF file: %p versus "
-			"%p", locerrstr, dwarf_diename(&cu_die),
+			"%p\n", locerrstr, dwarf_diename(&cu_die),
 			dwarf_diename(die), ctf, new_type->ctf_file);
 		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
