@@ -53,20 +53,43 @@ MODULE_PARM_DESC(weak_ordering,  "Allow weak ordering for data registered memory
 
 static void umem_vma_open(struct vm_area_struct *area)
 {
-	/* Empty implementation to prevent high level from merging some
+	/* Implementation is to prevent high level from merging some
 	VMAs in case of unmap/mmap on part of memory area.
+	Rlimit is handled as well.
 	*/
+	unsigned long total_size;
+	unsigned long ntotal_pages;
 
+	total_size = area->vm_end - area->vm_start;
+	ntotal_pages = PAGE_ALIGN(total_size) >> PAGE_SHIFT;
+	/* no locking is needed:
+	umem_vma_open is called from vm_open which is always called
+	with mm->mmap_sem held for writing.
+	*/
+	if (current->mm)
+		current->mm->pinned_vm += ntotal_pages;
 	return;
 }
 
 static void umem_vma_close(struct vm_area_struct *area)
 {
-	/* Empty implementation to prevent high level from merging some
+	/* Implementation is to prevent high level from merging some
 	VMAs in case of unmap/mmap on part of memory area.
+	Rlimit is handled as well.
 	*/
+	unsigned long total_size;
+	unsigned long ntotal_pages;
 
+	total_size = area->vm_end - area->vm_start;
+	ntotal_pages = PAGE_ALIGN(total_size) >> PAGE_SHIFT;
+	/* no locking is needed:
+	umem_vma_close is called from close which is always called
+	with mm->mmap_sem held for writing.
+	*/
+	if (current->mm)
+		current->mm->pinned_vm -= ntotal_pages;
 	return;
+
 }
 
 static const struct vm_operations_struct umem_vm_ops = {
@@ -85,6 +108,8 @@ int ib_umem_map_to_vma(struct ib_umem *umem,
 	unsigned long vma_entry_number = 0;
 	struct ib_umem_chunk *chunk;
 	int i;
+	unsigned long locked;
+	unsigned long lock_limit;
 
 	/* Total size expects to be already page aligned - verifying anyway */
 	total_size = vma->vm_end - vma->vm_start;
@@ -93,6 +118,15 @@ int ib_umem_map_to_vma(struct ib_umem *umem,
 		return -EINVAL;
 
 	ntotal_pages = PAGE_ALIGN(total_size) >> PAGE_SHIFT;
+	/* ib_umem_map_to_vma is called as part of mmap
+	with mm->mmap_sem held for writing.
+	No need to lock.
+	*/
+	locked = ntotal_pages + current->mm->pinned_vm;
+	lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+
+	if ((locked > lock_limit) && !capable(CAP_IPC_LOCK))
+		return -ENOMEM;
 
 	list_for_each_entry(chunk, &umem->chunk_list, list) {
 		for (i = 0; i < chunk->nents; ++i) {
@@ -100,6 +134,13 @@ int ib_umem_map_to_vma(struct ib_umem *umem,
 			if (vma_entry_number >= ntotal_pages)
 				goto end;
 			page = sg_page(&chunk->page_list[i]);
+			if (PageLRU(page) || PageAnon(page)) {
+				/* Above cases are not supported
+				    as of page fault issues for that VMA.
+				*/
+				ret = -ENOSYS;
+				goto err_vm_insert;
+			}
 			ret = vm_insert_page(vma, vma->vm_start +
 				(vma_entry_number << PAGE_SHIFT), page);
 			if (ret < 0)
@@ -112,6 +153,7 @@ int ib_umem_map_to_vma(struct ib_umem *umem,
 end:
 	/* We expect to have enough pages   */
 	if (vma_entry_number >= ntotal_pages) {
+		current->mm->pinned_vm = locked;
 		vma->vm_ops =  &umem_vm_ops;
 		return 0;
 	}
@@ -136,6 +178,7 @@ static void ib_cmem_release(struct kref *ref)
 
 	struct ib_cmem *cmem;
 	struct ib_cmem_block *cmem_block, *tmp;
+	unsigned long ntotal_pages;
 
 	cmem = container_of(ref, struct ib_cmem, refcount);
 
@@ -144,7 +187,15 @@ static void ib_cmem_release(struct kref *ref)
 		list_del(&cmem_block->list);
 		kfree(cmem_block);
 	}
-
+	/* no locking is needed:
+	ib_cmem_release is called from vm_close which is always called
+	with mm->mmap_sem held for writing.
+	The only exception is when the process shutting down but in that case
+	counter not relevant any more.*/
+	if (current->mm) {
+		ntotal_pages = PAGE_ALIGN(cmem->length) >> PAGE_SHIFT;
+		current->mm->pinned_vm -= ntotal_pages;
+	}
 	kfree(cmem);
 
 }
@@ -160,33 +211,17 @@ void ib_cmem_release_contiguous_pages(struct ib_cmem *cmem)
 }
 EXPORT_SYMBOL(ib_cmem_release_contiguous_pages);
 
-static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int dirty)
-{
-	struct ib_umem_chunk *chunk, *tmp;
-	int i;
-
-	list_for_each_entry_safe(chunk, tmp, &umem->chunk_list, list) {
-		ib_dma_unmap_sg_attrs(dev, chunk->page_list,
-				      chunk->nents, DMA_BIDIRECTIONAL,
-				      &chunk->attrs);
-		for (i = 0; i < chunk->nents; ++i) {
-			struct page *page = sg_page(&chunk->page_list[i]);
-
-			if (umem->writable && dirty)
-				set_page_dirty_lock(page);
-			put_page(page);
-		}
-
-		kfree(chunk);
-	}
-}
-
-
 static void cmem_vma_open(struct vm_area_struct *area)
 {
 	struct ib_cmem *ib_cmem;
 	ib_cmem = (struct ib_cmem *)(area->vm_private_data);
-
+	
+	/* vm_open and vm_close are always called with mm->mmap_sem held for
+	writing. The only exception is when the process is shutting down, at
+	which point vm_close is called with no locks held, but since it is
+	after the VMAs have been detached, it is impossible that vm_open will
+	be called. Therefore, there is no need to synchronize the kref_get and
+	kref_put calls.*/
 	kref_get(&ib_cmem->refcount);
 }
 
@@ -295,8 +330,10 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 	int i;
 	int ncontiguous_pages_order;
 	struct ib_cmem_block *ib_cmem_block;
+	unsigned long locked;
+	unsigned long lock_limit;
 
-	if (page_size_order < PAGE_SHIFT)
+	if (page_size_order < PAGE_SHIFT || page_size_order > 31)
 		return ERR_PTR(-EINVAL);
 
 	cmem = kzalloc(sizeof *cmem, GFP_KERNEL);
@@ -311,6 +348,16 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 	    verifying anyway.
 	*/
 	ntotal_pages = PAGE_ALIGN(total_size) >> PAGE_SHIFT;
+	/* ib_cmem_alloc_contiguous_pages is called as part of mmap
+	with mm->mmap_sem held for writing.
+	No need to lock
+	*/
+	locked     = ntotal_pages + current->mm->pinned_vm;
+	lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+
+	if ((locked > lock_limit) && !capable(CAP_IPC_LOCK))
+		goto err_alloc;
+
 	/* How many contiguous pages do we need in 1 block */
 	ncontiguous_pages = (1 << page_size_order) >> PAGE_SHIFT;
 	ncontiguous_pages_order = ilog2(ncontiguous_pages);
@@ -344,15 +391,38 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 
 	cmem->block_order = ncontiguous_pages_order;
 	cmem->length = total_size;
+
+	current->mm->pinned_vm = locked;
 	return cmem;
 
 err_alloc:
+
 	ib_cmem_release_contiguous_pages(cmem);
 	return ERR_PTR(-ENOMEM);
 
 }
 EXPORT_SYMBOL(ib_cmem_alloc_contiguous_pages);
 
+
+static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int dirty)
+{
+	struct ib_umem_chunk *chunk, *tmp;
+	int i;
+
+	list_for_each_entry_safe(chunk, tmp, &umem->chunk_list, list) {
+		ib_dma_unmap_sg(dev, chunk->page_list,
+				chunk->nents, DMA_BIDIRECTIONAL);
+		for (i = 0; i < chunk->nents; ++i) {
+			struct page *page = sg_page(&chunk->page_list[i]);
+
+			if (umem->writable && dirty)
+				set_page_dirty_lock(page);
+			put_page(page);
+		}
+
+		kfree(chunk);
+	}
+}
 
 /**
  * ib_umem_get - Pin and DMA map userspace memory.
