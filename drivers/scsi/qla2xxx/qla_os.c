@@ -3751,7 +3751,7 @@ void
 qla83xx_nic_core_unrecoverable_work(struct work_struct *work)
 {
 	struct qla_hw_data *ha =
-		container_of(work, struct qla_hw_data, nic_core_reset);
+		container_of(work, struct qla_hw_data, nic_core_unrecoverable);
 	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
 	uint32_t dev_state = 0;
 
@@ -3773,7 +3773,7 @@ void
 qla83xx_idc_state_handler_work(struct work_struct *work)
 {
 	struct qla_hw_data *ha =
-		container_of(work, struct qla_hw_data, nic_core_reset);
+		container_of(work, struct qla_hw_data, idc_state_handler);
 	scsi_qla_host_t *base_vha = pci_get_drvdata(ha->pdev);
 	uint32_t dev_state = 0;
 
