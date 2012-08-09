@@ -3200,6 +3200,14 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 		return 0;
 
 	dwarf_formudata(&nelem_attr, &nelems);
+
+	/*
+	 * Upper bounds indicate that we have one more element than that, since
+	 * C starts counting at zero.
+	 */
+	if (dwarf_hasattr(die, DW_AT_upper_bound))
+		nelems++;
+
 	return nelems;
 }
 
