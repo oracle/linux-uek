@@ -352,12 +352,14 @@ enum skip_type { SKIP_CONTINUE = 0, SKIP_SKIP, SKIP_ABORT };
 
 /*
  * Recursively construct CTF for a type and its children.
+ *
+ * Most parameters are shared with the ctf_assembly_fun: see the comment below.
  */
 static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 			    Dwarf_Die *die, Dwarf_Die *parent_die,
 			    ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 			    int top_level_type, enum skip_type *skip,
-			    const char *id);
+			    int *override, const char *id);
 
 /*
  * Look up a type through its reference: return its ctf_id_t, or
@@ -392,6 +394,11 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * sub-entities can be skipped, but translation of the containing type should
  * continue.  Setting it to SKIP_CONTINUE indicates no error.
  *
+ * Setting 'override' to 1 in a child DIE indicates that this type should
+ * entirely *override* its parent's type (generally because it has wrapped it up
+ * in something).  This override takes immediate effect for later children of
+ * the same DIE.
+ *
  * recurse_ctf() calls these functions repeatedly for every child of the
  * requested DIE: the CTF ID eventually returned is whatever ID is returned by
  * the last such function, and parent_ctf_id is repeatedly replaced with the ID
@@ -409,7 +416,8 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
 				     int top_level_type,
-				     enum skip_type *skip);
+				     enum skip_type *skip,
+				     int *override);
 
 #define ASSEMBLY_FUN(name)					     \
 	static ctf_id_t assemble_ctf_##name(const char *module_name, \
@@ -420,7 +428,8 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 					    ctf_id_t parent_ctf_id,   \
 					    const char *locerrstr,    \
 					    int top_level_type,	      \
-					    enum skip_type *skip)
+					    enum skip_type *skip,     \
+					    int *override)
 
 /*
  * Defined assembly functions.
@@ -2012,7 +2021,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	dw_ctf_trace("%p: into recurse_ctf() for %s\n", &id, id);
 	ctf_id_t this_ctf_id = recurse_ctf(module_name, file_name, die,
 					   parent_die, ctf, -1, 1, &skip,
-					   id);
+					   NULL, id);
 	dw_ctf_trace("%p: out of recurse_ctf()\n", &id);
 
 	ctf_id = malloc(sizeof (struct ctf_full_id));
@@ -2077,10 +2086,11 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 			    Dwarf_Die *die, Dwarf_Die *parent_die,
 			    ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 			    int top_level_type, enum skip_type *skip,
-			    const char *id)
+			    int *override, const char *id)
 {
 	int sib_ret = 0;
 	ctf_id_t this_ctf_id;
+	int dummy;
 
 	do {
 		const char *id_name;
@@ -2136,7 +2146,9 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 							   parent_ctf_id,
 							   locerrstr,
 							   top_level_type,
-							   skip);
+							   skip,
+							   override ? override :
+							   &dummy);
 		dw_ctf_trace("%s: out of assembly function for tag %lx with "
 			     "type ID %li\n", locerrstr,
 			     (unsigned long) dwarf_tag(die), this_ctf_id);
@@ -2207,6 +2219,8 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 
 		if ((dwarf_haschildren(die)) && (*skip == SKIP_CONTINUE)) {
 			Dwarf_Die child_die;
+			ctf_id_t new_id;
+			int override = 0;
 
 			if (dwarf_child(die, &child_die) < 0) {
 				fprintf(stderr, "%s: Cannot recurse to "
@@ -2215,8 +2229,12 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 				exit(1);
 			}
 
-			recurse_ctf(module_name, file_name, &child_die, die,
-				    ctf, this_ctf_id, 0, skip, NULL);
+			new_id = recurse_ctf(module_name, file_name, &child_die,
+					     die, ctf, this_ctf_id, 0, skip,
+					     &override, NULL);
+
+			if (override)
+				this_ctf_id = new_id;
 		}
 
 		/*
@@ -2396,7 +2414,8 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 				  const char *file_name, Dwarf_Die *die,
 				  Dwarf_Die *parent_die, ctf_file_t *ctf,
 				  ctf_id_t parent_ctf_id, const char *locerrstr,
-				  int top_level_type, enum skip_type *skip)
+				  int top_level_type, enum skip_type *skip,
+				  int *override)
 {
 	typedef ctf_id_t (*ctf_add_fun)(ctf_file_t *, uint_t,
 					const char *, const ctf_encoding_t *);
@@ -2499,7 +2518,7 @@ static ctf_id_t assemble_ctf_pointer(const char *module_name,
 				     Dwarf_Die *die, Dwarf_Die *parent_die,
 				     ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 				     const char *locerrstr, int top_level_type,
-				     enum skip_type *skip)
+				     enum skip_type *skip, int *override)
 {
 	ctf_id_t type_ref;
 
@@ -2529,7 +2548,7 @@ static ctf_id_t assemble_ctf_array(const char *module_name,
 				   Dwarf_Die *parent_die, ctf_file_t *ctf,
 				   ctf_id_t parent_ctf_id,
 				   const char *locerrstr, int top_level_type,
-				   enum skip_type *skip)
+				   enum skip_type *skip, int *override)
 {
 	ctf_id_t type_ref;
 
@@ -2558,7 +2577,8 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 					     ctf_id_t parent_ctf_id,
 					     const char *locerrstr,
 					     int top_level_type,
-					     enum skip_type *skip)
+					     enum skip_type *skip,
+					     int *override)
 {
 	ctf_arinfo_t arinfo;
 
@@ -2581,9 +2601,10 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 
 	/*
 	 * For each array dimension, construct an appropriate array of the
-	 * type-so-far.
+	 * type-so-far, overriding the parent type.
 	 */
 
+	*override = 1;
 	return ctf_add_array(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
 			     &arinfo);
 }
@@ -2599,7 +2620,8 @@ static ctf_id_t assemble_ctf_enumeration(const char *module_name,
 					 ctf_id_t parent_ctf_id,
 					 const char *locerrstr,
 					 int top_level_type,
-					 enum skip_type *skip)
+					 enum skip_type *skip,
+					 int *override)
 {
 	const char *name = dwarf_diename(die);
 
@@ -2618,7 +2640,8 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 					ctf_id_t parent_ctf_id,
 					const char *locerrstr,
 					int top_level_type,
-					enum skip_type *skip)
+					enum skip_type *skip,
+					int *override)
 {
 	const char *name = dwarf_diename(die);
 	Dwarf_Attribute value_attr;
@@ -2652,7 +2675,8 @@ static ctf_id_t assemble_ctf_typedef(const char *module_name,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
 				     int top_level_type,
-				     enum skip_type *skip)
+				     enum skip_type *skip,
+				     int *override)
 {
 	const char *name = dwarf_diename(die);
 	ctf_id_t type_ref;
@@ -2680,7 +2704,8 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
 				      int top_level_type,
-				      enum skip_type *skip)
+				      enum skip_type *skip,
+				      int *override)
 {
 	ctf_id_t (*ctf_cvr_fun)(ctf_file_t *, uint_t, ctf_id_t);
 	ctf_id_t type_ref;
@@ -2722,7 +2747,8 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  ctf_id_t parent_ctf_id,
 					  const char *locerrstr,
 					  int top_level_type,
-					  enum skip_type *skip)
+					  enum skip_type *skip,
+					  int *override)
 {
 	ctf_id_t (*ctf_add_sou)(ctf_file_t *, uint_t, const char *);
 
@@ -2792,7 +2818,8 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       ctf_id_t parent_ctf_id,
 				       const char *locerrstr,
 				       int top_level_type,
-				       enum skip_type *skip)
+				       enum skip_type *skip,
+				       int *override)
 {
 	const char *name = dwarf_diename(die);
 	ulong_t offset;
@@ -2994,7 +3021,8 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
 				      int top_level_type,
-				      enum skip_type *skip)
+				      enum skip_type *skip,
+				      int *override)
 {
 	const char *name = dwarf_diename(die);
 	ctf_id_t type_ref;
