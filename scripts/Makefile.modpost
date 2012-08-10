@@ -180,16 +180,25 @@ $(ctf-stamp): $(builtins) $(modules:.ko=.o)
 module-ctfs-modular-prereq = $$(addprefix .ctf/,$$(notdir $$*.mod.ctf))
 module-ctfs-modular = $(addprefix .ctf/,$(notdir $*.mod.ctf))
 
+# Expands to the name of a CTF file, given a target of a module name given to
+# one of the link rules below.
+
+ifneq ($(CONFIG_MODULE_SIG),y)
+ctf-module-name = $(addprefix .ctf/,$(notdir $(basename $@)).mod.ctf)
+else
+ctf-module-name = $(addprefix .ctf/,$(notdir $(basename $(basename $@))).mod.ctf)
+endif
+
 # Expands to a series of objcopy --add-section arguments to add all
 # necessary CTF files to a module, with appropriate section names.
 # We also take advantage of the opportunity to strip the guaranteed-
 # useless debugging information out of dtrace_ctf.ko at the same time.
 
-module-ctf-flags = $(if $(filter dtrace_ctf.ko,$(notdir $@)), \
+module-ctf-flags = $(if $(filter dtrace_ctf.ko dtrace_ctf.ko.unsigned,$(notdir $@)), \
 		   --strip-debug \
-                   $(foreach builtin,$(wildcard .ctf/*.builtin.ctf), \
-                             --add-section $(patsubst %.builtin.ctf,.dtrace_ctf.%,$(notdir $(builtin)))=$(builtin)), \
-                   --add-section .dtrace_ctf=$(addprefix .ctf/,$(notdir $(basename $@)).mod.ctf))
+		   $(foreach builtin,$(wildcard .ctf/*.builtin.ctf), \
+			     --add-section $(patsubst %.builtin.ctf,.dtrace_ctf.%,$(notdir $(builtin)))=$(builtin)), \
+		   --add-section .dtrace_ctf=$(ctf-module-name))
 
 # We have to put content in our dummy no-CTF files because --add-section
 # in binutils 2.20 silently fails if asked to add an empty file as a section.
