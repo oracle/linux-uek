@@ -35,6 +35,7 @@
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
+#include <linux/vmalloc.h>
 
 #include <linux/mlx4/cmd.h>
 
@@ -134,8 +135,11 @@ static int mlx4_buddy_init(struct mlx4_buddy *buddy, int max_order)
 	for (i = 0; i <= buddy->max_order; ++i) {
 		s = BITS_TO_LONGS(1 << (buddy->max_order - i));
 		buddy->bits[i] = kmalloc(s * sizeof (long), GFP_KERNEL);
-		if (!buddy->bits[i])
-			goto err_out_free;
+		if (!buddy->bits[i]) {
+			buddy->bits[i] = vmalloc(s * sizeof(long));
+			if (!buddy->bits[i])
+				goto err_out_free;
+		}
 		bitmap_zero(buddy->bits[i], 1 << (buddy->max_order - i));
 	}
 
@@ -146,7 +150,10 @@ static int mlx4_buddy_init(struct mlx4_buddy *buddy, int max_order)
 
 err_out_free:
 	for (i = 0; i <= buddy->max_order; ++i)
-		kfree(buddy->bits[i]);
+		if (buddy->bits[i] && is_vmalloc_addr(buddy->bits[i]))
+			vfree(buddy->bits[i]);
+		else
+			kfree(buddy->bits[i]);
 
 err_out:
 	kfree(buddy->bits);
@@ -160,7 +167,10 @@ static void mlx4_buddy_cleanup(struct mlx4_buddy *buddy)
 	int i;
 
 	for (i = 0; i <= buddy->max_order; ++i)
-		kfree(buddy->bits[i]);
+		if (is_vmalloc_addr(buddy->bits[i]))
+			vfree(buddy->bits[i]);
+		else
+			kfree(buddy->bits[i]);
 
 	kfree(buddy->bits);
 	kfree(buddy->num_free);
