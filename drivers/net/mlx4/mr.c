@@ -907,7 +907,7 @@ int mlx4_init_mr_table(struct mlx4_dev *dev)
 				MLX4_MR_FLAG_NONE);
 
 			if (priv->reserved_mtts == 0xFFFFFFFF) {
-				mlx4_warn(dev, "MTT table of order %d"
+				mlx4_warn(dev, "MTT table of order %u"
 					  " is too small.\n",
 					  mr_table->mtt_buddy.max_order);
 				err = -ENOMEM;

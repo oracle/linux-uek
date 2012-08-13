@@ -233,7 +233,7 @@ struct mlx4_bitmap {
 struct mlx4_buddy {
 	unsigned long	      **bits;
 	unsigned int	       *num_free;
-	int			max_order;
+	u32			max_order;
 	spinlock_t		lock;
 };
 
@@ -242,7 +242,7 @@ struct mlx4_icm;
 struct mlx4_icm_table {
 	u64			virt;
 	int			num_icm;
-	int			num_obj;
+	u32			num_obj;
 	int			obj_size;
 	int			lowmem;
 	int			coherent;

@@ -76,7 +76,7 @@ u64 mlx4_make_profile(struct mlx4_dev *dev,
 		u64 size;
 		u64 start;
 		int type;
-		int num;
+		u32 num;
 		int log_num;
 	};
 
