@@ -231,7 +231,7 @@ static int add_all_parents(struct btrfs_root *root, struct btrfs_path *path,
 			}
 			if (!ret) {
 				ret = ulist_add(parents, eb->start,
-						(unsigned long)eie, GFP_NOFS);
+						(uintptr_t)eie, GFP_NOFS);
 				if (ret < 0)
 					break;
 				if (!extent_item_pos) {
@@ -363,8 +363,8 @@ static int __resolve_indirect_refs(struct btrfs_fs_info *fs_info,
 		ULIST_ITER_INIT(&uiter);
 		node = ulist_next(parents, &uiter);
 		ref->parent = node ? node->val : 0;
-		ref->inode_list =
-			node ? (struct extent_inode_elem *)node->aux : 0;
+		ref->inode_list = node ?
+			(struct extent_inode_elem *)(uintptr_t)node->aux : 0;
 
 		/* additional parents require new refs being added here */
 		while ((node = ulist_next(parents, &uiter))) {
@@ -375,8 +375,8 @@ static int __resolve_indirect_refs(struct btrfs_fs_info *fs_info,
 			}
 			memcpy(new_ref, ref, sizeof(*ref));
 			new_ref->parent = node->val;
-			new_ref->inode_list =
-					(struct extent_inode_elem *)node->aux;
+			new_ref->inode_list = (struct extent_inode_elem *)
+							(uintptr_t)node->aux;
 			list_add(&new_ref->list, &ref->list);
 		}
 		ulist_reinit(parents);
@@ -914,8 +914,8 @@ again:
 				free_extent_buffer(eb);
 			}
 			ret = ulist_add_merge(refs, ref->parent,
-					      (unsigned long)ref->inode_list,
-					      (unsigned long *)&eie, GFP_NOFS);
+					      (uintptr_t)ref->inode_list,
+					      (u64 *)&eie, GFP_NOFS);
 			if (!ret && extent_item_pos) {
 				/*
 				 * we've recorded that parent, so we must extend
@@ -959,7 +959,7 @@ static void free_leaf_list(struct ulist *blocks)
 	while ((node = ulist_next(blocks, &uiter))) {
 		if (!node->aux)
 			continue;
-		eie = (struct extent_inode_elem *)node->aux;
+		eie = (struct extent_inode_elem *)(uintptr_t)node->aux;
 		for (; eie; eie = eie_next) {
 			eie_next = eie->next;
 			kfree(eie);
@@ -1404,12 +1404,13 @@ int iterate_extent_inodes(struct btrfs_fs_info *fs_info,
 		ULIST_ITER_INIT(&root_uiter);
 		while (!ret && (root_node = ulist_next(roots, &root_uiter))) {
 			pr_debug("root %llu references leaf %llu, data list "
-				 "%#lx\n", root_node->val, ref_node->val,
-				 ref_node->aux);
-			ret = iterate_leaf_refs(
-				(struct extent_inode_elem *)ref_node->aux,
-				root_node->val, extent_item_objectid,
-				iterate, ctx);
+				 "%#llx\n", root_node->val, ref_node->val,
+				 (long long)ref_node->aux);
+			ret = iterate_leaf_refs((struct extent_inode_elem *)
+						(uintptr_t)ref_node->aux,
+						root_node->val,
+						extent_item_objectid,
+						iterate, ctx);
 		}
 		ulist_free(roots);
 		roots = NULL;
