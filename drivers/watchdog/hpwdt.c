@@ -744,17 +744,15 @@ static int __devinit hpwdt_init_nmi_decoding(struct pci_dev *dev)
 	 * die notify list to handle a critical NMI. The default is to
 	 * be last so other users of the NMI signal can function.
 	 */
-	if (priority)
-		die_notifier.priority = 0x7FFFFFFF;
-
-	retval = register_die_notifier(&die_notifier);
-	if (retval != 0) {
-		dev_warn(&dev->dev,
-			"Unable to register a die notifier (err=%d).\n",
-			retval);
-		if (cru_rom_addr)
-			iounmap(cru_rom_addr);
-	}
+	retval = register_nmi_handler(NMI_UNKNOWN, hpwdt_pretimeout, 0, "hpwdt");
+	if (retval)
+		goto error;
+	retval = register_nmi_handler(NMI_SERR, hpwdt_pretimeout, 0, "hpwdt");
+	if (retval)
+		goto error1;
+	retval = register_nmi_handler(NMI_IO_CHECK, hpwdt_pretimeout, 0, "hpwdt");
+	if (retval)
+		goto error2;
 
 	dev_info(&dev->dev,
 			"HP Watchdog Timer Driver: NMI decoding initialized"
@@ -763,6 +761,18 @@ static int __devinit hpwdt_init_nmi_decoding(struct pci_dev *dev)
 			(allow_kdump == 0) ? "OFF" : "ON",
 			(priority == 0) ? "LAST" : "FIRST");
 	return 0;
+
+error2:
+	unregister_nmi_handler(NMI_SERR, "hpwdt");
+error1:
+	unregister_nmi_handler(NMI_UNKNOWN, "hpwdt");
+error:
+	dev_warn(&dev->dev,
+		"Unable to register a die notifier (err=%d).\n",
+		retval);
+	if (cru_rom_addr)
+		iounmap(cru_rom_addr);
+	return retval;
 }
 
 static void hpwdt_exit_nmi_decoding(void)
