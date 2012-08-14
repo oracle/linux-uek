@@ -2052,7 +2052,7 @@ lpfc_idiag_queinfo_read(struct file *file, char __user *buf, size_t nbytes,
 				"EQ-STAT[max:x%x noE:x%x "
 				"bs:x%x proc:x%llx]\n",
 				qp->q_cnt_1, qp->q_cnt_2,
-				qp->q_cnt_3, qp->q_cnt_4);
+				qp->q_cnt_3, (unsigned long long)qp->q_cnt_4);
 
 			len += snprintf(pbuffer+len,
 				LPFC_QUE_INFO_GET_BUF_SIZE-len,
@@ -2086,7 +2086,7 @@ proc_cq:
 				"xabt:x%x wq:x%llx]\n",
 				qp->assoc_qid,
 				qp->q_cnt_1, qp->q_cnt_2,
-				qp->q_cnt_3, qp->q_cnt_4);
+				qp->q_cnt_3, (unsigned long long)qp->q_cnt_4);
 			len += snprintf(pbuffer+len,
 				LPFC_QUE_INFO_GET_BUF_SIZE-len,
 				"\tCQID[%02d], "
@@ -2116,7 +2116,7 @@ proc_cq:
 				"AssocCQID[%02d]: "
 				"WQ-STAT[oflow:x%x posted:x%llx]\n",
 				qp->assoc_qid,
-				qp->q_cnt_1, qp->q_cnt_4);
+				qp->q_cnt_1, (unsigned long long)qp->q_cnt_4);
 			len += snprintf(pbuffer+len,
 				LPFC_QUE_INFO_GET_BUF_SIZE-len,
 				"\t\tWQID[%02d], "
@@ -2151,7 +2151,8 @@ proc_cq:
 					"xabt:x%x wq:x%llx]\n",
 					qp->assoc_qid,
 					qp->q_cnt_1, qp->q_cnt_2,
-					qp->q_cnt_3, qp->q_cnt_4);
+					qp->q_cnt_3,
+					(unsigned long long)qp->q_cnt_4);
 				len += snprintf(pbuffer+len,
 					LPFC_QUE_INFO_GET_BUF_SIZE-len,
 					"\tCQID[%02d], "
@@ -2205,7 +2206,8 @@ proc_cq:
 					"xabt:x%x wq:x%llx]\n",
 					qp->assoc_qid,
 					qp->q_cnt_1, qp->q_cnt_2,
-					qp->q_cnt_3, qp->q_cnt_4);
+					qp->q_cnt_3,
+					(unsigned long long)qp->q_cnt_4);
 				len += snprintf(pbuffer+len,
 					LPFC_QUE_INFO_GET_BUF_SIZE-len,
 					"\tCQID [%02d], "
@@ -2236,7 +2238,8 @@ proc_cq:
 					" WQ-STAT[oflow:x%x "
 					"posted:x%llx]\n",
 					qp->assoc_qid,
-					qp->q_cnt_1, qp->q_cnt_4);
+					qp->q_cnt_1,
+					(unsigned long long)qp->q_cnt_4);
 				len += snprintf(pbuffer+len,
 					LPFC_QUE_INFO_GET_BUF_SIZE-len,
 					"\t\tWQID[%02d], "
@@ -2266,7 +2269,8 @@ proc_cq:
 					"trunc:x%x rcv:x%llx]\n",
 					qp->assoc_qid,
 					qp->q_cnt_1, qp->q_cnt_2,
-					qp->q_cnt_3, qp->q_cnt_4);
+					qp->q_cnt_3,
+					(unsigned long long)qp->q_cnt_4);
 				len += snprintf(pbuffer+len,
 					LPFC_QUE_INFO_GET_BUF_SIZE-len,
 					"\t\tHQID[%02d], "
