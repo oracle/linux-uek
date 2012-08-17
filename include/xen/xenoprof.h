@@ -22,8 +22,8 @@
 
 #ifndef __XEN_XENOPROF_H__
 #define __XEN_XENOPROF_H__
-#ifdef CONFIG_XEN
 
+#ifdef CONFIG_XEN
 #if defined(CONFIG_X86) || defined(CONFIG_X86_64)
 /* xenoprof x86 specific */
 struct super_block;
