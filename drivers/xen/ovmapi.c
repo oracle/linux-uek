@@ -259,6 +259,9 @@ static int ovmapi_read_name(const char *pathname, char *name,
 		return PTR_ERR(name_buff);
 	}
 
+	if (name_len >= *name_size)
+		name_len = *name_size;
+
 	memcpy(name, name_buff, name_len);
 	name[name_len] = '\0';
 	*name_size = name_len;
@@ -345,6 +348,7 @@ static int ovmapi_post_event(struct ovmapi_information *p_ovmapi_info,
 		if (!add_event) {
 			OVMLOG(DGBLVL_ERROR,
 			       "OVMAPI: unable to allocate event.\n");
+			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 			return -ENOMEM;
 		}
 		if (copy_from_user(&add_event->event_entry,
@@ -555,8 +559,10 @@ static int ovmapi_send_user_event(struct ovmapi_information *p_ovmapi_info,
 		if (!(app->event_mask & type))
 			continue;
 		add_event = kmem_cache_zalloc(event_cache, GFP_ATOMIC);
-		if (!add_event)
+		if (!add_event) {
+			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 			return -ENOMEM;
+		}
 		add_event->event_entry.header.type = type;
 		add_event->event_entry.header.severity = severity;
 		add_event->event_entry.header.phase = phase;
@@ -628,7 +634,6 @@ static int ovmapi_add_parameter(struct ovmapi_information *p_ovmapi_info,
 		if (strncmp(name, parameter->name,
 			    parameter->name_size) == 0) {
 			kfree(parameter->value);
-			kmem_cache_free(name_cache, name);
 			parameter->value = value;
 			parameter->value_size = value_size;
 			mutex_unlock(&p_ovmapi_info->parameter_mutex);
@@ -636,6 +641,7 @@ static int ovmapi_add_parameter(struct ovmapi_information *p_ovmapi_info,
 				OVMAPI_EVT_NEW_PARAM, OVMAPI_EVT_SEVERITY_INFO,
 				OVMAPI_EVT_PHASE_IMMED, strlen(name) + 1,
 				name);
+			kmem_cache_free(name_cache, name);
 			return 0;
 		}
 	}
@@ -858,7 +864,7 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 			continue;
 		}
 
-		name_len = OVMM_MAX_NAME_LEN;
+		name_len = OVMM_MAX_NAME_LEN - 1;
 		status = ovmapi_read_name(pathname, name, &name_len);
 
 		if (status) {
@@ -869,8 +875,8 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 			continue;
 		}
 
-		name[name_len + 1] = '\0';
-		value_len = OVMM_MAX_VALUE_LEN;
+
+		value_len = OVMM_MAX_VALUE_LEN - 1;
 		status = ovmapi_read_name_value(pathname, tmp_value,
 						&value_len);
 		if (status) {
@@ -880,7 +886,6 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 			continue;
 		}
 
-		tmp_value[value_len + 1] = '\0';
 		value = kmalloc(value_len + 1, GFP_ATOMIC);
 		if (!value) {
 			OVMLOG(DGBLVL_ERROR,
@@ -906,8 +911,13 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 				value);
 		} else {
 			/* Generate an event and store this as a parameter. */
-			ovmapi_add_parameter(p_ovmapi_info, name, value,
-					     value_len + 1);
+			status = ovmapi_add_parameter(p_ovmapi_info, name,
+					value, value_len + 1);
+			if (status != 0) {
+				kmem_cache_free(value_cache, tmp_value);
+				kmem_cache_free(name_cache, name);
+				return;
+			}
 		}
 
 		snprintf(pathname, OVMM_MAX_NAME_LEN,
@@ -983,14 +993,20 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 		if (!name)
 			return -ENOMEM;
 		value = kmalloc(message.value_size, GFP_ATOMIC);
-		strncpy(name, message.name,OVMM_MAX_NAME_LEN);
+		if (!value)
+			return -ENOMEM;
+		strncpy(name, message.name, OVMM_MAX_NAME_LEN);
 		if (copy_from_user(value, message.value, message.value_size))
 			return -EFAULT;
 		status = ovmapi_send_dom0_message(&ovmapi_info, name, value,
 						  message.value_size);
 		if (status == 0 && cmd == IOCTL_XENPCI_WRITE_PARAMETER) {
-			ovmapi_add_parameter(&ovmapi_info, name, value,
+			status = ovmapi_add_parameter(&ovmapi_info, name, value,
 					     message.value_size);
+			if (status != 0) {
+				kmem_cache_free(name_cache, name);
+				kfree(value);
+			}	
 		} else {
 			kmem_cache_free(name_cache, name);
 			kfree(value);
@@ -1116,7 +1132,7 @@ static int __init ovmapi_init(void)
 
 module_init(ovmapi_init);
 
-/* FIXME: this cleanup is not enough!
+/* FIXME: this cleanup is not enough
 static void __exit ovmapi_exit(void)
 {
 	unregister_xenstore_notifier(&xenstore_notifier);
