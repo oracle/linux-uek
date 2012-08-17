@@ -1250,7 +1250,8 @@ static void __init xen_pagetable_setup_done(pgd_t *base)
 			memblock_x86_free_range(__pa(xen_start_info->mfn_list), __pa(xen_start_info->mfn_list) + size);
 			/* And revector! Bye bye old array */
 			xen_start_info->mfn_list = new_mfn_list;
-		}
+		} else
+			goto skip;
 	}
 	/* At this stage, cleanup_highmap has already cleaned __ka space
 	 * from _brk_limit way up to the max_pfn_mapped (which is the end of
@@ -1271,6 +1272,7 @@ static void __init xen_pagetable_setup_done(pgd_t *base)
 	 * anything at this stage. */
 	xen_cleanhighmap(MODULES_VADDR, roundup(MODULES_VADDR, PUD_SIZE) - 1);
 #endif
+skip:
 #endif
 	xen_post_allocator_init();
 }
