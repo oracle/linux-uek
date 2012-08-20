@@ -1656,8 +1656,6 @@ DEVICE_DIAG_RPRT_ATTR(rq_num_lle	, 0x00, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_lle	, 0x04, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_lqpoe	, 0x08, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_lqpoe 	, 0x0C, 2);
-DEVICE_DIAG_RPRT_ATTR(rq_num_leeoe	, 0x10, 2);
-DEVICE_DIAG_RPRT_ATTR(sq_num_leeoe	, 0x14, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_lpe	, 0x18, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_lpe	, 0x1C, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_wrfe	, 0x20, 2);
@@ -1674,14 +1672,9 @@ DEVICE_DIAG_RPRT_ATTR(sq_num_tree	, 0x5C, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_rree	, 0x64, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_rnr	, 0x68, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_rnr	, 0x6C, 2);
-DEVICE_DIAG_RPRT_ATTR(sq_num_rabrte	, 0x7C, 2);
-DEVICE_DIAG_RPRT_ATTR(sq_num_ieecne	, 0x84, 2);
-DEVICE_DIAG_RPRT_ATTR(sq_num_ieecse	, 0x8C, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_oos	, 0x100, 2);
 DEVICE_DIAG_RPRT_ATTR(sq_num_oos	, 0x104, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_mce	, 0x108, 2);
-DEVICE_DIAG_RPRT_ATTR(rq_num_rsync	, 0x110, 2);
-DEVICE_DIAG_RPRT_ATTR(sq_num_rsync	, 0x114, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_udsdprd	, 0x118, 2);
 DEVICE_DIAG_RPRT_ATTR(rq_num_ucsdprd	, 0x120, 2);
 DEVICE_DIAG_RPRT_ATTR(num_cqovf		, 0x1A0, 2);
@@ -1695,8 +1688,6 @@ static struct attribute *diag_rprt_attrs[] = {
 	&dev_attr_sq_num_lle.attr,
 	&dev_attr_rq_num_lqpoe.attr,
 	&dev_attr_sq_num_lqpoe.attr,
-	&dev_attr_rq_num_leeoe.attr,
-	&dev_attr_sq_num_leeoe.attr,
 	&dev_attr_rq_num_lpe.attr,
 	&dev_attr_sq_num_lpe.attr,
 	&dev_attr_rq_num_wrfe.attr,
@@ -1713,14 +1704,9 @@ static struct attribute *diag_rprt_attrs[] = {
 	&dev_attr_sq_num_rree.attr,
 	&dev_attr_rq_num_rnr.attr,
 	&dev_attr_sq_num_rnr.attr,
-	&dev_attr_sq_num_rabrte.attr,
-	&dev_attr_sq_num_ieecne.attr,
-	&dev_attr_sq_num_ieecse.attr,
 	&dev_attr_rq_num_oos.attr,
 	&dev_attr_sq_num_oos.attr,
 	&dev_attr_rq_num_mce.attr,
-	&dev_attr_rq_num_rsync.attr,
-	&dev_attr_sq_num_rsync.attr,
 	&dev_attr_rq_num_udsdprd.attr,
 	&dev_attr_rq_num_ucsdprd.attr,
 	&dev_attr_num_cqovf.attr,
