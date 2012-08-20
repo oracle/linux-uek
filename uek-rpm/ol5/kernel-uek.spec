@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.5.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,47 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Aug 20 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.5.0.el5uek]
+- [ovmapi] fix memcpy overrun, leaks and mutex unlock (Cathy Avery)
+- xen/mmu: If the revector fails, don't attempt to revector anything else.
+  (Konrad Rzeszutek Wilk)
+- xen/p2m: When revectoring deal with holes in the P2M array. (Konrad Rzeszutek
+  Wilk)
+- xen/p2m: Reuse existing P2M leafs if they are filled with 1:1 PFNs or
+  INVALID. (Konrad Rzeszutek Wilk)
+- x86, mtrr: Fix a type overflow in range_to_mtrr func (zhenzhong.duan)
+  [Orabug: 14073173]
+- Fetch dmi version from SMBIOS if it exist (Zhenzhong Duan) [Orabug: 14267379]
+- Check dmi version when get system uuid (Zhenzhong Duan) [Orabug: 14267379]
+- Merge git://ca-git.us.oracle.com/linux-zduan-public.git
+  v2.6.39-200.18.0#bug13993738 (Maxim Uvarov)
+- Revert "xen PVonHVM: move shared_info to MMIO before kexec" (Konrad Rzeszutek
+  Wilk)
+- xen/mmu: Release just the MFN list, not MFN list and part of pagetables.
+  (Konrad Rzeszutek Wilk)
+- x86/nmi: Add new NMI queues to deal with IO_CHK and SERR (Maxim Uvarov)
+- x86, nmi: Create new NMI handler routines (Don Zickus)
+- tick: Add tick skew boot option (Mike Galbraith)
+- mm/vmstat.c: cache align vm_stat (Dimitri Sivanich)
+- vfs: fix panic in __d_lookup() with high dentry hashtable counts (Dimitri
+  Sivanich)
+- cpusets: randomize node rotor used in cpuset_mem_spread_node() (Jack Steiner)
+- x86: Reduce clock calibration time during slave cpu startup (Jack Steiner)
+- x66, UV: Enable 64-bit ACPI MFCG support for SGI UV2 platform (Jack Steiner)
+- x86, pci: Increase the number of iommus supported to be MAX_IO_APICS (Mike
+  Travis)
+- x86 PCI: Fix identity mapping for sandy bridge (Mike Travis)
+- x86, nmi: Split out nmi from traps.c (Don Zickus)
+- PCI: pciehp: replace unconditional sleep with config space access check
+  (Yinghai Lu) [Orabug:13993738]
+- PCI: Separate pci_bus_read_dev_vendor_id from pci_scan_device (Yinghai Lu)
+  [Orabug:13993738]
+- PCI: pciehp: wait 1000 ms before Link Training check (Kenji Kaneshige)
+  [Orabug:13993738]
+- ocfs2: clear unaligned io flag when dio fails (Junxiao Bi) [Orabug: 14063941]
+- aio: make kiocb->private NUll in init_sync_kiocb() (Junxiao Bi) [Orabug:
+  14063941]
+
 * Tue Aug 07 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.4.0.el5uek]
 - cciss: only enable cciss_allow_hpsa when for ol5 (Joe Jin) [Orabug: 14106006]
 - Revert "cciss: remove controllers supported by hpsa" (Joe Jin) [Orabug:
