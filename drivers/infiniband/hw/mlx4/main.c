@@ -2011,6 +2011,7 @@ err_counter:
 
 err_map:
 	iounmap(ibdev->priv_uar.map);
+	mlx4_ib_free_eqs(dev, ibdev);
 
 err_uar:
 	mlx4_uar_free(dev, &ibdev->priv_uar);
