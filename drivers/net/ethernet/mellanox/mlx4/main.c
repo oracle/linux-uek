@@ -224,7 +224,7 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 		si_meminfo(&si);
 		profile->num_mtt =
 			roundup_pow_of_two(max_t(unsigned,
-						1 << MLX4_LOG_NUM_MTT,
+						1 << (MLX4_LOG_NUM_MTT - log_mtts_per_seg),
 						min(1UL << 
 						(MLX4_MAX_LOG_NUM_MTT -
 						log_mtts_per_seg),
