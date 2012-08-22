@@ -57,6 +57,9 @@
 #define mlx4_ib_warn(ibdev, format, arg...) \
 	dev_warn((ibdev)->dma_device, MLX4_IB_DRV_NAME ": " format, ## arg)
 
+#define mlx4_ib_info(ibdev, format, arg...) \
+	dev_info((ibdev)->dma_device, MLX4_IB_DRV_NAME ": " format, ## arg)
+
 enum {
 	MLX4_IB_SQ_MIN_WQE_SHIFT = 6,
 	MLX4_IB_MAX_HEADROOM	 = 2048

@@ -2155,12 +2155,16 @@ static void mlx4_ib_event(struct mlx4_dev *dev, void *ibdev_ptr,
 			IB_LINK_LAYER_INFINIBAND) {
 			mlx4_ib_invalidate_all_guid_record(ibdev, p);
 		}
+		mlx4_ib_info((struct ib_device *) ibdev_ptr,
+			     "Port %d logical link is up\n", p);
 		ibev.event = IB_EVENT_PORT_ACTIVE;
 		break;
 
 	case MLX4_DEV_EVENT_PORT_DOWN:
 		if (p > ibdev->num_ports)
 			return;
+		mlx4_ib_info((struct ib_device *) ibdev_ptr,
+			     "Port %d logical link is down\n", p);
 		ibev.event = IB_EVENT_PORT_ERR;
 		break;
 
