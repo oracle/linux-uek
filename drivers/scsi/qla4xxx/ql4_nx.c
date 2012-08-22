@@ -2096,7 +2096,7 @@ static int qla4_8xxx_minidump_process_rdmem(struct scsi_qla_host *ha,
 	return QLA_SUCCESS;
 }
 
-static void ql4_8xxx_mark_entry_skipped(struct scsi_qla_host *ha,
+static void qla4_8xxx_mark_entry_skipped(struct scsi_qla_host *ha,
 				struct qla8xxx_minidump_entry_hdr *entry_hdr,
 				int index)
 {
@@ -2180,13 +2180,13 @@ static int qla4_8xxx_collect_md_data(struct scsi_qla_host *ha)
 		 */
 		switch (entry_hdr->entry_type) {
 		case QLA82XX_RDEND:
-			ql4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
+			qla4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
 			break;
 		case QLA82XX_CNTRL:
 			rval = qla4_8xxx_minidump_process_control(ha,
 								  entry_hdr);
 			if (rval != QLA_SUCCESS) {
-				ql4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
+				qla4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
 				goto md_failed;
 			}
 			break;
@@ -2198,7 +2198,7 @@ static int qla4_8xxx_collect_md_data(struct scsi_qla_host *ha)
 			rval = qla4_8xxx_minidump_process_rdmem(ha, entry_hdr,
 								&data_ptr);
 			if (rval != QLA_SUCCESS) {
-				ql4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
+				qla4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
 				goto md_failed;
 			}
 			break;
@@ -2214,7 +2214,7 @@ static int qla4_8xxx_collect_md_data(struct scsi_qla_host *ha)
 			rval = qla4_8xxx_minidump_process_l2tag(ha, entry_hdr,
 								&data_ptr);
 			if (rval != QLA_SUCCESS) {
-				ql4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
+				qla4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
 				goto md_failed;
 			}
 			break;
@@ -2237,7 +2237,7 @@ static int qla4_8xxx_collect_md_data(struct scsi_qla_host *ha)
 			break;
 		case QLA82XX_RDNOP:
 		default:
-			ql4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
+			qla4_8xxx_mark_entry_skipped(ha, entry_hdr, i);
 			break;
 		}
 
