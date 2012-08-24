@@ -431,6 +431,7 @@ struct be_adapter {
 	u8 wol_cap;
 	bool wol;
 	u32 msg_enable;
+	int be_get_temp_freq;
 };
 
 #define be_physfn(adapter)		(!adapter->virtfn)
