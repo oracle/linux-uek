@@ -1023,6 +1023,8 @@ static int be_find_vfs(struct be_adapter *adapter, int vf_state)
 	u16 offset, stride;
 
 	pos = pci_find_ext_capability(pdev, PCI_EXT_CAP_ID_SRIOV);
+	if (!pos)
+		return 0;
 	pci_read_config_word(pdev, pos + PCI_SRIOV_VF_OFFSET, &offset);
 	pci_read_config_word(pdev, pos + PCI_SRIOV_VF_STRIDE, &stride);
 
@@ -2504,7 +2506,6 @@ static int be_clear(struct be_adapter *adapter)
 	be_cmd_fw_clean(adapter);
 
 	be_msix_disable(adapter);
-	pci_write_config_dword(adapter->pdev, PCICFG_CUST_SCRATCHPAD_CSR, 0);
 	return 0;
 }
 
@@ -2745,7 +2746,6 @@ static int be_setup(struct be_adapter *adapter)
 	if (be_pause_supported(adapter))
 		adapter->phy.fc_autoneg = 1;
 
-	pci_write_config_dword(adapter->pdev, PCICFG_CUST_SCRATCHPAD_CSR, 1);
 	return 0;
 err:
 	be_clear(adapter);
@@ -3672,10 +3672,7 @@ reschedule:
 
 static bool be_reset_required(struct be_adapter *adapter)
 {
-	u32 reg;
-
-	pci_read_config_dword(adapter->pdev, PCICFG_CUST_SCRATCHPAD_CSR, &reg);
-	return reg;
+	return be_find_vfs(adapter, ENABLED) > 0 ? false : true;
 }
 
 static int __devinit be_probe(struct pci_dev *pdev,
