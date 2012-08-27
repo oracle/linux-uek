@@ -2340,7 +2340,7 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 	struct btrfs_key key;
 	u32 nritems;
 	int slot;
-	int ret;
+	int ret, fput_needed;
 	u64 len = olen;
 	u64 bs = root->fs_info->sb->s_blocksize;
 	u64 hint_byte;
@@ -2366,7 +2366,7 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 	if (ret)
 		return ret;
 
-	src_file = fget(srcfd);
+	src_file = fget_light(srcfd, &fput_needed);
 	if (!src_file) {
 		ret = -EBADF;
 		goto out_drop_write;
@@ -2714,7 +2714,7 @@ out_unlock:
 	vfree(buf);
 	btrfs_free_path(path);
 out_fput:
-	fput(src_file);
+	fput_light(src_file, fput_needed);
 out_drop_write:
 	mnt_drop_write(file->f_path.mnt);
 	return ret;
