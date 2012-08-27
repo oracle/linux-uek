@@ -1441,7 +1441,7 @@ static void bnx2x_get_ringparam(struct net_device *dev,
 	ering->rx_mini_pending = 0;
 	ering->rx_jumbo_pending = 0;
 
-	ering->tx_max_pending = MAX_TX_AVAIL;
+	ering->tx_max_pending = IS_MF_FCOE_AFEX(bp) ? 0 : MAX_TX_AVAIL;
 	ering->tx_pending = bp->tx_ring_size;
 }
 
@@ -1459,7 +1459,7 @@ static int bnx2x_set_ringparam(struct net_device *dev,
 	if ((ering->rx_pending > MAX_RX_AVAIL) ||
 	    (ering->rx_pending < (bp->disable_tpa ? MIN_RX_SIZE_NONTPA :
 						    MIN_RX_SIZE_TPA)) ||
-	    (ering->tx_pending > MAX_TX_AVAIL) ||
+	    (ering->tx_pending > (IS_MF_FCOE_AFEX(bp) ? 0 : MAX_TX_AVAIL)) ||
 	    (ering->tx_pending <= MAX_SKB_FRAGS + 4)) {
 		DP(BNX2X_MSG_ETHTOOL, "Command parameters not supported\n");
 		return -EINVAL;
