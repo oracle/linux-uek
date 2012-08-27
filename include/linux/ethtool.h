@@ -542,10 +542,15 @@ struct compat_ethtool_rxnfc {
 /**
  * struct ethtool_rxfh_indir - command to get or set RX flow hash indirection
  * @cmd: Specific command number - %ETHTOOL_GRXFHINDIR or %ETHTOOL_SRXFHINDIR
- * @size: On entry, the array size of the user buffer, which may be zero
- *	for %ETHTOOL_GRXFHINDIR.  On return from %ETHTOOL_GRXFHINDIR, the
- *	array size of the hardware indirection table.
+ * @size: On entry, the array size of the user buffer, which may be zero.
+ *	On return from %ETHTOOL_GRXFHINDIR, the array size of the hardware
+ *	indirection table.
  * @ring_index: RX ring/queue index for each hash value
+ *
+ * For %ETHTOOL_GRXFHINDIR, a @size of zero means that only the size
+ * should be returned.  For %ETHTOOL_SRXFHINDIR, a @size of zero means
+ * the table should be reset to default values.  This last feature
+ * is not supported by the original implementations.
  */
 struct ethtool_rxfh_indir {
 	__u32	cmd;
@@ -773,6 +778,18 @@ u32 ethtool_op_get_flags(struct net_device *dev);
 int ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported);
 void ethtool_ntuple_flush(struct net_device *dev);
 bool ethtool_invalid_flags(struct net_device *dev, u32 data, u32 supported);
+
+/**
+ * ethtool_rxfh_indir_default - get default value for RX flow hash indirection
+ * @index: Index in RX flow hash indirection table
+ * @n_rx_rings: Number of RX rings to use
+ *
+ * This function provides the default policy for RX flow hash indirection.
+ */
+static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
+{
+	return index % n_rx_rings;
+}
 
 /**
  * struct ethtool_ops - optional netdev operations
