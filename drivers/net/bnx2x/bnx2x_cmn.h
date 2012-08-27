@@ -1485,8 +1485,8 @@ static inline u16 bnx2x_extract_max_cfg(struct bnx2x *bp, int vn)
 					   FUNC_MF_CFG_MAX_BW_SHIFT;
 
 	if (!max_cfg && !bp->prev_max_cfg_invalid[vn])
-		BNX2X_ERR("Illegal configuration detected for Max BW "
-			  "on vn %d - using 100 instead\n", vn);
+		DP(NETIF_MSG_LINK,
+		   "Max BW configured to 0 - using 100 instead\n");
 	bp->prev_max_cfg_invalid[vn] = !max_cfg;
 
 	return max_cfg ?: 100;
