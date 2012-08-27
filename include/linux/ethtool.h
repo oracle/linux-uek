@@ -877,10 +877,14 @@ bool ethtool_invalid_flags(struct net_device *dev, u32 data, u32 supported);
  *	error code or zero.
  * @set_rx_ntuple: Set an RX n-tuple rule.  Returns a negative error code
  *	or zero.
+ * @get_rxfh_indir_size: Get the size of the RX flow hash indirection table.
+ *	Returns zero if not supported for this specific device.
  * @get_rx_ntuple: Deprecated.
  * @get_rxfh_indir: Get the contents of the RX flow hash indirection table.
+ *	Will not be called if @get_rxfh_indir_size returns zero.
  *	Returns a negative error code or zero.
  * @set_rxfh_indir: Set the contents of the RX flow hash indirection table.
+ *	Will not be called if @get_rxfh_indir_size returns zero.
  *	Returns a negative error code or zero.
  * @get_channels: Get number of channels.
  * @set_channels: Set number of channels.  Returns a negative error code or
@@ -957,10 +961,9 @@ struct ethtool_ops {
 	int	(*set_rx_ntuple)(struct net_device *,
 				 struct ethtool_rx_ntuple *);
 	int	(*get_rx_ntuple)(struct net_device *, u32 stringset, void *);
-	int	(*get_rxfh_indir)(struct net_device *,
-				  struct ethtool_rxfh_indir *);
-	int	(*set_rxfh_indir)(struct net_device *,
-				  const struct ethtool_rxfh_indir *);
+	u32	(*get_rxfh_indir_size)(struct net_device *);
+	int	(*get_rxfh_indir)(struct net_device *, u32 *);
+	int	(*set_rxfh_indir)(struct net_device *, const u32 *);
 	void	(*get_channels)(struct net_device *, struct ethtool_channels *);
 	int	(*set_channels)(struct net_device *, struct ethtool_channels *);
 	int	(*get_dump_flag)(struct net_device *, struct ethtool_dump *);
