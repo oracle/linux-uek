@@ -82,7 +82,7 @@ extern int __qla83xx_get_idc_control(scsi_qla_host_t *, uint32_t *);
 extern void qla83xx_idc_audit(scsi_qla_host_t *, int);
 extern int qla83xx_nic_core_reset(scsi_qla_host_t *);
 extern void qla83xx_reset_ownership(scsi_qla_host_t *);
-extern int qla2xx_mctp_dump(scsi_qla_host_t *);
+extern int qla2xxx_mctp_dump(scsi_qla_host_t *);
 
 /*
  * Global Data in qla_os.c source file.
@@ -396,12 +396,6 @@ qla2x00_port_logout(scsi_qla_host_t *, struct fc_port *);
 
 extern int
 qla2x00_dump_mctp_data(scsi_qla_host_t *, dma_addr_t, uint32_t, uint32_t);
-
-extern int
-qla2xxx_set_host_param(scsi_qla_host_t *, dma_addr_t, uint32_t);
-
-extern int
-qla2xxx_get_host_param(scsi_qla_host_t *, dma_addr_t, uint32_t);
 
 /*
  * Global Function Prototypes in qla_isr.c source file.

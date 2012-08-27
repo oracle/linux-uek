@@ -4940,11 +4940,8 @@ qla2x00_dump_mctp_data(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t addr,
 	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x114b,
 	    "Entered %s.\n", __func__);
 
+	memset(mcp->mb, 0, sizeof(mcp->mb));
 	mcp->mb[0] = MBC_DUMP_RISC_RAM_EXTENDED;
-	if (MSW(addr)) {
-		mcp->mb[8] = MSW(addr);
-		mcp->out_mb = MBX_8|MBX_0;
-	}
 	mcp->mb[1] = LSW(addr);
 	mcp->mb[2] = MSW(req_dma);
 	mcp->mb[3] = LSW(req_dma);
@@ -4952,13 +4949,13 @@ qla2x00_dump_mctp_data(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t addr,
 	mcp->mb[5] = LSW(size);
 	mcp->mb[6] = MSW(MSD(req_dma));
 	mcp->mb[7] = LSW(MSD(req_dma));
+	mcp->mb[8] = MSW(addr);
 	/* Setting RAM ID to valid */
 	mcp->mb[10] |= BIT_7;
 	/* For MCTP RAM ID is 0x40 */
 	mcp->mb[10] |= 0x40;
-	mcp->out_mb |= MBX_10;
 
-	mcp->out_mb |= MBX_10|MBX_7|MBX_6|MBX_5|MBX_4|MBX_3|MBX_2|MBX_1;
+	mcp->out_mb |= MBX_10|MBX_8|MBX_7|MBX_6|MBX_5|MBX_4|MBX_3|MBX_2|MBX_1|MBX_0;
 
 	mcp->in_mb = MBX_0;
 	mcp->tov = MBX_TOV_SECONDS;
@@ -4974,80 +4971,4 @@ qla2x00_dump_mctp_data(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t addr,
 	}
 
 	return rval;
-}
-
-int
-qla2xxx_set_host_param(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t len)
-{
-	int rval;
-	mbx_cmd_t mc;
-	mbx_cmd_t *mcp = &mc;
-
-	if (!IS_MCTP_CAPABLE(vha->hw))
-		return QLA_FUNCTION_FAILED;
-
-	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x114e,
-	    "Entered %s.\n", __func__);
-	mcp->mb[0] = MBC_SET_RNID_PARAMS;
-#define HOST_VERSION_ID_TYPE	0x9
-	mcp->mb[1] = ((len / 8) & 0x00ff) | HOST_VERSION_ID_TYPE << 8;
-	mcp->mb[2] = MSW(req_dma);
-	mcp->mb[3] = LSW(req_dma);
-	mcp->mb[6] = MSW(MSD(req_dma));
-	mcp->mb[7] = LSW(MSD(req_dma));
-
-	mcp->out_mb |= MBX_7|MBX_6|MBX_3|MBX_2|MBX_1;
-	mcp->in_mb = MBX_0;
-	mcp->tov = MBX_TOV_SECONDS;
-	mcp->flags = 0;
-	rval = qla2x00_mailbox_command(vha, mcp);
-
-	if (rval != QLA_SUCCESS) {
-		ql_dbg(ql_dbg_mbx, vha, 0x114f,
-		    "Failed=%x mb[0]=%x.\n", rval, mcp->mb[0]);
-	} else {
-		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1150,
-		    "Done %s.\n", __func__);
-	}
-
-	return rval;
-
-}
-
-int
-qla2xxx_get_host_param(scsi_qla_host_t *vha, dma_addr_t req_dma, uint32_t len)
-{
-	int rval;
-	mbx_cmd_t mc;
-	mbx_cmd_t *mcp = &mc;
-
-	if (!IS_MCTP_CAPABLE(vha->hw))
-		return QLA_FUNCTION_FAILED;
-
-	ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1151,
-	    "Entered %s.\n", __func__);
-	mcp->mb[0] = MBC_GET_RNID_PARAMS;
-#define HOST_VERSION_ID_TYPE	0x9
-	mcp->mb[1] = ((len / 8) & 0x00ff) | HOST_VERSION_ID_TYPE << 8;
-	mcp->mb[2] = MSW(req_dma);
-	mcp->mb[3] = LSW(req_dma);
-	mcp->mb[6] = MSW(MSD(req_dma));
-	mcp->mb[7] = LSW(MSD(req_dma));
-
-	mcp->out_mb |= MBX_7|MBX_6|MBX_3|MBX_2|MBX_1;
-	mcp->in_mb = MBX_0;
-	mcp->tov = MBX_TOV_SECONDS;
-	mcp->flags = 0;
-	rval = qla2x00_mailbox_command(vha, mcp);
-
-	if (rval != QLA_SUCCESS) {
-		ql_dbg(ql_dbg_mbx, vha, 0x1152,
-		    "Failed=%x mb[0]=%x.\n", rval, mcp->mb[0]);
-	} else {
-		ql_dbg(ql_dbg_mbx + ql_dbg_verbose, vha, 0x1153,
-		    "Done %s.\n", __func__);
-	}
-
-	return rval;
-
 }

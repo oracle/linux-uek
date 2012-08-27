@@ -4081,7 +4081,7 @@ exit:
 }
 
 int
-qla2xx_mctp_dump(scsi_qla_host_t *vha)
+qla2xxx_mctp_dump(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
 	int rval = QLA_FUNCTION_FAILED;
@@ -4097,28 +4097,35 @@ qla2xx_mctp_dump(scsi_qla_host_t *vha)
 		ha->mctp_dump = dma_alloc_coherent(&ha->pdev->dev,
 		    MCTP_DUMP_SIZE, &ha->mctp_dump_dma, GFP_KERNEL);
 
-		if (!ha->mctp_dump)
+		if (!ha->mctp_dump) {
 			ql_log(ql_log_warn, vha, 0x506e,
 			    "Failed to allocate memory for mctp dump\n");
-		return rval;
+			return rval;
+		}
 	}
 
-	rval = qla2x00_dump_mctp_data(vha, ha->mctp_dump_dma, 0x00000000, MCTP_DUMP_SIZE);
+#define MCTP_DUMP_STR_ADDR	0x00000000
+	rval = qla2x00_dump_mctp_data(vha, ha->mctp_dump_dma,
+	    MCTP_DUMP_STR_ADDR, MCTP_DUMP_SIZE/4);
 	if (rval != QLA_SUCCESS) {
 		ql_log(ql_log_warn, vha, 0x506f,
 		    "Failed to capture mctp dump\n");
-		return rval;
+	} else {
+		ql_log(ql_log_info, vha, 0x5070,
+		    "Mctp dump capture for host (%ld/%p).\n",
+		    vha->host_no, ha->mctp_dump);
+		ha->mctp_dumped = 1;
 	}
 
-	ql_log(ql_log_info, vha, 0x5070,
-	    "Mctp dump capture for host (%ld/%p).\n", vha->host_no, ha->mctp_dump);
-	ha->mctp_dumped = 1;
         if (!ha->flags.nic_core_reset_hdlr_active) {
                 ha->flags.nic_core_reset_hdlr_active = 1;
                 if ((rval = qla83xx_restart_nic_firmware(vha)))
                         /* NIC Core reset failed. */
 			ql_log(ql_log_warn, vha, 0x5071,
 			    "Failed to restart nic firmware\n");
+		else
+			ql_dbg(ql_dbg_p3p, vha, 0xb084,
+			    "Restarted NIC firmware successfully.\n");
                 ha->flags.nic_core_reset_hdlr_active = 0;
         }
 

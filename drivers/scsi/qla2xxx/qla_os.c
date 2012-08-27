@@ -3291,10 +3291,6 @@ qla2x00_mem_free(struct qla_hw_data *ha)
 		dma_free_coherent(&ha->pdev->dev, MCTP_DUMP_SIZE, ha->mctp_dump,
 		    ha->mctp_dump_dma);
 
-	if (ha->family_version)
-		dma_free_coherent(&ha->pdev->dev, MCTP_VERSION_SIZE,
-		                ha->family_version, ha->family_version_dma);
-
 	if (ha->srb_mempool)
 		mempool_destroy(ha->srb_mempool);
 
@@ -3819,7 +3815,7 @@ qla83xx_nic_core_reset_work(struct work_struct *work)
 	uint32_t dev_state = 0;
 
 	if (IS_QLA2031(ha)) {
-		if (qla2xx_mctp_dump(base_vha) != QLA_SUCCESS)
+		if (qla2xxx_mctp_dump(base_vha) != QLA_SUCCESS)
 			ql_log(ql_log_warn, base_vha, 0xb081,
 			    "Failed to dump mctp\n");
 		return;

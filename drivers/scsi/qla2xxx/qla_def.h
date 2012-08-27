@@ -2842,14 +2842,11 @@ struct qla_hw_data {
 	dma_addr_t	eft_dma;
 	void		*eft;
 /* Current size of mctp dump is 0x086064 bytes */
-#define MCTP_DUMP_SIZE  (536*1024)
+#define MCTP_DUMP_SIZE  0x086064
 	dma_addr_t	mctp_dump_dma;
 	void		*mctp_dump;
 	int		mctp_dumped;
 	int		mctp_dump_reading;
-#define MCTP_VERSION_SIZE  4
-	dma_addr_t	family_version_dma;
-	void		*family_version;
 	uint32_t	chain_offset;
 	struct dentry *dfs_dir;
 	struct dentry *dfs_fce;

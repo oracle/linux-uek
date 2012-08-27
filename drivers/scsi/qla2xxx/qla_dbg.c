@@ -12,7 +12,7 @@
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
  * | Module Init and Probe        |       0x0122       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x1153       | 0x111a-0x111b  |
+ * | Mailbox commands             |       0x114d       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2087       | 0x2020-0x2022, |
  * |                              |                    | 0x2016         |
  * | Queue Command and IO tracing |       0x3030       | 0x3006,0x3008  |
@@ -32,7 +32,7 @@
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x9011       |               |
  * | Virtual Port                 |       0xa008       |               |
- * | ISP82XX Specific             |       0xb083       | 0xb002,0xb024 |
+ * | ISP82XX Specific             |       0xb084       | 0xb002,0xb024 |
  * | MultiQ                       |       0xc00c       |              |
  * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------

@@ -878,48 +878,6 @@ qla2x00_fw_version_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n",
 	    ha->isp_ops->fw_version_str(vha, fw_str));
 }
-static ssize_t
-qla2x00_family_version_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
-	struct qla_hw_data *ha = vha->hw;
-
-	if (!IS_MCTP_CAPABLE(ha))
-		return -ENOTSUPP;
-	if (!ha->family_version) {
-		ha->family_version = dma_alloc_coherent(&ha->pdev->dev, MCTP_VERSION_SIZE,
-		    &ha->family_version_dma, GFP_KERNEL);
-
-		qla2xxx_get_host_param(vha, ha->family_version_dma, 1);
-	}
-	return snprintf(buf, PAGE_SIZE, "%s\n", (char *)ha->family_version);
-}
-
-static ssize_t
-qla2x00_family_version_store(struct device *dev, struct device_attribute *attr,
-		  const char *buf, size_t count)
-{
-	scsi_qla_host_t *vha = shost_priv(class_to_shost(dev));
-	struct qla_hw_data *ha = vha->hw;
-	dma_addr_t family_version_dma;
-	void *family_version;
-
-	if (!IS_MCTP_CAPABLE(ha))
-		return -ENOTSUPP;
-
-	family_version = dma_alloc_coherent(&ha->pdev->dev, MCTP_VERSION_SIZE,
-	    &family_version_dma, GFP_KERNEL);
-
-	strncpy(family_version, buf, 4);
-
-	qla2xxx_set_host_param(vha, ha->family_version_dma, 1);
-
-	dma_free_coherent(&ha->pdev->dev, MCTP_VERSION_SIZE,
-	    family_version, family_version_dma);
-
-	return strlen(buf);
-}
 
 static ssize_t
 qla2x00_serial_num_show(struct device *dev, struct device_attribute *attr,
@@ -1395,8 +1353,6 @@ qla2x00_fw_dump_size_show(struct device *dev, struct device_attribute *attr,
 
 static DEVICE_ATTR(driver_version, S_IRUGO, qla2x00_drvr_version_show, NULL);
 static DEVICE_ATTR(fw_version, S_IRUGO, qla2x00_fw_version_show, NULL);
-static DEVICE_ATTR(family_version, S_IRUGO | S_IWUSR, qla2x00_family_version_show,
-    qla2x00_family_version_store);
 static DEVICE_ATTR(serial_num, S_IRUGO, qla2x00_serial_num_show, NULL);
 static DEVICE_ATTR(isp_name, S_IRUGO, qla2x00_isp_name_show, NULL);
 static DEVICE_ATTR(isp_id, S_IRUGO, qla2x00_isp_id_show, NULL);
@@ -1440,7 +1396,6 @@ static DEVICE_ATTR(fw_dump_size, S_IRUGO, qla2x00_fw_dump_size_show, NULL);
 struct device_attribute *qla2x00_host_attrs[] = {
 	&dev_attr_driver_version,
 	&dev_attr_fw_version,
-	&dev_attr_family_version,
 	&dev_attr_serial_num,
 	&dev_attr_isp_name,
 	&dev_attr_isp_id,
