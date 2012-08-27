@@ -622,8 +622,8 @@ static int bond_update_speed_duplex(struct slave *slave)
 	u32 slave_speed;
 	int res;
 
-	slave->speed = -1;
-	slave->duplex = -1;
+	slave->speed = SPEED_UNKNOWN;
+	slave->duplex = DUPLEX_UNKNOWN;
 
 	if (!slave_dev->ethtool_ops || !slave_dev->ethtool_ops->get_settings)
 		return -1;
