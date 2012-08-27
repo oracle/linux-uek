@@ -16,7 +16,7 @@
  * | Device Discovery             |       0x2087       | 0x2020-0x2022  |
  * | Queue Command and IO tracing |       0x3030       | 0x3006,0x3008  |
  * |                              |                    | 0x302d,0x302e  |
- * | DPC Thread                   |       0x401c       | 0x4002,0x4013  |
+ * | DPC Thread                   |       0x401d       | 0x4002,0x4013  |
  * | Async Events                 |       0x5071       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
  * | Timer Routines               |       0x6011       |		|
@@ -31,7 +31,7 @@
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x9011       |               |
  * | Virtual Port                 |       0xa008       |               |
- * | ISP82XX Specific             |       0xb081       | 0xb002,0xb024 |
+ * | ISP82XX Specific             |       0xb083       | 0xb002,0xb024 |
  * | MultiQ                       |       0xc00c       |              |
  * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------
