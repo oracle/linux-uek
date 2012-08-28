@@ -1477,7 +1477,7 @@ lpfc_plogi_confirm_nport(struct lpfc_hba *phba, uint32_t *prsp,
 	memset(&rrq.xri_bitmap, 0, sizeof(new_ndlp->active_rrqs.xri_bitmap));
 
 	lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
-		 "1201 PLOGI confirm: ndlp %p x%x: new_ndlp %p\n",
+		 "3178 PLOGI confirm: ndlp %p x%x: new_ndlp %p\n",
 		 ndlp, ndlp->nlp_DID, new_ndlp);
 
 	if (!new_ndlp) {
@@ -1532,7 +1532,7 @@ lpfc_plogi_confirm_nport(struct lpfc_hba *phba, uint32_t *prsp,
 		 * to put ndlp on UNUSED list and try to free it.
 		 */
 		lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
-			 "1202 PLOGI confirm NEW: %x %x\n",
+			 "3179 PLOGI confirm NEW: %x %x\n",
 			 new_ndlp->nlp_DID, keepDID);
 
 		/* Fix up the rport accordingly */
@@ -1567,7 +1567,7 @@ lpfc_plogi_confirm_nport(struct lpfc_hba *phba, uint32_t *prsp,
 	}
 	else {
 		lpfc_printf_vlog(vport, KERN_INFO, LOG_ELS,
-			 "1203 PLOGI confirm SWAP: %x %x\n",
+			 "3180 PLOGI confirm SWAP: %x %x\n",
 			 new_ndlp->nlp_DID, keepDID);
 
 		lpfc_unreg_rpi(vport, ndlp);
