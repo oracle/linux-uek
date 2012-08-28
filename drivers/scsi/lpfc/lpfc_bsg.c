@@ -196,7 +196,7 @@ lpfc_bsg_send_mgmt_cmd_cmp(struct lpfc_hba *phba,
 
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;
@@ -1235,7 +1235,7 @@ lpfc_issue_ct_rsp_cmp(struct lpfc_hba *phba,
 
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;
@@ -4799,7 +4799,7 @@ lpfc_bsg_menlo_cmd_cmp(struct lpfc_hba *phba,
 	menlo_resp->xri = rsp->ulpContext;
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;
