@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2012 Intel Corporation.
+  Copyright(c) 2007-2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -28,16 +28,27 @@
 #ifndef _E1000_NVM_H_
 #define _E1000_NVM_H_
 
-s32  igb_acquire_nvm(struct e1000_hw *hw);
-void igb_release_nvm(struct e1000_hw *hw);
-s32  igb_read_mac_addr(struct e1000_hw *hw);
-s32  igb_read_part_num(struct e1000_hw *hw, u32 *part_num);
-s32  igb_read_part_string(struct e1000_hw *hw, u8 *part_num,
-                          u32 part_num_size);
-s32  igb_read_nvm_eerd(struct e1000_hw *hw, u16 offset, u16 words, u16 *data);
-s32  igb_read_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data);
-s32  igb_write_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data);
-s32  igb_validate_nvm_checksum(struct e1000_hw *hw);
-s32  igb_update_nvm_checksum(struct e1000_hw *hw);
+void e1000_init_nvm_ops_generic(struct e1000_hw *hw);
+s32  e1000_null_read_nvm(struct e1000_hw *hw, u16 a, u16 b, u16 *c);
+void e1000_null_nvm_generic(struct e1000_hw *hw);
+s32  e1000_null_led_default(struct e1000_hw *hw, u16 *data);
+s32  e1000_null_write_nvm(struct e1000_hw *hw, u16 a, u16 b, u16 *c);
+s32  e1000_acquire_nvm_generic(struct e1000_hw *hw);
 
+s32  e1000_poll_eerd_eewr_done(struct e1000_hw *hw, int ee_reg);
+s32  e1000_read_mac_addr_generic(struct e1000_hw *hw);
+s32  e1000_read_pba_string_generic(struct e1000_hw *hw, u8 *pba_num,
+				   u32 pba_num_size);
+s32  e1000_read_pba_length_generic(struct e1000_hw *hw, u32 *pba_num_size);
+s32  e1000_read_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words, u16 *data);
+s32  e1000_read_nvm_eerd(struct e1000_hw *hw, u16 offset, u16 words,
+			 u16 *data);
+s32  e1000_valid_led_default_generic(struct e1000_hw *hw, u16 *data);
+s32  e1000_validate_nvm_checksum_generic(struct e1000_hw *hw);
+s32  e1000_write_nvm_spi(struct e1000_hw *hw, u16 offset, u16 words,
+			 u16 *data);
+s32  e1000_update_nvm_checksum_generic(struct e1000_hw *hw);
+void e1000_release_nvm_generic(struct e1000_hw *hw);
+
+#define E1000_STM_OPCODE	0xDB00
 #endif
