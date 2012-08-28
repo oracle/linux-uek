@@ -746,28 +746,13 @@ static inline void retrigger_next_event(void *arg) { }
  * resolution timer interrupts. On UP we just disable interrupts and
  * call the high resolution interrupt code.
  */
-static void do_clock_was_set(unsigned long data)
+void clock_was_set(void)
 {
 #ifdef CONFIG_HIGH_RES_TIMERS
 	/* Retrigger the CPU local events everywhere */
 	on_each_cpu(retrigger_next_event, NULL, 1);
 #endif
 	timerfd_clock_was_set();
-}
-
-static DEFINE_TIMER(clock_was_set_timer, do_clock_was_set , 0, 0);
-
-void clock_was_set(void)
-{
-	/*
-	 * We can't call on_each_cpu() from irq context,
-	 * so if irqs are disabled , schedule the clock_was_set
-	 * via a timer_list timer for right after.
-	 */
-	if (irqs_disabled())
-		mod_timer(&clock_was_set_timer, jiffies);
-	else
-		do_clock_was_set(0);
 }
 
 /*
