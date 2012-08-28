@@ -921,11 +921,15 @@ lpfc_sli4_pdev_reg_request(struct lpfc_hba *phba, uint32_t opcode)
 	rc = lpfc_sli4_pdev_status_reg_wait(phba);
 
 	if (rc == -EPERM) {
-		/* no privilage for reset, restore if needed */
-		if (before_fc_flag & FC_OFFLINE_MODE)
-			goto out;
+		/* no privilage for reset */
+		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+				"3150 No privilage to perform the requested "
+				"access: x%x\n", reg_val);
 	} else if (rc == -EIO) {
 		/* reset failed, there is nothing more we can do */
+		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+				"3153 Fail to perform the requested "
+				"access: x%x\n", reg_val);
 		return rc;
 	}
 

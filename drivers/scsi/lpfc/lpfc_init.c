@@ -1465,8 +1465,12 @@ lpfc_handle_eratt_s4(struct lpfc_hba *phba)
 				phba->sli4_hba.u.if_type2.STATUSregaddr,
 				&portstat_reg.word0);
 		/* consider PCI bus read error as pci_channel_offline */
-		if (pci_rd_rc1 == -EIO)
+		if (pci_rd_rc1 == -EIO) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"3151 PCI bus read access failure: x%x\n",
+				readl(phba->sli4_hba.u.if_type2.STATUSregaddr));
 			return;
+		}
 		reg_err1 = readl(phba->sli4_hba.u.if_type2.ERR1regaddr);
 		reg_err2 = readl(phba->sli4_hba.u.if_type2.ERR2regaddr);
 		if (bf_get(lpfc_sliport_status_oti, &portstat_reg)) {
@@ -1516,6 +1520,9 @@ lpfc_handle_eratt_s4(struct lpfc_hba *phba)
 			}
 			/* fall through for not able to recover */
 		}
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"3152 Unrecoverable error, bring the port "
+				"offline\n");
 		lpfc_sli4_offline_eratt(phba);
 		break;
 	case LPFC_SLI_INTF_IF_TYPE_1:
