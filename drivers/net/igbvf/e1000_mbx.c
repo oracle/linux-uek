@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) 82576 Virtual Function Linux driver
-  Copyright(c) 2009 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2012 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -20,30 +20,36 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
 *******************************************************************************/
 
-#include "mbx.h"
+#include "e1000_mbx.h"
 
 /**
  *  e1000_poll_for_msg - Wait for message notification
  *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to write
  *
  *  returns SUCCESS if it successfully received a message notification
  **/
-static s32 e1000_poll_for_msg(struct e1000_hw *hw)
+static s32 e1000_poll_for_msg(struct e1000_hw *hw, u16 mbx_id)
 {
 	struct e1000_mbx_info *mbx = &hw->mbx;
 	int countdown = mbx->timeout;
 
-	if (!mbx->ops.check_for_msg)
+	DEBUGFUNC("e1000_poll_for_msg");
+
+	if (!countdown || !mbx->ops.check_for_msg)
 		goto out;
 
-	while (countdown && mbx->ops.check_for_msg(hw)) {
+	while (countdown && mbx->ops.check_for_msg(hw, mbx_id)) {
 		countdown--;
-		udelay(mbx->usec_delay);
+		if (!countdown)
+			break;
+		usec_delay(mbx->usec_delay);
 	}
 
 	/* if we failed, all future posted messages fail until reset */
@@ -56,20 +62,25 @@ out:
 /**
  *  e1000_poll_for_ack - Wait for message acknowledgement
  *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to write
  *
  *  returns SUCCESS if it successfully received a message acknowledgement
  **/
-static s32 e1000_poll_for_ack(struct e1000_hw *hw)
+static s32 e1000_poll_for_ack(struct e1000_hw *hw, u16 mbx_id)
 {
 	struct e1000_mbx_info *mbx = &hw->mbx;
 	int countdown = mbx->timeout;
 
-	if (!mbx->ops.check_for_ack)
+	DEBUGFUNC("e1000_poll_for_ack");
+
+	if (!countdown || !mbx->ops.check_for_ack)
 		goto out;
 
-	while (countdown && mbx->ops.check_for_ack(hw)) {
+	while (countdown && mbx->ops.check_for_ack(hw, mbx_id)) {
 		countdown--;
-		udelay(mbx->usec_delay);
+		if (!countdown)
+			break;
+		usec_delay(mbx->usec_delay);
 	}
 
 	/* if we failed, all future posted messages fail until reset */
@@ -84,23 +95,27 @@ out:
  *  @hw: pointer to the HW structure
  *  @msg: The message buffer
  *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to write
  *
  *  returns SUCCESS if it successfully received a message notification and
  *  copied it into the receive buffer.
  **/
-static s32 e1000_read_posted_mbx(struct e1000_hw *hw, u32 *msg, u16 size)
+static s32 e1000_read_posted_mbx(struct e1000_hw *hw, u32 *msg, u16 size,
+				 u16 mbx_id)
 {
 	struct e1000_mbx_info *mbx = &hw->mbx;
 	s32 ret_val = -E1000_ERR_MBX;
 
+	DEBUGFUNC("e1000_read_posted_mbx");
+
 	if (!mbx->ops.read)
 		goto out;
 
-	ret_val = e1000_poll_for_msg(hw);
+	ret_val = e1000_poll_for_msg(hw, mbx_id);
 
 	/* if ack received read message, otherwise we timed out */
 	if (!ret_val)
-		ret_val = mbx->ops.read(hw, msg, size);
+		ret_val = mbx->ops.read(hw, msg, size, mbx_id);
 out:
 	return ret_val;
 }
@@ -110,27 +125,44 @@ out:
  *  @hw: pointer to the HW structure
  *  @msg: The message buffer
  *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to write
  *
  *  returns SUCCESS if it successfully copied message into the buffer and
  *  received an ack to that message within delay * timeout period
  **/
-static s32 e1000_write_posted_mbx(struct e1000_hw *hw, u32 *msg, u16 size)
+static s32 e1000_write_posted_mbx(struct e1000_hw *hw, u32 *msg, u16 size,
+				  u16 mbx_id)
 {
 	struct e1000_mbx_info *mbx = &hw->mbx;
 	s32 ret_val = -E1000_ERR_MBX;
 
-	/* exit if we either can't write or there isn't a defined timeout */
+	DEBUGFUNC("e1000_write_posted_mbx");
+
+	/* exit if either we can't write or there isn't a defined timeout */
 	if (!mbx->ops.write || !mbx->timeout)
 		goto out;
 
-	/* send msg*/
-	ret_val = mbx->ops.write(hw, msg, size);
+	/* send msg */
+	ret_val = mbx->ops.write(hw, msg, size, mbx_id);
 
 	/* if msg sent wait until we receive an ack */
 	if (!ret_val)
-		ret_val = e1000_poll_for_ack(hw);
+		ret_val = e1000_poll_for_ack(hw, mbx_id);
 out:
 	return ret_val;
+}
+
+/**
+ *  e1000_init_mbx_ops_generic - Initialize mbx function pointers
+ *  @hw: pointer to the HW structure
+ *
+ *  Sets the function pointers to no-op functions
+ **/
+void e1000_init_mbx_ops_generic(struct e1000_hw *hw)
+{
+	struct e1000_mbx_info *mbx = &hw->mbx;
+	mbx->ops.read_posted = e1000_read_posted_mbx;
+	mbx->ops.write_posted = e1000_write_posted_mbx;
 }
 
 /**
@@ -142,7 +174,7 @@ out:
  **/
 static u32 e1000_read_v2p_mailbox(struct e1000_hw *hw)
 {
-	u32 v2p_mailbox = er32(V2PMAILBOX(0));
+	u32 v2p_mailbox = E1000_READ_REG(hw, E1000_V2PMAILBOX(0));
 
 	v2p_mailbox |= hw->dev_spec.vf.v2p_mailbox;
 	hw->dev_spec.vf.v2p_mailbox |= v2p_mailbox & E1000_V2PMAILBOX_R2C_BITS;
@@ -174,12 +206,15 @@ static s32 e1000_check_for_bit_vf(struct e1000_hw *hw, u32 mask)
 /**
  *  e1000_check_for_msg_vf - checks to see if the PF has sent mail
  *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
  *
  *  returns SUCCESS if the PF has set the Status bit or else ERR_MBX
  **/
-static s32 e1000_check_for_msg_vf(struct e1000_hw *hw)
+static s32 e1000_check_for_msg_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
+
+	DEBUGFUNC("e1000_check_for_msg_vf");
 
 	if (!e1000_check_for_bit_vf(hw, E1000_V2PMAILBOX_PFSTS)) {
 		ret_val = E1000_SUCCESS;
@@ -192,12 +227,15 @@ static s32 e1000_check_for_msg_vf(struct e1000_hw *hw)
 /**
  *  e1000_check_for_ack_vf - checks to see if the PF has ACK'd
  *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
  *
  *  returns SUCCESS if the PF has set the ACK bit or else ERR_MBX
  **/
-static s32 e1000_check_for_ack_vf(struct e1000_hw *hw)
+static s32 e1000_check_for_ack_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
+
+	DEBUGFUNC("e1000_check_for_ack_vf");
 
 	if (!e1000_check_for_bit_vf(hw, E1000_V2PMAILBOX_PFACK)) {
 		ret_val = E1000_SUCCESS;
@@ -210,15 +248,18 @@ static s32 e1000_check_for_ack_vf(struct e1000_hw *hw)
 /**
  *  e1000_check_for_rst_vf - checks to see if the PF has reset
  *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
  *
  *  returns true if the PF has set the reset done bit or else false
  **/
-static s32 e1000_check_for_rst_vf(struct e1000_hw *hw)
+static s32 e1000_check_for_rst_vf(struct e1000_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
+	DEBUGFUNC("e1000_check_for_rst_vf");
+
 	if (!e1000_check_for_bit_vf(hw, (E1000_V2PMAILBOX_RSTD |
-	                                 E1000_V2PMAILBOX_RSTI))) {
+					 E1000_V2PMAILBOX_RSTI))) {
 		ret_val = E1000_SUCCESS;
 		hw->mbx.stats.rsts++;
 	}
@@ -236,8 +277,10 @@ static s32 e1000_obtain_mbx_lock_vf(struct e1000_hw *hw)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
+	DEBUGFUNC("e1000_obtain_mbx_lock_vf");
+
 	/* Take ownership of the buffer */
-	ew32(V2PMAILBOX(0), E1000_V2PMAILBOX_VFU);
+	E1000_WRITE_REG(hw, E1000_V2PMAILBOX(0), E1000_V2PMAILBOX_VFU);
 
 	/* reserve mailbox for vf use */
 	if (e1000_read_v2p_mailbox(hw) & E1000_V2PMAILBOX_VFU)
@@ -251,35 +294,40 @@ static s32 e1000_obtain_mbx_lock_vf(struct e1000_hw *hw)
  *  @hw: pointer to the HW structure
  *  @msg: The message buffer
  *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to write
  *
  *  returns SUCCESS if it successfully copied message into the buffer
  **/
-static s32 e1000_write_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size)
+static s32 e1000_write_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
+			      u16 mbx_id)
 {
-	s32 err;
+	s32 ret_val;
 	u16 i;
 
+
+	DEBUGFUNC("e1000_write_mbx_vf");
+
 	/* lock the mailbox to prevent pf/vf race condition */
-	err = e1000_obtain_mbx_lock_vf(hw);
-	if (err)
+	ret_val = e1000_obtain_mbx_lock_vf(hw);
+	if (ret_val)
 		goto out_no_write;
 
-	/* flush any ack or msg as we are going to overwrite mailbox */
-	e1000_check_for_ack_vf(hw);
-	e1000_check_for_msg_vf(hw);
+	/* flush msg and acks as we are overwriting the message buffer */
+	e1000_check_for_msg_vf(hw, 0);
+	e1000_check_for_ack_vf(hw, 0);
 
 	/* copy the caller specified message to the mailbox memory buffer */
 	for (i = 0; i < size; i++)
-		array_ew32(VMBMEM(0), i, msg[i]);
+		E1000_WRITE_REG_ARRAY(hw, E1000_VMBMEM(0), i, msg[i]);
 
 	/* update stats */
 	hw->mbx.stats.msgs_tx++;
 
 	/* Drop VFU and interrupt the PF to tell it a message has been sent */
-	ew32(V2PMAILBOX(0), E1000_V2PMAILBOX_REQ);
+	E1000_WRITE_REG(hw, E1000_V2PMAILBOX(0), E1000_V2PMAILBOX_REQ);
 
 out_no_write:
-	return err;
+	return ret_val;
 }
 
 /**
@@ -287,31 +335,35 @@ out_no_write:
  *  @hw: pointer to the HW structure
  *  @msg: The message buffer
  *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to read
  *
  *  returns SUCCESS if it successfuly read message from buffer
  **/
-static s32 e1000_read_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size)
+static s32 e1000_read_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
+			     u16 mbx_id)
 {
-	s32 err;
+	s32 ret_val = E1000_SUCCESS;
 	u16 i;
 
+	DEBUGFUNC("e1000_read_mbx_vf");
+
 	/* lock the mailbox to prevent pf/vf race condition */
-	err = e1000_obtain_mbx_lock_vf(hw);
-	if (err)
+	ret_val = e1000_obtain_mbx_lock_vf(hw);
+	if (ret_val)
 		goto out_no_read;
 
 	/* copy the message from the mailbox memory buffer */
 	for (i = 0; i < size; i++)
-		msg[i] = array_er32(VMBMEM(0), i);
+		msg[i] = E1000_READ_REG_ARRAY(hw, E1000_VMBMEM(0), i);
 
 	/* Acknowledge receipt and release mailbox, then we're done */
-	ew32(V2PMAILBOX(0), E1000_V2PMAILBOX_ACK);
+	E1000_WRITE_REG(hw, E1000_V2PMAILBOX(0), E1000_V2PMAILBOX_ACK);
 
 	/* update stats */
 	hw->mbx.stats.msgs_rx++;
 
 out_no_read:
-	return err;
+	return ret_val;
 }
 
 /**
@@ -325,7 +377,7 @@ s32 e1000_init_mbx_params_vf(struct e1000_hw *hw)
 	struct e1000_mbx_info *mbx = &hw->mbx;
 
 	/* start mailbox as timed out and let the reset_hw call set the timeout
-	 * value to being communications */
+	 * value to begin communications */
 	mbx->timeout = 0;
 	mbx->usec_delay = E1000_VF_MBX_INIT_DELAY;
 
