@@ -28,6 +28,21 @@
 
 #include "e1000.h"
 
+static void e1000e_reload_nvm_generic(struct e1000_hw *hw);
+
+/**
+ *  e1000_init_nvm_ops_generic - Initialize NVM function pointers
+ *  @hw: pointer to the HW structure
+ *
+ *  Setups up the function pointers to no-op functions
+ **/
+void e1000_init_nvm_ops_generic(struct e1000_hw *hw)
+{
+	struct e1000_nvm_info *nvm = &hw->nvm;
+	/* Initialize function pointers */
+	nvm->ops.reload = e1000e_reload_nvm_generic;
+}
+
 /**
  *  e1000_raise_eec_clk - Raise EEPROM clock
  *  @hw: pointer to the HW structure
@@ -117,7 +132,6 @@ static u16 e1000_shift_in_eec_bits(struct e1000_hw *hw, u16 count)
 	u16 data;
 
 	eecd = er32(EECD);
-
 	eecd &= ~(E1000_EECD_DO | E1000_EECD_DI);
 	data = 0;
 
@@ -180,7 +194,6 @@ s32 e1000e_acquire_nvm(struct e1000_hw *hw)
 
 	ew32(EECD, eecd | E1000_EECD_REQ);
 	eecd = er32(EECD);
-
 	while (timeout) {
 		if (eecd & E1000_EECD_GNT)
 			break;
@@ -625,13 +638,13 @@ s32 e1000e_update_nvm_checksum_generic(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_reload_nvm - Reloads EEPROM
+ *  e1000e_reload_nvm_generic - Reloads EEPROM
  *  @hw: pointer to the HW structure
  *
  *  Reloads the EEPROM by setting the "Reinitialize from EEPROM" bit in the
  *  extended control register.
  **/
-void e1000e_reload_nvm(struct e1000_hw *hw)
+static void e1000e_reload_nvm_generic(struct e1000_hw *hw)
 {
 	u32 ctrl_ext;
 

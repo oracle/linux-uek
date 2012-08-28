@@ -28,6 +28,34 @@
 
 #include "e1000.h"
 
+static s32 e1000_validate_mdi_setting_generic(struct e1000_hw *hw);
+static void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw);
+static void e1000e_config_collision_dist_generic(struct e1000_hw *hw);
+
+/**
+ *  e1000_init_mac_ops_generic - Initialize MAC function pointers
+ *  @hw: pointer to the HW structure
+ *
+ *  Setups up the function pointers to no-op functions
+ **/
+void e1000_init_mac_ops_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	/* General Setup */
+	mac->ops.set_lan_id = e1000_set_lan_id_multi_port_pcie;
+	mac->ops.read_mac_addr = e1000_read_mac_addr_generic;
+	mac->ops.config_collision_dist = e1000e_config_collision_dist_generic;
+	/* LINK */
+	mac->ops.wait_autoneg = e1000_wait_autoneg;
+	/* Management */
+	mac->ops.mng_host_if_write = e1000_mng_host_if_write;
+	mac->ops.mng_write_cmd_header = e1000_mng_write_cmd_header;
+	mac->ops.mng_enable_host_if = e1000_mng_enable_host_if;
+	/* VLAN, MC, etc. */
+	mac->ops.rar_set = e1000e_rar_set;
+	mac->ops.validate_mdi_setting = e1000_validate_mdi_setting_generic;
+}
+
 /**
  *  e1000e_get_bus_info_pcie - Get PCIe bus information
  *  @hw: pointer to the HW structure
@@ -40,16 +68,29 @@ s32 e1000e_get_bus_info_pcie(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
 	struct e1000_bus_info *bus = &hw->bus;
-	struct e1000_adapter *adapter = hw->adapter;
-	u16 pcie_link_status, cap_offset;
+	s32 ret_val;
+	u16 pcie_link_status;
 
-	cap_offset = adapter->pdev->pcie_cap;
-	if (!cap_offset) {
+	bus->type = e1000_bus_type_pci_express;
+
+	ret_val = e1000_read_pcie_cap_reg(hw, PCIE_LINK_STATUS,
+					  &pcie_link_status);
+	if (ret_val) {
 		bus->width = e1000_bus_width_unknown;
+		bus->speed = e1000_bus_speed_unknown;
 	} else {
-		pci_read_config_word(adapter->pdev,
-				     cap_offset + PCIE_LINK_STATUS,
-				     &pcie_link_status);
+		switch (pcie_link_status & PCIE_LINK_SPEED_MASK) {
+		case PCIE_LINK_SPEED_2500:
+			bus->speed = e1000_bus_speed_2500;
+			break;
+		case PCIE_LINK_SPEED_5000:
+			bus->speed = e1000_bus_speed_5000;
+			break;
+		default:
+			bus->speed = e1000_bus_speed_unknown;
+			break;
+		}
+
 		bus->width = (enum e1000_bus_width)((pcie_link_status &
 						     PCIE_LINK_WIDTH_MASK) >>
 						    PCIE_LINK_WIDTH_SHIFT);
@@ -68,7 +109,7 @@ s32 e1000e_get_bus_info_pcie(struct e1000_hw *hw)
  *  Determines the LAN function id by reading memory-mapped registers
  *  and swaps the port value if requested.
  **/
-void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw)
+static void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw)
 {
 	struct e1000_bus_info *bus = &hw->bus;
 	u32 reg;
@@ -263,8 +304,7 @@ void e1000e_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
  *  @mc_addr: pointer to a multicast address
  *
  *  Generates a multicast address hash value which is used to determine
- *  the multicast filter table array address and new table value.  See
- *  e1000_mta_set_generic()
+ *  the multicast filter table array address and new table value.
  **/
 static u32 e1000_hash_mc_addr(struct e1000_hw *hw, u8 *mc_addr)
 {
@@ -465,7 +505,7 @@ s32 e1000e_check_for_copper_link(struct e1000_hw *hw)
 	 * of MAC speed/duplex configuration.  So we only need to
 	 * configure Collision Distance in the MAC.
 	 */
-	e1000e_config_collision_dist(hw);
+	mac->ops.config_collision_dist(hw);
 
 	/*
 	 * Configure Flow Control now that Auto-Neg has completed.
@@ -630,7 +670,7 @@ s32 e1000e_check_for_serdes_link(struct e1000_hw *hw)
 	if (E1000_TXCW_ANE & er32(TXCW)) {
 		status = er32(STATUS);
 		if (status & E1000_STATUS_LU) {
-			/* SYNCH bit and IV bit are sticky, so reread rxcw.  */
+			/* SYNCH bit and IV bit are sticky, so reread rxcw. */
 			udelay(10);
 			rxcw = er32(RXCW);
 			if (rxcw & E1000_RXCW_SYNCH) {
@@ -682,7 +722,7 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
 		return ret_val;
 	}
 
-	if ((nvm_data & NVM_WORD0F_PAUSE_MASK) == 0)
+	if (!(nvm_data & NVM_WORD0F_PAUSE_MASK))
 		hw->fc.requested_mode = e1000_fc_none;
 	else if ((nvm_data & NVM_WORD0F_PAUSE_MASK) == NVM_WORD0F_ASM_DIR)
 		hw->fc.requested_mode = e1000_fc_tx_pause;
@@ -693,7 +733,7 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_setup_link - Setup flow control and link settings
+ *  e1000e_setup_link_generic - Setup flow control and link settings
  *  @hw: pointer to the HW structure
  *
  *  Determines which flow control settings to use, then configures flow
@@ -702,16 +742,15 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
  *  should be established.  Assumes the hardware has previously been reset
  *  and the transmitter and receiver are not enabled.
  **/
-s32 e1000e_setup_link(struct e1000_hw *hw)
+s32 e1000e_setup_link_generic(struct e1000_hw *hw)
 {
-	struct e1000_mac_info *mac = &hw->mac;
 	s32 ret_val;
 
 	/*
 	 * In the case of the phy reset being blocked, we already have a link.
 	 * We do not need to set it up again.
 	 */
-	if (e1000_check_reset_block(hw))
+	if (hw->phy.ops.check_reset_block && hw->phy.ops.check_reset_block(hw))
 		return 0;
 
 	/*
@@ -733,7 +772,7 @@ s32 e1000e_setup_link(struct e1000_hw *hw)
 	e_dbg("After fix-ups FlowControl is now = %x\n", hw->fc.current_mode);
 
 	/* Call the necessary media_type subroutine to configure the link. */
-	ret_val = mac->ops.setup_physical_interface(hw);
+	ret_val = hw->mac.ops.setup_physical_interface(hw);
 	if (ret_val)
 		return ret_val;
 
@@ -890,7 +929,7 @@ s32 e1000e_setup_fiber_serdes_link(struct e1000_hw *hw)
 	/* Take the link out of reset */
 	ctrl &= ~E1000_CTRL_LRST;
 
-	e1000e_config_collision_dist(hw);
+	hw->mac.ops.config_collision_dist(hw);
 
 	ret_val = e1000_commit_fc_settings_generic(hw);
 	if (ret_val)
@@ -925,14 +964,13 @@ s32 e1000e_setup_fiber_serdes_link(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_config_collision_dist - Configure collision distance
+ *  e1000e_config_collision_dist_generic - Configure collision distance
  *  @hw: pointer to the HW structure
  *
  *  Configures the collision distance to the default value and is used
- *  during link setup. Currently no func pointer exists and all
- *  implementations are handled in the generic version of this function.
+ *  during link setup.
  **/
-void e1000e_config_collision_dist(struct e1000_hw *hw)
+static void e1000e_config_collision_dist_generic(struct e1000_hw *hw)
 {
 	u32 tctl;
 
@@ -971,7 +1009,9 @@ s32 e1000e_set_fc_watermarks(struct e1000_hw *hw)
 		 * XON frames.
 		 */
 		fcrtl = hw->fc.low_water;
-		fcrtl |= E1000_FCRTL_XONE;
+		if (hw->fc.send_xon)
+			fcrtl |= E1000_FCRTL_XONE;
+
 		fcrth = hw->fc.high_water;
 	}
 	ew32(FCRTL, fcrtl);
@@ -1111,8 +1151,8 @@ s32 e1000e_config_fc_after_link_up(struct e1000_hw *hw)
 		ret_val = e1e_rphy(hw, PHY_AUTONEG_ADV, &mii_nway_adv_reg);
 		if (ret_val)
 			return ret_val;
-		ret_val =
-		    e1e_rphy(hw, PHY_LP_ABILITY, &mii_nway_lp_ability_reg);
+		ret_val = e1e_rphy(hw, PHY_LP_ABILITY,
+				   &mii_nway_lp_ability_reg);
 		if (ret_val)
 			return ret_val;
 
@@ -1276,8 +1316,8 @@ s32 e1000e_get_speed_and_duplex_copper(struct e1000_hw *hw, u16 *speed,
  *  Sets the speed and duplex to gigabit full duplex (the only possible option)
  *  for fiber/serdes links.
  **/
-s32 e1000e_get_speed_and_duplex_fiber_serdes(struct e1000_hw *hw, u16 *speed,
-					     u16 *duplex)
+s32 e1000e_get_speed_and_duplex_fiber_serdes(struct e1000_hw *hw,
+					     u16 *speed, u16 *duplex)
 {
 	*speed = SPEED_1000;
 	*duplex = FULL_DUPLEX;
@@ -1399,11 +1439,11 @@ s32 e1000e_valid_led_default(struct e1000_hw *hw, u16 *data)
 }
 
 /**
- *  e1000e_id_led_init -
+ *  e1000e_id_led_init_generic -
  *  @hw: pointer to the HW structure
  *
  **/
-s32 e1000e_id_led_init(struct e1000_hw *hw)
+s32 e1000e_id_led_init_generic(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
 	s32 ret_val;
@@ -1700,11 +1740,28 @@ void e1000e_update_adaptive(struct e1000_hw *hw)
 			}
 		}
 	} else {
-		if (mac->in_ifs_mode &&
-		    (mac->tx_packet_delta <= MIN_NUM_XMITS)) {
+		if (mac->in_ifs_mode && (mac->tx_packet_delta <= MIN_NUM_XMITS)) {
 			mac->current_ifs_val = 0;
 			mac->in_ifs_mode = false;
 			ew32(AIT, 0);
 		}
 	}
+}
+
+/**
+ *  e1000_validate_mdi_setting_generic - Verify MDI/MDIx settings
+ *  @hw: pointer to the HW structure
+ *
+ *  Verify that when not using auto-negotiation that MDI/MDIx is correctly
+ *  set, which is forced to MDI mode only.
+ **/
+static s32 e1000_validate_mdi_setting_generic(struct e1000_hw *hw)
+{
+	if (!hw->mac.autoneg && (hw->phy.mdix == 0 || hw->phy.mdix == 3)) {
+		e_dbg("Invalid MDI setting detected\n");
+		hw->phy.mdix = 1;
+		return -E1000_ERR_CONFIG;
+	}
+
+	return 0;
 }
