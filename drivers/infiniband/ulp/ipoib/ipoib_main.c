@@ -989,18 +989,29 @@ static void ipoib_timeout(struct net_device *dev)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_send_ring *send_ring;
 	u16 index;
+	int is_stopped;
 
 	ipoib_warn(priv, "transmit timeout: latency %d msecs\n",
 		   jiffies_to_msecs(jiffies - dev->trans_start));
 
 	for (index = 0; index < priv->num_tx_queues; index++) {
-		if (__netif_subqueue_stopped(dev, index)) {
-			send_ring = priv->send_ring + index;
-			ipoib_warn(priv,
-				"queue (%d) stopped, tx_head %u, tx_tail %u\n",
-				index,
-				send_ring->tx_head, send_ring->tx_tail);
+		is_stopped = __netif_subqueue_stopped(dev, index);
+		send_ring = priv->send_ring + index;
+		ipoib_warn(priv,
+			"queue (%d) stopped=%d, tx_head %u, tx_tail %u "
+			"tx_outstanding %u ipoib_sendq_size: %d\n",
+			index, is_stopped,
+			send_ring->tx_head, send_ring->tx_tail,
+			send_ring->tx_outstanding, ipoib_sendq_size);
+
+		if (is_stopped && unlikely(send_ring->tx_outstanding <
+			    ipoib_sendq_size >> 1) &&
+			test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
+			ipoib_warn(priv, "%s: waking the queue\n",
+					__func__);
+			netif_wake_subqueue(dev, index);
 		}
+
 	}
 	/* XXX reset QP, etc. */
 }
@@ -1911,7 +1922,7 @@ void ipoib_setup(struct net_device *dev)
 
 	ipoib_set_ethtool_ops(dev);
 
-	dev->watchdog_timeo	 = HZ;
+	dev->watchdog_timeo	 = 5 * HZ;
 
 	dev->flags		|= IFF_BROADCAST | IFF_MULTICAST;
 

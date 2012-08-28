@@ -836,7 +836,7 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	netif_tx_lock_bh(dev);
 
 	++tx->tx_tail;
-	if (unlikely(--send_ring->tx_outstanding == ipoib_sendq_size >> 1) &&
+	if (unlikely(--send_ring->tx_outstanding <= ipoib_sendq_size >> 1) &&
 	    __netif_subqueue_stopped(dev, queue_index) &&
 	    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 		netif_wake_subqueue(dev, queue_index);
@@ -1233,7 +1233,7 @@ timeout:
 		queue_index = skb_get_queue_mapping(tx_req->skb);
 		send_ring = priv->send_ring + queue_index;
 		netif_tx_lock_bh(p->dev);
-		if (unlikely(--send_ring->tx_outstanding ==
+		if (unlikely(--send_ring->tx_outstanding <=
 				(ipoib_sendq_size >> 1)) &&
 		    __netif_subqueue_stopped(p->dev, queue_index) &&
 		    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))

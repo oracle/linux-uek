@@ -484,7 +484,7 @@ static void ipoib_ib_handle_tx_wc(struct ipoib_send_ring *send_ring,
 	dev_kfree_skb_any(tx_req->skb);
 
 	++send_ring->tx_tail;
-	if (unlikely(--send_ring->tx_outstanding == ipoib_sendq_size >> 1) &&
+	if (unlikely(--send_ring->tx_outstanding <= ipoib_sendq_size >> 1) &&
 			__netif_subqueue_stopped(dev, send_ring->index) &&
 			test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 		netif_wake_subqueue(dev, send_ring->index);
