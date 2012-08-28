@@ -320,9 +320,6 @@ extern ktime_t ktime_get(void);
 extern ktime_t ktime_get_real(void);
 extern ktime_t ktime_get_boottime(void);
 extern ktime_t ktime_get_monotonic_offset(void);
-extern void ktime_get_and_real_and_sleep_offset(ktime_t *monotonic,
-						ktime_t *real_offset,
-						ktime_t *sleep_offset);
 
 DECLARE_PER_CPU(struct tick_device, tick_cpu_device);
 

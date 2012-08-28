@@ -1258,26 +1258,18 @@ static void __run_hrtimer(struct hrtimer *timer, ktime_t *now)
 void hrtimer_interrupt(struct clock_event_device *dev)
 {
 	struct hrtimer_cpu_base *cpu_base = &__get_cpu_var(hrtimer_bases);
-	ktime_t expires_next, now, entry_time, delta, real_offset, sleep_offset;
+	ktime_t expires_next, now, entry_time, delta;
 	int i, retries = 0;
 
 	BUG_ON(!cpu_base->hres_active);
 	cpu_base->nr_events++;
 	dev->next_event.tv64 = KTIME_MAX;
 
-
-	ktime_get_and_real_and_sleep_offset(&now, &real_offset, &sleep_offset);
-
-	entry_time = now;
+	entry_time = now = ktime_get();
 retry:
 	expires_next.tv64 = KTIME_MAX;
 
 	raw_spin_lock(&cpu_base->lock);
-
-	/* Update base offsets, to avoid early wakeups */
-	cpu_base->clock_base[HRTIMER_BASE_REALTIME].offset = real_offset;
-	cpu_base->clock_base[HRTIMER_BASE_BOOTTIME].offset = sleep_offset;
-
 	/*
 	 * We set expires_next to KTIME_MAX here with cpu_base->lock
 	 * held to prevent that a timer is enqueued in our queue via
@@ -1354,7 +1346,7 @@ retry:
 	 * interrupt routine. We give it 3 attempts to avoid
 	 * overreacting on some spurious event.
 	 */
-	ktime_get_and_real_and_sleep_offset(&now, &real_offset, &sleep_offset);
+	now = ktime_get();
 	cpu_base->nr_retries++;
 	if (++retries < 3)
 		goto retry;

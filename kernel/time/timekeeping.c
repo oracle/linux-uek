@@ -1108,40 +1108,6 @@ void get_xtime_and_monotonic_and_sleep_offset(struct timespec *xtim,
 }
 
 /**
- * ktime_get_and_real_and_sleep_offset() - hrtimer helper, gets monotonic ktime,
- *	realtime offset, and sleep offsets.
- */
-void ktime_get_and_real_and_sleep_offset(ktime_t *monotonic,
-						ktime_t *real_offset,
-						ktime_t *sleep_offset)
-{
-	unsigned long seq;
-	struct timespec wtom, sleep;
-	u64 secs, nsecs;
-
-	do {
-		seq = read_seqbegin(&xtime_lock);
-
-		secs = xtime.tv_sec +
-				wall_to_monotonic.tv_sec;
-		nsecs = xtime.tv_nsec +
-				wall_to_monotonic.tv_nsec;
-		nsecs += timekeeping_get_ns();
-		/* If arch requires, add in gettimeoffset() */
-		nsecs += arch_gettimeoffset();
-
-		wtom = wall_to_monotonic;
-		sleep = total_sleep_time;
-	} while (read_seqretry(&xtime_lock, seq));
-
-	*monotonic = ktime_add_ns(ktime_set(secs, 0), nsecs);
-	set_normalized_timespec(&wtom, -wtom.tv_sec, -wtom.tv_nsec);
-	*real_offset =	timespec_to_ktime(wtom);
-	*sleep_offset = timespec_to_ktime(sleep);
-}
-
-
-/**
  * ktime_get_monotonic_offset() - get wall_to_monotonic in ktime_t format
  */
 ktime_t ktime_get_monotonic_offset(void)
