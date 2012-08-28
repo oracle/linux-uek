@@ -3882,6 +3882,7 @@ lpfc_sli4_brdreset(struct lpfc_hba *phba)
 {
 	struct lpfc_sli *psli = &phba->sli;
 	uint16_t cfg_value;
+	int rc;
 
 	/* Reset HBA */
 	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
@@ -3910,12 +3911,12 @@ lpfc_sli4_brdreset(struct lpfc_hba *phba)
 
 	/* Perform FCoE PCI function reset */
 	lpfc_sli4_queue_destroy(phba);
-	lpfc_pci_function_reset(phba);
+	rc = lpfc_pci_function_reset(phba);
 
 	/* Restore PCI cmd register */
 	pci_write_config_word(phba->pcidev, PCI_COMMAND, cfg_value);
 
-	return 0;
+	return rc;
 }
 
 /**
@@ -4007,6 +4008,7 @@ lpfc_sli_brdrestart_s4(struct lpfc_hba *phba)
 {
 	struct lpfc_sli *psli = &phba->sli;
 	uint32_t hba_aer_enabled;
+	int rc;
 
 	/* Restart HBA */
 	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
@@ -4016,7 +4018,7 @@ lpfc_sli_brdrestart_s4(struct lpfc_hba *phba)
 	/* Take PCIe device Advanced Error Reporting (AER) state */
 	hba_aer_enabled = phba->hba_flag & HBA_AER_ENABLED;
 
-	lpfc_sli4_brdreset(phba);
+	rc = lpfc_sli4_brdreset(phba);
 
 	spin_lock_irq(&phba->hbalock);
 	phba->pport->stopped = 0;
@@ -4033,7 +4035,7 @@ lpfc_sli_brdrestart_s4(struct lpfc_hba *phba)
 
 	lpfc_hba_down_post(phba);
 
-	return 0;
+	return rc;
 }
 
 /**
