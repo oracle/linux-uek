@@ -130,7 +130,11 @@ fw-shipped-$(CONFIG_R8169) += rtl_nic/rtl8105e-1.fw \
 			      rtl_nic/rtl8168e-2.fw \
 			      rtl_nic/rtl8168e-3.fw \
 			      rtl_nic/rtl8168f-1.fw \
-			      rtl_nic/rtl8168f-2.fw
+			      rtl_nic/rtl8168f-2.fw \
+			      rtl_nic/rtl8168g-1.fw \
+			      rtl_nic/rtl8106e-1.fw \
+			      rtl_nic/rtl8411-1.fw \
+			      rtl_nic/rtl8402-1.fw
 
 fw-shipped-$(CONFIG_SERIAL_8250_CS) += cis/MT5634ZLX.cis cis/RS-COM-2P.cis \
 				       cis/COMpad2.cis cis/COMpad4.cis \
