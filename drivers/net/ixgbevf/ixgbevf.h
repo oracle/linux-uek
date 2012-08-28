@@ -28,14 +28,33 @@
 #ifndef _IXGBEVF_H_
 #define _IXGBEVF_H_
 
-#include <linux/types.h>
-#include <linux/bitops.h>
-#include <linux/timer.h>
-#include <linux/io.h>
-#include <linux/netdevice.h>
-#include <linux/if_vlan.h>
 
-#include "vf.h"
+#include <linux/pci.h>
+#include <linux/netdevice.h>
+#include <linux/vmalloc.h>
+
+#ifdef SIOCETHTOOL
+#include <linux/ethtool.h>
+#endif
+#ifdef NETIF_F_HW_VLAN_TX
+#include <linux/if_vlan.h>
+#endif
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#define IXGBE_DCA
+#include <linux/dca.h>
+
+#endif
+
+#include "kcompat.h"
+
+#include "ixgbe_type.h"
+#include "ixgbe_vf.h"
+
+#define PFX "ixgbevf: "
+#define DPRINTK(nlevel, klevel, fmt, args...) \
+	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
+	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
+		__FUNCTION__ , ## args)))
 
 /* wrapper around a pointer to a socket buffer,
  * so a DMA handle can be stored along with the buffer */
@@ -45,7 +64,6 @@ struct ixgbevf_tx_buffer {
 	unsigned long time_stamp;
 	u16 length;
 	u16 next_to_watch;
-	u16 mapped_as_page;
 };
 
 struct ixgbevf_rx_buffer {
@@ -78,8 +96,8 @@ struct ixgbevf_ring {
 	unsigned int total_packets;
 
 	u16 reg_idx; /* holds the special value that gets the hardware register
-		      * offset associated with this ring, which is different
-		      * for DCB and RSS modes */
+	              * offset associated with this ring, which is different
+	              * for DCB and RSS modes */
 
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 	/* cpu for tx queue */
@@ -87,8 +105,8 @@ struct ixgbevf_ring {
 #endif
 
 	u64 v_idx; /* maps directly to the index for this ring in the hardware
-		    * vector array, can also be used for finding the bit in EICR
-		    * and friends that represents the vector for this ring */
+	            * vector array, can also be used for finding the bit in EICR
+	            * and friends that represents the vector for this ring */
 
 	u16 work_limit;                /* max work per interrupt */
 	u16 rx_buf_len;
@@ -187,7 +205,9 @@ struct ixgbevf_q_vector {
 /* board specific private data structure */
 struct ixgbevf_adapter {
 	struct timer_list watchdog_timer;
-	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
+#ifdef NETIF_F_HW_VLAN_TX
+	struct vlan_group *vlgrp;
+#endif
 	u16 bd_number;
 	struct work_struct reset_task;
 	struct ixgbevf_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
@@ -231,23 +251,34 @@ struct ixgbevf_adapter {
 	 */
 	u32 flags;
 #define IXGBE_FLAG_RX_CSUM_ENABLED              (u32)(1)
-#define IXGBE_FLAG_RX_1BUF_CAPABLE              (u32)(1 << 1)
-#define IXGBE_FLAG_RX_PS_CAPABLE                (u32)(1 << 2)
-#define IXGBE_FLAG_RX_PS_ENABLED                (u32)(1 << 3)
-#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 4)
-#define IXGBE_FLAG_IMIR_ENABLED                 (u32)(1 << 5)
-#define IXGBE_FLAG_MQ_CAPABLE                   (u32)(1 << 6)
-#define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 7)
-#define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 8)
+#ifndef IXGBE_NO_LLI
+#define IXGBE_FLAG_LLI_PUSH                     (u32)(1 << 1)
+#endif
+#define IXGBE_FLAG_RX_1BUF_CAPABLE              (u32)(1 << 2)
+#define IXGBE_FLAG_RX_PS_CAPABLE                (u32)(1 << 3)
+#define IXGBE_FLAG_RX_PS_ENABLED                (u32)(1 << 4)
+#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 5)
+#define IXGBE_FLAG_IMIR_ENABLED                 (u32)(1 << 6)
+#define IXGBE_FLAG_MQ_CAPABLE                   (u32)(1 << 7)
+#define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 8)
+#define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 9)
 	/* OS defined structs */
 	struct net_device *netdev;
 	struct pci_dev *pdev;
+	struct net_device_stats net_stats;
 
 	/* structs defined in ixgbe_vf.h */
 	struct ixgbe_hw hw;
 	u16 msg_enable;
 	struct ixgbevf_hw_stats stats;
 	u64 zero_base;
+#ifndef IXGBE_NO_LLI
+	u32 lli_port;
+	u32 lli_size;
+	u64 lli_int;
+	u32 lli_etype;
+	u32 lli_vlan_pri;
+#endif /* IXGBE_NO_LLI */
 	/* Interrupt Throttle Rate */
 	u32 eitr_param;
 
@@ -266,39 +297,38 @@ struct ixgbevf_adapter {
 	bool dev_closed;
 };
 
+struct ixgbevf_info {
+	enum ixgbe_mac_type	mac;
+	unsigned int		flags;
+};
+
 enum ixbgevf_state_t {
 	__IXGBEVF_TESTING,
 	__IXGBEVF_RESETTING,
 	__IXGBEVF_DOWN
 };
 
-enum ixgbevf_boards {
-	board_82599_vf,
-	board_X540_vf,
-};
 
-extern const struct ixgbevf_info ixgbevf_82599_vf_info;
-extern const struct ixgbevf_info ixgbevf_X540_vf_info;
-extern const struct ixgbe_mbx_operations ixgbevf_mbx_ops;
+/* needed by ixgbevf_main.c */
+extern void ixgbevf_check_options(struct ixgbevf_adapter *adapter);
 
-/* needed by ethtool.c */
-extern const char ixgbevf_driver_name[];
+/* needed by ixgbevf_ethtool.c */
+extern char ixgbevf_driver_name[];
 extern const char ixgbevf_driver_version[];
 
-extern int ixgbevf_up(struct ixgbevf_adapter *adapter);
+extern void ixgbevf_up(struct ixgbevf_adapter *adapter);
 extern void ixgbevf_down(struct ixgbevf_adapter *adapter);
 extern void ixgbevf_reinit_locked(struct ixgbevf_adapter *adapter);
 extern void ixgbevf_reset(struct ixgbevf_adapter *adapter);
 extern void ixgbevf_set_ethtool_ops(struct net_device *netdev);
-extern int ixgbevf_setup_rx_resources(struct ixgbevf_adapter *,
-				      struct ixgbevf_ring *);
-extern int ixgbevf_setup_tx_resources(struct ixgbevf_adapter *,
-				      struct ixgbevf_ring *);
-extern void ixgbevf_free_rx_resources(struct ixgbevf_adapter *,
-				      struct ixgbevf_ring *);
-extern void ixgbevf_free_tx_resources(struct ixgbevf_adapter *,
-				      struct ixgbevf_ring *);
+extern int ixgbevf_setup_rx_resources(struct ixgbevf_adapter *,struct ixgbevf_ring *);
+extern int ixgbevf_setup_tx_resources(struct ixgbevf_adapter *,struct ixgbevf_ring *);
+extern void ixgbevf_free_rx_resources(struct ixgbevf_adapter *,struct ixgbevf_ring *);
+extern void ixgbevf_free_tx_resources(struct ixgbevf_adapter *,struct ixgbevf_ring *);
 extern void ixgbevf_update_stats(struct ixgbevf_adapter *adapter);
+extern void ixgbevf_reset_interrupt_capability(struct ixgbevf_adapter *adapter);
+extern int ixgbevf_init_interrupt_scheme(struct ixgbevf_adapter *adapter);
+extern bool ixgbevf_is_ixgbevf(struct pci_dev *pcidev);
 
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *ifr);
@@ -307,12 +337,17 @@ extern int ethtool_ioctl(struct ifreq *ifr);
 extern void ixgbe_napi_add_all(struct ixgbevf_adapter *adapter);
 extern void ixgbe_napi_del_all(struct ixgbevf_adapter *adapter);
 
-#ifdef DEBUG
-extern char *ixgbevf_get_hw_dev_name(struct ixgbe_hw *hw);
-#define hw_dbg(hw, format, arg...) \
-	printk(KERN_DEBUG "%s: " format, ixgbevf_get_hw_dev_name(hw), ##arg)
-#else
-#define hw_dbg(hw, format, arg...) do {} while (0)
-#endif
+static inline u32 __er32(struct ixgbe_hw *hw, unsigned long reg)
+{
+	return readl(hw->hw_addr + reg);
+}
+
+static inline void __ew32(struct ixgbe_hw *hw, unsigned long reg, u32 val)
+{
+	writel(val, hw->hw_addr + reg);
+}
+#define er32(reg)	IXGBE_READ_REG(hw, IXGBE_##reg)
+#define ew32(reg,val)	IXGBE_WRITE_REG(hw, IXGBE_##reg, (val))
+#define e1e_flush()	er32(STATUS)
 
 #endif /* _IXGBEVF_H_ */
