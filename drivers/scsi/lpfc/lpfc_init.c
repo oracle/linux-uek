@@ -4649,7 +4649,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 		goto out_remove_rpi_hdrs;
 	}
 
-	/* 
+	/*
 	 * The cfg_fcp_eq_count can be zero whenever there is exactly one
 	 * interrupt vector.  This is not an error
 	 */

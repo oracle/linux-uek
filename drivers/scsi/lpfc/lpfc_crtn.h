@@ -107,7 +107,7 @@ void lpfc_cleanup(struct lpfc_vport *);
 void lpfc_disc_timeout(unsigned long);
 
 struct lpfc_nodelist *__lpfc_findnode_rpi(struct lpfc_vport *, uint16_t);
-struct lpfc_nodelist * lpfc_findnode_rpi(struct lpfc_vport *, uint16_t);
+struct lpfc_nodelist *lpfc_findnode_rpi(struct lpfc_vport *, uint16_t);
 void lpfc_worker_wake_up(struct lpfc_hba *);
 int lpfc_workq_post_event(struct lpfc_hba *, void *, void *, uint32_t);
 int lpfc_do_work(void *);
