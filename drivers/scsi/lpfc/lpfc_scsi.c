@@ -4414,7 +4414,7 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	DECLARE_WAIT_QUEUE_HEAD_ONSTACK(waitq);
 
 	status = fc_block_scsi_eh(cmnd);
-	if (status)
+	if (status != 0 && status != SUCCESS)
 		return status;
 	lpfc_cmd = (struct lpfc_scsi_buf *)cmnd->host_scribble;
 	if (!lpfc_cmd) {
@@ -4743,7 +4743,7 @@ lpfc_device_reset_handler(struct scsi_cmnd *cmnd)
 	}
 	pnode = rdata->pnode;
 	status = fc_block_scsi_eh(cmnd);
-	if (status)
+	if (status != 0 && status != SUCCESS)
 		return status;
 
 	status = lpfc_chk_tgt_mapped(vport, cmnd);
@@ -4810,7 +4810,7 @@ lpfc_target_reset_handler(struct scsi_cmnd *cmnd)
 	}
 	pnode = rdata->pnode;
 	status = fc_block_scsi_eh(cmnd);
-	if (status)
+	if (status != 0 && status != SUCCESS)
 		return status;
 
 	status = lpfc_chk_tgt_mapped(vport, cmnd);
@@ -4878,7 +4878,7 @@ lpfc_bus_reset_handler(struct scsi_cmnd *cmnd)
 		sizeof(scsi_event), (char *)&scsi_event, LPFC_NL_VENDOR_ID);
 
 	status = fc_block_scsi_eh(cmnd);
-	if (status)
+	if (status != 0 && status != SUCCESS)
 		return status;
 
 	/*
