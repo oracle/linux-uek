@@ -1279,15 +1279,16 @@ lpfc_cmd_blksize(struct scsi_cmnd *sc)
 }
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
-/*
- * Given a scsi cmnd, determine the BlockGuard tags to be used with it
+/**
+ * lpfc_bg_err_inject - Determine if we should inject an error
+ * @phba: The Hba for which this call is being executed.
  * @sc: The SCSI command to examine
  * @reftag: (out) BlockGuard reference tag for transmitted data
  * @apptag: (out) BlockGuard application tag for transmitted data
  * @new_guard (in) Value to replace CRC with if needed
  *
  * Returns (1) if error injection was performed, (0) otherwise
- */
+ **/
 static int
 lpfc_bg_err_inject(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		uint32_t *reftag, uint16_t *apptag, uint32_t new_guard)
@@ -1440,15 +1441,17 @@ lpfc_bg_err_inject(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 }
 #endif
 
-/*
- * Given a scsi cmnd, determine the BlockGuard opcodes to be used with it
+/**
+ * lpfc_sc_to_bg_opcodes - Determine the BlockGuard opcodes to be used with
+ * the specified SCSI command.
+ * @phba: The Hba for which this call is being executed.
  * @sc: The SCSI command to examine
  * @txopt: (out) BlockGuard operation for transmitted data
  * @rxopt: (out) BlockGuard operation for received data
  *
  * Returns: zero on success; non-zero if tx and/or rx op cannot be determined
  *
- */
+ **/
 static int
 lpfc_sc_to_bg_opcodes(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		uint8_t *txop, uint8_t *rxop)
@@ -1518,8 +1521,14 @@ lpfc_sc_to_bg_opcodes(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	return ret;
 }
 
-/*
- * This function sets up buffer list for protection groups of
+/**
+ * lpfc_bg_setup_bpl - Setup BlockGuard BPL with no protection data
+ * @phba: The Hba for which this call is being executed.
+ * @sc: pointer to scsi command we're working on
+ * @bpl: pointer to buffer list for protection groups
+ * @datacnt: number of segments of data that have been dma mapped
+ *
+ * This function sets up BPL buffer list for protection groups of
  * type LPFC_PG_TYPE_NO_DIF
  *
  * This is usually used when the HBA is instructed to generate
@@ -1538,12 +1547,11 @@ lpfc_sc_to_bg_opcodes(struct lpfc_hba *phba, struct scsi_cmnd *sc,
  *                                |more Data BDE's ... (opt)|
  *                                +-------------------------+
  *
- * @sc: pointer to scsi command we're working on
- * @bpl: pointer to buffer list for protection groups
- * @datacnt: number of segments of data that have been dma mapped
  *
  * Note: Data s/g buffers have been dma mapped
- */
+ *
+ * Returns the number of BDEs added to the BPL.
+ **/
 static int
 lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		struct ulp_bde64 *bpl, int datasegcnt)
@@ -1564,7 +1572,7 @@ lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 
 	/* extract some info from the scsi command for pde*/
 	blksize = lpfc_cmd_blksize(sc);
-	reftag = scsi_get_lba(sc) & 0xffffffff;
+	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
 	/* reftag is the only error we can inject here */
@@ -1626,9 +1634,16 @@ out:
 	return num_bde;
 }
 
-/*
- * This function sets up buffer list for protection groups of
- * type LPFC_PG_TYPE_DIF_BUF
+/**
+ * lpfc_bg_setup_bpl_prot - Setup BlockGuard BPL with protection data
+ * @phba: The Hba for which this call is being executed.
+ * @sc: pointer to scsi command we're working on
+ * @bpl: pointer to buffer list for protection groups
+ * @datacnt: number of segments of data that have been dma mapped
+ * @protcnt: number of segment of protection data that have been dma mapped
+ *
+ * This function sets up BPL buffer list for protection groups of
+ * type LPFC_PG_TYPE_DIF
  *
  * This is usually used when DIFs are in their own buffers,
  * separate from the data. The HBA can then by instructed
@@ -1653,14 +1668,11 @@ out:
  *                                    |          ...            |
  *                                    +-------------------------+
  *
- * @sc: pointer to scsi command we're working on
- * @bpl: pointer to buffer list for protection groups
- * @datacnt: number of segments of data that have been dma mapped
- * @protcnt: number of segment of protection data that have been dma mapped
- *
  * Note: It is assumed that both data and protection s/g buffers have been
  *       mapped for DMA
- */
+ *
+ * Returns the number of BDEs added to the BPL.
+ **/
 static int
 lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		struct ulp_bde64 *bpl, int datacnt, int protcnt)
@@ -1700,7 +1712,7 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 
 	/* extract some info from the scsi command */
 	blksize = lpfc_cmd_blksize(sc);
-	reftag = scsi_get_lba(sc) & 0xffffffff;
+	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
 	/* reftag / guard tag are the only errors we can inject here */
@@ -1851,13 +1863,342 @@ out:
 	return num_bde;
 }
 
-/*
+/**
+ * lpfc_bg_setup_sgl - Setup BlockGuard SGL with no protection data
+ * @phba: The Hba for which this call is being executed.
+ * @sc: pointer to scsi command we're working on
+ * @sgl: pointer to buffer list for protection groups
+ * @datacnt: number of segments of data that have been dma mapped
+ *
+ * This function sets up SGL buffer list for protection groups of
+ * type LPFC_PG_TYPE_NO_DIF
+ *
+ * This is usually used when the HBA is instructed to generate
+ * DIFs and insert them into data stream (or strip DIF from
+ * incoming data stream)
+ *
+ * The buffer list consists of just one protection group described
+ * below:
+ *                                +-------------------------+
+ *   start of prot group  -->     |         DI_SEED         |
+ *                                +-------------------------+
+ *                                |         Data SGE        |
+ *                                +-------------------------+
+ *                                |more Data SGE's ... (opt)|
+ *                                +-------------------------+
+ *
+ *
+ * Note: Data s/g buffers have been dma mapped
+ *
+ * Returns the number of SGEs added to the SGL.
+ **/
+static int
+lpfc_bg_setup_sgl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
+		struct sli4_sge *sgl, int datasegcnt)
+{
+	struct scatterlist *sgde = NULL; /* s/g data entry */
+	struct sli4_sge_diseed *diseed = NULL;
+	dma_addr_t physaddr;
+	int i = 0, num_sge = 0, status;
+	int datadir = sc->sc_data_direction;
+	uint32_t reftag;
+	unsigned blksize;
+	uint8_t txop, rxop;
+	uint32_t dma_len;
+	uint32_t dma_offset = 0;
+
+	status  = lpfc_sc_to_bg_opcodes(phba, sc, &txop, &rxop);
+	if (status)
+		goto out;
+
+	/* extract some info from the scsi command for pde*/
+	blksize = lpfc_cmd_blksize(sc);
+	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
+
+#ifdef CONFIG_SCSI_LPFC_DEBUG_FS
+	/* reftag is the only error we can inject here */
+	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0);
+#endif
+
+	/* setup DISEED with what we have */
+	diseed = (struct sli4_sge_diseed *) sgl;
+	memset(diseed, 0, sizeof(struct sli4_sge_diseed));
+	bf_set(lpfc_sli4_sge_type, sgl, LPFC_SGE_TYPE_DISEED);
+
+	/* Endianness conversion if necessary */
+	diseed->ref_tag = cpu_to_le32(reftag);
+
+	/* setup DISEED with the rest of the info */
+	bf_set(lpfc_sli4_sge_dif_optx, diseed, txop);
+	bf_set(lpfc_sli4_sge_dif_oprx, diseed, rxop);
+	if (datadir == DMA_FROM_DEVICE) {
+		bf_set(lpfc_sli4_sge_dif_ce, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_re, diseed, 1);
+	}
+	bf_set(lpfc_sli4_sge_dif_ai, diseed, 1);
+	bf_set(lpfc_sli4_sge_dif_me, diseed, 0);
+
+	/* Endianness conversion if necessary for DISEED */
+	diseed->word2 = cpu_to_le32(diseed->word2);
+	diseed->word3 = cpu_to_le32(diseed->word3);
+
+	/* advance bpl and increment sge count */
+	num_sge++;
+	sgl++;
+
+	/* assumption: caller has already run dma_map_sg on command data */
+	scsi_for_each_sg(sc, sgde, datasegcnt, i) {
+		physaddr = sg_dma_address(sgde);
+		dma_len = sg_dma_len(sgde);
+		sgl->addr_lo = cpu_to_le32(putPaddrLow(physaddr));
+		sgl->addr_hi = cpu_to_le32(putPaddrHigh(physaddr));
+		if ((i + 1) == datasegcnt)
+			bf_set(lpfc_sli4_sge_last, sgl, 1);
+		else
+			bf_set(lpfc_sli4_sge_last, sgl, 0);
+		bf_set(lpfc_sli4_sge_offset, sgl, dma_offset);
+		bf_set(lpfc_sli4_sge_type, sgl, LPFC_SGE_TYPE_DATA);
+
+		sgl->sge_len = cpu_to_le32(dma_len);
+		dma_offset += dma_len;
+
+		sgl++;
+		num_sge++;
+	}
+
+out:
+	return num_sge;
+}
+
+/**
+ * lpfc_bg_setup_sgl_prot - Setup BlockGuard SGL with protection data
+ * @phba: The Hba for which this call is being executed.
+ * @sc: pointer to scsi command we're working on
+ * @sgl: pointer to buffer list for protection groups
+ * @datacnt: number of segments of data that have been dma mapped
+ * @protcnt: number of segment of protection data that have been dma mapped
+ *
+ * This function sets up SGL buffer list for protection groups of
+ * type LPFC_PG_TYPE_DIF
+ *
+ * This is usually used when DIFs are in their own buffers,
+ * separate from the data. The HBA can then by instructed
+ * to place the DIFs in the outgoing stream.  For read operations,
+ * The HBA could extract the DIFs and place it in DIF buffers.
+ *
+ * The buffer list for this type consists of one or more of the
+ * protection groups described below:
+ *                                    +-------------------------+
+ *   start of first prot group  -->   |         DISEED          |
+ *                                    +-------------------------+
+ *                                    |      DIF (Prot SGE)     |
+ *                                    +-------------------------+
+ *                                    |        Data SGE         |
+ *                                    +-------------------------+
+ *                                    |more Data SGE's ... (opt)|
+ *                                    +-------------------------+
+ *   start of new  prot group  -->    |         DISEED          |
+ *                                    +-------------------------+
+ *                                    |          ...            |
+ *                                    +-------------------------+
+ *
+ * Note: It is assumed that both data and protection s/g buffers have been
+ *       mapped for DMA
+ *
+ * Returns the number of SGEs added to the SGL.
+ **/
+static int
+lpfc_bg_setup_sgl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
+		struct sli4_sge *sgl, int datacnt, int protcnt)
+{
+	struct scatterlist *sgde = NULL; /* s/g data entry */
+	struct scatterlist *sgpe = NULL; /* s/g prot entry */
+	struct sli4_sge_diseed *diseed = NULL;
+	dma_addr_t dataphysaddr, protphysaddr;
+	unsigned short curr_data = 0, curr_prot = 0;
+	unsigned int split_offset;
+	unsigned int protgroup_len, protgroup_offset = 0, protgroup_remainder;
+	unsigned int protgrp_blks, protgrp_bytes;
+	unsigned int remainder, subtotal;
+	int status;
+	unsigned char pgdone = 0, alldone = 0;
+	unsigned blksize;
+	uint32_t reftag;
+	uint8_t txop, rxop;
+	uint32_t dma_len;
+	uint32_t dma_offset = 0;
+	int num_sge = 0;
+
+	sgpe = scsi_prot_sglist(sc);
+	sgde = scsi_sglist(sc);
+
+	if (!sgpe || !sgde) {
+		lpfc_printf_log(phba, KERN_ERR, LOG_FCP,
+				"9082 Invalid s/g entry: data=0x%p prot=0x%p\n",
+				sgpe, sgde);
+		return 0;
+	}
+
+	status = lpfc_sc_to_bg_opcodes(phba, sc, &txop, &rxop);
+	if (status)
+		goto out;
+
+	/* extract some info from the scsi command */
+	blksize = lpfc_cmd_blksize(sc);
+	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
+
+#ifdef CONFIG_SCSI_LPFC_DEBUG_FS
+	/* reftag is the only error we can inject here */
+	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0xDEAD);
+#endif
+
+	split_offset = 0;
+	do {
+		/* setup DISEED with what we have */
+		diseed = (struct sli4_sge_diseed *) sgl;
+		memset(diseed, 0, sizeof(struct sli4_sge_diseed));
+		bf_set(lpfc_sli4_sge_type, sgl, LPFC_SGE_TYPE_DISEED);
+
+		/* Endianness conversion if necessary */
+		diseed->ref_tag = cpu_to_le32(reftag);
+
+		/* setup DISEED with the rest of the info */
+		bf_set(lpfc_sli4_sge_dif_optx, diseed, txop);
+		bf_set(lpfc_sli4_sge_dif_oprx, diseed, rxop);
+		bf_set(lpfc_sli4_sge_dif_ce, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_re, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_ai, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_me, diseed, 0);
+
+		/* Endianness conversion if necessary for DISEED */
+		diseed->word2 = cpu_to_le32(diseed->word2);
+		diseed->word3 = cpu_to_le32(diseed->word3);
+
+		/* advance sgl and increment bde count */
+		num_sge++;
+		sgl++;
+
+		/* setup the first BDE that points to protection buffer */
+		protphysaddr = sg_dma_address(sgpe) + protgroup_offset;
+		protgroup_len = sg_dma_len(sgpe) - protgroup_offset;
+
+		/* must be integer multiple of the DIF block length */
+		BUG_ON(protgroup_len % 8);
+
+		/* Now setup DIF SGE */
+		sgl->word2 = 0;
+		bf_set(lpfc_sli4_sge_type, sgl, LPFC_SGE_TYPE_DIF);
+		sgl->addr_hi = le32_to_cpu(putPaddrHigh(protphysaddr));
+		sgl->addr_lo = le32_to_cpu(putPaddrLow(protphysaddr));
+		sgl->word2 = cpu_to_le32(sgl->word2);
+
+		protgrp_blks = protgroup_len / 8;
+		protgrp_bytes = protgrp_blks * blksize;
+
+		/* check if DIF SGE is crossing the 4K boundary; if so split */
+		if ((sgl->addr_lo & 0xfff) + protgroup_len > 0x1000) {
+			protgroup_remainder = 0x1000 - (sgl->addr_lo & 0xfff);
+			protgroup_offset += protgroup_remainder;
+			protgrp_blks = protgroup_remainder / 8;
+			protgrp_bytes = protgrp_blks * blksize;
+		} else {
+			protgroup_offset = 0;
+			curr_prot++;
+		}
+
+		num_sge++;
+
+		/* setup SGE's for data blocks associated with DIF data */
+		pgdone = 0;
+		subtotal = 0; /* total bytes processed for current prot grp */
+		while (!pgdone) {
+			if (!sgde) {
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9086 BLKGRD:%s Invalid data segment\n",
+						__func__);
+				return 0;
+			}
+			sgl++;
+			dataphysaddr = sg_dma_address(sgde) + split_offset;
+
+			remainder = sg_dma_len(sgde) - split_offset;
+
+			if ((subtotal + remainder) <= protgrp_bytes) {
+				/* we can use this whole buffer */
+				dma_len = remainder;
+				split_offset = 0;
+
+				if ((subtotal + remainder) == protgrp_bytes)
+					pgdone = 1;
+			} else {
+				/* must split this buffer with next prot grp */
+				dma_len = protgrp_bytes - subtotal;
+				split_offset += dma_len;
+			}
+
+			subtotal += dma_len;
+
+			sgl->addr_lo = cpu_to_le32(putPaddrLow(dataphysaddr));
+			sgl->addr_hi = cpu_to_le32(putPaddrHigh(dataphysaddr));
+			bf_set(lpfc_sli4_sge_last, sgl, 0);
+			bf_set(lpfc_sli4_sge_offset, sgl, dma_offset);
+			bf_set(lpfc_sli4_sge_type, sgl, LPFC_SGE_TYPE_DATA);
+
+			sgl->sge_len = cpu_to_le32(dma_len);
+			dma_offset += dma_len;
+
+			num_sge++;
+			curr_data++;
+
+			if (split_offset)
+				break;
+
+			/* Move to the next s/g segment if possible */
+			sgde = sg_next(sgde);
+		}
+
+		if (protgroup_offset) {
+			/* update the reference tag */
+			reftag += protgrp_blks;
+			sgl++;
+			continue;
+		}
+
+		/* are we done ? */
+		if (curr_prot == protcnt) {
+			bf_set(lpfc_sli4_sge_last, sgl, 1);
+			alldone = 1;
+		} else if (curr_prot < protcnt) {
+			/* advance to next prot buffer */
+			sgpe = sg_next(sgpe);
+			sgl++;
+
+			/* update the reference tag */
+			reftag += protgrp_blks;
+		} else {
+			/* if we're here, we have a bug */
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+				"9085 BLKGRD: bug in %s\n", __func__);
+		}
+
+	} while (!alldone);
+
+out:
+
+	return num_sge;
+}
+
+/**
+ * lpfc_prot_group_type - Get prtotection group type of SCSI command
+ * @phba: The Hba for which this call is being executed.
+ * @sc: pointer to scsi command we're working on
+ *
  * Given a SCSI command that supports DIF, determine composition of protection
  * groups involved in setting up buffer lists
  *
- * Returns:
- *			      for DIF (for both read and write)
- * */
+ * Returns: Protection group type (with or without DIF)
+ *
+ **/
 static int
 lpfc_prot_group_type(struct lpfc_hba *phba, struct scsi_cmnd *sc)
 {
@@ -1884,13 +2225,17 @@ lpfc_prot_group_type(struct lpfc_hba *phba, struct scsi_cmnd *sc)
 	return ret;
 }
 
-/*
+/**
+ * lpfc_bg_scsi_prep_dma_buf_s3 - DMA mapping for scsi buffer to SLI3 IF spec
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be prep'ed.
+ *
  * This is the protection/DIF aware version of
  * lpfc_scsi_prep_dma_buf(). It may be a good idea to combine the
  * two functions eventually, but for now, it's here
- */
+ **/
 static int
-lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba,
+lpfc_bg_scsi_prep_dma_buf_s3(struct lpfc_hba *phba,
 		struct lpfc_scsi_buf *lpfc_cmd)
 {
 	struct scsi_cmnd *scsi_cmnd = lpfc_cmd->pCmd;
@@ -2291,6 +2636,180 @@ lpfc_scsi_prep_dma_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 }
 
 /**
+ * lpfc_bg_scsi_adjust_dl - Adjust SCSI data length for BlockGuard
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be adjusted.
+ *
+ * Adjust the data length to account for how much data
+ * is actually on the wire.
+ *
+ * returns the adjusted data length
+ **/
+static int
+lpfc_bg_scsi_adjust_dl(struct lpfc_hba *phba,
+		struct lpfc_scsi_buf *lpfc_cmd)
+{
+	struct scsi_cmnd *sc = lpfc_cmd->pCmd;
+	int diflen, fcpdl;
+	unsigned blksize;
+
+	fcpdl = scsi_bufflen(sc);
+
+	/* Check if there is protection data on the wire */
+	if (sc->sc_data_direction == DMA_FROM_DEVICE) {
+		/* Read */
+		if (scsi_get_prot_op(sc) ==  SCSI_PROT_READ_INSERT)
+			return fcpdl;
+
+	} else {
+		/* Write */
+		if (scsi_get_prot_op(sc) ==  SCSI_PROT_WRITE_STRIP)
+			return fcpdl;
+	}
+
+	/* If protection data on the wire, adjust the count accordingly */
+	blksize = lpfc_cmd_blksize(sc);
+	diflen = (fcpdl / blksize) * 8;
+	fcpdl += diflen;
+	return fcpdl;
+}
+
+/**
+ * lpfc_bg_scsi_prep_dma_buf_s4 - DMA mapping for scsi buffer to SLI4 IF spec
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be mapped.
+ *
+ * This is the protection/DIF aware version of
+ * lpfc_scsi_prep_dma_buf(). It may be a good idea to combine the
+ * two functions eventually, but for now, it's here
+ **/
+static int
+lpfc_bg_scsi_prep_dma_buf_s4(struct lpfc_hba *phba,
+		struct lpfc_scsi_buf *lpfc_cmd)
+{
+	struct scsi_cmnd *scsi_cmnd = lpfc_cmd->pCmd;
+	struct fcp_cmnd *fcp_cmnd = lpfc_cmd->fcp_cmnd;
+	struct sli4_sge *sgl = (struct sli4_sge *)(lpfc_cmd->fcp_bpl);
+	IOCB_t *iocb_cmd = &lpfc_cmd->cur_iocbq.iocb;
+	uint32_t num_bde = 0;
+	int datasegcnt, protsegcnt, datadir = scsi_cmnd->sc_data_direction;
+	int prot_group_type = 0;
+	int fcpdl;
+
+	/*
+	 * Start the lpfc command prep by bumping the sgl beyond fcp_cmnd
+	 *  fcp_rsp regions to the first data bde entry
+	 */
+	if (scsi_sg_count(scsi_cmnd)) {
+		/*
+		 * The driver stores the segment count returned from pci_map_sg
+		 * because this a count of dma-mappings used to map the use_sg
+		 * pages.  They are not guaranteed to be the same for those
+		 * architectures that implement an IOMMU.
+		 */
+		datasegcnt = dma_map_sg(&phba->pcidev->dev,
+					scsi_sglist(scsi_cmnd),
+					scsi_sg_count(scsi_cmnd), datadir);
+		if (unlikely(!datasegcnt))
+			return 1;
+
+		sgl += 1;
+		/* clear the last flag in the fcp_rsp map entry */
+		sgl->word2 = le32_to_cpu(sgl->word2);
+		bf_set(lpfc_sli4_sge_last, sgl, 0);
+		sgl->word2 = cpu_to_le32(sgl->word2);
+
+		sgl += 1;
+		lpfc_cmd->seg_cnt = datasegcnt;
+		if (lpfc_cmd->seg_cnt > phba->cfg_sg_seg_cnt) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9087 BLKGRD: %s: Too many sg segments"
+					" from dma_map_sg.  Config %d, seg_cnt"
+					" %d\n",
+					__func__, phba->cfg_sg_seg_cnt,
+					lpfc_cmd->seg_cnt);
+			scsi_dma_unmap(scsi_cmnd);
+			return 1;
+		}
+
+		prot_group_type = lpfc_prot_group_type(phba, scsi_cmnd);
+
+		switch (prot_group_type) {
+		case LPFC_PG_TYPE_NO_DIF:
+			num_bde = lpfc_bg_setup_sgl(phba, scsi_cmnd, sgl,
+					datasegcnt);
+			/* we should have 2 or more entries in buffer list */
+			if (num_bde < 2)
+				goto err;
+			break;
+		case LPFC_PG_TYPE_DIF_BUF:{
+			/*
+			 * This type indicates that protection buffers are
+			 * passed to the driver, so that needs to be prepared
+			 * for DMA
+			 */
+			protsegcnt = dma_map_sg(&phba->pcidev->dev,
+					scsi_prot_sglist(scsi_cmnd),
+					scsi_prot_sg_count(scsi_cmnd), datadir);
+			if (unlikely(!protsegcnt)) {
+				scsi_dma_unmap(scsi_cmnd);
+				return 1;
+			}
+
+			lpfc_cmd->prot_seg_cnt = protsegcnt;
+			if (lpfc_cmd->prot_seg_cnt
+			    > phba->cfg_prot_sg_seg_cnt) {
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9088 BLKGRD: %s: Too many prot sg "
+					"segments from dma_map_sg.  Config %d,"
+						"prot_seg_cnt %d\n", __func__,
+						phba->cfg_prot_sg_seg_cnt,
+						lpfc_cmd->prot_seg_cnt);
+				dma_unmap_sg(&phba->pcidev->dev,
+					     scsi_prot_sglist(scsi_cmnd),
+					     scsi_prot_sg_count(scsi_cmnd),
+					     datadir);
+				scsi_dma_unmap(scsi_cmnd);
+				return 1;
+			}
+
+			num_bde = lpfc_bg_setup_sgl_prot(phba, scsi_cmnd, sgl,
+					datasegcnt, protsegcnt);
+			/* we should have 3 or more entries in buffer list */
+			if (num_bde < 3)
+				goto err;
+			break;
+		}
+		case LPFC_PG_TYPE_INVALID:
+		default:
+			lpfc_printf_log(phba, KERN_ERR, LOG_FCP,
+					"9083 Unexpected protection group %i\n",
+					prot_group_type);
+			return 1;
+		}
+	}
+
+	fcpdl = lpfc_bg_scsi_adjust_dl(phba, lpfc_cmd);
+
+	fcp_cmnd->fcpDl = be32_to_cpu(fcpdl);
+
+	/*
+	 * Due to difference in data length between DIF/non-DIF paths,
+	 * we need to set word 4 of IOCB here
+	 */
+	iocb_cmd->un.fcpi.fcpi_parm = fcpdl;
+	lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_DIF;
+
+	return 0;
+err:
+	lpfc_printf_log(phba, KERN_ERR, LOG_FCP,
+			"9084 Could not setup all needed BDE's"
+			"prot_group_type=%d, num_bde=%d\n",
+			prot_group_type, num_bde);
+	return 1;
+}
+
+/**
  * lpfc_scsi_prep_dma_buf - Wrapper function for DMA mapping of scsi buffer
  * @phba: The Hba for which this call is being executed.
  * @lpfc_cmd: The scsi buffer which is going to be mapped.
@@ -2306,6 +2825,25 @@ static inline int
 lpfc_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 {
 	return phba->lpfc_scsi_prep_dma_buf(phba, lpfc_cmd);
+}
+
+/**
+ * lpfc_bg_scsi_prep_dma_buf - Wrapper function for DMA mapping of scsi buffer
+ * using BlockGuard.
+ * @phba: The Hba for which this call is being executed.
+ * @lpfc_cmd: The scsi buffer which is going to be mapped.
+ *
+ * This routine wraps the actual DMA mapping function pointer from the
+ * lpfc_hba struct.
+ *
+ * Return codes:
+ *	1 - Error
+ *	0 - Success
+ **/
+static inline int
+lpfc_bg_scsi_prep_dma_buf(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
+{
+	return phba->lpfc_bg_scsi_prep_dma_buf(phba, lpfc_cmd);
 }
 
 /**
@@ -3071,12 +3609,14 @@ lpfc_scsi_api_table_setup(struct lpfc_hba *phba, uint8_t dev_grp)
 	case LPFC_PCI_DEV_LP:
 		phba->lpfc_new_scsi_buf = lpfc_new_scsi_buf_s3;
 		phba->lpfc_scsi_prep_dma_buf = lpfc_scsi_prep_dma_buf_s3;
+		phba->lpfc_bg_scsi_prep_dma_buf = lpfc_bg_scsi_prep_dma_buf_s3;
 		phba->lpfc_release_scsi_buf = lpfc_release_scsi_buf_s3;
 		phba->lpfc_get_scsi_buf = lpfc_get_scsi_buf_s3;
 		break;
 	case LPFC_PCI_DEV_OC:
 		phba->lpfc_new_scsi_buf = lpfc_new_scsi_buf_s4;
 		phba->lpfc_scsi_prep_dma_buf = lpfc_scsi_prep_dma_buf_s4;
+		phba->lpfc_bg_scsi_prep_dma_buf = lpfc_bg_scsi_prep_dma_buf_s4;
 		phba->lpfc_release_scsi_buf = lpfc_release_scsi_buf_s4;
 		phba->lpfc_get_scsi_buf = lpfc_get_scsi_buf_s4;
 		break;
@@ -3249,8 +3789,7 @@ lpfc_queuecommand_lck(struct scsi_cmnd *cmnd, void (*done) (struct scsi_cmnd *))
 	ndlp = rdata->pnode;
 
 	if ((scsi_get_prot_op(cmnd) != SCSI_PROT_NORMAL) &&
-		(!(phba->sli3_options & LPFC_SLI3_BG_ENABLED) ||
-		(phba->sli_rev == LPFC_SLI_REV4))) {
+		(!(phba->sli3_options & LPFC_SLI3_BG_ENABLED))) {
 
 		lpfc_printf_log(phba, KERN_ERR, LOG_BG,
 				"9058 BLKGRD: ERROR: rcvd protected cmd:%02x"
