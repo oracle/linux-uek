@@ -25,10 +25,7 @@
 
 *******************************************************************************/
 
-#include <linux/pci.h>
-#include <linux/delay.h>
 #include "ixgbe_type.h"
-#include "ixgbe_common.h"
 #include "ixgbe_mbx.h"
 
 /**
@@ -151,7 +148,7 @@ static s32 ixgbe_poll_for_msg(struct ixgbe_hw *hw, u16 mbx_id)
 		countdown--;
 		if (!countdown)
 			break;
-		udelay(mbx->usec_delay);
+		udelay(mbx->udelay);
 	}
 
 out:
@@ -177,7 +174,7 @@ static s32 ixgbe_poll_for_ack(struct ixgbe_hw *hw, u16 mbx_id)
 		countdown--;
 		if (!countdown)
 			break;
-		udelay(mbx->usec_delay);
+		udelay(mbx->udelay);
 	}
 
 out:
@@ -194,8 +191,7 @@ out:
  *  returns SUCCESS if it successfully received a message notification and
  *  copied it into the receive buffer.
  **/
-static s32 ixgbe_read_posted_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size,
-				 u16 mbx_id)
+s32 ixgbe_read_posted_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size, u16 mbx_id)
 {
 	struct ixgbe_mbx_info *mbx = &hw->mbx;
 	s32 ret_val = IXGBE_ERR_MBX;
@@ -222,8 +218,8 @@ out:
  *  returns SUCCESS if it successfully copied message into the buffer and
  *  received an ack to that message within delay * timeout period
  **/
-static s32 ixgbe_write_posted_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size,
-                           u16 mbx_id)
+s32 ixgbe_write_posted_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size,
+			   u16 mbx_id)
 {
 	struct ixgbe_mbx_info *mbx = &hw->mbx;
 	s32 ret_val = IXGBE_ERR_MBX;
@@ -240,6 +236,241 @@ static s32 ixgbe_write_posted_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size,
 		ret_val = ixgbe_poll_for_ack(hw, mbx_id);
 out:
 	return ret_val;
+}
+
+/**
+ *  ixgbe_init_mbx_ops_generic - Initialize MB function pointers
+ *  @hw: pointer to the HW structure
+ *
+ *  Setups up the mailbox read and write message function pointers
+ **/
+void ixgbe_init_mbx_ops_generic(struct ixgbe_hw *hw)
+{
+	struct ixgbe_mbx_info *mbx = &hw->mbx;
+
+	mbx->ops.read_posted = ixgbe_read_posted_mbx;
+	mbx->ops.write_posted = ixgbe_write_posted_mbx;
+}
+
+/**
+ *  ixgbe_read_v2p_mailbox - read v2p mailbox
+ *  @hw: pointer to the HW structure
+ *
+ *  This function is used to read the v2p mailbox without losing the read to
+ *  clear status bits.
+ **/
+static u32 ixgbe_read_v2p_mailbox(struct ixgbe_hw *hw)
+{
+	u32 v2p_mailbox = IXGBE_READ_REG(hw, IXGBE_VFMAILBOX);
+
+	v2p_mailbox |= hw->mbx.v2p_mailbox;
+	hw->mbx.v2p_mailbox |= v2p_mailbox & IXGBE_VFMAILBOX_R2C_BITS;
+
+	return v2p_mailbox;
+}
+
+/**
+ *  ixgbe_check_for_bit_vf - Determine if a status bit was set
+ *  @hw: pointer to the HW structure
+ *  @mask: bitmask for bits to be tested and cleared
+ *
+ *  This function is used to check for the read to clear bits within
+ *  the V2P mailbox.
+ **/
+static s32 ixgbe_check_for_bit_vf(struct ixgbe_hw *hw, u32 mask)
+{
+	u32 v2p_mailbox = ixgbe_read_v2p_mailbox(hw);
+	s32 ret_val = IXGBE_ERR_MBX;
+
+	if (v2p_mailbox & mask)
+		ret_val = 0;
+
+	hw->mbx.v2p_mailbox &= ~mask;
+
+	return ret_val;
+}
+
+/**
+ *  ixgbe_check_for_msg_vf - checks to see if the PF has sent mail
+ *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
+ *
+ *  returns SUCCESS if the PF has set the Status bit or else ERR_MBX
+ **/
+static s32 ixgbe_check_for_msg_vf(struct ixgbe_hw *hw, u16 mbx_id)
+{
+	s32 ret_val = IXGBE_ERR_MBX;
+
+	if (!ixgbe_check_for_bit_vf(hw, IXGBE_VFMAILBOX_PFSTS)) {
+		ret_val = 0;
+		hw->mbx.stats.reqs++;
+	}
+
+	return ret_val;
+}
+
+/**
+ *  ixgbe_check_for_ack_vf - checks to see if the PF has ACK'd
+ *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
+ *
+ *  returns SUCCESS if the PF has set the ACK bit or else ERR_MBX
+ **/
+static s32 ixgbe_check_for_ack_vf(struct ixgbe_hw *hw, u16 mbx_id)
+{
+	s32 ret_val = IXGBE_ERR_MBX;
+
+	if (!ixgbe_check_for_bit_vf(hw, IXGBE_VFMAILBOX_PFACK)) {
+		ret_val = 0;
+		hw->mbx.stats.acks++;
+	}
+
+	return ret_val;
+}
+
+/**
+ *  ixgbe_check_for_rst_vf - checks to see if the PF has reset
+ *  @hw: pointer to the HW structure
+ *  @mbx_id: id of mailbox to check
+ *
+ *  returns true if the PF has set the reset done bit or else false
+ **/
+static s32 ixgbe_check_for_rst_vf(struct ixgbe_hw *hw, u16 mbx_id)
+{
+	s32 ret_val = IXGBE_ERR_MBX;
+
+	if (!ixgbe_check_for_bit_vf(hw, (IXGBE_VFMAILBOX_RSTD |
+	    IXGBE_VFMAILBOX_RSTI))) {
+		ret_val = 0;
+		hw->mbx.stats.rsts++;
+	}
+
+	return ret_val;
+}
+
+/**
+ *  ixgbe_obtain_mbx_lock_vf - obtain mailbox lock
+ *  @hw: pointer to the HW structure
+ *
+ *  return SUCCESS if we obtained the mailbox lock
+ **/
+static s32 ixgbe_obtain_mbx_lock_vf(struct ixgbe_hw *hw)
+{
+	s32 ret_val = IXGBE_ERR_MBX;
+
+	/* Take ownership of the buffer */
+	IXGBE_WRITE_REG(hw, IXGBE_VFMAILBOX, IXGBE_VFMAILBOX_VFU);
+
+	/* reserve mailbox for vf use */
+	if (ixgbe_read_v2p_mailbox(hw) & IXGBE_VFMAILBOX_VFU)
+		ret_val = 0;
+
+	return ret_val;
+}
+
+/**
+ *  ixgbe_write_mbx_vf - Write a message to the mailbox
+ *  @hw: pointer to the HW structure
+ *  @msg: The message buffer
+ *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to write
+ *
+ *  returns SUCCESS if it successfully copied message into the buffer
+ **/
+static s32 ixgbe_write_mbx_vf(struct ixgbe_hw *hw, u32 *msg, u16 size,
+			      u16 mbx_id)
+{
+	s32 ret_val;
+	u16 i;
+
+
+	/* lock the mailbox to prevent pf/vf race condition */
+	ret_val = ixgbe_obtain_mbx_lock_vf(hw);
+	if (ret_val)
+		goto out_no_write;
+
+	/* flush msg and acks as we are overwriting the message buffer */
+	ixgbe_check_for_msg_vf(hw, 0);
+	ixgbe_check_for_ack_vf(hw, 0);
+
+	/* copy the caller specified message to the mailbox memory buffer */
+	for (i = 0; i < size; i++)
+		IXGBE_WRITE_REG_ARRAY(hw, IXGBE_VFMBMEM, i, msg[i]);
+
+	/* update stats */
+	hw->mbx.stats.msgs_tx++;
+
+	/* Drop VFU and interrupt the PF to tell it a message has been sent */
+	IXGBE_WRITE_REG(hw, IXGBE_VFMAILBOX, IXGBE_VFMAILBOX_REQ);
+
+out_no_write:
+	return ret_val;
+}
+
+/**
+ *  ixgbe_read_mbx_vf - Reads a message from the inbox intended for vf
+ *  @hw: pointer to the HW structure
+ *  @msg: The message buffer
+ *  @size: Length of buffer
+ *  @mbx_id: id of mailbox to read
+ *
+ *  returns SUCCESS if it successfuly read message from buffer
+ **/
+static s32 ixgbe_read_mbx_vf(struct ixgbe_hw *hw, u32 *msg, u16 size,
+			     u16 mbx_id)
+{
+	s32 ret_val = 0;
+	u16 i;
+
+	/* lock the mailbox to prevent pf/vf race condition */
+	ret_val = ixgbe_obtain_mbx_lock_vf(hw);
+	if (ret_val)
+		goto out_no_read;
+
+	/* copy the message from the mailbox memory buffer */
+	for (i = 0; i < size; i++)
+		msg[i] = IXGBE_READ_REG_ARRAY(hw, IXGBE_VFMBMEM, i);
+
+	/* Acknowledge receipt and release mailbox, then we're done */
+	IXGBE_WRITE_REG(hw, IXGBE_VFMAILBOX, IXGBE_VFMAILBOX_ACK);
+
+	/* update stats */
+	hw->mbx.stats.msgs_rx++;
+
+out_no_read:
+	return ret_val;
+}
+
+/**
+ *  ixgbe_init_mbx_params_vf - set initial values for vf mailbox
+ *  @hw: pointer to the HW structure
+ *
+ *  Initializes the hw->mbx struct to correct values for vf mailbox
+ */
+void ixgbe_init_mbx_params_vf(struct ixgbe_hw *hw)
+{
+	struct ixgbe_mbx_info *mbx = &hw->mbx;
+
+	/* start mailbox as timed out and let the reset_hw call set the timeout
+	 * value to begin communications */
+	mbx->timeout = 0;
+	mbx->udelay = IXGBE_VF_MBX_INIT_DELAY;
+
+	mbx->size = IXGBE_VFMAILBOX_SIZE;
+
+	mbx->ops.read = ixgbe_read_mbx_vf;
+	mbx->ops.write = ixgbe_write_mbx_vf;
+	mbx->ops.read_posted = ixgbe_read_posted_mbx;
+	mbx->ops.write_posted = ixgbe_write_posted_mbx;
+	mbx->ops.check_for_msg = ixgbe_check_for_msg_vf;
+	mbx->ops.check_for_ack = ixgbe_check_for_ack_vf;
+	mbx->ops.check_for_rst = ixgbe_check_for_rst_vf;
+
+	mbx->stats.msgs_tx = 0;
+	mbx->stats.msgs_rx = 0;
+	mbx->stats.reqs = 0;
+	mbx->stats.acks = 0;
+	mbx->stats.rsts = 0;
 }
 
 static s32 ixgbe_check_for_bit_pf(struct ixgbe_hw *hw, u32 mask, s32 index)
@@ -269,7 +500,7 @@ static s32 ixgbe_check_for_msg_pf(struct ixgbe_hw *hw, u16 vf_number)
 	u32 vf_bit = vf_number % 16;
 
 	if (!ixgbe_check_for_bit_pf(hw, IXGBE_MBVFICR_VFREQ_VF1 << vf_bit,
-	                            index)) {
+				    index)) {
 		ret_val = 0;
 		hw->mbx.stats.reqs++;
 	}
@@ -291,7 +522,7 @@ static s32 ixgbe_check_for_ack_pf(struct ixgbe_hw *hw, u16 vf_number)
 	u32 vf_bit = vf_number % 16;
 
 	if (!ixgbe_check_for_bit_pf(hw, IXGBE_MBVFICR_VFACK_VF1 << vf_bit,
-	                            index)) {
+				    index)) {
 		ret_val = 0;
 		hw->mbx.stats.acks++;
 	}
@@ -366,7 +597,7 @@ static s32 ixgbe_obtain_mbx_lock_pf(struct ixgbe_hw *hw, u16 vf_number)
  *  returns SUCCESS if it successfully copied message into the buffer
  **/
 static s32 ixgbe_write_mbx_pf(struct ixgbe_hw *hw, u32 *msg, u16 size,
-                              u16 vf_number)
+			      u16 vf_number)
 {
 	s32 ret_val;
 	u16 i;
@@ -407,7 +638,7 @@ out_no_write:
  *  a message due to a VF request so no polling for message is needed.
  **/
 static s32 ixgbe_read_mbx_pf(struct ixgbe_hw *hw, u32 *msg, u16 size,
-                             u16 vf_number)
+			     u16 vf_number)
 {
 	s32 ret_val;
 	u16 i;
@@ -431,7 +662,6 @@ out_no_read:
 	return ret_val;
 }
 
-#ifdef CONFIG_PCI_IOV
 /**
  *  ixgbe_init_mbx_params_pf - set initial values for pf mailbox
  *  @hw: pointer to the HW structure
@@ -447,25 +677,21 @@ void ixgbe_init_mbx_params_pf(struct ixgbe_hw *hw)
 		return;
 
 	mbx->timeout = 0;
-	mbx->usec_delay = 0;
+	mbx->udelay = 0;
+
+	mbx->size = IXGBE_VFMAILBOX_SIZE;
+
+	mbx->ops.read = ixgbe_read_mbx_pf;
+	mbx->ops.write = ixgbe_write_mbx_pf;
+	mbx->ops.read_posted = ixgbe_read_posted_mbx;
+	mbx->ops.write_posted = ixgbe_write_posted_mbx;
+	mbx->ops.check_for_msg = ixgbe_check_for_msg_pf;
+	mbx->ops.check_for_ack = ixgbe_check_for_ack_pf;
+	mbx->ops.check_for_rst = ixgbe_check_for_rst_pf;
 
 	mbx->stats.msgs_tx = 0;
 	mbx->stats.msgs_rx = 0;
 	mbx->stats.reqs = 0;
 	mbx->stats.acks = 0;
 	mbx->stats.rsts = 0;
-
-	mbx->size = IXGBE_VFMAILBOX_SIZE;
 }
-#endif /* CONFIG_PCI_IOV */
-
-struct ixgbe_mbx_operations mbx_ops_generic = {
-	.read                   = ixgbe_read_mbx_pf,
-	.write                  = ixgbe_write_mbx_pf,
-	.read_posted            = ixgbe_read_posted_mbx,
-	.write_posted           = ixgbe_write_posted_mbx,
-	.check_for_msg          = ixgbe_check_for_msg_pf,
-	.check_for_ack          = ixgbe_check_for_ack_pf,
-	.check_for_rst          = ixgbe_check_for_rst_pf,
-};
-

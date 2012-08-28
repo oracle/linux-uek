@@ -20,7 +20,6 @@
 # the file called "COPYING".
 #
 # Contact Information:
-# Linux NICS <linux.nics@intel.com>
 # e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
 # Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 #
@@ -34,7 +33,8 @@ obj-$(CONFIG_IXGBE) += ixgbe.o
 
 ixgbe-objs := ixgbe_main.o ixgbe_common.o ixgbe_ethtool.o \
               ixgbe_82599.o ixgbe_82598.o ixgbe_phy.o ixgbe_sriov.o \
-              ixgbe_mbx.o ixgbe_x540.o
+              ixgbe_mbx.o ixgbe_x540.o ixgbe_api.o ixgbe_param.o \
+              ixgbe_lib.o kcompat.o ixgbe_ptp.o ixgbe_sysfs.o ixgbe_procfs.o
 
 ixgbe-$(CONFIG_IXGBE_DCB) +=  ixgbe_dcb.o ixgbe_dcb_82598.o \
                               ixgbe_dcb_82599.o ixgbe_dcb_nl.o
