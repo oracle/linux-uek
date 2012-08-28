@@ -1279,6 +1279,12 @@ lpfc_cmd_blksize(struct scsi_cmnd *sc)
 }
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
+
+#define BG_ERR_INIT	1
+#define BG_ERR_TGT	2
+#define BG_ERR_SWAP	3
+#define BG_ERR_CHECK	4
+
 /**
  * lpfc_bg_err_inject - Determine if we should inject an error
  * @phba: The Hba for which this call is being executed.
@@ -1287,7 +1293,10 @@ lpfc_cmd_blksize(struct scsi_cmnd *sc)
  * @apptag: (out) BlockGuard application tag for transmitted data
  * @new_guard (in) Value to replace CRC with if needed
  *
- * Returns (1) if error injection was performed, (0) otherwise
+ * Returns (1) if error injection is detected by Initiator
+ * Returns (2) if error injection is detected by Target
+ * Returns (3) if swapping CSUM->CRC is required for error injection
+ * Returns (4) disabling Guard/Ref/App checking is required for error injection
  **/
 static int
 lpfc_bg_err_inject(struct lpfc_hba *phba, struct scsi_cmnd *sc,
@@ -1295,15 +1304,19 @@ lpfc_bg_err_inject(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 {
 	struct scatterlist *sgpe; /* s/g prot entry */
 	struct scatterlist *sgde; /* s/g data entry */
-	struct scsi_dif_tuple *src;
+	struct scsi_dif_tuple *src = NULL;
 	uint32_t op = scsi_get_prot_op(sc);
 	uint32_t blksize;
 	uint32_t numblks;
 	sector_t lba;
 	int rc = 0;
+	int blockoff = 0;
 
 	if (op == SCSI_PROT_NORMAL)
 		return 0;
+
+	sgpe = scsi_prot_sglist(sc);
+	sgde = scsi_sglist(sc);
 
 	lba = scsi_get_lba(sc);
 	if (phba->lpfc_injerr_lba != LPFC_INJERR_LBA_OFF) {
@@ -1314,129 +1327,281 @@ lpfc_bg_err_inject(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		if ((phba->lpfc_injerr_lba < lba) ||
 			(phba->lpfc_injerr_lba >= (lba + numblks)))
 			return 0;
+		if (sgpe) {
+			blockoff = phba->lpfc_injerr_lba - lba;
+			numblks = sg_dma_len(sgpe) /
+				sizeof(struct scsi_dif_tuple);
+			if (numblks < blockoff)
+				blockoff = numblks;
+			src = (struct scsi_dif_tuple *)sg_virt(sgpe);
+			src += blockoff;
+		}
 	}
-
-	sgpe = scsi_prot_sglist(sc);
-	sgde = scsi_sglist(sc);
 
 	/* Should we change the Reference Tag */
 	if (reftag) {
-		/*
-		 * If we are SCSI_PROT_WRITE_STRIP, the protection data is
-		 * being stripped from the wire, thus it doesn't matter.
-		 */
-		if ((op == SCSI_PROT_WRITE_PASS) ||
-			(op == SCSI_PROT_WRITE_INSERT)) {
-			if (phba->lpfc_injerr_wref_cnt) {
+		if (phba->lpfc_injerr_wref_cnt) {
+			switch (op) {
+			case SCSI_PROT_WRITE_PASS:
+				if (blockoff && src) {
+					/* Insert error in middle of the IO */
 
+					lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9076 BLKGRD: Injecting reftag error: "
+					"write lba x%lx + x%x oldrefTag x%x\n",
+					(unsigned long)lba, blockoff,
+					src->ref_tag);
+
+					/*
+					 * NOTE, this will change ref tag in
+					 * the memory location forever!
+					 */
+					src->ref_tag = 0xDEADBEEF;
+					phba->lpfc_injerr_wref_cnt--;
+					phba->lpfc_injerr_lba =
+						LPFC_INJERR_LBA_OFF;
+					rc = BG_ERR_CHECK;
+					break;
+				}
+				/* Drop thru */
+			case SCSI_PROT_WRITE_STRIP:
+				/*
+				 * For WRITE_STRIP and WRITE_PASS,
+				 * force the error on data
+				 * being copied from SLI-Host to SLI-Port.
+				 */
+				*reftag = 0xDEADBEEF;
+				phba->lpfc_injerr_wref_cnt--;
+				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
+				rc = BG_ERR_INIT;
+
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9077 BLKGRD: Injecting reftag error: "
+					"write lba x%lx\n", (unsigned long)lba);
+				break;
+			case SCSI_PROT_WRITE_INSERT:
+				/*
+				 * For WRITE_INSERT, force the
+				 * error to be sent on the wire. It should be
+				 * detected by the Target.
+				 */
 				/* DEADBEEF will be the reftag on the wire */
 				*reftag = 0xDEADBEEF;
 				phba->lpfc_injerr_wref_cnt--;
 				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-				rc = 1;
+				rc = BG_ERR_TGT;
 
 				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-					"9081 BLKGRD: Injecting reftag error: "
+					"9078 BLKGRD: Injecting reftag error: "
 					"write lba x%lx\n", (unsigned long)lba);
+				break;
 			}
-		} else {
-			if (phba->lpfc_injerr_rref_cnt) {
+		}
+		if (phba->lpfc_injerr_rref_cnt) {
+			switch (op) {
+			case SCSI_PROT_READ_INSERT:
+				/*
+				 * For READ_INSERT, it doesn't make sense
+				 * to change the reftag.
+				 */
+				break;
+			case SCSI_PROT_READ_STRIP:
+			case SCSI_PROT_READ_PASS:
+				/*
+				 * For READ_STRIP and READ_PASS, force the
+				 * error on data being read off the wire. It
+				 * should force an IO error to the driver.
+				 */
 				*reftag = 0xDEADBEEF;
 				phba->lpfc_injerr_rref_cnt--;
 				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-				rc = 1;
+				rc = BG_ERR_INIT;
 
 				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-					"9076 BLKGRD: Injecting reftag error: "
+					"9079 BLKGRD: Injecting reftag error: "
 					"read lba x%lx\n", (unsigned long)lba);
+				break;
 			}
 		}
 	}
 
 	/* Should we change the Application Tag */
 	if (apptag) {
-		/*
-		 * If we are SCSI_PROT_WRITE_STRIP, the protection data is
-		 * being stripped from the wire, thus it doesn't matter.
-		 */
-		if ((op == SCSI_PROT_WRITE_PASS) ||
-			(op == SCSI_PROT_WRITE_INSERT)) {
-			if (phba->lpfc_injerr_wapp_cnt) {
+		if (phba->lpfc_injerr_wapp_cnt) {
+			switch (op) {
+			case SCSI_PROT_WRITE_PASS:
+				if (blockoff && src) {
+					/* Insert error in middle of the IO */
 
+					lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"9080 BLKGRD: Injecting apptag error: "
+					"write lba x%lx + x%x oldappTag x%x\n",
+					(unsigned long)lba, blockoff,
+					src->app_tag);
+
+					/*
+					 * NOTE, this will change app tag in
+					 * the memory location forever!
+					 */
+					src->app_tag = 0xDEAD;
+					phba->lpfc_injerr_wapp_cnt--;
+					phba->lpfc_injerr_lba =
+						LPFC_INJERR_LBA_OFF;
+					rc = BG_ERR_CHECK;
+					break;
+				}
+				/* Drop thru */
+			case SCSI_PROT_WRITE_STRIP:
+				/*
+				 * For WRITE_STRIP and WRITE_PASS,
+				 * force the error on data
+				 * being copied from SLI-Host to SLI-Port.
+				 */
+				*apptag = 0xDEAD;
+				phba->lpfc_injerr_wapp_cnt--;
+				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
+				rc = BG_ERR_INIT;
+
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"0812 BLKGRD: Injecting apptag error: "
+					"write lba x%lx\n", (unsigned long)lba);
+				break;
+			case SCSI_PROT_WRITE_INSERT:
+				/*
+				 * For WRITE_INSERT, force the
+				 * error to be sent on the wire. It should be
+				 * detected by the Target.
+				 */
 				/* DEAD will be the apptag on the wire */
 				*apptag = 0xDEAD;
 				phba->lpfc_injerr_wapp_cnt--;
 				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-				rc = 1;
+				rc = BG_ERR_TGT;
 
 				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-					"9077 BLKGRD: Injecting apptag error: "
+					"0813 BLKGRD: Injecting apptag error: "
 					"write lba x%lx\n", (unsigned long)lba);
+				break;
 			}
-		} else {
-			if (phba->lpfc_injerr_rapp_cnt) {
+		}
+		if (phba->lpfc_injerr_rapp_cnt) {
+			switch (op) {
+			case SCSI_PROT_READ_INSERT:
+				/*
+				 * For READ_INSERT, it doesn't make sense
+				 * to change the apptag.
+				 */
+				break;
+			case SCSI_PROT_READ_STRIP:
+			case SCSI_PROT_READ_PASS:
+				/*
+				 * For READ_STRIP and READ_PASS, force the
+				 * error on data being read off the wire. It
+				 * should force an IO error to the driver.
+				 */
 				*apptag = 0xDEAD;
 				phba->lpfc_injerr_rapp_cnt--;
 				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-				rc = 1;
+				rc = BG_ERR_INIT;
 
 				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-					"9078 BLKGRD: Injecting apptag error: "
+					"0814 BLKGRD: Injecting apptag error: "
+					"read lba x%lx\n", (unsigned long)lba);
+				break;
+			}
+		}
+	}
+
+
+	/* Should we change the Guard Tag */
+	if (new_guard) {
+		if (phba->lpfc_injerr_wgrd_cnt) {
+			switch (op) {
+			case SCSI_PROT_WRITE_PASS:
+				if (blockoff && src) {
+					/* Insert error in middle of the IO */
+
+					lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"0815 BLKGRD: Injecting guard error: "
+					"write lba x%lx + x%x oldgrdTag x%x\n",
+					(unsigned long)lba, blockoff,
+					src->guard_tag);
+
+					/*
+					 * NOTE, this will change guard tag in
+					 * the memory location forever!
+					 */
+					src->guard_tag = 0xDEAD;
+					phba->lpfc_injerr_wgrd_cnt--;
+					phba->lpfc_injerr_lba =
+						LPFC_INJERR_LBA_OFF;
+					rc = BG_ERR_CHECK;
+					break;
+				}
+				/* Drop thru */
+			case SCSI_PROT_WRITE_STRIP:
+				/*
+				 * For WRITE_STRIP and WRITE_PASS,
+				 * force the error on data
+				 * being copied from SLI-Host to SLI-Port.
+				 */
+				phba->lpfc_injerr_wgrd_cnt--;
+				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
+
+				rc = BG_ERR_SWAP;
+				/* Signals the caller to swap CRC->CSUM */
+
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"0816 BLKGRD: Injecting guard error: "
+					"write lba x%lx\n", (unsigned long)lba);
+				break;
+			case SCSI_PROT_WRITE_INSERT:
+				/*
+				 * For WRITE_INSERT, force the
+				 * error to be sent on the wire. It should be
+				 * detected by the Target.
+				 */
+				phba->lpfc_injerr_wgrd_cnt--;
+				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
+
+				rc = BG_ERR_SWAP;
+				/* Signals the caller to swap CRC->CSUM */
+
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"0817 BLKGRD: Injecting guard error: "
+					"write lba x%lx\n", (unsigned long)lba);
+				break;
+			}
+		}
+		if (phba->lpfc_injerr_rgrd_cnt) {
+			switch (op) {
+			case SCSI_PROT_READ_INSERT:
+				/*
+				 * For READ_INSERT, it doesn't make sense
+				 * to change the guard tag.
+				 */
+				break;
+			case SCSI_PROT_READ_STRIP:
+			case SCSI_PROT_READ_PASS:
+				/*
+				 * For READ_STRIP and READ_PASS, force the
+				 * error on data being read off the wire. It
+				 * should force an IO error to the driver.
+				 */
+				*apptag = 0xDEAD;
+				phba->lpfc_injerr_rgrd_cnt--;
+				phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
+
+				rc = BG_ERR_SWAP;
+				/* Signals the caller to swap CRC->CSUM */
+
+				lpfc_printf_log(phba, KERN_ERR, LOG_BG,
+					"0818 BLKGRD: Injecting guard error: "
 					"read lba x%lx\n", (unsigned long)lba);
 			}
 		}
 	}
 
-	/* Should we change the Guard Tag */
-
-	/*
-	 * If we are SCSI_PROT_WRITE_INSERT, the protection data is
-	 * being on the wire is being fully generated on the HBA.
-	 * The host cannot change it or force an error.
-	 */
-	if (((op == SCSI_PROT_WRITE_STRIP) ||
-		(op == SCSI_PROT_WRITE_PASS)) &&
-		phba->lpfc_injerr_wgrd_cnt) {
-		if (sgpe) {
-			src = (struct scsi_dif_tuple *)sg_virt(sgpe);
-			/*
-			 * Just inject an error in the first
-			 * prot block.
-			 */
-			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-				"9079 BLKGRD: Injecting guard error: "
-				"write lba x%lx oldGuard x%x refTag x%x\n",
-				(unsigned long)lba, src->guard_tag,
-				src->ref_tag);
-
-			src->guard_tag = (uint16_t)new_guard;
-			phba->lpfc_injerr_wgrd_cnt--;
-			phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-			rc = 1;
-
-		} else {
-			blksize = lpfc_cmd_blksize(sc);
-			/*
-			 * Jump past the first data block
-			 * and inject an error in the
-			 * prot data. The prot data is already
-			 * embedded after the regular data.
-			 */
-			src = (struct scsi_dif_tuple *)
-					(sg_virt(sgde) + blksize);
-
-			lpfc_printf_log(phba, KERN_ERR, LOG_BG,
-				"9080 BLKGRD: Injecting guard error: "
-				"write lba x%lx oldGuard x%x refTag x%x\n",
-				(unsigned long)lba, src->guard_tag,
-				src->ref_tag);
-
-			src->guard_tag = (uint16_t)new_guard;
-			phba->lpfc_injerr_wgrd_cnt--;
-			phba->lpfc_injerr_lba = LPFC_INJERR_LBA_OFF;
-			rc = 1;
-		}
-	}
 	return rc;
 }
 #endif
@@ -1521,6 +1686,80 @@ lpfc_sc_to_bg_opcodes(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	return ret;
 }
 
+#ifdef CONFIG_SCSI_LPFC_DEBUG_FS
+/**
+ * lpfc_bg_err_opcodes - reDetermine the BlockGuard opcodes to be used with
+ * the specified SCSI command in order to force a guard tag error.
+ * @phba: The Hba for which this call is being executed.
+ * @sc: The SCSI command to examine
+ * @txopt: (out) BlockGuard operation for transmitted data
+ * @rxopt: (out) BlockGuard operation for received data
+ *
+ * Returns: zero on success; non-zero if tx and/or rx op cannot be determined
+ *
+ **/
+static int
+lpfc_bg_err_opcodes(struct lpfc_hba *phba, struct scsi_cmnd *sc,
+		uint8_t *txop, uint8_t *rxop)
+{
+	uint8_t guard_type = scsi_host_get_guard(sc->device->host);
+	uint8_t ret = 0;
+
+	if (guard_type == SHOST_DIX_GUARD_IP) {
+		switch (scsi_get_prot_op(sc)) {
+		case SCSI_PROT_READ_INSERT:
+		case SCSI_PROT_WRITE_STRIP:
+			*txop = BG_OP_IN_CRC_OUT_NODIF;
+			*rxop = BG_OP_IN_NODIF_OUT_CRC;
+			break;
+
+		case SCSI_PROT_READ_STRIP:
+		case SCSI_PROT_WRITE_INSERT:
+			*txop = BG_OP_IN_NODIF_OUT_CSUM;
+			*rxop = BG_OP_IN_CSUM_OUT_NODIF;
+			break;
+
+		case SCSI_PROT_READ_PASS:
+		case SCSI_PROT_WRITE_PASS:
+			*txop = BG_OP_IN_CRC_OUT_CRC;
+			*rxop = BG_OP_IN_CRC_OUT_CRC;
+			break;
+
+		case SCSI_PROT_NORMAL:
+		default:
+			break;
+
+		}
+	} else {
+		switch (scsi_get_prot_op(sc)) {
+		case SCSI_PROT_READ_STRIP:
+		case SCSI_PROT_WRITE_INSERT:
+			*txop = BG_OP_IN_NODIF_OUT_CSUM;
+			*rxop = BG_OP_IN_CSUM_OUT_NODIF;
+			break;
+
+		case SCSI_PROT_READ_PASS:
+		case SCSI_PROT_WRITE_PASS:
+			*txop = BG_OP_IN_CSUM_OUT_CRC;
+			*rxop = BG_OP_IN_CRC_OUT_CSUM;
+			break;
+
+		case SCSI_PROT_READ_INSERT:
+		case SCSI_PROT_WRITE_STRIP:
+			*txop = BG_OP_IN_CSUM_OUT_NODIF;
+			*rxop = BG_OP_IN_NODIF_OUT_CSUM;
+			break;
+
+		case SCSI_PROT_NORMAL:
+		default:
+			break;
+		}
+	}
+
+	return ret;
+}
+#endif
+
 /**
  * lpfc_bg_setup_bpl - Setup BlockGuard BPL with no protection data
  * @phba: The Hba for which this call is being executed.
@@ -1562,6 +1801,8 @@ lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	dma_addr_t physaddr;
 	int i = 0, num_bde = 0, status;
 	int datadir = sc->sc_data_direction;
+	uint32_t rc;
+	uint32_t checking = 1;
 	uint32_t reftag;
 	unsigned blksize;
 	uint8_t txop, rxop;
@@ -1575,8 +1816,13 @@ lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
-	/* reftag is the only error we can inject here */
-	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0);
+	rc = lpfc_bg_err_inject(phba, sc, &reftag, 0, 1);
+	if (rc) {
+		if (rc == BG_ERR_SWAP)
+			lpfc_bg_err_opcodes(phba, sc, &txop, &rxop);
+		if (rc == BG_ERR_CHECK)
+			checking = 0;
+	}
 #endif
 
 	/* setup PDE5 with what we have */
@@ -1599,8 +1845,8 @@ lpfc_bg_setup_bpl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	bf_set(pde6_optx, pde6, txop);
 	bf_set(pde6_oprx, pde6, rxop);
 	if (datadir == DMA_FROM_DEVICE) {
-		bf_set(pde6_ce, pde6, 1);
-		bf_set(pde6_re, pde6, 1);
+		bf_set(pde6_ce, pde6, checking);
+		bf_set(pde6_re, pde6, checking);
 	}
 	bf_set(pde6_ai, pde6, 1);
 	bf_set(pde6_ae, pde6, 0);
@@ -1692,6 +1938,8 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	int datadir = sc->sc_data_direction;
 	unsigned char pgdone = 0, alldone = 0;
 	unsigned blksize;
+	uint32_t rc;
+	uint32_t checking = 1;
 	uint32_t reftag;
 	uint8_t txop, rxop;
 	int num_bde = 0;
@@ -1715,8 +1963,13 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
-	/* reftag / guard tag are the only errors we can inject here */
-	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0xDEAD);
+	rc = lpfc_bg_err_inject(phba, sc, &reftag, 0, 1);
+	if (rc) {
+		if (rc == BG_ERR_SWAP)
+			lpfc_bg_err_opcodes(phba, sc, &txop, &rxop);
+		if (rc == BG_ERR_CHECK)
+			checking = 0;
+	}
 #endif
 
 	split_offset = 0;
@@ -1740,8 +1993,8 @@ lpfc_bg_setup_bpl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		bf_set(pde6_type, pde6, LPFC_PDE6_DESCRIPTOR);
 		bf_set(pde6_optx, pde6, txop);
 		bf_set(pde6_oprx, pde6, rxop);
-		bf_set(pde6_ce, pde6, 1);
-		bf_set(pde6_re, pde6, 1);
+		bf_set(pde6_ce, pde6, checking);
+		bf_set(pde6_re, pde6, checking);
 		bf_set(pde6_ai, pde6, 1);
 		bf_set(pde6_ae, pde6, 0);
 		bf_set(pde6_apptagval, pde6, 0);
@@ -1904,6 +2157,8 @@ lpfc_bg_setup_sgl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	uint32_t reftag;
 	unsigned blksize;
 	uint8_t txop, rxop;
+	uint32_t rc;
+	uint32_t checking = 1;
 	uint32_t dma_len;
 	uint32_t dma_offset = 0;
 
@@ -1916,8 +2171,13 @@ lpfc_bg_setup_sgl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
-	/* reftag is the only error we can inject here */
-	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0);
+	rc = lpfc_bg_err_inject(phba, sc, &reftag, 0, 1);
+	if (rc) {
+		if (rc == BG_ERR_SWAP)
+			lpfc_bg_err_opcodes(phba, sc, &txop, &rxop);
+		if (rc == BG_ERR_CHECK)
+			checking = 0;
+	}
 #endif
 
 	/* setup DISEED with what we have */
@@ -1933,8 +2193,8 @@ lpfc_bg_setup_sgl(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	bf_set(lpfc_sli4_sge_dif_optx, diseed, txop);
 	bf_set(lpfc_sli4_sge_dif_oprx, diseed, rxop);
 	if (datadir == DMA_FROM_DEVICE) {
-		bf_set(lpfc_sli4_sge_dif_ce, diseed, 1);
-		bf_set(lpfc_sli4_sge_dif_re, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_ce, diseed, checking);
+		bf_set(lpfc_sli4_sge_dif_re, diseed, checking);
 	}
 	bf_set(lpfc_sli4_sge_dif_ai, diseed, 1);
 	bf_set(lpfc_sli4_sge_dif_me, diseed, 0);
@@ -2027,6 +2287,8 @@ lpfc_bg_setup_sgl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	uint32_t reftag;
 	uint8_t txop, rxop;
 	uint32_t dma_len;
+	uint32_t rc;
+	uint32_t checking = 1;
 	uint32_t dma_offset = 0;
 	int num_sge = 0;
 
@@ -2049,8 +2311,13 @@ lpfc_bg_setup_sgl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 	reftag = (uint32_t)scsi_get_lba(sc); /* Truncate LBA */
 
 #ifdef CONFIG_SCSI_LPFC_DEBUG_FS
-	/* reftag is the only error we can inject here */
-	lpfc_bg_err_inject(phba, sc, &reftag, 0, 0xDEAD);
+	rc = lpfc_bg_err_inject(phba, sc, &reftag, 0, 1);
+	if (rc) {
+		if (rc == BG_ERR_SWAP)
+			lpfc_bg_err_opcodes(phba, sc, &txop, &rxop);
+		if (rc == BG_ERR_CHECK)
+			checking = 0;
+	}
 #endif
 
 	split_offset = 0;
@@ -2067,8 +2334,8 @@ lpfc_bg_setup_sgl_prot(struct lpfc_hba *phba, struct scsi_cmnd *sc,
 		/* setup DISEED with the rest of the info */
 		bf_set(lpfc_sli4_sge_dif_optx, diseed, txop);
 		bf_set(lpfc_sli4_sge_dif_oprx, diseed, rxop);
-		bf_set(lpfc_sli4_sge_dif_ce, diseed, 1);
-		bf_set(lpfc_sli4_sge_dif_re, diseed, 1);
+		bf_set(lpfc_sli4_sge_dif_ce, diseed, checking);
+		bf_set(lpfc_sli4_sge_dif_re, diseed, checking);
 		bf_set(lpfc_sli4_sge_dif_ai, diseed, 1);
 		bf_set(lpfc_sli4_sge_dif_me, diseed, 0);
 

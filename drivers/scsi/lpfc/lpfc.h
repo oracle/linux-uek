@@ -843,6 +843,7 @@ struct lpfc_hba {
 	struct dentry *debug_writeGuard; /* inject write guard_tag errors */
 	struct dentry *debug_writeApp;   /* inject write app_tag errors */
 	struct dentry *debug_writeRef;   /* inject write ref_tag errors */
+	struct dentry *debug_readGuard;  /* inject read guard_tag errors */
 	struct dentry *debug_readApp;    /* inject read app_tag errors */
 	struct dentry *debug_readRef;    /* inject read ref_tag errors */
 
@@ -850,6 +851,7 @@ struct lpfc_hba {
 	uint32_t lpfc_injerr_wgrd_cnt;
 	uint32_t lpfc_injerr_wapp_cnt;
 	uint32_t lpfc_injerr_wref_cnt;
+	uint32_t lpfc_injerr_rgrd_cnt;
 	uint32_t lpfc_injerr_rapp_cnt;
 	uint32_t lpfc_injerr_rref_cnt;
 	sector_t lpfc_injerr_lba;
