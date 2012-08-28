@@ -718,7 +718,9 @@ struct ipoib_cm_tx *ipoib_cm_create_tx(struct net_device *dev, struct ipoib_path
 void ipoib_cm_destroy_tx(struct ipoib_cm_tx *tx);
 void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			   unsigned int mtu);
-void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc);
+void ipoib_cm_handle_rx_wc(struct net_device *dev,
+			   struct ipoib_recv_ring *recv_ring,
+			   struct ib_wc *wc);
 void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc);
 #else
 
@@ -816,7 +818,9 @@ static inline void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff 
 	dev_kfree_skb_any(skb);
 }
 
-static inline void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
+static inline void ipoib_cm_handle_rx_wc(struct net_device *dev,
+					 struct ipoib_recv_ring *recv_ring,
+					 struct ib_wc *wc)
 {
 }
 

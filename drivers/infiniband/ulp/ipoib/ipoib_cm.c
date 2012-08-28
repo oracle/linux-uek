@@ -90,10 +90,9 @@ static void ipoib_cm_dma_unmap_rx(struct ipoib_dev_priv *priv, int frags,
 }
 
 static int ipoib_cm_post_receive_srq(struct net_device *dev,
-					int index, int id)
+				     struct ipoib_recv_ring *recv_ring, int id)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
-	struct ipoib_recv_ring *recv_ring = priv->recv_ring + index;
 	struct ib_sge *sge;
 	struct ib_recv_wr *wr;
 	struct ib_recv_wr *bad_wr;
@@ -237,7 +236,11 @@ static void ipoib_cm_start_rx_drain(struct ipoib_dev_priv *priv)
 	if (ib_post_send(p->qp, &ipoib_cm_rx_drain_wr, &bad_wr))
 		ipoib_warn(priv, "failed to post drain wr\n");
 
-	list_splice_init(&priv->cm.rx_flush_list, &priv->cm.rx_drain_list);
+	/*
+	 * want to get notification on the same CQ (multi ring)
+	 * so will do one by one
+	 */
+	list_move(&p->list, &priv->cm.rx_drain_list);
 }
 
 static void ipoib_cm_rx_event_handler(struct ib_event *event, void *ctx)
@@ -568,7 +571,9 @@ static void skb_put_frags(struct sk_buff *skb, unsigned int hdr_space,
 	}
 }
 
-void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
+void ipoib_cm_handle_rx_wc(struct net_device *dev,
+			   struct ipoib_recv_ring *recv_ring,
+			   struct ib_wc *wc)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_rx_buf *rx_ring;
@@ -608,7 +613,7 @@ void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		ipoib_dbg(priv, "cm recv error "
 			   "(status=%d, wrid=%d vend_err %x)\n",
 			   wc->status, wr_id, wc->vendor_err);
-		++priv->recv_ring[p->index].stats.rx_dropped;
+		++recv_ring->stats.rx_dropped;
 		if (has_srq)
 			goto repost;
 		else {
@@ -661,7 +666,7 @@ void ipoib_cm_handle_rx_wc(struct net_device *dev, struct ib_wc *wc)
 		 * this packet and reuse the old buffer.
 		 */
 		ipoib_dbg(priv, "failed to allocate receive buffer %d\n", wr_id);
-		++priv->recv_ring[p->index].stats.rx_dropped;
+		++recv_ring->stats.rx_dropped;
 		goto repost;
 	}
 
@@ -678,8 +683,8 @@ copied:
 	skb_reset_mac_header(skb);
 	skb_pull(skb, IPOIB_ENCAP_LEN);
 
-	++priv->recv_ring[p->index].stats.rx_packets;
-	priv->recv_ring[p->index].stats.rx_bytes += skb->len;
+	++recv_ring->stats.rx_packets;
+	recv_ring->stats.rx_bytes += skb->len;
 
 	skb->dev = dev;
 	/* XXX get correct PACKET_ type here */
@@ -693,8 +698,8 @@ copied:
 repost:
 	if (has_srq) {
 		if (unlikely(ipoib_cm_post_receive_srq(dev,
-							p->index,
-							wr_id)))
+						       recv_ring,
+						       wr_id)))
 			ipoib_warn(priv, "ipoib_cm_post_receive_srq failed "
 				   "for buf %d\n", wr_id);
 	} else {
@@ -1645,7 +1650,7 @@ int ipoib_cm_dev_init(struct net_device *dev)
 				return -ENOMEM;
 			}
 
-			if (ipoib_cm_post_receive_srq(dev, 0, i)) {
+			if (ipoib_cm_post_receive_srq(dev, priv->recv_ring, i)) {
 				ipoib_warn(priv, "ipoib_cm_post_receive_srq "
 					   "failed for buf %d\n", i);
 				ipoib_cm_dev_cleanup(dev);

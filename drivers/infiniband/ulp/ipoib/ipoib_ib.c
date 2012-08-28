@@ -532,7 +532,7 @@ poll_more:
 			if (wc->wr_id & IPOIB_OP_RECV) {
 				++done;
 				if (wc->wr_id & IPOIB_OP_CM)
-					ipoib_cm_handle_rx_wc(dev, wc);
+					ipoib_cm_handle_rx_wc(dev, rx_ring, wc);
 				else
 					ipoib_ib_handle_rx_wc(dev, rx_ring, wc);
 			} else
@@ -974,7 +974,7 @@ static void ipoib_drain_rx_ring(struct ipoib_dev_priv *priv,
 
 			if (rx_ring->ibwc[i].wr_id & IPOIB_OP_RECV) {
 				if (rx_ring->ibwc[i].wr_id & IPOIB_OP_CM)
-					ipoib_cm_handle_rx_wc(dev,
+					ipoib_cm_handle_rx_wc(dev, rx_ring,
 							rx_ring->ibwc + i);
 				else
 					ipoib_ib_handle_rx_wc(dev, rx_ring,
