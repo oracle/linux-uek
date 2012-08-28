@@ -71,6 +71,8 @@ module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "Debug level (0=none,...,16=all)");
 
 static void e1000e_disable_aspm(struct pci_dev *pdev, u16 state);
+static int e1000_set_features(struct net_device *netdev,
+			      netdev_features_t features);
 
 static s32 e1000_get_variants_82571(struct e1000_adapter *adapter)
 {
@@ -6077,8 +6079,15 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
 		 */
 		if ((netdev->features & NETIF_F_RXCSUM) &&
 		    (netdev->features & NETIF_F_RXHASH)) {
-			e_err("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled.  Disable one of the receive offload features before enabling jumbos.\n");
-			return -EINVAL;
+			/* Disable receive hashing */
+			netdev_features_t features;
+
+			features = netdev->features & (~NETIF_F_RXHASH);
+			if (e1000_set_features(netdev, features)) {
+				e_err("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled.  Disable one of the receive offload features before enabling jumbos.\n");
+				return -EINVAL;
+			}
+			e_info("Jumbo frames cannot be enabled when both receive checksum offload and receive hashing are enabled. Disabling Receive Hashing.\n");
 		}
 #endif /* HAVE_NDO_SET_FEATURES */
 	}
