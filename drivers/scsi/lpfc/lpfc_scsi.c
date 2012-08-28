@@ -4386,8 +4386,20 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	status = fc_block_scsi_eh(cmnd);
 	if (status != 0 && status != SUCCESS)
 		return status;
+
+	spin_lock_irq(&phba->hbalock);
+	/* driver queued commands are in process of being flushed */
+	if (phba->hba_flag & HBA_FCP_IOQ_FLUSH) {
+		spin_unlock_irq(&phba->hbalock);
+		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
+			"3168 SCSI Layer abort requested I/O has been "
+			"flushed by LLD.\n");
+		return FAILED;
+	}
+
 	lpfc_cmd = (struct lpfc_scsi_buf *)cmnd->host_scribble;
 	if (!lpfc_cmd) {
+		spin_unlock_irq(&phba->hbalock);
 		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 			 "2873 SCSI Layer I/O Abort Request IO CMPL Status "
 			 "x%x ID %d LUN %d\n",
@@ -4395,23 +4407,34 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 		return SUCCESS;
 	}
 
+	iocb = &lpfc_cmd->cur_iocbq;
+	/* the command is in process of being cancelled */
+	if (!(iocb->iocb_flag & LPFC_IO_ON_TXCMPLQ)) {
+		spin_unlock_irq(&phba->hbalock);
+		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
+			"3169 SCSI Layer abort requested I/O has been "
+			"cancelled by LLD.\n");
+		return FAILED;
+	}
 	/*
 	 * If pCmd field of the corresponding lpfc_scsi_buf structure
 	 * points to a different SCSI command, then the driver has
 	 * already completed this command, but the midlayer did not
-	 * see the completion before the eh fired.  Just return
-	 * SUCCESS.
+	 * see the completion before the eh fired. Just return SUCCESS.
 	 */
-	iocb = &lpfc_cmd->cur_iocbq;
-	if (lpfc_cmd->pCmd != cmnd)
-		goto out;
+	if (lpfc_cmd->pCmd != cmnd) {
+		lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
+			"3170 SCSI Layer abort requested I/O has been "
+			"completed by LLD.\n");
+		goto out_unlock;
+	}
 
 	BUG_ON(iocb->context1 != lpfc_cmd);
 
-	abtsiocb = lpfc_sli_get_iocbq(phba);
+	abtsiocb = __lpfc_sli_get_iocbq(phba);
 	if (abtsiocb == NULL) {
 		ret = FAILED;
-		goto out;
+		goto out_unlock;
 	}
 
 	/*
@@ -4443,6 +4466,9 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 
 	abtsiocb->iocb_cmpl = lpfc_sli_abort_fcp_cmpl;
 	abtsiocb->vport = vport;
+	/* no longer need the lock after this point */
+	spin_unlock_irq(&phba->hbalock);
+
 	if (lpfc_sli_issue_iocb(phba, LPFC_FCP_RING, abtsiocb, 0) ==
 	    IOCB_ERROR) {
 		lpfc_sli_release_iocbq(phba, abtsiocb);
@@ -4459,10 +4485,7 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 	wait_event_timeout(waitq,
 			  (lpfc_cmd->pCmd != cmnd),
 			   (2*vport->cfg_devloss_tmo*HZ));
-
-	spin_lock_irq(shost->host_lock);
 	lpfc_cmd->waitq = NULL;
-	spin_unlock_irq(shost->host_lock);
 
 	if (lpfc_cmd->pCmd == cmnd) {
 		ret = FAILED;
@@ -4472,8 +4495,11 @@ lpfc_abort_handler(struct scsi_cmnd *cmnd)
 				 "LUN %d\n",
 				 ret, cmnd->device->id, cmnd->device->lun);
 	}
+	goto out;
 
- out:
+out_unlock:
+	spin_unlock_irq(&phba->hbalock);
+out:
 	lpfc_printf_vlog(vport, KERN_WARNING, LOG_FCP,
 			 "0749 SCSI Layer I/O Abort Request Status x%x ID %d "
 			 "LUN %d\n", ret, cmnd->device->id,
