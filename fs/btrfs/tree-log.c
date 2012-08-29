@@ -3186,6 +3186,7 @@ next_slot:
 		}
 	}
 	BTRFS_I(inode)->logged_trans = trans->transid;
+	BTRFS_I(inode)->last_log_commit = BTRFS_I(inode)->last_sub_trans;
 out_unlock:
 	mutex_unlock(&BTRFS_I(inode)->log_mutex);
 
