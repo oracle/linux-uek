@@ -338,7 +338,7 @@ static void construct_ctf(const char *module_name, const char *file_name,
 static void write_types(void);
 
 /*
- * Construct CTF out of each type and return that type's ID and file
+ * Construct CTF out of each type and return that type's ID and file.
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
@@ -358,8 +358,9 @@ enum skip_type { SKIP_CONTINUE = 0, SKIP_SKIP, SKIP_ABORT };
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   int top_level_type, enum skip_type *skip,
-			   int *override, const char *id);
+			   ulong_t parent_bias, int top_level_type,
+			   enum skip_type *skip, int *override,
+			   const char *id);
 
 /*
  * Look up a type through its reference: return its ctf_id_t, or
@@ -382,7 +383,10 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * with the CU's DIE).  The parent_ctf_id is always in the same CTF file as the
  * ctf_id, just as the parent DWARF DIE is always in the same DWARF CU: this is
  * lexical scope, not dynamic, so referenced types themselves located at the top
- * level have the CU as their parent.
+ * level have the CU as their parent.  The parent_bias is an offset which should
+ * be added to the member offset of any structure or union members above and
+ * beyond the offset given in the member itself (used for unnamed structures and
+ * unions).
  *
  * Returning an error value (see below) indicates that no CTF was generated from
  * this DWARF DIE.
@@ -412,6 +416,7 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
+				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
@@ -420,10 +425,11 @@ typedef ctf_id_t (*ctf_assembly_fun)(const char *module_name,
 				     int *override);
 
 #define ASSEMBLY_FUN(name)					     \
-	static ctf_id_t assemble_ctf_##name(const char *module_name, \
+	static ctf_id_t assemble_ctf_##name(const char *module_name,  \
 					    const char *file_name,    \
 					    Dwarf_Die *die,	      \
 					    Dwarf_Die *parent_die,    \
+					    ulong_t parent_bias,      \
 					    ctf_file_t *ctf,	      \
 					    ctf_id_t parent_ctf_id,   \
 					    const char *locerrstr,    \
@@ -2020,7 +2026,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	enum skip_type skip = SKIP_CONTINUE;
 	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
 	ctf_id_t this_ctf_id = die_to_ctf(module_name, file_name, die,
-					  parent_die, ctf, -1, 1, &skip,
+					  parent_die, ctf, -1, 0, 1, &skip,
 					  NULL, id);
 	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
 
@@ -2085,8 +2091,9 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			   Dwarf_Die *die, Dwarf_Die *parent_die,
 			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			   int top_level_type, enum skip_type *skip,
-			   int *override, const char *id)
+			   ulong_t parent_bias, int top_level_type,
+			   enum skip_type *skip, int *override,
+			   const char *id)
 {
 	int sib_ret = 0;
 	ctf_id_t this_ctf_id;
@@ -2142,7 +2149,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		this_ctf_id = assembly_tab[dwarf_tag(die)](module_name,
 							   file_name,
 							   die, parent_die,
-							   ctf,
+							   parent_bias, ctf,
 							   parent_ctf_id,
 							   locerrstr,
 							   top_level_type,
@@ -2230,8 +2237,8 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			}
 
 			new_id = die_to_ctf(module_name, file_name, &child_die,
-					    die, ctf, this_ctf_id, 0, skip,
-					    &override, NULL);
+					    die, ctf, this_ctf_id, parent_bias,
+					    0, skip, &override, NULL);
 
 			if (override)
 				this_ctf_id = new_id;
@@ -2412,10 +2419,10 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
  */
 static ctf_id_t assemble_ctf_base(const char *module_name,
 				  const char *file_name, Dwarf_Die *die,
-				  Dwarf_Die *parent_die, ctf_file_t *ctf,
-				  ctf_id_t parent_ctf_id, const char *locerrstr,
-				  int top_level_type, enum skip_type *skip,
-				  int *override)
+				  Dwarf_Die *parent_die, ulong_t parent_bias,
+				  ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+				  const char *locerrstr, int top_level_type,
+				  enum skip_type *skip, int *override)
 {
 	typedef ctf_id_t (*ctf_add_fun)(ctf_file_t *, uint_t,
 					const char *, const ctf_encoding_t *);
@@ -2516,7 +2523,8 @@ static ctf_id_t assemble_ctf_base(const char *module_name,
 static ctf_id_t assemble_ctf_pointer(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die, Dwarf_Die *parent_die,
-				     ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+				     ulong_t parent_bias, ctf_file_t *ctf,
+				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr, int top_level_type,
 				     enum skip_type *skip, int *override)
 {
@@ -2545,8 +2553,8 @@ static ctf_id_t assemble_ctf_pointer(const char *module_name,
  */
 static ctf_id_t assemble_ctf_array(const char *module_name,
 				   const char *file_name, Dwarf_Die *die,
-				   Dwarf_Die *parent_die, ctf_file_t *ctf,
-				   ctf_id_t parent_ctf_id,
+				   Dwarf_Die *parent_die, ulong_t parent_bias,
+				   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
 				   const char *locerrstr, int top_level_type,
 				   enum skip_type *skip, int *override)
 {
@@ -2573,6 +2581,7 @@ static ctf_id_t assemble_ctf_array_dimension(const char *module_name,
 					     const char *file_name,
 					     Dwarf_Die *die,
 					     Dwarf_Die *parent_die,
+					     ulong_t parent_bias,
 					     ctf_file_t *ctf,
 					     ctf_id_t parent_ctf_id,
 					     const char *locerrstr,
@@ -2616,6 +2625,7 @@ static ctf_id_t assemble_ctf_enumeration(const char *module_name,
 					 const char *file_name,
 					 Dwarf_Die *die,
 					 Dwarf_Die *parent_die,
+					 ulong_t parent_bias,
 					 ctf_file_t *ctf,
 					 ctf_id_t parent_ctf_id,
 					 const char *locerrstr,
@@ -2636,6 +2646,7 @@ static ctf_id_t assemble_ctf_enumerator(const char *module_name,
 					const char *file_name,
 					Dwarf_Die *die,
 					Dwarf_Die *parent_die,
+					ulong_t parent_bias,
 					ctf_file_t *ctf,
 					ctf_id_t parent_ctf_id,
 					const char *locerrstr,
@@ -2671,6 +2682,7 @@ static ctf_id_t assemble_ctf_typedef(const char *module_name,
 				     const char *file_name,
 				     Dwarf_Die *die,
 				     Dwarf_Die *parent_die,
+				     ulong_t parent_bias,
 				     ctf_file_t *ctf,
 				     ctf_id_t parent_ctf_id,
 				     const char *locerrstr,
@@ -2700,6 +2712,7 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
+				      ulong_t paretn_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
@@ -2743,6 +2756,7 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  const char *file_name,
 					  Dwarf_Die *die,
 					  Dwarf_Die *parent_die,
+					  ulong_t parent_bias,
 					  ctf_file_t *ctf,
 					  ctf_id_t parent_ctf_id,
 					  const char *locerrstr,
@@ -2814,6 +2828,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       const char *file_name,
 				       Dwarf_Die *die,
 				       Dwarf_Die *parent_die,
+				       ulong_t parent_bias,
 				       ctf_file_t *ctf,
 				       ctf_id_t parent_ctf_id,
 				       const char *locerrstr,
@@ -2821,7 +2836,6 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       enum skip_type *skip,
 				       int *override)
 {
-	const char *name = dwarf_diename(die);
 	ulong_t offset;
 	ctf_full_id_t *new_type;
 	Dwarf_Attribute type_attr;
@@ -2831,7 +2845,9 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	CTF_DW_ENFORCE(type);
 
 	/*
-	 * Get the CTF ID of this member's type, by recursive lookup.
+	 * Find the associated type so we can either add a member with that type
+	 * (if it is named) or add its members directly (for unnamed types,
+	 * which must be unnamed structs/unions).
 	 */
 	dwarf_attr(die, DW_AT_type, &type_attr);
 	if (dwarf_formref_die(&type_attr, &type_die) == NULL) {
@@ -2840,24 +2856,6 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		exit(1);
 	}
 	dwarf_diecu(&type_die, &cu_die, NULL, NULL);
-
-	new_type = construct_ctf_id(module_name, file_name, &type_die, &cu_die);
-
-	if (new_type == NULL) {
-		*skip = SKIP_ABORT;
-		return CTF_ERROR_REPORTED;
-	}
-
-	if ((new_type->ctf_file != ctf) &&
-	    (new_type->ctf_file != g_hash_table_lookup(module_to_ctf_file,
-						       "dtrace_ctf"))) {
-		fprintf(stderr, "%s:%s: internal error: referenced type lookup "
-			"for member %s yields a different CTF file: %p versus "
-			"%p\n", locerrstr, dwarf_diename(&cu_die),
-			dwarf_diename(die), ctf, new_type->ctf_file);
-		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
-		exit(1);
-	}
 
 	/*
 	 * Figure out the offset of this type, in bits.
@@ -2974,8 +2972,61 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		offset = 0;
 	}
 
-	if (ctf_add_member_offset(ctf, parent_ctf_id, name, new_type->ctf_id,
-				  offset) < 0) {
+	offset += parent_bias;
+
+	/*
+	 * If this is an unnamed struct/union, call directly back to
+	 * die_to_ctf() to add this struct's members to the current structure,
+	 * merging it seamlessly with its parent (excepting only the member
+	 * offsets).
+	 */
+	if (!dwarf_hasattr(die, DW_AT_name)) {
+	    Dwarf_Die child_die;
+	    int dummy = 0;
+
+	    if ((dwarf_tag(&type_die) != DW_TAG_structure_type) &&
+		(dwarf_tag(&type_die) != DW_TAG_union_type)) {
+		fprintf(stderr, "%s:%lx: not supported: anonymous structure "
+			"member not a structure or union.\n", locerrstr,
+			(unsigned long) dwarf_dieoffset(die));
+		*skip = SKIP_ABORT;
+		return CTF_ERROR_REPORTED;
+	    }
+
+	    /*
+	     * Anonymous structure or union with no members. Silently skip.
+	     */
+	    if (dwarf_child(&type_die, &child_die) < 0)
+		return parent_ctf_id;
+
+	    die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
+		       parent_ctf_id, offset, 0, skip, &dummy, NULL);
+	    return parent_ctf_id;
+	}
+
+	/*
+	 * Get the CTF ID of this member's type, by recursive lookup.
+	 */
+	new_type = construct_ctf_id(module_name, file_name, &type_die, &cu_die);
+
+	if (new_type == NULL) {
+		*skip = SKIP_ABORT;
+		return CTF_ERROR_REPORTED;
+	}
+
+	if ((new_type->ctf_file != ctf) &&
+	    (new_type->ctf_file != g_hash_table_lookup(module_to_ctf_file,
+						       "dtrace_ctf"))) {
+		fprintf(stderr, "%s:%s: internal error: referenced type lookup "
+			"for member %s yields a different CTF file: %p versus "
+			"%p\n", locerrstr, dwarf_diename(&cu_die),
+			dwarf_diename(die), ctf, new_type->ctf_file);
+		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
+		exit(1);
+	}
+
+	if (ctf_add_member_offset(ctf, parent_ctf_id, dwarf_diename(die),
+				  new_type->ctf_id, offset) < 0) {
 		/*
 		 * If we have seen this member before, as part of another
 		 * definition somewhere else, that's fine.  We cannot recurse
@@ -3017,6 +3068,7 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 				      const char *file_name,
 				      Dwarf_Die *die,
 				      Dwarf_Die *parent_die,
+				      ulong_t parent_bias,
 				      ctf_file_t *ctf,
 				      ctf_id_t parent_ctf_id,
 				      const char *locerrstr,
