@@ -1114,9 +1114,9 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 
 		ocfs2_set_ro_flag(osb, 1);
 
-		printk(KERN_NOTICE "Readonly device detected. No cluster "
-		       "services will be utilized for this mount. Recovery "
-		       "will be skipped.\n");
+		printk(KERN_NOTICE "ocfs2: Readonly device (%s) detected. "
+		       "Cluster services will not be used for this mount. "
+		       "Recovery will be skipped.\n", osb->dev_str);
 	}
 
 	if (!ocfs2_is_hard_readonly(osb)) {
@@ -1161,11 +1161,11 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 	}
 
 	status = ocfs2_mount_volume(sb);
-	if (osb->root_inode)
-		inode = igrab(osb->root_inode);
-
 	if (status < 0)
 		goto read_super_error;
+
+	if (osb->root_inode)
+		inode = igrab(osb->root_inode);
 
 	if (!inode) {
 		status = -EIO;
@@ -1175,6 +1175,7 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 
 	root = d_alloc_root(inode);
 	if (!root) {
+		iput(inode);
 		status = -ENOMEM;
 		mlog_errno(status);
 		goto read_super_error;
@@ -1226,9 +1227,6 @@ static int ocfs2_fill_super(struct super_block *sb, void *data, int silent)
 
 read_super_error:
 	brelse(bh);
-
-	if (inode)
-		iput(inode);
 
 	if (osb) {
 		atomic_set(&osb->vol_state, VOLUME_DISABLED);
@@ -1630,21 +1628,17 @@ static int __init ocfs2_init(void)
  		init_waitqueue_head(&ocfs2__ioend_wq[i]);
 
 	status = init_ocfs2_uptodate_cache();
-	if (status < 0) {
-		mlog_errno(status);
-		goto leave;
-	}
+	if (status < 0)
+		goto out1;
 
 	status = ocfs2_initialize_mem_caches();
-	if (status < 0) {
-		mlog_errno(status);
-		goto leave;
-	}
+	if (status < 0)
+		goto out2;
 
 	ocfs2_wq = create_singlethread_workqueue("ocfs2_wq");
 	if (!ocfs2_wq) {
 		status = -ENOMEM;
-		goto leave;
+		goto out3;
 	}
 
 	ocfs2_debugfs_root = debugfs_create_dir("ocfs2", NULL);
@@ -1656,17 +1650,23 @@ static int __init ocfs2_init(void)
 	ocfs2_set_locking_protocol();
 
 	status = register_quota_format(&ocfs2_quota_format);
-leave:
-	if (status < 0) {
-		ocfs2_free_mem_caches();
-		exit_ocfs2_uptodate_cache();
-		mlog_errno(status);
-	}
+	if (status < 0)
+		goto out4;
+	status = register_filesystem(&ocfs2_fs_type);
+	if (!status)
+		return 0;
 
-	if (status >= 0) {
-		return register_filesystem(&ocfs2_fs_type);
-	} else
-		return -1;
+	unregister_quota_format(&ocfs2_quota_format);
+out4:
+	destroy_workqueue(ocfs2_wq);
+	debugfs_remove(ocfs2_debugfs_root);
+out3:
+	ocfs2_free_mem_caches();
+out2:
+	exit_ocfs2_uptodate_cache();
+out1:
+	mlog_errno(status);
+	return status;
 }
 
 static void __exit ocfs2_exit(void)
@@ -2464,8 +2464,8 @@ static int ocfs2_check_volume(struct ocfs2_super *osb)
 			goto finally;
 		}
 	} else {
-		mlog(ML_NOTICE, "File system was not unmounted cleanly, "
-		     "recovering volume.\n");
+		printk(KERN_NOTICE "ocfs2: File system on device (%s) was not "
+		       "unmounted cleanly, recovering it.\n", osb->dev_str);
 	}
 
 	local = ocfs2_mount_local(osb);
