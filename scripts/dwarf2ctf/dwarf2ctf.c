@@ -351,15 +351,15 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 enum skip_type { SKIP_CONTINUE = 0, SKIP_SKIP, SKIP_ABORT };
 
 /*
- * Recursively construct CTF for a type and its children.
+ * Recursive over a given DWARF DIE and its children andconstruct CTF out of it.
  *
  * Most parameters are shared with the ctf_assembly_fun: see the comment below.
  */
-static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
-			    Dwarf_Die *die, Dwarf_Die *parent_die,
-			    ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			    int top_level_type, enum skip_type *skip,
-			    int *override, const char *id);
+static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
+			   Dwarf_Die *die, Dwarf_Die *parent_die,
+			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+			   int top_level_type, enum skip_type *skip,
+			   int *override, const char *id);
 
 /*
  * Look up a type through its reference: return its ctf_id_t, or
@@ -399,7 +399,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
  * in something).  This override takes immediate effect for later children of
  * the same DIE.
  *
- * recurse_ctf() calls these functions repeatedly for every child of the
+ * die_to_ctf() calls these functions repeatedly for every child of the
  * requested DIE: the CTF ID eventually returned is whatever ID is returned by
  * the last such function, and parent_ctf_id is repeatedly replaced with the ID
  * returned by the last assembly function.  Thus, assembly functions that
@@ -473,7 +473,7 @@ static int filter_ctf_uninteresting(Dwarf_Die *die,
 
 /*
  * Error return values from CTF assembly functions.  These differ only in that
- * recurse_ctf() reports the ctf_errmsg() if CTF_NO_ERROR_REPORTED is returned,
+ * die_to_ctf() reports the ctf_errmsg() if CTF_NO_ERROR_REPORTED is returned,
  * but says nothing in the CTF_ERROR_REPORTED case.
  */
 #define CTF_NO_ERROR_REPORTED CTF_ERR
@@ -2018,11 +2018,11 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	 */
 
 	enum skip_type skip = SKIP_CONTINUE;
-	dw_ctf_trace("%p: into recurse_ctf() for %s\n", &id, id);
-	ctf_id_t this_ctf_id = recurse_ctf(module_name, file_name, die,
-					   parent_die, ctf, -1, 1, &skip,
-					   NULL, id);
-	dw_ctf_trace("%p: out of recurse_ctf()\n", &id);
+	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
+	ctf_id_t this_ctf_id = die_to_ctf(module_name, file_name, die,
+					  parent_die, ctf, -1, 1, &skip,
+					  NULL, id);
+	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
 
 	ctf_id = malloc(sizeof (struct ctf_full_id));
 	if (ctf_id == NULL) {
@@ -2082,11 +2082,11 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * Note: id is only defined when top_level_type is 1.  (We never use it
  * in other situations, and computing it is quite expensive.)
  */
-static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
-			    Dwarf_Die *die, Dwarf_Die *parent_die,
-			    ctf_file_t *ctf, ctf_id_t parent_ctf_id,
-			    int top_level_type, enum skip_type *skip,
-			    int *override, const char *id)
+static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
+			   Dwarf_Die *die, Dwarf_Die *parent_die,
+			   ctf_file_t *ctf, ctf_id_t parent_ctf_id,
+			   int top_level_type, enum skip_type *skip,
+			   int *override, const char *id)
 {
 	int sib_ret = 0;
 	ctf_id_t this_ctf_id;
@@ -2191,7 +2191,7 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 				exit(1);
 			}
 
-			dw_ctf_trace("    recurse_ctf(): immediate addition of "
+			dw_ctf_trace("    die_to_ctf(): immediate addition of "
 				     "%s, CTF ID %p:%li in module %s, file %s\n",
 				     id, full_ctf_id.ctf_file, full_ctf_id.ctf_id,
 				     module_name, file_name);
@@ -2229,9 +2229,9 @@ static ctf_id_t recurse_ctf(const char *module_name, const char *file_name,
 				exit(1);
 			}
 
-			new_id = recurse_ctf(module_name, file_name, &child_die,
-					     die, ctf, this_ctf_id, 0, skip,
-					     &override, NULL);
+			new_id = die_to_ctf(module_name, file_name, &child_die,
+					    die, ctf, this_ctf_id, 0, skip,
+					    &override, NULL);
 
 			if (override)
 				this_ctf_id = new_id;
