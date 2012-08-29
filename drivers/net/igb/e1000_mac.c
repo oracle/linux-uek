@@ -25,48 +25,157 @@
 
 *******************************************************************************/
 
-#include <linux/if_ether.h>
-#include <linux/delay.h>
-#include <linux/pci.h>
-#include <linux/netdevice.h>
-#include <linux/etherdevice.h>
+#include "e1000_api.h"
 
-#include "e1000_mac.h"
-
-#include "igb.h"
-
-static s32 igb_set_default_fc(struct e1000_hw *hw);
-static s32 igb_set_fc_watermarks(struct e1000_hw *hw);
+static s32 e1000_validate_mdi_setting_generic(struct e1000_hw *hw);
+static void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw);
+static void e1000_config_collision_dist_generic(struct e1000_hw *hw);
 
 /**
- *  igb_get_bus_info_pcie - Get PCIe bus information
+ *  e1000_init_mac_ops_generic - Initialize MAC function pointers
+ *  @hw: pointer to the HW structure
+ *
+ *  Setups up the function pointers to no-op functions
+ **/
+void e1000_init_mac_ops_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	DEBUGFUNC("e1000_init_mac_ops_generic");
+
+	/* General Setup */
+	mac->ops.init_params = e1000_null_ops_generic;
+	mac->ops.init_hw = e1000_null_ops_generic;
+	mac->ops.reset_hw = e1000_null_ops_generic;
+	mac->ops.setup_physical_interface = e1000_null_ops_generic;
+	mac->ops.get_bus_info = e1000_null_ops_generic;
+	mac->ops.set_lan_id = e1000_set_lan_id_multi_port_pcie;
+	mac->ops.read_mac_addr = e1000_read_mac_addr_generic;
+	mac->ops.config_collision_dist = e1000_config_collision_dist_generic;
+	mac->ops.clear_hw_cntrs = e1000_null_mac_generic;
+	/* LED */
+	mac->ops.cleanup_led = e1000_null_ops_generic;
+	mac->ops.setup_led = e1000_null_ops_generic;
+	mac->ops.blink_led = e1000_null_ops_generic;
+	mac->ops.led_on = e1000_null_ops_generic;
+	mac->ops.led_off = e1000_null_ops_generic;
+	/* LINK */
+	mac->ops.setup_link = e1000_null_ops_generic;
+	mac->ops.get_link_up_info = e1000_null_link_info;
+	mac->ops.check_for_link = e1000_null_ops_generic;
+	mac->ops.wait_autoneg = e1000_wait_autoneg_generic;
+	/* Management */
+	mac->ops.check_mng_mode = e1000_null_mng_mode;
+	mac->ops.mng_host_if_write = e1000_mng_host_if_write_generic;
+	mac->ops.mng_write_cmd_header = e1000_mng_write_cmd_header_generic;
+	mac->ops.mng_enable_host_if = e1000_mng_enable_host_if_generic;
+	/* VLAN, MC, etc. */
+	mac->ops.update_mc_addr_list = e1000_null_update_mc;
+	mac->ops.clear_vfta = e1000_null_mac_generic;
+	mac->ops.write_vfta = e1000_null_write_vfta;
+	mac->ops.rar_set = e1000_rar_set_generic;
+	mac->ops.validate_mdi_setting = e1000_validate_mdi_setting_generic;
+}
+
+/**
+ *  e1000_null_ops_generic - No-op function, returns 0
+ *  @hw: pointer to the HW structure
+ **/
+s32 e1000_null_ops_generic(struct e1000_hw *hw)
+{
+	DEBUGFUNC("e1000_null_ops_generic");
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_null_mac_generic - No-op function, return void
+ *  @hw: pointer to the HW structure
+ **/
+void e1000_null_mac_generic(struct e1000_hw *hw)
+{
+	DEBUGFUNC("e1000_null_mac_generic");
+	return;
+}
+
+/**
+ *  e1000_null_link_info - No-op function, return 0
+ *  @hw: pointer to the HW structure
+ **/
+s32 e1000_null_link_info(struct e1000_hw *hw, u16 *s, u16 *d)
+{
+	DEBUGFUNC("e1000_null_link_info");
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_null_mng_mode - No-op function, return false
+ *  @hw: pointer to the HW structure
+ **/
+bool e1000_null_mng_mode(struct e1000_hw *hw)
+{
+	DEBUGFUNC("e1000_null_mng_mode");
+	return false;
+}
+
+/**
+ *  e1000_null_update_mc - No-op function, return void
+ *  @hw: pointer to the HW structure
+ **/
+void e1000_null_update_mc(struct e1000_hw *hw, u8 *h, u32 a)
+{
+	DEBUGFUNC("e1000_null_update_mc");
+	return;
+}
+
+/**
+ *  e1000_null_write_vfta - No-op function, return void
+ *  @hw: pointer to the HW structure
+ **/
+void e1000_null_write_vfta(struct e1000_hw *hw, u32 a, u32 b)
+{
+	DEBUGFUNC("e1000_null_write_vfta");
+	return;
+}
+
+/**
+ *  e1000_null_rar_set - No-op function, return void
+ *  @hw: pointer to the HW structure
+ **/
+void e1000_null_rar_set(struct e1000_hw *hw, u8 *h, u32 a)
+{
+	DEBUGFUNC("e1000_null_rar_set");
+	return;
+}
+
+/**
+ *  e1000_get_bus_info_pcie_generic - Get PCIe bus information
  *  @hw: pointer to the HW structure
  *
  *  Determines and stores the system bus information for a particular
  *  network interface.  The following bus information is determined and stored:
  *  bus speed, bus width, type (PCIe), and PCIe function.
  **/
-s32 igb_get_bus_info_pcie(struct e1000_hw *hw)
+s32 e1000_get_bus_info_pcie_generic(struct e1000_hw *hw)
 {
+	struct e1000_mac_info *mac = &hw->mac;
 	struct e1000_bus_info *bus = &hw->bus;
 	s32 ret_val;
-	u32 reg;
 	u16 pcie_link_status;
+
+	DEBUGFUNC("e1000_get_bus_info_pcie_generic");
 
 	bus->type = e1000_bus_type_pci_express;
 
-	ret_val = igb_read_pcie_cap_reg(hw,
-					PCI_EXP_LNKSTA,
-					&pcie_link_status);
+	ret_val = e1000_read_pcie_cap_reg(hw, PCIE_LINK_STATUS,
+					  &pcie_link_status);
 	if (ret_val) {
 		bus->width = e1000_bus_width_unknown;
 		bus->speed = e1000_bus_speed_unknown;
 	} else {
-		switch (pcie_link_status & PCI_EXP_LNKSTA_CLS) {
-		case PCI_EXP_LNKSTA_CLS_2_5GB:
+		switch (pcie_link_status & PCIE_LINK_SPEED_MASK) {
+		case PCIE_LINK_SPEED_2500:
 			bus->speed = e1000_bus_speed_2500;
 			break;
-		case PCI_EXP_LNKSTA_CLS_5_0GB:
+		case PCIE_LINK_SPEED_5000:
 			bus->speed = e1000_bus_speed_5000;
 			break;
 		default:
@@ -75,35 +184,69 @@ s32 igb_get_bus_info_pcie(struct e1000_hw *hw)
 		}
 
 		bus->width = (enum e1000_bus_width)((pcie_link_status &
-						     PCI_EXP_LNKSTA_NLW) >>
-						     PCI_EXP_LNKSTA_NLW_SHIFT);
+			      PCIE_LINK_WIDTH_MASK) >> PCIE_LINK_WIDTH_SHIFT);
 	}
 
-	reg = rd32(E1000_STATUS);
+	mac->ops.set_lan_id(hw);
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_set_lan_id_multi_port_pcie - Set LAN id for PCIe multiple port devices
+ *
+ *  @hw: pointer to the HW structure
+ *
+ *  Determines the LAN function id by reading memory-mapped registers
+ *  and swaps the port value if requested.
+ **/
+static void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw)
+{
+	struct e1000_bus_info *bus = &hw->bus;
+	u32 reg;
+
+	/*
+	 * The status register reports the correct function number
+	 * for the device regardless of function swap state.
+	 */
+	reg = E1000_READ_REG(hw, E1000_STATUS);
 	bus->func = (reg & E1000_STATUS_FUNC_MASK) >> E1000_STATUS_FUNC_SHIFT;
-
-	return 0;
 }
 
 /**
- *  igb_clear_vfta - Clear VLAN filter table
+ *  e1000_set_lan_id_single_port - Set LAN id for a single port device
+ *  @hw: pointer to the HW structure
+ *
+ *  Sets the LAN function id to zero for a single port device.
+ **/
+void e1000_set_lan_id_single_port(struct e1000_hw *hw)
+{
+	struct e1000_bus_info *bus = &hw->bus;
+
+	bus->func = 0;
+}
+
+/**
+ *  e1000_clear_vfta_generic - Clear VLAN filter table
  *  @hw: pointer to the HW structure
  *
  *  Clears the register array which contains the VLAN filter table by
  *  setting all the values to 0.
  **/
-void igb_clear_vfta(struct e1000_hw *hw)
+void e1000_clear_vfta_generic(struct e1000_hw *hw)
 {
 	u32 offset;
 
+	DEBUGFUNC("e1000_clear_vfta_generic");
+
 	for (offset = 0; offset < E1000_VLAN_FILTER_TBL_SIZE; offset++) {
-		array_wr32(E1000_VFTA, offset, 0);
-		wrfl();
+		E1000_WRITE_REG_ARRAY(hw, E1000_VFTA, offset, 0);
+		E1000_WRITE_FLUSH(hw);
 	}
 }
 
 /**
- *  igb_write_vfta - Write value to VLAN filter table
+ *  e1000_write_vfta_generic - Write value to VLAN filter table
  *  @hw: pointer to the HW structure
  *  @offset: register offset in VLAN filter table
  *  @value: register value written to VLAN filter table
@@ -111,154 +254,85 @@ void igb_clear_vfta(struct e1000_hw *hw)
  *  Writes value at the given offset in the register array which stores
  *  the VLAN filter table.
  **/
-static void igb_write_vfta(struct e1000_hw *hw, u32 offset, u32 value)
+void e1000_write_vfta_generic(struct e1000_hw *hw, u32 offset, u32 value)
 {
-	array_wr32(E1000_VFTA, offset, value);
-	wrfl();
-}
+	DEBUGFUNC("e1000_write_vfta_generic");
 
-/* Due to a hw errata, if the host tries to  configure the VFTA register
- * while performing queries from the BMC or DMA, then the VFTA in some
- * cases won't be written.
- */
-
-/**
- *  igb_clear_vfta_i350 - Clear VLAN filter table
- *  @hw: pointer to the HW structure
- *
- *  Clears the register array which contains the VLAN filter table by
- *  setting all the values to 0.
- **/
-void igb_clear_vfta_i350(struct e1000_hw *hw)
-{
-	u32 offset;
-	int i;
-
-	for (offset = 0; offset < E1000_VLAN_FILTER_TBL_SIZE; offset++) {
-		for (i = 0; i < 10; i++)
-			array_wr32(E1000_VFTA, offset, 0);
-
-		wrfl();
-	}
+	E1000_WRITE_REG_ARRAY(hw, E1000_VFTA, offset, value);
+	E1000_WRITE_FLUSH(hw);
 }
 
 /**
- *  igb_write_vfta_i350 - Write value to VLAN filter table
- *  @hw: pointer to the HW structure
- *  @offset: register offset in VLAN filter table
- *  @value: register value written to VLAN filter table
- *
- *  Writes value at the given offset in the register array which stores
- *  the VLAN filter table.
- **/
-static void igb_write_vfta_i350(struct e1000_hw *hw, u32 offset, u32 value)
-{
-	int i;
-
-	for (i = 0; i < 10; i++)
-		array_wr32(E1000_VFTA, offset, value);
-
-	wrfl();
-}
-
-/**
- *  igb_init_rx_addrs - Initialize receive address's
+ *  e1000_init_rx_addrs_generic - Initialize receive address's
  *  @hw: pointer to the HW structure
  *  @rar_count: receive address registers
  *
- *  Setups the receive address registers by setting the base receive address
+ *  Setup the receive address registers by setting the base receive address
  *  register to the devices MAC address and clearing all the other receive
  *  address registers to 0.
  **/
-void igb_init_rx_addrs(struct e1000_hw *hw, u16 rar_count)
+void e1000_init_rx_addrs_generic(struct e1000_hw *hw, u16 rar_count)
 {
 	u32 i;
-	u8 mac_addr[ETH_ALEN] = {0};
+	u8 mac_addr[ETH_ADDR_LEN] = {0};
+
+	DEBUGFUNC("e1000_init_rx_addrs_generic");
 
 	/* Setup the receive address */
-	hw_dbg("Programming MAC Address into RAR[0]\n");
+	DEBUGOUT("Programming MAC Address into RAR[0]\n");
 
 	hw->mac.ops.rar_set(hw, hw->mac.addr, 0);
 
 	/* Zero out the other (rar_entry_count - 1) receive addresses */
-	hw_dbg("Clearing RAR[1-%u]\n", rar_count-1);
+	DEBUGOUT1("Clearing RAR[1-%u]\n", rar_count-1);
 	for (i = 1; i < rar_count; i++)
 		hw->mac.ops.rar_set(hw, mac_addr, i);
 }
 
 /**
- *  igb_vfta_set - enable or disable vlan in VLAN filter table
- *  @hw: pointer to the HW structure
- *  @vid: VLAN id to add or remove
- *  @add: if true add filter, if false remove
- *
- *  Sets or clears a bit in the VLAN filter table array based on VLAN id
- *  and if we are adding or removing the filter
- **/
-s32 igb_vfta_set(struct e1000_hw *hw, u32 vid, bool add)
-{
-	u32 index = (vid >> E1000_VFTA_ENTRY_SHIFT) & E1000_VFTA_ENTRY_MASK;
-	u32 mask = 1 << (vid & E1000_VFTA_ENTRY_BIT_SHIFT_MASK);
-	u32 vfta;
-	struct igb_adapter *adapter = hw->back;
-	s32 ret_val = 0;
-
-	vfta = adapter->shadow_vfta[index];
-
-	/* bit was set/cleared before we started */
-	if ((!!(vfta & mask)) == add) {
-		ret_val = -E1000_ERR_CONFIG;
-	} else {
-		if (add)
-			vfta |= mask;
-		else
-			vfta &= ~mask;
-	}
-	if (hw->mac.type == e1000_i350)
-		igb_write_vfta_i350(hw, index, vfta);
-	else
-		igb_write_vfta(hw, index, vfta);
-	adapter->shadow_vfta[index] = vfta;
-
-	return ret_val;
-}
-
-/**
- *  igb_check_alt_mac_addr - Check for alternate MAC addr
+ *  e1000_check_alt_mac_addr_generic - Check for alternate MAC addr
  *  @hw: pointer to the HW structure
  *
  *  Checks the nvm for an alternate MAC address.  An alternate MAC address
  *  can be setup by pre-boot software and must be treated like a permanent
- *  address and must override the actual permanent MAC address.  If an
- *  alternate MAC address is fopund it is saved in the hw struct and
- *  prgrammed into RAR0 and the cuntion returns success, otherwise the
- *  function returns an error.
+ *  address and must override the actual permanent MAC address. If an
+ *  alternate MAC address is found it is programmed into RAR0, replacing
+ *  the permanent address that was installed into RAR0 by the Si on reset.
+ *  This function will return SUCCESS unless it encounters an error while
+ *  reading the EEPROM.
  **/
-s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
+s32 e1000_check_alt_mac_addr_generic(struct e1000_hw *hw)
 {
 	u32 i;
-	s32 ret_val = 0;
+	s32 ret_val = E1000_SUCCESS;
 	u16 offset, nvm_alt_mac_addr_offset, nvm_data;
-	u8 alt_mac_addr[ETH_ALEN];
+	u8 alt_mac_addr[ETH_ADDR_LEN];
+
+	DEBUGFUNC("e1000_check_alt_mac_addr_generic");
+
+	ret_val = hw->nvm.ops.read(hw, NVM_COMPAT, 1, &nvm_data);
+	if (ret_val)
+		return ret_val;
+
 
 	/*
 	 * Alternate MAC address is handled by the option ROM for 82580
 	 * and newer. SW support not required.
 	 */
 	if (hw->mac.type >= e1000_82580)
-		goto out;
+		return E1000_SUCCESS;
 
 	ret_val = hw->nvm.ops.read(hw, NVM_ALT_MAC_ADDR_PTR, 1,
-				 &nvm_alt_mac_addr_offset);
+				   &nvm_alt_mac_addr_offset);
 	if (ret_val) {
-		hw_dbg("NVM Read Error\n");
-		goto out;
+		DEBUGOUT("NVM Read Error\n");
+		return ret_val;
 	}
 
 	if ((nvm_alt_mac_addr_offset == 0xFFFF) ||
 	    (nvm_alt_mac_addr_offset == 0x0000))
 		/* There is no Alternate MAC Address */
-		goto out;
+		return E1000_SUCCESS;
 
 	if (hw->bus.func == E1000_FUNC_1)
 		nvm_alt_mac_addr_offset += E1000_ALT_MAC_ADDRESS_OFFSET_LAN1;
@@ -267,12 +341,12 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 
 	if (hw->bus.func == E1000_FUNC_3)
 		nvm_alt_mac_addr_offset += E1000_ALT_MAC_ADDRESS_OFFSET_LAN3;
-	for (i = 0; i < ETH_ALEN; i += 2) {
+	for (i = 0; i < ETH_ADDR_LEN; i += 2) {
 		offset = nvm_alt_mac_addr_offset + (i >> 1);
 		ret_val = hw->nvm.ops.read(hw, offset, 1, &nvm_data);
 		if (ret_val) {
-			hw_dbg("NVM Read Error\n");
-			goto out;
+			DEBUGOUT("NVM Read Error\n");
+			return ret_val;
 		}
 
 		alt_mac_addr[i] = (u8)(nvm_data & 0xFF);
@@ -280,9 +354,9 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 	}
 
 	/* if multicast bit is set, the alternate address will not be used */
-	if (is_multicast_ether_addr(alt_mac_addr)) {
-		hw_dbg("Ignoring Alternate Mac Address with MC bit set\n");
-		goto out;
+	if (alt_mac_addr[0] & 0x01) {
+		DEBUGOUT("Ignoring Alternate Mac Address with MC bit set\n");
+		return E1000_SUCCESS;
 	}
 
 	/*
@@ -292,12 +366,11 @@ s32 igb_check_alt_mac_addr(struct e1000_hw *hw)
 	 */
 	hw->mac.ops.rar_set(hw, alt_mac_addr, 0);
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_rar_set - Set receive address register
+ *  e1000_rar_set_generic - Set receive address register
  *  @hw: pointer to the HW structure
  *  @addr: pointer to the receive address
  *  @index: receive address array register
@@ -305,17 +378,18 @@ out:
  *  Sets the receive address array register at index to the address passed
  *  in by addr.
  **/
-void igb_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
+void e1000_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index)
 {
 	u32 rar_low, rar_high;
+
+	DEBUGFUNC("e1000_rar_set_generic");
 
 	/*
 	 * HW expects these in little endian so we reverse the byte order
 	 * from network order (big endian) to little endian
 	 */
-	rar_low = ((u32) addr[0] |
-		   ((u32) addr[1] << 8) |
-		    ((u32) addr[2] << 16) | ((u32) addr[3] << 24));
+	rar_low = ((u32) addr[0] | ((u32) addr[1] << 8) |
+		   ((u32) addr[2] << 16) | ((u32) addr[3] << 24));
 
 	rar_high = ((u32) addr[4] | ((u32) addr[5] << 8));
 
@@ -328,60 +402,26 @@ void igb_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
 	 * a single burst write, which will malfunction on some parts.
 	 * The flushes avoid this.
 	 */
-	wr32(E1000_RAL(index), rar_low);
-	wrfl();
-	wr32(E1000_RAH(index), rar_high);
-	wrfl();
+	E1000_WRITE_REG(hw, E1000_RAL(index), rar_low);
+	E1000_WRITE_FLUSH(hw);
+	E1000_WRITE_REG(hw, E1000_RAH(index), rar_high);
+	E1000_WRITE_FLUSH(hw);
 }
 
 /**
- *  igb_mta_set - Set multicast filter table address
- *  @hw: pointer to the HW structure
- *  @hash_value: determines the MTA register and bit to set
- *
- *  The multicast table address is a register array of 32-bit registers.
- *  The hash_value is used to determine what register the bit is in, the
- *  current value is read, the new bit is OR'd in and the new value is
- *  written back into the register.
- **/
-void igb_mta_set(struct e1000_hw *hw, u32 hash_value)
-{
-	u32 hash_bit, hash_reg, mta;
-
-	/*
-	 * The MTA is a register array of 32-bit registers. It is
-	 * treated like an array of (32*mta_reg_count) bits.  We want to
-	 * set bit BitArray[hash_value]. So we figure out what register
-	 * the bit is in, read it, OR in the new bit, then write
-	 * back the new value.  The (hw->mac.mta_reg_count - 1) serves as a
-	 * mask to bits 31:5 of the hash value which gives us the
-	 * register we're modifying.  The hash bit within that register
-	 * is determined by the lower 5 bits of the hash value.
-	 */
-	hash_reg = (hash_value >> 5) & (hw->mac.mta_reg_count - 1);
-	hash_bit = hash_value & 0x1F;
-
-	mta = array_rd32(E1000_MTA, hash_reg);
-
-	mta |= (1 << hash_bit);
-
-	array_wr32(E1000_MTA, hash_reg, mta);
-	wrfl();
-}
-
-/**
- *  igb_hash_mc_addr - Generate a multicast hash value
+ *  e1000_hash_mc_addr_generic - Generate a multicast hash value
  *  @hw: pointer to the HW structure
  *  @mc_addr: pointer to a multicast address
  *
  *  Generates a multicast address hash value which is used to determine
- *  the multicast filter table array address and new table value.  See
- *  igb_mta_set()
+ *  the multicast filter table array address and new table value.
  **/
-static u32 igb_hash_mc_addr(struct e1000_hw *hw, u8 *mc_addr)
+u32 e1000_hash_mc_addr_generic(struct e1000_hw *hw, u8 *mc_addr)
 {
 	u32 hash_value, hash_mask;
 	u8 bit_shift = 0;
+
+	DEBUGFUNC("e1000_hash_mc_addr_generic");
 
 	/* Register count multiplied by bits per register */
 	hash_mask = (hw->mac.mta_reg_count * 32) - 1;
@@ -412,7 +452,7 @@ static u32 igb_hash_mc_addr(struct e1000_hw *hw, u8 *mc_addr)
 	 * values resulting from each mc_filter_type...
 	 * [0] [1] [2] [3] [4] [5]
 	 * 01  AA  00  12  34  56
-	 * LSB                 MSB
+	 * LSB		 MSB
 	 *
 	 * case 0: hash_value = ((0x34 >> 4) | (0x56 << 4)) & 0xFFF = 0x563
 	 * case 1: hash_value = ((0x34 >> 3) | (0x56 << 5)) & 0xFFF = 0xAC6
@@ -441,7 +481,7 @@ static u32 igb_hash_mc_addr(struct e1000_hw *hw, u8 *mc_addr)
 }
 
 /**
- *  igb_update_mc_addr_list - Update Multicast addresses
+ *  e1000_update_mc_addr_list_generic - Update Multicast addresses
  *  @hw: pointer to the HW structure
  *  @mc_addr_list: array of multicast addresses to program
  *  @mc_addr_count: number of multicast addresses to program
@@ -449,92 +489,98 @@ static u32 igb_hash_mc_addr(struct e1000_hw *hw, u8 *mc_addr)
  *  Updates entire Multicast Table Array.
  *  The caller must have a packed mc_addr_list of multicast addresses.
  **/
-void igb_update_mc_addr_list(struct e1000_hw *hw,
-                             u8 *mc_addr_list, u32 mc_addr_count)
+void e1000_update_mc_addr_list_generic(struct e1000_hw *hw,
+				       u8 *mc_addr_list, u32 mc_addr_count)
 {
 	u32 hash_value, hash_bit, hash_reg;
 	int i;
+
+	DEBUGFUNC("e1000_update_mc_addr_list_generic");
 
 	/* clear mta_shadow */
 	memset(&hw->mac.mta_shadow, 0, sizeof(hw->mac.mta_shadow));
 
 	/* update mta_shadow from mc_addr_list */
 	for (i = 0; (u32) i < mc_addr_count; i++) {
-		hash_value = igb_hash_mc_addr(hw, mc_addr_list);
+		hash_value = e1000_hash_mc_addr_generic(hw, mc_addr_list);
 
 		hash_reg = (hash_value >> 5) & (hw->mac.mta_reg_count - 1);
 		hash_bit = hash_value & 0x1F;
 
 		hw->mac.mta_shadow[hash_reg] |= (1 << hash_bit);
-		mc_addr_list += (ETH_ALEN);
+		mc_addr_list += (ETH_ADDR_LEN);
 	}
 
 	/* replace the entire MTA table */
 	for (i = hw->mac.mta_reg_count - 1; i >= 0; i--)
-		array_wr32(E1000_MTA, i, hw->mac.mta_shadow[i]);
-	wrfl();
+		E1000_WRITE_REG_ARRAY(hw, E1000_MTA, i, hw->mac.mta_shadow[i]);
+	E1000_WRITE_FLUSH(hw);
 }
 
 /**
- *  igb_clear_hw_cntrs_base - Clear base hardware counters
+ *  e1000_clear_hw_cntrs_base_generic - Clear base hardware counters
  *  @hw: pointer to the HW structure
  *
  *  Clears the base hardware counters by reading the counter registers.
  **/
-void igb_clear_hw_cntrs_base(struct e1000_hw *hw)
+void e1000_clear_hw_cntrs_base_generic(struct e1000_hw *hw)
 {
-	rd32(E1000_CRCERRS);
-	rd32(E1000_SYMERRS);
-	rd32(E1000_MPC);
-	rd32(E1000_SCC);
-	rd32(E1000_ECOL);
-	rd32(E1000_MCC);
-	rd32(E1000_LATECOL);
-	rd32(E1000_COLC);
-	rd32(E1000_DC);
-	rd32(E1000_SEC);
-	rd32(E1000_RLEC);
-	rd32(E1000_XONRXC);
-	rd32(E1000_XONTXC);
-	rd32(E1000_XOFFRXC);
-	rd32(E1000_XOFFTXC);
-	rd32(E1000_FCRUC);
-	rd32(E1000_GPRC);
-	rd32(E1000_BPRC);
-	rd32(E1000_MPRC);
-	rd32(E1000_GPTC);
-	rd32(E1000_GORCL);
-	rd32(E1000_GORCH);
-	rd32(E1000_GOTCL);
-	rd32(E1000_GOTCH);
-	rd32(E1000_RNBC);
-	rd32(E1000_RUC);
-	rd32(E1000_RFC);
-	rd32(E1000_ROC);
-	rd32(E1000_RJC);
-	rd32(E1000_TORL);
-	rd32(E1000_TORH);
-	rd32(E1000_TOTL);
-	rd32(E1000_TOTH);
-	rd32(E1000_TPR);
-	rd32(E1000_TPT);
-	rd32(E1000_MPTC);
-	rd32(E1000_BPTC);
+	DEBUGFUNC("e1000_clear_hw_cntrs_base_generic");
+
+	E1000_READ_REG(hw, E1000_CRCERRS);
+	E1000_READ_REG(hw, E1000_SYMERRS);
+	E1000_READ_REG(hw, E1000_MPC);
+	E1000_READ_REG(hw, E1000_SCC);
+	E1000_READ_REG(hw, E1000_ECOL);
+	E1000_READ_REG(hw, E1000_MCC);
+	E1000_READ_REG(hw, E1000_LATECOL);
+	E1000_READ_REG(hw, E1000_COLC);
+	E1000_READ_REG(hw, E1000_DC);
+	E1000_READ_REG(hw, E1000_SEC);
+	E1000_READ_REG(hw, E1000_RLEC);
+	E1000_READ_REG(hw, E1000_XONRXC);
+	E1000_READ_REG(hw, E1000_XONTXC);
+	E1000_READ_REG(hw, E1000_XOFFRXC);
+	E1000_READ_REG(hw, E1000_XOFFTXC);
+	E1000_READ_REG(hw, E1000_FCRUC);
+	E1000_READ_REG(hw, E1000_GPRC);
+	E1000_READ_REG(hw, E1000_BPRC);
+	E1000_READ_REG(hw, E1000_MPRC);
+	E1000_READ_REG(hw, E1000_GPTC);
+	E1000_READ_REG(hw, E1000_GORCL);
+	E1000_READ_REG(hw, E1000_GORCH);
+	E1000_READ_REG(hw, E1000_GOTCL);
+	E1000_READ_REG(hw, E1000_GOTCH);
+	E1000_READ_REG(hw, E1000_RNBC);
+	E1000_READ_REG(hw, E1000_RUC);
+	E1000_READ_REG(hw, E1000_RFC);
+	E1000_READ_REG(hw, E1000_ROC);
+	E1000_READ_REG(hw, E1000_RJC);
+	E1000_READ_REG(hw, E1000_TORL);
+	E1000_READ_REG(hw, E1000_TORH);
+	E1000_READ_REG(hw, E1000_TOTL);
+	E1000_READ_REG(hw, E1000_TOTH);
+	E1000_READ_REG(hw, E1000_TPR);
+	E1000_READ_REG(hw, E1000_TPT);
+	E1000_READ_REG(hw, E1000_MPTC);
+	E1000_READ_REG(hw, E1000_BPTC);
 }
 
 /**
- *  igb_check_for_copper_link - Check for link (Copper)
+ *  e1000_check_for_copper_link_generic - Check for link (Copper)
  *  @hw: pointer to the HW structure
  *
  *  Checks to see of the link status of the hardware has changed.  If a
  *  change in link status has been detected, then we read the PHY registers
  *  to get the current speed/duplex if link exists.
  **/
-s32 igb_check_for_copper_link(struct e1000_hw *hw)
+s32 e1000_check_for_copper_link_generic(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
 	s32 ret_val;
 	bool link;
+
+	DEBUGFUNC("e1000_check_for_copper_link");
 
 	/*
 	 * We only want to go out to the PHY registers to see if Auto-Neg
@@ -542,22 +588,20 @@ s32 igb_check_for_copper_link(struct e1000_hw *hw)
 	 * get_link_status flag is set upon receiving a Link Status
 	 * Change or Rx Sequence Error interrupt.
 	 */
-	if (!mac->get_link_status) {
-		ret_val = 0;
-		goto out;
-	}
+	if (!mac->get_link_status)
+		return E1000_SUCCESS;
 
 	/*
 	 * First we want to see if the MII Status Register reports
 	 * link.  If so, then we want to get the current speed/duplex
 	 * of the PHY.
 	 */
-	ret_val = igb_phy_has_link(hw, 1, 0, &link);
+	ret_val = e1000_phy_has_link_generic(hw, 1, 0, &link);
 	if (ret_val)
-		goto out;
+		return ret_val;
 
 	if (!link)
-		goto out; /* No link detected */
+		return E1000_SUCCESS; /* No link detected */
 
 	mac->get_link_status = false;
 
@@ -565,23 +609,21 @@ s32 igb_check_for_copper_link(struct e1000_hw *hw)
 	 * Check if there was DownShift, must be checked
 	 * immediately after link-up
 	 */
-	igb_check_downshift(hw);
+	e1000_check_downshift_generic(hw);
 
 	/*
 	 * If we are forcing speed/duplex, then we simply return since
 	 * we have already determined whether we have link or not.
 	 */
-	if (!mac->autoneg) {
-		ret_val = -E1000_ERR_CONFIG;
-		goto out;
-	}
+	if (!mac->autoneg)
+		return -E1000_ERR_CONFIG;
 
 	/*
 	 * Auto-Neg is enabled.  Auto Speed Detection takes care
 	 * of MAC speed/duplex configuration.  So we only need to
 	 * configure Collision Distance in the MAC.
 	 */
-	igb_config_collision_dist(hw);
+	mac->ops.config_collision_dist(hw);
 
 	/*
 	 * Configure Flow Control now that Auto-Neg has completed.
@@ -589,16 +631,234 @@ s32 igb_check_for_copper_link(struct e1000_hw *hw)
 	 * settings because we may have had to re-autoneg with a
 	 * different link partner.
 	 */
-	ret_val = igb_config_fc_after_link_up(hw);
+	ret_val = e1000_config_fc_after_link_up_generic(hw);
 	if (ret_val)
-		hw_dbg("Error configuring flow control\n");
+		DEBUGOUT("Error configuring flow control\n");
 
-out:
 	return ret_val;
 }
 
 /**
- *  igb_setup_link - Setup flow control and link settings
+ *  e1000_check_for_fiber_link_generic - Check for link (Fiber)
+ *  @hw: pointer to the HW structure
+ *
+ *  Checks for link up on the hardware.  If link is not up and we have
+ *  a signal, then we need to force link up.
+ **/
+s32 e1000_check_for_fiber_link_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	u32 rxcw;
+	u32 ctrl;
+	u32 status;
+	s32 ret_val;
+
+	DEBUGFUNC("e1000_check_for_fiber_link_generic");
+
+	ctrl = E1000_READ_REG(hw, E1000_CTRL);
+	status = E1000_READ_REG(hw, E1000_STATUS);
+	rxcw = E1000_READ_REG(hw, E1000_RXCW);
+
+	/*
+	 * If we don't have link (auto-negotiation failed or link partner
+	 * cannot auto-negotiate), the cable is plugged in (we have signal),
+	 * and our link partner is not trying to auto-negotiate with us (we
+	 * are receiving idles or data), we need to force link up. We also
+	 * need to give auto-negotiation time to complete, in case the cable
+	 * was just plugged in. The autoneg_failed flag does this.
+	 */
+	/* (ctrl & E1000_CTRL_SWDPIN1) == 1 == have signal */
+	if ((ctrl & E1000_CTRL_SWDPIN1) && !(status & E1000_STATUS_LU) &&
+	    !(rxcw & E1000_RXCW_C)) {
+		if (!mac->autoneg_failed) {
+			mac->autoneg_failed = true;
+			return E1000_SUCCESS;
+		}
+		DEBUGOUT("NOT Rx'ing /C/, disable AutoNeg and force link.\n");
+
+		/* Disable auto-negotiation in the TXCW register */
+		E1000_WRITE_REG(hw, E1000_TXCW, (mac->txcw & ~E1000_TXCW_ANE));
+
+		/* Force link-up and also force full-duplex. */
+		ctrl = E1000_READ_REG(hw, E1000_CTRL);
+		ctrl |= (E1000_CTRL_SLU | E1000_CTRL_FD);
+		E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
+
+		/* Configure Flow Control after forcing link up. */
+		ret_val = e1000_config_fc_after_link_up_generic(hw);
+		if (ret_val) {
+			DEBUGOUT("Error configuring flow control\n");
+			return ret_val;
+		}
+	} else if ((ctrl & E1000_CTRL_SLU) && (rxcw & E1000_RXCW_C)) {
+		/*
+		 * If we are forcing link and we are receiving /C/ ordered
+		 * sets, re-enable auto-negotiation in the TXCW register
+		 * and disable forced link in the Device Control register
+		 * in an attempt to auto-negotiate with our link partner.
+		 */
+		DEBUGOUT("Rx'ing /C/, enable AutoNeg and stop forcing link.\n");
+		E1000_WRITE_REG(hw, E1000_TXCW, mac->txcw);
+		E1000_WRITE_REG(hw, E1000_CTRL, (ctrl & ~E1000_CTRL_SLU));
+
+		mac->serdes_has_link = true;
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_check_for_serdes_link_generic - Check for link (Serdes)
+ *  @hw: pointer to the HW structure
+ *
+ *  Checks for link up on the hardware.  If link is not up and we have
+ *  a signal, then we need to force link up.
+ **/
+s32 e1000_check_for_serdes_link_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	u32 rxcw;
+	u32 ctrl;
+	u32 status;
+	s32 ret_val;
+
+	DEBUGFUNC("e1000_check_for_serdes_link_generic");
+
+	ctrl = E1000_READ_REG(hw, E1000_CTRL);
+	status = E1000_READ_REG(hw, E1000_STATUS);
+	rxcw = E1000_READ_REG(hw, E1000_RXCW);
+
+	/*
+	 * If we don't have link (auto-negotiation failed or link partner
+	 * cannot auto-negotiate), and our link partner is not trying to
+	 * auto-negotiate with us (we are receiving idles or data),
+	 * we need to force link up. We also need to give auto-negotiation
+	 * time to complete.
+	 */
+	/* (ctrl & E1000_CTRL_SWDPIN1) == 1 == have signal */
+	if (!(status & E1000_STATUS_LU) && !(rxcw & E1000_RXCW_C)) {
+		if (!mac->autoneg_failed) {
+			mac->autoneg_failed = true;
+			return E1000_SUCCESS;
+		}
+		DEBUGOUT("NOT Rx'ing /C/, disable AutoNeg and force link.\n");
+
+		/* Disable auto-negotiation in the TXCW register */
+		E1000_WRITE_REG(hw, E1000_TXCW, (mac->txcw & ~E1000_TXCW_ANE));
+
+		/* Force link-up and also force full-duplex. */
+		ctrl = E1000_READ_REG(hw, E1000_CTRL);
+		ctrl |= (E1000_CTRL_SLU | E1000_CTRL_FD);
+		E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
+
+		/* Configure Flow Control after forcing link up. */
+		ret_val = e1000_config_fc_after_link_up_generic(hw);
+		if (ret_val) {
+			DEBUGOUT("Error configuring flow control\n");
+			return ret_val;
+		}
+	} else if ((ctrl & E1000_CTRL_SLU) && (rxcw & E1000_RXCW_C)) {
+		/*
+		 * If we are forcing link and we are receiving /C/ ordered
+		 * sets, re-enable auto-negotiation in the TXCW register
+		 * and disable forced link in the Device Control register
+		 * in an attempt to auto-negotiate with our link partner.
+		 */
+		DEBUGOUT("Rx'ing /C/, enable AutoNeg and stop forcing link.\n");
+		E1000_WRITE_REG(hw, E1000_TXCW, mac->txcw);
+		E1000_WRITE_REG(hw, E1000_CTRL, (ctrl & ~E1000_CTRL_SLU));
+
+		mac->serdes_has_link = true;
+	} else if (!(E1000_TXCW_ANE & E1000_READ_REG(hw, E1000_TXCW))) {
+		/*
+		 * If we force link for non-auto-negotiation switch, check
+		 * link status based on MAC synchronization for internal
+		 * serdes media type.
+		 */
+		/* SYNCH bit and IV bit are sticky. */
+		usec_delay(10);
+		rxcw = E1000_READ_REG(hw, E1000_RXCW);
+		if (rxcw & E1000_RXCW_SYNCH) {
+			if (!(rxcw & E1000_RXCW_IV)) {
+				mac->serdes_has_link = true;
+				DEBUGOUT("SERDES: Link up - forced.\n");
+			}
+		} else {
+			mac->serdes_has_link = false;
+			DEBUGOUT("SERDES: Link down - force failed.\n");
+		}
+	}
+
+	if (E1000_TXCW_ANE & E1000_READ_REG(hw, E1000_TXCW)) {
+		status = E1000_READ_REG(hw, E1000_STATUS);
+		if (status & E1000_STATUS_LU) {
+			/* SYNCH bit and IV bit are sticky, so reread rxcw. */
+			usec_delay(10);
+			rxcw = E1000_READ_REG(hw, E1000_RXCW);
+			if (rxcw & E1000_RXCW_SYNCH) {
+				if (!(rxcw & E1000_RXCW_IV)) {
+					mac->serdes_has_link = true;
+					DEBUGOUT("SERDES: Link up - autoneg completed successfully.\n");
+				} else {
+					mac->serdes_has_link = false;
+					DEBUGOUT("SERDES: Link down - invalid codewords detected in autoneg.\n");
+				}
+			} else {
+				mac->serdes_has_link = false;
+				DEBUGOUT("SERDES: Link down - no sync.\n");
+			}
+		} else {
+			mac->serdes_has_link = false;
+			DEBUGOUT("SERDES: Link down - autoneg failed\n");
+		}
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_set_default_fc_generic - Set flow control default values
+ *  @hw: pointer to the HW structure
+ *
+ *  Read the EEPROM for the default values for flow control and store the
+ *  values.
+ **/
+static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
+{
+	s32 ret_val;
+	u16 nvm_data;
+
+	DEBUGFUNC("e1000_set_default_fc_generic");
+
+	/*
+	 * Read and store word 0x0F of the EEPROM. This word contains bits
+	 * that determine the hardware's default PAUSE (flow control) mode,
+	 * a bit that determines whether the HW defaults to enabling or
+	 * disabling auto-negotiation, and the direction of the
+	 * SW defined pins. If there is no SW over-ride of the flow
+	 * control setting, then the variable hw->fc will
+	 * be initialized based on a value in the EEPROM.
+	 */
+	ret_val = hw->nvm.ops.read(hw, NVM_INIT_CONTROL2_REG, 1, &nvm_data);
+
+	if (ret_val) {
+		DEBUGOUT("NVM Read Error\n");
+		return ret_val;
+	}
+
+	if ((nvm_data & NVM_WORD0F_PAUSE_MASK) == 0)
+		hw->fc.requested_mode = e1000_fc_none;
+	else if ((nvm_data & NVM_WORD0F_PAUSE_MASK) ==
+		 NVM_WORD0F_ASM_DIR)
+		hw->fc.requested_mode = e1000_fc_tx_pause;
+	else
+		hw->fc.requested_mode = e1000_fc_full;
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_setup_link_generic - Setup flow control and link settings
  *  @hw: pointer to the HW structure
  *
  *  Determines which flow control settings to use, then configures flow
@@ -607,40 +867,42 @@ out:
  *  should be established.  Assumes the hardware has previously been reset
  *  and the transmitter and receiver are not enabled.
  **/
-s32 igb_setup_link(struct e1000_hw *hw)
+s32 e1000_setup_link_generic(struct e1000_hw *hw)
 {
-	s32 ret_val = 0;
+	s32 ret_val;
+
+	DEBUGFUNC("e1000_setup_link_generic");
 
 	/*
 	 * In the case of the phy reset being blocked, we already have a link.
 	 * We do not need to set it up again.
 	 */
-	if (igb_check_reset_block(hw))
-		goto out;
+	if (hw->phy.ops.check_reset_block(hw))
+		return E1000_SUCCESS;
 
 	/*
 	 * If requested flow control is set to default, set flow control
 	 * based on the EEPROM flow control settings.
 	 */
 	if (hw->fc.requested_mode == e1000_fc_default) {
-		ret_val = igb_set_default_fc(hw);
+		ret_val = e1000_set_default_fc_generic(hw);
 		if (ret_val)
-			goto out;
+			return ret_val;
 	}
 
 	/*
-	 * We want to save off the original Flow Control configuration just
-	 * in case we get disconnected and then reconnected into a different
-	 * hub or switch with different Flow Control capabilities.
+	 * Save off the requested flow control mode for use later.  Depending
+	 * on the link partner's capabilities, we may or may not use this mode.
 	 */
 	hw->fc.current_mode = hw->fc.requested_mode;
 
-	hw_dbg("After fix-ups FlowControl is now = %x\n", hw->fc.current_mode);
+	DEBUGOUT1("After fix-ups FlowControl is now = %x\n",
+		hw->fc.current_mode);
 
 	/* Call the necessary media_type subroutine to configure the link. */
 	ret_val = hw->mac.ops.setup_physical_interface(hw);
 	if (ret_val)
-		goto out;
+		return ret_val;
 
 	/*
 	 * Initialize the flow control address, type, and PAUSE timer
@@ -648,52 +910,228 @@ s32 igb_setup_link(struct e1000_hw *hw)
 	 * control is disabled, because it does not hurt anything to
 	 * initialize these registers.
 	 */
-	hw_dbg("Initializing the Flow Control address, type and timer regs\n");
-	wr32(E1000_FCT, FLOW_CONTROL_TYPE);
-	wr32(E1000_FCAH, FLOW_CONTROL_ADDRESS_HIGH);
-	wr32(E1000_FCAL, FLOW_CONTROL_ADDRESS_LOW);
+	DEBUGOUT("Initializing the Flow Control address, type and timer regs\n");
+	E1000_WRITE_REG(hw, E1000_FCT, FLOW_CONTROL_TYPE);
+	E1000_WRITE_REG(hw, E1000_FCAH, FLOW_CONTROL_ADDRESS_HIGH);
+	E1000_WRITE_REG(hw, E1000_FCAL, FLOW_CONTROL_ADDRESS_LOW);
 
-	wr32(E1000_FCTTV, hw->fc.pause_time);
+	E1000_WRITE_REG(hw, E1000_FCTTV, hw->fc.pause_time);
 
-	ret_val = igb_set_fc_watermarks(hw);
+	return e1000_set_fc_watermarks_generic(hw);
+}
 
-out:
+/**
+ *  e1000_commit_fc_settings_generic - Configure flow control
+ *  @hw: pointer to the HW structure
+ *
+ *  Write the flow control settings to the Transmit Config Word Register (TXCW)
+ *  base on the flow control settings in e1000_mac_info.
+ **/
+static s32 e1000_commit_fc_settings_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	u32 txcw;
+
+	DEBUGFUNC("e1000_commit_fc_settings_generic");
+
+	/*
+	 * Check for a software override of the flow control settings, and
+	 * setup the device accordingly.  If auto-negotiation is enabled, then
+	 * software will have to set the "PAUSE" bits to the correct value in
+	 * the Transmit Config Word Register (TXCW) and re-start auto-
+	 * negotiation.  However, if auto-negotiation is disabled, then
+	 * software will have to manually configure the two flow control enable
+	 * bits in the CTRL register.
+	 *
+	 * The possible values of the "fc" parameter are:
+	 *      0:  Flow control is completely disabled
+	 *      1:  Rx flow control is enabled (we can receive pause frames,
+	 *          but not send pause frames).
+	 *      2:  Tx flow control is enabled (we can send pause frames but we
+	 *          do not support receiving pause frames).
+	 *      3:  Both Rx and Tx flow control (symmetric) are enabled.
+	 */
+	switch (hw->fc.current_mode) {
+	case e1000_fc_none:
+		/* Flow control completely disabled by a software over-ride. */
+		txcw = (E1000_TXCW_ANE | E1000_TXCW_FD);
+		break;
+	case e1000_fc_rx_pause:
+		/*
+		 * Rx Flow control is enabled and Tx Flow control is disabled
+		 * by a software over-ride. Since there really isn't a way to
+		 * advertise that we are capable of Rx Pause ONLY, we will
+		 * advertise that we support both symmetric and asymmetric Rx
+		 * PAUSE.  Later, we will disable the adapter's ability to send
+		 * PAUSE frames.
+		 */
+		txcw = (E1000_TXCW_ANE | E1000_TXCW_FD | E1000_TXCW_PAUSE_MASK);
+		break;
+	case e1000_fc_tx_pause:
+		/*
+		 * Tx Flow control is enabled, and Rx Flow control is disabled,
+		 * by a software over-ride.
+		 */
+		txcw = (E1000_TXCW_ANE | E1000_TXCW_FD | E1000_TXCW_ASM_DIR);
+		break;
+	case e1000_fc_full:
+		/*
+		 * Flow control (both Rx and Tx) is enabled by a software
+		 * over-ride.
+		 */
+		txcw = (E1000_TXCW_ANE | E1000_TXCW_FD | E1000_TXCW_PAUSE_MASK);
+		break;
+	default:
+		DEBUGOUT("Flow control param set incorrectly\n");
+		return -E1000_ERR_CONFIG;
+		break;
+	}
+
+	E1000_WRITE_REG(hw, E1000_TXCW, txcw);
+	mac->txcw = txcw;
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_poll_fiber_serdes_link_generic - Poll for link up
+ *  @hw: pointer to the HW structure
+ *
+ *  Polls for link up by reading the status register, if link fails to come
+ *  up with auto-negotiation, then the link is forced if a signal is detected.
+ **/
+static s32 e1000_poll_fiber_serdes_link_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+	u32 i, status;
+	s32 ret_val;
+
+	DEBUGFUNC("e1000_poll_fiber_serdes_link_generic");
+
+	/*
+	 * If we have a signal (the cable is plugged in, or assumed true for
+	 * serdes media) then poll for a "Link-Up" indication in the Device
+	 * Status Register.  Time-out if a link isn't seen in 500 milliseconds
+	 * seconds (Auto-negotiation should complete in less than 500
+	 * milliseconds even if the other end is doing it in SW).
+	 */
+	for (i = 0; i < FIBER_LINK_UP_LIMIT; i++) {
+		msec_delay(10);
+		status = E1000_READ_REG(hw, E1000_STATUS);
+		if (status & E1000_STATUS_LU)
+			break;
+	}
+	if (i == FIBER_LINK_UP_LIMIT) {
+		DEBUGOUT("Never got a valid link from auto-neg!!!\n");
+		mac->autoneg_failed = true;
+		/*
+		 * AutoNeg failed to achieve a link, so we'll call
+		 * mac->check_for_link. This routine will force the
+		 * link up if we detect a signal. This will allow us to
+		 * communicate with non-autonegotiating link partners.
+		 */
+		ret_val = mac->ops.check_for_link(hw);
+		if (ret_val) {
+			DEBUGOUT("Error while checking for link\n");
+			return ret_val;
+		}
+		mac->autoneg_failed = false;
+	} else {
+		mac->autoneg_failed = false;
+		DEBUGOUT("Valid Link Found\n");
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_setup_fiber_serdes_link_generic - Setup link for fiber/serdes
+ *  @hw: pointer to the HW structure
+ *
+ *  Configures collision distance and flow control for fiber and serdes
+ *  links.  Upon successful setup, poll for link.
+ **/
+s32 e1000_setup_fiber_serdes_link_generic(struct e1000_hw *hw)
+{
+	u32 ctrl;
+	s32 ret_val;
+
+	DEBUGFUNC("e1000_setup_fiber_serdes_link_generic");
+
+	ctrl = E1000_READ_REG(hw, E1000_CTRL);
+
+	/* Take the link out of reset */
+	ctrl &= ~E1000_CTRL_LRST;
+
+	hw->mac.ops.config_collision_dist(hw);
+
+	ret_val = e1000_commit_fc_settings_generic(hw);
+	if (ret_val)
+		return ret_val;
+
+	/*
+	 * Since auto-negotiation is enabled, take the link out of reset (the
+	 * link will be in reset, because we previously reset the chip). This
+	 * will restart auto-negotiation.  If auto-negotiation is successful
+	 * then the link-up status bit will be set and the flow control enable
+	 * bits (RFCE and TFCE) will be set according to their negotiated value.
+	 */
+	DEBUGOUT("Auto-negotiation enabled\n");
+
+	E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
+	E1000_WRITE_FLUSH(hw);
+	msec_delay(1);
+
+	/*
+	 * For these adapters, the SW definable pin 1 is set when the optics
+	 * detect a signal.  If we have a signal, then poll for a "Link-Up"
+	 * indication.
+	 */
+	if (hw->phy.media_type == e1000_media_type_internal_serdes ||
+	    (E1000_READ_REG(hw, E1000_CTRL) & E1000_CTRL_SWDPIN1)) {
+		ret_val = e1000_poll_fiber_serdes_link_generic(hw);
+	} else {
+		DEBUGOUT("No signal detected\n");
+	}
+
 	return ret_val;
 }
 
 /**
- *  igb_config_collision_dist - Configure collision distance
+ *  e1000_config_collision_dist_generic - Configure collision distance
  *  @hw: pointer to the HW structure
  *
  *  Configures the collision distance to the default value and is used
- *  during link setup. Currently no func pointer exists and all
- *  implementations are handled in the generic version of this function.
+ *  during link setup.
  **/
-void igb_config_collision_dist(struct e1000_hw *hw)
+static void e1000_config_collision_dist_generic(struct e1000_hw *hw)
 {
 	u32 tctl;
 
-	tctl = rd32(E1000_TCTL);
+	DEBUGFUNC("e1000_config_collision_dist_generic");
+
+	tctl = E1000_READ_REG(hw, E1000_TCTL);
 
 	tctl &= ~E1000_TCTL_COLD;
 	tctl |= E1000_COLLISION_DISTANCE << E1000_COLD_SHIFT;
 
-	wr32(E1000_TCTL, tctl);
-	wrfl();
+	E1000_WRITE_REG(hw, E1000_TCTL, tctl);
+	E1000_WRITE_FLUSH(hw);
 }
 
 /**
- *  igb_set_fc_watermarks - Set flow control high/low watermarks
+ *  e1000_set_fc_watermarks_generic - Set flow control high/low watermarks
  *  @hw: pointer to the HW structure
  *
  *  Sets the flow control high/low threshold (watermark) registers.  If
  *  flow control XON frame transmission is enabled, then set XON frame
- *  tansmission as well.
+ *  transmission as well.
  **/
-static s32 igb_set_fc_watermarks(struct e1000_hw *hw)
+s32 e1000_set_fc_watermarks_generic(struct e1000_hw *hw)
 {
-	s32 ret_val = 0;
 	u32 fcrtl = 0, fcrth = 0;
+
+	DEBUGFUNC("e1000_set_fc_watermarks_generic");
 
 	/*
 	 * Set the flow control receive threshold registers.  Normally,
@@ -714,54 +1152,14 @@ static s32 igb_set_fc_watermarks(struct e1000_hw *hw)
 
 		fcrth = hw->fc.high_water;
 	}
-	wr32(E1000_FCRTL, fcrtl);
-	wr32(E1000_FCRTH, fcrth);
+	E1000_WRITE_REG(hw, E1000_FCRTL, fcrtl);
+	E1000_WRITE_REG(hw, E1000_FCRTH, fcrth);
 
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_set_default_fc - Set flow control default values
- *  @hw: pointer to the HW structure
- *
- *  Read the EEPROM for the default values for flow control and store the
- *  values.
- **/
-static s32 igb_set_default_fc(struct e1000_hw *hw)
-{
-	s32 ret_val = 0;
-	u16 nvm_data;
-
-	/*
-	 * Read and store word 0x0F of the EEPROM. This word contains bits
-	 * that determine the hardware's default PAUSE (flow control) mode,
-	 * a bit that determines whether the HW defaults to enabling or
-	 * disabling auto-negotiation, and the direction of the
-	 * SW defined pins. If there is no SW over-ride of the flow
-	 * control setting, then the variable hw->fc will
-	 * be initialized based on a value in the EEPROM.
-	 */
-	ret_val = hw->nvm.ops.read(hw, NVM_INIT_CONTROL2_REG, 1, &nvm_data);
-
-	if (ret_val) {
-		hw_dbg("NVM Read Error\n");
-		goto out;
-	}
-
-	if ((nvm_data & NVM_WORD0F_PAUSE_MASK) == 0)
-		hw->fc.requested_mode = e1000_fc_none;
-	else if ((nvm_data & NVM_WORD0F_PAUSE_MASK) ==
-		 NVM_WORD0F_ASM_DIR)
-		hw->fc.requested_mode = e1000_fc_tx_pause;
-	else
-		hw->fc.requested_mode = e1000_fc_full;
-
-out:
-	return ret_val;
-}
-
-/**
- *  igb_force_mac_fc - Force the MAC's flow control settings
+ *  e1000_force_mac_fc_generic - Force the MAC's flow control settings
  *  @hw: pointer to the HW structure
  *
  *  Force the MAC's flow control settings.  Sets the TFCE and RFCE bits in the
@@ -770,12 +1168,13 @@ out:
  *  autonegotiation is managed by the PHY rather than the MAC.  Software must
  *  also configure these bits when link is forced on a fiber connection.
  **/
-s32 igb_force_mac_fc(struct e1000_hw *hw)
+s32 e1000_force_mac_fc_generic(struct e1000_hw *hw)
 {
 	u32 ctrl;
-	s32 ret_val = 0;
 
-	ctrl = rd32(E1000_CTRL);
+	DEBUGFUNC("e1000_force_mac_fc_generic");
+
+	ctrl = E1000_READ_REG(hw, E1000_CTRL);
 
 	/*
 	 * Because we didn't get link via the internal auto-negotiation
@@ -792,10 +1191,10 @@ s32 igb_force_mac_fc(struct e1000_hw *hw)
 	 *          frames but not send pause frames).
 	 *      2:  Tx flow control is enabled (we can send pause frames
 	 *          frames but we do not receive pause frames).
-	 *      3:  Both Rx and TX flow control (symmetric) is enabled.
+	 *      3:  Both Rx and Tx flow control (symmetric) is enabled.
 	 *  other:  No other values should be possible at this point.
 	 */
-	hw_dbg("hw->fc.current_mode = %u\n", hw->fc.current_mode);
+	DEBUGOUT1("hw->fc.current_mode = %u\n", hw->fc.current_mode);
 
 	switch (hw->fc.current_mode) {
 	case e1000_fc_none:
@@ -813,19 +1212,17 @@ s32 igb_force_mac_fc(struct e1000_hw *hw)
 		ctrl |= (E1000_CTRL_TFCE | E1000_CTRL_RFCE);
 		break;
 	default:
-		hw_dbg("Flow control param set incorrectly\n");
-		ret_val = -E1000_ERR_CONFIG;
-		goto out;
+		DEBUGOUT("Flow control param set incorrectly\n");
+		return -E1000_ERR_CONFIG;
 	}
 
-	wr32(E1000_CTRL, ctrl);
+	E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_config_fc_after_link_up - Configures flow control after link
+ *  e1000_config_fc_after_link_up_generic - Configures flow control after link
  *  @hw: pointer to the HW structure
  *
  *  Checks the status of auto-negotiation after link up to ensure that the
@@ -834,12 +1231,14 @@ out:
  *  and did not fail, then we configure flow control based on our link
  *  partner.
  **/
-s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
+s32 e1000_config_fc_after_link_up_generic(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
-	s32 ret_val = 0;
+	s32 ret_val = E1000_SUCCESS;
 	u16 mii_status_reg, mii_nway_adv_reg, mii_nway_lp_ability_reg;
 	u16 speed, duplex;
+
+	DEBUGFUNC("e1000_config_fc_after_link_up_generic");
 
 	/*
 	 * Check for the case where we have fiber media and auto-neg failed
@@ -847,16 +1246,17 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 	 * configuration of the MAC to match the "fc" parameter.
 	 */
 	if (mac->autoneg_failed) {
-		if (hw->phy.media_type == e1000_media_type_internal_serdes)
-			ret_val = igb_force_mac_fc(hw);
+		if (hw->phy.media_type == e1000_media_type_fiber ||
+		    hw->phy.media_type == e1000_media_type_internal_serdes)
+			ret_val = e1000_force_mac_fc_generic(hw);
 	} else {
 		if (hw->phy.media_type == e1000_media_type_copper)
-			ret_val = igb_force_mac_fc(hw);
+			ret_val = e1000_force_mac_fc_generic(hw);
 	}
 
 	if (ret_val) {
-		hw_dbg("Error forcing flow control settings\n");
-		goto out;
+		DEBUGOUT("Error forcing flow control settings\n");
+		return ret_val;
 	}
 
 	/*
@@ -871,19 +1271,16 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 		 * has completed.  We read this twice because this reg has
 		 * some "sticky" (latched) bits.
 		 */
-		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS,
-						   &mii_status_reg);
+		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS, &mii_status_reg);
 		if (ret_val)
-			goto out;
-		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS,
-						   &mii_status_reg);
+			return ret_val;
+		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS, &mii_status_reg);
 		if (ret_val)
-			goto out;
+			return ret_val;
 
 		if (!(mii_status_reg & MII_SR_AUTONEG_COMPLETE)) {
-			hw_dbg("Copper PHY and Auto Neg "
-				 "has not completed.\n");
-			goto out;
+			DEBUGOUT("Copper PHY and Auto Neg has not completed.\n");
+			return ret_val;
 		}
 
 		/*
@@ -894,13 +1291,13 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 		 * flow control was negotiated.
 		 */
 		ret_val = hw->phy.ops.read_reg(hw, PHY_AUTONEG_ADV,
-					    &mii_nway_adv_reg);
+					       &mii_nway_adv_reg);
 		if (ret_val)
-			goto out;
+			return ret_val;
 		ret_val = hw->phy.ops.read_reg(hw, PHY_LP_ABILITY,
-					    &mii_nway_lp_ability_reg);
+					       &mii_nway_lp_ability_reg);
 		if (ret_val)
-			goto out;
+			return ret_val;
 
 		/*
 		 * Two bits in the Auto Negotiation Advertisement Register
@@ -939,19 +1336,18 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 		if ((mii_nway_adv_reg & NWAY_AR_PAUSE) &&
 		    (mii_nway_lp_ability_reg & NWAY_LPAR_PAUSE)) {
 			/*
-			 * Now we need to check if the user selected RX ONLY
+			 * Now we need to check if the user selected Rx ONLY
 			 * of pause frames.  In this case, we had to advertise
-			 * FULL flow control because we could not advertise RX
+			 * FULL flow control because we could not advertise Rx
 			 * ONLY. Hence, we must now check to see if we need to
-			 * turn OFF  the TRANSMISSION of PAUSE frames.
+			 * turn OFF the TRANSMISSION of PAUSE frames.
 			 */
 			if (hw->fc.requested_mode == e1000_fc_full) {
 				hw->fc.current_mode = e1000_fc_full;
-				hw_dbg("Flow Control = FULL.\r\n");
+				DEBUGOUT("Flow Control = FULL.\n");
 			} else {
 				hw->fc.current_mode = e1000_fc_rx_pause;
-				hw_dbg("Flow Control = "
-				       "RX PAUSE frames only.\r\n");
+				DEBUGOUT("Flow Control = Rx PAUSE frames only.\n");
 			}
 		}
 		/*
@@ -967,7 +1363,7 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 			  (mii_nway_lp_ability_reg & NWAY_LPAR_PAUSE) &&
 			  (mii_nway_lp_ability_reg & NWAY_LPAR_ASM_DIR)) {
 			hw->fc.current_mode = e1000_fc_tx_pause;
-			hw_dbg("Flow Control = TX PAUSE frames only.\r\n");
+			DEBUGOUT("Flow Control = Tx PAUSE frames only.\n");
 		}
 		/*
 		 * For transmitting PAUSE frames ONLY.
@@ -982,37 +1378,14 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 			 !(mii_nway_lp_ability_reg & NWAY_LPAR_PAUSE) &&
 			 (mii_nway_lp_ability_reg & NWAY_LPAR_ASM_DIR)) {
 			hw->fc.current_mode = e1000_fc_rx_pause;
-			hw_dbg("Flow Control = RX PAUSE frames only.\r\n");
-		}
-		/*
-		 * Per the IEEE spec, at this point flow control should be
-		 * disabled.  However, we want to consider that we could
-		 * be connected to a legacy switch that doesn't advertise
-		 * desired flow control, but can be forced on the link
-		 * partner.  So if we advertised no flow control, that is
-		 * what we will resolve to.  If we advertised some kind of
-		 * receive capability (Rx Pause Only or Full Flow Control)
-		 * and the link partner advertised none, we will configure
-		 * ourselves to enable Rx Flow Control only.  We can do
-		 * this safely for two reasons:  If the link partner really
-		 * didn't want flow control enabled, and we enable Rx, no
-		 * harm done since we won't be receiving any PAUSE frames
-		 * anyway.  If the intent on the link partner was to have
-		 * flow control enabled, then by us enabling RX only, we
-		 * can at least receive pause frames and process them.
-		 * This is a good idea because in most cases, since we are
-		 * predominantly a server NIC, more times than not we will
-		 * be asked to delay transmission of packets than asking
-		 * our link partner to pause transmission of frames.
-		 */
-		else if ((hw->fc.requested_mode == e1000_fc_none ||
-			  hw->fc.requested_mode == e1000_fc_tx_pause) ||
-			 hw->fc.strict_ieee) {
-			hw->fc.current_mode = e1000_fc_none;
-			hw_dbg("Flow Control = NONE.\r\n");
+			DEBUGOUT("Flow Control = Rx PAUSE frames only.\n");
 		} else {
-			hw->fc.current_mode = e1000_fc_rx_pause;
-			hw_dbg("Flow Control = RX PAUSE frames only.\r\n");
+			/*
+			 * Per the IEEE spec, at this point flow control
+			 * should be disabled.
+			 */
+			hw->fc.current_mode = e1000_fc_none;
+			DEBUGOUT("Flow Control = NONE.\n");
 		}
 
 		/*
@@ -1020,10 +1393,10 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 		 * negotiated to HALF DUPLEX, flow control should not be
 		 * enabled per IEEE 802.3 spec.
 		 */
-		ret_val = hw->mac.ops.get_speed_and_duplex(hw, &speed, &duplex);
+		ret_val = mac->ops.get_link_up_info(hw, &speed, &duplex);
 		if (ret_val) {
-			hw_dbg("Error getting link speed and duplex\n");
-			goto out;
+			DEBUGOUT("Error getting link speed and duplex\n");
+			return ret_val;
 		}
 
 		if (duplex == HALF_DUPLEX)
@@ -1033,19 +1406,18 @@ s32 igb_config_fc_after_link_up(struct e1000_hw *hw)
 		 * Now we call a subroutine to actually force the MAC
 		 * controller to use the correct flow control settings.
 		 */
-		ret_val = igb_force_mac_fc(hw);
+		ret_val = e1000_force_mac_fc_generic(hw);
 		if (ret_val) {
-			hw_dbg("Error forcing flow control settings\n");
-			goto out;
+			DEBUGOUT("Error forcing flow control settings\n");
+			return ret_val;
 		}
 	}
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_get_speed_and_duplex_copper - Retrieve current speed/duplex
+ *  e1000_get_speed_and_duplex_copper_generic - Retrieve current speed/duplex
  *  @hw: pointer to the HW structure
  *  @speed: stores the current speed
  *  @duplex: stores the current duplex
@@ -1053,172 +1425,185 @@ out:
  *  Read the status register for the current speed/duplex and store the current
  *  speed and duplex for copper connections.
  **/
-s32 igb_get_speed_and_duplex_copper(struct e1000_hw *hw, u16 *speed,
-				      u16 *duplex)
+s32 e1000_get_speed_and_duplex_copper_generic(struct e1000_hw *hw, u16 *speed,
+					      u16 *duplex)
 {
 	u32 status;
 
-	status = rd32(E1000_STATUS);
+	DEBUGFUNC("e1000_get_speed_and_duplex_copper_generic");
+
+	status = E1000_READ_REG(hw, E1000_STATUS);
 	if (status & E1000_STATUS_SPEED_1000) {
 		*speed = SPEED_1000;
-		hw_dbg("1000 Mbs, ");
+		DEBUGOUT("1000 Mbs, ");
 	} else if (status & E1000_STATUS_SPEED_100) {
 		*speed = SPEED_100;
-		hw_dbg("100 Mbs, ");
+		DEBUGOUT("100 Mbs, ");
 	} else {
 		*speed = SPEED_10;
-		hw_dbg("10 Mbs, ");
+		DEBUGOUT("10 Mbs, ");
 	}
 
 	if (status & E1000_STATUS_FD) {
 		*duplex = FULL_DUPLEX;
-		hw_dbg("Full Duplex\n");
+		DEBUGOUT("Full Duplex\n");
 	} else {
 		*duplex = HALF_DUPLEX;
-		hw_dbg("Half Duplex\n");
+		DEBUGOUT("Half Duplex\n");
 	}
 
-	return 0;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_get_hw_semaphore - Acquire hardware semaphore
+ *  e1000_get_speed_and_duplex_fiber_generic - Retrieve current speed/duplex
+ *  @hw: pointer to the HW structure
+ *  @speed: stores the current speed
+ *  @duplex: stores the current duplex
+ *
+ *  Sets the speed and duplex to gigabit full duplex (the only possible option)
+ *  for fiber/serdes links.
+ **/
+s32 e1000_get_speed_and_duplex_fiber_serdes_generic(struct e1000_hw *hw,
+						    u16 *speed, u16 *duplex)
+{
+	DEBUGFUNC("e1000_get_speed_and_duplex_fiber_serdes_generic");
+
+	*speed = SPEED_1000;
+	*duplex = FULL_DUPLEX;
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_get_hw_semaphore_generic - Acquire hardware semaphore
  *  @hw: pointer to the HW structure
  *
  *  Acquire the HW semaphore to access the PHY or NVM
  **/
-s32 igb_get_hw_semaphore(struct e1000_hw *hw)
+s32 e1000_get_hw_semaphore_generic(struct e1000_hw *hw)
 {
 	u32 swsm;
-	s32 ret_val = 0;
 	s32 timeout = hw->nvm.word_size + 1;
 	s32 i = 0;
 
+	DEBUGFUNC("e1000_get_hw_semaphore_generic");
+
 	/* Get the SW semaphore */
 	while (i < timeout) {
-		swsm = rd32(E1000_SWSM);
+		swsm = E1000_READ_REG(hw, E1000_SWSM);
 		if (!(swsm & E1000_SWSM_SMBI))
 			break;
 
-		udelay(50);
+		usec_delay(50);
 		i++;
 	}
 
 	if (i == timeout) {
-		hw_dbg("Driver can't access device - SMBI bit is set.\n");
-		ret_val = -E1000_ERR_NVM;
-		goto out;
+		DEBUGOUT("Driver can't access device - SMBI bit is set.\n");
+		return -E1000_ERR_NVM;
 	}
 
 	/* Get the FW semaphore. */
 	for (i = 0; i < timeout; i++) {
-		swsm = rd32(E1000_SWSM);
-		wr32(E1000_SWSM, swsm | E1000_SWSM_SWESMBI);
+		swsm = E1000_READ_REG(hw, E1000_SWSM);
+		E1000_WRITE_REG(hw, E1000_SWSM, swsm | E1000_SWSM_SWESMBI);
 
 		/* Semaphore acquired if bit latched */
-		if (rd32(E1000_SWSM) & E1000_SWSM_SWESMBI)
+		if (E1000_READ_REG(hw, E1000_SWSM) & E1000_SWSM_SWESMBI)
 			break;
 
-		udelay(50);
+		usec_delay(50);
 	}
 
 	if (i == timeout) {
 		/* Release semaphores */
-		igb_put_hw_semaphore(hw);
-		hw_dbg("Driver can't access the NVM\n");
-		ret_val = -E1000_ERR_NVM;
-		goto out;
+		e1000_put_hw_semaphore_generic(hw);
+		DEBUGOUT("Driver can't access the NVM\n");
+		return -E1000_ERR_NVM;
 	}
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_put_hw_semaphore - Release hardware semaphore
+ *  e1000_put_hw_semaphore_generic - Release hardware semaphore
  *  @hw: pointer to the HW structure
  *
  *  Release hardware semaphore used to access the PHY or NVM
  **/
-void igb_put_hw_semaphore(struct e1000_hw *hw)
+void e1000_put_hw_semaphore_generic(struct e1000_hw *hw)
 {
 	u32 swsm;
 
-	swsm = rd32(E1000_SWSM);
+	DEBUGFUNC("e1000_put_hw_semaphore_generic");
+
+	swsm = E1000_READ_REG(hw, E1000_SWSM);
 
 	swsm &= ~(E1000_SWSM_SMBI | E1000_SWSM_SWESMBI);
 
-	wr32(E1000_SWSM, swsm);
+	E1000_WRITE_REG(hw, E1000_SWSM, swsm);
 }
 
 /**
- *  igb_get_auto_rd_done - Check for auto read completion
+ *  e1000_get_auto_rd_done_generic - Check for auto read completion
  *  @hw: pointer to the HW structure
  *
  *  Check EEPROM for Auto Read done bit.
  **/
-s32 igb_get_auto_rd_done(struct e1000_hw *hw)
+s32 e1000_get_auto_rd_done_generic(struct e1000_hw *hw)
 {
 	s32 i = 0;
-	s32 ret_val = 0;
 
+	DEBUGFUNC("e1000_get_auto_rd_done_generic");
 
 	while (i < AUTO_READ_DONE_TIMEOUT) {
-		if (rd32(E1000_EECD) & E1000_EECD_AUTO_RD)
+		if (E1000_READ_REG(hw, E1000_EECD) & E1000_EECD_AUTO_RD)
 			break;
-		msleep(1);
+		msec_delay(1);
 		i++;
 	}
 
 	if (i == AUTO_READ_DONE_TIMEOUT) {
-		hw_dbg("Auto read by HW from NVM has not completed.\n");
-		ret_val = -E1000_ERR_RESET;
-		goto out;
+		DEBUGOUT("Auto read by HW from NVM has not completed.\n");
+		return -E1000_ERR_RESET;
 	}
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_valid_led_default - Verify a valid default LED config
+ *  e1000_valid_led_default_generic - Verify a valid default LED config
  *  @hw: pointer to the HW structure
  *  @data: pointer to the NVM (EEPROM)
  *
  *  Read the EEPROM for the current default LED configuration.  If the
  *  LED configuration is not valid, set to a valid LED configuration.
  **/
-static s32 igb_valid_led_default(struct e1000_hw *hw, u16 *data)
+s32 e1000_valid_led_default_generic(struct e1000_hw *hw, u16 *data)
 {
 	s32 ret_val;
 
+	DEBUGFUNC("e1000_valid_led_default_generic");
+
 	ret_val = hw->nvm.ops.read(hw, NVM_ID_LED_SETTINGS, 1, data);
 	if (ret_val) {
-		hw_dbg("NVM Read Error\n");
-		goto out;
+		DEBUGOUT("NVM Read Error\n");
+		return ret_val;
 	}
 
-	if (*data == ID_LED_RESERVED_0000 || *data == ID_LED_RESERVED_FFFF) {
-		switch(hw->phy.media_type) {
-		case e1000_media_type_internal_serdes:
-			*data = ID_LED_DEFAULT_82575_SERDES;
-			break;
-		case e1000_media_type_copper:
-		default:
-			*data = ID_LED_DEFAULT;
-			break;
-		}
-	}
-out:
-	return ret_val;
+	if (*data == ID_LED_RESERVED_0000 || *data == ID_LED_RESERVED_FFFF)
+		*data = ID_LED_DEFAULT;
+
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_id_led_init -
+ *  e1000_id_led_init_generic -
  *  @hw: pointer to the HW structure
  *
  **/
-s32 igb_id_led_init(struct e1000_hw *hw)
+s32 e1000_id_led_init_generic(struct e1000_hw *hw)
 {
 	struct e1000_mac_info *mac = &hw->mac;
 	s32 ret_val;
@@ -1228,11 +1613,13 @@ s32 igb_id_led_init(struct e1000_hw *hw)
 	u16 data, i, temp;
 	const u16 led_mask = 0x0F;
 
-	ret_val = igb_valid_led_default(hw, &data);
-	if (ret_val)
-		goto out;
+	DEBUGFUNC("e1000_id_led_init_generic");
 
-	mac->ledctl_default = rd32(E1000_LEDCTL);
+	ret_val = hw->nvm.ops.valid_led_default(hw, &data);
+	if (ret_val)
+		return ret_val;
+
+	mac->ledctl_default = E1000_READ_REG(hw, E1000_LEDCTL);
 	mac->ledctl_mode1 = mac->ledctl_default;
 	mac->ledctl_mode2 = mac->ledctl_default;
 
@@ -1274,135 +1661,298 @@ s32 igb_id_led_init(struct e1000_hw *hw)
 		}
 	}
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_cleanup_led - Set LED config to default operation
+ *  e1000_setup_led_generic - Configures SW controllable LED
+ *  @hw: pointer to the HW structure
+ *
+ *  This prepares the SW controllable LED for use and saves the current state
+ *  of the LED so it can be later restored.
+ **/
+s32 e1000_setup_led_generic(struct e1000_hw *hw)
+{
+	u32 ledctl;
+
+	DEBUGFUNC("e1000_setup_led_generic");
+
+	if (hw->mac.ops.setup_led != e1000_setup_led_generic)
+		return -E1000_ERR_CONFIG;
+
+	if (hw->phy.media_type == e1000_media_type_fiber) {
+		ledctl = E1000_READ_REG(hw, E1000_LEDCTL);
+		hw->mac.ledctl_default = ledctl;
+		/* Turn off LED0 */
+		ledctl &= ~(E1000_LEDCTL_LED0_IVRT | E1000_LEDCTL_LED0_BLINK |
+			    E1000_LEDCTL_LED0_MODE_MASK);
+		ledctl |= (E1000_LEDCTL_MODE_LED_OFF <<
+			   E1000_LEDCTL_LED0_MODE_SHIFT);
+		E1000_WRITE_REG(hw, E1000_LEDCTL, ledctl);
+	} else if (hw->phy.media_type == e1000_media_type_copper) {
+		E1000_WRITE_REG(hw, E1000_LEDCTL, hw->mac.ledctl_mode1);
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_cleanup_led_generic - Set LED config to default operation
  *  @hw: pointer to the HW structure
  *
  *  Remove the current LED configuration and set the LED configuration
  *  to the default value, saved from the EEPROM.
  **/
-s32 igb_cleanup_led(struct e1000_hw *hw)
+s32 e1000_cleanup_led_generic(struct e1000_hw *hw)
 {
-	wr32(E1000_LEDCTL, hw->mac.ledctl_default);
-	return 0;
+	DEBUGFUNC("e1000_cleanup_led_generic");
+
+	E1000_WRITE_REG(hw, E1000_LEDCTL, hw->mac.ledctl_default);
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_blink_led - Blink LED
+ *  e1000_blink_led_generic - Blink LED
  *  @hw: pointer to the HW structure
  *
- *  Blink the led's which are set to be on.
+ *  Blink the LEDs which are set to be on.
  **/
-s32 igb_blink_led(struct e1000_hw *hw)
+s32 e1000_blink_led_generic(struct e1000_hw *hw)
 {
 	u32 ledctl_blink = 0;
 	u32 i;
 
-	/*
-	 * set the blink bit for each LED that's "on" (0x0E)
-	 * in ledctl_mode2
-	 */
-	ledctl_blink = hw->mac.ledctl_mode2;
-	for (i = 0; i < 4; i++)
-		if (((hw->mac.ledctl_mode2 >> (i * 8)) & 0xFF) ==
-		    E1000_LEDCTL_MODE_LED_ON)
-			ledctl_blink |= (E1000_LEDCTL_LED0_BLINK <<
-					 (i * 8));
+	DEBUGFUNC("e1000_blink_led_generic");
 
-	wr32(E1000_LEDCTL, ledctl_blink);
+	if (hw->phy.media_type == e1000_media_type_fiber) {
+		/* always blink LED0 for PCI-E fiber */
+		ledctl_blink = E1000_LEDCTL_LED0_BLINK |
+		     (E1000_LEDCTL_MODE_LED_ON << E1000_LEDCTL_LED0_MODE_SHIFT);
+	} else {
+		/*
+		 * set the blink bit for each LED that's "on" (0x0E)
+		 * in ledctl_mode2
+		 */
+		ledctl_blink = hw->mac.ledctl_mode2;
+		for (i = 0; i < 4; i++)
+			if (((hw->mac.ledctl_mode2 >> (i * 8)) & 0xFF) ==
+			    E1000_LEDCTL_MODE_LED_ON)
+				ledctl_blink |= (E1000_LEDCTL_LED0_BLINK <<
+						 (i * 8));
+	}
 
-	return 0;
+	E1000_WRITE_REG(hw, E1000_LEDCTL, ledctl_blink);
+
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_led_off - Turn LED off
+ *  e1000_led_on_generic - Turn LED on
  *  @hw: pointer to the HW structure
  *
- *  Turn LED off.
+ *  Turn LED on.
  **/
-s32 igb_led_off(struct e1000_hw *hw)
+s32 e1000_led_on_generic(struct e1000_hw *hw)
 {
+	u32 ctrl;
+
+	DEBUGFUNC("e1000_led_on_generic");
+
 	switch (hw->phy.media_type) {
+	case e1000_media_type_fiber:
+		ctrl = E1000_READ_REG(hw, E1000_CTRL);
+		ctrl &= ~E1000_CTRL_SWDPIN0;
+		ctrl |= E1000_CTRL_SWDPIO0;
+		E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
+		break;
 	case e1000_media_type_copper:
-		wr32(E1000_LEDCTL, hw->mac.ledctl_mode1);
+		E1000_WRITE_REG(hw, E1000_LEDCTL, hw->mac.ledctl_mode2);
 		break;
 	default:
 		break;
 	}
 
-	return 0;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_disable_pcie_master - Disables PCI-express master access
+ *  e1000_led_off_generic - Turn LED off
  *  @hw: pointer to the HW structure
  *
- *  Returns 0 (0) if successful, else returns -10
- *  (-E1000_ERR_MASTER_REQUESTS_PENDING) if master disable bit has not casued
+ *  Turn LED off.
+ **/
+s32 e1000_led_off_generic(struct e1000_hw *hw)
+{
+	u32 ctrl;
+
+	DEBUGFUNC("e1000_led_off_generic");
+
+	switch (hw->phy.media_type) {
+	case e1000_media_type_fiber:
+		ctrl = E1000_READ_REG(hw, E1000_CTRL);
+		ctrl |= E1000_CTRL_SWDPIN0;
+		ctrl |= E1000_CTRL_SWDPIO0;
+		E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
+		break;
+	case e1000_media_type_copper:
+		E1000_WRITE_REG(hw, E1000_LEDCTL, hw->mac.ledctl_mode1);
+		break;
+	default:
+		break;
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_set_pcie_no_snoop_generic - Set PCI-express capabilities
+ *  @hw: pointer to the HW structure
+ *  @no_snoop: bitmap of snoop events
+ *
+ *  Set the PCI-express register to snoop for events enabled in 'no_snoop'.
+ **/
+void e1000_set_pcie_no_snoop_generic(struct e1000_hw *hw, u32 no_snoop)
+{
+	u32 gcr;
+
+	DEBUGFUNC("e1000_set_pcie_no_snoop_generic");
+
+	if (no_snoop) {
+		gcr = E1000_READ_REG(hw, E1000_GCR);
+		gcr &= ~(PCIE_NO_SNOOP_ALL);
+		gcr |= no_snoop;
+		E1000_WRITE_REG(hw, E1000_GCR, gcr);
+	}
+}
+
+/**
+ *  e1000_disable_pcie_master_generic - Disables PCI-express master access
+ *  @hw: pointer to the HW structure
+ *
+ *  Returns E1000_SUCCESS if successful, else returns -10
+ *  (-E1000_ERR_MASTER_REQUESTS_PENDING) if master disable bit has not caused
  *  the master requests to be disabled.
  *
  *  Disables PCI-Express master access and verifies there are no pending
  *  requests.
  **/
-s32 igb_disable_pcie_master(struct e1000_hw *hw)
+s32 e1000_disable_pcie_master_generic(struct e1000_hw *hw)
 {
 	u32 ctrl;
 	s32 timeout = MASTER_DISABLE_TIMEOUT;
-	s32 ret_val = 0;
 
-	if (hw->bus.type != e1000_bus_type_pci_express)
-		goto out;
+	DEBUGFUNC("e1000_disable_pcie_master_generic");
 
-	ctrl = rd32(E1000_CTRL);
+	ctrl = E1000_READ_REG(hw, E1000_CTRL);
 	ctrl |= E1000_CTRL_GIO_MASTER_DISABLE;
-	wr32(E1000_CTRL, ctrl);
+	E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
 
 	while (timeout) {
-		if (!(rd32(E1000_STATUS) &
+		if (!(E1000_READ_REG(hw, E1000_STATUS) &
 		      E1000_STATUS_GIO_MASTER_ENABLE))
 			break;
-		udelay(100);
+		usec_delay(100);
 		timeout--;
 	}
 
 	if (!timeout) {
-		hw_dbg("Master requests are pending.\n");
-		ret_val = -E1000_ERR_MASTER_REQUESTS_PENDING;
-		goto out;
+		DEBUGOUT("Master requests are pending.\n");
+		return -E1000_ERR_MASTER_REQUESTS_PENDING;
 	}
 
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
 
 /**
- *  igb_validate_mdi_setting - Verify MDI/MDIx settings
+ *  e1000_reset_adaptive_generic - Reset Adaptive Interframe Spacing
  *  @hw: pointer to the HW structure
  *
- *  Verify that when not using auto-negotitation that MDI/MDIx is correctly
- *  set, which is forced to MDI mode only.
+ *  Reset the Adaptive Interframe Spacing throttle to default values.
  **/
-s32 igb_validate_mdi_setting(struct e1000_hw *hw)
+void e1000_reset_adaptive_generic(struct e1000_hw *hw)
 {
-	s32 ret_val = 0;
+	struct e1000_mac_info *mac = &hw->mac;
 
-	if (!hw->mac.autoneg && (hw->phy.mdix == 0 || hw->phy.mdix == 3)) {
-		hw_dbg("Invalid MDI setting detected\n");
-		hw->phy.mdix = 1;
-		ret_val = -E1000_ERR_CONFIG;
-		goto out;
+	DEBUGFUNC("e1000_reset_adaptive_generic");
+
+	if (!mac->adaptive_ifs) {
+		DEBUGOUT("Not in Adaptive IFS mode!\n");
+		return;
 	}
 
-out:
-	return ret_val;
+	mac->current_ifs_val = 0;
+	mac->ifs_min_val = IFS_MIN;
+	mac->ifs_max_val = IFS_MAX;
+	mac->ifs_step_size = IFS_STEP;
+	mac->ifs_ratio = IFS_RATIO;
+
+	mac->in_ifs_mode = false;
+	E1000_WRITE_REG(hw, E1000_AIT, 0);
 }
 
 /**
- *  igb_write_8bit_ctrl_reg - Write a 8bit CTRL register
+ *  e1000_update_adaptive_generic - Update Adaptive Interframe Spacing
+ *  @hw: pointer to the HW structure
+ *
+ *  Update the Adaptive Interframe Spacing Throttle value based on the
+ *  time between transmitted packets and time between collisions.
+ **/
+void e1000_update_adaptive_generic(struct e1000_hw *hw)
+{
+	struct e1000_mac_info *mac = &hw->mac;
+
+	DEBUGFUNC("e1000_update_adaptive_generic");
+
+	if (!mac->adaptive_ifs) {
+		DEBUGOUT("Not in Adaptive IFS mode!\n");
+		return;
+	}
+
+	if ((mac->collision_delta * mac->ifs_ratio) > mac->tx_packet_delta) {
+		if (mac->tx_packet_delta > MIN_NUM_XMITS) {
+			mac->in_ifs_mode = true;
+			if (mac->current_ifs_val < mac->ifs_max_val) {
+				if (!mac->current_ifs_val)
+					mac->current_ifs_val = mac->ifs_min_val;
+				else
+					mac->current_ifs_val +=
+						mac->ifs_step_size;
+				E1000_WRITE_REG(hw, E1000_AIT,
+						mac->current_ifs_val);
+			}
+		}
+	} else {
+		if (mac->in_ifs_mode &&
+		    (mac->tx_packet_delta <= MIN_NUM_XMITS)) {
+			mac->current_ifs_val = 0;
+			mac->in_ifs_mode = false;
+			E1000_WRITE_REG(hw, E1000_AIT, 0);
+		}
+	}
+}
+
+/**
+ *  e1000_validate_mdi_setting_generic - Verify MDI/MDIx settings
+ *  @hw: pointer to the HW structure
+ *
+ *  Verify that when not using auto-negotiation that MDI/MDIx is correctly
+ *  set, which is forced to MDI mode only.
+ **/
+static s32 e1000_validate_mdi_setting_generic(struct e1000_hw *hw)
+{
+	DEBUGFUNC("e1000_validate_mdi_setting_generic");
+
+	if (!hw->mac.autoneg && (hw->phy.mdix == 0 || hw->phy.mdix == 3)) {
+		DEBUGOUT("Invalid MDI setting detected\n");
+		hw->phy.mdix = 1;
+		return -E1000_ERR_CONFIG;
+	}
+
+	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_write_8bit_ctrl_reg_generic - Write a 8bit CTRL register
  *  @hw: pointer to the HW structure
  *  @reg: 32bit register offset such as E1000_SCTL
  *  @offset: register offset to write to
@@ -1412,72 +1962,28 @@ out:
  *  and they all have the format address << 8 | data and bit 31 is polled for
  *  completion.
  **/
-s32 igb_write_8bit_ctrl_reg(struct e1000_hw *hw, u32 reg,
-			      u32 offset, u8 data)
+s32 e1000_write_8bit_ctrl_reg_generic(struct e1000_hw *hw, u32 reg,
+				      u32 offset, u8 data)
 {
 	u32 i, regvalue = 0;
-	s32 ret_val = 0;
+
+	DEBUGFUNC("e1000_write_8bit_ctrl_reg_generic");
 
 	/* Set up the address and data */
 	regvalue = ((u32)data) | (offset << E1000_GEN_CTL_ADDRESS_SHIFT);
-	wr32(reg, regvalue);
+	E1000_WRITE_REG(hw, reg, regvalue);
 
 	/* Poll the ready bit to see if the MDI read completed */
 	for (i = 0; i < E1000_GEN_POLL_TIMEOUT; i++) {
-		udelay(5);
-		regvalue = rd32(reg);
+		usec_delay(5);
+		regvalue = E1000_READ_REG(hw, reg);
 		if (regvalue & E1000_GEN_CTL_READY)
 			break;
 	}
 	if (!(regvalue & E1000_GEN_CTL_READY)) {
-		hw_dbg("Reg %08x did not indicate ready\n", reg);
-		ret_val = -E1000_ERR_PHY;
-		goto out;
+		DEBUGOUT1("Reg %08x did not indicate ready\n", reg);
+		return -E1000_ERR_PHY;
 	}
 
-out:
-	return ret_val;
-}
-
-/**
- *  igb_enable_mng_pass_thru - Enable processing of ARP's
- *  @hw: pointer to the HW structure
- *
- *  Verifies the hardware needs to leave interface enabled so that frames can
- *  be directed to and from the management interface.
- **/
-bool igb_enable_mng_pass_thru(struct e1000_hw *hw)
-{
-	u32 manc;
-	u32 fwsm, factps;
-	bool ret_val = false;
-
-	if (!hw->mac.asf_firmware_present)
-		goto out;
-
-	manc = rd32(E1000_MANC);
-
-	if (!(manc & E1000_MANC_RCV_TCO_EN))
-		goto out;
-
-	if (hw->mac.arc_subsystem_valid) {
-		fwsm = rd32(E1000_FWSM);
-		factps = rd32(E1000_FACTPS);
-
-		if (!(factps & E1000_FACTPS_MNGCG) &&
-		    ((fwsm & E1000_FWSM_MODE_MASK) ==
-		     (e1000_mng_mode_pt << E1000_FWSM_MODE_SHIFT))) {
-			ret_val = true;
-			goto out;
-		}
-	} else {
-		if ((manc & E1000_MANC_SMBUS_EN) &&
-		    !(manc & E1000_MANC_ASF_EN)) {
-			ret_val = true;
-			goto out;
-		}
-	}
-
-out:
-	return ret_val;
+	return E1000_SUCCESS;
 }
