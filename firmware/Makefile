@@ -40,7 +40,10 @@ fw-shipped-$(CONFIG_BNX2X) += bnx2x/bnx2x-e1-6.2.9.0.fw \
 			      bnx2x/bnx2x-e2-7.0.20.0.fw \
 			      bnx2x/bnx2x-e1-7.2.16.0.fw \
 			      bnx2x/bnx2x-e1h-7.2.16.0.fw \
-			      bnx2x/bnx2x-e2-7.2.16.0.fw
+			      bnx2x/bnx2x-e2-7.2.16.0.fw \
+			      bnx2x/bnx2x-e1-7.2.51.0.fw \
+			      bnx2x/bnx2x-e1h-7.2.51.0.fw \
+			      bnx2x/bnx2x-e2-7.2.51.0.fw
 fw-shipped-$(CONFIG_BNX2) += bnx2/bnx2-mips-09-6.2.1b.fw \
 			     bnx2/bnx2-rv2p-09-6.0.17.fw \
 			     bnx2/bnx2-rv2p-09ax-6.0.17.fw \
