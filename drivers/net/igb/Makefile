@@ -1,7 +1,7 @@
 ################################################################################
 #
-# Intel 82575 PCI-Express Ethernet Linux driver
-# Copyright(c) 1999 - 2012 Intel Corporation.
+# Intel(R) Gigabit Ethernet Linux driver
+# Copyright(c) 2007-2012 Intel Corporation.
 #
 # This program is free software; you can redistribute it and/or modify it
 # under the terms and conditions of the GNU General Public License,
@@ -20,7 +20,6 @@
 # the file called "COPYING".
 #
 # Contact Information:
-# Linux NICS <linux.nics@intel.com>
 # e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
 # Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 #
@@ -32,6 +31,6 @@
 
 obj-$(CONFIG_IGB) += igb.o
 
-igb-objs := igb_main.o e1000_82575.o  e1000_mac.o e1000_nvm.o e1000_phy.o \
-         e1000_manage.o igb_param.o igb_ethtool.o kcompat.o e1000_api.o \
-         e1000_mbx.o igb_vmdq.o igb_sysfs.o igb_procfs.o
+igb-objs := igb_main.o e1000_82575.o e1000_mac.o e1000_nvm.o e1000_phy.o \
+            e1000_manage.o igb_param.o igb_ethtool.o kcompat.o e1000_api.o \
+            e1000_mbx.o igb_vmdq.o igb_sysfs.o igb_procfs.o

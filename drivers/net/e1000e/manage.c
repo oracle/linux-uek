@@ -28,19 +28,6 @@
 
 #include "e1000.h"
 
-enum e1000_mng_mode {
-	e1000_mng_mode_none = 0,
-	e1000_mng_mode_asf,
-	e1000_mng_mode_pt,
-	e1000_mng_mode_ipmi,
-	e1000_mng_mode_host_if_only
-};
-
-#define E1000_FACTPS_MNGCG		0x20000000
-
-/* Intel(R) Active Management Technology signature */
-#define E1000_IAMT_SIGNATURE		0x544D4149
-
 /**
  *  e1000_calculate_checksum - Calculate checksum for buffer
  *  @buffer: pointer to EEPROM
@@ -56,7 +43,6 @@ static u8 e1000_calculate_checksum(u8 *buffer, u32 length)
 
 	if (!buffer)
 		return 0;
-
 	for (i = 0; i < length; i++)
 		sum += buffer[i];
 
@@ -73,7 +59,7 @@ static u8 e1000_calculate_checksum(u8 *buffer, u32 length)
  *  and also checks whether the previous command is completed.  It busy waits
  *  in case of previous command is not completed.
  **/
-static s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
+s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 {
 	u32 hicr;
 	u8 i;
@@ -85,7 +71,7 @@ static s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 
 	/* Check that the host interface is enabled. */
 	hicr = er32(HICR);
-	if ((hicr & E1000_HICR_EN) == 0) {
+	if (!(hicr & E1000_HICR_EN)) {
 		e_dbg("E1000_HOST_EN bit disabled.\n");
 		return -E1000_ERR_HOST_INTERFACE_COMMAND;
 	}
@@ -106,7 +92,7 @@ static s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 }
 
 /**
- *  e1000e_check_mng_mode_generic - check management mode
+ *  e1000e_check_mng_mode_generic - Generic check management mode
  *  @hw: pointer to the HW structure
  *
  *  Reads the firmware semaphore register and returns true (>0) if
@@ -138,7 +124,7 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
 	hw->mac.tx_pkt_filtering = true;
 
 	/* No manageability, no filtering */
-	if (!e1000e_check_mng_mode(hw)) {
+	if (!hw->mac.ops.check_mng_mode(hw)) {
 		hw->mac.tx_pkt_filtering = false;
 		return hw->mac.tx_pkt_filtering;
 	}
@@ -147,7 +133,7 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
 	 * If we can't read from the host interface for whatever
 	 * reason, disable filtering.
 	 */
-	ret_val = e1000_mng_enable_host_if(hw);
+	ret_val = hw->mac.ops.mng_enable_host_if(hw);
 	if (ret_val) {
 		hw->mac.tx_pkt_filtering = false;
 		return hw->mac.tx_pkt_filtering;
@@ -187,8 +173,8 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
  *
  *  Writes the command header after does the checksum calculation.
  **/
-static s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
-				      struct e1000_host_mng_command_header *hdr)
+s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
+			       struct e1000_host_mng_command_header *hdr)
 {
 	u16 i, length = sizeof(struct e1000_host_mng_command_header);
 
@@ -218,8 +204,8 @@ static s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
  *  It also does alignment considerations to do the writes in most efficient
  *  way.  Also fills up the sum of the buffer in *buffer parameter.
  **/
-static s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
-				   u16 length, u16 offset, u8 *sum)
+s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
+			    u16 length, u16 offset, u8 *sum)
 {
 	u8 *tmp;
 	u8 *bufptr = buffer;
@@ -300,18 +286,18 @@ s32 e1000e_mng_write_dhcp_info(struct e1000_hw *hw, u8 *buffer, u16 length)
 	hdr.checksum = 0;
 
 	/* Enable the host interface */
-	ret_val = e1000_mng_enable_host_if(hw);
+	ret_val = hw->mac.ops.mng_enable_host_if(hw);
 	if (ret_val)
 		return ret_val;
 
 	/* Populate the host interface with the contents of "buffer". */
-	ret_val = e1000_mng_host_if_write(hw, buffer, length,
-					  sizeof(hdr), &(hdr.checksum));
+	ret_val = hw->mac.ops.mng_host_if_write(hw, buffer, length,
+						sizeof(hdr), &(hdr.checksum));
 	if (ret_val)
 		return ret_val;
 
 	/* Write the manageability command header */
-	ret_val = e1000_mng_write_cmd_header(hw, &hdr);
+	ret_val = hw->mac.ops.mng_write_cmd_header(hw, &hdr);
 	if (ret_val)
 		return ret_val;
 
@@ -358,8 +344,7 @@ bool e1000e_enable_mng_pass_thru(struct e1000_hw *hw)
 		    ((data & E1000_NVM_INIT_CTRL2_MNGM) ==
 		     (e1000_mng_mode_pt << 13)))
 			return true;
-	} else if ((manc & E1000_MANC_SMBUS_EN) &&
-		   !(manc & E1000_MANC_ASF_EN)) {
+	} else if ((manc & E1000_MANC_SMBUS_EN) && !(manc & E1000_MANC_ASF_EN)) {
 		return true;
 	}
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2006 Intel Corporation.
+  Copyright(c) 1999 - 2010 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -27,83 +27,108 @@
 *******************************************************************************/
 
 
-/* glue for the OS independent part of e1000
+/* glue for the OS-dependent part of e1000
  * includes register access macros
  */
 
 #ifndef _E1000_OSDEP_H_
 #define _E1000_OSDEP_H_
 
-#include <asm/io.h>
+#include <linux/pci.h>
+#include <linux/delay.h>
+#include <linux/interrupt.h>
+#include <linux/if_ether.h>
 
-#define CONFIG_RAM_BASE         0x60000
-#define GBE_CONFIG_OFFSET       0x0
+#include "kcompat.h"
 
-#define GBE_CONFIG_RAM_BASE \
-	((unsigned int)(CONFIG_RAM_BASE + GBE_CONFIG_OFFSET))
+#define usec_delay(x) udelay(x)
+#ifndef msec_delay
+#define msec_delay(x)	do { if(in_interrupt()) { \
+				/* Don't sleep in interrupt context! */ \
+	                	BUG(); \
+			} else { \
+				msleep(x); \
+			} } while (0)
 
-#define GBE_CONFIG_BASE_VIRT \
-	((void __iomem *)phys_to_virt(GBE_CONFIG_RAM_BASE))
+/* Some workarounds require millisecond delays and are run during interrupt
+ * context.  Most notably, when establishing link, the phy may need tweaking
+ * but cannot process phy register reads/writes faster than millisecond
+ * intervals...and we establish link due to a "link status change" interrupt.
+ */
+#define msec_delay_irq(x) mdelay(x)
+#endif
 
-#define GBE_CONFIG_FLASH_WRITE(base, offset, count, data) \
-	(iowrite16_rep(base + offset, data, count))
+#define PCI_COMMAND_REGISTER   PCI_COMMAND
+#define CMD_MEM_WRT_INVALIDATE PCI_COMMAND_INVALIDATE
+#define ETH_ADDR_LEN           ETH_ALEN
 
-#define GBE_CONFIG_FLASH_READ(base, offset, count, data) \
-	(ioread16_rep(base + (offset << 1), data, count))
+#ifdef __BIG_ENDIAN
+#define E1000_BIG_ENDIAN __BIG_ENDIAN
+#endif
 
-#define er32(reg)							\
-	(readl(hw->hw_addr + ((hw->mac_type >= e1000_82543)		\
-			       ? E1000_##reg : E1000_82542_##reg)))
 
-#define ew32(reg, value)						\
-	(writel((value), (hw->hw_addr + ((hw->mac_type >= e1000_82543)	\
-					 ? E1000_##reg : E1000_82542_##reg))))
+#define DEBUGOUT(S)
+#define DEBUGOUT1(S, A...)
+
+#define DEBUGFUNC(F) DEBUGOUT(F "\n")
+#define DEBUGOUT2 DEBUGOUT1
+#define DEBUGOUT3 DEBUGOUT2
+#define DEBUGOUT7 DEBUGOUT3
+
+#define E1000_REGISTER(a, reg) (((a)->mac.type >= e1000_82543) \
+                               ? reg                           \
+                               : e1000_translate_register_82542(reg))
+
+static inline u32 er32(u8 __iomem *reg)
+{
+        return readl(reg);
+}
+
+static inline void ew32(u8 __iomem *reg, u32 val)
+{
+        writel(val, reg);
+}
+
+#define E1000_WRITE_REG(a, reg, value) \
+    ew32(((a)->hw_addr + E1000_REGISTER(a, reg)),value)
+
+#define E1000_READ_REG(a, reg) (er32((a)->hw_addr + E1000_REGISTER(a, reg)))
 
 #define E1000_WRITE_REG_ARRAY(a, reg, offset, value) ( \
-    writel((value), ((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        ((offset) << 2))))
+    writel((value), ((a)->hw_addr + E1000_REGISTER(a, reg) + ((offset) << 2))))
 
 #define E1000_READ_REG_ARRAY(a, reg, offset) ( \
-    readl((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        ((offset) << 2)))
+    readl((a)->hw_addr + E1000_REGISTER(a, reg) + ((offset) << 2)))
 
 #define E1000_READ_REG_ARRAY_DWORD E1000_READ_REG_ARRAY
 #define E1000_WRITE_REG_ARRAY_DWORD E1000_WRITE_REG_ARRAY
 
 #define E1000_WRITE_REG_ARRAY_WORD(a, reg, offset, value) ( \
-    writew((value), ((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        ((offset) << 1))))
+    writew((value), ((a)->hw_addr + E1000_REGISTER(a, reg) + ((offset) << 1))))
 
 #define E1000_READ_REG_ARRAY_WORD(a, reg, offset) ( \
-    readw((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        ((offset) << 1)))
+    readw((a)->hw_addr + E1000_REGISTER(a, reg) + ((offset) << 1)))
 
 #define E1000_WRITE_REG_ARRAY_BYTE(a, reg, offset, value) ( \
-    writeb((value), ((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        (offset))))
+    writeb((value), ((a)->hw_addr + E1000_REGISTER(a, reg) + (offset))))
 
 #define E1000_READ_REG_ARRAY_BYTE(a, reg, offset) ( \
-    readb((a)->hw_addr + \
-        (((a)->mac_type >= e1000_82543) ? E1000_##reg : E1000_82542_##reg) + \
-        (offset)))
+    readb((a)->hw_addr + E1000_REGISTER(a, reg) + (offset)))
 
-#define E1000_WRITE_FLUSH() er32(STATUS)
+#define E1000_WRITE_REG_IO(a, reg, offset) do { \
+    outl(reg, ((a)->io_base));                  \
+    outl(offset, ((a)->io_base + 4));      } while(0)
 
-#define E1000_WRITE_ICH_FLASH_REG(a, reg, value) ( \
+#define E1000_WRITE_FLUSH(a) E1000_READ_REG(a, E1000_STATUS)
+
+#define E1000_WRITE_FLASH_REG(a, reg, value) ( \
     writel((value), ((a)->flash_address + reg)))
 
-#define E1000_READ_ICH_FLASH_REG(a, reg) ( \
-    readl((a)->flash_address + reg))
-
-#define E1000_WRITE_ICH_FLASH_REG16(a, reg, value) ( \
+#define E1000_WRITE_FLASH_REG16(a, reg, value) ( \
     writew((value), ((a)->flash_address + reg)))
 
-#define E1000_READ_ICH_FLASH_REG16(a, reg) ( \
-    readw((a)->flash_address + reg))
+#define E1000_READ_FLASH_REG(a, reg) (readl((a)->flash_address + reg))
+
+#define E1000_READ_FLASH_REG16(a, reg) (readw((a)->flash_address + reg))
 
 #endif /* _E1000_OSDEP_H_ */

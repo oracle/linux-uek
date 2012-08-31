@@ -1872,30 +1872,30 @@ static int cxgb_set_features(struct net_device *dev, u32 features)
 	return err;
 }
 
-static int get_rss_table(struct net_device *dev, struct ethtool_rxfh_indir *p)
+static u32 get_rss_table_size(struct net_device *dev)
 {
 	const struct port_info *pi = netdev_priv(dev);
-	unsigned int n = min_t(unsigned int, p->size, pi->rss_size);
 
-	p->size = pi->rss_size;
+	return pi->rss_size;
+}
+
+static int get_rss_table(struct net_device *dev, u32 *p)
+{
+	const struct port_info *pi = netdev_priv(dev);
+	unsigned int n = pi->rss_size;
+
 	while (n--)
-		p->ring_index[n] = pi->rss[n];
+		p[n] = pi->rss[n];
 	return 0;
 }
 
-static int set_rss_table(struct net_device *dev,
-			 const struct ethtool_rxfh_indir *p)
+static int set_rss_table(struct net_device *dev, const u32 *p)
 {
 	unsigned int i;
 	struct port_info *pi = netdev_priv(dev);
 
-	if (p->size != pi->rss_size)
-		return -EINVAL;
-	for (i = 0; i < p->size; i++)
-		if (p->ring_index[i] >= pi->nqsets)
-			return -EINVAL;
-	for (i = 0; i < p->size; i++)
-		pi->rss[i] = p->ring_index[i];
+	for (i = 0; i < pi->rss_size; i++)
+		pi->rss[i] = p[i];
 	if (pi->adapter->flags & FULL_INIT_DONE)
 		return write_rss(pi, pi->rss);
 	return 0;
@@ -1990,6 +1990,7 @@ static struct ethtool_ops cxgb_ethtool_ops = {
 	.get_wol           = get_wol,
 	.set_wol           = set_wol,
 	.get_rxnfc         = get_rxnfc,
+	.get_rxfh_indir_size = get_rss_table_size,
 	.get_rxfh_indir    = get_rss_table,
 	.set_rxfh_indir    = set_rss_table,
 	.flash_device      = set_flash,
@@ -3449,7 +3450,7 @@ static int __devinit init_rss(struct adapter *adap)
 		if (!pi->rss)
 			return -ENOMEM;
 		for (j = 0; j < pi->rss_size; j++)
-			pi->rss[j] = j % pi->nqsets;
+			pi->rss[j] = ethtool_rxfh_indir_default(j, pi->nqsets);
 	}
 	return 0;
 }

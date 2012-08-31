@@ -40,7 +40,10 @@ fw-shipped-$(CONFIG_BNX2X) += bnx2x/bnx2x-e1-6.2.9.0.fw \
 			      bnx2x/bnx2x-e2-7.0.20.0.fw \
 			      bnx2x/bnx2x-e1-7.2.16.0.fw \
 			      bnx2x/bnx2x-e1h-7.2.16.0.fw \
-			      bnx2x/bnx2x-e2-7.2.16.0.fw
+			      bnx2x/bnx2x-e2-7.2.16.0.fw \
+			      bnx2x/bnx2x-e1-7.2.51.0.fw \
+			      bnx2x/bnx2x-e1h-7.2.51.0.fw \
+			      bnx2x/bnx2x-e2-7.2.51.0.fw
 fw-shipped-$(CONFIG_BNX2) += bnx2/bnx2-mips-09-6.2.1b.fw \
 			     bnx2/bnx2-rv2p-09-6.0.17.fw \
 			     bnx2/bnx2-rv2p-09ax-6.0.17.fw \
@@ -127,7 +130,11 @@ fw-shipped-$(CONFIG_R8169) += rtl_nic/rtl8105e-1.fw \
 			      rtl_nic/rtl8168e-2.fw \
 			      rtl_nic/rtl8168e-3.fw \
 			      rtl_nic/rtl8168f-1.fw \
-			      rtl_nic/rtl8168f-2.fw
+			      rtl_nic/rtl8168f-2.fw \
+			      rtl_nic/rtl8168g-1.fw \
+			      rtl_nic/rtl8106e-1.fw \
+			      rtl_nic/rtl8411-1.fw \
+			      rtl_nic/rtl8402-1.fw
 
 fw-shipped-$(CONFIG_SERIAL_8250_CS) += cis/MT5634ZLX.cis cis/RS-COM-2P.cis \
 				       cis/COMpad2.cis cis/COMpad4.cis \

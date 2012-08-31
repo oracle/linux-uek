@@ -14,6 +14,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 
+#include <linux/stringify.h>
 #include <linux/kernel.h>
 #include <linux/timer.h>
 #include <linux/errno.h>
@@ -57,8 +58,8 @@
 #include "bnx2_fw.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION	"2.2.1"
-#define DRV_MODULE_RELDATE	"Dec 18, 2011"
+#define DRV_MODULE_VERSION	"2.2.3"
+#define DRV_MODULE_RELDATE	"June 27, 2012"
 #define FW_MIPS_FILE_06		"bnx2/bnx2-mips-06-6.2.3.fw"
 #define FW_RV2P_FILE_06		"bnx2/bnx2-rv2p-06-6.0.15.fw"
 #define FW_MIPS_FILE_09		"bnx2/bnx2-mips-09-6.2.1b.fw"
@@ -1972,22 +1973,26 @@ bnx2_remote_phy_event(struct bnx2 *bp)
 		switch (speed) {
 			case BNX2_LINK_STATUS_10HALF:
 				bp->duplex = DUPLEX_HALF;
+				/* fall through */
 			case BNX2_LINK_STATUS_10FULL:
 				bp->line_speed = SPEED_10;
 				break;
 			case BNX2_LINK_STATUS_100HALF:
 				bp->duplex = DUPLEX_HALF;
+				/* fall through */
 			case BNX2_LINK_STATUS_100BASE_T4:
 			case BNX2_LINK_STATUS_100FULL:
 				bp->line_speed = SPEED_100;
 				break;
 			case BNX2_LINK_STATUS_1000HALF:
 				bp->duplex = DUPLEX_HALF;
+				/* fall through */
 			case BNX2_LINK_STATUS_1000FULL:
 				bp->line_speed = SPEED_1000;
 				break;
 			case BNX2_LINK_STATUS_2500HALF:
 				bp->duplex = DUPLEX_HALF;
+				/* fall through */
 			case BNX2_LINK_STATUS_2500FULL:
 				bp->line_speed = SPEED_2500;
 				break;
@@ -2473,6 +2478,7 @@ bnx2_dump_mcp_state(struct bnx2 *bp)
 		   bnx2_shmem_rd(bp, BNX2_BC_STATE_RESET_TYPE));
 	pr_cont(" condition[%08x]\n",
 		bnx2_shmem_rd(bp, BNX2_BC_STATE_CONDITION));
+	DP_SHMEM_LINE(bp, BNX2_BC_RESET_TYPE);
 	DP_SHMEM_LINE(bp, 0x3cc);
 	DP_SHMEM_LINE(bp, 0x3dc);
 	DP_SHMEM_LINE(bp, 0x3ec);
@@ -2725,31 +2731,27 @@ bnx2_free_rx_page(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, u16 index)
 }
 
 static inline int
-bnx2_alloc_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, u16 index, gfp_t gfp)
+bnx2_alloc_rx_data(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, u16 index, gfp_t gfp)
 {
-	struct sk_buff *skb;
+	u8 *data;
 	struct sw_bd *rx_buf = &rxr->rx_buf_ring[index];
 	dma_addr_t mapping;
 	struct rx_bd *rxbd = &rxr->rx_desc_ring[RX_RING(index)][RX_IDX(index)];
-	unsigned long align;
 
-	skb = __netdev_alloc_skb(bp->dev, bp->rx_buf_size, gfp);
-	if (skb == NULL) {
+	data = kmalloc(bp->rx_buf_size, gfp);
+	if (!data)
 		return -ENOMEM;
-	}
 
-	if (unlikely((align = (unsigned long) skb->data & (BNX2_RX_ALIGN - 1))))
-		skb_reserve(skb, BNX2_RX_ALIGN - align);
-
-	mapping = dma_map_single(&bp->pdev->dev, skb->data, bp->rx_buf_use_size,
+	mapping = dma_map_single(&bp->pdev->dev,
+				 get_l2_fhdr(data),
+				 bp->rx_buf_use_size,
 				 PCI_DMA_FROMDEVICE);
 	if (dma_mapping_error(&bp->pdev->dev, mapping)) {
-		dev_kfree_skb(skb);
+		kfree(data);
 		return -EIO;
 	}
 
-	rx_buf->skb = skb;
-	rx_buf->desc = (struct l2_fhdr *) skb->data;
+	rx_buf->data = data;
 	dma_unmap_addr_set(rx_buf, mapping, mapping);
 
 	rxbd->rx_bd_haddr_hi = (u64) mapping >> 32;
@@ -2921,8 +2923,8 @@ bnx2_reuse_rx_skb_pages(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
 
 		shinfo = skb_shinfo(skb);
 		shinfo->nr_frags--;
-		page = shinfo->frags[shinfo->nr_frags].page;
-		shinfo->frags[shinfo->nr_frags].page = NULL;
+		page = skb_frag_page(&shinfo->frags[shinfo->nr_frags]);
+		__skb_frag_set_page(&shinfo->frags[shinfo->nr_frags], NULL);
 
 		cons_rx_pg->page = page;
 		dev_kfree_skb(skb);
@@ -2956,8 +2958,8 @@ bnx2_reuse_rx_skb_pages(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
 }
 
 static inline void
-bnx2_reuse_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
-		  struct sk_buff *skb, u16 cons, u16 prod)
+bnx2_reuse_rx_data(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
+		   u8 *data, u16 cons, u16 prod)
 {
 	struct sw_bd *cons_rx_buf, *prod_rx_buf;
 	struct rx_bd *cons_bd, *prod_bd;
@@ -2971,8 +2973,7 @@ bnx2_reuse_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
 
 	rxr->rx_prod_bseq += bp->rx_buf_use_size;
 
-	prod_rx_buf->skb = skb;
-	prod_rx_buf->desc = (struct l2_fhdr *) skb->data;
+	prod_rx_buf->data = data;
 
 	if (cons == prod)
 		return;
@@ -2986,33 +2987,39 @@ bnx2_reuse_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
 	prod_bd->rx_bd_haddr_lo = cons_bd->rx_bd_haddr_lo;
 }
 
-static int
-bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
+static struct sk_buff *
+bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, u8 *data,
 	    unsigned int len, unsigned int hdr_len, dma_addr_t dma_addr,
 	    u32 ring_idx)
 {
 	int err;
 	u16 prod = ring_idx & 0xffff;
+	struct sk_buff *skb;
 
-	err = bnx2_alloc_rx_skb(bp, rxr, prod, GFP_ATOMIC);
+	err = bnx2_alloc_rx_data(bp, rxr, prod, GFP_ATOMIC);
 	if (unlikely(err)) {
-		bnx2_reuse_rx_skb(bp, rxr, skb, (u16) (ring_idx >> 16), prod);
+		bnx2_reuse_rx_data(bp, rxr, data, (u16) (ring_idx >> 16), prod);
+error:
 		if (hdr_len) {
 			unsigned int raw_len = len + 4;
 			int pages = PAGE_ALIGN(raw_len - hdr_len) >> PAGE_SHIFT;
 
 			bnx2_reuse_rx_skb_pages(bp, rxr, NULL, pages);
 		}
-		return err;
+		return NULL;
 	}
 
-	skb_reserve(skb, BNX2_RX_OFFSET);
 	dma_unmap_single(&bp->pdev->dev, dma_addr, bp->rx_buf_use_size,
 			 PCI_DMA_FROMDEVICE);
-
+	skb = build_skb(data);
+	if (!skb) {
+		kfree(data);
+		goto error;
+	}
+	skb_reserve(skb, ((u8 *)get_l2_fhdr(data) - data) + BNX2_RX_OFFSET);
 	if (hdr_len == 0) {
 		skb_put(skb, len);
-		return 0;
+		return skb;
 	} else {
 		unsigned int i, frag_len, frag_size, pages;
 		struct sw_pg *rx_pg;
@@ -3043,7 +3050,7 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 					frag->size -= tail;
 					skb->data_len -= tail;
 				}
-				return 0;
+				return skb;
 			}
 			rx_pg = &rxr->rx_pg_ring[pg_cons];
 
@@ -3065,7 +3072,7 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 				rxr->rx_pg_prod = pg_prod;
 				bnx2_reuse_rx_skb_pages(bp, rxr, skb,
 							pages - i);
-				return err;
+				return NULL;
 			}
 
 			dma_unmap_page(&bp->pdev->dev, mapping_old,
@@ -3082,7 +3089,7 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 		rxr->rx_pg_prod = pg_prod;
 		rxr->rx_pg_cons = pg_cons;
 	}
-	return 0;
+	return skb;
 }
 
 static inline u16
@@ -3121,19 +3128,17 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 		struct sw_bd *rx_buf, *next_rx_buf;
 		struct sk_buff *skb;
 		dma_addr_t dma_addr;
+		u8 *data;
 
 		sw_ring_cons = RX_RING_IDX(sw_cons);
 		sw_ring_prod = RX_RING_IDX(sw_prod);
 
 		rx_buf = &rxr->rx_buf_ring[sw_ring_cons];
-		skb = rx_buf->skb;
-		prefetchw(skb);
+		data = rx_buf->data;
+		rx_buf->data = NULL;
 
-		next_rx_buf =
-			&rxr->rx_buf_ring[RX_RING_IDX(NEXT_RX_BD(sw_cons))];
-		prefetch(next_rx_buf->desc);
-
-		rx_buf->skb = NULL;
+		rx_hdr = get_l2_fhdr(data);
+		prefetch(rx_hdr);
 
 		dma_addr = dma_unmap_addr(rx_buf, mapping);
 
@@ -3141,7 +3146,10 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 			BNX2_RX_OFFSET + BNX2_RX_COPY_THRESH,
 			PCI_DMA_FROMDEVICE);
 
-		rx_hdr = rx_buf->desc;
+		next_rx_buf =
+			&rxr->rx_buf_ring[RX_RING_IDX(NEXT_RX_BD(sw_cons))];
+		prefetch(get_l2_fhdr(next_rx_buf->data));
+
 		len = rx_hdr->l2_fhdr_pkt_len;
 		status = rx_hdr->l2_fhdr_status;
 
@@ -3160,7 +3168,7 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 				       L2_FHDR_ERRORS_TOO_SHORT |
 				       L2_FHDR_ERRORS_GIANT_FRAME))) {
 
-			bnx2_reuse_rx_skb(bp, rxr, skb, sw_ring_cons,
+			bnx2_reuse_rx_data(bp, rxr, data, sw_ring_cons,
 					  sw_ring_prod);
 			if (pg_ring_used) {
 				int pages;
@@ -3175,30 +3183,29 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 		len -= 4;
 
 		if (len <= bp->rx_copy_thresh) {
-			struct sk_buff *new_skb;
-
-			new_skb = netdev_alloc_skb(bp->dev, len + 6);
-			if (new_skb == NULL) {
-				bnx2_reuse_rx_skb(bp, rxr, skb, sw_ring_cons,
+			skb = netdev_alloc_skb(bp->dev, len + 6);
+			if (skb == NULL) {
+				bnx2_reuse_rx_data(bp, rxr, data, sw_ring_cons,
 						  sw_ring_prod);
 				goto next_rx;
 			}
 
 			/* aligned copy */
-			skb_copy_from_linear_data_offset(skb,
-							 BNX2_RX_OFFSET - 6,
-				      new_skb->data, len + 6);
-			skb_reserve(new_skb, 6);
-			skb_put(new_skb, len);
+			memcpy(skb->data,
+			       (u8 *)rx_hdr + BNX2_RX_OFFSET - 6,
+			       len + 6);
+			skb_reserve(skb, 6);
+			skb_put(skb, len);
 
-			bnx2_reuse_rx_skb(bp, rxr, skb,
+			bnx2_reuse_rx_data(bp, rxr, data,
 				sw_ring_cons, sw_ring_prod);
 
-			skb = new_skb;
-		} else if (unlikely(bnx2_rx_skb(bp, rxr, skb, len, hdr_len,
-			   dma_addr, (sw_ring_cons << 16) | sw_ring_prod)))
-			goto next_rx;
-
+		} else {
+			skb = bnx2_rx_skb(bp, rxr, data, len, hdr_len, dma_addr,
+					  (sw_ring_cons << 16) | sw_ring_prod);
+			if (!skb)
+				goto next_rx;
+		}
 		if ((status & L2_FHDR_STATUS_L2_VLAN_TAG) &&
 		    !(bp->rx_mode & BNX2_EMAC_RX_MODE_KEEP_VLAN_TAG))
 			__vlan_hwaccel_put_tag(skb, rx_hdr->l2_fhdr_vlan_tag);
@@ -5225,7 +5232,7 @@ bnx2_init_rx_ring(struct bnx2 *bp, int ring_num)
 
 	ring_prod = prod = rxr->rx_prod;
 	for (i = 0; i < bp->rx_ring_size; i++) {
-		if (bnx2_alloc_rx_skb(bp, rxr, ring_prod, GFP_KERNEL) < 0) {
+		if (bnx2_alloc_rx_data(bp, rxr, ring_prod, GFP_KERNEL) < 0) {
 			netdev_warn(bp->dev, "init'ed rx ring %d with %d/%d skbs only\n",
 				    ring_num, i, bp->rx_ring_size);
 			break;
@@ -5320,7 +5327,7 @@ bnx2_set_rx_ring_size(struct bnx2 *bp, u32 size)
 	rx_size = bp->dev->mtu + ETH_HLEN + BNX2_RX_OFFSET + 8;
 
 	rx_space = SKB_DATA_ALIGN(rx_size + BNX2_RX_ALIGN) + NET_SKB_PAD +
-		sizeof(struct skb_shared_info);
+		SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
 	bp->rx_copy_thresh = BNX2_RX_COPY_THRESH;
 	bp->rx_pg_ring_size = 0;
@@ -5342,8 +5349,9 @@ bnx2_set_rx_ring_size(struct bnx2 *bp, u32 size)
 	}
 
 	bp->rx_buf_use_size = rx_size;
-	/* hw alignment */
-	bp->rx_buf_size = bp->rx_buf_use_size + BNX2_RX_ALIGN;
+	/* hw alignment + build_skb() overhead*/
+	bp->rx_buf_size = SKB_DATA_ALIGN(bp->rx_buf_use_size + BNX2_RX_ALIGN) +
+		NET_SKB_PAD + SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 	bp->rx_jumbo_thresh = rx_size - BNX2_RX_OFFSET;
 	bp->rx_ring_size = size;
 	bp->rx_max_ring = bnx2_find_max_ring(size, MAX_RX_RINGS);
@@ -5369,7 +5377,7 @@ bnx2_free_tx_skbs(struct bnx2 *bp)
 			int k, last;
 
 			if (skb == NULL) {
-				j++;
+				j = NEXT_TX_BD(j);
 				continue;
 			}
 
@@ -5381,8 +5389,8 @@ bnx2_free_tx_skbs(struct bnx2 *bp)
 			tx_buf->skb = NULL;
 
 			last = tx_buf->nr_frags;
-			j++;
-			for (k = 0; k < last; k++, j++) {
+			j = NEXT_TX_BD(j);
+			for (k = 0; k < last; k++, j = NEXT_TX_BD(j)) {
 				tx_buf = &txr->tx_buf_ring[TX_RING_IDX(j)];
 				dma_unmap_page(&bp->pdev->dev,
 					dma_unmap_addr(tx_buf, mapping),
@@ -5409,9 +5417,9 @@ bnx2_free_rx_skbs(struct bnx2 *bp)
 
 		for (j = 0; j < bp->rx_max_ring_idx; j++) {
 			struct sw_bd *rx_buf = &rxr->rx_buf_ring[j];
-			struct sk_buff *skb = rx_buf->skb;
+			u8 *data = rx_buf->data;
 
-			if (skb == NULL)
+			if (data == NULL)
 				continue;
 
 			dma_unmap_single(&bp->pdev->dev,
@@ -5419,9 +5427,9 @@ bnx2_free_rx_skbs(struct bnx2 *bp)
 					 bp->rx_buf_use_size,
 					 PCI_DMA_FROMDEVICE);
 
-			rx_buf->skb = NULL;
+			rx_buf->data = NULL;
 
-			dev_kfree_skb(skb);
+			kfree(data);
 		}
 		for (j = 0; j < bp->rx_max_pg_ring_idx; j++)
 			bnx2_free_rx_page(bp, rxr, j);
@@ -5727,7 +5735,8 @@ static int
 bnx2_run_loopback(struct bnx2 *bp, int loopback_mode)
 {
 	unsigned int pkt_size, num_pkts, i;
-	struct sk_buff *skb, *rx_skb;
+	struct sk_buff *skb;
+	u8 *data;
 	unsigned char *packet;
 	u16 rx_start_idx, rx_idx;
 	dma_addr_t map;
@@ -5819,14 +5828,14 @@ bnx2_run_loopback(struct bnx2 *bp, int loopback_mode)
 	}
 
 	rx_buf = &rxr->rx_buf_ring[rx_start_idx];
-	rx_skb = rx_buf->skb;
+	data = rx_buf->data;
 
-	rx_hdr = rx_buf->desc;
-	skb_reserve(rx_skb, BNX2_RX_OFFSET);
+	rx_hdr = get_l2_fhdr(data);
+	data = (u8 *)rx_hdr + BNX2_RX_OFFSET;
 
 	dma_sync_single_for_cpu(&bp->pdev->dev,
 		dma_unmap_addr(rx_buf, mapping),
-		bp->rx_buf_size, PCI_DMA_FROMDEVICE);
+		bp->rx_buf_use_size, PCI_DMA_FROMDEVICE);
 
 	if (rx_hdr->l2_fhdr_status &
 		(L2_FHDR_ERRORS_BAD_CRC |
@@ -5843,7 +5852,7 @@ bnx2_run_loopback(struct bnx2 *bp, int loopback_mode)
 	}
 
 	for (i = 14; i < pkt_size; i++) {
-		if (*(rx_skb->data + i) != (unsigned char) (i & 0xff)) {
+		if (*(data + i) != (unsigned char) (i & 0xff)) {
 			goto loopback_test_done;
 		}
 	}
@@ -6240,7 +6249,7 @@ bnx2_enable_msix(struct bnx2 *bp, int msix_vecs)
 static int
 bnx2_setup_int_mode(struct bnx2 *bp, int dis_msi)
 {
-	int cpus = num_online_cpus();
+	int cpus = netif_get_num_default_rss_queues();
 	int msix_vecs;
 
 	if (!bp->num_req_rx_rings)
@@ -6378,6 +6387,7 @@ bnx2_reset_task(struct work_struct *work)
 {
 	struct bnx2 *bp = container_of(work, struct bnx2, reset_task);
 	int rc;
+	u16 pcicmd;
 
 	rtnl_lock();
 	if (!netif_running(bp->dev)) {
@@ -6387,6 +6397,12 @@ bnx2_reset_task(struct work_struct *work)
 
 	bnx2_netif_stop(bp, true);
 
+	pci_read_config_word(bp->pdev, PCI_COMMAND, &pcicmd);
+	if (!(pcicmd & PCI_COMMAND_MEMORY)) {
+		/* in case PCI block has reset */
+		pci_restore_state(bp->pdev);
+		pci_save_state(bp->pdev);
+	}
 	rc = bnx2_init_nic(bp, 1);
 	if (rc) {
 		netdev_err(bp->dev, "failed to reset NIC, closing\n");
@@ -6399,6 +6415,75 @@ bnx2_reset_task(struct work_struct *work)
 	atomic_set(&bp->intr_sem, 1);
 	bnx2_netif_start(bp, true);
 	rtnl_unlock();
+}
+
+#define BNX2_FTQ_ENTRY(ftq) { __stringify(ftq##FTQ_CTL), BNX2_##ftq##FTQ_CTL }
+
+static void
+bnx2_dump_ftq(struct bnx2 *bp)
+{
+	int i;
+	u32 reg, bdidx, cid, valid;
+	struct net_device *dev = bp->dev;
+	static const struct ftq_reg {
+		char *name;
+		u32 off;
+	} ftq_arr[] = {
+		BNX2_FTQ_ENTRY(RV2P_P),
+		BNX2_FTQ_ENTRY(RV2P_T),
+		BNX2_FTQ_ENTRY(RV2P_M),
+		BNX2_FTQ_ENTRY(TBDR_),
+		BNX2_FTQ_ENTRY(TDMA_),
+		BNX2_FTQ_ENTRY(TXP_),
+		BNX2_FTQ_ENTRY(TXP_),
+		BNX2_FTQ_ENTRY(TPAT_),
+		BNX2_FTQ_ENTRY(RXP_C),
+		BNX2_FTQ_ENTRY(RXP_),
+		BNX2_FTQ_ENTRY(COM_COMXQ_),
+		BNX2_FTQ_ENTRY(COM_COMTQ_),
+		BNX2_FTQ_ENTRY(COM_COMQ_),
+		BNX2_FTQ_ENTRY(CP_CPQ_),
+	};
+
+	netdev_err(dev, "<--- start FTQ dump --->\n");
+	for (i = 0; i < ARRAY_SIZE(ftq_arr); i++)
+		netdev_err(dev, "%s %08x\n", ftq_arr[i].name,
+			   bnx2_reg_rd_ind(bp, ftq_arr[i].off));
+
+	netdev_err(dev, "CPU states:\n");
+	for (reg = BNX2_TXP_CPU_MODE; reg <= BNX2_CP_CPU_MODE; reg += 0x40000)
+		netdev_err(dev, "%06x mode %x state %x evt_mask %x pc %x pc %x instr %x\n",
+			   reg, bnx2_reg_rd_ind(bp, reg),
+			   bnx2_reg_rd_ind(bp, reg + 4),
+			   bnx2_reg_rd_ind(bp, reg + 8),
+			   bnx2_reg_rd_ind(bp, reg + 0x1c),
+			   bnx2_reg_rd_ind(bp, reg + 0x1c),
+			   bnx2_reg_rd_ind(bp, reg + 0x20));
+
+	netdev_err(dev, "<--- end FTQ dump --->\n");
+	netdev_err(dev, "<--- start TBDC dump --->\n");
+	netdev_err(dev, "TBDC free cnt: %ld\n",
+		   REG_RD(bp, BNX2_TBDC_STATUS) & BNX2_TBDC_STATUS_FREE_CNT);
+	netdev_err(dev, "LINE     CID  BIDX   CMD  VALIDS\n");
+	for (i = 0; i < 0x20; i++) {
+		int j = 0;
+
+		REG_WR(bp, BNX2_TBDC_BD_ADDR, i);
+		REG_WR(bp, BNX2_TBDC_CAM_OPCODE,
+		       BNX2_TBDC_CAM_OPCODE_OPCODE_CAM_READ);
+		REG_WR(bp, BNX2_TBDC_COMMAND, BNX2_TBDC_COMMAND_CMD_REG_ARB);
+		while ((REG_RD(bp, BNX2_TBDC_COMMAND) &
+			BNX2_TBDC_COMMAND_CMD_REG_ARB) && j < 100)
+			j++;
+
+		cid = REG_RD(bp, BNX2_TBDC_CID);
+		bdidx = REG_RD(bp, BNX2_TBDC_BIDX);
+		valid = REG_RD(bp, BNX2_TBDC_CAM_OPCODE);
+		netdev_err(dev, "%02x    %06x  %04lx   %02x    [%x]\n",
+			   i, cid, bdidx & BNX2_TBDC_BDIDX_BDIDX,
+			   bdidx >> 24, (valid >> 8) & 0x0ff);
+	}
+	netdev_err(dev, "<--- end TBDC dump --->\n");
 }
 
 static void
@@ -6430,6 +6515,7 @@ bnx2_tx_timeout(struct net_device *dev)
 {
 	struct bnx2 *bp = netdev_priv(dev);
 
+	bnx2_dump_ftq(bp);
 	bnx2_dump_state(bp);
 	bnx2_dump_mcp_state(bp);
 
@@ -6545,8 +6631,8 @@ bnx2_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		txbd = &txr->tx_desc_ring[ring_prod];
 
 		len = frag->size;
-		mapping = dma_map_page(&bp->pdev->dev, frag->page, frag->page_offset,
-				       len, PCI_DMA_TODEVICE);
+		mapping = skb_frag_dma_map(&bp->pdev->dev, frag, 0, len,
+					   PCI_DMA_TODEVICE);
 		if (dma_mapping_error(&bp->pdev->dev, mapping))
 			goto dma_error;
 		dma_unmap_addr_set(&txr->tx_buf_ring[ring_prod], mapping,
@@ -6621,6 +6707,7 @@ bnx2_close(struct net_device *dev)
 
 	bnx2_disable_int_sync(bp);
 	bnx2_napi_disable(bp);
+	netif_tx_disable(dev);
 	del_timer_sync(&bp->timer);
 	bnx2_shutdown_chip(bp);
 	bnx2_free_irq(bp);
@@ -7338,8 +7425,7 @@ static struct {
 	{ "rx_fw_discards" },
 };
 
-#define BNX2_NUM_STATS (sizeof(bnx2_stats_str_arr)/\
-			sizeof(bnx2_stats_str_arr[0]))
+#define BNX2_NUM_STATS ARRAY_SIZE(bnx2_stats_str_arr)
 
 #define STATS_OFFSET32(offset_name) (offsetof(struct statistics_block, offset_name) / 4)
 
@@ -7828,7 +7914,7 @@ bnx2_get_5709_media(struct bnx2 *bp)
 	else
 		strap = (val & BNX2_MISC_DUAL_MEDIA_CTRL_PHY_CTRL_STRAP) >> 8;
 
-	if (PCI_FUNC(bp->pdev->devfn) == 0) {
+	if (bp->func == 0) {
 		switch (strap) {
 		case 0x4:
 		case 0x5:
@@ -7971,7 +8057,6 @@ static int __devinit
 bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 {
 	struct bnx2 *bp;
-	unsigned long mem_len;
 	int rc, i, j;
 	u32 reg;
 	u64 dma_mask, persist_dma_mask;
@@ -8031,13 +8116,8 @@ bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 #endif
 	INIT_WORK(&bp->reset_task, bnx2_reset_task);
 
-	dev->base_addr = dev->mem_start = pci_resource_start(pdev, 0);
-	mem_len = MB_GET_CID_ADDR(TX_TSS_CID + TX_MAX_TSS_RINGS + 1);
-	dev->mem_end = dev->mem_start + mem_len;
-	dev->irq = pdev->irq;
-
-	bp->regview = ioremap_nocache(dev->base_addr, mem_len);
-
+	bp->regview = pci_iomap(pdev, 0, MB_GET_CID_ADDR(TX_TSS_CID +
+							 TX_MAX_TSS_RINGS + 1));
 	if (!bp->regview) {
 		dev_err(&pdev->dev, "Cannot map register space, aborting\n");
 		rc = -ENOMEM;
@@ -8133,9 +8213,12 @@ bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 
 	reg = bnx2_reg_rd_ind(bp, BNX2_SHM_HDR_SIGNATURE);
 
+	if (bnx2_reg_rd_ind(bp, BNX2_MCP_TOE_ID) & BNX2_MCP_TOE_ID_FUNCTION_ID)
+		bp->func = 1;
+
 	if ((reg & BNX2_SHM_HDR_SIGNATURE_SIG_MASK) ==
 	    BNX2_SHM_HDR_SIGNATURE_SIG) {
-		u32 off = PCI_FUNC(pdev->devfn) << 2;
+		u32 off = bp->func << 2;
 
 		bp->shmem_base = bnx2_reg_rd_ind(bp, BNX2_SHM_HDR_ADDR_0 + off);
 	} else
@@ -8341,10 +8424,8 @@ err_out_unmap:
 		bp->flags &= ~BNX2_FLAG_AER_ENABLED;
 	}
 
-	if (bp->regview) {
-		iounmap(bp->regview);
-		bp->regview = NULL;
-	}
+	pci_iounmap(pdev, bp->regview);
+	bp->regview = NULL;
 
 err_out_release:
 	pci_release_regions(pdev);
@@ -8427,7 +8508,7 @@ static int __devinit
 bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	static int version_printed = 0;
-	struct net_device *dev = NULL;
+	struct net_device *dev;
 	struct bnx2 *bp;
 	int rc;
 	char str[40];
@@ -8437,15 +8518,12 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* dev zeroed in init_etherdev */
 	dev = alloc_etherdev_mq(sizeof(*bp), TX_MAX_RINGS);
-
 	if (!dev)
 		return -ENOMEM;
 
 	rc = bnx2_init_board(pdev, dev);
-	if (rc < 0) {
-		free_netdev(dev);
-		return rc;
-	}
+	if (rc < 0)
+		goto err_free;
 
 	dev->netdev_ops = &bnx2_netdev_ops;
 	dev->watchdog_timeo = TX_TIMEOUT;
@@ -8475,22 +8553,21 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		goto error;
 	}
 
-	netdev_info(dev, "%s (%c%d) %s found at mem %lx, IRQ %d, node addr %pM\n",
-		    board_info[ent->driver_data].name,
+	netdev_info(dev, "%s (%c%d) %s found at mem %lx, IRQ %d, "
+		    "node addr %pM\n", board_info[ent->driver_data].name,
 		    ((CHIP_ID(bp) & 0xf000) >> 12) + 'A',
 		    ((CHIP_ID(bp) & 0x0ff0) >> 4),
-		    bnx2_bus_string(bp, str),
-		    dev->base_addr,
-		    bp->pdev->irq, dev->dev_addr);
+		    bnx2_bus_string(bp, str), (long)pci_resource_start(pdev, 0),
+		    pdev->irq, dev->dev_addr);
 
 	return 0;
 
 error:
-	if (bp->regview)
-		iounmap(bp->regview);
+	iounmap(bp->regview);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
 	pci_set_drvdata(pdev, NULL);
+err_free:
 	free_netdev(dev);
 	return rc;
 }
@@ -8506,8 +8583,7 @@ bnx2_remove_one(struct pci_dev *pdev)
 	del_timer_sync(&bp->timer);
 	cancel_work_sync(&bp->reset_task);
 
-	if (bp->regview)
-		iounmap(bp->regview);
+	pci_iounmap(bp->pdev, bp->regview);
 
 	kfree(bp->temp_stats_blk);
 

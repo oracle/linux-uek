@@ -987,6 +987,7 @@
  * clear; 1 = set. Data valid only in addresses 0-4. all the rest are zero. */
 #define IGU_REG_WRITE_DONE_PENDING				 0x130480
 #define MCP_A_REG_MCPR_SCRATCH					 0x3a0000
+#define MCP_REG_MCPR_ACCESS_LOCK				 0x8009c
 #define MCP_REG_MCPR_CPU_PROGRAM_COUNTER			 0x8501c
 #define MCP_REG_MCPR_GP_INPUTS					 0x800c0
 #define MCP_REG_MCPR_GP_OENABLE					 0x800c8
@@ -1482,6 +1483,126 @@
    starts at 0x0 for the A0 tape-out and increments by one for each
    all-layer tape-out. */
 #define MISC_REG_CHIP_REV					 0xa40c
+/* [R 14] otp_misc_do[100:0] spare bits collection: 13:11-
+ * otp_misc_do[100:98]; 10:7 - otp_misc_do[87:84]; 6:3 - otp_misc_do[75:72];
+ * 2:1 - otp_misc_do[51:50]; 0 - otp_misc_do[1]. */
+#define MISC_REG_CHIP_TYPE					 0xac60
+#define MISC_REG_CHIP_TYPE_57811_MASK				 (1<<1)
+#define MISC_REG_CPMU_LP_DR_ENABLE				 0xa858
+/* [RW 1] FW EEE LPI Enable. When 1 indicates that EEE LPI mode is enabled
+ * by FW. When 0 indicates that the EEE LPI mode is disabled by FW. Clk
+ * 25MHz. Reset on hard reset. */
+#define MISC_REG_CPMU_LP_FW_ENABLE_P0				 0xa84c
+/* [RW 32] EEE LPI Idle Threshold. The threshold value for the idle EEE LPI
+ * counter. Timer tick is 1 us. Clock 25MHz. Reset on hard reset. */
+#define MISC_REG_CPMU_LP_IDLE_THR_P0				 0xa8a0
+/* [RW 18] LPI entry events mask. [0] - Vmain SM Mask. When 1 indicates that
+ * the Vmain SM end state is disabled. When 0 indicates that the Vmain SM
+ * end state is enabled. [1] - FW Queues Empty Mask. When 1 indicates that
+ * the FW command that all Queues are empty is disabled. When 0 indicates
+ * that the FW command that all Queues are empty is enabled. [2] - FW Early
+ * Exit Mask / Reserved (Entry mask). When 1 indicates that the FW Early
+ * Exit command is disabled. When 0 indicates that the FW Early Exit command
+ * is enabled. This bit applicable only in the EXIT Events Mask registers.
+ * [3] - PBF Request Mask. When 1 indicates that the PBF Request indication
+ * is disabled. When 0 indicates that the PBF Request indication is enabled.
+ * [4] - Tx Request Mask. When =1 indicates that the Tx other Than PBF
+ * Request indication is disabled. When 0 indicates that the Tx Other Than
+ * PBF Request indication is enabled. [5] - Rx EEE LPI Status Mask. When 1
+ * indicates that the RX EEE LPI Status indication is disabled. When 0
+ * indicates that the RX EEE LPI Status indication is enabled. In the EXIT
+ * Events Masks registers; this bit masks the falling edge detect of the LPI
+ * Status (Rx LPI is on - off). [6] - Tx Pause Mask. When 1 indicates that
+ * the Tx Pause indication is disabled. When 0 indicates that the Tx Pause
+ * indication is enabled. [7] - BRB1 Empty Mask. When 1 indicates that the
+ * BRB1 EMPTY indication is disabled. When 0 indicates that the BRB1 EMPTY
+ * indication is enabled. [8] - QM Idle Mask. When 1 indicates that the QM
+ * IDLE indication is disabled. When 0 indicates that the QM IDLE indication
+ * is enabled. (One bit for both VOQ0 and VOQ1). [9] - QM LB Idle Mask. When
+ * 1 indicates that the QM IDLE indication for LOOPBACK is disabled. When 0
+ * indicates that the QM IDLE indication for LOOPBACK is enabled. [10] - L1
+ * Status Mask. When 1 indicates that the L1 Status indication from the PCIE
+ * CORE is disabled. When 0 indicates that the RX EEE LPI Status indication
+ * from the PCIE CORE is enabled. In the EXIT Events Masks registers; this
+ * bit masks the falling edge detect of the L1 status (L1 is on - off). [11]
+ * - P0 E0 EEE EEE LPI REQ Mask. When =1 indicates that the P0 E0 EEE EEE
+ * LPI REQ indication is disabled. When =0 indicates that the P0 E0 EEE LPI
+ * REQ indication is enabled. [12] - P1 E0 EEE LPI REQ Mask. When =1
+ * indicates that the P0 EEE LPI REQ indication is disabled. When =0
+ * indicates that the P0 EEE LPI REQ indication is enabled. [13] - P0 E1 EEE
+ * LPI REQ Mask. When =1 indicates that the P0 EEE LPI REQ indication is
+ * disabled. When =0 indicates that the P0 EEE LPI REQ indication is
+ * enabled. [14] - P1 E1 EEE LPI REQ Mask. When =1 indicates that the P0 EEE
+ * LPI REQ indication is disabled. When =0 indicates that the P0 EEE LPI REQ
+ * indication is enabled. [15] - L1 REQ Mask. When =1 indicates that the L1
+ * REQ indication is disabled. When =0 indicates that the L1 indication is
+ * enabled. [16] - Rx EEE LPI Status Edge Detect Mask. When =1 indicates
+ * that the RX EEE LPI Status Falling Edge Detect indication is disabled (Rx
+ * EEE LPI is on - off). When =0 indicates that the RX EEE LPI Status
+ * Falling Edge Detec indication is enabled (Rx EEE LPI is on - off). This
+ * bit is applicable only in the EXIT Events Masks registers. [17] - L1
+ * Status Edge Detect Mask. When =1 indicates that the L1 Status Falling
+ * Edge Detect indication from the PCIE CORE is disabled (L1 is on - off).
+ * When =0 indicates that the L1 Status Falling Edge Detect indication from
+ * the PCIE CORE is enabled (L1 is on - off). This bit is applicable only in
+ * the EXIT Events Masks registers. Clock 25MHz. Reset on hard reset. */
+#define MISC_REG_CPMU_LP_MASK_ENT_P0				 0xa880
+/* [RW 18] EEE LPI exit events mask. [0] - Vmain SM Mask. When 1 indicates
+ * that the Vmain SM end state is disabled. When 0 indicates that the Vmain
+ * SM end state is enabled. [1] - FW Queues Empty Mask. When 1 indicates
+ * that the FW command that all Queues are empty is disabled. When 0
+ * indicates that the FW command that all Queues are empty is enabled. [2] -
+ * FW Early Exit Mask / Reserved (Entry mask). When 1 indicates that the FW
+ * Early Exit command is disabled. When 0 indicates that the FW Early Exit
+ * command is enabled. This bit applicable only in the EXIT Events Mask
+ * registers. [3] - PBF Request Mask. When 1 indicates that the PBF Request
+ * indication is disabled. When 0 indicates that the PBF Request indication
+ * is enabled. [4] - Tx Request Mask. When =1 indicates that the Tx other
+ * Than PBF Request indication is disabled. When 0 indicates that the Tx
+ * Other Than PBF Request indication is enabled. [5] - Rx EEE LPI Status
+ * Mask. When 1 indicates that the RX EEE LPI Status indication is disabled.
+ * When 0 indicates that the RX LPI Status indication is enabled. In the
+ * EXIT Events Masks registers; this bit masks the falling edge detect of
+ * the EEE LPI Status (Rx EEE LPI is on - off). [6] - Tx Pause Mask. When 1
+ * indicates that the Tx Pause indication is disabled. When 0 indicates that
+ * the Tx Pause indication is enabled. [7] - BRB1 Empty Mask. When 1
+ * indicates that the BRB1 EMPTY indication is disabled. When 0 indicates
+ * that the BRB1 EMPTY indication is enabled. [8] - QM Idle Mask. When 1
+ * indicates that the QM IDLE indication is disabled. When 0 indicates that
+ * the QM IDLE indication is enabled. (One bit for both VOQ0 and VOQ1). [9]
+ * - QM LB Idle Mask. When 1 indicates that the QM IDLE indication for
+ * LOOPBACK is disabled. When 0 indicates that the QM IDLE indication for
+ * LOOPBACK is enabled. [10] - L1 Status Mask. When 1 indicates that the L1
+ * Status indication from the PCIE CORE is disabled. When 0 indicates that
+ * the RX EEE LPI Status indication from the PCIE CORE is enabled. In the
+ * EXIT Events Masks registers; this bit masks the falling edge detect of
+ * the L1 status (L1 is on - off). [11] - P0 E0 EEE EEE LPI REQ Mask. When
+ * =1 indicates that the P0 E0 EEE EEE LPI REQ indication is disabled. When
+ * =0 indicates that the P0 E0 EEE LPI REQ indication is enabled. [12] - P1
+ * E0 EEE LPI REQ Mask. When =1 indicates that the P0 EEE LPI REQ indication
+ * is disabled. When =0 indicates that the P0 EEE LPI REQ indication is
+ * enabled. [13] - P0 E1 EEE LPI REQ Mask. When =1 indicates that the P0 EEE
+ * LPI REQ indication is disabled. When =0 indicates that the P0 EEE LPI REQ
+ * indication is enabled. [14] - P1 E1 EEE LPI REQ Mask. When =1 indicates
+ * that the P0 EEE LPI REQ indication is disabled. When =0 indicates that
+ * the P0 EEE LPI REQ indication is enabled. [15] - L1 REQ Mask. When =1
+ * indicates that the L1 REQ indication is disabled. When =0 indicates that
+ * the L1 indication is enabled. [16] - Rx EEE LPI Status Edge Detect Mask.
+ * When =1 indicates that the RX EEE LPI Status Falling Edge Detect
+ * indication is disabled (Rx EEE LPI is on - off). When =0 indicates that
+ * the RX EEE LPI Status Falling Edge Detec indication is enabled (Rx EEE
+ * LPI is on - off). This bit is applicable only in the EXIT Events Masks
+ * registers. [17] - L1 Status Edge Detect Mask. When =1 indicates that the
+ * L1 Status Falling Edge Detect indication from the PCIE CORE is disabled
+ * (L1 is on - off). When =0 indicates that the L1 Status Falling Edge
+ * Detect indication from the PCIE CORE is enabled (L1 is on - off). This
+ * bit is applicable only in the EXIT Events Masks registers.Clock 25MHz.
+ * Reset on hard reset. */
+#define MISC_REG_CPMU_LP_MASK_EXT_P0				 0xa888
+/* [RW 16] EEE LPI Entry Events Counter. A statistic counter with the number
+ * of counts that the SM entered the EEE LPI state. Clock 25MHz. Read only
+ * register. Reset on hard reset. */
+#define MISC_REG_CPMU_LP_SM_ENT_CNT_P0				 0xa8b8
 /* [RW 32] The following driver registers(1...16) represent 16 drivers and
    32 clients. Each client can be controlled by one driver only. One in each
    bit represent that this driver control the appropriate client (Ex: bit 5
@@ -1686,6 +1807,7 @@
    [10] rst_dbg; [11] rst_misc_core; [12] rst_dbue (UART); [13]
    Pci_resetmdio_n; [14] rst_emac0_hard_core; [15] rst_emac1_hard_core; 16]
    rst_pxp_rq_rd_wr; 31:17] reserved */
+#define MISC_REG_RESET_REG_1					 0xa580
 #define MISC_REG_RESET_REG_2					 0xa590
 /* [RW 20] 20 bit GRC address where the scratch-pad of the MCP that is
    shared with the driver resides */
@@ -5365,6 +5487,8 @@
 /* [RW 32] Lower 48 bits of ctrl_sa register. Used as the SA in PAUSE/PFC
  * packets transmitted by the MAC */
 #define XMAC_REG_CTRL_SA_LO					 0x28
+#define XMAC_REG_EEE_CTRL					 0xd8
+#define XMAC_REG_EEE_TIMERS_HI					 0xe4
 #define XMAC_REG_PAUSE_CTRL					 0x68
 #define XMAC_REG_PFC_CTRL					 0x70
 #define XMAC_REG_PFC_CTRL_HI					 0x74
@@ -5607,6 +5731,7 @@
 /* [RC 32] Parity register #0 read clear */
 #define XSEM_REG_XSEM_PRTY_STS_CLR_0				 0x280128
 #define XSEM_REG_XSEM_PRTY_STS_CLR_1				 0x280138
+#define MCPR_ACCESS_LOCK_LOCK					 (1L<<31)
 #define MCPR_NVM_ACCESS_ENABLE_EN				 (1L<<0)
 #define MCPR_NVM_ACCESS_ENABLE_WR_EN				 (1L<<1)
 #define MCPR_NVM_ADDR_NVM_ADDR_VALUE				 (0xffffffL<<0)
@@ -5733,6 +5858,7 @@
 #define MISC_REGISTERS_GPIO_PORT_SHIFT				 4
 #define MISC_REGISTERS_GPIO_SET_POS				 8
 #define MISC_REGISTERS_RESET_REG_1_CLEAR			 0x588
+#define MISC_REGISTERS_RESET_REG_1_RST_BRB1			 (0x1<<0)
 #define MISC_REGISTERS_RESET_REG_1_RST_DORQ			 (0x1<<19)
 #define MISC_REGISTERS_RESET_REG_1_RST_HC			 (0x1<<29)
 #define MISC_REGISTERS_RESET_REG_1_RST_NIG			 (0x1<<7)
@@ -6804,6 +6930,8 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_AN_REG_LP_AUTO_NEG		0x0013
 #define MDIO_AN_REG_LP_AUTO_NEG2	0x0014
 #define MDIO_AN_REG_MASTER_STATUS	0x0021
+#define MDIO_AN_REG_EEE_ADV		0x003c
+#define MDIO_AN_REG_LP_EEE_ADV		0x003d
 /*bcm*/
 #define MDIO_AN_REG_LINK_STATUS 	0x8304
 #define MDIO_AN_REG_CL37_CL73		0x8370
@@ -6817,10 +6945,13 @@ Theotherbitsarereservedandshouldbezero*/
 
 #define MDIO_AN_REG_8481_10GBASE_T_AN_CTRL	0x0020
 #define MDIO_AN_REG_8481_LEGACY_MII_CTRL	0xffe0
+#define MDIO_AN_REG_8481_MII_CTRL_FORCE_1G	0x40
 #define MDIO_AN_REG_8481_LEGACY_MII_STATUS	0xffe1
 #define MDIO_AN_REG_8481_LEGACY_AN_ADV		0xffe4
 #define MDIO_AN_REG_8481_LEGACY_AN_EXPANSION	0xffe6
 #define MDIO_AN_REG_8481_1000T_CTRL		0xffe9
+#define MDIO_AN_REG_8481_1G_100T_EXT_CTRL	0xfff0
+#define MIDO_AN_REG_8481_EXT_CTRL_FORCE_LEDS_OFF	0x0008
 #define MDIO_AN_REG_8481_EXPANSION_REG_RD_RW	0xfff5
 #define MDIO_AN_REG_8481_EXPANSION_REG_ACCESS	0xfff7
 #define MDIO_AN_REG_8481_AUX_CTRL		0xfff8
@@ -6854,6 +6985,8 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_PMA_REG_84823_LED3_STRETCH_EN			0x0080
 
 /* BCM84833 only */
+#define MDIO_84833_TOP_CFG_FW_REV			0x400f
+#define MDIO_84833_TOP_CFG_FW_EEE		0x10b1
 #define MDIO_84833_TOP_CFG_XGPHY_STRAP1			0x401a
 #define MDIO_84833_SUPER_ISOLATE		0x8000
 /* These are mailbox register set used by 84833. */
@@ -6940,6 +7073,10 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_GP2_STATUS_GP_2_2			0x81d2
 #define MDIO_WC_REG_GP2_STATUS_GP_2_3			0x81d3
 #define MDIO_WC_REG_GP2_STATUS_GP_2_4			0x81d4
+#define MDIO_WC_REG_GP2_STATUS_GP_2_4_CL73_AN_CMPL 0x1000
+#define MDIO_WC_REG_GP2_STATUS_GP_2_4_CL37_AN_CMPL 0x0100
+#define MDIO_WC_REG_GP2_STATUS_GP_2_4_CL37_LP_AN_CAP 0x0010
+#define MDIO_WC_REG_GP2_STATUS_GP_2_4_CL37_AN_CAP 0x1
 #define MDIO_WC_REG_UC_INFO_B0_DEAD_TRAP		0x81EE
 #define MDIO_WC_REG_UC_INFO_B1_VERSION			0x81F0
 #define MDIO_WC_REG_UC_INFO_B1_FIRMWARE_MODE		0x81F2
@@ -6977,11 +7114,13 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_DIGITAL3_UP1			0x8329
 #define MDIO_WC_REG_DIGITAL3_LP_UP1			 0x832c
 #define MDIO_WC_REG_DIGITAL4_MISC3			0x833c
+#define MDIO_WC_REG_DIGITAL4_MISC5			0x833e
 #define MDIO_WC_REG_DIGITAL5_MISC6			0x8345
 #define MDIO_WC_REG_DIGITAL5_MISC7			0x8349
 #define MDIO_WC_REG_DIGITAL5_ACTUAL_SPEED		0x834e
 #define MDIO_WC_REG_DIGITAL6_MP5_NEXTPAGECTRL		0x8350
 #define MDIO_WC_REG_CL49_USERB0_CTRL			0x8368
+#define MDIO_WC_REG_EEE_COMBO_CONTROL0			0x8390
 #define MDIO_WC_REG_TX66_CONTROL			0x83b0
 #define MDIO_WC_REG_RX66_CONTROL			0x83c0
 #define MDIO_WC_REG_RX66_SCW0				0x83c2

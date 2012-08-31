@@ -3011,10 +3011,14 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #endif
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
+//typedef u32 netdev_features_t;
+#else /* ! < 3.3.0 */
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
 #undef ETHTOOL_SRXNTUPLE
 #endif
+#endif /* < 3.3.0 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0) )
