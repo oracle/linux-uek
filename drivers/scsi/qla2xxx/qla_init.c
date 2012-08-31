@@ -3410,8 +3410,8 @@ qla2x00_find_new_loop_id(scsi_qla_host_t *vha, fc_port_t *dev)
 
 	dev->loop_id = find_first_zero_bit(ha->loop_id_map,
 	    LOOPID_MAP_SIZE);
-
-	if (qla2x00_is_reserved_id(vha, dev->loop_id)) {
+	if (dev->loop_id >= LOOPID_MAP_SIZE ||
+	    qla2x00_is_reserved_id(vha, dev->loop_id)) {
 		dev->loop_id = FC_NO_LOOP_ID;
 		rval = QLA_FUNCTION_FAILED;
 	} else

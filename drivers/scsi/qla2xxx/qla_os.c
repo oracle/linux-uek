@@ -3178,7 +3178,8 @@ qla2x00_mem_alloc(struct qla_hw_data *ha, uint16_t req_len, uint16_t rsp_len,
 	INIT_LIST_HEAD(&ha->vp_list);
 
 	/* Allocate memory for our loop_id bitmap */
-	ha->loop_id_map = kzalloc(LOOPID_MAP_SIZE, GFP_KERNEL);
+	ha->loop_id_map = kzalloc(BITS_TO_LONGS(LOOPID_MAP_SIZE) * sizeof(long),
+	    GFP_KERNEL);
 	if (!ha->loop_id_map)
 		goto fail_async_pd;
 	else {
