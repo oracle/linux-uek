@@ -91,7 +91,12 @@
 	__xfrm_state_destroy
 	_atomic_dec_and_lock
 	_cond_resched
+	_copy_from_user
+	_copy_to_user
 	_ctype
+	_raw_spin_lock
+	_raw_spin_lock_irqsave
+	_raw_spin_unlock_irqrestore
 	_read_lock
 	_read_lock_bh
 	_read_lock_irq
@@ -130,6 +135,7 @@
 	add_uevent_var
 	add_wait_queue
 	add_wait_queue_exclusive
+	aio_complete
 	alloc_chrdev_region
 	alloc_dca_provider
 	alloc_disk
@@ -172,6 +178,7 @@
 	blk_execute_rq
 	blk_execute_rq_nowait
 	blk_fetch_request
+	blk_finish_plug
 	blk_get_request
 	blk_init_queue
 	blk_init_tags
@@ -207,11 +214,13 @@
 	blk_rq_map_user
 	blk_rq_unmap_user
 	blk_run_queue
+	blk_start_plug
 	blk_start_queue
 	blk_start_request
 	blk_stop_queue
 	blkcipher_walk_done
 	blkcipher_walk_virt
+	blkdev_get_by_dev
 	blkdev_put
 	block_commit_write
 	block_prepare_write
@@ -259,7 +268,10 @@
 	copy_in_user
 	copy_to_user
 	copy_user_generic
+	copy_user_generic_string
+	copy_user_generic_unrolled
 	cpu_khz
+	cpu_number
 	cpu_online_mask
 	cpu_possible_mask
 	cpu_present_mask
@@ -288,7 +300,9 @@
 	csum_partial
 	current_fs_time
 	current_kernel_time
+	current_task
 	d_alloc_root
+	d_drop
 	d_find_alias
 	d_instantiate
 	d_invalidate
@@ -297,6 +311,7 @@
 	d_path
 	d_prune_aliases
 	d_rehash
+	d_set_d_op
 	d_splice_alias
 	daemonize
 	datagram_poll
@@ -358,6 +373,7 @@
 	devm_kzalloc
 	devm_request_threaded_irq
 	dget_locked
+	dget_parent
 	disable_irq
 	disable_irq_nosync
 	dma_async_device_register
@@ -420,6 +436,7 @@
 	emergency_restart
 	enable_irq
 	end_page_writeback
+	end_writeback
 	eth_change_mtu
 	eth_mac_addr
 	eth_type_trans
@@ -465,6 +482,7 @@
 	find_or_create_page
 	find_vma
 	finish_wait
+	flock_lock_file_wait
 	flush_scheduled_work
 	flush_signals
 	flush_workqueue
@@ -610,6 +628,7 @@
 	init_uts_ns
 	inode_change_ok
 	inode_init_once
+	inode_newsize_ok
 	inode_setattr
 	input_allocate_device
 	input_event
@@ -619,6 +638,7 @@
 	int_to_scsilun
 	interruptible_sleep_on
 	invalidate_bdev
+	invalidate_inode_buffers
 	invalidate_inode_pages2_range
 	invalidate_mapping_pages
 	ioctl_by_bdev
@@ -656,10 +676,13 @@
 	jiffies_to_msecs
 	jiffies_to_timeval
 	kasprintf
+	kern_path
+	kern_path_parent
 	kernel_read
 	kernel_recvmsg
 	kernel_sendmsg
 	kernel_thread
+	kernel_stack
 	kfifo_alloc
 	kfifo_free
 	kfree
@@ -669,6 +692,7 @@
 	kmem_cache_alloc
 	kmem_cache_alloc_node_notrace
 	kmem_cache_alloc_notrace
+	kmem_cache_alloc_trace
 	kmem_cache_create
 	kmem_cache_destroy
 	kmem_cache_free
@@ -706,6 +730,7 @@
 	lock_rename
 	lock_sock_nested
 	lock_super
+	locks_init_lock
 	lookup_one_len
 	lro_flush_all
 	lro_receive_skb
@@ -752,11 +777,14 @@
 	misc_register
 	mnt_drop_write
 	mnt_want_write
+	mntget
+	mntput
 	mntput_no_expire
 	mod_timer
 	module_layout
 	module_put
 	module_refcount
+	mount_bdev
 	movable_zone
 	mpage_readpage
 	mpage_readpages
@@ -980,6 +1008,9 @@
 	pnp_range_reserved
 	pnp_register_driver
 	pnp_unregister_driver
+	posix_lock_file
+	posix_lock_file_wait
+	posix_test_lock
 	ppp_input
 	prepare_creds
 	prepare_to_wait
@@ -1003,6 +1034,7 @@
 	put_tty_driver
 	pv_cpu_ops
 	pv_irq_ops
+	pv_lock_ops
 	qdisc_calculate_pkt_len
 	qdisc_create_dflt
 	qdisc_destroy
@@ -1413,6 +1445,8 @@
 	tracing_generic_entry_update
 	truncate_inode_pages
 	truncate_inode_pages_range
+	truncate_pagecache
+	truncate_setsize
 	tty_buffer_request_room
 	tty_flip_buffer_push
 	tty_hangup
@@ -1550,8 +1584,10 @@
 	v4l2_ctrl_query_fill
 	v4l2_type_names
 	vfree
+	vfs_fsync
 	vfs_llseek
 	vfs_read
+	vfs_rename
 	vfs_write
 	vfs_writev
 	vga_client_register
@@ -1617,39 +1653,3 @@
 	zlib_inflateEnd
 	zlib_inflateInit2
 	zlib_inflate_workspacesize
-_copy_from_user
-_copy_to_user
-_raw_spin_lock
-_raw_spin_lock_irqsave
-_raw_spin_unlock_irqrestore
-aio_complete
-blk_finish_plug
-blk_start_plug
-blkdev_get_by_dev
-copy_user_generic_string
-copy_user_generic_unrolled
-cpu_number
-current_task
-d_drop
-d_set_d_op
-dget_parent
-end_writeback
-flock_lock_file_wait
-inode_newsize_ok
-invalidate_inode_buffers
-kern_path
-kern_path_parent
-kernel_stack
-kmem_cache_alloc_trace
-locks_init_lock
-mntget
-mntput
-mount_bdev
-posix_lock_file
-posix_lock_file_wait
-posix_test_lock
-pv_lock_ops
-truncate_pagecache
-truncate_setsize
-vfs_fsync
-vfs_rename
