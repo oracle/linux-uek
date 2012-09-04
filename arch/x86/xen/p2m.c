@@ -451,15 +451,15 @@ unsigned long __init xen_revector_p2m_tree(void)
 		if ((unsigned long)mid_p == INVALID_P2M_ENTRY)
 			continue;
 
-		if ((pfn_free + P2M_PER_PAGE) * PAGE_SIZE > size) {
-			WARN(1, "Only allocated for %ld pages, but we want %ld!\n",
-			     size, pfn_free + P2M_PER_PAGE);
-			return 0;
-		}
 		/* The old va. Rebase it on mfn_list */
 		if (mid_p >= (unsigned long *)va_start && mid_p <= (unsigned long *)va_end) {
 			unsigned long *new;
 
+			if (pfn_free  > (size / sizeof(unsigned long))) {
+				WARN(1, "Only allocated for %ld pages, but we want %ld!\n",
+				     size / sizeof(unsigned long), pfn_free);
+				return 0;
+			}
 			new = &mfn_list[pfn_free];
 
 			copy_page(new, mid_p);

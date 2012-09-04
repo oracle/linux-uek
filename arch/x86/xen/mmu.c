@@ -1815,18 +1815,18 @@ static void convert_pfn_mfn(void *v)
 	for (i = 0; i < PTRS_PER_PTE; i++)
 		pte[i] = xen_make_pte(pte[i].pte);
 }
-static __init check_pt_base(unsigned long *pt_base, unsigned long *pt_end,
-			    unsigned long addr)
+static void __init check_pt_base(unsigned long *pt_base, unsigned long *pt_end,
+				 unsigned long addr)
 {
-	if (pt_base == PFN_DOWN(__pa(addr))) {
+	if (*pt_base == PFN_DOWN(__pa(addr))) {
 		set_page_prot((void *)addr, PAGE_KERNEL);
 		clear_page((void *)addr);
-		*pt_base++;
+		(*pt_base)++;
 	}
-	if (pt_end == PFN_DOWN(__pa(addr))) {
+	if (*pt_end == PFN_DOWN(__pa(addr))) {
 		set_page_prot((void *)addr, PAGE_KERNEL);
 		clear_page((void *)addr);
-		*pt_end--;
+		(*pt_end)--;
 	}
 }
 /*
@@ -1855,7 +1855,7 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 	max_pfn_mapped = PFN_DOWN(__pa(xen_start_info->mfn_list));
 
 	pt_base = PFN_DOWN(__pa(xen_start_info->pt_base));
-	pt_end = PFN_DOWN(__pa(xen_start_info->pt_base + (xen_start_info->nr_pt_frames * PAGE_SIZE)));
+	pt_end = pt_base + xen_start_info->nr_pt_frames;
 
 	/* Zap identity mapping */
 	init_level4_pgt[0] = __pgd(0);
@@ -1923,7 +1923,9 @@ void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
 	/* We can't that easily rip out L3 and L2, as the Xen pagetables are
 	 * set out this way: [L4], [L1], [L2], [L3], [L1], [L1] ...  for
 	 * the initial domain. For guests using the toolstack, they are in:
-	 * [L4], [L3], [L2], [L1], [L1], order .. */
+	 * [L4], [L3], [L2], [L1], [L1], order .. So for dom0 we can only
+	 * rip out the [L4] (pgd), but for guests we shave off three pages.
+	 */
 	for (i = 0; i < ARRAY_SIZE(addr); i++)
 		check_pt_base(&pt_base, &pt_end, addr[i]);
 
