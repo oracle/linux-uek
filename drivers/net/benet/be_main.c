@@ -19,6 +19,7 @@
 #include "be.h"
 #include "be_cmds.h"
 #include <asm/div64.h>
+#include <linux/aer.h>
 
 MODULE_VERSION(DRV_VER);
 MODULE_DEVICE_TABLE(pci, be_dev_ids);
@@ -3504,6 +3505,8 @@ static void __devexit be_remove(struct pci_dev *pdev)
 
 	be_ctrl_cleanup(adapter);
 
+	pci_disable_pcie_error_reporting(pdev);
+
 	pci_set_drvdata(pdev, NULL);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
@@ -3794,6 +3797,10 @@ static int __devinit be_probe(struct pci_dev *pdev,
 		}
 	}
 
+	status = pci_enable_pcie_error_reporting(pdev);
+	if (status)
+		dev_err(&pdev->dev, "Could not use PCIe error reporting\n");
+
 	status = be_ctrl_init(adapter);
 	if (status)
 		goto free_netdev;
@@ -4019,6 +4026,7 @@ static pci_ers_result_t be_eeh_reset(struct pci_dev *pdev)
 	if (status)
 		return PCI_ERS_RESULT_DISCONNECT;
 
+	pci_cleanup_aer_uncorrect_error_status(pdev);
 	return PCI_ERS_RESULT_RECOVERED;
 }
 
