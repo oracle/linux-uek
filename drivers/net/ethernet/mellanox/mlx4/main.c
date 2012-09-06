@@ -1499,6 +1499,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		dev_cap = kmalloc(sizeof *dev_cap, GFP_KERNEL);
 		if (!dev_cap) {
 			mlx4_err(dev, "Failed to allocate memory for dev_cap\n");
+			err = -ENOMEM;
 			goto err_stop_fw;
 		}
 
