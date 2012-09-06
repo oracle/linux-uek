@@ -1561,11 +1561,16 @@ int btrfs_sync_file(struct file *file, int datasync)
 
 	trace_btrfs_sync_file(file, datasync);
 
-	/* we wait first, since the writeback may change the inode */
-	root->log_batch++;
-	/* the VFS called filemap_fdatawrite for us */
+	mutex_lock(&inode->i_mutex);
+
+	/*
+	 * we wait first, since the writeback may change the inode, also wait
+	 * ordered range does a filemape_write_and_wait_range which is why we
+	 * don't do it above like other file systems.
+	 */
+	atomic_inc(&root->log_batch);
 	btrfs_wait_ordered_range(inode, 0, (u64)-1);
-	root->log_batch++;
+	atomic_inc(&root->log_batch);
 
 	/*
 	 * check the transaction that last modified this inode
