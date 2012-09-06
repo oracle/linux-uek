@@ -925,18 +925,16 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	u64 objectid;
 	u64 root_flags;
 
-	rsv = trans->block_rsv;
-
 	new_root_item = kmalloc(sizeof(*new_root_item), GFP_NOFS);
 	if (!new_root_item) {
 		ret = pending->error = -ENOMEM;
-		goto fail;
+		goto root_item_alloc_fail;
 	}
 
 	ret = btrfs_find_free_objectid(tree_root, &objectid);
 	if (ret) {
 		pending->error = ret;
-		goto fail;
+		goto no_free_objectid;
 	}
 
 	btrfs_reloc_pre_snapshot(trans, pending, &to_reserve);
@@ -946,22 +944,22 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 						  to_reserve);
 		if (ret) {
 			pending->error = ret;
-			goto fail;
+			goto no_free_objectid;
 		}
 	}
 
 	ret = btrfs_qgroup_inherit(trans, fs_info, root->root_key.objectid,
 				   objectid, pending->inherit);
-	kfree(pending->inherit);
 	if (ret) {
 		pending->error = ret;
-		goto fail;
+		goto no_free_objectid;
 	}
 
 	key.objectid = objectid;
 	key.offset = (u64)-1;
 	key.type = BTRFS_ROOT_ITEM_KEY;
 
+	rsv = trans->block_rsv;
 	trans->block_rsv = &pending->block_rsv;
 
 	dentry = pending->dentry;
@@ -981,10 +979,9 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 				BTRFS_FT_DIR, index);
 	if (ret == -EEXIST) {
 		pending->error = -EEXIST;
-		dput(parent);
 		goto fail;
 	} else if (ret) {
-		goto abort_trans_dput;
+		goto abort_trans;
 	}
 
 	btrfs_i_size_write(parent_inode, parent_inode->i_size +
@@ -992,7 +989,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	parent_inode->i_mtime = parent_inode->i_ctime = CURRENT_TIME;
 	ret = btrfs_update_inode(trans, parent_root, parent_inode);
 	if (ret)
-		goto abort_trans_dput;
+		goto abort_trans;
 
 	/*
 	 * pull in the delayed directory update
@@ -1001,10 +998,8 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	 * snapshot
 	 */
 	ret = btrfs_run_delayed_items(trans, root);
-	if (ret) { /* Transaction aborted */
-		dput(parent);
-		goto fail;
-	}
+	if (ret)	/* Transaction aborted */
+		goto abort_trans;
 
 	record_root_in_trans(trans, root);
 	btrfs_set_root_last_snapshot(&root->root_item, trans->transid);
@@ -1023,7 +1018,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	if (ret) {
 		btrfs_tree_unlock(old);
 		free_extent_buffer(old);
-		goto abort_trans_dput;
+		goto abort_trans;
 	}
 
 	btrfs_set_lock_blocking(old);
@@ -1033,7 +1028,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	btrfs_tree_unlock(old);
 	free_extent_buffer(old);
 	if (ret)
-		goto abort_trans_dput;
+		goto abort_trans;
 
 	/* see comments in should_cow_block() */
 	root->force_cow = 1;
@@ -1046,7 +1041,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	btrfs_tree_unlock(tmp);
 	free_extent_buffer(tmp);
 	if (ret)
-		goto abort_trans_dput;
+		goto abort_trans;
 
 	/*
 	 * insert root back/forward references
@@ -1055,9 +1050,8 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 				 parent_root->root_key.objectid,
 				 btrfs_ino(parent_inode), index,
 				 dentry->d_name.name, dentry->d_name.len);
-	dput(parent);
 	if (ret)
-		goto fail;
+		goto abort_trans;
 
 	key.offset = (u64)-1;
 	pending->snap = btrfs_read_fs_root_no_name(root->fs_info, &key);
@@ -1069,15 +1063,15 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	ret = btrfs_reloc_post_snapshot(trans, pending);
 	if (ret)
 		goto abort_trans;
-	ret = 0;
 fail:
-	kfree(new_root_item);
+	dput(parent);
 	trans->block_rsv = rsv;
+no_free_objectid:
+	kfree(new_root_item);
+root_item_alloc_fail:
 	btrfs_block_rsv_release(root, &pending->block_rsv, (u64)-1);
 	return ret;
 
-abort_trans_dput:
-	dput(parent);
 abort_trans:
 	btrfs_abort_transaction(trans, root, ret);
 	goto fail;
