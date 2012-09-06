@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.6.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,138 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Sep 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.7.0.el6uek]
+- htrimer: fix kabi break. (Joe Jin)
+- timekeeping: Add missing update call in timekeeping_resume() (Thomas
+  Gleixner)
+- hrtimer: Update hrtimer base offsets each hrtimer_interrupt (John Stultz)
+- timekeeping: Provide hrtimer update function (Thomas Gleixner)
+- hrtimers: Move lock held region in hrtimer_interrupt() (Thomas Gleixner)
+- timekeeping: Maintain ktime_t based offsets for hrtimers (Thomas Gleixner)
+- timekeeping: Fix leapsecond triggered load spike issue (John Stultz)
+- hrtimer: Provide clock_was_set_delayed() (John Stultz)
+- time: Move common updates to a function (Thomas Gleixner)
+- timekeeping: Fix CLOCK_MONOTONIC inconsistency during leapsecond (John
+  Stultz)
+- ntp: Correct TAI offset during leap second (Richard Cochran)
+- Revert "3.0.x: hrtimer: Fix clock_was_set so it is safe to call from irq
+  context" (Joe Jin)
+- Revert "3.0.x: time: Fix leapsecond triggered hrtimer/futex load spike issue"
+  (Joe Jin)
+- Revert "3.0.x: hrtimer: Update hrtimer base offsets each hrtimer_interrupt"
+  (Joe Jin)
+- scsi/lpfc: Resolve spinlock issue (Vaios Papadimitriou)
+- scsi/lpfc: Update lpfc version for 8.3.5.82.2p driver release (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix null pointer error for piocbq (Vaios Papadimitriou)
+- scsi/lpfc: Add missing jumps to mempool_free to fix potential memory leak
+  (Vaios Papadimitriou)
+- scsi/lpfc: Fixed leaking memory from pci dma pool (Vaios Papadimitriou)
+- scsi/lpfc: Logged XRI of the SCSI command to be aborted on abort handler
+  timeout (Vaios Papadimitriou)
+- scsi/lpfc: Fix bug with driver logging too many fcp underrun messages (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fixed unnecessary SCSI device reset escalation due to LLD handling
+  of I/O abort (Vaios Papadimitriou)
+- scsi/lpfc: Fixed system panic due to midlayer abort and driver complete race
+  on SCSI cmd (Vaios Papadimitriou)
+- scsi/lpfc: Fix unable to create vports on FCoE SLI4 adapter (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix BlockGuard lpfc_printf_vlog messages (Vaios Papadimitriou)
+- scsi/lpfc: Fix parameter field in CQE to mask for LOCAL_REJECT status (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fixed new requirement compatibility with Resource and Capacity
+  Descriptors (Vaios Papadimitriou)
+- scsi/lpfc: Fixed incomplete list of SLI4 commands with extended 300 second
+  timeout value (Vaios Papadimitriou)
+- scsi/lpfc: Fix switching ports on Fabric causing additional fc_host rport
+  entries (Vaios Papadimitriou)
+- scsi/lpfc: Fix conflicts in log message numbers (Vaios Papadimitriou)
+- scsi/lpfc: Fixed kernel panic after scsi_eh escalation by checking the proper
+  return status (Vaios Papadimitriou)
+- scsi/lpfc: Fix driver not checking data transfered on write commands (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix bug with message 2520 appearing in the messages file (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix bug with rrq_pool not being destroyed during driver removal
+  (Vaios Papadimitriou)
+- scsi/lpfc: Fix Driver not attaching to OCe14000 adapters (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix bug with driver not setting the diag set valid bit for
+  loopback testing (Vaios Papadimitriou)
+- scsi/lpfc: Fix bug with driver does not reporting misconfigured ports for
+  Ganymede (Vaios Papadimitriou)
+- scsi/lpfc: Fix System Panic During IO Test using Medusa tool (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix fcp_imax module parameter to dynamically change FCP EQ delay
+  multiplier (Vaios Papadimitriou)
+- scsi/lpfc: Fix successful aborts returning incorrect status (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fixed system held-up when performing resource provsion through
+  same PCI function (Vaios Papadimitriou)
+- scsi/lpfc: Fixed debug helper routine failed to dump CQ and EQ entries in
+  non-MSI-X mode (Vaios Papadimitriou)
+- scsi/lpfc: Fixed system crash due to not providing SCSI error-handling host
+  reset handler (Vaios Papadimitriou)
+- scsi/lpfc: Fix bug with driver using the wrong xritag when sending an els
+  echo (Vaios Papadimitriou)
+- scsi/lpfc: Increment capability to dump various SLI4 queues via debug helper
+  routines (Vaios Papadimitriou)
+- scsi/lpfc: Fix unsol abts xri lookup (Vaios Papadimitriou)
+- scsi/lpfc: Bug fixes for LPe16000 to LPe16000 discovery (CR 130446) (Vaios
+  Papadimitriou)
+- scsi/lpfc: Reregister VPI for SLI3 after cable moved to new 8Gb FC Adapter
+  port (Vaios Papadimitriou)
+- scsi/lpfc: Fix driver crash during back-to-back ramp events (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix log message 2597 displayed when no error is detected (Vaios
+  Papadimitriou)
+- scsi/lpfc: Address FCP LOG support for Finisar trace correlation (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix kernel panic when going into to sleep state (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix error message displayed even when not an error (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix Read Link status data (Vaios Papadimitriou)
+- scsi/lpfc: Fix initiator sending flogi after acking flogi from target (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix bug with driver not supporting the get controller attributes
+  command (Vaios Papadimitriou)
+- scsi/lpfc: Incremented capability for handling SLI4-port XRI resource-
+  provisioning profile change (Vaios Papadimitriou)
+- scsi/lpfc: Sync driver base with upstream code (Vaios Papadimitriou)
+- scsi/lpfc: Change default DA_ID support from disabled to enabled (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix bug with driver unload leaving a scsi host for a vport around
+  (Vaios Papadimitriou)
+- scsi/lpfc: Incremented capability for T10 DIF debugfs error injection (CR
+  123966) (Vaios Papadimitriou)
+- scsi/lpfc: Update copyright date for files modified in 2012 (Vaios
+  Papadimitriou)
+- scsi/lpfc: Refine T10 DIF debugfs error injection capability for verification
+  usage (CR 123966) (Vaios Papadimitriou)
+- scsi/lpfc: Update copyright date for files modified in 2012 (Vaios
+  Papadimitriou)
+- scsi/lpfc: Make BA_ACC work on a fully qualified exchange (CR 126289) (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fix KERNEL allocation while lock held (Vaios Papadimitriou)
+- scsi/lpfc: Incorrect usage of bghm for BlockGuard errors (CR 127022) (Vaios
+  Papadimitriou)
+- scsi/lpfc: Fixed capability to inject T10 DIF errors via debugfs (CR 123966)
+  (Vaios Papadimitriou)
+- scsi/lpfc: Fix SLI4 BlockGuard behavior when protection data is generated by
+  HBA (CR 121980) (Vaios Papadimitriou)
+- scsi/lpfc: Fixed driver logging in area of SLI4 port error attention and
+  reset recovery (Vaios Papadimitriou)
+- scsi/lpfc: Fixed the ability to process T10 DIF/Blockguard with SLI4 16Gb FC
+  Adapters (CR 121980) (Vaios Papadimitriou)
+- scsi/lpfc: Fixed the ability to process T10 DIF/Blockguard with SLI4 16Gb FC
+  Adapters (CR 121980) (Vaios Papadimitriou)
+- scsi/lpfc: Merge from upstream: scsi: Fix up files implicitly depending on
+  module.h inclusion (Vaios Papadimitriou)
+- xen/p2m: Fix one by off error in checking the P2M tree directory. (Konrad
+  Rzeszutek Wilk)
+
 * Tue Sep 04 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.6.0.el6uek]
 - [kabi] update kabi (Maxim Uvarov)
 - [config] clean up NBD settings in kernel config (Maxim Uvarov)
