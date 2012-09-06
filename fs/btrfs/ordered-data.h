@@ -186,10 +186,12 @@ struct btrfs_ordered_extent *btrfs_lookup_ordered_range(struct inode *inode,
 int btrfs_ordered_update_i_size(struct inode *inode, u64 offset,
 				struct btrfs_ordered_extent *ordered);
 int btrfs_find_ordered_sum(struct inode *inode, u64 offset, u64 disk_bytenr, u32 *sum);
-int btrfs_run_ordered_operations(struct btrfs_root *root, int wait);
-int btrfs_add_ordered_operation(struct btrfs_trans_handle *trans,
-				struct btrfs_root *root,
-				struct inode *inode);
-int btrfs_wait_ordered_extents(struct btrfs_root *root,
-			       int nocow_only, int delay_iput);
+void btrfs_run_ordered_operations(struct btrfs_root *root, int wait);
+void btrfs_add_ordered_operation(struct btrfs_trans_handle *trans,
+				 struct btrfs_root *root,
+				 struct inode *inode);
+void btrfs_wait_ordered_extents(struct btrfs_root *root,
+				int nocow_only, int delay_iput);
+int __init ordered_data_init(void);
+void ordered_data_exit(void);
 #endif
