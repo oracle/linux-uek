@@ -1251,6 +1251,8 @@ typedef struct {
 #define PCI_VENDOR_ID_SERVERENGINE  0x19a2
 #define PCI_DEVICE_ID_TIGERSHARK    0x0704
 #define PCI_DEVICE_ID_TOMCAT        0x0714
+#define PCI_DEVICE_ID_SKYHAWK       0x0724
+#define PCI_DEVICE_ID_SKYHAWK_VF    0x072c
 
 #define JEDEC_ID_ADDRESS            0x0080001c
 #define FIREFLY_JEDEC_ID            0x1ACC
@@ -1458,6 +1460,7 @@ typedef struct {		/* FireFly BIU registers */
 #define MBX_UNREG_FCFI	    0xA2
 #define MBX_INIT_VFI        0xA3
 #define MBX_INIT_VPI        0xA4
+#define MBX_ACCESS_VDATA    0xA5
 
 #define MBX_AUTH_PORT       0xF8
 #define MBX_SECURITY_MGMT   0xF9
@@ -3242,6 +3245,7 @@ typedef struct {
 #define IOERR_SLI_DOWN                0x101  /* ulpStatus  - Driver defined */
 #define IOERR_SLI_BRESET              0x102
 #define IOERR_SLI_ABORTED             0x103
+#define IOERR_PARAM_MASK              0x1ff
 } PARM_ERR;
 
 typedef union {
@@ -3373,6 +3377,9 @@ typedef struct {
 	uint32_t xrsqRo;	/* Starting Relative Offset */
 	WORD5 w5;		/* Header control/status word */
 } XMT_SEQ_FIELDS64;
+
+/* This word is remote ports D_ID for XMIT_ELS_RSP64 */
+#define xmit_els_remoteID xrsqRo
 
 /* IOCB Command template for 64 bit RCV_SEQUENCE64 */
 typedef struct {

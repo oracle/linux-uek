@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2011 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2012 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -123,6 +123,10 @@ lpfc_dev_loss_tmo_callbk(struct fc_rport *rport)
 		"rport devlosscb: sid:x%x did:x%x flg:x%x",
 		ndlp->nlp_sid, ndlp->nlp_DID, ndlp->nlp_flag);
 
+	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
+			 "3181 dev_loss_callbk x%06x, rport %p flg x%x\n",
+			 ndlp->nlp_DID, ndlp->rport, ndlp->nlp_flag);
+
 	/* Don't defer this if we are in the process of deleting the vport
 	 * or unloading the driver. The unload will cleanup the node
 	 * appropriately we just need to cleanup the ndlp rport info here.
@@ -141,6 +145,15 @@ lpfc_dev_loss_tmo_callbk(struct fc_rport *rport)
 
 	if (ndlp->nlp_state == NLP_STE_MAPPED_NODE)
 		return;
+
+	if (ndlp->nlp_type & NLP_FABRIC) {
+
+		/* If the WWPN of the rport and ndlp don't match, ignore it */
+		if (rport->port_name != wwn_to_u64(ndlp->nlp_portname.u.wwn)) {
+			put_device(&rport->dev);
+			return;
+		}
+	}
 
 	evtp = &ndlp->dev_loss_evt;
 
@@ -201,6 +214,10 @@ lpfc_dev_loss_tmo_handler(struct lpfc_nodelist *ndlp)
 	lpfc_debugfs_disc_trc(vport, LPFC_DISC_TRC_RPORT,
 		"rport devlosstmo:did:x%x type:x%x id:x%x",
 		ndlp->nlp_DID, ndlp->nlp_type, rport->scsi_target_id);
+
+	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
+			 "3182 dev_loss_tmo_handler x%06x, rport %p flg x%x\n",
+			 ndlp->nlp_DID, ndlp->rport, ndlp->nlp_flag);
 
 	/* Don't defer this if we are in the process of deleting the vport
 	 * or unloading the driver. The unload will cleanup the node
@@ -530,7 +547,7 @@ lpfc_work_list_done(struct lpfc_hba *phba)
 			break;
 		case LPFC_EVT_OFFLINE_PREP:
 			if (phba->link_state >= LPFC_LINK_DOWN)
-				lpfc_offline_prep(phba);
+				lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 			*(int *)(evtp->evt_arg1) = 0;
 			complete((struct completion *)(evtp->evt_arg2));
 			break;
@@ -713,6 +730,7 @@ lpfc_do_work(void *p)
 	int rc;
 
 	set_user_nice(current, -20);
+	current->flags |= PF_NOFREEZE;
 	phba->data_flags = 0;
 
 	while (!kthread_should_stop()) {
@@ -1094,7 +1112,7 @@ lpfc_mbx_cmpl_local_config_link(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
 	/* Start discovery by sending a FLOGI. port_state is identically
 	 * LPFC_FLOGI while waiting for FLOGI cmpl
 	 */
-	if (vport->port_state != LPFC_FLOGI)
+	if (vport->port_state != LPFC_FLOGI || vport->fc_flag & FC_PT2PT_PLOGI)
 		lpfc_initial_flogi(vport);
 	return;
 
@@ -2881,9 +2899,14 @@ lpfc_mbx_cmpl_reg_vfi(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 	}
 
 	if (vport->port_state == LPFC_FABRIC_CFG_LINK) {
-		/* For private loop just start discovery and we are done. */
-		if ((phba->fc_topology == LPFC_TOPOLOGY_LOOP) &&
-		    !(vport->fc_flag & FC_PUBLIC_LOOP)) {
+		/*
+		 * For private loop or for NPort pt2pt,
+		 * just start discovery and we are done.
+		 */
+		if ((vport->fc_flag & FC_PT2PT) ||
+		    ((phba->fc_topology == LPFC_TOPOLOGY_LOOP) &&
+		    !(vport->fc_flag & FC_PUBLIC_LOOP))) {
+
 			/* Use loop map to make discovery list */
 			lpfc_disc_list_loopmap(vport);
 			/* Start discovery */
@@ -3486,7 +3509,7 @@ lpfc_create_static_vport(struct lpfc_hba *phba)
 	LPFC_MBOXQ_t *pmb = NULL;
 	MAILBOX_t *mb;
 	struct static_vport_info *vport_info;
-	int rc = 0, i;
+	int mbx_wait_rc = 0, i;
 	struct fc_vport_identifiers vport_id;
 	struct fc_vport *new_fc_vport;
 	struct Scsi_Host *shost;
@@ -3503,7 +3526,7 @@ lpfc_create_static_vport(struct lpfc_hba *phba)
 				" allocate mailbox memory\n");
 		return;
 	}
-
+	memset(pmb, 0, sizeof(LPFC_MBOXQ_t));
 	mb = &pmb->u.mb;
 
 	vport_info = kzalloc(sizeof(struct static_vport_info), GFP_KERNEL);
@@ -3517,24 +3540,31 @@ lpfc_create_static_vport(struct lpfc_hba *phba)
 
 	vport_buff = (uint8_t *) vport_info;
 	do {
+		/* free dma buffer from previous round */
+		if (pmb->context1) {
+			mp = (struct lpfc_dmabuf *)pmb->context1;
+			lpfc_mbuf_free(phba, mp->virt, mp->phys);
+			kfree(mp);
+		}
 		if (lpfc_dump_static_vport(phba, pmb, offset))
 			goto out;
 
 		pmb->vport = phba->pport;
-		rc = lpfc_sli_issue_mbox_wait(phba, pmb, LPFC_MBOX_TMO);
+		mbx_wait_rc = lpfc_sli_issue_mbox_wait(phba, pmb,
+							LPFC_MBOX_TMO);
 
-		if ((rc != MBX_SUCCESS) || mb->mbxStatus) {
+		if ((mbx_wait_rc != MBX_SUCCESS) || mb->mbxStatus) {
 			lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
 				"0544 lpfc_create_static_vport failed to"
 				" issue dump mailbox command ret 0x%x "
 				"status 0x%x\n",
-				rc, mb->mbxStatus);
+				mbx_wait_rc, mb->mbxStatus);
 			goto out;
 		}
 
 		if (phba->sli_rev == LPFC_SLI_REV4) {
 			byte_count = pmb->u.mqe.un.mb_words[5];
-			mp = (struct lpfc_dmabuf *) pmb->context2;
+			mp = (struct lpfc_dmabuf *)pmb->context1;
 			if (byte_count > sizeof(struct static_vport_info) -
 					offset)
 				byte_count = sizeof(struct static_vport_info)
@@ -3598,9 +3628,9 @@ lpfc_create_static_vport(struct lpfc_hba *phba)
 
 out:
 	kfree(vport_info);
-	if (rc != MBX_TIMEOUT) {
-		if (pmb->context2) {
-			mp = (struct lpfc_dmabuf *) pmb->context2;
+	if (mbx_wait_rc != MBX_TIMEOUT) {
+		if (pmb->context1) {
+			mp = (struct lpfc_dmabuf *)pmb->context1;
 			lpfc_mbuf_free(phba, mp->virt, mp->phys);
 			kfree(mp);
 		}
@@ -3828,6 +3858,10 @@ lpfc_register_remote_port(struct lpfc_vport *vport, struct lpfc_nodelist *ndlp)
 	if (rport_ids.roles !=  FC_RPORT_ROLE_UNKNOWN)
 		fc_remote_port_rolechg(rport, rport_ids.roles);
 
+	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
+			 "3183 rport register x%06x, rport %p role x%x\n",
+			 ndlp->nlp_DID, rport, rport_ids.roles);
+
 	if ((rport->scsi_target_id != -1) &&
 	    (rport->scsi_target_id < LPFC_MAX_TARGET)) {
 		ndlp->nlp_sid = rport->scsi_target_id;
@@ -3843,6 +3877,10 @@ lpfc_unregister_remote_port(struct lpfc_nodelist *ndlp)
 	lpfc_debugfs_disc_trc(ndlp->vport, LPFC_DISC_TRC_RPORT,
 		"rport delete:    did:x%x flg:x%x type x%x",
 		ndlp->nlp_DID, ndlp->nlp_flag, ndlp->nlp_type);
+
+	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
+			 "3184 rport unregister x%06x, rport %p\n",
+			 ndlp->nlp_DID, rport);
 
 	fc_remote_port_delete(rport);
 
@@ -5359,9 +5397,17 @@ __lpfc_find_node(struct lpfc_vport *vport, node_filter filter, void *param)
 	struct lpfc_nodelist *ndlp;
 
 	list_for_each_entry(ndlp, &vport->fc_nodes, nlp_listp) {
-		if (filter(ndlp, param))
+		if (filter(ndlp, param)) {
+			lpfc_printf_vlog(vport, KERN_INFO, LOG_NODE,
+					 "3185 FIND node filter %p DID "
+					 "Data: x%p x%x x%x\n",
+					 filter, ndlp, ndlp->nlp_DID,
+					 ndlp->nlp_flag);
 			return ndlp;
+		}
 	}
+	lpfc_printf_vlog(vport, KERN_INFO, LOG_NODE,
+			 "3186 FIND node filter %p NOT FOUND.\n", filter);
 	return NULL;
 }
 
@@ -5490,9 +5536,9 @@ lpfc_nlp_release(struct kref *kref)
 		ndlp->nlp_DID, ndlp->nlp_flag, ndlp->nlp_type);
 
 	lpfc_printf_vlog(ndlp->vport, KERN_INFO, LOG_NODE,
-			"0279 lpfc_nlp_release: ndlp:x%p "
+			"0279 lpfc_nlp_release: ndlp:x%p did %x "
 			"usgmap:x%x refcnt:%d\n",
-			(void *)ndlp, ndlp->nlp_usg_map,
+			(void *)ndlp, ndlp->nlp_DID, ndlp->nlp_usg_map,
 			atomic_read(&ndlp->kref.refcount));
 
 	/* remove ndlp from action. */

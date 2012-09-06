@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2009 Emulex.  All rights reserved.                *
+ * Copyright (C) 2009-2012 Emulex.  All rights reserved.                *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -228,19 +228,15 @@ struct lpfc_sli4_flags {
 #define lpfc_idx_rsrc_rdy_MASK		0x00000001
 #define lpfc_idx_rsrc_rdy_WORD		word0
 #define LPFC_IDX_RSRC_RDY		1
-#define lpfc_xri_rsrc_rdy_SHIFT		1
-#define lpfc_xri_rsrc_rdy_MASK		0x00000001
-#define lpfc_xri_rsrc_rdy_WORD		word0
-#define LPFC_XRI_RSRC_RDY		1
-#define lpfc_rpi_rsrc_rdy_SHIFT		2
+#define lpfc_rpi_rsrc_rdy_SHIFT		1
 #define lpfc_rpi_rsrc_rdy_MASK		0x00000001
 #define lpfc_rpi_rsrc_rdy_WORD		word0
 #define LPFC_RPI_RSRC_RDY		1
-#define lpfc_vpi_rsrc_rdy_SHIFT		3
+#define lpfc_vpi_rsrc_rdy_SHIFT		2
 #define lpfc_vpi_rsrc_rdy_MASK		0x00000001
 #define lpfc_vpi_rsrc_rdy_WORD		word0
 #define LPFC_VPI_RSRC_RDY		1
-#define lpfc_vfi_rsrc_rdy_SHIFT		4
+#define lpfc_vfi_rsrc_rdy_SHIFT		3
 #define lpfc_vfi_rsrc_rdy_MASK		0x00000001
 #define lpfc_vfi_rsrc_rdy_WORD		word0
 #define LPFC_VFI_RSRC_RDY		1
@@ -321,6 +317,10 @@ struct lpfc_cqe {
 #define CQE_STATUS_CMD_REJECT		0xb
 #define CQE_STATUS_FCP_TGT_LENCHECK	0xc
 #define CQE_STATUS_NEED_BUFF_ENTRY	0xf
+#define CQE_STATUS_DI_ERROR		0x16
+
+/* Used when mapping CQE status to IOCB */
+#define LPFC_IOCB_STATUS_MASK		0xf
 
 /* Status returned by hardware (valid only if status = CQE_STATUS_SUCCESS). */
 #define CQE_HW_STATUS_NO_ERR		0x0
@@ -338,7 +338,7 @@ struct lpfc_cqe {
  * Define mask value for xri_aborted and wcqe completed CQE extended status.
  * Currently, extended status is limited to 9 bits (0x0 -> 0x103) .
  */
-#define WCQE_PARAM_MASK		0x1FF;
+#define WCQE_PARAM_MASK		0x1FF
 
 /* completion queue entry for wqe completions */
 struct lpfc_wcqe_complete {
@@ -354,6 +354,21 @@ struct lpfc_wcqe_complete {
 #define lpfc_wcqe_c_hw_status_WORD	word0
 	uint32_t total_data_placed;
 	uint32_t parameter;
+#define lpfc_wcqe_c_bg_edir_SHIFT	5
+#define lpfc_wcqe_c_bg_edir_MASK	0x00000001
+#define lpfc_wcqe_c_bg_edir_WORD	parameter
+#define lpfc_wcqe_c_bg_tdpv_SHIFT	3
+#define lpfc_wcqe_c_bg_tdpv_MASK	0x00000001
+#define lpfc_wcqe_c_bg_tdpv_WORD	parameter
+#define lpfc_wcqe_c_bg_re_SHIFT		2
+#define lpfc_wcqe_c_bg_re_MASK		0x00000001
+#define lpfc_wcqe_c_bg_re_WORD		parameter
+#define lpfc_wcqe_c_bg_ae_SHIFT		1
+#define lpfc_wcqe_c_bg_ae_MASK		0x00000001
+#define lpfc_wcqe_c_bg_ae_WORD		parameter
+#define lpfc_wcqe_c_bg_ge_SHIFT		0
+#define lpfc_wcqe_c_bg_ge_MASK		0x00000001
+#define lpfc_wcqe_c_bg_ge_WORD		parameter
 	uint32_t word3;
 #define lpfc_wcqe_c_valid_SHIFT		lpfc_cqe_valid_SHIFT
 #define lpfc_wcqe_c_valid_MASK		lpfc_cqe_valid_MASK
@@ -365,8 +380,8 @@ struct lpfc_wcqe_complete {
 #define lpfc_wcqe_c_pv_MASK		0x00000001
 #define lpfc_wcqe_c_pv_WORD		word3
 #define lpfc_wcqe_c_priority_SHIFT	24
-#define lpfc_wcqe_c_priority_MASK		0x00000007
-#define lpfc_wcqe_c_priority_WORD		word3
+#define lpfc_wcqe_c_priority_MASK	0x00000007
+#define lpfc_wcqe_c_priority_WORD	word3
 #define lpfc_wcqe_c_code_SHIFT		lpfc_cqe_code_SHIFT
 #define lpfc_wcqe_c_code_MASK		lpfc_cqe_code_MASK
 #define lpfc_wcqe_c_code_WORD		lpfc_cqe_code_WORD
@@ -859,22 +874,29 @@ struct mbox_header {
 #define LPFC_MBOX_OPCODE_MQ_CREATE			0x15
 #define LPFC_MBOX_OPCODE_GET_CNTL_ATTRIBUTES		0x20
 #define LPFC_MBOX_OPCODE_NOP				0x21
+#define LPFC_MBOX_OPCODE_MODIFY_EQ_DELAY		0x29
 #define LPFC_MBOX_OPCODE_MQ_DESTROY			0x35
 #define LPFC_MBOX_OPCODE_CQ_DESTROY			0x36
 #define LPFC_MBOX_OPCODE_EQ_DESTROY			0x37
 #define LPFC_MBOX_OPCODE_QUERY_FW_CFG			0x3A
 #define LPFC_MBOX_OPCODE_FUNCTION_RESET			0x3D
+#define LPFC_MBOX_OPCODE_SET_PHYSICAL_LINK_CONFIG	0x3E
+#define LPFC_MBOX_OPCODE_SET_BOOT_CONFIG		0x43
 #define LPFC_MBOX_OPCODE_GET_PORT_NAME			0x4D
 #define LPFC_MBOX_OPCODE_MQ_CREATE_EXT			0x5A
+#define LPFC_MBOX_OPCODE_GET_VPD_DATA			0x5B
+#define LPFC_MBOX_OPCODE_SEND_ACTIVATION		0x73
+#define LPFC_MBOX_OPCODE_RESET_LICENSES			0x74
 #define LPFC_MBOX_OPCODE_GET_RSRC_EXTENT_INFO		0x9A
 #define LPFC_MBOX_OPCODE_GET_ALLOC_RSRC_EXTENT		0x9B
 #define LPFC_MBOX_OPCODE_ALLOC_RSRC_EXTENT		0x9C
 #define LPFC_MBOX_OPCODE_DEALLOC_RSRC_EXTENT		0x9D
-#define LPFC_MBOX_OPCODE_GET_FUNCTION_CONFIG    	0xA0
+#define LPFC_MBOX_OPCODE_GET_FUNCTION_CONFIG		0xA0
+#define LPFC_MBOX_OPCODE_GET_PROFILE_CAPACITIES		0xA1
 #define LPFC_MBOX_OPCODE_GET_PROFILE_CONFIG		0xA4
-#define LPFC_MBOX_OPCODE_SET_PROFILE_CONFIG     	0xA5
+#define LPFC_MBOX_OPCODE_SET_PROFILE_CONFIG		0xA5
 #define LPFC_MBOX_OPCODE_GET_PROFILE_LIST		0xA6
-#define LPFC_MBOX_OPCODE_SET_ACT_PROFILE        	0xA8
+#define LPFC_MBOX_OPCODE_SET_ACT_PROFILE		0xA8
 #define LPFC_MBOX_OPCODE_GET_FACTORY_PROFILE_CONFIG	0xA9
 #define LPFC_MBOX_OPCODE_READ_OBJECT			0xAB
 #define LPFC_MBOX_OPCODE_WRITE_OBJECT			0xAC
@@ -924,6 +946,13 @@ struct eq_context {
 #define lpfc_eq_context_delay_multi_WORD	word2
 	uint32_t reserved3;
 };
+
+struct eq_delay_info {
+	uint32_t eq_id;
+	uint32_t phase;
+	uint32_t delay_multi;
+};
+#define	LPFC_MAX_EQ_DELAY	8
 
 struct sgl_page_pairs {
 	uint32_t sgl_pg0_addr_lo;
@@ -983,6 +1012,19 @@ struct lpfc_mbx_eq_create {
 #define lpfc_mbx_eq_create_q_id_SHIFT	0
 #define lpfc_mbx_eq_create_q_id_MASK	0x0000FFFF
 #define lpfc_mbx_eq_create_q_id_WORD	word0
+		} response;
+	} u;
+};
+
+struct lpfc_mbx_modify_eq_delay {
+	struct mbox_header header;
+	union {
+		struct {
+			uint32_t num_eq;
+			struct eq_delay_info eq[LPFC_MAX_EQ_DELAY];
+		} request;
+		struct {
+			uint32_t word0;
 		} response;
 	} u;
 };
@@ -1346,6 +1388,11 @@ struct lpfc_mbx_set_link_diag_state {
 #define lpfc_mbx_set_diag_state_diag_SHIFT	0
 #define lpfc_mbx_set_diag_state_diag_MASK	0x00000001
 #define lpfc_mbx_set_diag_state_diag_WORD	word0
+#define lpfc_mbx_set_diag_state_diag_bit_valid_SHIFT	2
+#define lpfc_mbx_set_diag_state_diag_bit_valid_MASK	0x00000001
+#define lpfc_mbx_set_diag_state_diag_bit_valid_WORD	word0
+#define LPFC_DIAG_STATE_DIAG_BIT_VALID_NO_CHANGE	0
+#define LPFC_DIAG_STATE_DIAG_BIT_VALID_CHANGE		1
 #define lpfc_mbx_set_diag_state_link_num_SHIFT	16
 #define lpfc_mbx_set_diag_state_link_num_MASK	0x0000003F
 #define lpfc_mbx_set_diag_state_link_num_WORD	word0
@@ -2520,7 +2567,7 @@ struct lpfc_mbx_get_sli4_parameters {
 };
 
 struct lpfc_rscr_desc_generic {
-#define LPFC_RSRC_DESC_WSIZE			18
+#define LPFC_RSRC_DESC_WSIZE			22
 	uint32_t desc[LPFC_RSRC_DESC_WSIZE];
 };
 
@@ -2530,6 +2577,9 @@ struct lpfc_rsrc_desc_pcie {
 #define lpfc_rsrc_desc_pcie_type_MASK		0x000000ff
 #define lpfc_rsrc_desc_pcie_type_WORD		word0
 #define LPFC_RSRC_DESC_TYPE_PCIE		0x40
+#define lpfc_rsrc_desc_pcie_length_SHIFT	8
+#define lpfc_rsrc_desc_pcie_length_MASK		0x000000ff
+#define lpfc_rsrc_desc_pcie_length_WORD		word0
 	uint32_t word1;
 #define lpfc_rsrc_desc_pcie_pfnum_SHIFT		0
 #define lpfc_rsrc_desc_pcie_pfnum_MASK		0x000000ff
@@ -2557,6 +2607,12 @@ struct lpfc_rsrc_desc_fcfcoe {
 #define lpfc_rsrc_desc_fcfcoe_type_MASK		0x000000ff
 #define lpfc_rsrc_desc_fcfcoe_type_WORD		word0
 #define LPFC_RSRC_DESC_TYPE_FCFCOE		0x43
+#define lpfc_rsrc_desc_fcfcoe_length_SHIFT	8
+#define lpfc_rsrc_desc_fcfcoe_length_MASK	0x000000ff
+#define lpfc_rsrc_desc_fcfcoe_length_WORD	word0
+#define LPFC_RSRC_DESC_TYPE_FCFCOE_V0_RSVD	0
+#define LPFC_RSRC_DESC_TYPE_FCFCOE_V0_LENGTH	72
+#define LPFC_RSRC_DESC_TYPE_FCFCOE_V1_LENGTH	88
 	uint32_t word1;
 #define lpfc_rsrc_desc_fcfcoe_vfnum_SHIFT	0
 #define lpfc_rsrc_desc_fcfcoe_vfnum_MASK	0x000000ff
@@ -2615,6 +2671,12 @@ struct lpfc_rsrc_desc_fcfcoe {
 #define lpfc_rsrc_desc_fcfcoe_eq_cnt_SHIFT	16
 #define lpfc_rsrc_desc_fcfcoe_eq_cnt_MASK	0x0000ffff
 #define lpfc_rsrc_desc_fcfcoe_eq_cnt_WORD	word13
+/* extended FC/FCoE Resource Descriptor when length = 88 bytes */
+	uint32_t bw_min;
+	uint32_t bw_max;
+	uint32_t iops_min;
+	uint32_t iops_max;
+	uint32_t reserved[4];
 };
 
 struct lpfc_func_cfg {
@@ -2860,6 +2922,7 @@ struct lpfc_mqe {
 		struct lpfc_mbx_mq_create mq_create;
 		struct lpfc_mbx_mq_create_ext mq_create_ext;
 		struct lpfc_mbx_eq_create eq_create;
+		struct lpfc_mbx_modify_eq_delay eq_delay;
 		struct lpfc_mbx_cq_create cq_create;
 		struct lpfc_mbx_wq_create wq_create;
 		struct lpfc_mbx_rq_create rq_create;
@@ -3069,6 +3132,28 @@ struct lpfc_acqe_fc_la {
 #define LPFC_FC_LA_EVENT_TYPE_SHARED_LINK	0x2
 };
 
+struct lpfc_acqe_misconfigured_event {
+	struct {
+	uint32_t word0;
+#define lpfc_sli_misconfigured_port0_SHIFT	0
+#define lpfc_sli_misconfigured_port0_MASK	0x000000FF
+#define lpfc_sli_misconfigured_port0_WORD	word0
+#define lpfc_sli_misconfigured_port1_SHIFT	8
+#define lpfc_sli_misconfigured_port1_MASK	0x000000FF
+#define lpfc_sli_misconfigured_port1_WORD	word0
+#define lpfc_sli_misconfigured_port2_SHIFT	16
+#define lpfc_sli_misconfigured_port2_MASK	0x000000FF
+#define lpfc_sli_misconfigured_port2_WORD	word0
+#define lpfc_sli_misconfigured_port3_SHIFT	24
+#define lpfc_sli_misconfigured_port3_MASK	0x000000FF
+#define lpfc_sli_misconfigured_port3_WORD	word0
+	} theEvent;
+#define LPFC_SLI_EVENT_STATUS_VALID			0x00
+#define LPFC_SLI_EVENT_STATUS_NOT_PRESENT	0x01
+#define LPFC_SLI_EVENT_STATUS_WRONG_TYPE	0x02
+#define LPFC_SLI_EVENT_STATUS_UNSUPPORTED	0x03
+};
+
 struct lpfc_acqe_sli {
 	uint32_t event_data1;
 	uint32_t event_data2;
@@ -3079,6 +3164,7 @@ struct lpfc_acqe_sli {
 #define LPFC_SLI_EVENT_TYPE_NORM_TEMP		0x3
 #define LPFC_SLI_EVENT_TYPE_NVLOG_POST		0x4
 #define LPFC_SLI_EVENT_TYPE_DIAG_DUMP		0x5
+#define LPFC_SLI_EVENT_TYPE_MISCONFIGURED	0x9
 };
 
 /*
@@ -3280,7 +3366,13 @@ struct els_request64_wqe {
 struct xmit_els_rsp64_wqe {
 	struct ulp_bde64 bde;
 	uint32_t response_payload_len;
-	uint32_t rsvd4;
+	uint32_t word4;
+#define els_rsp64_sid_SHIFT         0
+#define els_rsp64_sid_MASK          0x00FFFFFF
+#define els_rsp64_sid_WORD          word4
+#define els_rsp64_sp_SHIFT          24
+#define els_rsp64_sp_MASK           0x00000001
+#define els_rsp64_sp_WORD           word4
 	struct wqe_did wqe_dest;
 	struct wqe_common wqe_com; /* words 6-11 */
 	uint32_t word12;

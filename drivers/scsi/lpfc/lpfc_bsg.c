@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2009-2011 Emulex.  All rights reserved.           *
+ * Copyright (C) 2009-2012 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -196,7 +196,7 @@ lpfc_bsg_send_mgmt_cmd_cmp(struct lpfc_hba *phba,
 
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;
@@ -600,6 +600,7 @@ lpfc_bsg_rport_els(struct fc_bsg_job *job)
 
 	cmdiocbq->iocb_cmpl = lpfc_bsg_rport_els_cmp;
 	cmdiocbq->context1 = dd_data;
+	cmdiocbq->context_un.ndlp = ndlp;
 	cmdiocbq->context2 = rspiocbq;
 	dd_data->type = TYPE_IOCB;
 	dd_data->context_un.iocb.cmdiocbq = cmdiocbq;
@@ -1234,7 +1235,7 @@ lpfc_issue_ct_rsp_cmp(struct lpfc_hba *phba,
 
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;
@@ -1715,6 +1716,8 @@ lpfc_sli4_bsg_set_link_diag_state(struct lpfc_hba *phba, uint32_t diag)
 			phba->sli4_hba.lnk_info.lnk_no);
 
 	link_diag_state = &pmboxq->u.mqe.un.link_diag_state;
+	bf_set(lpfc_mbx_set_diag_state_diag_bit_valid, &link_diag_state->u.req,
+	       LPFC_DIAG_STATE_DIAG_BIT_VALID_CHANGE);
 	bf_set(lpfc_mbx_set_diag_state_link_num, &link_diag_state->u.req,
 	       phba->sli4_hba.lnk_info.lnk_no);
 	bf_set(lpfc_mbx_set_diag_state_link_type, &link_diag_state->u.req,
@@ -3979,6 +3982,7 @@ lpfc_bsg_handle_sli_cfg_mbox(struct lpfc_hba *phba, struct fc_bsg_job *job,
 		} else if (subsys == SLI_CONFIG_SUBSYS_COMN) {
 			switch (opcode) {
 			case COMN_OPCODE_GET_CNTL_ADDL_ATTRIBUTES:
+			case COMN_OPCODE_GET_CNTL_ATTRIBUTES:
 				lpfc_printf_log(phba, KERN_INFO, LOG_LIBDFC,
 						"3106 Handled SLI_CONFIG "
 						"subsys_comn, opcode:x%x\n",
@@ -4795,7 +4799,7 @@ lpfc_bsg_menlo_cmd_cmp(struct lpfc_hba *phba,
 	menlo_resp->xri = rsp->ulpContext;
 	if (rsp->ulpStatus) {
 		if (rsp->ulpStatus == IOSTAT_LOCAL_REJECT) {
-			switch (rsp->un.ulpWord[4] & 0xff) {
+			switch (rsp->un.ulpWord[4] & IOERR_PARAM_MASK) {
 			case IOERR_SEQUENCE_TIMEOUT:
 				rc = -ETIMEDOUT;
 				break;

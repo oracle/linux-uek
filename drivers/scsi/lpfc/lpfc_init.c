@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2011 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2012 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  * Portions Copyright (C) 2004-2005 Christoph Hellwig              *
@@ -24,6 +24,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/idr.h>
 #include <linux/interrupt.h>
+#include <linux/module.h>
 #include <linux/kthread.h>
 #include <linux/pci.h>
 #include <linux/spinlock.h>
@@ -63,8 +64,8 @@ static int lpfc_sli4_queue_verify(struct lpfc_hba *);
 static int lpfc_create_bootstrap_mbox(struct lpfc_hba *);
 static int lpfc_setup_endian_order(struct lpfc_hba *);
 static void lpfc_destroy_bootstrap_mbox(struct lpfc_hba *);
-static void lpfc_free_sgl_list(struct lpfc_hba *);
-static int lpfc_init_sgl_list(struct lpfc_hba *);
+static void lpfc_free_els_sgl_list(struct lpfc_hba *);
+static void lpfc_init_sgl_list(struct lpfc_hba *);
 static int lpfc_init_active_sgl_array(struct lpfc_hba *);
 static void lpfc_free_active_sgl(struct lpfc_hba *);
 static int lpfc_hba_down_post_s3(struct lpfc_hba *phba);
@@ -72,6 +73,8 @@ static int lpfc_hba_down_post_s4(struct lpfc_hba *phba);
 static int lpfc_sli4_cq_event_pool_create(struct lpfc_hba *);
 static void lpfc_sli4_cq_event_pool_destroy(struct lpfc_hba *);
 static void lpfc_sli4_cq_event_release_all(struct lpfc_hba *);
+static void lpfc_sli4_disable_intr(struct lpfc_hba *);
+static uint32_t lpfc_sli4_enable_intr(struct lpfc_hba *, uint32_t);
 
 static struct scsi_transport_template *lpfc_transport_template = NULL;
 static struct scsi_transport_template *lpfc_vport_transport_template = NULL;
@@ -1159,7 +1162,7 @@ lpfc_offline_eratt(struct lpfc_hba *phba)
 	spin_lock_irq(&phba->hbalock);
 	psli->sli_flag &= ~LPFC_SLI_ACTIVE;
 	spin_unlock_irq(&phba->hbalock);
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_NO_WAIT);
 
 	lpfc_offline(phba);
 	lpfc_reset_barrier(phba);
@@ -1183,7 +1186,7 @@ lpfc_offline_eratt(struct lpfc_hba *phba)
 static void
 lpfc_sli4_offline_eratt(struct lpfc_hba *phba)
 {
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_NO_WAIT);
 	lpfc_offline(phba);
 	lpfc_sli4_brdreset(phba);
 	lpfc_hba_down_post(phba);
@@ -1241,7 +1244,7 @@ lpfc_handle_deferred_eratt(struct lpfc_hba *phba)
 	 * There was a firmware error. Take the hba offline and then
 	 * attempt to restart it.
 	 */
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 	lpfc_offline(phba);
 
 	/* Wait for the ER1 bit to clear.*/
@@ -1362,7 +1365,7 @@ lpfc_handle_eratt_s3(struct lpfc_hba *phba)
 		 * There was a firmware error.  Take the hba offline and then
 		 * attempt to restart it.
 		 */
-		lpfc_offline_prep(phba);
+		lpfc_offline_prep(phba, LPFC_MBX_NO_WAIT);
 		lpfc_offline(phba);
 		lpfc_sli_brdrestart(phba);
 		if (lpfc_online(phba) == 0) {	/* Initialize the HBA */
@@ -1417,6 +1420,54 @@ lpfc_handle_eratt_s3(struct lpfc_hba *phba)
 }
 
 /**
+ * lpfc_sli4_port_sta_fn_reset - The SLI4 function reset due to port status reg
+ * @phba: pointer to lpfc hba data structure.
+ * @mbx_action: flag for mailbox shutdown action.
+ *
+ * This routine is invoked to perform an SLI4 port PCI function reset in
+ * response to port status register polling attention. It waits for port
+ * status register (ERR, RDY, RN) bits before proceeding with function reset.
+ * During this process, interrupt vectors are freed and later requested
+ * for handling possible port resource change.
+ **/
+static int
+lpfc_sli4_port_sta_fn_reset(struct lpfc_hba *phba, int mbx_action)
+{
+	int rc;
+	uint32_t intr_mode;
+
+	/*
+	 * On error status condition, driver need to wait for port
+	 * ready before performing reset.
+	 */
+	rc = lpfc_sli4_pdev_status_reg_wait(phba);
+	if (!rc) {
+		/* need reset: attempt for port recovery */
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"2887 Reset Needed: Attempting Port "
+				"Recovery...\n");
+		lpfc_offline_prep(phba, mbx_action);
+		lpfc_offline(phba);
+		/* release interrupt for possible resource change */
+		lpfc_sli4_disable_intr(phba);
+		lpfc_sli_brdrestart(phba);
+		/* request and enable interrupt */
+		intr_mode = lpfc_sli4_enable_intr(phba, phba->intr_mode);
+		if (intr_mode == LPFC_INTR_ERROR) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+					"3175 Failed to enable interrupt\n");
+			return -EIO;
+		} else {
+			phba->intr_mode = intr_mode;
+		}
+		rc = lpfc_online(phba);
+		if (rc == 0)
+			lpfc_unblock_mgmt_io(phba);
+	}
+	return rc;
+}
+
+/**
  * lpfc_handle_eratt_s4 - The SLI4 HBA hardware error handler
  * @phba: pointer to lpfc hba data structure.
  *
@@ -1464,8 +1515,12 @@ lpfc_handle_eratt_s4(struct lpfc_hba *phba)
 				phba->sli4_hba.u.if_type2.STATUSregaddr,
 				&portstat_reg.word0);
 		/* consider PCI bus read error as pci_channel_offline */
-		if (pci_rd_rc1 == -EIO)
+		if (pci_rd_rc1 == -EIO) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"3151 PCI bus read access failure: x%x\n",
+				readl(phba->sli4_hba.u.if_type2.STATUSregaddr));
 			return;
+		}
 		reg_err1 = readl(phba->sli4_hba.u.if_type2.ERR1regaddr);
 		reg_err2 = readl(phba->sli4_hba.u.if_type2.ERR2regaddr);
 		if (bf_get(lpfc_sliport_status_oti, &portstat_reg)) {
@@ -1491,30 +1546,21 @@ lpfc_handle_eratt_s4(struct lpfc_hba *phba)
 			 reg_err2 == SLIPORT_ERR2_REG_FUNC_PROVISON)
 			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
 					"3145 Port Down: Provisioning\n");
-		/*
-		 * On error status condition, driver need to wait for port
-		 * ready before performing reset.
-		 */
-		rc = lpfc_sli4_pdev_status_reg_wait(phba);
-		if (!rc) {
-			/* need reset: attempt for port recovery */
-			lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-					"2887 Reset Needed: Attempting Port "
-					"Recovery...\n");
-			lpfc_offline_prep(phba);
-			lpfc_offline(phba);
-			lpfc_sli_brdrestart(phba);
-			if (lpfc_online(phba) == 0) {
-				lpfc_unblock_mgmt_io(phba);
-				/* don't report event on forced debug dump */
-				if (reg_err1 == SLIPORT_ERR1_REG_ERR_CODE_2 &&
-				    reg_err2 == SLIPORT_ERR2_REG_FORCED_DUMP)
-					return;
-				else
-					break;
-			}
-			/* fall through for not able to recover */
+
+		/* Check port status register for function reset */
+		rc = lpfc_sli4_port_sta_fn_reset(phba, LPFC_MBX_NO_WAIT);
+		if (rc == 0) {
+			/* don't report event on forced debug dump */
+			if (reg_err1 == SLIPORT_ERR1_REG_ERR_CODE_2 &&
+			    reg_err2 == SLIPORT_ERR2_REG_FORCED_DUMP)
+				return;
+			else
+				break;
 		}
+		/* fall through for not able to recover */
+		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+				"3152 Unrecoverable error, bring the port "
+				"offline\n");
 		lpfc_sli4_offline_eratt(phba);
 		break;
 	case LPFC_SLI_INTF_IF_TYPE_1:
@@ -2003,6 +2049,11 @@ lpfc_get_hba_model_desc(struct lpfc_hba *phba, uint8_t *mdp, uint8_t *descp)
 		oneConnect = 1;
 		m = (typeof(m)){"OCe15100", "PCIe", "FCoE"};
 		break;
+	case PCI_DEVICE_ID_SKYHAWK:
+	case PCI_DEVICE_ID_SKYHAWK_VF:
+		oneConnect = 1;
+		m = (typeof(m)){"OCe14000", "PCIe", "FCoE"};
+		break;
 	default:
 		m = (typeof(m)){"Unknown", "", ""};
 		break;
@@ -2476,15 +2527,19 @@ lpfc_stop_hba_timers(struct lpfc_hba *phba)
  * driver prepares the HBA interface for online or offline.
  **/
 static void
-lpfc_block_mgmt_io(struct lpfc_hba * phba)
+lpfc_block_mgmt_io(struct lpfc_hba *phba, int mbx_action)
 {
 	unsigned long iflag;
 	uint8_t actcmd = MBX_HEARTBEAT;
 	unsigned long timeout;
 
-	timeout = msecs_to_jiffies(LPFC_MBOX_TMO * 1000) + jiffies;
 	spin_lock_irqsave(&phba->hbalock, iflag);
 	phba->sli.sli_flag |= LPFC_BLOCK_MGMT_IO;
+	spin_unlock_irqrestore(&phba->hbalock, iflag);
+	if (mbx_action == LPFC_MBX_NO_WAIT)
+		return;
+	timeout = msecs_to_jiffies(LPFC_MBOX_TMO * 1000) + jiffies;
+	spin_lock_irqsave(&phba->hbalock, iflag);
 	if (phba->sli.mbox_active) {
 		actcmd = phba->sli.mbox_active->u.mb.mbxCommand;
 		/* Determine how long we might wait for the active mailbox
@@ -2574,7 +2629,7 @@ lpfc_online(struct lpfc_hba *phba)
 	lpfc_printf_log(phba, KERN_WARNING, LOG_INIT,
 			"0458 Bring Adapter online\n");
 
-	lpfc_block_mgmt_io(phba);
+	lpfc_block_mgmt_io(phba, LPFC_MBX_WAIT);
 
 	if (!lpfc_sli_queue_setup(phba)) {
 		lpfc_unblock_mgmt_io(phba);
@@ -2642,7 +2697,7 @@ lpfc_unblock_mgmt_io(struct lpfc_hba * phba)
  * queue to make it ready to be brought offline.
  **/
 void
-lpfc_offline_prep(struct lpfc_hba * phba)
+lpfc_offline_prep(struct lpfc_hba *phba, int mbx_action)
 {
 	struct lpfc_vport *vport = phba->pport;
 	struct lpfc_nodelist  *ndlp, *next_ndlp;
@@ -2653,7 +2708,7 @@ lpfc_offline_prep(struct lpfc_hba * phba)
 	if (vport->fc_flag & FC_OFFLINE_MODE)
 		return;
 
-	lpfc_block_mgmt_io(phba);
+	lpfc_block_mgmt_io(phba, mbx_action);
 
 	lpfc_linkdown(phba);
 
@@ -2700,7 +2755,7 @@ lpfc_offline_prep(struct lpfc_hba * phba)
 	}
 	lpfc_destroy_vport_work_array(phba, vports);
 
-	lpfc_sli_mbox_sys_shutdown(phba);
+	lpfc_sli_mbox_sys_shutdown(phba, mbx_action);
 }
 
 /**
@@ -2749,47 +2804,14 @@ lpfc_offline(struct lpfc_hba *phba)
 }
 
 /**
- * lpfc_scsi_buf_update - Update the scsi_buffers that are already allocated.
- * @phba: pointer to lpfc hba data structure.
- *
- * This routine goes through all the scsi buffers in the system and updates the
- * Physical XRIs assigned to the SCSI buffer because these may change after any
- * firmware reset
- *
- * Return codes
- *   0 - successful (for now, it always returns 0)
- **/
-int
-lpfc_scsi_buf_update(struct lpfc_hba *phba)
-{
-	struct lpfc_scsi_buf *sb, *sb_next;
-
-	spin_lock_irq(&phba->hbalock);
-	spin_lock(&phba->scsi_buf_list_lock);
-	list_for_each_entry_safe(sb, sb_next, &phba->lpfc_scsi_buf_list, list) {
-		sb->cur_iocbq.sli4_xritag =
-			phba->sli4_hba.xri_ids[sb->cur_iocbq.sli4_lxritag];
-		set_bit(sb->cur_iocbq.sli4_lxritag, phba->sli4_hba.xri_bmask);
-		phba->sli4_hba.max_cfg_param.xri_used++;
-		phba->sli4_hba.xri_count++;
-	}
-	spin_unlock(&phba->scsi_buf_list_lock);
-	spin_unlock_irq(&phba->hbalock);
-	return 0;
-}
-
-/**
  * lpfc_scsi_free - Free all the SCSI buffers and IOCBs from driver lists
  * @phba: pointer to lpfc hba data structure.
  *
  * This routine is to free all the SCSI buffers and IOCBs from the driver
  * list back to kernel. It is called from lpfc_pci_remove_one to free
  * the internal resources before the device is removed from the system.
- *
- * Return codes
- *   0 - successful (for now, it always returns 0)
  **/
-static int
+static void
 lpfc_scsi_free(struct lpfc_hba *phba)
 {
 	struct lpfc_scsi_buf *sb, *sb_next;
@@ -2815,7 +2837,178 @@ lpfc_scsi_free(struct lpfc_hba *phba)
 	}
 
 	spin_unlock_irq(&phba->hbalock);
+}
+
+/**
+ * lpfc_sli4_xri_sgl_update - update xri-sgl sizing and mapping
+ * @phba: pointer to lpfc hba data structure.
+ *
+ * This routine first calculates the sizes of the current els and allocated
+ * scsi sgl lists, and then goes through all sgls to updates the physical
+ * XRIs assigned due to port function reset. During port initialization, the
+ * current els and allocated scsi sgl lists are 0s.
+ *
+ * Return codes
+ *   0 - successful (for now, it always returns 0)
+ **/
+int
+lpfc_sli4_xri_sgl_update(struct lpfc_hba *phba)
+{
+	struct lpfc_sglq *sglq_entry = NULL, *sglq_entry_next = NULL;
+	struct lpfc_scsi_buf *psb = NULL, *psb_next = NULL;
+	uint16_t i, lxri, xri_cnt, els_xri_cnt, scsi_xri_cnt;
+	LIST_HEAD(els_sgl_list);
+	LIST_HEAD(scsi_sgl_list);
+	int rc;
+
+	/*
+	 * update on pci function's els xri-sgl list
+	 */
+	els_xri_cnt = lpfc_sli4_get_els_iocb_cnt(phba);
+	if (els_xri_cnt > phba->sli4_hba.els_xri_cnt) {
+		/* els xri-sgl expanded */
+		xri_cnt = els_xri_cnt - phba->sli4_hba.els_xri_cnt;
+		lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
+				"3157 ELS xri-sgl count increased from "
+				"%d to %d\n", phba->sli4_hba.els_xri_cnt,
+				els_xri_cnt);
+		/* allocate the additional els sgls */
+		for (i = 0; i < xri_cnt; i++) {
+			sglq_entry = kzalloc(sizeof(struct lpfc_sglq),
+					     GFP_KERNEL);
+			if (sglq_entry == NULL) {
+				lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+						"2562 Failure to allocate an "
+						"ELS sgl entry:%d\n", i);
+				rc = -ENOMEM;
+				goto out_free_mem;
+			}
+			sglq_entry->buff_type = GEN_BUFF_TYPE;
+			sglq_entry->virt = lpfc_mbuf_alloc(phba, 0,
+							   &sglq_entry->phys);
+			if (sglq_entry->virt == NULL) {
+				kfree(sglq_entry);
+				lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+						"2563 Failure to allocate an "
+						"ELS mbuf:%d\n", i);
+				rc = -ENOMEM;
+				goto out_free_mem;
+			}
+			sglq_entry->sgl = sglq_entry->virt;
+			memset(sglq_entry->sgl, 0, LPFC_BPL_SIZE);
+			sglq_entry->state = SGL_FREED;
+			list_add_tail(&sglq_entry->list, &els_sgl_list);
+		}
+		spin_lock(&phba->hbalock);
+		list_splice_init(&els_sgl_list, &phba->sli4_hba.lpfc_sgl_list);
+		spin_unlock(&phba->hbalock);
+	} else if (els_xri_cnt < phba->sli4_hba.els_xri_cnt) {
+		/* els xri-sgl shrinked */
+		xri_cnt = phba->sli4_hba.els_xri_cnt - els_xri_cnt;
+		lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
+				"3158 ELS xri-sgl count decreased from "
+				"%d to %d\n", phba->sli4_hba.els_xri_cnt,
+				els_xri_cnt);
+		spin_lock_irq(&phba->hbalock);
+		list_splice_init(&phba->sli4_hba.lpfc_sgl_list, &els_sgl_list);
+		spin_unlock_irq(&phba->hbalock);
+		/* release extra els sgls from list */
+		for (i = 0; i < xri_cnt; i++) {
+			list_remove_head(&els_sgl_list,
+					 sglq_entry, struct lpfc_sglq, list);
+			if (sglq_entry) {
+				lpfc_mbuf_free(phba, sglq_entry->virt,
+					       sglq_entry->phys);
+				kfree(sglq_entry);
+			}
+		}
+		spin_lock_irq(&phba->hbalock);
+		list_splice_init(&els_sgl_list, &phba->sli4_hba.lpfc_sgl_list);
+		spin_unlock_irq(&phba->hbalock);
+	} else
+		lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
+				"3163 ELS xri-sgl count unchanged: %d\n",
+				els_xri_cnt);
+	phba->sli4_hba.els_xri_cnt = els_xri_cnt;
+
+	/* update xris to els sgls on the list */
+	sglq_entry = NULL;
+	sglq_entry_next = NULL;
+	list_for_each_entry_safe(sglq_entry, sglq_entry_next,
+				 &phba->sli4_hba.lpfc_sgl_list, list) {
+		lxri = lpfc_sli4_next_xritag(phba);
+		if (lxri == NO_XRI) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+					"2400 Failed to allocate xri for "
+					"ELS sgl\n");
+			rc = -ENOMEM;
+			goto out_free_mem;
+		}
+		sglq_entry->sli4_lxritag = lxri;
+		sglq_entry->sli4_xritag = phba->sli4_hba.xri_ids[lxri];
+	}
+
+	/*
+	 * update on pci function's allocated scsi xri-sgl list
+	 */
+	phba->total_scsi_bufs = 0;
+
+	/* maximum number of xris available for scsi buffers */
+	phba->sli4_hba.scsi_xri_max = phba->sli4_hba.max_cfg_param.max_xri -
+				      els_xri_cnt;
+
+	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
+			"2401 Current allocated SCSI xri-sgl count:%d, "
+			"maximum  SCSI xri count:%d\n",
+			phba->sli4_hba.scsi_xri_cnt,
+			phba->sli4_hba.scsi_xri_max);
+
+	spin_lock_irq(&phba->scsi_buf_list_lock);
+	list_splice_init(&phba->lpfc_scsi_buf_list, &scsi_sgl_list);
+	spin_unlock_irq(&phba->scsi_buf_list_lock);
+
+	if (phba->sli4_hba.scsi_xri_cnt > phba->sli4_hba.scsi_xri_max) {
+		/* max scsi xri shrinked below the allocated scsi buffers */
+		scsi_xri_cnt = phba->sli4_hba.scsi_xri_cnt -
+					phba->sli4_hba.scsi_xri_max;
+		/* release the extra allocated scsi buffers */
+		for (i = 0; i < scsi_xri_cnt; i++) {
+			list_remove_head(&scsi_sgl_list, psb,
+					 struct lpfc_scsi_buf, list);
+			pci_pool_free(phba->lpfc_scsi_dma_buf_pool, psb->data,
+				      psb->dma_handle);
+			kfree(psb);
+		}
+		spin_lock_irq(&phba->scsi_buf_list_lock);
+		phba->sli4_hba.scsi_xri_cnt -= scsi_xri_cnt;
+		spin_unlock_irq(&phba->scsi_buf_list_lock);
+	}
+
+	/* update xris associated to remaining allocated scsi buffers */
+	psb = NULL;
+	psb_next = NULL;
+	list_for_each_entry_safe(psb, psb_next, &scsi_sgl_list, list) {
+		lxri = lpfc_sli4_next_xritag(phba);
+		if (lxri == NO_XRI) {
+			lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+					"2560 Failed to allocate xri for "
+					"scsi buffer\n");
+			rc = -ENOMEM;
+			goto out_free_mem;
+		}
+		psb->cur_iocbq.sli4_lxritag = lxri;
+		psb->cur_iocbq.sli4_xritag = phba->sli4_hba.xri_ids[lxri];
+	}
+	spin_lock(&phba->scsi_buf_list_lock);
+	list_splice_init(&scsi_sgl_list, &phba->lpfc_scsi_buf_list);
+	spin_unlock(&phba->scsi_buf_list_lock);
+
 	return 0;
+
+out_free_mem:
+	lpfc_free_els_sgl_list(phba);
+	lpfc_scsi_free(phba);
+	return rc;
 }
 
 /**
@@ -3526,12 +3719,76 @@ out_free_pmb:
 static void
 lpfc_sli4_async_sli_evt(struct lpfc_hba *phba, struct lpfc_acqe_sli *acqe_sli)
 {
-	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
-			"2901 Async SLI event - Event Data1:x%08x Event Data2:"
-			"x%08x SLI Event Type:%d",
-			acqe_sli->event_data1, acqe_sli->event_data2,
-			bf_get(lpfc_trailer_type, acqe_sli));
-	return;
+	char port_name;
+	char message[80];
+	uint8_t status;
+	struct lpfc_acqe_misconfigured_event *misconfigured;
+
+	/* special case misconfigured event as it contains data for all ports */
+	if ((bf_get(lpfc_sli_intf_if_type, &phba->sli4_hba.sli_intf) !=
+		 LPFC_SLI_INTF_IF_TYPE_2) ||
+		(bf_get(lpfc_trailer_type, acqe_sli) !=
+			LPFC_SLI_EVENT_TYPE_MISCONFIGURED)) {
+		lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
+				"2901 Async SLI event - Event Data1:x%08x Event Data2:"
+				"x%08x SLI Event Type:%d\n",
+				acqe_sli->event_data1, acqe_sli->event_data2,
+				bf_get(lpfc_trailer_type, acqe_sli));
+		return;
+	}
+
+	port_name = phba->Port[0];
+	if (port_name == 0x00)
+		port_name = '?'; /* get port name is empty */
+
+	misconfigured = (struct lpfc_acqe_misconfigured_event *)
+					&acqe_sli->event_data1;
+
+	/* fetch the status for this port */
+	switch (phba->sli4_hba.lnk_info.lnk_no) {
+	case LPFC_LINK_NUMBER_0:
+		status = bf_get(lpfc_sli_misconfigured_port0,
+					&misconfigured->theEvent);
+		break;
+	case LPFC_LINK_NUMBER_1:
+		status = bf_get(lpfc_sli_misconfigured_port1,
+					&misconfigured->theEvent);
+		break;
+	case LPFC_LINK_NUMBER_2:
+		status = bf_get(lpfc_sli_misconfigured_port2,
+					&misconfigured->theEvent);
+		break;
+	case LPFC_LINK_NUMBER_3:
+		status = bf_get(lpfc_sli_misconfigured_port3,
+					&misconfigured->theEvent);
+		break;
+	default:
+		status = ~LPFC_SLI_EVENT_STATUS_VALID;
+		break;
+	}
+
+	switch (status) {
+	case LPFC_SLI_EVENT_STATUS_VALID:
+		return; /* no message if the sfp is okay */
+	case LPFC_SLI_EVENT_STATUS_NOT_PRESENT:
+		sprintf(message, "Not installed");
+		break;
+	case LPFC_SLI_EVENT_STATUS_WRONG_TYPE:
+		sprintf(message,
+			"Optics of two types installed");
+		break;
+	case LPFC_SLI_EVENT_STATUS_UNSUPPORTED:
+		sprintf(message, "Incompatible optics");
+		break;
+	default:
+		/* firmware is reporting a status we don't know about */
+		sprintf(message, "Unknown event status x%02x", status);
+		break;
+	}
+
+	lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
+			"3176 Misconfigured Physical Port - "
+			"Port Name %c %s\n", port_name, message);
 }
 
 /**
@@ -4154,7 +4411,7 @@ lpfc_reset_hba(struct lpfc_hba *phba)
 		phba->link_state = LPFC_HBA_ERROR;
 		return;
 	}
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 	lpfc_offline(phba);
 	lpfc_sli_brdrestart(phba);
 	lpfc_online(phba);
@@ -4371,6 +4628,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	uint8_t pn_page[LPFC_MAX_SUPPORTED_PAGES] = {0};
 	struct lpfc_mqe *mqe;
 	int longs, sli_family;
+	int sges_per_segment;
 
 	/* Before proceed, wait for POST done and device ready */
 	rc = lpfc_sli4_post_status_check(phba);
@@ -4434,6 +4692,11 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	phba->fc_map[1] = LPFC_FCOE_FCF_MAP1;
 	phba->fc_map[2] = LPFC_FCOE_FCF_MAP2;
 
+	/* With BlockGuard we can have multiple SGEs per Data Segemnt */
+	sges_per_segment = 1;
+	if (phba->cfg_enable_bg)
+		sges_per_segment = 2;
+
 	/*
 	 * Since the sg_tablesize is module parameter, the sg_dma_buf_size
 	 * used to create the sg_dma_buf_pool must be dynamically calculated.
@@ -4442,7 +4705,8 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	 * sgl sizes of must be a power of 2.
 	 */
 	buf_size = (sizeof(struct fcp_cmnd) + sizeof(struct fcp_rsp) +
-		    ((phba->cfg_sg_seg_cnt + 2) * sizeof(struct sli4_sge)));
+		    (((phba->cfg_sg_seg_cnt * sges_per_segment) + 2) *
+		    sizeof(struct sli4_sge)));
 
 	sli_family = bf_get(lpfc_sli_intf_sli_family, &phba->sli4_hba.sli_intf);
 	max_buf_size = LPFC_SLI4_MAX_BUF_SIZE;
@@ -4459,6 +4723,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	default:
 		break;
 	}
+
 	for (dma_buf_size = LPFC_SLI4_MIN_BUF_SIZE;
 	     dma_buf_size < max_buf_size && buf_size > dma_buf_size;
 	     dma_buf_size = dma_buf_size << 1)
@@ -4608,18 +4873,15 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	if (rc)
 		goto out_free_bsmbx;
 
-	/* Initialize and populate the iocb list per host */
-	rc = lpfc_init_sgl_list(phba);
-	if (rc) {
-		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-				"1400 Failed to initialize sgl list.\n");
-		goto out_destroy_cq_event_pool;
-	}
+	/* Initialize sgl lists per host */
+	lpfc_init_sgl_list(phba);
+
+	/* Allocate and initialize active sgl array */
 	rc = lpfc_init_active_sgl_array(phba);
 	if (rc) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
 				"1430 Failed to initialize sgl list.\n");
-		goto out_free_sgl_list;
+		goto out_destroy_cq_event_pool;
 	}
 	rc = lpfc_sli4_init_rpi_hdrs(phba);
 	if (rc) {
@@ -4640,7 +4902,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 		goto out_remove_rpi_hdrs;
 	}
 
-	/* 
+	/*
 	 * The cfg_fcp_eq_count can be zero whenever there is exactly one
 	 * interrupt vector.  This is not an error
 	 */
@@ -4694,8 +4956,6 @@ out_remove_rpi_hdrs:
 	lpfc_sli4_remove_rpi_hdrs(phba);
 out_free_active_sgl:
 	lpfc_free_active_sgl(phba);
-out_free_sgl_list:
-	lpfc_free_sgl_list(phba);
 out_destroy_cq_event_pool:
 	lpfc_sli4_cq_event_pool_destroy(phba);
 out_free_bsmbx:
@@ -4732,10 +4992,7 @@ lpfc_sli4_driver_resource_unset(struct lpfc_hba *phba)
 
 	/* Free the ELS sgl list */
 	lpfc_free_active_sgl(phba);
-	lpfc_free_sgl_list(phba);
-
-	/* Free the SCSI sgl management array */
-	kfree(phba->sli4_hba.lpfc_scsi_psb_array);
+	lpfc_free_els_sgl_list(phba);
 
 	/* Free the completion queue EQ event pool */
 	lpfc_sli4_cq_event_release_all(phba);
@@ -4962,29 +5219,42 @@ out_free_iocbq:
 }
 
 /**
- * lpfc_free_sgl_list - Free sgl list.
+ * lpfc_free_sgl_list - Free a given sgl list.
  * @phba: pointer to lpfc hba data structure.
+ * @sglq_list: pointer to the head of sgl list.
  *
- * This routine is invoked to free the driver's sgl list and memory.
+ * This routine is invoked to free a give sgl list and memory.
  **/
-static void
-lpfc_free_sgl_list(struct lpfc_hba *phba)
+void
+lpfc_free_sgl_list(struct lpfc_hba *phba, struct list_head *sglq_list)
 {
 	struct lpfc_sglq *sglq_entry = NULL, *sglq_next = NULL;
+
+	list_for_each_entry_safe(sglq_entry, sglq_next, sglq_list, list) {
+		list_del(&sglq_entry->list);
+		lpfc_mbuf_free(phba, sglq_entry->virt, sglq_entry->phys);
+		kfree(sglq_entry);
+	}
+}
+
+/**
+ * lpfc_free_els_sgl_list - Free els sgl list.
+ * @phba: pointer to lpfc hba data structure.
+ *
+ * This routine is invoked to free the driver's els sgl list and memory.
+ **/
+static void
+lpfc_free_els_sgl_list(struct lpfc_hba *phba)
+{
 	LIST_HEAD(sglq_list);
 
+	/* Retrieve all els sgls from driver list */
 	spin_lock_irq(&phba->hbalock);
 	list_splice_init(&phba->sli4_hba.lpfc_sgl_list, &sglq_list);
 	spin_unlock_irq(&phba->hbalock);
 
-	list_for_each_entry_safe(sglq_entry, sglq_next,
-				 &sglq_list, list) {
-		list_del(&sglq_entry->list);
-		lpfc_mbuf_free(phba, sglq_entry->virt, sglq_entry->phys);
-		kfree(sglq_entry);
-		phba->sli4_hba.total_sglq_bufs--;
-	}
-	kfree(phba->sli4_hba.lpfc_els_sgl_array);
+	/* Now free the sgl list */
+	lpfc_free_sgl_list(phba, &sglq_list);
 }
 
 /**
@@ -5029,99 +5299,19 @@ lpfc_free_active_sgl(struct lpfc_hba *phba)
  * This routine is invoked to allocate and initizlize the driver's sgl
  * list and set up the sgl xritag tag array accordingly.
  *
- * Return codes
- *	0 - successful
- *	other values - error
  **/
-static int
+static void
 lpfc_init_sgl_list(struct lpfc_hba *phba)
 {
-	struct lpfc_sglq *sglq_entry = NULL;
-	int i;
-	int els_xri_cnt;
-
-	els_xri_cnt = lpfc_sli4_get_els_iocb_cnt(phba);
-	lpfc_printf_log(phba, KERN_INFO, LOG_SLI,
-				"2400 ELS XRI count %d.\n",
-				els_xri_cnt);
 	/* Initialize and populate the sglq list per host/VF. */
 	INIT_LIST_HEAD(&phba->sli4_hba.lpfc_sgl_list);
 	INIT_LIST_HEAD(&phba->sli4_hba.lpfc_abts_els_sgl_list);
 
-	/* Sanity check on XRI management */
-	if (phba->sli4_hba.max_cfg_param.max_xri <= els_xri_cnt) {
-		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
-				"2562 No room left for SCSI XRI allocation: "
-				"max_xri=%d, els_xri=%d\n",
-				phba->sli4_hba.max_cfg_param.max_xri,
-				els_xri_cnt);
-		return -ENOMEM;
-	}
+	/* els xri-sgl book keeping */
+	phba->sli4_hba.els_xri_cnt = 0;
 
-	/* Allocate memory for the ELS XRI management array */
-	phba->sli4_hba.lpfc_els_sgl_array =
-			kzalloc((sizeof(struct lpfc_sglq *) * els_xri_cnt),
-			GFP_KERNEL);
-
-	if (!phba->sli4_hba.lpfc_els_sgl_array) {
-		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
-				"2401 Failed to allocate memory for ELS "
-				"XRI management array of size %d.\n",
-				els_xri_cnt);
-		return -ENOMEM;
-	}
-
-	/* Keep the SCSI XRI into the XRI management array */
-	phba->sli4_hba.scsi_xri_max =
-			phba->sli4_hba.max_cfg_param.max_xri - els_xri_cnt;
+	/* scsi xri-buffer book keeping */
 	phba->sli4_hba.scsi_xri_cnt = 0;
-	phba->sli4_hba.lpfc_scsi_psb_array =
-			kzalloc((sizeof(struct lpfc_scsi_buf *) *
-			phba->sli4_hba.scsi_xri_max), GFP_KERNEL);
-
-	if (!phba->sli4_hba.lpfc_scsi_psb_array) {
-		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
-				"2563 Failed to allocate memory for SCSI "
-				"XRI management array of size %d.\n",
-				phba->sli4_hba.scsi_xri_max);
-		kfree(phba->sli4_hba.lpfc_els_sgl_array);
-		return -ENOMEM;
-	}
-
-	for (i = 0; i < els_xri_cnt; i++) {
-		sglq_entry = kzalloc(sizeof(struct lpfc_sglq), GFP_KERNEL);
-		if (sglq_entry == NULL) {
-			printk(KERN_ERR "%s: only allocated %d sgls of "
-				"expected %d count. Unloading driver.\n",
-				__func__, i, els_xri_cnt);
-			goto out_free_mem;
-		}
-
-		sglq_entry->buff_type = GEN_BUFF_TYPE;
-		sglq_entry->virt = lpfc_mbuf_alloc(phba, 0, &sglq_entry->phys);
-		if (sglq_entry->virt == NULL) {
-			kfree(sglq_entry);
-			printk(KERN_ERR "%s: failed to allocate mbuf.\n"
-				"Unloading driver.\n", __func__);
-			goto out_free_mem;
-		}
-		sglq_entry->sgl = sglq_entry->virt;
-		memset(sglq_entry->sgl, 0, LPFC_BPL_SIZE);
-
-		/* The list order is used by later block SGL registraton */
-		spin_lock_irq(&phba->hbalock);
-		sglq_entry->state = SGL_FREED;
-		list_add_tail(&sglq_entry->list, &phba->sli4_hba.lpfc_sgl_list);
-		phba->sli4_hba.lpfc_els_sgl_array[i] = sglq_entry;
-		phba->sli4_hba.total_sglq_bufs++;
-		spin_unlock_irq(&phba->hbalock);
-	}
-	return 0;
-
-out_free_mem:
-	kfree(phba->sli4_hba.lpfc_scsi_psb_array);
-	lpfc_free_sgl_list(phba);
-	return -ENOMEM;
 }
 
 /**
@@ -6078,8 +6268,9 @@ lpfc_sli4_read_config(struct lpfc_hba *phba)
 	uint32_t shdr_status, shdr_add_status;
 	struct lpfc_mbx_get_func_cfg *get_func_cfg;
 	struct lpfc_rsrc_desc_fcfcoe *desc;
+	char *pdesc_0;
 	uint32_t desc_count;
-	int length, i, rc = 0;
+	int length, i, rc = 0, rc2;
 
 	pmb = (LPFC_MBOXQ_t *) mempool_alloc(phba->mbox_mem_pool, GFP_KERNEL);
 	if (!pmb) {
@@ -6191,18 +6382,17 @@ lpfc_sli4_read_config(struct lpfc_hba *phba)
 			 LPFC_MBOX_OPCODE_GET_FUNCTION_CONFIG,
 			 length, LPFC_SLI4_MBX_EMBED);
 
-	rc = lpfc_sli_issue_mbox(phba, pmb, MBX_POLL);
+	rc2 = lpfc_sli_issue_mbox(phba, pmb, MBX_POLL);
 	shdr = (union lpfc_sli4_cfg_shdr *)
 				&pmb->u.mqe.un.sli4_config.header.cfg_shdr;
 	shdr_status = bf_get(lpfc_mbox_hdr_status, &shdr->response);
 	shdr_add_status = bf_get(lpfc_mbox_hdr_add_status, &shdr->response);
-	if (rc || shdr_status || shdr_add_status) {
+	if (rc2 || shdr_status || shdr_add_status) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
 				"3026 Mailbox failed , mbxCmd x%x "
 				"GET_FUNCTION_CONFIG, mbxStatus x%x\n",
 				bf_get(lpfc_mqe_command, &pmb->u.mqe),
 				bf_get(lpfc_mqe_status, &pmb->u.mqe));
-		rc = -EIO;
 		goto read_cfg_out;
 	}
 
@@ -6210,11 +6400,18 @@ lpfc_sli4_read_config(struct lpfc_hba *phba)
 	get_func_cfg = &pmb->u.mqe.un.get_func_cfg;
 	desc_count = get_func_cfg->func_cfg.rsrc_desc_count;
 
+	pdesc_0 = (char *)&get_func_cfg->func_cfg.desc[0];
+	desc = (struct lpfc_rsrc_desc_fcfcoe *)pdesc_0;
+	length = bf_get(lpfc_rsrc_desc_fcfcoe_length, desc);
+	if (length == LPFC_RSRC_DESC_TYPE_FCFCOE_V0_RSVD)
+		length = LPFC_RSRC_DESC_TYPE_FCFCOE_V0_LENGTH;
+	else if (length != LPFC_RSRC_DESC_TYPE_FCFCOE_V1_LENGTH)
+		goto read_cfg_out;
+
 	for (i = 0; i < LPFC_RSRC_DESC_MAX_NUM; i++) {
-		desc = (struct lpfc_rsrc_desc_fcfcoe *)
-			&get_func_cfg->func_cfg.desc[i];
+		desc = (struct lpfc_rsrc_desc_fcfcoe *)(pdesc_0 + length * i);
 		if (LPFC_RSRC_DESC_TYPE_FCFCOE ==
-		    bf_get(lpfc_rsrc_desc_pcie_type, desc)) {
+		    bf_get(lpfc_rsrc_desc_fcfcoe_type, desc)) {
 			phba->sli4_hba.iov.pf_number =
 				bf_get(lpfc_rsrc_desc_fcfcoe_pfnum, desc);
 			phba->sli4_hba.iov.vf_number =
@@ -6228,13 +6425,11 @@ lpfc_sli4_read_config(struct lpfc_hba *phba)
 				"3027 GET_FUNCTION_CONFIG: pf_number:%d, "
 				"vf_number:%d\n", phba->sli4_hba.iov.pf_number,
 				phba->sli4_hba.iov.vf_number);
-	else {
+	else
 		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
 				"3028 GET_FUNCTION_CONFIG: failed to find "
 				"Resrouce Descriptor:x%x\n",
 				LPFC_RSRC_DESC_TYPE_FCFCOE);
-		rc = -EIO;
-	}
 
 read_cfg_out:
 	mempool_free(pmb, phba->mbox_mem_pool);
@@ -7323,9 +7518,11 @@ lpfc_pci_function_reset(struct lpfc_hba *phba)
 					phba->sli4_hba.u.if_type2.ERR2regaddr);
 				lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
 					"2890 Port error detected during port "
-					"reset(%d): port status reg 0x%x, "
+					"reset(%d): wait_tmo:%d ms, "
+					"port status reg 0x%x, "
 					"error 1=0x%x, error 2=0x%x\n",
-					num_resets, reg_data.word0,
+					num_resets, rdy_chk*10,
+					reg_data.word0,
 					phba->work_status[0],
 					phba->work_status[1]);
 				rc = -ENODEV;
@@ -7391,10 +7588,11 @@ lpfc_sli4_send_nop_mbox_cmds(struct lpfc_hba *phba, uint32_t cnt)
 	/* Set up NOP SLI4_CONFIG mailbox-ioctl command */
 	length = (sizeof(struct lpfc_mbx_nop) -
 		  sizeof(struct lpfc_sli4_cfg_mhdr));
-	lpfc_sli4_config(phba, mboxq, LPFC_MBOX_SUBSYSTEM_COMMON,
-			 LPFC_MBOX_OPCODE_NOP, length, LPFC_SLI4_MBX_EMBED);
 
 	for (cmdsent = 0; cmdsent < cnt; cmdsent++) {
+		lpfc_sli4_config(phba, mboxq, LPFC_MBOX_SUBSYSTEM_COMMON,
+				 LPFC_MBOX_OPCODE_NOP, length,
+				 LPFC_SLI4_MBX_EMBED);
 		if (!phba->sli4_hba.intr_enable)
 			rc = lpfc_sli_issue_mbox(phba, mboxq, MBX_POLL);
 		else {
@@ -8697,8 +8895,11 @@ lpfc_pci_remove_one_s3(struct pci_dev *pdev)
 	/* Release all the vports against this physical port */
 	vports = lpfc_create_vport_work_array(phba);
 	if (vports != NULL)
-		for (i = 1; i <= phba->max_vports && vports[i] != NULL; i++)
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
+			if (vports[i]->port_type == LPFC_PHYSICAL_PORT)
+				continue;
 			fc_vport_terminate(vports[i]->fc_vport);
+		}
 	lpfc_destroy_vport_work_array(phba, vports);
 
 	/* Remove FC host and then SCSI host with the physical port */
@@ -8794,7 +8995,7 @@ lpfc_pci_suspend_one_s3(struct pci_dev *pdev, pm_message_t msg)
 			"0473 PCI device Power Management suspend.\n");
 
 	/* Bring down the device */
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 	lpfc_offline(phba);
 	kthread_stop(phba->worker_thread);
 
@@ -8920,7 +9121,7 @@ lpfc_sli_prep_dev_for_reset(struct lpfc_hba *phba)
 			"2710 PCI channel disable preparing for reset\n");
 
 	/* Block any management I/Os to the device */
-	lpfc_block_mgmt_io(phba);
+	lpfc_block_mgmt_io(phba, LPFC_MBX_WAIT);
 
 	/* Block all SCSI devices' I/Os on the host */
 	lpfc_scsi_dev_block(phba);
@@ -9064,7 +9265,7 @@ lpfc_io_slot_reset_s3(struct pci_dev *pdev)
 		phba->intr_mode = intr_mode;
 
 	/* Take device offline, it will perform cleanup */
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 	lpfc_offline(phba);
 	lpfc_sli_brdrestart(phba);
 
@@ -9118,8 +9319,12 @@ lpfc_sli4_get_els_iocb_cnt(struct lpfc_hba *phba)
 			return 50;
 		else if (max_xri <= 1024)
 			return 100;
-		else
+		else if (max_xri <= 1536)
 			return 150;
+		else if (max_xri <= 2048)
+			return 200;
+		else
+			return 250;
 	} else
 		return 0;
 }
@@ -9458,8 +9663,11 @@ lpfc_pci_remove_one_s4(struct pci_dev *pdev)
 	/* Release all the vports against this physical port */
 	vports = lpfc_create_vport_work_array(phba);
 	if (vports != NULL)
-		for (i = 1; i <= phba->max_vports && vports[i] != NULL; i++)
+		for (i = 0; i <= phba->max_vports && vports[i] != NULL; i++) {
+			if (vports[i]->port_type == LPFC_PHYSICAL_PORT)
+				continue;
 			fc_vport_terminate(vports[i]->fc_vport);
+		}
 	lpfc_destroy_vport_work_array(phba, vports);
 
 	/* Remove FC host and then SCSI host with the physical port */
@@ -9531,7 +9739,7 @@ lpfc_pci_suspend_one_s4(struct pci_dev *pdev, pm_message_t msg)
 			"2843 PCI device Power Management suspend.\n");
 
 	/* Bring down the device */
-	lpfc_offline_prep(phba);
+	lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 	lpfc_offline(phba);
 	kthread_stop(phba->worker_thread);
 
@@ -9657,7 +9865,7 @@ lpfc_sli4_prep_dev_for_reset(struct lpfc_hba *phba)
 			"2826 PCI channel disable preparing for reset\n");
 
 	/* Block any management I/Os to the device */
-	lpfc_block_mgmt_io(phba);
+	lpfc_block_mgmt_io(phba, LPFC_MBX_NO_WAIT);
 
 	/* Block all SCSI devices' I/Os on the host */
 	lpfc_scsi_dev_block(phba);
@@ -9830,7 +10038,7 @@ lpfc_io_resume_s4(struct pci_dev *pdev)
 	 */
 	if (!(phba->sli.sli_flag & LPFC_SLI_ACTIVE)) {
 		/* Perform device reset */
-		lpfc_offline_prep(phba);
+		lpfc_offline_prep(phba, LPFC_MBX_WAIT);
 		lpfc_offline(phba);
 		lpfc_sli_brdrestart(phba);
 		/* Bring the device back online */
@@ -10210,6 +10418,10 @@ static struct pci_device_id lpfc_id_table[] = {
 	{PCI_VENDOR_ID_EMULEX, PCI_DEVICE_ID_LANCER_FC_VF,
 		PCI_ANY_ID, PCI_ANY_ID, },
 	{PCI_VENDOR_ID_EMULEX, PCI_DEVICE_ID_LANCER_FCOE_VF,
+		PCI_ANY_ID, PCI_ANY_ID, },
+	{PCI_VENDOR_ID_EMULEX, PCI_DEVICE_ID_SKYHAWK,
+		PCI_ANY_ID, PCI_ANY_ID, },
+	{PCI_VENDOR_ID_EMULEX, PCI_DEVICE_ID_SKYHAWK_VF,
 		PCI_ANY_ID, PCI_ANY_ID, },
 	{ 0 }
 };
