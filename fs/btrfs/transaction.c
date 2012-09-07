@@ -289,7 +289,8 @@ static int may_wait_transaction(struct btrfs_root *root, int type)
 }
 
 static struct btrfs_trans_handle *start_transaction(struct btrfs_root *root,
-						    u64 num_items, int type)
+						    u64 num_items, int type,
+						    int noflush)
 {
 	struct btrfs_trans_handle *h;
 	struct btrfs_transaction *cur_trans;
@@ -314,9 +315,14 @@ static struct btrfs_trans_handle *start_transaction(struct btrfs_root *root,
 	 */
 	if (num_items > 0 && root != root->fs_info->chunk_root) {
 		num_bytes = btrfs_calc_trans_metadata_size(root, num_items);
-		ret = btrfs_block_rsv_add(root,
-					  &root->fs_info->trans_block_rsv,
-					  num_bytes);
+		if (noflush)
+			ret = btrfs_block_rsv_add_noflush(root,
+						&root->fs_info->trans_block_rsv,
+						num_bytes);
+		else
+			ret = btrfs_block_rsv_add(root,
+						&root->fs_info->trans_block_rsv,
+						num_bytes);
 		if (ret)
 			return ERR_PTR(ret);
 	}
@@ -378,21 +384,28 @@ got_it:
 struct btrfs_trans_handle *btrfs_start_transaction(struct btrfs_root *root,
 						   int num_items)
 {
-	return start_transaction(root, num_items, TRANS_START);
+	return start_transaction(root, num_items, TRANS_START, 0);
 }
+
+struct btrfs_trans_handle *btrfs_start_transaction_noflush(
+					struct btrfs_root *root, int num_items)
+{
+	return start_transaction(root, num_items, TRANS_START, 1);
+}
+
 struct btrfs_trans_handle *btrfs_join_transaction(struct btrfs_root *root)
 {
-	return start_transaction(root, 0, TRANS_JOIN);
+	return start_transaction(root, 0, TRANS_JOIN, 0);
 }
 
 struct btrfs_trans_handle *btrfs_join_transaction_nolock(struct btrfs_root *root)
 {
-	return start_transaction(root, 0, TRANS_JOIN_NOLOCK);
+	return start_transaction(root, 0, TRANS_JOIN_NOLOCK, 0);
 }
 
 struct btrfs_trans_handle *btrfs_start_ioctl_transaction(struct btrfs_root *root)
 {
-	return start_transaction(root, 0, TRANS_USERSPACE);
+	return start_transaction(root, 0, TRANS_USERSPACE, 0);
 }
 
 /* wait for a transaction commit to be fully complete */
