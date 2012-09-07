@@ -55,8 +55,9 @@ static const char *trace;
  * Run dwarf2ctf over a single object file or set thereof.
  *
  * starting_argv is the point in the argv array at which the arguments start.
+ * output_dir is the directory into which the CTF goes.
  */
-static void run(int starting_argv, char *argv[]);
+static void run(int starting_argv, char *argv[], char *output_dir);
 
 /*
  * A fully descriptive CTF type ID: both file and type ID in one place.
@@ -333,9 +334,10 @@ static void construct_ctf(const char *module_name, const char *file_name,
 			  void *unused __unused__);
 
 /*
- * Write out the CTF files from the module_to_ctf_file hashtable.
+ * Write out the CTF files from the module_to_ctf_file hashtable into files in
+ * the output_dir.
  */
-static void write_types(void);
+static void write_types(char *output_dir);
 
 /*
  * Construct CTF out of each type and return that type's ID and file.
@@ -626,18 +628,21 @@ static void private_ctf_free(void *ctf_file);
 
 int main(int argc, char *argv[])
 {
-	int starting_argv = 2;
+	int starting_argv = 3;
+	char *output_dir;
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if ((argc == 2 && (strcmp(argv[1], "-e") != 0)) || (argc < 3)) {
-		fprintf(stderr, "Syntax: dwarf2ctf objects.builtin "
+	if ((argc == 3 && (strcmp(argv[1], "-e") != 0)) || (argc < 4)) {
+		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin "
 			"modules.builtin vmlinux.o module.o...,\n");
-		fprintf(stderr, "        or dwarf2ctf -e module.o ... "
+		fprintf(stderr, "        or dwarf2ctf outputdir -e module.o ... "
 			"for (inefficient)\n");
 		fprintf(stderr, "external module use\n");
 		exit(1);
 	}
+
+	output_dir = argv[1];
 
 	elf_version(EV_CURRENT);
 
@@ -654,19 +659,19 @@ int main(int argc, char *argv[])
 	 * at once, deduplicating them.  In external-module mode, we act as if
 	 * independently invoked with every argument.
 	 */
-	if (strcmp(argv[1], "-e") != 0) {
+	if (strcmp(argv[2], "-e") != 0) {
 		char *builtin_objects_file;
 		char *builtin_module_file;
 		char *dedup_blacklist_file;
 
-		builtin_objects_file = argv[1];
-		builtin_module_file = argv[2];
-		dedup_blacklist_file = argv[3];
-		starting_argv = 4;
+		builtin_objects_file = argv[2];
+		builtin_module_file = argv[3];
+		dedup_blacklist_file = argv[4];
+		starting_argv = 5;
 		init_builtin(builtin_objects_file, builtin_module_file);
 		init_blacklist(dedup_blacklist_file);
 
-		run(starting_argv, argv);
+		run(starting_argv, argv, output_dir);
 	} else {
 		char **name;
 
@@ -675,7 +680,7 @@ int main(int argc, char *argv[])
 			one_argv[0] = *name;
 			one_argv[1] = NULL;
 
-			run(0, one_argv);
+			run(0, one_argv, output_dir);
 		}
 	}
 
@@ -689,8 +694,9 @@ int main(int argc, char *argv[])
  * Run dwarf2ctf over a single object file or set thereof.
  *
  * starting_argv is the point in the argv array at which the arguments start.
+ * output_dir is the directory into which the CTF goes.
  */
-static void run(int starting_argv, char *argv[])
+static void run(int starting_argv, char *argv[], char *output_dir)
 {
 	char **name;
 
@@ -728,7 +734,7 @@ static void run(int starting_argv, char *argv[])
 	 * necessary linker scripts.
 	 */
 	dw_ctf_trace("Writeout.\n");
-	write_types();
+	write_types(output_dir);
 
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
@@ -3115,7 +3121,7 @@ static ctf_id_t assemble_ctf_variable(const char *module_name,
 
 /* Writeout.  */
 
-static void write_types(void)
+static void write_types(char *output_dir)
 {
 	GHashTableIter module_iter;
 	char *module;
@@ -3123,12 +3129,12 @@ static void write_types(void)
 
 	/*
 	 * Work over all the modules and write their compressed CTF data out
-	 * into a new .ctf directory.  Built-in modules get names ending in
+	 * into the output directory.  Built-in modules get names ending in
 	 * .builtin.ctf.new; others get names ending in .mod.ctf.new.  The
 	 * makefile moves .ctf.new over the top of .ctf iff it has changed.
 	 */
 
-	if ((mkdir(".ctf", 0777) < 0) && errno != EEXIST) {
+	if ((mkdir(output_dir, 0777) < 0) && errno != EEXIST) {
 		fprintf(stderr, "Cannot create .ctf directory: %s\n",
 			strerror(errno));
 		exit(1);
@@ -3160,7 +3166,7 @@ static void write_types(void)
 			}
 		}
 
-		path = str_appendn(path, ".ctf/", module,
+		path = str_appendn(path, output_dir, "/", module,
 				   builtin_module ? ".builtin" : ".mod",
 				   ".ctf.new", NULL);
 
