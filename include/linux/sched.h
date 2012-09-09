@@ -54,6 +54,8 @@ struct sched_param {
 
 #include <asm/processor.h>
 
+#include <linux/dtrace_os.h>
+
 struct exec_domain;
 struct futex_pi_state;
 struct robust_list_head;
@@ -1609,6 +1611,7 @@ struct task_struct {
 	ktime_t dtrace_start;
 	uint8_t dtrace_stop;
 	uint8_t dtrace_sig;
+	dtrace_psinfo_t *dtrace_psinfo;
 
 	void *dtrace_helpers;
 #endif

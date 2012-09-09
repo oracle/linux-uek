@@ -207,6 +207,10 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DTRACE
+	dtrace_psinfo_free(tsk->dtrace_psinfo);
+#endif
+
 	account_kernel_stack(tsk->stack, -1);
 	arch_release_thread_info(tsk->stack);
 	free_thread_info(tsk->stack);
@@ -334,6 +338,10 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->task_frag.page = NULL;
 
 	account_kernel_stack(ti, 1);
+
+#ifdef CONFIG_DTRACE
+	tsk->dtrace_psinfo = NULL;
+#endif
 
 	return tsk;
 
