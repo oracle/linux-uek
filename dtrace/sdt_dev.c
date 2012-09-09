@@ -43,24 +43,67 @@ static int		sdt_probetab_size;
 static int		sdt_probetab_mask;
 
 static sdt_argdesc_t	sdt_args[] = {
-	{ "proc", "create", 0, 0, "struct task_struct *", },
+	/*
+	 * { name, provider, ndx, mapping, native, xlate }
+	 */
+	{ "io", "done", 0, 0, "struct buffer_head *", "bufinfo_t *" },
+	{ "io", "done", 1, 0, "struct buffer_head *", "devinfo_t *" },
+	{ "io", "done", 2, 0, "struct buffer_head *", "fileinfo_t *" },
+	{ "io", "start", 0, 0, "struct buffer_head *", "bufinfo_t *" },
+	{ "io", "start", 1, 0, "struct buffer_head *", "devinfo_t *" },
+	{ "io", "start", 2, 0, "struct buffer_head *", "fileinfo_t *" },
+	{ "io", "wait-done", 0, 0, "struct buffer_head *", "bufinfo_t *" },
+	{ "io", "wait-done", 1, 0, "struct buffer_head *", "devinfo_t *" },
+	{ "io", "wait-done", 2, 0, "struct buffer_head *", "fileinfo_t *" },
+	{ "io", "wait-start", 0, 0, "struct buffer_head *", "bufinfo_t *" },
+	{ "io", "wait-start", 1, 0, "struct buffer_head *", "devinfo_t *" },
+	{ "io", "wait-start", 2, 0, "struct buffer_head *", "fileinfo_t *" },
+
+	{ "proc", "create", 0, 0, "struct task_struct *", "psinfo_t *" },
 	{ "proc", "exec", 0, 0, "char *", },
 	{ "proc", "exec-failure", 0, 0, "int", },
 	{ "proc", "exit", 0, 0, "int", },
-	{ "proc", "lwp_create", 0, 0, "struct task_struct *", },
+#if 0
+	{ "proc", "fault", 0, 0, "int", },
+	{ "proc", "fault", 1, 1, "siginfo_t", },
+#endif
+	{ "proc", "lwp_create", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "proc", "lwp_create", 1, 0, "struct task_struct *", "psinfo_t *" },
 	{ "proc", "lwp_exit", 0, 0, "int", },
+	{ "proc", "signal-clear", 0, 0, "int", },
+	{ "proc", "signal-discard", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "proc", "signal-discard", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "proc", "signal-discard", 2, 1, "int", },
 	{ "proc", "signal-handle", 0, 0, "int" },
-	{ "proc", "signal-handle", 1, 0 /* 1 */, "siginfo_t *" },
-	{ "proc", "signal-handle", 2, 0 /* 2 */, "void (*)(void)" },
-	{ "proc", "signal-send", 0, 0, "struct task_struct *", },
-	{ "proc", "signal-send", 1, 0, "int", },
+	{ "proc", "signal-handle", 1, 1, "siginfo_t *" },
+	{ "proc", "signal-handle", 2, 2, "void (*)(void)" },
+	{ "proc", "signal-send", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "proc", "signal-send", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "proc", "signal-send", 2, 1, "int", },
 
-	{ "sched", "tick", 0, 0, "struct task_struct *", },
+	{ "sched", "change-pri", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "change-pri", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "change-pri", 2, 1, "int", },
+	{ "sched", "dequeue", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "dequeue", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "dequeue", 2, 1, "cpuinfo_t *", },
+	{ "sched", "dequeue", 3, 2, "int", },
+	{ "sched", "enqueue", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "enqueue", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "enqueue", 2, 1, "cpuinfo_t *", },
+	{ "sched", "off-cpu", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "off-cpu", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "surrender", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "surrender", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "tick", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "tick", 1, 0, "struct task_struct *", "psinfo_t *" },
+	{ "sched", "wakeup", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "sched", "wakeup", 1, 0, "struct task_struct *", "psinfo_t *" },
 
 	{ NULL, }
 };
 
-static int sdt_invop(struct pt_regs *regs)
+static uint8_t sdt_invop(struct pt_regs *regs)
 {
 	sdt_probe_t	*sdt = sdt_probetab[SDT_ADDR2NDX(regs->ip)];
 
@@ -164,7 +207,7 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 
-	sdt_probe_enable(sdp->sdp_patchpoint);
+	dtrace_invop_enable(sdp->sdp_patchpoint);
 	return 0;
 }
 
@@ -172,7 +215,7 @@ void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 
-	sdt_probe_disable(sdp->sdp_patchpoint);
+	dtrace_invop_disable(sdp->sdp_patchpoint, sdp->sdp_savedval);
 }
 
 void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
@@ -219,6 +262,33 @@ uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
 
 void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
 {
+	sdt_probe_t	*sdp = parg;
+
+	sdp->sdp_module->sdt_nprobes--;
+
+	while (sdp != NULL) {
+		sdt_probe_t	*old = sdp, *last, *hash;
+		int		ndx;
+
+		ndx = SDT_ADDR2NDX(sdp->sdp_patchpoint);
+		last = NULL;
+		hash = sdt_probetab[ndx];
+
+		while (hash != sdp) {
+			ASSERT(hash != NULL);
+			last = hash;
+			hash = hash->sdp_hashnext;
+		}
+
+		if (last != NULL)
+			last->sdp_hashnext = sdp->sdp_hashnext;
+		else
+			sdt_probetab[ndx] = sdp->sdp_hashnext;
+
+		kfree(sdp->sdp_name);
+		sdp = sdp->sdp_next;
+		kfree(old);
+	}
 }
 
 static long sdt_ioctl(struct file *file,
@@ -259,8 +329,6 @@ int sdt_dev_init(void)
 	if (ret)
 		pr_err("%s: Can't register misc device %d\n",
 		       sdt_dev.name, sdt_dev.minor);
-
-	dtrace_register_builtins();	/* FIXME */
 
 	if (sdt_probetab_size == 0)
 		sdt_probetab_size = SDT_PROBETAB_SIZE;

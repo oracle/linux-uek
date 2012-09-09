@@ -119,7 +119,7 @@ static dtrace_pops_t sdt_pops = {
 	NULL,
 	NULL,
 	sdt_getargdesc,
-	sdt_getarg,
+	NULL /* sdt_getarg */,
 	NULL,
 	sdt_destroy,
 };
