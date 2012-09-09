@@ -34,6 +34,8 @@
 #include <linux/socket.h>
 #include <net/ipv6.h>
 
+#include <linux/mount.h>
+
 #include "dtrace.h"
 
 size_t				dtrace_global_maxsize = 16 * 1024;
@@ -882,7 +884,7 @@ void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
  */
 #define DTRACE_TLS_THRKEY(where)					\
 	{								\
-		uint_t	intr = in_interrupt() ? 1 : 0;			\
+		uint_t	intr = in_irq() ? 1 : 0;			\
 									\
 		(where) = ((current->pid + DIF_VARIABLE_MAX) &		\
 			   (((uint64_t)1 << 63) - 1)) |			\
@@ -1087,7 +1089,7 @@ static int dtrace_canstore(uint64_t addr, size_t sz, dtrace_mstate_t *mstate,
  */
 static int
 dtrace_canload(uint64_t addr, size_t sz, dtrace_mstate_t *mstate,
-    dtrace_vstate_t *vstate)
+	       dtrace_vstate_t *vstate)
 {
 	volatile uintptr_t	*illval = &this_cpu_core->cpuc_dtrace_illval;
 
@@ -1857,12 +1859,10 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		return mstate->dtms_arg[ndx];
 
 	case DIF_VAR_UREGS: {
-		struct pt_regs	*regs = task_pt_regs(current);
-
 		if (!dtrace_priv_proc(state))
 			return 0;
 
-		return dtrace_getreg(regs, ndx);
+		return dtrace_getreg(current, ndx);
 	}
 
 	case DIF_VAR_CURTHREAD:
@@ -2037,14 +2037,6 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		/*
-		 * Note that we are assuming that an unanchored probe is
-		 * always due to a high-level interrupt.  (And we're assuming
-		 * that there is only a single high level interrupt.)
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return init_task.pid;
-
-		/*
 		 * It is always safe to dereference current, it always points
 		 * to a valid task_struct.
 		 */
@@ -2053,12 +2045,6 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 	case DIF_VAR_PPID:
 		if (!dtrace_priv_proc(state))
 			return 0;
-
-		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return init_task.real_parent->pid;
 
 		/*
 		 * It is always safe to dereference current, it always points
@@ -2070,23 +2056,11 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		return (uint64_t)current->real_parent->pid;
 
 	case DIF_VAR_TID:
-		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return init_task.pid;
-
 		return (uint64_t)current->pid;
 
 	case DIF_VAR_EXECNAME:
 		if (!dtrace_priv_proc(state))
 			return 0;
-
-		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return (uint64_t)(uintptr_t)init_task.comm;
 
 		/*
 		 * It is always safe to dereference current, it always points
@@ -2103,12 +2077,6 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return (uint64_t)init_task.real_cred->uid;
-
-		/*
 		 * It is always safe to dereference current, it always points
 		 * to a valid task_struct.
 		 *
@@ -2120,12 +2088,6 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 	case DIF_VAR_GID:
 		if (!dtrace_priv_proc(state))
 			return 0;
-
-		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return (uint64_t)init_task.real_cred->gid;
 
 		/*
 		 * It is always safe to dereference current, it always points
@@ -2141,16 +2103,13 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		/*
-		 * See comment in DIF_VAR_PID.
-		 */
-		if (DTRACE_ANCHORED(mstate->dtms_probe) && in_interrupt())
-			return 0;
-
-		/*
 		 * It is always safe to dereference current, it always points
 		 * to a valid task_struct.
 		 */
 		return (uint64_t)current->thread.error_code;
+
+	case DIF_VAR_CURCPU:
+		return (uint64_t)(uintptr_t)this_cpu_info;
 
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
@@ -3640,6 +3599,36 @@ next:
 inetout:
 #endif
 		regs[rd] = (uintptr_t)end + 1;
+		mstate->dtms_scratch_ptr += size;
+		break;
+	}
+
+	case DIF_SUBR_D_PATH: {
+		struct path	*path = (struct path *)tupregs[0].dttk_value;
+		char		*dest = (char *)mstate->dtms_scratch_ptr;
+		char		*ptr;
+		uint64_t	size = state->dts_options[DTRACEOPT_STRSIZE];
+
+		if (!dtrace_canload((uintptr_t)path, sizeof(struct path),
+				    mstate, vstate)) {
+			regs[rd] = 0;
+			break;
+		}
+
+		if (!DTRACE_INSCRATCH(mstate, size)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		ptr = d_path(path, dest, size);
+		if (ptr < 0) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+			regs[rd] = 0;
+			break;
+		}
+
+		regs[rd] = (uintptr_t)ptr;
 		mstate->dtms_scratch_ptr += size;
 		break;
 	}

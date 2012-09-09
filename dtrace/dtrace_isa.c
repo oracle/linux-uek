@@ -197,8 +197,10 @@ int dtrace_getipl(void)
 	return in_interrupt();
 }
 
-ulong_t dtrace_getreg(struct pt_regs *rp, uint_t reg)
+ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 {
+	struct pt_regs	*rp = task_pt_regs(task);
+
 #ifdef __i386__
 	if (reg > REG_SS) {
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
@@ -245,86 +247,53 @@ ulong_t dtrace_getreg(struct pt_regs *rp, uint_t reg)
 	}
 #else
 	int	regmap[] = {
-				REG_GS,		/*  0 -> GS */
-				REG_FS,		/*  1 -> FS */
-				REG_ES,		/*  2 -> ES */
-				REG_DS,		/*  3 -> DS */
+				REG_RBX,	/*  0 -> EBX */
+				REG_RCX,	/*  1 -> ECX */
+				REG_RDX,	/*  2 -> EDX */
+				REG_RSI,	/*  3 -> ESI */
 				REG_RDI,	/*  4 -> EDI */
-				REG_RSI,	/*  5 -> ESI */
-				REG_RBP,	/*  6 -> EBP */
-				REG_RSP,	/*  7 -> ESP */
-				REG_RBX,	/*  8 -> EBX */
-				REG_RDX,	/*  9 -> EDX */
-				REG_RCX,	/* 10 -> ECX */
-				REG_RAX,	/* 11 -> EAX */
-				REG_TRAPNO,	/* 12 -> TRAPNO */
-				REG_ERR,	/* 13 -> ERR */
-				REG_RIP,	/* 14 -> EIP */
-				REG_CS,		/* 15 -> CS */
-				REG_RFL,	/* 16 -> EFL */
-				REG_RSP,	/* 17 -> UESP */
-				REG_SS,		/* 18 -> SS */
+				REG_RBP,	/*  5 -> EBP */
+				REG_RAX,	/*  6 -> EAX */
+				REG_DS,		/*  7 -> DS */
+				REG_ES,		/*  8 -> ES */
+				REG_FS,		/*  9 -> FS */
+				REG_GS,		/* 10 -> GS */
+				REG_TRAPNO,	/* 11 -> TRAPNO */
+				REG_RIP,	/* 12 -> EIP */
+				REG_CS,		/* 13 -> CS */
+				REG_RFL,	/* 14 -> EFL */
+				REG_RSP,	/* 15 -> UESP */
+				REG_SS,		/* 16 -> SS */
 			   };
+	if (reg > REG_GS) {
+		/*
+		 * Convert register alias index into register mapping index.
+		 */
+		reg -= REG_GS + 1;
 
-	if (reg <= REG_SS) {
 		if (reg >= sizeof(regmap) / sizeof(int)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 			return 0;
 		}
 
 		reg = regmap[reg];
-	} else
-		reg -= REG_SS + 1;
+	}
+
+	/*
+	 * Most common case: direct index into pt_regs structure.
+	 */
+	if (reg <= REG_SS)
+		return (&rp->r15)[reg];
 
 	switch (reg) {
-	case REG_RDI:
-		return rp->di;
-	case REG_RSI:
-		return rp->si;
-	case REG_RDX:
-		return rp->dx;
-	case REG_RCX:
-		return rp->cx;
-	case REG_R8:
-		return rp->r8;
-	case REG_R9:
-		return rp->r9;
-	case REG_RAX:
-		return rp->ax;
-	case REG_RBX:
-		return rp->bx;
-	case REG_RBP:
-		return rp->bp;
-	case REG_R10:
-		return rp->r10;
-	case REG_R11:
-		return rp->r11;
-	case REG_R12:
-		return rp->r12;
-	case REG_R13:
-		return rp->r13;
-	case REG_R14:
-		return rp->r14;
-	case REG_R15:
-		return rp->r15;
-	case REG_CS:
 	case REG_DS:
+		return task->thread.ds;
 	case REG_ES:
+		return task->thread.es;
 	case REG_FS:
+		return task->thread.fs;
 	case REG_GS:
-		return rp->cs;
-	case REG_TRAPNO:
-		return rp->orig_ax;
-	case REG_ERR:
-		return rp->di;
-	case REG_RIP:
-		return rp->ip;
-	case REG_SS:
-		return rp->ss;
-	case REG_RFL:
-		return rp->flags;
-	case REG_RSP:
-		return rp->sp;
+		return task->thread.gs;
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return 0;

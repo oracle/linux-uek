@@ -52,9 +52,15 @@ dtrace_optval_t		dtrace_statusrate_default = NANOSEC;
 dtrace_optval_t		dtrace_statusrate_max = (uint64_t)10 * NANOSEC;
 dtrace_optval_t		dtrace_jstackframes_default = 50;
 dtrace_optval_t		dtrace_jstackstrsize_default = 512;
+#if 1
+ktime_t			dtrace_deadman_interval = KTIME_INIT(10, 0);
+ktime_t			dtrace_deadman_timeout = KTIME_INIT(120, 0);
+ktime_t			dtrace_deadman_user = KTIME_INIT(120, 0);
+#else
 ktime_t			dtrace_deadman_interval = KTIME_INIT(1, 0);
 ktime_t			dtrace_deadman_timeout = KTIME_INIT(10, 0);
 ktime_t			dtrace_deadman_user = KTIME_INIT(30, 0);
+#endif
 
 dtrace_id_t		dtrace_probeid_begin;
 dtrace_id_t		dtrace_probeid_end;
