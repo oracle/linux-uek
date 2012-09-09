@@ -368,6 +368,9 @@ void put_task_stack(struct task_struct *tsk)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DTRACE
+	dtrace_psinfo_free(tsk->dtrace_psinfo);
+#endif
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	/*
 	 * The task is finally done with both the stack and thread_info,
@@ -573,6 +576,9 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	atomic_set(&tsk->usage, 2);
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	tsk->btrace_seq = 0;
+#endif
+#ifdef CONFIG_DTRACE
+	tsk->dtrace_psinfo = NULL;
 #endif
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
