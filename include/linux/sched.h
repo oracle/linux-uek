@@ -58,6 +58,7 @@ struct sched_param {
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
 #include <linux/magic.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/processor.h>
 
@@ -1719,6 +1720,7 @@ struct task_struct {
 	ktime_t dtrace_start;
 	uint8_t dtrace_stop;
 	uint8_t dtrace_sig;
+	dtrace_psinfo_t *dtrace_psinfo;
 
 	void *dtrace_helpers;
 #endif
