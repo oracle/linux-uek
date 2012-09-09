@@ -340,25 +340,6 @@ static int dtrace_stacktrace_stack(void *data, char *name)
 			st->flags &= ~STACKTRACE_SKIP;
 	}
 
-/* FIXME - DEBUG */
-#if 1
-	if (name != NULL) {
-		unsigned long	sig = 0x5555550000000000ULL;
-		int		i = strlen(name);
-		int		s = 0;
-
-		if (i >= 5)
-			i = 5;
-
-		while (i > 0) {
-			sig |= (((unsigned long)name[i]) & 0xff) << s;
-			i--;
-			s += 8;
-		}
-		st->pcs[st->depth++] = sig;
-	}
-#endif
-
 	return 0;
 }
 
