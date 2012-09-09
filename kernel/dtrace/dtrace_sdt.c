@@ -12,6 +12,7 @@
 #include <asm-generic/bitsperlong.h>
 #include <asm-generic/sections.h>
 #include <asm/alternative.h>
+#include <asm/nmi.h>
 #include <asm/nops.h>
 
 #define	SDT_TRAP_INSTR	0xf0
@@ -19,20 +20,33 @@
 
 const char		*sdt_prefix = "__dtrace_probe_";
 
-void sdt_probe_enable(sdt_instr_t *addr)
+/* This code is based on apply_alternatives and text_poke_early.  It needs to
+ * run before SMP is initialized in order to avoid SMP problems with patching
+ * code that might be accessed on another CPU.
+ */
+static void __init_or_module text_poke_batch(struct text_poke_param *reqs,
+					     int cnt)
 {
-	text_poke(addr, ((unsigned char []){SDT_TRAP_INSTR}), 1);
-}
-EXPORT_SYMBOL(sdt_probe_enable);
+	int			i;
+	unsigned long		flags;
+	struct text_poke_param	*tpp;
 
-void sdt_probe_disable(sdt_instr_t *addr)
-{
-	text_poke((void *)addr, ideal_nops[1], 1);
+	stop_nmi();
+	local_irq_save(flags);
+
+	for (i = 0; i < cnt; i++) {
+		tpp = &reqs[i];
+		memcpy(tpp->addr, tpp->opcode, tpp->len);
+	}
+
+	sync_core();
+	local_irq_restore(flags);
+	restart_nmi();
 }
-EXPORT_SYMBOL(sdt_probe_disable);
 
 static int sdt_probe_add(struct module *mp, char *name, char *func,
-			 uintptr_t addr, void *nops)
+			 uintptr_t addr, struct text_poke_param *tpp,
+			 void *nops)
 {
 	sdt_probedesc_t *sdp;
 	uint8_t *instr;
@@ -59,23 +73,24 @@ static int sdt_probe_add(struct module *mp, char *name, char *func,
 	sdp->sdpd_next = mp->sdt_probes;
 	mp->sdt_probes = sdp;
 
-	mutex_lock(&text_mutex);
-	text_poke(instr, nops, SDT_NOP_SIZE);
-	mutex_unlock(&text_mutex);
+	tpp->addr = instr;
+	tpp->opcode = nops;
+	tpp->len = SDT_NOP_SIZE;
 
 	return 0;
 }
 
-void dtrace_register_builtins(void)
+void dtrace_sdt_register(struct module *mod)
 {
-	unsigned long		cnt;
+	int			i, cnt;
 	dtrace_sdt_probeinfo_t	*pi =
 				(dtrace_sdt_probeinfo_t *)&dtrace_sdt_probes;
 	void			*nextpi;
 	uint8_t			nops[SDT_NOP_SIZE];
+	struct text_poke_param	*reqs;
 
-	if (dtrace_kmod == NULL) {
-		pr_warning("%s: no kernel pseudo-module allocated\n",
+	if (mod == NULL) {
+		pr_warning("%s: no module provided - nothing registered\n",
 			   __func__);
 		return;
 	}
@@ -94,17 +109,44 @@ void dtrace_register_builtins(void)
 	add_nops(nops, 1);
 	add_nops(nops + 1, SDT_NOP_SIZE - 1);
 
-	for (cnt = 0; cnt < dtrace_sdt_nprobes; cnt++) {
+	/*
+	 * Set up a batch of text_poke requests that will handle replacing all
+	 * calls at SDT probe locations with the NOP sequence.  Allocate the
+	 * requests array, and then fill it in.
+	 */
+	reqs = (struct text_poke_param *)
+			vmalloc(dtrace_sdt_nprobes *
+				sizeof(struct text_poke_param));
+	if (reqs == NULL) {
+		pr_warning("%s: failed to allocate text_poke_param array\n",
+			   __func__);
+		return;
+	}
+
+	for (i = cnt = 0; cnt < dtrace_sdt_nprobes; i++) {
 		char	*func = pi->name + pi->name_len + 1;
 
-		if (sdt_probe_add(dtrace_kmod, pi->name, func, pi->addr, nops))
+		if (sdt_probe_add(dtrace_kmod, pi->name, func, pi->addr,
+				  &reqs[cnt], nops))
 			pr_warning("%s: failed to add SDT probe %s\n",
 				   __func__, pi->name);
+		else
+			cnt++;
 
 		nextpi = (void *)pi + sizeof(dtrace_sdt_probeinfo_t)
 			+ roundup(pi->name_len + 1 +
 				  pi->func_len + 1, BITS_PER_LONG / 8);
 		pi = nextpi;
 	}
+
+	text_poke_batch(reqs, cnt);
 }
-EXPORT_SYMBOL(dtrace_register_builtins);
+
+static int __init nosdt(char *str)
+{
+        dtrace_sdt_nprobes = 0;
+
+        return 0;
+}
+
+early_param("nosdt", nosdt);
