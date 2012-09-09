@@ -5,11 +5,6 @@
 
 #include <asm/unistd.h>
 
-#define ASSIST_PR_PSARGS	0
-#define ASSIST_PR_ARGC		1
-#define ASSIST_PR_ARGV		2
-#define ASSIST_PR_ENVP		3
-
 #define PR_PSARGS_SZ		80
 
 typedef struct dtrace_psinfo {
