@@ -2,7 +2,6 @@
 #define _DTRACE_CPU_H_
 
 #include <linux/ktime.h>
-#include <linux/module.h>
 #include <linux/mutex.h>
 
 #define CPUC_SIZE	(sizeof (uint16_t) + sizeof(uint8_t) + \
@@ -21,10 +20,10 @@ typedef struct cpu_core {
 	ktime_t cpu_dtrace_chilled;
 } cpu_core_t;
 
-DECLARE_PER_CPU_SHARED_ALIGNED(cpu_core_t, dtrace_cpu_info);
+DECLARE_PER_CPU_SHARED_ALIGNED(cpu_core_t, dtrace_cpu_core);
 
-#define per_cpu_core(cpu)	(&per_cpu(dtrace_cpu_info, (cpu)))
-#define this_cpu_core		(&__get_cpu_var(dtrace_cpu_info))
+#define per_cpu_core(cpu)	(&per_cpu(dtrace_cpu_core, (cpu)))
+#define this_cpu_core		(&__get_cpu_var(dtrace_cpu_core))
 
 #define DTRACE_CPUFLAG_ISSET(flag) \
 	(this_cpu_core->cpuc_dtrace_flags & (flag))
@@ -54,5 +53,25 @@ DECLARE_PER_CPU_SHARED_ALIGNED(cpu_core_t, dtrace_cpu_info);
 				 CPU_DTRACE_UPRIV | CPU_DTRACE_TUPOFLOW | \
 				 CPU_DTRACE_BADSTACK)
 #define CPU_DTRACE_ERROR	(CPU_DTRACE_FAULT | CPU_DTRACE_DROP)
+
+typedef uint32_t	processorid_t;
+typedef uint32_t	psetid_t;
+typedef uint32_t	chipid_t;
+typedef uint32_t	lgrp_id_t;
+
+typedef struct cpuinfo {
+	processorid_t cpu_id;
+	psetid_t cpu_pset;
+	chipid_t cpu_chip;
+	lgrp_id_t cpu_lgrp;
+	struct cpuinfo_x86 *cpu_info;
+} cpuinfo_t;
+
+DECLARE_PER_CPU_SHARED_ALIGNED(cpuinfo_t, dtrace_cpu_info);
+
+#define per_cpu_info(cpu)	(&per_cpu(dtrace_cpu_info, (cpu)))
+#define this_cpu_info		(&__get_cpu_var(dtrace_cpu_info))
+
+extern void dtrace_cpu_init(void);
 
 #endif /* _DTRACE_CPU_H_ */

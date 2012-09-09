@@ -27,6 +27,7 @@
 #include <linux/signal_types.h>
 #include <linux/mm_types_task.h>
 #include <linux/task_io_accounting.h>
+#include <linux/dtrace_os.h>
 
 /* task_struct member predeclarations (sorted alphabetically): */
 struct audit_context;
@@ -1074,6 +1075,7 @@ struct task_struct {
 	ktime_t dtrace_start;
 	uint8_t dtrace_stop;
 	uint8_t dtrace_sig;
+	dtrace_psinfo_t *dtrace_psinfo;
 
 	void *dtrace_helpers;
 #endif

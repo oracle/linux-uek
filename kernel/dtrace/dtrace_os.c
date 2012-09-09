@@ -5,10 +5,12 @@
  * Copyright (C) 2010, 2011 Oracle Corporation
  */
 
+#include <linux/binfmts.h>
 #include <linux/cyclic.h>
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
 #include <linux/fs.h>
+#include <linux/hardirq.h>
 #include <linux/hrtimer.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
@@ -16,15 +18,19 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/kallsyms.h>
+#include <linux/workqueue.h>
+#include <linux/mm.h>
 #include <asm/insn.h>
 #include <asm/stacktrace.h>
 #include <asm/syscalls.h>
 
-/*
- * Perform OS specific DTrace setup.
- */
+/*---------------------------------------------------------------------------*\
+(* OS SPECIFIC DTRACE SETUP                                                  *)
+\*---------------------------------------------------------------------------*/
 struct module	*dtrace_kmod = NULL;
 EXPORT_SYMBOL(dtrace_kmod);
+
+int		dtrace_ustackdepth_max = 2048;
 
 void dtrace_os_init(void)
 {
@@ -42,6 +48,8 @@ void dtrace_os_init(void)
 
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
+
+	dtrace_sdt_register(dtrace_kmod);
 }
 EXPORT_SYMBOL(dtrace_os_init);
 
@@ -58,6 +66,156 @@ void dtrace_os_exit(void)
 }
 EXPORT_SYMBOL(dtrace_os_exit);
 
+/*---------------------------------------------------------------------------*\
+(* TASK PSINFO SUPPORT                                                       *)
+\*---------------------------------------------------------------------------*/
+/*
+ * Allocate a new dtrace_psinfo_t structure.
+ */
+dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
+{
+	dtrace_psinfo_t		*psinfo;
+	struct mm_struct	*mm;
+
+	psinfo = kzalloc(sizeof(dtrace_psinfo_t), GFP_KERNEL);
+	if (psinfo == NULL) {
+		pr_warning("%s: cannot allocate DTrace psinfo structure\n",
+			   __func__);
+		return NULL;
+	}
+
+	mm = get_task_mm(task);
+	if (mm) {
+		size_t	len = mm->arg_end - mm->arg_start;
+		int	i, envc = 0;
+		char	*p;
+
+		/*
+		 * Construct the psargs string.
+		 */
+		if (len >= PR_PSARGS_SZ)
+			len = PR_PSARGS_SZ - 1;
+
+		i = access_process_vm(task, mm->arg_start, psinfo->psargs,
+					len, 0);
+		while (i < PR_PSARGS_SZ)
+			psinfo->psargs[i++] = 0;
+
+		mmput(mm);
+
+		for (i = 0; i < len; i++) {
+			if (psinfo->psargs[i] == '\0')
+				psinfo->psargs[i] = ' ';
+		}
+
+		/*
+		 * Determine the number of arguments.
+		 */
+		for (p = (char *)mm->arg_start; p < (char *)mm->arg_end;
+		     psinfo->argc++) {
+			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+
+			if (!l)
+				break;
+
+			p += l + 1;
+		}
+
+		psinfo->argv = vmalloc((psinfo->argc + 1) * sizeof(char *));
+
+		/*
+		 * Now populate the array of argument strings.
+		 */
+		for (i = 0, p = (char *)mm->arg_start; i < psinfo->argc; i++) {
+			psinfo->argv[i] = p;
+			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+		}
+		psinfo->argv[psinfo->argc] = NULL;
+
+		/*
+		 * Determine the number of environment variables.
+		 */
+		for (p = (char *)mm->env_start; p < (char *)mm->env_end;
+		     envc++) {
+			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+
+			if (!l)
+				break;
+
+			p += l + 1;
+		}
+
+		psinfo->envp = vmalloc((envc + 1) * sizeof(char *));
+
+		/*
+		 * Now populate the array of environment variable strings.
+		 */
+		for (i = 0, p = (char *)mm->env_start; i < envc; i++) {
+			psinfo->envp[i] = p;
+			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+		}
+		psinfo->envp[envc] = NULL;
+	}
+
+	return psinfo;
+}
+
+static DEFINE_SPINLOCK(psinfo_lock);
+static dtrace_psinfo_t *psinfo_free_list;
+
+/*
+ * Work queue handler to clean up psinfo structures for tasks that no longer
+ * exist.
+ */
+static void psinfo_cleaner(struct work_struct *work)
+{
+	unsigned long	flags;
+	dtrace_psinfo_t	*psinfo;
+
+	spin_lock_irqsave(&psinfo_lock, flags);
+	psinfo = psinfo_free_list;
+	psinfo_free_list = NULL;
+	spin_unlock_irqrestore(&psinfo_lock, flags);
+
+	while (psinfo) {
+		dtrace_psinfo_t	*next = psinfo->next;
+
+		if (psinfo->argv)
+			vfree(psinfo->argv);
+		if (psinfo->envp)
+			vfree(psinfo->envp);
+
+		kfree(psinfo);
+		psinfo = next;
+	}
+}
+
+static DECLARE_WORK(psinfo_cleanup, psinfo_cleaner);
+
+/*
+ * Schedule a psinfo structure for free'ing.
+ */
+void dtrace_psinfo_free(dtrace_psinfo_t *psinfo)
+{
+	unsigned long	flags;
+
+	/*
+	 * For most tasks, we never populate any DTrace psinfo.
+	 */
+	if (!psinfo)
+		return;
+
+	spin_lock_irqsave(&psinfo_lock, flags);
+	psinfo->next = psinfo_free_list;
+	psinfo_free_list = psinfo;
+	spin_unlock_irqrestore(&psinfo_lock, flags);
+
+	schedule_work(&psinfo_cleanup);
+}
+
+/*---------------------------------------------------------------------------*\
+(* TIME QUERIES                                                              *)
+\*---------------------------------------------------------------------------*/
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
  */
@@ -206,6 +364,13 @@ static void dtrace_stacktrace_address(void *data, unsigned long addr,
 		} else
 			st->depth++;
 	}
+
+	if (st->depth >= dtrace_ustackdepth_max) {
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADSTACK);
+		this_cpu_core->cpuc_dtrace_illval = st->depth;
+
+		return;
+	}
 }
 
 static inline int valid_sp(struct thread_info *tinfo, void *p,
@@ -275,11 +440,13 @@ EXPORT_SYMBOL(dtrace_stacktrace);
 (* INVALID OPCODE HANDLING                                                   *)
 \*---------------------------------------------------------------------------*/
 typedef struct dtrace_invop_hdlr {
-	int				(*dtih_func)(struct pt_regs *);
+	uint8_t				(*dtih_func)(struct pt_regs *);
 	struct dtrace_invop_hdlr	*dtih_next;
 } dtrace_invop_hdlr_t;
 
 static dtrace_invop_hdlr_t	*dtrace_invop_hdlrs;
+
+#define INVOP_TRAP_INSTR	0xf0
 
 static int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 			       void *args)
@@ -384,7 +551,7 @@ void dtrace_disable(void)
 }
 EXPORT_SYMBOL(dtrace_disable);
 
-void dtrace_invop_add(int (*func)(struct pt_regs *))
+void dtrace_invop_add(uint8_t (*func)(struct pt_regs *))
 {
 	dtrace_invop_hdlr_t	*hdlr;
 
@@ -395,7 +562,7 @@ void dtrace_invop_add(int (*func)(struct pt_regs *))
 }
 EXPORT_SYMBOL(dtrace_invop_add);
 
-void dtrace_invop_remove(int (*func)(struct pt_regs *))
+void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *))
 {
 	dtrace_invop_hdlr_t	*hdlr = dtrace_invop_hdlrs, *prev = NULL;
 
@@ -418,6 +585,18 @@ void dtrace_invop_remove(int (*func)(struct pt_regs *))
 	kfree(hdlr);
 }
 EXPORT_SYMBOL(dtrace_invop_remove);
+
+void dtrace_invop_enable(uint8_t *addr)
+{
+	text_poke(addr, ((unsigned char []){INVOP_TRAP_INSTR}), 1);
+}
+EXPORT_SYMBOL(dtrace_invop_enable);
+
+void dtrace_invop_disable(uint8_t *addr, uint8_t opcode)
+{
+	text_poke(addr, ((unsigned char []){opcode}), 1);
+}
+EXPORT_SYMBOL(dtrace_invop_disable);
 
 /*---------------------------------------------------------------------------*\
 (* SYSTEM CALL TRACING SUPPORT                                               *)

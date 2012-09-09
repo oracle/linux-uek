@@ -5,6 +5,27 @@
 
 #include <asm/unistd.h>
 
+#define ASSIST_PR_PSARGS	0
+#define ASSIST_PR_ARGC		1
+#define ASSIST_PR_ARGV		2
+#define ASSIST_PR_ENVP		3
+
+#define PR_PSARGS_SZ		80
+
+typedef struct dtrace_psinfo {
+	union {
+		unsigned long argc;
+		struct dtrace_psinfo *next;
+	};
+	char **argv;
+	char **envp;
+	char psargs[PR_PSARGS_SZ];
+} dtrace_psinfo_t;
+
+extern dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *);
+extern void dtrace_psinfo_free(dtrace_psinfo_t *);
+
+#ifdef NR_syscalls
 typedef uint32_t dtrace_id_t;
 
 #define DTRACE_IDNONE 0
@@ -26,8 +47,11 @@ extern void dtrace_os_exit(void);
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
-extern void dtrace_invop_add(int (*func)(struct pt_regs *));
-extern void dtrace_invop_remove(int (*func)(struct pt_regs *));
+extern void dtrace_invop_add(uint8_t (*func)(struct pt_regs *));
+extern void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *));
+
+extern void dtrace_invop_enable(uint8_t *);
+extern void dtrace_invop_disable(uint8_t *, uint8_t);
 
 typedef void (*sys_call_ptr_t)(void);
 typedef long (*dt_sys_call_t)(uintptr_t, uintptr_t, uintptr_t, uintptr_t,
@@ -77,5 +101,7 @@ typedef void		*(fbt_provide_fn)(struct module *, char *, uint8_t,
 					  uint8_t *, void *);
 
 extern void dtrace_fbt_init(fbt_provide_fn);
+
+#endif
 
 #endif /* _DTRACE_OS_H_ */

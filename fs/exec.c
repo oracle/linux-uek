@@ -1802,6 +1802,9 @@ static int do_execveat_common(int fd, struct filename *filename,
 		goto out;
 
 	/* execve succeeded */
+#ifdef CONFIG_DTRACE
+	current->dtrace_psinfo = dtrace_psinfo_alloc(current);
+#endif
 	current->fs->in_exec = 0;
 	current->in_execve = 0;
 	membarrier_execve(current);
