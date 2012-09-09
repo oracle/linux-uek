@@ -1024,6 +1024,7 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 			default:
 				dev_err(dev->dma_device,
 					"Unsupported l4 protocol.\n");
+				kfree(spec_l4);
 				return -EPROTONOSUPPORT;
 			}
 			list_add_tail(&spec_l4->list, rule_list_h);
