@@ -73,6 +73,7 @@
 #include <linux/init_task.h>
 #include <linux/binfmts.h>
 #include <linux/context_tracking.h>
+#include <linux/dtrace_cpu.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -721,8 +722,8 @@ static void set_load_weight(struct task_struct *p)
 
 static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED3(enqueue, struct task_struct *, p,
-			       struct task_struct *, p, void *, NULL);
+	DTRACE_SCHED2(enqueue, struct task_struct *, p,
+			       cpuinfo_t *, rq->dtrace_cpu_info);
 	update_rq_clock(rq);
 	sched_info_queued(p);
 	p->sched_class->enqueue_task(rq, p, flags);
@@ -730,8 +731,9 @@ static void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 static void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED4(dequeue, struct task_struct *, p,
-			       struct task_struct *, p, void *, NULL, int, 0);
+	DTRACE_SCHED3(dequeue, struct task_struct *, p,
+			       cpuinfo_t *, rq->dtrace_cpu_info,
+			       int, 0);
 	update_rq_clock(rq);
 	sched_info_dequeued(p);
 	p->sched_class->dequeue_task(rq, p, flags);
@@ -1443,6 +1445,8 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 	success = 1; /* we're going to change ->state */
 	cpu = task_cpu(p);
 
+	DTRACE_SCHED1(wakeup, struct task_struct *, p);
+
 	if (p->on_rq && ttwu_remote(p, wake_flags))
 		goto stat;
 
@@ -1507,8 +1511,6 @@ static void try_to_wake_up_local(struct task_struct *p)
 	if (!(p->state & TASK_NORMAL))
 		goto out;
 
-	DTRACE_SCHED2(wakeup, struct task_struct *, p,
-			      struct task_struct *, p);
 	if (!p->on_rq)
 		ttwu_activate(rq, p, ENQUEUE_WAKEUP);
 
@@ -1801,8 +1803,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 	trace_sched_switch(prev, next);
 	sched_info_switch(prev, next);
 	perf_event_task_sched_out(prev, next);
-	DTRACE_SCHED2(off__cpu, struct task_struct *, next,
-				struct task_struct *, next);
+	DTRACE_SCHED1(off__cpu, struct task_struct *, next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
@@ -1922,6 +1923,9 @@ asmlinkage void schedule_tail(struct task_struct *prev)
 #endif
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
+
+	DTRACE_PROC(start);
+	DTRACE_PROC(lwp__start);
 }
 
 /*
@@ -2912,31 +2916,34 @@ need_resched:
 
 	raw_spin_lock_irq(&rq->lock);
 
-	DTRACE_SCHED1(preempt, long, prev->state);
-
 	switch_count = &prev->nivcsw;
-	if (prev->state && !(preempt_count() & PREEMPT_ACTIVE)) {
-		if (unlikely(signal_pending_state(prev->state, prev))) {
-			prev->state = TASK_RUNNING;
-		} else {
-			deactivate_task(rq, prev, DEQUEUE_SLEEP);
-			prev->on_rq = 0;
+	if (prev->state) {
+		if (!(preempt_count() & PREEMPT_ACTIVE)) {
+			DTRACE_SCHED(sleep);
 
-			/*
-			 * If a worker went to sleep, notify and ask workqueue
-			 * whether it wants to wake up a task to maintain
-			 * concurrency.
-			 */
-			if (prev->flags & PF_WQ_WORKER) {
-				struct task_struct *to_wakeup;
-
-				to_wakeup = wq_worker_sleeping(prev, cpu);
-				if (to_wakeup)
-					try_to_wake_up_local(to_wakeup);
+			if (unlikely(signal_pending_state(prev->state, prev))) {
+				prev->state = TASK_RUNNING;
+			} else {
+				deactivate_task(rq, prev, DEQUEUE_SLEEP);
+				prev->on_rq = 0;
+	
+				/*
+				 * If a worker went to sleep, notify and ask
+				 * workqueue whether it wants to wake up a task
+				 * to maintain concurrency.
+				 */
+				if (prev->flags & PF_WQ_WORKER) {
+					struct task_struct *to_wakeup;
+	
+					to_wakeup = wq_worker_sleeping(prev, cpu);
+					if (to_wakeup)
+						try_to_wake_up_local(to_wakeup);
+				}
 			}
+			switch_count = &prev->nvcsw;
 		}
-		switch_count = &prev->nvcsw;
-	}
+	} else
+		DTRACE_SCHED(preempt);
 
 	pre_schedule(rq, prev);
 
@@ -3622,8 +3629,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
-	DTRACE_SCHED3(change__pri, struct task_struct *, p,
-				   struct task_struct *, p, int, old_prio);
+	DTRACE_SCHED2(change__pri, struct task_struct *, p, int, old_prio);
 
 	if (on_rq) {
 		enqueue_task(rq, p, 0);
@@ -4265,8 +4271,7 @@ SYSCALL_DEFINE0(sched_yield)
 	schedstat_inc(rq, yld_count);
 	current->sched_class->yield_task(rq);
 
-	DTRACE_SCHED2(surrender, struct task_struct *, current,
-				 struct task_struct *, current);
+	DTRACE_SCHED1(surrender, struct task_struct *, current);
 
 	/*
 	 * Since we are going to call schedule() anyway, there's
@@ -4416,8 +4421,7 @@ again:
 
 	yielded = curr->sched_class->yield_to_task(rq, p, preempt);
 	if (yielded) {
-		DTRACE_SCHED2(surrender, struct task_struct *, curr,
-					 struct task_struct *, curr);
+		DTRACE_SCHED1(surrender, struct task_struct *, curr);
 
 		schedstat_inc(rq, yld_count);
 		/*
@@ -6976,6 +6980,10 @@ void __init sched_init(void)
 #endif
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
+
+#ifdef CONFIG_DTRACE
+		rq->dtrace_cpu_info = per_cpu_info(i);
+#endif
 	}
 
 	set_load_weight(&init_task);

@@ -1053,8 +1053,11 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
-			from_ancestor_ns || (info == SEND_SIG_FORCED)))
+			    from_ancestor_ns || (info == SEND_SIG_FORCED))) {
+		DTRACE_PROC2(signal__discard, struct task_struct *, t,
+			     int, sig);
 		goto ret;
+	}
 
 	pending = group ? &t->signal->shared_pending : &t->pending;
 	/*
@@ -2793,8 +2796,10 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 	}
 	spin_unlock_irq(&tsk->sighand->siglock);
 
-	if (sig)
+	if (sig) {
+		DTRACE_PROC1(signal__clear, int, sig);
 		return sig;
+	}
 	return timeout ? -EINTR : -EAGAIN;
 }
 
