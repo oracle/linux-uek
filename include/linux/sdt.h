@@ -125,9 +125,6 @@ typedef uint8_t	sdt_instr_t;
 extern unsigned long dtrace_sdt_nprobes __attribute__((weak));
 extern void *dtrace_sdt_probes __attribute__((weak));
 
-extern void sdt_probe_enable(sdt_instr_t *);
-extern void sdt_probe_disable(sdt_instr_t *);
-
 typedef struct dtrace_sdt_probeinfo {
 	unsigned long addr;
 	unsigned long name_len;
@@ -135,7 +132,7 @@ typedef struct dtrace_sdt_probeinfo {
 	char name[0];
 } __aligned(sizeof(unsigned long)) dtrace_sdt_probeinfo_t;
 
-void dtrace_register_builtins(void);
+void dtrace_sdt_register(struct module *);
 
 #endif /* __KERNEL__ */
 

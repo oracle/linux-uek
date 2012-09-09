@@ -82,6 +82,8 @@
 #include <linux/proc_ns.h>
 #include <linux/io.h>
 #include <linux/sdt.h>
+#include <linux/dtrace_os.h>
+#include <linux/dtrace_cpu.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -675,7 +677,7 @@ asmlinkage __visible void __init start_kernel(void)
 	ftrace_init();
 
 #ifdef CONFIG_DTRACE
-	dtrace_register_builtins();                                             
+	dtrace_os_init();
 #endif                                                                        
 
 	/* Do the rest non-__init'ed, we're now alive */
@@ -996,6 +998,10 @@ static noinline void __init kernel_init_freeable(void)
 	cad_pid = task_pid(current);
 
 	smp_prepare_cpus(setup_max_cpus);
+
+#ifdef CONFIG_DTRACE
+	dtrace_cpu_init();
+#endif
 
 	do_pre_smp_initcalls();
 	lockup_detector_init();
