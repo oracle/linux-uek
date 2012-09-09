@@ -67,7 +67,6 @@ static int sdt_probe_add(struct module *mp, char *name, char *func,
 
 	/* adjust relocation address to beginning of call instruction */
 	instr = (uint8_t *)(addr - 1);
-pr_info("SDT: %s:%s is %lx\n", func, name, (uintptr_t)instr);
 
 	/* TBD: use a kernel list? */
 	sdp->sdpd_offset = (uintptr_t)instr;
