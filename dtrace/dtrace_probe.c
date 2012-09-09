@@ -353,11 +353,14 @@ static void dtrace_action_raise(uint64_t sig)
 	 * raise() has a queue depth of 1 -- we ignore all subsequent
 	 * invocations of the raise() action.
 	 */
+#if 0
+
+	sigaddset(&current->pending.signal, sig);
+	set_thread_flag(TIF_SIGPENDING);
+#else
 	if (current->dtrace_sig == 0)
 		current->dtrace_sig = (uint8_t)sig;
-
-//	current->sig_check = 1;	/* FIXME */
-//	aston(current);		/* FIXME */
+#endif
 }
 
 static void dtrace_action_stop(void)
@@ -1151,6 +1154,14 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		current->dtrace_start = dtrace_gethrtime();
 
 	local_irq_restore(cookie);
+
+	if (current->dtrace_sig != 0) {
+		int	sig = current->dtrace_sig;
+
+		current->dtrace_sig = 0;
+
+		send_sig(sig, current, 0);
+	}
 }
 EXPORT_SYMBOL(dtrace_probe);
 

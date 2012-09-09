@@ -3,6 +3,7 @@
 
 #include <linux/cred.h>
 #include <linux/cyclic.h>
+#include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
 #include <linux/idr.h>
 #include <linux/ktime.h>
@@ -296,7 +297,6 @@ typedef uint32_t	dtrace_cacheid_t;
 typedef uint32_t	dtrace_epid_t;
 typedef uint32_t	dtrace_optid_t;
 typedef uint32_t	dtrace_specid_t;
-typedef uint32_t	processorid_t;
 
 typedef uint64_t	dtrace_aggvarid_t;
 typedef uint64_t	dtrace_genid_t;
@@ -1414,6 +1414,7 @@ extern void (*dtrace_modunload)(struct module *);
 #define DIF_VAR_UID		0x011e
 #define DIF_VAR_GID		0x011f
 #define DIF_VAR_ERRNO		0x0120
+#define DIF_VAR_CURCPU		0x0121
 
 #define DIF_SUBR_RAND			0
 #define DIF_SUBR_MUTEX_OWNED		1
@@ -1459,8 +1460,9 @@ extern void (*dtrace_modunload)(struct module *);
 #define DIF_SUBR_INET_NTOP		41
 #define DIF_SUBR_INET_NTOA		42
 #define DIF_SUBR_INET_NTOA6		43
+#define DIF_SUBR_D_PATH			44
 
-#define DIF_SUBR_MAX			43
+#define DIF_SUBR_MAX			44
 
 #define DIF_INSTR_OP(i)			(((i) >> 24) & 0xff)
 #define DIF_INSTR_R1(i)			(((i) >> 16) & 0xff)
@@ -2302,7 +2304,7 @@ extern uintptr_t dtrace_getfp(void);
 extern uint64_t dtrace_getarg(int, int);
 extern int dtrace_getstackdepth(int);
 extern int dtrace_getustackdepth(void);
-extern ulong_t dtrace_getreg(struct pt_regs *, uint_t);
+extern ulong_t dtrace_getreg(struct task_struct *, uint_t);
 extern void dtrace_copyin(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 extern void dtrace_copyout(uintptr_t, uintptr_t, size_t, volatile uint16_t *);
 extern void dtrace_copyinstr(uintptr_t, uintptr_t, size_t,
@@ -2339,28 +2341,28 @@ extern void debug_enter(char *);
 # define REG_FS		1
 # define REG_GS		0
 #else
-# define REG_DS		25
-# define REG_ES		24
-# define REG_GS		23
-# define REG_FS		22
-# define REG_SS		21
-# define REG_RSP	20
-# define REG_RFL	19
-# define REG_CS		18
-# define REG_RIP	17
-# define REG_ERR	16
+# define REG_GS		24
+# define REG_FS		23
+# define REG_ES		22
+# define REG_DS		21
+# define REG_SS		20
+# define REG_RSP	19
+# define REG_RFL	18
+# define REG_CS		17
+# define REG_RIP	16
+# define REG_ERR	15
 # define REG_TRAPNO	15
-# define REG_RAX	14
-# define REG_RCX	13
+# define REG_RDI	14
+# define REG_RSI	13
 # define REG_RDX	12
-# define REG_RBX	11
-# define REG_RBP	10
-# define REG_RSI	9
-# define REG_RDI	8
-# define REG_R8		7
-# define REG_R9		6
-# define REG_R10	5
-# define REG_R11	4
+# define REG_RCX	11
+# define REG_RAX	10
+# define REG_R8		9
+# define REG_R9		8
+# define REG_R10	7
+# define REG_R11	6
+# define REG_RBX	5
+# define REG_RBP	4
 # define REG_R12	3
 # define REG_R13	2
 # define REG_R14	1
