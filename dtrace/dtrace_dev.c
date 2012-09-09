@@ -1213,7 +1213,6 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
-	dtrace_os_init();
 	dtrace_ctf_forceload();
 
 	dtrace_modload = dtrace_module_loaded;
@@ -1331,6 +1330,4 @@ void dtrace_dev_exit(void)
 	misc_deregister(&dtrace_dev);
 
 	dtrace_probe_exit();
-
-	dtrace_os_exit();
 }
