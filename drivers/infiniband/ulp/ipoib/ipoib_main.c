@@ -1542,16 +1542,8 @@ static void ipoib_set_default_moderation(struct ipoib_dev_priv *priv)
 	priv->ethtool.sample_interval = IPOIB_SAMPLE_INTERVAL;
 	priv->ethtool.use_adaptive_rx_coalesce = 1;
 
-	/*
-	* Compute the rate per ring
-	* Use fix-point rounded devision
-	*/
-	priv->ethtool.pkt_rate_low_per_ring =
-		(priv->ethtool.pkt_rate_low + priv->num_rx_queues / 2) /
-			priv->num_rx_queues;
-	priv->ethtool.pkt_rate_high_per_ring =
-		(priv->ethtool.pkt_rate_high + priv->num_rx_queues / 2) /
-		priv->num_rx_queues;
+	priv->ethtool.pkt_rate_low_per_ring = priv->ethtool.pkt_rate_low;
+	priv->ethtool.pkt_rate_high_per_ring = priv->ethtool.pkt_rate_high;
 	rx_ring = priv->recv_ring;
 	for (i = 0; i < priv->num_rx_queues; i++) {
 		rx_ring->ethtool.last_moder_time = IPOIB_AUTO_CONF;
@@ -1585,27 +1577,20 @@ static void ipoib_auto_moderation_ring(struct ipoib_recv_ring *rx_ring,
 					struct ipoib_dev_priv *priv)
 {
 	unsigned long period = jiffies - rx_ring->ethtool.last_moder_jiffies;
-	unsigned long packets;
 	unsigned long rate;
 	unsigned long avg_pkt_size;
 	unsigned long rx_packets;
 	unsigned long rx_bytes;
-	unsigned long tx_packets;
-	unsigned long tx_pkt_diff;
 	unsigned long rx_pkt_diff;
 	int moder_time;
 	int ret;
 
 	rx_packets = rx_ring->stats.rx_packets;
 	rx_bytes = rx_ring->stats.rx_bytes;
-	tx_packets = rx_packets; /* I can't relate TX and RQ queues */
-	tx_pkt_diff = tx_packets - rx_ring->ethtool.last_moder_tx_packets;
 	rx_pkt_diff = rx_packets - rx_ring->ethtool.last_moder_packets;
-
-	packets = max(tx_pkt_diff, rx_pkt_diff);
-	rate = packets * HZ / period;
-	avg_pkt_size = packets ?
-		(rx_bytes - rx_ring->ethtool.last_moder_bytes) / packets : 0;
+	rate = rx_pkt_diff * HZ / period;
+	avg_pkt_size = rx_pkt_diff ?
+		(rx_bytes - rx_ring->ethtool.last_moder_bytes) / rx_pkt_diff : 0;
 
 	/* Apply auto-moderation only when packet rate exceeds a rate that
 	 * it matters */
@@ -1615,25 +1600,21 @@ static void ipoib_auto_moderation_ring(struct ipoib_recv_ring *rx_ring,
 		* (probably TCP stream, big data and small acks),
 		* assume that traffic is mainly BW bound (maximum moderation).
 		* Otherwise, moderate according to packet rate */
-		if (2 * tx_pkt_diff > 3 * rx_pkt_diff ||
-			2 * rx_pkt_diff > 3 * tx_pkt_diff)
-			moder_time = priv->ethtool.rx_coalesce_usecs_high;
-		else {
-			if (rate < priv->ethtool.pkt_rate_low_per_ring)
-				moder_time =
-				priv->ethtool.rx_coalesce_usecs_low;
-			else if (rate > priv->ethtool.pkt_rate_high_per_ring)
-				moder_time =
-					priv->ethtool.rx_coalesce_usecs_high;
-			else
-				moder_time =
-				(rate - priv->ethtool.pkt_rate_low_per_ring) *
-				(priv->ethtool.rx_coalesce_usecs_high -
-				priv->ethtool.rx_coalesce_usecs_low) /
-				(priv->ethtool.pkt_rate_high_per_ring -
-				priv->ethtool.pkt_rate_low_per_ring) +
-				priv->ethtool.rx_coalesce_usecs_low;
-		}
+
+		if (rate < priv->ethtool.pkt_rate_low_per_ring)
+			moder_time =
+			priv->ethtool.rx_coalesce_usecs_low;
+		else if (rate > priv->ethtool.pkt_rate_high_per_ring)
+			moder_time =
+				priv->ethtool.rx_coalesce_usecs_high;
+		else
+			moder_time =
+			(rate - priv->ethtool.pkt_rate_low_per_ring) *
+			(priv->ethtool.rx_coalesce_usecs_high -
+			priv->ethtool.rx_coalesce_usecs_low) /
+			(priv->ethtool.pkt_rate_high_per_ring -
+			priv->ethtool.pkt_rate_low_per_ring) +
+			priv->ethtool.rx_coalesce_usecs_low;
 
 	} else
 		moder_time = priv->ethtool.rx_coalesce_usecs_low;
@@ -1645,12 +1626,13 @@ static void ipoib_auto_moderation_ring(struct ipoib_recv_ring *rx_ring,
 		ret = ib_modify_cq(rx_ring->recv_cq,
 				   priv->ethtool.rx_max_coalesced_frames,
 				   moder_time);
+
 		if (ret && ret != -ENOSYS)
 			ipoib_warn(priv, "%s: failed modifying CQ (%d)\n",
 			__func__, ret);
+
 	}
 	rx_ring->ethtool.last_moder_packets = rx_packets;
-	rx_ring->ethtool.last_moder_tx_packets = tx_packets;
 	rx_ring->ethtool.last_moder_bytes = rx_bytes;
 	rx_ring->ethtool.last_moder_jiffies = jiffies;
 
