@@ -122,11 +122,9 @@ EXPORT_SYMBOL(buffer_check_dirty_writeback);
  */
 void __wait_on_buffer(struct buffer_head * bh)
 {
-	DTRACE_IO3(wait__start, struct buffer_head *, bh,
-		   struct block_device *, bh->b_bdev, void *, NULL);
+	DTRACE_IO1(wait__start, struct buffer_head *, bh);
 	wait_on_bit_io(&bh->b_state, BH_Lock, TASK_UNINTERRUPTIBLE);
-	DTRACE_IO3(wait__done, struct buffer_head *, bh,
-		   struct block_device *, bh->b_bdev, void *, NULL);
+	DTRACE_IO1(wait__done, struct buffer_head *, bh);
 }
 EXPORT_SYMBOL(__wait_on_buffer);
 

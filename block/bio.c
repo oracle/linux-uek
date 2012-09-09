@@ -1853,10 +1853,6 @@ again:
 	bio_uninit(bio);
 	if (bio->bi_end_io)
 		bio->bi_end_io(bio);
-
-	DTRACE_IO3(done, struct bio *, bio, struct block_device *,
-		   bio->bi_bdev_orig ? bio->bi_bdev_orig : bio->bi_bdev,
-		   void *, NULL);
 }
 EXPORT_SYMBOL(bio_endio);
 

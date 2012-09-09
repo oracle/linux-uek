@@ -26,6 +26,7 @@
 #include <linux/profile.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/dtrace_cpu.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -753,8 +754,8 @@ static void set_load_weight(struct task_struct *p)
 
 static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED3(enqueue, struct task_struct *, p,
-		      struct task_struct *, p, void *, NULL);
+	DTRACE_SCHED2(enqueue, struct task_struct *, p,
+		      cpuinfo_t *, rq->dtrace_cpu_info);
 	if (!(flags & ENQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -766,8 +767,9 @@ static inline void enqueue_task(struct rq *rq, struct task_struct *p, int flags)
 
 static inline void dequeue_task(struct rq *rq, struct task_struct *p, int flags)
 {
-	DTRACE_SCHED4(dequeue, struct task_struct *, p,
-		      struct task_struct *, p, void *, NULL, int, 0);
+	DTRACE_SCHED3(dequeue, struct task_struct *, p,
+		      cpuinfo_t *, rq->dtrace_cpu_info,
+		      int, 0);
 	if (!(flags & DEQUEUE_NOCLOCK))
 		update_rq_clock(rq);
 
@@ -1986,6 +1988,7 @@ try_to_wake_up(struct task_struct *p, unsigned int state, int wake_flags)
 		goto out;
 
 	trace_sched_waking(p);
+	DTRACE_SCHED1(wakeup, struct task_struct *, p);
 
 	/* We're going to change ->state: */
 	success = 1;
@@ -2114,8 +2117,6 @@ static void try_to_wake_up_local(struct task_struct *p, struct rq_flags *rf)
 		goto out;
 
 	trace_sched_waking(p);
-	DTRACE_SCHED2(wakeup, struct task_struct *, p,
-			      struct task_struct *, p);
 
 	if (!task_on_rq_queued(p)) {
 		if (p->in_iowait) {
@@ -2587,8 +2588,7 @@ prepare_task_switch(struct rq *rq, struct task_struct *prev,
 {
 	sched_info_switch(rq, prev, next);
 	perf_event_task_sched_out(prev, next);
-	DTRACE_SCHED2(off__cpu, struct task_struct *, next,
-				struct task_struct *, next);
+	DTRACE_SCHED1(off__cpu, struct task_struct *, next);
 	fire_sched_out_preempt_notifiers(prev, next);
 	prepare_lock_switch(rq, next);
 	prepare_arch_switch(next);
@@ -2750,6 +2750,9 @@ asmlinkage __visible void schedule_tail(struct task_struct *prev)
 
 	if (current->set_child_tid)
 		put_user(task_pid_vnr(current), current->set_child_tid);
+
+	DTRACE_PROC(start);
+	DTRACE_PROC(lwp__start);
 }
 
 /*
@@ -3314,11 +3317,11 @@ static void __sched notrace __schedule(bool preempt)
 
 	/* Promote REQ to ACT */
 	rq->clock_update_flags <<= 1;
-	DTRACE_SCHED1(preempt, long, prev->state);
 	update_rq_clock(rq);
 
 	switch_count = &prev->nivcsw;
 	if (!preempt && prev->state) {
+		DTRACE_SCHED(sleep);
 		if (unlikely(signal_pending_state(prev->state, prev))) {
 			prev->state = TASK_RUNNING;
 		} else {
@@ -3344,7 +3347,8 @@ static void __sched notrace __schedule(bool preempt)
 			}
 		}
 		switch_count = &prev->nvcsw;
-	}
+	} else
+		DTRACE_SCHED(preempt);
 
 	next = pick_next_task(rq, prev, &rf);
 	clear_tsk_need_resched(prev);
@@ -3821,8 +3825,7 @@ void set_user_nice(struct task_struct *p, long nice)
 	p->prio = effective_prio(p);
 	delta = p->prio - old_prio;
 
-	DTRACE_SCHED3(change__pri, struct task_struct *, p,
-				   struct task_struct *, p, int, old_prio);
+	DTRACE_SCHED2(change__pri, struct task_struct *, p, int, old_prio);
 	if (queued) {
 		enqueue_task(rq, p, ENQUEUE_RESTORE | ENQUEUE_NOCLOCK);
 		/*
@@ -4835,8 +4838,7 @@ SYSCALL_DEFINE0(sched_yield)
 	schedstat_inc(rq->yld_count);
 	current->sched_class->yield_task(rq);
 
-	DTRACE_SCHED2(surrender, struct task_struct *, current,
-				 struct task_struct *, current);
+	DTRACE_SCHED1(surrender, struct task_struct *, current);
 
 	/*
 	 * Since we are going to call schedule() anyway, there's
@@ -4987,8 +4989,7 @@ again:
 
 	yielded = curr->sched_class->yield_to_task(rq, p, preempt);
 	if (yielded) {
-		DTRACE_SCHED2(surrender, struct task_struct *, curr,
-					 struct task_struct *, curr);
+		DTRACE_SCHED1(surrender, struct task_struct *, curr);
 
 		schedstat_inc(rq->yld_count);
 		/*
@@ -5950,6 +5951,10 @@ void __init sched_init(void)
 #endif /* CONFIG_SMP */
 		init_rq_hrtick(rq);
 		atomic_set(&rq->nr_iowait, 0);
+
+#ifdef CONFIG_DTRACE
+		rq->dtrace_cpu_info = per_cpu_info(i);
+#endif
 	}
 
 	set_load_weight(&init_task);
