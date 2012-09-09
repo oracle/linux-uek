@@ -1765,10 +1765,6 @@ void bio_endio(struct bio *bio, int error)
 		else if (!test_bit(BIO_UPTODATE, &bio->bi_flags))
 			error = -EIO;
 
-		DTRACE_IO3(done, struct bio *, bio, struct block_device *,
-			   bio->bi_bdev_orig ? bio->bi_bdev_orig : bio->bi_bdev,
-			   void *, NULL);
-
 		if (!atomic_dec_and_test(&bio->bi_remaining))
 			return;
 
