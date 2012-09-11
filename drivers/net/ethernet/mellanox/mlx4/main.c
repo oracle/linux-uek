@@ -1925,11 +1925,11 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 	int i;
 
 	if (msi_x) {
-		/* In multifunction mode each function gets 2 msi-X vectors
-		 * one for data path completions anf the other for asynch events
+		/* In multifunction mode each function gets 4 msi-X vectors
+		 * 3 for data path completions and 1 for asynch events
 		 * or command completions */
 		if (mlx4_is_mfunc(dev)) {
-			nreq = 2;
+			nreq = 4;
 		} else {
 			nreq = min_t(int, dev->caps.num_eqs -
 				     dev->caps.reserved_eqs, nreq);
