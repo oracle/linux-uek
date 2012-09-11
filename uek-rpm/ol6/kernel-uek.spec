@@ -83,7 +83,7 @@ Summary: The Linux kernel
 # dtrace
 %define with_dtrace    0
 # kernel-firmware
-%define with_firmware  0
+%define with_firmware  1
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
