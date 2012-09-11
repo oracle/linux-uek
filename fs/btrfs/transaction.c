@@ -531,6 +531,9 @@ static int __btrfs_end_transaction(struct btrfs_trans_handle *trans,
 	btrfs_trans_release_metadata(trans, root);
 	trans->block_rsv = NULL;
 
+	if (!list_empty(&trans->new_bgs))
+		btrfs_create_pending_block_groups(trans, root);
+
 	if (lock && !atomic_read(&root->fs_info->open_ioctl_trans) &&
 	    should_end_transaction(trans, root)) {
 		trans->transaction->blocked = 1;
@@ -1343,6 +1346,9 @@ int btrfs_commit_transaction(struct btrfs_trans_handle *trans,
 	 * start sending their work down.
 	 */
 	cur_trans->delayed_refs.flushing = 1;
+
+	if (!list_empty(&trans->new_bgs))
+		btrfs_create_pending_block_groups(trans, root);
 
 	ret = btrfs_run_delayed_refs(trans, root, 0);
 	if (ret)
