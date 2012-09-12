@@ -1,5 +1,5 @@
---- find-debuginfo.sh.orig	2012-09-11 14:16:20.726096651 +0100
-+++ find-debuginfo.sh	2012-09-11 14:18:47.733495661 +0100
+--- find-debuginfo.sh.orig	2012-09-12 20:42:13.106294407 +0100
++++ find-debuginfo.sh	2012-09-12 20:49:52.496863002 +0100
 @@ -2,12 +2,14 @@
  #find-debuginfo.sh - automagically generate debug info and file list
  #for inclusion in an rpm spec file.
@@ -26,17 +26,33 @@
    -g)
      strip_g=true
      ;;
-@@ -89,8 +94,11 @@
+@@ -88,11 +93,25 @@
+ 
  strip_to_debug()
  {
-   local g=
+-  local g=
 -  $strip_g && case "$(file -bi "$2")" in
 -  application/x-sharedlib*) g=-g ;;
++  local use_objcopy=false
 +  case "$strip_g" in
 +    true) case "$(file -bi "$2")" in
-+            application/x-sharedlib*) g=-g ;;
++            application/x-sharedlib*) use_objcopy=true ;;
 +          esac;;
-+    full) g=-g;;
++    full) use_objcopy=true;;
    esac
-   eu-strip --remove-comment $g -f "$1" "$2" || exit
+-  eu-strip --remove-comment $g -f "$1" "$2" || exit
++  # Note: eu-strip fails to remove debugging info in files containing
++  # debugging relocations at present. objcopy works fine, so use that.
++  # (This does mean that .comment sections don't get stripped, but this
++  # seems an insignificant problem for now.  When elfutils is fixed this
++  # hack can be removed.)
++  if $use_objcopy; then
++    objcopy --only-keep-debug "$2" "$1" || exit
++    objcopy --strip-debug "$2" "$2.tmp" || exit
++    mv -f "$2.tmp" "$2" || exit
++  else
++    eu-strip --remove-comment -f "$1" "$2" || exit
++  fi
    chmod 444 "$1" || exit
+ }
+ 
