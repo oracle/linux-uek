@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Sep 12 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-300.8.0.el5uek]
+- ocfs2: Fix oops in ocfs2_fast_symlink_readpage() code path (Xiaowei.Hu)
+
 * Thu Sep 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.7.0.el5uek]
 - htrimer: fix kabi break. (Joe Jin)
 - timekeeping: Add missing update call in timekeeping_resume() (Thomas
