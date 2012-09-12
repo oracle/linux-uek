@@ -545,6 +545,8 @@ Source26: Module.kabi_x86_64
 
 Source201: kabi_whitelist_x86_64
 
+Source300: debuginfo-g1.diff
+
 # Here should be only the patches up to the upstream canonical Linus tree.
 
 # For a stable release kernel
@@ -587,6 +589,16 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 %global _use_internal_dependency_generator 0
 %define __find_provides %_sourcedir/find-provides %{_tmppath}
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
+
+# TEMPORARY HACK.
+# Override __debug_install_post to use a patched script that supports -g1.
+%define __debug_install_post \
+  %{_builddir}/find-debuginfo.sh %{?_missing_build_ids_terminate_build:--strict-build-id} %{?_find_debuginfo_opts} "%{_builddir}/%{?buildsubdir}"\
+%{nil}
+
+# Only strip debugging information out of the compiled files, not any
+# other sections.
+%define _find_debuginfo_opts -g1
 
 %description
 The kernel package contains the Linux kernel (vmlinuz), the core of any
@@ -934,6 +946,15 @@ ApplyPatch %{stable_patch_00}
 %if 0%{?stable_rc}
 ApplyPatch %{stable_patch_01}
 %endif
+
+# Copy the RPM find-debuginfo.sh into the buildroot and patch it
+# to support -g1.  (This is a patch of *RPM*, not of the kernel,
+# so it is not governed by nopatches.)
+cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
+patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
+chmod +x %{_builddir}/find-debuginfo.sh
+
+chmod +x scripts/checkpatch.pl
 
 # only deal with configs if we are going to build for the arch
 # %ifnarch %nobuildarches
