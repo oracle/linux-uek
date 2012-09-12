@@ -42,7 +42,7 @@ mkdir -p %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace
 install -m0644 ${RPM_BUILD_DIR}/%{name}/dtrace/*.ko %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace/
 
 %post
-depmod -a %{kver} > /dev/null 2> /dev/null
+depmod -a %{kver}.%{karch} > /dev/null 2> /dev/null
 
 %clean
 rm -rf %{buildroot}
