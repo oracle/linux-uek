@@ -5,7 +5,7 @@
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
 
-Summary: The Linux kernel
+Summary: The Linux kernel for DTrace
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
@@ -20,7 +20,7 @@ Summary: The Linux kernel
 #
 # % define buildid .local
 
-%define distro_build 100
+%define distro_build 101
 %define signmodules 1 
 
 # base_sublevel is the kernel version we're starting with and patching
@@ -469,7 +469,7 @@ AutoReq: no\
 AutoProv: yes\
 %{nil}
 
-%define variant -uek
+%define variant -uek-dtrace
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
@@ -1637,9 +1637,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel-uek-dtrace|kernel-uek-dtrace-debug|kernel-ovs)
 %else
-%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel-uek-dtrace|kernel-uek-dtrace-debug|kernel-ovs)
 %endif
 
 %kernel_variant_pre smp
