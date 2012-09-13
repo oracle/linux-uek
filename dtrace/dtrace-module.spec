@@ -14,7 +14,7 @@ Release: 1.el6
 Provides: dtrace-kernel-interface = 1
 License: CDDL
 Group: System Environment/Kernel
-Requires: kernel-uek = %{kver}
+Requires: kernel-uek-dtrace = %{kver}
 Source0: dtrace-module-%{kver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel-uek-devel = %{kver}
