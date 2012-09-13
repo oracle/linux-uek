@@ -298,16 +298,11 @@ static void ip6_dst_ifdown(struct dst_entry *dst, struct net_device *dev,
 
 static __inline__ int rt6_check_expired(const struct rt6_info *rt)
 {
-	struct rt6_info *ort = NULL;
-
 	if (rt->rt6i_flags & RTF_EXPIRES) {
 		if (time_after(jiffies, rt->dst.expires))
 			return 1;
-	} else if (rt->dst.from) {
-		ort = (struct rt6_info *) rt->dst.from;
-		return (ort->rt6i_flags & RTF_EXPIRES) &&
-			time_after(jiffies, ort->dst.expires);
-	}
+	} else if (rt->dst.from)
+			return rt6_check_expired((struct rt6_info *) rt->dst.from);
 	return 0;
 }
 
