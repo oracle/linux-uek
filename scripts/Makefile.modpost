@@ -123,6 +123,7 @@ targets += $(modules:.ko=.mod.o)
 # Step 6), generate CTF for the entire kernel, or for the module alone if this
 # is a build of an external module.
 
+ifdef CONFIG_DTRACE
 ifndef CONFIG_DT_DISABLE_CTF
 
 # This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
@@ -209,6 +210,14 @@ cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
 		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
 		done
 
+else
+
+module-ctfs-modular-prereq =
+module-ctfs-builtin =
+module-ctf-flags =
+cmd-touch-ctf = @:
+
+endif
 else
 
 module-ctfs-modular-prereq =
