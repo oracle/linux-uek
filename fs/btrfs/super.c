@@ -761,7 +761,7 @@ int btrfs_sync_fs(struct super_block *sb, int wait)
 		return 0;
 	}
 
-	btrfs_wait_ordered_extents(root, 0, 0);
+	btrfs_wait_ordered_extents(root, 0);
 
 	trans = btrfs_start_transaction(root, 0);
 	if (IS_ERR(trans))
