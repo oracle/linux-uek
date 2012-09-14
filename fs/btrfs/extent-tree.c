@@ -5648,10 +5648,8 @@ checks:
 		ins->objectid = search_start;
 		ins->offset = num_bytes;
 
-		if (offset < search_start)
-			btrfs_add_free_space(used_block_group, offset,
-					     search_start - offset);
-		BUG_ON(offset > search_start);
+		trace_btrfs_reserve_extent(orig_root, block_group,
+					   search_start, num_bytes);
 		if (used_block_group != block_group)
 			btrfs_put_block_group(used_block_group);
 		btrfs_put_block_group(block_group);
