@@ -1464,17 +1464,11 @@ static long btrfs_control_ioctl(struct file *file, unsigned int cmd,
 
 static int btrfs_freeze(struct super_block *sb)
 {
-	struct btrfs_root *root = btrfs_sb(sb);
-	mutex_lock(&root->fs_info->transaction_kthread_mutex);
-	mutex_lock(&root->fs_info->cleaner_mutex);
 	return 0;
 }
 
 static int btrfs_unfreeze(struct super_block *sb)
 {
-	struct btrfs_root *root = btrfs_sb(sb);
-	mutex_unlock(&root->fs_info->cleaner_mutex);
-	mutex_unlock(&root->fs_info->transaction_kthread_mutex);
 	return 0;
 }
 
