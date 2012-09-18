@@ -1,0 +1,185 @@
+DTrace Kernel Modules News
+==========================
+
+Release 0.3.0 (Sep 14, 2012)
+----------------------------
+Kernel release: 2.6.39-201.0.1.el6uek
+
+New features:
+
+ - The curcpu builtin variable has been implemented as a DIF builtin variable
+   on Linux, providing a pointer to the CPU info structure for the CPU that is
+   currently active.
+
+ - A new DIF subroutine has been implemented: d_path().  This subroutine takes
+   a pointer to a path structure as argument, and returns a string representing
+   the full pathname for that path.
+
+ - The raise() action has been implemented.  This action allows a D script to
+   raise a signal in the current task.
+
+ - The io provider probes has been implemented.  It provides the following SDT
+   probes: start, wait-start, wait-done, and done.
+
+ - The proc provider has been implemented.  It provides the following SDT
+   probes: create, exec, exec-failure, exit, lwp-create, lwp-exit, lwp-start,
+   signal-clear, signal-discard, signal-handle, signal-send, start.
+
+ - The sched provider has been implemented.  It provides the following SDT
+   probes: change-pri, dequeue, enqueue, off-cpu, on-cpu, preempt, remain-cpu,
+   sleep, surrender, tick, wakeup.
+
+ - Argument mappings have been provided for io, proc, and sched provider
+   probes.  This information is used by userspace consumers.
+
+Changes:
+
+ - The invalid operand trap logic previously provided to support SDT probes has
+   been made more generic to support any probes that wish to utilie this
+   facility.
+
+ - The DTrace core module now depends on the core kernel CTF data-module, to
+   ensure that when DTrace modules are loaded on the system, CTF data for the
+   kernel will be available also.
+
+Bugfixes:
+
+ - Various DIF builtin variables that were providing a hardcoded value based on
+   the init task whenever a probe was executing in interrupt context are now
+   providing the actual value from the current task.  In Linux, there is always
+   a valid task structure available as 'current'.
+
+ - The numbering of the registers for the x86_64 architecture has been updated
+   to match the order of registers pushed onto the stack.
+
+ - It is now possible to get the correct value for the DS, ES, FS, and GS
+   registers.
+
+ - SDT probes are now correctly cleaned up when the SDT meta-provider module is
+   unloaded from the system.
+
+ - The rw_read_held() DIF subroutine will now verify whether it can safely
+   access the passed in argument based on the correct argument datatype.
+
+
+Release 0.2.4 (Feb 15th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Bugfixes:
+
+ - Provider modules now use a reference counter to determine whether any of
+   their probes are currently enabled.  Whenever the reference counter has a
+   value greater than zero, the provider module is referenced to ensure that
+   it cannot be unloaded.  Once the counter drops down to zero, the reference
+   on the module is released.  This prevents providers from being unloaded
+   while some of their probes are still in use (which would typically lead to
+   a kernel panic).
+
+
+Release 0.2.3 (Feb 10th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Changes:
+
+ - The DTrace core has been updated to support 28 DTrace option settings, to
+   account for the 'quietresize' options that was added to the userspace dtrace
+   consumer utility.
+
+Bugfixes:
+
+ - Various assertions in the DTrace core implementation incorrectly used
+   mutex_is_locked() where the test was meant to determine whether the current
+   task holds the mutex.  This has been corrected.
+
+
+Release 0.2.1 (Jan 31st, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+Bugfixes:
+
+ - Failed memory allocations from DIF code no longer trigger kernel warnings.
+
+
+Release 0.2.0 (Jan 25th, 2012)
+------------------------------
+Kernel release: 2.6.39-101.0.1.el6uek
+
+This release brings DTrace for Linux to the 2.6.39 kernel, as an upgrade from
+the previous release based on 2.6.32.
+
+New features:
+
+ - The DTrace core and provider API now support a meta-provider, a framework
+   that provides multiple providers using a common implementation.
+
+ - The Statically Defined Tracing (SDT) meta-provider has been implemented.
+   Some of the proc-provider probes are now available using this facility.
+
+Changes:
+
+ - The minimal cyclic implementation has been removed from the DTrace modules
+   because it is now provided by an equivalent GPL impementation in the core
+   kernel.
+
+ - CPU core information is now maintained at the core kernel level.
+
+ - Kernel and module code can now perform safe memory accesses by setting a
+   flag in the CPU core information structure.  If a memory access results in
+   a Page Fault or General Protection Fault, the failure will be noted as a CPU
+   fault, and execution will continue rather than causing a kernel panic.
+
+ - Functionality that depends on walking the stack (determining stack depth, or
+   collecting a backtrace) is now provided by a GPL implementation in the core
+   kernel.
+
+ - In the interest of consistency, a pseudo kernel module structure is created
+   at the core kernel level, representing the main kernel image.  This module
+   structure makes it possible to represent all kernel-level objects equally.
+   This structure provides a list of SDT probe locations in the core kernel.
+
+Bugfixes:
+
+ - Entry and return probes for system calls that use assembly code stubs are
+   now supported (systrace provider).
+
+ - All memory accesses from DIF code that cause a Page Fault or General
+   Protection Fault now correctly cause the ERROR probe to fire rather than
+   causing a kernel panic.
+
+ - Dynamic memory allocations from DIF code can now fail.  Such failures are
+   handled appropriately by the callers.
+
+ - The implementation of the division an modulo operations for signed 64-bit
+   values have been corrected.  This fixes various problems observed with
+   aggregations.
+
+ - The min() and max() aggregation functions now operate with correct (signed)
+   initial values.
+
+ - Code that depended on the idr_empty() function has been rewritten to use a
+   more explicit mechanism, because the logic for determining whether an IDR
+   structure had any elements or not was flawed.
+
+
+Release 0.1.0 (Oct 20th, 2011)
+------------------------------
+Kernel release: 2.6.32-201.0.4.el6uek
+
+First public release.
+
+Features:
+
+ - The vast majority of the DTrace core functionality has been implemented,
+   providing a nearly complete DIF/DOF implementation (including predicates,
+   aggregates, and speculative tracing support), provider API, ioctl interface
+   for userspace consumers, and direct probe invocation.
+
+ - BEGIN, END, and ERROR probes (dtrace provider).
+
+ - Timer based tick-* probes (profile provider).
+
+ - Syscall entry and return probes (systrace provider), with the exception of
+   system calls that rely on assembly code stubs, such as clone().
