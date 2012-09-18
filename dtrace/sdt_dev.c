@@ -67,9 +67,8 @@ static sdt_argdesc_t	sdt_args[] = {
 	{ "proc", "fault", 0, 0, "int", },
 	{ "proc", "fault", 1, 1, "siginfo_t", },
 #endif
-	{ "proc", "lwp_create", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
-	{ "proc", "lwp_create", 1, 0, "struct task_struct *", "psinfo_t *" },
-	{ "proc", "lwp_exit", 0, 0, "int", },
+	{ "proc", "lwp-create", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
+	{ "proc", "lwp-create", 1, 0, "struct task_struct *", "psinfo_t *" },
 	{ "proc", "signal-clear", 0, 0, "int", },
 	{ "proc", "signal-discard", 0, 0, "struct task_struct *", "lwpsinfo_t *" },
 	{ "proc", "signal-discard", 1, 0, "struct task_struct *", "psinfo_t *" },
