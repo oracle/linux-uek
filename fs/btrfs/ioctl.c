@@ -2471,13 +2471,13 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 	   another, and lock file content */
 	while (1) {
 		struct btrfs_ordered_extent *ordered;
-		lock_extent(&BTRFS_I(src)->io_tree, off, off+len, GFP_NOFS);
-		ordered = btrfs_lookup_first_ordered_extent(src, off+len);
+		lock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
+		ordered = btrfs_lookup_first_ordered_extent(src, off + len - 1);
 		if (!ordered &&
-		    !test_range_bit(&BTRFS_I(src)->io_tree, off, off+len,
-				   EXTENT_DELALLOC, 0, NULL))
+		    !test_range_bit(&BTRFS_I(src)->io_tree, off, off + len - 1,
+				    EXTENT_DELALLOC, 0, NULL))
 			break;
-		unlock_extent(&BTRFS_I(src)->io_tree, off, off+len, GFP_NOFS);
+		unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
 		if (ordered)
 			btrfs_put_ordered_extent(ordered);
 		btrfs_wait_ordered_range(src, off, len);
@@ -2551,7 +2551,7 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 			btrfs_release_path(path);
 
 			if (key.offset + datal <= off ||
-			    key.offset >= off+len)
+			    key.offset >= off + len - 1)
 				goto next;
 
 			memcpy(&new_key, &key, sizeof(new_key));
@@ -2652,8 +2652,8 @@ static noinline long btrfs_ioctl_clone(struct file *file, unsigned long srcfd,
 					new_key.offset += skip;
 				}
 
-				if (key.offset + datal > off+len)
-					trim = key.offset + datal - (off+len);
+				if (key.offset + datal > off + len)
+					trim = key.offset + datal - (off + len);
 
 				if (comp && (skip || trim)) {
 					ret = -EINVAL;
@@ -2730,7 +2730,7 @@ next:
 	ret = 0;
 out:
 	btrfs_release_path(path);
-	unlock_extent(&BTRFS_I(src)->io_tree, off, off+len, GFP_NOFS);
+	unlock_extent(&BTRFS_I(src)->io_tree, off, off + len - 1, GFP_NOFS);
 out_unlock:
 	mutex_unlock(&src->i_mutex);
 	mutex_unlock(&inode->i_mutex);
