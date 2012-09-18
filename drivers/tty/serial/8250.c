@@ -1141,6 +1141,7 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 	unsigned char status1, scratch, scratch2, scratch3;
 	unsigned char save_lcr, save_mcr;
 	unsigned long flags;
+	unsigned int old_capabilities;
 
 	if (!up->port.iobase && !up->port.mapbase && !up->port.membase)
 		return;
@@ -1191,6 +1192,7 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 			/*
 			 * We failed; there's nothing here
 			 */
+			spin_unlock_irqrestore(&up->port.lock, flags);
 			DEBUG_AUTOCONF("IER test failed (%02x, %02x) ",
 				       scratch2, scratch3);
 			goto out;
@@ -1214,6 +1216,7 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 		status1 = serial_inp(up, UART_MSR) & 0xF0;
 		serial_outp(up, UART_MCR, save_mcr);
 		if (status1 != 0x90) {
+			spin_unlock_irqrestore(&up->port.lock, flags);
 			DEBUG_AUTOCONF("LOOP test failed (%02x) ",
 				       status1);
 			goto out;
@@ -1235,8 +1238,6 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 
 	serial_outp(up, UART_FCR, UART_FCR_ENABLE_FIFO);
 	scratch = serial_in(up, UART_IIR) >> 6;
-
-	DEBUG_AUTOCONF("iir=%d ", scratch);
 
 	switch (scratch) {
 	case 0:
@@ -1272,19 +1273,13 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 
 	serial_outp(up, UART_LCR, save_lcr);
 
-	if (up->capabilities != uart_config[up->port.type].flags) {
-		printk(KERN_WARNING
-		       "ttyS%d: detected caps %08x should be %08x\n",
-		       serial_index(&up->port), up->capabilities,
-		       uart_config[up->port.type].flags);
-	}
-
 	up->port.fifosize = uart_config[up->port.type].fifo_size;
+	old_capabilities = up->capabilities;
 	up->capabilities = uart_config[up->port.type].flags;
 	up->tx_loadsz = uart_config[up->port.type].tx_loadsz;
 
 	if (up->port.type == PORT_UNKNOWN)
-		goto out;
+		goto out_lock;
 
 	/*
 	 * Reset the UART.
@@ -1301,8 +1296,17 @@ static void autoconfig(struct uart_8250_port *up, unsigned int probeflags)
 	else
 		serial_outp(up, UART_IER, 0);
 
- out:
+ out_lock:
 	spin_unlock_irqrestore(&up->port.lock, flags);
+	if (up->capabilities != old_capabilities) {
+		printk(KERN_WARNING
+		       "ttyS%d: detected caps %08x should be %08x\n",
+		       serial_index(&up->port), old_capabilities,
+		       up->capabilities);
+	}
+
+ out:
+	DEBUG_AUTOCONF("iir=%d ", scratch);
 	DEBUG_AUTOCONF("type=%s\n", uart_config[up->port.type].name);
 }
 
