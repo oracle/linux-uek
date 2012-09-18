@@ -10,7 +10,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.3.0
-Release: 1.el6
+Release: 2.el6
 Provides: dtrace-kernel-interface = 1
 License: CDDL
 Group: System Environment/Kernel
@@ -18,12 +18,19 @@ Requires: kernel-uek-dtrace = %{kver}
 Source0: dtrace-module-%{kver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel-uek-devel = %{kver}
+BuildRequires: libdtrace-ctf
 ExclusiveArch: x86_64
 
 %description
 DTrace kernel modules.
-This package contains the DTrace core module, and standard provider modules.
 
+This package contains the DTrace core module, and standard provider modules:
+dtrace, profile, syscall, sdt (io, proc,sched).
+
+Maintainers:
+------------
+Nick Alcock <nick.alcock@oracle.com>
+Kris van Hees <kris.van.hees@oracle.com>
 
 %prep
 rm -rf %{BuildRoot}
@@ -40,6 +47,8 @@ make KERNELDIR=$KSRC karch=%{karch} modules
 rm -rf %{buildroot}
 mkdir -p %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace
 install -m0644 ${RPM_BUILD_DIR}/%{name}/dtrace/*.ko %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace/
+mkdir -p %{buildroot}/usr/share/doc/dtrace-modules-%{kver}
+install -m0644 ${RPM_BUILD_DIR}/%{name}/dtrace/NEWS %{buildroot}/usr/share/doc/dtrace-modules-%{kver}
 
 %post
 depmod -a %{kver}.%{karch} > /dev/null 2> /dev/null
@@ -50,8 +59,13 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 /lib
+/usr
 
 %changelog
+* Mon Sep 17 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0-2
+- Remove development-only providers because they should not be built/released.
+* Fri Sep 14 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0
+- Release of the DTrace kernel modules for UEK2 2.6.39-201.0.1 (DTrace kernel).
 * Mon Mar 19 2012 Nick Alcock <nick.alcock@oracle.com> - 0.2.5-2
 - Fix typo causing unconditional depmod at postinstall time
 * Tue Mar 13 2012 Nick Alcock <nick.alcock@oracle.com> - 0.2.5
