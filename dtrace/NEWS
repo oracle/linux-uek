@@ -112,7 +112,7 @@ the previous release based on 2.6.32.
 
 New features:
 
- - The DTrace core and provider API now support a meta-provider, a framework
+ - The DTrace core and provider API now support meta-providers, a framework
    that provides multiple providers using a common implementation.
 
  - The Statically Defined Tracing (SDT) meta-provider has been implemented.
@@ -152,7 +152,7 @@ Bugfixes:
  - Dynamic memory allocations from DIF code can now fail.  Such failures are
    handled appropriately by the callers.
 
- - The implementation of the division an modulo operations for signed 64-bit
+ - The implementation of the division and modulo operations for signed 64-bit
    values have been corrected.  This fixes various problems observed with
    aggregations.
 
