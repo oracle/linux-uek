@@ -1146,14 +1146,36 @@ static void set_rings_qp_state(struct ipoib_dev_priv *priv,
 	if (priv->num_rx_queues > 1)
 		set_rx_rings_qp_state(priv, new_state);
 }
+/* 
+ * The function tries to clean the list of ah's that waiting for deleting.
+ * it tries for one HZ if it wasn't clear till then it print message
+ *  and out.
+ */
+static void ipoib_force_reap_ah_clean(struct ipoib_dev_priv *priv)
+{
+	unsigned long begin;
 
+	begin = jiffies;
+
+	while (!list_empty(&priv->dead_ahs)) {
+		__ipoib_reap_ah(priv->dev);
+
+		if (time_after(jiffies, begin + HZ)) {
+			ipoib_warn(priv, "timing out; will leak address handles\n");
+			break;
+		}
+
+		msleep(1);
+	}
+
+}
 
 int ipoib_ib_dev_stop(struct net_device *dev, int flush)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
-	unsigned long begin;
 	struct ipoib_recv_ring *recv_ring;
 	int i;
+	unsigned long begin;
 
 	if (test_and_clear_bit(IPOIB_FLAG_INITIALIZED, &priv->flags))
 		ipoib_napi_disable(dev);
@@ -1204,18 +1226,7 @@ timeout:
 	if (flush)
 		flush_workqueue(ipoib_workqueue);
 
-	begin = jiffies;
-
-	while (!list_empty(&priv->dead_ahs)) {
-		__ipoib_reap_ah(dev);
-
-		if (time_after(jiffies, begin + HZ)) {
-			ipoib_warn(priv, "timing out; will leak address handles\n");
-			break;
-		}
-
-		msleep(1);
-	}
+	ipoib_force_reap_ah_clean(priv);
 
 	recv_ring = priv->recv_ring;
 	for (i = 0; i < priv->num_rx_queues; ++i) {
@@ -1353,6 +1364,8 @@ void ipoib_ib_dev_cleanup(struct net_device *dev)
 
 	ipoib_mcast_stop_thread(dev, 1);
 	ipoib_mcast_dev_flush(dev);
+
+	ipoib_force_reap_ah_clean(priv);
 
 	ipoib_transport_dev_cleanup(dev);
 }
