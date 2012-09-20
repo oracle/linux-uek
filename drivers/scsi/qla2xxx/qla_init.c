@@ -4116,7 +4116,8 @@ qla2xxx_mctp_dump(scsi_qla_host_t *vha)
 
         if (!ha->flags.nic_core_reset_hdlr_active && !ha->portnum) {
                 ha->flags.nic_core_reset_hdlr_active = 1;
-                if ((rval = qla83xx_restart_nic_firmware(vha)))
+		rval = qla83xx_restart_nic_firmware(vha);
+		if (rval)
                         /* NIC Core reset failed. */
 			ql_log(ql_log_warn, vha, 0x5071,
 			    "Failed to restart nic firmware\n");
