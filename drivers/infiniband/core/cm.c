@@ -1544,7 +1544,6 @@ static int cm_req_handler(struct cm_work *work)
 
 	listen_cm_id_priv = cm_match_req(work, cm_id_priv);
 	if (!listen_cm_id_priv) {
-		pr_err("%s: no listen_cm_id_priv\n", __func__);
 		ret = -EINVAL;
 		kfree(cm_id_priv->timewait_info);
 		goto destroy;
