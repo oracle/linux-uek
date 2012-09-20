@@ -504,11 +504,12 @@ int btrfs_should_end_transaction(struct btrfs_trans_handle *trans,
 }
 
 static int __btrfs_end_transaction(struct btrfs_trans_handle *trans,
-			  struct btrfs_root *root, int throttle, int lock)
+			  struct btrfs_root *root, int throttle)
 {
 	struct btrfs_transaction *cur_trans = trans->transaction;
 	struct btrfs_fs_info *info = root->fs_info;
 	int count = 0;
+	int lock = (trans->type != TRANS_JOIN_NOLOCK);
 	int err = 0;
 
 	if (--trans->use_count) {
@@ -587,7 +588,7 @@ int btrfs_end_transaction(struct btrfs_trans_handle *trans,
 {
 	int ret;
 
-	ret = __btrfs_end_transaction(trans, root, 0, 1);
+	ret = __btrfs_end_transaction(trans, root, 0);
 	if (ret)
 		return ret;
 	return 0;
@@ -598,18 +599,7 @@ int btrfs_end_transaction_throttle(struct btrfs_trans_handle *trans,
 {
 	int ret;
 
-	ret = __btrfs_end_transaction(trans, root, 1, 1);
-	if (ret)
-		return ret;
-	return 0;
-}
-
-int btrfs_end_transaction_nolock(struct btrfs_trans_handle *trans,
-				 struct btrfs_root *root)
-{
-	int ret;
-
-	ret = __btrfs_end_transaction(trans, root, 0, 0);
+	ret = __btrfs_end_transaction(trans, root, 1);
 	if (ret)
 		return ret;
 	return 0;
@@ -618,7 +608,7 @@ int btrfs_end_transaction_nolock(struct btrfs_trans_handle *trans,
 int btrfs_end_transaction_dmeta(struct btrfs_trans_handle *trans,
 				struct btrfs_root *root)
 {
-	return __btrfs_end_transaction(trans, root, 1, 1);
+	return __btrfs_end_transaction(trans, root, 1);
 }
 
 /*
