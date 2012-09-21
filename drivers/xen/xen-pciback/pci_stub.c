@@ -352,16 +352,16 @@ static int __devinit pcistub_init_device(struct pci_dev *dev)
 	if (err)
 		goto config_release;
 
-	dev_dbg(&dev->dev, "reseting (FLR, D3, etc) the device\n");
-	__pci_reset_function_locked(dev);
-
 	/* We need the device active to save the state. */
 	dev_dbg(&dev->dev, "save state of device\n");
 	pci_save_state(dev);
 	dev_data->pci_saved_state = pci_store_saved_state(dev);
 	if (!dev_data->pci_saved_state)
 		dev_err(&dev->dev, "Could not store PCI conf saved state!\n");
-
+	else {
+		dev_dbg(&dev->dev, "reseting (FLR, D3, etc) the device\n");
+		__pci_reset_function_locked(dev);
+	}
 	/* Now disable the device (this also ensures some private device
 	 * data is setup before we export)
 	 */
@@ -895,17 +895,41 @@ static inline int str_to_slot(const char *buf, int *domain, int *bus,
 			      int *slot, int *func)
 {
 	int err;
+	char wc = '*';
 
 	err = sscanf(buf, " %x:%x:%x.%x", domain, bus, slot, func);
-	if (err == 4)
+	switch (err) {
+	case 3:
+		*func = -1;
+		err = sscanf(buf, " %x:%x:%x.%c", domain, bus, slot, &wc);
+		break;
+	case 2:
+		*slot = *func = -1;
+		err = sscanf(buf, " %x:%x:*.%c", domain, bus, &wc);
+		if (err >= 2)
+			++err;
+		break;
+	}
+	if (err == 4 && wc == '*')
 		return 0;
 	else if (err < 0)
 		return -EINVAL;
 
 	/* try again without domain */
 	*domain = 0;
+	wc = '*';
 	err = sscanf(buf, " %x:%x.%x", bus, slot, func);
-	if (err == 3)
+	switch (err) {
+	case 2:
+		*func = -1;
+		err = sscanf(buf, " %x:%x.%c", bus, slot, &wc);
+		break;
+	case 1:
+		*slot = *func = -1;
+		err = sscanf(buf, " %x:*.%c", bus, &wc) + 1;
+		break;
+	}
+	if (err == 3 && wc == '*')
 		return 0;
 
 	return -EINVAL;
@@ -928,6 +952,19 @@ static int pcistub_device_id_add(int domain, int bus, int slot, int func)
 {
 	struct pcistub_device_id *pci_dev_id;
 	unsigned long flags;
+	int rc = 0;
+
+	if (slot < 0) {
+		for (slot = 0; !rc && slot < 32; ++slot)
+			rc = pcistub_device_id_add(domain, bus, slot, func);
+		return rc;
+	}
+
+	if (func < 0) {
+		for (func = 0; !rc && func < 8; ++func)
+			rc = pcistub_device_id_add(domain, bus, slot, func);
+		return rc;
+	}
 
 	pci_dev_id = kmalloc(sizeof(*pci_dev_id), GFP_KERNEL);
 	if (!pci_dev_id)
@@ -950,15 +987,15 @@ static int pcistub_device_id_add(int domain, int bus, int slot, int func)
 static int pcistub_device_id_remove(int domain, int bus, int slot, int func)
 {
 	struct pcistub_device_id *pci_dev_id, *t;
-	int devfn = PCI_DEVFN(slot, func);
 	int err = -ENOENT;
 	unsigned long flags;
 
 	spin_lock_irqsave(&device_ids_lock, flags);
 	list_for_each_entry_safe(pci_dev_id, t, &pcistub_device_ids,
 				 slot_list) {
-		if (pci_dev_id->domain == domain
-		    && pci_dev_id->bus == bus && pci_dev_id->devfn == devfn) {
+		if (pci_dev_id->domain == domain && pci_dev_id->bus == bus
+		    && (slot < 0 || PCI_SLOT(pci_dev_id->devfn) == slot)
+		    && (func < 0 || PCI_FUNC(pci_dev_id->devfn) == func)) {
 			/* Don't break; here because it's possible the same
 			 * slot could be in the list more than once
 			 */
@@ -1214,6 +1251,10 @@ static ssize_t permissive_add(struct device_driver *drv, const char *buf,
 	err = str_to_slot(buf, &domain, &bus, &slot, &func);
 	if (err)
 		goto out;
+	if (slot < 0 || func < 0) {
+		err = -EINVAL;
+		goto out;
+	}
 	psdev = pcistub_device_find(domain, bus, slot, func);
 	if (!psdev) {
 		err = -ENODEV;
@@ -1295,17 +1336,51 @@ static int __init pcistub_init(void)
 
 	if (pci_devs_to_hide && *pci_devs_to_hide) {
 		do {
+			char wc = '*';
+
 			parsed = 0;
 
 			err = sscanf(pci_devs_to_hide + pos,
 				     " (%x:%x:%x.%x) %n",
 				     &domain, &bus, &slot, &func, &parsed);
-			if (err != 4) {
+			switch (err) {
+			case 3:
+				func = -1;
+				err = sscanf(pci_devs_to_hide + pos,
+					     " (%x:%x:%x.%c) %n",
+					     &domain, &bus, &slot, &wc,
+					     &parsed);
+				break;
+			case 2:
+				slot = func = -1;
+				err = sscanf(pci_devs_to_hide + pos,
+					     " (%x:%x:*.%c) %n",
+					     &domain, &bus, &wc, &parsed) + 1;
+				break;
+			}
+
+			if (err != 4 || wc != '*') {
 				domain = 0;
+				wc = '*';
 				err = sscanf(pci_devs_to_hide + pos,
 					     " (%x:%x.%x) %n",
 					     &bus, &slot, &func, &parsed);
-				if (err != 3)
+				switch (err) {
+				case 2:
+					func = -1;
+					err = sscanf(pci_devs_to_hide + pos,
+						     " (%x:%x.%c) %n",
+						     &bus, &slot, &wc,
+						     &parsed);
+					break;
+				case 1:
+					slot = func = -1;
+					err = sscanf(pci_devs_to_hide + pos,
+						     " (%x:*.%c) %n",
+						     &bus, &wc, &parsed) + 1;
+					break;
+				}
+				if (err != 3 || wc != '*')
 					goto parse_error;
 			}
 
