@@ -225,6 +225,7 @@ struct cma_work {
 struct alt_path_work {
 	struct delayed_work	work;
 	struct rdma_id_private	*id;
+	struct ib_sa_path_rec	path_rec;
 };
 
 struct cma_active_mig_send_lap_work {
@@ -1290,8 +1291,8 @@ static int cma_qp_set_alt_path(struct rdma_id_private *id_priv)
 		/* fix requested state. later, do it in CM level */
 		switch (path_mig_state) {
 		case IB_MIG_MIGRATED:
-		case IB_MIG_REARM:
 			break;
+		case IB_MIG_REARM:
 		case IB_MIG_ARMED:
 			/* FIXME: exclude  IB_QP_PATH_MIG_STATE from mask in ib_cm_init_qp_attr() */
 			qp_attr_mask &= ~IB_QP_PATH_MIG_STATE;
@@ -1305,6 +1306,11 @@ static int cma_qp_set_alt_path(struct rdma_id_private *id_priv)
 		ret = ib_modify_qp(id_priv->id.qp, &qp_attr, qp_attr_mask);
 		if (ret) {
 			cma_warn(id_priv, "failed to modify QP to REARM (%d)\n", ret);
+		} else {
+			memset(&event, 0, sizeof event);
+			event.event = RDMA_CM_EVENT_ALT_PATH_LOADED;
+			event.param.ud.alt_path_index = id_priv->alt_path_index;
+			ret = id_priv->id.event_handler(&id_priv->id, &event);
 		}
 		goto out1;
 	} else {
@@ -1400,10 +1406,12 @@ static void cma_alt_path_work_handler(struct work_struct *_work)
 {
 	struct alt_path_work *work = container_of(_work, struct alt_path_work, work.work);
 	struct rdma_id_private *id_priv = work->id;
+	struct rdma_route *route = &id_priv->id.route;
 
 	mutex_lock(&id_priv->handler_mutex);
 	cma_dbg(id_priv, "setting alt_path\n");
 
+	route->path_rec[id_priv->alt_path_index] = work->path_rec;
 	if (cma_qp_set_alt_path(id_priv))
 		cma_dbg(id_priv, "fail to set alt path\n");
 
@@ -1553,7 +1561,6 @@ static void cma_lap_handler(struct rdma_id_private *id_priv, struct ib_sa_path_r
 		return;
 	}
 
-	route->path_rec[id_priv->alt_path_index] = *path_rec;
 	cma_dbg(id_priv, "APR success. setting alt path.\n");
 	cma_debug_routes(id_priv);
 	if (id_priv->id.route.num_paths == 2) {
@@ -1563,10 +1570,18 @@ static void cma_lap_handler(struct rdma_id_private *id_priv, struct ib_sa_path_r
 		if (work) {
 			atomic_inc(&id_priv->refcount);
 			work->id = id_priv;
+			/*
+			 * cma_qp_event_handler can change the alt_path_index
+			 * under us while we wait. This can cause the alt path
+`			 * record to be out-of-synced with the active side,
+			 * so delaying the alt path record setting as well.
+			 */
+			work->path_rec = *path_rec;
 			INIT_DELAYED_WORK(&work->work, cma_alt_path_work_handler);
 			queue_delayed_work(cma_wq, &work->work, msecs_to_jiffies(1000));
 		}
 	} else {
+		route->path_rec[id_priv->alt_path_index] = *path_rec;
 		spin_unlock_irqrestore(&id_priv->lock, flags1);
 		cma_dbg(id_priv, "num_paths !=2, setting alt path immediately.\n");
 		/* we set num_paths to 2 unprotected below. However, since this
@@ -1820,6 +1835,7 @@ static const char *cma_event_str(enum rdma_cm_event_type event)
 	case RDMA_CM_EVENT_TIMEWAIT_EXIT: return "RDMA_CM_EVENT_TIMEWAIT_EXIT";
 	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED: return "RDMA_CM_EVENT_ALT_ROUTE_RESOLVED";
 	case RDMA_CM_EVENT_ALT_ROUTE_ERROR: return "RDMA_CM_EVENT_ALT_ROUTE_ERROR";
+	case RDMA_CM_EVENT_ALT_PATH_LOADED: return "RDMA_CM_EVENT_ALT_PATH_LOADED";
 	default: return "unknown CMA event";
 	}
 }
