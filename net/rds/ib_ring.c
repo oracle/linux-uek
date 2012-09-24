@@ -76,7 +76,6 @@ static inline u32 __rds_ib_ring_used(struct rds_ib_work_ring *ring)
 
 	/* This assumes that atomic_t has at least as many bits as u32 */
 	diff = ring->w_alloc_ctr - (u32) atomic_read(&ring->w_free_ctr);
-	BUG_ON(diff > ring->w_nr);
 
 	return diff;
 }
