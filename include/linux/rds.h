@@ -62,7 +62,7 @@
 /*
  * ioctl commands for SOL_RDS
 */
-#define RDS_IOC_SET_TOS                 1
+#define SIOCRDSSETTOS                   (SIOCPROTOPRIVATE)
 
 typedef u_int8_t         rds_tos_t;
 
