@@ -211,6 +211,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&conn->c_conn_w, rds_connect_worker);
+	INIT_DELAYED_WORK(&conn->c_hb_w, rds_hb_worker);
 	INIT_WORK(&conn->c_down_w, rds_shutdown_worker);
 	mutex_init(&conn->c_cm_lock);
 	conn->c_flags = 0;
