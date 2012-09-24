@@ -1213,6 +1213,7 @@ modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin objects
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 
 ifdef CONFIG_DTRACE
+ifndef CONFIG_DT_DISABLE_CTF
 # This contains all the object files that are unconditionally built into the
 # kernel, for consumption by dwarf2ctf in Makefile.modpost.
 # This is made doubly annoying by the presence of '.o' files which are actually
@@ -1224,6 +1225,10 @@ objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
 	    ar t "$$archive" | grep '\.o$$' | \
 		 sed "s,^,$${archive%/*}/," >> objects.builtin; \
 	done
+else
+PHONY += objects.builtin
+objects.builtin:
+endif
 else
 PHONY += objects.builtin
 objects.builtin:
