@@ -202,8 +202,14 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	conn->c_next_rx_seq = be64_to_cpu(inc->i_hdr.h_sequence) + 1;
 
 	if (rds_sysctl_ping_enable && inc->i_hdr.h_dport == 0) {
-		rds_stats_inc(s_recv_ping);
-		rds_send_pong(conn, inc->i_hdr.h_sport);
+		if (inc->i_hdr.h_flags & RDS_FLAG_HB_PING) {
+			rds_send_hb(conn, 1);
+		} else if (inc->i_hdr.h_flags & RDS_FLAG_HB_PONG) {
+			conn->c_hb_start = 0;
+		} else {
+			rds_stats_inc(s_recv_ping);
+			rds_send_pong(conn, inc->i_hdr.h_sport);
+		}
 		goto out;
 	}
 
