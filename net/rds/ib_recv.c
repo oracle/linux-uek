@@ -300,8 +300,8 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 				"recv memory exceeded max_recv_allocation %d\n",
 				atomic_read(&rds_ib_allocation));
 			}
-			kmem_cache_free(rds_ib_frag_slab, frag);
 			rds_ib_stats_inc(s_ib_rx_alloc_limit);
+			kmem_cache_free(rds_ib_frag_slab, frag);
 			return NULL;
 		}
 
@@ -624,7 +624,8 @@ release_out:
 	 * if we should requeue.
 	 */
 	if (rds_conn_up(conn) &&
-	   (must_wake || (can_wait && ring_low) || ring_empty)) {
+	   (must_wake || (can_wait && ring_low)
+			|| rds_ib_ring_empty(&ic->i_recv_ring))) {
 		queue_delayed_work(rds_wq, &conn->c_recv_w, 1);
 	}
 	if (can_wait)
@@ -1056,7 +1057,8 @@ static void rds_ib_process_recv(struct rds_connection *conn,
 	if (ihdr->h_credit)
 		rds_ib_send_add_credits(conn, ihdr->h_credit);
 
-	if (ihdr->h_sport == 0 && ihdr->h_dport == 0 && data_len == 0) {
+	if (ihdr->h_sport == 0 && ihdr->h_dport == 0 && data_len == 0 &&
+		ihdr->h_flags == 0) {
 		/* This is an ACK-only packet. The fact that it gets
 		 * special treatment here is that historically, ACKs
 		 * were rather special beasts.

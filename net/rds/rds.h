@@ -120,6 +120,7 @@ struct rds_connection {
 	struct delayed_work	c_send_w;
 	struct delayed_work	c_recv_w;
 	struct delayed_work	c_conn_w;
+	struct delayed_work     c_hb_w;
 	struct work_struct	c_down_w;
 	struct mutex		c_cm_lock;	/* protect conn state & cm */
 	wait_queue_head_t	c_waitq;
@@ -140,15 +141,23 @@ struct rds_connection {
 	int                     c_reconnect_warn;
 	int                     c_reconnect_err;
 
+	unsigned int		c_reconnect;
+
 	/* Qos support */
 	u8                      c_tos;
 
 	struct rds_notifier     *c_last_failed_op;
+
+	unsigned long           c_hb_start;
+
+	unsigned int		c_active_side;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
 #define RDS_FLAG_ACK_REQUIRED	0x02
 #define RDS_FLAG_RETRANSMITTED	0x04
+#define RDS_FLAG_HB_PING        0x08
+#define RDS_FLAG_HB_PONG        0x10
 #define RDS_MAX_ADV_CREDIT	127
 
 /*
@@ -461,6 +470,8 @@ struct rds_transport {
 	void (*sync_mr)(void *trans_private, int direction);
 	void (*free_mr)(void *trans_private, int invalidate);
 	void (*flush_mrs)(void);
+	void (*check_migration)(struct rds_connection *conn,
+				struct rdma_cm_event *event);
 };
 
 struct rds_sock {
@@ -746,6 +757,7 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 			 is_acked_func is_acked);
 void rds_send_remove_from_sock(struct list_head *messages, int status);
 int rds_send_pong(struct rds_connection *conn, __be16 dport);
+int rds_send_hb(struct rds_connection *conn, int response);
 struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
 
@@ -819,6 +831,7 @@ void rds_connect_worker(struct work_struct *);
 void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
+void rds_hb_worker(struct work_struct *);
 void rds_connect_complete(struct rds_connection *conn);
 
 /* transport.c */

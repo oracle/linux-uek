@@ -94,6 +94,11 @@ void rds_send_reset(struct rds_connection *conn)
 		set_bit(RDS_MSG_ACK_REQUIRED, &rm->m_flags);
 		set_bit(RDS_MSG_RETRANSMITTED, &rm->m_flags);
 
+		/* flush internal HB msgs */
+		if ((rm->m_inc.i_hdr.h_flags == RDS_FLAG_HB_PONG) ||
+			(rm->m_inc.i_hdr.h_flags == RDS_FLAG_HB_PING))
+			set_bit(RDS_MSG_FLUSH, &rm->m_flags);
+
 		/* check for failed op */
 		if (rds_async_send_enabled && (rm->rdma.op_active ||
 			(rm->data.op_active && rm->data.op_async)))
@@ -1353,4 +1358,45 @@ out:
 	if (rm)
 		rds_message_put(rm);
 	return ret;
+}
+
+int
+rds_send_hb(struct rds_connection *conn, int response)
+{
+	struct rds_message *rm;
+	unsigned long flags;
+	int ret = 0;
+
+	rm = rds_message_alloc(0, GFP_ATOMIC);
+	if (!rm)
+		return -ENOMEM;
+
+	rm->m_daddr = conn->c_faddr;
+	rm->data.op_active = 1;
+
+	spin_lock_irqsave(&conn->c_lock, flags);
+	list_add_tail(&rm->m_conn_item, &conn->c_send_queue);
+	set_bit(RDS_MSG_ON_CONN, &rm->m_flags);
+	rds_message_addref(rm);
+	rm->m_inc.i_conn = conn;
+
+	rds_message_populate_header(&rm->m_inc.i_hdr, 0, 0,
+				conn->c_next_tx_seq);
+
+	if (response)
+		rm->m_inc.i_hdr.h_flags |= RDS_FLAG_HB_PONG;
+	else
+		rm->m_inc.i_hdr.h_flags |= RDS_FLAG_HB_PING;
+
+	rm->m_inc.i_hdr.h_flags |= RDS_FLAG_ACK_REQUIRED;
+
+	conn->c_next_tx_seq++;
+	spin_unlock_irqrestore(&conn->c_lock, flags);
+
+	ret = rds_send_xmit(conn);
+	if (ret == -ENOMEM || ret == -EAGAIN)
+		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+
+	rds_message_put(rm);
+	return 0;
 }
