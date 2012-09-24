@@ -631,8 +631,7 @@ static int ovmapi_add_parameter(struct ovmapi_information *p_ovmapi_info,
 
 	/* check for duplication */
 	list_for_each_entry(parameter, &p_ovmapi_info->parameter_list, list) {
-		if (strncmp(name, parameter->name,
-			    parameter->name_size) == 0) {
+		if (strcmp(name, parameter->name) == 0) {
 			kfree(parameter->value);
 			parameter->value = value;
 			parameter->value_size = value_size;
@@ -684,8 +683,7 @@ static int ovmapi_delete_parameter(struct ovmapi_information *p_ovmapi_info,
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
 	list_for_each_entry_safe(parameter, next,
 				 &p_ovmapi_info->parameter_list, list) {
-		if (strncmp(message.name, parameter->name,
-			    parameter->name_size) == 0) {
+		if (strcmp(message.name, parameter->name) == 0) {
 			list_del(&parameter->list);
 			kmem_cache_free(name_cache, parameter->name);
 			kfree(parameter->value);
@@ -712,8 +710,7 @@ static int ovmapi_read_parameter(struct ovmapi_information *p_ovmapi_info,
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
 	list_for_each_entry(parameter, &p_ovmapi_info->parameter_list, list) {
-		if (strncmp(message.name, parameter->name,
-			    parameter->name_size) == 0) {
+		if (strcmp(message.name, parameter->name) == 0) {
 			if (parameter->value_size > message.value_size) {
 				message.value_size = parameter->value_size;
 				mutex_unlock(&p_ovmapi_info->parameter_mutex);
@@ -755,8 +752,7 @@ static int ovmapi_get_parameter_value_size(
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
 	list_for_each_entry(parameter, &p_ovmapi_info->parameter_list, list) {
-		if (strncmp(message.name, parameter->name,
-			    parameter->name_size) == 0) {
+		if (strcmp(message.name, parameter->name) == 0) {
 			message.value_size = parameter->value_size;
 			mutex_unlock(&p_ovmapi_info->parameter_mutex);
 			if (copy_to_user(user_buffer, &message,
