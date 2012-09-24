@@ -34,6 +34,10 @@
 
 #include "rdma_transport.h"
 #include "ib.h"
+#include "net/arp.h"
+#include <net/sock.h>
+#include <net/inet_common.h>
+#include <linux/version.h>
 
 static struct rdma_cm_id *rds_listen_id;
 
@@ -43,6 +47,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans = &rds_ib_transport;
+	struct page *page;
+	struct arpreq *r;
+	struct sockaddr_in *sin;
 	int ret = 0;
 
 	rdsdebug("conn %p id %p handling event %u\n", conn, cm_id,
@@ -73,6 +80,10 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+		if (rds_ib_apm_enable)
+			rdma_set_timeout(cm_id, rds_ib_timeout);
+#endif /* LINUX_VERSION < 4.12.0 */
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
@@ -100,18 +111,57 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		ret = trans->cm_initiate_connect(cm_id);
 		break;
 
+#if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
+	case RDMA_CM_EVENT_ALT_PATH_LOADED:
+		rdsdebug("RDS: alt path loaded\n");
+		if (conn)
+			trans->check_migration(conn, event);
+		break;
+
+	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
+		rdsdebug("RDS: alt route resolved\n");
+		break;
+
+	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
+		rdsdebug("RDS: alt route resolve error\n");
+		break;
+#endif /* LINUX_VERSION < 4.12.0 */
+
+	case RDMA_CM_EVENT_ROUTE_ERROR:
+		/* IP might have been moved so flush the ARP entry and retry */
+		page = alloc_page(GFP_HIGHUSER);
+		if (!page) {
+			printk(KERN_ERR "alloc_page failed .. NO MEM\n");
+			ret = -ENOMEM;
+		} else {
+			r = (struct arpreq *)kmap(page);
+			memset(r, 0, sizeof(struct arpreq));
+			sin = (struct sockaddr_in *)&r->arp_pa;
+			sin->sin_family = AF_INET;
+			sin->sin_addr.s_addr = conn->c_faddr;
+			inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long) r);
+			kunmap(page);
+			__free_page(page);
+		}
+
+		rds_conn_drop(conn);
+		break;
+
 	case RDMA_CM_EVENT_ESTABLISHED:
 		trans->cm_connect_complete(conn, event);
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
-	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-	case RDMA_CM_EVENT_ADDR_CHANGE:
 		if (conn)
+			rds_conn_drop(conn);
+		break;
+
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+		if (conn && !rds_ib_apm_enable)
 			rds_conn_drop(conn);
 		break;
 
