@@ -8,8 +8,10 @@
 #include "rds.h"
 #include "rdma_transport.h"
 
-#define RDS_FMR_SIZE			256
-#define RDS_FMR_POOL_SIZE		8192
+#define RDS_FMR_1M_POOL_SIZE		(8192 / 2)
+#define RDS_FMR_1M_MSG_SIZE		256
+#define RDS_FMR_8K_POOL_SIZE            128 * (8192 / 2)
+#define RDS_FMR_8K_MSG_SIZE		2
 
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
@@ -22,11 +24,24 @@
 
 #define RDS_IB_DEFAULT_RETRY_COUNT	1
 
+#define RDS_IB_DEFAULT_RNR_RETRY_COUNT  7
+
+#define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
+
 #define RDS_IB_SUPPORTED_PROTOCOLS	0x00000007	/* minor versions supported */
 
 #define RDS_IB_RECYCLE_BATCH_COUNT	32
 
 #define RDS_IB_SRQ_POST_BATCH_COUNT     64
+
+#define RDS_IB_GID_FMT             "%2.2x%2.2x:%2.2x%2.2x"
+
+#define RDS_IB_GID_RAW_ARG(gid) ((u8 *)(gid))[12],\
+				((u8 *)(gid))[13],\
+				((u8 *)(gid))[14],\
+				((u8 *)(gid))[15]
+
+#define RDS_IB_GID_ARG(gid)        RDS_IB_GID_RAW_ARG((gid).raw)
 
 #define RDS_WC_MAX 32
 
@@ -118,6 +133,21 @@ struct rds_ib_ack_state {
 
 struct rds_ib_device;
 
+struct rds_ib_path {
+	union ib_gid    p_sgid;
+	union ib_gid    p_dgid;
+};
+
+struct rds_ib_destroy_id_work {
+	struct delayed_work             work;
+	struct rdma_cm_id               *cm_id;
+};
+
+struct rds_ib_migrate_work {
+	struct delayed_work             work;
+	struct rds_ib_connection        *ic;
+};
+
 struct rds_ib_connection {
 
 	struct list_head	ib_node;
@@ -192,6 +222,13 @@ struct rds_ib_connection {
 	atomic_t                i_cache_allocs;
 
 	struct completion       i_last_wqe_complete;
+
+	/* APM support */
+	struct rds_ib_migrate_work	i_migrate_w;
+	struct rds_ib_path      i_pri_path;
+	struct rds_ib_path      i_cur_path;
+	unsigned int            i_alt_path_index;
+	unsigned int		i_active_side;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -220,6 +257,31 @@ struct rds_ib_srq {
 	struct delayed_work        s_rearm_w;
 };
 
+struct rds_ib_alias {
+	char                    if_name[IFNAMSIZ];
+	__be32                  ip_addr;
+};
+
+#define RDS_IB_MAX_ALIASES	200
+struct rds_ib_port {
+	char                    if_name[IFNAMSIZ];
+	__be32                  ip_addr;
+	unsigned int            active_port;
+	unsigned int            alias_cnt;
+	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
+};
+
+struct rds_ib_port_ud_work {
+	struct delayed_work             work;
+	struct rds_ib_device            *rds_ibdev;
+	unsigned int                    port;
+};
+
+enum {
+        RDS_IB_MR_8K_POOL,
+        RDS_IB_MR_1M_POOL,
+};
+
 struct rds_ib_device {
 	struct list_head	list;
 	struct list_head	ipaddr_list;
@@ -227,9 +289,11 @@ struct rds_ib_device {
 	struct ib_device	*dev;
 	struct ib_pd		*pd;
 	struct ib_mr		*mr;
-	struct rds_ib_mr_pool	*mr_pool;
+	struct rds_ib_mr_pool	*mr_1m_pool;
+	struct rds_ib_mr_pool   *mr_8k_pool;
 	unsigned int		fmr_max_remaps;
-	unsigned int		max_fmrs;
+	unsigned int		max_8k_fmrs;
+	unsigned int		max_1m_fmrs;
 	int			max_sge;
 	unsigned int		max_wrs;
 	unsigned int		max_initiator_depth;
@@ -238,6 +302,8 @@ struct rds_ib_device {
 	atomic_t		refcount;
 	struct work_struct	free_work;
 	struct rds_ib_srq       *srq;
+	struct rds_ib_port      *ports;
+	struct ib_event_handler event_handler;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -276,12 +342,18 @@ struct rds_ib_statistics {
 	uint64_t	s_ib_ack_send_delayed;
 	uint64_t	s_ib_ack_send_piggybacked;
 	uint64_t	s_ib_ack_received;
-	uint64_t	s_ib_rdma_mr_alloc;
-	uint64_t	s_ib_rdma_mr_free;
-	uint64_t	s_ib_rdma_mr_used;
-	uint64_t	s_ib_rdma_mr_pool_flush;
-	uint64_t	s_ib_rdma_mr_pool_wait;
-	uint64_t	s_ib_rdma_mr_pool_depleted;
+	uint64_t	s_ib_rdma_mr_8k_alloc;
+	uint64_t	s_ib_rdma_mr_8k_free;
+	uint64_t	s_ib_rdma_mr_8k_used;
+	uint64_t	s_ib_rdma_mr_8k_pool_flush;
+	uint64_t	s_ib_rdma_mr_8k_pool_wait;
+	uint64_t	s_ib_rdma_mr_8k_pool_depleted;
+	uint64_t        s_ib_rdma_mr_1m_alloc;
+	uint64_t        s_ib_rdma_mr_1m_free;
+	uint64_t        s_ib_rdma_mr_1m_used;
+	uint64_t        s_ib_rdma_mr_1m_pool_flush;
+	uint64_t        s_ib_rdma_mr_1m_pool_wait;
+	uint64_t        s_ib_rdma_mr_1m_pool_depleted;
 	uint64_t	s_ib_atomic_cswp;
 	uint64_t	s_ib_atomic_fadd;
 	uint64_t        s_ib_srq_lows;
@@ -325,6 +397,7 @@ static inline void rds_ib_dma_sync_sg_for_device(struct ib_device *dev,
 
 
 /* ib.c */
+extern struct workqueue_struct *rds_aux_wq;
 extern struct rds_transport rds_ib_transport;
 extern void rds_ib_add_one(struct ib_device *device);
 extern void rds_ib_remove_one(struct ib_device *device, void *client_data);
@@ -332,12 +405,17 @@ struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device);
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev);
 extern struct ib_client rds_ib_client;
 
-extern unsigned int fmr_pool_size;
-extern unsigned int fmr_message_size;
+extern unsigned int rds_ib_fmr_1m_pool_size;
+extern unsigned int rds_ib_fmr_8k_pool_size;
 extern unsigned int rds_ib_retry_count;
+extern unsigned int rds_ib_rnr_retry_count;
+extern unsigned int rds_ib_apm_enable;
+extern unsigned int rds_ib_timeout;
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
+
+extern struct socket *rds_ib_inet_socket;
 
 /* ib_cm.c */
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
@@ -353,6 +431,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
+void rds_ib_check_migration(struct rds_connection *conn,
+				struct rdma_cm_event *event);
 
 
 #define rds_ib_conn_error(conn, fmt...) \
@@ -363,7 +443,7 @@ int rds_ib_update_ipaddr(struct rds_ib_device *rds_ibdev, __be32 ipaddr);
 void rds_ib_add_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);
 void rds_ib_remove_conn(struct rds_ib_device *rds_ibdev, struct rds_connection *conn);
 void rds_ib_destroy_nodev_conns(void);
-struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *);
+struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_dev, int npages);
 void rds_ib_get_mr_info(struct rds_ib_device *rds_ibdev, struct rds_info_rdma_connection *iinfo);
 void rds_ib_destroy_mr_pool(struct rds_ib_mr_pool *);
 void *rds_ib_get_mr(struct scatterlist *sg, unsigned long nents,
