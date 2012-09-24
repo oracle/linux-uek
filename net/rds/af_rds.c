@@ -208,7 +208,7 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		return -EFAULT;
 
 	switch (cmd) {
-	case RDS_IOC_SET_TOS:
+	case SIOCRDSSETTOS:
 		spin_lock_irqsave(&rds_sock_lock, flags);
 		if (rs->rs_tos || rs->rs_conn) {
 			spin_unlock_irqrestore(&rds_sock_lock, flags);
@@ -218,7 +218,7 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		spin_unlock_irqrestore(&rds_sock_lock, flags);
 		break;
 	default:
-		return -ENOPROTOOPT;
+		return -ENOIOCTLCMD;
 	}
 
 	return 0;
