@@ -15,6 +15,7 @@
 #define DRV_RELDATE	"2007/08/12"
 #include "dl2k.h"
 #include <linux/dma-mapping.h>
+#include <linux/mii.h>
 
 static char version[] __devinitdata =
       KERN_INFO DRV_NAME " " DRV_VERSION " " DRV_RELDATE "\n";
