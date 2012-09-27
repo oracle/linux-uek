@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Sep 27 2012 Joe Jin <joe.jin@oracle.com> [2.6.39-300.9.0.el6uek]
+- cciss: Update HPSA_BOUNDARY. (Joe Jin) [Orabug: 14681165]
+
 * Wed Sep 12 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-300.8.0.el6uek]
 - ocfs2: Fix oops in ocfs2_fast_symlink_readpage() code path (Xiaowei.Hu)
 
