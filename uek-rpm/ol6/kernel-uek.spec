@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Sep 28 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.10.0.el6uek]
+- [ovmapi] changed instances of strncmp to strcmp (Cathy Avery) [Orabug:
+  14644624]
+
 * Thu Sep 27 2012 Joe Jin <joe.jin@oracle.com> [2.6.39-300.9.0.el6uek]
 - cciss: Update HPSA_BOUNDARY. (Joe Jin) [Orabug: 14681165]
 
