@@ -3681,7 +3681,7 @@ lpfc_sli4_async_link_evt(struct lpfc_hba *phba,
 				"0395 The mboxq allocation failed\n");
 		return;
 	}
-	mp = kmalloc(sizeof(struct lpfc_dmabuf), GFP_KERNEL); 
+	mp = kmalloc(sizeof(struct lpfc_dmabuf), GFP_KERNEL);
 	if (!mp) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
 				"0396 The lpfc_dmabuf allocation failed\n");
