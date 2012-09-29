@@ -9435,7 +9435,7 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 	struct lpfc_dmabuf *dmabuf, *next;
 	uint32_t offset = 0, temp_offset = 0;
 
-	/* It can be null in no-wait mode, sanity check */
+	/* It can be null, sanity check */
 	if (!fw) {
 		rc = -ENXIO;
 		goto out;
@@ -9478,7 +9478,7 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 				kfree(dmabuf);
 				rc = -ENOMEM;
 				goto release_out;
-                        }
+			}
 			list_add_tail(&dmabuf->list, &dma_buffer_list);
 		}
 		while (offset < fw->size) {
@@ -9496,7 +9496,7 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 				temp_offset += SLI4_PAGE_SIZE;
 			}
 			rc = lpfc_wr_object(phba, &dma_buffer_list,
-					(fw->size - offset), &offset);
+				    (fw->size - offset), &offset);
 			if (rc)
 				goto release_out;
 		}
@@ -9513,7 +9513,7 @@ release_out:
 	release_firmware(fw);
 out:
 	lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-			"3024 Firmware update done: %d.\n", rc);
+			"3024 Firmware update done: %d.", rc);
 	return;
 }
 
@@ -9588,6 +9588,10 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	uint32_t cfg_mode, intr_mode;
 	int mcnt;
 	int adjusted_fcp_io_channel;
+	uint8_t file_name[ELX_MODEL_NAME_SIZE];
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 13)
+	const struct firmware *fw;
+#endif
 
 	/* Allocate memory for HBA structure */
 	phba = lpfc_hba_alloc(pdev);
@@ -9731,8 +9735,21 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	lpfc_post_init_setup(phba);
 
 	/* check for firmware upgrade or downgrade (if_type 2 only) */
-	if (phba->cfg_request_firmware_upgrade)
-		ret = lpfc_sli4_request_firmware_update(phba, INT_FW_UPGRADE);
+	if (bf_get(lpfc_sli_intf_if_type, &phba->sli4_hba.sli_intf) ==
+	    LPFC_SLI_INTF_IF_TYPE_2) {
+		snprintf(file_name, ELX_MODEL_NAME_SIZE, "%s.grp",
+			 phba->ModelName);
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 13)
+		ret = request_firmware(&fw, file_name, &phba->pcidev->dev);
+		if (!ret)
+			lpfc_write_firmware(fw, (void *)phba);
+#else
+		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
+					file_name, &phba->pcidev->dev,
+					GFP_KERNEL, (void *)phba,
+					lpfc_write_firmware);
+#endif
+	}
 
 	/* Check if there are static vports to be created. */
 	lpfc_create_static_vport(phba);
