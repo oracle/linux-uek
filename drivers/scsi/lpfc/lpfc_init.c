@@ -9810,27 +9810,22 @@ lpfc_sli4_get_els_iocb_cnt(struct lpfc_hba *phba)
 
 /**
  * lpfc_write_firmware - attempt to write a firmware image to the port
- * @fw: pointer to firmware image returned from request_firmware.
  * @phba: pointer to lpfc hba data structure.
+ * @fw: pointer to firmware image returned from request_firmware.
  *
+ * returns the number of bytes written if write is successful.
+ * returns a negative error value if there were errors.
+ * returns 0 if firmware matches currently active firmware on port.
  **/
-static void
-lpfc_write_firmware(const struct firmware *fw, void *context)
+int
+lpfc_write_firmware(struct lpfc_hba *phba, const struct firmware *fw)
 {
-	struct lpfc_hba *phba = (struct lpfc_hba *)context;
 	char fwrev[FW_REV_STR_SIZE];
-	struct lpfc_grp_hdr *image;
+	struct lpfc_grp_hdr *image = (struct lpfc_grp_hdr *)fw->data;
 	struct list_head dma_buffer_list;
 	int i, rc = 0;
 	struct lpfc_dmabuf *dmabuf, *next;
 	uint32_t offset = 0, temp_offset = 0;
-
-	/* It can be null, sanity check */
-	if (!fw) {
-		rc = -ENXIO;
-		goto out;
-	}
-	image = (struct lpfc_grp_hdr *)fw->data;
 
 	INIT_LIST_HEAD(&dma_buffer_list);
 	if ((be32_to_cpu(image->magic_number) != LPFC_GROUP_OJECT_MAGIC_NUM) ||
@@ -9844,13 +9839,12 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 				be32_to_cpu(image->magic_number),
 				bf_get_be32(lpfc_grp_hdr_file_type, image),
 				bf_get_be32(lpfc_grp_hdr_id, image));
-		rc = -EINVAL;
-		goto release_out;
+		return -EINVAL;
 	}
 	lpfc_decode_firmware_rev(phba, fwrev, 1);
 	if (strncmp(fwrev, image->revision, strnlen(image->revision, 16))) {
 		lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-				"3023 Updating Firmware, Current Version:%s "
+				"3023 Updating Firmware. Current Version:%s "
 				"New Version:%s\n",
 				fwrev, image->revision);
 		for (i = 0; i < LPFC_MBX_WR_CONFIG_MAX_BDE; i++) {
@@ -9858,7 +9852,7 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 					 GFP_KERNEL);
 			if (!dmabuf) {
 				rc = -ENOMEM;
-				goto release_out;
+				goto out;
 			}
 			dmabuf->virt = dma_alloc_coherent(&phba->pcidev->dev,
 							  SLI4_PAGE_SIZE,
@@ -9867,7 +9861,7 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 			if (!dmabuf->virt) {
 				kfree(dmabuf);
 				rc = -ENOMEM;
-				goto release_out;
+				goto out;
 			}
 			list_add_tail(&dmabuf->list, &dma_buffer_list);
 		}
@@ -9887,24 +9881,23 @@ lpfc_write_firmware(const struct firmware *fw, void *context)
 			}
 			rc = lpfc_wr_object(phba, &dma_buffer_list,
 				    (fw->size - offset), &offset);
-			if (rc)
-				goto release_out;
+			if (rc) {
+				lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
+						"3024 Firmware update failed. "
+						"%d\n", rc);
+				goto out;
+			}
 		}
 		rc = offset;
 	}
-
-release_out:
+out:
 	list_for_each_entry_safe(dmabuf, next, &dma_buffer_list, list) {
 		list_del(&dmabuf->list);
 		dma_free_coherent(&phba->pcidev->dev, SLI4_PAGE_SIZE,
 				  dmabuf->virt, dmabuf->phys);
 		kfree(dmabuf);
 	}
-	release_firmware(fw);
-out:
-	lpfc_printf_log(phba, KERN_ERR, LOG_INIT,
-			"3024 Firmware update done: %d.", rc);
-	return;
+	return rc;
 }
 
 /**
@@ -9974,13 +9967,11 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	struct lpfc_hba   *phba;
 	struct lpfc_vport *vport = NULL;
 	struct Scsi_Host  *shost = NULL;
-	int error, ret;
+	int error;
 	uint32_t cfg_mode, intr_mode;
 	int adjusted_fcp_io_channel;
-	uint8_t file_name[ELX_MODEL_NAME_SIZE];
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 13)
 	const struct firmware *fw;
-#endif
+	uint8_t file_name[ELX_MODEL_NAME_SIZE];
 
 	/* Allocate memory for HBA structure */
 	phba = lpfc_hba_alloc(pdev);
@@ -10105,16 +10096,11 @@ lpfc_pci_probe_one_s4(struct pci_dev *pdev, const struct pci_device_id *pid)
 	    LPFC_SLI_INTF_IF_TYPE_2) {
 		snprintf(file_name, ELX_MODEL_NAME_SIZE, "%s.grp",
 			 phba->ModelName);
-#if LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 13)
-		ret = request_firmware(&fw, file_name, &phba->pcidev->dev);
-		if (!ret)
-			lpfc_write_firmware(fw, (void *)phba);
-#else
-		ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
-					file_name, &phba->pcidev->dev,
-					GFP_KERNEL, (void *)phba,
-					lpfc_write_firmware);
-#endif
+		error = request_firmware(&fw, file_name, &phba->pcidev->dev);
+		if (!error) {
+			lpfc_write_firmware(phba, fw);
+			release_firmware(fw);
+		}
 	}
 
 	/* Check if there are static vports to be created. */
