@@ -250,12 +250,12 @@ int ib_cmem_map_contiguous_pages_to_vma(struct ib_cmem *ib_cmem,
 {
 
 	int ret;
-	int page_entry;
+	unsigned long page_entry;
 	unsigned long ntotal_pages;
 	unsigned long ncontig_pages;
 	unsigned long total_size;
 	struct page *page;
-	int vma_entry_number = 0;
+	unsigned long vma_entry_number = 0;
 	struct ib_cmem_block *ib_cmem_block = NULL;
 
 	total_size = vma->vm_end - vma->vm_start;
