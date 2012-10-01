@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Oct 01 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.11.0.el5uek]
+- xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk) [Bugdb:
+  13665]
+
 * Fri Sep 28 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.10.0.el5uek]
 - [ovmapi] changed instances of strncmp to strcmp (Cathy Avery) [Orabug:
   14644624]
