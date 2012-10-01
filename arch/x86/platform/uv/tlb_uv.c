@@ -1609,6 +1609,8 @@ static void __init init_per_cpu_tunables(void)
 		bcp->cong_response_us		= congested_respns_us;
 		bcp->cong_reps			= congested_reps;
 		bcp->cong_period		= congested_period;
+		spin_lock_init(&bcp->queue_lock);
+		spin_lock_init(&bcp->uvhub_lock);
 	}
 }
 
