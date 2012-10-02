@@ -1800,7 +1800,7 @@ void xen_callback_vector(void)
 void xen_callback_vector(void) {}
 #endif
 
-void xen_init_IRQ(void)
+void __init xen_init_IRQ(void)
 {
 	int i;
 
@@ -1844,4 +1844,3 @@ void xen_init_IRQ(void)
 	}
 #endif
 }
-EXPORT_SYMBOL_GPL(xen_init_IRQ);
