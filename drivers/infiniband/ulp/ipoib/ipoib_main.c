@@ -1811,6 +1811,8 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	}
 
 	ipoib_dev_uninit(dev);
+	/* ipoib_dev_uninit took rings lock can't release in case of reinit */
+	write_unlock(&priv->rings_lock);
 }
 
 int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
