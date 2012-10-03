@@ -2347,13 +2347,15 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	    type_ref->ctf_file != g_hash_table_lookup(module_to_ctf_file,
 						      "dtrace_ctf")) {
 #ifdef DEBUG
-		fprintf(stderr, "%s: Internal error: lookup found in "
+		fprintf(stderr, "%s: Internal error: lookup of %s found in "
 			"different file: %s/%s versus %s/%s.\n", locerrstr,
+			dwarf_diename(die) ? dwarf_diename(die) : "(unnamed)",
 			type_ref->module_name, type_ref->file_name, module_name,
 			file_name);
 #else
-		fprintf(stderr, "%s: Internal error: lookup found in different "
-			"file.\n", locerrstr);
+		fprintf(stderr, "%s: Internal error: lookup of %s found in different "
+			"file.\n", locerrstr,
+			dwarf_diename(die) ? dwarf_diename(die) : "(unnamed)");
 #endif
 		fprintf(stderr, "detect_duplicates() is probably buggy.\n");
 		exit(1);
