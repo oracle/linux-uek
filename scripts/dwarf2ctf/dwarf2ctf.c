@@ -2774,6 +2774,8 @@ static ctf_id_t assemble_ctf_cvr_qual(const char *module_name,
  * We assume that if a structure or union type is discovered with more members
  * than an earlier-discovered type, that it is compatible with that earlier type
  * and a superset of it.
+ *
+ * FIXME: in debug mode we should not assume this.
  */
 static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 					  const char *file_name,
