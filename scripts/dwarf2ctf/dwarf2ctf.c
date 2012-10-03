@@ -2091,6 +2091,23 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * construction function to place it and (for aggregates) its siblings there,
  * recursing to handle contained aggregates.
  *
+ * The parameters to this function are:
+ *
+ * module_name: The kernel module.
+ * file_name: The object file.
+ * die: The DWARF DIE.
+ * parent_die: Its parent, i.e. if a structure member, this is a structure: if
+ * top-level, this is a CU DIE.
+ * ctf: The CTF file this object should go into (possibly dtrace_ctf).
+ * parent_ctf_id: The CTF ID of the parent DIE, or -1 if none.
+ * parent_bias: any bias applied to structure members.  Normally 0, may be
+ * nonzero for unnamed structure members.
+ * top_level_type: 1 if this is a top-level type that can have a name and be
+ * referred to by other types.
+ * skip: The error-handling / skipping enum.
+ * override: if 1, this type should replace its parent type entirely.
+ * id: the ID of this type.
+ *
  * Note: id is only defined when top_level_type is 1.  (We never use it
  * in other situations, and computing it is quite expensive.)
  */
