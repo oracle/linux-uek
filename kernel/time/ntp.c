@@ -49,7 +49,7 @@ static struct hrtimer		leap_timer;
 static int			time_state = TIME_OK;
 
 /* clock status bits:							*/
-static int			time_status = STA_UNSYNC;
+int				time_status = STA_UNSYNC;
 
 /* TAI offset (secs):							*/
 static long			time_tai;
@@ -232,17 +232,6 @@ static inline void pps_fill_timex(struct timex *txc)
 }
 
 #endif /* CONFIG_NTP_PPS */
-
-
-/**
- * ntp_synced - Returns 1 if the NTP status is not UNSYNC
- *
- */
-static inline int ntp_synced(void)
-{
-	return !(time_status & STA_UNSYNC);
-}
-
 
 /*
  * NTP methods:
