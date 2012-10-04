@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.12.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,9 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Oct 04 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.12.0.el5uek]
+- xen/m2p: do not reuse kmap_op->dev_bus_addr (Stefano Stabellini) [Orabug: 14706608]
+
 * Mon Oct 01 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.11.0.el5uek]
 - xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk) [Bugdb:
   13665]
