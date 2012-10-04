@@ -178,7 +178,8 @@ enum  hrtimer_base_type {
  */
 struct hrtimer_cpu_base {
 	raw_spinlock_t			lock;
-	unsigned long			active_bases;
+	unsigned int			active_bases;
+	unsigned int			clock_was_set;
 #ifdef CONFIG_HIGH_RES_TIMERS
 	ktime_t				expires_next;
 	int				hres_active;
@@ -189,9 +190,6 @@ struct hrtimer_cpu_base {
 	ktime_t				max_hang_time;
 #endif
 	struct hrtimer_clock_base	clock_base[HRTIMER_MAX_CLOCK_BASES];
-#ifndef __GENKSYMS__
-	unsigned int			clock_was_set;
-#endif
 };
 
 static inline void hrtimer_set_expires(struct hrtimer *timer, ktime_t time)
