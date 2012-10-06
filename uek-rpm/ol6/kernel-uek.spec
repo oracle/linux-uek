@@ -24,7 +24,7 @@ Summary: The Linux kernel
 
 %define rhel 1
 %if %{rhel}
-%define distro_build 400
+%define distro_build 300
 %define signmodules 1
 %else
 
@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,13 +1692,16 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
-* Mon Sep 24 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.1.0.el6uek]
-- xen-pciback: support wild cards in slot specifications (Jan Beulich)
-- xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk)
-- xen/m2p: do not reuse kmap_op->dev_bus_addr (Stefano Stabellini)
-- xen/pciback: Fix proper FLR steps. (Konrad Rzeszutek Wilk)
-- xen/setup: Fix one-off error when adding for-balloon PFNs to the P2M. (Konrad
-  Rzeszutek Wilk)
+* Mon Oct 01 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.11.0.el6uek]
+- xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk) [Bugdb:
+  13665]
+
+* Fri Sep 28 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.10.0.el6uek]
+- [ovmapi] changed instances of strncmp to strcmp (Cathy Avery) [Orabug:
+  14644624]
+
+* Thu Sep 27 2012 Joe Jin <joe.jin@oracle.com> [2.6.39-300.9.0.el6uek]
+- cciss: Update HPSA_BOUNDARY. (Joe Jin) [Orabug: 14681165]
 
 * Wed Sep 12 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-300.8.0.el6uek]
 - ocfs2: Fix oops in ocfs2_fast_symlink_readpage() code path (Xiaowei.Hu)

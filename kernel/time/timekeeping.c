@@ -198,15 +198,6 @@ static void timekeeping_update(bool clearntp)
 /* flag for if timekeeping is suspended */
 int __read_mostly timekeeping_suspended;
 
-/* must hold xtime_lock */
-void timekeeping_leap_insert(int leapsecond)
-{
-	xtime.tv_sec += leapsecond;
-	wall_to_monotonic.tv_sec -= leapsecond;
-	update_vsyscall(&xtime, &wall_to_monotonic, timekeeper.clock,
-			timekeeper.mult);
-}
-
 /**
  * timekeeping_forward_now - update clock to the current time
  *
@@ -773,7 +764,7 @@ static __always_inline int timekeeping_bigadjust(s64 error, s64 *interval,
 	 * Now calculate the error in (1 << look_ahead) ticks, but first
 	 * remove the single look ahead already included in the error.
 	 */
-	tick_error = ntp_tick_length() >> (timekeeper.ntp_error_shift + 1);
+	tick_error = tick_length >> (timekeeper.ntp_error_shift + 1);
 	tick_error -= timekeeper.xtime_interval >> 1;
 	error = ((error - tick_error) >> look_ahead) + tick_error;
 
@@ -875,7 +866,7 @@ static cycle_t logarithmic_accumulation(cycle_t offset, int shift)
 	raw_time.tv_nsec = raw_nsecs;
 
 	/* Accumulate error between NTP and clock interval */
-	timekeeper.ntp_error += ntp_tick_length() << shift;
+	timekeeper.ntp_error += tick_length << shift;
 	timekeeper.ntp_error -=
 	    (timekeeper.xtime_interval + timekeeper.xtime_remainder) <<
 				(timekeeper.ntp_error_shift + shift);
@@ -919,7 +910,7 @@ static void update_wall_time(void)
 	shift = ilog2(offset) - ilog2(timekeeper.cycle_interval);
 	shift = max(0, shift);
 	/* Bound shift to one less then what overflows tick_length */
-	maxshift = (64 - (ilog2(ntp_tick_length())+1)) - 1;
+	maxshift = (8*sizeof(tick_length) - (ilog2(tick_length)+1)) - 1;
 	shift = min(shift, maxshift);
 	while (offset >= timekeeper.cycle_interval) {
 		offset = logarithmic_accumulation(offset, shift);
