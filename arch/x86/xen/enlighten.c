@@ -80,8 +80,6 @@
 #include "smp.h"
 #include "multicalls.h"
 
-#include <xen/events.h>
-
 EXPORT_SYMBOL_GPL(hypercall_page);
 
 DEFINE_PER_CPU(struct vcpu_info *, xen_vcpu);
