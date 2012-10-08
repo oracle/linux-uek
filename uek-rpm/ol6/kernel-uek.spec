@@ -24,7 +24,7 @@ Summary: The Linux kernel
 
 %define rhel 1
 %if %{rhel}
-%define distro_build 300
+%define distro_build 400
 %define signmodules 1
 %else
 
@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,365 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Oct 08 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.1.0.el6uek]
+- Linux 3.0.44 (Greg Kroah-Hartman)
+- USB: Fix race condition when removing host controllers (Alan Stern)
+- MCE: Fix vm86 handling for 32bit mce handler (Andi Kleen)
+- sched: Fix ancient race in do_exit() (Yasunori Goto)
+- pch_uart: Fix parity setting issue (Tomoya MORINAGA)
+- pch_uart: Fix rx error interrupt setting issue (Tomoya MORINAGA)
+- pch_uart: Fix missing break for 16 byte fifo (Alan Cox)
+- time: Move ktime_t overflow checking into timespec_valid_strict (John Stultz)
+- time: Avoid making adjustments if we haven't accumulated anything (John
+  Stultz)
+- time: Improve sanity checking of timekeeping inputs (John Stultz)
+- drop_monitor: dont sleep in atomic context (Eric Dumazet)
+- drop_monitor: prevent init path from scheduling on the wrong cpu (Neil
+  Horman)
+- drop_monitor: Make updating data->skb smp safe (Neil Horman)
+- drop_monitor: fix sleeping in invalid context warning (Neil Horman)
+- sched: Fix race in task_group() (Peter Zijlstra)
+- cpufreq / ACPI: Fix not loading acpi-cpufreq driver regression (Thomas
+  Renninger)
+- libata: Prevent interface errors with Seagate FreeAgent GoFlex (Daniel J
+  Blueman)
+- rds: set correct msg_namelen (Weiping Pan)  {CVE-2012-3430}
+- net: Statically initialize init_net.dev_base_head (Rustad, Mark D)
+- workqueue: UNBOUND -> REBIND morphing in rebind_workers() should be atomic
+  (Lai Jiangshan)
+- fbcon: fix race condition between console lock and cursor timer (v1.1) (Dave
+  Airlie)
+- drivers/misc/sgi-xp/xpc_uv.c: SGI XPC fails to load when cpu 0 is out of IRQ
+  resources (Robin Holt)
+- PM / Runtime: Clear power.deferred_resume on success in rpm_suspend() (Rafael
+  J. Wysocki)
+- PM / Runtime: Fix rpm_resume() return value for power.no_callbacks set
+  (Rafael J. Wysocki)
+- xhci: Fix bug after deq ptr set to link TRB. (Sarah Sharp)
+- xhci: Make handover code more robust (Matthew Garrett)
+- Intel xhci: Only switch the switchable ports (Keng-Yu Lin)
+- EHCI: Update qTD next pointer in QH overlay region during unlink (Pavankumar
+  Kondeti)
+- NFS: return error from decode_getfh in decode open (Weston Andros Adamson)
+- NFS: Fix the initialisation of the readdir 'cookieverf' array (Trond
+  Myklebust)
+- cfg80211: fix possible circular lock on reg_regdb_search() (Luis R.
+  Rodriguez)
+- tracing: Don't call page_to_pfn() if page is NULL (Wen Congyang)
+- hpwdt: Fix kdump issue in hpwdt (Toshi Kani)
+- SCSI: hpsa: fix handling of protocol error (Stephen M. Cameron)
+- SCSI: bnx2i: Fixed NULL ptr deference for 1G bnx2 Linux iSCSI offload (Eddie
+  Wai)
+- SCSI: mpt2sas: Fix for issue - Unable to boot from the drive connected to HBA
+  (sreekanth.reddy)
+- memory hotplug: fix section info double registration bug (qiuxishi)
+- mm/ia64: fix a memory block size bug (Jianguo Wu)
+- mm/page_alloc: fix the page address of higher page's buddy calculation (Li
+  Haifeng)
+- md: Don't truncate size at 4TB for RAID0 and Linear (NeilBrown)
+- perf_event: Switch to internal refcount, fix race with close() (Al Viro)
+- target: Fix ->data_length re-assignment bug with SCSI overflow (Nicholas
+  Bellinger)
+- eCryptfs: Copy up attributes of the lower target inode after rename (Tyler
+  Hicks)
+- netconsole: remove a redundant netconsole_target_put() (Amerigo Wang)
+- vfs: dcache: use DCACHE_DENTRY_KILLED instead of DCACHE_DISCONNECTED in
+  d_kill() (Miklos Szeredi)
+- cpufreq/powernow-k8: workqueue user shouldn't migrate the kworker to another
+  CPU (Tejun Heo)
+- workqueue: reimplement work_on_cpu() using system_wq (Tejun Heo)
+- net: ipv4: ipmr_expire_timer causes crash when removing net namespace
+  (Francesco Ruggeri)
+- l2tp: avoid to use synchronize_rcu in tunnel free function (xeb)
+- netlink: fix possible spoofing from non-root processes (Pablo Neira Ayuso)
+- net: fix info leak in compat dev_ifconf() (Mathias Krause)
+- ipvs: fix info leak in getsockopt(IP_VS_SO_GET_TIMEOUT) (Mathias Krause)
+- dccp: fix info leak via getsockopt(DCCP_SOCKOPT_CCID_TX_INFO) (Mathias
+  Krause)
+- atm: fix info leak via getsockname() (Mathias Krause)
+- atm: fix info leak in getsockopt(SO_ATMPVC) (Mathias Krause)
+- ipv6: addrconf: Avoid calling netdevice notifiers with RCU read-side lock
+  (Ben Hutchings)
+- af_packet: remove BUG statement in tpacket_destruct_skb (danborkmann)
+- net/core: Fix potential memory leak in dev_set_alias() (Alexey Khoroshilov)
+- net_sched: gact: Fix potential panic in tcf_gact(). (Hiroaki SHIMODA)
+- tcp: Apply device TSO segment limit earlier (Ben Hutchings)  {CVE-2012-3412}
+- sfc: Fix maximum number of TSO segments and minimum TX queue size (Ben
+  Hutchings)  {CVE-2012-3412}
+- net: Allow driver to limit number of GSO segments per skb (Ben Hutchings)
+  {CVE-2012-3412}
+- Linux 3.0.45 (Maxim Uvarov)
+- xhci: Intel Panther Point BEI quirk. (Maxim Uvarov)
+- SCSI: scsi_dh_alua: Enable STPG for unavailable ports (Bart Van Assche)
+- PCI: honor child buses add_size in hot plug configuration (Yinghai Lu)
+- IB/srp: Avoid having aborted requests hang (Bart Van Assche)
+- IB/srp: Fix use-after-free in srp_reset_req() (Bart Van Assche)
+- IB/srp: Fix a race condition (Bart Van Assche)
+- IPoIB: Fix use-after-free of multicast object (Patrick McHardy)
+- SCSI: hpsa: Use LUN reset instead of target reset (Stephen M. Cameron)
+- SCSI: ibmvscsi: Fix host config length field overflow (Benjamin
+  Herrenschmidt)
+- Increase XHCI suspend timeout to 16ms (Michael Spang)
+- coredump: prevent double-free on an error path in core dumper (Denys
+  Vlasenko)
+- firmware: Add missing attributes to EFI variable attribute print out from
+  sysfs (Khalid Aziz)
+- b43legacy: Fix crash on unload when firmware not available (Larry Finger)
+- serial: set correct baud_base for EXSYS EX-41092 Dual 16950 (Flavio Leitner)
+- TTY: ttyprintk, don't touch behind tty->write_buf (Jiri Slaby)
+- Remove BUG_ON from n_tty_read() (Stanislav Kozina)
+- dm: handle requests beyond end of device instead of using BUG_ON (Mike
+  Snitzer)
+- vfs: dcache: fix deadlock in tree traversal (Miklos Szeredi)
+- Linux 3.0.40 (Maxim Uvarov)
+- Linux 3.0.41 (Greg Kroah-Hartman)
+- rt61pci: fix NULL pointer dereference in config_lna_gain (Stanislaw Gruszka)
+- e1000e: NIC goes up and immediately goes down (Maxim Uvarov)
+- cfg80211: fix interface combinations check for ADHOC(IBSS) (Liang Li)
+- cfg80211: process pending events when unregistering net device (Daniel Drake)
+- mm: hugetlbfs: close race during teardown of hugetlbfs shared page tables
+  (Mel Gorman)
+- x86, nops: Missing break resulting in incorrect selection on Intel (Alan Cox)
+- mm: mmu_notifier: fix freed page still mapped in secondary MMU (Xiao
+  Guangrong)
+- mm: fix wrong argument of migrate_huge_pages() in soft_offline_huge_page()
+  (Maxim Uvarov)
+- pcdp: use early_ioremap/early_iounmap to access pcdp table (Greg Pearson)
+- nilfs2: fix deadlock issue between chcp and thaw ioctls (Ryusuke Konishi)
+- SUNRPC: return negative value in case rpcbind client creation error
+  (Stanislav Kinsbursky)
+- Redefine ATOMIC_INIT and ATOMIC64_INIT to drop the casts (Tony Luck)
+- Linux 3.0.43 (Greg Kroah-Hartman)
+- block: replace __getblk_slow misfix by grow_dev_page fix (Hugh Dickins)
+- block: fix infinite loop in __getblk_slow (Jeff Moyer)
+- hwmon: (asus_atk0110) Add quirk for Asus M5A78L (Luca Tettamanti)
+- dccp: check ccid before dereferencing (Mathias Krause)
+- drm/vmwgfx: add MODULE_DEVICE_TABLE so vmwgfx loads at boot (Dave Airlie)
+- Input: i8042 - add Gigabyte T1005 series netbooks to noloop table (Dmitry
+  Torokhov)
+- fuse: fix retrieve length (Miklos Szeredi)
+- ext3: Fix fdatasync() for files with only i_size changes (Jan Kara)
+- udf: Fix data corruption for files in ICB (Jan Kara)
+- SCSI: Fix 'Device not ready' issue on mpt2sas (James Bottomley)
+- SCSI: megaraid_sas: Move poll_aen_lock initializer (Kashyap Desai)
+- Remove user-triggerable BUG from mpol_to_str (Dave Jones)
+- USB: CDC ACM: Fix NULL pointer dereference (Sven Schnelle)
+- USB: smsusb: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- USB: rtl8187: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- USB: p54usb: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- USB: spca506: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- PCI: EHCI: Fix crash during hibernation on ASUS computers (Rafael J. Wysocki)
+- ath9k: fix decrypt_error initialization in ath_rx_tasklet() (Lorenzo
+  Bianconi)
+- ACPI: export symbol acpi_get_table_with_size (Alex Deucher)
+- cciss: fix incorrect scsi status reporting (Stephen M. Cameron)
+- svcrpc: sends on closed socket should stop immediately (J. Bruce Fields)
+- svcrpc: fix svc_xprt_enqueue/svc_recv busy-looping (J. Bruce Fields)
+- svcrpc: fix BUG() in svc_tcp_clear_pages (J. Bruce Fields)
+- audit: fix refcounting in audit-tree (Miklos Szeredi)
+- audit: don't free_chunk() after fsnotify_add_mark() (Miklos Szeredi)
+- NFS: Alias the nfs module to nfs4 (bjschuma)
+- NFSv4.1: Remove a bogus BUG_ON() in nfs4_layoutreturn_done (Trond Myklebust)
+- NFSv3: Ensure that do_proc_get_root() reports errors correctly (Trond
+  Myklebust)
+- mm: hugetlbfs: correctly populate shared pmd (Michal Hocko)
+- USB: winbond: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- vfs: canonicalize create mode in build_open_flags() (Miklos Szeredi)
+- vfs: missed source of ->f_pos races (Al Viro)
+- ALSA: hda - fix Copyright debug message (Wang Xingchao)
+- USB: emi62: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- USB: vt6656: remove __devinit* from the struct usb_device_id table (Greg
+  Kroah-Hartman)
+- Linux 3.0.42 (Greg Kroah-Hartman)
+- IB/srp: Fix a race condition (Bart Van Assche)
+- usb: serial: mos7840: Fixup mos7840_chars_in_buffer() (Mark Ferrell)
+- xhci: Switch PPT ports to EHCI on shutdown. (Sarah Sharp)
+- xhci: Increase reset timeout for Renesas 720201 host. (Sarah Sharp)
+- ext4: avoid kmemcheck complaint from reading uninitialized memory (Theodore
+  Ts'o)
+- drm/radeon: do not reenable crtc after moving vram start address (Jerome
+  Glisse)
+- drm/i915: correctly order the ring init sequence (Daniel Vetter)
+- xen: mark local pages as FOREIGN in the m2p_override (Stefano Stabellini)
+- fuse: verify all ioctl retry iov elements (Zach Brown)
+- futex: Forbid uaddr == uaddr2 in futex_wait_requeue_pi() (Darren Hart)
+- futex: Fix bug in WARN_ON for NULL q.pi_state (Darren Hart)
+- futex: Test for pi_mutex on fault in futex_wait_requeue_pi() (Darren Hart)
+- USB: echi-dbgp: increase the controller wait time to come out of halt. (Colin
+  Ian King)
+- net/tun: fix ioctl() based info leaks (Mathias Krause)
+- tcp: perform DMA to userspace only if there is a task waiting for it (Jiri
+  Kosina)
+- net: fix rtnetlink IFF_PROMISC and IFF_ALLMULTI handling (Jiri Benc)
+- USB: kaweth.c: use GFP_ATOMIC under spin_lock (Dan Carpenter)
+- tcp: Add TCP_USER_TIMEOUT negative value check (Hangbin Liu)
+- cipso: don't follow a NULL pointer when setsockopt() is called (Paul Moore)
+- sctp: Fix list corruption resulting from freeing an association on a list
+  (Neil Horman)
+- sch_sfb: Fix missing NULL check (Alan Cox)
+- ext4: don't let i_reserved_meta_blocks go negative (Brian Foster)
+- ext4: pass a char * to ext4_count_free() instead of a buffer_head ptr
+  (Theodore Ts'o)
+- nfs: skip commit in releasepage if we're freeing memory for fs-related
+  reasons (Jeff Layton)
+- ACPI/AC: prevent OOPS on some boxes due to missing check
+  power_supply_register() return value check (Lan Tianyu)
+- ftrace: Disable function tracing during suspend/resume and hibernation, again
+  (Srivatsa S. Bhat)
+- locks: fix checking of fcntl_setlease argument (J. Bruce Fields)
+- usbdevfs: Correct amount of data copied to user in processcompl_compat (Hans
+  de Goede)
+- SCSI: Avoid dangling pointer in scsi_requeue_command() (Bart Van Assche)
+- SCSI: fix hot unplug vs async scan race (Dan Williams)
+- SCSI: fix eh wakeup (scsi_schedule_eh vs scsi_restart_operations) (Dan
+  Williams)
+- SCSI: libsas: fix sas_discover_devices return code handling (Dan Williams)
+- SCSI: libsas: continue revalidation (Dan Williams)
+- vmscan: fix initial shrinker size handling (Konstantin Khlebnikov)
+- mm/hugetlb: fix warning in alloc_huge_page/dequeue_huge_page_vma (Konstantin
+  Khlebnikov)
+- cpuset: mm: reduce large amounts of memory barrier related damage v3 (Mel
+  Gorman)
+- cpusets: stall when updating mems_allowed for mempolicy or disjoint nodemask
+  (David Rientjes)
+- cpusets: avoid looping when storing to mems_allowed if one node remains set
+  (David Rientjes)
+- mm: vmscan: convert global reclaim to per-memcg LRU lists (Johannes Weiner)
+- mm: test PageSwapBacked in lumpy reclaim (Hugh Dickins)
+- mm/vmscan.c: consider swap space when deciding whether to continue reclaim
+  (Minchan Kim)
+- vmscan: activate executable pages after first usage (Konstantin Khlebnikov)
+- vmscan: promote shared file mapped pages (Konstantin Khlebnikov)
+- mm: vmscan: check if reclaim should really abort even if compaction_ready()
+  is true for one zone (Mel Gorman)
+- mm: vmscan: do not OOM if aborting reclaim to start compaction (Mel Gorman)
+- mm: vmscan: when reclaiming for compaction, ensure there are sufficient free
+  pages available (Mel Gorman)
+- mm: compaction: introduce sync-light migration for use by compaction (Mel
+  Gorman)
+- kswapd: assign new_order and new_classzone_idx after wakeup in sleeping (Alex
+  Shi)
+- kswapd: avoid unnecessary rebalance after an unsuccessful balancing (Alex
+  Shi)
+- mm: compaction: make isolate_lru_page() filter-aware again (Mel Gorman)
+- mm: page allocator: do not call direct reclaim for THP allocations while
+  compaction is deferred (Mel Gorman)
+- mm: compaction: determine if dirty pages can be migrated without blocking
+  within ->migratepage (Mel Gorman)
+- mm: compaction: allow compaction to isolate dirty pages (Mel Gorman)
+- mm: migration: clean up unmap_and_move() (Minchan Kim)
+- mm: zone_reclaim: make isolate_lru_page() filter-aware (Minchan Kim)
+- mm: compaction: make isolate_lru_page() filter-aware (Minchan Kim)
+- mm: change isolate mode from #define to bitwise type (Minchan Kim)
+- mm: compaction: trivial clean up in acct_isolated() (Minchan Kim)
+- vmscan: abort reclaim/compaction if compaction can proceed (Mel Gorman)
+- vmscan: limit direct reclaim for higher order allocations (Rik van Riel)
+- vmscan: reduce wind up shrinker->nr when shrinker can't do work (Dave
+  Chinner)
+- vmscan: shrinker->nr updates race and go wrong (Dave Chinner)
+- vmscan: add shrink_slab tracepoints (Dave Chinner)
+- vmscan: clear ZONE_CONGESTED for zone with good watermark (Shaohua Li)
+- mm: vmscan: fix force-scanning small targets without swap (Johannes Weiner)
+- mm: memory hotplug: Check if pages are correctly reserved on a per-section
+  basis (Mel Gorman)
+- dm raid1: fix crash with mirror recovery and discard (Mikulas Patocka)
+- UBIFS: fix a bug in empty space fix-up (Artem Bityutskiy)
+- mm: fix lost kswapd wakeup in kswapd_stop() (Aaditya Kumar)
+- ntp: Fix STA_INS/DEL clearing bug (John Stultz)
+- cifs: always update the inode cache with the results from a FIND_* (Jeff
+  Layton)
+- Linux 3.0.38 (Greg Kroah-Hartman)
+- timekeeping: Add missing update call in timekeeping_resume() (Thomas
+  Gleixner)
+- hrtimer: Update hrtimer base offsets each hrtimer_interrupt (John Stultz)
+- timekeeping: Provide hrtimer update function (Thomas Gleixner)
+- hrtimers: Move lock held region in hrtimer_interrupt() (Thomas Gleixner)
+- timekeeping: Maintain ktime_t based offsets for hrtimers (Thomas Gleixner)
+- timekeeping: Fix leapsecond triggered load spike issue (John Stultz)
+- hrtimer: Provide clock_was_set_delayed() (John Stultz)
+- time: Move common updates to a function (Thomas Gleixner)
+- timekeeping: Fix CLOCK_MONOTONIC inconsistency during leapsecond (John
+  Stultz)
+- ntp: Correct TAI offset during leap second (Richard Cochran)
+- ntp: Fix leap-second hrtimer livelock (John Stultz)
+- Revert "ntp: Cleanup timex.h" (Guangyu Sun)
+- Revert "ntp: Access tick_length variable via ntp_tick_length()" (Guangyu Sun)
+- Revert "ntp: Add ntp_lock to replace xtime_locking" (Guangyu Sun)
+- Revert "ntp: Fix leap-second hrtimer livelock" (Guangyu Sun)
+- Revert "ntp: Correct TAI offset during leap second" (Guangyu Sun)
+- Revert "timekeeping: Fix CLOCK_MONOTONIC inconsistency during leapsecond"
+  (Guangyu Sun)
+- Revert "time: Move common updates to a function" (Guangyu Sun)
+- Revert "hrtimer: Provide clock_was_set_delayed()" (Guangyu Sun)
+- Revert "timekeeping: Fix leapsecond triggered load spike issue" (Guangyu Sun)
+- Revert "timekeeping: Maintain ktime_t based offsets for hrtimers" (Guangyu
+  Sun)
+- Revert "hrtimers: Move lock held region in hrtimer_interrupt()" (Guangyu Sun)
+- Revert "timekeeping: Provide hrtimer update function" (Guangyu Sun)
+- Revert "hrtimer: Update hrtimer base offsets each hrtimer_interrupt" (Guangyu
+  Sun)
+- Revert "timekeeping: Add missing update call in timekeeping_resume()"
+  (Guangyu Sun)
+- Revert "htrimer: fix kabi break." (Guangyu Sun)
+- cfg80211: check iface combinations only when iface is running (Michal Kazior)
+- tcp: drop SYN+FIN messages (Eric Dumazet)
+- e1000e: Correct link check logic for 82571 serdes (Tushar Dave)
+- fifo: Do not restart open() if it already found a partner (Anders Kaseorg)
+- block: fix infinite loop in __getblk_slow (Jeff Moyer)
+- Linux 3.0.37 (Greg Kroah-Hartman)
+- ACPI: Remove one board specific WARN when ignoring timer overriding (Feng
+  Tang)
+- ACPI: Make acpi_skip_timer_override cover all source_irq==0 cases (Feng Tang)
+- mm: Hold a file reference in madvise_remove (Andy Lutomirski)
+- mm, thp: abort compaction if migration page cannot be charged to memcg (David
+  Rientjes)
+- memory hotplug: fix invalid memory access caused by stale kswapd pointer
+  (Jiang Liu)
+- md/raid10: Don't try to recovery unmatched (and unused) chunks. (NeilBrown)
+- md/raid5: Do not add data_offset before call to is_badblock (majianpeng)
+- raid5: delayed stripe fix (Shaohua Li)
+- vhost: don't forget to schedule() (Nadav Har'El)
+- tracing: change CPU ring buffer state from tracing_cpumask (Vaibhav
+  Nagarnaik)
+- PCI: EHCI: fix crash during suspend on ASUS computers (Alan Stern)
+- eCryptfs: Gracefully refuse miscdev file ops on inherited/passed files (Tyler
+  Hicks)
+- tcm_fc: Resolve suspicious RCU usage warnings (Mark Rustad)
+- cfg80211: fix potential deadlock in regulatory (Eliad Peller)
+- ACPI, x86: fix Dell M6600 ACPI reboot regression via DMI (Zhang Rui)
+- acpi_pad: fix power_saving thread deadlock (Stuart Hayes)
+- drm/i915: Fix eDP blank screen after S3 resume on HP desktops (Takashi Iwai)
+- Btrfs: run delayed directory updates during log replay (Chris Mason)
+- nilfs2: ensure proper cache clearing for gc-inodes (Ryusuke Konishi)
+- netpoll: fix netpoll_send_udp() bugs (Eric Dumazet)
+- sky2: fix checksum bit management on some chips (stephen hemminger)
+- ipv6: Move ipv6 proc file registration to end of init order (Thomas Graf)
+- bonding: Fix corrupted queue_mapping (Eric Dumazet)
+- bridge: Assign rtnl_link_ops to bridge devices created via ioctl (v2)
+  (stephen hemminger)
+- dummy: fix rcu_sched self-detected stalls (Eric Dumazet)
+- net: l2tp_eth: fix kernel panic on rmmod l2tp_eth (Eric Dumazet)
+- SPEC: v2.6.39-300.12.0 (Maxim Uvarov)
+- xen/m2p: do not reuse kmap_op->dev_bus_addr (Stefano Stabellini)
+- config - clean up NBD selecting (Maxim Uvarov) [Orabug: 14547051]
+- net: do not take an additional reference in skb_frag_set_page (Maxim Uvarov)
+  [Orabug: 14696254]
+- [ovmapi] changed instances of strncmp to strcmp (Cathy Avery) [Orabug:
+  14644624]
+- SPEC: v2.6.39-400.1.0 (Maxim Uvarov)
+- xen-pciback: support wild cards in slot specifications (Jan Beulich)
+- xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk)
+- xen/m2p: do not reuse kmap_op->dev_bus_addr (Stefano Stabellini)
+- xen/pciback: Fix proper FLR steps. (Konrad Rzeszutek Wilk)
+- xen/setup: Fix one-off error when adding for-balloon PFNs to the P2M. (Konrad
+  Rzeszutek Wilk)
+
 * Mon Oct 01 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-300.11.0.el6uek]
 - xen/boot: Disable BIOS SMP MP table search. (Konrad Rzeszutek Wilk) [Bugdb:
   13665]
