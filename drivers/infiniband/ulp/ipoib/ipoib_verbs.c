@@ -369,8 +369,8 @@ static int ipoib_create_parent_qp(struct net_device *dev,
 		init_attr.parent_attrib.rss_child_count = priv->rss_qp_num;
 	}
 
-	if (init_attr.qpg_type != IB_QPG_PARENT)
-		init_attr.create_flags |= IB_QP_CREATE_NETIF_QP;
+	init_attr.create_flags |= IB_QP_CREATE_NETIF_QP;
+
 	/*
 	 * NO TSS (tss_qp_num = 0 priv->num_tx_queues  == 1)
 	 * OR TSS is not supported in HW in this case
