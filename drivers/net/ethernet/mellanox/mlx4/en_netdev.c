@@ -1234,7 +1234,17 @@ void mlx4_en_stop_port(struct net_device *dev)
 	priv->port_up = false;
 
 	/* Promsicuous mode */
-	if (priv->flags & MLX4_EN_FLAG_PROMISC) {
+	if (mdev->dev->caps.steering_mode ==
+	    MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		priv->flags &= ~(MLX4_EN_FLAG_PROMISC |
+				 MLX4_EN_FLAG_MC_PROMISC);
+		mlx4_flow_steer_promisc_remove(mdev->dev,
+					       priv->port,
+					       MLX4_FS_PROMISC_UPLINK);
+		mlx4_flow_steer_promisc_remove(mdev->dev,
+					       priv->port,
+					       MLX4_FS_PROMISC_ALL_MULTI);
+	} else if (priv->flags & MLX4_EN_FLAG_PROMISC) {
 		priv->flags &= ~MLX4_EN_FLAG_PROMISC;
 
 		/* Disable promiscouos mode */
