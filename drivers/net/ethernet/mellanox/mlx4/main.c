@@ -1725,14 +1725,15 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 	err = mlx4_init_uar_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "user access region table, aborting.\n");
+			 "user access region table (err=%d), aborting.\n",
+			 err);
 		return err;
 	}
 
 	err = mlx4_uar_alloc(dev, &priv->driver_uar);
 	if (err) {
-		mlx4_err(dev, "Failed to allocate driver access region, "
-			 "aborting.\n");
+		mlx4_err(dev, "Failed to allocate driver access region "
+			 "(err=%d), aborting.\n", err);
 		goto err_uar_table_free;
 	}
 
@@ -1747,35 +1748,36 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 	err = mlx4_init_pd_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "protection domain table, aborting.\n");
+			 "protection domain table (err=%d), aborting.\n", err);
 		goto err_kar_unmap;
 	}
 
 	err = mlx4_init_xrcd_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "reliable connection domain table, aborting.\n");
+			 "reliable connection domain table (err=%d), "
+			 "aborting.\n", err);
 		goto err_pd_table_free;
 	}
 
 	err = mlx4_init_mr_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "memory region table, aborting.\n");
+			 "memory region table (err=%d), aborting.\n", err);
 		goto err_xrcd_table_free;
 	}
 
 	err = mlx4_init_eq_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "event queue table, aborting.\n");
+			 "event queue table (err=%d), aborting.\n", err);
 		goto err_mr_table_free;
 	}
 
 	err = mlx4_cmd_use_events(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to switch to event-driven "
-			 "firmware commands, aborting.\n");
+			 "firmware commands (err=%d), aborting.\n", err);
 		goto err_eq_table_free;
 	}
 
@@ -1801,21 +1803,22 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 	err = mlx4_init_cq_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "completion queue table, aborting.\n");
+			 "completion queue table (err=%d), aborting.\n", err);
 		goto err_cmd_poll;
 	}
 
 	err = mlx4_init_srq_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "shared receive queue table, aborting.\n");
+			 "shared receive queue table (err=%d), aborting.\n",
+			 err);
 		goto err_cq_table_free;
 	}
 
 	err = mlx4_init_qp_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
-			 "queue pair table, aborting.\n");
+			 "queue pair table (err=%d), aborting.\n", err);
 		goto err_srq_table_free;
 	}
 
@@ -1823,14 +1826,16 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 		err = mlx4_init_mcg_table(dev);
 		if (err) {
 			mlx4_err(dev, "Failed to initialize "
-				 "multicast group table, aborting.\n");
+				 "multicast group table (err=%d), aborting.\n",
+				 err);
 			goto err_qp_table_free;
 		}
 	}
 
 	err = mlx4_init_counters_table(dev);
 	if (err && err != -ENOENT) {
-		mlx4_err(dev, "Failed to initialize counters table, aborting.\n");
+		mlx4_err(dev, "Failed to initialize counters table (err=%d), "
+			 "aborting.\n", err);
 		goto err_mcg_table_free;
 	}
 
@@ -1864,8 +1869,8 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 			err = mlx4_SET_PORT(dev, port, mlx4_is_master(dev) ?
 					    dev->caps.pkey_table_len[port] : -1);
 			if (err) {
-				mlx4_err(dev, "Failed to set port %d, aborting\n",
-					port);
+				mlx4_err(dev, "Failed to set port %d (err=%d), "
+					 "aborting\n", port, err);
 				goto err_counters_table_free;
 			}
 		}
