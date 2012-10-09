@@ -537,8 +537,10 @@ struct mlx4_en_priv {
 	u32 counter_index;
 
 #ifdef CONFIG_MLX4_EN_DCB
+#define MLX4_EN_DCB_ENABLED   0x3
 	struct ieee_ets ets;
 	u16 maxrate[IEEE_8021QAZ_MAX_TCS];
+	u8 dcbx_cap;
 #endif
 #ifdef CONFIG_RFS_ACCEL
 	spinlock_t filters_lock;

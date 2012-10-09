@@ -36,6 +36,28 @@
 
 #include "mlx4_en.h"
 
+static u8 mlx4_en_dcbnl_getcap(struct net_device *dev, int capid, u8 *cap)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+
+	switch (capid) {
+	case DCB_CAP_ATTR_PFC:
+		*cap = true;
+		break;
+	case DCB_CAP_ATTR_UP2TC:
+		*cap = true;
+		break;
+	case DCB_CAP_ATTR_DCBX:
+		*cap = priv->dcbx_cap;
+		break;
+	default:
+		*cap = false;
+		break;
+	}
+
+	return 0;
+}
+
 static int mlx4_en_dcbnl_ieee_getets(struct net_device *dev,
 				   struct ieee_ets *ets)
 {
@@ -214,6 +236,13 @@ static int mlx4_en_dcbnl_ieee_getmaxrate(struct net_device *dev,
 	return 0;
 }
 
+static u8 mlx4_en_dcbnl_get_state(struct net_device *dev)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+
+	return !!(priv->flags & MLX4_EN_DCB_ENABLED);
+}
+
 static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 		struct ieee_maxrate *maxrate)
 {
@@ -240,13 +269,14 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 }
 
 const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops = {
+	.getstate       = mlx4_en_dcbnl_get_state,
 	.ieee_getets	= mlx4_en_dcbnl_ieee_getets,
 	.ieee_setets	= mlx4_en_dcbnl_ieee_setets,
 	.ieee_getmaxrate = mlx4_en_dcbnl_ieee_getmaxrate,
 	.ieee_setmaxrate = mlx4_en_dcbnl_ieee_setmaxrate,
 	.ieee_getpfc	= mlx4_en_dcbnl_ieee_getpfc,
 	.ieee_setpfc	= mlx4_en_dcbnl_ieee_setpfc,
-
+	.getcap		= mlx4_en_dcbnl_getcap,
 	.getdcbx	= mlx4_en_dcbnl_getdcbx,
 	.setdcbx	= mlx4_en_dcbnl_setdcbx,
 };

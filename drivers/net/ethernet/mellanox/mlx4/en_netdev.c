@@ -1770,8 +1770,11 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	INIT_WORK(&priv->linkstate_task, mlx4_en_linkstate);
 	INIT_DELAYED_WORK(&priv->stats_task, mlx4_en_do_get_stats);
 #ifdef CONFIG_MLX4_EN_DCB
-	if (!mlx4_is_slave(priv->mdev->dev))
+	if (!mlx4_is_slave(priv->mdev->dev)) {
+		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
+		priv->flags |= MLX4_EN_DCB_ENABLED;
 		dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
+	}
 #endif
 
 	/* Query for default mac and max mtu */
