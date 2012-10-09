@@ -412,7 +412,6 @@ struct mlx4_caps {
 	int			reserved_mcgs;
 	int			num_qp_per_mgm;
 	int			steering_mode;
-	int			fs_log_max_ucast_qp_range_size;
 	int			num_pds;
 	int			reserved_pds;
 	int			max_xrcds;

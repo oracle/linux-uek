@@ -377,8 +377,6 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	if (dev_cap->flags2 & MLX4_DEV_CAP_FLAG2_FS_EN) {
 		dev->caps.steering_mode = MLX4_STEERING_MODE_DEVICE_MANAGED;
 		dev->caps.num_qp_per_mgm = dev_cap->fs_max_num_qp_per_entry;
-		dev->caps.fs_log_max_ucast_qp_range_size =
-			dev_cap->fs_log_max_ucast_qp_range_size;
 	} else {
 		if (dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_UC_STEER &&
 		    dev->caps.flags & MLX4_DEV_CAP_FLAG_VEP_MC_STEER) {

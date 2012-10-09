@@ -1939,7 +1939,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 
 	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED &&
 	    !mlx4_is_slave(dev)) {
-		ibdev->steer_qpn_count =  1 << dev->caps.fs_log_max_ucast_qp_range_size;
+		ibdev->steer_qpn_count = MLX4_IB_UC_MAX_NUM_QPS;
 		err = mlx4_qp_reserve_range(dev, ibdev->steer_qpn_count,
 					    MLX4_IB_UC_STEER_QPN_ALIGN, &ibdev->steer_qpn_base);
 		if (err)
