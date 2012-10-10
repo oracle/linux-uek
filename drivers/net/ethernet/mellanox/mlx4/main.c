@@ -2164,13 +2164,13 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 		return err;
 	}
 	if (num_vfs > MLX4_MAX_NUM_VF) {
-		printk(KERN_ERR "There are more VF's (%d) than allowed(%d)\n",
-		       num_vfs, MLX4_MAX_NUM_VF);
+		dev_err(&pdev->dev, "There are more VF's (%d) than allowed(%d)\n",
+			num_vfs, MLX4_MAX_NUM_VF);
 		return -EINVAL;
 	}
 
 	if (num_vfs < 0) {
-		printk(KERN_ERR "num_vfs module parameter cannot be negative\n");
+		dev_err(&pdev->dev, "num_vfs module parameter cannot be negative\n");
 		return -EINVAL;
 	}
 	/*
@@ -2482,7 +2482,7 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 		 * driver while there are alive vf's */
 		if (mlx4_is_master(dev)) {
 			if (mlx4_how_many_lives_vf(dev))
-				printk(KERN_ERR "Removing PF when there are assigned VF's !!!\n");
+				mlx4_err(dev, "Removing PF when there are assigned VF's !!!\n");
 		}
 		mlx4_stop_sense(dev);
 		mlx4_unregister_device(dev);
@@ -2669,7 +2669,7 @@ static int __init mlx4_verify_params(void)
 
 	/* Check if module param for ports type has legal combination */
 	if (port_type_array[0] == false && port_type_array[1] == true) {
-		printk(KERN_WARNING "Module parameter configuration ETH/IB is not supported. Switching to default configuration IB/IB\n");
+		pr_warning("mlx4_core: module parameter configuration ETH/IB is not supported. Switching to default configuration IB/IB\n");
 		port_type_array[0] = true;
 	}
 
