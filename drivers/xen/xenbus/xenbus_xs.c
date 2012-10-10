@@ -47,6 +47,7 @@
 #include <xen/xenbus.h>
 #include <xen/xen.h>
 #include "xenbus_comms.h"
+#include <asm/xen/hypervisor.h>
 
 struct xs_stored_msg {
 	struct list_head list;
@@ -617,12 +618,26 @@ static struct xenbus_watch *find_watch(const char *token)
 
 	return NULL;
 }
+static bool xen_strict_xenbus_quirk()
+{
+	uint32_t eax, ebx, ecx, edx, base;
 
+	base = xen_cpuid_base();
+	cpuid(base + 1, &eax, &ebx, &ecx, &edx);
+
+	if ((eax >> 16) < 4)
+		return true;
+	return false;
+
+}
 static void xs_reset_watches(void)
 {
 	int err, supported = 0;
 
 	if (!xen_hvm_domain())
+		return;
+
+	if (xen_strict_xenbus_quirk())
 		return;
 
 	err = xenbus_scanf(XBT_NIL, "control",
