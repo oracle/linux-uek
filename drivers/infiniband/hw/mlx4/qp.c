@@ -2028,7 +2028,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 		if (attr_mask & (IB_M_EXT_CLASS_2 | IB_M_EXT_CLASS_3)) {
 			err = mlx4_ib_ignore_overrun_cq(ibqp->send_cq);
 			if (err) {
-				printk(KERN_ERR "Failed to set ignore CQ "
+				pr_err("Failed to set ignore CQ "
 				       "overrun for QP 0x%x's send CQ\n",
 				       ibqp->qp_num);
 				goto out;
@@ -2037,7 +2037,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 			if (ibqp->recv_cq != ibqp->send_cq) {
 				err = mlx4_ib_ignore_overrun_cq(ibqp->recv_cq);
 				if (err) {
-					printk(KERN_ERR "Failed to set ignore "
+					pr_err("Failed to set ignore "
 					       "CQ overrun for QP 0x%x's recv "
 					       "CQ\n", ibqp->qp_num);
 					goto out;
