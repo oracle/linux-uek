@@ -449,7 +449,7 @@ static int prepare_shared_mr(struct mlx4_ib_mr *mr, int access_flags, int mr_id)
 				mr->smr_info);
 
 	if (!mr_proc_entry) {
-		printk(KERN_ERR "mlx4_ib:prepare_shared_mr failed via proc\n");
+		pr_err("prepare_shared_mr failed via proc\n");
 		kfree(mr->smr_info);
 		return -ENODEV;
 	}
