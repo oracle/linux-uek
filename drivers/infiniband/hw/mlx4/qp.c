@@ -2151,8 +2151,8 @@ int mlx4_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	}
 
 	if ((attr_mask & IB_M_QP_MOD_VEND_MASK) && !dev->dev->caps.sync_qp) {
-		printk(KERN_ERR "extended verbs are not supported by %s\n",
-			dev->ib_dev.name);
+		pr_err("extended verbs are not supported by %s\n",
+		       dev->ib_dev.name);
 		goto out;
 	}
 
