@@ -798,7 +798,7 @@ static void edit_counter(struct mlx4_counter *cnt, void *counters,
 		break;
 	}
 	default:
-		printk(KERN_WARNING "Unsupported attr_id 0x%x\n", attr_id);
+		pr_warn("Unsupported attr_id 0x%x\n", attr_id);
 		break;
 	}
 }
