@@ -2137,7 +2137,7 @@ extern int dtrace_badattr(const dtrace_attribute_t *);
 extern int dtrace_badname(const char *);
 extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 
-extern void dtrace_ctf_forceload(void);
+extern void ctf_forceload(void);
 
 #define DT_PROVIDER_POPS(name)						\
   static unsigned int	name##_refc = 0;				\
