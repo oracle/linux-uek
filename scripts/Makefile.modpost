@@ -172,6 +172,9 @@ $(all-module-ctfs): $(ctf-stamp)
 $(ctf-stamp): $(builtins) $(modules:.ko=.o)
 	$(call if_changed,ctf)
 	@shopt -s nullglob; \
+	for name in $(ctf-dir)/*.builtin.ctf; do \
+		[[ -f $${name}.new ]] || rm -f $$name; \
+	done; \
 	for name in $(ctf-dir)/*.ctf.new; do \
 		scripts/move-if-change $$name $${name%.new}; \
 	done
