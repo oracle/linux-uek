@@ -1011,8 +1011,8 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (qp->max_inline_data) {
 			err = mlx4_bf_alloc(dev->dev, &qp->bf, 0);
 			if (err) {
-				printk(KERN_ERR "failed to allocate blue flame"
-					" register (%d)", err);
+				pr_err("failed to allocate blue flame"
+				       " register (%d)", err);
 				qp->bf.uar = &dev->priv_uar;
 			}
 		} else
