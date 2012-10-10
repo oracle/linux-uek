@@ -1,0 +1,9 @@
+config CTF
+	bool "Compact Type Format generation"
+	default n
+	help
+	  Emit a compact, compressed description of the kernel's datatypes and
+	  global variables into .ctf sections in kernel modules.  A module
+	  'ctf.ko' is also generated containing type information for built-in
+	  modules, the core kernel, and types shared across multiple kernel
+	  modules.

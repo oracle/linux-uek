@@ -97,7 +97,7 @@ static GHashTable *id_to_module;
 /*
  * A mapping from module name to ctf_file_t *.  The CTF named 'vmlinux' is the
  * CTF corresponding to the types in always-built-in translation units; the CTF
- * named 'dtrace_ctf' (not appearing in this mapping) is the CTF corresponding
+ * named 'shared_ctf' (not appearing in this mapping) is the CTF corresponding
  * to types shared between more than one module (even between two currently-
  * built-in modules: we do not distinguish at this level between built-in
  * modules and non-built-in modules.)
@@ -165,7 +165,7 @@ static void init_tu_to_modules(void);
 /*
  * Initialize a CTF type table, and possibly fill it with those special types
  * that appear in CTF but not in DWARF (such as 'void').  (This filling happens
- * only for the type table named "dtrace_ctf", unless deduplication is turned
+ * only for the type table named "shared_ctf", unless deduplication is turned
  * off, signified by the builtin_modules list being NULL.)
  *
  * If this is a local type table, and deduplication is active, make the global
@@ -718,7 +718,7 @@ static void run(int starting_argv, char *argv[], char *output_dir)
 	init_tu_to_modules();
 
 	if (builtin_modules != NULL)
-		init_ctf_table("dtrace_ctf");
+		init_ctf_table("shared_ctf");
 
 	scan_duplicates(starting_argv, argv);
 
@@ -929,7 +929,7 @@ static void init_blacklist(const char *dedup_blacklist_file)
 /*
  * Initialize a CTF type table, and possibly fill it with those special types
  * that appear in CTF but not in DWARF (such as 'void').  (This filling happens
- * only for the type table named "dtrace_ctf", unless deduplication is turned
+ * only for the type table named "shared_ctf", unless deduplication is turned
  * off, signified by the builtin_modules list being NULL.)
  *
  * If this is a local type table, and deduplication is active, make the global
@@ -949,7 +949,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 			     ctf_file);
 
 	dw_ctf_trace("Initializing module: %s\n", module_name);
-	if ((strcmp(module_name, "dtrace_ctf") == 0) ||
+	if ((strcmp(module_name, "shared_ctf") == 0) ||
 	    (builtin_modules == NULL)) {
 		ctf_encoding_t void_encoding = { CTF_INT_SIGNED, 0, 0 };
 		ctf_encoding_t int_encoding = { CTF_INT_SIGNED, 0,
@@ -984,13 +984,13 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 		 */
 		if (ctf_import(ctf_file,
 			       g_hash_table_lookup(module_to_ctf_file,
-						   "dtrace_ctf")) < 0) {
+						   "shared_ctf")) < 0) {
 			fprintf(stderr, "Cannot set parent of CTF file for "
 				"module %s: %s\n", module_name,
 				ctf_errmsg(ctf_errno(ctf_file)));
 			exit(1);
 		}
-		ctf_parent_name_set(ctf_file, "dtrace_ctf");
+		ctf_parent_name_set(ctf_file, "shared_ctf");
 	}
 
 	dw_ctf_trace("Created CTF file for module %s: %p\n",
@@ -1614,7 +1614,7 @@ static void detect_duplicates(const char *module_name,
 		     !g_hash_table_lookup_extended(dedup_blacklist, module_name,
 						   NULL, NULL))) {
 			mark_shared(die, NULL, data);
-			mark_seen_contained(die, "dtrace_ctf");
+			mark_seen_contained(die, "shared_ctf");
 		}
 
 		/*
@@ -1723,11 +1723,11 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 	existing_module = g_hash_table_lookup(id_to_module, id);
 
 	if ((existing_module == NULL) ||
-	    (strcmp(existing_module, "dtrace_ctf") != 0)) {
+	    (strcmp(existing_module, "shared_ctf") != 0)) {
 
 		dw_ctf_trace("Marking %s as duplicate\n", id);
 		g_hash_table_replace(id_to_module, xstrdup(id),
-				     xstrdup("dtrace_ctf"));
+				     xstrdup("shared_ctf"));
 
 		/*
 		 * Newly-marked structures or unions must trigger a new
@@ -1914,10 +1914,10 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 							opaque_id);
 
 	transparent_shared = ((transparent_module != NULL) &&
-			      (strcmp(transparent_module, "dtrace_ctf") == 0));
+			      (strcmp(transparent_module, "shared_ctf") == 0));
 
 	opaque_shared = ((opaque_module != NULL) &&
-			 (strcmp(opaque_module, "dtrace_ctf") == 0));
+			 (strcmp(opaque_module, "shared_ctf") == 0));
 
 	/*
 	 * Transparent type needs sharing.
@@ -1939,7 +1939,7 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
 	if (transparent_shared && !opaque_shared) {
 		dw_ctf_trace("Marking %s as duplicate\n", opaque_id);
 		g_hash_table_replace(id_to_module, xstrdup(opaque_id),
-				     xstrdup("dtrace_ctf"));
+				     xstrdup("shared_ctf"));
 	}
 
 	free(opaque_id);
@@ -2001,7 +2001,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	}
 
 	if ((strcmp(ctf_module, module_name) != 0) &&
-	    (strcmp(ctf_module, "dtrace_ctf") != 0)) {
+	    (strcmp(ctf_module, "shared_ctf") != 0)) {
 		fprintf(stderr, "Internal error: within file %s, module %s, "
 			"type at DIE offset %lx with ID %s is in a different "
 			"non-shared module, %s.\n", file_name, module_name,
@@ -2098,7 +2098,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
  * die: The DWARF DIE.
  * parent_die: Its parent, i.e. if a structure member, this is a structure: if
  * top-level, this is a CU DIE.
- * ctf: The CTF file this object should go into (possibly dtrace_ctf).
+ * ctf: The CTF file this object should go into (possibly shared_ctf).
  * parent_ctf_id: The CTF ID of the parent DIE, or -1 if none.
  * parent_bias: any bias applied to structure members.  Normally 0, may be
  * nonzero for unnamed structure members.
@@ -2345,7 +2345,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 
 	if ((type_ref->ctf_file != ctf) &&
 	    type_ref->ctf_file != g_hash_table_lookup(module_to_ctf_file,
-						      "dtrace_ctf")) {
+						      "shared_ctf")) {
 #ifdef DEBUG
 		fprintf(stderr, "%s: Internal error: lookup of %s found in "
 			"different file: %s/%s versus %s/%s.\n", locerrstr,
@@ -3043,7 +3043,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 
 	if ((new_type->ctf_file != ctf) &&
 	    (new_type->ctf_file != g_hash_table_lookup(module_to_ctf_file,
-						       "dtrace_ctf"))) {
+						       "shared_ctf"))) {
 		fprintf(stderr, "%s:%s: internal error: referenced type lookup "
 			"for member %s yields a different CTF file: %p versus "
 			"%p\n", locerrstr, dwarf_diename(&cu_die),
@@ -3170,7 +3170,7 @@ static void write_types(char *output_dir)
 
 		dw_ctf_trace("Writing out %s\n", module);
 
-		if ((strcmp(module, "dtrace_ctf") == 0) ||
+		if ((strcmp(module, "shared_ctf") == 0) ||
 		    (strcmp(module, "vmlinux") == 0))
 			builtin_module = 1;
 		else {

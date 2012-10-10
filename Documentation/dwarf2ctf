@@ -89,9 +89,8 @@ dwarf2ctf has written out content identical to what it wrote last time it ran.
 These fall into several classes, partitioned according to the contents of
 objects.builtin and modules.builtin:
 
- - dtrace_ctf.builtin.ctf: The shared type repository.  Types shared by more
-   than one of the files below go here.  Despite its name it is not DTrace-
-   specific: it is named after the library that reads and writes it,
+ - shared_ctf.builtin.ctf: The shared type repository.  Types shared by more
+   than one of the files below go here.
    libdtrace-ctf).  See 'Using dwarf2ctf output' below regarding use of this
    data.
  - vmlinux.builtin.ctf: Types in the core kernel, that cannot be built in to
@@ -100,8 +99,8 @@ objects.builtin and modules.builtin:
    is presently built in to the kernel.
  - *.mod.ctf: One of these is generated for each .ko.
 
-All the files in the first three classes are linked into the dtrace_ctf.ko
-module under various names, an empty module containing nothing but CTF data.
+All the files in the first three classes are linked into the ctf.ko module under
+various names, an empty module containing nothing but CTF data.
 
 
 A lengthy section of Makefile.modpost, and a short section of the toplevel
@@ -110,16 +109,15 @@ kernel modules.  The dependency graph related to dwarf2ctf output is quite
 complex: modules and objects (ld -r'ed *.o files) are processed by dwarf2ctf to
 produce a number of files in the .ctf directory, and the final modules depend on
 the relevant ctf files.  .mod.ctf's go into the .ko's with the same stem name,
-but dtrace_ctf.ko receives content from all the CTF files corresponding to
-built-in modules, and until dwarf2ctf runs and creates those files we cannot
-tell what those CTF files will be, though we do have a wildcard that matches
-them all.
+but ctf.ko receives content from all the CTF files corresponding to built-in
+modules, and until dwarf2ctf runs and creates those files we cannot tell what
+those CTF files will be, though we do have a wildcard that matches them all.
 
 GNU Make's 'secondary expansion' feature comes to the rescue here: we can
 compute a list of expected CTF filenames at runtime, given the names of the
 modules we are linking in.  For the builtin modules, we cheat and touch a stamp
 file after moving any .ctf.new files back over a .ctf file, then depend on that
-to see if dtrace_ctf.ko needs to be relinked.
+to see if ctf.ko needs to be relinked.
 
 The actual incorporation of the CTF data into the kernel modules happens before
 module signing (if signing is active), by calling objcopy --add-section on the
@@ -144,14 +142,13 @@ Using dwarf2ctf output
 Using this data is fairly simple.  Once you've read the CTF sections from the
 kernel modules and inflated them (or ignored them if they are empty or, as just
 mentioned, one byte long), you simply need to look at the ctf_parent_name() for
-each module, and if it is set to "dtrace_ctf", call ctf_import() to set the
-parent of this module to the CTF data you have read from the
-.dtrace_ctf.dtrace_ctf section in the dtrace_ctf.ko kernel module.  The core
-kernel's types are stored in the .dtrace_ctf.vmlinux section in the same kernel
-module, and all built-in kernel modules have their types in
-.dtrace_ctf.$module_name.  Non-built-in kernel modules just have a .dtrace_ctf
-section containing their types, which again might need their parent set to
-"dtrace_ctf".  (Out-of- tree kernel modules will have no such parent.)
+each module, and if it is set to "ctf", call ctf_import() to set the parent of
+this module to the CTF data you have read from the .ctf.shared_ctf section in
+the ctf.ko kernel module.  The core kernel's types are stored in the
+.ctf.vmlinux section in the same kernel module, and all built-in kernel modules
+have their types in .ctf.$module_name.  Non-built-in kernel modules just have a
+.ctf section containing their types, which again might need their parent set to
+"shared_ctf".  (Out-of-tree kernel modules will have no such parent.)
 
 Once you've set up the parenthood relationships you can call ctf_close() on the
 shared type repository and forget about it entirely: it will be refcounted and
@@ -381,7 +378,7 @@ The job of the duplicate detection pass is to fill out the id_to_module hash,
 which maps type IDs to the module they appear in, with the two special cases
 that types that appear only in the core kernel are said to appear in the module
 'vmlinux', and types that appear in more than one module (or in a module and in
-the core kernel) are said to appear in the module 'dtrace_ctf', the shared type
+the core kernel) are said to appear in the module 'shared_ctf', the shared type
 repository.  This is quite a tricky multi-pass process, because we must ensure
 that the shared type repository is self-contained: all types in the repository
 must not reference any types outside the repository.

@@ -123,7 +123,7 @@ targets += $(modules:.ko=.mod.o)
 # Step 6), generate CTF for the entire kernel, or for the module alone if this
 # is a build of an external module.
 
-ifdef CONFIG_DTRACE
+ifdef CONFIG_CTF
 ifndef CONFIG_DT_DISABLE_CTF
 
 # This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
@@ -145,12 +145,12 @@ ctf-dir := .ctf
 quiet_cmd_ctf = DWARF2CTF
       cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist $^
 builtins := $(shell cat objects.builtin 2>/dev/null)
-ctf-stamp := .ctf/dtrace-ctf.stamp
+ctf-stamp := .ctf/ctf.stamp
 
-# The dtrace CTF module depends on the CTF stamp file, in lieu of the builtin
+# The CTF module depends on the CTF stamp file, in lieu of the builtin
 # CTF files whose names we cannot determine until it is too late.
 
-kernel/dtrace/dtrace_ctf.ko: .ctf/dtrace-ctf.stamp
+kernel/ctf/ctf.ko: .ctf/ctf.stamp
 
 else
 ctf-dir := $(KBUILD_EXTMOD)/.ctf
@@ -198,13 +198,13 @@ endif
 # Expands to a series of objcopy --add-section arguments to add all
 # necessary CTF files to a module, with appropriate section names.
 # We also take advantage of the opportunity to strip the guaranteed-
-# useless debugging information out of dtrace_ctf.ko at the same time.
+# useless debugging information out of ctf.ko at the same time.
 
-module-ctf-flags = $(if $(filter dtrace_ctf.ko dtrace_ctf.ko.unsigned,$(notdir $@)), \
+module-ctf-flags = $(if $(filter ctf.ko ctf.ko.unsigned,$(notdir $@)), \
 		   --strip-debug \
 		   $(foreach builtin,$(wildcard $(ctf-dir)/*.builtin.ctf), \
-			     --add-section $(patsubst %.builtin.ctf,.dtrace_ctf.%,$(notdir $(builtin)))=$(builtin)), \
-		   --add-section .dtrace_ctf=$(ctf-module-name))
+			     --add-section $(patsubst %.builtin.ctf,.ctf.%,$(notdir $(builtin)))=$(builtin)), \
+		   --add-section .ctf=$(ctf-module-name))
 
 # We have to put content in our dummy no-CTF files because --add-section
 # in binutils 2.20 silently fails if asked to add an empty file as a section.
@@ -213,7 +213,7 @@ cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
 		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
 		done
 
-else
+else		# CONFIG_DT_DISABLE_CTF
 
 module-ctfs-modular-prereq =
 module-ctfs-builtin =
@@ -221,7 +221,7 @@ module-ctf-flags =
 cmd-touch-ctf = @:
 
 endif
-else
+else		# !CONFIG_CTF
 
 module-ctfs-modular-prereq =
 module-ctfs-builtin =
