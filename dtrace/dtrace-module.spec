@@ -11,7 +11,7 @@ Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.3.0
 Release: 2.el6
-Provides: dtrace-kernel-interface = 1
+Provides: dtrace-kernel-interface = 2
 License: CDDL
 Group: System Environment/Kernel
 Requires: kernel-uek-dtrace = %{kver}

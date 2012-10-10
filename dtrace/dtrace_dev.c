@@ -1213,7 +1213,7 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
-	dtrace_ctf_forceload();
+	ctf_forceload();
 
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
