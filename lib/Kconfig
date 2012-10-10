@@ -532,6 +532,10 @@ config SIGNATURE
 #
 config LIBFDT
 	bool
+#
+# CTF support is select'ed if needed
+#
+source "kernel/ctf/Kconfig"
 
 config OID_REGISTRY
 	tristate
