@@ -139,6 +139,11 @@ ifndef CONFIG_DT_DISABLE_CTF
 #
 # Out-of-tree module CTF gets its own per-module set of stamp files, since its
 # CTF is rebuilt independently.
+#
+# Warning: cmd_ctf can expand to an emormously long command line, long enough
+# that many shells dump core trying to parse it.  We must avoid most shell
+# metacharacters in the definition of cmd_ctf, whereupon GNU make will invoke
+# the command directly rather than going through $SHELL.
 
 ifeq ($(KBUILD_EXTMOD),)
 ctf-dir := .ctf
