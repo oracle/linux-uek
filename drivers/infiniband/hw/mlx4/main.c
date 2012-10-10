@@ -1750,8 +1750,8 @@ static int mlx4_ib_proc_init(void)
 				NULL);
 
 	if (!mlx4_ib_driver_dir_entry) {
-		printk(KERN_ERR "mlx4_ib_proc_init has failed for %s\n",
-			MLX4_IB_DRIVER_PROC_DIR_NAME);
+		pr_err("mlx4_ib_proc_init has failed for %s\n",
+		       MLX4_IB_DRIVER_PROC_DIR_NAME);
 		err = -ENODEV;
 		goto error;
 	}
@@ -1759,8 +1759,8 @@ static int mlx4_ib_proc_init(void)
 	mlx4_mrs_dir_entry = proc_mkdir(MLX4_IB_MRS_PROC_DIR_NAME,
 					mlx4_ib_driver_dir_entry);
 	if (!mlx4_mrs_dir_entry) {
-		printk(KERN_ERR "mlx4_ib_proc_init has failed for %s\n",
-			MLX4_IB_MRS_PROC_DIR_NAME);
+		pr_err("mlx4_ib_proc_init has failed for %s\n",
+		       MLX4_IB_MRS_PROC_DIR_NAME);
 		err = -ENODEV;
 		goto remove_entry;
 	}
