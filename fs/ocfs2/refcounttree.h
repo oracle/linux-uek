@@ -85,10 +85,12 @@ int ocfs2_refcount_cow_xattr(struct inode *inode,
 			     u32 cpos, u32 write_len,
 			     struct ocfs2_post_refcount *post);
 int ocfs2_duplicate_clusters_by_page(handle_t *handle,
+				     struct inode *inode,
 				     struct file *file,
 				     u32 cpos, u32 old_cluster,
 				     u32 new_cluster, u32 new_len);
 int ocfs2_duplicate_clusters_by_jbd(handle_t *handle,
+				    struct inode *inode,
 				    struct file *file,
 				    u32 cpos, u32 old_cluster,
 				    u32 new_cluster, u32 new_len);
