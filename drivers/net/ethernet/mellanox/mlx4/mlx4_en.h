@@ -234,6 +234,9 @@ struct mlx4_en_tx_desc {
 
 #define MLX4_EN_USE_SRQ		0x01000000
 
+#define MLX4_EN_TX_BUDGET 64
+#define MLX4_EN_RX_BUDGET 64
+
 #define MLX4_EN_CX3_LOW_ID	0x1000
 #define MLX4_EN_CX3_HIGH_ID	0x1005
 
@@ -607,6 +610,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 			  struct mlx4_en_cq *cq,
 			  int budget);
 int mlx4_en_poll_rx_cq(struct napi_struct *napi, int budget);
+int mlx4_en_poll_tx_cq(struct napi_struct *napi, int budget);
 void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 		int is_tx, int rss, int qpn, int cqn, int user_prio,
 		struct mlx4_qp_context *context, int disable_vstrip);

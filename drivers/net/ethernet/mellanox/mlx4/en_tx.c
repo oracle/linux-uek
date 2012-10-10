@@ -298,7 +298,7 @@ static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 		}
 
 	}
-	dev_kfree_skb_any(skb);
+	dev_kfree_skb(skb);
 	return tx_info->nr_txbb;
 }
 
@@ -333,7 +333,9 @@ int mlx4_en_free_tx_buf(struct net_device *dev, struct mlx4_en_tx_ring *ring)
 	return cnt;
 }
 
-static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
+static int mlx4_en_process_tx_cq(struct net_device *dev,
+				 struct mlx4_en_cq *cq,
+				 int budget)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_cq *mcq = &cq->mcq;
@@ -351,10 +353,11 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 	int factor = priv->cqe_factor;
 	u64 timestamp = 0;
 	struct mlx4_en_tx_info *tx_info;
+	int done = 0;
 
 
 	if (!priv->port_up)
-		return;
+		return 0;
 
 	index = cons_index & size_mask;
 	cqe = &buf[(index << factor) + factor];
@@ -363,7 +366,7 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 
 	/* Process all completed CQEs */
 	while (XNOR(cqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK,
-			cons_index & size)) {
+			cons_index & size) && (done < budget)) {
 		/*
 		 * make sure we read the CQE after we read the
 		 * ownership bit
@@ -386,7 +389,7 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 					ring->size), timestamp);
 			packets++;
 			bytes += ring->tx_info[ring_index].nr_bytes;
-		} while (ring_index != new_index);
+		} while ((++done < budget) && (ring_index != new_index));
 
 		++cons_index;
 		index = cons_index & size_mask;
@@ -414,6 +417,7 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 		netif_tx_wake_queue(ring->tx_queue);
 		ring->wake_queue++;
 	}
+	return done;
 }
 
 void mlx4_en_tx_irq(struct mlx4_cq *mcq)
@@ -421,10 +425,31 @@ void mlx4_en_tx_irq(struct mlx4_cq *mcq)
 	struct mlx4_en_cq *cq = container_of(mcq, struct mlx4_en_cq, mcq);
 	struct mlx4_en_priv *priv = netdev_priv(cq->dev);
 
-	mlx4_en_process_tx_cq(cq->dev, cq);
-	mlx4_en_arm_cq(priv, cq);
+	if (priv->port_up)
+		napi_schedule(&cq->napi);
+	else
+		mlx4_en_arm_cq(priv, cq);
 }
 
+/* TX CQ polling - called by NAPI */
+int mlx4_en_poll_tx_cq(struct napi_struct *napi, int budget)
+{
+	struct mlx4_en_cq *cq = container_of(napi, struct mlx4_en_cq, napi);
+	struct net_device *dev = cq->dev;
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+	int done;
+
+	done = mlx4_en_process_tx_cq(dev, cq, budget);
+
+	/* If we used up all the quota - we're probably not done yet... */
+	if (done < budget) {
+		/* Done for now */
+		napi_complete(napi);
+		mlx4_en_arm_cq(priv, cq);
+		return done;
+	}
+	return budget;
+}
 
 static struct mlx4_en_tx_desc *mlx4_en_bounce_to_desc(struct mlx4_en_priv *priv,
 						      struct mlx4_en_tx_ring *ring,
