@@ -837,15 +837,9 @@ void mlx4_en_calc_rx_buf(struct net_device *dev)
 			(eff_mtu > buf_size + frag_sizes[i]) ?
 				frag_sizes[i] : eff_mtu - buf_size;
 		priv->frag_info[i].frag_prefix_size = buf_size;
-		if (!i)	{
-			priv->frag_info[i].frag_align = NET_IP_ALIGN;
-			priv->frag_info[i].frag_stride =
-				ALIGN(frag_sizes[i] + NET_IP_ALIGN, SMP_CACHE_BYTES);
-		} else {
-			priv->frag_info[i].frag_align = 0;
-			priv->frag_info[i].frag_stride =
-				ALIGN(frag_sizes[i], SMP_CACHE_BYTES);
-		}
+		priv->frag_info[i].frag_align = 0;
+		priv->frag_info[i].frag_stride =
+			ALIGN(frag_sizes[i], SMP_CACHE_BYTES);
 		priv->frag_info[i].last_offset = mlx4_en_last_alloc_offset(
 						priv, priv->frag_info[i].frag_stride,
 						priv->frag_info[i].frag_align);
