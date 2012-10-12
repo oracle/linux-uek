@@ -3785,7 +3785,7 @@ qla83xx_idc_state_handler_work(struct work_struct *work)
 	qla83xx_idc_unlock(base_vha, 0);
 }
 
-int
+static int
 qla83xx_check_nic_core_fw_alive(scsi_qla_host_t *base_vha)
 {
 	int rval = QLA_SUCCESS;
@@ -3903,7 +3903,7 @@ qla83xx_wait_logic(void)
 	}
 }
 
-int
+static int
 qla83xx_force_lock_recovery(scsi_qla_host_t *base_vha)
 {
 	int rval;
@@ -3962,7 +3962,7 @@ qla83xx_force_lock_recovery(scsi_qla_host_t *base_vha)
 	return rval;
 }
 
-int
+static int
 qla83xx_idc_lock_recovery(scsi_qla_host_t *base_vha)
 {
 	int rval = QLA_SUCCESS;
@@ -4161,7 +4161,7 @@ qla83xx_clear_drv_presence(scsi_qla_host_t *vha)
 	return rval;
 }
 
-void
+static void
 qla83xx_need_reset_handler(scsi_qla_host_t *vha)
 {
 	struct qla_hw_data *ha = vha->hw;
@@ -4200,7 +4200,7 @@ qla83xx_need_reset_handler(scsi_qla_host_t *vha)
 	ql_log(ql_log_info, vha, 0xb068, "HW State: COLD/RE-INIT.\n");
 }
 
-int
+static int
 qla83xx_device_bootstrap(scsi_qla_host_t *vha)
 {
 	int rval = QLA_SUCCESS;
@@ -4925,7 +4925,8 @@ qla2xxx_pci_mmio_enabled(struct pci_dev *pdev)
 		return PCI_ERS_RESULT_RECOVERED;
 }
 
-uint32_t qla82xx_error_recovery(scsi_qla_host_t *base_vha)
+static uint32_t
+qla82xx_error_recovery(scsi_qla_host_t *base_vha)
 {
 	uint32_t rval = QLA_FUNCTION_FAILED;
 	uint32_t drv_active = 0;
