@@ -210,12 +210,9 @@ int rds_cong_get_maps(struct rds_connection *conn)
 	return 0;
 }
 
-void rds_cong_queue_updates(struct rds_cong_map *map)
+void __rds_cong_queue_updates(struct rds_cong_map *map)
 {
 	struct rds_connection *conn;
-	unsigned long flags;
-
-	spin_lock_irqsave(&rds_cong_lock, flags);
 
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
 		if (!test_and_set_bit(0, &conn->c_map_queued)) {
@@ -223,9 +220,16 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 			rds_send_xmit(conn);
 		}
 	}
+}
 
+void rds_cong_queue_updates(struct rds_cong_map *map)
+{
+	unsigned long flags;
+	spin_lock_irqsave(&rds_cong_lock, flags);
+	__rds_cong_queue_updates(map);
 	spin_unlock_irqrestore(&rds_cong_lock, flags);
 }
+
 
 void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 {
@@ -334,12 +338,12 @@ void rds_cong_remove_socket(struct rds_sock *rs)
 	/* update congestion map for now-closed port */
 	spin_lock_irqsave(&rds_cong_lock, flags);
 	map = rds_cong_tree_walk(rs->rs_bound_addr, NULL);
-	spin_unlock_irqrestore(&rds_cong_lock, flags);
 
 	if (map && rds_cong_test_bit(map, rs->rs_bound_port)) {
 		rds_cong_clear_bit(map, rs->rs_bound_port);
-		rds_cong_queue_updates(map);
+		__rds_cong_queue_updates(map);
 	}
+	spin_unlock_irqrestore(&rds_cong_lock, flags);
 }
 
 int rds_cong_wait(struct rds_cong_map *map, __be16 port, int nonblock,
