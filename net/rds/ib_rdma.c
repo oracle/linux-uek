@@ -241,10 +241,10 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 	INIT_DELAYED_WORK(&pool->flush_worker, rds_ib_mr_pool_flush_worker);
 
 	if (pool_type == RDS_IB_MR_1M_POOL) {
-		pool->fmr_attr.max_pages = RDS_FMR_1M_MSG_SIZE;
+		pool->fmr_attr.max_pages = RDS_FMR_1M_MSG_SIZE + 1;
 		pool->max_items = rds_ib_fmr_1m_pool_size;
 	} else /* pool_type == RDS_IB_MR_8K_POOL */ {
-		pool->fmr_attr.max_pages = RDS_FMR_8K_MSG_SIZE;
+		pool->fmr_attr.max_pages = RDS_FMR_8K_MSG_SIZE + 1;
 		pool->max_items = rds_ib_fmr_8k_pool_size;
 	}
 	pool->max_free_pinned =
