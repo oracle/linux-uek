@@ -491,6 +491,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		sdp_dbg(sk, "alt route was resolved slid=%d, dlid=%d\n",
 				id->route.path_rec[1].slid, id->route.path_rec[1].dlid);
 		break;
+
+	case RDMA_CM_EVENT_ALT_PATH_LOADED:
+		sdp_dbg(sk, "alt route path loaded\n");
+		break;
+
 	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
 		sdp_warn(sk, "alt route resolve error\n");
 		break;
