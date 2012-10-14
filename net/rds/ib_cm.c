@@ -508,7 +508,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	else
 		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
 					rds_ib_cq_event_handler, conn,
-					rds_ib_srq_max_wr - 1,
+					ic->i_recv_ring.w_nr,
 					IB_CQ_VECTOR_LEAST_ATTACHED);
 	if (IS_ERR(ic->i_rcq)) {
 		ret = PTR_ERR(ic->i_rcq);
