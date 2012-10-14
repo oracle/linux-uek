@@ -702,9 +702,10 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 		dev->caps.qp1_tunnel[i - 1] = func_cap.qp1_tunnel_qpn;
 		dev->caps.qp1_proxy[i - 1] = func_cap.qp1_proxy_qpn;
 		dev->caps.port_mask[i] = dev->caps.port_type[i];
-		if (mlx4_get_slave_pkey_gid_tbl_len(dev, i,
-						    &dev->caps.gid_table_len[i],
-						    &dev->caps.pkey_table_len[i]))
+		err = mlx4_get_slave_pkey_gid_tbl_len(dev, i,
+						      &dev->caps.gid_table_len[i],
+						      &dev->caps.pkey_table_len[i]);
+		if (err)
 			goto err_mem;
 	}
 
@@ -715,6 +716,7 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 			 "PCI resource 2 size of 0x%llx, aborting.\n",
 			 dev->caps.uar_page_size * dev->caps.num_uars,
 			 (unsigned long long) pci_resource_len(dev->pdev, 2));
+		err = -ENOMEM;
 		goto err_mem;
 	}
 
