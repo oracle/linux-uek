@@ -516,7 +516,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 					 rds_ib_cq_event_handler, conn,
 					 &cq_attr);
 	} else {
-		cq_attr.cqe = rds_ib_srq_max_wr - 1;
+		cq_attr.cqe = ic->i_recv_ring.w_nr;
 #ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
 		cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
 #endif
