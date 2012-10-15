@@ -178,24 +178,46 @@ union ich8_hws_flash_regacc {
  **/
 static bool e1000_phy_is_accessible_pchlan(struct e1000_hw *hw)
 {
-	u16 phy_reg;
-	u32 phy_id;
+	u16 phy_reg = 0;
+	u32 phy_id = 0;
+	s32 ret_val;
+	u16 retry_count;
 
-	hw->phy.ops.read_reg_locked(hw, PHY_ID1, &phy_reg);
-	phy_id = (u32)(phy_reg << 16);
-	hw->phy.ops.read_reg_locked(hw, PHY_ID2, &phy_reg);
-	phy_id |= (u32)(phy_reg & PHY_REVISION_MASK);
+	for (retry_count = 0; retry_count < 2; retry_count++) {
+		ret_val = e1e_rphy_locked(hw, PHY_ID1, &phy_reg);
+		if (ret_val || (phy_reg == 0xFFFF))
+			continue;
+		phy_id = (u32)(phy_reg << 16);
+
+		ret_val = e1e_rphy_locked(hw, PHY_ID2, &phy_reg);
+		if (ret_val || (phy_reg == 0xFFFF)) {
+			phy_id = 0;
+			continue;
+		}
+		phy_id |= (u32)(phy_reg & PHY_REVISION_MASK);
+		break;
+	}
 
 	if (hw->phy.id) {
 		if (hw->phy.id == phy_id)
 			return true;
-	} else {
-		if ((phy_id != 0) && (phy_id != PHY_REVISION_MASK))
-			hw->phy.id = phy_id;
+	} else if (phy_id) {
+		hw->phy.id = phy_id;
+		hw->phy.revision = (u32)(phy_reg & ~PHY_REVISION_MASK);
 		return true;
 	}
 
-	return false;
+	/*
+	 * In case the PHY needs to be in mdio slow mode,
+	 * set slow mode and try to get the PHY id again.
+	 */
+	hw->phy.ops.release(hw);
+	ret_val = e1000_set_mdio_slow_mode_hv(hw);
+	if (!ret_val)
+		ret_val = e1000e_get_phy_id(hw);
+	hw->phy.ops.acquire(hw);
+
+	return !ret_val;
 }
 
 /**
@@ -248,11 +270,9 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 		if (e1000_phy_is_accessible_pchlan(hw)) {
 			if (hw->mac.type == e1000_pch_lpt) {
 				/* Unforce SMBus mode in PHY */
-				hw->phy.ops.read_reg_locked(hw, CV_SMB_CTRL,
-							    &phy_reg);
+				e1e_rphy_locked(hw, CV_SMB_CTRL, &phy_reg);
 				phy_reg &= ~CV_SMB_CTRL_FORCE_SMBUS;
-				hw->phy.ops.write_reg_locked(hw, CV_SMB_CTRL,
-							     phy_reg);
+				e1e_wphy_locked(hw, CV_SMB_CTRL, phy_reg);
 
 				/* Unforce SMBus mode in MAC */
 				mac_reg = er32(CTRL_EXT);
@@ -683,56 +703,84 @@ static s32 e1000_init_mac_params_ich8lan(struct e1000_hw *hw)
  *  e1000_set_eee_pchlan - Enable/disable EEE support
  *  @hw: pointer to the HW structure
  *
- *  Enable/disable EEE based on setting in dev_spec structure.  The bits in
- *  the LPI Control register will remain set only if/when link is up.
+ *  Enable/disable EEE based on setting in dev_spec structure, the duplex and
+ *  MDI/MDI-X mode of the link and the EEE capabilities of the link partner.
+ *  The LPI Control register bits will remain set only if/when link is up.
  **/
 static s32 e1000_set_eee_pchlan(struct e1000_hw *hw)
 {
 	struct e1000_dev_spec_ich8lan *dev_spec = &hw->dev_spec.ich8lan;
-	s32 ret_val = 0;
-	u16 phy_reg;
+	s32 ret_val;
+	u16 lpi_ctrl;
 
 	if ((hw->phy.type != e1000_phy_82579) &&
 	    (hw->phy.type != e1000_phy_i217))
 		return 0;
 
-	ret_val = e1e_rphy(hw, I82579_LPI_CTRL, &phy_reg);
+	/* get phy info to see if the phy is in MDI-x mode */
+	ret_val = hw->phy.ops.get_info(hw);
 	if (ret_val)
 		return ret_val;
 
-	if (dev_spec->eee_disable)
-		phy_reg &= ~I82579_LPI_CTRL_ENABLE_MASK;
-	else
-		phy_reg |= I82579_LPI_CTRL_ENABLE_MASK;
-
-	ret_val = e1e_wphy(hw, I82579_LPI_CTRL, phy_reg);
+	ret_val = hw->phy.ops.acquire(hw);
 	if (ret_val)
 		return ret_val;
 
-	if ((hw->phy.type == e1000_phy_i217) && !dev_spec->eee_disable) {
+	ret_val = e1e_rphy_locked(hw, I82579_LPI_CTRL, &lpi_ctrl);
+	if (ret_val)
+		goto release;
+
+	/* Clear bits that enable EEE in various speeds */
+	lpi_ctrl &= ~I82579_LPI_CTRL_ENABLE_MASK;
+
+	/* Enable EEE if not disabled by user and link is not in MDI-X mode */
+	if (!dev_spec->eee_disable && !hw->phy.is_mdix) {
+		u16 data;
+
 		/* Save off link partner's EEE ability */
-		ret_val = hw->phy.ops.acquire(hw);
-		if (ret_val)
-			return ret_val;
-		ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_ADDR,
-						       I217_EEE_LP_ABILITY);
+		switch (hw->phy.type) {
+		case e1000_phy_82579:
+			data = I82579_EEE_LP_ABILITY;
+			break;
+		case e1000_phy_i217:
+			data = I217_EEE_LP_ABILITY;
+			break;
+		default:
+			ret_val = -E1000_ERR_PHY;
+			goto release;
+		}
+		ret_val = e1e_wphy_locked(hw, I82579_EMI_ADDR, data);
 		if (ret_val)
 			goto release;
-		hw->phy.ops.read_reg_locked(hw, I82579_EMI_DATA,
-					    &dev_spec->eee_lp_ability);
+		e1e_rphy_locked(hw, I82579_EMI_DATA, &dev_spec->eee_lp_ability);
 
 		/*
-		 * EEE is not supported in 100Half, so ignore partner's EEE
-		 * in 100 ability if full-duplex is not advertised.
+		 * Enable EEE only for speeds in which the link partner is
+		 * EEE capable.
 		 */
-		hw->phy.ops.read_reg_locked(hw, PHY_LP_ABILITY, &phy_reg);
-		if (!(phy_reg & NWAY_LPAR_100TX_FD_CAPS))
-			dev_spec->eee_lp_ability &= ~I217_EEE_100_SUPPORTED;
-release:
-		hw->phy.ops.release(hw);
+		if (dev_spec->eee_lp_ability & I82579_EEE_1000_SUPPORTED)
+			lpi_ctrl |= I82579_LPI_CTRL_1000_ENABLE;
+
+		if (dev_spec->eee_lp_ability & I82579_EEE_100_SUPPORTED) {
+			e1e_rphy_locked(hw, PHY_LP_ABILITY, &data);
+			if (data & NWAY_LPAR_100TX_FD_CAPS)
+				lpi_ctrl |= I82579_LPI_CTRL_100_ENABLE;
+			else
+				/*
+				 * EEE is not supported in 100Half, so ignore
+				 * partner's EEE in 100 ability if full-duplex
+				 * is not advertised.
+				 */
+				dev_spec->eee_lp_ability &=
+				    ~I82579_EEE_100_SUPPORTED;
+		}
 	}
 
-	return 0;
+	ret_val = e1e_wphy_locked(hw, I82579_LPI_CTRL, lpi_ctrl);
+release:
+	hw->phy.ops.release(hw);
+
+	return ret_val;
 }
 
 /**
@@ -1213,7 +1261,7 @@ static s32 e1000_write_smbus_addr(struct e1000_hw *hw)
 			phy_data |= (freq & (1 << 0)) <<
 			    HV_SMB_ADDR_FREQ_LOW_SHIFT;
 			phy_data |= (freq & (1 << 1)) <<
-			    HV_SMB_ADDR_FREQ_HIGH_SHIFT;
+			    (HV_SMB_ADDR_FREQ_HIGH_SHIFT - 1);
 		} else {
 			e_dbg("Unsupported SMB frequency in PHY\n");
 		}
@@ -1333,8 +1381,7 @@ static s32 e1000_sw_lcd_config_ich8lan(struct e1000_hw *hw)
 		reg_addr &= PHY_REG_MASK;
 		reg_addr |= phy_page;
 
-		ret_val = phy->ops.write_reg_locked(hw, (u32)reg_addr,
-						    reg_data);
+		ret_val = e1e_wphy_locked(hw, (u32)reg_addr, reg_data);
 		if (ret_val)
 			goto release;
 	}
@@ -1371,8 +1418,8 @@ static s32 e1000_k1_gig_workaround_hv(struct e1000_hw *hw, bool link)
 	/* Disable K1 when link is 1Gbps, otherwise use the NVM setting */
 	if (link) {
 		if (hw->phy.type == e1000_phy_82578) {
-			ret_val = hw->phy.ops.read_reg_locked(hw, BM_CS_STATUS,
-							      &status_reg);
+			ret_val = e1e_rphy_locked(hw, BM_CS_STATUS,
+						  &status_reg);
 			if (ret_val)
 				goto release;
 
@@ -1386,8 +1433,7 @@ static s32 e1000_k1_gig_workaround_hv(struct e1000_hw *hw, bool link)
 		}
 
 		if (hw->phy.type == e1000_phy_82577) {
-			ret_val = hw->phy.ops.read_reg_locked(hw, HV_M_STATUS,
-							      &status_reg);
+			ret_val = e1e_rphy_locked(hw, HV_M_STATUS, &status_reg);
 			if (ret_val)
 				goto release;
 
@@ -1402,15 +1448,13 @@ static s32 e1000_k1_gig_workaround_hv(struct e1000_hw *hw, bool link)
 		}
 
 		/* Link stall fix for link up */
-		ret_val = hw->phy.ops.write_reg_locked(hw, PHY_REG(770, 19),
-						       0x0100);
+		ret_val = e1e_wphy_locked(hw, PHY_REG(770, 19), 0x0100);
 		if (ret_val)
 			goto release;
 
 	} else {
 		/* Link stall fix for link down */
-		ret_val = hw->phy.ops.write_reg_locked(hw, PHY_REG(770, 19),
-						       0x4100);
+		ret_val = e1e_wphy_locked(hw, PHY_REG(770, 19), 0x4100);
 		if (ret_val)
 			goto release;
 	}
@@ -1509,7 +1553,7 @@ static s32 e1000_oem_bits_config_ich8lan(struct e1000_hw *hw, bool d0_state)
 
 	mac_reg = er32(PHY_CTRL);
 
-	ret_val = hw->phy.ops.read_reg_locked(hw, HV_OEM_BITS, &oem_reg);
+	ret_val = e1e_rphy_locked(hw, HV_OEM_BITS, &oem_reg);
 	if (ret_val)
 		goto release;
 
@@ -1536,7 +1580,7 @@ static s32 e1000_oem_bits_config_ich8lan(struct e1000_hw *hw, bool d0_state)
 	    !hw->phy.ops.check_reset_block(hw))
 		oem_reg |= HV_OEM_BITS_RESTART_AN;
 
-	ret_val = hw->phy.ops.write_reg_locked(hw, HV_OEM_BITS, oem_reg);
+	ret_val = e1e_wphy_locked(hw, HV_OEM_BITS, oem_reg);
 
 release:
 	hw->phy.ops.release(hw);
@@ -1631,11 +1675,10 @@ static s32 e1000_hv_phy_workarounds_ich8lan(struct e1000_hw *hw)
 	ret_val = hw->phy.ops.acquire(hw);
 	if (ret_val)
 		return ret_val;
-	ret_val = hw->phy.ops.read_reg_locked(hw, BM_PORT_GEN_CFG, &phy_data);
+	ret_val = e1e_rphy_locked(hw, BM_PORT_GEN_CFG, &phy_data);
 	if (ret_val)
 		goto release;
-	ret_val = hw->phy.ops.write_reg_locked(hw, BM_PORT_GEN_CFG,
-					       phy_data & 0x00FF);
+	ret_val = e1e_wphy_locked(hw, BM_PORT_GEN_CFG, phy_data & 0x00FF);
 release:
 	hw->phy.ops.release(hw);
 
@@ -1694,7 +1737,7 @@ s32 e1000_lv_jumbo_workaround_ich8lan(struct e1000_hw *hw, bool enable)
 	u32 mac_reg;
 	u16 i;
 
-	if ((hw->mac.type != e1000_pch2lan) && (hw->mac.type != e1000_pch_lpt))
+	if (hw->mac.type < e1000_pch2lan)
 		return 0;
 
 	/* disable Rx path while enabling/disabling workaround */
@@ -1867,20 +1910,18 @@ static s32 e1000_lv_phy_workarounds_ich8lan(struct e1000_hw *hw)
 	ret_val = hw->phy.ops.acquire(hw);
 	if (ret_val)
 		return ret_val;
-	ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_ADDR,
-					       I82579_MSE_THRESHOLD);
+	ret_val = e1e_wphy_locked(hw, I82579_EMI_ADDR, I82579_MSE_THRESHOLD);
 	if (ret_val)
 		goto release;
 	/* set MSE higher to enable link to stay up when noise is high */
-	ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_DATA, 0x0034);
+	ret_val = e1e_wphy_locked(hw, I82579_EMI_DATA, 0x0034);
 	if (ret_val)
 		goto release;
-	ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_ADDR,
-					       I82579_MSE_LINK_DOWN);
+	ret_val = e1e_wphy_locked(hw, I82579_EMI_ADDR, I82579_MSE_LINK_DOWN);
 	if (ret_val)
 		goto release;
 	/* drop link after 5 times MSE threshold was reached */
-	ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_DATA, 0x0005);
+	ret_val = e1e_wphy_locked(hw, I82579_EMI_DATA, 0x0005);
 release:
 	hw->phy.ops.release(hw);
 
@@ -1953,7 +1994,7 @@ static void e1000_gate_hw_phy_config_ich8lan(struct e1000_hw *hw, bool gate)
 {
 	u32 extcnf_ctrl;
 
-	if ((hw->mac.type != e1000_pch2lan) && (hw->mac.type != e1000_pch_lpt))
+	if (hw->mac.type < e1000_pch2lan)
 		return;
 
 	extcnf_ctrl = er32(EXTCNF_CTRL);
@@ -2055,12 +2096,10 @@ static s32 e1000_post_phy_reset_ich8lan(struct e1000_hw *hw)
 		ret_val = hw->phy.ops.acquire(hw);
 		if (ret_val)
 			return ret_val;
-		ret_val = hw->phy.ops.write_reg_locked(hw, I82579_EMI_ADDR,
-						       I82579_LPI_UPDATE_TIMER);
+		ret_val = e1e_wphy_locked(hw, I82579_EMI_ADDR,
+					  I82579_LPI_UPDATE_TIMER);
 		if (!ret_val)
-			ret_val = hw->phy.ops.write_reg_locked(hw,
-							       I82579_EMI_DATA,
-							       0x1387);
+			ret_val = e1e_wphy_locked(hw, I82579_EMI_DATA, 0x1387);
 		hw->phy.ops.release(hw);
 	}
 
@@ -3885,22 +3924,21 @@ void e1000_suspend_workarounds_ich8lan(struct e1000_hw *hw)
 		if (!dev_spec->eee_disable) {
 			u16 eee_advert;
 
-			ret_val = hw->phy.ops.write_reg_locked(hw,
-							       I82579_EMI_ADDR,
-							       I217_EEE_ADVERTISEMENT);
+			ret_val = e1e_wphy_locked(hw,
+						  I82579_EMI_ADDR,
+						  I217_EEE_ADVERTISEMENT);
 			if (ret_val)
 				goto release;
-			hw->phy.ops.read_reg_locked(hw, I82579_EMI_DATA,
-						    &eee_advert);
+			e1e_rphy_locked(hw, I82579_EMI_DATA, &eee_advert);
 
 			/*
 			 * Disable LPLU if both link partners support 100BaseT
 			 * EEE and 100Full is advertised on both ends of the
 			 * link.
 			 */
-			if ((eee_advert & I217_EEE_100_SUPPORTED) &&
+			if ((eee_advert & I82579_EEE_100_SUPPORTED) &&
 			    (dev_spec->eee_lp_ability &
-			     I217_EEE_100_SUPPORTED) &&
+			     I82579_EEE_100_SUPPORTED) &&
 			    (hw->phy.autoneg_advertised & ADVERTISE_100_FULL))
 				phy_ctrl &= ~(E1000_PHY_CTRL_D0A_LPLU |
 					      E1000_PHY_CTRL_NOND0A_LPLU);
@@ -3917,33 +3955,31 @@ void e1000_suspend_workarounds_ich8lan(struct e1000_hw *hw)
 		if (!(er32(FWSM) & E1000_ICH_FWSM_FW_VALID)) {
 
 			/* Enable proxy to reset only on power good. */
-			hw->phy.ops.read_reg_locked(hw, I217_PROXY_CTRL,
-						    &phy_reg);
+			e1e_rphy_locked(hw, I217_PROXY_CTRL, &phy_reg);
 			phy_reg |= I217_PROXY_CTRL_AUTO_DISABLE;
-			hw->phy.ops.write_reg_locked(hw, I217_PROXY_CTRL,
-						     phy_reg);
+			e1e_wphy_locked(hw, I217_PROXY_CTRL, phy_reg);
 
 			/*
 			 * Set bit enable LPI (EEE) to reset only on
 			 * power good.
 			 */
-			hw->phy.ops.read_reg_locked(hw, I217_SxCTRL, &phy_reg);
-			phy_reg |= I217_SxCTRL_MASK;
-			hw->phy.ops.write_reg_locked(hw, I217_SxCTRL, phy_reg);
+			e1e_rphy_locked(hw, I217_SxCTRL, &phy_reg);
+			phy_reg |= I217_SxCTRL_ENABLE_LPI_RESET;
+			e1e_wphy_locked(hw, I217_SxCTRL, phy_reg);
 
 			/* Disable the SMB release on LCD reset. */
-			hw->phy.ops.read_reg_locked(hw, I217_MEMPWR, &phy_reg);
-			phy_reg &= ~I217_MEMPWR;
-			hw->phy.ops.write_reg_locked(hw, I217_MEMPWR, phy_reg);
+			e1e_rphy_locked(hw, I217_MEMPWR, &phy_reg);
+			phy_reg &= ~I217_MEMPWR_DISABLE_SMB_RELEASE;
+			e1e_wphy_locked(hw, I217_MEMPWR, phy_reg);
 		}
 
 		/*
 		 * Enable MTA to reset for Intel Rapid Start Technology
 		 * Support
 		 */
-		hw->phy.ops.read_reg_locked(hw, I217_CGFREG, &phy_reg);
-		phy_reg |= I217_CGFREG_MASK;
-		hw->phy.ops.write_reg_locked(hw, I217_CGFREG, phy_reg);
+		e1e_rphy_locked(hw, I217_CGFREG, &phy_reg);
+		phy_reg |= I217_CGFREG_ENABLE_MTA_RESET;
+		e1e_wphy_locked(hw, I217_CGFREG, phy_reg);
 
 release:
 		hw->phy.ops.release(hw);
@@ -4012,23 +4048,21 @@ void e1000_resume_workarounds_pchlan(struct e1000_hw *hw)
 			 * Restore clear on SMB if no manageability engine
 			 * is present
 			 */
-			ret_val = hw->phy.ops.read_reg_locked(hw, I217_MEMPWR,
-							      &phy_reg);
+			ret_val = e1e_rphy_locked(hw, I217_MEMPWR, &phy_reg);
 			if (ret_val)
 				goto release;
-			phy_reg |= I217_MEMPWR_MASK;
-			hw->phy.ops.write_reg_locked(hw, I217_MEMPWR, phy_reg);
+			phy_reg |= I217_MEMPWR_DISABLE_SMB_RELEASE;
+			e1e_wphy_locked(hw, I217_MEMPWR, phy_reg);
 
 			/* Disable Proxy */
-			hw->phy.ops.write_reg_locked(hw, I217_PROXY_CTRL, 0);
+			e1e_wphy_locked(hw, I217_PROXY_CTRL, 0);
 		}
 		/* Enable reset on MTA */
-		ret_val = hw->phy.ops.read_reg_locked(hw, I217_CGFREG,
-						      &phy_reg);
+		ret_val = e1e_rphy_locked(hw, I217_CGFREG, &phy_reg);
 		if (ret_val)
 			goto release;
-		phy_reg &= ~I217_CGFREG_MASK;
-		hw->phy.ops.write_reg_locked(hw, I217_CGFREG, phy_reg);
+		phy_reg &= ~I217_CGFREG_ENABLE_MTA_RESET;
+		e1e_wphy_locked(hw, I217_CGFREG, phy_reg);
 release:
 		if (ret_val)
 			e_dbg("Error %d in resume workarounds\n", ret_val);

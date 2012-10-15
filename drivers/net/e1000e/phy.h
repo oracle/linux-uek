@@ -154,8 +154,9 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define I82577_PHY_STATUS2_SPEED_100MBPS	0x0100
 
 /* I82577 PHY Control 2 */
-#define I82577_PHY_CTRL2_AUTO_MDIX		0x0400
-#define I82577_PHY_CTRL2_FORCE_MDI_MDIX		0x0200
+#define I82577_PHY_CTRL2_MANUAL_MDIX		0x0200
+#define I82577_PHY_CTRL2_AUTO_MDI_MDIX		0x0400
+#define I82577_PHY_CTRL2_MDIX_CFG_MASK		0x0600
 
 /* I82577 PHY Diagnostics Status */
 #define I82577_DSTATUS_CABLE_LENGTH		0x03FC
@@ -234,8 +235,14 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define E1000_KMRNCTRLSTA_IBIST_DISABLE	0x0200	/* Kumeran IBIST Disable */
 #define E1000_KMRNCTRLSTA_DIAG_NELPBK	0x1000	/* Nearend Loopback mode */
 #define E1000_KMRNCTRLSTA_K1_CONFIG	0x7
-#define E1000_KMRNCTRLSTA_K1_ENABLE	0x0002
+#define E1000_KMRNCTRLSTA_K1_ENABLE	0x0002	/* enable K1 */
+#define E1000_KMRNCTRLSTA_UNBLOCK_RX	0x0004	/* unblock Kumeran Rx in K0/K1 */
+#define E1000_KMRNCTRLSTA_PLL_STOP_EN	0x0008	/* enable PLL stop in K1 mode */
+
 #define E1000_KMRNCTRLSTA_HD_CTRL	0x10	/* Kumeran HD Control */
+#define E1000_KMRNCTRLSTA_K0_CTRL	0x1E	/* Kumeran K0s Control */
+#define E1000_KMRNCTRLSTA_K0_GBE_EN	0x1000	/* ena K0s mode for 1G link */
+#define E1000_KMRNCTRLSTA_K0_100_EN	0x2000	/* ena K0s mode for 10/100 lnk */
 
 #define IFE_PHY_EXTENDED_STATUS_CONTROL	0x10
 #define IFE_PHY_SPECIAL_CONTROL		0x11	/* 100BaseTx PHY Special Control */

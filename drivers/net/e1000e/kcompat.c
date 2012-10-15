@@ -1035,16 +1035,30 @@ int _kc_pci_wake_from_d3(struct pci_dev *dev, bool enable)
 out:
 	return err;
 }
-
-void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
-			 int off, int size)
-{
-	skb_fill_page_desc(skb, i, page, off, size);
-	skb->len += size;
-	skb->data_len += size;
-	skb->truesize += size;
-}
 #endif /* < 2.6.28 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
+#if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
+int _kc_pci_num_vf(struct pci_dev *dev)
+{
+	int num_vf = 0;
+#ifdef CONFIG_PCI_IOV
+	struct pci_dev *vfdev;
+
+	/* loop through all ethernet devices starting at PF dev */
+	vfdev = pci_get_class(PCI_CLASS_NETWORK_ETHERNET << 8, NULL);
+	while (vfdev) {
+		if (vfdev->is_virtfn && vfdev->physfn == dev)
+			num_vf++;
+
+		vfdev = pci_get_class(PCI_CLASS_NETWORK_ETHERNET << 8, vfdev);
+	}
+
+#endif
+	return num_vf;
+}
+#endif /* RHEL_RELEASE_CODE */
+#endif /* < 2.6.34 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
 #endif /* < 2.6.35 */
@@ -1077,5 +1091,10 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
+
 #endif /* !(RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)) */
 #endif /* < 2.6.39 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0) )
+#endif /* < 3.4.0 */

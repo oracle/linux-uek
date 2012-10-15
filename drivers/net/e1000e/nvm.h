@@ -44,4 +44,5 @@ s32 e1000e_update_nvm_checksum_generic(struct e1000_hw *hw);
 void e1000e_release_nvm(struct e1000_hw *hw);
 
 #define E1000_STM_OPCODE	0xDB00
+
 #endif

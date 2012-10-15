@@ -31,6 +31,7 @@
 static s32 e1000_validate_mdi_setting_generic(struct e1000_hw *hw);
 static void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw);
 static void e1000e_config_collision_dist_generic(struct e1000_hw *hw);
+static void e1000e_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index);
 
 /**
  *  e1000_init_mac_ops_generic - Initialize MAC function pointers
@@ -52,7 +53,7 @@ void e1000_init_mac_ops_generic(struct e1000_hw *hw)
 	mac->ops.mng_write_cmd_header = e1000_mng_write_cmd_header;
 	mac->ops.mng_enable_host_if = e1000_mng_enable_host_if;
 	/* VLAN, MC, etc. */
-	mac->ops.rar_set = e1000e_rar_set;
+	mac->ops.rar_set = e1000e_rar_set_generic;
 	mac->ops.validate_mdi_setting = e1000_validate_mdi_setting_generic;
 }
 
@@ -184,12 +185,12 @@ void e1000e_init_rx_addrs(struct e1000_hw *hw, u16 rar_count)
 	/* Setup the receive address */
 	e_dbg("Programming MAC Address into RAR[0]\n");
 
-	e1000e_rar_set(hw, hw->mac.addr, 0);
+	hw->mac.ops.rar_set(hw, hw->mac.addr, 0);
 
 	/* Zero out the other (rar_entry_count - 1) receive addresses */
 	e_dbg("Clearing RAR[1-%u]\n", rar_count - 1);
 	for (i = 1; i < rar_count; i++)
-		e1000e_rar_set(hw, mac_addr, i);
+		hw->mac.ops.rar_set(hw, mac_addr, i);
 }
 
 /**
@@ -256,13 +257,13 @@ s32 e1000_check_alt_mac_addr_generic(struct e1000_hw *hw)
 	 * same as the normal permanent MAC address stored by the HW into the
 	 * RAR. Do this by mapping this address into RAR0.
 	 */
-	e1000e_rar_set(hw, alt_mac_addr, 0);
+	hw->mac.ops.rar_set(hw, alt_mac_addr, 0);
 
 	return 0;
 }
 
 /**
- *  e1000e_rar_set - Set receive address register
+ *  e1000e_rar_set_generic - Set receive address register
  *  @hw: pointer to the HW structure
  *  @addr: pointer to the receive address
  *  @index: receive address array register
@@ -270,7 +271,7 @@ s32 e1000_check_alt_mac_addr_generic(struct e1000_hw *hw)
  *  Sets the receive address array register at index to the address passed
  *  in by addr.
  **/
-void e1000e_rar_set(struct e1000_hw *hw, u8 *addr, u32 index)
+static void e1000e_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index)
 {
 	u32 rar_low, rar_high;
 

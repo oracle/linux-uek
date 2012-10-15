@@ -72,13 +72,10 @@
 #define E1000_FWSM_WLOCK_MAC_SHIFT	7
 
 /* Shared Receive Address Registers */
-#define E1000_SHRAL(_i)		(0x05438 + ((_i) * 8))
-#define E1000_SHRAH(_i)		(0x0543C + ((_i) * 8))
-#define E1000_SHRAH_AV		0x80000000	/* Addr Valid bit */
-#define E1000_SHRAH_MAV		0x40000000	/* Multicast Addr Valid bit */
-
 #define E1000_SHRAL_PCH_LPT(_i)		(0x05408 + ((_i) * 8))
 #define E1000_SHRAH_PCH_LPT(_i)		(0x0540C + ((_i) * 8))
+#define E1000_SHRAH_AV		0x80000000	/* Addr Valid bit */
+#define E1000_SHRAH_MAV		0x40000000	/* Multicast Addr Valid bit */
 
 #define E1000_H2ME		0x05B50	/* Host to ME */
 #define E1000_H2ME_LSECREQ	0x00000001	/* Linksec Request */
@@ -100,6 +97,9 @@
 #define E1000_ICH_NVM_SIG_VALUE		0x80
 
 #define E1000_ICH8_LAN_INIT_TIMEOUT	1500
+
+/* FEXT register bit definition */
+#define E1000_FEXT_PHY_CABLE_DISCONNECTED	0x00000004
 
 #define E1000_FEXTNVM_SW_CONFIG		1
 #define E1000_FEXTNVM_SW_CONFIG_ICH8M	(1 << 27)	/* Bit redefined for ICH8M */
@@ -245,6 +245,8 @@
 
 /* PHY Low Power Idle Control */
 #define I82579_LPI_CTRL				PHY_REG(772, 20)
+#define I82579_LPI_CTRL_100_ENABLE		0x2000
+#define I82579_LPI_CTRL_1000_ENABLE		0x4000
 #define I82579_LPI_CTRL_ENABLE_MASK		0x6000
 #define I82579_LPI_CTRL_FORCE_PLL_LOCK_COUNT	0x80
 
@@ -254,19 +256,22 @@
 #define I82579_LPI_UPDATE_TIMER	0x4805	/* in 40ns units + 40 ns base value */
 #define I82579_MSE_THRESHOLD	0x084F	/* Mean Square Error Threshold */
 #define I82579_MSE_LINK_DOWN	0x2411	/* MSE count before dropping link */
+#define I82579_EEE_LP_ABILITY		0x040F	/* IEEE MMD Register 7.61 */
+#define I82579_EEE_100_SUPPORTED	(1 << 1)	/* 100BaseTx EEE supported */
+#define I82579_EEE_1000_SUPPORTED	(1 << 2)	/* 1000BaseTx EEE supported */
 #define I217_EEE_ADVERTISEMENT	0x8001	/* IEEE MMD Register 7.60 */
 #define I217_EEE_LP_ABILITY	0x8002	/* IEEE MMD Register 7.61 */
-#define I217_EEE_100_SUPPORTED	(1 << 1)	/* 100BaseTx EEE supported */
 
 /* Intel Rapid Start Technology Support */
-#define I217_PROXY_CTRL			PHY_REG(BM_WUC_PAGE, 70)
+#define I217_PROXY_CTRL		BM_PHY_REG(BM_WUC_PAGE, 70)
 #define I217_PROXY_CTRL_AUTO_DISABLE	0x0080
 #define I217_SxCTRL			PHY_REG(BM_PORT_CTRL_PAGE, 28)
-#define I217_SxCTRL_MASK		0x1000
+#define I217_SxCTRL_ENABLE_LPI_RESET	0x1000
+#define I217_SxCTRL_ENABLE_SERDES	0x0020
 #define I217_CGFREG			PHY_REG(772, 29)
-#define I217_CGFREG_MASK		0x0002
+#define I217_CGFREG_ENABLE_MTA_RESET	0x0002
 #define I217_MEMPWR			PHY_REG(772, 26)
-#define I217_MEMPWR_MASK		0x0010
+#define I217_MEMPWR_DISABLE_SMB_RELEASE	0x0010
 
 /*
  * Additional interrupts need to be handled for ICH family:
