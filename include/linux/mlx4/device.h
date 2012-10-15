@@ -49,6 +49,12 @@
 
 #define MLX4_ROCE_MAX_GIDS	128
 
+#define MLX4_NUM_UP		8
+#define MLX4_NUM_TC		8
+#define MLX4_RATELIMIT_UNITS 3 /* 100 Mbps */
+#define MLX4_RATELIMIT_DEFAULT 0xffff
+
+
 enum {
 	MLX4_FLAG_MSI_X		= 1 << 0,
 	MLX4_FLAG_OLD_PORT_CMDS	= 1 << 1,
