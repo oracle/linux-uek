@@ -175,7 +175,6 @@ static u32 initiate_bulk_draining(struct nfs_client *clp,
 		if (!igrab(lo->plh_inode))
 			continue;
 		get_layout_hdr(lo);
-		BUG_ON(!list_empty(&lo->plh_bulk_recall));
 		list_add(&lo->plh_bulk_recall, &recall_list);
 	}
 	spin_unlock(&clp->cl_lock);
