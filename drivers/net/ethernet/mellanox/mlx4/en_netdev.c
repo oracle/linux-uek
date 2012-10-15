@@ -874,7 +874,7 @@ static void mlx4_en_set_default_moderation(struct mlx4_en_priv *priv)
 	 *   satisfy our coelsing target.
 	 * - moder_time is set to a fixed value.
 	 */
-	priv->rx_frames = MLX4_EN_RX_COAL_TARGET;
+	priv->rx_frames = MLX4_EN_RX_COAL_TARGET / priv->dev->mtu + 1;
 	priv->rx_usecs = MLX4_EN_RX_COAL_TIME;
 	priv->tx_frames = MLX4_EN_TX_COAL_PKTS;
 	priv->tx_usecs = MLX4_EN_TX_COAL_TIME;
