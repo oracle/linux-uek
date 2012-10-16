@@ -72,7 +72,7 @@ static const char ixgbe_driver_string[] =
 
 #define MAJ 3
 #define MIN 10
-#define BUILD 16
+#define BUILD 17
 #define DRV_VERSION	__stringify(MAJ) "." __stringify(MIN) "." \
 			__stringify(BUILD) DRIVERIOV DRV_HW_PERF FPGA VMDQ_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
@@ -5194,6 +5194,7 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct net_device *netdev = adapter->netdev;
 	int err;
+	u8 old_addr[ETH_ALEN];
 
 	/* lock SFP init bit to prevent race conditions with the watchdog */
 	while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
@@ -5228,9 +5229,10 @@ void ixgbe_reset(struct ixgbe_adapter *adapter)
 
 	clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
 
+	/* do not flush user set addresses */
+	memcpy(old_addr, &adapter->mac_table[0].addr, netdev->addr_len);
 	ixgbe_flush_sw_mac_table(adapter);
-	memcpy(&adapter->mac_table[0].addr, hw->mac.perm_addr,
-	       netdev->addr_len);
+	memcpy(&adapter->mac_table[0].addr, old_addr, netdev->addr_len);
 	adapter->mac_table[0].queue = VMDQ_P(0);
 	adapter->mac_table[0].state = (IXGBE_MAC_STATE_DEFAULT |
 					IXGBE_MAC_STATE_IN_USE);
