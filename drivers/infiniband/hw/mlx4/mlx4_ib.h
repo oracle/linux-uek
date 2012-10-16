@@ -72,7 +72,7 @@ enum {
 extern int mlx4_ib_sm_guid_assign;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
-#define MLX4_IB_UC_MAX_NUM_QPS     256
+#define MLX4_IB_UC_MAX_NUM_QPS     (256 * 1024)
 struct mlx4_ib_ucontext {
 	struct ib_ucontext	ibucontext;
 	struct mlx4_uar		uar;
