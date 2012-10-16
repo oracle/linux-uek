@@ -1095,6 +1095,27 @@ static void del_tx_poll_timers(struct ipoib_dev_priv *priv)
 	}
 }
 
+static void check_qp_movment_and_print(struct ipoib_dev_priv *priv, struct ib_qp *qp,
+				       enum ib_qp_state new_state)
+{
+	struct ib_qp_attr qp_attr;
+	struct ib_qp_init_attr query_init_attr;
+	int ret;
+
+	ret = ib_query_qp(qp, &qp_attr, IB_QP_STATE, &query_init_attr);
+	if (ret) {
+		ipoib_warn(priv, "%s: Failed to query QP \n", __func__);
+		return;
+	}
+	/* print according to the new-state and the previous state.*/
+	if (IB_QPS_ERR == new_state && qp_attr.qp_state == IB_QPS_RESET)
+		ipoib_dbg(priv, "Failed to modify QP from"
+				" IB_QPS_RESET to IB_QPS_ERR - acceptable.\n");
+	else
+		ipoib_warn(priv, "Failed to modify QP to state: %d from state: %d\n",
+			   new_state, qp_attr.qp_state);
+}
+
 static void set_tx_rings_qp_state(struct ipoib_dev_priv *priv,
 					enum ib_qp_state new_state)
 {
@@ -1106,8 +1127,8 @@ static void set_tx_rings_qp_state(struct ipoib_dev_priv *priv,
 	for (i = 0; i <  priv->num_tx_queues; i++) {
 		qp_attr.qp_state = new_state;
 		if (ib_modify_qp(send_ring->send_qp, &qp_attr, IB_QP_STATE))
-			ipoib_warn(priv, "Failed to modify QP to state(%d)\n",
-					new_state);
+			check_qp_movment_and_print(priv, send_ring->send_qp, new_state);
+
 		send_ring++;
 	}
 }
@@ -1123,8 +1144,8 @@ static void set_rx_rings_qp_state(struct ipoib_dev_priv *priv,
 	for (i = 0; i < priv->num_rx_queues; i++) {
 		qp_attr.qp_state = new_state;
 		if (ib_modify_qp(recv_ring->recv_qp, &qp_attr, IB_QP_STATE))
-			ipoib_warn(priv, "Failed to modify QP to state(%d)\n",
-					new_state);
+			check_qp_movment_and_print(priv, recv_ring->recv_qp, new_state);
+
 		recv_ring++;
 	}
 }
@@ -1137,8 +1158,7 @@ static void set_rings_qp_state(struct ipoib_dev_priv *priv,
 		struct ib_qp_attr qp_attr;
 		qp_attr.qp_state = new_state;
 		if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))
-			ipoib_warn(priv, "Failed to modify QP to state(%d)\n",
-					new_state);
+			check_qp_movment_and_print(priv, priv->qp, new_state);
 	}
 
 	set_tx_rings_qp_state(priv, new_state);
