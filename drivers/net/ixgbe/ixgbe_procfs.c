@@ -467,7 +467,7 @@ static int ixgbe_maclla1(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	rc = ixgbe_read_eeprom_buffer(hw, first_word, word_count,
+	rc = hw->eeprom.ops.read_buffer(hw, first_word, word_count,
 					   eeprom_buff);
 	if (rc != 0)
 		return snprintf(page, count, "error: reading buffer\n");

@@ -78,48 +78,44 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 {
 	s32 ret_val = 0;
 
-	if (hw->vendor_id == IXGBE_INTEL_VENDOR_ID) {
-		switch (hw->device_id) {
-		case IXGBE_DEV_ID_82598:
-		case IXGBE_DEV_ID_82598_BX:
-		case IXGBE_DEV_ID_82598AF_SINGLE_PORT:
-		case IXGBE_DEV_ID_82598AF_DUAL_PORT:
-		case IXGBE_DEV_ID_82598AT:
-		case IXGBE_DEV_ID_82598AT2:
-		case IXGBE_DEV_ID_82598EB_CX4:
-		case IXGBE_DEV_ID_82598_CX4_DUAL_PORT:
-		case IXGBE_DEV_ID_82598_DA_DUAL_PORT:
-		case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM:
-		case IXGBE_DEV_ID_82598EB_XF_LR:
-		case IXGBE_DEV_ID_82598EB_SFP_LOM:
-			hw->mac.type = ixgbe_mac_82598EB;
-			break;
-		case IXGBE_DEV_ID_82599_KX4:
-		case IXGBE_DEV_ID_82599_KX4_MEZZ:
-		case IXGBE_DEV_ID_82599_XAUI_LOM:
-		case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
-		case IXGBE_DEV_ID_82599_KR:
-		case IXGBE_DEV_ID_82599_SFP:
-		case IXGBE_DEV_ID_82599_BACKPLANE_FCOE:
-		case IXGBE_DEV_ID_82599_SFP_FCOE:
-		case IXGBE_DEV_ID_82599_SFP_EM:
-		case IXGBE_DEV_ID_82599_SFP_SF2:
-		case IXGBE_DEV_ID_82599_SFP_SF_QP:
-		case IXGBE_DEV_ID_82599EN_SFP:
-		case IXGBE_DEV_ID_82599_CX4:
-		case IXGBE_DEV_ID_82599_LS:
-		case IXGBE_DEV_ID_82599_T3_LOM:
-			hw->mac.type = ixgbe_mac_82599EB;
-			break;
-		case IXGBE_DEV_ID_X540T:
-			hw->mac.type = ixgbe_mac_X540;
-			break;
-		default:
-			ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
-			break;
-		}
-	} else {
+	switch (hw->device_id) {
+	case IXGBE_DEV_ID_82598:
+	case IXGBE_DEV_ID_82598_BX:
+	case IXGBE_DEV_ID_82598AF_SINGLE_PORT:
+	case IXGBE_DEV_ID_82598AF_DUAL_PORT:
+	case IXGBE_DEV_ID_82598AT:
+	case IXGBE_DEV_ID_82598AT2:
+	case IXGBE_DEV_ID_82598EB_CX4:
+	case IXGBE_DEV_ID_82598_CX4_DUAL_PORT:
+	case IXGBE_DEV_ID_82598_DA_DUAL_PORT:
+	case IXGBE_DEV_ID_82598_SR_DUAL_PORT_EM:
+	case IXGBE_DEV_ID_82598EB_XF_LR:
+	case IXGBE_DEV_ID_82598EB_SFP_LOM:
+		hw->mac.type = ixgbe_mac_82598EB;
+		break;
+	case IXGBE_DEV_ID_82599_KX4:
+	case IXGBE_DEV_ID_82599_KX4_MEZZ:
+	case IXGBE_DEV_ID_82599_XAUI_LOM:
+	case IXGBE_DEV_ID_82599_COMBO_BACKPLANE:
+	case IXGBE_DEV_ID_82599_KR:
+	case IXGBE_DEV_ID_82599_SFP:
+	case IXGBE_DEV_ID_82599_BACKPLANE_FCOE:
+	case IXGBE_DEV_ID_82599_SFP_FCOE:
+	case IXGBE_DEV_ID_82599_SFP_EM:
+	case IXGBE_DEV_ID_82599_SFP_SF2:
+	case IXGBE_DEV_ID_82599_SFP_SF_QP:
+	case IXGBE_DEV_ID_82599EN_SFP:
+	case IXGBE_DEV_ID_82599_CX4:
+	case IXGBE_DEV_ID_82599_LS:
+	case IXGBE_DEV_ID_82599_T3_LOM:
+		hw->mac.type = ixgbe_mac_82599EB;
+		break;
+	case IXGBE_DEV_ID_X540T:
+		hw->mac.type = ixgbe_mac_X540;
+		break;
+	default:
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
+		break;
 	}
 
 	hw_dbg(hw, "ixgbe_set_mac_type found mac: %d, returns: %d\n",

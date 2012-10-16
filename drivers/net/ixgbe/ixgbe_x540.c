@@ -106,6 +106,7 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.setup_rxpba = &ixgbe_set_rxpba_generic;
 	mac->ops.check_link = &ixgbe_check_mac_link_generic;
 
+
 	mac->mcft_size		= 128;
 	mac->vft_size		= 128;
 	mac->num_rar_entries	= 128;
@@ -926,4 +927,5 @@ s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index)
 
 	return 0;
 }
+
 

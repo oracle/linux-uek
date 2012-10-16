@@ -347,10 +347,10 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 	int i;
 	u16 vmdq_i = adapter->ring_feature[RING_F_VMDQ].limit;
 	u16 vmdq_m = 0;
-	u8 tcs = netdev_get_num_tc(adapter->netdev);
 #ifdef IXGBE_FCOE
 	u16 fcoe_i = 0;
 #endif
+	u8 tcs = netdev_get_num_tc(adapter->netdev);
 
 	/* verify we have DCB enabled before proceeding */
 	if (tcs <= 1)
@@ -717,12 +717,14 @@ static bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 	 * more CPUs.
 	 */
 	if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
+		struct net_device *dev = adapter->netdev;
 		u16 fcoe_i;
 
 		f = &adapter->ring_feature[RING_F_FCOE];
 
 		/* merge FCoE queues with RSS queues */
 		fcoe_i = min_t(u16, f->limit + rss_i, num_online_cpus());
+		fcoe_i = min_t(u16, fcoe_i, dev->num_tx_queues);
 
 		/* limit indices to rss_i if MSI-X is disabled */
 		if (!(adapter->flags & IXGBE_FLAG_MSIX_ENABLED))
@@ -887,6 +889,9 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		cpumask_copy(&q_vector->affinity_mask, cpu_online_mask);
 #endif
 	q_vector->numa_node = node;
+
+	/* initialize CPU for DCA */
+	q_vector->cpu = -1;
 
 #ifndef IXGBE_NO_LRO
 	/* initialize LRO */

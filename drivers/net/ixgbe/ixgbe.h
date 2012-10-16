@@ -34,9 +34,6 @@
 
 #include <linux/pci.h>
 #include <linux/netdevice.h>
-#ifdef HAVE_IRQ_AFFINITY_HINT
-#include <linux/cpumask.h>
-#endif /* HAVE_IRQ_AFFINITY_HINT */
 #include <linux/vmalloc.h>
 
 #ifdef SIOCETHTOOL
@@ -57,6 +54,10 @@
 #include <linux/sctp.h>
 #endif
 
+#ifdef HAVE_INCLUDE_LINUX_MDIO_H
+#include <linux/mdio.h>
+#endif
+
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #define IXGBE_FCOE
 #include "ixgbe_fcoe.h"
@@ -70,6 +71,11 @@
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
 		__func__ , ## args)))
 
+#ifdef CONFIG_IXGBE_PTP
+#include <linux/clocksource.h>
+#include <linux/net_tstamp.h>
+#include <linux/ptp_clock_kernel.h>
+#endif
 
 /* TX/RX descriptor defines */
 #define IXGBE_DEFAULT_TXD		512
@@ -94,11 +100,11 @@
 
 /* Supported Rx Buffer Sizes */
 #define IXGBE_RXBUFFER_256       256  /* Used for skb receive header */
-#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
-#define IXGBE_RXBUFFER_1536	1536
 #define IXGBE_RXBUFFER_2K	2048
 #define IXGBE_RXBUFFER_3K	3072
 #define IXGBE_RXBUFFER_4K	4096
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+#define IXGBE_RXBUFFER_1536	1536
 #define IXGBE_RXBUFFER_7K	7168
 #define IXGBE_RXBUFFER_8K	8192
 #define IXGBE_RXBUFFER_15K	15360
@@ -197,6 +203,7 @@ struct vf_data_storage {
 	u16 tx_rate;
 	u16 vlan_count;
 	u8 spoofchk_enabled;
+	unsigned int vf_api;
 };
 
 struct vf_macvlans {
@@ -411,16 +418,29 @@ struct ixgbe_ring_feature {
  * this is twice the size of a half page we need to double the page order
  * for FCoE enabled Rx queues.
  */
-#if defined(IXGBE_FCOE) && (PAGE_SIZE < 8192)
+static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring *ring)
+{
+#if MAX_SKB_FRAGS < 8
+	return ALIGN(IXGBE_MAX_RXBUFFER / MAX_SKB_FRAGS, 1024);
+#else
+#ifdef IXGBE_FCOE
+	if (test_bit(__IXGBE_RX_FCOE, &ring->state))
+		return (PAGE_SIZE < 8192) ? IXGBE_RXBUFFER_4K :
+					    IXGBE_RXBUFFER_3K;
+#endif
+	return IXGBE_RXBUFFER_2K;
+#endif
+}
+
 static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring *ring)
 {
-	return test_bit(__IXGBE_RX_FCOE, &ring->state) ? 1 : 0;
-}
-#else
-#define ixgbe_rx_pg_order(_ring) 0
+#ifdef IXGBE_FCOE
+	if (test_bit(__IXGBE_RX_FCOE, &ring->state))
+		return (PAGE_SIZE < 8192) ? 1 : 0;
 #endif
+	return 0;
+}
 #define ixgbe_rx_pg_size(_ring) (PAGE_SIZE << ixgbe_rx_pg_order(_ring))
-#define ixgbe_rx_bufsz(_ring) ((PAGE_SIZE / 2) << ixgbe_rx_pg_order(_ring))
 
 #endif
 struct ixgbe_ring_container {
@@ -503,7 +523,7 @@ static inline u16 ixgbe_desc_unused(struct ixgbe_ring *ring)
 #define IXGBE_TX_CTXTDESC(R, i)	\
 	(&(((struct ixgbe_adv_tx_context_desc *)((R)->desc))[i]))
 
-#define IXGBE_MAX_JUMBO_FRAME_SIZE	16128
+#define IXGBE_MAX_JUMBO_FRAME_SIZE	9728
 #ifdef IXGBE_FCOE
 /* use 3K as the baby jumbo frame size for FCoE */
 #define IXGBE_FCOE_JUMBO_FRAME_SIZE	3072
@@ -532,7 +552,6 @@ struct ixgbe_therm_proc_data {
 };
 
 #endif /* IXGBE_PROCFS */
-
 /*
  * Only for array allocations in our adapter struct.  On 82598, there will be
  * unused entries in the array, but that's not a big deal.  Also, in 82599,
@@ -618,7 +637,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	(u32)(1 << 8)
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
-#define IXGBE_FLAG2_OVERFLOW_CHECK_ENABLED      (u32)(1 << 11)
+#define IXGBE_FLAG2_PTP_ENABLED                 (u32)(1 << 11)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 12)
 
 	/* Tx fast path data */
@@ -661,7 +680,7 @@ struct ixgbe_adapter {
 	u8 dcb_set_bitmap;
 	u8 dcbx_cap;
 #ifndef HAVE_MQPRIO
-	u8 tc;
+	u8 dcb_tc;
 #endif
 	enum ixgbe_fc_mode last_lfc_mode;
 
@@ -729,6 +748,17 @@ struct ixgbe_adapter {
 	u32 led_reg;
 #endif
 
+#ifdef CONFIG_IXGBE_PTP
+	struct ptp_clock *ptp_clock;
+	struct ptp_clock_info ptp_caps;
+	unsigned long last_overflow_check;
+	spinlock_t tmreg_lock;
+	struct cyclecounter hw_cc;
+	struct timecounter hw_tc;
+	int rx_hwtstamp_filter;
+	u32 base_incval;
+#endif /* CONFIG_IXGBE_PTP */
+
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
 	unsigned int num_vfs;
 	struct vf_data_storage *vfinfo;
@@ -751,6 +781,8 @@ struct ixgbe_adapter {
 	struct ixgbe_therm_proc_data therm_data[IXGBE_MAX_SENSORS];
 #endif /* IXGBE_PROCFS */
 #endif /* IXGBE_SYSFS */
+
+	u8 default_up;
 };
 
 struct ixgbe_fdir_filter {
@@ -921,6 +953,21 @@ extern int ixgbe_available_rars(struct ixgbe_adapter *adapter);
 extern void ixgbe_vlan_mode(struct net_device *, u32);
 #endif
 
+#ifdef CONFIG_IXGBE_PTP
+extern void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_tx_hwtstamp(struct ixgbe_q_vector *q_vector,
+				  struct sk_buff *skb);
+extern void ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
+				  union ixgbe_adv_rx_desc *rx_desc,
+				  struct sk_buff *skb);
+extern int ixgbe_ptp_hwtstamp_ioctl(struct ixgbe_adapter *adapter,
+				    struct ifreq *ifr, int cmd);
+extern void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
+#endif /* CONFIG_IXGBE_PTP */
 
 extern void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
 #endif /* _IXGBE_H_ */
