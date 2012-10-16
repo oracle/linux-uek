@@ -157,7 +157,7 @@ struct mlx4_port_config {
 */
 #define MLX4_MAX_LOG_NUM_MTT 30
 static struct mlx4_profile mod_param_profile = {
-	.num_qp         = 18,
+	.num_qp         = 19,
 	.num_srq        = 16,
 	.rdmarc_per_qp  = 4,
 	.num_cq         = 16,
@@ -167,7 +167,7 @@ static struct mlx4_profile mod_param_profile = {
 };
 
 module_param_named(log_num_qp, mod_param_profile.num_qp, int, 0444);
-MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 18)");
+MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 19)");
 
 module_param_named(log_num_srq, mod_param_profile.num_srq, int, 0444);
 MODULE_PARM_DESC(log_num_srq, "log maximum number of SRQs per HCA "

@@ -73,7 +73,7 @@ extern int mlx4_ib_sm_guid_assign;
 extern struct proc_dir_entry *mlx4_mrs_dir_entry;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
-#define MLX4_IB_UC_MAX_NUM_QPS     64
+#define MLX4_IB_UC_MAX_NUM_QPS     (256 * 1024)
 
 
 #define MLX4_IB_MMAP_CMD_MASK 0xFF
