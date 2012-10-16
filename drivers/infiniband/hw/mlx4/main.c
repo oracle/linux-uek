@@ -1965,7 +1965,8 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 			goto err_counter;
 
 		ibdev->ib_uc_qpns_bitmap =
-			kmalloc(BITS_TO_LONGS(ibdev->steer_qpn_count),
+			kmalloc(BITS_TO_LONGS(ibdev->steer_qpn_count) *
+				sizeof(long),
 				GFP_KERNEL);
 		if (!ibdev->ib_uc_qpns_bitmap) {
 			dev_err(&dev->pdev->dev, "bit map alloc failed\n");
