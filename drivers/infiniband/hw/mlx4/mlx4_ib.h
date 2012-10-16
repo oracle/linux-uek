@@ -70,7 +70,7 @@ enum {
 extern int mlx4_ib_sm_guid_assign;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
-#define MLX4_IB_UC_MAX_NUM_QPS     256
+#define MLX4_IB_UC_MAX_NUM_QPS     (256 * 1024)
 
 enum hw_bar_type {
 	HW_BAR_BF,
