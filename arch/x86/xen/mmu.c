@@ -2506,7 +2506,9 @@ static int remap_area_mfn_pte_fn(pte_t *ptep, pgtable_t token,
 int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
 			       unsigned long addr,
 			       unsigned long mfn, int nr,
-			       pgprot_t prot, unsigned domid)
+			       pgprot_t prot, unsigned domid,
+			       struct page **pages)
+
 {
 	struct remap_data rmd;
 	struct mmu_update mmu_update[REMAP_BATCH_SIZE];
@@ -2596,3 +2598,13 @@ void xen_release_hugepage(struct page *page)
 	op.arg1.mfn = pfn_to_mfn(page_to_pfn(page));
 	HYPERVISOR_mmuext_op(&op, 1, NULL, DOMID_SELF);
 }
+/* Returns: 0 success */
+int xen_unmap_domain_mfn_range(struct vm_area_struct *vma,
+			       int numpgs, struct page **pages)
+{
+	if (!pages || !xen_feature(XENFEAT_auto_translated_physmap))
+		return 0;
+
+	return -EINVAL;
+}
+EXPORT_SYMBOL_GPL(xen_unmap_domain_mfn_range);

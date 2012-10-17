@@ -26,7 +26,10 @@ void xen_destroy_contiguous_region(unsigned long vstart, unsigned int order);
 int xen_remap_domain_mfn_range(struct vm_area_struct *vma,
 			       unsigned long addr,
 			       unsigned long mfn, int nr,
-			       pgprot_t prot, unsigned domid);
+			       pgprot_t prot, unsigned domid,
+			       struct page **pages);
+int xen_unmap_domain_mfn_range(struct vm_area_struct *vma,
+			       int numpgs, struct page **pages);
 
 bool xen_running_on_version_or_later(unsigned int major, unsigned int minor);
 #endif /* INCLUDE_XEN_OPS_H */
