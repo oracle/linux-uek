@@ -78,6 +78,7 @@ struct mlx4_dev_cap {
 	u16 wavelength[MLX4_MAX_PORTS + 1];
 	u64 trans_code[MLX4_MAX_PORTS + 1];
 	u16 stat_rate_support;
+	int fs_log_max_ucast_qp_range_size;
 	int fs_max_num_qp_per_entry;
 	u64 flags;
 	u64 flags2;
