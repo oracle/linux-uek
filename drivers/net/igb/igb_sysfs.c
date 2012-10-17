@@ -139,13 +139,11 @@ static ssize_t igb_fwbanner(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buf)
 {
 	struct igb_adapter *adapter = igb_get_adapter(kobj);	
-	u16 nvm_ver;
 
 	if (adapter == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no adapter\n");
-	nvm_ver = adapter->fw_version;
 
-	return snprintf(buf, PAGE_SIZE, "0x%08x\n", nvm_ver);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", adapter->etrack_id);
 }
 
 static ssize_t igb_numeports(struct kobject *kobj,
@@ -161,7 +159,7 @@ static ssize_t igb_numeports(struct kobject *kobj,
 	if (hw == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no hw data\n");
 
- 	/* CMW taking the original out so and assigning ports generally
+ 	/* CMW taking the original out so assigning ports generally
 	 * by mac type for now.  Want to have the daemon handle this some
 	 * other way due to the variability of the 1GB parts.
 	 */
@@ -175,6 +173,10 @@ static ssize_t igb_numeports(struct kobject *kobj,
 		case e1000_82580:
 		case e1000_i350:
 			ports = 4;
+			break;
+		case e1000_i210:
+		case e1000_i211:
+			ports = 1;
 			break;
 		default:
 			break;

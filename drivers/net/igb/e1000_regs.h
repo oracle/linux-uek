@@ -49,8 +49,10 @@
 #define E1000_FCAL	0x00028  /* Flow Control Address Low - RW */
 #define E1000_FCAH	0x0002C  /* Flow Control Address High -RW */
 #define E1000_FEXT	0x0002C  /* Future Extended - RW */
-#define E1000_FEXTNVM4	0x00024  /* Future Extended NVM 4 - RW */
 #define E1000_FEXTNVM	0x00028  /* Future Extended NVM - RW */
+#define E1000_FEXTNVM2	0x00030  /* Future Extended NVM 2 - RW */
+#define E1000_FEXTNVM3	0x0003C  /* Future Extended NVM 3 - RW */
+#define E1000_FEXTNVM4	0x00024  /* Future Extended NVM 4 - RW */
 #define E1000_FCT	0x00030  /* Flow Control Type - RW */
 #define E1000_CONNSW	0x00034  /* Copper/Fiber switch control - RW */
 #define E1000_VET	0x00038  /* VLAN Ether Type - RW */
@@ -132,6 +134,62 @@
 #define E1000_PBRWAC	0x024E8 /* Rx packet buffer wrap around counter - RO */
 #define E1000_RDTR	0x02820  /* Rx Delay Timer - RW */
 #define E1000_RADV	0x0282C  /* Rx Interrupt Absolute Delay Timer - RW */
+#define E1000_SRWR		0x12018  /* Shadow Ram Write Register - RW */
+#define E1000_I210_FLMNGCTL	0x12038
+#define E1000_I210_FLMNGDATA	0x1203C
+#define E1000_I210_FLMNGCNT	0x12040
+
+#define E1000_I210_FLSWCTL	0x12048
+#define E1000_I210_FLSWDATA	0x1204C
+#define E1000_I210_FLSWCNT	0x12050
+
+#define E1000_I210_FLA		0x1201C
+
+#define E1000_INVM_DATA_REG(_n)	(0x12120 + 4*(_n))
+#define E1000_INVM_SIZE		64 /* Number of INVM Data Registers */
+
+/* QAV Tx mode control register */
+#define E1000_I210_TQAVCTRL	0x3570
+
+/* QAV Tx mode control register bitfields masks */
+/* QAV enable */
+#define E1000_TQAVCTRL_MODE			(1 << 0)
+/* Fetching arbitration type */
+#define E1000_TQAVCTRL_FETCH_ARB		(1 << 4)
+/* Fetching timer enable */
+#define E1000_TQAVCTRL_FETCH_TIMER_ENABLE	(1 << 5)
+/* Launch arbitration type */
+#define E1000_TQAVCTRL_LAUNCH_ARB		(1 << 8)
+/* Launch timer enable */
+#define E1000_TQAVCTRL_LAUNCH_TIMER_ENABLE	(1 << 9)
+/* SP waits for SR enable */
+#define E1000_TQAVCTRL_SP_WAIT_SR		(1 << 10)
+/* Fetching timer correction */
+#define E1000_TQAVCTRL_FETCH_TIMER_DELTA_OFFSET	16
+#define E1000_TQAVCTRL_FETCH_TIMER_DELTA	\
+			(0xFFFF << E1000_TQAVCTRL_FETCH_TIMER_DELTA_OFFSET)
+
+/* High credit registers where _n can be 0 or 1. */
+#define E1000_I210_TQAVHC(_n)			(0x300C + 0x40 * (_n))
+
+/* Queues fetch arbitration priority control register */
+#define E1000_I210_TQAVARBCTRL			0x3574
+/* Queues priority masks where _n and _p can be 0-3. */
+#define E1000_TQAVARBCTRL_QUEUE_PRI(_n, _p)	((_p) << (2 * _n))
+/* QAV Tx mode control registers where _n can be 0 or 1. */
+#define E1000_I210_TQAVCC(_n)			(0x3004 + 0x40 * (_n))
+
+/* QAV Tx mode control register bitfields masks */
+#define E1000_TQAVCC_IDLE_SLOPE		0xFFFF /* Idle slope */
+#define E1000_TQAVCC_KEEP_CREDITS	(1 << 30) /* Keep credits opt enable */
+#define E1000_TQAVCC_QUEUE_MODE		(1 << 31) /* SP vs. SR Tx mode */
+
+/* Good transmitted packets counter registers */
+#define E1000_PQGPTC(_n)		(0x010014 + (0x100 * (_n)))
+
+/* Queues packet buffer size masks where _n can be 0-3 and _s 0-63 [kB] */
+#define E1000_I210_TXPBS_SIZE(_n, _s)	((_s) << (6 * _n))
+
 /*
  * Convenience macros
  *
@@ -403,6 +461,7 @@
 #define E1000_HOST_IF	0x08800  /* Host Interface */
 #define E1000_FFMT	0x09000  /* Flexible Filter Mask Table - RW Array */
 #define E1000_FFVT	0x09800  /* Flexible Filter Value Table - RW Array */
+#define E1000_HIBBA	0x8F40   /* Host Interface Buffer Base Address */
 /* Flexible Host Filter Table */
 #define E1000_FHFT(_n)	(0x09000 + ((_n) * 0x100))
 /* Ext Flexible Host Filter Table */
@@ -501,8 +560,12 @@
 #define E1000_SYSTIML	0x0B600 /* System time register Low - RO */
 #define E1000_SYSTIMH	0x0B604 /* System time register High - RO */
 #define E1000_TIMINCA	0x0B608 /* Increment attributes register - RW */
+#define E1000_TIMADJL	0x0B60C /* Time sync time adjustment offset Low - RW */
+#define E1000_TIMADJH	0x0B610 /* Time sync time adjustment offset High - RW */
 #define E1000_TSAUXC	0x0B640 /* Timesync Auxiliary Control register */
 #define E1000_SYSTIMR	0x0B6F8 /* System time register Residue */
+#define E1000_TSICR	0x0B66C /* Interrupt Cause Register */
+#define E1000_TSIM	0x0B674 /* Interrupt Mask Register */
 
 /* Filtering Registers */
 #define E1000_SAQF(_n)	(0x05980 + (4 * (_n))) /* Source Address Queue Fltr */
@@ -589,6 +652,7 @@
 #define E1000_B2OGPRC	0x04158 /* BMC2OS packets received by host */
 #define E1000_O2BGPTC	0x08FE4 /* OS2BMC packets received by BMC */
 #define E1000_O2BSPC	0x0415C /* OS2BMC packets transmitted by host */
+
 
 
 #endif
