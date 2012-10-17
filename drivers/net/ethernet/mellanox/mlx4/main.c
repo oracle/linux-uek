@@ -77,6 +77,10 @@ MODULE_PARM_DESC(msi_x, "attempt to use MSI-X if nonzero");
 
 #endif /* CONFIG_PCI_MSI */
 
+static int enable_sys_tune = 0;
+module_param(enable_sys_tune, int, 0444);
+MODULE_PARM_DESC(enable_sys_tune, "Tune the cpu's for better performance (default 0)");
+
 int mlx4_blck_lb = 1;
 module_param_named(block_loopback, mlx4_blck_lb, int, 0644);
 MODULE_PARM_DESC(block_loopback, "Block multicast loopback packets if > 0 "
@@ -2738,12 +2742,21 @@ static int __init mlx4_init(void)
 	if (!mlx4_wq)
 		return -ENOMEM;
 
+	if (enable_sys_tune)
+		sys_tune_init();
+
 	ret = pci_register_driver(&mlx4_driver);
+	if (ret < 0 && enable_sys_tune)
+		sys_tune_fini();
+
 	return ret < 0 ? ret : 0;
 }
 
 static void __exit mlx4_cleanup(void)
 {
+	if (enable_sys_tune)
+		sys_tune_fini();
+
 	pci_unregister_driver(&mlx4_driver);
 	destroy_workqueue(mlx4_wq);
 }

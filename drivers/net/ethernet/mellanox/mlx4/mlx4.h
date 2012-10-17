@@ -1274,4 +1274,7 @@ static inline spinlock_t *mlx4_tlock(struct mlx4_dev *dev)
 
 #define NOT_MASKED_PD_BITS 17
 
+void sys_tune_init(void);
+void sys_tune_fini(void);
+
 #endif /* MLX4_H */
