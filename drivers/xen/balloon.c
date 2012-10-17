@@ -54,7 +54,6 @@
 #include <asm/pgalloc.h>
 #include <asm/pgtable.h>
 #include <asm/tlb.h>
-#include <asm/e820.h>
 
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
