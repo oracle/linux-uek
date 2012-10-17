@@ -94,7 +94,7 @@ static unsigned long balloon_npages;
 static unsigned long discontig_frame_list[PAGE_SIZE / sizeof(unsigned long)];
 
 /* We increase/decrease in batches which fit in a page */
-static unsigned long frame_list[PAGE_SIZE / sizeof(unsigned long)];
+static xen_pfn_t frame_list[PAGE_SIZE / sizeof(unsigned long)];
 
 #ifdef CONFIG_HIGHMEM
 #define inc_totalhigh_pages() (totalhigh_pages++)
