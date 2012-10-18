@@ -3,6 +3,7 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/stop_machine.h>
+#include <linux/dtrace_cpu.h>
 
 #include "cpupri.h"
 
@@ -482,6 +483,9 @@ struct rq {
 #endif
 
 	struct sched_avg avg;
+#ifdef CONFIG_DTRACE
+	cpuinfo_t *dtrace_cpu_info;
+#endif
 };
 
 static inline int cpu_of(struct rq *rq)
