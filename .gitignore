@@ -35,6 +35,7 @@
 *.gcno
 *.ll
 modules.builtin
+objects.builtin
 Module.symvers
 *.dwo
 *.su
