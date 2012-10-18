@@ -650,14 +650,10 @@ static systrace_info_t	systrace_info =
 			    [SCE_RT_SIGRETURN] dtrace_stub_rt_sigreturn,
 			},
 			{
-/*
- * Need to remove the define for _ASM_X86_UNISTD_64_H in order for unistd_64
- * to be included here because it was already included indirectly.
- */
-#undef __SYSCALL
-#define __SYSCALL(nr, sym)	[nr] { __stringify(sym), },
-# undef _ASM_X86_UNISTD_64_H
-#include <asm/unistd.h>
+#define __SYSCALL_64(nr, sym, compat)		[nr] { __stringify(sym), },
+#define __SYSCALL_COMMON(nr, sym, compat)	__SYSCALL_64(nr, sym, compat)
+#define __SYSCALL_X32(nt, sym, compat)
+#include <asm/syscalls_64.h>
 			}
 		};
 
