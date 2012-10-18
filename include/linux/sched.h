@@ -1714,6 +1714,7 @@ struct task_struct {
 		int order;
 		unsigned int may_oom:1;
 	} memcg_oom;
+#endif
 #ifdef CONFIG_DTRACE
 	uint32_t predcache;
 	ktime_t dtrace_vtime;

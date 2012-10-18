@@ -74,7 +74,6 @@
 #include <linux/binfmts.h>
 #include <linux/context_tracking.h>
 #include <linux/compiler.h>
-#include <linux/dtrace_cpu.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>

@@ -21,7 +21,6 @@
 #include <linux/percpu.h>
 #include <asm/module.h>
 
-#include <trace/events/module.h>
 #include <linux/sdt.h>
 
 /* In stripped ARM and x86-64 modules, ~ is surprisingly rare. */

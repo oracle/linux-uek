@@ -3,8 +3,6 @@
 #ifndef _DTRACE_OS_H_
 #define _DTRACE_OS_H_
 
-#include <asm/unistd.h>
-
 #define PR_PSARGS_SZ		80
 
 typedef struct dtrace_psinfo {
@@ -17,10 +15,13 @@ typedef struct dtrace_psinfo {
 	char psargs[PR_PSARGS_SZ];
 } dtrace_psinfo_t;
 
+#ifndef COMPILE_OFFSETS
+
+#include <asm/asm-offsets.h>
+
 extern dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *);
 extern void dtrace_psinfo_free(dtrace_psinfo_t *);
 
-#ifdef NR_syscalls
 typedef uint32_t dtrace_id_t;
 
 #define DTRACE_IDNONE 0
@@ -97,6 +98,6 @@ typedef void		*(fbt_provide_fn)(struct module *, char *, uint8_t,
 
 extern void dtrace_fbt_init(fbt_provide_fn);
 
-#endif
+#endif /* COMPILE_OFFSETS */
 
 #endif /* _DTRACE_OS_H_ */

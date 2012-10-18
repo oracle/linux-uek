@@ -82,8 +82,6 @@
 #include <linux/proc_ns.h>
 #include <linux/io.h>
 #include <linux/sdt.h>
-#include <linux/dtrace_os.h>
-#include <linux/dtrace_cpu.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -98,6 +96,11 @@ extern void fork_init(void);
 extern void radix_tree_init(void);
 #ifndef CONFIG_DEBUG_RODATA
 static inline void mark_rodata_ro(void) { }
+#endif
+
+#ifdef CONFIG_DTRACE
+extern void dtrace_os_init(void);
+extern void dtrace_cpu_init(void);
 #endif
 
 /*
