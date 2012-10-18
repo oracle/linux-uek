@@ -28,6 +28,7 @@
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 
+#include "dtrace.h"
 #include "dtrace_dev.h"
 
 static long lockstat_ioctl(struct file *file,
