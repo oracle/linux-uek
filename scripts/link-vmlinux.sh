@@ -64,6 +64,39 @@ archive_builtin()
 	fi
 }
 
+# Generate the SDT probe point stubs object file
+# ${1} output file
+sdtstubs()
+{
+	info MKSTUBS ${1}
+	${NM} -u ${KBUILD_VMLINUX_INIT} ${KBUILD_VMLINUX_MAIN} | \
+		grep __dtrace_probe_ | sort | uniq | \
+		${AWK} '{
+			  printf("\t.globl %s\n\t.type %s,@function\n%s:\n",
+				 $2, $2, $2);
+			}' > .tmp_sdtstubs.S
+	echo "  ret" >> .tmp_sdtstubs.S
+
+	local aflags="${KBUILD_AFLAGS} ${KBUILD_AFLAGS_KERNEL}               \
+		      ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS}"
+
+	${CC} ${aflags} -c -o ${1} .tmp_sdtstubs.S
+}
+
+# Generate the SDT probe info for object file ${1} and kernel image ${2}
+# ${3} output file
+sdtinfo()
+{
+	info DT-SDT ${3}
+
+	scripts/dtrace_sdt.sh ${1} ${2} > .tmp_sdtinfo.S
+
+	local aflags="${KBUILD_AFLAGS} ${KBUILD_AFLAGS_KERNEL}               \
+		      ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS}"
+
+	${CC} ${aflags} -c -o ${3} .tmp_sdtinfo.S
+}
+
 # Link of vmlinux.o used for section mismatch analysis
 # ${1} output file
 modpost_link()
@@ -191,6 +224,8 @@ cleanup()
 	rm -f .old_version
 	rm -f .tmp_System.map
 	rm -f .tmp_kallsyms*
+	rm -f .tmp_sdtstubs.*
+	rm -f .tmp_sdtinfo.*
 	rm -f .tmp_version
 	rm -f .tmp_vmlinux*
 	rm -f built-in.o
@@ -252,6 +287,14 @@ ${MAKE} -f "${srctree}/scripts/Makefile.build" obj=init GCC_PLUGINS_CFLAGS="${GC
 
 archive_builtin
 
+sdtstubso=""
+sdtinfoo=""
+if [ -n "${CONFIG_DTRACE}" ]; then
+	sdtstubso=.tmp_sdtstubs.o
+	sdtinfoo=.tmp_sdtinfo.o
+	sdtstubs ${sdtstubso}
+fi
+
 #link vmlinux.o
 info LD vmlinux.o
 modpost_link vmlinux.o
@@ -289,12 +332,20 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 	kallsymso=.tmp_kallsyms2.o
 	kallsyms_vmlinux=.tmp_vmlinux2
 
+	if [ -n "${CONFIG_DTRACE}" ]; then
+		sdtinfo vmlinux.o "" ${sdtinfoo}
+	fi
+
 	# step 1
-	vmlinux_link "" .tmp_vmlinux1
+	vmlinux_link "${sdtstubso} ${sdtinfoo}" .tmp_vmlinux1
 	kallsyms .tmp_vmlinux1 .tmp_kallsyms1.o
 
+	if [ -n "${CONFIG_DTRACE}" ]; then
+		sdtinfo vmlinux.o .tmp_vmlinux1 ${sdtinfoo}
+	fi
+
 	# step 2
-	vmlinux_link .tmp_kallsyms1.o .tmp_vmlinux2
+	vmlinux_link "${sdtstubso} .tmp_kallsyms1.o ${sdtinfoo}" .tmp_vmlinux2
 	kallsyms .tmp_vmlinux2 .tmp_kallsyms2.o
 
 	# step 3
@@ -305,14 +356,14 @@ if [ -n "${CONFIG_KALLSYMS}" ]; then
 		kallsymso=.tmp_kallsyms3.o
 		kallsyms_vmlinux=.tmp_vmlinux3
 
-		vmlinux_link .tmp_kallsyms2.o .tmp_vmlinux3
+		vmlinux_link "${sdtstubso} .tmp_kallsyms2.o ${sdtinfoo}" .tmp_vmlinux3
 
 		kallsyms .tmp_vmlinux3 .tmp_kallsyms3.o
 	fi
 fi
 
 info LD vmlinux
-vmlinux_link "${kallsymso}" vmlinux
+vmlinux_link "${sdtstubso} ${kallsymso} ${sdtinfoo}" vmlinux
 
 if [ -n "${CONFIG_BUILDTIME_EXTABLE_SORT}" ]; then
 	info SORTEX vmlinux

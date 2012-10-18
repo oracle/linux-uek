@@ -40,13 +40,12 @@ lfn="$2"
 		 next;
 	     }
 
-	     /__dtrace_probe_/ {
+	     /__dtrace_probe_/ && sect !~ /debug/ {
 		 $3 = substr($3, 16);
 		 sub(/-.*$/, "", $3);
 		 printf "%16s %s R %s %s\n", sect, $1, $3, sectbase[sect];
 		 next;
 	     }' | \
-tee /tmp/sdt.log | \
 	sort
     [ "x${lfn}" != "x" ] && nm ${lfn}
 ) | \
