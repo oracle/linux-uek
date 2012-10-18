@@ -89,8 +89,6 @@
 #include <linux/cache.h>
 #include <linux/rodata_test.h>
 #include <linux/sdt.h>
-#include <linux/dtrace_os.h>
-#include <linux/dtrace_cpu.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -103,6 +101,11 @@ static int kernel_init(void *);
 extern void init_IRQ(void);
 extern void fork_init(void);
 extern void radix_tree_init(void);
+
+#ifdef CONFIG_DTRACE
+extern void dtrace_os_init(void);
+extern void dtrace_cpu_init(void);
+#endif
 
 /*
  * Debug helper: via this flag we know that we are in 'early bootup code'

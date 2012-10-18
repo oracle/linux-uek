@@ -26,7 +26,6 @@
 #include <linux/profile.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
-#include <linux/dtrace_cpu.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
