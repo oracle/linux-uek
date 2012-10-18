@@ -43,13 +43,6 @@ struct stacktrace_ops {
 	walk_stack_t	walk_stack;
 };
 
-extern unsigned long print_context_stack(struct thread_info *tinfo,
-					 unsigned long *stack,
-					 unsigned long bp,
-					 const struct stacktrace_ops *ops,
-					 void *data, unsigned long *end,
-					 int *graph);
-
 void dump_trace(struct task_struct *tsk, struct pt_regs *regs,
 		unsigned long *stack, unsigned long bp,
 		const struct stacktrace_ops *ops, void *data);

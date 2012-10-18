@@ -2926,7 +2926,7 @@ need_resched:
 			} else {
 				deactivate_task(rq, prev, DEQUEUE_SLEEP);
 				prev->on_rq = 0;
-	
+
 				/*
 				 * If a worker went to sleep, notify and ask
 				 * workqueue whether it wants to wake up a task
@@ -2934,7 +2934,7 @@ need_resched:
 				 */
 				if (prev->flags & PF_WQ_WORKER) {
 					struct task_struct *to_wakeup;
-	
+
 					to_wakeup = wq_worker_sleeping(prev, cpu);
 					if (to_wakeup)
 						try_to_wake_up_local(to_wakeup);
