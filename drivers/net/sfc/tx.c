@@ -1132,6 +1132,21 @@ static int efx_enqueue_skb_tso(struct efx_tx_queue *tx_queue,
 	int frag_i, rc, rc2 = NETDEV_TX_OK;
 	struct tso_state state;
 
+	/* Since the stack does not limit the number of segments per
+	 * skb, we must do so.  Otherwise an attacker may be able to
+	 * make the TCP produce skbs that will never fit in our TX
+	 * queue, causing repeated resets.
+	 */
+	if (unlikely(skb_shinfo(skb)->gso_segs > EFX_TSO_MAX_SEGS)) {
+		unsigned int excess =
+			(skb_shinfo(skb)->gso_segs - EFX_TSO_MAX_SEGS) *
+			skb_shinfo(skb)->gso_size;
+		if (__pskb_trim(skb, skb->len - excess)) {
+			dev_kfree_skb_any(skb);
+			return NETDEV_TX_OK;
+		}
+	}
+
 	/* Find the packet protocol and sanity-check it */
 	state.protocol = efx_tso_check_protocol(skb);
 
