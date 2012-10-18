@@ -1060,7 +1060,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 				"hardware.  Disabling RSC.\n");
 			netdev->features &= ~NETIF_F_LRO;
 		}
-#endif
+#endif /* IXGBE_NO_LRO */
 	}
 	{ /*
 	   * allow_unsupported_sfp - Enable/Disable support for unsupported

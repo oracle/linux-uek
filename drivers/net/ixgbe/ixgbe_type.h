@@ -31,9 +31,6 @@
 #include "ixgbe_osdep.h"
 
 
-/* Vendor ID */
-#define IXGBE_INTEL_VENDOR_ID			0x8086
-
 /* Device IDs */
 #define IXGBE_DEV_ID_82598			0x10B6
 #define IXGBE_DEV_ID_82598_BX			0x1508
@@ -55,7 +52,9 @@
 #define IXGBE_DEV_ID_82599_CX4			0x10F9
 #define IXGBE_DEV_ID_82599_SFP			0x10FB
 #define IXGBE_SUBDEV_ID_82599_SFP		0x11A9
+#define IXGBE_SUBDEV_ID_82599_RNDC		0x1F72
 #define IXGBE_SUBDEV_ID_82599_560FLR		0x17D0
+#define IXGBE_SUBDEV_ID_82599_ECNA_DP		0x0470
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
@@ -1014,6 +1013,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RSCCTL_MAXDESC_4	0x04
 #define IXGBE_RSCCTL_MAXDESC_8	0x08
 #define IXGBE_RSCCTL_MAXDESC_16	0x0C
+#define IXGBE_RSCCTL_TS_DIS	0x02
 
 /* RSCDBU Bit Masks */
 #define IXGBE_RSCDBU_RSCSMALDIS_MASK	0x0000007F
@@ -1026,7 +1026,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RDRXCTL_DMAIDONE		0x00000008 /* DMA init cycle done */
 #define IXGBE_RDRXCTL_AGGDIS		0x00010000 /* Aggregation disable */
 #define IXGBE_RDRXCTL_RSCFRSTSIZE	0x003E0000 /* RSC First packet size */
-#define IXGBE_RDRXCTL_RSCLLIDIS		0x00800000 /* Disabl RSC compl on LLI */
+#define IXGBE_RDRXCTL_RSCLLIDIS		0x00800000 /* Disable RSC compl on LLI*/
 #define IXGBE_RDRXCTL_RSCACKC		0x02000000 /* must set 1 when RSC ena */
 #define IXGBE_RDRXCTL_FCOE_WRFIX	0x04000000 /* must set 1 when RSC ena */
 
@@ -1587,10 +1587,15 @@ enum {
 #define IXGBE_ESDP_SDP4		0x00000010 /* SDP4 Data Value */
 #define IXGBE_ESDP_SDP5		0x00000020 /* SDP5 Data Value */
 #define IXGBE_ESDP_SDP6		0x00000040 /* SDP6 Data Value */
+#define IXGBE_ESDP_SDP7		0x00000080 /* SDP7 Data Value */
 #define IXGBE_ESDP_SDP0_DIR	0x00000100 /* SDP0 IO direction */
 #define IXGBE_ESDP_SDP1_DIR	0x00000200 /* SDP1 IO direction */
+#define IXGBE_ESDP_SDP2_DIR	0x00000400 /* SDP1 IO direction */
+#define IXGBE_ESDP_SDP3_DIR	0x00000800 /* SDP3 IO direction */
 #define IXGBE_ESDP_SDP4_DIR	0x00001000 /* SDP4 IO direction */
 #define IXGBE_ESDP_SDP5_DIR	0x00002000 /* SDP5 IO direction */
+#define IXGBE_ESDP_SDP6_DIR	0x00004000 /* SDP6 IO direction */
+#define IXGBE_ESDP_SDP7_DIR	0x00008000 /* SDP7 IO direction */
 #define IXGBE_ESDP_SDP0_NATIVE	0x00010000 /* SDP0 IO mode */
 #define IXGBE_ESDP_SDP1_NATIVE	0x00020000 /* SDP1 IO mode */
 
@@ -3214,6 +3219,7 @@ struct ixgbe_hw {
 	u16 subsystem_vendor_id;
 	u8 revision_id;
 	bool adapter_stopped;
+	int api_version;
 	bool force_full_reset;
 	bool allow_unsupported_sfp;
 };

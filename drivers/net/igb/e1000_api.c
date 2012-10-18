@@ -182,6 +182,21 @@ s32 e1000_set_mac_type(struct e1000_hw *hw)
 	case E1000_DEV_ID_I350_DA4:
 		mac->type = e1000_i350;
 		break;
+#if defined(QV_RELEASE) && defined(SPRINGVILLE_FLASHLESS_HW)
+	case E1000_DEV_ID_I210_NVMLESS:
+#endif /* QV_RELEASE && SPRINGVILLE_FLASHLESS_HW */
+	case E1000_DEV_ID_I210_COPPER:
+	case E1000_DEV_ID_I210_COPPER_OEM1:
+	case E1000_DEV_ID_I210_COPPER_IT:
+	case E1000_DEV_ID_I210_FIBER:
+	case E1000_DEV_ID_I210_SERDES:
+	case E1000_DEV_ID_I210_SGMII:
+		mac->type = e1000_i210;
+		break;
+	case E1000_DEV_ID_I211_COPPER:
+	mac->type = e1000_i211;
+	break;
+
 	default:
 		/* Should never have loaded on this device */
 		ret_val = -E1000_ERR_MAC_INIT;
@@ -240,6 +255,10 @@ s32 e1000_setup_init_funcs(struct e1000_hw *hw, bool init_device)
 	case e1000_82580:
 	case e1000_i350:
 		e1000_init_function_pointers_82575(hw);
+		break;
+	case e1000_i210:
+	case e1000_i211:
+		e1000_init_function_pointers_i210(hw);
 		break;
 	default:
 		DEBUGOUT("Hardware not supported\n");

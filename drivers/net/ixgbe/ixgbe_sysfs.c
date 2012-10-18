@@ -37,6 +37,7 @@
 #include <linux/kobject.h>
 #include <linux/device.h>
 #include <linux/netdevice.h>
+#include <linux/time.h>
 
 /*
  * This file provides a sysfs interface to export information from the
@@ -519,7 +520,7 @@ static ssize_t ixgbe_maclla1(struct kobject *kobj,
 	if (hw == NULL)
 		return snprintf(buf, PAGE_SIZE, "error: no hw data\n");
 
-	rc = ixgbe_read_eeprom_buffer(hw, first_word, word_count,
+	rc = hw->eeprom.ops.read_buffer(hw, first_word, word_count,
 				      eeprom_buff);
 	if (rc != 0)
 		return snprintf(buf, PAGE_SIZE, "error: reading buffer\n");
@@ -989,29 +990,28 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 		goto err;
 
 	/* Don't create thermal subkobjs if no data present */
-	if (ixgbe_thermal_present(adapter->info_kobj) != true)
-		goto exit;
+	if (ixgbe_thermal_present(adapter->info_kobj) == true) {
+		for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
 
-	for (i = 0; i < IXGBE_MAX_SENSORS; i++) {
+			char buf[16];
 
-		char buf[16];
+			/*
+			 * Likewise only create individual kobjs that have
+			 * meaningful data.
+			 */
+			if (adapter->hw.mac.thermal_sensor_data.sensor[i].location == 0)
+				continue;
 
-		/*
-		 * Likewise only create individual kobjs that have
-		 * meaningful data.
-		 */
-		if (adapter->hw.mac.thermal_sensor_data.sensor[i].location == 0)
-			continue;
-
-		/* directory named after sensor offset */
-		snprintf(buf, sizeof(buf), "sensor_%d", i);
-		adapter->therm_kobj[i] =
-			kobject_create_and_add(buf, adapter->info_kobj);
-		if (adapter->therm_kobj[i] == NULL)
-			goto err;
-		if (sysfs_create_group(adapter->therm_kobj[i],
-				       &therm_attr_group))
-			goto err;
+			/* directory named after sensor offset */
+			snprintf(buf, sizeof(buf), "sensor_%d", i);
+			adapter->therm_kobj[i] =
+				kobject_create_and_add(buf, adapter->info_kobj);
+			if (adapter->therm_kobj[i] == NULL)
+				goto err;
+			if (sysfs_create_group(adapter->therm_kobj[i],
+					       &therm_attr_group))
+				goto err;
+		}
 	}
 
 	goto exit;

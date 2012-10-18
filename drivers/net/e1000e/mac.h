@@ -65,7 +65,6 @@ void e1000_clear_vfta_generic(struct e1000_hw *hw);
 void e1000e_init_rx_addrs(struct e1000_hw *hw, u16 rar_count);
 void e1000_pcix_mmrbc_workaround_generic(struct e1000_hw *hw);
 void e1000e_put_hw_semaphore(struct e1000_hw *hw);
-void e1000e_rar_set(struct e1000_hw *hw, u8 *addr, u32 index);
 s32 e1000_check_alt_mac_addr_generic(struct e1000_hw *hw);
 void e1000e_reset_adaptive(struct e1000_hw *hw);
 void e1000e_set_pcie_no_snoop(struct e1000_hw *hw, u32 no_snoop);

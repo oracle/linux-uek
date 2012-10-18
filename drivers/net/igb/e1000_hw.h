@@ -56,6 +56,16 @@ struct e1000_hw;
 #define E1000_DEV_ID_I350_SERDES		0x1523
 #define E1000_DEV_ID_I350_SGMII			0x1524
 #define E1000_DEV_ID_I350_DA4			0x1546
+#if defined(QV_RELEASE) && defined(SPRINGVILLE_FLASHLESS_HW)
+#define E1000_DEV_ID_I210_NVMLESS		0x1531
+#endif /* QV_RELEASE && SPRINGVILLE_FLASHLESS_HW */
+#define E1000_DEV_ID_I210_COPPER		0x1533
+#define E1000_DEV_ID_I210_COPPER_OEM1		0x1534
+#define E1000_DEV_ID_I210_COPPER_IT		0x1535
+#define E1000_DEV_ID_I210_FIBER			0x1536
+#define E1000_DEV_ID_I210_SERDES		0x1537
+#define E1000_DEV_ID_I210_SGMII			0x1538
+#define E1000_DEV_ID_I211_COPPER		0x1539
 #define E1000_DEV_ID_DH89XXCC_SGMII		0x0438
 #define E1000_DEV_ID_DH89XXCC_SERDES		0x043A
 #define E1000_DEV_ID_DH89XXCC_BACKPLANE		0x043C
@@ -82,6 +92,8 @@ enum e1000_mac_type {
 	e1000_82576,
 	e1000_82580,
 	e1000_i350,
+	e1000_i210,
+	e1000_i211,
 	e1000_num_macs  /* List is 1-based, so subtract 1 for true count. */
 };
 
@@ -118,6 +130,7 @@ enum e1000_phy_type {
 	e1000_phy_ife,
 	e1000_phy_82580,
 	e1000_phy_vf,
+	e1000_phy_i210,
 };
 
 enum e1000_bus_type {
@@ -726,6 +739,7 @@ struct e1000_dev_spec_82575 {
 	bool eee_disable;
 	bool module_plugged;
 	u32 mtu;
+	struct sfp_e1000_flags eth_flags;
 };
 
 struct e1000_dev_spec_vf {
@@ -762,6 +776,7 @@ struct e1000_hw {
 };
 
 #include "e1000_82575.h"
+#include "e1000_i210.h"
 
 /* These functions must be implemented by drivers */
 s32  e1000_read_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value);

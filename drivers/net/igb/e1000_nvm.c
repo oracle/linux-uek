@@ -618,8 +618,8 @@ s32 e1000_read_pba_string_generic(struct e1000_hw *hw, u8 *pba_num,
 	if (nvm_data != NVM_PBA_PTR_GUARD) {
 		DEBUGOUT("NVM PBA number is not stored as string\n");
 
-		/* we will need 11 characters to store the PBA */
-		if (pba_num_size < 11) {
+		/* make sure callers buffer is big enough to store the PBA */
+		if (pba_num_size < E1000_PBANUM_LENGTH) {
 			DEBUGOUT("PBA string buffer too small\n");
 			return E1000_ERR_NO_SPACE;
 		}
@@ -720,7 +720,7 @@ s32 e1000_read_pba_length_generic(struct e1000_hw *hw, u32 *pba_num_size)
 
 	 /* if data is not ptr guard the PBA must be in legacy format */
 	if (nvm_data != NVM_PBA_PTR_GUARD) {
-		*pba_num_size = 11;
+		*pba_num_size = E1000_PBANUM_LENGTH;
 		return E1000_SUCCESS;
 	}
 
@@ -743,6 +743,10 @@ s32 e1000_read_pba_length_generic(struct e1000_hw *hw, u32 *pba_num_size)
 
 	return E1000_SUCCESS;
 }
+
+
+
+
 
 /**
  *  e1000_read_mac_addr_generic - Read device MAC address
@@ -856,4 +860,80 @@ static void e1000_reload_nvm_generic(struct e1000_hw *hw)
 	E1000_WRITE_REG(hw, E1000_CTRL_EXT, ctrl_ext);
 	E1000_WRITE_FLUSH(hw);
 }
+
+/**
+ *  e1000_get_fw_version - Get firmware version information
+ *  @hw: pointer to the HW structure
+ *  @fw_vers: pointer to output version structure
+ *
+ *  unsupported/not present features return 0 in version structure
+ **/
+void e1000_get_fw_version(struct e1000_hw *hw, struct e1000_fw_version *fw_vers)
+{
+	u16 eeprom_verh, eeprom_verl, fw_version;
+	u16 comb_verh, comb_verl, comb_offset;
+
+	memset(fw_vers, 0, sizeof(struct e1000_fw_version));
+
+	/* this code only applies to certain mac types */
+	switch (hw->mac.type) {
+	case e1000_i211:
+		e1000_read_invm_version(hw, fw_vers);
+		return;
+	case e1000_82575:
+	case e1000_82576:
+	case e1000_82580:
+	case e1000_i350:
+	case e1000_i210:
+		break;
+	default:
+		return;
+	}
+
+	/* basic eeprom version numbers */
+	hw->nvm.ops.read(hw, NVM_VERSION, 1, &fw_version);
+	fw_vers->eep_major = (fw_version & NVM_MAJOR_MASK) >> NVM_MAJOR_SHIFT;
+	fw_vers->eep_minor = (fw_version & NVM_MINOR_MASK);
+
+	/* etrack id */
+	hw->nvm.ops.read(hw, NVM_ETRACK_WORD, 1, &eeprom_verl);
+	hw->nvm.ops.read(hw, (NVM_ETRACK_WORD + 1), 1, &eeprom_verh);
+	fw_vers->etrack_id = (eeprom_verh << NVM_ETRACK_SHIFT) | eeprom_verl;
+
+	switch (hw->mac.type) {
+	case e1000_i210:
+	case e1000_i350:
+		/* find combo image version */
+		hw->nvm.ops.read(hw, NVM_COMB_VER_PTR, 1, &comb_offset);
+		if ((comb_offset != 0x0) &&
+		    (comb_offset != NVM_VER_INVALID)) {
+
+			hw->nvm.ops.read(hw, (NVM_COMB_VER_OFF + comb_offset
+					 + 1), 1, &comb_verh);
+			hw->nvm.ops.read(hw, (NVM_COMB_VER_OFF + comb_offset),
+					 1, &comb_verl);
+
+			/* get Option Rom version if it exists and is valid */
+			if ((comb_verh && comb_verl) &&
+			    ((comb_verh != NVM_VER_INVALID) &&
+			     (comb_verl != NVM_VER_INVALID))) {
+
+				fw_vers->or_valid = true;
+				fw_vers->or_major =
+					comb_verl >> NVM_COMB_VER_SHFT;
+				fw_vers->or_build =
+					(comb_verl << NVM_COMB_VER_SHFT)
+					| (comb_verh >> NVM_COMB_VER_SHFT);
+				fw_vers->or_patch =
+					comb_verh & NVM_COMB_VER_MASK;
+			}
+		}
+		break;
+
+	default:
+		break;
+	}
+	return;
+}
+
 

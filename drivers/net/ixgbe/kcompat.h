@@ -1124,6 +1124,8 @@ static inline struct device *pci_dev_to_dev(struct pci_dev *pdev)
 	pdev_printk(KERN_INFO, to_pci_dev(dev), fmt, ## args)
 #define dev_warn(dev, fmt, args...)            \
 	pdev_printk(KERN_WARNING, to_pci_dev(dev), fmt, ## args)
+#define dev_notice(dev, fmt, args...)            \
+	pdev_printk(KERN_NOTICE, to_pci_dev(dev), fmt, ## args)
 
 /* NOTE: dangerous! we ignore the 'gfp' argument */
 #define dma_alloc_coherent(dev,sz,dma,gfp) \
@@ -1646,6 +1648,8 @@ extern void *_kc_kzalloc(size_t size, int flags);
 #define ESTATUS_1000_TFULL	0x2000	/* Can do 1000BT Full */
 #define ESTATUS_1000_THALF	0x1000	/* Can do 1000BT Half */
 
+#define SUPPORTED_Pause	        (1 << 13)
+#define SUPPORTED_Asym_Pause	(1 << 14)
 #define ADVERTISED_Pause	(1 << 13)
 #define ADVERTISED_Asym_Pause	(1 << 14)
 
@@ -1661,10 +1665,10 @@ typedef unsigned gfp_t;
 
 #if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,9) )
 #ifdef CONFIG_X86_64
-#define dma_sync_single_range_for_cpu(dev, dma_handle, offset, size, dir)       \
-	dma_sync_single_for_cpu(dev, dma_handle, size, dir)
-#define dma_sync_single_range_for_device(dev, dma_handle, offset, size, dir)    \
-	dma_sync_single_for_device(dev, dma_handle, size, dir)
+#define dma_sync_single_range_for_cpu(dev, addr, off, sz, dir)       \
+	dma_sync_single_for_cpu((dev), (addr), (off) + (sz), (dir))
+#define dma_sync_single_range_for_device(dev, addr, off, sz, dir)    \
+	dma_sync_single_for_device((dev), (addr), (off) + (sz), (dir))
 #endif
 #endif
 #endif /* < 2.6.14 */
@@ -1723,6 +1727,11 @@ static inline unsigned _kc_compare_ether_addr(const u8 *addr1, const u8 *addr2)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,17) )
+#ifndef dev_notice
+#define dev_notice(dev, fmt, args...)            \
+	dev_printk(KERN_NOTICE, dev, fmt, ## args)
+#endif
+
 #ifndef first_online_node
 #define first_online_node 0
 #endif
@@ -1904,6 +1913,10 @@ do { \
 #define PCI_VDEVICE(ven, dev)        \
 	PCI_VENDOR_ID_##ven, (dev),  \
 	PCI_ANY_ID, PCI_ANY_ID, 0, 0
+#endif
+
+#ifndef PCI_VENDOR_ID_INTEL
+#define PCI_VENDOR_ID_INTEL 0x8086
 #endif
 
 #ifndef round_jiffies
@@ -2137,6 +2150,10 @@ static inline int _kc_skb_is_gso_v6(const struct sk_buff *skb)
 
 #ifndef KERN_CONT
 #define KERN_CONT	""
+#endif
+#ifndef pr_err
+#define pr_err(fmt, arg...) \
+	printk(KERN_ERR fmt, ##arg)
 #endif
 #else /* < 2.6.24 */
 #define HAVE_ETHTOOL_GET_SSET_COUNT
@@ -2375,10 +2392,6 @@ static inline void __kc_skb_queue_head_init(struct sk_buff_head *list)
 }
 #define __skb_queue_head_init(_q) __kc_skb_queue_head_init(_q)
 #endif
-#ifndef skb_add_rx_frag
-#define skb_add_rx_frag _kc_skb_add_rx_frag
-extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *, int, int);
-#endif
 #endif /* < 2.6.28 */
 
 /*****************************************************************************/
@@ -2437,7 +2450,16 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *, int, int);
 #define netdev_for_each_uc_addr(uclist, dev) \
 	for (uclist = dev->uc_list; uclist; uclist = uclist->next)
 #endif
-#else
+#ifndef PORT_OTHER
+#define PORT_OTHER 0xff
+#endif
+#ifndef MDIO_PHY_ID_PRTAD
+#define MDIO_PHY_ID_PRTAD 0x03e0
+#endif
+#ifndef MDIO_PHY_ID_DEVAD
+#define MDIO_PHY_ID_DEVAD 0x001f
+#endif
+#else /* < 2.6.31 */
 #ifndef HAVE_NETDEV_STORAGE_ADDRESS
 #define HAVE_NETDEV_STORAGE_ADDRESS
 #endif
@@ -2446,6 +2468,9 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *, int, int);
 #endif
 #ifndef HAVE_TRANS_START_IN_QUEUE
 #define HAVE_TRANS_START_IN_QUEUE
+#endif
+#ifndef HAVE_INCLUDE_LINUX_MDIO_H
+#define HAVE_INCLUDE_LINUX_MDIO_H
 #endif
 #endif /* < 2.6.31 */
 
@@ -2531,13 +2556,37 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *, int, int);
 #ifndef __percpu
 #define __percpu
 #endif /* __percpu */
+#ifndef PORT_DA
+#define PORT_DA PORT_OTHER
+#endif
+#ifndef PORT_NONE
+#define PORT_NONE PORT_OTHER
+#endif
+
+#if ((RHEL_RELEASE_CODE && \
+     (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3)) && \
+     (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0))))
+#if !defined(CONFIG_X86_32) && !defined(CONFIG_NEED_DMA_MAP_STATE)
+#undef DEFINE_DMA_UNMAP_ADDR
+#define DEFINE_DMA_UNMAP_ADDR(ADDR_NAME)	dma_addr_t ADDR_NAME
+#undef DEFINE_DMA_UNMAP_LEN
+#define DEFINE_DMA_UNMAP_LEN(LEN_NAME)		__u32 LEN_NAME
+#undef dma_unmap_addr
+#define dma_unmap_addr(PTR, ADDR_NAME)		((PTR)->ADDR_NAME)
+#undef dma_unmap_addr_set
+#define dma_unmap_addr_set(PTR, ADDR_NAME, VAL)	(((PTR)->ADDR_NAME) = (VAL))
+#undef dma_unmap_len
+#define dma_unmap_len(PTR, LEN_NAME)		((PTR)->LEN_NAME)
+#undef dma_unmap_len_set
+#define dma_unmap_len_set(PTR, LEN_NAME, VAL)	(((PTR)->LEN_NAME) = (VAL))
+#endif /* CONFIG_X86_64 && !CONFIG_NEED_DMA_MAP_STATE */
+#endif /* RHEL_RELEASE_CODE */
 #else /* < 2.6.33 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_GETWWN
 #define HAVE_NETDEV_OPS_FCOE_GETWWN
 #endif
 #endif /* CONFIG_FCOE || CONFIG_FCOE_MODULE */
-#define HAVE_ETHTOOL_SFP_DISPLAY_PORT
 #endif /* < 2.6.33 */
 
 /*****************************************************************************/
@@ -2598,8 +2647,7 @@ static inline const char *_kc_netdev_name(const struct net_device *dev)
 do {								\
 	struct adapter_struct *kc_adapter = netdev_priv(netdev);\
 	struct pci_dev *pdev = kc_adapter->pdev;		\
-	printk("%s %s: " format, level, pci_name(pdev),		\
-	       ##args);						\
+	printk(level "%s: " format, pci_name(pdev), ##args);	\
 } while(0)
 #elif ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
 #define netdev_printk(level, netdev, format, args...)		\
@@ -3031,6 +3079,8 @@ struct _kc_ethtool_rx_flow_spec {
 /*****************************************************************************/
 
 /*****************************************************************************/
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0) )
 #ifndef __netdev_alloc_skb_ip_align
 #define __netdev_alloc_skb_ip_align(d,l,_g) netdev_alloc_skb_ip_align(d,l)
@@ -3120,7 +3170,6 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #undef ixgbe_get_netdev_tc_txq
 #define ixgbe_get_netdev_tc_txq(dev, tc) (&netdev_extended(dev)->qos_data.tc_to_txq[tc])
 #endif
-
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
 //typedef u32 netdev_features_t;
@@ -3143,6 +3192,11 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #define NUMTCS_RETURNS_U8
 
 
+#ifndef skb_add_rx_frag
+#define skb_add_rx_frag _kc_skb_add_rx_frag
+extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *,
+				int, int, unsigned int);
+#endif
 #endif /* < 3.4.0 */
 
 /*****************************************************************************/
@@ -3152,4 +3206,65 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #define HAVE_FDB_OPS
 #define HAVE_ETHTOOL_GET_TS_INFO
 #endif /* < 3.5.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0) )
+#ifdef ETHTOOL_GEEE
+#include <linux/mdio.h>
+/**
+ * mmd_eee_cap_to_ethtool_sup_t
+ * @eee_cap: value of the MMD EEE Capability register
+ *
+ * A small helper function that translates MMD EEE Capability (3.20) bits
+ * to ethtool supported settings.
+ */
+static inline u32 mmd_eee_cap_to_ethtool_sup_t(u16 eee_cap)
+{
+	u32 supported = 0;
+
+	if (eee_cap & MDIO_EEE_100TX)
+		supported |= SUPPORTED_100baseT_Full;
+	if (eee_cap & MDIO_EEE_1000T)
+		supported |= SUPPORTED_1000baseT_Full;
+	if (eee_cap & MDIO_EEE_10GT)
+		supported |= SUPPORTED_10000baseT_Full;
+	if (eee_cap & MDIO_EEE_1000KX)
+		supported |= SUPPORTED_1000baseKX_Full;
+	if (eee_cap & MDIO_EEE_10GKX4)
+		supported |= SUPPORTED_10000baseKX4_Full;
+	if (eee_cap & MDIO_EEE_10GKR)
+		supported |= SUPPORTED_10000baseKR_Full;
+
+	return supported;
+}
+
+/**
+ * mmd_eee_adv_to_ethtool_adv_t
+ * @eee_adv: value of the MMD EEE Advertisement/Link Partner Ability registers
+ *
+ * A small helper function that translates the MMD EEE Advertisment (7.60)
+ * and MMD EEE Link Partner Ability (7.61) bits to ethtool advertisement
+ * settings.
+ */
+static inline u32 mmd_eee_adv_to_ethtool_adv_t(u16 eee_adv)
+{
+	u32 adv = 0;
+
+	if (eee_adv & MDIO_EEE_100TX)
+		adv |= ADVERTISED_100baseT_Full;
+	if (eee_adv & MDIO_EEE_1000T)
+		adv |= ADVERTISED_1000baseT_Full;
+	if (eee_adv & MDIO_EEE_10GT)
+		adv |= ADVERTISED_10000baseT_Full;
+	if (eee_adv & MDIO_EEE_1000KX)
+		adv |= ADVERTISED_1000baseKX_Full;
+	if (eee_adv & MDIO_EEE_10GKX4)
+		adv |= ADVERTISED_10000baseKX4_Full;
+	if (eee_adv & MDIO_EEE_10GKR)
+		adv |= ADVERTISED_10000baseKR_Full;
+
+	return adv;
+}
+#endif /* ETHTOOL_GEEE */
+#endif /* < 3.7.0 */
 #endif /* _KCOMPAT_H_ */

@@ -92,10 +92,7 @@ static int igb_fwbanner(char *page, char **start, off_t off, int count,
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
-	return snprintf(page, count, "%d.%d-%d\n", 
-			(adapter->fw_version & 0xF000) >> 12,
-			(adapter->fw_version & 0x0FF0) >> 4,
-			adapter->fw_version & 0x000F);
+	return snprintf(page, count, "0x%08x\n", adapter->etrack_id);
 }
 
 static int igb_numeports(char *page, char **start, off_t off, int count, 

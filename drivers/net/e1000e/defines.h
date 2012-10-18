@@ -716,6 +716,10 @@
 
 #define E1000_KABGTXD_BGSQLBIAS			0x00050000
 
+/* Low Power IDLE Control */
+#define E1000_LPIC_1000ENABLE		0x00010000
+#define E1000_LPIC_100ENABLE		0x00020000
+
 /* PBA constants */
 #define E1000_PBA_6K		0x0006	/* 6KB */
 #define E1000_PBA_8K		0x0008	/* 8KB */
@@ -1218,6 +1222,9 @@
 #define NVM_VERSION			0x0005
 #define NVM_SERDES_AMPLITUDE		0x0006	/* SERDES output amplitude */
 #define NVM_PHY_CLASS_WORD		0x0007
+#define NVM_ETRACK_WORD			0x0042
+#define NVM_COMB_VER_OFF		0x0083
+#define NVM_COMB_VER_PTR		0x003d
 
 #define NVM_INIT_CONTROL1_REG		0x000A
 #define NVM_INIT_CONTROL2_REG		0x000F

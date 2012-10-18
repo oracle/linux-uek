@@ -41,8 +41,10 @@
 #define E1000_FCAL	0x00028	/* Flow Control Address Low - RW */
 #define E1000_FCAH	0x0002C	/* Flow Control Address High -RW */
 #define E1000_FEXT	0x0002C	/* Future Extended - RW */
-#define E1000_FEXTNVM4	0x00024	/* Future Extended NVM 4 - RW */
 #define E1000_FEXTNVM	0x00028	/* Future Extended NVM - RW */
+#define E1000_FEXTNVM2	0x00030	/* Future Extended NVM 2 - RW */
+#define E1000_FEXTNVM3	0x0003C	/* Future Extended NVM 3 - RW */
+#define E1000_FEXTNVM4	0x00024	/* Future Extended NVM 4 - RW */
 #define E1000_FCT	0x00030	/* Flow Control Type - RW */
 #define E1000_CONNSW	0x00034	/* Copper/Fiber switch control - RW */
 #define E1000_VET	0x00038	/* VLAN Ether Type - RW */
@@ -55,6 +57,7 @@
 #define E1000_IVAR	0x000E4	/* Interrupt Vector Allocation Register - RW */
 #define E1000_SVCR	0x000F0
 #define E1000_SVT	0x000F4
+#define E1000_LPIC  0x000FC	/* Low Power IDLE control */
 #define E1000_RCTL	0x00100	/* Rx Control - RW */
 #define E1000_FCTTV	0x00170	/* Flow Control Transmit Timer Value - RW */
 #define E1000_TXCW	0x00178	/* Tx Configuration Word - RW */

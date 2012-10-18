@@ -125,6 +125,8 @@ s32 ixgbe_set_fw_drv_ver_generic(struct ixgbe_hw *hw, u8 maj, u8 min,
 				 u8 build, u8 ver);
 void ixgbe_clear_tx_pending(struct ixgbe_hw *hw);
 
+extern s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw);
+
 #define IXGBE_I2C_THERMAL_SENSOR_ADDR	0xF8
 #define IXGBE_EMC_INTERNAL_DATA		0x00
 #define IXGBE_EMC_INTERNAL_THERM_LIMIT	0x20

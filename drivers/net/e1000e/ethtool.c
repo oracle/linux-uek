@@ -504,7 +504,6 @@ static int e1000e_set_flags(struct net_device *netdev, u32 data)
 #endif
 
 	rc = ethtool_op_set_flags(netdev, data, supported);
-
 	if (rc)
 		return rc;
 
@@ -2122,7 +2121,6 @@ static int e1000_set_coalesce(struct net_device *netdev,
 			      struct ethtool_coalesce *ec)
 {
 	struct e1000_adapter *adapter = netdev_priv(netdev);
-	struct e1000_hw *hw = &adapter->hw;
 
 	if ((ec->rx_coalesce_usecs > E1000_MAX_ITR_USECS) ||
 	    ((ec->rx_coalesce_usecs > 4) &&
@@ -2131,7 +2129,8 @@ static int e1000_set_coalesce(struct net_device *netdev,
 		return -EINVAL;
 
 	if (ec->rx_coalesce_usecs == 4) {
-		adapter->itr = adapter->itr_setting = 4;
+		adapter->itr_setting = 4;
+		adapter->itr = adapter->itr_setting;
 	} else if (ec->rx_coalesce_usecs <= 3) {
 		adapter->itr = 20000;
 		adapter->itr_setting = ec->rx_coalesce_usecs;
@@ -2141,9 +2140,9 @@ static int e1000_set_coalesce(struct net_device *netdev,
 	}
 
 	if (adapter->itr_setting != 0)
-		ew32(ITR, 1000000000 / (adapter->itr * 256));
+		e1000e_write_itr(adapter, adapter->itr);
 	else
-		ew32(ITR, 0);
+		e1000e_write_itr(adapter, 0);
 
 	return 0;
 }

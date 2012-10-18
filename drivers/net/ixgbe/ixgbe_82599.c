@@ -124,9 +124,8 @@ init_phy_ops_out:
 s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 {
 	s32 ret_val = 0;
-	u32 reg_anlp1 = 0;
-	u32 i = 0;
 	u16 list_offset, data_offset, data_value;
+	bool got_lock = false;
 
 	if (hw->phy.sfp_type != ixgbe_sfp_type_unknown) {
 		ixgbe_init_mac_link_ops_82599(hw);
@@ -158,28 +157,39 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 		/* Delay obtaining semaphore again to allow FW access */
 		msleep(hw->eeprom.semaphore_delay);
 
-		/* Now restart DSP by setting Restart_AN and clearing LMS */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, ((IXGBE_READ_REG(hw,
-				IXGBE_AUTOC) & ~IXGBE_AUTOC_LMS_MASK) |
-				IXGBE_AUTOC_AN_RESTART));
+		/* Need SW/FW semaphore around AUTOC writes if LESM on,
+		 * likewise reset_pipeline requires lock as it also writes
+		 * AUTOC.
+		 */
+		if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+			ret_val = hw->mac.ops.acquire_swfw_sync(hw,
+							IXGBE_GSSR_MAC_CSR_SM);
+			if (ret_val != 0) {
+				ret_val = IXGBE_ERR_SWFW_SYNC;
+				goto setup_sfp_out;
+			}
 
-		/* Wait for AN to leave state 0 */
-		for (i = 0; i < 10; i++) {
-			msleep(4);
-			reg_anlp1 = IXGBE_READ_REG(hw, IXGBE_ANLP1);
-			if (reg_anlp1 & IXGBE_ANLP1_AN_STATE_MASK)
-				break;
+			got_lock = true;
 		}
-		if (!(reg_anlp1 & IXGBE_ANLP1_AN_STATE_MASK)) {
+
+		/* Restart DSP and set SFI mode */
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (IXGBE_READ_REG(hw,
+				IXGBE_AUTOC) | IXGBE_AUTOC_LMS_10G_SERIAL));
+
+		ret_val = ixgbe_reset_pipeline_82599(hw);
+
+		if (got_lock) {
+			hw->mac.ops.release_swfw_sync(hw,
+						      IXGBE_GSSR_MAC_CSR_SM);
+			got_lock = false;
+		}
+
+		if (ret_val) {
 			hw_dbg(hw, "sfp module setup not complete\n");
 			ret_val = IXGBE_ERR_SFP_SETUP_NOT_COMPLETE;
 			goto setup_sfp_out;
 		}
 
-		/* Restart DSP by setting Restart_AN and return to SFI mode */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (IXGBE_READ_REG(hw,
-				IXGBE_AUTOC) | IXGBE_AUTOC_LMS_10G_SERIAL |
-				IXGBE_AUTOC_AN_RESTART));
 	}
 
 setup_sfp_out:
@@ -443,14 +453,29 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 	u32 links_reg;
 	u32 i;
 	s32 status = 0;
+	bool got_lock = false;
+
+	/*  reset_pipeline requires us to hold this lock as it writes to
+	 *  AUTOC.
+	 */
+	if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+		status = hw->mac.ops.acquire_swfw_sync(hw,
+						       IXGBE_GSSR_MAC_CSR_SM);
+		if (status != 0)
+			goto out;
+
+		got_lock = true;
+	}
 
 	/* Restart link */
-	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
-	autoc_reg |= IXGBE_AUTOC_AN_RESTART;
-	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
+	ixgbe_reset_pipeline_82599(hw);
+
+	if (got_lock)
+		hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_MAC_CSR_SM);
 
 	/* Only poll for autoneg to complete if specified to do so */
 	if (autoneg_wait_to_complete) {
+		autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 		if ((autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
 		     IXGBE_AUTOC_LMS_KX4_KX_KR ||
 		    (autoc_reg & IXGBE_AUTOC_LMS_MASK) ==
@@ -474,6 +499,7 @@ s32 ixgbe_start_mac_link_82599(struct ixgbe_hw *hw,
 	/* Add delay to filter out noises during initial link setup */
 	msleep(50);
 
+out:
 	return status;
 }
 
@@ -820,10 +846,11 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 	u32 links_reg;
 	u32 i;
 	ixgbe_link_speed link_capabilities = IXGBE_LINK_SPEED_UNKNOWN;
+	bool got_lock = false;
 
 	/* Check to see if speed passed in is supported. */
 	status = ixgbe_get_link_capabilities(hw, &link_capabilities, &autoneg);
-	if (status != 0)
+	if (status)
 		goto out;
 
 	speed &= link_capabilities;
@@ -844,12 +871,13 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 	    link_mode == IXGBE_AUTOC_LMS_KX4_KX_KR_SGMII) {
 		/* Set KX4/KX/KR support according to speed requested */
 		autoc &= ~(IXGBE_AUTOC_KX4_KX_SUPP_MASK | IXGBE_AUTOC_KR_SUPP);
-		if (speed & IXGBE_LINK_SPEED_10GB_FULL)
+		if (speed & IXGBE_LINK_SPEED_10GB_FULL) {
 			if (orig_autoc & IXGBE_AUTOC_KX4_SUPP)
 				autoc |= IXGBE_AUTOC_KX4_SUPP;
 			if ((orig_autoc & IXGBE_AUTOC_KR_SUPP) &&
 			    (hw->phy.smart_speed_active == false))
 				autoc |= IXGBE_AUTOC_KR_SUPP;
+		}
 		if (speed & IXGBE_LINK_SPEED_1GB_FULL)
 			autoc |= IXGBE_AUTOC_KX_SUPP;
 	} else if ((pma_pmd_1g == IXGBE_AUTOC_1G_SFI) &&
@@ -875,9 +903,30 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 	}
 
 	if (autoc != start_autoc) {
+		/* Need SW/FW semaphore around AUTOC writes if LESM is on,
+		 * likewise reset_pipeline requires us to hold this lock as
+		 * it also writes to AUTOC.
+		 */
+		if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+			status = hw->mac.ops.acquire_swfw_sync(hw,
+							IXGBE_GSSR_MAC_CSR_SM);
+			if (status != 0) {
+				status = IXGBE_ERR_SWFW_SYNC;
+				goto out;
+			}
+
+			got_lock = true;
+		}
+
 		/* Restart link */
-		autoc |= IXGBE_AUTOC_AN_RESTART;
 		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc);
+		ixgbe_reset_pipeline_82599(hw);
+
+		if (got_lock) {
+			hw->mac.ops.release_swfw_sync(hw,
+						      IXGBE_GSSR_MAC_CSR_SM);
+			got_lock = false;
+		}
 
 		/* Only poll for autoneg to complete if specified to do so */
 		if (autoneg_wait_to_complete) {
@@ -1032,9 +1081,30 @@ mac_reset_top:
 		hw->mac.orig_autoc2 = autoc2;
 		hw->mac.orig_link_settings_stored = true;
 	} else {
-		if (autoc != hw->mac.orig_autoc)
-			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, (hw->mac.orig_autoc |
-					IXGBE_AUTOC_AN_RESTART));
+		if (autoc != hw->mac.orig_autoc) {
+			/* Need SW/FW semaphore around AUTOC writes if LESM is
+			 * on, likewise reset_pipeline requires us to hold
+			 * this lock as it also writes to AUTOC.
+			 */
+			bool got_lock = false;
+			if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+				status = hw->mac.ops.acquire_swfw_sync(hw,
+							IXGBE_GSSR_MAC_CSR_SM);
+				if (status != 0) {
+					status = IXGBE_ERR_SWFW_SYNC;
+					goto reset_hw_out;
+				}
+
+				got_lock = true;
+			}
+
+			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, hw->mac.orig_autoc);
+			ixgbe_reset_pipeline_82599(hw);
+
+			if (got_lock)
+				hw->mac.ops.release_swfw_sync(hw,
+						      IXGBE_GSSR_MAC_CSR_SM);
+		}
 
 		if ((autoc2 & IXGBE_AUTOC2_UPPER_MASK) !=
 		    (hw->mac.orig_autoc2 & IXGBE_AUTOC2_UPPER_MASK)) {
@@ -1137,7 +1207,7 @@ s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 		if (IXGBE_READ_REG(hw, IXGBE_FDIRCTRL) &
 				   IXGBE_FDIRCTRL_INIT_DONE)
 			break;
-		udelay(10);
+		msleep(1);
 	}
 	if (i >= IXGBE_FDIR_INIT_DONE_POLL) {
 		hw_dbg(hw, "Flow Director Signature poll time exceeded!\n");
@@ -2037,7 +2107,7 @@ s32 ixgbe_enable_rx_dma_82599(struct ixgbe_hw *hw, u32 regval)
  *  Returns IXGBE_ERR_EEPROM_VERSION if the FW is not present or
  *  if the FW version is not supported.
  **/
-static s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw)
+s32 ixgbe_verify_fw_version_82599(struct ixgbe_hw *hw)
 {
 	s32 status = IXGBE_ERR_EEPROM_VERSION;
 	u16 fw_offset, fw_ptp_cfg_offset;
@@ -2177,5 +2247,47 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
 
 	return ret_val;
 }
+
+/**
+ * ixgbe_reset_pipeline_82599 - perform pipeline reset
+ *
+ *  @hw: pointer to hardware structure
+ *
+ * Reset pipeline by asserting Restart_AN together with LMS change to ensure
+ * full pipeline reset
+ **/
+s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
+{
+	s32 i, autoc_reg, ret_val;
+	s32 anlp1_reg = 0;
+
+	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	autoc_reg |= IXGBE_AUTOC_AN_RESTART;
+	/* Write AUTOC register with toggled LMS[2] bit and Restart_AN */
+	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg ^ IXGBE_AUTOC_LMS_1G_AN);
+	/* Wait for AN to leave state 0 */
+	for (i = 0; i < 10; i++) {
+		msleep(4);
+		anlp1_reg = IXGBE_READ_REG(hw, IXGBE_ANLP1);
+		if (anlp1_reg & IXGBE_ANLP1_AN_STATE_MASK)
+			break;
+	}
+
+	if (!(anlp1_reg & IXGBE_ANLP1_AN_STATE_MASK)) {
+		hw_dbg(hw, "auto negotiation not completed\n");
+		ret_val = IXGBE_ERR_RESET_FAILED;
+		goto reset_pipeline_out;
+	}
+
+	ret_val = 0;
+
+reset_pipeline_out:
+	/* Write AUTOC register with original LMS field and Restart_AN */
+	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
+	IXGBE_WRITE_FLUSH(hw);
+
+	return ret_val;
+}
+
 
 

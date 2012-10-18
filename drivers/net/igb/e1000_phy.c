@@ -1035,6 +1035,32 @@ s32 e1000_copper_link_setup_82577(struct e1000_hw *hw)
 	if (ret_val)
 		return ret_val;
 
+	/* Set MDI/MDIX mode */
+	ret_val = hw->phy.ops.read_reg(hw, I82577_PHY_CTRL_2, &phy_data);
+	if (ret_val)
+		return ret_val;
+	phy_data &= ~I82577_PHY_CTRL2_MDIX_CFG_MASK;
+	/*
+	 * Options:
+	 *   0 - Auto (default)
+	 *   1 - MDI mode
+	 *   2 - MDI-X mode
+	 */
+	switch (hw->phy.mdix) {
+	case 1:
+		break;
+	case 2:
+		phy_data |= I82577_PHY_CTRL2_MANUAL_MDIX;
+		break;
+	case 0:
+	default:
+		phy_data |= I82577_PHY_CTRL2_AUTO_MDI_MDIX;
+		break;
+	}
+	ret_val = hw->phy.ops.write_reg(hw, I82577_PHY_CTRL_2, phy_data);
+	if (ret_val)
+		return ret_val;
+
 	return e1000_set_master_slave_mode(hw);
 }
 
@@ -1097,7 +1123,7 @@ s32 e1000_copper_link_setup_m88(struct e1000_hw *hw)
 	 *   1 - Enabled
 	 */
 	phy_data &= ~M88E1000_PSCR_POLARITY_REVERSAL;
-	if (phy->disable_polarity_correction == 1)
+	if (phy->disable_polarity_correction)
 		phy_data |= M88E1000_PSCR_POLARITY_REVERSAL;
 
 	ret_val = phy->ops.write_reg(hw, M88E1000_PHY_SPEC_CTRL, phy_data);
@@ -1139,6 +1165,12 @@ s32 e1000_copper_link_setup_m88(struct e1000_hw *hw)
 	if (ret_val) {
 		DEBUGOUT("Error committing the PHY changes\n");
 		return ret_val;
+	}
+
+	if (phy->type == e1000_phy_i210) {
+		ret_val = e1000_set_master_slave_mode(hw);
+		if (ret_val)
+			return ret_val;
 	}
 
 	return E1000_SUCCESS;
@@ -1204,7 +1236,7 @@ s32 e1000_copper_link_setup_m88_gen2(struct e1000_hw *hw)
 	 *   1 - Enabled
 	 */
 	phy_data &= ~M88E1000_PSCR_POLARITY_REVERSAL;
-	if (phy->disable_polarity_correction == 1)
+	if (phy->disable_polarity_correction)
 		phy_data |= M88E1000_PSCR_POLARITY_REVERSAL;
 
 	/* Enable downshift and setting it to X6 */
@@ -1513,7 +1545,7 @@ static s32 e1000_copper_link_autoneg(struct e1000_hw *hw)
 	 * If autoneg_advertised is zero, we assume it was not defaulted
 	 * by the calling code so we set to advertise full capability.
 	 */
-	if (phy->autoneg_advertised == 0)
+	if (!phy->autoneg_advertised)
 		phy->autoneg_advertised = phy->autoneg_mask;
 
 	DEBUGOUT("Reconfiguring auto-neg advertisement params\n");
@@ -1695,18 +1727,23 @@ s32 e1000_phy_force_speed_duplex_m88(struct e1000_hw *hw)
 
 	DEBUGFUNC("e1000_phy_force_speed_duplex_m88");
 
-	/*
-	 * Clear Auto-Crossover to force MDI manually.  M88E1000 requires MDI
-	 * forced whenever speed and duplex are forced.
-	 */
-	ret_val = phy->ops.read_reg(hw, M88E1000_PHY_SPEC_CTRL, &phy_data);
-	if (ret_val)
-		return ret_val;
+	/* I210 and I211 devices support Auto-Crossover in forced operation. */
+	if (phy->type != e1000_phy_i210) {
+		/*
+		 * Clear Auto-Crossover to force MDI manually.  M88E1000
+		 * requires MDI forced whenever speed and duplex are forced.
+		 */
+		ret_val = phy->ops.read_reg(hw, M88E1000_PHY_SPEC_CTRL,
+					    &phy_data);
+		if (ret_val)
+			return ret_val;
 
-	phy_data &= ~M88E1000_PSCR_AUTO_X_MODE;
-	ret_val = phy->ops.write_reg(hw, M88E1000_PHY_SPEC_CTRL, phy_data);
-	if (ret_val)
-		return ret_val;
+		phy_data &= ~M88E1000_PSCR_AUTO_X_MODE;
+		ret_val = phy->ops.write_reg(hw, M88E1000_PHY_SPEC_CTRL,
+					     phy_data);
+		if (ret_val)
+			return ret_val;
+	}
 
 	DEBUGOUT1("M88E1000 PSCR: %X\n", phy_data);
 
@@ -1740,6 +1777,7 @@ s32 e1000_phy_force_speed_duplex_m88(struct e1000_hw *hw)
 			case I347AT4_E_PHY_ID:
 			case M88E1340M_E_PHY_ID:
 			case M88E1112_E_PHY_ID:
+			case I210_I_PHY_ID:
 				reset_dsp = false;
 				break;
 			default:
@@ -1779,6 +1817,8 @@ s32 e1000_phy_force_speed_duplex_m88(struct e1000_hw *hw)
 	if (hw->phy.id == I347AT4_E_PHY_ID ||
 		hw->phy.id == M88E1340M_E_PHY_ID ||
 		hw->phy.id == M88E1112_E_PHY_ID)
+		return E1000_SUCCESS;
+	if (hw->phy.id == I210_I_PHY_ID)
 		return E1000_SUCCESS;
 	ret_val = phy->ops.read_reg(hw, M88E1000_EXT_PHY_SPEC_CTRL, &phy_data);
 	if (ret_val)
@@ -2042,6 +2082,7 @@ s32 e1000_check_downshift_generic(struct e1000_hw *hw)
 	DEBUGFUNC("e1000_check_downshift_generic");
 
 	switch (phy->type) {
+	case e1000_phy_i210:
 	case e1000_phy_m88:
 	case e1000_phy_gg82563:
 		offset = M88E1000_PHY_SPEC_STATUS;
@@ -2312,6 +2353,27 @@ s32 e1000_get_cable_length_m88_gen2(struct e1000_hw *hw)
 	DEBUGFUNC("e1000_get_cable_length_m88_gen2");
 
 	switch (hw->phy.id) {
+	case I210_I_PHY_ID:
+		/* Get cable length from PHY Cable Diagnostics Control Reg */
+		ret_val = phy->ops.read_reg(hw, (0x7 << GS40G_PAGE_SHIFT) +
+					    (I347AT4_PCDL + phy->addr),
+					    &phy_data);
+		if (ret_val)
+			return ret_val;
+
+		/* Check if the unit of cable length is meters or cm */
+		ret_val = phy->ops.read_reg(hw, (0x7 << GS40G_PAGE_SHIFT) +
+					    I347AT4_PCDC, &phy_data2);
+		if (ret_val)
+			return ret_val;
+
+		is_cm = !(phy_data2 & I347AT4_PCDC_CABLE_LENGTH_UNIT);
+
+		/* Populate the phy structure with cable length in meters */
+		phy->min_cable_length = phy_data / (is_cm ? 100 : 1);
+		phy->max_cable_length = phy_data / (is_cm ? 100 : 1);
+		phy->cable_length = phy_data / (is_cm ? 100 : 1);
+		break;
 	case M88E1340M_E_PHY_ID:
 	case I347AT4_E_PHY_ID:
 		/* Remember the original page select and set it to 7 */
@@ -2706,9 +2768,11 @@ s32 e1000_phy_hw_reset_generic(struct e1000_hw *hw)
 
 	DEBUGFUNC("e1000_phy_hw_reset_generic");
 
-	ret_val = phy->ops.check_reset_block(hw);
-	if (ret_val)
-		return E1000_SUCCESS;
+	if (phy->ops.check_reset_block) {
+		ret_val = phy->ops.check_reset_block(hw);
+		if (ret_val)
+			return E1000_SUCCESS;
+	}
 
 	ret_val = phy->ops.acquire(hw);
 	if (ret_val)
@@ -2868,6 +2932,9 @@ enum e1000_phy_type e1000_get_phy_type_from_id(u32 phy_id)
 	case I82580_I_PHY_ID:
 		phy_type = e1000_phy_82580;
 		break;
+	case I210_I_PHY_ID:
+		phy_type = e1000_phy_i210;
+		break;
 	default:
 		phy_type = e1000_phy_unknown;
 		break;
@@ -2925,10 +2992,16 @@ s32 e1000_determine_phy_address(struct e1000_hw *hw)
 void e1000_power_up_phy_copper(struct e1000_hw *hw)
 {
 	u16 mii_reg = 0;
+	u16 power_reg = 0;
 
 	/* The PHY will retain its settings across a power down/up cycle */
 	hw->phy.ops.read_reg(hw, PHY_CONTROL, &mii_reg);
 	mii_reg &= ~MII_CR_POWER_DOWN;
+	if (hw->phy.type == e1000_phy_i210) {
+		hw->phy.ops.read_reg(hw, GS40G_COPPER_SPEC, &power_reg);
+		power_reg &= ~GS40G_CS_POWER_DOWN;
+		hw->phy.ops.write_reg(hw, GS40G_COPPER_SPEC, power_reg);
+	}
 	hw->phy.ops.write_reg(hw, PHY_CONTROL, mii_reg);
 }
 
@@ -2943,10 +3016,17 @@ void e1000_power_up_phy_copper(struct e1000_hw *hw)
 void e1000_power_down_phy_copper(struct e1000_hw *hw)
 {
 	u16 mii_reg = 0;
+	u16 power_reg = 0;
 
 	/* The PHY will retain its settings across a power down/up cycle */
 	hw->phy.ops.read_reg(hw, PHY_CONTROL, &mii_reg);
 	mii_reg |= MII_CR_POWER_DOWN;
+	/* i210 Phy requires an additional bit for power up/down */
+	if (hw->phy.type == e1000_phy_i210) {
+		hw->phy.ops.read_reg(hw, GS40G_COPPER_SPEC, &power_reg);
+		power_reg |= GS40G_CS_POWER_DOWN;
+		hw->phy.ops.write_reg(hw, GS40G_COPPER_SPEC, power_reg);
+	}
 	hw->phy.ops.write_reg(hw, PHY_CONTROL, mii_reg);
 	msec_delay(1);
 }
@@ -3116,4 +3196,67 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw)
 	phy->cable_length = length;
 
 	return E1000_SUCCESS;
+}
+
+/**
+ *  e1000_write_phy_reg_gs40g - Write GS40G  PHY register
+ *  @hw: pointer to the HW structure
+ *  @offset: register offset to write to
+ *  @data: data to write at register offset
+ *
+ *  Acquires semaphore, if necessary, then writes the data to PHY register
+ *  at the offset.  Release any acquired semaphores before exiting.
+ **/
+s32 e1000_write_phy_reg_gs40g(struct e1000_hw *hw, u32 offset, u16 data)
+{
+	s32 ret_val;
+	u16 page = offset >> GS40G_PAGE_SHIFT;
+
+	DEBUGFUNC("e1000_write_phy_reg_gs40g");
+
+	offset = offset & GS40G_OFFSET_MASK;
+	ret_val = hw->phy.ops.acquire(hw);
+	if (ret_val)
+		return ret_val;
+
+	ret_val = e1000_write_phy_reg_mdic(hw, GS40G_PAGE_SELECT, page);
+	if (ret_val)
+		goto release;
+	ret_val = e1000_write_phy_reg_mdic(hw, offset, data);
+
+release:
+	hw->phy.ops.release(hw);
+	return ret_val;
+}
+
+/**
+ *  e1000_read_phy_reg_gs40g - Read GS40G  PHY register
+ *  @hw: pointer to the HW structure
+ *  @offset: lower half is register offset to read to
+ *     upper half is page to use.
+ *  @data: data to read at register offset
+ *
+ *  Acquires semaphore, if necessary, then reads the data in the PHY register
+ *  at the offset.  Release any acquired semaphores before exiting.
+ **/
+s32 e1000_read_phy_reg_gs40g(struct e1000_hw *hw, u32 offset, u16 *data)
+{
+	s32 ret_val;
+	u16 page = offset >> GS40G_PAGE_SHIFT;
+
+	DEBUGFUNC("e1000_read_phy_reg_gs40g");
+
+	offset = offset & GS40G_OFFSET_MASK;
+	ret_val = hw->phy.ops.acquire(hw);
+	if (ret_val)
+		return ret_val;
+
+	ret_val = e1000_write_phy_reg_mdic(hw, GS40G_PAGE_SELECT, page);
+	if (ret_val)
+		goto release;
+	ret_val = e1000_read_phy_reg_mdic(hw, offset, data);
+
+release:
+	hw->phy.ops.release(hw);
+	return ret_val;
 }
