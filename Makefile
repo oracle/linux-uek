@@ -1219,11 +1219,13 @@ ifndef CONFIG_DT_DISABLE_CTF
 # This is made doubly annoying by the presence of '.o' files which are actually
 # empty ar archives.
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
-	@echo $(vmlinux-all) | tr " " "\n" | grep "\.o$$" | xargs file | \
+	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
+		tr " " "\n" | grep "\.o$$" | xargs file | \
 		grep ELF | cut -d: -f1 > objects.builtin
-	@for archive in $$(echo $(vmlinux-all) | tr " " "\n" | grep "\.a$$"); do \
-	    ar t "$$archive" | grep '\.o$$' | \
-		 sed "s,^,$${archive%/*}/," >> objects.builtin; \
+	@for archive in $$(echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) |\
+		tr " " "\n" | grep "\.a$$"); do \
+		ar t "$$archive" | grep '\.o$$' | \
+			sed "s,^,$${archive%/*}/," >> objects.builtin; \
 	done
 else
 PHONY += objects.builtin

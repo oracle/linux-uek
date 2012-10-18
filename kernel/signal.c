@@ -1092,8 +1092,8 @@ out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
-ret:
 	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
+ret:
 	trace_signal_generate(sig, info, t, group, result);
 	return ret;
 }
