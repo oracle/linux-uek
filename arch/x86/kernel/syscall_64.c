@@ -23,17 +23,7 @@ typedef void (*sys_call_ptr_t)(void);
 
 extern void sys_ni_syscall(void);
 
-#if defined(CONFIG_DT_SYSTRACE) || defined(CONFIG_DT_SYSTRACE_MODULE)
 sys_call_ptr_t sys_call_table[__NR_syscall_max+1] = {
-	/*
-	*Smells like a like a compiler bug -- it doesn't work
-	*when the & below is removed.
-	*/
-	[0 ... __NR_syscall_max] = &sys_ni_syscall,
-#include <asm/unistd_64.h>
-};
-#else
-const sys_call_ptr_t sys_call_table[__NR_syscall_max+1] = {
 	/*
 	 * Smells like a compiler bug -- it doesn't work
 	 * when the & below is removed.
@@ -41,4 +31,3 @@ const sys_call_ptr_t sys_call_table[__NR_syscall_max+1] = {
 	[0 ... __NR_syscall_max] = &sys_ni_syscall,
 #include <asm/syscalls_64.h>
 };
-#endif /* CONFIG_DT_SYSTRACE || CONFIG_DT_SYSTRACE_MODULE */

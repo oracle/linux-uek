@@ -69,8 +69,6 @@
 #include <linux/slab.h>
 #include <linux/perf_event.h>
 #include <linux/file.h>
-#include <linux/dtrace_os.h>
-#include <linux/dtrace_cpu.h>
 
 #include <asm/io.h>
 #include <asm/bugs.h>
@@ -95,6 +93,11 @@ static inline void mark_rodata_ro(void) { }
 
 #ifdef CONFIG_TC
 extern void tc_init(void);
+#endif
+
+#ifdef CONFIG_DTRACE
+extern void dtrace_os_init(void);
+extern void dtrace_cpu_init(void);
 #endif
 
 /*
