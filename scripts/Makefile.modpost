@@ -17,7 +17,7 @@
 # 5) compile all <module>.mod.c files
 # 6) generate CTF for the entire kernel, or for the module alone if this is
 #    a build of an external module
-# 7) final link of the module
+# 7) final link of the module to a <module.ko> file
 
 # Step 3 is used to place certain information in the module's ELF
 # section, including information such as:
@@ -142,7 +142,7 @@ ifndef CONFIG_DT_DISABLE_CTF
 
 ifeq ($(KBUILD_EXTMOD),)
 ctf-dir := .ctf
-quiet_cmd_ctf = DWARF2CTF
+quiet_cmd_ctf = CTF
       cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist $^
 builtins := $(shell cat objects.builtin 2>/dev/null)
 ctf-stamp := .ctf/ctf.stamp
@@ -154,7 +154,7 @@ kernel/ctf/ctf.ko: .ctf/ctf.stamp
 
 else
 ctf-dir := $(KBUILD_EXTMOD)/.ctf
-quiet_cmd_ctf = DWARF2CTF
+quiet_cmd_ctf = CTF
       cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $^
 builtins :=
 ctf-stamp := $(ctf-dir)/$(notdir $(M)-extmod).stamp
@@ -189,11 +189,7 @@ module-ctfs-modular = $(addprefix $(ctf-dir)/,$(notdir $*.mod.ctf))
 # Expands to the name of a CTF file, given a target of a module name given to
 # one of the link rules below.
 
-ifneq ($(CONFIG_MODULE_SIG),y)
 ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $@)).mod.ctf)
-else
-ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $(basename $@))).mod.ctf)
-endif
 
 # Expands to a series of objcopy --add-section arguments to add all
 # necessary CTF files to a module, with appropriate section names.
