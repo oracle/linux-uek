@@ -150,3 +150,11 @@ static int __init nosdt(char *str)
 }
 
 early_param("nosdt", nosdt);
+
+#if defined(CONFIG_DT_DT_PERF) || defined(CONFIG_DT_DT_PERF_MODULE)
+void dtrace_sdt_perf(void)
+{
+	DTRACE_PROBE(measure);
+}
+EXPORT_SYMBOL(dtrace_sdt_perf);
+#endif
