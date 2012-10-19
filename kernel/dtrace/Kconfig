@@ -69,6 +69,12 @@ config DT_DT_TEST
 	help
 	  To be written.
 
+config DT_DT_PERF
+	tristate "DTrace Performance Test Probe"
+	default m
+	help
+	  To be written.
+
 config DT_DEBUG
 	bool "DTrace debugging"
 	default m
