@@ -2722,6 +2722,8 @@ static int be_vf_setup(struct be_adapter *adapter)
 		if (status)
 			goto err;
 		vf_cfg->def_vid = def_vlan;
+
+		be_cmd_enable_vf(adapter, vf + 1);
 	}
 	return 0;
 err:
