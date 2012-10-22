@@ -524,6 +524,7 @@ static struct sk_buff *mlx4_en_rx_skb(struct mlx4_en_priv *priv,
 		dma_sync_single_for_cpu(priv->ddev, dma, length,
 					DMA_FROM_DEVICE);
 		skb_copy_to_linear_data(skb, va, length);
+		skb->truesize = length + sizeof(struct sk_buff);
 		skb->tail += length;
 	} else {
 		/* Move relevant fragments to skb */
