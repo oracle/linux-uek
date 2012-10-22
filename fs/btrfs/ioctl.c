@@ -566,7 +566,8 @@ static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 		ret = btrfs_commit_transaction(trans,
 					       root->fs_info->extent_root);
 	}
-	BUG_ON(ret);
+	if (ret)
+		goto fail;
 
 	ret = pending_snapshot->error;
 	if (ret)
