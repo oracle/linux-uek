@@ -384,6 +384,12 @@ typedef struct {
 	void *romimage;
 } efi_pci_io_protocol_64;
 
+#define EFI_CERT_SHA256_GUID \
+    EFI_GUID(  0xc1c41626, 0x504c, 0x4092, 0xac, 0xa9, 0x41, 0xf9, 0x36, 0x93, 0x43, 0x28 )
+
+#define EFI_CERT_X509_GUID \
+    EFI_GUID(  0xa5c059a1, 0x94e4, 0x4aa7, 0x87, 0xb5, 0xab, 0x15, 0x5c, 0x2b, 0xf0, 0x72 )
+
 typedef struct {
 	void *poll_mem;
 	void *poll_io;
@@ -803,6 +809,20 @@ typedef struct _efi_file_io_interface {
 #define EFI_FILE_MODE_CREATE	0x8000000000000000
 
 #define EFI_INVALID_TABLE_ADDR		(~0UL)
+
+typedef struct  {
+	efi_guid_t signature_owner;
+	u8 signature_data[];
+} efi_signature_data_t;
+
+typedef struct {
+	efi_guid_t signature_type;
+	u32 signature_list_size;
+	u32 signature_header_size;
+	u32 signature_size;
+	u8 signature_header[];
+	/* efi_signature_data_t signatures[][] */
+} efi_signature_list_t;
 
 /*
  * All runtime access to EFI goes through this structure:
