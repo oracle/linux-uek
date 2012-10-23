@@ -40,7 +40,7 @@
 #include <asm/atomic.h>
 #include <linux/node.h>
 
-#ifdef CONFIG_X86
+#if defined(CONFIG_X86) && defined(CONFIG_APM_MODULE)
 
 /* Each CPU is put into a group.  In most cases, the group number is
  * equal to the CPU number of one of the CPUs in the group.  The
@@ -267,7 +267,7 @@ static void sys_tune_ensure_init(void)
 
 void sys_tune_fini(void)
 {
-#ifdef CONFIG_X86
+#if defined(CONFIG_X86) && defined(CONFIG_APM_MODULE)
 	void (*old)(void);
 	int cpu;
 
@@ -297,7 +297,7 @@ void sys_tune_fini(void)
 
 void sys_tune_init(void)
 {
-#ifdef CONFIG_X86
+#if defined(CONFIG_X86) && defined(CONFIG_APM_MODULE)
 	int cpu;
 
 	for_each_possible_cpu(cpu) {
