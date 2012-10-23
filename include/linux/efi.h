@@ -925,6 +925,10 @@ extern bool efi_poweroff_required(void);
 char * __init efi_md_typeattr_format(char *buf, size_t size,
 				     const efi_memory_desc_t *md);
 
+struct key;
+extern int __init parse_efi_signature_list(const void *data, size_t size,
+					   struct key *keyring);
+
 /**
  * efi_range_is_wc - check the WC bit on an address range
  * @start: starting kvirt address
