@@ -661,7 +661,12 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
  */
 extern const struct ethtool_ops mlx4_en_ethtool_ops;
 
-
+/*
+ * Defines for link speed - needed by selftest
+ */
+#define MLX4_EN_LINK_SPEED_1G	1000
+#define MLX4_EN_LINK_SPEED_10G	10000
+#define MLX4_EN_LINK_SPEED_40G	40000
 
 /*
  * printk / logging functions

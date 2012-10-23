@@ -127,8 +127,10 @@ static int mlx4_en_test_speed(struct mlx4_en_priv *priv)
 	if (mlx4_en_QUERY_PORT(priv->mdev, priv->port))
 		return -ENOMEM;
 
-	/* The device currently only supports 10G speed */
-	if (priv->port_state.link_speed != SPEED_10000)
+	/* The device supports 1G, 10G and 40G speed */
+	if (priv->port_state.link_speed != MLX4_EN_LINK_SPEED_1G &&
+	    priv->port_state.link_speed != MLX4_EN_LINK_SPEED_10G &&
+	    priv->port_state.link_speed != MLX4_EN_LINK_SPEED_40G)
 		return priv->port_state.link_speed;
 	return 0;
 }
