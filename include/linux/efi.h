@@ -639,6 +639,10 @@ extern void efi_init_function_register(const struct efi_init_funcs *funcs);
 extern int efi_config_init(u64 tables, int nr_tables, struct efi *efi_t);
 extern void xen_efi_probe(void);
 
+struct key;
+extern int __init parse_efi_signature_list(const void *data, size_t size,
+					   struct key *keyring);
+
 /**
  * efi_range_is_wc - check the WC bit on an address range
  * @start: starting kvirt address
