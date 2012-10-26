@@ -54,6 +54,7 @@
 #include <asm/io.h>
 #include <linux/ethtool.h>
 #include <linux/if_vlan.h>
+#include "uek-kcompat.h"
 
 /* NAPI enable/disable flags here */
 #define NAPI
