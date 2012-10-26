@@ -159,7 +159,7 @@ static struct key *request_asymmetric_key(const char *signer, size_t signer_len,
 	pr_debug("Look up: \"%s\"\n", id);
 
 #ifdef CONFIG_SYSTEM_BLACKLIST_KEYRING
-	key = keyring_search(make_key_ref(system_blacklist_keyring,, 1),
+	key = keyring_search(make_key_ref(system_blacklist_keyring, 1),
 				   &key_type_asymmetric, id);
 	if (!IS_ERR(key)) {
 		/* module is signed with a cert in the blacklist.  reject */
