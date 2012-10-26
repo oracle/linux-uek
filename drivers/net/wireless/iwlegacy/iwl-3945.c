@@ -496,7 +496,8 @@ static void iwl3945_pass_packet_to_mac80211(struct iwl_priv *priv,
 				       le32_to_cpu(rx_end->status), stats);
 
 	skb_add_rx_frag(skb, 0, rxb->page,
-			(void *)rx_hdr->payload - (void *)pkt, len);
+			(void *)rx_hdr->payload - (void *)pkt, len,
+			len);
 
 	iwl_legacy_update_stats(priv, false, fc, len);
 	memcpy(IEEE80211_SKB_RXCB(skb), stats, sizeof(*stats));

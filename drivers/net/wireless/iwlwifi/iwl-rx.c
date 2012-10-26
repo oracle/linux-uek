@@ -855,7 +855,8 @@ static void iwl_pass_packet_to_mac80211(struct iwl_priv *priv,
 		return;
 	}
 
-	skb_add_rx_frag(skb, 0, rxb->page, (void *)hdr - rxb_addr(rxb), len);
+	skb_add_rx_frag(skb, 0, rxb->page, (void *)hdr - rxb_addr(rxb), len,
+			len);
 
 	iwl_update_stats(priv, false, fc, len);
 
