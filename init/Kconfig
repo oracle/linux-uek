@@ -1793,6 +1793,15 @@ config BASE_SMALL
 	default 0 if BASE_FULL
 	default 1 if !BASE_FULL
 
+config SYSTEM_BLACKLIST_KEYRING
+	bool "Provide system-wide ring of blacklisted keys"
+	depends on KEYS
+	help
+	  Provide a system keyring to which blacklisted keys can be added.  Keys
+	  in the keyring are considered entirely untrusted.  Keys in this keyring
+	  are used by the module signature checking to reject loading of modules
+	  signed with a blacklisted key.
+
 menuconfig MODULES
 	bool "Enable loadable module support"
 	option modules

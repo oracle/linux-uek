@@ -20,6 +20,9 @@
 
 struct key *system_trusted_keyring;
 EXPORT_SYMBOL_GPL(system_trusted_keyring);
+#ifdef CONFIG_SYSTEM_BLACKLIST_KEYRING
+struct key *system_blacklist_keyring;
+#endif
 
 extern __initconst const u8 system_certificate_list[];
 extern __initconst const unsigned long system_certificate_list_size;
@@ -41,6 +44,20 @@ static __init int system_trusted_keyring_init(void)
 		panic("Can't allocate system trusted keyring\n");
 
 	set_bit(KEY_FLAG_TRUSTED_ONLY, &system_trusted_keyring->flags);
+
+#ifdef CONFIG_SYSTEM_BLACKLIST_KEYRING
+	system_blacklist_keyring = keyring_alloc(".system_blacklist_keyring",
+				    KUIDT_INIT(0), KGIDT_INIT(0),
+				    current_cred(),
+				    (KEY_POS_ALL & ~KEY_POS_SETATTR) |
+				    KEY_USR_VIEW | KEY_USR_READ,
+				    KEY_ALLOC_NOT_IN_QUOTA, NULL);
+	if (IS_ERR(system_blacklist_keyring))
+		panic("Can't allocate module signing blacklist keyring\n");
+
+	set_bit(KEY_FLAG_TRUSTED_ONLY, &system_blacklist_keyring->flags);
+#endif
+
 	return 0;
 }
 
