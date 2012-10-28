@@ -226,6 +226,15 @@ struct mlx4_ib_proxy_sqp_hdr {
 	struct mlx4_rcv_tunnel_hdr tun;
 }  __packed;
 
+struct mlx4_roce_smac_info {
+	u64 smac;
+	int smac_index;
+	int smac_port;
+	u64 candidate_smac;
+	int candidate_smac_index;
+	int candidate_smac_port;
+};
+
 struct mlx4_ib_qp {
 	struct ib_qp		ibqp;
 	struct mlx4_qp		mqp;
@@ -258,7 +267,8 @@ struct mlx4_ib_qp {
 	struct list_head	gid_list;
 	struct list_head	steering_rules;
 	struct mlx4_ib_buf	*sqp_proxy_rcv;
-
+	struct mlx4_roce_smac_info pri;
+	struct mlx4_roce_smac_info alt;
 };
 
 struct mlx4_ib_srq {
