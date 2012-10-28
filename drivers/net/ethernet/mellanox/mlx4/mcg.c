@@ -565,7 +565,12 @@ static int remove_promisc_qp(struct mlx4_dev *dev, u8 port,
 					break;
 				}
 
-			BUG_ON(loc < 0);
+			if (loc < 0) {
+				mlx4_err(dev, "QP %06x wasn't found in entry %d\n",
+					 qpn, entry->index);
+				err = -EINVAL;
+				goto out_mailbox;
+			}
 
 			mgm->members_count = cpu_to_be32(--members_count |
 							 (MLX4_PROT_ETH << 30));
