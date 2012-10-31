@@ -2950,6 +2950,21 @@ lpfc_bg_scsi_prep_dma_buf_s3(struct lpfc_hba *phba,
 	iocb_cmd->ulpBdeCount = 1;
 	iocb_cmd->ulpLe = 1;
 
+	switch (scsi_get_prot_op(scsi_cmnd)) {
+	case SCSI_PROT_WRITE_STRIP:
+	case SCSI_PROT_READ_STRIP:
+		lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_DIF_STRIP;
+		break;
+	case SCSI_PROT_WRITE_INSERT:
+	case SCSI_PROT_READ_INSERT:
+		lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_DIF_INSERT;
+		break;
+	case SCSI_PROT_WRITE_PASS:
+	case SCSI_PROT_READ_PASS:
+		lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_DIF_PASS;
+		break;
+	}
+
 	fcpdl = lpfc_bg_scsi_adjust_dl(phba, lpfc_cmd);
 	fcp_cmnd->fcpDl = be32_to_cpu(fcpdl);
 
@@ -3600,7 +3615,6 @@ lpfc_bg_scsi_prep_dma_buf_s4(struct lpfc_hba *phba,
 	 * we need to set word 4 of IOCB here
 	 */
 	iocb_cmd->un.fcpi.fcpi_parm = fcpdl;
-	lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_DIF;
 
 	return 0;
 err:

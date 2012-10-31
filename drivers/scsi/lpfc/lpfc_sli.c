@@ -8122,10 +8122,6 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		       LPFC_WQE_LENLOC_WORD4);
 		bf_set(wqe_ebde_cnt, &wqe->fcp_iwrite.wqe_com, 0);
 		bf_set(wqe_pu, &wqe->fcp_iwrite.wqe_com, iocbq->iocb.ulpPU);
-		if (iocbq->iocb_flag & LPFC_IO_DIF) {
-			iocbq->iocb_flag &= ~LPFC_IO_DIF;
-			bf_set(wqe_dif, &wqe->generic.wqe_com, 1);
-		}
 		bf_set(wqe_dbde, &wqe->fcp_iwrite.wqe_com, 1);
 		break;
 	case CMD_FCP_IREAD64_CR:
@@ -8145,10 +8141,6 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		       LPFC_WQE_LENLOC_WORD4);
 		bf_set(wqe_ebde_cnt, &wqe->fcp_iread.wqe_com, 0);
 		bf_set(wqe_pu, &wqe->fcp_iread.wqe_com, iocbq->iocb.ulpPU);
-		if (iocbq->iocb_flag & LPFC_IO_DIF) {
-			iocbq->iocb_flag &= ~LPFC_IO_DIF;
-			bf_set(wqe_dif, &wqe->generic.wqe_com, 1);
-		}
 		bf_set(wqe_dbde, &wqe->fcp_iread.wqe_com, 1);
 		break;
 	case CMD_FCP_ICMND64_CR:
@@ -8358,6 +8350,14 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		break;
 	}
 
+	if (iocbq->iocb_flag & LPFC_IO_DIF_PASS)
+		bf_set(wqe_dif, &wqe->generic.wqe_com, LPFC_WQE_DIF_PASSTHRU);
+	else if (iocbq->iocb_flag & LPFC_IO_DIF_STRIP)
+		bf_set(wqe_dif, &wqe->generic.wqe_com, LPFC_WQE_DIF_STRIP);
+	else if (iocbq->iocb_flag & LPFC_IO_DIF_INSERT)
+		bf_set(wqe_dif, &wqe->generic.wqe_com, LPFC_WQE_DIF_INSERT);
+	iocbq->iocb_flag &= ~(LPFC_IO_DIF_PASS | LPFC_IO_DIF_STRIP |
+			      LPFC_IO_DIF_INSERT);
 	bf_set(wqe_xri_tag, &wqe->generic.wqe_com, xritag);
 	bf_set(wqe_reqtag, &wqe->generic.wqe_com, iocbq->iotag);
 	wqe->generic.wqe_com.abort_tag = abort_tag;
