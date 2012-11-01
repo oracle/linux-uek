@@ -1066,10 +1066,10 @@ static int __mlx4_ib_flow_attach(struct mlx4_ib_dev *mdev,
 	struct mlx4_net_trans_rule rule =
 	{	.queue_mode = MLX4_NET_TRANS_Q_FIFO,
 		.exclusive = 0,
-		.allow_loopback = 1,
 		.promisc_mode = MLX4_FS_PROMISC_NONE,
 	};
 
+	rule.allow_loopback = !flow_spec->block_mc_loopback;
 	rule.port = mqp->port;
 	rule.priority = MLX4_DOMAIN_UVERBS | priority;
 	rule.qpn = mqp->mqp.qpn;
