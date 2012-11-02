@@ -894,11 +894,10 @@ static int scrub_handle_errored_block(struct scrub_block *sblock_to_check)
 		sblock_other = sblocks_for_recheck + mirror_index;
 
 		/* build and submit the bios, check checksums */
-		scrub_recheck_block(fs_info, sblock_other, is_metadata,
-				    have_csum, csum, generation,
-				    sctx->csum_size);
-
-		if (!sblock_other->header_error &&
+		ret = scrub_recheck_block(fs_info, sblock_other, is_metadata,
+					  have_csum, csum, generation,
+					  sctx->csum_size);
+		if (!ret && !sblock_other->header_error &&
 		    !sblock_other->checksum_error &&
 		    sblock_other->no_io_error_seen) {
 			int force_write = is_metadata || have_csum;
