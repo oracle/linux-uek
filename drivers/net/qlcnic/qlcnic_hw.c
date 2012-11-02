@@ -38,7 +38,7 @@ static inline void writeq(u64 val, void __iomem *addr)
 }
 #endif
 
-static const struct crb_128M_2M_block_map
+static struct crb_128M_2M_block_map
 crb_128M_2M_map[64] __cacheline_aligned_in_smp = {
     {{{0, 0,         0,         0} } },		/* 0: PCI */
     {{{1, 0x0100000, 0x0102000, 0x120000},	/* 1: PCIE */
@@ -817,12 +817,13 @@ int qlcnic_change_mtu(struct net_device *netdev, int mtu)
 }
 
 
-u32 qlcnic_fix_features(struct net_device *netdev, u32 features)
+netdev_features_t qlcnic_fix_features(struct net_device *netdev,
+	netdev_features_t features)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(netdev);
 
 	if ((adapter->flags & QLCNIC_ESWITCH_ENABLED)) {
-		u32 changed = features ^ netdev->features;
+		netdev_features_t changed = features ^ netdev->features;
 		features ^= changed & (NETIF_F_ALL_CSUM | NETIF_F_RXCSUM);
 	}
 
@@ -833,10 +834,10 @@ u32 qlcnic_fix_features(struct net_device *netdev, u32 features)
 }
 
 
-int qlcnic_set_features(struct net_device *netdev, u32 features)
+int qlcnic_set_features(struct net_device *netdev, netdev_features_t features)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(netdev);
-	u32 changed = netdev->features ^ features;
+	netdev_features_t changed = netdev->features ^ features;
 	int hw_lro = (features & NETIF_F_LRO) ? QLCNIC_LRO_ENABLED : 0;
 
 	if (!(changed & NETIF_F_LRO))
@@ -1775,7 +1776,7 @@ int qlcnic_dump_fw(struct qlcnic_adapter *adapter)
 		fw_dump->clr = 1;
 		snprintf(mesg, sizeof(mesg), "FW_DUMP=%s",
 			adapter->netdev->name);
-		netdev_info(adapter->netdev, "Dump data, %d bytes captured\n",
+		dev_info(&adapter->pdev->dev, "Dump data, %d bytes captured\n",
 			fw_dump->size);
 		/* Send a udev event to notify availability of FW dump */
 		kobject_uevent_env(&adapter->pdev->dev.kobj, KOBJ_CHANGE, msg);

@@ -36,8 +36,8 @@
 
 #define _QLCNIC_LINUX_MAJOR 5
 #define _QLCNIC_LINUX_MINOR 0
-#define _QLCNIC_LINUX_SUBVERSION 28
-#define QLCNIC_LINUX_VERSIONID  "5.0.28.1"
+#define _QLCNIC_LINUX_SUBVERSION 29
+#define QLCNIC_LINUX_VERSIONID  "5.0.29"
 #define QLCNIC_DRV_IDC_VER  0x01
 #define QLCNIC_DRIVER_VERSION  ((_QLCNIC_LINUX_MAJOR << 16) |\
 		 (_QLCNIC_LINUX_MINOR << 8) | (_QLCNIC_LINUX_SUBVERSION))
@@ -433,7 +433,6 @@ struct qlcnic_dump_template_hdr {
 
 struct qlcnic_fw_dump {
 	u8	clr;	/* flag to indicate if dump is cleared */
-	u32	pos;	/* position in the dump buffer */
 	u8	enable; /* enable/disable dump */
 	u32	size;	/* total size of the dump */
 	void	*data;	/* dump data area */
@@ -613,7 +612,11 @@ struct qlcnic_recv_context {
 #define QLCNIC_CDRP_CMD_GET_MAC_STATS		0x00000037
 
 #define QLCNIC_RCODE_SUCCESS		0
+#define QLCNIC_RCODE_INVALID_ARGS	6
 #define QLCNIC_RCODE_NOT_SUPPORTED	9
+#define QLCNIC_RCODE_NOT_PERMITTED	10
+#define QLCNIC_RCODE_NOT_IMPL		15
+#define QLCNIC_RCODE_INVALID		16
 #define QLCNIC_RCODE_TIMEOUT		17
 #define QLCNIC_DESTROY_CTX_RESET	0
 
@@ -943,8 +946,8 @@ struct qlcnic_ipaddr {
 #define __QLCNIC_START_FW 		4
 #define __QLCNIC_AER			5
 #define __QLCNIC_DIAG_RES_ALLOC		6
-#define	__QLCNIC_LED_ENABLE		7
-#define __QLCNIC_ELB_INPROGRESS		8
+#define __QLCNIC_LED_ENABLE		7
+
 #define QLCNIC_INTERRUPT_TEST		1
 #define QLCNIC_LOOPBACK_TEST		2
 #define QLCNIC_LED_TEST		3
@@ -1408,16 +1411,6 @@ enum op_codes {
 #define QLCNIC_SET_QUIESCENT		0xadd00010
 #define QLCNIC_RESET_QUIESCENT		0xadd00020
 
-#define QLCNIC_INVALID_KEY		EINVAL
-
-#ifndef SPEED_UNKNOWN
-#define SPEED_UNKNOWN	-1
-#endif
-
-#ifndef DUPLEX_UNKNOWN
-#define DUPLEX_UNKNOWN	0xff
-#endif
-
 struct qlcnic_dump_operations {
 	enum op_codes opcode;
 	u32 (*handler)(struct qlcnic_adapter *,
@@ -1531,8 +1524,9 @@ void qlcnic_advert_link_change(struct qlcnic_adapter *adapter, int linkup);
 
 int qlcnic_fw_cmd_set_mtu(struct qlcnic_adapter *adapter, int mtu);
 int qlcnic_change_mtu(struct net_device *netdev, int new_mtu);
-u32 qlcnic_fix_features(struct net_device *netdev, u32 features);
-int qlcnic_set_features(struct net_device *netdev, u32 features);
+netdev_features_t qlcnic_fix_features(struct net_device *netdev,
+	netdev_features_t features);
+int qlcnic_set_features(struct net_device *netdev, netdev_features_t features);
 int qlcnic_config_hw_lro(struct qlcnic_adapter *adapter, int enable);
 int qlcnic_config_bridged_mode(struct qlcnic_adapter *adapter, u32 enable);
 int qlcnic_send_lro_cleanup(struct qlcnic_adapter *adapter);
@@ -1545,7 +1539,6 @@ int qlcnic_set_lb_mode(struct qlcnic_adapter *adapter, u8 mode);
 
 /* Functions from qlcnic_ethtool.c */
 int qlcnic_check_loopback_buff(unsigned char *data, u8 mac[]);
-int qlcnic_loopback_test(struct net_device *netdev, u8 mode);
 
 /* Functions from qlcnic_main.c */
 int qlcnic_reset_context(struct qlcnic_adapter *);
