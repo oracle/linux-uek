@@ -734,10 +734,10 @@ qlcnic_check_flash_fw_ver(struct qlcnic_adapter *adapter)
 
 	if (adapter->ahw->revision_id == QLCNIC_P3P_C0)
 		ret = qlcnic_get_flt_entry(adapter, QLCNIC_C0_FW_IMAGE_REGION,
-						&fw_entry);
+						 &fw_entry);
 	else
 		ret = qlcnic_get_flt_entry(adapter, QLCNIC_B0_FW_IMAGE_REGION,
-						&fw_entry);
+						 &fw_entry);
 
 	if (!ret)
 		/* 0-4:-signature,  4-8:-fw version */
@@ -1321,8 +1321,7 @@ next:
 void
 qlcnic_release_firmware(struct qlcnic_adapter *adapter)
 {
-	if (adapter->fw)
-		release_firmware(adapter->fw);
+	release_firmware(adapter->fw);
 	adapter->fw = NULL;
 }
 
@@ -1357,7 +1356,7 @@ qlcnic_handle_linkevent(struct qlcnic_adapter *adapter,
 				cable_len);
 
 	if (!link_status && (lb_status == QLCNIC_ILB_MODE ||
-		lb_status == QLCNIC_ELB_MODE))
+	    lb_status == QLCNIC_ELB_MODE))
 		adapter->ahw->loopback_state |= QLCNIC_LINKEVENT;
 
 	qlcnic_advert_link_change(adapter, link_status);
@@ -1440,7 +1439,7 @@ qlcnic_alloc_rx_skb(struct qlcnic_adapter *adapter,
 	dma_addr_t dma;
 	struct pci_dev *pdev = adapter->pdev;
 
-	skb = dev_alloc_skb(rds_ring->skb_size);
+	skb = netdev_alloc_skb(adapter->netdev, rds_ring->skb_size);
 	if (!skb) {
 		adapter->stats.skb_alloc_failure++;
 		return -ENOMEM;
@@ -1488,8 +1487,6 @@ static struct sk_buff *qlcnic_process_rxbuf(struct qlcnic_adapter *adapter,
 	} else {
 		skb_checksum_none_assert(skb);
 	}
-
-	skb->dev = adapter->netdev;
 
 	buffer->skb = NULL;
 
