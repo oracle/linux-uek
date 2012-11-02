@@ -150,6 +150,26 @@ struct skb_frag_struct {
 #endif
 };
 
+static inline unsigned int skb_frag_size(const skb_frag_t *frag)
+{
+        return frag->size;
+}
+
+static inline void skb_frag_size_set(skb_frag_t *frag, unsigned int size)         
+{
+        frag->size = size;
+}
+
+static inline void skb_frag_size_add(skb_frag_t *frag, int delta)
+{
+        frag->size += delta;
+}
+
+static inline void skb_frag_size_sub(skb_frag_t *frag, int delta)
+{
+        frag->size -= delta;
+}
+
 #define HAVE_HW_TIME_STAMP
 
 /**
