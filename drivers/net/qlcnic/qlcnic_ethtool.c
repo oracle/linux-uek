@@ -13,6 +13,7 @@
 #include <linux/ethtool.h>
 
 #include "qlcnic.h"
+#define ETH_FW_DUMP_DISABLE 0
 
 struct qlcnic_stats {
 	char stat_string[ETH_GSTRING_LEN];
