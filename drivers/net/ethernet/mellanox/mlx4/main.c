@@ -2691,7 +2691,7 @@ static int __init mlx4_verify_params(void)
 		port_type_array[0] = true;
 	}
 
-	if (mod_param_profile.num_qp < 12 || mod_param_profile.num_qp > 23) {
+	if (mod_param_profile.num_qp < 18 || mod_param_profile.num_qp > 23) {
 		pr_warning("mlx4_core: bad log_num_qp: %d\n",
 			   mod_param_profile.num_qp);
 		return -1;
