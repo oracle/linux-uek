@@ -3213,7 +3213,7 @@ int close_ctree(struct btrfs_root *root)
 	fs_info->closing = 1;
 	smp_mb();
 
-	btrfs_scrub_cancel(root);
+	btrfs_scrub_cancel(fs_info);
 
 	/* wait for any defraggers to finish */
 	wait_event(fs_info->transaction_wait,

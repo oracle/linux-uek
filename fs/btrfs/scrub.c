@@ -2264,9 +2264,8 @@ static noinline_for_stack int scrub_supers(struct scrub_ctx *sctx,
 /*
  * get a reference count on fs_info->scrub_workers. start worker if necessary
  */
-static noinline_for_stack int scrub_workers_get(struct btrfs_root *root)
+static noinline_for_stack int scrub_workers_get(struct btrfs_fs_info *fs_info)
 {
-	struct btrfs_fs_info *fs_info = root->fs_info;
 	int ret = 0;
 
 	mutex_lock(&fs_info->scrub_lock);
@@ -2285,10 +2284,8 @@ out:
 	return ret;
 }
 
-static noinline_for_stack void scrub_workers_put(struct btrfs_root *root)
+static noinline_for_stack void scrub_workers_put(struct btrfs_fs_info *fs_info)
 {
-	struct btrfs_fs_info *fs_info = root->fs_info;
-
 	mutex_lock(&fs_info->scrub_lock);
 	if (--fs_info->scrub_workers_refcnt == 0)
 		btrfs_stop_workers(&fs_info->scrub_workers);
@@ -2296,29 +2293,29 @@ static noinline_for_stack void scrub_workers_put(struct btrfs_root *root)
 	mutex_unlock(&fs_info->scrub_lock);
 }
 
-
-int btrfs_scrub_dev(struct btrfs_root *root, u64 devid, u64 start, u64 end,
-		    struct btrfs_scrub_progress *progress, int readonly)
+int btrfs_scrub_dev(struct btrfs_fs_info *fs_info, u64 devid, u64 start,
+		    u64 end, struct btrfs_scrub_progress *progress,
+		    int readonly)
 {
 	struct scrub_ctx *sctx;
-	struct btrfs_fs_info *fs_info = root->fs_info;
 	int ret;
 	struct btrfs_device *dev;
 
-	if (btrfs_fs_closing(root->fs_info))
+	if (btrfs_fs_closing(fs_info))
 		return -EINVAL;
 
 	/*
 	 * check some assumptions
 	 */
-	if (root->nodesize != root->leafsize) {
+	if (fs_info->chunk_root->nodesize != fs_info->chunk_root->leafsize) {
 		printk(KERN_ERR
 		       "btrfs_scrub: size assumption nodesize == leafsize (%d == %d) fails\n",
-		       root->nodesize, root->leafsize);
+		       fs_info->chunk_root->nodesize,
+		       fs_info->chunk_root->leafsize);
 		return -EINVAL;
 	}
 
-	if (root->nodesize > BTRFS_STRIPE_LEN) {
+	if (fs_info->chunk_root->nodesize > BTRFS_STRIPE_LEN) {
 		/*
 		 * in this case scrub is unable to calculate the checksum
 		 * the way scrub is implemented. Do not handle this
@@ -2326,15 +2323,16 @@ int btrfs_scrub_dev(struct btrfs_root *root, u64 devid, u64 start, u64 end,
 		 */
 		printk(KERN_ERR
 		       "btrfs_scrub: size assumption nodesize <= BTRFS_STRIPE_LEN (%d <= %d) fails\n",
-		       root->nodesize, BTRFS_STRIPE_LEN);
+		       fs_info->chunk_root->nodesize, BTRFS_STRIPE_LEN);
 		return -EINVAL;
 	}
 
-	if (root->sectorsize != PAGE_SIZE) {
+	if (fs_info->chunk_root->sectorsize != PAGE_SIZE) {
 		/* not supported for data w/o checksums */
 		printk(KERN_ERR
 		       "btrfs_scrub: size assumption sectorsize != PAGE_SIZE (%d != %lld) fails\n",
-		       root->sectorsize, (unsigned long long)PAGE_SIZE);
+		       fs_info->chunk_root->sectorsize,
+		       (unsigned long long)PAGE_SIZE);
 		return -EINVAL;
 	}
 
@@ -2354,37 +2352,37 @@ int btrfs_scrub_dev(struct btrfs_root *root, u64 devid, u64 start, u64 end,
 		return -EINVAL;
 	}
 
-	ret = scrub_workers_get(root);
+	ret = scrub_workers_get(fs_info);
 	if (ret)
 		return ret;
 
-	mutex_lock(&root->fs_info->fs_devices->device_list_mutex);
-	dev = btrfs_find_device(root, devid, NULL, NULL);
+	mutex_lock(&fs_info->fs_devices->device_list_mutex);
+	dev = btrfs_find_device(fs_info, devid, NULL, NULL);
 	if (!dev || dev->missing) {
-		mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
-		scrub_workers_put(root);
+		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
+		scrub_workers_put(fs_info);
 		return -ENODEV;
 	}
 	mutex_lock(&fs_info->scrub_lock);
 
 	if (!dev->in_fs_metadata) {
 		mutex_unlock(&fs_info->scrub_lock);
-		mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
-		scrub_workers_put(root);
-		return -ENODEV;
+		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
+		scrub_workers_put(fs_info);
+		return -EIO;
 	}
 
 	if (dev->scrub_device) {
 		mutex_unlock(&fs_info->scrub_lock);
-		mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
-		scrub_workers_put(root);
+		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
+		scrub_workers_put(fs_info);
 		return -EINPROGRESS;
 	}
 	sctx = scrub_setup_ctx(dev);
 	if (IS_ERR(sctx)) {
 		mutex_unlock(&fs_info->scrub_lock);
-		mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
-		scrub_workers_put(root);
+		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
+		scrub_workers_put(fs_info);
 		return PTR_ERR(sctx);
 	}
 	sctx->readonly = readonly;
@@ -2392,7 +2390,7 @@ int btrfs_scrub_dev(struct btrfs_root *root, u64 devid, u64 start, u64 end,
 
 	atomic_inc(&fs_info->scrubs_running);
 	mutex_unlock(&fs_info->scrub_lock);
-	mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
+	mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 
 	down_read(&fs_info->scrub_super_lock);
 	ret = scrub_supers(sctx, dev);
@@ -2415,12 +2413,12 @@ int btrfs_scrub_dev(struct btrfs_root *root, u64 devid, u64 start, u64 end,
 	mutex_unlock(&fs_info->scrub_lock);
 
 	scrub_free_ctx(sctx);
-	scrub_workers_put(root);
+	scrub_workers_put(fs_info);
 
 	return ret;
 }
 
-int btrfs_scrub_pause(struct btrfs_root *root)
+void btrfs_scrub_pause(struct btrfs_root *root)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
 
@@ -2435,34 +2433,28 @@ int btrfs_scrub_pause(struct btrfs_root *root)
 		mutex_lock(&fs_info->scrub_lock);
 	}
 	mutex_unlock(&fs_info->scrub_lock);
-
-	return 0;
 }
 
-int btrfs_scrub_continue(struct btrfs_root *root)
+void btrfs_scrub_continue(struct btrfs_root *root)
 {
 	struct btrfs_fs_info *fs_info = root->fs_info;
 
 	atomic_dec(&fs_info->scrub_pause_req);
 	wake_up(&fs_info->scrub_pause_wait);
-	return 0;
 }
 
-int btrfs_scrub_pause_super(struct btrfs_root *root)
+void btrfs_scrub_pause_super(struct btrfs_root *root)
 {
 	down_write(&root->fs_info->scrub_super_lock);
-	return 0;
 }
 
-int btrfs_scrub_continue_super(struct btrfs_root *root)
+void btrfs_scrub_continue_super(struct btrfs_root *root)
 {
 	up_write(&root->fs_info->scrub_super_lock);
-	return 0;
 }
 
-int __btrfs_scrub_cancel(struct btrfs_fs_info *fs_info)
+int btrfs_scrub_cancel(struct btrfs_fs_info *fs_info)
 {
-
 	mutex_lock(&fs_info->scrub_lock);
 	if (!atomic_read(&fs_info->scrubs_running)) {
 		mutex_unlock(&fs_info->scrub_lock);
@@ -2482,14 +2474,9 @@ int __btrfs_scrub_cancel(struct btrfs_fs_info *fs_info)
 	return 0;
 }
 
-int btrfs_scrub_cancel(struct btrfs_root *root)
+int btrfs_scrub_cancel_dev(struct btrfs_fs_info *fs_info,
+			   struct btrfs_device *dev)
 {
-	return __btrfs_scrub_cancel(root->fs_info);
-}
-
-int btrfs_scrub_cancel_dev(struct btrfs_root *root, struct btrfs_device *dev)
-{
-	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct scrub_ctx *sctx;
 
 	mutex_lock(&fs_info->scrub_lock);
@@ -2521,12 +2508,12 @@ int btrfs_scrub_cancel_devid(struct btrfs_root *root, u64 devid)
 	 * does not go away in cancel_dev. FIXME: find a better solution
 	 */
 	mutex_lock(&fs_info->fs_devices->device_list_mutex);
-	dev = btrfs_find_device(root, devid, NULL, NULL);
+	dev = btrfs_find_device(fs_info, devid, NULL, NULL);
 	if (!dev) {
 		mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 		return -ENODEV;
 	}
-	ret = btrfs_scrub_cancel_dev(root, dev);
+	ret = btrfs_scrub_cancel_dev(fs_info, dev);
 	mutex_unlock(&fs_info->fs_devices->device_list_mutex);
 
 	return ret;
@@ -2539,7 +2526,7 @@ int btrfs_scrub_progress(struct btrfs_root *root, u64 devid,
 	struct scrub_ctx *sctx = NULL;
 
 	mutex_lock(&root->fs_info->fs_devices->device_list_mutex);
-	dev = btrfs_find_device(root, devid, NULL, NULL);
+	dev = btrfs_find_device(root->fs_info, devid, NULL, NULL);
 	if (dev)
 		sctx = dev->scrub_device;
 	if (sctx)
