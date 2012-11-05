@@ -1334,13 +1334,15 @@ static noinline int btrfs_ioctl_resize(struct file *file,
 	ret = mnt_want_write_file(file);
 	if (ret)
 		return ret;
-	mutex_lock(&root->fs_info->volume_mutex);
-	if (root->fs_info->balance_ctl) {
-		printk(KERN_INFO "btrfs: balance in progress\n");
-		ret = -EINVAL;
-		goto out;
+
+	if (atomic_xchg(&root->fs_info->mutually_exclusive_operation_running,
+			1)) {
+		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
+		mnt_drop_write_file(file);
+		return -EINPROGRESS;
 	}
 
+	mutex_lock(&root->fs_info->volume_mutex);
 	vol_args = memdup_user(arg, sizeof(*vol_args));
 	if (IS_ERR(vol_args)) {
 		ret = PTR_ERR(vol_args);
@@ -1442,6 +1444,7 @@ out_free:
 	kfree(vol_args);
 out:
 	mutex_unlock(&root->fs_info->volume_mutex);
+	atomic_set(&root->fs_info->mutually_exclusive_operation_running, 0);
 	mnt_drop_write_file(file);
 	return ret;
 }
@@ -2211,8 +2214,11 @@ static int btrfs_ioctl_defrag(struct file *file, void __user *argp)
 	int ret;
 
 	ret = mnt_want_write_file(file);
-	if (ret)
+	if (ret) {
+		atomic_set(&root->fs_info->mutually_exclusive_operation_running,
+			   0);
 		return ret;
+	}
 
 	if (btrfs_root_readonly(root)) {
 		ret = -EROFS;
@@ -2269,6 +2275,7 @@ static int btrfs_ioctl_defrag(struct file *file, void __user *argp)
 	}
 out:
 	mnt_drop_write_file(file);
+	atomic_set(&root->fs_info->mutually_exclusive_operation_running, 0);
 	return ret;
 }
 
@@ -2280,13 +2287,13 @@ static long btrfs_ioctl_add_dev(struct btrfs_root *root, void __user *arg)
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
 
-	mutex_lock(&root->fs_info->volume_mutex);
-	if (root->fs_info->balance_ctl) {
-		printk(KERN_INFO "btrfs: balance in progress\n");
-		ret = -EINVAL;
-		goto out;
+	if (atomic_xchg(&root->fs_info->mutually_exclusive_operation_running,
+			1)) {
+		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
+		return -EINPROGRESS;
 	}
 
+	mutex_lock(&root->fs_info->volume_mutex);
 	vol_args = memdup_user(arg, sizeof(*vol_args));
 	if (IS_ERR(vol_args)) {
 		ret = PTR_ERR(vol_args);
@@ -2299,6 +2306,7 @@ static long btrfs_ioctl_add_dev(struct btrfs_root *root, void __user *arg)
 	kfree(vol_args);
 out:
 	mutex_unlock(&root->fs_info->volume_mutex);
+	atomic_set(&root->fs_info->mutually_exclusive_operation_running, 0);
 	return ret;
 }
 
@@ -2315,13 +2323,13 @@ static long btrfs_ioctl_rm_dev(struct file *file, void __user *arg)
 	if (ret)
 		return ret;
 
-	mutex_lock(&root->fs_info->volume_mutex);
-	if (root->fs_info->balance_ctl) {
-		printk(KERN_INFO "btrfs: balance in progress\n");
-		ret = -EINVAL;
-		goto out;
+	if (atomic_xchg(&root->fs_info->mutually_exclusive_operation_running,
+			1)) {
+		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
+		return -EINPROGRESS;
 	}
 
+	mutex_lock(&root->fs_info->volume_mutex);
 	vol_args = memdup_user(arg, sizeof(*vol_args));
 	if (IS_ERR(vol_args)) {
 		ret = PTR_ERR(vol_args);
@@ -2334,6 +2342,7 @@ static long btrfs_ioctl_rm_dev(struct file *file, void __user *arg)
 	kfree(vol_args);
 out:
 	mutex_unlock(&root->fs_info->volume_mutex);
+	atomic_set(&root->fs_info->mutually_exclusive_operation_running, 0);
 	mnt_drop_write_file(file);
 	return ret;
 }
@@ -3410,6 +3419,7 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 	struct btrfs_balance_control *bctl;
 	bool need_unlock; /* for mut. excl. ops lock */
 	int ret;
+	int need_to_clear_lock = 0;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -3477,10 +3487,13 @@ locked:
 		bargs = NULL;
 	}
 
-	if (fs_info->balance_ctl) {
+	if (atomic_xchg(&root->fs_info->mutually_exclusive_operation_running,
+			1)) {
+		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
 		ret = -EINPROGRESS;
 		goto out_bargs;
 	}
+	need_to_clear_lock = 1;
 
 	bctl = kzalloc(sizeof(*bctl), GFP_NOFS);
 	if (!bctl) {

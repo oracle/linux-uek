@@ -1434,6 +1434,8 @@ struct btrfs_fs_info {
 
 	/* device replace state */
 	struct btrfs_dev_replace dev_replace;
+
+	atomic_t mutually_exclusive_operation_running;
 };
 
 /*
