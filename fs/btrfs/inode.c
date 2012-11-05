@@ -1550,7 +1550,6 @@ int btrfs_merge_bio_hook(struct page *page, unsigned long offset,
 			 unsigned long bio_flags)
 {
 	struct btrfs_root *root = BTRFS_I(page->mapping->host)->root;
-	struct btrfs_mapping_tree *map_tree;
 	u64 logical = (u64)bio->bi_sector << 9;
 	u64 length = 0;
 	u64 map_length;
@@ -1560,11 +1559,11 @@ int btrfs_merge_bio_hook(struct page *page, unsigned long offset,
 		return 0;
 
 	length = bio->bi_size;
-	map_tree = &root->fs_info->mapping_tree;
 	map_length = length;
-	ret = btrfs_map_block(map_tree, READ, logical,
+	ret = btrfs_map_block(root->fs_info, READ, logical,
 			      &map_length, NULL, 0);
-
+	/* Will always return 0 with map_multi == NULL */
+	BUG_ON(ret < 0);
 	if (map_length < length + size)
 		return 1;
 	return ret;
@@ -6162,7 +6161,6 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 {
 	struct inode *inode = dip->inode;
 	struct btrfs_root *root = BTRFS_I(inode)->root;
-	struct btrfs_mapping_tree *map_tree = &root->fs_info->mapping_tree;
 	struct bio *bio;
 	struct bio *orig_bio = dip->orig_bio;
 	struct bio_vec *bvec = orig_bio->bi_io_vec;
@@ -6177,7 +6175,7 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 	int write = rw & REQ_WRITE;
 
 	map_length = orig_bio->bi_size;
-	ret = btrfs_map_block(map_tree, READ, start_sector << 9,
+	ret = btrfs_map_block(root->fs_info, READ, start_sector << 9,
 			      &map_length, NULL, 0);
 	if (ret) {
 		bio_put(orig_bio);
@@ -6234,7 +6232,8 @@ static int btrfs_submit_direct_hook(int rw, struct btrfs_dio_private *dip,
 			bio->bi_end_io = btrfs_end_dio_bio;
 
 			map_length = orig_bio->bi_size;
-			ret = btrfs_map_block(map_tree, READ, start_sector << 9,
+			ret = btrfs_map_block(root->fs_info, READ,
+					      start_sector << 9,
 					      &map_length, NULL, 0);
 			if (ret) {
 				bio_put(bio);
