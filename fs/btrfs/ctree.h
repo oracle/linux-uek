@@ -897,6 +897,23 @@ struct btrfs_dev_replace {
 	struct btrfs_scrub_progress scrub_progress;
 };
 
+struct btrfs_dev_replace_item {
+	/*
+	 * grow this item struct at the end for future enhancements and keep
+	 * the existing values unchanged
+	 */
+	__le64 src_devid;
+	__le64 cursor_left;
+	__le64 cursor_right;
+	__le64 cont_reading_from_srcdev_mode;
+
+	__le64 replace_state;
+	__le64 time_started;
+	__le64 time_stopped;
+	__le64 num_write_errors;
+	__le64 num_uncorrectable_read_errors;
+} __attribute__ ((__packed__));
+
 /* different types of block groups (and chunks) */
 #define BTRFS_BLOCK_GROUP_DATA		(1ULL << 0)
 #define BTRFS_BLOCK_GROUP_SYSTEM	(1ULL << 1)
@@ -1645,6 +1662,12 @@ struct btrfs_ioctl_defrag_range_args {
  * One key for all stats, (0, BTRFS_DEV_STATS_KEY, devid).
  */
 #define BTRFS_DEV_STATS_KEY	249
+
+/*
+ * Persistantly stores the device replace state in the device tree.
+ * The key is built like this: (0, BTRFS_DEV_REPLACE_KEY, 0).
+ */
+#define BTRFS_DEV_REPLACE_KEY	250
 
 /*
  * string items are for debugging.  They just store a short string of
