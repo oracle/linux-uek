@@ -4258,9 +4258,6 @@ static int __btrfs_map_block(struct btrfs_fs_info *fs_info, int rw,
 	map = (struct map_lookup *)em->bdev;
 	offset = logical - em->start;
 
-	if (mirror_num > map->num_stripes)
-		mirror_num = 0;
-
 	stripe_nr = offset;
 	/*
 	 * stripe_nr counts the total number of stripes we have to stride
