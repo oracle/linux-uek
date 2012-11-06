@@ -51,7 +51,7 @@ static unsigned long xen_io_tlb_nslabs;
  * Quick lookup value of the bus address of the IOTLB.
  */
 
-u64 start_dma_addr;
+static u64 start_dma_addr;
 
 static dma_addr_t xen_phys_to_bus(phys_addr_t paddr)
 {
@@ -464,14 +464,6 @@ xen_swiotlb_map_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 }
 EXPORT_SYMBOL_GPL(xen_swiotlb_map_sg_attrs);
 
-int
-xen_swiotlb_map_sg(struct device *hwdev, struct scatterlist *sgl, int nelems,
-		   enum dma_data_direction dir)
-{
-	return xen_swiotlb_map_sg_attrs(hwdev, sgl, nelems, dir, NULL);
-}
-EXPORT_SYMBOL_GPL(xen_swiotlb_map_sg);
-
 /*
  * Unmap a set of streaming mode DMA translations.  Again, cpu read rules
  * concerning calls here are the same as for swiotlb_unmap_page() above.
@@ -491,14 +483,6 @@ xen_swiotlb_unmap_sg_attrs(struct device *hwdev, struct scatterlist *sgl,
 
 }
 EXPORT_SYMBOL_GPL(xen_swiotlb_unmap_sg_attrs);
-
-void
-xen_swiotlb_unmap_sg(struct device *hwdev, struct scatterlist *sgl, int nelems,
-		     enum dma_data_direction dir)
-{
-	return xen_swiotlb_unmap_sg_attrs(hwdev, sgl, nelems, dir, NULL);
-}
-EXPORT_SYMBOL_GPL(xen_swiotlb_unmap_sg);
 
 /*
  * Make physical memory consistent for a set of streaming mode DMA translations

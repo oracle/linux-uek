@@ -8,6 +8,7 @@
 #include <xen/xen.h>
 #include <asm/iommu_table.h>
 
+#include <asm/xen/swiotlb-xen.h>
 int xen_swiotlb __read_mostly;
 
 static struct dma_map_ops xen_swiotlb_dma_ops = {
@@ -62,6 +63,6 @@ void __init pci_xen_swiotlb_init(void)
 	}
 }
 IOMMU_INIT_FINISH(pci_xen_swiotlb_detect,
-		  0,
+		  NULL,
 		  pci_xen_swiotlb_init,
-		  0);
+		  NULL);
