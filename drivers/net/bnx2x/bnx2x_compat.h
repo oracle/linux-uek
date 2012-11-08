@@ -1647,10 +1647,6 @@ static inline void skb_tx_timestamp(struct sk_buff *skb)
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 2, 0))
-#define skb_frag_size(frag) ((frag)->size)
-#endif
-
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 12))
 static inline int is_zero_ether_addr(const u8 *addr)
 {

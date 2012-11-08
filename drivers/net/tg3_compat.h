@@ -1038,10 +1038,6 @@ static int tg3_set_tx_hw_csum(struct net_device *dev, u32 data)
 #define skb_tx_timestamp(skb)
 #endif
 
-#ifndef BCM_HAS_SKB_FRAG_SIZE
-#define skb_frag_size(skb_frag)	((skb_frag)->size)
-#endif
-
 #if (LINUX_VERSION_CODE < 0x2060c)
 static inline int skb_header_cloned(struct sk_buff *skb) { return 0; }
 #endif

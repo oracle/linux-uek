@@ -643,19 +643,6 @@ static inline void netif_set_real_num_tx_queues(struct net_device *dev,
 #endif
 #endif
 
-#ifndef HAVE_SKB_FRAG
-static inline unsigned int skb_frag_size(const skb_frag_t *frag)
-{
-	return frag->size;
-}
-
-static inline void skb_frag_size_sub(skb_frag_t *frag, int delta)
-{
-	frag->size -= delta;
-}
-
-#endif
-
 #ifndef HAVE_ETHTOOL_TO_MII
 static inline u32 ethtool_adv_to_mii_adv_t(u32 ethadv)
 {
