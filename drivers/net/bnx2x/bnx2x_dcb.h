@@ -20,6 +20,9 @@
 #define BNX2X_DCB_H
 
 #include "bnx2x_hsi.h"
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#include "bnx2x_compat.h"
+#endif
 
 #define LLFC_DRIVER_TRAFFIC_TYPE_MAX 3 /* NW, iSCSI, FCoE */
 struct bnx2x_dcbx_app_params {
@@ -79,6 +82,24 @@ struct bnx2x_config_lldp_params {
 	u32 msg_tx_interval;
 	u32 tx_fast;
 };
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+struct bnx2x_lldp_params_get{
+	u32	ver_num;
+#define LLDP_PARAMS_VER_NUM 2
+	struct bnx2x_config_lldp_params config_lldp_params;
+	/* The reserved field should follow in case the struct above will increase*/
+	u32	_reserved[20];
+	u32	admin_status;
+#define LLDP_TX_ONLY  0x01
+#define LLDP_RX_ONLY  0x02
+#define LLDP_TX_RX    0x03
+#define LLDP_DISABLED 0x04
+	u32 remote_chassis_id[REM_CHASSIS_ID_STAT_LEN];
+	u32 remote_port_id[REM_PORT_ID_STAT_LEN];
+	u32 local_chassis_id[LOCAL_CHASSIS_ID_STAT_LEN];
+	u32 local_port_id[LOCAL_PORT_ID_STAT_LEN];
+};
+#endif /* ! BNX2X_UPSTREAM */
 
 struct bnx2x_admin_priority_app_table {
 		u32 valid;
@@ -115,6 +136,60 @@ struct bnx2x_config_dcbx_params {
 	u32 admin_default_priority;
 };
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#define DCBX_PARAMS_VER_NUM 3
+struct bnx2x_dcbx_params_get {
+	u32 ver_num;
+	u32 dcb_state;
+	u32 dcbx_enabled;
+	struct bnx2x_config_dcbx_params config_dcbx_params;
+	/* The reserved field should follow in case the struct above will increase*/
+	u32 _reserved[19];
+
+	u32 dcb_current_state;
+#define BNX2X_DCBX_CURRENT_STATE_IS_SYNC			(1 << 0)
+#define BNX2X_PFC_IS_CURRENTLY_OPERATIONAL			(1 << 1)
+#define BNX2X_ETS_IS_CURRENTLY_OPERATIONAL			(1 << 2)
+#define BNX2X_PRIORITY_TAGGING_IS_CURRENTLY_OPERATIONAL		(1 << 3)
+
+	u32 local_tc_supported;
+	u32 local_pfc_caps;
+	u32 remote_tc_supported;
+	u32 remote_pfc_cap;
+	u32 remote_ets_willing;
+	u32 remote_ets_reco_valid;
+	u32 remote_pfc_willing;
+	u32 remote_app_priority_willing;
+	u32 remote_configuration_bw_precentage[8];
+	u32 remote_configuration_ets_pg[8];
+	u32 remote_recommendation_bw_precentage[8];
+	u32 remote_recommendation_ets_pg[8];
+	u32 remote_pfc_bitmap;
+	struct bnx2x_admin_priority_app_table
+			remote_priority_app_table[DCBX_MAX_APP_PROTOCOL];
+	u32 local_ets_enable;
+	u32 local_pfc_enable;
+	u32 local_configuration_bw_precentage[8];
+	u32 local_configuration_ets_pg[8];
+	u32 local_pfc_bitmap;
+	struct bnx2x_admin_priority_app_table
+			local_priority_app_table[DCBX_MAX_APP_PROTOCOL];
+	u32 pfc_mismatch;
+	u32 priority_app_mismatch;
+	u32 dcbx_frames_sent;
+	u32 dcbx_frames_received;
+	u32 pfc_frames_sent[2];
+	u32 pfc_frames_received[2];
+};
+
+struct bnx2x_dcbx_params_set {
+	u32 ver_num;
+	u32 dcb_state;
+	u32 dcbx_enabled;
+	struct bnx2x_config_dcbx_params config_dcbx_params;
+};
+
+#endif /* ! BNX2X_UPSTREAM */
 #define GET_FLAGS(flags, bits)		((flags) & (bits))
 #define SET_FLAGS(flags, bits)		((flags) |= (bits))
 #define RESET_FLAGS(flags, bits)	((flags) &= ~(bits))
@@ -187,6 +262,11 @@ struct bnx2x;
 void bnx2x_dcbx_update(struct work_struct *work);
 void bnx2x_dcbx_init_params(struct bnx2x *bp);
 void bnx2x_dcbx_set_state(struct bnx2x *bp, bool dcb_on, u32 dcbx_enabled);
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+int bnx2x_dcb_get_lldp_params_ioctl(struct bnx2x *bp, void __user *uaddr);
+int bnx2x_dcb_get_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr);
+int bnx2x_dcb_set_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr);
+#endif
 
 enum {
 	BNX2X_DCBX_STATE_NEG_RECEIVED = 0x1,
@@ -198,7 +278,11 @@ void bnx2x_dcbx_set_params(struct bnx2x *bp, u32 state);
 void bnx2x_dcbx_pmf_update(struct bnx2x *bp);
 /* DCB netlink */
 #ifdef BCM_DCBNL
+#if (LINUX_VERSION_CODE >= 0x020621) /* BNX2X_UPSTREAM */
 extern const struct dcbnl_rtnl_ops bnx2x_dcbnl_ops;
+#else
+extern struct dcbnl_rtnl_ops bnx2x_dcbnl_ops;
+#endif
 int bnx2x_dcbnl_update_applist(struct bnx2x *bp, bool delall);
 #endif /* BCM_DCBNL */
 

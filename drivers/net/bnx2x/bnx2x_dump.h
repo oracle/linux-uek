@@ -1,6 +1,6 @@
 /* bnx2x_dump.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2012 Broadcom Corporation
+ * Copyright (c) 2011-2012 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -25,94 +25,119 @@
 
 
 /*definitions */
-#define XSTORM_WAITP_ADDR	0x2b8a80
-#define TSTORM_WAITP_ADDR	0x1b8a80
-#define USTORM_WAITP_ADDR	0x338a80
-#define CSTORM_WAITP_ADDR	0x238a80
-#define TSTORM_CAM_MODE	0x1B1440
+#define XSTORM_WAITP_ADDR    0x2b8a80
+#define TSTORM_WAITP_ADDR    0x1b8a80
+#define USTORM_WAITP_ADDR    0x338a80
+#define CSTORM_WAITP_ADDR    0x238a80
+#define TSTORM_CAM_MODE         0x1B1440
 
-#define MAX_TIMER_PENDING	200
-#define TIMER_SCAN_DONT_CARE	0xFF
-#define RI_E1				0x1
-#define RI_E1H				0x2
-#define RI_E2				0x4
-#define RI_E3				0x8
-#define RI_E3B0				0x10
-#define RI_ONLINE			0x100
+#define MAX_TIMER_PENDING      200
+#define TIMER_SCAN_DONT_CARE   0xFF
+#define RI_E1			0x1
+#define RI_E1H			0x2
+#define RI_E2			0x4
+#define RI_E3			0x8
+#define RI_E3B0			0x10
+#define RI_ONLINE 		0x100
 #define RI_OFFLINE			0x0
-#define RI_PATH0_DUMP			0x200
-#define RI_PATH1_DUMP			0x400
+#define RI_PATH0_DUMP 		0x200
+#define RI_PATH1_DUMP 		0x400
 
-#define RI_E1_ONLINE		(RI_E1 | RI_ONLINE)
-#define RI_E1H_ONLINE		(RI_E1H | RI_ONLINE)
-#define RI_E1E1H_ONLINE		(RI_E1 | RI_E1H | RI_ONLINE)
-#define RI_E2_ONLINE		(RI_E2 | RI_ONLINE)
-#define RI_E1E2_ONLINE		(RI_E1 | RI_E2 | RI_ONLINE)
-#define RI_E1HE2_ONLINE		(RI_E1H | RI_E2 | RI_ONLINE)
-#define RI_E1E1HE2_ONLINE	(RI_E1 | RI_E1H | RI_E2 | RI_ONLINE)
-#define RI_E3_ONLINE		(RI_E3 | RI_ONLINE)
-#define RI_E1E3_ONLINE		(RI_E1 | RI_E3 | RI_ONLINE)
-#define RI_E1HE3_ONLINE		(RI_E1H | RI_E3 | RI_ONLINE)
-#define RI_E1E1HE3_ONLINE	(RI_E1 | RI_E1H | RI_E3 | RI_ONLINE)
-#define RI_E2E3_ONLINE		(RI_E2 | RI_E3 | RI_ONLINE)
-#define RI_E1E2E3_ONLINE	(RI_E1 | RI_E2 | RI_E3 | RI_ONLINE)
-#define RI_E1HE2E3_ONLINE	(RI_E1H | RI_E2 | RI_E3 | RI_ONLINE)
-#define RI_E1E1HE2E3_ONLINE	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_ONLINE)
-#define RI_E3B0_ONLINE		(RI_E3B0 | RI_ONLINE)
-#define RI_E1E3B0_ONLINE	(RI_E1 | RI_E3B0 | RI_ONLINE)
-#define RI_E1HE3B0_ONLINE	(RI_E1H | RI_E3B0 | RI_ONLINE)
-#define RI_E1E1HE3B0_ONLINE	(RI_E1 | RI_E1H | RI_E3B0 | RI_ONLINE)
-#define RI_E2E3B0_ONLINE	(RI_E2 | RI_E3B0 | RI_ONLINE)
-#define RI_E1E2E3B0_ONLINE	(RI_E1 | RI_E2 | RI_E3B0 | RI_ONLINE)
-#define RI_E1HE2E3B0_ONLINE	(RI_E1H | RI_E2 | RI_E3B0 | RI_ONLINE)
-#define RI_E1E1HE2E3B0_ONLINE	(RI_E1 | RI_E1H | RI_E2 | RI_E3B0 | RI_ONLINE)
-#define RI_E3E3B0_ONLINE	(RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1E3E3B0_ONLINE	(RI_E1 | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1HE3E3B0_ONLINE	(RI_E1H | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1E1HE3E3B0_ONLINE	(RI_E1 | RI_E1H | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E2E3E3B0_ONLINE	(RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1E2E3E3B0_ONLINE	(RI_E1 | RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1HE2E3E3B0_ONLINE	(RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define MAX_VFC_WRITE_SIZE 2
+
+#define RI_SRC_XSTORM 0
+#define RI_SRC_TSTORM 1
+#define RI_SRC_USTORM 2
+#define RI_SRC_CSTORM 3
+#define RI_OTHER_BLOCK 4
+
+#define RI_TYPE_IGU 0
+#define RI_TYPE_VFC 1
+#define RI_TYPE_SPLIT 2
+
+#define RI_VFC_IS_READY 1
+#define RI_VFC_IS_BUSY 2
+#define RI_VFC_IS_ONGOING_SEND 4
+#define RI_E1_ONLINE			(RI_E1 | RI_ONLINE)
+#define RI_E1H_ONLINE			(RI_E1H | RI_ONLINE)
+#define RI_E1E1H_ONLINE			(RI_E1 | RI_E1H | RI_ONLINE)
+#define RI_E2_ONLINE			(RI_E2 | RI_ONLINE)
+#define RI_E1E2_ONLINE			(RI_E1 | RI_E2 | RI_ONLINE)
+#define RI_E1HE2_ONLINE			(RI_E1H | RI_E2 | RI_ONLINE)
+#define RI_E1E1HE2_ONLINE		(RI_E1 | RI_E1H | RI_E2 | RI_ONLINE)
+#define RI_E3_ONLINE			(RI_E3 | RI_ONLINE)
+#define RI_E1E3_ONLINE			(RI_E1 | RI_E3 | RI_ONLINE)
+#define RI_E1HE3_ONLINE			(RI_E1H | RI_E3 | RI_ONLINE)
+#define RI_E1E1HE3_ONLINE		(RI_E1 | RI_E1H | RI_E3 | RI_ONLINE)
+#define RI_E2E3_ONLINE			(RI_E2 | RI_E3 | RI_ONLINE)
+#define RI_E1E2E3_ONLINE			(RI_E1 | RI_E2 | RI_E3 | RI_ONLINE)
+#define RI_E1HE2E3_ONLINE		(RI_E1H | RI_E2 | RI_E3 | RI_ONLINE)
+#define RI_E1E1HE2E3_ONLINE		\
+	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_ONLINE)
+#define RI_E3B0_ONLINE			(RI_E3B0 | RI_ONLINE)
+#define RI_E1E3B0_ONLINE			(RI_E1 | RI_E3B0 | RI_ONLINE)
+#define RI_E1HE3B0_ONLINE		(RI_E1H | RI_E3B0 | RI_ONLINE)
+#define RI_E1E1HE3B0_ONLINE		(RI_E1 | RI_E1H | RI_E3B0 | RI_ONLINE)
+#define RI_E2E3B0_ONLINE			(RI_E2 | RI_E3B0 | RI_ONLINE)
+#define RI_E1E2E3B0_ONLINE		(RI_E1 | RI_E2 | RI_E3B0 | RI_ONLINE)
+#define RI_E1HE2E3B0_ONLINE		(RI_E1H | RI_E2 | RI_E3B0 | RI_ONLINE)
+#define RI_E1E1HE2E3B0_ONLINE		\
+	(RI_E1 | RI_E1H | RI_E2 | RI_E3B0 | RI_ONLINE)
+#define RI_E3E3B0_ONLINE			(RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E1E3E3B0_ONLINE		(RI_E1 | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E1HE3E3B0_ONLINE		(RI_E1H | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E1E1HE3E3B0_ONLINE		\
+	(RI_E1 | RI_E1H | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E2E3E3B0_ONLINE		(RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E1E2E3E3B0_ONLINE		\
+	(RI_E1 | RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
+#define RI_E1HE2E3E3B0_ONLINE		\
+	(RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
 #define RI_E1E1HE2E3E3B0_ONLINE	\
 	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_ONLINE)
-#define RI_E1_OFFLINE		(RI_E1 | RI_OFFLINE)
-#define RI_E1H_OFFLINE		(RI_E1H | RI_OFFLINE)
-#define RI_E1E1H_OFFLINE	(RI_E1 | RI_E1H | RI_OFFLINE)
-#define RI_E2_OFFLINE		(RI_E2 | RI_OFFLINE)
-#define RI_E1E2_OFFLINE		(RI_E1 | RI_E2 | RI_OFFLINE)
-#define RI_E1HE2_OFFLINE	(RI_E1H | RI_E2 | RI_OFFLINE)
-#define RI_E1E1HE2_OFFLINE	(RI_E1 | RI_E1H | RI_E2 | RI_OFFLINE)
-#define RI_E3_OFFLINE		(RI_E3 | RI_OFFLINE)
-#define RI_E1E3_OFFLINE		(RI_E1 | RI_E3 | RI_OFFLINE)
-#define RI_E1HE3_OFFLINE	(RI_E1H | RI_E3 | RI_OFFLINE)
-#define RI_E1E1HE3_OFFLINE	(RI_E1 | RI_E1H | RI_E3 | RI_OFFLINE)
-#define RI_E2E3_OFFLINE		(RI_E2 | RI_E3 | RI_OFFLINE)
-#define RI_E1E2E3_OFFLINE	(RI_E1 | RI_E2 | RI_E3 | RI_OFFLINE)
-#define RI_E1HE2E3_OFFLINE	(RI_E1H | RI_E2 | RI_E3 | RI_OFFLINE)
-#define RI_E1E1HE2E3_OFFLINE	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_OFFLINE)
-#define RI_E3B0_OFFLINE		(RI_E3B0 | RI_OFFLINE)
-#define RI_E1E3B0_OFFLINE	(RI_E1 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1HE3B0_OFFLINE	(RI_E1H | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E1HE3B0_OFFLINE	(RI_E1 | RI_E1H | RI_E3B0 | RI_OFFLINE)
-#define RI_E2E3B0_OFFLINE	(RI_E2 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E2E3B0_OFFLINE	(RI_E1 | RI_E2 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1HE2E3B0_OFFLINE	(RI_E1H | RI_E2 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E1HE2E3B0_OFFLINE	(RI_E1 | RI_E1H | RI_E2 | RI_E3B0 | RI_OFFLINE)
-#define RI_E3E3B0_OFFLINE	(RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E3E3B0_OFFLINE	(RI_E1 | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1HE3E3B0_OFFLINE	(RI_E1H | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E1HE3E3B0_OFFLINE	(RI_E1 | RI_E1H | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E2E3E3B0_OFFLINE	(RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1E2E3E3B0_OFFLINE	(RI_E1 | RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_E1HE2E3E3B0_OFFLINE	(RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1_OFFLINE			(RI_E1 | RI_OFFLINE)
+#define RI_E1H_OFFLINE			(RI_E1H | RI_OFFLINE)
+#define RI_E1E1H_OFFLINE			(RI_E1 | RI_E1H | RI_OFFLINE)
+#define RI_E2_OFFLINE			(RI_E2 | RI_OFFLINE)
+#define RI_E1E2_OFFLINE			(RI_E1 | RI_E2 | RI_OFFLINE)
+#define RI_E1HE2_OFFLINE			(RI_E1H | RI_E2 | RI_OFFLINE)
+#define RI_E1E1HE2_OFFLINE		(RI_E1 | RI_E1H | RI_E2 | RI_OFFLINE)
+#define RI_E3_OFFLINE			(RI_E3 | RI_OFFLINE)
+#define RI_E1E3_OFFLINE			(RI_E1 | RI_E3 | RI_OFFLINE)
+#define RI_E1HE3_OFFLINE			(RI_E1H | RI_E3 | RI_OFFLINE)
+#define RI_E1E1HE3_OFFLINE		(RI_E1 | RI_E1H | RI_E3 | RI_OFFLINE)
+#define RI_E2E3_OFFLINE			(RI_E2 | RI_E3 | RI_OFFLINE)
+#define RI_E1E2E3_OFFLINE		(RI_E1 | RI_E2 | RI_E3 | RI_OFFLINE)
+#define RI_E1HE2E3_OFFLINE		(RI_E1H | RI_E2 | RI_E3 | RI_OFFLINE)
+#define RI_E1E1HE2E3_OFFLINE		\
+	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_OFFLINE)
+#define RI_E3B0_OFFLINE			(RI_E3B0 | RI_OFFLINE)
+#define RI_E1E3B0_OFFLINE		(RI_E1 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1HE3B0_OFFLINE		(RI_E1H | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E1HE3B0_OFFLINE		(RI_E1 | RI_E1H | RI_E3B0 | RI_OFFLINE)
+#define RI_E2E3B0_OFFLINE		(RI_E2 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E2E3B0_OFFLINE		(RI_E1 | RI_E2 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1HE2E3B0_OFFLINE		(RI_E1H | RI_E2 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E1HE2E3B0_OFFLINE		\
+	(RI_E1 | RI_E1H | RI_E2 | RI_E3B0 | RI_OFFLINE)
+#define RI_E3E3B0_OFFLINE		(RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E3E3B0_OFFLINE		(RI_E1 | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1HE3E3B0_OFFLINE		(RI_E1H | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E1HE3E3B0_OFFLINE		\
+	(RI_E1 | RI_E1H | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E2E3E3B0_OFFLINE		(RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1E2E3E3B0_OFFLINE		\
+	(RI_E1 | RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
+#define RI_E1HE2E3E3B0_OFFLINE		\
+	(RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
 #define RI_E1E1HE2E3E3B0_OFFLINE	\
 	(RI_E1 | RI_E1H | RI_E2 | RI_E3 | RI_E3B0 | RI_OFFLINE)
-#define RI_ALL_ONLINE		RI_E1E1HE2E3E3B0_ONLINE
-#define RI_ALL_OFFLINE		RI_E1E1HE2E3E3B0_OFFLINE
+#define RI_ALL_ONLINE	RI_E1E1HE2E3E3B0_ONLINE
+#define RI_ALL_OFFLINE	RI_E1E1HE2E3E3B0_OFFLINE
 
-#define DBG_DMP_TRACE_BUFFER_SIZE	0x800
+#define DBG_DMP_TRACE_BUFFER_SIZE 0x800
 #define DBG_DMP_TRACE_BUFFER_OFFSET(shmem0_offset) \
-	((shmem0_offset) - DBG_DMP_TRACE_BUFFER_SIZE)
+		((shmem0_offset) - DBG_DMP_TRACE_BUFFER_SIZE)
 
 struct dump_sign {
 	u32 time_stamp;
@@ -130,6 +155,47 @@ struct dump_hdr {
 	u16  info;
 	u8   idle_chk;
 	u8   reserved;
+};
+
+#define HDR_SIGNATURE 0x11ff22ee
+
+struct extension_hdr {
+	u32  hdr_signature;
+	u32  hdr_size;	/* in dwords, excluding this field */
+	u32  data_size;	/* in dwords */
+	u32  additional_data;
+	u32  data_source; /* storm number or none if from a block. */
+	u32  data_type;
+	u32  reserved;
+	u32  error;
+};
+
+struct igu_data {
+	u32  valid;	/* is valid for the current chip */
+	u32  max_size;	/* max read iterations */
+	u32  is_last_commands;	/* put  value in the additional_data field */
+	u32  is_data_valid;	/* non-zero for valid */
+	u32  data[];
+};
+
+struct vfc_general {
+	u32  valid;	/* is valid for the current chip */
+	u32  vfc_status;
+	u32  vfc_address;
+	u32  vfc_data_write;
+	u32  vfc_data_read;
+};
+
+struct vfc_read_write_vector {
+u32 read_size;
+u32 address_value;
+u32 write_value_num_valid;
+u32 write_value[MAX_VFC_WRITE_SIZE];
+};
+
+struct vfc_read_task {
+	const struct vfc_read_write_vector *read_write_vectors;
+u32 array_size;
 };
 
 struct reg_addr {
@@ -401,11 +467,11 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x70000, 8, RI_ALL_ONLINE },
 	{ 0x70020, 8184, RI_ALL_OFFLINE },
 	{ 0x78000, 8192, RI_E3E3B0_OFFLINE },
-	{ 0x85000, 3, RI_ALL_ONLINE },
-	{ 0x8501c, 7, RI_ALL_ONLINE },
-	{ 0x85048, 1, RI_ALL_ONLINE },
-	{ 0x85200, 32, RI_ALL_ONLINE },
-	{ 0xb0000, 16384, RI_E1H_ONLINE },
+	{ 0x85000, 3, RI_ALL_OFFLINE },
+	{ 0x8501c, 7, RI_ALL_OFFLINE },
+	{ 0x85048, 1, RI_ALL_OFFLINE },
+	{ 0x85200, 32, RI_ALL_OFFLINE },
+	{ 0xb0000, 16384, RI_E1H_OFFLINE },
 	{ 0xc1000, 7, RI_ALL_ONLINE },
 	{ 0xc103c, 2, RI_E2E3E3B0_ONLINE },
 	{ 0xc1800, 2, RI_ALL_ONLINE },
@@ -581,17 +647,12 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x140188, 3, RI_E1E1HE2E3_ONLINE },
 	{ 0x140194, 13, RI_ALL_ONLINE },
 	{ 0x140200, 6, RI_E1E1HE2E3_ONLINE },
-	{ 0x140220, 4, RI_E2E3_ONLINE },
-	{ 0x140240, 4, RI_E2E3_ONLINE },
 	{ 0x140260, 4, RI_E2E3_ONLINE },
 	{ 0x140280, 4, RI_E2E3_ONLINE },
-	{ 0x1402a0, 4, RI_E2E3_ONLINE },
-	{ 0x1402c0, 4, RI_E2E3_ONLINE },
 	{ 0x1402e0, 2, RI_E2E3_ONLINE },
 	{ 0x1402e8, 2, RI_E2E3E3B0_ONLINE },
 	{ 0x1402f0, 9, RI_E2E3_ONLINE },
 	{ 0x140314, 44, RI_E3B0_ONLINE },
-	{ 0x1403d0, 70, RI_E3B0_ONLINE },
 	{ 0x144000, 4, RI_E1E1H_ONLINE },
 	{ 0x148000, 4, RI_E1E1H_ONLINE },
 	{ 0x14c000, 4, RI_E1E1H_ONLINE },
@@ -704,7 +765,6 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x180398, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x1803a0, 5, RI_E2E3E3B0_ONLINE },
 	{ 0x1803b4, 2, RI_E3E3B0_ONLINE },
-	{ 0x180400, 1, RI_ALL_ONLINE },
 	{ 0x180404, 255, RI_E1E1H_OFFLINE },
 	{ 0x181000, 4, RI_ALL_ONLINE },
 	{ 0x181010, 1020, RI_ALL_OFFLINE },
@@ -800,9 +860,9 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x1b905c, 1, RI_E3E3B0_ONLINE },
 	{ 0x1b9064, 1, RI_E3B0_ONLINE },
 	{ 0x1b9080, 10, RI_E3B0_ONLINE },
-	{ 0x1b9400, 14, RI_E2E3E3B0_ONLINE },
-	{ 0x1b943c, 19, RI_E2E3E3B0_ONLINE },
-	{ 0x1b9490, 10, RI_E2E3E3B0_ONLINE },
+	{ 0x1b9400, 14, RI_E2E3E3B0_OFFLINE },
+	{ 0x1b943c, 19, RI_E2E3E3B0_OFFLINE },
+	{ 0x1b9490, 10, RI_E2E3E3B0_OFFLINE },
 	{ 0x1c0000, 2, RI_ALL_ONLINE },
 	{ 0x200000, 65, RI_ALL_ONLINE },
 	{ 0x20014c, 2, RI_E1HE2E3E3B0_ONLINE },
@@ -814,7 +874,6 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x200398, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x2003a0, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x2003a8, 2, RI_E2E3E3B0_ONLINE },
-	{ 0x200400, 1, RI_ALL_ONLINE },
 	{ 0x200404, 255, RI_E1E1H_OFFLINE },
 	{ 0x202000, 4, RI_ALL_ONLINE },
 	{ 0x202010, 2044, RI_ALL_OFFLINE },
@@ -921,7 +980,6 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x280398, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x2803a0, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x2803a8, 2, RI_E2E3E3B0_ONLINE },
-	{ 0x280400, 1, RI_ALL_ONLINE },
 	{ 0x280404, 255, RI_E1E1H_OFFLINE },
 	{ 0x282000, 4, RI_ALL_ONLINE },
 	{ 0x282010, 2044, RI_ALL_OFFLINE },
@@ -1031,7 +1089,6 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x300398, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x3003a0, 1, RI_E2E3E3B0_ONLINE },
 	{ 0x3003a8, 2, RI_E2E3E3B0_ONLINE },
-	{ 0x300400, 1, RI_ALL_ONLINE },
 	{ 0x300404, 255, RI_E1E1H_OFFLINE },
 	{ 0x302000, 4, RI_ALL_ONLINE },
 	{ 0x302010, 2044, RI_ALL_OFFLINE },
@@ -1129,28 +1186,36 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x339080, 10, RI_E3B0_ONLINE },
 	{ 0x340000, 2, RI_ALL_ONLINE },
 };
-#define REGS_COUNT			ARRAY_SIZE(reg_addrs)
+#define REGS_COUNT ARRAY_SIZE(reg_addrs)
 
-static const struct dump_sign dump_sign_all = { 0x4e23fde1, 0x70017, 0x3a };
+static const struct dump_sign dump_sign_all = { 0x4f0ae30c, 0x70038, 0x3a };
 
-static const u32 page_vals_e2[] = { 0, 128 };
-#define PAGE_MODE_VALUES_E2		ARRAY_SIZE(page_vals_e2)
+#define PAGE_MODE_VALUES_E2 2
+
+#define PAGE_READ_REGS_E2 1
+
+#define PAGE_WRITE_REGS_E2 1
+
+static const u32 page_vals_e2[] = { 0,  128 };
 
 static const u32 page_write_regs_e2[] = { 328476 };
-#define PAGE_WRITE_REGS_E2		ARRAY_SIZE(page_write_regs_e2)
 
 static const struct reg_addr page_read_regs_e2[] = {
-	{ 0x58000, 4608, RI_E2_ONLINE } };
-#define PAGE_READ_REGS_E2		ARRAY_SIZE(page_read_regs_e2)
+	{ 0x58000, 4608, RI_E2_ONLINE }
+};
 
-static const u32 page_vals_e3[] = { 0, 128 };
-#define PAGE_MODE_VALUES_E3		ARRAY_SIZE(page_vals_e3)
+#define PAGE_MODE_VALUES_E3 2
+
+#define PAGE_READ_REGS_E3 1
+
+#define PAGE_WRITE_REGS_E3 1
+
+static const u32 page_vals_e3[] = { 0,  128 };
 
 static const u32 page_write_regs_e3[] = { 328476 };
-#define PAGE_WRITE_REGS_E3		ARRAY_SIZE(page_write_regs_e3)
 
 static const struct reg_addr page_read_regs_e3[] = {
-	{ 0x58000, 4608, RI_E3E3B0_ONLINE } };
-#define PAGE_READ_REGS_E3		ARRAY_SIZE(page_read_regs_e3)
+	{ 0x58000, 4608, RI_E3E3B0_ONLINE }
+};
 
 #endif /* BNX2X_DUMP_H */

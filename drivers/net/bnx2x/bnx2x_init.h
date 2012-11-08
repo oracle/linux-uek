@@ -15,6 +15,14 @@
 #ifndef BNX2X_INIT_H
 #define BNX2X_INIT_H
 
+/*
+* ©2011 Broadcom Corporation
+* Unless you and Broadcom execute a separate written software license
+* agreement governing use of this software, this software is licensed to
+* you under the terms of the GNU General Public License version 2,
+* available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
+*/
+
 /* Init operation types and structures */
 enum {
 	OP_RD = 0x1,	/* read a single register */
@@ -25,10 +33,8 @@ enum {
 	OP_WR_64,	/* write 64 bit pattern */
 	OP_WB,		/* copy a string using DMAE */
 	OP_WB_ZR,	/* Clear a string using DMAE or indirect-wr */
-	/* Skip the following ops if all of the init modes don't match */
-	OP_IF_MODE_OR,
-	/* Skip the following ops if any of the init modes don't match */
-	OP_IF_MODE_AND,
+	OP_IF_MODE_OR,  /* Skip the following ops if all init modes don't match */
+	OP_IF_MODE_AND, /* Skip the following ops if any init modes don't match */
 	OP_MAX
 };
 
@@ -173,6 +179,13 @@ enum {
 	NUM_OF_INIT_BLOCKS
 };
 
+#ifdef __KERNEL__ 
+#include "bnx2x.h"
+
+/* Vnics per mode */
+#define BNX2X_PORT2_MODE_NUM_VNICS 4
+
+
 /* QM queue numbers */
 #define BNX2X_ETH_Q		0
 #define BNX2X_TOE_Q		3
@@ -182,7 +195,6 @@ enum {
 #define BNX2X_FCOE_Q		10
 
 /* Vnics per mode */
-#define BNX2X_PORT2_MODE_NUM_VNICS 4
 #define BNX2X_PORT4_MODE_NUM_VNICS 2
 
 /* COS offset for port1 in E3 B0 4port mode */
@@ -267,7 +279,7 @@ static inline void bnx2x_dcb_config_qm(struct bnx2x *bp, enum cos_mode mode,
 	bnx2x_map_q_cos(bp, BNX2X_ISCSI_ACK_Q,
 		traffic_cos[LLFC_TRAFFIC_TYPE_ISCSI].cos);
 	if (mode != STATIC_COS) {
-		/* required only in backward compatible COS mode */
+		/* required only in OVERRIDE_COS mode */
 		bnx2x_map_q_cos(bp, BNX2X_ETH_Q,
 				traffic_cos[LLFC_TRAFFIC_TYPE_NW].cos);
 		bnx2x_map_q_cos(bp, BNX2X_TOE_Q,
@@ -408,7 +420,7 @@ static inline void bnx2x_init_min(const struct cmng_init_input *input_data,
 			 * share of the port rate)
 			 */
 			vdata->vnic_min_rate[vnic].vn_credit_delta =
-				(u32)input_data->vnic_min_rate[vnic] * 100 *
+				(u32)(input_data->vnic_min_rate[vnic]) * 100 *
 				(T_FAIR_COEF / (8 * 100 * vnicWeightSum));
 			if (vdata->vnic_min_rate[vnic].vn_credit_delta <
 			    pdata->fair_vars.fair_threshold +
@@ -486,7 +498,8 @@ static inline void bnx2x_init_cmng(const struct cmng_init_input *input_data,
 
 
 
-/* Returns the index of start or end of a specific block stage in ops array */
+
+/* Returns the index of start or end of a specific block stage in ops array*/
 #define BLOCK_OPS_IDX(block, stage, end) \
 			(2*(((block)*NUM_OF_INIT_PHASES) + (stage)) + (end))
 
@@ -566,7 +579,7 @@ static const struct {
 		u32 e2;		/* 57712 */
 		u32 e3;		/* 578xx */
 	} reg_mask;		/* Register mask (all valid bits) */
-	char name[7];		/* Block's longest name is 6 characters long
+	char name[8];		/* Block's longest name is 7 characters long
 				 * (name + suffix)
 				 */
 } bnx2x_blocks_parity_data[] = {
@@ -708,7 +721,9 @@ static inline void bnx2x_disable_blocks_parity(struct bnx2x *bp)
 	bnx2x_set_mcp_parity(bp, false);
 }
 
-/* Clear the parity error status registers. */
+/**
+ * Clear the parity error status registers.
+ */
 static inline void bnx2x_clear_blocks_parity(struct bnx2x *bp)
 {
 	int i;
@@ -770,5 +785,6 @@ static inline void bnx2x_enable_blocks_parity(struct bnx2x *bp)
 }
 
 
+#endif // __KERNEL__ 
 #endif /* BNX2X_INIT_H */
 

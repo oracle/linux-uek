@@ -15,10 +15,18 @@
  *
  */
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#include <linux/version.h>
+#endif
+
+#if (LINUX_VERSION_CODE > 0x02060f) /* BNX2X_UPSTREAM */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#endif
 
 #include "bnx2x_stats.h"
 #include "bnx2x_cmn.h"
+
+#include "bnx2x_sriov.h"
 
 
 /* Statistics */
@@ -39,20 +47,80 @@ static inline long bnx2x_hilo(u32 *hiref)
 #endif
 }
 
-static u16 bnx2x_get_port_stats_dma_len(struct bnx2x *bp)
+static inline u16 bnx2x_get_port_stats_dma_len(struct bnx2x *bp)
 {
-	u16 res = sizeof(struct host_port_stats) >> 2;
+	u16 res = 0;
 
-	/* if PFC stats are not supported by the MFW, don't DMA them */
-	if (!(bp->flags &  BC_SUPPORTS_PFC_STATS))
-		res -= (sizeof(u32)*4) >> 2;
+	/* 'newest' convention - shmem2 cotains the size of the port stats */
+	if (SHMEM2_HAS(bp, sizeof_port_stats)) {
+		u32 size = SHMEM2_RD(bp, sizeof_port_stats);
+		if (size)
+			res = size;
 
+		/* prevent newer BC from causing buffer overflow */
+		if (res > sizeof(struct host_port_stats))
+			res = sizeof(struct host_port_stats);
+	}
+
+	/* Older convention - all BCs support the port stats' fields up until
+	 * the 'not_used' field
+	 */
+	if (!res) {
+		res = offsetof(struct host_port_stats, not_used) + 4;
+
+		/* if PFC stats are supported by the MFW, DMA them as well */
+		if (bp->flags & BC_SUPPORTS_PFC_STATS) {
+			res += offsetof(struct host_port_stats,
+					pfc_frames_rx_lo) -
+			       offsetof(struct host_port_stats,
+					pfc_frames_tx_hi) + 4 ;
+		}
+	}
+
+	res >>= 2;
+
+	WARN_ON(res > 2 * DMAE_LEN32_RD_MAX);
 	return res;
 }
 
 /*
  * Init service functions
  */
+
+static void bnx2x_dp_stats(struct bnx2x *bp)
+{
+	int i;
+	DP(BNX2X_MSG_STATS, "dumping stats:\n"
+	   "fw_stats_req\n"
+	   "    hdr\n"
+	   "        cmd_num %d\n"
+	   "        reserved0 %d\n"
+	   "        drv_stats_counter %d\n"
+	   "        reserved1 %d\n"
+	   "        stats_counters_addrs %x %x\n",
+	   bp->fw_stats_req->hdr.cmd_num,
+	   bp->fw_stats_req->hdr.reserved0,
+	   bp->fw_stats_req->hdr.drv_stats_counter,
+	   bp->fw_stats_req->hdr.reserved1,
+	   bp->fw_stats_req->hdr.stats_counters_addrs.hi,
+	   bp->fw_stats_req->hdr.stats_counters_addrs.lo);
+
+	for (i = 0; i < bp->fw_stats_req->hdr.cmd_num; i++) {
+		DP(BNX2X_MSG_STATS,
+		   "query[%d]\n"
+		   "              kind %d\n"
+		   "              index %d\n"
+		   "              funcID %d\n"
+		   "              reserved %d\n"
+		   "              address %x %x\n",
+		   i, bp->fw_stats_req->query[i].kind,
+		   bp->fw_stats_req->query[i].index,
+		   bp->fw_stats_req->query[i].funcID,
+		   bp->fw_stats_req->query[i].reserved,
+		   bp->fw_stats_req->query[i].address.hi,
+		   bp->fw_stats_req->query[i].address.lo);
+	}
+}
 
 /* Post the next statistics ramrod. Protect it with the spin in
  * order to ensure the strict order between statistics ramrods
@@ -78,7 +146,10 @@ static void bnx2x_storm_stats_post(struct bnx2x *bp)
 		DP(BNX2X_MSG_STATS, "Sending statistics ramrod %d\n",
 			bp->fw_stats_req->hdr.drv_stats_counter);
 
+		/* adjust the ramrod to include VF queues statistics */
+		bnx2x_iov_adjust_stats_req(bp);
 
+		bnx2x_dp_stats(bp);
 
 		/* send FW stats ramrod */
 		rc = bnx2x_sp_post(bp, RAMROD_CMD_ID_COMMON_STAT_QUERY, 0,
@@ -100,6 +171,11 @@ static void bnx2x_hw_stats_post(struct bnx2x *bp)
 	*stats_comp = DMAE_COMP_VAL;
 	if (CHIP_REV_IS_SLOW(bp))
 		return;
+
+	/* Update MCP's statistics if possible */
+	if (bp->func_stx)
+		memcpy(bnx2x_sp(bp, func_stats), &bp->func_stats,
+		       sizeof(bp->func_stats));
 
 	/* loader */
 	if (bp->executer_idx) {
@@ -128,8 +204,6 @@ static void bnx2x_hw_stats_post(struct bnx2x *bp)
 
 	} else if (bp->func_stx) {
 		*stats_comp = 0;
-		memcpy(bnx2x_sp(bp, func_stats), &bp->func_stats,
-		       sizeof(bp->func_stats));
 		bnx2x_post_dmae(bp, dmae, INIT_DMAE_C(bp));
 	}
 }
@@ -146,7 +220,7 @@ static int bnx2x_stats_comp(struct bnx2x *bp)
 			break;
 		}
 		cnt--;
-		usleep_range(1000, 1000);
+		usleep_range(1000, 2000);
 	}
 	return 1;
 }
@@ -454,6 +528,12 @@ static void bnx2x_func_stats_init(struct bnx2x *bp)
 
 static void bnx2x_stats_start(struct bnx2x *bp)
 {
+	/* vfs travel through here as part of the statistics FSM, but no action
+	 * is required
+	 */
+	if (IS_VF(bp))
+		return;
+
 	if (bp->port.pmf)
 		bnx2x_port_stats_init(bp);
 
@@ -473,6 +553,11 @@ static void bnx2x_stats_pmf_start(struct bnx2x *bp)
 
 static void bnx2x_stats_restart(struct bnx2x *bp)
 {
+	/* vfs travel through here as part of the statistics FSM, but no action
+	 * is required
+	 */
+	if (IS_VF(bp))
+		return;
 	bnx2x_stats_comp(bp);
 	bnx2x_stats_start(bp);
 }
@@ -523,6 +608,7 @@ static void bnx2x_bmac_stats_update(struct bnx2x *bp)
 
 	} else {
 		struct bmac2_stats *new = bnx2x_sp(bp, mac_stats.bmac2_stats);
+		struct bnx2x_fw_port_stats_old *fwstats = &bp->fw_stats_old;
 
 		/* the macros below will use "bmac2_stats" type */
 		UPDATE_STAT64(rx_stat_grerb, rx_stat_ifhcinbadoctets);
@@ -558,9 +644,13 @@ static void bnx2x_bmac_stats_update(struct bnx2x *bp)
 		/* collect PFC stats */
 		pstats->pfc_frames_tx_hi = new->tx_stat_gtpp_hi;
 		pstats->pfc_frames_tx_lo = new->tx_stat_gtpp_lo;
+		ADD_64(pstats->pfc_frames_tx_hi, fwstats->pfc_frames_tx_hi,
+		       pstats->pfc_frames_tx_lo, fwstats->pfc_frames_tx_lo);
 
 		pstats->pfc_frames_rx_hi = new->rx_stat_grpp_hi;
 		pstats->pfc_frames_rx_lo = new->rx_stat_grpp_lo;
+		ADD_64(pstats->pfc_frames_rx_hi, fwstats->pfc_frames_rx_hi,
+		       pstats->pfc_frames_rx_lo, fwstats->pfc_frames_rx_lo);
 	}
 
 	estats->pause_frames_received_hi =
@@ -573,14 +663,10 @@ static void bnx2x_bmac_stats_update(struct bnx2x *bp)
 	estats->pause_frames_sent_lo =
 				pstats->mac_stx[1].tx_stat_outxoffsent_lo;
 
-	estats->pfc_frames_received_hi =
-				pstats->pfc_frames_rx_hi;
-	estats->pfc_frames_received_lo =
-				pstats->pfc_frames_rx_lo;
-	estats->pfc_frames_sent_hi =
-				pstats->pfc_frames_tx_hi;
-	estats->pfc_frames_sent_lo =
-				pstats->pfc_frames_tx_lo;
+	estats->pfc_frames_received_hi = pstats->pfc_frames_rx_hi;
+	estats->pfc_frames_received_lo = pstats->pfc_frames_rx_lo;
+	estats->pfc_frames_sent_hi = pstats->pfc_frames_tx_hi;
+	estats->pfc_frames_sent_lo = pstats->pfc_frames_tx_lo;
 }
 
 static void bnx2x_mstat_stats_update(struct bnx2x *bp)
@@ -785,9 +871,11 @@ static int bnx2x_hw_stats_update(struct bnx2x *bp)
 
 	pstats->host_port_stats_counter++;
 
-	if (CHIP_IS_E3(bp))
-		estats->eee_tx_lpi += REG_RD(bp,
-					     MISC_REG_CPMU_LP_SM_ENT_CNT_P0);
+	if (CHIP_IS_E3(bp)) {
+		u32 lpi_reg = BP_PORT(bp) ? MISC_REG_CPMU_LP_SM_ENT_CNT_P1
+					  : MISC_REG_CPMU_LP_SM_ENT_CNT_P0;
+		estats->eee_tx_lpi += REG_RD(bp, lpi_reg);
+	}
 
 	if (!BP_NOMCP(bp)) {
 		u32 nig_timer_max =
@@ -802,19 +890,10 @@ static int bnx2x_hw_stats_update(struct bnx2x *bp)
 	return 0;
 }
 
-static int bnx2x_storm_stats_update(struct bnx2x *bp)
+static int bnx2x_storm_stats_validate_counters(struct bnx2x *bp)
 {
-	struct tstorm_per_port_stats *tport =
-				&bp->fw_stats_data->port.tstorm_port_statistics;
-	struct tstorm_per_pf_stats *tfunc =
-				&bp->fw_stats_data->pf.tstorm_pf_statistics;
-	struct host_func_stats *fstats = &bp->func_stats;
-	struct bnx2x_eth_stats *estats = &bp->eth_stats;
-	struct bnx2x_eth_stats_old *estats_old = &bp->eth_stats_old;
 	struct stats_counter *counters = &bp->fw_stats_data->storm_counters;
-	int i;
 	u16 cur_stats_counter;
-
 	/* Make sure we use the value of the counter
 	 * used for sending the last stats ramrod.
 	 */
@@ -850,6 +929,23 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 		   le16_to_cpu(counters->tstats_counter), bp->stats_counter);
 		return -EAGAIN;
 	}
+	return 0;
+}
+
+static int bnx2x_storm_stats_update(struct bnx2x *bp)
+{
+	struct tstorm_per_port_stats *tport =
+				&bp->fw_stats_data->port.tstorm_port_statistics;
+	struct tstorm_per_pf_stats *tfunc =
+				&bp->fw_stats_data->pf.tstorm_pf_statistics;
+	struct host_func_stats *fstats = &bp->func_stats;
+	struct bnx2x_eth_stats *estats = &bp->eth_stats;
+	struct bnx2x_eth_stats_old *estats_old = &bp->eth_stats_old;
+	int i;
+
+	/* vfs stat counter is managed by pf */
+	if (IS_PF(bp) && bnx2x_storm_stats_validate_counters(bp))
+		return -EAGAIN;
 
 	estats->error_bytes_received_hi = 0;
 	estats->error_bytes_received_lo = 0;
@@ -859,17 +955,22 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 		struct tstorm_per_queue_stats *tclient =
 			&bp->fw_stats_data->queue_stats[i].
 			tstorm_queue_statistics;
-		struct tstorm_per_queue_stats *old_tclient = &fp->old_tclient;
+		struct tstorm_per_queue_stats *old_tclient =
+			&bnx2x_fp_stats(bp, fp)->old_tclient;
 		struct ustorm_per_queue_stats *uclient =
 			&bp->fw_stats_data->queue_stats[i].
 			ustorm_queue_statistics;
-		struct ustorm_per_queue_stats *old_uclient = &fp->old_uclient;
+		struct ustorm_per_queue_stats *old_uclient =
+			&bnx2x_fp_stats(bp, fp)->old_uclient;
 		struct xstorm_per_queue_stats *xclient =
 			&bp->fw_stats_data->queue_stats[i].
 			xstorm_queue_statistics;
-		struct xstorm_per_queue_stats *old_xclient = &fp->old_xclient;
-		struct bnx2x_eth_q_stats *qstats = &fp->eth_q_stats;
-		struct bnx2x_eth_q_stats_old *qstats_old = &fp->eth_q_stats_old;
+		struct xstorm_per_queue_stats *old_xclient =
+			&bnx2x_fp_stats(bp, fp)->old_xclient;
+		struct bnx2x_eth_q_stats *qstats =
+			&bnx2x_fp_stats(bp, fp)->eth_q_stats;
+		struct bnx2x_eth_q_stats_old *qstats_old =
+			&bnx2x_fp_stats(bp, fp)->eth_q_stats_old;
 
 		u32 diff;
 
@@ -918,8 +1019,8 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 		UPDATE_EXTEND_TSTAT(rcv_bcast_pkts,
 					total_broadcast_packets_received);
 		UPDATE_EXTEND_E_TSTAT(pkts_too_big_discard,
-				      etherstatsoverrsizepkts);
-		UPDATE_EXTEND_E_TSTAT(no_buff_discard, no_buff_discard);
+				      etherstatsoverrsizepkts, 32);
+		UPDATE_EXTEND_E_TSTAT(no_buff_discard, no_buff_discard, 16);
 
 		SUB_EXTEND_USTAT(ucast_no_buff_pkts,
 					total_unicast_packets_received);
@@ -998,15 +1099,15 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 	       estats->total_bytes_received_lo,
 	       estats->rx_stat_ifhcinbadoctets_lo);
 
-	ADD_64(estats->total_bytes_received_hi,
-	       le32_to_cpu(tfunc->rcv_error_bytes.hi),
-	       estats->total_bytes_received_lo,
-	       le32_to_cpu(tfunc->rcv_error_bytes.lo));
+	ADD_64_LE(estats->total_bytes_received_hi,
+		  tfunc->rcv_error_bytes.hi,
+		  estats->total_bytes_received_lo,
+		  tfunc->rcv_error_bytes.lo);
 
-	ADD_64(estats->error_bytes_received_hi,
-	       le32_to_cpu(tfunc->rcv_error_bytes.hi),
-	       estats->error_bytes_received_lo,
-	       le32_to_cpu(tfunc->rcv_error_bytes.lo));
+	ADD_64_LE(estats->error_bytes_received_hi,
+		  tfunc->rcv_error_bytes.hi,
+		  estats->error_bytes_received_lo,
+		  tfunc->rcv_error_bytes.lo);
 
 	UPDATE_ESTAT(etherstatsoverrsizepkts, rx_stat_dot3statsframestoolong);
 
@@ -1033,7 +1134,11 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 static void bnx2x_net_stats_update(struct bnx2x *bp)
 {
 	struct bnx2x_eth_stats *estats = &bp->eth_stats;
+#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 	struct net_device_stats *nstats = &bp->dev->stats;
+#else
+	struct net_device_stats *nstats = &bp->net_stats;
+#endif
 	unsigned long tmp;
 	int i;
 
@@ -1052,8 +1157,11 @@ static void bnx2x_net_stats_update(struct bnx2x *bp)
 	nstats->tx_bytes = bnx2x_hilo(&estats->total_bytes_transmitted_hi);
 
 	tmp = estats->mac_discard;
-	for_each_rx_queue(bp, i)
-		tmp += le32_to_cpu(bp->fp[i].old_tclient.checksum_discard);
+	for_each_rx_queue(bp, i) {
+		struct tstorm_per_queue_stats *old_tclient =
+			&bp->fp_stats[i].old_tclient;
+		tmp += le32_to_cpu(old_tclient->checksum_discard);
+	}
 	nstats->rx_dropped = tmp + bp->net_stats_old.rx_dropped;
 
 	nstats->tx_dropped = 0;
@@ -1103,23 +1211,22 @@ static void bnx2x_drv_stats_update(struct bnx2x *bp)
 	int i;
 
 	for_each_queue(bp, i) {
-		struct bnx2x_eth_q_stats *qstats = &bp->fp[i].eth_q_stats;
+		struct bnx2x_eth_q_stats *qstats = &bp->fp_stats[i].eth_q_stats;
 		struct bnx2x_eth_q_stats_old *qstats_old =
-						&bp->fp[i].eth_q_stats_old;
+			&bp->fp_stats[i].eth_q_stats_old;
 
 		UPDATE_ESTAT_QSTAT(driver_xoff);
 		UPDATE_ESTAT_QSTAT(rx_err_discard_pkt);
 		UPDATE_ESTAT_QSTAT(rx_skb_alloc_failed);
 		UPDATE_ESTAT_QSTAT(hw_csum_err);
+		UPDATE_ESTAT_QSTAT(driver_filtered_tx_pkt);
 	}
 }
 
 static bool bnx2x_edebug_stats_stopped(struct bnx2x *bp)
 {
-	u32 val;
-
 	if (SHMEM2_HAS(bp, edebug_driver_if[1])) {
-		val = SHMEM2_RD(bp, edebug_driver_if[1]);
+		u32 val = SHMEM2_RD(bp, edebug_driver_if[1]);
 
 		if (val == EDEBUG_DRIVER_IF_OP_CODE_DISABLE_STAT)
 			return true;
@@ -1135,20 +1242,33 @@ static void bnx2x_stats_update(struct bnx2x *bp)
 	if (bnx2x_edebug_stats_stopped(bp))
 		return;
 
-	if (*stats_comp != DMAE_COMP_VAL)
-		return;
+	if (IS_PF(bp)) {
+		if (*stats_comp != DMAE_COMP_VAL)
+			return;
 
-	if (bp->port.pmf)
-		bnx2x_hw_stats_update(bp);
+		if (bp->port.pmf)
+			bnx2x_hw_stats_update(bp);
 
-	if (bnx2x_storm_stats_update(bp) && (bp->stats_pending++ == 3)) {
-		BNX2X_ERR("storm stats were not updated for 3 times\n");
-		bnx2x_panic();
-		return;
+		if (bnx2x_storm_stats_update(bp)) {
+			if (bp->stats_pending++ == 3) {
+				BNX2X_ERR("storm stats were not updated for 3 times\n");
+				bnx2x_panic();
+			}
+			return;
+		}
+	} else {
+		/* vf doesn't collect HW statistics, and doesn't get completions
+		 * perform only update
+		 */
+		bnx2x_storm_stats_update(bp);
 	}
 
 	bnx2x_net_stats_update(bp);
 	bnx2x_drv_stats_update(bp);
+
+	/* vf is done */
+	if (IS_VF(bp))
+		return;
 
 	if (netif_msg_timer(bp)) {
 		struct bnx2x_eth_stats *estats = &bp->eth_stats;
@@ -1222,14 +1342,14 @@ static void bnx2x_port_stats_stop(struct bnx2x *bp)
 
 static void bnx2x_stats_stop(struct bnx2x *bp)
 {
-	int update = 0;
+	bool update = false;
 
 	bnx2x_stats_comp(bp);
 
 	if (bp->port.pmf)
-		update = (bnx2x_hw_stats_update(bp) == 0);
+		update = bnx2x_hw_stats_update(bp) == 0;
 
-	update |= (bnx2x_storm_stats_update(bp) == 0);
+	update |= bnx2x_storm_stats_update(bp) == 0;
 
 	if (update) {
 		bnx2x_net_stats_update(bp);
@@ -1313,12 +1433,9 @@ static void bnx2x_port_stats_base_init(struct bnx2x *bp)
 	bnx2x_stats_comp(bp);
 }
 
-/**
- * This function will prepare the statistics ramrod data the way
+/* This function will prepare the statistics ramrod data the way
  * we will only have to increment the statistics counter and
  * send the ramrod each time we have to.
- *
- * @param bp
  */
 static void bnx2x_prep_fw_stats_req(struct bnx2x *bp)
 {
@@ -1432,7 +1549,7 @@ static void bnx2x_prep_fw_stats_req(struct bnx2x *bp)
 					query[first_queue_query_index + i];
 
 		cur_query_entry->kind = STATS_TYPE_QUEUE;
-		cur_query_entry->index = bnx2x_stats_id(&bp->fp[FCOE_IDX]);
+		cur_query_entry->index = bnx2x_stats_id(&bp->fp[FCOE_IDX(bp)]);
 		cur_query_entry->funcID = cpu_to_le16(BP_FUNC(bp));
 		cur_query_entry->address.hi =
 			cpu_to_le32(U64_HI(cur_data_offset));
@@ -1483,22 +1600,30 @@ void bnx2x_stats_init(struct bnx2x *bp)
 
 	/* function stats */
 	for_each_queue(bp, i) {
-		struct bnx2x_fastpath *fp = &bp->fp[i];
+		struct bnx2x_fp_stats *fp_stats = &bp->fp_stats[i];
 
-		memset(&fp->old_tclient, 0, sizeof(fp->old_tclient));
-		memset(&fp->old_uclient, 0, sizeof(fp->old_uclient));
-		memset(&fp->old_xclient, 0, sizeof(fp->old_xclient));
+		memset(&fp_stats->old_tclient, 0,
+		       sizeof(fp_stats->old_tclient));
+		memset(&fp_stats->old_uclient, 0,
+		       sizeof(fp_stats->old_uclient));
+		memset(&fp_stats->old_xclient, 0,
+		       sizeof(fp_stats->old_xclient));
 		if (bp->stats_init) {
-			memset(&fp->eth_q_stats, 0, sizeof(fp->eth_q_stats));
-			memset(&fp->eth_q_stats_old, 0,
-			       sizeof(fp->eth_q_stats_old));
+			memset(&fp_stats->eth_q_stats, 0,
+			       sizeof(fp_stats->eth_q_stats));
+			memset(&fp_stats->eth_q_stats_old, 0,
+			       sizeof(fp_stats->eth_q_stats_old));
 		}
 	}
 
 	/* Prepare statistics ramrod data */
 	bnx2x_prep_fw_stats_req(bp);
 
+#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 	memset(&bp->dev->stats, 0, sizeof(bp->dev->stats));
+#else
+	memset(&bp->net_stats, 0, sizeof(bp->net_stats));
+#endif
 	if (bp->stats_init) {
 		memset(&bp->net_stats_old, 0, sizeof(bp->net_stats_old));
 		memset(&bp->fw_stats_old, 0, sizeof(bp->fw_stats_old));
@@ -1528,13 +1653,19 @@ void bnx2x_stats_init(struct bnx2x *bp)
 void bnx2x_save_statistics(struct bnx2x *bp)
 {
 	int i;
+#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 	struct net_device_stats *nstats = &bp->dev->stats;
+#else
+	struct net_device_stats *nstats = &bp->net_stats;
+#endif
 
 	/* save queue statistics */
 	for_each_eth_queue(bp, i) {
 		struct bnx2x_fastpath *fp = &bp->fp[i];
-		struct bnx2x_eth_q_stats *qstats = &fp->eth_q_stats;
-		struct bnx2x_eth_q_stats_old *qstats_old = &fp->eth_q_stats_old;
+		struct bnx2x_eth_q_stats *qstats =
+			&bnx2x_fp_stats(bp, fp)->eth_q_stats;
+		struct bnx2x_eth_q_stats_old *qstats_old =
+			&bnx2x_fp_stats(bp, fp)->eth_q_stats_old;
 
 		UPDATE_QSTAT_OLD(total_unicast_bytes_received_hi);
 		UPDATE_QSTAT_OLD(total_unicast_bytes_received_lo);
@@ -1556,13 +1687,22 @@ void bnx2x_save_statistics(struct bnx2x *bp)
 	bp->net_stats_old.rx_dropped = nstats->rx_dropped;
 
 	/* store port firmware statistics */
-	if (bp->port.pmf && IS_MF(bp)) {
+	if (bp->port.pmf) {
 		struct bnx2x_eth_stats *estats = &bp->eth_stats;
 		struct bnx2x_fw_port_stats_old *fwstats = &bp->fw_stats_old;
-		UPDATE_FW_STAT_OLD(mac_filter_discard);
-		UPDATE_FW_STAT_OLD(mf_tag_discard);
-		UPDATE_FW_STAT_OLD(brb_truncate_discard);
-		UPDATE_FW_STAT_OLD(mac_discard);
+		struct host_port_stats *pstats = bnx2x_sp(bp, port_stats);
+
+		fwstats->pfc_frames_rx_hi = pstats->pfc_frames_rx_hi;
+		fwstats->pfc_frames_rx_lo = pstats->pfc_frames_rx_lo;
+		fwstats->pfc_frames_tx_hi = pstats->pfc_frames_tx_hi;
+		fwstats->pfc_frames_tx_lo = pstats->pfc_frames_tx_lo;
+
+		if (IS_MF(bp)) {
+			UPDATE_FW_STAT_OLD(mac_filter_discard);
+			UPDATE_FW_STAT_OLD(mf_tag_discard);
+			UPDATE_FW_STAT_OLD(brb_truncate_discard);
+			UPDATE_FW_STAT_OLD(mac_discard);
+		}
 	}
 }
 
@@ -1573,7 +1713,7 @@ void bnx2x_afex_collect_stats(struct bnx2x *bp, void *void_afex_stats,
 	struct afex_stats *afex_stats = (struct afex_stats *)void_afex_stats;
 	struct bnx2x_eth_stats *estats = &bp->eth_stats;
 	struct per_queue_stats *fcoe_q_stats =
-		&bp->fw_stats_data->queue_stats[FCOE_IDX];
+		&bp->fw_stats_data->queue_stats[FCOE_IDX(bp)];
 
 	struct tstorm_per_queue_stats *fcoe_q_tstorm_stats =
 		&fcoe_q_stats->tstorm_queue_statistics;
@@ -1590,8 +1730,7 @@ void bnx2x_afex_collect_stats(struct bnx2x *bp, void *void_afex_stats,
 	memset(afex_stats, 0, sizeof(struct afex_stats));
 
 	for_each_eth_queue(bp, i) {
-		struct bnx2x_fastpath *fp = &bp->fp[i];
-		struct bnx2x_eth_q_stats *qstats = &fp->eth_q_stats;
+		struct bnx2x_eth_q_stats *qstats = &bp->fp_stats[i].eth_q_stats;
 
 		ADD_64(afex_stats->rx_unicast_bytes_hi,
 		       qstats->total_unicast_bytes_received_hi,
