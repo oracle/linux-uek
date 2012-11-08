@@ -36,15 +36,84 @@
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_host.h>
 #include <scsi/scsi.h>
-#include <scsi/iscsi_proto.h>
-#include <scsi/libiscsi.h>
-#include <scsi/scsi_transport_iscsi.h>
+
+#include "bnx2i_compat.h"
 
 #include "../../net/cnic_if.h"
+
 #include "57xx_iscsi_hsi.h"
 #include "57xx_iscsi_constants.h"
 
+#include "../../net/bnx2x/bnx2x_mfw_req.h"
+
 #define BNX2_ISCSI_DRIVER_NAME		"bnx2i"
+#ifndef PCI_DEVICE_ID_NX2_5709
+#define PCI_DEVICE_ID_NX2_5709		0x1639
+#endif
+ 
+#ifndef PCI_DEVICE_ID_NX2_5709S
+#define PCI_DEVICE_ID_NX2_5709S		0x163a
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57710
+#define PCI_DEVICE_ID_NX2_57710		0x164e
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57711
+#define PCI_DEVICE_ID_NX2_57711		0x164f
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57711E
+#define PCI_DEVICE_ID_NX2_57711E	0x1650
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57712
+#define PCI_DEVICE_ID_NX2_57712		0x1662
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57712_MF
+#define PCI_DEVICE_ID_NX2_57712_MF	0x1663
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57712_VF
+#define PCI_DEVICE_ID_NX2_57712_VF	0x166f
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57800
+#define PCI_DEVICE_ID_NX2_57800		0x168a
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57800_MF
+#define PCI_DEVICE_ID_NX2_57800_MF	0x16a5
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57800_VF
+#define PCI_DEVICE_ID_NX2_57800_VF	0x16a9
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57810
+#define PCI_DEVICE_ID_NX2_57810		0x168e
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57810_MF
+#define PCI_DEVICE_ID_NX2_57810_MF	0x16ae
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57810_VF
+#define PCI_DEVICE_ID_NX2_57810_VF	0x16af
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57840
+#define PCI_DEVICE_ID_NX2_57840		0x168d
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57840_MF
+#define PCI_DEVICE_ID_NX2_57840_MF	0x16ab
+#endif
+
+#ifndef PCI_DEVICE_ID_NX2_57840_VF
+#define PCI_DEVICE_ID_NX2_57840_VF	0x16ad
+#endif
 
 #define BNX2I_MAX_ADAPTERS		8
 
@@ -126,6 +195,42 @@
 #define REG_WR(__hba, offset, val)			\
 		writel(val, __hba->regview + offset)
 
+#ifdef CONFIG_32BIT
+#define GET_STATS_64(__hba, dst, field)				\
+	do {							\
+		spin_lock_bh(&__hba->stat_lock);		\
+		dst->field##_lo = __hba->stats.field##_lo;	\
+		dst->field##_hi = __hba->stats.field##_hi;	\
+		spin_unlock_bh(&__hba->stat_lock);		\
+	} while (0)
+
+#define ADD_STATS_64(__hba, field, len)				\
+	do {							\
+		if (spin_trylock(&__hba->stat_lock)) {		\
+			if (__hba->stats.field##_lo + len <	\
+			    __hba->stats.field##_lo)		\
+				__hba->stats.field##_hi++;	\
+			__hba->stats.field##_lo += len;		\
+			spin_unlock(&__hba->stat_lock);		\
+		}						\
+	} while (0)
+
+#else
+#define GET_STATS_64(__hba, dst, field)				\
+	do {							\
+		u64 val, *out;					\
+								\
+		val = __hba->bnx2i_stats.field;			\
+		out = (u64 *)&__hba->stats.field##_lo;		\
+		*out = cpu_to_le64(val);			\
+		out = (u64 *)&dst->field##_lo;			\
+		*out = cpu_to_le64(val);			\
+	} while (0)
+
+#define ADD_STATS_64(__hba, field, len)				\
+	__hba->bnx2i_stats.field += len
+
+#endif
 
 /**
  * struct generic_pdu_resc - login pdu resource structure
@@ -212,6 +317,7 @@ struct io_bdt {
  * @io_tbl:             buffer descriptor (BD) table
  * @bd_tbl_dma:         buffer descriptor (BD) table's dma address
  * @req:                bnx2i specific command request struct
+ * @cpu:                CPU number of the specific cmd; for completion purposes
  */
 struct bnx2i_cmd {
 	struct iscsi_hdr hdr;
@@ -221,6 +327,7 @@ struct bnx2i_cmd {
 	struct io_bdt io_tbl;
 	dma_addr_t bd_tbl_dma;
 	struct bnx2i_cmd_request req;
+	u32 cpu;
 };
 
 
@@ -235,6 +342,7 @@ struct bnx2i_cmd {
  * @gen_pdu:               login/nopout/logout pdu resources
  * @violation_notified:    bit mask used to track iscsi error/warning messages
  *                         already printed out
+ * @prev_sess_state:       keeps track of the connections previous session state
  * @work_cnt:              keeps track of the number of outstanding work
  *
  * iSCSI connection structure
@@ -260,9 +368,10 @@ struct bnx2i_conn {
 	struct generic_pdu_resc gen_pdu;
 	u64 violation_notified;
 
+	int prev_sess_state;
+
 	atomic_t work_cnt;
 };
-
 
 
 /**
@@ -288,6 +397,29 @@ struct iscsi_cid_queue {
 	struct bnx2i_conn **conn_cid_tbl;
 };
 
+struct bnx2i_stats_info {
+	u64 rx_pdus;
+	u64 rx_bytes;
+	u64 tx_pdus;
+	u64 tx_bytes;
+};
+
+struct iscsi_login_stats_info {
+	u32 successful_logins;			/* Total login successes */
+	u32 login_failures;			/* Total login failures */
+	u32 login_negotiation_failures;		/* Text negotiation failed */
+	u32 login_authentication_failures;	/* login Authentication failed */
+	u32 login_redirect_responses;		/* Target redirects to another portal */
+	u32 connection_timeouts;		/* TCP connection timeouts */
+	u32 session_failures;			/* Errors resulting in sess recovery */
+	u32 digest_errors;			/* Errors resulting in digest errors */
+};
+
+struct bnx2i_iface {
+	struct list_head link;
+	struct iscsi_iface *iface;
+};
+
 /**
  * struct bnx2i_hba - bnx2i adapter structure
  *
@@ -306,6 +438,11 @@ struct iscsi_cid_queue {
  * @max_sqes:              SQ size
  * @max_rqes:              RQ size
  * @max_cqes:              CQ size
+ * @err_rec_task:          error handling worker
+ * @conn_recov_list:       conn list which are queued for recovery
+ * @conn_recov_prod_idx:   producer index to manage conn recovery list
+ * @conn_recov_cons_idx:   producer index to manage conn recovery list
+ * @conn_recov_max_idx:    max index to manage conn recovery list
  * @num_ccell:             number of command cells per connection
  * @ofld_conns_active:     active connection list
  * @eh_wait:               wait queue for the endpoint to shutdown
@@ -341,6 +478,11 @@ struct iscsi_cid_queue {
  * @ctx_ccell_tasks:       captures number of ccells and tasks supported by
  *                         currently offloaded connection, used to decode
  *                         context memory
+ * @stat_lock:             statistic lock to maintain coherency
+ * @stats:                 iSCSI statistic structure memory
+ * @login_stats:           iSCSI login statistic structure memory
+ * @iface_ipv4_list:       bnx2i_iface struct list for IPv4
+ * @iface_ipv6_list:       bnx2i_iface struct list for IPv6
  *
  * Adapter Data Structure
  */
@@ -378,6 +520,13 @@ struct bnx2i_hba {
 	u32 max_sqes;
 	u32 max_rqes;
 	u32 max_cqes;
+
+	struct work_struct err_rec_task;
+	struct iscsi_conn **conn_recov_list;
+	int conn_recov_prod_idx;
+	int conn_recov_cons_idx;
+	int conn_recov_max_idx;
+
 	u32 num_ccell;
 
 	int ofld_conns_active;
@@ -405,6 +554,7 @@ struct bnx2i_hba {
 	int hba_shutdown_tmo;
 	int conn_teardown_tmo;
 	int conn_ctx_destroy_tmo;
+
 	/*
 	 * PCI related info.
 	 */
@@ -427,7 +577,18 @@ struct bnx2i_hba {
 	u32 num_sess_opened;
 	u32 num_conn_opened;
 	unsigned int ctx_ccell_tasks;
+
+#ifdef CONFIG_32BIT
+	spinlock_t stat_lock;
+#endif
+	struct bnx2i_stats_info bnx2i_stats;
+	struct iscsi_stats_info stats;
+	struct iscsi_login_stats_info login_stats;
+
+	struct list_head iface_ipv4_list;
+	struct list_head iface_ipv6_list;
 };
+
 
 
 /*******************************************************************************
@@ -727,8 +888,10 @@ struct bnx2i_percpu_s {
 extern unsigned int error_mask1, error_mask2;
 extern u64 iscsi_error_mask;
 extern unsigned int en_tcp_dack;
+extern unsigned int time_stamps;
 extern unsigned int event_coal_div;
 extern unsigned int event_coal_min;
+extern unsigned int tcp_buf_size;
 
 extern struct scsi_transport_template *bnx2i_scsi_xport_template;
 extern struct iscsi_transport bnx2i_iscsi_transport;
@@ -736,6 +899,8 @@ extern struct cnic_ulp_ops bnx2i_cnic_cb;
 
 extern unsigned int sq_size;
 extern unsigned int rq_size;
+extern unsigned int last_active_tcp_port;
+extern unsigned int cmd_cmpl_per_work;
 
 extern struct device_attribute *bnx2i_dev_attributes[];
 
@@ -750,6 +915,8 @@ extern void bnx2i_ulp_init(struct cnic_dev *dev);
 extern void bnx2i_ulp_exit(struct cnic_dev *dev);
 extern void bnx2i_start(void *handle);
 extern void bnx2i_stop(void *handle);
+extern int bnx2i_get_stats(void *handle);
+
 extern struct bnx2i_hba *get_adapter_list_head(void);
 
 struct bnx2i_conn *bnx2i_get_conn_from_id(struct bnx2i_hba *hba,
@@ -819,4 +986,5 @@ extern int bnx2i_percpu_io_thread(void *arg);
 extern int bnx2i_process_scsi_cmd_resp(struct iscsi_session *session,
 				       struct bnx2i_conn *bnx2i_conn,
 				       struct cqe *cqe);
+extern void bnx2i_add_stats(u32 *lo, u32 *hi, u32 length);
 #endif

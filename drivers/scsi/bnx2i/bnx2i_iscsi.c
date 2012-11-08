@@ -13,15 +13,25 @@
  * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
  */
 
-#include <linux/slab.h>
-#include <scsi/scsi_tcq.h>
-#include <scsi/libiscsi.h>
 #include "bnx2i.h"
+#include <linux/ethtool.h>
+#include <scsi/scsi_transport.h>
+#include <net/netlink.h>
+
+#include <linux/version.h>
 
 struct scsi_transport_template *bnx2i_scsi_xport_template;
 struct iscsi_transport bnx2i_iscsi_transport;
 static struct scsi_host_template bnx2i_host_template;
 
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_WORK_NAR)
+static void conn_err_recovery_task(struct work_struct *work);
+#else
+static void conn_err_recovery_task(void *data);
+#endif
+
+static void bnx2i_withdraw_conn_recovery(struct bnx2i_hba *hba,
+					 struct iscsi_conn *conn);
 /*
  * Global endpoint resource info
  */
@@ -372,9 +382,6 @@ static void bnx2i_release_free_cid_que(struct bnx2i_hba *hba)
  * bnx2i_alloc_ep - allocates ep structure from global pool
  * @hba:	pointer to adapter instance
  *
- * routine allocates a free endpoint structure from global pool and
- *	a tcp port to be used for this connection.  Global resource lock,
- *	'bnx2i_resc_lock' is held while accessing shared global data structures
  */
 static struct iscsi_endpoint *bnx2i_alloc_ep(struct bnx2i_hba *hba)
 {
@@ -591,6 +598,22 @@ static void bnx2i_free_mp_bdt(struct bnx2i_hba *hba)
 void bnx2i_drop_session(struct iscsi_cls_session *cls_session)
 {
 	iscsi_session_failure(cls_session->dd_data, ISCSI_ERR_CONN_FAILED);
+}
+
+/**
+ * bnx2i_invalid_host - notifies iscsid of host invalidation (prep for host
+ *			removal)
+ * @hba:	adapter instance pointer
+ * @session:	iscsi session pointer
+ *
+ * This notifies iscsid to invalidate the host
+ *
+ * This relies on caller using the iscsi class iterator so the object
+ * is refcounted and does not disapper from under us.
+ */
+void bnx2i_invalid_host(struct iscsi_cls_session *cls_session)
+{
+	iscsi_session_failure(cls_session->dd_data, ISCSI_ERR_INVALID_HOST);
 }
 
 /**
@@ -874,6 +897,28 @@ struct bnx2i_hba *bnx2i_alloc_hba(struct cnic_dev *cnic)
 		hba->conn_ctx_destroy_tmo = 2 * HZ;
 	}
 
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_WORK_NAR)
+	INIT_WORK(&hba->err_rec_task, conn_err_recovery_task);
+#else
+	INIT_WORK(&hba->err_rec_task, conn_err_recovery_task, hba);
+#endif
+	hba->conn_recov_prod_idx = 0;
+	hba->conn_recov_cons_idx = 0;
+	hba->conn_recov_max_idx = 0;
+	hba->conn_recov_list = kmalloc(PAGE_SIZE, GFP_KERNEL);
+	if (!hba->conn_recov_list)
+		goto free_dump_mem;
+	hba->conn_recov_max_idx = PAGE_SIZE / sizeof (struct iscsi_conn *) - 1;
+
+#ifdef CONFIG_32BIT
+	spin_lock_init(&hba->stat_lock);
+#endif
+	memset(&hba->stats, 0, sizeof(struct iscsi_stats_info));
+	memset(&hba->login_stats, 0, sizeof(struct iscsi_login_stats_info));
+
+	INIT_LIST_HEAD(&hba->iface_ipv4_list);
+	INIT_LIST_HEAD(&hba->iface_ipv6_list);
+
 	if (iscsi_host_add(shost, &hba->pcidev->dev))
 		goto free_dump_mem;
 	return hba;
@@ -902,8 +947,42 @@ ioreg_map_err:
 void bnx2i_free_hba(struct bnx2i_hba *hba)
 {
 	struct Scsi_Host *shost = hba->shost;
+	struct iscsi_host *ihost = shost_priv(shost);
+#define MAX_FREE_HBA_RETRY 10
+	int i = MAX_FREE_HBA_RETRY, rc = 0;
+#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
+     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+	struct list_head *pos, *q;
+	struct bnx2i_iface *bnx2i_iface;
+#endif
 
+	/* Before calling host_remove, we must ensure that all sessions
+	 * are currently down via the ihost->num_session parameter
+	 */
+	while (i--) {
+		iscsi_host_for_each_session(hba->shost,
+					    bnx2i_invalid_host);
+		/* 10s timeout */
+		rmb();
+		rc = wait_event_interruptible_timeout(hba->eh_wait,
+						      ihost->num_sessions == 0,
+						      msecs_to_jiffies(10000));
+		rmb();
+		if (ihost->num_sessions) {
+			printk(KERN_ALERT "bnx2i: %s free_hba retry with "
+				"num_sessions = %d\n", hba->netdev->name,
+				ihost->num_sessions);
+		} else {
+			printk(KERN_ALERT "bnx2i: %s free_hba done after %d "
+				"retries\n", hba->netdev->name,
+				(MAX_FREE_HBA_RETRY - 1) - i);
+			break;
+		}
+	}
 	iscsi_host_remove(shost);
+
 	INIT_LIST_HEAD(&hba->ep_ofld_list);
 	INIT_LIST_HEAD(&hba->ep_active_list);
 	INIT_LIST_HEAD(&hba->ep_destroy_list);
@@ -915,6 +994,37 @@ void bnx2i_free_hba(struct bnx2i_hba *hba)
 	}
 	bnx2i_free_mp_bdt(hba);
 	bnx2i_release_free_cid_que(hba);
+
+	if (hba->conn_recov_list) {
+		kfree(hba->conn_recov_list);
+		hba->conn_recov_list = NULL;
+	}
+
+#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
+     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+	list_for_each_safe(pos, q, &hba->iface_ipv4_list) {
+		bnx2i_iface = list_entry(pos, struct bnx2i_iface, link);
+		if (bnx2i_iface) {
+			if (bnx2i_iface->iface)
+				iscsi_destroy_iface(bnx2i_iface->iface);
+			list_del(pos);
+			kfree(bnx2i_iface);
+		}
+	}
+	INIT_LIST_HEAD(&hba->iface_ipv4_list);
+	list_for_each_safe(pos, q, &hba->iface_ipv6_list) {
+		bnx2i_iface = list_entry(pos, struct bnx2i_iface, link);
+		if (bnx2i_iface) {
+			if (bnx2i_iface->iface)
+				iscsi_destroy_iface(bnx2i_iface->iface);
+			list_del(pos);
+			kfree(bnx2i_iface);
+		}
+	}
+	INIT_LIST_HEAD(&hba->iface_ipv6_list);
+#endif
 	iscsi_host_free(shost);
 }
 
@@ -1078,6 +1188,22 @@ static int bnx2i_iscsi_send_generic_request(struct iscsi_task *task)
 	char *buf;
 	int data_len;
 
+	/*
+	 * Forcefully terminate all in progress connection recovery at the
+	 * earliest, either in bind(), send_pdu(LOGIN), or conn_start() 
+	 */
+	if (bnx2i_adapter_ready(bnx2i_conn->ep->hba)) {
+		if ((task->hdr->opcode & ISCSI_OPCODE_MASK) ==
+		    ISCSI_OP_NOOP_OUT)
+			/* This is a WA to indicate to libiscsi that the nopout
+			 * request was sent successfully without actually
+			 * submitting to the hardware.  
+			 * Just silently drop the nopout request
+			 */
+			return 0;
+		else
+			return -EIO;
+	}
 	bnx2i_iscsi_prep_generic_pdu_bd(bnx2i_conn);
 	switch (task->hdr->opcode & ISCSI_OPCODE_MASK) {
 	case ISCSI_OP_LOGIN:
@@ -1181,12 +1307,18 @@ static int
 bnx2i_mtask_xmit(struct iscsi_conn *conn, struct iscsi_task *task)
 {
 	struct bnx2i_conn *bnx2i_conn = conn->dd_data;
+	struct bnx2i_hba *hba = bnx2i_conn->hba;
 	struct bnx2i_cmd *cmd = task->dd_data;
 
 	memset(bnx2i_conn->gen_pdu.req_buf, 0, ISCSI_DEF_MAX_RECV_SEG_LEN);
 
 	bnx2i_setup_cmd_wqe_template(cmd);
 	bnx2i_conn->gen_pdu.req_buf_size = task->data_count;
+
+	/* Tx PDU/data length count */
+	ADD_STATS_64(hba, tx_pdus, 1);
+	ADD_STATS_64(hba, tx_bytes, task->data_count);
+
 	if (task->data_count) {
 		memcpy(bnx2i_conn->gen_pdu.req_buf, task->data,
 		       task->data_count);
@@ -1195,6 +1327,7 @@ bnx2i_mtask_xmit(struct iscsi_conn *conn, struct iscsi_task *task)
 	}
 	cmd->conn = conn->dd_data;
 	cmd->scsi_cmd = NULL;
+
 	return bnx2i_iscsi_send_generic_request(task);
 }
 
@@ -1214,16 +1347,27 @@ static int bnx2i_task_xmit(struct iscsi_task *task)
 	struct scsi_cmnd *sc = task->sc;
 	struct bnx2i_cmd *cmd = task->dd_data;
 	struct iscsi_cmd *hdr = (struct iscsi_cmd *) task->hdr;
+	u32 cpu;
 
+	/* If the number of outstanding cmds exceeds max_sqes, bail */
 	if (atomic_read(&bnx2i_conn->ep->num_active_cmds) + 1  >
-	    hba->max_sqes)
+	    hba->max_sqes) {
+		printk(KERN_ERR "bnx2i: cmds full=%d max=%d\n",
+		       atomic_read(&bnx2i_conn->ep->num_active_cmds),
+				   hba->max_sqes);
 		return -ENOMEM;
-
+	}
 	/*
 	 * If there is no scsi_cmnd this must be a mgmt task
 	 */
 	if (!sc)
 		return bnx2i_mtask_xmit(conn, task);
+
+	/* Keep track of the CPU number for the respective scsi cmds */
+	/* Avoid sc->request->cpu for now as the blk layer code has a bug */
+	cpu = get_cpu();
+	put_cpu();
+	cmd->cpu = cpu;
 
 	bnx2i_setup_cmd_wqe_template(cmd);
 	cmd->req.op_code = ISCSI_OP_SCSI_CMD;
@@ -1430,6 +1574,13 @@ static int bnx2i_conn_bind(struct iscsi_cls_session *cls_session,
 				  hba->netdev->name);
 		return -EEXIST;
 	}
+	if (bnx2i_conn->ep) {
+		printk(KERN_ALERT "bnx2i: Binding to an existing endpoint "
+			"detected.  Disconnecting the old...\n");
+		mutex_lock(&hba->net_dev_lock);
+ 		bnx2i_hw_ep_disconnect(bnx2i_conn->ep);
+		mutex_unlock(&hba->net_dev_lock);
+	}
 	bnx2i_ep->conn = bnx2i_conn;
 	bnx2i_conn->ep = bnx2i_ep;
 	bnx2i_conn->iscsi_conn_cid = bnx2i_ep->ep_iscsi_cid;
@@ -1471,6 +1622,8 @@ static void bnx2i_conn_destroy(struct iscsi_cls_conn *cls_conn)
 
 	bnx2i_conn_free_login_resources(hba, bnx2i_conn);
 
+	bnx2i_withdraw_conn_recovery(hba, conn);
+
 	if (atomic_read(&bnx2i_conn->work_cnt)) {
 		for_each_online_cpu(cpu) {
 			p = &per_cpu(bnx2i_percpu, cpu);
@@ -1493,6 +1646,54 @@ static void bnx2i_conn_destroy(struct iscsi_cls_conn *cls_conn)
 	iscsi_conn_teardown(cls_conn);
 }
 
+#if ((!defined(__SLES_DISTRO__) || (__SLES_DISTRO__ < 0x1102)) && \
+     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x0509)) && \
+     (!defined(__RHELS_DISTRO_6__) || (__RHELS_DISTRO_6__ < 0x0602)) && \
+     (defined(__DISTRO__) || LINUX_VERSION_CODE < 0x020626))
+/**
+ * bnx2i_conn_get_param - return iscsi connection parameter to caller
+ * @cls_conn:	pointer to iscsi cls conn
+ * @param:	parameter type identifier
+ * @buf: 	buffer pointer
+ *
+ * returns iSCSI connection parameters
+ */
+static int bnx2i_conn_get_param(struct iscsi_cls_conn *cls_conn,
+				enum iscsi_param param, char *buf)
+{
+	struct iscsi_conn *conn = cls_conn->dd_data;
+	struct bnx2i_conn *bnx2i_conn = conn->dd_data;
+	struct bnx2i_hba *hba;
+	int len = 0;
+
+	switch (param) {
+	case ISCSI_PARAM_CONN_PORT:
+	case ISCSI_PARAM_CONN_ADDRESS:
+		/* iscsi_conn is protected by the caller */
+		if (!(bnx2i_conn && bnx2i_conn->hba))
+			break;
+		hba = bnx2i_conn->hba;
+		/* lock ep to conn/cm_sk */
+		mutex_lock(&hba->net_dev_lock);
+		if (!(bnx2i_conn->ep && bnx2i_conn->ep->cm_sk))
+			goto out;
+
+		if (param == ISCSI_PARAM_CONN_PORT)
+			len = sprintf(buf, "%hu\n",
+				      bnx2i_conn->ep->cm_sk->dst_port);
+		else
+			len = sprintf(buf, "%pI4\n",
+				      &bnx2i_conn->ep->cm_sk->dst_ip);
+out:
+		mutex_unlock(&hba->net_dev_lock);
+		break;
+	default:
+		len = iscsi_conn_get_param(cls_conn, param, buf);
+	}
+	return len;
+}
+
+#else
 
 /**
  * bnx2i_ep_get_param - return iscsi ep parameter to caller
@@ -1528,9 +1729,155 @@ static int bnx2i_ep_get_param(struct iscsi_endpoint *ep,
 	default:
 		return -ENOSYS;
 	}
-
 	return len;
 }
+#endif
+
+#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
+     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+/**
+ * bnx2i_set_iface_param - sets iface related parameters
+ * @shost:	scsi host pointer
+ * @data:	iface data string
+ * @len:	length
+ */
+static int bnx2i_set_iface_param(struct Scsi_Host *shost,
+				 void *data, u32 len)
+{
+	struct bnx2i_hba *hba = iscsi_host_priv(shost);
+	struct iscsi_iface_param_info *iface_param = NULL;
+	struct nlattr *attr;
+	u32 rem = len;
+	struct bnx2i_iface *bnx2i_iface;
+	struct iscsi_iface *iface;
+	struct list_head *pos, *q, *ip_list;
+
+	if (!hba)
+		return 0;
+
+	nla_for_each_attr(attr, data, len, rem) {
+		iface_param = nla_data(attr);
+
+		if (iface_param->param_type != ISCSI_NET_PARAM)
+			continue;
+
+		/* Ignore all other param request */
+		if (iface_param->param != ISCSI_NET_PARAM_IFACE_ENABLE)
+			continue;
+
+		switch (iface_param->iface_type) {
+		case ISCSI_IFACE_TYPE_IPV4:
+			ip_list = &hba->iface_ipv4_list;
+			break;
+		case ISCSI_IFACE_TYPE_IPV6:
+			ip_list = &hba->iface_ipv6_list;
+			break;
+		default:
+			printk(KERN_ERR "bnx2i: Invalid iface type\n");
+			continue;
+		}
+		list_for_each_safe(pos, q, ip_list) {
+			bnx2i_iface = list_entry(pos,
+						 struct bnx2i_iface,
+						 link);
+			if (bnx2i_iface->iface->iface_num ==
+			    iface_param->iface_num) {
+				/* iface found, delete */
+				if (bnx2i_iface->iface) {
+					iscsi_destroy_iface(bnx2i_iface->iface);
+					list_del(pos);
+					kfree(bnx2i_iface);
+				}
+				break;
+			}
+		}
+		if (iface_param->value[0] != ISCSI_IFACE_ENABLE)
+			goto done;
+
+		/* Allocate for the new bnx2i iface entry */
+		bnx2i_iface = kmalloc(sizeof(struct bnx2i_iface), GFP_ATOMIC);
+		if (!bnx2i_iface) {
+			printk(KERN_ERR "bnx2i: bnx2i_iface alloc failed\n");
+			return -ENOMEM;
+		}
+		iface = iscsi_create_iface(shost,
+					   &bnx2i_iscsi_transport,
+					   iface_param->iface_type,
+					   iface_param->iface_num, 0);
+		if (!iface) {
+			printk(KERN_ERR "bnx2i: iscsi_iface create failed\n");
+			kfree(bnx2i_iface);
+			return -ENOMEM;
+		}
+		bnx2i_iface->iface = iface;
+		list_add_tail(&bnx2i_iface->link, ip_list);
+	}
+done:
+	return 0;
+}
+
+
+/**
+* bnx2i_get_iface_param - gets iface related parameters
+* @shost:	scsi host pointer
+* @data:	iface data string
+* @len:		length
+*/
+static int bnx2i_get_iface_param(struct iscsi_iface *iface,
+				 enum iscsi_param_type param_type,
+				 int param, char *buf)
+{
+	struct Scsi_Host *shost = iscsi_iface_to_shost(iface);
+	struct bnx2i_hba *hba = iscsi_host_priv(shost);
+	struct list_head *active_list;
+	int len = 0;
+
+	if (param_type != ISCSI_NET_PARAM)
+		return -ENOSYS;
+
+	if (!hba)
+		return -ENOSYS;
+
+	switch (param) {
+	case ISCSI_NET_PARAM_IPV4_ADDR:
+	case ISCSI_NET_PARAM_IPV6_ADDR:
+		read_lock_bh(&hba->ep_rdwr_lock);
+		active_list = &hba->ep_active_list;
+		if (!list_empty(active_list)) {
+			struct bnx2i_endpoint *bnx2i_ep;
+			struct cnic_sock *csk;
+
+			list_for_each_entry(bnx2i_ep, active_list, link) {
+				csk = bnx2i_ep->cm_sk;
+				if (!csk)
+					continue;
+				if (csk->iface_num != iface->iface_num)
+					continue;
+				/* IPv4 */
+				if (!test_bit(SK_F_IPV6, &csk->flags) &&
+				    iface->iface_type == ISCSI_IFACE_TYPE_IPV4) {
+					FORMAT_IP(buf, "%pI4\n", csk->src_ip,
+						  len);
+					break;
+				} else if (test_bit(SK_F_IPV6, &csk->flags) &&
+				    iface->iface_type == ISCSI_IFACE_TYPE_IPV6) {
+					FORMAT_IP6(buf, "%pI6\n", csk->src_ip,
+						   len);
+					break;
+				}
+			}
+		}
+		read_unlock_bh(&hba->ep_rdwr_lock);
+		break;
+	default:
+		break;
+	}
+	return len;
+}
+#endif
+
 
 /**
  * bnx2i_host_get_param - returns host (adapter) related parameters
@@ -1543,6 +1890,11 @@ static int bnx2i_host_get_param(struct Scsi_Host *shost,
 {
 	struct bnx2i_hba *hba = iscsi_host_priv(shost);
 	int len = 0;
+
+	/* Return len = 0 if the hba or the cnic has already been 
+	   unregistered */
+	if (!(hba && hba->cnic))
+		return len;
 
 	switch (param) {
 	case ISCSI_HOST_PARAM_HWADDRESS:
@@ -1563,10 +1915,14 @@ static int bnx2i_host_get_param(struct Scsi_Host *shost,
 						    struct bnx2i_endpoint,
 						    link);
 			csk = bnx2i_ep->cm_sk;
-			if (test_bit(SK_F_IPV6, &csk->flags))
-				len = sprintf(buf, "%pI6\n", csk->src_ip);
-			else
-				len = sprintf(buf, "%pI4\n", csk->src_ip);
+			if (csk) {
+				if (!test_bit(SK_F_IPV6, &csk->flags))
+					FORMAT_IP(buf, "%pI4\n", csk->src_ip,
+						  len);
+				else
+					FORMAT_IP6(buf, "%pI6\n", csk->src_ip,
+						   len);
+			}
 		}
 		read_unlock_bh(&hba->ep_rdwr_lock);
 		break;
@@ -1606,6 +1962,9 @@ static int bnx2i_conn_start(struct iscsi_cls_conn *cls_conn)
 	if (signal_pending(current))
 		flush_signals(current);
 	del_timer_sync(&bnx2i_conn->ep->ofld_timer);
+
+	if (bnx2i_conn->ep->state != EP_STATE_ULP_UPDATE_COMPL)
+		return -EBUSY;
 
 	iscsi_conn_start(cls_conn);
 	return 0;
@@ -1691,9 +2050,10 @@ no_nx2_route:
 static int bnx2i_tear_down_conn(struct bnx2i_hba *hba,
 				 struct bnx2i_endpoint *ep)
 {
-	if (test_bit(BNX2I_CNIC_REGISTERED, &hba->reg_with_cnic) && ep->cm_sk)
+	if (test_bit(BNX2I_CNIC_REGISTERED, &hba->reg_with_cnic) && ep->cm_sk) {
 		hba->cnic->cm_destroy(ep->cm_sk);
-
+		ep->cm_sk = NULL;
+	}
 	if (test_bit(BNX2I_NX2_DEV_57710, &hba->cnic_dev_type) &&
 	    ep->state == EP_STATE_DISCONN_TIMEDOUT) {
 		if (ep->conn && ep->conn->cls_conn &&
@@ -1757,7 +2117,7 @@ static int bnx2i_tear_down_conn(struct bnx2i_hba *hba,
  */
 static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 					       struct sockaddr *dst_addr,
-					       int non_blocking)
+					       int non_blocking, u32 iface_num)
 {
 	u32 iscsi_cid = BNX2I_CID_RESERVED;
 	struct sockaddr_in *desti = (struct sockaddr_in *) dst_addr;
@@ -1768,6 +2128,9 @@ static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 	struct cnic_sockaddr saddr;
 	struct iscsi_endpoint *ep;
 	int rc = 0;
+#ifndef _EP_CONNECT_IFACE_NUM_
+	u32 iface_num = -1;
+#endif
 
 	if (shost) {
 		/* driver is given scsi host to work with */
@@ -1860,16 +2223,21 @@ static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 	}
 
 	rc = cnic->cm_create(cnic, CNIC_ULP_ISCSI, bnx2i_ep->ep_cid,
-			     iscsi_cid, &bnx2i_ep->cm_sk, bnx2i_ep);
+			     iscsi_cid, &bnx2i_ep->cm_sk, bnx2i_ep, iface_num);
 	if (rc) {
 		rc = -EINVAL;
 		/* Need to terminate and cleanup the connection */
 		goto release_ep;
 	}
 
-	bnx2i_ep->cm_sk->rcv_buf = 256 * 1024;
-	bnx2i_ep->cm_sk->snd_buf = 256 * 1024;
-	clear_bit(SK_TCP_TIMESTAMP, &bnx2i_ep->cm_sk->tcp_flags);
+	/* Supply Window size to be 4 bytes aligned */
+	bnx2i_ep->cm_sk->rcv_buf = (tcp_buf_size * 1024 - 1) & ~0x03;
+	bnx2i_ep->cm_sk->snd_buf = (tcp_buf_size * 1024 - 1) & ~0x03;
+
+        if (!en_tcp_dack)
+                bnx2i_ep->cm_sk->tcp_flags |= SK_TCP_NO_DELAY_ACK;
+        if (time_stamps)
+                bnx2i_ep->cm_sk->tcp_flags |= SK_TCP_TIMESTAMP;
 
 	memset(&saddr, 0, sizeof(saddr));
 	if (dst_addr->sa_family == AF_INET) {
@@ -1896,6 +2264,8 @@ static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 
 	if (bnx2i_map_ep_dbell_regs(bnx2i_ep))
 		goto del_active_ep;
+        
+	last_active_tcp_port = be16_to_cpu(bnx2i_ep->cm_sk->src_port);
 
 	mutex_unlock(&hba->net_dev_lock);
 	return ep;
@@ -2122,15 +2492,16 @@ static void bnx2i_ep_disconnect(struct iscsi_endpoint *ep)
 	if (bnx2i_ep->conn) {
 		bnx2i_conn = bnx2i_ep->conn;
 		conn = bnx2i_conn->cls_conn->dd_data;
+
 		iscsi_suspend_queue(conn);
 	}
 	hba = bnx2i_ep->hba;
 
 	mutex_lock(&hba->net_dev_lock);
 
-	if (bnx2i_ep->state == EP_STATE_DISCONN_TIMEDOUT)
+	if (bnx2i_ep->state == EP_STATE_DISCONN_TIMEDOUT) {
 		goto out;
-
+	}
 	if (bnx2i_ep->state == EP_STATE_IDLE)
 		goto free_resc;
 
@@ -2226,9 +2597,100 @@ static mode_t bnx2i_attr_is_visible(int param_type, int param)
 		default:
 			return 0;
 		}
+	case ISCSI_NET_PARAM:
+		switch (param) {
+		case ISCSI_NET_PARAM_IPV4_ADDR:
+		case ISCSI_NET_PARAM_IPV4_SUBNET:
+		case ISCSI_NET_PARAM_IPV4_GW:
+		case ISCSI_NET_PARAM_IPV4_BOOTPROTO:
+		case ISCSI_NET_PARAM_IFACE_ENABLE:
+		case ISCSI_NET_PARAM_IPV6_LINKLOCAL:
+		case ISCSI_NET_PARAM_IPV6_ADDR:
+		case ISCSI_NET_PARAM_IPV6_ROUTER:
+		case ISCSI_NET_PARAM_IPV6_ADDR_AUTOCFG:
+		case ISCSI_NET_PARAM_IPV6_LINKLOCAL_AUTOCFG:
+		case ISCSI_NET_PARAM_VLAN_ID:
+		case ISCSI_NET_PARAM_VLAN_PRIORITY:
+		case ISCSI_NET_PARAM_VLAN_ENABLED:
+		case ISCSI_NET_PARAM_MTU:
+		case ISCSI_NET_PARAM_PORT:
+			return S_IRUGO;
+		default:
+			return 0;
+		}
 	}
 
 	return 0;
+}
+
+/**
+ * conn_err_recovery_task - does recovery on all queued sessions
+ *
+ * @work:               pointer to work struct
+ *
+ * iSCSI Session recovery queue manager
+ */
+static void
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_WORK_NAR)
+conn_err_recovery_task(struct work_struct *work)
+#else
+conn_err_recovery_task(void *data)
+#endif
+{
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_WORK_NAR)
+	struct bnx2i_hba *hba = container_of(work, struct bnx2i_hba,
+					     err_rec_task);
+#else
+	struct bnx2i_hba *hba = data;
+#endif
+	int cons_idx = hba->conn_recov_cons_idx;
+	unsigned int long flags;
+	struct iscsi_conn *conn;
+	struct iscsi_session *sess = NULL;
+
+	spin_lock_irqsave(&hba->lock, flags);
+	while (hba->conn_recov_prod_idx != cons_idx) {
+		conn = hba->conn_recov_list[cons_idx];
+		if (cons_idx == hba->conn_recov_max_idx)
+			cons_idx = 0;
+		else
+			cons_idx++;
+		spin_unlock_irqrestore(&hba->lock, flags);
+		if (conn)
+			sess = conn->session;
+		if (sess) {
+			spin_lock_bh(&sess->lock);
+			if (sess->state != ISCSI_STATE_LOGGING_OUT) {
+				spin_unlock_bh(&sess->lock);
+				iscsi_conn_failure(conn, ISCSI_ERR_CONN_FAILED);
+			} else
+				spin_unlock_bh(&sess->lock);
+		}
+		spin_lock_irqsave(&hba->lock, flags);
+	}
+	hba->conn_recov_cons_idx = cons_idx;
+	spin_unlock_irqrestore(&hba->lock, flags);
+}
+
+
+static void bnx2i_withdraw_conn_recovery(struct bnx2i_hba *hba,
+					 struct iscsi_conn *conn)
+{
+        int cons_idx = hba->conn_recov_cons_idx;
+        unsigned int long flags;
+
+        spin_lock_irqsave(&hba->lock, flags);
+        while (hba->conn_recov_prod_idx != cons_idx) {
+                if (conn == hba->conn_recov_list[cons_idx]) {
+                        hba->conn_recov_list[cons_idx] = NULL;
+                        break;
+                }
+                if (cons_idx == hba->conn_recov_max_idx)
+                        cons_idx = 0;
+                else
+                        cons_idx++;
+        }
+        spin_unlock_irqrestore(&hba->lock, flags);
 }
 
 /*
@@ -2242,16 +2704,25 @@ static struct scsi_host_template bnx2i_host_template = {
 	.queuecommand		= iscsi_queuecommand,
 	.eh_abort_handler	= iscsi_eh_abort,
 	.eh_device_reset_handler = iscsi_eh_device_reset,
+#if (LINUX_VERSION_CODE >= 0x020622)
 	.eh_target_reset_handler = iscsi_eh_recover_target,
+#endif
 	.change_queue_depth	= iscsi_change_queue_depth,
+#if ((defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0600)) || \
+     (defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1101)))
 	.target_alloc		= iscsi_target_alloc,
+#endif
 	.can_queue		= 2048,
 	.max_sectors		= 127,
 	.cmd_per_lun		= 128,
 	.this_id		= -1,
 	.use_clustering		= ENABLE_CLUSTERING,
 	.sg_tablesize		= ISCSI_MAX_BDS_PER_CMD,
+#if (defined(__RHELS_DISTRO_5__))
+	.sdev_attrs		= bnx2i_dev_attributes,
+#else
 	.shost_attrs		= bnx2i_dev_attributes,
+#endif
 };
 
 struct iscsi_transport bnx2i_iscsi_transport = {
@@ -2266,9 +2737,24 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.create_conn		= bnx2i_conn_create,
 	.bind_conn		= bnx2i_conn_bind,
 	.destroy_conn		= bnx2i_conn_destroy,
-	.attr_is_visible	= bnx2i_attr_is_visible,
 	.set_param		= iscsi_set_param,
+	.attr_is_visible	= bnx2i_attr_is_visible,
+#if ((!defined(__SLES_DISTRO__) || (__SLES_DISTRO__ < 0x1102)) && \
+     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x0509)) && \
+     (!defined(__RHELS_DISTRO_6__) || (__RHELS_DISTRO_6__ < 0x0602)) && \
+     (defined(__DISTRO__) || LINUX_VERSION_CODE < 0x020626))
+	.get_conn_param		= bnx2i_conn_get_param,
+#else
 	.get_conn_param		= iscsi_conn_get_param,
+	.get_ep_param		= bnx2i_ep_get_param,
+#endif
+#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
+     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+	.set_iface_param	= bnx2i_set_iface_param,
+	.get_iface_param	= bnx2i_get_iface_param,
+#endif
 	.get_session_param	= iscsi_session_get_param,
 	.get_host_param		= bnx2i_host_get_param,
 	.start_conn		= bnx2i_conn_start,
@@ -2277,7 +2763,6 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.xmit_task		= bnx2i_task_xmit,
 	.get_stats		= bnx2i_conn_get_stats,
 	/* TCP connect - disconnect - option-2 interface calls */
-	.get_ep_param		= bnx2i_ep_get_param,
 	.ep_connect		= bnx2i_ep_connect,
 	.ep_poll		= bnx2i_ep_poll,
 	.ep_disconnect		= bnx2i_ep_disconnect,

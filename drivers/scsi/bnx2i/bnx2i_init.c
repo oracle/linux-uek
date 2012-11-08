@@ -18,17 +18,15 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION	"2.7.2.2"
-#define DRV_MODULE_RELDATE	"Apr 25, 2012"
+#define DRV_MODULE_VERSION	"2.7.4.1f"
+#define DRV_MODULE_RELDATE	"Aug 27, 2012"
 
 static char version[] __devinitdata =
 		"Broadcom NetXtreme II iSCSI Driver " DRV_MODULE_NAME \
 		" v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
-
 MODULE_AUTHOR("Anil Veerabhadrappa <anilgv@broadcom.com> and "
 	      "Eddie Wai <eddie.wai@broadcom.com>");
-
 MODULE_DESCRIPTION("Broadcom NetXtreme II BCM5706/5708/5709/57710/57711/57712"
 		   "/57800/57810/57840 iSCSI Driver");
 MODULE_LICENSE("GPL");
@@ -48,6 +46,10 @@ unsigned int en_tcp_dack = 1;
 module_param(en_tcp_dack, int, 0664);
 MODULE_PARM_DESC(en_tcp_dack, "Enable TCP Delayed ACK");
 
+unsigned int time_stamps = 0x00;
+module_param(time_stamps, int, 0664);
+MODULE_PARM_DESC(time_stamps, "Enable TCP TimeStamps");
+
 unsigned int error_mask1 = 0x00;
 module_param(error_mask1, uint, 0664);
 MODULE_PARM_DESC(error_mask1, "Config FW iSCSI Error Mask #1");
@@ -63,6 +65,14 @@ MODULE_PARM_DESC(sq_size, "Configure SQ size");
 unsigned int rq_size = BNX2I_RQ_WQES_DEFAULT;
 module_param(rq_size, int, 0664);
 MODULE_PARM_DESC(rq_size, "Configure RQ size");
+
+unsigned int tcp_buf_size = 64;
+module_param(tcp_buf_size, int, 0664);
+MODULE_PARM_DESC(tcp_buf_size, "TCP send/receive buffer size");
+ 
+unsigned int last_active_tcp_port = 0x00;
+module_param(last_active_tcp_port, int, 0664);
+MODULE_PARM_DESC(last_active_tcp_port, "Display last tcp src port info");
 
 u64 iscsi_error_mask = 0x00;
 
@@ -101,7 +111,8 @@ void bnx2i_identify_device(struct bnx2i_hba *hba)
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57711    ||
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57711E   ||
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57712    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57712E   ||
+		   hba->pci_did == PCI_DEVICE_ID_NX2_57712_VF ||
+		   hba->pci_did == PCI_DEVICE_ID_NX2_57712_MF ||
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57800    ||
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57800_MF ||
 		   hba->pci_did == PCI_DEVICE_ID_NX2_57800_VF ||
@@ -316,6 +327,7 @@ static int bnx2i_init_one(struct bnx2i_hba *hba, struct cnic_dev *cnic)
 	else
 		printk(KERN_ERR "bnx2i dev reg, unknown error, %d\n", rc);
 
+	set_bit(CNIC_F_ISCSI_OOO_ENABLE, &cnic->flags);
 out:
 	mutex_unlock(&bnx2i_dev_lock);
 
@@ -335,17 +347,26 @@ void bnx2i_ulp_init(struct cnic_dev *dev)
 {
 	struct bnx2i_hba *hba;
 
+	if (dev->version != CNIC_DEV_VER) {
+		printk(KERN_WARNING "bnx2i init: cnic not compatible, "
+				"expecting: 0x%x got: 0x%x\n",
+				CNIC_DEV_VER, dev->version);
+		return;
+	}
+
 	/* Allocate a HBA structure for this device */
 	hba = bnx2i_alloc_hba(dev);
 	if (!hba) {
-		printk(KERN_ERR "bnx2i init: hba initialization failed\n");
+		printk(KERN_ERR "bnx2i init: (%s) hba initialization failed\n",
+			dev->netdev->name);
 		return;
 	}
 
 	/* Get PCI related information and update hba struct members */
 	clear_bit(BNX2I_CNIC_REGISTERED, &hba->reg_with_cnic);
 	if (bnx2i_init_one(hba, dev)) {
-		printk(KERN_ERR "bnx2i - hba %p init failed\n", hba);
+		printk(KERN_ERR "bnx2i init: (%s) hba %p init failed\n",
+			dev->netdev->name, hba);
 		bnx2i_free_hba(hba);
 	}
 }
@@ -377,6 +398,47 @@ void bnx2i_ulp_exit(struct cnic_dev *dev)
 	mutex_unlock(&bnx2i_dev_lock);
 
 	bnx2i_free_hba(hba);
+}
+
+
+/**
+ * bnx2i_get_stats - Retrieve various statistic from iSCSI offload
+ * @handle:		bnx2i_hba
+ *
+ * function callback exported via bnx2i - cnic driver interface to
+ *	retrieve various iSCSI offload related statistics.
+ */
+int bnx2i_get_stats(void *handle)
+{
+	struct bnx2i_hba *hba = handle;
+	struct iscsi_stats_info *stats;
+
+	if (!hba)
+		return -EINVAL;
+
+	stats = (struct iscsi_stats_info *)hba->cnic->stats_addr;
+
+	if (!stats)
+		return -ENOMEM;
+
+	memcpy(stats->version, DRV_MODULE_VERSION, sizeof(stats->version));
+	memcpy(stats->mac_add1 + 2, hba->cnic->mac_addr, ETH_ALEN);
+
+	stats->max_frame_size = hba->netdev->mtu;
+	stats->txq_size = hba->max_sqes;
+	stats->rxq_size = hba->max_cqes;
+
+	/* Loop through all ep to get the cqe_left average */
+	stats->txq_avg_depth = 0;
+	stats->rxq_avg_depth = 0;
+
+	GET_STATS_64(hba, stats, rx_pdus);
+	GET_STATS_64(hba, stats, rx_bytes);
+
+	GET_STATS_64(hba, stats, tx_pdus);
+	GET_STATS_64(hba, stats, tx_bytes);
+
+	return 0;
 }
 
 
@@ -494,7 +556,7 @@ static int __init bnx2i_mod_init(void)
 		goto out;
 	}
 
-	err = cnic_register_driver(CNIC_ULP_ISCSI, &bnx2i_cnic_cb);
+	err = cnic_register_driver2(CNIC_ULP_ISCSI, &bnx2i_cnic_cb);
 	if (err) {
 		printk(KERN_ERR "Could not register bnx2i cnic driver.\n");
 		goto unreg_xport;
@@ -558,7 +620,7 @@ static void __exit bnx2i_mod_exit(void)
 		bnx2i_percpu_thread_destroy(cpu);
 
 	iscsi_unregister_transport(&bnx2i_iscsi_transport);
-	cnic_unregister_driver(CNIC_ULP_ISCSI);
+	cnic_unregister_driver2(CNIC_ULP_ISCSI);
 }
 
 module_init(bnx2i_mod_init);
