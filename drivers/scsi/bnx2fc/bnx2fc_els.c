@@ -86,6 +86,7 @@ int bnx2fc_send_rrq(struct bnx2fc_cmd *aborted_io_req)
 	rrq.rrq_rx_id = htons(aborted_io_req->task->rxwr_txrd.var_ctx.rx_id);
 
 retry_rrq:
+	tgt->stats.num_rrq_issued++;
 	rc = bnx2fc_initiate_els(tgt, ELS_RRQ, &rrq, sizeof(rrq),
 				 bnx2fc_rrq_compl, cb_arg,
 				 r_a_tov);
@@ -193,6 +194,7 @@ int bnx2fc_send_adisc(struct bnx2fc_rport *tgt, struct fc_frame *fp)
 	/* adisc is initialized by libfc */
 	rc = bnx2fc_initiate_els(tgt, ELS_ADISC, adisc, sizeof(*adisc),
 				 bnx2fc_l2_els_compl, cb_arg, 2 * r_a_tov);
+	tgt->stats.num_adisc_issued++;
 	if (rc)
 		kfree(cb_arg);
 	return rc;
@@ -268,6 +270,7 @@ void bnx2fc_srr_compl(struct bnx2fc_els_cb_arg *cb_arg)
 
 	orig_io_req = cb_arg->aborted_io_req;
 	srr_req = cb_arg->io_req;
+	srr_req->tgt->stats.num_srr_compl++;
 	if (test_and_clear_bit(BNX2FC_FLAG_ELS_TIMEOUT, &srr_req->req_flags)) {
 		/* SRR timedout */
 		BNX2FC_IO_DBG(srr_req, "srr timed out, abort "
@@ -277,7 +280,8 @@ void bnx2fc_srr_compl(struct bnx2fc_els_cb_arg *cb_arg)
 		if (rc != SUCCESS) {
 			BNX2FC_IO_DBG(srr_req, "srr_compl: initiate_abts "
 				"failed. issue cleanup\n");
-			bnx2fc_initiate_cleanup(srr_req);
+			rc = bnx2fc_initiate_cleanup(srr_req);
+			BUG_ON(rc);
 		}
 		if (test_bit(BNX2FC_FLAG_IO_COMPL, &orig_io_req->req_flags) ||
 		    test_bit(BNX2FC_FLAG_ISSUE_ABTS, &orig_io_req->req_flags)) {
@@ -302,7 +306,8 @@ void bnx2fc_srr_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			BNX2FC_IO_DBG(srr_req, "srr_compl: initiate_abts "
 				"failed xid = 0x%x. issue cleanup\n",
 				orig_io_req->xid);
-			bnx2fc_initiate_cleanup(orig_io_req);
+			rc = bnx2fc_initiate_cleanup(orig_io_req);
+			BUG_ON(rc);
 		}
 		goto srr_compl_done;
 	}
@@ -348,7 +353,8 @@ void bnx2fc_srr_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			BNX2FC_IO_DBG(srr_req, "srr_compl: initiate_abts "
 				"failed xid = 0x%x. issue cleanup\n",
 				orig_io_req->xid);
-			bnx2fc_initiate_cleanup(orig_io_req);
+			rc = bnx2fc_initiate_cleanup(orig_io_req);
+			BUG_ON(rc);
 		}
 		break;
 	default:
@@ -387,10 +393,13 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 	bool abort_io = false;
 
 	BNX2FC_MISC_DBG("Entered rec_compl callback\n");
+	BUG_ON(!cb_arg);
 	rec_req = cb_arg->io_req;
 	orig_io_req = cb_arg->aborted_io_req;
+	BUG_ON(!orig_io_req);
 	BNX2FC_IO_DBG(rec_req, "rec_compl: orig xid = 0x%x", orig_io_req->xid);
 	tgt = orig_io_req->tgt;
+	tgt->stats.num_rec_compl++;
 
 	/* Handle REC timeout case */
 	if (test_and_clear_bit(BNX2FC_FLAG_ELS_TIMEOUT, &rec_req->req_flags)) {
@@ -402,7 +411,8 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 		if (rc != SUCCESS) {
 			BNX2FC_IO_DBG(rec_req, "rec_compl: initiate_abts "
 				"failed. issue cleanup\n");
-			bnx2fc_initiate_cleanup(rec_req);
+			rc = bnx2fc_initiate_cleanup(rec_req);
+			BUG_ON(rc);
 		}
 		orig_io_req->rec_retry++;
 		/* REC timedout. send ABTS to the orig IO req */
@@ -418,7 +428,8 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			BNX2FC_IO_DBG(rec_req, "rec_compl: initiate_abts "
 				"failed xid = 0x%x. issue cleanup\n",
 				orig_io_req->xid);
-			bnx2fc_initiate_cleanup(orig_io_req);
+			rc = bnx2fc_initiate_cleanup(orig_io_req);
+			BUG_ON(rc);
 		}
 		goto rec_compl_done;
 	}
@@ -429,6 +440,7 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			orig_io_req->xid);
 		goto rec_compl_done;
 	}
+
 	if (test_bit(BNX2FC_FLAG_ISSUE_ABTS, &orig_io_req->req_flags)) {
 		BNX2FC_IO_DBG(rec_req, "abts in prog "
 		       "orig_io - 0x%x\n",
@@ -476,6 +488,7 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			/* cleanup orig_io_req that is with the FW */
 			set_bit(BNX2FC_FLAG_CMD_LOST,
 				&orig_io_req->req_flags);
+			tgt->stats.num_cmd_lost++;
 			bnx2fc_initiate_cleanup(orig_io_req);
 			/* Post a new IO req with the same sc_cmd */
 			BNX2FC_IO_DBG(rec_req, "Post IO request again\n");
@@ -491,7 +504,8 @@ abort_io:
 		if (rc != SUCCESS) {
 			BNX2FC_IO_DBG(rec_req, "rec_compl: initiate_abts "
 				"failed. issue cleanup\n");
-			bnx2fc_initiate_cleanup(orig_io_req);
+			rc = bnx2fc_initiate_cleanup(orig_io_req);
+			BUG_ON(rc);
 		}
 	} else if (opcode == ELS_LS_ACC) {
 		/* REVISIT: Check if the exchange is already aborted */
@@ -511,12 +525,14 @@ abort_io:
 			/* SCSI WRITE command */
 			if (offset == orig_io_req->data_xfer_len) {
 				BNX2FC_IO_DBG(rec_req, "WRITE - resp lost\n");
+				tgt->stats.num_rsp_lost++;
 				/* FCP_RSP lost */
 				r_ctl = FC_RCTL_DD_CMD_STATUS;
 				offset = 0;
 			} else  {
 				/* start transmitting from offset */
 				BNX2FC_IO_DBG(rec_req, "XFER_RDY/DATA lost\n");
+				tgt->stats.num_xfer_rdy_lost++;
 				send_seq_clnp = true;
 				r_ctl = FC_RCTL_DD_DATA_DESC;
 				if (bnx2fc_initiate_seq_cleanup(orig_io_req,
@@ -537,6 +553,7 @@ abort_io:
 				send_seq_clnp = true;
 				offset = err_entry->data.rx_buf_off;
 				BNX2FC_IO_DBG(rec_req, "RD DATA lost\n");
+				tgt->stats.num_data_lost++;
 				/* FCP_DATA lost */
 				r_ctl = FC_RCTL_DD_SOL_DATA;
 				if (bnx2fc_initiate_seq_cleanup(orig_io_req,
@@ -583,6 +600,7 @@ int bnx2fc_send_rec(struct bnx2fc_cmd *orig_io_req)
 	int rc;
 
 	BNX2FC_IO_DBG(orig_io_req, "Sending REC\n");
+	tgt->stats.num_rec_issued++;
 	memset(&rec, 0, sizeof(rec));
 
 	cb_arg = kzalloc(sizeof(struct bnx2fc_els_cb_arg), GFP_ATOMIC);
@@ -624,6 +642,7 @@ int bnx2fc_send_srr(struct bnx2fc_cmd *orig_io_req, u32 offset, u8 r_ctl)
 	int rc;
 
 	BNX2FC_IO_DBG(orig_io_req, "Sending SRR\n");
+	tgt->stats.num_srr_issued++;
 	memset(&srr, 0, sizeof(srr));
 
 	cb_arg = kzalloc(sizeof(struct bnx2fc_els_cb_arg), GFP_ATOMIC);
@@ -659,6 +678,7 @@ srr_err:
 
 	return rc;
 }
+
 
 static int bnx2fc_initiate_els(struct bnx2fc_rport *tgt, unsigned int op,
 			void *data, u32 data_len,
