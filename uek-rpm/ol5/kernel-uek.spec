@@ -1682,6 +1682,265 @@ fi
 
 %changelog
 * Mon Oct 08 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.1.0.el5uek]
+- proc: Consider NO_HZ when printing idle and iowait times (Michal Hocko)
+  [Orabug: 14779047]
+- xen/netfront: teardown the device before unregistering it. (Ian Campbell)
+  [Orabug: 14579353]
+- x86: Fetch stack from regs when possible in dump_trace() (Frederic
+  Weisbecker) [Orabug: 14701687]
+- CVE-2012-3400: udf: Avoid run away loop when partition table length is
+  corrupted (Chuck Anderson) [Orabug: 15845302] {CVE-2012-3400}
+- CVE-2012-3400: udf: Fortify loading of sparing table (Chuck Anderson)
+  [Orabug: 15845302] {CVE-2012-3400}
+- CVE-2012-2133: hugepages: fix use after free bug in "quota" handling (Chuck
+  Anderson) [Orabug: 15845276] {CVE-2012-2133}
+- Merge tag 'v2.6.39-400#bcom' of git://ca-git.us.oracle.com/linux-snits-public
+  into m-master (Maxim Uvarov)
+- bnx2,bnx2x,tg3: resolve build error (Jerry Snitselaar)
+- Revert "drm/i915: Sanitize BIOS debugging bits from PIPECONF" (Guangyu Sun)
+  [Orabug: 15851255]
+- Revert "drm/i915: don't clobber the pipe param in sanitize_modesetting"
+  (Guangyu Sun) [Orabug: 15851255]
+- drm/i915: protect force_wake_(get|put) with the gt_lock (Daniel Vetter)
+  [Orabug: 15851255]
+- drm/i915: convert force_wake_get to func pointer in the gpu reset code
+  (Daniel Vetter) [Orabug: 15851255]
+- drm/i915: Cache GT fifo count for SandyBridge (Chris Wilson) [Orabug:
+  15851255]
+- drm/i915: add multi-threaded forcewake support (Keith Packard) [Orabug:
+  15851255]
+- i915: Move i915_read/write out of line (Andi Kleen) [Orabug: 15851255]
+- drm/i915: set GFX_MODE to pre-Ivybridge default value even on Ivybridge
+  (Jesse Barnes) [Orabug: 15851255]
+- bnx2x: update to broadcom 1.74.17 driver (Jerry Snitselaar)
+- bnx2i: update to broadcom 2.7.4.1f driver (Jerry Snitselaar)
+- bnx2fc: update to broadcom 2.2.17 driver (Jerry Snitselaar)
+- cnic: update to broadcom 2.5.12e driver (Jerry Snitselaar)
+- bnx2: update to broadcom 2.74.09 driver (Jerry Snitselaar)
+- tg3: update to broadcom 3.125g driver (Jerry Snitselaar)
+- Linux 3.0.51 (Greg Kroah-Hartman)
+- xen/mmu: Use Xen specific TLB flush instead of the generic one. (Konrad
+  Rzeszutek Wilk) [Oracle-bug: 14630170]
+- Revert "RDS: Bypass workqueue when queueing cong updates" (Maxim Uvarov)
+  [Orabug: 14647229]
+- bridge: Pull ip header into skb->data before looking into ip header.
+  (Sarveshwar Bandi) [Bugdb: 13780 Bugdb: 13780]
+- qlcnic: reverts to old api (Maxim Uvarov)
+- qlcnic: bumped up version number to 5.0.29 (Maxim Uvarov)
+- netxen: bumped version to 4.0.80 (Maxim Uvarov)
+- qlge: bumped version to v1.00.00.31 (Maxim Uvarov)
+- net: implement inline ether_addr_equal (Maxim Uvarov)
+- add skb_frag inline functions (Maxim Uvarov)
+- r8169: use unlimited DMA burst for TX (Michal Schmidt)
+- r8169: add D-Link DGE-560T identifiers. (Francois Romieu)
+- Revert "RDS: Bypass workqueue when queueing cong updates" (Maxim Uvarov)
+  [Orabug: 14647229]
+- Linux 3.0.51 (Greg Kroah-Hartman)
+- drm/nouveau: silence modesetting spam on pre-gf8 chipsets (Ben Skeggs)
+- x86: Remove the ancient and deprecated disable_hlt() and enable_hlt()
+  facility (Len Brown)
+- floppy: do put_disk on current dr if blk_init_queue fails (Herton Ronaldo
+  Krzesinski)
+- xen/mmu: Use Xen specific TLB flush instead of the generic one. (Konrad
+  Rzeszutek Wilk) [Oracle-bug: 14630170]
+- bridge: Pull ip header into skb->data before looking into ip header.
+  (Sarveshwar Bandi) [Bugdb: 13780 Bugdb: 13780]
+- Linux 3.0.50 (Greg Kroah-Hartman)
+- x86, mm: Undo incorrect revert in arch/x86/mm/init.c (Yinghai Lu)
+- x86, mm: Find_early_table_space based on ranges that are actually being
+  mapped (Jacob Shin)
+- cpufreq / powernow-k8: Remove usage of smp_processor_id() in preemptible code
+  (Andreas Herrmann)
+- mac80211: check if key has TKIP type before updating IV (Stanislaw Gruszka)
+- vhost: fix mergeable bufs on BE hosts (Michael S. Tsirkin)
+- xhci: Fix potential NULL ptr deref in command cancellation. (Sarah Sharp)
+- USB: mos7840: remove invalid disconnect handling (Johan Hovold)
+- USB: mos7840: remove NULL-urb submission (Johan Hovold)
+- USB: mos7840: fix port-device leak in error path (Johan Hovold)
+- USB: mos7840: fix urb leak at release (Johan Hovold)
+- USB: sierra: fix memory leak in probe error path (Johan Hovold)
+- USB: sierra: fix memory leak in attach error path (Johan Hovold)
+- USB: serial: Fix memory leak in sierra_release() (Lennart Sorensen)
+- USB: opticon: fix memory leak in error path (Johan Hovold)
+- USB: opticon: fix DMA from stack (Johan Hovold)
+- USB: whiteheat: fix memory leak in error path (Johan Hovold)
+- usb hub: send clear_tt_buffer_complete events when canceling TT clear work
+  (Octavian Purdila)
+- sysfs: sysfs_pathname/sysfs_add_one: Use strlcat() instead of strcat() (Geert
+  Uytterhoeven)
+- SUNRPC: Prevent races in xs_abort_connection() (Trond Myklebust)
+- Revert "SUNRPC: Ensure we close the socket on EPIPE errors too..." (Trond
+  Myklebust)
+- SUNRPC: Clear the connect flag when socket state is TCP_CLOSE_WAIT (Trond
+  Myklebust)
+- SUNRPC: Get rid of the xs_error_report socket callback (Trond Myklebust)
+- gen_init_cpio: avoid stack overflow when expanding (Kees Cook)
+- Linux 3.0.49 (Greg Kroah-Hartman)
+- xHCI: handle command after aborting the command ring (Elric Fu)
+- xHCI: cancel command after command timeout (Elric Fu)
+- xHCI: add aborting command ring function (Elric Fu)
+- xHCI: add cmd_ring_state (Elric Fu)
+- sparc64: Be less verbose during vmemmap population. (David S. Miller)
+- sparc64: do not clobber personality flags in sys_sparc64_personality() (Jiri
+  Kosina)
+- sparc64: Fix bit twiddling in sparc_pmu_enable_event(). (David S. Miller)
+- sparc64: Like x86 we should check current->mm during perf backtrace
+  generation. (David S. Miller)
+- sparc64: fix ptrace interaction with force_successful_syscall_return() (Al
+  Viro)
+- tcp: resets are misrouted (Alexey Kuznetsov)
+- RDS: fix rds-ping spinlock recursion (jeff.liu)
+- net: Fix skb_under_panic oops in neigh_resolve_output (ramesh.nagappa)
+- drm/i915: apply timing generator bug workaround on CPT and PPT (Jesse Barnes)
+- amd64_edac:__amd64_set_scrub_rate(): avoid overindexing scrubrates[] (Andrew
+  Morton)
+- cgroup: notify_on_release may not be triggered in some cases (Daisuke
+  Nishimura)
+- usb: acm: fix the computation of the number of data bits (Nicolas Boullis)
+- USB: cdc-acm: fix pipe type of write endpoint (Ming Lei)
+- xen/x86: don't corrupt %eip when returning from a signal handler (David
+  Vrabel)
+- x86: Exclude E820_RESERVED regions and memory holes above 4 GB from direct
+  mapping. (Jacob Shin)
+- use clamp_t in UNAME26 fix (Kees Cook)
+- kernel/sys.c: fix stack memory content leak via UNAME26 (Kees Cook)
+  {CVE-2012-0957}
+- SUNRPC: Prevent kernel stack corruption on long values of flush (Sasha Levin)
+- oprofile, x86: Fix wrapping bug in op_x86_get_ctrl() (Dan Carpenter)
+- NLM: nlm_lookup_file() may return NLMv4-specific error codes (Trond
+  Myklebust)
+- Linux 3.0.48 (Greg Kroah-Hartman)
+- Linux 3.0.47 (Greg Kroah-Hartman)
+- tpm: Propagate error from tpm_transmit to fix a timeout hang (Peter Huewe)
+- jbd: Fix assertion failure in commit code due to lacking transaction credits
+  (Jan Kara)
+- netfilter: xt_limit: have r->cost != 0 case work (Jan Engelhardt)
+- netfilter: limit, hashlimit: avoid duplicated inline (Florian Westphal)
+- netfilter: nf_ct_expect: fix possible access to uninitialized timer (Pablo
+  Neira Ayuso)
+- netfilter: nf_nat_sip: fix via header translation with multiple parameters
+  (Patrick McHardy)
+- ipvs: fix oops on NAT reply in br_nf context (Lin Ming)
+- netfilter: nf_nat_sip: fix incorrect handling of EBUSY for RTCP expectation
+  (Pablo Neira Ayuso)
+- netfilter: nf_ct_ipv4: packets with wrong ihl are invalid (Jozsef Kadlecsik)
+- netfilter: nf_conntrack: fix racy timer handling with reliable events (Pablo
+  Neira Ayuso)
+- ipvs: fix oops in ip_vs_dst_event on rmmod (Julian Anastasov)
+- pktgen: fix crash when generating IPv6 packets (Amerigo Wang)
+- timers: Fix endless looping between cascade() and internal_add_timer()
+  (Hildner, Christian)
+- autofs4 - fix reset pending flag on mount fail (Ian Kent)
+- xen/bootup: allow read_tscp call for Xen PV guests. (Konrad Rzeszutek Wilk)
+- xen/bootup: allow {read|write}_cr8 pvops call. (Konrad Rzeszutek Wilk)
+- SUNRPC: Ensure that the TCP socket is closed when in CLOSE_WAIT (Trond
+  Myklebust)
+- firewire: cdev: fix user memory corruption (i386 userland on amd64 kernel)
+  (Stefan Richter)
+- tmpfs,ceph,gfs2,isofs,reiserfs,xfs: fix fh_len checking (Hugh Dickins)
+- qlcnic: reverts to old api (Maxim Uvarov)
+- qlcnic: bumped up version number to 5.0.29 (Maxim Uvarov)
+- netxen: bumped version to 4.0.80 (Maxim Uvarov)
+- qlge: bumped version to v1.00.00.31 (Maxim Uvarov)
+- net: implement inline ether_addr_equal (Maxim Uvarov)
+- add skb_frag inline functions (Maxim Uvarov)
+- r8169: use unlimited DMA burst for TX (Michal Schmidt)
+- r8169: add D-Link DGE-560T identifiers. (Francois Romieu)
+- ixgbe add uek kcompat (Maxim Uvarov)
+- net: add a truesize parameter to skb_add_rx_frag() (Eric Dumazet)
+- gro: fix truesize underestimation (Eric Dumazet)
+- CVE-2012-2313: dl2k: Clean up rio_ioctl (Chuck Anderson) [Orabug: 14680245]
+- [net/sfc] limit number of segments per skb on tx (Maxim Uvarov) [Orabug:
+  14769994] {CVE-2012-3412}
+- ocfs2: submit disk heartbeat bio using WRITE_SYNC (Srinivas Eeda)
+- Linux 3.0.46 (Greg Kroah-Hartman)
+- CPU hotplug, cpusets, suspend: Don't modify cpusets during suspend/resume
+  (Srivatsa S. Bhat)
+- mempolicy: fix a memory corruption by refcount imbalance in alloc_pages_vma()
+  (Mel Gorman)
+- mempolicy: fix refcount leak in mpol_set_shared_policy() (KOSAKI Motohiro)
+- mempolicy: fix a race in shared_policy_replace() (Mel Gorman)
+- mempolicy: remove mempolicy sharing (KOSAKI Motohiro)
+- rcu: Fix day-one dyntick-idle stall-warning bug (Paul E. McKenney)
+- mm: thp: fix pmd_present for split_huge_page and PROT_NONE with THP (Andrea
+  Arcangeli)
+- mm: fix invalidate_complete_page2() lock ordering (Hugh Dickins)
+- ext4: fix fdatasync() for files with only i_size changes (Jan Kara)
+- ext4: online defrag is not supported for journaled files (Dmitry Monakhov)
+- PCI: Check P2P bridge for invalid secondary/subordinate range (Yinghai Lu)
+- aoe: assert AoE packets marked as requiring no checksum (Ed L. Cashin)
+- net: do not disable sg for packets requiring no checksum (Ed L. Cashin)
+- l2tp: fix a typo in l2tp_eth_dev_recv() (Eric Dumazet)
+- ipv6: mip6: fix mip6_mh_filter() (Eric Dumazet)
+- ipv6: raw: fix icmpv6_filter() (Eric Dumazet)
+- ipv4: raw: fix icmp_filter() (Eric Dumazet)
+- net: guard tcp_set_keepalive() to tcp sockets (Eric Dumazet)
+- net: small bug on rxhash calculation (Chema Gonzalez)
+- pppoe: drop PPPOX_ZOMBIEs in pppoe_release (Xiaodong Xu)
+- sctp: Don't charge for data in sndbuf again when transmitting packet (Thomas
+  Graf)
+- tcp: flush DMA queue before sk_wait_data if rcv_wnd is zero (Michal Kubeček)
+- ipv6: release reference of ip6_null_entry's dst entry in __ip6_del_rt (Gao
+  feng)
+- 8021q: fix mac_len recomputation in vlan_untag() (Antonio Quartulli)
+- sierra_net: Endianess bug fix. (Lennart Sorensen)
+- pkt_sched: fix virtual-start-time update in QFQ (Paolo Valente)
+- net-sched: sch_cbq: avoid infinite loop (Eric Dumazet)
+- netxen: check for root bus in netxen_mask_aer_correctable (Nikolay
+  Aleksandrov)
+- xfrm_user: ensure user supplied esn replay window is valid (Mathias Krause)
+- xfrm_user: don't copy esn replay window twice for new states (Mathias Krause)
+- xfrm_user: fix info leak in copy_to_user_tmpl() (Mathias Krause)
+- xfrm_user: fix info leak in copy_to_user_policy() (Mathias Krause)
+- xfrm_user: fix info leak in copy_to_user_state() (Mathias Krause)
+- xfrm_user: fix info leak in copy_to_user_auth() (Mathias Krause)
+- xfrm: fix a read lock imbalance in make_blackhole (Li RongQing)
+- xfrm_user: return error pointer instead of NULL #2 (Mathias Krause)
+- xfrm_user: return error pointer instead of NULL (Mathias Krause)
+- xfrm: Workaround incompatibility of ESN and async crypto (Steffen Klassert)
+- workqueue: add missing smp_wmb() in process_one_work() (Tejun Heo)
+- kernel/sys.c: call disable_nonboot_cpus() in kernel_restart() (Shawn Guo)
+- lib/gcd.c: prevent possible div by 0 (Davidlohr Bueso)
+- PCI: acpiphp: check whether _ADR evaluation succeeded (Bjorn Helgaas)
+- ACPI: run _OSC after ACPI_FULL_INITIALIZATION (Lin Ming)
+- [net] igb-4.0.17 driver update (Maxim Uvarov)
+- [net] ixgbe-3.11.33 driver update (Maxim Uvarov)
+- [net] ixgbe-3.10.17 driver update (Maxim Uvarov)
+- [net] e1000e-2.1.4 driver update (Maxim Uvarov)
+- [PATCH] ocfs2: fix NULL pointer dereference in
+  ocfs2_duplicate_clusters_by_page v2 (Xiaowei.Hu) [Orabug: 14752693]
+- rds fix cong locking (Maxim Uvarov)
+- DELL MEE (Maxim Uvarov)
+- x86, UV: Clean up uv_mmrs.h (Jack Steiner) [Orabug: 14751013]
+- x86, UV: Fix UV2 hub part number (Jack Steiner) [Orabug: 14751013]
+- x86/uv: Fix uninitialized spinlocks (Maxim Uvarov) [Orabug: 14751013]
+- x86/UV: Lower UV rtc clocksource rating (Dimitri Sivanich) [Orabug: 14751013]
+- xen/pv-on-hvm kexec: add quirk for Xen 3.4 and shutdown watches. (Konrad
+  Rzeszutek Wilk)
+- SPEC: v2.6.39-400.1.0 (Maxim Uvarov)
+- Linux 3.0.45 (Maxim Uvarov)
+- xhci: Intel Panther Point BEI quirk. (Maxim Uvarov)
+- SCSI: scsi_dh_alua: Enable STPG for unavailable ports (Bart Van Assche)
+- PCI: honor child buses add_size in hot plug configuration (Yinghai Lu)
+- IB/srp: Avoid having aborted requests hang (Bart Van Assche)
+- IB/srp: Fix use-after-free in srp_reset_req() (Bart Van Assche)
+- IB/srp: Fix a race condition (Bart Van Assche)
+- IPoIB: Fix use-after-free of multicast object (Patrick McHardy)
+- SCSI: hpsa: Use LUN reset instead of target reset (Stephen M. Cameron)
+- SCSI: ibmvscsi: Fix host config length field overflow (Benjamin
+  Herrenschmidt)
+- Increase XHCI suspend timeout to 16ms (Michael Spang)
+- coredump: prevent double-free on an error path in core dumper (Denys
+  Vlasenko)
+- firmware: Add missing attributes to EFI variable attribute print out from
+  sysfs (Khalid Aziz)
+- b43legacy: Fix crash on unload when firmware not available (Larry Finger)
+- serial: set correct baud_base for EXSYS EX-41092 Dual 16950 (Flavio Leitner)
+- TTY: ttyprintk, don't touch behind tty->write_buf (Jiri Slaby)
+- Remove BUG_ON from n_tty_read() (Stanislav Kozina)
+- dm: handle requests beyond end of device instead of using BUG_ON (Mike
+  Snitzer)
+- vfs: dcache: fix deadlock in tree traversal (Miklos Szeredi)
 - Linux 3.0.44 (Greg Kroah-Hartman)
 - USB: Fix race condition when removing host controllers (Alan Stern)
 - MCE: Fix vm86 handling for 32bit mce handler (Andi Kleen)
