@@ -20,7 +20,13 @@
  */
 static inline struct bnx2i_hba *bnx2i_dev_to_hba(struct device *dev)
 {
+#if (defined(__RHELS_DISTRO_5__))
+	/* TODO: is the shost_gendev what we want here?  or
+		 do we want the actual class_dev */
+	struct Scsi_Host *shost = dev_to_shost(dev);
+#else
 	struct Scsi_Host *shost = class_to_shost(dev);
+#endif
 	return iscsi_host_priv(shost);
 }
 

@@ -40,6 +40,8 @@
 #define ILOG2(x)	x
 #endif
 
+
+
 static int bnx2x_gunzip(struct bnx2x *bp, const u8 *zbuf, int len);
 static void bnx2x_reg_wr_ind(struct bnx2x *bp, u32 addr, u32 val);
 static void bnx2x_write_dmae_phys_len(struct bnx2x *bp,
@@ -218,7 +220,7 @@ static void bnx2x_init_wr_zp(struct bnx2x *bp, u32 addr, u32 len,
 	/* gunzip_outlen is in dwords */
 	len = GUNZIP_OUTLEN(bp);
 	for (i = 0; i < len; i++)
-		((u32 *)GUNZIP_BUF(bp))[i] =
+		((u32 *)GUNZIP_BUF(bp))[i] = (__force u32)
 				cpu_to_le32(((u32 *)GUNZIP_BUF(bp))[i]);
 
 	bnx2x_write_big_buf_wb(bp, addr, len);
@@ -860,7 +862,8 @@ static void bnx2x_qm_set_ptr_table(struct bnx2x *bp, int qm_cid_count,
 	for (i = 0; i < 4 * QM_QUEUES_PER_FUNC; i++) {
 		REG_WR(bp, base_reg + i*4,
 		       qm_cid_count * 4 * (i % QM_QUEUES_PER_FUNC));
-		bnx2x_init_wr_wb(bp, reg + i*8,	 wb_data, 2);
+		bnx2x_init_wr_wb(bp, reg + i*8,
+				 wb_data, 2);
 	}
 }
 
@@ -890,7 +893,6 @@ static void bnx2x_qm_init_ptr_table(struct bnx2x *bp, int qm_cid_count,
 /****************************************************************************
 * SRC initializations
 ****************************************************************************/
-#ifdef BCM_CNIC
 /* called during init func stage */
 static void bnx2x_src_init_t2(struct bnx2x *bp, struct src_ent *t2,
 			      dma_addr_t t2_mapping, int src_cid_count)
@@ -915,5 +917,4 @@ static void bnx2x_src_init_t2(struct bnx2x *bp, struct src_ent *t2,
 		    U64_HI((u64)t2_mapping +
 			   (src_cid_count-1) * sizeof(struct src_ent)));
 }
-#endif
 #endif /* BNX2X_INIT_OPS_H */

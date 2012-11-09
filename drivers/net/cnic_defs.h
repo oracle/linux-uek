@@ -40,8 +40,8 @@
 #define FCOE_RAMROD_CMD_ID_STAT_FUNC		(FCOE_KCQE_OPCODE_STAT_FUNC)
 #define FCOE_RAMROD_CMD_ID_OFFLOAD_CONN		(FCOE_KCQE_OPCODE_OFFLOAD_CONN)
 #define FCOE_RAMROD_CMD_ID_ENABLE_CONN		(FCOE_KCQE_OPCODE_ENABLE_CONN)
-#define FCOE_RAMROD_CMD_ID_DISABLE_CONN		(FCOE_KCQE_OPCODE_DISABLE_CONN)
-#define FCOE_RAMROD_CMD_ID_DESTROY_CONN		(FCOE_KCQE_OPCODE_DESTROY_CONN)
+#define FCOE_RAMROD_CMD_ID_DISABLE_CONN		(FCOE_KCQE_OPCODE_DISABLE_CONN) 
+#define FCOE_RAMROD_CMD_ID_DESTROY_CONN		(FCOE_KCQE_OPCODE_DESTROY_CONN) 
 #define FCOE_RAMROD_CMD_ID_TERMINATE_CONN	(0x81)
 
 /* KCQ (kernel completion queue) response op codes */
@@ -871,9 +871,9 @@ struct tstorm_fcoe_ag_context {
 
 
 /*
- * The tcp aggregative context section of Tstorm
+ * The iscsi aggregative context section of Tstorm
  */
-struct tstorm_tcp_tcp_ag_context_section {
+struct tstorm_iscsi_tcp_ag_context_section {
 	u32 __agg_val1;
 #if defined(__BIG_ENDIAN)
 	u8 __tcp_agg_vars2;
@@ -896,51 +896,51 @@ struct tstorm_tcp_tcp_ag_context_section {
 	u32 snd_nxt;
 	u32 rtt_seq;
 	u32 rtt_time;
-	u32 __reserved66;
+	u32 wnd_right_edge_local;
 	u32 wnd_right_edge;
 	u32 tcp_agg_vars1;
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_FIN_SENT_FLAG (0x1<<0)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_FIN_SENT_FLAG_SHIFT 0
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_LAST_PACKET_FIN_FLAG (0x1<<1)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_LAST_PACKET_FIN_FLAG_SHIFT 1
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_WND_UPD_CF (0x3<<2)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_SHIFT 2
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF (0x3<<4)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_SHIFT 4
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_EN (0x1<<6)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_EN_SHIFT 6
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_EN (0x1<<7)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_EN_SHIFT 7
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_SEQ_EN (0x1<<8)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_SEQ_EN_SHIFT 8
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_SND_NXT_EN (0x1<<9)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_SND_NXT_EN_SHIFT 9
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_FLAG (0x1<<10)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_FLAG_SHIFT 10
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_FLAG (0x1<<11)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_FLAG_SHIFT 11
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_CF_EN (0x1<<12)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_CF_EN_SHIFT 12
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_CF_EN (0x1<<13)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_CF_EN_SHIFT 13
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_CF (0x3<<14)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX1_CF_SHIFT 14
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_CF (0x3<<16)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX2_CF_SHIFT 16
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TX_BLOCKED (0x1<<18)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_TX_BLOCKED_SHIFT 18
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX10_CF_EN (0x1<<19)
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX10_CF_EN_SHIFT 19
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX11_CF_EN (0x1<<20)
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX11_CF_EN_SHIFT 20
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX12_CF_EN (0x1<<21)
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_AUX12_CF_EN_SHIFT 21
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RESERVED1 (0x3<<22)
-#define __TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RESERVED1_SHIFT 22
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_PEND_SEQ (0xF<<24)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_PEND_SEQ_SHIFT 24
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_DONE_SEQ (0xF<<28)
-#define TSTORM_TCP_TCP_AG_CONTEXT_SECTION_RETRANSMIT_DONE_SEQ_SHIFT 28
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_FIN_SENT_FLAG (0x1<<0)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_FIN_SENT_FLAG_SHIFT 0
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_LAST_PACKET_FIN_FLAG (0x1<<1)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_LAST_PACKET_FIN_FLAG_SHIFT 1
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_WND_UPD_CF (0x3<<2)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_SHIFT 2
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF (0x3<<4)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_SHIFT 4
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_EN (0x1<<6)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_WND_UPD_CF_EN_SHIFT 6
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_EN (0x1<<7)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TIMEOUT_CF_EN_SHIFT 7
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_SEQ_EN (0x1<<8)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_SEQ_EN_SHIFT 8
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_SND_NXT_EN (0x1<<9)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_SND_NXT_EN_SHIFT 9
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_FLAG (0x1<<10)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_FLAG_SHIFT 10
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_FLAG (0x1<<11)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_FLAG_SHIFT 11
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_CF_EN (0x1<<12)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_CF_EN_SHIFT 12
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_CF_EN (0x1<<13)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_CF_EN_SHIFT 13
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_CF (0x3<<14)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX1_CF_SHIFT 14
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_CF (0x3<<16)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX2_CF_SHIFT 16
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TX_BLOCKED (0x1<<18)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_TX_BLOCKED_SHIFT 18
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX10_CF_EN (0x1<<19)
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX10_CF_EN_SHIFT 19
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX11_CF_EN (0x1<<20)
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX11_CF_EN_SHIFT 20
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX12_CF_EN (0x1<<21)
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_AUX12_CF_EN_SHIFT 21
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RESERVED1 (0x3<<22)
+#define __TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RESERVED1_SHIFT 22
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_PEND_SEQ (0xF<<24)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_PEND_SEQ_SHIFT 24
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_DONE_SEQ (0xF<<28)
+#define TSTORM_ISCSI_TCP_AG_CONTEXT_SECTION_RETRANSMIT_DONE_SEQ_SHIFT 28
 	u32 snd_max;
 	u32 snd_una;
 	u32 __reserved2;
@@ -1042,7 +1042,7 @@ struct tstorm_iscsi_ag_context {
 #define TSTORM_ISCSI_AG_CONTEXT_AUX7_CF_EN_SHIFT 15
 	u16 __agg_val4;
 #endif
-	struct tstorm_tcp_tcp_ag_context_section tcp;
+	struct tstorm_iscsi_tcp_ag_context_section tcp;
 };
 
 
@@ -2381,8 +2381,7 @@ struct fcoe_abts_info {
 
 
 /*
- * Fixed size structure in order to plant it in Union structure
- * $$KEEP_ENDIANNESS$$
+ * Fixed size structure in order to plant it in Union structure $$KEEP_ENDIANNESS$$
  */
 struct fcoe_abts_rsp_union {
 	u8 r_ctl;
@@ -2458,8 +2457,7 @@ struct fcoe_fcp_rsp_payload {
 };
 
 /*
- * Fixed size structure in order to plant it in Union structure
- * $$KEEP_ENDIANNESS$$
+ * Fixed size structure in order to plant it in Union structure $$KEEP_ENDIANNESS$$
  */
 struct fcoe_fcp_rsp_union {
 	struct fcoe_fcp_rsp_payload payload;
@@ -3107,8 +3105,7 @@ struct fcoe_cached_wqe {
 
 
 /*
- * FCoE connection enable\disable params passed by driver to FW in FCoE enable
- * ramrod $$KEEP_ENDIANNESS$$
+ * FCoE connection enable\disable params passed by driver to FW in FCoE enable ramrod $$KEEP_ENDIANNESS$$
  */
 struct fcoe_conn_enable_disable_ramrod_params {
 	struct fcoe_kwqe_conn_enable_disable enable_disable_kwqe;
@@ -3116,8 +3113,7 @@ struct fcoe_conn_enable_disable_ramrod_params {
 
 
 /*
- * FCoE connection offload params passed by driver to FW in FCoE offload ramrod
- * $$KEEP_ENDIANNESS$$
+ * FCoE connection offload params passed by driver to FW in FCoE offload ramrod $$KEEP_ENDIANNESS$$
  */
 struct fcoe_conn_offload_ramrod_params {
 	struct fcoe_kwqe_conn_offload1 offload_kwqe1;
@@ -3166,8 +3162,7 @@ struct ustorm_fcoe_mng_ctx {
 };
 
 /*
- * Parameters initialized during offloaded according to FLOGI/PLOGI/PRLI and
- * used in FCoE context section
+ * Parameters initialized during offloaded according to FLOGI/PLOGI/PRLI and used in FCoE context section
  */
 struct ustorm_fcoe_params {
 #if defined(__BIG_ENDIAN)
@@ -3666,7 +3661,7 @@ struct xstorm_fcoe_st_context {
 };
 
 /*
- * Fcoe connection context
+ * Fcoe connection context 
  */
 struct fcoe_context {
 	struct ustorm_fcoe_st_context ustorm_st_context;
@@ -3678,9 +3673,11 @@ struct fcoe_context {
 	struct xstorm_fcoe_st_context xstorm_st_context;
 };
 
+
+
+
 /*
- * FCoE init params passed by driver to FW in FCoE init ramrod
- * $$KEEP_ENDIANNESS$$
+ * FCoE init params passed by driver to FW in FCoE init ramrod $$KEEP_ENDIANNESS$$
  */
 struct fcoe_init_ramrod_params {
 	struct fcoe_kwqe_init1 init_kwqe1;
@@ -3696,9 +3693,9 @@ struct fcoe_init_ramrod_params {
 	__le16 reserved1;
 };
 
+
 /*
- * FCoE statistics params buffer passed by driver to FW in FCoE statistics
- * ramrod $$KEEP_ENDIANNESS$$
+ * FCoE statistics params buffer passed by driver to FW in FCoE statistics ramrod $$KEEP_ENDIANNESS$$
  */
 struct fcoe_stat_ramrod_params {
 	struct fcoe_kwqe_stat stat_kwqe;
@@ -4635,7 +4632,7 @@ struct xstorm_iscsi_st_context {
 };
 
 /*
- * Iscsi connection context
+ * Iscsi connection context 
  */
 struct iscsi_context {
 	struct ustorm_iscsi_st_context ustorm_st_context;
@@ -5430,12 +5427,12 @@ struct xstorm_l5cm_tcp_flags {
  * Out-of-order states
  */
 enum tcp_ooo_event {
-	TCP_EVENT_ADD_PEN = 0,
-	TCP_EVENT_ADD_NEW_ISLE = 1,
-	TCP_EVENT_ADD_ISLE_RIGHT = 2,
-	TCP_EVENT_ADD_ISLE_LEFT = 3,
-	TCP_EVENT_JOIN = 4,
-	TCP_EVENT_NOP = 5,
+	TCP_EVENT_ADD_PEN=0,
+	TCP_EVENT_ADD_NEW_ISLE=1,
+	TCP_EVENT_ADD_ISLE_RIGHT=2,
+	TCP_EVENT_ADD_ISLE_LEFT=3,
+	TCP_EVENT_JOIN=4,
+	TCP_EVENT_NOP=5,
 	MAX_TCP_OOO_EVENT
 };
 
@@ -5444,9 +5441,9 @@ enum tcp_ooo_event {
  * OOO support modes
  */
 enum tcp_tstorm_ooo {
-	TCP_TSTORM_OOO_DROP_AND_PROC_ACK = 0,
-	TCP_TSTORM_OOO_SEND_PURE_ACK = 1,
-	TCP_TSTORM_OOO_SUPPORTED = 2,
+	TCP_TSTORM_OOO_DROP_AND_PROC_ACK=0,
+	TCP_TSTORM_OOO_SEND_PURE_ACK=1,
+	TCP_TSTORM_OOO_SUPPORTED=2,
 	MAX_TCP_TSTORM_OOO
 };
 

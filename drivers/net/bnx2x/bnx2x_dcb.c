@@ -16,18 +16,28 @@
  * Written by: Dmitry Kravkov
  *
  */
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#include <linux/version.h>
+#endif
 
+#if (LINUX_VERSION_CODE > 0x02060f) /* BNX2X_UPSTREAM */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+#endif
 
 #include <linux/netdevice.h>
 #include <linux/types.h>
 #include <linux/errno.h>
 #include <linux/rtnetlink.h>
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,29)) /* BNX2X_UPSTREAM */
 #include <net/dcbnl.h>
+#endif
 
 #include "bnx2x.h"
 #include "bnx2x_cmn.h"
 #include "bnx2x_dcb.h"
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#include "bnx2x_compat.h"
+#endif
 
 /* forward declarations of dcbx related functions */
 static int bnx2x_dcbx_stop_hw_tx(struct bnx2x *bp);
@@ -91,25 +101,21 @@ static void bnx2x_pfc_set(struct bnx2x *bp)
 	/*
 	 * Rx COS configuration
 	 * Changing PFC RX configuration .
-	 * In RX COS0 will always be configured to lossy and COS1 to lossless
+	 * In RX COS0 will always be configured to lossless and COS1 to lossy
 	 */
 	for (i = 0 ; i < MAX_PFC_PRIORITIES ; i++) {
 		pri_bit = 1 << i;
 
-		if (pri_bit & DCBX_PFC_PRI_PAUSE_MASK(bp))
+		if (!(pri_bit & DCBX_PFC_PRI_PAUSE_MASK(bp)))
 			val |= 1 << (i * 4);
 	}
 
 	pfc_params.pkt_priority_to_cos = val;
 
 	/* RX COS0 */
-	pfc_params.llfc_low_priority_classes = 0;
+	pfc_params.llfc_low_priority_classes = DCBX_PFC_PRI_PAUSE_MASK(bp);
 	/* RX COS1 */
-	pfc_params.llfc_high_priority_classes = DCBX_PFC_PRI_PAUSE_MASK(bp);
-
-	/* BRB configuration */
-	pfc_params.cos0_pauseable = false;
-	pfc_params.cos1_pauseable = true;
+	pfc_params.llfc_high_priority_classes = 0;
 
 	bnx2x_acquire_phy_lock(bp);
 	bp->link_params.feature_config_flags |= FEATURE_CONFIG_PFC_ENABLED;
@@ -417,8 +423,12 @@ static int bnx2x_dcbx_read_mib(struct bnx2x *bp,
 
 static void bnx2x_pfc_set_pfc(struct bnx2x *bp)
 {
+	int mfw_configured = SHMEM2_HAS(bp, drv_flags) &&
+			     GET_FLAGS(SHMEM2_RD(bp, drv_flags),
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED);
+
 	if (bp->dcbx_port_params.pfc.enabled &&
-	    !(bp->dcbx_error & DCBX_REMOTE_MIB_ERROR))
+	    (!(bp->dcbx_error & DCBX_REMOTE_MIB_ERROR) || mfw_configured))
 		/*
 		 * 1. Fills up common PFC structures if required
 		 * 2. Configure NIG, MAC and BRB via the elink
@@ -556,10 +566,14 @@ static void bnx2x_dcbx_update_ets_config(struct bnx2x *bp)
 
 static void bnx2x_dcbx_update_ets_params(struct bnx2x *bp)
 {
+	int mfw_configured = SHMEM2_HAS(bp, drv_flags) &&
+			     GET_FLAGS(SHMEM2_RD(bp, drv_flags),
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED);
+
 	bnx2x_ets_disabled(&bp->link_params, &bp->link_vars);
 
 	if (!bp->dcbx_port_params.ets.enabled ||
-	    (bp->dcbx_error & DCBX_REMOTE_MIB_ERROR))
+	    ((bp->dcbx_error & DCBX_REMOTE_MIB_ERROR) && !mfw_configured))
 		return;
 
 	if (CHIP_IS_E3B0(bp))
@@ -774,6 +788,43 @@ void bnx2x_dcbx_set_params(struct bnx2x *bp, u32 state)
 #define LLDP_ADMIN_MIB_OFFSET(bp)	(PORT_MAX*sizeof(struct lldp_params) + \
 				      BP_PORT(bp)*sizeof(struct lldp_admin_mib))
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+/* calculate struct offset in array according to chip information */
+#define LLDP_PARAMS_OFFSET(bp)		(BP_PORT(bp)*sizeof(struct lldp_params))
+
+#define LLDP_STATS_OFFSET(bp)		(BP_PORT(bp)*\
+					sizeof(struct lldp_dcbx_stat))
+static void bnx2x_dcbx_lldp_updated_params(struct bnx2x *bp,
+					   u32 dcbx_lldp_params_offset)
+{
+	struct lldp_params lldp_params = {0};
+	u32 offset = dcbx_lldp_params_offset + LLDP_PARAMS_OFFSET(bp);
+
+	DP(BNX2X_MSG_DCB, "lldp_offset 0x%x\n", offset);
+
+	if (bp->lldp_config_params.overwrite_settings ==
+				BNX2X_DCBX_OVERWRITE_SETTINGS_ENABLE) {
+		/* Read the data first */
+		bnx2x_read_data(bp, (u32 *)&lldp_params, offset,
+				sizeof(struct lldp_params));
+
+		lldp_params.msg_tx_hold =
+			(u8)bp->lldp_config_params.msg_tx_hold;
+		lldp_params.msg_fast_tx_interval =
+			(u8)bp->lldp_config_params.msg_fast_tx;
+		lldp_params.tx_crd_max =
+			(u8)bp->lldp_config_params.tx_credit_max;
+		lldp_params.msg_tx_interval =
+			(u8)bp->lldp_config_params.msg_tx_interval;
+		lldp_params.tx_fast =
+			(u8)bp->lldp_config_params.tx_fast;
+
+		/* Write the data.*/
+		bnx2x_write_data(bp, (u32 *)&lldp_params, offset,
+				 sizeof(struct lldp_params));
+	}
+}
+#endif
 static void bnx2x_dcbx_admin_mib_updated_params(struct bnx2x *bp,
 				u32 dcbx_lldp_params_offset)
 {
@@ -903,7 +954,7 @@ static void bnx2x_dcbx_admin_mib_updated_params(struct bnx2x *bp,
 
 void bnx2x_dcbx_set_state(struct bnx2x *bp, bool dcb_on, u32 dcbx_enabled)
 {
-	if (!CHIP_IS_E1x(bp) && !CHIP_IS_E3(bp)) {
+	if (!CHIP_IS_E1x(bp)) {
 		bp->dcb_state = dcb_on;
 		bp->dcbx_enabled = dcbx_enabled;
 	} else {
@@ -972,23 +1023,29 @@ void bnx2x_dcbx_init_params(struct bnx2x *bp)
 	bp->dcbx_config_params.admin_default_priority = 0;
 }
 
-void bnx2x_dcbx_init(struct bnx2x *bp)
+void bnx2x_dcbx_init(struct bnx2x *bp, bool update_shmem)
 {
 	u32 dcbx_lldp_params_offset = SHMEM_LLDP_DCBX_PARAMS_NONE;
 
+	/* only PMF can send ADMIN msg to MFW in old MFW versions */
+	if ((!bp->port.pmf) && (!(bp->flags & BC_SUPPORTS_DCBX_MSG_NON_PMF)))
+		return;
+
+#ifndef BCM_DCB /* ! BNX2X_UPSTREAM */
+	return;
+#endif
 	if (bp->dcbx_enabled <= 0)
 		return;
 
 	/* validate:
 	 * chip of good for dcbx version,
 	 * dcb is wanted
-	 * the function is pmf
 	 * shmem2 contains DCBX support fields
 	 */
 	DP(BNX2X_MSG_DCB, "dcb_state %d bp->port.pmf %d\n",
 	   bp->dcb_state, bp->port.pmf);
 
-	if (bp->dcb_state == BNX2X_DCB_STATE_ON && bp->port.pmf &&
+	if (bp->dcb_state == BNX2X_DCB_STATE_ON &&
 	    SHMEM2_HAS(bp, dcbx_lldp_params_offset)) {
 		dcbx_lldp_params_offset =
 			SHMEM2_RD(bp, dcbx_lldp_params_offset);
@@ -999,12 +1056,28 @@ void bnx2x_dcbx_init(struct bnx2x *bp)
 		bnx2x_update_drv_flags(bp, 1 << DRV_FLAGS_DCB_CONFIGURED, 0);
 
 		if (SHMEM_LLDP_DCBX_PARAMS_NONE != dcbx_lldp_params_offset) {
-			bnx2x_dcbx_admin_mib_updated_params(bp,
-				dcbx_lldp_params_offset);
+			/* need HW lock to avoid scenario of two drivers
+			 * writing in parallel to shmem
+			 */
+			bnx2x_acquire_hw_lock(bp,
+					      HW_LOCK_RESOURCE_DCBX_ADMIN_MIB);
+			if (update_shmem) {
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+				bnx2x_dcbx_lldp_updated_params(bp,
+					dcbx_lldp_params_offset);
+#endif
+				bnx2x_dcbx_admin_mib_updated_params(bp,
+					dcbx_lldp_params_offset);
+			}
 
 			/* Let HW start negotiation */
 			bnx2x_fw_command(bp,
 					 DRV_MSG_CODE_DCBX_ADMIN_PMF_MSG, 0);
+			/* release HW lock only after MFW acks that it finished
+			 * reading values from shmem
+			 */
+			bnx2x_release_hw_lock(bp,
+					      HW_LOCK_RESOURCE_DCBX_ADMIN_MIB);
 		}
 	}
 }
@@ -1050,6 +1123,108 @@ bnx2x_dcbx_print_cos_params(struct bnx2x *bp,
 	}
 }
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+
+int bnx2x_dcb_get_lldp_params_ioctl(struct bnx2x *bp, void __user *uaddr)
+{
+	struct bnx2x_lldp_params_get	lldp_params;
+	struct lldp_params		mcp_lldp_params;
+	struct lldp_dcbx_stat		lldp_dcbx_stat;
+	int i;
+	u32 offset, stat_offset;
+
+	/* only PMF can send ADMIN msg to MFW in old MFW versions */
+	if ((!bp->port.pmf) && (!(bp->flags & BC_SUPPORTS_DCBX_MSG_NON_PMF))) {
+		DP(BNX2X_MSG_DCB, "Query is supported on pmf only\n");
+		return -EINVAL;
+	}
+
+	if (bp->dcbx_enabled != BNX2X_DCBX_ENABLED_ON_NEG_ON) {
+		DP(BNX2X_MSG_DCB, "DCBX is not enabled\n");
+		return -EINVAL;
+	}
+
+	if (copy_from_user(&lldp_params, uaddr,
+			   sizeof(struct bnx2x_lldp_params_get))) {
+		DP(BNX2X_MSG_DCB, "Copy user ioctl params failed\n");
+		return -EFAULT;
+	}
+
+	if (lldp_params.ver_num != LLDP_PARAMS_VER_NUM) {
+		DP(BNX2X_MSG_DCB, "Wrong ioctl parameters version\n");
+		return -EINVAL; /* incorrect version */
+	}
+
+	if(CHIP_IS_E1(bp) || !(SHMEM2_HAS(bp, dcbx_lldp_params_offset)) ||
+			     !(SHMEM2_HAS(bp, dcbx_lldp_dcbx_stat_offset))) {
+		DP(BNX2X_MSG_DCB, "DCB not supported\n");
+		return -EINVAL;  /* unsupported feature */
+	}
+
+	offset = SHMEM2_RD(bp, dcbx_lldp_params_offset);
+	stat_offset = SHMEM2_RD(bp, dcbx_lldp_dcbx_stat_offset);
+	if (offset == SHMEM_LLDP_DCBX_PARAMS_NONE ||
+	    stat_offset == SHMEM_LLDP_DCBX_STAT_NONE) {
+		DP(BNX2X_MSG_DCB, "DCB not configured\n");
+		return -EINVAL; /* feature not configured */
+	}
+
+	memset(&lldp_params, 0, sizeof(struct bnx2x_lldp_params_get));
+
+	lldp_params.ver_num = LLDP_PARAMS_VER_NUM;
+	lldp_params.config_lldp_params.overwrite_settings =
+			bp->lldp_config_params.overwrite_settings;
+
+	offset += LLDP_PARAMS_OFFSET(bp);
+	stat_offset += LLDP_STATS_OFFSET(bp);
+
+	/* handle the lldp params */
+	bnx2x_read_data(bp, (u32*)&mcp_lldp_params, offset,
+			 sizeof(struct lldp_params));
+
+	lldp_params.config_lldp_params.msg_tx_hold
+				= mcp_lldp_params.msg_tx_hold;
+	lldp_params.config_lldp_params.msg_fast_tx
+				= mcp_lldp_params.msg_fast_tx_interval;
+	lldp_params.config_lldp_params.tx_credit_max
+				= mcp_lldp_params.tx_crd_max;
+	lldp_params.config_lldp_params.msg_tx_interval
+				= mcp_lldp_params.msg_tx_interval;
+	lldp_params.config_lldp_params.tx_fast
+				= mcp_lldp_params.tx_fast;
+
+	for(i = 0; i < REM_CHASSIS_ID_STAT_LEN; i++)
+		lldp_params.remote_chassis_id[i] =
+			mcp_lldp_params.peer_chassis_id[i];
+
+	for(i = 0; i < REM_PORT_ID_STAT_LEN; i++)
+		lldp_params.remote_port_id[i] =
+			mcp_lldp_params.peer_port_id[i];
+
+	lldp_params.admin_status = mcp_lldp_params.admin_status;
+
+
+	/* handle the stats */
+	bnx2x_read_data(bp, (u32*)&lldp_dcbx_stat, stat_offset,
+			 sizeof(struct lldp_dcbx_stat));
+
+	for( i = 0; i < LOCAL_CHASSIS_ID_STAT_LEN; i++ )
+		lldp_params.local_chassis_id[i] =
+					lldp_dcbx_stat.local_chassis_id[i];
+	for( i = 0; i < LOCAL_CHASSIS_ID_STAT_LEN; i++ )
+		lldp_params.local_chassis_id[i] =
+					lldp_dcbx_stat.local_chassis_id[i];
+	if (copy_to_user(uaddr, &lldp_params,
+			 sizeof(struct bnx2x_lldp_params_get))) {
+		DP(BNX2X_MSG_DCB, "Copy ioctl params to user failed\n");
+		return -EFAULT;
+	}
+	DP(BNX2X_MSG_DCB, "get_lldp_params done (%d)\n",
+			(int)sizeof(struct bnx2x_lldp_params_get));
+	return 0;
+
+}
+#endif /* ! BNX2X_UPSTREAM */
 /* fills help_data according to pg_info */
 static void bnx2x_dcbx_get_num_pg_traf_type(struct bnx2x *bp,
 					    u32 *pg_pri_orginal_spread,
@@ -1785,6 +1960,379 @@ static void bnx2x_dcbx_get_ets_pri_pg_tbl(struct bnx2x *bp,
 	}
 }
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+static void bnx2x_dcbx_get_bw_precentage_tbl(struct bnx2x *bp,
+				u32 * set_configuration_bw,
+				u32 * pg_bw_tbl) {
+
+	int i;
+
+	for(i = 0 ;i < DCBX_MAX_NUM_PG_BW_ENTRIES ; i++)
+		set_configuration_bw[i] = DCBX_PG_BW_GET(pg_bw_tbl, i);
+}
+
+/* assumes that app_array is not smaller than num_entries */
+static void bnx2x_dcbx_get_priority_app_table(struct bnx2x *bp,
+		struct bnx2x_admin_priority_app_table *set_priority_app,
+		int num_entries,
+		struct dcbx_app_priority_entry *app_array)
+{
+	int i;
+
+	for (i = 0; i < num_entries; i++) {
+		set_priority_app[i].valid =
+		   GET_FLAGS(app_array[i].appBitfield, DCBX_APP_ENTRY_VALID) ?
+					   true : false;
+
+		if(GET_FLAGS(app_array[i].appBitfield,DCBX_APP_SF_ETH_TYPE))
+			set_priority_app[i].traffic_type = TRAFFIC_TYPE_ETH;
+		else
+			set_priority_app[i].traffic_type = TRAFFIC_TYPE_PORT;
+
+		set_priority_app[i].priority = app_array[i].pri_bitmap;
+
+		set_priority_app[i].app_id = app_array[i].app_id;
+	}
+}
+
+int bnx2x_dcb_set_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr)
+{
+	struct bnx2x_dcbx_params_set dcbx_params;
+	int rc = 0;
+
+	if (bp->recovery_state != BNX2X_RECOVERY_DONE) {
+		DP(BNX2X_MSG_DCB,
+		   "Handling parity error recovery. Try again later\n");
+		return -EAGAIN;
+	}
+
+	/* only PMF can send ADMIN msg to MFW in old MFW versions */
+	if ((!bp->port.pmf) && (!(bp->flags & BC_SUPPORTS_DCBX_MSG_NON_PMF))) {
+		DP(BNX2X_MSG_DCB, "Configuration is supported on pmf only\n");
+		return -EINVAL;
+	}
+
+	/* Fail if dcbx is disabled in nvram */
+	if ((bp->dcbx_enabled == BNX2X_DCBX_ENABLED_OFF) ||
+	    (bp->dcbx_enabled == BNX2X_DCBX_ENABLED_INVALID)) {
+		DP(BNX2X_MSG_DCB, "Can not set dcbx while it is disabled\n");
+		return -EINVAL;
+	}
+
+	if(copy_from_user(&dcbx_params, uaddr,
+			  sizeof(struct bnx2x_dcbx_params_set))) {
+		DP(BNX2X_MSG_DCB, "Copy user ioctl params failed\n");
+		return -EFAULT;
+	}
+
+	if (dcbx_params.ver_num != DCBX_PARAMS_VER_NUM) {
+		DP(BNX2X_MSG_DCB, "Wrong ioctl parameters version\n");
+		return -EINVAL; /* incorrect version */
+	}
+
+	if (dcbx_params.dcbx_enabled != BNX2X_DCBX_ENABLED_OFF &&
+	    dcbx_params.dcbx_enabled != BNX2X_DCBX_ENABLED_ON_NEG_OFF &&
+	    dcbx_params.dcbx_enabled != BNX2X_DCBX_ENABLED_ON_NEG_ON) {
+		BNX2X_ERR("Invalid dcbx_state requested: (%d)\n",
+			  dcbx_params.dcbx_enabled);
+
+		return -EINVAL; /* invalid state requested */
+	}
+
+	bnx2x_dcbx_set_state(bp, dcbx_params.dcb_state,
+			     dcbx_params.dcbx_enabled);
+
+	memcpy(&bp->dcbx_config_params, &dcbx_params.config_dcbx_params,
+		sizeof(struct bnx2x_config_dcbx_params));
+
+	if (netif_running(bp->dev)) {
+		bnx2x_update_drv_flags(bp,
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED, 1);
+		bnx2x_dcbx_init(bp, true);
+	}
+	DP(BNX2X_MSG_DCB, "set_dcbx_params done (%d)\n", rc);
+	return rc;
+}
+
+int bnx2x_dcb_get_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr)
+{
+	struct bnx2x_dcbx_params_get	*dcbx_params;
+	int rc = 0;
+	struct lldp_admin_mib		admin_mib;
+	struct lldp_dcbx_stat		lldp_dcbx_stat;
+	u32 offset, stat_offset, dcbx_err_state = 0;
+	int mfw_configured = SHMEM2_HAS(bp, drv_flags) &&
+			     GET_FLAGS(SHMEM2_RD(bp, drv_flags),
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED);
+
+	/* only PMF can send ADMIN msg to MFW in old MFW versions */
+	if ((!bp->port.pmf) && (!(bp->flags & BC_SUPPORTS_DCBX_MSG_NON_PMF))) {
+		DP(BNX2X_MSG_DCB, "Query is supported on pmf only\n");
+		return -EINVAL;
+	}
+
+	/* E3.0 might be 4...not supported in current shmem */
+	if (2 != PORT_MAX ) {
+		DP(BNX2X_MSG_DCB, "Not supported port configuration\n");
+		return -EINVAL;
+	}
+
+	dcbx_params = kmalloc(sizeof(struct bnx2x_dcbx_params_get), GFP_KERNEL);
+
+	if (!dcbx_params) {
+		DP(BNX2X_MSG_DCB, "Can't allocate memory\n");
+		return -ENOMEM;
+	}
+
+	if (copy_from_user(dcbx_params, uaddr,
+			   sizeof(struct bnx2x_dcbx_params_get))) {
+		DP(BNX2X_MSG_DCB, "Copy user ioctl params failed\n");
+		return -EFAULT;
+	}
+
+	if (dcbx_params->ver_num != DCBX_PARAMS_VER_NUM) {
+		DP(BNX2X_MSG_DCB, "Wrong ioctl parameters version\n");
+		return -EINVAL; /* incorrect version */
+	}
+
+	/* chip or MCP does not support dcbx */
+	if(CHIP_IS_E1x(bp) || !SHMEM2_HAS(bp, dcbx_lldp_params_offset)
+			   || !SHMEM2_HAS(bp, dcbx_lldp_dcbx_stat_offset)) {
+		DP(BNX2X_MSG_DCB, "DCB not supported\n");
+		return -EINVAL; /* unsupported feature */
+	}
+
+	stat_offset = SHMEM2_RD(bp, dcbx_lldp_dcbx_stat_offset);
+	offset = SHMEM2_RD(bp,dcbx_lldp_params_offset);
+
+	if (offset == SHMEM_LLDP_DCBX_PARAMS_NONE ||
+	    stat_offset == SHMEM_LLDP_DCBX_STAT_NONE){
+		DP(BNX2X_MSG_DCB, "DCBX not supported by BC\n");
+		return -EINVAL;
+	}
+
+	memset(dcbx_params, 0, sizeof(struct bnx2x_dcbx_params_get));
+
+	dcbx_params->ver_num = LLDP_PARAMS_VER_NUM;
+
+	dcbx_params->config_dcbx_params.overwrite_settings =
+		bp->dcbx_config_params.overwrite_settings;
+
+	dcbx_params->dcb_state = bp->dcb_state;
+	dcbx_params->dcbx_enabled = bp->dcbx_enabled;
+
+	offset += LLDP_ADMIN_MIB_OFFSET(bp);
+
+	/* Read the data first */
+	bnx2x_read_data(bp, (u32 *)&admin_mib, offset,
+			sizeof(struct lldp_admin_mib));
+
+	dcbx_params->config_dcbx_params.admin_dcbx_version =
+			(admin_mib.ver_cfg_flags & DCBX_CEE_VERSION_MASK )
+						>> DCBX_CEE_VERSION_SHIFT;
+
+	dcbx_params->config_dcbx_params.admin_ets_enable =
+					admin_mib.features.ets.enabled;
+
+	dcbx_params->config_dcbx_params.admin_pfc_enable =
+					admin_mib.features.pfc.enabled;
+
+	/* FOR IEEE bp->dcbx_config_params.admin_tc_supported_tx_enable */
+	dcbx_params->config_dcbx_params.admin_ets_configuration_tx_enable =
+		GET_FLAGS(admin_mib.ver_cfg_flags, DCBX_ETS_CONFIG_TX_ENABLED) ?
+		true : false;
+
+	/* For IEEE admin_ets_recommendation_tx_enable */
+
+	dcbx_params->config_dcbx_params.admin_pfc_tx_enable =
+		GET_FLAGS(admin_mib.ver_cfg_flags, DCBX_PFC_CONFIG_TX_ENABLED) ?
+		true : false;
+
+	dcbx_params->config_dcbx_params.admin_application_priority_tx_enable =
+		GET_FLAGS(admin_mib.ver_cfg_flags, DCBX_APP_CONFIG_TX_ENABLED) ?
+		true : false;
+
+	dcbx_params->config_dcbx_params.admin_ets_willing =
+		GET_FLAGS(admin_mib.ver_cfg_flags,DCBX_ETS_WILLING) ?
+		true : false;
+
+	/* For IEEE admin_ets_reco_valid */
+	dcbx_params->config_dcbx_params.admin_pfc_willing =
+		GET_FLAGS(admin_mib.ver_cfg_flags,DCBX_PFC_WILLING) ?
+		true : false;
+
+	dcbx_params->config_dcbx_params.admin_app_priority_willing =
+		GET_FLAGS(admin_mib.ver_cfg_flags,DCBX_APP_WILLING) ?
+		true : false;
+
+	bnx2x_dcbx_get_bw_precentage_tbl(bp,
+	   dcbx_params->config_dcbx_params.admin_configuration_bw_precentage,
+	   admin_mib.features.ets.pg_bw_tbl);
+
+	bnx2x_dcbx_get_ets_pri_pg_tbl(bp,
+	   dcbx_params->config_dcbx_params.admin_configuration_ets_pg,
+	   admin_mib.features.ets.pri_pg_tbl);
+
+
+	/* For IEEE admin_recommendation_bw_precentage
+	 * For IEEE admin_recommendation_ets_pg */
+	dcbx_params->config_dcbx_params.admin_pfc_bitmap =
+			admin_mib.features.pfc.pri_en_bitmap;
+
+	bnx2x_dcbx_get_priority_app_table(bp,
+	   dcbx_params->config_dcbx_params.admin_priority_app_table,
+	   DCBX_CONFIG_MAX_APP_PROTOCOL,
+	   admin_mib.features.app.app_pri_tbl);
+
+	dcbx_params->config_dcbx_params.admin_default_priority =
+			admin_mib.features.app.default_pri;
+
+
+	/* Get negotiation results MIB data */
+	offset = SHMEM2_RD(bp, dcbx_neg_res_offset);
+
+	if (SHMEM_DCBX_NEG_RES_NONE != offset) {
+		struct lldp_local_mib local_mib;
+
+		if(bnx2x_dcbx_read_mib(bp,
+				       (u32 *)&local_mib,
+				       offset,
+				       DCBX_READ_LOCAL_MIB)){
+			rc = -EIO;
+			goto out;
+		}
+
+		dcbx_params->local_tc_supported =
+			local_mib.features.app.tc_supported;
+		dcbx_params->local_pfc_caps    =
+			local_mib.features.pfc.pfc_caps;
+		dcbx_params->local_ets_enable  =
+			local_mib.features.ets.enabled;
+		dcbx_params->local_pfc_enable  =
+			local_mib.features.pfc.enabled;
+
+		bnx2x_dcbx_get_bw_precentage_tbl(bp,
+			dcbx_params->local_configuration_bw_precentage,
+			local_mib.features.ets.pg_bw_tbl);
+
+		bnx2x_dcbx_get_ets_pri_pg_tbl(bp,
+			dcbx_params->local_configuration_ets_pg,
+			local_mib.features.ets.pri_pg_tbl);
+
+		dcbx_params->local_pfc_bitmap =
+			local_mib.features.pfc.pri_en_bitmap;
+
+		bnx2x_dcbx_get_priority_app_table(bp,
+			dcbx_params->local_priority_app_table,
+			DCBX_MAX_APP_PROTOCOL,
+			local_mib.features.app.app_pri_tbl);
+
+		dcbx_params->pfc_mismatch =
+			GET_FLAGS(local_mib.error, DCBX_LOCAL_PFC_MISMATCH) ?
+			true : false;
+		dcbx_params->priority_app_mismatch =
+			GET_FLAGS(local_mib.error, DCBX_LOCAL_APP_MISMATCH) ?
+			true : false;
+
+		if ((GET_FLAGS(local_mib.error, DCBX_REMOTE_MIB_ERROR)) &&
+		    !mfw_configured)
+			dcbx_err_state |= 1;
+	}
+
+
+	offset = SHMEM2_RD(bp, dcbx_remote_mib_offset);
+	if (SHMEM_DCBX_NEG_RES_NONE != offset) {
+		struct lldp_remote_mib remote_mib;
+
+		if (bnx2x_dcbx_read_mib(bp,
+					(u32*)&remote_mib,
+					offset,
+					DCBX_READ_REMOTE_MIB)){
+			rc = -EIO;
+			goto out;
+		}
+
+		dcbx_params->remote_tc_supported =
+			remote_mib.features.app.tc_supported;
+		dcbx_params->remote_pfc_cap =
+			remote_mib.features.pfc.pfc_caps;
+
+		dcbx_params->remote_ets_reco_valid =
+			GET_FLAGS(remote_mib.flags,DCBX_REMOTE_ETS_RECO_VALID) ?
+			true : false;
+
+		dcbx_params->remote_ets_willing =
+			GET_FLAGS(remote_mib.flags,DCBX_ETS_REM_WILLING) ?
+			true : false;
+
+		dcbx_params->remote_pfc_willing =
+			GET_FLAGS(remote_mib.flags,DCBX_PFC_REM_WILLING) ?
+			true : false;
+
+		dcbx_params->remote_app_priority_willing =
+			GET_FLAGS(remote_mib.flags,DCBX_APP_REM_WILLING) ?
+			true : false;
+
+		bnx2x_dcbx_get_bw_precentage_tbl(bp,
+				dcbx_params->remote_configuration_bw_precentage,
+				remote_mib.features.ets.pg_bw_tbl);
+
+		bnx2x_dcbx_get_ets_pri_pg_tbl(bp,
+				dcbx_params->remote_configuration_ets_pg,
+				remote_mib.features.ets.pri_pg_tbl);
+
+		dcbx_params->remote_pfc_bitmap =
+			remote_mib.features.pfc.pri_en_bitmap;
+
+		bnx2x_dcbx_get_priority_app_table(bp,
+				dcbx_params->remote_priority_app_table,
+				DCBX_MAX_APP_PROTOCOL,
+				remote_mib.features.app.app_pri_tbl);
+	}
+
+	/* handle the stats */
+	bnx2x_read_data(bp, (u32*)&lldp_dcbx_stat, stat_offset,
+			 sizeof(struct lldp_dcbx_stat));
+
+	dcbx_params->dcbx_frames_sent = lldp_dcbx_stat.num_tx_dcbx_pkts;
+	dcbx_params->dcbx_frames_received = lldp_dcbx_stat.num_rx_dcbx_pkts;
+
+	bnx2x_acquire_phy_lock(bp);
+	bnx2x_pfc_statistic(&bp->link_params, &bp->link_vars,
+			    dcbx_params->pfc_frames_sent,
+			    dcbx_params->pfc_frames_received);
+	bnx2x_release_phy_lock(bp);
+
+	if (!(SHMEM2_HAS(bp, drv_flags) &&
+	      GET_FLAGS(SHMEM2_RD(bp, drv_flags),
+			1 << DRV_FLAGS_DCB_CONFIGURED)))
+		dcbx_err_state |= 1;
+
+	if (!dcbx_err_state) {
+		dcbx_params->dcb_current_state |=
+				BNX2X_DCBX_CURRENT_STATE_IS_SYNC;
+		if (bp->dcbx_port_params.app.enabled)
+			dcbx_params->dcb_current_state |=
+				BNX2X_PRIORITY_TAGGING_IS_CURRENTLY_OPERATIONAL;
+		if (bp->dcbx_port_params.pfc.enabled)
+			dcbx_params->dcb_current_state |=
+				BNX2X_PFC_IS_CURRENTLY_OPERATIONAL;
+		if (bp->dcbx_port_params.ets.enabled)
+			dcbx_params->dcb_current_state |=
+				BNX2X_ETS_IS_CURRENTLY_OPERATIONAL;
+	}
+
+	if(copy_to_user(uaddr, dcbx_params,
+			sizeof(struct bnx2x_dcbx_params_get))) {
+		DP(BNX2X_MSG_DCB, "Copy ioctl params to user failed\n");
+		rc = -EFAULT;
+	}
+out:
+	kfree(dcbx_params);
+
+	return rc;
+}
+#endif /* ! BNX2X_UPSTREAM */
 static void bnx2x_dcbx_fw_struct(struct bnx2x *bp,
 				 struct bnx2x_func_tx_start_params *pfc_fw_cfg)
 {
@@ -1792,11 +2340,14 @@ static void bnx2x_dcbx_fw_struct(struct bnx2x *bp,
 	u8 cos = 0, pri = 0;
 	struct priority_cos *tt2cos;
 	u32 *ttp = bp->dcbx_port_params.app.traffic_type_priority;
+	int mfw_configured = SHMEM2_HAS(bp, drv_flags) &&
+			     GET_FLAGS(SHMEM2_RD(bp, drv_flags),
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED);
 
 	memset(pfc_fw_cfg, 0, sizeof(*pfc_fw_cfg));
 
 	/* to disable DCB - the structure must be zeroed */
-	if (bp->dcbx_error & DCBX_REMOTE_MIB_ERROR)
+	if ((bp->dcbx_error & DCBX_REMOTE_MIB_ERROR) && !mfw_configured)
 		return;
 
 	/*shortcut*/
@@ -1885,6 +2436,13 @@ static u8 bnx2x_dcbnl_set_state(struct net_device *netdev, u8 state)
 	struct bnx2x *bp = netdev_priv(netdev);
 	DP(BNX2X_MSG_DCB, "state = %s\n", state ? "on" : "off");
 
+	/* Fail to set state to "enabled" if dcbx is disabled in nvram */
+	if (state && ((bp->dcbx_enabled == BNX2X_DCBX_ENABLED_OFF) ||
+		      (bp->dcbx_enabled == BNX2X_DCBX_ENABLED_INVALID))) {
+		DP(BNX2X_MSG_DCB, "Can not set dcbx to enabled while it is disabled in nvm\n");
+		return 1;
+	}
+
 	bnx2x_dcbx_set_state(bp, (state ? true : false), bp->dcbx_enabled);
 	return 0;
 }
@@ -1898,10 +2456,11 @@ static void bnx2x_dcbnl_get_perm_hw_addr(struct net_device *netdev,
 	/* first the HW mac address */
 	memcpy(perm_addr, netdev->dev_addr, netdev->addr_len);
 
-#ifdef BCM_CNIC
-	/* second SAN address */
-	memcpy(perm_addr+netdev->addr_len, bp->fip_mac, netdev->addr_len);
-#endif
+
+	if (CNIC_ENABLED(bp))
+		/* second SAN address */
+		memcpy(perm_addr+netdev->addr_len, bp->fip_mac,
+		       netdev->addr_len);
 }
 
 static void bnx2x_dcbnl_set_pg_tccfg_tx(struct net_device *netdev, int prio,
@@ -2028,10 +2587,12 @@ static void bnx2x_dcbnl_set_pfc_cfg(struct net_device *netdev, int prio,
 	if (!bnx2x_dcbnl_set_valid(bp) || prio >= MAX_PFC_PRIORITIES)
 		return;
 
-	bp->dcbx_config_params.admin_pfc_bitmap |= ((setting ? 1 : 0) << prio);
-
-	if (setting)
+	if (setting) {
+		bp->dcbx_config_params.admin_pfc_bitmap |= (1 << prio);
 		bp->dcbx_config_params.admin_pfc_tx_enable = 1;
+	} else {
+		bp->dcbx_config_params.admin_pfc_bitmap &= ~(1 << prio);
+	}
 }
 
 static void bnx2x_dcbnl_get_pfc_cfg(struct net_device *netdev, int prio,
@@ -2064,8 +2625,10 @@ static u8 bnx2x_dcbnl_set_all(struct net_device *netdev)
 		return 1;
 	}
 	if (netif_running(bp->dev)) {
-		bnx2x_nic_unload(bp, UNLOAD_NORMAL);
-		rc = bnx2x_nic_load(bp, LOAD_NORMAL);
+		bnx2x_update_drv_flags(bp,
+				       1 << DRV_FLAGS_DCB_MFW_CONFIGURED,
+				       1);
+		bnx2x_dcbx_init(bp, true);
 	}
 	DP(BNX2X_MSG_DCB, "set_dcbx_params done (%d)\n", rc);
 	if (rc)
@@ -2118,8 +2681,11 @@ static u8 bnx2x_dcbnl_get_cap(struct net_device *netdev, int capid, u8 *cap)
 	DP(BNX2X_MSG_DCB, "capid %d:%x\n", capid, *cap);
 	return rval;
 }
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)) /* BNX2X_UPSTREAM */
+static int bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
+#else
 static u8 bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
+#endif
 {
 	struct bnx2x *bp = netdev_priv(netdev);
 	u8 rval = 0;
@@ -2148,8 +2714,11 @@ static u8 bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
 
 	return rval;
 }
-
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)) /* BNX2X_UPSTREAM */
+static int bnx2x_dcbnl_set_numtcs(struct net_device *netdev, int tcid, u8 num)
+#else
 static u8 bnx2x_dcbnl_set_numtcs(struct net_device *netdev, int tcid, u8 num)
+#endif
 {
 	struct bnx2x *bp = netdev_priv(netdev);
 	DP(BNX2X_MSG_DCB, "num tcs = %d; Not supported\n", num);
@@ -2410,6 +2979,7 @@ static u8 bnx2x_dcbnl_set_featcfg(struct net_device *netdev, int featid,
 	return rval;
 }
 
+#ifdef DCB_CEE_SUPPORT /* BNX2X_UPSTREAM */
 static int bnx2x_peer_appinfo(struct net_device *netdev,
 			      struct dcb_peer_app_info *info, u16* app_count)
 {
@@ -2474,8 +3044,13 @@ static int bnx2x_cee_peer_getpfc(struct net_device *netdev,
 	pfc->pfc_en = bp->dcbx_remote_feat.pfc.pri_en_bitmap;
 	return 0;
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= 0x020621) /* BNX2X_UPSTREAM */
 const struct dcbnl_rtnl_ops bnx2x_dcbnl_ops = {
+#else
+struct dcbnl_rtnl_ops bnx2x_dcbnl_ops = {
+#endif
 	.getstate		= bnx2x_dcbnl_get_state,
 	.setstate		= bnx2x_dcbnl_set_state,
 	.getpermhwaddr		= bnx2x_dcbnl_get_perm_hw_addr,
@@ -2500,10 +3075,12 @@ const struct dcbnl_rtnl_ops bnx2x_dcbnl_ops = {
 	.setdcbx		= bnx2x_dcbnl_set_dcbx,
 	.getfeatcfg		= bnx2x_dcbnl_get_featcfg,
 	.setfeatcfg		= bnx2x_dcbnl_set_featcfg,
+#ifdef DCB_CEE_SUPPORT /* BNX2X_UPSTREAM */
 	.peer_getappinfo	= bnx2x_peer_appinfo,
 	.peer_getapptable	= bnx2x_peer_apptable,
 	.cee_peer_getpg		= bnx2x_cee_peer_getpg,
 	.cee_peer_getpfc	= bnx2x_cee_peer_getpfc,
+#endif
 };
 
 #endif /* BCM_DCBNL */

@@ -203,6 +203,9 @@ struct bnx2x_eth_stats {
 	/* Recovery */
 	u32 recoverable_error;
 	u32 unrecoverable_error;
+
+	u32 driver_filtered_tx_pkt;
+
 	/* src: Clear-on-Read register; Will not survive PMF Migration */
 	u32 eee_tx_lpi;
 };
@@ -264,6 +267,8 @@ struct bnx2x_eth_q_stats {
 	u32 total_tpa_aggregated_frames_lo;
 	u32 total_tpa_bytes_hi;
 	u32 total_tpa_bytes_lo;
+
+	u32 driver_filtered_tx_pkt;
 };
 
 struct bnx2x_eth_stats_old {
@@ -315,6 +320,8 @@ struct bnx2x_eth_q_stats_old {
 	u32 rx_err_discard_pkt_old;
 	u32 rx_skb_alloc_failed_old;
 	u32 hw_csum_err_old;
+
+	u32 driver_filtered_tx_pkt_old;
 };
 
 struct bnx2x_net_stats_old {
@@ -322,6 +329,11 @@ struct bnx2x_net_stats_old {
 };
 
 struct bnx2x_fw_port_stats_old {
+	 u32 pfc_frames_tx_hi;
+	 u32 pfc_frames_tx_lo;
+	 u32 pfc_frames_rx_hi;
+	 u32 pfc_frames_rx_lo;
+
 	 u32 mac_filter_discard;
 	 u32 mf_tag_discard;
 	 u32 brb_truncate_discard;
@@ -418,16 +430,19 @@ struct bnx2x_fw_port_stats_old {
 			      new->s); \
 	} while (0)
 
-#define UPDATE_EXTEND_TSTAT(s, t) \
+#define UPDATE_EXTEND_TSTAT_X(s, t, size) \
 	do { \
-		diff = le32_to_cpu(tclient->s) - le32_to_cpu(old_tclient->s); \
+		diff = le##size##_to_cpu(tclient->s) - \
+		       le##size##_to_cpu(old_tclient->s); \
 		old_tclient->s = tclient->s; \
 		ADD_EXTEND_64(qstats->t##_hi, qstats->t##_lo, diff); \
 	} while (0)
 
-#define UPDATE_EXTEND_E_TSTAT(s, t) \
+#define UPDATE_EXTEND_TSTAT(s, t) UPDATE_EXTEND_TSTAT_X(s, t, 32)
+
+#define UPDATE_EXTEND_E_TSTAT(s, t, size) \
 	do { \
-		UPDATE_EXTEND_TSTAT(s, t); \
+		UPDATE_EXTEND_TSTAT_X(s, t, size); \
 		ADD_EXTEND_64(estats->t##_hi, estats->t##_lo, diff); \
 	} while (0)
 
@@ -532,9 +547,14 @@ struct bnx2x_fw_port_stats_old {
 
 /* forward */
 struct bnx2x;
-
+/**
+ *
+ */
 void bnx2x_stats_init(struct bnx2x *bp);
 
+/**
+ *
+ */
 void bnx2x_stats_handle(struct bnx2x *bp, enum bnx2x_stats_event event);
 
 /**
@@ -547,3 +567,4 @@ void bnx2x_save_statistics(struct bnx2x *bp);
 void bnx2x_afex_collect_stats(struct bnx2x *bp, void *void_afex_stats,
 			      u32 stats_type);
 #endif /* BNX2X_STATS_H */
+

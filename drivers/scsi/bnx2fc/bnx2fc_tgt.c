@@ -130,8 +130,8 @@ retry_ofld:
 		goto ofld_err;
 	}
 	if (bnx2fc_map_doorbell(tgt)) {
-		printk(KERN_ERR PFX "map doorbell failed - no mem\n");
 		/* upload will take care of cleaning up sess resc */
+		printk(KERN_ERR PFX "map doorbell failed - no mem\n");
 		lport->tt.rport_logoff(rdata);
 	}
 	return;
@@ -139,7 +139,7 @@ retry_ofld:
 ofld_err:
 	/* couldn't offload the session. log off from this rport */
 	BNX2FC_TGT_DBG(tgt, "bnx2fc_offload_session - offload error\n");
-	/* Free session resources */
+	/* Free session resources before rport logoff*/
 	bnx2fc_free_session_resc(hba, tgt);
 tgt_init_err:
 	if (tgt->fcoe_conn_id != -1)
@@ -181,8 +181,14 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 
 		set_bit(BNX2FC_FLAG_IO_COMPL, &io_req->req_flags);
 		set_bit(BNX2FC_FLAG_IO_CLEANUP, &io_req->req_flags);
-		rc = bnx2fc_initiate_cleanup(io_req);
-		BUG_ON(rc);
+
+		/* Do not issue cleanup when disable request failed */
+		if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags))
+			bnx2fc_process_cleanup_compl(io_req, io_req->task, 0);
+		else {
+			rc = bnx2fc_initiate_cleanup(io_req);
+			BUG_ON(rc);
+		}
 	}
 
 	list_for_each_safe(list, tmp, &tgt->active_tm_queue) {
@@ -212,8 +218,13 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 			io_req->cb_arg = NULL;
 		}
 
-		rc = bnx2fc_initiate_cleanup(io_req);
-		BUG_ON(rc);
+		/* Do not issue cleanup when disable request failed */
+		if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags))
+			bnx2fc_process_cleanup_compl(io_req, io_req->task, 0);
+		else {
+			rc = bnx2fc_initiate_cleanup(io_req);
+			BUG_ON(rc);
+		}
 	}
 
 	list_for_each_safe(list, tmp, &tgt->io_retire_queue) {
@@ -244,10 +255,13 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 	/* wait for active_ios to go to 0 */
 	while ((tgt->num_active_ios.counter != 0) && (i++ < BNX2FC_WAIT_CNT))
 		msleep(25);
-	if (tgt->num_active_ios.counter != 0)
+	if (tgt->num_active_ios.counter != 0) {
 		printk(KERN_ERR PFX "CLEANUP on port 0x%x:"
 				    " active_ios = %d\n",
 			tgt->rdata->ids.port_id, tgt->num_active_ios.counter);
+		tgt->stats.num_pending_ios_after_flush +=
+					      atomic_read(&tgt->num_active_ios);
+	}
 	spin_lock_bh(&tgt->tgt_lock);
 	tgt->flush_in_prog = 0;
 	spin_unlock_bh(&tgt->tgt_lock);
@@ -321,13 +335,18 @@ static void bnx2fc_upload_session(struct fcoe_port *port,
 
 		del_timer_sync(&tgt->upld_timer);
 
-	} else
+	} else if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags))
+		printk(KERN_ERR PFX "ERROR!! DISABLE req failed, destry"
+				" not set to FW\n");
+	else
 		printk(KERN_ERR PFX "ERROR!! DISABLE req timed out, destroy"
 				" not sent to FW\n");
 
 	/* Free session resources */
 	bnx2fc_free_session_resc(hba, tgt);
 	bnx2fc_free_conn_id(hba, tgt->fcoe_conn_id);
+
+	bnx2fc_debugfs_sync_stat(hba, tgt);
 }
 
 static int bnx2fc_init_tgt(struct bnx2fc_rport *tgt,
@@ -372,6 +391,7 @@ static int bnx2fc_init_tgt(struct bnx2fc_rport *tgt,
 	atomic_set(&tgt->num_active_ios, 0);
 
 	if (rdata->flags & FC_RP_FLAGS_RETRY) {
+		printk(KERN_ERR PFX "tgt type is TAPE\n");
 		tgt->dev_type = TYPE_TAPE;
 		tgt->io_timeout = 0; /* use default ULP timeout */
 	} else {
