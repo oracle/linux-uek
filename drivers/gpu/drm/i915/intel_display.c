@@ -6579,13 +6579,6 @@ static void intel_sanitize_modesetting(struct drm_device *dev,
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
 	u32 reg, val;
-	int i;
-
-	/* Clear any frame start delays used for debugging left by the BIOS */
-	for_each_pipe(i) {
-		reg = PIPECONF(i);
-		I915_WRITE(reg, I915_READ(reg) & ~PIPECONF_FRAME_START_DELAY_MASK);
-	}
 
 	if (HAS_PCH_SPLIT(dev))
 		return;
@@ -7782,6 +7775,28 @@ static void intel_init_display(struct drm_device *dev)
 
 	/* For FIFO watermark updates */
 	if (HAS_PCH_SPLIT(dev)) {
+		dev_priv->display.force_wake_get = __gen6_gt_force_wake_get;
+		dev_priv->display.force_wake_put = __gen6_gt_force_wake_put;
+
+		/* IVB configs may use multi-threaded forcewake */
+		if (IS_IVYBRIDGE(dev)) {
+			u32	ecobus;
+
+			mutex_lock(&dev->struct_mutex);
+			__gen6_gt_force_wake_mt_get(dev_priv);
+			ecobus = I915_READ(ECOBUS);
+			__gen6_gt_force_wake_mt_put(dev_priv);
+			mutex_unlock(&dev->struct_mutex);
+
+			if (ecobus & FORCEWAKE_MT_ENABLE) {
+				DRM_DEBUG_KMS("Using MT version of forcewake\n");
+				dev_priv->display.force_wake_get =
+					__gen6_gt_force_wake_mt_get;
+				dev_priv->display.force_wake_put =
+					__gen6_gt_force_wake_mt_put;
+			}
+		}
+
 		if (HAS_PCH_IBX(dev))
 			dev_priv->display.init_pch_clock_gating = ibx_init_clock_gating;
 		else if (HAS_PCH_CPT(dev))

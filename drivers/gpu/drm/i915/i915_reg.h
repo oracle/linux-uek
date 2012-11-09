@@ -367,12 +367,16 @@
 # define MI_FLUSH_ENABLE				(1 << 11)
 
 #define GFX_MODE	0x02520
+#define GFX_MODE_GEN7	0x0229c
 #define   GFX_RUN_LIST_ENABLE		(1<<15)
 #define   GFX_TLB_INVALIDATE_ALWAYS	(1<<13)
 #define   GFX_SURFACE_FAULT_ENABLE	(1<<12)
 #define   GFX_REPLAY_MODE		(1<<11)
 #define   GFX_PSMI_GRANULARITY		(1<<10)
 #define   GFX_PPGTT_ENABLE		(1<<9)
+
+#define GFX_MODE_ENABLE(bit) (((bit) << 16) | (bit))
+#define GFX_MODE_DISABLE(bit) (((bit) << 16) | (0))
 
 #define SCPD0		0x0209c /* 915+ only */
 #define IER		0x020a0
@@ -2289,7 +2293,6 @@
 #define   PIPECONF_DISABLE	0
 #define   PIPECONF_DOUBLE_WIDE	(1<<30)
 #define   I965_PIPECONF_ACTIVE	(1<<30)
-#define   PIPECONF_FRAME_START_DELAY_MASK (3<<27)
 #define   PIPECONF_SINGLE_WIDE	0
 #define   PIPECONF_PIPE_UNLOCKED 0
 #define   PIPECONF_PIPE_LOCKED	(1<<25)
@@ -3402,8 +3405,13 @@
 
 #define  FORCEWAKE				0xA18C
 #define  FORCEWAKE_ACK				0x130090
+#define  FORCEWAKE_MT				0xa188 /* multi-threaded */
+#define  FORCEWAKE_MT_ACK			0x130040
+#define  ECOBUS					0xa180
+#define    FORCEWAKE_MT_ENABLE			(1<<5)
 
 #define  GT_FIFO_FREE_ENTRIES			0x120008
+#define    GT_FIFO_NUM_RESERVED_ENTRIES		20
 
 #define GEN6_UCGCTL2				0x9404
 # define GEN6_RCZUNIT_CLOCK_GATE_DISABLE		(1 << 13)

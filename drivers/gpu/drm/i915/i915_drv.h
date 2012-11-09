@@ -106,6 +106,7 @@ struct opregion_header;
 struct opregion_acpi;
 struct opregion_swsci;
 struct opregion_asle;
+struct drm_i915_private;
 
 struct intel_opregion {
 	struct opregion_header *header;
@@ -214,6 +215,8 @@ struct drm_i915_display_funcs {
 	int (*queue_flip)(struct drm_device *dev, struct drm_crtc *crtc,
 			  struct drm_framebuffer *fb,
 			  struct drm_i915_gem_object *obj);
+	void (*force_wake_get)(struct drm_i915_private *dev_priv);
+	void (*force_wake_put)(struct drm_i915_private *dev_priv);
 	/* clock updates for mode set */
 	/* cursor updates */
 	/* render clock increase/decrease */
@@ -275,6 +278,13 @@ typedef struct drm_i915_private {
 	int relative_constants_mode;
 
 	void __iomem *regs;
+	/** gt_fifo_count and the subsequent register write are synchronized
+	 * with dev->struct_mutex. */
+	unsigned gt_fifo_count;
+	/** forcewake_count is protected by gt_lock */
+	unsigned forcewake_count;
+	/** gt_lock is also taken in irq contexts. */
+	struct spinlock gt_lock;
 
 	struct intel_gmbus {
 		struct i2c_adapter adapter;
@@ -725,8 +735,6 @@ typedef struct drm_i915_private {
 
 	struct drm_property *broadcast_rgb_property;
 	struct drm_property *force_audio_property;
-
-	atomic_t forcewake_count;
 } drm_i915_private_t;
 
 enum i915_cache_level {
@@ -1299,6 +1307,11 @@ extern void gen6_set_rps(struct drm_device *dev, u8 val);
 extern void intel_detect_pch (struct drm_device *dev);
 extern int intel_trans_dp_port_sel (struct drm_crtc *crtc);
 
+extern void __gen6_gt_force_wake_get(struct drm_i915_private *dev_priv);
+extern void __gen6_gt_force_wake_mt_get(struct drm_i915_private *dev_priv);
+extern void __gen6_gt_force_wake_put(struct drm_i915_private *dev_priv);
+extern void __gen6_gt_force_wake_mt_put(struct drm_i915_private *dev_priv);
+
 /* overlay */
 #ifdef CONFIG_DEBUG_FS
 extern struct intel_overlay_error_state *intel_overlay_capture_error_state(struct drm_device *dev);
@@ -1343,22 +1356,12 @@ void __gen6_gt_wait_for_fifo(struct drm_i915_private *dev_priv);
 /* We give fast paths for the really cool registers */
 #define NEEDS_FORCE_WAKE(dev_priv, reg) \
 	(((dev_priv)->info->gen >= 6) && \
-	((reg) < 0x40000) && \
-	((reg) != FORCEWAKE))
+	 ((reg) < 0x40000) &&		 \
+	 ((reg) != FORCEWAKE) &&	 \
+	 ((reg) != ECOBUS))
 
 #define __i915_read(x, y) \
-static inline u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg) { \
-	u##x val = 0; \
-	if (NEEDS_FORCE_WAKE((dev_priv), (reg))) { \
-		gen6_gt_force_wake_get(dev_priv); \
-		val = read##y(dev_priv->regs + reg); \
-		gen6_gt_force_wake_put(dev_priv); \
-	} else { \
-		val = read##y(dev_priv->regs + reg); \
-	} \
-	trace_i915_reg_rw(false, reg, val, sizeof(val)); \
-	return val; \
-}
+	u##x i915_read##x(struct drm_i915_private *dev_priv, u32 reg);
 
 __i915_read(8, b)
 __i915_read(16, w)
@@ -1367,13 +1370,8 @@ __i915_read(64, q)
 #undef __i915_read
 
 #define __i915_write(x, y) \
-static inline void i915_write##x(struct drm_i915_private *dev_priv, u32 reg, u##x val) { \
-	trace_i915_reg_rw(true, reg, val, sizeof(val)); \
-	if (NEEDS_FORCE_WAKE((dev_priv), (reg))) { \
-		__gen6_gt_wait_for_fifo(dev_priv); \
-	} \
-	write##y(val, dev_priv->regs + reg); \
-}
+	void i915_write##x(struct drm_i915_private *dev_priv, u32 reg, u##x val);
+
 __i915_write(8, b)
 __i915_write(16, w)
 __i915_write(32, l)
