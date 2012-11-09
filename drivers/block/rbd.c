@@ -1133,7 +1133,6 @@ static int rbd_do_request(struct request *rq,
 	u64 bno;
 	struct timespec mtime = CURRENT_TIME;
 	struct rbd_request *rbd_req;
-	struct ceph_osd_request_head *reqhead;
 	struct ceph_osd_client *osdc;
 
 	rbd_req = kzalloc(sizeof(*rbd_req), GFP_NOIO);
@@ -1165,9 +1164,6 @@ static int rbd_do_request(struct request *rq,
 	rbd_req->len = len;
 
 	osd_req->r_priv = rbd_req;
-
-	reqhead = osd_req->r_request->front.iov_base;
-	reqhead->snapid = cpu_to_le64(CEPH_NOSNAP);
 
 	strncpy(osd_req->r_oid, object_name, sizeof(osd_req->r_oid));
 	osd_req->r_oid_len = strlen(osd_req->r_oid);
