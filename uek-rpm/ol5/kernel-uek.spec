@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Nov  9 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-400.2.0.el5uek]
+- update kabi (Srinivas Maturi) [orabug 15852885]
+- alpha release
+
 * Mon Oct 08 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.1.0.el5uek]
 - proc: Consider NO_HZ when printing idle and iowait times (Michal Hocko)
   [Orabug: 14779047]
