@@ -446,8 +446,8 @@
 	void *__memtrack_addr = (void *)addr;					\
 										\
 	if (__memtrack_addr && !is_skb_allocation(__func__)) {			\
-		if (memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), __FILE__, __LINE__)) { \
-										\
+		if (memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), 0, __FILE__, __LINE__)) { \
+			memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0, 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 		}								\
 	}									\
 	get_page(addr);								\
@@ -477,7 +477,7 @@
 		/* a new addr and the ref-count is 1 then we'll free this addr */\
 		/* Don't change the order these conditions */			\
 		if (!is_umem_release_func(__func__) && \
-		    !memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), __FILE__, __LINE__) && \
+		    !memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), 1, __FILE__, __LINE__) && \
 		    (memtrack_get_page_ref_count((unsigned long)(__memtrack_addr)) == 1)) { \
 			memtrack_free(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
 		}								\

@@ -529,9 +529,9 @@ EXPORT_SYMBOL(memtrack_check_size);
 
 /* Search for a specific addr whether it exist in the
    current data-base.
-   If not it will print an error msg,
+   It will print an error msg if we get an unexpected result,
    Return value: 0 - if addr exist, else 1 */
-int memtrack_is_new_addr(enum memtrack_memtype_t memtype, unsigned long addr,
+int memtrack_is_new_addr(enum memtrack_memtype_t memtype, unsigned long addr, int expect_exist,
 			 const char *filename, const unsigned long line_num)
 {
 	unsigned long hash_val;
@@ -565,8 +565,9 @@ int memtrack_is_new_addr(enum memtrack_memtype_t memtype, unsigned long addr,
 	}
 
 	/* not found */
-	printk(KERN_ERR "mtl rsc inconsistency: %s: %s::%lu: %s for unknown address=0x%lX\n",
-	       __func__, filename, line_num, memtype_free_str(memtype), addr);
+	if (expect_exist)
+		printk(KERN_ERR "mtl rsc inconsistency: %s: %s::%lu: %s for unknown address=0x%lX\n",
+		       __func__, filename, line_num, memtype_free_str(memtype), addr);
 
 	memtrack_spin_unlock(&obj_desc_p->hash_lock, flags);
 	return 1;

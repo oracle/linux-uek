@@ -79,7 +79,7 @@ void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
    current data-base.
    If not it will print an error msg,
    Return value: 0 - if addr exist, else 1 */
-int memtrack_is_new_addr(enum memtrack_memtype_t memtype, unsigned long addr,
+int memtrack_is_new_addr(enum memtrack_memtype_t memtype, unsigned long addr, int expect_exist,
 			 const char *filename, const unsigned long line_num);
 
 /* Return current page reference counter */
