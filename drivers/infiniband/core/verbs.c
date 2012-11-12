@@ -1191,8 +1191,18 @@ int ib_attach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->attach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
-		return -EINVAL;
+
+	switch (rdma_node_get_transport(qp->device->node_type)) {
+	case RDMA_TRANSPORT_IB:
+		if ((gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD) &&
+		    qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		 break;
+	case RDMA_TRANSPORT_IWARP:
+		if (qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		break;
+	}
 
 	ret = qp->device->attach_mcast(qp, gid, lid);
 	if (!ret)
@@ -1207,8 +1217,18 @@ int ib_detach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->detach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
-		return -EINVAL;
+
+	switch (rdma_node_get_transport(qp->device->node_type)) {
+	case RDMA_TRANSPORT_IB:
+		if ((gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD) &&
+		    qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		 break;
+	case RDMA_TRANSPORT_IWARP:
+		if (qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		break;
+	}
 
 	ret = qp->device->detach_mcast(qp, gid, lid);
 	if (!ret)
