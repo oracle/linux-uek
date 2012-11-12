@@ -414,51 +414,77 @@ void memtrack_free(enum memtrack_memtype_t memtype, unsigned long dev,
 }
 EXPORT_SYMBOL(memtrack_free);
 
-/* WA - In this function handles skb & vnic
-   check whether the function name
-   has 'skb' or "vnic_" string in it.
-   If yes the function return 1, else 0.
-   This function was written in order not to
-   track after skb page allocation because
-   they're send directly to the OS
-   Return value:
-    0 - if the function name has
-    'skb' or "vnic_", else 1          */
-int is_skb_allocation(const char *func_name)
+/*
+ * This function recognizes allocations which
+ * may be released by kernel (e.g. skb & vnic) and
+ * therefore not trackable by memtrack.
+ * The allocations are recognized by the name
+ * of their calling function.
+ */
+int is_non_trackable_alloc_func(const char *func_name)
 {
-	const char skb_str[4] = "skb";
-	const char skb_vnic[6] = "vnic_";
-	const char frag_alloc1[19] = "mlx4_en_alloc_frag";
-	const char frag_alloc2[23] = "mlx4_en_init_allocator";
-	const char frag_free1[21] = "mlx4_en_free_rx_desc";
-	const char frag_free2[26] = "mlx4_en_destroy_allocator";
-	const char mem_allocate1[14] = "sdp_post_recv";
-	const char mem_allocate2[18] = "sdp_rx_ring_purge";
-	const char mem_allocate3[18] = "sdp_post_srcavail";
-	const char mem_allocate4[21] = "sk_stream_alloc_page";
-	const char mem_allocate5[17] = "update_send_head";
-	const char mem_allocate6[14] = "sdp_bcopy_get";
-	const char mem_allocate7[22] = "sdp_destroy_resources";
-	const char ib_device_alloc1[16] = "ib_alloc_device";
+	static const char * const str_str_arr[] = {
+		"skb",
+		"vnic_"
+	};
+	static const char * const str_cmp_arr[] = {
+		/* functions that allocate SKBs */
+		"mlx4_en_alloc_frag",
+		"mlx4_en_init_allocator",
+		"mlx4_en_free_rx_desc",
+		"mlx4_en_destroy_allocator",
+		"sdp_post_recv",
+		"sdp_rx_ring_purge",
+		"sdp_post_srcavail",
+		"sk_stream_alloc_page",
+		"update_send_head",
+		"sdp_bcopy_get",
+		"sdp_destroy_resources",
 
+		/* function that allocate memory for RDMA device context */
+		"ib_alloc_device"
+	};
+	size_t str_str_arr_size = sizeof(str_str_arr)/sizeof(char *);
+	size_t str_cmp_arr_size = sizeof(str_cmp_arr)/sizeof(char *);
 
-	return ((strstr(func_name, skb_str)) ||
-		(strstr(func_name, skb_vnic)) ||
-		(!strcmp(func_name, frag_alloc1)) ||
-		(!strcmp(func_name, frag_alloc2)) ||
-		(!strcmp(func_name, frag_free1)) ||
-		(!strcmp(func_name, frag_free2)) ||
-		(!strcmp(func_name, mem_allocate1)) ||
-		(!strcmp(func_name, mem_allocate2)) ||
-		(!strcmp(func_name, mem_allocate3)) ||
-		(!strcmp(func_name, mem_allocate4)) ||
-		(!strcmp(func_name, mem_allocate5)) ||
-		(!strcmp(func_name, mem_allocate6)) ||
-		(!strcmp(func_name, mem_allocate7)) ||
-		(!strcmp(func_name, ib_device_alloc1))
-		) ? 1 : 0;
+	int i;
+
+	for (i = 0; i < str_str_arr_size; ++i)
+		if (strstr(func_name, str_str_arr[i]))
+			return 1;
+
+	for (i = 0; i < str_cmp_arr_size; ++i)
+		if (!strcmp(func_name, str_cmp_arr[i]))
+			return 1;
+	return 0;
 }
-EXPORT_SYMBOL(is_skb_allocation);
+EXPORT_SYMBOL(is_non_trackable_alloc_func);
+
+/*
+ * In some cases we need to free a memory
+ * we defined as "non trackable" (see
+ * is_non_trackable_alloc_func).
+ * This function recognizes such releases
+ * by the name of their calling function.
+ */
+int is_non_trackable_free_func(const char *func_name)
+{
+
+	static const char * const str_cmp_arr[] = {
+		/* function that deallocate memory for RDMA device context */
+		"ib_dealloc_device"
+	};
+	size_t str_cmp_arr_size = sizeof(str_cmp_arr)/sizeof(char *);
+
+	int i;
+
+	for (i = 0; i < str_cmp_arr_size; ++i)
+		if (!strcmp(func_name, str_cmp_arr[i]))
+			return 1;
+	return 0;
+}
+EXPORT_SYMBOL(is_non_trackable_free_func);
+
 
 /* WA - In this function handles confirm
    the the function name is

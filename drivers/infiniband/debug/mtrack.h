@@ -32,7 +32,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "kzalloc");\
 	else									\
 		__memtrack_kz_addr = kmalloc(size, flags);			\
-	if (__memtrack_kz_addr && !is_skb_allocation(__func__)) {		\
+	if (__memtrack_kz_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		memset(__memtrack_kz_addr, 0, size);				\
 	}									\
 	__memtrack_kz_addr;							\
@@ -46,7 +46,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "kzalloc");\
 	else									\
 		__memtrack_addr = kzalloc(size, flags);				\
-	if (__memtrack_addr && !is_skb_allocation(__func__)) {		\
+	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), size, 0UL, 0, __FILE__, __LINE__, flags); \
 	}									\
 	__memtrack_addr;							\
@@ -61,7 +61,8 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "kzalloc_node"); \
 	else									\
 		__memtrack_addr = kzalloc_node(size, flags, node);		\
-	if (__memtrack_addr && (size) && !is_skb_allocation(__func__)) {	\
+	if (__memtrack_addr && (size) &&					\
+	    !is_non_trackable_alloc_func(__func__)) {				\
 		memtrack_alloc(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), size, 0UL, 0, __FILE__, __LINE__, flags); \
 	}									\
 	__memtrack_addr;							\
@@ -166,7 +167,8 @@
 #define kfree(addr) ({								\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (!ZERO_OR_NULL_PTR(__memtrack_addr)) {				\
+	if (!ZERO_OR_NULL_PTR(__memtrack_addr) &&				\
+	    !is_non_trackable_free_func(__func__)) {				\
 		memtrack_free(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
 	}									\
 	kfree(__memtrack_addr);							\
@@ -175,7 +177,7 @@
 #define kfree(addr) ({								\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (__memtrack_addr) {							\
+	if (__memtrack_addr && !is_non_trackable_free_func(__func__)) {		\
 		memtrack_free(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
 	}									\
 	kfree(__memtrack_addr);							\
@@ -363,7 +365,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "alloc_pages_node"); \
 	else									\
 	page_addr = (struct page *)alloc_pages_node(nid, gfp_mask, order);	\
-	if (page_addr && !is_skb_allocation(__func__)) {			\
+	if (page_addr && !is_non_trackable_alloc_func(__func__)) {		\
 		memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(page_addr), (unsigned long)(order), 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 	}									\
 	page_addr;								\
@@ -377,7 +379,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "alloc_pages"); \
 	else									\
 		page_addr = (struct page *)alloc_pages(gfp_mask, order);	\
-	if (page_addr && !is_skb_allocation(__func__)) {			\
+	if (page_addr && !is_non_trackable_alloc_func(__func__)) {		\
 		memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(page_addr), (unsigned long)(order), 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 	}									\
 	page_addr;								\
@@ -401,7 +403,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "__get_free_pages"); \
 	else									\
 		page_addr = (struct page *)__get_free_pages(gfp_mask, order);	\
-	if (page_addr && !is_skb_allocation(__func__)) {			\
+	if (page_addr && !is_non_trackable_alloc_func(__func__)) {		\
 		memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(page_addr), (unsigned long)(order), 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 	}									\
 	page_addr;								\
@@ -414,7 +416,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "get_zeroed_page"); \
 	else									\
 		page_addr = (struct page *)get_zeroed_page(gfp_mask);		\
-	if (page_addr && !is_skb_allocation(__func__)) {			\
+	if (page_addr && !is_non_trackable_alloc_func(__func__)) {		\
 		memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(page_addr), 0, 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 	}									\
 	(unsigned long)page_addr;						\
@@ -423,7 +425,7 @@
 #define __free_pages(addr, order) ({						\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (__memtrack_addr && !is_skb_allocation(__func__)) {			\
+	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		memtrack_check_size(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), (unsigned long)(order), __FILE__, __LINE__); \
 		memtrack_free(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
 	}									\
@@ -434,7 +436,7 @@
 #define free_pages(addr, order) ({						\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (__memtrack_addr && !is_skb_allocation(__func__)) {			\
+	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		memtrack_check_size(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), (unsigned long)(order), __FILE__, __LINE__); \
 		memtrack_free(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
 	}									\
@@ -445,7 +447,7 @@
 #define get_page(addr) ({							\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (__memtrack_addr && !is_skb_allocation(__func__)) {			\
+	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		if (memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), 0, __FILE__, __LINE__)) { \
 			memtrack_alloc(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0, 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
 		}								\
@@ -460,7 +462,7 @@
 		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "get_user_pages_fast"); \
 	else									\
 		__memtrack_rc = get_user_pages_fast(start, nr_pages, write, pages); \
-	if (__memtrack_rc > 0 && !is_skb_allocation(__func__) ) {		\
+	if (__memtrack_rc > 0 && !is_non_trackable_alloc_func(__func__)) {	\
 		int __memtrack_i;						\
 										\
 		for (__memtrack_i = 0; __memtrack_i < __memtrack_rc; __memtrack_i++) \
@@ -472,7 +474,7 @@
 #define put_page(addr) ({							\
 	void *__memtrack_addr = (void *)addr;					\
 										\
-	if (__memtrack_addr && !is_skb_allocation(__func__)) {			\
+	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
 		/* Check whether this is not __ib_umem_release function & not */\
 		/* a new addr and the ref-count is 1 then we'll free this addr */\
 		/* Don't change the order these conditions */			\

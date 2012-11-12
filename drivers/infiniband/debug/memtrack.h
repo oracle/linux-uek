@@ -46,14 +46,22 @@ void memtrack_free(enum memtrack_memtype_t memtype, unsigned long dev,
 		   unsigned long addr, unsigned long size, int direction,
 		   const char *filename, const unsigned long line_num);
 
-/* WA - Is this function handles skb
-   check whether the function name
-   has 'skb' string in it.
-   If yes the function return 1, else 0.
-   This function was written in order not to track
-   after skb page allocation because they're
-   send directly to the OS                         */
-int is_skb_allocation(const char *func_name);
+/*
+ * This function recognizes allocations which
+ * may be released by kernel (e.g. skb & vnic) and
+ * therefore not trackable by memtrack.
+ * The allocations are recognized by the name
+ * of their calling function.
+ */
+int is_non_trackable_alloc_func(const char *func_name);
+/*
+ * In some cases we need to free a memory
+ * we defined as "non trackable" (see
+ * is_non_trackable_alloc_func).
+ * This function recognizes such releases
+ * by the name of their calling function.
+ */
+int is_non_trackable_free_func(const char *func_name);
 
 /* WA - In this function handles confirm
    the the function name is
