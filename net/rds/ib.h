@@ -9,9 +9,9 @@
 #include "rdma_transport.h"
 
 #define RDS_FMR_1M_POOL_SIZE		(8192 / 2)
-#define RDS_FMR_1M_MSG_SIZE		256
-#define RDS_FMR_8K_POOL_SIZE            128 * (8192 / 2)
-#define RDS_FMR_8K_MSG_SIZE		2
+#define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
+#define RDS_FMR_8K_MSG_SIZE             2
+#define RDS_FMR_8K_POOL_SIZE            ((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 2))
 
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
@@ -19,8 +19,8 @@
 #define RDS_IB_DEFAULT_RECV_WR		1024
 #define RDS_IB_DEFAULT_SEND_WR		256
 #define RDS_IB_DEFAULT_SRQ_MAX_WR       4096
-#define RDS_IB_DEFAULT_SRQ_REFILL_WR	(RDS_IB_DEFAULT_SRQ_MAX_WR/2)
-#define RDS_IB_DEFAULT_SRQ_LOW_WR	(RDS_IB_DEFAULT_SRQ_MAX_WR/10)
+#define RDS_IB_DEFAULT_SRQ_HWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/2)
+#define RDS_IB_DEFAULT_SRQ_LWM_REFILL	(RDS_IB_DEFAULT_SRQ_MAX_WR/10)
 
 #define RDS_IB_DEFAULT_RETRY_COUNT	1
 
@@ -260,13 +260,25 @@ struct rds_ib_srq {
 struct rds_ib_alias {
 	char                    if_name[IFNAMSIZ];
 	__be32                  ip_addr;
+	__be32			ip_bcast;
+	__be32			ip_mask;
+};
+
+enum {
+	RDS_IB_PORT_UNKNOWN = 0,
+	RDS_IB_PORT_UP,
+	RDS_IB_PORT_DOWN,
 };
 
 #define RDS_IB_MAX_ALIASES	200
 struct rds_ib_port {
+	struct net_device	*dev;
 	char                    if_name[IFNAMSIZ];
+	unsigned int		port_state;
 	__be32                  ip_addr;
-	unsigned int            active_port;
+	__be32			ip_bcast;
+	__be32			ip_mask;
+	unsigned int            ip_active_port;
 	unsigned int            alias_cnt;
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
@@ -274,12 +286,13 @@ struct rds_ib_port {
 struct rds_ib_port_ud_work {
 	struct delayed_work             work;
 	struct rds_ib_device            *rds_ibdev;
+	struct net_device		*dev;
 	unsigned int                    port;
 };
 
 enum {
-        RDS_IB_MR_8K_POOL,
-        RDS_IB_MR_1M_POOL,
+	RDS_IB_MR_8K_POOL,
+	RDS_IB_MR_1M_POOL,
 };
 
 struct rds_ib_device {
@@ -409,8 +422,11 @@ extern unsigned int rds_ib_fmr_1m_pool_size;
 extern unsigned int rds_ib_fmr_8k_pool_size;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
-extern unsigned int rds_ib_apm_enable;
-extern unsigned int rds_ib_timeout;
+extern unsigned int rds_ib_apm_enabled;
+extern unsigned int rds_ib_apm_fallback;
+extern unsigned int rds_ib_haip_enabled;
+extern unsigned int rds_ib_haip_fallback;
+extern unsigned int rds_ib_apm_timeout;
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
@@ -515,8 +531,8 @@ unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 
 /* ib_recv.c */
 extern unsigned int rds_ib_srq_max_wr;
-extern unsigned int rds_ib_srq_refill_wr;
-extern unsigned int rds_ib_srq_low_wr;
+extern unsigned int rds_ib_srq_hwm_refill;
+extern unsigned int rds_ib_srq_lwm_refill;
 extern unsigned int rds_ib_srq_enabled;
 
 /* ib_sysctl.c */
