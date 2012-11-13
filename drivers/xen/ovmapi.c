@@ -40,6 +40,7 @@
 #include <linux/signal.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/syscore_ops.h>
 #include <xen/xen.h>
 #include <xen/xenbus.h>
 #include <xen/interface/io/protocols.h>
@@ -53,6 +54,7 @@ static struct kmem_cache *parameter_cache;
 static struct kmem_cache *event_cache;
 static struct notifier_block xenstore_notifier;
 static struct ovmapi_information ovmapi_info;
+
 
 #define DGBLVL_OFF     0
 #define DGBLVL_ERROR   1
@@ -1074,6 +1076,28 @@ static int ovmapi_init_watcher(struct notifier_block *notifier,
 	return NOTIFY_DONE;
 }
 
+static int ovmapi_syscore_suspend(void)
+{
+    
+	return 0;
+}
+
+
+static void ovmapi_syscore_resume(void)
+{   
+
+    
+    ovmapi_info.last_read_message = 0;
+    ovmapi_info.last_write_message = 0;
+
+  
+}
+
+static struct syscore_ops ovmapi_syscore_ops = {
+	.suspend = ovmapi_syscore_suspend,
+	.resume = ovmapi_syscore_resume,
+};
+
 static const struct file_operations ovmapi_fops = {
 	.owner          = THIS_MODULE,
 	.open           = ovmapi_open,
@@ -1103,6 +1127,7 @@ static int __init ovmapi_init(void)
 		return ret;
 	}
 
+   
 	name_cache = kmem_cache_create("name_cache", OVMM_MAX_NAME_LEN,
 				       0, 0, NULL);
 	value_cache = kmem_cache_create("value_cache", OVMM_MAX_VALUE_LEN,
@@ -1122,6 +1147,7 @@ static int __init ovmapi_init(void)
 	xenstore_notifier.notifier_call = ovmapi_init_watcher;
 	ovmapi_info.event_counter = 0;
 	register_xenstore_notifier(&xenstore_notifier);
+	register_syscore_ops(&ovmapi_syscore_ops);
 
 	return 0;
 }
