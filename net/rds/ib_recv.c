@@ -39,18 +39,18 @@
 #include "ib.h"
 
 unsigned int rds_ib_srq_max_wr = RDS_IB_DEFAULT_SRQ_MAX_WR;
-unsigned int rds_ib_srq_refill_wr = RDS_IB_DEFAULT_SRQ_REFILL_WR;
-unsigned int rds_ib_srq_low_wr = RDS_IB_DEFAULT_SRQ_LOW_WR;
+unsigned int rds_ib_srq_hwm_refill = RDS_IB_DEFAULT_SRQ_HWM_REFILL;
+unsigned int rds_ib_srq_lwm_refill = RDS_IB_DEFAULT_SRQ_LWM_REFILL;
 unsigned int rds_ib_srq_enabled = 0;
 
 module_param(rds_ib_srq_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_srq_enabled, "Set to enabled SRQ");
 module_param(rds_ib_srq_max_wr, int, 0444);
 MODULE_PARM_DESC(rds_ib_srq_max_wr, "Max number of SRQ WRs");
-module_param(rds_ib_srq_refill_wr, int, 0444);
-MODULE_PARM_DESC(rds_ib_srq_refill_wr, "SRQ refill watermark");
-module_param(rds_ib_srq_low_wr, int, 0444);
-MODULE_PARM_DESC(rds_ib_srq_low_wr, "SRQ low watermark");
+module_param(rds_ib_srq_hwm_refill, int, 0444);
+MODULE_PARM_DESC(rds_ib_srq_hwm_refill, "SRQ HWM refill");
+module_param(rds_ib_srq_lwm_refill, int, 0444);
+MODULE_PARM_DESC(rds_ib_srq_lwm_refill, "SRQ LWM refill");
 
 static struct kmem_cache *rds_ib_incoming_slab;
 static struct kmem_cache *rds_ib_frag_slab;
@@ -1456,7 +1456,7 @@ void rds_ib_srq_rearm(struct work_struct *work)
 	struct rds_ib_srq *srq = container_of(work, struct rds_ib_srq, s_rearm_w.work);
 	struct ib_srq_attr srq_attr;
 
-	srq_attr.srq_limit = rds_ib_srq_low_wr;
+	srq_attr.srq_limit = rds_ib_srq_lwm_refill;
 	if (ib_modify_srq(srq->s_srq, &srq_attr, IB_SRQ_LIMIT)) {
 		printk(KERN_ERR "RDS: ib_modify_srq failed\n");
 		return;
