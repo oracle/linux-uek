@@ -84,8 +84,8 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
 		rdma_set_service_type(cm_id, conn->c_tos);
 
-		if (rds_ib_apm_enable)
-			rdma_set_timeout(cm_id, rds_ib_timeout);
+		if (rds_ib_apm_enabled)
+			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
@@ -161,7 +161,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
-		if (conn && !rds_ib_apm_enable)
+		if (conn && !rds_ib_apm_enabled)
 			rds_conn_drop(conn);
 		break;
 
