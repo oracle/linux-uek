@@ -242,10 +242,10 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 
 	if (pool_type == RDS_IB_MR_1M_POOL) {
 		pool->fmr_attr.max_pages = RDS_FMR_1M_MSG_SIZE + 1;
-		pool->max_items = rds_ib_fmr_1m_pool_size;
+		pool->max_items = rds_ibdev->max_1m_fmrs;
 	} else /* pool_type == RDS_IB_MR_8K_POOL */ {
 		pool->fmr_attr.max_pages = RDS_FMR_8K_MSG_SIZE + 1;
-		pool->max_items = rds_ib_fmr_8k_pool_size;
+		pool->max_items = rds_ibdev->max_8k_fmrs;
 	}
 	pool->max_free_pinned =
 		pool->max_items * pool->fmr_attr.max_pages / 4;
@@ -316,6 +316,7 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_mr_pool *pool;
 	struct rds_ib_mr *ibmr = NULL;
+	struct rds_ib_mr *tmp_ibmr = NULL;
 	int err = 0, iter = 0;
 
 	if (npages <= RDS_FMR_8K_MSG_SIZE)
@@ -379,6 +380,25 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 			&pool->fmr_attr);
 	if (IS_ERR(ibmr->fmr)) {
 		err = PTR_ERR(ibmr->fmr);
+
+		/* Adjust the pool size to reflect the resources available to
+		 * the VM.
+		 */
+		if (err == -ENOMEM) {
+			int prev_max = pool->max_items;
+
+			pool->max_items = max(atomic_read(&pool->item_count),
+						RDS_FMR_1M_POOL_SIZE);
+
+			printk(KERN_ERR "RDS/IB: Adjusted FMR pool (%d->%ld)\n",
+			       prev_max, pool->max_items);
+
+			rds_ib_flush_mr_pool(pool, 0, &tmp_ibmr);
+			if (tmp_ibmr) {
+				kfree(ibmr);
+				return tmp_ibmr;
+			}
+		}
 		ibmr->fmr = NULL;
 		printk(KERN_WARNING "RDS/IB: ib_alloc_fmr failed (err=%d)\n", err);
 		goto out_no_cigar;
