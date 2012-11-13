@@ -216,7 +216,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	if (dp && dp->dp_ack_seq)
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
-	if (rds_ib_apm_enable && !ic->conn->c_reconnect) {
+	if (rds_ib_apm_enabled && !ic->conn->c_reconnect) {
 		memcpy(&ic->i_pri_path.p_sgid,
 			&ic->i_cm_id->route.path_rec[0].sgid,
 			sizeof(union ib_gid));
@@ -390,7 +390,7 @@ void rds_ib_tasklet_fn_recv(unsigned long data)
 
 	if (rds_ib_srq_enabled)
 		if ((atomic_read(&rds_ibdev->srq->s_num_posted) <
-					rds_ib_srq_refill_wr) &&
+					rds_ib_srq_hwm_refill) &&
 			!test_and_set_bit(0, &rds_ibdev->srq->s_refill_gate))
 				queue_delayed_work(rds_wq, &rds_ibdev->srq->s_refill_w, 0);
 }
@@ -788,8 +788,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		event->param.conn.initiator_depth);
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	if (rds_ib_apm_enable)
-		rdma_set_timeout(cm_id, rds_ib_timeout);
+	if (rds_ib_apm_enabled)
+		rdma_set_timeout(cm_id, rds_ib_apm_timeout);
 #endif /* LINUX_VERSION < 4.12.0 */
 
 	/* rdma_accept() calls rdma_reject() internally if it fails */
@@ -797,7 +797,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	if (err)
 		rds_ib_conn_error(conn, "rdma_accept failed (%d)\n", err);
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	else if (rds_ib_apm_enable && !conn->c_loopback) {
+	else if (rds_ib_apm_enabled && !conn->c_loopback) {
 		err = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
 		if (err)
 			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for passive side: %d\n", err);
@@ -822,7 +822,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	int ret;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
-	if (rds_ib_apm_enable && !conn->c_loopback) {
+	if (rds_ib_apm_enabled && !conn->c_loopback) {
 		ret = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
 		if (ret)
 			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for active side: %d\n", ret);
@@ -870,6 +870,9 @@ static void rds_ib_migrate(struct work_struct *_work)
 	struct rdma_cm_id *cm_id = ic->i_cm_id;
 	int ret = 0;
 
+	if (!rds_ib_apm_fallback)
+		return;
+
 	if (!ic->i_active_side) {
 		ret = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE,
 				&qp_init_attr);
@@ -908,8 +911,8 @@ void rds_ib_check_migration(struct rds_connection *conn,
 	struct rdma_cm_id *cm_id = ic->i_cm_id;
 	int err;
 
-	if (!rds_ib_apm_enable || !rds_conn_up(ic->conn))
-		return;
+	if (!rds_ib_apm_enabled || !rds_conn_up(ic->conn))
+		return ;
 
 #if LINUX_VERSION_CODE < KERNEL_VERSION(4, 12, 0)
 	ic->i_alt_path_index = event->param.ud.alt_path_index;
@@ -936,7 +939,7 @@ void rds_ib_check_migration(struct rds_connection *conn,
 		printk(KERN_ERR "RDS/IB: ib_query_qp failed (%d)\n", err);
 		return;
 	}
-	qp_attr.alt_timeout = rds_ib_timeout;
+	qp_attr.alt_timeout = rds_ib_apm_timeout;
 	err = ib_modify_qp(cm_id->qp, &qp_attr, IB_QP_ALT_PATH);
 	if (err) {
 		printk(KERN_ERR "RDS/IB: ib_modify_qp failed (%d)\n", err);
