@@ -1120,6 +1120,7 @@ static int rbd_do_request(struct request *rq,
 			  struct page **pages,
 			  int num_pages,
 			  int flags,
+			  unsigned int num_op,
 			  struct ceph_osd_req_op *ops,
 			  struct rbd_req_coll *coll,
 			  int coll_index,
@@ -1260,6 +1261,7 @@ static void rbd_simple_req_cb(struct ceph_osd_request *osd_req,
  */
 static int rbd_req_sync_op(struct rbd_device *rbd_dev,
 			   int flags,
+			   unsigned int num_op,
 			   struct ceph_osd_req_op *ops,
 			   const char *object_name,
 			   u64 ofs, u64 inbound_size,
@@ -1282,7 +1284,7 @@ static int rbd_req_sync_op(struct rbd_device *rbd_dev,
 			  object_name, ofs, inbound_size, NULL,
 			  pages, num_pages,
 			  flags,
-			  ops,
+			  num_op, ops,
 			  NULL, 0,
 			  NULL,
 			  linger_req, ver);
@@ -1352,7 +1354,7 @@ static int rbd_do_op(struct request *rq,
 			     bio,
 			     NULL, 0,
 			     flags,
-			     ops,
+			     1, ops,
 			     coll, coll_index,
 			     rbd_req_cb, 0, NULL);
 	if (ret < 0)
@@ -1381,7 +1383,7 @@ static int rbd_req_sync_read(struct rbd_device *rbd_dev,
 		return -ENOMEM;
 
 	ret = rbd_req_sync_op(rbd_dev, CEPH_OSD_FLAG_READ,
-			       ops, object_name, ofs, len, buf, NULL, ver);
+			       1, ops, object_name, ofs, len, buf, NULL, ver);
 	rbd_destroy_ops(ops);
 
 	return ret;
@@ -1409,7 +1411,7 @@ static int rbd_req_sync_notify_ack(struct rbd_device *rbd_dev,
 			  rbd_dev->header_name, 0, 0, NULL,
 			  NULL, 0,
 			  CEPH_OSD_FLAG_READ,
-			  ops,
+			  1, ops,
 			  NULL, 0,
 			  rbd_simple_req_cb, 0, NULL);
 
@@ -1461,7 +1463,7 @@ static int rbd_req_sync_watch(struct rbd_device *rbd_dev)
 
 	ret = rbd_req_sync_op(rbd_dev,
 			      CEPH_OSD_FLAG_WRITE | CEPH_OSD_FLAG_ONDISK,
-			      ops,
+			      1, ops,
 			      rbd_dev->header_name,
 			      0, 0, NULL,
 			      &rbd_dev->watch_request, NULL);
@@ -1498,7 +1500,7 @@ static int rbd_req_sync_unwatch(struct rbd_device *rbd_dev)
 
 	ret = rbd_req_sync_op(rbd_dev,
 			      CEPH_OSD_FLAG_WRITE | CEPH_OSD_FLAG_ONDISK,
-			      ops,
+			      1, ops,
 			      rbd_dev->header_name,
 			      0, 0, NULL, NULL, NULL);
 
@@ -1549,7 +1551,7 @@ static int rbd_req_sync_exec(struct rbd_device *rbd_dev,
 	ops[0].cls.indata = outbound;
 	ops[0].cls.indata_len = outbound_size;
 
-	ret = rbd_req_sync_op(rbd_dev, CEPH_OSD_FLAG_READ, ops,
+	ret = rbd_req_sync_op(rbd_dev, CEPH_OSD_FLAG_READ, 1, ops,
 			       object_name, 0, inbound_size, inbound,
 			       NULL, ver);
 
