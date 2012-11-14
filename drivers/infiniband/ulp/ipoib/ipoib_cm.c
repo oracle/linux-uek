@@ -1201,8 +1201,8 @@ err_tx:
 static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(p->dev);
-	struct ipoib_cm_tx_buf *tx_req;
 	unsigned long begin;
+	int num_tries = 0;
 
 	ipoib_dbg(priv, "Destroy active connection 0x%x head 0x%x tail 0x%x\n",
 		  p->qp ? p->qp->qp_num : 0, p->tx_head, p->tx_tail);
@@ -1210,43 +1210,49 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 	if (p->id)
 		ib_destroy_cm_id(p->id);
 
-	if (p->tx_ring) {
-		/* Wait for all sends to complete */
-		begin = jiffies;
-		while ((int) p->tx_tail - (int) p->tx_head < 0) {
-			if (time_after(jiffies, begin + 5 * HZ)) {
-				ipoib_warn(priv, "timing out; %d sends not completed\n",
-					   p->tx_head - p->tx_tail);
-				goto timeout;
-			}
+	/* move the qp to ERROR state */
+	if (p->qp) {
+		if (ib_modify_qp(p->qp, &ipoib_cm_err_attr, IB_QP_STATE))
+			ipoib_warn(priv, "%s: Failed to modify QP to ERROR state\n",
+				   __func__);
+	}
 
-			msleep(1);
+	if (p->tx_ring) {
+		/* 
+		 * Wait for all sends to complete,
+		 * All of them should return here after ERROR state in the qp.
+		 */
+		begin = jiffies;
+		while (p->tx_tail != p->tx_head) {
+			if (time_after(jiffies, begin + 5 * HZ)) {
+				ipoib_warn(priv, "timing out; %d sends not "
+						 "completed still waiting..\n",
+					   p->tx_head - p->tx_tail);
+				/*
+				 * check if we are in napi_disable state
+				 * (in port/module down etc.), if so we need
+				 * to force drain over the qp in order to get
+				 * all the comp, otherwise ib_req_notify_cq
+				 * to get the poll_tx at the next time.
+				 */
+				if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags))
+					ipoib_drain_cq(p->dev);
+
+				begin = jiffies;
+				num_tries++;
+
+				if (num_tries == 5) {
+					ipoib_warn(priv, "%s: %d not completed "
+							 "Going out.\n",
+						   __func__, p->tx_head - p->tx_tail);
+					goto out;
+				}
+			}
+			/*let the wc to arrived.*/
+			msleep(2);
 		}
 	}
-
-timeout:
-
-	while ((int) p->tx_tail - (int) p->tx_head < 0) {
-		struct ipoib_send_ring *send_ring;
-		u16 queue_index;
-		tx_req = &p->tx_ring[p->tx_tail & (ipoib_sendq_size - 1)];
-		/* Checking whether inline was used - nothing to unmap */
-		if (!tx_req->is_inline)
-			ib_dma_unmap_single(priv->ca, tx_req->mapping,
-					tx_req->skb->len, DMA_TO_DEVICE);
-		dev_kfree_skb_any(tx_req->skb);
-		++p->tx_tail;
-		queue_index = skb_get_queue_mapping(tx_req->skb);
-		send_ring = priv->send_ring + queue_index;
-		netif_tx_lock_bh(p->dev);
-		if (unlikely(--send_ring->tx_outstanding <=
-				(ipoib_sendq_size >> 1)) &&
-		    __netif_subqueue_stopped(p->dev, queue_index) &&
-		    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
-			netif_wake_subqueue(p->dev, queue_index);
-		netif_tx_unlock_bh(p->dev);
-	}
-
+out:
 	if (p->qp)
 		ib_destroy_qp(p->qp);
 
