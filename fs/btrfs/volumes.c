@@ -1685,16 +1685,17 @@ int btrfs_init_new_device(struct btrfs_root *root, char *device_path)
 	mutex_lock(&root->fs_info->volume_mutex);
 
 	devices = &root->fs_info->fs_devices->devices;
-	/*
-	 * we have the volume lock, so we don't need the extra
-	 * device list mutex while reading the list here.
-	 */
+
+	mutex_lock(&root->fs_info->fs_devices->device_list_mutex);
 	list_for_each_entry(device, devices, dev_list) {
 		if (device->bdev == bdev) {
 			ret = -EEXIST;
+			mutex_unlock(
+				&root->fs_info->fs_devices->device_list_mutex);
 			goto error;
 		}
 	}
+	mutex_unlock(&root->fs_info->fs_devices->device_list_mutex);
 
 	device = kzalloc(sizeof(*device), GFP_NOFS);
 	if (!device) {
