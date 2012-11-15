@@ -311,6 +311,10 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 	ncontiguous_pages_order = ilog2(ncontiguous_pages);
 	ncontiguous_groups = (ntotal_pages >> ncontiguous_pages_order)  +
 		(!!(ntotal_pages & (ncontiguous_pages - 1)));
+	
+	/* Checking MAX_ORDER to prevent WARN via calling alloc_pages below */
+	if (ncontiguous_pages_order >= MAX_ORDER)
+		goto err_alloc;
 
 	for (i = 0; i < ncontiguous_groups; i++) {
 		/* Allocating the managed entry */
