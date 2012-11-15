@@ -269,6 +269,7 @@ struct mlx4_ib_qp {
 	struct mlx4_ib_buf	*sqp_proxy_rcv;
 	struct mlx4_roce_smac_info pri;
 	struct mlx4_roce_smac_info alt;
+	struct list_head	rules_list;
 };
 
 struct mlx4_ib_srq {

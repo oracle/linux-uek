@@ -821,15 +821,132 @@ err_malloc:
 	return err;
 }
 
-static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *spec,
+enum {
+	IBV_FLOW_L4_NONE = 0,
+	IBV_FLOW_L4_OTHER = 3,
+	IBV_FLOW_L4_UDP = 5,
+	IBV_FLOW_L4_TCP = 6
+};
+
+struct mlx4_cm_steering {
+	struct list_head list;
+	u64 reg_id;
+	struct ib_flow_spec spec;
+};
+
+static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flow_spec,
+				  struct list_head *rule_list_h)
+{
+	struct mlx4_spec_list *cur;
+	struct list_head * indx;
+	u64 mac_msk = cpu_to_be64(0xffffffffffff << 16);
+
+	indx = rule_list_h->next;
+	cur = list_entry(indx, struct mlx4_spec_list, list);
+
+	switch (flow_spec->type) {
+	case IB_FLOW_ETH:
+		cur->id = MLX4_NET_TRANS_RULE_ID_ETH;
+		memcpy(cur->eth.dst_mac, flow_spec->l2_id.eth.mac, ETH_ALEN);
+		memcpy(cur->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
+		break;
+	case IB_FLOW_IB_UC:
+	case IB_FLOW_IB_MC_IPV4:
+	case IB_FLOW_IB_MC_IPV6:
+		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
+		memcpy(cur->ib.dst_gid, flow_spec->l2_id.ib_mc.mgid, 16);
+		memset(cur->ib.dst_gid_msk, 0xff, 16);
+		break;
+	}
+
+	indx = indx->next;
+	cur = list_entry(indx, struct mlx4_spec_list, list);
+
+	cur->id = MLX4_NET_TRANS_RULE_ID_IPV4;
+	cur->ipv4.src_ip = flow_spec->src_ip;
+	if (flow_spec->type != IB_FLOW_IB_MC_IPV4 &&
+			flow_spec->type != IB_FLOW_IB_MC_IPV6)
+		cur->ipv4.dst_ip = flow_spec->dst_ip;
+
+	if (cur->ipv4.src_ip)
+		cur->ipv4.src_ip_msk = mac_msk;
+	if (cur->ipv4.dst_ip)
+		cur->ipv4.dst_ip_msk = mac_msk;
+
+	indx = indx->next;
+	cur = list_entry(indx, struct mlx4_spec_list, list);
+
+	cur->tcp_udp.src_port = flow_spec->src_port;
+	cur->tcp_udp.dst_port = flow_spec->dst_port;
+	if (cur->tcp_udp.src_port)
+		cur->tcp_udp.src_port_msk = cpu_to_be16(0xffff);
+	if (cur->tcp_udp.dst_port)
+		cur->tcp_udp.dst_port_msk = cpu_to_be16(0xffff);
+
+	switch(flow_spec->l4_protocol) {
+	case IBV_FLOW_L4_UDP:
+		cur->id = MLX4_NET_TRANS_RULE_ID_UDP;
+		break;
+	case IBV_FLOW_L4_TCP:
+		cur->id = MLX4_NET_TRANS_RULE_ID_TCP;
+		break;
+	default:
+		dev_err(dev->dma_device, "Unsupported l4 protocol.\n");
+		return -EPROTONOSUPPORT;
+	}
+
+	return 0;
+}
+
+static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 			       int priority)
 {
 	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
 	struct mlx4_ib_qp *mqp = to_mqp(qp);
+	u64 reg_id = 0;
+	int err;
+	struct mlx4_cm_steering *cm_flow;
+	struct mlx4_spec_list spec_l2 = {{0}}, spec_l3 = {{0}}, spec_l4 = {{0}};
 
-	return mlx4_flow_attach(mdev->dev, mqp->mqp.qpn,
-				(struct mlx4_flow_spec *)spec,
-				MLX4_DOMAIN_CM, priority, 0);
+	struct mlx4_net_trans_rule rule =
+	{	.queue_mode = MLX4_NET_TRANS_Q_FIFO,
+		.exclusive = 0,
+		.allow_loopback = 1,
+		.promisc_mode = MLX4_FS_PROMISC_NONE,
+	};
+
+	rule.port = mqp->port;
+	rule.priority = MLX4_DOMAIN_UVERBS | priority;
+	rule.qpn = mqp->mqp.qpn;
+	INIT_LIST_HEAD(&rule.list);
+	list_add_tail(&spec_l2.list, &rule.list);
+	list_add_tail(&spec_l3.list, &rule.list);
+	list_add_tail(&spec_l4.list, &rule.list);
+
+	cm_flow = kmalloc(sizeof(*cm_flow), GFP_KERNEL);
+	if (!cm_flow)
+		return -ENOMEM;
+
+	err = flow_spec_to_net_rule(&mdev->ib_dev, flow_spec, &rule.list);
+	if (err)
+		goto out;
+
+	err = mlx4_flow_attach(mdev->dev, &rule, &reg_id);
+	if (err)
+		goto out;
+
+	memcpy(&cm_flow->spec, flow_spec, sizeof(*flow_spec));
+	cm_flow->reg_id = reg_id;
+
+	mutex_lock(&mqp->mutex);
+	list_add(&cm_flow->list, &mqp->rules_list);
+	mutex_unlock(&mqp->mutex);
+
+	return 0;
+out:
+	kfree(cm_flow);
+	dev_err(mdev->ib_dev.dma_device, "Fail to attach rdmacm flow steering rule\n");
+	return err;
 }
 
 static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
@@ -837,11 +954,27 @@ static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
 {
 	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
 	struct mlx4_ib_qp *mqp = to_mqp(qp);
+	struct mlx4_cm_steering *cm_flow;
+	int ret;
 
-	return mlx4_flow_detach(mdev->dev, mqp->mqp.qpn,
-				(struct mlx4_flow_spec *)spec,
-				MLX4_DOMAIN_CM, priority);
-	return 0;
+	mutex_lock(&mqp->mutex);
+	list_for_each_entry(cm_flow, &mqp->rules_list, list) {
+		if (!memcmp(&cm_flow->spec, spec, sizeof(*spec))) {
+			list_del(&cm_flow->list);
+			break;
+		}
+	}
+	mutex_unlock(&mqp->mutex);
+	if (&cm_flow->list == &mqp->rules_list) {
+		dev_err(mdev->ib_dev.dma_device, "Couldn't find reg_id for flow spec. "
+			"Steering rule is left attached\n");
+		return -EINVAL;
+	}
+
+	ret = mlx4_flow_detach(mdev->dev, cm_flow->reg_id);
+
+	kfree(cm_flow);
+	return ret;
 }
 
 static struct mlx4_ib_gid_entry *find_gid_entry(struct mlx4_ib_qp *qp, u8 *raw)
