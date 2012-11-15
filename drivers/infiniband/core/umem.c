@@ -294,7 +294,7 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 	if (page_size_order < PAGE_SHIFT)
 		return ERR_PTR(-EINVAL);
 
-	cmem = kmalloc(sizeof *cmem, GFP_KERNEL);
+	cmem = kzalloc(sizeof *cmem, GFP_KERNEL);
 	if (!cmem)
 		return ERR_PTR(-ENOMEM);
 
