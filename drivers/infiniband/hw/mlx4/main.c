@@ -1027,6 +1027,47 @@ static void update_gids_task(struct work_struct *work)
 	kfree(gw);
 }
 
+static int update_ipv6_gids_sriov(struct mlx4_ib_dev *dev, int port)
+{
+	struct net_device *ndev = dev->iboe.netdevs[port - 1];
+	struct update_gid_work *work;
+	struct net_device *tmp;
+	union ib_gid gid;
+	int need_update = 0;
+
+	if (!ndev)
+		return 0;
+
+	work = kzalloc(sizeof(*work), GFP_ATOMIC);
+	if (!work)
+		return -ENOMEM;
+
+	rcu_read_lock();
+	for_each_netdev_rcu(&init_net, tmp) {
+		if (tmp == ndev) {
+			gid.global.subnet_prefix = cpu_to_be64(0xfe80000000000000LL);
+			mlx4_addrconf_ifid_eui48(&gid.raw[8], 0xFFFF, ndev);
+			if (memcmp(&dev->iboe.gid_table[port - 1][0], &gid, sizeof(gid)) ||
+			    !memcmp(&dev->iboe.gid_table[port - 1][0], &zgid, sizeof(gid))) {
+				dev->iboe.gid_table[port - 1][0] = gid;
+				++need_update;
+			}
+		}
+	}
+	rcu_read_unlock();
+
+	if (need_update) {
+		memcpy(work->gids, dev->iboe.gid_table[port - 1], sizeof(work->gids));
+		INIT_WORK(&work->work, update_gids_task);
+		work->port = port;
+		work->dev = dev;
+		queue_work(wq, &work->work);
+	} else
+		kfree(work);
+
+	return 0;
+}
+
 static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 {
 	struct net_device *ndev = dev->iboe.netdevs[port - 1];
@@ -1040,6 +1081,9 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 	int found;
 	int need_update = 0;
 	u16 vid;
+
+	if (mlx4_is_mfunc(dev->dev))
+		return update_ipv6_gids_sriov(dev, port);
 
 	work = kzalloc(sizeof *work, GFP_ATOMIC);
 	if (!work)
