@@ -55,7 +55,7 @@ static int mlx4_en_alloc_frags(struct mlx4_en_priv *priv,
 	for (i = 0; i < priv->num_frags; i++) {
 		frag_info = &priv->frag_info[i];
 		if (ring_alloc[i].offset == frag_info->last_offset) {
-			page = alloc_pages(GFP_ATOMIC | __GFP_COMP,
+			page = alloc_pages(GFP_ATOMIC | __GFP_COMP | __GFP_NOWARN,
 					MLX4_EN_ALLOC_ORDER);
 			if (!page)
 				goto out;
