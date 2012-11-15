@@ -851,6 +851,8 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 		memcpy(cur->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
 		break;
 	case IB_FLOW_IB_UC:
+		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
+		break;
 	case IB_FLOW_IB_MC_IPV4:
 	case IB_FLOW_IB_MC_IPV6:
 		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
@@ -1641,8 +1643,31 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	spin_lock_init(&ibdev->sm_lock);
 	mutex_init(&ibdev->cap_mask_mutex);
 
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		ibdev->steer_qpn_count =  1 << dev->caps.fs_log_max_ucast_qp_range_size;
+		err = mlx4_qp_reserve_range(dev, ibdev->steer_qpn_count,
+					    MLX4_IB_UC_STEER_QPN_ALIGN, &ibdev->steer_qpn_base);
+		if (err)
+			goto err_counter;
+
+		ibdev->ib_uc_qpns_bitmap =
+			kmalloc(BITS_TO_LONGS(ibdev->steer_qpn_count),
+				GFP_KERNEL);
+		if (!ibdev->ib_uc_qpns_bitmap) {
+			dev_err(&dev->pdev->dev, "bit map alloc failed\n");
+			goto err_steer_qp_release;
+		}
+
+		bitmap_zero(ibdev->ib_uc_qpns_bitmap, ibdev->steer_qpn_count);
+
+		err = mlx4_FLOW_STEERING_IB_UC_QP_RANGE(dev, ibdev->steer_qpn_base,
+				ibdev->steer_qpn_base + ibdev->steer_qpn_count - 1);
+		if (err)
+			goto err_steer_free_bitmap;
+	}
+
 	if (ib_register_device(&ibdev->ib_dev, NULL))
-		goto err_counter;
+		goto err_steer_free_bitmap;
 
 	if (mlx4_ib_mad_init(ibdev))
 		goto err_reg;
@@ -1693,6 +1718,13 @@ err_mad:
 err_reg:
 	ib_unregister_device(&ibdev->ib_dev);
 
+err_steer_free_bitmap:
+	kfree(ibdev->ib_uc_qpns_bitmap);
+
+err_steer_qp_release:
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED)
+		mlx4_qp_release_range(dev, ibdev->steer_qpn_base,
+				ibdev->steer_qpn_count);
 err_counter:
 	for (; i; --i)
 		if (ibdev->counters[i - 1] != -1)
@@ -1713,6 +1745,33 @@ err_dealloc:
 	return NULL;
 }
 
+int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev)
+{
+	int offset;
+
+	if (dev->dev->caps.steering_mode != MLX4_STEERING_MODE_DEVICE_MANAGED)
+		return 0;
+
+	offset = bitmap_find_free_region(dev->ib_uc_qpns_bitmap,
+			dev->steer_qpn_count, 0);
+	if (offset < 0)
+		return offset;
+
+	return dev->steer_qpn_base + offset;
+}
+
+void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn)
+{
+	if (!qpn ||
+	    dev->dev->caps.steering_mode != MLX4_STEERING_MODE_DEVICE_MANAGED)
+		return;
+
+	BUG_ON(qpn < dev->steer_qpn_base);
+
+	bitmap_release_region(dev->ib_uc_qpns_bitmap,
+			qpn - dev->steer_qpn_base, 0);
+}
+
 static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 {
 	struct mlx4_ib_dev *ibdev = ibdev_ptr;
@@ -1721,6 +1780,13 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 	mlx4_ib_close_sriov(ibdev);
 	mlx4_ib_mad_cleanup(ibdev);
 	ib_unregister_device(&ibdev->ib_dev);
+
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		mlx4_qp_release_range(dev, ibdev->steer_qpn_base,
+				ibdev->steer_qpn_count);
+		kfree(ibdev->ib_uc_qpns_bitmap);
+	}
+
 	if (ibdev->iboe.nb.notifier_call) {
 		if (unregister_netdevice_notifier(&ibdev->iboe.nb))
 			pr_warn("failure unregistering notifier\n");

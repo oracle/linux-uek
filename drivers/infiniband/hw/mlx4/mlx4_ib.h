@@ -68,6 +68,8 @@ enum {
 /*module param to indicate if SM assigns the alias_GUID*/
 extern int mlx4_ib_sm_guid_assign;
 
+#define MLX4_IB_UC_STEER_QPN_ALIGN 1
+
 struct mlx4_ib_ucontext {
 	struct ib_ucontext	ibucontext;
 	struct mlx4_uar		uar;
@@ -141,6 +143,7 @@ struct mlx4_ib_wq {
 enum mlx4_ib_qp_flags {
 	MLX4_IB_QP_LSO = IB_QP_CREATE_IPOIB_UD_LSO,
 	MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK = IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK,
+	MLX4_IB_QP_NETIF = 1 << 2,
 	MLX4_IB_SRIOV_TUNNEL_QP = 1 << 30,
 	MLX4_IB_SRIOV_SQP = 1 << 31,
 };
@@ -493,6 +496,9 @@ struct mlx4_ib_dev {
 	struct kobject	       *dev_ports_parent[MLX4_MFUNC_MAX];
 	struct mlx4_ib_iov_port	iov_ports[MLX4_MAX_PORTS];
 	struct pkey_mgt		pkeys;
+	unsigned long *ib_uc_qpns_bitmap;
+	int steer_qpn_count;
+	int steer_qpn_base;
 };
 
 struct ib_event_work {
@@ -736,5 +742,8 @@ void mlx4_ib_device_unregister_sysfs(struct mlx4_ib_dev *device);
 
 __be64 mlx4_ib_gen_node_guid(void);
 
+
+int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev);
+void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn);
 
 #endif /* MLX4_IB_H */

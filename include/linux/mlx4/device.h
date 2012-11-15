@@ -990,4 +990,6 @@ __be64 mlx4_get_slave_node_guid(struct mlx4_dev *dev, int slave);
 int mlx4_get_slave_from_roce_gid(struct mlx4_dev *dev, int port, u8 *gid, int *slave_id);
 int mlx4_get_roce_gid_from_slave(struct mlx4_dev *dev, int port, int slave_id, u8 *gid);
 
+int mlx4_FLOW_STEERING_IB_UC_QP_RANGE(struct mlx4_dev *dev, u32 min_range_qpn, u32 max_range_qpn);
+
 #endif /* MLX4_DEVICE_H */

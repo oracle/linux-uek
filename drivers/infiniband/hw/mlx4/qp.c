@@ -729,6 +729,9 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (init_attr->create_flags & IB_QP_CREATE_IPOIB_UD_LSO)
 			qp->flags |= MLX4_IB_QP_LSO;
 
+		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP)
+			qp->flags |= MLX4_IB_QP_NETIF;
+
 		err = set_kernel_sq_size(dev, &init_attr->cap, qp_type, qp);
 		if (err)
 			goto err;
@@ -1009,8 +1012,14 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	 */
 	if (init_attr->create_flags & ~(MLX4_IB_QP_LSO |
 					MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK |
-					MLX4_IB_SRIOV_TUNNEL_QP | MLX4_IB_SRIOV_SQP))
+					MLX4_IB_SRIOV_TUNNEL_QP | MLX4_IB_SRIOV_SQP |
+					IB_QP_CREATE_NETIF_QP))
 		return ERR_PTR(-EINVAL);
+
+	if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
+	       if (init_attr->qp_type != IB_QPT_UD)
+		       return ERR_PTR(-EINVAL);
+	}
 
 	if (init_attr->create_flags &&
 	    (udata ||
@@ -1040,10 +1049,21 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		/* fall through */
 	case IB_QPT_UD:
 	{
-		err = create_qp_common(to_mdev(pd->device), pd, init_attr,
-				       udata, 0, &qp);
-		if (err)
+		int sqpn = 0;
+		struct mlx4_ib_dev *dev = to_mdev(pd->device);
+
+		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
+			sqpn = mlx4_ib_steer_qp_alloc(dev);
+			if (sqpn < 0)
+				return ERR_PTR(sqpn);
+		}
+
+		err = create_qp_common(to_mdev(pd->device), pd, init_attr, udata, sqpn, &qp);
+		if (err) {
+			if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP)
+				mlx4_ib_steer_qp_free(dev, sqpn);
 			return ERR_PTR(err);
+		}
 
 		qp->ibqp.qp_num = qp->mqp.qpn;
 		qp->xrcdn = xrcdn;
@@ -1087,6 +1107,9 @@ int mlx4_ib_destroy_qp(struct ib_qp *qp)
 
 	pd = get_pd(mqp);
 	destroy_qp_common(dev, mqp, !!pd->ibpd.uobject);
+
+	if (mqp->flags & MLX4_IB_QP_NETIF)
+		mlx4_ib_steer_qp_free(dev, mqp->mqp.qpn);
 
 	if (is_sqp(dev, mqp))
 		kfree(to_msqp(mqp));
@@ -2880,6 +2903,9 @@ done:
 
 	if (qp->flags & MLX4_IB_QP_LSO)
 		qp_init_attr->create_flags |= IB_QP_CREATE_IPOIB_UD_LSO;
+
+	if (qp->flags & MLX4_IB_QP_NETIF)
+		qp_init_attr->create_flags |= IB_QP_CREATE_NETIF_QP;
 
 	qp_init_attr->sq_sig_type =
 		qp->sq_signal_bits == cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE) ?
