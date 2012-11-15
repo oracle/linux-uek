@@ -35,8 +35,14 @@
 #include <linux/export.h>
 
 #include <linux/mlx4/cmd.h>
-
+#include <linux/moduleparam.h>
 #include "mlx4.h"
+
+int mlx4_set_4k_mtu = -1;
+module_param_named(set_4k_mtu, mlx4_set_4k_mtu, int, 0444);
+MODULE_PARM_DESC(set_4k_mtu,
+	"(Obsolete) attempt to set 4K MTU to all ConnectX ports");
+
 
 #define MLX4_MAC_VALID		(1ull << 63)
 

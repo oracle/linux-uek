@@ -119,7 +119,8 @@ MODULE_PARM_DESC(log_num_mac, "Log2 max number of MACs per ETH port (1-7)");
 
 static int log_num_vlan;
 module_param_named(log_num_vlan, log_num_vlan, int, 0444);
-MODULE_PARM_DESC(log_num_vlan, "Log2 max number of VLANs per ETH port (0-7)");
+MODULE_PARM_DESC(log_num_vlan,
+	"(Obsolete) Log2 max number of VLANs per ETH port (0-7)");
 /* Log2 max number of VLANs per ETH port (0-7) */
 #define MLX4_LOG_NUM_VLANS 7
 
@@ -2510,6 +2511,9 @@ static int __init mlx4_verify_params(void)
 	if (log_num_vlan != 0)
 		pr_warning("mlx4_core: log_num_vlan - obsolete module param, using %d\n",
 			   MLX4_LOG_NUM_VLANS);
+
+	if (mlx4_set_4k_mtu != -1)
+		pr_warning("mlx4_core: set_4k_mtu - obsolete module param\n");
 
 	if ((log_mtts_per_seg < 0) || (log_mtts_per_seg > 7)) {
 		pr_warning("mlx4_core: bad log_mtts_per_seg: %d\n", log_mtts_per_seg);
