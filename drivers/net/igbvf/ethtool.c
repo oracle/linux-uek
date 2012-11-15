@@ -289,11 +289,9 @@ static void igbvf_get_drvinfo(struct net_device *netdev,
 			      struct ethtool_drvinfo *drvinfo)
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
-	char firmware_version[32] = "N/A";
 
 	strncpy(drvinfo->driver,  igbvf_driver_name, 32);
 	strncpy(drvinfo->version, igbvf_driver_version, 32);
-	strncpy(drvinfo->fw_version, firmware_version, 32);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
 	drvinfo->regdump_len = igbvf_get_regs_len(netdev);
 	drvinfo->eedump_len = igbvf_get_eeprom_len(netdev);

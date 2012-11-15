@@ -66,7 +66,6 @@ static void veth_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *inf
 {
 	strcpy(info->driver, DRV_NAME);
 	strcpy(info->version, DRV_VERSION);
-	strcpy(info->fw_version, "N/A");
 }
 
 static void veth_get_strings(struct net_device *dev, u32 stringset, u8 *buf)

@@ -1006,9 +1006,7 @@ static void get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info)
 	strcpy(info->version, DRV_VERSION);
 	strcpy(info->bus_info, pci_name(adapter->pdev));
 
-	if (!adapter->params.fw_vers)
-		strcpy(info->fw_version, "N/A");
-	else
+	if (adapter->params.fw_vers)
 		snprintf(info->fw_version, sizeof(info->fw_version),
 			"%u.%u.%u.%u, TP %u.%u.%u.%u",
 			FW_HDR_FW_VER_MAJOR_GET(adapter->params.fw_vers),
