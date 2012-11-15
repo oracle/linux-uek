@@ -141,6 +141,7 @@ enum {
 	MLX4_DEV_CAP_FLAG_VEP_MC_STEER	= 1LL << 42,
 	MLX4_DEV_CAP_FLAG_COUNTERS	= 1LL << 48,
 	MLX4_DEV_CAP_FLAG_SENSE_SUPPORT	= 1LL << 55,
+	MLX4_DEV_CAP_FLAG_FAST_DROP	= 1LL << 57,
 	MLX4_DEV_CAP_FLAG_PORT_MNG_CHG_EV = 1LL << 59,
 	MLX4_DEV_CAP_FLAG_64B_EQE	= 1LL << 61,
 	MLX4_DEV_CAP_FLAG_64B_CQE	= 1LL << 62
@@ -445,6 +446,7 @@ struct mlx4_caps {
 	u8			eqe_factor;
 	u32			userspace_caps; /* userspace must be aware to */
 	u32			function_caps;  /* functions must be aware to */
+	u8			fast_drop;
 };
 
 struct mlx4_buf_list {
