@@ -582,13 +582,23 @@ static struct ib_ucontext *mlx4_ib_alloc_ucontext(struct ib_device *ibdev,
 
 	if (ibdev->uverbs_abi_ver == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION) {
 		resp_v3.qp_tab_size      = dev->dev->caps.num_qps;
-		resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp_v3.bf_reg_size      = 0;
+			resp_v3.bf_regs_per_page = 0;
+		}
 	} else {
 		resp.dev_caps	      = dev->dev->caps.userspace_caps;
 		resp.qp_tab_size      = dev->dev->caps.num_qps;
-		resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp.bf_reg_size      = 0;
+			resp.bf_regs_per_page = 0;
+		}
 		resp.cqe_size	      = dev->dev->caps.cqe_size;
 	}
 
