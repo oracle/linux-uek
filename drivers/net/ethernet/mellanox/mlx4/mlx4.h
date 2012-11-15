@@ -773,6 +773,10 @@ enum {
 	MLX4_PCI_DEV_FORCE_SENSE_PORT	= 1 << 1,
 };
 
+struct mlx4_roce_gid_entry {
+	u8 raw[16];
+};
+
 struct mlx4_priv {
 	struct mlx4_dev		dev;
 
@@ -818,7 +822,7 @@ struct mlx4_priv {
 	int			fs_hash_mode;
 	u8 virt2phys_pkey[MLX4_MFUNC_MAX][MLX4_MAX_PORTS][MLX4_MAX_PORT_PKEYS];
 	__be64			slave_node_guids[MLX4_MFUNC_MAX];
-
+	struct mlx4_roce_gid_entry roce_gids[MLX4_MAX_PORTS][128];
 };
 
 static inline struct mlx4_priv *mlx4_priv(struct mlx4_dev *dev)

@@ -646,6 +646,7 @@ int mlx4_get_port_ib_caps(struct mlx4_dev *dev, u8 port, __be32 *caps)
 	mlx4_free_cmd_mailbox(dev, outmailbox);
 	return err;
 }
+static struct mlx4_roce_gid_entry zgid_entry;
 
 static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
 				u8 op_mod, struct mlx4_cmd_mailbox *inbox)
@@ -656,6 +657,7 @@ static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
 	struct mlx4_slave_state *slave_st = &master->slave_state[slave];
 	struct mlx4_set_port_rqp_calc_context *qpn_context;
 	struct mlx4_set_port_general_context *gen_context;
+	struct mlx4_roce_gid_entry *gid_entry;
 	int reset_qkey_viols;
 	int port;
 	int is_eth;
@@ -676,7 +678,8 @@ static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
 	/* Slaves cannot perform SET_PORT operations except changing MTU */
 	if (is_eth) {
 		if (slave != dev->caps.function &&
-		    in_modifier != MLX4_SET_PORT_GENERAL) {
+		    in_modifier != MLX4_SET_PORT_GENERAL &&
+		    in_modifier != MLX4_SET_PORT_GID_TABLE) {
 			mlx4_warn(dev, "denying SET_PORT for slave:%d\n",
 					slave);
 			return -EINVAL;
@@ -720,6 +723,28 @@ static int mlx4_common_set_port(struct mlx4_dev *dev, int slave, u32 in_mod,
 			}
 
 			gen_context->mtu = cpu_to_be16(master->max_mtu[port]);
+			break;
+		case MLX4_SET_PORT_GID_TABLE:
+			gid_entry = (struct mlx4_roce_gid_entry *) (inbox->buf);
+			/* check that do not have duplicates */
+			if (memcmp(gid_entry->raw, zgid_entry.raw, 16)) {
+				for (i = 0; i < 128; i++) {
+					if (slave != i &&
+					    !memcmp(gid_entry->raw, priv->roce_gids[port - 1][i].raw, 16)) {
+						mlx4_warn(dev, "requested gid entry for slave:%d "
+							  "is a duplicate of slave %d\n",
+							  slave, i);
+						return -EEXIST;
+					}
+				}
+			}
+			/* insert slave GID at proper index */
+			memcpy(priv->roce_gids[port - 1][slave].raw, gid_entry->raw, 16);
+			/* rewrite roce port gids table to FW */
+			for (i = 0; i < 128; i++) {
+				memcpy(gid_entry->raw, priv->roce_gids[port - 1][i].raw, 16);
+				gid_entry++;
+			}
 			break;
 		}
 		return mlx4_cmd(dev, inbox->dma, in_mod, op_mod,
