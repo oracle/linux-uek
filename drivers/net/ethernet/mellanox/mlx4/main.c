@@ -147,6 +147,10 @@ struct mlx4_port_config {
 };
 
 #define MLX4_LOG_NUM_MTT 20
+/* When a higher value than 28 is used we get a failure via initializing
+     the event queue table.
+*/
+#define MLX4_MAX_LOG_NUM_MTT 28
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 18,
 	.num_srq        = 16,
@@ -213,9 +217,11 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	else {
 		si_meminfo(&si);
 		profile->num_mtt =
-			roundup_pow_of_two(max_t(unsigned, 1 << MLX4_LOG_NUM_MTT,
-						 min(1UL << 31,
-						     si.totalram >> (log_mtts_per_seg - 1))));
+			roundup_pow_of_two(max_t(unsigned,
+						1 << MLX4_LOG_NUM_MTT,
+						min(1UL << MLX4_MAX_LOG_NUM_MTT,
+						(si.totalram << 1)
+						>> log_mtts_per_seg)));
 	}
 }
 
@@ -2556,6 +2562,11 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
+	if (mod_param_profile.num_mtt > MLX4_MAX_LOG_NUM_MTT) {
+		pr_warning("mlx4_core: too high log_num_mtt: %d\n",
+			   mod_param_profile.num_mtt);
+		return -1;
+	}
 	return 0;
 }
 
