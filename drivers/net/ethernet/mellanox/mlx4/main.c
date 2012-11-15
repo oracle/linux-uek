@@ -100,6 +100,11 @@ MODULE_PARM_DESC(log_num_mgm_entry_size, "log mgm size, that defines the num"
 					 " Not in use with device managed"
 					 " flow steering");
 
+static int high_rate_steer;
+module_param(high_rate_steer, int, 0444);
+MODULE_PARM_DESC(high_rate_steer, "Enable steering mode for higher packet rate"
+				  " (default off)");
+
 int mlx4_enable_64b_cqe_eqe;
 module_param_named(enable_64b_cqe_eqe, mlx4_enable_64b_cqe_eqe, int, 0644);
 MODULE_PARM_DESC(enable_64b_cqe_eqe,
@@ -350,6 +355,12 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.stat_rate_support  = dev_cap->stat_rate_support;
 	dev->caps.max_gso_sz	     = dev_cap->max_gso_sz;
 	dev->caps.max_rss_tbl_sz     = dev_cap->max_rss_tbl_sz;
+
+	if (high_rate_steer && !mlx4_is_mfunc(dev)) {
+		dev->caps.flags &= ~(MLX4_DEV_CAP_FLAG_VEP_MC_STEER |
+				     MLX4_DEV_CAP_FLAG_VEP_UC_STEER);
+		dev_cap->flags2 &= ~MLX4_DEV_CAP_FLAG2_FS_EN;
+	}
 
 	if (dev_cap->flags2 & MLX4_DEV_CAP_FLAG2_FS_EN) {
 		dev->caps.steering_mode = MLX4_STEERING_MODE_DEVICE_MANAGED;
