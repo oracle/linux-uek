@@ -1601,7 +1601,7 @@ int mlx4_SET_ICM_SIZE(struct mlx4_dev *dev, u64 icm_size, u64 *aux_pages)
 int mlx4_NOP(struct mlx4_dev *dev)
 {
 	/* Input modifier of 0x1f means "finish as soon as possible." */
-	return mlx4_cmd(dev, 0, 0x1f, 0, MLX4_CMD_NOP, 100, MLX4_CMD_NATIVE);
+	return mlx4_cmd(dev, 0, 0x1f, 0, MLX4_CMD_NOP, MLX4_CMD_TIME_CLASS_A, MLX4_CMD_NATIVE);
 }
 
 int mlx4_query_diag_counters(struct mlx4_dev *dev, int array_length,
