@@ -2163,6 +2163,9 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 			}
 		}
 
+		atomic_set(&priv->opreq_count, 0);
+		INIT_WORK(&priv->opreq_task, mlx4_opreq_action);
+
 		/*
 		 * Now reset the HCA before we touch the PCI capabilities or
 		 * attempt a firmware command, since a boot ROM may have left
