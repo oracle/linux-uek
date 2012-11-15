@@ -155,7 +155,7 @@ pte_t *huge_pte_alloc(struct mm_struct *mm,
 		} else {
 			BUG_ON(sz != PMD_SIZE);
 			if (!xen_pv_domain() && pud_none(*pud))
-				huge_pmd_share(mm, addr, pud);
+				pte = huge_pmd_share(mm, addr, pud);
 			else
 				pte = (pte_t *)pmd_alloc(mm, pud, addr);
 		}
