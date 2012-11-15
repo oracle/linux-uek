@@ -102,16 +102,6 @@ static char mlx4_version[] __devinitdata =
 	DRV_NAME ": Mellanox ConnectX core driver v"
 	DRV_VERSION " (" DRV_RELDATE ")\n";
 
-static struct mlx4_profile default_profile = {
-	.num_qp		= 1 << 18,
-	.num_srq	= 1 << 16,
-	.rdmarc_per_qp	= 1 << 4,
-	.num_cq		= 1 << 16,
-	.num_mcg	= 1 << 13,
-	.num_mpt	= 1 << 19,
-	.num_mtt	= 1 << 20, /* It is really num mtt segements */
-};
-
 static int log_num_mac = 7;
 module_param_named(log_num_mac, log_num_mac, int, 0444);
 MODULE_PARM_DESC(log_num_mac, "Log2 max number of MACs per ETH port (1-7)");
@@ -142,6 +132,79 @@ struct mlx4_port_config {
 	enum mlx4_port_type port_type[MLX4_MAX_PORTS + 1];
 	struct pci_dev *pdev;
 };
+
+#define MLX4_LOG_NUM_MTT 20
+static struct mlx4_profile mod_param_profile = {
+	.num_qp         = 18,
+	.num_srq        = 16,
+	.rdmarc_per_qp  = 4,
+	.num_cq         = 16,
+	.num_mcg        = 13,
+	.num_mpt        = 19,
+	.num_mtt        = 0, /* max(20, 2*MTTs for host memory)) */
+};
+
+module_param_named(log_num_qp, mod_param_profile.num_qp, int, 0444);
+MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 18)");
+
+module_param_named(log_num_srq, mod_param_profile.num_srq, int, 0444);
+MODULE_PARM_DESC(log_num_srq, "log maximum number of SRQs per HCA "
+		 "(default: 16)");
+
+module_param_named(log_rdmarc_per_qp, mod_param_profile.rdmarc_per_qp, int,
+		   0444);
+MODULE_PARM_DESC(log_rdmarc_per_qp, "log number of RDMARC buffers per QP "
+		 "(default: 4)");
+
+module_param_named(log_num_cq, mod_param_profile.num_cq, int, 0444);
+MODULE_PARM_DESC(log_num_cq, "log maximum number of CQs per HCA (default: 16)");
+
+module_param_named(log_num_mcg, mod_param_profile.num_mcg, int, 0444);
+MODULE_PARM_DESC(log_num_mcg, "log maximum number of multicast groups per HCA "
+		 "(default: 13)");
+
+module_param_named(log_num_mpt, mod_param_profile.num_mpt, int, 0444);
+MODULE_PARM_DESC(log_num_mpt,
+		 "log maximum number of memory protection table entries per "
+		 "HCA (default: 19)");
+
+module_param_named(log_num_mtt, mod_param_profile.num_mtt, int, 0444);
+MODULE_PARM_DESC(log_num_mtt,
+		 "log maximum number of memory translation table segments per "
+		 "HCA (default: max(20, 2*MTTs for register all of the host memory))");
+
+static void process_mod_param_profile(struct mlx4_profile *profile)
+{
+	struct sysinfo si;
+
+	profile->num_qp        = 1 << mod_param_profile.num_qp;
+	profile->num_srq       = 1 << mod_param_profile.num_srq;
+	profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
+	profile->num_cq	       = 1 << mod_param_profile.num_cq;
+	profile->num_mcg       = 1 << mod_param_profile.num_mcg;
+	profile->num_mpt       = 1 << mod_param_profile.num_mpt;
+	/*
+	 * We want to scale the number of MTTs with the size of the
+	 * system memory, since it makes sense to register a lot of
+	 * memory on a system with a lot of memory.  As a heuristic,
+	 * make sure we have enough MTTs to register twice the system
+	 * memory (with PAGE_SIZE entries).
+	 *
+	 * This number has to be a power of two and fit into 32 bits
+	 * due to device limitations, so cap this at 2^31 as well.
+	 * That limits us to 8TB of memory registration per HCA with
+	 * 4KB pages, which is probably OK for the next few months.
+	 */
+	if (mod_param_profile.num_mtt)
+		profile->num_mtt = 1 << mod_param_profile.num_mtt;
+	else {
+		si_meminfo(&si);
+		profile->num_mtt =
+			roundup_pow_of_two(max_t(unsigned, 1 << MLX4_LOG_NUM_MTT,
+						 min(1UL << 31,
+						     si.totalram >> (log_mtts_per_seg - 1))));
+	}
+}
 
 int mlx4_check_port_params(struct mlx4_dev *dev,
 			   enum mlx4_port_type *port_type)
@@ -1343,7 +1406,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 			break;
 		}
 
-		profile = default_profile;
+		process_mod_param_profile(&profile);
 		if (dev->caps.steering_mode ==
 		    MLX4_STEERING_MODE_DEVICE_MANAGED)
 			profile.num_mcg = MLX4_FS_NUM_MCG;
