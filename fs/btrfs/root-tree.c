@@ -95,8 +95,10 @@ int btrfs_update_root(struct btrfs_trans_handle *trans, struct btrfs_root
 	path = btrfs_alloc_path();
 	BUG_ON(!path);
 	ret = btrfs_search_slot(trans, root, key, path, 0, 1);
-	if (ret < 0)
+	if (ret < 0) {
+		btrfs_abort_transaction(trans, root, ret);
 		goto out;
+	}
 
 	if (ret != 0) {
 		btrfs_print_leaf(root, path->nodes[0]);
@@ -384,6 +386,8 @@ int btrfs_find_root_ref(struct btrfs_root *tree_root,
  *
  * For a back ref the root_id is the id of the subvol or snapshot and
  * ref_id is the id of the tree referencing it.
+ *
+ * Will return 0, -ENOMEM, or anything from the CoW path
  */
 int btrfs_add_root_ref(struct btrfs_trans_handle *trans,
 		       struct btrfs_root *tree_root,
@@ -407,7 +411,11 @@ int btrfs_add_root_ref(struct btrfs_trans_handle *trans,
 again:
 	ret = btrfs_insert_empty_item(trans, tree_root, path, &key,
 				      sizeof(*ref) + name_len);
-	BUG_ON(ret);
+	if (ret) {
+		btrfs_abort_transaction(trans, tree_root, ret);
+		btrfs_free_path(path);
+		return ret;
+	}
 
 	leaf = path->nodes[0];
 	ref = btrfs_item_ptr(leaf, path->slots[0], struct btrfs_root_ref);
