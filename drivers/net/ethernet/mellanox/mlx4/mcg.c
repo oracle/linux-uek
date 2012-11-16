@@ -500,7 +500,7 @@ static int remove_promisc_qp(struct mlx4_dev *dev, u8 port,
 	u32 members_count;
 	bool found;
 	bool back_to_list = false;
-	int loc, i;
+	int i, loc = -1;
 	int err;
 
 	s_steer = &mlx4_priv(dev)->steer[port - 1];
@@ -554,7 +554,7 @@ static int remove_promisc_qp(struct mlx4_dev *dev, u8 port,
 				if (err)
 					goto out_mailbox;
 			members_count = be32_to_cpu(mgm->members_count) & 0xffffff;
-			for (loc = -1, i = 0; i < members_count; ++i)
+			for (i = 0; i < members_count; ++i)
 				if ((be32_to_cpu(mgm->qp[i]) & MGM_QPN_MASK) == qpn) {
 					loc = i;
 					break;
@@ -567,10 +567,11 @@ static int remove_promisc_qp(struct mlx4_dev *dev, u8 port,
 				goto out_mailbox;
 			}
 
+			/* copy the last QP in this MGM over removed QP */
+			mgm->qp[loc] = mgm->qp[members_count - 1];
+			mgm->qp[members_count - 1] = 0;
 			mgm->members_count = cpu_to_be32(--members_count |
 							 (MLX4_PROT_ETH << 30));
-			mgm->qp[loc] = mgm->qp[i - 1];
-			mgm->qp[i - 1] = 0;
 
 			err = mlx4_WRITE_ENTRY(dev, entry->index, mailbox);
 				if (err)
@@ -1022,7 +1023,7 @@ int mlx4_qp_detach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 	struct mlx4_mgm *mgm;
 	u32 members_count;
 	int prev, index;
-	int i, loc;
+	int i, loc = -1;
 	int err;
 	u8 port = gid[5];
 	bool removed_entry = false;
@@ -1051,9 +1052,11 @@ int mlx4_qp_detach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 		goto out;
 
 	members_count = be32_to_cpu(mgm->members_count) & 0xffffff;
-	for (loc = -1, i = 0; i < members_count; ++i)
-		if ((be32_to_cpu(mgm->qp[i]) & MGM_QPN_MASK) == qp->qpn)
+	for (i = 0; i < members_count; ++i)
+		if ((be32_to_cpu(mgm->qp[i]) & MGM_QPN_MASK) == qp->qpn) {
 			loc = i;
+			break;
+		}
 
 	if (loc == -1) {
 		mlx4_err(dev, "QP %06x not found in MGM\n", qp->qpn);
@@ -1061,10 +1064,10 @@ int mlx4_qp_detach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 		goto out;
 	}
 
-
+	/* copy the last QP in this MGM over removed QP */
+	mgm->qp[loc] = mgm->qp[members_count - 1];
+	mgm->qp[members_count - 1] = 0;
 	mgm->members_count = cpu_to_be32(--members_count | (u32) prot << 30);
-	mgm->qp[loc]       = mgm->qp[i - 1];
-	mgm->qp[i - 1]     = 0;
 
 	if (prot == MLX4_PROT_ETH)
 		removed_entry = can_remove_steering_entry(dev, port, steer,
