@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.2.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1692,6 +1692,101 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Nov 16 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.3.0.el6uek]
+- Merge tag 'v2.6.39-400.2.0#btrfs_reb' of git://ca-git.us.oracle.com/linux-
+  muvarov-public (Maxim Uvarov)
+- mm: hugetlbfs: assign return value of huge_pmd_share() to pte (Guangyu Sun)
+  [Orabug: 15861301]
+- Added suspend and resume support (Cathy Avery) [Orabug: 14801157]
+- rcu: Fix wrong check in list_splice_init_rcu() (Jan H. Schönherr)
+- btrfs: ->submit_bio_hook error push-up (Jeff Mahoney)
+- btrfs: Don't BUG_ON() errors in update_ref_for_cow() (Mark Fasheh)
+- btrfs: add varargs to btrfs_error (Jeff Mahoney)
+- Btrfs: Fix space checking during fs resize (Daniel J Blueman)
+- Btrfs: avoid setting ->d_op twice (Li Zefan)
+- btrfs: replace many BUG_ONs with proper error handling (Jeff Mahoney)
+- btrfs: enhance transaction abort infrastructure (Jeff Mahoney)
+- sfc: Replace some literal constants with EFX_PAGE_SIZE/EFX_BUF_SIZE (Maxim
+  Uvarov) [Orabug: 14769994]
+- qla4xxx: Updated driver version to 5.03.00.00.06.02-uek2 (Tej Parkash)
+- scsi: fix various printk and comment typos (Masanari Iida)
+- qla4xxx: Disable generating pause frames for ISP83XX (Tej Parkash)
+- qla4xxx: Fix double clearing of risc_intr for ISP83XX (Manish Dusane)
+- qla4xxx: IDC implementation for Loopback (Nilesh Javali)
+- qla4xxx: Fix panic while rmmod (Vikas Chaudhary)
+- qla4xxx: Fail probe_adapter if IRQ allocation fails (Poornima Vonti)
+- qla4xxx: Prevent MSI/MSI-X falling back to INTx for ISP82XX (Vikas Chaudhary)
+- qla4xxx: Update idc reg in case of PCI AER (Vikas Chaudhary)
+- qla4xxx: Fix double IDC locking in qla4_8xxx_error_recovery (Poornima Vonti)
+- qla4xxx: Clear interrupt while unloading driver for ISP83XX (Vikas Chaudhary)
+- qla4xxx: Print correct IDC version (Vikas Chaudhary)
+- qla4xxx: Added new mbox cmd to pass driver version to FW (Manish Dusane)
+- qla4xxx: Update Copyright header (Vikas Chaudhary)
+- qla4xxx: Added support for ISP83XX (Vikas Chaudhary)
+- qla4xxx: Added new function qla4_8xxx_get_minidump (Vikas Chaudhary)
+- qla4xxx: Set IDC version in correct way (Vikas Chaudhary)
+- qla4xxx: Replace all !is_qla8022() with is_qla40XX() (Vikas Chaudhary)
+- qla4xxx: Added new functions in isp_ops (Vikas Chaudhary)
+- qla4xxx: Clean-up and optimize macros (Vikas Chaudhary)
+- qla4xxx: Rename 82XX macros (Vikas Chaudhary)
+- qla4xxx: Update func name from ql4_ to qla4_ (Vikas Chaudhary)
+- qla4xxx: Update structure and variable names (Vikas Chaudhary)
+- qla4xxx: Update function name from 8xxx to 82xx (Vikas Chaudhary)
+- qla4xxx: Wait for cmd to complete before chip reset for ISP40XX (Vikas
+  Chaudhary)
+- qla4xxx: Clear interrupt while unloading driver. (Vikas Chaudhary)
+- qla4xxx: Fix lockdep warning in qla4xxx_post_work() (Vikas Chaudhary)
+- qla4xxx: Properly handle SCSI underrun while processing status IOCBs. (Lalit
+  Chandivade)
+- qla4xxx: Fix multiple conn login event issue during session recovery. (Manish
+  Rangankar)
+- qla4xxx: Fix gcc warning for x86 system (Vikas Chaudhary)
+- qla4xxx: Fix memory corruption issue in qla4xxx_ep_connect. (Manish
+  Rangankar)
+- qla4xxx: remove unnecessary read of PCI_CAP_ID_EXP (Jon Mason)
+- qla4xxx: Fix Spell check. (Vikas Chaudhary)
+- qla4xxx: Fix a Sparse warning message (Vikas Chaudhary)
+- qla4xxx: multi-session fix for flash ddbs (Vikas Chaudhary)
+- qla4xxx: Add missing spaces to error messages (Petr Uzel)
+- qla4xxx: Capture minidump for ISP82XX on firmware failure (Tej Parkash)
+- qla4xxx: Add change_queue_depth API support (Tej Parkash)
+- qla4xxx: Fix clear ddb mbx command failure issue. (Manish Rangankar)
+- qla4xxx: Fix kernel panic during discovery logout. (Manish Rangankar)
+- qla4xxx: Correct early completion of pending mbox. (Lalit Chandivade)
+- atp870u, mpt2sas, qla4xxx use pci_dev->revision (Sergei Shtylyov)
+- qla4xxx: Removed packed attr from struct iscsi_chap_rec (Vikas Chaudhary)
+- iscsi_transport: Added error status code for ping comp event (Vikas
+  Chaudhary)
+- qla4xxx: assign correct address for iscsi_cls_host (Vikas Chaudhary)
+- qla4xxx: trivial cleanup (Vikas Chaudhary)
+- qla4xxx: Fix sparse warning (Vikas Chaudhary)
+- qla4xxx: Add support for multiple session per host. (Manish Rangankar)
+- qla4xxx: Export CHAP index as sysfs attribute (Mike Christie)
+- scsi_transport: Export CHAP index as sysfs attribute (Mike Christie)
+- qla4xxx: Add support to display CHAP list and delete CHAP entry (Nilesh
+  Javali)
+- iscsi_transport: Add support to display CHAP list and delete CHAP entry
+  (Nilesh Javali)
+- qla4xxx: Added support to show port_state and port_speed in sysfs (Vikas
+  Chaudhary)
+- scsi_transport_iscsi: Added support to show port_state and port_speed in
+  sysfs (Vikas Chaudhary)
+- qla4xxx: Added support to show targetalias in sysfs (Vikas Chaudhary)
+- libiscsi: Added support to show targetalias in sysfs (Vikas Chaudhary)
+- qla4xxx: Export boot targets to sysfs by default (Nilesh Javali)
+- Updated driver version to 5.02.00.01.06.02-uek2 (Tej Parkash)
+- qla4xxx: Added ping support (Vikas Chaudhary)
+- iscsi_transport: Added Ping support (Vikas Chaudhary)
+- qla4xxx: added support for host event (Vikas Chaudhary)
+- scsi_transport_iscsi: added support for host event (Vikas Chaudhary)
+- qla4xxx: Remove un-necessary print statment (Lalit Chandivade)
+- qla4xxx: Modified debug log messages for boot info. (Manish Rangankar)
+- qla4xxx: Fix un-necessary delay on invalid DDB (Lalit Chandivade)
+- qla4xxx: Remove unused code (Shyam Sundar)
+- qla4xxx: Proper detection of firmware abort error code for ISP82xx (Tej
+  Parkash)
+- qla4xxx: Fix verify boot idx correctly (Lalit Chandivade)
+
 * Fri Nov  9 2012 Guru Anbalagane <guru.anbalagane@oracle.com> [2.6.39-400.2.0.el6uek]
 - update kabi (Srinivas Maturi) [orabug 15852885]
 - alpha release
