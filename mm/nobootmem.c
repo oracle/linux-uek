@@ -154,21 +154,6 @@ static void reset_node_lowmem_managed_pages(pg_data_t *pgdat)
 }
 
 /**
- * free_all_bootmem_node - release a node's free pages to the buddy allocator
- * @pgdat: node to be released
- *
- * Returns the number of pages actually released.
- */
-unsigned long __init free_all_bootmem_node(pg_data_t *pgdat)
-{
-	register_page_bootmem_info_node(pgdat);
-	reset_node_lowmem_managed_pages(pgdat);
-
-	/* free_low_memory_core_early(MAX_NUMNODES) will be called later */
-	return 0;
-}
-
-/**
  * free_all_bootmem - release free pages to the buddy allocator
  *
  * Returns the number of pages actually released.
