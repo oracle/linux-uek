@@ -256,6 +256,17 @@ struct mlx4_roce_smac_info {
 	int candidate_smac_port;
 };
 
+struct mlx4_ib_qpg_data {
+	unsigned long *tss_bitmap;
+	unsigned long *rss_bitmap;
+	struct mlx4_ib_qp *qpg_parent;
+	int tss_qpn_base;
+	int rss_qpn_base;
+	u32 tss_child_count;
+	u32 rss_child_count;
+	u32 qpg_tss_mask_sz;
+};
+
 struct mlx4_ib_qp {
 	struct ib_qp		ibqp;
 	struct mlx4_qp		mqp;
@@ -285,6 +296,8 @@ struct mlx4_ib_qp {
 	u8			sq_no_prefetch;
 	u8			state;
 	int			mlx_type;
+	enum ib_qpg_type	qpg_type;
+	struct mlx4_ib_qpg_data *qpg_data;
 	struct list_head	gid_list;
 	struct list_head	steering_rules;
 	struct mlx4_ib_buf	*sqp_proxy_rcv;

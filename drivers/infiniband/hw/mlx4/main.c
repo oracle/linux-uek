@@ -148,6 +148,11 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC)
 		props->device_cap_flags |= IB_DEVICE_XRC;
 
+	props->device_cap_flags |= IB_DEVICE_QPG;
+	if (dev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) {
+		props->device_cap_flags |= IB_DEVICE_UD_RSS;
+		props->max_rss_tbl_sz = dev->dev->caps.max_rss_tbl_sz;
+	}
 	props->vendor_id	   = be32_to_cpup((__be32 *) (out_mad->data + 36)) &
 		0xffffff;
 	props->vendor_part_id	   = dev->dev->pdev->device;
