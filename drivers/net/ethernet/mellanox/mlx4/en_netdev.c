@@ -1405,6 +1405,20 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 	struct mlx4_en_port_profile *prof = priv->prof;
 	int i;
 	int err;
+	int node;
+
+	/* Create rx Rings */
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		node = cpu_to_node(i % num_online_cpus());
+		if (mlx4_en_create_cq(priv, &priv->rx_cq[i],
+				      prof->rx_ring_size, i, RX, node))
+			goto err;
+
+		if (mlx4_en_create_rx_ring(priv, &priv->rx_ring[i],
+					   prof->rx_ring_size, priv->stride,
+					   node))
+			goto err;
+	}
 
 	err = mlx4_qp_reserve_range(priv->mdev->dev, priv->tx_ring_num, 256, &priv->base_tx_qpn);
 	if (err) {
@@ -1414,23 +1428,13 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 
 	/* Create tx Rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
+		node = cpu_to_node(i % num_online_cpus());
 		if (mlx4_en_create_cq(priv, &priv->tx_cq[i],
-				      prof->tx_ring_size, i, TX))
+				      prof->tx_ring_size, i, TX, node))
 			goto err;
 
 		if (mlx4_en_create_tx_ring(priv, &priv->tx_ring[i], priv->base_tx_qpn + i,
-					   prof->tx_ring_size, TXBB_SIZE))
-			goto err;
-	}
-
-	/* Create rx Rings */
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		if (mlx4_en_create_cq(priv, &priv->rx_cq[i],
-				      prof->rx_ring_size, i, RX))
-			goto err;
-
-		if (mlx4_en_create_rx_ring(priv, &priv->rx_ring[i],
-					   prof->rx_ring_size, priv->stride))
+					   prof->tx_ring_size, TXBB_SIZE, node))
 			goto err;
 	}
 
