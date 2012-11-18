@@ -608,6 +608,8 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 
 	mlx4_log_num_mgm_entry_size = hca_param.log_mc_entry_sz;
 
+	dev->caps.hca_core_clock = hca_param.hca_core_clock;
+
 	memset(&dev_cap, 0, sizeof(dev_cap));
 	dev->caps.max_qp_dest_rdma = 1 << hca_param.log_rd_per_qp;
 	err = mlx4_dev_cap(dev, &dev_cap);
@@ -1318,8 +1320,31 @@ static void unmap_bf_area(struct mlx4_dev *dev)
 		io_mapping_free(mlx4_priv(dev)->bf_mapping);
 }
 
+int map_internal_clock(struct mlx4_dev *dev)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	priv->clock_mapping = ioremap(pci_resource_start(dev->pdev,
+				priv->fw.clock_bar) +
+				priv->fw.clock_offset, MLX4_CLOCK_SIZE);
+
+	if (!priv->clock_mapping)
+		return -ENOMEM;
+
+	return 0;
+}
+
+void unmap_internal_clock(struct mlx4_dev *dev)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	if (priv->clock_mapping)
+		iounmap(priv->clock_mapping);
+}
+
 static void mlx4_close_hca(struct mlx4_dev *dev)
 {
+	unmap_internal_clock(dev);
 	unmap_bf_area(dev);
 	if (mlx4_is_slave(dev))
 		mlx4_slave_exit(dev);
@@ -1511,6 +1536,38 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	if (map_bf_area(dev))
 		mlx4_dbg(dev, "Failed to map blue flame area\n");
 
+	/*
+	 * Read HCA frequency by QUERY_HCA command
+	 */
+	if (dev->caps.cq_timestamp) {
+		memset(&init_hca, 0, sizeof(init_hca));
+		err = mlx4_QUERY_HCA(dev, &init_hca);
+		if (err) {
+			mlx4_err(dev, "QUERY_HCA command failed, disable timestamp.\n");
+			dev->caps.cq_timestamp = 0;
+		} else
+			dev->caps.hca_core_clock = init_hca.hca_core_clock;
+
+		/*
+		 * In case we got HCA frequency 0 - disable timestamping
+		 * to avoid dividing by zero
+		 */
+		if (!dev->caps.hca_core_clock) {
+			dev->caps.cq_timestamp = 0;
+			mlx4_err(dev, "HCA frequency is 0. "
+				 "Timestamping is not supported.");
+		}
+
+		/*
+		 * Map internal clock, in case of failure disable timestamping
+		 */
+		if (map_internal_clock(dev)) {
+			dev->caps.cq_timestamp = 0;
+			mlx4_err(dev, "Failed to map internal clock. "
+				 "Timestamping is not supported.\n");
+		}
+	}
+
 	/*Only the master set the ports, all the rest got it from it.*/
 	if (!mlx4_is_slave(dev))
 		mlx4_set_port_mask(dev);
@@ -1527,6 +1584,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	return 0;
 
 unmap_bf:
+	unmap_internal_clock(dev);
 	unmap_bf_area(dev);
 
 err_close:

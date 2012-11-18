@@ -448,6 +448,7 @@ struct mlx4_caps {
 	u32			userspace_caps; /* userspace must be aware to */
 	u32			function_caps;  /* functions must be aware to */
 	u8			fast_drop;
+	u16			hca_core_clock;
 };
 
 struct mlx4_buf_list {
