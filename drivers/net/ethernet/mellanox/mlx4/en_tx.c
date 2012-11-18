@@ -170,7 +170,7 @@ int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 	ring->doorbell_qpn = ring->qp.qpn << 8;
 
 	mlx4_en_fill_qp_context(priv, ring->size, ring->stride, 1, 0, ring->qpn,
-				ring->cqn, user_prio, &ring->context);
+				ring->cqn, user_prio, &ring->context, 0);
 	if (ring->bf_enabled)
 		ring->context.usr_page = cpu_to_be32(ring->bf.uar->index);
 
@@ -192,8 +192,9 @@ void mlx4_en_deactivate_tx_ring(struct mlx4_en_priv *priv,
 
 static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 				struct mlx4_en_tx_ring *ring,
-				int index, u8 owner)
+				int index, u8 owner, u64 timestamp)
 {
+	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_en_tx_info *tx_info = &ring->tx_info[index];
 	struct mlx4_en_tx_desc *tx_desc = ring->buf + index * TXBB_SIZE;
 	struct mlx4_wqe_data_seg *data = (void *) tx_desc + tx_info->data_offset;
@@ -204,6 +205,12 @@ static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 	int i;
 	__be32 *ptr = (__be32 *)tx_desc;
 	__be32 stamp = cpu_to_be32(STAMP_VAL | (!!owner << STAMP_SHIFT));
+	struct skb_shared_hwtstamps hwts;
+
+	if (timestamp) {
+		mlx4_en_fill_hwtstamps(mdev, &hwts, timestamp);
+		skb_tstamp_tx(skb, &hwts);
+	}
 
 	/* Optimize the common case when there are no wraparounds */
 	if (likely((void *) tx_desc + tx_info->nr_txbb * TXBB_SIZE <= end)) {
@@ -289,7 +296,7 @@ int mlx4_en_free_tx_buf(struct net_device *dev, struct mlx4_en_tx_ring *ring)
 	while (ring->cons != ring->prod) {
 		ring->last_nr_txbb = mlx4_en_free_tx_desc(priv, ring,
 						ring->cons & ring->size_mask,
-						!!(ring->cons & ring->size));
+						!!(ring->cons & ring->size), 0);
 		ring->cons += ring->last_nr_txbb;
 		cnt++;
 	}
@@ -316,6 +323,9 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 	u32 packets = 0;
 	u32 bytes = 0;
 	int factor = priv->cqe_factor;
+	u64 timestamp = 0;
+	struct mlx4_en_tx_info *tx_info;
+
 
 	if (!priv->port_up)
 		return;
@@ -323,6 +333,7 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 	index = cons_index & size_mask;
 	cqe = &buf[(index << factor) + factor];
 	ring_index = ring->cons & size_mask;
+	tx_info = &ring->tx_info[ring_index];
 
 	/* Process all completed CQEs */
 	while (XNOR(cqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK,
@@ -336,6 +347,9 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 		/* Skip over last polled CQE */
 		new_index = be16_to_cpu(cqe->wqe_index) & size_mask;
 
+		if (tx_info->ts_requested)
+			timestamp = mlx4_en_get_cqe_ts(cqe);
+
 		do {
 			txbbs_skipped += ring->last_nr_txbb;
 			ring_index = (ring_index + ring->last_nr_txbb) & size_mask;
@@ -343,7 +357,7 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 			ring->last_nr_txbb = mlx4_en_free_tx_desc(
 					priv, ring, ring_index,
 					!!((ring->cons + txbbs_skipped) &
-							ring->size));
+					ring->size), timestamp);
 			packets++;
 			bytes += ring->tx_info[ring_index].nr_bytes;
 		} while (ring_index != new_index);
@@ -616,6 +630,16 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	tx_info = &ring->tx_info[index];
 	tx_info->skb = skb;
 	tx_info->nr_txbb = nr_txbb;
+
+	/*
+	 * For timestamping add flag to skb_shinfo and
+	 * set flag for further reference
+	 */
+	if (ring->hwtstamp_tx_type == HWTSTAMP_TX_ON &&
+	    skb_shinfo(skb)->tx_flags.flags & SKBTX_HW_TSTAMP) {
+		skb_shinfo(skb)->tx_flags.flags |= SKBTX_IN_PROGRESS;
+		tx_info->ts_requested = 1;
+	}
 
 	/* Prepare ctrl segement apart opcode+ownership, which depends on
 	 * whether LSO is used */

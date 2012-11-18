@@ -39,7 +39,8 @@
 
 void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 			     int is_tx, int rss, int qpn, int cqn,
-			     int user_prio, struct mlx4_qp_context *context)
+			     int user_prio, struct mlx4_qp_context *context,
+			     int disable_vstrip)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 
@@ -65,6 +66,8 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 	context->cqn_send = cpu_to_be32(cqn);
 	context->cqn_recv = cpu_to_be32(cqn);
 	context->db_rec_addr = cpu_to_be64(priv->res.db.dma << 2);
+	if (disable_vstrip)
+		context->param3 |= cpu_to_be32(1 << 30);
 }
 
 

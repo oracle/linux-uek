@@ -40,6 +40,8 @@
 
 #include <linux/atomic.h>
 
+#include <linux/clocksource.h>
+
 #define MAX_MSIX_P_PORT		17
 #define MAX_MSIX		64
 #define MSIX_LEGACY_SZ		4
@@ -826,7 +828,7 @@ void mlx4_free_hwq_res(struct mlx4_dev *mdev, struct mlx4_hwq_resources *wqres,
 
 int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 		  struct mlx4_uar *uar, u64 db_rec, struct mlx4_cq *cq,
-		  unsigned vector, int collapsed);
+		  unsigned vector, int collapsed, int timestamp_en);
 void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq);
 
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align, int *base);
@@ -1025,5 +1027,7 @@ int mlx4_get_slave_from_roce_gid(struct mlx4_dev *dev, int port, u8 *gid, int *s
 int mlx4_get_roce_gid_from_slave(struct mlx4_dev *dev, int port, int slave_id, u8 *gid);
 
 int mlx4_FLOW_STEERING_IB_UC_QP_RANGE(struct mlx4_dev *dev, u32 min_range_qpn, u32 max_range_qpn);
+
+cycle_t mlx4_read_clock(struct mlx4_dev *dev);
 
 #endif /* MLX4_DEVICE_H */

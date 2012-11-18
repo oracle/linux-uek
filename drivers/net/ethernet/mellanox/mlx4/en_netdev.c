@@ -1421,6 +1421,8 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 		if (mlx4_en_create_tx_ring(priv, &priv->tx_ring[i], priv->base_tx_qpn + i,
 					   prof->tx_ring_size, TXBB_SIZE))
 			goto err;
+		priv->tx_ring[i].hwtstamp_tx_type
+			= priv->hwtstamp_config.tx_type;
 	}
 
 	/* Create rx Rings */
@@ -1432,6 +1434,8 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 		if (mlx4_en_create_rx_ring(priv, &priv->rx_ring[i],
 					   prof->rx_ring_size, priv->stride))
 			goto err;
+		priv->rx_ring[i].hwtstamp_rx_filter
+			= priv->hwtstamp_config.rx_filter;
 	}
 
 #ifdef CONFIG_RFS_ACCEL
@@ -1517,6 +1521,60 @@ static int mlx4_en_change_mtu(struct net_device *dev, int new_mtu)
 	return 0;
 }
 
+static int mlx4_en_hwtstamp_ioctl(struct net_device *dev, struct ifreq *ifr)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct hwtstamp_config config;
+
+	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	/* reserved for future extensions */
+	if (config.flags)
+		return -EINVAL;
+
+	/* device doesn't support time stamping */
+	if (!mdev->dev->caps.cq_timestamp)
+		return -EINVAL;
+
+	/* TX HW timestamp */
+	switch (config.tx_type) {
+	case HWTSTAMP_TX_OFF:
+	case HWTSTAMP_TX_ON:
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	/* RX HW timestamp */
+	switch (config.rx_filter) {
+	case HWTSTAMP_FILTER_NONE:
+	case HWTSTAMP_FILTER_ALL:
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	if (mlx4_en_timestamp_config(dev, config.tx_type, config.rx_filter)) {
+		config.tx_type = HWTSTAMP_TX_OFF;
+		config.rx_filter = HWTSTAMP_FILTER_NONE;
+	}
+
+	return copy_to_user(ifr->ifr_data, &config,
+			    sizeof(config)) ? -EFAULT : 0;
+}
+
+static int mlx4_en_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
+{
+	switch (cmd) {
+	case SIOCSHWTSTAMP:
+		return mlx4_en_hwtstamp_ioctl(dev, ifr);
+	default:
+		return -EOPNOTSUPP;
+	}
+}
+
 static int mlx4_en_set_features(struct net_device *netdev,
 		netdev_features_t features)
 {
@@ -1542,6 +1600,7 @@ static const struct net_device_ops mlx4_netdev_ops = {
 	.ndo_set_mac_address	= mlx4_en_set_mac,
 	.ndo_validate_addr	= eth_validate_addr,
 	.ndo_change_mtu		= mlx4_en_change_mtu,
+	.ndo_do_ioctl		= mlx4_en_ioctl,
 	.ndo_tx_timeout		= mlx4_en_tx_timeout,
 	.ndo_vlan_rx_add_vid	= mlx4_en_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= mlx4_en_vlan_rx_kill_vid,
@@ -1629,6 +1688,11 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	err = mlx4_en_alloc_resources(priv);
 	if (err)
 		goto out;
+
+	/* Initialize time stamping config */
+	priv->hwtstamp_config.flags = 0;
+	priv->hwtstamp_config.tx_type = HWTSTAMP_TX_OFF;
+	priv->hwtstamp_config.rx_filter = HWTSTAMP_FILTER_NONE;
 
 	/* Allocate page for receive rings */
 	err = mlx4_alloc_hwq_res(mdev->dev, &priv->res,

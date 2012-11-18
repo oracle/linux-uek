@@ -553,6 +553,7 @@ static void mlx4_en_refill_rx_buffers(struct mlx4_en_priv *priv,
 int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int budget)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_cqe *cqe;
 	struct mlx4_en_rx_ring *ring = &priv->rx_ring[cq->ring];
 	struct mlx4_en_rx_alloc *frags;
@@ -567,6 +568,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 	dma_addr_t dma;
 	u64 s_mac;
 	int factor = priv->cqe_factor;
+	u64 timestamp;
 
 	if (!priv->port_up)
 		return 0;
@@ -652,8 +654,10 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					gro_skb->data_len = length;
 					gro_skb->ip_summed = CHECKSUM_UNNECESSARY;
 
-					if (cqe->vlan_my_qpn &
-					    cpu_to_be32(MLX4_CQE_VLAN_PRESENT_MASK)) {
+					if ((cqe->vlan_my_qpn &
+					    cpu_to_be32(MLX4_CQE_VLAN_PRESENT_MASK))
+					    && (ring->hwtstamp_rx_filter
+						== HWTSTAMP_FILTER_NONE)) {
 						u16 vid = be16_to_cpu(cqe->sl_vid);
 
 						__vlan_hwaccel_put_tag(gro_skb, vid);
@@ -697,9 +701,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		if (dev->features & NETIF_F_RXHASH)
 			skb->rxhash = be32_to_cpu(cqe->immed_rss_invalid);
 
-		if (be32_to_cpu(cqe->vlan_my_qpn) &
-		    MLX4_CQE_VLAN_PRESENT_MASK)
+		if ((be32_to_cpu(cqe->vlan_my_qpn) & MLX4_CQE_VLAN_PRESENT_MASK)
+		    && (ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_NONE))
 			__vlan_hwaccel_put_tag(skb, be16_to_cpu(cqe->sl_vid));
+
+		if (ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_ALL) {
+			timestamp = mlx4_en_get_cqe_ts(cqe);
+			mlx4_en_fill_hwtstamps(mdev, skb_hwtstamps(skb),
+				timestamp);
+		}
 
 		/* Push it up the stack */
 		netif_receive_skb(skb);
@@ -837,6 +847,10 @@ static int mlx4_en_config_rss_qp(struct mlx4_en_priv *priv, int qpn,
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_qp_context *context;
 	int err = 0;
+	int disable_vstrip = 0;
+
+	if (priv->hwtstamp_config.rx_filter)
+		disable_vstrip = 1;
 
 	context = kmalloc(sizeof *context , GFP_KERNEL);
 	if (!context) {
@@ -853,7 +867,7 @@ static int mlx4_en_config_rss_qp(struct mlx4_en_priv *priv, int qpn,
 
 	memset(context, 0, sizeof *context);
 	mlx4_en_fill_qp_context(priv, ring->actual_size, ring->stride, 0, 0,
-				qpn, ring->cqn, -1, context);
+				qpn, ring->cqn, -1, context, disable_vstrip);
 	context->db_rec_addr = cpu_to_be64(ring->wqres.db.dma);
 
 	/* Cancel FCS removal if FW allows */
@@ -950,7 +964,7 @@ int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv)
 	}
 	rss_map->indir_qp.event = mlx4_en_sqp_event;
 	mlx4_en_fill_qp_context(priv, 0, 0, 0, 1, priv->base_qpn,
-				priv->rx_ring[0].cqn, -1, &context);
+				priv->rx_ring[0].cqn, -1, &context, 0);
 
 	if (!priv->prof->rss_rings || priv->prof->rss_rings > priv->rx_ring_num)
 		rss_rings = priv->rx_ring_num;

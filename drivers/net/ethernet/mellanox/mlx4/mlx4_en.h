@@ -40,6 +40,8 @@
 #include <linux/mutex.h>
 #include <linux/netdevice.h>
 #include <linux/if_vlan.h>
+#include <linux/net_tstamp.h>
+#include <linux/timecompare.h>
 #ifdef CONFIG_MLX4_EN_DCB
 #include <linux/dcbnl.h>
 #endif
@@ -211,6 +213,7 @@ struct mlx4_en_tx_info {
 	u8 linear;
 	u8 data_offset;
 	u8 inl;
+	u8 ts_requested;
 };
 
 
@@ -266,6 +269,7 @@ struct mlx4_en_tx_ring {
 	struct mlx4_bf bf;
 	bool bf_enabled;
 	struct netdev_queue *tx_queue;
+	int hwtstamp_tx_type;
 };
 
 struct mlx4_en_rx_desc {
@@ -292,6 +296,7 @@ struct mlx4_en_rx_ring {
 	unsigned long packets;
 	unsigned long csum_ok;
 	unsigned long csum_none;
+	int hwtstamp_rx_filter;
 };
 
 
@@ -367,6 +372,9 @@ struct mlx4_en_dev {
 	u32                     priv_pdn;
 	spinlock_t              uar_lock;
 	u8			mac_removed[MLX4_MAX_PORTS + 1];
+	struct cyclecounter	cycles;
+	struct timecounter	clock;
+	struct timecompare	compare;
 };
 
 
@@ -527,6 +535,7 @@ struct mlx4_en_priv {
 	bool wol;
 	struct device *ddev;
 	int base_tx_qpn;
+	struct hwtstamp_config hwtstamp_config;
 
 #ifdef CONFIG_MLX4_EN_DCB
 	struct ieee_ets ets;
@@ -595,7 +604,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 int mlx4_en_poll_rx_cq(struct napi_struct *napi, int budget);
 void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 		int is_tx, int rss, int qpn, int cqn, int user_prio,
-		struct mlx4_qp_context *context);
+		struct mlx4_qp_context *context, int disable_vstrip);
 void mlx4_en_sqp_event(struct mlx4_qp *qp, enum mlx4_event event);
 int mlx4_en_map_buffer(struct mlx4_buf *buf);
 void mlx4_en_unmap_buffer(struct mlx4_buf *buf);
@@ -626,6 +635,19 @@ void mlx4_en_cleanup_filters(struct mlx4_en_priv *priv,
 #define MLX4_EN_NUM_SELF_TEST	5
 void mlx4_en_ex_selftest(struct net_device *dev, u32 *flags, u64 *buf);
 u64 mlx4_en_mac_to_u64(u8 *addr);
+
+/*
+ * Functions for time stamping
+ */
+#define SKBTX_HW_TSTAMP (1 << 0)
+#define SKBTX_IN_PROGRESS (1 << 2)
+
+u64 mlx4_en_get_cqe_ts(struct mlx4_cqe *cqe);
+void mlx4_en_fill_hwtstamps(struct mlx4_en_dev *mdev,
+			    struct skb_shared_hwtstamps *hwts,
+			    u64 timestamp);
+void mlx4_en_init_timestamp(struct mlx4_en_dev *mdev);
+int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter);
 
 /*
  * Globals
