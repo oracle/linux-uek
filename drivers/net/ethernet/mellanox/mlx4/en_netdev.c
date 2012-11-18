@@ -828,7 +828,7 @@ static void mlx4_en_netpoll(struct net_device *dev)
 	int i;
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		cq = &priv->rx_cq[i];
+		cq = priv->rx_cq[i];
 		spin_lock_irqsave(&cq->lock, flags);
 		napi_synchronize(&cq->napi);
 		mlx4_en_process_rx_cq(dev, cq, 0);
@@ -883,7 +883,7 @@ static void mlx4_en_set_default_moderation(struct mlx4_en_priv *priv)
 
 	/* Setup cq moderation params */
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		cq = &priv->rx_cq[i];
+		cq = priv->rx_cq[i];
 		cq->moder_cnt = priv->rx_frames;
 		cq->moder_time = priv->rx_usecs;
 		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
@@ -892,7 +892,7 @@ static void mlx4_en_set_default_moderation(struct mlx4_en_priv *priv)
 	}
 
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		cq = &priv->tx_cq[i];
+		cq = priv->tx_cq[i];
 		cq->moder_cnt = priv->tx_frames;
 		cq->moder_time = priv->tx_usecs;
 	}
@@ -926,8 +926,8 @@ static void mlx4_en_auto_moderation(struct mlx4_en_priv *priv)
 
 	for (ring = 0; ring < priv->rx_ring_num; ring++) {
 		spin_lock_bh(&priv->stats_lock);
-		rx_packets = priv->rx_ring[ring].packets;
-		rx_bytes = priv->rx_ring[ring].bytes;
+		rx_packets = priv->rx_ring[ring]->packets;
+		rx_bytes = priv->rx_ring[ring]->bytes;
 		spin_unlock_bh(&priv->stats_lock);
 
 		rx_pkt_diff = ((unsigned long) (rx_packets -
@@ -956,7 +956,7 @@ static void mlx4_en_auto_moderation(struct mlx4_en_priv *priv)
 
 		if (moder_time != priv->last_moder_time[ring]) {
 			priv->last_moder_time[ring] = moder_time;
-			cq = &priv->rx_cq[ring];
+			cq = priv->rx_cq[ring];
 			cq->moder_time = moder_time;
 			err = mlx4_en_set_cq_moder(priv, cq);
 			if (err)
@@ -1053,7 +1053,7 @@ int mlx4_en_start_port(struct net_device *dev)
 		return err;
 	}
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		cq = &priv->rx_cq[i];
+		cq = priv->rx_cq[i];
 
 		err = mlx4_en_activate_cq(priv, cq, i);
 		if (err) {
@@ -1069,7 +1069,7 @@ int mlx4_en_start_port(struct net_device *dev)
 			goto cq_err;
 		}
 		mlx4_en_arm_cq(priv, cq);
-		priv->rx_ring[i].cqn = cq->mcq.cqn;
+		priv->rx_ring[i]->cqn = cq->mcq.cqn;
 		++rx_index;
 	}
 
@@ -1096,7 +1096,7 @@ int mlx4_en_start_port(struct net_device *dev)
 	/* Configure tx cq's and rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
 		/* Configure cq */
-		cq = &priv->tx_cq[i];
+		cq = priv->tx_cq[i];
 		err = mlx4_en_activate_cq(priv, cq, i);
 		if (err) {
 			en_err(priv, "Failed allocating Tx CQ\n");
@@ -1112,7 +1112,7 @@ int mlx4_en_start_port(struct net_device *dev)
 		cq->buf->wqe_index = cpu_to_be16(0xffff);
 
 		/* Configure ring */
-		tx_ring = &priv->tx_ring[i];
+		tx_ring = priv->tx_ring[i];
 		err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn,
 			i / priv->mdev->profile.num_tx_rings_p_up);
 		if (err) {
@@ -1189,8 +1189,8 @@ int mlx4_en_start_port(struct net_device *dev)
 
 tx_err:
 	while (tx_index--) {
-		mlx4_en_deactivate_tx_ring(priv, &priv->tx_ring[tx_index]);
-		mlx4_en_deactivate_cq(priv, &priv->tx_cq[tx_index]);
+		mlx4_en_deactivate_tx_ring(priv, priv->tx_ring[tx_index]);
+		mlx4_en_deactivate_cq(priv, priv->tx_cq[tx_index]);
 	}
 	mlx4_en_destroy_drop_qp(priv);
 rss_err:
@@ -1199,9 +1199,9 @@ mac_err:
 	mlx4_put_eth_qp(mdev->dev, priv->port, priv->mac, priv->base_qpn);
 cq_err:
 	while (rx_index--)
-		mlx4_en_deactivate_cq(priv, &priv->rx_cq[rx_index]);
+		mlx4_en_deactivate_cq(priv, priv->rx_cq[rx_index]);
 	for (i = 0; i < priv->rx_ring_num; i++)
-		mlx4_en_deactivate_rx_ring(priv, &priv->rx_ring[i]);
+		mlx4_en_deactivate_rx_ring(priv, priv->rx_ring[i]);
 
 	return err; /* need to close devices */
 }
@@ -1252,13 +1252,13 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Free TX Rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		mlx4_en_deactivate_tx_ring(priv, &priv->tx_ring[i]);
-		mlx4_en_deactivate_cq(priv, &priv->tx_cq[i]);
+		mlx4_en_deactivate_tx_ring(priv, priv->tx_ring[i]);
+		mlx4_en_deactivate_cq(priv, priv->tx_cq[i]);
 	}
 	msleep(10);
 
 	for (i = 0; i < priv->tx_ring_num; i++)
-		mlx4_en_free_tx_buf(dev, &priv->tx_ring[i]);
+		mlx4_en_free_tx_buf(dev, priv->tx_ring[i]);
 
 	/* Free RSS qps */
 	mlx4_en_release_rss_steer(priv);
@@ -1269,10 +1269,10 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Free RX Rings */
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		mlx4_en_deactivate_rx_ring(priv, &priv->rx_ring[i]);
-		while (test_bit(NAPI_STATE_SCHED, &priv->rx_cq[i].napi.state))
+		mlx4_en_deactivate_rx_ring(priv, priv->rx_ring[i]);
+		while (test_bit(NAPI_STATE_SCHED, &priv->rx_cq[i]->napi.state))
 			msleep(1);
-		mlx4_en_deactivate_cq(priv, &priv->rx_cq[i]);
+		mlx4_en_deactivate_cq(priv, priv->rx_cq[i]);
 	}
 
 	/* close port*/
@@ -1293,7 +1293,7 @@ static void mlx4_en_restart(struct work_struct *work)
 	if (priv->port_up) {
 		mlx4_en_stop_port(dev);
 		for (i = 0; i < priv->tx_ring_num; i++)
-			netdev_tx_reset_queue(priv->tx_ring[i].tx_queue);
+			netdev_tx_reset_queue(priv->tx_ring[i]->tx_queue);
 		if (mlx4_en_start_port(dev))
 			en_err(priv, "Failed restarting port %d\n", priv->port);
 	}
@@ -1315,15 +1315,15 @@ static void mlx4_en_clear_stats(struct net_device *dev)
 	memset(&priv->port_stats, 0, sizeof(priv->port_stats));
 
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		priv->tx_ring[i].bytes = 0;
-		priv->tx_ring[i].packets = 0;
-		priv->tx_ring[i].tx_csum = 0;
+		priv->tx_ring[i]->bytes = 0;
+		priv->tx_ring[i]->packets = 0;
+		priv->tx_ring[i]->tx_csum = 0;
 	}
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_ring[i].bytes = 0;
-		priv->rx_ring[i].packets = 0;
-		priv->rx_ring[i].csum_ok = 0;
-		priv->rx_ring[i].csum_none = 0;
+		priv->rx_ring[i]->bytes = 0;
+		priv->rx_ring[i]->packets = 0;
+		priv->rx_ring[i]->csum_ok = 0;
+		priv->rx_ring[i]->csum_none = 0;
 	}
 }
 
@@ -1380,17 +1380,17 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 #endif
 
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		if (priv->tx_ring[i].tx_info)
+		if (priv->tx_ring[i])
 			mlx4_en_destroy_tx_ring(priv, &priv->tx_ring[i]);
-		if (priv->tx_cq[i].buf)
+		if (priv->tx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->tx_cq[i]);
 	}
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		if (priv->rx_ring[i].rx_info)
+		if (priv->rx_ring)
 			mlx4_en_destroy_rx_ring(priv, &priv->rx_ring[i],
 				priv->prof->rx_ring_size, priv->stride);
-		if (priv->rx_cq[i].buf)
+		if (priv->rx_cq)
 			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
 	}
 
@@ -1642,13 +1642,13 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->ctrl_flags = cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE |
 			MLX4_WQE_CTRL_SOLICITED);
 	priv->tx_ring_num = prof->tx_ring_num;
-	priv->tx_ring = kzalloc(sizeof(struct mlx4_en_tx_ring) *
+	priv->tx_ring = kzalloc(sizeof(struct mlx4_en_tx_ring *) *
 			priv->tx_ring_num, GFP_KERNEL);
 	if (!priv->tx_ring) {
 		err = -ENOMEM;
 		goto out;
 	}
-	priv->tx_cq = kzalloc(sizeof(struct mlx4_en_cq) * priv->tx_ring_num,
+	priv->tx_cq = kzalloc(sizeof(struct mlx4_en_cq *) * priv->tx_ring_num,
 			GFP_KERNEL);
 	if (!priv->tx_cq) {
 		err = -ENOMEM;

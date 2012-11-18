@@ -513,10 +513,10 @@ struct mlx4_en_priv {
 	u16 num_frags;
 	u16 log_rx_info;
 
-	struct mlx4_en_tx_ring *tx_ring;
-	struct mlx4_en_rx_ring rx_ring[MAX_RX_RINGS];
-	struct mlx4_en_cq *tx_cq;
-	struct mlx4_en_cq rx_cq[MAX_RX_RINGS];
+	struct mlx4_en_tx_ring **tx_ring;
+	struct mlx4_en_rx_ring *rx_ring[MAX_RX_RINGS];
+	struct mlx4_en_cq **tx_cq;
+	struct mlx4_en_cq *rx_cq[MAX_RX_RINGS];
 	struct mlx4_qp drop_qp;
 	struct work_struct mcast_task;
 	struct work_struct mac_task;
@@ -567,9 +567,9 @@ void mlx4_en_stop_port(struct net_device *dev);
 void mlx4_en_free_resources(struct mlx4_en_priv *priv);
 int mlx4_en_alloc_resources(struct mlx4_en_priv *priv);
 
-int mlx4_en_create_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
+int mlx4_en_create_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq **pcq,
 		      int entries, int ring, enum cq_type mode);
-void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
+void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq **pcq);
 int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
 			int cq_idx);
 void mlx4_en_deactivate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq);
@@ -580,9 +580,11 @@ void mlx4_en_tx_irq(struct mlx4_cq *mcq);
 u16 mlx4_en_select_queue(struct net_device *dev, struct sk_buff *skb);
 netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev);
 
-int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv, struct mlx4_en_tx_ring *ring,
+int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
+			   struct mlx4_en_tx_ring **pring,
 			   int qpn, u32 size, u16 stride);
-void mlx4_en_destroy_tx_ring(struct mlx4_en_priv *priv, struct mlx4_en_tx_ring *ring);
+void mlx4_en_destroy_tx_ring(struct mlx4_en_priv *priv,
+			     struct mlx4_en_tx_ring **pring);
 int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 			     struct mlx4_en_tx_ring *ring,
 			     int cq, int user_prio);
@@ -590,10 +592,10 @@ void mlx4_en_deactivate_tx_ring(struct mlx4_en_priv *priv,
 				struct mlx4_en_tx_ring *ring);
 
 int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
-			   struct mlx4_en_rx_ring *ring,
+			   struct mlx4_en_rx_ring **pring,
 			   u32 size, u16 stride);
 void mlx4_en_destroy_rx_ring(struct mlx4_en_priv *priv,
-			     struct mlx4_en_rx_ring *ring,
+			     struct mlx4_en_rx_ring **pring,
 			     u32 size, u16 stride);
 int mlx4_en_activate_rx_rings(struct mlx4_en_priv *priv);
 void mlx4_en_deactivate_rx_ring(struct mlx4_en_priv *priv,

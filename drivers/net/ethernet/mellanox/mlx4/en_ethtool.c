@@ -235,12 +235,12 @@ static void mlx4_en_get_ethtool_stats(struct net_device *dev,
 		}
 	}
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		data[index++] = priv->tx_ring[i].packets;
-		data[index++] = priv->tx_ring[i].bytes;
+		data[index++] = priv->tx_ring[i]->packets;
+		data[index++] = priv->tx_ring[i]->bytes;
 	}
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		data[index++] = priv->rx_ring[i].packets;
-		data[index++] = priv->rx_ring[i].bytes;
+		data[index++] = priv->rx_ring[i]->packets;
+		data[index++] = priv->rx_ring[i]->bytes;
 	}
 	spin_unlock_bh(&priv->stats_lock);
 
@@ -398,9 +398,9 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 		priv->tx_usecs = coal->tx_coalesce_usecs;
 		priv->tx_frames = coal->tx_max_coalesced_frames;
 		for (i = 0; i < priv->tx_ring_num; i++) {
-			priv->tx_cq[i].moder_cnt = priv->tx_frames;
-			priv->tx_cq[i].moder_time = priv->tx_usecs;
-			if (mlx4_en_set_cq_moder(priv, &priv->tx_cq[i])) {
+			priv->tx_cq[i]->moder_cnt = priv->tx_frames;
+			priv->tx_cq[i]->moder_time = priv->tx_usecs;
+			if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i])) {
 				en_warn(priv, "Failed changing moderation "
 					      "for TX cq %d\n", i);
 			}
@@ -418,10 +418,10 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 		return 0;
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i].moder_cnt = priv->rx_frames;
-		priv->rx_cq[i].moder_time = priv->rx_usecs;
+		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+		priv->rx_cq[i]->moder_time = priv->rx_usecs;
 		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, &priv->rx_cq[i]);
+		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
 		if (err)
 			return err;
 	}
@@ -478,9 +478,9 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	tx_size = max_t(u32, tx_size, MLX4_EN_MIN_TX_SIZE);
 	tx_size = min_t(u32, tx_size, MLX4_EN_MAX_TX_SIZE);
 
-	if (rx_size == (priv->port_up ? priv->rx_ring[0].actual_size :
-					priv->rx_ring[0].size) &&
-	    tx_size == priv->tx_ring[0].size)
+	if (rx_size == (priv->port_up ? priv->rx_ring[0]->actual_size :
+					priv->rx_ring[0]->size) &&
+	    tx_size == priv->tx_ring[0]->size)
 		return 0;
 
 	mutex_lock(&mdev->state_lock);
@@ -506,10 +506,10 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	}
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i].moder_cnt = priv->rx_frames;
-		priv->rx_cq[i].moder_time = priv->rx_usecs;
+		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+		priv->rx_cq[i]->moder_time = priv->rx_usecs;
 		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, &priv->rx_cq[i]);
+		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
 		if (err)
 			goto out;
 	}
@@ -528,8 +528,8 @@ static void mlx4_en_get_ringparam(struct net_device *dev,
 	param->rx_max_pending = MLX4_EN_MAX_RX_SIZE;
 	param->tx_max_pending = MLX4_EN_MAX_TX_SIZE;
 	param->rx_pending = priv->port_up ?
-		priv->rx_ring[0].actual_size : priv->rx_ring[0].size;
-	param->tx_pending = priv->tx_ring[0].size;
+		priv->rx_ring[0]->actual_size : priv->rx_ring[0]->size;
+	param->tx_pending = priv->tx_ring[0]->size;
 }
 
 static u32 mlx4_en_get_rxfh_indir_size(struct net_device *dev)
