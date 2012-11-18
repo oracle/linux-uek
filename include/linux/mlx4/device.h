@@ -916,10 +916,10 @@ struct mlx4_spec_ipv4 {
 };
 
 struct mlx4_spec_ib {
-	__be32	r_qpn;
-	__be32	qpn_msk;
-	u8	dst_gid[16];
-	u8	dst_gid_msk[16];
+	__be32 r_u_qpn;
+	__be32 qpn_msk;
+	u8 dst_gid[16];
+	u8 dst_gid_msk[16];
 };
 
 struct mlx4_spec_list {

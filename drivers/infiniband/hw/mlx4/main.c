@@ -964,6 +964,7 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 		break;
 	case IB_FLOW_IB_UC:
 		cur->id = MLX4_NET_TRANS_RULE_ID_IB;
+		cur->ib.r_u_qpn = cpu_to_be32(1 << 30);
 		break;
 	case IB_FLOW_IB_MC_IPV4:
 	case IB_FLOW_IB_MC_IPV6:
