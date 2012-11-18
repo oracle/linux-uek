@@ -72,7 +72,7 @@ int mlx4_en_create_cq(struct mlx4_en_priv *priv,
 	err = mlx4_en_map_buffer(&cq->wqres.buf);
 	if (err)
 		goto err_res;
-		
+
 	cq->buf = (struct mlx4_cqe *) cq->wqres.buf.direct.buf;
 	*pcq = cq;
 
