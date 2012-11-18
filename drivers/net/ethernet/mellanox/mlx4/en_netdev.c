@@ -1421,8 +1421,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 		if (mlx4_en_create_tx_ring(priv, &priv->tx_ring[i], priv->base_tx_qpn + i,
 					   prof->tx_ring_size, TXBB_SIZE))
 			goto err;
-		priv->tx_ring[i].hwtstamp_tx_type
-			= priv->hwtstamp_config.tx_type;
 	}
 
 	/* Create rx Rings */
@@ -1434,8 +1432,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 		if (mlx4_en_create_rx_ring(priv, &priv->rx_ring[i],
 					   prof->rx_ring_size, priv->stride))
 			goto err;
-		priv->rx_ring[i].hwtstamp_rx_filter
-			= priv->hwtstamp_config.rx_filter;
 	}
 
 #ifdef CONFIG_RFS_ACCEL

@@ -118,6 +118,8 @@ int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
 	} else
 		ring->bf_enabled = true;
 
+	ring->hwtstamp_tx_type = priv->hwtstamp_config.tx_type;
+
 	return 0;
 
 err_map:
@@ -636,8 +638,8 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	 * set flag for further reference
 	 */
 	if (ring->hwtstamp_tx_type == HWTSTAMP_TX_ON &&
-	    skb_shinfo(skb)->tx_flags.flags & SKBTX_HW_TSTAMP) {
-		skb_shinfo(skb)->tx_flags.flags |= SKBTX_IN_PROGRESS;
+	    skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 		tx_info->ts_requested = 1;
 	}
 

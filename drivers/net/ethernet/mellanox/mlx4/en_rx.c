@@ -319,6 +319,8 @@ int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 	}
 	ring->buf = ring->wqres.buf.direct.buf;
 
+	ring->hwtstamp_rx_filter = priv->hwtstamp_config.rx_filter;
+
 	return 0;
 
 err_hwq:
