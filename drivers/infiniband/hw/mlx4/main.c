@@ -2226,7 +2226,7 @@ static int __init mlx4_ib_init(void)
 
 	err = mlx4_ib_mcg_init();
 	if (err)
-		goto clean_wq;
+		goto clean_proc;
 
 
 	err = mlx4_register_interface(&mlx4_ib_interface);
@@ -2237,6 +2237,11 @@ static int __init mlx4_ib_init(void)
 
 clean_mcg:
 	mlx4_ib_mcg_destroy();
+
+clean_proc:
+	remove_proc_entry(MLX4_IB_MRS_PROC_DIR_NAME,
+			  mlx4_ib_driver_dir_entry);
+	remove_proc_entry(MLX4_IB_DRIVER_PROC_DIR_NAME, NULL);
 
 clean_wq:
 	destroy_workqueue(wq);
