@@ -270,6 +270,7 @@ struct mlx4_en_tx_ring {
 	bool bf_enabled;
 	struct netdev_queue *tx_queue;
 	int hwtstamp_tx_type;
+	atomic_t inflight;
 };
 
 struct mlx4_en_rx_desc {
