@@ -152,9 +152,6 @@ struct mlx4_port_config {
 };
 
 #define MLX4_LOG_NUM_MTT 20
-/* When a higher value than 28 is used we get a failure via initializing
-     the event queue table.
-*/
 #define MLX4_MAX_LOG_NUM_MTT 28
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 18,
@@ -213,8 +210,8 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * memory (with PAGE_SIZE entries).
 	 *
 	 * This number has to be a power of two and fit into 32 bits
-	 * due to device limitations, so cap this at 2^31 as well.
-	 * That limits us to 8TB of memory registration per HCA with
+	 * due to device limitations, so cap this at 2^28 as well.
+	 * That limits us to 1TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
 	if (mod_param_profile.num_mtt)
@@ -224,7 +221,9 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 		profile->num_mtt =
 			roundup_pow_of_two(max_t(unsigned,
 						1 << MLX4_LOG_NUM_MTT,
-						min(1UL << MLX4_MAX_LOG_NUM_MTT,
+						min(1UL << 
+						(MLX4_MAX_LOG_NUM_MTT -
+						log_mtts_per_seg),
 						(si.totalram << 1)
 						>> log_mtts_per_seg)));
 	}
