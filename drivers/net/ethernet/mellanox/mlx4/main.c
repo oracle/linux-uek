@@ -1466,8 +1466,8 @@ static void mlx4_parav_master_pf_caps(struct mlx4_dev *dev)
 static int mlx4_init_hca(struct mlx4_dev *dev)
 {
 	struct mlx4_priv	  *priv = mlx4_priv(dev);
+	struct mlx4_dev_cap	   *dev_cap = NULL;
 	struct mlx4_adapter	   adapter;
-	struct mlx4_dev_cap	   dev_cap;
 	struct mlx4_mod_stat_cfg   mlx4_cfg;
 	struct mlx4_profile	   profile;
 	struct mlx4_init_hca_param init_hca;
@@ -1496,7 +1496,13 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		if (err)
 			mlx4_warn(dev, "Failed to override log_pg_sz parameter\n");
 
-		err = mlx4_dev_cap(dev, &dev_cap);
+		dev_cap = kmalloc(sizeof *dev_cap, GFP_KERNEL);
+		if (!dev_cap) {
+			mlx4_err(dev, "Failed to allocate memory for dev_cap\n");
+			goto err_stop_fw;
+		}
+
+		err = mlx4_dev_cap(dev, dev_cap);
 		if (err) {
 			mlx4_err(dev, "QUERY_DEV_CAP command failed, aborting.\n");
 			goto err_stop_fw;
@@ -1526,7 +1532,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		    MLX4_STEERING_MODE_DEVICE_MANAGED)
 			profile.num_mcg = MLX4_FS_NUM_MCG;
 
-		icm_size = mlx4_make_profile(dev, &profile, &dev_cap,
+		icm_size = mlx4_make_profile(dev, &profile, dev_cap,
 					     &init_hca);
 		if ((long long) icm_size < 0) {
 			err = icm_size;
@@ -1538,7 +1544,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		init_hca.log_uar_sz = ilog2(dev->caps.num_uars);
 		init_hca.uar_page_sz = PAGE_SHIFT - 12;
 
-		err = mlx4_init_icm(dev, &dev_cap, &init_hca, icm_size);
+		err = mlx4_init_icm(dev, dev_cap, &init_hca, icm_size);
 		if (err)
 			goto err_stop_fw;
 
@@ -1609,6 +1615,9 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	priv->eq_table.inta_pin = adapter.inta_pin;
 	memcpy(dev->board_id, adapter.board_id, sizeof dev->board_id);
 
+	if (!mlx4_is_slave(dev))
+		kfree(dev_cap);
+
 	return 0;
 
 unmap_bf:
@@ -1629,6 +1638,8 @@ err_stop_fw:
 	if (!mlx4_is_slave(dev)) {
 		mlx4_UNMAP_FA(dev);
 		mlx4_free_icm(dev, priv->fw.fw_icm, 0);
+		if (dev_cap)
+			kfree(dev_cap);
 	}
 	return err;
 }
