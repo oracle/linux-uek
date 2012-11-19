@@ -152,7 +152,7 @@ struct mlx4_port_config {
 };
 
 #define MLX4_LOG_NUM_MTT 20
-#define MLX4_MAX_LOG_NUM_MTT 28
+#define MLX4_MAX_LOG_NUM_MTT 31
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 18,
 	.num_srq        = 16,
@@ -210,8 +210,8 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * memory (with PAGE_SIZE entries).
 	 *
 	 * This number has to be a power of two and fit into 32 bits
-	 * due to device limitations, so cap this at 2^28 as well.
-	 * That limits us to 1TB of memory registration per HCA with
+	 * due to device limitations, so cap this at 2^31 as well.
+	 * That limits us to 8TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
 	if (mod_param_profile.num_mtt)
