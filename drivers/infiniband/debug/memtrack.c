@@ -424,8 +424,13 @@ EXPORT_SYMBOL(memtrack_free);
 int is_non_trackable_alloc_func(const char *func_name)
 {
 	static const char * const str_str_arr[] = {
+		/* functions containing these strings consider non trackable */
 		"skb",
 		"vnic_"
+	};
+	static const char * const str_str_excep_arr[] = {
+		/* functions which are exception to the str_str_arr table */
+		"ipoib_cm_skb_too_long"
 	};
 	static const char * const str_cmp_arr[] = {
 		/* functions that allocate SKBs */
@@ -445,14 +450,18 @@ int is_non_trackable_alloc_func(const char *func_name)
 		"ib_alloc_device"
 	};
 	size_t str_str_arr_size = sizeof(str_str_arr)/sizeof(char *);
+	size_t str_str_excep_size = sizeof(str_str_excep_arr)/sizeof(char *);
 	size_t str_cmp_arr_size = sizeof(str_cmp_arr)/sizeof(char *);
 
-	int i;
+	int i, j;
 
 	for (i = 0; i < str_str_arr_size; ++i)
-		if (strstr(func_name, str_str_arr[i]))
+		if (strstr(func_name, str_str_arr[i])) {
+			for (j = 0; j < str_str_excep_size; ++j)
+				if (!strcmp(func_name, str_str_excep_arr[j]))
+					return 0;
 			return 1;
-
+		}
 	for (i = 0; i < str_cmp_arr_size; ++i)
 		if (!strcmp(func_name, str_cmp_arr[i]))
 			return 1;
