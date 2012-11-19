@@ -2601,11 +2601,25 @@ static const struct pci_error_handlers mlx4_err_handler = {
 	.slot_reset     = mlx4_pci_slot_reset,
 };
 
+static int suspend(struct pci_dev *pdev, pm_message_t state)
+{
+	mlx4_remove_one(pdev);
+
+	return 0;
+}
+
+static int resume(struct pci_dev *pdev)
+{
+	return __mlx4_init_one(pdev, 0);
+}
+
 static struct pci_driver mlx4_driver = {
 	.name		= DRV_NAME,
 	.id_table	= mlx4_pci_table,
 	.probe		= mlx4_init_one,
 	.remove		= __devexit_p(mlx4_remove_one),
+	.suspend	= suspend,
+	.resume		= resume,
 	.err_handler    = &mlx4_err_handler,
 };
 
