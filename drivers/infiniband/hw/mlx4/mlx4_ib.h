@@ -304,6 +304,8 @@ struct mlx4_ib_qp {
 	struct mlx4_roce_smac_info pri;
 	struct mlx4_roce_smac_info alt;
 	struct list_head	rules_list;
+	int                     max_inline_data;
+	struct mlx4_bf          bf;
 };
 
 struct mlx4_ib_srq {
@@ -505,8 +507,6 @@ struct mlx4_ib_dev {
 	struct ib_device	ib_dev;
 	struct mlx4_dev	       *dev;
 	int			num_ports;
-	void __iomem	       *uar_map;
-
 	struct mlx4_uar		priv_uar;
 	u32			priv_pdn;
 	MLX4_DECLARE_DOORBELL_LOCK(uar_lock);

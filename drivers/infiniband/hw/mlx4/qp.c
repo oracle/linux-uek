@@ -43,6 +43,7 @@
 #include <rdma/ib_mad.h>
 
 #include <linux/mlx4/qp.h>
+#include <linux/io.h>
 
 #include "mlx4_ib.h"
 #include "user.h"
@@ -107,6 +108,19 @@ static const __be32 mlx4_ib_opcode[] = {
 	[IB_WR_MASKED_ATOMIC_CMP_AND_SWP]	= cpu_to_be32(MLX4_OPCODE_MASKED_ATOMIC_CS),
 	[IB_WR_MASKED_ATOMIC_FETCH_AND_ADD]	= cpu_to_be32(MLX4_OPCODE_MASKED_ATOMIC_FA),
 };
+
+#ifndef wc_wmb
+	#if defined(__i386__)
+		#define wc_wmb() asm volatile("lock; addl $0,0(%%esp) " ::: "memory")
+	#elif defined(__x86_64__)
+		#define wc_wmb() asm volatile("sfence" ::: "memory")
+	#elif defined(__ia64__)
+		#define wc_wmb() asm volatile("fwb" ::: "memory")
+	#else
+		#define wc_wmb() wmb()
+	#endif
+#endif
+
 
 #define ETH_ALEN	6
 static u64 mlx4_mac_to_u64(u8 *addr)
@@ -525,8 +539,7 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 	cap->max_send_sge = min(qp->sq.max_gs,
 				min(dev->dev->caps.max_sq_sg,
 				    dev->dev->caps.max_rq_sg));
-	/* We don't support inline sends for kernel QPs (yet) */
-	cap->max_inline_data = 0;
+	qp->max_inline_data = cap->max_inline_data;
 
 	return 0;
 }
@@ -985,6 +998,16 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			*qp->db.db = 0;
 		}
 
+		if (qp->max_inline_data) {
+			err = mlx4_bf_alloc(dev->dev, &qp->bf, 0);
+			if (err) {
+				printk(KERN_ERR "failed to allocate blue flame"
+					" register (%d)", err);
+				qp->bf.uar = &dev->priv_uar;
+			}
+		} else
+			qp->bf.uar = &dev->priv_uar;
+
 		if (mlx4_buf_alloc(dev->dev, qp->buf_size, PAGE_SIZE * 2, &qp->buf)) {
 			err = -ENOMEM;
 			goto err_db;
@@ -1068,6 +1091,9 @@ err_buf:
 err_db:
 	if (!pd->uobject && qp_has_rq(init_attr))
 		mlx4_db_free(dev->dev, &qp->db);
+
+	if (qp->max_inline_data)
+		mlx4_bf_free(dev->dev, &qp->bf);
 
 err:
 	if (!*caller_qp)
@@ -1210,6 +1236,9 @@ static void destroy_qp_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 		    MLX4_IB_QPT_PROXY_SMI | MLX4_IB_QPT_PROXY_GSI))
 			free_proxy_bufs(&dev->ib_dev, qp);
 		mlx4_buf_free(dev->dev, qp->buf_size, &qp->buf);
+		if (qp->max_inline_data)
+			mlx4_bf_free(dev->dev, &qp->bf);
+
 		if (qp->rq.wqe_cnt)
 			mlx4_db_free(dev->dev, &qp->db);
 	}
@@ -1695,7 +1724,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	if (qp->ibqp.uobject)
 		context->usr_page = cpu_to_be32(to_mucontext(ibqp->uobject->context)->uar.index);
 	else
-		context->usr_page = cpu_to_be32(dev->priv_uar.index);
+		context->usr_page = cpu_to_be32(qp->bf.uar->index);
 
 	if (attr_mask & IB_QP_DEST_QPN)
 		context->remote_qpn = cpu_to_be32(attr->dest_qp_num);
@@ -2716,6 +2745,88 @@ static void add_zero_len_inline(void *wqe)
 	inl->byte_count = cpu_to_be32(1 << 31);
 }
 
+static int lay_inline_data(struct mlx4_ib_qp *qp, struct ib_send_wr *wr,
+			   void *wqe, int *sz)
+{
+	struct mlx4_wqe_inline_seg *seg;
+	void *addr;
+	int len, seg_len;
+	int num_seg;
+	int off, to_copy;
+	int i;
+	int inl = 0;
+
+	seg = wqe;
+	wqe += sizeof *seg;
+	off = ((unsigned long)wqe) & (unsigned long)(MLX4_INLINE_ALIGN - 1);
+	num_seg = 0;
+	seg_len = 0;
+
+	for (i = 0; i < wr->num_sge; ++i) {
+		addr = (void *) (unsigned long)(wr->sg_list[i].addr);
+		len  = wr->sg_list[i].length;
+		inl += len;
+
+		if (inl > qp->max_inline_data) {
+			inl = 0;
+			return -1;
+		}
+
+		while (len >= MLX4_INLINE_ALIGN - off) {
+			to_copy = MLX4_INLINE_ALIGN - off;
+			memcpy(wqe, addr, to_copy);
+			len -= to_copy;
+			wqe += to_copy;
+			addr += to_copy;
+			seg_len += to_copy;
+			wmb(); /* see comment below */
+			seg->byte_count = htonl(MLX4_INLINE_SEG | seg_len);
+			seg_len = 0;
+			seg = wqe;
+			wqe += sizeof *seg;
+			off = sizeof *seg;
+			++num_seg;
+		}
+
+		memcpy(wqe, addr, len);
+		wqe += len;
+		seg_len += len;
+		off += len;
+	}
+
+	if (seg_len) {
+		++num_seg;
+		/*
+		 * Need a barrier here to make sure
+		 * all the data is visible before the
+		 * byte_count field is set.  Otherwise
+		 * the HCA prefetcher could grab the
+		 * 64-byte chunk with this inline
+		 * segment and get a valid (!=
+		 * 0xffffffff) byte count but stale
+		 * data, and end up sending the wrong
+		 * data.
+		 */
+		wmb();
+		seg->byte_count = htonl(MLX4_INLINE_SEG | seg_len);
+	}
+
+	*sz = (inl + num_seg * sizeof *seg + 15) / 16;
+
+	return 0;
+}
+
+/*
+ * Avoid using memcpy() to copy to BlueFlame page, since memcpy()
+ * implementations may use move-string-buffer assembler instructions,
+ * which do not guarantee order of copying.
+ */
+static void mlx4_bf_copy(unsigned long *dst, unsigned long *src,
+				unsigned bytecnt)
+{
+	__iowrite64_copy(dst, src, bytecnt / 8);
+}
+
 int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		      struct ib_send_wr **bad_wr)
 {
@@ -2735,7 +2846,7 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	__be32 uninitialized_var(lso_hdr_sz);
 	__be32 blh;
 	int i;
-
+	int inl = 0;
 	spin_lock_irqsave(&qp->sq.lock, flags);
 
 	ind = qp->sq_next_wqe;
@@ -2757,6 +2868,7 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		}
 
 		ctrl = wqe = get_send_wqe(qp, ind & (qp->sq.wqe_cnt - 1));
+		*((u32 *) (&ctrl->vlan_tag)) = 0;
 		qp->sq.wrid[(qp->sq.head + nreq) & (qp->sq.wqe_cnt - 1)] = wr->wr_id;
 
 		ctrl->srcrb_flags =
@@ -2932,10 +3044,8 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		 * cacheline.  This avoids issues with WQE
 		 * prefetching.
 		 */
-
 		dseg = wqe;
 		dseg += wr->num_sge - 1;
-		size += wr->num_sge * (sizeof (struct mlx4_wqe_data_seg) / 16);
 
 		/* Add one more inline data segment for ICRC for MLX sends */
 		if (unlikely(qp->mlx4_ib_qp_type == MLX4_IB_QPT_SMI ||
@@ -2946,8 +3056,19 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 			size += sizeof (struct mlx4_wqe_data_seg) / 16;
 		}
 
-		for (i = wr->num_sge - 1; i >= 0; --i, --dseg)
-			set_data_seg(dseg, wr->sg_list + i);
+		if (wr->send_flags & IB_SEND_INLINE && wr->num_sge) {
+			int sz;
+			err = lay_inline_data(qp, wr, wqe, &sz);
+			if (!err) {
+				inl = 1;
+				size += sz;
+			}
+		} else {
+			size += wr->num_sge *
+				(sizeof(struct mlx4_wqe_data_seg) / 16);
+			for (i = wr->num_sge - 1; i >= 0; --i, --dseg)
+				set_data_seg(dseg, wr->sg_list + i);
+		}
 
 		/*
 		 * Possibly overwrite stamping in cacheline with LSO
@@ -2956,7 +3077,6 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		 */
 		wmb();
 		*lso_wqe = lso_hdr_sz;
-
 		ctrl->fence_size = (wr->send_flags & IB_SEND_FENCE ?
 				    MLX4_WQE_CTRL_FENCE : 0) | size;
 
@@ -2995,7 +3115,27 @@ int mlx4_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	}
 
 out:
-	if (likely(nreq)) {
+	if (nreq == 1 && inl && size > 1 && size < qp->bf.buf_size / 16) {
+		ctrl->owner_opcode |= htonl((qp->sq_next_wqe & 0xffff) << 8);
+		/* We set above doorbell_qpn bits to 0 as part of vlan
+		  * tag initialization, so |= should be correct.
+		*/
+		*(u32 *) (&ctrl->vlan_tag) |= qp->doorbell_qpn;
+		/*
+		 * Make sure that descriptor is written to memory
+		 * before writing to BlueFlame page.
+		 */
+		wmb();
+
+		++qp->sq.head;
+
+		mlx4_bf_copy(qp->bf.reg + qp->bf.offset, (unsigned long *) ctrl,
+			     ALIGN(size * 16, 64));
+		wc_wmb();
+
+		qp->bf.offset ^= qp->bf.buf_size;
+
+	} else if (nreq) {
 		qp->sq.head += nreq;
 
 		/*
@@ -3004,8 +3144,7 @@ out:
 		 */
 		wmb();
 
-		writel(qp->doorbell_qpn,
-		       to_mdev(ibqp->device)->uar_map + MLX4_SEND_DOORBELL);
+		writel(qp->doorbell_qpn, qp->bf.uar->map + MLX4_SEND_DOORBELL);
 
 		/*
 		 * Make sure doorbells don't leak out of SQ spinlock
@@ -3013,8 +3152,10 @@ out:
 		 */
 		mmiowb();
 
-		stamp_send_wqe(qp, stamp, size * 16);
+	}
 
+	if (likely(nreq)) {
+		stamp_send_wqe(qp, stamp, size * 16);
 		ind = pad_wraparound(qp, ind);
 		qp->sq_next_wqe = ind;
 	}
