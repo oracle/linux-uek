@@ -160,7 +160,10 @@ struct mlx4_port_config {
 static atomic_t pf_loading = ATOMIC_INIT(0);
 
 #define MLX4_LOG_NUM_MTT 20
-#define MLX4_MAX_LOG_NUM_MTT 28
+/* We limit to 30 as of a bit map issue which uses int and not uint.
+     see mlx4_buddy_init -> bitmap_zero which gets int.
+*/
+#define MLX4_MAX_LOG_NUM_MTT 30
 static struct mlx4_profile mod_param_profile = {
 	.num_qp         = 18,
 	.num_srq        = 16,
@@ -198,7 +201,7 @@ MODULE_PARM_DESC(log_num_mpt,
 module_param_named(log_num_mtt, mod_param_profile.num_mtt, int, 0444);
 MODULE_PARM_DESC(log_num_mtt,
 		 "log maximum number of memory translation table segments per "
-		 "HCA (default: max(20, 2*MTTs for register all of the host memory))");
+		 "HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
 
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
@@ -218,8 +221,9 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * memory (with PAGE_SIZE entries).
 	 *
 	 * This number has to be a power of two and fit into 32 bits
-	 * due to device limitations, so cap this at 2^28 as well.
-	 * That limits us to 1TB of memory registration per HCA with
+	 * due to device limitations. We cap this at 2^30 as of bit map
+	 * limitation to work with int instead of uint (mlx4_buddy_init -> bitmap_zero)
+	 * That limits us to 4TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
 	if (mod_param_profile.num_mtt)
