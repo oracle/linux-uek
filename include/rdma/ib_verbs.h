@@ -1073,6 +1073,7 @@ struct ib_flow_spec {
 	__be16 dst_port;
 	u8 l4_protocol;
 	u8 block_mc_loopback;
+	u8 rule_type;
 };
 
 struct ib_mad;

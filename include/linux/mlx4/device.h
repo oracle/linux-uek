@@ -892,6 +892,8 @@ enum mlx4_net_trans_promisc_mode {
 	/* For future use. Not implemented yet */
 	MLX4_FS_PROMISC_FUNCTION_PORT,
 	MLX4_FS_PROMISC_ALL_MULTI,
+	MLX4_FS_UC_SNIFFER,
+	MLX4_FS_MC_SNIFFER,
 };
 
 struct mlx4_spec_eth {

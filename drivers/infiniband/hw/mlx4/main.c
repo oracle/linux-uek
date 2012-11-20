@@ -1066,12 +1066,10 @@ static int __mlx4_ib_flow_attach(struct mlx4_ib_dev *mdev,
 	struct mlx4_net_trans_rule rule =
 	{	.queue_mode = MLX4_NET_TRANS_Q_FIFO,
 		.exclusive = 0,
-		.promisc_mode = MLX4_FS_PROMISC_NONE,
 	};
 
-	rule.allow_loopback = !flow_spec->block_mc_loopback;
+	rule.promisc_mode = flow_spec->rule_type;
 	rule.port = mqp->port;
-	rule.priority = MLX4_DOMAIN_UVERBS | priority;
 	rule.qpn = mqp->mqp.qpn;
 	INIT_LIST_HEAD(&rule.list);
 
@@ -1079,9 +1077,14 @@ static int __mlx4_ib_flow_attach(struct mlx4_ib_dev *mdev,
 	if (!cm_flow)
 		return -ENOMEM;
 
-	err = flow_spec_to_net_rule(&mdev->ib_dev, flow_spec, &rule.list);
-	if (err)
-		goto free_list;
+	if (rule.promisc_mode == MLX4_FS_PROMISC_NONE) {
+		rule.allow_loopback = !flow_spec->block_mc_loopback;
+		rule.priority = MLX4_DOMAIN_UVERBS | priority;
+		err = flow_spec_to_net_rule(&mdev->ib_dev, flow_spec,
+					    &rule.list);
+		if (err)
+			goto free_list;
+	}
 
 	err = mlx4_flow_attach(mdev->dev, &rule, &reg_id);
 	if (err)

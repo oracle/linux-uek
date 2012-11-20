@@ -675,6 +675,8 @@ static void trans_rule_ctrl_to_hw(struct mlx4_net_trans_rule *ctrl,
 		[MLX4_FS_PROMISC_UPLINK] = 0x1,
 		[MLX4_FS_PROMISC_FUNCTION_PORT] = 0x2,
 		[MLX4_FS_PROMISC_ALL_MULTI] = 0x3,
+		[MLX4_FS_UC_SNIFFER] = 0x4,
+		[MLX4_FS_MC_SNIFFER] = 0x5,
 	};
 
 	u32 dw = 0;
