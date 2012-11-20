@@ -1398,9 +1398,9 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 #endif
 
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		if (priv->tx_ring[i])
+		if (priv->tx_ring && priv->tx_ring[i])
 			mlx4_en_destroy_tx_ring(priv, &priv->tx_ring[i]);
-		if (priv->tx_cq[i])
+		if (priv->tx_cq && priv->tx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->tx_cq[i]);
 	}
 
