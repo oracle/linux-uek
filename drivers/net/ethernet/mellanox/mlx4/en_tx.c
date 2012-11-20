@@ -409,7 +409,8 @@ static void mlx4_en_process_tx_cq(struct net_device *dev, struct mlx4_en_cq *cq)
 	 * Wakeup Tx queue if this stopped, and at least 1 packet
 	 * was completed
 	 */
-	if (netif_tx_queue_stopped(ring->tx_queue) && txbbs_skipped > 0) {
+	if (netif_tx_queue_stopped(netdev_get_tx_queue(dev, cq->ring)) &&
+				   txbbs_skipped > 0) {
 		netif_tx_wake_queue(ring->tx_queue);
 		ring->wake_queue++;
 	}
@@ -633,7 +634,13 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		netif_tx_stop_queue(ring->tx_queue);
 		ring->queue_stopped++;
 
-		return NETDEV_TX_BUSY;
+		/* Check again whether the queue was cleaned */
+		if (atomic_read(&ring->inflight) <=
+				ring->size - HEADROOM - MAX_DESC_TXBBS) {
+			netif_tx_wake_queue(netdev_get_tx_queue(dev, tx_ind));
+			ring->wake_queue++;
+		} else
+			return NETDEV_TX_BUSY;
 	}
 
 	/* Track current inflight packets for performance analysis */
