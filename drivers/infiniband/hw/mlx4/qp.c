@@ -801,10 +801,14 @@ static int alloc_qpn_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 	case IB_QPG_NONE:
 		/* Raw packet QPNs must be aligned to 8 bits. If not, the WQE
 		 * BlueFlame setup flow wrongly causes VLAN insertion. */
-		if (attr->qp_type == IB_QPT_RAW_PACKET)
+		if (attr->qp_type == IB_QPT_RAW_PACKET) {
 			err = mlx4_qp_reserve_range(dev->dev, 1, 1 << 8, qpn);
-		else
-			err = mlx4_qp_reserve_range(dev->dev, 1, 1, qpn);
+		} else {
+			if(qp->flags & MLX4_IB_QP_NETIF)
+				err = mlx4_ib_steer_qp_alloc(dev, qpn);
+			else
+				err = mlx4_qp_reserve_range(dev->dev, 1, 1, qpn);
+		}
 		break;
 	case IB_QPG_PARENT:
 		err = init_qpg_parent(dev, qp, attr, qpn);
@@ -829,7 +833,10 @@ static void free_qpn_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 {
 	switch (qpg_type) {
 	case IB_QPG_NONE:
-		mlx4_qp_release_range(dev->dev, qpn, 1);
+		if (qp->flags & MLX4_IB_QP_NETIF)
+			mlx4_ib_steer_qp_free(dev, qpn);
+		else
+			mlx4_qp_release_range(dev->dev, qpn, 1);
 		break;
 	case IB_QPG_PARENT:
 		free_qpg_parent(dev, qp);
@@ -983,7 +990,10 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (init_attr->create_flags & IB_QP_CREATE_IPOIB_UD_LSO)
 			qp->flags |= MLX4_IB_QP_LSO;
 
-		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP)
+		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP &&
+		    dev->dev->caps.steering_mode ==
+		    MLX4_STEERING_MODE_DEVICE_MANAGED &&
+		    !mlx4_is_mfunc(dev->dev))
 			qp->flags |= MLX4_IB_QP_NETIF;
 
 		err = set_kernel_sq_size(dev, &init_attr->cap, qp_type, qp);
@@ -1386,21 +1396,9 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		/* fall through */
 	case IB_QPT_UD:
 	{
-		int sqpn = 0;
-		struct mlx4_ib_dev *dev = to_mdev(pd->device);
-
-		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
-			sqpn = mlx4_ib_steer_qp_alloc(dev);
-			if (sqpn < 0)
-				return ERR_PTR(sqpn);
-		}
-
-		err = create_qp_common(to_mdev(pd->device), pd, init_attr, udata, sqpn, &qp);
-		if (err) {
-			if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP)
-				mlx4_ib_steer_qp_free(dev, sqpn);
+		err = create_qp_common(to_mdev(pd->device), pd, init_attr, udata, 0, &qp);
+		if (err)
 			return ERR_PTR(err);
-		}
 
 		qp->ibqp.qp_num = qp->mqp.qpn;
 		qp->xrcdn = xrcdn;
