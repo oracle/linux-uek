@@ -116,7 +116,33 @@ struct kimage {
 #endif
 };
 
+struct kexec_ops {
+	/*
+	 * Some kdump implementations (e.g. Xen PVOPS dom0) could not access
+	 * directly crash kernel memory area. In this situation they must
+	 * allocate memory outside of it and later move contents from temporary
+	 * storage to final resting places (usualy done by relocate_kernel()).
+	 * Such behavior could be enforced by setting
+	 * crash_alloc_temp_store member to true.
+	 */
+	bool crash_alloc_temp_store;
+	struct page *(*kimage_alloc_pages)(gfp_t gfp_mask,
+						unsigned int order,
+						unsigned long limit);
+	void (*kimage_free_pages)(struct page *page);
+	unsigned long (*page_to_pfn)(struct page *page);
+	struct page *(*pfn_to_page)(unsigned long pfn);
+	unsigned long (*virt_to_phys)(volatile void *address);
+	void *(*phys_to_virt)(unsigned long address);
+	int (*machine_kexec_prepare)(struct kimage *image);
+	int (*machine_kexec_load)(struct kimage *image);
+	void (*machine_kexec_cleanup)(struct kimage *image);
+	void (*machine_kexec_unload)(struct kimage *image);
+	void (*machine_kexec_shutdown)(void);
+	void (*machine_kexec)(struct kimage *image);
+};
 
+extern struct kexec_ops kexec_ops;
 
 /* kexec interface functions */
 extern void machine_kexec(struct kimage *image);
