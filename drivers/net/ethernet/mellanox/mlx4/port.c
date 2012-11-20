@@ -109,7 +109,7 @@ static int mlx4_uc_steer_add(struct mlx4_dev *dev, u8 port,
 			.queue_mode = MLX4_NET_TRANS_Q_FIFO,
 			.exclusive = 0,
 			.allow_loopback = 1,
-			.promisc_mode = MLX4_FS_PROMISC_NONE,
+			.promisc_mode = MLX4_FS_REGULAR,
 			.priority = MLX4_DOMAIN_NIC,
 		};
 

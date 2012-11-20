@@ -1077,7 +1077,7 @@ static int __mlx4_ib_flow_attach(struct mlx4_ib_dev *mdev,
 	if (!cm_flow)
 		return -ENOMEM;
 
-	if (rule.promisc_mode == MLX4_FS_PROMISC_NONE) {
+	if (rule.promisc_mode == MLX4_FS_REGULAR) {
 		rule.allow_loopback = !flow_spec->block_mc_loopback;
 		rule.priority = MLX4_DOMAIN_UVERBS | priority;
 		err = flow_spec_to_net_rule(&mdev->ib_dev, flow_spec,
