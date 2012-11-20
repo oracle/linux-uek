@@ -46,6 +46,7 @@
 enum {
 	MAX_INLINE = 104, /* 128 - 16 - 4 - 4 */
 	MAX_BF = 256,
+	MIN_PKT_LEN = 17,
 };
 
 static int inline_thold __read_mostly = MAX_INLINE;
@@ -560,11 +561,18 @@ static void build_inline_wqe(struct mlx4_en_tx_desc *tx_desc, struct sk_buff *sk
 	int spc = MLX4_INLINE_ALIGN - CTRL_SIZE - sizeof *inl;
 
 	if (skb->len <= spc) {
-		inl->byte_count = cpu_to_be32(1 << 31 | skb->len);
+		inl->byte_count = cpu_to_be32(1 << 31 |
+					      max_t(typeof(skb->len),
+						    skb->len,
+						    MIN_PKT_LEN));
 		skb_copy_from_linear_data(skb, inl + 1, skb_headlen(skb));
 		if (skb_shinfo(skb)->nr_frags)
 			memcpy(((void *)(inl + 1)) + skb_headlen(skb), fragptr,
 			       skb_frag_size(&skb_shinfo(skb)->frags[0]));
+
+		if (skb->len < MIN_PKT_LEN)
+			memset(((void *)(inl + 1)) + skb->len, 0,
+			       MIN_PKT_LEN - skb->len);
 
 	} else {
 		inl->byte_count = cpu_to_be32(1 << 31 | spc);
