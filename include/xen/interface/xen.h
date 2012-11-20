@@ -57,6 +57,7 @@
 #define __HYPERVISOR_event_channel_op     32
 #define __HYPERVISOR_physdev_op           33
 #define __HYPERVISOR_hvm_op               34
+#define __HYPERVISOR_kexec_op             37
 #define __HYPERVISOR_tmem_op              38
 
 /* Architecture-specific hypercall definitions. */
@@ -248,7 +249,39 @@ DEFINE_GUEST_HANDLE_STRUCT(mmuext_op);
 #define VMASST_TYPE_pae_extended_cr3     3
 #define MAX_VMASST_TYPE 3
 
+/*
+ * Commands to HYPERVISOR_kexec_op().
+ */
+#define KEXEC_CMD_kexec			0
+#define KEXEC_CMD_kexec_load		1
+#define KEXEC_CMD_kexec_unload		2
+#define KEXEC_CMD_kexec_get_range	3
+
+/*
+ * Memory ranges for kdump (utilized by HYPERVISOR_kexec_op()).
+ */
+#define KEXEC_RANGE_MA_CRASH		0
+#define KEXEC_RANGE_MA_XEN		1
+#define KEXEC_RANGE_MA_CPU		2
+#define KEXEC_RANGE_MA_XENHEAP		3
+#define KEXEC_RANGE_MA_BOOT_PARAM	4
+#define KEXEC_RANGE_MA_EFI_MEMMAP	5
+#define KEXEC_RANGE_MA_VMCOREINFO	6
+
 #ifndef __ASSEMBLY__
+struct xen_kexec_exec {
+	int type;
+};
+
+struct xen_kexec_range {
+	int range;
+	int nr;
+	unsigned long size;
+	unsigned long start;
+};
+
+extern unsigned long xen_vmcoreinfo_maddr;
+extern unsigned long xen_vmcoreinfo_max_size;
 
 typedef uint16_t domid_t;
 
