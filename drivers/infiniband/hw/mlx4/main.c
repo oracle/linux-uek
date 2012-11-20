@@ -71,6 +71,13 @@ static struct proc_dir_entry *mlx4_ib_driver_dir_entry;
 module_param_named(sm_guid_assign, mlx4_ib_sm_guid_assign, int, 0444);
 MODULE_PARM_DESC(sm_guid_assign, "Enable SM alias_GUID assignment if sm_guid_assign > 0 (Default: 1)");
 
+static char dev_assign_str[512];
+module_param_string(dev_assign_str, dev_assign_str, sizeof(dev_assign_str), 0644);
+MODULE_PARM_DESC(dev_assign_str, "Map all device function numbers to "
+		 "IB device numbers following the  pattern: "
+		 "bb:dd.f-0,bb:dd.f-1,... (all numbers are hexadecimals)."
+		 " Max supported devices - 32");
+
 static const char mlx4_ib_version[] =
 	DRV_NAME ": Mellanox ConnectX InfiniBand driver v"
 	DRV_VERSION " (" DRV_RELDATE ")\n";
@@ -81,6 +88,16 @@ struct update_gid_work {
 	struct mlx4_ib_dev     *dev;
 	int			port;
 };
+
+struct dev_rec {
+	int	bus;
+	int	dev;
+	int	func;
+	int	nr;
+};
+
+#define MAX_DR 32
+static struct dev_rec dr[MAX_DR];
 
 static void do_slave_init(struct mlx4_ib_dev *ibdev, int slave, int do_init);
 
@@ -1793,6 +1810,82 @@ error:
 	return err;
 }
 
+static void init_dev_assign(void)
+{
+	int bus, slot, fn, ib_idx;
+	char *p = dev_assign_str, *t;
+	char curr_val[32] = {0};
+	int ret;
+	int j, i = 0;
+
+	memset(dr, 0, sizeof dr);
+
+	if (dev_assign_str[0] == 0)
+		return;
+
+	while (strlen(p)) {
+		ret = sscanf(p, "%02x:%02x.%x-%x", &bus, &slot, &fn, &ib_idx);
+		if (ret != 4 || ib_idx < 0)
+			goto err;
+
+		for (j = 0; j < i; j++)
+			if (dr[j].nr == ib_idx)
+				goto err;
+
+		dr[i].bus = bus;
+		dr[i].dev = slot;
+		dr[i].func = fn;
+		dr[i].nr = ib_idx;
+
+		t = strchr(p, ',');
+		sprintf(curr_val, "%02x:%02x.%x-%x", bus, slot, fn, ib_idx);
+		if ((!t) && strlen(p) == strlen(curr_val))
+			return;
+
+		if (!t || (t + 1) >= dev_assign_str + sizeof dev_assign_str)
+			goto err;
+
+		++i;
+		if (i >= MAX_DR)
+			goto err;
+
+		p = t + 1;
+	}
+
+	return;
+err:
+	memset(dr, 0, sizeof dr);
+	printk(KERN_WARNING "mlx4_ib: The value of 'dev_assign_str' parameter "
+			    "is incorrect. The parameter value is discarded!");
+}
+
+static int mlx4_ib_dev_idx(struct mlx4_dev *dev)
+{
+	int bus, slot, fn;
+	int i;
+
+	if (!dev)
+		return -1;
+	else if (!dev->pdev)
+		return -1;
+	else if (!dev->pdev->bus)
+		return -1;
+
+	bus	= dev->pdev->bus->number;
+	slot	= PCI_SLOT(dev->pdev->devfn);
+	fn	= PCI_FUNC(dev->pdev->devfn);
+
+	for (i = 0; i < MAX_DR; ++i) {
+		if (dr[i].bus == bus &&
+		    dr[i].dev == slot &&
+		    dr[i].func == fn) {
+			return dr[i].nr;
+		}
+	}
+
+	return -1;
+}
+
 static void *mlx4_ib_add(struct mlx4_dev *dev)
 {
 	struct mlx4_ib_dev *ibdev;
@@ -1800,6 +1893,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	int i, j;
 	int err;
 	struct mlx4_ib_iboe *iboe;
+	int dev_idx;
 
 	pr_info_once("%s", mlx4_ib_version);
 
@@ -1834,7 +1928,12 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 
 	ibdev->dev = dev;
 
-	strlcpy(ibdev->ib_dev.name, "mlx4_%d", IB_DEVICE_NAME_MAX);
+	dev_idx = mlx4_ib_dev_idx(dev);
+	if (dev_idx >= 0)
+		sprintf(ibdev->ib_dev.name, "mlx4_%d", dev_idx);
+	else
+		strlcpy(ibdev->ib_dev.name, "mlx4_%d", IB_DEVICE_NAME_MAX);
+
 	ibdev->ib_dev.owner		= THIS_MODULE;
 	ibdev->ib_dev.node_type		= RDMA_NODE_IB_CA;
 	ibdev->ib_dev.local_dma_lkey	= dev->caps.reserved_lkey;
@@ -2285,6 +2384,7 @@ static int __init mlx4_ib_init(void)
 	if (err)
 		goto clean_proc;
 
+	init_dev_assign();
 
 	err = mlx4_register_interface(&mlx4_ib_interface);
 	if (err)
