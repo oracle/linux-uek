@@ -373,6 +373,14 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 		 */
 		rmb();
 
+		if (unlikely((cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) ==
+			     MLX4_CQE_OPCODE_ERROR)) {
+			en_err(priv, "CQE completed in error - vendor syndrom: 0x%x syndrom: 0x%x\n",
+			       ((struct mlx4_err_cqe *)cqe)->
+				       vendor_err_syndrome,
+			       ((struct mlx4_err_cqe *)cqe)->syndrome);
+		}
+
 		/* Skip over last polled CQE */
 		new_index = be16_to_cpu(cqe->wqe_index) & size_mask;
 
