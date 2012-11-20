@@ -649,8 +649,11 @@ static int init_qpg_parent(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *pqp,
 	if (!qpg_data)
 		return -ENOMEM;
 
-	err = mlx4_qp_reserve_range(dev->dev, tss_align_num,
-				    tss_align_num, &tss_base);
+	if(pqp->flags & MLX4_IB_QP_NETIF)
+		err = mlx4_ib_steer_qp_alloc(dev, tss_align_num, &tss_base);
+	else
+		err = mlx4_qp_reserve_range(dev->dev, tss_align_num,
+				tss_align_num, &tss_base);
 	if (err)
 		goto err1;
 
@@ -700,7 +703,10 @@ err3:
 		kfree(qpg_data->tss_bitmap);
 
 err2:
-	mlx4_qp_release_range(dev->dev, tss_base, tss_align_num);
+	if(pqp->flags & MLX4_IB_QP_NETIF)
+		mlx4_ib_steer_qp_free(dev, tss_base, tss_align_num);
+	else
+		mlx4_qp_release_range(dev->dev, tss_base, tss_align_num);
 
 err1:
 	kfree(qpg_data);
@@ -716,7 +722,10 @@ static void free_qpg_parent(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *pqp)
 		kfree(qpg_data->tss_bitmap);
 
 	align_num = roundup_pow_of_two(1 + qpg_data->tss_child_count);
-	mlx4_qp_release_range(dev->dev, qpg_data->tss_qpn_base, align_num);
+	if(pqp->flags & MLX4_IB_QP_NETIF)
+		mlx4_ib_steer_qp_free(dev, qpg_data->tss_qpn_base, align_num);
+	else
+		mlx4_qp_release_range(dev->dev, qpg_data->tss_qpn_base, align_num);
 
 	if (qpg_data->rss_child_count > 1) {
 		kfree(qpg_data->rss_bitmap);
@@ -805,7 +814,7 @@ static int alloc_qpn_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 			err = mlx4_qp_reserve_range(dev->dev, 1, 1 << 8, qpn);
 		} else {
 			if(qp->flags & MLX4_IB_QP_NETIF)
-				err = mlx4_ib_steer_qp_alloc(dev, qpn);
+				err = mlx4_ib_steer_qp_alloc(dev, 1, qpn);
 			else
 				err = mlx4_qp_reserve_range(dev->dev, 1, 1, qpn);
 		}
@@ -834,7 +843,7 @@ static void free_qpn_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 	switch (qpg_type) {
 	case IB_QPG_NONE:
 		if (qp->flags & MLX4_IB_QP_NETIF)
-			mlx4_ib_steer_qp_free(dev, qpn);
+			mlx4_ib_steer_qp_free(dev, qpn, 1);
 		else
 			mlx4_qp_release_range(dev->dev, qpn, 1);
 		break;
@@ -1445,9 +1454,6 @@ int mlx4_ib_destroy_qp(struct ib_qp *qp)
 	pd = get_pd(mqp);
 	destroy_qp_common(dev, mqp, !!pd->ibpd.uobject);
 
-	if (mqp->flags & MLX4_IB_QP_NETIF)
-		mlx4_ib_steer_qp_free(dev, mqp->mqp.qpn);
-
 	if (is_sqp(dev, mqp))
 		kfree(to_msqp(mqp));
 	else
@@ -1683,6 +1689,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	struct mlx4_qp_context *context;
 	enum mlx4_qp_optpar optpar = 0;
 	int sqd_event;
+	int steer_qp = 0;
 	int err = -EINVAL;
 	int is_eth = -1;
 
@@ -1767,6 +1774,12 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 			optpar |= MLX4_QP_OPTPAR_COUNTER_INDEX;
 		} else
 			context->pri_path.counter_index = 0xff;
+
+		if (qp->flags & MLX4_IB_QP_NETIF &&
+		    (qp->qpg_type == IB_QPG_NONE || qp->qpg_type == IB_QPG_PARENT)) {
+			mlx4_ib_steer_qp_reg(dev, qp, 1);
+			steer_qp = 1;
+		}
 	}
 
 	if (attr_mask & IB_QP_PKEY_INDEX) {
@@ -2079,6 +2092,11 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 			qp->sq_next_wqe = 0;
 			if (qp->rq.wqe_cnt)
 				*qp->db.db  = 0;
+
+			if (qp->flags & MLX4_IB_QP_NETIF &&
+			    (qp->qpg_type == IB_QPG_NONE ||
+			     qp->qpg_type == IB_QPG_PARENT))
+				mlx4_ib_steer_qp_reg(dev, qp, 0);
 		}
 		if (qp->pri.smac) {
 			mlx4_unregister_mac(dev->dev, qp->pri.smac_port, qp->pri.smac);
@@ -2091,6 +2109,8 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	}
 
 out:
+	if (err && steer_qp)
+		mlx4_ib_steer_qp_reg(dev, qp, 0);
 	kfree(context);
 	if (qp->pri.candidate_smac) {
 		if (err)

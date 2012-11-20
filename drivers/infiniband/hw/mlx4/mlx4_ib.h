@@ -781,8 +781,9 @@ void mlx4_ib_device_unregister_sysfs(struct mlx4_ib_dev *device);
 
 __be64 mlx4_ib_gen_node_guid(void);
 
-
-int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int *qpn);
-void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn);
+int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int count, int *qpn);
+void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn, int count);
+int mlx4_ib_steer_qp_reg(struct mlx4_ib_dev *mdev, struct mlx4_ib_qp *mqp,
+			 int is_attach);
 
 #endif /* MLX4_IB_H */

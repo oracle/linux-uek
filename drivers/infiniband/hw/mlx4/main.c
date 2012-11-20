@@ -1033,11 +1033,11 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 	return 0;
 }
 
-static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
-			       int priority)
+static int __mlx4_ib_flow_attach(struct mlx4_ib_dev *mdev,
+				 struct mlx4_ib_qp *mqp,
+				 struct ib_flow_spec *flow_spec,
+				 int priority, int lock_qp)
 {
-	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
-	struct mlx4_ib_qp *mqp = to_mqp(qp);
 	u64 reg_id = 0;
 	int err = 0;
 	struct mlx4_cm_steering *cm_flow;
@@ -1070,9 +1070,11 @@ static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
 	memcpy(&cm_flow->spec, flow_spec, sizeof(*flow_spec));
 	cm_flow->reg_id = reg_id;
 
-	mutex_lock(&mqp->mutex);
+	if (lock_qp)
+		mutex_lock(&mqp->mutex);
 	list_add(&cm_flow->list, &mqp->rules_list);
-	mutex_unlock(&mqp->mutex);
+	if (lock_qp)
+                mutex_unlock(&mqp->mutex);
 
 free_list:
 	list_for_each_entry_safe(spec, tmp_spec, &rule.list, list) {
@@ -1087,22 +1089,25 @@ free_list:
 	return err;
 }
 
-static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
-			       int priority)
+static int __mlx4_ib_flow_detach(struct mlx4_ib_dev *mdev,
+				 struct mlx4_ib_qp *mqp,
+				 struct ib_flow_spec *spec, int priority,
+				 int lock_qp)
 {
-	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
-	struct mlx4_ib_qp *mqp = to_mqp(qp);
 	struct mlx4_cm_steering *cm_flow;
 	int ret;
 
-	mutex_lock(&mqp->mutex);
+	if (lock_qp)
+		mutex_lock(&mqp->mutex);
 	list_for_each_entry(cm_flow, &mqp->rules_list, list) {
 		if (!memcmp(&cm_flow->spec, spec, sizeof(*spec))) {
 			list_del(&cm_flow->list);
 			break;
 		}
 	}
-	mutex_unlock(&mqp->mutex);
+	if (lock_qp)
+		mutex_unlock(&mqp->mutex);
+
 	if (&cm_flow->list == &mqp->rules_list) {
 		dev_err(mdev->ib_dev.dma_device, "Couldn't find reg_id for flow spec. "
 			"Steering rule is left attached\n");
@@ -1113,6 +1118,20 @@ static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
 
 	kfree(cm_flow);
 	return ret;
+}
+
+static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
+			       int priority)
+{
+	return __mlx4_ib_flow_attach(to_mdev(qp->device), to_mqp(qp),
+				     flow_spec, priority, 1);
+}
+
+static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
+			       int priority)
+{
+	return __mlx4_ib_flow_detach(to_mdev(qp->device), to_mqp(qp),
+				     spec, priority, 1);
 }
 
 static struct mlx4_ib_gid_entry *find_gid_entry(struct mlx4_ib_qp *qp, u8 *raw)
@@ -2043,14 +2062,15 @@ err_dealloc:
 	return NULL;
 }
 
-int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int *qpn)
+int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int count, int *qpn)
 {
 	int offset;
 
 	WARN_ON(!dev->ib_uc_qpns_bitmap);
 
 	offset = bitmap_find_free_region(dev->ib_uc_qpns_bitmap,
-			dev->steer_qpn_count, 0);
+					 dev->steer_qpn_count,
+					 get_count_order(count));
 	if (offset < 0)
 		return offset;
 
@@ -2058,7 +2078,7 @@ int mlx4_ib_steer_qp_alloc(struct mlx4_ib_dev *dev, int *qpn)
 	return 0;
 }
 
-void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn)
+void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn, int count)
 {
 	if (!qpn ||
 	    dev->dev->caps.steering_mode != MLX4_STEERING_MODE_DEVICE_MANAGED)
@@ -2067,7 +2087,20 @@ void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn)
 	BUG_ON(qpn < dev->steer_qpn_base);
 
 	bitmap_release_region(dev->ib_uc_qpns_bitmap,
-			qpn - dev->steer_qpn_base, 0);
+			qpn - dev->steer_qpn_base, get_count_order(count));
+}
+
+int mlx4_ib_steer_qp_reg(struct mlx4_ib_dev *mdev, struct mlx4_ib_qp *mqp,
+			 int is_attach)
+{
+	struct ib_flow_spec spec = {
+		.type = IB_FLOW_IB_UC,
+		.l2_id.ib_uc.qpn  = mqp->ibqp.qp_num,
+	};
+
+	return is_attach ?
+		__mlx4_ib_flow_attach(mdev, mqp, &spec, MLX4_DOMAIN_NIC, 0)
+                : __mlx4_ib_flow_detach(mdev, mqp, &spec, MLX4_DOMAIN_NIC, 0);
 }
 
 static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
