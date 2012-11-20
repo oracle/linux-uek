@@ -38,6 +38,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_vlan.h>
 #include <linux/vmalloc.h>
+#include <linux/prefetch.h>
 
 #include "mlx4_en.h"
 
@@ -647,7 +648,8 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 		    !((dev->features & NETIF_F_LOOPBACK) ||
 		      priv->validate_loopback))
 			goto next;
-
+		/* avoid cache miss in tcp_gro_receive */
+		prefetch((char *)ethh + 64);
 		/*
 		 * Packet is OK - process it.
 		 */
