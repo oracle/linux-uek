@@ -2757,6 +2757,9 @@ qla2x00_shutdown(struct pci_dev *pdev)
 	scsi_qla_host_t *vha;
 	struct qla_hw_data  *ha;
 
+	if (!atomic_read(&pdev->enable_cnt))
+		return;
+
 	vha = pci_get_drvdata(pdev);
 	ha = vha->hw;
 
