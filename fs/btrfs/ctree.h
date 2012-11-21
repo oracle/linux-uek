@@ -2596,6 +2596,7 @@ int btrfs_force_chunk_alloc(struct btrfs_trans_handle *trans,
 int btrfs_trim_fs(struct btrfs_root *root, struct fstrim_range *range);
 
 int btrfs_init_space_info(struct btrfs_fs_info *fs_info);
+int __get_raid_index(u64 flags);
 /* ctree.c */
 int btrfs_bin_search(struct extent_buffer *eb, struct btrfs_key *key,
 		     int level, int *slot);
