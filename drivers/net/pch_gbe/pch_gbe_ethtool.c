@@ -163,7 +163,6 @@ static void pch_gbe_get_drvinfo(struct net_device *netdev,
 
 	strcpy(drvinfo->driver, KBUILD_MODNAME);
 	strcpy(drvinfo->version, pch_driver_version);
-	strcpy(drvinfo->fw_version, "N/A");
 	strcpy(drvinfo->bus_info, pci_name(adapter->pdev));
 	drvinfo->regdump_len = pch_gbe_get_regs_len(netdev);
 }

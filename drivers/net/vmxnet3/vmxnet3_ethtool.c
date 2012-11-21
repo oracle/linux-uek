@@ -202,14 +202,9 @@ vmxnet3_get_drvinfo(struct net_device *netdev, struct ethtool_drvinfo *drvinfo)
 	struct vmxnet3_adapter *adapter = netdev_priv(netdev);
 
 	strlcpy(drvinfo->driver, vmxnet3_driver_name, sizeof(drvinfo->driver));
-	drvinfo->driver[sizeof(drvinfo->driver) - 1] = '\0';
 
 	strlcpy(drvinfo->version, VMXNET3_DRIVER_VERSION_REPORT,
 		sizeof(drvinfo->version));
-	drvinfo->driver[sizeof(drvinfo->version) - 1] = '\0';
-
-	strlcpy(drvinfo->fw_version, "N/A", sizeof(drvinfo->fw_version));
-	drvinfo->fw_version[sizeof(drvinfo->fw_version) - 1] = '\0';
 
 	strlcpy(drvinfo->bus_info, pci_name(adapter->pdev),
 		ETHTOOL_BUSINFO_LEN);
@@ -606,7 +601,7 @@ vmxnet3_set_rss_indir(struct net_device *netdev, const u32 *p)
 }
 #endif
 
-static struct ethtool_ops vmxnet3_ethtool_ops = {
+static const struct ethtool_ops vmxnet3_ethtool_ops = {
 	.get_settings      = vmxnet3_get_settings,
 	.get_drvinfo       = vmxnet3_get_drvinfo,
 	.get_regs_len      = vmxnet3_get_regs_len,

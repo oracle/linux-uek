@@ -2402,7 +2402,6 @@ static void e100_get_drvinfo(struct net_device *netdev,
 	struct nic *nic = netdev_priv(netdev);
 	strcpy(info->driver, DRV_NAME);
 	strcpy(info->version, DRV_VERSION);
-	strcpy(info->fw_version, "N/A");
 	strcpy(info->bus_info, pci_name(nic->pdev));
 }
 

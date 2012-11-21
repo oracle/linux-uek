@@ -397,7 +397,6 @@ static void ixgbevf_get_drvinfo(struct net_device *netdev,
 	strncpy(drvinfo->driver, ixgbevf_driver_name, 32);
 	strncpy(drvinfo->version, ixgbevf_driver_version, 32);
 
-	strncpy(drvinfo->fw_version, "N/A", 4);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
 	drvinfo->n_stats = IXGBEVF_STATS_LEN;
 	drvinfo->testinfo_len = IXGBE_TEST_LEN;

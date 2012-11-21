@@ -1589,7 +1589,6 @@ static void tun_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *info
 
 	strcpy(info->driver, DRV_NAME);
 	strcpy(info->version, DRV_VERSION);
-	strcpy(info->fw_version, "N/A");
 
 	switch (tun->flags & TUN_TYPE_MASK) {
 	case TUN_TUN_DEV:

@@ -637,7 +637,7 @@ vmxnet3_rq_alloc_rx_buf(struct vmxnet3_rx_queue *rq, u32 ring_idx,
 
 	dev_dbg(&adapter->netdev->dev,
 		"alloc_rx_buf: %d allocated, next2fill %u, next2comp "
-		"%u, uncommited %u\n", num_allocated, ring->next2fill,
+		"%u, uncommitted %u\n", num_allocated, ring->next2fill,
 		ring->next2comp, rq->uncommitted[ring_idx]);
 
 	/* so that the device can distinguish a full ring and an empty ring */
@@ -656,10 +656,11 @@ vmxnet3_append_frag(struct sk_buff *skb, struct Vmxnet3_RxCompDesc *rcd,
 
 	BUG_ON(skb_shinfo(skb)->nr_frags >= MAX_SKB_FRAGS);
 
-	frag->page = rbi->page;
+	__skb_frag_set_page(frag, rbi->page);
 	frag->page_offset = 0;
 	frag->size = rcd->len;
 	skb->data_len += frag->size;
+	skb->truesize += PAGE_SIZE;
 	skb_shinfo(skb)->nr_frags++;
 }
 
@@ -747,28 +748,43 @@ vmxnet3_map_pkt(struct sk_buff *skb, struct vmxnet3_tx_ctx *ctx,
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[i];
+		u32 buf_size;
 
-		tbi = tq->buf_info + tq->tx_ring.next2fill;
-		tbi->map_type = VMXNET3_MAP_PAGE;
-		tbi->dma_addr = pci_map_page(adapter->pdev, frag->page,
-					     frag->page_offset, frag->size,
-					     PCI_DMA_TODEVICE);
+		buf_offset = 0;
+		len = frag->size;
+		while (len) {
+			tbi = tq->buf_info + tq->tx_ring.next2fill;
+			if (len < VMXNET3_MAX_TX_BUF_SIZE) {
+				buf_size = len;
+				dw2 |= len;
+			} else {
+				buf_size = VMXNET3_MAX_TX_BUF_SIZE;
+				/* spec says that for TxDesc.len, 0 == 2^14 */
+			}
+			tbi->map_type = VMXNET3_MAP_PAGE;
+			tbi->dma_addr = skb_frag_dma_map(&adapter->pdev->dev, frag,
+							 buf_offset, buf_size,
+							 PCI_DMA_TODEVICE);
 
-		tbi->len = frag->size;
+			tbi->len = buf_size;
 
-		gdesc = tq->tx_ring.base + tq->tx_ring.next2fill;
-		BUG_ON(gdesc->txd.gen == tq->tx_ring.gen);
+			gdesc = tq->tx_ring.base + tq->tx_ring.next2fill;
+			BUG_ON(gdesc->txd.gen == tq->tx_ring.gen);
 
-		gdesc->txd.addr = cpu_to_le64(tbi->dma_addr);
-		gdesc->dword[2] = cpu_to_le32(dw2 | frag->size);
-		gdesc->dword[3] = 0;
+			gdesc->txd.addr = cpu_to_le64(tbi->dma_addr);
+			gdesc->dword[2] = cpu_to_le32(dw2);
+			gdesc->dword[3] = 0;
 
-		dev_dbg(&adapter->netdev->dev,
-			"txd[%u]: 0x%llu %u %u\n",
-			tq->tx_ring.next2fill, le64_to_cpu(gdesc->txd.addr),
-			le32_to_cpu(gdesc->dword[2]), gdesc->dword[3]);
-		vmxnet3_cmd_ring_adv_next2fill(&tq->tx_ring);
-		dw2 = tq->tx_ring.gen << VMXNET3_TXD_GEN_SHIFT;
+			dev_dbg(&adapter->netdev->dev,
+				"txd[%u]: 0x%llu %u %u\n",
+				tq->tx_ring.next2fill, le64_to_cpu(gdesc->txd.addr),
+				le32_to_cpu(gdesc->dword[2]), gdesc->dword[3]);
+			vmxnet3_cmd_ring_adv_next2fill(&tq->tx_ring);
+			dw2 = tq->tx_ring.gen << VMXNET3_TXD_GEN_SHIFT;
+
+			len -= buf_size;
+			buf_offset += buf_size;
+		}
 	}
 
 	ctx->eop_txd = gdesc;
@@ -816,22 +832,19 @@ vmxnet3_parse_and_copy_hdr(struct sk_buff *skb, struct vmxnet3_tx_queue *tq,
 
 	if (ctx->mss) {	/* TSO */
 		ctx->eth_ip_hdr_size = skb_transport_offset(skb);
-		ctx->l4_hdr_size = ((struct tcphdr *)
-				   skb_transport_header(skb))->doff * 4;
+		ctx->l4_hdr_size = tcp_hdrlen(skb);
 		ctx->copy_size = ctx->eth_ip_hdr_size + ctx->l4_hdr_size;
 	} else {
 		if (skb->ip_summed == CHECKSUM_PARTIAL) {
 			ctx->eth_ip_hdr_size = skb_checksum_start_offset(skb);
 
 			if (ctx->ipv4) {
-				struct iphdr *iph = (struct iphdr *)
-						    skb_network_header(skb);
+				const struct iphdr *iph = ip_hdr(skb);
+
 				if (iph->protocol == IPPROTO_TCP)
-					ctx->l4_hdr_size = ((struct tcphdr *)
-					   skb_transport_header(skb))->doff * 4;
+					ctx->l4_hdr_size = tcp_hdrlen(skb);
 				else if (iph->protocol == IPPROTO_UDP)
-					ctx->l4_hdr_size =
-							sizeof(struct udphdr);
+					ctx->l4_hdr_size = sizeof(struct udphdr);
 				else
 					ctx->l4_hdr_size = 0;
 			} else {
@@ -876,19 +889,34 @@ static void
 vmxnet3_prepare_tso(struct sk_buff *skb,
 		    struct vmxnet3_tx_ctx *ctx)
 {
-	struct tcphdr *tcph = (struct tcphdr *)skb_transport_header(skb);
+	struct tcphdr *tcph = tcp_hdr(skb);
+
 	if (ctx->ipv4) {
-		struct iphdr *iph = (struct iphdr *)skb_network_header(skb);
+		struct iphdr *iph = ip_hdr(skb);
+
 		iph->check = 0;
 		tcph->check = ~csum_tcpudp_magic(iph->saddr, iph->daddr, 0,
 						 IPPROTO_TCP, 0);
 	} else {
-		struct ipv6hdr *iph = (struct ipv6hdr *)skb_network_header(skb);
+		struct ipv6hdr *iph = ipv6_hdr(skb);
+
 		tcph->check = ~csum_ipv6_magic(&iph->saddr, &iph->daddr, 0,
 					       IPPROTO_TCP, 0);
 	}
 }
 
+static int txd_estimate(const struct sk_buff *skb)
+{
+	int count = VMXNET3_TXD_NEEDED(skb_headlen(skb)) + 1;
+	int i;
+
+	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+		const struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[i];
+
+		count += VMXNET3_TXD_NEEDED(skb_frag_size(frag));
+	}
+	return count;
+}
 
 /*
  * Transmits a pkt thru a given tq
@@ -917,9 +945,7 @@ vmxnet3_tq_xmit(struct sk_buff *skb, struct vmxnet3_tx_queue *tq,
 	union Vmxnet3_GenericDesc tempTxDesc;
 #endif
 
-	/* conservatively estimate # of descriptors to use */
-	count = VMXNET3_TXD_NEEDED(skb_headlen(skb)) +
-		skb_shinfo(skb)->nr_frags + 1;
+	count = txd_estimate(skb);
 
 	ctx.ipv4 = (skb->protocol == cpu_to_be16(ETH_P_IP));
 
@@ -1274,7 +1300,6 @@ vmxnet3_rq_rx_complete(struct vmxnet3_rx_queue *rq,
 		skb = ctx->skb;
 		if (rcd->eop) {
 			skb->len += skb->data_len;
-			skb->truesize += skb->data_len;
 
 			vmxnet3_rx_csum(adapter, skb,
 					(union Vmxnet3_GenericDesc *)rcd);
@@ -1986,14 +2011,16 @@ static void
 vmxnet3_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 {
 	struct vmxnet3_adapter *adapter = netdev_priv(netdev);
-	u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
-	unsigned long flags;
+	if (!(netdev->flags & IFF_PROMISC)) {
+		u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
+		unsigned long flags;
 
-	VMXNET3_SET_VFTABLE_ENTRY(vfTable, vid);
-	spin_lock_irqsave(&adapter->cmd_lock, flags);
-	VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
-			       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
-	spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+		VMXNET3_SET_VFTABLE_ENTRY(vfTable, vid);
+		spin_lock_irqsave(&adapter->cmd_lock, flags);
+		VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
+				       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
+		spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+	}
 }
 
 
@@ -2001,14 +2028,16 @@ static void
 vmxnet3_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 {
 	struct vmxnet3_adapter *adapter = netdev_priv(netdev);
-	u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
-	unsigned long flags;
+	if (!(netdev->flags & IFF_PROMISC)) {
+		u32 *vfTable = adapter->shared->devRead.rxFilterConf.vfTable;
+		unsigned long flags;
 
-	VMXNET3_CLEAR_VFTABLE_ENTRY(vfTable, vid);
-	spin_lock_irqsave(&adapter->cmd_lock, flags);
-	VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
-			       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
-	spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+		VMXNET3_CLEAR_VFTABLE_ENTRY(vfTable, vid);
+		spin_lock_irqsave(&adapter->cmd_lock, flags);
+		VMXNET3_WRITE_BAR1_REG(adapter, VMXNET3_REG_CMD,
+				       VMXNET3_CMD_UPDATE_VLAN_FILTERS);
+		spin_unlock_irqrestore(&adapter->cmd_lock, flags);
+	}
 }
 
 
@@ -2742,8 +2771,8 @@ vmxnet3_acquire_msix_vectors(struct vmxnet3_adapter *adapter,
 			adapter->intr.num_intrs = vectors;
 			return 0;
 		} else if (err < 0) {
-			printk(KERN_ERR "Failed to enable MSI-X for %s, error"
-			       " %d\n",	adapter->netdev->name, err);
+			netdev_err(adapter->netdev,
+				   "Failed to enable MSI-X, error: %d\n", err);
 			vectors = 0;
 		} else if (err < vector_threshold) {
 			break;
@@ -2751,15 +2780,15 @@ vmxnet3_acquire_msix_vectors(struct vmxnet3_adapter *adapter,
 			/* If fails to enable required number of MSI-x vectors
 			 * try enabling minimum number of vectors required.
 			 */
+			netdev_err(adapter->netdev,
+				   "Failed to enable %d MSI-X, trying %d instead\n",
+				    vectors, vector_threshold);
 			vectors = vector_threshold;
-			printk(KERN_ERR "Failed to enable %d MSI-X for %s, try"
-			       " %d instead\n", vectors, adapter->netdev->name,
-			       vector_threshold);
 		}
 	}
 
-	printk(KERN_INFO "Number of MSI-X interrupts which can be allocatedi"
-	       " are lower than min threshold required.\n");
+	netdev_info(adapter->netdev,
+		    "Number of MSI-X interrupts which can be allocated are lower than min threshold required.\n");
 	return err;
 }
 
@@ -2825,8 +2854,9 @@ vmxnet3_alloc_intr_resources(struct vmxnet3_adapter *adapter)
 			return;
 
 		/* If we cannot allocate MSIx vectors use only one rx queue */
-		printk(KERN_INFO "Failed to enable MSI-X for %s, error %d."
-		       "#rx queues : 1, try MSI\n", adapter->netdev->name, err);
+		netdev_info(adapter->netdev,
+			    "Failed to enable MSI-X, error %d . Limiting #rx queues to 1, try MSI.\n",
+			    err);
 
 		adapter->intr.type = VMXNET3_IT_MSI;
 	}
@@ -3068,6 +3098,7 @@ vmxnet3_probe_device(struct pci_dev *pdev,
 	netdev->watchdog_timeo = 5 * HZ;
 
 	INIT_WORK(&adapter->work, vmxnet3_reset_work);
+	set_bit(VMXNET3_STATE_BIT_QUIESCED, &adapter->state);
 
 	if (adapter->intr.type == VMXNET3_IT_MSIX) {
 		int i;
@@ -3093,7 +3124,6 @@ vmxnet3_probe_device(struct pci_dev *pdev,
 		goto err_register;
 	}
 
-	set_bit(VMXNET3_STATE_BIT_QUIESCED, &adapter->state);
 	vmxnet3_check_link(adapter, false);
 	atomic_inc(&devices_found);
 	return 0;
