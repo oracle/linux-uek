@@ -45,8 +45,12 @@
 
 static int mcast_leave_retries = 3;
 
-module_param_call(mcast_leave_retries, param_set_int, param_get_int,
-		  &mcast_leave_retries, 0644);
+static const struct kernel_param_ops retry_ops = {
+	.set = param_set_int,
+	.get = param_get_int,
+};
+
+module_param_cb(mcast_leave_retries, &retry_ops, &mcast_leave_retries, 0644);
 MODULE_PARM_DESC(mcast_leave_retries, "Number of retries for multicast leave "
 				      "requests before giving up (default: 3)");
 

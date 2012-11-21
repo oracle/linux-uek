@@ -30,6 +30,9 @@
  * SOFTWARE.
  */
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt) PFX fmt
 
 #include <linux/module.h>

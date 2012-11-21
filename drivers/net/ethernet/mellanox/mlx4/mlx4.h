@@ -722,7 +722,7 @@ struct mlx4_net_trans_rule_hw_ib {
 	u8 rsvd1;
 	__be16 id;
 	u32 rsvd2;
-	__be32 qpn;
+	__be32 r_u_qpn;
 	__be32 qpn_mask;
 	u8 dst_gid[16];
 	u8 dst_gid_msk[16];
