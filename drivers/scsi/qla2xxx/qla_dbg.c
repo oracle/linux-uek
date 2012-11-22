@@ -14,9 +14,9 @@
  * | Module Init and Probe        |       0x0124       | 0x4b,0xba,0xfa |
  * | Mailbox commands             |       0x114e       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2087       | 0x2020-0x2022, |
- * |                              |                    | 0x2016,0x207d  |
+ * |                              |                    | 0x2016		|
  * | Queue Command and IO tracing |       0x3031       | 0x3006,0x300b  |
- * |                              |                    | 0x3027-0x302a  |
+ * |                              |                    | 0x3027-0x3028  |
  * |                              |                    | 0x302d,0x302e  |
  * | DPC Thread                   |       0x401d       | 0x4002,0x4013  |
  * | Async Events                 |       0x5071       | 0x502b-0x502f  |
