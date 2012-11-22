@@ -2282,6 +2282,7 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 		exit(1);
 	}
 
+	dw_ctf_trace("New type ID: %p:%li\n", ctf, this_ctf_id);
 	return this_ctf_id;
 }
 
@@ -3024,7 +3025,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	     * Anonymous structure or union with no members. Silently skip.
 	     */
 	    if (dwarf_child(&type_die, &child_die) < 0)
-		return parent_ctf_id;
+		    return parent_ctf_id;
 
 	    die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
 		       parent_ctf_id, offset, 0, skip, &dummy, NULL);
