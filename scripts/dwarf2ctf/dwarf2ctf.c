@@ -976,6 +976,12 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 					     &func_info, NULL);
 		ctf_funcptr_type = ctf_add_pointer(ctf_file, CTF_ADD_ROOT,
 						   func_type);
+
+		if (ctf_update(ctf_file) < 0) {
+			fprintf(stderr, "Cannot initialize shared CTF "
+				"file: %s\n", ctf_errmsg(ctf_errno(ctf_file)));
+			exit(1);
+		}
 	} else {
 		/*
 		 * Local types module with deduplication enabled: point the
