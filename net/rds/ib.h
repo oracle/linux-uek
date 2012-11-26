@@ -270,11 +270,14 @@ enum {
 	RDS_IB_PORT_DOWN,
 };
 
-#define RDS_IB_MAX_ALIASES	200
+#define RDS_IB_MAX_ALIASES	100
+#define RDS_IB_MAX_PORTS	10
 struct rds_ib_port {
+	struct rds_ib_device	*rds_ibdev;
 	struct net_device	*dev;
+	unsigned int            port_state;
+	u8			port_num;
 	char                    if_name[IFNAMSIZ];
-	unsigned int		port_state;
 	__be32                  ip_addr;
 	__be32			ip_bcast;
 	__be32			ip_mask;
@@ -285,9 +288,9 @@ struct rds_ib_port {
 
 struct rds_ib_port_ud_work {
 	struct delayed_work             work;
-	struct rds_ib_device            *rds_ibdev;
 	struct net_device		*dev;
 	unsigned int                    port;
+	int				timeout;
 };
 
 enum {
@@ -426,6 +429,7 @@ extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
 extern unsigned int rds_ib_haip_enabled;
 extern unsigned int rds_ib_haip_fallback;
+extern unsigned int rds_ib_haip_failover_enabled;
 extern unsigned int rds_ib_apm_timeout;
 
 extern spinlock_t ib_nodev_conns_lock;
