@@ -3104,10 +3104,11 @@ static noinline long btrfs_ioctl_wait_sync(struct btrfs_root *root,
 	return btrfs_wait_for_commit(root, transid);
 }
 
-static long btrfs_ioctl_scrub(struct btrfs_root *root, void __user *arg)
+static long btrfs_ioctl_scrub(struct file *file, void __user *arg)
 {
-	int ret;
+	struct btrfs_root *root = BTRFS_I(fdentry(file)->d_inode)->root;
 	struct btrfs_ioctl_scrub_args *sa;
+	int ret;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -3116,6 +3117,12 @@ static long btrfs_ioctl_scrub(struct btrfs_root *root, void __user *arg)
 	if (IS_ERR(sa))
 		return PTR_ERR(sa);
 
+	if (!(sa->flags & BTRFS_SCRUB_READONLY)) {
+		ret = mnt_want_write_file(file);
+		if (ret)
+			goto out;
+	}
+
 	ret = btrfs_scrub_dev(root->fs_info, sa->devid, sa->start, sa->end,
 			      &sa->progress, sa->flags & BTRFS_SCRUB_READONLY,
 			      0);
@@ -3123,6 +3130,9 @@ static long btrfs_ioctl_scrub(struct btrfs_root *root, void __user *arg)
 	if (copy_to_user(arg, sa, sizeof(*sa)))
 		ret = -EFAULT;
 
+	if (!(sa->flags & BTRFS_SCRUB_READONLY))
+		mnt_drop_write_file(file);
+out:
 	kfree(sa);
 	return ret;
 }
@@ -3386,7 +3396,7 @@ long btrfs_ioctl(struct file *file, unsigned int
 	case BTRFS_IOC_WAIT_SYNC:
 		return btrfs_ioctl_wait_sync(root, argp);
 	case BTRFS_IOC_SCRUB:
-		return btrfs_ioctl_scrub(root, argp);
+		return btrfs_ioctl_scrub(file, argp);
 	case BTRFS_IOC_SCRUB_CANCEL:
 		return btrfs_ioctl_scrub_cancel(root, argp);
 	case BTRFS_IOC_SCRUB_PROGRESS:
