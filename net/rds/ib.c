@@ -54,6 +54,7 @@ unsigned int rds_ib_apm_enabled = 0;
 unsigned int rds_ib_apm_fallback = 1;
 unsigned int rds_ib_haip_enabled = 0;
 unsigned int rds_ib_haip_fallback = 1;
+unsigned int rds_ib_haip_hca_failover_enabled = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 
@@ -75,7 +76,8 @@ module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
 module_param(rds_ib_haip_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
-
+module_param(rds_ib_haip_hca_failover_enabled, int, 0444);
+MODULE_PARM_DESC(rds_ib_haip_hca_failover_enabled, " HAIP HCA failover Enabled");
 
 
 /*
@@ -94,6 +96,9 @@ struct workqueue_struct *rds_aux_wq;
 EXPORT_SYMBOL_GPL(rds_aux_wq);
 
 struct socket	*rds_ib_inet_socket;
+
+static struct rds_ib_port *ip_config;
+static u8	ip_port_cnt = 0;
 
 void rds_ib_nodev_connect(void)
 {
@@ -309,9 +314,45 @@ static int rds_ib_laddr_check(__be32 addr)
 	return ret;
 }
 
-static void rds_ib_send_gratuitous_arp(struct net_device *out_dev,
-					unsigned char *dev_addr,
-					__be32 ip_addr)
+static u8 rds_ib_port_lookup(struct rds_ib_device *rds_ibdev, u8 port_num)
+{
+	u8	i;
+
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (ip_config[i].rds_ibdev == rds_ibdev &&
+			ip_config[i].port_num == port_num)
+			return i;
+	}
+	return 0;
+}
+
+static u8 rds_ib_get_failover_port(u8 port)
+{
+	u8	i;
+
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (i != port &&
+			ip_config[i].rds_ibdev == ip_config[port].rds_ibdev &&
+			ip_config[i].port_state == RDS_IB_PORT_UP) {
+			return i;
+		}
+	}
+
+	if (rds_ib_haip_hca_failover_enabled) {
+		for (i = 1; i <= ip_port_cnt; i++) {
+			if (i != port &&
+				ip_config[i].port_state == RDS_IB_PORT_UP) {
+					return i;
+				}
+		}
+	}
+
+	return 0;
+}
+
+static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
+					unsigned char		*dev_addr,
+					__be32			ip_addr)
 {
 	arp_send(ARPOP_REQUEST, ETH_P_ARP,
 		ip_addr, out_dev,
@@ -319,17 +360,17 @@ static void rds_ib_send_gratuitous_arp(struct net_device *out_dev,
 		dev_addr, NULL);
 }
 
-static int rds_ib_set_ip(struct net_device *out_dev,
-			unsigned char *dev_addr,
-			char *if_name,
-			__be32 addr,
-			__be32 bcast,
-			__be32 mask)
+static int rds_ib_set_ip(struct net_device	*out_dev,
+			unsigned char		*dev_addr,
+			char			*if_name,
+			__be32			addr,
+			__be32			bcast,
+			__be32			mask)
 {
-	struct ifreq *ir;
-	struct sockaddr_in *sin;
-	struct page *page;
-	int ret = 0;
+	struct ifreq		*ir;
+	struct sockaddr_in	*sin;
+	struct page		*page;
+	int			ret = 0;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -346,10 +387,10 @@ static int rds_ib_set_ip(struct net_device *out_dev,
 
 	sin->sin_addr.s_addr = addr;
 	ret = inet_ioctl(rds_ib_inet_socket, SIOCSIFADDR, (unsigned long) ir);
-	if (ret) {
+	if (ret && addr) {
 		printk(KERN_ERR
-			"RDS/IB: inet_ioctl(SIOCSIFADDR) failed (%d)\n",
-			ret);
+			"RDS/IB: inet_ioctl(SIOCSIFADDR) on %s failed (%d)\n",
+			if_name, ret);
 		goto out;
 	}
 
@@ -361,8 +402,8 @@ static int rds_ib_set_ip(struct net_device *out_dev,
 			(unsigned long) ir);
 	if (ret) {
 		printk(KERN_ERR
-			"RDS/IB: inet_ioctl(SIOCSIFBRDADDR) failed (%d)\n",
-			ret);
+			"RDS/IB: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
+			if_name, ret);
 		goto out;
 	}
 
@@ -371,8 +412,8 @@ static int rds_ib_set_ip(struct net_device *out_dev,
 			(unsigned long) ir);
 	if (ret) {
 		printk(KERN_ERR
-			"RDS/IB: inet_ioctl(SIOCSIFBRDADDR) failed (%d)\n",
-			ret);
+			"RDS/IB: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
+			if_name, ret);
 		goto out;
 	}
 
@@ -385,24 +426,50 @@ out:
 	return ret;
 }
 
-static int rds_ib_move_ip(struct net_device *out_dev,
-			unsigned char *dev_addr,
-			char *from_dev,
-			char *to_dev,
-			__be32 addr,
-			__be32 bcast,
-			__be32 mask,
-			int failover)
+static int rds_ib_addr_exist(struct net_device *ndev,
+				__be32		addr,
+				char		*if_name)
 {
-	struct rds_ib_device *rds_ibdev;
-	struct ifreq *ir;
-	struct sockaddr_in *sin;
-	struct page *page;
-	char from_dev2[2*IFNAMSIZ + 1];
-	char to_dev2[2*IFNAMSIZ + 1];
-	int i, ret = 0;
-	char *from_colon, *to_colon;
-	int from_passive = 0, to_passive = 0;
+	struct in_device        *in_dev;
+	struct in_ifaddr        *ifa;
+	struct in_ifaddr        **ifap;
+	int			found = 0;
+
+	in_dev = in_dev_get(ndev);
+	if (in_dev) {
+		for (ifap = &in_dev->ifa_list; (ifa = *ifap);
+			ifap = &ifa->ifa_next) {
+			if (ifa->ifa_address == addr) {
+				found = 1;
+				if (if_name)
+					strcpy(if_name, ifa->ifa_label);
+				break;
+			}
+		}
+	}
+	in_dev_put(in_dev);
+
+	return found;
+}
+
+static int rds_ib_move_ip(char			*from_dev,
+			char			*to_dev,
+			u8			from_port,
+			u8			to_port,
+			u8			arp_port,
+			__be32			addr,
+			__be32			bcast,
+			__be32			mask,
+			int			failover)
+{
+	struct ifreq		*ir;
+	struct sockaddr_in	*sin;
+	struct page		*page;
+	char			from_dev2[2*IFNAMSIZ + 1];
+	char			to_dev2[2*IFNAMSIZ + 1];
+	int			ret = 0;
+	u8			active_port;
+	struct in_device	*in_dev;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -413,31 +480,34 @@ static int rds_ib_move_ip(struct net_device *out_dev,
 	ir = (struct ifreq *)kmap(page);
 	memset(ir, 0, sizeof(struct ifreq));
 	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin->sin_family = AF_INET;
 
-	from_colon = strchr(from_dev, ':');
-	to_colon = strchr(to_dev, ':');
-	if (!from_colon && !to_colon) {
-		rcu_read_lock();
-		list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-			for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-				if (!strcmp(from_dev,
-					rds_ibdev->ports[i].if_name) &&
-					!rds_ibdev->ports[i].ip_addr) {
-					from_passive = 1;
-				}
-
-				if (!strcmp(to_dev,
-					rds_ibdev->ports[i].if_name) &&
-					!rds_ibdev->ports[i].ip_addr) {
-					to_passive = 1;
-				}
+	/* Set the primary IP if it hasn't been set */
+	if (ip_config[to_port].ip_addr) {
+		strcpy(ir->ifr_ifrn.ifrn_name, ip_config[to_port].dev->name);
+		ret = inet_ioctl(rds_ib_inet_socket, SIOCGIFADDR,
+					(unsigned long) ir);
+		if (ret == -EADDRNOTAVAIL) {
+			sin->sin_addr.s_addr = ip_config[to_port].ip_addr;
+			ret = inet_ioctl(rds_ib_inet_socket, SIOCSIFADDR,
+						(unsigned long) ir);
+			if (ret) {
+				printk(KERN_ERR
+					"RDS/IB: inet_ioctl(SIOCSIFADDR) "
+					"failed (%d)\n", ret);
+				goto out;
 			}
+		} else if (ret) {
+			printk(KERN_ERR
+				"RDS/IB: inet_ioctl(SIOCGIFADDR) "
+				"failed (%d)\n", ret);
+			goto out;
 		}
-		rcu_read_unlock();
 	}
 
 	if (failover) {
-		if (to_passive) {
+		in_dev = in_dev_get(ip_config[to_port].dev);
+		if (in_dev && !in_dev->ifa_list) {
 			strcpy(to_dev2, to_dev);
 		} else {
 			strcpy(to_dev2, to_dev);
@@ -445,11 +515,30 @@ static int rds_ib_move_ip(struct net_device *out_dev,
 			strcat(to_dev2, from_dev);
 			to_dev2[IFNAMSIZ-1] = 0;
 		}
-		strcpy(from_dev2, from_dev);
-	} else {
-		if (from_passive) {
+		in_dev_put(in_dev);
+
+		/* Bail if IP already exists on target port */
+		if (rds_ib_addr_exist(ip_config[to_port].dev, addr, NULL))
+			goto out;
+
+		active_port = ip_config[from_port].ip_active_port;
+		if (active_port == from_port) {
 			strcpy(from_dev2, from_dev);
+		} else if (ip_config[active_port].port_state ==
+				RDS_IB_PORT_UP) {
+			if (!rds_ib_addr_exist(ip_config[active_port].dev,
+						addr, from_dev2)) {
+				strcpy(from_dev2,
+					ip_config[active_port].dev->name);
+				strcat(from_dev2, ":");
+				strcat(from_dev2, from_dev);
+			}
 		} else {
+			strcpy(from_dev2, from_dev);
+		}
+	} else {
+		if (!rds_ib_addr_exist(ip_config[from_port].dev,
+						addr, from_dev2)) {
 			strcpy(from_dev2, from_dev);
 			strcat(from_dev2, ":");
 			strcat(from_dev2, to_dev);
@@ -458,193 +547,162 @@ static int rds_ib_move_ip(struct net_device *out_dev,
 		strcpy(to_dev2, to_dev);
 	}
 
-	/* Clear IP on from Interface */
-	sin->sin_addr.s_addr = 0;
-	sin->sin_family = AF_INET;
-	strcpy(ir->ifr_ifrn.ifrn_name, from_dev2);
-	ret = inet_ioctl(rds_ib_inet_socket, SIOCSIFADDR, (unsigned long) ir);
-	if (ret) {
-		printk(KERN_ERR
-			"RDS/IB: inet_ioctl(SIOCSIFADDR,%s) failed (%d)\n",
-			ir->ifr_ifrn.ifrn_name, ret);
-	}
+	/* Clear the IP on old port */
+	ret = rds_ib_set_ip(NULL, NULL, from_dev2, 0, 0, 0);
 
-	ret = rds_ib_set_ip(out_dev, dev_addr, to_dev2, addr, bcast, mask);
+	/* Set the IP on new port */
+	ret = rds_ib_set_ip(ip_config[arp_port].dev,
+				ip_config[to_port].dev->dev_addr,
+				to_dev2, addr, bcast, mask);
 
 	if (ret) {
-		if (failover)
-			printk(KERN_NOTICE
-				"RDS/IP: failed to move IP %pI4 "
-				"from %s to %s\n",
-				&addr, from_dev2, to_dev2);
-		else
-			printk(KERN_NOTICE
-				"RDS/IP: failed to move IP %pI4 "
-				"from %s back to %s\n",
-				&addr, from_dev2, to_dev2);
+		printk(KERN_NOTICE
+		       "RDS/IP: failed to move IP %pI4 "
+		       "from %s to %s\n",
+		       &addr, from_dev2, to_dev2);
 	} else {
-		if (failover)
-			printk(KERN_NOTICE
-				"RDS/IB: IP %pI4 migrated over to %s\n",
-				&addr, to_dev2);
-		else
-			printk(KERN_NOTICE
-				"RDS/IB: IP %pI4 migrated back to %s\n",
-				&addr, to_dev2);
+		printk(KERN_NOTICE
+		       "RDS/IB: IP %pI4 migrated from %s to %s\n",
+		       &addr, from_dev2, to_dev2);
 	}
 
+out:
 	kunmap(page);
 	__free_page(page);
 
 	return ret;
 }
 
-static void rds_ib_init_port(struct rds_ib_device *rds_ibdev,
-				struct net_device *net_dev,
-				u8 port_num)
+static void rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
+				struct net_device	*net_dev,
+				u8			port_num)
 {
-	strcpy(rds_ibdev->ports[port_num].if_name, net_dev->name);
-	rds_ibdev->ports[port_num].dev = net_dev;
-	rds_ibdev->ports[port_num].ip_active_port = 0;
+	ip_port_cnt++;
+	ip_config[ip_port_cnt].port_num = port_num;
+	ip_config[ip_port_cnt].dev = net_dev;
+	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
+	ip_config[ip_port_cnt].ip_active_port = 0;
+	strcpy(ip_config[ip_port_cnt].if_name, net_dev->name);
 
 	if (net_dev->operstate == IF_OPER_UP)
-		rds_ibdev->ports[port_num].port_state = RDS_IB_PORT_UP;
+		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
 	else
-		rds_ibdev->ports[port_num].port_state = RDS_IB_PORT_DOWN;
+		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_DOWN;
 }
 
-static void rds_ib_set_port(struct rds_ib_device *rds_ibdev,
-				struct net_device *net_dev,
-				char *if_name, u8 port_num,
-				__be32 ip_addr,
-				__be32 ip_bcast,
-				__be32 ip_mask)
+static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
+				struct net_device	*net_dev,
+				char			*if_name,
+				u8			port_num,
+				__be32			ip_addr,
+				__be32			ip_bcast,
+				__be32			ip_mask)
 {
 	unsigned int	idx;
+	u8	port = rds_ib_port_lookup(rds_ibdev, port_num);
 
 	if (!strcmp(net_dev->name, if_name)) {
-		strcpy(rds_ibdev->ports[port_num].if_name, if_name);
-		rds_ibdev->ports[port_num].ip_addr = ip_addr;
-		rds_ibdev->ports[port_num].ip_bcast = ip_bcast;
-		rds_ibdev->ports[port_num].ip_mask = ip_mask;
-		rds_ibdev->ports[port_num].ip_active_port = port_num;
+		strcpy(ip_config[port].if_name, if_name);
+		ip_config[port].ip_addr = ip_addr;
+		ip_config[port].ip_bcast = ip_bcast;
+		ip_config[port].ip_mask = ip_mask;
+		ip_config[port].ip_active_port = port;
 	} else {
-		idx = rds_ibdev->ports[port_num].alias_cnt++;
-		strcpy(rds_ibdev->ports[port_num].
-			aliases[idx].if_name, if_name);
-		rds_ibdev->ports[port_num].
-			aliases[idx].ip_addr = ip_addr;
-		rds_ibdev->ports[port_num].
-			aliases[idx].ip_bcast = ip_bcast;
-		rds_ibdev->ports[port_num].
-			aliases[idx].ip_mask = ip_mask;
+		idx = ip_config[port].alias_cnt++;
+		strcpy(ip_config[port].aliases[idx].if_name, if_name);
+		ip_config[port].aliases[idx].ip_addr = ip_addr;
+		ip_config[port].aliases[idx].ip_bcast = ip_bcast;
+		ip_config[port].aliases[idx].ip_mask = ip_mask;
 	}
 }
 
-static void rds_ib_do_failover(struct rds_ib_device *rds_ibdev,
-				u8 from_port,
-				u8 to_port)
+static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 {
-	u8      i, j;
+	u8      j;
 	int	ret;
 
-	for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-		if ((from_port != i &&
-			i == rds_ibdev->ports[i].ip_active_port) ||
-			i == to_port) {
+	if (!ip_config[from_port].ip_addr)
+		return;
 
-			if (!rds_ib_move_ip(
-				rds_ibdev->ports[i].dev,
-				rds_ibdev->ports[i].dev->dev_addr,
-				rds_ibdev->ports[from_port].if_name,
-				rds_ibdev->ports[i].if_name,
-				rds_ibdev->ports[from_port].ip_addr,
-				rds_ibdev->ports[from_port].ip_bcast,
-				rds_ibdev->ports[from_port].ip_mask,
-				1)) {
+	if (!to_port)
+		to_port = rds_ib_get_failover_port(from_port);
 
-				rds_ibdev->ports[from_port].ip_active_port = i;
-				for (j = 0; j < rds_ibdev->ports[from_port].
-					alias_cnt; j++) {
+	if (!arp_port)
+		arp_port = to_port;
 
-					ret = rds_ib_move_ip(
-						rds_ibdev->ports[i].dev,
-						rds_ibdev->ports[i].
-							dev->dev_addr,
-						rds_ibdev->ports[from_port].
-							aliases[j].if_name,
-						rds_ibdev->ports[i].if_name,
-						rds_ibdev->ports[from_port].
-							aliases[j].ip_addr,
-						rds_ibdev->ports[from_port].
-							aliases[j].ip_bcast,
-						rds_ibdev->ports[from_port].
-							aliases[j].ip_mask,
-						1);
-				}
-				break;
+	if (to_port) {
+		if (!rds_ib_move_ip(
+			ip_config[from_port].if_name,
+			ip_config[to_port].if_name,
+			from_port,
+			to_port,
+			arp_port,
+			ip_config[from_port].ip_addr,
+			ip_config[from_port].ip_bcast,
+			ip_config[from_port].ip_mask,
+			1)) {
+
+			ip_config[from_port].ip_active_port = to_port;
+			for (j = 0; j < ip_config[from_port].
+				alias_cnt; j++) {
+
+				ret = rds_ib_move_ip(
+					ip_config[from_port].
+						aliases[j].if_name,
+					ip_config[to_port].if_name,
+					from_port,
+					to_port,
+					arp_port,
+					ip_config[from_port].
+						aliases[j].ip_addr,
+					ip_config[from_port].
+						aliases[j].ip_bcast,
+					ip_config[from_port].
+						aliases[j].ip_mask,
+					1);
 			}
 		}
 	}
 }
 
-static void rds_ib_do_set_ip(struct rds_ib_device *rds_ibdev,
-				u8 port)
+static void rds_ib_do_failback(u8 port)
 {
-	int     ret;
-	u8      j;
-
-	ret = rds_ib_set_ip(rds_ibdev->ports[port].dev,
-			rds_ibdev->ports[port].dev->dev_addr,
-			rds_ibdev->ports[port].if_name,
-			rds_ibdev->ports[port].ip_addr,
-			rds_ibdev->ports[port].ip_bcast,
-			rds_ibdev->ports[port].ip_mask);
-
-	for (j = 0; j < rds_ibdev->ports[port].alias_cnt; j++) {
-		ret = rds_ib_set_ip(rds_ibdev->ports[port].dev,
-				rds_ibdev->ports[port].dev->dev_addr,
-				rds_ibdev->ports[port].aliases[j].if_name,
-				rds_ibdev->ports[port].aliases[j].ip_addr,
-				rds_ibdev->ports[port].aliases[j].ip_bcast,
-				rds_ibdev->ports[port].aliases[j].ip_mask);
-	}
-}
-
-static void rds_ib_do_failback(struct rds_ib_device *rds_ibdev,
-				u8 port)
-{
-	u8      ip_active_port = rds_ibdev->ports[port].ip_active_port;
+	u8      ip_active_port = ip_config[port].ip_active_port;
 	u8      j;
 	int     ret;
 
-	if (port != rds_ibdev->ports[port].ip_active_port) {
+	if (!ip_config[port].ip_addr)
+		return;
+
+	if (port != ip_config[port].ip_active_port) {
 		if (!rds_ib_move_ip(
-			rds_ibdev->ports[ip_active_port].dev,
-			rds_ibdev->ports[port].dev->dev_addr,
-			rds_ibdev->ports[ip_active_port].if_name,
-			rds_ibdev->ports[port].if_name,
-			rds_ibdev->ports[port].ip_addr,
-			rds_ibdev->ports[port].ip_bcast,
-			rds_ibdev->ports[port].ip_mask,
+			ip_config[ip_active_port].if_name,
+			ip_config[port].if_name,
+			ip_active_port,
+			port,
+			ip_active_port,
+			ip_config[port].ip_addr,
+			ip_config[port].ip_bcast,
+			ip_config[port].ip_mask,
 			0)) {
 
-			for (j = 0; j < rds_ibdev->ports[port].
+			ip_config[port].ip_active_port = port;
+			for (j = 0; j < ip_config[port].
 				alias_cnt; j++) {
 
 				ret = rds_ib_move_ip(
-					rds_ibdev->ports[ip_active_port].dev,
-					rds_ibdev->ports[port].
-						dev->dev_addr,
-					rds_ibdev->ports[ip_active_port].
+					ip_config[ip_active_port].
 						if_name,
-					rds_ibdev->ports[port].
+					ip_config[port].
 						aliases[j].if_name,
-					rds_ibdev->ports[port].
+					ip_active_port,
+					port,
+					ip_active_port,
+					ip_config[port].
 						aliases[j].ip_addr,
-					rds_ibdev->ports[port].
+					ip_config[port].
 						aliases[j].ip_bcast,
-					rds_ibdev->ports[port].
+					ip_config[port].
 						aliases[j].ip_mask,
 					0);
 			}
@@ -654,18 +712,25 @@ static void rds_ib_do_failback(struct rds_ib_device *rds_ibdev,
 
 static void rds_ib_failover(struct work_struct *_work)
 {
-	struct rds_ib_port_ud_work *work =
+	struct rds_ib_port_ud_work	*work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
-	struct rds_ib_device *rds_ibdev = work->rds_ibdev;
-	int ret;
+	int				ret;
+	u8				i;
 
-	if (rds_ibdev->ports[work->port].ip_addr)
-		rds_ib_do_failover(rds_ibdev, work->port, 0);
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (i != work->port &&
+			ip_config[i].port_state == RDS_IB_PORT_DOWN &&
+			ip_config[i].ip_active_port == work->port) {
+			rds_ib_do_failover(i, 0, 0);
+		}
+	}
 
-	if (rds_ibdev->ports[work->port].ip_active_port == work->port) {
-		ret = rds_ib_set_ip(rds_ibdev->ports[work->port].dev,
-				rds_ibdev->ports[work->port].dev->dev_addr,
-				rds_ibdev->ports[work->port].if_name,
+	if (ip_config[work->port].ip_addr)
+		rds_ib_do_failover(work->port, 0, 0);
+
+	if (ip_config[work->port].ip_active_port == work->port) {
+		ret = rds_ib_set_ip(NULL, NULL,
+				ip_config[work->port].if_name,
 				0, 0, 0);
 	}
 
@@ -674,35 +739,41 @@ static void rds_ib_failover(struct work_struct *_work)
 
 static void rds_ib_failback(struct work_struct *_work)
 {
-	struct rds_ib_port_ud_work *work =
+	struct rds_ib_port_ud_work	*work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
-	struct rds_ib_device *rds_ibdev = work->rds_ibdev;
-	u8 i, port = work->port;
-	struct in_device *in_dev;
+	u8				i, ip_active_port, port = work->port;
 
-	if (rds_ibdev->ports[port].ip_addr &&
-		rds_ibdev->ports[port].ip_active_port != port) {
+	ip_active_port = ip_config[port].ip_active_port;
 
-		rds_ib_do_failback(rds_ibdev, port);
+	rds_ib_do_failback(port);
+
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (i == port ||
+			ip_config[i].port_state == RDS_IB_PORT_UP ||
+			!ip_config[i].ip_addr)
+			continue;
+
+		if (ip_config[i].ip_active_port == i) {
+			rds_ib_do_failover(i, 0, ip_active_port);
+		} else if (ip_config[i].ip_active_port == port) {
+			rds_ib_do_failover(i, port, ip_active_port);
+		} else if (ip_config[ip_config[i].ip_active_port].port_state ==
+				RDS_IB_PORT_DOWN) {
+			rds_ib_do_failover(i, 0, ip_active_port);
+		} else if (ip_config[port].rds_ibdev ==
+				ip_config[i].rds_ibdev) {
+			rds_ib_do_failover(i, port, ip_active_port);
+		}
 	}
 
-	rds_ibdev->ports[port].ip_active_port = port;
-	in_dev = in_dev_get(rds_ibdev->ports[port].dev);
+	if (ip_active_port != ip_config[port].ip_active_port) {
+		for (i = 1; i <= ip_port_cnt; i++) {
+			if (ip_config[i].port_state == RDS_IB_PORT_DOWN &&
+				i != ip_active_port && ip_config[i].ip_addr &&
+				ip_config[i].ip_active_port == ip_active_port) {
 
-	for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-		if (rds_ibdev->ports[i].port_state == RDS_IB_PORT_DOWN &&
-			i != port && rds_ibdev->ports[i].ip_addr) {
-
-			if (rds_ibdev->ports[i].ip_active_port == i) {
-				rds_ib_do_failover(rds_ibdev, i, 0);
-			} else if (rds_ibdev->ports[i].ip_active_port == port) {
-				if (in_dev && !in_dev->ifa_list &&
-					rds_ibdev->ports[port].ip_addr) {
-
-					rds_ib_do_set_ip(rds_ibdev, port);
-				}
-
-				rds_ib_do_failover(rds_ibdev, i, port);
+				rds_ib_do_failover(i, ip_active_port,
+							ip_active_port);
 			}
 		}
 	}
@@ -710,15 +781,48 @@ static void rds_ib_failback(struct work_struct *_work)
 	kfree(work);
 }
 
+static int rds_ib_ip_config_down(void)
+{
+	u8	i;
+
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (ip_config[i].port_state == RDS_IB_PORT_UP)
+			return 0;
+	}
+
+	return 1;
+}
+
+static void rds_ib_net_failback(struct work_struct *_work)
+{
+	struct rds_ib_port_ud_work	*work =
+		container_of(_work, struct rds_ib_port_ud_work, work.work);
+	struct in_device		*in_dev;
+
+	in_dev = in_dev_get(ip_config[work->port].dev);
+	if (in_dev && !in_dev->ifa_list &&
+		ip_config[work->port].ip_addr &&
+		work->timeout > 0) {
+		INIT_DELAYED_WORK(&work->work, rds_ib_net_failback);
+		work->timeout -= msecs_to_jiffies(100);
+		queue_delayed_work(rds_wq, &work->work,
+			msecs_to_jiffies(100));
+	} else {
+		rds_ib_failback((struct work_struct *)&work->work);
+	}
+
+	in_dev_put(in_dev);
+}
+
 static void rds_ib_event_handler(struct ib_event_handler *handler,
 				struct ib_event *event)
 {
-	struct rds_ib_device *rds_ibdev =
+	struct rds_ib_device	*rds_ibdev =
 		container_of(handler, typeof(*rds_ibdev), event_handler);
-	u8 port = event->element.port_num;
-	struct rds_ib_port_ud_work *work;
+	u8	port = rds_ib_port_lookup(rds_ibdev, event->element.port_num);
+	struct rds_ib_port_ud_work	*work;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_haip_enabled || !ip_port_cnt)
 		return;
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
@@ -726,8 +830,9 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		return;
 
 	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		rds_ibdev->dev->name, port,
-		rds_ibdev->ports[port].if_name,
+		rds_ibdev->dev->name,
+		event->element.port_num,
+		ip_config[port].if_name,
 		(event->event == IB_EVENT_PORT_ACTIVE) ?
 			"ACTIVE" : "ERROR");
 
@@ -737,7 +842,6 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		return;
 	}
 
-	work->rds_ibdev = rds_ibdev;
 	work->port = port;
 
 	if (event->event == IB_EVENT_PORT_ACTIVE) {
@@ -746,86 +850,55 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 			queue_delayed_work(rds_wq, &work->work, 0);
 		} else
 			kfree(work);
-		rds_ibdev->ports[port].port_state = RDS_IB_PORT_UP;
+		ip_config[port].port_state = RDS_IB_PORT_UP;
 	} else {
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
-		rds_ibdev->ports[port].port_state = RDS_IB_PORT_DOWN;
+		ip_config[port].port_state = RDS_IB_PORT_DOWN;
 	}
-}
-
-static void rds_ib_check_down_port(void)
-{
-	struct rds_ib_device *rds_ibdev;
-	struct rds_ib_port_ud_work *work;
-	u8 i;
-
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-			if (rds_ibdev->ports[i].port_state != RDS_IB_PORT_UP &&
-				rds_ibdev->ports[i].ip_addr) {
-				printk(KERN_NOTICE
-					"RDS/IB: port %s/%d is NOT UP\n",
-					rds_ibdev->dev->name, i);
-
-				work = kzalloc(sizeof *work, GFP_KERNEL);
-				if (!work) {
-					printk(KERN_ERR
-						"RDS/IB: failed to allocate port work\n");
-					return;
-				}
-
-				work->rds_ibdev = rds_ibdev;
-				work->port = i;
-				INIT_DELAYED_WORK(&work->work, rds_ib_failover);				queue_delayed_work(rds_wq, &work->work, 0);
-			}
-		}
-	}
-	flush_workqueue(rds_wq);
 }
 
 static void rds_ib_dump_ip_config(void)
 {
-	struct rds_ib_device *rds_ibdev;
-	int i, j;
+	int	i, j;
 
 	if (!rds_ib_haip_enabled)
 		return;
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-			printk(KERN_ERR "RDS/IB: %s/port_%d/%s: "
-				"IP %pI4/%pI4/%pI4 "
-				"state %s\n",
-				rds_ibdev->dev->name, i,
-				rds_ibdev->ports[i].if_name,
-				&rds_ibdev->ports[i].ip_addr,
-				&rds_ibdev->ports[i].ip_bcast,
-				&rds_ibdev->ports[i].ip_mask,
-				(rds_ibdev->ports[i].port_state == RDS_IB_PORT_UP ? "UP" : "DOWN"));
+	for (i = 1; i <= ip_port_cnt; i++) {
+		printk(KERN_ERR "RDS/IB: %s/port_%d/%s: "
+			"IP %pI4/%pI4/%pI4 "
+			"state %s\n",
+			ip_config[i].rds_ibdev->dev->name,
+			ip_config[i].port_num,
+			ip_config[i].if_name,
+			&ip_config[i].ip_addr,
+			&ip_config[i].ip_bcast,
+			&ip_config[i].ip_mask,
+			(ip_config[i].port_state ==
+				RDS_IB_PORT_UP ? "UP" : "DOWN"));
 
-			for (j = 0; j < rds_ibdev->ports[i].alias_cnt; j++) {
-				printk(KERN_ERR "Alias %s "
-					"IP %pI4/%pI4/%pI4\n",
-					rds_ibdev->ports[i].aliases[j].if_name,
-					&rds_ibdev->ports[i].aliases[j].ip_addr,
-					&rds_ibdev->ports[i].aliases[j].ip_bcast,
-					&rds_ibdev->ports[i].aliases[j].ip_mask);
-			}
+		for (j = 0; j < ip_config[i].alias_cnt; j++) {
+			printk(KERN_ERR "Alias %s "
+				"IP %pI4/%pI4/%pI4\n",
+				ip_config[i].aliases[j].if_name,
+				&ip_config[i].aliases[j].ip_addr,
+				&ip_config[i].aliases[j].ip_bcast,
+				&ip_config[i].aliases[j].ip_mask);
 		}
 	}
 }
 
 static int rds_ib_setup_ports(void)
 {
-	struct net_device *dev;
-	struct in_ifaddr *ifa;
-	struct in_ifaddr **ifap;
-	struct in_device *in_dev;
-	struct rds_ib_device *rds_ibdev;
-	u8      port_num;
-	int     ret = 0;
+	struct net_device	*dev;
+	struct in_ifaddr	*ifa;
+	struct in_ifaddr	**ifap;
+	struct in_device	*in_dev;
+	struct rds_ib_device	*rds_ibdev;
+	u8			port_num;
+	int			ret = 0;
 
 	if (!rds_ib_haip_enabled)
 		return ret;
@@ -871,9 +944,9 @@ static int rds_ib_setup_ports(void)
 					ifa->ifa_mask);
 			}
 		}
+		in_dev_put(in_dev);
 	}
 
-	rds_ib_check_down_port();
 	rds_ib_dump_ip_config();
 out:
 	read_unlock(&dev_base_lock);
@@ -933,11 +1006,12 @@ void rds_ib_add_one(struct ib_device *device)
 	}
 
 	if (rds_ib_haip_enabled) {
-		rds_ibdev->ports = kzalloc(sizeof(struct rds_ib_port) *
-					(device->phys_port_cnt + 1), GFP_KERNEL);
-		if (!rds_ibdev->ports) {
+		ip_config = kzalloc(sizeof(struct rds_ib_port) *
+					RDS_IB_MAX_PORTS + 1, GFP_KERNEL);
+
+		if (!ip_config) {
 			printk(KERN_ERR
-				"RDS/IB: failed to allocate ports\n");
+				"RDS/IB: failed to allocate IP config\n");
 			goto put_dev;
 		}
 
@@ -1040,33 +1114,28 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
 	u8 port = 0;
 	u8 i;
-	struct rds_ib_device	*rds_ibdev;
 	struct rds_ib_port_ud_work *work;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_haip_enabled || !ip_port_cnt)
 		return NOTIFY_DONE;
 
 	if (event != NETDEV_UP && event != NETDEV_DOWN)
 		return NOTIFY_DONE;
 
-	rcu_read_lock();
-	list_for_each_entry(rds_ibdev, &rds_ib_devices, list) {
-		for (i = 1; i <= rds_ibdev->dev->phys_port_cnt; i++) {
-			if (!strcmp(ndev->name,
-				rds_ibdev->ports[i].if_name)) {
-					port = i;
-					goto out;
-				}
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (!strcmp(ndev->name, ip_config[i].if_name)) {
+			port = i;
+			break;
 		}
 	}
-	rcu_read_unlock();
-out:
+
 	if (!port)
 		return NOTIFY_DONE;
 
 
 	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		rds_ibdev->dev->name, port, ndev->name,
+		ip_config[port].rds_ibdev->dev->name,
+		ip_config[port].port_num, ndev->name,
 		(event == NETDEV_UP) ? "UP" : "DOWN");
 
 	work = kzalloc(sizeof *work, GFP_KERNEL);
@@ -1075,24 +1144,32 @@ out:
 		return NOTIFY_DONE;
 	}
 
-	work->rds_ibdev = rds_ibdev;
 	work->dev = ndev;
 	work->port = port;
 
 	switch (event) {
 	case NETDEV_UP:
 		if (rds_ib_haip_fallback) {
-			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
-			queue_delayed_work(rds_wq, &work->work, msecs_to_jiffies(100));
+			if (rds_ib_ip_config_down()) {
+				INIT_DELAYED_WORK(&work->work,
+					rds_ib_net_failback);
+				work->timeout = msecs_to_jiffies(10000);
+			} else {
+				INIT_DELAYED_WORK(&work->work,
+					rds_ib_net_failback);
+				work->timeout = msecs_to_jiffies(1000);
+			}
+			queue_delayed_work(rds_wq, &work->work,
+				msecs_to_jiffies(100));
 		} else
 			kfree(work);
 
-		rds_ibdev->ports[port].port_state = NETDEV_UP;
+		ip_config[port].port_state = NETDEV_UP;
 		break;
 	case NETDEV_DOWN:
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
-		rds_ibdev->ports[port].port_state = RDS_IB_PORT_DOWN;
+		ip_config[port].port_state = RDS_IB_PORT_DOWN;
 		break;
 	}
 
