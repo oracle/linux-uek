@@ -94,6 +94,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	union lpfc_wqe *temp_wqe;
 	struct lpfc_register doorbell;
 	uint32_t host_index;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -101,7 +102,8 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	temp_wqe = q->qe[q->host_index].wqe;
 
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->host_index + 1) % q->entry_count) == q->hba_index)
+	idx = ((q->host_index + 1) % q->entry_count); 
+	if (idx == q->hba_index)
 		return -ENOMEM;
 	/* set consumption flag every once in a while */
 	if (!((q->host_index + 1) % q->entry_repost))
@@ -112,7 +114,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 
 	/* Update the host index before invoking device */
 	host_index = q->host_index;
-	q->host_index = ((q->host_index + 1) % q->entry_count);
+	q->host_index = idx;
 
 	/* Ring Doorbell */
 	doorbell.word0 = 0;
@@ -120,7 +122,6 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	bf_set(lpfc_wq_doorbell_index, &doorbell, host_index);
 	bf_set(lpfc_wq_doorbell_id, &doorbell, q->queue_id);
 	writel(doorbell.word0, q->phba->sli4_hba.WQDBregaddr);
-	readl(q->phba->sli4_hba.WQDBregaddr); /* Flush */
 
 	return 0;
 }
@@ -194,7 +195,6 @@ lpfc_sli4_mq_put(struct lpfc_queue *q, struct lpfc_mqe *mqe)
 	bf_set(lpfc_mq_doorbell_num_posted, &doorbell, 1);
 	bf_set(lpfc_mq_doorbell_id, &doorbell, q->queue_id);
 	writel(doorbell.word0, q->phba->sli4_hba.MQDBregaddr);
-	readl(q->phba->sli4_hba.MQDBregaddr); /* Flush */
 	return 0;
 }
 
@@ -234,6 +234,7 @@ static struct lpfc_eqe *
 lpfc_sli4_eq_get(struct lpfc_queue *q)
 {
 	struct lpfc_eqe *eqe;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -244,10 +245,11 @@ lpfc_sli4_eq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_eqe_valid, eqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->hba_index + 1) % q->entry_count) == q->host_index)
+	idx = ((q->hba_index + 1) % q->entry_count); 
+	if (idx == q->host_index) 
 		return NULL;
 
-	q->hba_index = ((q->hba_index + 1) % q->entry_count);
+	q->hba_index = idx;
 	return eqe;
 }
 
@@ -318,6 +320,7 @@ static struct lpfc_cqe *
 lpfc_sli4_cq_get(struct lpfc_queue *q)
 {
 	struct lpfc_cqe *cqe;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -327,11 +330,12 @@ lpfc_sli4_cq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_cqe_valid, q->qe[q->hba_index].cqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->hba_index + 1) % q->entry_count) == q->host_index)
+	idx = ((q->hba_index + 1) % q->entry_count); 
+	if (idx == q->host_index) 
 		return NULL;
 
 	cqe = q->qe[q->hba_index].cqe;
-	q->hba_index = ((q->hba_index + 1) % q->entry_count);
+	q->hba_index = idx;
 	return cqe;
 }
 
