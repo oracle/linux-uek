@@ -20,6 +20,7 @@
  *******************************************************************/
 
 #include <scsi/scsi_host.h>
+#include <linux/version.h>
 
 #if defined(CONFIG_DEBUG_FS) && !defined(CONFIG_SCSI_LPFC_DEBUG_FS)
 #define CONFIG_SCSI_LPFC_DEBUG_FS
@@ -710,6 +711,7 @@ struct lpfc_hba {
 	uint32_t cfg_log_verbose;
 	uint32_t cfg_aer_support;
 	uint32_t cfg_sriov_nr_virtfn;
+	uint32_t cfg_request_firmware_upgrade;
 	uint32_t cfg_iocb_cnt;
 	uint32_t cfg_suppress_link_up;
 #define LPFC_INITIALIZE_LINK              0	/* do normal init_link mbox */
