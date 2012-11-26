@@ -58,7 +58,7 @@ static int xen_microcode_update(int cpu)
 
 static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device)
 {
-	char name[30];
+	char name[36];
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
 	const struct firmware *firmware;
 	struct ucode_cpu_info *uci = ucode_cpu_info + cpu;
@@ -74,7 +74,11 @@ static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device)
 		break;
 
 	case X86_VENDOR_AMD:
-		snprintf(name, sizeof(name), "amd-ucode/microcode_amd.bin");
+		/* Beginning with family 15h AMD uses family-specific firmware files. */
+		if (c->x86 >= 0x15)
+			snprintf(name, sizeof(name), "amd-ucode/microcode_amd_fam%.2xh.bin", c->x86);
+		else
+			snprintf(name, sizeof(name), "amd-ucode/microcode_amd.bin");
 		break;
 
 	default:
