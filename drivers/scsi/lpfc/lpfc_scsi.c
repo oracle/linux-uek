@@ -3916,6 +3916,8 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	struct lpfc_iocbq *piocbq = &(lpfc_cmd->cur_iocbq);
 	int datadir = scsi_cmnd->sc_data_direction;
 	char tag[2];
+	uint8_t *ptr;
+	bool sli4;
 
 	if (!pnode || !NLP_CHK_NODE_ACT(pnode))
 		return;
@@ -3927,8 +3929,13 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	int_to_scsilun(lpfc_cmd->pCmd->device->lun,
 			&lpfc_cmd->fcp_cmnd->fcp_lun);
 
-	memset(&fcp_cmnd->fcpCdb[0], 0, LPFC_FCP_CDB_LEN);
-	memcpy(&fcp_cmnd->fcpCdb[0], scsi_cmnd->cmnd, scsi_cmnd->cmd_len);
+	ptr = &fcp_cmnd->fcpCdb[0]; 
+	memcpy(ptr, scsi_cmnd->cmnd, scsi_cmnd->cmd_len); 
+	if (scsi_cmnd->cmd_len < LPFC_FCP_CDB_LEN) { 
+		ptr += scsi_cmnd->cmd_len; 
+		memset(ptr, 0, (LPFC_FCP_CDB_LEN - scsi_cmnd->cmd_len)); 
+	} 
+
 	if (scsi_populate_tag_msg(scsi_cmnd, tag)) {
 		switch (tag[0]) {
 		case HEAD_OF_QUEUE_TAG:
@@ -3944,6 +3951,8 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	} else
 		fcp_cmnd->fcpCntl1 = 0;
 
+	sli4 = (phba->sli_rev == LPFC_SLI_REV4);
+
 	/*
 	 * There are three possibilities here - use scatter-gather segment, use
 	 * the single mapping, or neither.  Start the lpfc command prep by
@@ -3953,11 +3962,12 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	if (scsi_sg_count(scsi_cmnd)) {
 		if (datadir == DMA_TO_DEVICE) {
 			iocb_cmd->ulpCommand = CMD_FCP_IWRITE64_CR;
-			if (phba->sli_rev < LPFC_SLI_REV4) {
+			if (sli4)
+				iocb_cmd->ulpPU = PARM_READ_CHECK;
+			else {
 				iocb_cmd->un.fcpi.fcpi_parm = 0;
 				iocb_cmd->ulpPU = 0;
-			} else
-				iocb_cmd->ulpPU = PARM_READ_CHECK;
+			}
 			fcp_cmnd->fcpCntl3 = WRITE_DATA;
 			phba->fc4OutputRequests++;
 		} else {
@@ -3981,7 +3991,7 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	 * of the scsi_cmnd request_buffer
 	 */
 	piocbq->iocb.ulpContext = pnode->nlp_rpi;
-	if (phba->sli_rev == LPFC_SLI_REV4)
+	if (sli4)
 		piocbq->iocb.ulpContext =
 		  phba->sli4_hba.rpi_ids[pnode->nlp_rpi];
 	if (pnode->nlp_fcp_info & NLP_FCP_2_DEVICE)
@@ -4144,7 +4154,7 @@ lpfc_info(struct Scsi_Host *host)
 {
 	struct lpfc_vport *vport = (struct lpfc_vport *) host->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
-	int len;
+	int len, link_speed = 0;
 	static char  lpfcinfobuf[384];
 
 	memset(lpfcinfobuf,0,384);
@@ -4165,12 +4175,18 @@ lpfc_info(struct Scsi_Host *host)
 				 phba->Port);
 		}
 		len = strlen(lpfcinfobuf);
-		if (phba->sli4_hba.link_state.logical_speed) {
-			snprintf(lpfcinfobuf + len,
-				 384-len,
-				 " Logical Link Speed: %d Mbps",
-				 phba->sli4_hba.link_state.logical_speed * 10);
+		if (phba->sli_rev <= LPFC_SLI_REV3) {
+			link_speed = lpfc_sli_port_speed_get(phba);
+		} else {
+			if (phba->sli4_hba.link_state.logical_speed)
+				link_speed =
+				      phba->sli4_hba.link_state.logical_speed;
+			else
+				link_speed = phba->sli4_hba.link_state.speed;
 		}
+		if (link_speed != 0)
+			snprintf(lpfcinfobuf + len, 384-len,
+				 " Logical Link Speed: %d Mbps", link_speed);
 	}
 	return lpfcinfobuf;
 }

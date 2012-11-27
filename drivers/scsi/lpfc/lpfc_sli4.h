@@ -90,6 +90,9 @@
 
 #define LPFC_FW_RESET_MAXIMUM_WAIT_10MS_CNT 12000
 
+#define INT_FW_UPGRADE	0
+#define RUN_FW_UPGRADE	1
+
 enum lpfc_sli4_queue_type {
 	LPFC_EQ,
 	LPFC_GCQ,
@@ -145,7 +148,7 @@ struct lpfc_queue {
 };
 
 struct lpfc_sli4_link {
-	uint8_t speed;
+	uint16_t speed;
 	uint8_t duplex;
 	uint8_t status;
 	uint8_t type;

@@ -458,6 +458,8 @@ void lpfc_sli4_queue_destroy(struct lpfc_hba *);
 void lpfc_sli4_abts_err_handler(struct lpfc_hba *, struct lpfc_nodelist *,
 				struct sli4_wcqe_xri_aborted *);
 int lpfc_hba_init_link_fc_topology(struct lpfc_hba *, uint32_t);
+void lpfc_sli_abts_recover_port(struct lpfc_vport *,
+				struct lpfc_nodelist *);
 int lpfc_issue_reg_vfi(struct lpfc_vport *);
 int lpfc_issue_unreg_vfi(struct lpfc_vport *);
 int lpfc_selective_reset(struct lpfc_hba *);
@@ -465,3 +467,5 @@ int lpfc_sli4_read_config(struct lpfc_hba *);
 void lpfc_sli4_node_prep(struct lpfc_hba *);
 int lpfc_sli4_xri_sgl_update(struct lpfc_hba *);
 void lpfc_free_sgl_list(struct lpfc_hba *, struct list_head *);
+uint32_t lpfc_sli_port_speed_get(struct lpfc_hba *);
+int lpfc_sli4_request_firmware_update(struct lpfc_hba *, uint8_t);

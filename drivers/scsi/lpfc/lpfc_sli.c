@@ -94,6 +94,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	union lpfc_wqe *temp_wqe;
 	struct lpfc_register doorbell;
 	uint32_t host_index;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -101,7 +102,8 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	temp_wqe = q->qe[q->host_index].wqe;
 
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->host_index + 1) % q->entry_count) == q->hba_index)
+	idx = ((q->host_index + 1) % q->entry_count); 
+	if (idx == q->hba_index)
 		return -ENOMEM;
 	/* set consumption flag every once in a while */
 	if (!((q->host_index + 1) % q->entry_repost))
@@ -112,7 +114,7 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 
 	/* Update the host index before invoking device */
 	host_index = q->host_index;
-	q->host_index = ((q->host_index + 1) % q->entry_count);
+	q->host_index = idx;
 
 	/* Ring Doorbell */
 	doorbell.word0 = 0;
@@ -120,7 +122,6 @@ lpfc_sli4_wq_put(struct lpfc_queue *q, union lpfc_wqe *wqe)
 	bf_set(lpfc_wq_doorbell_index, &doorbell, host_index);
 	bf_set(lpfc_wq_doorbell_id, &doorbell, q->queue_id);
 	writel(doorbell.word0, q->phba->sli4_hba.WQDBregaddr);
-	readl(q->phba->sli4_hba.WQDBregaddr); /* Flush */
 
 	return 0;
 }
@@ -194,7 +195,6 @@ lpfc_sli4_mq_put(struct lpfc_queue *q, struct lpfc_mqe *mqe)
 	bf_set(lpfc_mq_doorbell_num_posted, &doorbell, 1);
 	bf_set(lpfc_mq_doorbell_id, &doorbell, q->queue_id);
 	writel(doorbell.word0, q->phba->sli4_hba.MQDBregaddr);
-	readl(q->phba->sli4_hba.MQDBregaddr); /* Flush */
 	return 0;
 }
 
@@ -234,6 +234,7 @@ static struct lpfc_eqe *
 lpfc_sli4_eq_get(struct lpfc_queue *q)
 {
 	struct lpfc_eqe *eqe;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -244,10 +245,11 @@ lpfc_sli4_eq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_eqe_valid, eqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->hba_index + 1) % q->entry_count) == q->host_index)
+	idx = ((q->hba_index + 1) % q->entry_count); 
+	if (idx == q->host_index) 
 		return NULL;
 
-	q->hba_index = ((q->hba_index + 1) % q->entry_count);
+	q->hba_index = idx;
 	return eqe;
 }
 
@@ -318,6 +320,7 @@ static struct lpfc_cqe *
 lpfc_sli4_cq_get(struct lpfc_queue *q)
 {
 	struct lpfc_cqe *cqe;
+	uint32_t idx;
 
 	/* sanity check on queue memory */
 	if (unlikely(!q))
@@ -327,11 +330,12 @@ lpfc_sli4_cq_get(struct lpfc_queue *q)
 	if (!bf_get_le32(lpfc_cqe_valid, q->qe[q->hba_index].cqe))
 		return NULL;
 	/* If the host has not yet processed the next entry then we are done */
-	if (((q->hba_index + 1) % q->entry_count) == q->host_index)
+	idx = ((q->hba_index + 1) % q->entry_count); 
+	if (idx == q->host_index) 
 		return NULL;
 
 	cqe = q->qe[q->hba_index].cqe;
-	q->hba_index = ((q->hba_index + 1) % q->entry_count);
+	q->hba_index = idx;
 	return cqe;
 }
 
@@ -3915,9 +3919,9 @@ lpfc_sli4_brdreset(struct lpfc_hba *phba)
 	pci_write_config_word(phba->pcidev, PCI_COMMAND, (cfg_value &
 			      ~(PCI_COMMAND_PARITY | PCI_COMMAND_SERR)));
 
-	/* Perform FCoE PCI function reset */
-	lpfc_sli4_queue_destroy(phba);
+	/* Perform FCoE PCI function reset before freeing queue memory */
 	rc = lpfc_pci_function_reset(phba);
+	lpfc_sli4_queue_destroy(phba);
 
 	/* Restore PCI cmd register */
 	pci_write_config_word(phba->pcidev, PCI_COMMAND, cfg_value);
@@ -7024,6 +7028,40 @@ lpfc_sli4_async_mbox_unblock(struct lpfc_hba *phba)
 }
 
 /**
+ * lpfc_sli4_wait_bmbx_ready - Wait for bootstrap mailbox register ready
+ * @phba: Pointer to HBA context object.
+ * @mboxq: Pointer to mailbox object.
+ *
+ * The function waits for the bootstrap mailbox register ready bit from
+ * port for twice the regular mailbox command timeout value.
+ *
+ *      0 - no timeout on waiting for bootstrap mailbox register ready.
+ *      MBXERR_ERROR - wait for bootstrap mailbox register timed out.
+ **/
+static int
+lpfc_sli4_wait_bmbx_ready(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
+{
+	uint32_t db_ready;
+	unsigned long timeout;
+	struct lpfc_register bmbx_reg;
+
+	timeout = msecs_to_jiffies(lpfc_mbox_tmo_val(phba, mboxq)
+				   * 1000) + jiffies;
+
+	do {
+		bmbx_reg.word0 = readl(phba->sli4_hba.BMBXregaddr);
+		db_ready = bf_get(lpfc_bmbx_rdy, &bmbx_reg);
+		if (!db_ready)
+			msleep(2);
+
+		if (time_after(jiffies, timeout))
+			return MBXERR_ERROR;
+	} while (!db_ready);
+
+	return 0;
+}
+
+/**
  * lpfc_sli4_post_sync_mbox - Post an SLI4 mailbox to the bootstrap mailbox
  * @phba: Pointer to HBA context object.
  * @mboxq: Pointer to mailbox object.
@@ -7044,15 +7082,12 @@ lpfc_sli4_post_sync_mbox(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 {
 	int rc = MBX_SUCCESS;
 	unsigned long iflag;
-	uint32_t db_ready;
 	uint32_t mcqe_status;
 	uint32_t mbx_cmnd;
-	unsigned long timeout;
 	struct lpfc_sli *psli = &phba->sli;
 	struct lpfc_mqe *mb = &mboxq->u.mqe;
 	struct lpfc_bmbx_create *mbox_rgn;
 	struct dma_address *dma_address;
-	struct lpfc_register bmbx_reg;
 
 	/*
 	 * Only one mailbox can be active to the bootstrap mailbox region
@@ -7076,6 +7111,11 @@ lpfc_sli4_post_sync_mbox(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 	phba->sli.mbox_active = mboxq;
 	spin_unlock_irqrestore(&phba->hbalock, iflag);
 
+	/* wait for bootstrap mbox register for readyness */
+	rc = lpfc_sli4_wait_bmbx_ready(phba, mboxq);
+	if (rc)
+		goto exit;
+
 	/*
 	 * Initialize the bootstrap memory region to avoid stale data areas
 	 * in the mailbox post.  Then copy the caller's mailbox contents to
@@ -7090,35 +7130,18 @@ lpfc_sli4_post_sync_mbox(struct lpfc_hba *phba, LPFC_MBOXQ_t *mboxq)
 	dma_address = &phba->sli4_hba.bmbx.dma_address;
 	writel(dma_address->addr_hi, phba->sli4_hba.BMBXregaddr);
 
-	timeout = msecs_to_jiffies(lpfc_mbox_tmo_val(phba, mboxq)
-				   * 1000) + jiffies;
-	do {
-		bmbx_reg.word0 = readl(phba->sli4_hba.BMBXregaddr);
-		db_ready = bf_get(lpfc_bmbx_rdy, &bmbx_reg);
-		if (!db_ready)
-			msleep(2);
-
-		if (time_after(jiffies, timeout)) {
-			rc = MBXERR_ERROR;
-			goto exit;
-		}
-	} while (!db_ready);
+	/* wait for bootstrap mbox register for hi-address write done */
+	rc = lpfc_sli4_wait_bmbx_ready(phba, mboxq);
+	if (rc)
+		goto exit;
 
 	/* Post the low mailbox dma address to the port. */
 	writel(dma_address->addr_lo, phba->sli4_hba.BMBXregaddr);
-	timeout = msecs_to_jiffies(lpfc_mbox_tmo_val(phba, mboxq)
-				   * 1000) + jiffies;
-	do {
-		bmbx_reg.word0 = readl(phba->sli4_hba.BMBXregaddr);
-		db_ready = bf_get(lpfc_bmbx_rdy, &bmbx_reg);
-		if (!db_ready)
-			msleep(2);
 
-		if (time_after(jiffies, timeout)) {
-			rc = MBXERR_ERROR;
-			goto exit;
-		}
-	} while (!db_ready);
+	/* wait for bootstrap mbox register for low address write done */
+	rc = lpfc_sli4_wait_bmbx_ready(phba, mboxq);
+	if (rc)
+		goto exit;
 
 	/*
 	 * Read the CQ to ensure the mailbox has completed.
@@ -8038,6 +8061,8 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		bf_set(wqe_lenloc, &wqe->fcp_icmd.wqe_com,
 		       LPFC_WQE_LENLOC_NONE);
 		bf_set(wqe_ebde_cnt, &wqe->fcp_icmd.wqe_com, 0);
+		bf_set(wqe_erp, &wqe->fcp_icmd.wqe_com,
+		       iocbq->iocb.ulpFCP2Rcvy);
 		break;
 	case CMD_GEN_REQUEST64_CR:
 		/* For this command calculate the xmit length of the
@@ -8458,56 +8483,6 @@ lpfc_extra_ring_setup( struct lpfc_hba *phba)
 	pring->prt[0].type = phba->cfg_multi_ring_type;
 	pring->prt[0].lpfc_sli_rcv_unsol_event = NULL;
 	return 0;
-}
-
-/* lpfc_sli_abts_recover_port - Recover a port that failed an ABTS.
- * @vport: pointer to virtual port object.
- * @ndlp: nodelist pointer for the impacted rport.
- *
- * The driver calls this routine in response to a XRI ABORT CQE
- * event from the port.  In this event, the driver is required to
- * recover its login to the rport even though its login may be valid
- * from the driver's perspective.  The failed ABTS notice from the
- * port indicates the rport is not responding.
- */
-static void
-lpfc_sli_abts_recover_port(struct lpfc_vport *vport,
-			   struct lpfc_nodelist *ndlp)
-{
-	struct Scsi_Host *shost;
-	struct lpfc_hba *phba;
-	unsigned long flags = 0;
-
-	shost = lpfc_shost_from_vport(vport);
-	phba = vport->phba;
-	if (ndlp->nlp_state != NLP_STE_MAPPED_NODE) {
-		lpfc_printf_log(phba, KERN_INFO,
-			LOG_SLI, "3093 No rport recovery needed. "
-			"rport in state 0x%x\n",
-			ndlp->nlp_state);
-		return;
-	}
-	lpfc_printf_log(phba, KERN_ERR, LOG_SLI,
-			"3094 Start rport recovery on shost id 0x%x "
-			"fc_id 0x%06x vpi 0x%x rpi 0x%x state 0x%x "
-			"flags 0x%x\n",
-			shost->host_no, ndlp->nlp_DID,
-			vport->vpi, ndlp->nlp_rpi, ndlp->nlp_state,
-			ndlp->nlp_flag);
-	/*
-	 * The rport is not responding.  Don't attempt ADISC recovery.
-	 * Remove the FCP-2 flag to force a PLOGI.
-	 */
-	spin_lock_irqsave(shost->host_lock, flags);
-	ndlp->nlp_fcp_info &= ~NLP_FCP_2_DEVICE;
-	spin_unlock_irqrestore(shost->host_lock, flags);
-	lpfc_disc_state_machine(vport, ndlp, NULL,
-				NLP_EVT_DEVICE_RECOVERY);
-	lpfc_cancel_retry_delay_tmo(vport, ndlp);
-	spin_lock_irqsave(shost->host_lock, flags);
-	ndlp->nlp_flag |= NLP_NPR_2B_DISC;
-	spin_unlock_irqrestore(shost->host_lock, flags);
-	lpfc_disc_start(vport);
 }
 
 /* lpfc_sli_abts_err_handler - handle a failed ABTS request from an SLI3 port.
