@@ -216,6 +216,36 @@ void mlx4_en_deactivate_tx_ring(struct mlx4_en_priv *priv,
 		       MLX4_QP_STATE_RST, NULL, 0, 0, &ring->qp);
 }
 
+static void mlx4_en_stamp_wqe(struct mlx4_en_priv *priv,
+		       struct mlx4_en_tx_ring *ring,
+		       int index, u8 owner)
+{
+	struct mlx4_en_tx_info *tx_info = &ring->tx_info[index];
+	struct mlx4_en_tx_desc *tx_desc = ring->buf + index * TXBB_SIZE;
+	void *end = ring->buf + ring->buf_size;
+	__be32 *ptr = (__be32 *)tx_desc;
+	__be32 stamp = cpu_to_be32(STAMP_VAL | (!!owner << STAMP_SHIFT));
+	int i;
+
+	/* Optimize the common case when there are no wraparounds */
+	if (likely((void *)tx_desc + tx_info->nr_txbb * TXBB_SIZE <= end))
+		/* Stamp the freed descriptor */
+		for (i = 0; i < tx_info->nr_txbb * TXBB_SIZE; i += STAMP_STRIDE) {
+			*ptr = stamp;
+			ptr += STAMP_DWORDS;
+		}
+	else
+		/* Stamp the freed descriptor */
+		for (i = 0; i < tx_info->nr_txbb * TXBB_SIZE; i += STAMP_STRIDE) {
+			*ptr = stamp;
+			ptr += STAMP_DWORDS;
+			if ((void *)ptr >= end) {
+				ptr = ring->buf;
+				stamp ^= cpu_to_be32(0x80000000);
+			}
+		}
+}
+
 
 static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 				struct mlx4_en_tx_ring *ring,
@@ -230,8 +260,6 @@ static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 	void *end = ring->buf + ring->buf_size;
 	int frags = skb_shinfo(skb)->nr_frags;
 	int i;
-	__be32 *ptr = (__be32 *)tx_desc;
-	__be32 stamp = cpu_to_be32(STAMP_VAL | (!!owner << STAMP_SHIFT));
 	struct skb_shared_hwtstamps hwts;
 
 	if (timestamp) {
@@ -257,12 +285,6 @@ static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 					skb_frag_size(frag), PCI_DMA_TODEVICE);
 			}
 		}
-		/* Stamp the freed descriptor */
-		for (i = 0; i < tx_info->nr_txbb * TXBB_SIZE; i += STAMP_STRIDE) {
-			*ptr = stamp;
-			ptr += STAMP_DWORDS;
-		}
-
 	} else {
 		if (!tx_info->inl) {
 			if ((void *) data >= end) {
@@ -288,16 +310,6 @@ static u32 mlx4_en_free_tx_desc(struct mlx4_en_priv *priv,
 				++data;
 			}
 		}
-		/* Stamp the freed descriptor */
-		for (i = 0; i < tx_info->nr_txbb * TXBB_SIZE; i += STAMP_STRIDE) {
-			*ptr = stamp;
-			ptr += STAMP_DWORDS;
-			if ((void *) ptr >= end) {
-				ptr = ring->buf;
-				stamp ^= cpu_to_be32(0x80000000);
-			}
-		}
-
 	}
 	dev_kfree_skb(skb);
 	return tx_info->nr_txbb;
@@ -343,8 +355,9 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 	struct mlx4_en_tx_ring *ring = priv->tx_ring[cq->ring];
 	struct mlx4_cqe *cqe;
 	u16 index;
-	u16 new_index, ring_index;
+	u16 new_index, ring_index, stamp_index;
 	u32 txbbs_skipped = 0;
+	u32 txbbs_stamp = 0;
 	u32 cons_index = mcq->cons_index;
 	int size = cq->size;
 	u32 size_mask = ring->size_mask;
@@ -363,6 +376,7 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 	index = cons_index & size_mask;
 	cqe = &buf[(index << factor) + factor];
 	ring_index = ring->cons & size_mask;
+	stamp_index = ring_index;
 	tx_info = &ring->tx_info[ring_index];
 
 	/* Process all completed CQEs */
@@ -396,6 +410,11 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 					priv, ring, ring_index,
 					!!((ring->cons + txbbs_skipped) &
 					ring->size), timestamp);
+			mlx4_en_stamp_wqe(priv, ring, stamp_index,
+					  !!((ring->cons + txbbs_stamp) &
+						ring->size));
+			stamp_index = ring_index;
+			txbbs_stamp = txbbs_skipped;
 			packets++;
 			bytes += ring->tx_info[ring_index].nr_bytes;
 		} while ((++done < budget) && (ring_index != new_index));
