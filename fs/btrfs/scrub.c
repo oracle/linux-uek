@@ -2222,6 +2222,11 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 		if (ret)
 			break;
 
+		if (sctx->stat.malloc_errors > 0) {
+			ret = -ENOMEM;
+			break;
+		}
+
 		key.offset = found_key.offset + length;
 		btrfs_release_path(path);
 	}
