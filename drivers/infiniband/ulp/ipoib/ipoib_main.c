@@ -837,7 +837,9 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
 	struct ipoib_header *header;
 	unsigned long flags;
+	struct ipoib_send_ring *send_ring;
 
+	send_ring = priv->send_ring + skb_get_queue_mapping(skb);
 	header = (struct ipoib_header *) skb->data;
 
 	if (unlikely(cb->hwaddr[4] == 0xff)) {
@@ -847,7 +849,7 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		    (header->proto != htons(ETH_P_ARP)) &&
 		    (header->proto != htons(ETH_P_RARP))) {
 			/* ethertype not supported by IPoIB */
-			++dev->stats.tx_dropped;
+			++send_ring->stats.tx_dropped;
 			dev_kfree_skb_any(skb);
 			return NETDEV_TX_OK;
 		}
@@ -887,14 +889,22 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 send_using_neigh:
 	/* note we now hold a ref to neigh */
 	if (ipoib_cm_get(neigh)) {
+		/* in select queue cm wasn't enabled ring is likely wrong */
+		if (!IPOIB_CM_SUPPORTED(neigh->daddr))
+			goto requeue;
+
 		if (ipoib_cm_up(neigh)) {
 			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
 			goto unref;
 		}
 	} else if (neigh->ah) {
+		/* in select queue cm was enabled ring is likely wrong */
+		if (IPOIB_CM_SUPPORTED(neigh->daddr) && priv->num_tx_queues > 1)
+			goto requeue;
 		ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 		goto unref;
 	}
+requeue:
 
 	if (skb_queue_len(&neigh->queue) < IPOIB_MAX_PATH_REC_QUEUE) {
 		spin_lock_irqsave(&priv->lock, flags);
