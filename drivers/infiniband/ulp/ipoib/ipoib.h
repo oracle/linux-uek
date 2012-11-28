@@ -357,6 +357,7 @@ struct ipoib_dev_priv {
 	struct net_device *parent;
 	struct list_head child_intfs;
 	struct list_head list;
+	int child_index;
 	int    child_type;
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
@@ -514,8 +515,10 @@ void ipoib_transport_dev_cleanup(struct net_device *dev);
 void ipoib_event(struct ib_event_handler *handler,
 		 struct ib_event *record);
 
-int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey);
-int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey);
+int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
+						unsigned char clone_index);
+int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
+						unsigned char clone_index);
 
 int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		     u16 pkey, int child_type);

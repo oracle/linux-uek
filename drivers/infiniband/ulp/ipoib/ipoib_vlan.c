@@ -119,7 +119,8 @@ err:
 	return result;
 }
 
-int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
+		unsigned char child_index)
 {
 	struct ipoib_dev_priv *ppriv, *priv;
 	char intf_name[IFNAMSIZ];
@@ -128,14 +129,9 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
-
+	
+	priv = NULL;
 	ppriv = netdev_priv(pdev);
-
-	snprintf(intf_name, sizeof intf_name, "%s.%04x",
-		 ppriv->dev->name, pkey);
-	priv = ipoib_intf_alloc(intf_name);
-	if (!priv)
-		return -ENOMEM;
 
 	if (!rtnl_trylock())
 		return restart_syscall();
@@ -143,21 +139,44 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 	mutex_lock(&ppriv->vlan_mutex);
 
 	/*
-	 * First ensure this isn't a duplicate. We check the parent device and
-	 * then all of the legacy child interfaces to make sure the Pkey
-	 * doesn't match.
+	 * First ensure this isn't a duplicate. We check all of the child
+	 * interfaces to make sure the Pkey AND the child index
+	 * don't match.
 	 */
-	if (ppriv->pkey == pkey) {
-		result = -ENOTUNIQ;
-		goto out;
-	}
 
 	list_for_each_entry(tpriv, &ppriv->child_intfs, list) {
 		if (tpriv->pkey == pkey &&
-		    tpriv->child_type == IPOIB_LEGACY_CHILD) {
+		    tpriv->child_type == IPOIB_LEGACY_CHILD && 
+		    priv->child_index == child_index) {
 			result = -ENOTUNIQ;
 			goto out;
 		}
+	}
+
+	/* for the case of non-legacy and same pkey childs we wanted to use
+	 * a notation of ibN.pkey:index and ibN:index but this is problematic
+	 * with tools like ifconfig who treat devices with ":" in their names
+	 * as aliases which are restriced, e.t w.r.t counters, etc */
+	if (ppriv->pkey != pkey && child_index == 0) /* legacy child */
+		snprintf(intf_name, sizeof intf_name, "%s.%04x",
+			 ppriv->dev->name, pkey);
+	else if (ppriv->pkey != pkey && child_index != 0) /* non-legacy child */
+		snprintf(intf_name, sizeof intf_name, "%s.%04x.%d",
+			 ppriv->dev->name, pkey, child_index);
+	else if (ppriv->pkey == pkey && child_index != 0) /* same pkey child */
+		snprintf(intf_name, sizeof intf_name, "%s.%d",
+			 ppriv->dev->name, child_index);
+	else  {
+		printk(KERN_ERR "wrong pkey/child_index pairing %04x %d\n",
+				pkey, child_index);
+		result = -EINVAL;
+		goto out;
+	}
+
+	priv = ipoib_intf_alloc(intf_name);
+	if (!priv) {
+		result = -ENOMEM;
+		goto out;
 	}
 
 	result = __ipoib_vlan_add(ppriv, priv, pkey, IPOIB_LEGACY_CHILD);
@@ -165,7 +184,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 out:
 	mutex_unlock(&ppriv->vlan_mutex);
 
-	if (result)
+	if (result && priv)
 		free_netdev(priv->dev);
 
 	rtnl_unlock();
@@ -173,7 +192,8 @@ out:
 	return result;
 }
 
-int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
+		unsigned char child_index)
 {
 	struct ipoib_dev_priv *ppriv, *priv, *tpriv;
 	struct net_device *dev = NULL;
@@ -188,7 +208,8 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 	mutex_lock(&ppriv->vlan_mutex);
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
 		if (priv->pkey == pkey &&
-		    priv->child_type == IPOIB_LEGACY_CHILD) {
+		    priv->child_type == IPOIB_LEGACY_CHILD &&
+		    priv->child_index == child_index) {
 			unregister_netdevice(priv->dev);
 			list_del(&priv->list);
 			dev = priv->dev;
