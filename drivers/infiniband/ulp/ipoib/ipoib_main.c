@@ -99,12 +99,20 @@ inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
 	struct ipoib_cm_rx *p_cm_ctx = NULL;
 	union skb_cb_data *data = NULL;
 	struct ib_grh *grh = NULL;
+	struct ipoib_header *header;
+	unsigned int tss_mask, tss_qpn_mask_sz;
 
 	p_cm_ctx = wc->qp->qp_context;
 	data = IPOIB_HANDLER_CB(skb);
 
 	data->rx.slid = wc->slid;
-	data->rx.sqpn = wc->src_qp;
+	header = (struct ipoib_header *)(skb->data - IPOIB_ENCAP_LEN);
+	if (header->tss_qpn_mask_sz & cpu_to_be16(0xF000)) {
+		tss_qpn_mask_sz = be16_to_cpu(header->tss_qpn_mask_sz) >> 12;
+		tss_mask = 0xffff >> (16 - tss_qpn_mask_sz);
+		data->rx.sqpn = wc->src_qp & tss_mask;
+	} else
+		data->rx.sqpn = wc->src_qp;
 	data->rx.napi = napi;
 
 	/*TODO: add mcast support.*/
@@ -825,9 +833,67 @@ unref:
 	return NETDEV_TX_OK;
 }
 
-static u16 ipoib_select_queue_null(struct net_device *dev, struct sk_buff *skb)
+static u16 ipoib_select_queue_hw(struct net_device *dev, struct sk_buff *skb)
 {
-	return 0;
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
+
+	/* (BC/MC), stay on this core */
+	if (unlikely(cb->hwaddr[4] == 0xff))
+		return smp_processor_id() % priv->tss_qp_num;
+
+	/* is CM in use */
+	if (IPOIB_CM_SUPPORTED(cb->hwaddr)) {
+		if (ipoib_cm_admin_enabled(dev)) {
+			/* use remote QP for hash, so we use the same ring */
+			u32 *daddr_32 = (u32 *) cb->hwaddr;
+			u32 hv = jhash_1word(*daddr_32 & 0xFFFFFF, 0);
+			return hv % priv->tss_qp_num;
+		}
+		else
+			/* the ADMIN CM might be up until transmit, and
+			 * we might transmit on CM QP not from it's
+			 * designated ring */
+			cb->hwaddr[0] &= ~IPOIB_FLAGS_RC;
+	}
+	return skb_tx_hash(dev, skb);
+}
+
+static u16 ipoib_select_queue_sw(struct net_device *dev, struct sk_buff *skb)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
+	struct ipoib_header *header;
+
+	/* (BC/MC) use designated QDISC -> parent QP */
+	if (unlikely(cb->hwaddr[4] == 0xff))
+		return priv->tss_qp_num;
+
+	/* is CM in use */
+	if (IPOIB_CM_SUPPORTED(cb->hwaddr)) {
+		if (ipoib_cm_admin_enabled(dev)) {
+			/* use remote QP for hash, so we use the same ring */
+			u32 *daddr_32 = (u32 *) cb->hwaddr;
+			u32 hv = jhash_1word(*daddr_32 & 0xFFFFFF, 0);
+			return hv % priv->tss_qp_num;
+		}
+		else
+			/* the ADMIN CM might be up until transmit, and
+			 * we might transmit on CM QP not from it's
+			 * designated ring */
+			cb->hwaddr[0] &= ~IPOIB_FLAGS_RC;
+	}
+
+	/* Did neighbour advertise TSS support */
+	if (unlikely(!IPOIB_TSS_SUPPORTED(cb->hwaddr)))
+		return priv->tss_qp_num;
+
+	/* We are after ipoib_hard_header so skb->data is O.K. */
+	header = (struct ipoib_header *) skb->data;
+	header->tss_qpn_mask_sz |= priv->tss_qpn_mask_sz;
+
+	/* don't use special ring in TX */
+	return __skb_tx_hash(dev, skb, priv->tss_qp_num);
 }
 
 static void ipoib_timeout(struct net_device *dev)
@@ -900,7 +966,7 @@ static int ipoib_hard_header(struct sk_buff *skb,
 	header = (struct ipoib_header *) skb_push(skb, sizeof *header);
 
 	header->proto = htons(type);
-	header->reserved = 0;
+	header->tss_qpn_mask_sz = 0;
 
 	/*
 	 * we don't rely on dst_entry structure,  always stuff the
@@ -1044,6 +1110,7 @@ static void ipoib_reap_neigh(struct work_struct *work)
 static struct ipoib_neigh *ipoib_neigh_ctor(u8 *daddr,
 				      struct net_device *dev)
 {
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_neigh *neigh;
 
 	neigh = kzalloc(sizeof *neigh, GFP_ATOMIC);
@@ -1057,6 +1124,17 @@ static struct ipoib_neigh *ipoib_neigh_ctor(u8 *daddr,
 	ipoib_cm_set(neigh, NULL);
 	/* one ref on behalf of the caller */
 	atomic_set(&neigh->refcnt, 1);
+
+	/*
+	 * ipoib_neigh_alloc can be called from neigh_add_path without
+	 * the protection of spin lock or from ipoib_mcast_send under
+	 * spin lock protection. thus there is a need to use atomic
+	 */
+	if (priv->tss_qp_num > 0)
+		neigh->index = atomic_inc_return(&priv->tx_ring_ind)
+			% priv->tss_qp_num;
+	else
+		neigh->index = 0;
 
 	return neigh;
 }
@@ -1388,8 +1466,7 @@ int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 	for (i = 0; i < priv->num_tx_queues; i++) {
 		send_ring->tx_ring = vzalloc(alloc_size);
 		if (!send_ring->tx_ring) {
-			printk(KERN_WARNING
-			"%s: failed to allocate TX ring (%d entries)\n",
+			pr_warn("%s: failed to allocate TX ring (%d entries)\n",
 			ca->name, ipoib_sendq_size);
 			goto out_send_ring_cleanup;
 		}
@@ -1464,25 +1541,51 @@ static const struct header_ops ipoib_header_ops = {
 	.create	= ipoib_hard_header,
 };
 
-static const struct net_device_ops ipoib_netdev_ops = {
+static const struct net_device_ops ipoib_netdev_ops_no_tss = {
 	.ndo_uninit		 = ipoib_uninit,
 	.ndo_open		 = ipoib_open,
 	.ndo_stop		 = ipoib_stop,
 	.ndo_change_mtu		 = ipoib_change_mtu,
 	.ndo_fix_features	 = ipoib_fix_features,
 	.ndo_start_xmit	 	 = ipoib_start_xmit,
-	.ndo_select_queue 	= ipoib_select_queue_null,
 	.ndo_tx_timeout		 = ipoib_timeout,
 	.ndo_get_stats		= ipoib_get_stats,
 	.ndo_set_rx_mode	 = ipoib_set_mcast_list,
 };
+
+static const struct net_device_ops ipoib_netdev_ops_hw_tss = {
+	.ndo_open	= ipoib_open,
+	.ndo_stop	= ipoib_stop,
+	.ndo_change_mtu		= ipoib_change_mtu,
+	.ndo_fix_features		= ipoib_fix_features,
+	.ndo_start_xmit		= ipoib_start_xmit,
+	.ndo_select_queue		= ipoib_select_queue_hw,
+	.ndo_tx_timeout		= ipoib_timeout,
+	.ndo_get_stats		= ipoib_get_stats,
+	.ndo_set_rx_mode		= ipoib_set_mcast_list,
+};
+
+static const struct net_device_ops ipoib_netdev_ops_sw_tss = {
+	.ndo_open	= ipoib_open,
+	.ndo_stop	= ipoib_stop,
+	.ndo_change_mtu		= ipoib_change_mtu,
+	.ndo_fix_features		= ipoib_fix_features,
+	.ndo_start_xmit		= ipoib_start_xmit,
+	.ndo_select_queue		= ipoib_select_queue_sw,
+	.ndo_tx_timeout		= ipoib_timeout,
+	.ndo_get_stats		= ipoib_get_stats,
+	.ndo_set_rx_mode		= ipoib_set_mcast_list,
+};
+
+
+static const struct net_device_ops *ipoib_netdev_ops;
 
 void ipoib_setup(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
 	/* Use correct ops (ndo_select_queue) */
-	dev->netdev_ops		 = &ipoib_netdev_ops;
+	dev->netdev_ops		 = ipoib_netdev_ops;
 	dev->header_ops		 = &ipoib_header_ops;
 
 	ipoib_set_ethtool_ops(dev);
@@ -1529,6 +1632,16 @@ struct ipoib_dev_priv *ipoib_intf_alloc(const char *name,
 					struct ipoib_dev_priv *template_priv)
 {
 	struct net_device *dev;
+
+	/* Use correct ops (ndo_select_queue) pass to ipoib_setup */
+	if (template_priv->num_tx_queues > 1) {
+		if (template_priv->hca_caps & IB_DEVICE_UD_TSS)
+			ipoib_netdev_ops = &ipoib_netdev_ops_hw_tss;
+		else
+			ipoib_netdev_ops = &ipoib_netdev_ops_sw_tss;
+	} else
+		ipoib_netdev_ops = &ipoib_netdev_ops_no_tss;
+
 
 	dev = alloc_netdev_mqs((int) sizeof(struct ipoib_dev_priv), name,
 			   ipoib_setup,
@@ -1667,6 +1780,7 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 				  struct ib_device *hca)
 {
 	struct ib_device_attr *device_attr;
+	int num_cores;
 	int result = -ENOMEM;
 
 	device_attr = kmalloc(sizeof *device_attr, GFP_KERNEL);
@@ -1685,10 +1799,39 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 	}
 	priv->hca_caps = device_attr->device_cap_flags;
 
+	num_cores = num_online_cpus();
+	if (num_cores == 1 || !(priv->hca_caps & IB_DEVICE_QPG)) {
+		/* No additional QP, only one QP for RX & TX */
+		priv->rss_qp_num = 0;
+		priv->tss_qp_num = 0;
+		priv->num_rx_queues = 1;
+		priv->num_tx_queues = 1;
+		kfree(device_attr);
+		return 0;
+	}
+	num_cores = roundup_pow_of_two(num_cores);
+	if (priv->hca_caps & IB_DEVICE_UD_RSS) {
+		int max_rss_tbl_sz;
+		max_rss_tbl_sz = device_attr->max_rss_tbl_sz;
+		max_rss_tbl_sz = min(num_cores, max_rss_tbl_sz);
+		max_rss_tbl_sz = rounddown_pow_of_two(max_rss_tbl_sz);
+		priv->rss_qp_num    = max_rss_tbl_sz;
+		priv->num_rx_queues = max_rss_tbl_sz;
+	} else {
+		/* No additional QP, only the parent QP for RX */
+		priv->rss_qp_num = 0;
+		priv->num_rx_queues = 1;
+	}
+
 	kfree(device_attr);
 
-	priv->num_rx_queues = 1;
-	priv->num_tx_queues = 1;
+	priv->tss_qp_num = num_cores;
+	if (priv->hca_caps & IB_DEVICE_UD_TSS)
+		/* TSS is supported by HW */
+		priv->num_tx_queues = priv->tss_qp_num;
+	else
+		/* If TSS is not support by HW use the parent QP for ARP */
+		priv->num_tx_queues = priv->tss_qp_num + 1;
 
 	return 0;
 }

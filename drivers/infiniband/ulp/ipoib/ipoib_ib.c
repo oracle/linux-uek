@@ -286,6 +286,7 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev,
 	/*
 	 * Drop packets that this interface sent, ie multicast packets
 	 * that the HCA has replicated.
+	 * Note with SW TSS MC were sent using priv->qp so no need to mask
 	 */
 	if (wc->slid == priv->local_lid && wc->src_qp == priv->qp->qp_num)
 		goto repost;
@@ -1065,6 +1066,15 @@ static void set_rx_rings_qp_state(struct ipoib_dev_priv *priv,
 static void set_rings_qp_state(struct ipoib_dev_priv *priv,
 				enum ib_qp_state new_state)
 {
+	if (priv->hca_caps & IB_DEVICE_UD_TSS) {
+		/* TSS HW is supported, parent QP has no ring (send_ring) */
+		struct ib_qp_attr qp_attr;
+		qp_attr.qp_state = new_state;
+		if (ib_modify_qp(priv->qp, &qp_attr, IB_QP_STATE))
+			ipoib_warn(priv, "Failed to modify QP to state(%d)\n",
+					new_state);
+	}
+
 	set_tx_rings_qp_state(priv, new_state);
 
 	if (priv->num_rx_queues > 1)

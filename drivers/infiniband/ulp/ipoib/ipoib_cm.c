@@ -1059,11 +1059,6 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 
 	priv->cm.tx_cq_ind = index + 1;
 	attr.send_cq = attr.recv_cq = priv->recv_ring[index].recv_cq;
-	/* For ndo_select_queue */
-	index =  (priv->cm.tx_ring_ind < priv->num_tx_queues) ?
-			priv->cm.tx_ring_ind : 0;
-	priv->cm.tx_ring_ind = index + 1;
-	tx->index = index;
 
 	return ib_create_qp(priv->pd, &attr);
 }

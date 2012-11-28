@@ -122,7 +122,7 @@ enum {
 
 struct ipoib_header {
 	__be16	proto;
-	u16	reserved;
+	__be16	tss_qpn_mask_sz;
 };
 
 struct ipoib_cb {
@@ -233,7 +233,6 @@ struct ipoib_cm_tx {
 	unsigned	     tx_tail;
 	unsigned long	     flags;
 	u32		     mtu;
-	int index; /* For ndo_select_queue and ring counters */
 };
 
 struct ipoib_cm_rx_buf {
@@ -264,7 +263,6 @@ struct ipoib_cm_dev_priv {
 	int			num_frags;
 	u32			rx_cq_ind;
 	u32			tx_cq_ind;
-	u32			tx_ring_ind;
 };
 
 struct ipoib_ethtool_st {
@@ -386,9 +384,7 @@ struct ipoib_dev_priv {
 	u16		  pkey_index;
 	struct ib_pd	 *pd;
 	struct ib_mr	 *mr;
-	struct ib_cq	 *recv_cq;
-	struct ib_cq	 *send_cq;
-	struct ib_qp	 *qp;
+	struct ib_qp	 *qp; /* also parent QP for TSS & RSS */
 	u32		  qkey;
 
 	union ib_gid local_gid;
@@ -422,8 +418,12 @@ struct ipoib_dev_priv {
 	struct timer_list poll_timer;
 	struct ipoib_recv_ring *recv_ring;
 	struct ipoib_send_ring *send_ring;
-	unsigned int num_rx_queues;
-	unsigned int num_tx_queues;
+	unsigned int rss_qp_num; /* No RSS HW support 0 */
+	unsigned int tss_qp_num; /* No TSS (HW or SW) used 0 */
+	unsigned int num_rx_queues; /* No RSS HW support 1 */
+	unsigned int num_tx_queues; /* No TSS HW support tss_qp_num + 1 */
+	__be16 tss_qpn_mask_sz; /* Put in ipoib header reserved */
+	atomic_t tx_ring_ind;
 };
 
 struct ipoib_ah {
@@ -466,6 +466,7 @@ struct ipoib_neigh {
 	struct rcu_head     rcu;
 	atomic_t	    refcnt;
 	unsigned long       alive;
+	int index; /* For ndo_select_queue and ring counters */
 };
 
 #define IPOIB_UD_MTU(ib_mtu)		(ib_mtu - IPOIB_ENCAP_LEN)
@@ -593,9 +594,11 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca);
 
 #define IPOIB_FLAGS_RC		0x80
 #define IPOIB_FLAGS_UC		0x40
+#define IPOIB_FLAGS_TSS		0x20
 
 /* We don't support UC connections at the moment */
 #define IPOIB_CM_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_RC))
+#define IPOIB_TSS_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_TSS))
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 
