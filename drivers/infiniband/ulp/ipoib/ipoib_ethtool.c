@@ -155,6 +155,67 @@ static void ipoib_get_ethtool_stats(struct net_device *dev,
 	}
 }
 
+static void ipoib_get_channels(struct net_device *dev,
+			struct ethtool_channels *channel)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+
+	channel->max_rx = priv->max_rx_queues;
+	channel->max_tx = priv->max_tx_queues;
+	channel->max_other = 0;
+	channel->max_combined = priv->max_rx_queues +
+				priv->max_tx_queues;
+	channel->rx_count = priv->num_rx_queues;
+	channel->tx_count = priv->num_tx_queues;
+	channel->other_count = 0;
+	channel->combined_count = priv->num_rx_queues +
+				priv->num_tx_queues;
+}
+
+static int ipoib_set_channels(struct net_device *dev,
+			struct ethtool_channels *channel)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+
+	if (channel->other_count)
+		return -EINVAL;
+
+	if (channel->combined_count !=
+		priv->num_rx_queues + priv->num_tx_queues)
+		return -EINVAL;
+
+	if (channel->rx_count == 0 ||
+		channel->rx_count > priv->max_rx_queues)
+		return -EINVAL;
+
+	if (!is_power_of_2(channel->rx_count))
+		return -EINVAL;
+
+	if (channel->tx_count  == 0 ||
+		channel->tx_count > priv->max_tx_queues)
+		return -EINVAL;
+
+	/* Nothing to do ? */
+	if (channel->rx_count == priv->num_rx_queues &&
+		channel->tx_count == priv->num_tx_queues)
+		return 0;
+
+	/* 1 is always O.K. */
+	if (channel->tx_count > 1) {
+		if (priv->hca_caps & IB_DEVICE_UD_TSS) {
+			/* with HW TSS tx_count is 2^N */
+			if (!is_power_of_2(channel->tx_count))
+				return -EINVAL;
+		} else {
+			/* with SW TSS tx_count = 1 + 2 ^ N */
+			if (!is_power_of_2(channel->tx_count - 1))
+				return -EINVAL;
+		}
+	}
+
+	return ipoib_reinit(dev, channel->rx_count, channel->tx_count);
+}
+
 static const struct ethtool_ops ipoib_ethtool_ops = {
 	.get_drvinfo		= ipoib_get_drvinfo,
 	.get_coalesce		= ipoib_get_coalesce,
@@ -162,6 +223,8 @@ static const struct ethtool_ops ipoib_ethtool_ops = {
 	.get_strings		= ipoib_get_strings,
 	.get_sset_count		= ipoib_get_sset_count,
 	.get_ethtool_stats	= ipoib_get_ethtool_stats,
+	.get_channels		= ipoib_get_channels,
+	.set_channels		= ipoib_set_channels,
 };
 
 void ipoib_set_ethtool_ops(struct net_device *dev)

@@ -743,8 +743,10 @@ static void ipoib_napi_disable(struct net_device *dev)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int i;
 
-	for (i = 0; i < priv->num_rx_queues; i++)
+	for (i = 0; i < priv->num_rx_queues; i++) {
 		napi_disable(&priv->recv_ring[i].napi);
+		netif_napi_del(&priv->recv_ring[i].napi);
+	}
 }
 
 int ipoib_ib_dev_open(struct net_device *dev)

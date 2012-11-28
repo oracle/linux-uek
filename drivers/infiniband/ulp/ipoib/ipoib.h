@@ -420,8 +420,10 @@ struct ipoib_dev_priv {
 	struct ipoib_send_ring *send_ring;
 	unsigned int rss_qp_num; /* No RSS HW support 0 */
 	unsigned int tss_qp_num; /* No TSS (HW or SW) used 0 */
-	unsigned int num_rx_queues; /* No RSS HW support 1 */
-	unsigned int num_tx_queues; /* No TSS HW support tss_qp_num + 1 */
+	unsigned int max_rx_queues; /* No RSS HW support 1 */
+	unsigned int max_tx_queues; /* No TSS HW support tss_qp_num + 1 */
+	unsigned int num_rx_queues; /* Actual */
+	unsigned int num_tx_queues; /* Actual */
 	__be16 tss_qpn_mask_sz; /* Put in ipoib header reserved */
 	atomic_t tx_ring_ind;
 };
@@ -531,6 +533,8 @@ int ipoib_ib_dev_stop(struct net_device *dev, int flush);
 
 int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port);
 void ipoib_dev_cleanup(struct net_device *dev);
+
+int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx);
 
 void ipoib_mcast_join_task(struct work_struct *work);
 void ipoib_mcast_carrier_on_task(struct work_struct *work);

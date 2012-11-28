@@ -1501,24 +1501,14 @@ out:
 	return -ENOMEM;
 }
 
-void ipoib_dev_cleanup(struct net_device *dev)
+static void ipoib_dev_uninit(struct net_device *dev)
 {
-	struct ipoib_dev_priv *priv = netdev_priv(dev), *cpriv, *tcpriv;
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int i;
 	LIST_HEAD(head);
 
 	ASSERT_RTNL();
 
-	ipoib_delete_debug_files(dev);
-
-	/* Delete any child interfaces first */
-	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list) {
-		/* Stop GC on child */
-		set_bit(IPOIB_STOP_NEIGH_GC, &cpriv->flags);
-		cancel_delayed_work(&cpriv->neigh_reap_task);
-		unregister_netdevice_queue(cpriv->dev, &head);
-	}
-	unregister_netdevice_many(&head);
 
 	ipoib_ib_dev_cleanup(dev);
 
@@ -1535,6 +1525,73 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	priv->send_ring = NULL;
 
 	ipoib_neigh_hash_uninit(dev);
+}
+
+void ipoib_dev_cleanup(struct net_device *dev)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev), *cpriv, *tcpriv;
+
+	ipoib_delete_debug_files(dev);
+
+	/* Delete any child interfaces first */
+	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list) {
+		unregister_netdev(cpriv->dev);
+		ipoib_dev_cleanup(cpriv->dev);
+		free_netdev(cpriv->dev);
+	}
+
+	ipoib_dev_uninit(dev);
+}
+
+int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	int flags;
+	int ret;
+
+	flags = dev->flags;
+	ipoib_stop(dev);
+	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags))
+		ib_unregister_event_handler(&priv->event_handler);
+	ipoib_dev_uninit(dev);
+	priv->num_rx_queues = num_rx;
+	priv->num_tx_queues = num_tx;
+	if (num_rx == 1)
+		priv->rss_qp_num = 0;
+	else
+		priv->rss_qp_num = num_rx;
+	if (num_tx == 1 || !(priv->hca_caps & IB_DEVICE_UD_TSS))
+		priv->tss_qp_num = num_tx - 1;
+	else
+		priv->tss_qp_num = num_tx;
+	netif_set_real_num_tx_queues(dev, num_tx);
+	netif_set_real_num_rx_queues(dev, num_rx);
+	/*
+	 * prevent ipoib_ib_dev_init call ipoib_ib_dev_open
+	 * let ipoib_open do it
+	 */
+	dev->flags &= ~IFF_UP;
+	ret = ipoib_dev_init(dev, priv->ca, priv->port);
+	if (ret) {
+		pr_warn("%s: failed to reinitialize port %d (ret = %d)\n",
+		       priv->ca->name, priv->port, ret);
+		return ret;
+	}
+	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
+		ret = ib_register_event_handler(&priv->event_handler);
+		if (ret)
+			pr_warn("%s: failed to rereg port %d (ret = %d)\n",
+			priv->ca->name, priv->port, ret);
+	}
+	dev->flags = flags;
+	/* if the device was up bring it up again */
+	if (flags & IFF_UP) {
+		ret = ipoib_open(dev);
+		if (ret)
+			pr_warn("%s: failed to reopen port %d (ret = %d)\n",
+			       priv->ca->name, priv->port, ret);
+	}
+	return ret;
 }
 
 static const struct header_ops ipoib_header_ops = {
@@ -1633,8 +1690,12 @@ struct ipoib_dev_priv *ipoib_intf_alloc(const char *name,
 {
 	struct net_device *dev;
 
-	/* Use correct ops (ndo_select_queue) pass to ipoib_setup */
-	if (template_priv->num_tx_queues > 1) {
+	/* Use correct ops (ndo_select_queue) pass to ipoib_setup
+	 * A child interface starts with the same numebr of queues
+	 * as the parent but even if the parnet curently, has only
+	 * one ring the MQ potential must be reserved
+	 */
+	if (template_priv->max_tx_queues > 1) {
 		if (template_priv->hca_caps & IB_DEVICE_UD_TSS)
 			ipoib_netdev_ops = &ipoib_netdev_ops_hw_tss;
 		else
@@ -1645,8 +1706,8 @@ struct ipoib_dev_priv *ipoib_intf_alloc(const char *name,
 
 	dev = alloc_netdev_mqs((int) sizeof(struct ipoib_dev_priv), name,
 			   ipoib_setup,
-			   template_priv->num_tx_queues,
-			   template_priv->num_rx_queues);
+			   template_priv->max_tx_queues,
+			   template_priv->max_rx_queues);
 	if (!dev)
 		return NULL;
 
@@ -1776,6 +1837,120 @@ int ipoib_add_pkey_attr(struct net_device *dev)
 	return device_create_file(&dev->dev, &dev_attr_pkey);
 }
 
+static ssize_t get_rx_chan(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "%d\n", priv->num_rx_queues);
+}
+
+static ssize_t set_rx_chan(struct device *dev,
+			  struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct net_device *ndev = to_net_dev(dev);
+	struct ipoib_dev_priv *priv = netdev_priv(ndev);
+	int val, ret;
+
+	ret = sscanf(buf, "%d", &val);
+	if (ret != 1)
+		return -EINVAL;
+	if (val == 0 || val > priv->max_rx_queues)
+		return -EINVAL;
+	/* Nothing to do ? */
+	if (val == priv->num_rx_queues)
+		return count;
+	if (!is_power_of_2(val))
+		return -EINVAL;
+
+	if (!rtnl_trylock())
+		return restart_syscall();
+
+	ret = ipoib_reinit(ndev, val, priv->num_tx_queues);
+
+	rtnl_unlock();
+
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static DEVICE_ATTR(rx_channels, S_IWUSR | S_IRUGO, get_rx_chan, set_rx_chan);
+
+static ssize_t get_rx_max_channel(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "%d\n", priv->max_rx_queues);
+}
+
+static DEVICE_ATTR(rx_max_channels, S_IRUGO, get_rx_max_channel, NULL);
+
+static ssize_t get_tx_chan(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(dev));
+	return sprintf(buf, "%d\n", priv->num_tx_queues);
+}
+
+static ssize_t set_tx_chan(struct device *dev,
+			  struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct net_device *ndev = to_net_dev(dev);
+	struct ipoib_dev_priv *priv = netdev_priv(ndev);
+	int val, ret;
+
+	ret = sscanf(buf, "%d", &val);
+	if (ret != 1)
+		return -EINVAL;
+	if (val == 0 || val > priv->max_tx_queues)
+		return -EINVAL;
+	/* Nothing to do ? */
+	if (val == priv->num_tx_queues)
+		return count;
+
+	/* 1 is always O.K. */
+	if (val > 1) {
+		if (priv->hca_caps & IB_DEVICE_UD_TSS) {
+			/* with HW TSS tx_count is 2^N */
+			if (!is_power_of_2(val))
+				return -EINVAL;
+		} else {
+			/* with SW TSS tx_count = 1 + 2 ^ N */
+			if (!is_power_of_2(val - 1))
+				return -EINVAL;
+		}
+	}
+
+	if (!rtnl_trylock())
+		return restart_syscall();
+
+	ret = ipoib_reinit(ndev, priv->num_rx_queues, val);
+
+	rtnl_unlock();
+
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static DEVICE_ATTR(tx_channels, S_IWUSR | S_IRUGO, get_tx_chan, set_tx_chan);
+
+static ssize_t get_tx_max_channel(struct device *dev,
+			   struct device_attribute *attr, char *buf)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(to_net_dev(dev));
+
+	return sprintf(buf, "%d\n", priv->max_tx_queues);
+}
+
+static DEVICE_ATTR(tx_max_channels, S_IRUGO, get_tx_max_channel, NULL);
+
 static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 				  struct ib_device *hca)
 {
@@ -1804,6 +1979,8 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 		/* No additional QP, only one QP for RX & TX */
 		priv->rss_qp_num = 0;
 		priv->tss_qp_num = 0;
+		priv->max_rx_queues = 1;
+		priv->max_tx_queues = 1;
 		priv->num_rx_queues = 1;
 		priv->num_tx_queues = 1;
 		kfree(device_attr);
@@ -1816,22 +1993,25 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 		max_rss_tbl_sz = min(num_cores, max_rss_tbl_sz);
 		max_rss_tbl_sz = rounddown_pow_of_two(max_rss_tbl_sz);
 		priv->rss_qp_num    = max_rss_tbl_sz;
-		priv->num_rx_queues = max_rss_tbl_sz;
+		priv->max_rx_queues = max_rss_tbl_sz;
 	} else {
 		/* No additional QP, only the parent QP for RX */
 		priv->rss_qp_num = 0;
-		priv->num_rx_queues = 1;
+		priv->max_rx_queues = 1;
 	}
+	priv->num_rx_queues = priv->max_rx_queues;
 
 	kfree(device_attr);
 
 	priv->tss_qp_num = num_cores;
 	if (priv->hca_caps & IB_DEVICE_UD_TSS)
 		/* TSS is supported by HW */
-		priv->num_tx_queues = priv->tss_qp_num;
+		priv->max_tx_queues = priv->tss_qp_num;
 	else
 		/* If TSS is not support by HW use the parent QP for ARP */
-		priv->num_tx_queues = priv->tss_qp_num + 1;
+		priv->max_tx_queues = priv->tss_qp_num + 1;
+
+	priv->num_tx_queues = priv->max_tx_queues;
 
 	return 0;
 }
@@ -1960,6 +2140,14 @@ static struct net_device *ipoib_add_port(const char *format,
 	if (device_create_file(&priv->dev->dev, &dev_attr_create_child))
 		goto sysfs_failed;
 	if (device_create_file(&priv->dev->dev, &dev_attr_delete_child))
+		goto sysfs_failed;
+	if (device_create_file(&priv->dev->dev, &dev_attr_tx_max_channels))
+		goto sysfs_failed;
+	if (device_create_file(&priv->dev->dev, &dev_attr_rx_max_channels))
+		goto sysfs_failed;
+	if (device_create_file(&priv->dev->dev, &dev_attr_tx_channels))
+		goto sysfs_failed;
+	if (device_create_file(&priv->dev->dev, &dev_attr_rx_channels))
 		goto sysfs_failed;
 
 	return priv->dev;
