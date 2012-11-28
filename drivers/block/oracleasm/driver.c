@@ -127,6 +127,19 @@ static struct kmem_cache	*asm_request_cachep;
 static struct kmem_cache	*asmfs_inode_cachep;
 static struct kmem_cache	*asmdisk_cachep;
 
+static bool use_logical_block_size = false;
+module_param(use_logical_block_size, bool, 0644);
+MODULE_PARM_DESC(use_logical_block_size,
+	"Prefer logical block size over physical (Y=logical, N=physical [default])");
+
+static inline unsigned int asm_block_size(struct block_device *bdev)
+{
+	if (use_logical_block_size)
+		return bdev_logical_block_size(bdev);
+
+	return bdev_physical_block_size(bdev);
+}
+
 /*
  * asmfs super-block data in memory
  */
@@ -710,7 +723,7 @@ static int asm_open_disk(struct file *file, struct block_device *bdev)
 	if (ret)
 		goto out;
 
-	ret = set_blocksize(bdev, bdev_physical_block_size(bdev));
+	ret = set_blocksize(bdev, asm_block_size(bdev));
 	if (ret)
 		goto out_get;
 
@@ -1281,7 +1294,7 @@ static int asm_submit_io(struct file *file,
 
 	bdev = d->d_bdev;
 
-	r->r_count = ioc->rcount_asm_ioc * bdev_physical_block_size(bdev);
+	r->r_count = ioc->rcount_asm_ioc * asm_block_size(bdev);
 
 	/* linux only supports unsigned long size sector numbers */
 	mlog(ML_IOC,
@@ -1387,8 +1400,7 @@ static int asm_submit_io(struct file *file,
 	/* Block layer always uses 512-byte sector addressing,
 	 * regardless of logical and physical block size.
 	 */
-	r->r_bio->bi_sector = ioc->first_asm_ioc *
-		(bdev_physical_block_size(bdev) >> 9);
+	r->r_bio->bi_sector = ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
 
 	if (it) {
 		ret = asm_integrity_map(it, r, rw == READ);
@@ -2362,7 +2374,7 @@ static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size)
 	bdev = I_BDEV(filp->f_mapping->host);
 
 	qd_info->qd_max_sectors = compute_max_sectors(bdev);
-	qd_info->qd_hardsect_size = bdev_physical_block_size(bdev);
+	qd_info->qd_hardsect_size = asm_block_size(bdev);
 	qd_info->qd_feature = asm_integrity_format(bdev) &
 		ASM_INTEGRITY_QDF_MASK;
 	mlog(ML_ABI|ML_DISK,
