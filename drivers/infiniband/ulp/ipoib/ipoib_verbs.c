@@ -118,6 +118,10 @@ int ipoib_init_qp(struct net_device *dev)
 		goto out_fail;
 	}
 
+	/* Only one ring currently */
+	priv->recv_ring[0].recv_qp = priv->qp;
+	priv->send_ring[0].send_qp = priv->qp;
+
 	return 0;
 
 out_fail:
@@ -142,8 +146,10 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		.qp_type     = IB_QPT_UD
 	};
 
+	struct ipoib_send_ring *send_ring;
+	struct ipoib_recv_ring *recv_ring, *first_recv_ring;
 	int ret, size;
-	int i;
+	int i, j;
 
 	priv->pd = ib_alloc_pd(priv->ca);
 	if (IS_ERR(priv->pd)) {
@@ -167,7 +173,7 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 			size += ipoib_recvq_size * ipoib_max_conn_qp;
 	}
 
-	priv->recv_cq = ib_create_cq(priv->ca, ipoib_ib_completion, NULL, dev, size,
+	priv->recv_cq = ib_create_cq(priv->ca, ipoib_ib_completion, NULL, priv->recv_ring, size,
 				     priv->child_index % priv->ca->num_comp_vectors);
 	if (IS_ERR(priv->recv_cq)) {
 		printk(KERN_WARNING "%s: failed to create receive CQ\n", ca->name);
@@ -175,11 +181,15 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	}
 
 	priv->send_cq = ib_create_cq(priv->ca, ipoib_send_comp_handler, NULL,
-				     dev, ipoib_sendq_size, 0);
+				     priv->send_ring, ipoib_sendq_size, 0);
 	if (IS_ERR(priv->send_cq)) {
 		printk(KERN_WARNING "%s: failed to create send CQ\n", ca->name);
 		goto out_free_recv_cq;
 	}
+
+	/* Only one ring */
+	priv->recv_ring[0].recv_cq = priv->recv_cq;
+	priv->send_ring[0].send_cq = priv->send_cq;
 
 	if (ib_req_notify_cq(priv->recv_cq, IB_CQ_NEXT_COMP))
 		goto out_free_send_cq;
@@ -210,25 +220,43 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	priv->dev->dev_addr[2] = (priv->qp->qp_num >>  8) & 0xff;
 	priv->dev->dev_addr[3] = (priv->qp->qp_num      ) & 0xff;
 
-	for (i = 0; i < MAX_SKB_FRAGS + 1; ++i)
-		priv->tx_sge[i].lkey = priv->mr->lkey;
+	send_ring = priv->send_ring;
+	for (j = 0; j < priv->num_tx_queues; j++) {
+		for (i = 0; i < MAX_SKB_FRAGS + 1; ++i)
+			send_ring->tx_sge[i].lkey = priv->mr->lkey;
 
-	priv->tx_wr.opcode	= IB_WR_SEND;
-	priv->tx_wr.sg_list	= priv->tx_sge;
-	priv->tx_wr.send_flags	= IB_SEND_SIGNALED;
-
-	priv->rx_sge[0].lkey = priv->mr->lkey;
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		priv->rx_sge[0].length = IPOIB_UD_HEAD_SIZE;
-		priv->rx_sge[1].length = PAGE_SIZE;
-		priv->rx_sge[1].lkey = priv->mr->lkey;
-		priv->rx_wr.num_sge = IPOIB_UD_RX_SG;
-	} else {
-		priv->rx_sge[0].length = IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
-		priv->rx_wr.num_sge = 1;
+		send_ring->tx_wr.opcode	= IB_WR_SEND;
+		send_ring->tx_wr.sg_list	= send_ring->tx_sge;
+		send_ring->tx_wr.send_flags	= IB_SEND_SIGNALED;
+		send_ring++;
 	}
-	priv->rx_wr.next = NULL;
-	priv->rx_wr.sg_list = priv->rx_sge;
+
+	recv_ring = priv->recv_ring;
+	recv_ring->rx_sge[0].lkey = priv->mr->lkey;
+	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
+		recv_ring->rx_sge[0].length = IPOIB_UD_HEAD_SIZE;
+		recv_ring->rx_sge[1].length = PAGE_SIZE;
+		recv_ring->rx_sge[1].lkey = priv->mr->lkey;
+		recv_ring->rx_wr.num_sge = IPOIB_UD_RX_SG;
+	} else {
+		recv_ring->rx_sge[0].length =
+				IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
+		recv_ring->rx_wr.num_sge = 1;
+	}
+	recv_ring->rx_wr.next = NULL;
+	recv_ring->rx_wr.sg_list = recv_ring->rx_sge;
+
+	/* Copy first RX ring sge and wr parameters to the rest RX ring */
+	first_recv_ring = recv_ring;
+	recv_ring++;
+	for (i = 1; i < priv->num_rx_queues; i++) {
+		recv_ring->rx_sge[0] = first_recv_ring->rx_sge[0];
+		recv_ring->rx_sge[1] = first_recv_ring->rx_sge[1];
+		recv_ring->rx_wr = first_recv_ring->rx_wr;
+		/* This field in per ring */
+		recv_ring->rx_wr.sg_list = recv_ring->rx_sge;
+		recv_ring++;
+	}
 
 	return 0;
 

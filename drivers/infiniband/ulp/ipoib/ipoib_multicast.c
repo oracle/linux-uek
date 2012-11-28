@@ -69,7 +69,7 @@ struct ipoib_mcast_iter {
 static void ipoib_mcast_free(struct ipoib_mcast *mcast)
 {
 	struct net_device *dev = mcast->dev;
-	int tx_dropped = 0;
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
 	ipoib_dbg_mcast(netdev_priv(dev), "deleting multicast group %pI6\n",
 			mcast->mcmember.mgid.raw);
@@ -81,13 +81,14 @@ static void ipoib_mcast_free(struct ipoib_mcast *mcast)
 		ipoib_put_ah(mcast->ah);
 
 	while (!skb_queue_empty(&mcast->pkt_queue)) {
-		++tx_dropped;
-		dev_kfree_skb_any(skb_dequeue(&mcast->pkt_queue));
+		struct sk_buff *skb = skb_dequeue(&mcast->pkt_queue);
+		int index = skb_get_queue_mapping(skb);
+		/* Modify to lock queue */
+		netif_tx_lock_bh(dev);
+		priv->send_ring[index].stats.tx_dropped++;
+		netif_tx_unlock_bh(dev);
+		dev_kfree_skb_any(skb);
 	}
-
-	netif_tx_lock_bh(dev);
-	dev->stats.tx_dropped += tx_dropped;
-	netif_tx_unlock_bh(dev);
 
 	kfree(mcast);
 }
@@ -172,6 +173,7 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 	struct ipoib_ah *ah;
 	int ret;
 	int set_qkey = 0;
+	int i;
 
 	mcast->mcmember = *mcmember;
 
@@ -188,7 +190,8 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 		priv->mcast_mtu = IPOIB_UD_MTU(ib_mtu_enum_to_int(priv->broadcast->mcmember.mtu));
 		priv->qkey = be32_to_cpu(priv->broadcast->mcmember.qkey);
 		spin_unlock_irq(&priv->lock);
-		priv->tx_wr.wr.ud.remote_qkey = priv->qkey;
+		for (i = 0; i < priv->num_tx_queues; i++)
+			priv->send_ring[i].tx_wr.wr.ud.remote_qkey = priv->qkey;
 		set_qkey = 1;
 
 		if (!ipoib_cm_admin_enabled(dev)) {
@@ -276,6 +279,7 @@ ipoib_mcast_sendonly_join_complete(int status,
 {
 	struct ipoib_mcast *mcast = multicast->context;
 	struct net_device *dev = mcast->dev;
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
 	/* We trap for port events ourselves. */
 	if (status == -ENETRESET)
@@ -292,8 +296,10 @@ ipoib_mcast_sendonly_join_complete(int status,
 		/* Flush out any queued packets */
 		netif_tx_lock_bh(dev);
 		while (!skb_queue_empty(&mcast->pkt_queue)) {
-			++dev->stats.tx_dropped;
-			dev_kfree_skb_any(skb_dequeue(&mcast->pkt_queue));
+			struct sk_buff *skb = skb_dequeue(&mcast->pkt_queue);
+			int index = skb_get_queue_mapping(skb);
+			priv->send_ring[index].stats.tx_dropped++;
+			dev_kfree_skb_any(skb);
 		}
 		netif_tx_unlock_bh(dev);
 
@@ -653,7 +659,8 @@ void ipoib_mcast_send(struct net_device *dev, u8 *daddr, struct sk_buff *skb)
 	if (!test_bit(IPOIB_FLAG_OPER_UP, &priv->flags)		||
 	    !priv->broadcast					||
 	    !test_bit(IPOIB_MCAST_FLAG_ATTACHED, &priv->broadcast->flags)) {
-		++dev->stats.tx_dropped;
+		int index = skb_get_queue_mapping(skb);
+		priv->send_ring[index].stats.tx_dropped++;
 		dev_kfree_skb_any(skb);
 		goto unlock;
 	}
@@ -666,9 +673,10 @@ void ipoib_mcast_send(struct net_device *dev, u8 *daddr, struct sk_buff *skb)
 
 		mcast = ipoib_mcast_alloc(dev, 0);
 		if (!mcast) {
+			int index = skb_get_queue_mapping(skb);
+			priv->send_ring[index].stats.tx_dropped++;
 			ipoib_warn(priv, "unable to allocate memory for "
 				   "multicast structure\n");
-			++dev->stats.tx_dropped;
 			dev_kfree_skb_any(skb);
 			goto out;
 		}
@@ -683,7 +691,8 @@ void ipoib_mcast_send(struct net_device *dev, u8 *daddr, struct sk_buff *skb)
 		if (skb_queue_len(&mcast->pkt_queue) < IPOIB_MAX_MCAST_QUEUE)
 			skb_queue_tail(&mcast->pkt_queue, skb);
 		else {
-			++dev->stats.tx_dropped;
+			int index = skb_get_queue_mapping(skb);
+			priv->send_ring[index].stats.tx_dropped++;
 			dev_kfree_skb_any(skb);
 		}
 

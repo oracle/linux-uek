@@ -159,6 +159,7 @@ struct ipoib_rx_buf {
 
 struct ipoib_tx_buf {
 	struct sk_buff *skb;
+	struct ipoib_ah *ah;
 	u64		mapping[MAX_SKB_FRAGS + 1];
 };
 
@@ -217,6 +218,7 @@ struct ipoib_cm_rx {
 	enum ipoib_cm_state	state;
 	int			recv_count;
 	u32			qpn;
+	int index; /* For ring counters */
 };
 
 struct ipoib_cm_tx {
@@ -231,6 +233,7 @@ struct ipoib_cm_tx {
 	unsigned	     tx_tail;
 	unsigned long	     flags;
 	u32		     mtu;
+	int index; /* For ndo_select_queue and ring counters */
 };
 
 struct ipoib_cm_rx_buf {
@@ -256,11 +259,12 @@ struct ipoib_cm_dev_priv {
 	struct list_head	start_list;
 	struct list_head	reap_list;
 	struct ib_wc		ibwc[IPOIB_NUM_WC];
-	struct ib_sge		rx_sge[IPOIB_CM_RX_SG];
-	struct ib_recv_wr       rx_wr;
 	int			nonsrq_conn_qp;
 	int			max_cm_mtu;
 	int			num_frags;
+	u32			rx_cq_ind;
+	u32			tx_cq_ind;
+	u32			tx_ring_ind;
 };
 
 struct ipoib_ethtool_st {
@@ -286,6 +290,65 @@ struct ipoib_neigh_table {
 };
 
 /*
+ * Per QP stats
+ */
+
+struct ipoib_tx_ring_stats {
+	unsigned long tx_packets;
+	unsigned long tx_bytes;
+	unsigned long tx_errors;
+	unsigned long tx_dropped;
+};
+
+struct ipoib_rx_ring_stats {
+	unsigned long rx_packets;
+	unsigned long rx_bytes;
+	unsigned long rx_errors;
+	unsigned long rx_dropped;
+};
+
+/*
+ * Encapsulates the per send QP information
+ */
+struct ipoib_send_ring {
+	struct net_device	*dev;
+	struct ib_cq		*send_cq;
+	struct ib_qp		*send_qp;
+	struct ipoib_tx_buf	*tx_ring;
+	unsigned		tx_head;
+	unsigned		tx_tail;
+	struct ib_sge		tx_sge[MAX_SKB_FRAGS + 1];
+	struct ib_send_wr	tx_wr;
+	unsigned		tx_outstanding;
+	struct ib_wc		tx_wc[MAX_SEND_CQE];
+	struct timer_list	poll_timer;
+	struct ipoib_tx_ring_stats stats;
+	unsigned		index;
+};
+
+struct ipoib_rx_cm_info {
+	struct ib_sge		rx_sge[IPOIB_CM_RX_SG];
+	struct ib_recv_wr       rx_wr;
+};
+
+/*
+ * Encapsulates the per recv QP information
+ */
+struct ipoib_recv_ring {
+	struct net_device	*dev;
+	struct ib_qp		*recv_qp;
+	struct ib_cq		*recv_cq;
+	struct ib_wc		ibwc[IPOIB_NUM_WC];
+	struct napi_struct	napi;
+	struct ipoib_rx_buf	*rx_ring;
+	struct ib_recv_wr	rx_wr;
+	struct ib_sge		rx_sge[IPOIB_UD_RX_SG];
+	struct ipoib_rx_cm_info	cm;
+	struct ipoib_rx_ring_stats stats;
+	unsigned		index;
+};
+
+/*
  * Device private locking: network stack tx_lock protects members used
  * in TX fast path, lock protects everything else.  lock nests inside
  * of tx_lock (ie tx_lock must be acquired first if needed).
@@ -294,8 +357,6 @@ struct ipoib_dev_priv {
 	spinlock_t lock;
 
 	struct net_device *dev;
-
-	struct napi_struct napi;
 
 	unsigned long flags;
 
@@ -337,21 +398,6 @@ struct ipoib_dev_priv {
 	unsigned int mcast_mtu;
 	unsigned int max_ib_mtu;
 
-	struct ipoib_rx_buf *rx_ring;
-
-	struct ipoib_tx_buf *tx_ring;
-	unsigned	     tx_head;
-	unsigned	     tx_tail;
-	struct ib_sge	     tx_sge[MAX_SKB_FRAGS + 1];
-	struct ib_send_wr    tx_wr;
-	unsigned	     tx_outstanding;
-	struct ib_wc	     send_wc[MAX_SEND_CQE];
-
-	struct ib_recv_wr    rx_wr;
-	struct ib_sge	     rx_sge[IPOIB_UD_RX_SG];
-
-	struct ib_wc ibwc[IPOIB_NUM_WC];
-
 	struct list_head dead_ahs;
 
 	struct ib_event_handler event_handler;
@@ -374,6 +420,10 @@ struct ipoib_dev_priv {
 	int	hca_caps;
 	struct ipoib_ethtool_st ethtool;
 	struct timer_list poll_timer;
+	struct ipoib_recv_ring *recv_ring;
+	struct ipoib_send_ring *send_ring;
+	unsigned int num_rx_queues;
+	unsigned int num_tx_queues;
 };
 
 struct ipoib_ah {
@@ -381,7 +431,7 @@ struct ipoib_ah {
 	struct ib_ah	  *ah;
 	struct list_head   list;
 	struct kref	   ref;
-	unsigned	   last_send;
+	atomic_t	   refcnt;
 };
 
 struct ipoib_path {
@@ -443,8 +493,8 @@ extern struct workqueue_struct *ipoib_workqueue;
 /* functions */
 
 int ipoib_poll(struct napi_struct *napi, int budget);
-void ipoib_ib_completion(struct ib_cq *cq, void *dev_ptr);
-void ipoib_send_comp_handler(struct ib_cq *cq, void *dev_ptr);
+void ipoib_ib_completion(struct ib_cq *cq, void *recv_ring_ptr);
+void ipoib_send_comp_handler(struct ib_cq *cq, void *send_ring_ptr);
 
 struct ipoib_ah *ipoib_create_ah(struct net_device *dev,
 				 struct ib_pd *pd, struct ib_ah_attr *attr);
@@ -463,7 +513,8 @@ void ipoib_reap_ah(struct work_struct *work);
 
 void ipoib_mark_paths_invalid(struct net_device *dev);
 void ipoib_flush_paths(struct net_device *dev);
-struct ipoib_dev_priv *ipoib_intf_alloc(const char *format);
+struct ipoib_dev_priv *ipoib_intf_alloc(const char *format,
+					struct ipoib_dev_priv *temp_priv);
 
 int ipoib_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port);
 void ipoib_ib_dev_flush_light(struct work_struct *work);

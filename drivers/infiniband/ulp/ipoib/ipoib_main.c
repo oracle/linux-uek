@@ -153,7 +153,7 @@ int ipoib_open(struct net_device *dev)
 		mutex_unlock(&priv->vlan_mutex);
 	}
 
-	netif_start_queue(dev);
+	netif_tx_start_all_queues(dev);
 
 	return 0;
 
@@ -174,7 +174,7 @@ static int ipoib_stop(struct net_device *dev)
 
 	clear_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags);
 
-	netif_stop_queue(dev);
+	netif_tx_stop_all_queues(dev);
 
 	ipoib_ib_dev_down(dev, 1);
 	ipoib_ib_dev_stop(dev, 0);
@@ -244,6 +244,8 @@ static int ipoib_change_mtu(struct net_device *dev, int new_mtu)
 int ipoib_set_mode(struct net_device *dev, const char *buf)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_send_ring *send_ring;
+	int i;
 
 	/* flush paths if we switch modes so that connections are restarted */
 	if (IPOIB_CM_SUPPORTED(dev->dev_addr) && !strcmp(buf, "connected\n")) {
@@ -252,7 +254,12 @@ int ipoib_set_mode(struct net_device *dev, const char *buf)
 			   "will cause multicast packet drops\n");
 		netdev_update_features(dev);
 		rtnl_unlock();
-		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+
+		send_ring = priv->send_ring;
+		for (i = 0; i < priv->num_tx_queues; i++) {
+			send_ring->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+			send_ring++;
+		}
 
 		ipoib_flush_paths(dev);
 		rtnl_lock();
@@ -607,12 +614,14 @@ static void neigh_add_path(struct sk_buff *skb, u8 *daddr,
 	struct ipoib_path *path;
 	struct ipoib_neigh *neigh;
 	unsigned long flags;
+	int index;
 
 	spin_lock_irqsave(&priv->lock, flags);
 	neigh = ipoib_neigh_alloc(daddr, dev);
 	if (!neigh) {
 		spin_unlock_irqrestore(&priv->lock, flags);
-		++dev->stats.tx_dropped;
+		index = skb_get_queue_mapping(skb);
+		priv->send_ring[index].stats.tx_dropped++;
 		dev_kfree_skb_any(skb);
 		return;
 	}
@@ -672,7 +681,8 @@ err_list:
 err_path:
 	ipoib_neigh_free(neigh);
 err_drop:
-	++dev->stats.tx_dropped;
+	index = skb_get_queue_mapping(skb);
+	priv->send_ring[index].stats.tx_dropped++;
 	dev_kfree_skb_any(skb);
 
 	spin_unlock_irqrestore(&priv->lock, flags);
@@ -685,6 +695,7 @@ static void unicast_arp_send(struct sk_buff *skb, struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_path *path;
 	unsigned long flags;
+	int index = skb_get_queue_mapping(skb);
 
 	spin_lock_irqsave(&priv->lock, flags);
 
@@ -707,7 +718,7 @@ static void unicast_arp_send(struct sk_buff *skb, struct net_device *dev,
 			} else
 				__path_add(dev, path);
 		} else {
-			++dev->stats.tx_dropped;
+			priv->send_ring[index].stats.tx_dropped++;
 			dev_kfree_skb_any(skb);
 		}
 
@@ -726,7 +737,7 @@ static void unicast_arp_send(struct sk_buff *skb, struct net_device *dev,
 		   skb_queue_len(&path->queue) < IPOIB_MAX_PATH_REC_QUEUE) {
 		__skb_queue_tail(&path->queue, skb);
 	} else {
-		++dev->stats.tx_dropped;
+		priv->send_ring[index].stats.tx_dropped++;
 		dev_kfree_skb_any(skb);
 	}
 
@@ -814,16 +825,68 @@ unref:
 	return NETDEV_TX_OK;
 }
 
+static u16 ipoib_select_queue_null(struct net_device *dev, struct sk_buff *skb)
+{
+	return 0;
+}
+
 static void ipoib_timeout(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_send_ring *send_ring;
+	u16 index;
 
 	ipoib_warn(priv, "transmit timeout: latency %d msecs\n",
 		   jiffies_to_msecs(jiffies - dev->trans_start));
-	ipoib_warn(priv, "queue stopped %d, tx_head %u, tx_tail %u\n",
-		   netif_queue_stopped(dev),
-		   priv->tx_head, priv->tx_tail);
+
+	for (index = 0; index < priv->num_tx_queues; index++) {
+		if (__netif_subqueue_stopped(dev, index)) {
+			send_ring = priv->send_ring + index;
+			ipoib_warn(priv,
+				"queue (%d) stopped, tx_head %u, tx_tail %u\n",
+				index,
+				send_ring->tx_head, send_ring->tx_tail);
+		}
+	}
 	/* XXX reset QP, etc. */
+}
+
+static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct net_device_stats *stats = &dev->stats;
+	struct net_device_stats local_stats;
+	int i;
+
+	memset(&local_stats, 0, sizeof(struct net_device_stats));
+
+	for (i = 0; i < priv->num_rx_queues; i++) {
+		struct ipoib_rx_ring_stats *rstats = &priv->recv_ring[i].stats;
+		local_stats.rx_packets += rstats->rx_packets;
+		local_stats.rx_bytes   += rstats->rx_bytes;
+		local_stats.rx_errors  += rstats->rx_errors;
+		local_stats.rx_dropped += rstats->rx_dropped;
+	}
+
+	for (i = 0; i < priv->num_tx_queues; i++) {
+		struct ipoib_tx_ring_stats *tstats = &priv->send_ring[i].stats;
+		local_stats.tx_packets += tstats->tx_packets;
+		local_stats.tx_bytes   += tstats->tx_bytes;
+		local_stats.tx_errors  += tstats->tx_errors;
+		local_stats.tx_dropped += tstats->tx_dropped;
+	}
+
+	stats->rx_packets = local_stats.rx_packets;
+	stats->rx_bytes   = local_stats.rx_bytes;
+	stats->rx_errors  = local_stats.rx_errors;
+	stats->rx_dropped = local_stats.rx_dropped;
+
+	stats->tx_packets = local_stats.tx_packets;
+	stats->tx_bytes   = local_stats.tx_bytes;
+	stats->tx_errors  = local_stats.tx_errors;
+	stats->tx_dropped = local_stats.tx_dropped;
+
+	return stats;
 }
 
 static int ipoib_hard_header(struct sk_buff *skb,
@@ -1278,47 +1341,93 @@ static void ipoib_neigh_hash_uninit(struct net_device *dev)
 int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_send_ring *send_ring;
+	struct ipoib_recv_ring *recv_ring;
+	int i, rx_allocated, tx_allocated;
+	unsigned long alloc_size;
 
 	if (ipoib_neigh_hash_init(priv) < 0)
 		goto out;
 	/* Allocate RX/TX "rings" to hold queued skbs */
-	priv->rx_ring =	kzalloc(ipoib_recvq_size * sizeof *priv->rx_ring,
+	/* Multi queue initialization */
+	priv->recv_ring = kzalloc(priv->num_rx_queues * sizeof(*recv_ring),
 				GFP_KERNEL);
-	if (!priv->rx_ring) {
-		printk(KERN_WARNING "%s: failed to allocate RX ring (%d entries)\n",
-		       ca->name, ipoib_recvq_size);
+	if (!priv->recv_ring) {
+		pr_warn("%s: failed to allocate RECV ring (%d entries)\n",
+			ca->name, priv->num_rx_queues);
 		goto out_neigh_hash_cleanup;
 	}
+	
+	alloc_size = ipoib_recvq_size * sizeof(*recv_ring->rx_ring);
+	rx_allocated = 0;
+	recv_ring = priv->recv_ring;
+	for (i = 0; i < priv->num_rx_queues; i++) {
+		recv_ring->rx_ring = kzalloc(alloc_size, GFP_KERNEL);
+		if (!recv_ring->rx_ring) {
+			pr_warn("%s: failed to allocate RX ring (%d entries)\n",
+			ca->name, ipoib_recvq_size);
+			goto out_recv_ring_cleanup;
+		}
+		recv_ring->dev = dev;
+		recv_ring->index = i;
+		recv_ring++;
+		rx_allocated++;
+	}
 
-	priv->tx_ring = vzalloc(ipoib_sendq_size * sizeof *priv->tx_ring);
-	if (!priv->tx_ring) {
-		printk(KERN_WARNING "%s: failed to allocate TX ring (%d entries)\n",
-		       ca->name, ipoib_sendq_size);
-		goto out_rx_ring_cleanup;
+	priv->send_ring = kzalloc(priv->num_tx_queues * sizeof(*send_ring),
+			GFP_KERNEL);
+	if (!priv->send_ring) {
+		pr_warn("%s: failed to allocate SEND ring (%d entries)\n",
+			ca->name, priv->num_tx_queues);
+		goto out_recv_ring_cleanup;
+	}
+
+	alloc_size = ipoib_sendq_size * sizeof(*send_ring->tx_ring);
+	tx_allocated = 0;
+	send_ring = priv->send_ring;
+	for (i = 0; i < priv->num_tx_queues; i++) {
+		send_ring->tx_ring = vzalloc(alloc_size);
+		if (!send_ring->tx_ring) {
+			printk(KERN_WARNING
+			"%s: failed to allocate TX ring (%d entries)\n",
+			ca->name, ipoib_sendq_size);
+			goto out_send_ring_cleanup;
+		}
+		send_ring->dev = dev;
+		send_ring->index = i;
+		send_ring++;
+		tx_allocated++;
 	}
 
 	/* priv->tx_head, tx_tail & tx_outstanding are already 0 */
 
 	if (ipoib_ib_dev_init(dev, ca, port))
-		goto out_tx_ring_cleanup;
+		goto out_send_ring_cleanup;
+
 
 	return 0;
 
-out_tx_ring_cleanup:
-	vfree(priv->tx_ring);
-
-out_rx_ring_cleanup:
-	kfree(priv->rx_ring);
+out_send_ring_cleanup:
+	for (i = 0; i < tx_allocated; i++)
+		vfree(priv->send_ring[i].tx_ring);
+	
+out_recv_ring_cleanup:
+	for (i = 0; i < rx_allocated; i++)
+		kfree(priv->recv_ring[i].rx_ring);
 
 out_neigh_hash_cleanup:
 	ipoib_neigh_hash_uninit(dev);
 out:
+	priv->send_ring = NULL;
+	priv->recv_ring = NULL;
+
 	return -ENOMEM;
 }
 
 void ipoib_dev_cleanup(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev), *cpriv, *tcpriv;
+	int i;
 	LIST_HEAD(head);
 
 	ASSERT_RTNL();
@@ -1336,11 +1445,17 @@ void ipoib_dev_cleanup(struct net_device *dev)
 
 	ipoib_ib_dev_cleanup(dev);
 
-	kfree(priv->rx_ring);
-	vfree(priv->tx_ring);
 
-	priv->rx_ring = NULL;
-	priv->tx_ring = NULL;
+	for (i = 0; i < priv->num_tx_queues; i++)
+		vfree(priv->send_ring[i].tx_ring);
+	kfree(priv->send_ring);
+
+	for (i = 0; i < priv->num_rx_queues; i++)
+		kfree(priv->recv_ring[i].rx_ring);
+	kfree(priv->recv_ring);
+
+	priv->recv_ring = NULL;
+	priv->send_ring = NULL;
 
 	ipoib_neigh_hash_uninit(dev);
 }
@@ -1356,7 +1471,9 @@ static const struct net_device_ops ipoib_netdev_ops = {
 	.ndo_change_mtu		 = ipoib_change_mtu,
 	.ndo_fix_features	 = ipoib_fix_features,
 	.ndo_start_xmit	 	 = ipoib_start_xmit,
+	.ndo_select_queue 	= ipoib_select_queue_null,
 	.ndo_tx_timeout		 = ipoib_timeout,
+	.ndo_get_stats		= ipoib_get_stats,
 	.ndo_set_rx_mode	 = ipoib_set_mcast_list,
 };
 
@@ -1364,12 +1481,11 @@ void ipoib_setup(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
+	/* Use correct ops (ndo_select_queue) */
 	dev->netdev_ops		 = &ipoib_netdev_ops;
 	dev->header_ops		 = &ipoib_header_ops;
 
 	ipoib_set_ethtool_ops(dev);
-
-	netif_napi_add(dev, &priv->napi, ipoib_poll, 100);
 
 	dev->watchdog_timeo	 = HZ;
 
@@ -1409,14 +1525,20 @@ void ipoib_setup(struct net_device *dev)
 	INIT_DELAYED_WORK(&priv->neigh_reap_task, ipoib_reap_neigh);
 }
 
-struct ipoib_dev_priv *ipoib_intf_alloc(const char *name)
+struct ipoib_dev_priv *ipoib_intf_alloc(const char *name,
+					struct ipoib_dev_priv *template_priv)
 {
 	struct net_device *dev;
 
-	dev = alloc_netdev((int) sizeof (struct ipoib_dev_priv), name,
-			   ipoib_setup);
+	dev = alloc_netdev_mqs((int) sizeof(struct ipoib_dev_priv), name,
+			   ipoib_setup,
+			   template_priv->num_tx_queues,
+			   template_priv->num_rx_queues);
 	if (!dev)
 		return NULL;
+
+	netif_set_real_num_tx_queues(dev, template_priv->num_tx_queues);
+	netif_set_real_num_rx_queues(dev, template_priv->num_rx_queues);
 
 	return netdev_priv(dev);
 }
@@ -1541,7 +1663,8 @@ int ipoib_add_pkey_attr(struct net_device *dev)
 	return device_create_file(&dev->dev, &dev_attr_pkey);
 }
 
-int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
+static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
+				  struct ib_device *hca)
 {
 	struct ib_device_attr *device_attr;
 	int result = -ENOMEM;
@@ -1564,6 +1687,20 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
 
 	kfree(device_attr);
 
+	priv->num_rx_queues = 1;
+	priv->num_tx_queues = 1;
+
+	return 0;
+}
+
+int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
+{
+	int result;
+
+	result = ipoib_get_hca_features(priv, hca);
+	if (result)
+		return result;
+
 	if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM) {
 		priv->dev->hw_features = NETIF_F_SG |
 			NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
@@ -1580,13 +1717,23 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
 static struct net_device *ipoib_add_port(const char *format,
 					 struct ib_device *hca, u8 port)
 {
-	struct ipoib_dev_priv *priv;
+	struct ipoib_dev_priv *priv, *template_priv;
 	struct ib_port_attr attr;
 	int result = -ENOMEM;
 
-	priv = ipoib_intf_alloc(format);
-	if (!priv)
-		goto alloc_mem_failed;
+	template_priv = kmalloc(sizeof *template_priv, GFP_KERNEL);
+	if (!template_priv)
+		goto alloc_mem_failed1;
+
+	if (ipoib_get_hca_features(template_priv, hca))
+		goto device_query_failed;
+
+	priv = ipoib_intf_alloc(format, template_priv);
+	if (!priv) {
+		kfree(template_priv);
+		goto alloc_mem_failed2;
+	}
+	kfree(template_priv);
 
 	SET_NETDEV_DEV(priv->dev, hca->dma_device);
 	priv->dev->dev_id = port - 1;
@@ -1691,7 +1838,13 @@ event_failed:
 device_init_failed:
 	free_netdev(priv->dev);
 
-alloc_mem_failed:
+alloc_mem_failed2:
+	return ERR_PTR(result);
+
+device_query_failed:
+	kfree(template_priv);
+
+alloc_mem_failed1:
 	return ERR_PTR(result);
 }
 

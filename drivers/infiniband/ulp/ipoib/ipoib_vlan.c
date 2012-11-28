@@ -173,7 +173,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 		goto out;
 	}
 
-	priv = ipoib_intf_alloc(intf_name);
+	priv = ipoib_intf_alloc(intf_name, ppriv);
 	if (!priv) {
 		result = -ENOMEM;
 		goto out;
