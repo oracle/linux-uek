@@ -79,6 +79,7 @@
 #define ASM_DISK_LABEL_MARKED   "ORCLDISK"
 #define ASM_DISK_LABEL_CLEAR    "ORCLCLRD"
 #define ASM_DISK_LABEL_OFFSET   32
+#define ASM_DISK_LABEL_ID_SIZE	24
 
 struct asm_disk_label {
 	char dl_tag[8];
