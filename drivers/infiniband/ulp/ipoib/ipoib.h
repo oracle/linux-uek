@@ -291,16 +291,13 @@ struct ipoib_ethtool_st {
 	__u32 rx_coalesce_usecs;
 	__u32	pkt_rate_low;
 	__u32	pkt_rate_high;
+	__u32	pkt_rate_low_per_ring;
+	__u32	pkt_rate_high_per_ring;
 	__u32	rx_coalesce_usecs_low;
 	__u32	rx_coalesce_usecs_high;
 	__u32	rate_sample_interval;
 	__u32	use_adaptive_rx_coalesce;
-	int	last_moder_time;
 	u16	sample_interval;
-	unsigned long last_moder_jiffies;
-	unsigned long last_moder_packets;
-	unsigned long last_moder_tx_packets;
-	unsigned long last_moder_bytes;
 };
 
 struct ipoib_neigh_table;
@@ -362,6 +359,14 @@ struct ipoib_rx_cm_info {
 	struct ib_recv_wr       rx_wr;
 };
 
+struct ipoib_ethtool_last_st {
+	unsigned long last_moder_jiffies;
+	unsigned long last_moder_packets;
+	unsigned long last_moder_tx_packets;
+	unsigned long last_moder_bytes;
+	int	last_moder_time;
+};
+
 /*
  * Encapsulates the per recv QP information
  */
@@ -377,6 +382,7 @@ struct ipoib_recv_ring {
 	struct ipoib_rx_cm_info	cm;
 	struct ipoib_rx_ring_stats stats;
 	unsigned		index;
+	struct ipoib_ethtool_last_st ethtool;
 };
 
 struct ipoib_arp_repath {

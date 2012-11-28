@@ -105,6 +105,16 @@ static int ipoib_set_coalesce(struct net_device *dev,
 	priv->ethtool.rx_coalesce_usecs_high = coal->rx_coalesce_usecs_high;
 	priv->ethtool.pkt_rate_high = coal->pkt_rate_high;
 	priv->ethtool.rate_sample_interval = coal->rate_sample_interval;
+	/*
+	 * Compute the rate per ring
+	 * Use fix-point rounded devision
+	 */
+	priv->ethtool.pkt_rate_low_per_ring =
+		(priv->ethtool.pkt_rate_low + priv->num_rx_queues / 2) /
+		priv->num_rx_queues;
+	priv->ethtool.pkt_rate_high_per_ring =
+		(priv->ethtool.pkt_rate_high + priv->num_rx_queues / 2) /
+		priv->num_rx_queues;
 
 	if (priv->ethtool.use_adaptive_rx_coalesce &&
 		!coal->use_adaptive_rx_coalesce) {
