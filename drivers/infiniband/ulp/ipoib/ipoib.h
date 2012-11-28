@@ -347,6 +347,14 @@ struct ipoib_recv_ring {
 	unsigned		index;
 };
 
+struct ipoib_arp_repath {
+	struct work_struct work;
+	u16 lid;
+	union ib_gid	    sgid;
+	struct net_device   *dev;
+};
+
+
 /*
  * Device private locking: network stack tx_lock protects members used
  * in TX fast path, lock protects everything else.  lock nests inside
@@ -514,6 +522,7 @@ int ipoib_add_umcast_attr(struct net_device *dev);
 void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		struct ipoib_ah *address, u32 qpn);
 void ipoib_reap_ah(struct work_struct *work);
+void ipoib_repath_ah(struct work_struct *work);
 
 void ipoib_mark_paths_invalid(struct net_device *dev);
 void ipoib_flush_paths(struct net_device *dev);

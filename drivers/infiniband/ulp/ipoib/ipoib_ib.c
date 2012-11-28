@@ -43,6 +43,8 @@
 
 #include "ipoib.h"
 
+#include <linux/if_arp.h>	/* For ARPHRD_xxx */
+
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG_DATA
 static int data_debug_level;
 
@@ -251,6 +253,41 @@ static int ipoib_ib_post_receives(struct net_device *dev)
 	return 0;
 }
 
+static inline void ipoib_create_repath_ent(struct net_device *dev,
+						struct sk_buff *skb,
+						u16 lid)
+{
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_arp_repath *arp_repath;
+	struct arphdr *parphdr;
+
+	parphdr = (struct arphdr *)(skb->data);
+	if ((ARPOP_REPLY != be16_to_cpu(parphdr->ar_op)) &&
+		(ARPOP_REQUEST != be16_to_cpu(parphdr->ar_op))) {
+		return;
+	}
+
+	arp_repath = kzalloc(sizeof *arp_repath, GFP_ATOMIC);
+	if (!arp_repath) {
+		ipoib_warn(priv, "Failed alloc ipoib_arp_repath.\n");
+		return;
+	}
+
+	INIT_WORK(&arp_repath->work, ipoib_repath_ah);
+
+	arp_repath->lid = lid;
+	memcpy(&arp_repath->sgid, skb->data + sizeof(struct arphdr) + 4,
+		sizeof(union ib_gid));
+		arp_repath->dev = dev;
+
+	if (!test_bit(IPOIB_STOP_REAPER, &priv->flags))
+		queue_work(ipoib_workqueue, &arp_repath->work);
+	else
+		kfree(arp_repath);
+}
+
+
+
 static void ipoib_ib_handle_rx_wc(struct net_device *dev,
 				  struct ipoib_recv_ring *recv_ring,
 				  struct ib_wc *wc)
@@ -329,6 +366,9 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev,
 
 	++recv_ring->stats.rx_packets;
 	recv_ring->stats.rx_bytes += skb->len;
+
+	if (unlikely(be16_to_cpu(skb->protocol) == ETH_P_ARP))
+		ipoib_create_repath_ent(dev, skb, wc->slid);
 
 	skb->dev = dev;
 	if ((dev->features & NETIF_F_RXCSUM) &&

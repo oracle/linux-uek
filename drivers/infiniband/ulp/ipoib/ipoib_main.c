@@ -697,6 +697,77 @@ err_drop:
 	ipoib_neigh_put(neigh);
 }
 
+/*
+ * clean_path_from_cache: free path from both caches
+ * (list and rb tree)
+ * call that function under lock. (netif_tx_lock_bh && priv->lock)
+ */
+static inline void clean_path_from_cache(struct ipoib_path *path,
+				  struct ipoib_dev_priv *priv)
+{
+	list_del(&path->list);
+	rb_erase(&path->rb_node, &priv->path_tree);
+	if (path->query)
+		ib_sa_cancel_query(path->query_id, path->query);
+
+}
+
+/*
+ * clean_path_dependencies: free path from neigths.
+ * Do not call this function under locks.
+ */
+static inline void clean_path_references(struct ipoib_path *path,
+				  struct net_device *dev)
+{
+	wait_for_completion(&path->done);
+	path_free(dev, path);
+}
+
+/*
+ * ipoib_repath_ah: for each arp response/request:
+ *		 check that the lid ipoib kept for this gid
+ *		 is the same as it has in the arp packet.
+ *		 if not, delete that path from the cache.
+ */
+void ipoib_repath_ah(struct work_struct *work)
+{
+	struct ipoib_arp_repath *repath =
+		container_of(work, struct ipoib_arp_repath, work);
+
+	struct net_device *dev = repath->dev;
+	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	struct ipoib_path *path_from_cache;
+	u16 lid_from_cache;
+	unsigned long flags;
+
+	netif_tx_lock_bh(dev);
+	spin_lock_irqsave(&priv->lock, flags);
+
+	path_from_cache = __path_find(dev, &repath->sgid);
+
+	if (path_from_cache) {
+		lid_from_cache = be16_to_cpu(path_from_cache->pathrec.dlid);
+		/*check if we have the same path in the path cache:*/
+		if ((lid_from_cache && repath->lid) &&
+		    (repath->lid != lid_from_cache)) {
+			ipoib_warn(priv, "Found gid with mismach lids."
+					 "(cache:%d,from arp: %d)\n",
+				   lid_from_cache, repath->lid);
+			clean_path_from_cache(path_from_cache, priv);
+			spin_unlock_irqrestore(&priv->lock, flags);
+			netif_tx_unlock_bh(dev);
+			clean_path_references(path_from_cache, dev);
+			goto free_res;
+		}
+	}
+
+	spin_unlock_irqrestore(&priv->lock, flags);
+	netif_tx_unlock_bh(dev);
+
+free_res:
+	kfree(repath);
+}
+
 static void unicast_arp_send(struct sk_buff *skb, struct net_device *dev,
 			     struct ipoib_cb *cb)
 {
