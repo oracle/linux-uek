@@ -400,16 +400,16 @@ static void ipoib_dma_unmap_tx(struct ib_device *ca,
 	int off;
 
 	if (skb_headlen(skb)) {
-		ib_dma_unmap_single(ca, mapping[0], skb_headlen(skb), DMA_TO_DEVICE);
+		ib_dma_unmap_single(ca, mapping[0], skb_headlen(skb),
+						DMA_TO_DEVICE);
 		off = 1;
 	} else
 		off = 0;
 
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; ++i) {
 		const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
-
-		ib_dma_unmap_page(ca, mapping[i + off], skb_frag_size(frag),
-				  DMA_TO_DEVICE);
+		ib_dma_unmap_page(ca, mapping[i + off],
+					skb_frag_size(frag), DMA_TO_DEVICE);
 	}
 }
 
@@ -435,8 +435,8 @@ static void ipoib_ib_handle_tx_wc(struct ipoib_send_ring *send_ring,
 
 	ah = tx_req->ah;
 	atomic_dec(&ah->refcnt);
-
-	ipoib_dma_unmap_tx(priv->ca, tx_req);
+	if (!tx_req->is_inline)
+		ipoib_dma_unmap_tx(priv->ca, tx_req);
 
 	++send_ring->stats.tx_packets;
 	send_ring->stats.tx_bytes += tx_req->skb->len;
@@ -546,7 +546,7 @@ static inline int post_send(struct ipoib_send_ring *send_ring,
 			    unsigned int wr_id,
 			    struct ib_ah *address, u32 qpn,
 			    struct ipoib_tx_buf *tx_req,
-			    void *head, int hlen)
+			    void *head, int hlen, int use_inline)
 {
 	struct ib_send_wr *bad_wr;
 	int i, off;
@@ -555,18 +555,27 @@ static inline int post_send(struct ipoib_send_ring *send_ring,
 	int nr_frags = skb_shinfo(skb)->nr_frags;
 	u64 *mapping = tx_req->mapping;
 
-	if (skb_headlen(skb)) {
-		send_ring->tx_sge[0].addr         = mapping[0];
-		send_ring->tx_sge[0].length       = skb_headlen(skb);
-		off = 1;
-	} else
-		off = 0;
+	if (use_inline) {
+		send_ring->tx_sge[0].addr         =  (u64)skb->data;
+		send_ring->tx_sge[0].length       = skb->len;
+		send_ring->tx_wr.num_sge	 = 1;
+	} else {
+		if (skb_headlen(skb)) {
+			send_ring->tx_sge[0].addr         = mapping[0];
+			send_ring->tx_sge[0].length       = skb_headlen(skb);
+			off = 1;
+		} else
+			off = 0;
 
-	for (i = 0; i < nr_frags; ++i) {
-		send_ring->tx_sge[i + off].addr = mapping[i + off];
-		send_ring->tx_sge[i + off].length = skb_frag_size(&frags[i]);
+		for (i = 0; i < nr_frags; ++i) {
+			send_ring->tx_sge[i + off].addr = mapping[i + off];
+			send_ring->tx_sge[i + off].length =
+					skb_frag_size(&frags[i]);
+		}
+
+		send_ring->tx_wr.num_sge	 = nr_frags + off;
 	}
-	send_ring->tx_wr.num_sge	 = nr_frags + off;
+
 	send_ring->tx_wr.wr_id		 = wr_id;
 	send_ring->tx_wr.wr.ud.remote_qpn = qpn;
 	send_ring->tx_wr.wr.ud.ah	 = address;
@@ -634,10 +643,19 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 	tx_req = &send_ring->tx_ring[req_index];
 	tx_req->skb = skb;
 	tx_req->ah = address;
-	if (unlikely(ipoib_dma_map_tx(priv->ca, tx_req))) {
-		++send_ring->stats.tx_errors;
-		dev_kfree_skb_any(skb);
-		return;
+
+	if (skb->len < ipoib_inline_thold &&
+			!skb_shinfo(skb)->nr_frags) {
+		tx_req->is_inline = 1;
+		send_ring->tx_wr.send_flags |= IB_SEND_INLINE;
+	} else {
+		if (unlikely(ipoib_dma_map_tx(priv->ca, tx_req))) {
+			++send_ring->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return;
+		}
+		tx_req->is_inline = 0;
+		send_ring->tx_wr.send_flags &= ~IB_SEND_INLINE;
 	}
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL)
@@ -659,12 +677,14 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 	 */
 	atomic_inc(&address->refcnt);
 	rc = post_send(send_ring, req_index,
-		       address->ah, qpn, tx_req, phead, hlen);
+		       address->ah, qpn, tx_req, phead, hlen,
+		       tx_req->is_inline);
 	if (unlikely(rc)) {
 		ipoib_warn(priv, "post_send failed, error %d\n", rc);
 		++send_ring->stats.tx_errors;
 		--send_ring->tx_outstanding;
-		ipoib_dma_unmap_tx(priv->ca, tx_req);
+		if (!tx_req->is_inline)
+			ipoib_dma_unmap_tx(priv->ca, tx_req);
 		dev_kfree_skb_any(skb);
 		atomic_dec(&address->refcnt);
 		if (__netif_subqueue_stopped(dev, queue_index))
@@ -972,7 +992,8 @@ static void ipoib_ib_send_ring_stop(struct ipoib_dev_priv *priv)
 		while ((int) tx_ring->tx_tail - (int) tx_ring->tx_head < 0) {
 			tx_req = &tx_ring->tx_ring[tx_ring->tx_tail &
 				  (ipoib_sendq_size - 1)];
-			ipoib_dma_unmap_tx(priv->ca, tx_req);
+			if (!tx_req->is_inline)
+				ipoib_dma_unmap_tx(priv->ca, tx_req);
 			dev_kfree_skb_any(tx_req->skb);
 			++tx_ring->tx_tail;
 			--tx_ring->tx_outstanding;

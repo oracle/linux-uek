@@ -346,7 +346,8 @@ static int ipoib_create_parent_qp(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ib_qp_init_attr init_attr = {
 		.sq_sig_type = IB_SIGNAL_ALL_WR,
-		.qp_type     = IB_QPT_UD
+		.qp_type     = IB_QPT_UD,
+		.cap.max_inline_data	= IPOIB_MAX_INLINE_SIZE
 	};
 	struct ib_qp *qp;
 
@@ -425,6 +426,7 @@ static struct ib_qp *ipoib_create_tss_qp(struct net_device *dev,
 		.cap = {
 			.max_send_wr  = ipoib_sendq_size,
 			.max_send_sge = 1,
+			.max_inline_data	= IPOIB_MAX_INLINE_SIZE,
 		},
 		.sq_sig_type = IB_SIGNAL_ALL_WR,
 		.qp_type     = IB_QPT_UD

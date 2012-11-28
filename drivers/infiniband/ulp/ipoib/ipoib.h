@@ -105,7 +105,7 @@ enum {
 
 	MAX_SEND_CQE		  = 16,
 	IPOIB_CM_COPYBREAK	  = 256,
-
+	IPOIB_MAX_INLINE_SIZE     = 800,
 	IPOIB_NON_CHILD		  = 0,
 	IPOIB_LEGACY_CHILD	  = 1,
 	IPOIB_RTNL_CHILD	  = 2,
@@ -161,11 +161,13 @@ struct ipoib_tx_buf {
 	struct sk_buff *skb;
 	struct ipoib_ah *ah;
 	u64		mapping[MAX_SKB_FRAGS + 1];
+	int		is_inline;
 };
 
 struct ipoib_cm_tx_buf {
 	struct sk_buff *skb;
 	u64		mapping;
+	int		is_inline;
 };
 
 struct ib_cm_id;
@@ -786,6 +788,7 @@ static inline void ipoib_unregister_debugfs(void) { }
 
 extern int ipoib_sendq_size;
 extern int ipoib_recvq_size;
+extern int ipoib_inline_thold;
 
 extern struct ib_sa_client ipoib_sa_client;
 

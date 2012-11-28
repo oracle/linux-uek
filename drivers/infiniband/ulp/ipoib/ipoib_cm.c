@@ -42,6 +42,7 @@
 #include "ipoib.h"
 
 int ipoib_max_conn_qp = 128;
+int ipoib_inline_thold = 160;
 
 module_param_named(max_nonsrq_conn_qp, ipoib_max_conn_qp, int, 0444);
 MODULE_PARM_DESC(max_nonsrq_conn_qp,
@@ -756,21 +757,33 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	 */
 	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_sendq_size - 1)];
 	tx_req->skb = skb;
-	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
-	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
-		++send_ring->stats.tx_errors;
-		dev_kfree_skb_any(skb);
-		return;
-	}
 
-	tx_req->mapping = addr;
+	if (skb->len < ipoib_inline_thold && !skb_shinfo(skb)->nr_frags) {
+		addr = (u64) skb->data;
+		send_ring->tx_wr.send_flags |= IB_SEND_INLINE;
+		tx_req->is_inline = 1;
+	} else {
+		addr = ib_dma_map_single(priv->ca, skb->data,
+			skb->len, DMA_TO_DEVICE);
+		if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
+			++send_ring->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return;
+		}
+
+		tx_req->mapping = addr;
+		tx_req->is_inline = 0;
+		send_ring->tx_wr.send_flags &= ~IB_SEND_INLINE;
+	}
 
 	rc = post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
 		       addr, skb->len, send_ring);
 	if (unlikely(rc)) {
 		ipoib_warn(priv, "post_send failed, error %d\n", rc);
 		++send_ring->stats.tx_errors;
-		ib_dma_unmap_single(priv->ca, addr, skb->len, DMA_TO_DEVICE);
+		if (!tx_req->is_inline)
+			ib_dma_unmap_single(priv->ca, addr, skb->len,
+					DMA_TO_DEVICE);
 		dev_kfree_skb_any(skb);
 	} else {
 		netdev_get_tx_queue(dev, queue_index)->trans_start = jiffies;
@@ -809,8 +822,10 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	tx_req = &tx->tx_ring[wr_id];
 	queue_index = skb_get_queue_mapping(tx_req->skb);
 	send_ring = priv->send_ring + queue_index;
-
-	ib_dma_unmap_single(priv->ca, tx_req->mapping, tx_req->skb->len, DMA_TO_DEVICE);
+	/* Checking whether inline send was used - nothing to unmap */
+	if (!tx_req->is_inline)
+		ib_dma_unmap_single(priv->ca, tx_req->mapping,
+			tx_req->skb->len, DMA_TO_DEVICE);
 
 	/* FIXME: is this right? Shouldn't we only increment on success? */
 	++send_ring->stats.tx_packets;
@@ -1046,6 +1061,7 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.srq			= priv->cm.srq,
 		.cap.max_send_wr	= ipoib_sendq_size,
 		.cap.max_send_sge	= 1,
+		.cap.max_inline_data	= IPOIB_MAX_INLINE_SIZE,
 		.sq_sig_type		= IB_SIGNAL_ALL_WR,
 		.qp_type		= IB_QPT_RC,
 		.qp_context		= tx
@@ -1208,8 +1224,10 @@ timeout:
 		struct ipoib_send_ring *send_ring;
 		u16 queue_index;
 		tx_req = &p->tx_ring[p->tx_tail & (ipoib_sendq_size - 1)];
-		ib_dma_unmap_single(priv->ca, tx_req->mapping, tx_req->skb->len,
-				    DMA_TO_DEVICE);
+		/* Checking whether inline was used - nothing to unmap */
+		if (!tx_req->is_inline)
+			ib_dma_unmap_single(priv->ca, tx_req->mapping,
+					tx_req->skb->len, DMA_TO_DEVICE);
 		dev_kfree_skb_any(tx_req->skb);
 		++p->tx_tail;
 		queue_index = skb_get_queue_mapping(tx_req->skb);
