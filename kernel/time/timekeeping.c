@@ -20,6 +20,7 @@
 #include <linux/time.h>
 #include <linux/tick.h>
 #include <linux/stop_machine.h>
+#include <linux/pvclock_gtod.h>
 
 /* Structure holding internal timekeeping values. */
 struct timekeeper {
@@ -181,6 +182,54 @@ static void update_rt_offset(void)
 	offs_real = timespec_to_ktime(tmp);
 }
 
+static RAW_NOTIFIER_HEAD(pvclock_gtod_chain);
+
+static void update_pvclock_gtod(struct timekeeper *tk)
+{
+	raw_notifier_call_chain(&pvclock_gtod_chain, 0, tk);
+}
+
+/**
+ * pvclock_gtod_register_notifier - register a pvclock timedata update listener
+ *
+ * Must hold write on timekeeper.lock
+ */
+int pvclock_gtod_register_notifier(struct notifier_block *nb)
+{
+	struct timekeeper *tk = &timekeeper;
+	unsigned long flags;
+	int ret;
+
+	write_seqlock_irqsave(&xtime_lock, flags);
+	ret = raw_notifier_chain_register(&pvclock_gtod_chain, nb);
+	/* update timekeeping data */
+	update_pvclock_gtod(tk);
+	write_sequnlock_irqrestore(&xtime_lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pvclock_gtod_register_notifier);
+
+/**
+ * pvclock_gtod_unregister_notifier - unregister a pvclock
+ * timedata update listener
+ *
+ * Must hold write on timekeeper.lock
+ */
+int pvclock_gtod_unregister_notifier(struct notifier_block *nb)
+{
+	struct timekeeper *tk = &timekeeper;
+	unsigned long flags;
+	int ret;
+
+	write_seqlock_irqsave(&xtime_lock, flags);
+	ret = raw_notifier_chain_unregister(&pvclock_gtod_chain, nb);
+	write_sequnlock_irqrestore(&xtime_lock, flags);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(pvclock_gtod_unregister_notifier);
+
 /* must hold write on xtime_lock */
 static void timekeeping_update(bool clearntp)
 {
@@ -191,6 +240,7 @@ static void timekeeping_update(bool clearntp)
 	update_rt_offset();
 	update_vsyscall(&xtime, &wall_to_monotonic,
 			 timekeeper.clock, timekeeper.mult);
+	update_pvclock_gtod(&timekeeper);
 }
 
 
