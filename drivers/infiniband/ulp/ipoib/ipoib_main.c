@@ -80,7 +80,7 @@ static const u8 ipv4_bcast_addr[] = {
 };
 
 struct workqueue_struct *ipoib_workqueue;
-
+struct workqueue_struct *ipoib_auto_moder_workqueue;
 struct ib_sa_client ipoib_sa_client;
 
 static void ipoib_add_one(struct ib_device *device);
@@ -162,6 +162,13 @@ int ipoib_open(struct net_device *dev)
 	}
 
 	netif_tx_start_all_queues(dev);
+
+	if (priv->ethtool.use_adaptive_rx_coalesce) {
+		set_bit(IPOIB_FLAG_AUTO_MODER, &priv->flags);
+		queue_delayed_work(ipoib_auto_moder_workqueue,
+					   &priv->adaptive_moder_task,
+					   ADAPT_MODERATION_DELAY);
+	}
 
 	return 0;
 
@@ -1487,6 +1494,149 @@ static void ipoib_neigh_hash_uninit(struct net_device *dev)
 }
 
 
+
+static void ipoib_set_default_moderation(struct ipoib_dev_priv *priv)
+{
+
+	/* If we haven't received a specific coalescing setting
+	 * (module param), we set the moderation parameters as follows:
+	 * - moder_cnt is set to the number of mtu sized packets to
+	 *   satisfy our coaelscing target.
+	 * - moder_time is set to a fixed value.
+	 */
+	priv->ethtool.rx_max_coalesced_frames = IPOIB_RX_COAL_TARGET;
+	priv->ethtool.rx_coalesce_usecs = IPOIB_RX_COAL_TIME;
+	printk(KERN_ERR "Default coalesing params for mtu:%d - "
+			   "rx_frames:%d rx_usecs:%d\n",
+	       priv->dev->mtu, priv->ethtool.rx_max_coalesced_frames,
+	       priv->ethtool.rx_coalesce_usecs);
+
+	/* Reset auto-moderation params */
+	priv->ethtool.pkt_rate_low = IPOIB_RX_RATE_LOW;
+	priv->ethtool.rx_coalesce_usecs_low = IPOIB_RX_COAL_TIME_LOW;
+	priv->ethtool.pkt_rate_high = IPOIB_RX_RATE_HIGH;
+	priv->ethtool.rx_coalesce_usecs_high = IPOIB_RX_COAL_TIME_HIGH;
+	priv->ethtool.sample_interval = IPOIB_SAMPLE_INTERVAL;
+	priv->ethtool.use_adaptive_rx_coalesce = 1;
+	priv->ethtool.last_moder_time = IPOIB_AUTO_CONF;
+	priv->ethtool.last_moder_jiffies = 0;
+	priv->ethtool.last_moder_packets = 0;
+	priv->ethtool.last_moder_tx_packets = 0;
+	priv->ethtool.last_moder_bytes = 0;
+}
+/*
+The function classifies the incoming traffic during each sampling interval
+into classes. The rx_usec value (i.e., moderation time) is then adjusted
+appropriately per class.
+There are two classes defined:
+	A. Bulk traffic: for heavy traffic consisting of packets of normal size.
+	This class is further divided into two sub-classes:
+		1. Traffic that is mainly BW bound
+		- This traffic will get maximum moderation.
+		2. Traffic that is mostly latency bound
+		- For situations where low latency is vital
+		- The rx_usec will be changed to a value in the range:
+		(ethtool.pkt_rate_low  .. ethtool.pkt_rate_high)
+		depending on sampled packet rate.
+	B.  Low latency traffic: for minimal traffic, or small packets.
+	- This traffic will get minimum moderation.
+*/
+static void ipoib_auto_moderation(struct ipoib_dev_priv *priv)
+{
+	unsigned long period = jiffies - priv->ethtool.last_moder_jiffies;
+	unsigned long packets;
+	unsigned long rate;
+	unsigned long avg_pkt_size;
+	unsigned long rx_packets;
+	unsigned long rx_bytes;
+	unsigned long tx_packets;
+	unsigned long tx_pkt_diff;
+	unsigned long rx_pkt_diff;
+	int moder_time;
+	int ret;
+	int i;
+
+
+
+	if (!priv->ethtool.use_adaptive_rx_coalesce)
+		return;
+
+	rx_packets = priv->dev->stats.rx_packets;
+	rx_bytes = priv->dev->stats.rx_bytes;
+	tx_packets = priv->dev->stats.tx_packets;
+
+	tx_pkt_diff = tx_packets - priv->ethtool.last_moder_tx_packets;
+	rx_pkt_diff = rx_packets - priv->ethtool.last_moder_packets;
+	packets = max(tx_pkt_diff, rx_pkt_diff);
+	rate = packets * HZ / period;
+	avg_pkt_size = packets ?
+		(rx_bytes - priv->ethtool.last_moder_bytes) / packets : 0;
+
+	/* Apply auto-moderation only when packet rate exceeds a rate that
+	 * it matters */
+	if (rate > IPOIB_RX_RATE_THRESH &&
+		avg_pkt_size > IPOIB_AVG_PKT_SMALL) {
+		if (rate < priv->ethtool.pkt_rate_low)
+			moder_time =
+				priv->ethtool.rx_coalesce_usecs_low;
+		else if (rate > priv->ethtool.pkt_rate_high)
+			moder_time =
+				priv->ethtool.rx_coalesce_usecs_high;
+		else
+			moder_time = (rate - priv->ethtool.pkt_rate_low) *
+				(priv->ethtool.rx_coalesce_usecs_high
+				- priv->ethtool.rx_coalesce_usecs_low) /
+				(priv->ethtool.pkt_rate_high
+				- priv->ethtool.pkt_rate_low) +
+				priv->ethtool.rx_coalesce_usecs_low;
+
+	} else
+		moder_time = priv->ethtool.rx_coalesce_usecs_low;
+
+	if (moder_time != priv->ethtool.last_moder_time) {
+		ipoib_dbg(priv, "%s: Rx moder_time changed from:%d to %d\n",
+		       __func__, priv->ethtool.last_moder_time, moder_time);
+		priv->ethtool.last_moder_time = moder_time;
+		for (i = 0; i < priv->num_rx_queues; i++) {
+			ret = ib_modify_cq(priv->recv_ring[i].recv_cq,
+				   priv->ethtool.rx_max_coalesced_frames,
+				   moder_time);
+			if (ret && ret != -ENOSYS)
+				ipoib_warn(priv,
+					"%s: failed modifying CQ (%d)\n",
+					__func__, ret);
+		}
+	}
+
+	priv->ethtool.last_moder_packets = rx_packets;
+	priv->ethtool.last_moder_tx_packets = tx_packets;
+	priv->ethtool.last_moder_bytes = rx_bytes;
+	priv->ethtool.last_moder_jiffies = jiffies;
+}
+
+static void ipoib_config_adapt_moder(struct work_struct *work)
+{
+	struct delayed_work *delay = to_delayed_work(work);
+	struct ipoib_dev_priv *priv = container_of(delay,
+						   struct ipoib_dev_priv,
+						   adaptive_moder_task);
+
+	if (!(netif_running(priv->dev) && netif_carrier_ok(priv->dev))) {
+		ipoib_dbg(priv, "%s: port is not ACTIVE, no configuration"
+				" for adaptive moderation\n",
+			  __func__);
+		return;
+	}
+
+	ipoib_auto_moderation(priv);
+
+	if (test_bit(IPOIB_FLAG_AUTO_MODER, &priv->flags) &&
+	    priv->ethtool.use_adaptive_rx_coalesce)
+		queue_delayed_work(ipoib_auto_moder_workqueue,
+				   &priv->adaptive_moder_task,
+				   ADAPT_MODERATION_DELAY);
+}
+
 int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
@@ -1553,6 +1703,7 @@ int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 		goto out_send_ring_cleanup;
 
 
+	ipoib_set_default_moderation(priv);
 	return 0;
 
 out_send_ring_cleanup:
@@ -1754,6 +1905,7 @@ void ipoib_setup(struct net_device *dev)
 	INIT_WORK(&priv->restart_task, ipoib_mcast_restart_task);
 	INIT_DELAYED_WORK(&priv->ah_reap_task, ipoib_reap_ah);
 	INIT_DELAYED_WORK(&priv->neigh_reap_task, ipoib_reap_neigh);
+	INIT_DELAYED_WORK(&priv->adaptive_moder_task, ipoib_config_adapt_moder);
 }
 
 struct ipoib_dev_priv *ipoib_intf_alloc(const char *name,
@@ -2314,6 +2466,7 @@ static void ipoib_remove_one(struct ib_device *device)
 		set_bit(IPOIB_STOP_NEIGH_GC, &priv->flags);
 		cancel_delayed_work(&priv->neigh_reap_task);
 		flush_workqueue(ipoib_workqueue);
+		flush_workqueue(ipoib_auto_moder_workqueue);
 
 		unregister_netdev(priv->dev);
 		free_netdev(priv->dev);
@@ -2361,6 +2514,12 @@ static int __init ipoib_init_module(void)
 		goto err_fs;
 	}
 
+	ipoib_auto_moder_workqueue =
+		create_singlethread_workqueue("ipoib_auto_moder");
+	if (!ipoib_auto_moder_workqueue) {
+		ret = -ENOMEM;
+		goto err_am;
+	}
 	ib_sa_register_client(&ipoib_sa_client);
 
 	ret = ib_register_client(&ipoib_client);
@@ -2378,6 +2537,8 @@ err_client:
 
 err_sa:
 	ib_sa_unregister_client(&ipoib_sa_client);
+	destroy_workqueue(ipoib_auto_moder_workqueue);
+err_am:
 	destroy_workqueue(ipoib_workqueue);
 
 err_fs:
@@ -2393,6 +2554,7 @@ static void __exit ipoib_cleanup_module(void)
 	ib_sa_unregister_client(&ipoib_sa_client);
 	ipoib_unregister_debugfs();
 	destroy_workqueue(ipoib_workqueue);
+	destroy_workqueue(ipoib_auto_moder_workqueue);
 }
 
 module_init(ipoib_init_module);

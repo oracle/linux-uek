@@ -72,8 +72,8 @@ enum {
 	IPOIB_CM_BUF_SIZE	  = IPOIB_CM_MTU  + IPOIB_ENCAP_LEN,
 	IPOIB_CM_HEAD_SIZE	  = IPOIB_CM_BUF_SIZE % PAGE_SIZE,
 	IPOIB_CM_RX_SG		  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
-	IPOIB_RX_RING_SIZE	  = 256,
-	IPOIB_TX_RING_SIZE	  = 128,
+	IPOIB_RX_RING_SIZE	  = 512,
+	IPOIB_TX_RING_SIZE	  = 512,
 	IPOIB_MAX_QUEUE_SIZE	  = 8192,
 	IPOIB_MIN_QUEUE_SIZE	  = 2,
 	IPOIB_CM_MAX_CONN_QP	  = 4096,
@@ -95,6 +95,7 @@ enum {
 	IPOIB_FLAG_UMCAST	  = 10,
 	IPOIB_STOP_NEIGH_GC	  = 11,
 	IPOIB_NEIGH_TBL_FLUSH	  = 12,
+	IPOIB_FLAG_AUTO_MODER     = 13, /*indicates moderation is running*/
 
 	IPOIB_MAX_BACKOFF_SECONDS = 16,
 
@@ -266,9 +267,40 @@ struct ipoib_cm_dev_priv {
 	u32			rx_cq_ind;
 };
 
+/* adaptive moderation parameters: */
+enum {
+	/* Target number of packets to coalesce with interrupt moderation */
+	IPOIB_RX_COAL_TARGET	= 88,
+	IPOIB_RX_COAL_TIME	= 16,
+	IPOIB_TX_COAL_PKTS	= 5,
+	IPOIB_TX_COAL_TIME	= 0x80,
+	IPOIB_RX_RATE_LOW	= 400000,
+	IPOIB_RX_COAL_TIME_LOW	= 0,
+	IPOIB_RX_RATE_HIGH	= 450000,
+	IPOIB_RX_COAL_TIME_HIGH	= 128,
+	IPOIB_RX_SIZE_THRESH	= 1024,
+	IPOIB_RX_RATE_THRESH	= 1000000 / IPOIB_RX_COAL_TIME_HIGH,
+	IPOIB_SAMPLE_INTERVAL	= 0,
+	IPOIB_AVG_PKT_SMALL	= 256,
+	IPOIB_AUTO_CONF		= 0xffff,
+	ADAPT_MODERATION_DELAY	= HZ / 4,
+};
+
 struct ipoib_ethtool_st {
-	u16     coalesce_usecs;
-	u16     max_coalesced_frames;
+	__u32 rx_max_coalesced_frames;
+	__u32 rx_coalesce_usecs;
+	__u32	pkt_rate_low;
+	__u32	pkt_rate_high;
+	__u32	rx_coalesce_usecs_low;
+	__u32	rx_coalesce_usecs_high;
+	__u32	rate_sample_interval;
+	__u32	use_adaptive_rx_coalesce;
+	int	last_moder_time;
+	u16	sample_interval;
+	unsigned long last_moder_jiffies;
+	unsigned long last_moder_packets;
+	unsigned long last_moder_tx_packets;
+	unsigned long last_moder_bytes;
 };
 
 struct ipoib_neigh_table;
@@ -386,6 +418,7 @@ struct ipoib_dev_priv {
 	struct work_struct flush_heavy;
 	struct work_struct restart_task;
 	struct delayed_work ah_reap_task;
+	struct delayed_work adaptive_moder_task;
 	struct delayed_work neigh_reap_task;
 	struct ib_device *ca;
 	u8		  port;
@@ -501,6 +534,7 @@ void ipoib_neigh_free(struct ipoib_neigh *neigh);
 void ipoib_del_neighs_by_gid(struct net_device *dev, u8 *gid);
 
 extern struct workqueue_struct *ipoib_workqueue;
+extern struct workqueue_struct *ipoib_auto_moder_workqueue;
 
 /* functions */
 

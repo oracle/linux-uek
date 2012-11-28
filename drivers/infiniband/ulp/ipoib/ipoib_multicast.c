@@ -379,6 +379,14 @@ void ipoib_mcast_carrier_on_task(struct work_struct *work)
 	rtnl_lock();
 	netif_carrier_on(priv->dev);
 	rtnl_unlock();
+
+	/* enable auto-moderation */
+	if (priv->ethtool.use_adaptive_rx_coalesce &&
+		test_bit(IPOIB_FLAG_AUTO_MODER, &priv->flags))
+		queue_delayed_work(ipoib_auto_moder_workqueue,
+			&priv->adaptive_moder_task,
+			ADAPT_MODERATION_DELAY);
+
 }
 
 static int ipoib_mcast_join_complete(int status,

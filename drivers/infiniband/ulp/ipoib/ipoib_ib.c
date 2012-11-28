@@ -871,7 +871,7 @@ int ipoib_ib_dev_up(struct net_device *dev)
 	}
 
 	set_bit(IPOIB_FLAG_OPER_UP, &priv->flags);
-
+	set_bit(IPOIB_FLAG_AUTO_MODER, &priv->flags);
 	return ipoib_mcast_start_thread(dev);
 }
 
@@ -893,6 +893,12 @@ int ipoib_ib_dev_down(struct net_device *dev, int flush)
 		if (flush)
 			flush_workqueue(ipoib_workqueue);
 	}
+
+	/* cancell the adaptive moderation task. */
+	if (test_and_clear_bit(IPOIB_FLAG_AUTO_MODER, &priv->flags))
+		cancel_delayed_work(&priv->adaptive_moder_task);
+
+	flush_workqueue(ipoib_auto_moder_workqueue);
 
 	ipoib_mcast_stop_thread(dev, flush);
 	ipoib_mcast_dev_flush(dev);
