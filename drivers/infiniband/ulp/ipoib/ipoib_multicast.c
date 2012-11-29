@@ -365,20 +365,19 @@ void ipoib_mcast_carrier_on_task(struct work_struct *work)
 						   carrier_on_task);
 	struct ib_port_attr attr;
 
-	/*
-	 * Take rtnl_lock to avoid racing with ipoib_stop() and
-	 * turning the carrier back on while a device is being
-	 * removed.
-	 */
+	mutex_lock(&priv->state_lock);
+	if (!test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
+		ipoib_dbg(priv, "Keeping carrier off - IPOIB_FLAG_ADMIN_UP not set.\n");
+		goto out;
+	}
+
 	if (ib_query_port(priv->ca, priv->port, &attr) ||
 	    attr.state != IB_PORT_ACTIVE) {
 		ipoib_dbg(priv, "Keeping carrier off until IB port is active\n");
-		return;
+		goto out;
 	}
 
-	rtnl_lock();
 	netif_carrier_on(priv->dev);
-	rtnl_unlock();
 
 	/* enable auto-moderation */
 	if (priv->ethtool.use_adaptive_rx_coalesce &&
@@ -386,6 +385,10 @@ void ipoib_mcast_carrier_on_task(struct work_struct *work)
 		queue_delayed_work(ipoib_auto_moder_workqueue,
 			&priv->adaptive_moder_task,
 			ADAPT_MODERATION_DELAY);
+
+out:
+	mutex_unlock(&priv->state_lock);
+
 
 }
 

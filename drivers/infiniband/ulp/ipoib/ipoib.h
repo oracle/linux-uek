@@ -482,6 +482,7 @@ struct ipoib_dev_priv {
 	rwlock_t rings_lock;
 	__be16 tss_qpn_mask_sz; /* Put in ipoib header reserved */
 	atomic_t tx_ring_ind;
+	struct mutex		state_lock;
 };
 
 struct ipoib_ah {

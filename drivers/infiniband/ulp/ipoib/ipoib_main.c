@@ -186,8 +186,9 @@ static int ipoib_stop(struct net_device *dev)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
 	ipoib_dbg(priv, "stopping interface\n");
-
+	mutex_lock(&priv->state_lock);
 	clear_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags);
+	mutex_unlock(&priv->state_lock);
 
 	netif_tx_stop_all_queues(dev);
 
@@ -1936,6 +1937,7 @@ void ipoib_setup(struct net_device *dev)
 	spin_lock_init(&priv->lock);
 
 	mutex_init(&priv->vlan_mutex);
+	mutex_init(&priv->state_lock);
 
 	rwlock_init(&priv->rings_lock);
 	/* read access to rings is disabled */
