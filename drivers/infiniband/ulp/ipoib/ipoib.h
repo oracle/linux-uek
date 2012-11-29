@@ -171,6 +171,13 @@ struct ipoib_cm_tx_buf {
 	int		is_inline;
 };
 
+/* in order to call dst->ops->update_pmtu out of spin-lock*/
+struct ipoib_pmtu_update {
+	struct work_struct work;
+	struct sk_buff *skb;
+	unsigned int mtu;
+};
+
 struct ib_cm_id;
 
 struct ipoib_cm_data {

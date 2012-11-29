@@ -1440,14 +1440,47 @@ static void ipoib_cm_skb_reap(struct work_struct *work)
 	netif_tx_unlock_bh(dev);
 }
 
+static void ipoib_cm_update_pmtu_task(struct work_struct *work)
+{
+	struct ipoib_pmtu_update *pmtu_update =
+		container_of(work, struct ipoib_pmtu_update, work);
+	struct sk_buff *skb = pmtu_update->skb;
+
+	skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, pmtu_update->mtu);
+
+	atomic_dec(&skb->users);
+
+	kfree(pmtu_update);
+}
+
+
 void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			   unsigned int mtu)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int e = skb_queue_empty(&priv->cm.skb_queue);
 
-	if (skb_dst(skb))
-		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, mtu);
+	struct ipoib_pmtu_update *pmtu_update;
+
+	if (skb_dst(skb)) {
+		/* take the pmtu_update ouf ot spin-lock context */
+		pmtu_update = kzalloc(sizeof *pmtu_update, GFP_ATOMIC);
+		if (pmtu_update) {
+			pmtu_update->skb = skb;
+			pmtu_update->mtu = mtu;
+			/* in order to keep the skb available */
+			atomic_inc(&skb->users);
+			INIT_WORK(&pmtu_update->work, ipoib_cm_update_pmtu_task);
+			/*
+			* in order to have it serial, push that task to
+			* the same queue which the function  will push
+			* the priv->cm.skb_task work.
+			*/
+			queue_work(ipoib_workqueue, &pmtu_update->work);
+		} else
+			 ipoib_warn(priv, "Failed alloc pmtu_update and update_pmtu(skb->dst, mtu)\n");
+	}
+
 
 	skb_queue_tail(&priv->cm.skb_queue, skb);
 	if (e)
