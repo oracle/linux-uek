@@ -575,7 +575,6 @@ void ip_forward_options(struct sk_buff *skb)
 			opt->is_changed = 1;
 			ip_hdr(skb)->daddr = opt->nexthop;
 			ip_rt_get_source(&optptr[srrptr-1], skb, rt);
-			ip_hdr(skb)->daddr = opt->nexthop;
 			optptr[2] = srrptr+4;
 		} else if (net_ratelimit())
 			printk(KERN_CRIT "ip_forward(): Argh! Destination lost!\n");
