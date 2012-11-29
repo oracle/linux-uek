@@ -747,6 +747,8 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		++send_ring->stats.tx_dropped;
 		++send_ring->stats.tx_errors;
 		ipoib_cm_skb_too_long(dev, skb, tx->mtu - IPOIB_ENCAP_LEN);
+
+		dev_kfree_skb_any(skb);
 		return;
 	}
 
@@ -1460,7 +1462,7 @@ static void ipoib_cm_update_pmtu_task(struct work_struct *work)
 
 	skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, pmtu_update->mtu);
 
-	atomic_dec(&skb->users);
+	consume_skb(skb);
 
 	kfree(pmtu_update);
 }
@@ -1470,7 +1472,7 @@ void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			   unsigned int mtu)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
-	int e = skb_queue_empty(&priv->cm.skb_queue);
+	/* int e = skb_queue_empty(&priv->cm.skb_queue);*/
 
 	struct ipoib_pmtu_update *pmtu_update;
 
@@ -1481,7 +1483,8 @@ void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			pmtu_update->skb = skb;
 			pmtu_update->mtu = mtu;
 			/* in order to keep the skb available */
-			atomic_inc(&skb->users);
+			skb_get(skb);
+
 			INIT_WORK(&pmtu_update->work, ipoib_cm_update_pmtu_task);
 			/*
 			* in order to have it serial, push that task to
@@ -1493,10 +1496,11 @@ void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			 ipoib_warn(priv, "Failed alloc pmtu_update and update_pmtu(skb->dst, mtu)\n");
 	}
 
-
+/* TODO: check how to do that without the panic:
 	skb_queue_tail(&priv->cm.skb_queue, skb);
 	if (e)
 		queue_work(ipoib_workqueue, &priv->cm.skb_task);
+*/
 }
 
 static void ipoib_cm_rx_reap(struct work_struct *work)

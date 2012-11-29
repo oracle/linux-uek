@@ -663,6 +663,8 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 			++send_ring->stats.tx_dropped;
 			++send_ring->stats.tx_errors;
 			ipoib_cm_skb_too_long(dev, skb, priv->mcast_mtu);
+
+			dev_kfree_skb_any(skb);
 			return;
 		}
 		phead = NULL;
