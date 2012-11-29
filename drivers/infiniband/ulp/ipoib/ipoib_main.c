@@ -1023,6 +1023,10 @@ static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
 	struct net_device_stats local_stats;
 	int i;
 
+	/* if rings are not ready yet return last values */
+	if (!read_trylock(&priv->rings_lock))
+		return stats;
+
 	memset(&local_stats, 0, sizeof(struct net_device_stats));
 
 	for (i = 0; i < priv->num_rx_queues; i++) {
@@ -1040,6 +1044,8 @@ static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
 		local_stats.tx_errors  += tstats->tx_errors;
 		local_stats.tx_dropped += tstats->tx_dropped;
 	}
+
+	read_unlock(&priv->rings_lock);
 
 	stats->rx_packets = local_stats.rx_packets;
 	stats->rx_bytes   = local_stats.rx_bytes;
@@ -1740,6 +1746,8 @@ int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 
 
 	ipoib_set_default_moderation(priv);
+	/* access to rings allowed */
+	write_unlock(&priv->rings_lock);
 	return 0;
 
 out_send_ring_cleanup:
@@ -1770,6 +1778,9 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	ipoib_ib_dev_cleanup(dev);
 
+
+	/* no more access to rings */
+	write_lock(&priv->rings_lock);
 
 	for (i = 0; i < priv->num_tx_queues; i++)
 		vfree(priv->send_ring[i].tx_ring);
@@ -1925,6 +1936,10 @@ void ipoib_setup(struct net_device *dev)
 	spin_lock_init(&priv->lock);
 
 	mutex_init(&priv->vlan_mutex);
+
+	rwlock_init(&priv->rings_lock);
+	/* read access to rings is disabled */
+	write_lock(&priv->rings_lock);
 
 	INIT_LIST_HEAD(&priv->path_list);
 	INIT_LIST_HEAD(&priv->child_intfs);
