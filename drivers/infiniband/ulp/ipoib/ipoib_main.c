@@ -485,6 +485,7 @@ static void path_rec_completion(int status,
 	struct sk_buff_head skqueue;
 	struct sk_buff *skb;
 	unsigned long flags;
+	int ret;
 
 	if (!status)
 		ipoib_dbg(priv, "PathRec LID 0x%04x for GID %pI6\n",
@@ -559,9 +560,10 @@ static void path_rec_completion(int status,
 
 	while ((skb = __skb_dequeue(&skqueue))) {
 		skb->dev = dev;
-		if (dev_queue_xmit(skb))
-			ipoib_warn(priv, "dev_queue_xmit failed "
-				   "to requeue packet\n");
+		ret = dev_queue_xmit(skb);
+		if (ret)
+			ipoib_warn(priv, "%s: dev_queue_xmit failed "
+				   "to requeue packet, ret:%d\n", __func__, ret);
 	}
 }
 
