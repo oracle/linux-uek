@@ -57,6 +57,7 @@ unsigned int rds_ib_haip_fallback = 1;
 unsigned int rds_ib_haip_hca_failover_enabled = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
+unsigned int rds_ib_cq_balance_enabled = 1;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -78,7 +79,8 @@ module_param(rds_ib_haip_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
 module_param(rds_ib_haip_hca_failover_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_hca_failover_enabled, " HAIP HCA failover Enabled");
-
+module_param(rds_ib_cq_balance_enabled, int, 0444);
+MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -99,6 +101,7 @@ struct socket	*rds_ib_inet_socket;
 
 static struct rds_ib_port *ip_config;
 static u8	ip_port_cnt = 0;
+static u8	ip_port_max;
 
 void rds_ib_nodev_connect(void)
 {
@@ -145,6 +148,9 @@ static void rds_ib_dev_free(struct work_struct *work)
 		list_del(&i_ipaddr->list);
 		kfree(i_ipaddr);
 	}
+
+	if (rds_ibdev->vector_load)
+		kfree(rds_ibdev->vector_load);
 
 	kfree(rds_ibdev);
 }
@@ -577,7 +583,12 @@ static void rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
 				u8			port_num)
 {
-	ip_port_cnt++;
+	if (ip_port_cnt++ > ip_port_max) {
+		printk(KERN_ERR "RDS/IB: Exceeded max ports (%d)\n",
+			ip_port_max);
+		return;
+	}
+
 	ip_config[ip_port_cnt].port_num = port_num;
 	ip_config[ip_port_cnt].dev = net_dev;
 	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
@@ -890,7 +901,7 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
-static int rds_ib_setup_ports(void)
+static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
 	struct in_ifaddr	*ifa;
@@ -901,7 +912,21 @@ static int rds_ib_setup_ports(void)
 	int			ret = 0;
 
 	if (!rds_ib_haip_enabled)
-		return ret;
+		return 0;
+
+	ip_port_max = 0;
+	rcu_read_lock();
+	list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
+		ip_port_max += rds_ibdev->dev->phys_port_cnt;
+	}
+	rcu_read_unlock();
+
+	ip_config = kzalloc(sizeof(struct rds_ib_port) *
+				(ip_port_max + 1), GFP_KERNEL);
+	if (!ip_config) {
+		printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
+		return 1;
+	}
 
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
@@ -1006,18 +1031,16 @@ void rds_ib_add_one(struct ib_device *device)
 	}
 
 	if (rds_ib_haip_enabled) {
-		ip_config = kzalloc(sizeof(struct rds_ib_port) *
-					RDS_IB_MAX_PORTS + 1, GFP_KERNEL);
-
-		if (!ip_config) {
-			printk(KERN_ERR
-				"RDS/IB: failed to allocate IP config\n");
-			goto put_dev;
-		}
-
 		INIT_IB_EVENT_HANDLER(&rds_ibdev->event_handler,
 				rds_ibdev->dev, rds_ib_event_handler);
 		ib_register_event_handler(&rds_ibdev->event_handler);
+	}
+
+	rds_ibdev->vector_load = kzalloc(sizeof(int) *
+					device->num_comp_vectors, GFP_KERNEL);
+	if (!rds_ibdev->vector_load) {
+		printk(KERN_ERR "RDS/IB: failed to allocate vector memoru\n");
+		goto put_dev;
 	}
 
 	rds_ibdev->mr = ib_get_dma_mr(rds_ibdev->pd, IB_ACCESS_LOCAL_WRITE);
@@ -1079,6 +1102,9 @@ void rds_ib_exit(void)
 	rds_ib_recv_exit();
 	rds_trans_unregister(&rds_ib_transport);
 	rds_ib_fmr_exit();
+
+	if (ip_config)
+		kfree(ip_config);
 }
 
 struct rds_transport rds_ib_transport = {
@@ -1223,7 +1249,7 @@ int rds_ib_init(void)
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
-	ret = rds_ib_setup_ports();
+	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
 		goto out_srq;
