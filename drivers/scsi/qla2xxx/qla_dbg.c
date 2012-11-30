@@ -11,11 +11,11 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0122       | 0x4b,0xba,0xfa |
+ * | Module Init and Probe        |       0x0123       | 0x4b,0xba,0xfa |
  * | Mailbox commands             |       0x114d       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2087       | 0x2020-0x2022, |
  * |                              |                    | 0x2016,0x207d  |
- * | Queue Command and IO tracing |       0x3030       | 0x3006,0x300b  |
+ * | Queue Command and IO tracing |       0x3031       | 0x3006,0x300b  |
  * |                              |                    | 0x3027-0x302a  |
  * |                              |                    | 0x302d,0x302e  |
  * | DPC Thread                   |       0x401d       | 0x4002,0x4013  |
@@ -474,8 +474,8 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 		ha->max_req_queues : ha->max_rsp_queues;
 	mq->count = htonl(que_cnt);
 	for (cnt = 0; cnt < que_cnt; cnt++) {
-		reg = (struct device_reg_25xxmq *) ((void *)
-			ha->mqiobase + cnt * QLA_QUE_PAGE);
+		reg = (struct device_reg_25xxmq __iomem *)
+			(ha->mqiobase + cnt * QLA_QUE_PAGE);
 		que_idx = cnt * 4;
 		mq->qregs[que_idx] = htonl(RD_REG_DWORD(&reg->req_q_in));
 		mq->qregs[que_idx+1] = htonl(RD_REG_DWORD(&reg->req_q_out));
@@ -2203,7 +2203,7 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 		if (!cnt) {
 			nxt = fw->code_ram;
-			nxt += sizeof(fw->code_ram),
+			nxt += sizeof(fw->code_ram);
 			nxt += (ha->fw_memory_size - 0x100000 + 1);
 			goto copy_queue;
 		} else

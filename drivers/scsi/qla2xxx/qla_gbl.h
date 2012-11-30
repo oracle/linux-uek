@@ -84,6 +84,9 @@ extern int qla83xx_nic_core_reset(scsi_qla_host_t *);
 extern void qla83xx_reset_ownership(scsi_qla_host_t *);
 extern int qla2xxx_mctp_dump(scsi_qla_host_t *);
 
+extern int
+qla2x00_alloc_outstanding_cmds(struct qla_hw_data *, struct req_que *);
+
 /*
  * Global Data in qla_os.c source file.
  */
@@ -94,6 +97,7 @@ extern int qlport_down_retry;
 extern int ql2xplogiabsentdevice;
 extern int ql2xloginretrycount;
 extern int ql2xfdmienable;
+extern int ql2xmaxqdepth;
 extern int ql2xallocfwdump;
 extern int ql2xextended_error_logging;
 extern int ql2xiidmaenable;
