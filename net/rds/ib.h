@@ -229,6 +229,9 @@ struct rds_ib_connection {
 	struct rds_ib_path      i_cur_path;
 	unsigned int            i_alt_path_index;
 	unsigned int		i_active_side;
+
+	int			i_scq_vector;
+	int			i_rcq_vector;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -271,7 +274,6 @@ enum {
 };
 
 #define RDS_IB_MAX_ALIASES	100
-#define RDS_IB_MAX_PORTS	10
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
 	struct net_device	*dev;
@@ -320,6 +322,7 @@ struct rds_ib_device {
 	struct rds_ib_srq       *srq;
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
+	int			*vector_load;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -431,6 +434,7 @@ extern unsigned int rds_ib_haip_enabled;
 extern unsigned int rds_ib_haip_fallback;
 extern unsigned int rds_ib_haip_failover_enabled;
 extern unsigned int rds_ib_apm_timeout;
+extern unsigned int rds_ib_cq_balance_enabled;
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
