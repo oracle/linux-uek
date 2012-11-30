@@ -458,6 +458,31 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 	}
 }
 
+static int rds_ib_find_least_loaded_vector(struct rds_ib_device *rds_ibdev)
+{
+	int i;
+	int index = 0;
+	int min = rds_ibdev->vector_load[0];
+
+	if (!rds_ib_cq_balance_enabled) {
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+		return IB_CQ_VECTOR_LEAST_ATTACHED;
+#else
+		return 0;
+#endif
+	}
+
+	for (i = 1; i < rds_ibdev->dev->num_comp_vectors; i++) {
+		if (rds_ibdev->vector_load[i] < min) {
+			index = i;
+			min = rds_ibdev->vector_load[i];
+		}
+	}
+
+	rds_ibdev->vector_load[index]++;
+	return index;
+}
+
 /*
  * This needs to be very careful to not leave IS_ERR pointers around for
  * cleanup to trip over.
@@ -491,11 +516,10 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	ic->i_pd = rds_ibdev->pd;
 	ic->i_mr = rds_ibdev->mr;
 
+	ic->i_scq_vector = rds_ib_find_least_loaded_vector(rds_ibdev);
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	cq_attr.cqe = ic->i_send_ring.w_nr + 1;
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
-	cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
-#endif
+	cq_attr.comp_vector = ic->i_scq_vector;
 	ic->i_scq = ib_create_cq(dev, rds_ib_cq_comp_handler_send,
 				 rds_ib_cq_event_handler, conn,
 				 &cq_attr);
@@ -503,31 +527,36 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		ret = PTR_ERR(ic->i_scq);
 		ic->i_scq = NULL;
 		rdsdebug("ib_create_cq send failed: %d\n", ret);
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
+			rds_ibdev->vector_load[ic->i_scq_vector]--;
+#endif
 		goto out;
 	}
 
+	ic->i_rcq_vector = rds_ib_find_least_loaded_vector(rds_ibdev);
 	memset(&cq_attr, 0, sizeof(cq_attr));
 	if (rds_ib_srq_enabled) {
 		cq_attr.cqe = rds_ib_srq_max_wr - 1;
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
-		cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
-#endif
+		cq_attr.comp_vector = ic->i_rcq_vector;
 		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
 					 rds_ib_cq_event_handler, conn,
 					 &cq_attr);
 	} else {
 		cq_attr.cqe = ic->i_recv_ring.w_nr;
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED /* obsoleted */
-		cq_attr.comp_vector = IB_CQ_VECTOR_LEAST_ATTACHED;
-#endif
+		cq_attr.comp_vector = ic->i_rcq_vector;
 		ic->i_rcq = ib_create_cq(dev, rds_ib_cq_comp_handler_recv,
-					rds_ib_cq_event_handler, conn,
+					 rds_ib_cq_event_handler, conn,
 					 &cq_attr);
 	}
 	if (IS_ERR(ic->i_rcq)) {
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
 		rdsdebug("ib_create_cq recv failed: %d\n", ret);
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
+			rds_ibdev->vector_load[ic->i_rcq_vector]--;
+#endif
 		goto out;
 	}
 
@@ -1064,10 +1093,24 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		/* first destroy the ib state that generates callbacks */
 		if (ic->i_cm_id->qp)
 			rdma_destroy_qp(ic->i_cm_id);
-		if (ic->i_rcq)
+
+		if (ic->i_rcq) {
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+			if (ic->rds_ibdev &&
+				ic->i_rcq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
+				ic->rds_ibdev->vector_load[ic->i_rcq_vector]--;
+#endif
 			ib_destroy_cq(ic->i_rcq);
-		if (ic->i_scq)
+		}
+
+		if (ic->i_scq) {
+#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+			if (ic->rds_ibdev &&
+				ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
+				ic->rds_ibdev->vector_load[ic->i_scq_vector]--;
+#endif
 			ib_destroy_cq(ic->i_scq);
+		}
 
 		/* then free the resources that ib callbacks use */
 		if (ic->i_send_hdrs)
