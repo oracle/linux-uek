@@ -3822,7 +3822,7 @@ static void rtl_disable_msi(struct pci_dev *pdev, struct rtl8169_private *tp)
 	}
 }
 
-static void __devinit rtl_init_mdio_ops(struct rtl8169_private *tp)
+static void rtl_init_mdio_ops(struct rtl8169_private *tp)
 {
 	struct mdio_ops *ops = &tp->mdio_ops;
 
@@ -4074,7 +4074,7 @@ static void rtl_pll_power_up(struct rtl8169_private *tp)
 	rtl_generic_op(tp, tp->pll_power_ops.up);
 }
 
-static void __devinit rtl_init_pll_power_ops(struct rtl8169_private *tp)
+static void rtl_init_pll_power_ops(struct rtl8169_private *tp)
 {
 	struct pll_power_ops *ops = &tp->pll_power_ops;
 
@@ -4268,7 +4268,7 @@ static void r8168b_1_hw_jumbo_disable(struct rtl8169_private *tp)
 	RTL_W8(Config4, RTL_R8(Config4) & ~(1 << 0));
 }
 
-static void __devinit rtl_init_jumbo_ops(struct rtl8169_private *tp)
+static void rtl_init_jumbo_ops(struct rtl8169_private *tp)
 {
 	struct jumbo_ops *ops = &tp->jumbo_ops;
 
@@ -4706,7 +4706,7 @@ static u32 r8402_csi_read(struct rtl8169_private *tp, int addr)
 		RTL_R32(CSIDR) : ~0;
 }
 
-static void __devinit rtl_init_csi_ops(struct rtl8169_private *tp)
+static void rtl_init_csi_ops(struct rtl8169_private *tp)
 {
 	struct csi_ops *ops = &tp->csi_ops;
 
@@ -6608,7 +6608,7 @@ static void rtl_shutdown(struct pci_dev *pdev)
 	pm_runtime_put_noidle(d);
 }
 
-static void __devexit rtl_remove_one(struct pci_dev *pdev)
+static void rtl_remove_one(struct pci_dev *pdev)
 {
 	struct net_device *dev = pci_get_drvdata(pdev);
 	struct rtl8169_private *tp = netdev_priv(dev);
@@ -6728,7 +6728,7 @@ DECLARE_RTL_COND(rtl_rxtx_empty_cond)
 	return (RTL_R8(MCU) & RXTX_EMPTY) == RXTX_EMPTY;
 }
 
-static void __devinit rtl_hw_init_8168g(struct rtl8169_private *tp)
+static void rtl_hw_init_8168g(struct rtl8169_private *tp)
 {
 	void __iomem *ioaddr = tp->mmio_addr;
 	u32 data;
@@ -6762,7 +6762,7 @@ static void __devinit rtl_hw_init_8168g(struct rtl8169_private *tp)
 		return;
 }
 
-static void __devinit rtl_hw_initialize(struct rtl8169_private *tp)
+static void rtl_hw_initialize(struct rtl8169_private *tp)
 {
 	switch (tp->mac_version) {
 	case RTL_GIGA_MAC_VER_40:
@@ -6775,7 +6775,7 @@ static void __devinit rtl_hw_initialize(struct rtl8169_private *tp)
 	}
 }
 
-static int __devinit
+static int
 rtl_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
 	const struct rtl_cfg_info *cfg = rtl_cfg_infos + ent->driver_data;
@@ -7025,7 +7025,7 @@ static struct pci_driver rtl8169_pci_driver = {
 	.name		= MODULENAME,
 	.id_table	= rtl8169_pci_tbl,
 	.probe		= rtl_init_one,
-	.remove		= __devexit_p(rtl_remove_one),
+	.remove		= rtl_remove_one,
 	.shutdown	= rtl_shutdown,
 	.driver.pm	= RTL8169_PM_OPS,
 };
