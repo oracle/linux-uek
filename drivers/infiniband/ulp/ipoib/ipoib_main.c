@@ -1884,6 +1884,7 @@ static const struct net_device_ops ipoib_netdev_ops_no_tss = {
 };
 
 static const struct net_device_ops ipoib_netdev_ops_hw_tss = {
+	.ndo_uninit		 = ipoib_uninit,
 	.ndo_open	= ipoib_open,
 	.ndo_stop	= ipoib_stop,
 	.ndo_change_mtu		= ipoib_change_mtu,
@@ -1896,6 +1897,7 @@ static const struct net_device_ops ipoib_netdev_ops_hw_tss = {
 };
 
 static const struct net_device_ops ipoib_netdev_ops_sw_tss = {
+	.ndo_uninit		 = ipoib_uninit,
 	.ndo_open	= ipoib_open,
 	.ndo_stop	= ipoib_stop,
 	.ndo_change_mtu		= ipoib_change_mtu,

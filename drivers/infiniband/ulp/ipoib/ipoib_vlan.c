@@ -147,7 +147,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 	list_for_each_entry(tpriv, &ppriv->child_intfs, list) {
 		if (tpriv->pkey == pkey &&
 		    tpriv->child_type == IPOIB_LEGACY_CHILD && 
-		    priv->child_index == child_index) {
+		    tpriv->child_index == child_index) {
 			result = -ENOTUNIQ;
 			goto out;
 		}
