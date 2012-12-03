@@ -32,20 +32,22 @@
 
 #ifndef _LINUX_ETH_IB_IPOIB_H
 #define _LINUX_ETH_IB_IPOIB_H
-#include <linux/skbuff.h>
-#include <linux/if_infiniband.h>
-#include <rdma/ib_verbs.h>
+#include <net/sch_generic.h>
 
-/* must be <= 48 bytes */
-union skb_cb_data {
-	struct {
+struct eipoib_cb_data {
+	/*
+	* extra care taken not to collide with the usage done
+	* by the qdisc layer in struct skb cb data.
+	*/
+	struct qdisc_skb_cb     qdisc_cb;
+	struct { /* must be <= 20 bytes */
 		u32 sqpn;
-		u16 slid;
-		u8  dgid[16];
 		struct napi_struct *napi;
-	} rx;
+		u16 slid;
+		u8 data[6];
+	} __packed rx;
 };
 
-#define IPOIB_HANDLER_CB(skb) ((union skb_cb_data *)(skb)->cb)
+#define IPOIB_HANDLER_CB(skb) ((struct eipoib_cb_data *)(skb)->cb)
 
 #endif /* _LINUX_ETH_IB_IPOIB_H */

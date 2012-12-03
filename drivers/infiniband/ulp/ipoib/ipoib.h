@@ -860,8 +860,7 @@ static inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
 				struct napi_struct *napi)
 {
 	struct ipoib_cm_rx *p_cm_ctx = NULL;
-	union skb_cb_data *data = NULL;
-	struct ib_grh *grh = NULL;
+	struct eipoib_cb_data *data = NULL;
 	struct ipoib_header *header;
 	unsigned int tss_mask, tss_qpn_mask_sz;
 
@@ -874,16 +873,11 @@ static inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
 		tss_qpn_mask_sz = be16_to_cpu(header->tss_qpn_mask_sz) >> 12;
 		tss_mask = 0xffff >> (16 - tss_qpn_mask_sz);
 		data->rx.sqpn = wc->src_qp & tss_mask;
-	} else
+	} else {
 		data->rx.sqpn = wc->src_qp;
+	}
+
 	data->rx.napi = napi;
-
-	/*TODO: add mcast support.*/
-	/*if dqpn is mcast, fetch the dgid*/
-	grh = (struct ib_grh *)(skb->data - IB_GRH_BYTES - IPOIB_ENCAP_LEN);
-
-	if ((wc->wc_flags & IB_WC_GRH) && grh)
-		memcpy(data->rx.dgid, grh->dgid.raw, 16);
 
 	/* in CM mode, use the "base" qpn as sqpn */
 	if (p_cm_ctx)
