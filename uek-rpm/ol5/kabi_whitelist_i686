@@ -1634,3 +1634,7 @@
 	zlib_inflateEnd
 	zlib_inflateInit2
 	zlib_inflate_workspacesize
+	__phys_addr
+	copy_user_generic_string
+	copy_user_generic_unrolled
+	kernel_stack
