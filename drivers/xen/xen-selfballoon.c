@@ -69,6 +69,7 @@
 
 #include <linux/kernel.h>
 #include <linux/bootmem.h>
+#include <linux/swap.h>
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/module.h>
@@ -102,6 +103,12 @@ static unsigned int selfballoon_interval __read_mostly = 5;
  * setting this value indiscriminately may cause OOMs and crashes.
  */
 static unsigned int selfballoon_min_usable_mb;
+
+/*
+ * Amount of RAM in MB to add to the target number of pages.
+ * Can be used to reserve some more room for caches and the like.
+ */
+static unsigned int selfballoon_reserved_mb __read_mostly;
 
 static void selfballoon_process(struct work_struct *work);
 static DECLARE_DELAYED_WORK(selfballoon_worker, selfballoon_process);
@@ -215,7 +222,8 @@ static void selfballoon_process(struct work_struct *work)
 		cur_pages = totalram_pages;
 		tgt_pages = cur_pages; /* default is no change */
 		goal_pages = percpu_counter_read_positive(&vm_committed_as) +
-				totalreserve_pages;
+				totalreserve_pages +
+				MB2PAGES(selfballoon_reserved_mb);
 #ifdef CONFIG_FRONTSWAP
 		/* allow space for frontswap pages to be repatriated */
 		if (frontswap_selfshrinking && frontswap_enabled)
@@ -396,6 +404,30 @@ static SYSDEV_ATTR(selfballoon_min_usable_mb, S_IRUGO | S_IWUSR,
 		   show_selfballoon_min_usable_mb,
 		   store_selfballoon_min_usable_mb);
 
+SELFBALLOON_SHOW(selfballoon_reserved_mb, "%d\n",
+				selfballoon_reserved_mb);
+
+static ssize_t store_selfballoon_reserved_mb(struct sys_device *dev,
+					     struct sysdev_attribute *attr,
+					     const char *buf,
+					     size_t count)
+{
+	unsigned long val;
+	int err;
+
+	if (!capable(CAP_SYS_ADMIN))
+		return -EPERM;
+	err = strict_strtoul(buf, 10, &val);
+	if (err || val == 0)
+		return -EINVAL;
+	selfballoon_reserved_mb = val;
+	return count;
+}
+
+static SYSDEV_ATTR(selfballoon_reserved_mb, S_IRUGO | S_IWUSR,
+		   show_selfballoon_reserved_mb,
+		   store_selfballoon_reserved_mb);
+
 
 #ifdef CONFIG_FRONTSWAP
 SELFBALLOON_SHOW(frontswap_selfshrinking, "%d\n", frontswap_selfshrinking);
@@ -479,6 +511,7 @@ static struct attribute *selfballoon_attrs[] = {
 	&attr_selfballoon_downhysteresis.attr,
 	&attr_selfballoon_uphysteresis.attr,
 	&attr_selfballoon_min_usable_mb.attr,
+	&attr_selfballoon_reserved_mb.attr,
 #ifdef CONFIG_FRONTSWAP
 	&attr_frontswap_selfshrinking.attr,
 	&attr_frontswap_hysteresis.attr,

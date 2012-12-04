@@ -29,6 +29,7 @@
 #include <acpi/acpi_drivers.h>
 #include <acpi/processor.h>
 
+#include <xen/xen.h>
 #include <xen/interface/platform.h>
 #include <asm/xen/hypercall.h>
 
@@ -496,7 +497,7 @@ static int __init xen_acpi_processor_init(void)
 		}
 	}
 
-	/* Do initialization in ACPI core. It is OK to fail here.*/
+	/* Do initialization in ACPI core. It is OK to fail here. */
 	(void)acpi_processor_preregister_performance(acpi_perf_data);
 
 	for_each_possible_cpu(i) {
