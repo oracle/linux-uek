@@ -3,8 +3,9 @@
 #include <asm/apic.h>
 #include <xen/interface/physdev.h>
 #include <asm/xen/hypercall.h>
+#include "xen-ops.h"
 
-unsigned int xen_io_apic_read(unsigned apic, unsigned reg)
+static unsigned int xen_io_apic_read(unsigned apic, unsigned reg)
 {
 	struct physdev_apic apic_op;
 	int ret;
