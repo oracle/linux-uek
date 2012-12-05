@@ -511,48 +511,38 @@ int ipoib_poll(struct napi_struct *napi, int budget)
 {
 	struct ipoib_recv_ring *rx_ring;
 	struct net_device *dev;
-	int done;
-	int t;
 	int n, i;
+	struct ib_wc *wc;
 
-	done  = 0;
 	rx_ring = container_of(napi, struct ipoib_recv_ring, napi);
 	dev = rx_ring->dev;
 
 poll_more:
-	while (done < budget) {
-		int max = (budget - done);
 
-		t = min(IPOIB_NUM_WC, max);
-		n = ib_poll_cq(rx_ring->recv_cq, t, rx_ring->ibwc);
+	n = ib_poll_cq(rx_ring->recv_cq, IPOIB_NUM_WC, rx_ring->ibwc);
 
-		for (i = 0; i < n; i++) {
-			struct ib_wc *wc = rx_ring->ibwc + i;
+	for (i = 0; i < n; i++) {
+		wc = rx_ring->ibwc + i;
 
-			if (wc->wr_id & IPOIB_OP_RECV) {
-				++done;
-				if (wc->wr_id & IPOIB_OP_CM)
-					ipoib_cm_handle_rx_wc(dev, rx_ring, wc);
-				else
-					ipoib_ib_handle_rx_wc(dev, rx_ring, wc);
-			} else
-				ipoib_cm_handle_tx_wc(dev, wc);
-		}
-
-		if (n != t)
-			break;
+		if (wc->wr_id & IPOIB_OP_RECV) {
+			if (wc->wr_id & IPOIB_OP_CM)
+				ipoib_cm_handle_rx_wc(dev, rx_ring, wc);
+			else
+				ipoib_ib_handle_rx_wc(dev, rx_ring, wc);
+		} else
+			ipoib_cm_handle_tx_wc(dev, wc);
 	}
 
-	if (done < budget) {
+	if (n < budget) {
 		napi_complete(napi);
 		if (unlikely(ib_req_notify_cq(rx_ring->recv_cq,
 					      IB_CQ_NEXT_COMP |
 					      IB_CQ_REPORT_MISSED_EVENTS)) &&
-		    napi_reschedule(napi))
+					    napi_reschedule(napi))
 			goto poll_more;
 	}
 
-	return done;
+	return (n < 0 ? 0 : n);
 }
 
 void ipoib_ib_completion(struct ib_cq *cq, void *ctx_ptr)
@@ -791,7 +781,7 @@ static void ipoib_napi_enable(struct net_device *dev)
 	recv_ring = priv->recv_ring;
 	for (i = 0; i < priv->num_rx_queues; i++) {
 		netif_napi_add(dev, &recv_ring->napi,
-						ipoib_poll, 100);
+						ipoib_poll, IPOIB_NUM_WC);
 		napi_enable(&recv_ring->napi);
 		recv_ring++;
 	}
