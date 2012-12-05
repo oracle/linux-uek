@@ -1734,6 +1734,18 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv = netdev_priv(dev);
 	memset(priv, 0, sizeof(struct mlx4_en_priv));
 	priv->counter_index = 0xff;
+	spin_lock_init(&priv->stats_lock);
+	INIT_WORK(&priv->mcast_task, mlx4_en_do_set_multicast);
+	INIT_WORK(&priv->mac_task, mlx4_en_do_set_mac);
+	INIT_WORK(&priv->watchdog_task, mlx4_en_restart);
+	INIT_WORK(&priv->linkstate_task, mlx4_en_linkstate);
+	INIT_DELAYED_WORK(&priv->stats_task, mlx4_en_do_get_stats);
+#ifdef CONFIG_RFS_ACCEL
+	INIT_LIST_HEAD(&priv->filters);
+	spin_lock_init(&priv->filters_lock);
+#endif
+
+	priv->msg_enable = MLX4_EN_MSG_LEVEL;
 	priv->dev = dev;
 	priv->mdev = mdev;
 	priv->ddev = &mdev->pdev->dev;
@@ -1759,16 +1771,9 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->rx_ring_num = prof->rx_ring_num;
 	priv->cqe_factor = (mdev->dev->caps.cqe_size == 64) ? 1 : 0;
 	priv->mac_index = -1;
-	priv->msg_enable = MLX4_EN_MSG_LEVEL;
 	priv->last_ifq_jiffies = 0;
 	priv->if_counters_rx_errors = 0;
 	priv->if_counters_rx_no_buffer = 0;
-	spin_lock_init(&priv->stats_lock);
-	INIT_WORK(&priv->mcast_task, mlx4_en_do_set_multicast);
-	INIT_WORK(&priv->mac_task, mlx4_en_do_set_mac);
-	INIT_WORK(&priv->watchdog_task, mlx4_en_restart);
-	INIT_WORK(&priv->linkstate_task, mlx4_en_linkstate);
-	INIT_DELAYED_WORK(&priv->stats_task, mlx4_en_do_get_stats);
 #ifdef CONFIG_MLX4_EN_DCB
 	if (!mlx4_is_slave(priv->mdev->dev)) {
 		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
