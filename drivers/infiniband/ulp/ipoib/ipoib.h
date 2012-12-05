@@ -481,7 +481,7 @@ struct ipoib_dev_priv {
 	unsigned int max_tx_queues; /* No TSS HW support tss_qp_num + 1 */
 	unsigned int num_rx_queues; /* Actual */
 	unsigned int num_tx_queues; /* Actual */
-	rwlock_t rings_lock;
+	struct rw_semaphore rings_rwsem;
 	__be16 tss_qpn_mask_sz; /* Put in ipoib header reserved */
 	atomic_t tx_ring_ind;
 	struct mutex		state_lock;

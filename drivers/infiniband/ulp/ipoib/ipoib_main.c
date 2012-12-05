@@ -1027,7 +1027,7 @@ static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
 	int i;
 
 	/* if rings are not ready yet return last values */
-	if (!read_trylock(&priv->rings_lock))
+	if (!down_read_trylock(&priv->rings_rwsem))
 		return stats;
 
 	memset(&local_stats, 0, sizeof(struct net_device_stats));
@@ -1048,7 +1048,7 @@ static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
 		local_stats.tx_dropped += tstats->tx_dropped;
 	}
 
-	read_unlock(&priv->rings_lock);
+	up_read(&priv->rings_rwsem);
 
 	stats->rx_packets = local_stats.rx_packets;
 	stats->rx_bytes   = local_stats.rx_bytes;
@@ -1750,7 +1750,7 @@ int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 
 	ipoib_set_default_moderation(priv);
 	/* access to rings allowed */
-	write_unlock(&priv->rings_lock);
+	up_write(&priv->rings_rwsem);
 	return 0;
 
 out_send_ring_cleanup:
@@ -1783,7 +1783,7 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 
 	/* no more access to rings */
-	write_lock(&priv->rings_lock);
+	down_write(&priv->rings_rwsem);
 
 	for (i = 0; i < priv->num_tx_queues; i++)
 		vfree(priv->send_ring[i].tx_ring);
@@ -1814,7 +1814,7 @@ void ipoib_dev_cleanup(struct net_device *dev)
 
 	ipoib_dev_uninit(dev);
 	/* ipoib_dev_uninit took rings lock can't release in case of reinit */
-	write_unlock(&priv->rings_lock);
+	up_write(&priv->rings_rwsem);
 }
 
 int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
@@ -1945,9 +1945,9 @@ void ipoib_setup(struct net_device *dev)
 	mutex_init(&priv->vlan_mutex);
 	mutex_init(&priv->state_lock);
 
-	rwlock_init(&priv->rings_lock);
+	init_rwsem(&priv->rings_rwsem);
 	/* read access to rings is disabled */
-	write_lock(&priv->rings_lock);
+	down_write(&priv->rings_rwsem);
 
 	INIT_LIST_HEAD(&priv->path_list);
 	INIT_LIST_HEAD(&priv->child_intfs);
