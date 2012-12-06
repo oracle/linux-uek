@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.3.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1681,6 +1681,247 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Dec 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.4.0.el5uek]
+- Merge tag 'uek2-merge-400-3.7-tag' of git://ca-git.us.oracle.com/linux-
+  konrad-public (Maxim Uvarov)
+- Merge tag 'uek2-merge-backport-3.7' of git://ca-git/linux-konrad-public into
+  uek2-merge-400 (Konrad Rzeszutek Wilk)
+- Revert "xen/x86: Workaround 64-bit hypervisor and 32-bit initial domain." and
+  "xen/x86: Use memblock_reserve for sensitive areas." (Konrad Rzeszutek Wilk)
+- xen/x86: Workaround 64-bit hypervisor and 32-bit initial domain. (Konrad
+  Rzeszutek Wilk)
+- xen/arm: Fix compile errors when drivers are compiled as modules (export
+  more). (Stefano Stabellini)
+- xen/arm: Fix compile errors when drivers are compiled as modules. (Konrad
+  Rzeszutek Wilk)
+- xen/generic: Disable fallback build on ARM. (Konrad Rzeszutek Wilk)
+- xen/hvm: If we fail to fetch an HVM parameter print out which flag it is.
+  (Konrad Rzeszutek Wilk)
+- xen/hypercall: fix hypercall fallback code for very old hypervisors (Jan
+  Beulich)
+- xen/arm: use the __HVC macro (Stefano Stabellini)
+- xen/xenbus: fix overflow check in xenbus_file_write() (Jan Beulich)
+- xen-kbdfront: handle backend CLOSED without CLOSING (David Vrabel)
+- xen-fbfront: handle backend CLOSED without CLOSING (David Vrabel)
+- xen/gntdev: don't leak memory from IOCTL_GNTDEV_MAP_GRANT_REF (David Vrabel)
+- x86: remove obsolete comment from asm/xen/hypervisor.h (Olaf Hering)
+- xen: dbgp: Fix warning when CONFIG_PCI is not enabled. (Ian Campbell)
+- USB EHCI/Xen: propagate controller reset information to hypervisor (Jan
+  Beulich)
+- xen: arm: comment on why 64-bit xen_pfn_t is safe even on 32 bit (Ian
+  Campbell)
+- xen: balloon: use correct type for frame_list (Ian Campbell)
+- xen/x86: don't corrupt %eip when returning from a signal handler (David
+  Vrabel)
+- xen: arm: make p2m operations NOPs (Ian Campbell)
+- xen: balloon: don't include e820.h (Ian Campbell)
+- xen: events: pirq_check_eoi_map is X86 specific (Ian Campbell)
+- xen: XENMEM_translate_gpfn_list was remove ages ago and is unused. (Ian
+  Campbell)
+- xen: sysfs: include err.h for PTR_ERR etc (Ian Campbell)
+- xen: xenbus: quirk uses x86 specific cpuid (Ian Campbell)
+- xen/xenbus: Fix compile warning. (Konrad Rzeszutek Wilk)
+- xen/x86: remove duplicated include from enlighten.c (Wei Yongjun)
+- xen/pv-on-hvm kexec: add quirk for Xen 3.4 and shutdown watches. (Konrad
+  Rzeszutek Wilk)
+- xen/bootup: allow {read|write}_cr8 pvops call. (Konrad Rzeszutek Wilk)
+- xen/bootup: allow read_tscp call for Xen PV guests. (Konrad Rzeszutek Wilk)
+- xen pv-on-hvm: add pfn_is_ram helper for kdump (Olaf Hering)
+- xen/hvc: handle backend CLOSED without CLOSING (David Vrabel)
+- xen/xen_initial_domain: check that xen_start_info is initialized (Stefano
+  Stabellini)
+- xen: mark xen_init_IRQ __init (Stefano Stabellini)
+- xen/Makefile: fix dom-y build (Stefano Stabellini)
+- MAINTAINERS: add myself as Xen ARM maintainer (Stefano Stabellini)
+- xen/arm: compile netback (Stefano Stabellini)
+- xen/arm: compile blkfront and blkback (Stefano Stabellini)
+- xen/arm: implement alloc/free_xenballooned_pages with alloc_pages/kfree
+  (Stefano Stabellini)
+- xen/arm: receive Xen events on ARM (Stefano Stabellini)
+- xen/arm: initialize grant_table on ARM (Stefano Stabellini)
+- xen/arm: get privilege status (Stefano Stabellini)
+- xen/arm: introduce CONFIG_XEN on ARM (Stefano Stabellini)
+- xen: do not compile manage, balloon, pci, acpi, pcpu and cpu_hotplug on ARM
+  (Stefano Stabellini)
+- xen/tmem: cleanup (Jan Beulich)
+- xen: Add selfballoning memory reservation tunable. (Jana Saout)
+- xen: constify all instances of "struct attribute_group" (Jan Beulich)
+- xen: Fix selfballooning and ensure it doesn't go too far (Dan Magenheimer)
+- xen: self-balloon needs module.h (Randy Dunlap)
+- xen/balloon: Fix compile errors - missing header files. (Konrad Rzeszutek
+  Wilk)
+- xen: tmem: self-ballooning and frontswap-selfshrinking (Dan Magenheimer)
+- xen: grant: use xen_pfn_t type for frame_list. (Ian Campbell)
+- xen: sysfs: fix build warning. (Ian Campbell)
+- xen/arm: Introduce xen_ulong_t for unsigned long (Stefano Stabellini)
+- xen: Introduce xen_pfn_t for pfn and mfn types (Stefano Stabellini)
+- xen/arm: Xen detection and shared_info page mapping (Stefano Stabellini)
+- docs: Xen ARM DT bindings (Stefano Stabellini)
+- xen/arm: empty implementation of grant_table arch specific functions (Stefano
+  Stabellini)
+- xen/arm: sync_bitops (Stefano Stabellini)
+- xen/arm: page.h definitions (Stefano Stabellini)
+- xen/arm: hypercalls (Stefano Stabellini)
+- arm: initial Xen support (Stefano Stabellini)
+- xen/vga: add the xen EFI video mode support (Jan Beulich)
+- xen: allow enable use of VGA console on dom0 (Jeremy Fitzhardinge)
+- xen/pcifront: Use Xen-SWIOTLB when initting if required. (Konrad Rzeszutek
+  Wilk)
+- xen/swiotlb: For early initialization, return zero on success. (Konrad
+  Rzeszutek Wilk)
+- xen/swiotlb: Use the swiotlb_late_init_with_tbl to init Xen-SWIOTLB late when
+  PV PCI is used. (Konrad Rzeszutek Wilk)
+- xen/swiotlb: Move the error strings to its own function. (Konrad Rzeszutek
+  Wilk)
+- xen/swiotlb: Move the nr_tbl determination in its own function. (Konrad
+  Rzeszutek Wilk)
+- xen: Use correct masking in xen_swiotlb_alloc_coherent. (Ronny Hegewald)
+- xen/swiotlb: Use page alignment for early buffer allocation. (Konrad
+  Rzeszutek Wilk)
+- swiotlb: Expose swiotlb_nr_tlb function to modules (Konrad Rzeszutek Wilk)
+- xen-swiotlb: When doing coherent alloc/dealloc check before swizzling the
+  MFNs. (Konrad Rzeszutek Wilk)
+- xen-swiotlb: fix printk and panic args (Randy Dunlap)
+- xen-swiotlb: Fix wrong panic. (Konrad Rzeszutek Wilk)
+- xen-swiotlb: Retry up three times to allocate Xen-SWIOTLB (Konrad Rzeszutek
+  Wilk)
+- swiotlb: add the late swiotlb initialization function with iotlb memory
+  (Konrad Rzeszutek Wilk)
+- xen/swiotlb: With more than 4GB on 64-bit, disable the native SWIOTLB.
+  (Konrad Rzeszutek Wilk)
+- xen/swiotlb: Simplify the logic. (Konrad Rzeszutek Wilk)
+- xen/gndev: Xen backend support for paged out grant targets V4. (Andres Lagar-
+  Cavilla)
+- xen/arm: compile and run xenbus (Stefano Stabellini)
+- xen: clear IRQ_NOAUTOEN and IRQ_NOREQUEST (Stefano Stabellini)
+- xen/events: fix unmask_evtchn for PV on HVM guests (Stefano Stabellini)
+- xen/privcmd: Correctly return success from IOCTL_PRIVCMD_MMAPBATCH (Mats
+  Petersson)
+- xen/mmu: Use Xen specific TLB flush instead of the generic one. (Konrad
+  Rzeszutek Wilk) [Oracle-bug: 14630170]
+- xen/enlighten: Disable MWAIT_LEAF so that acpi-pad won't be loaded. (Konrad
+  Rzeszutek Wilk)
+- x86, amd, xen: Avoid NULL pointer paravirt references (Konrad Rzeszutek Wilk)
+- xen/setup: filter APERFMPERF cpuid feature out (Andre Przywara)
+- xen/enlighten: Expose MWAIT and MWAIT_LEAF if hypervisor OKs it. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi: Fix potential memory leak. (Konrad Rzeszutek Wilk)
+- xen-acpi-processor: Add missing #include <xen/xen.h> (H. Peter Anvin)
+- xen/acpi: Workaround broken BIOSes exporting non-existing C-states. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi: Remove the WARN's as they just create noise. (Konrad Rzeszutek
+  Wilk)
+- xen/acpi-processor: C and P-state driver that uploads said data to
+  hypervisor. (Konrad Rzeszutek Wilk)
+- xen/acpi: Domain0 acpi parser related platform hypercall (Yu Ke)
+- xen PV passthru: assign SR-IOV virtual functions to separate virtual slots
+  (Laszlo Ersek)
+- xen-pciback: properly clean up after calling pcistub_device_find() (Jan
+  Beulich)
+- kabi: add ocfs2 white list fuction (Maxim Uvarov)
+- Merge tag 'v2.6.39-400#qla2xxx' of git://ca-git.us.oracle.com/linux-snits-
+  public (Maxim Uvarov)
+- qla2xxx: Update driver version to 8.04.00.10.39.0-k. (Saurav Kashyap)
+- qla2xxx: Ramp down queue depth for attached SCSI devices when driver
+  resources are low. (Chad Dupuis)
+- qla2xxx: Add acquiring of risc semaphore before doing ISP reset. (Joe
+  Carnuccio)
+- qla2xxx: Determine the number of outstanding commands based on available
+  resources. (Chad Dupuis)
+- qla2xxx: Fix for kernel crash when external loopback diagnostic is run
+  through BSG interface. (Armen Baloyan)
+- qla2xxx: Ignore driver ack bit if corresponding presence bit is not set.
+  (Saurav Kashyap)
+- qla2xxx: Fix typo in qla83xx_fw_dump function. (Saurav Kashyap)
+- qla2xxx: Add Gen3 PCIe speed 8GT/s to the log message. (Saurav Kashyap)
+- qla2xxx: Use correct Request-Q-Out register during bidirectional request
+  processing (Andrew Vasquez)
+- qla2xxx: Test and clear FCPORT_UPDATE_NEEDED atomically. (David Jeffery)
+- qla2xxx: Move noisy Start scsi failed messages to verbose logging level.
+  (Chad Dupuis)
+- qla2xxx: Honor status value of 2 for report-id acquistion. (Saurav Kashyap)
+- qla2xxx: Fix coccinelle warnings in qla2x00_relogin. (Saurav Kashyap)
+- qla2xxx: Fix for warning reported by sparse. (Saurav Kashyap)
+- qla2xxx: Update the driver verion to 8.04.00.09.39.0-k. (Saurav Kashyap)
+- qla2xxx: No fcport FC-4 type assignment in GA_NXT response. (Armen Baloyan)
+- qla2xxx: Fix checkpatch error in qla2xxx_mctp_dump. (Chad Dupuis)
+- qla2xxx: Change in setting UNLOADING flag and FC vports logout sequence while
+  unloading qla2xxx driver. (Giridhar Malavali)
+- qla2xxx: Remove spurious taking of ha->vport_slock spinlock. (Chad Dupuis)
+- qla2xxx: Clear unsupported 'states' during Get-FW-State queries. (Andrew
+  Vasquez)
+- qla2xxx: Bind to ISP8031. (Saurav Kashyap)
+- ip_options: git meerge fix: do not duplicate setting of daddr (Maxim Uvarov)
+  [Orabug: 15929855]
+- ext4: race-condition protection for ext4_convert_unwritten_extents_endio
+  (Dmitry Monakhov) [Orabug: 14774219] {CVE-2012-4508}
+- NFS: fix bug in legacy DNS resolver. (NeilBrown) [Orabug: 14769650]
+- [libata] Add " 2GB ATA Flash Disk"/"ADMA428M" to DMA blacklist (Prarit
+  Bhargava) [Orabug: 15929836]
+- NFS: Map minor mismatch error to protocol not support error. (Steve Dickson)
+  [Orabug: 15929836]
+- tg3: fix VLAN tagging regression (Kasper Pedersen) [Orabug: 15929836]
+- ext4: Fix overflow caused by missing cast in ext4_fallocate() (Utako Kusaka)
+  [Orabug: 15929836]
+- intel_idle: initial IVB support (Len Brown) [Orabug: 15919684]
+- oracleasm: Introduce module parameter for block size selection (Martin K.
+  Petersen) [Orabug: 15924773]
+- Merge tag 'v2.6.39-400#lpfc' of git://ca-git.us.oracle.com/linux-snits-public
+  (Maxim Uvarov)
+- lpfc: Update lpfc version for 8.3.5.86.2p driver release (James Smart)
+- lpfc: Fixed setting sequential delivery bit in a service class that is not
+  valid (James Smart)
+- lpfc: fix boot from san failure (James Smart)
+- [SCSI] lpfc 8.3.34: Add LOGO support after ABTS compliance (James Smart)
+- [SCSI] lpfc 8.3.35: Fixed not reporting logical link speed to SCSI midlayer
+  when QoS not on (James Smart)
+- [SCSI] lpfc 8.3.35: Fixed SCSI host create showing wrong link speed on SLI3
+  HBA ports (James Smart)
+- [SCSI] lpfc 8.3.35: Fixed Linux generic firmware download on SLI4 devices
+  with longer module names (James Smart)
+- [SCSI] lpfc 8.3.35: Fix error with fabric service parameters causing
+  performance issues (James Smart)
+- [SCSI] lpfc 8.3.35: Fixed messages for misconfigured port errors (James
+  Smart)
+- [SCSI] lpfc 8.3.35: Fix FCP2 Retries for non-r/w commands. (James Smart)
+- [SCSI] lpfc 8.3.35: Fix incorrect comment in T10 DIF attributes (James Smart)
+- [SCSI] lpfc 8.3.35: Correct missing queue destroy on function reset (James
+  Smart)
+- [SCSI] lpfc 8.3.35: Added checking BMBX register for RDY bit before writing
+  the first address in (James Smart)
+- [SCSI] lpfc 8.3.33: Misc changes to optimize critical path (James Smart)
+- nbd: clear waiting_queue on shutdown (Paul Clements)
+- kernel posttrans remove all crashkernel=* (Jason Luan) [Orabug: 15882974]
+- vmxnet3: must split too big fragments (Eric Dumazet)
+- vmxnet3: convert to SKB paged frag API. (Ian Campbell)
+- vmxnet3: Fix race between dev_open() and register_netdev() (Steve Hodgson)
+- vmxnet3: Fix log messages and corrects some typos (Shreyas Bhatewara)
+- vmxnet3: Fix typo in vmxnet3_drv.c (Masanari Iida)
+- vmxnet3: cleanup tso headers manipulation (Eric Dumazet)
+- vmxnet3" make ethtool ops const (stephen hemminger)
+- Sweep away N/A fw_version dustbunnies from the .get_drvinfo routine of a
+  number of drivers (Guangyu Sun)
+- vmxnet3: fix skb truesize underestimation (Eric Dumazet)
+- vmxnet3: Don't enable vlan filters in promiscuous mode. (Jesse Gross)
+- xen/mmu: Use Xen specific TLB flush instead of the generic one. (Konrad
+  Rzeszutek Wilk) [Oracle-bug: 14630170]
+- xen: resynchronise grant table status codes with upstream (Ian Campbell)
+- xen/privcmd: return -EFAULT on error (Dan Carpenter)
+- xen/privcmd: Fix mmap batch ioctl error status copy back. (Andres Lagar-
+  Cavilla)
+- xen/privcmd: add PRIVCMD_MMAPBATCH_V2 ioctl (Andres Lagar-Cavilla)
+- xen/mm: return more precise error from xen_remap_domain_range() (David
+  Vrabel)
+- xen/swiotlb: Fix compile warnings when using plain integer instead of NULL
+  pointer. (Konrad Rzeszutek Wilk)
+- xen/swiotlb: Remove functions not needed anymore. (Konrad Rzeszutek Wilk)
+- xen: allow privcmd for HVM guests (Stefano Stabellini)
+- xen/sysfs: Use XENVER_guest_handle to query UUID (Daniel De Graaf)
+- xen/apic/xenbus/swiotlb/pcifront/grant/tmem: Make functions or variables
+  static. (Konrad Rzeszutek Wilk)
+- xen: missing includes (Stefano Stabellini)
+- xen: update xen_add_to_physmap interface (Stefano Stabellini)
+
 * Fri Nov 16 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.3.0.el5uek]
 - Merge tag 'v2.6.39-400.2.0#btrfs_reb' of git://ca-git.us.oracle.com/linux-
   muvarov-public (Maxim Uvarov)
