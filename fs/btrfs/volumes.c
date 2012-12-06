@@ -70,6 +70,19 @@ static void free_fs_devices(struct btrfs_fs_devices *fs_devices)
 	kfree(fs_devices);
 }
 
+static void btrfs_kobject_uevent(struct block_device *bdev,
+				 enum kobject_action action)
+{
+	int ret;
+
+	ret = kobject_uevent(&disk_to_dev(bdev->bd_disk)->kobj, action);
+	if (ret)
+		pr_warn("Sending event '%d' to kobject: '%s' (%p): failed\n",
+			action,
+			kobject_name(&disk_to_dev(bdev->bd_disk)->kobj),
+			&disk_to_dev(bdev->bd_disk)->kobj);
+}
+
 int btrfs_cleanup_fs_uuids(void)
 {
 	struct btrfs_fs_devices *fs_devices;
@@ -1517,6 +1530,9 @@ int btrfs_rm_device(struct btrfs_root *root, char *device_path)
 	}
 
 	ret = 0;
+
+	/* Notify udev that device has changed */
+	btrfs_kobject_uevent(bdev, KOBJ_CHANGE);
 
 error_brelse:
 	brelse(bh);
