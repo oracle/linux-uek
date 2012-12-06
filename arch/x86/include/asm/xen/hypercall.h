@@ -471,6 +471,12 @@ HYPERVISOR_tmem_op(
 	return _hypercall1(int, tmem_op, op);
 }
 
+static inline int
+HYPERVISOR_xenoprof_op(unsigned int op, void *arg)
+{
+	return _hypercall2(int, xenoprof_op, op, arg);
+}
+
 static inline void
 MULTI_fpu_taskswitch(struct multicall_entry *mcl, int set)
 {

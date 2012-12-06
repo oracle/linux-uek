@@ -235,4 +235,7 @@ config XEN_ACPI_PROCESSOR
           module will be called xen_acpi_processor  If you do not know what to choose,
           select M here. If the CPUFREQ drivers are built in, select Y here.
 
+config XEN_HAVE_PVMMU
+       bool
+
 endmenu

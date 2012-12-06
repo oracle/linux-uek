@@ -35,6 +35,7 @@
 #include <linux/vmalloc.h>
 #include <linux/wait.h>
 #include <linux/io.h>
+#include <linux/rbtree.h>
 #include <asm/setup.h>
 #include <asm/pgalloc.h>
 #include <asm/hypervisor.h>
@@ -164,11 +165,23 @@ struct xen_vbd {
 	struct block_device	*bdev;
 	/* Cached size parameter. */
 	sector_t		size;
-	bool			flush_support;
-	bool			discard_secure;
+	unsigned int		flush_support:1;
+	unsigned int		discard_secure:1;
+
+	unsigned int		feature_gnt_persistent:1;
+	unsigned int		overflow_max_grants:1;
 };
 
 struct backend_info;
+
+
+struct persistent_gnt {
+	struct page *page;
+	grant_ref_t gnt;
+	grant_handle_t handle;
+	uint64_t dev_bus_addr;
+	struct rb_node node;
+};
 
 struct xen_blkif {
 	/* Unique identifier for this interface. */
@@ -196,6 +209,10 @@ struct xen_blkif {
 	/* One thread per one blkif. */
 	struct task_struct	*xenblkd;
 	unsigned int		waiting_reqs;
+
+	/* tree to store persistent grants */
+	struct rb_root		persistent_gnts;
+	unsigned int		persistent_gnt_c;
 
 	/* statistics */
 	unsigned long		st_print;
