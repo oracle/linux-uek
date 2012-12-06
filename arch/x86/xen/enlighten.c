@@ -35,6 +35,7 @@
 #include <linux/syscore_ops.h>
 
 #include <xen/xen.h>
+#include <xen/events.h>
 #include <xen/interface/xen.h>
 #include <xen/interface/version.h>
 #include <xen/interface/physdev.h>
@@ -76,6 +77,7 @@
 #include <acpi/processor.h>
 #include <xen/interface/platform.h>
 #endif
+
 
 #include "xen-ops.h"
 #include "mmu.h"
@@ -1041,55 +1043,7 @@ static int xen_write_msr_safe(unsigned int msr, unsigned low, unsigned high)
 
 	return ret;
 }
-/*
- * If the MFN is not in the m2p (provided to us by the hypervisor) this
- * function won't do anything. In practice this means that the XenBus
- * MFN won't be available for the initial domain. */
-static void __init xen_reserve_mfn(unsigned long mfn)
-{
-	unsigned long pfn;
 
-	if (!mfn)
-		return;
-	pfn = mfn_to_pfn(mfn);
-	if (phys_to_machine_mapping_valid(pfn))
-		memblock_x86_reserve_range(PFN_PHYS(pfn), PFN_PHYS(pfn) + PAGE_SIZE, "XEN MFN");
-}
-static void __init xen_reserve_internals(void)
-{
-	unsigned long size;
-
-	if (!xen_pv_domain())
-		return;
-
-	/* xen_start_info does not exist in the M2P, hence can't use
-	 * xen_reserve_mfn. */
-	memblock_x86_reserve_range(__pa(xen_start_info), __pa(xen_start_info) + PAGE_SIZE, "XEN START INFO");
-
-	xen_reserve_mfn(PFN_DOWN(xen_start_info->shared_info));
-	xen_reserve_mfn(xen_start_info->store_mfn);
-
-	if (!xen_initial_domain())
-		xen_reserve_mfn(xen_start_info->console.domU.mfn);
-
-	if (xen_feature(XENFEAT_auto_translated_physmap))
-		return;
-
-	/*
-	 * ALIGN up to compensate for the p2m_page pointing to an array that
-	 * can partially filled (look in xen_build_dynamic_phys_to_machine).
-	 */
-
-	size = PAGE_ALIGN(xen_start_info->nr_pages * sizeof(unsigned long));
-
-	/* We could use xen_reserve_mfn here, but would end up looping quite
-	 * a lot (and call memblock_reserve for each PAGE), so lets just use
-	 * the easy way and reserve it wholesale. */
-	memblock_x86_reserve_range(__pa(xen_start_info->mfn_list),
-				   __pa(xen_start_info->mfn_list) + size, "P2M ARRAY");
-
-	/* The pagetables are reserved in mmu.c */
-}
 void xen_setup_shared_info(void)
 {
 	if (!xen_feature(XENFEAT_auto_translated_physmap)) {
@@ -1216,7 +1170,10 @@ static const struct pv_cpu_ops xen_cpu_ops __initconst = {
 	.wbinvd = native_wbinvd,
 
 	.read_msr = native_read_msr_safe,
+	.rdmsr_regs = native_rdmsr_safe_regs,
 	.write_msr = xen_write_msr_safe,
+	.wrmsr_regs = native_wrmsr_safe_regs,
+
 	.read_tsc = native_read_tsc,
 	.read_pmc = native_read_pmc,
 
@@ -1464,7 +1421,6 @@ asmlinkage void __init xen_start_kernel(void)
 	xen_raw_console_write("mapping kernel into physical memory\n");
 	xen_setup_kernel_pagetable((pgd_t *)xen_start_info->pt_base, xen_start_info->nr_pages);
 
-	xen_reserve_internals();
 	/* Allocate and initialize top and mid mfn levels for p2m structure */
 	xen_build_mfn_list_list();
 
@@ -1519,10 +1475,10 @@ asmlinkage void __init xen_start_kernel(void)
 		xen_start_info->console.domU.mfn = 0;
 		xen_start_info->console.domU.evtchn = 0;
 
+		xen_init_apic();
 		/* Make sure ACS will be enabled */
 		pci_request_acs();
 		
-		xen_init_apic();
 		xen_acpi_sleep_register();
 
 		/* Avoid searching for BIOS MP tables */

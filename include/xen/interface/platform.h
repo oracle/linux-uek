@@ -54,7 +54,7 @@ DEFINE_GUEST_HANDLE_STRUCT(xenpf_settime_t);
 #define XENPF_add_memtype         31
 struct xenpf_add_memtype {
 	/* IN variables. */
-	unsigned long mfn;
+	xen_pfn_t mfn;
 	uint64_t nr_mfns;
 	uint32_t type;
 	/* OUT variables. */
@@ -84,7 +84,7 @@ struct xenpf_read_memtype {
 	/* IN variables. */
 	uint32_t reg;
 	/* OUT variables. */
-	unsigned long mfn;
+	xen_pfn_t mfn;
 	uint64_t nr_mfns;
 	uint32_t type;
 };
@@ -286,7 +286,6 @@ struct xen_processor_performance {
 };
 DEFINE_GUEST_HANDLE_STRUCT(xen_processor_performance);
 
-DEFINE_GUEST_HANDLE(uint32_t);
 struct xenpf_set_processor_pminfo {
 	/* IN variables */
 	uint32_t id;    /* ACPI CPU ID */
