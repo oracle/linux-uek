@@ -477,8 +477,8 @@ struct be_adapter {
 
 
 #define be_roce_supported(adapter) ((adapter->if_type == SLI_INTF_TYPE_3 || \
-				adapter->sli_family == SKYHAWK_SLI_FAMILY) && \
-				(adapter->function_mode & RDMA_ENABLED))
+				     skyhawk_chip(adapter)) && \
+				     (adapter->function_mode & RDMA_ENABLED))
 
 extern const struct ethtool_ops be_ethtool_ops;
 
