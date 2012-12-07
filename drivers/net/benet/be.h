@@ -340,6 +340,9 @@ struct phy_info {
 	u32 supported;
 };
 
+#define BE_UC_PMAC_COUNT		30
+#define BE_VF_UC_PMAC_COUNT		2
+
 struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
@@ -392,7 +395,7 @@ struct be_adapter {
 	/* Ethtool knobs and info */
 	char fw_ver[FW_VER_LEN];
 	int if_handle;		/* Used to configure filtering */
-	u32 pmac_id;		/* MAC addr handle used by BE card */
+	u32 *pmac_id;		/* MAC addr handle used by BE card */
 	u32 beacon_state;	/* for set_phys_id */
 
 	bool eeh_error;
@@ -432,6 +435,8 @@ struct be_adapter {
 	struct phy_info phy;
 	u8 wol_cap;
 	bool wol;
+	u32 max_pmac_cnt;	/* Max secondary UC MACs programmable */
+	u32 uc_macs;		/* Count of secondary UC MAC programmed */
 	u32 msg_enable;
 	int be_get_temp_freq;
 };

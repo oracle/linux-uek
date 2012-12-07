@@ -235,7 +235,7 @@ static int be_mac_addr_set(struct net_device *netdev, void *p)
 	struct sockaddr *addr = p;
 	int status = 0;
 	u8 current_mac[ETH_ALEN];
-	u32 pmac_id = adapter->pmac_id;
+	u32 pmac_id = adapter->pmac_id[0];
 
 	if (!is_valid_ether_addr(addr->sa_data))
 		return -EADDRNOTAVAIL;
@@ -247,7 +247,7 @@ static int be_mac_addr_set(struct net_device *netdev, void *p)
 
 	if (memcmp(addr->sa_data, current_mac, ETH_ALEN)) {
 		status = be_cmd_pmac_add(adapter, (u8 *)addr->sa_data,
-				adapter->if_handle, &adapter->pmac_id, 0);
+				adapter->if_handle, &adapter->pmac_id[0], 0);
 		if (status)
 			goto err;
 
@@ -921,6 +921,29 @@ static void be_set_rx_mode(struct net_device *netdev)
 			netdev_mc_count(netdev) > BE_MAX_MC) {
 		be_cmd_rx_filter(adapter, IFF_ALLMULTI, ON);
 		goto done;
+	}
+
+	if (netdev_uc_count(netdev) != adapter->uc_macs) {
+		struct netdev_hw_addr *ha;
+		int i = 1; /* First slot is claimed by the Primary MAC */
+
+		for (; adapter->uc_macs > 0; adapter->uc_macs--, i++) {
+			be_cmd_pmac_del(adapter, adapter->if_handle,
+					adapter->pmac_id[i], 0);
+		}
+
+		if (netdev_uc_count(netdev) > adapter->max_pmac_cnt) {
+			be_cmd_rx_filter(adapter, IFF_PROMISC, ON);
+			adapter->promiscuous = true;
+			goto done;
+		}
+
+		netdev_for_each_uc_addr(ha, adapter->netdev) {
+			adapter->uc_macs++; /* First slot is for Primary MAC */
+			be_cmd_pmac_add(adapter, (u8 *)ha->addr,
+					adapter->if_handle,
+					&adapter->pmac_id[adapter->uc_macs], 0);
+		}
 	}
 
 	status = be_cmd_rx_filter(adapter, IFF_MULTICAST, ON);
@@ -2531,8 +2554,14 @@ done:
 
 static int be_clear(struct be_adapter *adapter)
 {
+	int i = 1;
+
 	if (sriov_enabled(adapter))
 		be_vf_clear(adapter);
+
+	for (; adapter->uc_macs > 0; adapter->uc_macs--, i++)
+		be_cmd_pmac_del(adapter, adapter->if_handle,
+			adapter->pmac_id[i], 0);
 
 	be_cmd_if_destroy(adapter, adapter->if_handle,  0);
 
@@ -2542,6 +2571,7 @@ static int be_clear(struct be_adapter *adapter)
 	be_evt_queues_destroy(adapter);
 
 	be_msix_disable(adapter);
+	kfree(adapter->pmac_id);
 	return 0;
 }
 
@@ -2750,13 +2780,13 @@ static int be_setup(struct be_adapter *adapter)
 	memset(mac, 0, ETH_ALEN);
 	active_mac = false;
 	status = be_get_mac_addr(adapter, mac, adapter->if_handle,
-				 &active_mac, &adapter->pmac_id);
+				 &active_mac, &adapter->pmac_id[0]);
 	if (status != 0)
 		goto err;
 
 	if (!active_mac) {
 		status = be_cmd_pmac_add(adapter, mac, adapter->if_handle,
-					 &adapter->pmac_id, 0);
+					 &adapter->pmac_id[0], 0);
 		if (status != 0)
 			goto err;
 	}
@@ -3291,6 +3321,8 @@ static void be_netdev_init(struct net_device *netdev)
 
 	netdev->flags |= IFF_MULTICAST;
 
+	netdev->priv_flags |= IFF_UNICAST_FLT;
+
 	netif_set_gso_max_size(netdev, 65535 - ETH_HLEN);
 
 	netdev->netdev_ops = &be_netdev_ops;
@@ -3566,6 +3598,17 @@ static int be_get_initial_config(struct be_adapter *adapter)
 		adapter->max_vlans = BE_NUM_VLANS_SUPPORTED/8;
 	else
 		adapter->max_vlans = BE_NUM_VLANS_SUPPORTED;
+
+	if (be_physfn(adapter))
+		adapter->max_pmac_cnt = BE_UC_PMAC_COUNT;
+	else
+		adapter->max_pmac_cnt = BE_VF_UC_PMAC_COUNT;
+
+	/* primary mac needs 1 pmac entry */
+	adapter->pmac_id = kcalloc(adapter->max_pmac_cnt + 1,
+				  sizeof(u32), GFP_KERNEL);
+	if (!adapter->pmac_id)
+		return -ENOMEM;
 
 	status = be_cmd_get_cntl_attributes(adapter);
 	if (status)
