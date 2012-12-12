@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.4.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.5.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1697,6 +1697,76 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Dec 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.5.0.el6uek]
+- x86, tsc: Fix SMI induced variation in quick_pit_calibrate() (Linus Torvalds)
+  [Orabug: 13256166]
+- x86, tsc: Skip TSC synchronization checks for tsc=reliable (Suresh Siddha)
+  [Orabug: 13256166]
+- bonding: rlb mode of bond should not alter ARP originating via bridge
+  (zheng.li) [Orabug: 14650975]
+- Merge tag 'v2.6.39-400#rdac' of git://ca-git.us.oracle.com/linux-snits-public
+  (Maxim Uvarov)
+- [SCSI] scsi_dh_rdac: Fix error path (Richard Weinberger)
+- [SCSI] scsi_dh_rdac: Adding NetApp as a brand name for rdac (Chauhan, Vijay)
+- Merge tag 'uek2-merge-400-3.8-fixes-tag' of git://ca-git.us.oracle.com/linux-
+  konrad-public (Maxim Uvarov)
+- xen-blkfront: handle bvecs with partial data (Roger Pau Monne)
+- xen-blkfront: implement safe version of llist_for_each_entry (Roger Pau
+  Monne)
+- xen-blkback: implement safe iterator for the list of persistent grants (Roger
+  Pau Monne)
+- Merge tag 'uek2-merge-400-3.8-tag' of git://ca-git.us.oracle.com/linux-
+  konrad-public (Maxim Uvarov)
+- Merge tag 'uek2-merge-backport-3.8' of git://ca-git/linux-konrad-public into
+  uek2-merge-400 (Konrad Rzeszutek Wilk)
+- xen: arm: implement remap interfaces needed for privcmd mappings. (Ian
+  Campbell)
+- xen: correctly use xen_pfn_t in remap_domain_mfn_range. (Ian Campbell)
+- xen: arm: enable balloon driver (Ian Campbell)
+- xen: balloon: allow PVMMU interfaces to be compiled out (Ian Campbell)
+- xen: privcmd: support autotranslated physmap guests. (Mukesh Rathor)
+- xen: add pages parameter to xen_remap_domain_mfn_range (Ian Campbell)
+- xen/PVonHVM: fix compile warning in init_hvm_pv_info (Olaf Hering)
+- xen/acpi: Move the xen_running_on_version_or_later function. (Konrad
+  Rzeszutek Wilk)
+- xen/xenbus: Remove duplicate inclusion of asm/xen/hypervisor.h (Sachin Kamat)
+- xen/acpi: Fix compile error by missing decleration for xen_domain. (Konrad
+  Rzeszutek Wilk)
+- xen/acpi: revert pad config check in xen_check_mwait (Liu, Jinsong)
+- xen/acpi: ACPI PAD driver (Liu, Jinsong)
+- xen PVonHVM: use E820_Reserved area for shared_info (Olaf Hering)
+- xen-blkfront: free allocated page (Roger Pau Monne)
+- xen-blkback: move free persistent grants code (Roger Pau Monne)
+- xen/blkback: persistent-grants fixes (Roger Pau Monne)
+- xen/blkback: Persistent grant maps for xen blk drivers (Roger Pau Monne)
+- xen/blkback: Change xen_vbd's flush_support and discard_secure to have type
+  unsigned int, rather than bool (Oliver Chick)
+- xen/blkback: use kmem_cache_zalloc instead of kmem_cache_alloc/memset (Wei
+  Yongjun)
+- xen/blkfront: Add WARN to deal with misbehaving backends. (Konrad Rzeszutek
+  Wilk)
+- llist-return-whether-list-is-empty-before-adding-in-llist_add-fix (Andrew
+  Morton)
+- llist: Add back llist_add_batch() and llist_del_first() prototypes (Stephen
+  Rothwell)
+- llist: Remove cpu_relax() usage in cmpxchg loops (Peter Zijlstra)
+- llist: Add llist_next() (Peter Zijlstra)
+- llist: Return whether list is empty before adding in llist_add() (Huang Ying)
+- llist: Move cpu_relax() to after the cmpxchg() (Huang Ying)
+- llist: Remove the platform-dependent NMI checks (Ingo Molnar)
+- llist: Make some llist functions inline (Huang Ying)
+- lib, Add lock-less NULL terminated single list (Huang Ying)
+- xen/oprofile: Expose the oprofile_arch_exit_fnc pointer. (Konrad Rzeszutek
+  Wilk)
+- xen/oprofile: Switch from syscore_ops to platform_ops. (Konrad Rzeszutek
+  Wilk)
+- xen/oprofile: Fix compile issues when CONFIG_XEN is not defined. (Konrad
+  Rzeszutek Wilk)
+- xen/oprofile: The arch_ variants for init/exec weren't being called. (Konrad
+  Rzeszutek Wilk)
+- xen/oprofile: Compile fix (Konrad Rzeszutek Wilk)
+- xen/oprofile: Patch from Michael Petullo (Konrad Rzeszutek Wilk)
+
 * Thu Dec 06 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.4.0.el6uek]
 - Merge tag 'uek2-merge-400-3.7-tag' of git://ca-git.us.oracle.com/linux-
   konrad-public (Maxim Uvarov)
