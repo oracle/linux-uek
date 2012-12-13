@@ -441,7 +441,7 @@ Summary: The Linux kernel
 # scripts use them.
 #
 ##%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, mkinitrd >= 6.0.61-1, kernel-firmware >= %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg
-%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-71.0.10, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, ql2xxx-firmware, oraclelinux-release
+%define kernel_prereq  fileutils, module-init-tools, initscripts >= 8.11.1-1, kernel-firmware = %{rpmversion}-%{pkg_release}, /sbin/new-kernel-pkg, mkinitrd >= 5.1.19.6-71.0.10, kexec-tools >= 1.102pre-96.1.1.el5_5.2, device-mapper-multipath >= 0.4.9-23.0.1.el5, oraclelinux-release
 
 #
 # This macro does requires, provides, conflicts, obsoletes for a kernel package.
@@ -639,6 +639,14 @@ Group: Development/System
 License: GPL+ and GPLv2+ and MIT and Redistributable, no modification permitted
 %if "x%{?variant}" != "x"
 Provides: kernel-firmware = %{rpmversion}-%{pkg_release}
+
+Requires: aic94xx-firmware atmel-firmware bfa-firmware cxgb3-firmware ipw2100-firmware
+Requires: ipw2200-firmware ivtv-firmware wl100-firmware iwl1000-firmware
+Requires: iwl3945-firmware iwl4965-firmware iwl5000-firmware iwl5150-firmware
+Requires: iwl6000-firmware iwl6000g2a-firmware iwl6000g2b-firmware iwl6050-firmware
+Requires: libertas-usb8388-firmware netxen-firmware
+Requires: ql2100-firmware ql2200-firmware ql23xx-firmware ql2400-firmware ql2500-firmware ql2xxx-firmware
+Requires: rt61pci-firmware rt73usb-firmware zd1211-firmware 
 %endif
 %description firmware
 Kernel-firmware includes firmware files required for some devices to
