@@ -4410,16 +4410,25 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 	int extra_reserve = 0;
 	enum btrfs_reserve_flush_enum flush = BTRFS_RESERVE_FLUSH_ALL;
 	int ret;
+	bool delalloc_lock = true;
 
-	/* Need to be holding the i_mutex here if we aren't free space cache */
-	if (btrfs_is_free_space_inode(inode))
+	/* If we are a free space inode we need to not flush since we will be in
+	 * the middle of a transaction commit.  We also don't need the delalloc
+	 * mutex since we won't race with anybody.  We need this mostly to make
+	 * lockdep shut its filthy mouth.
+	 */
+	if (btrfs_is_free_space_inode(inode)) {
 		flush = BTRFS_RESERVE_NO_FLUSH;
+		delalloc_lock = false;
+	}
 
 	if (flush != BTRFS_RESERVE_NO_FLUSH &&
 	    btrfs_transaction_in_commit(root->fs_info))
 		schedule_timeout(1);
 
-	mutex_lock(&BTRFS_I(inode)->delalloc_mutex);
+	if (delalloc_lock)
+		mutex_lock(&BTRFS_I(inode)->delalloc_mutex);
+
 	num_bytes = ALIGN(num_bytes, root->sectorsize);
 
 	spin_lock(&BTRFS_I(inode)->lock);
@@ -4470,7 +4479,8 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 
 		if (to_free)
 			btrfs_block_rsv_release(root, block_rsv, to_free);
-		mutex_unlock(&BTRFS_I(inode)->delalloc_mutex);
+		if (delalloc_lock)
+			mutex_unlock(&BTRFS_I(inode)->delalloc_mutex);
 		return ret;
 	}
 
@@ -4482,7 +4492,9 @@ int btrfs_delalloc_reserve_metadata(struct inode *inode, u64 num_bytes)
 	}
 	BTRFS_I(inode)->reserved_extents += nr_extents;
 	spin_unlock(&BTRFS_I(inode)->lock);
-	mutex_unlock(&BTRFS_I(inode)->delalloc_mutex);
+
+	if (delalloc_lock)
+		mutex_unlock(&BTRFS_I(inode)->delalloc_mutex);
 
 	block_rsv_add_bytes(block_rsv, to_reserve, 1);
 
