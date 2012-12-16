@@ -78,6 +78,7 @@
 enum eipoib_emac_guest_info {
 	VALID,
 	MIGRATED_OUT,
+	NEW,
 	INVALID,
 };
 
@@ -96,17 +97,24 @@ struct ipoib_arp_data {
 	__be32 arp_dip;
 } __packed;
 
-/* live migration support structures: */
+/* live migration & bonding support structures: */
+enum eipoib_served_ip_state {
+	IP_VALID,
+	IP_NEW,
+};
+
 struct ip_member {
 	__be32 ip;
+	enum eipoib_served_ip_state state;
 	struct list_head list;
 };
 
 /*
  * for each slave (emac) saves all the ip over that mac.
- * the parent keeps that list for live migration.
+ * the parent keeps that list for live migration/teaming.
  */
 struct guest_emac_info {
+	char ifname[IFNAMSIZ];
 	u8 emac[ETH_ALEN];
 	u16 vlan;
 	struct list_head ip_list;
@@ -173,9 +181,9 @@ struct parent {
 	union    ib_gid gid;
 	char     ipoib_main_interface[IFNAMSIZ];
 	/* live migration and bonding support */
+	rwlock_t emac_info_lock;
 	struct   list_head emac_ip_list;
-	struct   delayed_work emac_ip_work;
-	struct   delayed_work migrate_out_work;
+	struct   delayed_work arp_gen_work;
 };
 
 #define eipoib_slave_get_rcu(dev) \
@@ -214,5 +222,9 @@ void parent_set_ethtool_ops(struct net_device *dev);
 int parent_add_vif_param(struct net_device *parent_dev,
 			 struct net_device *new_vif_dev,
 			 u16 vlan, u8 *mac);
+inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
+			    u8 *mac, u16 vlan, gfp_t mem_flag);
+void free_ip_ent_in_emac_rec(struct parent *parent, u8 *emac, u16 vlan,
+			     __be32 ip);
 
 #endif /* _LINUX_ETH_IPOIB_H */

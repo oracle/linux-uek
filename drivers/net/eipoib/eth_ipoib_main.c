@@ -36,9 +36,11 @@
 
 #define EMAC_IP_GC_TIME (10 * HZ)
 
-#define MIG_OUT_ARP_REQ_ISSUE_TIME (0.5 * HZ)
+#define GEN_ARP_REQ_ISSUE_TIME (HZ/2)
 
 #define MIG_OUT_MAX_ARP_RETRIES 5
+
+#define GRAT_ARP_MAX_RETRIES 3
 
 #define LIVE_MIG_PACKET 1
 
@@ -48,7 +50,7 @@
 static rx_handler_result_t eipoib_handle_frame(struct sk_buff **pskb);
 static int eipoib_device_event(struct notifier_block *unused,
 			       unsigned long event, void *ptr);
-static void free_ip_mem_in_rec(struct guest_emac_info *emac_info);
+static void free_all_ip_ent_in_emac_rec(struct guest_emac_info *emac_info);
 
 static const char * const version =
 	DRV_DESCRIPTION ": v" DRV_VERSION " (" DRV_RELDATE ")\n";
@@ -135,19 +137,18 @@ static inline
 struct guest_emac_info *get_mac_ip_info_by_mac_and_vlan(struct parent *parent,
 							u8 *mac, u16 vlan)
 {
-	struct guest_emac_info *emac_info, *emac_info_ret;
+	struct guest_emac_info *emac_info;
 	int found = 0;
 
 	list_for_each_entry(emac_info, &parent->emac_ip_list, list) {
 		if ((!memcmp(emac_info->emac, mac, ETH_ALEN)) &&
 		    vlan == emac_info->vlan) {
 			found = 1;
-			emac_info_ret = emac_info;
 			break;
 		}
 	}
 
-	return found ? emac_info_ret : NULL;
+	return found ? emac_info : NULL;
 }
 
 /*
@@ -157,13 +158,14 @@ struct guest_emac_info *get_mac_ip_info_by_mac_and_vlan(struct parent *parent,
  * otherwise return 1 and if exist set the guest_emac_info obj.
  */
 static inline
-int is_mac_info_contain_ip(struct parent *parent, u8 *mac, __be32 ip,
+int is_mac_info_contain_new_ip(struct parent *parent, u8 *mac, __be32 ip,
 			  struct guest_emac_info *emac_info, u16 vlan)
 {
 	struct ip_member *ipm;
 	int found = 0;
 
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, mac, vlan);
+
 	if (!emac_info)
 		return 0;
 
@@ -574,19 +576,20 @@ int parent_release_slave(struct net_device *parent_dev,
 		slave_dev->name);
 
 	/* for live migration, mark its mac_ip record as invalid */
+	write_lock_bh(&parent->emac_info_lock);
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, slave->emac, slave->vlan);
 	if (!emac_info)
 		pr_warn("%s %s didn't find emac: %pM\n",
 			parent_dev->name, slave_dev->name, slave->emac);
 	else {
 		emac_info->rec_state = MIGRATED_OUT;
+		emac_info->num_of_retries = MIG_OUT_MAX_ARP_RETRIES;
 		/* start GC work */
 		pr_info("%s: sending clean task for slave mac: %pM\n",
 			__func__, slave->emac);
-		queue_delayed_work(parent->wq, &parent->migrate_out_work, 0);
-		queue_delayed_work(parent->wq, &parent->emac_ip_work,
-				   EMAC_IP_GC_TIME);
+		queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
 	}
+	write_unlock_bh(&parent->emac_info_lock);
 
 	/* release the slave from its parent */
 	parent_detach_slave(parent, slave);
@@ -653,12 +656,14 @@ static int parent_release_all(struct net_device *parent_dev)
 			kfree(neigh_cmd);
 		}
 
+	write_lock_bh(&parent->emac_info_lock);
 	list_for_each_entry_safe(emac_info, emac_info_tmp,
 				 &parent->emac_ip_list, list) {
-		free_ip_mem_in_rec(emac_info);
+		free_all_ip_ent_in_emac_rec(emac_info);
 		list_del(&emac_info->list);
 		kfree(emac_info);
 	}
+	write_unlock_bh(&parent->emac_info_lock);
 
 	pr_info("%s: released all slaves\n", parent_dev->name);
 
@@ -823,11 +828,8 @@ static void parent_work_cancel_all(struct parent *parent)
 	if (delayed_work_pending(&parent->neigh_learn_work))
 		cancel_delayed_work(&parent->neigh_learn_work);
 
-	if (delayed_work_pending(&parent->emac_ip_work))
-		cancel_delayed_work(&parent->emac_ip_work);
-
-	if (delayed_work_pending(&parent->migrate_out_work))
-		cancel_delayed_work(&parent->migrate_out_work);
+	if (delayed_work_pending(&parent->arp_gen_work))
+		cancel_delayed_work(&parent->arp_gen_work);
 }
 
 static struct parent *get_parent_by_pif_name(char *pif_name)
@@ -841,7 +843,42 @@ static struct parent *get_parent_by_pif_name(char *pif_name)
 	return NULL;
 }
 
-static void free_ip_mem_in_rec(struct guest_emac_info *emac_info)
+static void free_emac_info_rec(struct guest_emac_info *emac_info)
+{
+	free_all_ip_ent_in_emac_rec(emac_info);
+	list_del(&emac_info->list);
+	kfree(emac_info);
+}
+
+void free_ip_ent_in_emac_rec(struct parent *parent, u8 *emac, u16 vlan,
+			     __be32 ip)
+{
+	struct guest_emac_info *emac_info;
+	struct ip_member *ipm, *tmp_ipm;
+
+	write_lock_bh(&parent->emac_info_lock);
+	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, emac, vlan);
+
+	if (!emac_info) {
+		write_unlock_bh(&parent->emac_info_lock);
+		return;
+	}
+
+	list_for_each_entry_safe(ipm, tmp_ipm, &emac_info->ip_list, list) {
+		if (ipm->ip == ip) {
+			list_del(&ipm->list);
+			kfree(ipm);
+		}
+	}
+	/* if no more records, delete that entry.*/
+	if (list_empty(&emac_info->ip_list))
+		free_emac_info_rec(emac_info);
+
+	write_unlock_bh(&parent->emac_info_lock);
+
+}
+
+static void free_all_ip_ent_in_emac_rec(struct guest_emac_info *emac_info)
 {
 	struct ip_member *ipm, *tmp_ipm;
 	list_for_each_entry_safe(ipm, tmp_ipm, &emac_info->ip_list, list) {
@@ -850,35 +887,65 @@ static void free_ip_mem_in_rec(struct guest_emac_info *emac_info)
 	}
 }
 
-static inline void free_invalid_emac_ip_det(struct parent *parent)
+/* assume: the lock parent->emac_info_lock is held.*/
+static void update_emac_info_ip_list(struct guest_emac_info *emac_info,
+				     enum eipoib_served_ip_state state)
 {
-	struct guest_emac_info *emac_info, *emac_info_tmp;
+	struct ip_member *ipm;
 
-	list_for_each_entry_safe(emac_info, emac_info_tmp,
-				 &parent->emac_ip_list, list) {
-		if (emac_info->rec_state == INVALID) {
-			free_ip_mem_in_rec(emac_info);
-			list_del(&emac_info->list);
-			kfree(emac_info);
-		}
+	list_for_each_entry(ipm, &emac_info->ip_list, list) {
+		ipm->state = state;
 	}
 }
 
-static void emac_info_clean_task(struct work_struct *work)
+/* assume: the lock parent->emac_info_lock is held.*/
+static int gen_grat_arp_req(struct parent *parent, u8 *emac,
+			    u16 vlan)
 {
-	struct parent *parent = container_of(work, struct parent,
-					     emac_ip_work.work);
+	struct guest_emac_info *emac_info;
+	struct ip_member *ipm;
+	struct slave *slave;
+	struct sk_buff *nskb;
+	int ret = 0;
+	u8 t_addr[ETH_ALEN] = {0};
 
-	write_lock_bh(&parent->lock);
+	slave = get_slave_by_mac_and_vlan(parent, emac, vlan);
+	if (unlikely(!slave)) {
+		pr_warn("%s: Failed to find parent slave !!! %pM\n",
+			__func__, emac);
+		return -ENODEV;
+	}
 
-	if (parent->kill_timers)
-		goto out;
+	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, emac, vlan);
 
-	free_invalid_emac_ip_det(parent);
+	if (!emac_info)
+		return 0;
 
-out:
-	write_unlock_bh(&parent->lock);
-	return;
+	/* go over all ip's attached to that mac */
+	list_for_each_entry(ipm, &emac_info->ip_list, list) {
+		if (ipm->state == IP_NEW) {
+			/* create and send arp request to that ip.*/
+			pr_info("%s: dev: %s Sending gratuitous arp, for %pI4\n",
+				__func__, slave->dev->name, &(ipm->ip));
+			/* create gratuitous ARP on behalf of the guest */
+			nskb = arp_create(ARPOP_REQUEST,
+					  ETH_P_ARP,
+					  ipm->ip,
+					  slave->dev,
+					  ipm->ip,
+					  NULL,
+					  slave->dev->dev_addr,
+					  t_addr);
+			if (likely(nskb)) {
+				arp_xmit(nskb);
+			} else {
+				pr_err("%s: %s failed creating skb\n",
+				       __func__, slave->dev->name);
+				ret = -ENOMEM;
+			}
+		}
+	}
+	return ret;
 }
 
 static int migrate_out_gen_arp_req(struct parent *parent, u8 *emac,
@@ -916,8 +983,9 @@ static int migrate_out_gen_arp_req(struct parent *parent, u8 *emac,
 				  slave->dev->broadcast,
 				  slave->dev->broadcast,
 				  slave->dev->broadcast);
-		if (nskb)
+		if (nskb) {
 			arp_xmit(nskb);
+		}
 		else {
 			pr_err("%s: %s failed creating skb\n",
 			       __func__, slave->dev->name);
@@ -927,23 +995,22 @@ static int migrate_out_gen_arp_req(struct parent *parent, u8 *emac,
 	return ret;
 }
 
-static void migrate_out_work_task(struct work_struct *work)
+static void arp_gen_work_task(struct work_struct *work)
 {
 	struct parent *parent = container_of(work, struct parent,
-					     migrate_out_work.work);
-	struct guest_emac_info *emac_info;
+					     arp_gen_work.work);
+	struct guest_emac_info *emac_info, *next_emac_info;
 	int is_reschedule = 0;
 	int ret;
 
 	write_lock_bh(&parent->lock);
-
 	if (parent->kill_timers)
 		goto out;
 
-	list_for_each_entry(emac_info, &parent->emac_ip_list, list) {
+	write_lock(&parent->emac_info_lock);
+	list_for_each_entry_safe(emac_info, next_emac_info, &parent->emac_ip_list, list) {
 		if (emac_info->rec_state == MIGRATED_OUT) {
-			if (emac_info->num_of_retries <
-			    MIG_OUT_MAX_ARP_RETRIES) {
+			if (emac_info->num_of_retries > 0) {
 				ret = migrate_out_gen_arp_req(parent, emac_info->emac,
 							      emac_info->vlan);
 				if (ret)
@@ -951,53 +1018,87 @@ static void migrate_out_work_task(struct work_struct *work)
 					       __func__, ret);
 
 				emac_info->num_of_retries =
-					emac_info->num_of_retries + 1;
+					emac_info->num_of_retries - 1;
 				is_reschedule = 1;
-			} else
-				emac_info->rec_state = INVALID;
+			} else {
+				/* Delete it. */
+				free_emac_info_rec(emac_info);
+			}
+		} else if (emac_info->rec_state == NEW) {
+			if (emac_info->num_of_retries > 0) {
+				/* generate gart arp for it */
+				ret = gen_grat_arp_req(parent, emac_info->emac,
+						       emac_info->vlan);
+				if (ret)
+					pr_err("%s: gen_gart_arp_req failed: %d\n",
+					       __func__, ret);
+				emac_info->num_of_retries =
+					emac_info->num_of_retries - 1;
+				is_reschedule = 1;
+			} else {
+				emac_info->rec_state = VALID;
+				/*mark all ips at that record as updated.*/
+				update_emac_info_ip_list(emac_info, IP_VALID);
+			}
 		}
 	}
 	/* issue arp request till the device removed that entry from list */
 	if (is_reschedule)
-		queue_delayed_work(parent->wq, &parent->migrate_out_work,
-				   MIG_OUT_ARP_REQ_ISSUE_TIME);
+		queue_delayed_work(parent->wq, &parent->arp_gen_work,
+				   GEN_ARP_REQ_ISSUE_TIME);
+
+	write_unlock(&parent->emac_info_lock);
 out:
 	write_unlock_bh(&parent->lock);
 	return;
 }
 
-static inline int add_emac_ip_info(struct net_device *slave_dev, __be32 ip,
-				   u8 *mac, u16 vlan)
+inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
+			    u8 *mac, u16 vlan, gfp_t mem_flag)
 {
-	struct net_device *parent_dev = slave_dev->master;
 	struct parent *parent = netdev_priv(parent_dev);
+	struct slave *slave;
 	struct guest_emac_info *emac_info = NULL;
 	struct ip_member *ipm;
 	int ret;
 	int is_just_alloc_emac_info = 0;
 
-	ret = is_mac_info_contain_ip(parent, mac, ip, emac_info, vlan);
-	if (ret)
+	/* check if exists such slave at all */
+	slave = get_slave_by_mac_and_vlan(parent, mac, vlan);
+	if (unlikely(!slave)) {
+		pr_warn("%s: No slave (mac: %pM vlan: %d)\n",
+			__func__, mac, vlan);
+		return -ENXIO;
+	}
+
+	read_lock_bh(&parent->emac_info_lock);
+	ret = is_mac_info_contain_new_ip(parent, mac, ip, emac_info, vlan);
+	if (ret) {
+		read_unlock_bh(&parent->emac_info_lock);
 		return 0;
+	}
+
+	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, mac, vlan);
+	read_unlock_bh(&parent->emac_info_lock);
 
 	/* new ip add it to the emc_ip obj */
 	if (!emac_info) {
-		emac_info = kzalloc(sizeof *emac_info, GFP_ATOMIC);
+		emac_info = kzalloc(sizeof(*emac_info), mem_flag);
 		if (!emac_info) {
 			pr_err("%s: Failed allocating emac_info\n",
 			       parent_dev->name);
 			return -ENOMEM;
 		}
+		strcpy(emac_info->ifname, slave->dev->name);
 		memcpy(emac_info->emac, mac, ETH_ALEN);
 		INIT_LIST_HEAD(&emac_info->ip_list);
-		emac_info->rec_state = VALID;
 		emac_info->vlan = vlan;
-		emac_info->num_of_retries = 0;
-		list_add_tail(&emac_info->list, &parent->emac_ip_list);
 		is_just_alloc_emac_info = 1;
+		pr_info("%s: slave:%s new emac_info for mac: %pM, vlan: %d, ip: %pI4\n",
+			__func__, slave->dev->name, mac, vlan, &ip);
 	}
 
-	ipm = kzalloc(sizeof *ipm, GFP_ATOMIC);
+	ipm = kzalloc(sizeof(*ipm), mem_flag);
 	if (!ipm) {
 		pr_err(" %s Failed allocating emac_info (ipm)\n",
 		       parent_dev->name);
@@ -1007,7 +1108,22 @@ static inline int add_emac_ip_info(struct net_device *slave_dev, __be32 ip,
 	}
 
 	ipm->ip = ip;
+	ipm->state = IP_NEW;
+
+	write_lock_bh(&parent->emac_info_lock);
+
 	list_add_tail(&ipm->list, &emac_info->ip_list);
+	/* force gart-arp announce */
+	emac_info->rec_state = NEW;
+	emac_info->num_of_retries = GRAT_ARP_MAX_RETRIES;
+
+	if (is_just_alloc_emac_info)
+		list_add_tail(&emac_info->list, &parent->emac_ip_list);
+
+	write_unlock_bh(&parent->emac_info_lock);
+
+	/* send gart arp to the world.*/
+	queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
 
 	return 0;
 }
@@ -1035,8 +1151,8 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
 	 * arp request for all these IP's.
 	 */
 	if (skb->protocol == htons(ETH_P_ARP))
-		err = add_emac_ip_info(slave->dev, arp_data->arp_sip,
-				       arp_data->arp_sha, slave->vlan);
+		err = add_emac_ip_info(slave->dev->master, arp_data->arp_sip,
+				       arp_data->arp_sha, slave->vlan, GFP_ATOMIC);
 	if (err)
 		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4",
 			__func__, &arp_data->arp_sip);
@@ -1092,6 +1208,7 @@ static void get_slave_skb_arp_by_ip(struct slave *slave,
 {
 	struct sk_buff *nskb = NULL;
 	struct iphdr *iph = ip_hdr(skb);
+	struct ethhdr *ethh = (struct ethhdr *)(skb->data);
 
 	pr_info("Sending arp on behalf of slave %s, from %pI4"
 		" to %pI4" , slave->dev->name, &(iph->saddr),
@@ -1110,6 +1227,13 @@ static void get_slave_skb_arp_by_ip(struct slave *slave,
 	else
 		pr_err("%s: %s failed creating skb\n",
 		       __func__, slave->dev->name);
+
+	/* add new source IP as served via the driver. */
+	if (add_emac_ip_info(slave->dev->master, iph->saddr, ethh->h_source,
+			     slave->vlan, GFP_ATOMIC))
+		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 mac: %pM",
+			__func__, &iph->saddr, ethh->h_source);
+
 }
 
 /* build ipoib ipv4/ipv6 packet */
@@ -1508,8 +1632,7 @@ static int parent_open(struct net_device *parent_dev)
 
 	parent->kill_timers = 0;
 	INIT_DELAYED_WORK(&parent->neigh_learn_work, neigh_learn_task);
-	INIT_DELAYED_WORK(&parent->emac_ip_work, emac_info_clean_task);
-	INIT_DELAYED_WORK(&parent->migrate_out_work, migrate_out_work_task);
+	INIT_DELAYED_WORK(&parent->arp_gen_work, arp_gen_work_task);
 	return 0;
 }
 
@@ -1521,9 +1644,8 @@ static int parent_close(struct net_device *parent_dev)
 	parent->kill_timers = 1;
 	write_unlock_bh(&parent->lock);
 
-	cancel_delayed_work(&parent->neigh_learn_work);
-	cancel_delayed_work(&parent->emac_ip_work);
-	cancel_delayed_work(&parent->migrate_out_work);
+	cancel_delayed_work_sync(&parent->neigh_learn_work);
+	cancel_delayed_work_sync(&parent->arp_gen_work);
 
 	return 0;
 }
@@ -1671,7 +1793,7 @@ static void parent_setup(struct net_device *parent_dev)
 
 	/* initialize rwlocks */
 	rwlock_init(&parent->lock);
-
+	rwlock_init(&parent->emac_info_lock);
 	/* Initialize pointers */
 	parent->dev = parent_dev;
 	INIT_LIST_HEAD(&parent->neigh_add_list);

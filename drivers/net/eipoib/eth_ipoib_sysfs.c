@@ -515,11 +515,124 @@ out:
 static DEVICE_ATTR(slaves, S_IRUGO | S_IWUSR, parent_show_slaves,
 		   parent_store_slaves);
 
+
+static ssize_t parent_show_served(struct device *d,
+				  struct device_attribute *attr, char *buf)
+{
+	struct parent *parent = to_parent(d);
+	char *p = buf;
+	struct guest_emac_info *emac_info;
+	struct ip_member *ipm;
+
+	read_lock_bh(&parent->lock);
+	read_lock(&parent->emac_info_lock);
+
+	list_for_each_entry(emac_info, &parent->emac_ip_list, list) {
+		if (VALID == emac_info->rec_state) {
+			list_for_each_entry(ipm, &emac_info->ip_list, list) {
+				if (emac_info->vlan == VLAN_N_VID) {
+					p += _sprintf(p, buf, "SLAVE=%s MAC=%pM IP=%pI4 VLAN=%s\n",
+						      emac_info->ifname, emac_info->emac, &ipm->ip,
+						      MOD_NA_STRING);
+				} else {
+					p += _sprintf(p, buf, "SLAVE=%s MAC=%pM IP=%pI4 VLAN=%d\n",
+						      emac_info->ifname, emac_info->emac, &ipm->ip,
+						      emac_info->vlan);
+				}
+			}
+		}
+	}
+
+	read_unlock(&parent->emac_info_lock);
+	read_unlock_bh(&parent->lock);
+
+	 _end_of_line(p, buf);
+
+	 return (ssize_t)(p - buf);
+
+}
+
+#define IP_ADDR_LEN 4/* in bytes */
+
+static ssize_t parent_store_served(struct device *d,
+				   struct device_attribute *attr,
+				   const char *buffer, size_t count)
+{
+	char command[ETH_ALEN * 3 + 1] = { 0, };
+	char *mac_str;
+	char ip_str[IP_ADDR_LEN + 1] = { 0, };
+	u8 mac[ETH_ALEN];
+	u16 vlan = VLAN_N_VID;
+	__be32 ip;
+	int ret = count, ret2 = 0;
+	struct parent *parent = to_parent(d);
+
+	/* format: +52:54:00:ca:0b:0f 11.134.45.1 7 */
+	sscanf(buffer, "%s %s %hd", command, ip_str, &vlan);
+
+	mac_str = command + 1;
+	if ((strlen(command) <= 1) || /*!dev_valid_name(ifname) ||*/
+	    (command[0] != '+' && command[0] != '-'))
+		goto err_no_cmd;
+	/* process command */
+	if (command[0] == '+') {
+		if (get_emac(mac, mac_str)) {
+			pr_err("%s invalid mac input\n", parent->dev->name);
+			return -EINVAL;
+		}
+
+		ip = in_aton(ip_str);
+		/*
+		 * takes parent->lock, before calling add_emac_ip_info.
+		 * because add_emac_ip_info can reschedule work, make sure
+		 * the driver is not at the middle of getting down.
+		 */
+		pr_info("Adding new served ip: %pI4, mac: %pM, vlan:%d.\n",
+			&ip, mac, vlan);
+		read_lock_bh(&parent->lock);
+		ret2 = add_emac_ip_info(parent->dev, ip, mac, vlan, GFP_ATOMIC);
+		read_unlock_bh(&parent->lock);
+		if (ret2)
+			return -EINVAL;
+
+		return ret;
+	}
+
+	if (command[0] == '-') {
+
+		if (get_emac(mac, mac_str)) {
+			pr_err("invalid mac input: %s\n", mac_str);
+			return -EINVAL;
+		}
+
+		ip = in_aton(ip_str);
+
+		pr_info("Delete served ip: %pI4, mac: %pM, vlan:%d.\n",
+			&ip, mac, vlan);
+
+		free_ip_ent_in_emac_rec(parent, mac, vlan, ip);
+		return ret;
+
+	}
+
+err_no_cmd:
+	pr_err("%s USAGE: (-|+)ifname [mac]\n", DRV_NAME);
+	ret = -EPERM;
+
+	return ret;
+
+}
+
+static DEVICE_ATTR(served, S_IRUGO | S_IWUSR, parent_show_served,
+		   parent_store_served);
+
+
 /* sysfs create/destroy functions */
 static struct attribute *per_parent_attrs[] = {
 	&dev_attr_slaves.attr, /* DEVICE_ATTR(slaves..) */
 	&dev_attr_vifs.attr,
 	&dev_attr_neighs.attr,
+	&dev_attr_served.attr,
 	NULL,
 };
 
