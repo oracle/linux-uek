@@ -531,9 +531,9 @@ static int be2iscsi_get_if_param(struct beiscsi_hba *phba,
 		break;
 	case ISCSI_NET_PARAM_IPV4_BOOTPROTO:
 		if (!if_info.dhcp_state)
-			len = sprintf(buf, "static");
+			len = sprintf(buf, "static\n");
 		else
-			len = sprintf(buf, "dhcp");
+			len = sprintf(buf, "dhcp\n");
 		break;
 	case ISCSI_NET_PARAM_IPV4_SUBNET:
 		len = sprintf(buf, "%pI4\n", &if_info.ip_addr.subnet_mask);
@@ -541,7 +541,7 @@ static int be2iscsi_get_if_param(struct beiscsi_hba *phba,
 	case ISCSI_NET_PARAM_VLAN_ENABLED:
 		len = sprintf(buf, "%s\n",
 			     (if_info.vlan_priority == BEISCSI_VLAN_DISABLE)
-			     ? "Disabled" : "Enabled");
+			     ? "Disabled\n" : "Enabled\n");
 		break;
 	case ISCSI_NET_PARAM_VLAN_ID:
 		if (if_info.vlan_priority == BEISCSI_VLAN_DISABLE)
@@ -586,7 +586,7 @@ int be2iscsi_iface_get_param(struct iscsi_iface *iface,
 		len = be2iscsi_get_if_param(phba, iface, param, buf);
 		break;
 	case ISCSI_NET_PARAM_IFACE_ENABLE:
-		len = sprintf(buf, "enabled");
+		len = sprintf(buf, "enabled\n");
 		break;
 	case ISCSI_NET_PARAM_IPV4_GW:
 		memset(&gateway, 0, sizeof(gateway));
@@ -685,7 +685,6 @@ int beiscsi_set_param(struct iscsi_cls_conn *cls_conn,
  * @buf: buffer bointer
  * @phba: The device priv structure instance
  *
- * returns number of bytes
  */
 static int beiscsi_get_initname(char *buf, struct beiscsi_hba *phba)
 {
@@ -1059,8 +1058,8 @@ beiscsi_ep_connect(struct Scsi_Host *shost, struct sockaddr *dst_addr,
 
 	if (phba->state != BE_ADAPTER_UP) {
 		ret = -EBUSY;
-		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
-			    "BS_%d : The Adapter state is Not UP\n");
+		beiscsi_log(phba, KERN_WARNING, BEISCSI_LOG_CONFIG,
+			    "BS_%d : The Adapter Port state is Down!!!\n");
 		return ERR_PTR(ret);
 	}
 
