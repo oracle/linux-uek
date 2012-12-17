@@ -2790,6 +2790,8 @@ void btrfs_set_root_node(struct btrfs_root_item *item,
 void btrfs_check_and_init_root_item(struct btrfs_root_item *item);
 
 /* dir-item.c */
+int btrfs_check_dir_item_collision(struct btrfs_root *root, u64 dir,
+			  const char *name, int name_len);
 int btrfs_insert_dir_item(struct btrfs_trans_handle *trans,
 			  struct btrfs_root *root, const char *name,
 			  int name_len, struct inode *dir,
