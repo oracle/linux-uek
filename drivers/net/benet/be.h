@@ -35,7 +35,7 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"4.4.31.0o"
+#define DRV_VER			"4.4.161.0o"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"ServerEngines BladeEngine2 10Gbps NIC"
 #define BE3_NAME		"ServerEngines BladeEngine3 10Gbps NIC"
@@ -54,6 +54,7 @@
 #define OC_DEVICE_ID3		0xe220	/* Device id for Lancer cards */
 #define OC_DEVICE_ID4           0xe228   /* Device id for VF in Lancer */
 #define OC_DEVICE_ID5		0x720	/* Device Id for Skyhawk cards */
+#define OC_DEVICE_ID6		0x728   /* Device id for VF in SkyHawk */
 #define OC_SUBSYS_DEVICE_ID1	0xE602
 #define OC_SUBSYS_DEVICE_ID2	0xE642
 #define OC_SUBSYS_DEVICE_ID3	0xE612
@@ -72,6 +73,7 @@ static inline char *nic_name(struct pci_dev *pdev)
 	case BE_DEVICE_ID2:
 		return BE3_NAME;
 	case OC_DEVICE_ID5:
+	case OC_DEVICE_ID6:
 		return OC_NAME_SH;
 	default:
 		return BE_NAME;
@@ -111,6 +113,7 @@ static inline char *nic_name(struct pci_dev *pdev)
 #define MAX_RX_POST		BE_NAPI_WEIGHT /* Frags posted at a time */
 #define RX_FRAGS_REFILL_WM	(RX_Q_LEN - MAX_RX_POST)
 
+#define MAX_VFS			30 /* Max VFs supported by BE3 FW */
 #define FW_VER_LEN		32
 
 struct be_dma_mem {
@@ -334,17 +337,18 @@ struct phy_info {
 	u16 auto_speeds_supported;
 	u16 fixed_speeds_supported;
 	int link_speed;
-	int forced_port_speed;
 	u32 dac_cable_len;
 	u32 advertising;
 	u32 supported;
 };
 
+#define BE_UC_PMAC_COUNT		30
+#define BE_VF_UC_PMAC_COUNT		2
+
 struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
 
-	u8 __iomem *csr;
 	u8 __iomem *db;		/* Door Bell */
 
 	struct mutex mbox_lock; /* For serializing mbox cmds to BE card */
@@ -372,11 +376,8 @@ struct be_adapter {
 	struct be_rx_obj rx_obj[MAX_RX_QS];
 	u32 big_page_size;	/* Compounded page size shared by rx wrbs */
 
-	u8 eq_next_idx;
 	struct be_drv_stats drv_stats;
-
 	u16 vlans_added;
-	u16 max_vlans;	/* Number of vlans supported */
 	u8 vlan_tag[VLAN_N_VID];
 	u8 vlan_prio_bmap;	/* Available Priority BitMap */
 	u16 recommended_prio;	/* Recommended Priority */
@@ -389,10 +390,11 @@ struct be_adapter {
 
 	struct delayed_work func_recovery_work;
 	u32 flags;
+	u32 cmd_privileges;
 	/* Ethtool knobs and info */
 	char fw_ver[FW_VER_LEN];
 	int if_handle;		/* Used to configure filtering */
-	u32 pmac_id;		/* MAC addr handle used by BE card */
+	u32 *pmac_id;		/* MAC addr handle used by BE card */
 	u32 beacon_state;	/* for set_phys_id */
 
 	bool eeh_error;
@@ -406,10 +408,8 @@ struct be_adapter {
 	u32 rx_fc;		/* Rx flow control */
 	u32 tx_fc;		/* Tx flow control */
 	bool stats_cmd_sent;
-	u8 generation;		/* BladeEngine ASIC generation */
 	u32 if_type;
 	struct {
-		u8 __iomem *base;	/* Door Bell */
 		u32 size;
 		u32 total_size;
 		u64 io_addr;
@@ -432,8 +432,18 @@ struct be_adapter {
 	struct phy_info phy;
 	u8 wol_cap;
 	bool wol;
+	u32 uc_macs;		/* Count of secondary UC MAC programmed */
 	u32 msg_enable;
 	int be_get_temp_freq;
+	u16 max_mcast_mac;
+	u16 max_tx_queues;
+	u16 max_rss_queues;
+	u16 max_rx_queues;
+	u16 max_pmac_cnt;
+	u16 max_vlans;
+	u16 max_event_queues;
+	u32 if_cap_flags;
+	u8 pf_number;
 };
 
 #define be_physfn(adapter)		(!adapter->virtfn)
@@ -444,21 +454,25 @@ struct be_adapter {
 	for (i = 0, vf_cfg = &adapter->vf_cfg[i]; i < adapter->num_vfs;	\
 		i++, vf_cfg++)
  
-/* BladeEngine Generation numbers */
-#define BE_GEN2 2
-#define BE_GEN3 3
-
 #define ON				1
 #define OFF				0
-#define lancer_chip(adapter)	((adapter->pdev->device == OC_DEVICE_ID3) || \
-				 (adapter->pdev->device == OC_DEVICE_ID4))
 
-#define skyhawk_chip(adapter)	(adapter->pdev->device == OC_DEVICE_ID5)
+#define lancer_chip(adapter)	(adapter->pdev->device == OC_DEVICE_ID3 || \
+				 adapter->pdev->device == OC_DEVICE_ID4)
 
+#define skyhawk_chip(adapter)	(adapter->pdev->device == OC_DEVICE_ID5 || \
+				 adapter->pdev->device == OC_DEVICE_ID6)
 
-#define be_roce_supported(adapter) ((adapter->if_type == SLI_INTF_TYPE_3 || \
-				adapter->sli_family == SKYHAWK_SLI_FAMILY) && \
-				(adapter->function_mode & RDMA_ENABLED))
+#define BE3_chip(adapter)	(adapter->pdev->device == BE_DEVICE_ID2 || \
+				 adapter->pdev->device == OC_DEVICE_ID2)
+
+#define BE2_chip(adapter)	(adapter->pdev->device == BE_DEVICE_ID1 || \
+				 adapter->pdev->device == OC_DEVICE_ID1)
+
+#define BEx_chip(adapter)	(BE3_chip(adapter) || BE2_chip(adapter))
+
+#define be_roce_supported(adapter)	(skyhawk_chip(adapter) && \
+					(adapter->function_mode & RDMA_ENABLED))
 
 extern const struct ethtool_ops be_ethtool_ops;
 
@@ -631,12 +645,6 @@ static inline bool be_is_wol_excluded(struct be_adapter *adapter)
 	default:
 		return false;
 	}
-}
-
-static inline bool be_type_2_3(struct be_adapter *adapter)
-{
-	return (adapter->if_type == SLI_INTF_TYPE_2 ||
-		adapter->if_type == SLI_INTF_TYPE_3) ? true : false;
 }
 
 extern void be_cq_notify(struct be_adapter *adapter, u16 qid, bool arm,
