@@ -3463,7 +3463,9 @@ static int do_chunk_alloc(struct btrfs_trans_handle *trans,
 	int wait_for_alloc = 0;
 	int ret = 0;
 
-	flags = btrfs_reduce_alloc_profile(extent_root, flags);
+	/* Don't re-enter if we're already allocating a chunk */
+	if (trans->allocating_chunk)
+		return -ENOSPC;
 
 	space_info = __find_space_info(extent_root->fs_info, flags);
 	if (!space_info) {
@@ -3507,6 +3509,8 @@ again:
 		goto again;
 	}
 
+	trans->allocating_chunk = true;
+
 	/*
 	 * If we have mixed data/metadata chunks we want to make sure we keep
 	 * allocating mixed chunks instead of individual chunks.
@@ -3533,6 +3537,7 @@ again:
 	check_system_chunk(trans, extent_root, flags);
 
 	ret = btrfs_alloc_chunk(trans, extent_root, flags);
+	trans->allocating_chunk = false;
 	if (ret < 0 && ret != -ENOSPC)
 		goto out;
 
