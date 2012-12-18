@@ -24,4 +24,4 @@ config SCSI_QLA_FC
 
 	Firmware images can be retrieved from:
 
-		ftp://ftp.qlogic.com/outgoing/linux/firmware/
+		http://ldriver.qlogic.com/firmware/
