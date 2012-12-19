@@ -1803,14 +1803,21 @@ void ipoib_dev_cleanup(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev), *cpriv, *tcpriv;
 
+	LIST_HEAD(head);
+
+	ASSERT_RTNL();
+
 	ipoib_delete_debug_files(dev);
 
 	/* Delete any child interfaces first */
-	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list) {
-		unregister_netdev(cpriv->dev);
-		ipoib_dev_cleanup(cpriv->dev);
-		free_netdev(cpriv->dev);
-	}
+	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list)
+		unregister_netdevice_queue(cpriv->dev, &head);
+
+	/*
+	 * the next function calls the ipoib_uninit which calls for
+	 * ipoib_dev_cleanup for each devices at the head list.
+	 */
+	unregister_netdevice_many(&head);
 
 	ipoib_dev_uninit(dev);
 	/* ipoib_dev_uninit took rings lock can't release in case of reinit */
