@@ -856,9 +856,39 @@ extern int ipoib_inline_thold;
 
 extern struct ib_sa_client ipoib_sa_client;
 
+static inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
+				struct napi_struct *napi)
+{
+	struct ipoib_cm_rx *p_cm_ctx = NULL;
+	union skb_cb_data *data = NULL;
+	struct ib_grh *grh = NULL;
+	struct ipoib_header *header;
+	unsigned int tss_mask, tss_qpn_mask_sz;
 
-inline void set_skb_oob_cb_data(struct sk_buff *skb, struct ib_wc *wc,
-				struct napi_struct *napi);
+	p_cm_ctx = wc->qp->qp_context;
+	data = IPOIB_HANDLER_CB(skb);
+
+	data->rx.slid = wc->slid;
+	header = (struct ipoib_header *)(skb->data - IPOIB_ENCAP_LEN);
+	if (header->tss_qpn_mask_sz & cpu_to_be16(0xF000)) {
+		tss_qpn_mask_sz = be16_to_cpu(header->tss_qpn_mask_sz) >> 12;
+		tss_mask = 0xffff >> (16 - tss_qpn_mask_sz);
+		data->rx.sqpn = wc->src_qp & tss_mask;
+	} else
+		data->rx.sqpn = wc->src_qp;
+	data->rx.napi = napi;
+
+	/*TODO: add mcast support.*/
+	/*if dqpn is mcast, fetch the dgid*/
+	grh = (struct ib_grh *)(skb->data - IB_GRH_BYTES - IPOIB_ENCAP_LEN);
+
+	if ((wc->wc_flags & IB_WC_GRH) && grh)
+		memcpy(data->rx.dgid, grh->dgid.raw, 16);
+
+	/* in CM mode, use the "base" qpn as sqpn */
+	if (p_cm_ctx)
+		data->rx.sqpn = p_cm_ctx->qpn;
+}
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 extern int ipoib_debug_level;
