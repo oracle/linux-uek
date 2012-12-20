@@ -37,6 +37,15 @@
 
 #include "iscsi_iser.h"
 
+int iser_cq_completions = 0;
+int iser_cq_timeout     = 0;
+
+module_param_named(cq_completions, iser_cq_completions, int, 0644);
+MODULE_PARM_DESC(cq_completions, "moderate CQ to N completions if N > 0 (default:disabled)");
+
+module_param_named(cq_timeout, iser_cq_timeout, int, 0644);
+MODULE_PARM_DESC(cq_timeout, "moderate CQ to max T micro-sec if T > 0 (default:disabled)");
+
 #define ISCSI_ISER_MAX_CONN	8
 #define ISER_MAX_RX_CQ_LEN	(ISER_QP_MAX_RECV_DTOS * ISCSI_ISER_MAX_CONN)
 #define ISER_MAX_TX_CQ_LEN	(ISER_QP_MAX_REQ_DTOS  * ISCSI_ISER_MAX_CONN)
@@ -70,7 +79,7 @@ static void iser_event_handler(struct ib_event_handler *handler,
  */
 static int iser_create_device_ib_res(struct iser_device *device)
 {
-	int i, j;
+	int i, j, ret;
 	struct iser_cq_desc *cq_desc;
 
 	device->cqs_used = min(ISER_MAX_CQ, device->ib_device->num_comp_vectors);
@@ -109,6 +118,16 @@ static int iser_create_device_ib_res(struct iser_device *device)
 
 		if (ib_req_notify_cq(device->rx_cq[i], IB_CQ_NEXT_COMP))
 			goto cq_err;
+
+                if (iser_cq_completions && iser_cq_timeout) {
+                        iser_err("applying CQ moderation - to be max {%d completions, %d us timeout} \n",
+                                iser_cq_completions, iser_cq_timeout);
+                        ret = ib_modify_cq(device->rx_cq[i], iser_cq_completions, iser_cq_timeout);
+                        if (ret == -ENOSYS)
+                                iser_err("device does not support CQ moderation\n");
+                        else
+                                iser_err("failed modifying RX CQ err %d\n", ret);
+                }
 
 		tasklet_init(&device->cq_tasklet[i],
 			     iser_cq_tasklet_fn,
