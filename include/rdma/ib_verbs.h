@@ -1340,6 +1340,7 @@ struct ib_device {
 	u32			     local_dma_lkey;
 	u8                           node_type;
 	u8                           phys_port_cnt;
+	int			     cmd_perf;
 };
 
 struct ib_client {

@@ -577,11 +577,91 @@ out:
 	return ev_file;
 }
 
+static const char *verbs_cmd_str(__u32 cmd)
+{
+	switch (cmd) {
+	case IB_USER_VERBS_CMD_GET_CONTEXT:
+		return "GET_CONTEXT";
+	case IB_USER_VERBS_CMD_QUERY_DEVICE:
+		return "QUERY_DEVICE";
+	case IB_USER_VERBS_CMD_QUERY_PORT:
+		return "QUERY_PORT";
+	case IB_USER_VERBS_CMD_ALLOC_PD:
+		return "ALLOC_PD";
+	case IB_USER_VERBS_CMD_DEALLOC_PD:
+		return "DEALLOC_PD";
+	case IB_USER_VERBS_CMD_REG_MR:
+		return "REG_MR";
+	case IB_USER_VERBS_CMD_DEREG_MR:
+		return "DEREG_MR";
+	case IB_USER_VERBS_CMD_CREATE_COMP_CHANNEL:
+		return "CREATE_COMP_CHANNEL";
+	case IB_USER_VERBS_CMD_CREATE_CQ:
+		return "CREATE_CQ";
+	case IB_USER_VERBS_CMD_RESIZE_CQ:
+		return "RESIZE_CQ";
+	case IB_USER_VERBS_CMD_POLL_CQ:
+		return "POLL_CQ";
+	case IB_USER_VERBS_CMD_REQ_NOTIFY_CQ:
+		return "REQ_NOTIFY_CQ";
+	case IB_USER_VERBS_CMD_DESTROY_CQ:
+		return "DESTROY_CQ";
+	case IB_USER_VERBS_CMD_CREATE_QP:
+		return "CREATE_QP";
+	case IB_USER_VERBS_CMD_QUERY_QP:
+		return "QUERY_QP";
+	case IB_USER_VERBS_CMD_MODIFY_QP:
+		return "MODIFY_QP";
+	case IB_USER_VERBS_CMD_DESTROY_QP:
+		return "DESTROY_QP";
+	case IB_USER_VERBS_CMD_POST_SEND:
+		return "POST_SEND";
+	case IB_USER_VERBS_CMD_POST_RECV:
+		return "POST_RECV";
+	case IB_USER_VERBS_CMD_POST_SRQ_RECV:
+		return "POST_SRQ_RECV";
+	case IB_USER_VERBS_CMD_CREATE_AH:
+		return "CREATE_AH";
+	case IB_USER_VERBS_CMD_DESTROY_AH:
+		return "DESTROY_AH";
+	case IB_USER_VERBS_CMD_ATTACH_MCAST:
+		return "ATTACH_MCAST";
+	case IB_USER_VERBS_CMD_DETACH_MCAST:
+		return "DETACH_MCAST";
+	case IB_USER_VERBS_CMD_CREATE_SRQ:
+		return "CREATE_SRQ";
+	case IB_USER_VERBS_CMD_MODIFY_SRQ:
+		return "MODIFY_SRQ";
+	case IB_USER_VERBS_CMD_QUERY_SRQ:
+		return "QUERY_SRQ";
+	case IB_USER_VERBS_CMD_DESTROY_SRQ:
+		return "DESTROY_SRQ";
+	case IB_USER_VERBS_CMD_OPEN_XRCD:
+		return "OPEN_XRCD";
+	case IB_USER_VERBS_CMD_CLOSE_XRCD:
+		return "CLOSE_XRCD";
+	case IB_USER_VERBS_CMD_CREATE_XSRQ:
+		return "CREATE_XSRQ";
+	case IB_USER_VERBS_CMD_OPEN_QP:
+		return "OPEN_QP";
+	case IB_USER_VERBS_CMD_ATTACH_FLOW:
+		return "ATTACH_FLOW";
+	case IB_USER_VERBS_CMD_DETACH_FLOW:
+		return "DETACH_FLOW";
+	}
+	return "Unknown command";
+}
+
 static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 			     size_t count, loff_t *pos)
 {
 	struct ib_uverbs_file *file = filp->private_data;
 	struct ib_uverbs_cmd_hdr hdr;
+	struct timespec ts1;
+	struct timespec ts2;
+	ktime_t t1, t2, delta;
+	s64 ds;
+	ssize_t ret;
 
 	if (count < sizeof hdr)
 		return -EINVAL;
@@ -603,8 +683,21 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	if (!(file->device->ib_dev->uverbs_cmd_mask & (1ull << hdr.command)))
 		return -ENOSYS;
 
-	return uverbs_cmd_table[hdr.command](file, buf + sizeof hdr,
-					     hdr.in_words * 4, hdr.out_words * 4);
+	ktime_get_ts(&ts1);
+	ret = uverbs_cmd_table[hdr.command](file, buf + sizeof(hdr),
+					    hdr.in_words * 4,
+					    hdr.out_words * 4);
+	if (file->device->ib_dev->cmd_perf) {
+		ktime_get_ts(&ts2);
+		t1 = timespec_to_ktime(ts1);
+		t2 = timespec_to_ktime(ts2);
+		delta = ktime_sub(t2, t1);
+		ds = ktime_to_ns(delta);
+		pr_info("%s: %s execution time = %lld nsec\n",
+			file->device->ib_dev->name,
+			verbs_cmd_str(hdr.command), ds);
+	}
+	return ret;
 }
 
 static int ib_uverbs_mmap(struct file *filp, struct vm_area_struct *vma)

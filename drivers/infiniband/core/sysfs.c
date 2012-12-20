@@ -730,16 +730,46 @@ static ssize_t set_node_desc(struct device *device,
 	return count;
 }
 
+static ssize_t show_cmd_perf(struct device *device,
+			     struct device_attribute *attr, char *buf)
+{
+	struct ib_device *dev = container_of(device, struct ib_device, dev);
+
+	return sprintf(buf, "%d\n", dev->cmd_perf);
+}
+
+static ssize_t set_cmd_perf(struct device *device,
+			    struct device_attribute *attr,
+			    const char *buf, size_t count)
+{
+	struct ib_device *dev = container_of(device, struct ib_device, dev);
+	int val;
+
+	if (count < 1)
+		return -EINVAL;
+
+	val = buf[0] - '0';
+
+	if (val < 0 || val > 1)
+		return -EINVAL;
+
+	dev->cmd_perf = val;
+
+	return count;
+}
+
 static DEVICE_ATTR(node_type, S_IRUGO, show_node_type, NULL);
 static DEVICE_ATTR(sys_image_guid, S_IRUGO, show_sys_image_guid, NULL);
 static DEVICE_ATTR(node_guid, S_IRUGO, show_node_guid, NULL);
 static DEVICE_ATTR(node_desc, S_IRUGO | S_IWUSR, show_node_desc, set_node_desc);
+static DEVICE_ATTR(cmd_perf, S_IRUGO | S_IWUSR, show_cmd_perf, set_cmd_perf);
 
 static struct device_attribute *ib_class_attributes[] = {
 	&dev_attr_node_type,
 	&dev_attr_sys_image_guid,
 	&dev_attr_node_guid,
-	&dev_attr_node_desc
+	&dev_attr_node_desc,
+	&dev_attr_cmd_perf,
 };
 
 static struct class ib_class = {
