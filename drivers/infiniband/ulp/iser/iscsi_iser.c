@@ -335,6 +335,8 @@ iscsi_iser_conn_destroy(struct iscsi_cls_conn *cls_conn)
 	 */
 	if (ib_conn) {
 		ib_conn->iser_conn = NULL;
+		if (ib_conn->state != ISER_CONN_UP)
+			ib_conn->iser_conn = NULL;
 		iser_conn_put(ib_conn, 1); /* deref iscsi/ib conn unbinding */
 	}
 }
