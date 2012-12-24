@@ -226,6 +226,10 @@ MODULE_PARM_DESC(log_num_mtt,
 		 "log maximum number of memory translation table segments per "
 		 "HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
 
+enum {
+	MLX4_IF_STATE_BASIC,
+	MLX4_IF_STATE_EXTENDED
+};
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
 	struct sysinfo si;
@@ -2532,6 +2536,7 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	int nent_pow2;
+	int res;
 
 	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS))
 		return -ENOENT;
@@ -2541,9 +2546,27 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 
 	nent_pow2 = roundup_pow_of_two(dev->caps.max_counters);
 	/* reserve last counter index for sink counter */
-	return mlx4_bitmap_init(&priv->counters_bitmap, nent_pow2,
+	res = mlx4_bitmap_init(&priv->counters_bitmap, nent_pow2,
 				nent_pow2 - 1, 0,
 				nent_pow2 - dev->caps.max_counters + 1);
+	if (res)
+		return res;
+
+	if (mlx4_is_slave(dev))
+		return 0;
+
+	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT))
+		return 0;
+
+	res = mlx4_cmd(dev, MLX4_IF_STATE_EXTENDED, 0, 0,
+		MLX4_CMD_SET_IF_STAT,
+		MLX4_CMD_TIME_CLASS_A, MLX4_CMD_NATIVE);
+
+	if (res)
+		mlx4_err(dev, "Failed to set extended counters (err=%d)\n",
+				res);
+	return res;
+
 }
 
 static void mlx4_cleanup_counters_table(struct mlx4_dev *dev)
