@@ -1931,7 +1931,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 				context->pri_path.fl = 0x80;
 			context->pri_path.sched_queue |= MLX4_IB_DEFAULT_SCHED_QUEUE;
 		}
-		is_eth = rdma_port_get_link_layer(&dev->ib_dev, qp->port - 1) ==
+		is_eth = rdma_port_get_link_layer(&dev->ib_dev, qp->port) ==
 			IB_LINK_LAYER_ETHERNET;
 		if (is_eth) {
 			if (qp->mlx4_ib_qp_type == MLX4_IB_QPT_TUN_GSI ||
