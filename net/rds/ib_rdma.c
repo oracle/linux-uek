@@ -391,7 +391,7 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 						RDS_FMR_1M_POOL_SIZE);
 
 			printk(KERN_ERR "RDS/IB: Adjusted FMR pool (%d->%ld)\n",
-			       prev_max, pool->max_items);
+				prev_max, pool->max_items);
 
 			rds_ib_flush_mr_pool(pool, 0, &tmp_ibmr);
 			if (tmp_ibmr) {
