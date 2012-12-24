@@ -53,6 +53,7 @@ MODULE_PARM_DESC(set_4k_mtu,
 #define MLX4_STATS_TRAFFIC_DROPS_MASK		0xc0ULL
 #define MLX4_STATS_ERROR_COUNTERS_MASK		0x1ffc30ULL
 #define MLX4_STATS_PORT_COUNTERS_MASK		0x1fe00000ULL
+#define MLX4_STATS_IF_RX_ERRORS_COUNTERS_MASK	0x8010ULL
 
 void mlx4_init_mac_table(struct mlx4_dev *dev, struct mlx4_mac_table *table)
 {
@@ -1083,7 +1084,8 @@ void mlx4_set_stats_bitmap(struct mlx4_dev *dev, u64 *stats_bitmap)
 
 	*stats_bitmap = (MLX4_STATS_TRAFFIC_COUNTERS_MASK |
 			 MLX4_STATS_TRAFFIC_DROPS_MASK |
-			 MLX4_STATS_PORT_COUNTERS_MASK);
+			 MLX4_STATS_PORT_COUNTERS_MASK |
+			 MLX4_STATS_IF_RX_ERRORS_COUNTERS_MASK);
 
 	if (mlx4_is_master(dev))
 		*stats_bitmap |= MLX4_STATS_ERROR_COUNTERS_MASK;
