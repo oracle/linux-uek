@@ -615,16 +615,65 @@ union mlx4_ext_av {
 	struct mlx4_eth_av	eth;
 };
 
-struct mlx4_counter {
-	u8	reserved1[3];
-	u8	counter_mode;
-	__be32	num_ifc;
-	u32	reserved2[2];
-	__be64	rx_frames;
-	__be64	rx_bytes;
-	__be64	tx_frames;
-	__be64	tx_bytes;
+struct mlx4_if_stat_control {
+	u8 reserved1[3];
+	/* Extended counters enabled */
+	u8 cnt_mode;
+	/* Number of interfaces */
+	__be32 num_of_if;
+	__be32 reserved[2];
 };
+
+struct mlx4_if_stat_basic {
+	struct mlx4_if_stat_control control;
+	struct {
+		__be64 IfRxFrames;
+		__be64 IfRxOctets;
+		__be64 IfTxFrames;
+		__be64 IfTxOctets;
+	} counters[];
+};
+#define MLX4_IF_STAT_BSC_SZ(ports)(sizeof(struct mlx4_if_stat_extended) +\
+				   sizeof(((struct mlx4_if_stat_extended *)0)->\
+				   counters[0]) * ports)
+
+struct mlx4_if_stat_extended {
+	struct mlx4_if_stat_control control;
+	struct {
+		__be64 IfRxUnicastFrames;
+		__be64 IfRxUnicastOctets;
+		__be64 IfRxMulticastFrames;
+		__be64 IfRxMulticastOctets;
+		__be64 IfRxBroadcastFrames;
+		__be64 IfRxBroadcastOctets;
+		__be64 IfRxNoBufferFrames;
+		__be64 IfRxNoBufferOctets;
+		__be64 IfRxErrorFrames;
+		__be64 IfRxErrorOctets;
+		__be64 reserved[20];
+		__be64 IfTxUnicastFrames;
+		__be64 IfTxUnicastOctets;
+		__be64 IfTxMulticastFrames;
+		__be64 IfTxMulticastOctets;
+		__be64 IfTxBroadcastFrames;
+		__be64 IfTxBroadcastOctets;
+		__be64 IfTxDroppedFrames;
+		__be64 IfTxDroppedOctets;
+		__be64 IfTxRequestedFramesSent;
+		__be64 IfTxGeneratedFramesSent;
+		__be64 IfTxTsoOctets;
+	} counters[];
+};
+#define MLX4_IF_STAT_EXT_SZ(ports)   (sizeof(struct mlx4_if_stat_extended) +\
+				      sizeof(((struct mlx4_if_stat_extended *)\
+				      0)->counters[0]) * ports)
+
+union mlx4_counter {
+	struct mlx4_if_stat_control	control;
+	struct mlx4_if_stat_basic	basic;
+	struct mlx4_if_stat_extended	ext;
+};
+#define MLX4_IF_STAT_SZ(ports)		MLX4_IF_STAT_EXT_SZ(ports)
 
 struct mlx4_dev {
 	struct pci_dev	       *pdev;
