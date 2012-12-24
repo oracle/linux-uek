@@ -1620,7 +1620,7 @@ static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 			if (smac_index >= 0) {
 				smac_info->candidate_smac_index = smac_index;
 				smac_info->candidate_smac = u64_mac;
-				smac_info->candidate_smac = port;
+				smac_info->candidate_smac_port = port;
 			} else
 				return -EINVAL;
 		} else
