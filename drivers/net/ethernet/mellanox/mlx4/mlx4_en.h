@@ -540,6 +540,7 @@ struct mlx4_en_priv {
 	struct device *ddev;
 	int base_tx_qpn;
 	struct hwtstamp_config hwtstamp_config;
+	u32 counter_index;
 
 #ifdef CONFIG_MLX4_EN_DCB
 	struct ieee_ets ets;

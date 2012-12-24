@@ -1033,6 +1033,7 @@ int mlx4_en_start_port(struct net_device *dev)
 	int i;
 	int j;
 	u8 mc_list[16] = {0};
+	u32 counter_index;
 
 	if (priv->port_up) {
 		en_dbg(DRV, priv, "start port called while port already up\n");
@@ -1083,6 +1084,15 @@ int mlx4_en_start_port(struct net_device *dev)
 		goto cq_err;
 	}
 	mdev->mac_removed[priv->port] = 0;
+
+	err = mlx4_counter_alloc(mdev->dev, &counter_index);
+	if (err) {
+		en_err(priv,
+			"Failed allocating counter-using default, err=%d\n",
+			err);
+		priv->counter_index = 0xff;
+	} else
+		priv->counter_index = counter_index;
 
 	err = mlx4_en_config_rss_steer(priv);
 	if (err) {
@@ -1232,6 +1242,8 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Set port as not active */
 	priv->port_up = false;
+	if (priv->counter_index != 0xff)
+		mlx4_counter_free(mdev->dev, priv->counter_index);
 
 	/* Promsicuous mode */
 	if (mdev->dev->caps.steering_mode ==

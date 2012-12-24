@@ -62,7 +62,7 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 		context->pri_path.sched_queue |= user_prio << 3;
 		context->pri_path.feup = 1 << 6;
 	}
-	context->pri_path.counter_index = 0xff;
+	context->pri_path.counter_index = (u8)(priv->counter_index);
 	context->cqn_send = cpu_to_be32(cqn);
 	context->cqn_recv = cpu_to_be32(cqn);
 	context->db_rec_addr = cpu_to_be64(priv->res.db.dma << 2);
