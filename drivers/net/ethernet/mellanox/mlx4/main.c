@@ -169,6 +169,13 @@ module_param_array(port_type_array, int, &arr_argc, 0444);
 MODULE_PARM_DESC(port_type_array, "Array of port types: HW_DEFAULT (0) is default "
 				"1 for IB, 2 for Ethernet");
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+enum {
+	MLX4_IF_STATE_BASIC,
+	MLX4_IF_STATE_EXTENDED
+};
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static atomic_t pf_loading = ATOMIC_INIT(0);
 
 static int mlx4_devlink_ierr_reset_get(struct devlink *devlink, u32 id,
@@ -2526,6 +2533,9 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	int nent_pow2;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	int res;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS))
 		return -ENOENT;
@@ -2535,9 +2545,32 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 
 	nent_pow2 = roundup_pow_of_two(dev->caps.max_counters);
 	/* reserve last counter index for sink counter */
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	return mlx4_bitmap_init(&priv->counters_bitmap, nent_pow2,
 				nent_pow2 - 1, 0,
 				nent_pow2 - dev->caps.max_counters + 1);
+#else
+	res = mlx4_bitmap_init(&priv->counters_bitmap, nent_pow2,
+				nent_pow2 - 1, 0,
+				nent_pow2 - dev->caps.max_counters + 1);
+	if (res)
+		return res;
+
+	if (mlx4_is_slave(dev))
+		return 0;
+
+	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT))
+		return 0;
+
+	res = mlx4_cmd(dev, MLX4_IF_STATE_EXTENDED, 0, 0,
+		MLX4_CMD_SET_IF_STAT,
+		MLX4_CMD_TIME_CLASS_A, MLX4_CMD_NATIVE);
+
+	if (res)
+		mlx4_err(dev, "Failed to set extended counters (err=%d)\n",
+				res);
+	return res;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static void mlx4_cleanup_counters_table(struct mlx4_dev *dev)
