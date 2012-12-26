@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.5.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.6.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1697,6 +1697,97 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Wed Dec 26 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.6.0.el6uek]
+- qla3xxx: Ensure request/response queue addr writes to the registers (Joe Jin)
+  [Orabug: 14614290]
+- tcp: fix tcp_trim_head() (Eric Dumazet) [Orabug: 14810429]
+- mm/hotplug: correctly add new zone to all other nodes' zone lists (Jiang Liu)
+  [Orabug: 16020976 Bug-db: 14798] {CVE-2012-5517}
+- Divide by zero in TCP congestion control Algorithm. (Jesper Dangaard Brouer)
+  [Orabug: 16020656 Bug-db: 14798] {CVE-2012-4565}
+- Fix length of buffer copied in __nfs4_get_acl_uncached (Sachin Prabhu) [Bug-
+  db: 14798] {CVE-2012-2375}
+- Avoid reading past buffer when calling GETACL (Sachin Prabhu) [Bug-db: 14798]
+  {CVE-2012-2375}
+- Avoid beyond bounds copy while caching ACL (Sachin Prabhu) [Bug-db: 14798]
+  {CVE-2012-2375}
+- Merge tag 'v2.6.39-400#bug16011154' of git://ca-git.us.oracle.com/linux-
+  snits-public (Maxim Uvarov) [Orabug: 16011154]
+- qla2xxx: Update the driver version to 8.04.00.11.39.0-k. (Saurav Kashyap)
+- qla2xxx: Obtain loopback iteration count from bsg request. (Joe Carnuccio)
+- qla2xxx: Update the FTP site references in the driver sources. (Giridhar
+  Malavali)
+- qla2xxx: Debug ID corrections. (Chad Dupuis)
+- qla2xxx: Reject loopback request if one is already in progress. (Chad Dupuis)
+- qla2xxx: Print ignore message when thermal is not supported. (Joe Carnuccio)
+- qla2xxx: Avoid null pointer dereference in shutdown routine. (Masanari Iida)
+- qla2xxx: Get VPD information from common location for CNA. (Saurav Kashyap)
+- qla2xxx: Correct race in loop_state assignment during reset handling. (Andrew
+  Vasquez)
+- qla2xxx: Display that driver is operating in legacy interrupt mode. (Saurav
+  Kashyap)
+- qla2xxx: Free rsp_data even on error in qla2x00_process_loopback(). (Steve
+  Hodgson)
+- qla2xxx: Dont clear drv active on iospace config failure. (Saurav Kashyap)
+- qla2xxx: Fix typo in qla2xxx driver. (Masanari Iida)
+- qla2xxx: Update ql2xextended_error_logging parameter description with new
+  option. (Chad Dupuis)
+- qla2xxx: Parameterize the link speed string conversion function. (Joe
+  Carnuccio)
+- qla2xxx: Add 16Gb/s case to get port speed capability. (Joe Carnuccio)
+- qla2xxx: Move marking fcport online ahead of setting iiDMA speed. (Joe
+  Carnuccio)
+- Merge tag 'v2.6.39-400.5.0#bugdb13826' of ca-git.us.oracle.com:linux-muvarov-
+  public (Maxim Uvarov) [Bug-db: 13826]
+- be2net: fix INTx ISR for interrupt behaviour on BE2 (Sathya Perla)
+- be2net: fix a possible events_get() race on BE2 (Sathya Perla)
+- net: Remove bogus dependencies on INET (Ben Hutchings)
+- be2net: remove adapter->eq_next_idx (Sathya Perla)
+- be2net: remove roce on lancer (Sathya Perla)
+- be2net: fix access to SEMAPHORE reg (Sathya Perla)
+- be2net: re-factor bar mapping code (Sathya Perla)
+- be2net: do not use sli_family to identify skyhawk-R chip (Sathya Perla)
+- be2net: fix wrong usage of adapter->generation (Sathya Perla)
+- be2net: remove LANCER A0 workaround (Sathya Perla)
+- be2net: Fix smatch warnings in be_main.c (Padmanabh Ratnakar)
+- be2net: Update driver version (Padmanabh Ratnakar)
+- be2net: Fix skyhawk VF PCI Device ID (Padmanabh Ratnakar)
+- be2net: Fix FW flashing on Skyhawk-R (Padmanabh Ratnakar)
+- be2net: Enabling Wake-on-LAN is not supported in S5 state (Padmanabh
+  Ratnakar)
+- be2net: Fix VF driver load on newer Lancer FW (Padmanabh Ratnakar)
+- be2net: Fix unnecessary delay in PCI EEH (Padmanabh Ratnakar)
+- be2net: Fix issues in error recovery due to wrong queue state (Padmanabh
+  Ratnakar)
+- be2net: Fix ethtool get_settings output for VF (Padmanabh Ratnakar)
+- be2net: Fix error messages while driver load for VFs (Padmanabh Ratnakar)
+- be2net: Fix configuring VLAN for VF for Lancer (Padmanabh Ratnakar)
+- be2net: Wait till resources are available for VF in error recovery (Padmanabh
+  Ratnakar)
+- be2net: Fix change MAC operation for VF for Lancer (Padmanabh Ratnakar)
+- be2net: Fix setting QoS for VF for Lancer (Padmanabh Ratnakar)
+- be2net: Fix driver load failure for different FW configs in Lancer (Padmanabh
+  Ratnakar)
+- be2net: create RSS rings even in multi-channel configs (Sathya Perla)
+- be2net: set maximal number of default RSS queues (Yuval Mintz)
+- be2net: Program secondary UC MAC address into MAC filter (Ajit Khaparde)
+- be2net: Remove code that stops further access to BE NIC based on UE bits
+  (Ajit Khaparde)
+- be2net: fix vfs enumeration (Ivan Vecera)
+- be2net: fixup log messages (Sathya Perla)
+- be2net: cleanup code related to be_link_status_query() (Sathya Perla)
+- be2net: fix wrong handling of be_setup() failure in be_probe() (Sathya Perla)
+- be2net: remove type argument of be_cmd_mac_addr_query() (Sathya Perla)
+- Revert "be2net: fix vfs enumeration" (David S. Miller)
+- be2net: fix vfs enumeration (Ivan Vecera)
+- be2net: use PCIe AER capability (Sathya Perla)
+- be2net: modify log msg for lack of privilege error (Vasundhara Volam)
+- be2net: fix FW default for VF tx-rate (Vasundhara Volam)
+- be2net: fix max VFs reported by HW (Vasundhara Volam)
+- netpoll: revert 6bdb7fe3104 and fix be_poll() instead (Amerigo Wang)
+- SPEC: OL5 kernel firmware rpm depends on all others firmwares (Maxim Uvarov)
+  [Orabug: 15987332]
+
 * Wed Dec 12 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.5.0.el6uek]
 - x86, tsc: Fix SMI induced variation in quick_pit_calibrate() (Linus Torvalds)
   [Orabug: 13256166]
