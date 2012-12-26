@@ -96,7 +96,6 @@ DEFINE_SPINLOCK(ib_nodev_conns_lock);
 LIST_HEAD(ib_nodev_conns);
 
 struct workqueue_struct *rds_aux_wq;
-EXPORT_SYMBOL_GPL(rds_aux_wq);
 
 struct socket	*rds_ib_inet_socket;
 
@@ -1093,49 +1092,6 @@ static void rds_ib_unregister_client(void)
 	flush_workqueue(rds_wq);
 }
 
-void rds_ib_exit(void)
-{
-	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
-	rds_ib_unregister_client();
-	rds_ib_destroy_nodev_conns();
-	rds_ib_sysctl_exit();
-	rds_ib_srqs_exit();
-	rds_ib_recv_exit();
-	rds_trans_unregister(&rds_ib_transport);
-	rds_ib_fmr_exit();
-
-	if (ip_config)
-		kfree(ip_config);
-}
-
-struct rds_transport rds_ib_transport = {
-	.laddr_check		= rds_ib_laddr_check,
-	.xmit_complete		= rds_ib_xmit_complete,
-	.xmit			= rds_ib_xmit,
-	.xmit_rdma		= rds_ib_xmit_rdma,
-	.xmit_atomic		= rds_ib_xmit_atomic,
-	.recv			= rds_ib_recv,
-	.conn_alloc		= rds_ib_conn_alloc,
-	.conn_free		= rds_ib_conn_free,
-	.conn_connect		= rds_ib_conn_connect,
-	.conn_shutdown		= rds_ib_conn_shutdown,
-	.inc_copy_to_user	= rds_ib_inc_copy_to_user,
-	.inc_free		= rds_ib_inc_free,
-	.cm_initiate_connect	= rds_ib_cm_initiate_connect,
-	.cm_handle_connect	= rds_ib_cm_handle_connect,
-	.cm_connect_complete	= rds_ib_cm_connect_complete,
-	.stats_info_copy	= rds_ib_stats_info_copy,
-	.exit			= rds_ib_exit,
-	.get_mr			= rds_ib_get_mr,
-	.sync_mr		= rds_ib_sync_mr,
-	.free_mr		= rds_ib_free_mr,
-	.flush_mrs		= rds_ib_flush_mrs,
-	.check_migration        = rds_ib_check_migration,
-	.t_owner		= THIS_MODULE,
-	.t_name			= "infiniband",
-	.t_type			= RDS_TRANS_IB
-};
-
 static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
@@ -1244,6 +1200,12 @@ int rds_ib_init(void)
 		goto out_recv;
 	}
 
+	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
+	if (!rds_aux_wq) {
+		printk(KERN_ERR "RDS/IB: failed to create aux workqueue\n");
+		goto out_srq;
+	}
+
 	ret = rds_trans_register(&rds_ib_transport);
 	if (ret)
 		goto out_srq;
@@ -1253,12 +1215,6 @@ int rds_ib_init(void)
 	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
-		goto out_srq;
-	}
-
-	rds_aux_wq = create_singlethread_workqueue("krdsd_aux");
-	if (!rds_aux_wq) {
-		printk(KERN_ERR "RDS/IB: failed to create aux workqueue\n");
 		goto out_srq;
 	}
 
@@ -1279,6 +1235,52 @@ out_fmr_exit:
 out:
 	return ret;
 }
+
+
+void rds_ib_exit(void)
+{
+	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+	rds_ib_unregister_client();
+	rds_ib_destroy_nodev_conns();
+	rds_ib_sysctl_exit();
+	rds_ib_srqs_exit();
+	rds_ib_recv_exit();
+	flush_workqueue(rds_aux_wq);
+	destroy_workqueue(rds_aux_wq);
+	rds_trans_unregister(&rds_ib_transport);
+	rds_ib_fmr_exit();
+
+	if (ip_config)
+		kfree(ip_config);
+}
+
+struct rds_transport rds_ib_transport = {
+	.laddr_check		= rds_ib_laddr_check,
+	.xmit_complete		= rds_ib_xmit_complete,
+	.xmit			= rds_ib_xmit,
+	.xmit_rdma		= rds_ib_xmit_rdma,
+	.xmit_atomic		= rds_ib_xmit_atomic,
+	.recv			= rds_ib_recv,
+	.conn_alloc		= rds_ib_conn_alloc,
+	.conn_free		= rds_ib_conn_free,
+	.conn_connect		= rds_ib_conn_connect,
+	.conn_shutdown		= rds_ib_conn_shutdown,
+	.inc_copy_to_user	= rds_ib_inc_copy_to_user,
+	.inc_free		= rds_ib_inc_free,
+	.cm_initiate_connect	= rds_ib_cm_initiate_connect,
+	.cm_handle_connect	= rds_ib_cm_handle_connect,
+	.cm_connect_complete	= rds_ib_cm_connect_complete,
+	.stats_info_copy	= rds_ib_stats_info_copy,
+	.exit			= rds_ib_exit,
+	.get_mr			= rds_ib_get_mr,
+	.sync_mr		= rds_ib_sync_mr,
+	.free_mr		= rds_ib_free_mr,
+	.flush_mrs		= rds_ib_flush_mrs,
+	.check_migration        = rds_ib_check_migration,
+	.t_owner		= THIS_MODULE,
+	.t_name			= "infiniband",
+	.t_type			= RDS_TRANS_IB
+};
 
 MODULE_LICENSE("GPL");
 
