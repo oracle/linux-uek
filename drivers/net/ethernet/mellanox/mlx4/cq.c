@@ -57,8 +57,13 @@ void mlx4_cq_completion(struct mlx4_dev *dev, u32 cqn)
 {
 	struct mlx4_cq *cq;
 
+	rcu_read_lock();
 	cq = radix_tree_lookup(&mlx4_priv(dev)->cq_table.tree,
 			       cqn & (dev->caps.num_cqs - 1));
+	if (cq)
+		atomic_inc(&cq->refcount);
+	rcu_read_unlock();
+
 	if (!cq) {
 		mlx4_dbg(dev, "Completion event for bogus CQ %08x\n", cqn);
 		return;
@@ -67,6 +72,9 @@ void mlx4_cq_completion(struct mlx4_dev *dev, u32 cqn)
 	++cq->arm_sn;
 
 	cq->comp(cq);
+
+	if (atomic_dec_and_test(&cq->refcount))
+		complete(&cq->free);
 }
 
 void mlx4_cq_event(struct mlx4_dev *dev, u32 cqn, int event_type)
@@ -74,13 +82,13 @@ void mlx4_cq_event(struct mlx4_dev *dev, u32 cqn, int event_type)
 	struct mlx4_cq_table *cq_table = &mlx4_priv(dev)->cq_table;
 	struct mlx4_cq *cq;
 
-	spin_lock(&cq_table->lock);
+	rcu_read_lock();
 
 	cq = radix_tree_lookup(&cq_table->tree, cqn & (dev->caps.num_cqs - 1));
 	if (cq)
 		atomic_inc(&cq->refcount);
 
-	spin_unlock(&cq_table->lock);
+	rcu_read_unlock();
 
 	if (!cq) {
 		mlx4_warn(dev, "Async event for bogus CQ %08x\n", cqn);
@@ -328,6 +336,7 @@ err_radix:
 	spin_lock_irq(&cq_table->lock);
 	radix_tree_delete(&cq_table->tree, cq->cqn);
 	spin_unlock_irq(&cq_table->lock);
+	synchronize_rcu();
 
 err_icm:
 	mlx4_cq_free_icm(dev, cq->cqn);
@@ -351,6 +360,7 @@ void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq)
 	spin_lock_irq(&cq_table->lock);
 	radix_tree_delete(&cq_table->tree, cq->cqn);
 	spin_unlock_irq(&cq_table->lock);
+	synchronize_rcu();
 
 	if (atomic_dec_and_test(&cq->refcount))
 		complete(&cq->free);
