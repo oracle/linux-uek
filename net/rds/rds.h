@@ -146,7 +146,7 @@ struct rds_connection {
 	/* Qos support */
 	u8                      c_tos;
 
-	struct rds_notifier     *c_last_failed_op;
+	unsigned int		c_pending_flush;
 
 	unsigned long           c_hb_start;
 
@@ -760,6 +760,8 @@ int rds_send_pong(struct rds_connection *conn, __be16 dport);
 int rds_send_hb(struct rds_connection *conn, int response);
 struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
+
+extern unsigned int rds_async_send_enabled;
 
 /* rdma.c */
 void rds_rdma_unuse(struct rds_sock *rs, u32 r_key, int force);

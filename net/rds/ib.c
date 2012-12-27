@@ -1012,13 +1012,13 @@ void rds_ib_add_one(struct ib_device *device)
 
 	rds_ibdev->max_1m_fmrs = dev_attr->max_fmr ?
 		min_t(unsigned int, dev_attr->max_fmr,
-			RDS_FMR_1M_POOL_SIZE) :
-			RDS_FMR_1M_POOL_SIZE;
+			rds_ib_fmr_1m_pool_size) :
+			rds_ib_fmr_1m_pool_size;
 
 	rds_ibdev->max_8k_fmrs = dev_attr->max_fmr ?
 		min_t(unsigned int, dev_attr->max_fmr,
-			RDS_FMR_8K_POOL_SIZE) :
-			RDS_FMR_8K_POOL_SIZE;
+			rds_ib_fmr_8k_pool_size) :
+			rds_ib_fmr_8k_pool_size;
 
 	rds_ibdev->max_initiator_depth = dev_attr->max_qp_init_rd_atom;
 	rds_ibdev->max_responder_resources = dev_attr->max_qp_rd_atom;

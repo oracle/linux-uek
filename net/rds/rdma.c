@@ -565,7 +565,7 @@ int rds_cmsg_rdma_args(struct rds_sock *rs, struct rds_message *rm,
 	WARN_ON(!nr_pages);
 	op->op_sg = rds_message_alloc_sgs(rm, nr_pages);
 
-	if (op->op_notify || op->op_recverr) {
+	if (op->op_notify || op->op_recverr || rds_async_send_enabled) {
 		/* We allocate an uninitialized notifier here, because
 		 * we don't want to do that in the completion handler. We
 		 * would have to use GFP_ATOMIC there, and don't want to deal
@@ -775,7 +775,7 @@ int rds_cmsg_atomic(struct rds_sock *rs, struct rds_message *rm,
 
 	sg_set_page(rm->atomic.op_sg, page, 8, offset_in_page(args->local_addr));
 
-	if (rm->atomic.op_notify || rm->atomic.op_recverr) {
+	if (rm->atomic.op_notify || rm->atomic.op_recverr || rds_async_send_enabled) {
 		/* We allocate an uninitialized notifier here, because
 		 * we don't want to do that in the completion handler. We
 		 * would have to use GFP_ATOMIC there, and don't want to deal
