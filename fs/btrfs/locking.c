@@ -91,8 +91,20 @@ void btrfs_clear_lock_blocking_rw(struct extent_buffer *eb, int rw)
 void btrfs_tree_read_lock(struct extent_buffer *eb)
 {
 again:
-	wait_event(eb->write_lock_wq, atomic_read(&eb->blocking_writers) == 0);
 	read_lock(&eb->lock);
+	if (atomic_read(&eb->blocking_writers) &&
+	    current->pid == eb->lock_owner) {
+		/*
+		 * This extent is already write-locked by our thread. We allow
+		 * an additional read lock to be added because it's for the same
+		 * thread. btrfs_find_all_roots() depends on this as it may be
+		 * called on a partly (write-)locked tree.
+		 */
+		BUG_ON(eb->lock_nested);
+		eb->lock_nested = 1;
+		read_unlock(&eb->lock);
+		return;
+	}
 	if (atomic_read(&eb->blocking_writers)) {
 		read_unlock(&eb->lock);
 		wait_event(eb->write_lock_wq,
