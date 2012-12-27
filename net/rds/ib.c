@@ -1239,6 +1239,7 @@ out:
 
 void rds_ib_exit(void)
 {
+	unregister_netdevice_notifier(&rds_ib_nb);
 	rds_info_deregister_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 	rds_ib_unregister_client();
 	rds_ib_destroy_nodev_conns();
