@@ -2099,6 +2099,7 @@ struct btrfs_root *open_ctree(struct super_block *sb,
 
 	spin_lock_init(&fs_info->block_group_cache_lock);
 	fs_info->block_group_cache_tree = RB_ROOT;
+	fs_info->first_logical_byte = (u64)-1;
 
 	extent_io_tree_init(&fs_info->freed_extents[0],
 			     fs_info->btree_inode->i_mapping);
