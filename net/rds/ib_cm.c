@@ -462,8 +462,8 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 static int rds_ib_find_least_loaded_vector(struct rds_ib_device *rds_ibdev)
 {
 	int i;
-	int index = 0;
-	int min = rds_ibdev->vector_load[0];
+	int index = rds_ibdev->dev->num_comp_vectors - 1;
+	int min = rds_ibdev->vector_load[rds_ibdev->dev->num_comp_vectors - 1];
 
 	if (!rds_ib_cq_balance_enabled) {
 #ifdef IB_CQ_VECTOR_LEAST_ATTACHED
@@ -473,7 +473,7 @@ static int rds_ib_find_least_loaded_vector(struct rds_ib_device *rds_ibdev)
 #endif
 	}
 
-	for (i = 1; i < rds_ibdev->dev->num_comp_vectors; i++) {
+	for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
 		if (rds_ibdev->vector_load[i] < min) {
 			index = i;
 			min = rds_ibdev->vector_load[i];
