@@ -464,8 +464,6 @@ out:
 }
 
 static int cache_block_group(struct btrfs_block_group_cache *cache,
-			     struct btrfs_trans_handle *trans,
-			     struct btrfs_root *root,
 			     int load_cache_only)
 {
 	DEFINE_WAIT(wait);
@@ -4645,7 +4643,7 @@ static int update_block_group(struct btrfs_trans_handle *trans,
 		 * space back to the block group, otherwise we will leak space.
 		 */
 		if (!alloc && cache->cached == BTRFS_CACHE_NO)
-			cache_block_group(cache, trans, NULL, 1);
+			cache_block_group(cache, 1);
 
 		byte_in_group = bytenr - cache->key.objectid;
 		WARN_ON(byte_in_group > cache->key.offset);
@@ -4760,7 +4758,7 @@ int btrfs_pin_extent_for_log_replay(struct btrfs_trans_handle *trans,
 	 * to one because the slow code to read in the free extents does check
 	 * the pinned extents.
 	 */
-	cache_block_group(cache, trans, root, 1);
+	cache_block_group(cache, 1);
 
 	pin_down_extent(root, cache, bytenr, num_bytes, 0);
 
@@ -5547,9 +5545,9 @@ have_block_group:
 		cached = block_group_cache_done(block_group);
 		if (unlikely(!cached)) {
 			found_uncached_bg = true;
-			ret = cache_block_group(block_group, trans,
-						orig_root, 0);
-			BUG_ON(ret);
+			ret = cache_block_group(block_group, 0);
+			BUG_ON(ret < 0);
+			ret = 0;
 		}
 
 		if (unlikely(block_group->ro))
@@ -6088,7 +6086,7 @@ int btrfs_alloc_logged_file_extent(struct btrfs_trans_handle *trans,
 	u64 num_bytes = ins->offset;
 
 	block_group = btrfs_lookup_block_group(root->fs_info, ins->objectid);
-	cache_block_group(block_group, trans, NULL, 0);
+	cache_block_group(block_group, 0);
 	caching_ctl = get_caching_control(block_group);
 
 	if (!caching_ctl) {
@@ -7997,7 +7995,7 @@ int btrfs_trim_fs(struct btrfs_root *root, struct fstrim_range *range)
 
 		if (end - start >= range->minlen) {
 			if (!block_group_cache_done(cache)) {
-				ret = cache_block_group(cache, NULL, root, 0);
+				ret = cache_block_group(cache, 0);
 				if (!ret)
 					wait_block_group_cache_done(cache);
 			}
