@@ -194,6 +194,7 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	 * XXX we could spend more on the wire to get more robust failure
 	 * detection, arguably worth it to avoid data corruption.
 	 */
+
 	if (be64_to_cpu(inc->i_hdr.h_sequence) < conn->c_next_rx_seq
 	 && (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
 		rds_stats_inc(s_recv_drop_old_seq);
@@ -349,9 +350,14 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 
 		/* If this is the last failed op, re-open the connection for
 		   traffic */
-		if (notifier->n_conn &&
-			notifier->n_conn->c_last_failed_op == notifier)
-				notifier->n_conn->c_last_failed_op = NULL;
+		if (notifier->n_conn) {
+			spin_lock_irqsave(&notifier->n_conn->c_lock, flags);
+			if (notifier->n_conn->c_pending_flush)
+				notifier->n_conn->c_pending_flush--;
+			else
+				printk(KERN_ERR "rds_notify_queue_get: OOPS!\n");
+			spin_unlock_irqrestore(&notifier->n_conn->c_lock, flags);
+		}
 
 		list_del_init(&notifier->n_list);
 		kfree(notifier);
