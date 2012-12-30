@@ -179,6 +179,12 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 		goto out;
 	}
 
+	/*
+	 * keep the child_index inside the priv, in order to find it when it
+	 * needs to be deleted.
+	 */
+	priv->child_index = child_index;
+
 	result = __ipoib_vlan_add(ppriv, priv, pkey, IPOIB_LEGACY_CHILD);
 
 out:
