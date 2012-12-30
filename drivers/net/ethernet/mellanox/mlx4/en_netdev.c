@@ -591,7 +591,8 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 	}
 }
 
-static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac)
+static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac,
+			    u64 old_mac)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
@@ -641,9 +642,11 @@ static void mlx4_en_do_set_mac(struct work_struct *work)
 	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {
 		/* Remove old MAC and insert the new one */
-		err = mlx4_replace_mac(priv, priv->base_qpn, priv->mac);
+		err = mlx4_replace_mac(priv, priv->base_qpn, priv->mac,
+				       priv->old_mac);
 		if (err)
 			en_err(priv, "Failed changing HW MAC address\n");
+		priv->old_mac = priv->mac;
 	} else
 		en_dbg(HW, priv, "Port is down while registering mac, exiting...\n");
 
@@ -2007,6 +2010,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		err = -EINVAL;
 		goto out;
 	}
+	priv->old_mac = priv->mac;
 
 	priv->stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
 					  DS_SIZE * MLX4_EN_MAX_RX_FRAGS);

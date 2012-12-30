@@ -493,6 +493,7 @@ struct mlx4_en_priv {
 	int allocated;
 	int stride;
 	u64 mac;
+	u64 old_mac;
 	int mac_index;
 	unsigned max_mtu;
 	int base_qpn;
