@@ -1003,6 +1003,97 @@ static void mlx4_en_do_multicast(struct mlx4_en_priv *priv,
 	}
 }
 
+static void mlx4_en_do_uc_filter(struct mlx4_en_priv *priv,
+				 struct net_device *dev,
+				 struct mlx4_en_dev *mdev)
+{
+	struct netdev_hw_addr *ha;
+	struct mlx4_mac_entry *entry;
+	struct hlist_node *n, *tmp;
+	bool found;
+	u64 mac;
+	int err = 0;
+	struct hlist_head *bucket;
+	unsigned int i;
+
+	/* Note that we do not need to protect our mac_hash traversal with rcu,
+	 * since all modification code is protected by mdev->state_lock
+	 */
+
+	/* find what to add */
+	netdev_for_each_uc_addr(ha, dev) {
+		mac = mlx4_mac_to_u64(ha->addr);
+
+		found = false;
+		bucket = &priv->mac_hash[ha->addr[MLX4_EN_MAC_HASH_IDX]];
+		hlist_for_each_entry(entry, n, bucket, hlist) {
+			if (entry->mac == mac) {
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+			if (!entry) {
+				en_err(priv, "Failed adding MAC %llx on port:%d (out of memory)\n",
+				       mac, priv->port);
+				return;
+			}
+			entry->mac = mac;
+			entry->reg_id = 0;
+			mlx4_register_mac(mdev->dev, priv->port, entry->mac);
+			err = mlx4_en_uc_steer_add(priv, entry->mac,
+						   &priv->base_qpn,
+						   &entry->reg_id);
+			if (err) {
+				en_err(priv, "Failed adding MAC %llx on port:%d\n",
+				       entry->mac, priv->port);
+				mlx4_unregister_mac(mdev->dev, priv->port,
+						    entry->mac);
+				kfree(entry);
+			} else {
+				en_dbg(DRV, priv, "Added MAC %llx on port:%d\n",
+				       entry->mac, priv->port);
+				bucket = &priv->mac_hash[mlx4_en_get_mac_hash(mac)];
+				hlist_add_head_rcu(&entry->hlist, bucket);
+			}
+		}
+	}
+
+	/* find what to remove */
+	for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i) {
+		bucket = &priv->mac_hash[i];
+		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
+			found = false;
+			netdev_for_each_uc_addr(ha, dev) {
+				mac = mlx4_mac_to_u64(ha->addr);
+				if (mac == entry->mac) {
+					found = true;
+					break;
+				}
+			}
+
+			/* MAC address of the port is not in uc list */
+			if (priv->mac == entry->mac)
+				found = true;
+
+			if (!found) {
+				mlx4_en_uc_steer_release(priv, entry->mac,
+							 priv->base_qpn,
+							 entry->reg_id);
+				mlx4_unregister_mac(mdev->dev, priv->port, entry->mac);
+
+				hlist_del_rcu(&entry->hlist);
+				synchronize_rcu();
+				kfree(entry);
+				en_dbg(DRV, priv, "Removed MAC %llx on port:%d\n",
+				       entry->mac, priv->port);
+			}
+		}
+	}
+}
+
 static void mlx4_en_do_set_rx_mode(struct work_struct *work)
 {
 	struct mlx4_en_priv *priv = container_of(work, struct mlx4_en_priv,
@@ -1029,6 +1120,9 @@ static void mlx4_en_do_set_rx_mode(struct work_struct *work)
 			}
 		}
 	}
+
+	if (mdev->dev->caps.steering_mode != MLX4_STEERING_MODE_A0)
+		mlx4_en_do_uc_filter(priv, dev, mdev);
 
 	/* Promsicuous mode: disable all filters */
 	if (dev->flags & IFF_PROMISC) {
@@ -2107,6 +2201,9 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	if (mdev->dev->caps.steering_mode ==
 	    MLX4_STEERING_MODE_DEVICE_MANAGED)
 		dev->hw_features |= NETIF_F_NTUPLE;
+
+	if (mdev->dev->caps.steering_mode != MLX4_STEERING_MODE_A0)
+		dev->priv_flags |= IFF_UNICAST_FLT;
 
 	mdev->pndev[port] = dev;
 
