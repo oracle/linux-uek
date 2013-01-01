@@ -38,6 +38,8 @@
 struct mlx4_dev;
 
 #define MLX4_MAC_MASK	   0xffffffffffffULL
+#define MLX4_BE_SHORT_MASK cpu_to_be16(0xffff)
+#define MLX4_BE_WORD_MASK  cpu_to_be32(0xffffffff)
 
 enum mlx4_dev_event {
 	MLX4_DEV_EVENT_CATASTROPHIC_ERROR,

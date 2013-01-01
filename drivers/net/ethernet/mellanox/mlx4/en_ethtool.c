@@ -42,8 +42,6 @@
 #include "en_port.h"
 
 #define EN_ETHTOOL_QP_ATTACH (1ull << 63)
-#define EN_ETHTOOL_SHORT_MASK cpu_to_be16(0xffff)
-#define EN_ETHTOOL_WORD_MASK  cpu_to_be32(0xffffffff)
 
 static void
 mlx4_en_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
@@ -776,10 +774,10 @@ static int add_ip_rule(struct mlx4_en_priv *priv,
 	spec_l3->id = MLX4_NET_TRANS_RULE_ID_IPV4;
 	spec_l3->ipv4.src_ip = cmd->fs.h_u.usr_ip4_spec.ip4src;
 	if (l3_mask->ip4src)
-		spec_l3->ipv4.src_ip_msk = EN_ETHTOOL_WORD_MASK;
+		spec_l3->ipv4.src_ip_msk = MLX4_BE_WORD_MASK;
 	spec_l3->ipv4.dst_ip = cmd->fs.h_u.usr_ip4_spec.ip4dst;
 	if (l3_mask->ip4dst)
-		spec_l3->ipv4.dst_ip_msk = EN_ETHTOOL_WORD_MASK;
+		spec_l3->ipv4.dst_ip_msk = MLX4_BE_WORD_MASK;
 	list_add_tail(&spec_l3->list, list_h);
 
 	return 0;
@@ -830,14 +828,14 @@ static int add_tcp_udp_rule(struct mlx4_en_priv *priv,
 	}
 
 	if (l4_mask->ip4src)
-		spec_l3->ipv4.src_ip_msk = EN_ETHTOOL_WORD_MASK;
+		spec_l3->ipv4.src_ip_msk = MLX4_BE_WORD_MASK;
 	if (l4_mask->ip4dst)
-		spec_l3->ipv4.dst_ip_msk = EN_ETHTOOL_WORD_MASK;
+		spec_l3->ipv4.dst_ip_msk = MLX4_BE_WORD_MASK;
 
 	if (l4_mask->psrc)
-		spec_l4->tcp_udp.src_port_msk = EN_ETHTOOL_SHORT_MASK;
+		spec_l4->tcp_udp.src_port_msk = MLX4_BE_SHORT_MASK;
 	if (l4_mask->pdst)
-		spec_l4->tcp_udp.dst_port_msk = EN_ETHTOOL_SHORT_MASK;
+		spec_l4->tcp_udp.dst_port_msk = MLX4_BE_SHORT_MASK;
 
 	list_add_tail(&spec_l3->list, list_h);
 	list_add_tail(&spec_l4->list, list_h);

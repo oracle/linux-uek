@@ -1020,9 +1020,9 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 			spec_l3->ipv4.dst_ip = flow_spec->dst_ip;
 
 		if (spec_l3->ipv4.src_ip)
-			spec_l3->ipv4.src_ip_msk = mac_msk;
+			spec_l3->ipv4.src_ip_msk = MLX4_BE_WORD_MASK;
 		if (spec_l3->ipv4.dst_ip)
-			spec_l3->ipv4.dst_ip_msk = mac_msk;
+			spec_l3->ipv4.dst_ip_msk = MLX4_BE_WORD_MASK;
 
 		list_add_tail(&spec_l3->list, rule_list_h);
 
@@ -1034,9 +1034,11 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 			spec_l4->tcp_udp.src_port = flow_spec->src_port;
 			spec_l4->tcp_udp.dst_port = flow_spec->dst_port;
 			if (spec_l4->tcp_udp.src_port)
-				spec_l4->tcp_udp.src_port_msk = cpu_to_be16(0xffff);
+				spec_l4->tcp_udp.src_port_msk =
+							MLX4_BE_SHORT_MASK;
 			if (spec_l4->tcp_udp.dst_port)
-				spec_l4->tcp_udp.dst_port_msk = cpu_to_be16(0xffff);
+				spec_l4->tcp_udp.dst_port_msk =
+							MLX4_BE_SHORT_MASK;
 
 			switch(flow_spec->l4_protocol) {
 			case IBV_FLOW_L4_UDP:
