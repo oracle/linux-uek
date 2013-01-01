@@ -402,8 +402,32 @@ static int mlx4_en_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	int trans_type;
 
 	cmd->autoneg = AUTONEG_DISABLE;
-	cmd->supported = SUPPORTED_10000baseT_Full;
-	cmd->advertising = ADVERTISED_10000baseT_Full;
+
+	/* SUPPORTED_1000baseT_Half isn't supported */
+	cmd->supported = SUPPORTED_1000baseT_Full
+			|SUPPORTED_10000baseT_Full;
+
+	cmd->advertising = ADVERTISED_1000baseT_Full
+			  |ADVERTISED_10000baseT_Full;
+
+	cmd->supported |= SUPPORTED_1000baseKX_Full
+			|SUPPORTED_10000baseKX4_Full
+			|SUPPORTED_10000baseKR_Full
+			|SUPPORTED_10000baseR_FEC
+			|SUPPORTED_40000baseKR4_Full
+			|SUPPORTED_40000baseCR4_Full
+			|SUPPORTED_40000baseSR4_Full
+			|SUPPORTED_40000baseLR4_Full;
+
+	/* ADVERTISED_1000baseT_Half isn't advertised */
+	cmd->advertising |= ADVERTISED_1000baseKX_Full
+			  |ADVERTISED_10000baseKX4_Full
+			  |ADVERTISED_10000baseKR_Full
+			  |ADVERTISED_10000baseR_FEC
+			  |ADVERTISED_40000baseKR4_Full
+			  |ADVERTISED_40000baseCR4_Full
+			  |ADVERTISED_40000baseSR4_Full
+			  |ADVERTISED_40000baseLR4_Full;
 
 	if (mlx4_en_QUERY_PORT(priv->mdev, priv->port))
 		return -ENOMEM;
