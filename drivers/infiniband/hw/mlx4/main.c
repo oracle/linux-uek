@@ -1025,36 +1025,36 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 			spec_l3->ipv4.dst_ip_msk = MLX4_BE_WORD_MASK;
 
 		list_add_tail(&spec_l3->list, rule_list_h);
+	}
 
-		if (flow_spec->l4_protocol) {
-			spec_l4 = kzalloc(sizeof *spec_l4, GFP_KERNEL);
-			if (!spec_l4)
-				return -ENOMEM;
+	if (flow_spec->l4_protocol) {
+		spec_l4 = kzalloc(sizeof(*spec_l4), GFP_KERNEL);
+		if (!spec_l4)
+			return -ENOMEM;
 
-			spec_l4->tcp_udp.src_port = flow_spec->src_port;
-			spec_l4->tcp_udp.dst_port = flow_spec->dst_port;
-			if (spec_l4->tcp_udp.src_port)
-				spec_l4->tcp_udp.src_port_msk =
-							MLX4_BE_SHORT_MASK;
-			if (spec_l4->tcp_udp.dst_port)
-				spec_l4->tcp_udp.dst_port_msk =
-							MLX4_BE_SHORT_MASK;
+		spec_l4->tcp_udp.src_port = flow_spec->src_port;
+		spec_l4->tcp_udp.dst_port = flow_spec->dst_port;
+		if (spec_l4->tcp_udp.src_port)
+			spec_l4->tcp_udp.src_port_msk =
+						MLX4_BE_SHORT_MASK;
+		if (spec_l4->tcp_udp.dst_port)
+			spec_l4->tcp_udp.dst_port_msk =
+						MLX4_BE_SHORT_MASK;
 
-			switch(flow_spec->l4_protocol) {
-			case IBV_FLOW_L4_UDP:
-				spec_l4->id = MLX4_NET_TRANS_RULE_ID_UDP;
-				break;
-			case IBV_FLOW_L4_TCP:
-				spec_l4->id = MLX4_NET_TRANS_RULE_ID_TCP;
-				break;
-			default:
-				dev_err(dev->dma_device,
-					"Unsupported l4 protocol.\n");
-				kfree(spec_l4);
-				return -EPROTONOSUPPORT;
-			}
-			list_add_tail(&spec_l4->list, rule_list_h);
+		switch (flow_spec->l4_protocol) {
+		case IBV_FLOW_L4_UDP:
+			spec_l4->id = MLX4_NET_TRANS_RULE_ID_UDP;
+			break;
+		case IBV_FLOW_L4_TCP:
+			spec_l4->id = MLX4_NET_TRANS_RULE_ID_TCP;
+			break;
+		default:
+			dev_err(dev->dma_device,
+				"Unsupported l4 protocol.\n");
+			kfree(spec_l4);
+			return -EPROTONOSUPPORT;
 		}
+		list_add_tail(&spec_l4->list, rule_list_h);
 	}
 	return 0;
 }
