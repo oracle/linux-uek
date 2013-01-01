@@ -650,7 +650,7 @@ struct mlx4_if_stat_extended {
 		__be64 IfRxNoBufferOctets;
 		__be64 IfRxErrorFrames;
 		__be64 IfRxErrorOctets;
-		__be64 reserved[20];
+		__be32 reserved[39];
 		__be64 IfTxUnicastFrames;
 		__be64 IfTxUnicastOctets;
 		__be64 IfTxMulticastFrames;
@@ -662,7 +662,7 @@ struct mlx4_if_stat_extended {
 		__be64 IfTxRequestedFramesSent;
 		__be64 IfTxGeneratedFramesSent;
 		__be64 IfTxTsoOctets;
-	} counters[];
+	} __packed counters[];
 };
 #define MLX4_IF_STAT_EXT_SZ(ports)   (sizeof(struct mlx4_if_stat_extended) +\
 				      sizeof(((struct mlx4_if_stat_extended *)\
