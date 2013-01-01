@@ -459,6 +459,40 @@ static void mlx4_en_get_pauseparam(struct net_device *dev,
 	pause->rx_pause = priv->prof->rx_pause;
 }
 
+/* rtnl lock must be taken before calling */
+int mlx4_en_pre_config(struct mlx4_en_priv *priv)
+{
+#ifdef CONFIG_RFS_ACCEL
+	struct cpu_rmap *rmap;
+
+	if (!priv->dev->rx_cpu_rmap)
+		return 0;
+
+	/* Disable RFS events
+	 * Must have all RFS jobs flushed before freeing resources
+	 */
+	rmap = priv->dev->rx_cpu_rmap;
+	priv->dev->rx_cpu_rmap = NULL;
+
+	rtnl_unlock();
+	free_irq_cpu_rmap(rmap);
+	rtnl_lock();
+
+	if (priv->dev->rx_cpu_rmap)
+		return -EBUSY; /* another configuration completed while lock
+				* was free
+				*/
+
+	/* Make sure all currently running filter_work are being processed
+	 * Other work will return immediatly because of disable_rfs
+	 */
+	flush_workqueue(priv->mdev->workqueue);
+
+#endif
+
+	return 0;
+}
+
 static int mlx4_en_set_ringparam(struct net_device *dev,
 				 struct ethtool_ringparam *param)
 {
@@ -483,6 +517,9 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 					priv->rx_ring[0]->size) &&
 	    tx_size == priv->tx_ring[0]->size)
 		return 0;
+	err = mlx4_en_pre_config(priv);
+	if (err)
+		return err;
 
 	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {

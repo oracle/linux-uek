@@ -1416,8 +1416,10 @@ void mlx4_en_free_resources(struct mlx4_en_priv *priv)
 	int i;
 
 #ifdef CONFIG_RFS_ACCEL
-	free_irq_cpu_rmap(priv->dev->rx_cpu_rmap);
-	priv->dev->rx_cpu_rmap = NULL;
+	if (priv->dev->rx_cpu_rmap) {
+		free_irq_cpu_rmap(priv->dev->rx_cpu_rmap);
+		priv->dev->rx_cpu_rmap = NULL;
+	}
 #endif
 
 	for (i = 0; i < priv->tx_ring_num; i++) {
@@ -1483,9 +1485,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 	priv->dev->rx_cpu_rmap = alloc_irq_cpu_rmap(priv->rx_ring_num);
 	if (!priv->dev->rx_cpu_rmap)
 		goto err;
-
-	INIT_LIST_HEAD(&priv->filters);
-	spin_lock_init(&priv->filters_lock);
 #endif
 
 	return 0;
@@ -1734,6 +1733,11 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->hwtstamp_config.flags = 0;
 	priv->hwtstamp_config.tx_type = HWTSTAMP_TX_OFF;
 	priv->hwtstamp_config.rx_filter = HWTSTAMP_FILTER_NONE;
+
+#ifdef CONFIG_RFS_ACCEL
+	INIT_LIST_HEAD(&priv->filters);
+	spin_lock_init(&priv->filters_lock);
+#endif
 
 	/* Allocate page for receive rings */
 	err = mlx4_alloc_hwq_res(mdev->dev, &priv->res,

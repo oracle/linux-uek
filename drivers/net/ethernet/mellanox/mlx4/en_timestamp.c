@@ -44,6 +44,10 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	int port_up = 0;
 	int err = 0;
 
+	err = mlx4_en_pre_config(priv);
+	if (err)
+		return err;
+
 	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {
 		port_up = 1;
