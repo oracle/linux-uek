@@ -121,6 +121,15 @@ struct ib_mad_snoop_private {
 	struct completion comp;
 };
 
+/* Structure for timeout-fifo entry */
+struct tf_entry {
+	unsigned long exp_time;	    /* entry expiration time */
+	struct list_head fifo_list; /* to keep entries in fifo order */
+	struct list_head to_list;   /* to keep entries in timeout order */
+	int in_tf;		    /* indicates whether entry is inside tf */
+	int canceled;		    /* indicates whether entry is canceled */
+};
+
 struct ib_mad_send_wr_private {
 	struct ib_mad_list_head mad_list;
 	struct list_head agent_list;
@@ -146,6 +155,10 @@ struct ib_mad_send_wr_private {
 	int seg_num;
 	int newwin;
 	int pad;
+
+	/* SA congestion controlled MAD */
+	int is_sa_cc_mad;
+	struct tf_entry tf_list;
 };
 
 struct ib_mad_local_private {
@@ -197,6 +210,25 @@ struct ib_mad_qp_info {
 	atomic_t snoop_count;
 };
 
+struct to_fifo {
+	struct list_head to_head;
+	struct list_head fifo_head;
+	spinlock_t lists_lock;
+	struct timer_list timer;
+	struct work_struct work;
+	u32 fifo_size;
+	u32 num_items;
+	int stop_enqueue;
+	struct workqueue_struct *workq;
+};
+
+/* SA congestion control data */
+struct sa_cc_data {
+	spinlock_t lock;
+	unsigned long outstanding;
+	struct to_fifo  *tf;
+};
+
 struct ib_mad_port_private {
 	struct list_head port_list;
 	struct ib_device *device;
@@ -211,6 +243,7 @@ struct ib_mad_port_private {
 	struct workqueue_struct *wq;
 	struct work_struct work;
 	struct ib_mad_qp_info qp_info[IB_MAD_QPS_CORE];
+	struct sa_cc_data sa_cc;
 };
 
 int ib_send_mad(struct ib_mad_send_wr_private *mad_send_wr);

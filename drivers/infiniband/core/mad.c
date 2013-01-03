@@ -61,6 +61,24 @@ static struct kmem_cache *ib_mad_cache;
 static struct list_head ib_mad_port_list;
 static u32 ib_mad_client_id = 0;
 
+
+/*
+ * Timeout FIFO (tf) param
+ */
+enum {
+	/* min time between 2 consecutive activations of tf workqueue */
+	MIN_BETWEEN_ACTIVATIONS_MS = 5
+};
+
+/*
+ * SA congestion control params
+ */
+enum {
+	MAX_OUTSTANDING_SA_MADS = 10,
+	MIN_TIME_FOR_SA_MAD_SEND_MS = 20,
+	MAX_SA_MADS = 10000
+};
+
 /* Port list lock */
 static DEFINE_SPINLOCK(ib_mad_port_list_lock);
 
@@ -81,6 +99,491 @@ static int add_nonoui_reg_req(struct ib_mad_reg_req *mad_reg_req,
 			      u8 mgmt_class);
 static int add_oui_reg_req(struct ib_mad_reg_req *mad_reg_req,
 			   struct ib_mad_agent_private *agent_priv);
+static int send_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr,
+			  u32 timeout_ms, u32 retries_left);
+
+
+/*
+ * Timeout FIFO functions - implements FIFO with timeout mechanism
+ */
+
+static void activate_timeout_handler_task(unsigned long data)
+{
+	struct to_fifo *tf;
+
+	tf = (struct to_fifo *)data;
+	del_timer(&tf->timer);
+	queue_work(tf->workq, &tf->work);
+}
+
+static unsigned long adjusted_time(unsigned long last, unsigned long next)
+{
+	unsigned long min_next;
+
+	min_next = last + msecs_to_jiffies(MIN_BETWEEN_ACTIVATIONS_MS);
+	if (time_after(min_next, next))
+		return min_next;
+
+	return next;
+}
+
+static void notify_failure(struct ib_mad_send_wr_private *mad_send_wr,
+			   enum ib_wc_status status)
+{
+	struct ib_mad_send_wc mad_send_wc;
+	struct ib_mad_agent_private *mad_agent_priv;
+
+	mad_send_wc.status = status;
+	mad_send_wc.vendor_err = 0;
+	mad_send_wc.send_buf = &mad_send_wr->send_buf;
+	mad_agent_priv = mad_send_wr->mad_agent_priv;
+	mad_agent_priv->agent.send_handler(&mad_agent_priv->agent, &mad_send_wc);
+}
+
+static inline struct sa_cc_data *
+get_cc_obj(struct ib_mad_send_wr_private *mad_send_wr)
+{
+	return &mad_send_wr->mad_agent_priv->qp_info->port_priv->sa_cc;
+}
+
+static inline struct ib_mad_send_wr_private *tfe_to_mad(struct tf_entry *tfe)
+{
+	return container_of(tfe, struct ib_mad_send_wr_private, tf_list);
+}
+
+static void timeout_handler_task(struct work_struct *work)
+{
+	struct tf_entry *tmp1, *tmp2;
+	struct list_head *list_item, exp_lst;
+	unsigned long flags, curr_time;
+	int lst_empty;
+	struct to_fifo *tf;
+
+	tf = container_of(work, struct to_fifo, work);
+	do {
+		INIT_LIST_HEAD(&exp_lst);
+
+		spin_lock_irqsave(&tf->lists_lock, flags);
+		curr_time = jiffies;
+		list_for_each(list_item, &tf->to_head) {
+			tmp1 = list_entry(list_item, struct tf_entry, to_list);
+			if (time_before(curr_time, tmp1->exp_time))
+				break;
+			list_del(&tmp1->fifo_list);
+			tmp1->in_tf = 0;
+			tf->num_items--;
+		}
+
+		/* cut list up to and including list_item->prev */
+		list_cut_position(&exp_lst, &tf->to_head, list_item->prev);
+		spin_unlock_irqrestore(&tf->lists_lock, flags);
+
+		lst_empty = list_empty(&exp_lst);
+		list_for_each_entry_safe(tmp1, tmp2, &exp_lst, to_list) {
+			list_del(&tmp1->to_list);
+			if (tmp1->canceled) {
+				tmp1->canceled = 0;
+				notify_failure(tfe_to_mad(tmp1), IB_WC_WR_FLUSH_ERR);
+			} else {
+				notify_failure(tfe_to_mad(tmp1), IB_WC_RESP_TIMEOUT_ERR);
+			}
+		}
+	} while (!lst_empty);
+
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	if (!list_empty(&tf->to_head)) {
+		tmp1 = list_entry(tf->to_head.next, struct tf_entry, to_list);
+		mod_timer(&tf->timer, adjusted_time(curr_time, tmp1->exp_time));
+	}
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+}
+
+/**
+ * tf_create - creates new timeout-fifo object
+ * @fifo_size: Maximum fifo size
+ *
+ * Allocate and initialize new timeout-fifo object
+ */
+static struct to_fifo *tf_create(u32 fifo_size)
+{
+	struct to_fifo *tf;
+
+	tf = kzalloc(sizeof(*tf), GFP_KERNEL);
+	if (tf) {
+		tf->workq = create_singlethread_workqueue("to_fifo");
+		if (!tf->workq) {
+			kfree(tf);
+			return NULL;
+		}
+		spin_lock_init(&tf->lists_lock);
+		INIT_LIST_HEAD(&tf->to_head);
+		INIT_LIST_HEAD(&tf->fifo_head);
+		init_timer(&tf->timer);
+		INIT_WORK(&tf->work, timeout_handler_task);
+		tf->timer.data = (unsigned long) tf;
+		tf->timer.function = activate_timeout_handler_task;
+		tf->timer.expires = jiffies;
+		tf->fifo_size = fifo_size;
+		tf->stop_enqueue = 0;
+		tf->num_items = 0;
+	}
+
+	return tf;
+}
+
+/**
+ * tf_enqueue - enqueue item to timeout-fifo object
+ * @tf:timeout-fifo object
+ * @item: item to enqueue.
+ * @timeout_ms: item expiration time in ms.
+ *
+ * Enqueue item to fifo and modify expiration timer when required.
+ *
+ * Returns 0 on success and negative on failure.
+ */
+static int tf_enqueue(struct to_fifo *tf, struct tf_entry *item, u32 timeout_ms)
+{
+	struct tf_entry *tmp;
+	struct list_head *list_item;
+	unsigned long flags;
+
+	item->exp_time = jiffies + msecs_to_jiffies(timeout_ms);
+
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	if (tf->num_items >= tf->fifo_size || tf->stop_enqueue) {
+		spin_unlock_irqrestore(&tf->lists_lock, flags);
+		return -EBUSY;
+	}
+
+	/* Insert item to timeout list */
+	list_for_each_prev(list_item, &tf->to_head) {
+		tmp = list_entry(list_item, struct tf_entry, to_list);
+		if (time_after(item->exp_time, tmp->exp_time))
+			break;
+	}
+
+	list_add(&item->to_list, list_item);
+
+	/* Insert item to fifo list */
+	list_add_tail(&item->fifo_list, &tf->fifo_head);
+
+	item->in_tf = 1;
+	tf->num_items++;
+
+	/* modify expiration timer if required */
+	if (list_item == &tf->to_head)
+		mod_timer(&tf->timer, item->exp_time);
+
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+
+	return 0;
+}
+
+/**
+ * tf_dequeue - dequeue item from timeout-fifo object
+ * @tf:timeout-fifo object
+ * @time_left_ms: returns the time left for expiration in ms.
+ *
+ * Dequeue item from fifo and modify expiration timer when required.
+ *
+ * Returns pointer to tf_entry on success and NULL on failure.
+ */
+static struct tf_entry *tf_dequeue(struct to_fifo *tf, u32 *time_left_ms)
+{
+	unsigned long flags;
+	unsigned long time_left;
+	struct tf_entry *tmp, *tmp1;
+
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	if (list_empty(&tf->fifo_head)) {
+		spin_unlock_irqrestore(&tf->lists_lock, flags);
+		return NULL;
+	}
+
+	list_for_each_entry(tmp, &tf->fifo_head, fifo_list) {
+		if (!tmp->canceled)
+			break;
+	}
+
+	if (tmp->canceled) {
+		spin_unlock_irqrestore(&tf->lists_lock, flags);
+		return NULL;
+	}
+
+	/* modify timer in case enqueued item is the next to expire */
+	if (tf->to_head.next == &tmp->to_list) {
+		if (list_is_last(&tmp->to_list, &tf->to_head)) {
+			del_timer(&tf->timer);
+		} else {
+			tmp1 = list_entry(tmp->to_list.next, struct tf_entry, to_list);
+			mod_timer(&tf->timer, tmp1->exp_time);
+		}
+	}
+	list_del(&tmp->fifo_list);
+	list_del(&tmp->to_list);
+	tmp->in_tf = 0;
+	tf->num_items--;
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+
+	time_left = tmp->exp_time - jiffies;
+	if ((long) time_left <= 0)
+		time_left = 0;
+	*time_left_ms = jiffies_to_msecs(time_left);
+
+	return tmp;
+}
+
+static void tf_stop_enqueue(struct to_fifo *tf)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	tf->stop_enqueue = 1;
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+}
+
+/**
+ * tf_free - free empty timeout-fifo object
+ * @tf:timeout-fifo object
+ *
+ */
+static void tf_free(struct to_fifo *tf)
+{
+	del_timer_sync(&tf->timer);
+	flush_workqueue(tf->workq);
+	destroy_workqueue(tf->workq);
+
+	kfree(tf);
+}
+
+/**
+ * tf_free_agent - free MADs related to specific MAD agent from timeout-fifo
+ * @tf:timeout-fifo object
+ * @mad_agent_priv: MAD agent.
+ *
+ */
+static void tf_free_agent(struct to_fifo *tf, struct ib_mad_agent_private *mad_agent_priv)
+{
+	unsigned long flags;
+	struct tf_entry *tmp, *tmp1;
+	struct list_head tmp_head;
+
+	INIT_LIST_HEAD(&tmp_head);
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	list_for_each_entry_safe(tmp, tmp1, &tf->fifo_head, fifo_list) {
+		if (tfe_to_mad(tmp)->mad_agent_priv == mad_agent_priv) {
+			list_del(&tmp->to_list);
+			list_move(&tmp->fifo_list, &tmp_head);
+			tmp->in_tf = 0;
+			tf->num_items--;
+		}
+	}
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+
+	list_for_each_entry_safe(tmp, tmp1, &tmp_head, fifo_list) {
+		list_del(&tmp->fifo_list);
+		notify_failure(tfe_to_mad(tmp), IB_WC_WR_FLUSH_ERR);
+	}
+}
+
+/**
+ * tf_modify_item - to modify expiration time for specific item
+ * @tf:timeout-fifo object
+ * @item: item to modify in queue.
+ *
+ * Returns 0 if item found on list and -ENXIO if not.
+ */
+static int tf_modify_item(struct to_fifo *tf, struct tf_entry *item, int timeout_ms)
+{
+	struct tf_entry *tmp;
+	struct list_head *list_item;
+	unsigned long flags;
+
+	spin_lock_irqsave(&tf->lists_lock, flags);
+	if (!item->in_tf) {
+		spin_unlock_irqrestore(&tf->lists_lock, flags);
+		return -ENXIO;
+	}
+
+	item->exp_time = jiffies + msecs_to_jiffies(timeout_ms);
+
+	if (timeout_ms) {
+		list_del(&item->to_list);
+		list_for_each_prev(list_item, &tf->to_head) {
+			tmp = list_entry(list_item, struct tf_entry, to_list);
+			if (time_after(item->exp_time, tmp->exp_time))
+				break;
+		}
+		list_add(&item->to_list, list_item);
+
+		/* modify expiration timer if required */
+		if (list_item == &tf->to_head)
+			mod_timer(&tf->timer, item->exp_time);
+	} else {
+		/*
+		 * when item canceled (timeout_ms == 0) move item to
+		 * head of timeout list and to the tail of fifo list
+		 */
+		item->canceled = 1;
+		list_move(&item->to_list, &tf->to_head);
+		list_move_tail(&item->fifo_list, &tf->fifo_head);
+		mod_timer(&tf->timer, item->exp_time);
+	}
+	spin_unlock_irqrestore(&tf->lists_lock, flags);
+
+	return 0;
+}
+
+
+/*
+ * SA congestion control functions
+ */
+
+/*
+ * Defines which MAD is under congestion control.
+ */
+static int is_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr)
+{
+	struct ib_mad_hdr *mad;
+
+	mad = (struct ib_mad_hdr *)mad_send_wr->send_buf.mad;
+
+	return ((mad_send_wr->send_buf.timeout_ms) &&
+		(mad->mgmt_class == IB_MGMT_CLASS_SUBN_ADM) &&
+		((mad->method == IB_MGMT_METHOD_GET) ||
+		 (mad->method == IB_MGMT_METHOD_SET)));
+}
+
+/*
+ * Notify that SA congestion controlled MAD is done.
+ * to allow dequeuing SA MAD from congestion control queue.
+ */
+static void sa_cc_mad_done(struct sa_cc_data *cc_obj)
+{
+	unsigned long flags;
+	struct tf_entry *tfe;
+	struct ib_mad_send_wr_private *mad_send_wr;
+	u32 time_left_ms, timeout_ms, retries;
+	int ret;
+
+	do {
+		spin_lock_irqsave(&cc_obj->lock, flags);
+		tfe = tf_dequeue(cc_obj->tf, &time_left_ms);
+		if (!tfe) {
+			if (cc_obj->outstanding > 0)
+				cc_obj->outstanding--;
+			spin_unlock_irqrestore(&cc_obj->lock, flags);
+			break;
+		}
+		spin_unlock_irqrestore(&cc_obj->lock, flags);
+		mad_send_wr = tfe_to_mad(tfe);
+		time_left_ms += MIN_TIME_FOR_SA_MAD_SEND_MS;
+		if (time_left_ms > mad_send_wr->send_buf.timeout_ms) {
+			retries = time_left_ms / mad_send_wr->send_buf.timeout_ms - 1;
+			timeout_ms = mad_send_wr->send_buf.timeout_ms;
+		} else {
+			retries = 0;
+			timeout_ms = time_left_ms;
+		}
+		ret = send_sa_cc_mad(mad_send_wr, timeout_ms, retries);
+		if (ret) {
+			if (ret == -ENOMEM)
+				notify_failure(mad_send_wr, IB_WC_GENERAL_ERR);
+			else
+				notify_failure(mad_send_wr, IB_WC_LOC_QP_OP_ERR);
+		}
+	} while (ret);
+}
+
+/*
+ * Send SA MAD under congestion control.
+ */
+static int sa_cc_mad_send(struct ib_mad_send_wr_private *mad_send_wr)
+{
+	unsigned long flags;
+	int ret;
+	struct sa_cc_data *cc_obj;
+
+	cc_obj = get_cc_obj(mad_send_wr);
+	spin_lock_irqsave(&cc_obj->lock, flags);
+	if (cc_obj->outstanding < MAX_OUTSTANDING_SA_MADS) {
+		cc_obj->outstanding++;
+		spin_unlock_irqrestore(&cc_obj->lock, flags);
+		ret = send_sa_cc_mad(mad_send_wr, mad_send_wr->send_buf.timeout_ms,
+				     mad_send_wr->retries_left);
+		if (ret)
+			sa_cc_mad_done(cc_obj);
+
+	} else {
+		ret = tf_enqueue(cc_obj->tf, &mad_send_wr->tf_list,
+				 (mad_send_wr->send_buf.timeout_ms *
+				  (mad_send_wr->retries_left + 1))
+				 - MIN_TIME_FOR_SA_MAD_SEND_MS);
+
+		spin_unlock_irqrestore(&cc_obj->lock, flags);
+	}
+
+	return ret;
+}
+
+/*
+ * Initialize SA congestion control.
+ */
+static int sa_cc_init(struct sa_cc_data *cc_obj)
+{
+	spin_lock_init(&cc_obj->lock);
+	cc_obj->outstanding = 0;
+	cc_obj->tf = tf_create(MAX_SA_MADS);
+	if (!cc_obj->tf)
+		return -ENOMEM;
+	return 0;
+}
+
+/*
+ * Cancel SA MADs from congestion control queue.
+ */
+static void cancel_sa_cc_mads(struct ib_mad_agent_private *mad_agent_priv)
+{
+	tf_free_agent(mad_agent_priv->qp_info->port_priv->sa_cc.tf,
+		      mad_agent_priv);
+}
+
+/*
+ * Modify timeout of SA MAD on congestion control queue.
+ */
+static int modify_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr,
+			    int timeout_ms)
+{
+	int ret;
+
+	ret = tf_modify_item(get_cc_obj(mad_send_wr)->tf, &mad_send_wr->tf_list,
+			     timeout_ms);
+	return ret;
+}
+
+static void sa_cc_destroy(struct sa_cc_data *cc_obj)
+{
+	struct ib_mad_send_wr_private *mad_send_wr;
+	struct tf_entry *tfe;
+	struct ib_mad_send_wc mad_send_wc;
+	struct ib_mad_agent_private *mad_agent_priv;
+	u32 time_left_ms;
+
+	mad_send_wc.status = IB_WC_WR_FLUSH_ERR;
+	mad_send_wc.vendor_err = 0;
+
+	tf_stop_enqueue(cc_obj->tf);
+	tfe = tf_dequeue(cc_obj->tf, &time_left_ms);
+	while (tfe) {
+		mad_send_wr = tfe_to_mad(tfe);
+		mad_send_wc.send_buf = &mad_send_wr->send_buf;
+		mad_agent_priv = mad_send_wr->mad_agent_priv;
+		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
+						   &mad_send_wc);
+		tfe = tf_dequeue(cc_obj->tf, &time_left_ms);
+	}
+	tf_free(cc_obj->tf);
+}
 
 /*
  * Returns a ib_mad_port_private structure or NULL for a device/port
@@ -1069,6 +1572,40 @@ dma1_err:
 }
 
 /*
+ * Send SA MAD that passed congestion control
+ */
+static int send_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr,
+			  u32 timeout_ms, u32 retries_left)
+{
+	int ret;
+	unsigned long flags;
+	struct ib_mad_agent_private *mad_agent_priv;
+
+	mad_agent_priv = mad_send_wr->mad_agent_priv;
+	mad_send_wr->timeout = msecs_to_jiffies(timeout_ms);
+	mad_send_wr->retries_left = retries_left;
+	mad_send_wr->refcount = 1 + (mad_send_wr->timeout > 0);
+
+	/* Reference MAD agent until send completes */
+	atomic_inc(&mad_agent_priv->refcount);
+	spin_lock_irqsave(&mad_agent_priv->lock, flags);
+	list_add_tail(&mad_send_wr->agent_list,
+		      &mad_agent_priv->send_list);
+	spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
+
+	ret = ib_send_mad(mad_send_wr);
+	if (ret < 0) {
+		/* Fail send request */
+		spin_lock_irqsave(&mad_agent_priv->lock, flags);
+		list_del(&mad_send_wr->agent_list);
+		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
+		atomic_dec(&mad_agent_priv->refcount);
+	}
+
+	return ret;
+}
+
+/*
  * ib_post_send_mad - Posts MAD(s) to the send queue of the QP associated
  *  with the registered client
  */
@@ -1131,26 +1668,33 @@ int ib_post_send_mad(struct ib_mad_send_buf *send_buf,
 		mad_send_wr->refcount = 1 + (mad_send_wr->timeout > 0);
 		mad_send_wr->status = IB_WC_SUCCESS;
 
-		/* Reference MAD agent until send completes */
-		atomic_inc(&mad_agent_priv->refcount);
-		spin_lock_irqsave(&mad_agent_priv->lock, flags);
-		list_add_tail(&mad_send_wr->agent_list,
-			      &mad_agent_priv->send_list);
-		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
-
-		if (mad_agent_priv->agent.rmpp_version) {
-			ret = ib_send_rmpp_mad(mad_send_wr);
-			if (ret >= 0 && ret != IB_RMPP_RESULT_CONSUMED)
-				ret = ib_send_mad(mad_send_wr);
-		} else
-			ret = ib_send_mad(mad_send_wr);
-		if (ret < 0) {
-			/* Fail send request */
+		if (is_sa_cc_mad(mad_send_wr)) {
+			mad_send_wr->is_sa_cc_mad = 1;
+			ret = sa_cc_mad_send(mad_send_wr);
+			if (ret < 0)
+				goto error;
+		} else {
+			/* Reference MAD agent until send completes */
+			atomic_inc(&mad_agent_priv->refcount);
 			spin_lock_irqsave(&mad_agent_priv->lock, flags);
-			list_del(&mad_send_wr->agent_list);
+			list_add_tail(&mad_send_wr->agent_list,
+				      &mad_agent_priv->send_list);
 			spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
-			atomic_dec(&mad_agent_priv->refcount);
-			goto error;
+
+			if (mad_agent_priv->agent.rmpp_version) {
+				ret = ib_send_rmpp_mad(mad_send_wr);
+				if (ret >= 0 && ret != IB_RMPP_RESULT_CONSUMED)
+					ret = ib_send_mad(mad_send_wr);
+			} else
+				ret = ib_send_mad(mad_send_wr);
+			if (ret < 0) {
+				/* Fail send request */
+				spin_lock_irqsave(&mad_agent_priv->lock, flags);
+				list_del(&mad_send_wr->agent_list);
+				spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
+				atomic_dec(&mad_agent_priv->refcount);
+				goto error;
+			}
 		}
 	}
 	return 0;
@@ -2116,9 +2660,12 @@ void ib_mad_complete_send_wr(struct ib_mad_send_wr_private *mad_send_wr,
 		mad_send_wc->status = mad_send_wr->status;
 	if (ret == IB_RMPP_RESULT_INTERNAL)
 		ib_rmpp_send_handler(mad_send_wc);
-	else
+	else {
+		if (mad_send_wr->is_sa_cc_mad)
+			sa_cc_mad_done(get_cc_obj(mad_send_wr));
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   mad_send_wc);
+	}
 
 	/* Release reference on agent taken when sending */
 	deref_mad_agent(mad_agent_priv);
@@ -2298,6 +2845,7 @@ static void cancel_mads(struct ib_mad_agent_private *mad_agent_priv)
 
 	INIT_LIST_HEAD(&cancel_list);
 
+	cancel_sa_cc_mads(mad_agent_priv);
 	spin_lock_irqsave(&mad_agent_priv->lock, flags);
 	list_for_each_entry_safe(mad_send_wr, temp_mad_send_wr,
 				 &mad_agent_priv->send_list, agent_list) {
@@ -2319,6 +2867,8 @@ static void cancel_mads(struct ib_mad_agent_private *mad_agent_priv)
 				 &cancel_list, agent_list) {
 		mad_send_wc.send_buf = &mad_send_wr->send_buf;
 		list_del(&mad_send_wr->agent_list);
+		if (mad_send_wr->is_sa_cc_mad)
+			sa_cc_mad_done(get_cc_obj(mad_send_wr));
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   &mad_send_wc);
 		atomic_dec(&mad_agent_priv->refcount);
@@ -2358,7 +2908,14 @@ int ib_modify_mad(struct ib_mad_agent *mad_agent,
 				      agent);
 	spin_lock_irqsave(&mad_agent_priv->lock, flags);
 	mad_send_wr = find_send_wr(mad_agent_priv, send_buf);
-	if (!mad_send_wr || mad_send_wr->status != IB_WC_SUCCESS) {
+	if (!mad_send_wr) {
+		mad_send_wr = container_of(send_buf, struct ib_mad_send_wr_private, send_buf);
+		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
+		if (modify_sa_cc_mad(mad_send_wr, timeout_ms))
+			return -EINVAL;
+		return 0;
+	}
+	if (mad_send_wr->status != IB_WC_SUCCESS) {
 		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
 		return -EINVAL;
 	}
@@ -2542,6 +3099,8 @@ static void timeout_sends(struct work_struct *work)
 		else
 			mad_send_wc.status = mad_send_wr->status;
 		mad_send_wc.send_buf = &mad_send_wr->send_buf;
+		if (mad_send_wr->is_sa_cc_mad)
+			sa_cc_mad_done(get_cc_obj(mad_send_wr));
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   &mad_send_wc);
 
@@ -2896,6 +3455,10 @@ static int ib_mad_port_open(struct ib_device *device,
 	}
 	INIT_WORK(&port_priv->work, ib_mad_completion_handler);
 
+	if (sa_cc_init(&port_priv->sa_cc))
+		goto error9;
+
+
 	spin_lock_irqsave(&ib_mad_port_list_lock, flags);
 	list_add_tail(&port_priv->port_list, &ib_mad_port_list);
 	spin_unlock_irqrestore(&ib_mad_port_list_lock, flags);
@@ -2903,17 +3466,19 @@ static int ib_mad_port_open(struct ib_device *device,
 	ret = ib_mad_port_start(port_priv);
 	if (ret) {
 		printk(KERN_ERR PFX "Couldn't start port\n");
-		goto error9;
+		goto error10;
 	}
 
 	return 0;
 
-error9:
+error10:
 	spin_lock_irqsave(&ib_mad_port_list_lock, flags);
 	list_del_init(&port_priv->port_list);
 	spin_unlock_irqrestore(&ib_mad_port_list_lock, flags);
 
 	destroy_workqueue(port_priv->wq);
+error9:
+	sa_cc_destroy(&port_priv->sa_cc);
 error8:
 	destroy_mad_qp(&port_priv->qp_info[1]);
 error7:
@@ -2953,6 +3518,7 @@ static int ib_mad_port_close(struct ib_device *device, int port_num)
 	spin_unlock_irqrestore(&ib_mad_port_list_lock, flags);
 
 	destroy_workqueue(port_priv->wq);
+	sa_cc_destroy(&port_priv->sa_cc);
 	destroy_mad_qp(&port_priv->qp_info[1]);
 	destroy_mad_qp(&port_priv->qp_info[0]);
 	ib_dereg_mr(port_priv->mr);
