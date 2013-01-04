@@ -440,7 +440,7 @@ static inline struct slave *bond_slave_has_mac(struct bonding *bond,
 	struct slave *tmp;
 
 	bond_for_each_slave(bond, tmp, i)
-		if (compare_ether_addr_64bits(mac, tmp->dev->dev_addr))
+		if (!compare_ether_addr_64bits(mac, tmp->dev->dev_addr))
 			return tmp;
 
 	return NULL;
