@@ -1493,6 +1493,16 @@ out:
 	return ret;
 }
 
+static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
+{
+	int port;
+	for (port = 1; port <= MLX4_MAX_PORTS; port++) {
+		priv->mfunc.master.vf_oper[slave].vport[port].state =
+				priv->mfunc.master.vf_admin[slave].vport[port];
+	}
+	return 0;
+}
+
 static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 			       u16 param, u8 toggle)
 {
@@ -1558,6 +1568,7 @@ static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 		if (slave_state[slave].last_cmd != MLX4_COMM_CMD_VHCR2)
 			goto reset_slave;
 		slave_state[slave].vhcr_dma |= param;
+		mlx4_master_activate_admin_state(priv, slave);
 		slave_state[slave].active = true;
 		mlx4_dispatch_event(dev, MLX4_DEV_EVENT_SLAVE_INIT, slave);
 		break;
@@ -1734,6 +1745,18 @@ int mlx4_multi_func_init(struct mlx4_dev *dev)
 		if (!priv->mfunc.master.slave_state)
 			goto err_comm;
 
+		priv->mfunc.master.vf_admin =
+			kzalloc(dev->num_slaves *
+				sizeof(struct mlx4_vf_admin_state), GFP_KERNEL);
+		if (!priv->mfunc.master.vf_admin)
+			goto err_comm_admin;
+
+		priv->mfunc.master.vf_oper =
+			kzalloc(dev->num_slaves *
+				sizeof(struct mlx4_vf_oper_state), GFP_KERNEL);
+		if (!priv->mfunc.master.vf_oper)
+			goto err_comm_oper;
+
 		for (i = 0; i < dev->num_slaves; ++i) {
 			s_state = &priv->mfunc.master.slave_state[i];
 			s_state->last_cmd = MLX4_COMM_CMD_RESET;
@@ -1754,6 +1777,9 @@ int mlx4_multi_func_init(struct mlx4_dev *dev)
 					goto err_slaves;
 				}
 				INIT_LIST_HEAD(&s_state->mcast_filters[port]);
+				priv->mfunc.master.vf_admin[i].vport[port].default_vlan = MLX4_VGT;
+				priv->mfunc.master.vf_oper[i].vport[port].vlan_idx = NO_INDX;
+				priv->mfunc.master.vf_oper[i].vport[port].mac_idx = NO_INDX;
 			}
 			spin_lock_init(&s_state->lock);
 		}
@@ -1802,6 +1828,10 @@ err_slaves:
 		for (port = 1; port <= MLX4_MAX_PORTS; port++)
 			kfree(priv->mfunc.master.slave_state[i].vlan_filter[port]);
 	}
+	kfree(priv->mfunc.master.vf_oper);
+err_comm_oper:
+	kfree(priv->mfunc.master.vf_admin);
+err_comm_admin:
 	kfree(priv->mfunc.master.slave_state);
 err_comm:
 	iounmap(priv->mfunc.comm);
@@ -1878,6 +1908,8 @@ void mlx4_multi_func_cleanup(struct mlx4_dev *dev)
 				kfree(priv->mfunc.master.slave_state[i].vlan_filter[port]);
 		}
 		kfree(priv->mfunc.master.slave_state);
+		kfree(priv->mfunc.master.vf_admin);
+		kfree(priv->mfunc.master.vf_oper);
 	}
 
 	iounmap(priv->mfunc.comm);
