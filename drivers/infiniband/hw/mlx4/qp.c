@@ -43,6 +43,7 @@
 #include <rdma/ib_mad.h>
 
 #include <linux/mlx4/qp.h>
+#include <linux/mlx4/driver.h>
 #include <linux/io.h>
 
 #include "mlx4_ib.h"
@@ -120,20 +121,6 @@ static const __be32 mlx4_ib_opcode[] = {
 		#define wc_wmb() wmb()
 	#endif
 #endif
-
-
-#define ETH_ALEN	6
-static u64 mlx4_mac_to_u64(u8 *addr)
-{
-	u64 mac = 0;
-	int i;
-
-	for (i = 0; i < ETH_ALEN; i++) {
-		mac <<= 8;
-		mac |= addr[i];
-	}
-	return mac;
-}
 
 static struct mlx4_ib_sqp *to_msqp(struct mlx4_ib_qp *mqp)
 {

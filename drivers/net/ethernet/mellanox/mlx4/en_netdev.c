@@ -414,18 +414,6 @@ static int mlx4_en_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
 	return 0;
 }
 
-u64 mlx4_en_mac_to_u64(u8 *addr)
-{
-	u64 mac = 0;
-	int i;
-
-	for (i = 0; i < ETH_ALEN; i++) {
-		mac <<= 8;
-		mac |= addr[i];
-	}
-	return mac;
-}
-
 static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -436,7 +424,7 @@ static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 		return -EADDRNOTAVAIL;
 
 	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
-	priv->mac = mlx4_en_mac_to_u64(dev->dev_addr);
+	priv->mac = mlx4_mac_to_u64(dev->dev_addr);
 	queue_work(mdev->workqueue, &priv->mac_task);
 	return 0;
 }
@@ -762,7 +750,7 @@ static void mlx4_en_do_set_multicast(struct work_struct *work)
 		mlx4_en_cache_mclist(dev);
 		netif_addr_unlock_bh(dev);
 		list_for_each_entry(mclist, &priv->mc_list, list) {
-			mcast_addr = mlx4_en_mac_to_u64(mclist->addr);
+			mcast_addr = mlx4_mac_to_u64(mclist->addr);
 			mlx4_SET_MCAST_FLTR(mdev->dev, priv->port,
 					    mcast_addr, 0, MLX4_MCAST_CONFIG);
 		}

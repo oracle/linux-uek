@@ -39,6 +39,7 @@
 #include <linux/if_vlan.h>
 #include <linux/vmalloc.h>
 #include <linux/prefetch.h>
+#include <linux/mlx4/driver.h>
 
 #include "mlx4_en.h"
 
@@ -641,7 +642,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					DMA_FROM_DEVICE);
 		ethh = (struct ethhdr *)(page_address(frags[0].page) +
 					 frags[0].offset);
-		s_mac = mlx4_en_mac_to_u64(ethh->h_source);
+		s_mac = mlx4_mac_to_u64(ethh->h_source);
 
 		/* If source MAC is equal to our own MAC and not performing
 		 * the selftest or flb disabled - drop the packet */
