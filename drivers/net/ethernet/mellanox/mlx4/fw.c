@@ -110,6 +110,7 @@ static void dump_dev_cap_flags(struct mlx4_dev *dev, u64 flags)
 		[42] = "Multicast VEP steering support",
 		[48] = "Counters support",
 		[59] = "Port management change event support",
+		[60] = "eSwitch support",
 		[61] = "64 byte EQE support",
 		[62] = "64 byte CQE support",
 	};
