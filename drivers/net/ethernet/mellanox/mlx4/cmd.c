@@ -2020,3 +2020,24 @@ u32 mlx4_comm_get_version(void)
 {
 	 return ((u32) CMD_CHAN_IF_REV << 8) | (u32) CMD_CHAN_VER;
 }
+
+int mlx4_set_vf_mac(struct mlx4_dev *dev, int port, int vf, u8 *mac)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_vport_state *s_info;
+
+	if (!mlx4_is_master(dev))
+		return -EPROTONOSUPPORT;
+
+	if ((vf <= 0) || (vf > dev->num_vfs)) {
+		mlx4_err(dev, "Bad vf number:%d (max vf activated: %d)\n", vf, dev->num_vfs);
+		return -EINVAL;
+	}
+
+	s_info = &priv->mfunc.master.vf_admin[vf].vport[port];
+	s_info->mac = mlx4_mac_to_u64(mac);
+	mlx4_info(dev, "default mac on vf %d port %d to %llX will take afect only after vf restart\n",
+		  vf, port, s_info->mac);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_vf_mac);
