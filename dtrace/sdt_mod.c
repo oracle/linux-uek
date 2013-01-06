@@ -148,4 +148,4 @@ dtrace_mprovider_t sdt_providers[] = {
   { NULL }
 };
 
-DT_META_PROVIDER_MODULE(sdt)
+DT_MULTI_PROVIDER_MODULE(sdt, sdt_providers)
