@@ -479,8 +479,7 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 	* b. All the proxy SQPs (8 per function)
 	* c. All the tunnel QPs (8 per function)
 	*/
-	reserved_from_bot = dev->phys_caps.base_sqpn + 8 +
-			    16 * MLX4_MFUNC_MAX * !!mlx4_is_master(dev);
+	reserved_from_bot = mlx4_num_reserved_sqps(dev);
 	if (reserved_from_bot + reserved_from_top > dev->caps.num_qps) {
 		mlx4_err(dev, "Number of reserved QPs is higher than number "
 			 "of QPs, increase the value of log_num_qp\n");
