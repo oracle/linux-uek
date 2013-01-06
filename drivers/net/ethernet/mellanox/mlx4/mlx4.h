@@ -491,6 +491,7 @@ struct slave_list {
 };
 
 struct resource_allocator {
+	spinlock_t alloc_lock;
 	union {
 		int res_reserved;
 		int res_port_rsvd[MLX4_MAX_PORTS];
