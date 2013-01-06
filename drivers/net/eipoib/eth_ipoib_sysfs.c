@@ -528,7 +528,7 @@ static ssize_t parent_show_served(struct device *d,
 	read_lock(&parent->emac_info_lock);
 
 	list_for_each_entry(emac_info, &parent->emac_ip_list, list) {
-		if (VALID == emac_info->rec_state) {
+		if (VALID == emac_info->rec_state || NEW == emac_info->rec_state) {
 			list_for_each_entry(ipm, &emac_info->ip_list, list) {
 				if (emac_info->vlan == VLAN_N_VID) {
 					p += _sprintf(p, buf, "SLAVE=%s MAC=%pM IP=%pI4 VLAN=%s\n",
