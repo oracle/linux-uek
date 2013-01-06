@@ -2207,17 +2207,17 @@ typedef struct dtrace_mprovider {
 	dtrace_provider_id_t	dtmp_id;
 } dtrace_mprovider_t;
 
-#define DT_META_PROVIDER_MODULE(name)					\
+#define DT_MULTI_PROVIDER_MODULE(name, plist)				\
   static int __init name##_init(void)					\
   {									\
-	int		ret = 0;					\
-	dtrace_mprovider_t	*prov;						\
+	int			ret = 0;				\
+	dtrace_mprovider_t	*prov;					\
 									\
 	ret = name##_dev_init();					\
 	if (ret)							\
 		goto failed;						\
 									\
-	for (prov = name##_providers; prov->dtmp_name != NULL; prov++) {\
+	for (prov = plist; prov->dtmp_name != NULL; prov++) {		\
 		if (dtrace_register(prov->dtmp_name, prov->dtmp_attr,	\
 				    prov->dtmp_priv, NULL,		\
 				    prov->dtmp_pops, prov,		\
@@ -2237,7 +2237,7 @@ typedef struct dtrace_mprovider {
 	int			ret = 0;				\
 	dtrace_mprovider_t	*prov;					\
 									\
-	for (prov = name##_providers; prov->dtmp_name != NULL; prov++) {\
+	for (prov = plist; prov->dtmp_name != NULL; prov++) {		\
 		if (prov->dtmp_id != DTRACE_PROVNONE) {			\
 			ret = dtrace_unregister(prov->dtmp_id);		\
 			if (ret != 0)					\
