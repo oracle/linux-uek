@@ -434,9 +434,9 @@ int is_non_trackable_alloc_func(const char *func_name)
 	};
 	static const char * const str_cmp_arr[] = {
 		/* functions that allocate SKBs */
-		"mlx4_en_alloc_frag",
+		"mlx4_en_alloc_frags",
 		"mlx4_en_init_allocator",
-		"mlx4_en_free_rx_desc",
+		"mlx4_en_free_frag",
 		"mlx4_en_destroy_allocator",
 		"sdp_post_recv",
 		"sdp_rx_ring_purge",
