@@ -83,6 +83,10 @@
 #define MLX4_EN_FILTER_HASH_SHIFT 4
 #define MLX4_EN_FILTER_EXPIRY_QUOTA 60
 
+/* vlan valid range */
+#define VLAN_MIN_VALUE		1
+#define VLAN_MAX_VALUE		4094
+
 /* Typical TSO descriptor with 16 gather entries is 352 bytes... */
 #define MAX_DESC_SIZE		512
 #define MAX_DESC_TXBBS		(MAX_DESC_SIZE / TXBB_SIZE)
