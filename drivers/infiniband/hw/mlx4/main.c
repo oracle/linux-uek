@@ -984,6 +984,10 @@ static int flow_spec_to_net_rule(struct ib_device *dev, struct ib_flow_spec *flo
 		memcpy(spec_l2->eth.dst_mac, flow_spec->l2_id.eth.mac, ETH_ALEN);
 		memcpy(spec_l2->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
 		spec_l2->eth.ether_type = flow_spec->l2_id.eth.ethertype;
+		if (flow_spec->l2_id.eth.vlan_present) {
+			spec_l2->eth.vlan_id = flow_spec->l2_id.eth.vlan;
+			spec_l2->eth.vlan_id_msk = cpu_to_be16(0x0fff);
+		}
 		break;
 	case IB_FLOW_IB_UC:
 		spec_l2->id = MLX4_NET_TRANS_RULE_ID_IB;
