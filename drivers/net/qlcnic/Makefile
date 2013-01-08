@@ -5,4 +5,6 @@
 obj-$(CONFIG_QLCNIC) := qlcnic.o
 
 qlcnic-y := qlcnic_hw.o qlcnic_main.o qlcnic_init.o \
-	qlcnic_ethtool.o qlcnic_ctx.o
+	qlcnic_ethtool.o qlcnic_ctx.o qlcnic_io.o \
+	qlcnic_sysfs.o qlcnic_83xx.o qlcnic_83xx_init.o \
+	qlcnic_minidump.o qlcnic_83xx_vnic.o
