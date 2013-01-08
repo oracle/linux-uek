@@ -1504,8 +1504,8 @@ static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
 		vp_admin = &priv->mfunc.master.vf_admin[slave].vport[port];
 		vp_oper->state = *vp_admin;
 		if (MLX4_VGT != vp_admin->default_vlan) {
-			err = __mlx4_register_vlan(&priv->dev, port,
-						   vp_admin->default_vlan, &(vp_oper->vlan_idx));
+			err = mlx4_register_vlan(&priv->dev, port,
+						 vp_admin->default_vlan, &(vp_oper->vlan_idx));
 			if (err) {
 				vp_oper->vlan_idx = NO_INDX;
 				mlx4_warn((&priv->dev),
