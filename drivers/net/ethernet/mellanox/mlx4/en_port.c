@@ -39,7 +39,7 @@
 
 #include "en_port.h"
 #include "mlx4_en.h"
-
+#define EN_IFQ_MIN_INTERVAL 3000
 
 int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, struct mlx4_en_priv *priv)
 {
@@ -120,15 +120,18 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	struct mlx4_en_priv *priv = netdev_priv(mdev->pndev[port]);
 	struct net_device_stats *stats = &priv->stats;
 	struct mlx4_cmd_mailbox *mailbox;
-	struct mlx4_cmd_mailbox *if_stat_mailbox;
+	struct mlx4_cmd_mailbox *if_stat_mailbox = NULL;
 	u64 in_mod = reset << 8 | port;
 	u32 if_stat_in_mod = (priv->counter_index & 0xff) |
 				((reset & 1) << 31);
 	int err;
 	int i;
-	u64 if_counters_rx_errors = 0;
-	u64 if_counters_rx_no_buffer = 0;
 	union  mlx4_counter		*counter;
+	int do_if_stat = 1;
+	unsigned long period = (unsigned long) (jiffies - priv->last_ifq_jiffies);
+
+	if (jiffies_to_msecs(period) < EN_IFQ_MIN_INTERVAL)
+		do_if_stat = 0;
 
 	mailbox = mlx4_alloc_cmd_mailbox(mdev->dev);
 	if (IS_ERR(mailbox))
@@ -140,26 +143,28 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	if (err)
 		goto out;
 
-	if_stat_mailbox = mlx4_alloc_cmd_mailbox(mdev->dev);
-	if (IS_ERR(if_stat_mailbox)) {
-		err = PTR_ERR(if_stat_mailbox);
-		goto out;
-	}
+	if (do_if_stat) {
+		if_stat_mailbox = mlx4_alloc_cmd_mailbox(mdev->dev);
+		if (IS_ERR(if_stat_mailbox)) {
+			err = PTR_ERR(if_stat_mailbox);
+			goto out;
+		}
 
-	memset(if_stat_mailbox->buf, 0, sizeof(*counter));
-	err = mlx4_cmd_box(mdev->dev, 0, mailbox->dma, if_stat_in_mod, 0,
-			   MLX4_CMD_QUERY_IF_STAT, MLX4_CMD_TIME_CLASS_C,
-			   MLX4_CMD_WRAPPED);
-	if (err)
-		goto if_stat_out;
+		memset(if_stat_mailbox->buf, 0, sizeof(*counter));
+		err = mlx4_cmd_box(mdev->dev, 0, if_stat_mailbox->dma, if_stat_in_mod, 0,
+				   MLX4_CMD_QUERY_IF_STAT, MLX4_CMD_TIME_CLASS_C,
+				   MLX4_CMD_WRAPPED);
+		if (err)
+			goto if_stat_out;
 
-	counter = (union mlx4_counter *)mailbox->buf;
-	if ((counter->control.cnt_mode & 0xf) == 1) {
-		if_counters_rx_errors =
-			be64_to_cpu(counter->ext.counters[0].IfRxErrorFrames);
-		if_counters_rx_no_buffer =
-			be64_to_cpu(
-				counter->ext.counters[0].IfRxNoBufferFrames);
+		counter = (union mlx4_counter *)if_stat_mailbox->buf;
+		if ((counter->control.cnt_mode & 0xf) == 1) {
+			priv->if_counters_rx_errors =
+				be64_to_cpu(counter->ext.counters[0].IfRxErrorFrames);
+			priv->if_counters_rx_no_buffer =
+				be64_to_cpu(
+					counter->ext.counters[0].IfRxNoBufferFrames);
+		}
 	}
 
 	mlx4_en_stats = mailbox->buf;
@@ -193,7 +198,7 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 			   be32_to_cpu(mlx4_en_stats->RJBBR) +
 			   be32_to_cpu(mlx4_en_stats->RCRC) +
 			   be32_to_cpu(mlx4_en_stats->RRUNT) +
-			   if_counters_rx_errors;
+			   priv->if_counters_rx_errors;
 
 	stats->tx_errors = be32_to_cpu(mlx4_en_stats->TDROP);
 	stats->multicast = be64_to_cpu(mlx4_en_stats->MCAST_prio_0) +
@@ -211,7 +216,7 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	stats->rx_crc_errors = be32_to_cpu(mlx4_en_stats->RCRC);
 	stats->rx_frame_errors = 0;
 	stats->rx_fifo_errors = be32_to_cpu(mlx4_en_stats->RdropOvflw);
-	stats->rx_missed_errors = if_counters_rx_no_buffer;
+	stats->rx_missed_errors = priv->if_counters_rx_no_buffer;
 	stats->tx_aborted_errors = 0;
 	stats->tx_carrier_errors = 0;
 	stats->tx_fifo_errors = 0;
@@ -247,9 +252,12 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	spin_unlock_bh(&priv->stats_lock);
 
 if_stat_out:
-	mlx4_free_cmd_mailbox(mdev->dev, if_stat_mailbox);
+	if (if_stat_mailbox)
+		mlx4_free_cmd_mailbox(mdev->dev, if_stat_mailbox);
 out:
 	mlx4_free_cmd_mailbox(mdev->dev, mailbox);
+	if (do_if_stat)
+		priv->last_ifq_jiffies = jiffies;
 
 	return err;
 }

@@ -552,6 +552,9 @@ struct mlx4_en_priv {
 	struct list_head filters;
 	struct hlist_head filter_hash[1 << MLX4_EN_FILTER_HASH_SHIFT];
 #endif
+	unsigned long last_ifq_jiffies;
+	u64 if_counters_rx_errors;
+	u64 if_counters_rx_no_buffer;
 
 };
 

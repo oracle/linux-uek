@@ -1744,6 +1744,9 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->cqe_factor = (mdev->dev->caps.cqe_size == 64) ? 1 : 0;
 	priv->mac_index = -1;
 	priv->msg_enable = MLX4_EN_MSG_LEVEL;
+	priv->last_ifq_jiffies = 0;
+	priv->if_counters_rx_errors = 0;
+	priv->if_counters_rx_no_buffer = 0;
 	spin_lock_init(&priv->stats_lock);
 	INIT_WORK(&priv->mcast_task, mlx4_en_do_set_multicast);
 	INIT_WORK(&priv->mac_task, mlx4_en_do_set_mac);
