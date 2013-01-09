@@ -328,6 +328,7 @@ quit:
 static void ql_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 {
 	int index;
+
 	switch (stringset) {
 	case ETH_SS_TEST:
 		memcpy(buf, *ql_gstrings_test, QLGE_TEST_LEN * ETH_GSTRING_LEN);
@@ -335,8 +336,8 @@ static void ql_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 	case ETH_SS_STATS:
 		for (index = 0; index < QLGE_STATS_LEN; index++) {
 			memcpy(buf + index * ETH_GSTRING_LEN,
-				ql_gstrings_stats[index].stat_string,
-				ETH_GSTRING_LEN);
+			ql_gstrings_stats[index].stat_string,
+			ETH_GSTRING_LEN);
 		}
 		break;
 	}
@@ -403,15 +404,12 @@ static void ql_get_drvinfo(struct net_device *ndev,
 {
 	struct ql_adapter *qdev = netdev_priv(ndev);
 	strlcpy(drvinfo->driver, qlge_driver_name, sizeof(drvinfo->driver));
-	strlcpy(drvinfo->version, qlge_driver_version,
-		sizeof(drvinfo->version));
-	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version),
-		 "v%d.%d.%d",
+	strlcpy(drvinfo->version, qlge_driver_version, sizeof(drvinfo->version));
+	snprintf(drvinfo->fw_version, sizeof(drvinfo->fw_version), "v%d.%d.%d",
 		 (qdev->fw_rev_id & 0x00ff0000) >> 16,
 		 (qdev->fw_rev_id & 0x0000ff00) >> 8,
 		 (qdev->fw_rev_id & 0x000000ff));
-	strlcpy(drvinfo->bus_info, pci_name(qdev->pdev),
-		sizeof(drvinfo->bus_info));
+	strlcpy(drvinfo->bus_info, pci_name(qdev->pdev), sizeof(drvinfo->bus_info));
 	drvinfo->n_stats = 0;
 	drvinfo->testinfo_len = 0;
 	if (!test_bit(QL_FRC_COREDUMP, &qdev->flags))
@@ -694,6 +692,8 @@ static int ql_set_pauseparam(struct net_device *netdev,
 		return -EINVAL;
 
 	status = ql_mb_set_port_cfg(qdev);
+	if (status)
+		return status;
 	return status;
 }
 

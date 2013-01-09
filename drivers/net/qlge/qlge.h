@@ -7,11 +7,9 @@
 #ifndef _QLGE_H_
 #define _QLGE_H_
 
-#include <linux/interrupt.h>
 #include <linux/pci.h>
 #include <linux/netdevice.h>
 #include <linux/rtnetlink.h>
-#include <linux/if_vlan.h>
 
 /*
  * General definitions...
@@ -2060,7 +2058,7 @@ struct ql_adapter {
 
 	struct nic_stats nic_stats;
 
-	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
+	struct vlan_group *vlgrp;
 
 	/* PCI Configuration information for this device */
 	struct pci_dev *pdev;
