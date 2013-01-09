@@ -2976,6 +2976,7 @@ static int qla4xxx_recover_adapter(struct scsi_qla_host *ha)
 		if (status == QLA_SUCCESS) {
 			if (!test_bit(AF_FW_RECOVERY, &ha->flags))
 				qla4xxx_cmd_wait(ha);
+
 			ha->isp_ops->disable_intrs(ha);
 			qla4xxx_process_aen(ha, FLUSH_DDB_CHANGED_AENS);
 			qla4xxx_abort_active_cmds(ha, DID_RESET << 16);
@@ -3506,10 +3507,8 @@ static void qla4xxx_free_adapter(struct scsi_qla_host *ha)
 {
 	qla4xxx_abort_active_cmds(ha, DID_NO_CONNECT << 16);
 
-	if (test_bit(AF_INTERRUPTS_ON, &ha->flags)) {
-		/* Turn-off interrupts on the card. */
-		ha->isp_ops->disable_intrs(ha);
-	}
+	/* Turn-off interrupts on the card. */
+	ha->isp_ops->disable_intrs(ha);
 
 	if (is_qla40XX(ha)) {
 		writel(set_rmask(CSR_SCSI_PROCESSOR_INTR),
@@ -3545,8 +3544,7 @@ static void qla4xxx_free_adapter(struct scsi_qla_host *ha)
 	}
 
 	/* Detach interrupts */
-	if (test_and_clear_bit(AF_IRQ_ATTACHED, &ha->flags))
-		qla4xxx_free_irqs(ha);
+	qla4xxx_free_irqs(ha);
 
 	/* free extra memory */
 	qla4xxx_mem_free(ha);
@@ -4685,7 +4683,8 @@ static struct iscsi_endpoint *qla4xxx_get_ep_fwdb(struct scsi_qla_host *ha,
 	struct iscsi_endpoint *ep;
 	struct sockaddr_in *addr;
 	struct sockaddr_in6 *addr6;
-	struct sockaddr *dst_addr;
+	struct sockaddr *t_addr;
+	struct sockaddr_storage *dst_addr;
 	char *ip;
 
 	/* TODO: need to destroy on unload iscsi_endpoint*/
@@ -4694,21 +4693,23 @@ static struct iscsi_endpoint *qla4xxx_get_ep_fwdb(struct scsi_qla_host *ha,
 		return NULL;
 
 	if (fw_ddb_entry->options & DDB_OPT_IPV6_DEVICE) {
-		dst_addr->sa_family = AF_INET6;
+		t_addr = (struct sockaddr *)dst_addr;
+		t_addr->sa_family = AF_INET6;
 		addr6 = (struct sockaddr_in6 *)dst_addr;
 		ip = (char *)&addr6->sin6_addr;
 		memcpy(ip, fw_ddb_entry->ip_addr, IPv6_ADDR_LEN);
 		addr6->sin6_port = htons(le16_to_cpu(fw_ddb_entry->port));
 
 	} else {
-		dst_addr->sa_family = AF_INET;
+		t_addr = (struct sockaddr *)dst_addr;
+		t_addr->sa_family = AF_INET;
 		addr = (struct sockaddr_in *)dst_addr;
 		ip = (char *)&addr->sin_addr;
 		memcpy(ip, fw_ddb_entry->ip_addr, IP_ADDR_LEN);
 		addr->sin_port = htons(le16_to_cpu(fw_ddb_entry->port));
 	}
 
-	ep = qla4xxx_ep_connect(ha->host, dst_addr, 0);
+	ep = qla4xxx_ep_connect(ha->host, (struct sockaddr *)dst_addr, 0);
 	vfree(dst_addr);
 	return ep;
 }
@@ -5268,7 +5269,7 @@ static int __devinit qla4xxx_probe_adapter(struct pci_dev *pdev,
 		if (is_qla80XX(ha)) {
 			ha->isp_ops->idc_lock(ha);
 			dev_state = qla4_8xxx_rd_direct(ha,
-							QLA82XX_CRB_DEV_STATE);
+							QLA8XXX_CRB_DEV_STATE);
 			ha->isp_ops->idc_unlock(ha);
 			if (dev_state == QLA8XXX_DEV_FAILED) {
 				ql4_printk(KERN_WARNING, ha, "%s: don't retry "
@@ -6003,14 +6004,6 @@ static int qla4xxx_host_reset(struct Scsi_Host *shost, int reset_type)
 		DEBUG2(ql4_printk(KERN_INFO, ha, "%s: Don't Reset HBA\n",
 				  __func__));
 		rval = -EPERM;
-		goto exit_host_reset;
-	}
-
-	rval = qla4xxx_wait_for_hba_online(ha);
-	if (rval != QLA_SUCCESS) {
-		DEBUG2(ql4_printk(KERN_INFO, ha, "%s: Unable to reset host "
-				  "adapter\n", __func__));
-		rval = -EIO;
 		goto exit_host_reset;
 	}
 
