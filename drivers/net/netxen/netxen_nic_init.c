@@ -280,10 +280,13 @@ int netxen_alloc_sw_resources(struct netxen_adapter *adapter)
 
 		}
 		rds_ring->rx_buf_arr = vzalloc(RCV_BUFF_RINGSIZE(rds_ring));
-		if (rds_ring->rx_buf_arr == NULL)
+		if (rds_ring->rx_buf_arr == NULL) {
+			printk(KERN_ERR "%s: Failed to allocate "
+				"rx buffer ring %d\n",
+				netdev->name, ring);
 			/* free whatever was already allocated */
 			goto err_out;
-
+		}
 		INIT_LIST_HEAD(&rds_ring->free_list);
 		/*
 		 * Now go through all of them, set reference handles
@@ -477,8 +480,11 @@ int netxen_pinit_from_rom(struct netxen_adapter *adapter)
 	}
 
 	buf = kcalloc(n, sizeof(struct crb_addr_pair), GFP_KERNEL);
-	if (buf == NULL)
+	if (buf == NULL) {
+		printk("%s: netxen_pinit_from_rom: Unable to calloc memory.\n",
+				netxen_nic_driver_name);
 		return -ENOMEM;
+	}
 
 	for (i = 0; i < n; i++) {
 		if (netxen_rom_fast_read(adapter, 8*i + 4*offset, &val) != 0 ||
@@ -1260,7 +1266,8 @@ next:
 void
 netxen_release_firmware(struct netxen_adapter *adapter)
 {
-	release_firmware(adapter->fw);
+	if (adapter->fw)
+		release_firmware(adapter->fw);
 	adapter->fw = NULL;
 }
 
@@ -1437,6 +1444,8 @@ netxen_handle_linkevent(struct netxen_adapter *adapter, nx_fw_msg_t *msg)
 				netdev->name, cable_len);
 	}
 
+	netxen_advert_link_change(adapter, link_status);
+
 	/* update link parameters */
 	if (duplex == LINKEVENT_FULL_DUPLEX)
 		adapter->link_duplex = DUPLEX_FULL;
@@ -1445,8 +1454,6 @@ netxen_handle_linkevent(struct netxen_adapter *adapter, nx_fw_msg_t *msg)
 	adapter->module_type = module;
 	adapter->link_autoneg = autoneg;
 	adapter->link_speed = link_speed;
-
-	netxen_advert_link_change(adapter, link_status);
 }
 
 static void
@@ -1485,7 +1492,7 @@ netxen_alloc_rx_skb(struct netxen_adapter *adapter,
 	dma_addr_t dma;
 	struct pci_dev *pdev = adapter->pdev;
 
-	buffer->skb = netdev_alloc_skb(adapter->netdev, rds_ring->skb_size);
+	buffer->skb = dev_alloc_skb(rds_ring->skb_size);
 	if (!buffer->skb)
 		return 1;
 
@@ -1531,6 +1538,8 @@ static struct sk_buff *netxen_process_rxbuf(struct netxen_adapter *adapter,
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 	} else
 		skb->ip_summed = CHECKSUM_NONE;
+
+	skb->dev = adapter->netdev;
 
 	buffer->skb = NULL;
 no_skb:

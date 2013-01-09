@@ -95,6 +95,7 @@ static void netxen_restore_indev_addr(struct net_device *dev, unsigned long);
 static struct rtnl_link_stats64 *netxen_nic_get_stats(struct net_device *dev,
 						      struct rtnl_link_stats64 *stats);
 static int netxen_nic_set_mac(struct net_device *netdev, void *p);
+int nx_dev_request_reset(struct netxen_adapter *adapter);
 
 /*  PCI Device ID Table  */
 #define ENTRY(device) \
@@ -543,8 +544,7 @@ static void netxen_set_multicast_list(struct net_device *dev)
 	adapter->set_multi(dev);
 }
 
-static netdev_features_t netxen_fix_features(struct net_device *dev,
-	netdev_features_t features)
+static u32 netxen_fix_features(struct net_device *dev, u32 features)
 {
 	if (!(features & NETIF_F_RXCSUM)) {
 		netdev_info(dev, "disabling LRO as RXCSUM is off\n");
@@ -555,8 +555,7 @@ static netdev_features_t netxen_fix_features(struct net_device *dev,
 	return features;
 }
 
-static int netxen_set_features(struct net_device *dev,
-	netdev_features_t features)
+static int netxen_set_features(struct net_device *dev, u32 features)
 {
 	struct netxen_adapter *adapter = netdev_priv(dev);
 	int hw_lro;
@@ -582,7 +581,7 @@ static const struct net_device_ops netxen_netdev_ops = {
 	.ndo_start_xmit    = netxen_nic_xmit_frame,
 	.ndo_get_stats64   = netxen_nic_get_stats,
 	.ndo_validate_addr = eth_validate_addr,
-	.ndo_set_rx_mode   = netxen_set_multicast_list,
+	.ndo_set_rx_mode = netxen_set_multicast_list,
 	.ndo_set_mac_address    = netxen_nic_set_mac,
 	.ndo_change_mtu	   = netxen_nic_change_mtu,
 	.ndo_tx_timeout	   = netxen_tx_timeout,
@@ -913,7 +912,7 @@ netxen_check_options(struct netxen_adapter *adapter)
 static int
 netxen_start_firmware(struct netxen_adapter *adapter)
 {
-	int val, err, first_boot;
+	int val, err, first_boot, state;
 	struct pci_dev *pdev = adapter->pdev;
 
 	/* required for NX2031 dummy dma */
@@ -998,7 +997,15 @@ wait_init:
 		goto err_out;
 	}
 
+	if (netxen_api_lock(adapter))
+		return -EIO;
+	state = NXRD32(adapter, NX_CRB_DEV_STATE);
+
+	if (state == NX_DEV_FAILED)
+		return 1;
+
 	NXWR32(adapter, NX_CRB_DEV_STATE, NX_DEV_READY);
+	netxen_api_unlock(adapter);
 
 	nx_update_dma_mask(adapter);
 
@@ -1948,13 +1955,13 @@ netxen_map_tx_skb(struct pci_dev *pdev,
 		frag = &skb_shinfo(skb)->frags[i];
 		nf = &pbuf->frag_array[i+1];
 
-		map = skb_frag_dma_map(&pdev->dev, frag, 0, skb_frag_size(frag),
-				       DMA_TO_DEVICE);
-		if (dma_mapping_error(&pdev->dev, map))
+		map = pci_map_page(pdev, frag->page, frag->page_offset,
+				frag->size, PCI_DMA_TODEVICE);
+		if (pci_dma_mapping_error(pdev, map))
 			goto unwind;
 
 		nf->dma = map;
-		nf->length = skb_frag_size(frag);
+		nf->length = frag->size;
 	}
 
 	return 0;
@@ -2005,7 +2012,7 @@ netxen_nic_xmit_frame(struct sk_buff *skb, struct net_device *netdev)
 
 		for (i = 0; i < (frag_count - NETXEN_MAX_FRAGS_PER_TX); i++) {
 			frag = &skb_shinfo(skb)->frags[i];
-			delta += skb_frag_size(frag);
+			delta += frag->size;
 		}
 
 		if (!__pskb_pull_tail(skb, delta))
@@ -2778,6 +2785,188 @@ netxen_show_diag_mode(struct device *dev,
 			!!(adapter->flags & NETXEN_NIC_DIAG_ENABLED));
 }
 
+static ssize_t
+netxen_sysfs_read_fw_dump(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *attr,
+			char *buf, loff_t offset, size_t size)
+{
+	int ret;
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+
+	if ((!adapter->fw_mdump_rdy) || (!adapter->mdump.md_capture_buff))
+		return 0;
+
+	ret = memory_read_from_buffer(buf, size, &offset,
+				adapter->mdump.md_capture_buff,
+					adapter->mdump.md_dump_size);
+	if (offset == adapter->mdump.md_dump_size) {
+		adapter->mdump.md_dump_size = 0;
+		adapter->fw_mdump_rdy = 0;
+		if (adapter->mdump.md_capture_buff) {
+			vfree(adapter->mdump.md_capture_buff);
+			adapter->mdump.md_capture_buff = NULL;
+		}
+
+	dev_info(&adapter->pdev->dev, "%s: extracted the Fw Dump successfully\n",
+			adapter->netdev->name);
+	}
+	return ret;
+}
+
+
+static ssize_t
+netxen_sysfs_write_fw_dump(struct file *filp, struct kobject *kobj,
+			struct bin_attribute *attr,
+			char *buf, loff_t offset, size_t size)
+{
+	struct device *dev = container_of(kobj, struct device, kobj);
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	struct netxen_minidump *mdump = &adapter->mdump;
+	unsigned long data;
+
+	data = simple_strtoul(buf, NULL, 16);
+	rtnl_lock();
+	switch (data) {
+	case NX_FORCE_FW_DUMP_KEY:
+		if (!mdump->md_enabled)
+			mdump->md_enabled = 1;
+		if (adapter->fw_mdump_rdy) {
+			dev_info(&adapter->pdev->dev, "%s: Previous dump not "
+				"cleared, not forcing dump\n",
+					adapter->netdev->name);
+			goto out;
+		}
+		dev_info(&adapter->pdev->dev, "%s: Forcing a fw dump\n",
+				adapter->netdev->name);
+		nx_dev_request_reset(adapter);
+		break;
+	case NX_DISABLE_FW_DUMP:
+		if (mdump->md_enabled) {
+			dev_info(&adapter->pdev->dev, "%s: Disabling FW Dump\n",
+				adapter->netdev->name);
+			mdump->md_enabled = 0;
+		}
+		break;
+	case NX_ENABLE_FW_DUMP:
+		if (!mdump->md_enabled) {
+			dev_info(&adapter->pdev->dev, "%s: Enabling FW dump\n",
+				adapter->netdev->name);
+			mdump->md_enabled = 1;
+		}
+		break;
+	case NX_FORCE_FW_RESET:
+		dev_info(&adapter->pdev->dev, "%s: Forcing FW reset\n",
+				adapter->netdev->name);
+		nx_dev_request_reset(adapter);
+		adapter->flags &= ~NETXEN_FW_RESET_OWNER;
+		break;
+	default:
+		dev_info(dev, "Invalid dump key, 0x%lx\n", data);
+		break;
+	}
+
+out:
+	rtnl_unlock();
+	return size;
+}
+
+static ssize_t
+netxen_show_fwdump_size(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 size = 0;
+
+	if (adapter->fw_mdump_rdy)
+		size = adapter->mdump.md_dump_size;
+	return sprintf(buf, "%u\n", size);
+}
+
+static ssize_t
+netxen_store_fwdump_size(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	return -EIO;
+}
+
+static ssize_t
+netxen_show_fwdump_level(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 size = adapter->mdump.md_capture_mask;
+	return sprintf(buf, "%u\n", size);
+}
+
+static ssize_t
+netxen_store_fwdump_level(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t size)
+{
+	int i;
+	unsigned long int val;
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+
+	val = simple_strtoul(buf, NULL, 16);
+
+	for (i = 0; i < ARRAY_SIZE(FW_DUMP_LEVELS); i++) {
+		if (val == FW_DUMP_LEVELS[i]) {
+			rtnl_lock();
+			adapter->mdump.md_capture_mask = val;
+			rtnl_unlock();
+			netdev_info(adapter->netdev,
+					"Driver mask changed to: 0x%x\n",
+					adapter->mdump.md_capture_mask);
+			return size;
+		}
+	}
+
+	netdev_info(adapter->netdev, "Invalid Dump Level: 0x%lx\n",
+			(unsigned long int) val);
+	return -EINVAL;
+}
+
+static ssize_t
+netxen_show_fwdump_state(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct netxen_adapter *adapter = dev_get_drvdata(dev);
+	u32 state = adapter->mdump.md_enabled;
+	return sprintf(buf, "%u\n", state);
+}
+
+static ssize_t
+netxen_store_fwdump_state(struct device *dev,
+		struct device_attribute *attr, const char *buf, size_t len)
+{
+	return -EIO;
+}
+
+static struct bin_attribute bin_attr_fw_dump = {
+	.attr = {.name = "fw_dump", .mode = (S_IRUGO | S_IWUSR)},
+	.size = 0,
+	.read = netxen_sysfs_read_fw_dump,
+	.write = netxen_sysfs_write_fw_dump,
+};
+
+static struct device_attribute dev_attr_fwdump_size = {
+	.attr = {.name = "fwdump_size", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_size,
+	.store = netxen_store_fwdump_size,
+};
+
+static struct device_attribute dev_attr_fwdump_level = {
+	.attr = {.name = "fwdump_level", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_level,
+	.store = netxen_store_fwdump_level,
+};
+
+static struct device_attribute dev_attr_fwdump_state = {
+	.attr = {.name = "fwdump_state", .mode = (S_IRUGO | S_IWUSR)},
+	.show = netxen_show_fwdump_state,
+	.store = netxen_store_fwdump_state,
+};
+
 static struct device_attribute dev_attr_diag_mode = {
 	.attr = {.name = "diag_mode", .mode = (S_IRUGO | S_IWUSR)},
 	.show = netxen_show_diag_mode,
@@ -3056,7 +3245,6 @@ netxen_sysfs_read_dimm(struct file *filp, struct kobject *kobj,
 out:
 	memcpy(buf, &dimm, sizeof(struct netxen_dimm_cfg));
 	return sizeof(struct netxen_dimm_cfg);
-
 }
 
 static struct bin_attribute bin_attr_dimm = {
@@ -3064,7 +3252,6 @@ static struct bin_attribute bin_attr_dimm = {
 	.size = 0,
 	.read = netxen_sysfs_read_dimm,
 };
-
 
 static void
 netxen_create_sysfs_entries(struct netxen_adapter *adapter)
@@ -3096,6 +3283,18 @@ netxen_create_diag_entries(struct netxen_adapter *adapter)
 	struct device *dev;
 
 	dev = &pdev->dev;
+	if (adapter->mdump.md_template) {
+		dev_info(&pdev->dev, "%s: Supports Fw Dump Capability\n",
+				adapter->netdev->name);
+		if (device_create_file(dev, &dev_attr_fwdump_state))
+			dev_info(dev, "failed to create fwdump_state sysfs entry\n");
+		if (device_create_bin_file(dev, &bin_attr_fw_dump))
+			dev_info(dev, "failed to create fw_dump sysfs entry\n");
+		if (device_create_file(dev, &dev_attr_fwdump_size))
+			dev_info(dev, "failed to create fwdump_size sysfs entry\n");
+		if (device_create_file(dev, &dev_attr_fwdump_level))
+			dev_info(dev, "failed to create fwdump_level sysfs entry\n");
+	}
 	if (device_create_file(dev, &dev_attr_diag_mode))
 		dev_info(dev, "failed to create diag_mode sysfs entry\n");
 	if (device_create_bin_file(dev, &bin_attr_crb))
@@ -3117,6 +3316,13 @@ netxen_remove_diag_entries(struct netxen_adapter *adapter)
 	device_remove_bin_file(dev, &bin_attr_crb);
 	device_remove_bin_file(dev, &bin_attr_mem);
 	device_remove_bin_file(dev, &bin_attr_dimm);
+
+	if (adapter->mdump.md_template) {
+		device_remove_bin_file(dev, &bin_attr_fw_dump);
+		device_remove_file(dev, &dev_attr_fwdump_size);
+		device_remove_file(dev, &dev_attr_fwdump_level);
+		device_remove_file(dev, &dev_attr_fwdump_state);
+	}
 }
 
 #ifdef CONFIG_INET
@@ -3340,7 +3546,7 @@ netxen_free_vlan_ip_list(struct netxen_adapter *adapter)
 { }
 #endif
 
-static const struct pci_error_handlers netxen_err_handler = {
+static struct pci_error_handlers netxen_err_handler = {
 	.error_detected = netxen_io_error_detected,
 	.slot_reset = netxen_io_slot_reset,
 	.resume = netxen_io_resume,

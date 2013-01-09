@@ -32,7 +32,6 @@
 
 #include "netxen_nic.h"
 #include "netxen_nic_hw.h"
-#define ETH_FW_DUMP_DISABLE 0
 
 struct netxen_nic_stats {
 	char stat_string[ETH_GSTRING_LEN];
@@ -45,6 +44,7 @@ struct netxen_nic_stats {
 
 #define NETXEN_NIC_PORT_WINDOW 0x10000
 #define NETXEN_NIC_INVALID_DATA 0xDEADBEEF
+#define ETH_FW_DUMP_DISABLE	0x0
 
 static const struct netxen_nic_stats netxen_nic_gstrings_stats[] = {
 	{"xmit_called", NETXEN_NIC_STAT(stats.xmitcalled)},
@@ -878,9 +878,9 @@ netxen_set_dump(struct net_device *netdev, struct ethtool_dump *val)
 		for (i = 0; i < ARRAY_SIZE(FW_DUMP_LEVELS); i++) {
 			if (val->flag == FW_DUMP_LEVELS[i]) {
 				mdump->md_capture_mask = val->flag;
-				netdev_info(netdev,
-					"Driver mask changed to: 0x%x\n",
-					mdump->md_capture_mask);
+				netdev_info(netdev, 
+					    "Driver mask changed to: 0x%x\n",
+					    mdump->md_capture_mask);
 				return 0;
 			}
 		}
@@ -904,7 +904,7 @@ netxen_get_dump_data(struct net_device *netdev, struct ethtool_dump *dump,
 
 	if (!adapter->fw_mdump_rdy) {
 		netdev_info(netdev, "Dump not available\n");
-		return -EINVAL;
+		return 0;
 	}
 	/* Copy template header first */
 	copy_sz = mdump->md_template_size;

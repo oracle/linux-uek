@@ -51,6 +51,14 @@
 #include "netxen_nic_hdr.h"
 #include "netxen_nic_hw.h"
 
+#ifndef SPEED_UNKNOWN
+#define SPEED_UNKNOWN 0x0
+#endif
+
+#ifndef DUPLEX_UNKNOWN
+#define DUPLEX_UNKNOWN 0xff
+#endif
+
 #define _NETXEN_NIC_LINUX_MAJOR 4
 #define _NETXEN_NIC_LINUX_MINOR 0
 #define _NETXEN_NIC_LINUX_SUBVERSION 80
@@ -957,7 +965,7 @@ typedef struct nx_mac_list_s {
 
 struct nx_vlan_ip_list {
 	struct list_head list;
-	__be32 ip_addr;
+	u32 ip_addr;
 };
 
 /*
@@ -1205,7 +1213,6 @@ typedef struct {
 #define NX_ENABLE_FW_DUMP               0xaddfeed
 #define NX_DISABLE_FW_DUMP              0xbadfeed
 #define NX_FORCE_FW_RESET               0xdeaddead
-
 
 /* Fw dump levels */
 static const u32 FW_DUMP_LEVELS[] = { 0x3, 0x7, 0xf, 0x1f, 0x3f, 0x7f, 0xff };
