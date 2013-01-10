@@ -821,6 +821,7 @@ static int rbd_get_num_segments(struct rbd_image_header *header,
 {
 	u64 start_seg;
 	u64 end_seg;
+	u64 result;
 
 	if (!len)
 		return 0;
@@ -830,7 +831,11 @@ static int rbd_get_num_segments(struct rbd_image_header *header,
 	start_seg = ofs >> header->obj_order;
 	end_seg = (ofs + len - 1) >> header->obj_order;
 
-	return end_seg - start_seg + 1;
+	result = end_seg - start_seg + 1;
+	if (result > (u64) INT_MAX)
+		return -ERANGE;
+
+	return (int) result;
 }
 
 /*
