@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.6.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,99 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jan 10 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.7.0.el5uek]
+- git-changelog: search for bug # in merge commit (Maxim Uvarov)
+- be2iscsi: Bump the driver version (Jayamohan Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix Unrecoverable Error Detection (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix for MBX timeout issue (Jayamohan Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix the copyright information (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix issue of displaying adapter family. (Jayamohan Kallickal)
+  [Orabug: 16023790]
+- be2iscsi: Fix Task Completion Event handling (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix session update context with V2 version. (Jayamohan Kallickal)
+  [Orabug: 16023790]
+- be2iscsi: Fix support for V2 version of WRB. (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix support for handling CQ_CREATE V2 version. (Jayamohan
+  Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix max EQ supported by the driver. (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix driver support for an adapter. (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix return value and typo. (Jayamohan Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix kernel panic in blk_iopoll disable mode. (Jayamohan Kallickal)
+  [Orabug: 16023790]
+- be2iscsi: Issue an FLR when driver is loaded (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Display driver name and version in device attribute (Jayamohan
+  Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix max supported EQ count to 8. (Jayamohan Kallickal) [Orabug:
+  16023790]
+- be2iscsi: Fix memory leak in control path of driver (Jayamohan Kallickal)
+  [Orabug: 16023790]
+- be2iscsi: Display Completion Event string instead of Opcode (Jayamohan
+  Kallickal) [Orabug: 16023790]
+- be2iscsi: Fix the issue with soft reset. (Jayamohan Kallickal) [Orabug:
+  16023790]
+- netxen: update to qlogic 4.0.80 (Sritej Velaga) [Orabug: 16025025]
+- qlge: update to qlogic 1.00.00.31 (Sritej Velaga) [Orabug: 16025042]
+- qlcnic: Update to 5.1.27.35 (Sritej Velaga) [Orabug: 16024990]
+- [SCSI] scsi_dh_alua: Add fusionio ION LUNs to scsi_dh_alua device list (Mike
+  Christie) [Orabug: 16081231]
+- bonding: fixup typo in rlb mode of bond and bridge fix (Guru Anbalagane)
+  [Orabug: 16069448]
+- qla4xxx: Updated driver version to 5.03.00.01.06.02-uek2 (Tej Parkash)
+  [Orabug: 16067337]
+- qla4xxx: Correct the validation to check in get_sys_info mailbox (Nilesh
+  Javali) [Orabug: 16067337]
+- qla4xxx: Pass correct function param to qla4_8xxx_rd_direct (Vikas Chaudhary)
+  [Orabug: 16067337]
+- qla4xxx: Fix memory corruption issue in qla4xxx_get_ep_fwdb. (Manish
+  Rangankar) [Orabug: 16067337]
+- qla4xxx: Allow reset in link down case (Harish Zunjarrao) [Orabug: 16067337]
+- qla4xxx: Fix MBOX intr switching from polling to intr mode for ISP83XX (Vikas
+  Chaudhary) [Orabug: 16067337]
+- [SCSI] hpsa: change confusing message to be more clear (Mike Miller) [Orabug:
+  14793661]
+- [SCSI] hpsa: retry commands completing with status of UNSOLICITED_ABORT
+  (Stephen M. Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: use ioremap_nocache instead of ioremap (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: fix incorrect abort diagnostic message (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: dial down lockup detection during firmware flash (Stephen M.
+  Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: add new RAID level "1(ADM)" (Mike Miller) [Orabug: 14793661]
+- [SCSI] hpsa: factor out hpsa_free_irqs_and_disable_msix (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: refine interrupt handler locking for greater concurrency (Matt
+  Gates) [Orabug: 14793661]
+- [SCSI] hpsa: use multiple reply queues (Matt Gates) [Orabug: 14793661]
+- [SCSI] hpsa: factor out tail calls to next_command() in
+  process_(non)indexed_cmd() (Stephen M. Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: do aborts two ways (Stephen M. Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: add abort error handler function (Stephen M. Cameron) [Orabug:
+  14793661]
+- [SCSI] hpsa: remove unused parameter from finish_cmd (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: do not give up retry of driver cmds after only 3 retries
+  (Stephen M. Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: retry driver initiated commands on busy status (Matt Bondurant)
+  [Orabug: 14793661]
+- [SCSI] hpsa: suppress excessively chatty error messages (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: enable bus master bit after pci_enable_device (Stephen M.
+  Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: do not skip disabled devices (Stephen M. Cameron) [Orabug:
+  14793661]
+- [SCSI] hpsa: call pci_disable_device on driver unload (Stephen M. Cameron)
+  [Orabug: 14793661]
+- [SCSI] hpsa: factor out driver name (Stephen M. Cameron) [Orabug: 14793661]
+- [SCSI] hpsa: gen8plus Smart Array IDs (Mike Miller) [Orabug: 14793661]
+
 * Wed Dec 26 2012 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.6.0.el5uek]
 - qla3xxx: Ensure request/response queue addr writes to the registers (Joe Jin)
   [Orabug: 14614290]
