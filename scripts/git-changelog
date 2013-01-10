@@ -34,6 +34,7 @@ class ChangeLog:
     def __init__(self, tag):
         self.tag = tag
         self.ignore = None
+	self.merges = {} 
 
     def _getCommitDetail(self, commit, field):
         proc = subprocess.Popen(['git', 'log', '-1',
@@ -52,8 +53,13 @@ class ChangeLog:
 
         return ret
 
-    def _get_orabug(self, commit):
-    	proc = subprocess.Popen(['git', 'log', '-1',
+    def _get_orabug(self, commit, is_merge = 0):
+	if is_merge == 1:
+		m_option = "--merges"
+	else:
+		m_option = "--no-merges"
+
+    	proc = subprocess.Popen(['git', 'log', m_option, '-1',
 			    "--pretty=format:%b", commit],
 			    stdout=subprocess.PIPE,
 			    stderr=subprocess.PIPE).communicate()
@@ -72,10 +78,38 @@ class ChangeLog:
 	if len(bugz) > 0:
 		for bug in bugz:
 			ret += "%s " % bug
+	m = re.search("Bugdb:.*$", proc[0], re.MULTILINE)
+	if m:
+		bugz.append(m.group())
+	if len(bugz) > 0:
+		for bug in bugz:
+			ret += "%s " % bug
+	m = re.search("Bug-db:.*$", proc[0], re.MULTILINE)
+	if m:
+		bugz.append(m.group())
+	#	print m.group()
+	#if len(bugz) > 0:
+	#	for bug in bugz:
+	#		ret += "%s " % bug
+	m = re.search("Oracle-bug:.*$", proc[0], re.MULTILINE)
+	if m:
+		bugz.append(m.group())
+	if len(bugz) > 0:
+		for bug in bugz:
+			ret += "%s " % bug
+
 	if len(ret) > 0:
 		return "[%s]" % ret.rstrip()
-	else:
-		return ret 
+
+	#If commit has merge commit check if there is Bug #
+	if is_merge == 1:
+		return "Merge 1 commit %s" % commit
+	found = 0
+	for key in self.merges:
+		if commit in self.merges[key]:
+			found = 1
+			return self._get_orabug(key, is_merge = 1)
+	return ret
 
     def _get_cve(self, commit):
     	proc = subprocess.Popen(['git', 'log', '-1',
@@ -95,9 +129,30 @@ class ChangeLog:
 	else:
 		return ret
 
+    def getMerges(self):
+        range = "%s.." % (self.tag)
+        proc = subprocess.Popen(['git', 'log', '--merges', '--pretty=oneline', range],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE).communicate()
+        lines = filter(lambda x: x.find('l10n: ') != 41, 
+                       proc[0].strip('\n').split('\n'))
+
+        for line in lines:
+            fields = line.split(' ')
+            commit = fields[0]
+	    #print "Processing merge %s" % commit
+	    show_merges = "%s^..%s" % (commit, commit)
+	    proc2 = subprocess.Popen(['git', 'log', '--no-merges', '--pretty=%H', show_merges],
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.PIPE).communicate()
+	    mlist = []
+	    for l in proc2[0].split('\n'):
+	    	mlist.append(l)
+	    self.merges[commit] = mlist
+
     def getLog(self):
         range = "%s.." % (self.tag)
-        proc = subprocess.Popen(['git', 'log', '--pretty=oneline', range],
+        proc = subprocess.Popen(['git', 'log', '--no-merges', '--pretty=oneline', range],
                                 stdout=subprocess.PIPE,
                                 stderr=subprocess.PIPE).communicate()
         lines = filter(lambda x: x.find('l10n: ') != 41 and \
@@ -113,7 +168,8 @@ class ChangeLog:
         for line in lines:
             fields = line.split(' ')
             commit = fields[0]
-
+	    #print commit
+		
             summary = self._getCommitDetail(commit, "%s")
             long = self._getCommitDetail(commit, "%b")
             author = self._getCommitDetail(commit, "%aN")
@@ -137,7 +193,7 @@ class ChangeLog:
 			    stderr=subprocess.PIPE).communicate()
 	email = proc[0].rstrip()
 
-	date = datetime.datetime.now().strftime("%a %B %d %Y")
+	date = datetime.datetime.now().strftime("%a %b %d %Y")
 
 	ret = "* %s %s <%s>" % (date, name, email)
 	return ret
@@ -161,6 +217,7 @@ def main():
     (options, args) = parser.parse_args()
 
     cl = ChangeLog(options.tag)
+    cl.getMerges()
 
     print cl.get_date()
     print cl.formatLog()
