@@ -103,11 +103,10 @@ class ChangeLog:
 
 	#If commit has merge commit check if there is Bug #
 	if is_merge == 1:
-		return "Merge 1 commit %s" % commit
-	found = 0
+		return ret
+
 	for key in self.merges:
 		if commit in self.merges[key]:
-			found = 1
 			return self._get_orabug(key, is_merge = 1)
 	return ret
 
