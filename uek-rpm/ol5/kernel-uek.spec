@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.7.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,10 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Jan 11 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.8.0.el5uek]
+- git-changelog: don't print debug info (Maxim Uvarov)
+- spec: remove not used firmwares (Maxim Uvarov) [Orabug: 16048277]
+
 * Thu Jan 10 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.7.0.el5uek]
 - git-changelog: search for bug # in merge commit (Maxim Uvarov)
 - be2iscsi: Bump the driver version (Jayamohan Kallickal) [Orabug: 16023790]
