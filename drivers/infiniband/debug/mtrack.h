@@ -585,6 +585,24 @@
 })
 
 #elif LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36) /* 2.6.28 - 2.6.35 */
+
+#ifdef alloc_workqueue
+	#undef alloc_workqueue
+#endif
+
+#define alloc_workqueue(name, flags, max_active) ({				\
+	struct workqueue_struct *wq_addr = NULL;				\
+										\
+	if (memtrack_inject_error())						\
+		MEMTRACK_ERROR_INJECTION_MESSAGE(__FILE__, __LINE__, "alloc_workqueue"); \
+	else									\
+	wq_addr = __create_workqueue((name), (flags), (max_active), 0);				\
+	if (wq_addr) {								\
+		memtrack_alloc(MEMTRACK_WORK_QUEUE, 0UL, (unsigned long)(wq_addr), 0, 0UL, 0, __FILE__, __LINE__, GFP_ATOMIC); \
+	}									\
+	wq_addr;								\
+})
+
 #define create_workqueue(name) ({						\
 	struct workqueue_struct *wq_addr = NULL;				\
 										\
