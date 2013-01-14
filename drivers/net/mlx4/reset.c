@@ -31,6 +31,7 @@
  * SOFTWARE.
  */
 
+#include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/pci.h>
 #include <linux/delay.h>
@@ -38,6 +39,41 @@
 #include <linux/jiffies.h>
 
 #include "mlx4.h"
+
+
+#define MLX4_OWNER_BASE	0x8069c
+#define MLX4_OWNER_SIZE	4
+
+int mlx4_get_ownership(struct mlx4_dev *dev)
+{
+	void __iomem *owner;
+	u32 ret;
+
+	owner = ioremap(pci_resource_start(dev->pdev, 0) + MLX4_OWNER_BASE,
+			MLX4_OWNER_SIZE);
+	if (!owner) {
+		mlx4_err(dev, "Failed to map ownership sempahore\n");
+		return -ENOMEM;
+	}
+
+	ret = readl(owner);
+	iounmap(owner);
+	return (int) !!ret;
+}
+
+void mlx4_free_ownership(struct mlx4_dev *dev)
+{
+	void __iomem *owner;
+
+	owner = ioremap(pci_resource_start(dev->pdev, 0) + MLX4_OWNER_BASE,
+			MLX4_OWNER_SIZE);
+	if (!owner) {
+		mlx4_err(dev, "Failed to map ownership sempahore\n");
+		return;
+	}
+	writel(0, owner);
+	iounmap(owner);
+}
 
 int mlx4_reset(struct mlx4_dev *dev)
 {

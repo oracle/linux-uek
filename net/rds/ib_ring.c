@@ -76,7 +76,6 @@ static inline u32 __rds_ib_ring_used(struct rds_ib_work_ring *ring)
 
 	/* This assumes that atomic_t has at least as many bits as u32 */
 	diff = ring->w_alloc_ctr - (u32) atomic_read(&ring->w_free_ctr);
-	BUG_ON(diff > ring->w_nr);
 
 	return diff;
 }
@@ -118,6 +117,7 @@ void rds_ib_ring_free(struct rds_ib_work_ring *ring, u32 val)
 {
 	ring->w_free_ptr = (ring->w_free_ptr + val) % ring->w_nr;
 	atomic_add(val, &ring->w_free_ctr);
+	smp_mb();
 
 	if (__rds_ib_ring_empty(ring) &&
 	    waitqueue_active(&rds_ib_ring_empty_wait))
@@ -137,7 +137,7 @@ int rds_ib_ring_empty(struct rds_ib_work_ring *ring)
 
 int rds_ib_ring_low(struct rds_ib_work_ring *ring)
 {
-	return __rds_ib_ring_used(ring) <= (ring->w_nr >> 1);
+	return __rds_ib_ring_used(ring) <= (ring->w_nr >> 2);
 }
 
 /*

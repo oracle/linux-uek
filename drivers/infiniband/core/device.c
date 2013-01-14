@@ -38,13 +38,19 @@
 #include <linux/slab.h>
 #include <linux/init.h>
 #include <linux/mutex.h>
-#include <rdma/rdma_netlink.h>
+#include <linux/workqueue.h>
 
 #include "core_priv.h"
 
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("core kernel InfiniBand API");
 MODULE_LICENSE("Dual BSD/GPL");
+
+#ifdef __ia64__
+/* workaround for a bug in hp chipset that would cause kernel
+   panic when dma resources are exhaused */
+int dma_map_sg_hp_wa = 0;
+#endif
 
 struct ib_client_data {
 	struct list_head  list;
@@ -270,9 +276,7 @@ out:
  * callback for each device that is added. @device must be allocated
  * with ib_alloc_device().
  */
-int ib_register_device(struct ib_device *device,
-		       int (*port_callback)(struct ib_device *,
-					    u8, struct kobject *))
+int ib_register_device(struct ib_device *device)
 {
 	int ret;
 
@@ -293,6 +297,10 @@ int ib_register_device(struct ib_device *device,
 	INIT_LIST_HEAD(&device->client_data_list);
 	spin_lock_init(&device->event_handler_lock);
 	spin_lock_init(&device->client_data_lock);
+	device->ib_uverbs_xrcd_table = RB_ROOT;
+	mutex_init(&device->xrcd_table_mutex);
+	device->relaxed_pd = NULL;
+	INIT_LIST_HEAD(&device->relaxed_pool_list);
 
 	ret = read_port_table_lengths(device);
 	if (ret) {
@@ -301,7 +309,7 @@ int ib_register_device(struct ib_device *device,
 		goto out;
 	}
 
-	ret = ib_device_register_sysfs(device, port_callback);
+	ret = ib_device_register_sysfs(device);
 	if (ret) {
 		printk(KERN_WARNING "Couldn't register device %s with driver model\n",
 		       device->name);
@@ -699,20 +707,29 @@ EXPORT_SYMBOL(ib_find_gid);
 int ib_find_pkey(struct ib_device *device,
 		 u8 port_num, u16 pkey, u16 *index)
 {
-	int ret, i;
+	int i;
 	u16 tmp_pkey;
+	int ret;
+	int partial_ix = -1;
 
 	for (i = 0; i < device->pkey_tbl_len[port_num - start_port(device)]; ++i) {
 		ret = ib_query_pkey(device, port_num, i, &tmp_pkey);
 		if (ret)
 			return ret;
-
 		if ((pkey & 0x7fff) == (tmp_pkey & 0x7fff)) {
-			*index = i;
-			return 0;
+			/* if there is full-member pkey take it.*/
+			if (tmp_pkey & 0x8000) {
+				*index = i;
+				return 0;
+			}
+			partial_ix = i;
 		}
 	}
-
+	/*no full-member, if exists take the limited*/
+	if (partial_ix >= 0) {
+		*index = partial_ix;
+		return 0;
+	}
 	return -ENOENT;
 }
 EXPORT_SYMBOL(ib_find_pkey);
@@ -724,44 +741,31 @@ static int __init ib_core_init(void)
 	ib_wq = alloc_workqueue("infiniband", 0, 0);
 	if (!ib_wq)
 		return -ENOMEM;
+#ifdef __ia64__
+	if (ia64_platform_is("hpzx1"))
+		dma_map_sg_hp_wa = 1;
+#endif
 
 	ret = ib_sysfs_setup();
-	if (ret) {
+	if (ret)
 		printk(KERN_WARNING "Couldn't create InfiniBand device class\n");
-		goto err;
-	}
-
-	ret = ibnl_init();
-	if (ret) {
-		printk(KERN_WARNING "Couldn't init IB netlink interface\n");
-		goto err_sysfs;
-	}
 
 	ret = ib_cache_setup();
 	if (ret) {
 		printk(KERN_WARNING "Couldn't set up InfiniBand P_Key/GID cache\n");
-		goto err_nl;
+		destroy_workqueue(ib_wq);
+		ib_sysfs_cleanup();
 	}
 
-	return 0;
-
-err_nl:
-	ibnl_cleanup();
-
-err_sysfs:
-	ib_sysfs_cleanup();
-
-err:
-	destroy_workqueue(ib_wq);
 	return ret;
 }
 
 static void __exit ib_core_cleanup(void)
 {
 	ib_cache_cleanup();
-	ibnl_cleanup();
 	ib_sysfs_cleanup();
 	/* Make sure that any pending umem accounting work is done. */
+	flush_scheduled_work();
 	destroy_workqueue(ib_wq);
 }
 

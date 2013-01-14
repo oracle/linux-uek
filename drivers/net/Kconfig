@@ -2874,6 +2874,13 @@ config MLX4_DEBUG
 	  debug_level module parameter (which can also be set after
 	  the driver is loaded through sysfs).
 
+config MLX4_VNIC
+	tristate "Mellanox Technologies VNIC support"
+	depends on PCI && INFINIBAND && INFINIBAND_ADDR_TRANS
+	select MLX4_CORE
+	help
+	  Mellanox Technologies VNIC functionality.
+
 config TEHUTI
 	tristate "Tehuti Networks 10G Ethernet"
 	depends on PCI

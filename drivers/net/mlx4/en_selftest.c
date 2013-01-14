@@ -43,7 +43,7 @@
 static int mlx4_en_test_registers(struct mlx4_en_priv *priv)
 {
 	return mlx4_cmd(priv->mdev->dev, 0, 0, 0, MLX4_CMD_HW_HEALTH_CHECK,
-			MLX4_CMD_TIME_CLASS_A);
+			MLX4_CMD_TIME_CLASS_A, 0);
 }
 
 static int mlx4_en_test_loopback_xmit(struct mlx4_en_priv *priv)
@@ -107,7 +107,7 @@ static int mlx4_en_test_loopback(struct mlx4_en_priv *priv)
 mlx4_en_test_loopback_exit:
 
 	priv->validate_loopback = 0;
-	return !loopback_ok;
+	return (!loopback_ok);
 }
 
 
@@ -149,7 +149,7 @@ void mlx4_en_ex_selftest(struct net_device *dev, u32 *flags, u64 *buf)
 
 		netif_carrier_off(dev);
 retry_tx:
-		/* Wait until all tx queues are empty.
+		/* Wait untill all tx queues are empty.
 		 * there should not be any additional incoming traffic
 		 * since we turned the carrier off */
 		msleep(200);
@@ -159,8 +159,7 @@ retry_tx:
 				goto retry_tx;
 		}
 
-		if (priv->mdev->dev->caps.flags &
-					MLX4_DEV_CAP_FLAG_UC_LOOPBACK) {
+		if (priv->mdev->dev->caps.loopback_support) {
 			buf[3] = mlx4_en_test_registers(priv);
 			buf[4] = mlx4_en_test_loopback(priv);
 		}

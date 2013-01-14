@@ -37,14 +37,67 @@
 #include <linux/sched.h>
 #include <linux/hugetlb.h>
 #include <linux/dma-attrs.h>
-#include <linux/slab.h>
 
 #include "uverbs.h"
+
+static int allow_weak_ordering;
+module_param(allow_weak_ordering, bool, 0444);
+MODULE_PARM_DESC(allow_weak_ordering,  "Allow weak ordering for data registered memory");
 
 #define IB_UMEM_MAX_PAGE_CHUNK						\
 	((PAGE_SIZE - offsetof(struct ib_umem_chunk, page_list)) /	\
 	 ((void *) &((struct ib_umem_chunk *) 0)->page_list[1] -	\
 	  (void *) &((struct ib_umem_chunk *) 0)->page_list[0]))
+
+#ifdef __ia64__
+extern int dma_map_sg_hp_wa;
+
+static int dma_map_sg_ia64(struct ib_device *ibdev,
+			   struct scatterlist *sg,
+			   int nents,
+			   enum dma_data_direction dir)
+{
+	int i, rc, j, lents = 0;
+	struct device *dev;
+
+	if (!dma_map_sg_hp_wa)
+		return ib_dma_map_sg(ibdev, sg, nents, dir);
+
+	dev = ibdev->dma_device;
+	for (i = 0; i < nents; ++i) {
+		rc = dma_map_sg(dev, sg + i, 1, dir);
+		if (rc <= 0) {
+			for (j = 0; j < i; ++j)
+				dma_unmap_sg(dev, sg + j, 1, dir);
+
+			return 0;
+		}
+		lents += rc;
+	}
+
+	return lents;
+}
+
+static void dma_unmap_sg_ia64(struct ib_device *ibdev,
+			      struct scatterlist *sg,
+			      int nents,
+			      enum dma_data_direction dir)
+{
+	int i;
+	struct device *dev;
+
+	if (!dma_map_sg_hp_wa)
+		return ib_dma_unmap_sg(ibdev, sg, nents, dir);
+
+	dev = ibdev->dma_device;
+	for (i = 0; i < nents; ++i)
+		dma_unmap_sg(dev, sg + i, 1, dir);
+}
+
+#define ib_dma_map_sg(dev, sg, nents, dir) dma_map_sg_ia64(dev, sg, nents, dir)
+#define ib_dma_unmap_sg(dev, sg, nents, dir) dma_unmap_sg_ia64(dev, sg, nents, dir)
+
+#endif
 
 static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int dirty)
 {
@@ -52,8 +105,8 @@ static void __ib_umem_release(struct ib_device *dev, struct ib_umem *umem, int d
 	int i;
 
 	list_for_each_entry_safe(chunk, tmp, &umem->chunk_list, list) {
-		ib_dma_unmap_sg(dev, chunk->page_list,
-				chunk->nents, DMA_BIDIRECTIONAL);
+		ib_dma_unmap_sg_attrs(dev, chunk->page_list,
+				      chunk->nents, DMA_BIDIRECTIONAL, &chunk->attrs);
 		for (i = 0; i < chunk->nents; ++i) {
 			struct page *page = sg_page(&chunk->page_list[i]);
 
@@ -92,6 +145,9 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 
 	if (dmasync)
 		dma_set_attr(DMA_ATTR_WRITE_BARRIER, &attrs);
+	else if (allow_weak_ordering)
+		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &attrs);
+
 
 	if (!can_do_mlock())
 		return ERR_PTR(-EPERM);
@@ -137,7 +193,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 	down_write(&current->mm->mmap_sem);
 
 	locked     = npages + current->mm->locked_vm;
-	lock_limit = rlimit(RLIMIT_MEMLOCK) >> PAGE_SHIFT;
+	lock_limit = current->signal->rlim[RLIMIT_MEMLOCK].rlim_cur >> PAGE_SHIFT;
 
 	if ((locked > lock_limit) && !capable(CAP_IPC_LOCK)) {
 		ret = -ENOMEM;
@@ -170,6 +226,7 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 				goto out;
 			}
 
+			chunk->attrs = attrs;
 			chunk->nents = min_t(int, ret, IB_UMEM_MAX_PAGE_CHUNK);
 			sg_init_table(chunk->page_list, chunk->nents);
 			for (i = 0; i < chunk->nents; ++i) {
@@ -262,7 +319,7 @@ void ib_umem_release(struct ib_umem *umem)
 			umem->mm   = mm;
 			umem->diff = diff;
 
-			queue_work(ib_wq, &umem->work);
+			schedule_work(&umem->work);
 			return;
 		}
 	} else

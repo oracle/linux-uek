@@ -31,25 +31,19 @@
  * SOFTWARE.
  */
 
+#include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
-#include <linux/slab.h>
 
 #include <linux/mlx4/cmd.h>
 
 #include "mlx4.h"
 #include "icm.h"
 #include "fw.h"
-
-/*
- * We allocate in as big chunks as we can, up to a maximum of 256 KB
- * per chunk.
- */
-enum {
-	MLX4_ICM_ALLOC_SIZE	= 1 << 18,
-	MLX4_TABLE_CHUNK_SIZE	= 1 << 18
-};
+#include "fmr_api.h"
+#include "fmr_slave.h"
+#include "fmr_master.h"
 
 static void mlx4_free_icm_pages(struct mlx4_dev *dev, struct mlx4_icm_chunk *chunk)
 {
@@ -74,15 +68,23 @@ static void mlx4_free_icm_coherent(struct mlx4_dev *dev, struct mlx4_icm_chunk *
 				  sg_dma_address(&chunk->mem[i]));
 }
 
-void mlx4_free_icm(struct mlx4_dev *dev, struct mlx4_icm *icm, int coherent)
+void mlx4_free_icm(struct mlx4_dev *dev, struct mlx4_icm *icm, int coherent,
+		   enum mlx4_mr_flags flags)
 {
 	struct mlx4_icm_chunk *chunk, *tmp;
+	int fmr_flow, i;
 
 	if (!icm)
 		return;
 
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+
 	list_for_each_entry_safe(chunk, tmp, &icm->chunk_list, list) {
-		if (coherent)
+		if (fmr_flow)
+			for (i = 0; i < chunk->npages; ++i) {
+				__free_page(chunk->fmr_pages[i]);
+				chunk->fmr_pages[i] = NULL;
+			} else if (coherent)
 			mlx4_free_icm_coherent(dev, chunk);
 		else
 			mlx4_free_icm_pages(dev, chunk);
@@ -130,7 +132,7 @@ struct mlx4_icm *mlx4_alloc_icm(struct mlx4_dev *dev, int npages,
 	/* We use sg_set_buf for coherent allocs, which assumes low memory */
 	BUG_ON(coherent && (gfp_mask & __GFP_HIGHMEM));
 
-	icm = kmalloc(sizeof *icm, gfp_mask & ~(__GFP_HIGHMEM | __GFP_NOWARN));
+	icm = kzalloc(sizeof *icm, gfp_mask & ~(__GFP_HIGHMEM | __GFP_NOWARN));
 	if (!icm)
 		return NULL;
 
@@ -141,7 +143,7 @@ struct mlx4_icm *mlx4_alloc_icm(struct mlx4_dev *dev, int npages,
 
 	while (npages > 0) {
 		if (!chunk) {
-			chunk = kmalloc(sizeof *chunk,
+			chunk = kzalloc(sizeof *chunk,
 					gfp_mask & ~(__GFP_HIGHMEM | __GFP_NOWARN));
 			if (!chunk)
 				goto fail;
@@ -163,30 +165,29 @@ struct mlx4_icm *mlx4_alloc_icm(struct mlx4_dev *dev, int npages,
 			ret = mlx4_alloc_icm_pages(&chunk->mem[chunk->npages],
 						   cur_order, gfp_mask);
 
-		if (ret) {
-			if (--cur_order < 0)
+		if (!ret) {
+			++chunk->npages;
+
+			if (coherent)
+				++chunk->nsg;
+			else if (chunk->npages == MLX4_ICM_CHUNK_LEN) {
+				chunk->nsg = pci_map_sg(dev->pdev, chunk->mem,
+							chunk->npages,
+							PCI_DMA_BIDIRECTIONAL);
+
+				if (chunk->nsg <= 0)
+					goto fail;
+			}
+
+			if (chunk->npages == MLX4_ICM_CHUNK_LEN)
+				chunk = NULL;
+
+			npages -= 1 << cur_order;
+		} else {
+			--cur_order;
+			if (cur_order < 0)
 				goto fail;
-			else
-				continue;
 		}
-
-		++chunk->npages;
-
-		if (coherent)
-			++chunk->nsg;
-		else if (chunk->npages == MLX4_ICM_CHUNK_LEN) {
-			chunk->nsg = pci_map_sg(dev->pdev, chunk->mem,
-						chunk->npages,
-						PCI_DMA_BIDIRECTIONAL);
-
-			if (chunk->nsg <= 0)
-				goto fail;
-		}
-
-		if (chunk->npages == MLX4_ICM_CHUNK_LEN)
-			chunk = NULL;
-
-		npages -= 1 << cur_order;
 	}
 
 	if (!coherent && chunk) {
@@ -201,8 +202,193 @@ struct mlx4_icm *mlx4_alloc_icm(struct mlx4_dev *dev, int npages,
 	return icm;
 
 fail:
-	mlx4_free_icm(dev, icm, coherent);
+	mlx4_free_icm(dev, icm, coherent, MLX4_MR_FLAG_NONE);
 	return NULL;
+}
+
+static int mlx4_UNMAP_FMR(struct mlx4_dev *dev, u64 virt, u32 page_count,
+			  struct mlx4_icm *icm)
+{
+	struct mlx4_icm_chunk   *chunk;
+	int			err, i;
+
+	err = mlx4_cmd(dev, virt, page_count, 1, MLX4_CMD_UNMAP_ICM,
+		       MLX4_CMD_TIME_CLASS_B, 0);
+	if (err) {
+		mlx4_dbg(dev, "UNMAP FMR failed for virt 0x%llx\n",
+			 (unsigned long long) virt);
+		return err;
+	}
+
+	/* fmr flow maps all pages into first chunk */
+	chunk = list_empty(&icm->chunk_list) ? NULL :
+		list_entry(icm->chunk_list.next, struct mlx4_icm_chunk, list);
+	if (!chunk) {
+		mlx4_dbg(dev, "UNMAP FMR got null chunk\n");
+		return -EINVAL;
+	}
+
+	for (i = 0; i < page_count; ++i) {
+		mlx4_fmr_slave_unshare(chunk->fmr_vpm_ctx[i]);
+		chunk->fmr_vpm_ctx[i] = NULL;
+	}
+
+	return 0;
+}
+
+static int mlx4_MAP_FMR(struct mlx4_dev *dev, struct mlx4_icm *icm, u64 virt)
+{
+	struct mlx4_cmd_mailbox *mailbox;
+	struct mlx4_icm_chunk   *chunk;
+	struct vpm		*vpm;
+	void			*vpm_raw;
+	int                     fmr_vpm_size, i, nent;
+	int			err;
+
+
+
+	err = mlx4_fmr_slave_context_init(dev);
+	if (err) {
+		mlx4_warn(dev, "FMR init failed. FMR disabled.\n");
+		return err;
+	}
+
+	mailbox = mlx4_alloc_cmd_mailbox(dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+
+	/* fmr flow maps all pages into first chunk */
+	chunk = list_empty(&icm->chunk_list) ? NULL :
+		list_entry(icm->chunk_list.next, struct mlx4_icm_chunk, list);
+	if (!chunk) {
+		mlx4_dbg(dev, "MAP FMR got null chunk\n");
+		err = -EINVAL;
+		goto out_free_mailbox;
+	}
+
+	vpm_raw = mailbox->buf;
+
+	/* vpm includes two u64 fields and private data in 2 byte words */
+	fmr_vpm_size = sizeof(struct vpm) + mlx4_fmr_slave_vpm_info_size();
+
+	for (i = 0, nent = 0; i < chunk->npages; ++i, virt += PAGE_SIZE,
+	     vpm_raw += fmr_vpm_size) {
+		vpm = (struct vpm *)vpm_raw;
+		memset(vpm_raw, 0, fmr_vpm_size);
+		err = mlx4_fmr_slave_share(dev,
+				lowmem_page_address(chunk->fmr_pages[i]),
+				vpm, &chunk->fmr_vpm_ctx[i]);
+
+		if (err) {
+			mlx4_dbg(dev, "MAP FMR failed to share page, err %d\n",
+				 err);
+			goto out;
+		}
+
+		vpm->va = cpu_to_be64(virt);
+
+		if ((++nent + 1) * fmr_vpm_size > MLX4_MAILBOX_SIZE) {
+			err = mlx4_cmd(dev, mailbox->dma | dev->caps.function,
+				       nent, 1, MLX4_CMD_MAP_ICM,
+				       MLX4_CMD_TIME_CLASS_B, 0);
+			if (err) {
+				mlx4_dbg(dev, "MAP FMR cmd failed, err %d\n",
+					 err);
+				goto out_unshare;
+			}
+			nent = 0;
+		}
+	}
+
+	if (nent) {
+		err = mlx4_cmd(dev, mailbox->dma | dev->caps.function, nent, 1,
+			       MLX4_CMD_MAP_ICM,
+			       MLX4_CMD_TIME_CLASS_B, 0);
+		if (err) {
+			mlx4_dbg(dev, "MAP FMR cmd failed, err %d\n", err);
+			goto out;
+		}
+	}
+
+	mlx4_dbg(dev, "MAP FMR %d pages at %llx for ICM.\n",
+		 chunk->npages, (unsigned long long) (virt - i * PAGE_SIZE));
+
+	mlx4_free_cmd_mailbox(dev, mailbox);
+	return 0;
+
+out_unshare:
+	mlx4_fmr_slave_unshare(chunk->fmr_vpm_ctx[i]);
+
+out:
+	mlx4_UNMAP_FMR(dev, virt -= i * PAGE_SIZE, i, icm);
+
+out_free_mailbox:
+	mlx4_free_cmd_mailbox(dev, mailbox);
+	return err;
+}
+
+int mlx4_MAP_ICM_wrapper(struct mlx4_dev *dev, int slave,
+			 struct mlx4_vhcr *vhcr,
+			 struct mlx4_cmd_mailbox *inbox,
+			 struct mlx4_cmd_mailbox *outbox,
+			 struct mlx4_cmd_info *cmd)
+{
+	int err, nent, i;
+	u64 va;
+	struct vpm *vpm;
+	void *vpm_raw;
+	int vpm_info_size;
+	dma_addr_t addr;
+
+	nent = vhcr->in_modifier;
+
+	if (!vhcr->op_modifier)
+		return mlx4_cmd(dev, inbox->dma, nent, 0, MLX4_CMD_MAP_ICM,
+				MLX4_CMD_TIME_CLASS_B, 1);
+
+
+	vpm_info_size = sizeof(struct vpm) + mlx4_fmr_master_vpm_info_size();
+	vpm_raw = inbox->buf;
+
+	for (i = 0; i < nent; ++i, vpm_raw += vpm_info_size) {
+		vpm  = (struct vpm *)vpm_raw;
+		va   = be64_to_cpu(vpm->va);
+		addr = mlx4_fmr_master_dma_map(dev, slave, vpm);
+		if (!addr) {
+			mlx4_dbg(dev, "MAP ICM wrapper failed to get fmr dma"
+				 " addr for va 0x%llx\n",
+				 (unsigned long long)va);
+			err = -EINVAL;
+			goto out_addr;
+		}
+
+		err = mlx4_MAP_ICM_page(dev, (u64)addr, va);
+		if (err) {
+			mlx4_dbg(dev, "MAP ICM wrapper failed to map icm"
+				 " addr for va 0x%llx\n",
+				 (unsigned long long)va);
+			err = -EINVAL;
+			goto out_dma_free;
+		}
+	}
+
+	return 0;
+
+out_dma_free:
+	mlx4_fmr_master_dma_unmap(dev, slave, be64_to_cpu(vpm->va));
+
+out_addr:
+	for (--i, vpm_raw -= vpm_info_size; i >= 0; --i, vpm_raw -= vpm_info_size) {
+		vpm  = (struct vpm *)vpm_raw;
+		va  = be64_to_cpu(vpm->va);
+		if (mlx4_UNMAP_ICM(dev, va, 1))
+			mlx4_warn(dev, "MAP ICM wrapper failed to unmap icm"
+				  " addr for va 0x%llx with err %d\n",
+				  (unsigned long long)va, err);
+		mlx4_fmr_master_dma_unmap(dev, slave, va);
+	}
+
+	return err;
 }
 
 static int mlx4_MAP_ICM(struct mlx4_dev *dev, struct mlx4_icm *icm, u64 virt)
@@ -210,10 +396,62 @@ static int mlx4_MAP_ICM(struct mlx4_dev *dev, struct mlx4_icm *icm, u64 virt)
 	return mlx4_map_cmd(dev, MLX4_CMD_MAP_ICM, icm, virt);
 }
 
-static int mlx4_UNMAP_ICM(struct mlx4_dev *dev, u64 virt, u32 page_count)
+int mlx4_UNMAP_ICM_wrapper(struct mlx4_dev *dev, int slave,
+			   struct mlx4_vhcr *vhcr,
+			   struct mlx4_cmd_mailbox *inbox,
+			   struct mlx4_cmd_mailbox *outbox,
+			   struct mlx4_cmd_info *cmd)
+{
+	u32 page_count = vhcr->in_modifier;
+	u64 virt = vhcr->in_param;
+	int err, i;
+
+	err = mlx4_cmd(dev, virt, page_count, 0, MLX4_CMD_UNMAP_ICM,
+		       MLX4_CMD_TIME_CLASS_B, 1);
+
+	if (err) {
+		mlx4_dbg(dev, "UNMAP ICM wrapper failed for addr 0x%llx,"
+			 " page count %d with err %d\n",
+			 (unsigned long long)virt, page_count, err);
+		return err;
+	}
+
+	for (i = 0; i < page_count; ++i, virt += PAGE_SIZE)
+		mlx4_fmr_master_dma_unmap(dev, slave, virt);
+
+	return 0;
+}
+
+int mlx4_UNMAP_ICM(struct mlx4_dev *dev, u64 virt, u32 page_count)
 {
 	return mlx4_cmd(dev, virt, page_count, 0, MLX4_CMD_UNMAP_ICM,
-			MLX4_CMD_TIME_CLASS_B);
+			MLX4_CMD_TIME_CLASS_B, 1);
+}
+
+int mlx4_MAP_ICM_page(struct mlx4_dev *dev, u64 dma_addr, u64 virt)
+{
+	struct mlx4_cmd_mailbox *mailbox;
+	__be64 *inbox;
+	int err;
+
+	mailbox = mlx4_alloc_cmd_mailbox(dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+	inbox = mailbox->buf;
+
+	inbox[0] = cpu_to_be64(virt);
+	inbox[1] = cpu_to_be64(dma_addr);
+
+	err = mlx4_cmd(dev, mailbox->dma, 1, 0, MLX4_CMD_MAP_ICM,
+		       MLX4_CMD_TIME_CLASS_B, 1);
+
+	mlx4_free_cmd_mailbox(dev, mailbox);
+
+	if (!err)
+		mlx4_dbg(dev, "Mapped page at %llx to %llx for ICM.\n",
+			  (unsigned long long) dma_addr, (unsigned long long) virt);
+
+	return err;
 }
 
 int mlx4_MAP_ICM_AUX(struct mlx4_dev *dev, struct mlx4_icm *icm)
@@ -223,13 +461,64 @@ int mlx4_MAP_ICM_AUX(struct mlx4_dev *dev, struct mlx4_icm *icm)
 
 int mlx4_UNMAP_ICM_AUX(struct mlx4_dev *dev)
 {
-	return mlx4_cmd(dev, 0, 0, 0, MLX4_CMD_UNMAP_ICM_AUX, MLX4_CMD_TIME_CLASS_B);
+	return mlx4_cmd(dev, 0, 0, 0, MLX4_CMD_UNMAP_ICM_AUX, MLX4_CMD_TIME_CLASS_B, 1);
 }
 
-int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj)
+static struct mlx4_icm *mlx4_alloc_fmr(struct mlx4_dev *dev, int npages,
+				    gfp_t gfp_mask)
+{
+	struct mlx4_icm *icm;
+	struct mlx4_icm_chunk *chunk;
+	int i;
+
+	icm = kzalloc(sizeof *icm, gfp_mask & ~(__GFP_HIGHMEM | __GFP_NOWARN));
+	if (!icm) {
+		mlx4_dbg(dev, "alloc fmr failed to alloc icm mem\n");
+		return NULL;
+	}
+
+	icm->refcount = 0;
+	INIT_LIST_HEAD(&icm->chunk_list);
+
+	/* Fmr flow maps all pages into first chunk */
+	chunk = kzalloc(sizeof *chunk,
+			gfp_mask & ~(__GFP_HIGHMEM | __GFP_NOWARN));
+	if (!chunk) {
+		mlx4_dbg(dev, "alloc fmr failed to alloc chunk mem\n");
+		goto out_free_icm;
+	}
+
+	/* The memory is allocated but not dma mapped */
+	for (i = 0; i < npages; ++i) {
+		chunk->fmr_pages[i] = alloc_page(gfp_mask);
+		if (!chunk->fmr_pages[i]) {
+			mlx4_dbg(dev, "alloc fmr failed to alloc chunk mem\n");
+			goto out_free_chunk;
+		}
+	}
+
+	chunk->npages = npages;
+	list_add_tail(&chunk->list, &icm->chunk_list);
+	return icm;
+
+out_free_chunk:
+	for (; i > 0; --i)
+		__free_page(chunk->fmr_pages[i]);
+	kfree(chunk);
+
+out_free_icm:
+	kfree(icm);
+
+	return NULL;
+}
+
+int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+		   enum mlx4_mr_flags flags)
 {
 	int i = (obj & (table->num_obj - 1)) / (MLX4_TABLE_CHUNK_SIZE / table->obj_size);
 	int ret = 0;
+	int fmr_flow;
+	gfp_t gfp_mask;
 
 	mutex_lock(&table->mutex);
 
@@ -238,48 +527,71 @@ int mlx4_table_get(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj)
 		goto out;
 	}
 
-	table->icm[i] = mlx4_alloc_icm(dev, MLX4_TABLE_CHUNK_SIZE >> PAGE_SHIFT,
-				       (table->lowmem ? GFP_KERNEL : GFP_HIGHUSER) |
-				       __GFP_NOWARN, table->coherent);
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+	gfp_mask = (table->lowmem ? GFP_KERNEL : GFP_HIGHUSER) | __GFP_NOWARN;
+
+	table->icm[i] = fmr_flow ?
+			mlx4_alloc_fmr(dev, MLX4_TABLE_CHUNK_PAGES, gfp_mask) :
+			mlx4_alloc_icm(dev, MLX4_TABLE_CHUNK_PAGES, gfp_mask,
+				       table->coherent);
 	if (!table->icm[i]) {
 		ret = -ENOMEM;
 		goto out;
 	}
 
-	if (mlx4_MAP_ICM(dev, table->icm[i], table->virt +
-			 (u64) i * MLX4_TABLE_CHUNK_SIZE)) {
-		mlx4_free_icm(dev, table->icm[i], table->coherent);
+	ret = fmr_flow ?
+		mlx4_MAP_FMR(dev, table->icm[i], table->virt +
+			     (u64) i * MLX4_TABLE_CHUNK_SIZE) :
+		mlx4_MAP_ICM(dev, table->icm[i], table->virt +
+			     (u64) i * MLX4_TABLE_CHUNK_SIZE);
+
+	if (ret) {
+		mlx4_free_icm(dev, table->icm[i], table->coherent, flags);
 		table->icm[i] = NULL;
 		ret = -ENOMEM;
 		goto out;
 	}
 
 	++table->icm[i]->refcount;
+	table->icm[i]->chunk_size = MLX4_TABLE_CHUNK_SIZE;
 
 out:
 	mutex_unlock(&table->mutex);
 	return ret;
 }
 
-void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj)
+void mlx4_table_put(struct mlx4_dev *dev, struct mlx4_icm_table *table, int obj,
+		    enum mlx4_mr_flags flags)
 {
 	int i;
+	int fmr_flow;
 
 	i = (obj & (table->num_obj - 1)) / (MLX4_TABLE_CHUNK_SIZE / table->obj_size);
 
 	mutex_lock(&table->mutex);
 
-	if (--table->icm[i]->refcount == 0) {
-		mlx4_UNMAP_ICM(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
-			       MLX4_TABLE_CHUNK_SIZE / MLX4_ICM_PAGE_SIZE);
-		mlx4_free_icm(dev, table->icm[i], table->coherent);
-		table->icm[i] = NULL;
-	}
+	if (--table->icm[i]->refcount > 0)
+		goto out;
 
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+	if (fmr_flow)
+		mlx4_UNMAP_FMR(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
+			       table->icm[i]->chunk_size / MLX4_ICM_PAGE_SIZE,
+			       table->icm[i]);
+	else
+		mlx4_UNMAP_ICM(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
+			       table->icm[i]->chunk_size / MLX4_ICM_PAGE_SIZE);
+
+	mlx4_free_icm(dev, table->icm[i], table->coherent, flags);
+	table->icm[i] = NULL;
+
+out:
 	mutex_unlock(&table->mutex);
 }
 
-void *mlx4_table_find(struct mlx4_icm_table *table, int obj, dma_addr_t *dma_handle)
+void *mlx4_table_find(struct mlx4_dev *dev, struct mlx4_icm_table *table,
+		      int obj, dma_addr_t *dma_handle,
+		      enum mlx4_mr_flags flags)
 {
 	int idx, offset, dma_offset, i;
 	struct mlx4_icm_chunk *chunk;
@@ -298,6 +610,18 @@ void *mlx4_table_find(struct mlx4_icm_table *table, int obj, dma_addr_t *dma_han
 	if (!icm)
 		goto out;
 
+	if (mlx4_fmr_flow(dev, flags)) {
+		/* fmr flow maps all pages into first chunk */
+		chunk = list_empty(&icm->chunk_list) ? NULL :
+			list_entry(icm->chunk_list.next, struct mlx4_icm_chunk,
+				   list);
+		if (!chunk)
+			return NULL;
+
+		page = chunk->fmr_pages[offset / PAGE_SIZE];
+		offset %= PAGE_SIZE;
+		goto out;
+	}
 	list_for_each_entry(chunk, &icm->chunk_list, list) {
 		for (i = 0; i < chunk->npages; ++i) {
 			if (dma_handle && dma_offset >= 0) {
@@ -325,13 +649,13 @@ out:
 }
 
 int mlx4_table_get_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
-			 int start, int end)
+			 int start, int end, enum mlx4_mr_flags flags)
 {
 	int inc = MLX4_TABLE_CHUNK_SIZE / table->obj_size;
 	int i, err;
 
 	for (i = start; i <= end; i += inc) {
-		err = mlx4_table_get(dev, table, i);
+		err = mlx4_table_get(dev, table, i, flags);
 		if (err)
 			goto fail;
 	}
@@ -341,19 +665,19 @@ int mlx4_table_get_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 fail:
 	while (i > start) {
 		i -= inc;
-		mlx4_table_put(dev, table, i);
+		mlx4_table_put(dev, table, i, flags);
 	}
 
 	return err;
 }
 
 void mlx4_table_put_range(struct mlx4_dev *dev, struct mlx4_icm_table *table,
-			  int start, int end)
+			  int start, int end, enum mlx4_mr_flags flags)
 {
 	int i;
 
 	for (i = start; i <= end; i += MLX4_TABLE_CHUNK_SIZE / table->obj_size)
-		mlx4_table_put(dev, table, i);
+		mlx4_table_put(dev, table, i, flags);
 }
 
 int mlx4_init_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table,
@@ -371,6 +695,10 @@ int mlx4_init_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 	table->icm      = kcalloc(num_icm, sizeof *table->icm, GFP_KERNEL);
 	if (!table->icm)
 		return -ENOMEM;
+
+	for (i = 0; i < num_icm; ++i)
+		table->icm[i] = NULL;
+
 	table->virt     = virt;
 	table->num_icm  = num_icm;
 	table->num_obj  = nobj;
@@ -389,8 +717,10 @@ int mlx4_init_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 					       __GFP_NOWARN, use_coherent);
 		if (!table->icm[i])
 			goto err;
-		if (mlx4_MAP_ICM(dev, table->icm[i], virt + i * MLX4_TABLE_CHUNK_SIZE)) {
-			mlx4_free_icm(dev, table->icm[i], use_coherent);
+		if (mlx4_MAP_ICM(dev, table->icm[i], virt +
+				 i * MLX4_TABLE_CHUNK_SIZE)) {
+			mlx4_free_icm(dev, table->icm[i], use_coherent,
+				      MLX4_MR_FLAG_NONE);
 			table->icm[i] = NULL;
 			goto err;
 		}
@@ -400,6 +730,7 @@ int mlx4_init_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table,
 		 * gets freed (since it contains reserved firmware objects).
 		 */
 		++table->icm[i]->refcount;
+		table->icm[i]->chunk_size = chunk_size;
 	}
 
 	return 0;
@@ -408,23 +739,36 @@ err:
 	for (i = 0; i < num_icm; ++i)
 		if (table->icm[i]) {
 			mlx4_UNMAP_ICM(dev, virt + i * MLX4_TABLE_CHUNK_SIZE,
-				       MLX4_TABLE_CHUNK_SIZE / MLX4_ICM_PAGE_SIZE);
-			mlx4_free_icm(dev, table->icm[i], use_coherent);
+				       table->icm[i]->chunk_size /
+				       MLX4_ICM_PAGE_SIZE);
+			mlx4_free_icm(dev, table->icm[i], use_coherent,
+				      MLX4_MR_FLAG_NONE);
 		}
 
 	return -ENOMEM;
 }
 
-void mlx4_cleanup_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table)
+void mlx4_cleanup_icm_table(struct mlx4_dev *dev, struct mlx4_icm_table *table,
+			    enum mlx4_mr_flags flags)
 {
 	int i;
 
-	for (i = 0; i < table->num_icm; ++i)
-		if (table->icm[i]) {
+	for (i = 0; i < table->num_icm; ++i) {
+		if (!table->icm[i])
+			continue;
+
+		if (mlx4_fmr_flow(dev, flags))
+			mlx4_UNMAP_FMR(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
+				       table->icm[i]->chunk_size / MLX4_ICM_PAGE_SIZE,
+				       table->icm[i]);
+		else
 			mlx4_UNMAP_ICM(dev, table->virt + i * MLX4_TABLE_CHUNK_SIZE,
-				       MLX4_TABLE_CHUNK_SIZE / MLX4_ICM_PAGE_SIZE);
-			mlx4_free_icm(dev, table->icm[i], table->coherent);
-		}
+				       table->icm[i]->chunk_size /
+				       MLX4_ICM_PAGE_SIZE);
+
+		mlx4_free_icm(dev, table->icm[i], table->coherent, flags);
+	}
 
 	kfree(table->icm);
+	table->icm = NULL;
 }

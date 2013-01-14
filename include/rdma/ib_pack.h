@@ -228,16 +228,16 @@ struct ib_unpacked_vlan {
 struct ib_ud_header {
 	int                     lrh_present;
 	struct ib_unpacked_lrh  lrh;
-	int			eth_present;
-	struct ib_unpacked_eth	eth;
+	int                     eth_present;
+	struct ib_unpacked_eth  eth;
 	int                     vlan_present;
 	struct ib_unpacked_vlan vlan;
-	int			grh_present;
-	struct ib_unpacked_grh	grh;
-	struct ib_unpacked_bth	bth;
+	int                     grh_present;
+	struct ib_unpacked_grh  grh;
+	struct ib_unpacked_bth  bth;
 	struct ib_unpacked_deth deth;
-	int			immediate_present;
-	__be32			immediate_data;
+	int            		immediate_present;
+	__be32         		immediate_data;
 };
 
 void ib_pack(const struct ib_field        *desc,
@@ -250,11 +250,11 @@ void ib_unpack(const struct ib_field        *desc,
 	       void                         *buf,
 	       void                         *structure);
 
-void ib_ud_header_init(int		    payload_bytes,
+void ib_ud_header_init(int     		    payload_bytes,
 		       int		    lrh_present,
 		       int		    eth_present,
 		       int		    vlan_present,
-		       int		    grh_present,
+		       int    		    grh_present,
 		       int		    immediate_present,
 		       struct ib_ud_header *header);
 
@@ -263,5 +263,7 @@ int ib_ud_header_pack(struct ib_ud_header *header,
 
 int ib_ud_header_unpack(void                *buf,
 			struct ib_ud_header *header);
+int ib_lrh_header_pack(struct ib_unpacked_lrh *lrh, void *buf);
+int ib_lrh_header_unpack(void *buf, struct ib_unpacked_lrh *lrh);
 
 #endif /* IB_PACK_H */

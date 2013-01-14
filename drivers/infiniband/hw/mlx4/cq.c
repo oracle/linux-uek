@@ -33,10 +33,13 @@
 
 #include <linux/mlx4/cq.h>
 #include <linux/mlx4/qp.h>
-#include <linux/slab.h>
+#include <linux/mlx4/srq.h>
 
 #include "mlx4_ib.h"
 #include "user.h"
+
+/* Which firmware version adds support for Resize CQ */
+#define MLX4_FW_VER_RESIZE_CQ  mlx4_fw_ver(2, 5, 0)
 
 static void mlx4_ib_cq_comp(struct mlx4_cq *cq)
 {
@@ -106,7 +109,7 @@ static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *
 		goto out;
 
 	err = mlx4_mtt_init(dev->dev, buf->buf.npages, buf->buf.page_shift,
-				    &buf->mtt);
+				    &buf->mtt, MLX4_MR_FLAG_NONE);
 	if (err)
 		goto err_buf;
 
@@ -117,7 +120,7 @@ static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *
 	return 0;
 
 err_mtt:
-	mlx4_mtt_cleanup(dev->dev, &buf->mtt);
+	mlx4_mtt_cleanup(dev->dev, &buf->mtt, MLX4_MR_FLAG_NONE);
 
 err_buf:
 	mlx4_buf_free(dev->dev, nent * sizeof(struct mlx4_cqe),
@@ -144,7 +147,8 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *cont
 		return PTR_ERR(*umem);
 
 	err = mlx4_mtt_init(dev->dev, ib_umem_page_count(*umem),
-			    ilog2((*umem)->page_size), &buf->mtt);
+			    ilog2((*umem)->page_size), &buf->mtt,
+			    MLX4_MR_FLAG_NONE);
 	if (err)
 		goto err_buf;
 
@@ -155,7 +159,7 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *cont
 	return 0;
 
 err_mtt:
-	mlx4_mtt_cleanup(dev->dev, &buf->mtt);
+	mlx4_mtt_cleanup(dev->dev, &buf->mtt, MLX4_MR_FLAG_NONE);
 
 err_buf:
 	ib_umem_release(*umem);
@@ -172,10 +176,12 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev, int entries, int vector
 	struct mlx4_uar *uar;
 	int err;
 
-	if (entries < 1 || entries > dev->dev->caps.max_cqes)
+	if (entries < 1 || entries > dev->dev->caps.max_cqes) {
+		mlx4_ib_dbg("invalid num of entries: %d", entries);
 		return ERR_PTR(-EINVAL);
+	}
 
-	cq = kmalloc(sizeof *cq, GFP_KERNEL);
+	cq = kzalloc(sizeof *cq, GFP_KERNEL);
 	if (!cq)
 		return ERR_PTR(-ENOMEM);
 
@@ -223,7 +229,9 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev, int entries, int vector
 	}
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar,
-			    cq->db.dma, &cq->mcq, vector, 0);
+			    cq->db.dma, &cq->mcq,
+			    vector == IB_CQ_VECTOR_LEAST_ATTACHED ?
+			    MLX4_LEAST_ATTACHED_VECTOR : vector, 0);
 	if (err)
 		goto err_dbmap;
 
@@ -243,7 +251,7 @@ err_dbmap:
 		mlx4_ib_db_unmap_user(to_mucontext(context), &cq->db);
 
 err_mtt:
-	mlx4_mtt_cleanup(dev->dev, &cq->buf.mtt);
+	mlx4_mtt_cleanup(dev->dev, &cq->buf.mtt, MLX4_MR_FLAG_NONE);
 
 	if (context)
 		ib_umem_release(cq->umem);
@@ -350,6 +358,9 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	int outst_cqe;
 	int err;
 
+	if (dev->dev->caps.fw_ver < MLX4_FW_VER_RESIZE_CQ)
+		return -ENOSYS;
+
 	mutex_lock(&cq->resize_mutex);
 
 	if (entries < 1 || entries > dev->dev->caps.max_cqes) {
@@ -386,7 +397,7 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	if (err)
 		goto err_buf;
 
-	mlx4_mtt_cleanup(dev->dev, &mtt);
+	mlx4_mtt_cleanup(dev->dev, &mtt, MLX4_MR_FLAG_NONE);
 	if (ibcq->uobject) {
 		cq->buf      = cq->resize_buf->buf;
 		cq->ibcq.cqe = cq->resize_buf->cqe;
@@ -399,7 +410,7 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	} else {
 		struct mlx4_ib_cq_buf tmp_buf;
 		int tmp_cqe = 0;
-
+ 
 		spin_lock_irq(&cq->lock);
 		if (cq->resize_buf) {
 			mlx4_ib_cq_resize_copy_cqes(cq);
@@ -420,7 +431,7 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	goto out;
 
 err_buf:
-	mlx4_mtt_cleanup(dev->dev, &cq->resize_buf->buf.mtt);
+	mlx4_mtt_cleanup(dev->dev, &cq->resize_buf->buf.mtt, MLX4_MR_FLAG_NONE);
 	if (!ibcq->uobject)
 		mlx4_ib_free_cq_buf(dev, &cq->resize_buf->buf,
 				    cq->resize_buf->cqe);
@@ -444,7 +455,7 @@ int mlx4_ib_destroy_cq(struct ib_cq *cq)
 	struct mlx4_ib_cq *mcq = to_mcq(cq);
 
 	mlx4_cq_free(dev->dev, &mcq->mcq);
-	mlx4_mtt_cleanup(dev->dev, &mcq->buf.mtt);
+	mlx4_mtt_cleanup(dev->dev, &mcq->buf.mtt, MLX4_MR_FLAG_NONE);
 
 	if (cq->uobject) {
 		mlx4_ib_db_unmap_user(to_mucontext(cq->uobject->context), &mcq->db);
@@ -544,6 +555,37 @@ static int mlx4_ib_ipoib_csum_ok(__be16 status, __be16 checksum)
 		checksum == cpu_to_be16(0xffff);
 }
 
+static int ph_to_virt_pkey(struct mlx4_ib_dev *dev, int port, u16 ph_idx, u16 *virt_idx)
+{
+	if (port < 1 || port > dev->num_ports) {
+		mlx4_ib_warn(&dev->ib_dev, "port = %d is out of range\n", port);
+		return -EINVAL;
+	}
+
+	*virt_idx = dev->pkeys.phys2virt_pkey[port - 1][ph_idx];
+	return 0;
+}
+
+static int use_tunnel_data(struct mlx4_ib_qp *qp, struct mlx4_ib_cq *cq, struct ib_wc *wc,
+			   unsigned tail, struct mlx4_cqe *cqe)
+{
+	struct mlx4_ib_proxy_sqp_hdr *hdr;
+
+	ib_dma_sync_single_for_cpu(qp->ibqp.device,
+				   qp->sqp_proxy_rcv[tail].map,
+				   sizeof(struct mlx4_ib_proxy_sqp_hdr),
+				   DMA_FROM_DEVICE);
+	hdr = (struct mlx4_ib_proxy_sqp_hdr *) (qp->sqp_proxy_rcv[tail].addr);
+	wc->pkey_index	= hdr->tun.pkey_index;
+	wc->slid	= hdr->tun.slid;
+	wc->sl		= hdr->tun.sl;
+	wc->src_qp	= hdr->tun.src_qp;
+	wc->wc_flags   |= hdr->tun.wc_flags & IB_WC_GRH;
+	wc->dlid_path_bits = 0;
+	wc->csum_ok	= mlx4_ib_ipoib_csum_ok(cqe->status, cqe->checksum);
+	return 0;
+}
+
 static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 			    struct mlx4_ib_qp **cur_qp,
 			    struct ib_wc *wc)
@@ -551,11 +593,17 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 	struct mlx4_cqe *cqe;
 	struct mlx4_qp *mqp;
 	struct mlx4_ib_wq *wq;
-	struct mlx4_ib_srq *srq;
+	struct mlx4_ib_srq *uninitialized_var(srq);
+	struct mlx4_srq *msrq;
 	int is_send;
 	int is_error;
 	u32 g_mlpath_rqpn;
+	int is_xrc_recv = 0;
 	u16 wqe_ctr;
+	u16 ph_pkey_index, virt_pkey_index;
+	int port;
+	int err;
+	unsigned tail = 0;
 
 repoll:
 	cqe = next_cqe_sw(cq);
@@ -596,7 +644,24 @@ repoll:
 		goto repoll;
 	}
 
-	if (!*cur_qp ||
+	if ((be32_to_cpu(cqe->vlan_my_qpn) & (1 << 23)) && !is_send) {
+		 /*
+		  * We do not have to take the XRC SRQ table lock here,
+		  * because CQs will be locked while XRC SRQs are removed
+		  * from the table.
+		  */
+		 msrq = __mlx4_srq_lookup(to_mdev(cq->ibcq.device)->dev,
+					 be32_to_cpu(cqe->g_mlpath_rqpn) &
+					 0xffffff);
+		 if (unlikely(!msrq)) {
+			 printk(KERN_WARNING "CQ %06x with entry for unknown "
+				"XRC SRQ %06x\n", cq->mcq.cqn,
+				be32_to_cpu(cqe->g_mlpath_rqpn) & 0xffffff);
+			 return -EINVAL;
+		 }
+		 is_xrc_recv = 1;
+		 srq = to_mibsrq(msrq);
+	} else if (!*cur_qp ||
 	    (be32_to_cpu(cqe->vlan_my_qpn) & MLX4_CQE_QPN_MASK) != (*cur_qp)->mqp.qpn) {
 		/*
 		 * We do not have to take the QP table lock here,
@@ -614,7 +679,7 @@ repoll:
 		*cur_qp = to_mibqp(mqp);
 	}
 
-	wc->qp = &(*cur_qp)->ibqp;
+	wc->qp = is_xrc_recv ? NULL: &(*cur_qp)->ibqp;
 
 	if (is_send) {
 		wq = &(*cur_qp)->sq;
@@ -624,6 +689,10 @@ repoll:
 		}
 		wc->wr_id = wq->wrid[wq->tail & (wq->wqe_cnt - 1)];
 		++wq->tail;
+	} else if (is_xrc_recv) {
+		wqe_ctr = be16_to_cpu(cqe->wqe_index);
+		wc->wr_id = srq->wrid[wqe_ctr];
+		mlx4_ib_free_srq_wqe(srq, wqe_ctr);
 	} else if ((*cur_qp)->ibqp.srq) {
 		srq = to_msrq((*cur_qp)->ibqp.srq);
 		wqe_ctr = be16_to_cpu(cqe->wqe_index);
@@ -631,12 +700,14 @@ repoll:
 		mlx4_ib_free_srq_wqe(srq, wqe_ctr);
 	} else {
 		wq	  = &(*cur_qp)->rq;
-		wc->wr_id = wq->wrid[wq->tail & (wq->wqe_cnt - 1)];
+		tail 	  = wq->tail & (wq->wqe_cnt - 1);
+		wc->wr_id = wq->wrid[tail];
 		++wq->tail;
 	}
 
 	if (unlikely(is_error)) {
 		mlx4_ib_handle_error_cqe((struct mlx4_err_cqe *) cqe, wc);
+		wc->opcode = is_send;
 		return 0;
 	}
 
@@ -714,13 +785,39 @@ repoll:
 			break;
 		}
 
+		if (mlx4_is_mfunc(to_mdev(cq->ibcq.device)->dev)) {
+			if (is_xrc_recv) {
+				mqp = __mlx4_qp_lookup(to_mdev(cq->ibcq.device)->dev,
+						       be32_to_cpu(cqe->vlan_my_qpn));
+				if (unlikely(!mqp)) {
+					printk(KERN_WARNING "CQ %06x, XRC SRQ 0x%x with unknown QPN %06x\n",
+					       cq->mcq.cqn, srq->ibsrq.xrc_srq_num,
+					       be32_to_cpu(cqe->vlan_my_qpn) & MLX4_CQE_QPN_MASK);
+					return -EINVAL;
+				}
+				port = to_mibqp(mqp)->port;
+			} else if ((*cur_qp)->mlx4_ib_qp_type == MLX4_IB_QPT_PROXY_SMI ||
+				   (*cur_qp)->mlx4_ib_qp_type == MLX4_IB_QPT_PROXY_GSI) {
+				return use_tunnel_data(*cur_qp, cq, wc, tail, cqe);
+			} else
+				port = (*cur_qp)->port;
+
+			ph_pkey_index = be32_to_cpu(cqe->immed_rss_invalid) & 0x7f;
+			err = ph_to_virt_pkey(to_mdev(cq->ibcq.device), port,
+					      ph_pkey_index, &virt_pkey_index);
+			if (err)
+				return err;
+			wc->pkey_index = virt_pkey_index;
+		} else {
+			wc->pkey_index = be32_to_cpu(cqe->immed_rss_invalid) & 0x7f;
+		}
+
 		wc->slid	   = be16_to_cpu(cqe->rlid);
 		wc->sl		   = be16_to_cpu(cqe->sl_vid) >> 12;
 		g_mlpath_rqpn	   = be32_to_cpu(cqe->g_mlpath_rqpn);
 		wc->src_qp	   = g_mlpath_rqpn & 0xffffff;
 		wc->dlid_path_bits = (g_mlpath_rqpn >> 24) & 0x7f;
 		wc->wc_flags	  |= g_mlpath_rqpn & 0x80000000 ? IB_WC_GRH : 0;
-		wc->pkey_index     = be32_to_cpu(cqe->immed_rss_invalid) & 0x7f;
 		wc->csum_ok	   = mlx4_ib_ipoib_csum_ok(cqe->status, cqe->checksum);
 	}
 
@@ -759,7 +856,7 @@ int mlx4_ib_arm_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	mlx4_cq_arm(&to_mcq(ibcq)->mcq,
 		    (flags & IB_CQ_SOLICITED_MASK) == IB_CQ_SOLICITED ?
 		    MLX4_CQ_DB_REQ_NOT_SOL : MLX4_CQ_DB_REQ_NOT,
-		    to_mdev(ibcq->device)->uar_map,
+		    to_mdev(ibcq->device)->priv_uar.map,
 		    MLX4_GET_DOORBELL_LOCK(&to_mdev(ibcq->device)->uar_lock));
 
 	return 0;
@@ -771,6 +868,10 @@ void __mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq)
 	int nfreed = 0;
 	struct mlx4_cqe *cqe, *dest;
 	u8 owner_bit;
+	int is_xrc_srq = 0;
+
+	if (srq && srq->ibsrq.xrc_cq)
+		is_xrc_srq = 1;
 
 	/*
 	 * First we need to find the current producer index, so we
@@ -789,7 +890,10 @@ void __mlx4_ib_cq_clean(struct mlx4_ib_cq *cq, u32 qpn, struct mlx4_ib_srq *srq)
 	 */
 	while ((int) --prod_index - (int) cq->mcq.cons_index >= 0) {
 		cqe = get_cqe(cq, prod_index & cq->ibcq.cqe);
-		if ((be32_to_cpu(cqe->vlan_my_qpn) & MLX4_CQE_QPN_MASK) == qpn) {
+		if (((be32_to_cpu(cqe->vlan_my_qpn) & 0xffffff) == qpn) ||
+		    (is_xrc_srq &&
+		     (be32_to_cpu(cqe->g_mlpath_rqpn) & 0xffffff) ==
+		      srq->msrq.srqn)) {
 			if (srq && !(cqe->owner_sr_opcode & MLX4_CQE_IS_SEND_MASK))
 				mlx4_ib_free_srq_wqe(srq, be16_to_cpu(cqe->wqe_index));
 			++nfreed;

@@ -35,7 +35,6 @@
 
 #include <linux/mutex.h>
 #include <linux/inetdevice.h>
-#include <linux/slab.h>
 #include <linux/workqueue.h>
 #include <net/arp.h>
 #include <net/neighbour.h>
@@ -130,8 +129,8 @@ int rdma_translate_ip(struct sockaddr *addr, struct rdma_dev_addr *dev_addr)
 
 #if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
 	case AF_INET6:
-		rcu_read_lock();
-		for_each_netdev_rcu(&init_net, dev) {
+		read_lock(&dev_base_lock);
+		for_each_netdev(&init_net, dev) {
 			if (ipv6_chk_addr(&init_net,
 					  &((struct sockaddr_in6 *) addr)->sin6_addr,
 					  dev, 1)) {
@@ -139,7 +138,7 @@ int rdma_translate_ip(struct sockaddr *addr, struct rdma_dev_addr *dev_addr)
 				break;
 			}
 		}
-		rcu_read_unlock();
+		read_unlock(&dev_base_lock);
 		break;
 #endif
 	}
@@ -185,20 +184,15 @@ static int addr4_resolve(struct sockaddr_in *src_in,
 	__be32 dst_ip = dst_in->sin_addr.s_addr;
 	struct rtable *rt;
 	struct neighbour *neigh;
-	struct flowi4 fl4;
 	int ret;
 
-	memset(&fl4, 0, sizeof(fl4));
-	fl4.daddr = dst_ip;
-	fl4.saddr = src_ip;
-	fl4.flowi4_oif = addr->bound_dev_if;
-	rt = ip_route_output_key(&init_net, &fl4);
+	rt = ip_route_output(&init_net, dst_ip, src_ip, 0, addr->bound_dev_if);
 	if (IS_ERR(rt)) {
 		ret = PTR_ERR(rt);
 		goto out;
 	}
 	src_in->sin_family = AF_INET;
-	src_in->sin_addr.s_addr = fl4.saddr;
+	src_in->sin_addr.s_addr = rt->rt_src;
 
 	if (rt->dst.dev->flags & IFF_LOOPBACK) {
 		ret = rdma_translate_ip((struct sockaddr *) dst_in, addr);
@@ -215,9 +209,7 @@ static int addr4_resolve(struct sockaddr_in *src_in,
 
 	neigh = neigh_lookup(&arp_tbl, &rt->rt_gateway, rt->dst.dev);
 	if (!neigh || !(neigh->nud_state & NUD_VALID)) {
-		rcu_read_lock();
 		neigh_event_send(dst_get_neighbour(&rt->dst), NULL);
-		rcu_read_unlock();
 		ret = -ENODATA;
 		if (neigh)
 			goto release;
@@ -274,17 +266,15 @@ static int addr6_resolve(struct sockaddr_in6 *src_in,
 		ret = rdma_copy_addr(addr, dst->dev, NULL);
 		goto put;
 	}
-
-	rcu_read_lock();
+	
 	neigh = dst_get_neighbour(dst);
 	if (!neigh || !(neigh->nud_state & NUD_VALID)) {
-		if (neigh)
-			neigh_event_send(neigh, NULL);
+		neigh_event_send(neigh, NULL);
 		ret = -ENODATA;
-	} else {
-		ret = rdma_copy_addr(addr, dst->dev, neigh->ha);
+		goto put;
 	}
-	rcu_read_unlock();
+
+	ret = rdma_copy_addr(addr, dst->dev, neigh->ha);
 put:
 	dst_release(dst);
 	return ret;
@@ -440,7 +430,7 @@ static struct notifier_block nb = {
 	.notifier_call = netevent_callback
 };
 
-static int __init addr_init(void)
+static int addr_init(void)
 {
 	addr_wq = create_singlethread_workqueue("ib_addr");
 	if (!addr_wq)
@@ -450,7 +440,7 @@ static int __init addr_init(void)
 	return 0;
 }
 
-static void __exit addr_cleanup(void)
+static void addr_cleanup(void)
 {
 	unregister_netevent_notifier(&nb);
 	destroy_workqueue(addr_wq);

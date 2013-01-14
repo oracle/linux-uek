@@ -33,6 +33,7 @@
 #include <linux/module.h>
 
 #include <linux/init.h>
+#include <linux/slab.h>
 #include <linux/seq_file.h>
 
 #include <asm/uaccess.h>
@@ -49,7 +50,8 @@ static ssize_t show_parent(struct device *d, struct device_attribute *attr,
 }
 static DEVICE_ATTR(parent, S_IRUGO, show_parent, NULL);
 
-int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
+		unsigned char child_index)
 {
 	struct ipoib_dev_priv *ppriv, *priv;
 	char intf_name[IFNAMSIZ];
@@ -59,31 +61,52 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 		return -EPERM;
 
 	ppriv = netdev_priv(pdev);
-
-	if (!rtnl_trylock())
-		return restart_syscall();
+	while (!rtnl_trylock()) {
+		if (test_bit(IPOIB_FLAG_MODULE_DOWN, &ppriv->flags)) {
+			ipoib_dbg(ppriv, "%s: module is going down - nop\n",
+				__func__);
+			return -ENODEV;
+		}
+		/* enable other tasks to unlock the rtnl */
+		msleep(5);
+	}	
 	mutex_lock(&ppriv->vlan_mutex);
 
 	/*
-	 * First ensure this isn't a duplicate. We check the parent device and
-	 * then all of the child interfaces to make sure the Pkey doesn't match.
+	 * First ensure this isn't a duplicate. We check all of the child
+	 * interfaces to make sure the Pkey AND the child index
+	 * don't match.
 	 */
-	if (ppriv->pkey == pkey) {
-		result = -ENOTUNIQ;
-		priv = NULL;
-		goto err;
-	}
-
 	list_for_each_entry(priv, &ppriv->child_intfs, list) {
-		if (priv->pkey == pkey) {
+		if (priv->pkey == pkey && priv->child_index == child_index) {
 			result = -ENOTUNIQ;
 			priv = NULL;
 			goto err;
 		}
 	}
 
-	snprintf(intf_name, sizeof intf_name, "%s.%04x",
-		 ppriv->dev->name, pkey);
+	/*
+	 * for the case of non-legacy and same pkey childs we wanted to use
+	 * a notation of ibN.pkey:index and ibN:index but this is problematic
+	 * with tools like ifconfig who treat devices with ":" in their names
+	 * as aliases which are restriced, e.t w.r.t counters, etc
+	 */
+	if (ppriv->pkey != pkey && child_index == 0) /* legacy child */
+		snprintf(intf_name, sizeof intf_name, "%s.%04x",
+			 ppriv->dev->name, pkey);
+	else if (ppriv->pkey != pkey && child_index != 0) /* non-legacy child */
+		snprintf(intf_name, sizeof intf_name, "%s.%04x.%d",
+			 ppriv->dev->name, pkey, child_index);
+	else if (ppriv->pkey == pkey && child_index != 0) /* same pkey child */
+		snprintf(intf_name, sizeof intf_name, "%s.%d",
+			 ppriv->dev->name, child_index);
+	else  {
+		ipoib_warn(ppriv, "wrong pkey/child_index pairing %04x %d\n",
+			   pkey, child_index);
+		result = -EINVAL;
+		goto err;
+	}
+
 	priv = ipoib_intf_alloc(intf_name);
 	if (!priv) {
 		result = -ENOMEM;
@@ -101,6 +124,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 		goto err;
 
 	priv->pkey = pkey;
+	priv->child_index = child_index;
 
 	memcpy(priv->dev->dev_addr, ppriv->dev->dev_addr, INFINIBAND_ALEN);
 	priv->dev->broadcast[8] = pkey >> 8;
@@ -157,7 +181,8 @@ err:
 	return result;
 }
 
-int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
+		unsigned char child_index)
 {
 	struct ipoib_dev_priv *ppriv, *priv, *tpriv;
 	struct net_device *dev = NULL;
@@ -166,14 +191,20 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 		return -EPERM;
 
 	ppriv = netdev_priv(pdev);
+	while (!rtnl_trylock()) {
+		if (test_bit(IPOIB_FLAG_MODULE_DOWN, &ppriv->flags)) {
+			ipoib_dbg(ppriv, "%s: module is going down - nop\n",
+				__func__);
+			return -ENODEV;
+		}
+		/* enable other tasks to unlock the rtnl */
+		msleep(5);
+	}
 
-	if (!rtnl_trylock())
-		return restart_syscall();
 	mutex_lock(&ppriv->vlan_mutex);
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
-		if (priv->pkey == pkey) {
+		if (priv->pkey == pkey && priv->child_index == child_index) {
 			unregister_netdevice(priv->dev);
-			ipoib_dev_cleanup(priv->dev);
 			list_del(&priv->list);
 			dev = priv->dev;
 			break;
@@ -183,6 +214,7 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 	rtnl_unlock();
 
 	if (dev) {
+		ipoib_dev_cleanup(dev);
 		free_netdev(dev);
 		return 0;
 	}

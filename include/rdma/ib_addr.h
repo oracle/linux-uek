@@ -39,9 +39,10 @@
 #include <linux/if_arp.h>
 #include <linux/netdevice.h>
 #include <linux/socket.h>
-#include <linux/if_vlan.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_pack.h>
+#include <linux/ethtool.h>
+#include <linux/if_vlan.h>
 
 struct rdma_addr_client {
 	atomic_t refcount;
@@ -133,34 +134,31 @@ static inline int rdma_addr_gid_offset(struct rdma_dev_addr *dev_addr)
 static inline void iboe_mac_vlan_to_ll(union ib_gid *gid, u8 *mac, u16 vid)
 {
 	memset(gid->raw, 0, 16);
-	*((__be32 *) gid->raw) = cpu_to_be32(0xfe800000);
-	if (vid < 0x1000) {
+	*((u32 *)gid->raw) = cpu_to_be32(0xfe800000);
+	if (vid) {
 		gid->raw[12] = vid & 0xff;
 		gid->raw[11] = vid >> 8;
 	} else {
 		gid->raw[12] = 0xfe;
 		gid->raw[11] = 0xff;
 	}
+
 	memcpy(gid->raw + 13, mac + 3, 3);
 	memcpy(gid->raw + 8, mac, 3);
 	gid->raw[8] ^= 2;
 }
 
-static inline u16 rdma_vlan_dev_vlan_id(const struct net_device *dev)
-{
-	return dev->priv_flags & IFF_802_1Q_VLAN ?
-		vlan_dev_vlan_id(dev) : 0xffff;
-}
-
 static inline void iboe_addr_get_sgid(struct rdma_dev_addr *dev_addr,
-				      union ib_gid *gid)
+					union ib_gid *gid)
 {
 	struct net_device *dev;
-	u16 vid = 0xffff;
+	u16 vid = 0;
 
 	dev = dev_get_by_index(&init_net, dev_addr->bound_dev_if);
 	if (dev) {
-		vid = rdma_vlan_dev_vlan_id(dev);
+#if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
+		vid = vlan_dev_vlan_id(dev);
+#endif
 		dev_put(dev);
 	}
 
@@ -217,19 +215,18 @@ static inline enum ib_mtu iboe_get_mtu(int mtu)
 static inline int iboe_get_rate(struct net_device *dev)
 {
 	struct ethtool_cmd cmd;
-	u32 speed;
 
-	if (dev_ethtool_get_settings(dev, &cmd))
+	if (!dev->ethtool_ops || !dev->ethtool_ops->get_settings ||
+	    dev->ethtool_ops->get_settings(dev, &cmd))
 		return IB_RATE_PORT_CURRENT;
 
-	speed = ethtool_cmd_speed(&cmd);
-	if (speed >= 40000)
+	if (cmd.speed >= 40000)
 		return IB_RATE_40_GBPS;
-	else if (speed >= 30000)
+	else if (cmd.speed >= 30000)
 		return IB_RATE_30_GBPS;
-	else if (speed >= 20000)
+	else if (cmd.speed >= 20000)
 		return IB_RATE_20_GBPS;
-	else if (speed >= 10000)
+	else if (cmd.speed >= 10000)
 		return IB_RATE_10_GBPS;
 	else
 		return IB_RATE_PORT_CURRENT;
@@ -237,7 +234,7 @@ static inline int iboe_get_rate(struct net_device *dev)
 
 static inline int rdma_link_local_addr(struct in6_addr *addr)
 {
-	if (addr->s6_addr32[0] == htonl(0xfe800000) &&
+	if (addr->s6_addr32[0] == cpu_to_be32(0xfe800000) &&
 	    addr->s6_addr32[1] == 0)
 		return 1;
 
@@ -253,7 +250,7 @@ static inline void rdma_get_ll_mac(struct in6_addr *addr, u8 *mac)
 
 static inline int rdma_is_multicast_addr(struct in6_addr *addr)
 {
-	return addr->s6_addr[0] == 0xff;
+	return addr->s6_addr[0] == 0xff ? 1 : 0;
 }
 
 static inline void rdma_get_mcast_mac(struct in6_addr *addr, u8 *mac)
@@ -271,13 +268,7 @@ static inline u16 rdma_get_vlan_id(union ib_gid *dgid)
 	u16 vid;
 
 	vid = dgid->raw[11] << 8 | dgid->raw[12];
-	return vid < 0x1000 ? vid : 0xffff;
-}
-
-static inline struct net_device *rdma_vlan_dev_real_dev(const struct net_device *dev)
-{
-	return dev->priv_flags & IFF_802_1Q_VLAN ?
-		vlan_dev_real_dev(dev) : 0;
+	return vid == 0xfffe ? 0 : vid  & 0xfff;
 }
 
 #endif /* IB_ADDR_H */

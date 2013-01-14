@@ -59,12 +59,15 @@ enum {
 	MLX4_CMD_HW_HEALTH_CHECK = 0x50,
 	MLX4_CMD_SET_PORT	 = 0xc,
 	MLX4_CMD_SET_NODE	 = 0x5a,
+	MLX4_CMD_QUERY_FUNC	 = 0x56,
 	MLX4_CMD_ACCESS_DDR	 = 0x2e,
 	MLX4_CMD_MAP_ICM	 = 0xffa,
 	MLX4_CMD_UNMAP_ICM	 = 0xff9,
 	MLX4_CMD_MAP_ICM_AUX	 = 0xffc,
 	MLX4_CMD_UNMAP_ICM_AUX	 = 0xffb,
 	MLX4_CMD_SET_ICM_SIZE	 = 0xffd,
+	MLX4_CMD_INFORM_FLR_DONE = 0x5b, /*master notify fw on finish for slave's flr*/
+	MLX4_CMD_MAD_DEMUX	 = 0x203,
 
 	/* TPT commands */
 	MLX4_CMD_SW2HW_MPT	 = 0xd,
@@ -119,20 +122,49 @@ enum {
 	/* miscellaneous commands */
 	MLX4_CMD_DIAG_RPRT	 = 0x30,
 	MLX4_CMD_NOP		 = 0x31,
+	MLX4_CMD_ACCESS_MEM	 = 0x2e,
+	MLX4_CMD_SET_VEP	 = 0x52,
+
+	/* Ethernet specific commands */
+	MLX4_CMD_SET_VLAN_FLTR	 = 0x47,
+	MLX4_CMD_SET_MCAST_FLTR	 = 0x48,
+	MLX4_CMD_DUMP_ETH_STATS	 = 0x49,
+
+	/* Communication channel commands */
+	MLX4_CMD_ARM_COMM_CHANNEL = 0x57,
+	MLX4_CMD_GEN_EQE	 = 0x58,
+
+	/* virtual commands */
+	MLX4_CMD_ALLOC_RES	 = 0xf00,
+	MLX4_CMD_FREE_RES	 = 0xf01,
+	MLX4_CMD_REPLACE_RES	 = 0xf02,
+	MLX4_CMD_GET_EVENT	 = 0xf03,
+	MLX4_CMD_QUERY_SLAVE_CAP = 0xf04,
+	MLX4_CMD_MCAST_ATTACH	 = 0xf05,
+	MLX4_CMD_COMM_INT	 = 0xf07,
+	MLX4_CMD_PROMISC	 = 0xf08,
+	MLX4_CMD_GET_PKEY_TABLE  = 0xf09,
+	MLX4_CMD_GET_GID_MAP     = 0xf10,
+	MLX4_CMD_ENABLE_FMR	 = 0xf11,
 
 	/* debug commands */
 	MLX4_CMD_QUERY_DEBUG_MSG = 0x2a,
 	MLX4_CMD_SET_DEBUG_MSG	 = 0x2b,
+
+	/* statistics commands */
+	MLX4_CMD_QUERY_IF_STAT	 = 0X54,
+	MLX4_CMD_SET_IF_STAT	 = 0X55,
 };
 
 enum {
-	MLX4_CMD_TIME_CLASS_A	= 10000,
-	MLX4_CMD_TIME_CLASS_B	= 10000,
-	MLX4_CMD_TIME_CLASS_C	= 10000,
+	MLX4_CMD_TIME_CLASS_A	= 60000,
+	MLX4_CMD_TIME_CLASS_B	= 60000,
+	MLX4_CMD_TIME_CLASS_C	= 60000,
 };
 
 enum {
-	MLX4_MAILBOX_SIZE	=  4096
+	MLX4_MAILBOX_SIZE	= 4096,
+	MLX4_ACCESS_MEM_ALIGN	= 256,
 };
 
 enum {
@@ -143,6 +175,42 @@ enum {
 	MLX4_SET_PORT_VLAN_TABLE = 0x3,
 	MLX4_SET_PORT_PRIO_MAP  = 0x4,
 	MLX4_SET_PORT_GID_TABLE = 0x5,
+	MLX4_SET_PORT_MODIFIERS
+};
+
+enum {
+	MLX4_DUMP_STATS_PORT_COUNTERS = 0x0,
+	MLX4_DUMP_STATS_FUNC_COUNTERS = 0x8,
+};
+
+enum {
+	MLX4_CMD_MAD_DEMUX_CONFIG 	= 0,
+	MLX4_CMD_MAD_DEMUX_QUERY_STATE  = 1,
+	MLX4_CMD_MAD_DEMUX_QUERY_REST	= 2, /* Query mad demux restrictions */
+};
+
+enum {
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_NOTICE 		= 1 << 0,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_NODE_DESC 		= 1 << 1,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_NODE_INFO 		= 1 << 2,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_SWITCH_INFO 	= 1 << 3,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_GUID_INFO 		= 1 << 4,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_PORT_INFO 		= 1 << 5,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_PKRY_TBL 		= 1 << 6,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_SL2VL_TBL 		= 1 << 7,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_VL_ARB_TBL 	= 1 << 8,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_LIN_FW_TBL 	= 1 << 9,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_RAND_FW_TBL 	= 1 << 10,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_MCAST_FW_TBL 	= 1 << 11,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_LINK_PAIRS_TBL 	= 1 << 12,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_SM_INFO 		= 1 << 13,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_VENDOR_DIAG 	= 1 << 14,
+	MLX4_CMD_MAD_DEMUX_SUBN_ATTR_LED_INFO 		= 1 << 15,
+};
+
+enum {
+	MLX4_CMD_MAD_DEMUX_SUBN_TRAP	 = 0x40,
+	MLX4_CMD_MAD_DEMUX_SUBN_TRAP_REP = 0x70,
 };
 
 struct mlx4_dev;
@@ -154,23 +222,23 @@ struct mlx4_cmd_mailbox {
 
 int __mlx4_cmd(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	       int out_is_imm, u32 in_modifier, u8 op_modifier,
-	       u16 op, unsigned long timeout);
+	       u16 op, unsigned long timeout, int native);
 
 /* Invoke a command with no output parameter */
 static inline int mlx4_cmd(struct mlx4_dev *dev, u64 in_param, u32 in_modifier,
-			   u8 op_modifier, u16 op, unsigned long timeout)
+			   u8 op_modifier, u16 op, unsigned long timeout, int native)
 {
 	return __mlx4_cmd(dev, in_param, NULL, 0, in_modifier,
-			  op_modifier, op, timeout);
+			  op_modifier, op, timeout, native);
 }
 
 /* Invoke a command with an output mailbox */
 static inline int mlx4_cmd_box(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 			       u32 in_modifier, u8 op_modifier, u16 op,
-			       unsigned long timeout)
+			       unsigned long timeout, int native)
 {
 	return __mlx4_cmd(dev, in_param, &out_param, 0, in_modifier,
-			  op_modifier, op, timeout);
+			  op_modifier, op, timeout, native);
 }
 
 /*
@@ -180,13 +248,18 @@ static inline int mlx4_cmd_box(struct mlx4_dev *dev, u64 in_param, u64 out_param
  */
 static inline int mlx4_cmd_imm(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			       u32 in_modifier, u8 op_modifier, u16 op,
-			       unsigned long timeout)
+			       unsigned long timeout, int native)
 {
 	return __mlx4_cmd(dev, in_param, out_param, 1, in_modifier,
-			  op_modifier, op, timeout);
+			  op_modifier, op, timeout, native);
 }
 
 struct mlx4_cmd_mailbox *mlx4_alloc_cmd_mailbox(struct mlx4_dev *dev);
 void mlx4_free_cmd_mailbox(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox);
+
+u32 mlx4_comm_get_version(void);
+
+#define MLX4_COMM_GET_VER(cmd_chan_ver) (u8)(cmd_chan_ver)
+#define MLX4_COMM_GET_IF_REV(cmd_chan_ver) (u8)((cmd_chan_ver) >> 8)
 
 #endif /* MLX4_CMD_H */

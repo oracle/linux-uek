@@ -865,7 +865,7 @@ int c2_register_device(struct c2_dev *dev)
 	dev->ibdev.iwcm->create_listen = c2_service_create;
 	dev->ibdev.iwcm->destroy_listen = c2_service_destroy;
 
-	ret = ib_register_device(&dev->ibdev, NULL);
+	ret = ib_register_device(&dev->ibdev);
 	if (ret)
 		goto out_free_iwcm;
 

@@ -38,14 +38,14 @@
 
 #include "mlx4.h"
 
-int mlx4_SENSE_PORT(struct mlx4_dev *dev, int port,
-		    enum mlx4_port_type *type)
+static int mlx4_SENSE_PORT(struct mlx4_dev *dev, int port,
+			   enum mlx4_port_type *type)
 {
 	u64 out_param;
 	int err = 0;
 
 	err = mlx4_cmd_imm(dev, 0, &out_param, port, 0,
-			   MLX4_CMD_SENSE_PORT, MLX4_CMD_TIME_CLASS_B);
+			   MLX4_CMD_SENSE_PORT, MLX4_CMD_TIME_CLASS_B, 0);
 	if (err) {
 		mlx4_err(dev, "Sense command failed for port: %d\n", port);
 		return err;
@@ -53,7 +53,7 @@ int mlx4_SENSE_PORT(struct mlx4_dev *dev, int port,
 
 	if (out_param > 2) {
 		mlx4_err(dev, "Sense returned illegal value: 0x%llx\n", out_param);
-		return -EINVAL;
+		return EINVAL;
 	}
 
 	*type = out_param;
@@ -121,8 +121,9 @@ static void mlx4_sense_port(struct work_struct *work)
 
 sense_again:
 	mutex_unlock(&priv->port_mutex);
-	queue_delayed_work(mlx4_wq , &sense->sense_poll,
-			   round_jiffies_relative(MLX4_SENSE_RANGE));
+	if (sense->resched)
+		queue_delayed_work(sense->sense_wq , &sense->sense_poll,
+				   round_jiffies(MLX4_SENSE_RANGE));
 }
 
 void mlx4_start_sense(struct mlx4_dev *dev)
@@ -133,24 +134,39 @@ void mlx4_start_sense(struct mlx4_dev *dev)
 	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_DPDP))
 		return;
 
-	queue_delayed_work(mlx4_wq , &sense->sense_poll,
-			   round_jiffies_relative(MLX4_SENSE_RANGE));
+	sense->resched = 1;
+	queue_delayed_work(sense->sense_wq , &sense->sense_poll,
+			   round_jiffies(MLX4_SENSE_RANGE));
 }
+
 
 void mlx4_stop_sense(struct mlx4_dev *dev)
 {
-	cancel_delayed_work_sync(&mlx4_priv(dev)->sense.sense_poll);
+	mlx4_priv(dev)->sense.resched = 0;
 }
 
-void  mlx4_sense_init(struct mlx4_dev *dev)
+int mlx4_sense_init(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_sense *sense = &priv->sense;
 	int port;
 
 	sense->dev = dev;
+	sense->sense_wq = create_singlethread_workqueue("mlx4_sense");
+	if (!sense->sense_wq)
+		return -ENOMEM;
+
 	for (port = 1; port <= dev->caps.num_ports; port++)
 		sense->do_sense_port[port] = 1;
 
 	INIT_DELAYED_WORK_DEFERRABLE(&sense->sense_poll, mlx4_sense_port);
+	return 0;
 }
+
+void mlx4_sense_cleanup(struct mlx4_dev *dev)
+{
+	mlx4_stop_sense(dev);
+	cancel_delayed_work(&mlx4_priv(dev)->sense.sense_poll);
+	destroy_workqueue(mlx4_priv(dev)->sense.sense_wq);
+}
+

@@ -43,6 +43,8 @@ struct rds_tcp_statistics {
 };
 
 /* tcp.c */
+int rds_tcp_init(void);
+void rds_tcp_exit(void);
 void rds_tcp_tune(struct socket *sock);
 void rds_tcp_nonagle(struct socket *sock);
 void rds_tcp_set_callbacks(struct socket *sock, struct rds_connection *conn);
@@ -84,5 +86,17 @@ DECLARE_PER_CPU(struct rds_tcp_statistics, rds_tcp_stats);
 #define rds_tcp_stats_inc(member) rds_stats_inc_which(rds_tcp_stats, member)
 unsigned int rds_tcp_stats_info_copy(struct rds_info_iterator *iter,
 				     unsigned int avail);
+
+#ifndef NIPQUAD
+#define NIPQUAD(addr) \
+	((unsigned char *)&(addr))[0], \
+	((unsigned char *)&(addr))[1], \
+	((unsigned char *)&(addr))[2], \
+	((unsigned char *)&(addr))[3]
+#endif
+
+#ifndef NIPQUAD_FMT
+#define NIPQUAD_FMT "%u.%u.%u.%u"
+#endif
 
 #endif
