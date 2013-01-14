@@ -30,6 +30,7 @@
  * SOFTWARE.
  *
  */
+#include <linux/string.h>
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
@@ -44,6 +45,21 @@
 static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
+
+static int rds_qos_enabled = 1;
+module_param(rds_qos_enabled, int, 0444);
+MODULE_PARM_DESC(rds_qos_enabled, "Set to enable QoS");
+
+static char *rds_qos_threshold = NULL;
+module_param(rds_qos_threshold, charp, 0444);
+MODULE_PARM_DESC(rds_qos_threshold, "<tos>:<max_msg_size>[,<tos>:<max_msg_size>]*");
+
+static	int rds_qos_threshold_action = 0;
+module_param(rds_qos_threshold_action, int, 0444);
+MODULE_PARM_DESC(rds_qos_threshold_action,
+	"0=Ignore,1=Error,2=Statistic,3=Error_Statistic");
+
+static unsigned long rds_qos_threshold_tbl[256];
 
 /* this is just used for stats gathering :/ */
 static DEFINE_SPINLOCK(rds_sock_lock);
@@ -204,11 +220,14 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	rds_tos_t tos;
 	unsigned long flags;
 
-	if (get_user(tos, (rds_tos_t __user *)arg))
-		return -EFAULT;
-
 	switch (cmd) {
 	case SIOCRDSSETTOS:
+		if (!rds_qos_enabled)
+			return -EOPNOTSUPP;
+
+		if (get_user(tos, (rds_tos_t __user *)arg))
+			return -EFAULT;
+
 		spin_lock_irqsave(&rds_sock_lock, flags);
 		if (rs->rs_tos || rs->rs_conn) {
 			spin_unlock_irqrestore(&rds_sock_lock, flags);
@@ -621,6 +640,105 @@ out:
 	spin_unlock_irqrestore(&rds_sock_lock, flags);
 }
 
+static unsigned long parse_ul(char *ptr, unsigned long max)
+{
+	unsigned long val;
+	char *endptr;
+
+	val = simple_strtoul(ptr, &endptr, 0);
+	switch (*endptr) {
+	case 'k': case 'K':
+		val <<= 10;
+		endptr++;
+		break;
+	case 'm': case 'M':
+		val <<= 20;
+		endptr++;
+		break;
+	}
+
+	if (*ptr && !*endptr && val <= max)
+		return val;
+
+	printk(KERN_WARNING "RDS: Invalid threshold number\n");
+	return 0;
+}
+
+int rds_check_qos_threshold(u8 tos, size_t payload_len)
+{
+	if (rds_qos_threshold_action == 0)
+		return 0;
+
+	if (rds_qos_threshold_tbl[tos] && payload_len &&
+		rds_qos_threshold_tbl[tos] < payload_len) {
+		if (rds_qos_threshold_action == 1)
+			return 1;
+		else if (rds_qos_threshold_action == 2) {
+			rds_stats_inc(s_qos_threshold_exceeded);
+			return 0;
+		} else if (rds_qos_threshold_action == 3) {
+			rds_stats_inc(s_qos_threshold_exceeded);
+			return 1;
+		} else
+			return 0;
+	} else
+		return 0;
+}
+
+static void rds_qos_threshold_init(void)
+{
+	char *tok, *nxt_tok, *end;
+	char str[1024];
+	int	i;
+
+	for (i = 0; i < 256; i++)
+		rds_qos_threshold_tbl[i] = 0;
+
+	if (rds_qos_threshold == NULL)
+		return;
+
+	strcpy(str, rds_qos_threshold);
+	nxt_tok = strchr(str, ',');
+	if (nxt_tok) {
+		*nxt_tok = '\0';
+		nxt_tok++;
+	}
+
+	tok = str;
+	while (tok) {
+		char *qos_str, *threshold_str;
+		
+		qos_str = tok;
+		threshold_str = strchr(tok, ':');
+		if (threshold_str) {
+			unsigned long qos, threshold;
+
+			*threshold_str = '\0';
+			threshold_str++;
+			qos = simple_strtol(qos_str, &end, 0);
+			if (*end) {
+				printk(KERN_WARNING "RDS: Warning: QoS "
+					"%s is improperly formatted\n", qos_str);
+			} else if (qos > 255) {
+				printk(KERN_WARNING "RDS: Warning: QoS "
+					"%lu out of range\n", qos);
+			}
+			threshold = parse_ul(threshold_str, (u32)~0);
+			rds_qos_threshold_tbl[qos] = threshold;
+		} else {
+			printk(KERN_WARNING "RDS: Warning: QoS:Threshold "
+				"%s is improperly formatted\n", tok);
+		}
+
+		tok = nxt_tok;
+		nxt_tok = strchr(str, ',');
+		if (nxt_tok) {
+			*nxt_tok = '\0';
+			nxt_tok++;
+		}
+	}
+}
+
 static void rds_exit(void)
 {
 	sock_unregister(rds_family_ops.family);
@@ -662,6 +780,8 @@ static int rds_init(void)
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
 
+	rds_qos_threshold_init();
+
 	goto out;
 
 out_sock:
@@ -683,8 +803,8 @@ out:
 }
 module_init(rds_init);
 
-#define DRV_VERSION     "4.0"
-#define DRV_RELDATE     "Feb 12, 2009"
+#define DRV_VERSION     "4.1"
+#define DRV_RELDATE     "Jan 04, 2013"
 
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
 MODULE_DESCRIPTION("RDS: Reliable Datagram Sockets"
