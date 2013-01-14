@@ -55,10 +55,10 @@ unsigned int rds_ib_apm_enabled = 0;
 unsigned int rds_ib_apm_fallback = 1;
 unsigned int rds_ib_haip_enabled = 0;
 unsigned int rds_ib_haip_fallback = 1;
-unsigned int rds_ib_haip_hca_failover_enabled = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cq_balance_enabled = 1;
+static char *rds_ib_haip_failover_groups = NULL;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -78,8 +78,9 @@ module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
 module_param(rds_ib_haip_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
-module_param(rds_ib_haip_hca_failover_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_hca_failover_enabled, " HAIP HCA failover Enabled");
+module_param(rds_ib_haip_failover_groups, charp, 0444);
+MODULE_PARM_DESC(rds_ib_haip_failover_groups,
+	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
 
@@ -338,19 +339,18 @@ static u8 rds_ib_get_failover_port(u8 port)
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i != port &&
-			ip_config[i].rds_ibdev == ip_config[port].rds_ibdev &&
+			ip_config[i].failover_group ==
+				ip_config[port].failover_group &&
 			ip_config[i].port_state == RDS_IB_PORT_UP) {
 			return i;
 		}
 	}
 
-	if (rds_ib_haip_hca_failover_enabled) {
-		for (i = 1; i <= ip_port_cnt; i++) {
-			if (i != port &&
-				ip_config[i].port_state == RDS_IB_PORT_UP) {
-					return i;
-				}
-		}
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (i != port &&
+			ip_config[i].port_state == RDS_IB_PORT_UP) {
+				return i;
+			}
 	}
 
 	return 0;
@@ -771,8 +771,8 @@ static void rds_ib_failback(struct work_struct *_work)
 		} else if (ip_config[ip_config[i].ip_active_port].port_state ==
 				RDS_IB_PORT_DOWN) {
 			rds_ib_do_failover(i, 0, ip_active_port);
-		} else if (ip_config[port].rds_ibdev ==
-				ip_config[i].rds_ibdev) {
+		} else if (ip_config[port].failover_group ==
+				ip_config[i].failover_group) {
 			rds_ib_do_failover(i, port, ip_active_port);
 		}
 	}
@@ -976,6 +976,70 @@ static int rds_ib_ip_config_init(void)
 out:
 	read_unlock(&dev_base_lock);
 	return ret;
+}
+
+void rds_ib_ip_failover_groups_init(void)
+{
+	char *tok, *grp, *nxt_tok, *nxt_grp;
+	char str[1024];
+	unsigned int	grp_id = 1;
+	int i;
+	struct rds_ib_device *rds_ibdev;
+
+	if (rds_ib_haip_failover_groups == NULL) {
+		rcu_read_lock();
+		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
+			for (i = 1; i <= ip_port_cnt; i++) {
+				if (ip_config[i].rds_ibdev == rds_ibdev)
+					ip_config[i].failover_group = grp_id;
+			}
+			grp_id++;
+		}
+		rcu_read_unlock();
+		return;
+	}
+
+	strcpy(str, rds_ib_haip_failover_groups);
+	nxt_grp = strchr(str, ';');
+	if (nxt_grp) {
+		*nxt_grp = '\0';
+		nxt_grp++;
+	}
+	grp = str;
+	while (grp) {
+		tok = grp;
+		nxt_tok = strchr(tok, ',');
+		if (nxt_tok) {
+			*nxt_tok = '\0';
+			nxt_tok++;
+		}
+		while (tok) {
+			for (i = 1; i <= ip_port_cnt; i++) {
+				if (!strcmp(tok, ip_config[i].if_name)) {
+					if (!ip_config[i].failover_group)
+						ip_config[i].failover_group =
+							grp_id;
+					else
+						printk(KERN_WARNING "RDS/IB: %s is already part of another failover group\n", tok);
+					break;
+				}
+			}
+			tok = nxt_tok;
+			nxt_tok = strchr(str, ',');
+			if (nxt_tok) {
+				*nxt_tok = '\0';
+				nxt_tok++;
+			}
+		}
+
+		grp = nxt_grp;
+		nxt_grp = strchr(str, ';');
+		if (nxt_grp) {
+			*nxt_grp = '\0';
+			nxt_grp++;
+		}
+		grp_id++;
+	}
 }
 
 void rds_ib_add_one(struct ib_device *device)
@@ -1217,6 +1281,8 @@ int rds_ib_init(void)
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
 		goto out_srq;
 	}
+
+	rds_ib_ip_failover_groups_init();
 
 	register_netdevice_notifier(&rds_ib_nb);
 

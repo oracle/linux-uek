@@ -276,6 +276,7 @@ enum {
 #define RDS_IB_MAX_ALIASES	100
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
+	unsigned int		failover_group;
 	struct net_device	*dev;
 	unsigned int            port_state;
 	u8			port_num;
