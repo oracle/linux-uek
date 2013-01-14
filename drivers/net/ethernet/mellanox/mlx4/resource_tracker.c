@@ -504,7 +504,7 @@ int mlx4_init_resource_tracker(struct mlx4_dev *dev)
 				break;
 			case RES_COUNTER:
 				res_alloc->quota[t] = dev->caps.max_counters;
-				res_alloc->guaranteed[t] = 1;
+				res_alloc->guaranteed[t] = 0;
 				if (t == mlx4_master_func_num(dev))
 					res_alloc->res_free = res_alloc->quota[t];
 				break;
