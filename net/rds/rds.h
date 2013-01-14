@@ -598,6 +598,7 @@ struct rds_statistics {
 	uint64_t	s_cong_update_received;
 	uint64_t	s_cong_send_error;
 	uint64_t	s_cong_send_blocked;
+	uint64_t	s_qos_threshold_exceeded;
 };
 
 /* af_rds.c */
@@ -611,6 +612,7 @@ static inline void __rds_wake_sk_sleep(struct sock *sk)
 	if (!sock_flag(sk, SOCK_DEAD) && waitq)
 		wake_up(waitq);
 }
+int rds_check_qos_threshold(u8 tos, size_t pauload_len);
 extern wait_queue_head_t rds_poll_waitq;
 
 void debug_sock_hold(struct sock *sock);
