@@ -581,7 +581,8 @@ void rds_rdma_send_complete(struct rds_message *rm, int status)
 		notifier->n_status = status;
 
 		if (!ro->op_remote_complete) {
-			if (rds_async_send_enabled && !status) {
+			if (!rds_async_send_enabled ||
+				(rds_async_send_enabled && !status)) {
 				spin_lock(&rs->rs_lock);
 				list_add_tail(&notifier->n_list,
 					&rs->rs_notify_queue);
@@ -620,7 +621,8 @@ void rds_atomic_send_complete(struct rds_message *rm, int status)
 		debug_sock_hold(rds_rs_to_sk(rs));
 
 		notifier->n_status = status;
-		if (rds_async_send_enabled && !status) {
+		if (!rds_async_send_enabled ||
+			(rds_async_send_enabled && !status)) {
 			spin_lock(&rs->rs_lock);
 			list_add_tail(&notifier->n_list,
 				&rs->rs_notify_queue);
@@ -1179,6 +1181,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	int queued = 0, allocated_mr = 0;
 	int nonblock = msg->msg_flags & MSG_DONTWAIT;
 	long timeo = sock_sndtimeo(sk, nonblock);
+	size_t total_payload_len = payload_len;
 
 	/* Mirror Linux UDP mirror of BSD error message compatibility */
 	/* XXX: Perhaps MSG_MORE someday */
@@ -1236,6 +1239,14 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	ret = rds_cmsg_send(rs, rm, msg, &allocated_mr);
 	if (ret)
 		goto out;
+
+	if (rm->rdma.op_active)
+		total_payload_len += rm->rdma.op_bytes;
+
+	if (rds_check_qos_threshold(rs->rs_tos, total_payload_len)) {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	/* rds_conn_create has a spinlock that runs with IRQ off.
 	 * Caching the conn in the socket helps a lot. */
