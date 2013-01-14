@@ -275,8 +275,13 @@ static int ipoib_set_channels(struct net_device *dev,
 			if (!is_power_of_2(channel->tx_count))
 				return -EINVAL;
 		} else {
-			/* with SW TSS tx_count = 1 + 2 ^ N */
-			if (!is_power_of_2(channel->tx_count - 1))
+			/*
+			* with SW TSS tx_count = 1 + 2 ^ N,
+			* 2 is not allowed, make no sense.
+			* if want to disable TSS use 1.
+			*/
+			if (!is_power_of_2(channel->tx_count - 1) ||
+			    channel->tx_count == 2)
 				return -EINVAL;
 		}
 	}

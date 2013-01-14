@@ -2174,8 +2174,12 @@ static ssize_t set_tx_chan(struct device *dev,
 			if (!is_power_of_2(val))
 				return -EINVAL;
 		} else {
-			/* with SW TSS tx_count = 1 + 2 ^ N */
-			if (!is_power_of_2(val - 1))
+			/*
+			* with SW TSS tx_count = 1 + 2 ^ N.
+			* 2 is not allowed, makes no sense,
+			* if want to disable TSS use 1.
+			*/
+			if (!is_power_of_2(val - 1) || val == 2)
 				return -EINVAL;
 		}
 	}
