@@ -452,7 +452,13 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		}
 	}
 
-	dev->caps.max_counters = 1 << ilog2(dev_cap->max_counters);
+	dev->caps.max_basic_counters = dev_cap->max_basic_counters;
+	dev->caps.max_extended_counters = dev_cap->max_extended_counters;
+	/* support extended counters if available */
+	if (dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT)
+		dev->caps.max_counters = dev->caps.max_extended_counters;
+	else
+		dev->caps.max_counters = dev->caps.max_basic_counters;
 
 	dev->caps.reserved_qps_cnt[MLX4_QP_REGION_FW] = dev_cap->reserved_qps;
 	dev->caps.reserved_qps_cnt[MLX4_QP_REGION_ETH_ADDR] =
@@ -1557,7 +1563,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		if (err)
 			mlx4_warn(dev, "Failed to override log_pg_sz parameter\n");
 
-		dev_cap = kmalloc(sizeof *dev_cap, GFP_KERNEL);
+		dev_cap = kzalloc(sizeof *dev_cap, GFP_KERNEL);
 		if (!dev_cap) {
 			mlx4_err(dev, "Failed to allocate memory for dev_cap\n");
 			err = -ENOMEM;
@@ -1702,21 +1708,20 @@ err_stop_fw:
 static int mlx4_init_counters_table(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
-	int nent;
 	int res;
+	int nent_pow2;
 
 	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS))
 		return -ENOENT;
 
-	nent = dev->caps.max_counters;
-	res = mlx4_bitmap_init(&priv->counters_bitmap, nent, nent - 1, 0, 0);
+	nent_pow2 = roundup_pow_of_two(dev->caps.max_counters);
+	res = mlx4_bitmap_init(&priv->counters_bitmap, nent_pow2,
+				nent_pow2 - 1, 0,
+				nent_pow2 - dev->caps.max_counters);
 	if (res)
 		return res;
 
-	if (mlx4_is_slave(dev))
-		return 0;
-
-	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT))
+	if (dev->caps.max_counters == dev->caps.max_basic_counters)
 		return 0;
 
 	res = mlx4_cmd(dev, MLX4_IF_STATE_EXTENDED, 0, 0,
@@ -1731,7 +1736,9 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 
 static void mlx4_cleanup_counters_table(struct mlx4_dev *dev)
 {
-	mlx4_bitmap_cleanup(&mlx4_priv(dev)->counters_bitmap);
+	if (!mlx4_is_slave(dev) &&
+		(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS))
+		mlx4_bitmap_cleanup(&mlx4_priv(dev)->counters_bitmap);
 }
 
 int __mlx4_counter_alloc(struct mlx4_dev *dev, u32 *idx)
@@ -1902,16 +1909,14 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 				 err);
 			goto err_qp_table_free;
 		}
-	}
 
-	err = mlx4_init_counters_table(dev);
-	if (err && err != -ENOENT) {
-		mlx4_err(dev, "Failed to initialize counters table (err=%d), "
-			 "aborting.\n", err);
-		goto err_mcg_table_free;
-	}
+		err = mlx4_init_counters_table(dev);
+		if (err && err != -ENOENT) {
+			mlx4_err(dev, "Failed to initialize counters table (err=%d), "
+				 "aborting.\n", err);
+			goto err_mcg_table_free;
+		}
 
-	if (!mlx4_is_slave(dev)) {
 		for (port = 1; port <= dev->caps.num_ports; port++) {
 			ib_port_default_caps = 0;
 			err = mlx4_get_port_ib_caps(dev, port,

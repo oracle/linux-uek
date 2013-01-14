@@ -466,7 +466,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 #define QUERY_DEV_CAP_MAX_PD_OFFSET		0x65
 #define QUERY_DEV_CAP_RSVD_XRC_OFFSET		0x66
 #define QUERY_DEV_CAP_MAX_XRC_OFFSET		0x67
-#define QUERY_DEV_CAP_MAX_COUNTERS_OFFSET	0x68
+#define QUERY_DEV_CAP_MAX_BASIC_COUNTERS_OFFSET	0x68
+#define QUERY_DEV_CAP_MAX_EXTENDED_COUNTERS_OFFSET	0x6c
 #define QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET	0x76
 #define QUERY_DEV_CAP_FLOW_STEERING_MAX_QP_OFFSET	0x77
 #define QUERY_DEV_CAP_RDMARC_ENTRY_SZ_OFFSET	0x80
@@ -648,8 +649,13 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	MLX4_GET(dev_cap->max_icm_sz, outbox,
 		 QUERY_DEV_CAP_MAX_ICM_SZ_OFFSET);
 	if (dev_cap->flags & MLX4_DEV_CAP_FLAG_COUNTERS)
-		MLX4_GET(dev_cap->max_counters, outbox,
-			 QUERY_DEV_CAP_MAX_COUNTERS_OFFSET);
+		MLX4_GET(dev_cap->max_basic_counters, outbox,
+			 QUERY_DEV_CAP_MAX_BASIC_COUNTERS_OFFSET);
+	/* FW reports 256 however real value is 255 */
+	dev_cap->max_basic_counters = min_t(u32, dev_cap->max_basic_counters, 255);
+	if (dev_cap->flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT)
+		MLX4_GET(dev_cap->max_extended_counters, outbox,
+			 QUERY_DEV_CAP_MAX_EXTENDED_COUNTERS_OFFSET);
 
 	if (dev->flags & MLX4_FLAG_OLD_PORT_CMDS) {
 		for (i = 1; i <= dev_cap->num_ports; ++i) {
@@ -745,7 +751,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	mlx4_dbg(dev, "Max RQ desc size: %d, max RQ S/G: %d\n",
 		 dev_cap->max_rq_desc_sz, dev_cap->max_rq_sg);
 	mlx4_dbg(dev, "Max GSO size: %d\n", dev_cap->max_gso_sz);
-	mlx4_dbg(dev, "Max counters: %d\n", dev_cap->max_counters);
+	mlx4_dbg(dev, "Max basic counters: %d\n", dev_cap->max_basic_counters);
+	mlx4_dbg(dev, "Max extended counters: %d\n", dev_cap->max_extended_counters);
 	mlx4_dbg(dev, "Max RSS Table size: %d\n", dev_cap->max_rss_tbl_sz);
 
 	dump_dev_cap_flags(dev, dev_cap->flags);

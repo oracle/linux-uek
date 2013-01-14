@@ -452,6 +452,8 @@ struct mlx4_caps {
 	u32			function_caps;  /* functions must be aware to */
 	u8			fast_drop;
 	u16			hca_core_clock;
+	u32			max_basic_counters;
+	u32			max_extended_counters;
 };
 
 struct mlx4_buf_list {
