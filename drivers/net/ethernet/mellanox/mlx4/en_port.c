@@ -130,7 +130,8 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	int do_if_stat = 1;
 	unsigned long period = (unsigned long) (jiffies - priv->last_ifq_jiffies);
 
-	if (jiffies_to_msecs(period) < EN_IFQ_MIN_INTERVAL)
+	if (jiffies_to_msecs(period) < EN_IFQ_MIN_INTERVAL ||
+				priv->counter_index == 0xff)
 		do_if_stat = 0;
 
 	mailbox = mlx4_alloc_cmd_mailbox(mdev->dev);

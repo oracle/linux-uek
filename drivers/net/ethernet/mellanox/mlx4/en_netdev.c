@@ -1226,8 +1226,10 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Set port as not active */
 	priv->port_up = false;
-	if (priv->counter_index != 0xff)
+	if (priv->counter_index != 0xff) {
 		mlx4_counter_free(mdev->dev, priv->counter_index);
+		priv->counter_index = 0xff;
+	}
 
 	/* Promsicuous mode */
 	if (mdev->dev->caps.steering_mode ==
