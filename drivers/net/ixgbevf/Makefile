@@ -29,7 +29,7 @@
 ## Makefile for the Intel(R) 82599 VF ethernet driver
 #
 #
-#obj-$(CONFIG_IXGBEVF) += ixgbevf.o
+obj-$(CONFIG_IXGBEVF) += ixgbevf.o
 
 ixgbevf-objs := ixgbevf_main.o ixgbevf_param.o ixgbevf_ethtool.o kcompat.o \
                 ixgbe_vf.o ixgbe_mbx.o
