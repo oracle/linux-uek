@@ -1726,6 +1726,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 
 	priv = netdev_priv(dev);
 	memset(priv, 0, sizeof(struct mlx4_en_priv));
+	priv->counter_index = 0xff;
 	priv->dev = dev;
 	priv->mdev = mdev;
 	priv->ddev = &mdev->pdev->dev;
