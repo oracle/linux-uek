@@ -384,7 +384,13 @@ static int __init cmdline_parser_init(void)
 	return register_mtd_parser(&cmdline_parser);
 }
 
+static void __exit cmdline_parser_exit(void)
+{
+	deregister_mtd_parser(&cmdline_parser);
+}
+
 module_init(cmdline_parser_init);
+module_exit(cmdline_parser_exit);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Marius Groeger <mag@sysgo.de>");
