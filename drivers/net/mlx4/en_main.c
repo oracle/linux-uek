@@ -124,20 +124,24 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 	struct mlx4_en_priv *priv;
 	int i;
 
-	if (!mdev->pndev[port])
-		return;
-
-	priv = netdev_priv(mdev->pndev[port]);
 	switch (event) {
 	case MLX4_DEV_EVENT_PORT_UP:
 	case MLX4_DEV_EVENT_PORT_DOWN:
 		/* To prevent races, we poll the link state in a separate
 		  task rather than changing it here */
+		if (!mdev->pndev[port])
+			return;
+		priv = netdev_priv(mdev->pndev[port]);
+
 		priv->link_state = event;
 		queue_work(mdev->workqueue, &priv->linkstate_task);
 		break;
 
 	case MLX4_EVENT_TYPE_MAC_UPDATE:
+		if (!mdev->pndev[port])
+			return;
+		priv = netdev_priv(mdev->pndev[port]);
+
 		priv->mac = dev->caps.def_mac[port];
 		for (i = 0; i < ETH_ALEN; i++) {
 			priv->dev->dev_addr[ETH_ALEN - 1 - i] = (u8) (priv->mac >> (8 * i));
@@ -148,6 +152,9 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 
 	case MLX4_DEV_EVENT_CATASTROPHIC_ERROR:
 		mlx4_err(mdev, "Internal error detected, restarting device\n");
+		break;
+
+	case MLX4_DEV_EVENT_PORT_MGMT_CHANGE: /* ignore event */
 		break;
 
 	default:
