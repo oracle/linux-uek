@@ -982,7 +982,7 @@ out:
 
 void rds_ib_ip_failover_groups_init(void)
 {
-	char *tok, *grp, *nxt_tok, *nxt_grp, *end;
+	char *tok, *grp, *nxt_tok, *nxt_grp;
 	char str[1024];
 	unsigned int	grp_id = 1;
 	int i;

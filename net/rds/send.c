@@ -1232,8 +1232,6 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	/* Attach data to the rm */
 	if (payload_len) {
-		struct user_hdr *uhdr = msg->msg_iov->iov_base;
-
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
 		ret = rds_message_copy_from_user(rm, msg->msg_iov, payload_len);
 		if (ret)
