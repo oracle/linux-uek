@@ -309,6 +309,17 @@ static void aliasguid_query_handler(int status,
 						rec->all_recs[i] = guid_rec->guid_info_list[i];
 				}
 			}
+			/*
+			the func is called here to close the cases when the sm doesn't send smp,
+			so in the sa response the driver notifies the slave.
+
+			GUID change of one of the master GUIDs is not handled here.
+			the assumption is that it this scenario GID0 won't be changed (as
+			it can't) and GID1 is only used by the vnic, which will be closed
+			and re-opened in this case. so it's ok not to notify the master
+			about the change
+			*/
+			notify_slaves_on_guid_change(dev, guid_rec->block_num, cb_ctx->port, (u8*)guid_rec->guid_info_list);
 		} else
 			printk(KERN_ERR "block num mismatch: %d != %d",
 				    cb_ctx->block_num, guid_rec->block_num);
