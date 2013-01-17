@@ -1403,7 +1403,7 @@ int mthca_register_device(struct mthca_dev *dev)
 
 	mutex_init(&dev->cap_mask_mutex);
 
-	ret = ib_register_device(&dev->ib_dev, NULL);
+	ret = ib_register_device(&dev->ib_dev);
 	if (ret)
 		return ret;
 

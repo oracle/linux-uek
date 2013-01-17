@@ -32,7 +32,6 @@
  */
 #include <linux/kernel.h>
 #include <linux/in.h>
-#include <linux/slab.h>
 #include <linux/vmalloc.h>
 
 #include "rds.h"
@@ -181,7 +180,7 @@ static int rds_iw_init_qp_attrs(struct ib_qp_init_attr *attr,
 	unsigned int send_size, recv_size;
 	int ret;
 
-	/* The offset of 1 is to accommodate the additional ACK WR. */
+	/* The offset of 1 is to accomodate the additional ACK WR. */
 	send_size = min_t(unsigned int, rds_iwdev->max_wrs, rds_iw_sysctl_max_send_wr + 1);
 	recv_size = min_t(unsigned int, rds_iwdev->max_wrs, rds_iw_sysctl_max_recv_wr + 1);
 	rds_iw_ring_resize(send_ring, send_size - 1);
@@ -397,7 +396,7 @@ int rds_iw_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 RDS_PROTOCOL_MAJOR(version), RDS_PROTOCOL_MINOR(version));
 
 	conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr, &rds_iw_transport,
-			       GFP_KERNEL);
+			       0, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
 		conn = NULL;
@@ -452,7 +451,6 @@ int rds_iw_cm_handle_connect(struct rdma_cm_id *cm_id,
 	err = rds_iw_setup_qp(conn);
 	if (err) {
 		rds_iw_conn_error(conn, "rds_iw_setup_qp failed (%d)\n", err);
-		mutex_unlock(&conn->c_cm_lock);
 		goto out;
 	}
 
@@ -522,7 +520,7 @@ int rds_iw_conn_connect(struct rds_connection *conn)
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
 	ic->i_cm_id = rdma_create_id(rds_rdma_cm_event_handler, conn,
-				     RDMA_PS_TCP, IB_QPT_RC);
+				     RDMA_PS_TCP);
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;

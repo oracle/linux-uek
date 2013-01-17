@@ -55,13 +55,13 @@ static unsigned long rds_iw_sysctl_max_unsig_bytes_max = ~0UL;
 
 unsigned int rds_iw_sysctl_flow_control = 1;
 
-static ctl_table rds_iw_sysctl_table[] = {
+ctl_table rds_iw_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
 		.data		= &rds_iw_sysctl_max_send_wr,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_iw_sysctl_max_wr_min,
 		.extra2		= &rds_iw_sysctl_max_wr_max,
 	},
@@ -70,7 +70,7 @@ static ctl_table rds_iw_sysctl_table[] = {
 		.data		= &rds_iw_sysctl_max_recv_wr,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_iw_sysctl_max_wr_min,
 		.extra2		= &rds_iw_sysctl_max_wr_max,
 	},
@@ -79,7 +79,7 @@ static ctl_table rds_iw_sysctl_table[] = {
 		.data		= &rds_iw_sysctl_max_unsig_wrs,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_iw_sysctl_max_unsig_wr_min,
 		.extra2		= &rds_iw_sysctl_max_unsig_wr_max,
 	},
@@ -88,7 +88,7 @@ static ctl_table rds_iw_sysctl_table[] = {
 		.data		= &rds_iw_sysctl_max_unsig_bytes,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_iw_sysctl_max_unsig_bytes_min,
 		.extra2		= &rds_iw_sysctl_max_unsig_bytes_max,
 	},
@@ -97,14 +97,14 @@ static ctl_table rds_iw_sysctl_table[] = {
 		.data		= &rds_iw_sysctl_max_recv_allocation,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 	},
 	{
 		.procname	= "flow_control",
 		.data		= &rds_iw_sysctl_flow_control,
 		.maxlen		= sizeof(rds_iw_sysctl_flow_control),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= &proc_dointvec,
 	},
 	{ }
 };
@@ -112,7 +112,7 @@ static ctl_table rds_iw_sysctl_table[] = {
 static struct ctl_path rds_iw_sysctl_path[] = {
 	{ .procname = "net", },
 	{ .procname = "rds", },
-	{ .procname = "iw", },
+	{ .procname = "iw",  },
 	{ }
 };
 

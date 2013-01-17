@@ -58,4 +58,6 @@ source "drivers/infiniband/ulp/srp/Kconfig"
 
 source "drivers/infiniband/ulp/iser/Kconfig"
 
+source "drivers/infiniband/ulp/sdp/Kconfig"
+
 endif # INFINIBAND

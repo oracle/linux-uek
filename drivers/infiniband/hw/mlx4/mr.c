@@ -31,8 +31,6 @@
  * SOFTWARE.
  */
 
-#include <linux/slab.h>
-
 #include "mlx4_ib.h"
 
 static u32 convert_access(int acc)
@@ -49,7 +47,7 @@ struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc)
 	struct mlx4_ib_mr *mr;
 	int err;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
@@ -121,6 +119,70 @@ out:
 	return err;
 }
 
+static int handle_hugetlb_user_mr(struct ib_pd *pd, struct mlx4_ib_mr *mr,
+				  u64 start, u64 virt_addr, int access_flags)
+{
+#if defined(CONFIG_HUGETLB_PAGE) && !defined(__powerpc__) && !defined(__ia64__)
+	struct mlx4_ib_dev *dev = to_mdev(pd->device);
+	struct ib_umem_chunk *chunk;
+	unsigned dsize;
+	dma_addr_t daddr;
+	unsigned cur_size = 0;
+	dma_addr_t uninitialized_var(cur_addr);
+	int n;
+	struct ib_umem	*umem = mr->umem;
+	u64 *arr;
+	int err = 0;
+	int i;
+	int j = 0;
+	int off = start & (HPAGE_SIZE - 1);
+
+	n = DIV_ROUND_UP(off + umem->length, HPAGE_SIZE);
+	arr = kmalloc(n * sizeof *arr, GFP_KERNEL);
+	if (!arr)
+		return -ENOMEM;
+
+	list_for_each_entry(chunk, &umem->chunk_list, list)
+		for (i = 0; i < chunk->nmap; ++i) {
+			daddr = sg_dma_address(&chunk->page_list[i]);
+			dsize = sg_dma_len(&chunk->page_list[i]);
+			if (!cur_size) {
+				cur_addr = daddr;
+				cur_size = dsize;
+			} else if (cur_addr + cur_size != daddr) {
+				err = -EINVAL;
+				goto out;
+			} else
+				cur_size += dsize;
+
+			if (cur_size > HPAGE_SIZE) {
+				err = -EINVAL;
+				goto out;
+			} else if (cur_size == HPAGE_SIZE) {
+				cur_size = 0;
+				arr[j++] = cur_addr;
+			}
+		}
+
+	if (cur_size) {
+		arr[j++] = cur_addr;
+	}
+
+	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, umem->length,
+			    convert_access(access_flags), n, HPAGE_SHIFT, &mr->mmr);
+	if (err)
+		goto out;
+
+	err = mlx4_write_mtt(dev->dev, &mr->mmr.mtt, 0, n, arr);
+
+out:
+	kfree(arr);
+	return err;
+#else
+	return -ENOSYS;
+#endif
+}
+
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata)
@@ -131,7 +193,7 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	int err;
 	int n;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
@@ -142,17 +204,20 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 		goto err_free;
 	}
 
-	n = ib_umem_page_count(mr->umem);
-	shift = ilog2(mr->umem->page_size);
+	if (!mr->umem->hugetlb ||
+	    handle_hugetlb_user_mr(pd, mr, start, virt_addr, access_flags)) {
+		n = ib_umem_page_count(mr->umem);
+		shift = ilog2(mr->umem->page_size);
 
-	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, length,
-			    convert_access(access_flags), n, shift, &mr->mmr);
-	if (err)
-		goto err_umem;
+		err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, length,
+				    convert_access(access_flags), n, shift, &mr->mmr);
+		if (err)
+			goto err_umem;
 
-	err = mlx4_ib_umem_write_mtt(dev, &mr->mmr.mtt, mr->umem);
-	if (err)
-		goto err_mr;
+		err = mlx4_ib_umem_write_mtt(dev, &mr->mmr.mtt, mr->umem);
+		if (err)
+			goto err_mr;
+	}
 
 	err = mlx4_mr_enable(dev->dev, &mr->mmr);
 	if (err)
@@ -193,7 +258,7 @@ struct ib_mr *mlx4_ib_alloc_fast_reg_mr(struct ib_pd *pd,
 	struct mlx4_ib_mr *mr;
 	int err;
 
-	mr = kmalloc(sizeof *mr, GFP_KERNEL);
+	mr = kzalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
@@ -226,7 +291,7 @@ struct ib_fast_reg_page_list *mlx4_ib_alloc_fast_reg_page_list(struct ib_device 
 	struct mlx4_ib_fast_reg_page_list *mfrpl;
 	int size = page_list_len * sizeof (u64);
 
-	if (page_list_len > MLX4_MAX_FAST_REG_PAGES)
+	if (size > PAGE_SIZE)
 		return ERR_PTR(-EINVAL);
 
 	mfrpl = kmalloc(sizeof *mfrpl, GFP_KERNEL);
@@ -240,7 +305,7 @@ struct ib_fast_reg_page_list *mlx4_ib_alloc_fast_reg_page_list(struct ib_device 
 	mfrpl->mapped_page_list = dma_alloc_coherent(&dev->dev->pdev->dev,
 						     size, &mfrpl->map,
 						     GFP_KERNEL);
-	if (!mfrpl->mapped_page_list)
+	if (!mfrpl->ibfrpl.page_list)
 		goto err_free;
 
 	WARN_ON(mfrpl->map & 0x3f);
@@ -272,9 +337,11 @@ struct ib_fmr *mlx4_ib_fmr_alloc(struct ib_pd *pd, int acc,
 	struct mlx4_ib_fmr *fmr;
 	int err = -ENOMEM;
 
-	fmr = kmalloc(sizeof *fmr, GFP_KERNEL);
+	fmr = kzalloc(sizeof *fmr, GFP_KERNEL);
 	if (!fmr)
 		return ERR_PTR(-ENOMEM);
+
+	fmr->mfmr.mr.flags |= MLX4_MR_FLAG_FMR;
 
 	err = mlx4_fmr_alloc(dev->dev, to_mpd(pd)->pdn, convert_access(acc),
 			     fmr_attr->max_pages, fmr_attr->max_maps,
@@ -299,6 +366,14 @@ err_free:
 	return ERR_PTR(err);
 }
 
+int mlx4_ib_set_fmr_pd(struct ib_fmr *ibfmr, struct ib_pd *pd)
+{
+	struct mlx4_ib_fmr *ifmr = to_mfmr(ibfmr);
+	u32 pdn = to_mpd(pd)->pdn;
+
+	return mlx4_set_fmr_pd(&ifmr->mfmr, pdn);
+}
+
 int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list,
 		      int npages, u64 iova)
 {
@@ -312,7 +387,6 @@ int mlx4_ib_map_phys_fmr(struct ib_fmr *ibfmr, u64 *page_list,
 int mlx4_ib_unmap_fmr(struct list_head *fmr_list)
 {
 	struct ib_fmr *ibfmr;
-	int err;
 	struct mlx4_dev *mdev = NULL;
 
 	list_for_each_entry(ibfmr, fmr_list, list) {
@@ -330,20 +404,8 @@ int mlx4_ib_unmap_fmr(struct list_head *fmr_list)
 		mlx4_fmr_unmap(mdev, &ifmr->mfmr, &ifmr->ibfmr.lkey, &ifmr->ibfmr.rkey);
 	}
 
-	/*
-	 * Make sure all MPT status updates are visible before issuing
-	 * SYNC_TPT firmware command.
-	 */
-	wmb();
-
-	err = mlx4_SYNC_TPT(mdev);
-	if (err)
-		printk(KERN_WARNING "mlx4_ib: SYNC_TPT error %d when "
-		       "unmapping FMRs\n", err);
-
 	return 0;
 }
-
 int mlx4_ib_fmr_dealloc(struct ib_fmr *ibfmr)
 {
 	struct mlx4_ib_fmr *ifmr = to_mfmr(ibfmr);
@@ -351,7 +413,6 @@ int mlx4_ib_fmr_dealloc(struct ib_fmr *ibfmr)
 	int err;
 
 	err = mlx4_fmr_free(dev->dev, &ifmr->mfmr);
-
 	if (!err)
 		kfree(ifmr);
 

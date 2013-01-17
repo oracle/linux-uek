@@ -59,7 +59,11 @@ enum rdma_cm_event_type {
 	RDMA_CM_EVENT_MULTICAST_JOIN,
 	RDMA_CM_EVENT_MULTICAST_ERROR,
 	RDMA_CM_EVENT_ADDR_CHANGE,
-	RDMA_CM_EVENT_TIMEWAIT_EXIT
+	RDMA_CM_EVENT_TIMEWAIT_EXIT,
+	RDMA_CM_EVENT_ALT_ROUTE_RESOLVED,
+	RDMA_CM_EVENT_ALT_ROUTE_ERROR,
+	RDMA_CM_EVENT_LOAD_ALT_PATH,
+	RDMA_CM_EVENT_ALT_PATH_LOADED,
 };
 
 enum rdma_port_space {
@@ -67,6 +71,14 @@ enum rdma_port_space {
 	RDMA_PS_IPOIB = 0x0002,
 	RDMA_PS_TCP   = 0x0106,
 	RDMA_PS_UDP   = 0x0111,
+	RDMA_PS_SCTP  = 0x0183
+};
+
+enum alt_path_type {
+	RDMA_ALT_PATH_NONE,
+	RDMA_ALT_PATH_PORT,
+	RDMA_ALT_PATH_LID,
+	RDMA_ALT_PATH_BEST
 };
 
 struct rdma_addr {
@@ -100,6 +112,7 @@ struct rdma_ud_param {
 	struct ib_ah_attr ah_attr;
 	u32 qp_num;
 	u32 qkey;
+	u8 alt_path_index;
 };
 
 struct rdma_cm_event {
@@ -109,20 +122,6 @@ struct rdma_cm_event {
 		struct rdma_conn_param	conn;
 		struct rdma_ud_param	ud;
 	} param;
-};
-
-enum rdma_cm_state {
-	RDMA_CM_IDLE,
-	RDMA_CM_ADDR_QUERY,
-	RDMA_CM_ADDR_RESOLVED,
-	RDMA_CM_ROUTE_QUERY,
-	RDMA_CM_ROUTE_RESOLVED,
-	RDMA_CM_CONNECT,
-	RDMA_CM_DISCONNECT,
-	RDMA_CM_ADDR_BOUND,
-	RDMA_CM_LISTEN,
-	RDMA_CM_DEVICE_REMOVAL,
-	RDMA_CM_DESTROYING
 };
 
 struct rdma_cm_id;
@@ -144,8 +143,8 @@ struct rdma_cm_id {
 	rdma_cm_event_handler	 event_handler;
 	struct rdma_route	 route;
 	enum rdma_port_space	 ps;
-	enum ib_qp_type		 qp_type;
 	u8			 port_num;
+	void			*ucontext;
 };
 
 /**
@@ -155,11 +154,9 @@ struct rdma_cm_id {
  *   returned rdma_id.
  * @context: User specified context associated with the id.
  * @ps: RDMA port space.
- * @qp_type: type of queue pair associated with the id.
  */
 struct rdma_cm_id *rdma_create_id(rdma_cm_event_handler event_handler,
-				  void *context, enum rdma_port_space ps,
-				  enum ib_qp_type qp_type);
+				  void *context, enum rdma_port_space ps);
 
 /**
   * rdma_destroy_id - Destroys an RDMA identifier.
@@ -206,6 +203,19 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
  * into an RDMA address before calling this routine.
  */
 int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms);
+
+/**
+ * rdma_enable_apm - Get ready to use APM for the given ID.
+ * Actual Alternate path discovery and load will take place only
+ * after a connection has been established.
+ *
+ * Calling this function only has an effect on the connection's client side.
+ * It should be called after rdma_resolve_route and before rdma_connect.
+ *
+ * @id: RDMA identifier.
+ * @alt_type: Alternate path type to resolve.
+ */
+int rdma_enable_apm(struct rdma_cm_id *id, enum alt_path_type alt_type);
 
 /**
  * rdma_create_qp - Allocate a QP and associate it with the specified RDMA
@@ -347,13 +357,11 @@ void rdma_leave_multicast(struct rdma_cm_id *id, struct sockaddr *addr);
 void rdma_set_service_type(struct rdma_cm_id *id, int tos);
 
 /**
- * rdma_set_reuseaddr - Allow the reuse of local addresses when binding
- *    the rdma_cm_id.
- * @id: Communication identifier to configure.
- * @reuse: Value indicating if the bound address is reusable.
- *
- * Reuse must be set before an address is bound to the id.
+ * rdma_set_timeout - Set the QP timeout associated with a connection
+ * identifier.
+ * @id: Communication identifier to associated with service type.
+ * @timeout: QP timeout
  */
-int rdma_set_reuseaddr(struct rdma_cm_id *id, int reuse);
+void rdma_set_timeout(struct rdma_cm_id *id, int timeout);
 
 #endif /* RDMA_CM_H */

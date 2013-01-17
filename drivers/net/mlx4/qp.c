@@ -33,7 +33,8 @@
  * SOFTWARE.
  */
 
-#include <linux/gfp.h>
+#include <linux/init.h>
+
 #include <linux/mlx4/cmd.h>
 #include <linux/mlx4/qp.h>
 
@@ -54,7 +55,7 @@ void mlx4_qp_event(struct mlx4_dev *dev, u32 qpn, int event_type)
 	spin_unlock(&qp_table->lock);
 
 	if (!qp) {
-		mlx4_warn(dev, "Async event for bogus QP %08x\n", qpn);
+		mlx4_dbg(dev, "Async event for none existent QP %08x\n", qpn);
 		return;
 	}
 
@@ -64,10 +65,24 @@ void mlx4_qp_event(struct mlx4_dev *dev, u32 qpn, int event_type)
 		complete(&qp->free);
 }
 
-int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
-		   enum mlx4_qp_state cur_state, enum mlx4_qp_state new_state,
-		   struct mlx4_qp_context *context, enum mlx4_qp_optpar optpar,
-		   int sqd_event, struct mlx4_qp *qp)
+/* used for INIT/CLOSE port logic */
+static int is_qp0(struct mlx4_dev *dev, struct mlx4_qp *qp, int *real_qp0, int *proxy_qp0)
+{
+	/* qp0 is either the proxy qp0, or the real qp0 */
+	*proxy_qp0 = qp->qpn >= dev->caps.sqp_start &&
+		qp->qpn <= dev->caps.sqp_start + 1;
+
+	*real_qp0 = mlx4_is_mfunc(dev) &&
+		qp->qpn >= dev->caps.tunnel_qpn &&
+		qp->qpn <= dev->caps.tunnel_qpn + 1;
+
+	return *real_qp0 || *proxy_qp0;
+}
+
+int __mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
+		     enum mlx4_qp_state cur_state, enum mlx4_qp_state new_state,
+		     struct mlx4_qp_context *context, enum mlx4_qp_optpar optpar,
+		     int sqd_event, struct mlx4_qp *qp, int native)
 {
 	static const u16 op[MLX4_QP_NUM_STATE][MLX4_QP_NUM_STATE] = {
 		[MLX4_QP_STATE_RST] = {
@@ -109,16 +124,32 @@ int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 		}
 	};
 
+	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_cmd_mailbox *mailbox;
 	int ret = 0;
+	int real_qp0 = 0;
+	int proxy_qp0 = 0;
+	u8 port;
+	u8 vep_num;
 
 	if (cur_state >= MLX4_QP_NUM_STATE || new_state >= MLX4_QP_NUM_STATE ||
 	    !op[cur_state][new_state])
 		return -EINVAL;
 
-	if (op[cur_state][new_state] == MLX4_CMD_2RST_QP)
-		return mlx4_cmd(dev, 0, qp->qpn, 2,
-				MLX4_CMD_2RST_QP, MLX4_CMD_TIME_CLASS_A);
+	if (op[cur_state][new_state] == MLX4_CMD_2RST_QP) {
+		ret = mlx4_cmd(dev, 0, qp->qpn, 2,
+			       MLX4_CMD_2RST_QP, MLX4_CMD_TIME_CLASS_A, native);
+		if (mlx4_is_master(dev) && cur_state != MLX4_QP_STATE_ERR &&
+		    cur_state != MLX4_QP_STATE_RST &&
+		    is_qp0(dev, qp, &real_qp0, &proxy_qp0)) {
+			port = (qp->qpn & 1) + 1;
+			if (proxy_qp0)
+				priv->mfunc.master.qp0_state[port].proxy_qp0_active = 0;
+			else
+				priv->mfunc.master.qp0_state[port].qp0_active = 0;
+		}
+		return ret;
+	}
 
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
 	if (IS_ERR(mailbox))
@@ -131,46 +162,202 @@ int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 		context->log_page_size   = mtt->page_shift - MLX4_ICM_PAGE_SHIFT;
 	}
 
+	port = ((context->pri_path.sched_queue >> 6) & 1) + 1;
+	if (dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH) {
+		vep_num = dev->caps.function >> 1;
+		context->pri_path.sched_queue = (context->pri_path.sched_queue & 0xc3) |
+						(vep_num << 3);
+	}
+
 	*(__be32 *) mailbox->buf = cpu_to_be32(optpar);
 	memcpy(mailbox->buf + 8, context, sizeof *context);
 
 	((struct mlx4_qp_context *) (mailbox->buf + 8))->local_qpn =
 		cpu_to_be32(qp->qpn);
 
-	ret = mlx4_cmd(dev, mailbox->dma, qp->qpn | (!!sqd_event << 31),
+	ret = mlx4_cmd(dev, mailbox->dma | dev->caps.function,
+		       qp->qpn | (!!sqd_event << 31),
 		       new_state == MLX4_QP_STATE_RST ? 2 : 0,
-		       op[cur_state][new_state], MLX4_CMD_TIME_CLASS_C);
+		       op[cur_state][new_state], MLX4_CMD_TIME_CLASS_C, native);
+
+	if (mlx4_is_master(dev) && cur_state != MLX4_QP_STATE_ERR &&
+	    cur_state != MLX4_QP_STATE_RST && new_state == MLX4_QP_STATE_ERR &&
+	    is_qp0(dev, qp, &real_qp0, &proxy_qp0)) {
+		if (proxy_qp0)
+			priv->mfunc.master.qp0_state[port].proxy_qp0_active = 0;
+		else
+			priv->mfunc.master.qp0_state[port].qp0_active = 0;
+	}
+
+	if (mlx4_is_master(dev) && new_state == MLX4_QP_STATE_RTR &&
+	    is_qp0(dev, qp, &real_qp0, &proxy_qp0)) {
+		if (proxy_qp0)
+			priv->mfunc.master.qp0_state[port].proxy_qp0_active = 1;
+		else
+			priv->mfunc.master.qp0_state[port].qp0_active = 1;
+	}
 
 	mlx4_free_cmd_mailbox(dev, mailbox);
 	return ret;
 }
+
+int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
+		     enum mlx4_qp_state cur_state, enum mlx4_qp_state new_state,
+		     struct mlx4_qp_context *context, enum mlx4_qp_optpar optpar,
+		     int sqd_event, struct mlx4_qp *qp)
+{
+	return __mlx4_qp_modify(dev, mtt, cur_state, new_state, context,
+				optpar, sqd_event, qp, 0);
+}
 EXPORT_SYMBOL_GPL(mlx4_qp_modify);
+
+int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align, int *base)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_qp_table *qp_table = &priv->qp_table;
+
+	*base = mlx4_bitmap_alloc_range(&qp_table->bitmap, cnt, align);
+	if (*base == -1)
+		return -ENOMEM;
+	return 0;
+}
 
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align, int *base)
 {
-	struct mlx4_priv *priv = mlx4_priv(dev);
-	struct mlx4_qp_table *qp_table = &priv->qp_table;
-	int qpn;
+	u64 in_param;
+	u64 out_param;
+	int err;
 
-	qpn = mlx4_bitmap_alloc_range(&qp_table->bitmap, cnt, align);
-	if (qpn == -1)
-		return -ENOMEM;
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, cnt);
+		set_param_h(&in_param, align);
+		err = mlx4_cmd_imm(dev, in_param, &out_param, RES_QP, RES_OP_RESERVE,
+							      MLX4_CMD_ALLOC_RES,
+							      MLX4_CMD_TIME_CLASS_A, 0);
+		if (err)
+			return err;
 
-	*base = qpn;
-	return 0;
+		*base = get_param_l(&out_param);
+		return 0;
+	}
+	return __mlx4_qp_reserve_range(dev, cnt, align, base);
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_reserve_range);
 
-void mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt)
+void __mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_qp_table *qp_table = &priv->qp_table;
-	if (base_qpn < dev->caps.sqp_start + 8)
-		return;
 
+	if (mlx4_is_qp_reserved(dev, (u32) base_qpn))
+		return;
 	mlx4_bitmap_free_range(&qp_table->bitmap, base_qpn, cnt);
 }
+
+void mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt)
+{
+	u64 in_param;
+	int err;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, base_qpn);
+		set_param_h(&in_param, cnt);
+		err = mlx4_cmd(dev, in_param, RES_QP, RES_OP_RESERVE,
+						      MLX4_CMD_FREE_RES,
+						      MLX4_CMD_TIME_CLASS_A, 0);
+		if (err) {
+			mlx4_warn(dev, "Failed to release qp range base:%d cnt:%d\n",
+									base_qpn, cnt);
+		}
+	} else
+		__mlx4_qp_release_range(dev, base_qpn, cnt);
+}
 EXPORT_SYMBOL_GPL(mlx4_qp_release_range);
+
+int __mlx4_qp_alloc_icm(struct mlx4_dev *dev, int qpn)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_qp_table *qp_table = &priv->qp_table;
+	int err;
+
+	err = mlx4_table_get(dev, &qp_table->qp_table, qpn, MLX4_MR_FLAG_NONE);
+	if (err)
+		goto err_out;
+
+	err = mlx4_table_get(dev, &qp_table->auxc_table, qpn,
+			     MLX4_MR_FLAG_NONE);
+	if (err)
+		goto err_put_qp;
+
+	err = mlx4_table_get(dev, &qp_table->altc_table, qpn,
+			     MLX4_MR_FLAG_NONE);
+	if (err)
+		goto err_put_auxc;
+
+	err = mlx4_table_get(dev, &qp_table->rdmarc_table, qpn,
+			     MLX4_MR_FLAG_NONE);
+	if (err)
+		goto err_put_altc;
+
+	err = mlx4_table_get(dev, &qp_table->cmpt_table, qpn,
+			     MLX4_MR_FLAG_NONE);
+	if (err)
+		goto err_put_rdmarc;
+
+	return 0;
+
+err_put_rdmarc:
+	mlx4_table_put(dev, &qp_table->rdmarc_table, qpn, MLX4_MR_FLAG_NONE);
+
+err_put_altc:
+	mlx4_table_put(dev, &qp_table->altc_table, qpn, MLX4_MR_FLAG_NONE);
+
+err_put_auxc:
+	mlx4_table_put(dev, &qp_table->auxc_table, qpn, MLX4_MR_FLAG_NONE);
+
+err_put_qp:
+	mlx4_table_put(dev, &qp_table->qp_table, qpn, MLX4_MR_FLAG_NONE);
+
+err_out:
+	return err;
+}
+
+static int mlx4_qp_alloc_icm(struct mlx4_dev *dev, int qpn)
+{
+	u64 param;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&param, qpn);
+		return mlx4_cmd_imm(dev, param, &param, RES_QP, RES_OP_MAP_ICM,
+				    MLX4_CMD_ALLOC_RES, MLX4_CMD_TIME_CLASS_A, 0);
+	}
+	return __mlx4_qp_alloc_icm(dev, qpn);
+}
+
+void __mlx4_qp_free_icm(struct mlx4_dev *dev, int qpn)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_qp_table *qp_table = &priv->qp_table;
+
+	mlx4_table_put(dev, &qp_table->cmpt_table, qpn, MLX4_MR_FLAG_NONE);
+	mlx4_table_put(dev, &qp_table->rdmarc_table, qpn, MLX4_MR_FLAG_NONE);
+	mlx4_table_put(dev, &qp_table->altc_table, qpn, MLX4_MR_FLAG_NONE);
+	mlx4_table_put(dev, &qp_table->auxc_table, qpn, MLX4_MR_FLAG_NONE);
+	mlx4_table_put(dev, &qp_table->qp_table, qpn, MLX4_MR_FLAG_NONE);
+}
+
+void mlx4_qp_free_icm(struct mlx4_dev *dev, int qpn)
+{
+	u64 in_param;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, qpn);
+		if (mlx4_cmd(dev, in_param, RES_QP, RES_OP_MAP_ICM,
+			     MLX4_CMD_FREE_RES, MLX4_CMD_TIME_CLASS_A, 0))
+			mlx4_warn(dev, "Failed to free icm of qp:%d\n", qpn);
+	} else
+		__mlx4_qp_free_icm(dev, qpn);
+}
 
 int mlx4_qp_alloc(struct mlx4_dev *dev, int qpn, struct mlx4_qp *qp)
 {
@@ -183,53 +370,23 @@ int mlx4_qp_alloc(struct mlx4_dev *dev, int qpn, struct mlx4_qp *qp)
 
 	qp->qpn = qpn;
 
-	err = mlx4_table_get(dev, &qp_table->qp_table, qp->qpn);
+	err = mlx4_qp_alloc_icm(dev, qpn);
 	if (err)
-		goto err_out;
-
-	err = mlx4_table_get(dev, &qp_table->auxc_table, qp->qpn);
-	if (err)
-		goto err_put_qp;
-
-	err = mlx4_table_get(dev, &qp_table->altc_table, qp->qpn);
-	if (err)
-		goto err_put_auxc;
-
-	err = mlx4_table_get(dev, &qp_table->rdmarc_table, qp->qpn);
-	if (err)
-		goto err_put_altc;
-
-	err = mlx4_table_get(dev, &qp_table->cmpt_table, qp->qpn);
-	if (err)
-		goto err_put_rdmarc;
+		return err;
 
 	spin_lock_irq(&qp_table->lock);
 	err = radix_tree_insert(&dev->qp_table_tree, qp->qpn & (dev->caps.num_qps - 1), qp);
 	spin_unlock_irq(&qp_table->lock);
 	if (err)
-		goto err_put_cmpt;
+		goto err_icm;
 
 	atomic_set(&qp->refcount, 1);
 	init_completion(&qp->free);
 
 	return 0;
 
-err_put_cmpt:
-	mlx4_table_put(dev, &qp_table->cmpt_table, qp->qpn);
-
-err_put_rdmarc:
-	mlx4_table_put(dev, &qp_table->rdmarc_table, qp->qpn);
-
-err_put_altc:
-	mlx4_table_put(dev, &qp_table->altc_table, qp->qpn);
-
-err_put_auxc:
-	mlx4_table_put(dev, &qp_table->auxc_table, qp->qpn);
-
-err_put_qp:
-	mlx4_table_put(dev, &qp_table->qp_table, qp->qpn);
-
-err_out:
+err_icm:
+	mlx4_qp_free_icm(dev, qpn);
 	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_alloc);
@@ -247,24 +404,19 @@ EXPORT_SYMBOL_GPL(mlx4_qp_remove);
 
 void mlx4_qp_free(struct mlx4_dev *dev, struct mlx4_qp *qp)
 {
-	struct mlx4_qp_table *qp_table = &mlx4_priv(dev)->qp_table;
-
 	if (atomic_dec_and_test(&qp->refcount))
 		complete(&qp->free);
 	wait_for_completion(&qp->free);
 
-	mlx4_table_put(dev, &qp_table->cmpt_table, qp->qpn);
-	mlx4_table_put(dev, &qp_table->rdmarc_table, qp->qpn);
-	mlx4_table_put(dev, &qp_table->altc_table, qp->qpn);
-	mlx4_table_put(dev, &qp_table->auxc_table, qp->qpn);
-	mlx4_table_put(dev, &qp_table->qp_table, qp->qpn);
+	mlx4_qp_free_icm(dev, qp->qpn);
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_free);
 
 static int mlx4_CONF_SPECIAL_QP(struct mlx4_dev *dev, u32 base_qpn)
 {
-	return mlx4_cmd(dev, 0, base_qpn, 0, MLX4_CMD_CONF_SPECIAL_QP,
-			MLX4_CMD_TIME_CLASS_B);
+	return mlx4_cmd(dev, 0, base_qpn,
+			(dev->caps.flags & MLX4_DEV_CAP_FLAG_RAW_ETY) ? 4 : 0,
+			MLX4_CMD_CONF_SPECIAL_QP, MLX4_CMD_TIME_CLASS_B, 1);
 }
 
 int mlx4_init_qp_table(struct mlx4_dev *dev)
@@ -275,13 +427,20 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 
 	spin_lock_init(&qp_table->lock);
 	INIT_RADIX_TREE(&dev->qp_table_tree, GFP_ATOMIC);
+	if (mlx4_is_mfunc(dev) && !mlx4_is_master(dev))
+		return 0;
 
 	/*
 	 * We reserve 2 extra QPs per port for the special QPs.  The
 	 * block of special QPs must be aligned to a multiple of 8, so
 	 * round up.
+	 * If we are operating in multi-function mode, we reserve additional
+	 * 8 qps for each function, while the "real" special qps serve as
+	 * a tunnel for para-virtualization purposes.
+	 * We also reserve the MSB of the 24-bit QP number to indicate
+	 * an XRC qp.
 	 */
-	dev->caps.sqp_start =
+	dev->caps.tunnel_qpn =
 		ALIGN(dev->caps.reserved_qps_cnt[MLX4_QP_REGION_FW], 8);
 
 	{
@@ -312,20 +471,47 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 
 	}
 
+	/* reserve 8 (unused) tunnel QPs, 8 real SQPs, and, per function,
+	 * 8 proxy SQPs (used by slaves), and 8 corresponding tunnel QPs (for master).
+	 * Each proxy SQP works opposite its own Dom0 tunnel QP.
+	 */
 	err = mlx4_bitmap_init(&qp_table->bitmap, dev->caps.num_qps,
-			       (1 << 23) - 1, dev->caps.sqp_start + 8,
+			       (1 << 23) - 1, dev->caps.tunnel_qpn + 8 +
+                               16 * MLX4_MFUNC_MAX *
+			       !!(mlx4_is_mfunc(dev) && mlx4_is_master(dev)),
 			       reserved_from_top);
 	if (err)
 		return err;
+	/*In mfunc the start of the sqp is diffrent:*/
+	if (mlx4_is_mfunc(dev))
+		dev->caps.sqp_start = dev->caps.tunnel_qpn + 8 * (dev->caps.function + 1);
+	else
+		dev->caps.sqp_start = dev->caps.tunnel_qpn;
 
-	return mlx4_CONF_SPECIAL_QP(dev, dev->caps.sqp_start);
+	return mlx4_CONF_SPECIAL_QP(dev, dev->caps.tunnel_qpn);
 }
 
 void mlx4_cleanup_qp_table(struct mlx4_dev *dev)
 {
+	if (mlx4_is_mfunc(dev) && !mlx4_is_master(dev))
+		return;
+
 	mlx4_CONF_SPECIAL_QP(dev, 0);
 	mlx4_bitmap_cleanup(&mlx4_priv(dev)->qp_table.bitmap);
 }
+
+int mlx4_qp_get_region(struct mlx4_dev *dev, enum mlx4_qp_region region,
+			int *base_qpn, int *cnt)
+{
+	if ((region < 0) || (region >= MLX4_NUM_QP_REGION))
+		return -EINVAL;
+
+	*base_qpn = dev->caps.reserved_qps_base[region];
+	*cnt = dev->caps.reserved_qps_cnt[region];
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_qp_get_region);
 
 int mlx4_qp_query(struct mlx4_dev *dev, struct mlx4_qp *qp,
 		  struct mlx4_qp_context *context)
@@ -338,7 +524,7 @@ int mlx4_qp_query(struct mlx4_dev *dev, struct mlx4_qp *qp,
 		return PTR_ERR(mailbox);
 
 	err = mlx4_cmd_box(dev, 0, mailbox->dma, qp->qpn, 0,
-			   MLX4_CMD_QUERY_QP, MLX4_CMD_TIME_CLASS_A);
+			   MLX4_CMD_QUERY_QP, MLX4_CMD_TIME_CLASS_A, 0);
 	if (!err)
 		memcpy(context, mailbox->buf + 8, sizeof *context);
 

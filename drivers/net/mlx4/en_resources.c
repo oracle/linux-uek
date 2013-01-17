@@ -31,7 +31,6 @@
  *
  */
 
-#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/mlx4/qp.h>
 
@@ -47,8 +46,9 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 	context->flags = cpu_to_be32(7 << 16 | rss << 13);
 	context->pd = cpu_to_be32(mdev->priv_pdn);
 	context->mtu_msgmax = 0xff;
-	if (!is_tx && !rss)
+	if (!is_tx && !rss) {
 		context->rq_size_stride = ilog2(size) << 3 | (ilog2(stride) - 4);
+	}
 	if (is_tx)
 		context->sq_size_stride = ilog2(size) << 3 | (ilog2(stride) - 4);
 	else

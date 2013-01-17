@@ -31,17 +31,15 @@
  * SOFTWARE.
  */
 
+#include <linux/init.h>
 #include <linux/errno.h>
+#include <asm/kmap_types.h>
 #include <linux/io-mapping.h>
 
 #include <asm/page.h>
 
 #include "mlx4.h"
 #include "icm.h"
-
-enum {
-	MLX4_NUM_RESERVED_UARS = 8
-};
 
 int mlx4_pd_alloc(struct mlx4_dev *dev, u32 *pdn)
 {
@@ -50,7 +48,8 @@ int mlx4_pd_alloc(struct mlx4_dev *dev, u32 *pdn)
 	*pdn = mlx4_bitmap_alloc(&priv->pd_bitmap);
 	if (*pdn == -1)
 		return -ENOMEM;
-
+	if (mlx4_is_mfunc(dev))
+		*pdn |= (dev->caps.function + 1) << NOT_MASKED_PD_BITS;
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_pd_alloc);
@@ -66,7 +65,7 @@ int mlx4_init_pd_table(struct mlx4_dev *dev)
 	struct mlx4_priv *priv = mlx4_priv(dev);
 
 	return mlx4_bitmap_init(&priv->pd_bitmap, dev->caps.num_pds,
-				(1 << 24) - 1, dev->caps.reserved_pds, 0);
+				(1 << NOT_MASKED_PD_BITS) - 1, dev->caps.reserved_pds, 0);
 }
 
 void mlx4_cleanup_pd_table(struct mlx4_dev *dev)
@@ -77,13 +76,19 @@ void mlx4_cleanup_pd_table(struct mlx4_dev *dev)
 
 int mlx4_uar_alloc(struct mlx4_dev *dev, struct mlx4_uar *uar)
 {
+	int offset;
+
 	uar->index = mlx4_bitmap_alloc(&mlx4_priv(dev)->uar_table.bitmap);
 	if (uar->index == -1)
 		return -ENOMEM;
 
-	uar->pfn = (pci_resource_start(dev->pdev, 2) >> PAGE_SHIFT) + uar->index;
+	if (mlx4_is_mfunc(dev) && !mlx4_is_master(dev))
+		offset = uar->index % ((int) pci_resource_len(dev->pdev, 2) /
+				       dev->caps.uar_page_size);
+	else
+		offset = uar->index;
+	uar->pfn = (pci_resource_start(dev->pdev, 2) >> PAGE_SHIFT) + offset;
 	uar->map = NULL;
-
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_uar_alloc);
@@ -108,10 +113,6 @@ int mlx4_bf_alloc(struct mlx4_dev *dev, struct mlx4_bf *bf)
 	if (!list_empty(&priv->bf_list))
 		uar = list_entry(priv->bf_list.next, struct mlx4_uar, bf_list);
 	else {
-		if (mlx4_bitmap_avail(&priv->uar_table.bitmap) < MLX4_NUM_RESERVED_UARS) {
-			err = -ENOMEM;
-			goto out;
-		}
 		uar = kmalloc(sizeof *uar, GFP_KERNEL);
 		if (!uar) {
 			err = -ENOMEM;
@@ -199,9 +200,9 @@ int mlx4_init_uar_table(struct mlx4_dev *dev)
 		return -ENODEV;
 	}
 
-	return mlx4_bitmap_init(&mlx4_priv(dev)->uar_table.bitmap,
-				dev->caps.num_uars, dev->caps.num_uars - 1,
-				max(128, dev->caps.reserved_uars), 0);
+	return mlx4_bitmap_init_no_mask(&mlx4_priv(dev)->uar_table.bitmap,
+					dev->caps.num_uars,
+					dev->caps.reserved_uars, 0);
 }
 
 void mlx4_cleanup_uar_table(struct mlx4_dev *dev)

@@ -32,34 +32,19 @@
  * SOFTWARE.
  */
 
+#include <linux/init.h>
 #include <linux/errno.h>
-#include <linux/slab.h>
+#include <linux/kernel.h>
 
 #include <linux/mlx4/cmd.h>
 
 #include "mlx4.h"
 #include "icm.h"
+#include "fmr_slave.h"
 
 /*
  * Must be packed because mtt_seg is 64 bits but only aligned to 32 bits.
  */
-struct mlx4_mpt_entry {
-	__be32 flags;
-	__be32 qpn;
-	__be32 key;
-	__be32 pd_flags;
-	__be64 start;
-	__be64 length;
-	__be32 lkey;
-	__be32 win_cnt;
-	u8	reserved1[3];
-	u8	mtt_rep;
-	__be64 mtt_seg;
-	__be32 mtt_sz;
-	__be32 entity_size;
-	__be32 first_byte_offset;
-} __packed;
-
 #define MLX4_MPT_FLAG_SW_OWNS	    (0xfUL << 28)
 #define MLX4_MPT_FLAG_FREE	    (0x3UL << 28)
 #define MLX4_MPT_FLAG_MIO	    (1 << 17)
@@ -70,6 +55,8 @@ struct mlx4_mpt_entry {
 #define MLX4_MPT_PD_FLAG_FAST_REG   (1 << 27)
 #define MLX4_MPT_PD_FLAG_RAE	    (1 << 28)
 #define MLX4_MPT_PD_FLAG_EN_INV	    (3 << 24)
+
+#define MLX4_MPT_FLAG2_FBO_EN	     (1 <<  7)
 
 #define MLX4_MPT_STATUS_SW		0xF0
 #define MLX4_MPT_STATUS_HW		0x00
@@ -91,7 +78,7 @@ static u32 mlx4_buddy_alloc(struct mlx4_buddy *buddy, int order)
 		}
 
 	spin_unlock(&buddy->lock);
-	return -1;
+	return 0xFFFFFFFF;
 
  found:
 	clear_bit(seg, buddy->bits[o]);
@@ -179,26 +166,74 @@ static void mlx4_buddy_cleanup(struct mlx4_buddy *buddy)
 	kfree(buddy->num_free);
 }
 
-static u32 mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order)
+inline u32 __mlx4_reserve_mtt_range(struct mlx4_dev *dev, int order)
+{
+	return mlx4_buddy_alloc(&mlx4_priv(dev)->mr_table.mtt_buddy, order);
+}
+
+u32 __mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order,
+			   enum mlx4_mr_flags flags)
 {
 	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
 	u32 seg;
+	struct mlx4_buddy *buddy;
+	struct mlx4_icm_table *icm_table;
+	int fmr_flow;
 
-	seg = mlx4_buddy_alloc(&mr_table->mtt_buddy, order);
-	if (seg == -1)
-		return -1;
+	fmr_flow = mlx4_fmr_flow(dev, flags);
 
-	if (mlx4_table_get_range(dev, &mr_table->mtt_table, seg,
-				 seg + (1 << order) - 1)) {
-		mlx4_buddy_free(&mr_table->mtt_buddy, seg, order);
-		return -1;
+	if (fmr_flow) {
+		buddy = &mr_table->fmr.mtt_buddy;
+		icm_table = &mr_table->fmr.mtt_table;
+	} else {
+		buddy = &mr_table->mtt_buddy;
+		icm_table = &mr_table->mtt_table;
+	}
+
+	seg = mlx4_buddy_alloc(buddy, order);
+	if (seg == 0xFFFFFFFF) {
+		mlx4_err(dev, "alloc mtt range failed in budddy alloc\n");
+		return 0xFFFFFFFF;
+	}
+
+	if (mlx4_table_get_range(dev, icm_table, seg,
+				 seg + (1 << order) - 1, flags)) {
+		mlx4_buddy_free(buddy, seg, order);
+		mlx4_err(dev, "alloc mtt range failed to get table range\n");
+		return 0xFFFFFFFF;
 	}
 
 	return seg;
 }
 
+u32 mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order,
+			 enum mlx4_mr_flags flags)
+{
+	u64 in_param;
+	u64 out_param;
+	u16 op;
+	int err;
+
+	op = mlx4_fmr_flow(dev, flags) ? RES_OP_RESERVE :
+	     RES_OP_RESERVE_AND_MAP;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, order);
+		err = mlx4_cmd_imm(dev, in_param, &out_param, RES_MTT, op,
+						       MLX4_CMD_ALLOC_RES,
+						       MLX4_CMD_TIME_CLASS_A, 0);
+		if (err) {
+			mlx4_dbg(dev, "Failed to alloc mtt order:%d fmr_flow %d\n",
+				 order, mlx4_fmr_flow(dev, flags));
+			return 0xFFFFFFFF;
+		}
+		return get_param_l(&out_param);
+	}
+	return __mlx4_alloc_mtt_range(dev, order, flags);
+}
+
 int mlx4_mtt_init(struct mlx4_dev *dev, int npages, int page_shift,
-		  struct mlx4_mtt *mtt)
+		  struct mlx4_mtt *mtt, enum mlx4_mr_flags flags)
 {
 	int i;
 
@@ -212,24 +247,81 @@ int mlx4_mtt_init(struct mlx4_dev *dev, int npages, int page_shift,
 	for (mtt->order = 0, i = dev->caps.mtts_per_seg; i < npages; i <<= 1)
 		++mtt->order;
 
-	mtt->first_seg = mlx4_alloc_mtt_range(dev, mtt->order);
-	if (mtt->first_seg == -1)
+	mtt->first_seg = mlx4_fmr_flow(dev, flags) ?
+			 __mlx4_alloc_mtt_range(dev,  mtt->order, flags) :
+			 mlx4_alloc_mtt_range(dev, mtt->order, flags);
+	if (mtt->first_seg == 0xFFFFFFFF)
 		return -ENOMEM;
 
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_mtt_init);
 
-void mlx4_mtt_cleanup(struct mlx4_dev *dev, struct mlx4_mtt *mtt)
+inline void __mlx4_free_mtt_reserved_range(struct mlx4_dev *dev, u32 first_seg,
+				    int order)
+{
+	mlx4_buddy_free(&mlx4_priv(dev)->mr_table.mtt_buddy,
+			first_seg, order);
+}
+
+void __mlx4_free_mtt_range(struct mlx4_dev *dev, u32 first_seg, int order,
+			   enum mlx4_mr_flags flags)
 {
 	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
+	struct mlx4_buddy *buddy;
+	struct mlx4_icm_table *icm_table;
+	int fmr_flow;
 
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+
+	if (fmr_flow) {
+		buddy = &mr_table->fmr.mtt_buddy;
+		icm_table = &mr_table->fmr.mtt_table;
+	} else {
+		buddy = &mr_table->mtt_buddy;
+		icm_table = &mr_table->mtt_table;
+	}
+
+	mlx4_buddy_free(buddy, first_seg, order);
+	mlx4_table_put_range(dev, icm_table, first_seg,
+			     first_seg + (1 << order) - 1, flags);
+}
+
+void mlx4_free_mtt_range(struct mlx4_dev *dev, u32 first_seg, int order,
+			 enum mlx4_mr_flags flags)
+{
+	u64 in_param;
+	u16 op;
+	int err;
+
+	op = mlx4_fmr_flow(dev, flags) ? RES_OP_RESERVE :
+	     RES_OP_RESERVE_AND_MAP;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, first_seg);
+		set_param_h(&in_param, order);
+		err = mlx4_cmd(dev, in_param, RES_MTT, op,
+						       MLX4_CMD_FREE_RES,
+						       MLX4_CMD_TIME_CLASS_A, 0);
+		if (err)
+			mlx4_warn(dev, "Failed to free mtt range at:%d order:%d"
+				  " fmr_flow %d\n", first_seg, order,
+				  mlx4_fmr_flow(dev, flags));
+		return;
+	}
+	__mlx4_free_mtt_range(dev, first_seg, order, flags);
+}
+
+void mlx4_mtt_cleanup(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
+		      enum mlx4_mr_flags flags)
+{
 	if (mtt->order < 0)
 		return;
 
-	mlx4_buddy_free(&mr_table->mtt_buddy, mtt->first_seg, mtt->order);
-	mlx4_table_put_range(dev, &mr_table->mtt_table, mtt->first_seg,
-			     mtt->first_seg + (1 << mtt->order) - 1);
+	if (mlx4_fmr_flow(dev, flags))
+		__mlx4_free_mtt_range(dev, mtt->first_seg, mtt->order, flags);
+	else
+		mlx4_free_mtt_range(dev, mtt->first_seg, mtt->order, flags);
 }
 EXPORT_SYMBOL_GPL(mlx4_mtt_cleanup);
 
@@ -244,77 +336,278 @@ static u32 hw_index_to_key(u32 ind)
 	return (ind >> 24) | (ind << 8);
 }
 
-static u32 key_to_hw_index(u32 key)
-{
-	return (key << 24) | (key >> 8);
-}
-
 static int mlx4_SW2HW_MPT(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox,
 			  int mpt_index)
 {
-	return mlx4_cmd(dev, mailbox->dma, mpt_index, 0, MLX4_CMD_SW2HW_MPT,
-			MLX4_CMD_TIME_CLASS_B);
+	return mlx4_cmd(dev, mailbox->dma | dev->caps.function , mpt_index,
+			0, MLX4_CMD_SW2HW_MPT, MLX4_CMD_TIME_CLASS_B, 0);
 }
 
 static int mlx4_HW2SW_MPT(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox,
 			  int mpt_index)
 {
 	return mlx4_cmd_box(dev, 0, mailbox ? mailbox->dma : 0, mpt_index,
-			    !mailbox, MLX4_CMD_HW2SW_MPT, MLX4_CMD_TIME_CLASS_B);
+			    !mailbox, MLX4_CMD_HW2SW_MPT, MLX4_CMD_TIME_CLASS_B, 0);
+}
+
+int mlx4_mr_reserve_range(struct mlx4_dev *dev, int cnt, int align, u32 *base_mridx)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	u32 mridx;
+
+	mridx = mlx4_bitmap_alloc_range(&priv->mr_table.mpt_bitmap, cnt, align);
+	if (mridx == -1)
+		return -ENOMEM;
+
+	*base_mridx = mridx;
+	return 0;
+
+}
+EXPORT_SYMBOL_GPL(mlx4_mr_reserve_range);
+
+void mlx4_mr_release_range(struct mlx4_dev *dev, u32 base_mridx, int cnt)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	mlx4_bitmap_free_range(&priv->mr_table.mpt_bitmap, base_mridx, cnt);
+}
+EXPORT_SYMBOL_GPL(mlx4_mr_release_range);
+
+int mlx4_mr_alloc_reserved(struct mlx4_dev *dev, u32 mridx, u32 pd,
+			   u64 iova, u64 size, u32 access, int npages,
+			   int page_shift, struct mlx4_mr *mr)
+{
+	mr->iova       = iova;
+	mr->size       = size;
+	mr->pd	       = pd;
+	mr->access     = access;
+	mr->enabled    = MLX4_MR_DISABLED;
+	mr->key	       = hw_index_to_key(mridx);
+
+	return mlx4_mtt_init(dev, npages, page_shift, &mr->mtt, mr->flags);
+}
+EXPORT_SYMBOL_GPL(mlx4_mr_alloc_reserved);
+
+static int mlx4_WRITE_MTT(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox,
+			  int num_entries)
+{
+	return mlx4_cmd(dev, mailbox->dma, num_entries, 0, MLX4_CMD_WRITE_MTT,
+			MLX4_CMD_TIME_CLASS_A, 0);
+}
+
+int __mlx4_mr_reserve(struct mlx4_dev *dev)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	return mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);
+}
+
+static int mlx4_fmr_reserve(struct mlx4_dev *dev)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	return mlx4_bitmap_alloc(&priv->mr_table.fmr.mpt_bitmap);
+}
+
+static void mlx4_fmr_release(struct mlx4_dev *dev, u32 idx)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	mlx4_bitmap_free(&priv->mr_table.fmr.mpt_bitmap, idx);
+}
+
+int mlx4_mr_reserve(struct mlx4_dev *dev, enum mlx4_mr_flags flags)
+{
+	u64 out_param;
+	u64 in_param = 0;
+	int idx = 0;
+	int fmr_flow;
+
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+	if (fmr_flow) {
+		idx = mlx4_fmr_reserve(dev);
+		if (idx < 0) {
+			mlx4_warn(dev, "Failed allocating mpt index for FMR\n");
+			return -1;
+		}
+		set_param_l(&in_param, dev->caps.fmr_dmpt_base_idx + idx);
+		set_param_h(&in_param, flags);
+	}
+
+	if (mlx4_is_mfunc(dev)) {
+		if (mlx4_cmd_imm(dev, in_param, &out_param, RES_MPT,
+		    RES_OP_RESERVE, MLX4_CMD_ALLOC_RES,
+		    MLX4_CMD_TIME_CLASS_A, 0)) {
+			mlx4_warn(dev, "Failed to reserve mr fmr_flow %d"
+				  ", idx %d\n", fmr_flow, idx);
+			return -1;
+		}
+		mlx4_dbg(dev, "Allocated mpt index = 0x%x, fmr_flow %d\n",
+			  get_param_l(&out_param), fmr_flow);
+		return get_param_l(&out_param);
+	}
+	return  __mlx4_mr_reserve(dev);
+}
+
+void __mlx4_mr_release(struct mlx4_dev *dev, u32 index)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	mlx4_bitmap_free(&priv->mr_table.mpt_bitmap, index);
+}
+
+void mlx4_mr_release(struct mlx4_dev *dev, u32 index, enum mlx4_mr_flags flags)
+{
+	u64 in_param = 0;
+	int fmr_flow;
+
+	fmr_flow = mlx4_fmr_flow(dev, flags);
+	if (fmr_flow) {
+		mlx4_fmr_release(dev, index - dev->caps.fmr_dmpt_base_idx);
+		set_param_h(&in_param, flags);
+	}
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, index);
+		if (mlx4_cmd(dev, in_param, RES_MPT, RES_OP_RESERVE,
+			       MLX4_CMD_FREE_RES,
+			       MLX4_CMD_TIME_CLASS_A, 0))
+			mlx4_warn(dev, "Failed to release mr index:%d,"
+				  " fmr_flow %d\n", index, fmr_flow);
+		else
+			mlx4_dbg(dev, "Release mpt index = 0x%x, fmr_flow %d\n",
+				  index, fmr_flow);
+		return;
+	}
+	__mlx4_mr_release(dev, index);
+}
+
+int __mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index,
+			enum mlx4_mr_flags flags)
+{
+	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
+	int fmr_flow = mlx4_fmr_flow(dev, flags);
+	struct mlx4_icm_table *icm_table;
+
+	icm_table = fmr_flow ? &mr_table->fmr.dmpt_table :
+			       &mr_table->dmpt_table;
+
+	if (fmr_flow)
+		index -= dev->caps.fmr_dmpt_base_idx;
+
+	return mlx4_table_get(dev, icm_table, index, flags);
+}
+
+int mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index, enum mlx4_mr_flags flags)
+{
+	u64 param;
+	int fmr_flow = mlx4_fmr_flow(dev, flags);
+	int err = 0;
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&param, index);
+		err = mlx4_cmd_imm(dev, param, &param, RES_MPT, RES_OP_MAP_ICM,
+							MLX4_CMD_ALLOC_RES,
+							MLX4_CMD_TIME_CLASS_A, 0);
+		if (err) {
+			mlx4_err(dev, "Alloc icm failed with err %d\n", err);
+			return err;
+		}
+	}
+
+	if (!mlx4_is_mfunc(dev) || fmr_flow)
+		err = __mlx4_mr_alloc_icm(dev, index, flags);
+
+	return err;
+}
+
+void __mlx4_mr_free_icm(struct mlx4_dev *dev, u32 index,
+			enum mlx4_mr_flags flags)
+{
+	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
+	int fmr_flow = mlx4_fmr_flow(dev, flags);
+	struct mlx4_icm_table *icm_table;
+
+	icm_table = fmr_flow ? &mr_table->fmr.dmpt_table :
+			       &mr_table->dmpt_table;
+
+	if (fmr_flow)
+		index -= dev->caps.fmr_dmpt_base_idx;
+
+	mlx4_table_put(dev, icm_table, index, flags);
+}
+
+void mlx4_mr_free_icm(struct mlx4_dev *dev, u32 index, enum mlx4_mr_flags flags)
+{
+	u64 in_param;
+	int fmr_flow = mlx4_fmr_flow(dev, flags);
+
+	if (mlx4_is_mfunc(dev)) {
+		set_param_l(&in_param, index);
+		if (mlx4_cmd(dev, in_param, RES_MPT, RES_OP_MAP_ICM,
+			     MLX4_CMD_FREE_RES, MLX4_CMD_TIME_CLASS_A, 0)) {
+			mlx4_warn(dev, "Failed to free icm of mr index:%d\n", index);
+			return;
+		}
+	}
+
+	if (!mlx4_is_mfunc(dev) || fmr_flow)
+		return __mlx4_mr_free_icm(dev, index, flags);
 }
 
 int mlx4_mr_alloc(struct mlx4_dev *dev, u32 pd, u64 iova, u64 size, u32 access,
 		  int npages, int page_shift, struct mlx4_mr *mr)
 {
-	struct mlx4_priv *priv = mlx4_priv(dev);
 	u32 index;
 	int err;
 
-	index = mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);
+	index = mlx4_mr_reserve(dev, mr->flags);
 	if (index == -1)
 		return -ENOMEM;
 
-	mr->iova       = iova;
-	mr->size       = size;
-	mr->pd	       = pd;
-	mr->access     = access;
-	mr->enabled    = 0;
-	mr->key	       = hw_index_to_key(index);
-
-	err = mlx4_mtt_init(dev, npages, page_shift, &mr->mtt);
+	err = mlx4_mr_alloc_reserved(dev, index, pd, iova, size,
+				     access, npages, page_shift, mr);
 	if (err)
-		mlx4_bitmap_free(&priv->mr_table.mpt_bitmap, index);
+		mlx4_mr_release(dev, index, mr->flags);
 
 	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_mr_alloc);
 
+void mlx4_mr_free_reserved(struct mlx4_dev *dev, struct mlx4_mr *mr)
+{
+	int err;
+	int fmr_flow = mlx4_fmr_flow(dev, mr->flags);
+
+	if (mr->enabled == MLX4_MR_EN_HW ||
+	    (fmr_flow && (mr->enabled ==  MLX4_MR_EN_SW))) {
+		err = mlx4_HW2SW_MPT(dev, NULL,
+				     key_to_mpt_index(dev, mr->key));
+		if (err)
+			mlx4_warn(dev, "xxx HW2SW_MPT failed (%d)\n", err);
+
+		mr->enabled = MLX4_MR_EN_SW;
+	}
+	mlx4_mtt_cleanup(dev, &mr->mtt, mr->flags);
+}
+EXPORT_SYMBOL_GPL(mlx4_mr_free_reserved);
+
 void mlx4_mr_free(struct mlx4_dev *dev, struct mlx4_mr *mr)
 {
-	struct mlx4_priv *priv = mlx4_priv(dev);
-	int err;
-
-	if (mr->enabled) {
-		err = mlx4_HW2SW_MPT(dev, NULL,
-				     key_to_hw_index(mr->key) &
-				     (dev->caps.num_mpts - 1));
-		if (err)
-			mlx4_warn(dev, "HW2SW_MPT failed (%d)\n", err);
-	}
-
-	mlx4_mtt_cleanup(dev, &mr->mtt);
-	mlx4_bitmap_free(&priv->mr_table.mpt_bitmap, key_to_hw_index(mr->key));
+	mlx4_mr_free_reserved(dev, mr);
+	if (mr->enabled)
+		mlx4_mr_free_icm(dev, key_to_mpt_index(dev, mr->key),
+				 mr->flags);
+	mlx4_mr_release(dev, key_to_mpt_index(dev, mr->key), mr->flags);
 }
 EXPORT_SYMBOL_GPL(mlx4_mr_free);
 
 int mlx4_mr_enable(struct mlx4_dev *dev, struct mlx4_mr *mr)
 {
-	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
 	struct mlx4_cmd_mailbox *mailbox;
 	struct mlx4_mpt_entry *mpt_entry;
 	int err;
 
-	err = mlx4_table_get(dev, &mr_table->dmpt_table, key_to_hw_index(mr->key));
+	err = mlx4_mr_alloc_icm(dev, key_to_mpt_index(dev, mr->key), mr->flags);
 	if (err)
 		return err;
 
@@ -341,7 +634,12 @@ int mlx4_mr_enable(struct mlx4_dev *dev, struct mlx4_mr *mr)
 		mpt_entry->flags |= cpu_to_be32(MLX4_MPT_FLAG_PHYSICAL);
 		mpt_entry->mtt_seg = 0;
 	} else {
-		mpt_entry->mtt_seg = cpu_to_be64(mlx4_mtt_addr(dev, &mr->mtt));
+		/* compute the GLOBAL segment index */
+		mpt_entry->mtt_seg = !mlx4_fmr_flow(dev, mr->flags) ?
+				     cpu_to_be64(mlx4_mtt_addr(dev, &mr->mtt)) :
+				     cpu_to_be64((u64)dev->caps.fmr_mtt_base_idx
+						 * dev->caps.mtt_entry_sz +
+						 mlx4_mtt_addr(dev, &mr->mtt));
 	}
 
 	if (mr->mtt.order >= 0 && mr->mtt.page_shift == 0) {
@@ -356,13 +654,13 @@ int mlx4_mr_enable(struct mlx4_dev *dev, struct mlx4_mr *mr)
 	}
 
 	err = mlx4_SW2HW_MPT(dev, mailbox,
-			     key_to_hw_index(mr->key) & (dev->caps.num_mpts - 1));
+			     key_to_mpt_index(dev, mr->key));
 	if (err) {
-		mlx4_warn(dev, "SW2HW_MPT failed (%d)\n", err);
+		mlx4_warn(dev, "SW2HW_MPT failed (%d) got mpt idx %lx\n", err,
+			  (unsigned long)key_to_mpt_index(dev, mr->key));
 		goto err_cmd;
 	}
-
-	mr->enabled = 1;
+	mr->enabled = MLX4_MR_EN_HW;
 
 	mlx4_free_cmd_mailbox(dev, mailbox);
 
@@ -372,7 +670,7 @@ err_cmd:
 	mlx4_free_cmd_mailbox(dev, mailbox);
 
 err_table:
-	mlx4_table_put(dev, &mr_table->dmpt_table, key_to_hw_index(mr->key));
+	mlx4_mr_free_icm(dev, key_to_mpt_index(dev, mr->key), mr->flags);
 	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_mr_enable);
@@ -394,13 +692,14 @@ static int mlx4_write_mtt_chunk(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 	if (start_index & (dev->caps.mtts_per_seg - 1))
 		return -EINVAL;
 
-	mtts = mlx4_table_find(&priv->mr_table.mtt_table, mtt->first_seg +
-				s / dev->caps.mtt_entry_sz, &dma_handle);
+	mtts = mlx4_table_find(dev, &priv->mr_table.mtt_table, mtt->first_seg +
+				s / dev->caps.mtt_entry_sz, &dma_handle,
+				MLX4_MR_FLAG_NONE);
 	if (!mtts)
 		return -ENOMEM;
 
 	dma_sync_single_for_cpu(&dev->pdev->dev, dma_handle,
-				npages * sizeof (u64), DMA_TO_DEVICE);
+			        npages * sizeof (u64), DMA_TO_DEVICE);
 
 	for (i = 0; i < npages; ++i)
 		mtts[i] = cpu_to_be64(page_list[i] | MLX4_MTT_FLAG_PRESENT);
@@ -411,27 +710,68 @@ static int mlx4_write_mtt_chunk(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 	return 0;
 }
 
-int mlx4_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
-		   int start_index, int npages, u64 *page_list)
+int __mlx4_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
+		     int start_index, int npages, u64 *page_list)
 {
+	int err = 0;
 	int chunk;
-	int err;
-
-	if (mtt->order < 0)
-		return -EINVAL;
 
 	while (npages > 0) {
 		chunk = min_t(int, PAGE_SIZE / sizeof(u64), npages);
 		err = mlx4_write_mtt_chunk(dev, mtt, start_index, chunk, page_list);
 		if (err)
 			return err;
-
 		npages      -= chunk;
 		start_index += chunk;
 		page_list   += chunk;
 	}
+	return err;
+}
 
-	return 0;
+int mlx4_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
+		   int start_index, int npages, u64 *page_list)
+{
+	struct mlx4_cmd_mailbox *mailbox = NULL;
+	__be64 *inbox = NULL;
+	int chunk;
+	int err = 0;
+	int i;
+
+	if (mtt->order < 0)
+		return -EINVAL;
+
+	if (mlx4_is_mfunc(dev)) {
+		mailbox = mlx4_alloc_cmd_mailbox(dev);
+		if (IS_ERR(mailbox))
+			return PTR_ERR(mailbox);
+		inbox = mailbox->buf;
+
+		while (npages > 0) {
+			int s = mtt->first_seg * dev->caps.mtts_per_seg + start_index;
+			chunk = min_t(int, MLX4_MAILBOX_SIZE / sizeof(u64) - dev->caps.mtts_per_seg, npages);
+			if (s / (PAGE_SIZE / sizeof (u64)) !=
+			    (s + chunk - 1) / (PAGE_SIZE / sizeof (u64)))
+				chunk = PAGE_SIZE / sizeof (u64) - (s % (PAGE_SIZE / sizeof (u64)));
+
+			inbox[0] = cpu_to_be64(mtt->first_seg * dev->caps.mtts_per_seg + start_index);
+			inbox[1] = 0;
+			for (i = 0; i < chunk; ++i)
+				inbox[i + 2] = cpu_to_be64(page_list[i] | MLX4_MTT_FLAG_PRESENT);
+			err = mlx4_WRITE_MTT(dev, mailbox, chunk);
+			if (err) {
+				mlx4_free_cmd_mailbox(dev, mailbox);
+				return err;
+			}
+
+			npages      -= chunk;
+			start_index += chunk;
+			page_list   += chunk;
+		}
+		mlx4_free_cmd_mailbox(dev, mailbox);
+		return err;
+	}
+
+	return __mlx4_write_mtt(dev, mtt, start_index, npages, page_list);
 }
 EXPORT_SYMBOL_GPL(mlx4_write_mtt);
 
@@ -459,44 +799,182 @@ int mlx4_buf_write_mtt(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 }
 EXPORT_SYMBOL_GPL(mlx4_buf_write_mtt);
 
-int mlx4_init_mr_table(struct mlx4_dev *dev)
+static int mlx4_init_icm_fmr(struct mlx4_dev *dev)
 {
-	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
+	struct mlx4_priv *priv = mlx4_priv(dev);
 	int err;
 
-	err = mlx4_bitmap_init(&mr_table->mpt_bitmap, dev->caps.num_mpts,
-			       ~0, dev->caps.reserved_mrws, 0);
-	if (err)
+	if (!is_power_of_2(dev->caps.fmr_num_mpts)) {
+		mlx4_err(dev, "Num mpts is not power of 2, aborting.\n");
+		return  -EINVAL;
+	}
+
+	if ((dev->caps.dmpt_entry_sz * dev->caps.fmr_num_mpts) &
+	    (PAGE_SIZE - 1)) {
+		mlx4_err(dev, "MPT size is not page aligned, aborting.\n");
+		return -EINVAL;
+	}
+
+	err = mlx4_init_icm_table(dev, &priv->mr_table.fmr.dmpt_table,
+				  dev->caps.fmr_dmpt_base,
+				  dev->caps.dmpt_entry_sz,
+				  dev->caps.fmr_num_mpts,
+				  0, 1, 1);
+	if (err) {
+		mlx4_err(dev, "Failed to map FMR dMPT context memory,"
+			 " aborting.\n");
 		return err;
+	}
 
-	err = mlx4_buddy_init(&mr_table->mtt_buddy,
-			      ilog2(dev->caps.num_mtt_segs));
-	if (err)
-		goto err_buddy;
+	dev->caps.fmr_mtt_base_idx = mlx4_alloc_mtt_range(dev,
+			fls(dev->caps.fmr_num_mtt_segs - 1),
+			MLX4_MR_FLAG_FMR);
+	if (dev->caps.fmr_mtt_base_idx == 0xFFFFFFFF) {
+		mlx4_err(dev, "Failed alloc mtt range for fmr\n");
+		err = -ENOMEM;
+		goto out_free_mpt_icm;
+	}
 
-	if (dev->caps.reserved_mtts) {
-		if (mlx4_alloc_mtt_range(dev, fls(dev->caps.reserved_mtts - 1)) == -1) {
-			mlx4_warn(dev, "MTT table of order %d is too small.\n",
-				  mr_table->mtt_buddy.max_order);
-			err = -ENOMEM;
-			goto err_reserve_mtts;
+	dev->caps.fmr_mtt_base = dev->caps.mtt_base + dev->caps.fmr_mtt_base_idx
+				 * dev->caps.mtt_entry_sz;
+
+	err = mlx4_init_icm_table(dev, &priv->mr_table.fmr.mtt_table,
+				  dev->caps.fmr_mtt_base,
+				  dev->caps.mtt_entry_sz,
+				  dev->caps.fmr_num_mtt_segs,
+				  0, 1, 0);
+	if (err) {
+		mlx4_err(dev, "Failed to map FMR MTT context memory,"
+			 " aborting.\n");
+		goto out_release_mtt;
+	}
+
+	return 0;
+
+out_release_mtt:
+	mlx4_free_mtt_range(dev, dev->caps.fmr_mtt_base_idx,
+			    fls(dev->caps.fmr_num_mtt_segs - 1),
+			    MLX4_MR_FLAG_FMR);
+
+out_free_mpt_icm:
+	mlx4_cleanup_icm_table(dev, &mlx4_priv(dev)->mr_table.fmr.dmpt_table,
+			       MLX4_MR_FLAG_FMR);
+	return err;
+}
+
+
+int mlx4_init_mr_table(struct mlx4_dev *dev)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_mr_table *mr_table = &priv->mr_table;
+	int num_mpts;
+	int err;
+
+	/* compute mpts without the reserved for fmr */
+	num_mpts = dev->caps.num_mpts >> 1;
+	if (!is_power_of_2(num_mpts)) {
+		mlx4_err(dev, "MPT num is not power of 2, aborting.\n");
+		return -EINVAL;
+	}
+
+
+	if (!mlx4_is_mfunc(dev) || mlx4_is_master(dev)) {
+		err = mlx4_bitmap_init(&mr_table->mpt_bitmap, num_mpts,
+				       num_mpts-1, dev->caps.reserved_mrws, 0);
+		if (err)
+			return err;
+
+		err = mlx4_buddy_init(&mr_table->mtt_buddy,
+				      ilog2(dev->caps.num_mtt_segs));
+		if (err)
+			goto err_mpt;
+
+		if (dev->caps.reserved_mtts) {
+			priv->reserved_mtts = mlx4_alloc_mtt_range(dev,
+				fls(dev->caps.reserved_mtts - 1),
+				MLX4_MR_FLAG_NONE);
+
+			if (priv->reserved_mtts == 0xFFFFFFFF) {
+				mlx4_warn(dev, "MTT table of order %d"
+					  " is too small.\n",
+					  mr_table->mtt_buddy.max_order);
+				err = -ENOMEM;
+				goto err_buddy;
+			}
+		}
+	}
+
+	if (mlx4_is_mfunc(dev)) {
+		err = mlx4_bitmap_init(&mr_table->fmr.mpt_bitmap,
+				       dev->caps.fmr_num_mpts,
+				       dev->caps.fmr_num_mpts - 1, 0, 0);
+		if (err)
+			goto err_alloc;
+
+		err = mlx4_buddy_init(&mr_table->fmr.mtt_buddy,
+				      ilog2(dev->caps.fmr_num_mtt_segs));
+		if (err)
+			goto err_fmr_mpt;
+
+		err = mlx4_init_icm_fmr(dev);
+		if (err) {
+			mlx4_err(dev, "Failed to initialize fmr icm\n");
+			goto err_fmr_mpt;
 		}
 	}
 
 	return 0;
 
-err_reserve_mtts:
-	mlx4_buddy_cleanup(&mr_table->mtt_buddy);
+err_fmr_mpt:
+	if (mlx4_is_mfunc(dev))
+		mlx4_bitmap_cleanup(&mr_table->fmr.mpt_bitmap);
+
+err_alloc:
+	if (!mlx4_is_mfunc(dev) || mlx4_is_master(dev))
+		if (dev->caps.reserved_mtts)
+			mlx4_free_mtt_range(dev, priv->reserved_mtts,
+					    fls(dev->caps.reserved_mtts - 1),
+					    MLX4_MR_FLAG_NONE);
 
 err_buddy:
-	mlx4_bitmap_cleanup(&mr_table->mpt_bitmap);
+	if (!mlx4_is_mfunc(dev) || mlx4_is_master(dev))
+		mlx4_buddy_cleanup(&mr_table->mtt_buddy);
+
+err_mpt:
+	if (!mlx4_is_mfunc(dev) || mlx4_is_master(dev))
+		mlx4_bitmap_cleanup(&mr_table->mpt_bitmap);
 
 	return err;
 }
 
 void mlx4_cleanup_mr_table(struct mlx4_dev *dev)
 {
-	struct mlx4_mr_table *mr_table = &mlx4_priv(dev)->mr_table;
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_mr_table *mr_table = &priv->mr_table;
+
+	if (mlx4_is_mfunc(dev)) {
+		if (dev->caps.fmr_mtt_base_idx != 0xFFFFFFFF) {
+			mlx4_free_mtt_range(dev, dev->caps.fmr_mtt_base_idx,
+					    fls(dev->caps.fmr_num_mtt_segs - 1),
+					    MLX4_MR_FLAG_FMR);
+			mlx4_cleanup_icm_table(dev,
+				&mlx4_priv(dev)->mr_table.fmr.dmpt_table,
+				MLX4_MR_FLAG_FMR);
+			mlx4_cleanup_icm_table(dev,
+				&mlx4_priv(dev)->mr_table.fmr.mtt_table,
+				MLX4_MR_FLAG_FMR);
+		}
+
+		mlx4_bitmap_cleanup(&mr_table->fmr.mpt_bitmap);
+		mlx4_buddy_cleanup(&mr_table->fmr.mtt_buddy);
+	}
+
+	if (mlx4_is_mfunc(dev) && !mlx4_is_master(dev))
+		return;
+	if (priv->reserved_mtts >= 0)
+		mlx4_free_mtt_range(dev, priv->reserved_mtts,
+				    fls(dev->caps.reserved_mtts - 1),
+				    MLX4_MR_FLAG_NONE);
 
 	mlx4_buddy_cleanup(&mr_table->mtt_buddy);
 	mlx4_bitmap_cleanup(&mr_table->mpt_bitmap);
@@ -529,8 +1007,17 @@ static inline int mlx4_check_fmr(struct mlx4_fmr *fmr, u64 *page_list,
 	return 0;
 }
 
-int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
-		      int npages, u64 iova, u32 *lkey, u32 *rkey)
+int mlx4_set_fmr_pd(struct mlx4_fmr *fmr, u32 pd)
+{
+	fmr->mr.pd = pd;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_fmr_pd);
+
+
+int mlx4_map_phys_fmr_fbo(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
+			  u64 *page_list, int npages, u64 iova, u32 fbo,
+			  u32 len, u32 *lkey, u32 *rkey, int same_key)
 {
 	u32 key;
 	int i, err;
@@ -542,9 +1029,9 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 	++fmr->maps;
 
 	key = key_to_hw_index(fmr->mr.key);
-	key += dev->caps.num_mpts;
+	if (!same_key)
+		key += dev->caps.num_mpts;
 	*lkey = *rkey = fmr->mr.key = hw_index_to_key(key);
-
 	*(u8 *) fmr->mpt = MLX4_MPT_STATUS_SW;
 
 	/* Make sure MPT status is visible before writing MTT entries */
@@ -561,8 +1048,16 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 
 	fmr->mpt->key    = cpu_to_be32(key);
 	fmr->mpt->lkey   = cpu_to_be32(key);
-	fmr->mpt->length = cpu_to_be64(npages * (1ull << fmr->page_shift));
+	fmr->mpt->length = cpu_to_be64(len);
 	fmr->mpt->start  = cpu_to_be64(iova);
+	fmr->mpt->first_byte_offset = cpu_to_be32(fbo & 0x001fffff);
+	fmr->mpt->flags2 = (fbo ? MLX4_MPT_FLAG2_FBO_EN : 0);
+
+	fmr->mpt->pd_flags = cpu_to_be32(fmr->mr.pd | MLX4_MPT_PD_FLAG_EN_INV);
+	if (fmr->mr.mtt.order >= 0 && fmr->mr.mtt.page_shift == 0) {
+		fmr->mpt->pd_flags |= cpu_to_be32(MLX4_MPT_PD_FLAG_FAST_REG |
+						   MLX4_MPT_PD_FLAG_RAE);
+	}
 
 	/* Make MTT entries are visible before setting MPT status */
 	wmb();
@@ -574,12 +1069,23 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(mlx4_map_phys_fmr_fbo);
+
+int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
+		      int npages, u64 iova, u32 *lkey, u32 *rkey)
+{
+	u32 len = npages * (1ull << fmr->page_shift);
+
+	return mlx4_map_phys_fmr_fbo(dev, fmr, page_list, npages, iova, 0,
+				     len, lkey, rkey, 0);
+}
 EXPORT_SYMBOL_GPL(mlx4_map_phys_fmr);
 
 int mlx4_fmr_alloc(struct mlx4_dev *dev, u32 pd, u32 access, int max_pages,
 		   int max_maps, u8 page_shift, struct mlx4_fmr *fmr)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_icm_table *icm_table;
 	u64 mtt_seg;
 	int err = -ENOMEM;
 
@@ -602,9 +1108,13 @@ int mlx4_fmr_alloc(struct mlx4_dev *dev, u32 pd, u32 access, int max_pages,
 
 	mtt_seg = fmr->mr.mtt.first_seg * dev->caps.mtt_entry_sz;
 
-	fmr->mtts = mlx4_table_find(&priv->mr_table.mtt_table,
+	icm_table = mlx4_fmr_flow(dev, fmr->mr.flags) ?
+				  &priv->mr_table.fmr.mtt_table :
+				  &priv->mr_table.mtt_table;
+
+	fmr->mtts = mlx4_table_find(dev, icm_table,
 				    fmr->mr.mtt.first_seg,
-				    &fmr->dma_handle);
+				    &fmr->dma_handle, fmr->mr.flags);
 	if (!fmr->mtts) {
 		err = -ENOMEM;
 		goto err_free;
@@ -618,19 +1128,82 @@ err_free:
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_alloc);
 
+int mlx4_fmr_alloc_reserved(struct mlx4_dev *dev, u32 mridx,
+			    u32 pd, u32 access, int max_pages,
+			    int max_maps, u8 page_shift, struct mlx4_fmr *fmr)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_icm_table *icm_table;
+	u64 mtt_seg;
+	int err = -ENOMEM;
+
+	if (page_shift < (ffs(dev->caps.page_size_cap) - 1) || page_shift >= 32)
+		return -EINVAL;
+
+	/* All MTTs must fit in the same page */
+	if (max_pages * sizeof *fmr->mtts > PAGE_SIZE)
+		return -EINVAL;
+
+	fmr->page_shift = page_shift;
+	fmr->max_pages  = max_pages;
+	fmr->max_maps   = max_maps;
+	fmr->maps = 0;
+
+	err = mlx4_mr_alloc_reserved(dev, mridx, pd, 0, 0, access, max_pages,
+				     page_shift, &fmr->mr);
+	if (err) {
+		mlx4_err(dev, "Failed to fmr alloc reserved for mpt idx %lx\n",
+			 (unsigned long)mridx);
+		return err;
+	}
+
+	mtt_seg = fmr->mr.mtt.first_seg * dev->caps.mtt_entry_sz;
+
+	icm_table = mlx4_fmr_flow(dev, fmr->mr.flags) ?
+				  &priv->mr_table.fmr.mtt_table :
+				  &priv->mr_table.mtt_table;
+
+	fmr->mtts = mlx4_table_find(dev, icm_table,
+				    fmr->mr.mtt.first_seg,
+				    &fmr->dma_handle, fmr->mr.flags);
+	if (!fmr->mtts) {
+		err = -ENOMEM;
+		mlx4_err(dev, "Failed getting mtts in fmr alloc reserved for mpt idx %lx\n",
+			 (unsigned long)mridx);
+		goto err_free;
+	}
+
+	return 0;
+
+err_free:
+	mlx4_mr_free_reserved(dev, &fmr->mr);
+	return err;
+}
+EXPORT_SYMBOL_GPL(mlx4_fmr_alloc_reserved);
+
 int mlx4_fmr_enable(struct mlx4_dev *dev, struct mlx4_fmr *fmr)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_icm_table *icm_table;
 	int err;
 
 	err = mlx4_mr_enable(dev, &fmr->mr);
 	if (err)
 		return err;
 
-	fmr->mpt = mlx4_table_find(&priv->mr_table.dmpt_table,
-				    key_to_hw_index(fmr->mr.key), NULL);
-	if (!fmr->mpt)
+	icm_table = mlx4_fmr_flow(dev, fmr->mr.flags) ?
+				       &priv->mr_table.fmr.dmpt_table :
+				       &priv->mr_table.dmpt_table;
+
+	fmr->mpt = mlx4_table_find(dev, icm_table,
+				   key_to_mpt_index(dev, fmr->mr.key) -
+						    dev->caps.fmr_dmpt_base_idx,
+				   NULL, fmr->mr.flags);
+	if (!fmr->mpt) {
+		mlx4_err(dev, "Failed to enable fmr for mpt idx %lx\n",
+			 (unsigned long)key_to_mpt_index(dev, fmr->mr.key));
 		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -644,7 +1217,7 @@ void mlx4_fmr_unmap(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 
 	fmr->maps = 0;
 
-	*(u8 *) fmr->mpt = MLX4_MPT_STATUS_SW;
+	fmr->mr.enabled = MLX4_MR_EN_SW;
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_unmap);
 
@@ -653,15 +1226,27 @@ int mlx4_fmr_free(struct mlx4_dev *dev, struct mlx4_fmr *fmr)
 	if (fmr->maps)
 		return -EBUSY;
 
-	fmr->mr.enabled = 0;
 	mlx4_mr_free(dev, &fmr->mr);
+	fmr->mr.enabled = MLX4_MR_DISABLED;
 
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_free);
 
+int mlx4_fmr_free_reserved(struct mlx4_dev *dev, struct mlx4_fmr *fmr)
+{
+	if (fmr->maps)
+		return -EBUSY;
+
+	mlx4_mr_free_reserved(dev, &fmr->mr);
+	fmr->mr.enabled = MLX4_MR_DISABLED;
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_fmr_free_reserved);
+
 int mlx4_SYNC_TPT(struct mlx4_dev *dev)
 {
-	return mlx4_cmd(dev, 0, 0, 0, MLX4_CMD_SYNC_TPT, 1000);
+	return mlx4_cmd(dev, 0, 0, 0, MLX4_CMD_SYNC_TPT, 1000, 0);
 }
 EXPORT_SYMBOL_GPL(mlx4_SYNC_TPT);

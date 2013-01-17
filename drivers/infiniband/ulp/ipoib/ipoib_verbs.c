@@ -31,9 +31,8 @@
  * SOFTWARE.
  */
 
-#include <linux/slab.h>
-
 #include "ipoib.h"
+#include <linux/ethtool.h>
 
 int ipoib_mcast_attach(struct net_device *dev, u16 mlid, union ib_gid *mgid, int set_qkey)
 {
@@ -144,6 +143,7 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	int ret, size;
 	int i;
+	struct ethtool_coalesce *coal;
 
 	priv->pd = ib_alloc_pd(priv->ca);
 	if (IS_ERR(priv->pd)) {
@@ -167,7 +167,8 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 			size += ipoib_recvq_size * ipoib_max_conn_qp;
 	}
 
-	priv->recv_cq = ib_create_cq(priv->ca, ipoib_ib_completion, NULL, dev, size, 0);
+	priv->recv_cq = ib_create_cq(priv->ca, ipoib_ib_completion, NULL, dev, size,
+				     priv->child_index % priv->ca->num_comp_vectors);
 	if (IS_ERR(priv->recv_cq)) {
 		printk(KERN_WARNING "%s: failed to create receive CQ\n", ca->name);
 		goto out_free_mr;
@@ -182,6 +183,16 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	if (ib_req_notify_cq(priv->recv_cq, IB_CQ_NEXT_COMP))
 		goto out_free_send_cq;
+
+	coal = kzalloc(sizeof *coal, GFP_KERNEL);
+	if (coal) {
+		coal->rx_coalesce_usecs = 10;
+		coal->tx_coalesce_usecs = 10;
+		coal->rx_max_coalesced_frames = 16;
+		coal->tx_max_coalesced_frames = 16;
+		dev->ethtool_ops->set_coalesce(dev, coal);
+		kfree(coal);
+	}
 
 	init_attr.send_cq = priv->send_cq;
 	init_attr.recv_cq = priv->recv_cq;

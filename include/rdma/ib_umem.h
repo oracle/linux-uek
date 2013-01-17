@@ -36,6 +36,7 @@
 #include <linux/list.h>
 #include <linux/scatterlist.h>
 #include <linux/workqueue.h>
+#include <linux/dma-attrs.h>
 
 struct ib_ucontext;
 
@@ -56,6 +57,7 @@ struct ib_umem_chunk {
 	struct list_head	list;
 	int                     nents;
 	int                     nmap;
+	struct dma_attrs	attrs;
 	struct scatterlist      page_list[0];
 };
 

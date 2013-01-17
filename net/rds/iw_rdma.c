@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 
 #include "rds.h"
 #include "iw.h"
@@ -122,7 +121,7 @@ static int rds_iw_get_device(struct rds_sock *rs, struct rds_iw_device **rds_iwd
 #else
 			/* FIXME - needs to compare the local and remote
 			 * ipaddr/port tuple, but the ipaddr is the only
-			 * available information in the rds_sock (as the rest are
+			 * available infomation in the rds_sock (as the rest are
 			 * zero'ed.  It doesn't appear to be properly populated
 			 * during connection setup...
 			 */
@@ -157,8 +156,7 @@ static int rds_iw_add_cm_id(struct rds_iw_device *rds_iwdev, struct rdma_cm_id *
 	return 0;
 }
 
-static void rds_iw_remove_cm_id(struct rds_iw_device *rds_iwdev,
-				struct rdma_cm_id *cm_id)
+void rds_iw_remove_cm_id(struct rds_iw_device *rds_iwdev, struct rdma_cm_id *cm_id)
 {
 	struct rds_iw_cm_id *i_cm_id;
 
@@ -207,9 +205,9 @@ void rds_iw_add_conn(struct rds_iw_device *rds_iwdev, struct rds_connection *con
 	BUG_ON(list_empty(&ic->iw_node));
 	list_del(&ic->iw_node);
 
-	spin_lock(&rds_iwdev->spinlock);
+	spin_lock_irq(&rds_iwdev->spinlock);
 	list_add_tail(&ic->iw_node, &rds_iwdev->conn_list);
-	spin_unlock(&rds_iwdev->spinlock);
+	spin_unlock_irq(&rds_iwdev->spinlock);
 	spin_unlock_irq(&iw_nodev_conns_lock);
 
 	ic->rds_iwdev = rds_iwdev;
@@ -574,8 +572,8 @@ void rds_iw_free_mr(void *trans_private, int invalidate)
 	rds_iw_free_fastreg(pool, ibmr);
 
 	/* If we've pinned too many pages, request a flush */
-	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned ||
-	    atomic_read(&pool->dirty_count) >= pool->max_items / 10)
+	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned
+	 || atomic_read(&pool->dirty_count) >= pool->max_items / 10)
 		queue_work(rds_wq, &pool->flush_worker);
 
 	if (invalidate) {

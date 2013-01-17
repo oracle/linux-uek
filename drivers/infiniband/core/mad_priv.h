@@ -102,7 +102,8 @@ struct ib_mad_agent_private {
 	struct list_head send_list;
 	struct list_head wait_list;
 	struct list_head done_list;
-	struct delayed_work timed_work;
+	struct work_struct timeout_work;
+	struct timer_list timeout_timer;
 	unsigned long timeout;
 	struct list_head local_list;
 	struct work_struct local_work;
