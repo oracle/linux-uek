@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.8.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,20 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Jan 17 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.9.0.el5uek]
+- mlx4_ib: alias_GUID, calculate slave port state in sa query handler
+  (Ajaykumar Hotchandani) [Orabug: 15997083]
+- RDS: Fixes warning while rds-info. spin_lock_irqsave() is changed to
+  spin_lock_bh(). (Ajaykumar Hotchandani) [Orabug: 15997083]
+- mlx4_en: handle HCA events correctly (Ajaykumar Hotchandani) [Orabug:
+  15997083]
+- ixgbevf fix typo in Makefile (Maxim Uvarov) [Orabug: 16168292]
+- [patch3/3] kernel config: Mellanox OFED R2, 0080 release (Ajaykumar
+  Hotchandani) [Orabug: 15997083]
+- [patch2/3] RDS merge for UEK2 (Ajaykumar Hotchandani) [Orabug: 15997083]
+- [patch1/3] Merge for Mellanox OFED R2, 0080 release (Ajaykumar Hotchandani)
+  [Orabug: 15997083]
+
 * Fri Jan 11 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.8.0.el5uek]
 - git-changelog: don't print debug info (Maxim Uvarov)
 - spec: remove not used firmwares (Maxim Uvarov) [Orabug: 16048277]
