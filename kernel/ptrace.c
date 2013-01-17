@@ -12,6 +12,8 @@
 #include <linux/sched.h>
 #include <linux/errno.h>
 #include <linux/mm.h>
+#include <linux/file.h>
+#include <linux/fdtable.h>
 #include <linux/highmem.h>
 #include <linux/pagemap.h>
 #include <linux/ptrace.h>
@@ -796,6 +798,52 @@ static int ptrace_regset(struct task_struct *task, int req, unsigned int type,
 EXPORT_SYMBOL_GPL(task_user_regset_view);
 #endif
 
+static int ptrace_getmapfd(struct task_struct *child, unsigned long addr,
+			   unsigned long data)
+{
+	void __user *datavp = (void __user *) data;
+	unsigned long __user *datalp = datavp;
+	int ret;
+
+	struct mm_struct *mm;
+	struct vm_area_struct *vma;
+	struct files_struct *files;
+	int new_fd;
+
+	if (!access_ok(VERIFY_WRITE, datavp, sizeof(int)))
+		return -EFAULT;
+
+	mm = get_task_mm(child);
+	files = get_files_struct(child);
+	vma = find_vma(mm, addr);
+
+	if (!vma || vma->vm_start > addr) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	if (!vma->vm_file || !files) {
+		ret = -EBADFD;
+		goto err;
+	}
+
+	if (security_file_receive(vma->vm_file) != 0) {
+		ret = -EPERM;
+		goto err;
+	}
+
+	new_fd = get_unused_fd_flags(O_CLOEXEC);
+	ret = __put_user(new_fd, datalp);
+	get_file(vma->vm_file);
+	fd_install(new_fd, vma->vm_file);
+
+err:
+	put_files_struct(files);
+	mmput(mm);
+
+	return ret;
+}
+
 int ptrace_request(struct task_struct *child, long request,
 		   unsigned long addr, unsigned long data)
 {
@@ -1003,6 +1051,9 @@ int ptrace_request(struct task_struct *child, long request,
 		break;
 	}
 #endif
+	case PTRACE_GETMAPFD:
+		ret = ptrace_getmapfd (child, addr, data);
+		break;
 	default:
 		break;
 	}
