@@ -3657,7 +3657,7 @@ static int btree_writepage_io_failed_hook(struct bio *bio, struct page *page,
 					  struct extent_state *state)
 {
 	struct super_block *sb = page->mapping->host->i_sb;
-	struct btrfs_fs_info *fs_info = btrfs_sb(sb);
+	struct btrfs_fs_info *fs_info = btrfs_sb(sb)->fs_info;
 	btrfs_error(fs_info, -EIO,
 		    "Error occured while writing out btree at %llu", start);
 	return -EIO;
