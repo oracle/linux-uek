@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.9.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,13 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Fri Jan 18 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.10.0.el5uek]
+- btrfs: fix incompatible pointer warning (Jerry Snitselaar)
+- bnx2x: enable support for ethtool op get_rxfh_indir_size (Jerry Snitselaar)
+- Revert "cgroup: notify_on_release may not be triggered in some cases" (Maxim
+  Uvarov) [Orabug: 16167473]
+- mlx4: disable build for i686 (Maxim Uvarov)
+
 * Thu Jan 17 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.9.0.el5uek]
 - mlx4_ib: alias_GUID, calculate slave port state in sa query handler
   (Ajaykumar Hotchandani) [Orabug: 15997083]
