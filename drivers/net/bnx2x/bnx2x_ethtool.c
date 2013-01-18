@@ -3129,7 +3129,7 @@ static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 	return T_ETH_INDIRECTION_TABLE_SIZE;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_rxfh_indir(struct net_device *dev, u32 *indir)
 #else
 static int bnx2x_get_rxfh_indir(struct net_device *dev,
@@ -3137,7 +3137,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 #endif
 {
 	struct bnx2x *bp = netdev_priv(dev);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)) /* ! BNX2X_UPSTREAM */
 	size_t copy_size = bnx2x_get_rxfh_indir_size(dev);
 #endif
 	u8 ind_table[T_ETH_INDIRECTION_TABLE_SIZE] = {0};
@@ -3155,7 +3155,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 	 * align the returned table to the Client ID of the leading RSS
 	 * queue.
 	 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++)
 		indir[i] = ind_table[i] - bp->fp->cl_id;
 #else
@@ -3163,13 +3163,13 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 		indir->ring_index[i] = ind_table[i] - bp->fp->cl_id;
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)) /* ! BNX2X_UPSTREAM */
 	indir->size = T_ETH_INDIRECTION_TABLE_SIZE;
 #endif
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 static int bnx2x_set_rxfh_indir(struct net_device *dev, const u32 *indir)
 #else
 static int bnx2x_set_rxfh_indir(struct net_device *dev,
@@ -3178,7 +3178,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	size_t i;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)) /* ! BNX2X_UPSTREAM */
 	u32 num_eth_queues = BNX2X_NUM_ETH_QUEUES(bp);
 
 	/* validate the size */
@@ -3189,7 +3189,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 #endif
 
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++) {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0)) /* ! BNX2X_UPSTREAM */
 		/* validate the indices */
 		if (indir->ring_index[i] >= num_eth_queues) {
 			DP(BNX2X_MSG_ETHTOOL, "Ring index > num of queues\n");
@@ -3205,7 +3205,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 		 * align the received table to the Client ID of the leading RSS
 		 * queue
 		 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 		bp->rss_conf_obj.ind_table[i] = indir[i] + bp->fp->cl_id;
 #else
 		bp->rss_conf_obj.ind_table[i] =
@@ -3365,7 +3365,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= 0x020624) /* BNX2X_UPSTREAM */
 	.get_rxnfc		= bnx2x_get_rxnfc,
 	.set_rxnfc		= bnx2x_set_rxnfc,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
