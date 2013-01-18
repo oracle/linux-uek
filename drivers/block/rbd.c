@@ -1475,6 +1475,9 @@ static int rbd_req_sync_watch(struct rbd_device *rbd_dev, int start)
 	struct ceph_osd_req_op *op;
 	int ret = 0;
 
+	rbd_assert(start ^ !!rbd_dev->watch_event);
+	rbd_assert(start ^ !!rbd_dev->watch_request);
+
 	if (start) {
 		struct ceph_osd_client *osdc;
 
@@ -1483,8 +1486,6 @@ static int rbd_req_sync_watch(struct rbd_device *rbd_dev, int start)
 						&rbd_dev->watch_event);
 		if (ret < 0)
 			return ret;
-	} else {
-		rbd_assert(rbd_dev->watch_request != NULL);
 	}
 
 	op = rbd_osd_req_op_create(CEPH_OSD_OP_WATCH,
@@ -3024,22 +3025,6 @@ static void rbd_bus_del_dev(struct rbd_device *rbd_dev)
 	device_unregister(&rbd_dev->dev);
 }
 
-static int rbd_init_watch_dev(struct rbd_device *rbd_dev)
-{
-	int ret, rc;
-
-	do {
-		ret = rbd_req_sync_watch(rbd_dev, 1);
-		if (ret == -ERANGE) {
-			rc = rbd_dev_refresh(rbd_dev, NULL);
-			if (rc < 0)
-				return rc;
-		}
-	} while (ret == -ERANGE);
-
-	return ret;
-}
-
 static atomic64_t rbd_dev_id_max = ATOMIC64_INIT(0);
 
 /*
@@ -3585,7 +3570,7 @@ static int rbd_dev_probe_finish(struct rbd_device *rbd_dev)
 	if (ret)
 		goto err_out_bus;
 
-	ret = rbd_init_watch_dev(rbd_dev);
+	ret = rbd_req_sync_watch(rbd_dev, 1);
 	if (ret)
 		goto err_out_bus;
 
