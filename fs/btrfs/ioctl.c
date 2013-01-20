@@ -2297,6 +2297,7 @@ static long btrfs_ioctl_rm_dev(struct file *file, void __user *arg)
 	ret = btrfs_rm_device(root, vol_args->name);
 
 	kfree(vol_args);
+	mnt_drop_write_file(file);
 	return ret;
 }
 
