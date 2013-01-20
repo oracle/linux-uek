@@ -3463,7 +3463,6 @@ static long btrfs_ioctl_balance(struct file *file, void __user *arg)
 	struct btrfs_balance_control *bctl;
 	bool need_unlock; /* for mut. excl. ops lock */
 	int ret;
-	int need_to_clear_lock = 0;
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
@@ -3546,13 +3545,10 @@ locked:
 		bargs = NULL;
 	}
 
-	if (atomic_xchg(&root->fs_info->mutually_exclusive_operation_running,
-			1)) {
-		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
+	if (fs_info->balance_ctl) {
 		ret = -EINPROGRESS;
 		goto out_bargs;
 	}
-	need_to_clear_lock = 1;
 
 	bctl = kzalloc(sizeof(*bctl), GFP_NOFS);
 	if (!bctl) {
