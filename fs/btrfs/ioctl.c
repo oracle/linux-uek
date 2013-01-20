@@ -2197,12 +2197,14 @@ static int btrfs_ioctl_defrag(struct file *file, void __user *argp)
 	struct btrfs_ioctl_defrag_range_args *range;
 	int ret;
 
-	if (btrfs_root_readonly(root))
-		return -EROFS;
-
-	ret = mnt_want_write(file->f_path.mnt);
+	ret = mnt_want_write_file(file);
 	if (ret)
 		return ret;
+
+	if (btrfs_root_readonly(root)) {
+		ret = -EROFS;
+		goto out;
+	}
 
 	switch (inode->i_mode & S_IFMT) {
 	case S_IFDIR:
@@ -2253,7 +2255,7 @@ static int btrfs_ioctl_defrag(struct file *file, void __user *argp)
 		ret = -EINVAL;
 	}
 out:
-	mnt_drop_write(file->f_path.mnt);
+	mnt_drop_write_file(file);
 	return ret;
 }
 
