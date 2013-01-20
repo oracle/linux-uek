@@ -3430,6 +3430,7 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 	struct btrfs_fs_info *fs_info = root->fs_info;
 	struct btrfs_ioctl_balance_args *bargs;
 	struct btrfs_balance_control *bctl;
+	bool need_unlock; /* for mut. excl. ops lock */
 	int ret;
 
 	if (!capable(CAP_SYS_ADMIN))
@@ -3438,14 +3439,61 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 	if (fs_info->sb->s_flags & MS_RDONLY)
 		return -EROFS;
 
-	mutex_lock(&fs_info->volume_mutex);
+again:
+	if (!atomic_xchg(&fs_info->mutually_exclusive_operation_running, 1)) {
+		mutex_lock(&fs_info->volume_mutex);
+		mutex_lock(&fs_info->balance_mutex);
+		need_unlock = true;
+		goto locked;
+	}
+
+	/*
+	 * mut. excl. ops lock is locked.  Three possibilites:
+	 *   (1) some other op is running
+	 *   (2) balance is running
+	 *   (3) balance is paused -- special case (think resume)
+	 */
 	mutex_lock(&fs_info->balance_mutex);
+	if (fs_info->balance_ctl) {
+		/* this is either (2) or (3) */
+		if (!atomic_read(&fs_info->balance_running)) {
+			mutex_unlock(&fs_info->balance_mutex);
+			if (!mutex_trylock(&fs_info->volume_mutex))
+				goto again;
+			mutex_lock(&fs_info->balance_mutex);
+
+			if (fs_info->balance_ctl &&
+			    !atomic_read(&fs_info->balance_running)) {
+				/* this is (3) */
+				need_unlock = false;
+				goto locked;
+			}
+
+			mutex_unlock(&fs_info->balance_mutex);
+			mutex_unlock(&fs_info->volume_mutex);
+			goto again;
+		} else {
+			/* this is (2) */
+			mutex_unlock(&fs_info->balance_mutex);
+			ret = -EINPROGRESS;
+			goto out;
+		}
+	} else {
+		/* this is (1) */
+		mutex_unlock(&fs_info->balance_mutex);
+		pr_info("btrfs: dev add/delete/balance/replace/resize operation in progress\n");
+		ret = -EINVAL;
+		goto out;
+	}
+
+locked:
+	BUG_ON(!atomic_read(&fs_info->mutually_exclusive_operation_running));
 
 	if (arg) {
 		bargs = memdup_user(arg, sizeof(*bargs));
 		if (IS_ERR(bargs)) {
 			ret = PTR_ERR(bargs);
-			goto out;
+			goto out_unlock;
 		}
 	} else {
 		bargs = NULL;
@@ -3474,11 +3522,18 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 		bctl->flags |= BTRFS_BALANCE_TYPE_MASK;
 	}
 
-	ret = btrfs_balance(bctl, bargs);
+do_balance:
 	/*
-	 * bctl is freed in __cancel_balance or in free_fs_info if
-	 * restriper was paused all the way until unmount
+	 * Ownership of bctl and mutually_exclusive_operation_running
+	 * goes to to btrfs_balance.  bctl is freed in __cancel_balance,
+	 * or, if restriper was paused all the way until unmount, in
+	 * free_fs_info.  mutually_exclusive_operation_running is
+	 * cleared in __cancel_balance.
 	 */
+	need_unlock = false;
+
+	ret = btrfs_balance(bctl, bargs);
+
 	if (arg) {
 		if (copy_to_user(arg, bargs, sizeof(*bargs)))
 			ret = -EFAULT;
@@ -3486,9 +3541,13 @@ static long btrfs_ioctl_balance(struct btrfs_root *root, void __user *arg)
 
 out_bargs:
 	kfree(bargs);
-out:
+out_unlock:
 	mutex_unlock(&fs_info->balance_mutex);
 	mutex_unlock(&fs_info->volume_mutex);
+	if (need_unlock)
+		atomic_set(&fs_info->mutually_exclusive_operation_running, 0);
+out:
+	mnt_drop_write_file(file);
 	return ret;
 }
 
