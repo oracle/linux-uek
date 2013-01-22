@@ -1000,6 +1000,9 @@ void rds_ib_ip_failover_groups_init(void)
 	int i;
 	struct rds_ib_device *rds_ibdev;
 
+	if (!rds_ib_haip_enabled)
+		return;
+
 	if (rds_ib_haip_failover_groups == NULL) {
 		rcu_read_lock();
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
