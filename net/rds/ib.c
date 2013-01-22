@@ -593,16 +593,18 @@ out:
 	return ret;
 }
 
-static void rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
+static int rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
 				u8			port_num)
 {
-	if (ip_port_cnt++ > ip_port_max) {
-		printk(KERN_ERR "RDS/IB: Exceeded max ports (%d)\n",
-			ip_port_max);
-		return;
+	if (ip_port_cnt >= ip_port_max) {
+		printk(KERN_ERR
+			"RDS/IB: Exceeded max ports (%d) for device %s\n",
+				ip_port_max, rds_ibdev->dev->name);
+		return 1;
 	}
 
+	ip_port_cnt++;
 	ip_config[ip_port_cnt].port_num = port_num;
 	ip_config[ip_port_cnt].dev = net_dev;
 	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
@@ -613,6 +615,8 @@ static void rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
 	else
 		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_DOWN;
+
+	return 0;
 }
 
 static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
@@ -892,10 +896,17 @@ static void rds_ib_dump_ip_config(void)
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
 	for (i = 1; i <= ip_port_cnt; i++) {
+		if (!ip_config[i].ip_addr)
+			continue;
+
 		printk(KERN_ERR "RDS/IB: %s/port_%d/%s: "
 			"IP %pI4/%pI4/%pI4 "
 			"state %s\n",
-			ip_config[i].rds_ibdev->dev->name,
+			((ip_config[i].rds_ibdev) ?
+				((ip_config[i].rds_ibdev->dev) ?
+					ip_config[i].rds_ibdev->dev->name :
+						"No IB device") :
+							"No RDS device"),
 			ip_config[i].port_num,
 			ip_config[i].if_name,
 			&ip_config[i].ip_addr,
@@ -922,8 +933,9 @@ static int rds_ib_ip_config_init(void)
 	struct in_ifaddr	**ifap;
 	struct in_device	*in_dev;
 	struct rds_ib_device	*rds_ibdev;
-	u8			port_num;
-	int			ret = 0;
+	union ib_gid    	gid;
+	int                     ret = 0;
+	u8              	port_num;
 
 	if (!rds_ib_haip_enabled)
 		return 0;
@@ -949,8 +961,6 @@ static int rds_ib_ip_config_init(void)
 			!(dev->flags & IFF_SLAVE) &&
 			!(dev->flags & IFF_MASTER) &&
 			in_dev) {
-			union ib_gid gid;
-
 			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
 
 			rcu_read_lock();
@@ -964,30 +974,31 @@ static int rds_ib_ip_config_init(void)
 			}
 			rcu_read_unlock();
 
-			if (!port_num) {
+			if (ret) {
 				printk(KERN_ERR "RDS/IB: GID "RDS_IB_GID_FMT
 					" has no associated port\n",
 					RDS_IB_GID_ARG(gid));
-				ret = 1;
-				goto out;
-			}
-
-			rds_ib_init_port(rds_ibdev, dev, port_num);
-
-			for (ifap = &in_dev->ifa_list; (ifa = *ifap);
-				ifap = &ifa->ifa_next) {
-				rds_ib_set_port(rds_ibdev, dev,
-					ifa->ifa_label, port_num,
-					ifa->ifa_address,
-					ifa->ifa_broadcast,
-					ifa->ifa_mask);
+			} else {
+				ret = rds_ib_init_port(rds_ibdev, dev,
+					port_num);
+				if (!ret) {
+					for (ifap = &in_dev->ifa_list;
+						(ifa = *ifap);
+						ifap = &ifa->ifa_next) {
+						rds_ib_set_port(rds_ibdev, dev,
+							ifa->ifa_label,
+							port_num,
+							ifa->ifa_address,
+							ifa->ifa_broadcast,
+							ifa->ifa_mask);
+					}
+				}
 			}
 		}
 		in_dev_put(in_dev);
 	}
 
 	rds_ib_dump_ip_config();
-out:
 	read_unlock(&dev_base_lock);
 	return ret;
 }
