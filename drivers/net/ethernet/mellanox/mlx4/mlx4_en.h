@@ -543,6 +543,7 @@ struct mlx4_en_priv {
 	int base_tx_qpn;
 	struct hwtstamp_config hwtstamp_config;
 	u32 counter_index;
+	struct radix_tree_root mac_tree;
 
 #ifdef CONFIG_MLX4_EN_DCB
 #define MLX4_EN_DCB_ENABLED   0x3
@@ -565,6 +566,11 @@ struct mlx4_en_priv {
 enum mlx4_en_wol {
 	MLX4_EN_WOL_MAGIC = (1ULL << 61),
 	MLX4_EN_WOL_ENABLED = (1ULL << 62),
+};
+
+struct mlx4_mac_entry {
+	u64 mac;
+	u64 reg_id;
 };
 
 #define MLX4_EN_WOL_DO_MODIFY (1ULL << 63)

@@ -414,6 +414,208 @@ static int mlx4_en_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
 	return 0;
 }
 
+static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
+				u64 mac, int *qpn, u64 *reg_id)
+{
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_dev *dev = mdev->dev;
+	__be64 be_mac;
+	int err;
+
+	mac &= MLX4_MAC_MASK;
+	be_mac = cpu_to_be64(mac << 16);
+
+	switch (dev->caps.steering_mode) {
+	case MLX4_STEERING_MODE_B0: {
+		struct mlx4_qp qp;
+		u8 gid[16] = {0};
+
+		qp.qpn = *qpn;
+		memcpy(&gid[10], &be_mac, ETH_ALEN);
+		gid[5] = priv->port;
+
+		err = mlx4_unicast_attach(dev, &qp, gid, 0, MLX4_PROT_ETH);
+		break;
+	}
+	case MLX4_STEERING_MODE_DEVICE_MANAGED: {
+		struct mlx4_spec_list spec_eth = { {NULL} };
+		__be64 mac_mask = cpu_to_be64(MLX4_MAC_MASK << 16);
+
+		struct mlx4_net_trans_rule rule = {
+			.queue_mode = MLX4_NET_TRANS_Q_FIFO,
+			.exclusive = 0,
+			.allow_loopback = 1,
+			.promisc_mode = MLX4_FS_REGULAR,
+			.priority = MLX4_DOMAIN_NIC,
+		};
+
+		rule.port = priv->port;
+		rule.qpn = *qpn;
+		INIT_LIST_HEAD(&rule.list);
+
+		spec_eth.id = MLX4_NET_TRANS_RULE_ID_ETH;
+		memcpy(spec_eth.eth.dst_mac, &be_mac, ETH_ALEN);
+		memcpy(spec_eth.eth.dst_mac_msk, &mac_mask, ETH_ALEN);
+		list_add_tail(&spec_eth.list, &rule.list);
+
+		err = mlx4_flow_attach(dev, &rule, reg_id);
+		break;
+	}
+	default:
+		return -EINVAL;
+	}
+	if (err)
+		en_warn(priv, "Failed Attaching Unicast\n");
+
+	return err;
+}
+
+static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
+				     u64 mac, int qpn, u64 reg_id)
+{
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_dev *dev = mdev->dev;
+
+	switch (dev->caps.steering_mode) {
+	case MLX4_STEERING_MODE_B0: {
+		struct mlx4_qp qp;
+		u8 gid[16] = {0};
+		__be64 be_mac;
+
+		qp.qpn = qpn;
+		mac &= MLX4_MAC_MASK;
+		be_mac = cpu_to_be64(mac << 16);
+		memcpy(&gid[10], &be_mac, ETH_ALEN);
+		gid[5] = priv->port;
+
+		mlx4_unicast_detach(dev, &qp, gid, MLX4_PROT_ETH);
+		break;
+	}
+	case MLX4_STEERING_MODE_DEVICE_MANAGED: {
+		mlx4_flow_detach(dev, reg_id);
+		break;
+	}
+	default:
+		en_err(priv, "Invalid steering mode.\n");
+	}
+}
+
+static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
+{
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_dev *dev = mdev->dev;
+	struct mlx4_mac_entry *entry;
+	int index = 0;
+	int err = 0;
+	u64 reg_id;
+	int *qpn = &priv->base_qpn;
+	u64 mac = priv->mac;
+
+	en_dbg(DRV, priv, "Registering MAC: 0x%llx for adding\n",
+	       (unsigned long long) mac);
+	index = mlx4_register_mac(dev, priv->port, mac);
+	if (index < 0) {
+		err = index;
+		en_err(priv, "Failed adding MAC: 0x%llx\n",
+		       (unsigned long long) mac);
+		return err;
+	}
+
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_A0) {
+		int base_qpn = mlx4_get_base_qpn(dev, priv->port);
+		*qpn = base_qpn + index;
+		return 0;
+	}
+
+	err = mlx4_qp_reserve_range(dev, 1, 1, qpn);
+	en_dbg(DRV, priv, "Reserved qp %d\n", *qpn);
+	if (err) {
+		en_err(priv, "Failed to reserve qp for mac registration\n");
+		goto qp_err;
+	}
+
+	err = mlx4_en_uc_steer_add(priv, mac, qpn, &reg_id);
+	if (err)
+		goto steer_err;
+
+	entry = kmalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry) {
+		err = -ENOMEM;
+		goto alloc_err;
+	}
+	entry->mac = mac;
+	entry->reg_id = reg_id;
+
+	err = radix_tree_insert(&priv->mac_tree, *qpn, entry);
+	if (err)
+		goto insert_err;
+	return 0;
+
+insert_err:
+	kfree(entry);
+
+alloc_err:
+	mlx4_en_uc_steer_release(priv, mac, *qpn, reg_id);
+
+steer_err:
+	mlx4_qp_release_range(dev, *qpn, 1);
+
+qp_err:
+	mlx4_unregister_mac(dev, priv->port, mac);
+	return err;
+}
+
+static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
+{
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_dev *dev = mdev->dev;
+	struct mlx4_mac_entry *entry;
+	int qpn = priv->base_qpn;
+	u64 mac = priv->mac;
+
+	en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
+	       (unsigned long long) mac);
+	mlx4_unregister_mac(dev, priv->port, mac);
+
+	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
+		entry = radix_tree_lookup(&priv->mac_tree, qpn);
+		if (entry) {
+			en_dbg(DRV, priv, "Releasing qp: port %d, mac 0x%llx, qpn %d\n",
+			       priv->port, (unsigned long long) mac, qpn);
+			mlx4_en_uc_steer_release(priv, entry->mac,
+						 qpn, entry->reg_id);
+			mlx4_qp_release_range(dev, qpn, 1);
+			radix_tree_delete(&priv->mac_tree, qpn);
+			kfree(entry);
+		}
+	}
+}
+
+static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac)
+{
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_dev *dev = mdev->dev;
+	struct mlx4_mac_entry *entry;
+	int err = 0;
+
+	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
+		entry = radix_tree_lookup(&priv->mac_tree, qpn);
+		if (!entry)
+			return -EINVAL;
+		mlx4_en_uc_steer_release(priv, entry->mac,
+					 qpn, entry->reg_id);
+		mlx4_unregister_mac(dev, priv->port, entry->mac);
+		entry->mac = new_mac;
+		entry->reg_id = 0;
+		mlx4_register_mac(dev, priv->port, new_mac);
+		err = mlx4_en_uc_steer_add(priv, entry->mac,
+					   &qpn, &entry->reg_id);
+		return err;
+	}
+
+	return __mlx4_replace_mac(dev, priv->port, qpn, new_mac);
+}
+
 static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -439,8 +641,7 @@ static void mlx4_en_do_set_mac(struct work_struct *work)
 	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {
 		/* Remove old MAC and insert the new one */
-		err = mlx4_replace_mac(mdev->dev, priv->port,
-				       priv->base_qpn, priv->mac);
+		err = mlx4_replace_mac(priv, priv->base_qpn, priv->mac);
 		if (err)
 			en_err(priv, "Failed changing HW MAC address\n");
 	} else
@@ -1064,8 +1265,7 @@ int mlx4_en_start_port(struct net_device *dev)
 
 	/* Set qp number */
 	en_dbg(DRV, priv, "Getting qp number for port %d\n", priv->port);
-	err = mlx4_get_eth_qp(mdev->dev, priv->port,
-				priv->mac, &priv->base_qpn);
+	err = mlx4_en_get_qp(priv);
 	if (err) {
 		en_err(priv, "Failed getting eth qp\n");
 		goto cq_err;
@@ -1188,7 +1388,7 @@ tx_err:
 rss_err:
 	mlx4_en_release_rss_steer(priv);
 mac_err:
-	mlx4_put_eth_qp(mdev->dev, priv->port, priv->mac, priv->base_qpn);
+	mlx4_en_put_qp(priv);
 cq_err:
 	while (rx_index--)
 		mlx4_en_deactivate_cq(priv, priv->rx_cq[rx_index]);
@@ -1295,7 +1495,7 @@ void mlx4_en_stop_port(struct net_device *dev)
 	mlx4_en_release_rss_steer(priv);
 
 	/* Unregister Mac address for the port */
-	mlx4_put_eth_qp(mdev->dev, priv->port, priv->mac, priv->base_qpn);
+	mlx4_en_put_qp(priv);
 	mdev->mac_removed[priv->port] = 1;
 
 	/* Remove flow steering rules for the port*/
@@ -1778,6 +1978,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
 	}
 #endif
+
+	INIT_RADIX_TREE(&priv->mac_tree, GFP_KERNEL);
 
 	/* Query for default mac and max mtu */
 	priv->max_mtu = mdev->dev->caps.eth_mtu_cap[priv->port];
