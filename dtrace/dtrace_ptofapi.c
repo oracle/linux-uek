@@ -1,6 +1,6 @@
 /*
  * FILE:	dtrace_ptofapi.c
- * DESCRIPTION:	Dynamic Tracing: provider-to-framework API
+ * DESCRIPTION:	Dynamic Tracing: (meta) provider-to-framework API
  *
  * CDDL HEADER START
  *
@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
+ * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
