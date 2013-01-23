@@ -1,3 +1,5 @@
+/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+
 #ifndef _DTRACE_IOCTL_H_
 #define _DTRACE_IOCTL_H_
 
