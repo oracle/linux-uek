@@ -465,6 +465,158 @@ int dtrace_difo_validate(dtrace_difo_t *dp, dtrace_vstate_t *vstate,
 }
 
 /*
+ * Validate a DTrace DIF object that it is to be used as a helper.  Helpers
+ * are much more constrained than normal DIFOs.  Specifically, they may
+ * not:
+ *
+ * 1. Make calls to subroutines other than copyin(), copyinstr() or
+ *    miscellaneous string routines
+ * 2. Access DTrace variables other than the args[] array, and the
+ *    curthread, pid, ppid, tid, execname, zonename, uid and gid variables.
+ * 3. Have thread-local variables.
+ * 4. Have dynamic variables.
+ */
+int dtrace_difo_validate_helper(dtrace_difo_t *dp)
+{
+	int	(*efunc)(uint_t pc, const char *, ...) = dtrace_difo_err;
+	int	err = 0;
+	uint_t	pc;
+
+	for (pc = 0; pc < dp->dtdo_len; pc++) {
+		dif_instr_t	instr = dp->dtdo_buf[pc];
+		uint_t		v = DIF_INSTR_VAR(instr);
+		uint_t		subr = DIF_INSTR_SUBR(instr);
+		uint_t		op = DIF_INSTR_OP(instr);
+
+		switch (op) {
+		case DIF_OP_OR:
+		case DIF_OP_XOR:
+		case DIF_OP_AND:
+		case DIF_OP_SLL:
+		case DIF_OP_SRL:
+		case DIF_OP_SRA:
+		case DIF_OP_SUB:
+		case DIF_OP_ADD:
+		case DIF_OP_MUL:
+		case DIF_OP_SDIV:
+		case DIF_OP_UDIV:
+		case DIF_OP_SREM:
+		case DIF_OP_UREM:
+		case DIF_OP_COPYS:
+		case DIF_OP_NOT:
+		case DIF_OP_MOV:
+		case DIF_OP_RLDSB:
+		case DIF_OP_RLDSH:
+		case DIF_OP_RLDSW:
+		case DIF_OP_RLDUB:
+		case DIF_OP_RLDUH:
+		case DIF_OP_RLDUW:
+		case DIF_OP_RLDX:
+		case DIF_OP_ULDSB:
+		case DIF_OP_ULDSH:
+		case DIF_OP_ULDSW:
+		case DIF_OP_ULDUB:
+		case DIF_OP_ULDUH:
+		case DIF_OP_ULDUW:
+		case DIF_OP_ULDX:
+		case DIF_OP_STB:
+		case DIF_OP_STH:
+		case DIF_OP_STW:
+		case DIF_OP_STX:
+		case DIF_OP_ALLOCS:
+		case DIF_OP_CMP:
+		case DIF_OP_SCMP:
+		case DIF_OP_TST:
+		case DIF_OP_BA:
+		case DIF_OP_BE:
+		case DIF_OP_BNE:
+		case DIF_OP_BG:
+		case DIF_OP_BGU:
+		case DIF_OP_BGE:
+		case DIF_OP_BGEU:
+		case DIF_OP_BL:
+		case DIF_OP_BLU:
+		case DIF_OP_BLE:
+		case DIF_OP_BLEU:
+		case DIF_OP_RET:
+		case DIF_OP_NOP:
+		case DIF_OP_POPTS:
+		case DIF_OP_FLUSHTS:
+		case DIF_OP_SETX:
+		case DIF_OP_SETS:
+		case DIF_OP_LDGA:
+		case DIF_OP_LDLS:
+		case DIF_OP_STGS:
+		case DIF_OP_STLS:
+		case DIF_OP_PUSHTR:
+		case DIF_OP_PUSHTV:
+			break;
+
+		case DIF_OP_LDGS:
+			if (v >= DIF_VAR_OTHER_UBASE)
+				break;
+
+			if (v >= DIF_VAR_ARG0 && v <= DIF_VAR_ARG9)
+				break;
+
+			if (v == DIF_VAR_CURTHREAD || v == DIF_VAR_PID ||
+			    v == DIF_VAR_PPID || v == DIF_VAR_TID ||
+			    v == DIF_VAR_EXECNAME || v == DIF_VAR_ZONENAME ||
+			    v == DIF_VAR_UID || v == DIF_VAR_GID)
+				break;
+
+			err += efunc(pc, "illegal variable %u\n", v);
+			break;
+
+		case DIF_OP_LDTA:
+		case DIF_OP_LDGAA:
+		case DIF_OP_LDTAA:
+			err += efunc(pc, "illegal dynamic variable load\n");
+			break;
+
+		case DIF_OP_STTS:
+		case DIF_OP_STGAA:
+		case DIF_OP_STTAA:
+			err += efunc(pc, "illegal dynamic variable store\n");
+			break;
+
+		case DIF_OP_CALL:
+			if (subr == DIF_SUBR_ALLOCA ||
+			    subr == DIF_SUBR_BCOPY ||
+			    subr == DIF_SUBR_COPYIN ||
+			    subr == DIF_SUBR_COPYINTO ||
+			    subr == DIF_SUBR_COPYINSTR ||
+			    subr == DIF_SUBR_INDEX ||
+			    subr == DIF_SUBR_INET_NTOA ||
+			    subr == DIF_SUBR_INET_NTOA6 ||
+			    subr == DIF_SUBR_INET_NTOP ||
+			    subr == DIF_SUBR_LLTOSTR ||
+			    subr == DIF_SUBR_RINDEX ||
+			    subr == DIF_SUBR_STRCHR ||
+			    subr == DIF_SUBR_STRJOIN ||
+			    subr == DIF_SUBR_STRRCHR ||
+			    subr == DIF_SUBR_STRSTR ||
+			    subr == DIF_SUBR_HTONS ||
+			    subr == DIF_SUBR_HTONL ||
+			    subr == DIF_SUBR_HTONLL ||
+			    subr == DIF_SUBR_NTOHS ||
+			    subr == DIF_SUBR_NTOHL ||
+			    subr == DIF_SUBR_NTOHLL)
+				break;
+
+			err += efunc(pc, "invalid subr %u\n", subr);
+			break;
+
+		default:
+			err += efunc(pc, "invalid opcode %u\n",
+				     DIF_INSTR_OP(instr));
+		}
+	}
+
+	return err;
+}
+
+/*
  * Returns 1 if the expression in the DIF object can be cached on a per-thread
  * basis; 0 if not.
  */
@@ -521,7 +673,7 @@ int dtrace_difo_cacheable(dtrace_difo_t *dp)
  */
 static void dtrace_difo_chunksize(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 {
-	uint64_t		sval;
+	uint64_t		sval = 0;
 	dtrace_key_t		tupregs[DIF_DTR_NREGS + 2]; /* + thread + id */
 	const dif_instr_t	*text = dp->dtdo_buf;
 	uint_t			pc, srd = 0;
