@@ -805,7 +805,6 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ipoib_neigh *neigh;
 	struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
 	struct ipoib_header *header;
-	unsigned long flags;
 	struct ipoib_send_ring *send_ring;
 
 	send_ring = priv->send_ring + skb_get_queue_mapping(skb);
@@ -859,8 +858,13 @@ send_using_neigh:
 	/* note we now hold a ref to neigh */
 	if (ipoib_cm_get(neigh)) {
 		/* in select queue cm wasn't enabled ring is likely wrong */
-		if (!IPOIB_CM_SUPPORTED(neigh->daddr))
-			goto requeue;
+		if (!IPOIB_CM_SUPPORTED(cb->hwaddr)) {
+			ipoib_warn(priv, "CM NOT supported,ring likely wrong, dropping.cm is: %d\n",
+				   ipoib_cm_admin_enabled(dev));
+			++dev->stats.tx_dropped;
+			dev_kfree_skb_any(skb);
+			return NETDEV_TX_OK;
+		}
 
 		if (ipoib_cm_up(neigh)) {
 			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
@@ -868,20 +872,15 @@ send_using_neigh:
 		}
 	} else if (neigh->ah) {
 		/* in select queue cm was enabled ring is likely wrong */
-		if (IPOIB_CM_SUPPORTED(neigh->daddr) && priv->num_tx_queues > 1)
-			goto requeue;
+		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
+				ipoib_warn(priv, "CM supported,ring likely wrong, dropping.cm is: %d\n",
+					   ipoib_cm_admin_enabled(dev));
+				++dev->stats.tx_dropped;
+				dev_kfree_skb_any(skb);
+				return NETDEV_TX_OK;
+		}
 		ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 		goto unref;
-	}
-requeue:
-
-	if (skb_queue_len(&neigh->queue) < IPOIB_MAX_PATH_REC_QUEUE) {
-		spin_lock_irqsave(&priv->lock, flags);
-		__skb_queue_tail(&neigh->queue, skb);
-		spin_unlock_irqrestore(&priv->lock, flags);
-	} else {
-		++dev->stats.tx_dropped;
-		dev_kfree_skb_any(skb);
 	}
 
 unref:
@@ -1099,7 +1098,7 @@ struct ipoib_neigh *ipoib_neigh_get(struct net_device *dev, u8 *daddr)
 	for (neigh = rcu_dereference_bh(htbl->buckets[hash_val]);
 	     neigh != NULL;
 	     neigh = rcu_dereference_bh(neigh->hnext)) {
-		if (memcmp(daddr, neigh->daddr, INFINIBAND_ALEN) == 0) {
+		if (memcmp(daddr+1, neigh->daddr+1, INFINIBAND_ALEN-1) == 0) {
 			/* found, take one ref on behalf of the caller */
 			if (!atomic_inc_not_zero(&neigh->refcnt)) {
 				/* deleted */
