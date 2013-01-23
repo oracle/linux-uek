@@ -16,6 +16,8 @@
 #include <asm/ptrace.h>
 #include <asm/sections.h>
 
+#include "dtrace_debug.h"
+
 #define UINT8_MAX		(0xff)
 #define UINT8_MIN		0
 #define UINT16_MAX		(0xffff)
