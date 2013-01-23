@@ -57,6 +57,7 @@
 #include <linux/oom.h>
 #include <linux/compat.h>
 #include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/uaccess.h>
 #include <asm/mmu_context.h>
@@ -1589,6 +1590,8 @@ static int do_execveat_common(int fd, struct filename *filename,
 
 	/* execve succeeded */
 #ifdef CONFIG_DTRACE
+	dtrace_task_cleanup(current);	/* get rid of probes from old ... */
+	dtrace_task_init(current);	/* ... be ready for probes from new */
 	current->dtrace_psinfo = dtrace_psinfo_alloc(current);
 #endif
 	current->fs->in_exec = 0;

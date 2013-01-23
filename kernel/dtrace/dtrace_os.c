@@ -910,3 +910,99 @@ long dtrace_rt_sigreturn(struct pt_regs *regs)
 
 	return rc;
 }
+
+/*---------------------------------------------------------------------------*\
+(* USER SPACE TRACING (FASTTRAP) SUPPORT                                     *)
+\*---------------------------------------------------------------------------*/
+struct task_struct *register_pid_provider(pid_t pid)
+{
+	struct task_struct	*p;
+
+	/*
+	 * Make sure the process exists, (FIXME: isn't a child created as the
+	 * result of a vfork(2)), and isn't a zombie (but may be in fork).
+	 */
+	rcu_read_lock();
+	read_lock(&tasklist_lock);
+	if ((p = find_task_by_vpid(pid)) == NULL) {
+		read_unlock(&tasklist_lock);
+		rcu_read_unlock();
+		return NULL;
+	}
+
+	get_task_struct(p);
+	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
+
+	if (p->state & TASK_DEAD ||
+	    p->exit_state & (EXIT_ZOMBIE | EXIT_DEAD)) {
+		put_task_struct(p);
+		return NULL;
+	}
+
+	/*
+	 * Increment dtrace_probes so that the process knows to inform us
+	 * when it exits or execs. fasttrap_provider_free() decrements this
+	 * when we're done with this provider.
+	 */
+	p->dtrace_probes++;
+	put_task_struct(p);
+
+	return p;
+}
+EXPORT_SYMBOL(register_pid_provider);
+
+void unregister_pid_provider(pid_t pid)
+{
+	struct task_struct	*p;
+
+	/*
+	 * Decrement dtrace_probes on the process whose provider we're
+	 * freeing. We don't have to worry about clobbering somone else's
+	 * modifications to it because we have locked the bucket that
+	 * corresponds to this process's hash chain in the provider hash
+	 * table. Don't sweat it if we can't find the process.
+	 */
+	rcu_read_lock();
+	read_lock(&tasklist_lock);
+	if ((p = find_task_by_vpid(pid)) == NULL) {
+		read_unlock(&tasklist_lock);
+		rcu_read_unlock();
+		return;
+	}
+
+	get_task_struct(p);
+	read_unlock(&tasklist_lock);
+	rcu_read_unlock();
+
+	p->dtrace_probes--;
+	put_task_struct(p);
+}
+EXPORT_SYMBOL(unregister_pid_provider);
+
+void (*dtrace_helpers_cleanup)(struct task_struct *);
+EXPORT_SYMBOL(dtrace_helpers_cleanup);
+void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
+EXPORT_SYMBOL(dtrace_fasttrap_probes_cleanup);
+
+void dtrace_task_init(struct task_struct *tsk)
+{
+	tsk->dtrace_helpers = NULL;
+	tsk->dtrace_probes = 0;
+}
+
+void dtrace_task_cleanup(struct task_struct *tsk)
+{
+	if (likely(dtrace_helpers_cleanup == NULL))
+		return;
+
+	if (tsk->dtrace_helpers != NULL)
+		(*dtrace_helpers_cleanup)(tsk);
+
+	if (tsk->dtrace_probes) {
+		if (dtrace_fasttrap_probes_cleanup == NULL)
+			pr_warn("Fasttrap probes, yet no cleanup routine\n");
+		else
+			(*dtrace_fasttrap_probes_cleanup)(tsk);
+	}
+}
