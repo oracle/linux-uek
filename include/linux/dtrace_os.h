@@ -72,13 +72,4 @@ typedef struct stacktrace_state {
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
 
-#define FBT_PUSHL_EBP	0x55
-#define FBT_RET		0xc3
-#define FBT_RET_IMM16	0xc2
-
-typedef void		*(fbt_provide_fn)(struct module *, char *, uint8_t,
-					  uint8_t *, void *);
-
-extern void dtrace_fbt_init(fbt_provide_fn);
-
 #endif /* _DTRACE_OS_H_ */
