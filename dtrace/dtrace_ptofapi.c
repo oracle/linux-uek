@@ -32,6 +32,8 @@
 #include "dtrace.h"
 
 dtrace_provider_t	*dtrace_provider;
+dtrace_meta_t		*dtrace_meta_pid;
+dtrace_helpers_t	*dtrace_deferred_pid;
 
 DEFINE_MUTEX(dtrace_lock);
 DEFINE_MUTEX(dtrace_provider_lock);
@@ -42,7 +44,7 @@ DEFINE_MUTEX(dtrace_meta_lock);
  * be called by providers during module initialization.
  */
 int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
-		    cred_t *cr, const dtrace_pops_t *pops, void *arg,
+		    const cred_t *cr, const dtrace_pops_t *pops, void *arg,
 		    dtrace_provider_id_t *idp)
 {
 	dtrace_provider_t	*provider;
@@ -201,8 +203,9 @@ static int dtrace_unregister_check(int id, void *p, void *data)
 }
 
 /*
- * Remove the given probe from the hash tables and the probe IDR.  The probes
- * are chained for further processing.
+ * Remove the given probe from the hash tables and the probe IDR, if it is
+ * associated with the given provider.  The probes are chained for further
+ * processing.
  */
 static int dtrace_unregister_probe(int id, void *p, void *data)
 {
@@ -210,6 +213,37 @@ static int dtrace_unregister_probe(int id, void *p, void *data)
 	struct unreg_state	*st = (struct unreg_state *)data;
 
 	if (probe->dtpr_provider != st->prov)
+		return 0;
+
+	dtrace_hash_remove(dtrace_bymod, probe);
+	dtrace_hash_remove(dtrace_byfunc, probe);
+	dtrace_hash_remove(dtrace_byname, probe);
+
+	if (st->first == NULL) {
+		st->first = probe;
+		probe->dtpr_nextmod = NULL;
+	} else {
+		probe->dtpr_nextmod = st->first;
+		st->first = probe;
+	}
+
+	return 0;
+}
+
+/*
+ * Remove the given probe from the hash tables and the probe IDR, if it is
+ * associated with the given provider and if it does not have any enablings.
+ * The probes are chained for further processing.
+ */
+static int dtrace_condense_probe(int id, void *p, void *data)
+{
+	dtrace_probe_t		*probe = (dtrace_probe_t *)p;
+	struct unreg_state	*st = (struct unreg_state *)data;
+
+	if (probe->dtpr_provider != st->prov)
+		return 0;
+
+	if (probe->dtpr_ecb == NULL)
 		return 0;
 
 	dtrace_hash_remove(dtrace_bymod, probe);
@@ -410,8 +444,11 @@ EXPORT_SYMBOL(dtrace_attached);
 int dtrace_condense(dtrace_provider_id_t id)
 {
 	dtrace_provider_t	*prov = (dtrace_provider_t *)id;
-	int			i;
 	dtrace_probe_t		*probe;
+	struct unreg_state	st = {
+					prov,
+					NULL
+				     };
 
 	/*
 	 * Make sure this isn't the DTrace provider itself.
@@ -422,7 +459,35 @@ int dtrace_condense(dtrace_provider_id_t id)
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
-	/* FIXME - INCOMPLETE */
+	/*
+	 * Attempt to destroy the probes associated with this provider.
+	 */
+	dtrace_probe_for_each(dtrace_condense_probe, &st);
+
+	/*
+	 * The probes associated with the provider have been removed.  Ensure
+	 * synchronization on probe IDR processing.
+	 */
+	dtrace_sync();
+
+	/*
+	 * Now get rid of the actual probes.
+	 */
+	for (probe = st.first; probe != NULL; probe = st.first) {
+		int	probe_id = probe->dtpr_id;
+
+		st.first = probe->dtpr_nextmod;
+
+		prov->dtpv_pops.dtps_destroy(prov->dtpv_arg, probe_id,
+					     probe->dtpr_arg);
+
+		kfree(probe->dtpr_mod);
+		kfree(probe->dtpr_func);
+		kfree(probe->dtpr_name);
+		kfree(probe);
+
+		dtrace_probe_remove_id(probe_id);
+	}
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
@@ -430,3 +495,113 @@ int dtrace_condense(dtrace_provider_id_t id)
 	return 0;
 }
 EXPORT_SYMBOL(dtrace_condense);
+
+int dtrace_meta_register(const char *name, const dtrace_mops_t *mops,
+			 void *arg, dtrace_meta_provider_id_t *idp)
+{
+	dtrace_meta_t		*meta;
+	dtrace_helpers_t	*help, *next;
+	int			i;
+
+	*idp = DTRACE_METAPROVNONE;
+
+	/*
+	 * We strictly don't need the name, but we hold onto it for
+	 * debuggability. All hail error queues!
+	 */
+	if (name == NULL) {
+		pr_warn("failed to register meta-provider: invalid name\n");
+		return -EINVAL;
+	}
+
+	if (mops == NULL ||
+	    mops->dtms_create_probe == NULL ||
+	    mops->dtms_provide_pid == NULL ||
+	    mops->dtms_remove_pid == NULL) {
+		pr_warn("failed to register meta-register %s: invalid ops\n",
+			name);
+		return -EINVAL;
+	}
+
+	meta = kzalloc(sizeof(dtrace_meta_t), GFP_KERNEL);
+	meta->dtm_mops = *mops;
+	meta->dtm_name = kmalloc(strlen(name) + 1, GFP_KERNEL);
+	strcpy(meta->dtm_name, name);
+	meta->dtm_arg = arg;
+
+	mutex_lock(&dtrace_meta_lock);
+	mutex_lock(&dtrace_lock);
+
+	if (dtrace_meta_pid != NULL) {
+		mutex_unlock(&dtrace_lock);
+		mutex_unlock(&dtrace_meta_lock);
+		pr_warn("failed to register meta-register %s: user-land "
+			"meta-provider exists", name);
+		kfree(meta->dtm_name);
+		kfree(meta);
+		return -EINVAL;
+	}
+
+	dtrace_meta_pid = meta;
+	*idp = (dtrace_meta_provider_id_t)meta;
+
+	/*
+	 * If there are providers and probes ready to go, pass them
+	 * off to the new meta provider now.
+	 */
+	help = dtrace_deferred_pid;
+	dtrace_deferred_pid = NULL;
+
+	mutex_unlock(&dtrace_lock);
+
+	while (help != NULL) {
+		for (i = 0; i < help->dthps_nprovs; i++) {
+			dtrace_helper_provide(&help->dthps_provs[i]->dthp_prov,
+					      help->dthps_pid);
+		}
+
+		next = help->dthps_next;
+		help->dthps_next = NULL;
+		help->dthps_prev = NULL;
+		help->dthps_deferred = 0;
+		help = next;
+	}
+
+	mutex_unlock(&dtrace_meta_lock);
+
+	return 0;
+}
+EXPORT_SYMBOL(dtrace_meta_register);
+
+int dtrace_meta_unregister(dtrace_meta_provider_id_t id)
+{
+	dtrace_meta_t	**pp, *old = (dtrace_meta_t *)id;
+
+	mutex_lock(&dtrace_meta_lock);
+	mutex_lock(&dtrace_lock);
+
+	if (old == dtrace_meta_pid) {
+		pp = &dtrace_meta_pid;
+	} else {
+		pr_err("Attempt to unregister non-existent DTrace meta-"
+		       "provider %p\n", (void *)old);
+		BUG();
+	}
+
+	if (old->dtm_count != 0) {
+		mutex_unlock(&dtrace_lock);
+		mutex_unlock(&dtrace_meta_lock);
+		return -EBUSY;
+	}
+
+	*pp = NULL;
+
+	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_meta_lock);
+
+	kfree(old->dtm_name);
+	kfree(old);
+
+	return 0;
+}
+EXPORT_SYMBOL(dtrace_meta_unregister);
