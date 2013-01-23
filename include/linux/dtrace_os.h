@@ -1,4 +1,4 @@
-/* Copyright (C) 2011, 2012, 2013 Oracle Corporation */
+/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
 
 #ifndef _DTRACE_OS_H_
 #define _DTRACE_OS_H_
@@ -71,5 +71,13 @@ typedef struct stacktrace_state {
 } stacktrace_state_t;
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
+
+extern struct task_struct *register_pid_provider(pid_t);
+extern void unregister_pid_provider(pid_t);
+extern void dtrace_task_init(struct task_struct *tsk);
+extern void dtrace_task_cleanup(struct task_struct *tsk);
+
+extern void (*dtrace_helpers_cleanup)(struct task_struct *);
+extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 
 #endif /* _DTRACE_OS_H_ */

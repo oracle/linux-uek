@@ -54,6 +54,7 @@
 #include <linux/writeback.h>
 #include <linux/shm.h>
 #include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/uaccess.h>
 #include <asm/unistd.h>
@@ -786,6 +787,10 @@ void do_exit(long code)
 
 	DTRACE_PROC(lwp__exit);
 	DTRACE_PROC1(exit, int, code & 0x80 ? 3 : code & 0x7f ? 2 : 1);
+
+#ifdef CONFIG_DTRACE
+	dtrace_task_cleanup(tsk);
+#endif
 
 	exit_mm(tsk);
 
