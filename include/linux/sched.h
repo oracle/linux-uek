@@ -58,7 +58,7 @@ struct sched_param {
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
 #include <linux/magic.h>
-#include <linux/dtrace_os.h>
+#include <linux/dtrace_psinfo.h>
 
 #include <asm/processor.h>
 
