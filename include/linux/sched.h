@@ -54,7 +54,7 @@ struct sched_param {
 
 #include <asm/processor.h>
 
-#include <linux/dtrace_os.h>
+#include <linux/dtrace_psinfo.h>
 
 struct exec_domain;
 struct futex_pi_state;
