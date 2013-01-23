@@ -500,6 +500,18 @@ static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
 	}
 }
 
+static u8 mlx4_en_get_mac_hash(u64 mac)
+{
+	u8 tmp[ETH_ALEN];
+	unsigned int i;
+
+	for (i = ETH_ALEN - 1; i; --i) {
+		tmp[i] = mac & 0xff;
+		mac >>= 8;
+	}
+	return tmp[MLX4_EN_MAC_HASH_IDX];
+}
+
 static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -546,13 +558,10 @@ static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 	entry->mac = mac;
 	entry->reg_id = reg_id;
 
-	err = radix_tree_insert(&priv->mac_tree, *qpn, entry);
-	if (err)
-		goto insert_err;
-	return 0;
+	hlist_add_head_rcu(&entry->hlist,
+			   &priv->mac_hash[mlx4_en_get_mac_hash(mac)]);
 
-insert_err:
-	kfree(entry);
+	return 0;
 
 alloc_err:
 	mlx4_en_uc_steer_release(priv, mac, *qpn, reg_id);
@@ -569,7 +578,6 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
-	struct mlx4_mac_entry *entry;
 	int qpn = priv->base_qpn;
 	u64 mac = priv->mac;
 
@@ -578,15 +586,25 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 	mlx4_unregister_mac(dev, priv->port, mac);
 
 	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
-		entry = radix_tree_lookup(&priv->mac_tree, qpn);
-		if (entry) {
-			en_dbg(DRV, priv, "Releasing qp: port %d, mac 0x%llx, qpn %d\n",
-			       priv->port, (unsigned long long) mac, qpn);
-			mlx4_en_uc_steer_release(priv, entry->mac,
-						 qpn, entry->reg_id);
-			mlx4_qp_release_range(dev, qpn, 1);
-			radix_tree_delete(&priv->mac_tree, qpn);
-			kfree(entry);
+		struct mlx4_mac_entry *entry;
+		struct hlist_node *n, *tmp;
+		struct hlist_head *bucket;
+
+		bucket = &priv->mac_hash[mlx4_en_get_mac_hash(mac)];
+		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
+			if (entry->mac == mac) {
+				en_dbg(DRV, priv, "Releasing qp: port %d, mac 0x%llx, qpn %d\n",
+				       priv->port, (unsigned long long) mac,
+				       qpn);
+				mlx4_en_uc_steer_release(priv, entry->mac,
+							 qpn, entry->reg_id);
+				mlx4_qp_release_range(dev, qpn, 1);
+
+				hlist_del_rcu(&entry->hlist);
+				synchronize_rcu();
+				kfree(entry);
+				break;
+			}
 		}
 	}
 }
@@ -597,21 +615,34 @@ static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac,
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
 	struct mlx4_mac_entry *entry;
+	struct hlist_node *n, *tmp;
 	int err = 0;
 
 	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
-		entry = radix_tree_lookup(&priv->mac_tree, qpn);
-		if (!entry)
-			return -EINVAL;
-		mlx4_en_uc_steer_release(priv, entry->mac,
-					 qpn, entry->reg_id);
-		mlx4_unregister_mac(dev, priv->port, entry->mac);
-		entry->mac = new_mac;
-		entry->reg_id = 0;
-		mlx4_register_mac(dev, priv->port, new_mac);
-		err = mlx4_en_uc_steer_add(priv, entry->mac,
-					   &qpn, &entry->reg_id);
-		return err;
+		struct hlist_head *bucket;
+
+		bucket = &priv->mac_hash[mlx4_en_get_mac_hash(old_mac)];
+		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
+			if (entry->mac == old_mac) {
+				mlx4_en_uc_steer_release(priv, entry->mac,
+							 qpn, entry->reg_id);
+				mlx4_unregister_mac(dev, priv->port,
+						    entry->mac);
+				hlist_del_rcu(&entry->hlist);
+				synchronize_rcu();
+				entry->mac = new_mac;
+				entry->reg_id = 0;
+				hlist_add_head_rcu(&entry->hlist,
+						   &priv->mac_hash[mlx4_en_get_mac_hash(new_mac)]);
+				synchronize_rcu();
+				mlx4_register_mac(dev, priv->port, new_mac);
+				err = mlx4_en_uc_steer_add(priv, entry->mac,
+							   &qpn,
+							   &entry->reg_id);
+				return err;
+			}
+		}
+		return -EINVAL;
 	}
 
 	return __mlx4_replace_mac(dev, priv->port, qpn, new_mac);
@@ -1999,7 +2030,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	}
 #endif
 
-	INIT_RADIX_TREE(&priv->mac_tree, GFP_KERNEL);
+	for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i)
+		INIT_HLIST_HEAD(&priv->mac_hash[i]);
 
 	/* Query for default mac and max mtu */
 	priv->max_mtu = mdev->dev->caps.eth_mtu_cap[priv->port];

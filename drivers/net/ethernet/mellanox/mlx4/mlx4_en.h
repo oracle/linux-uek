@@ -452,6 +452,8 @@ struct ethtool_flow_id {
 	u64 id;
 };
 
+#define MLX4_EN_MAC_HASH_SIZE (1 << BITS_PER_BYTE)
+
 struct mlx4_en_priv {
 	struct mlx4_en_dev *mdev;
 	struct mlx4_en_port_profile *prof;
@@ -544,7 +546,8 @@ struct mlx4_en_priv {
 	int base_tx_qpn;
 	struct hwtstamp_config hwtstamp_config;
 	u32 counter_index;
-	struct radix_tree_root mac_tree;
+#define MLX4_EN_MAC_HASH_IDX 5
+	struct hlist_head mac_hash[MLX4_EN_MAC_HASH_SIZE];
 
 #ifdef CONFIG_MLX4_EN_DCB
 #define MLX4_EN_DCB_ENABLED   0x3
@@ -570,6 +573,7 @@ enum mlx4_en_wol {
 };
 
 struct mlx4_mac_entry {
+	struct hlist_node hlist;
 	u64 mac;
 	u64 reg_id;
 };
