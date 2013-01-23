@@ -1,3 +1,5 @@
+/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+
 #ifndef _SDT_H_
 #define	_SDT_H_
 
