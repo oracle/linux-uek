@@ -1078,6 +1078,7 @@ struct task_struct {
 	dtrace_psinfo_t *dtrace_psinfo;
 
 	void *dtrace_helpers;
+	uint32_t dtrace_probes;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task		*utask;

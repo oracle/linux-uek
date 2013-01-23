@@ -91,6 +91,7 @@
 #include <linux/livepatch.h>
 #include <linux/thread_info.h>
 #include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -579,6 +580,7 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 #endif
 #ifdef CONFIG_DTRACE
 	tsk->dtrace_psinfo = NULL;
+	dtrace_task_init(tsk);
 #endif
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
