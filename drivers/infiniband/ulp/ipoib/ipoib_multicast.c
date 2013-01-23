@@ -196,7 +196,12 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 		set_qkey = 1;
 
 		if (!ipoib_cm_admin_enabled(dev)) {
-			rtnl_lock();
+			while (!rtnl_trylock()) {
+				if (!test_bit(IPOIB_MCAST_RUN, &priv->flags))
+					return -EAGAIN;
+				/* enable other tasks to unlock the rtnl */
+				msleep(5);
+			}
 			dev_set_mtu(dev, min(priv->mcast_mtu, priv->admin_mtu));
 			rtnl_unlock();
 		}
