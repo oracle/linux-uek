@@ -414,7 +414,7 @@ typedef struct dtrace_helper_provdesc {
 
 typedef struct dtrace_mops {
 	void (*dtms_create_probe)(void *, void *, dtrace_helper_probedesc_t *);
-	void (*dtms_provide_pid)(void *, dtrace_helper_provdesc_t *, pid_t);
+	void *(*dtms_provide_pid)(void *, dtrace_helper_provdesc_t *, pid_t);
 	void (*dtms_remove_pid)(void *, dtrace_helper_provdesc_t *, pid_t);
 } dtrace_mops_t;
 
@@ -1203,10 +1203,19 @@ extern void dtrace_probekey(const dtrace_probedesc_t *, dtrace_probekey_t *);
 typedef uintptr_t		dtrace_provider_id_t;
 typedef uintptr_t		dtrace_meta_provider_id_t;
 
+typedef struct dtrace_meta {
+	dtrace_mops_t dtm_mops;
+	char *dtm_name;
+	void *dtm_arg;
+	uint64_t dtm_count;
+} dtrace_meta_t;
+
 extern dtrace_provider_t	*dtrace_provider;
+extern dtrace_meta_t		*dtrace_meta_pid;
+extern dtrace_helpers_t		*dtrace_deferred_pid;
 
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
-			   cred_t *, const dtrace_pops_t *, void *,
+			   const cred_t *, const dtrace_pops_t *, void *,
 			   dtrace_provider_id_t *);
 extern int dtrace_unregister(dtrace_provider_id_t);
 extern void dtrace_invalidate(dtrace_provider_id_t);
@@ -1543,6 +1552,7 @@ extern int dtrace_vcanload(void *, dtrace_diftype_t *, dtrace_mstate_t *,
 
 extern int dtrace_difo_validate(dtrace_difo_t *, dtrace_vstate_t *, uint_t,
 				const cred_t *);
+extern int dtrace_difo_validate_helper(dtrace_difo_t *);
 extern int dtrace_difo_cacheable(dtrace_difo_t *);
 extern void dtrace_difo_hold(dtrace_difo_t *);
 extern void dtrace_difo_init(dtrace_difo_t *, dtrace_vstate_t *);
@@ -1576,6 +1586,7 @@ extern void dtrace_actdesc_release(dtrace_actdesc_t *, dtrace_vstate_t *);
 /*
  * DTrace Helper Functions
  */
+extern void dtrace_helpers_destroy(struct task_struct *);
 extern uint64_t dtrace_helper(int, dtrace_mstate_t *, dtrace_state_t *,
 			      uint64_t, uint64_t);
 
@@ -2080,6 +2091,7 @@ typedef struct dof_xlref {
 	uint32_t dofxr_argn;
 } dof_xlref_t;
 
+extern void dtrace_dof_error(dof_hdr_t *, const char *);
 extern dof_hdr_t *dtrace_dof_create(dtrace_state_t *);
 extern dof_hdr_t *dtrace_dof_copyin(void __user *, int *);
 extern dof_hdr_t *dtrace_dof_property(const char *);
@@ -2087,6 +2099,9 @@ extern void dtrace_dof_destroy(dof_hdr_t *);
 extern int dtrace_dof_slurp(dof_hdr_t *, dtrace_vstate_t *, const cred_t *,
 			    dtrace_enabling_t **, uint64_t, int);
 extern int dtrace_dof_options(dof_hdr_t *, dtrace_state_t *);
+extern void dtrace_helper_provide(dof_helper_t *dhp, pid_t pid);
+extern int dtrace_helper_slurp(dof_hdr_t *, dof_helper_t *);
+extern int dtrace_helper_destroygen(int);
 
 /*
  * DTrace Anonymous Enabling Functions
@@ -2194,6 +2209,37 @@ extern void ctf_forceload(void);
   static void __exit name##_exit(void)					\
   {									\
 	dtrace_unregister(name##_id);					\
+	name##_dev_exit();						\
+  }									\
+									\
+  module_init(name##_init);						\
+  module_exit(name##_exit);
+
+#define DT_META_PROVIDER_MODULE(name)					\
+  dtrace_meta_provider_id_t	name##_id;				\
+									\
+  static int __init name##_init(void)					\
+  {									\
+	int	ret = 0;						\
+									\
+	ret = name##_dev_init();					\
+	if (ret)							\
+		goto failed;						\
+									\
+	ret = dtrace_meta_register(__stringify(name), &name##_mops,	\
+				   NULL, &name##_id);			\
+	if (ret)							\
+		goto failed;						\
+									\
+	return 0;							\
+									\
+  failed:								\
+	return ret;							\
+  }									\
+									\
+  static void __exit name##_exit(void)					\
+  {									\
+	dtrace_meta_unregister(name##_id);				\
 	name##_dev_exit();						\
   }									\
 									\

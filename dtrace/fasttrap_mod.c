@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
+ * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -29,17 +29,17 @@
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
-#include "fasttrap.h"
+#include "fasttrap_impl.h"
 
 MODULE_AUTHOR("Kris Van Hees (kris.van.hees@oracle.com)");
 MODULE_DESCRIPTION("Fasttrap Tracing");
 MODULE_VERSION("v0.1");
 MODULE_LICENSE("CDDL");
 
-static const dtrace_pattr_t fasttrap_attr = {
+static dtrace_mops_t fasttrap_mops = {
+	fasttrap_meta_create_probe,
+	fasttrap_meta_provide,
+	fasttrap_meta_remove
 };
 
-static dtrace_pops_t fasttrap_pops = {
-};
-
-DT_PROVIDER_MODULE(fasttrap, DTRACE_PRIV_PROC | DTRACE_PRIV_OWNER)
+DT_META_PROVIDER_MODULE(fasttrap)

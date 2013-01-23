@@ -93,6 +93,67 @@ int dtrace_enable_nullop(void)
 	return 0;
 }
 
+static int dtrace_open(struct inode *inode, struct file *file)
+{
+	dtrace_state_t	*state;
+	uint32_t	priv;
+	uid_t		uid;
+
+	dtrace_cred2priv(file->f_cred, &priv, &uid);
+	if (priv == DTRACE_PRIV_NONE)
+		return -EACCES;
+
+	mutex_lock(&dtrace_provider_lock);
+	dtrace_probe_provide(NULL, NULL);
+	mutex_unlock(&dtrace_provider_lock);
+
+	mutex_lock(&cpu_lock);
+	mutex_lock(&dtrace_lock);
+	dtrace_opens++;
+	dtrace_membar_producer();
+
+#ifdef FIXME
+	/*
+	 * Is this relevant for Linux?  Is there an equivalent?
+	 */
+	if (kdi_dtrace_set(KDI_DTSET_DTRACE_ACTIVATE) != 0) {
+		dtrace_opens--;
+		mutex_unlock(&cpu_lock);
+		mutex_unlock(&dtrace_lock);
+		return -EBUSY;
+	}
+#endif
+
+	state = dtrace_state_create(file);
+	mutex_unlock(&cpu_lock);
+
+	if (state == NULL) {
+#ifdef FIXME
+		if (--dtrace_opens == 0 && dtrace_anon.dta_enabling == NULL)
+			(void)kdi_dtrace_set(KDI_DTSET_DTRACE_DEACTIVATE);
+#endif
+
+		mutex_unlock(&dtrace_lock);
+
+		return -EAGAIN;
+	}
+
+	file->private_data = state;
+
+	/*
+	 * We only want to enable trap handling once, so we'll do it for the
+	 * first open of the DTrace core device file.
+	 * FIXME: If anonymous tracing is enabled, that would have enabled trap
+	 *	  handling already, so we should not do it here again.
+	 */
+	if (dtrace_opens == 1)
+		dtrace_enable();
+
+	mutex_unlock(&dtrace_lock);
+
+	return 0;
+}
+
 static long dtrace_ioctl(struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
@@ -849,67 +910,6 @@ static long dtrace_ioctl(struct file *file,
 	return -ENOTTY;
 }
 
-static int dtrace_open(struct inode *inode, struct file *file)
-{
-	dtrace_state_t	*state;
-	uint32_t	priv;
-	uid_t		uid;
-
-	dtrace_cred2priv(file->f_cred, &priv, &uid);
-	if (priv == DTRACE_PRIV_NONE)
-		return -EACCES;
-
-	mutex_lock(&dtrace_provider_lock);
-	dtrace_probe_provide(NULL, NULL);
-	mutex_unlock(&dtrace_provider_lock);
-
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_lock);
-	dtrace_opens++;
-	dtrace_membar_producer();
-
-#ifdef FIXME
-	/*
-	 * Is this relevant for Linux?  Is there an equivalent?
-	 */
-	if (kdi_dtrace_set(KDI_DTSET_DTRACE_ACTIVATE) != 0) {
-		dtrace_opens--;
-		mutex_unlock(&cpu_lock);
-		mutex_unlock(&dtrace_lock);
-		return -EBUSY;
-	}
-#endif
-
-	state = dtrace_state_create(file);
-	mutex_unlock(&cpu_lock);
-
-	if (state == NULL) {
-#ifdef FIXME
-		if (--dtrace_opens == 0 && dtrace_anon.dta_enabling == NULL)
-			(void)kdi_dtrace_set(KDI_DTSET_DTRACE_DEACTIVATE);
-#endif
-
-		mutex_unlock(&dtrace_lock);
-
-		return -EAGAIN;
-	}
-
-	file->private_data = state;
-
-	/*
-	 * We only want to enable trap handling once, so we'll do it for the
-	 * first open of the DTrace core device file.
-	 * FIXME: If anonymous tracing is enabled, that would have enabled trap
-	 *	  handling already, so we should not do it here again.
-	 */
-	if (dtrace_opens == 1)
-		dtrace_enable();
-
-	mutex_unlock(&dtrace_lock);
-
-	return 0;
-}
-
 static int dtrace_close(struct inode *inode, struct file *file)
 {
 	dtrace_state_t	*state = file->private_data;
@@ -950,6 +950,80 @@ static int dtrace_close(struct inode *inode, struct file *file)
 	return 0;
 }
 
+static int dtrace_helper_open(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static long dtrace_helper_ioctl(struct file *file,
+			 unsigned int cmd, unsigned long arg)
+{
+	int		rval;
+	dof_helper_t	help, *dhp = NULL;
+	void __user	*argp = (void __user *)arg;
+
+	switch (cmd) {
+	case DTRACEHIOC_ADDDOF:
+		if (copy_from_user(&help, argp, sizeof(help)) != 0) {
+			dtrace_dof_error(NULL, "failed to copy DOF helper");
+			return -EFAULT;
+		}
+
+		dhp = &help;
+		argp = (void __user *)help.dofhp_dof;
+
+		/* fallthrough */
+
+	case DTRACEHIOC_ADD: {
+		dof_hdr_t	*dof = dtrace_dof_copyin(argp, &rval);
+
+		if (dof == NULL)
+			return rval;
+
+		dt_dbg_ioctl("Helper IOCTL: %s\n",
+			     cmd == DTRACEHIOC_ADD ? "AddProbe" : "AddDOF");
+
+		mutex_lock(&dtrace_lock);
+
+		/*
+		 * The dtrace_helper_slurp() routine takes responsibility for
+		 * the dof -- it may free it now, or it may save it and free it
+		 * later.
+		 */
+		if ((rval = dtrace_helper_slurp(dof, dhp)) == -1)
+			rval = -EINVAL;
+
+		mutex_unlock(&dtrace_lock);
+
+		dt_dbg_ioctl("Helper IOCTL: %s returning %d\n",
+			     cmd == DTRACEHIOC_ADD ? "AddProbe" : "AddDOF",
+			     rval);
+
+		return rval;
+	}
+
+	case DTRACEHIOC_REMOVE:
+		dt_dbg_ioctl("Helper IOCTL: Remove gen %ld\n", (uintptr_t)argp);
+
+		mutex_lock(&dtrace_lock);
+
+		rval = dtrace_helper_destroygen((uintptr_t)argp);
+
+		mutex_unlock(&dtrace_lock);
+
+		return rval;
+	default:
+		break;
+	}
+
+	return -ENOTTY;
+}
+
+static int dtrace_helper_close(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
 static const struct file_operations dtrace_fops = {
 	.owner  = THIS_MODULE,
         .unlocked_ioctl = dtrace_ioctl,
@@ -957,11 +1031,25 @@ static const struct file_operations dtrace_fops = {
         .release = dtrace_close,
 };
 
+static const struct file_operations helper_fops = {
+	.owner  = THIS_MODULE,
+        .unlocked_ioctl = dtrace_helper_ioctl,
+        .open   = dtrace_helper_open,
+        .release = dtrace_helper_close,
+};
+
 static struct miscdevice dtrace_dev = {
 	.minor = DT_DEV_DTRACE_MINOR,
 	.name = "dtrace",
 	.nodename = "dtrace/dtrace",
 	.fops = &dtrace_fops,
+};
+
+static struct miscdevice helper_dev = {
+	.minor = DT_DEV_HELPER_MINOR,
+	.name = "helper",
+	.nodename = "dtrace/helper",
+	.fops = &helper_fops,
 };
 
 static void
@@ -1213,13 +1301,28 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
+	/*
+	 * Register the device for the DTrace helper.
+	 */
+	rc = misc_register(&helper_dev);
+	if (rc) {
+		pr_err("%s: Can't register misc device %d\n",
+		       helper_dev.name, helper_dev.minor);
+
+		mutex_unlock(&cpu_lock);
+		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&dtrace_lock);
+
+		return rc;
+	}
+
 	ctf_forceload();
 
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
+	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 #ifdef FIXME
 	dtrace_cpu_init = dtrace_cpu_setup_initial;
-	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 	dtrace_helpers_fork = dtrace_helpers_duplicate;
 	dtrace_cpustart_init = dtrace_suspend;
 	dtrace_cpustart_fini = dtrace_resume;
@@ -1327,6 +1430,7 @@ int dtrace_dev_init(void)
 void dtrace_dev_exit(void)
 {
 	kmem_cache_destroy(dtrace_state_cache);
+	misc_deregister(&helper_dev);
 	misc_deregister(&dtrace_dev);
 
 	dtrace_probe_exit();
