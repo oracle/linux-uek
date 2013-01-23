@@ -1,5 +1,5 @@
 /*
- * FILE:	fbt_dmod.c
+ * FILE:	fbt_mod.c
  * DESCRIPTION:	Function Boundary Tracing: module handling
  *
  * CDDL HEADER START
@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
+ * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
