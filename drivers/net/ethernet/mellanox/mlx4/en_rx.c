@@ -596,7 +596,6 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 	int ip_summed;
 	struct ethhdr *ethh;
 	dma_addr_t dma;
-	u64 s_mac;
 	int factor = priv->cqe_factor;
 	u64 timestamp;
 
@@ -642,14 +641,17 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					DMA_FROM_DEVICE);
 		ethh = (struct ethhdr *)(page_address(frags[0].page) +
 					 frags[0].offset);
-		s_mac = mlx4_mac_to_u64(ethh->h_source);
 
-		/* If source MAC is equal to our own MAC and not performing
-		 * the selftest or flb disabled - drop the packet */
-		if (s_mac == priv->mac &&
-		    !((dev->features & NETIF_F_LOOPBACK) &&
-		      priv->validate_loopback))
-			goto next;
+		/* Check if we need to drop the packet if SRIOV is not enabled
+		 * and not performing the selftest or flb disabled
+		 */
+		if (priv->flags & MLX4_EN_FLAG_RX_FILTER_NEEDED) {
+			u64 s_mac;
+			/* Drop the packet, since HW loopback-ed it */
+			s_mac = mlx4_mac_to_u64(ethh->h_source);
+			if (s_mac == priv->mac)
+				goto next;
+		}
 		/* avoid cache miss in tcp_gro_receive */
 		prefetch((char *)ethh + 64);
 		/*

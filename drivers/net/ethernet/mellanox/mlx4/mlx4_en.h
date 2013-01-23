@@ -501,8 +501,16 @@ struct mlx4_en_priv {
 	struct mlx4_en_rss_map rss_map;
 	__be32 ctrl_flags;
 	u32 flags;
-#define MLX4_EN_FLAG_PROMISC	0x1
-#define MLX4_EN_FLAG_MC_PROMISC	0x2
+#define MLX4_EN_FLAG_PROMISC		0x1
+#define MLX4_EN_FLAG_MC_PROMISC		0x2
+	/* flag for whether we need to enable hardware loopback by putting dmac in Tx WQE
+	 * see mlx4_en_update_loopback_state for when we enable this
+	 */
+#define MLX4_EN_FLAG_ENABLE_HW_LOOPBACK	0x4
+	/* flag for whether we need to drop packets that hardware loopback-ed
+	 * see mlx4_en_update_loopback_state for when we enable this
+	 */
+#define MLX4_EN_FLAG_RX_FILTER_NEEDED	0x8
 	u32 tx_ring_num;
 	u32 rx_ring_num;
 	u32 rx_skb_size;
@@ -560,6 +568,9 @@ enum mlx4_en_wol {
 };
 
 #define MLX4_EN_WOL_DO_MODIFY (1ULL << 63)
+
+void mlx4_en_update_loopback_state(struct net_device *dev,
+				netdev_features_t features);
 
 void mlx4_en_destroy_netdev(struct net_device *dev);
 int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
