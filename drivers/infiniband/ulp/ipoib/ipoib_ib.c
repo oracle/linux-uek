@@ -648,8 +648,8 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		}
 	} else {
 		if (unlikely(skb->len > priv->mcast_mtu + IPOIB_ENCAP_LEN)) {
-			ipoib_warn(priv, "packet len %d (> %d) too long to send, dropping\n",
-				   skb->len, priv->mcast_mtu + IPOIB_ENCAP_LEN);
+			ipoib_warn(priv, "%s: packet len %d (> %d) too long to send, dropping\n",
+				   __func__, skb->len, priv->mcast_mtu + IPOIB_ENCAP_LEN);
 			++send_ring->stats.tx_dropped;
 			++send_ring->stats.tx_errors;
 			ipoib_cm_skb_too_long(dev, skb, priv->mcast_mtu);
@@ -712,7 +712,8 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		       address->ah, qpn, tx_req, phead, hlen,
 		       tx_req->is_inline);
 	if (unlikely(rc)) {
-		ipoib_warn(priv, "post_send failed, error %d\n", rc);
+		ipoib_warn(priv, "%s: post_send failed, error %d, queue_index:%d skb->len: %d\n",
+			   __func__, rc, queue_index, skb->len);
 		++send_ring->stats.tx_errors;
 		--send_ring->tx_outstanding;
 		if (!tx_req->is_inline)
