@@ -43,6 +43,48 @@
 
 #define EN_ETHTOOL_QP_ATTACH (1ull << 63)
 
+union mlx4_ethtool_flow_union {
+	struct ethtool_tcpip4_spec		tcp_ip4_spec;
+	struct ethtool_tcpip4_spec		udp_ip4_spec;
+	struct ethtool_tcpip4_spec		sctp_ip4_spec;
+	struct ethtool_ah_espip4_spec		ah_ip4_spec;
+	struct ethtool_ah_espip4_spec		esp_ip4_spec;
+	struct ethtool_usrip4_spec		usr_ip4_spec;
+	struct ethhdr				ether_spec;
+	__u8					hdata[52];
+};
+
+struct mlx4_ethtool_flow_ext {
+	__u8		padding[2];
+	unsigned char	h_dest[ETH_ALEN];
+	__be16		vlan_etype;
+	__be16		vlan_tci;
+	__be32		data[2];
+};
+
+struct mlx4_ethtool_rx_flow_spec {
+	__u32		flow_type;
+	union mlx4_ethtool_flow_union h_u;
+	struct mlx4_ethtool_flow_ext h_ext;
+	union mlx4_ethtool_flow_union m_u;
+	struct mlx4_ethtool_flow_ext m_ext;
+	__u64		ring_cookie;
+	__u32		location;
+};
+
+struct mlx4_ethtool_rxnfc {
+	__u32				cmd;
+	__u32				flow_type;
+	__u64				data;
+	struct mlx4_ethtool_rx_flow_spec	fs;
+	__u32				rule_cnt;
+	__u32				rule_locs[0];
+};
+
+#ifndef FLOW_MAC_EXT
+#define	FLOW_MAC_EXT	0x40000000
+#endif
+
 static void
 mlx4_en_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
 {
@@ -649,7 +691,7 @@ static int mlx4_en_set_rxfh_indir(struct net_device *dev,
 	((field) == 0 || (field) == (__force typeof(field))-1)
 
 static int mlx4_en_validate_flow(struct net_device *dev,
-				 struct ethtool_rxnfc *cmd)
+				 struct mlx4_ethtool_rxnfc *cmd)
 {
 	struct ethtool_usrip4_spec *l3_mask;
 	struct ethtool_tcpip4_spec *l4_mask;
@@ -660,7 +702,13 @@ static int mlx4_en_validate_flow(struct net_device *dev,
 	if (cmd->fs.location >= MAX_NUM_OF_FS_RULES)
 		return -EINVAL;
 
-	switch (cmd->fs.flow_type & ~FLOW_EXT) {
+	if (cmd->fs.flow_type & FLOW_MAC_EXT) {
+		/* dest mac mask must be ff:ff:ff:ff:ff:ff */
+		if (!is_broadcast_ether_addr(cmd->fs.m_ext.h_dest))
+			return -EINVAL;
+	}
+
+	switch (cmd->fs.flow_type & ~(FLOW_EXT | FLOW_MAC_EXT)) {
 	case TCP_V4_FLOW:
 	case UDP_V4_FLOW:
 		if (cmd->fs.m_u.tcp_ip4_spec.tos)
@@ -716,18 +764,17 @@ static int mlx4_en_validate_flow(struct net_device *dev,
 	return 0;
 }
 
-static int mlx4_en_ethtool_add_mac_rule(struct ethtool_rxnfc *cmd,
+static int mlx4_en_ethtool_add_mac_rule(struct mlx4_ethtool_rxnfc *cmd,
 					struct list_head *rule_list_h,
 					struct mlx4_spec_list *spec_l2,
-					__be64 be_mac)
+					unsigned char *mac)
 {
 	int err = 0;
 	__be64 mac_msk = cpu_to_be64(MLX4_MAC_MASK << 16);
 
 	spec_l2->id = MLX4_NET_TRANS_RULE_ID_ETH;
 	memcpy(spec_l2->eth.dst_mac_msk, &mac_msk, ETH_ALEN);
-	if ((cmd->fs.flow_type & ~FLOW_EXT) != ETHER_FLOW)
-		memcpy(spec_l2->eth.dst_mac, &be_mac, ETH_ALEN);
+	memcpy(spec_l2->eth.dst_mac, mac, ETH_ALEN);
 
 	if ((cmd->fs.flow_type & FLOW_EXT) && cmd->fs.m_ext.vlan_tci) {
 		spec_l2->eth.vlan_id = cmd->fs.h_ext.vlan_tci;
@@ -740,23 +787,30 @@ static int mlx4_en_ethtool_add_mac_rule(struct ethtool_rxnfc *cmd,
 }
 
 static int mlx4_en_ethtool_add_mac_rule_by_ipv4(struct mlx4_en_priv *priv,
-						struct ethtool_rxnfc *cmd,
+						struct mlx4_ethtool_rxnfc *cmd,
 						struct list_head *rule_list_h,
 						struct mlx4_spec_list *spec_l2,
 						__be32 ipv4_dst)
 {
 	__be64 be_mac = 0;
+	unsigned char mac[ETH_ALEN];
 
-	if (!ipv4_is_multicast(ipv4_dst))
-		be_mac = cpu_to_be64((priv->mac & MLX4_MAC_MASK) << 16);
-	else
-		ip_eth_mc_map(ipv4_dst, (char *)&be_mac);
+	if (!ipv4_is_multicast(ipv4_dst)) {
+		if (cmd->fs.flow_type & FLOW_MAC_EXT){
+			memcpy(&mac, cmd->fs.h_ext.h_dest, ETH_ALEN);
+		} else {
+			be_mac = cpu_to_be64((priv->mac & MLX4_MAC_MASK) << 16);
+			memcpy(&mac, &be_mac, ETH_ALEN);
+		}
+	} else {
+		ip_eth_mc_map(ipv4_dst, mac);
+	}
 
-	return mlx4_en_ethtool_add_mac_rule(cmd, rule_list_h, spec_l2, be_mac);
+	return mlx4_en_ethtool_add_mac_rule(cmd, rule_list_h, spec_l2, &mac[0]);
 }
 
 static int add_ip_rule(struct mlx4_en_priv *priv,
-				struct ethtool_rxnfc *cmd,
+				struct mlx4_ethtool_rxnfc *cmd,
 				struct list_head *list_h)
 {
 	struct mlx4_spec_list *spec_l2 = NULL;
@@ -788,7 +842,7 @@ static int add_ip_rule(struct mlx4_en_priv *priv,
 }
 
 static int add_tcp_udp_rule(struct mlx4_en_priv *priv,
-			     struct ethtool_rxnfc *cmd,
+			     struct mlx4_ethtool_rxnfc *cmd,
 			     struct list_head *list_h, int proto)
 {
 	struct mlx4_spec_list *spec_l2 = NULL;
@@ -848,7 +902,7 @@ static int add_tcp_udp_rule(struct mlx4_en_priv *priv,
 }
 
 static int mlx4_en_ethtool_to_net_trans_rule(struct net_device *dev,
-					     struct ethtool_rxnfc *cmd,
+					     struct mlx4_ethtool_rxnfc *cmd,
 					     struct list_head *rule_list_h)
 {
 	int err;
@@ -860,16 +914,14 @@ static int mlx4_en_ethtool_to_net_trans_rule(struct net_device *dev,
 	if (err)
 		return err;
 
-	switch (cmd->fs.flow_type & ~FLOW_EXT) {
+	switch (cmd->fs.flow_type & ~(FLOW_EXT | FLOW_MAC_EXT)) {
 	case ETHER_FLOW:
 		spec_l2 = kzalloc(sizeof(*spec_l2), GFP_KERNEL);
 		if (!spec_l2)
 			return -ENOMEM;
 
-		__be64 be_mac = cpu_to_be64((priv->mac & MLX4_MAC_MASK) << 16);
-		mlx4_en_ethtool_add_mac_rule(cmd, rule_list_h, spec_l2, be_mac);
 		eth_spec = &cmd->fs.h_u.ether_spec;
-		memcpy(&spec_l2->eth.dst_mac, eth_spec->h_dest, ETH_ALEN);
+		mlx4_en_ethtool_add_mac_rule(cmd, rule_list_h, spec_l2, &eth_spec->h_dest[0]);
 		spec_l2->eth.ether_type = eth_spec->h_proto;
 		if (eth_spec->h_proto)
 			spec_l2->eth.ether_type_enable = 1;
@@ -889,7 +941,7 @@ static int mlx4_en_ethtool_to_net_trans_rule(struct net_device *dev,
 }
 
 static int mlx4_en_flow_replace(struct net_device *dev,
-				struct ethtool_rxnfc *cmd)
+				struct mlx4_ethtool_rxnfc *cmd)
 {
 	int err;
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -965,7 +1017,7 @@ out_free_list:
 }
 
 static int mlx4_en_flow_detach(struct net_device *dev,
-			       struct ethtool_rxnfc *cmd)
+			       struct mlx4_ethtool_rxnfc *cmd)
 {
 	int err = 0;
 	struct ethtool_flow_id *rule;
@@ -994,7 +1046,7 @@ out:
 
 }
 
-static int mlx4_en_get_flow(struct net_device *dev, struct ethtool_rxnfc *cmd,
+static int mlx4_en_get_flow(struct net_device *dev, struct mlx4_ethtool_rxnfc *cmd,
 			    int loc)
 {
 	int err = 0;
@@ -1026,13 +1078,14 @@ static int mlx4_en_get_num_flows(struct mlx4_en_priv *priv)
 
 }
 
-static int mlx4_en_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
+static int mlx4_en_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *c,
 			     u32 *rule_locs)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int err = 0;
 	int i = 0, priority = 0;
+	struct mlx4_ethtool_rxnfc *cmd = (struct mlx4_ethtool_rxnfc *)c;
 
 	if ((cmd->cmd == ETHTOOL_GRXCLSRLCNT ||
 	     cmd->cmd == ETHTOOL_GRXCLSRULE ||
@@ -1068,11 +1121,12 @@ static int mlx4_en_get_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd,
 	return err;
 }
 
-static int mlx4_en_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
+static int mlx4_en_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *c)
 {
 	int err = 0;
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
+	struct mlx4_ethtool_rxnfc *cmd = (struct mlx4_ethtool_rxnfc *)c;
 
 	if (mdev->dev->caps.steering_mode !=
 	    MLX4_STEERING_MODE_DEVICE_MANAGED || !priv->port_up)
