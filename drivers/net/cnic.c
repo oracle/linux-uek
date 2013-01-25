@@ -4135,61 +4135,6 @@ static int cnic_get_v4_route(struct sockaddr_in *dst_addr,
 #endif
 }
 
-#if defined(CONFIG_IPV6) || defined(CONFIG_IPV6_MODULE)
-#if (LINUX_VERSION_CODE >= 0x030000)
-static struct dst_entry *cnic_ip6_rte_output(struct sock *sk, struct flowi6 *fl)
-{
-	struct dst_entry *(*fn)(struct net *, const struct sock *,
-				struct flowi6 *);
-	struct dst_entry *dst = NULL;
-
-	fn = symbol_get(ip6_route_output);
-	if (fn) {
-		dst = (*fn)(&init_net, sk, fl);
-		symbol_put(ip6_route_output);
-	}
-	return dst;
-}
-
-#else
-
-static struct dst_entry *cnic_ip6_rte_output(struct sock *sk, struct flowi *fl)
-{
-#if (LINUX_VERSION_CODE >= 0x02061a)
-	struct dst_entry *(*fn)(struct net *, struct sock *, struct flowi *);
-#else
-	struct dst_entry *(*fn)(struct sock *, struct flowi *);
-#endif
-	struct dst_entry *dst = NULL;
-
-	fn = symbol_get(ip6_route_output);
-	if (fn) {
-#if (LINUX_VERSION_CODE >= 0x02061a)
-		dst = (*fn)(&init_net, sk, fl);
-#else
-		dst = (*fn)(sk, fl);
-#endif
-		symbol_put(ip6_route_output);
-	}
-	return dst;
-}
-#endif
-
-static int cnic_ipv6_addr_type(const struct in6_addr *addr)
-{
-	int (*fn)(const struct in6_addr *addr);
-	int type = 0;
-
-	fn = symbol_get(__ipv6_addr_type);
-	if (fn) {
-		type = fn(addr) & 0xffff;
-		symbol_put(__ipv6_addr_type);
-	}
-	return type;
-}
-
-#endif
-
 static int cnic_get_v6_route(struct sockaddr_in6 *dst_addr,
 			     struct dst_entry **dst)
 {
@@ -4199,10 +4144,10 @@ static int cnic_get_v6_route(struct sockaddr_in6 *dst_addr,
 
 	memset(&fl6, 0, sizeof(fl6));
 	fl6.daddr = dst_addr->sin6_addr;
-	if (cnic_ipv6_addr_type(&fl6.daddr) & IPV6_ADDR_LINKLOCAL)
+	if (ipv6_addr_type(&fl6.daddr) & IPV6_ADDR_LINKLOCAL)
 		fl6.flowi6_oif = dst_addr->sin6_scope_id;
 
-	*dst = cnic_ip6_rte_output(NULL, &fl6);
+	*dst = ip6_route_output(&init_net, NULL, &fl6);
 	if (*dst == NULL)
 		return -ENETUNREACH;
 	if ((*dst)->error) {
