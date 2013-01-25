@@ -1497,7 +1497,9 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 	int rval = QLA_FUNCTION_FAILED;
 	struct qla_hw_data *ha = vha->hw;
 	struct host_system_info *phost_info;
+	struct register_host_info *preg_hsi;
 	struct new_utsname *p_sysid = NULL;
+	struct timeval tv;
 
 	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
 	if (!sp)
@@ -1550,9 +1552,10 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		}
 
 		if (fx_type == FXDISC_REG_HOST_INFO) {
-			phost_info = (host_system_info_t *)
+			preg_hsi = (struct register_host_info *)
 				fdisc->u.fxiocb.req_addr;
-			memset(phost_info, 0, sizeof(host_system_info_t));
+			phost_info = &preg_hsi->hsi;
+			memset(preg_hsi, 0, sizeof(struct register_host_info));
 			phost_info->os_type = OS_TYPE_LINUX;
 			strncpy(phost_info->sysname,
 			    p_sysid->sysname, SYSNAME_LENGTH);
@@ -1568,6 +1571,8 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 			    p_sysid->domainname, DOMNAME_LENGTH);
 			strncpy(phost_info->hostdriver,
 			    QLA2XXX_VERSION, VERSION_LENGTH);
+			do_gettimeofday(&tv);
+			preg_hsi->utc = (uint64_t)tv.tv_sec;
 			ql_dbg(ql_dbg_init, vha, 0x0149,
 			    "ISP%04X: Host registration with firmware\n",
 			    ha->pdev->device);

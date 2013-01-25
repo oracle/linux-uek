@@ -327,6 +327,13 @@ struct host_system_info {
 } __packed;
 typedef struct host_system_info host_system_info_t;
 
+struct register_host_info {
+	struct host_system_info     hsi;	/* host system info */
+	uint64_t        utc;			/* UTC (system time) */
+	uint32_t        reserved[64];		/* future additions */
+} __packed;
+
+
 #define QLAFX00_PORT_DATA_INFO (sizeof(port_info_data_t))
 #define QLAFX00_TGT_NODE_LIST_SIZE (sizeof(uint32_t) * 32)
 
