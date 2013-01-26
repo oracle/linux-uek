@@ -340,7 +340,11 @@ static int eth_link_query_port(struct ib_device *ibdev, u8 port,
 						IB_WIDTH_4X : IB_WIDTH_1X;
 	props->active_speed	= IB_SPEED_QDR;
 	props->port_cap_flags	= IB_PORT_CM_SUP;
-	props->gid_tbl_len	= mdev->dev->caps.gid_table_len[port];
+	if (netw_view)
+		props->gid_tbl_len = MLX4_ROCE_MAX_GIDS;
+	else
+		props->gid_tbl_len   = mdev->dev->caps.gid_table_len[port];
+
 	props->max_msg_sz	= mdev->dev->caps.max_msg_sz;
 	props->pkey_tbl_len	= 1;
 	props->max_mtu		= IB_MTU_4096;
