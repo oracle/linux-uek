@@ -1,0 +1,429 @@
+From: Amir Vadai <amirv@mellanox.co.il>
+Subject: BACKPORT: mlx4_en: Use sysfs instead of missing QoS DCB netlink
+
+API to max rate-limit using sysfs file /sys/class/net/<interface>/qos/maxrate
+Also to set skprio2up when HW multiq is not supported by kernel.
+
+Change-Id: Iec74a1bddd5a46225cc3282f1ff43e8de2307d98
+Signed-off-by: Amir Vadai <amirv@mellanox.com>
+---
+ drivers/net/ethernet/mellanox/mlx4/Makefile    |    3 +
+ drivers/net/ethernet/mellanox/mlx4/en_dcb_nl.c |   14 ++-
+ drivers/net/ethernet/mellanox/mlx4/en_netdev.c |   20 ++-
+ drivers/net/ethernet/mellanox/mlx4/en_sysfs.c  |  219 ++++++++++++++++++++++++
+ drivers/net/ethernet/mellanox/mlx4/mlx4_en.h   |   33 ++++
+ ofed_scripts/compat.mk                         |    6 +
+ 6 files changed, 291 insertions(+), 4 deletions(-)
+ create mode 100644 drivers/net/ethernet/mellanox/mlx4/en_sysfs.c
+
+diff --git a/drivers/net/ethernet/mellanox/mlx4/Makefile b/drivers/net/ethernet/mellanox/mlx4/Makefile
+index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/net/ethernet/mellanox/mlx4/Makefile
++++ b/drivers/net/ethernet/mellanox/mlx4/Makefile
+@@ -11,3 +11,6 @@ mlx4_en-y := 	en_main.o en_tx.o en_rx.o en_ethtool.o en_port.o en_cq.o \
+ ifeq ($(CONFIG_COMPAT_DISABLE_DCB),)
+ mlx4_en-$(CONFIG_MLX4_EN_DCB) += en_dcb_nl.o
+ endif
++ifneq ($(CONFIG_COMPAT_EN_SYSFS),)
++mlx4_en-y += en_sysfs.o
++endif
+diff --git a/drivers/net/ethernet/mellanox/mlx4/en_dcb_nl.c b/drivers/net/ethernet/mellanox/mlx4/en_dcb_nl.c
+index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/net/ethernet/mellanox/mlx4/en_dcb_nl.c
++++ b/drivers/net/ethernet/mellanox/mlx4/en_dcb_nl.c
+@@ -201,9 +201,13 @@ static u8 mlx4_en_dcbnl_setdcbx(struct net_device *dev, u8 mode)
+ }
+ 
+ #define MLX4_RATELIMIT_UNITS_IN_KB 100000 /* rate-limit HW unit in Kbps */
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifndef CONFIG_COMPAT_MAXRATE
+ static int mlx4_en_dcbnl_ieee_getmaxrate(struct net_device *dev,
+ 				   struct ieee_maxrate *maxrate)
++#else
++int mlx4_en_dcbnl_ieee_getmaxrate(struct net_device *dev,
++				  struct ieee_maxrate *maxrate)
++#endif
+ {
+ 	struct mlx4_en_priv *priv = netdev_priv(dev);
+ 	int i;
+@@ -215,8 +219,13 @@ static int mlx4_en_dcbnl_ieee_getmaxrate(struct net_device *dev,
+ 	return 0;
+ }
+ 
++#ifndef CONFIG_COMPAT_MAXRATE
+ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
+ 		struct ieee_maxrate *maxrate)
++#else
++int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
++				  struct ieee_maxrate *maxrate)
++#endif
+ {
+ 	struct mlx4_en_priv *priv = netdev_priv(dev);
+ 	u16 tmp[IEEE_8021QAZ_MAX_TCS];
+@@ -239,12 +248,11 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
+ 
+ 	return 0;
+ }
+-#endif
+ 
+ const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops = {
+ 	.ieee_getets	= mlx4_en_dcbnl_ieee_getets,
+ 	.ieee_setets	= mlx4_en_dcbnl_ieee_setets,
+-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3,5,0)
++#ifndef CONFIG_COMPAT_MAXRATE
+ 	.ieee_getmaxrate = mlx4_en_dcbnl_ieee_getmaxrate,
+ 	.ieee_setmaxrate = mlx4_en_dcbnl_ieee_setmaxrate,
+ #endif
+diff --git a/drivers/net/ethernet/mellanox/mlx4/en_netdev.c b/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
+index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
++++ b/drivers/net/ethernet/mellanox/mlx4/en_netdev.c
+@@ -47,7 +47,7 @@
+ #include "mlx4_en.h"
+ #include "en_port.h"
+ 
+-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39))
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)) || defined (CONFIG_COMPAT_NEW_TX_RING_SCHEME)
+ static int mlx4_en_setup_tc(struct net_device *dev, u8 up)
+ {
+ 	struct mlx4_en_priv *priv = netdev_priv(dev);
+@@ -1539,6 +1539,10 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
+ 
+ 	en_dbg(DRV, priv, "Destroying netdev on port:%d\n", priv->port);
+ 
++#ifdef CONFIG_COMPAT_EN_SYSFS
++	mlx4_en_sysfs_remove(dev);
++#endif
++
+ 	/* Unregister device - this will close the port if it was up */
+ 	if (priv->registered)
+ 		unregister_netdev(dev);
+@@ -1810,6 +1814,13 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
+ 		err = -ENOMEM;
+ 		goto out;
+ 	}
++
++#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,39)) || defined (CONFIG_COMPAT_NEW_TX_RING_SCHEME)
++	err = mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
++	if (err)
++		goto out;
++#endif
++
+ 	priv->tx_cq = kzalloc(sizeof(struct mlx4_en_cq *) * priv->tx_ring_num,
+ 			GFP_KERNEL);
+ 	if (!priv->tx_cq) {
+@@ -1973,6 +1984,13 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
+ 		goto out;
+ 	}
+ 	queue_delayed_work(mdev->workqueue, &priv->stats_task, STATS_DELAY);
++
++#ifdef CONFIG_COMPAT_EN_SYSFS
++	err = mlx4_en_sysfs_create(dev);
++	if (err)
++		goto out;
++#endif
++
+ 	return 0;
+ 
+ out:
+diff --git a/drivers/net/ethernet/mellanox/mlx4/en_sysfs.c b/drivers/net/ethernet/mellanox/mlx4/en_sysfs.c
+new file mode 100644
+index 0000000..8bbac21
+--- /dev/null
++++ b/drivers/net/ethernet/mellanox/mlx4/en_sysfs.c
+@@ -0,0 +1,219 @@
++/*
++ * Copyright (c) 2013 Mellanox Technologies. All rights reserved.
++ *
++ * This software is available to you under a choice of one of two
++ * licenses.  You may choose to be licensed under the terms of the GNU
++ * General Public License (GPL) Version 2, available from the file
++ * COPYING in the main directory of this source tree, or the
++ * OpenIB.org BSD license below:
++ *
++ *     Redistribution and use in source and binary forms, with or
++ *     without modification, are permitted provided that the following
++ *     conditions are met:
++ *
++ *      - Redistributions of source code must retain the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer.
++ *
++ *      - Redistributions in binary form must reproduce the above
++ *        copyright notice, this list of conditions and the following
++ *        disclaimer in the documentation and/or other materials
++ *        provided with the distribution.
++ *
++ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
++ * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
++ * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
++ * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
++ * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
++ * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
++ * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
++ * SOFTWARE.
++ *
++ */
++
++#include <linux/device.h>
++#include <linux/netdevice.h>
++
++#include "mlx4_en.h"
++
++#define to_en_priv(cd)	((struct mlx4_en_priv *)(netdev_priv(to_net_dev(cd))))
++
++#ifdef CONFIG_COMPAT_MAXRATE
++static ssize_t mlx4_en_show_maxrate(struct device *d,
++					 struct device_attribute *attr,
++					 char *buf)
++{
++	struct mlx4_en_priv *priv = to_en_priv(d);
++	int i;
++	int len = 0;
++	struct ieee_maxrate maxrate;
++	int ret;
++
++	ret = mlx4_en_dcbnl_ieee_getmaxrate(priv->dev, &maxrate);
++	if (ret)
++		return ret;
++
++	for (i = 0; i < MLX4_EN_NUM_TC; i++)
++		len += sprintf(buf + len, "%lld ", maxrate.tc_maxrate[i]);
++	len += sprintf(buf + len, "\n");
++
++	return len;
++}
++
++static ssize_t mlx4_en_store_maxrate(struct device *d,
++					  struct device_attribute *attr,
++					  const char *buf, size_t count)
++{
++	int ret;
++	struct mlx4_en_priv *priv = to_en_priv(d);
++	char save;
++	int i = 0;
++	struct ieee_maxrate maxrate;
++
++	do {
++		int len;
++		u64 new_value;
++
++		if (i >= MLX4_EN_NUM_TC)
++			goto bad_elem_count;
++
++		len = strcspn(buf, " ");
++
++		/* nul-terminate and parse */
++		save = buf[len];
++		((char *)buf)[len] = '\0';
++
++		if (sscanf(buf, "%lld", &new_value) != 1 ||
++				new_value < 0) {
++			en_err(priv, "bad maxrate value: '%s'\n", buf);
++			ret = -EINVAL;
++			goto out;
++		}
++		maxrate.tc_maxrate[i] = new_value;
++		printk("%s:%d new_val = %lld\n", __func__, __LINE__, new_value);
++
++		buf += len+1;
++		i++;
++	} while (save == ' ');
++
++	if (i != MLX4_EN_NUM_TC)
++		goto bad_elem_count;
++
++	printk("%s:%d\n", __func__, __LINE__);
++	ret = mlx4_en_dcbnl_ieee_setmaxrate(priv->dev, &maxrate);
++	if (!ret)
++		ret = count;
++
++out:
++	return ret;
++
++bad_elem_count:
++	en_err(priv, "bad number of elemets in maxrate array\n");
++	return -EINVAL;
++}
++
++static DEVICE_ATTR(maxrate, S_IRUGO | S_IWUSR,
++		   mlx4_en_show_maxrate, mlx4_en_store_maxrate);
++#endif
++
++#ifdef CONFIG_COMPAT_MQPRIO
++
++#define MLX4_EN_NUM_SKPRIO		16
++
++static ssize_t mlx4_en_show_skprio2up(struct device *d,
++					 struct device_attribute *attr,
++					 char *buf)
++{
++	struct mlx4_en_priv *priv = to_en_priv(d);
++	struct net_device *dev = priv->dev;
++	int i;
++	int len = 0;
++
++	for (i = 0; i < MLX4_EN_NUM_SKPRIO; i++)
++		len += sprintf(buf + len,  "%d ", 
++			       netdev_get_prio_tc_map(dev, i));
++	len += sprintf(buf + len, "\n");
++
++	return len;
++}
++
++static ssize_t mlx4_en_store_skprio2up(struct device *d,
++					  struct device_attribute *attr,
++					  const char *buf, size_t count)
++{
++	int ret = count;
++	struct mlx4_en_priv *priv = to_en_priv(d);
++	struct net_device *dev = priv->dev;
++	char save;
++	int i = 0;
++	u8 skprio2up[MLX4_EN_NUM_SKPRIO];
++
++	do {
++		int len;
++		int new_value;
++
++		if (i >= MLX4_EN_NUM_SKPRIO)
++			goto bad_elem_count;
++
++		len = strcspn(buf, " ");
++
++		/* nul-terminate and parse */
++		save = buf[len];
++		((char *)buf)[len] = '\0';
++
++		if (sscanf(buf, "%d", &new_value) != 1 ||
++				new_value > MLX4_EN_NUM_UP || new_value < 0) {
++			en_err(priv, "bad user priority: '%s'\n", buf);
++			ret = -EINVAL;
++			goto out;
++		}
++		skprio2up[i] = new_value;
++
++		buf += len+1;
++		i++;
++	} while (save == ' ');
++
++	if (i != MLX4_EN_NUM_SKPRIO)
++		goto bad_elem_count;
++
++	netdev_set_num_tc(dev, MLX4_EN_NUM_SKPRIO);
++
++	for (i = 0; i < MLX4_EN_NUM_SKPRIO; i++)
++		netdev_set_prio_tc_map(dev, i, skprio2up[i]);
++
++out:
++	return ret;
++
++bad_elem_count:
++	en_err(priv, "bad number of elemets in skprio2up array\n");
++	return -EINVAL;
++}
++
++static DEVICE_ATTR(skprio2up, S_IRUGO | S_IWUSR,
++		   mlx4_en_show_skprio2up, mlx4_en_store_skprio2up);
++#endif
++
++static struct attribute *mlx4_en_qos_attrs[] = {
++#ifdef CONFIG_COMPAT_MAXRATE
++	&dev_attr_maxrate.attr,
++#endif
++#ifdef CONFIG_COMPAT_MQPRIO
++	&dev_attr_skprio2up.attr,
++#endif
++	NULL,
++};
++
++static struct attribute_group qos_group = {
++	.name = "qos",
++	.attrs = mlx4_en_qos_attrs,
++};
++
++int mlx4_en_sysfs_create(struct net_device *dev)
++{
++	return sysfs_create_group(&(dev->dev.kobj), &qos_group);
++}
++
++void mlx4_en_sysfs_remove(struct net_device *dev)
++{
++	sysfs_remove_group(&(dev->dev.kobj), &qos_group);
++}
+diff --git a/drivers/net/ethernet/mellanox/mlx4/mlx4_en.h b/drivers/net/ethernet/mellanox/mlx4/mlx4_en.h
+index xxxxxxx..xxxxxxx xxxxxx
+--- a/drivers/net/ethernet/mellanox/mlx4/mlx4_en.h
++++ b/drivers/net/ethernet/mellanox/mlx4/mlx4_en.h
+@@ -60,6 +60,20 @@
+ #define DRV_VERSION	"2.0"
+ #define DRV_RELDATE	"Dec 2011"
+ 
++#ifndef CONFIG_COMPAT_DISABLE_DCB
++#ifdef CONFIG_MLX4_EN_DCB
++
++#if LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0)
++#define CONFIG_COMPAT_MAXRATE
++#endif
++
++#ifndef CONFIG_NET_SCH_MULTIQ
++#define CONFIG_COMPAT_MQPRIO
++#endif
++
++#endif
++#endif
++
+ #define MLX4_EN_MSG_LEVEL	(NETIF_MSG_LINK | NETIF_MSG_IFDOWN)
+ 
+ /*
+@@ -668,9 +682,28 @@ int mlx4_SET_VLAN_FLTR(struct mlx4_dev *dev, struct mlx4_en_priv *priv);
+ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset);
+ int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port);
+ 
++#ifndef CONFIG_COMPAT_DISABLE_DCB
+ #ifdef CONFIG_MLX4_EN_DCB
+ extern const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops;
+ #endif
++#endif
++
++#ifdef CONFIG_COMPAT_EN_SYSFS
++int mlx4_en_sysfs_create(struct net_device *dev);
++void mlx4_en_sysfs_remove(struct net_device *dev);
++#endif
++
++#ifdef CONFIG_COMPAT_MAXRATE
++struct ieee_maxrate {
++	u64 tc_maxrate[IEEE_8021QAZ_MAX_TCS];
++};
++
++int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
++				  struct ieee_maxrate *maxrate);
++int mlx4_en_dcbnl_ieee_getmaxrate(struct net_device *dev,
++				  struct ieee_maxrate *maxrate);
++#endif
++
+ 
+ #ifdef CONFIG_RFS_ACCEL
+ void mlx4_en_cleanup_filters(struct mlx4_en_priv *priv,
+diff --git a/ofed_scripts/compat.mk b/ofed_scripts/compat.mk
+index xxxxxxx..xxxxxxx xxxxxx
+--- a/ofed_scripts/compat.mk
++++ b/ofed_scripts/compat.mk
+@@ -91,6 +91,9 @@ ifdef CONFIG_COMPAT_SLES_11_2
+  CFLAGS += -DCONFIG_COMPAT_ISER_ATTR_IS_VISIBLE
+  CFLAGS += -DCONFIG_COMPAT_ISCSI_ISER_GET_EP_PARAM
+  CFLAGS += -DCONFIG_COMPAT_IF_ISCSI_SCSI_REQ
++ # CONFIG_COMPAT_EN_SYSFS should be set to 'y' as it used in drivers/net/ethernet/mellanox/mlx4/Makefile
++ CONFIG_COMPAT_EN_SYSFS=y
++ CFLAGS += -DCONFIG_COMPAT_EN_SYSFS
+ endif
+ 
+ ifdef CONFIG_COMPAT_RHEL_6_3
+@@ -116,4 +119,7 @@ ifeq ($(RHEL_MAJOR),6)
+  CFLAGS += -DCONFIG_COMPAT_NETIF_F_RXHASH
+  CFLAGS += -DCONFIG_COMPAT_USE_LRO
+  CFLAGS += -DCONFIG_COMPAT_NDO_VF_MAC_VLAN
++ # CONFIG_COMPAT_EN_SYSFS should be set to 'y' as it used in drivers/net/ethernet/mellanox/mlx4/Makefile
++ CONFIG_COMPAT_EN_SYSFS=y
++ CFLAGS += -DCONFIG_COMPAT_EN_SYSFS
+ endif
