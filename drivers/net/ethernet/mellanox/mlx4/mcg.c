@@ -898,8 +898,8 @@ int mlx4_FLOW_STEERING_IB_UC_QP_RANGE(struct mlx4_dev *dev, u32 min_range_qpn, u
 	int err;
 	u64 in_param;
 
-	in_param = ((u64) max_range_qpn) << 32;
-	in_param |= ((u64) min_range_qpn) & 0xFFFFFFFF;
+	in_param = ((u64) min_range_qpn) << 32;
+	in_param |= ((u64) max_range_qpn) & 0xFFFFFFFF;
 
 	err = mlx4_cmd(dev, in_param, 0, 0,
 			MLX4_FLOW_STEERING_IB_UC_QP_RANGE,
