@@ -1481,7 +1481,7 @@ static void ipoib_neigh_hash_uninit(struct net_device *dev)
 	/* Stop GC if called at init fail need to cancel work */
 	stopped = test_and_set_bit(IPOIB_STOP_NEIGH_GC, &priv->flags);
 	if (!stopped)
-		cancel_delayed_work(&priv->neigh_reap_task);
+		cancel_delayed_work_sync(&priv->neigh_reap_task);
 
 	ipoib_flush_neighs(priv);
 
