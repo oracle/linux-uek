@@ -367,7 +367,10 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 	/* Checking MAX_ORDER to prevent WARN via calling alloc_pages below */
 	if (ncontiguous_pages_order >= MAX_ORDER)
 		goto err_alloc;
-
+	/* we set block_order before starting allocation to prevent
+	   a leak in a failure flow in ib_cmem_release.
+	   cmem->length has at that step value 0 from kzalloc as expected */
+	cmem->block_order = ncontiguous_pages_order;
 	for (i = 0; i < ncontiguous_groups; i++) {
 		/* Allocating the managed entry */
 		ib_cmem_block = kmalloc(sizeof(struct ib_cmem_block),
@@ -389,7 +392,6 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 		list_add_tail(&ib_cmem_block->list, &cmem->ib_cmem_block);
 	}
 
-	cmem->block_order = ncontiguous_pages_order;
 	cmem->length = total_size;
 
 	current->mm->pinned_vm = locked;
