@@ -2448,6 +2448,7 @@ static void ipoib_add_one(struct ib_device *device)
 	struct net_device *dev;
 	struct ipoib_dev_priv *priv;
 	int s, e, p;
+	int is_error_init = 0;
 
 	if (rdma_node_get_transport(device->node_type) != RDMA_TRANSPORT_IB)
 		return;
@@ -2473,10 +2474,16 @@ static void ipoib_add_one(struct ib_device *device)
 		if (!IS_ERR(dev)) {
 			priv = netdev_priv(dev);
 			list_add_tail(&priv->list, dev_list);
-		}
+		} else
+			is_error_init = 1;
 	}
-
 	ib_set_client_data(device, &ipoib_client, dev_list);
+
+	if (is_error_init) {
+		printk(KERN_ERR "%s: Failed to init ib port, removing it\n",
+		       __func__);
+		ipoib_remove_one(device);
+	}
 }
 
 static void ipoib_remove_one(struct ib_device *device)
