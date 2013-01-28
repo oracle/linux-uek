@@ -378,8 +378,8 @@ struct ib_cmem *ib_cmem_alloc_contiguous_pages(struct ib_ucontext *context,
 		if (!ib_cmem_block)
 			goto err_alloc;
 
-		page =  alloc_pages(GFP_HIGHUSER | __GFP_ZERO | __GFP_COMP,
-				ncontiguous_pages_order);
+		page =  alloc_pages(GFP_HIGHUSER | __GFP_ZERO | __GFP_COMP |
+					__GFP_NOWARN, ncontiguous_pages_order);
 		if (!page) {
 			kfree(ib_cmem_block);
 			/* We should deallocate previous succeeded allocatations
