@@ -1,3 +1,11 @@
+obj-$(CONFIG_MLX4_XEN_FMR_MASTER) += mlx4_xen_fmr_master.o
+
+mlx4_xen_fmr_master-y := xen_fmr_master.o
+
+obj-$(CONFIG_MLX4_XEN_FMR_SLAVE) += mlx4_xen_fmr_slave.o
+
+mlx4_xen_fmr_slave-y := xen_fmr_slave.o
+
 obj-$(CONFIG_MLX4_CORE)		+= mlx4_core.o
 
 mlx4_core-y :=	alloc.o catas.o cmd.o cq.o eq.o fw.o icm.o intf.o main.o mcg.o \
