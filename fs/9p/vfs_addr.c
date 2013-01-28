@@ -249,8 +249,8 @@ static int v9fs_launder_page(struct page *page)
  * the VFS gets them, so this method should never be called.
  *
  * Direct IO is not 'yet' supported in the cached mode. Hence when
- * this routine is called through generic_file_aio_read(), the read/write fails
- * with an error.
+ * this routine is called through generic_file_read_iter(), the read/write
+ * fails with an error.
  *
  */
 static ssize_t
