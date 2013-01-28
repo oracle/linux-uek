@@ -179,7 +179,7 @@ nfs_file_read_iter(struct kiocb *iocb, struct iov_iter *iter, loff_t pos)
 	ssize_t result;
 
 	if (iocb->ki_filp->f_flags & O_DIRECT)
-		return nfs_file_direct_read(iocb, iter, pos, true);
+		return nfs_file_direct_read(iocb, iter, pos);
 
 	dprintk("NFS: read_iter(%s/%s, %lu@%lu)\n",
 		dentry->d_parent->d_name.name, dentry->d_name.name,
@@ -619,7 +619,7 @@ ssize_t nfs_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
 	size_t count = iov_iter_count(iter);
 
 	if (iocb->ki_filp->f_flags & O_DIRECT)
-		return nfs_file_direct_write(iocb, iter, pos, true);
+		return nfs_file_direct_write(iocb, iter, pos);
 
 	dprintk("NFS: write_iter(%s/%s, %lu@%lld)\n",
 		dentry->d_parent->d_name.name, dentry->d_name.name,
