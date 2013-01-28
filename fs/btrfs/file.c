@@ -1563,9 +1563,10 @@ static ssize_t btrfs_file_write_iter(struct kiocb *iocb,
 		if (err < 0 && num_written > 0)
 			num_written = err;
 	}
-out:
+
 	if (sync)
 		atomic_dec(&BTRFS_I(inode)->sync_writers);
+out:
 	sb_end_write(inode->i_sb);
 	current->backing_dev_info = NULL;
 	return num_written ? num_written : err;
