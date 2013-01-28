@@ -912,6 +912,10 @@ int aio_complete(struct kiocb *iocb, long res, long res2)
 		iocb->ki_users = 0;
 		wake_up_process(iocb->ki_obj.tsk);
 		return 1;
+	} else if (is_kernel_kiocb(iocb)) {
+		iocb->ki_obj.complete(iocb->ki_user_data, res);
+		aio_kernel_free(iocb);
+		return 0;
 	}
 
 	info = &ctx->ring_info;
@@ -1503,6 +1507,94 @@ static ssize_t aio_setup_iocb(struct kiocb *kiocb, bool compat)
 
 	return 0;
 }
+
+ /*
+ * This allocates an iocb that will be used to submit and track completion of
+ * an IO that is issued from kernel space.
+ *
+ * The caller is expected to call the appropriate aio_kernel_init_() functions
+ * and then call aio_kernel_submit().  From that point forward progress is
+ * guaranteed by the file system aio method.  Eventually the caller's
+ * completion callback will be called.
+ *
+ * These iocbs are special.  They don't have a context, we don't limit the
+ * number pending, they can't be canceled, and can't be retried.  In the short
+ * term callers need to be careful not to call operations which might retry by
+ * only calling new ops which never add retry support.  In the long term
+ * retry-based AIO should be removed.
+ */
+struct kiocb *aio_kernel_alloc(gfp_t gfp)
+{
+	struct kiocb *iocb = kzalloc(sizeof(struct kiocb), gfp);
+	if (iocb)
+		iocb->ki_key = KIOCB_KERNEL_KEY;
+	return iocb;
+}
+EXPORT_SYMBOL_GPL(aio_kernel_alloc);
+
+void aio_kernel_free(struct kiocb *iocb)
+{
+	kfree(iocb);
+}
+EXPORT_SYMBOL_GPL(aio_kernel_free);
+
+/*
+ * ptr and count can be a buff and bytes or an iov and segs.
+ */
+void aio_kernel_init_rw(struct kiocb *iocb, struct file *filp,
+			unsigned short op, void *ptr, size_t nr, loff_t off)
+{
+	iocb->ki_filp = filp;
+	iocb->ki_opcode = op;
+	iocb->ki_buf = (char __user *)(unsigned long)ptr;
+	iocb->ki_left = nr;
+	iocb->ki_nbytes = nr;
+	iocb->ki_pos = off;
+}
+EXPORT_SYMBOL_GPL(aio_kernel_init_rw);
+
+void aio_kernel_init_callback(struct kiocb *iocb,
+			      void (*complete)(u64 user_data, long res),
+			      u64 user_data)
+{
+	iocb->ki_obj.complete = complete;
+	iocb->ki_user_data = user_data;
+}
+EXPORT_SYMBOL_GPL(aio_kernel_init_callback);
+
+/*
+ * The iocb is our responsibility once this is called.  The caller must not
+ * reference it.  This comes from aio_setup_iocb() modifying the iocb.
+ *
+ * Callers must be prepared for their iocb completion callback to be called the
+ * moment they enter this function.  The completion callback may be called from
+ * any context.
+ *
+ * Returns: 0: the iocb completion callback will be called with the op result
+ * negative errno: the operation was not submitted and the iocb was freed
+ */
+int aio_kernel_submit(struct kiocb *iocb)
+{
+	int ret;
+
+	BUG_ON(!is_kernel_kiocb(iocb));
+	BUG_ON(!iocb->ki_obj.complete);
+	BUG_ON(!iocb->ki_filp);
+
+	ret = aio_setup_iocb(iocb, 0);
+	if (ret) {
+		aio_kernel_free(iocb);
+		return ret;
+	}
+
+	ret = iocb->ki_retry(iocb);
+	BUG_ON(ret == -EIOCBRETRY);
+	if (ret != -EIOCBQUEUED)
+		aio_complete(iocb, ret, 0);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(aio_kernel_submit);
 
 static int io_submit_one(struct kioctx *ctx, struct iocb __user *user_iocb,
 			 struct iocb *iocb, struct kiocb_batch *batch,

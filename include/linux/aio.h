@@ -24,6 +24,7 @@ struct kioctx;
 #define KIOCB_C_COMPLETE	0x02
 
 #define KIOCB_SYNC_KEY		(~0U)
+#define KIOCB_KERNEL_KEY		(~1U)
 
 /* ki_flags bits */
 /*
@@ -99,6 +100,7 @@ struct kiocb {
 	union {
 		void __user		*user;
 		struct task_struct	*tsk;
+		void			(*complete)(u64 user_data, long res);
 	} ki_obj;
 
 	__u64			ki_user_data;	/* user's data for completion */
@@ -129,6 +131,11 @@ struct kiocb {
 static inline bool is_sync_kiocb(struct kiocb *kiocb)
 {
 	return kiocb->ki_key == KIOCB_SYNC_KEY;
+}
+
+static inline bool is_kernel_kiocb(struct kiocb *kiocb)
+{
+	return kiocb->ki_key == KIOCB_KERNEL_KEY;
 }
 
 static inline void init_sync_kiocb(struct kiocb *kiocb, struct file *filp)
@@ -218,6 +225,14 @@ struct mm_struct;
 extern void exit_aio(struct mm_struct *mm);
 extern long do_io_submit(aio_context_t ctx_id, long nr,
 			 struct iocb __user *__user *iocbpp, bool compat);
+struct kiocb *aio_kernel_alloc(gfp_t gfp);
+void aio_kernel_free(struct kiocb *iocb);
+void aio_kernel_init_rw(struct kiocb *iocb, struct file *filp,
+			unsigned short op, void *ptr, size_t nr, loff_t off);
+void aio_kernel_init_callback(struct kiocb *iocb,
+			      void (*complete)(u64 user_data, long res),
+			      u64 user_data);
+int aio_kernel_submit(struct kiocb *iocb);
 #else
 static inline ssize_t wait_on_sync_kiocb(struct kiocb *iocb) { return 0; }
 static inline int aio_put_req(struct kiocb *iocb) { return 0; }
