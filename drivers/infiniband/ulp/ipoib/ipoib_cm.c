@@ -1568,9 +1568,14 @@ static ssize_t set_mode(struct device *d, struct device_attribute *attr,
 
 	ret = ipoib_set_mode(dev, buf);
 
-	rtnl_unlock();
+	/* the assumption is that the func ipoib_set_mode returned with the
+	 * rtnl held by it, if not the value -EBUSY returned,
+	 * so no need to rtnl_unlock
+	 */
+	if (ret != -EBUSY)
+		rtnl_unlock();
 
-	if (!ret)
+	if (!ret || ret == -EBUSY)
 		return count;
 
 	return ret;
