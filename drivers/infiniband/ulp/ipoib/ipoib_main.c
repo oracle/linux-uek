@@ -806,6 +806,7 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct ipoib_cb *cb = (struct ipoib_cb *) skb->cb;
 	struct ipoib_header *header;
 	struct ipoib_send_ring *send_ring;
+	unsigned long flags;
 
 	send_ring = priv->send_ring + skb_get_queue_mapping(skb);
 	header = (struct ipoib_header *) skb->data;
@@ -863,13 +864,13 @@ send_using_neigh:
 				   ipoib_cm_admin_enabled(dev));
 			++dev->stats.tx_dropped;
 			dev_kfree_skb_any(skb);
-			return NETDEV_TX_OK;
-		}
-
-		if (ipoib_cm_up(neigh)) {
-			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
 			goto unref;
 		}
+
+		if (ipoib_cm_up(neigh))
+			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
+
+		goto unref;
 	} else if (neigh->ah) {
 		/* in select queue cm was enabled ring is likely wrong */
 		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
@@ -877,10 +878,20 @@ send_using_neigh:
 					   ipoib_cm_admin_enabled(dev));
 				++dev->stats.tx_dropped;
 				dev_kfree_skb_any(skb);
-				return NETDEV_TX_OK;
+				goto unref;
 		}
 		ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 		goto unref;
+	}
+
+	/*requeue the packet that misses path*/
+	if (skb_queue_len(&neigh->queue) < IPOIB_MAX_PATH_REC_QUEUE) {
+		spin_lock_irqsave(&priv->lock, flags);
+		__skb_queue_tail(&neigh->queue, skb);
+		spin_unlock_irqrestore(&priv->lock, flags);
+	} else {
+		++dev->stats.tx_dropped;
+		dev_kfree_skb_any(skb);
 	}
 
 unref:
