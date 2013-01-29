@@ -198,7 +198,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.10.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1697,6 +1697,23 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Mon Jan 28 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.11.0.el6uek]
+- cnic: don't use weak dependencies for ipv6 (Jerry Snitselaar) [Orabug:
+  16207564]
+- ext4: remove unaligned AIO warning printk (Eric Sandeen) [Orabug: 14096480]
+- SPEC: add block/net modules to list used by installer (Guru Anbalagane)
+  [Orabug: 14224837]
+- dm mpath: add retain_attached_hw_handler feature (Mike Snitzer) [Orabug:
+  16199397]
+- [SCSI] scsi_dh: add scsi_dh_attached_handler_name (Mike Snitzer) [Orabug:
+  16199397]
+- xen/grant-table: Force to use v1 of grants. (Konrad Rzeszutek Wilk) [Oracle-
+  bug: 16039922]
+- xen: netback: handle compound page fragments on transmit. (Ian Campbell)
+- xen: Fix stack corruption in xen_failsafe_callback for 32bit PVOPS guests.
+  (Andrew Cooper)  {CVE-2013-0190}
+- xen/grant-table: correctly initialize grant table version 1 (Matt Wilson)
+
 * Fri Jan 18 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.10.0.el6uek]
 - btrfs: fix incompatible pointer warning (Jerry Snitselaar)
 - bnx2x: enable support for ethtool op get_rxfh_indir_size (Jerry Snitselaar)
