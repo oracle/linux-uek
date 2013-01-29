@@ -323,7 +323,9 @@ static inline unsigned long btrfs_chunk_item_size(int num_stripes)
 /*
  * File system states
  */
+#define BTRFS_FS_STATE_ERROR		0
 
+/* Super block flags */
 /* Errors detected */
 #define BTRFS_SUPER_FLAG_ERROR		(1ULL << 2)
 
@@ -1323,7 +1325,7 @@ struct btrfs_fs_info {
 	struct btrfs_workers scrub_workers;
 
 	/* filesystem state */
-	u64 fs_state;
+	unsigned long fs_state;
 
 	struct btrfs_delayed_root *delayed_root;
 
