@@ -97,7 +97,8 @@ static void ipoib_ud_dma_unmap_rx(struct ipoib_dev_priv *priv,
 				  u64 mapping[IPOIB_UD_RX_SG])
 {
 	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		ib_dma_unmap_single(priv->ca, mapping[0], IPOIB_UD_HEAD_SIZE,
+		ib_dma_unmap_single(priv->ca, mapping[0],
+				    IPOIB_UD_HEAD_BUFF_SIZE,
 				    DMA_FROM_DEVICE);
 		ib_dma_unmap_page(priv->ca, mapping[1], PAGE_SIZE,
 				  DMA_FROM_DEVICE);
@@ -114,14 +115,19 @@ static void ipoib_ud_skb_put_frags(struct ipoib_dev_priv *priv,
 	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
 		unsigned int size;
-		/*
-		 * There is only two buffers needed for max_payload = 4K,
-		 * first buf size is IPOIB_UD_HEAD_SIZE
-		 */
-		skb->tail += IPOIB_UD_HEAD_SIZE;
-		skb->len  += length;
+		if (length > IPOIB_UD_HEAD_BUFF_SIZE) {
+			/*
+			 * There is only two buffers needed for max_payload = 4K
+			 * first buf size is IPOIB_UD_HEAD_BUFF_SIZE
+			 */
+			skb->tail += IPOIB_UD_HEAD_BUFF_SIZE;
+			skb->len  += length;
 
-		size = length - IPOIB_UD_HEAD_SIZE;
+			size = length - IPOIB_UD_HEAD_BUFF_SIZE;
+		} else {
+			skb_put(skb, length);
+			size = 0;
+		}
 
 		skb_frag_size_set(frag, size);
 		skb->data_len += size;
@@ -161,18 +167,15 @@ static struct sk_buff *ipoib_alloc_rx_skb(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct sk_buff *skb;
 	int buf_size;
-	int tailroom;
 	u64 *mapping;
 
 	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		buf_size = IPOIB_UD_HEAD_SIZE;
-		tailroom = 128; /* reserve some tailroom for IP/TCP headers */
+		buf_size = IPOIB_UD_HEAD_BUFF_SIZE;
 	} else {
 		buf_size = IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
-		tailroom = 0;
 	}
 
-	skb = dev_alloc_skb(buf_size + tailroom + 4);
+	skb = dev_alloc_skb(buf_size + 4);
 	if (unlikely(!skb))
 		return NULL;
 
@@ -1159,7 +1162,7 @@ static void set_rings_qp_state(struct ipoib_dev_priv *priv,
 	if (priv->num_rx_queues > 1)
 		set_rx_rings_qp_state(priv, new_state);
 }
-/* 
+/*
  * The function tries to clean the list of ah's that waiting for deleting.
  * it tries for one HZ if it wasn't clear till then it print message
  *  and out.

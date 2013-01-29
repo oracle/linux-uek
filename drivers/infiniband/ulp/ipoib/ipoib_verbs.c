@@ -568,7 +568,7 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 			size += ipoib_recvq_size * ipoib_max_conn_qp;
 	}
 
-	
+
 	/* Create CQ(s) */
 	ret = ipoib_transport_cq_init(dev, size);
 	if (ret) {
@@ -617,7 +617,7 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	recv_ring = priv->recv_ring;
 	recv_ring->rx_sge[0].lkey = priv->mr->lkey;
 	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		recv_ring->rx_sge[0].length = IPOIB_UD_HEAD_SIZE;
+		recv_ring->rx_sge[0].length = IPOIB_UD_HEAD_BUFF_SIZE;
 		recv_ring->rx_sge[1].length = PAGE_SIZE;
 		recv_ring->rx_sge[1].lkey = priv->mr->lkey;
 		recv_ring->rx_wr.num_sge = IPOIB_UD_RX_SG;

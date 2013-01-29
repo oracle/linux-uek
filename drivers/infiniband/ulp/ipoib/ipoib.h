@@ -66,6 +66,7 @@ enum {
 	IPOIB_ENCAP_LEN		  = 4,
 
 	IPOIB_UD_HEAD_SIZE	  = IB_GRH_BYTES + IPOIB_ENCAP_LEN,
+	IPOIB_UD_HEAD_BUFF_SIZE   = IPOIB_UD_HEAD_SIZE + 128, /* reserve some tailroom for IP/TCP headers */
 	IPOIB_UD_RX_SG		  = 2, /* max buffer needed for 4K mtu */
 
 	IPOIB_CM_MTU		  = 0x10000 - 0x10, /* padding to align header to 16 */
