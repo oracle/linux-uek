@@ -2864,6 +2864,20 @@ config MLX4_CORE
 	depends on PCI
 	default n
 
+config MLX4_XEN_FMR_MASTER
+	tristate "Mellanox Technologies FMR master support"
+	depends on PCI
+	select MLX4_CORE
+	help
+	  Mellanox Technologies FMR functionality.
+
+config MLX4_XEN_FMR_SLAVE
+	tristate "Mellanox Technologies FMR slave support"
+	depends on PCI
+	select MLX4_CORE
+	help
+	  Mellanox Technologies FMR functionality.
+
 config MLX4_DEBUG
 	bool "Verbose debugging output" if (MLX4_CORE && EXPERT)
 	depends on MLX4_CORE
