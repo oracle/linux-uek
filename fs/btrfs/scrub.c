@@ -2685,11 +2685,6 @@ int scrub_enumerate_chunks(struct scrub_ctx *sctx,
 			break;
 		}
 
-		if (sctx->stat.malloc_errors > 0) {
-			ret = -ENOMEM;
-			break;
-		}
-
 		key.offset = found_key.offset + length;
 		btrfs_release_path(path);
 	}
@@ -3192,18 +3187,25 @@ static int copy_nocow_pages_for_inode(u64 inum, u64 offset, u64 root, void *ctx)
 	u64 physical_for_dev_replace;
 	u64 len;
 	struct btrfs_fs_info *fs_info = nocow_ctx->sctx->dev_root->fs_info;
+	int srcu_index;
 
 	key.objectid = root;
 	key.type = BTRFS_ROOT_ITEM_KEY;
 	key.offset = (u64)-1;
+
+	srcu_index = srcu_read_lock(&fs_info->subvol_srcu);
+
 	local_root = btrfs_read_fs_root_no_name(fs_info, &key);
-	if (IS_ERR(local_root))
+	if (IS_ERR(local_root)) {
+		srcu_read_unlock(&fs_info->subvol_srcu, srcu_index);
 		return PTR_ERR(local_root);
+	}
 
 	key.type = BTRFS_INODE_ITEM_KEY;
 	key.objectid = inum;
 	key.offset = 0;
 	inode = btrfs_iget(fs_info->sb, &key, local_root, NULL);
+	srcu_read_unlock(&fs_info->subvol_srcu, srcu_index);
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
