@@ -12,8 +12,7 @@ Signed-off-by: Amir Vadai <amirv@mellanox.com>
  drivers/net/ethernet/mellanox/mlx4/en_netdev.c |   20 ++-
  drivers/net/ethernet/mellanox/mlx4/en_sysfs.c  |  219 ++++++++++++++++++++++++
  drivers/net/ethernet/mellanox/mlx4/mlx4_en.h   |   33 ++++
- ofed_scripts/compat.mk                         |    6 +
- 6 files changed, 291 insertions(+), 4 deletions(-)
+ 5 files changed, 285 insertions(+), 4 deletions(-)
  create mode 100644 drivers/net/ethernet/mellanox/mlx4/en_sysfs.c
 
 diff --git a/drivers/net/ethernet/mellanox/mlx4/Makefile b/drivers/net/ethernet/mellanox/mlx4/Makefile
@@ -405,25 +404,3 @@ index xxxxxxx..xxxxxxx xxxxxx
  
  #ifdef CONFIG_RFS_ACCEL
  void mlx4_en_cleanup_filters(struct mlx4_en_priv *priv,
-diff --git a/ofed_scripts/compat.mk b/ofed_scripts/compat.mk
-index xxxxxxx..xxxxxxx xxxxxx
---- a/ofed_scripts/compat.mk
-+++ b/ofed_scripts/compat.mk
-@@ -91,6 +91,9 @@ ifdef CONFIG_COMPAT_SLES_11_2
-  CFLAGS += -DCONFIG_COMPAT_ISER_ATTR_IS_VISIBLE
-  CFLAGS += -DCONFIG_COMPAT_ISCSI_ISER_GET_EP_PARAM
-  CFLAGS += -DCONFIG_COMPAT_IF_ISCSI_SCSI_REQ
-+ # CONFIG_COMPAT_EN_SYSFS should be set to 'y' as it used in drivers/net/ethernet/mellanox/mlx4/Makefile
-+ CONFIG_COMPAT_EN_SYSFS=y
-+ CFLAGS += -DCONFIG_COMPAT_EN_SYSFS
- endif
- 
- ifdef CONFIG_COMPAT_RHEL_6_3
-@@ -116,4 +119,7 @@ ifeq ($(RHEL_MAJOR),6)
-  CFLAGS += -DCONFIG_COMPAT_NETIF_F_RXHASH
-  CFLAGS += -DCONFIG_COMPAT_USE_LRO
-  CFLAGS += -DCONFIG_COMPAT_NDO_VF_MAC_VLAN
-+ # CONFIG_COMPAT_EN_SYSFS should be set to 'y' as it used in drivers/net/ethernet/mellanox/mlx4/Makefile
-+ CONFIG_COMPAT_EN_SYSFS=y
-+ CFLAGS += -DCONFIG_COMPAT_EN_SYSFS
- endif
