@@ -500,20 +500,29 @@ static int scrub_fixup_readpage(u64 inum, u64 offset, u64 root, void *ctx)
 	int corrected = 0;
 	struct btrfs_key key;
 	struct inode *inode = NULL;
+	struct btrfs_fs_info *fs_info;
 	u64 end = offset + PAGE_SIZE - 1;
 	struct btrfs_root *local_root;
+	int srcu_index;
 
 	key.objectid = root;
 	key.type = BTRFS_ROOT_ITEM_KEY;
 	key.offset = (u64)-1;
-	local_root = btrfs_read_fs_root_no_name(fixup->root->fs_info, &key);
-	if (IS_ERR(local_root))
+
+	fs_info = fixup->root->fs_info;
+	srcu_index = srcu_read_lock(&fs_info->subvol_srcu);
+
+	local_root = btrfs_read_fs_root_no_name(fs_info, &key);
+	if (IS_ERR(local_root)) {
+		srcu_read_unlock(&fs_info->subvol_srcu, srcu_index);
 		return PTR_ERR(local_root);
+	}
 
 	key.type = BTRFS_INODE_ITEM_KEY;
 	key.objectid = inum;
 	key.offset = 0;
-	inode = btrfs_iget(fixup->root->fs_info->sb, &key, local_root, NULL);
+	inode = btrfs_iget(fs_info->sb, &key, local_root, NULL);
+	srcu_read_unlock(&fs_info->subvol_srcu, srcu_index);
 	if (IS_ERR(inode))
 		return PTR_ERR(inode);
 
@@ -526,7 +535,6 @@ static int scrub_fixup_readpage(u64 inum, u64 offset, u64 root, void *ctx)
 	}
 
 	if (PageUptodate(page)) {
-		struct btrfs_fs_info *fs_info;
 		if (PageDirty(page)) {
 			/*
 			 * we need to write the data to the defect sector. the
