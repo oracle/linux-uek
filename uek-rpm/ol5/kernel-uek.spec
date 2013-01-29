@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.11.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.12.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,12 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Jan 29 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.12.0.el5uek]
+- IB: Add config options for Mellanox driver Xen FMR support. (Ajaykumar
+  Hotchandani) [Orabug: 16234102]
+- IB: Enable Xen FMR support for Mellanox driver. (Ajaykumar Hotchandani)
+  [Orabug: 16234102]
+
 * Mon Jan 28 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.11.0.el5uek]
 - cnic: don't use weak dependencies for ipv6 (Jerry Snitselaar) [Orabug:
   16207564]
