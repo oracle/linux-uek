@@ -197,7 +197,8 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 
 		if (!ipoib_cm_admin_enabled(dev)) {
 			while (!rtnl_trylock()) {
-				if (!test_bit(IPOIB_MCAST_RUN, &priv->flags))
+				if (!test_bit(IPOIB_MCAST_RUN, &priv->flags) ||
+				    !test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
 					return -EAGAIN;
 				/* enable other tasks to unlock the rtnl */
 				msleep(5);
