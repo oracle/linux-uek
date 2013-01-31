@@ -165,14 +165,10 @@ void rds_connect_worker(struct work_struct *work)
 
 		if (ret) {
 			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN)) {
-				if (conn->c_reconnect && conn->c_active_side)
-					rds_queue_reconnect(conn);
+				rds_queue_reconnect(conn);
 			} else
 				rds_conn_error(conn, "RDS: connect failed\n");
 		}
-
-		if (!conn->c_reconnect)
-			conn->c_active_side = 1;
 	}
 }
 
@@ -258,9 +254,6 @@ void rds_shutdown_worker(struct work_struct *work)
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
 
 	rds_conn_shutdown(conn);
-
-	if (!conn->c_reconnect)
-		conn->c_active_side = 0;
 }
 
 void rds_threads_exit(void)
