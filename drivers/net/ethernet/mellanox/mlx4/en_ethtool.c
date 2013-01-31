@@ -1144,6 +1144,84 @@ static int mlx4_en_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *c)
 	return err;
 }
 
+static void mlx4_en_get_channels(struct net_device *dev,
+				 struct ethtool_channels *channel)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+
+	memset(channel, 0, sizeof(*channel));
+
+	channel->max_rx = MAX_RX_RINGS;
+	channel->max_tx = MLX4_EN_MAX_TX_RING_P_UP;
+
+	channel->rx_count = priv->rx_ring_num;
+	channel->tx_count = (priv->tx_ring_num - priv->tx_queue_num) /
+		MLX4_EN_NUM_UP;
+}
+
+static int mlx4_en_set_channels(struct net_device *dev,
+				struct ethtool_channels *channel)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
+	int port_up;
+	int i;
+	int err = 0;
+
+	if (channel->other_count || channel->combined_count ||
+	    channel->tx_count > MLX4_EN_MAX_TX_RING_P_UP ||
+	    channel->rx_count > MAX_RX_RINGS ||
+	    !channel->tx_count || !channel->rx_count)
+		return -EINVAL;
+
+	mutex_lock(&mdev->state_lock);
+	if (priv->port_up) {
+		port_up = 1;
+		mlx4_en_stop_port(dev);
+	}
+
+	mlx4_en_free_resources(priv);
+
+	priv->tx_queue_num = channel->tx_count;
+	priv->num_tx_rings_p_up = channel->tx_count;
+	priv->tx_ring_num = channel->tx_count * MLX4_EN_NUM_UP +
+		priv->tx_queue_num;
+	priv->rx_ring_num = channel->rx_count;
+
+	err = mlx4_en_alloc_resources(priv);
+	if (err) {
+		en_err(priv, "Failed reallocating port resources\n");
+		goto out;
+	}
+
+	netif_set_real_num_tx_queues(dev, priv->tx_ring_num - priv->tx_queue_num);
+	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
+
+	mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
+
+	en_warn(priv, "Using %d TX rings\n", priv->tx_ring_num);
+	en_warn(priv, "Using %d RX rings\n", priv->rx_ring_num);
+
+	if (port_up) {
+		err = mlx4_en_start_port(dev);
+		if (err)
+			en_err(priv, "Failed starting port\n");
+	}
+
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+		priv->rx_cq[i]->moder_time = priv->rx_usecs;
+		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+		if (err)
+			goto out;
+	}
+
+out:
+	mutex_unlock(&mdev->state_lock);
+	return err;
+}
+
 const struct ethtool_ops mlx4_en_ethtool_ops = {
 	.get_drvinfo = mlx4_en_get_drvinfo,
 	.get_settings = mlx4_en_get_settings,
@@ -1168,6 +1246,8 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 	.get_rxfh_indir_size = mlx4_en_get_rxfh_indir_size,
 	.get_rxfh_indir = mlx4_en_get_rxfh_indir,
 	.set_rxfh_indir = mlx4_en_set_rxfh_indir,
+	.get_channels = mlx4_en_get_channels,
+	.set_channels = mlx4_en_set_channels,
 };
 
 

@@ -47,11 +47,11 @@
 #include "mlx4_en.h"
 #include "en_port.h"
 
-static int mlx4_en_setup_tc(struct net_device *dev, u8 up)
+int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int i;
-	unsigned int q, offset = 0;
+	unsigned int offset = 0;
 
 	if (up && up != MLX4_EN_NUM_UP)
 		return -EINVAL;
@@ -59,10 +59,9 @@ static int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 	netdev_set_num_tc(dev, up);
 
 	/* Partition Tx queues evenly amongst UP's */
-	q = (priv->tx_ring_num - priv->tx_queue_num) / up;
 	for (i = 0; i < up; i++) {
-		netdev_set_tc_queue(dev, i, q, offset);
-		offset += q;
+		netdev_set_tc_queue(dev, i, priv->num_tx_rings_p_up, offset);
+		offset += priv->num_tx_rings_p_up;
 	}
 
 	return 0;
@@ -1462,6 +1461,9 @@ int mlx4_en_start_port(struct net_device *dev)
 
 	/* Configure tx cq's and rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
+		int up = i < priv->tx_ring_num - priv->tx_queue_num ?
+			i / priv->num_tx_rings_p_up : -1;
+
 		/* Configure cq */
 		cq = priv->tx_cq[i];
 		err = mlx4_en_activate_cq(priv, cq, i);
@@ -1480,11 +1482,8 @@ int mlx4_en_start_port(struct net_device *dev)
 
 		/* Configure ring */
 		tx_ring = priv->tx_ring[i];
-		if (i < priv->tx_ring_num - priv->tx_queue_num)
-			err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn,
-					i / priv->mdev->profile.num_tx_rings_p_up);
-		else
-			err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn, -1);
+
+		err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn, up);
 		if (err) {
 			en_err(priv, "Failed allocating Tx ring\n");
 			mlx4_en_deactivate_cq(priv, cq);
@@ -2181,9 +2180,12 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	int err;
 
 	dev = alloc_etherdev_mqs(sizeof(struct mlx4_en_priv),
-	    prof->tx_ring_num, prof->rx_ring_num);
+				 MAX_TX_RINGS, MAX_RX_RINGS);
 	if (dev == NULL)
 		return -ENOMEM;
+
+	netif_set_real_num_tx_queues(dev, prof->tx_ring_num);
+	netif_set_real_num_rx_queues(dev, prof->rx_ring_num);
 
 	SET_NETDEV_DEV(dev, &mdev->dev->pdev->dev);
 	dev->dev_id =  port - 1;
@@ -2215,21 +2217,23 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->flags = prof->flags;
 	priv->ctrl_flags = cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE |
 			MLX4_WQE_CTRL_SOLICITED);
+	priv->num_tx_rings_p_up = mdev->profile.num_tx_rings_p_up;
 	priv->tx_ring_num = prof->tx_ring_num;
-	priv->tx_ring = kzalloc(sizeof(struct mlx4_en_tx_ring *) *
-			priv->tx_ring_num, GFP_KERNEL);
+
+	priv->tx_ring = kcalloc(MAX_TX_RINGS,
+				sizeof(struct mlx4_en_tx_ring *), GFP_KERNEL);
 	if (!priv->tx_ring) {
 		err = -ENOMEM;
 		goto out;
 	}
 	priv->tx_queue_num = prof->tx_queue_num;
-	priv->tx_queue = kzalloc(sizeof(struct mlx4_en_tx_queue) *
-				 priv->tx_queue_num, GFP_KERNEL);
+	priv->tx_queue = kcalloc(sizeof(struct mlx4_en_tx_queue),
+				 MLX4_EN_MAX_TX_RING_P_UP, GFP_KERNEL);
 	if (!priv->tx_queue) {
 		err = -ENOMEM;
 		goto out;
 	}
-	priv->tx_cq = kzalloc(sizeof(struct mlx4_en_cq *) * priv->tx_ring_num,
+	priv->tx_cq = kcalloc(sizeof(struct mlx4_en_cq *), MAX_TX_RINGS,
 			GFP_KERNEL);
 	if (!priv->tx_cq) {
 		err = -ENOMEM;

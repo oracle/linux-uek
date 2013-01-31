@@ -69,7 +69,8 @@
 
 #define MLX4_EN_PAGE_SHIFT	12
 #define MLX4_EN_PAGE_SIZE	(1 << MLX4_EN_PAGE_SHIFT)
-#define MAX_RX_RINGS		16
+#define DEF_RX_RINGS		16
+#define MAX_RX_RINGS		128
 #define MIN_RX_RINGS		4
 #define TXBB_SIZE		64
 #define HEADROOM		(2048 / TXBB_SIZE + 1)
@@ -110,8 +111,13 @@
 #define MLX4_EN_MIN_TX_SIZE	(4096 / TXBB_SIZE)
 
 #define MLX4_EN_SMALL_PKT_SIZE		128
+
 #define MLX4_EN_MAX_TX_RING_P_UP	32
 #define MLX4_EN_NUM_UP			8
+
+#define MAX_TX_RINGS			(MLX4_EN_MAX_TX_RING_P_UP * \
+					 (MLX4_EN_NUM_UP + 1))
+
 #define MLX4_EN_DEF_TX_RING_SIZE	1024
 #define MLX4_EN_DEF_RX_RING_SIZE  	1024
 
@@ -503,6 +509,7 @@ struct mlx4_en_priv {
 	struct mlx4_en_rss_map rss_map;
 	__be32 ctrl_flags;
 	u32 flags;
+	u8 num_tx_rings_p_up;
 	u32 tx_ring_num;
 	u32 tx_queue_num;
 	u32 rx_ring_num;
@@ -648,6 +655,8 @@ void mlx4_en_unregister_debugfs(void);
 #ifdef CONFIG_MLX4_EN_DCB
 extern const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops;
 #endif
+
+int mlx4_en_setup_tc(struct net_device *dev, u8 up);
 
 #ifdef CONFIG_RFS_ACCEL
 void mlx4_en_cleanup_filters(struct mlx4_en_priv *priv,
