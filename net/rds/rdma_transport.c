@@ -41,6 +41,8 @@
 #include <net/inet_common.h>
 #include <linux/version.h>
 
+#define RDS_IB_REJ_CONSUMER_DEFINED 28
+
 static struct rdma_cm_id *rds_listen_id;
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
@@ -53,6 +55,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	struct arpreq *r;
 	struct sockaddr_in *sin;
 	int ret = 0;
+	int *err;
 
 	rdsdebug("conn %p id %p handling event %u\n", conn, cm_id,
 		 event->event);
@@ -156,10 +159,27 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ADDR_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn)
 			rds_conn_drop(conn);
+		break;
+
+	case RDMA_CM_EVENT_REJECTED:
+		err = (int *)event->param.conn.private_data;
+		if (conn) {
+			if ((*err) == 0 &&
+				event->status == RDS_IB_REJ_CONSUMER_DEFINED) {
+				/* rejection from 3.x protocol */
+				if (!conn->c_tos) {
+					/* retry the connect with a
+					 * lower compatible protocol */
+					conn->c_proposed_version =
+						RDS_PROTOCOL_COMPAT_VERSION;
+					rds_conn_drop(conn);
+				}
+			} else
+				rds_conn_drop(conn);
+		}
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
