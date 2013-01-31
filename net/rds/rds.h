@@ -18,8 +18,10 @@
  */
 #define RDS_PROTOCOL_3_0	0x0300
 #define RDS_PROTOCOL_3_1	0x0301
-#define RDS_PROTOCOL_3_2        0x0302
-#define RDS_PROTOCOL_VERSION    RDS_PROTOCOL_3_2
+#define RDS_PROTOCOL_4_0	0x0400
+#define RDS_PROTOCOL_4_1	0x0401
+#define RDS_PROTOCOL_COMPAT_VERSION	RDS_PROTOCOL_3_1
+#define RDS_PROTOCOL_VERSION    RDS_PROTOCOL_4_1
 #define RDS_PROTOCOL_MAJOR(v)	((v) >> 8)
 #define RDS_PROTOCOL_MINOR(v)	((v) & 255)
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
@@ -138,6 +140,7 @@ struct rds_connection {
 	unsigned int		c_unacked_bytes;
 
 	/* Protocol version */
+	unsigned int		c_proposed_version;
 	unsigned int		c_version;
 
 	/* Re-connect stall diagnostics */
@@ -155,7 +158,7 @@ struct rds_connection {
 
 	unsigned long           c_hb_start;
 
-	unsigned int		c_active_side;
+	struct rds_connection	*c_base_conn;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
