@@ -46,10 +46,6 @@ static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
 
-static int rds_qos_enabled = 1;
-module_param(rds_qos_enabled, int, 0444);
-MODULE_PARM_DESC(rds_qos_enabled, "Set to enable QoS");
-
 static char *rds_qos_threshold = NULL;
 module_param(rds_qos_threshold, charp, 0444);
 MODULE_PARM_DESC(rds_qos_threshold, "<tos>:<max_msg_size>[,<tos>:<max_msg_size>]*");
@@ -220,9 +216,6 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 
 	switch (cmd) {
 	case SIOCRDSSETTOS:
-		if (!rds_qos_enabled)
-			return -EOPNOTSUPP;
-
 		if (get_user(tos, (rds_tos_t __user *)arg))
 			return -EFAULT;
 

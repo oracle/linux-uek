@@ -208,6 +208,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	conn->c_reconnect_warn = 1;
 	conn->c_reconnect_drops = 0;
 	conn->c_reconnect_err = 0;
+	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
