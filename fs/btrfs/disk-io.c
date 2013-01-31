@@ -3755,8 +3755,6 @@ int btrfs_cleanup_transaction(struct btrfs_root *root)
 
 	while (!list_empty(&list)) {
 		t = list_entry(list.next, struct btrfs_transaction, list);
-		if (!t)
-			break;
 
 		btrfs_destroy_ordered_operations(root);
 
