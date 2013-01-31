@@ -63,8 +63,7 @@
 static const struct super_operations btrfs_super_ops;
 static struct file_system_type btrfs_fs_type;
 
-static const char *btrfs_decode_error(struct btrfs_fs_info *fs_info, int errno,
-				      char nbuf[16])
+static const char *btrfs_decode_error(int errno, char nbuf[16])
 {
 	char *errstr = NULL;
 
@@ -149,7 +148,7 @@ void __btrfs_std_error(struct btrfs_fs_info *fs_info, const char *function,
 	if (errno == -EROFS && (sb->s_flags & MS_RDONLY))
   		return;
 
-  	errstr = btrfs_decode_error(fs_info, errno, nbuf);
+  	errstr = btrfs_decode_error(errno, nbuf);
 	if (fmt) {
 		struct va_format vaf = {
 			.fmt = fmt,
@@ -249,7 +248,7 @@ void __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
 		char nbuf[16];
 		const char *errstr;
 
-		errstr = btrfs_decode_error(root->fs_info, errno, nbuf);
+		errstr = btrfs_decode_error(errno, nbuf);
 		btrfs_printk(root->fs_info,
 			     "%s:%d: Aborting unused transaction(%s).\n",
 			     function, line, errstr);
@@ -257,6 +256,35 @@ void __btrfs_abort_transaction(struct btrfs_trans_handle *trans,
 	}
 	ACCESS_ONCE(trans->transaction->aborted) = errno;
 	__btrfs_std_error(root->fs_info, function, line, errno, NULL);
+}
+/*
+ * __btrfs_panic decodes unexpected, fatal errors from the caller,
+ * issues an alert, and either panics or BUGs, depending on mount options.
+ */
+void __btrfs_panic(struct btrfs_fs_info *fs_info, const char *function,
+		   unsigned int line, int errno, const char *fmt, ...)
+{
+	char nbuf[16];
+	char *s_id = "<unknown>";
+	const char *errstr;
+	struct va_format vaf = { .fmt = fmt };
+	va_list args;
+
+	if (fs_info)
+		s_id = fs_info->sb->s_id;
+
+	va_start(args, fmt);
+	vaf.va = &args;
+
+	errstr = btrfs_decode_error(errno, nbuf);
+	if (fs_info->mount_opt & BTRFS_MOUNT_PANIC_ON_FATAL_ERROR)
+		panic(KERN_CRIT "BTRFS panic (device %s) in %s:%d: %pV (%s)\n",
+			s_id, function, line, &vaf, errstr);
+
+	printk(KERN_CRIT "BTRFS panic (device %s) in %s:%d: %pV (%s)\n",
+	       s_id, function, line, &vaf, errstr);
+	va_end(args);
+	/* Caller calls BUG() */
 }
 
 static void btrfs_put_super(struct super_block *sb)
