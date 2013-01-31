@@ -1000,29 +1000,14 @@ static int rds_send_queue_rm(struct rds_sock *rs, struct rds_connection *conn,
 		rds_message_addref(rm);
 
 		spin_lock(&conn->c_lock);
+		if (conn->c_pending_flush) {
+			spin_unlock(&conn->c_lock);
+			spin_unlock_irqrestore(&rs->rs_lock, flags);
+			goto out;
+		}
 		rm->m_inc.i_hdr.h_sequence = cpu_to_be64(conn->c_next_tx_seq++);
 		list_add_tail(&rm->m_conn_item, &conn->c_send_queue);
 		set_bit(RDS_MSG_ON_CONN, &rm->m_flags);
-
-		/* This can race with rds_send_reset. If an async op sneaked
-		 * in after resetting the send state, flush it too.
-		 */
-		if (conn->c_pending_flush) {
-			if (rm->rdma.op_active) {
-				if (rm->rdma.op_notifier) {
-					rm->rdma.op_notifier->n_conn = conn;
-					conn->c_pending_flush++;
-				}
-				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
-			}
-			if (rm->data.op_active && rm->data.op_async) {
-				if (rm->data.op_notifier) {
-					rm->data.op_notifier->n_conn = conn;
-					conn->c_pending_flush++;
-				}
-				set_bit(RDS_MSG_FLUSH, &rm->m_flags);
-			}
-		}
 
 		spin_unlock(&conn->c_lock);
 
@@ -1261,15 +1246,30 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			ret = PTR_ERR(conn);
 			goto out;
 		}
+
+		if (rs->rs_tos && !conn->c_base_conn) {
+			conn->c_base_conn = rds_conn_create_outgoing(
+					rs->rs_bound_addr, daddr,
+					rs->rs_transport, 0,
+					sock->sk->sk_allocation);
+			if (IS_ERR(conn->c_base_conn)) {
+				ret = PTR_ERR(conn->c_base_conn);
+				goto out;
+			}
+			rds_conn_connect_if_down(conn->c_base_conn);
+		}
 		rs->rs_conn = conn;
 	}
 
-	/*
-	if (allocated_mr && conn->c_cleanup_stale_mrs) {
-		rds_rdma_cleanup_stale_mrs(rs, conn);
-		conn->c_cleanup_stale_mrs = 0;
+	if (conn->c_tos && !rds_conn_up(conn)) {
+		if (!rds_conn_up(conn->c_base_conn)) {
+			ret = -EAGAIN;
+			goto out;
+		} else if (conn->c_base_conn->c_version ==
+				RDS_PROTOCOL_COMPAT_VERSION) {
+			conn = conn->c_base_conn;
+		}
 	}
-	*/
 
 	/* Not accepting new sends until all the failed ops have been reaped */
 	if (rds_async_send_enabled && conn->c_pending_flush) {
@@ -1310,6 +1310,10 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 			goto out;
 		}
 		if (nonblock) {
+			ret = -EAGAIN;
+			goto out;
+		}
+		if (conn->c_pending_flush) {
 			ret = -EAGAIN;
 			goto out;
 		}
