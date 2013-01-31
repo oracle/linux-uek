@@ -145,20 +145,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		}
 	}
 
-	if (conn->c_version < RDS_PROTOCOL(3, 2)) {
-		if (conn->c_version == RDS_PROTOCOL(3, 1)) {
-			if (conn->c_tos) {
-				printk(KERN_NOTICE "RDS: Connection to"
-					" %pI4 version %u.%u Tos %d"
-					" failed, not supporting QoS\n",
-					&conn->c_faddr,
-					RDS_PROTOCOL_MAJOR(conn->c_version),
-					RDS_PROTOCOL_MINOR(conn->c_version),
-					conn->c_tos);
-				rds_conn_drop(conn);
-				return;
-			}
-		} else {
+	if (conn->c_version < RDS_PROTOCOL_VERSION) {
+		if (conn->c_version != RDS_PROTOCOL_COMPAT_VERSION) {
 			/*
 			   * BUG: destroying connection here can deadlock with
 			   * the CM event handler on the c_cm_lock.
@@ -171,6 +159,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 				RDS_PROTOCOL_MINOR(conn->c_version));
 			rds_conn_destroy(conn);
 			return;
+		} else {
+			conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 		}
 	}
 
@@ -277,7 +267,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
 		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
 		dp->dp_ack_seq = rds_ib_piggyb_ack(ic);
-		dp->dp_tos = conn->c_tos;
+		dp->dp_tos = cpu_to_be32(conn->c_tos);
 
 		/* Advertise flow control */
 		if (ic->i_flowctl) {
@@ -687,13 +677,16 @@ static u32 rds_ib_protocol_compatible(struct rdma_cm_event *event)
 	/* Even if len is crap *now* I still want to check it. -ASG */
 	if (event->param.conn.private_data_len < sizeof(*dp)
 	    || dp->dp_protocol_major == 0)
-		return RDS_PROTOCOL_3_0;
+		return RDS_PROTOCOL_4_0;
 
 	common = be16_to_cpu(dp->dp_protocol_minor_mask) & RDS_IB_SUPPORTED_PROTOCOLS;
-	if (dp->dp_protocol_major == 3 && common) {
-		version = RDS_PROTOCOL_3_0;
+	if (dp->dp_protocol_major == 4 && common) {
+		version = RDS_PROTOCOL_4_0;
 		while ((common >>= 1) != 0)
 			version++;
+	} else if (RDS_PROTOCOL_COMPAT_VERSION ==
+		RDS_PROTOCOL(dp->dp_protocol_major, dp->dp_protocol_minor)) {
+		version = RDS_PROTOCOL_COMPAT_VERSION;
 	} else if (printk_ratelimit()) {
 		printk(KERN_NOTICE "RDS: Connection from %pI4 using "
 			"incompatible protocol version %u.%u\n",
@@ -729,7 +722,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 (unsigned long long)be64_to_cpu(fguid));
 
 	conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr, &rds_ib_transport,
-			       dp->dp_tos, GFP_KERNEL);
+			       be32_to_cpu(dp->dp_tos), GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
 		conn = NULL;
@@ -836,7 +829,7 @@ out:
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 	if (err)
-		rdma_reject(cm_id, NULL, 0);
+		rdma_reject(cm_id, &err, sizeof(int));
 	return destroy;
 }
 
@@ -859,7 +852,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	/* If the peer doesn't do protocol negotiation, we must
 	 * default to RDSv3.0 */
-	rds_ib_set_protocol(conn, RDS_PROTOCOL_3_0);
+	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_0);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 
 	ret = rds_ib_setup_qp(conn);
@@ -868,8 +861,8 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 		goto out;
 	}
 
-	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp, RDS_PROTOCOL_VERSION,
-		UINT_MAX, UINT_MAX);
+	rds_ib_cm_fill_conn_param(conn, &conn_param, &dp,
+				conn->c_proposed_version, UINT_MAX, UINT_MAX);
 	ret = rdma_connect(cm_id, &conn_param);
 	if (ret)
 		rds_ib_conn_error(conn, "rdma_connect failed (%d)\n", ret);
