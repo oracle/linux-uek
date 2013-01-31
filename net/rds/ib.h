@@ -28,7 +28,7 @@
 
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
-#define RDS_IB_SUPPORTED_PROTOCOLS	0x00000007	/* minor versions supported */
+#define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
 
 #define RDS_IB_RECYCLE_BATCH_COUNT	32
 
@@ -83,10 +83,9 @@ struct rds_ib_connect_private {
 	u8			dp_protocol_major;
 	u8			dp_protocol_minor;
 	__be16			dp_protocol_minor_mask; /* bitmask */
-	__be32			dp_reserved1;
+	__be32			dp_tos;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
-	u8                      dp_tos;
 };
 
 struct rds_ib_send_work {
