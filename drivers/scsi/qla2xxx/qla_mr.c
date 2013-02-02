@@ -67,18 +67,8 @@ qlafx00_soc_cpu_reset(scsi_qla_host_t *vha)
 		    (SOC_SW_RST_CONTROL_REG_CORE0 + 4 + 8*i), (0x01010101));
 	}
 
-	/* Fix only used GBE default value in RX queue control registers*/
-	QLAFX00_SET_HBA_SOC_REG(ha, 0x0071400, (0x40));
-
 	/* Reset all units in Fabric */
 	QLAFX00_SET_HBA_SOC_REG(ha, SOC_FABRIC_RST_CONTROL_REG, (0x11F0101));
-
-	/*Restore default Clock Gating values */
-	for (i = 0; i < 5; i++) {
-		QLAFX00_SET_HBA_SOC_REG(ha,
-		    (SOC_PWR_MANAGEMENT_PWR_DOWN_REG + 4*i), (0x0));
-	}
-	QLAFX00_SET_HBA_SOC_REG(ha, SOC_CLOCK_GATING_CONTROL, (0xDBFFA239));
 
 	/* Reset all interrupt control registers */
 	for (i = 0; i < 115; i++) {
@@ -91,6 +81,11 @@ qlafx00_soc_cpu_reset(scsi_qla_host_t *vha)
 		for (i = 0; i < 8; i++)
 			QLAFX00_SET_HBA_SOC_REG(ha,
 			    (SOC_CORE_TIMER_REG + 0x100*core + 4*i), (0x0));
+
+	/* Reset per core IRQ ack register */
+	for (core = 0; core < 4; core++)
+		QLAFX00_SET_HBA_SOC_REG(ha,
+		    (SOC_IRQ_ACK_REG + 0x100*core), (0x3FF));
 
 	/* Set Fabric control and config to defaults */
 	QLAFX00_SET_HBA_SOC_REG(ha, SOC_FABRIC_CONTROL_REG, (0x2));
