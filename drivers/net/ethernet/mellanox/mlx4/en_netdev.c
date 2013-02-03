@@ -1834,6 +1834,20 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 
 err:
 	en_err(priv, "Failed to allocate NIC resources\n");
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		if (priv->rx_ring[i])
+			mlx4_en_destroy_rx_ring(priv, &priv->rx_ring[i],
+						prof->rx_ring_size,
+						priv->stride);
+		if (priv->rx_cq[i])
+			mlx4_en_destroy_cq(priv, &priv->rx_cq[i]);
+	}
+	for (i = 0; i < priv->tx_ring_num; i++) {
+		if (priv->tx_ring[i])
+			mlx4_en_destroy_tx_ring(priv, &priv->tx_ring[i]);
+		if (priv->tx_cq[i])
+			mlx4_en_destroy_cq(priv, &priv->tx_cq[i]);
+	}
 	return -ENOMEM;
 }
 
