@@ -1804,7 +1804,7 @@ static int vlan_add_to_slave(struct mlx4_dev *dev, int slave, u16 vlan,
 }
 
 
-static void vlan_del_from_slave(struct mlx4_dev *dev, int slave, int vlan_ix,
+static void vlan_del_from_slave(struct mlx4_dev *dev, int slave, u16 vlan,
 				int port)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
@@ -1814,7 +1814,7 @@ static void vlan_del_from_slave(struct mlx4_dev *dev, int slave, int vlan_ix,
 	struct vlan_res *res, *tmp;
 
 	list_for_each_entry_safe(res, tmp, vlan_list, list) {
-		if (res->vlan_index == vlan_ix && res->port == (u8) port) {
+		if (res->vlan == vlan && res->port == (u8) port) {
 			if (!--res->ref_count) {
 				list_del(&res->list);
 				mlx4_release_resource(dev, slave, RES_VLAN,
@@ -1839,7 +1839,7 @@ static void rem_slave_vlans(struct mlx4_dev *dev, int slave)
 		list_del(&res->list);
 		/* dereference the vlan the num times the slave referenced it */
 		for (i = 0; i < res->ref_count; i++)
-			__mlx4_unregister_vlan(dev, res->port, res->vlan_index);
+			__mlx4_unregister_vlan(dev, res->port, res->vlan);
 		mlx4_release_resource(dev, slave, RES_VLAN, 1, res->port);
 		kfree(res);
 	}
@@ -1865,7 +1865,7 @@ static int vlan_alloc_res(struct mlx4_dev *dev, int slave, int op, int cmd,
 		set_param_l(out_param, (u32) vlan_index);
 		err = vlan_add_to_slave(dev, slave, vlan, port, vlan_index);
 		if (err)
-			__mlx4_unregister_vlan(dev, port, vlan_index);
+			__mlx4_unregister_vlan(dev, port, vlan);
 	}
 	return err;
 }
