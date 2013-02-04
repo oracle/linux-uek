@@ -146,6 +146,7 @@ struct memtrack_meminfo_t {
 	struct memtrack_meminfo_t *next;
 	struct list_head list;  /* used to link all items from a certain type together */
 	char filename[MAX_FILENAME_LEN + 1];    /* putting the char array last is better for struct. packing */
+	char ext_info[32];
 };
 
 static struct kmem_cache *meminfo_cache;
@@ -299,6 +300,7 @@ void memtrack_alloc(enum memtrack_memtype_t memtype, unsigned long dev,
 	new_mem_info_p->direction = direction;
 
 	new_mem_info_p->line_num = line_num;
+	*new_mem_info_p->ext_info = '\0';
 	/* Make sure that we will print out the path tail if the given filename is longer
 	 * than MAX_FILENAME_LEN. (otherwise, we will not see the name of the actual file
 	 * in the printout -- only the path head!
@@ -517,7 +519,7 @@ EXPORT_SYMBOL(is_umem_release_func);
    When Freeing a page allocation it checks whether
    we are trying to free the same size
    we asked to allocate                             */
-void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
+int memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
 			 unsigned long size, const char *filename,
 			 const unsigned long line_num)
 {
@@ -525,15 +527,16 @@ void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
 	struct memtrack_meminfo_t *cur_mem_info_p;
 	struct tracked_obj_desc_t *obj_desc_p;
 	unsigned long flags;
+	int ret = 0;
 
 	if (memtype >= MEMTRACK_NUM_OF_MEMTYPES) {
 		printk(KERN_ERR "%s: Invalid memory type (%d)\n", __func__, memtype);
-		return;
+		return 1;
 	}
 
 	if (!tracked_objs_arr[memtype]) {
 		/* object is not tracked */
-		return;
+		return 1;
 	}
 	obj_desc_p = tracked_objs_arr[memtype];
 
@@ -549,9 +552,12 @@ void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
 				printk(KERN_ERR "mtl size inconsistency: %s: %s::%lu: try to %s at address=0x%lX with size %lu while was created with size %lu\n",
 				       __func__, filename, line_num, memtype_free_str(memtype),
 				       addr, size, cur_mem_info_p->size);
+				snprintf(cur_mem_info_p->ext_info, sizeof(cur_mem_info_p->ext_info),
+						"invalid free size %lu\n", size);
+				ret = 1;
 			}
 			memtrack_spin_unlock(&obj_desc_p->hash_lock, flags);
-			return;
+			return ret;
 		}
 		cur_mem_info_p = cur_mem_info_p->next;
 	}
@@ -560,7 +566,7 @@ void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
 		       but will only check the correct size\order
 		       For inconsistency the 'free' function will check that */
 	memtrack_spin_unlock(&obj_desc_p->hash_lock, flags);
-	return;
+	return 1;
 }
 EXPORT_SYMBOL(memtrack_check_size);
 
@@ -672,13 +678,14 @@ static void memtrack_report(void)
 				memtrack_spin_lock(&obj_desc_p->hash_lock, flags);      /* protect per bucket/list */
 				cur_mem_info_p = obj_desc_p->mem_hash[cur_bucket];
 				while (cur_mem_info_p != NULL) {        /* scan bucket */
-					printk(KERN_INFO "%s::%lu: %s(%lu)==%lX dev=%lX\n",
+					printk(KERN_INFO "%s::%lu: %s(%lu)==%lX dev=%lX %s\n",
 					       cur_mem_info_p->filename,
 					       cur_mem_info_p->line_num,
 					       memtype_alloc_str(memtype),
 					       cur_mem_info_p->size,
 					       cur_mem_info_p->addr,
-					       cur_mem_info_p->dev);
+					       cur_mem_info_p->dev,
+					       cur_mem_info_p->ext_info);
 					cur_mem_info_p = cur_mem_info_p->next;
 					++ detected_leaks;
 				}       /* while cur_mem_info_p */

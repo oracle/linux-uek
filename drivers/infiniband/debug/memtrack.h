@@ -79,7 +79,7 @@ int is_umem_release_func(const char *func_name);
    we ask to allocate (In log2(order)).
    In case an error if found it will print
    an error msg                                    */
-void memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
+int memtrack_check_size(enum memtrack_memtype_t memtype, unsigned long addr,
 			 unsigned long size, const char *filename,
 			 const unsigned long line_num);
 
