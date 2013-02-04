@@ -188,8 +188,8 @@ int mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac)
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&out_param, port);
-		err = mlx4_cmd_imm(dev, mac, &out_param, RES_MAC,
+		err = mlx4_cmd_imm(dev, mac, &out_param,
+				   ((u32) port) << 8 | (u32) RES_MAC,
 				   RES_OP_RESERVE_AND_MAP, MLX4_CMD_ALLOC_RES,
 				   MLX4_CMD_TIME_CLASS_A, MLX4_CMD_WRAPPED);
 		if (err)
@@ -246,8 +246,8 @@ void mlx4_unregister_mac(struct mlx4_dev *dev, u8 port, u64 mac)
 	u64 out_param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&out_param, port);
-		(void) mlx4_cmd_imm(dev, mac, &out_param, RES_MAC,
+		(void) mlx4_cmd_imm(dev, mac, &out_param,
+				    ((u32) port) << 8 | (u32) RES_MAC,
 				    RES_OP_RESERVE_AND_MAP, MLX4_CMD_FREE_RES,
 				    MLX4_CMD_TIME_CLASS_A, MLX4_CMD_WRAPPED);
 		return;
@@ -389,8 +389,8 @@ int mlx4_register_vlan(struct mlx4_dev *dev, u8 port, u16 vlan, int *index)
 		return -EINVAL;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&out_param, port);
-		err = mlx4_cmd_imm(dev, vlan, &out_param, RES_VLAN,
+		err = mlx4_cmd_imm(dev, vlan, &out_param,
+				   ((u32) port) << 8 | (u32) RES_VLAN,
 				   RES_OP_RESERVE_AND_MAP, MLX4_CMD_ALLOC_RES,
 				   MLX4_CMD_TIME_CLASS_A, MLX4_CMD_WRAPPED);
 		if (!err)
@@ -434,8 +434,8 @@ void mlx4_unregister_vlan(struct mlx4_dev *dev, u8 port, int index)
 	u64 out_param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&out_param, port);
-		(void) mlx4_cmd_imm(dev, index, &out_param, RES_VLAN,
+		(void) mlx4_cmd_imm(dev, index, &out_param,
+				    ((u32) port) << 8 | (u32) RES_VLAN,
 				    RES_OP_RESERVE_AND_MAP,
 				    MLX4_CMD_FREE_RES, MLX4_CMD_TIME_CLASS_A,
 				    MLX4_CMD_WRAPPED);
