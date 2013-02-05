@@ -511,7 +511,7 @@ int mlx4_ib_send_to_slave(struct mlx4_ib_dev *dev, int slave, u8 port,
 	memset(&attr, 0, sizeof attr);
 	attr.port_num = port;
 	if (is_eth) {
-		mlx4_get_roce_gid_from_slave(dev->dev, port, slave, attr.grh.dgid.raw);
+		memcpy(&attr.grh.dgid.raw[0], &grh->dgid.raw[0], 16);
 		attr.ah_flags = IB_AH_GRH;
 	}
 	ah = ib_create_ah(tun_ctx->pd, &attr);

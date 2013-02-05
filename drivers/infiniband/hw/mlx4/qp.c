@@ -912,10 +912,12 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			if (!sqp)
 				return -ENOMEM;
 			qp = &sqp->qp;
+			qp->pri.vid = qp->alt.vid = 0xFFFF;
 		} else {
 			qp = kzalloc(sizeof (struct mlx4_ib_qp), GFP_KERNEL);
 			if (!qp)
 				return -ENOMEM;
+			qp->pri.vid = qp->alt.vid = 0xFFFF;
 		}
 	} else
 		qp = *caller_qp;
@@ -1206,6 +1208,18 @@ static void destroy_qp_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 			mlx4_unregister_mac(dev->dev, qp->alt.smac_port, qp->alt.smac);
 			qp->alt.smac = 0;
 		}
+		if (qp->pri.vid < 0x1000) {
+			mlx4_unregister_vlan(dev->dev, qp->pri.vlan_port, qp->pri.vid);
+			qp->pri.vid = 0xFFFF;
+			qp->pri.candidate_vid = 0xFFFF;
+			qp->pri.update_vid = 0;
+		}
+		if (qp->alt.vid < 0x1000) {
+			mlx4_unregister_vlan(dev->dev, qp->alt.vlan_port, qp->alt.vid);
+			qp->alt.vid = 0xFFFF;
+			qp->alt.candidate_vid = 0xFFFF;
+			qp->alt.update_vid = 0;
+		}
 	}
 
 	get_cqs(qp, &send_cq, &recv_cq);
@@ -1389,6 +1403,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		qp = kzalloc(sizeof *qp, GFP_KERNEL);
 		if (!qp)
 			return ERR_PTR(-ENOMEM);
+		qp->pri.vid = qp->alt.vid = 0xFFFF;
 		/* fall through */
 	case IB_QPT_UD:
 	{
@@ -1534,7 +1549,7 @@ static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 	int smac_index;
 	u64 u64_mac;
 	u8 *smac;
-	struct mlx4_roce_smac_info *smac_info;
+	struct mlx4_roce_smac_vlan_info *smac_info;
 
 	path->grh_mylmc     = ah->src_path_bits & 0x7f;
 	path->rlid	    = cpu_to_be16(ah->dlid);
@@ -1569,13 +1584,48 @@ static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 		path->sched_queue = MLX4_IB_DEFAULT_SCHED_QUEUE |
 			((port - 1) << 6) | ((ah->sl & 7) << 3);
 
+		if (is_primary)
+			smac_info = &qp->pri;
+		else
+			smac_info = &qp->alt;
+
 		vlan_tag = rdma_get_vlan_id(&dev->iboe.gid_table[port - 1][ah->grh.sgid_index]);
 		if (vlan_tag < 0x1000) {
-			if (mlx4_find_cached_vlan(dev->dev, port, vlan_tag, &vidx))
-				return -ENOENT;
-
-			path->vlan_index = vidx;
-			path->fl = 1 << 6;
+			if (smac_info->vid < 0x1000) {
+				/* both valid vlan ids */
+				if (smac_info->vid != vlan_tag) {
+					/* different VIDs.  unreg old and reg new */
+					err = mlx4_register_vlan(dev->dev, port, vlan_tag, &vidx);
+					if (err)
+						return err;
+					smac_info->candidate_vid = vlan_tag;
+					smac_info->candidate_vlan_index = vidx;
+					smac_info->candidate_vlan_port = port;
+					smac_info->update_vid = 1;
+					path->vlan_index = vidx;
+					path->fl = 1 << 6;
+				} else {
+					path->vlan_index = smac_info->vlan_index;
+					path->fl = 1 << 6;
+				}
+			} else {
+				/* no current vlan tag in qp */
+				err = mlx4_register_vlan(dev->dev, port, vlan_tag, &vidx);
+				if (err)
+					return err;
+				smac_info->candidate_vid = vlan_tag;
+				smac_info->candidate_vlan_index = vidx;
+				smac_info->candidate_vlan_port = port;
+				smac_info->update_vid = 1;
+				path->vlan_index = vidx;
+				path->fl = 1 << 6;
+			}
+		} else {
+			/* have current vlan tag. unregister it at modify-qp success */
+			if (smac_info->vid < 0x1000) {
+				smac_info->candidate_vid = 0xFFFF;
+				smac_info->update_vid = 1;
+			}
 		}
 
 		err = mlx4_ib_resolve_grh(dev, ah, mac, &is_mcast, port);
@@ -1595,11 +1645,6 @@ static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 		} else
 			u64_mac = dev->dev->caps.def_mac[port];
                 spin_unlock(&dev->iboe.lock);
-
-		if (is_primary)
-			smac_info = &qp->pri;
-		else
-			smac_info = &qp->alt;
 
 		if (!smac_info->smac || smac_info->smac != u64_mac) {
 			/* register candidate now, unreg if needed, after success */
@@ -2093,6 +2138,19 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 			mlx4_unregister_mac(dev->dev, qp->alt.smac_port, qp->alt.smac);
 			qp->alt.smac = 0;
 		}
+		if (qp->pri.vid < 0x1000) {
+			mlx4_unregister_vlan(dev->dev, qp->pri.vlan_port, qp->pri.vid);
+			qp->pri.vid = 0xFFFF;
+			qp->pri.candidate_vid = 0xFFFF;
+			qp->pri.update_vid = 0;
+		}
+
+		if (qp->alt.vid < 0x1000) {
+			mlx4_unregister_vlan(dev->dev, qp->alt.vlan_port, qp->alt.vid);
+			qp->alt.vid = 0xFFFF;
+			qp->alt.candidate_vid = 0xFFFF;
+			qp->alt.update_vid = 0;
+		}
 	}
 
 out:
@@ -2131,6 +2189,41 @@ out:
 		qp->pri.candidate_smac_index = 0;
 		qp->pri.candidate_smac_port = 0;
 	}
+
+	if (qp->pri.update_vid) {
+		if (err) {
+			if (qp->pri.candidate_vid < 0x1000)
+				mlx4_unregister_vlan(dev->dev, qp->pri.candidate_vlan_port,
+						     qp->pri.candidate_vid);
+		} else {
+			if (qp->pri.vid < 0x1000)
+				mlx4_unregister_vlan(dev->dev, qp->pri.vlan_port,
+						     qp->pri.vid);
+			qp->pri.vid = qp->pri.candidate_vid;
+			qp->pri.vlan_port = qp->pri.candidate_vlan_port;
+			qp->pri.vlan_index =  qp->pri.candidate_vlan_index;
+		}
+		qp->pri.candidate_vid = 0xFFFF;
+		qp->pri.update_vid = 0;
+	}
+
+	if (qp->alt.update_vid) {
+		if (err) {
+			if (qp->alt.candidate_vid < 0x1000)
+				mlx4_unregister_vlan(dev->dev, qp->alt.candidate_vlan_port,
+						     qp->alt.candidate_vid);
+		} else {
+			if (qp->alt.vid < 0x1000)
+				mlx4_unregister_vlan(dev->dev, qp->alt.vlan_port,
+						     qp->alt.vid);
+			qp->alt.vid = qp->alt.candidate_vid;
+			qp->alt.vlan_port = qp->alt.candidate_vlan_port;
+			qp->alt.vlan_index =  qp->alt.candidate_vlan_index;
+		}
+		qp->alt.candidate_vid = 0xFFFF;
+		qp->alt.update_vid = 0;
+	}
+
 	return err;
 }
 

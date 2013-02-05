@@ -251,13 +251,20 @@ struct mlx4_ib_proxy_sqp_hdr {
 	struct mlx4_rcv_tunnel_hdr tun;
 }  __packed;
 
-struct mlx4_roce_smac_info {
+struct mlx4_roce_smac_vlan_info {
 	u64 smac;
 	int smac_index;
 	int smac_port;
 	u64 candidate_smac;
 	int candidate_smac_index;
 	int candidate_smac_port;
+	u16 vid;
+	int vlan_index;
+	int vlan_port;
+	u16 candidate_vid;
+	int candidate_vlan_index;
+	int candidate_vlan_port;
+	int update_vid;
 };
 
 struct mlx4_ib_qpg_data {
@@ -305,8 +312,8 @@ struct mlx4_ib_qp {
 	struct list_head	gid_list;
 	struct list_head	steering_rules;
 	struct mlx4_ib_buf	*sqp_proxy_rcv;
-	struct mlx4_roce_smac_info pri;
-	struct mlx4_roce_smac_info alt;
+	struct mlx4_roce_smac_vlan_info pri;
+	struct mlx4_roce_smac_vlan_info alt;
 	struct list_head	rules_list;
 	int                     max_inline_data;
 	struct mlx4_bf          bf;
