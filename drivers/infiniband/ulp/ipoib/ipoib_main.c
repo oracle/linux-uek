@@ -1246,9 +1246,9 @@ static struct ipoib_neigh *ipoib_neigh_ctor(u8 *daddr,
 	 * the protection of spin lock or from ipoib_mcast_send under
 	 * spin lock protection. thus there is a need to use atomic
 	 */
-	if (priv->tss_qp_num > 0)
+	if (priv->num_rx_queues > 1)
 		neigh->index = atomic_inc_return(&priv->tx_ring_ind)
-			% priv->tss_qp_num;
+			% priv->num_rx_queues;
 	else
 		neigh->index = 0;
 
