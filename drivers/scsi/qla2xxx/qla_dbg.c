@@ -11,18 +11,18 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0124       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x1152       | 0x111a-0x111b  |
- * | Device Discovery             |       0x2087       | 0x2020-0x2022, |
+ * | Module Init and Probe        |       0x0151       | 0x4b,0xba,0xfa |
+ * | Mailbox commands             |       0x1174       | 0x111a-0x111b  |
+ * | Device Discovery             |       0x2097       | 0x2020-0x2022, |
  * |                              |                    | 0x2016		|
- * | Queue Command and IO tracing |       0x3031       | 0x3006,0x300b  |
+ * | Queue Command and IO tracing |       0x304a       | 0x3006,0x300b  |
  * |                              |                    | 0x3027-0x3028  |
  * |                              |                    | 0x302d,0x302e  |
- * | DPC Thread                   |       0x401d       | 0x4002,0x4013  |
- * | Async Events                 |       0x5071       | 0x502b-0x502f  |
+ * | DPC Thread                   |       0x4024       | 0x4002,0x4013  |
+ * | Async Events                 |       0x5082       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
- * | Timer Routines               |       0x6011       |		|
- * | User Space Interactions      |       0x70c4       | 0x7018,0x702e  |
+ * | Timer Routines               |       0x6013       |		|
+ * | User Space Interactions      |       0x70da       | 0x7018,0x702e  |
  * |                              |                    | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
@@ -30,7 +30,7 @@
  * |                              |                    | 0x70a5-0x70a6  |
  * |                              |                    | 0x70a8,0x70ab  |
  * |                              |                    | 0x70ad-0x70ae  |
- * | Task Management              |       0x803c       | 0x8025-0x8026  |
+ * | Task Management              |       0x803d       | 0x8025-0x8026  |
  * |				  |		       | 0x800b,0x8039 |
  * | AER/EEH                      |       0x9011       |               |
  * | Virtual Port                 |       0xa008       |               |
