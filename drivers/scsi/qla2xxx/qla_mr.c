@@ -1567,7 +1567,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 			strncpy(phost_info->domainname,
 			    p_sysid->domainname, DOMNAME_LENGTH);
 			strncpy(phost_info->hostdriver,
-			    QLA2XXX_DRIVER_NAME, VERSION_LENGTH);
+			    QLA2XXX_VERSION, VERSION_LENGTH);
 			ql_dbg(ql_dbg_init, vha, 0x0149,
 			    "ISP%04X: Host registration with firmware\n",
 			    ha->pdev->device);
