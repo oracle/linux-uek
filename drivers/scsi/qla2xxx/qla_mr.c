@@ -1004,6 +1004,11 @@ qlafx00_rescan_isp(scsi_qla_host_t *vha)
 		/* if no cable then assume it's good */
 		if ((vha->device_flags & DFLG_NO_CABLE))
 			status = 0;
+		/* Register system information */
+		if (qlafx00_fx_disc(vha,
+		    &vha->hw->mr.fcport, FXDISC_REG_HOST_INFO))
+			ql_dbg(ql_dbg_disc, vha, 0x2098,
+			    "failed to register host info\n");
 	}
 	scsi_unblock_requests(vha->host);
 	return status;
