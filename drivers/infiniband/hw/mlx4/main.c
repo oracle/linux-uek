@@ -1373,47 +1373,6 @@ static void update_gids_task(struct work_struct *work)
 	kfree(gw);
 }
 
-static int update_ipv6_gids_sriov(struct mlx4_ib_dev *dev, int port)
-{
-	struct net_device *ndev = dev->iboe.netdevs[port - 1];
-	struct update_gid_work *work;
-	struct net_device *tmp;
-	union ib_gid gid;
-	int need_update = 0;
-
-	if (!ndev)
-		return 0;
-
-	work = kzalloc(sizeof(*work), GFP_ATOMIC);
-	if (!work)
-		return -ENOMEM;
-
-	rcu_read_lock();
-	for_each_netdev_rcu(&init_net, tmp) {
-		if (tmp == ndev) {
-			gid.global.subnet_prefix = cpu_to_be64(0xfe80000000000000LL);
-			mlx4_addrconf_ifid_eui48(&gid.raw[8], 0xFFFF, ndev);
-			if (memcmp(&dev->iboe.gid_table[port - 1][0], &gid, sizeof(gid)) ||
-			    !memcmp(&dev->iboe.gid_table[port - 1][0], &zgid, sizeof(gid))) {
-				dev->iboe.gid_table[port - 1][0] = gid;
-				++need_update;
-			}
-		}
-	}
-	rcu_read_unlock();
-
-	if (need_update) {
-		memcpy(work->gids, dev->iboe.gid_table[port - 1], sizeof(work->gids));
-		INIT_WORK(&work->work, update_gids_task);
-		work->port = port;
-		work->dev = dev;
-		queue_work(wq, &work->work);
-	} else
-		kfree(work);
-
-	return 0;
-}
-
 static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 {
 	struct net_device *ndev = dev->iboe.netdevs[port - 1];
@@ -1421,15 +1380,12 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 	struct net_device *tmp;
 	int i;
 	u8 *hits;
-	int ret;
 	union ib_gid gid;
 	int free;
 	int found;
 	int need_update = 0;
+	int max_gids;
 	u16 vid;
-
-	if (mlx4_is_mfunc(dev->dev))
-		return update_ipv6_gids_sriov(dev, port);
 
 	work = kzalloc(sizeof *work, GFP_ATOMIC);
 	if (!work)
@@ -1437,9 +1393,11 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 
 	hits = kzalloc(128, GFP_ATOMIC);
 	if (!hits) {
-		ret = -ENOMEM;
-		goto out;
+		kfree(work);
+		return -ENOMEM;
 	}
+
+	max_gids = dev->dev->caps.gid_table_len[port];
 
 	rcu_read_lock();
 	for_each_netdev_rcu(&init_net, tmp) {
@@ -1449,7 +1407,7 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 			mlx4_addrconf_ifid_eui48(&gid.raw[8], vid, ndev);
 			found = 0;
 			free = -1;
-			for (i = 0; i < 128; ++i) {
+			for (i = 0; i < max_gids; ++i) {
 				if (free < 0 &&
 				    !memcmp(&dev->iboe.gid_table[port - 1][i], &zgid, sizeof zgid))
 					free = i;
@@ -1479,7 +1437,7 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 	}
 	rcu_read_unlock();
 
-	for (i = 0; i < 128; ++i)
+	for (i = 0; i < max_gids; ++i)
 		if (!hits[i]) {
 			if (memcmp(&dev->iboe.gid_table[port - 1][i], &zgid, sizeof zgid))
 				++need_update;
@@ -1497,10 +1455,6 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 
 	kfree(hits);
 	return 0;
-
-out:
-	kfree(work);
-	return ret;
 }
 
 static void handle_en_event(struct mlx4_ib_dev *dev, int port, unsigned long event)
