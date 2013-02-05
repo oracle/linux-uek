@@ -220,6 +220,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	if (!rds_ibdev)
 		return;
 
+	ib_unregister_event_handler(&rds_ibdev->event_handler);
+
 	rds_ib_dev_shutdown(rds_ibdev);
 
 	/* stop connection attempts from getting a reference to this device. */
