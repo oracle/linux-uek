@@ -116,7 +116,7 @@ struct socket	*rds_ib_inet_socket;
 
 static struct rds_ib_port *ip_config;
 static u8	ip_port_cnt = 0;
-static u8	ip_port_max;
+static u8	ip_port_max = RDS_IB_MAX_PORTS;
 
 void rds_ib_nodev_connect(void)
 {
@@ -335,18 +335,6 @@ static int rds_ib_laddr_check(__be32 addr)
 	return ret;
 }
 
-static u8 rds_ib_port_lookup(struct rds_ib_device *rds_ibdev, u8 port_num)
-{
-	u8	i;
-
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (ip_config[i].rds_ibdev == rds_ibdev &&
-			ip_config[i].port_num == port_num)
-			return i;
-	}
-	return 0;
-}
-
 static u8 rds_ib_get_failover_port(u8 port)
 {
 	u8	i;
@@ -532,12 +520,12 @@ static int rds_ib_move_ip(char			*from_dev,
 		} else {
 			strcpy(to_dev2, to_dev);
 			strcat(to_dev2, ":");
-			strcat(to_dev2, from_dev);
+			strcat(to_dev2, ip_config[from_port].port_label);
 			to_dev2[IFNAMSIZ-1] = 0;
 		}
 		in_dev_put(in_dev);
 
-		/* Bail if IP already exists on target port */
+		/* Bailout if IP already exists on target port */
 		if (rds_ib_addr_exist(ip_config[to_port].dev, addr, NULL))
 			goto out;
 
@@ -551,7 +539,9 @@ static int rds_ib_move_ip(char			*from_dev,
 				strcpy(from_dev2,
 					ip_config[active_port].dev->name);
 				strcat(from_dev2, ":");
-				strcat(from_dev2, from_dev);
+				strcat(from_dev2,
+					ip_config[from_port].port_label);
+				from_dev2[IFNAMSIZ-1] = 0;
 			}
 		} else {
 			strcpy(from_dev2, from_dev);
@@ -561,7 +551,7 @@ static int rds_ib_move_ip(char			*from_dev,
 						addr, from_dev2)) {
 			strcpy(from_dev2, from_dev);
 			strcat(from_dev2, ":");
-			strcat(from_dev2, to_dev);
+			strcat(from_dev2, ip_config[to_port].port_label);
 			from_dev2[IFNAMSIZ-1] = 0;
 		}
 		strcpy(to_dev2, to_dev);
@@ -593,19 +583,25 @@ out:
 	return ret;
 }
 
-static int rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
+static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
 				u8			port_num)
 {
+	const char *digits = "0123456789";
+
 	if (ip_port_cnt >= ip_port_max) {
 		printk(KERN_ERR
 			"RDS/IB: Exceeded max ports (%d) for device %s\n",
 				ip_port_max, rds_ibdev->dev->name);
-		return 1;
+		return 0;
 	}
 
 	ip_port_cnt++;
 	ip_config[ip_port_cnt].port_num = port_num;
+	ip_config[ip_port_cnt].port_label[0] = 'P';
+	ip_config[ip_port_cnt].port_label[1] = digits[ip_port_cnt / 10];
+	ip_config[ip_port_cnt].port_label[2] = digits[ip_port_cnt % 10];
+	ip_config[ip_port_cnt].port_label[3] = 0;
 	ip_config[ip_port_cnt].dev = net_dev;
 	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
 	ip_config[ip_port_cnt].ip_active_port = 0;
@@ -614,21 +610,20 @@ static int rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	if (net_dev->operstate == IF_OPER_UP)
 		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
 	else
-		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_DOWN;
+		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_INIT;
 
-	return 0;
+	return ip_port_cnt;
 }
 
 static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
 				char			*if_name,
-				u8			port_num,
+				u8			port,
 				__be32			ip_addr,
 				__be32			ip_bcast,
 				__be32			ip_mask)
 {
 	unsigned int	idx;
-	u8	port = rds_ib_port_lookup(rds_ibdev, port_num);
 
 	if (!strcmp(net_dev->name, if_name)) {
 		strcpy(ip_config[port].if_name, if_name);
@@ -745,11 +740,21 @@ static void rds_ib_failover(struct work_struct *_work)
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	int				ret;
 	u8				i;
+	char				if_name[IFNAMSIZ];
+
+	ip_config[work->port].port_state = RDS_IB_PORT_DOWN;
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i != work->port &&
 			ip_config[i].port_state == RDS_IB_PORT_DOWN &&
 			ip_config[i].ip_active_port == work->port) {
+
+			strcpy(if_name, ip_config[work->port].if_name);
+			strcat(if_name, ":");
+			strcat(if_name, ip_config[i].port_label);
+			if_name[IFNAMSIZ-1] = 0;
+			ret = rds_ib_set_ip(NULL, NULL, if_name, 0, 0, 0);
+
 			rds_ib_do_failover(i, 0, 0);
 		}
 	}
@@ -771,6 +776,8 @@ static void rds_ib_failback(struct work_struct *_work)
 	struct rds_ib_port_ud_work	*work =
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	u8				i, ip_active_port, port = work->port;
+
+	ip_config[port].port_state = RDS_IB_PORT_UP;
 
 	ip_active_port = ip_config[port].ip_active_port;
 
@@ -848,7 +855,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 {
 	struct rds_ib_device	*rds_ibdev =
 		container_of(handler, typeof(*rds_ibdev), event_handler);
-	u8	port = rds_ib_port_lookup(rds_ibdev, event->element.port_num);
+	u8	port;
 	struct rds_ib_port_ud_work	*work;
 
 	if (!rds_ib_haip_enabled || !ip_port_cnt)
@@ -858,32 +865,37 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		event->event != IB_EVENT_PORT_ERR)
 		return;
 
-	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		rds_ibdev->dev->name,
-		event->element.port_num,
-		ip_config[port].if_name,
-		(event->event == IB_EVENT_PORT_ACTIVE) ?
-			"ACTIVE" : "ERROR");
+	for (port = 1; port <= ip_port_cnt; port++) {
+		if (ip_config[port].port_num != event->element.port_num ||
+			ip_config[port].rds_ibdev != rds_ibdev)
+			continue;
 
-	work = kzalloc(sizeof *work, GFP_KERNEL);
-	if (!work) {
-		printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
-		return;
-	}
+		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
+			rds_ibdev->dev->name,
+			event->element.port_num,
+			ip_config[port].if_name,
+			(event->event == IB_EVENT_PORT_ACTIVE) ?
+				"ACTIVE" : "ERROR");
 
-	work->port = port;
+		work = kzalloc(sizeof *work, GFP_KERNEL);
+		if (!work) {
+			printk(KERN_ERR
+				"RDS/IB: failed to allocate port work\n");
+			return;
+		}
 
-	if (event->event == IB_EVENT_PORT_ACTIVE) {
-		if (rds_ib_haip_fallback) {
-			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
+		work->port = port;
+
+		if (event->event == IB_EVENT_PORT_ACTIVE) {
+			if (rds_ib_haip_fallback) {
+				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
+				queue_delayed_work(rds_wq, &work->work, 0);
+			} else
+				kfree(work);
+		} else {
+			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 			queue_delayed_work(rds_wq, &work->work, 0);
-		} else
-			kfree(work);
-		ip_config[port].port_state = RDS_IB_PORT_UP;
-	} else {
-		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
-		queue_delayed_work(rds_wq, &work->work, 0);
-		ip_config[port].port_state = RDS_IB_PORT_DOWN;
+		}
 	}
 }
 
@@ -896,9 +908,6 @@ static void rds_ib_dump_ip_config(void)
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
 	for (i = 1; i <= ip_port_cnt; i++) {
-		if (!ip_config[i].ip_addr)
-			continue;
-
 		printk(KERN_ERR "RDS/IB: %s/port_%d/%s: "
 			"IP %pI4/%pI4/%pI4 "
 			"state %s\n",
@@ -933,18 +942,14 @@ static int rds_ib_ip_config_init(void)
 	struct in_ifaddr	**ifap;
 	struct in_device	*in_dev;
 	struct rds_ib_device	*rds_ibdev;
-	union ib_gid    	gid;
+	union ib_gid            gid;
 	int                     ret = 0;
-	u8              	port_num;
+	u8                      port_num;
+	u8                      port;
 
 	if (!rds_ib_haip_enabled)
 		return 0;
 
-	ip_port_max = 0;
-	rcu_read_lock();
-	list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
-		ip_port_max += rds_ibdev->dev->phys_port_cnt;
-	}
 	rcu_read_unlock();
 
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
@@ -979,15 +984,15 @@ static int rds_ib_ip_config_init(void)
 					" has no associated port\n",
 					RDS_IB_GID_ARG(gid));
 			} else {
-				ret = rds_ib_init_port(rds_ibdev, dev,
+				port = rds_ib_init_port(rds_ibdev, dev,
 					port_num);
-				if (!ret) {
+				if (port > 0) {
 					for (ifap = &in_dev->ifa_list;
 						(ifa = *ifap);
 						ifap = &ifa->ifa_next) {
 						rds_ib_set_port(rds_ibdev, dev,
 							ifa->ifa_label,
-							port_num,
+							port,
 							ifa->ifa_address,
 							ifa->ifa_broadcast,
 							ifa->ifa_mask);
@@ -1239,12 +1244,10 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		} else
 			kfree(work);
 
-		ip_config[port].port_state = NETDEV_UP;
 		break;
 	case NETDEV_DOWN:
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
-		ip_config[port].port_state = RDS_IB_PORT_DOWN;
 		break;
 	}
 
