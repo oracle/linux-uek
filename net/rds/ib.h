@@ -267,18 +267,20 @@ struct rds_ib_alias {
 };
 
 enum {
-	RDS_IB_PORT_UNKNOWN = 0,
+	RDS_IB_PORT_INIT = 0,
 	RDS_IB_PORT_UP,
 	RDS_IB_PORT_DOWN,
 };
 
 #define RDS_IB_MAX_ALIASES	100
+#define RDS_IB_MAX_PORTS	100
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
 	unsigned int		failover_group;
 	struct net_device	*dev;
 	unsigned int            port_state;
 	u8			port_num;
+	char			port_label[4];
 	char                    if_name[IFNAMSIZ];
 	__be32                  ip_addr;
 	__be32			ip_bcast;
