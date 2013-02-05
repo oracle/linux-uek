@@ -48,6 +48,7 @@
 #define MIN_MSIX_P_PORT		5
 
 #define MLX4_ROCE_MAX_GIDS	128
+#define MLX4_ROCE_PF_GIDS	16
 
 #define MLX4_NUM_UP			8
 #define MLX4_NUM_TC			8

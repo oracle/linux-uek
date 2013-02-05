@@ -1392,6 +1392,36 @@ out:
 	return ret;
 }
 
+static int get_slave_base_gid_ix(struct mlx4_ib_dev *dev, int slave, int port)
+{
+	int gids;
+	int vfs;
+
+	if (rdma_port_get_link_layer(&dev->ib_dev, port) == IB_LINK_LAYER_INFINIBAND)
+		return slave;
+
+	gids = MLX4_ROCE_MAX_GIDS - MLX4_ROCE_PF_GIDS;
+	vfs = dev->dev->num_vfs;
+
+	if (slave == 0)
+		return 0;
+	if (slave <= gids % vfs)
+		return MLX4_ROCE_PF_GIDS + ((gids / vfs) + 1) * (slave - 1);
+
+	return MLX4_ROCE_PF_GIDS + (gids % vfs) + ((gids / vfs) * (slave - 1));
+}
+
+static int get_real_sgid_index(struct mlx4_ib_dev *dev, int slave, int port,
+			       struct ib_ah_attr *ah_attr)
+{
+	if (rdma_port_get_link_layer(&dev->ib_dev, port) == IB_LINK_LAYER_INFINIBAND) {
+		ah_attr->grh.sgid_index = slave;
+		return 0;
+	}
+	ah_attr->grh.sgid_index += get_slave_base_gid_ix(dev, slave, port);
+	return 0;
+}
+
 static void mlx4_ib_multiplex_mad(struct mlx4_ib_demux_pv_ctx *ctx, struct ib_wc *wc)
 {
 	struct mlx4_ib_dev *dev = to_mdev(ctx->ib_dev);
@@ -1479,7 +1509,8 @@ static void mlx4_ib_multiplex_mad(struct mlx4_ib_demux_pv_ctx *ctx, struct ib_wc
 	ah.ibah.device = ctx->ib_dev;
 	mlx4_ib_query_ah(&ah.ibah, &ah_attr);
 	if (ah_attr.ah_flags & IB_AH_GRH)
-		ah_attr.grh.sgid_index = slave;
+		if (get_real_sgid_index(dev, slave, ctx->port, &ah_attr))
+			return;
 
 	mlx4_ib_send_to_wire(dev, slave, ctx->port,
 			     is_proxy_qp0(dev, wc->src_qp, slave) ?
