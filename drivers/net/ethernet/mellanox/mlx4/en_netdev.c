@@ -2205,7 +2205,8 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->if_counters_rx_errors = 0;
 	priv->if_counters_rx_no_buffer = 0;
 #ifdef CONFIG_MLX4_EN_DCB
-	if (!mlx4_is_slave(priv->mdev->dev)) {
+	if (!mlx4_is_slave(priv->mdev->dev) &&
+	    (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_SET_PORT_ETH_SCHED)) {
 		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
 		priv->flags |= MLX4_EN_DCB_ENABLED;
 		dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
