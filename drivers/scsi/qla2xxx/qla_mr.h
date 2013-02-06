@@ -547,17 +547,19 @@ struct mr_data_fx00 {
 					 * request that are not linked
 					 * to a particular target
 					 */
+	uint8_t fw_hbt_en;
 	uint8_t fw_hbt_cnt;
 	uint8_t fw_hbt_miss_cnt;
 	uint32_t old_fw_hbt_cnt;
 	uint16_t fw_reset_timer_tick;
 	uint8_t fw_reset_timer_exp;
+	uint32_t old_aenmbx0_state;
 };
 
 #define QLAFX00_LOOP_DOWN_TIME		615     /* 600 */
 #define QLAFX00_HEARTBEAT_INTERVAL	6	/* number of seconds */
 #define QLAFX00_HEARTBEAT_MISS_CNT	3	/* number of miss */
-#define QLAFX00_RESET_INTERVAL		1	/* number of seconds */
+#define QLAFX00_RESET_INTERVAL		120	/* number of seconds */
 #define QLAFX00_MAX_RESET_INTERVAL	600	/* number of seconds */
 
 #define qla_for_each_bit(bit, addr, size) \

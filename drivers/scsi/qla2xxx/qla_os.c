@@ -2491,6 +2491,7 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 		ha->port_down_retry_count = 30; /* default value */
 		ha->mr.fw_hbt_cnt = QLAFX00_HEARTBEAT_INTERVAL;
 		ha->mr.fw_reset_timer_tick = QLAFX00_RESET_INTERVAL;
+		ha->mr.fw_hbt_en = 1;
 	}
 
 	ql_dbg_pci(ql_dbg_init, pdev, 0x001e,
