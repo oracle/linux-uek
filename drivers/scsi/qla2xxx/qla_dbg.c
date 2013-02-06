@@ -12,7 +12,7 @@
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
  * | Module Init and Probe        |       0x0150       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x1178       | 0x111a-0x111b  |
+ * | Mailbox commands             |       0x117b       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
  * |                              |                    | 0x2016		|
  * | Queue Command and IO tracing |       0x304a       | 0x3006,0x300b  |
@@ -22,7 +22,7 @@
  * | Async Events                 |       0x5082       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
  * | Timer Routines               |       0x6013       |		|
- * | User Space Interactions      |       0x70da       | 0x7018,0x702e  |
+ * | User Space Interactions      |       0x70dd       | 0x7018,0x702e  |
  * |                              |                    | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
