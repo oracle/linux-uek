@@ -11,8 +11,8 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0151       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x1174       | 0x111a-0x111b  |
+ * | Module Init and Probe        |       0x0150       | 0x4b,0xba,0xfa |
+ * | Mailbox commands             |       0x1178       | 0x111a-0x111b  |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
  * |                              |                    | 0x2016		|
  * | Queue Command and IO tracing |       0x304a       | 0x3006,0x300b  |
