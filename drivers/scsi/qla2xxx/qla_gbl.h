@@ -425,6 +425,7 @@ qla2x00_get_sp_from_handle(scsi_qla_host_t *, const char *, struct req_que *,
 extern void
 qla2x00_process_completed_request(struct scsi_qla_host *, struct req_que *,
     uint32_t);
+extern int qla2x00_is_a_vp_did(scsi_qla_host_t *, uint32_t);
 
 /*
  * Global Function Prototypes in qla_sup.c source file.
