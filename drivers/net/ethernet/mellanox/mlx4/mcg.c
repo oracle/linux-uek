@@ -992,7 +992,6 @@ int mlx4_qp_attach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 	if (err)
 		goto out;
 
-out:
 	if (prot == MLX4_PROT_ETH) {
 		/* manage the steering entry for promisc mode */
 		if (new_entry)
@@ -1001,6 +1000,8 @@ out:
 			existing_steering_entry(dev, port, steer,
 						index, qp->qpn);
 	}
+
+out:
 	if (err && link && index != -1) {
 		if (index < dev->caps.num_mgms)
 			mlx4_warn(dev, "Got AMGM index %d < %d",
