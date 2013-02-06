@@ -415,7 +415,10 @@ static ssize_t vnic_login_show(struct module_attribute *attr,
 		p += _sprintf(p, buf, "SHARED_MAC    %s\n", NOT_AVAILABLE_STRING);
 		p += _sprintf(p, buf, "SHARED_IP     %s\n", NOT_AVAILABLE_STRING);
 	}
-
+	p += _sprintf(p, buf, "GW KA(msec)   %d\n",
+                  jiffies_to_msecs(vnic_fip->gw->info.gw_period));
+	p += _sprintf(p, buf, "Last KA(msec) %d\n",
+                  jiffies_to_msecs(jiffies - vnic_fip->keep_alive_jiffs));
 	return (ssize_t)(p - buf);
 }
 
