@@ -754,7 +754,14 @@ out:
 		spin_lock_irqsave(&priv->lock, flags);
 		if (!neigh) {
 			neigh = ipoib_neigh_alloc(daddr, dev);
-			if (neigh) {
+			/* with TX MQ it is possible that more than one skb
+			 * transmissions triggered the creation of the neigh.
+			 * but only one actuallly created the neigh struct,
+			 * all the others found it in the hash. we must make
+			 * sure that the neigh will be added only once to the
+			 * mcast list.
+			 */
+			if (neigh && list_empty(&neigh->list)) {
 				kref_get(&mcast->ah->ref);
 				neigh->ah	= mcast->ah;
 				list_add_tail(&neigh->list, &mcast->neigh_list);
