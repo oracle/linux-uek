@@ -365,7 +365,7 @@ static noinline int create_subvol(struct btrfs_root *root,
 				  struct dentry *dentry,
 				  char *name, int namelen,
 				  u64 *async_transid,
-				  struct btrfs_qgroup_inherit **inherit)
+				  struct btrfs_qgroup_inherit *inherit)
 {
 	struct btrfs_trans_handle *trans;
 	struct btrfs_key key;
@@ -401,8 +401,7 @@ static noinline int create_subvol(struct btrfs_root *root,
 		return PTR_ERR(trans);
 	}
 
-	ret = btrfs_qgroup_inherit(trans, root->fs_info, 0, objectid,
-				   inherit ? *inherit : NULL);
+	ret = btrfs_qgroup_inherit(trans, root->fs_info, 0, objectid, inherit);
 	if (ret)
 		goto fail;
 
@@ -526,7 +525,7 @@ fail:
 
 static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 			   char *name, int namelen, u64 *async_transid,
-			   bool readonly, struct btrfs_qgroup_inherit **inherit)
+			   bool readonly, struct btrfs_qgroup_inherit *inherit)
 {
 	struct inode *inode;
 	struct dentry *parent;
@@ -546,10 +545,7 @@ static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 	pending_snapshot->dentry = dentry;
 	pending_snapshot->root = root;
 	pending_snapshot->readonly = readonly;
-	if (inherit) {
-		pending_snapshot->inherit = *inherit;
-		*inherit = NULL;	/* take responsibility to free it */
-	}
+	pending_snapshot->inherit = inherit;
 
 	trans = btrfs_start_transaction(root->fs_info->extent_root, 6);
 	if (IS_ERR(trans)) {
@@ -691,7 +687,7 @@ static noinline int btrfs_mksubvol(struct path *parent,
 				   char *name, int namelen,
 				   struct btrfs_root *snap_src,
 				   u64 *async_transid, bool readonly,
-				   struct btrfs_qgroup_inherit **inherit)
+				   struct btrfs_qgroup_inherit *inherit)
 {
 	struct inode *dir  = parent->dentry->d_inode;
 	struct dentry *dentry;
@@ -1462,7 +1458,7 @@ out_unlock:
 static noinline int btrfs_ioctl_snap_create_transid(struct file *file,
 				char *name, unsigned long fd, int subvol,
 				u64 *transid, bool readonly,
-				struct btrfs_qgroup_inherit **inherit)
+				struct btrfs_qgroup_inherit *inherit)
 {
 	struct btrfs_root *root = BTRFS_I(fdentry(file)->d_inode)->root;
 	struct file *src_file;
@@ -1577,7 +1573,7 @@ static noinline int btrfs_ioctl_snap_create_v2(struct file *file,
 
 	ret = btrfs_ioctl_snap_create_transid(file, vol_args->name,
 					      vol_args->fd, subvol, ptr,
-					      readonly, &inherit);
+					      readonly, inherit);
 
 	if (ret == 0 && ptr &&
 	    copy_to_user(arg +
