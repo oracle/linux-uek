@@ -170,7 +170,6 @@ ENTRY(dtrace_stub_execve)
 	PARTIAL_FRAME 0
 	SAVE_REST
 	FIXUP_TOP_OF_STACK %r11
-	movq %rsp, %rcx
 	call dtrace_execve
 	RESTORE_TOP_OF_STACK %r11
 	movq %rax,RAX(%rsp)
