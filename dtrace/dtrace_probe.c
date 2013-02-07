@@ -663,6 +663,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 		}
 
+		dt_dbg_probe("Probe (ID %d EPID %d) on CPU %d...\n",
+			     id, ecb->dte_epid, cpuid);
 		if (ecb->dte_cond) {
 			/*
 			 * If the dte_cond bits indicate that this
@@ -742,8 +744,13 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		tomax = buf->dtb_tomax;
 		ASSERT(tomax != NULL);
 
-		if (ecb->dte_size != 0)
+		if (ecb->dte_size != 0) {
 			DTRACE_STORE(uint32_t, tomax, offs, ecb->dte_epid);
+			dt_dbg_buf("    Store: %p[%ld .. %ld] <- %d [EPID] "
+				   "(from %s::%d)\n",
+				   buf, offs, offs + sizeof(uint32_t) - 1,
+				   ecb->dte_epid, __FUNCTION__, __LINE__);
+		}
 
 		mstate.dtms_epid = ecb->dte_epid;
 		mstate.dtms_present |= DTRACE_MSTATE_EPID;
@@ -771,6 +778,9 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					current->predcache = cid;
 				}
 
+				dt_dbg_probe("Probe (ID %d EPID %d) "
+					     "Predicate not satisfied (%d)\n",
+					     id, ecb->dte_epid, rval);
 				continue;
 			}
 		}
@@ -781,6 +791,9 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			size_t			valoffs;
 			dtrace_difo_t		*dp;
 			dtrace_recdesc_t	*rec = &act->dta_rec;
+
+			dt_dbg_probe("Probe (ID %d EPID %d) Action %d...\n",
+				    id, ecb->dte_epid, act->dta_kind);
 
 			size = rec->dtrd_size;
 			valoffs = offs + rec->dtrd_offset;
@@ -922,9 +935,17 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				tomax = buf->dtb_tomax;
 				ASSERT(tomax != NULL);
 
-				if (ecb->dte_size != 0)
+				if (ecb->dte_size != 0) {
 					DTRACE_STORE(uint32_t, tomax, offs,
 						     ecb->dte_epid);
+					dt_dbg_buf("    Store: %p[%ld .. %ld] "
+						   "<- %d [EPID] "
+						   "(from %s::%d)\n",
+						   buf, offs,
+						   offs + sizeof(uint32_t) - 1,
+						   ecb->dte_epid,
+						   __FUNCTION__, __LINE__);
+				}
 
 				continue;
 
@@ -947,8 +968,13 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				/*
 				 * We need to commit our buffer state.
 				 */
-				if (ecb->dte_size)
+				if (ecb->dte_size) {
 					buf->dtb_offset = offs + ecb->dte_size;
+					dt_dbg_buf("  Consume: %p[%ld .. "
+						   "%lld]\n",
+						   buf, offs,
+						   buf->dtb_offset - 1);
+				}
 
 				buf = &state->dts_buffer[cpuid];
 				dtrace_speculation_commit(state, cpuid, val);
@@ -983,8 +1009,19 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 				DTRACE_STORE(uint64_t, tomax, valoffs,
 					     (uint64_t)pid);
+				dt_dbg_buf("    Store: %p[%ld .. %ld] <- %lld "
+					   "[PID] (from %s::%d)\n",
+					   buf, valoffs,
+					   valoffs + sizeof(uint64_t) - 1,
+					   (uint64_t)pid,
+					   __FUNCTION__, __LINE__);
 				DTRACE_STORE(uint64_t, tomax,
 					     valoffs + sizeof(uint64_t), val);
+				dt_dbg_buf("    Store: %p[%ld .. %ld] <- %lld "
+					   "(from %s::%d)\n",
+					   buf, valoffs + sizeof(uint64_t),
+					   valoffs + 2 * sizeof(uint64_t) - 1,
+					   val, __FUNCTION__, __LINE__);
 
 				continue;
 			}
@@ -1054,6 +1091,12 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 
 						DTRACE_STORE(uint8_t, tomax,
 							     valoffs++, c);
+						dt_dbg_buf("    Store: %p[%ld]"
+							   " <- %d (from "
+							   "%s::%d)\n",
+							   buf, valoffs, c,
+							   __FUNCTION__,
+							   __LINE__);
 
 						if (c == '\0' && intuple)
 							break;
@@ -1062,9 +1105,14 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					continue;
 				}
 
-				while (valoffs < end)
+				while (valoffs < end) {
 					DTRACE_STORE(uint8_t, tomax, valoffs++,
 						     dtrace_load8(val++));
+					dt_dbg_buf("    Store: %p[%ld] <- ??? "
+						   "(from %s::%d)\n",
+						   buf, valoffs,
+						   __FUNCTION__, __LINE__);
+				}
 
 				continue;
 			}
@@ -1074,15 +1122,36 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				break;
 			case sizeof(uint8_t):
 				DTRACE_STORE(uint8_t, tomax, valoffs, val);
+				dt_dbg_buf("    Store: %p[%ld] <- %d "
+					   "(from %s::%d)\n",
+					   buf, valoffs, (uint8_t)val,
+					   __FUNCTION__, __LINE__);
 				break;
 			case sizeof(uint16_t):
 				DTRACE_STORE(uint16_t, tomax, valoffs, val);
+				dt_dbg_buf("    Store: %p[%ld .. %ld] <- %d "
+					   "(from %s::%d)\n",
+					   buf, valoffs,
+					   valoffs + sizeof(uint16_t) - 1,
+					   (uint16_t)val,
+					   __FUNCTION__, __LINE__);
 				break;
 			case sizeof(uint32_t):
 				DTRACE_STORE(uint32_t, tomax, valoffs, val);
+				dt_dbg_buf("    Store: %p[%ld] <- %d "
+					   "(from %s::%d)\n",
+					   buf, valoffs,
+					   valoffs + sizeof(uint32_t) - 1,
+					   (uint32_t)val,
+					   __FUNCTION__, __LINE__);
 				break;
 			case sizeof(uint64_t):
 				DTRACE_STORE(uint64_t, tomax, valoffs, val);
+				dt_dbg_buf("    Store: %p[%ld] <- %d "
+					   "(from %s::%d)\n",
+					   buf, valoffs,
+					   valoffs + sizeof(uint64_t) - 1, val,
+					   __FUNCTION__, __LINE__);
 				break;
 			default:
 				/*
@@ -1094,8 +1163,11 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			}
 		}
 
-		if (*flags & CPU_DTRACE_DROP)
+		if (*flags & CPU_DTRACE_DROP) {
+			dt_dbg_probe("Probe (ID %d EPID %d) Dropped\n",
+				     id, ecb->dte_epid);
 			continue;
+		}
 
 		if (*flags & CPU_DTRACE_FAULT) {
 			int		ndx;
@@ -1146,8 +1218,11 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			continue;
 		}
 
-		if (!committed)
+		if (!committed) {
 			buf->dtb_offset = offs + ecb->dte_size;
+			dt_dbg_buf("  Consume: %p[%ld .. %lld]\n",
+				   buf, offs, buf->dtb_offset);
+		}
 	}
 
 	if (vtime)

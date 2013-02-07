@@ -5,8 +5,8 @@
 
 # undef DT_DBG_AGG
 # undef DT_DBG_BUF
-# define DT_DBG_DOF
-# define DT_DBG_IOCTL
+# undef DT_DBG_DOF
+# undef DT_DBG_IOCTL
 # undef DT_DBG_PROBE
 
 #else /* CONFIG_DT_DEBUG */
