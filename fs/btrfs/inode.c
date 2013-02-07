@@ -2186,11 +2186,6 @@ void btrfs_run_delayed_iputs(struct btrfs_root *root)
 	}
 }
 
-enum btrfs_orphan_cleanup_state {
-	ORPHAN_CLEANUP_STARTED	= 1,
-	ORPHAN_CLEANUP_DONE	= 2,
-};
-
 /*
  * This is called in transaction commmit time. If there are no orphan
  * files in the subvolume, it removes orphan item and frees block_rsv
