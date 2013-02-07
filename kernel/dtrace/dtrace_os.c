@@ -784,12 +784,13 @@ long dtrace_vfork(struct pt_regs *regs)
 
 long dtrace_execve(const char __user *name,
 		   const char __user *const __user *argv,
-		   const char __user *const __user *envp, struct pt_regs *regs)
+		   const char __user *const __user *envp)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
-	char			*filename;
+	struct filename		*path;
+	struct pt_regs		*regs = current_pt_regs();
 
 	sc = &systrace_info.sysent[__NR_execve];
 
@@ -801,14 +802,12 @@ long dtrace_execve(const char __user *name,
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	filename = getname(name);
-	rc = PTR_ERR(filename);
-	if (IS_ERR(filename))
+	path = getname(name);
+	rc = PTR_ERR(path);
+	if (IS_ERR(path))
 		goto out;
-
-	rc = do_execve(filename, argv, envp, regs);
-
-	putname(filename);
+	rc = do_execve(path->name, argv, envp, regs);
+	putname(path);
 
 out:
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
