@@ -1536,7 +1536,7 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 	    break;
 	case FXDISC_REG_HOST_INFO:
 	    fdisc->u.fxiocb.flags = SRB_FXDISC_REQ_DMA_VALID;
-	    fdisc->u.fxiocb.req_len = sizeof(host_system_info_t);
+	    fdisc->u.fxiocb.req_len = sizeof(struct register_host_info);
 	    p_sysid = utsname();
 	    if (!p_sysid) {
 		    ql_log(ql_log_warn, vha, 0x303c,
