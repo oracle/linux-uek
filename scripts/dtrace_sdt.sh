@@ -139,8 +139,9 @@ lfn="$2"
 
 		 for (i = 1; i <= NF; i++) {
 		     prb = $i;
+		     pn = fun":"prb;
 
-		     print "\tPTR\t0x" addl(baseaddr, poffst[prb]);
+		     print "\tPTR\t0x" addl(baseaddr, poffst[pn]);
 		     print "\tPTR\t" length(prb);
 		     print "\tPTR\t" length(fun);
 		     print "\t.asciz\t\042" prb "\042";
@@ -165,9 +166,10 @@ lfn="$2"
 
 	 $3 == "R" {
 	     sub(/^0+/, "", $2);
+	     pn = fun":"$4;
 
 	     probes[fun] = $4 " " probes[fun];
-	     poffst[$4] = subl($2, addr);
+	     poffst[pn] = subl($2, addr);
 
 	     next;
 	 }
