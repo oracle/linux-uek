@@ -514,8 +514,10 @@ static DEFINE_XENBUS_DRIVER(mlx_xen_fmr_back, ,
  */
 static int __init mlx4_xen_fmr_backend_init(void)
 {
-	if (!xen_domain())
-		return -ENODEV;
+	if (!xen_domain()) {
+		printk(KERN_ERR "xen_fmr_master: This driver requires XEN\n");
+		return -EPERM;
+	}
 
 	m_registered_to_xenbus = 0;
 
@@ -549,6 +551,9 @@ static int __init mlx4_xen_fmr_backend_init(void)
 static void __exit mlx4_xen_fmr_backend_exit(void)
 {
 	DPRINTK(KERN_INFO "xen_fmr_master: Going down\n");
+
+	if (!xen_domain())
+		return;
 
 	DPRINTK(KERN_INFO "xen_fmr_master: Unregistering from ICM\n");
 	mlx4_unreg_icm_master(&icm_master);
