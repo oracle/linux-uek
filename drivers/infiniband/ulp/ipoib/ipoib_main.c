@@ -939,8 +939,8 @@ static u16 ipoib_select_queue_hw(struct net_device *dev, struct sk_buff *skb)
 	if (IPOIB_CM_SUPPORTED(cb->hwaddr)) {
 		if (ipoib_cm_admin_enabled(dev)) {
 			/* use remote QP for hash, so we use the same ring */
-			u32 *daddr_32 = (u32 *) cb->hwaddr;
-			u32 hv = jhash_1word(*daddr_32 & 0xFFFFFF, 0);
+			u32 *d32 = (u32 *)cb->hwaddr;
+			u32 hv = jhash_1word(*d32 & cpu_to_be32(0xFFFFFF), 0);
 			return hv % priv->tss_qp_num;
 		}
 		else
@@ -966,8 +966,8 @@ static u16 ipoib_select_queue_sw(struct net_device *dev, struct sk_buff *skb)
 	if (IPOIB_CM_SUPPORTED(cb->hwaddr)) {
 		if (ipoib_cm_admin_enabled(dev)) {
 			/* use remote QP for hash, so we use the same ring */
-			u32 *daddr_32 = (u32 *) cb->hwaddr;
-			u32 hv = jhash_1word(*daddr_32 & 0xFFFFFF, 0);
+			u32 *d32 = (u32 *)cb->hwaddr;
+			u32 hv = jhash_1word(*d32 & cpu_to_be32(0xFFFFFF), 0);
 			return hv % priv->tss_qp_num;
 		}
 		else
@@ -1109,10 +1109,10 @@ static u32 ipoib_addr_hash(struct ipoib_neigh_hash *htbl, u8 *daddr)
 	 * different subnets.
 	 */
 	 /* qpn octets[1:4) & port GUID octets[12:20) */
-	u32 *daddr_32 = (u32 *) daddr;
+	u32 *d32 = (u32 *)daddr;
 	u32 hv;
 
-	hv = jhash_3words(daddr_32[3], daddr_32[4], 0xFFFFFF & daddr_32[0], 0);
+	hv = jhash_3words(d32[3], d32[4], cpu_to_be32(0xFFFFFF) & d32[0], 0);
 	return hv & htbl->mask;
 }
 
