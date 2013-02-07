@@ -2586,14 +2586,7 @@ static int __init ipoib_init_module(void)
 	if (ret)
 		goto err_sa;
 
-	ret = ipoib_netlink_init();
-	if (ret)
-		goto err_client;
-
 	return 0;
-
-err_client:
-	ib_unregister_client(&ipoib_client);
 
 err_sa:
 	ib_sa_unregister_client(&ipoib_sa_client);
@@ -2609,7 +2602,6 @@ err_fs:
 
 static void __exit ipoib_cleanup_module(void)
 {
-	ipoib_netlink_fini();
 	ib_unregister_client(&ipoib_client);
 	ib_sa_unregister_client(&ipoib_sa_client);
 	ipoib_unregister_debugfs();

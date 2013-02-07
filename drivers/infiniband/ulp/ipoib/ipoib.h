@@ -643,9 +643,6 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
 int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		     u16 pkey, int child_type);
 
-int  __init ipoib_netlink_init(void);
-void __exit ipoib_netlink_fini(void);
-
 void ipoib_set_umcast(struct net_device *ndev, int umcast_val);
 int  ipoib_set_mode(struct net_device *dev, const char *buf);
 
