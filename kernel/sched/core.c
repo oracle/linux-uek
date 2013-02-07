@@ -4270,8 +4270,6 @@ SYSCALL_DEFINE0(sched_yield)
 	schedstat_inc(rq, yld_count);
 	current->sched_class->yield_task(rq);
 
-	DTRACE_SCHED1(surrender, struct task_struct *, current);
-
 	/*
 	 * Since we are going to call schedule() anyway, there's
 	 * no need to preempt or enable interrupts:
@@ -4281,6 +4279,7 @@ SYSCALL_DEFINE0(sched_yield)
 	do_raw_spin_unlock(&rq->lock);
 	sched_preempt_enable_no_resched();
 
+	DTRACE_SCHED1(surrender, struct task_struct *, current);
 	schedule();
 
 	return 0;
@@ -4420,8 +4419,6 @@ again:
 
 	yielded = curr->sched_class->yield_to_task(rq, p, preempt);
 	if (yielded) {
-		DTRACE_SCHED1(surrender, struct task_struct *, curr);
-
 		schedstat_inc(rq, yld_count);
 		/*
 		 * Make p's CPU reschedule; pick_next_entity takes care of
@@ -4435,8 +4432,10 @@ out:
 	double_rq_unlock(rq, p_rq);
 	local_irq_restore(flags);
 
-	if (yielded)
+	if (yielded) {
+		DTRACE_SCHED1(surrender, struct task_struct *, curr);
 		schedule();
+	}
 
 	return yielded;
 }
