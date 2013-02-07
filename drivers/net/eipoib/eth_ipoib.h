@@ -222,7 +222,7 @@ void parent_set_ethtool_ops(struct net_device *dev);
 int parent_add_vif_param(struct net_device *parent_dev,
 			 struct net_device *new_vif_dev,
 			 u16 vlan, u8 *mac);
-inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
+int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 			    u8 *mac, u16 vlan, gfp_t mem_flag);
 void free_ip_ent_in_emac_rec(struct parent *parent, u8 *emac, u16 vlan,
 			     __be32 ip);
