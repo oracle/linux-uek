@@ -475,6 +475,11 @@ void dtrace_aggregate(dtrace_aggregation_t *agg, dtrace_buffer_t *dbuf,
 		 * This is a hit:  we need to apply the aggregator to
 		 * the value at this key.
 		 */
+		dt_dbg_agg("    Aggregate [accum]: Buf %p, offs %lld, act %d, "
+			   "%lld (%lld, %lld)\n",
+			   buf, size,
+			   agg->dtag_action.dta_kind - DTRACEACT_AGGREGATION,
+			   *(uint64_t *)(kdata + size), expr, arg);
 		agg->dtag_aggregate((uint64_t *)(kdata + size), expr, arg);
 		return;
 next:
@@ -556,5 +561,10 @@ next:
 	 * Finally, apply the aggregator.
 	 */
 	*((uint64_t *)(key->dtak_data + size)) = agg->dtag_initial;
+	dt_dbg_agg("    Aggregate [initial]: Buf %p, offs %lld, act %d, "
+	           "%lld (%lld, %lld)\n",
+	           buf, size,
+	           agg->dtag_action.dta_kind - DTRACEACT_AGGREGATION,
+	           *(uint64_t *)(key->dtak_data + size), expr, arg);
 	agg->dtag_aggregate((uint64_t *)(key->dtak_data + size), expr, arg);
 }

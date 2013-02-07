@@ -49,6 +49,10 @@ void dtrace_buffer_switch(dtrace_buffer_t *buf)
 
 	local_irq_save(cookie);
 
+	dt_dbg_buf("Switch (CPU %d): tomax %p (%lld) <-> xamot %p (%lld)\n",
+		   smp_processor_id(), tomax, buf->dtb_offset,
+		   xamot, buf->dtb_xamot_offset );
+
 	buf->dtb_tomax = xamot;
 	buf->dtb_xamot = tomax;
 	buf->dtb_xamot_drops = buf->dtb_drops;
@@ -197,6 +201,10 @@ intptr_t dtrace_buffer_reserve(dtrace_buffer_t *buf, size_t needed,
 			ASSERT(!((align - (offs & (align - 1))) &
 				(sizeof (uint32_t) - 1)));
 			DTRACE_STORE(uint32_t, tomax, offs, DTRACE_EPIDNONE);
+			dt_dbg_buf("    Store: %p[%ld .. %ld] <- EPIDNONE "
+				   "(from %s::%d)\n",
+				   buf, offs, offs + sizeof(uint32_t) - 1,
+				   __FUNCTION__, __LINE__);
 			offs += sizeof (uint32_t);
 		}
 
@@ -205,13 +213,18 @@ intptr_t dtrace_buffer_reserve(dtrace_buffer_t *buf, size_t needed,
 			return -1;
 		}
 
-		if (mstate == NULL)
-			return (offs);
+		if (mstate == NULL) {
+			dt_dbg_buf("  Reserve: %p[%ld .. %ld]\n",
+				   buf, offs, offs + needed - 1);
+			return offs;
+		}
 
 		mstate->dtms_scratch_base = (uintptr_t)tomax + soffs;
 		mstate->dtms_scratch_size = buf->dtb_size - soffs;
 		mstate->dtms_scratch_ptr = mstate->dtms_scratch_base;
 
+		dt_dbg_buf("  Reserve: %p[%ld .. %ld]\n",
+			   buf, offs, offs + needed - 1);
 		return offs;
 	}
 
@@ -378,6 +391,10 @@ out:
 		ASSERT(!((align - (offs & (align - 1))) &
 			(sizeof (uint32_t) - 1)));
 		DTRACE_STORE(uint32_t, tomax, offs, DTRACE_EPIDNONE);
+		dt_dbg_buf("    Store: %p[%ld .. %ld] <- EPIDNONE "
+			   "(from %s::%d)\n",
+			   buf, offs, offs + sizeof(uint32_t) - 1,
+			   __FUNCTION__, __LINE__);
 		offs += sizeof (uint32_t);
 	}
 
@@ -388,8 +405,11 @@ out:
 		}
 	}
 
-	if (mstate == NULL)
+	if (mstate == NULL) {
+		dt_dbg_buf("  Reserve: %p[%ld .. %ld]\n",
+			   buf, offs, offs + needed - 1);
 		return offs;
+	}
 
 	/*
 	 * For ring buffers and fill buffers, the scratch space is always
@@ -399,6 +419,8 @@ out:
 	mstate->dtms_scratch_size = buf->dtb_size;
 	mstate->dtms_scratch_ptr = mstate->dtms_scratch_base;
 
+	dt_dbg_buf("  Reserve: %p[%ld .. %ld]\n",
+		   buf, offs, offs + needed - 1);
 	return offs;
 }
 

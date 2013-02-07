@@ -166,6 +166,8 @@ static long dtrace_ioctl(struct file *file,
 		state = state->dts_anon;
 	}
 
+	dt_dbg_ioctl("IOCTL (%#x, argp %p) ...\n", cmd, argp);
+
 	switch (cmd) {
 	case DTRACEIOC_PROVIDER: {
 		dtrace_providerdesc_t	pvd;
