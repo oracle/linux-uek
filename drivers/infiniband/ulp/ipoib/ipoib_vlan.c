@@ -216,13 +216,17 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
 		if (priv->pkey == pkey &&
 		    priv->child_type == IPOIB_LEGACY_CHILD &&
 		    priv->child_index == child_index) {
-			unregister_netdevice(priv->dev);
 			list_del(&priv->list);
 			dev = priv->dev;
 			break;
 		}
 	}
 	mutex_unlock(&ppriv->vlan_mutex);
+
+	if (dev) {
+		ipoib_dbg(ppriv, "delete child vlan %s\n", dev->name);
+		unregister_netdevice(dev);
+	}
 	rtnl_unlock();
 
 	if (dev) {
