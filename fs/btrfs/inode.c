@@ -6691,13 +6691,12 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	u64 len = bh_result->b_size;
 	struct btrfs_trans_handle *trans;
 	int unlock_bits = EXTENT_LOCKED;
-	int ret;
+	int ret = 0;
 
 	if (create)
 		unlock_bits |= EXTENT_DELALLOC | EXTENT_DIRTY;
 	else
 		len = min_t(u64, len, root->sectorsize);
-	}
 
 	lockstart = start;
 	lockend = start + len - 1;
@@ -6708,14 +6707,6 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	 */
 	if (lock_extent_direct(inode, lockstart, lockend, &cached_state, create))
 		return -ENOTBLK;
-
-	if (create) {
-		ret = set_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
-				     lockend, EXTENT_DELALLOC, NULL,
-				     &cached_state, GFP_NOFS);
-		if (ret)
-			goto unlock_err;
-	}
 
 	em = btrfs_get_extent(inode, NULL, 0, start, len, 0);
 	if (IS_ERR(em)) {
@@ -6748,7 +6739,6 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	if (!create && (em->block_start == EXTENT_MAP_HOLE ||
 			test_bit(EXTENT_FLAG_PREALLOC, &em->flags))) {
 		free_extent_map(em);
-		ret = 0;
 		goto unlock_err;
 	}
 
@@ -6861,10 +6851,11 @@ unlock:
 	 * in the case of read we need to unlock only the end area that we
 	 * aren't using if there is any left over space.
 	 */
-	if (lockstart < lockend)
-		clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart, lockend,
-				 unlock_bits, 1, 0, &cached_state, GFP_NOFS);
-	else
+	if (lockstart < lockend) {
+		clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
+				 lockend, unlock_bits, 1, 0,
+				 &cached_state, GFP_NOFS);
+	} else {
 		free_extent_state(cached_state);
 
 	free_extent_map(em);
@@ -6872,9 +6863,6 @@ unlock:
 	return 0;
 
 unlock_err:
-	if (create)
-		unlock_bits |= EXTENT_DO_ACCOUNTING;
-
 	clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart, lockend,
 			 unlock_bits, 1, 0, &cached_state, GFP_NOFS);
 	return ret;
@@ -7470,7 +7458,7 @@ out:
 	if (relock)
 		mutex_lock(&inode->i_mutex);
 
-	return 0;
+	return ret;
 }
 
 #define BTRFS_FIEMAP_FLAGS	(FIEMAP_FLAG_SYNC)
