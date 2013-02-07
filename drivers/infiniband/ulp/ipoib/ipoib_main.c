@@ -1838,6 +1838,8 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 	if (ret) {
 		pr_warn("%s: failed to reinitialize port %d (ret = %d)\n",
 		       priv->ca->name, priv->port, ret);
+		INIT_IB_EVENT_HANDLER(&priv->event_handler,
+				      priv->ca, ipoib_event);
 		return ret;
 	}
 	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
