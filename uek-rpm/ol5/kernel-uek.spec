@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.12.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.13.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1689,6 +1689,35 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Feb 07 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.13.0.el5uek]
+- kmod: make __request_module() killable (Oleg Nesterov) [Orabug: 16286305]
+  {CVE-2012-4398}
+- kmod: introduce call_modprobe() helper (Oleg Nesterov) [Orabug: 16286305]
+  {CVE-2012-4398}
+- usermodehelper: implement UMH_KILLABLE (Oleg Nesterov) [Orabug: 16286305]
+  {CVE-2012-4398}
+- usermodehelper: introduce umh_complete(sub_info) (Oleg Nesterov) [Orabug:
+  16286305] {CVE-2012-4398}
+- KVM: x86: invalid opcode oops on SET_SREGS with OSXSAVE bit set
+  (CVE-2012-4461) (Jerry Snitselaar) [Orabug: 16286290] {CVE-2012-4461}
+- exec: do not leave bprm->interp on stack (Kees Cook) [Orabug: 16286267]
+  {CVE-2012-4530}
+- exec: use -ELOOP for max recursion depth (Kees Cook) [Orabug: 16286267]
+  {CVE-2012-4530}
+- xen-pciback: rate limit error messages from xen_pcibk_enable_msi{,x}() (Jan
+  Beulich) [Orabug: 16243736] {CVE-2013-0231}
+- netback: correct netbk_tx_err to handle wrap around. (Ian Campbell) [Orabug:
+  16243309] {CVE-2013-0216 CVE-2013-0217}
+- xen/netback: free already allocated memory on failure in
+  xen_netbk_get_requests (Ian Campbell) [Orabug: 16243309] {CVE-2013-0216
+  CVE-2013-0217}
+- xen/netback: don't leak pages on failure in xen_netbk_tx_check_gop. (Ian
+  Campbell) [Orabug: 16243309] {CVE-2013-0216 CVE-2013-0217}
+- xen/netback: shutdown the ring if it contains garbage. (Ian Campbell)
+  [Orabug: 16243309] {CVE-2013-0216 CVE-2013-0217}
+- SCSI: scsi_remove_target: fix softlockup regression on hot remove (Dan
+  Williams) [Orabug: 16242926]
+
 * Tue Jan 29 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.12.0.el5uek]
 - IB: Add config options for Mellanox driver Xen FMR support. (Ajaykumar
   Hotchandani) [Orabug: 16234102]
