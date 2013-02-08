@@ -4540,6 +4540,12 @@ static int btrfs_setsize(struct inode *inode, struct iattr *attr)
 
 		/* we don't support swapfiles, so vmtruncate shouldn't fail */
 		truncate_setsize(inode, newsize);
+
+		/* Disable nonlocked read DIO to avoid the end less truncate */
+		btrfs_inode_block_unlocked_dio(inode);
+		inode_dio_wait(inode);
+		btrfs_inode_resume_unlocked_dio(inode);
+
 		ret = btrfs_truncate(inode);
 		if (ret && inode->i_nlink)
 			btrfs_orphan_del(NULL, inode);
@@ -7470,14 +7476,11 @@ static ssize_t btrfs_direct_IO_bvec(int rw, struct kiocb *iocb,
 	if (rw & WRITE) {
 		if (ret < 0 && ret != -EIOCBQUEUED)
 			btrfs_delalloc_release_space(inode, count);
-		else if (ret > 0 && (size_t)ret < count) {
-			spin_lock(&BTRFS_I(inode)->lock);
-			BTRFS_I(inode)->outstanding_extents++;
-			spin_unlock(&BTRFS_I(inode)->lock);
+		else if (ret >= 0 && (size_t)ret < count)
 			btrfs_delalloc_release_space(inode,
 						     count - (size_t)ret);
-		}
-		btrfs_delalloc_release_metadata(inode, 0);
+		else
+			btrfs_delalloc_release_metadata(inode, 0);
 	}
 out:
 	if (wakeup)
