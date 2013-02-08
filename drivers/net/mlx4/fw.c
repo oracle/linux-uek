@@ -734,6 +734,9 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		 dev_cap->max_rq_desc_sz, dev_cap->max_rq_sg);
 	mlx4_dbg(dev, "Max GSO size: %d\n", dev_cap->max_gso_sz);
 
+	/* this CAP is currently not implemented in FW */
+	/* use hardcoded value 127 */
+	dev_cap->max_funix = 127;
 	dump_dev_cap_flags(dev, dev_cap->flags);
 
 out:

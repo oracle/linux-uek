@@ -291,6 +291,11 @@ static DEFINE_XENBUS_DRIVER(mlx4_xen_fmr_front, ,
  */
 static int __init xen_fmr_slave_init(void)
 {
+	if (!xen_domain()) {
+		printk(KERN_ERR "xen_fmr_slave: This driver requires XEN\n");
+		return -EPERM;
+	}
+
 	m_my_dom_id = 0;
 
 	m_running_on_dom_u = (!xen_initial_domain());
@@ -334,6 +339,9 @@ static int __init xen_fmr_slave_init(void)
 static void __exit xen_fmr_slave_exit(void)
 {
 	DPRINTK(KERN_INFO "xen_fmr_slave: Going down\n");
+
+	if (!xen_domain())
+		return;
 
 	/* Let backend know we are down */
 	if (m_running_on_dom_u)

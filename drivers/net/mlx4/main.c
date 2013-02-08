@@ -1184,12 +1184,13 @@ err:
 }
 
 static void mlx4_dom0_fmr_cap(struct mlx4_dev *dev,
-			      struct mlx4_init_hca_param *init_hca)
+			      struct mlx4_init_hca_param *init_hca,
+				  struct mlx4_dev_cap *dev_cap)
 {
 	int num_mpts, num_fmr_clients;
 
 	/* fmr clients are the VFs and the PF. Does not support multiple PFs */
-	num_fmr_clients = dev->sr_iov + 1;
+	num_fmr_clients = dev_cap->max_funix + 1;
 
 	/* should be retrieved using QUERY DEV CAP cmd */
 	dev->caps.fmr_num_mpts = rounddown_pow_of_two((dev->caps.num_mpts >> 1)
@@ -1274,7 +1275,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 
 		init_hca.log_uar_sz = ilog2(dev->caps.num_uars);
 
-		mlx4_dom0_fmr_cap(dev, &init_hca);
+		mlx4_dom0_fmr_cap(dev, &init_hca, &dev_cap);
 
 		err = mlx4_init_icm(dev, &dev_cap, &init_hca, icm_size);
 		if (err)
