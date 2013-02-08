@@ -7305,6 +7305,7 @@ static ssize_t check_direct_IO_bvec(struct btrfs_root *root, int rw,
 				    loff_t offset, unsigned long nr_segs)
 {
 	int seg;
+	int i;
 	size_t size;
 	unsigned long addr;
 	unsigned blocksize_mask = root->sectorsize - 1;
@@ -7347,15 +7348,62 @@ static ssize_t btrfs_direct_IO(int rw, struct kiocb *iocb,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
+	size_t count = 0;
+	int flags = 0;
+	bool wakeup = true;
+	bool relock = false;
+	ssize_t ret;
 
 	if (check_direct_IO(BTRFS_I(inode)->root, rw, iocb, iov,
 			    offset, nr_segs))
 		return 0;
 
-	return __blockdev_direct_IO(rw, iocb, inode,
-		   BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
-		   iov, offset, nr_segs, btrfs_get_blocks_direct, NULL,
-		   btrfs_submit_direct, 0);
+	down_read(&inode->i_alloc_sem);
+
+	if (rw & WRITE) {
+		count = iov_length(iov, nr_segs);
+		/*
+		 * If the write DIO is beyond the EOF, we need update
+		 * the isize, but it is protected by i_mutex. So we can
+		 * not unlock the i_mutex at this case.
+		 */
+		if (offset + count <= inode->i_size) {
+			mutex_unlock(&inode->i_mutex);
+			relock = true;
+		}
+		ret = btrfs_delalloc_reserve_space(inode, count);
+		if (ret)
+			goto out;
+	} else if (unlikely(test_bit(BTRFS_INODE_READDIO_NEED_LOCK,
+				     &BTRFS_I(inode)->runtime_flags))) {
+		up_read(&inode->i_alloc_sem);
+		flags = DIO_LOCKING | DIO_SKIP_HOLES;
+		wakeup = false;
+	}
+
+	ret = __blockdev_direct_IO(rw, iocb, inode,
+			BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
+			iov, offset, nr_segs, btrfs_get_blocks_direct, NULL,
+			btrfs_submit_direct, flags);
+	if (rw & WRITE) {
+		if (ret < 0 && ret != -EIOCBQUEUED)
+			btrfs_delalloc_release_space(inode, count);
+		else if (ret > 0 && (size_t)ret < count) {
+			spin_lock(&BTRFS_I(inode)->lock);
+			BTRFS_I(inode)->outstanding_extents++;
+			spin_unlock(&BTRFS_I(inode)->lock);
+			btrfs_delalloc_release_space(inode,
+						     count - (size_t)ret);
+		}
+		btrfs_delalloc_release_metadata(inode, 0);
+	}
+out:
+	if (wakeup)
+		up_read(&inode->i_alloc_sem);
+	if (relock)
+		mutex_lock(&inode->i_mutex);
+
+	return ret;
 }
 
 static ssize_t btrfs_direct_IO_bvec(int rw, struct kiocb *iocb,
@@ -7364,19 +7412,62 @@ static ssize_t btrfs_direct_IO_bvec(int rw, struct kiocb *iocb,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
-	ssize_t ret;
-	int writing = rw & WRITE;
-	int write_bits = 0;
 	size_t count = bvec_length(bvec, bvec_len);
+	int flags = 0;
+	bool wakeup = true;
+	bool relock = false;
+	ssize_t ret;
 
 	if (check_direct_IO_bvec(BTRFS_I(inode)->root, rw, iocb, bvec,
 				 offset, bvec_len))
 		return 0;
 
-	return __blockdev_direct_IO_bvec(rw, iocb, inode,
-		   BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
-		   bvec, offset, bvec_len, btrfs_get_blocks_direct, NULL,
-		   btrfs_submit_direct, 0);
+	down_read(&inode->i_alloc_sem);
+
+	if (rw & WRITE) {
+		count = bvec_length(bvec, bvec_len);
+		/*
+		 * If the write DIO is beyond the EOF, we need update
+		 * the isize, but it is protected by i_mutex. So we can
+		 * not unlock the i_mutex at this case.
+		 */
+		if (offset + count <= inode->i_size) {
+			mutex_unlock(&inode->i_mutex);
+			relock = true;
+		}
+		ret = btrfs_delalloc_reserve_space(inode, count);
+		if (ret)
+			goto out;
+	} else if (unlikely(test_bit(BTRFS_INODE_READDIO_NEED_LOCK,
+				     &BTRFS_I(inode)->runtime_flags))) {
+		up_read(&inode->i_alloc_sem);
+		flags = DIO_LOCKING | DIO_SKIP_HOLES;
+		wakeup = false;
+	}
+
+	ret = __blockdev_direct_IO_bvec(rw, iocb, inode,
+			BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
+			bvec, offset, bvec_len, btrfs_get_blocks_direct, NULL,
+			btrfs_submit_direct, flags);
+	if (rw & WRITE) {
+		if (ret < 0 && ret != -EIOCBQUEUED)
+			btrfs_delalloc_release_space(inode, count);
+		else if (ret > 0 && (size_t)ret < count) {
+			spin_lock(&BTRFS_I(inode)->lock);
+			BTRFS_I(inode)->outstanding_extents++;
+			spin_unlock(&BTRFS_I(inode)->lock);
+			btrfs_delalloc_release_space(inode,
+						     count - (size_t)ret);
+		}
+		btrfs_delalloc_release_metadata(inode, 0);
+	}
+out:
+	if (wakeup)
+		up_read(&inode->i_alloc_sem);
+	if (relock)
+		mutex_lock(&inode->i_mutex);
+
+	return 0;
 }
 
 #define BTRFS_FIEMAP_FLAGS	(FIEMAP_FLAG_SYNC)
