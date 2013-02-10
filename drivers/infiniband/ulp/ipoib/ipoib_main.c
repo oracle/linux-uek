@@ -1786,9 +1786,7 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	ASSERT_RTNL();
 
-
 	ipoib_ib_dev_cleanup(dev);
-
 
 	/* no more access to rings */
 	down_write(&priv->rings_rwsem);
