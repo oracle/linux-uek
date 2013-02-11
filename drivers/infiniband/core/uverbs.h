@@ -222,5 +222,6 @@ IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
 IB_UVERBS_DECLARE_CMD(attach_flow);
 IB_UVERBS_DECLARE_CMD(detach_flow);
+IB_UVERBS_DECLARE_CMD(create_qp_ex);
 
 #endif /* UVERBS_H */

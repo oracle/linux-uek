@@ -114,6 +114,7 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp,
 	[IB_USER_VERBS_CMD_ATTACH_FLOW]		= ib_uverbs_attach_flow,
 	[IB_USER_VERBS_CMD_DETACH_FLOW]		= ib_uverbs_detach_flow,
+	[IB_USER_VERBS_CMD_CREATE_QP_EX]        = ib_uverbs_create_qp_ex,
 };
 
 static void ib_uverbs_add_one(struct ib_device *device);
@@ -648,6 +649,8 @@ static const char *verbs_cmd_str(__u32 cmd)
 		return "ATTACH_FLOW";
 	case IB_USER_VERBS_CMD_DETACH_FLOW:
 		return "DETACH_FLOW";
+	case IB_USER_VERBS_CMD_CREATE_QP_EX:
+		return "CREATE_QP_EX";
 	}
 	return "Unknown command";
 }
