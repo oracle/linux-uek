@@ -91,6 +91,7 @@ enum {
 	IB_USER_VERBS_CMD_ATTACH_FLOW,
 	IB_USER_VERBS_CMD_DETACH_FLOW,
 	IB_USER_VERBS_CMD_CREATE_QP_EX  = IB_USER_VERBS_CMD_THRESHOLD,
+	IB_USER_VERBS_CMD_MODIFY_CQ_EX
 };
 
 /*
@@ -296,6 +297,15 @@ struct ib_uverbs_create_cq {
 struct ib_uverbs_create_cq_resp {
 	__u32 cq_handle;
 	__u32 cqe;
+};
+
+struct ib_uverbs_modify_cq_ex {
+	__u64 comp_mask;
+	__u32 cq_handle;
+	__u32 attr_mask;
+	__u16 cq_count;
+	__u16 cq_period;
+	__u32 cq_cap_flags;
 };
 
 struct ib_uverbs_resize_cq {

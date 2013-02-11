@@ -1202,6 +1202,33 @@ err:
 	return ret;
 }
 
+ssize_t ib_uverbs_modify_cq_ex(struct ib_uverbs_file *file,
+			       const char __user *buf, int in_len,
+			       int out_len)
+{
+	struct ib_uverbs_modify_cq_ex cmd;
+	struct ib_cq               *cq;
+	struct ib_cq_attr           attr;
+	int                         ret;
+
+	if (copy_from_user(&cmd, buf, sizeof(cmd)))
+		return -EFAULT;
+
+	cq = idr_read_cq(cmd.cq_handle, file->ucontext, 0);
+	if (!cq)
+		return -EINVAL;
+
+	attr.moderation.cq_count  = cmd.cq_count;
+	attr.moderation.cq_period = cmd.cq_period;
+	attr.cq_cap_flags         = cmd.cq_cap_flags;
+
+	ret = ib_modify_cq(cq, &attr, cmd.attr_mask);
+
+	put_cq_read(cq);
+
+	return ret ? ret : in_len;
+}
+
 ssize_t ib_uverbs_resize_cq(struct ib_uverbs_file *file,
 			    const char __user *buf, int in_len,
 			    int out_len)
