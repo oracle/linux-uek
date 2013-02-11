@@ -897,9 +897,8 @@ if [ -d linux-%{kversion}.%{_target_cpu} ]; then
   rm -rf deleteme.%{_target_cpu} &
 fi
 
-cp -rl vanilla-%{vanillaversion} linux-%{kversion}.%{_target_cpu}
-
-cd linux-%{kversion}.%{_target_cpu}
+cp -rl vanilla-%{vanillaversion} linux-%{kversion}-%{release}
+cd linux-%{kversion}-%{release}
 
 # released_kernel with possible stable updates
 %if 0%{?stable_base}
@@ -1160,9 +1159,9 @@ hwcap 0 nosegneg"
     cp -a acpi config generated crypto keys linux math-emu media uapi net pcmcia rdma rxrpc scsi sound trace video asm-generic drm xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
-    pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
+    cd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include 
     ln -s $asmdir asm
-    popd
+    cd -
     # Make sure the Makefile and version.h have a matching timestamp so that
     # external modules can be built
     touch -r $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/Makefile $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/generated/uapi/linux/version.h
@@ -1259,7 +1258,7 @@ hwcap 0 nosegneg"
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/boot
 
-cd linux-%{kversion}.%{_target_cpu}
+cd linux-%{version}-%{release}
 
 %if %{with_debug}
 %if %{with_up}
@@ -1342,8 +1341,8 @@ find Documentation -type d | xargs chmod u+w
 %global __debug_package 1
 %files debuginfo-common
 %defattr(-,root,root)
-/usr/src/debug/kernel-%{version}/linux-%{kversion}.%{_target_cpu}
 %dir /usr/src/debug
+/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}
 %dir %{debuginfodir}
 %dir %{debuginfodir}/%{image_install_path}
 %dir %{debuginfodir}/lib
@@ -1368,8 +1367,7 @@ find Documentation -type d | xargs chmod u+w
 ###
 
 %install
-
-cd linux-%{kversion}.%{_target_cpu}
+cd linux-%{version}-%{release}
 
 %if %{with_doc}
 docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel-doc-%{rpmversion}
@@ -1452,7 +1450,7 @@ then\
 fi\
 if [ "$HARDLINK" != "no" -a -x /usr/sbin/hardlink ]\
 then\
-    (cd /usr/src/kernels/%{KVERREL}%{?1:.%{1}} &&\
+    (cd /usr/src/kernels/linux-%{kversion}-%{release}%{?1:.%{1}} &&\
      /usr/bin/find . -type f | while read f; do\
        hardlink -c /usr/src/kernels/*.fc*.*/$f $f\
      done)\
