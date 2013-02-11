@@ -120,9 +120,14 @@ static int iser_create_device_ib_res(struct iser_device *device)
 			goto cq_err;
 
                 if (iser_cq_completions && iser_cq_timeout) {
-                        iser_err("applying CQ moderation - to be max {%d completions, %d us timeout} \n",
-                                iser_cq_completions, iser_cq_timeout);
-                        ret = ib_modify_cq(device->rx_cq[i], iser_cq_completions, iser_cq_timeout);
+			struct ib_cq_attr  attr;
+
+			attr.moderation.cq_count = iser_cq_completions;
+			attr.moderation.cq_period = iser_cq_timeout;
+
+			iser_err("applying CQ moderation - to be max {%d completions, %d us timeout}\n",
+				 iser_cq_completions, iser_cq_timeout);
+			ret = ib_modify_cq(device->rx_cq[i], &attr, IB_CQ_MODERATION);
                         if (ret == -ENOSYS)
                                 iser_err("device does not support CQ moderation\n");
                         else

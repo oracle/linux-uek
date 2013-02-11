@@ -989,6 +989,23 @@ struct ib_ah {
 	struct ib_uobject	*uobject;
 };
 
+enum ib_cq_attr_mask {
+	IB_CQ_MODERATION               = (1 << 0),
+	IB_CQ_CAP_FLAGS                = (1 << 1)
+};
+
+enum ib_cq_cap_flags {
+	IB_CQ_IGNORE_OVERRUN           = (1 << 0)
+};
+
+struct ib_cq_attr {
+	struct {
+		u16     cq_count;
+		u16     cq_period;
+	} moderation;
+	u32     cq_cap_flags;
+};
+
 typedef void (*ib_comp_handler)(struct ib_cq *cq, void *cq_context);
 
 struct ib_cq {
@@ -1250,8 +1267,9 @@ struct ib_device {
 						int comp_vector,
 						struct ib_ucontext *context,
 						struct ib_udata *udata);
-	int                        (*modify_cq)(struct ib_cq *cq, u16 cq_count,
-						u16 cq_period);
+	int                        (*modify_cq)(struct ib_cq *cq,
+						struct ib_cq_attr *cq_attr,
+						int cq_attr_mask);
 	int                        (*destroy_cq)(struct ib_cq *cq);
 	int                        (*resize_cq)(struct ib_cq *cq, int cqe,
 						struct ib_udata *udata);
@@ -1708,13 +1726,16 @@ struct ib_cq *ib_create_cq(struct ib_device *device,
 int ib_resize_cq(struct ib_cq *cq, int cqe);
 
 /**
- * ib_modify_cq - Modifies moderation params of the CQ
+ * ib_modify_cq - Modifies the attributes for the specified CQ and then
+ *   transitions the CQ to the given state.
  * @cq: The CQ to modify.
- * @cq_count: number of CQEs that will trigger an event
- * @cq_period: max period of time in usec before triggering an event
- *
+ * @cq_attr: specifies the CQ attributes to modify.
+ * @cq_attr_mask: A bit-mask used to specify which attributes of the CQ
+ *   are being modified.
  */
-int ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period);
+int ib_modify_cq(struct ib_cq *cq,
+		 struct ib_cq_attr *cq_attr,
+		 int cq_attr_mask);
 
 /**
  * ib_destroy_cq - Destroys the specified CQ.

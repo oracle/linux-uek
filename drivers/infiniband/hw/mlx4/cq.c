@@ -92,12 +92,25 @@ static struct mlx4_cqe *next_cqe_sw(struct mlx4_ib_cq *cq)
 	return get_sw_cqe(cq, cq->mcq.cons_index);
 }
 
-int mlx4_ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period)
+int mlx4_ib_modify_cq(struct ib_cq *cq,
+		      struct ib_cq_attr *cq_attr,
+		      int cq_attr_mask)
 {
+	int err = 0;
 	struct mlx4_ib_cq *mcq = to_mcq(cq);
 	struct mlx4_ib_dev *dev = to_mdev(cq->device);
 
-	return mlx4_cq_modify(dev->dev, &mcq->mcq, cq_count, cq_period);
+	if (cq_attr_mask & IB_CQ_CAP_FLAGS)
+		if (cq_attr->cq_cap_flags & IB_CQ_IGNORE_OVERRUN)
+			err = mlx4_cq_ignore_overrun(dev->dev, &mcq->mcq);
+
+	if (!err)
+		if (cq_attr_mask & IB_CQ_MODERATION)
+			err = mlx4_cq_modify(dev->dev, &mcq->mcq,
+					cq_attr->moderation.cq_count,
+					cq_attr->moderation.cq_period);
+
+	return err;
 }
 
 static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *buf, int nent)

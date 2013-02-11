@@ -92,9 +92,13 @@ static int ipoib_set_coalesce(struct net_device *dev,
 	       coal->rx_coalesce_usecs;
 
 	for (i = 0; i < priv->num_rx_queues; i++) {
+		struct ib_cq_attr  attr;
+
+		attr.moderation.cq_count = coal->rx_max_coalesced_frames;
+		attr.moderation.cq_period = coal->rx_coalesce_usecs;
 		ret = ib_modify_cq(priv->recv_ring[i].recv_cq,
-					coal->rx_max_coalesced_frames,
-					coal->rx_coalesce_usecs);
+					&attr,
+					IB_CQ_MODERATION);
 		if (ret && ret != -ENOSYS) {
 			ipoib_warn(priv, "failed modifying CQ (%d)\n", ret);
 			return ret;
@@ -129,11 +133,15 @@ static int ipoib_set_coalesce(struct net_device *dev,
 	if (MOVING_TO_OFF == moder_operation)
 		flush_workqueue(ipoib_auto_moder_workqueue);
 	else if (MOVING_TO_ON == moder_operation) {
+		struct ib_cq_attr  attr;
+
+		attr.moderation.cq_count = priv->ethtool.rx_max_coalesced_frames;
+		attr.moderation.cq_period = priv->ethtool.rx_coalesce_usecs;
 		/* move to initial values */
 		for (i = 0; i < priv->num_rx_queues; i++) {
 			ret = ib_modify_cq(priv->recv_ring[i].recv_cq,
-			priv->ethtool.rx_max_coalesced_frames,
-			priv->ethtool.rx_coalesce_usecs);
+						&attr,
+						IB_CQ_MODERATION);
 
 			if (ret && ret != -ENOSYS) {
 				ipoib_warn(priv, "failed modifying CQ (%d)"

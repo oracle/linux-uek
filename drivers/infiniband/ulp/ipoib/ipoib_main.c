@@ -1636,13 +1636,17 @@ static void ipoib_auto_moderation_ring(struct ipoib_recv_ring *rx_ring,
 	} else
 		moder_time = priv->ethtool.rx_coalesce_usecs_low;
 	if (moder_time != rx_ring->ethtool.last_moder_time) {
+		struct ib_cq_attr  attr;
+
+		attr.moderation.cq_count = priv->ethtool.rx_max_coalesced_frames;
+		attr.moderation.cq_period = moder_time;
 		ipoib_dbg(priv, "%s: Rx moder_time changed from:%d to %d\n",
 			__func__, rx_ring->ethtool.last_moder_time,
 				moder_time);
 		rx_ring->ethtool.last_moder_time = moder_time;
 		ret = ib_modify_cq(rx_ring->recv_cq,
-				   priv->ethtool.rx_max_coalesced_frames,
-				   moder_time);
+				   &attr,
+				   IB_CQ_MODERATION);
 
 		if (ret && ret != -ENOSYS)
 			ipoib_warn(priv, "%s: failed modifying CQ (%d)\n",
