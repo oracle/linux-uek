@@ -164,6 +164,8 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 		props->device_cap_flags |= IB_DEVICE_MEM_MGT_EXTENSIONS;
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC)
 		props->device_cap_flags |= IB_DEVICE_XRC;
+	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_CROSS_CHANNEL)
+		props->device_cap_flags |= IB_DEVICE_CROSS_CHANNEL;
 
 	props->device_cap_flags |= IB_DEVICE_QPG;
 	if (dev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) {
@@ -1989,6 +1991,10 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.attach_flow	= mlx4_ib_flow_attach;
 	ibdev->ib_dev.detach_flow	= mlx4_ib_flow_detach;
 	ibdev->ib_dev.process_mad	= mlx4_ib_process_mad;
+
+	ibdev->ib_dev.uverbs_cmd_mask	|=
+		(1ull << IB_USER_VERBS_CMD_CREATE_QP_EX)        |
+		(1ull << IB_USER_VERBS_CMD_MODIFY_CQ_EX);
 
 	if (!mlx4_is_slave(ibdev->dev)) {
 		ibdev->ib_dev.alloc_fmr		= mlx4_ib_fmr_alloc;

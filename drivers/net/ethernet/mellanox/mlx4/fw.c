@@ -108,6 +108,7 @@ static void dump_dev_cap_flags(struct mlx4_dev *dev, u64 flags)
 		[40] = "UDP RSS support",
 		[41] = "Unicast VEP steering support",
 		[42] = "Multicast VEP steering support",
+		[44] = "Cross-channel (sync_qp) operations support",
 		[48] = "Counters support",
 		[59] = "Port management change event support",
 		[60] = "eSwitch support",

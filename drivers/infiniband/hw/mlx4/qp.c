@@ -951,6 +951,15 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 			goto err;
 		}
 
+		if (init_attr->create_flags & IB_QP_CREATE_CROSS_CHANNEL)
+			qp->flags |= MLX4_IB_QP_CAP_CROSS_CHANNEL;
+
+		if (init_attr->create_flags & IB_QP_CREATE_MANAGED_SEND)
+			qp->flags |= MLX4_IB_QP_CAP_MANAGED_SEND;
+
+		if (init_attr->create_flags & IB_QP_CREATE_MANAGED_RECV)
+			qp->flags |= MLX4_IB_QP_CAP_MANAGED_RECV;
+
 		qp->sq_no_prefetch = ucmd.sq_no_prefetch;
 
 		err = set_user_sq_size(dev, qp, &ucmd);
@@ -1347,6 +1356,15 @@ static enum mlx4_ib_qp_flags to_mlx4_ib_qp_flags(enum ib_qp_create_flags ib_qp_f
 	if (ib_qp_flags & IB_QP_CREATE_NETIF_QP)
 		mlx4_ib_qp_flags |= MLX4_IB_QP_NETIF;
 
+	if (ib_qp_flags & IB_QP_CREATE_CROSS_CHANNEL)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_CAP_CROSS_CHANNEL;
+
+	if (ib_qp_flags & IB_QP_CREATE_MANAGED_SEND)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_CAP_MANAGED_SEND;
+
+	if (ib_qp_flags & IB_QP_CREATE_MANAGED_RECV)
+		mlx4_ib_qp_flags |= MLX4_IB_QP_CAP_MANAGED_RECV;
+
 	/* reserved flags */
 	mlx4_ib_qp_flags |= (ib_qp_flags & RESERVED_FLAGS_MASK);
 
@@ -1370,6 +1388,9 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	 * and only for kernel UD QPs.
 	 */
 	if (mlx4_qp_flags & ~(MLX4_IB_QP_LSO |
+					MLX4_IB_QP_CAP_CROSS_CHANNEL |
+					MLX4_IB_QP_CAP_MANAGED_SEND |
+					MLX4_IB_QP_CAP_MANAGED_RECV |
 					MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK |
 					MLX4_IB_SRIOV_TUNNEL_QP | MLX4_IB_SRIOV_SQP |
 					MLX4_IB_QP_NETIF))
@@ -1380,7 +1401,21 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		       return ERR_PTR(-EINVAL);
 	}
 
-	if (init_attr->create_flags &&
+	if ((mlx4_qp_flags &
+		(MLX4_IB_QP_CAP_CROSS_CHANNEL |
+		 MLX4_IB_QP_CAP_MANAGED_SEND |
+		 MLX4_IB_QP_CAP_MANAGED_RECV)) &&
+	     !(to_mdev(device)->dev->caps.flags &
+		MLX4_DEV_CAP_FLAG_CROSS_CHANNEL)) {
+		pr_debug("%s Does not support cross-channel operations\n",
+			 to_mdev(device)->ib_dev.name);
+		return ERR_PTR(-EINVAL);
+	}
+
+	if ((init_attr->create_flags &
+		~(IB_QP_CREATE_CROSS_CHANNEL |
+		  IB_QP_CREATE_MANAGED_SEND |
+		  IB_QP_CREATE_MANAGED_RECV)) &&
 	    (udata ||
 	     ((mlx4_qp_flags & ~MLX4_IB_SRIOV_SQP) &&
 	      init_attr->qp_type != IB_QPT_UD) ||
@@ -1914,6 +1949,15 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 
 	if (attr_mask & IB_M_EXT_CLASS_3)
 		context->params2 |= cpu_to_be32(MLX4_QP_BIT_COLL_SYNC_RQ);
+
+	if (cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT) {
+		context->params2 |= (qp->flags & MLX4_IB_QP_CAP_CROSS_CHANNEL ?
+			cpu_to_be32(MLX4_QP_BIT_COLL_MASTER) : 0);
+		context->params2 |= (qp->flags & MLX4_IB_QP_CAP_MANAGED_SEND ?
+			cpu_to_be32(MLX4_QP_BIT_COLL_MASTER | MLX4_QP_BIT_COLL_SYNC_SQ) : 0);
+		context->params2 |= (qp->flags & MLX4_IB_QP_CAP_MANAGED_RECV ?
+			cpu_to_be32(MLX4_QP_BIT_COLL_MASTER | MLX4_QP_BIT_COLL_SYNC_RQ) : 0);
+	}
 
 	if (ibqp->srq)
 		context->params2 |= cpu_to_be32(MLX4_QP_BIT_RIC);
@@ -3545,6 +3589,15 @@ done:
 	qp_init_attr->sq_sig_type =
 		qp->sq_signal_bits == cpu_to_be32(MLX4_WQE_CTRL_CQ_UPDATE) ?
 		IB_SIGNAL_ALL_WR : IB_SIGNAL_REQ_WR;
+
+	if (qp->flags & MLX4_IB_QP_CAP_CROSS_CHANNEL)
+		qp_init_attr->create_flags |= IB_QP_CREATE_CROSS_CHANNEL;
+
+	if (qp->flags & MLX4_IB_QP_CAP_MANAGED_SEND)
+		qp_init_attr->create_flags |= IB_QP_CREATE_MANAGED_SEND;
+
+	if (qp->flags & MLX4_IB_QP_CAP_MANAGED_RECV)
+		qp_init_attr->create_flags |= IB_QP_CREATE_MANAGED_RECV;
 
 	qp_init_attr->qpg_type = ibqp->qpg_type;
 	if (ibqp->qpg_type == IB_QPG_PARENT)
