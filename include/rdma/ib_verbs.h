@@ -119,7 +119,8 @@ enum ib_device_cap_flags {
 	IB_DEVICE_SHARED_MR             = (1<<24),
 	IB_DEVICE_QPG			= (1<<25),
 	IB_DEVICE_UD_RSS		= (1<<26),
-	IB_DEVICE_UD_TSS		= (1<<27)
+	IB_DEVICE_UD_TSS		= (1<<27),
+	IB_DEVICE_CROSS_CHANNEL		= (1<<28)
 };
 
 enum ib_atomic_cap {
@@ -622,7 +623,10 @@ enum ib_qp_type {
 enum ib_qp_create_flags {
 	IB_QP_CREATE_IPOIB_UD_LSO		= 1 << 0,
 	IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK	= 1 << 1,
-	IB_QP_CREATE_NETIF_QP			= 1 << 2,
+	IB_QP_CREATE_CROSS_CHANNEL		= 1 << 2,
+	IB_QP_CREATE_MANAGED_SEND		= 1 << 3,
+	IB_QP_CREATE_MANAGED_RECV		= 1 << 4,
+	IB_QP_CREATE_NETIF_QP			= 1 << 5,
 	/* reserve bits 26-31 for low level drivers' internal use */
 	IB_QP_CREATE_RESERVED_START		= 1 << 26,
 	IB_QP_CREATE_RESERVED_END		= 1 << 31,
