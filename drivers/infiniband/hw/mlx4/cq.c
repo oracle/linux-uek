@@ -101,8 +101,12 @@ int mlx4_ib_modify_cq(struct ib_cq *cq,
 	struct mlx4_ib_dev *dev = to_mdev(cq->device);
 
 	if (cq_attr_mask & IB_CQ_CAP_FLAGS)
-		if (cq_attr->cq_cap_flags & IB_CQ_IGNORE_OVERRUN)
-			err = mlx4_cq_ignore_overrun(dev->dev, &mcq->mcq);
+		if (cq_attr->cq_cap_flags & IB_CQ_IGNORE_OVERRUN) {
+			if (dev->dev->caps.cq_flags & MLX4_DEV_CAP_CQ_FLAG_IO)
+				err = mlx4_cq_ignore_overrun(dev->dev, &mcq->mcq);
+			else
+				err = -ENOSYS;
+		}
 
 	if (!err)
 		if (cq_attr_mask & IB_CQ_MODERATION)

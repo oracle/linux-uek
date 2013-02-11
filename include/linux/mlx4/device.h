@@ -187,6 +187,10 @@ enum {
 };
 
 enum {
+	MLX4_DEV_CAP_CQ_FLAG_IO			= 1 <<  0
+};
+
+enum {
 	MLX4_DEV_CAP_64B_EQE_ENABLED	= 1LL << 0,
 	MLX4_DEV_CAP_64B_CQE_ENABLED	= 1LL << 1
 };
@@ -473,6 +477,7 @@ struct mlx4_caps {
 	u8			port_ib_mtu[MLX4_MAX_PORTS + 1];
 	u16			sqp_demux;
 	u32			sync_qp;
+	u32			cq_flags;
 	u32			eqe_size;
 	u32			cqe_size;
 	u8			eqe_factor;

@@ -782,6 +782,9 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		dev->caps.reserved_qps_cnt[MLX4_QP_REGION_FC_EXCH];
 
 	dev->caps.sync_qp = dev_cap->sync_qp;
+	if (dev->pdev->device == 0x1003)
+		dev->caps.cq_flags |= MLX4_DEV_CAP_CQ_FLAG_IO;
+
 	dev->caps.sqp_demux = (mlx4_is_master(dev)) ? MLX4_MAX_NUM_SLAVES : 0;
 
 	if (!mlx4_enable_64b_cqe_eqe) {
