@@ -575,33 +575,36 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
 	int qpn = priv->base_qpn;
-	u64 mac = priv->mac;
 
-	en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
-	       (unsigned long long) mac);
-	mlx4_unregister_mac(dev, priv->port, mac);
-
-	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_A0) {
+		en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
+		       (unsigned long long) priv->mac);
+		mlx4_unregister_mac(dev, priv->port, priv->mac);
+	} else {
 		struct mlx4_mac_entry *entry;
 		struct hlist_node *n, *tmp;
 		struct hlist_head *bucket;
+		unsigned int i;
 
-		bucket = &priv->mac_hash[mlx4_en_get_mac_hash(mac)];
-		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
-			if (entry->mac == mac) {
-				en_dbg(DRV, priv, "Releasing qp: port %d, mac 0x%llx, qpn %d\n",
-				       priv->port, (unsigned long long) mac,
-				       qpn);
+		for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i) {
+			bucket = &priv->mac_hash[i];
+			hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
+				en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
+				       (unsigned long long)entry->mac);
 				mlx4_en_uc_steer_release(priv, entry->mac,
 							 qpn, entry->reg_id);
-				mlx4_qp_release_range(dev, qpn, 1);
 
+				mlx4_unregister_mac(dev, priv->port,
+						    entry->mac);
 				hlist_del_rcu(&entry->hlist);
 				synchronize_rcu();
 				kfree(entry);
-				break;
 			}
 		}
+
+		en_dbg(DRV, priv, "Releasing qp: port %d, qpn %d\n",
+		       priv->port, qpn);
+		mlx4_qp_release_range(dev, qpn, 1);
 	}
 }
 
