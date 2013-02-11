@@ -644,29 +644,10 @@ static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac,
 	return __mlx4_replace_mac(dev, priv->port, qpn, new_mac);
 }
 
-static int mlx4_en_set_mac(struct net_device *dev, void *addr)
+static int mlx4_en_do_set_mac(struct mlx4_en_priv *priv)
 {
-	struct mlx4_en_priv *priv = netdev_priv(dev);
-	struct mlx4_en_dev *mdev = priv->mdev;
-	struct sockaddr *saddr = addr;
-
-	if (!is_valid_ether_addr(saddr->sa_data))
-		return -EADDRNOTAVAIL;
-
-	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
-	priv->mac = mlx4_mac_to_u64(dev->dev_addr);
-	queue_work(mdev->workqueue, &priv->mac_task);
-	return 0;
-}
-
-static void mlx4_en_do_set_mac(struct work_struct *work)
-{
-	struct mlx4_en_priv *priv = container_of(work, struct mlx4_en_priv,
-						 mac_task);
-	struct mlx4_en_dev *mdev = priv->mdev;
 	int err = 0;
 
-	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {
 		/* Remove old MAC and insert the new one */
 		err = mlx4_replace_mac(priv, priv->base_qpn, priv->mac,
@@ -677,7 +658,27 @@ static void mlx4_en_do_set_mac(struct work_struct *work)
 	} else
 		en_dbg(HW, priv, "Port is down while registering mac, exiting...\n");
 
+	return err;
+}
+
+static int mlx4_en_set_mac(struct net_device *dev, void *addr)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
+	struct sockaddr *saddr = addr;
+	int err;
+
+	if (!is_valid_ether_addr(saddr->sa_data))
+		return -EADDRNOTAVAIL;
+
+	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
+	priv->mac = mlx4_mac_to_u64(dev->dev_addr);
+
+	mutex_lock(&mdev->state_lock);
+	err = mlx4_en_do_set_mac(priv);
 	mutex_unlock(&mdev->state_lock);
+
+	return err;
 }
 
 static void mlx4_en_clear_list(struct net_device *dev)
@@ -1317,7 +1318,7 @@ static void mlx4_en_do_get_stats(struct work_struct *work)
 		queue_delayed_work(mdev->workqueue, &priv->stats_task, STATS_DELAY);
 	}
 	if (mdev->mac_removed[MLX4_MAX_PORTS + 1 - priv->port]) {
-		queue_work(mdev->workqueue, &priv->mac_task);
+		mlx4_en_do_set_mac(priv);
 		mdev->mac_removed[MLX4_MAX_PORTS + 1 - priv->port] = 0;
 	}
 	mutex_unlock(&mdev->state_lock);
@@ -2166,7 +2167,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->counter_index = 0xff;
 	spin_lock_init(&priv->stats_lock);
 	INIT_WORK(&priv->rx_mode_task, mlx4_en_do_set_rx_mode);
-	INIT_WORK(&priv->mac_task, mlx4_en_do_set_mac);
 	INIT_WORK(&priv->watchdog_task, mlx4_en_restart);
 	INIT_WORK(&priv->linkstate_task, mlx4_en_linkstate);
 	INIT_DELAYED_WORK(&priv->stats_task, mlx4_en_do_get_stats);
