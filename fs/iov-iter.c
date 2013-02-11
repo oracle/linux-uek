@@ -19,7 +19,7 @@ static size_t __iovec_copy_to_user(char *vaddr, const struct iovec *iov,
 		if (atomic)
 			left = __copy_to_user_inatomic(buf, vaddr, copy);
 		else
-			left = copy_to_user(buf, vaddr, copy);
+			left = __copy_to_user(buf, vaddr, copy);
 		copied += copy;
 		bytes -= copy;
 		vaddr += copy;
@@ -65,7 +65,7 @@ EXPORT_SYMBOL(iov_iter_copy_to_user_atomic);
  * The difference is that it attempts to resolve faults.
  * Page must not be locked.
  */
-size_t iov_iter_copy_to_user(struct page *page,
+size_t __iov_iter_copy_to_user(struct page *page,
 		struct iov_iter *i, unsigned long offset, size_t bytes)
 {
 	char *kaddr;
@@ -83,6 +83,16 @@ size_t iov_iter_copy_to_user(struct page *page,
 	}
 	kunmap(page);
 	return copied;
+}
+EXPORT_SYMBOL(__iov_iter_copy_to_user);
+
+size_t iov_iter_copy_to_user(struct page *page,
+		struct iov_iter *i, unsigned long offset, size_t bytes)
+{
+	might_sleep();
+	if (generic_segment_checks(i->iov, &i->nr_segs, &bytes, VERIFY_WRITE))
+		return 0;
+	return __iov_iter_copy_to_user(page, i, offset, bytes);
 }
 EXPORT_SYMBOL(iov_iter_copy_to_user);
 
