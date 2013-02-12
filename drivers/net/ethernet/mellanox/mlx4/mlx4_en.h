@@ -452,7 +452,20 @@ struct ethtool_flow_id {
 	u64 id;
 };
 
+enum {
+	MLX4_EN_FLAG_PROMISC		= (1 << 0),
+	MLX4_EN_FLAG_MC_PROMISC		= (1 << 1),
+	/* whether we need to enable hardware loopback by putting dmac
+	 * in Tx WQE
+	 */
+	MLX4_EN_FLAG_ENABLE_HW_LOOPBACK	= (1 << 2),
+	/* whether we need to drop packets that hardware loopback-ed */
+	MLX4_EN_FLAG_RX_FILTER_NEEDED	= (1 << 3),
+	MLX4_EN_FLAG_FORCE_PROMISC	= (1 << 4)
+};
+
 #define MLX4_EN_MAC_HASH_SIZE (1 << BITS_PER_BYTE)
+#define MLX4_EN_MAC_HASH_IDX 5
 
 struct mlx4_en_priv {
 	struct mlx4_en_dev *mdev;
@@ -494,8 +507,7 @@ struct mlx4_en_priv {
 	int registered;
 	int allocated;
 	int stride;
-	u64 mac;
-	u64 old_mac;
+	unsigned char prev_mac[ETH_ALEN + 2];
 	int mac_index;
 	unsigned max_mtu;
 	int base_qpn;
@@ -504,16 +516,6 @@ struct mlx4_en_priv {
 	struct mlx4_en_rss_map rss_map;
 	__be32 ctrl_flags;
 	u32 flags;
-#define MLX4_EN_FLAG_PROMISC		0x1
-#define MLX4_EN_FLAG_MC_PROMISC		0x2
-	/* flag for whether we need to enable hardware loopback by putting dmac in Tx WQE
-	 * see mlx4_en_update_loopback_state for when we enable this
-	 */
-#define MLX4_EN_FLAG_ENABLE_HW_LOOPBACK	0x4
-	/* flag for whether we need to drop packets that hardware loopback-ed
-	 * see mlx4_en_update_loopback_state for when we enable this
-	 */
-#define MLX4_EN_FLAG_RX_FILTER_NEEDED	0x8
 	u32 tx_ring_num;
 	u32 rx_ring_num;
 	u32 rx_skb_size;
@@ -573,8 +575,9 @@ enum mlx4_en_wol {
 
 struct mlx4_mac_entry {
 	struct hlist_node hlist;
-	u64 mac;
+	unsigned char mac[ETH_ALEN + 2];
 	u64 reg_id;
+	struct rcu_head rcu;
 };
 
 #define MLX4_EN_WOL_DO_MODIFY (1ULL << 63)

@@ -650,14 +650,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 			struct mlx4_mac_entry *entry;
 			struct hlist_node *n;
 			struct hlist_head *bucket;
-			u64 s_mac;
+			unsigned int mac_hash;
 
-			s_mac = mlx4_mac_to_u64(ethh->h_source);
 			/* Drop the packet, since HW loopback-ed it */
-			bucket = &priv->mac_hash[ethh->h_source[MLX4_EN_MAC_HASH_IDX]];
+			mac_hash = ethh->h_source[MLX4_EN_MAC_HASH_IDX];
+			bucket = &priv->mac_hash[mac_hash];
 			rcu_read_lock();
 			hlist_for_each_entry_rcu(entry, n, bucket, hlist) {
-				if (entry->mac == s_mac) {
+				if (ether_addr_equal_64bits(entry->mac,
+							    ethh->h_source)) {
 					rcu_read_unlock();
 					goto next;
 				}

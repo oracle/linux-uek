@@ -133,17 +133,14 @@ static void mlx4_en_filter_work(struct work_struct *work)
 		.priority = MLX4_DOMAIN_RFS,
 	};
 	int rc;
-	__be64 mac;
 	__be64 mac_mask = cpu_to_be64(MLX4_MAC_MASK << 16);
 
 	list_add_tail(&spec_eth.list, &rule.list);
 	list_add_tail(&spec_ip.list, &rule.list);
 	list_add_tail(&spec_tcp.list, &rule.list);
 
-	mac = cpu_to_be64((priv->mac & MLX4_MAC_MASK) << 16);
-
 	rule.qpn = priv->rss_map.qps[filter->rxq_index].qpn;
-	memcpy(spec_eth.eth.dst_mac, &mac, ETH_ALEN);
+	memcpy(spec_eth.eth.dst_mac, priv->dev->dev_addr, ETH_ALEN);
 	memcpy(spec_eth.eth.dst_mac_msk, &mac_mask, ETH_ALEN);
 
 	filter->activated = 0;
@@ -410,16 +407,22 @@ static int mlx4_en_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
 	return 0;
 }
 
+static void mlx4_en_u64_to_mac(unsigned char dst_mac[ETH_ALEN + 2], u64 src_mac)
+{
+	unsigned int i;
+	for (i = ETH_ALEN - 1; i; --i) {
+		dst_mac[i] = src_mac & 0xff;
+		src_mac >>= 8;
+	}
+	memset(&dst_mac[ETH_ALEN], 0, 2);
+}
+
 static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
-				u64 mac, int *qpn, u64 *reg_id)
+				unsigned char *mac, int *qpn, u64 *reg_id)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
-	__be64 be_mac;
 	int err;
-
-	mac &= MLX4_MAC_MASK;
-	be_mac = cpu_to_be64(mac << 16);
 
 	switch (dev->caps.steering_mode) {
 	case MLX4_STEERING_MODE_B0: {
@@ -427,7 +430,7 @@ static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
 		u8 gid[16] = {0};
 
 		qp.qpn = *qpn;
-		memcpy(&gid[10], &be_mac, ETH_ALEN);
+		memcpy(&gid[10], mac, ETH_ALEN);
 		gid[5] = priv->port;
 
 		err = mlx4_unicast_attach(dev, &qp, gid, 0, MLX4_PROT_ETH);
@@ -450,7 +453,7 @@ static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
 		INIT_LIST_HEAD(&rule.list);
 
 		spec_eth.id = MLX4_NET_TRANS_RULE_ID_ETH;
-		memcpy(spec_eth.eth.dst_mac, &be_mac, ETH_ALEN);
+		memcpy(spec_eth.eth.dst_mac, mac, ETH_ALEN);
 		memcpy(spec_eth.eth.dst_mac_msk, &mac_mask, ETH_ALEN);
 		list_add_tail(&spec_eth.list, &rule.list);
 
@@ -467,7 +470,7 @@ static int mlx4_en_uc_steer_add(struct mlx4_en_priv *priv,
 }
 
 static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
-				     u64 mac, int qpn, u64 reg_id)
+				     unsigned char *mac, int qpn, u64 reg_id)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
@@ -476,12 +479,9 @@ static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
 	case MLX4_STEERING_MODE_B0: {
 		struct mlx4_qp qp;
 		u8 gid[16] = {0};
-		__be64 be_mac;
 
 		qp.qpn = qpn;
-		mac &= MLX4_MAC_MASK;
-		be_mac = cpu_to_be64(mac << 16);
-		memcpy(&gid[10], &be_mac, ETH_ALEN);
+		memcpy(&gid[10], mac, ETH_ALEN);
 		gid[5] = priv->port;
 
 		mlx4_unicast_detach(dev, &qp, gid, MLX4_PROT_ETH);
@@ -496,18 +496,6 @@ static void mlx4_en_uc_steer_release(struct mlx4_en_priv *priv,
 	}
 }
 
-static u8 mlx4_en_get_mac_hash(u64 mac)
-{
-	u8 tmp[ETH_ALEN];
-	unsigned int i;
-
-	for (i = ETH_ALEN - 1; i; --i) {
-		tmp[i] = mac & 0xff;
-		mac >>= 8;
-	}
-	return tmp[MLX4_EN_MAC_HASH_IDX];
-}
-
 static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
@@ -517,15 +505,15 @@ static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 	int err = 0;
 	u64 reg_id;
 	int *qpn = &priv->base_qpn;
-	u64 mac = priv->mac;
+	u64 mac = mlx4_mac_to_u64(priv->dev->dev_addr);
 
-	en_dbg(DRV, priv, "Registering MAC: 0x%llx for adding\n",
-	       (unsigned long long) mac);
+	en_dbg(DRV, priv, "Registering MAC: %pM for adding\n",
+	       priv->dev->dev_addr);
 	index = mlx4_register_mac(dev, priv->port, mac);
 	if (index < 0) {
 		err = index;
-		en_err(priv, "Failed adding MAC: 0x%llx\n",
-		       (unsigned long long) mac);
+		en_err(priv, "Failed adding MAC: %pM\n",
+		       priv->dev->dev_addr);
 		return err;
 	}
 
@@ -542,7 +530,7 @@ static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 		goto qp_err;
 	}
 
-	err = mlx4_en_uc_steer_add(priv, mac, qpn, &reg_id);
+	err = mlx4_en_uc_steer_add(priv, priv->dev->dev_addr, qpn, &reg_id);
 	if (err)
 		goto steer_err;
 
@@ -551,16 +539,16 @@ static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 		err = -ENOMEM;
 		goto alloc_err;
 	}
-	entry->mac = mac;
+	memcpy(entry->mac, priv->dev->dev_addr, sizeof(entry->mac));
 	entry->reg_id = reg_id;
 
 	hlist_add_head_rcu(&entry->hlist,
-			   &priv->mac_hash[mlx4_en_get_mac_hash(mac)]);
+			   &priv->mac_hash[entry->mac[MLX4_EN_MAC_HASH_IDX]]);
 
 	return 0;
 
 alloc_err:
-	mlx4_en_uc_steer_release(priv, mac, *qpn, reg_id);
+	mlx4_en_uc_steer_release(priv, priv->dev->dev_addr, *qpn, reg_id);
 
 steer_err:
 	mlx4_qp_release_range(dev, *qpn, 1);
@@ -575,11 +563,13 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
 	int qpn = priv->base_qpn;
+	u64 mac;
 
 	if (dev->caps.steering_mode == MLX4_STEERING_MODE_A0) {
-		en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
-		       (unsigned long long) priv->mac);
-		mlx4_unregister_mac(dev, priv->port, priv->mac);
+		mac = mlx4_mac_to_u64(priv->dev->dev_addr);
+		en_dbg(DRV, priv, "Registering MAC: %pM for deleting\n",
+		       priv->dev->dev_addr);
+		mlx4_unregister_mac(dev, priv->port, mac);
 	} else {
 		struct mlx4_mac_entry *entry;
 		struct hlist_node *n, *tmp;
@@ -589,53 +579,57 @@ static void mlx4_en_put_qp(struct mlx4_en_priv *priv)
 		for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i) {
 			bucket = &priv->mac_hash[i];
 			hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
-				en_dbg(DRV, priv, "Registering MAC: 0x%llx for deleting\n",
-				       (unsigned long long)entry->mac);
+				mac = mlx4_mac_to_u64(entry->mac);
+				en_dbg(DRV, priv, "Registering MAC: %pM for deleting\n",
+				       entry->mac);
 				mlx4_en_uc_steer_release(priv, entry->mac,
 							 qpn, entry->reg_id);
 
-				mlx4_unregister_mac(dev, priv->port,
-						    entry->mac);
+				mlx4_unregister_mac(dev, priv->port, mac);
 				hlist_del_rcu(&entry->hlist);
-				synchronize_rcu();
-				kfree(entry);
+				kfree_rcu(entry, rcu);
 			}
 		}
 
 		en_dbg(DRV, priv, "Releasing qp: port %d, qpn %d\n",
 		       priv->port, qpn);
 		mlx4_qp_release_range(dev, qpn, 1);
+		priv->flags &= ~MLX4_EN_FLAG_FORCE_PROMISC;
 	}
 }
 
-static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac,
-			    u64 old_mac)
+static int mlx4_en_replace_mac(struct mlx4_en_priv *priv, int qpn,
+			       unsigned char *new_mac, unsigned char *prev_mac)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	struct mlx4_dev *dev = mdev->dev;
-	struct mlx4_mac_entry *entry;
-	struct hlist_node *n, *tmp;
 	int err = 0;
+	u64 new_mac_u64 = mlx4_mac_to_u64(new_mac);
 
 	if (dev->caps.steering_mode != MLX4_STEERING_MODE_A0) {
 		struct hlist_head *bucket;
+		unsigned int mac_hash;
+		struct mlx4_mac_entry *entry;
+		struct hlist_node *n, *tmp;
+		u64 prev_mac_u64 = mlx4_mac_to_u64(prev_mac);
 
-		bucket = &priv->mac_hash[mlx4_en_get_mac_hash(old_mac)];
+		bucket = &priv->mac_hash[prev_mac[MLX4_EN_MAC_HASH_IDX]];
 		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
-			if (entry->mac == old_mac) {
+			if (ether_addr_equal_64bits(entry->mac, prev_mac)) {
 				mlx4_en_uc_steer_release(priv, entry->mac,
 							 qpn, entry->reg_id);
 				mlx4_unregister_mac(dev, priv->port,
-						    entry->mac);
+						    prev_mac_u64);
 				hlist_del_rcu(&entry->hlist);
 				synchronize_rcu();
-				entry->mac = new_mac;
+				memcpy(entry->mac, new_mac, ETH_ALEN);
 				entry->reg_id = 0;
+				mac_hash = new_mac[MLX4_EN_MAC_HASH_IDX];
 				hlist_add_head_rcu(&entry->hlist,
-						   &priv->mac_hash[mlx4_en_get_mac_hash(new_mac)]);
+						   &priv->mac_hash[mac_hash]);
 				synchronize_rcu();
-				mlx4_register_mac(dev, priv->port, new_mac);
-				err = mlx4_en_uc_steer_add(priv, entry->mac,
+				mlx4_register_mac(dev, priv->port, new_mac_u64);
+				err = mlx4_en_uc_steer_add(priv, new_mac,
 							   &qpn,
 							   &entry->reg_id);
 				return err;
@@ -644,7 +638,7 @@ static int mlx4_replace_mac(struct mlx4_en_priv *priv, int qpn, u64 new_mac,
 		return -EINVAL;
 	}
 
-	return __mlx4_replace_mac(dev, priv->port, qpn, new_mac);
+	return __mlx4_replace_mac(dev, priv->port, qpn, new_mac_u64);
 }
 
 static int mlx4_en_do_set_mac(struct mlx4_en_priv *priv)
@@ -653,11 +647,12 @@ static int mlx4_en_do_set_mac(struct mlx4_en_priv *priv)
 
 	if (priv->port_up) {
 		/* Remove old MAC and insert the new one */
-		err = mlx4_replace_mac(priv, priv->base_qpn, priv->mac,
-				       priv->old_mac);
+		err = mlx4_en_replace_mac(priv, priv->base_qpn,
+					  priv->dev->dev_addr, priv->prev_mac);
 		if (err)
 			en_err(priv, "Failed changing HW MAC address\n");
-		priv->old_mac = priv->mac;
+		memcpy(priv->prev_mac, priv->dev->dev_addr,
+		       sizeof(priv->prev_mac));
 	} else
 		en_dbg(HW, priv, "Port is down while registering mac, exiting...\n");
 
@@ -675,7 +670,6 @@ static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 		return -EADDRNOTAVAIL;
 
 	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
-	priv->mac = mlx4_mac_to_u64(dev->dev_addr);
 
 	mutex_lock(&mdev->state_lock);
 	err = mlx4_en_do_set_mac(priv);
@@ -1015,19 +1009,61 @@ static void mlx4_en_do_uc_filter(struct mlx4_en_priv *priv,
 	int err = 0;
 	struct hlist_head *bucket;
 	unsigned int i;
+	int removed = 0;
+	u32 prev_flags;
 
 	/* Note that we do not need to protect our mac_hash traversal with rcu,
 	 * since all modification code is protected by mdev->state_lock
 	 */
 
+	/* find what to remove */
+	for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i) {
+		bucket = &priv->mac_hash[i];
+		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
+			found = false;
+			netdev_for_each_uc_addr(ha, dev) {
+				if (ether_addr_equal_64bits(entry->mac,
+							    ha->addr)) {
+					found = true;
+					break;
+				}
+			}
+
+			/* MAC address of the port is not in uc list */
+			if (ether_addr_equal_64bits(entry->mac, dev->dev_addr))
+				found = true;
+
+			if (!found) {
+				mac = mlx4_mac_to_u64(entry->mac);
+				mlx4_en_uc_steer_release(priv, entry->mac,
+							 priv->base_qpn,
+							 entry->reg_id);
+				mlx4_unregister_mac(mdev->dev, priv->port, mac);
+
+				hlist_del_rcu(&entry->hlist);
+				kfree_rcu(entry, rcu);
+				en_dbg(DRV, priv, "Removed MAC %pM on port:%d\n",
+				       entry->mac, priv->port);
+				++removed;
+			}
+		}
+	}
+
+	/* if we didn't remove anything, there is no use in trying to add
+	 * again once we are in a forced promisc mode state
+	 */
+	if ((priv->flags & MLX4_EN_FLAG_FORCE_PROMISC) && 0 == removed)
+		return;
+
+	prev_flags = priv->flags;
+	priv->flags &= ~MLX4_EN_FLAG_FORCE_PROMISC;
+
 	/* find what to add */
 	netdev_for_each_uc_addr(ha, dev) {
-		mac = mlx4_mac_to_u64(ha->addr);
-
 		found = false;
 		bucket = &priv->mac_hash[ha->addr[MLX4_EN_MAC_HASH_IDX]];
 		hlist_for_each_entry(entry, n, bucket, hlist) {
-			if (entry->mac == mac) {
+			if (ether_addr_equal_64bits(entry->mac, ha->addr)) {
 				found = true;
 				break;
 			}
@@ -1036,61 +1072,48 @@ static void mlx4_en_do_uc_filter(struct mlx4_en_priv *priv,
 		if (!found) {
 			entry = kmalloc(sizeof(*entry), GFP_KERNEL);
 			if (!entry) {
-				en_err(priv, "Failed adding MAC %llx on port:%d (out of memory)\n",
-				       mac, priv->port);
-				return;
+				en_err(priv, "Failed adding MAC %pM on port:%d (out of memory)\n",
+				       ha->addr, priv->port);
+				priv->flags |= MLX4_EN_FLAG_FORCE_PROMISC;
+				break;
 			}
-			entry->mac = mac;
-			entry->reg_id = 0;
-			mlx4_register_mac(mdev->dev, priv->port, entry->mac);
-			err = mlx4_en_uc_steer_add(priv, entry->mac,
+			mac = mlx4_mac_to_u64(ha->addr);
+			memcpy(entry->mac, ha->addr, ETH_ALEN);
+			err = mlx4_register_mac(mdev->dev, priv->port, mac);
+			if (err < 0) {
+				en_err(priv, "Failed registering MAC %pM on port %d: %d\n",
+				       ha->addr, priv->port, err);
+				kfree(entry);
+				priv->flags |= MLX4_EN_FLAG_FORCE_PROMISC;
+				break;
+			}
+			err = mlx4_en_uc_steer_add(priv, ha->addr,
 						   &priv->base_qpn,
 						   &entry->reg_id);
 			if (err) {
-				en_err(priv, "Failed adding MAC %llx on port:%d\n",
-				       entry->mac, priv->port);
-				mlx4_unregister_mac(mdev->dev, priv->port,
-						    entry->mac);
+				en_err(priv, "Failed adding MAC %pM on port %d: %d\n",
+				       ha->addr, priv->port, err);
+				mlx4_unregister_mac(mdev->dev, priv->port, mac);
 				kfree(entry);
+				priv->flags |= MLX4_EN_FLAG_FORCE_PROMISC;
+				break;
 			} else {
-				en_dbg(DRV, priv, "Added MAC %llx on port:%d\n",
-				       entry->mac, priv->port);
-				bucket = &priv->mac_hash[mlx4_en_get_mac_hash(mac)];
+				unsigned int mac_hash;
+				en_dbg(DRV, priv, "Added MAC %pM on port:%d\n",
+				       ha->addr, priv->port);
+				mac_hash = ha->addr[MLX4_EN_MAC_HASH_IDX];
+				bucket = &priv->mac_hash[mac_hash];
 				hlist_add_head_rcu(&entry->hlist, bucket);
 			}
 		}
 	}
 
-	/* find what to remove */
-	for (i = 0; i < MLX4_EN_MAC_HASH_SIZE; ++i) {
-		bucket = &priv->mac_hash[i];
-		hlist_for_each_entry_safe(entry, n, tmp, bucket, hlist) {
-			found = false;
-			netdev_for_each_uc_addr(ha, dev) {
-				mac = mlx4_mac_to_u64(ha->addr);
-				if (mac == entry->mac) {
-					found = true;
-					break;
-				}
-			}
-
-			/* MAC address of the port is not in uc list */
-			if (priv->mac == entry->mac)
-				found = true;
-
-			if (!found) {
-				mlx4_en_uc_steer_release(priv, entry->mac,
-							 priv->base_qpn,
-							 entry->reg_id);
-				mlx4_unregister_mac(mdev->dev, priv->port, entry->mac);
-
-				hlist_del_rcu(&entry->hlist);
-				synchronize_rcu();
-				kfree(entry);
-				en_dbg(DRV, priv, "Removed MAC %llx on port:%d\n",
-				       entry->mac, priv->port);
-			}
-		}
+	if (priv->flags & MLX4_EN_FLAG_FORCE_PROMISC) {
+		en_warn(priv, "Forcing promiscuous mode on port:%d\n",
+			priv->port);
+	} else if (prev_flags & MLX4_EN_FLAG_FORCE_PROMISC) {
+		en_warn(priv, "Stop forcing promiscuous mode on port:%d\n",
+			priv->port);
 	}
 }
 
@@ -1121,11 +1144,12 @@ static void mlx4_en_do_set_rx_mode(struct work_struct *work)
 		}
 	}
 
-	if (mdev->dev->caps.steering_mode != MLX4_STEERING_MODE_A0)
+	if (dev->priv_flags & IFF_UNICAST_FLT)
 		mlx4_en_do_uc_filter(priv, dev, mdev);
 
 	/* Promsicuous mode: disable all filters */
-	if (dev->flags & IFF_PROMISC) {
+	if ((dev->flags & IFF_PROMISC) ||
+	    (priv->flags & MLX4_EN_FLAG_FORCE_PROMISC)) {
 		mlx4_en_set_promisc_mode(priv, mdev);
 		goto out;
 	}
@@ -2214,14 +2238,19 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 
 	/* Query for default mac and max mtu */
 	priv->max_mtu = mdev->dev->caps.eth_mtu_cap[priv->port];
-	priv->mac = mdev->dev->caps.def_mac[priv->port];
-	if (ILLEGAL_MAC(priv->mac)) {
-		en_err(priv, "Port: %d, invalid mac burned: 0x%llx, quiting\n",
-			 priv->port, priv->mac);
+
+	/* Set default MAC */
+	dev->addr_len = ETH_ALEN;
+	mlx4_en_u64_to_mac(dev->dev_addr, mdev->dev->caps.def_mac[priv->port]);
+	if (!is_valid_ether_addr(dev->dev_addr)) {
+		en_err(priv, "Port: %d, invalid mac burned: %pM, quiting\n",
+		       priv->port, dev->dev_addr);
 		err = -EINVAL;
 		goto out;
 	}
-	priv->old_mac = priv->mac;
+
+	memcpy(dev->perm_addr, dev->dev_addr, ETH_ALEN);
+	memcpy(priv->prev_mac, dev->dev_addr, sizeof(priv->prev_mac));
 
 	priv->stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
 					  DS_SIZE * MLX4_EN_MAX_RX_FRAGS);
@@ -2260,13 +2289,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 	SET_ETHTOOL_OPS(dev, &mlx4_en_ethtool_ops);
-
-	/* Set defualt MAC */
-	dev->addr_len = ETH_ALEN;
-	for (i = 0; i < ETH_ALEN; i++) {
-		dev->dev_addr[ETH_ALEN - 1 - i] = (u8) (priv->mac >> (8 * i));
-		dev->perm_addr[ETH_ALEN - 1 - i] = (u8) (priv->mac >> (8 * i));
-	}
 
 	/*
 	 * Set driver features
