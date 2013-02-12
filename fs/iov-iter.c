@@ -80,17 +80,32 @@ static size_t ii_iovec_copy_to_user(struct page *page,
 			return 0;
 	}
 
-	kaddr = kmap(page);
 	if (likely(i->nr_segs == 1)) {
 		int left;
 		char __user *buf = iov->iov_base + i->iov_offset;
+		/*
+		 * Faults on the destination of a read are common, so do it
+		 * before taking the kmap.
+		 */
+		if (!fault_in_pages_writeable(buf, bytes)) {
+			kaddr = kmap_atomic(page);
+			left = __copy_to_user_inatomic(buf, kaddr + offset,
+						     bytes);
+			kunmap_atomic(kaddr);
+			if (left == 0)
+				goto success;
+		}
+		kaddr = kmap(page);
 		left = copy_to_user(buf, kaddr + offset, bytes);
+		kunmap(page);
+success:
 		copied = bytes - left;
 	} else {
+		kaddr = kmap(page);
 		copied = __iovec_copy_to_user(kaddr + offset, iov,
 					      i->iov_offset, bytes, 0);
+		kunmap(page);
 	}
-	kunmap(page);
 	return copied;
 }
 
