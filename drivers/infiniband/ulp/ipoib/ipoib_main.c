@@ -1032,6 +1032,12 @@ static struct net_device_stats *ipoib_get_stats(struct net_device *dev)
 	if (!down_read_trylock(&priv->rings_rwsem))
 		return stats;
 
+	/* check we are not after ipoib_dev_uninit that already released them*/
+	if (!priv->recv_ring || !priv->send_ring) {
+		up_read(&priv->rings_rwsem);
+		return stats;
+	}
+
 	memset(&local_stats, 0, sizeof(struct net_device_stats));
 
 	for (i = 0; i < priv->num_rx_queues; i++) {
