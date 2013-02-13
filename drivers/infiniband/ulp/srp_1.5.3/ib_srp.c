@@ -2346,7 +2346,7 @@ static void srp_remove_one(struct ib_device *device)
 		 * started before we marked our target ports as
 		 * removed, and any target port removal tasks.
 		 */
-		flush_scheduled_work();
+		flush_workqueue(srp_wq);
 
 		list_for_each_entry_safe(target, tmp_target,
 					 &host->target_list, list) {
@@ -4967,7 +4967,7 @@ static void srp_remove_one(struct ib_device *device)
 		 * started before we marked our target ports as
 		 * removed, and any target port removal tasks.
 		 */
-		flush_scheduled_work();
+		flush_workqueue(srp_wq);
 
 		list_for_each_entry_safe(target, tmp_target,
 					 &host->target_list, list) {
