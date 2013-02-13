@@ -318,6 +318,7 @@ struct mlx4_ib_qp {
 	struct mlx4_roce_smac_vlan_info pri;
 	struct mlx4_roce_smac_vlan_info alt;
 	struct list_head	rules_list;
+	u64			reg_id;
 	int                     max_inline_data;
 	struct mlx4_bf          bf;
 };

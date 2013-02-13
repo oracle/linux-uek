@@ -58,6 +58,9 @@
 
 #define MLX4_IB_DRIVER_PROC_DIR_NAME "driver/mlx4_ib"
 #define MLX4_IB_MRS_PROC_DIR_NAME "mrs"
+#define MLX4_IB_FLOW_MAX_PRIO 0xFFF
+#define MLX4_IB_FLOW_QPN_MASK 0xFFFFFF
+#define MAX_FLOW_TYPES(a) (sizeof(a) / sizeof(a[0]))
 
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("Mellanox ConnectX HCA InfiniBand driver");
@@ -113,6 +116,23 @@ static void init_query_mad(struct ib_smp *mad)
 
 static union ib_gid zgid;
 
+static int check_flow_steering_support(struct mlx4_dev *dev)
+{
+	int ib_num_ports = 0;
+	int i;
+
+	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB)
+		ib_num_ports++;
+	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		if (!ib_num_ports ||
+		    (ib_num_ports && !mlx4_is_mfunc(dev)))
+			return 1;
+		if (ib_num_ports && mlx4_is_mfunc(dev))
+			pr_warn("Device managed flow steering is unavailable for IB port in multifunction env.\n");
+	}
+	return 0;
+}
+
 static int mlx4_ib_query_device(struct ib_device *ibdev,
 				struct ib_device_attr *props)
 {
@@ -166,6 +186,10 @@ static int mlx4_ib_query_device(struct ib_device *ibdev,
 		props->device_cap_flags |= IB_DEVICE_XRC;
 	if (dev->dev->caps.flags & MLX4_DEV_CAP_FLAG_CROSS_CHANNEL)
 		props->device_cap_flags |= IB_DEVICE_CROSS_CHANNEL;
+
+	if (check_flow_steering_support(dev->dev))
+		props->device_cap_flags |= IB_DEVICE_MANAGED_FLOW_STEERING;
+
 
 	props->device_cap_flags |= IB_DEVICE_QPG;
 	if (dev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_RSS) {
@@ -916,6 +940,231 @@ struct mlx4_ib_steering {
 	u64 reg_id;
 	union ib_gid gid;
 };
+
+static int parse_flow_attr(struct mlx4_dev *dev,
+			   struct _ib_flow_spec *ib_spec,
+			   struct _rule_hw *mlx4_spec)
+{
+	enum mlx4_net_trans_rule_id type;
+
+	switch (ib_spec->type) {
+	case IB_FLOW_SPEC_ETH:
+		type = MLX4_NET_TRANS_RULE_ID_ETH;
+		memcpy(mlx4_spec->eth.dst_mac, ib_spec->eth.val.dst_mac,
+		       ETH_ALEN);
+		memcpy(mlx4_spec->eth.dst_mac_msk, ib_spec->eth.mask.dst_mac,
+		       ETH_ALEN);
+		mlx4_spec->eth.vlan_tag =
+			cpu_to_be16(ib_spec->eth.val.vlan_tag);
+		mlx4_spec->eth.vlan_tag_msk =
+			cpu_to_be16(ib_spec->eth.mask.vlan_tag);
+		break;
+
+	case IB_FLOW_SPEC_IB:
+		type = MLX4_NET_TRANS_RULE_ID_IB;
+		mlx4_spec->ib.l3_qpn =
+			cpu_to_be32(ib_spec->ib.val.l3_type_qpn);
+		mlx4_spec->ib.qpn_mask =
+			cpu_to_be32(ib_spec->ib.mask.l3_type_qpn);
+		memcpy(&mlx4_spec->ib.dst_gid, ib_spec->ib.val.dst_gid, 16);
+		memcpy(&mlx4_spec->ib.dst_gid_msk,
+		       ib_spec->ib.mask.dst_gid, 16);
+		break;
+
+	case IB_FLOW_SPEC_IPV4:
+		type = MLX4_NET_TRANS_RULE_ID_IPV4;
+		mlx4_spec->ipv4.src_ip = cpu_to_be32(ib_spec->ipv4.val.src_ip);
+		mlx4_spec->ipv4.src_ip_msk =
+			cpu_to_be32(ib_spec->ipv4.mask.src_ip);
+		mlx4_spec->ipv4.dst_ip =
+			cpu_to_be32(ib_spec->ipv4.val.dst_ip);
+		mlx4_spec->ipv4.dst_ip_msk =
+			cpu_to_be32(ib_spec->ipv4.mask.dst_ip);
+		break;
+
+	case IB_FLOW_SPEC_TCP:
+	case IB_FLOW_SPEC_UDP:
+		type = ib_spec->type == IB_FLOW_SPEC_TCP ?
+					MLX4_NET_TRANS_RULE_ID_TCP :
+					MLX4_NET_TRANS_RULE_ID_UDP;
+		mlx4_spec->tcp_udp.dst_port =
+			cpu_to_be16(ib_spec->tcp_udp.val.dst_port);
+		mlx4_spec->tcp_udp.dst_port_msk =
+			cpu_to_be16(ib_spec->tcp_udp.mask.dst_port);
+		mlx4_spec->tcp_udp.src_port =
+			cpu_to_be16(ib_spec->tcp_udp.val.src_port);
+		mlx4_spec->tcp_udp.src_port_msk =
+			cpu_to_be16(ib_spec->tcp_udp.mask.src_port);
+		break;
+
+	default:
+		return -EINVAL;
+	}
+	if (map_sw_to_hw_steering_id(dev, type) < 0 ||
+	    hw_rule_sz(dev, type) < 0)
+		return -EINVAL;
+	mlx4_spec->id = cpu_to_be16(map_sw_to_hw_steering_id(dev, type));
+	mlx4_spec->size = hw_rule_sz(dev, type) >> 2;
+	return hw_rule_sz(dev, type);
+}
+
+int __mlx4_ib_create_flow(struct ib_qp *qp, struct ib_flow_attr *flow_attr,
+			  int domain,
+			  enum mlx4_net_trans_promisc_mode flow_type,
+			  u64 *reg_id)
+{
+	int ret, i;
+	int size = 0;
+	void *ib_flow;
+	struct mlx4_ib_dev *mdev = to_mdev(qp->device);
+	struct mlx4_cmd_mailbox *mailbox;
+	struct mlx4_net_trans_rule_hw_ctrl *ctrl;
+	size_t rule_size = sizeof(struct mlx4_net_trans_rule_hw_ctrl) +
+			   (sizeof(struct _rule_hw) * flow_attr->num_of_specs);
+
+	static const u16 __mlx4_domain[] = {
+		[IB_FLOW_DOMAIN_USER] = MLX4_DOMAIN_UVERBS,
+		[IB_FLOW_DOMAIN_ETHTOOL] = MLX4_DOMAIN_ETHTOOL,
+		[IB_FLOW_DOMAIN_RFS] = MLX4_DOMAIN_RFS,
+		[IB_FLOW_DOMAIN_NIC] = MLX4_DOMAIN_NIC,
+	};
+
+	if (flow_attr->priority > MLX4_IB_FLOW_MAX_PRIO) {
+		pr_err("Invalid priority value.\n");
+		return -EINVAL;
+	}
+	if (domain >= IB_FLOW_DOMAIN_NUM) {
+		pr_err("Invalid domain value.\n");
+		return -EINVAL;
+	}
+	if (map_sw_to_hw_steering_mode(mdev->dev, flow_type) < 0)
+		return -EINVAL;
+
+	mailbox = mlx4_alloc_cmd_mailbox(mdev->dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+	memset(mailbox->buf, 0, rule_size);
+	ctrl = mailbox->buf;
+
+	ctrl->prio = cpu_to_be16(__mlx4_domain[domain] |
+				 flow_attr->priority);
+	ctrl->type = map_sw_to_hw_steering_mode(mdev->dev, flow_type);
+	ctrl->port = flow_attr->port;
+	ctrl->qpn = cpu_to_be32(qp->qp_num);
+
+	if (flow_attr->flags & IB_FLOW_ATTR_FLAGS_ALLOW_LOOP_BACK)
+		ctrl->flags = (1 << 3);
+
+	ib_flow = flow_attr + 1;
+	size += sizeof(struct mlx4_net_trans_rule_hw_ctrl);
+	for (i = 0; i < flow_attr->num_of_specs; i++) {
+		ret = parse_flow_attr(mdev->dev, ib_flow, mailbox->buf + size);
+		if (ret < 0) {
+			mlx4_free_cmd_mailbox(mdev->dev, mailbox);
+			return -EINVAL;
+		}
+		ib_flow += ((struct _ib_flow_spec *)ib_flow)->size;
+		size += ret;
+	}
+
+	ret = mlx4_cmd_imm(mdev->dev, mailbox->dma, reg_id, size >> 2, 0,
+			   MLX4_QP_FLOW_STEERING_ATTACH, MLX4_CMD_TIME_CLASS_A,
+			   MLX4_CMD_NATIVE);
+	if (ret == -ENOMEM)
+		pr_err("mcg table is full. Fail to register network rule.\n");
+	else if (ret == -ENXIO)
+		pr_err("Device managed flow steering is disabled. Fail to register network rule.\n");
+	else if (ret)
+		pr_err("Invalid argumant. Fail to register network rule.\n");
+	return ret;
+}
+
+int __mlx4_ib_destroy_flow(struct mlx4_dev *dev, u64 reg_id)
+{
+	int err;
+	err = mlx4_cmd(dev, reg_id, 0, 0,
+		       MLX4_QP_FLOW_STEERING_DETACH, MLX4_CMD_TIME_CLASS_A,
+		       MLX4_CMD_NATIVE);
+	if (err)
+		pr_err("Fail to detach network rule. registration id = 0x%llx\n",
+		       reg_id);
+	return err;
+}
+
+struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
+				    struct ib_flow_attr *flow_attr,
+				    int domain)
+{
+	int err = 0, i = 0;
+	struct ib_flow *flow_id = NULL;
+	struct mlx4_flow_handle *flow_handle;
+	enum mlx4_net_trans_promisc_mode type[2];
+	memset(type, 0, sizeof(type));
+
+	flow_id = kzalloc(sizeof(struct ib_flow), GFP_KERNEL);
+	flow_handle = kzalloc(sizeof(struct mlx4_flow_handle), GFP_KERNEL);
+	if (!flow_id || !flow_handle) {
+		err = -ENOMEM;
+		goto err_free;
+	}
+
+	switch (flow_attr->type) {
+	case IB_FLOW_ATTR_NORMAL:
+		type[0] = MLX4_FS_REGULAR;
+		break;
+
+	case IB_FLOW_ATTR_ALL_DEFAULT:
+		type[0] = MLX4_FS_ALL_DEFAULT;
+		break;
+
+	case IB_FLOW_ATTR_MC_DEFAULT:
+		type[0] = MLX4_FS_MC_DEFAULT;
+		break;
+
+	case IB_FLOW_ATTR_SNIFFER:
+		type[0] = MLX4_FS_UC_SNIFFER;
+		type[1] = MLX4_FS_MC_SNIFFER;
+		break;
+
+	default:
+		err = -EINVAL;
+		goto err_free;
+	}
+
+	while (type[i] && i < MAX_FLOW_TYPES(type)) {
+		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
+					    &flow_handle->reg_id[i]);
+		if (err)
+			goto err_free;
+		i++;
+	}
+	flow_id->flow_context = flow_handle;
+	return flow_id;
+err_free:
+	kfree(flow_handle);
+	kfree(flow_id);
+	return ERR_PTR(err);
+}
+
+int mlx4_ib_destroy_flow(struct ib_flow *flow_id)
+{
+	int err, ret = 0;
+	int i = 0;
+	struct mlx4_ib_dev *mdev = to_mdev(flow_id->qp->device);
+	struct mlx4_flow_handle *flow_handle;
+
+	flow_handle = flow_id->flow_context;
+	while (flow_handle->reg_id[i] &&
+	       i < MAX_FLOW_TYPES(flow_handle->reg_id)) {
+		err = __mlx4_ib_destroy_flow(mdev->dev, flow_handle->reg_id[i]);
+		if (err)
+			ret = err;
+		i++;
+	}
+	kfree(flow_id->flow_context);
+	kfree(flow_id);
+	return ret;
+}
 
 static int mlx4_ib_mcg_attach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 {
@@ -1798,6 +2047,14 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 			(1ull << IB_USER_VERBS_CMD_CLOSE_XRCD);
 	}
 
+	if (check_flow_steering_support(dev)) {
+		ibdev->ib_dev.uverbs_cmd_mask	|=
+			(1ull << IB_USER_VERBS_CMD_CREATE_FLOW) |
+			(1ull << IB_USER_VERBS_CMD_DESTROY_FLOW);
+		ibdev->ib_dev.create_flow	= mlx4_ib_create_flow;
+		ibdev->ib_dev.destroy_flow	= mlx4_ib_destroy_flow;
+	}
+
 	mlx4_ib_alloc_eqs(dev, ibdev);
 
 	spin_lock_init(&iboe->lock);
@@ -1956,7 +2213,35 @@ void mlx4_ib_steer_qp_free(struct mlx4_ib_dev *dev, u32 qpn, int count)
 int mlx4_ib_steer_qp_reg(struct mlx4_ib_dev *mdev, struct mlx4_ib_qp *mqp,
 			 int is_attach)
 {
-	return -ENOSYS;
+	int err;
+	size_t flow_size;
+	struct ib_flow_attr *flow = NULL;
+	struct ib_flow_spec_ib *ib_spec;
+
+	if (is_attach) {
+		flow_size = sizeof(struct ib_flow_attr) +
+			    sizeof(struct ib_flow_spec_ib);
+		flow = kzalloc(flow_size, GFP_KERNEL);
+		if (!flow)
+			return -ENOMEM;
+		flow->port = mqp->port;
+		flow->num_of_specs = 1;
+		flow->size = flow_size;
+		ib_spec = (struct ib_flow_spec_ib *)(flow + 1);
+		ib_spec->type = IB_FLOW_SPEC_IB;
+		ib_spec->size = sizeof(struct ib_flow_spec_ib);
+		ib_spec->val.l3_type_qpn = mqp->ibqp.qp_num;
+		ib_spec->mask.l3_type_qpn = MLX4_IB_FLOW_QPN_MASK;
+
+		err = __mlx4_ib_create_flow(&mqp->ibqp, flow,
+					    IB_FLOW_DOMAIN_NIC,
+					    MLX4_FS_REGULAR,
+					    &mqp->reg_id);
+	} else {
+		err = __mlx4_ib_destroy_flow(mdev->dev, mqp->reg_id);
+	}
+	kfree(flow);
+	return err;
 }
 
 static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
