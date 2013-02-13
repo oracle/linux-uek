@@ -1146,39 +1146,6 @@ out:
 	return ret;
 }
 
-static ssize_t ucma_netdev_get_l2(struct ucma_file *file,
-				  const char __user *inbuf,
-				  int in_len, int out_len)
-{
-	struct rdma_ucm_netdev_get_l2 cmd;
-	struct rdma_ucm_netdev_get_l2_resp resp;
-	struct ucma_context *ctx;
-	int ret;
-
-	if (out_len < sizeof(resp))
-		return -ENOSPC;
-
-	if (copy_from_user(&cmd, inbuf, sizeof(cmd)))
-		return -EFAULT;
-
-	ctx = ucma_get_ctx(file, cmd.id);
-	if (IS_ERR(ctx))
-		return PTR_ERR(ctx);
-
-	ret = rdma_netdev_get_l2(ctx->cm_id,
-				 (struct rdma_netdev_l2_params *)(&resp));
-	if (ret)
-		goto out;
-
-	if (copy_to_user((void __user *)(unsigned long)cmd.response,
-			 &resp, sizeof(resp)))
-		ret = -EFAULT;
-
-out:
-	ucma_put_ctx(ctx);
-	return ret;
-}
-
 static void ucma_lock_files(struct ucma_file *file1, struct ucma_file *file2)
 {
 	/* Acquire mutex's based on pointer comparison to prevent deadlock. */
@@ -1290,8 +1257,7 @@ static ssize_t (*ucma_cmd_table[])(struct ucma_file *file,
 	[RDMA_USER_CM_CMD_NOTIFY]	= ucma_notify,
 	[RDMA_USER_CM_CMD_JOIN_MCAST]	= ucma_join_multicast,
 	[RDMA_USER_CM_CMD_LEAVE_MCAST]	= ucma_leave_multicast,
-	[RDMA_USER_CM_CMD_MIGRATE_ID]	= ucma_migrate_id,
-	[RDMA_USER_CM_CMD_NETDEV_GET_L2] = ucma_netdev_get_l2
+	[RDMA_USER_CM_CMD_MIGRATE_ID]	= ucma_migrate_id
 };
 
 static ssize_t ucma_write(struct file *filp, const char __user *buf,
