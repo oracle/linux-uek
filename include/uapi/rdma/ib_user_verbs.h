@@ -89,7 +89,9 @@ enum {
 	IB_USER_VERBS_CMD_CREATE_XSRQ,
 	IB_USER_VERBS_CMD_OPEN_QP,
 	IB_USER_VERBS_CMD_CREATE_QP_EX  = IB_USER_VERBS_CMD_THRESHOLD,
-	IB_USER_VERBS_CMD_MODIFY_CQ_EX
+	IB_USER_VERBS_CMD_MODIFY_CQ_EX,
+	IB_USER_VERBS_CMD_CREATE_FLOW,
+	IB_USER_VERBS_CMD_DESTROY_FLOW
 };
 
 /*
@@ -726,6 +728,110 @@ struct ib_uverbs_detach_mcast {
 	__u16 mlid;
 	__u16 reserved;
 	__u64 driver_data[0];
+};
+
+struct ib_kern_eth_filter {
+	__u8	dst_mac[6];
+	__u8	src_mac[6];
+	__u16	ether_type;
+	__u16	vlan_tag;
+};
+
+struct ib_kern_spec_eth {
+	__u32 type;
+	__u16 size;
+	__u16 reserved;
+	struct ib_kern_eth_filter val;
+	struct ib_kern_eth_filter mask;
+};
+
+struct ib_kern_ib_filter {
+	__u32	l3_type_qpn;
+	__u8	dst_gid[16];
+};
+
+struct ib_kern_spec_ib {
+	__u32 type;
+	__u16 size;
+	__u16 reserved;
+	struct ib_kern_ib_filter val;
+	struct ib_kern_ib_filter mask;
+};
+
+struct ib_kern_ipv4_filter {
+	__u32	src_ip;
+	__u32	dst_ip;
+};
+
+struct ib_kern_spec_ipv4 {
+	__u32 type;
+	__u16 size;
+	__u16 reserved;
+	struct ib_kern_ipv4_filter val;
+	struct ib_kern_ipv4_filter mask;
+};
+
+struct ib_kern_tcp_udp_filter {
+	__u16	dst_port;
+	__u16	src_port;
+};
+
+struct ib_kern_spec_tcp_udp {
+	__u32 type;
+	__u16 size;
+	__u16 reserved;
+	struct ib_kern_tcp_udp_filter val;
+	struct ib_kern_tcp_udp_filter mask;
+};
+
+struct ib_kern_spec {
+	union {
+		struct {
+			__u32 type;
+			__u16 size;
+		};
+		struct ib_kern_spec_ib ib;
+		struct ib_kern_spec_eth eth;
+		struct ib_kern_spec_ipv4 ipv4;
+		struct ib_kern_spec_tcp_udp tcp_udp;
+	};
+};
+
+struct ib_kern_flow_attr {
+	__u32	     type;
+	__u16	     size;
+	__u16	     priority;
+	__u8	     num_of_specs;
+	__u8	     reserved[2];
+	__u8	     port;
+	__u32	     flags;
+	/* Following are the optional layers according to user request
+	 * struct ib_flow_spec_xxx
+	 * struct ib_flow_spec_yyy
+	 */
+};
+
+struct ib_kern_flow {
+	struct ib_device	*device;
+	struct ib_uobject	*uobject;
+	void			*flow_context;
+};
+
+struct ib_uverbs_create_flow  {
+	__u32 comp_mask;
+	__u64 response;
+	__u32 qp_handle;
+	struct ib_kern_flow_attr flow_attr;
+};
+
+struct ib_uverbs_create_flow_resp {
+	__u32 comp_mask;
+	__u32 flow_handle;
+};
+
+struct ib_uverbs_destroy_flow  {
+	__u32 comp_mask;
+	__u32 flow_handle;
 };
 
 struct ib_uverbs_create_srq {

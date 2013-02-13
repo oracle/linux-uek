@@ -73,6 +73,7 @@ DEFINE_IDR(ib_uverbs_cq_idr);
 DEFINE_IDR(ib_uverbs_qp_idr);
 DEFINE_IDR(ib_uverbs_srq_idr);
 DEFINE_IDR(ib_uverbs_xrcd_idr);
+DEFINE_IDR(ib_uverbs_rule_idr);
 
 static DEFINE_SPINLOCK(map_lock);
 static DECLARE_BITMAP(dev_map, IB_UVERBS_MAX_DEVICES);
@@ -114,6 +115,8 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp,
 	[IB_USER_VERBS_CMD_CREATE_QP_EX]        = ib_uverbs_create_qp_ex,
 	[IB_USER_VERBS_CMD_MODIFY_CQ_EX]        = ib_uverbs_modify_cq_ex,
+	[IB_USER_VERBS_CMD_CREATE_FLOW]		= ib_uverbs_create_flow,
+	[IB_USER_VERBS_CMD_DESTROY_FLOW]	= ib_uverbs_destroy_flow,
 };
 
 static void ib_uverbs_add_one(struct ib_device *device);
@@ -200,6 +203,14 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 		idr_remove_uobj(&ib_uverbs_ah_idr, uobj);
 		ib_destroy_ah(ah);
+		kfree(uobj);
+	}
+
+	list_for_each_entry_safe(uobj, tmp, &context->rule_list, list) {
+		struct ib_flow *flow_id = uobj->object;
+
+		idr_remove_uobj(&ib_uverbs_rule_idr, uobj);
+		ib_destroy_flow(flow_id);
 		kfree(uobj);
 	}
 
@@ -635,6 +646,10 @@ static const char *verbs_cmd_str(__u32 cmd)
 		return "CREATE_QP_EX";
 	case IB_USER_VERBS_CMD_MODIFY_CQ_EX:
 		return "MODIFY_CQ_EX";
+	case IB_USER_VERBS_CMD_CREATE_FLOW:
+		return "CREATE_FLOW";
+	case IB_USER_VERBS_CMD_DESTROY_FLOW:
+		return "DESTROY_FLOW";
 	}
 	return "Unknown command";
 }
