@@ -1359,6 +1359,10 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	int err;
 	u16 xrcdn = 0;
 	enum mlx4_ib_qp_flags mlx4_qp_flags = to_mlx4_ib_qp_flags(init_attr->create_flags);
+	struct ib_device *device;
+
+	/* see ib_core::ib_create_qp same handling */
+	device = pd ? pd->device : init_attr->xrcd->device;
 	/*
 	 * We only support LSO, vendor flag1, and multicast loopback blocking,
 	 * and only for kernel UD QPs.
@@ -1382,7 +1386,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	      init_attr->qp_type > IB_QPT_GSI)))
 		return ERR_PTR(-EINVAL);
 
-	err = check_qpg_attr(to_mdev(pd->device), init_attr);
+	err = check_qpg_attr(to_mdev(device), init_attr);
 	if (err)
 		return ERR_PTR(err);
 
@@ -1393,7 +1397,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		init_attr->send_cq = to_mxrcd(init_attr->xrcd)->cq;
 		/* fall through */
 	case IB_QPT_XRC_INI:
-		if (!(to_mdev(pd->device)->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC))
+		if (!(to_mdev(device)->dev->caps.flags & MLX4_DEV_CAP_FLAG_XRC))
 			return ERR_PTR(-ENOSYS);
 		init_attr->recv_cq = init_attr->send_cq;
 		/* fall through */
@@ -1407,7 +1411,7 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		/* fall through */
 	case IB_QPT_UD:
 	{
-		err = create_qp_common(to_mdev(pd->device), pd, init_attr, udata, 0, &qp);
+		err = create_qp_common(to_mdev(device), pd, init_attr, udata, 0, &qp);
 		if (err) {
 			kfree(qp);
 			return ERR_PTR(err);
@@ -1425,8 +1429,8 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 		if (udata)
 			return ERR_PTR(-EINVAL);
 
-		err = create_qp_common(to_mdev(pd->device), pd, init_attr, udata,
-				       get_sqp_num(to_mdev(pd->device), init_attr),
+		err = create_qp_common(to_mdev(device), pd, init_attr, udata,
+				       get_sqp_num(to_mdev(device), init_attr),
 				       &qp);
 		if (err)
 			return ERR_PTR(err);
