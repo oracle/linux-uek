@@ -1155,20 +1155,6 @@ static int __mlx4_ib_flow_detach(struct mlx4_ib_dev *mdev,
 	return ret;
 }
 
-static int mlx4_ib_flow_attach(struct ib_qp *qp, struct ib_flow_spec *flow_spec,
-			       int priority)
-{
-	return __mlx4_ib_flow_attach(to_mdev(qp->device), to_mqp(qp),
-				     flow_spec, priority, 1);
-}
-
-static int mlx4_ib_flow_detach(struct ib_qp *qp, struct ib_flow_spec *spec,
-			       int priority)
-{
-	return __mlx4_ib_flow_detach(to_mdev(qp->device), to_mqp(qp),
-				     spec, priority, 1);
-}
-
 static struct mlx4_ib_gid_entry *find_gid_entry(struct mlx4_ib_qp *qp, u8 *raw)
 {
 	struct mlx4_ib_gid_entry *ge;
@@ -1942,10 +1928,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
-		(1ull << IB_USER_VERBS_CMD_ATTACH_FLOW)		|
-		(1ull << IB_USER_VERBS_CMD_DETACH_FLOW)		|
-		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
 
 	ibdev->ib_dev.query_device	= mlx4_ib_query_device;
 	ibdev->ib_dev.query_port	= mlx4_ib_query_port;
@@ -1988,8 +1971,6 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.free_fast_reg_page_list  = mlx4_ib_free_fast_reg_page_list;
 	ibdev->ib_dev.attach_mcast	= mlx4_ib_mcg_attach;
 	ibdev->ib_dev.detach_mcast	= mlx4_ib_mcg_detach;
-	ibdev->ib_dev.attach_flow	= mlx4_ib_flow_attach;
-	ibdev->ib_dev.detach_flow	= mlx4_ib_flow_detach;
 	ibdev->ib_dev.process_mad	= mlx4_ib_process_mad;
 
 	ibdev->ib_dev.uverbs_cmd_mask	|=
