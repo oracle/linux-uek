@@ -112,8 +112,6 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_CLOSE_XRCD]		= ib_uverbs_close_xrcd,
 	[IB_USER_VERBS_CMD_CREATE_XSRQ]		= ib_uverbs_create_xsrq,
 	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp,
-	[IB_USER_VERBS_CMD_ATTACH_FLOW]		= ib_uverbs_attach_flow,
-	[IB_USER_VERBS_CMD_DETACH_FLOW]		= ib_uverbs_detach_flow,
 	[IB_USER_VERBS_CMD_CREATE_QP_EX]        = ib_uverbs_create_qp_ex,
 	[IB_USER_VERBS_CMD_MODIFY_CQ_EX]        = ib_uverbs_modify_cq_ex,
 };
@@ -187,18 +185,6 @@ static void ib_uverbs_detach_umcast(struct ib_qp *qp,
 	}
 }
 
-static void ib_uverbs_detach_uflows(struct ib_qp *qp,
-				    struct ib_uqp_object *uobj)
-{
-	struct ib_uverbs_flow_entry *flow, *tmp;
-
-	list_for_each_entry_safe(flow, tmp, &uobj->flow_list, list) {
-		ib_detach_flow(qp, &flow->spec, flow->priority);
-		list_del(&flow->list);
-		kfree(flow);
-	}
-}
-
 static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 				      struct ib_ucontext *context)
 {
@@ -227,7 +213,6 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 			ib_close_qp(qp);
 		} else {
 			ib_uverbs_detach_umcast(qp, uqp);
-			ib_uverbs_detach_uflows(qp, uqp);
 			ib_destroy_qp(qp);
 		}
 		ib_uverbs_release_uevent(file, &uqp->uevent);

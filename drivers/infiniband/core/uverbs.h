@@ -116,12 +116,6 @@ struct ib_uverbs_mcast_entry {
 	u16 			lid;
 };
 
-struct ib_uverbs_flow_entry {
-	struct list_head	list;
-	struct ib_flow_spec	spec;
-	int                     priority;
-};
-
 struct ib_uevent_object {
 	struct ib_uobject	uobject;
 	struct list_head	event_list;
@@ -141,7 +135,6 @@ struct ib_usrq_object {
 struct ib_uqp_object {
 	struct ib_uevent_object	uevent;
 	struct list_head	mcast_list;
-	struct list_head	flow_list;
 };
 
 struct ib_ucq_object {
@@ -220,8 +213,6 @@ IB_UVERBS_DECLARE_CMD(destroy_srq);
 IB_UVERBS_DECLARE_CMD(create_xsrq);
 IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
-IB_UVERBS_DECLARE_CMD(attach_flow);
-IB_UVERBS_DECLARE_CMD(detach_flow);
 IB_UVERBS_DECLARE_CMD(create_qp_ex);
 IB_UVERBS_DECLARE_CMD(modify_cq_ex);
 
