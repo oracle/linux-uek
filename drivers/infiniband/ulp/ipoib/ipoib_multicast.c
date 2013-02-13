@@ -196,11 +196,19 @@ static int ipoib_mcast_join_finish(struct ipoib_mcast *mcast,
 		set_qkey = 1;
 
 		if (!ipoib_cm_admin_enabled(dev)) {
+			int count = 0;
+			/*
+			 *in order to avoid deadlock with ipoib_mcast_dev_flush
+			 * waits limited times of tries.
+			 */
 			while (!rtnl_trylock()) {
-				if (!test_bit(IPOIB_MCAST_RUN, &priv->flags) ||
-				    !test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
+				if (count++ >= 20 ||
+				    !test_bit(IPOIB_MCAST_RUN, &priv->flags) ||
+				    !test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
+					ipoib_dbg(priv, "RTNL locked, mcg %pI6 rescheduled\n",
+						  mcast->mcmember.mgid.raw);
 					return -EAGAIN;
-				/* enable other tasks to unlock the rtnl */
+				}
 				msleep(5);
 			}
 			dev_set_mtu(dev, min(priv->mcast_mtu, priv->admin_mtu));
