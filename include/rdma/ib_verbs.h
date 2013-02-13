@@ -120,7 +120,8 @@ enum ib_device_cap_flags {
 	IB_DEVICE_QPG			= (1<<25),
 	IB_DEVICE_UD_RSS		= (1<<26),
 	IB_DEVICE_UD_TSS		= (1<<27),
-	IB_DEVICE_CROSS_CHANNEL		= (1<<28)
+	IB_DEVICE_CROSS_CHANNEL		= (1<<28),
+	IB_DEVICE_MANAGED_FLOW_STEERING = (1<<29)
 };
 
 enum ib_atomic_cap {
@@ -1034,7 +1035,8 @@ struct ib_qp {
 	struct ib_srq	       *srq;
 	struct ib_xrcd	       *xrcd; /* XRC TGT QPs only */
 	struct list_head	xrcd_list;
-	atomic_t		usecnt; /* count times opened, mcast attaches */
+	/* count times opened, mcast attaches, flow attaches */
+	atomic_t		usecnt;
 	struct list_head	open_list;
 	struct ib_qp           *real_qp;
 	struct ib_uobject      *uobject;
@@ -1067,6 +1069,131 @@ struct ib_fmr {
 	struct list_head	list;
 	u32			lkey;
 	u32			rkey;
+};
+
+/* Supported steering options */
+enum ib_flow_attr_type {
+	/* steering according to rule specifications */
+	IB_FLOW_ATTR_NORMAL		= 0x0,
+	/* default unicast and multicast rule -
+	 * receive all Eth traffic which isn't steered to any QP
+	 */
+	IB_FLOW_ATTR_ALL_DEFAULT	= 0x1,
+	/* default multicast rule -
+	 * receive all Eth multicast traffic which isn't steered to any QP
+	 */
+	IB_FLOW_ATTR_MC_DEFAULT		= 0x2,
+	/* sniffer rule - receive all port traffic */
+	IB_FLOW_ATTR_SNIFFER		= 0x3
+};
+
+/* Supported steering header types */
+enum ib_flow_spec_type {
+	/* L2 headers*/
+	IB_FLOW_SPEC_ETH	= 0x20,
+	IB_FLOW_SPEC_IB		= 0x21,
+	/* L3 header*/
+	IB_FLOW_SPEC_IPV4	= 0x30,
+	/* L4 headers*/
+	IB_FLOW_SPEC_TCP	= 0x40,
+	IB_FLOW_SPEC_UDP	= 0x41
+};
+
+/* Flow steering rule priority is set according to it's domain.
+ * Lower domain value means higher priority.
+ */
+enum ib_flow_domain {
+	IB_FLOW_DOMAIN_USER,
+	IB_FLOW_DOMAIN_ETHTOOL,
+	IB_FLOW_DOMAIN_RFS,
+	IB_FLOW_DOMAIN_NIC,
+	IB_FLOW_DOMAIN_NUM /* Must be last */
+};
+
+enum ib_flow_flags {
+	IB_FLOW_ATTR_FLAGS_ALLOW_LOOP_BACK = 1
+};
+
+struct ib_flow_eth_filter {
+	u8	dst_mac[6];
+	u8	src_mac[6];
+	u16	ether_type;
+	u16	vlan_tag;
+};
+
+struct ib_flow_spec_eth {
+	enum ib_flow_spec_type	  type;
+	u16			  size;
+	struct ib_flow_eth_filter val;
+	struct ib_flow_eth_filter mask;
+};
+
+struct ib_flow_ib_filter {
+	u32	l3_type_qpn;
+	u8	dst_gid[16];
+};
+
+struct ib_flow_spec_ib {
+	enum ib_flow_spec_type	 type;
+	u16			 size;
+	struct ib_flow_ib_filter val;
+	struct ib_flow_ib_filter mask;
+};
+
+struct ib_flow_ipv4_filter {
+	u32	src_ip;
+	u32	dst_ip;
+};
+
+struct ib_flow_spec_ipv4 {
+	enum ib_flow_spec_type	   type;
+	u16			   size;
+	struct ib_flow_ipv4_filter val;
+	struct ib_flow_ipv4_filter mask;
+};
+
+struct ib_flow_tcp_udp_filter {
+	u16	dst_port;
+	u16	src_port;
+};
+
+struct ib_flow_spec_tcp_udp {
+	enum ib_flow_spec_type	      type;
+	u16			      size;
+	struct ib_flow_tcp_udp_filter val;
+	struct ib_flow_tcp_udp_filter mask;
+};
+
+struct _ib_flow_spec {
+	union {
+		struct {
+			enum ib_flow_spec_type	type;
+			u16			size;
+		};
+		struct ib_flow_spec_ib ib;
+		struct ib_flow_spec_eth eth;
+		struct ib_flow_spec_ipv4 ipv4;
+		struct ib_flow_spec_tcp_udp tcp_udp;
+	};
+};
+
+struct ib_flow_attr {
+	enum ib_flow_attr_type type;
+	u16	     size;
+	u16	     priority;
+	u8	     num_of_specs;
+	u8	     port;
+	u32	     flags;
+	/* Following are the optional layers according to user request
+	 * struct ib_flow_spec_xxx
+	 * struct ib_flow_spec_yyy
+	 */
+};
+
+struct ib_flow {
+	struct ib_qp		*qp;
+	struct ib_uobject	*uobject;
+	void			*flow_context;
 };
 
 struct ib_mad;
@@ -1302,6 +1429,11 @@ struct ib_device {
 						 struct ib_ucontext *ucontext,
 						 struct ib_udata *udata);
 	int			   (*dealloc_xrcd)(struct ib_xrcd *xrcd);
+	struct ib_flow *	   (*create_flow)(struct ib_qp *qp,
+						  struct ib_flow_attr
+						  *flow_attr,
+						  int domain);
+	int			   (*destroy_flow)(struct ib_flow *flow_id);
 
 	unsigned long		   (*get_unmapped_area)(struct file *file,
 					unsigned long addr,
@@ -2251,5 +2383,9 @@ struct ib_xrcd *ib_alloc_xrcd(struct ib_device *device);
  * @xrcd: The XRC domain to deallocate.
  */
 int ib_dealloc_xrcd(struct ib_xrcd *xrcd);
+
+struct ib_flow *ib_create_flow(struct ib_qp *qp,
+			       struct ib_flow_attr *flow_attr, int domain);
+int ib_destroy_flow(struct ib_flow *flow_id);
 
 #endif /* IB_VERBS_H */
