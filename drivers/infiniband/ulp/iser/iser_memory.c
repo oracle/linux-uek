@@ -53,8 +53,15 @@ static int iser_start_rdma_unaligned_sg(struct iscsi_iser_task *iser_task,
 	unsigned long  cmd_data_len = data->data_len;
 
 	if (cmd_data_len > ISER_KMALLOC_THRESHOLD)
+#ifdef _BullseyeCoverage
+		/* BullseyeCoverage doesn't process ilog2 correctly */
+	#pragma BullseyeCoverage off
+#endif
 		mem = (void *)__get_free_pages(GFP_ATOMIC,
 		      ilog2(roundup_pow_of_two(cmd_data_len)) - PAGE_SHIFT);
+#ifdef _BullseyeCoverage
+	#pragma BullseyeCoverage on
+#endif
 	else
 		mem = kmalloc(cmd_data_len, GFP_ATOMIC);
 
@@ -145,8 +152,15 @@ void iser_finalize_rdma_unaligned_sg(struct iscsi_iser_task *iser_task,
 	cmd_data_len = iser_task->data[cmd_dir].data_len;
 
 	if (cmd_data_len > ISER_KMALLOC_THRESHOLD)
+#ifdef _BullseyeCoverage
+		/* BullseyeCoverage doesn't process ilog2 correctly */
+	#pragma BullseyeCoverage off
+#endif
 		free_pages((unsigned long)mem_copy->copy_buf,
 			   ilog2(roundup_pow_of_two(cmd_data_len)) - PAGE_SHIFT);
+#ifdef _BullseyeCoverage
+	#pragma BullseyeCoverage on
+#endif
 	else
 		kfree(mem_copy->copy_buf);
 
