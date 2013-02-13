@@ -535,7 +535,7 @@ static int mlx4_en_get_qp(struct mlx4_en_priv *priv)
 		return 0;
 	}
 
-	err = mlx4_qp_reserve_range(dev, 1, 1, qpn);
+	err = mlx4_qp_reserve_range(dev, 1, 1, qpn, 0);
 	en_dbg(DRV, priv, "Reserved qp %d\n", *qpn);
 	if (err) {
 		en_err(priv, "Failed to reserve qp for mac registration\n");
@@ -1790,7 +1790,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 {
 	struct mlx4_en_port_profile *prof = priv->prof;
 	int i;
-	int err;
 	int node;
 
 	/* Create rx Rings */
@@ -1806,12 +1805,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 			goto err;
 	}
 
-	err = mlx4_qp_reserve_range(priv->mdev->dev, priv->tx_ring_num, 256, &priv->base_tx_qpn);
-	if (err) {
-		en_err(priv, "failed reserving range for TX rings\n");
-		return err;
-	}
-
 	/* Create tx Rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
 		node = cpu_to_node(i % num_online_cpus());
@@ -1819,7 +1812,7 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 				      prof->tx_ring_size, i, TX, node))
 			goto err;
 
-		if (mlx4_en_create_tx_ring(priv, &priv->tx_ring[i], priv->base_tx_qpn + i,
+		if (mlx4_en_create_tx_ring(priv, &priv->tx_ring[i],
 					   prof->tx_ring_size, TXBB_SIZE, node))
 			goto err;
 	}
