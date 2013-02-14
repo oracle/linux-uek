@@ -138,7 +138,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 		return -EPERM;
 	}
 
-	mutex_lock(&ppriv->vlan_mutex);
+	down_write(&ppriv->vlan_rwsem);
 
 	/*
 	 * First ensure this isn't a duplicate. We check all of the child
@@ -190,7 +190,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 	result = __ipoib_vlan_add(ppriv, priv, pkey, IPOIB_LEGACY_CHILD);
 
 out:
-	mutex_unlock(&ppriv->vlan_mutex);
+	up_write(&ppriv->vlan_rwsem);
 
 	rtnl_unlock();
 
@@ -217,7 +217,8 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
 		return -EPERM;
 	}
 
-	mutex_lock(&ppriv->vlan_mutex);
+	down_write(&ppriv->vlan_rwsem);
+
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
 		if (priv->pkey == pkey &&
 		    priv->child_type == IPOIB_LEGACY_CHILD &&
@@ -227,7 +228,7 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
 			break;
 		}
 	}
-	mutex_unlock(&ppriv->vlan_mutex);
+	up_write(&ppriv->vlan_rwsem);
 
 	if (dev) {
 		ipoib_dbg(ppriv, "delete child vlan %s\n", dev->name);

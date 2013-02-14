@@ -1283,7 +1283,7 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	struct net_device *dev = priv->dev;
 	u16 new_index;
 
-	mutex_lock(&priv->vlan_mutex);
+	down_read(&priv->vlan_rwsem);
 
 	/*
 	 * Flush any child interfaces too -- they might be up even if
@@ -1292,7 +1292,7 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	list_for_each_entry(cpriv, &priv->child_intfs, list)
 		__ipoib_ib_dev_flush(cpriv, level);
 
-	mutex_unlock(&priv->vlan_mutex);
+	up_read(&priv->vlan_rwsem);
 
 	if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags)) {
 		ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
