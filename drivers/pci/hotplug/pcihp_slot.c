@@ -171,6 +171,9 @@ static int pci_set_payload(struct pci_dev *dev)
        if (!pos)
                return 0;
 
+       if (!parent)
+	       return 0;
+
        /* Read Device MaxPayload capability and setting */
        pci_read_config_word(dev, pos + PCI_EXP_DEVCTL, &dctl);
        pci_read_config_word(dev, pos + PCI_EXP_DEVCAP, &dcap);
