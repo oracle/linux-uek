@@ -840,10 +840,12 @@ static void srp_process_rsp(struct srp_target_port *target, struct srp_rsp *rsp)
 		complete(&req->done);
 	} else {
 		scmnd = req->scmnd;
-		if (!scmnd)
+		if (!scmnd) {
 			shost_printk(KERN_ERR, target->scsi_host,
 				     "Null scmnd for RSP w/tag %016llx\n",
 				     (unsigned long long) rsp->tag);
+			goto out;
+		}
 		scmnd->result = rsp->status;
 
 		if (rsp->flags & SRP_RSP_FLAG_SNSVALID) {
@@ -866,7 +868,7 @@ static void srp_process_rsp(struct srp_target_port *target, struct srp_rsp *rsp)
 		} else
 			req->cmd_done = 1;
 	}
-
+out:
 	spin_unlock_irqrestore(target->scsi_host->host_lock, flags);
 }
 
@@ -3356,10 +3358,12 @@ static void srp_process_rsp(struct srp_target_port *target, struct srp_rsp *rsp)
 		complete(&req->done);
 	} else {
 		scmnd = req->scmnd;
-		if (!scmnd)
+		if (!scmnd) {
 			shost_printk(KERN_ERR, target->scsi_host,
 				     "Null scmnd for RSP w/tag %016llx\n",
 				     (unsigned long long) rsp->tag);
+			goto out;
+		}
 		scmnd->result = rsp->status;
 
 		if (rsp->flags & SRP_RSP_FLAG_SNSVALID) {
@@ -3382,7 +3386,7 @@ static void srp_process_rsp(struct srp_target_port *target, struct srp_rsp *rsp)
 		} else
 			req->cmd_done = 1;
 	}
-
+out:
 	spin_unlock_irqrestore(target->scsi_host->host_lock, flags);
 }
 
