@@ -2036,7 +2036,9 @@ static ssize_t srp_create_target(struct device *dev,
 	if (ret)
 		goto err;
 
-	ib_query_gid(host->srp_dev->dev, host->port, 0, &target->path.sgid);
+	ret = ib_query_gid(host->srp_dev->dev, host->port, 0, &target->path.sgid);
+	if (ret)
+		goto err;
 
 	shost_printk(KERN_DEBUG, target->scsi_host, PFX
 		     "new target: id_ext %016llx ioc_guid %016llx pkey %04x "
@@ -4647,7 +4649,9 @@ static ssize_t srp_create_target(struct device *dev,
 		list_add_tail(&req->list, &target->free_reqs);
 	}
 
-	ib_query_gid(ibdev, host->port, 0, &target->path.sgid);
+	ret = ib_query_gid(ibdev, host->port, 0, &target->path.sgid);
+	if (ret)
+		goto err;
 
 	shost_printk(KERN_DEBUG, target->scsi_host, PFX
 		     "new target: id_ext %016llx ioc_guid %016llx pkey %04x "
