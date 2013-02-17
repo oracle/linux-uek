@@ -703,6 +703,7 @@ int mlx4_ib_mcg_port_init(struct mlx4_ib_demux_ctx *ctx);
 void mlx4_ib_mcg_port_cleanup(struct mlx4_ib_demux_ctx *ctx, int destroy_wq);
 void clean_vf_mcast(struct mlx4_ib_demux_ctx *ctx, int slave);
 int mlx4_ib_mcg_init(void);
+void mlx4_ib_mcg_flush(void);
 void mlx4_ib_mcg_destroy(void);
 int mlx4_ib_mcg_multiplex_handler(struct ib_device *ibdev, int port, int slave,
 				  struct ib_sa_mad *sa_mad);
