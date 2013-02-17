@@ -481,9 +481,6 @@ static void ipoib_ib_handle_tx_wc(struct ipoib_send_ring *send_ring,
 	if (!tx_req->is_inline)
 		ipoib_dma_unmap_tx(priv->ca, tx_req);
 
-	++send_ring->stats.tx_packets;
-	send_ring->stats.tx_bytes += tx_req->skb->len;
-
 	dev_kfree_skb_any(tx_req->skb);
 
 	++send_ring->tx_tail;
@@ -727,6 +724,8 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 			netif_wake_subqueue(dev, queue_index);
 	} else {
 		netdev_get_tx_queue(dev, queue_index)->trans_start = jiffies;
+		++send_ring->stats.tx_packets;
+		send_ring->stats.tx_bytes += skb->len;
 
 		++send_ring->tx_head;
 		skb_orphan(skb);
