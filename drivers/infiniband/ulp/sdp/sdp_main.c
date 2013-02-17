@@ -964,7 +964,10 @@ static int sdp_disconnect(struct sock *sk, int flags)
 	if (sk->sk_state != TCP_LISTEN) {
 		if (ssk->id) {
 			sdp_sk(sk)->qp_active = 0;
+			/* release soket to insure that sdp_cma_handler won't lockup */
+			release_sock(sk);
 			rc = rdma_disconnect(ssk->id);
+			lock_sock(sk);
 		}
 
 		return rc;
