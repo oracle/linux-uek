@@ -40,6 +40,7 @@
 #include <linux/vmalloc.h>
 #include <linux/tcp.h>
 #include <linux/moduleparam.h>
+#include <linux/ip.h>
 
 #include "mlx4_en.h"
 
@@ -182,6 +183,23 @@ void mlx4_en_destroy_tx_ring(struct mlx4_en_priv *priv,
 	vfree(ring->tx_info);
 	kfree(ring);
 	*pring = NULL;
+}
+
+void mlx4_en_create_tx_queues(struct mlx4_en_priv *priv)
+{
+	int i, j;
+
+	for (i = 0; i < priv->tx_queue_num; i++) {
+		priv->tx_queue[i].tx_rings[0] = i;
+		priv->tx_queue[i].tx_rings[1] =
+			priv->tx_ring_num - priv->tx_queue_num + i;
+		for (j = 0; j < MLX4_EN_TX_HASH_SIZE; j++) {
+			priv->tx_queue[i].tx_hash[j].ring = i;
+			priv->tx_queue[i].tx_hash[j].cnt = 0;
+			priv->tx_queue[i].tx_hash[j].small_pkts = 0;
+			priv->tx_queue[i].tx_hash[j].big_pkts = 0;
+		}
+	}
 }
 
 int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
@@ -650,6 +668,46 @@ static void mlx4_bf_copy(void __iomem *dst, unsigned long *src, unsigned bytecnt
 	__iowrite64_copy(dst, src, bytecnt / 8);
 }
 
+static u16 mlx4_en_get_shadow_queue(struct mlx4_en_priv *priv,
+				    struct mlx4_en_tx_queue *tx_queue,
+				    struct sk_buff *skb,
+				    u16 queue_index)
+{
+	struct mlx4_en_tx_hash_entry *entry;
+	struct tcphdr *th = tcp_hdr(skb);
+	struct iphdr *iph = ip_hdr(skb);
+	u32 hash_index = 0;
+
+	hash_index = be32_to_cpu(iph->daddr) & MLX4_EN_TX_HASH_MASK;
+	switch (iph->protocol) {
+	case IPPROTO_UDP:
+		break;
+	case IPPROTO_TCP:
+		hash_index = (hash_index ^
+			      be16_to_cpu(th->dest ^ th->source)) &
+					  MLX4_EN_TX_HASH_MASK;
+		break;
+	default:
+		break;
+	}
+
+	entry = &priv->tx_queue[queue_index].tx_hash[hash_index];
+	if (unlikely(!entry->cnt)) {
+		if (2 * entry->small_pkts > entry->big_pkts)
+			entry->ring = tx_queue->tx_rings[1];
+		else
+			entry->ring = tx_queue->tx_rings[0];
+		entry->small_pkts = 0;
+		entry->big_pkts = 0;
+	}
+	entry->cnt++;
+	if (skb->len > MLX4_EN_SMALL_PKT_SIZE)
+		entry->big_pkts++;
+	else
+		entry->small_pkts++;
+	return entry->ring;
+}
+
 netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
@@ -660,7 +718,6 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	struct skb_frag_struct *frag;
 	struct mlx4_en_tx_info *tx_info;
 	struct ethhdr *ethh;
-	int tx_ind = 0;
 	int nr_txbb;
 	int desc_size;
 	int real_size;
@@ -672,6 +729,9 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	int lso_header_size;
 	void *fragptr;
 	bool bounce = false;
+	struct iphdr *iph = ip_hdr(skb);
+	u16 queue_index = 0;
+	struct mlx4_en_tx_queue *tx_queue;
 
 	if (!priv->port_up)
 		goto tx_drop;
@@ -689,8 +749,16 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_drop;
 	}
 
-	tx_ind = skb->queue_mapping;
-	ring = priv->tx_ring[tx_ind];
+	queue_index = skb->queue_mapping;
+	tx_queue = &priv->tx_queue[queue_index];
+
+	/* Additional hashing is only done for TCP/IP or UDP/IP packets */
+	if (queue_index < priv->tx_queue_num &&
+	    (iph->protocol & (IPPROTO_UDP | IPPROTO_TCP)))
+		queue_index = mlx4_en_get_shadow_queue(priv, tx_queue,
+						       skb, queue_index);
+
+	ring = priv->tx_ring[queue_index];
 	if (vlan_tx_tag_present(skb))
 		vlan_tag = vlan_tx_tag_get(skb);
 
@@ -704,7 +772,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		/* Check again whether the queue was cleaned */
 		if (atomic_read(&ring->inflight) <=
 				ring->size - HEADROOM - MAX_DESC_TXBBS) {
-			netif_tx_wake_queue(netdev_get_tx_queue(dev, tx_ind));
+			netif_tx_wake_queue(netdev_get_tx_queue(dev, queue_index));
 			ring->wake_queue++;
 		} else
 			return NETDEV_TX_BUSY;
@@ -832,7 +900,8 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		}
 		tx_info->inl = 0;
 	} else {
-		build_inline_wqe(tx_desc, skb, real_size, &vlan_tag, tx_ind, fragptr);
+		build_inline_wqe(tx_desc, skb, real_size, &vlan_tag,
+				 queue_index, fragptr);
 		tx_info->inl = 1;
 	}
 

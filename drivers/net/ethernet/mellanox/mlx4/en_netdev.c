@@ -59,7 +59,7 @@ static int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 	netdev_set_num_tc(dev, up);
 
 	/* Partition Tx queues evenly amongst UP's */
-	q = priv->tx_ring_num / up;
+	q = (priv->tx_ring_num - priv->tx_queue_num) / up;
 	for (i = 0; i < up; i++) {
 		netdev_set_tc_queue(dev, i, q, offset);
 		offset += q;
@@ -1480,8 +1480,11 @@ int mlx4_en_start_port(struct net_device *dev)
 
 		/* Configure ring */
 		tx_ring = priv->tx_ring[i];
-		err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn,
-			i / priv->mdev->profile.num_tx_rings_p_up);
+		if (i < priv->tx_ring_num - priv->tx_queue_num)
+			err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn,
+					i / priv->mdev->profile.num_tx_rings_p_up);
+		else
+			err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn, -1);
 		if (err) {
 			en_err(priv, "Failed allocating Tx ring\n");
 			mlx4_en_deactivate_cq(priv, cq);
@@ -1816,6 +1819,9 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 	int i;
 	int node;
 
+	/* Create TX Queues */
+	mlx4_en_create_tx_queues(priv);
+
 	/* Create rx Rings */
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		node = cpu_to_node(i % num_online_cpus());
@@ -1894,6 +1900,7 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 
 	mlx4_en_free_resources(priv);
 
+	kfree(priv->tx_queue);
 	kfree(priv->tx_ring);
 	kfree(priv->tx_cq);
 
@@ -2212,6 +2219,13 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		err = -ENOMEM;
 		goto out;
 	}
+	priv->tx_queue_num = prof->tx_queue_num;
+	priv->tx_queue = kzalloc(sizeof(struct mlx4_en_tx_queue) *
+				 priv->tx_queue_num, GFP_KERNEL);
+	if (!priv->tx_queue) {
+		err = -ENOMEM;
+		goto out;
+	}
 	priv->tx_cq = kzalloc(sizeof(struct mlx4_en_cq *) * priv->tx_ring_num,
 			GFP_KERNEL);
 	if (!priv->tx_cq) {
@@ -2285,7 +2299,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	else
 		dev->netdev_ops = &mlx4_netdev_ops;
 	dev->watchdog_timeo = MLX4_EN_WATCHDOG_TIMEOUT;
-	netif_set_real_num_tx_queues(dev, priv->tx_ring_num);
+	netif_set_real_num_tx_queues(dev, priv->tx_ring_num - priv->tx_queue_num);
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 	SET_ETHTOOL_OPS(dev, &mlx4_en_ethtool_ops);
