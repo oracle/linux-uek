@@ -788,6 +788,14 @@ int mlx4_QUERY_DEV_CAP_wrapper(struct mlx4_dev *dev, int slave,
 	field &= 0x7f;
 	MLX4_PUT(outbox->buf, field, QUERY_DEV_CAP_BF_OFFSET);
 
+	/* turn off device-managed steering capability if not enabled */
+	if (dev->caps.steering_mode != MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		MLX4_GET(field, outbox->buf,
+			 QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET);
+		field &= 0x7f;
+		MLX4_PUT(outbox->buf, field,
+			 QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET);
+	}
 	return 0;
 }
 
