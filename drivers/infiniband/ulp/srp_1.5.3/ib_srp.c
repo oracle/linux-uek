@@ -79,12 +79,12 @@ module_param(mellanox_workarounds, int, 0444);
 MODULE_PARM_DESC(mellanox_workarounds,
 		 "Enable workarounds for Mellanox SRP target bugs if != 0");
 
-static int srp_dev_loss_tmo = 60;
+static int srp_dev_loss_tmo = 10;
 
 module_param(srp_dev_loss_tmo, int, 0444);
 MODULE_PARM_DESC(srp_dev_loss_tmo,
 		 "Default number of seconds that srp transport should \
-		  insulate the lost of a remote port (default is 60 secs");
+		  insulate the lost of a remote port (default is 10 secs");
 
 static void srp_add_one(struct ib_device *device);
 static void srp_remove_one(struct ib_device *device);
@@ -591,7 +591,7 @@ static int srp_reconnect_target(struct srp_target_port *target)
 
 	spin_lock_irq(target->scsi_host->host_lock);
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-		srp_reset_req(target, req, DID_NO_CONNECT);
+		srp_reset_req(target, req, DID_ERROR);
 	spin_unlock_irq(target->scsi_host->host_lock);
 
 	target->rx_head	 = 0;
@@ -946,7 +946,7 @@ static void srp_qp_in_err_timer(unsigned long data)
 
 	spin_lock_irq(target->scsi_host->host_lock);
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-		srp_reset_req(target, req, DID_NO_CONNECT);
+		srp_reset_req(target, req, DID_ERROR);
 
 	if (!target->work_in_progress) {
 		target->work_in_progress = 1;
@@ -959,6 +959,11 @@ static void srp_qp_in_err_timer(unsigned long data)
 
 static void srp_qp_err_add_timer(struct srp_target_port *target, int time)
 {
+	struct srp_request *req, *tmp;
+
+	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
+		srp_reset_req(target, req, DID_ERROR);
+
 	if (!timer_pending(&target->qp_err_timer)) {
 		setup_timer(&target->qp_err_timer,
 			    srp_qp_in_err_timer,
@@ -1178,9 +1183,7 @@ err_unmap:
 	srp_unmap_data(scmnd, target, req);
 
 err:
-	scmnd->result = DID_NO_CONNECT << 16;
-	done(scmnd);
-	return 0;
+	return SCSI_MLQUEUE_HOST_BUSY;
 }
 
 static int srp_alloc_iu_bufs(struct srp_target_port *target)
@@ -1393,10 +1396,8 @@ static int srp_cm_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 		spin_lock_irq(target->scsi_host->host_lock);
 		if (!target->qp_in_error && !target->work_in_progress &&
 		    target->state == SRP_TARGET_LIVE) {
-			target->state = SRP_TARGET_DEAD;
-			target->work_in_progress = 1;
-			INIT_WORK(&target->work, srp_remove_work);
-			queue_work(srp_wq, &target->work);
+			target->qp_in_error = 1;
+			srp_qp_err_add_timer(target, 1);
 		}
 		spin_unlock_irq(target->scsi_host->host_lock);
 
@@ -1436,10 +1437,8 @@ static int srp_send_tsk_mgmt(struct srp_target_port *target,
 	spin_lock_irq(target->scsi_host->host_lock);
 
 	if (target->state == SRP_TARGET_DEAD ||
-	    target->state == SRP_TARGET_REMOVED) {
-		req->scmnd->result = DID_NO_CONNECT << 16;
+	    target->state == SRP_TARGET_REMOVED)
 		goto out;
-	}
 
 	init_completion(&req->done);
 
@@ -1539,7 +1538,7 @@ static int srp_reset_device(struct scsi_cmnd *scmnd)
 
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
 		if (req->scmnd->device == scmnd->device)
-			srp_reset_req(target, req, DID_NO_CONNECT);
+			srp_reset_req(target, req, DID_ERROR);
 
 	spin_unlock_irq(target->scsi_host->host_lock);
 
@@ -1560,15 +1559,16 @@ static int srp_reset_host(struct scsi_cmnd *scmnd)
 	if (timer_pending(&target->qp_err_timer) || target->qp_in_error ||
 	    target->state != SRP_TARGET_LIVE) {
 		list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-			srp_reset_req(target, req, DID_NO_CONNECT);
+			srp_reset_req(target, req, DID_ERROR);
 		spin_unlock_irq(target->scsi_host->host_lock);
-		return SUCCESS;
+		goto out;
 	}
 	spin_unlock_irq(target->scsi_host->host_lock);
 
 	if (!srp_reconnect_target(target))
 		ret = SUCCESS;
 
+out:
 	return ret;
 }
 
@@ -2157,13 +2157,13 @@ static void srp_event_handler(struct ib_event_handler *handler,
 	if (!srp_dev || srp_dev->dev != event->device)
 		return;
 
-	printk(KERN_WARNING PFX "ASYNC event= %d on device= %s\n",
-	       event->event, srp_dev->dev->name);
-
 	switch (event->event) {
 	case IB_EVENT_PORT_ERR:
 	case IB_EVENT_LID_CHANGE:
 	case IB_EVENT_PKEY_CHANGE:
+		printk(KERN_WARNING PFX "ASYNC event= %d on device= %s port= %d\n",
+		       event->event, srp_dev->dev->name, event->element.port_num);
+
 		list_for_each_entry_safe(host, tmp_host,
 					&srp_dev->dev_list, list) {
 			if (event->element.port_num == host->port) {
@@ -2172,16 +2172,12 @@ static void srp_event_handler(struct ib_event_handler *handler,
 							 &host->target_list, list) {
 					spin_lock_irq(target->scsi_host->host_lock);
 					if (!target->qp_in_error && !target->work_in_progress &&
-					    target->state == SRP_TARGET_LIVE) {
-						if (event->event == IB_EVENT_PORT_ERR) {
-							target->state = SRP_TARGET_DEAD;
-							target->work_in_progress = 1;
-							INIT_WORK(&target->work, srp_remove_work);
-							queue_work(srp_wq, &target->work);
-						} else {
-							target->qp_in_error = 1;
-							srp_qp_err_add_timer(target, 1);
-						}
+						target->state == SRP_TARGET_LIVE) {
+						shost_printk(KERN_WARNING PFX, target->scsi_host,
+							     "Add qp_err_timer port= %d\n",
+							     host->port);
+						target->qp_in_error = 1;
+						srp_qp_err_add_timer(target, 1);
 					}
 					spin_unlock_irq(target->scsi_host->host_lock);
 				}
@@ -2191,25 +2187,8 @@ static void srp_event_handler(struct ib_event_handler *handler,
 		break;
 	case IB_EVENT_PORT_ACTIVE:
 	case IB_EVENT_SM_CHANGE:
-		list_for_each_entry_safe(host, tmp_host, &srp_dev->dev_list,
-					list) {
-			if (event->element.port_num == host->port) {
-				spin_lock_irq(&host->target_lock);
-				list_for_each_entry_safe(target, tmp_target,
-							 &host->target_list, list) {
-					spin_lock_irq(target->scsi_host->host_lock);
-					if (timer_pending(&target->qp_err_timer)
-					   && !target->qp_in_error) {
-						shost_printk(KERN_WARNING PFX,
-							     target->scsi_host,
-							     "delete qp_in_err timer\n");
-						del_timer(&target->qp_err_timer);
-					}
-					spin_unlock_irq(target->scsi_host->host_lock);
-				}
-				spin_unlock_irq(&host->target_lock);
-			}
-		}
+		printk(KERN_WARNING PFX "ASYNC event= %d on device= %s port= %d\n",
+		       event->event, srp_dev->dev->name, event->element.port_num);
 		break;
 	default:
 		break;
@@ -2461,12 +2440,12 @@ module_param(topspin_workarounds, int, 0444);
 MODULE_PARM_DESC(topspin_workarounds,
 		 "Enable workarounds for Topspin/Cisco SRP target bugs if != 0");
 
-static int srp_dev_loss_tmo = 60;
+static int srp_dev_loss_tmo = 10;
 
 module_param(srp_dev_loss_tmo, int, 0444);
 MODULE_PARM_DESC(srp_dev_loss_tmo,
 		 "Default number of seconds that srp transport should \
-		  insulate the lost of a remote port (default is 60 secs");
+		  insulate the lost of a remote port (default is 10 secs");
 
 static void srp_add_one(struct ib_device *device);
 static void srp_remove_one(struct ib_device *device);
@@ -3006,7 +2985,7 @@ static int srp_reconnect_target(struct srp_target_port *target)
 
 	spin_lock_irq(target->scsi_host->host_lock);
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-		srp_reset_req(target, req, DID_NO_CONNECT);
+		srp_reset_req(target, req, DID_ERROR);
 	spin_unlock_irq(target->scsi_host->host_lock);
 
 	target->rx_head	 = 0;
@@ -3466,7 +3445,7 @@ static void srp_qp_in_err_timer(unsigned long data)
 
 	spin_lock_irq(target->scsi_host->host_lock);
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-		srp_reset_req(target, req, DID_NO_CONNECT);
+		srp_reset_req(target, req, DID_ERROR);
 
 	if (!target->work_in_progress) {
 		target->work_in_progress = 1;
@@ -3479,10 +3458,15 @@ static void srp_qp_in_err_timer(unsigned long data)
 
 static void srp_qp_err_add_timer(struct srp_target_port *target, int time)
 {
-	if (!timer_pending(&target->qp_err_timer)) {
-		setup_timer(&target->qp_err_timer,
-			    srp_qp_in_err_timer,
-			    (unsigned long)target);
+		struct srp_request *req, *tmp;
+
+		 list_for_each_entry_safe(req, tmp, &target->req_queue, list)
+			srp_reset_req(target, req, DID_ERROR);
+
+if (!timer_pending(&target->qp_err_timer)) {
+	setup_timer(&target->qp_err_timer,
+		    srp_qp_in_err_timer,
+		    (unsigned long)target);
 		target->qp_err_timer.expires = round_jiffies(time*HZ + jiffies);
 		add_timer(&target->qp_err_timer);
 		shost_printk(KERN_WARNING, target->scsi_host, "add timer to clean qp_err\n");
@@ -3699,9 +3683,7 @@ err_unmap:
 	srp_unmap_data(scmnd, target, req);
 
 err:
-	scmnd->result = DID_NO_CONNECT << 16;
-	done(scmnd);
-	return 0;
+	return SCSI_MLQUEUE_HOST_BUSY;
 }
 
 DEF_SCSI_QCMD(srp_queuecommand)
@@ -3915,11 +3897,9 @@ static int srp_cm_handler(struct ib_cm_id *cm_id, struct ib_cm_event *event)
 
 		spin_lock_irq(target->scsi_host->host_lock);
 		if (!target->qp_in_error && !target->work_in_progress &&
-		    target->state == SRP_TARGET_LIVE) {
-			target->state = SRP_TARGET_DEAD;
-			target->work_in_progress = 1;
-			INIT_WORK(&target->work, srp_remove_work);
-			queue_work(srp_wq, &target->work);
+			target->state == SRP_TARGET_LIVE) {
+				target->qp_in_error = 1;
+				srp_qp_err_add_timer(target, 1);
 		}
 		spin_unlock_irq(target->scsi_host->host_lock);
 
@@ -3959,10 +3939,8 @@ static int srp_send_tsk_mgmt(struct srp_target_port *target,
 	spin_lock_irq(target->scsi_host->host_lock);
 
 	if (target->state == SRP_TARGET_DEAD ||
-	    target->state == SRP_TARGET_REMOVED) {
-		req->scmnd->result = DID_NO_CONNECT << 16;
+	    target->state == SRP_TARGET_REMOVED)
 		goto out;
-	}
 
 	init_completion(&req->done);
 
@@ -4062,7 +4040,7 @@ static int srp_reset_device(struct scsi_cmnd *scmnd)
 
 	list_for_each_entry_safe(req, tmp, &target->req_queue, list)
 		if (req->scmnd->device == scmnd->device)
-			srp_reset_req(target, req, DID_NO_CONNECT);
+			srp_reset_req(target, req, DID_ERROR);
 
 	spin_unlock_irq(target->scsi_host->host_lock);
 
@@ -4082,15 +4060,16 @@ static int srp_reset_host(struct scsi_cmnd *scmnd)
 	spin_lock_irq(target->scsi_host->host_lock);
 	if (timer_pending(&target->qp_err_timer)) {
 		list_for_each_entry_safe(req, tmp, &target->req_queue, list)
-			srp_reset_req(target, req, DID_NO_CONNECT);
+			srp_reset_req(target, req, DID_ERROR);
 		spin_unlock_irq(target->scsi_host->host_lock);
-		return SUCCESS;
+		goto out;
 	}
 	spin_unlock_irq(target->scsi_host->host_lock);
 
 	if (!srp_reconnect_target(target))
 		ret = SUCCESS;
 
+out:
 	return ret;
 }
 
@@ -4773,13 +4752,13 @@ static void srp_event_handler(struct ib_event_handler *handler,
 	if (!srp_dev || srp_dev->dev != event->device)
 		return;
 
-	printk(KERN_WARNING PFX "ASYNC event= %d on device= %s\n",
-	       event->event, srp_dev->dev->name);
-
 	switch (event->event) {
 	case IB_EVENT_PORT_ERR:
 	case IB_EVENT_LID_CHANGE:
 	case IB_EVENT_PKEY_CHANGE:
+		printk(KERN_WARNING PFX "ASYNC event= %d on device= %s port= %d\n",
+		       event->event, srp_dev->dev->name, event->element.port_num);
+
 		list_for_each_entry_safe(host, tmp_host,
 					&srp_dev->dev_list, list) {
 			if (event->element.port_num == host->port) {
@@ -4790,15 +4769,11 @@ static void srp_event_handler(struct ib_event_handler *handler,
 					if (!target->qp_in_error && !target->work_in_progress &&
 					    target->state == SRP_TARGET_LIVE &&
 					    !scsi_host_in_recovery(target->scsi_host)) {
-						if (event->event == IB_EVENT_PORT_ERR) {
-							target->state = SRP_TARGET_DEAD;
-							target->work_in_progress = 1;
-							INIT_WORK(&target->work, srp_remove_work);
-							queue_work(srp_wq, &target->work);
-						} else {
-							target->qp_in_error = 1;
-							srp_qp_err_add_timer(target, 1);
-						}
+						shost_printk(KERN_WARNING PFX, target->scsi_host,
+							     "Add qp_err_timer port= %d\n",
+							     host->port);
+						target->qp_in_error = 1;
+						srp_qp_err_add_timer(target, 1);
 					}
 					spin_unlock_irq(target->scsi_host->host_lock);
 				}
@@ -4808,25 +4783,8 @@ static void srp_event_handler(struct ib_event_handler *handler,
 		break;
 	case IB_EVENT_PORT_ACTIVE:
 	case IB_EVENT_SM_CHANGE:
-		list_for_each_entry_safe(host, tmp_host, &srp_dev->dev_list,
-					list) {
-			if (event->element.port_num == host->port) {
-				spin_lock_irq(&host->target_lock);
-				list_for_each_entry_safe(target, tmp_target,
-							 &host->target_list, list) {
-					spin_lock_irq(target->scsi_host->host_lock);
-					if (timer_pending(&target->qp_err_timer)
-					   && !target->qp_in_error) {
-						shost_printk(KERN_WARNING PFX,
-							     target->scsi_host,
-							     "delete qp_in_err timer\n");
-						del_timer(&target->qp_err_timer);
-					}
-					spin_unlock_irq(target->scsi_host->host_lock);
-				}
-				spin_unlock_irq(&host->target_lock);
-			}
-		}
+		printk(KERN_WARNING PFX "ASYNC event= %d on device= %s port= %d\n",
+		       event->event, srp_dev->dev->name, event->element.port_num);
 		break;
 	default:
 		break;
