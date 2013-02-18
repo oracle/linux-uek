@@ -893,10 +893,10 @@ int ipoib_ib_dev_down(struct net_device *dev, int flush)
 
 	flush_workqueue(ipoib_auto_moder_workqueue);
 
+	ipoib_flush_paths(dev);
+
 	ipoib_mcast_stop_thread(dev, flush);
 	ipoib_mcast_dev_flush(dev);
-
-	ipoib_flush_paths(dev);
 
 	return 0;
 }
