@@ -951,7 +951,11 @@ int fip_vnic_destroy(struct fip_vnic_data *vnic)
 	}
 
 	if (vnic->flush == FIP_PARTIAL_FLUSH) {
-		vnic->state = FIP_VNIC_HADMIN_IDLE;
+		if (vnic->hadmined) /* we close Host admin vnics so they won't do any login from fip_vnic_fsm */
+			vnic->state = FIP_VNIC_CLOSED;
+		else
+			vnic->state = FIP_VNIC_HADMIN_IDLE;
+
 		vnic->flush = FIP_NO_FLUSH;
 		vnic->last_send_jiffs = 0;
 
@@ -1169,11 +1173,11 @@ int fip_hadmin_vnic_refresh(struct fip_vnic_data *vnic, struct fip_vnic_send_inf
 	vnic_dbg_fip(vnic->name, "fip_vnic_to_login host admin flow flush=%d"
 		     " state=%d\n", vnic->flush, vnic->state);
 	if (likely(vnic->flush == FIP_NO_FLUSH) &&
-	    vnic->state == FIP_VNIC_HADMIN_IDLE &&
+	    vnic->state <= FIP_VNIC_HADMIN_IDLE &&
 	    (!VNIC_MAX_RETRIES || vnic->retry_count < VNIC_MAX_RETRIES)) {
 		fip_vnic_set_gw_param(vnic, gw_address);
-		vnic->state = FIP_VNIC_LOGIN;
 		cancel_delayed_work(&vnic->vnic_task);
+		vnic->state = FIP_VNIC_LOGIN;
 		fip_vnic_fsm(&vnic->vnic_task.work);
 	}
 	return 0;
@@ -1568,6 +1572,8 @@ void fip_vnic_fsm(struct work_struct *work)
 		return;
 
 	switch (vnic->state) {
+	case FIP_VNIC_CLOSED:
+		break;
 	case FIP_VNIC_HADMIN_IDLE:
 		if (vnic->gw->state < FIP_GW_CONNECTED)
 			break;
