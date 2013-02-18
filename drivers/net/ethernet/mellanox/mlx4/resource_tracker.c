@@ -428,6 +428,13 @@ static inline void initialize_res_quotas(struct mlx4_dev *dev,
 	res_alloc->guaranteed[vf] = num_instances /
 				    (2 * (dev->persist->num_vfs + 1));
 	res_alloc->quota[vf] = (num_instances / 2) + res_alloc->guaranteed[vf];
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* upstream kernel code required that num_mpts and num_qps be power-of-2 */
+	if (res_type == RES_MPT || res_type == RES_QP)
+		res_alloc->quota[vf] = roundup_pow_of_two(res_alloc->quota[vf]);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	if (vf == mlx4_master_func_num(dev)) {
 		res_alloc->res_free = num_instances;
 		if (res_type == RES_MTT) {
