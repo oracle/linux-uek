@@ -879,7 +879,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 			(event->event == IB_EVENT_PORT_ACTIVE) ?
 				"ACTIVE" : "ERROR");
 
-		work = kzalloc(sizeof *work, GFP_KERNEL);
+		work = kzalloc(sizeof *work, GFP_ATOMIC);
 		if (!work) {
 			printk(KERN_ERR
 				"RDS/IB: failed to allocate port work\n");
@@ -1220,7 +1220,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		ip_config[port].port_num, ndev->name,
 		(event == NETDEV_UP) ? "UP" : "DOWN");
 
-	work = kzalloc(sizeof *work, GFP_KERNEL);
+	work = kzalloc(sizeof *work, GFP_ATOMIC);
 	if (!work) {
 		printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
 		return NOTIFY_DONE;
