@@ -220,7 +220,8 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	if (!rds_ibdev)
 		return;
 
-	ib_unregister_event_handler(&rds_ibdev->event_handler);
+	if (rds_ib_haip_enabled)
+		ib_unregister_event_handler(&rds_ibdev->event_handler);
 
 	rds_ib_dev_shutdown(rds_ibdev);
 
