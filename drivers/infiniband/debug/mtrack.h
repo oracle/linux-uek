@@ -200,6 +200,7 @@
 	__memtrack_addr;							\
 })
 
+#ifndef vzalloc
 #define vzalloc(size) ({							\
 	void *__memtrack_addr = NULL;						\
 										\
@@ -212,6 +213,7 @@
 	}									\
 	__memtrack_addr;							\
 })
+#endif
 
 #define vmalloc_node(size, node) ({						\
 	void *__memtrack_addr = NULL;						\
