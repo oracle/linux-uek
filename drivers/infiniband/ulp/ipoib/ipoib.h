@@ -35,6 +35,7 @@
 #ifndef _IPOIB_H
 #define _IPOIB_H
 
+#include <linux/string.h>
 #include <linux/list.h>
 #include <linux/skbuff.h>
 #include <linux/netdevice.h>
@@ -843,8 +844,12 @@ static inline int ipoib_register_debugfs(void) { return 0; }
 static inline void ipoib_unregister_debugfs(void) { }
 #endif
 
-#define ipoib_printk(level, priv, format, arg...)	\
-	printk(level "%s: " format, ((struct ipoib_dev_priv *) priv)->dev->name , ## arg)
+#define ipoib_printk(level, priv, format, arg...)			\
+	printk(level "%s: " format,					\
+	      !priv || strchr(((struct ipoib_dev_priv *)priv)->dev->name, '%') \
+	      ? "dev not registered" :					\
+	      ((struct ipoib_dev_priv *)priv)->dev->name, ## arg)
+
 #define ipoib_warn(priv, format, arg...)		\
 	ipoib_printk(KERN_WARNING, priv, format , ## arg)
 
