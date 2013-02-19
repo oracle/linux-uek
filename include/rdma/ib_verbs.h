@@ -615,6 +615,7 @@ enum ib_qp_type {
 	IB_QPT_RAW_PACKET = 8,
 	IB_QPT_XRC_INI = 9,
 	IB_QPT_XRC_TGT,
+	IB_QPT_SYNC_UMR,
 	IB_QPT_MAX
 };
 
@@ -784,6 +785,7 @@ enum ib_wr_opcode {
 	IB_WR_FAST_REG_MR,
 	IB_WR_MASKED_ATOMIC_CMP_AND_SWP,
 	IB_WR_MASKED_ATOMIC_FETCH_AND_ADD,
+	IB_WR_UMR,
 };
 
 enum ib_send_flags {
@@ -791,7 +793,8 @@ enum ib_send_flags {
 	IB_SEND_SIGNALED	= (1<<1),
 	IB_SEND_SOLICITED	= (1<<2),
 	IB_SEND_INLINE		= (1<<3),
-	IB_SEND_IP_CSUM		= (1<<4)
+	IB_SEND_IP_CSUM		= (1<<4),
+	IB_SEND_UMR_UNREG       = (1<<5)
 };
 
 enum ib_flow_types {
@@ -863,6 +866,15 @@ struct ib_send_wr {
 			int				access_flags;
 			u32				rkey;
 		} fast_reg;
+		struct {
+			int		npages;
+			int		access_flags;
+			u32		mkey;
+			struct ib_pd   *pd;
+			u64		virt_addr;
+			u64		length;
+			int		page_shift;
+		} umr;
 	} wr;
 	u32			xrc_remote_srq_num;	/* XRC TGT QPs only */
 };
