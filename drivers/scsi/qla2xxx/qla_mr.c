@@ -2530,6 +2530,7 @@ qlafx00_status_entry(scsi_qla_host_t *vha, struct rsp_que *rsp, void *pkt)
 	}
 
 	if (sp->type == SRB_TM_CMD) {
+		req->outstanding_cmds[handle] = NULL;
 		qlafx00_tm_iocb_entry(vha, req, pkt, sp,
 		    scsi_status, comp_status);
 		return;
