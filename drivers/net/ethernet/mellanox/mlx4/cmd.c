@@ -153,6 +153,131 @@ static int mlx4_status_to_errno(u8 status)
 	return trans_table[status];
 }
 
+static const char *cmd_to_str(u16 cmd)
+{
+	switch (cmd) {
+	case MLX4_CMD_SYS_EN:		return "SYS_EN";
+	case MLX4_CMD_SYS_DIS:		return "SYS_DIS";
+	case MLX4_CMD_MAP_FA:		return "MAP_FA";
+	case MLX4_CMD_UNMAP_FA:		return "UNMAP_FA";
+	case MLX4_CMD_RUN_FW:		return "RUN_FW";
+	case MLX4_CMD_MOD_STAT_CFG:	return "MOD_STAT_CFG";
+	case MLX4_CMD_QUERY_DEV_CAP:	return "QUERY_DEV_CAP";
+	case MLX4_CMD_QUERY_FW:		return "QUERY_FW";
+	case MLX4_CMD_ENABLE_LAM:	return "ENABLE_LAM";
+	case MLX4_CMD_DISABLE_LAM:	return "DISABLE_LAM";
+	case MLX4_CMD_QUERY_DDR:	return "QUERY_DDR";
+	case MLX4_CMD_QUERY_ADAPTER:	return "QUERY_ADAPTER";
+	case MLX4_CMD_INIT_HCA:		return "INIT_HCA";
+	case MLX4_CMD_CLOSE_HCA:	return "CLOSE_HCA";
+	case MLX4_CMD_INIT_PORT:	return "INIT_PORT";
+	case MLX4_CMD_CLOSE_PORT:	return "CLOSE_PORT";
+	case MLX4_CMD_QUERY_HCA:	return "QUERY_HCA";
+	case MLX4_CMD_QUERY_PORT:	return "QUERY_PORT";
+	case MLX4_CMD_SENSE_PORT:	return "SENSE_PORT";
+	case MLX4_CMD_HW_HEALTH_CHECK:  return "HW_HEALTH_CHECK";
+	case MLX4_CMD_SET_PORT:		return "SET_PORT";
+	case MLX4_CMD_SET_NODE:		return "SET_NODE";
+	case MLX4_CMD_QUERY_FUNC:	return "QUERY_FUNC";
+	case MLX4_CMD_MAP_ICM:		return "MAP_ICM";
+	case MLX4_CMD_UNMAP_ICM:	return "UNMAP_ICM";
+	case MLX4_CMD_MAP_ICM_AUX:	return "MAP_ICM_AUX";
+	case MLX4_CMD_UNMAP_ICM_AUX:	return "UNMAP_ICM_AUX";
+	case MLX4_CMD_SET_ICM_SIZE:	return "SET_ICM_SIZE";
+		/*master notify fw on finish for slave's flr*/
+	case MLX4_CMD_INFORM_FLR_DONE:	return "INFORM_FLR_DONE";
+	case MLX4_CMD_GET_OP_REQ:	return "GET_OP_REQ";
+
+		/* TPT commands */
+	case MLX4_CMD_SW2HW_MPT:	return "SW2HW_MPT";
+	case MLX4_CMD_QUERY_MPT:	return "QUERY_MPT";
+	case MLX4_CMD_HW2SW_MPT:	return "HW2SW_MPT";
+	case MLX4_CMD_READ_MTT:		return "READ_MTT";
+	case MLX4_CMD_WRITE_MTT:	return "WRITE_MTT";
+	case MLX4_CMD_SYNC_TPT:		return "SYNC_TPT";
+
+		/* EQ commands */
+	case MLX4_CMD_MAP_EQ:		return "MAP_EQ";
+	case MLX4_CMD_SW2HW_EQ:		return "SW2HW_EQ";
+	case MLX4_CMD_HW2SW_EQ:		return "HW2SW_EQ";
+	case MLX4_CMD_QUERY_EQ:		return "QUERY_EQ";
+
+		/* CQ commands */
+	case MLX4_CMD_SW2HW_CQ:		return "SW2HW_CQ";
+	case MLX4_CMD_HW2SW_CQ:		return "HW2SW_CQ";
+	case MLX4_CMD_QUERY_CQ:		return "QUERY_CQ:";
+	case MLX4_CMD_MODIFY_CQ:	return "MODIFY_CQ:";
+
+		/* SRQ commands */
+	case MLX4_CMD_SW2HW_SRQ:	return "SW2HW_SRQ";
+	case MLX4_CMD_HW2SW_SRQ:	return "HW2SW_SRQ";
+	case MLX4_CMD_QUERY_SRQ:	return "QUERY_SRQ";
+	case MLX4_CMD_ARM_SRQ:		return "ARM_SRQ";
+
+		/* QP/EE commands */
+	case MLX4_CMD_RST2INIT_QP:	return "RST2INIT_QP";
+	case MLX4_CMD_INIT2RTR_QP:	return "INIT2RTR_QP";
+	case MLX4_CMD_RTR2RTS_QP:	return "RTR2RTS_QP";
+	case MLX4_CMD_RTS2RTS_QP:	return "RTS2RTS_QP";
+	case MLX4_CMD_SQERR2RTS_QP:	return "SQERR2RTS_QP";
+	case MLX4_CMD_2ERR_QP:		return "2ERR_QP";
+	case MLX4_CMD_RTS2SQD_QP:	return "RTS2SQD_QP";
+	case MLX4_CMD_SQD2SQD_QP:	return "SQD2SQD_QP";
+	case MLX4_CMD_SQD2RTS_QP:	return "SQD2RTS_QP";
+	case MLX4_CMD_2RST_QP:		return "2RST_QP";
+	case MLX4_CMD_QUERY_QP:		return "QUERY_QP";
+	case MLX4_CMD_INIT2INIT_QP:	return "INIT2INIT_QP";
+	case MLX4_CMD_SUSPEND_QP:	return "SUSPEND_QP";
+	case MLX4_CMD_UNSUSPEND_QP:	return "UNSUSPEND_QP";
+		/* special QP and management commands */
+	case MLX4_CMD_CONF_SPECIAL_QP:	return "CONF_SPECIAL_QP";
+	case MLX4_CMD_MAD_IFC:		return "MAD_IFC";
+
+		/* multicast commands */
+	case MLX4_CMD_READ_MCG:		return "READ_MCG";
+	case MLX4_CMD_WRITE_MCG:	return "WRITE_MCG";
+	case MLX4_CMD_MGID_HASH:	return "MGID_HASH";
+
+		/* miscellaneous commands */
+	case MLX4_CMD_DIAG_RPRT:	return "DIAG_RPRT";
+	case MLX4_CMD_NOP:		return "NOP";
+	case MLX4_CMD_ACCESS_MEM:	return "ACCESS_MEM";
+	case MLX4_CMD_SET_VEP:		return "SET_VEP";
+
+		/* Ethernet specific commands */
+	case MLX4_CMD_SET_VLAN_FLTR:	return "SET_VLAN_FLTR";
+	case MLX4_CMD_SET_MCAST_FLTR:	return "SET_MCAST_FLTR";
+	case MLX4_CMD_DUMP_ETH_STATS:	return "DUMP_ETH_STATS";
+
+		/* Communication channel commands */
+	case MLX4_CMD_ARM_COMM_CHANNEL:	return "ARM_COMM_CHANNEL";
+	case MLX4_CMD_GEN_EQE:		return "GEN_EQE";
+
+		/* virtual commands */
+	case MLX4_CMD_ALLOC_RES:	return "ALLOC_RES";
+	case MLX4_CMD_FREE_RES:		return "FREE_RES";
+	case MLX4_CMD_MCAST_ATTACH:	return "MCAST_ATTACH";
+	case MLX4_CMD_UCAST_ATTACH:	return "UCAST_ATTACH";
+	case MLX4_CMD_PROMISC:		return "PROMISC";
+	case MLX4_CMD_QUERY_FUNC_CAP:	return "QUERY_FUNC_CAP";
+	case MLX4_CMD_QP_ATTACH:	return "QP_ATTACH";
+
+		/* debug commands */
+	case MLX4_CMD_QUERY_DEBUG_MSG:	return "QUERY_DEBUG_MSG";
+	case MLX4_CMD_SET_DEBUG_MSG:	return "SET_DEBUG_MSG";
+
+		/* statistics commands */
+	case MLX4_CMD_QUERY_IF_STAT:	return "QUERY_IF_STAT";
+	case MLX4_CMD_SET_IF_STAT:	return "SET_IF_STAT";
+
+		/* register/delete flow steering network rules */
+	case MLX4_QP_FLOW_STEERING_ATTACH:	return "QP_FLOW_STEERING_ATTACH";
+	case MLX4_QP_FLOW_STEERING_DETACH:	return "QP_FLOW_STEERING_DETACH";
+	case MLX4_FLOW_STEERING_IB_UC_QP_RANGE:	return "FLOW_STEERING_IB_UC_QP_RANGE";
+	default: return "OTHER";
+	}
+}
+
 static u8 mlx4_errno_to_status(int errno)
 {
 	switch (errno) {
@@ -440,7 +565,7 @@ static int mlx4_slave_cmd(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			ret = mlx4_status_to_errno(vhcr->status);
 		} else
 			mlx4_err(dev, "failed execution of VHCR_POST command"
-				 "opcode 0x%x\n", op);
+				 "opcode %s (0x%x)\n", cmd_to_str(op), op);
 	}
 
 	mutex_unlock(&priv->cmd.slave_cmd_mutex);
@@ -488,7 +613,8 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	}
 
 	if (cmd_pending(dev)) {
-		mlx4_warn(dev, "command 0x%x timed out (go bit not cleared)\n", op);
+		mlx4_warn(dev, "command %s (0x%x) timed out (go bit not cleared)\n",
+			  cmd_to_str(op), op);
 		err = -ETIMEDOUT;
 		goto out;
 	}
@@ -503,8 +629,8 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			   __raw_readl(hcr + HCR_STATUS_OFFSET)) >> 24;
 	err = mlx4_status_to_errno(stat);
 	if (err)
-		mlx4_err(dev, "command 0x%x failed: fw status = 0x%x\n",
-			 op, stat);
+		mlx4_err(dev, "command %s (0x%x) failed: fw status = 0x%x\n",
+			 cmd_to_str(op), op, stat);
 
 out:
 	up(&priv->cmd.poll_sem);
@@ -565,26 +691,29 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	err = mlx4_cmd_post(dev, in_param, out_param ? *out_param : 0,
 			    in_modifier, op_modifier, op, context->token, 1);
 	if (err) {
-		mlx4_warn(dev, "command 0x%x could not be posted (%d)\n",
-			  op, err);
+		mlx4_warn(dev, "command %s (0x%x) could not be posted (%d)\n",
+			  cmd_to_str(op), op, err);
 		goto out;
 	}
 
 	if (!wait_for_completion_timeout(&context->done,
 					 msecs_to_jiffies(timeout))) {
 		stat_err = get_status(dev, &status, &go_bit, &t_bit);
-		mlx4_warn(dev, "command 0x%x timed out: "
+		mlx4_warn(dev, "command %s (0x%x) timed out: "
 			  "get_status err=%d, status=0x%x, go_bit=%d, "
-			  "t_bit=%d, toggle=0x%x\n", op, stat_err, status,
-			  go_bit, t_bit, mlx4_priv(dev)->cmd.toggle);
+			  "t_bit=%d, toggle=0x%x\n", cmd_to_str(op), op,
+			  stat_err, status, go_bit, t_bit,
+			  mlx4_priv(dev)->cmd.toggle);
 		err = -EBUSY;
 		goto out;
 	}
 
 	err = context->result;
 	if (err) {
-		mlx4_err(dev, "command 0x%x failed: fw status = 0x%x\n",
-			 op, context->fw_status);
+		mlx4_err(dev, "command %s (0x%x) failed: in_param=0x%llx, "
+			 "in_mod=0x%x, op_mod=0x%x, fw status = 0x%x\n",
+			 cmd_to_str(op), op, in_param, in_modifier,
+			 op_modifier, context->fw_status);
 		goto out;
 	}
 
@@ -1402,8 +1531,8 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 		}
 	}
 	if (!cmd) {
-		mlx4_err(dev, "Unknown command:0x%x accepted from slave:%d\n",
-			 vhcr->op, slave);
+		mlx4_err(dev, "unparavirt command: %s (0x%x) accepted from slave:%d\n",
+			 cmd_to_str(vhcr->op), vhcr->op, slave);
 		vhcr_cmd->status = CMD_STAT_BAD_PARAM;
 		goto out_status;
 	}
@@ -1421,8 +1550,8 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 		if (mlx4_ACCESS_MEM(dev, inbox->dma, slave,
 				    vhcr->in_param,
 				    MLX4_MAILBOX_SIZE, 1)) {
-			mlx4_err(dev, "%s: Failed reading inbox (cmd:0x%x)\n",
-				 __func__, cmd->opcode);
+			mlx4_err(dev, "%s: Failed reading inbox for cmd %s (0x%x)\n",
+				 __func__, cmd_to_str(cmd->opcode), cmd->opcode);
 			vhcr_cmd->status = CMD_STAT_INTERNAL_ERR;
 			goto out_status;
 		}
@@ -1430,9 +1559,9 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 
 	/* Apply permission and bound checks if applicable */
 	if (cmd->verify && cmd->verify(dev, slave, vhcr, inbox)) {
-		mlx4_warn(dev, "Command:0x%x from slave: %d failed protection "
-			  "checks for resource_id:%d\n", vhcr->op, slave,
-			  vhcr->in_modifier);
+		mlx4_warn(dev, "Command %s (0x%x) from slave: %d failed protection "
+			  "checks for resource_id: %d\n", cmd_to_str(vhcr->op),
+			  vhcr->op, slave, vhcr->in_modifier);
 		vhcr_cmd->status = CMD_STAT_BAD_OP;
 		goto out_status;
 	}
@@ -1471,9 +1600,11 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 	}
 
 	if (err) {
-		mlx4_warn(dev, "vhcr command:0x%x slave:%d failed with"
-			  " error:%d, status %d\n",
-			  vhcr->op, slave, vhcr->errno, err);
+		mlx4_warn(dev, "vhcr command %s (0x%x) slave:%d in_param 0x%llx "
+			  "in_mod=0x%x, op_mod=0x%x failed with error:%d, "
+			  "status %d\n", cmd_to_str(vhcr->op), vhcr->op, slave,
+			  vhcr->in_param, vhcr->in_modifier, vhcr->op_modifier,
+			  vhcr->errno, err);
 		vhcr_cmd->status = mlx4_errno_to_status(err);
 		goto out_status;
 	}
@@ -1488,7 +1619,7 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 			/* If we failed to write back the outbox after the
 			 *command was successfully executed, we must fail this
 			 * slave, as it is now in undefined state */
-			mlx4_err(dev, "%s:Failed writing outbox\n", __func__);
+			mlx4_err(dev, "%s: Failed writing outbox\n", __func__);
 			goto out;
 		}
 	}
@@ -1549,7 +1680,7 @@ static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
 				err = vp_oper->mac_idx;
 				vp_oper->mac_idx = NO_INDX;
 				mlx4_warn((&priv->dev),
-					  "No mac resorces slave %d, port %d\n",
+					  "No mac resources slave %d, port %d\n",
 					  slave, port);
 				return err;
 			}
@@ -1620,7 +1751,7 @@ static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 	/*command from slave in the middle of FLR*/
 	if (cmd != MLX4_COMM_CMD_RESET &&
 	    MLX4_COMM_CMD_FLR == slave_state[slave].last_cmd) {
-		mlx4_warn(dev, "slave:%d is Trying to run cmd(0x%x) "
+		mlx4_warn(dev, "slave:%d is Trying to run cmd (0x%x) "
 			  "in the middle of FLR\n", slave, cmd);
 		return;
 	}
@@ -1659,7 +1790,7 @@ static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 
 		mutex_lock(&priv->cmd.slave_cmd_mutex);
 		if (mlx4_master_process_vhcr(dev, slave, NULL)) {
-			mlx4_err(dev, "Failed processing vhcr for slave:%d,"
+			mlx4_err(dev, "Failed processing vhcr for slave: %d,"
 				 " resetting slave.\n", slave);
 			mutex_unlock(&priv->cmd.slave_cmd_mutex);
 			goto reset_slave;
@@ -1667,7 +1798,7 @@ static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 		mutex_unlock(&priv->cmd.slave_cmd_mutex);
 		break;
 	default:
-		mlx4_warn(dev, "Bad comm cmd:%d from slave:%d\n", cmd, slave);
+		mlx4_warn(dev, "Bad comm cmd: %d from slave: %d\n", cmd, slave);
 		goto reset_slave;
 	}
 	spin_lock(&priv->mfunc.master.slave_state_lock);
@@ -1677,8 +1808,8 @@ static void mlx4_master_do_cmd(struct mlx4_dev *dev, int slave, u8 cmd,
 		is_going_down = 1;
 	spin_unlock(&priv->mfunc.master.slave_state_lock);
 	if (is_going_down) {
-		mlx4_warn(dev, "Slave is going down aborting command(%d)"
-			  " executing from slave:%d\n",
+		mlx4_warn(dev, "Slave is going down aborting command (%d)"
+			  " executing from slave: %d\n",
 			  cmd, slave);
 		return;
 	}
