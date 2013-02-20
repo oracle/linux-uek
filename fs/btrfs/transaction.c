@@ -48,6 +48,14 @@ static noinline void switch_commit_root(struct btrfs_root *root)
 	root->commit_root = btrfs_root_node(root);
 }
 
+static inline int can_join_transaction(struct btrfs_transaction *trans,
+				       int type)
+{
+	return !(trans->in_commit &&
+		 type != TRANS_JOIN &&
+		 type != TRANS_JOIN_NOLOCK);
+}
+
 /*
  * either allocate a new transaction or hop into the existing one
  */
@@ -76,6 +84,10 @@ loop:
 		if (cur_trans->aborted) {
 			spin_unlock(&fs_info->trans_lock);
 			return cur_trans->aborted;
+		}
+		if (!can_join_transaction(cur_trans, type)) {
+			spin_unlock(&fs_info->trans_lock);
+			return -EBUSY;
 		}
 		atomic_inc(&cur_trans->use_count);
 		atomic_inc(&cur_trans->num_writers);
@@ -331,6 +343,9 @@ again:
 		ret = join_transaction(root, type == TRANS_JOIN_NOLOCK);
 		if (ret == -EBUSY)
 			wait_current_trans(root);
+			if (unlikely(type == TRANS_ATTACH))
+				ret = -ENOENT;
+		}
 	} while (ret == -EBUSY);
 
 	if (ret < 0) {
