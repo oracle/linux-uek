@@ -3183,7 +3183,7 @@ void dlm_clean_master_list(struct dlm_ctxt *dlm, u8 dead_node)
 	struct dlm_master_list_entry *mle;
 	struct dlm_lock_resource *res;
 	struct hlist_head *bucket;
-	struct hlist_node *list;
+	struct hlist_node *list, *tmp;
 	unsigned int i;
 
 	mlog(0, "dlm=%s, dead node=%u\n", dlm->name, dead_node);
@@ -3194,7 +3194,7 @@ top:
 	spin_lock(&dlm->master_lock);
 	for (i = 0; i < DLM_HASH_BUCKETS; i++) {
 		bucket = dlm_master_hash(dlm, i);
-		hlist_for_each(list, bucket) {
+		hlist_for_each_safe(list, tmp, bucket) {
 			mle = hlist_entry(list, struct dlm_master_list_entry,
 					  master_hash_node);
 
