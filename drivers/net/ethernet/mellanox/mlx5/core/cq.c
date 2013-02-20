@@ -143,6 +143,19 @@ int mlx5_core_destroy_cq(struct mlx5_core_dev *dev, struct mlx5_core_cq *cq)
 	struct mlx5_destroy_cq_mbox_out out;
 	int err;
 	struct mlx5_cq_table *table = &dev->priv.cq_table;
+	struct mlx5_core_cq *tmp;
+
+	spin_lock_irq(&table->lock);
+	tmp = radix_tree_delete(&table->tree, cq->cqn);
+	spin_unlock_irq(&table->lock);
+	if (!tmp) {
+		mlx5_core_warn(dev, "cq 0x%x not found in tree\n", cq->cqn);
+		return -EINVAL;
+	}
+	if (tmp != cq) {
+		mlx5_core_warn(dev, "corruption on srqn 0x%x\n", cq->cqn);
+		return -EINVAL;
+	}
 
 	memset(&in, 0, sizeof(in));
 	memset(&out, 0, sizeof(out));
@@ -158,10 +171,6 @@ int mlx5_core_destroy_cq(struct mlx5_core_dev *dev, struct mlx5_core_cq *cq)
 	synchronize_irq(cq->irqn);
 
 	mlx5_debug_cq_remove(dev, cq);
-	spin_lock_irq(&table->lock);
-	radix_tree_delete(&table->tree, cq->cqn);
-	spin_unlock_irq(&table->lock);
-
 	if (atomic_dec_and_test(&cq->refcount))
 		complete(&cq->free);
 	wait_for_completion(&cq->free);
