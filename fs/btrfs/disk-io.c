@@ -2376,8 +2376,7 @@ struct btrfs_root *open_ctree(struct super_block *sb,
 	sb->s_blocksize = sectorsize;
 	sb->s_blocksize_bits = blksize_bits(sectorsize);
 
-	if (strncmp((char *)(&disk_super->magic), BTRFS_MAGIC,
-		    sizeof(disk_super->magic))) {
+	if (disk_super->magic != cpu_to_le64(BTRFS_MAGIC)) {
 		printk(KERN_INFO "btrfs: valid FS not found on %s\n", sb->s_id);
 		goto fail_sb_buffer;
 	}
@@ -2728,8 +2727,7 @@ struct buffer_head *btrfs_read_dev_super(struct block_device *bdev)
 
 		super = (struct btrfs_super_block *)bh->b_data;
 		if (btrfs_super_bytenr(super) != bytenr ||
-		    strncmp((char *)(&super->magic), BTRFS_MAGIC,
-			    sizeof(super->magic))) {
+		    super->magic != cpu_to_le64(BTRFS_MAGIC)) {
 			brelse(bh);
 			continue;
 		}
