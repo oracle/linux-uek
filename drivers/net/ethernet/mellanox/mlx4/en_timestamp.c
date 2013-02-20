@@ -147,7 +147,7 @@ void mlx4_en_init_timestamp(struct mlx4_en_dev *mdev)
 	 * since we don't have floating point there;
 	 * at the end shift result back
 	 */
-	temp_mult = ((1ull * 1000) << 29) / dev->caps.hca_core_clock;
+	temp_mult = div_u64(((1ull * 1000) << 29), dev->caps.hca_core_clock);
 	mdev->cycles.mult = (u32)temp_mult;
 	mdev->cycles.shift = 29;
 
