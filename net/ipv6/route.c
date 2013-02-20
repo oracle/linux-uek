@@ -245,14 +245,15 @@ static void ip6_dst_destroy(struct dst_entry *dst)
 	struct rt6_info *rt = (struct rt6_info *)dst;
 	struct inet6_dev *idev = rt->rt6i_idev;
 	struct inet_peer *peer = rt->rt6i_peer;
+	struct dst_entry *from = dst->from;
 
 	if (idev != NULL) {
 		rt->rt6i_idev = NULL;
 		in6_dev_put(idev);
 	}
 
-	if (!(rt->rt6i_flags & RTF_EXPIRES) && dst->from)
-		dst_release(dst->from);
+	dst->from = NULL;
+	dst_release(from);
 
 	if (peer) {
 		rt->rt6i_peer = NULL;
@@ -923,7 +924,6 @@ struct dst_entry *ip6_blackhole_route(struct net *net, struct dst_entry *dst_ori
 			in6_dev_hold(rt->rt6i_idev);
 
 		ipv6_addr_copy(&rt->rt6i_gateway, &ort->rt6i_gateway);
-		rt6_clean_expires(rt);
 		rt->rt6i_metric = 0;
 
 		memcpy(&rt->rt6i_dst, &ort->rt6i_dst, sizeof(struct rt6key));
@@ -1763,8 +1763,6 @@ static struct rt6_info * ip6_rt_copy(struct rt6_info *ort)
 		if ((ort->rt6i_flags & (RTF_DEFAULT | RTF_ADDRCONF)) ==
 		    (RTF_DEFAULT | RTF_ADDRCONF))
 			rt6_set_from(rt, ort);
-		else
-			rt6_clean_expires(rt);
 		rt->rt6i_metric = 0;
 
 		memcpy(&rt->rt6i_dst, &ort->rt6i_dst, sizeof(struct rt6key));
