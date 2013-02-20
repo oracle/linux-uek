@@ -2152,7 +2152,8 @@ qla24xx_bsg_timeout(struct fc_bsg_job *bsg_job)
 			sp = req->outstanding_cmds[cnt];
 			if (sp) {
 				if (((sp->type == SRB_CT_CMD) ||
-					(sp->type == SRB_ELS_CMD_HST))
+					(sp->type == SRB_ELS_CMD_HST) ||
+					(sp->type == SRB_FXIOCB_BCMD))
 					&& (sp->u.bsg_job == bsg_job)) {
 					spin_unlock_irqrestore(&ha->hardware_lock, flags);
 					if (ha->isp_ops->abort_command(sp)) {
