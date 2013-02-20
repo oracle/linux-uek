@@ -562,7 +562,6 @@ struct mlx4_en_priv {
 	bool wol;
 	struct device *ddev;
 	struct dentry *dev_root;
-	int base_tx_qpn;
 	struct hwtstamp_config hwtstamp_config;
 	u32 counter_index;
 #define MLX4_EN_MAC_HASH_IDX 5
