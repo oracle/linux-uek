@@ -296,7 +296,23 @@ static int parent_set_mtu(struct parent *parent)
 }
 
 /*
- *--------------------------- slave list handling ------
+ * The function returns the features that are not depend
+ * on the slaves's features.
+ * Only features that were at the parent netdev before.
+ */
+static u64 parent_self_features(struct net_device *parent_dev)
+{
+	u64 parent_orig_features = 0;
+
+	/* basic independent features*/
+	if (parent_dev->features & NETIF_F_GRO)
+		parent_orig_features |= NETIF_F_GRO;
+
+	return parent_orig_features;
+}
+
+
+/*--------------------------- slave list handling ------
  *
  * This function attaches the slave to the end of list.
  * pay attention, the caller should held paren->lock
@@ -320,6 +336,7 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 	struct slave *slave;
 	struct parent *parent = netdev_priv(dev);
 	netdev_features_t mask;
+	u64 parent_orig_features = parent_self_features(parent->dev);
 
 	read_lock_bh(&parent->lock);
 
@@ -333,6 +350,10 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 						     mask);
 
 	features &= ~NETIF_F_VLAN_CHALLENGED;
+
+	/* return back the original independent features */
+	features |= parent_orig_features;
+
 	read_unlock_bh(&parent->lock);
 	return features;
 }
@@ -340,11 +361,14 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 static int parent_compute_features(struct parent *parent)
 {
 	struct net_device *parent_dev = parent->dev;
-	u64 hw_features, features;
+	u64 hw_features, features, parent_orig_features = 0;
 	struct slave *slave;
 
 	if (list_empty(&parent->slave_list))
 		goto done;
+
+	/* take basic features that do not depends on slaves */
+	parent_orig_features = parent_self_features(parent_dev);
 
 	/* starts with the max set of features mask */
 	hw_features = features = ~0LL;
@@ -360,6 +384,7 @@ static int parent_compute_features(struct parent *parent)
 
 	hw_features &= ~NETIF_F_VLAN_CHALLENGED;
 	features &= hw_features;
+	features |= parent_orig_features;
 
 	parent_dev->hw_features = hw_features;
 	parent_dev->features = features;
