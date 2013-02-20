@@ -107,14 +107,17 @@ int mlx5_core_create_srq(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq,
 	spin_lock_irq(&table->lock);
 	err = radix_tree_insert(&table->tree, srq->srqn, srq);
 	spin_unlock_irq(&table->lock);
-	if (err)
+	if (err) {
+		mlx5_core_warn(dev, "err %d, srqn 0x%x\n", err, srq->srqn);
 		goto err_cmd;
+	}
 
 	return 0;
 
 err_cmd:
 	memset(&din, 0, sizeof(din));
 	memset(&dout, 0, sizeof(dout));
+	din.srqn = cpu_to_be32(srq->srqn);
 	din.hdr.opcode = cpu_to_be16(MLX5_CMD_OP_DESTROY_SRQ);
 	mlx5_cmd_exec(dev, &din, sizeof(din), &dout, sizeof(dout));
 	return err;
@@ -127,6 +130,19 @@ int mlx5_core_destroy_srq(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq)
 	struct mlx5_destroy_srq_mbox_out out;
 	int err;
 	struct mlx5_srq_table *table = &dev->priv.srq_table;
+	struct mlx5_core_srq *tmp;
+
+	spin_lock_irq(&table->lock);
+	tmp = radix_tree_delete(&table->tree, srq->srqn);
+	spin_unlock_irq(&table->lock);
+	if (!tmp) {
+		mlx5_core_warn(dev, "srq 0x%x not found in tree\n", srq->srqn);
+		return -EINVAL;
+	}
+	if (tmp != srq) {
+		mlx5_core_warn(dev, "corruption on srqn 0x%x\n", srq->srqn);
+		return -EINVAL;
+	}
 
 	memset(&in, 0, sizeof(in));
 	memset(&out, 0, sizeof(out));
@@ -138,10 +154,6 @@ int mlx5_core_destroy_srq(struct mlx5_core_dev *dev, struct mlx5_core_srq *srq)
 
 	if (out.hdr.status)
 		return mlx5_cmd_status_to_err(&out.hdr);
-
-	spin_lock_irq(&table->lock);
-	radix_tree_delete(&table->tree, srq->srqn);
-	spin_unlock_irq(&table->lock);
 
 	if (atomic_dec_and_test(&srq->refcount))
 		complete(&srq->free);
