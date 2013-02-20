@@ -79,8 +79,73 @@ struct mlx5_profile profile[] = {
 		.log_max_qp	= 12,
 	},
 	[2] = {
-		.mask		= MLX5_PROF_MASK_QP_SIZE,
+		.mask		= MLX5_PROF_MASK_QP_SIZE |
+				  MLX5_PROF_MASK_MR_CACHE,
 		.log_max_qp	= 17,
+		.mr_cache[0]	= {
+			.size	= 20000,
+			.limit	= 200
+		},
+		.mr_cache[1]	= {
+			.size	= 10000,
+			.limit	= 100
+		},
+		.mr_cache[2]	= {
+			.size	= 5000,
+			.limit	= 50
+		},
+		.mr_cache[3]	= {
+			.size	= 1000,
+			.limit	= 20
+		},
+		.mr_cache[4]	= {
+			.size	= 1000,
+			.limit	= 20
+		},
+		.mr_cache[5]	= {
+			.size	= 400,
+			.limit	= 20
+		},
+		.mr_cache[6]	= {
+			.size	= 500,
+			.limit	= 20
+		},
+		.mr_cache[7]	= {
+			.size	= 400,
+			.limit	= 20
+		},
+		.mr_cache[8]	= {
+			.size	= 300,
+			.limit	= 20
+		},
+		.mr_cache[9]	= {
+			.size	= 300,
+			.limit	= 20
+		},
+		.mr_cache[10]	= {
+			.size	= 400,
+			.limit	= 20
+		},
+		.mr_cache[11]	= {
+			.size	= 20,
+			.limit	= 10
+		},
+		.mr_cache[12]	= {
+			.size	= 20,
+			.limit	= 10
+		},
+		.mr_cache[13]	= {
+			.size	= 20,
+			.limit	= 10
+		},
+		.mr_cache[14]	= {
+			.size	= 10,
+			.limit	= 5
+		},
+		.mr_cache[15]	= {
+			.size	= 10,
+			.limit	= 5
+		},
 	},
 };
 

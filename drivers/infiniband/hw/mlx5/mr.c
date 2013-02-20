@@ -456,7 +456,8 @@ int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 	int err;
 	int i;
 	struct mlx5_cache_ent *ent;
-
+	int size;
+	int limit;
 
 	cache->wq = create_singlethread_workqueue("mkey_cache");
 	if (!cache->wq) {
@@ -474,12 +475,19 @@ int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 		ent->order = i + 2;
 		ent->dev = dev;
 
-		err = add_keys(dev, i, DEF_CACHE_SIZE);
+		if (dev->mdev.profile->mask & MLX5_PROF_MASK_MR_CACHE) {
+			size = dev->mdev.profile->mr_cache[i].size;
+			limit = dev->mdev.profile->mr_cache[i].limit;
+		} else {
+			size = DEF_CACHE_SIZE;
+			limit = 0;
+		}
+		err = add_keys(dev, i, size);
 		if (err) {
 			mlx5_ib_warn(dev, "add keys failed %d\n", err);
 			goto error;
 		}
-		ent->cur = DEF_CACHE_SIZE;
+		ent->limit = limit;
 	}
 	INIT_WORK(&cache->work.work, cache_work_func);
 

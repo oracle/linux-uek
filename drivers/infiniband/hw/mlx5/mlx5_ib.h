@@ -329,10 +329,6 @@ struct mlx5_mkey_work {
 	struct mlx5_ib_dev *dev;
 };
 
-enum {
-	MAX_MR_CACHE_ENTRIES    = 16,
-};
-
 struct mlx5_mr_cache {
 	struct workqueue_struct *wq;
 	struct mlx5_cache_ent	ent[MAX_MR_CACHE_ENTRIES];
