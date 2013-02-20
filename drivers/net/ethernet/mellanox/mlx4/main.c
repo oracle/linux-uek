@@ -94,33 +94,59 @@ enum {
 	MAX_VALS_PER_BDF	= 2
 };
 
+enum {
+	NUM_VFS,
+	PROBE_VF,
+	PORT_TYPE_ARRAY
+};
+
+enum {
+	VALID_DATA,
+	INVALID_DATA,
+	INVALID_STR
+};
+
 struct dev_data {
 	int bdf;
 	int val[MAX_VALS_PER_BDF];
 };
 
-static char num_vfs_str[IB_DEVS_STR_SIZE];
-static struct dev_data num_vfs_tbl[IB_DEVS_TBL_SIZE];
-module_param_string(num_vfs_str, num_vfs_str, sizeof(num_vfs_str), 0444);
-MODULE_PARM_DESC(num_vfs_str, "List of IB_devices-num_vfs using the following"
-			      " bdf-num_vfs pattern: bb:dd.f-nn,... "
-			      "(in hexadecimal). Max supported devices - 32");
+struct p_range {
+	int min;
+	int max;
+};
 
-static char probe_vf_str[IB_DEVS_STR_SIZE];
-static struct dev_data probe_vf_tbl[IB_DEVS_TBL_SIZE];
-module_param_string(probe_vf_str, probe_vf_str, sizeof(probe_vf_str), 0444);
-MODULE_PARM_DESC(probe_vf_str, "List of IB_devices-probe_vfs, to define the "
-			       "number of vfs to probe by each pf driver. The "
-			       "param bdf-probe_vf pattern is: bb:dd.f-nn,... "
-			       "(in hexadecimal). Max supported devices - 32");
+struct param_data {
+	int		id;
+	char		name[50];
+	char		str[IB_DEVS_STR_SIZE];
+	struct dev_data	tbl[IB_DEVS_TBL_SIZE];
+	int		num_vals;
+	int		def_val[MAX_VALS_PER_BDF];
+	struct p_range	range;
+};
 
-static int num_vfs;
-module_param(num_vfs, int, 0444);
-MODULE_PARM_DESC(num_vfs, "enable #num_vfs functions if num_vfs > 0");
+static struct param_data num_vfs = {
+	.id		= NUM_VFS,
+	.name		= "num_vfs",
+	.num_vals	= 1,
+	.def_val	= {0},
+	.range		= {0, MLX4_MAX_NUM_VF}
+};
+module_param_string(num_vfs, num_vfs.str, sizeof(num_vfs.str), 0444);
+MODULE_PARM_DESC(num_vfs,
+		 "Is either one num_vfs val for all devices or list of BDF to num_vfs 'bb:dd.f-val,...' (in hex).");
 
-static int probe_vf;
-module_param(probe_vf, int, 0444);
-MODULE_PARM_DESC(probe_vf, "number of vfs to probe by pf driver (num_vfs > 0)");
+static struct param_data probe_vf = {
+	.id		= PROBE_VF,
+	.name		= "probe_vf",
+	.num_vals	= 1,
+	.def_val	= {0},
+	.range		= {0, MLX4_MAX_NUM_VF}
+};
+module_param_string(probe_vf, probe_vf.str, sizeof(probe_vf.str), 0444);
+MODULE_PARM_DESC(probe_vf,
+		 "Is either one val(num vfs to probe by the pf driver) for all devices or list of BDF to probe_vf 'bb:dd.f-val,...' (in hex).");
 
 int mlx4_log_num_mgm_entry_size = MLX4_DEFAULT_MGM_LOG_ENTRY_SIZE;
 
@@ -172,11 +198,17 @@ module_param_named(log_mtts_per_seg, log_mtts_per_seg, int, 0444);
 MODULE_PARM_DESC(log_mtts_per_seg, "Log2 number of MTT entries per segment "
 		 "(0-7) (default: 0)");
 
-static int port_type_array[2] = {MLX4_PORT_TYPE_NONE, MLX4_PORT_TYPE_NONE};
-static int arr_argc = 2;
-module_param_array(port_type_array, int, &arr_argc, 0444);
-MODULE_PARM_DESC(port_type_array, "Array of port types: HW_DEFAULT (0) is default "
-				"1 for IB, 2 for Ethernet");
+static struct param_data port_type_array = {
+	.id		= PORT_TYPE_ARRAY,
+	.name		= "port_type_array",
+	.num_vals	= 2,
+	.def_val	= {MLX4_PORT_TYPE_NONE, MLX4_PORT_TYPE_NONE},
+	.range		= {MLX4_PORT_TYPE_NONE, MLX4_PORT_TYPE_AUTO}
+};
+module_param_string(port_type_array, port_type_array.str, sizeof(port_type_array.str), 0444);
+MODULE_PARM_DESC(port_type_array,
+		 "Is either one array of 2 port types 't1,t2' for all devices or list of BDF to port_type_array 'bb:dd.f-t1;t2,...' (in hex).");
+
 
 struct mlx4_port_config {
 	struct list_head list;
@@ -232,6 +264,224 @@ enum {
 	MLX4_IF_STATE_BASIC,
 	MLX4_IF_STATE_EXTENDED
 };
+
+static inline int int_bdf(int bus, int dev, int fn)
+{
+	return (bus << 12) | (dev << 4) | fn;
+}
+
+static inline void pr_bdf_err(const char *bdf, const char *pname)
+{
+	pr_warn("mlx4_core: '%s' is not valid bdf in '%s' param\n", bdf, pname);
+}
+
+static inline void pr_val_err(const char *bdf, const char *pname,
+			      const char *val)
+{
+	pr_warn("mlx4_core: value '%s' of bdf '%s' in '%s' param is not valid\n"
+		, val, bdf, pname);
+}
+
+static inline void pr_out_of_range_bdf(const char *bdf, int val,
+				       struct param_data *pdata)
+{
+	pr_warn("mlx4_core: value %d in bdf %s of param %s is out of its valid range (%d,%d)"
+		, val, bdf, pdata->name , pdata->range.min, pdata->range.max);
+}
+
+static inline void pr_out_of_range(struct param_data *pdata)
+{
+	pr_warn("mlx4_core: value of %s param is out of its valid range (%d,%d)"
+		, pdata->name , pdata->range.min, pdata->range.max);
+}
+
+static inline int is_in_range(int val, struct p_range *r)
+{
+	return (val >= r->min && val <= r->max);
+}
+
+static int update_defaults(struct param_data *pdata)
+{
+	int val[MAX_VALS_PER_BDF];
+	char tmp[32];
+
+	switch (pdata->id) {
+	case PORT_TYPE_ARRAY:
+		if (sscanf(pdata->str, "%x,%x", &val[0], &val[1]) != 2)
+			return INVALID_STR;
+		sprintf(tmp, "%x,%x", val[0], val[1]);
+		if (strcmp(pdata->str, tmp))
+			return INVALID_STR;
+
+		if (!is_in_range(val[0], &pdata->range) ||
+		    !is_in_range(val[1], &pdata->range)) {
+			pr_out_of_range(pdata);
+			return INVALID_DATA;
+		}
+		pdata->tbl[0].val[0] = val[0];
+		pdata->tbl[0].val[1] = val[1];
+		break;
+
+	case NUM_VFS:
+	case PROBE_VF:
+		if (sscanf(pdata->str, "%x", &val[0]) != 1)
+			return INVALID_STR;
+		sprintf(tmp, "%x", val[0]);
+		if (strcmp(pdata->str, tmp))
+			return INVALID_STR;
+
+		if (!is_in_range(val[0], &pdata->range)) {
+			pr_out_of_range(pdata);
+			return INVALID_DATA;
+		}
+		pdata->tbl[0].val[0] = val[0];
+		break;
+	}
+	pdata->tbl[1].bdf = -1;
+
+	return VALID_DATA;
+}
+
+static int fill_tbl(struct param_data *pdata)
+{
+	int bus, dev, fn, val, bdf;
+	char *p, *t, *v;
+	char tmp[32];
+	char sbdf[32];
+	char sval[32];
+	int j, k, str_size, i = 1;
+	int val_len;
+
+	p = pdata->str;
+
+	for (j = 0; j < pdata->num_vals; j++)
+		pdata->tbl[0].val[j] = pdata->def_val[j];
+	pdata->tbl[1].bdf = -1;
+
+	str_size = strlen(pdata->str);
+
+	if (str_size == 0)
+		return 0;
+
+	sbdf[IB_BDF_STR_SIZE] = 0;
+	while (strlen(p)) {
+		strncpy(sbdf, p, IB_BDF_STR_SIZE);
+		if (sscanf(sbdf, "%02x:%02x.%x-", &bus, &dev, &fn) != 3) {
+			pr_bdf_err(sbdf, pdata->name);
+			goto err;
+		}
+
+		sprintf(tmp, "%02x:%02x.%x-", bus, dev, fn);
+		if (strcmp(sbdf, tmp)) {
+			pr_bdf_err(sbdf, pdata->name);
+			goto err;
+		}
+
+		bdf = int_bdf(bus, dev, fn);
+
+		for (j = 1; j < i; j++)
+			if (pdata->tbl[j].bdf == bdf) {
+				pr_warn("mlx4_core: in '%s' param, %s appears multiple times\n"
+					, pdata->name, sbdf);
+				goto err;
+			}
+
+		if (i >= IB_DEVS_TBL_SIZE) {
+			pr_warn("mlx4_core: Too many devices in '%s' param\n"
+				, pdata->name);
+			goto err;
+		}
+
+		p += IB_BDF_STR_SIZE;
+		t = strchr(p, ',');
+		t = t ? t : p + strlen(p);
+
+		for (k = 0; k < pdata->num_vals; k++) {
+			v = (k == pdata->num_vals - 1) ? t : strchr(p, ';');
+			if (!v || v > t) {
+				pr_val_err(sbdf, pdata->name, p);
+				goto err;
+			}
+
+			val_len = v - p;
+			if (val_len > 8) {
+				strncpy(sval, p, 9);
+				sval[9] = 0;
+				pr_val_err(sbdf, pdata->name, sval);
+				goto err;
+			}
+			strncpy(sval, p, val_len);
+			sval[val_len] = 0;
+
+			if (sscanf(sval, "%x", &val) != 1) {
+				pr_val_err(sbdf, pdata->name, sval);
+				goto err;
+			}
+			sprintf(tmp, "%x", val);
+			if (strcmp(sval, tmp)) {
+				pr_val_err(sbdf, pdata->name, sval);
+				goto err;
+			}
+
+			if (!is_in_range(val, &pdata->range)) {
+				pr_out_of_range_bdf(sbdf, val, pdata);
+				goto err;
+			}
+
+			pdata->tbl[i].val[k] = val;
+			p += val_len;
+			if (v[0] == ';')
+				p++;
+		}
+
+		pdata->tbl[i].bdf = bdf;
+		if (strlen(p)) {
+			if (p[0] != ',') {
+				pr_warn("mlx4_core: expect separator ',' before '%s' in param '%s'\n"
+					, p, pdata->name);
+				goto err;
+			}
+			p++;
+		}
+		i++;
+	}
+
+	return 0;
+
+err:
+	pdata->tbl[1].bdf = -1;
+	pr_warn("mlx4_core: The value of '%s' param is incorrect. The param value is discarded!\n"
+		, pdata->name);
+
+	return -EINVAL;
+}
+
+int get_val(struct dev_data *tbl, struct pci_dev *pdev, int idx)
+{
+	int bdf, i = 1;
+
+	if (!pdev)
+		goto ret_default;
+
+	if (!pdev->bus) {
+		pr_debug("mlx4_core: pci_dev without valid bus number\n");
+		goto ret_default;
+	}
+
+	bdf = int_bdf(pdev->bus->number, PCI_SLOT(pdev->devfn),
+		      PCI_FUNC(pdev->devfn));
+
+	while ((i < IB_DEVS_TBL_SIZE) && (tbl[i].bdf != -1)) {
+		if (tbl[i].bdf == bdf)
+			return tbl[i].val[idx];
+		i++;
+	}
+
+ret_default:
+
+	return tbl[0].val[idx];
+}
+
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
 	struct sysinfo si;
@@ -449,11 +699,12 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 				/* if IB and ETH are supported, we set the port
 				 * type according to user selection of port type;
 				 * if user selected none, take the FW hint */
-				if (port_type_array[i - 1] == MLX4_PORT_TYPE_NONE)
+				int pta = get_val(port_type_array.tbl, ph_pci(dev->pdev), i - 1);
+				if (pta == MLX4_PORT_TYPE_NONE)
 					dev->caps.port_type[i] = dev->caps.suggested_type[i] ?
 						MLX4_PORT_TYPE_ETH : MLX4_PORT_TYPE_IB;
 				else
-					dev->caps.port_type[i] = port_type_array[i - 1];
+					dev->caps.port_type[i] = pta;
 			}
 		}
 		/*
@@ -1534,156 +1785,10 @@ static int choose_log_fs_mgm_entry_size(int qp_per_entry)
 	return (i <= MLX4_MAX_MGM_LOG_ENTRY_SIZE) ? i : -1;
 }
 
-static inline int int_bdf(int bus, int dev, int fn)
-{
-	return (bus << 12) | (dev << 4) | fn;
-}
-
-static inline void pr_bdf_err(const char *bdf, const char *pname)
-{
-	pr_warn("mlx4_core: '%s' is not valid bdf in '%s' param\n", bdf, pname);
-}
-
-static inline void pr_val_err(const char *bdf, const char *pname,
-			      const char *val)
-{
-	pr_warn("mlx4_core: value '%s' of bdf '%s' in '%s' param is not valid\n"
-		, val, bdf, pname);
-}
-
-static int fill_tbl(struct dev_data *tbl, char *str, int default_val,
-		    const char *pram_name, int num_vals)
-{
-	int bus, dev, fn, val, bdf;
-	char *p = str, *t, *v;
-	char tmp[32];
-	char sbdf[32];
-	char sval[32];
-	int j, k, str_size, i = 1;
-	int val_len;
-
-	tbl[0].val[0] = default_val;
-	tbl[1].bdf = -1;
-
-	str_size = strlen(str);
-
-	if (str_size == 0)
-		return 0;
-
-	sbdf[IB_BDF_STR_SIZE] = 0;
-	while (strlen(p)) {
-		strncpy(sbdf, p, IB_BDF_STR_SIZE);
-		if (sscanf(sbdf, "%02x:%02x.%x-", &bus, &dev, &fn) != 3) {
-			pr_bdf_err(sbdf, pram_name);
-			goto err;
-		}
-
-		sprintf(tmp, "%02x:%02x.%x-", bus, dev, fn);
-		if (strcmp(sbdf, tmp)) {
-			pr_bdf_err(sbdf, pram_name);
-			goto err;
-		}
-
-		bdf = int_bdf(bus, dev, fn);
-
-		for (j = 1; j < i; j++)
-			if (tbl[j].bdf == bdf) {
-				pr_warn("mlx4_core: in '%s' param, %s appears multiple times\n"
-					, pram_name, sbdf);
-				goto err;
-			}
-
-		if (i >= IB_DEVS_TBL_SIZE) {
-			pr_warn("mlx4_core: Too many devices in '%s' param\n"
-				, pram_name);
-			goto err;
-		}
-
-		p += IB_BDF_STR_SIZE;
-		t = strchr(p, ',');
-		t = t ? t : p + strlen(p);
-
-		for (k = 0; k < num_vals; k++) {
-			v = (k == num_vals - 1) ? t : strchr(p, ':');
-			if (!v || v > t) {
-				pr_val_err(sbdf, pram_name, p);
-				goto err;
-			}
-
-			val_len = v - p;
-			if (val_len > 8) {
-				strncpy(sval, p, 9);
-				sval[9] = 0;
-				pr_val_err(sbdf, pram_name, sval);
-				goto err;
-			}
-			strncpy(sval, p, val_len);
-			sval[val_len] = 0;
-
-			if (sscanf(sval, "%x", &val) != 1 || val < 0) {
-				pr_val_err(sbdf, pram_name, sval);
-				goto err;
-			}
-
-			tbl[i].val[k] = val;
-			p += val_len;
-			if (v[0] == ':')
-				p++;
-		}
-
-		tbl[i].bdf = bdf;
-		if (strlen(p)) {
-			if (p[0] != ',') {
-				pr_warn("mlx4_core: expect separator ',' before '%s' in param '%s'\n"
-					, p, pram_name);
-				goto err;
-			}
-			p++;
-		}
-		i++;
-
-	}
-
-	return 0;
-
-err:
-	tbl[1].bdf = -1;
-	pr_warn("mlx4_core: The value of '%s' param is incorrect. The param value is discarded!\n"
-		, pram_name);
-
-	return -EINVAL;
-}
-
-int get_val(struct dev_data *tbl, struct pci_dev *pdev, int idx)
-{
-	int bdf, i = 1;
-
-	if (!pdev)
-		goto ret_default;
-
-	if (!pdev->bus) {
-		pr_debug("mlx4_core: pci_dev without valid bus number\n");
-		goto ret_default;
-	}
-
-	bdf = int_bdf(pdev->bus->number, PCI_SLOT(pdev->devfn),
-		      PCI_FUNC(pdev->devfn));
-
-	while ((i < IB_DEVS_TBL_SIZE) && (tbl[i].bdf != -1)) {
-		if (tbl[i].bdf == bdf)
-			return tbl[i].val[idx];
-		i++;
-	}
-
-ret_default:
-
-	return tbl[0].val[0];
-}
-
 static void choose_steering_mode(struct mlx4_dev *dev,
 				 struct mlx4_dev_cap *dev_cap)
 {
-	int nvfs = get_val(num_vfs_tbl, ph_pci(dev->pdev), 0);
+	int nvfs = get_val(num_vfs.tbl, ph_pci(dev->pdev), 0);
 
 	if (high_rate_steer && !mlx4_is_mfunc(dev)) {
 		dev->caps.flags &= ~(MLX4_DEV_CAP_FLAG_VEP_MC_STEER |
@@ -2428,8 +2533,8 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 		return err;
 	}
 
-	nvfs = get_val(num_vfs_tbl, ph_pci(pdev), 0);
-	prb_vf = get_val(probe_vf_tbl, ph_pci(pdev), 0);
+	nvfs = get_val(num_vfs.tbl, ph_pci(pdev), 0);
+	prb_vf = get_val(probe_vf.tbl, ph_pci(pdev), 0);
 	if (nvfs > MLX4_MAX_NUM_VF) {
 		dev_err(&pdev->dev, "There are more VF's (%d) than allowed(%d)\n",
 			nvfs, MLX4_MAX_NUM_VF);
@@ -2936,19 +3041,31 @@ static struct pci_driver mlx4_driver = {
 
 static int __init mlx4_verify_params(void)
 {
-	if (num_vfs && strlen(num_vfs_str)) {
-		pr_warn("mlx4_core: not allowed to use both num_vfs and num_vfs_str module params");
-		return -1;
-	}
-	if (fill_tbl(num_vfs_tbl, num_vfs_str, num_vfs, "num_vfs_str", 1))
-		return -1;
+	int status;
 
-	if (probe_vf && strlen(probe_vf_str)) {
-		pr_warn("mlx4_core: not allowed to use both probe_vf and probe_vf_str module params");
+	status = update_defaults(&port_type_array);
+	if (status == INVALID_STR) {
+		if (fill_tbl(&port_type_array))
+			return -1;
+	} else if (status == INVALID_DATA) {
 		return -1;
 	}
-	if (fill_tbl(probe_vf_tbl, probe_vf_str, probe_vf, "probe_vf_str", 1))
+
+	status = update_defaults(&num_vfs);
+	if (status == INVALID_STR) {
+		if (fill_tbl(&num_vfs))
+			return -1;
+	} else if (status == INVALID_DATA) {
 		return -1;
+	}
+
+	status = update_defaults(&probe_vf);
+	if (status == INVALID_STR) {
+		if (fill_tbl(&probe_vf))
+			return -1;
+	} else if (status == INVALID_DATA) {
+		return -1;
+	}
 
 	if ((log_num_mac < 0) || (log_num_mac > 7)) {
 		pr_warning("mlx4_core: bad num_mac: %d\n", log_num_mac);
@@ -2965,12 +3082,6 @@ static int __init mlx4_verify_params(void)
 	if ((log_mtts_per_seg < 0) || (log_mtts_per_seg > 7)) {
 		pr_warning("mlx4_core: bad log_mtts_per_seg: %d\n", log_mtts_per_seg);
 		return -1;
-	}
-
-	/* Check if module param for ports type has legal combination */
-	if (port_type_array[0] == false && port_type_array[1] == true) {
-		pr_warning("mlx4_core: module parameter configuration ETH/IB is not supported. Switching to default configuration IB/IB\n");
-		port_type_array[0] = true;
 	}
 
 	if (mlx4_log_num_mgm_entry_size != -1 &&
