@@ -631,10 +631,6 @@ static const char *verbs_cmd_str(__u32 cmd)
 		return "CREATE_XSRQ";
 	case IB_USER_VERBS_CMD_OPEN_QP:
 		return "OPEN_QP";
-	case IB_USER_VERBS_CMD_ATTACH_FLOW:
-		return "ATTACH_FLOW";
-	case IB_USER_VERBS_CMD_DETACH_FLOW:
-		return "DETACH_FLOW";
 	case IB_USER_VERBS_CMD_CREATE_QP_EX:
 		return "CREATE_QP_EX";
 	case IB_USER_VERBS_CMD_MODIFY_CQ_EX:
