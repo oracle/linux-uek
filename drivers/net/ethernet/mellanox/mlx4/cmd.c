@@ -435,6 +435,19 @@ static int cmd_pending(struct mlx4_dev *dev)
 		 !!(status & swab32(1 << HCR_T_BIT)));
 }
 
+static int get_status(struct mlx4_dev *dev, u32 *status, int *go_bit,
+		      int *t_bit)
+{
+	if (pci_channel_offline(dev->pdev))
+		return -EIO;
+
+	*status = readl(mlx4_priv(dev)->cmd.hcr + HCR_STATUS_OFFSET);
+	*t_bit = !!(*status & swab32(1 << HCR_T_BIT));
+	*go_bit = !!(*status & swab32(1 << HCR_GO_BIT));
+
+	return 0;
+}
+
 static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 			 u32 in_modifier, u8 op_modifier, u16 op, u16 token,
 			 int event)
@@ -443,6 +456,8 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 	u32 __iomem *hcr = cmd->hcr;
 	int ret = -EAGAIN;
 	unsigned long end;
+	int err, go_bit = 0, t_bit = 0;
+	u32 status = 0;
 
 	mutex_lock(&cmd->hcr_mutex);
 
@@ -509,6 +524,15 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 	ret = 0;
 
 out:
+	if (ret) {
+		err = get_status(dev, &status, &go_bit, &t_bit);
+		mlx4_warn(dev, "Could not post command %s (0x%x): ret=%d, "
+			  "in_param=0x%llx, in_mod=0x%x, op_mod=0x%x, "
+			  "get_status err=%d, status_reg=0x%x, go_bit=%d, "
+			  "t_bit=%d, toggle=0x%x\n", cmd_to_str(op), op, ret,
+			  in_param, in_modifier, op_modifier, err, status,
+			  go_bit, t_bit, cmd->toggle);
+	}
 	mutex_unlock(&cmd->hcr_mutex);
 	return ret;
 }
@@ -654,19 +678,6 @@ void mlx4_cmd_event(struct mlx4_dev *dev, u16 token, u8 status, u64 out_param)
 	complete(&context->done);
 }
 
-static int get_status(struct mlx4_dev *dev, u32 *status, int *go_bit,
-		      int *t_bit)
-{
-	if (pci_channel_offline(dev->pdev))
-		return -EIO;
-
-	*status = readl(mlx4_priv(dev)->cmd.hcr + HCR_STATUS_OFFSET);
-	*t_bit = !!(*status & swab32(1 << HCR_T_BIT));
-	*go_bit = !!(*status & swab32(1 << HCR_GO_BIT));
-
-	return 0;
-}
-
 static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			 int out_is_imm, u32 in_modifier, u8 op_modifier,
 			 u16 op, unsigned long timeout)
@@ -690,19 +701,17 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 
 	err = mlx4_cmd_post(dev, in_param, out_param ? *out_param : 0,
 			    in_modifier, op_modifier, op, context->token, 1);
-	if (err) {
-		mlx4_warn(dev, "command %s (0x%x) could not be posted (%d)\n",
-			  cmd_to_str(op), op, err);
+	if (err)
 		goto out;
-	}
 
 	if (!wait_for_completion_timeout(&context->done,
 					 msecs_to_jiffies(timeout))) {
 		stat_err = get_status(dev, &status, &go_bit, &t_bit);
-		mlx4_warn(dev, "command %s (0x%x) timed out: "
-			  "get_status err=%d, status=0x%x, go_bit=%d, "
-			  "t_bit=%d, toggle=0x%x\n", cmd_to_str(op), op,
-			  stat_err, status, go_bit, t_bit,
+		mlx4_warn(dev, "command %s (0x%x) timed out: in_param=0x%llx, "
+			  "in_mod=0x%x, op_mod=0x%x, get_status err=%d, "
+			  "status_reg=0x%x, go_bit=%d, t_bit=%d, toggle=0x%x\n"
+			  , cmd_to_str(op), op, in_param, in_modifier,
+			  op_modifier, stat_err, status, go_bit, t_bit,
 			  mlx4_priv(dev)->cmd.toggle);
 		err = -EBUSY;
 		goto out;
