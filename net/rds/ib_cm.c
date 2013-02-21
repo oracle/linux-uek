@@ -267,7 +267,7 @@ static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
 		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
 		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IB_SUPPORTED_PROTOCOLS);
 		dp->dp_ack_seq = rds_ib_piggyb_ack(ic);
-		dp->dp_tos = cpu_to_be32(conn->c_tos);
+		dp->dp_tos = conn->c_tos;
 
 		/* Advertise flow control */
 		if (ic->i_flowctl) {
@@ -722,7 +722,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		 (unsigned long long)be64_to_cpu(fguid));
 
 	conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr, &rds_ib_transport,
-			       be32_to_cpu(dp->dp_tos), GFP_KERNEL);
+			       dp->dp_tos, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
 		conn = NULL;
