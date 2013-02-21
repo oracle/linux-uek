@@ -285,13 +285,13 @@ static inline void pr_val_err(const char *bdf, const char *pname,
 static inline void pr_out_of_range_bdf(const char *bdf, int val,
 				       struct param_data *pdata)
 {
-	pr_warn("mlx4_core: value %d in bdf %s of param %s is out of its valid range (%d,%d)"
+	pr_warn("mlx4_core: value %d in bdf '%s' of param '%s' is out of its valid range (%d,%d)"
 		, val, bdf, pdata->name , pdata->range.min, pdata->range.max);
 }
 
 static inline void pr_out_of_range(struct param_data *pdata)
 {
-	pr_warn("mlx4_core: value of %s param is out of its valid range (%d,%d)"
+	pr_warn("mlx4_core: value of '%s' param is out of its valid range (%d,%d)"
 		, pdata->name , pdata->range.min, pdata->range.max);
 }
 
@@ -302,35 +302,47 @@ static inline int is_in_range(int val, struct p_range *r)
 
 static int update_defaults(struct param_data *pdata)
 {
-	int val[MAX_VALS_PER_BDF];
-	char tmp[32];
+	long int val[MAX_VALS_PER_BDF];
+	int ret;
+	char *t, *p = pdata->str;
+	char sval[32];
+	int val_len;
+
+	if (!strlen(p) || strchr(p, ':') || strchr(p, '.') || strchr(p, ';'))
+		return INVALID_STR;
 
 	switch (pdata->id) {
 	case PORT_TYPE_ARRAY:
-		if (sscanf(pdata->str, "%x,%x", &val[0], &val[1]) != 2)
-			return INVALID_STR;
-		sprintf(tmp, "%x,%x", val[0], val[1]);
-		if (strcmp(pdata->str, tmp))
+		t = strchr(p, ',');
+		if (!t || t == p || (t - p) > sizeof(sval))
 			return INVALID_STR;
 
-		if (!is_in_range(val[0], &pdata->range) ||
-		    !is_in_range(val[1], &pdata->range)) {
-			pr_out_of_range(pdata);
+		val_len = t - p;
+		strncpy(sval, p, val_len);
+		sval[val_len] = 0;
+
+		ret = kstrtol(sval, 0, &val[0]);
+		if (ret == -EINVAL)
+			return INVALID_STR;
+		if (ret || !is_in_range(val[0], &pdata->range))
 			return INVALID_DATA;
-		}
+
+		ret = kstrtol(t + 1, 0, &val[1]);
+		if (ret == -EINVAL)
+			return INVALID_STR;
+		if (ret || !is_in_range(val[1], &pdata->range))
+			return INVALID_DATA;
+
 		pdata->tbl[0].val[0] = val[0];
 		pdata->tbl[0].val[1] = val[1];
 		break;
 
 	case NUM_VFS:
 	case PROBE_VF:
-		if (sscanf(pdata->str, "%x", &val[0]) != 1)
+		ret = kstrtol(p, 0, &val[0]);
+		if (ret == -EINVAL)
 			return INVALID_STR;
-		sprintf(tmp, "%x", val[0]);
-		if (strcmp(pdata->str, tmp))
-			return INVALID_STR;
-
-		if (!is_in_range(val[0], &pdata->range)) {
+		if (ret || !is_in_range(val[0], &pdata->range)) {
 			pr_out_of_range(pdata);
 			return INVALID_DATA;
 		}
@@ -344,13 +356,12 @@ static int update_defaults(struct param_data *pdata)
 
 static int fill_tbl(struct param_data *pdata)
 {
-	int bus, dev, fn, val, bdf;
+	int bus, dev, fn, bdf;
 	char *p, *t, *v;
 	char tmp[32];
 	char sbdf[32];
-	char sval[32];
+	char sep = ',';
 	int j, k, str_size, i = 1;
-	int val_len;
 
 	p = pdata->str;
 
@@ -372,7 +383,8 @@ static int fill_tbl(struct param_data *pdata)
 		}
 
 		sprintf(tmp, "%02x:%02x.%x-", bus, dev, fn);
-		if (strcmp(sbdf, tmp)) {
+
+		if (strnicmp(sbdf, tmp, sizeof(tmp))) {
 			pr_bdf_err(sbdf, pdata->name);
 			goto err;
 		}
@@ -393,52 +405,53 @@ static int fill_tbl(struct param_data *pdata)
 		}
 
 		p += IB_BDF_STR_SIZE;
-		t = strchr(p, ',');
+		t = strchr(p, sep);
 		t = t ? t : p + strlen(p);
+		if (p >= t) {
+			pr_val_err(sbdf, pdata->name, "");
+			goto err;
+		}
 
 		for (k = 0; k < pdata->num_vals; k++) {
-			v = (k == pdata->num_vals - 1) ? t : strchr(p, ';');
-			if (!v || v > t) {
+			char sval[32];
+			long int val;
+			int ret, val_len;
+			char vsep = ';';
+
+			v = (k == pdata->num_vals - 1) ? t : strchr(p, vsep);
+			if (!v || v > t || v == p || (v - p) > sizeof(sval)) {
 				pr_val_err(sbdf, pdata->name, p);
 				goto err;
 			}
-
 			val_len = v - p;
-			if (val_len > 8) {
-				strncpy(sval, p, 9);
-				sval[9] = 0;
-				pr_val_err(sbdf, pdata->name, sval);
-				goto err;
-			}
 			strncpy(sval, p, val_len);
 			sval[val_len] = 0;
 
-			if (sscanf(sval, "%x", &val) != 1) {
-				pr_val_err(sbdf, pdata->name, sval);
+			ret = kstrtol(sval, 0, &val);
+			if (ret) {
+				if (strchr(p, vsep))
+					pr_warn("mlx4_core: too many vals in bdf '%s' of param '%s'\n"
+						, sbdf, pdata->name);
+				else
+					pr_val_err(sbdf, pdata->name, sval);
 				goto err;
 			}
-			sprintf(tmp, "%x", val);
-			if (strcmp(sval, tmp)) {
-				pr_val_err(sbdf, pdata->name, sval);
-				goto err;
-			}
-
 			if (!is_in_range(val, &pdata->range)) {
 				pr_out_of_range_bdf(sbdf, val, pdata);
 				goto err;
 			}
 
 			pdata->tbl[i].val[k] = val;
-			p += val_len;
-			if (v[0] == ';')
+			p = v;
+			if (p[0] == vsep)
 				p++;
 		}
 
 		pdata->tbl[i].bdf = bdf;
 		if (strlen(p)) {
-			if (p[0] != ',') {
-				pr_warn("mlx4_core: expect separator ',' before '%s' in param '%s'\n"
-					, p, pdata->name);
+			if (p[0] != sep) {
+				pr_warn("mlx4_core: expect separator '%c' before '%s' in param '%s'\n"
+					, sep, p, pdata->name);
 				goto err;
 			}
 			p++;
