@@ -488,7 +488,9 @@ struct ib_cq *mlx5_ib_create_cq(struct ib_device *ibdev, int entries,
 int mlx5_ib_destroy_cq(struct ib_cq *cq);
 int mlx5_ib_poll_cq(struct ib_cq *ibcq, int num_entries, struct ib_wc *wc);
 int mlx5_ib_arm_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags);
-int mlx5_ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period);
+int mlx5_ib_modify_cq(struct ib_cq *cq,
+		      struct ib_cq_attr *cq_attr,
+		      int cq_attr_mask);
 int mlx5_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata);
 struct ib_mr *mlx5_ib_get_dma_mr(struct ib_pd *pd, int acc);
 struct ib_mr *mlx5_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,

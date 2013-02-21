@@ -794,7 +794,9 @@ void mlx5_ib_cq_clean(struct mlx5_ib_cq *cq, u32 qpn, struct mlx5_ib_srq *srq)
 	spin_unlock_irq(&cq->lock);
 }
 
-int mlx5_ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period)
+int mlx5_ib_modify_cq(struct ib_cq *cq,
+		      struct ib_cq_attr *cq_attr,
+		      int cq_attr_mask)
 {
 	return -ENOSYS;
 }
