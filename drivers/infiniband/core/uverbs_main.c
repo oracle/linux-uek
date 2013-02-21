@@ -669,9 +669,6 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	if (copy_from_user(&hdr, buf, sizeof hdr))
 		return -EFAULT;
 
-	if (hdr.in_words * 4 != count)
-		return -EINVAL;
-
 	if (hdr.command >= ARRAY_SIZE(uverbs_cmd_table) ||
 	    !uverbs_cmd_table[hdr.command])
 		return -EINVAL;
@@ -684,9 +681,29 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		return -ENOSYS;
 
 	ktime_get_ts(&ts1);
-	ret = uverbs_cmd_table[hdr.command](file, buf + sizeof(hdr),
-					    hdr.in_words * 4,
-					    hdr.out_words * 4);
+	if (hdr.command >= IB_USER_VERBS_CMD_THRESHOLD) {
+		struct ib_uverbs_cmd_hdr_ex hdr_ex;
+
+		if (copy_from_user(&hdr_ex, buf, sizeof(hdr_ex)))
+			return -EFAULT;
+
+		if (((hdr_ex.in_words + hdr_ex.provider_in_words) * 4) != count)
+			return -EINVAL;
+
+		ret = uverbs_cmd_table[hdr.command](
+				file,
+				buf + sizeof(hdr_ex),
+				(hdr_ex.in_words + hdr_ex.provider_in_words) * 4,
+				(hdr_ex.out_words + hdr_ex.provider_out_words) * 4);
+	} else {
+		if (hdr.in_words * 4 != count)
+			return -EINVAL;
+
+		ret = uverbs_cmd_table[hdr.command](
+				file,
+				buf + sizeof(hdr),
+				hdr.in_words * 4, hdr.out_words * 4);
+	}
 	if (file->device->ib_dev->cmd_perf) {
 		ktime_get_ts(&ts2);
 		t1 = timespec_to_ktime(ts1);

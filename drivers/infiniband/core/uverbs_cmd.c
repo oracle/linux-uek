@@ -69,6 +69,11 @@ static struct uverbs_lock_class xrcd_lock_class = { .name = "XRCD-uobj" };
 		(udata)->outlen = (olen);				\
 	} while (0)
 
+enum uverbs_cmd_type {
+	IB_USER_VERBS_CMD_BASIC,
+	IB_USER_VERBS_CMD_EXTENDED
+};
+
 /*
  * The ib_uobject locking scheme is as follows:
  *
