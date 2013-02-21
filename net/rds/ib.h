@@ -83,7 +83,9 @@ struct rds_ib_connect_private {
 	u8			dp_protocol_major;
 	u8			dp_protocol_minor;
 	__be16			dp_protocol_minor_mask; /* bitmask */
-	__be32			dp_tos;
+	u8                      dp_tos;
+	u8                      dp_reserved1;
+	__be16                  dp_reserved2;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
 };

@@ -324,18 +324,6 @@ static int rds_ib_laddr_check(__be32 addr)
 	return ret;
 }
 
-static u8 rds_ib_port_lookup(struct rds_ib_device *rds_ibdev, u8 port_num)
-{
-	u8	i;
-
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (ip_config[i].rds_ibdev == rds_ibdev &&
-			ip_config[i].port_num == port_num)
-			return i;
-	}
-	return 0;
-}
-
 static u8 rds_ib_get_failover_port(u8 port)
 {
 	u8	i;
