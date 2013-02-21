@@ -2085,7 +2085,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		}
 
 		if (wr->send_flags & IB_SEND_INLINE && wr->num_sge) {
-			int sz;
+			int uninitialized_var(sz);
 
 			err = set_data_inl_seg(qp, wr, seg, &sz);
 			if (unlikely(err)) {
