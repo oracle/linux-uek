@@ -794,6 +794,8 @@ static int scsi_add_lun(struct scsi_device *sdev, unsigned char *inq_result,
 		sdev->removable = (inq_result[1] & 0x80) >> 7;
 	}
 
+	sdev->request_queue->sgio_type = sdev->type;
+
 	switch (sdev->type) {
 	case TYPE_RBC:
 	case TYPE_TAPE:
