@@ -1078,6 +1078,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 
 	rsv = trans->block_rsv;
 	trans->block_rsv = &pending->block_rsv;
+	trans->bytes_reserved = trans->block_rsv->reserved;
 
 	dentry = pending->dentry;
 	parent = dget_parent(dentry);
@@ -1231,6 +1232,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 fail:
 	dput(parent);
 	trans->block_rsv = rsv;
+	trans->bytes_reserved = 0;
 no_free_objectid:
 	kfree(new_root_item);
 root_item_alloc_fail:
