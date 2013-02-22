@@ -348,7 +348,6 @@ struct request_queue
 	unsigned int		in_flight[2];
 
 	unsigned int		rq_timeout;
-	unsigned int		eh_timeout;
 	struct timer_list	timeout;
 	struct list_head	timeout_list;
 
@@ -387,6 +386,9 @@ struct request_queue
 #ifdef CONFIG_BLK_DEV_THROTTLING
 	/* Throttle data */
 	struct throtl_data *td;
+#endif
+#ifndef __GENKSYMS__
+	unsigned int		eh_timeout;
 #endif
 };
 
