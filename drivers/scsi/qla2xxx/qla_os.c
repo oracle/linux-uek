@@ -2856,6 +2856,8 @@ iospace_config_failed:
 	} else {
 		if (ha->iobase)
 			iounmap(ha->iobase);
+		if (ha->cregbase)
+			iounmap(ha->cregbase);
 	}
 	pci_release_selected_regions(ha->pdev, ha->bars);
 	kfree(ha);
@@ -3020,6 +3022,9 @@ qla2x00_remove_one(struct pci_dev *pdev)
 	} else {
 		if (ha->iobase)
 			iounmap(ha->iobase);
+
+		if (ha->cregbase)
+			iounmap(ha->cregbase);
 
 		if (ha->mqiobase)
 			iounmap(ha->mqiobase);
