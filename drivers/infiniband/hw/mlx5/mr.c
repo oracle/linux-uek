@@ -627,31 +627,48 @@ static int poll_timeout(struct mlx5_ib_dev *dev, u64 wrid)
 	unsigned long end;
 	struct ib_wc wc;
 	int err;
+	unsigned long start, delta;
 
+	start = jiffies;
+poll_again:
 	end = jiffies + HZ;
 	do {
 		err = ib_poll_cq(umrc->cq, 1, &wc);
 		if (err < 0) {
 			mlx5_ib_warn(dev, "poll err %d\n", err);
+			while (1)
+				msleep(10000);
+
 			return err;
 		} else if (err > 1) {
 			err = -EIO;
 			mlx5_ib_warn(dev, "expected 1 completion but got %d\n",
 				     err);
+			while (1)
+				msleep(10000);
+
 			return err;
 		}
 	} while (err == 0 && time_before(jiffies, end));
 
 	if (err == 0) {
-		mlx5_ib_warn(dev, "waited too long with no completion\n");
+		mlx5_ib_warn(dev, "waited too long with no completion: wrid: 0x%llx\n", wrid);
+		while (1) {
+			msleep(10000);
+			goto poll_again;
+		}
 		return -ENOENT;
 	}
 
+	delta = jiffies - start;
 	if (wc.wr_id != wrid || wc.status != IB_WC_SUCCESS) {
-		mlx5_ib_warn(dev, "expected wrid 0x%llx, got 0x%llx, status %d\n",
-			     wrid, wc.wr_id, wc.status);
+		mlx5_ib_warn(dev, "expected wrid 0x%llx, got 0x%llx, status %d, total time %lu\n",
+			     wrid, wc.wr_id, wc.status, delta);
 		return -EINVAL;
 	}
+
+	if (delta > HZ)
+		mlx5_ib_warn(dev, "UMR completed in %lu jiffies\n", delta);
 
 	return 0;
 }
