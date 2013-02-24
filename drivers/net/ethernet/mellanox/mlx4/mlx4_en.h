@@ -97,22 +97,12 @@
 
 #define MLX4_EN_WATCHDOG_TIMEOUT	(15 * HZ)
 
-#ifdef CONFIG_X86_32
-#define MLX4_EN_ALLOC_SIZE	PAGE_ALIGN(4096)
-#else
-/* Use the maximum between 16384 and a single page */
-#define MLX4_EN_ALLOC_SIZE	PAGE_ALIGN(16384)
-#endif
-#define MLX4_EN_ALLOC_ORDER	get_order(MLX4_EN_ALLOC_SIZE)
-
-#define MLX4_EN_MAX_LRO_DESCRIPTORS	32
-
 /* Maximum ring sizes */
 #define MLX4_EN_MAX_TX_SIZE	8192
 #define MLX4_EN_MAX_RX_SIZE	8192
 
-/* Minimum ring size for our page-allocation scheme to work */
-#define MLX4_EN_MIN_RX_SIZE	(MLX4_EN_ALLOC_SIZE / SMP_CACHE_BYTES)
+/* Minimum ring sizes */
+#define MLX4_EN_MIN_RX_SIZE	(4096 / TXBB_SIZE)
 #define MLX4_EN_MIN_TX_SIZE	(4096 / TXBB_SIZE)
 
 #define MLX4_EN_SMALL_PKT_SIZE		128
