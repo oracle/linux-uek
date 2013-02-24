@@ -1862,7 +1862,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 		optpar |= MLX4_QP_OPTPAR_PKEY_INDEX;
 	}
 
-	if (attr_mask & IB_QP_AV) {
+	if ((attr_mask & IB_QP_AV) && (ibqp->qp_type != IB_QPT_RAW_PACKET)) {
 		if (mlx4_set_path(dev, &attr->ah_attr, qp, &context->pri_path,
 				  attr_mask & IB_QP_PORT ?
 				  attr->port_num : qp->port, 1))
@@ -2012,6 +2012,12 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 			if (qp->mlx4_ib_qp_type & MLX4_IB_QPT_ANY_SRIOV)
 				context->pri_path.fl = 0x80;
 			context->pri_path.sched_queue |= MLX4_IB_DEFAULT_SCHED_QUEUE;
+		}
+		if (ibqp->qp_type == IB_QPT_RAW_PACKET &&
+		    (attr_mask & IB_QP_AV)) {
+			context->pri_path.sched_queue |=
+				((attr->ah_attr.sl & 0xf) << 3);
+			context->pri_path.feup = 1 << 6;
 		}
 		is_eth = rdma_port_get_link_layer(&dev->ib_dev, qp->port) ==
 			IB_LINK_LAYER_ETHERNET;
