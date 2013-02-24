@@ -1402,7 +1402,7 @@ int mlx4_en_start_port(struct net_device *dev)
 
 	/* Calculate Rx buf size */
 	dev->mtu = min(dev->mtu, priv->max_mtu);
-	mlx4_en_calc_rx_buf(dev);
+	priv->rx_skb_size = dev->mtu + ETH_HLEN + VLAN_HLEN;
 	en_dbg(DRV, priv, "Rx buf size:%d\n", priv->rx_skb_size);
 
 	/* Configure rx cq's and rings */
@@ -1825,7 +1825,7 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 			goto err;
 
 		if (mlx4_en_create_rx_ring(priv, &priv->rx_ring[i],
-					   prof->rx_ring_size, priv->stride,
+					   prof->rx_ring_size,
 					   node))
 			goto err;
 	}
@@ -2262,7 +2262,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	memcpy(priv->prev_mac, dev->dev_addr, sizeof(priv->prev_mac));
 
 	priv->stride = roundup_pow_of_two(sizeof(struct mlx4_en_rx_desc) +
-					  DS_SIZE * MLX4_EN_MAX_RX_FRAGS);
+					  DS_SIZE);
 	err = mlx4_en_alloc_resources(priv);
 	if (err)
 		goto out;
@@ -2339,7 +2339,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	mlx4_en_update_loopback_state(priv->dev, priv->dev->features);
 
 	/* Configure port */
-	mlx4_en_calc_rx_buf(dev);
+	priv->rx_skb_size = dev->mtu + ETH_HLEN + VLAN_HLEN;
 	err = mlx4_SET_PORT_general(mdev->dev, priv->port,
 				    priv->rx_skb_size + ETH_FCS_LEN,
 				    prof->tx_pause, prof->tx_ppp,

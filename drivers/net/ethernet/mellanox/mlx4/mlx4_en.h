@@ -107,16 +107,6 @@
 
 #define MLX4_EN_MAX_LRO_DESCRIPTORS	32
 
-/* Receive fragment sizes; we use at most 4 fragments (for 9600 byte MTU
- * and 4K allocations) */
-enum {
-	FRAG_SZ0 = 2048,
-	FRAG_SZ1 = 1024,
-	FRAG_SZ2 = 4096,
-	FRAG_SZ3 = MLX4_EN_ALLOC_SIZE
-};
-#define MLX4_EN_MAX_RX_FRAGS	4
-
 /* Maximum ring sizes */
 #define MLX4_EN_MAX_TX_SIZE	8192
 #define MLX4_EN_MAX_RX_SIZE	8192
@@ -242,12 +232,6 @@ struct mlx4_en_tx_desc {
 #define MLX4_EN_CX3_LOW_ID	0x1000
 #define MLX4_EN_CX3_HIGH_ID	0x1005
 
-struct mlx4_en_rx_alloc {
-	struct page *page;
-	dma_addr_t dma;
-	u16 offset;
-};
-
 struct mlx4_en_tx_ring {
 	struct mlx4_hwq_resources wqres;
 	u32 size ; /* number of TXBBs */
@@ -287,7 +271,6 @@ struct mlx4_en_rx_desc {
 
 struct mlx4_en_rx_ring {
 	struct mlx4_hwq_resources wqres;
-	struct mlx4_en_rx_alloc page_alloc[MLX4_EN_MAX_RX_FRAGS];
 	u32 size ;	/* number of Rx descs*/
 	u32 actual_size;
 	u32 size_mask;
@@ -429,15 +412,6 @@ struct mlx4_en_mc_list {
 	u64			reg_id;
 };
 
-struct mlx4_en_frag_info {
-	u16 frag_size;
-	u16 frag_prefix_size;
-	u16 frag_stride;
-	u16 frag_align;
-	u16 last_offset;
-
-};
-
 #ifdef CONFIG_MLX4_EN_DCB
 /* Minimal TC BW - setting to 0 will block traffic */
 #define MLX4_EN_BW_MIN 1
@@ -536,9 +510,6 @@ struct mlx4_en_priv {
 	u32 tx_queue_num;
 	u32 rx_ring_num;
 	u32 rx_skb_size;
-	struct mlx4_en_frag_info frag_info[MLX4_EN_MAX_RX_FRAGS];
-	u16 num_frags;
-	u16 log_rx_info;
 
 	struct mlx4_en_tx_ring **tx_ring;
 	struct mlx4_en_tx_queue *tx_queue;
@@ -640,7 +611,7 @@ void mlx4_en_create_tx_queues(struct mlx4_en_priv *priv);
 
 int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 			   struct mlx4_en_rx_ring **pring,
-			   u32 size, u16 stride, int node);
+			   u32 size, int node);
 void mlx4_en_destroy_rx_ring(struct mlx4_en_priv *priv,
 			     struct mlx4_en_rx_ring **pring,
 			     u32 size, u16 stride);
@@ -659,7 +630,6 @@ void mlx4_en_sqp_event(struct mlx4_qp *qp, enum mlx4_event event);
 int mlx4_en_map_buffer(struct mlx4_buf *buf);
 void mlx4_en_unmap_buffer(struct mlx4_buf *buf);
 
-void mlx4_en_calc_rx_buf(struct net_device *dev);
 int mlx4_en_config_rss_steer(struct mlx4_en_priv *priv);
 void mlx4_en_release_rss_steer(struct mlx4_en_priv *priv);
 int mlx4_en_create_drop_qp(struct mlx4_en_priv *priv);
