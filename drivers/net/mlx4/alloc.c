@@ -145,9 +145,6 @@ void mlx4_bitmap_free_range(struct mlx4_bitmap *bitmap, u32 obj, int cnt)
 	spin_lock(&bitmap->lock);
 	for (i = 0; i < cnt; i++)
 		clear_bit(obj + i, bitmap->table);
-	bitmap->last = min(bitmap->last, obj);
-	bitmap->top = (bitmap->top + bitmap->max + bitmap->reserved_top)
-			& bitmap->mask;
 	spin_unlock(&bitmap->lock);
 }
 
