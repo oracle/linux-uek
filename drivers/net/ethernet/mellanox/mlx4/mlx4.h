@@ -967,7 +967,7 @@ int mlx4_DMA_wrapper(struct mlx4_dev *dev, int slave,
 		     struct mlx4_cmd_mailbox *outbox,
 		     struct mlx4_cmd_info *cmd);
 int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
-			    int *base, u8 bf_qp);
+			    int *base, u8 flags);
 void __mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt);
 int __mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac);
 void __mlx4_unregister_mac(struct mlx4_dev *dev, u8 port, u64 mac);

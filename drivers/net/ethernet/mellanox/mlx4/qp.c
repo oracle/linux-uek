@@ -214,8 +214,10 @@ int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 EXPORT_SYMBOL_GPL(mlx4_qp_modify);
 
 int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
-			    int *base, u8 bf_qp)
+			    int *base, u8 flags)
 {
+	int bf_qp = !!(flags & (u8) MLX4_RESERVE_BF_QP);
+
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_qp_table *qp_table = &priv->qp_table;
 
@@ -231,14 +233,14 @@ int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
 }
 
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
-			  int *base, u8 bf_qp)
+			  int *base, u8 flags)
 {
 	u64 in_param = 0;
 	u64 out_param;
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&in_param, (((!!bf_qp) << 31) | (u32)cnt));
+		set_param_l(&in_param, (((u32) flags) << 24) | (u32) cnt);
 		set_param_h(&in_param, align);
 		err = mlx4_cmd_imm(dev, in_param, &out_param,
 				   RES_QP, RES_OP_RESERVE,
@@ -250,7 +252,7 @@ int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
 		*base = get_param_l(&out_param);
 		return 0;
 	}
-	return __mlx4_qp_reserve_range(dev, cnt, align, base, bf_qp);
+	return __mlx4_qp_reserve_range(dev, cnt, align, base, flags);
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_reserve_range);
 

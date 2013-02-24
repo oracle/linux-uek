@@ -124,7 +124,8 @@ int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
 	       "buf_size:%d dma:%llx\n", ring, ring->buf, ring->size,
 	       ring->buf_size, (unsigned long long) ring->wqres.buf.direct.map);
 
-	err = mlx4_qp_reserve_range(mdev->dev, 1, 1, &ring->qpn, 1);
+	err = mlx4_qp_reserve_range(mdev->dev, 1, 1, &ring->qpn,
+				    MLX4_RESERVE_BF_QP);
 	if (err) {
 		en_err(priv, "failed reserving qp for TX ring\n");
 		goto err_map;

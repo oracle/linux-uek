@@ -173,6 +173,18 @@ enum {
 	MLX4_DEV_CAP_FLAG2_FS_EN		= 1LL <<  3
 };
 
+/* bit enums for an 8-bit flags field indicating special use
+ * QPs which require special handling in qp_reserve_range.
+ * Currently, this only includes QPs used by the ETH interface,
+ * where we expect to use blueflame.  These QPs must not have
+ * bits 6 and 7 set in their qp number.
+ *
+ * This enum may use only bits 0..7.
+ */
+enum {
+	MLX4_RESERVE_BF_QP	= 1 << 7,
+};
+
 enum {
 	MLX4_DEV_CAP_64B_EQE_ENABLED	= 1LL << 0,
 	MLX4_DEV_CAP_64B_CQE_ENABLED	= 1LL << 1
@@ -920,7 +932,7 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq);
 
 int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
-			  int *base, u8 bf_qp);
+			  int *base, u8 flags);
 void mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt);
 
 int mlx4_qp_alloc(struct mlx4_dev *dev, int qpn, struct mlx4_qp *qp);

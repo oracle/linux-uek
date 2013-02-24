@@ -1469,18 +1469,18 @@ static int qp_alloc_res(struct mlx4_dev *dev, int slave, int op, int cmd,
 	int align;
 	int base;
 	int qpn;
-	u8 bf_qp;
+	u8 flags;
 
 	switch (op) {
 	case RES_OP_RESERVE:
 		count = get_param_l(&in_param) & 0xffffff;
-		bf_qp = get_param_l(&in_param) >> 31;
+		flags = get_param_l(&in_param) >> 24;
 		align = get_param_h(&in_param);
 		err = mlx4_grant_resource(dev, slave, RES_QP, count, 0);
 		if (err)
 			return err;
 
-		err = __mlx4_qp_reserve_range(dev, count, align, &base, bf_qp);
+		err = __mlx4_qp_reserve_range(dev, count, align, &base, flags);
 		if (err) {
 			mlx4_release_resource(dev, slave, RES_QP, count, 0);
 			return err;

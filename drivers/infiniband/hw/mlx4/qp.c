@@ -640,7 +640,7 @@ static int init_qpg_parent(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *pqp,
 		err = mlx4_ib_steer_qp_alloc(dev, tss_align_num, &tss_base);
 	else
 		err = mlx4_qp_reserve_range(dev->dev, tss_align_num,
-				tss_align_num, &tss_base, 1);
+				tss_align_num, &tss_base, MLX4_RESERVE_BF_QP);
 	if (err)
 		goto err1;
 
@@ -795,10 +795,12 @@ static int alloc_qpn_common(struct mlx4_ib_dev *dev, struct mlx4_ib_qp *qp,
 
 	switch (attr->qpg_type) {
 	case IB_QPG_NONE:
-		/* Raw packet QPNs must be aligned to 8 bits. If not, the WQE
-		 * BlueFlame setup flow wrongly causes VLAN insertion. */
+		/* Raw packet QPNs may not have bits 6,7 set in their qp_num;
+		 * otherwise, the WQE BlueFlame setup flow wrongly causes
+		 * VLAN insertion. */
 		if (attr->qp_type == IB_QPT_RAW_PACKET) {
-			err = mlx4_qp_reserve_range(dev->dev, 1, 1, qpn, 1);
+			err = mlx4_qp_reserve_range(dev->dev, 1, 1, qpn,
+						    MLX4_RESERVE_BF_QP);
 		} else {
 			if(qp->flags & MLX4_IB_QP_NETIF)
 				err = mlx4_ib_steer_qp_alloc(dev, 1, qpn);
