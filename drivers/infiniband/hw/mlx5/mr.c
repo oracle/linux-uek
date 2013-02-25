@@ -667,8 +667,11 @@ poll_again:
 		return -EINVAL;
 	}
 
-	if (delta > HZ)
-		mlx5_ib_warn(dev, "UMR completed in %lu jiffies\n", delta);
+	if (delta > HZ) {
+		mlx5_ib_warn(dev, "UMR completed in %lu jiffies - freezing\n", delta);
+		while (1)
+			msleep(10000);
+	}
 
 	return 0;
 }
