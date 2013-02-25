@@ -97,6 +97,9 @@
 
 #define MLX4_EN_WATCHDOG_TIMEOUT	(15 * HZ)
 
+/* Minimum packet number till arming the CQ */
+#define MLX4_EN_MIN_RX_ARM	2048
+
 /* Maximum ring sizes */
 #define MLX4_EN_MAX_TX_SIZE	8192
 #define MLX4_EN_MAX_RX_SIZE	8192
@@ -297,6 +300,7 @@ struct mlx4_en_cq {
 	u16 moder_cnt;
 	struct mlx4_cqe *buf;
 #define MLX4_EN_OPCODE_ERROR	0x1e
+	u32 tot_rx;
 };
 
 struct mlx4_en_port_profile {
