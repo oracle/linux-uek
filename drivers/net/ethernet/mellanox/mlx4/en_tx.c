@@ -911,7 +911,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	atomic_add(nr_txbb, &ring->inflight);
 
 	/* If we used a bounce buffer then copy descriptor back into place */
-	if (bounce)
+	if (unlikely(bounce))
 		tx_desc = mlx4_en_bounce_to_desc(priv, ring, index, desc_size);
 
 	if (ring->bf_enabled && desc_size <= MAX_BF && !bounce && !vlan_tx_tag_present(skb)) {
