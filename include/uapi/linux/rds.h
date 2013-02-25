@@ -63,6 +63,7 @@
  * ioctl commands for SOL_RDS
 */
 #define SIOCRDSSETTOS                   (SIOCPROTOPRIVATE)
+#define SIOCRDSGETTOS                  (SIOCPROTOPRIVATE + 1)
 
 typedef u_int8_t         rds_tos_t;
 
