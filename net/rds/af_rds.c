@@ -227,6 +227,13 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 		rs->rs_tos = tos;
 		spin_unlock_bh(&rds_sock_lock);
 		break;
+        case SIOCRDSGETTOS:
+                spin_lock_bh(&rds_sock_lock);
+                tos = rs->rs_tos;
+                spin_unlock_bh(&rds_sock_lock);
+                if (put_user(tos, (rds_tos_t __user *)arg))
+                        return -EFAULT;
+                break;
 	default:
 		return -ENOIOCTLCMD;
 	}
