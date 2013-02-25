@@ -99,6 +99,7 @@
 
 /* Minimum packet number till arming the CQ */
 #define MLX4_EN_MIN_RX_ARM	2048
+#define MLX4_EN_MIN_TX_ARM	2048
 
 /* Maximum ring sizes */
 #define MLX4_EN_MAX_TX_SIZE	8192
@@ -301,6 +302,7 @@ struct mlx4_en_cq {
 	struct mlx4_cqe *buf;
 #define MLX4_EN_OPCODE_ERROR	0x1e
 	u32 tot_rx;
+	u32 tot_tx;
 };
 
 struct mlx4_en_port_profile {

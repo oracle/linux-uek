@@ -495,10 +495,20 @@ int mlx4_en_poll_tx_cq(struct napi_struct *napi, int budget)
 	done = mlx4_en_process_tx_cq(dev, cq, budget);
 
 	/* If we used up all the quota - we're probably not done yet... */
-	if (done < budget) {
+	cq->tot_tx += done;
+	if (done == budget) {
+		INC_PERF_COUNTER(priv->pstats.napi_quota);
+		if (cq->tot_tx >= MLX4_EN_MIN_TX_ARM) {
+			napi_complete(napi);
+			mlx4_en_arm_cq(priv, cq);
+			cq->tot_tx = 0;
+			return 0;
+		}
+	} else {
 		/* Done for now */
 		napi_complete(napi);
 		mlx4_en_arm_cq(priv, cq);
+		cq->tot_tx = 0;
 		return done;
 	}
 	return budget;
