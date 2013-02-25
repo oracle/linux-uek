@@ -77,8 +77,7 @@ int mlx4_en_create_tx_ring(struct mlx4_en_priv *priv,
 	ring->size_mask = size - 1;
 	ring->stride = stride;
 	ring->full_size = ring->size - HEADROOM - MAX_DESC_TXBBS;
-
-	inline_thold = min(inline_thold, MAX_INLINE);
+	ring->inline_thold = min(inline_thold, MAX_INLINE);
 
 	tmp = size * sizeof(struct mlx4_en_tx_info);
 	ring->tx_info = vmalloc_node(tmp, node);
@@ -533,11 +532,11 @@ static struct mlx4_en_tx_desc *mlx4_en_bounce_to_desc(struct mlx4_en_priv *priv,
 	return ring->buf + index * TXBB_SIZE;
 }
 
-static int is_inline(struct sk_buff *skb, void **pfrag)
+static int is_inline(struct sk_buff *skb, void **pfrag, int thold)
 {
 	void *ptr;
 
-	if (inline_thold && !skb_is_gso(skb) && skb->len <= inline_thold) {
+	if (skb->len <= thold && !skb_is_gso(skb)) {
 		if (skb_shinfo(skb)->nr_frags == 1) {
 			ptr = skb_frag_address_safe(&skb_shinfo(skb)->frags[0]);
 			if (unlikely(!ptr))
@@ -568,7 +567,7 @@ static int inline_size(struct sk_buff *skb)
 }
 
 static int get_real_size(struct sk_buff *skb, struct net_device *dev,
-			 int *lso_header_size)
+			 int *lso_header_size, bool inl)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int real_size;
@@ -590,7 +589,7 @@ static int get_real_size(struct sk_buff *skb, struct net_device *dev,
 		}
 	} else {
 		*lso_header_size = 0;
-		if (!is_inline(skb, NULL))
+		if (!inl)
 			real_size = CTRL_SIZE + (skb_shinfo(skb)->nr_frags + 1) * DS_SIZE;
 		else
 			real_size = inline_size(skb);
@@ -723,21 +722,34 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	int desc_size;
 	int real_size;
 	dma_addr_t dma;
-	u32 index, bf_index;
+	u32 index, bf_index, ring_size;
 	__be32 op_own;
 	u16 vlan_tag = 0;
 	int i;
 	int lso_header_size;
-	void *fragptr;
+	void *fragptr = NULL;
 	bool bounce = false;
 	struct iphdr *iph = ip_hdr(skb);
 	u16 queue_index = 0;
 	struct mlx4_en_tx_queue *tx_queue;
+	bool inl = false;
 
 	if (!priv->port_up)
 		goto tx_drop;
 
-	real_size = get_real_size(skb, dev, &lso_header_size);
+	queue_index = skb->queue_mapping;
+	tx_queue = &priv->tx_queue[queue_index];
+
+	/* Additional hashing is only done for TCP/IP or UDP/IP packets */
+	if (queue_index < priv->tx_queue_num &&
+	    (iph->protocol & (IPPROTO_UDP | IPPROTO_TCP)))
+		queue_index = mlx4_en_get_shadow_queue(priv, tx_queue,
+						       skb, queue_index);
+
+	ring = priv->tx_ring[queue_index];
+	ring_size = ring->size;
+	inl = is_inline(skb, &fragptr, ring->inline_thold);
+	real_size = get_real_size(skb, dev, &lso_header_size, inl);
 	if (unlikely(!real_size))
 		goto tx_drop;
 
@@ -750,16 +762,6 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		goto tx_drop;
 	}
 
-	queue_index = skb->queue_mapping;
-	tx_queue = &priv->tx_queue[queue_index];
-
-	/* Additional hashing is only done for TCP/IP or UDP/IP packets */
-	if (queue_index < priv->tx_queue_num &&
-	    (iph->protocol & (IPPROTO_UDP | IPPROTO_TCP)))
-		queue_index = mlx4_en_get_shadow_queue(priv, tx_queue,
-						       skb, queue_index);
-
-	ring = priv->tx_ring[queue_index];
 	if (vlan_tx_tag_present(skb))
 		vlan_tag = vlan_tx_tag_get(skb);
 
@@ -797,7 +799,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* See if we have enough space for whole descriptor TXBB for setting
 	 * SW ownership on next descriptor; if not, use a bounce buffer. */
-	if (likely(index + nr_txbb <= ring->size))
+	if (likely(index + nr_txbb <= ring_size))
 		tx_desc = ring->buf + index * TXBB_SIZE;
 	else {
 		tx_desc = (struct mlx4_en_tx_desc *) ring->bounce_buf;
@@ -845,7 +847,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (lso_header_size) {
 		/* Mark opcode as LSO */
 		op_own = cpu_to_be32(MLX4_OPCODE_LSO | (1 << 6)) |
-			((ring->prod & ring->size) ?
+			((ring->prod & ring_size) ?
 				cpu_to_be32(MLX4_EN_BIT_DESC_OWN) : 0);
 
 		/* Fill in the LSO prefix */
@@ -866,7 +868,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	} else {
 		/* Normal (Non LSO) packet */
 		op_own = cpu_to_be32(MLX4_OPCODE_SEND) |
-			((ring->prod & ring->size) ?
+			((ring->prod & ring_size) ?
 			 cpu_to_be32(MLX4_EN_BIT_DESC_OWN) : 0);
 		data = &tx_desc->data;
 		tx_info->nr_bytes = max_t(unsigned int, skb->len, ETH_ZLEN);
@@ -877,14 +879,12 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	netdev_tx_sent_queue(ring->tx_queue, tx_info->nr_bytes);
 	AVG_PERF_COUNTER(priv->pstats.tx_pktsz_avg, skb->len);
 
-
 	/* valid only for none inline segments */
 	tx_info->data_offset = (void *) data - (void *) tx_desc;
-
-	tx_info->linear = (lso_header_size < skb_headlen(skb) && !is_inline(skb, NULL)) ? 1 : 0;
+	tx_info->linear = (lso_header_size < skb_headlen(skb) && !inl) ? 1 : 0;
 	data += skb_shinfo(skb)->nr_frags + tx_info->linear - 1;
 
-	if (!is_inline(skb, &fragptr)) {
+	if (!inl) {
 		/* Map fragments */
 		for (i = skb_shinfo(skb)->nr_frags - 1; i >= 0; i--) {
 			frag = &skb_shinfo(skb)->frags[i];

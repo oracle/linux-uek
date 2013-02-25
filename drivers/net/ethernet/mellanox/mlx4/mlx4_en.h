@@ -252,6 +252,7 @@ struct mlx4_en_tx_ring {
 	struct netdev_queue *tx_queue;
 	int hwtstamp_tx_type;
 	int full_size;
+	int inline_thold;
 };
 
 struct mlx4_en_rx_desc {
