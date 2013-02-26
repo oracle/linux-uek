@@ -648,7 +648,7 @@ static int update_vport_qp_param(struct mlx4_dev *dev,
 
 		qpc->srqn |= cpu_to_be32(1 << 25); /*set cqe vlan mask */
 		qpc->pri_path.vlan_index = vp_oper->vlan_idx;
-		qpc->pri_path.fl = 1 << 6; /* set cv bit*/
+		qpc->pri_path.fl = (1 << 6) | (1 << 2); /* set cv bit and hide_cqe_vlan bit*/
 		qpc->pri_path.feup |= 1 << 3; /* set fvl bit */
 		qpc->pri_path.sched_queue &= 0xC7;
 		qpc->pri_path.sched_queue |= (vp_oper->state.default_qos) << 3;

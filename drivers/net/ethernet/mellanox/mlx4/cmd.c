@@ -2279,7 +2279,7 @@ int mlx4_set_vf_vlan(struct mlx4_dev *dev, int port, int vf, u16 vlan, u8 qos)
 	int slave;
 
 	if ((!mlx4_is_master(dev)) ||
-	    !(dev->caps.flags & MLX4_DEV_CAP_FLAG_ESWITCH_SUPPORT))
+	    !(dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_VLAN_CONTROL))
 		return -EPROTONOSUPPORT;
 
 	if ((vlan > 4095) || (qos > 7))
@@ -2306,7 +2306,7 @@ int mlx4_set_vf_spoofchk(struct mlx4_dev *dev, int port, int vf, bool setting)
 	int slave;
 
 	if ((!mlx4_is_master(dev)) ||
-	    !(dev->caps.flags & MLX4_DEV_CAP_FLAG_ESWITCH_SUPPORT))
+	    !(dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_FSM))
 		return -EPROTONOSUPPORT;
 
 	slave = mlx4_get_slave_indx(dev, vf);

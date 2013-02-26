@@ -129,7 +129,9 @@ static void dump_dev_cap_flags2(struct mlx4_dev *dev, u64 flags)
 		[0] = "RSS support",
 		[1] = "RSS Toeplitz Hash Function support",
 		[2] = "RSS XOR Hash Function support",
-		[3] = "Device manage flow steering support"
+		[3] = "Device manage flow steering support",
+		[4] = "FSM (MAC unti-spoofing) support",
+		[5] = "VST (control vlan insertion/stripping) support"
 	};
 	int i;
 
@@ -470,6 +472,7 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 #define QUERY_DEV_CAP_MAX_BASIC_COUNTERS_OFFSET	0x68
 #define QUERY_DEV_CAP_MAX_EXTENDED_COUNTERS_OFFSET	0x6c
 #define QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET	0x76
+#define QUERY_DEV_CAP_EXT_2_FLAGS_OFFSET		0x70
 #define QUERY_DEV_CAP_FLOW_STEERING_MAX_QP_OFFSET	0x77
 #define QUERY_DEV_CAP_RDMARC_ENTRY_SZ_OFFSET	0x80
 #define QUERY_DEV_CAP_QPC_ENTRY_SZ_OFFSET	0x82
@@ -657,6 +660,12 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	if (dev_cap->flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT)
 		MLX4_GET(dev_cap->max_extended_counters, outbox,
 			 QUERY_DEV_CAP_MAX_EXTENDED_COUNTERS_OFFSET);
+
+	MLX4_GET(field32, outbox, QUERY_DEV_CAP_EXT_2_FLAGS_OFFSET);
+	if (field32 & (1 << 20))
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_FSM;
+	if (field32 & (1 << 26))
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_VLAN_CONTROL;
 
 	if (dev->flags & MLX4_FLAG_OLD_PORT_CMDS) {
 		for (i = 1; i <= dev_cap->num_ports; ++i) {
