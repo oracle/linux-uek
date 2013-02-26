@@ -1344,6 +1344,8 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	enum mlx5_qp_optpar optpar = 0;
 	int sqd_event;
 	int err;
+	enum mlx5_qp_state mlx5_cur, mlx5_new;
+	int mlx5_st;
 
 	in = kzalloc(sizeof(*in), GFP_KERNEL);
 	if (!in)
@@ -1494,7 +1496,14 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (!ibqp->uobject && cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT)
 		context->sq_crq_size |= cpu_to_be16(1 << 4);
 
-	optpar &= opt_mask[to_mlx5_state(cur_state)][to_mlx5_state(new_state)][to_mlx5_st(ibqp->qp_type)];
+
+	mlx5_cur = to_mlx5_state(cur_state);
+	mlx5_new = to_mlx5_state(new_state);
+	mlx5_st = to_mlx5_st(ibqp->qp_type);
+	if (mlx5_cur < 0 || mlx5_new < 0 || mlx5_st < 0)
+		goto out;
+
+	optpar &= opt_mask[mlx5_cur][mlx5_new][mlx5_st];
 	in->optparam = cpu_to_be32(optpar);
 	err = mlx5_core_qp_modify(&dev->mdev, to_mlx5_state(cur_state),
 				  to_mlx5_state(new_state), in, sqd_event,
