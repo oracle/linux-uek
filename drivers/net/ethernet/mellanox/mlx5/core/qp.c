@@ -85,8 +85,10 @@ int mlx5_core_create_qp(struct mlx5_core_dev *dev,
 		return err;
 	}
 
-	if (out.hdr.status)
+	if (out.hdr.status) {
+		pr_warn("current num of QPs 0x%x\n", atomic_read(&dev->num_qps));
 		return mlx5_cmd_status_to_err(&out.hdr);
+	}
 
 	qp->qpn = be32_to_cpu(out.qpn) & 0xffffff;
 	mlx5_core_dbg(dev, "qpn = 0x%x\n", qp->qpn);
@@ -106,6 +108,7 @@ int mlx5_core_create_qp(struct mlx5_core_dev *dev,
 
 	qp->pid = current->pid;
 	atomic_set(&qp->refcount, 1);
+	atomic_inc(&dev->num_qps);
 	init_completion(&qp->free);
 
 	return 0;
@@ -151,6 +154,7 @@ int mlx5_core_destroy_qp(struct mlx5_core_dev *dev,
 	if (out.hdr.status)
 		return mlx5_cmd_status_to_err(&out.hdr);
 
+	atomic_dec(&dev->num_qps);
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx5_core_destroy_qp);

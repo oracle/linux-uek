@@ -107,6 +107,8 @@ int mlx5_qp_debugfs_init(struct mlx5_core_dev *dev)
 	if (!mlx5_debugfs_root)
 		return 0;
 
+	atomic_set(&dev->num_qps, 0);
+
 	dev->priv.qp_debugfs = debugfs_create_dir("QPs",  dev->priv.dbg_root);
 	if (!dev->priv.qp_debugfs)
 		return -ENOMEM;

@@ -518,6 +518,7 @@ struct mlx5_core_dev {
 					  void *data);
 	struct mlx5_priv	priv;
 	struct mlx5_profile	*profile;
+	atomic_t		num_qps;
 };
 
 struct mlx5_db {
