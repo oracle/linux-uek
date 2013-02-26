@@ -2345,6 +2345,8 @@ qlafx00_handle_sense(srb_t *sp, uint8_t *sense_data, uint32_t par_sense_len,
 	struct scsi_cmnd *cp = GET_CMD_SP(sp);
 	uint32_t track_sense_len;
 
+	SET_FW_SENSE_LEN(sp, sense_len);
+
 	if (sense_len >= SCSI_SENSE_BUFFERSIZE)
 		sense_len = SCSI_SENSE_BUFFERSIZE;
 
@@ -2357,11 +2359,16 @@ qlafx00_handle_sense(srb_t *sp, uint8_t *sense_data, uint32_t par_sense_len,
 
 	memcpy(cp->sense_buffer, sense_data, sense_len);
 
+	SET_FW_SENSE_LEN(sp, GET_FW_SENSE_LEN(sp) - sense_len);
+
 	SET_CMD_SENSE_PTR(sp, cp->sense_buffer + sense_len);
 	track_sense_len -= sense_len;
 	SET_CMD_SENSE_LEN(sp, track_sense_len);
 
-	if (track_sense_len != 0) {
+	ql_dbg(ql_dbg_io, vha, 0x304d,
+	    "sense_len=0x%x par_sense_len=0x%x track_sense_len=0x%x.\n",
+	    sense_len, par_sense_len, track_sense_len);
+	if (GET_FW_SENSE_LEN(sp) > 0) {
 		rsp->status_srb = sp;
 		cp->result = res;
 	}
@@ -2759,15 +2766,17 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	uint32_t sense_len;
 	uint8_t *sense_ptr;
 
-	if (!sp || !GET_CMD_SENSE_LEN(sp)) {
+	if (!sp) {
 		ql_dbg(ql_dbg_io, vha, 0x3037,
-		    "SP or no sense data\n");
+		    "no SP, sp = %p\n", sp);
 		return;
 	}
 
-	sense_len = GET_CMD_SENSE_LEN(sp);
-	sense_ptr = GET_CMD_SENSE_PTR(sp);
-
+	if (!GET_FW_SENSE_LEN(sp)) {
+		ql_dbg(ql_dbg_io, vha, 0x3037,
+		    "no fw sense data, sp = %p\n", sp);
+		return;
+	}
 	cp = GET_CMD_SP(sp);
 	if (cp == NULL) {
 		ql_log(ql_log_warn, vha, 0x303b,
@@ -2777,21 +2786,38 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 		return;
 	}
 
-	if (sense_len > sizeof(pkt->data))
-		sense_sz = sizeof(pkt->data);
-	else
-		sense_sz = sense_len;
+	if (!GET_CMD_SENSE_LEN(sp)) {
+		ql_dbg(ql_dbg_io, vha, 0x3037,
+		    "no sense data, sp = %p\n", sp);
+	} else {
+		sense_len = GET_CMD_SENSE_LEN(sp);
+		sense_ptr = GET_CMD_SENSE_PTR(sp);
+		ql_dbg(ql_dbg_io, vha, 0x304f,
+		    "sp=%p sense_len=0x%x sense_ptr=%p.\n",
+		    sp, sense_len, sense_ptr);
 
-	/* Move sense data. */
-	memcpy(sense_ptr, pkt->data, sense_sz);
-	ql_dump_buffer(ql_dbg_io + ql_dbg_buffer, vha, 0x304a,
-		sense_ptr, sense_sz);
+		if (sense_len > sizeof(pkt->data))
+			sense_sz = sizeof(pkt->data);
+		else
+			sense_sz = sense_len;
 
-	sense_len -= sense_sz;
-	sense_ptr += sense_sz;
+		/* Move sense data. */
+		ql_dump_buffer(ql_dbg_io + ql_dbg_buffer, vha, 0x304e,
+		    (uint8_t *)pkt, sizeof(sts_cont_entry_t));
+		memcpy(sense_ptr, pkt->data, sense_sz);
+		ql_dump_buffer(ql_dbg_io + ql_dbg_buffer, vha, 0x304a,
+		    sense_ptr, sense_sz);
 
-	SET_CMD_SENSE_PTR(sp, sense_ptr);
-	SET_CMD_SENSE_LEN(sp, sense_len);
+		sense_len -= sense_sz;
+		sense_ptr += sense_sz;
+
+		SET_CMD_SENSE_PTR(sp, sense_ptr);
+		SET_CMD_SENSE_LEN(sp, sense_len);
+	}
+	sense_len = GET_FW_SENSE_LEN(sp);
+	sense_len = (sense_len > sizeof(pkt->data)) ?
+	    (sense_len - sizeof(pkt->data)) : 0;
+	SET_FW_SENSE_LEN(sp, sense_len);
 
 	/* Place command on done queue. */
 	if (sense_len == 0) {

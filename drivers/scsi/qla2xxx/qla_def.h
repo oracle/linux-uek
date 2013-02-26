@@ -282,6 +282,7 @@ struct sd_dif_tuple {
 struct srb_cmd {
 	struct scsi_cmnd *cmd;		/* Linux SCSI command pkt */
 	uint32_t request_sense_length;
+	uint32_t fw_sense_length;
 	uint8_t *request_sense_ptr;
 	void *ctx;
 };
@@ -402,6 +403,10 @@ typedef struct srb {
 	(sp->u.scmd.request_sense_ptr)
 #define SET_CMD_SENSE_PTR(sp, ptr) \
 	(sp->u.scmd.request_sense_ptr = ptr)
+#define GET_FW_SENSE_LEN(sp) \
+	(sp->u.scmd.fw_sense_length)
+#define SET_FW_SENSE_LEN(sp, len) \
+	(sp->u.scmd.fw_sense_length = len)
 
 struct msg_echo_lb {
 	dma_addr_t send_dma;
