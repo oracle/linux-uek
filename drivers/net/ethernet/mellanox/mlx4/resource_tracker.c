@@ -4283,6 +4283,7 @@ static void rem_slave_counters(struct mlx4_dev *dev, int slave)
 			list_del(&counter->com.list);
 			kfree(counter);
 			__mlx4_counter_free(dev, index);
+			mlx4_release_resource(dev, slave, RES_COUNTER, 1, 0);
 		}
 	}
 	spin_unlock_irq(mlx4_tlock(dev));
