@@ -451,6 +451,11 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 			goto next;
 		}
 
+		/*
+		 * before calling eth_hdr() should reset skb->mac_header
+		 * to point to the address skb->data points
+		 */
+		skb_reset_mac_header(skb);
 		ethh = eth_hdr(skb);
 
 		/* Check if we need to drop the packet if SRIOV is not enabled
