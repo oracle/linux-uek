@@ -52,6 +52,7 @@ enum {
 enum {
 	MLX5_NUM_SPARE_EQE	= 0x80,
 	MLX5_NUM_ASYNC_EQE	= 0x100,
+	MLX5_NUM_CMD_EQE	= 32,
 };
 
 enum {
@@ -69,8 +70,7 @@ enum {
 			       (1ull << MLX5_EVENT_TYPE_PORT_CHANGE)	    | \
 			       (1ull << MLX5_EVENT_TYPE_SRQ_CATAS_ERROR)    | \
 			       (1ull << MLX5_EVENT_TYPE_SRQ_LAST_WQE)	    | \
-			       (1ull << MLX5_EVENT_TYPE_SRQ_RQ_LIMIT)	    | \
-			       (1ull << MLX5_EVENT_TYPE_CMD))
+			       (1ull << MLX5_EVENT_TYPE_SRQ_RQ_LIMIT))
 
 struct map_eq_in {
 	u64	mask;
@@ -443,13 +443,23 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 	struct mlx5_eq_table *table = &dev->priv.eq_table;
 	int err;
 
+	err = mlx5_create_map_eq(dev, &table->cmd_eq, MLX5_EQ_VEC_CMD,
+				 MLX5_NUM_CMD_EQE, 1ull << MLX5_EVENT_TYPE_CMD,
+				 "mlx5_cmd_eq", &dev->priv.uuari.uars[0]);
+	if (err) {
+		mlx5_core_warn(dev, "failed to create cmd EQ %d\n", err);
+		return err;
+	}
+
+	mlx5_cmd_use_events(dev);
+
 	err = mlx5_create_map_eq(dev, &table->async_eq, MLX5_EQ_VEC_ASYNC,
 				 MLX5_NUM_ASYNC_EQE, MLX5_ASYNC_EVENT_MASK,
 				 "mlx5_async_eq", &dev->priv.uuari.uars[0]);
-	if (err)
-		return err;
-
-	mlx5_cmd_use_events(dev);
+	if (err) {
+		mlx5_core_warn(dev, "failed to create async EQ %d\n", err);
+		goto err1;
+	}
 
 	err = mlx5_create_map_eq(dev, &table->pages_eq,
 				 MLX5_EQ_VEC_PAGES,
@@ -457,10 +467,18 @@ int mlx5_start_eqs(struct mlx5_core_dev *dev)
 				 1 << MLX5_EVENT_TYPE_PAGE_REQUEST, "mlx5_pages_eq",
 				 &dev->priv.uuari.uars[0]);
 	if (err) {
-		mlx5_destroy_unmap_eq(dev, &table->async_eq);
-		mlx5_cmd_use_polling(dev);
+		mlx5_core_warn(dev, "failed to create pages EQ %d\n", err);
+		goto err2;
 	}
 
+	return err;
+
+err2:
+	mlx5_destroy_unmap_eq(dev, &table->async_eq);
+
+err1:
+	mlx5_cmd_use_polling(dev);
+	mlx5_destroy_unmap_eq(dev, &table->cmd_eq);
 	return err;
 }
 
@@ -473,9 +491,10 @@ int mlx5_stop_eqs(struct mlx5_core_dev *dev)
 	if (err)
 		return err;
 
+	mlx5_destroy_unmap_eq(dev, &table->async_eq);
 	mlx5_cmd_use_polling(dev);
 
-	err = mlx5_destroy_unmap_eq(dev, &table->async_eq);
+	err = mlx5_destroy_unmap_eq(dev, &table->cmd_eq);
 	if (err)
 		mlx5_cmd_use_events(dev);
 

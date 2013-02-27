@@ -76,7 +76,8 @@ enum {
 
 enum {
 	MLX5_EQ_VEC_PAGES	 = 0,
-	MLX5_EQ_VEC_ASYNC	 = 1,
+	MLX5_EQ_VEC_CMD		 = 1,
+	MLX5_EQ_VEC_ASYNC	 = 2,
 	MLX5_EQ_VEC_COMP_BASE,
 };
 
@@ -415,6 +416,7 @@ struct mlx5_eq_table {
 	struct list_head       *comp_eq_head;
 	struct mlx5_eq		pages_eq;
 	struct mlx5_eq		async_eq;
+	struct mlx5_eq		cmd_eq;
 	struct msix_entry	*msix_arr;
 	int			num_comp_vectors;
 	/*

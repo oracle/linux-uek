@@ -115,14 +115,15 @@ static void release_bar(struct pci_dev *pdev)
 
 static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 {
-	int nvec = dev->caps.num_ports * num_online_cpus() + 2;
+	int nvec;
 	int num_eqs = 1 << dev->caps.log_max_eq;
 	struct mlx5_eq_table *table = &dev->priv.eq_table;
 	int err;
 	int i;
 
+	nvec = dev->caps.num_ports * num_online_cpus() + MLX5_EQ_VEC_COMP_BASE;
 	nvec = min_t(int, nvec, num_eqs);
-	if (nvec <= 2)
+	if (nvec <= MLX5_EQ_VEC_COMP_BASE)
 		return -ENOMEM;
 
 	table->msix_arr = kzalloc(nvec * sizeof(*table->msix_arr), GFP_KERNEL);
@@ -133,7 +134,7 @@ static int mlx5_enable_msix(struct mlx5_core_dev *dev)
 		table->msix_arr[i].entry = i;
 
 retry:
-	table->num_comp_vectors = nvec - 2;
+	table->num_comp_vectors = nvec - MLX5_EQ_VEC_COMP_BASE;
 	err = pci_enable_msix(dev->pdev, table->msix_arr, nvec);
 	if (err <= 0) {
 		return err;
