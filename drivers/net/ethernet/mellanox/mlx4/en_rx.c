@@ -494,6 +494,10 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 			ip_summed = CHECKSUM_NONE;
 		}
 
+		skb->ip_summed = ip_summed;
+		skb->protocol = eth_type_trans(skb, dev);
+		skb_record_rx_queue(skb, cq->ring);
+
 		if (dev->features & NETIF_F_RXHASH)
 			skb->rxhash = be32_to_cpu(cqe->immed_rss_invalid);
 
@@ -507,9 +511,6 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 			mlx4_en_fill_hwtstamps(mdev, skb_hwtstamps(skb),
 					       timestamp);
 		}
-		skb->ip_summed = ip_summed;
-		skb->protocol = eth_type_trans(skb, dev);
-		skb_record_rx_queue(skb, cq->ring);
 
 		/* Push it up the stack */
 		napi_gro_receive(&cq->napi, skb);
