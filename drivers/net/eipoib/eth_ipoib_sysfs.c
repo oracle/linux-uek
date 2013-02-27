@@ -117,7 +117,7 @@ static ssize_t parent_show_neighs(struct device *d,
 	struct parent *parent = to_parent(d);
 	char *p = buf;
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	parent_for_each_slave(parent, slave) {
 		list_for_each_entry(neigh, &slave->neigh_list, list) {
 			p += _sprintf(p, buf, "SLAVE=%-10s EMAC=%pM IMAC=%pM:%pM:%pM:%.2x:%.2x\n",
@@ -128,7 +128,7 @@ static ssize_t parent_show_neighs(struct device *d,
 		}
 	}
 
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	_end_of_line(p, buf);
 
@@ -160,7 +160,7 @@ out:
 	return neigh_cmd;
 }
 
-/* write_lock_bh(&parent->lock) must be held */
+/* write_lock(&parent->lock) must be held */
 ssize_t __parent_store_neighs(struct device *d,
 			      struct device_attribute *attr,
 			      const char *buffer, size_t count)
@@ -280,9 +280,9 @@ static ssize_t parent_store_neighs(struct device *d,
 	struct parent *parent = to_parent(d);
 	ssize_t rc;
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 	rc = __parent_store_neighs(d, attr, buffer, count);
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	return rc;
 }
@@ -297,7 +297,7 @@ static ssize_t parent_show_vifs(struct device *d,
 	struct parent *parent = to_parent(d);
 	char *p = buf;
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	parent_for_each_slave(parent, slave) {
 		if (is_zero_ether_addr(slave->emac)) {
 			p += _sprintf(p, buf, "SLAVE=%-10s MAC=%-17s "
@@ -315,7 +315,7 @@ static ssize_t parent_show_vifs(struct device *d,
 				      slave->vlan);
 		}
 	}
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	_end_of_line(p, buf);
 
@@ -343,7 +343,7 @@ static ssize_t parent_store_vifs(struct device *d,
 	    (command[0] != '+' && command[0] != '-'))
 		goto err_no_cmd;
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	/* check if ifname exist */
 	parent_for_each_slave(parent, slave_tmp) {
 		if (!strcmp(slave_tmp->dev->name, ifname)) {
@@ -351,7 +351,7 @@ static ssize_t parent_store_vifs(struct device *d,
 			slave = slave_tmp;
 		}
 	}
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	if (!found) {
 		pr_err("%s could not find slave\n", ifname);
@@ -372,7 +372,7 @@ static ssize_t parent_store_vifs(struct device *d,
 
 	if (command[0] == '-') {
 
-		write_lock_bh(&parent->lock);
+		write_lock(&parent->lock);
 
 		if (is_zero_ether_addr(slave->emac)) {
 			pr_err("%s slave mac already unset %pM\n",
@@ -394,7 +394,7 @@ err_no_cmd:
 	ret = -EPERM;
 
 out:
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	return ret;
 }
@@ -409,10 +409,10 @@ static ssize_t parent_show_slaves(struct device *d,
 	struct parent *parent = to_parent(d);
 	char *p = buf;
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	parent_for_each_slave(parent, slave)
 		p += _sprintf(p, buf, "%s\n", slave->dev->name);
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	_end_of_line(p, buf);
 
@@ -455,7 +455,7 @@ static ssize_t parent_store_slaves(struct device *d,
 			goto out;
 		}
 
-		read_lock_bh(&parent->lock);
+		read_lock(&parent->lock);
 		parent_for_each_slave(parent, slave) {
 			if (slave->dev == dev) {
 				pr_err("%s ERR- Interface %s is already enslaved!\n",
@@ -463,7 +463,7 @@ static ssize_t parent_store_slaves(struct device *d,
 				ret = -EPERM;
 			}
 		}
-		read_unlock_bh(&parent->lock);
+		read_unlock(&parent->lock);
 
 		if (ret < 0)
 			goto out;
@@ -524,7 +524,7 @@ static ssize_t parent_show_served(struct device *d,
 	struct guest_emac_info *emac_info;
 	struct ip_member *ipm;
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	read_lock(&parent->emac_info_lock);
 
 	list_for_each_entry(emac_info, &parent->emac_ip_list, list) {
@@ -544,7 +544,7 @@ static ssize_t parent_show_served(struct device *d,
 	}
 
 	read_unlock(&parent->emac_info_lock);
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	 _end_of_line(p, buf);
 
@@ -589,9 +589,9 @@ static ssize_t parent_store_served(struct device *d,
 		 */
 		pr_info("Adding new served ip: %pI4, mac: %pM, vlan:%d.\n",
 			&ip, mac, vlan);
-		read_lock_bh(&parent->lock);
+		read_lock(&parent->lock);
 		ret2 = add_emac_ip_info(parent->dev, ip, mac, vlan, GFP_ATOMIC);
-		read_unlock_bh(&parent->lock);
+		read_unlock(&parent->lock);
 		if (ret2)
 			return -EINVAL;
 

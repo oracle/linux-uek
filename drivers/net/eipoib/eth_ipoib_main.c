@@ -338,7 +338,7 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 	netdev_features_t mask;
 	u64 parent_orig_features = parent_self_features(parent->dev);
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 
 	mask = features;
 	features &= ~NETIF_F_ONE_FOR_ALL;
@@ -354,7 +354,7 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 	/* return back the original independent features */
 	features |= parent_orig_features;
 
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 	return features;
 }
 
@@ -509,19 +509,19 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
 
 	new_slave->dev = slave_dev;
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 
 	parent_attach_slave(parent, new_slave);
 
 	parent_compute_features(parent);
 
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 
 	parent_set_carrier(parent);
 
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	res = create_slave_symlinks(parent_dev, slave_dev);
 	if (res)
@@ -586,14 +586,14 @@ int parent_release_slave(struct net_device *parent_dev,
 		return -EINVAL;
 	}
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 
 	slave = get_slave_by_dev(parent, slave_dev);
 	if (!slave) {
 		/* not a slave of this parent */
 		pr_warn("%s not enslaved %s\n",
 			parent_dev->name, slave_dev->name);
-		write_unlock_bh(&parent->lock);
+		write_unlock(&parent->lock);
 		return -EINVAL;
 	}
 
@@ -601,7 +601,7 @@ int parent_release_slave(struct net_device *parent_dev,
 		slave_dev->name);
 
 	/* for live migration, mark its mac_ip record as invalid */
-	write_lock_bh(&parent->emac_info_lock);
+	write_lock(&parent->emac_info_lock);
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, slave->emac, slave->vlan);
 	if (!emac_info)
 		pr_warn("%s %s didn't find emac: %pM\n",
@@ -614,7 +614,7 @@ int parent_release_slave(struct net_device *parent_dev,
 			__func__, slave->emac);
 		queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
 	}
-	write_unlock_bh(&parent->emac_info_lock);
+	write_unlock(&parent->emac_info_lock);
 
 	/* release the slave from its parent */
 	parent_detach_slave(parent, slave);
@@ -624,7 +624,7 @@ int parent_release_slave(struct net_device *parent_dev,
 	if (parent->slave_cnt == 0)
 		parent_set_carrier(parent);
 
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	/* must do this from outside any spinlocks */
 	destroy_slave_symlinks(parent_dev, slave_dev);
@@ -647,7 +647,7 @@ static int parent_release_all(struct net_device *parent_dev)
 	struct guest_emac_info *emac_info, *emac_info_tmp;
 	struct slave;
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 
 	netif_carrier_off(parent_dev);
 
@@ -662,7 +662,7 @@ static int parent_release_all(struct net_device *parent_dev)
 
 		parent_compute_features(parent);
 
-		write_unlock_bh(&parent->lock);
+		write_unlock(&parent->lock);
 
 		destroy_slave_symlinks(parent_dev, slave_dev);
 
@@ -672,7 +672,7 @@ static int parent_release_all(struct net_device *parent_dev)
 
 		slave_free(parent, slave);
 
-		write_lock_bh(&parent->lock);
+		write_lock(&parent->lock);
 	}
 
 	list_for_each_entry_safe(neigh_cmd, neigh_cmd_tmp,
@@ -681,19 +681,19 @@ static int parent_release_all(struct net_device *parent_dev)
 			kfree(neigh_cmd);
 		}
 
-	write_lock_bh(&parent->emac_info_lock);
+	write_lock(&parent->emac_info_lock);
 	list_for_each_entry_safe(emac_info, emac_info_tmp,
 				 &parent->emac_ip_list, list) {
 		free_all_ip_ent_in_emac_rec(emac_info);
 		list_del(&emac_info->list);
 		kfree(emac_info);
 	}
-	write_unlock_bh(&parent->emac_info_lock);
+	write_unlock(&parent->emac_info_lock);
 
 	pr_info("%s: released all slaves\n", parent_dev->name);
 
 out:
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	return 0;
 }
@@ -708,7 +708,7 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 
 	memset(stats, 0, sizeof(*stats));
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 
 	parent_for_each_slave(parent, slave) {
 		const struct rtnl_link_stats64 *sstats =
@@ -741,7 +741,7 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 		stats->tx_window_errors += sstats->tx_window_errors;
 	}
 
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	return stats;
 }
@@ -826,7 +826,7 @@ static void neigh_learn_task(struct work_struct *work)
 					     neigh_learn_work.work);
 	struct neigh *neigh_cmd, *neigh_cmd_tmp;
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 
 	if (parent->kill_timers)
 		goto out;
@@ -840,15 +840,15 @@ static void neigh_learn_task(struct work_struct *work)
 	}
 
 out:
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 	return;
 }
 
 static void parent_work_cancel_all(struct parent *parent)
 {
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 	parent->kill_timers = 1;
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	if (delayed_work_pending(&parent->neigh_learn_work))
 		cancel_delayed_work(&parent->neigh_learn_work);
@@ -881,11 +881,11 @@ void free_ip_ent_in_emac_rec(struct parent *parent, u8 *emac, u16 vlan,
 	struct guest_emac_info *emac_info;
 	struct ip_member *ipm, *tmp_ipm;
 
-	write_lock_bh(&parent->emac_info_lock);
+	write_lock(&parent->emac_info_lock);
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, emac, vlan);
 
 	if (!emac_info) {
-		write_unlock_bh(&parent->emac_info_lock);
+		write_unlock(&parent->emac_info_lock);
 		return;
 	}
 
@@ -899,7 +899,7 @@ void free_ip_ent_in_emac_rec(struct parent *parent, u8 *emac, u16 vlan,
 	if (list_empty(&emac_info->ip_list))
 		free_emac_info_rec(emac_info);
 
-	write_unlock_bh(&parent->emac_info_lock);
+	write_unlock(&parent->emac_info_lock);
 
 }
 
@@ -1028,7 +1028,7 @@ static void arp_gen_work_task(struct work_struct *work)
 	int is_reschedule = 0;
 	int ret;
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 	if (parent->kill_timers)
 		goto out;
 
@@ -1074,7 +1074,7 @@ static void arp_gen_work_task(struct work_struct *work)
 
 	write_unlock(&parent->emac_info_lock);
 out:
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 	return;
 }
 
@@ -1096,15 +1096,15 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 		return -ENXIO;
 	}
 
-	read_lock_bh(&parent->emac_info_lock);
+	read_lock(&parent->emac_info_lock);
 	ret = is_mac_info_contain_new_ip(parent, mac, ip, emac_info, vlan);
 	if (ret) {
-		read_unlock_bh(&parent->emac_info_lock);
+		read_unlock(&parent->emac_info_lock);
 		return 0;
 	}
 
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, mac, vlan);
-	read_unlock_bh(&parent->emac_info_lock);
+	read_unlock(&parent->emac_info_lock);
 
 	/* new ip add it to the emc_ip obj */
 	if (!emac_info) {
@@ -1135,7 +1135,7 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	ipm->ip = ip;
 	ipm->state = IP_NEW;
 
-	write_lock_bh(&parent->emac_info_lock);
+	write_lock(&parent->emac_info_lock);
 
 	list_add_tail(&ipm->list, &emac_info->ip_list);
 	/* force gart-arp announce */
@@ -1145,7 +1145,7 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	if (is_just_alloc_emac_info)
 		list_add_tail(&emac_info->list, &parent->emac_ip_list);
 
-	write_unlock_bh(&parent->emac_info_lock);
+	write_unlock(&parent->emac_info_lock);
 
 	/* send gart arp to the world.*/
 	queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
@@ -1490,7 +1490,7 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 
 	build_neigh_mac(remac, data->rx.sqpn, data->rx.slid);
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 
 	if (unlikely(skb_headroom(skb) < ETH_HLEN)) {
 		pr_warn("%s: small headroom %d < %d\n",
@@ -1501,11 +1501,11 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 
 	/* learn neighs based on ARP snooping */
 	if (unlikely(ntohs(skb->protocol) == ETH_P_ARP)) {
-		read_unlock_bh(&parent->lock);
-		write_lock_bh(&parent->lock);
+		read_unlock(&parent->lock);
+		write_lock(&parent->lock);
 		neigh_learn(slave, skb, remac);
-		write_unlock_bh(&parent->lock);
-		read_lock_bh(&parent->lock);
+		write_unlock(&parent->lock);
+		read_lock(&parent->lock);
 	}
 
 	nskb = get_parent_skb(slave, skb, remac);
@@ -1533,13 +1533,13 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 	else
 		rc = netif_receive_skb(skb);
 
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	return rc;
 
 drop:
 	dev_kfree_skb_any(skb);
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 
 	return NET_RX_DROP;
 }
@@ -1566,7 +1566,7 @@ static netdev_tx_t parent_tx(struct sk_buff *skb, struct net_device *dev)
 	u16 vlan;
 	u8 mac_no_admin_bit[ETH_ALEN];
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 
 	if (unlikely(!IS_E_IPOIB_PROTO(ethh->h_proto))) {
 		++parent->port_stats.tx_proto_errors;
@@ -1647,7 +1647,7 @@ drop:
 	dev_kfree_skb(skb);
 
 out:
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 	return NETDEV_TX_OK;
 }
 
@@ -1665,9 +1665,9 @@ static int parent_close(struct net_device *parent_dev)
 {
 	struct parent *parent = netdev_priv(parent_dev);
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 	parent->kill_timers = 1;
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	cancel_delayed_work_sync(&parent->neigh_learn_work);
 	cancel_delayed_work_sync(&parent->arp_gen_work);
@@ -1747,7 +1747,7 @@ int parent_add_vif_param(struct net_device *parent_dev,
 		return -EINVAL;
 	}
 
-	write_lock_bh(&parent->lock);
+	write_lock(&parent->lock);
 
 	new_slave = get_slave_by_dev(parent, new_vif_dev);
 	if (!new_slave) {
@@ -1787,7 +1787,7 @@ int parent_add_vif_param(struct net_device *parent_dev,
 	new_slave->vlan = vlan;
 
 out:
-	write_unlock_bh(&parent->lock);
+	write_unlock(&parent->lock);
 
 	return ret;
 }

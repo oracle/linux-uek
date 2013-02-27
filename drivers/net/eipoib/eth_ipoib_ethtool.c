@@ -85,9 +85,9 @@ static void parent_get_ethtool_stats(struct net_device *parent_dev,
 {
 	struct parent *parent = netdev_priv(parent_dev);
 
-	read_lock_bh(&parent->lock);
+	read_lock(&parent->lock);
 	memcpy(data, &parent->port_stats, sizeof(parent->port_stats));
-	read_unlock_bh(&parent->lock);
+	read_unlock(&parent->lock);
 }
 
 static int parent_get_sset_count(struct net_device *parent_dev, int sset)
