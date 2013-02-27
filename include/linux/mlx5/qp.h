@@ -335,8 +335,10 @@ struct mlx5_qp_context {
 	__be16			hw_rq_counter;
 	__be16			sw_rcyclic_byte_counter;
 	__be16			sw_rq_counter;
-	u8			cgs_cs;
-	u8			rsvd0[7];
+	u8			rsvd0[5];
+	u8			cgs;
+	u8			cs_req;
+	u8			cs_res;
 	__be64			dc_access_key;
 	u8			rsvd1[24];
 };

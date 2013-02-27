@@ -820,10 +820,17 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		rcqe_sz = mlx5_ib_get_cqe_size(dev, init_attr->recv_cq);
 		scqe_sz = mlx5_ib_get_cqe_size(dev, init_attr->send_cq);
 
-		if (rcqe_sz == 128  && scqe_sz == 128)
-			in->ctx.cgs_cs = MLX5_SCAT_DATA64_CQE;
+		if (rcqe_sz == 128)
+			in->ctx.cs_res = MLX5_RES_SCAT_DATA64_CQE;
 		else
-			in->ctx.cgs_cs = MLX5_SCAT_DATA32_CQE;
+			in->ctx.cs_res = MLX5_RES_SCAT_DATA32_CQE;
+
+		if (init_attr->sq_sig_type == IB_SIGNAL_ALL_WR) {
+			if (scqe_sz == 128)
+				in->ctx.cs_req = MLX5_REQ_SCAT_DATA64_CQE;
+			else
+				in->ctx.cs_req = MLX5_REQ_SCAT_DATA32_CQE;
+		}
 	}
 
 	if (qp->rq.wqe_cnt) {
