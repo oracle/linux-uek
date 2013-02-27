@@ -130,7 +130,36 @@ struct tf_entry {
 	int canceled;		    /* indicates whether entry is canceled */
 };
 
+/* MADTRACK */
+enum {
+	MADTRACK_WR_CREATED		= 0x000001,
+	/* Sent to QP (ib_post_send) */
+	MADTRACK_WR_SEND_MAD_IB_PS	= 0x000010,
+	MADTRACK_WR_OVERFLOW_IB_PS	= 0x000020,
+	MADTRACK_WR_RETRY_IB_PS		= 0x000040,
+	/* Send done */
+	MADTRACK_WR_SEND_DONE		= 0x000100,
+	MADTRACK_WR_RECV_DONE		= 0x000200,
+	/* Sent to send handler */
+	MADTRACK_WR_CC_MAD_SH		= 0x001000,
+	MADTRACK_WR_CANCEL_MADS_SH	= 0x002000,
+	MADTRACK_WR_TIMEOUT_SH		= 0x004000,
+	MADTRACK_WR_COMPLETE_SEND_SH	= 0x008000,
+	MADTRACK_WR_RMPP_SH		= 0x010000,
+
+	MADTRACK_WR_DELETED		= 0x100000
+};
+enum {
+	MADTRACK_PATTERN	= 0xA110CA7E
+};
+/* end MADTRACK */
+
 struct ib_mad_send_wr_private {
+	/* MADTRACK */
+	u32 madtrack_pattern;
+	u32 madtrack_id;
+	int madtrack_state;
+	/* end MADTRACK */
 	struct ib_mad_list_head mad_list;
 	struct list_head agent_list;
 	struct ib_mad_agent_private *mad_agent_priv;
