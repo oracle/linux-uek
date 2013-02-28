@@ -1135,8 +1135,6 @@ no_free_objectid:
 	kfree(new_root_item);
 root_item_alloc_fail:
 	btrfs_free_path(path);
-path_alloc_fail:
-	btrfs_block_rsv_release(root, &pending->block_rsv, (u64)-1);
 	return ret;
 }
 
