@@ -3008,22 +3008,6 @@ qlafx00_async_event(scsi_qla_host_t *vha)
 		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
 		break;
 
-	case MBA_REQ_TRANSFER_ERR:	/* Request Transfer Error */
-		ql_log(ql_log_warn, vha, 0x5074,
-		    "ISP Request Transfer Error (%x).\n",  ha->aenmb[0]);
-		BUG(); /* MR- TO DO - Not defined in firmware specification */
-		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-		qla2xxx_wake_dpc(vha);
-		break;
-
-	case MBA_RSP_TRANSFER_ERR:	/* Response Transfer Error */
-		ql_log(ql_log_warn, vha, 0x5075,
-		    "ISP Response Transfer Error (%x).\n",  ha->aenmb[0]);
-		BUG(); /* MR- TO DO - Not defined in firmware specification */
-		set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
-		qla2xxx_wake_dpc(vha);
-		break;
-
 	case QLAFX00_MBA_SHUTDOWN_RQSTD:	/* Shutdown requested */
 		ql_dbg(ql_dbg_async, vha, 0x5076,
 		    "Asynchronous FW shutdown requested.\n");

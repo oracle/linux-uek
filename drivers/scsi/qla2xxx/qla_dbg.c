@@ -21,6 +21,7 @@
  * | DPC Thread                   |       0x4024       | 0x4002,0x4013  |
  * | Async Events                 |       0x5082       | 0x502b-0x502f  |
  * |                            |                    | 0x5047,0x5052  |
+ * |				  |		       | 0x5074,0x5075  |
  * | Timer Routines               |       0x6013       |		|
  * | User Space Interactions      |       0x70dd       | 0x7018,0x702e  |
  * |                              |                    | 0x7020,0x7024  |
