@@ -2776,7 +2776,7 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	}
 
 	if (!GET_FW_SENSE_LEN(sp)) {
-		ql_dbg(ql_dbg_io, vha, 0x3037,
+		ql_dbg(ql_dbg_io, vha, 0x3050,
 		    "no fw sense data, sp = %p\n", sp);
 		return;
 	}
@@ -2790,7 +2790,7 @@ qlafx00_status_cont_entry(struct rsp_que *rsp, sts_cont_entry_t *pkt)
 	}
 
 	if (!GET_CMD_SENSE_LEN(sp)) {
-		ql_dbg(ql_dbg_io, vha, 0x3037,
+		ql_dbg(ql_dbg_io, vha, 0x3051,
 		    "no sense data, sp = %p\n", sp);
 	} else {
 		sense_len = GET_CMD_SENSE_LEN(sp);

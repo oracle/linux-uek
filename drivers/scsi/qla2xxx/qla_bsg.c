@@ -1921,11 +1921,11 @@ qlafx00_mgmt_cmd(struct fc_bsg_job *bsg_job)
 	    &bsg_job->request->rqst_data.h_vendor.vendor_cmd[1];
 
 	/* Dump the vendor information */
-	ql_dump_buffer(ql_dbg_user + ql_dbg_verbose , vha, 0x70c5,
+	ql_dump_buffer(ql_dbg_user + ql_dbg_verbose , vha, 0x70de,
 	    (uint8_t *)piocb_rqst, sizeof(qla_mt_iocb_rqst_fx00_t));
 
 	if (!vha->flags.online) {
-		ql_log(ql_log_warn, vha, 0x70c6,
+		ql_log(ql_log_warn, vha, 0x70df,
 		    "Host is not online.\n");
 		rval = -EIO;
 		goto done;
