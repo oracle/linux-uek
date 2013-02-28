@@ -574,7 +574,7 @@ static int get_octo_len(u64 addr, u64 len, int page_size)
 	int npages;
 
 	offset = addr & (page_size - 1);
-	npages = ALIGN(len + offset, page_size) / page_size;
+	npages = ALIGN(len + offset, page_size) >> ilog2(page_size);
 	return (npages + 1) / 2;
 }
 

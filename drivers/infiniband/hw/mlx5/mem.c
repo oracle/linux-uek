@@ -189,6 +189,6 @@ int mlx5_ib_get_buf_offset(u64 addr, int page_shift, u32 *offset)
 	if (buf_off & off_mask)
 		return -EINVAL;
 
-	*offset = buf_off / off_size;
+	*offset = buf_off >> ilog2(off_size);
 	return 0;
 }
