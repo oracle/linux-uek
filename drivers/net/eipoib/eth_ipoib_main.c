@@ -298,17 +298,23 @@ static int parent_set_mtu(struct parent *parent)
 /*
  * The function returns the features that are not depend
  * on the slaves's features.
- * Only features that were at the parent netdev before.
+ * take features that were at the parent netdev before.
+ * drop, features that the parent shouldn't have.
  */
-static u64 parent_self_features(struct net_device *parent_dev)
+static void parent_self_features(struct net_device *parent_dev, u64 *take,
+				 u64 *drop)
 {
-	u64 parent_orig_features = 0;
+	*take = 0;
+	*drop = 0;
 
-	/* basic independent features*/
+	/* basic independent features to take, if were at the parent first */
 	if (parent_dev->features & NETIF_F_GRO)
-		parent_orig_features |= NETIF_F_GRO;
+		*take |= NETIF_F_GRO;
 
-	return parent_orig_features;
+	/* basic independent features to drop anyeay*/
+	*drop = (NETIF_F_VLAN_CHALLENGED | NETIF_F_LRO);
+
+	return;
 }
 
 
@@ -336,7 +342,9 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 	struct slave *slave;
 	struct parent *parent = netdev_priv(dev);
 	netdev_features_t mask;
-	u64 parent_orig_features = parent_self_features(parent->dev);
+	u64 take, drop;
+
+	parent_self_features(parent->dev, &take, &drop);
 
 	read_lock(&parent->lock);
 
@@ -349,10 +357,10 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 						     slave->dev->features,
 						     mask);
 
-	features &= ~NETIF_F_VLAN_CHALLENGED;
+	/* return/takeoff back the original independent features */
+	features &= ~drop;
 
-	/* return back the original independent features */
-	features |= parent_orig_features;
+	features |= take;
 
 	read_unlock(&parent->lock);
 	return features;
@@ -361,14 +369,14 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 static int parent_compute_features(struct parent *parent)
 {
 	struct net_device *parent_dev = parent->dev;
-	u64 hw_features, features, parent_orig_features = 0;
+	u64 hw_features, features, take, drop;
 	struct slave *slave;
 
 	if (list_empty(&parent->slave_list))
 		goto done;
 
 	/* take basic features that do not depends on slaves */
-	parent_orig_features = parent_self_features(parent_dev);
+	parent_self_features(parent_dev, &take, &drop);
 
 	/* starts with the max set of features mask */
 	hw_features = features = ~0LL;
@@ -382,9 +390,10 @@ static int parent_compute_features(struct parent *parent)
 	features = features | PARENT_VLAN_FEATURES;
 	hw_features = hw_features | PARENT_VLAN_FEATURES;
 
-	hw_features &= ~NETIF_F_VLAN_CHALLENGED;
+	hw_features &= ~drop;
+
 	features &= hw_features;
-	features |= parent_orig_features;
+	features |= take;
 
 	parent_dev->hw_features = hw_features;
 	parent_dev->features = features;
