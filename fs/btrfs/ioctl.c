@@ -523,9 +523,10 @@ fail:
 	return ret;
 }
 
-static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
-			   char *name, int namelen, u64 *async_transid,
-			   bool readonly, struct btrfs_qgroup_inherit *inherit)
+static int create_snapshot(struct btrfs_root *root, struct inode *dir,
+			   struct dentry *dentry, char *name, int namelen,
+			   u64 *async_transid, bool readonly,
+			   struct btrfs_qgroup_inherit *inherit)
 {
 	struct inode *inode;
 	struct dentry *parent;
@@ -545,6 +546,7 @@ static int create_snapshot(struct btrfs_root *root, struct dentry *dentry,
 	pending_snapshot->dentry = dentry;
 	pending_snapshot->root = root;
 	pending_snapshot->readonly = readonly;
+	pending_snapshot->dir = dir;
 	pending_snapshot->inherit = inherit;
 
 	trans = btrfs_start_transaction(root->fs_info->extent_root, 6);
@@ -724,7 +726,7 @@ static noinline int btrfs_mksubvol(struct path *parent,
 		goto out_up_read;
 
 	if (snap_src) {
-		error = create_snapshot(snap_src, dentry, name, namelen,
+		error = create_snapshot(snap_src, dir, dentry, name, namelen,
 					async_transid, readonly, inherit);
 	} else {
 		error = create_subvol(BTRFS_I(dir)->root, dentry,
