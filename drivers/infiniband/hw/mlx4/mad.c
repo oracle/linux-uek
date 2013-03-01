@@ -744,12 +744,6 @@ static int ib_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 	return IB_MAD_RESULT_SUCCESS | IB_MAD_RESULT_REPLY;
 }
 
-static __be32 be64_to_be32(__be64 b64)
-{
-	return cpu_to_be32(be64_to_cpu(b64) & 0xffffffff);
-}
-
-
 static void edit_counter(struct mlx4_counters *cnt, void *counters,
              __be16 attr_id)
 {
