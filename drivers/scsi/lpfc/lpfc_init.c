@@ -4129,9 +4129,9 @@ lpfc_sli4_async_fip_evt(struct lpfc_hba *phba,
 
 		/* If FCF has been in discovered state, perform rediscovery
 		 * only if the FCF with the same index of the in-use FCF got
-		 * modified. Otherwise, do nothing.
+		 * modified during normal operation. Otherwise, do nothing.
 		 */
-		if (phba->fcf.fcf_flag & (FCF_SCAN_DONE | FCF_IN_USE)) {
+		if (phba->pport->port_state > LPFC_FLOGI) {
 			spin_unlock_irq(&phba->hbalock);
 			if (phba->fcf.current_rec.fcf_indx ==
 			    acqe_fip->index) {
