@@ -386,19 +386,36 @@ struct mlx5_cmd_layout {
 	u8		status_own;
 };
 
+
+struct health_buffer {
+	__be32		assert_var[5];
+	__be32		rsvd0[3];
+	__be32		assert_exit_ptr;
+	__be32		assert_callra;
+	__be32		rsvd1[2];
+	__be32		fw_ver;
+	__be32		hw_id;
+	__be32		rsvd2;
+	u8		irisc_index;
+	u8		synd;
+	__be16		ext_sync;
+};
+
 struct mlx5_init_seg {
-	__be32	fw_rev;
-	__be32	cmdif_rev_fw_sub;
-	__be32	rsvd0[2];
-	__be32	cmdq_addr_h;
-	__be32	cmdq_addr_l_sz;
-	__be32	cmd_dbell;
-	__be32	rsvd1[1017];
-	__be32	ieee1588_h;
-	__be32	ieee1588_l;
-	__be32	ieee1588_clk_type;
-	__be32	clr_intx;
-	__be32	health_buffer[4];
+	__be32			fw_rev;
+	__be32			cmdif_rev_fw_sub;
+	__be32			rsvd0[2];
+	__be32			cmdq_addr_h;
+	__be32			cmdq_addr_l_sz;
+	__be32			cmd_dbell;
+	__be32			rsvd1[121];
+	struct health_buffer	health;
+	__be32			rsvd2[880];
+	__be32			health_counter;
+	__be32			rsvd3[1023];
+	__be64			ieee1588_clk;
+	__be32			ieee1588_clk_type;
+	__be32			clr_intx;
 };
 
 struct mlx5_eqe_comp {

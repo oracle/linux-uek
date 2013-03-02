@@ -50,14 +50,6 @@ static DEFINE_SPINLOCK(health_lock);
 static LIST_HEAD(health_list);
 static struct work_struct health_work;
 
-static const char *synd_str(u8 synd)
-{
-	switch (synd) {
-	default:
-		return "unrecognized syndrom";
-	}
-}
-
 static void health_care(struct work_struct *work)
 {
 	LIST_HEAD(tlist);
@@ -77,6 +69,24 @@ static void health_care(struct work_struct *work)
 	}
 }
 
+static void print_health_info(struct mlx5_core_dev *dev)
+{
+	struct mlx5_core_health *health = &dev->priv.health;
+	struct health_buffer __iomem *h = health->health;
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(h->assert_var); ++i)
+		pr_info("assert_var[%d] 0x%08x\n", i, be32_to_cpu(h->assert_var[i]));
+
+	pr_info("assert_exit_ptr 0x%08x\n", be32_to_cpu(h->assert_exit_ptr));
+	pr_info("assert_callra 0x%08x\n", be32_to_cpu(h->assert_callra));
+	pr_info("fw_ver 0x%08x\n", be32_to_cpu(h->fw_ver));
+	pr_info("hw_id 0x%08x\n", be32_to_cpu(h->hw_id));
+	pr_info("irisc_index %d\n", h->irisc_index);
+	pr_info("synd 0x%x\n", h->synd);
+	pr_info("ext_sync 0x%04x\n", be16_to_cpu(h->ext_sync));
+}
+
 static void poll_health(unsigned long data)
 {
 	struct mlx5_core_dev *dev = (struct mlx5_core_dev *)data;
@@ -84,15 +94,16 @@ static void poll_health(unsigned long data)
 	u32 count;
 	unsigned long next;
 
-	count = ioread32be(&health->map[3]) & 0xffffff;
+	count = ioread32be(&health->health_counter);
 	if (count == health->prev)
 		++health->miss_counter;
 	else
 		health->miss_counter = 0;
 
+	health->prev = count;
 	if (health->miss_counter == MAX_MISSES) {
-		mlx5_core_err(dev, "device's health compromised. %s(%d)\n",
-			      synd_str(count >> 24), count >> 24);
+		mlx5_core_err(dev, "device's health compromised\n");
+		print_health_info(dev);
 		spin_lock(&health_lock);
 		list_add(&health->list, &health_list);
 		spin_unlock(&health_lock);
@@ -112,7 +123,8 @@ void mlx5_start_health_poll(struct mlx5_core_dev *dev)
 
 	INIT_LIST_HEAD(&health->list);
 	init_timer(&health->timer);
-	health->map = dev->iseg->health_buffer;
+	health->health = &dev->iseg->health;
+	health->health_counter = &dev->iseg->health_counter;
 
 	health->timer.data = (unsigned long)dev;
 	health->timer.function = poll_health;

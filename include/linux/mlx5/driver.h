@@ -435,12 +435,13 @@ struct mlx5_uar {
 
 
 struct mlx5_core_health {
-	__be32 __iomem	       *map;
-	struct timer_list	timer;
-	struct list_head	list;
-	u32			prev;
-	int			miss_counter;
-	int			active;
+	struct health_buffer __iomem   *health;
+	__be32 __iomem		       *health_counter;
+	struct timer_list		timer;
+	struct list_head		list;
+	u32				prev;
+	int				miss_counter;
+	int				active;
 };
 
 struct mlx5_cq_table {
