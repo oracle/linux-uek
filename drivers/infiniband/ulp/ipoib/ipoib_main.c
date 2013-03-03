@@ -93,6 +93,9 @@ static struct ib_client ipoib_client = {
 	.remove = ipoib_remove_one
 };
 
+/* used to avoid get/set client_data at the same time */
+spinlock_t client_data_lock;
+
 int ipoib_open(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
@@ -2497,6 +2500,7 @@ static void ipoib_add_one(struct ib_device *device)
 	struct ipoib_dev_priv *priv;
 	int s, e, p;
 	int is_error_init = 0;
+	unsigned long flags;
 
 	if (rdma_node_get_transport(device->node_type) != RDMA_TRANSPORT_IB)
 		return;
@@ -2504,6 +2508,8 @@ static void ipoib_add_one(struct ib_device *device)
 	dev_list = kmalloc(sizeof *dev_list, GFP_KERNEL);
 	if (!dev_list)
 		return;
+
+	spin_lock_init(&client_data_lock);
 
 	INIT_LIST_HEAD(dev_list);
 
@@ -2525,7 +2531,9 @@ static void ipoib_add_one(struct ib_device *device)
 		} else
 			is_error_init = 1;
 	}
+	spin_lock_irqsave(&client_data_lock, flags);
 	ib_set_client_data(device, &ipoib_client, dev_list);
+	spin_unlock_irqrestore(&client_data_lock, flags);
 
 	if (is_error_init) {
 		printk(KERN_ERR "%s: Failed to init ib port, removing it\n",
@@ -2538,13 +2546,24 @@ static void ipoib_remove_one(struct ib_device *device)
 {
 	struct ipoib_dev_priv *priv, *tmp;
 	struct list_head *dev_list;
+	unsigned long flags;
 
 	if (rdma_node_get_transport(device->node_type) != RDMA_TRANSPORT_IB)
 		return;
 
+	/*
+	 * protect against calling ipoib_remove_one multiple times
+	 * for same device.
+	 */
+	spin_lock_irqsave(&client_data_lock, flags);
 	dev_list = ib_get_client_data(device, &ipoib_client);
-	if (!dev_list)
+	if (!dev_list) {
+		spin_unlock_irqrestore(&client_data_lock, flags);
 		return;
+	}
+
+	ib_set_client_data(device, &ipoib_client, NULL);
+	spin_unlock_irqrestore(&client_data_lock, flags);
 
 	list_for_each_entry_safe(priv, tmp, dev_list, list) {
 		ib_unregister_event_handler(&priv->event_handler);
