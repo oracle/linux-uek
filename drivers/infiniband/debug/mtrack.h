@@ -184,6 +184,32 @@
 })
 #endif
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) || defined (CONFIG_COMPAT_RCU)
+#ifdef kfree_rcu
+	#undef kfree_rcu
+#endif
+
+#ifdef ZERO_OR_NULL_PTR
+#define kfree_rcu(addr, rcu_head) ({								\
+	void *__memtrack_addr = (void *)addr;					\
+										\
+	if (!ZERO_OR_NULL_PTR(__memtrack_addr) &&				\
+	    !is_non_trackable_free_func(__func__)) {				\
+		memtrack_free(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
+	}									\
+	__kfree_rcu(&((addr)->rcu_head), offsetof(typeof(*(addr)), rcu_head));					\
+})
+#else
+#define kfree_rcu(addr, rcu_head) ({								\
+	void *__memtrack_addr = (void *)addr;					\
+										\
+	if (__memtrack_addr && !is_non_trackable_free_func(__func__)) {		\
+		memtrack_free(MEMTRACK_KMALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
+	}									\
+	__kfree_rcu(&((addr)->rcu_head), offsetof(typeof(*(addr)), rcu_head));					\
+})
+#endif
+#endif /* LINUX_VERSION_CODE < KERNEL_VERSION(3, 0, 0) */
 
 #define vmalloc(size) ({							\
 	void *__memtrack_addr = NULL;						\
