@@ -452,10 +452,11 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 		}
 
 		/*
-		 * before calling eth_hdr() should reset skb->mac_header
-		 * to point to the address skb->data points
+		 * Before calling eth_hdr() should reset skb->mac_header
+		 * to point to the address skb->data points.
+		 * This is done by eth_type_trans().
 		 */
-		skb_reset_mac_header(skb);
+		skb->protocol = eth_type_trans(skb, dev);
 		ethh = eth_hdr(skb);
 
 		/* Check if we need to drop the packet if SRIOV is not enabled
@@ -495,7 +496,6 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 		}
 
 		skb->ip_summed = ip_summed;
-		skb->protocol = eth_type_trans(skb, dev);
 		skb_record_rx_queue(skb, cq->ring);
 
 		if (dev->features & NETIF_F_RXHASH)
