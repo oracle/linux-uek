@@ -101,13 +101,13 @@ cycle_t mlx4_en_read_clock(const struct cyclecounter *tc)
 
 u64 mlx4_en_get_cqe_ts(struct mlx4_cqe *cqe)
 {
-	u64 ts;
-	struct mlx4_ts_cqe *ts_cqe = (struct mlx4_ts_cqe *) cqe;
+	u64 hi, lo;
+	struct mlx4_ts_cqe *ts_cqe = (struct mlx4_ts_cqe *)cqe;
 
-	ts = (u64) be32_to_cpu(ts_cqe->timestamp_hi) << 16
-		| (u64) be16_to_cpu(ts_cqe->timestamp_lo);
+	lo = (u64)be16_to_cpu(ts_cqe->timestamp_lo);
+	hi = ((u64)be32_to_cpu(ts_cqe->timestamp_hi) + !lo) << 16;
 
-	return ts;
+	return hi | lo;
 }
 
 void mlx4_en_fill_hwtstamps(struct mlx4_en_dev *mdev,
