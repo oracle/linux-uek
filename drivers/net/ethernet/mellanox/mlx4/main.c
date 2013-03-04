@@ -1969,6 +1969,8 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 
 	priv->eq_table.inta_pin = adapter.inta_pin;
 	memcpy(dev->board_id, adapter.board_id, sizeof dev->board_id);
+	memcpy(dev->vsd, adapter.vsd, sizeof(dev->vsd));
+	dev->vsd_vendor_id = adapter.vsd_vendor_id;
 
 	if (!mlx4_is_slave(dev))
 		kfree(dev_cap);

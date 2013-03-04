@@ -1362,16 +1362,33 @@ static ssize_t show_board(struct device *device, struct device_attribute *attr,
 		       dev->dev->board_id);
 }
 
+static ssize_t show_vsd(struct device *device, struct device_attribute *attr,
+			  char *buf)
+{
+	struct mlx4_ib_dev *dev =
+		container_of(device, struct mlx4_ib_dev, ib_dev.dev);
+	ssize_t len = MLX4_VSD_LEN;
+
+	if (dev->dev->vsd_vendor_id == PCI_VENDOR_ID_MELLANOX)
+		len = sprintf(buf, "%.*s\n", MLX4_VSD_LEN, dev->dev->vsd);
+	else
+		memcpy(buf, dev->dev->vsd, MLX4_VSD_LEN);
+
+	return len;
+}
+
 static DEVICE_ATTR(hw_rev,   S_IRUGO, show_rev,    NULL);
 static DEVICE_ATTR(fw_ver,   S_IRUGO, show_fw_ver, NULL);
 static DEVICE_ATTR(hca_type, S_IRUGO, show_hca,    NULL);
 static DEVICE_ATTR(board_id, S_IRUGO, show_board,  NULL);
+static DEVICE_ATTR(vsd,      S_IRUGO, show_vsd,    NULL);
 
 static struct device_attribute *mlx4_class_attributes[] = {
 	&dev_attr_hw_rev,
 	&dev_attr_fw_ver,
 	&dev_attr_hca_type,
-	&dev_attr_board_id
+	&dev_attr_board_id,
+	&dev_attr_vsd
 };
 
 static void mlx4_addrconf_ifid_eui48(u8 *eui, u16 vlan_id, struct net_device *dev)

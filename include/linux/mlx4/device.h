@@ -88,7 +88,8 @@ enum {
 #define MLX4_RESERVED_QKEY_MASK  (0xFFFF0000)
 
 enum {
-	MLX4_BOARD_ID_LEN = 64
+	MLX4_BOARD_ID_LEN = 64,
+	MLX4_VSD_LEN = 208
 };
 
 enum {
@@ -735,6 +736,8 @@ struct mlx4_dev {
 	struct radix_tree_root	qp_table_tree;
 	u8			rev_id;
 	char			board_id[MLX4_BOARD_ID_LEN];
+	u16			vsd_vendor_id;
+	char			vsd[MLX4_VSD_LEN];
 	int			num_vfs;
 	int			numa_node;
 	int			oper_log_mgm_entry_size;

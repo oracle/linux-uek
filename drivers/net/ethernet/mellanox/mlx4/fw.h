@@ -146,7 +146,9 @@ struct mlx4_func_cap {
 };
 
 struct mlx4_adapter {
+	u16 vsd_vendor_id;
 	char board_id[MLX4_BOARD_ID_LEN];
+	char vsd[MLX4_VSD_LEN];
 	u8   inta_pin;
 };
 

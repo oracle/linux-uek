@@ -1147,7 +1147,7 @@ int mlx4_QUERY_FW_wrapper(struct mlx4_dev *dev, int slave,
 	return 0;
 }
 
-static void get_board_id(void *vsd, char *board_id)
+static void get_board_id(void *vsd, char *board_id, char *vsdstr)
 {
 	int i;
 
@@ -1155,8 +1155,15 @@ static void get_board_id(void *vsd, char *board_id)
 #define VSD_OFFSET_SIG2		0xde
 #define VSD_OFFSET_MLX_BOARD_ID	0xd0
 #define VSD_OFFSET_TS_BOARD_ID	0x20
+#define VSD_LEN			0xd0
 
 #define VSD_SIGNATURE_TOPSPIN	0x5ad
+
+	memset(vsdstr, 0, MLX4_VSD_LEN);
+
+	for (i = 0; i < VSD_LEN / 4; i++)
+		((u32 *)vsdstr)[i] =
+			swab32(*(u32 *)(vsd + i * 4));
 
 	memset(board_id, 0, MLX4_BOARD_ID_LEN);
 
@@ -1184,6 +1191,7 @@ int mlx4_QUERY_ADAPTER(struct mlx4_dev *dev, struct mlx4_adapter *adapter)
 #define QUERY_ADAPTER_OUT_SIZE             0x100
 #define QUERY_ADAPTER_INTA_PIN_OFFSET      0x10
 #define QUERY_ADAPTER_VSD_OFFSET           0x20
+#define QUERY_ADAPTER_VSD_VENDOR_ID_OFFSET 0x1e
 
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
 	if (IS_ERR(mailbox))
@@ -1197,8 +1205,11 @@ int mlx4_QUERY_ADAPTER(struct mlx4_dev *dev, struct mlx4_adapter *adapter)
 
 	MLX4_GET(adapter->inta_pin, outbox,    QUERY_ADAPTER_INTA_PIN_OFFSET);
 
+	adapter->vsd_vendor_id = be16_to_cpup((u16 *)outbox +
+				QUERY_ADAPTER_VSD_VENDOR_ID_OFFSET / 2);
+
 	get_board_id(outbox + QUERY_ADAPTER_VSD_OFFSET / 4,
-		     adapter->board_id);
+		     adapter->board_id, adapter->vsd);
 
 out:
 	mlx4_free_cmd_mailbox(dev, mailbox);
