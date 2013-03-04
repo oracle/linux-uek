@@ -62,7 +62,7 @@ MLX5_IB_MOD_DBG_MASK(MLX5_IB_MOD_MAIN);
 module_param_named(debug_mask, mlx5_ib_debug_mask, int, 0644);
 MODULE_PARM_DESC(debug_mask, "mask of debug sources");
 
-static int prof_sel;
+static int prof_sel = 2;
 module_param_named(prof_sel, prof_sel, int, 0444);
 MODULE_PARM_DESC(prof_sel, "profile selector");
 
