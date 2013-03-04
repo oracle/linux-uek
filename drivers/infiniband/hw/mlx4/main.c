@@ -54,7 +54,7 @@
 
 #define DRV_NAME	MLX4_IB_DRV_NAME
 #define DRV_VERSION	"1.0"
-#define DRV_RELDATE	"April 4, 2008"
+#define DRV_RELDATE	__DATE__
 
 #define MLX4_IB_DRIVER_PROC_DIR_NAME "driver/mlx4_ib"
 #define MLX4_IB_MRS_PROC_DIR_NAME "mrs"

@@ -52,7 +52,7 @@
 #define DRV_NAME	"mlx4_core"
 #define PFX		DRV_NAME ": "
 #define DRV_VERSION	"1.1"
-#define DRV_RELDATE	"Dec, 2011"
+#define DRV_RELDATE	__DATE__
 
 #define MLX4_FS_UDP_UC_EN		(1 << 1)
 #define MLX4_FS_TCP_UC_EN		(1 << 2)

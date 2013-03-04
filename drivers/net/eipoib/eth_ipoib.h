@@ -48,7 +48,7 @@
 
 /* macros and definitions */
 #define DRV_VERSION		"1.0.0"
-#define DRV_RELDATE		"June 1, 2012"
+#define DRV_RELDATE		__DATE__
 #define DRV_NAME		"eth_ipoib"
 #define SDRV_NAME		"ipoib"
 #define DRV_DESCRIPTION		"IP-over-InfiniBand Para Virtualized Driver"
