@@ -946,7 +946,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		int shift;
 		int n;
 
-		if (ib_copy_from_udata(&ucmd, udata, sizeof ucmd)) {
+		if (!udata || ib_copy_from_udata(&ucmd, udata, sizeof(ucmd))) {
 			err = -EFAULT;
 			goto err;
 		}
