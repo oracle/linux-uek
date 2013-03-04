@@ -2509,8 +2509,6 @@ static void ipoib_add_one(struct ib_device *device)
 	if (!dev_list)
 		return;
 
-	spin_lock_init(&client_data_lock);
-
 	INIT_LIST_HEAD(dev_list);
 
 	if (device->node_type == RDMA_NODE_IB_SWITCH) {
@@ -2605,6 +2603,8 @@ static int __init ipoib_init_module(void)
 	 * linear data part of the SKB, so we rely on this condition.
 	 */
 	BUILD_BUG_ON(IPOIB_CM_COPYBREAK > IPOIB_CM_HEAD_SIZE);
+
+	spin_lock_init(&client_data_lock);
 
 	ret = ipoib_register_debugfs();
 	if (ret)
