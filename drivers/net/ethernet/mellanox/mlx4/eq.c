@@ -498,6 +498,7 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 		case MLX4_EVENT_TYPE_SRQ_LIMIT:
 			mlx4_warn(dev, "%s: MLX4_EVENT_TYPE_SRQ_LIMIT\n",
 				  __func__);
+		/* fall through */
 		case MLX4_EVENT_TYPE_SRQ_CATAS_ERROR:
 			if (mlx4_is_master(dev)) {
 				/* forward only to slave owning the SRQ */

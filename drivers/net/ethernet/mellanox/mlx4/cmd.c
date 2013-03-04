@@ -688,6 +688,9 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	int go_bit = 0, t_bit = 0, stat_err;
 	u32 status = 0;
 
+	if (out_is_imm && !out_param)
+		return -EINVAL;
+
 	down(&cmd->event_sem);
 
 	spin_lock(&cmd->context_lock);
