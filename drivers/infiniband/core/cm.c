@@ -2752,7 +2752,8 @@ static int cm_lap_handler(struct cm_work *work)
 	cm_init_av_for_response(work->port, work->mad_recv_wc->wc,
 				work->mad_recv_wc->recv_buf.grh,
 				&cm_id_priv->av);
-	cm_init_av_by_path(param->alternate_path, &cm_id_priv->alt_av);
+	if (cm_init_av_by_path(param->alternate_path, &cm_id_priv->alt_av))
+		goto unlock;
 	ret = atomic_inc_and_test(&cm_id_priv->work_count);
 	if (!ret)
 		list_add_tail(&work->list, &cm_id_priv->work_list);
@@ -3869,7 +3870,8 @@ static int __init ib_cm_init(void)
 	cm.remote_sidr_table = RB_ROOT;
 	idr_init(&cm.local_id_table);
 	get_random_bytes(&cm.random_id_operand, sizeof cm.random_id_operand);
-	idr_pre_get(&cm.local_id_table, GFP_KERNEL);
+	if (!idr_pre_get(&cm.local_id_table, GFP_KERNEL))
+		return -ENOMEM;
 	INIT_LIST_HEAD(&cm.timewait_list);
 
 	ret = class_register(&cm_class);
