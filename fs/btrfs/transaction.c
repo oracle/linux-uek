@@ -923,7 +923,12 @@ int btrfs_defrag_root(struct btrfs_root *root)
 
 /*
  * new snapshots need to be created at a very specific time in the
- * transaction commit.  This does the actual creation
+ * transaction commit.  This does the actual creation.
+ *
+ * Note:
+ * If the error which may affect the commitment of the current transaction
+ * happens, we should return the error number. If the error which just affect
+ * the creation of the pending snapshots, just return 0.
  */
 static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 				   struct btrfs_fs_info *fs_info,
@@ -941,7 +946,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	struct dentry *dentry;
 	struct extent_buffer *tmp;
 	struct extent_buffer *old;
-	int ret;
+	int ret = 0;
 	u64 to_reserve = 0;
 	u64 index = 0;
 	u64 objectid;
@@ -949,39 +954,29 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 
 	path = btrfs_alloc_path();
 	if (!path) {
-		ret = pending->error = -ENOMEM;
-		goto path_alloc_fail;
+		pending->error = -ENOMEM;
+		return 0;
 	}
 
 	new_root_item = kmalloc(sizeof(*new_root_item), GFP_NOFS);
 	if (!new_root_item) {
-		ret = pending->error = -ENOMEM;
+		pending->error = -ENOMEM;
 		goto root_item_alloc_fail;
 	}
 
-	ret = btrfs_find_free_objectid(tree_root, &objectid);
-	if (ret) {
-		pending->error = ret;
+	pending->error = btrfs_find_free_objectid(tree_root, &objectid);
+	if (pending->error)
 		goto no_free_objectid;
-	}
 
 	btrfs_reloc_pre_snapshot(trans, pending, &to_reserve);
 
 	if (to_reserve > 0) {
-		ret = btrfs_block_rsv_add(root, &pending->block_rsv,
-					  to_reserve,
-					  BTRFS_RESERVE_NO_FLUSH);
-		if (ret) {
-			pending->error = ret;
+		pending->error = btrfs_block_rsv_add(root,
+						     &pending->block_rsv,
+						     to_reserve,
+						     BTRFS_RESERVE_NO_FLUSH);
+		if (pending->error)
 			goto no_free_objectid;
-		}
-	}
-
-	ret = btrfs_qgroup_inherit(trans, fs_info, root->root_key.objectid,
-				   objectid, pending->inherit);
-	if (ret) {
-		pending->error = ret;
-		goto no_free_objectid;
 	}
 
 	key.objectid = objectid;
@@ -1010,7 +1005,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 					 dentry->d_name.len, 0);
 	if (dir_item != NULL && !IS_ERR(dir_item)) {
 		pending->error = -EEXIST;
-		goto fail;
+		goto dir_item_existed;
 	} else if (IS_ERR(dir_item)) {
 		ret = PTR_ERR(dir_item);
 		btrfs_abort_transaction(trans, root, ret);
@@ -1127,6 +1122,8 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 	if (ret)
 		btrfs_abort_transaction(trans, root, ret);
 fail:
+	pending->error = ret;
+dir_item_existed:
 	trans->block_rsv = rsv;
 	trans->bytes_reserved = 0;
 no_free_objectid:
@@ -1144,12 +1141,17 @@ path_alloc_fail:
 static noinline int create_pending_snapshots(struct btrfs_trans_handle *trans,
 					     struct btrfs_fs_info *fs_info)
 {
-	struct btrfs_pending_snapshot *pending;
+	struct btrfs_pending_snapshot *pending, *next;
 	struct list_head *head = &trans->transaction->pending_snapshots;
+	int ret = 0;
 
-	list_for_each_entry(pending, head, list)
-		create_pending_snapshot(trans, fs_info, pending);
-	return 0;
+	list_for_each_entry_safe(pending, next, head, list) {
+		list_del(&pending->list);
+		ret = create_pending_snapshot(trans, fs_info, pending);
+		if (ret)
+			break;
+	}
+	return ret;
 }
 
 static void update_super_roots(struct btrfs_root *root)
