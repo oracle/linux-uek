@@ -1042,6 +1042,11 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		} ucmd;
 		size_t copy_len;
 
+		if (!udata) {
+			err = -EFAULT;
+			goto err;
+		}
+
 		copy_len = (src == MLX4_IB_QP_SRC) ?
 			   sizeof(struct mlx4_ib_create_qp) :
 			   min(sizeof(struct mlx4_ib_create_wq), udata->inlen);
