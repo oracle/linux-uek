@@ -123,6 +123,15 @@ struct guest_emac_info {
 	int num_of_retries;
 };
 
+/* handles new neigh learning taskzzz*/
+struct learn_neigh_info {
+	struct parent *parent;
+	struct slave *slave;
+	struct work_struct work;
+	u8 remac[ETH_ALEN];
+	u8 rimac[INFINIBAND_ALEN];
+};
+
 struct neigh {
 	struct list_head list;
 	u8 emac[ETH_ALEN];
@@ -175,9 +184,7 @@ struct parent {
 	u16      flags;
 	struct   workqueue_struct *wq;
 	s8       kill_timers;
-	struct   delayed_work neigh_learn_work;
 	struct   delayed_work vif_learn_work;
-	struct   list_head neigh_add_list;
 	union    ib_gid gid;
 	char     ipoib_main_interface[IFNAMSIZ];
 	/* live migration and bonding support */

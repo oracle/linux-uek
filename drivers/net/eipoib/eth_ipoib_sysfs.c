@@ -226,9 +226,9 @@ ssize_t __parent_store_neighs(struct device *d,
 			goto out;
 		}
 
-		neigh = kzalloc(sizeof *neigh, GFP_ATOMIC);
+		neigh = kzalloc(sizeof(*neigh), GFP_KERNEL);
 		if (!neigh) {
-			pr_err("%s cannot allocate neigh struct\n",
+			pr_err("%s cannot allocate neigh struct, no mem\n",
 			       slave->dev->name);
 			ret = -ENOMEM;
 			goto out;

@@ -51,7 +51,7 @@ static rx_handler_result_t eipoib_handle_frame(struct sk_buff **pskb);
 static int eipoib_device_event(struct notifier_block *unused,
 			       unsigned long event, void *ptr);
 static void free_all_ip_ent_in_emac_rec(struct guest_emac_info *emac_info);
-
+static void neigh_learn_task(struct work_struct *work);
 static const char * const version =
 	DRV_DESCRIPTION ": v" DRV_VERSION " (" DRV_RELDATE ")\n";
 
@@ -652,7 +652,6 @@ static int parent_release_all(struct net_device *parent_dev)
 	struct parent *parent = netdev_priv(parent_dev);
 	struct slave *slave, *slave_tmp;
 	struct net_device *slave_dev;
-	struct neigh *neigh_cmd, *neigh_cmd_tmp;
 	struct guest_emac_info *emac_info, *emac_info_tmp;
 	struct slave;
 
@@ -683,12 +682,6 @@ static int parent_release_all(struct net_device *parent_dev)
 
 		write_lock(&parent->lock);
 	}
-
-	list_for_each_entry_safe(neigh_cmd, neigh_cmd_tmp,
-				 &parent->neigh_add_list, list) {
-		list_del(&neigh_cmd->list);
-			kfree(neigh_cmd);
-		}
 
 	write_lock(&parent->emac_info_lock);
 	list_for_each_entry_safe(emac_info, emac_info_tmp,
@@ -756,24 +749,6 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 }
 
 /* ---------------------------- Main funcs ---------------------------------- */
-static struct neigh *neigh_cmd_find_by_mac(struct slave *slave, u8 *mac)
-{
-	struct net_device *dev = slave->dev;
-	struct net_device *parent_dev = dev->master;
-	struct parent *parent = netdev_priv(parent_dev);
-	struct neigh *neigh;
-	int found = 0;
-
-	list_for_each_entry(neigh, &parent->neigh_add_list, list) {
-		if (!memcmp(neigh->emac, mac, ETH_ALEN)) {
-			found = 1;
-			break;
-		}
-	}
-
-	return found ? neigh : NULL;
-}
-
 static struct neigh *neigh_find_by_mac(struct slave *slave, u8 *mac)
 {
 	struct neigh *neigh;
@@ -794,36 +769,31 @@ static int neigh_learn(struct slave *slave, struct sk_buff *skb, u8 *remac)
 	struct net_device *dev = slave->dev;
 	struct net_device *parent_dev = dev->master;
 	struct parent *parent = netdev_priv(parent_dev);
-	struct neigh *neigh_cmd;
-	u8 *rimac;
 	int rc;
+	struct learn_neigh_info *learn_neigh;
 
 	/* linearize to easy on reading the arp payload */
 	rc = skb_linearize(skb);
 	if (rc) {
 		pr_err("%s: skb_linearize failed rc %d\n", dev->name, rc);
 		goto out;
-	} else
-		rimac = skb->data + sizeof(struct arphdr);
+	}
 
-	/* check if entry is being processed or already exists */
-	if (neigh_find_by_mac(slave, remac))
-		goto out;
-
-	if (neigh_cmd_find_by_mac(slave, remac))
-		goto out;
-
-	neigh_cmd = parent_get_neigh_cmd('+', slave->dev->name, remac, rimac);
-	if (!neigh_cmd) {
-		pr_err("%s cannot build neigh cmd\n", slave->dev->name);
+	learn_neigh = kzalloc(sizeof(*learn_neigh), GFP_ATOMIC);
+	if (!learn_neigh) {
+		pr_err("%s: Failed to allocate memory\n", dev->name);
 		rc = -ENOMEM;
 		goto out;
 	}
 
-	list_add_tail(&neigh_cmd->list, &parent->neigh_add_list);
-
-	/* calls neigh_learn_task() */
-	queue_delayed_work(parent->wq, &parent->neigh_learn_work, 0);
+	learn_neigh->parent = parent;
+	learn_neigh->slave = slave;
+	memcpy(learn_neigh->remac, remac, ETH_ALEN);
+	memcpy(learn_neigh->rimac, skb->data + sizeof(struct arphdr),
+	       INFINIBAND_ALEN);
+	INIT_WORK(&learn_neigh->work, neigh_learn_task);
+	queue_work(parent->wq, &learn_neigh->work);
+	return rc;
 
 out:
 	return rc;
@@ -831,24 +801,35 @@ out:
 
 static void neigh_learn_task(struct work_struct *work)
 {
-	struct parent *parent = container_of(work, struct parent,
-					     neigh_learn_work.work);
-	struct neigh *neigh_cmd, *neigh_cmd_tmp;
+	struct learn_neigh_info *learn_neigh =
+		container_of(work, struct learn_neigh_info, work);
+
+	struct parent *parent = learn_neigh->parent;
+	struct slave *slave = learn_neigh->slave;
+	struct neigh *neigh_cmd;
 
 	write_lock(&parent->lock);
 
 	if (parent->kill_timers)
 		goto out;
 
-	list_for_each_entry_safe(neigh_cmd, neigh_cmd_tmp,
-				 &parent->neigh_add_list, list) {
-		__parent_store_neighs(&parent->dev->dev, NULL,
-				      neigh_cmd->cmd, PAGE_SIZE);
-		list_del(&neigh_cmd->list);
-		kfree(neigh_cmd);
+	if (neigh_find_by_mac(slave, learn_neigh->remac))
+		goto out;
+
+	neigh_cmd = parent_get_neigh_cmd('+', slave->dev->name,
+					 learn_neigh->remac,
+					 learn_neigh->rimac);
+	if (!neigh_cmd) {
+		pr_err("%s cannot build neigh cmd\n", slave->dev->name);
+		goto out;
 	}
 
+	__parent_store_neighs(&parent->dev->dev, NULL, neigh_cmd->cmd,
+			      PAGE_SIZE);
+	kfree(neigh_cmd);
+
 out:
+	kfree(learn_neigh);
 	write_unlock(&parent->lock);
 	return;
 }
@@ -858,9 +839,6 @@ static void parent_work_cancel_all(struct parent *parent)
 	write_lock(&parent->lock);
 	parent->kill_timers = 1;
 	write_unlock(&parent->lock);
-
-	if (delayed_work_pending(&parent->neigh_learn_work))
-		cancel_delayed_work(&parent->neigh_learn_work);
 
 	if (delayed_work_pending(&parent->arp_gen_work))
 		cancel_delayed_work(&parent->arp_gen_work);
@@ -1499,8 +1477,6 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 
 	build_neigh_mac(remac, data->rx.sqpn, data->rx.slid);
 
-	read_lock(&parent->lock);
-
 	if (unlikely(skb_headroom(skb) < ETH_HLEN)) {
 		pr_warn("%s: small headroom %d < %d\n",
 			skb->dev->name, skb_headroom(skb), ETH_HLEN);
@@ -1509,12 +1485,12 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 	}
 
 	/* learn neighs based on ARP snooping */
-	if (unlikely(ntohs(skb->protocol) == ETH_P_ARP)) {
-		read_unlock(&parent->lock);
-		write_lock(&parent->lock);
-		neigh_learn(slave, skb, remac);
-		write_unlock(&parent->lock);
-		read_lock(&parent->lock);
+	if (unlikely(ntohs(skb->protocol) == ETH_P_ARP))
+		rc = neigh_learn(slave, skb, remac);
+	if (rc) {
+		pr_warn("%s: failed to run neigh_learn\n",
+			skb->dev->name);
+		goto drop;
 	}
 
 	nskb = get_parent_skb(slave, skb, remac);
@@ -1542,13 +1518,11 @@ static int parent_rx(struct sk_buff *skb, struct slave *slave)
 	else
 		rc = netif_receive_skb(skb);
 
-	read_unlock(&parent->lock);
 
 	return rc;
 
 drop:
 	dev_kfree_skb_any(skb);
-	read_unlock(&parent->lock);
 
 	return NET_RX_DROP;
 }
@@ -1665,7 +1639,6 @@ static int parent_open(struct net_device *parent_dev)
 	struct parent *parent = netdev_priv(parent_dev);
 
 	parent->kill_timers = 0;
-	INIT_DELAYED_WORK(&parent->neigh_learn_work, neigh_learn_task);
 	INIT_DELAYED_WORK(&parent->arp_gen_work, arp_gen_work_task);
 	return 0;
 }
@@ -1678,9 +1651,8 @@ static int parent_close(struct net_device *parent_dev)
 	parent->kill_timers = 1;
 	write_unlock(&parent->lock);
 
-	cancel_delayed_work_sync(&parent->neigh_learn_work);
 	cancel_delayed_work_sync(&parent->arp_gen_work);
-
+	flush_workqueue(parent->wq);
 	return 0;
 }
 
@@ -1701,8 +1673,10 @@ static void parent_uninit(struct net_device *parent_dev)
 	parent_deinit(parent_dev);
 	parent_destroy_sysfs_entry(parent);
 
-	if (parent->wq)
+	if (parent->wq) {
+		flush_workqueue(parent->wq);
 		destroy_workqueue(parent->wq);
+	}
 }
 
 static struct lock_class_key parent_netdev_xmit_lock_key;
@@ -1830,7 +1804,6 @@ static void parent_setup(struct net_device *parent_dev)
 	rwlock_init(&parent->emac_info_lock);
 	/* Initialize pointers */
 	parent->dev = parent_dev;
-	INIT_LIST_HEAD(&parent->neigh_add_list);
 	INIT_LIST_HEAD(&parent->slave_list);
 	INIT_LIST_HEAD(&parent->emac_ip_list);
 	/* Initialize the device entry points */
