@@ -1773,13 +1773,31 @@ static int __init ipoib_init_module(void)
 {
 	int ret;
 
-	ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
-	ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
-	ipoib_recvq_size = max(ipoib_recvq_size, IPOIB_MIN_QUEUE_SIZE);
+	if (ipoib_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
+		ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
+		ipoib_recvq_size = max(ipoib_recvq_size, IPOIB_MIN_QUEUE_SIZE);
+	} else {
+		pr_err(KERN_ERR "ipoib_recvq_size is out of bounds [%d-%d], seting to default %d\n",
+		       IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
+		       IPOIB_RX_RING_SIZE);
+		ipoib_recvq_size  = IPOIB_RX_RING_SIZE;
+	}
 
-	ipoib_sendq_size = roundup_pow_of_two(ipoib_sendq_size);
-	ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
-	ipoib_sendq_size = max3(ipoib_sendq_size, 2 * MAX_SEND_CQE, IPOIB_MIN_QUEUE_SIZE);
+	if (ipoib_sendq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_sendq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_sendq_size = roundup_pow_of_two(ipoib_sendq_size);
+		ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
+		ipoib_sendq_size = max3(ipoib_sendq_size, 2 * MAX_SEND_CQE,
+					IPOIB_MIN_QUEUE_SIZE);
+	} else {
+		pr_err(KERN_ERR "ipoib_sendq_size is out of bounds [%d-%d], seting to default %d\n",
+		       IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
+		       IPOIB_TX_RING_SIZE);
+		ipoib_sendq_size  = IPOIB_TX_RING_SIZE;
+	}
+
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 	ipoib_max_conn_qp = min(ipoib_max_conn_qp, IPOIB_CM_MAX_CONN_QP);
 #endif
