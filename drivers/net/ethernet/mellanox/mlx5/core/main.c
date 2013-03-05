@@ -457,16 +457,17 @@ static int __init init(void)
 {
 	int err;
 
-	mlx5_health_init();
 	mlx5_register_debugfs();
 	mlx5_core_wq = create_singlethread_workqueue("mlx5_core_wq");
 	if (!mlx5_core_wq) {
 		err = -ENOMEM;
 		goto err_debug;
 	}
+	mlx5_health_init();
 
 	return 0;
 
+	mlx5_health_cleanup();
 err_debug:
 	mlx5_unregister_debugfs();
 	return err;
@@ -474,9 +475,9 @@ err_debug:
 
 static void __exit cleanup(void)
 {
+	mlx5_health_cleanup();
 	destroy_workqueue(mlx5_core_wq);
 	mlx5_unregister_debugfs();
-	mlx5_health_cleanup();
 }
 
 module_init(init);

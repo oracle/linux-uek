@@ -104,16 +104,20 @@ static void poll_health(unsigned long data)
 	if (health->miss_counter == MAX_MISSES) {
 		mlx5_core_err(dev, "device's health compromised\n");
 		print_health_info(dev);
-		spin_lock(&health_lock);
+		spin_lock_irq(&health_lock);
 		list_add(&health->list, &health_list);
-		spin_unlock(&health_lock);
+		spin_unlock_irq(&health_lock);
 
 		queue_work(mlx5_core_wq, &health_work);
-	} else if (health->active) {
-		get_random_bytes(&next, sizeof(next));
-		next %= HZ;
-		next += jiffies + MLX5_HEALTH_POLL_INTERVAL;
-		mod_timer(&health->timer, next);
+	} else {
+		spin_lock_irq(&health_lock);
+		if (health->active) {
+			get_random_bytes(&next, sizeof(next));
+			next %= HZ;
+			next += jiffies + MLX5_HEALTH_POLL_INTERVAL;
+			mod_timer(&health->timer, next);
+		}
+		spin_unlock_irq(&health_lock);
 	}
 }
 
@@ -137,7 +141,9 @@ void mlx5_stop_health_poll(struct mlx5_core_dev *dev)
 {
 	struct mlx5_core_health *health = &dev->priv.health;
 
+	spin_lock_irq(&health_lock);
 	health->active = 0;
+	spin_unlock_irq(&health_lock);
 	del_timer_sync(&health->timer);
 
 	spin_lock_irq(&health_lock);
