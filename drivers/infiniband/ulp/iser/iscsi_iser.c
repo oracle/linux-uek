@@ -779,8 +779,32 @@ register_transport_failure:
 
 static void __exit iser_exit(void)
 {
+	int logger_count = 10;
 	iser_dbg("Removing iSER datamover...\n");
 	iscsi_unregister_transport(&iscsi_iser_transport);
+	/*
+	This flow is a workarround to fix issue 31475.
+	Initiator kernel crash when doing multiple unload/load
+	of ib_iser immediately after targets logout.
+	It will not be contributed to community and will
+	be replased by appropriate fix ASAP.
+	*/
+	do {
+		mutex_lock(&ig.device_list_mutex);
+		if (list_empty(&ig.device_list)) {
+			mutex_unlock(&ig.device_list_mutex);
+			break;
+		} else {
+			mutex_unlock(&ig.device_list_mutex);
+			if (logger_count == 0) {
+				iser_err("ib_iser unload: device list is NOT empty. Postpone module unload.\n");
+				logger_count = 10;
+			}
+			msleep(1000);
+			logger_count -= 1;
+		}
+	} while (1);
+
 	kmem_cache_destroy(ig.desc_cache);
 }
 
