@@ -2636,7 +2636,8 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 		return -EFAULT;
 
 	if ((cmd.flow_attr.type == IB_FLOW_ATTR_SNIFFER &&
-	     !capable(CAP_NET_ADMIN)) || !capable(CAP_NET_RAW))
+	     !capable(CAP_NET_ADMIN)) ||
+	    (!capable(CAP_NET_RAW) && !disable_raw_qp_enforcement))
 		return -EPERM;
 
 	flow_attr = kmalloc(cmd.flow_attr.size, GFP_KERNEL);
