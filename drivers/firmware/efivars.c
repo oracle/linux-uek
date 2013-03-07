@@ -170,6 +170,7 @@ efivar_create_sysfs_entry(struct efivars *efivars,
 
 static void efivar_update_sysfs_entries(struct work_struct *);
 static DECLARE_WORK(efivar_work, efivar_update_sysfs_entries);
+static bool efivar_wq_enabled = true;
 
 /* Return the number of unicode characters in data */
 static unsigned long
@@ -1422,7 +1423,7 @@ static int efi_pstore_write(enum pstore_type_id type,
 
 	spin_unlock_irqrestore(&efivars->lock, flags);
 
-	if (reason == KMSG_DUMP_OOPS)
+	if (reason == KMSG_DUMP_OOPS && efivar_wq_enabled)
 		schedule_work(&efivar_work);
 
 	*id = part;
@@ -1959,6 +1960,13 @@ static void dup_variable_bug(efi_char16_t *s16, efi_guid_t *vendor_guid,
 {
 	size_t i, len8 = len16 / sizeof(efi_char16_t);
 	char *s8;
+
+	/*
+	 * Disable the workqueue since the algorithm it uses for
+	 * detecting new variables won't work with this buggy
+	 * implementation of GetNextVariableName().
+	 */
+	efivar_wq_enabled = false;
 
 	s8 = kzalloc(len8, GFP_KERNEL);
 	if (!s8)
