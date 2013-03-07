@@ -949,8 +949,10 @@ static void prepare_message_data(struct ceph_msg *msg,
 #endif
 	msg_pos->data_pos = 0;
 
-	/* If there's a trail, initialize its cursor */
+	/* Initialize data cursors */
 
+	if (ceph_msg_has_pagelist(msg))
+		ceph_msg_data_cursor_init(&msg->l);
 	if (ceph_msg_has_trail(msg))
 		ceph_msg_data_cursor_init(&msg->t);
 
@@ -1238,18 +1240,19 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 {
 	struct ceph_msg *msg = con->out_msg;
 	struct ceph_msg_pos *msg_pos = &con->out_msg_pos;
+	bool need_crc = false;
 
 	BUG_ON(!msg);
 	BUG_ON(!sent);
 
 	msg_pos->data_pos += sent;
 	msg_pos->page_pos += sent;
-	if (in_trail) {
-		bool need_crc;
-
+	if (in_trail)
 		need_crc = ceph_msg_data_advance(&msg->t, sent);
-		BUG_ON(need_crc && sent != len);
-	}
+	else if (ceph_msg_has_pagelist(msg))
+		need_crc = ceph_msg_data_advance(&msg->l, sent);
+	BUG_ON(need_crc && sent != len);
+
 	if (sent < len)
 		return;
 
@@ -1257,13 +1260,10 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	msg_pos->page_pos = 0;
 	msg_pos->page++;
 	msg_pos->did_page_crc = false;
-	if (ceph_msg_has_pagelist(msg)) {
-		list_rotate_left(&msg->l.pagelist->head);
 #ifdef CONFIG_BLOCK
-	} else if (ceph_msg_has_bio(msg)) {
+	if (ceph_msg_has_bio(msg))
 		iter_bio_next(&msg->b.bio_iter, &msg->b.bio_seg);
 #endif
-	}
 }
 
 static void in_msg_pos_next(struct ceph_connection *con, size_t len,
@@ -1358,8 +1358,9 @@ static int write_partial_message_data(struct ceph_connection *con)
 		} else if (ceph_msg_has_pages(msg)) {
 			page = msg->p.pages[msg_pos->page];
 		} else if (ceph_msg_has_pagelist(msg)) {
-			page = list_first_entry(&msg->l.pagelist->head,
-						struct page, lru);
+			use_cursor = true;
+			page = ceph_msg_data_next(&msg->l, &page_offset,
+							&length, &last_piece);
 #ifdef CONFIG_BLOCK
 		} else if (ceph_msg_has_bio(msg)) {
 			struct bio_vec *bv;
