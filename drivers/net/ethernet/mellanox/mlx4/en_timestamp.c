@@ -42,7 +42,8 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int port_up = 0;
-	int err = 0;
+	int n_stats, err = 0;
+	u64 *data = NULL;
 
 	err = mlx4_en_pre_config(priv);
 	if (err)
@@ -52,6 +53,14 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	if (priv->port_up) {
 		port_up = 1;
 		mlx4_en_stop_port(dev);
+	}
+
+	/* Cache port statistics */
+	n_stats = mlx4_en_get_sset_count(dev, ETH_SS_STATS);
+	if (n_stats > 0) {
+		data = kmalloc(n_stats * sizeof(u64), GFP_KERNEL);
+		if (data)
+			mlx4_en_get_ethtool_stats(dev, NULL, data);
 	}
 
 	mlx4_en_free_resources(priv);
@@ -76,6 +85,11 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 		en_err(priv, "Failed reallocating port resources\n");
 		goto out;
 	}
+
+	/* Restore port statistics */
+	if (n_stats > 0 && data)
+		mlx4_en_restore_ethtool_stats(priv, data);
+
 	if (port_up) {
 		err = mlx4_en_start_port(dev);
 		if (err)
@@ -83,6 +97,7 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	}
 
 out:
+	kfree(data);
 	mutex_unlock(&mdev->state_lock);
 	return err;
 }

@@ -679,6 +679,14 @@ void mlx4_en_fill_hwtstamps(struct mlx4_en_dev *mdev,
 void mlx4_en_init_timestamp(struct mlx4_en_dev *mdev);
 int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter);
 
+/* Functions for caching and restoring statistics */
+int mlx4_en_get_sset_count(struct net_device *dev, int sset);
+void mlx4_en_get_ethtool_stats(struct net_device *dev,
+			       struct ethtool_stats *stats,
+			       u64 *data);
+void mlx4_en_restore_ethtool_stats(struct mlx4_en_priv *priv,
+				    u64 *data);
+
 /*
  * Globals
  */

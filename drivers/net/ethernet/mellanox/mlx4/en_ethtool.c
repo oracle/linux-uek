@@ -226,7 +226,7 @@ static int mlx4_en_set_wol(struct net_device *netdev,
 	return err;
 }
 
-static int mlx4_en_get_sset_count(struct net_device *dev, int sset)
+int mlx4_en_get_sset_count(struct net_device *dev, int sset)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int bit_count = hweight64(priv->stats_bitmap);
@@ -243,12 +243,15 @@ static int mlx4_en_get_sset_count(struct net_device *dev, int sset)
 	}
 }
 
-static void mlx4_en_get_ethtool_stats(struct net_device *dev,
-		struct ethtool_stats *stats, uint64_t *data)
+void mlx4_en_get_ethtool_stats(struct net_device *dev,
+		struct ethtool_stats *stats, u64 *data)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int index = 0;
 	int i, j = 0;
+
+	if (!data)
+		return;
 
 	spin_lock_bh(&priv->stats_lock);
 
@@ -286,6 +289,48 @@ static void mlx4_en_get_ethtool_stats(struct net_device *dev,
 	}
 	spin_unlock_bh(&priv->stats_lock);
 
+}
+
+void mlx4_en_restore_ethtool_stats(struct mlx4_en_priv *priv, u64 *data)
+{
+	int index = 0;
+	int i, j = 0;
+
+	if (!data)
+		return;
+
+	spin_lock_bh(&priv->stats_lock);
+
+	if (!(priv->stats_bitmap)) {
+		for (i = 0; i < NUM_MAIN_STATS; i++)
+			((unsigned long *)&priv->stats)[i] = data[index++];
+		for (i = 0; i < NUM_PORT_STATS; i++)
+			((unsigned long *)&priv->port_stats)[i] = data[index++];
+		for (i = 0; i < NUM_PKT_STATS; i++)
+			((unsigned long *)&priv->pkstats)[i] = data[index++];
+	} else {
+		for (i = 0; i < NUM_MAIN_STATS; i++) {
+			if ((priv->stats_bitmap >> j) & 1)
+				((unsigned long *)&priv->stats)[i] =
+				data[index++];
+			j++;
+		}
+		for (i = 0; i < NUM_PORT_STATS; i++) {
+			if ((priv->stats_bitmap >> j) & 1)
+				((unsigned long *)&priv->port_stats)[i] =
+				data[index++];
+			j++;
+		}
+	}
+	for (i = 0; i < priv->tx_ring_num; i++) {
+		priv->tx_ring[i]->packets = data[index++];
+		priv->tx_ring[i]->bytes = data[index++];
+	}
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		priv->rx_ring[i]->packets = data[index++];
+		priv->rx_ring[i]->bytes = data[index++];
+	}
+	spin_unlock_bh(&priv->stats_lock);
 }
 
 static void mlx4_en_self_test(struct net_device *dev,
@@ -546,7 +591,8 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	u32 rx_size, tx_size;
 	int port_up = 0;
 	int err = 0;
-	int i;
+	int i, n_stats;
+	u64 *data = NULL;
 
 	if (param->rx_jumbo_pending || param->rx_mini_pending)
 		return -EINVAL;
@@ -572,6 +618,14 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 		mlx4_en_stop_port(dev);
 	}
 
+	/* Cache port statistics */
+	n_stats = mlx4_en_get_sset_count(dev, ETH_SS_STATS);
+	if (n_stats > 0) {
+		data = kmalloc(n_stats * sizeof(u64), GFP_KERNEL);
+		if (data)
+			mlx4_en_get_ethtool_stats(dev, NULL, data);
+	}
+
 	mlx4_en_free_resources(priv);
 
 	priv->prof->tx_ring_size = tx_size;
@@ -582,6 +636,11 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 		en_err(priv, "Failed reallocating port resources\n");
 		goto out;
 	}
+
+	/* Restore port statistics */
+	if (n_stats > 0 && data)
+		mlx4_en_restore_ethtool_stats(priv, data);
+
 	if (port_up) {
 		err = mlx4_en_start_port(dev);
 		if (err)
@@ -598,6 +657,7 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	}
 
 out:
+	kfree(data);
 	mutex_unlock(&mdev->state_lock);
 	return err;
 }
