@@ -94,7 +94,7 @@ static void poll_health(unsigned long data)
 	u32 count;
 	unsigned long next;
 
-	count = ioread32be(&health->health_counter);
+	count = ioread32be(health->health_counter);
 	if (count == health->prev)
 		++health->miss_counter;
 	else
