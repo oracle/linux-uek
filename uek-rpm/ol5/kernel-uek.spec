@@ -1607,7 +1607,7 @@ fi
 %files firmware
 %defattr(-,root,root)
 /lib/firmware/*
-%doc linux-%{kversion}.%{_target_cpu}/firmware/WHENCE
+%doc linux-%{version}-%{release}/firmware/WHENCE
 %endif
 
 %if %{with_bootwrapper}
