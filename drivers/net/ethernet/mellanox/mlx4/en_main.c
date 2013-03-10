@@ -72,6 +72,9 @@ MLX4_EN_PARM_INT(pfctx, 0, "Priority based Flow Control policy on TX[7:0]."
 MLX4_EN_PARM_INT(pfcrx, 0, "Priority based Flow Control policy on RX[7:0]."
 			   " Per priority bit mask");
 
+#define MAX_PFC_TX	0xff
+#define MAX_PFC_RX	0xff
+
 int en_print(const char *level, const struct mlx4_en_priv *priv,
 	     const char *format, ...)
 {
@@ -340,10 +343,30 @@ static struct mlx4_interface mlx4_en_interface = {
 	.protocol	= MLX4_PROT_ETH,
 };
 
+void mlx4_en_verify_params(void)
+{
+	if (pfctx > MAX_PFC_TX) {
+		pr_warn("mlx4_en: WARNING: illegal module parameter pfctx 0x%x - "
+		       "should be in range 0-0x%x, will be changed to default (0)\n",
+		       pfctx, MAX_PFC_TX);
+		pfctx = 0;
+	}
+
+	if (pfcrx > MAX_PFC_RX) {
+		pr_warn("mlx4_en: WARNING: illegal module parameter pfcrx 0x%x - "
+		       "should be in range 0-0x%x, will be changed to default (0)\n",
+		       pfcrx, MAX_PFC_RX);
+		pfcrx = 0;
+	}
+}
+
 static int __init mlx4_en_init(void)
 {
+	int err = 0;
+
+	mlx4_en_verify_params();
 #ifdef CONFIG_DEBUG_FS
-	int err = mlx4_en_register_debugfs();
+	err = mlx4_en_register_debugfs();
 	if (err)
 		pr_err(KERN_ERR "Failed to register debugfs\n");
 #endif
