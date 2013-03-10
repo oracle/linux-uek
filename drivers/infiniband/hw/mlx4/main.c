@@ -60,7 +60,6 @@
 #define MLX4_IB_MRS_PROC_DIR_NAME "mrs"
 #define MLX4_IB_FLOW_MAX_PRIO 0xFFF
 #define MLX4_IB_FLOW_QPN_MASK 0xFFFFFF
-#define MAX_FLOW_TYPES(a) (sizeof(a) / sizeof(a[0]))
 
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("Mellanox ConnectX HCA InfiniBand driver");
@@ -1135,7 +1134,7 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 		goto err_free;
 	}
 
-	while (type[i] && i < MAX_FLOW_TYPES(type)) {
+	while (type[i] && i < ARRAY_SIZE(type)) {
 		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
 					    &flow_handle->reg_id[i]);
 		if (err)
@@ -1159,7 +1158,7 @@ int mlx4_ib_destroy_flow(struct ib_flow *flow_id)
 
 	flow_handle = flow_id->flow_context;
 	while (flow_handle->reg_id[i] &&
-	       i < MAX_FLOW_TYPES(flow_handle->reg_id)) {
+	       i < ARRAY_SIZE(flow_handle->reg_id)) {
 		err = __mlx4_ib_destroy_flow(mdev->dev, flow_handle->reg_id[i]);
 		if (err)
 			ret = err;
