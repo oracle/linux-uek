@@ -1845,8 +1845,12 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 
 	flags = dev->flags;
 	dev_close(dev);
-	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags))
-		ib_unregister_event_handler(&priv->event_handler);
+	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
+		spin_lock_irq(&priv->lock);
+		if (test_and_clear_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+			ib_unregister_event_handler(&priv->event_handler);
+		spin_unlock_irq(&priv->lock);
+	}
 	ipoib_dev_uninit(dev);
 	priv->num_rx_queues = num_rx;
 	priv->num_tx_queues = num_tx;
@@ -1874,7 +1878,11 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 		return ret;
 	}
 	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
-		ret = ib_register_event_handler(&priv->event_handler);
+		spin_lock_irq(&priv->lock);
+		if (!test_and_set_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+			ret = ib_register_event_handler(&priv->event_handler);
+		spin_unlock_irq(&priv->lock);
+
 		if (ret)
 			pr_warn("%s: failed to rereg port %d (ret = %d)\n",
 			priv->ca->name, priv->port, ret);
@@ -2423,7 +2431,11 @@ static struct net_device *ipoib_add_port(const char *format,
 
 	INIT_IB_EVENT_HANDLER(&priv->event_handler,
 			      priv->ca, ipoib_event);
-	result = ib_register_event_handler(&priv->event_handler);
+	spin_lock_irq(&priv->lock);
+	if (!test_and_set_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+		result = ib_register_event_handler(&priv->event_handler);
+	spin_unlock_irq(&priv->lock);
+
 	if (result < 0) {
 		printk(KERN_WARNING "%s: ib_register_event_handler failed for "
 		       "port %d (ret = %d)\n",
@@ -2471,7 +2483,11 @@ sysfs_failed:
 	unregister_netdev(priv->dev);
 
 register_failed:
-	ib_unregister_event_handler(&priv->event_handler);
+	spin_lock_irq(&priv->lock);
+	if (test_and_clear_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+		ib_unregister_event_handler(&priv->event_handler);
+	spin_unlock_irq(&priv->lock);
+
 	/* Stop GC if started before flush */
 	set_bit(IPOIB_STOP_NEIGH_GC, &priv->flags);
 	cancel_delayed_work(&priv->neigh_reap_task);
@@ -2564,7 +2580,10 @@ static void ipoib_remove_one(struct ib_device *device)
 	spin_unlock_irqrestore(&client_data_lock, flags);
 
 	list_for_each_entry_safe(priv, tmp, dev_list, list) {
-		ib_unregister_event_handler(&priv->event_handler);
+		spin_lock_irq(&priv->lock);
+		if (test_and_clear_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+			ib_unregister_event_handler(&priv->event_handler);
+		spin_unlock_irq(&priv->lock);
 
 		rtnl_lock();
 		dev_change_flags(priv->dev, priv->dev->flags & ~IFF_UP);

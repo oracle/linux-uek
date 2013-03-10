@@ -98,6 +98,8 @@ enum {
 	IPOIB_STOP_NEIGH_GC	  = 11,
 	IPOIB_NEIGH_TBL_FLUSH	  = 12,
 	IPOIB_FLAG_AUTO_MODER     = 13, /*indicates moderation is running*/
+	/*indicates if event handler was registered*/
+	IPOIB_FLAG_EVENTS_REGISTERED    = 14,
 
 	IPOIB_MAX_BACKOFF_SECONDS = 16,
 
