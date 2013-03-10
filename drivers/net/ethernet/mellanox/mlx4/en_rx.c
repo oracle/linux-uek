@@ -284,6 +284,14 @@ err_buffers:
 		mlx4_en_free_rx_buf(priv, priv->rx_ring[ring_ind]);
 
 	ring_ind = priv->rx_ring_num - 1;
+
+	while (ring_ind >= 0) {
+		ring = priv->rx_ring[ring_ind];
+		if (ring->stride <= TXBB_SIZE)
+			ring->buf -= TXBB_SIZE;
+		ring_ind--;
+	}
+
 	return err;
 }
 
