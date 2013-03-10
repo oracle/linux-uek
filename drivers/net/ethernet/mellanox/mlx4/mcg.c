@@ -674,7 +674,7 @@ static const u8 __promisc_mode[] = {
 int map_sw_to_hw_steering_mode(struct mlx4_dev *dev,
 			       enum mlx4_net_trans_promisc_mode flow_type)
 {
-	if (flow_type >= MLX4_FS_MODE_NUM) {
+	if (flow_type >= MLX4_FS_MODE_NUM || flow_type < 0) {
 		mlx4_err(dev, "Invalid flow type. type = %d\n", flow_type);
 		return -EINVAL;
 	}
@@ -710,7 +710,7 @@ const u16 __sw_id_hw[] = {
 int map_sw_to_hw_steering_id(struct mlx4_dev *dev,
 			     enum mlx4_net_trans_rule_id id)
 {
-	if (id >= MLX4_NET_TRANS_RULE_NUM) {
+	if (id >= MLX4_NET_TRANS_RULE_NUM || id < 0) {
 		mlx4_err(dev, "Invalid network rule id. id = %d\n", id);
 		return -EINVAL;
 	}
@@ -735,10 +735,11 @@ static const size_t __rule_hw_sz[] = {
 size_t hw_rule_sz(struct mlx4_dev *dev,
 		  enum mlx4_net_trans_rule_id id)
 {
-	if (id >= MLX4_NET_TRANS_RULE_NUM) {
+	if (id >= MLX4_NET_TRANS_RULE_NUM || id < 0) {
 		mlx4_err(dev, "Invalid network rule id. id = %d\n", id);
 		return -EINVAL;
 	}
+
 	return __rule_hw_sz[id];
 }
 EXPORT_SYMBOL_GPL(hw_rule_sz);
