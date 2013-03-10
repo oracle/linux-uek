@@ -1657,6 +1657,45 @@ out:
 	return ret;
 }
 
+
+int mlx4_master_immediate_activate_admin_state(struct mlx4_priv *priv,
+					       int slave, int port)
+{
+	struct mlx4_vport_oper_state *vp_oper;
+	struct mlx4_vport_state *vp_admin;
+	int err;
+	vp_oper = &priv->mfunc.master.vf_oper[slave].vport[port];
+	vp_admin = &priv->mfunc.master.vf_admin[slave].vport[port];
+
+	if (vp_oper->state.default_vlan != vp_admin->default_vlan) {
+		if (NO_INDX != vp_oper->vlan_idx) {
+			__mlx4_unregister_vlan(
+				&priv->dev, port, vp_oper->state.default_vlan);
+			vp_oper->vlan_idx = NO_INDX;
+		}
+		vp_oper->state.default_vlan = vp_admin->default_vlan;
+		vp_oper->state.default_qos = vp_admin->default_qos;
+
+		if (MLX4_VGT != vp_admin->default_vlan) {
+			err = __mlx4_register_vlan(&priv->dev, port,
+			vp_admin->default_vlan, &(vp_oper->vlan_idx));
+			if (err) {
+				vp_oper->vlan_idx = NO_INDX;
+				mlx4_warn((&priv->dev),
+					"No vlan resorces slave %d, port %d\n",
+					slave, port);
+				return err;
+			}
+			mlx4_dbg((&(priv->dev)),
+				 "alloc vlan %d idx  %d slave %d port %d\n",
+				 (int)(vp_admin->default_vlan),
+				 vp_oper->vlan_idx, slave, port);
+		}
+	}
+	return 0;
+}
+
+
 static int mlx4_master_activate_admin_state(struct mlx4_priv *priv, int slave)
 {
 	int port, err;
@@ -2295,6 +2334,12 @@ int mlx4_set_vf_vlan(struct mlx4_dev *dev, int port, int vf, u16 vlan, u8 qos)
 	else
 		s_info->default_vlan = vlan;
 	s_info->default_qos = qos;
+
+	if (priv->mfunc.master.slave_state[slave].active) {
+		mlx4_info(dev, "using vlan admin config on vf %d port %d\n",
+			  vf, port);
+		mlx4_master_immediate_activate_admin_state(priv, slave, port);
+	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_set_vf_vlan);
