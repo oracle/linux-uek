@@ -2273,6 +2273,7 @@ again:
 	key.type = BTRFS_EXTENT_DATA_KEY;
 	key.offset = start;
 
+	path->leave_spinning = 1;
 	if (merge) {
 		struct btrfs_file_extent_item *fi;
 		u64 extent_len;
@@ -2329,6 +2330,7 @@ again:
 
 	btrfs_mark_buffer_dirty(leaf);
 	inode_add_bytes(inode, len);
+	btrfs_release_path(path);
 
 	ret = btrfs_inc_extent_ref(trans, root, new->bytenr,
 			new->disk_len, 0,
@@ -2342,6 +2344,7 @@ again:
 	ret = 1;
 out_free_path:
 	btrfs_release_path(path);
+	path->leave_spinning = 0;
 	btrfs_end_transaction(trans, root);
 out_unlock:
 	unlock_extent_cached(&BTRFS_I(inode)->io_tree, lock_start, lock_end,
