@@ -1002,7 +1002,7 @@ static struct mlx4_cmd_info cmd_info[] = {
 	},
 	{
 		.opcode = MLX4_CMD_SYNC_TPT,
-		.has_inbox = true,
+		.has_inbox = false,
 		.has_outbox = false,
 		.out_is_imm = false,
 		.encode_slave_id = false,

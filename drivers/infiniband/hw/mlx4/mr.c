@@ -388,6 +388,7 @@ int mlx4_ib_unmap_fmr(struct list_head *fmr_list)
 {
 	struct ib_fmr *ibfmr;
 	struct mlx4_dev *mdev = NULL;
+	int err;
 
 	list_for_each_entry(ibfmr, fmr_list, list) {
 		if (mdev && to_mdev(ibfmr->device)->dev != mdev)
@@ -403,7 +404,16 @@ int mlx4_ib_unmap_fmr(struct list_head *fmr_list)
 
 		mlx4_fmr_unmap(mdev, &ifmr->mfmr, &ifmr->ibfmr.lkey, &ifmr->ibfmr.rkey);
 	}
+	/*
+	* Make sure all MPT status updates are visible before issuing
+	* SYNC_TPT firmware command.
+	*/
+	wmb();
 
+	err = mlx4_SYNC_TPT(mdev);
+	if (err)
+		  printk(KERN_WARNING  "mlx4_ib: SYNC_TPT error %d when "
+				 "unmapping FMRs\n", err);
 	return 0;
 }
 int mlx4_ib_fmr_dealloc(struct ib_fmr *ibfmr)

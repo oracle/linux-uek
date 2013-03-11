@@ -214,8 +214,11 @@ u32 mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order,
 	u16 op;
 	int err;
 
-	op = mlx4_fmr_flow(dev, flags) ? RES_OP_RESERVE :
-	     RES_OP_RESERVE_AND_MAP;
+	/* we shouldn't check mlx4_fmr_flow(dev, flags) since icm_slave
+	   is not initialized when mlx4_core is loading and we don't need it
+	   to reserve MTTs */
+	op = (flags & MLX4_MR_FLAG_FMR) ? RES_OP_RESERVE :
+		RES_OP_RESERVE_AND_MAP;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&in_param, order);
@@ -282,9 +285,9 @@ void __mlx4_free_mtt_range(struct mlx4_dev *dev, u32 first_seg, int order,
 		icm_table = &mr_table->mtt_table;
 	}
 
-	mlx4_buddy_free(buddy, first_seg, order);
 	mlx4_table_put_range(dev, icm_table, first_seg,
 			     first_seg + (1 << order) - 1, flags);
+	mlx4_buddy_free(buddy, first_seg, order);
 }
 
 void mlx4_free_mtt_range(struct mlx4_dev *dev, u32 first_seg, int order,
@@ -954,15 +957,17 @@ void mlx4_cleanup_mr_table(struct mlx4_dev *dev)
 
 	if (mlx4_is_mfunc(dev)) {
 		if (dev->caps.fmr_mtt_base_idx != 0xFFFFFFFF) {
-			mlx4_free_mtt_range(dev, dev->caps.fmr_mtt_base_idx,
-					    fls(dev->caps.fmr_num_mtt_segs - 1),
-					    MLX4_MR_FLAG_FMR);
 			mlx4_cleanup_icm_table(dev,
 				&mlx4_priv(dev)->mr_table.fmr.dmpt_table,
 				MLX4_MR_FLAG_FMR);
+
 			mlx4_cleanup_icm_table(dev,
 				&mlx4_priv(dev)->mr_table.fmr.mtt_table,
 				MLX4_MR_FLAG_FMR);
+
+			mlx4_free_mtt_range(dev, dev->caps.fmr_mtt_base_idx,
+					    fls(dev->caps.fmr_num_mtt_segs - 1),
+					    MLX4_MR_FLAG_FMR);
 		}
 
 		mlx4_bitmap_cleanup(&mr_table->fmr.mpt_bitmap);
