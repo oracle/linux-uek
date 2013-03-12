@@ -1101,14 +1101,6 @@ static void prepare_message_data(struct ceph_msg *msg,
 	data_len = le32_to_cpu(msg->hdr.data_len);
 	BUG_ON(!data_len);
 
-	/* initialize page iterator */
-	msg_pos->page = 0;
-	if (ceph_msg_has_data(msg))
-		msg_pos->page_pos = msg->data.alignment;
-	else
-		msg_pos->page_pos = 0;
-	msg_pos->data_pos = 0;
-
 	/* Initialize data cursor */
 
 	ceph_msg_data_cursor_init(&msg->data, data_len);
@@ -1420,8 +1412,6 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 	BUG_ON(!msg);
 	BUG_ON(!sent);
 
-	msg_pos->data_pos += sent;
-	msg_pos->page_pos += sent;
 	need_crc = ceph_msg_data_advance(&msg->data, sent);
 	BUG_ON(need_crc && sent != len);
 
@@ -1429,8 +1419,6 @@ static void out_msg_pos_next(struct ceph_connection *con, struct page *page,
 		return;
 
 	BUG_ON(sent != len);
-	msg_pos->page_pos = 0;
-	msg_pos->page++;
 	msg_pos->did_page_crc = false;
 }
 
@@ -1438,21 +1426,16 @@ static void in_msg_pos_next(struct ceph_connection *con, size_t len,
 				size_t received)
 {
 	struct ceph_msg *msg = con->in_msg;
-	struct ceph_msg_pos *msg_pos = &con->in_msg_pos;
 
 	BUG_ON(!msg);
 	BUG_ON(!received);
 
-	msg_pos->data_pos += received;
-	msg_pos->page_pos += received;
 	(void) ceph_msg_data_advance(&msg->data, received);
 
 	if (received < len)
 		return;
 
 	BUG_ON(received != len);
-	msg_pos->page_pos = 0;
-	msg_pos->page++;
 }
 
 static u32 ceph_crc32c_page(u32 crc, struct page *page,
@@ -1483,8 +1466,7 @@ static int write_partial_message_data(struct ceph_connection *con)
 	bool do_datacrc = !con->msgr->nocrc;
 	int ret;
 
-	dout("%s %p msg %p page %d offset %d\n", __func__,
-	     con, msg, msg_pos->page, msg_pos->page_pos);
+	dout("%s %p msg %p\n", __func__, con, msg);
 
 	if (WARN_ON(!ceph_msg_has_data(msg)))
 		return -EINVAL;
@@ -2177,7 +2159,6 @@ static int read_partial_msg_data(struct ceph_connection *con)
 	struct ceph_msg *msg = con->in_msg;
 	struct ceph_msg_data_cursor *cursor = &msg->data.cursor;
 	const bool do_datacrc = !con->msgr->nocrc;
-	unsigned int data_len;
 	struct page *page;
 	size_t page_offset;
 	size_t length;
@@ -2187,7 +2168,6 @@ static int read_partial_msg_data(struct ceph_connection *con)
 	if (WARN_ON(!ceph_msg_has_data(msg)))
 		return -EIO;
 
-	data_len = le32_to_cpu(con->in_hdr.data_len);
 	while (cursor->resid) {
 		page = ceph_msg_data_next(&msg->data, &page_offset, &length,
 							NULL);
