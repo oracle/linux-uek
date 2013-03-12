@@ -536,22 +536,6 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	}
 }
 
-
-static inline struct pci_dev *ph_pci(struct pci_dev *pdev)
-{
-	struct pci_dev *ph_dev = pdev;
-#ifdef CONFIG_PCI_IOV
-	if (pdev->is_virtfn)
-#ifdef CONFIG_PCI_ATS
-		ph_dev = pdev->physfn;
-#else
-		ph_dev = NULL;
-#endif
-#endif
-	return ph_dev;
-}
-
-
 int mlx4_check_port_params(struct mlx4_dev *dev,
 			   enum mlx4_port_type *port_type)
 {
@@ -712,7 +696,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 				/* if IB and ETH are supported, we set the port
 				 * type according to user selection of port type;
 				 * if user selected none, take the FW hint */
-				int pta = get_val(port_type_array.tbl, ph_pci(dev->pdev), i - 1);
+				int pta = get_val(port_type_array.tbl, pci_physfn(dev->pdev), i - 1);
 				if (pta == MLX4_PORT_TYPE_NONE)
 					dev->caps.port_type[i] = dev->caps.suggested_type[i] ?
 						MLX4_PORT_TYPE_ETH : MLX4_PORT_TYPE_IB;
@@ -1804,7 +1788,7 @@ static int choose_log_fs_mgm_entry_size(int qp_per_entry)
 static void choose_steering_mode(struct mlx4_dev *dev,
 				 struct mlx4_dev_cap *dev_cap)
 {
-	int nvfs = get_val(num_vfs.tbl, ph_pci(dev->pdev), 0);
+	int nvfs = get_val(num_vfs.tbl, pci_physfn(dev->pdev), 0);
 
 	if (high_rate_steer && !mlx4_is_mfunc(dev)) {
 		dev->caps.flags &= ~(MLX4_DEV_CAP_FLAG_VEP_MC_STEER |
@@ -2552,8 +2536,8 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 		return err;
 	}
 
-	nvfs = get_val(num_vfs.tbl, ph_pci(pdev), 0);
-	prb_vf = get_val(probe_vf.tbl, ph_pci(pdev), 0);
+	nvfs = get_val(num_vfs.tbl, pci_physfn(pdev), 0);
+	prb_vf = get_val(probe_vf.tbl, pci_physfn(pdev), 0);
 	if (nvfs > MLX4_MAX_NUM_VF) {
 		dev_err(&pdev->dev, "There are more VF's (%d) than allowed(%d)\n",
 			nvfs, MLX4_MAX_NUM_VF);
