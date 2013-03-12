@@ -297,7 +297,7 @@ void mlx4_free_mtt_range(struct mlx4_dev *dev, u32 first_seg, int order,
 	u16 op;
 	int err;
 
-	op = mlx4_fmr_flow(dev, flags) ? RES_OP_RESERVE :
+	op = (flags & MLX4_MR_FLAG_FMR) ? RES_OP_RESERVE :
 	     RES_OP_RESERVE_AND_MAP;
 
 	if (mlx4_is_mfunc(dev)) {
