@@ -80,6 +80,8 @@ MODULE_PARM_DESC(dev_assign_str, "Map all device function numbers to "
 		 "IB device numbers following the  pattern: "
 		 "bb:dd.f-0,bb:dd.f-1,... (all numbers are hexadecimals)."
 		 " Max supported devices - 32");
+static unsigned long *dev_num_str_bitmap;
+static spinlock_t dev_num_str_lock;
 
 static const char mlx4_ib_version[] =
 	DRV_NAME ": Mellanox ConnectX InfiniBand driver v"
@@ -100,7 +102,9 @@ struct dev_rec {
 };
 
 #define MAX_DR 32
+#define MAX_NUM_STR_BITMAP (1 << 15)
 static struct dev_rec dr[MAX_DR];
+static int dr_active;
 
 static void do_slave_init(struct mlx4_ib_dev *ibdev, int slave, int do_init);
 
@@ -1831,10 +1835,22 @@ static void init_dev_assign(void)
 	int ret;
 	int j, i = 0;
 
+	spin_lock_init(&dev_num_str_lock);
+
 	memset(dr, 0, sizeof dr);
 
 	if (dev_assign_str[0] == 0)
 		return;
+
+	dev_num_str_bitmap =
+		kmalloc(BITS_TO_LONGS(MAX_NUM_STR_BITMAP) * sizeof(long),
+			GFP_KERNEL);
+	if (!dev_num_str_bitmap) {
+		pr_warn("bitmap alloc failed -- cannot apply dev_assign_str parameter\n");
+		return;
+	}
+
+	bitmap_zero(dev_num_str_bitmap, MAX_NUM_STR_BITMAP);
 
 	while (strlen(p)) {
 		ret = sscanf(p, "%02x:%02x.%x-%x", &bus, &slot, &fn, &ib_idx);
@@ -1849,11 +1865,13 @@ static void init_dev_assign(void)
 		dr[i].dev = slot;
 		dr[i].func = fn;
 		dr[i].nr = ib_idx;
+		if (bitmap_allocate_region(dev_num_str_bitmap, ib_idx, 0))
+			goto err;
 
 		t = strchr(p, ',');
 		sprintf(curr_val, "%02x:%02x.%x-%x", bus, slot, fn, ib_idx);
 		if ((!t) && strlen(p) == strlen(curr_val))
-			return;
+			break;
 
 		if (!t || (t + 1) >= dev_assign_str + sizeof dev_assign_str)
 			goto err;
@@ -1864,10 +1882,13 @@ static void init_dev_assign(void)
 
 		p = t + 1;
 	}
-
+	dr_active = 1;
 	return;
+
 err:
 	memset(dr, 0, sizeof dr);
+	kfree(dev_num_str_bitmap);
+	dev_num_str_bitmap = NULL;
 	printk(KERN_WARNING "mlx4_ib: The value of 'dev_assign_str' parameter "
 			    "is incorrect. The parameter value is discarded!");
 }
@@ -1877,6 +1898,8 @@ static int mlx4_ib_dev_idx(struct mlx4_dev *dev)
 	int bus, slot, fn;
 	int i;
 
+	if (!dr_active)
+		return -1;
 	if (!dev)
 		return -1;
 	else if (!dev->pdev)
@@ -1892,9 +1915,16 @@ static int mlx4_ib_dev_idx(struct mlx4_dev *dev)
 		if (dr[i].bus == bus &&
 		    dr[i].dev == slot &&
 		    dr[i].func == fn) {
+			dev->flags |= MLX4_FLAG_DEV_NUM_STR;
 			return dr[i].nr;
 		}
 	}
+
+	spin_lock(&dev_num_str_lock);
+	i = bitmap_find_free_region(dev_num_str_bitmap, MAX_NUM_STR_BITMAP, 0);
+	spin_unlock(&dev_num_str_lock);
+	if (i >= 0)
+		return i;
 
 	return -1;
 }
@@ -2248,11 +2278,23 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 {
 	struct mlx4_ib_dev *ibdev = ibdev_ptr;
 	int p;
+	int dev_idx, ret;
 
 	mlx4_ib_close_sriov(ibdev);
 	sysfs_remove_group(&ibdev->ib_dev.dev.kobj, &diag_counters_group);
 	mlx4_ib_mad_cleanup(ibdev);
+	dev_idx = -1;
+	if (dr_active && !(ibdev->dev->flags & MLX4_FLAG_DEV_NUM_STR)) {
+		ret = sscanf(ibdev->ib_dev.name, "mlx4_%d", &dev_idx);
+		if (ret != 1)
+			dev_idx = -1;
+	}
 	ib_unregister_device(&ibdev->ib_dev);
+	if (dev_idx >= 0) {
+		spin_lock(&dev_num_str_lock);
+		bitmap_release_region(dev_num_str_bitmap, dev_idx, 0);
+		spin_unlock(&dev_num_str_lock);
+	}
 
 	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
 		mlx4_qp_release_range(dev, ibdev->steer_qpn_base,
@@ -2456,7 +2498,7 @@ static void __exit mlx4_ib_cleanup(void)
 	remove_proc_entry(MLX4_IB_MRS_PROC_DIR_NAME,
 				mlx4_ib_driver_dir_entry);
 	remove_proc_entry(MLX4_IB_DRIVER_PROC_DIR_NAME, NULL);
-
+	kfree(dev_num_str_bitmap);
 }
 
 module_init(mlx4_ib_init);

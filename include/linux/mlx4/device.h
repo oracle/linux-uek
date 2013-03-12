@@ -67,6 +67,7 @@ enum {
 	MLX4_FLAG_MASTER	= 1 << 2,
 	MLX4_FLAG_SLAVE		= 1 << 3,
 	MLX4_FLAG_SRIOV		= 1 << 4,
+	MLX4_FLAG_DEV_NUM_STR	= 1 << 5,
 };
 
 enum {
