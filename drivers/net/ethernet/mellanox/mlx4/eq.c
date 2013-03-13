@@ -496,8 +496,8 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 			break;
 
 		case MLX4_EVENT_TYPE_SRQ_LIMIT:
-			mlx4_warn(dev, "%s: MLX4_EVENT_TYPE_SRQ_LIMIT\n",
-				  __func__);
+			mlx4_dbg(dev, "%s: MLX4_EVENT_TYPE_SRQ_LIMIT\n",
+				 __func__);
 		/* fall through */
 		case MLX4_EVENT_TYPE_SRQ_CATAS_ERROR:
 			if (mlx4_is_master(dev)) {
@@ -515,17 +515,15 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 						  eq->eqn, eq->cons_index, ret);
 					break;
 				}
-				mlx4_warn(dev, "%s: slave:%d, srq_no:0x%x,"
-					  " event: %02x(%02x)\n", __func__,
-					  slave,
-					  be32_to_cpu(eqe->event.srq.srqn),
-					  eqe->type, eqe->subtype);
+				mlx4_dbg(dev, "%s: slave:%d, srq_no:0x%x, event: %02x(%02x)\n",
+					 __func__, slave,
+					 be32_to_cpu(eqe->event.srq.srqn),
+					 eqe->type, eqe->subtype);
 
 				if (!ret && slave != dev->caps.function) {
-					mlx4_warn(dev, "%s: sending event "
-						  "%02x(%02x) to slave:%d\n",
-						   __func__, eqe->type,
-						  eqe->subtype, slave);
+					mlx4_dbg(dev, "%s: sending event %02x(%02x) to slave:%d\n",
+						 __func__, eqe->type,
+						 eqe->subtype, slave);
 					mlx4_slave_event(dev, slave, eqe);
 					break;
 				}
