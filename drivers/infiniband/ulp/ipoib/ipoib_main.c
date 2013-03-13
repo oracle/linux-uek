@@ -1844,13 +1844,25 @@ int ipoib_reinit(struct net_device *dev, int num_rx, int num_tx)
 	int ret;
 
 	flags = dev->flags;
+
 	dev_close(dev);
+
 	if (!test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
 		spin_lock_irq(&priv->lock);
-		if (test_and_clear_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags))
+		if (test_and_clear_bit(IPOIB_FLAG_EVENTS_REGISTERED, &priv->flags)) {
 			ib_unregister_event_handler(&priv->event_handler);
+		} else {
+			/* no need to continue with the function,
+			 * the driver is going down anyway,
+			 */
+			spin_unlock_irq(&priv->lock);
+			pr_warn("%s %s: port %d module is going down\n",
+				__func__, priv->ca->name, priv->port);
+			return -EBUSY;
+		}
 		spin_unlock_irq(&priv->lock);
 	}
+
 	ipoib_dev_uninit(dev);
 	priv->num_rx_queues = num_rx;
 	priv->num_tx_queues = num_tx;
