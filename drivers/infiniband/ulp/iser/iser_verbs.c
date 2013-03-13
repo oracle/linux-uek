@@ -83,9 +83,9 @@ static int iser_create_device_ib_res(struct iser_device *device)
 	struct iser_cq_desc *cq_desc;
 
 	device->cqs_used = min(ISER_MAX_CQ, device->ib_device->num_comp_vectors);
-	iser_dbg("using %d CQs, device %s supports %d vectors\n",
-		 device->cqs_used, device->ib_device->name,
-		 device->ib_device->num_comp_vectors);
+	iser_info("using %d CQs, device %s supports %d vectors\n",
+		  device->cqs_used, device->ib_device->name,
+		  device->ib_device->num_comp_vectors);
 
 	device->cq_desc = kmalloc(sizeof(struct iser_cq_desc) * device->cqs_used,
 				  GFP_KERNEL);
@@ -126,8 +126,8 @@ static int iser_create_device_ib_res(struct iser_device *device)
 			attr.moderation.cq_count = iser_cq_completions;
 			attr.moderation.cq_period = iser_cq_timeout;
 
-			iser_dbg("applying CQ moderation - to be max {%d completions, %d us timeout}\n",
-				 iser_cq_completions, iser_cq_timeout);
+			iser_info("applying CQ moderation - to be max {%d completions, %d us timeout}\n",
+				  iser_cq_completions, iser_cq_timeout);
 			ret = ib_modify_cq(device->rx_cq[i], &attr, IB_CQ_MODERATION);
                         if (ret == -ENOSYS)
                                 iser_err("device does not support CQ moderation\n");
@@ -287,7 +287,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 			min_index = index;
 	device->cq_active_qps[min_index]++;
 	mutex_unlock(&ig.connlist_mutex);
-	iser_dbg("cq index %d used for ib_conn %p\n", min_index, ib_conn);
+	iser_info("cq index %d used for ib_conn %p\n", min_index, ib_conn);
 
 	init_attr.event_handler = iser_qp_event_callback;
 	init_attr.qp_context	= (void *)ib_conn;
@@ -305,9 +305,9 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 		goto out_err;
 
 	ib_conn->qp = ib_conn->cma_id->qp;
-	iser_dbg("setting conn %p cma_id %p: fmr_pool %p qp %p\n",
-		 ib_conn, ib_conn->cma_id,
-		 ib_conn->fmr_pool, ib_conn->cma_id->qp);
+	iser_info("setting conn %p cma_id %p: fmr_pool %p qp %p\n",
+		  ib_conn, ib_conn->cma_id,
+		  ib_conn->fmr_pool, ib_conn->cma_id->qp);
 	return ret;
 
 out_err:
@@ -324,9 +324,9 @@ static int iser_free_ib_conn_res(struct iser_conn *ib_conn, int can_destroy_id)
 	int cq_index;
 	BUG_ON(ib_conn == NULL);
 
-	iser_dbg("freeing conn %p cma_id %p fmr pool %p qp %p\n",
-		 ib_conn, ib_conn->cma_id,
-		 ib_conn->fmr_pool, ib_conn->qp);
+	iser_info("freeing conn %p cma_id %p fmr pool %p qp %p\n",
+		  ib_conn, ib_conn->cma_id,
+		  ib_conn->fmr_pool, ib_conn->qp);
 
 	/* qp is created only once both addr & route are resolved */
 	if (ib_conn->fmr_pool != NULL)
@@ -404,7 +404,7 @@ static void iser_device_try_release(struct iser_device *device)
 {
 	mutex_lock(&ig.device_list_mutex);
 	device->refcount--;
-	iser_dbg("device %p refcount %d\n", device, device->refcount);
+	iser_info("device %p refcount %d\n", device, device->refcount);
 	if (!device->refcount) {
 		iser_free_device_ib_res(device);
 		list_del(&device->ig_list);
@@ -587,8 +587,8 @@ static int iser_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *eve
 {
 	int ret = 0;
 
-	iser_dbg("event %d status %d conn %p id %p\n",
-		 event->event, event->status, cma_id->context, cma_id);
+	iser_info("event %d status %d conn %p id %p\n",
+		  event->event, event->status, cma_id->context, cma_id);
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -648,8 +648,8 @@ int iser_connect(struct iser_conn   *ib_conn,
 	/* the device is known only --after-- address resolution */
 	ib_conn->device = NULL;
 
-	iser_dbg("connecting to: %pI4, port 0x%x\n",
-		 &dst_addr->sin_addr, dst_addr->sin_port);
+	iser_info("connecting to: %pI4, port 0x%x\n",
+		  &dst_addr->sin_addr, dst_addr->sin_port);
 
 	ib_conn->state = ISER_CONN_PENDING;
 
