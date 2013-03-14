@@ -743,7 +743,7 @@ static void con_out_kvec_add(struct ceph_connection *con,
 static void ceph_msg_data_bio_cursor_init(struct ceph_msg_data *data,
 					size_t length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct bio *bio;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_BIO);
@@ -763,7 +763,7 @@ static struct page *ceph_msg_data_bio_next(struct ceph_msg_data *data,
 						size_t *page_offset,
 						size_t *length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct bio *bio;
 	struct bio_vec *bio_vec;
 	unsigned int index;
@@ -792,7 +792,7 @@ static struct page *ceph_msg_data_bio_next(struct ceph_msg_data *data,
 
 static bool ceph_msg_data_bio_advance(struct ceph_msg_data *data, size_t bytes)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct bio *bio;
 	struct bio_vec *bio_vec;
 	unsigned int index;
@@ -844,7 +844,7 @@ static bool ceph_msg_data_bio_advance(struct ceph_msg_data *data, size_t bytes)
 static void ceph_msg_data_pages_cursor_init(struct ceph_msg_data *data,
 					size_t length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	int page_count;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_PAGES);
@@ -867,7 +867,7 @@ static struct page *ceph_msg_data_pages_next(struct ceph_msg_data *data,
 					size_t *page_offset,
 					size_t *length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_PAGES);
 
@@ -886,7 +886,7 @@ static struct page *ceph_msg_data_pages_next(struct ceph_msg_data *data,
 static bool ceph_msg_data_pages_advance(struct ceph_msg_data *data,
 						size_t bytes)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_PAGES);
 
@@ -915,7 +915,7 @@ static bool ceph_msg_data_pages_advance(struct ceph_msg_data *data,
 static void ceph_msg_data_pagelist_cursor_init(struct ceph_msg_data *data,
 					size_t length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct ceph_pagelist *pagelist;
 	struct page *page;
 
@@ -941,7 +941,7 @@ static struct page *ceph_msg_data_pagelist_next(struct ceph_msg_data *data,
 						size_t *page_offset,
 						size_t *length)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct ceph_pagelist *pagelist;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_PAGELIST);
@@ -959,13 +959,13 @@ static struct page *ceph_msg_data_pagelist_next(struct ceph_msg_data *data,
 	else
 		*length = PAGE_SIZE - *page_offset;
 
-	return data->cursor.page;
+	return data->cursor->page;
 }
 
 static bool ceph_msg_data_pagelist_advance(struct ceph_msg_data *data,
 						size_t bytes)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	struct ceph_pagelist *pagelist;
 
 	BUG_ON(data->type != CEPH_MSG_DATA_PAGELIST);
@@ -1021,7 +1021,7 @@ static void ceph_msg_data_cursor_init(struct ceph_msg_data *data,
 		/* BUG(); */
 		break;
 	}
-	data->cursor.need_crc = true;
+	data->cursor->need_crc = true;
 }
 
 /*
@@ -1057,7 +1057,7 @@ static struct page *ceph_msg_data_next(struct ceph_msg_data *data,
 	BUG_ON(*page_offset + *length > PAGE_SIZE);
 	BUG_ON(!*length);
 	if (last_piece)
-		*last_piece = data->cursor.last_piece;
+		*last_piece = data->cursor->last_piece;
 
 	return page;
 }
@@ -1068,7 +1068,7 @@ static struct page *ceph_msg_data_next(struct ceph_msg_data *data,
  */
 static bool ceph_msg_data_advance(struct ceph_msg_data *data, size_t bytes)
 {
-	struct ceph_msg_data_cursor *cursor = &data->cursor;
+	struct ceph_msg_data_cursor *cursor = data->cursor;
 	bool new_piece;
 
 	BUG_ON(bytes > cursor->resid);
@@ -1089,7 +1089,7 @@ static bool ceph_msg_data_advance(struct ceph_msg_data *data, size_t bytes)
 		BUG();
 		break;
 	}
-	data->cursor.need_crc = new_piece;
+	data->cursor->need_crc = new_piece;
 
 	return new_piece;
 }
@@ -1422,7 +1422,7 @@ static u32 ceph_crc32c_page(u32 crc, struct page *page,
 static int write_partial_message_data(struct ceph_connection *con)
 {
 	struct ceph_msg *msg = con->out_msg;
-	struct ceph_msg_data_cursor *cursor = &msg->data->cursor;
+	struct ceph_msg_data_cursor *cursor = msg->data->cursor;
 	bool do_datacrc = !con->msgr->nocrc;
 	u32 crc;
 
@@ -2120,7 +2120,7 @@ static int read_partial_message_section(struct ceph_connection *con,
 static int read_partial_msg_data(struct ceph_connection *con)
 {
 	struct ceph_msg *msg = con->in_msg;
-	struct ceph_msg_data_cursor *cursor = &msg->data->cursor;
+	struct ceph_msg_data_cursor *cursor = msg->data->cursor;
 	const bool do_datacrc = !con->msgr->nocrc;
 	struct page *page;
 	size_t page_offset;
@@ -3009,6 +3009,7 @@ void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_PAGES);
 	BUG_ON(!data);
+	data->cursor = &msg->cursor;
 	data->pages = pages;
 	data->length = length;
 	data->alignment = alignment & ~PAGE_MASK;
@@ -3030,6 +3031,7 @@ void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_PAGELIST);
 	BUG_ON(!data);
+	data->cursor = &msg->cursor;
 	data->pagelist = pagelist;
 
 	msg->data = data;
@@ -3049,6 +3051,7 @@ void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio,
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_BIO);
 	BUG_ON(!data);
+	data->cursor = &msg->cursor;
 	data->bio = bio;
 	data->bio_length = length;
 
