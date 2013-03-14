@@ -2999,6 +2999,7 @@ void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
 
 	BUG_ON(!pages);
 	BUG_ON(!length);
+	BUG_ON(msg->data_length);
 	BUG_ON(msg->data != NULL);
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_PAGES);
@@ -3008,6 +3009,7 @@ void ceph_msg_data_set_pages(struct ceph_msg *msg, struct page **pages,
 	data->alignment = alignment & ~PAGE_MASK;
 
 	msg->data = data;
+	msg->data_length = length;
 }
 EXPORT_SYMBOL(ceph_msg_data_set_pages);
 
@@ -3018,6 +3020,7 @@ void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
 
 	BUG_ON(!pagelist);
 	BUG_ON(!pagelist->length);
+	BUG_ON(msg->data_length);
 	BUG_ON(msg->data != NULL);
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_PAGELIST);
@@ -3025,14 +3028,17 @@ void ceph_msg_data_set_pagelist(struct ceph_msg *msg,
 	data->pagelist = pagelist;
 
 	msg->data = data;
+	msg->data_length = pagelist->length;
 }
 EXPORT_SYMBOL(ceph_msg_data_set_pagelist);
 
-void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio)
+void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio,
+		size_t length)
 {
 	struct ceph_msg_data *data;
 
 	BUG_ON(!bio);
+	BUG_ON(msg->data_length);
 	BUG_ON(msg->data != NULL);
 
 	data = ceph_msg_data_create(CEPH_MSG_DATA_BIO);
@@ -3040,6 +3046,7 @@ void ceph_msg_data_set_bio(struct ceph_msg *msg, struct bio *bio)
 	data->bio = bio;
 
 	msg->data = data;
+	msg->data_length = length;
 }
 EXPORT_SYMBOL(ceph_msg_data_set_bio);
 
@@ -3218,6 +3225,7 @@ void ceph_msg_last_put(struct kref *kref)
 	}
 	ceph_msg_data_destroy(m->data);
 	m->data = NULL;
+	m->data_length = 0;
 
 	if (m->pool)
 		ceph_msgpool_put(m->pool, m);
