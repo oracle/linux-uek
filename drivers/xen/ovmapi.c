@@ -65,16 +65,10 @@ static int debug_level = DGBLVL_OFF;
 
 module_param(debug_level, int, S_IRUGO|S_IWUSR);
 
-static void ovmapi_debug_out(int level, const char *msg, ...)
-{
-	va_list ap;
-
-	if (debug_level >= level) {
-		va_start(ap, msg);
-		vprintk(msg, ap);
-		va_end(ap);
-	}
-}
+#define ovmapi_debug_out(l, m, a...) do {	\
+	if ((l) <= debug_level)			\
+		printk(m, ##a);			\
+	} while (0)
 
 #define OVMLOG(lvl, msg, args...) ovmapi_debug_out(lvl, msg, ## args);
 
@@ -83,7 +77,7 @@ static int ovmapi_open(struct inode *inode, struct file *file)
 	struct ovmapi_app_entry *app;
 
 	OVMLOG(DGBLVL_INFO, "ovmapi_open\n");
-	app = kzalloc(sizeof(struct ovmapi_app_entry), GFP_KERNEL);
+	app = kzalloc(sizeof(*app), GFP_KERNEL);
 	if (!app)
 		return -ENOMEM;
 
@@ -104,8 +98,7 @@ static int ovmapi_release(struct inode *inode, struct file *file)
 	struct ovmapi_app_entry *app = file->private_data;
 
 	mutex_lock(&ovmapi_info.apps_list_mutex);
-	if (&app->list)
-		list_del(&app->list);
+	list_del(&app->list);
 	mutex_unlock(&ovmapi_info.apps_list_mutex);
 	kfree(app);
 
@@ -180,8 +173,7 @@ static int ovmapi_get_all_parameter_names(
 	unsigned int total_names = 0;
 	char *p_name;
 
-	if (copy_from_user(&names, user_buffer,
-			   sizeof(struct ovmapi_param_names)))
+	if (copy_from_user(&names, user_buffer, sizeof(names)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
@@ -215,38 +207,43 @@ static int ovmapi_get_parameter_by_index(
 	struct ovmapi_param *parameter;
 	struct ovmapi_param_message message;
 	unsigned int index = 0;
+	bool found = false;
+	int err = 0;
 
-	if (copy_from_user(&message, user_buffer,
-			   sizeof(struct ovmapi_param_message)))
+	if (copy_from_user(&message, user_buffer, sizeof(message)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
 	list_for_each_entry(parameter, &p_ovmapi_info->parameter_list, list) {
 		if (index == message.index) {
 			if (parameter->value_size > message.value_size) {
-				mutex_unlock(&p_ovmapi_info->parameter_mutex);
-				return -EINVAL;
+				err = -EINVAL;
+				goto fail;
 			}
 			if (copy_to_user(message.value, parameter->value,
 					 parameter->value_size)) {
-				mutex_unlock(&p_ovmapi_info->parameter_mutex);
-				return -EFAULT;
+				err = -EFAULT;
+				goto fail;
 			}
 			message.value_size = parameter->value_size;
 			memcpy(message.name, parameter->name,
 			       parameter->name_size);
 			if (copy_to_user(user_buffer, &message,
-				 sizeof(struct ovmapi_param_message))) {
-				mutex_unlock(&p_ovmapi_info->parameter_mutex);
-				return -EFAULT;
+					sizeof(message))) {
+				err = -EFAULT;
+				goto fail;
 			}
+			found = true;
 			break;
 		}
 		index++;
 	}
 	mutex_unlock(&p_ovmapi_info->parameter_mutex);
 
-	return 0;
+	return found ? 0 : -ENOENT;
+fail:
+	mutex_unlock(&p_ovmapi_info->parameter_mutex);
+	return err;
 }
 
 static int ovmapi_read_name(const char *pathname, char *name,
@@ -261,12 +258,7 @@ static int ovmapi_read_name(const char *pathname, char *name,
 		return PTR_ERR(name_buff);
 	}
 
-	if (name_len >= *name_size)
-		name_len = *name_size;
-
-	memcpy(name, name_buff, name_len);
-	name[name_len] = '\0';
-	*name_size = name_len;
+	*name_size = snprintf(name, *name_size, "%s", name_buff);
 	kfree(name_buff);
 
 	return 0;
@@ -318,10 +310,10 @@ static int ovmapi_read_name_value(const char *pathname, char *value,
 static int ovmapi_delete_events(struct ovmapi_information *p_ovmapi_info,
 				struct ovmapi_app_entry *app)
 {
-	struct ovmapi_event_list *event = NULL;
+	struct ovmapi_event_list *event = NULL, *tmp;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
-	list_for_each_entry(event, &app->events_list, list) {
+	list_for_each_entry_safe(event, tmp, &app->events_list, list) {
 		if (!(app->event_mask & event->event_entry.header.type)) {
 
 			list_del(&event->list);
@@ -346,7 +338,7 @@ static int ovmapi_post_event(struct ovmapi_information *p_ovmapi_info,
 			continue;
 		if (!app->registered)
 			continue;
-		add_event = kmem_cache_zalloc(event_cache, GFP_ATOMIC);
+		add_event = kmem_cache_zalloc(event_cache, GFP_KERNEL);
 		if (!add_event) {
 			OVMLOG(DGBLVL_ERROR,
 			       "OVMAPI: unable to allocate event.\n");
@@ -432,18 +424,18 @@ static int ovmapi_get_event(struct ovmapi_information *p_ovmapi_info,
 			    struct ovmapi_app_entry *app,
 			    void __user *user_buffer)
 {
-	struct ovmapi_event_list *event;
+	struct ovmapi_event_list *event, *tmp;
 	struct ovmapi_event_header kernel_mem_event;
 	struct ovmapi_event *user_mem_event =
 				(struct ovmapi_event *)user_buffer;
 
 	/* We should only have a valid header from the user. */
 	if (copy_from_user(&kernel_mem_event, user_mem_event,
-			   sizeof(struct ovmapi_event_header)))
+			   sizeof(kernel_mem_event)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
-	list_for_each_entry(event, &app->events_list, list) {
+	list_for_each_entry_safe(event, tmp, &app->events_list, list) {
 		if (kernel_mem_event.event_id ==
 			event->event_entry.header.event_id) {
 			if (copy_to_user(user_mem_event, &event->event_entry,
@@ -501,14 +493,14 @@ static int ovmapi_discard_event(struct ovmapi_information *p_ovmapi_info,
 				struct ovmapi_app_entry *app,
 				void __user *user_buffer)
 {
-	struct ovmapi_event_list *event = NULL;
+	struct ovmapi_event_list *event = NULL, *tmp;
 	unsigned long event_id;
 
 	if (copy_from_user(&event_id, user_buffer, sizeof(event_id)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->apps_list_mutex);
-	list_for_each_entry(event, &app->events_list, list) {
+	list_for_each_entry_safe(event, tmp, &app->events_list, list) {
 		if (event_id == event->event_entry.header.event_id) {
 			list_del(&event->list);
 			kmem_cache_free(event_cache, event);
@@ -560,7 +552,7 @@ static int ovmapi_send_user_event(struct ovmapi_information *p_ovmapi_info,
 			continue;
 		if (!(app->event_mask & type))
 			continue;
-		add_event = kmem_cache_zalloc(event_cache, GFP_ATOMIC);
+		add_event = kmem_cache_zalloc(event_cache, GFP_KERNEL);
 		if (!add_event) {
 			mutex_unlock(&p_ovmapi_info->apps_list_mutex);
 			return -ENOMEM;
@@ -647,7 +639,7 @@ static int ovmapi_add_parameter(struct ovmapi_information *p_ovmapi_info,
 		}
 	}
 
-	parameter = kmem_cache_zalloc(parameter_cache, GFP_ATOMIC);
+	parameter = kmem_cache_zalloc(parameter_cache, GFP_KERNEL);
 	if (!parameter) {
 		OVMLOG(DGBLVL_ERROR,
 		       "OVMAPI: unable to allocate parameter cache.\n");
@@ -678,8 +670,7 @@ static int ovmapi_delete_parameter(struct ovmapi_information *p_ovmapi_info,
 	struct ovmapi_param *parameter, *next;
 	struct ovmapi_param_message message;
 
-	if (copy_from_user(&message, user_buffer,
-			   sizeof(struct ovmapi_param_message)))
+	if (copy_from_user(&message, user_buffer, sizeof(message)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
@@ -706,8 +697,7 @@ static int ovmapi_read_parameter(struct ovmapi_information *p_ovmapi_info,
 	struct ovmapi_param *parameter;
 	struct ovmapi_param_message message;
 
-	if (copy_from_user(&message, user_buffer,
-			   sizeof(struct ovmapi_param_message)))
+	if (copy_from_user(&message, user_buffer, sizeof(message)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
@@ -717,7 +707,7 @@ static int ovmapi_read_parameter(struct ovmapi_information *p_ovmapi_info,
 				message.value_size = parameter->value_size;
 				mutex_unlock(&p_ovmapi_info->parameter_mutex);
 				if (copy_to_user(user_buffer, &message,
-					sizeof(struct ovmapi_param_message))) {
+					sizeof(message))) {
 					return -EFAULT;
 				}
 				return -EINVAL;
@@ -730,7 +720,7 @@ static int ovmapi_read_parameter(struct ovmapi_information *p_ovmapi_info,
 			message.value_size = parameter->value_size;
 			mutex_unlock(&p_ovmapi_info->parameter_mutex);
 			if (copy_to_user(user_buffer, &message,
-				sizeof(struct ovmapi_param_message))) {
+				sizeof(message))) {
 				return -EFAULT;
 			}
 			return 0;
@@ -748,8 +738,7 @@ static int ovmapi_get_parameter_value_size(
 	struct ovmapi_param *parameter;
 	struct ovmapi_param_message message;
 
-	if (copy_from_user(&message, user_buffer,
-			   sizeof(struct ovmapi_param_message)))
+	if (copy_from_user(&message, user_buffer, sizeof(message)))
 		return -EFAULT;
 
 	mutex_lock(&p_ovmapi_info->parameter_mutex);
@@ -758,7 +747,7 @@ static int ovmapi_get_parameter_value_size(
 			message.value_size = parameter->value_size;
 			mutex_unlock(&p_ovmapi_info->parameter_mutex);
 			if (copy_to_user(user_buffer, &message,
-					 sizeof(struct ovmapi_param_message)))
+						sizeof(message)))
 				return -EFAULT;
 			return 0;
 		 }
@@ -841,7 +830,7 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 
 	OVMLOG(DGBLVL_INFO, "OVMAPI: received messages from Dom0\n");
 
-	tmp_value  = (char *)kmem_cache_alloc(value_cache,  GFP_ATOMIC);
+	tmp_value  = kmem_cache_alloc(value_cache, GFP_KERNEL);
 
 	if (!tmp_value) {
 		OVMLOG(DGBLVL_ERROR,
@@ -855,7 +844,7 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 			 "control/oracle-vmapi/to-guest/%ld",
 			 p_ovmapi_info->last_read_message);
 
-		name  = kmem_cache_alloc(name_cache,  GFP_ATOMIC);
+		name  = kmem_cache_alloc(name_cache,  GFP_KERNEL);
 		if (!name) {
 			OVMLOG(DGBLVL_ERROR,
 			       "OVMAPI: unable to allocate name cache.\n");
@@ -884,7 +873,7 @@ static void ovmapi_receive_dom0_message(struct xenbus_watch *watch,
 			continue;
 		}
 
-		value = kmalloc(value_len + 1, GFP_ATOMIC);
+		value = kmemdup(tmp_value, value_len + 1, GFP_KERNEL);
 		if (!value) {
 			OVMLOG(DGBLVL_ERROR,
 			       "OVMAPI: unable to allocate value.\n");
@@ -933,7 +922,7 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 {
 	void __user *argp = (void __user *)arg;
 	struct ovmapi_param_message message;
-	char *value, *name;
+	char *value = NULL, *name = NULL;
 	long status = 0;
 	struct ovmapi_app_entry *app = file->private_data;
 
@@ -984,31 +973,35 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 	case IOCTL_XENPCI_SEND_MESSAGE:
 		if (!arg)
 			return -EINVAL;
-		if (copy_from_user(&message, argp,
-				   sizeof(struct ovmapi_param_message)))
+		if (copy_from_user(&message, argp, sizeof(message)))
 			return -EFAULT;
-		name  = (char *)kmem_cache_alloc(name_cache,  GFP_ATOMIC);
+		if (message.value_size > OVMM_MAX_VALUE_LEN)
+			return -EMSGSIZE;
+		name  = kmem_cache_alloc(name_cache,  GFP_KERNEL);
 		if (!name)
 			return -ENOMEM;
-		value = kmalloc(message.value_size, GFP_ATOMIC);
-		if (!value)
-			return -ENOMEM;
+		value = kmalloc(message.value_size, GFP_KERNEL);
+		if (!value) {
+			status = -ENOMEM;
+			goto out;
+		}
 		strncpy(name, message.name, OVMM_MAX_NAME_LEN);
-		if (copy_from_user(value, message.value, message.value_size))
-			return -EFAULT;
+		name[OVMM_MAX_NAME_LEN - 1] = '\0';
+		if (copy_from_user(value, message.value, message.value_size)) {
+			status = -EFAULT;
+			goto out;
+		}
 		status = ovmapi_send_dom0_message(&ovmapi_info, name, value,
 						  message.value_size);
 		if (status == 0 && cmd == IOCTL_XENPCI_WRITE_PARAMETER) {
 			status = ovmapi_add_parameter(&ovmapi_info, name, value,
 					     message.value_size);
-			if (status != 0) {
-				kmem_cache_free(name_cache, name);
-				kfree(value);
-			}	
-		} else {
-			kmem_cache_free(name_cache, name);
-			kfree(value);
+			if (status == 0)
+				return 0;
 		}
+out:
+		kmem_cache_free(name_cache, name);
+		kfree(value);
 		return status;
 	case IOCTL_XENPCI_DELETE_PARAM:
 		if (!arg)
