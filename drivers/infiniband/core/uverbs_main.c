@@ -849,6 +849,18 @@ static ssize_t show_ibdev(struct device *device, struct device_attribute *attr,
 }
 static DEVICE_ATTR(ibdev, S_IRUGO, show_ibdev, NULL);
 
+static ssize_t show_dev_ref_cnt(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct ib_uverbs_device *dev = dev_get_drvdata(device);
+
+	if (!dev)
+		return -ENODEV;
+
+	return sprintf(buf, "%d\n",  atomic_read(&dev->ref.refcount));
+}
+static DEVICE_ATTR(ref_cnt, S_IRUGO, show_dev_ref_cnt, NULL);
+
 static ssize_t show_dev_abi_version(struct device *device,
 				    struct device_attribute *attr, char *buf)
 {
@@ -946,6 +958,8 @@ static void ib_uverbs_add_one(struct ib_device *device)
 		goto err_cdev;
 
 	if (device_create_file(uverbs_dev->dev, &dev_attr_ibdev))
+		goto err_class;
+	if (device_create_file(uverbs_dev->dev, &dev_attr_ref_cnt))
 		goto err_class;
 	if (device_create_file(uverbs_dev->dev, &dev_attr_abi_version))
 		goto err_class;
