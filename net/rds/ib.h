@@ -270,8 +270,8 @@ enum {
 	RDS_IB_PORT_DOWN,
 };
 
-#define RDS_IB_MAX_ALIASES	100
-#define RDS_IB_MAX_PORTS	100
+#define RDS_IB_MAX_ALIASES	50	
+#define RDS_IB_MAX_PORTS	50	
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
 	unsigned int		failover_group;
