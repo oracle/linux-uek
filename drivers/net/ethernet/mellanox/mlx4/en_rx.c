@@ -59,8 +59,8 @@ static int mlx4_en_alloc_rx_skb(struct mlx4_en_priv *priv,
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
 	dma_addr_t dma;
-	int size = priv->rx_skb_size + NET_IP_ALIGN;
-	struct sk_buff *new_skb = dev_alloc_skb(size);
+	int size = priv->rx_skb_size;
+	struct sk_buff *new_skb = dev_alloc_skb(size + MLX4_EN_64_ALIGN);
 
 	if (unlikely(new_skb == NULL))
 		return -ENOMEM;
@@ -70,7 +70,7 @@ static int mlx4_en_alloc_rx_skb(struct mlx4_en_priv *priv,
 				 be32_to_cpu(rx_desc->data->byte_count),
 				 PCI_DMA_FROMDEVICE);
 	new_skb->dev = priv->dev;
-	skb_reserve(new_skb, NET_IP_ALIGN);
+	skb_reserve(new_skb, MLX4_EN_64_ALIGN);
 	dma = pci_map_single(priv->mdev->pdev, new_skb->data,
 			     size, DMA_FROM_DEVICE);
 	*pskb = new_skb;
@@ -349,12 +349,12 @@ static struct sk_buff *mlx4_en_get_rx_skb(struct mlx4_en_priv *priv,
 	dma_addr_t dma;
 
 	if (length <= SMALL_PACKET_SIZE) {
-		skb = dev_alloc_skb(length + NET_IP_ALIGN);
+		skb = dev_alloc_skb(length + MLX4_EN_64_ALIGN);
 		if (unlikely(!skb))
 			return NULL;
 
 		skb->dev = priv->dev;
-		skb_reserve(skb, NET_IP_ALIGN);
+		skb_reserve(skb, MLX4_EN_64_ALIGN);
 		/*
 		 * We are copying all relevant data to the skb -
 		 * temporarily synch buffers for the copy
