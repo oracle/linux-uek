@@ -73,6 +73,12 @@ static int mlx4_en_alloc_rx_skb(struct mlx4_en_priv *priv,
 	skb_reserve(new_skb, MLX4_EN_64_ALIGN);
 	dma = pci_map_single(priv->mdev->pdev, new_skb->data,
 			     size, DMA_FROM_DEVICE);
+
+	if (unlikely(pci_dma_mapping_error(mdev->pdev, dma))) {
+		kfree_skb(new_skb);
+		return -ENOMEM;
+	}
+
 	*pskb = new_skb;
 	rx_desc->data->addr = cpu_to_be64(dma);
 	return 0;
