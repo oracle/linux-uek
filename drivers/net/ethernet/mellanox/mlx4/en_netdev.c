@@ -1650,6 +1650,17 @@ void mlx4_en_stop_port(struct net_device *dev)
 	/* Flush multicast filter */
 	mlx4_SET_MCAST_FLTR(mdev->dev, priv->port, 0, 1, MLX4_MCAST_CONFIG);
 
+	/* Remove flow steering rules for the port*/
+	if (mdev->dev->caps.steering_mode ==
+	    MLX4_STEERING_MODE_DEVICE_MANAGED) {
+		ASSERT_RTNL();
+		list_for_each_entry_safe(flow, tmp_flow,
+					 &priv->ethtool_list, list) {
+			mlx4_flow_detach(mdev->dev, flow->id);
+			list_del(&flow->list);
+		}
+	}
+
 	mlx4_en_destroy_drop_qp(priv);
 
 	/* Free TX Rings */
@@ -1668,17 +1679,6 @@ void mlx4_en_stop_port(struct net_device *dev)
 	/* Unregister Mac address for the port */
 	mlx4_en_put_qp(priv);
 	mdev->mac_removed[priv->port] = 1;
-
-	/* Remove flow steering rules for the port*/
-	if (mdev->dev->caps.steering_mode ==
-	    MLX4_STEERING_MODE_DEVICE_MANAGED) {
-		ASSERT_RTNL();
-		list_for_each_entry_safe(flow, tmp_flow,
-					 &priv->ethtool_list, list) {
-			mlx4_flow_detach(mdev->dev, flow->id);
-			list_del(&flow->list);
-		}
-	}
 
 	/* Free RX Rings */
 	for (i = 0; i < priv->rx_ring_num; i++) {
