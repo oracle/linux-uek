@@ -955,6 +955,15 @@ static int mlx4_MAD_IFC_wrapper(struct mlx4_dev *dev, int slave,
 				    vhcr->op, MLX4_CMD_TIME_CLASS_C, MLX4_CMD_NATIVE);
 }
 
+int MLX4_CMD_DIAG_RPRT_wrapper(struct mlx4_dev *dev, int slave,
+		     struct mlx4_vhcr *vhcr,
+		     struct mlx4_cmd_mailbox *inbox,
+		     struct mlx4_cmd_mailbox *outbox,
+		     struct mlx4_cmd_info *cmd)
+{
+	return -EPERM;
+}
+
 int mlx4_DMA_wrapper(struct mlx4_dev *dev, int slave,
 		     struct mlx4_vhcr *vhcr,
 		     struct mlx4_cmd_mailbox *inbox,
@@ -1090,6 +1099,16 @@ static struct mlx4_cmd_info cmd_info[] = {
 		.encode_slave_id = false,
 		.verify = NULL,
 		.wrapper = NULL
+	},
+	{
+		.opcode = MLX4_CMD_DIAG_RPRT,
+		.has_inbox = false,
+		.has_outbox = false,
+		.out_is_imm = false,
+		.encode_slave_id = false,
+		.skip_err_print = true,
+		.verify = NULL,
+		.wrapper = MLX4_CMD_DIAG_RPRT_wrapper
 	},
 	{
 		.opcode = MLX4_CMD_NOP,
@@ -1612,11 +1631,13 @@ static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,
 	}
 
 	if (err) {
-		mlx4_warn(dev, "vhcr command %s (0x%x) slave:%d in_param 0x%llx "
-			  "in_mod=0x%x, op_mod=0x%x failed with error:%d, "
-			  "status %d\n", cmd_to_str(vhcr->op), vhcr->op, slave,
-			  vhcr->in_param, vhcr->in_modifier, vhcr->op_modifier,
-			  vhcr->errno, err);
+		if (!cmd->skip_err_print)
+			mlx4_warn(dev, "vhcr command %s (0x%x) slave:%d "
+				  "in_param 0x%llx in_mod=0x%x, op_mod=0x%x "
+				  "failed with error:%d, status %d\n",
+				  cmd_to_str(vhcr->op), vhcr->op, slave,
+				  vhcr->in_param, vhcr->in_modifier,
+				  vhcr->op_modifier, vhcr->errno, err);
 		vhcr_cmd->status = mlx4_errno_to_status(err);
 		goto out_status;
 	}

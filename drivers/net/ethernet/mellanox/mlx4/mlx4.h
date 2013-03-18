@@ -194,6 +194,7 @@ struct mlx4_cmd_info {
 	bool has_outbox;
 	bool out_is_imm;
 	bool encode_slave_id;
+	bool skip_err_print;
 	int (*verify)(struct mlx4_dev *dev, int slave, struct mlx4_vhcr *vhcr,
 		      struct mlx4_cmd_mailbox *inbox);
 	int (*wrapper)(struct mlx4_dev *dev, int slave, struct mlx4_vhcr *vhcr,
