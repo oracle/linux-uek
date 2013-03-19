@@ -96,44 +96,16 @@ void ipoib_free_ah(struct kref *kref)
 static void ipoib_ud_dma_unmap_rx(struct ipoib_dev_priv *priv,
 				  u64 mapping[IPOIB_UD_RX_SG])
 {
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		ib_dma_unmap_single(priv->ca, mapping[0],
-				    IPOIB_UD_HEAD_BUFF_SIZE,
-				    DMA_FROM_DEVICE);
-		ib_dma_unmap_page(priv->ca, mapping[1], PAGE_SIZE,
-				  DMA_FROM_DEVICE);
-	} else
-		ib_dma_unmap_single(priv->ca, mapping[0],
-				    IPOIB_UD_BUF_SIZE(priv->max_ib_mtu),
-				    DMA_FROM_DEVICE);
+	ib_dma_unmap_single(priv->ca, mapping[0],
+			    IPOIB_UD_BUF_SIZE(priv->max_ib_mtu),
+			    DMA_FROM_DEVICE);
 }
 
 static void ipoib_ud_skb_put_frags(struct ipoib_dev_priv *priv,
-				   struct sk_buff *skb,
-				   unsigned int length)
+					  struct sk_buff *skb,
+					  unsigned int length)
 {
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		skb_frag_t *frag = &skb_shinfo(skb)->frags[0];
-		unsigned int size;
-		if (length > IPOIB_UD_HEAD_BUFF_SIZE) {
-			/*
-			 * There is only two buffers needed for max_payload = 4K
-			 * first buf size is IPOIB_UD_HEAD_BUFF_SIZE
-			 */
-			skb->tail += IPOIB_UD_HEAD_BUFF_SIZE;
-			skb->len  += length;
-
-			size = length - IPOIB_UD_HEAD_BUFF_SIZE;
-		} else {
-			skb_put(skb, length);
-			size = 0;
-		}
-
-		skb_frag_size_set(frag, size);
-		skb->data_len += size;
-		skb->truesize += PAGE_SIZE;
-	} else
-		skb_put(skb, length);
+	skb_put(skb, length);
 
 }
 
@@ -169,11 +141,7 @@ static struct sk_buff *ipoib_alloc_rx_skb(struct net_device *dev,
 	int buf_size;
 	u64 *mapping;
 
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		buf_size = IPOIB_UD_HEAD_BUFF_SIZE;
-	} else {
-		buf_size = IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
-	}
+	buf_size = IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
 
 	skb = dev_alloc_skb(buf_size + 4);
 	if (unlikely(!skb))
@@ -191,18 +159,6 @@ static struct sk_buff *ipoib_alloc_rx_skb(struct net_device *dev,
 				       DMA_FROM_DEVICE);
 	if (unlikely(ib_dma_mapping_error(priv->ca, mapping[0])))
 		goto error;
-
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		struct page *page = alloc_page(GFP_ATOMIC);
-		if (!page)
-			goto partial_error;
-		skb_fill_page_desc(skb, 0, page, 0, PAGE_SIZE);
-		mapping[1] =
-			ib_dma_map_page(priv->ca, page,
-					0, PAGE_SIZE, DMA_FROM_DEVICE);
-		if (unlikely(ib_dma_mapping_error(priv->ca, mapping[1])))
-			goto partial_error;
-	}
 
 	recv_ring->rx_ring[id].skb = skb;
 	return skb;

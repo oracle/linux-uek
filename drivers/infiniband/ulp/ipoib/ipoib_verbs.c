@@ -616,16 +616,11 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 
 	recv_ring = priv->recv_ring;
 	recv_ring->rx_sge[0].lkey = priv->mr->lkey;
-	if (ipoib_ud_need_sg(priv->max_ib_mtu)) {
-		recv_ring->rx_sge[0].length = IPOIB_UD_HEAD_BUFF_SIZE;
-		recv_ring->rx_sge[1].length = PAGE_SIZE;
-		recv_ring->rx_sge[1].lkey = priv->mr->lkey;
-		recv_ring->rx_wr.num_sge = IPOIB_UD_RX_SG;
-	} else {
-		recv_ring->rx_sge[0].length =
-				IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
-		recv_ring->rx_wr.num_sge = 1;
-	}
+
+	recv_ring->rx_sge[0].length =
+		IPOIB_UD_BUF_SIZE(priv->max_ib_mtu);
+	recv_ring->rx_wr.num_sge = 1;
+
 	recv_ring->rx_wr.next = NULL;
 	recv_ring->rx_wr.sg_list = recv_ring->rx_sge;
 
