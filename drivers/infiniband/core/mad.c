@@ -61,6 +61,7 @@ static struct kmem_cache *ib_mad_cache;
 static struct list_head ib_mad_port_list;
 static u32 ib_mad_client_id = 0;
 
+
 /*
  * Timeout FIFO (tf) param
  */
@@ -101,76 +102,6 @@ static int add_oui_reg_req(struct ib_mad_reg_req *mad_reg_req,
 static int send_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr,
 			  u32 timeout_ms, u32 retries_left);
 
-/* MADTRACK */
-static inline void update_madtrack_state(struct ib_mad_send_wr_private
-					 *mad_send_wr, int state)
-{
-	mad_send_wr->madtrack_state |= state;
-}
-
-static inline void set_madtrack_state(struct ib_mad_send_wr_private
-				      *mad_send_wr, int state)
-{
-	mad_send_wr->madtrack_state = state;
-}
-void madtrack_print_state(u32 state)
-{
-	switch (state) {
-	case MADTRACK_WR_CREATED:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_CREATED\n");
-		break;
-	case MADTRACK_WR_SEND_MAD_IB_PS:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_SEND_MAD_IB_PS\n");
-		break;
-	case MADTRACK_WR_OVERFLOW_IB_PS:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_OVERFLOW_IB_PS\n");
-		break;
-	case MADTRACK_WR_RETRY_IB_PS:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_RETRY_IB_PS\n");
-		break;
-	case MADTRACK_WR_SEND_DONE:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_SEND_DONE\n");
-		break;
-	case MADTRACK_WR_RECV_DONE:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_RECV_DONE\n");
-		break;
-	case MADTRACK_WR_CC_MAD_SH:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_CC_MAD_SH\n");
-		break;
-	case MADTRACK_WR_CANCEL_MADS_SH:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_CANCEL_MADS_SH\n");
-		break;
-	case MADTRACK_WR_TIMEOUT_SH:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_TIMEOUT_SH\n");
-		break;
-	case MADTRACK_WR_COMPLETE_SEND_SH:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_COMPLETE_SEND_SH\n");
-		break;
-	case MADTRACK_WR_RMPP_SH:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_RMPP_SH\n");
-		break;
-	case MADTRACK_WR_DELETED:
-		pr_err(KERN_ERR PFX "MADTRACK: MADTRACK_WR_DELETED\n");
-		break;
-	}
-}
-void madtrack_print(u32 pattern, int id, u32 state)
-{
-	int i = 0;
-
-	if (pattern != MADTRACK_PATTERN) {
-		pr_err(KERN_ERR PFX "MADTRACK: Not valid MAD send WR\n");
-		return;
-	}
-
-	pr_err(KERN_ERR PFX "MADTRACK: MAD send WR %d states: %X\n", id, state);
-	while (MADTRACK_WR_DELETED >= (1 << i)) {
-		madtrack_print_state(state & (1 << i));
-		i++;
-	}
-}
-
-/* end MADTRACK */
 
 /*
  * Timeout FIFO functions - implements FIFO with timeout mechanism
@@ -206,7 +137,6 @@ static void notify_failure(struct ib_mad_send_wr_private *mad_send_wr,
 	mad_send_wc.vendor_err = 0;
 	mad_send_wc.send_buf = &mad_send_wr->send_buf;
 	mad_agent_priv = mad_send_wr->mad_agent_priv;
-	update_madtrack_state(mad_send_wr, MADTRACK_WR_CC_MAD_SH);
 	mad_agent_priv->agent.send_handler(&mad_agent_priv->agent, &mad_send_wc);
 }
 
@@ -666,7 +596,6 @@ static void sa_cc_destroy(struct sa_cc_data *cc_obj)
 		mad_send_wr = tfe_to_mad(tfe);
 		mad_send_wc.send_buf = &mad_send_wr->send_buf;
 		mad_agent_priv = mad_send_wr->mad_agent_priv;
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_CC_MAD_SH);
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   &mad_send_wc);
 		tfe = tf_dequeue(cc_obj->tf, &time_left_ms);
@@ -1465,9 +1394,7 @@ struct ib_mad_send_buf * ib_create_send_mad(struct ib_mad_agent *mad_agent,
 	struct ib_mad_send_wr_private *mad_send_wr;
 	int pad, message_size, ret, size;
 	void *buf;
-	/* MADTRACK */
-	static u32 mt_id;
-	/* end MADTRACK */
+
 	mad_agent_priv = container_of(mad_agent, struct ib_mad_agent_private,
 				      agent);
 	pad = get_pad_size(hdr_len, data_len);
@@ -1484,11 +1411,6 @@ struct ib_mad_send_buf * ib_create_send_mad(struct ib_mad_agent *mad_agent,
 		return ERR_PTR(-ENOMEM);
 
 	mad_send_wr = buf + size;
-	/* MADTRACK */
-	mad_send_wr->madtrack_pattern = MADTRACK_PATTERN;
-	mad_send_wr->madtrack_id = mt_id++;
-	set_madtrack_state(mad_send_wr, MADTRACK_WR_CREATED);
-	/* end MADTRACK */
 	INIT_LIST_HEAD(&mad_send_wr->rmpp_list);
 	mad_send_wr->send_buf.mad = buf;
 	mad_send_wr->send_buf.hdr_len = hdr_len;
@@ -1595,7 +1517,6 @@ void ib_free_send_mad(struct ib_mad_send_buf *send_buf)
 	mad_send_wr = container_of(send_buf, struct ib_mad_send_wr_private,
 				   send_buf);
 
-	update_madtrack_state(mad_send_wr, MADTRACK_WR_DELETED);
 	free_send_rmpp_list(mad_send_wr);
 	kfree(send_buf->mad);
 	deref_mad_agent(mad_agent_priv);
@@ -1641,7 +1562,6 @@ int ib_send_mad(struct ib_mad_send_wr_private *mad_send_wr)
 
 	spin_lock_irqsave(&qp_info->send_queue.lock, flags);
 	if (qp_info->send_queue.count < qp_info->send_queue.max_active) {
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_SEND_MAD_IB_PS);
 		ret = ib_post_send(mad_agent->qp, &mad_send_wr->send_wr,
 				   &bad_send_wr);
 		list = &qp_info->send_queue.list;
@@ -2476,7 +2396,6 @@ static void ib_mad_complete_recv(struct ib_mad_agent_private *mad_agent_priv,
 			deref_mad_agent(mad_agent_priv);
 			return;
 		}
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_RECV_DONE);
 		ib_mark_mad_done(mad_send_wr);
 		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
 
@@ -2757,13 +2676,11 @@ void ib_mad_complete_send_wr(struct ib_mad_send_wr_private *mad_send_wr,
 
 	if (mad_send_wr->status != IB_WC_SUCCESS )
 		mad_send_wc->status = mad_send_wr->status;
-	if (ret == IB_RMPP_RESULT_INTERNAL) {
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_RMPP_SH);
+	if (ret == IB_RMPP_RESULT_INTERNAL)
 		ib_rmpp_send_handler(mad_send_wc);
-	} else {
+	else {
 		if (mad_send_wr->is_sa_cc_mad)
 			sa_cc_mad_done(get_cc_obj(mad_send_wr));
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_COMPLETE_SEND_SH);
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   mad_send_wc);
 	}
@@ -2786,16 +2703,10 @@ static void ib_mad_send_done_handler(struct ib_mad_port_private *port_priv,
 	struct ib_mad_send_wc		mad_send_wc;
 	unsigned long flags;
 	int ret;
-	/* MADTRACK */
-	u32 mt_id;
-	u32 mt_pattern;
-	int mt_state;
-	/* end MADTRACK */
 
 	mad_list = (struct ib_mad_list_head *)(unsigned long)wc->wr_id;
 	mad_send_wr = container_of(mad_list, struct ib_mad_send_wr_private,
 				   mad_list);
-	update_madtrack_state(mad_send_wr, MADTRACK_WR_SEND_DONE);
 	send_queue = mad_list->mad_queue;
 	qp_info = send_queue->qp_info;
 
@@ -2807,25 +2718,7 @@ retry:
 			    mad_send_wr->payload_mapping,
 			    mad_send_wr->sg_list[1].length, DMA_TO_DEVICE);
 	queued_send_wr = NULL;
-	/* MADTRACK */
-	mt_pattern = mad_send_wr->madtrack_pattern;
-	mt_id = mad_send_wr->madtrack_id;
-	mt_state = mad_send_wr->madtrack_state;
-	/* end MADTRACK */
 	spin_lock_irqsave(&send_queue->lock, flags);
-	/* MADTRACK */
-	if (!(mad_list->list.prev) || !(mad_list->list.next) ||
-	    mad_list->list.next == LIST_POISON1 ||
-	    mad_list->list.prev == LIST_POISON2 ||
-	    (mad_send_wr->madtrack_state & MADTRACK_WR_DELETED)) {
-		pr_err(KERN_ERR PFX " MADTRACK: deleting bad list item (prev, next) = (%p, %p)\n"
-		       , mad_list->list.prev, mad_list->list.next);
-		madtrack_print(mad_send_wr->madtrack_pattern,
-			       mad_send_wr->madtrack_id,
-			       mad_send_wr->madtrack_state);
-		madtrack_print(mt_pattern, mt_id, mt_state);
-	}
-	/* end MADTRACK */
 	list_del(&mad_list->list);
 
 	/* Move queued send to the send queue */
@@ -2848,7 +2741,6 @@ retry:
 	ib_mad_complete_send_wr(mad_send_wr, &mad_send_wc);
 
 	if (queued_send_wr) {
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_OVERFLOW_IB_PS);
 		ret = ib_post_send(qp_info->qp, &queued_send_wr->send_wr,
 				   &bad_send_wr);
 		if (ret) {
@@ -2906,7 +2798,6 @@ static void mad_error_handler(struct ib_mad_port_private *port_priv,
 			struct ib_send_wr *bad_send_wr;
 
 			mad_send_wr->retry = 0;
-			update_madtrack_state(mad_send_wr, MADTRACK_WR_RETRY_IB_PS);
 			ret = ib_post_send(qp_info->qp, &mad_send_wr->send_wr,
 					&bad_send_wr);
 			if (ret)
@@ -2996,7 +2887,6 @@ static void cancel_mads(struct ib_mad_agent_private *mad_agent_priv)
 		list_del(&mad_send_wr->agent_list);
 		if (mad_send_wr->is_sa_cc_mad)
 			sa_cc_mad_done(get_cc_obj(mad_send_wr));
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_CANCEL_MADS_SH);
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   &mad_send_wc);
 		atomic_dec(&mad_agent_priv->refcount);
@@ -3228,7 +3118,6 @@ static void timeout_sends(struct work_struct *work)
 		mad_send_wc.send_buf = &mad_send_wr->send_buf;
 		if (mad_send_wr->is_sa_cc_mad)
 			sa_cc_mad_done(get_cc_obj(mad_send_wr));
-		update_madtrack_state(mad_send_wr, MADTRACK_WR_TIMEOUT_SH);
 		mad_agent_priv->agent.send_handler(&mad_agent_priv->agent,
 						   &mad_send_wc);
 
