@@ -417,6 +417,15 @@ retry:
 			return error;
 	}
 
+	/*
+	 * Make sure preallocation does not create extents beyond the range we
+	 * actually support in this filesystem.
+	 */
+	if (last_fsb > XFS_B_TO_FSB(mp, mp->m_maxioffset))
+		last_fsb = XFS_B_TO_FSB(mp, mp->m_maxioffset);
+
+	ASSERT(last_fsb > offset_fsb);
+
 	nimaps = XFS_WRITE_IMAPS;
 	firstblock = NULLFSBLOCK;
 	error = xfs_bmapi(NULL, ip, offset_fsb,
