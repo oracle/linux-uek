@@ -240,7 +240,7 @@ static u8 mlx4_en_dcbnl_get_state(struct net_device *dev)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 
-	return !!(priv->flags & MLX4_EN_DCB_ENABLED);
+	return !!(priv->flags & MLX4_EN_FLAG_DCB_ENABLED);
 }
 
 static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,

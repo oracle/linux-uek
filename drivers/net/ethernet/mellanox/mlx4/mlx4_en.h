@@ -440,7 +440,10 @@ enum {
 	MLX4_EN_FLAG_ENABLE_HW_LOOPBACK	= (1 << 2),
 	/* whether we need to drop packets that hardware loopback-ed */
 	MLX4_EN_FLAG_RX_FILTER_NEEDED	= (1 << 3),
-	MLX4_EN_FLAG_FORCE_PROMISC	= (1 << 4)
+	MLX4_EN_FLAG_FORCE_PROMISC	= (1 << 4),
+#ifdef CONFIG_MLX4_EN_DCB
+	MLX4_EN_FLAG_DCB_ENABLED	= (1 << 5)
+#endif
 };
 
 #define MLX4_EN_MAC_HASH_SIZE (1 << BITS_PER_BYTE)
@@ -544,7 +547,6 @@ struct mlx4_en_priv {
 	struct hlist_head mac_hash[MLX4_EN_MAC_HASH_SIZE];
 
 #ifdef CONFIG_MLX4_EN_DCB
-#define MLX4_EN_DCB_ENABLED   0x3
 	struct ieee_ets ets;
 	u16 maxrate[IEEE_8021QAZ_MAX_TCS];
 	u8 dcbx_cap;
