@@ -4453,8 +4453,18 @@ xfs_bmapi(
 					xfs_bmbt_get_all(ep, &prev);
 				}
 			} else {
-				alen = (xfs_extlen_t)
-					XFS_FILBLKS_MIN(len, MAXEXTLEN);
+				/*
+				 * There's a 32/64 bit type mismatch between the
+				 * allocation length request (which can be 64
+				 * bits in length) and the bma length request,
+				 * which is xfs_extlen_t and therefore 32 bits.
+				 * Hence we have to check for 32-bit overflows
+				 * and handle them here.
+				 */
+				if (len > (xfs_filblks_t)MAXEXTLEN)
+					alen = MAXEXTLEN;
+				else
+					alen = len;
 				if (!eof)
 					alen = (xfs_extlen_t)
 						XFS_FILBLKS_MIN(alen,
