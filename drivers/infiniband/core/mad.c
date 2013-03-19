@@ -2797,16 +2797,6 @@ static void ib_mad_send_done_handler(struct ib_mad_port_private *port_priv,
 				   mad_list);
 	update_madtrack_state(mad_send_wr, MADTRACK_WR_SEND_DONE);
 	send_queue = mad_list->mad_queue;
-	/* MADTRACK */
-	if (!send_queue || !(send_queue->qp_info) ||
-	    (mad_send_wr->madtrack_state & MADTRACK_WR_DELETED)) {
-		pr_err(KERN_ERR PFX " MADTRACK: bad list item (prev, next) = (%p, %p)\n"
-		       , mad_list->list.prev, mad_list->list.next);
-		madtrack_print(mad_send_wr->madtrack_pattern,
-			       mad_send_wr->madtrack_id,
-			       mad_send_wr->madtrack_state);
-	}
-	/* end MADTRACK */
 	qp_info = send_queue->qp_info;
 
 retry:
