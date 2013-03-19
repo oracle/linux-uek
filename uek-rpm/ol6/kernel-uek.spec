@@ -122,6 +122,12 @@ Summary: The Linux kernel
 # Control whether we perform a compat. check against published ABI.
 %define with_kabichk 1
 
+%define fancy_debuginfo 1
+%if %{fancy_debuginfo}
+BuildRequires: rpm-build >= 4.4.2.1-4
+%define debuginfo_args --strict-build-id
+%endif
+
 # Additional options for user-friendly one-off kernel building:
 #
 # Only build the base kernel (--with baseonly):
@@ -1048,6 +1054,18 @@ scripts/bin2c ksign_def_public_key __initdata <extract.pub >crypto/signature/key
 %define sparse_mflags	C=1
 %endif
 
+%if %{fancy_debuginfo}
+# This override tweaks the kernel makefiles so that we run debugedit on an
+# object before embedding it.  When we later run find-debuginfo.sh, it will
+# run debugedit again.  The edits it does change the build ID bits embedded
+# in the stripped object, but repeating debugedit is a no-op.  We do it
+# beforehand to get the proper final build ID bits into the embedded image.
+# This affects the vDSO images in vmlinux, and the vmlinux image in bzImage.
+export AFTER_LINK=\
+'sh -xc "/usr/lib/rpm/debugedit -b $$RPM_BUILD_DIR -d /usr/src/debug \
+    				-i $@ > $@.id"'
+%endif
+
 cp_vmlinux()
 {
   eu-strip --remove-comment -o "$2" "$1"
@@ -1243,6 +1261,15 @@ hwcap 0 nosegneg"
     cp $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/.config $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/config/auto.conf
     cd ..
 
+%if %{fancy_debuginfo}
+    if test -s vmlinux.id; then
+      cp vmlinux.id $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/vmlinux.id
+    else
+      echo >&2 "*** ERROR *** no vmlinux build ID! ***"
+      exit 1
+    fi
+%endif
+
     #
     # save the vmlinux file for kernel debugging into the kernel-debuginfo rpm
     #
@@ -1352,6 +1379,11 @@ find Documentation -type d | xargs chmod u+w
 
 # This macro is used by %%install, so we must redefine it before that.
 %define debug_package %{nil}
+%if %{fancy_debuginfo}
+%define __debug_install_post \
+  /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+%{nil}
+%endif
 
 %if %{with_debuginfo}
 %ifnarch noarch
@@ -1674,11 +1706,19 @@ fi
 /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
 %if %{with_debuginfo}\
 %ifnarch noarch\
+%if %{fancy_debuginfo}\
+%{expand:%%files -f debuginfo%{?2}.list %{?2:%{2}-}debuginfo}\
+%else\
 %{expand:%%files %{?2:%{2}-}debuginfo}\
+%endif\
 %defattr(-,root,root)\
+%if !%{fancy_debuginfo}\
+%if "%{elf_image_install_path}" != ""\
+%{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
+%endif\
 %{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
 %{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
-# % {debuginfodir}/usr/bin/%{KVERREL}%{?2:.%{2}}\
+%endif\
 %endif\
 %endif\
 %endif\
