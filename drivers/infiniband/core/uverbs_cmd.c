@@ -2640,19 +2640,10 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 	    (!capable(CAP_NET_RAW) && !disable_raw_qp_enforcement))
 		return -EPERM;
 
-	flow_attr = kmalloc(cmd.flow_attr.size, GFP_KERNEL);
-	uobj = kmalloc(sizeof(*uobj), GFP_KERNEL);
-	if (!flow_attr || !uobj) {
-		err = -ENOMEM;
-		goto err_free;
-	}
-
 	if (cmd.flow_attr.num_of_specs) {
 		kern_flow_attr = kmalloc(cmd.flow_attr.size, GFP_KERNEL);
-		if (!kern_flow_attr) {
-			err = -ENOMEM;
-			goto err_free;
-		}
+		if (!kern_flow_attr)
+			return -ENOMEM;
 
 		memcpy(kern_flow_attr, &cmd.flow_attr, sizeof(*kern_flow_attr));
 		if (copy_from_user(kern_flow_attr + 1, buf + sizeof(cmd),
@@ -2663,6 +2654,12 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 	} else {
 		kern_flow_attr = &cmd.flow_attr;
 	}
+
+	uobj = kmalloc(sizeof(*uobj), GFP_KERNEL);
+	if (!uobj) {
+		err = -ENOMEM;
+		goto err_free_attr;
+	}
 	init_uobj(uobj, 0, file->ucontext, &rule_lock_class);
 	down_write(&uobj->mutex);
 
@@ -2670,6 +2667,12 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 	if (!qp) {
 		err = -EINVAL;
 		goto err_uobj;
+	}
+
+	flow_attr = kmalloc(cmd.flow_attr.size, GFP_KERNEL);
+	if (!flow_attr) {
+		err = -ENOMEM;
+		goto err_put;
 	}
 
 	flow_attr->type = kern_flow_attr->type;
@@ -2684,7 +2687,7 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 	for (i = 0; i < flow_attr->num_of_specs; i++) {
 		err = kern_spec_to_ib_spec(kern_spec, ib_spec);
 		if (err)
-			goto err_uobj;
+			goto err_free;
 		flow_attr->size +=
 			((struct _ib_flow_spec *)ib_spec)->size;
 		kern_spec += ((struct ib_kern_spec *)kern_spec)->size;
@@ -2693,7 +2696,7 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 	flow_id = ib_create_flow(qp, flow_attr, IB_FLOW_DOMAIN_USER);
 	if (IS_ERR(flow_id)) {
 		err = PTR_ERR(flow_id);
-		goto err_put;
+		goto err_free;
 	}
 	flow_id->qp = qp;
 	flow_id->uobject = uobj;
@@ -2721,12 +2724,15 @@ ssize_t ib_uverbs_create_flow(struct ib_uverbs_file *file,
 
 	up_write(&uobj->mutex);
 	kfree(flow_attr);
-
+	if (cmd.flow_attr.num_of_specs)
+		kfree(kern_flow_attr);
 	return in_len;
 err_copy:
 	idr_remove_uobj(&ib_uverbs_rule_idr, uobj);
 destroy_flow:
 	ib_destroy_flow(flow_id);
+err_free:
+	kfree(flow_attr);
 err_put:
 	put_qp_read(qp);
 err_uobj:
@@ -2734,8 +2740,6 @@ err_uobj:
 err_free_attr:
 	if (cmd.flow_attr.num_of_specs)
 		kfree(kern_flow_attr);
-err_free:
-	kfree(flow_attr);
 	return err;
 }
 
