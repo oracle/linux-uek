@@ -392,7 +392,6 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 	u32 bytes = 0;
 	int factor = priv->cqe_factor;
 	u64 timestamp = 0;
-	struct mlx4_en_tx_info *tx_info;
 	int done = 0;
 
 
@@ -403,7 +402,6 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 	cqe = &buf[(index << factor) + factor];
 	ring_index = ring->cons & size_mask;
 	stamp_index = ring_index;
-	tx_info = &ring->tx_info[ring_index];
 
 	/* Process all completed CQEs */
 	while (XNOR(cqe->owner_sr_opcode & MLX4_CQE_OWNER_MASK,
@@ -425,12 +423,12 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 		/* Skip over last polled CQE */
 		new_index = be16_to_cpu(cqe->wqe_index) & size_mask;
 
-		if (tx_info->ts_requested)
-			timestamp = mlx4_en_get_cqe_ts(cqe);
-
 		do {
 			txbbs_skipped += ring->last_nr_txbb;
 			ring_index = (ring_index + ring->last_nr_txbb) & size_mask;
+			if (ring->tx_info[ring_index].ts_requested)
+				timestamp = mlx4_en_get_cqe_ts(cqe);
+
 			/* free next descriptor */
 			ring->last_nr_txbb = mlx4_en_free_tx_desc(
 					priv, ring, ring_index,
