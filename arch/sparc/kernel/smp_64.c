@@ -1406,11 +1406,17 @@ void __irq_entry smp_receive_signal_client(int irq, struct pt_regs *regs)
 	scheduler_ipi();
 }
 
-/* This is a nop because we capture all other cpus
- * anyways when making the PROM active.
- */
+void stop_this_cpu(void *dummy)
+{
+	set_cpu_online(smp_processor_id(), false);
+
+	local_irq_disable();
+	while (1) ;
+}
+
 void smp_send_stop(void)
 {
+	smp_call_function(stop_this_cpu, NULL, 0);
 }
 
 /**
