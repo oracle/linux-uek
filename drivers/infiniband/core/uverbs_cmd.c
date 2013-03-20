@@ -359,12 +359,6 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 		goto err_fd;
 	}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
-		ret = -EFAULT;
-		goto err_file;
-	}
-
 	file->async_file = filp->private_data;
 
 	INIT_IB_EVENT_HANDLER(&file->event_handler, file->device->ib_dev,
@@ -373,6 +367,11 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 	if (ret)
 		goto err_file;
 
+	if (copy_to_user((void __user *) (unsigned long) cmd.response,
+			 &resp, sizeof resp)) {
+		ret = -EFAULT;
+		goto err_file;
+	}
 	kref_get(&file->async_file->ref);
 	kref_get(&file->ref);
 	file->ucontext = ucontext;
