@@ -2603,7 +2603,7 @@ static int kern_spec_to_ib_spec(struct ib_kern_spec *kern_spec,
 	case IB_FLOW_SPEC_UDP:
 		ib_spec->tcp_udp.size = sizeof(struct ib_flow_spec_tcp_udp);
 		memcpy(&ib_spec->tcp_udp.val, &kern_spec->tcp_udp.val,
-		       sizeof(struct ib_flow_ipv4_filter));
+		       sizeof(struct ib_flow_tcp_udp_filter));
 		memcpy(&ib_spec->tcp_udp.mask, &kern_spec->tcp_udp.mask,
 		       sizeof(struct ib_flow_tcp_udp_filter));
 		break;
