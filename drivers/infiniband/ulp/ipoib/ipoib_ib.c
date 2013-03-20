@@ -163,8 +163,6 @@ static struct sk_buff *ipoib_alloc_rx_skb(struct net_device *dev,
 	recv_ring->rx_ring[id].skb = skb;
 	return skb;
 
-partial_error:
-	ib_dma_unmap_single(priv->ca, mapping[0], buf_size, DMA_FROM_DEVICE);
 error:
 	dev_kfree_skb_any(skb);
 	return NULL;
