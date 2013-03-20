@@ -718,7 +718,7 @@ int map_sw_to_hw_steering_id(struct mlx4_dev *dev,
 }
 EXPORT_SYMBOL_GPL(map_sw_to_hw_steering_id);
 
-static const size_t __rule_hw_sz[] = {
+static const int __rule_hw_sz[] = {
 	[MLX4_NET_TRANS_RULE_ID_ETH] =
 		sizeof(struct mlx4_net_trans_rule_hw_eth),
 	[MLX4_NET_TRANS_RULE_ID_IB] =
@@ -732,8 +732,8 @@ static const size_t __rule_hw_sz[] = {
 		sizeof(struct mlx4_net_trans_rule_hw_tcp_udp)
 };
 
-size_t hw_rule_sz(struct mlx4_dev *dev,
-		  enum mlx4_net_trans_rule_id id)
+int hw_rule_sz(struct mlx4_dev *dev,
+	       enum mlx4_net_trans_rule_id id)
 {
 	if (id >= MLX4_NET_TRANS_RULE_NUM || id < 0) {
 		mlx4_err(dev, "Invalid network rule id. id = %d\n", id);

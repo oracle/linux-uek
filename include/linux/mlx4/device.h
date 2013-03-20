@@ -1208,7 +1208,7 @@ int map_sw_to_hw_steering_mode(struct mlx4_dev *dev,
 			       enum mlx4_net_trans_promisc_mode flow_type);
 int map_sw_to_hw_steering_id(struct mlx4_dev *dev,
 			     enum mlx4_net_trans_rule_id id);
-size_t hw_rule_sz(struct mlx4_dev *dev, enum mlx4_net_trans_rule_id id);
+int hw_rule_sz(struct mlx4_dev *dev, enum mlx4_net_trans_rule_id id);
 
 void mlx4_sync_pkey_table(struct mlx4_dev *dev, int slave, int port,
 			  int i, int val);
