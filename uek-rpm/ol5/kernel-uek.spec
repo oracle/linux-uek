@@ -190,7 +190,7 @@ Summary: The Linux kernel
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.13.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.100.0%{?dist}uek%{?buildid}
 
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}
@@ -1687,6 +1687,297 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Thu Mar 21 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.100.0.el5uek]
+- xfs: prevent recursion in xfs_buf_iorequest (Christoph Hellwig)
+- xfs: punch new delalloc blocks out of failed writes inside (Dave Chinner)
+- xfs: handle EOF correctly in xfs_vm_writepage (Christoph Hellwig)
+- xfs: xfs_vm_writepage clear iomap_valid when (Alain Renaud)
+- xfs: fix memory reclaim deadlock on agi buffer (Peter Watkins)
+- xfs: use iolock on XFS_IOC_ALLOCSP calls (Dave Chinner)
+- xfs: fix incorrect b_offset initialisation (Dave Chinner)
+- xfs: using GFP_NOFS for blkdev_issue_flush (Shaohua Li)
+- xfs: limit specualtive delalloc to maxioffset (Dave Chinner)
+- xfs: don't fill statvfs with project quota for a directory (Jie Liu)
+- xfs: fix fstrim offset calculations (Dave Chinner)
+- xfs: fix deadlock in xfs_rtfree_extent (Kamal Dasu)
+- xfs: fix allocation length overflow in xfs_bmapi_write() (Dave Chinner)
+- xfs: do not flush data workqueues in xfs_flush_buftarg (Christoph Hellwig)
+- xfs: XFS_TRANS_SWAPEXT is not a valid flag for (Christoph Hellwig)
+- xfs: fix possible overflow in xfs_ioc_trim() (Lukas Czerner)
+- rds: Congestion flag does not get cleared causing the connection to hang
+  (Bang Nguyen) [Orabug: 16424692]
+- dm table: set flush capability based on underlying devices (Mike Snitzer)
+  [Orabug: 16392584]
+- wake_up_process() should be never used to wakeup a TASK_STOPPED/TRACED task
+  (Oleg Nesterov) [Orabug: 16405869] {CVE-2013-0871}
+- ptrace: ensure arch_ptrace/ptrace_request can never race with SIGKILL (Oleg
+  Nesterov) [Orabug: 16405869] {CVE-2013-0871}
+- ptrace: introduce signal_wake_up_state() and ptrace_signal_wake_up() (Oleg
+  Nesterov) [Orabug: 16405869] {CVE-2013-0871}
+- NLS: improve UTF8 -> UTF16 string conversion routine (Alan Stern) [Orabug:
+  16425571] {CVE-2013-1773}
+- drm/i915/lvds: ditch ->prepare special case (Daniel Vetter) [Orabug:
+  14394113]
+- drm/i915: Leave LVDS registers unlocked (Keith Packard) [Orabug: 14394113]
+- drm/i915: don't clobber the pipe param in sanitize_modesetting (Daniel
+  Vetter) [Orabug: 14394113]
+- drm/i915: Sanitize BIOS debugging bits from PIPECONF (Chris Wilson) [Orabug:
+  14394113]
+- ipmi: make kcs timeout parameters as module options (Pavel Bures)
+- Linux 3.0.69 (Greg Kroah-Hartman)
+- Fix memory leak in cpufreq stats. (Tu, Xiaobing) [Orabug: 16524544]
+- md: raid0: fix error return from create_stripe_zones. (NeilBrown) [Orabug:
+  16524499]
+- cifs: ensure that cifs_get_root() only traverses directories (Jeff Layton)
+  [Orabug: 16524441]
+- btrfs: Init io_lock after cloning btrfs device struct (Thomas Gleixner)
+  [Orabug: 16524430]
+- Linux 3.0.68 (Greg Kroah-Hartman)
+- cgroup: fix exit() vs rmdir() race (Li Zefan) [Orabug: 16524187]
+- cpuset: fix cpuset_print_task_mems_allowed() vs rename() race (Li Zefan)
+  [Orabug: 16524180]
+- x86: Do not leak kernel page mapping locations (Kees Cook) [Orabug: 16524160]
+- ext4: fix race in ext4_mb_add_n_trim() (Niu Yawei) [Orabug: 16524038]
+- sysctl: fix null checking in bin_dn_node_address() (Xi Wang) [Orabug:
+  16524021]
+- xen-blkback: do not leak mode property (Jan Beulich)
+- target: Add missing mapped_lun bounds checking during make_mappedlun setup
+  (Nicholas Bellinger) [Orabug: 16523953]
+- ftrace: Call ftrace cleanup module notifier after all other notifiers (Steven
+  Rostedt (Red Hat)) [Orabug: 16523318]
+- ftrace: Be first to run code modification on modules (Steven Rostedt)
+  [Orabug: 16523318]
+- posix-timer: Don't call idr_find() with out-of-range ID (Tejun Heo) [Orabug:
+  16522902]
+- spec: ol6 port to uek2 fancy debug info (Maxim Uvarov) [Orabug: 14351757]
+- Linux 3.0.67 (Greg Kroah-Hartman)
+- xen-netback: cancel the credit timer when taking the vif down (David Vrabel)
+  [Orabug: 16516401]
+- ext4: add missing kfree() on error return path in add_new_gdb() (Dan
+  Carpenter) [Orabug: 16516151]
+- ext4: Free resources in some error path in ext4_fill_super (Tao Ma) [Orabug:
+  16516151]
+- tmpfs: fix use-after-free of mempolicy object (Greg Thelen) [Orabug:
+  16515833] {CVE-2013-1767}
+- ocfs2: unlock super lock if lockres refresh failed (Junxiao Bi) [Orabug:
+  16515772]
+- mmu_notifier_unregister NULL Pointer deref and multiple ->release() callouts
+  (Robin Holt) [Orabug: 16515703]
+- mm: mmu_notifier: make the mmu_notifier srcu static (Andrea Arcangeli)
+  [Orabug: 16515703]
+- mm: mmu_notifier: have mmu_notifiers use a global SRCU so they may safely
+  schedule (Sagi Grimberg) [Orabug: 16515703]
+- Driver core: treat unregistered bus_types as having no devices (Bjorn
+  Helgaas) [Orabug: 16515651]
+- hrtimer: Prevent hrtimer_enqueue_reprogram race (Leonid Shatz) [Orabug:
+  16515570]
+- posix-cpu-timers: Fix nanosleep task_struct leak (Stanislaw Gruszka) [Orabug:
+  16515546]
+- genirq: Avoid deadlock in spurious handling (Thomas Gleixner) [Orabug:
+  16515515]
+- kbuild: AFTER_LINK (Roland McGrath) [Orabug: 14351757]
+- SPEC: fix doc build (Guru Anbalagane)
+- floppy: Fix a crash during rmmod (Vivek Goyal) [Orabug: 16040504]
+- Add SIOCRDSGETTOS to get the current TOS for the socket (Bang Nguyen)
+  [Orabug: 16397197]
+- Changes to connect/TOS interface (Bang Nguyen) [Orabug: 16397197]
+- x86/msr: Add capabilities check (Alan Cox) [Orabug: 16405007] {CVE-2013-0268}
+- spec: unique debuginfo (Maxim Uvarov) [Orabug: 16245366]
+- 3.0.66 (Greg Kroah-Hartman)
+- Linux 3.0.65 (Greg Kroah-Hartman)
+- PCI/PM: Clean up PME state when removing a device (Rafael J. Wysocki)
+  [Orabug: 16419018]
+- x86/mm: Check if PUD is large when validating a kernel address (Mel Gorman)
+  [Orabug: 16419009]
+- Linux 3.0.64 (Greg Kroah-Hartman)
+- net: sctp: sctp_endpoint_free: zero out secret key data (Daniel Borkmann)
+  [Orabug: 16417847]
+- net: sctp: sctp_setsockopt_auth_key: use kzfree instead of kfree (Daniel
+  Borkmann) [Orabug: 16417847]
+- packet: fix leakage of tx_ring memory (Phil Sutter) [Orabug: 16417817]
+- net: loopback: fix a dst refcounting issue (Eric Dumazet) [Orabug: 16417800]
+- kernel/resource.c: fix stack overflow in __reserve_region_with_split() (T
+  Makphaibulchoke) [Orabug: 16417783]
+- virtio_console: Don't access uninitialized data. (Sjur Brændeland) [Orabug:
+  16417750]
+- Linux 3.0.63 (Greg Kroah-Hartman)
+- USB: XHCI: fix memory leak of URB-private data (Alan Stern) [Orabug:
+  16405610]
+- x86-64: Replace left over sti/cli in ia32 audit exit code (Jan Beulich)
+  [Orabug: 16405604]
+- Linux 3.0.62 (Greg Kroah-Hartman)
+- efi, x86: Pass a proper identity mapping in efi_call_phys_prelog (Nathan
+  Zimmer) [Orabug: 16405090]
+- x86/msr: Add capabilities check (Alan Cox) [Orabug: 16405007]
+- fs/cifs/cifs_dfs_ref.c: fix potential memory leakage (Cong Ding) [Orabug:
+  16405135]
+- Linux 3.0.61 (Greg Kroah-Hartman)
+- Linux 3.0.60 (Greg Kroah-Hartman)
+- xen: Fix stack corruption in xen_failsafe_callback for 32bit PVOPS guests.
+  (Frediano Ziglio) [Orabug: 16398133] {CVE-2013-0190 XSA-40}
+- xhci: fix null-pointer dereference when destroying half-built segment rings
+  (Julius Werner) [Orabug: 16398006]
+- Linux 3.0.59 (Greg Kroah-Hartman)
+- intel-iommu: Free old page tables before creating superpage (Woodhouse,
+  David) [Orabug: 16390878]
+- udf: fix memory leak while allocating blocks during write (Namjae Jeon)
+  [Orabug: 16390872]
+- aoe: do not call bdi_init after blk_alloc_queue (Ed L. Cashin) [Orabug:
+  16390867]
+- jbd2: fix assertion failure in jbd2_journal_flush() (Jan Kara) [Orabug:
+  16390861]
+- ext4: fix extent tree corruption caused by hole punch (Forrest Liu) [Orabug:
+  16383554]
+- pci: hotplug: fix null dereference in pci_set_payload() (Jerry Snitselaar)
+  [Orabug: 16345420]
+- dm ioctl: prevent unsafe change to dm_ioctl data_size (Alasdair G Kergon)
+  [Orabug: 16371437]
+- ring-buffer: Fix race between integrity check and readers (Steven Rostedt)
+  [Orabug: 16371349]
+- RDMA/nes: Fix for terminate timer crash (Tatyana Nikolova) [Orabug: 16371298]
+- RDMA/nes: Fix for crash when registering zero length MR for CQ (Tatyana
+  Nikolova) [Orabug: 16371298]
+- SUNRPC: Ensure that we free the rpc_task after cleanups are done (Trond
+  Myklebust) [Orabug: 16371208]
+- ext4: fix memory leak in ext4_xattr_set_acl()'s error path (Eugene Shatokhin)
+  [Orabug: 16345607]
+- xfs: Use preallocation for inodes with extsz hints (Dave Chinner) [Orabug:
+  16307993]
+- This is a fix on dlm_clean_master_list() (Xiaowei.Hu) [Orabug: 12798517]
+- rds: this resolved crash while removing rds_rdma module. orabug: 16268201
+  (Bang Nguyen)
+- rds: scheduling while atomic on failover orabug: 16275095 (Bang Nguyen)
+- SRP: Revert back to 2.6.39-400.8.0 code (Ajaykumar Hotchandani)
+- iSER: Revert back to 2.6.39-400.8.0 code (Ajaykumar Hotchandani)
+- the ac->ac_allow_chain_relink=0 won't disable group relink (Xiaowei.Hu)
+  [Orabug: 14842737]
+- epoll: prevent missed events on EPOLL_CTL_MOD (Eric Wong) [Orabug: 16363540]
+- libata: fix Null pointer dereference on disk error (Xiaotian Feng) [Orabug:
+  16344896]
+- libata: set dma_mode to 0xff in reset (Aaron Lu) [Orabug: 16344896]
+- sata_promise: fix hardreset lockdep error (Mikael Pettersson) [Orabug:
+  16344878]
+- SCSI: mvsas: fix undefined bit shift (Xi Wang) [Orabug: 16344868]
+- Linux 3.0.58 (Greg Kroah-Hartman)
+- mm: limit mmu_gather batching to fix soft lockups on !CONFIG_PREEMPT (Michal
+  Hocko) [Orabug: 16344783]
+- x86/xen: don't assume %ds is usable in xen_iret for 32-bit PVOPS. (Jan
+  Beulich)  {CVE-2013-0228 XSA-42 CVE-2013-0190}
+- xen-blkfront: drop the use of llist_for_each_entry_safe (Konrad Rzeszutek
+  Wilk) [Orabug: 16263164]
+- Revert "xen PVonHVM: use E820_Reserved area for shared_info" (Konrad
+  Rzeszutek Wilk) [Orabug: 16297716]
+- Revert "xen/PVonHVM: fix compile warning in init_hvm_pv_info" (Konrad
+  Rzeszutek Wilk)
+- xfs: use shared ilock mode for direct IO writes by default (Dave Chinner)
+  [Orabug: 16304938]
+- sched: fix divide by zero at {thread_group,task}_times (Stanislaw Gruszka)
+  [Orabug: 15956690]
+- Revert "Revert "cgroup: notify_on_release may not be triggered in some
+  cases"" (Maxim Uvarov)
+- cgroup: remove incorrect dget/dput() pair in cgroup_create_dir() (Tejun Heo)
+  [Orabug: 16299317]
+- nfs: fix null checking in nfs_get_option_str() (Xi Wang) [Orabug: 16299190]
+- nfsd4: fix oops on unusual readlike compound (J. Bruce Fields) [Orabug:
+  16299190]
+- NFS: Fix calls to drop_nlink() (Trond Myklebust) [Orabug: 16299190]
+- NFS: avoid NULL dereference in nfs_destroy_server (NeilBrown) [Orabug:
+  16299190]
+- virtio: force vring descriptors to be allocated from lowmem (Will Deacon)
+  [Orabug: 16298929]
+- exec: do not leave bprm->interp on stack (Kees Cook) [Orabug: 16298170]
+- sctp: fix memory leak in sctp_datamsg_from_user() when copy from user space
+  fails (Tommi Rantala) [Orabug: 16293274]
+- bonding: fix race condition in bonding_store_slaves_active (nikolay) [Orabug:
+  16293049]
+- xen_fmr: Verify XEN platform before running xen_fmr drivers (Yuval Shaia)
+  [Orabug: 16302435]
+- Linux 3.0.57 (Greg Kroah-Hartman)
+- tmpfs: fix shared mempolicy leak (Mel Gorman) [Orabug: 16292842]
+- workqueue: convert BUG_ON()s in __queue_delayed_work() to WARN_ON_ONCE()s
+  (Tejun Heo) [Orabug: 16286334]
+- rds: unregister IB event handler on shutdown (Bang Nguyen) [Orabug: 16302435]
+- rds: HAIP support child interface (Bang Nguyen) [Orabug: 16302435]
+- Linux 3.0.56 (Greg Kroah-Hartman)
+- scsi: Silence unnecessary warnings about ioctl to partition (Jan Kara)
+  [Orabug: 16285846]
+- ACPI: missing break (Alan Cox) [Orabug: 16285836]
+- workqueue: exit rescuer_thread() as TASK_RUNNING (Mike Galbraith) [Orabug:
+  16285719]
+- mm: soft offline: split thp at the beginning of soft_offline_page() (Naoya
+  Horiguchi) [Orabug: 16285709]
+- Linux 3.0.55 (Greg Kroah-Hartman)
+- x86-32: Export kernel_stack_pointer() for modules (H. Peter Anvin) [Orabug:
+  16231017]
+- Linux 3.0.54 (Greg Kroah-Hartman)
+- jbd: Fix lock ordering bug in journal_unmap_buffer() (Jan Kara) [Orabug:
+  16284655]
+- futex: avoid wake_futex() for a PI futex_q (Darren Hart) [Orabug: 16284620]
+- RDS HAIP misc fixes (Bang Nguyen) [Orabug: 16302435]
+- Ignore failover groups if HAIP is disabled (Bang Nguyen) [Orabug: 16302435]
+- RDS: RDS rolling upgrade (Saeed Mahameed) [Orabug: 16302435]
+- mlx4_core: use correct FMR number of clients according to PRM. (Saeed
+  Mahameed) [Orabug: 16302435]
+- x86-32: Fix invalid stack address while in softirq (Robert Richter) [Orabug:
+  16231017]
+- Linux 3.0.53 (Greg Kroah-Hartman)
+- Resource: fix wrong resource window calculation (Ram Pai) [Orabug: 16225482]
+- PCI : Calculate right add_size (Yinghai Lu) [Orabug: 16225482]
+- PCI : ability to relocate assigned pci-resources (Ram Pai) [Orabug: 16225482]
+- selinux: fix sel_netnode_insert() suspicious rcu dereference (Dave Jones)
+  [Orabug: 16225467]
+- NFS: Wait for session recovery to finish before returning (Bryan Schumaker)
+  [Orabug: 16225396]
+- usb: use usb_serial_put in usb_serial_probe errors (Jan Safrata) [Orabug:
+  16225350]
+- netfilter: Mark SYN/ACK packets as invalid from original direction (Jozsef
+  Kadlecsik) [Orabug: 16225312]
+- netfilter: Validate the sequence number of dataless ACK packets as well
+  (Jozsef Kadlecsik) [Orabug: 16225312]
+- net-rps: Fix brokeness causing OOO packets (Tom Herbert) [Orabug: 16225270]
+- net: correct check in dev_addr_del() (Jiri Pirko) [Orabug: 16225247]
+- xen: netback: handle compound page fragments on transmit. (Ian Campbell)
+- xen: Fix stack corruption in xen_failsafe_callback for 32bit PVOPS guests.
+  (Andrew Cooper)  {CVE-2013-0190 XSA-40}
+- xen/gntdev: remove erronous use of copy_to_user (Daniel De Graaf)
+- xen/gntdev: correctly unmap unlinked maps in mmu notifier (Daniel De Graaf)
+- xen/gntdev: fix unsafe vma access (Daniel De Graaf)
+- xen/privcmd: Fix mmap batch ioctl. (Andres Lagar-Cavilla)
+- Xen: properly bound buffer access when parsing cpu/*/availability (Jan
+  Beulich)
+- xen/grant-table: correctly initialize grant table version 1 (Matt Wilson)
+- x86/xen : Fix the wrong check in pciback (Yang Zhang)
+- xen/privcmd: Relax access control in privcmd_ioctl_mmap (Tamas Lengyel)
+- xen/vcpu: Fix vcpu restore path. (Wei Liu)
+- xen: Add EVTCHNOP_reset in Xen interface header files. (Wei Liu)
+- ipv6: setsockopt(IPIPPROTO_IPV6, IPV6_MINHOPCOUNT) forgot to set return value
+  (Hannes Frederic Sowa) [Orabug: 16219504]
+- ipv4: avoid undefined behavior in do_ip_setsockopt() (Xi Wang) [Orabug:
+  16219489]
+- crypto: cryptd - disable softirqs in cryptd_queue_worker to prevent data
+  corruption (Jussi Kivilinna) [Orabug: 16219473]
+- mm: bugfix: set current->reclaim_state to NULL while returning from kswapd()
+  (Takamori Yamaguchi) [Orabug: 16219405]
+- Linux 3.0.52 (Greg Kroah-Hartman)
+- intel-iommu: Fix AB-BA lockdep report (Roland Dreier) [Orabug: 16212693]
+- futex: Handle futex_pi OWNER_DIED take over correctly (Thomas Gleixner)
+  [Orabug: 16212042]
+- l2tp: fix oops in l2tp_eth_create() error path (Tom Parkin) [Orabug:
+  16211918]
+- net: usb: Fix memory leak on Tx data path (Hemant Kumar) [Orabug: 16211885]
+- ipv6: Set default hoplimit as zero. (Li RongQing) [Orabug: 16211773]
+- tcp: fix FIONREAD/SIOCINQ (Eric Dumazet) [Orabug: 16211727]
+- netlink: use kfree_rcu() in netlink_release() (Eric Dumazet) [Orabug:
+  16211670]
+- NFS: Fix Oopses in nfs_lookup_revalidate and nfs4_lookup_revalidate (Trond
+  Myklebust) [Orabug: 16211565]
+- NFSv4: nfs4_locku_done must release the sequence id (Trond Myklebust)
+  [Orabug: 16211434]
+- target: Don't return success from module_init() if setup fails (Roland
+  Dreier) [Orabug: 16211397]
+- floppy: Cleanup disk->queue before caling put_disk() if add_disk() was never
+  called (Vivek Goyal) [Orabug: 16040504]
+
 * Thu Feb 07 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.13.0.el5uek]
 - kmod: make __request_module() killable (Oleg Nesterov) [Orabug: 16286305]
   {CVE-2012-4398}
