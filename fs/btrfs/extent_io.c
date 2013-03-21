@@ -4407,7 +4407,7 @@ void free_extent_buffer_stale(struct extent_buffer *eb)
 	release_extent_buffer(eb, GFP_NOFS);
 }
 
-int clear_extent_buffer_dirty(struct extent_buffer *eb)
+void clear_extent_buffer_dirty(struct extent_buffer *eb)
 {
 	unsigned long i;
 	unsigned long num_pages;
@@ -4436,7 +4436,6 @@ int clear_extent_buffer_dirty(struct extent_buffer *eb)
 		unlock_page(page);
 	}
 	WARN_ON(atomic_read(&eb->refs) == 0);
-	return 0;
 }
 
 int set_extent_buffer_dirty(struct extent_buffer *eb)
