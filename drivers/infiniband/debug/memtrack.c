@@ -501,19 +501,22 @@ EXPORT_SYMBOL(is_non_trackable_free_func);
 
 /* WA - In this function handles confirm
    the the function name is
-   '__ib_umem_release'.
+   '__ib_umem_release' or 'ib_umem_get'
    In this case we won't track the
    memory there because the kernel
    was the one who allocated it.
    Return value:
-     0 - if the function name is '__ib_umem_release', else 1 */
-int is_umem_release_func(const char *func_name)
+     1 - if the function name is match, else 0 */
+int is_umem_put_page(const char *func_name)
 {
 	const char func_str[18] = "__ib_umem_release";
+	/* In case of error flow put_page is called as part of ib_umem_get */
+	const char func_str1[12] = "ib_umem_get";
 
-	return (strstr(func_name, func_str) != NULL) ? 1 : 0;
+	return ((strstr(func_name, func_str) != NULL) ||
+		(strstr(func_name, func_str1) != NULL)) ? 1 : 0;
 }
-EXPORT_SYMBOL(is_umem_release_func);
+EXPORT_SYMBOL(is_umem_put_page);
 
 /* Check page order size
    When Freeing a page allocation it checks whether

@@ -65,13 +65,13 @@ int is_non_trackable_free_func(const char *func_name);
 
 /* WA - In this function handles confirm
    the the function name is
-   '__ib_umem_release'.
+   '__ib_umem_release' or 'ib_umem_get'
    In this case we won't track the
    memory there because the kernel
    was the one who allocated it.
    Return value:
-     0 - if the function name is '__ib_umem_release', else 1    */
-int is_umem_release_func(const char *func_name);
+     1 - if the function name is match, else 0    */
+int is_umem_put_page(const char *func_name);
 
 /* Check page order size
    When Freeing a page allocation it checks whether

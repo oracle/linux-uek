@@ -503,10 +503,10 @@
 	void *__memtrack_addr = (void *)addr;					\
 										\
 	if (__memtrack_addr && !is_non_trackable_alloc_func(__func__)) {	\
-		/* Check whether this is not __ib_umem_release function & not */\
+		/* Check whether this is not part of umem put page & not */\
 		/* a new addr and the ref-count is 1 then we'll free this addr */\
 		/* Don't change the order these conditions */			\
-		if (!is_umem_release_func(__func__) && \
+		if (!is_umem_put_page(__func__) && \
 		    !memtrack_is_new_addr(MEMTRACK_PAGE_ALLOC, (unsigned long)(__memtrack_addr), 1, __FILE__, __LINE__) && \
 		    (memtrack_get_page_ref_count((unsigned long)(__memtrack_addr)) == 1)) { \
 			memtrack_free(MEMTRACK_PAGE_ALLOC, 0UL, (unsigned long)(__memtrack_addr), 0UL, 0, __FILE__, __LINE__); \
