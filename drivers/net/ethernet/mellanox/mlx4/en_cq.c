@@ -133,33 +133,12 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
 				mdev->dev->caps.num_comp_vectors;
 		}
 	} else {
-		/* For TX we use the next core on same socket
-		as the RX core    */
 		struct mlx4_en_cq *rx_cq;
-		int cpu, next_cpu = -1;
-		int curr = cq_idx % num_online_cpus();
-		struct cpumask *mask = cpu_core_mask(curr);
-		for_each_cpu_mask(cpu, *mask) {
-			if (cpu == curr)
-				continue;
-			if (next_cpu == -1) {
-				next_cpu = cpu;
-				continue;
-			}
-			if (next_cpu > curr) {
-				if (cpu < next_cpu && cpu > curr)
-					next_cpu = cpu;
-			} else {
-				if (cpu > curr)
-					next_cpu = cpu;
-			}
-		}
-		if (next_cpu == -1)
-			next_cpu = curr;
-
-		cq_idx = ((num_online_cpus() *
-			  (cq_idx / num_online_cpus())) + next_cpu) %
-			  priv->rx_ring_num;
+		/*
+		 * For TX we use the same irq per
+		 * ring we assigned for the RX
+		 */
+		cq_idx = cq_idx % priv->rx_ring_num;
 		rx_cq = priv->rx_cq[cq_idx];
 		cq->vector = rx_cq->vector;
 	}
