@@ -146,7 +146,27 @@ static GHashTable *dedup_blacklist;
 /*
  * Populate the deduplication blacklist from the dedup_blacklist file.
  */
-static void init_blacklist(const char *dedup_blacklist_file);
+static void init_dedup_blacklist(const char *dedup_blacklist_file);
+
+/*
+ * The member blacklist bans fields with specific names in specifically named
+ * structures, declared in specific source files, from being emitted.  The
+ * mapping is from absolute source file name:structure.member to NULL (this is
+ * safe because type names cannot contain a colon, and structure names cannot
+ * contain a period).
+ */
+static GHashTable *member_blacklist;
+
+/*
+ * Populate the member blacklist from the member_blacklist file.
+ */
+static void init_member_blacklist(const char *member_blacklist_file);
+
+/*
+ * Return 1 if a given DWARF DIE, which must be a DW_TAG_member, appears in the
+ * member blacklist.
+ */
+static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die);
 
 /*
  * A mapping from translation unit name to the name of the module that
@@ -639,10 +659,11 @@ int main(int argc, char *argv[])
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if ((argc == 3 && (strcmp(argv[1], "-e") != 0)) || (argc < 4)) {
-		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin "
-			"modules.builtin vmlinux.o module.o...,\n");
-		fprintf(stderr, "        or dwarf2ctf outputdir -e module.o ... "
+	if (((argc < 2) && (strcmp(argv[1], "-e") == 0)) ||
+	    (argc < 6 && (strcmp(argv[1], "-e") != 0))) {
+		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin modules.builtin dedup.blacklist\n");
+		fprintf(stderr, "		   member.blacklist vmlinux.o module.o...,\n");
+		fprintf(stderr, "	 or dwarf2ctf outputdir -e module.o ... "
 			"for (inefficient)\n");
 		fprintf(stderr, "external module use\n");
 		exit(1);
@@ -669,13 +690,16 @@ int main(int argc, char *argv[])
 		char *builtin_objects_file;
 		char *builtin_module_file;
 		char *dedup_blacklist_file;
+		char *member_blacklist_file;
 
 		builtin_objects_file = argv[2];
 		builtin_module_file = argv[3];
 		dedup_blacklist_file = argv[4];
-		starting_argv = 5;
+		member_blacklist_file = argv[5];
+		starting_argv = 6;
 		init_builtin(builtin_objects_file, builtin_module_file);
-		init_blacklist(dedup_blacklist_file);
+		init_dedup_blacklist(dedup_blacklist_file);
+		init_member_blacklist(member_blacklist_file);
 
 		run(starting_argv, argv, output_dir);
 	} else {
@@ -896,7 +920,7 @@ static void init_assembly_tab(void)
 /*
  * Populate the deduplication blacklist from the dedup_blacklist file.
  */
-static void init_blacklist(const char *dedup_blacklist_file)
+static void init_dedup_blacklist(const char *dedup_blacklist_file)
 {
 	FILE *f;
 	char *line = NULL;
@@ -930,6 +954,125 @@ static void init_blacklist(const char *dedup_blacklist_file)
 	}
 
 	fclose(f);
+}
+
+/*
+ * Populate the member blacklist from the member_blacklist file.
+ */
+static void init_member_blacklist(const char *member_blacklist_file)
+{
+	FILE *f;
+	char *line = NULL;
+	size_t line_num = 0;
+	size_t line_size = 0;
+
+	/*
+	 * Not having a member blacklist is not an error.
+	 */
+	if ((f = fopen(member_blacklist_file, "r")) == NULL)
+		return;
+
+	member_blacklist = g_hash_table_new(g_str_hash, g_str_equal);
+
+	while (getline(&line, &line_size, f) >= 0) {
+		size_t len = strlen(line);
+		char *last_colon;
+		const char *last_dot;
+		char *absolutized;
+
+		line_num++;
+
+		if (len == 0)
+			continue;
+
+		if (line[len-1] == '\n')
+			line[len-1] = '\0';
+
+		last_colon = strrchr(line, ':');
+		last_dot = strrchr(last_colon + 1, '.');
+		if (!last_colon || !last_dot) {
+			fprintf(stderr, "Syntax error on line %li of %s.\n"
+			    "Syntax: filename:structure.member.\n",
+			    line_num, member_blacklist_file);
+			continue;
+		}
+
+		*last_colon = '\0';
+		last_colon++;
+		absolutized = xstrdup(abs_file_name(line));
+		absolutized = str_appendn(absolutized, ":", last_colon, NULL);
+
+		g_hash_table_insert(member_blacklist, absolutized, NULL);
+	}
+
+	if (ferror(f)) {
+		fprintf(stderr, "Error reading from %s: %s\n",
+			member_blacklist_file, strerror(errno));
+		exit(1);
+	}
+
+	fclose(f);
+}
+
+/*
+ * Return 1 if a given DWARF DIE, which must be a DW_TAG_member, appears in the
+ * member blacklist.
+ */
+static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
+{
+	const char *fname = dwarf_decl_file(die);
+	char *id;
+	int blacklisted = 0;
+
+	/*
+	 * If there is no member blacklist, do nothing.
+	 */
+	if (!member_blacklist)
+		return 0;
+
+	/*
+	 * Unnamed structure and union members cannot be blacklisted, for now.
+	 */
+	if ((dwarf_diename(parent_die) == NULL) ||
+	    (dwarf_diename(die) == NULL))
+		return 0;
+
+	/*
+	 * If the compiler is now emitting members without decl_files, we
+	 * want to know.
+	 */
+	if (fname == NULL) {
+		static int warned = 0;
+
+		if (!warned)
+			fprintf(stderr, "Warning: member_blacklisted() called with "
+			    "NULL decl_file, which should never happen.\n");
+
+		warned = 1;
+		return 0;
+	}
+
+	fname = abs_file_name(fname);
+
+	if (dwarf_tag(die) != DW_TAG_member ||
+	    (dwarf_tag(parent_die) != DW_TAG_structure_type &&
+		dwarf_tag(parent_die) != DW_TAG_union_type)) {
+		fprintf(stderr, "Warning: member_blacklisted() called on "
+		    "%s:%s.%s at offset %li, which is not a structure member.",
+		    fname, dwarf_diename(parent_die), dwarf_diename(die),
+		    dwarf_dieoffset(die));
+		return 0;
+	}
+
+	id = xstrdup(fname);
+	id = str_appendn(id, ":", dwarf_diename(parent_die), ".",
+	    dwarf_diename(die), NULL);
+
+	if (g_hash_table_lookup_extended(member_blacklist, id, NULL, NULL))
+		blacklisted = 1;
+
+	free(id);
+	return blacklisted;
 }
 
 /*
@@ -1760,12 +1903,14 @@ static void mark_shared(Dwarf_Die *die, const char *id, void *data)
 		}
 
 		/*
-		 * We are only interested in children of type DW_TAG_member.
+		 * We are only interested in non-blacklisted children of type
+		 * DW_TAG_member.
 		 */
 		int sib_ret;
 
 		do
-			free(type_id(&child, mark_shared, state));
+			if (!member_blacklisted(&child, die))
+				free(type_id(&child, mark_shared, state));
 		while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
 		if (sib_ret == -1)
@@ -2841,7 +2986,7 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
  * Assemble a structure or union member.
  *
  * We only assemble a member of a given name if a member by that name does not
- * already exist.
+ * already exist, and if the member is not blacklisted.
  */
 static ctf_id_t assemble_ctf_su_member(const char *module_name,
 				       const char *file_name,
@@ -2862,6 +3007,14 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	Dwarf_Die cu_die;
 
 	CTF_DW_ENFORCE(type);
+
+	/*
+	 * If this member is blacklisted, just skip it.
+	 */
+	if (member_blacklisted(die, parent_die)) {
+		dw_ctf_trace("%s: blacklisted, skipping.\n", locerrstr);
+		return parent_ctf_id;
+	}
 
 	/*
 	 * Find the associated type so we can either add a member with that type
