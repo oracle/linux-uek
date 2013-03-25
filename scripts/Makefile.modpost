@@ -148,7 +148,7 @@ ifndef CONFIG_DT_DISABLE_CTF
 ifeq ($(KBUILD_EXTMOD),)
 ctf-dir := .ctf
 quiet_cmd_ctf = CTF
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist $^
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist scripts/dwarf2ctf/member.blacklist $^
 builtins := $(shell cat objects.builtin 2>/dev/null)
 ctf-stamp := .ctf/ctf.stamp
 
