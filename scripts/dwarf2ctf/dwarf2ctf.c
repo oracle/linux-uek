@@ -609,6 +609,11 @@ static char *xstrdup(const char *s) __attribute__((__nonnull__,
 static char *fn_to_module(const char *file_name);
 
 /*
+ * Determine, and cache, absolute filenames.
+ */
+static const char *abs_file_name(const char *file_name);
+
+/*
  * Stub libdwfl callback, use only the ELF handle passed in.
  */
 static int no_debuginfo(Dwfl_Module *mod __unused__,
@@ -1138,40 +1143,19 @@ static char *type_id(Dwarf_Die *die, void (*fun)(Dwarf_Die *die,
 			id = type_id(private_dwarf_type(die, &type_die), fun, data);
 
 		/*
-		 * Location information.  Here in particular we value speed over
-		 * clarity, caching the result of realpath() to minimize system
-		 * calls, and going to some length to keep the number of calls
-		 * to str_append*() down.
+		 * Location information.  We use cached realpath() results, and
+		 * call str_appendn() only once, minimizing the number of
+		 * strlen()s.
 		 */
 		if (id == NULL) {
-			static GHashTable *abs_file_names;
-
-			if (abs_file_names == NULL)
-				abs_file_names = g_hash_table_new_full(g_str_hash,
-								       g_str_equal,
-								       free, free);
-
 			const char *decl_file_name = dwarf_decl_file(die);
 			int decl_line_num;
 			const char *fname = "";
-			char line_num[21] = "";  /* bigger than 2^64's digit count */
+			char line_num[21] = "";	 /* bigger than 2^64's digit count */
 
 			no_type_id = 1;
 			if (decl_file_name != NULL) {
-
-				fname = g_hash_table_lookup(abs_file_names,
-							    decl_file_name);
-
-				if (fname == NULL) {
-					char abspath[PATH_MAX] = "";
-					if (realpath(decl_file_name, abspath) == NULL)
-						strcpy(abspath, decl_file_name);
-					g_hash_table_replace(abs_file_names,
-							     xstrdup(decl_file_name),
-							     xstrdup(abspath));
-					fname = g_hash_table_lookup(abs_file_names,
-								    decl_file_name);
-				}
+				fname = abs_file_name(decl_file_name);
 			}
 
 			if (dwarf_decl_line(die, &decl_line_num) >= 0) {
@@ -3434,6 +3418,35 @@ static char *fn_to_module(const char *file_name)
 		*chop = '\0';
 
 	return module_name;
+}
+
+/*
+ * Determine, and cache, absolute filenames.  This is called in very hot
+ * paths, notably type_id(), and must be kept fast.
+ */
+static const char *abs_file_name(const char *file_name)
+{
+	static GHashTable *abs_file_names;
+	const char *abs_name;
+
+	if (abs_file_names == NULL)
+		abs_file_names = g_hash_table_new_full(g_str_hash, g_str_equal,
+		    free, free);
+
+	abs_name = g_hash_table_lookup(abs_file_names, file_name);
+
+	if (abs_name == NULL) {
+		char abspath[PATH_MAX] = "";
+
+		if (realpath(file_name, abspath) == NULL)
+			strcpy(abspath, file_name);
+		g_hash_table_replace(abs_file_names,
+		    xstrdup(file_name), xstrdup(abspath));
+
+		abs_name = g_hash_table_lookup(abs_file_names, file_name);
+	}
+
+	return abs_name;
 }
 
 /*
