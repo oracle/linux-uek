@@ -3000,27 +3000,27 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	 * offsets).
 	 */
 	if (!dwarf_hasattr(die, DW_AT_name)) {
-	    Dwarf_Die child_die;
-	    int dummy = 0;
+		Dwarf_Die child_die;
+		int dummy = 0;
 
-	    if ((dwarf_tag(&type_die) != DW_TAG_structure_type) &&
-		(dwarf_tag(&type_die) != DW_TAG_union_type)) {
-		fprintf(stderr, "%s:%lx: not supported: anonymous structure "
-			"member not a structure or union.\n", locerrstr,
-			(unsigned long) dwarf_dieoffset(die));
-		*skip = SKIP_ABORT;
-		return CTF_ERROR_REPORTED;
-	    }
+		if ((dwarf_tag(&type_die) != DW_TAG_structure_type) &&
+		    (dwarf_tag(&type_die) != DW_TAG_union_type)) {
+			fprintf(stderr, "%s:%lx: not supported: anonymous "
+			    "structure member not a structure or union.\n",
+			    locerrstr, (unsigned long) dwarf_dieoffset(die));
+			*skip = SKIP_ABORT;
+			return CTF_ERROR_REPORTED;
+		}
 
-	    /*
-	     * Anonymous structure or union with no members. Silently skip.
-	     */
-	    if (dwarf_child(&type_die, &child_die) < 0)
-		    return parent_ctf_id;
+		/*
+		 * Anonymous structure or union with no members. Silently skip.
+		 */
+		if (dwarf_child(&type_die, &child_die) < 0)
+			return parent_ctf_id;
 
-	    die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
-		       parent_ctf_id, offset, 0, skip, &dummy, NULL);
-	    return parent_ctf_id;
+		die_to_ctf(module_name, file_name, &child_die, parent_die, ctf,
+		    parent_ctf_id, offset, 0, skip, &dummy, NULL);
+		return parent_ctf_id;
 	}
 
 	/*
