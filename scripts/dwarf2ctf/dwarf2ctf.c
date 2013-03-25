@@ -592,7 +592,8 @@ static char *str_append(char *s, const char *append)
 /*
  * A vararg string appender.
  */
-static char *str_appendn(char *s, ...) __attribute__((__warn_unused_result__));
+static char *str_appendn(char *s, ...)
+	__attribute__((__warn_unused_result__, sentinel));
 
 /*
  * An error-checking strdup().
