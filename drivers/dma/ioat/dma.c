@@ -889,7 +889,7 @@ MODULE_PARM_DESC(ioat_interrupt_style,
  * ioat_dma_setup_interrupts - setup interrupt handler
  * @device: ioat device
  */
-static int ioat_dma_setup_interrupts(struct ioatdma_device *device)
+int ioat_dma_setup_interrupts(struct ioatdma_device *device)
 {
 	struct ioat_chan_common *chan;
 	struct pci_dev *pdev = device->pdev;
@@ -938,6 +938,7 @@ msix:
 		}
 	}
 	intrctrl |= IOAT_INTRCTRL_MSIX_VECTOR_CONTROL;
+	device->irq_mode = IOAT_MSIX;
 	goto done;
 
 msix_single_vector:
@@ -953,6 +954,7 @@ msix_single_vector:
 		pci_disable_msix(pdev);
 		goto msi;
 	}
+	device->irq_mode = IOAT_MSIX_SINGLE;
 	goto done;
 
 msi:
@@ -966,6 +968,7 @@ msi:
 		pci_disable_msi(pdev);
 		goto intx;
 	}
+	device->irq_mode = IOAT_MSIX;
 	goto done;
 
 intx:
@@ -974,6 +977,7 @@ intx:
 	if (err)
 		goto err_no_irq;
 
+	device->irq_mode = IOAT_INTX;
 done:
 	if (device->intr_quirk)
 		device->intr_quirk(device);
@@ -984,9 +988,11 @@ done:
 err_no_irq:
 	/* Disable all interrupt generation */
 	writeb(0, device->reg_base + IOAT_INTRCTRL_OFFSET);
+	device->irq_mode = IOAT_NOIRQ;
 	dev_err(dev, "no usable interrupts\n");
 	return err;
 }
+EXPORT_SYMBOL(ioat_dma_setup_interrupts);
 
 static void ioat_disable_interrupts(struct ioatdma_device *device)
 {
