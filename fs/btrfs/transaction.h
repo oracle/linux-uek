@@ -76,7 +76,6 @@ struct btrfs_pending_snapshot {
 	struct inode *dir;
 	struct btrfs_root *root;
 	struct btrfs_root *snap;
-	struct btrfs_qgroup_inherit *inherit;
 	/* block reservation for the operation */
 	struct btrfs_block_rsv block_rsv;
 	/* extra metadata reseration for relocation */
