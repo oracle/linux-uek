@@ -595,7 +595,6 @@ static int __btrfs_end_transaction(struct btrfs_trans_handle *trans,
 	if (trans->aborted ||
 	    test_bit(BTRFS_FS_STATE_ERROR, &root->fs_info->fs_state))
 		err = -EIO;
-	assert_qgroups_uptodate(trans);
 
 	kmem_cache_free(btrfs_trans_handle_cachep, trans);
 	return err;
@@ -1655,7 +1654,6 @@ int btrfs_commit_transaction(struct btrfs_trans_handle *trans,
 			    root->fs_info->chunk_root->node);
 	switch_commit_root(root->fs_info->chunk_root);
 
-	assert_qgroups_uptodate(trans);
 	update_super_roots(root);
 
 	if (!root->fs_info->log_root_recovering) {

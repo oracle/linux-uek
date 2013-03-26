@@ -2404,8 +2404,6 @@ int btrfs_run_delayed_refs(struct btrfs_trans_handle *trans,
 	if (root == root->fs_info->extent_root)
 		root = root->fs_info->tree_root;
 
-	btrfs_delayed_refs_qgroup_accounting(trans, root->fs_info);
-
 	delayed_refs = &trans->transaction->delayed_refs;
 	INIT_LIST_HEAD(&cluster);
 	if (count == 0) {
@@ -2552,7 +2550,6 @@ out:
 		wake_up(&delayed_refs->wait);
 
 	spin_unlock(&delayed_refs->lock);
-	assert_qgroups_uptodate(trans);
 	return 0;
 }
 
