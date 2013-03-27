@@ -2616,7 +2616,7 @@ static int btrfs_finish_ordered_io(struct btrfs_ordered_extent *ordered_extent)
 
 	lock_extent_bits(io_tree, ordered_extent->file_offset,
 			 ordered_extent->file_offset + ordered_extent->len - 1,
-			 0, &cached_state, GFP_NOFS);
+			 0, &cached_state);
 
 	ret = test_range_bit(io_tree, ordered_extent->file_offset,
 			ordered_extent->file_offset + ordered_extent->len - 1,
@@ -3416,8 +3416,8 @@ static void fill_inode_item(struct btrfs_trans_handle *trans,
 
 	btrfs_init_map_token(&token);
 
-	btrfs_set_token_inode_uid(leaf, item, i_uid_read(inode), &token);
-	btrfs_set_token_inode_gid(leaf, item, i_gid_read(inode), &token);
+	btrfs_set_token_inode_uid(leaf, item, inode->i_uid, &token);
+	btrfs_set_token_inode_gid(leaf, item, inode->i_gid, &token);
 	btrfs_set_token_inode_size(leaf, item, BTRFS_I(inode)->disk_i_size,
 				   &token);
 	btrfs_set_token_inode_mode(leaf, item, inode->i_mode, &token);
@@ -4543,7 +4543,6 @@ static int btrfs_setsize(struct inode *inode, struct iattr *attr)
 
 		/* Disable nonlocked read DIO to avoid the end less truncate */
 		btrfs_inode_block_unlocked_dio(inode);
-		inode_dio_wait(inode);
 		btrfs_inode_resume_unlocked_dio(inode);
 
 		ret = btrfs_truncate(inode);
@@ -6890,6 +6889,7 @@ unlock:
 				 &cached_state, GFP_NOFS);
 	} else {
 		free_extent_state(cached_state);
+	}
 
 	free_extent_map(em);
 

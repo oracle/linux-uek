@@ -1383,7 +1383,7 @@ static noinline int link_to_fixup_dir(struct btrfs_trans_handle *trans,
 	btrfs_release_path(path);
 	if (ret == 0) {
 		if (!inode->i_nlink)
-			set_nlink(inode, 1);
+			inode->i_nlink = 1;
 		else
 			btrfs_inc_nlink(inode);
 		ret = btrfs_update_inode(trans, root, inode);
@@ -2989,8 +2989,8 @@ static void fill_inode_item(struct btrfs_trans_handle *trans,
 		btrfs_set_token_inode_size(leaf, item, inode->i_size, &token);
 	}
 
-	btrfs_set_token_inode_uid(leaf, item, i_uid_read(inode), &token);
-	btrfs_set_token_inode_gid(leaf, item, i_gid_read(inode), &token);
+	btrfs_set_token_inode_uid(leaf, item, inode->i_uid, &token);
+	btrfs_set_token_inode_gid(leaf, item, inode->i_gid, &token);
 	btrfs_set_token_inode_mode(leaf, item, inode->i_mode, &token);
 	btrfs_set_token_inode_nlink(leaf, item, inode->i_nlink, &token);
 

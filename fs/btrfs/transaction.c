@@ -61,7 +61,7 @@ static inline int can_join_transaction(struct btrfs_transaction *trans,
 /*
  * either allocate a new transaction or hop into the existing one
  */
-static noinline int join_transaction(struct btrfs_root *root, int nofail)
+static noinline int join_transaction(struct btrfs_root *root, int type)
 {
 	struct btrfs_transaction *cur_trans;
 	struct btrfs_fs_info *fs_info = root->fs_info;
@@ -75,7 +75,7 @@ loop:
 	}
 
 	if (fs_info->trans_no_join) {
-		if (!nofail) {
+		if (type != TRANS_JOIN_NOLOCK) {
 			spin_unlock(&fs_info->trans_lock);
 			return -EBUSY;
 		}
@@ -278,13 +278,6 @@ static void wait_current_trans(struct btrfs_root *root)
 	}
 }
 
-enum btrfs_trans_type {
-	TRANS_START,
-	TRANS_JOIN,
-	TRANS_USERSPACE,
-	TRANS_JOIN_NOLOCK,
-};
-
 static int may_wait_transaction(struct btrfs_root *root, int type)
 {
 	if (root->fs_info->log_root_recovering)
@@ -343,12 +336,9 @@ again:
 		wait_current_trans(root);
 
 	do {
-		ret = join_transaction(root, type == TRANS_JOIN_NOLOCK);
+		ret = join_transaction(root, type);
 		if (ret == -EBUSY)
 			wait_current_trans(root);
-			if (unlikely(type == TRANS_ATTACH))
-				ret = -ENOENT;
-		}
 	} while (ret == -EBUSY);
 
 	if (ret < 0) {
@@ -362,13 +352,15 @@ again:
 	h->transaction = cur_trans;
 	h->blocks_used = 0;
 	h->bytes_reserved = 0;
-	h->root = root;
 	h->delayed_ref_updates = 0;
 	h->use_count = 1;
 	h->adding_csums = 0;
 	h->block_rsv = NULL;
 	h->orig_rsv = NULL;
 	h->aborted = 0;
+	h->type = type;
+	h->allocating_chunk = false;
+	INIT_LIST_HEAD(&h->new_bgs);
 
 	smp_mb();
 	if (cur_trans->blocked && may_wait_transaction(root, type)) {

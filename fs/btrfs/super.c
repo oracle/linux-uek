@@ -800,7 +800,7 @@ static int btrfs_fill_super(struct super_block *sb,
 	key.objectid = BTRFS_FIRST_FREE_OBJECTID;
 	key.type = BTRFS_INODE_ITEM_KEY;
 	key.offset = 0;
-	inode = btrfs_iget(sb, &key, tree_root->fs_info->fs_root, NULL);
+	inode = btrfs_iget(sb, &key, fs_info->fs_root, NULL);
 	if (IS_ERR(inode)) {
 		err = PTR_ERR(inode);
 		goto fail_close;
@@ -850,7 +850,7 @@ int btrfs_sync_fs(struct super_block *sb, int wait)
 
 static int btrfs_show_options(struct seq_file *seq, struct vfsmount *vfs)
 {
-	struct btrfs_fs_info *info = btrfs_sb(dentry->d_sb);
+	struct btrfs_fs_info *info = btrfs_sb(vfs->mnt_sb);
 	struct btrfs_root *root = info->tree_root;
 	char *compress_type;
 

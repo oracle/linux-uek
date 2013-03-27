@@ -1444,7 +1444,6 @@ static ssize_t __btrfs_direct_write(struct kiocb *iocb,
 				    loff_t pos, loff_t *ppos, size_t count)
 {
 	struct file *file = iocb->ki_filp;
-	struct iov_iter i;
 	ssize_t written;
 	ssize_t written_buffered;
 	loff_t endbyte;
@@ -1692,7 +1691,6 @@ int btrfs_sync_file(struct file *file, int datasync)
 	if (ret)
 		return ret;
 
-	mutex_lock(&inode->i_mutex);
 
 	/*
 	 * We flush the dirty pages again to avoid some dirty pages in the
@@ -1710,7 +1708,6 @@ int btrfs_sync_file(struct file *file, int datasync)
 	 * and see if its already been committed
 	 */
 	if (!BTRFS_I(inode)->last_trans) {
-		mutex_unlock(&inode->i_mutex);
 		goto out;
 	}
 
@@ -1732,7 +1729,6 @@ int btrfs_sync_file(struct file *file, int datasync)
 		 */
 		clear_bit(BTRFS_INODE_NEEDS_FULL_SYNC,
 			  &BTRFS_I(inode)->runtime_flags);
-		mutex_unlock(&inode->i_mutex);
 		goto out;
 	}
 
@@ -1745,13 +1741,11 @@ int btrfs_sync_file(struct file *file, int datasync)
 	trans = btrfs_start_transaction(root, 0);
 	if (IS_ERR(trans)) {
 		ret = PTR_ERR(trans);
-		mutex_unlock(&inode->i_mutex);
 		goto out;
 	}
 
 	ret = btrfs_log_dentry_safe(trans, root, dentry);
 	if (ret < 0) {
-		mutex_unlock(&inode->i_mutex);
 		goto out;
 	}
 
@@ -1791,6 +1785,7 @@ int btrfs_sync_file(struct file *file, int datasync)
 	} else {
 		ret = btrfs_end_transaction(trans, root);
 	}
+	mutex_lock(&dentry->d_inode->i_mutex);
 out:
 	return ret > 0 ? -EIO : ret;
 }

@@ -430,7 +430,6 @@ static int csum_dirty_buffer(struct btrfs_root *root, struct page *page)
 	if (page != eb->pages[0])
 		return 0;
 
-	ret = -EIO;
 	found_start = btrfs_header_bytenr(eb);
 	if (found_start != start) {
 		WARN_ON(1);
@@ -2704,7 +2703,6 @@ fail_srcu:
 	cleanup_srcu_struct(&fs_info->subvol_srcu);
 fail:
 	btrfs_close_devices(fs_info->fs_devices);
-	free_fs_info(fs_info);
 	return err;
 
 recovery_tree_root:
@@ -3374,8 +3372,6 @@ int close_ctree(struct btrfs_root *root)
 	percpu_counter_destroy(&fs_info->delalloc_bytes);
 	bdi_destroy(&fs_info->bdi);
 	cleanup_srcu_struct(&fs_info->subvol_srcu);
-
-	free_fs_info(fs_info);
 
 	return 0;
 }

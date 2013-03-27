@@ -5,7 +5,7 @@
  */
 
 #include <linux/slab.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include "ulist.h"
 
 /*

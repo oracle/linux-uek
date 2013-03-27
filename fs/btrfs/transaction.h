@@ -52,7 +52,6 @@ enum btrfs_trans_type {
 	TRANS_JOIN,
 	TRANS_USERSPACE,
 	TRANS_JOIN_NOLOCK,
-	TRANS_JOIN_FREEZE,
 };
 
 struct btrfs_trans_handle {
@@ -69,6 +68,7 @@ struct btrfs_trans_handle {
 	short adding_csums;
 	bool allocating_chunk;
 	enum btrfs_trans_type type;
+	struct list_head new_bgs;
 };
 
 struct btrfs_pending_snapshot {

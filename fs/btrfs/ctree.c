@@ -4606,6 +4606,7 @@ static void del_ptr(struct btrfs_trans_handle *trans, struct btrfs_root *root,
 {
 	struct extent_buffer *parent = path->nodes[level];
 	u32 nritems;
+	int ret;
 
 	nritems = btrfs_header_nritems(parent);
 	if (slot != nritems - 1) {
