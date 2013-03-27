@@ -1635,6 +1635,8 @@ static int cleaner_kthread(void *arg)
 	struct btrfs_root *root = arg;
 
 	do {
+		vfs_check_frozen(root->fs_info->sb, SB_FREEZE_WRITE);
+
 		if (!(root->fs_info->sb->s_flags & MS_RDONLY) &&
 		    mutex_trylock(&root->fs_info->cleaner_mutex)) {
 			btrfs_run_delayed_iputs(root);
@@ -1668,6 +1670,7 @@ static int transaction_kthread(void *arg)
 	do {
 		cannot_commit = false;
 		delay = HZ * 30;
+		vfs_check_frozen(root->fs_info->sb, SB_FREEZE_WRITE);
 		mutex_lock(&root->fs_info->transaction_kthread_mutex);
 
 		spin_lock(&root->fs_info->trans_lock);
