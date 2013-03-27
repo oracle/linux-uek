@@ -1445,7 +1445,9 @@ static int search_bitmap(struct btrfs_free_space_ctl *ctl,
 			  max_t(u64, *offset, bitmap_info->offset));
 	bits = bytes_to_bits(*bytes, ctl->unit);
 
-	for_each_set_bit_from(i, bitmap_info->bitmap, BITS_PER_BITMAP) {
+	for (i = find_next_bit(bitmap_info->bitmap, BITS_PER_BITMAP, i);
+	     i < BITS_PER_BITMAP;
+	     i = find_next_bit(bitmap_info->bitmap, BITS_PER_BITMAP, i + 1)) {
 		next_zero = find_next_zero_bit(bitmap_info->bitmap,
 					       BITS_PER_BITMAP, i);
 		if ((next_zero - i) >= bits) {
@@ -2303,7 +2305,9 @@ static int btrfs_bitmap_cluster(struct btrfs_block_group_cache *block_group,
 
 again:
 	found_bits = 0;
-	for_each_set_bit_from(i, entry->bitmap, BITS_PER_BITMAP) {
+	for (i = find_next_bit(entry->bitmap, BITS_PER_BITMAP, i);
+	     i < BITS_PER_BITMAP;
+	     i = find_next_bit(entry->bitmap, BITS_PER_BITMAP, i + 1)) {
 		next_zero = find_next_zero_bit(entry->bitmap,
 					       BITS_PER_BITMAP, i);
 		if (next_zero - i >= min_bits) {
