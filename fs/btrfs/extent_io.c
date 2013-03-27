@@ -707,9 +707,10 @@ static void uncache_state(struct extent_state **cached_ptr)
  * [start, end] is inclusive This takes the tree lock.
  */
 
-int set_extent_bit(struct extent_io_tree *tree, u64 start, u64 end,
-		   int bits, int exclusive_bits, u64 *failed_start,
-		   struct extent_state **cached_state, gfp_t mask)
+static int __must_check
+__set_extent_bit(struct extent_io_tree *tree, u64 start, u64 end,
+		 int bits, int exclusive_bits, u64 *failed_start,
+		 struct extent_state **cached_state, gfp_t mask)
 {
 	struct extent_state *state;
 	struct extent_state *prealloc = NULL;
@@ -898,6 +899,15 @@ search_again:
 		cond_resched();
 	goto again;
 }
+
+int set_extent_bit(struct extent_io_tree *tree, u64 start, u64 end, int bits,
+		   u64 *failed_start, struct extent_state **cached_state,
+		   gfp_t mask)
+{
+	return __set_extent_bit(tree, start, end, bits, 0, failed_start,
+				cached_state, mask);
+}
+
 
 /**
  * convert_extent_bit - convert all bits in a given range from one bit to
@@ -1104,14 +1114,14 @@ search_again:
 int set_extent_dirty(struct extent_io_tree *tree, u64 start, u64 end,
 		     gfp_t mask)
 {
-	return set_extent_bit(tree, start, end, EXTENT_DIRTY, 0, NULL,
+	return set_extent_bit(tree, start, end, EXTENT_DIRTY, NULL,
 			      NULL, mask);
 }
 
 int set_extent_bits(struct extent_io_tree *tree, u64 start, u64 end,
 		    int bits, gfp_t mask)
 {
-	return set_extent_bit(tree, start, end, bits, 0, NULL,
+	return set_extent_bit(tree, start, end, bits, NULL,
 			      NULL, mask);
 }
 
@@ -1126,7 +1136,7 @@ int set_extent_delalloc(struct extent_io_tree *tree, u64 start, u64 end,
 {
 	return set_extent_bit(tree, start, end,
 			      EXTENT_DELALLOC | EXTENT_UPTODATE,
-			      0, NULL, cached_state, mask);
+			      NULL, cached_state, mask);
 }
 
 int set_extent_defrag(struct extent_io_tree *tree, u64 start, u64 end,
@@ -1148,7 +1158,7 @@ int clear_extent_dirty(struct extent_io_tree *tree, u64 start, u64 end,
 int set_extent_new(struct extent_io_tree *tree, u64 start, u64 end,
 		     gfp_t mask)
 {
-	return set_extent_bit(tree, start, end, EXTENT_NEW, 0, NULL,
+	return set_extent_bit(tree, start, end, EXTENT_NEW, NULL,
 			      NULL, mask);
 }
 
@@ -1156,7 +1166,7 @@ int set_extent_uptodate(struct extent_io_tree *tree, u64 start, u64 end,
 			struct extent_state **cached_state, gfp_t mask)
 {
 	return set_extent_bit(tree, start, end, EXTENT_UPTODATE, 0,
-			      NULL, cached_state, mask);
+			      cached_state, mask);
 }
 
 int clear_extent_uptodate(struct extent_io_tree *tree, u64 start, u64 end,
@@ -1176,9 +1186,9 @@ int lock_extent_bits(struct extent_io_tree *tree, u64 start, u64 end,
 	int err;
 	u64 failed_start;
 	while (1) {
-		err = set_extent_bit(tree, start, end, EXTENT_LOCKED | bits,
-				     EXTENT_LOCKED, &failed_start,
-				     cached_state, GFP_NOFS);
+		err = __set_extent_bit(tree, start, end, EXTENT_LOCKED | bits,
+				       EXTENT_LOCKED, &failed_start,
+				       cached_state, GFP_NOFS);
 		if (err == -EEXIST) {
 			wait_extent_bit(tree, failed_start, end, EXTENT_LOCKED);
 			start = failed_start;
@@ -1199,8 +1209,8 @@ int try_lock_extent(struct extent_io_tree *tree, u64 start, u64 end)
 	int err;
 	u64 failed_start;
 
-	err = set_extent_bit(tree, start, end, EXTENT_LOCKED, EXTENT_LOCKED,
-			     &failed_start, NULL, GFP_NOFS);
+	err = __set_extent_bit(tree, start, end, EXTENT_LOCKED, EXTENT_LOCKED,
+			       &failed_start, NULL, GFP_NOFS);
 	if (err == -EEXIST) {
 		if (failed_start > start)
 			clear_extent_bit(tree, start, failed_start - 1,
