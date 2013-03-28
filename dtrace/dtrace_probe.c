@@ -855,7 +855,9 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				continue;
 
 			case DTRACEACT_JSTACK:
-			case DTRACEACT_USTACK:
+			case DTRACEACT_USTACK: {
+				pid_t	pid = current->pid;
+
 				if (!dtrace_priv_proc(state))
 					continue;
 
@@ -875,29 +877,35 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					continue;
 				}
 
+				DTRACE_STORE(uint64_t, tomax, valoffs,
+					     (uint64_t)pid);
+
 				if (DTRACE_USTACK_STRSIZE(rec->dtrd_arg) != 0 &&
 				    current->dtrace_helpers != NULL) {
 					/*
 					 * This is the slow path -- we have
 					 * allocated string space, and we're
 					 * getting the stack of a process that
-					 * has helpers.  Call into a separate
+					 * has helpers.	 Call into a separate
 					 * routine to perform this processing.
 					 */
 					dtrace_action_ustack(
 						&mstate, state,
-						(uint64_t *)(tomax + valoffs),
+						(uint64_t *)(tomax + valoffs +
+							     sizeof(uint64_t)),
 						rec->dtrd_arg);
 					continue;
 				}
 
 				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				dtrace_getupcstack(
-					(uint64_t *)(tomax + valoffs),
+					(uint64_t *)(tomax + valoffs +
+						     sizeof(uint64_t)),
 					DTRACE_USTACK_NFRAMES(rec->dtrd_arg) +
 					1);
 				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 				continue;
+			}
 
 			default:
 				break;
