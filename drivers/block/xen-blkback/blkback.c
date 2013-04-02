@@ -49,6 +49,7 @@
 #include <xen/xen.h>
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
+#include <xen/balloon.h>
 #include "common.h"
 
 /*
@@ -242,6 +243,7 @@ static void free_persistent_gnts(struct rb_root *root, unsigned int num)
 			ret = gnttab_unmap_refs(unmap, NULL, pages,
 				segs_to_unmap);
 			BUG_ON(ret);
+			free_xenballooned_pages(segs_to_unmap, pages);
 			segs_to_unmap = 0;
 		}
 
@@ -530,8 +532,8 @@ static int xen_blkbk_map(struct blkif_request *req,
 				GFP_KERNEL);
 			if (!persistent_gnt)
 				return -ENOMEM;
-			persistent_gnt->page = alloc_page(GFP_KERNEL);
-			if (!persistent_gnt->page) {
+			if (alloc_xenballooned_pages(1, &persistent_gnt->page,
+			    false)) {
 				kfree(persistent_gnt);
 				return -ENOMEM;
 			}
@@ -898,7 +900,6 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
 		goto fail_response;
 	}
 
-	preq.dev           = req->u.rw.handle;
 	preq.sector_number = req->u.rw.sector_number;
 	preq.nr_sects      = 0;
 
