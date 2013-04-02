@@ -1094,18 +1094,14 @@ static bool ceph_msg_data_advance(struct ceph_msg_data *data, size_t bytes)
 	return new_piece;
 }
 
-static void prepare_message_data(struct ceph_msg *msg)
+static void prepare_message_data(struct ceph_msg *msg, u32 data_len)
 {
-	size_t data_len;
-
 	BUG_ON(!msg);
-
-	data_len = le32_to_cpu(msg->hdr.data_len);
 	BUG_ON(!data_len);
 
 	/* Initialize data cursor */
 
-	ceph_msg_data_cursor_init(msg->data, data_len);
+	ceph_msg_data_cursor_init(msg->data, (size_t)data_len);
 }
 
 /*
@@ -1168,11 +1164,12 @@ static void prepare_write_message(struct ceph_connection *con)
 		m->hdr.seq = cpu_to_le64(++con->out_seq);
 		m->needs_out_seq = false;
 	}
+	WARN_ON(m->data_length != le32_to_cpu(m->hdr.data_len));
 
-	dout("prepare_write_message %p seq %lld type %d len %d+%d+%d\n",
+	dout("prepare_write_message %p seq %lld type %d len %d+%d+%zd\n",
 	     m, con->out_seq, le16_to_cpu(m->hdr.type),
 	     le32_to_cpu(m->hdr.front_len), le32_to_cpu(m->hdr.middle_len),
-	     le32_to_cpu(m->hdr.data_len));
+	     m->data_length);
 	BUG_ON(le32_to_cpu(m->hdr.front_len) != m->front.iov_len);
 
 	/* tag + hdr + front + middle */
@@ -1203,8 +1200,8 @@ static void prepare_write_message(struct ceph_connection *con)
 
 	/* is there a data payload? */
 	con->out_msg->footer.data_crc = 0;
-	if (m->hdr.data_len) {
-		prepare_message_data(con->out_msg);
+	if (m->data_length) {
+		prepare_message_data(con->out_msg, m->data_length);
 		con->out_more = 1;  /* data + footer will follow */
 	} else {
 		/* no, queue up footer too and be done */
@@ -2249,7 +2246,7 @@ static int read_partial_message(struct ceph_connection *con)
 		/* prepare for data payload, if any */
 
 		if (data_len)
-			prepare_message_data(con->in_msg);
+			prepare_message_data(con->in_msg, data_len);
 	}
 
 	/* front */
