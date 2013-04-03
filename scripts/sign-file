@@ -403,6 +403,6 @@ print FD
     ;
 close FD || die $dest;
 
-if ($#ARGV != 3) {
+if ($#ARGV != 4) {
     rename($dest, $module) || die $module;
 }
