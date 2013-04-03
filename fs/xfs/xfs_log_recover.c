@@ -1787,6 +1787,7 @@ xlog_recover_do_inode_buffer(
 	xfs_agino_t		*buffer_nextp;
 
 	trace_xfs_log_recover_buf_inode_buf(mp->m_log, buf_f);
+	bp->b_ops = &xfs_inode_buf_ops;
 
 	inodes_per_buf = BBTOB(bp->b_io_length) >> mp->m_sb.sb_inodelog;
 	for (i = 0; i < inodes_per_buf; i++) {
@@ -1989,6 +1990,18 @@ xlog_recover_do_reg_buffer(
 			break;
 		}
 		bp->b_ops = &xfs_dquot_buf_ops;
+		break;
+	case XFS_BLF_DINO_BUF:
+		/*
+		 * we get here with inode allocation buffers, not buffers that
+		 * track unlinked list changes.
+		 */
+		if (*(__be16 *)bp->b_addr != cpu_to_be16(XFS_DINODE_MAGIC)) {
+			xfs_warn(mp, "Bad INODE block magic!");
+			ASSERT(0);
+			break;
+		}
+		bp->b_ops = &xfs_inode_buf_ops;
 		break;
 	default:
 		break;
@@ -2278,6 +2291,7 @@ xlog_recover_inode_pass2(
 	int			attr_index;
 	uint			fields;
 	xfs_icdinode_t		*dicp;
+	uint			isize;
 	int			need_free = 0;
 
 	if (item->ri_buf[0].i_len == sizeof(xfs_inode_log_format_t)) {
@@ -2303,7 +2317,7 @@ xlog_recover_inode_pass2(
 	trace_xfs_log_recover_inode_recover(log, in_f);
 
 	bp = xfs_buf_read(mp->m_ddev_targp, in_f->ilf_blkno, in_f->ilf_len, 0,
-			  NULL);
+			  &xfs_inode_buf_ops);
 	if (!bp) {
 		error = ENOMEM;
 		goto error;
@@ -2414,7 +2428,8 @@ xlog_recover_inode_pass2(
 		error = EFSCORRUPTED;
 		goto error;
 	}
-	if (unlikely(item->ri_buf[1].i_len > sizeof(struct xfs_icdinode))) {
+	isize = xfs_icdinode_size(dicp->di_version);
+	if (unlikely(item->ri_buf[1].i_len > isize)) {
 		XFS_CORRUPTION_ERROR("xlog_recover_inode_pass2(7)",
 				     XFS_ERRLEVEL_LOW, mp, dicp);
 		xfs_buf_relse(bp);
@@ -2426,13 +2441,13 @@ xlog_recover_inode_pass2(
 	}
 
 	/* The core is in in-core format */
-	xfs_dinode_to_disk(dip, item->ri_buf[1].i_addr);
+	xfs_dinode_to_disk(dip, dicp);
 
 	/* the rest is in on-disk format */
-	if (item->ri_buf[1].i_len > sizeof(struct xfs_icdinode)) {
-		memcpy((xfs_caddr_t) dip + sizeof(struct xfs_icdinode),
-			item->ri_buf[1].i_addr + sizeof(struct xfs_icdinode),
-			item->ri_buf[1].i_len  - sizeof(struct xfs_icdinode));
+	if (item->ri_buf[1].i_len > isize) {
+		memcpy((char *)dip + isize,
+			item->ri_buf[1].i_addr + isize,
+			item->ri_buf[1].i_len - isize);
 	}
 
 	fields = in_f->ilf_fields;
@@ -2516,6 +2531,9 @@ xlog_recover_inode_pass2(
 	}
 
 write_inode_buffer:
+	/* re-generate the checksum. */
+	xfs_dinode_calc_crc(log->l_mp, dip);
+
 	ASSERT(bp->b_target->bt_mount == mp);
 	bp->b_iodone = xlog_recover_iodone;
 	xfs_buf_delwri_queue(bp, buffer_list);
