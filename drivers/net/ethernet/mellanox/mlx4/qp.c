@@ -221,8 +221,11 @@ int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_qp_table *qp_table = &priv->qp_table;
 
+	/* Only IPoIB uses a large cnt. In this case, just allocate
+	 * as usual, ignoring bf skipping, since IPoIB does not run over RoCE
+	 */
 	if (cnt > MLX4_MAX_BF_QP_RANGE && bf_qp)
-		return -ENOMEM;
+		bf_qp = 0;
 
 	*base = mlx4_bitmap_alloc_range(&qp_table->bitmap, cnt, align,
 					bf_qp ? MLX4_BF_QP_SKIP_MASK : 0);
