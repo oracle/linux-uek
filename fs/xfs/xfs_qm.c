@@ -910,6 +910,10 @@ xfs_qm_dqiter_bufs(
 		if (error)
 			break;
 
+		/*
+		 * XXX(hch): need to figure out if it makes sense to validate
+		 *	     the CRC here.
+		 */
 		xfs_qm_reset_dqcounts(mp, bp, firstid, type);
 		xfs_buf_delwri_queue(bp, buffer_list);
 		xfs_buf_relse(bp);
