@@ -1,0 +1,64 @@
+--- kernel.spec
++++ kernel-uek.spec
+@@ -529,16 +529,8 @@
+ BuildRequires: elfutils-devel zlib-devel binutils-devel newt-devel python-devel perl(ExtUtils::Embed) pciutils-devel gettext
+ %endif
+ BuildConflicts: rhbuildsys(DiskFree) < 500Mb
+-
+-%define fancy_debuginfo 0
+ %if %{with_debuginfo}
+-%if 0%{?fedora} >= 8 || 0%{?rhel} >= 6
+-%define fancy_debuginfo 1
+-%endif
+-%endif
+-
+-%if %{fancy_debuginfo}
+-# Fancy new debuginfo generation introduced in Fedora 8.
++# Fancy new debuginfo generation introduced in Fedora 8/RHEL 6.
+ BuildRequires: rpm-build >= 4.4.2.1-4
+ %define debuginfo_args --strict-build-id
+ %endif
+@@ -1739,13 +1729,11 @@
+ # This macro is used by %%install, so we must redefine it before that.
+ %define debug_package %{nil}
+ 
+-%if %{fancy_debuginfo}
++%if %{with_debuginfo}
+ %define __debug_install_post \
+   /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+ %{nil}
+-%endif
+ 
+-%if %{with_debuginfo}
+ %ifnarch noarch
+ %global __debug_package 1
+ %files -f debugfiles.list debuginfo-common-%{_target_cpu}
+@@ -2034,19 +2022,8 @@
+ /usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+ %if %{with_debuginfo}\
+ %ifnarch noarch\
+-%if %{fancy_debuginfo}\
+ %{expand:%%files -f debuginfo%{?2}.list %{?2:%{2}-}debuginfo}\
+-%else\
+-%{expand:%%files %{?2:%{2}-}debuginfo}\
+-%endif\
+ %defattr(-,root,root)\
+-%if !%{fancy_debuginfo}\
+-%if "%{elf_image_install_path}" != ""\
+-%{debuginfodir}/%{elf_image_install_path}/*-%{KVERREL}%{?2:.%{2}}.debug\
+-%endif\
+-%{debuginfodir}/lib/modules/%{KVERREL}%{?2:.%{2}}\
+-%{debuginfodir}/usr/src/kernels/%{KVERREL}%{?2:.%{2}}\
+-%endif\
+ %endif\
+ %endif\
+ %endif\
+@@ -2079,6 +2056,8 @@
+   enough releases now.
+ - ppc64/ppc vdso patches have been upstream for ages.
+ - Install vdso on s390/s390x.
++- Fedora 8 was a very long time ago... fancy_debuginfo turns into
++  with_debuginfo in the glorious future.
+ 
+ * Wed Oct 26 2011 Josh Boyer <jwboyer@redhat.com>
+ - Add patch to fix XFS memory corruption (rhbz 749166)
