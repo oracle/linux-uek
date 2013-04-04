@@ -263,6 +263,4 @@ int cpufreq_governor_dbs(struct cpufreq_policy *policy,
 		struct common_dbs_data *cdata, unsigned int event);
 void gov_queue_work(struct dbs_data *dbs_data, struct cpufreq_policy *policy,
 		unsigned int delay, bool all_cpus);
-int cpufreq_governor_dbs(struct dbs_data *dbs_data,
-		struct cpufreq_policy *policy, unsigned int event);
 #endif /* _CPUFREQ_GOVERNOR_H */
