@@ -749,7 +749,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	tx_queue = &priv->tx_queue[queue_index];
 
 	/* Additional hashing is only done for TCP/IP or UDP/IP packets */
-	if (queue_index < priv->tx_queue_num &&
+	if (queue_index < priv->tx_queue_num && iph &&
 	    (iph->protocol & (IPPROTO_UDP | IPPROTO_TCP)))
 		queue_index = mlx4_en_get_shadow_queue(priv, tx_queue,
 						       skb, queue_index);
