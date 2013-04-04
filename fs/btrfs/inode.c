@@ -98,7 +98,8 @@ static noinline int cow_file_range(struct inode *inode,
 static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 					   u64 len, u64 orig_start,
 					   u64 block_start, u64 block_len,
-					   u64 orig_block_len, int type);
+					   u64 orig_block_len, u64 ram_bytes,
+					   int type);
 
 static int btrfs_init_inode_security(struct btrfs_trans_handle *trans,
 				     struct inode *inode,  struct inode *dir,
@@ -721,6 +722,7 @@ retry:
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = async_extent->ram_size;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		em->compress_type = async_extent->compress_type;
 		set_bit(EXTENT_FLAG_PINNED, &em->flags);
@@ -929,6 +931,7 @@ static noinline int __cow_file_range(struct btrfs_trans_handle *trans,
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = ram_size;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		set_bit(EXTENT_FLAG_PINNED, &em->flags);
 		em->generation = -1;
@@ -1191,6 +1194,7 @@ static noinline int run_delalloc_nocow(struct inode *inode,
 	u64 disk_bytenr;
 	u64 num_bytes;
 	u64 disk_num_bytes;
+	u64 ram_bytes;
 	int extent_type;
 	int ret, err;
 	int type;
@@ -1287,6 +1291,7 @@ next_slot:
 				    struct btrfs_file_extent_item);
 		extent_type = btrfs_file_extent_type(leaf, fi);
 
+		ram_bytes = btrfs_file_extent_ram_bytes(leaf, fi);
 		if (extent_type == BTRFS_FILE_EXTENT_REG ||
 		    extent_type == BTRFS_FILE_EXTENT_PREALLOC) {
 			disk_bytenr = btrfs_file_extent_disk_bytenr(leaf, fi);
@@ -1370,6 +1375,7 @@ out_check:
 			em->block_len = num_bytes;
 			em->block_start = disk_bytenr;
 			em->orig_block_len = disk_num_bytes;
+			em->ram_bytes = ram_bytes;
 			em->bdev = root->fs_info->fs_devices->latest_bdev;
 			set_bit(EXTENT_FLAG_PINNED, &em->flags);
 			set_bit(EXTENT_FLAG_FILLING, &em->flags);
@@ -3774,6 +3780,7 @@ int btrfs_cont_expand(struct inode *inode, loff_t oldsize, loff_t size)
 			hole_em->block_start = EXTENT_MAP_HOLE;
 			hole_em->block_len = 0;
 			hole_em->orig_block_len = 0;
+			hole_em->ram_bytes = hole_size;
 			hole_em->bdev = root->fs_info->fs_devices->latest_bdev;
 			hole_em->compress_type = BTRFS_COMPRESS_NONE;
 			hole_em->generation = trans->transid;
@@ -5473,6 +5480,7 @@ again:
 		goto not_found_em;
 	}
 
+	em->ram_bytes = btrfs_file_extent_ram_bytes(leaf, item);
 	if (found_type == BTRFS_FILE_EXTENT_REG ||
 	    found_type == BTRFS_FILE_EXTENT_PREALLOC) {
 		em->start = extent_start;
@@ -5805,7 +5813,7 @@ static struct extent_map *btrfs_new_extent_direct(struct inode *inode,
 	}
 
 	em = create_pinned_em(inode, start, ins.offset, start, ins.objectid,
-			      ins.offset, ins.offset, 0);
+			      ins.offset, ins.offset, ins.offset, 0);
 	if (IS_ERR(em))
 		goto out;
 
@@ -5991,7 +5999,8 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 					   u64 len, u64 orig_start,
 					   u64 block_start, u64 block_len,
-					   u64 orig_block_len, int type)
+					   u64 orig_block_len, u64 ram_bytes,
+					   int type)
 {
 	struct extent_map_tree *em_tree;
 	struct extent_map *em;
@@ -6010,6 +6019,7 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 	em->block_start = block_start;
 	em->bdev = root->fs_info->fs_devices->latest_bdev;
 	em->orig_block_len = orig_block_len;
+	em->ram_bytes = ram_bytes;
 	em->generation = -1;
 	set_bit(EXTENT_FLAG_PINNED, &em->flags);
 	if (type == BTRFS_ORDERED_PREALLOC)
@@ -6142,7 +6152,8 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 				em = create_pinned_em(inode, start, len,
 						       orig_start,
 						       block_start, len,
-						       orig_block_len, type);
+						       orig_block_len,
+						       ram_bytes, type);
 				if (IS_ERR(em)) {
 					btrfs_end_transaction(trans, root);
 					goto unlock_err;
@@ -7865,6 +7876,7 @@ static int __btrfs_prealloc_file_range(struct inode *inode, int mode,
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = ins.offset;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		set_bit(EXTENT_FLAG_PREALLOC, &em->flags);
 		em->generation = trans->transid;
