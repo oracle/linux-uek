@@ -731,10 +731,7 @@ retry:
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST) {
 				free_extent_map(em);
@@ -938,10 +935,7 @@ static noinline int __cow_file_range(struct btrfs_trans_handle *trans,
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST) {
 				free_extent_map(em);
@@ -1382,10 +1376,7 @@ out_check:
 			em->generation = -1;
 			while (1) {
 				write_lock(&em_tree->lock);
-				ret = add_extent_mapping(em_tree, em);
-				if (!ret)
-					list_move(&em->list,
-						  &em_tree->modified_extents);
+				ret = add_extent_mapping(em_tree, em, 1);
 				write_unlock(&em_tree->lock);
 				if (ret != -EEXIST) {
 					free_extent_map(em);
@@ -3787,10 +3778,7 @@ int btrfs_cont_expand(struct inode *inode, loff_t oldsize, loff_t size)
 
 			while (1) {
 				write_lock(&em_tree->lock);
-				err = add_extent_mapping(em_tree, hole_em);
-				if (!err)
-					list_move(&hole_em->list,
-						  &em_tree->modified_extents);
+				err = add_extent_mapping(em_tree, hole_em, 1);
 				write_unlock(&em_tree->lock);
 				if (err != -EEXIST)
 					break;
@@ -5305,7 +5293,7 @@ static int merge_extent_mapping(struct extent_map_tree *em_tree,
 		em->block_start += start_diff;
 		em->block_len -= start_diff;
 	}
-	return add_extent_mapping(em_tree, em);
+	return add_extent_mapping(em_tree, em, 0);
 }
 
 static noinline int uncompress_inline(struct btrfs_path *path,
@@ -5601,7 +5589,7 @@ insert:
 
 	err = 0;
 	write_lock(&em_tree->lock);
-	ret = add_extent_mapping(em_tree, em);
+	ret = add_extent_mapping(em_tree, em, 0);
 	/* it is possible that someone inserted the extent into the tree
 	 * while we had the lock dropped.  It is also possible that
 	 * an overlapping map exists in the tree
@@ -6029,10 +6017,7 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 		btrfs_drop_extent_cache(inode, em->start,
 				em->start + em->len - 1, 0);
 		write_lock(&em_tree->lock);
-		ret = add_extent_mapping(em_tree, em);
-		if (!ret)
-			list_move(&em->list,
-				  &em_tree->modified_extents);
+		ret = add_extent_mapping(em_tree, em, 1);
 		write_unlock(&em_tree->lock);
 	} while (ret == -EEXIST);
 
@@ -7883,10 +7868,7 @@ static int __btrfs_prealloc_file_range(struct inode *inode, int mode,
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST)
 				break;
