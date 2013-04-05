@@ -445,6 +445,7 @@ extern int disable_ertm;
 
 int l2cap_init_sockets(void);
 void l2cap_cleanup_sockets(void);
+bool l2cap_is_socket(struct socket *sock);
 
 void l2cap_send_cmd(struct l2cap_conn *conn, u8 ident, u8 code, u16 len, void *data);
 void __l2cap_connect_rsp_defer(struct l2cap_chan *chan);
