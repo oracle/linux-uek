@@ -321,6 +321,9 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev,
 	skb_reset_mac_header(skb);
 	skb_pull(skb, IPOIB_ENCAP_LEN);
 
+	/* indicate size for reasmb */
+	skb->truesize = skb->len + sizeof(struct sk_buff);
+
 	++recv_ring->stats.rx_packets;
 	recv_ring->stats.rx_bytes += skb->len;
 
