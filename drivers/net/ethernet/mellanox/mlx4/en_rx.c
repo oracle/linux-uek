@@ -414,7 +414,6 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 	int index;
 	unsigned int length;
 	int polled = 0;
-	int ip_summed;
 	struct ethhdr *ethh;
 	int factor = priv->cqe_factor;
 	u32 cons_index = mcq->cons_index;
@@ -498,29 +497,26 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 		}
 		/* avoid cache miss in tcp_gro_receive */
 		prefetch((char *)ethh + 64);
-
-		if (likely((dev->features & NETIF_F_RXCSUM) &&
-			   (cqe->status & cpu_to_be16(MLX4_CQE_STATUS_IPOK)) &&
-			   (cqe->checksum == cpu_to_be16(0xffff)))) {
-			ring->csum_ok++;
-			ip_summed = CHECKSUM_UNNECESSARY;
-		} else {
-			ring->csum_none++;
-			ip_summed = CHECKSUM_NONE;
-		}
-
-		skb->ip_summed = ip_summed;
 		skb_record_rx_queue(skb, cq->ring);
 
 		if (dev->features & NETIF_F_RXHASH)
 			skb->rxhash = be32_to_cpu(cqe->immed_rss_invalid);
 
-		if ((be32_to_cpu(cqe->vlan_my_qpn) &
-		     MLX4_CQE_VLAN_PRESENT_MASK) &&
-		    (ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_NONE))
-			__vlan_hwaccel_put_tag(skb, be16_to_cpu(cqe->sl_vid));
+		if (likely((dev->features & NETIF_F_RXCSUM) &&
+			   (cqe->status & cpu_to_be16(MLX4_CQE_STATUS_IPOK)) &&
+			   (cqe->checksum == cpu_to_be16(0xffff)))) {
+			ring->csum_ok++;
+			skb->ip_summed = CHECKSUM_UNNECESSARY;
+		} else {
+			ring->csum_none++;
+			skb->ip_summed = CHECKSUM_NONE;
+		}
 
-		if (ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_ALL) {
+		if ((ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_NONE) &&
+		    (be32_to_cpu(cqe->vlan_my_qpn) &
+		     MLX4_CQE_VLAN_PRESENT_MASK)) {
+			__vlan_hwaccel_put_tag(skb, be16_to_cpu(cqe->sl_vid));
+		} else if (ring->hwtstamp_rx_filter == HWTSTAMP_FILTER_ALL) {
 			timestamp = mlx4_en_get_cqe_ts(cqe);
 			mlx4_en_fill_hwtstamps(mdev, skb_hwtstamps(skb),
 					       timestamp);
