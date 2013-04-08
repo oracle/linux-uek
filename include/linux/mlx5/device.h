@@ -410,7 +410,7 @@ struct mlx5_init_seg {
 	__be32			cmd_dbell;
 	__be32			rsvd1[121];
 	struct health_buffer	health;
-	__be32			rsvd2[880];
+	__be32			rsvd2[884];
 	__be32			health_counter;
 	__be32			rsvd3[1023];
 	__be64			ieee1588_clk;
