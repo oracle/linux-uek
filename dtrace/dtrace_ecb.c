@@ -278,8 +278,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 				arg = DTRACE_USTACK_ARG(nframes, strsize);
 			}
 
-			size = (nframes + 2) * sizeof(uint64_t); /* +1 for limit,
-								    +1 for PID */
+			size = (nframes + 1) * sizeof(uint64_t);
 			size += DTRACE_USTACK_STRSIZE(arg);
 			size = P2ROUNDUP(size, (uint32_t)(sizeof(uintptr_t)));
 
