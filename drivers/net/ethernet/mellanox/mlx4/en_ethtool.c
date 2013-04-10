@@ -120,7 +120,7 @@ static const char main_strings[][ETH_GSTRING_LEN] = {
 	"rx_csum_good", "rx_csum_none", "tx_chksum_offload",
 
 	/* packet statistics */
-	"broadcast", "rx_prio_0", "rx_prio_1", "rx_prio_2", "rx_prio_3",
+	"no_wqes", "broadcast", "rx_prio_0", "rx_prio_1", "rx_prio_2", "rx_prio_3",
 	"rx_prio_4", "rx_prio_5", "rx_prio_6", "rx_prio_7", "tx_prio_0",
 	"tx_prio_1", "tx_prio_2", "tx_prio_3", "tx_prio_4", "tx_prio_5",
 	"tx_prio_6", "tx_prio_7",

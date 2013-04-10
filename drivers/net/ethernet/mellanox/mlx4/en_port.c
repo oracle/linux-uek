@@ -217,13 +217,14 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	stats->rx_crc_errors = be32_to_cpu(mlx4_en_stats->RCRC);
 	stats->rx_frame_errors = 0;
 	stats->rx_fifo_errors = be32_to_cpu(mlx4_en_stats->RdropOvflw);
-	stats->rx_missed_errors = priv->if_counters_rx_no_buffer;
+	stats->rx_missed_errors = 0;
 	stats->tx_aborted_errors = 0;
 	stats->tx_carrier_errors = 0;
 	stats->tx_fifo_errors = 0;
 	stats->tx_heartbeat_errors = 0;
 	stats->tx_window_errors = 0;
 
+	priv->pkstats.no_wqes = priv->if_counters_rx_no_buffer;
 	priv->pkstats.broadcast =
 				be64_to_cpu(mlx4_en_stats->RBCAST_prio_0) +
 				be64_to_cpu(mlx4_en_stats->RBCAST_prio_1) +

@@ -375,10 +375,11 @@ struct mlx4_en_port_state {
 };
 
 struct mlx4_en_pkt_stats {
+	unsigned long no_wqes;
 	unsigned long broadcast;
 	unsigned long rx_prio[8];
 	unsigned long tx_prio[8];
-#define NUM_PKT_STATS		17
+#define NUM_PKT_STATS		18
 };
 
 struct mlx4_en_port_stats {
