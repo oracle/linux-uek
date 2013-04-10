@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2001-2008 LSI Corporation.
+ *  Copyright (c) 2001-2010 LSI Corporation.
  *
  *
  *           Name:  mpi_raid.h

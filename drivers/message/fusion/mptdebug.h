@@ -3,11 +3,45 @@
  *      For use with LSI PCI chip/adapter(s)
  *      running LSI Fusion MPT (Message Passing Technology) firmware.
  *
- *  Copyright (c) 1999-2008 LSI Corporation
+ *  Copyright (c) 1999-2010 LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
- *
  */
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
+/*
+
+    This program is free software; you can redistribute it and/or modify
+    it under the terms of the GNU General Public License as published by
+    the Free Software Foundation; version 2 of the License.
+
+    This program is distributed in the hope that it will be useful,
+    but WITHOUT ANY WARRANTY; without even the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+    GNU General Public License for more details.
+
+    NO WARRANTY
+    THE PROGRAM IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OR
+    CONDITIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED INCLUDING, WITHOUT
+    LIMITATION, ANY WARRANTIES OR CONDITIONS OF TITLE, NON-INFRINGEMENT,
+    MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE. Each Recipient is
+    solely responsible for determining the appropriateness of using and
+    distributing the Program and assumes all risks associated with its
+    exercise of rights under this Agreement, including but not limited to
+    the risks and costs of program errors, damage to or loss of data,
+    programs or equipment, and unavailability or interruption of operations.
+
+    DISCLAIMER OF LIABILITY
+    NEITHER RECIPIENT NOR ANY CONTRIBUTORS SHALL HAVE ANY LIABILITY FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+    DAMAGES (INCLUDING WITHOUT LIMITATION LOST PROFITS), HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+    TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+    USE OR DISTRIBUTION OF THE PROGRAM OR THE EXERCISE OF ANY RIGHTS GRANTED
+    HEREUNDER, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES
+
+    You should have received a copy of the GNU General Public License
+    along with this program; if not, write to the Free Software
+    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307  USA
+*/
 
 #ifndef MPTDEBUG_H_INCLUDED
 #define MPTDEBUG_H_INCLUDED
@@ -17,6 +51,10 @@
  *
  * Example:  (programming for MPT_DEBUG_EVENTS on host 5)
  *
+ * global setting:
+ * echo 8 > /sys/module/mptbase/parameters/mpt_debug_level
+ *
+ * per host setting:
  * echo 8 > /sys/class/scsi_host/host5/debug_level
  *
  * --------------------------------------------------------
@@ -55,10 +93,11 @@
 #define MPT_DEBUG_RESET			0x00008000
 #define MPT_DEBUG_SCSI			0x00010000
 #define MPT_DEBUG_IOCTL			0x00020000
+#define MPT_DEBUG_CSMISAS		0x00040000
 #define MPT_DEBUG_FC			0x00080000
 #define MPT_DEBUG_SAS			0x00100000
 #define MPT_DEBUG_SAS_WIDE		0x00200000
-#define MPT_DEBUG_36GB_MEM              0x00400000
+#define MPT_DEBUG_36GB_MEM		0x00400000
 
 /*
  * CONFIG_FUSION_LOGGING - enabled in Kconfig
@@ -127,6 +166,9 @@
 #define dctlprintk(IOC, CMD)			\
 	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_IOCTL)
 
+#define dcsmisasprintk(IOC, CMD)		\
+	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_CSMISAS)
+
 #define dfcprintk(IOC, CMD)			\
 	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_FC)
 
@@ -138,7 +180,6 @@
 
 #define d36memprintk(IOC, CMD)		\
 	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_36GB_MEM)
-
 
 /*
  * Verbose logging
