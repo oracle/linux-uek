@@ -6590,7 +6590,7 @@ static int qla4xxx_sysfs_ddb_delete(struct iscsi_bus_flash_session *fnode_sess)
 	struct dev_db_entry *fw_ddb_entry = NULL;
 	dma_addr_t fw_ddb_entry_dma;
 	uint16_t *ddb_cookie = NULL;
-	size_t ddb_size;
+	size_t ddb_size = 0;
 	void *pddb = NULL;
 	int target_id;
 	int rc = 0;
