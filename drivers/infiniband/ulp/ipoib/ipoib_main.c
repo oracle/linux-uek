@@ -889,7 +889,7 @@ send_using_neigh:
 	if (ipoib_cm_get(neigh)) {
 		/* in select queue cm wasn't enabled ring is likely wrong */
 		if (!IPOIB_CM_SUPPORTED(cb->hwaddr)) {
-			ipoib_warn(priv, "CM NOT supported,ring likely wrong, dropping.cm is: %d\n",
+			ipoib_dbg(priv, "CM NOT supported,ring likely wrong, dropping.cm is: %d\n",
 				   ipoib_cm_admin_enabled(dev));
 			++dev->stats.tx_dropped;
 			dev_kfree_skb_any(skb);
