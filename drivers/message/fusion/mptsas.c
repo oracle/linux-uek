@@ -102,10 +102,6 @@ MODULE_PARM_DESC(mpt_pt_clear,
 		" Clear persistency table: enable=1  "
 		"(default=MPTSCSIH_PT_CLEAR=0)");
 
-static int mptsas_multiprobe = 1;
-module_param(mptsas_multiprobe, int, 0);
-MODULE_PARM_DESC(mptsas_multiprobe, "Multiprobe the devices,default enabled!");
-
 static int mpt_cmd_retry_count = 300;
 module_param(mpt_cmd_retry_count, int, 0);
 MODULE_PARM_DESC(mpt_cmd_retry_count,
@@ -6222,15 +6218,7 @@ mptsas_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	data->pdev = pdev;
 	data->id = id;
 
-	if (mptsas_multiprobe) {
-		probe_task = kthread_run(__mptsas_probe, data,
-					 "mptsas_probe-%s", pci_name(pdev));
-		if (IS_ERR(probe_task))
-			ret = __mptsas_probe(data);
-		else
-			printk(KERN_INFO "Started mptsas_probe-%s\n", pci_name(pdev));
-	} else
-		ret = __mptsas_probe(data);
+	ret = __mptsas_probe(data);
 
 	return ret;
 }
