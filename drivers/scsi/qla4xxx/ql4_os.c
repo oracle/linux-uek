@@ -6276,8 +6276,7 @@ qla4xxx_sysfs_ddb_get_param(struct iscsi_bus_flash_session *fnode_sess,
 			rc = sprintf(buf, "\n");
 		break;
 	case ISCSI_FLASHNODE_DISCOVERY_PARENT_IDX:
-		if ((fnode_sess->discovery_parent_idx) >= 0  &&
-		    (fnode_sess->discovery_parent_idx < MAX_DDB_ENTRIES))
+		if (fnode_sess->discovery_parent_idx < MAX_DDB_ENTRIES)
 			parent_index = fnode_sess->discovery_parent_idx;
 
 		rc = sprintf(buf, "%u\n", parent_index);
@@ -6287,8 +6286,7 @@ qla4xxx_sysfs_ddb_get_param(struct iscsi_bus_flash_session *fnode_sess,
 			parent_type = ISCSI_DISC_PARENT_ISNS;
 		else if (fnode_sess->discovery_parent_type == DDB_NO_LINK)
 			parent_type = ISCSI_DISC_PARENT_UNKNOWN;
-		else if (fnode_sess->discovery_parent_type >= 0  &&
-			 fnode_sess->discovery_parent_type < MAX_DDB_ENTRIES)
+		else if (fnode_sess->discovery_parent_type < MAX_DDB_ENTRIES)
 			parent_type = ISCSI_DISC_PARENT_SENDTGT;
 		else
 			parent_type = ISCSI_DISC_PARENT_UNKNOWN;
