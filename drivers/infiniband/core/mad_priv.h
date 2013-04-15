@@ -126,7 +126,6 @@ struct tf_entry {
 	unsigned long exp_time;	    /* entry expiration time */
 	struct list_head fifo_list; /* to keep entries in fifo order */
 	struct list_head to_list;   /* to keep entries in timeout order */
-	int in_tf;		    /* indicates whether entry is inside tf */
 	int canceled;		    /* indicates whether entry is canceled */
 };
 

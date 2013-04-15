@@ -240,7 +240,6 @@ static void timeout_handler_task(struct work_struct *work)
 			if (time_before(curr_time, tmp1->exp_time))
 				break;
 			list_del(&tmp1->fifo_list);
-			tmp1->in_tf = 0;
 			tf->num_items--;
 		}
 
@@ -337,7 +336,6 @@ static int tf_enqueue(struct to_fifo *tf, struct tf_entry *item, u32 timeout_ms)
 	/* Insert item to fifo list */
 	list_add_tail(&item->fifo_list, &tf->fifo_head);
 
-	item->in_tf = 1;
 	tf->num_items++;
 
 	/* modify expiration timer if required */
@@ -391,7 +389,6 @@ static struct tf_entry *tf_dequeue(struct to_fifo *tf, u32 *time_left_ms)
 	}
 	list_del(&tmp->fifo_list);
 	list_del(&tmp->to_list);
-	tmp->in_tf = 0;
 	tf->num_items--;
 	spin_unlock_irqrestore(&tf->lists_lock, flags);
 
@@ -444,7 +441,6 @@ static void tf_free_agent(struct to_fifo *tf, struct ib_mad_agent_private *mad_a
 		if (tfe_to_mad(tmp)->mad_agent_priv == mad_agent_priv) {
 			list_del(&tmp->to_list);
 			list_move(&tmp->fifo_list, &tmp_head);
-			tmp->in_tf = 0;
 			tf->num_items--;
 		}
 	}
@@ -459,18 +455,34 @@ static void tf_free_agent(struct to_fifo *tf, struct ib_mad_agent_private *mad_a
 /**
  * tf_modify_item - to modify expiration time for specific item
  * @tf:timeout-fifo object
- * @item: item to modify in queue.
+ * @mad_agent_priv: MAD agent.
+ * @send_buf: the MAD to modify in queue
+ * @timeout_ms: new timeout to set.
  *
  * Returns 0 if item found on list and -ENXIO if not.
+ *
+ * Note: The send_buf may point on MAD that is already released.
+ *       Therefore we can't use this struct before finding it in the list
  */
-static int tf_modify_item(struct to_fifo *tf, struct tf_entry *item, int timeout_ms)
+static int tf_modify_item(struct to_fifo *tf,
+			  struct ib_mad_agent_private *mad_agent_priv,
+			  struct ib_mad_send_buf *send_buf, u32 timeout_ms)
 {
-	struct tf_entry *tmp;
+	struct tf_entry *tmp, *item;
 	struct list_head *list_item;
 	unsigned long flags;
+	int found = 0;
 
 	spin_lock_irqsave(&tf->lists_lock, flags);
-	if (!item->in_tf) {
+	list_for_each_entry(item, &tf->fifo_head, fifo_list) {
+		if (tfe_to_mad(item)->mad_agent_priv == mad_agent_priv &&
+		    &tfe_to_mad(item)->send_buf == send_buf) {
+			found = 1;
+			break;
+		}
+	}
+
+	if (!found) {
 		spin_unlock_irqrestore(&tf->lists_lock, flags);
 		return -ENXIO;
 	}
@@ -503,7 +515,6 @@ static int tf_modify_item(struct to_fifo *tf, struct tf_entry *item, int timeout
 
 	return 0;
 }
-
 
 /*
  * SA congestion control functions
@@ -585,10 +596,13 @@ static int sa_cc_mad_send(struct ib_mad_send_wr_private *mad_send_wr)
 			sa_cc_mad_done(cc_obj);
 
 	} else {
-		ret = tf_enqueue(cc_obj->tf, &mad_send_wr->tf_list,
-				 (mad_send_wr->send_buf.timeout_ms *
-				  (mad_send_wr->retries_left + 1))
-				 - MIN_TIME_FOR_SA_MAD_SEND_MS);
+		int qtime = (mad_send_wr->send_buf.timeout_ms *
+			    (mad_send_wr->retries_left + 1))
+			    - MIN_TIME_FOR_SA_MAD_SEND_MS;
+
+		if (qtime < 0)
+			qtime = 0;
+		ret = tf_enqueue(cc_obj->tf, &mad_send_wr->tf_list, (u32)qtime);
 
 		spin_unlock_irqrestore(&cc_obj->lock, flags);
 	}
@@ -621,13 +635,17 @@ static void cancel_sa_cc_mads(struct ib_mad_agent_private *mad_agent_priv)
 /*
  * Modify timeout of SA MAD on congestion control queue.
  */
-static int modify_sa_cc_mad(struct ib_mad_send_wr_private *mad_send_wr,
-			    int timeout_ms)
+static int modify_sa_cc_mad(struct ib_mad_agent_private *mad_agent_priv,
+			    struct ib_mad_send_buf *send_buf, u32 timeout_ms)
 {
 	int ret;
+	int qtime = 0;
 
-	ret = tf_modify_item(get_cc_obj(mad_send_wr)->tf, &mad_send_wr->tf_list,
-			     timeout_ms);
+	if (timeout_ms > MIN_TIME_FOR_SA_MAD_SEND_MS)
+		qtime = timeout_ms - MIN_TIME_FOR_SA_MAD_SEND_MS;
+
+	ret = tf_modify_item(mad_agent_priv->qp_info->port_priv->sa_cc.tf,
+			     mad_agent_priv, send_buf, (u32)qtime);
 	return ret;
 }
 
@@ -3029,9 +3047,8 @@ int ib_modify_mad(struct ib_mad_agent *mad_agent,
 	spin_lock_irqsave(&mad_agent_priv->lock, flags);
 	mad_send_wr = find_send_wr(mad_agent_priv, send_buf);
 	if (!mad_send_wr) {
-		mad_send_wr = container_of(send_buf, struct ib_mad_send_wr_private, send_buf);
 		spin_unlock_irqrestore(&mad_agent_priv->lock, flags);
-		if (modify_sa_cc_mad(mad_send_wr, timeout_ms))
+		if (modify_sa_cc_mad(mad_agent_priv, send_buf, timeout_ms))
 			return -EINVAL;
 		return 0;
 	}
