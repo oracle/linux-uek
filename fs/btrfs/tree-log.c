@@ -408,7 +408,7 @@ insert:
 		found_size = btrfs_item_size_nr(path->nodes[0],
 						path->slots[0]);
 		if (found_size > item_size)
-			btrfs_truncate_item(trans, root, path, item_size, 1);
+			btrfs_truncate_item(root, path, item_size, 1);
 		else if (found_size < item_size)
 			btrfs_extend_item(root, path,
 					  item_size - found_size);
@@ -3302,7 +3302,7 @@ static int drop_adjacent_extents(struct btrfs_trans_handle *trans,
 		BUG_ON(extent_type == BTRFS_FILE_EXTENT_INLINE);
 		memcpy(&new_key, &key, sizeof(new_key));
 		new_key.offset = em->start + em->len;
-		btrfs_set_item_key_safe(trans, root, path, &new_key);
+		btrfs_set_item_key_safe(root, path, &new_key);
 		extent_offset += em->start + em->len - key.offset;
 		btrfs_set_token_file_extent_offset(leaf, fi, extent_offset,
 						   &token);
