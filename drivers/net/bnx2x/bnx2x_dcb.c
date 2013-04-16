@@ -1,6 +1,6 @@
 /* bnx2x_dcb.c: Broadcom Everest network driver.
  *
- * Copyright 2009-2012 Broadcom Corporation
+ * Copyright 2009-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -2457,7 +2457,7 @@ static void bnx2x_dcbnl_get_perm_hw_addr(struct net_device *netdev,
 	memcpy(perm_addr, netdev->dev_addr, netdev->addr_len);
 
 
-	if (CNIC_ENABLED(bp))
+	if (CNIC_LOADED(bp))
 		/* second SAN address */
 		memcpy(perm_addr+netdev->addr_len, bp->fip_mac,
 		       netdev->addr_len);

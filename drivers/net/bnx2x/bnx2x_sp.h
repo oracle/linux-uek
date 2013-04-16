@@ -1,6 +1,6 @@
 /* bnx2x_sp.h: Broadcom Everest network driver.
  *
- * Copyright 2011-2012 Broadcom Corporation
+ * Copyright 2011-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -41,6 +41,12 @@ enum {
 	 * pending commands list.
 	 */
 	RAMROD_CONT,
+	/* If there is another pending ramrod, wait until it finishes and
+	 * re-try to submit this one. This flag can be set only in sleepable
+	 * context, and should not be set from the context that completes the
+	 * ramrods as deadlock will occur.
+	 */
+	RAMROD_RETRY,
 };
 
 typedef enum {
@@ -839,7 +845,8 @@ enum {
 	BNX2X_Q_FLG_TX_SEC,
 	BNX2X_Q_FLG_ANTI_SPOOF,
 	BNX2X_Q_FLG_SILENT_VLAN_REM,
-	BNX2X_Q_FLG_FORCE_DEFAULT_PRI
+	BNX2X_Q_FLG_FORCE_DEFAULT_PRI,
+	BNX2X_Q_FLG_REFUSE_OUTBAND_VLAN
 };
 
 /* Queue type options: queue type may be a compination of below. */
@@ -1137,6 +1144,10 @@ struct bnx2x_func_start_params {
 	u8 network_cos_mode;
 };
 
+struct bnx2x_func_switch_update_params {
+	u8 suspend;
+};
+
 struct bnx2x_func_afex_update_params {
 	u16 vif_id;
 	u16 afex_default_vlan;
@@ -1170,6 +1181,7 @@ struct bnx2x_func_state_params {
 		struct bnx2x_func_hw_init_params hw_init;
 		struct bnx2x_func_hw_reset_params hw_reset;
 		struct bnx2x_func_start_params start;
+		struct bnx2x_func_switch_update_params switch_update;
 		struct bnx2x_func_afex_update_params afex_update;
 		struct bnx2x_func_afex_viflists_params afex_viflists;
 		struct bnx2x_func_tx_start_params tx_start;

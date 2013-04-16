@@ -1,5 +1,5 @@
 /*
- * Copyright 1999-2012 Broadcom Corporation
+ * Copyright 1999-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License, version 2,
@@ -1374,7 +1374,7 @@ static struct st_record st_database[ST_DB_LINES] = {
 	NA, 1, 0, pand_neq,
 	NA, IDLE_CHK_ERROR,
 	"AEU: P0 AFTER_INVERT_3 is not 0",
-	{NA, NA, ~0xC3FF0000, 0, NA, NA} },
+	{NA, NA, ~0xFFFF0000, 0, NA, NA} },
 
 /*line 187*/{(0x1F), 1, MISC_REG_AEU_AFTER_INVERT_4_FUNC_0,
 	NA, 1, 0, pand_neq,
@@ -1398,7 +1398,7 @@ static struct st_record st_database[ST_DB_LINES] = {
 	NA, 1, 0, pand_neq,
 	NA, IDLE_CHK_ERROR,
 	"AEU: P1 AFTER_INVERT_3 is not 0",
-	{NA, NA, ~0xC3FF0000, 0, NA, NA} },
+	{NA, NA, ~0xFFFF0000, 0, NA, NA} },
 
 /*line 191*/{(0x3), 1, MISC_REG_AEU_AFTER_INVERT_4_FUNC_1,
 	NA, 1, 0, pand_neq,
@@ -1422,7 +1422,7 @@ static struct st_record st_database[ST_DB_LINES] = {
 	NA, 1, 0, pand_neq,
 	NA, IDLE_CHK_ERROR,
 	"AEU: MCP AFTER_INVERT_3 is not 0",
-	{NA, NA, ~0xC3FF0000, 0, NA, NA} },
+	{NA, NA, ~0xFFFF0000, 0, NA, NA} },
 
 /*line 195*/{(0x1F), 1, MISC_REG_AEU_AFTER_INVERT_4_MCP,
 	NA, 1, 0, pand_neq,

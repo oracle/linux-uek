@@ -1,6 +1,6 @@
 /* bnx2x_compat.h: Broadcom Everest network driver.
  *
- * Copyright 2007-2012 Broadcom Corporation
+ * Copyright 2007-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -35,6 +35,7 @@
 #ifndef XENSERVER_DISTRO
 #define XENSERVER_DISTRO		0
 #endif
+
 #if (LINUX_VERSION_CODE < 0x02061D)
 #include <linux/pci.h> /* for vpd */
 #endif
@@ -48,7 +49,7 @@
 #define RHEL_RELEASE_VERSION(a, b) 0
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020625) && (!defined(RHEL_RELEASE_CODE) || (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(6,3)))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)) && (!defined(RHEL_RELEASE_CODE) || (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(6, 4)))
 #define OLD_VLAN			1
 #endif
 
@@ -859,7 +860,28 @@ static inline void usleep_range(unsigned long min, unsigned long max)
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02061D)
+#if (defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6, 3))
+/** RHEL6.3 is missing in 'arch/x86/Kconfig' the logic which sets
+ *  'CONFIG_NEED_DMA_MAP_STATE'. Therefore, we supplement that logic here,
+ *  possibly replacing the 'dma_unmap_*' macros.
+ */
+#if defined(CONFIG_X86_64) || defined(CONFIG_INTEL_IOMMU) || defined(CONFIG_DMA_API_DEBUG)
+#undef DEFINE_DMA_UNMAP_ADDR
+#define DEFINE_DMA_UNMAP_ADDR(ADDR_NAME)        dma_addr_t ADDR_NAME
+#undef DEFINE_DMA_UNMAP_LEN
+#define DEFINE_DMA_UNMAP_LEN(LEN_NAME)          __u32 LEN_NAME
+#undef dma_unmap_addr
+#define dma_unmap_addr(PTR, ADDR_NAME)           ((PTR)->ADDR_NAME)
+#undef dma_unmap_addr_set
+#define dma_unmap_addr_set(PTR, ADDR_NAME, VAL)  (((PTR)->ADDR_NAME) = (VAL))
+#undef dma_unmap_len
+#define dma_unmap_len(PTR, LEN_NAME)             ((PTR)->LEN_NAME)
+#undef dma_unmap_len_set
+#define dma_unmap_len_set(PTR, LEN_NAME, VAL)    (((PTR)->LEN_NAME) = (VAL))
+#endif
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 29))
 static inline ssize_t
 pci_read_vpd(struct pci_dev *dev, loff_t pos, size_t count, u8 *buf)
 {
@@ -1333,7 +1355,7 @@ static inline int list_is_last(const struct list_head *list,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020625)
+#if (LINUX_VERSION_CODE < 0x020625) && (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4))
 static inline int netif_set_real_num_rx_queues(struct net_device *dev, int num)
 {
 	return 0;
@@ -1556,15 +1578,21 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #define RCU_INIT_POINTER(ptr, val)  rcu_assign_pointer(ptr, val)
 #endif
 
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 1, 0)) && \
+	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,2)) && \
+	(!defined(SLES_DISTRO) || (SLES_DISTRO != 0x1102))
+#ifndef DCB_CMD_CEE_GET
+#define DCB_CMD_CEE_GET (-1) /* invalid value */
+#endif
+#endif
+
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || \
 	(defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6, 2))
 #define  DCB_CEE_SUPPORT 1
 #endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
 #define netdev_features_t u32
-#endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
 static inline void netdev_tx_completed_queue(struct netdev_queue *q,
 					    unsigned int a, unsigned int b) { }
 static inline void netdev_tx_reset_queue(struct netdev_queue *q) { }
@@ -1640,11 +1668,15 @@ static inline void bnx2x_msix_set_enable(struct pci_dev *dev, int enable)
 #define	ETH_TEST_FL_EXTERNAL_LB_DONE	(1 << 3)
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36))
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36) && (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4)))
 static inline void skb_tx_timestamp(struct sk_buff *skb)
 {
 	return;
 }
+#endif
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 2, 0))
+#define skb_frag_size(frag) ((frag)->size)
 #endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 12))
@@ -1773,6 +1805,86 @@ static inline void *kzalloc(size_t size, unsigned int flags)
 #undef dev_info
 #define dev_info(dev, format, arg...) printk(KERN_INFO "bnx2x: " format, ##arg)
 #endif /* dev_info */
+
+/* The following patch allows ESX to enter functions into D3hot */
+#ifndef SYSTEM_POWER_OFF
+#define SYSTEM_POWER_OFF	(3)
+#endif
+#define system_state		SYSTEM_POWER_OFF
 #endif /* __VMKLNX__ */
+
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 7, 0))
+#ifndef _HAVE_ARCH_IPV6_CSUM
+static inline __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
+					  const struct in6_addr *daddr,
+					  __u32 len, unsigned short proto,
+					  __wsum csum)
+{
+
+	int carry;
+	__u32 ulen;
+	__u32 uproto;
+	__u32 sum = (__force u32)csum;
+
+	sum += (__force u32)saddr->s6_addr32[0];
+	carry = (sum < (__force u32)saddr->s6_addr32[0]);
+	sum += carry;
+
+	sum += (__force u32)saddr->s6_addr32[1];
+	carry = (sum < (__force u32)saddr->s6_addr32[1]);
+	sum += carry;
+
+	sum += (__force u32)saddr->s6_addr32[2];
+	carry = (sum < (__force u32)saddr->s6_addr32[2]);
+	sum += carry;
+
+	sum += (__force u32)saddr->s6_addr32[3];
+	carry = (sum < (__force u32)saddr->s6_addr32[3]);
+	sum += carry;
+
+	sum += (__force u32)daddr->s6_addr32[0];
+	carry = (sum < (__force u32)daddr->s6_addr32[0]);
+	sum += carry;
+
+	sum += (__force u32)daddr->s6_addr32[1];
+	carry = (sum < (__force u32)daddr->s6_addr32[1]);
+	sum += carry;
+
+	sum += (__force u32)daddr->s6_addr32[2];
+	carry = (sum < (__force u32)daddr->s6_addr32[2]);
+	sum += carry;
+
+	sum += (__force u32)daddr->s6_addr32[3];
+	carry = (sum < (__force u32)daddr->s6_addr32[3]);
+	sum += carry;
+
+	ulen = (__force u32)htonl((__u32) len);
+	sum += ulen;
+	carry = (sum < ulen);
+	sum += carry;
+
+	uproto = (__force u32)htonl(proto);
+	sum += uproto;
+	carry = (sum < uproto);
+	sum += carry;
+
+	return csum_fold((__force __wsum)sum);
+}
+
+#endif
+
+static inline __sum16 tcp_v6_check(int len,
+					struct in6_addr *saddr,
+					struct in6_addr *daddr,
+					__wsum base)
+{
+	return csum_ipv6_magic(saddr, daddr, len, IPPROTO_TCP, base);
+}
+
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 21))
+#define TCP_V4_CHECK_NEW
+#endif
 
 #endif /* __BNX2X_COMPAT_H__ */

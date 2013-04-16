@@ -1,6 +1,6 @@
 /* bnx2x_sriov.c: Broadcom Everest network driver.
  *
- * Copyright 2009-2012 Broadcom Corporation
+ * Copyright 2009-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -1461,7 +1461,7 @@ static void bnx2x_vfop_qflr(struct bnx2x *bp, struct bnx2x_virtf *vf)
 	if (vfop->rc < 0)
 		goto op_err;
 
-	DP(BNX2X_MSG_IOV, "vf[%d] STATE: %s\n", vf->abs_vfid,
+	DP(BNX2X_MSG_IOV, "VF[%d] STATE: %s\n", vf->abs_vfid,
 	   bnx2x_vfop_qflr_state_string[state]);
 
 	cmd.done = bnx2x_vfop_qflr;
@@ -1481,8 +1481,8 @@ static void bnx2x_vfop_qflr(struct bnx2x *bp, struct bnx2x_virtf *vf)
 		vfop->state = BNX2X_VFOP_QFLR_TERMINATE;
 		vfop->rc = bnx2x_vfop_mac_delall_cmd(bp, vf, &cmd, qid, true);
 		DP(BNX2X_MSG_IOV,
-		   "vfop->rc after bnx2x_vfop_mac_delall_cmd was %d",
-		   vfop->rc);
+		   "VF[%d] vfop->rc after bnx2x_vfop_mac_delall_cmd was %d",
+		   vf->abs_vfid, vfop->rc);
 		if (vfop->rc)
 			goto op_err;
 		return;
@@ -1499,8 +1499,8 @@ static void bnx2x_vfop_qflr(struct bnx2x *bp, struct bnx2x_virtf *vf)
 		 */
 		vfop->state = BNX2X_VFOP_QFLR_DONE;
 
-		DP(BNX2X_MSG_IOV, "qstate during flr was %d",
-		   qstate->q_obj->state);
+		DP(BNX2X_MSG_IOV, "VF[%d] qstate during flr was %d",
+		   vf->abs_vfid, qstate->q_obj->state);
 
 		if (qstate->q_obj->state != BNX2X_Q_STATE_RESET) {
 			qstate->q_obj->state = BNX2X_Q_STATE_STOPPED;
@@ -1969,6 +1969,7 @@ struct pci_dev *pci_get_bus_and_slot(unsigned int bus,
 { return NULL; }
 #endif
 
+#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
 static u8 bnx2x_vf_is_pcie_pending(struct bnx2x *bp, u8 abs_vfid)
 {
 	struct pci_dev *dev;
@@ -1984,6 +1985,7 @@ unknown_dev:
 	BNX2X_ERR("Unknown device\n");
 	return false;
 }
+#endif
 
 int bnx2x_vf_flr_clnup_epilog(struct bnx2x *bp, u8 abs_vfid)
 {
@@ -2608,11 +2610,6 @@ void __devexit bnx2x_iov_remove_one(struct bnx2x *bp)
 	/* if SRIOV is not eanbled there's nothing to do */
 	if (!IS_SRIOV(bp))
 		return;
-
-	DP(BNX2X_MSG_IOV, "about to call disable sriov");
-	pci_disable_sriov(bp->pdev);
-	DP(BNX2X_MSG_IOV, "sriov disabled");
-
 
 	/* free vf database */
 	__bnx2x_iov_free_vfdb(bp);
