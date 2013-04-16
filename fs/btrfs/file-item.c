@@ -805,7 +805,7 @@ again:
 		if (diff != csum_size)
 			goto insert;
 
-		btrfs_extend_item(trans, root, path, diff);
+		btrfs_extend_item(root, path, diff);
 		goto csum;
 	}
 

@@ -131,7 +131,7 @@ int btrfs_uuid_tree_add(struct btrfs_trans_handle *trans,
 		 * An item with that type already exists.
 		 * Extend the item and store the new subid at the end.
 		 */
-		btrfs_extend_item(trans, uuid_root, path, sizeof(subid_le));
+		btrfs_extend_item(uuid_root, path, sizeof(subid_le));
 		eb = path->nodes[0];
 		slot = path->slots[0];
 		offset = btrfs_item_ptr_offset(eb, slot);
