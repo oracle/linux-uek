@@ -1,6 +1,6 @@
 /* cnic_if.h: Broadcom CNIC core network driver.
  *
- * Copyright (c) 2006 - 2012 Broadcom Corporation
+ * Copyright (c) 2006 - 2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,8 +14,8 @@
 
 #include "bnx2x/bnx2x_mfw_req.h"
 
-#define CNIC_MODULE_VERSION	"2.5.12e"
-#define CNIC_MODULE_RELDATE	"Aug 22, 2012"
+#define CNIC_MODULE_VERSION	"2.5.16g"
+#define CNIC_MODULE_RELDATE	"Mar 11, 2013"
 
 #define CNIC_ULP_RDMA		0
 #define CNIC_ULP_ISCSI		1
@@ -449,8 +449,5 @@ struct cnic_ulp_ops {
 extern int cnic_register_driver2(int ulp_type, struct cnic_ulp_ops *ulp_ops);
 
 extern int cnic_unregister_driver2(int ulp_type);
-
-extern struct cnic_eth_dev *bnx2_cnic_probe2(struct net_device *dev);
-extern struct cnic_eth_dev *bnx2x_cnic_probe2(struct net_device *dev);
 
 #endif
