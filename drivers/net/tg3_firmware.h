@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2012 Broadcom Corporation. */
+/* Copyright (C) 2009-2013 Broadcom Corporation. */
 
 #ifdef NETIF_F_TSO
 #define TG3_TSO_SUPPORT	1

@@ -1,4 +1,4 @@
-/* Copyright (C) 2008-2012 Broadcom Corporation. */
+/* Copyright (C) 2008-2013 Broadcom Corporation. */
 
 #ifdef CONFIG_X86
 #undef NET_IP_ALIGN
@@ -294,6 +294,12 @@ static inline void * pci_ioremap_bar(struct pci_dev *pdev, int bar)
 	.subvendor = PCI_ANY_ID, .subdevice = PCI_ANY_ID
 #endif
 
+#ifndef PCI_DEVICE_SUB
+#define PCI_DEVICE_SUB(vend, dev, subvend, subdev) \
+	.vendor = (vend), .device = (dev), \
+	.subvendor = (subvend), .subdevice = (subdev)
+#endif
+
 #ifndef PCI_DEVICE_ID_TIGON3_5704S_2
 #define PCI_DEVICE_ID_TIGON3_5704S_2	0x1649
 #endif
@@ -480,6 +486,10 @@ static inline void * pci_ioremap_bar(struct pci_dev *pdev, int bar)
 
 #ifndef PCI_DEVICE_ID_INTEL_PXH_1
 #define PCI_DEVICE_ID_INTEL_PXH_1	0x032A
+#endif
+
+#ifndef PCI_VENDOR_ID_LENOVO
+#define PCI_VENDOR_ID_LENOVO		0x17aa
 #endif
 
 #ifndef PCI_D0
@@ -1036,6 +1046,23 @@ static int tg3_set_tx_hw_csum(struct net_device *dev, u32 data)
 
 #ifndef BCM_HAS_SKB_TX_TIMESTAMP
 #define skb_tx_timestamp(skb)
+#endif
+
+#ifdef BCM_HAS_SKB_SHARED_TX_UNION
+#define tx_flags tx_flags.flags
+
+/* Definitions for tx_flags in struct skb_shared_info */
+enum {
+	/* generate hardware time stamp */
+	SKBTX_HW_TSTAMP = 1 << 0,
+
+	/* device driver is going to provide hardware time stamp */
+	SKBTX_IN_PROGRESS = 1 << 2,
+};
+#endif
+
+#ifndef BCM_HAS_SKB_FRAG_SIZE
+#define skb_frag_size(skb_frag)	((skb_frag)->size)
 #endif
 
 #if (LINUX_VERSION_CODE < 0x2060c)
@@ -1972,3 +1999,9 @@ static inline __u32 ethtool_cmd_speed_set(struct ethtool_cmd *ep, __u32 speed)
 	return 0;
 }
 #endif /* BCM_HAS_ETHTOOL_CMD_SPEED_SET */
+
+#ifdef BCM_HAS_PCI_BUSN_RES
+#define busn_res_end busn_res.end
+#else
+#define busn_res_end subordinate
+#endif

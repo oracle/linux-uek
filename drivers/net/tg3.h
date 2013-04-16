@@ -1,10 +1,10 @@
-/* $Id: //depot/main/NetXtreme/drivers/linux/tg3-new/tg3.h#47 $
+/* $Id: //depot/main/NetXtreme/drivers/linux/tg3-new/tg3.h#62 $
  * tg3.h: Definitions for Broadcom Tigon3 ethernet driver.
  *
  * Copyright (C) 2001, 2002, 2003, 2004 David S. Miller (davem@redhat.com)
  * Copyright (C) 2001 Jeff Garzik (jgarzik@pobox.com)
  * Copyright (C) 2004 Sun Microsystems Inc.
- * Copyright (C) 2007-2012 Broadcom Corporation.
+ * Copyright (C) 2007-2013 Broadcom Corporation.
  */
 
 #ifndef _T3_H
@@ -46,12 +46,14 @@
 #define  TG3PCI_DEVICE_TIGON3_5761S	 0x1688
 #define  TG3PCI_DEVICE_TIGON3_5761SE	 0x1689
 #define  TG3PCI_DEVICE_TIGON3_57780	 0x1692
+#define  TG3PCI_DEVICE_TIGON3_5787M	 0x1693
 #define  TG3PCI_DEVICE_TIGON3_57760	 0x1690
 #define  TG3PCI_DEVICE_TIGON3_57790	 0x1694
 #define  TG3PCI_DEVICE_TIGON3_57788	 0x1691
 #define  TG3PCI_DEVICE_TIGON3_5785_G	 0x1699 /* GPHY */
 #define  TG3PCI_DEVICE_TIGON3_5785_F	 0x16a0 /* 10/100 only */
 #define  TG3PCI_DEVICE_TIGON3_5717	 0x1655
+#define  TG3PCI_DEVICE_TIGON3_5717_C	 0x1665
 #define  TG3PCI_DEVICE_TIGON3_5718	 0x1656
 #define  TG3PCI_DEVICE_TIGON3_57781	 0x16b1
 #define  TG3PCI_DEVICE_TIGON3_57785	 0x16b5
@@ -67,6 +69,7 @@
 #define  TG3PCI_DEVICE_TIGON3_57782	 0x16b7
 #define  TG3PCI_DEVICE_TIGON3_5762	 0x1687
 #define  TG3PCI_DEVICE_TIGON3_5725	 0x1643
+#define  TG3PCI_DEVICE_TIGON3_5727	 0x16f3
 #define  TG3PCI_DEVICE_TIGON3_57764	 0x1642
 #define  TG3PCI_DEVICE_TIGON3_57767	 0x1683
 #define  TG3PCI_DEVICE_TIGON3_57787	 0x1641
@@ -102,6 +105,10 @@
 #define TG3PCI_SUBDEVICE_ID_COMPAQ_NC7780_2	0x0099
 #define TG3PCI_SUBVENDOR_ID_IBM			PCI_VENDOR_ID_IBM
 #define TG3PCI_SUBDEVICE_ID_IBM_5703SAX2	0x0281
+#define TG3PCI_SUBDEVICE_ID_ACER_57780_A	0x0601
+#define TG3PCI_SUBDEVICE_ID_ACER_57780_B	0x0612
+#define TG3PCI_SUBDEVICE_ID_LENOVO_5787M	0x3056
+
 /* 0x30 --> 0x64 unused */
 #define TG3PCI_MSI_DATA			0x00000064
 /* 0x66 --> 0x68 unused */
@@ -782,6 +789,7 @@
 #define  SG_DIG_AUTONEG_ERROR		 0x00000001
 #define TG3_TX_TSTAMP_LSB		0x000005c0
 #define TG3_TX_TSTAMP_MSB		0x000005c4
+#define  TG3_TSTAMP_MASK		 0x7fffffffffffffff
 /* 0x5c8 --> 0x600 unused */
 #define MAC_TX_MAC_STATE_BASE		0x00000600 /* 16 bytes */
 #define MAC_RX_MAC_STATE_BASE		0x00000610 /* 20 bytes */
@@ -1853,6 +1861,11 @@
 #define TG3_EAV_REF_CLCK_CTL		0x00006908
 #define  TG3_EAV_REF_CLCK_CTL_STOP	 0x00000002
 #define  TG3_EAV_REF_CLCK_CTL_RESUME	 0x00000004
+#define TG3_EAV_REF_CLK_CORRECT_CTL	0x00006928
+#define  TG3_EAV_REF_CLK_CORRECT_EN	 (1 << 31)
+#define  TG3_EAV_REF_CLK_CORRECT_NEG	 (1 << 30)
+
+#define TG3_EAV_REF_CLK_CORRECT_MASK	0xffffff
 /* 0x690c --> 0x7000 unused */
 
 /* NVRAM Control registers */
@@ -1889,6 +1902,7 @@
 #define  FLASH_VENDOR_SST_SMALL		 0x00000001
 #define  FLASH_VENDOR_SST_LARGE		 0x02000001
 #define  NVRAM_CFG1_5752VENDOR_MASK	 0x03c00003
+#define  NVRAM_CFG1_5762VENDOR_MASK	 0x03e00003
 #define  FLASH_5752VENDOR_ATMEL_EEPROM_64KHZ	 0x00000000
 #define  FLASH_5752VENDOR_ATMEL_EEPROM_376KHZ	 0x02000000
 #define  FLASH_5752VENDOR_ATMEL_FLASH_BUFFERED	 0x02000003
@@ -2426,6 +2440,20 @@
 #define TG3_APE_LOCK_GRANT		0x004c
 #define  APE_LOCK_GRANT_DRIVER		 0x00001000
 #define TG3_APE_STICKY_TMR		0x00b0
+#define TG3_APE_OTP_CTRL		0x00e8
+#define  APE_OTP_CTRL_PROG_EN		 0x200000
+#define  APE_OTP_CTRL_CMD_RD		 0x000000
+#define  APE_OTP_CTRL_START		 0x000001
+#define TG3_APE_OTP_STATUS		0x00ec
+#define  APE_OTP_STATUS_CMD_DONE	 0x000001
+#define TG3_APE_OTP_ADDR		0x00f0
+#define  APE_OTP_ADDR_CPU_ENABLE	 0x80000000
+#define TG3_APE_OTP_RD_DATA		0x00f8
+
+#define OTP_ADDRESS_MAGIC0		 0x00000050
+#define TG3_OTP_MAGIC0_VALID(val)		\
+	((((val) & 0xf0000000) == 0xa0000000) ||\
+	 (((val) & 0x0f000000) == 0x0a000000))
 
 /* APE shared memory.  Accessible through BAR1 */
 #define TG3_APE_SHMEM_BASE		0x4000
@@ -3190,8 +3218,6 @@ struct tg3 {
 	struct ptp_clock_info		ptp_info;
 	struct ptp_clock		*ptp_clock;
 	s64				ptp_adjust;
-	u64				ptp_save;
-	u64				ptp_stop_time;
 #else  /* IS_ENABLED(CONFIG_PTP_1588_CLOCK) */
 	struct cyclecounter		cycles;
 	struct timecounter		clock;
@@ -3223,7 +3249,7 @@ struct tg3 {
 	u32				rxq_req;
 	u32				rxq_cnt;
 	u32				rxq_max;
-#ifdef BCM_USE_OLD_VLAN_INTERFACE
+#ifndef BCM_HAS_NEW_VLAN_INTERFACE
 	struct vlan_group		*vlgrp;
 #endif
 

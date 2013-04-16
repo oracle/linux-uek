@@ -1,4 +1,4 @@
-/* Copyright (C) 2009-2012 Broadcom Corporation. */
+/* Copyright (C) 2009-2013 Broadcom Corporation. */
 
 #ifndef BCM_HAS_PCI_PCIE_CAP
 static inline int pci_pcie_cap(struct pci_dev *pdev)
@@ -107,7 +107,7 @@ static inline void tg3_5780_class_intx_workaround(struct tg3 *tp)
 #define tg3_update_trans_start(dev)		((dev)->trans_start = jiffies)
 #endif
 
-#ifndef BCM_HAS_VLAN_HWACCEL_PUT_TAG
+#ifndef BCM_HAS_NEW_VLAN_INTERFACE
 #define TG3_TO_INT(Y)       ((int)((ptrdiff_t)(Y) & (SMP_CACHE_BYTES - 1)))
 #define TG3_COMPAT_VLAN_ALLOC_LEN		(SMP_CACHE_BYTES + VLAN_HLEN)
 #define TG3_COMPAT_VLAN_RESERVE(addr)	(SKB_DATA_ALIGN((addr) + VLAN_HLEN) - (addr))
@@ -118,12 +118,12 @@ static inline void tg3_5780_class_intx_workaround(struct tg3 *tp)
 
 #ifdef BCM_KERNEL_SUPPORTS_8021Q
 
-#ifndef BCM_HAS_VLAN_HWACCEL_PUT_TAG
+#ifndef BCM_HAS_NEW_VLAN_INTERFACE
 #undef  TG3_RAW_IP_ALIGN
 #define TG3_RAW_IP_ALIGN (2 + VLAN_HLEN)
-#endif /* BCM_HAS_VLAN_HWACCEL_PUT_TAG */
+#endif /* BCM_HAS_NEW_VLAN_INTERFACE */
 
-#ifdef BCM_USE_OLD_VLAN_INTERFACE
+#ifndef BCM_HAS_NEW_VLAN_INTERFACE
 static void __tg3_set_rx_mode(struct net_device *);
 static inline void tg3_netif_start(struct tg3 *tp);
 static inline void tg3_netif_stop(struct tg3 *tp);
@@ -279,13 +279,16 @@ static void netdev_update_features(struct net_device *dev)
 }
 #endif /* BCM_HAS_NETDEV_UPDATE_FEATURES */
 
-#ifndef BCM_HAS_SET_PHYS_ID
+#if !defined(BCM_HAS_SET_PHYS_ID) || defined(GET_ETHTOOL_OP_EXT)
+
+#if !defined(BCM_HAS_SET_PHYS_ID)
 enum ethtool_phys_id_state {
 	ETHTOOL_ID_INACTIVE,
 	ETHTOOL_ID_ACTIVE,
 	ETHTOOL_ID_ON,
 	ETHTOOL_ID_OFF
 };
+#endif
 
 static int tg3_set_phys_id(struct net_device *dev,
 			    enum ethtool_phys_id_state state);
