@@ -697,7 +697,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 {
 	struct fc_lport *lport;
 	struct fc_rport *rport = starget_to_rport(scsi_target(sc_cmd->device));
-	struct fc_rport_libfc_priv *rp = rport->dd_data;
+	struct fc_rport_libfc_priv *rp;
 	struct fcoe_port *port;
 	struct bnx2fc_interface *interface;
 	struct bnx2fc_rport *tgt;
@@ -723,6 +723,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 		rc = FAILED;
 		goto tmf_err;
 	}
+	rp = rport->dd_data;
 
 #ifdef __BNX2FC_SLES11SP1__
         rc = fc_remote_port_chkready(rport);
@@ -1153,7 +1154,9 @@ int bnx2fc_expl_logo(struct fc_lport *lport, struct bnx2fc_cmd *io_req)
 	 * release the reference taken in eh_abort
 	 * to allow the target to relogin
 	 */
+	spin_lock_bh(&tgt->tgt_lock);
 	kref_put(&io_req->refcount, bnx2fc_cmd_release);
+	spin_unlock_bh(&tgt->tgt_lock);
 
 	if (!logo_issued) {
 		clear_bit(BNX2FC_FLAG_SESSION_READY, &tgt->flags);
@@ -1859,7 +1862,7 @@ static void bnx2fc_parse_fcp_rsp(struct bnx2fc_cmd *io_req,
 			fcp_sns_len = SCSI_SENSE_BUFFERSIZE;
 		}
 
-		memset(sc_cmd->sense_buffer, 0, sizeof(sc_cmd->sense_buffer));
+		memset(sc_cmd->sense_buffer, 0, SCSI_SENSE_BUFFERSIZE);
 		if (fcp_sns_len)
 			memcpy(sc_cmd->sense_buffer, rq_data, fcp_sns_len);
 

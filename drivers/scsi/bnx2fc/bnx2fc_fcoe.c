@@ -22,7 +22,7 @@ DEFINE_PER_CPU(struct bnx2fc_percpu_s, bnx2fc_percpu);
 
 #define DRV_MODULE_NAME		"bnx2fc"
 #define DRV_MODULE_VERSION	BNX2FC_VERSION
-#define DRV_MODULE_RELDATE	"Aug 03, 2012"
+#define DRV_MODULE_RELDATE	"Jan 31, 2013"
 
 
 static char version[] __devinitdata =
@@ -137,7 +137,6 @@ static void bnx2fc_get_lesb(struct fc_lport *lport,
 	lesb->lesb_link_fail = htonl(lfc);
 	lesb->lesb_vlink_fail = htonl(vlfc);
 	lesb->lesb_miss_fka = htonl(mdac);
-
 	lesb->lesb_fcs_error = htonl(dev_get_stats(netdev,
 				     &temp)->rx_crc_errors);
 }
@@ -375,7 +374,7 @@ static int bnx2fc_xmit(struct fc_lport *lport, struct fc_frame *fp)
 		fc_fcoe_set_mac(eh->h_dest, fh->fh_d_id);
 	else
 		/* insert GW address */
-		memcpy(eh->h_dest, interface->ctlr.dest_addr, ETH_ALEN);
+		memcpy(eh->h_dest, interface->dest_addr, ETH_ALEN);
 
 	if (unlikely(interface->ctlr.flogi_oxid != FC_XID_UNKNOWN))
 		memcpy(eh->h_source, interface->ctlr.ctl_src_addr, ETH_ALEN);
@@ -677,14 +676,18 @@ static struct fc_host_statistics *bnx2fc_get_host_stats(struct Scsi_Host *shost)
 	}
 	hba = interface->hba;
 	fw_stats = (struct fcoe_statistics_params *)hba->stats_buffer;
-	if (!fw_stats)
+	if (!fw_stats) {
+		printk(KERN_ERR PFX "get_host_stats: fw_stats is NULL\n");
 		return NULL;
+	}
 
 	bnx2fc_stats = fc_get_host_stats(shost);
 
 	init_completion(&hba->stat_req_done);
-	if (bnx2fc_send_stat_req(hba))
+	if (bnx2fc_send_stat_req(hba)) {
+		printk(KERN_ERR PFX "send_stat_req failed\n");
 		return bnx2fc_stats;
+	}
 	rc = wait_for_completion_timeout(&hba->stat_req_done, (2 * HZ));
 	if (!rc) {
 		BNX2FC_HBA_DBG(lport, "FW stat req timed out\n");
@@ -743,7 +746,7 @@ static int bnx2fc_shost_config(struct fc_lport *lport, struct device *dev)
 		fc_host_max_npiv_vports(lport->host) = USHORT_MAX;
 	sprintf(fc_host_symbolic_name(lport->host), "%s v%s over %s",
 		BNX2FC_NAME, BNX2FC_VERSION,
-		interface->netdev->name);
+		interface->v_netdev->name);
 
 	return 0;
 }
@@ -1061,9 +1064,63 @@ static int bnx2fc_fip_recv(struct sk_buff *skb, struct net_device *dev,
 			   struct net_device *orig_dev)
 {
 	struct bnx2fc_interface *interface;
+	struct fip_header *fiph;
+	struct fip_desc *desc;
+	size_t dlen, rlen;
+	u16 op;
+	u8 sub;
+	int flogi_resp = 0;
+	u32 desc_cnt = 0;
+
 	interface = container_of(ptype, struct bnx2fc_interface,
 				 fip_packet_type);
+
+	fiph = (struct fip_header *)skb->data;
+	op = ntohs(fiph->fip_op);
+	sub = fiph->fip_subcode;
+
+	if ((op != FIP_OP_LS) || (sub != FIP_SC_REP))
+		goto done;
+
+	rlen = ntohs(fiph->fip_dl_len) * 4;
+	if (rlen + sizeof(*fiph) > skb->len)
+		goto out;
+
+	desc = (struct fip_desc *)(fiph + 1);
+	while (rlen > 0) {
+		desc_cnt++;
+		dlen = desc->fip_dlen * FIP_BPW;
+		if (dlen < sizeof(*desc) || dlen > rlen)
+			goto out;
+
+		switch(desc->fip_dtype) {
+		case FIP_DT_FLOGI:
+			BNX2FC_MISC_DBG("FIP dt_flog: reset dest_addr\n");
+			memset(interface->dest_addr, 0, ETH_ALEN);
+			flogi_resp = 1;
+			break;
+		case FIP_DT_MAC:
+			BNX2FC_MISC_DBG("FIP dt_mac: desc_cnt = %d\n", desc_cnt);
+			if (desc_cnt == 3) {
+				if (flogi_resp) {
+					BNX2FC_MISC_DBG("FIP dt_mac: FLOGI resp\n");
+					memcpy(interface->dest_addr,
+					       ((struct fip_mac_desc *)desc)->fd_mac,
+					       ETH_ALEN);
+				}
+				BNX2FC_MISC_DBG("FIP dt_mac: dtype to 128\n");
+				desc->fip_dtype = 128;
+			}
+			break;
+		default:
+			break;
+		}
+		desc = (struct fip_desc *)((char *)desc + dlen);
+		rlen -= dlen;
+	}
+done:
 	fcoe_ctlr_recv(&interface->ctlr, skb);
+out:
 	return 0;
 }
 
@@ -1727,7 +1784,15 @@ static int bnx2fc_destroy(struct net_device *netdev)
 {
 	struct bnx2fc_interface *interface = NULL;
 	struct workqueue_struct *timer_work_queue;
+	struct net_device *phys_dev;
 	int rc = 0;
+
+	if (netdev->priv_flags & IFF_802_1Q_VLAN) {
+		if (vlan_dev_vlan_id(netdev) == 0) {
+			phys_dev = vlan_dev_real_dev(netdev);
+			netdev = phys_dev;
+		}
+	}
 
 	rtnl_lock();
 	mutex_lock(&bnx2fc_dev_lock);
@@ -1825,8 +1890,11 @@ static void bnx2fc_unbind_pcidev(struct bnx2fc_hba *hba)
  static int bnx2fc_ulp_get_stats(void *handle)
  {
 	struct bnx2fc_hba *hba = handle;
+	struct bnx2fc_interface *interface;
 	struct cnic_dev *cnic;
 	struct fcoe_stats_info *stats_addr;
+	struct fc_lport *lport;
+	struct fc_host_statistics *bnx2fc_stats;
 
 	if (!hba)
 		return -EINVAL;
@@ -1836,11 +1904,22 @@ static void bnx2fc_unbind_pcidev(struct bnx2fc_hba *hba)
 	if (!stats_addr)
 		return -EINVAL;
 
+
 	strncpy(stats_addr->version, BNX2FC_VERSION,
 		sizeof(stats_addr->version));
 	stats_addr->txq_size = BNX2FC_SQ_WQES_MAX;
 	stats_addr->rxq_size = BNX2FC_CQ_WQES_MAX;
+	stats_addr->rx_fc_crc_errors = 0;
 
+	list_for_each_entry(interface, &if_list, list) {
+		if (interface->hba == hba) {
+			lport = interface->ctlr.lp;
+			bnx2fc_stats = bnx2fc_get_host_stats(lport->host);
+			if (bnx2fc_stats)
+				stats_addr->rx_fc_crc_errors +=
+					bnx2fc_stats->invalid_crc_count;
+		}
+	}
 	return 0;
  }
 
@@ -2105,7 +2184,15 @@ static void bnx2fc_ulp_init(struct cnic_dev *dev)
 static int bnx2fc_disable(struct net_device *netdev)
 {
 	struct bnx2fc_interface *interface;
+	struct net_device *phys_dev;
 	int rc = 0;
+
+	if (netdev->priv_flags & IFF_802_1Q_VLAN) {
+		if (vlan_dev_vlan_id(netdev) == 0) {
+			phys_dev = vlan_dev_real_dev(netdev);
+			netdev = phys_dev;
+		}
+	}
 
 	rtnl_lock();
 	mutex_lock(&bnx2fc_dev_lock);
@@ -2129,7 +2216,15 @@ static int bnx2fc_disable(struct net_device *netdev)
 static int bnx2fc_enable(struct net_device *netdev)
 {
 	struct bnx2fc_interface *interface;
+	struct net_device *phys_dev;
 	int rc = 0;
+
+	if (netdev->priv_flags & IFF_802_1Q_VLAN) {
+		if (vlan_dev_vlan_id(netdev) == 0) {
+			phys_dev = vlan_dev_real_dev(netdev);
+			netdev = phys_dev;
+		}
+	}
 
 	rtnl_lock();
 	mutex_lock(&bnx2fc_dev_lock);
@@ -2189,7 +2284,7 @@ netdev_err:
 static int bnx2fc_create(struct net_device *netdev, enum fip_state fip_mode)
 {
 	struct bnx2fc_interface *interface;
-	struct net_device *phys_dev;
+	struct net_device *phys_dev, *v_netdev;
 	struct bnx2fc_hba *hba;
 	struct fc_lport *lport;
 	int rc = 0;
@@ -2229,6 +2324,13 @@ static int bnx2fc_create(struct net_device *netdev, enum fip_state fip_mode)
 		goto mod_err;
 	}
 
+	if (netdev->priv_flags & IFF_802_1Q_VLAN)
+		vlan_id = vlan_dev_vlan_id(netdev);
+
+	v_netdev = netdev;
+	if (vlan_id == 0)
+		netdev = phys_dev;
+
 	if (bnx2fc_interface_lookup(netdev)) {
 		rc = -EEXIST;
 		module_put(THIS_MODULE);
@@ -2241,10 +2343,14 @@ static int bnx2fc_create(struct net_device *netdev, enum fip_state fip_mode)
 		goto ifput_err;
 	}
 
-	if (netdev->priv_flags & IFF_802_1Q_VLAN) {
-		vlan_id = vlan_dev_vlan_id(netdev);
+	interface->v_netdev = v_netdev;
+	/*
+	 * for vlan_id 0, netdev would have been phys_dev, so vlan
+	 * is not enabled
+	 */
+	if (netdev->priv_flags & IFF_802_1Q_VLAN)
 		interface->vlan_enabled = 1;
-	}
+
 	interface->vlan_id = vlan_id;
 
 	interface->timer_work_queue =
@@ -2772,7 +2878,7 @@ static struct scsi_host_template bnx2fc_shost_template = {
 	.can_queue		= BNX2FC_CAN_QUEUE,
 	.use_clustering		= ENABLE_CLUSTERING,
 	.sg_tablesize		= BNX2FC_MAX_BDS_PER_CMD,
-	.max_sectors		= 512,
+	.max_sectors		= 1024,
 #ifdef __BNX2FC_RHEL62__
 	.lockless		= 1,
 #endif
