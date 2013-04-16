@@ -227,7 +227,7 @@ int btrfs_uuid_tree_rem(struct btrfs_trans_handle *trans,
 	move_src = offset + sizeof(subid);
 	move_len = item_size - (move_src - btrfs_item_ptr_offset(eb, slot));
 	memmove_extent_buffer(eb, move_dst, move_src, move_len);
-	btrfs_truncate_item(trans, uuid_root, path, item_size - sizeof(subid), 1);
+	btrfs_truncate_item(uuid_root, path, item_size - sizeof(subid), 1);
 
 out:
 	btrfs_free_path(path);
