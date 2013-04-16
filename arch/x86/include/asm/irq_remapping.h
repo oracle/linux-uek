@@ -1,6 +1,9 @@
 #ifndef _ASM_X86_IRQ_REMAPPING_H
 #define _ASM_X86_IRQ_REMAPPING_H
 
+#include <linux/dmar.h>
+#include <asm/hw_irq.h>
+
 #define IRTE_DEST(dest) ((x2apic_mode) ? dest : dest << 8)
 
 #ifdef CONFIG_INTR_REMAP
@@ -28,6 +31,7 @@ static inline bool irq_remapped(struct irq_cfg *cfg)
 {
 	return cfg->irq_2_iommu.iommu != NULL;
 }
+extern void set_irq_remapping_broken(void);
 #else
 static void prepare_irte(struct irte *irte, int vector, unsigned int dest)
 {
@@ -36,6 +40,7 @@ static inline bool irq_remapped(struct irq_cfg *cfg)
 {
 	return false;
 }
+static inline void set_irq_remapping_broken(void) { }
 #endif
 
 #endif	/* _ASM_X86_IRQ_REMAPPING_H */
