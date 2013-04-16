@@ -30,6 +30,7 @@ extern int irq_remapping_enabled;
 
 extern void setup_irq_remapping_ops(void);
 extern int irq_remapping_supported(void);
+extern void set_irq_remapping_broken(void);
 extern int irq_remapping_prepare(void);
 extern int irq_remapping_enable(void);
 extern void irq_remapping_disable(void);
@@ -58,6 +59,7 @@ extern int setup_hpet_msi_remapped(unsigned int irq, unsigned int id);
 
 static inline void setup_irq_remapping_ops(void) { }
 static inline int irq_remapping_supported(void) { return 0; }
+static inline void set_irq_remapping_broken(void) { }
 static inline int irq_remapping_prepare(void) { return -ENODEV; }
 static inline int irq_remapping_enable(void) { return -ENODEV; }
 static inline void irq_remapping_disable(void) { }
