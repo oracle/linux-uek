@@ -55,66 +55,6 @@
 #define PCI_DEVICE_ID_NX2_5709S		0x163a
 #endif
 
-#ifndef PCI_DEVICE_ID_NX2_57710
-#define PCI_DEVICE_ID_NX2_57710		0x164e
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57711
-#define PCI_DEVICE_ID_NX2_57711		0x164f
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57711E
-#define PCI_DEVICE_ID_NX2_57711E	0x1650
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57712
-#define PCI_DEVICE_ID_NX2_57712		0x1662
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57712_MF
-#define PCI_DEVICE_ID_NX2_57712_MF	0x1663
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57712_VF
-#define PCI_DEVICE_ID_NX2_57712_VF	0x166f
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57800
-#define PCI_DEVICE_ID_NX2_57800		0x168a
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57800_MF
-#define PCI_DEVICE_ID_NX2_57800_MF	0x16a5
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57800_VF
-#define PCI_DEVICE_ID_NX2_57800_VF	0x16a9
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57810
-#define PCI_DEVICE_ID_NX2_57810		0x168e
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57810_MF
-#define PCI_DEVICE_ID_NX2_57810_MF	0x16ae
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57810_VF
-#define PCI_DEVICE_ID_NX2_57810_VF	0x16af
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57840
-#define PCI_DEVICE_ID_NX2_57840		0x168d
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57840_MF
-#define PCI_DEVICE_ID_NX2_57840_MF	0x16ab
-#endif
-
-#ifndef PCI_DEVICE_ID_NX2_57840_VF
-#define PCI_DEVICE_ID_NX2_57840_VF	0x16ad
-#endif
-
 #define BNX2I_MAX_ADAPTERS		8
 
 #define ISCSI_MAX_CONNS_PER_HBA		128
@@ -909,7 +849,7 @@ extern struct device_attribute *bnx2i_dev_attributes[];
 /*
  * Function Prototypes
  */
-extern void bnx2i_identify_device(struct bnx2i_hba *hba);
+extern void bnx2i_identify_device(struct bnx2i_hba *hba, struct cnic_dev *dev);
 
 extern void bnx2i_ulp_init(struct cnic_dev *dev);
 extern void bnx2i_ulp_exit(struct cnic_dev *dev);

@@ -831,7 +831,7 @@ struct bnx2i_hba *bnx2i_alloc_hba(struct cnic_dev *cnic)
 	hba->pci_func = PCI_FUNC(hba->pcidev->devfn);
 	hba->pci_devno = PCI_SLOT(hba->pcidev->devfn);
 
-	bnx2i_identify_device(hba);
+	bnx2i_identify_device(hba, cnic);
 	bnx2i_setup_host_queue_size(hba, shost);
 
 	hba->reg_base = pci_resource_start(hba->pcidev, 0);
@@ -951,7 +951,7 @@ void bnx2i_free_hba(struct bnx2i_hba *hba)
 #define MAX_FREE_HBA_RETRY 10
 	int i = MAX_FREE_HBA_RETRY, rc = 0;
 #if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
      (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
      (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
 	struct list_head *pos, *q;
@@ -1001,7 +1001,7 @@ void bnx2i_free_hba(struct bnx2i_hba *hba)
 	}
 
 #if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
      (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
      (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
 	list_for_each_safe(pos, q, &hba->iface_ipv4_list) {
@@ -1647,7 +1647,7 @@ static void bnx2i_conn_destroy(struct iscsi_cls_conn *cls_conn)
 }
 
 #if ((!defined(__SLES_DISTRO__) || (__SLES_DISTRO__ < 0x1102)) && \
-     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x0509)) && \
+     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x050a)) && \
      (!defined(__RHELS_DISTRO_6__) || (__RHELS_DISTRO_6__ < 0x0602)) && \
      (defined(__DISTRO__) || LINUX_VERSION_CODE < 0x020626))
 /**
@@ -1734,7 +1734,7 @@ static int bnx2i_ep_get_param(struct iscsi_endpoint *ep,
 #endif
 
 #if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
      (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
      (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
 /**
@@ -2229,15 +2229,12 @@ static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 		/* Need to terminate and cleanup the connection */
 		goto release_ep;
 	}
+	if (!test_bit(BNX2I_NX2_DEV_57710, &hba->cnic_dev_type) && time_stamps)
+		bnx2i_ep->cm_sk->tcp_flags |= SK_TCP_TIMESTAMP;
 
 	/* Supply Window size to be 4 bytes aligned */
 	bnx2i_ep->cm_sk->rcv_buf = (tcp_buf_size * 1024 - 1) & ~0x03;
 	bnx2i_ep->cm_sk->snd_buf = (tcp_buf_size * 1024 - 1) & ~0x03;
-
-        if (!en_tcp_dack)
-                bnx2i_ep->cm_sk->tcp_flags |= SK_TCP_NO_DELAY_ACK;
-        if (time_stamps)
-                bnx2i_ep->cm_sk->tcp_flags |= SK_TCP_TIMESTAMP;
 
 	memset(&saddr, 0, sizeof(saddr));
 	if (dst_addr->sa_family == AF_INET) {
@@ -2548,6 +2545,7 @@ static int bnx2i_nl_set_path(struct Scsi_Host *shost, struct iscsi_path *params)
 	return 0;
 }
 
+
 static mode_t bnx2i_attr_is_visible(int param_type, int param)
 {
 	switch (param_type) {
@@ -2622,6 +2620,7 @@ static mode_t bnx2i_attr_is_visible(int param_type, int param)
 
 	return 0;
 }
+
 
 /**
  * conn_err_recovery_task - does recovery on all queued sessions
@@ -2740,7 +2739,7 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.set_param		= iscsi_set_param,
 	.attr_is_visible	= bnx2i_attr_is_visible,
 #if ((!defined(__SLES_DISTRO__) || (__SLES_DISTRO__ < 0x1102)) && \
-     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x0509)) && \
+     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x050a)) && \
      (!defined(__RHELS_DISTRO_6__) || (__RHELS_DISTRO_6__ < 0x0602)) && \
      (defined(__DISTRO__) || LINUX_VERSION_CODE < 0x020626))
 	.get_conn_param		= bnx2i_conn_get_param,
@@ -2749,7 +2748,7 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.get_ep_param		= bnx2i_ep_get_param,
 #endif
 #if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0508)) || \
+     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
      (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
      (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
 	.set_iface_param	= bnx2i_set_iface_param,
