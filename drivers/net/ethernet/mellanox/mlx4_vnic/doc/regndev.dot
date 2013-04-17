@@ -1,0 +1,54 @@
+digraph {
+
+	vnic_login_create_1 -> register_netdev; //
+	__vnic_login_create -> vnic_login_create_1; //
+	vnic_new_intf_store -> __vnic_login_create; //
+	vnic_port_data_init -> __vnic_login_create; //
+	vnic_ib_dev_add_one -> vnic_port_data_init; //
+	fip_vnic_login_create -> vnic_login_create_1; //
+	fip_vnic_test_login -> fip_vnic_login_create [label="login_wq", color=blue]; //
+	fip_vnic_destroy -> fip_vnic_test_login; //
+	fip_purge_vnics -> fip_vnic_destroy; //
+	fip_purge_vnics -> fip_purge_vnics [label="fip_wq", color=blue]; //
+	fip_vnic_close -> fip_purge_vnics [label="fip_wq", color=blue];
+	fip_vnic_hadmin_init -> fip_vnic_test_login; //
+	fip_gw_update_hadmin_gw -> fip_vnic_hadmin_init; //
+	fip_discover_hadmin_update -> fip_gw_update_hadmin_gw; //
+	fip_hadmin_sysfs_update -> fip_discover_hadmin_update [label="fip_wq", color=blue]; //
+	fip_vnic_fsm -> fip_vnic_test_login; //
+	fip_gw_create_vnics -> fip_vnic_fsm; //
+
+
+	fip_gw_update_hadmin_gw -> fip_vnic_fsm;
+	fip_vnic_login_ack_recv -> fip_vnic_fsm; //
+	fip_discover_rx_packet_bh -> fip_vnic_login_ack_recv;
+	fip_vnic_tbl_done -> fip_vnic_fsm; //
+	vhub_handle_tbl -> fip_vnic_tbl_done; //
+	fip_vnic_recv_bh -> vhub_handle_tbl; //
+	fip_vnic_recv -> fip_vnic_recv_bh [label="fip_wq", color=blue]; //
+	fip_vnic_comp -> fip_vnic_recv;
+
+	fip_discover_rx_advertise_bh -> fip_discover_gw_fsm;
+
+	fip_hadmin_vnic_refresh -> fip_vnic_fsm; //
+	fip_gw_create_vnics -> fip_hadmin_vnic_refresh //
+	fip_gw_modified -> fip_gw_create_vnics; //
+	fip_discover_rx_advertise_bh -> fip_gw_modified; //
+	fip_discover_rx_packet_bh -> fip_discover_rx_advertise_bh; //
+	fip_discover_process_rx_bh -> fip_discover_rx_packet_bh; //
+	fip_discover_process_rx -> fip_discover_process_rx_bh [label="fip_wq", color=blue]; //
+	fip_discover_comp -> fip_discover_process_rx;
+
+
+
+	fip_discover_rx_advertise_bh -> fip_gw_create_vnics;
+	fip_discover_gw_fsm -> fip_gw_create_vnics;
+
+	vnic_login_pre_create_1 -> vnic_alloc_netdev; //
+	__vnic_login_create -> vnic_login_pre_create_1;
+	fip_vnic_hadmin_init -> vnic_login_pre_create_1;
+	fip_vnic_login_init -> vnic_login_pre_create_1;
+	fip_vnic_fsm -> fip_vnic_login_init;
+	
+
+}
