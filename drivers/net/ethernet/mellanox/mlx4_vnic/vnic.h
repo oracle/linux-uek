@@ -73,6 +73,19 @@
 #define DRV_DESC  "Mellanox BridgeX Virtual NIC Driver"
 #define DRV_AUTH  "Ali Ayoub & Gabi Liron"
 
+/* backports */
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,35))
+#define _BP_NO_MC_LIST
+
+// Not sure this should be here at least this is ok for 2.6.39
+#define _BP_NO_ATT_OWNER
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,1,0))
+#define _BP_NO_GRO
+#endif
+
 /* externs */
 extern u32 vnic_msglvl;
 extern u32 vnic_max_tx_outs;

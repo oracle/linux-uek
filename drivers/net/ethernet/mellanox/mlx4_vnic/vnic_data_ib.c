@@ -1025,6 +1025,7 @@ void vnic_destroy_tx_res(struct vnic_login *login, int tx_res_index)
 			  tx_res_index);
 }
 
+#if 0
 static inline int get_comp_vector(int index, struct vnic_port *port)
 {
 	int vector;
@@ -1038,11 +1039,12 @@ static inline int get_comp_vector(int index, struct vnic_port *port)
 
 	return vector;
 }
+#endif
 
 int vnic_create_rx_res(struct vnic_login *login, int rx_res_index)
 {
 	struct vnic_rx_res *rx_res = &login->rx_res[rx_res_index];
-	int comp_vector = get_comp_vector(rx_res_index, login->port);
+	int comp_vector = rx_res_index % login->port->dev->ca->num_comp_vectors;
 	struct ib_cq *cq =
 		ib_create_cq(login->port->dev->ca,
 			     vnic_comp_handler_rx,
@@ -1092,7 +1094,7 @@ int vnic_create_tx_res(struct vnic_login *login, int tx_res_index)
 	tx_res->mcast_av.ah_flags = IB_AH_GRH;
 
 	/* create tx cq */
-	comp_vector = get_comp_vector(tx_res_index, login->port);
+	comp_vector = tx_res_index % login->port->dev->ca->num_comp_vectors;
 	cq = ib_create_cq(login->port->dev->ca,
 			  vnic_comp_handler_tx,
 			  NULL, &login->tx_res[tx_res_index],
@@ -1614,7 +1616,10 @@ int vnic_ib_set_moder(struct vnic_login *login, u16 rx_usecs, u16 rx_frames,
 		       login->sample_interval, login->port->attr.state);
 
 	for (i = 0; i < login->tx_rings_num; ++i) {
-		rc = ib_modify_cq(login->tx_res[i].cq, tx_frames, tx_usecs);
+		struct ib_cq_attr  attr;
+		attr.moderation.cq_count = tx_frames;
+		attr.moderation.cq_period = tx_usecs;
+		rc = ib_modify_cq(login->tx_res[i].cq, &attr, IB_CQ_MODERATION);
 		if (rc && rc != -ENOSYS) {
 			vnic_warn(login->name, "failed modifying tx_res,"
 				  " rc %d, tx ring index %d\n", rc, i);
@@ -1623,7 +1628,10 @@ int vnic_ib_set_moder(struct vnic_login *login, u16 rx_usecs, u16 rx_frames,
 	}
 
 	for (i = 0; i < login->rx_rings_num; ++i) {
-		rc = ib_modify_cq(login->rx_res[i].cq, rx_frames, rx_usecs);
+		struct ib_cq_attr  attr;
+		attr.moderation.cq_count = rx_frames;
+		attr.moderation.cq_period = rx_usecs;
+		rc = ib_modify_cq(login->rx_res[i].cq, &attr, IB_CQ_MODERATION);
 		if (rc && rc != -ENOSYS) {
 			vnic_warn(login->name, "failed modifying rx_res,"
 				  " rc %d, rx ring index %d\n", rc, i);

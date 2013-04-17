@@ -2,6 +2,8 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 
+#include "vnic.h"
+
 MODULE_AUTHOR("Eli Cohen");
 MODULE_DESCRIPTION("container for mlx4_vnic stats function");
 MODULE_LICENSE("Dual BSD/GPL");

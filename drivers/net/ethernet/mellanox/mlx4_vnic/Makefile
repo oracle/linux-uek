@@ -9,4 +9,3 @@ mlx4_vnic-y :=  vnic_data_main.o    vnic_data_ib.o    vnic_data_netdev.o    vnic
 		vnic_param.o        vnic_qp.o         vnic_main.o	    fip_parser.o	\
 		vnic_data_mac.o
 
-

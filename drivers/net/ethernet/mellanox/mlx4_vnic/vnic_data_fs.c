@@ -733,6 +733,10 @@ int fip_hadmin_sysfs_update(struct vnic_port *port,
 		vnic_dbg_sysfs(name, "use shared ip/mac\n");
 	}
 
+#ifndef VLAN_GROUP_ARRAY_LEN
+#define VLAN_GROUP_ARRAY_LEN VLAN_N_VID
+#endif
+
 	/* get VLAN field (dec) */
 	if ((sscanf(cmd->c_vid, "%d", &num) == 1) &&
 	    num < VLAN_GROUP_ARRAY_LEN && num >= 0) {
