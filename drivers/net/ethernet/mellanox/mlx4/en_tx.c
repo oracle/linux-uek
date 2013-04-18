@@ -230,6 +230,7 @@ int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 	err = mlx4_qp_to_ready(mdev->dev, &ring->wqres.mtt, &ring->context,
 			       &ring->qp, &ring->qp_state);
 
+	atomic_set(&ring->inflight, 0);
 	return err;
 }
 
@@ -457,6 +458,7 @@ static int mlx4_en_process_tx_cq(struct net_device *dev,
 	mlx4_cq_set_ci(mcq);
 	wmb();
 	ring->cons += txbbs_skipped;
+	atomic_sub(txbbs_skipped, &ring->inflight);
 	netdev_tx_completed_queue(ring->tx_queue, packets, bytes);
 
 	/*
@@ -774,8 +776,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		vlan_tag = vlan_tx_tag_get(skb);
 
 	/* Check available TXBBs And 2K spare for prefetch */
-	if (unlikely((int)(ring->prod - ring->cons) >
-		     ring->full_size)) {
+	if (unlikely(atomic_read(&ring->inflight) > ring->full_size)) {
 		/* every full Tx ring stops queue */
 		netif_tx_stop_queue(ring->tx_queue);
 		ring->queue_stopped++;
@@ -789,8 +790,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 		wmb();
 
 		/* Check again whether the queue was cleaned */
-		if (likely((int)(ring->prod - ring->cons) <=
-				ring->full_size)) {
+		if (likely(atomic_read(&ring->inflight) <= ring->full_size)) {
 			netif_tx_wake_queue(netdev_get_tx_queue(dev, queue_index));
 			ring->wake_queue++;
 		} else
@@ -923,6 +923,7 @@ netdev_tx_t mlx4_en_xmit(struct sk_buff *skb, struct net_device *dev)
 	}
 
 	ring->prod += nr_txbb;
+	atomic_add(nr_txbb, &ring->inflight);
 
 	/* If we used a bounce buffer then copy descriptor back into place */
 	if (unlikely(bounce))
