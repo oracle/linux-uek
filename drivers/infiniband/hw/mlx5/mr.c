@@ -46,6 +46,13 @@ enum {
 	DEF_CACHE_SIZE	= 10,
 };
 
+static __be64 *mr_align(__be64 *ptr, int align)
+{
+	unsigned long mask = align - 1;
+
+	return (__be64 *)(((unsigned long)ptr + mask) & ~mask);
+}
+
 static int file_open(struct inode *inode, struct file *file)
 {
 	file->private_data = inode->i_private;
@@ -73,7 +80,7 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	int npages = 1 << ent->order;
 	struct device *ddev = dev->ib_dev.dma_device;
-	int size = ALIGN(sizeof(u64) * npages, 0x40);
+	int size = sizeof(u64) * npages;
 
 	in = kzalloc(sizeof(*in), GFP_KERNEL);
 	if (!in) {
@@ -90,13 +97,14 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		}
 		mr->order = ent->order;
 		mr->umred = 1;
-		mr->pas = kmalloc(size, GFP_KERNEL);
+		mr->pas = kmalloc(size + 0x3f, GFP_KERNEL);
 		if (!mr->pas) {
 			kfree(mr);
 			err = -ENOMEM;
 			goto out;
 		}
-		mr->dma = dma_map_single(ddev, mr->pas, size, DMA_TO_DEVICE);
+		mr->dma = dma_map_single(ddev, mr_align(mr->pas, 0x40), size,
+					 DMA_TO_DEVICE);
 		if (dma_mapping_error(ddev, mr->dma)) {
 			kfree(mr->pas);
 			kfree(mr);
@@ -691,7 +699,7 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	if (!mr)
 		return ERR_PTR(-EAGAIN);
 
-	mlx5_ib_populate_pas(dev, umem, page_shift, mr->pas, 1);
+	mlx5_ib_populate_pas(dev, umem, page_shift, mr_align(mr->pas, 0x40), 1);
 
 	memset(&wr, 0, sizeof(wr));
 	get_random_bytes(&wr.wr_id, sizeof(wr.wr_id));
