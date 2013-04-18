@@ -4869,6 +4869,7 @@ lpfc_sli_driver_resource_unset(struct lpfc_hba *phba)
 static int
 lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 {
+	struct lpfc_vector_map_info *cpup;
 	struct lpfc_sli *psli;
 	LPFC_MBOXQ_t *mboxq;
 	int rc, i, hbq_count, max_buf_size;
@@ -5215,6 +5216,15 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 				"interrupt vector mapping\n");
 		rc = -ENOMEM;
 		goto out_free_msix;
+	}
+	/* Initialize io channels for round robin */
+	cpup = phba->sli4_hba.cpu_map;
+	rc = 0;
+	for (i = 0; i < phba->sli4_hba.num_present_cpu; i++) {
+		cpup->channel_id = rc;
+		rc++;
+		if (rc >= phba->cfg_fcp_io_channel)
+			rc = 0;
 	}
 
 	/*
@@ -8414,14 +8424,14 @@ lpfc_sli4_set_affinity(struct lpfc_hba *phba, int vectors)
 	struct cpumask *mask;
 	uint8_t chann[LPFC_FCP_IO_CHAN_MAX+1];
 
+	/* If there is no mapping, just return */
+	if (!phba->cfg_fcp_cpu_map)
+		return 1;
+
 	/* Init cpu_map array */
 	memset(phba->sli4_hba.cpu_map, 0xff,
 	       (sizeof(struct lpfc_vector_map_info) *
 		phba->sli4_hba.num_present_cpu));
-
-	/* If there is no mapping, just return */
-	if (!phba->cfg_fcp_cpu_map)
-		return 1;
 
 	max_phys_id = 0;
 	phys_id = 0;
