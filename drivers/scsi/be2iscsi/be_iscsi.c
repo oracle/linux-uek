@@ -685,6 +685,7 @@ int beiscsi_set_param(struct iscsi_cls_conn *cls_conn,
  * @buf: buffer bointer
  * @phba: The device priv structure instance
  *
+ * returns number of bytes
  */
 static int beiscsi_get_initname(char *buf, struct beiscsi_hba *phba)
 {
@@ -712,6 +713,70 @@ static int beiscsi_get_initname(char *buf, struct beiscsi_hba *phba)
 	resp = embedded_payload(wrb);
 	rc = sprintf(buf, "%s\n", resp->initiator_name);
 	return rc;
+}
+
+/**
+ * beiscsi_get_port_state - Get the Port State
+ * @shost : pointer to scsi_host structure
+ *
+ */
+static void beiscsi_get_port_state(struct Scsi_Host *shost)
+{
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+	struct iscsi_cls_host *ihost = shost->shost_data;
+
+	ihost->port_state = (phba->state == BE_ADAPTER_UP) ?
+		ISCSI_PORT_STATE_UP : ISCSI_PORT_STATE_DOWN;
+}
+
+/**
+ * beiscsi_get_port_speed  - Get the Port Speed from Adapter
+ * @shost : pointer to scsi_host structure
+ *
+ * returns Success/Failure
+ */
+static int beiscsi_get_port_speed(struct Scsi_Host *shost)
+{
+	int rc;
+	unsigned int tag;
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_ntwk_link_status_resp *resp;
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+	struct iscsi_cls_host *ihost = shost->shost_data;
+
+	tag = be_cmd_get_port_speed(phba);
+	if (!tag) {
+		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
+			    "BS_%d : Getting Port Speed Failed\n");
+
+		 return -EBUSY;
+	}
+	rc = beiscsi_mccq_compl(phba, tag, &wrb, NULL);
+	if (rc) {
+		beiscsi_log(phba, KERN_ERR,
+			    BEISCSI_LOG_CONFIG | BEISCSI_LOG_MBOX,
+			    "BS_%d : Port Speed MBX Failed\n");
+		return rc;
+	}
+	resp = embedded_payload(wrb);
+
+	switch (resp->mac_speed) {
+	case BE2ISCSI_LINK_SPEED_10MBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_10MBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_100MBPS:
+		ihost->port_speed = BE2ISCSI_LINK_SPEED_100MBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_1GBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_1GBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_10GBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_10GBPS;
+		break;
+	default:
+		ihost->port_speed = ISCSI_PORT_SPEED_UNKNOWN;
+	}
+	return 0;
 }
 
 /**
@@ -748,6 +813,19 @@ int beiscsi_get_host_param(struct Scsi_Host *shost,
 				    "BS_%d : Retreiving Initiator Name Failed\n");
 			return status;
 		}
+		break;
+	case ISCSI_HOST_PARAM_PORT_STATE:
+		beiscsi_get_port_state(shost);
+		status = sprintf(buf, "%s\n", iscsi_get_port_state_name(shost));
+		break;
+	case ISCSI_HOST_PARAM_PORT_SPEED:
+		status = beiscsi_get_port_speed(shost);
+		if (status) {
+			beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
+				    "BS_%d : Retreiving Port Speed Failed\n");
+			return status;
+		}
+		status = sprintf(buf, "%s\n", iscsi_get_port_speed_name(shost));
 		break;
 	default:
 		return iscsi_host_get_param(shost, param, buf);
@@ -1202,6 +1280,9 @@ mode_t be2iscsi_attr_is_visible(int param_type, int param)
 	case ISCSI_HOST_PARAM:
 		switch (param) {
 		case ISCSI_HOST_PARAM_HWADDRESS:
+		case ISCSI_HOST_PARAM_INITIATOR_NAME:
+		case ISCSI_HOST_PARAM_PORT_STATE:
+		case ISCSI_HOST_PARAM_PORT_SPEED:
 			return S_IRUGO;
 		default:
 			return 0;
