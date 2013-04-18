@@ -887,28 +887,11 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 send_using_neigh:
 	/* note we now hold a ref to neigh */
 	if (ipoib_cm_get(neigh)) {
-		/* in select queue cm wasn't enabled ring is likely wrong */
-		if (!IPOIB_CM_SUPPORTED(cb->hwaddr)) {
-			ipoib_dbg(priv, "CM NOT supported,ring likely wrong, dropping.cm is: %d\n",
-				   ipoib_cm_admin_enabled(dev));
-			++dev->stats.tx_dropped;
-			dev_kfree_skb_any(skb);
+		if (ipoib_cm_up(neigh)) {
+			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
 			goto unref;
 		}
-
-		if (ipoib_cm_up(neigh))
-			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
-
-		goto unref;
 	} else if (neigh->ah) {
-		/* in select queue cm was enabled ring is likely wrong */
-		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
-				ipoib_dbg(priv, "CM supported,ring likely wrong, dropping.cm is: %d\n",
-					   ipoib_cm_admin_enabled(dev));
-				++dev->stats.tx_dropped;
-				dev_kfree_skb_any(skb);
-				goto unref;
-		}
 		ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 		goto unref;
 	}
