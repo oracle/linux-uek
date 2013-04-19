@@ -38,6 +38,7 @@
 #include "rds.h"
 #include "ib.h"
 #include "tcp.h"
+
 /*
  * Convert IB-specific error message to RDS error message and call core
  * completion handler.
@@ -309,7 +310,8 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 			"send completion on %pI4 "
 			"had status %u, disconnecting and reconnecting\n",
 			&conn->c_faddr, wc->status);
-	}
+	} else
+		ic->i_last_migration = 0;
 }
 
 /*

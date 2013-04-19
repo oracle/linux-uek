@@ -80,7 +80,7 @@ struct rds_ib_mr_pool {
 
 	atomic_t		free_pinned;		/* memory pinned by free MRs */
 	unsigned long		max_items;
-	unsigned long		max_items_soft;
+	atomic_t		max_items_soft;
 	unsigned long		max_free_pinned;
 	struct ib_fmr_attr	fmr_attr;
 };
@@ -251,7 +251,7 @@ struct rds_ib_mr_pool *rds_ib_create_mr_pool(struct rds_ib_device *rds_ibdev,
 		pool->max_items * pool->fmr_attr.max_pages / 4;
 	pool->fmr_attr.max_maps = rds_ibdev->fmr_max_remaps;
 	pool->fmr_attr.page_shift = PAGE_SHIFT;
-	pool->max_items_soft = pool->max_items * 3 / 4;
+	atomic_set(&pool->max_items_soft, pool->max_items);
 
 	return pool;
 }
@@ -316,7 +316,6 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 {
 	struct rds_ib_mr_pool *pool;
 	struct rds_ib_mr *ibmr = NULL;
-	struct rds_ib_mr *tmp_ibmr = NULL;
 	int err = 0, iter = 0;
 
 	if (npages <= RDS_FMR_8K_MSG_SIZE)
@@ -324,7 +323,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	else
 		pool = rds_ibdev->mr_1m_pool;
 
-	if (atomic_read(&pool->dirty_count) >= pool->max_items / 10)
+	if (atomic_read(&pool->dirty_count) >=
+		atomic_read(&pool->max_items_soft) / 10)
 		queue_delayed_work(rds_ib_fmr_wq, &pool->flush_worker, 10);
 
 	while (1) {
@@ -381,25 +381,39 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	if (IS_ERR(ibmr->fmr)) {
 		err = PTR_ERR(ibmr->fmr);
 
-		/* Adjust the pool size to reflect the resources available to
-		 * the VM.
+		/* Re-balance the pool sizes to reflect the memory resources
+		 * available to the VM.
 		 */
 		if (err == -ENOMEM) {
-			int prev_max = pool->max_items;
+			int total_pool_size =
+				atomic_read(&rds_ibdev->mr_8k_pool->item_count)
+					* (RDS_FMR_8K_MSG_SIZE + 1) +
+				atomic_read(&rds_ibdev->mr_1m_pool->item_count)
+					* RDS_FMR_1M_MSG_SIZE;
 
-			pool->max_items = atomic_read(&pool->item_count);
+			if (total_pool_size) {
+				int prev_8k_max = atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft);
+				int prev_1m_max = atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft);
+				atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft, (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
+				atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft, (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
+				printk(KERN_ERR "RDS/IB: "
+					"Adjusted 8K FMR pool (%d->%d)\n",
+					prev_8k_max,
+					atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
+				printk(KERN_ERR "RDS/IB: "
+					"Adjusted 1K FMR pool (%d->%d)\n",
+					prev_1m_max,
+					atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
+				rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1,
+							NULL);
 
-			printk(KERN_ERR "RDS/IB: Adjusted %s FMR pool (%d->%ld)\n", (pool->pool_type == RDS_IB_MR_8K_POOL) ? "8K" : "1M",
-				prev_max, pool->max_items);
+				rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1,
+							NULL);
 
-			rds_ib_flush_mr_pool(pool, 0, &tmp_ibmr);
-			if (tmp_ibmr) {
-				kfree(ibmr);
-				return tmp_ibmr;
+				err = -EAGAIN;
 			}
 		}
 		ibmr->fmr = NULL;
-		printk(KERN_WARNING "RDS/IB: ib_alloc_fmr failed (err=%d)\n", err);
 		goto out_no_cigar;
 	}
 
@@ -408,6 +422,11 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		rds_ib_stats_inc(s_ib_rdma_mr_8k_alloc);
 	else
 		rds_ib_stats_inc(s_ib_rdma_mr_1m_alloc);
+
+	if (atomic_read(&pool->item_count) >
+		atomic_read(&pool->max_items_soft))
+		atomic_set(&pool->max_items_soft, pool->max_items);
+
 	return ibmr;
 
 out_no_cigar:
@@ -793,7 +812,8 @@ void rds_ib_free_mr(void *trans_private, int invalidate)
 
 	/* If we've pinned too many pages, request a flush */
 	if (atomic_read(&pool->free_pinned) >= pool->max_free_pinned
-	 || atomic_read(&pool->dirty_count) >= pool->max_items / 5)
+	 || atomic_read(&pool->dirty_count) >=
+		atomic_read(&pool->max_items_soft) / 5)
 		queue_delayed_work(rds_ib_fmr_wq, &pool->flush_worker, 10);
 
 	if (invalidate) {
