@@ -8,10 +8,10 @@
 #include "rds.h"
 #include "rdma_transport.h"
 
-#define RDS_FMR_1M_POOL_SIZE		(8192 / 2)
+#define RDS_FMR_1M_POOL_SIZE		(8192 * 3 / 4)
 #define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
 #define RDS_FMR_8K_MSG_SIZE             2
-#define RDS_FMR_8K_POOL_SIZE            ((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 2))
+#define RDS_FMR_8K_POOL_SIZE		((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 4))
 
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
@@ -25,6 +25,8 @@
 #define RDS_IB_DEFAULT_RETRY_COUNT	1
 
 #define RDS_IB_DEFAULT_RNR_RETRY_COUNT  7
+
+#define RDS_IB_DEFAULT_NUM_ARPS		100
 
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
@@ -83,9 +85,9 @@ struct rds_ib_connect_private {
 	u8			dp_protocol_major;
 	u8			dp_protocol_minor;
 	__be16			dp_protocol_minor_mask; /* bitmask */
-	u8                      dp_tos;
-	u8                      dp_reserved1;
-	__be16                  dp_reserved2;
+	u8			dp_tos;
+	u8			dp_reserved1;
+	__be16			dp_reserved2;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
 };
@@ -230,6 +232,7 @@ struct rds_ib_connection {
 	struct rds_ib_path      i_cur_path;
 	unsigned int            i_alt_path_index;
 	unsigned int		i_active_side;
+	unsigned long		i_last_migration;
 
 	int			i_scq_vector;
 	int			i_rcq_vector;
@@ -282,6 +285,7 @@ struct rds_ib_port {
 	struct net_device	*dev;
 	unsigned int            port_state;
 	u8			port_num;
+	union ib_gid            gid;
 	char			port_label[4];
 	char                    if_name[IFNAMSIZ];
 	__be32                  ip_addr;
@@ -292,11 +296,17 @@ struct rds_ib_port {
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
 
+enum {
+	RDS_IB_PORT_EVENT_IB,
+	RDS_IB_PORT_EVENT_NET,
+};
+
 struct rds_ib_port_ud_work {
 	struct delayed_work             work;
 	struct net_device		*dev;
 	unsigned int                    port;
 	int				timeout;
+	int				event_type;
 };
 
 enum {
@@ -382,6 +392,7 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_lows;
 	uint64_t        s_ib_srq_refills;
 	uint64_t        s_ib_srq_empty_refills;
+	uint64_t	s_ib_failed_apm;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
