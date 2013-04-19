@@ -44,6 +44,8 @@
 
 static struct rdma_cm_id *rds_iw_listen_id;
 
+int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
+
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event)
 {
@@ -94,7 +96,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
-					 RDS_RDMA_RESOLVE_TIMEOUT_MS);
+				rds_rdma_resolve_to_ms[conn->c_to_index]);
 		if (ret) {
 			/*
 			 * The cm_id will get destroyed by addr_handler
@@ -109,12 +111,14 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn);
-			}
+			} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+				conn->c_to_index++;
 		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		/* XXX worry about racing with listen acceptance */
+		conn->c_to_index = 0;
 		ret = trans->cm_initiate_connect(cm_id);
 		break;
 
@@ -172,7 +176,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				/* rejection from 3.x protocol */
 				if (!conn->c_tos) {
 					/* retry the connect with a
-				 	* lower compatible protocol */
+					   lower compatible protocol */
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
 					rds_conn_drop(conn);
