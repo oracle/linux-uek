@@ -208,6 +208,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
 #if RDMA_RDS_APM_SUPPORTED
+<<<<<<< HEAD
 	if (rds_ib_apm_enabled && !ic->conn->c_reconnect) {
 		memcpy(&ic->i_pri_path.p_sgid,
 			&ic->i_cm_id->route.path_rec[0].sgid,
@@ -233,10 +234,42 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 			conn->c_tos,
 			RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
 			RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
+=======
+	if (rds_ib_apm_enabled) {
+		struct rdma_dev_addr *dev_addr;
+
+		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
+
+		if (!ic->conn->c_reconnect) {
+			rdma_addr_get_sgid(dev_addr,
+				(union ib_gid *)&ic->i_pri_path.p_sgid);
+			rdma_addr_get_dgid(dev_addr,
+				(union ib_gid *)&ic->i_pri_path.p_dgid);
+			printk(KERN_NOTICE "RDS/IB: connection "
+				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> primary path "
+				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr),
+				conn->c_tos,
+				RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
+				RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
+		}
+		rdma_addr_get_sgid(dev_addr,
+			(union ib_gid *)&ic->i_cur_path.p_sgid);
+		rdma_addr_get_dgid(dev_addr,
+			(union ib_gid *)&ic->i_cur_path.p_dgid);
+>>>>>>> f09abac... RDS: Fixes to improve throughput performance
 	}
 #endif
 
 	rds_connect_complete(conn);
+
+#if RDMA_RDS_APM_SUPPORTED
+        if (ic->i_last_migration) {
+                rds_ib_stats_inc(s_ib_failed_apm);
+                ic->i_last_migration = 0;
+        }
+#endif
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
@@ -436,6 +469,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 				RDS_IB_GID_ARG(ic->i_cur_path.p_sgid),
 				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
 		}
+		ic->i_last_migration = get_seconds();
 
 		break;
 	case IB_EVENT_PATH_MIG_ERR:
