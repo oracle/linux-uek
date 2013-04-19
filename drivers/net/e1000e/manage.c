@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -59,7 +59,7 @@ static u8 e1000_calculate_checksum(u8 *buffer, u32 length)
  *  and also checks whether the previous command is completed.  It busy waits
  *  in case of previous command is not completed.
  **/
-s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
+static s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 {
 	u32 hicr;
 	u8 i;
@@ -129,11 +129,10 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
 		return hw->mac.tx_pkt_filtering;
 	}
 
-	/*
-	 * If we can't read from the host interface for whatever
+	/* If we can't read from the host interface for whatever
 	 * reason, disable filtering.
 	 */
-	ret_val = hw->mac.ops.mng_enable_host_if(hw);
+	ret_val = e1000_mng_enable_host_if(hw);
 	if (ret_val) {
 		hw->mac.tx_pkt_filtering = false;
 		return hw->mac.tx_pkt_filtering;
@@ -149,8 +148,7 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
 	hdr->checksum = 0;
 	csum = e1000_calculate_checksum((u8 *)hdr,
 					E1000_MNG_DHCP_COOKIE_LENGTH);
-	/*
-	 * If either the checksums or signature don't match, then
+	/* If either the checksums or signature don't match, then
 	 * the cookie area isn't considered valid, in which case we
 	 * take the safe route of assuming Tx filtering is enabled.
 	 */
@@ -173,8 +171,8 @@ bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw)
  *
  *  Writes the command header after does the checksum calculation.
  **/
-s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
-			       struct e1000_host_mng_command_header *hdr)
+static s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
+				      struct e1000_host_mng_command_header *hdr)
 {
 	u16 i, length = sizeof(struct e1000_host_mng_command_header);
 
@@ -204,8 +202,8 @@ s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
  *  It also does alignment considerations to do the writes in most efficient
  *  way.  Also fills up the sum of the buffer in *buffer parameter.
  **/
-s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
-			    u16 length, u16 offset, u8 *sum)
+static s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
+				   u16 length, u16 offset, u8 *sum)
 {
 	u8 *tmp;
 	u8 *bufptr = buffer;
@@ -238,8 +236,7 @@ s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
 	/* Calculate length in DWORDs */
 	length >>= 2;
 
-	/*
-	 * The device driver writes the relevant command block into the
+	/* The device driver writes the relevant command block into the
 	 * ram area.
 	 */
 	for (i = 0; i < length; i++) {
@@ -286,18 +283,18 @@ s32 e1000e_mng_write_dhcp_info(struct e1000_hw *hw, u8 *buffer, u16 length)
 	hdr.checksum = 0;
 
 	/* Enable the host interface */
-	ret_val = hw->mac.ops.mng_enable_host_if(hw);
+	ret_val = e1000_mng_enable_host_if(hw);
 	if (ret_val)
 		return ret_val;
 
 	/* Populate the host interface with the contents of "buffer". */
-	ret_val = hw->mac.ops.mng_host_if_write(hw, buffer, length,
-						sizeof(hdr), &(hdr.checksum));
+	ret_val = e1000_mng_host_if_write(hw, buffer, length,
+					  sizeof(hdr), &(hdr.checksum));
 	if (ret_val)
 		return ret_val;
 
 	/* Write the manageability command header */
-	ret_val = hw->mac.ops.mng_write_cmd_header(hw, &hdr);
+	ret_val = e1000_mng_write_cmd_header(hw, &hdr);
 	if (ret_val)
 		return ret_val;
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -26,14 +26,9 @@
 
 *******************************************************************************/
 
-#ifndef _E1000_MAC_H_
-#define _E1000_MAC_H_
+#ifndef _E1000E_MAC_H_
+#define _E1000E_MAC_H_
 
-/*
- * Functions that should not be called directly from drivers but can be used
- * by other files in this 'shared code'
- */
-void e1000_init_mac_ops_generic(struct e1000_hw *hw);
 s32 e1000e_blink_led_generic(struct e1000_hw *hw);
 s32 e1000e_check_for_copper_link(struct e1000_hw *hw);
 s32 e1000e_check_for_fiber_link(struct e1000_hw *hw);
@@ -59,16 +54,21 @@ s32 e1000e_set_fc_watermarks(struct e1000_hw *hw);
 s32 e1000e_setup_fiber_serdes_link(struct e1000_hw *hw);
 s32 e1000e_setup_led_generic(struct e1000_hw *hw);
 s32 e1000e_setup_link_generic(struct e1000_hw *hw);
+s32 e1000e_validate_mdi_setting_generic(struct e1000_hw *hw);
+s32 e1000e_validate_mdi_setting_crossover_generic(struct e1000_hw *hw);
 
 void e1000e_clear_hw_cntrs_base(struct e1000_hw *hw);
 void e1000_clear_vfta_generic(struct e1000_hw *hw);
 void e1000e_init_rx_addrs(struct e1000_hw *hw, u16 rar_count);
-void e1000_pcix_mmrbc_workaround_generic(struct e1000_hw *hw);
 void e1000e_put_hw_semaphore(struct e1000_hw *hw);
 s32 e1000_check_alt_mac_addr_generic(struct e1000_hw *hw);
 void e1000e_reset_adaptive(struct e1000_hw *hw);
 void e1000e_set_pcie_no_snoop(struct e1000_hw *hw, u32 no_snoop);
 void e1000e_update_adaptive(struct e1000_hw *hw);
 void e1000_write_vfta_generic(struct e1000_hw *hw, u32 offset, u32 value);
+
+void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw);
+void e1000e_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index);
+void e1000e_config_collision_dist_generic(struct e1000_hw *hw);
 
 #endif

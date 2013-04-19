@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -62,7 +62,6 @@
 #undef ADVERTISED_10000baseT_Full
 #define ADVERTISED_10000baseT_Full	(1 << 12)
 #undef SPEED_10000
-#define SPEED_10000		10000
 
 #undef ethtool_ops
 #define ethtool_ops _kc_ethtool_ops

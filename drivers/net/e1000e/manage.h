@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -26,16 +26,11 @@
 
 *******************************************************************************/
 
-#ifndef _E1000_MANAGE_H_
-#define _E1000_MANAGE_H_
+#ifndef _E1000E_MANAGE_H_
+#define _E1000E_MANAGE_H_
 
 bool e1000e_check_mng_mode_generic(struct e1000_hw *hw);
 bool e1000e_enable_tx_pkt_filtering(struct e1000_hw *hw);
-s32 e1000_mng_enable_host_if(struct e1000_hw *hw);
-s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer,
-			    u16 length, u16 offset, u8 *sum);
-s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
-			       struct e1000_host_mng_command_header *hdr);
 s32 e1000e_mng_write_dhcp_info(struct e1000_hw *hw, u8 *buffer, u16 length);
 bool e1000e_enable_mng_pass_thru(struct e1000_hw *hw);
 
@@ -64,9 +59,6 @@ enum e1000_mng_mode {
 #define E1000_VFTA_ENTRY_MASK			0x7F
 #define E1000_VFTA_ENTRY_BIT_SHIFT_MASK		0x1F
 
-#define E1000_HI_MAX_BLOCK_BYTE_LENGTH		1792	/* Num of bytes in range */
-#define E1000_HI_MAX_BLOCK_DWORD_LENGTH		448	/* Num of dwords in range */
-#define E1000_HI_COMMAND_TIMEOUT		500	/* Process HI cmd limit */
 #define E1000_HICR_EN			0x01	/* Enable bit - RO */
 /* Driver sets this bit when done to put command in RAM */
 #define E1000_HICR_C			0x02

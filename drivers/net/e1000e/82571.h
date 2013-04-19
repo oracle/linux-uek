@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -26,8 +26,8 @@
 
 *******************************************************************************/
 
-#ifndef _E1000_82571_H_
-#define _E1000_82571_H_
+#ifndef _E1000E_82571_H_
+#define _E1000E_82571_H_
 
 #define ID_LED_RESERVED_F746	0xF746
 #define ID_LED_DEFAULT_82573	((ID_LED_DEF1_DEF2 << 12) | \
@@ -44,10 +44,10 @@
 #define E1000_EIAC_82574	0x000DC	/* Ext. Interrupt Auto Clear - RW */
 #define E1000_EIAC_MASK_82574	0x01F00000
 
+#define E1000_IVAR_INT_ALLOC_VALID	0x8
+
 /* Manageability Operation Mode mask */
 #define E1000_NVM_INIT_CTRL2_MNGM	0x6000
-
-#define E1000_RXCFGL	0x0B634	/* TimeSync Rx EtherType & Msg Type Reg - RW */
 
 #define E1000_BASE1000T_STATUS		10
 #define E1000_IDLE_ERROR_COUNT_MASK	0xFF

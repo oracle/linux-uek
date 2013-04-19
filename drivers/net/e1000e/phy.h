@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -26,8 +26,8 @@
 
 *******************************************************************************/
 
-#ifndef _E1000_PHY_H_
-#define _E1000_PHY_H_
+#ifndef _E1000E_PHY_H_
+#define _E1000E_PHY_H_
 
 s32 e1000e_check_downshift(struct e1000_hw *hw);
 s32 e1000_check_polarity_m88(struct e1000_hw *hw);
@@ -41,7 +41,7 @@ s32 e1000e_phy_force_speed_duplex_m88(struct e1000_hw *hw);
 s32 e1000_phy_force_speed_duplex_ife(struct e1000_hw *hw);
 s32 e1000e_get_cable_length_m88(struct e1000_hw *hw);
 s32 e1000e_get_cable_length_igp_2(struct e1000_hw *hw);
-s32 e1000e_get_cfg_done(struct e1000_hw *hw);
+s32 e1000e_get_cfg_done_generic(struct e1000_hw *hw);
 s32 e1000e_get_phy_id(struct e1000_hw *hw);
 s32 e1000e_get_phy_info_igp(struct e1000_hw *hw);
 s32 e1000e_get_phy_info_m88(struct e1000_hw *hw);
@@ -58,13 +58,11 @@ s32 e1000e_read_phy_reg_igp_locked(struct e1000_hw *hw, u32 offset, u16 *data);
 s32 e1000e_read_phy_reg_m88(struct e1000_hw *hw, u32 offset, u16 *data);
 s32 e1000e_set_d3_lplu_state(struct e1000_hw *hw, bool active);
 s32 e1000e_setup_copper_link(struct e1000_hw *hw);
-s32 e1000_wait_autoneg(struct e1000_hw *hw);
 s32 e1000e_write_kmrn_reg(struct e1000_hw *hw, u32 offset, u16 data);
 s32 e1000e_write_kmrn_reg_locked(struct e1000_hw *hw, u32 offset, u16 data);
 s32 e1000e_write_phy_reg_igp(struct e1000_hw *hw, u32 offset, u16 data);
 s32 e1000e_write_phy_reg_igp_locked(struct e1000_hw *hw, u32 offset, u16 data);
 s32 e1000e_write_phy_reg_m88(struct e1000_hw *hw, u32 offset, u16 data);
-s32 e1000_phy_reset_dsp(struct e1000_hw *hw);
 s32 e1000e_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
 				u32 usec_interval, bool *success);
 s32 e1000e_phy_init_script_igp3(struct e1000_hw *hw);
@@ -100,8 +98,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define IGP01E1000_PHY_PORT_STATUS	0x11	/* Status */
 #define IGP01E1000_PHY_PORT_CTRL	0x12	/* Control */
 #define IGP01E1000_PHY_LINK_HEALTH	0x13	/* PHY Link Health */
-#define IGP01E1000_GMII_FIFO		0x14	/* GMII FIFO */
-#define IGP01E1000_PHY_CHANNEL_QUALITY	0x15	/* PHY Channel Quality */
 #define IGP02E1000_PHY_POWER_MGMT	0x19	/* Power Management */
 #define IGP01E1000_PHY_PAGE_SELECT	0x1F	/* Page Select */
 #define BM_PHY_PAGE_SELECT		22	/* Page Select for BM */
@@ -110,7 +106,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 
 /* BM/HV Specific Registers */
 #define BM_PORT_CTRL_PAGE		769
-#define BM_PCIE_PAGE			770
 #define BM_WUC_PAGE			800
 #define BM_WUC_ADDRESS_OPCODE		0x11
 #define BM_WUC_DATA_OPCODE		0x12
@@ -151,7 +146,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define I82577_PHY_STATUS2_MDIX			0x0800
 #define I82577_PHY_STATUS2_SPEED_MASK		0x0300
 #define I82577_PHY_STATUS2_SPEED_1000MBPS	0x0200
-#define I82577_PHY_STATUS2_SPEED_100MBPS	0x0100
 
 /* I82577 PHY Control 2 */
 #define I82577_PHY_CTRL2_MANUAL_MDIX		0x0200
@@ -162,19 +156,11 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define I82577_DSTATUS_CABLE_LENGTH		0x03FC
 #define I82577_DSTATUS_CABLE_LENGTH_SHIFT	2
 
-/* 82580 PHY Power Management */
-#define E1000_82580_PHY_POWER_MGMT	0xE14
-#define E1000_82580_PM_SPD		0x0001	/* Smart Power Down */
-#define E1000_82580_PM_D0_LPLU		0x0002	/* For D0a states */
-#define E1000_82580_PM_D3_LPLU		0x0004	/* For all other states */
-
 /* BM PHY Copper Specific Control 1 */
 #define BM_CS_CTRL1			16
-#define BM_CS_CTRL1_ENERGY_DETECT	0x0300	/* Enable Energy Detect */
 
 /* BM PHY Copper Specific Status */
 #define BM_CS_STATUS			17
-#define BM_CS_STATUS_ENERGY_DETECT	0x0010	/* Energy Detect Status */
 #define BM_CS_STATUS_LINK_UP		0x0400
 #define BM_CS_STATUS_RESOLVED		0x0800
 #define BM_CS_STATUS_SPEED_MASK		0xC000
@@ -194,10 +180,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define IGP01E1000_PSCR_FORCE_MDI_MDIX	0x2000	/* 0=MDI, 1=MDIX */
 
 #define IGP01E1000_PSCFR_SMART_SPEED	0x0080
-
-/* Enable flexible speed on link-up */
-#define IGP01E1000_GMII_FLEX_SPD	0x0010
-#define IGP01E1000_GMII_SPD		0x0020	/* Enable SPD */
 
 #define IGP02E1000_PM_SPD		0x0001	/* Smart Power Down */
 #define IGP02E1000_PM_D0_LPLU		0x0002	/* For D0a states */
@@ -220,9 +202,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define IGP02E1000_AGC_LENGTH_MASK	0x7F
 #define IGP02E1000_AGC_RANGE		15
 
-#define IGP03E1000_PHY_MISC_CTRL	0x1B
-#define IGP03E1000_PHY_MISC_DUPLEX_MANUAL_SET	0x1000	/* Manually Set Duplex */
-
 #define E1000_CABLE_LENGTH_UNDEFINED	0xFF
 
 #define E1000_KMRNCTRLSTA_OFFSET	0x001F0000
@@ -236,13 +215,7 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define E1000_KMRNCTRLSTA_DIAG_NELPBK	0x1000	/* Nearend Loopback mode */
 #define E1000_KMRNCTRLSTA_K1_CONFIG	0x7
 #define E1000_KMRNCTRLSTA_K1_ENABLE	0x0002	/* enable K1 */
-#define E1000_KMRNCTRLSTA_UNBLOCK_RX	0x0004	/* unblock Kumeran Rx in K0/K1 */
-#define E1000_KMRNCTRLSTA_PLL_STOP_EN	0x0008	/* enable PLL stop in K1 mode */
-
 #define E1000_KMRNCTRLSTA_HD_CTRL	0x10	/* Kumeran HD Control */
-#define E1000_KMRNCTRLSTA_K0_CTRL	0x1E	/* Kumeran K0s Control */
-#define E1000_KMRNCTRLSTA_K0_GBE_EN	0x1000	/* ena K0s mode for 1G link */
-#define E1000_KMRNCTRLSTA_K0_100_EN	0x2000	/* ena K0s mode for 10/100 lnk */
 
 #define IFE_PHY_EXTENDED_STATUS_CONTROL	0x10
 #define IFE_PHY_SPECIAL_CONTROL		0x11	/* 100BaseTx PHY Special Control */
@@ -255,7 +228,6 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 /* IFE PHY Special Control */
 #define IFE_PSC_AUTO_POLARITY_DISABLE	0x0010
 #define IFE_PSC_FORCE_POLARITY		0x0020
-#define IFE_PSC_DISABLE_DYNAMIC_POWER_DOWN	0x0100
 
 /* IFE PHY Special Control and LED Control */
 #define IFE_PSCL_PROBE_MODE		0x0020
@@ -266,29 +238,5 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define IFE_PMC_MDIX_STATUS		0x0020	/* 1=MDI-X, 0=MDI */
 #define IFE_PMC_FORCE_MDIX		0x0040	/* 1=force MDI-X, 0=force MDI */
 #define IFE_PMC_AUTO_MDIX		0x0080	/* 1=enable auto, 0=disable */
-
-/* SFP modules ID memory locations */
-#define E1000_SFF_IDENTIFIER_OFFSET	0x00
-#define E1000_SFF_IDENTIFIER_SFF	0x02
-#define E1000_SFF_IDENTIFIER_SFP	0x03
-
-#define E1000_SFF_ETH_FLAGS_OFFSET	0x06
-/* Flags for SFP modules compatible with ETH up to 1Gb */
-struct sfp_e1000_flags {
-	u8 e1000_base_sx:1;
-	u8 e1000_base_lx:1;
-	u8 e1000_base_cx:1;
-	u8 e1000_base_t:1;
-	u8 e100_base_lx:1;
-	u8 e100_base_fx:1;
-	u8 e10_base_bx10:1;
-	u8 e10_base_px:1;
-};
-
-/* Vendor OUIs: format of OUI is 0x[byte0][byte1][byte2][00] */
-#define E1000_SFF_VENDOR_OUI_TYCO	0x00407600
-#define E1000_SFF_VENDOR_OUI_FTL	0x00906500
-#define E1000_SFF_VENDOR_OUI_AVAGO	0x00176A00
-#define E1000_SFF_VENDOR_OUI_INTEL	0x001B2100
 
 #endif
