@@ -3996,8 +3996,10 @@ static __init int iscsi_transport_init(void)
 	}
 
 	iscsi_eh_timer_workq = create_singlethread_workqueue("iscsi_eh");
-	if (!iscsi_eh_timer_workq)
+	if (!iscsi_eh_timer_workq) {
+		err = -ENOMEM;
 		goto release_nls;
+	}
 
 	return 0;
 
