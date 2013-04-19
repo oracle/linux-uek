@@ -345,7 +345,8 @@ void rds_conn_shutdown(struct rds_connection *conn)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node)) {
 		rcu_read_unlock();
-		rds_queue_reconnect(conn);
+		if (conn->c_laddr >= conn->c_faddr)
+			rds_queue_reconnect(conn);
 	} else {
 		rcu_read_unlock();
 	}
