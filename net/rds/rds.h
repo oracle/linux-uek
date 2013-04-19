@@ -92,6 +92,8 @@ enum {
 #define RDS_IN_XMIT		2
 #define RDS_RECV_REFILL		3
 
+#define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
+
 struct rds_connection {
 	struct hlist_node	c_hash_node;
 	__be32			c_laddr;
@@ -148,6 +150,7 @@ struct rds_connection {
 	unsigned int            c_reconnect_drops;
 	int                     c_reconnect_warn;
 	int                     c_reconnect_err;
+	int			c_to_index;
 
 	unsigned int		c_reconnect;
 
