@@ -40,6 +40,7 @@
 #include <linux/delay.h>
 #include <rdma/ib_cache.h>
 #include <net/sock.h>
+#include <net/route.h>
 #include <net/inet_common.h>
 #include <linux/rtnetlink.h>
 
@@ -65,6 +66,7 @@ unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cq_balance_enabled = 1;
 #endif
 static char *rds_ib_haip_failover_groups = NULL;
+unsigned int rds_ib_haip_arps = RDS_IB_DEFAULT_NUM_ARPS;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -97,6 +99,8 @@ MODULE_PARM_DESC(rds_ib_haip_failover_groups,
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
 #endif
+module_param(rds_ib_haip_arps, int, 0444);
+MODULE_PARM_DESC(rds_ib_haip_arps, " Num ARPs to be sent when IP moved");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -268,10 +272,21 @@ static int rds_ib_conn_info_visitor(struct rds_connection *conn,
 		struct rdma_dev_addr *dev_addr;
 
 		ic = conn->c_transport_data;
-		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
-
-		rdma_addr_get_sgid(dev_addr, (union ib_gid *) &iinfo->src_gid);
-		rdma_addr_get_dgid(dev_addr, (union ib_gid *) &iinfo->dst_gid);
+#if RDMA_RDS_APM_SUPPORTED
+		if (rds_ib_apm_enabled) {
+			memcpy((union ib_gid *) &iinfo->src_gid,
+				&ic->i_cur_path.p_sgid, sizeof(union ib_gid));
+			memcpy((union ib_gid *) &iinfo->dst_gid,
+				&ic->i_cur_path.p_dgid, sizeof(union ib_gid));
+		} else
+#endif
+		{
+			dev_addr = &ic->i_cm_id->route.addr.dev_addr;
+			rdma_addr_get_sgid(dev_addr,
+				(union ib_gid *) &iinfo->src_gid);
+			rdma_addr_get_dgid(dev_addr,
+				(union ib_gid *) &iinfo->dst_gid);
+		}
 
 		rds_ibdev = ic->rds_ibdev;
 		iinfo->max_send_wr = ic->i_send_ring.w_nr;
@@ -365,10 +380,15 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 					unsigned char		*dev_addr,
 					__be32			ip_addr)
 {
-	arp_send(ARPOP_REQUEST, ETH_P_ARP,
-		ip_addr, out_dev,
-		ip_addr, NULL,
-		dev_addr, NULL);
+	int i;
+
+	/* Send multiple ARPs to improve reliability */
+	for (i = 0; i < rds_ib_haip_arps; i++) {
+		arp_send(ARPOP_REQUEST, ETH_P_ARP,
+			ip_addr, out_dev,
+			ip_addr, NULL,
+			dev_addr, NULL);
+	}
 }
 
 static int rds_ib_set_ip(struct net_device	*out_dev,
@@ -471,6 +491,7 @@ static int rds_ib_move_ip(char			*from_dev,
 			__be32			addr,
 			__be32			bcast,
 			__be32			mask,
+			int			event_type,
 			int			failover)
 {
 	struct ifreq		*ir;
@@ -577,6 +598,30 @@ static int rds_ib_move_ip(char			*from_dev,
 		printk(KERN_NOTICE
 		       "RDS/IB: IP %pI4 migrated from %s to %s\n",
 		       &addr, from_dev2, to_dev2);
+
+		if (event_type == RDS_IB_PORT_EVENT_NET) {
+			unsigned long flags;
+			struct rds_ib_connection *ic;
+			struct rds_ib_device *rds_ibdev;
+
+			rds_ibdev = ip_config[to_port].rds_ibdev;
+			spin_lock_irqsave(&rds_ibdev->spinlock, flags);
+			list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
+				if (ic->conn->c_laddr == addr) {
+#if RDMA_RDS_APM_SUPPORTED
+					if (rds_ib_apm_enabled) {
+						if (!memcmp(
+							&ic->i_cur_path.p_sgid,
+							&ip_config[to_port].gid,
+							sizeof(union ib_gid))) {
+							continue;
+						}
+					}
+#endif
+					rds_conn_drop(ic->conn);
+				}
+			spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
+		}
 	}
 
 out:
@@ -586,9 +631,41 @@ out:
 	return ret;
 }
 
+static void rds_ib_check_up_port(void)
+{
+	struct net_device *dev;
+	int     downs;
+	int     retries = 0;
+
+retry:
+	downs = 0;
+	read_lock(&dev_base_lock);
+	for_each_netdev(&init_net, dev) {
+		if ((dev->type == ARPHRD_INFINIBAND) &&
+				!(dev->flags & IFF_SLAVE) &&
+				!(dev->flags & IFF_MASTER)) {
+			if (dev->operstate != IF_OPER_UP)
+				downs++;
+		}
+	}
+	read_unlock(&dev_base_lock);
+
+	if (downs) {
+		if (retries++ <= 60) {
+			msleep(1000);
+			goto retry;
+		} else {
+			printk(KERN_ERR "RDS/IB: Some port(s) may not be "
+					"operational\n");
+		}
+	}
+}
+
+
 static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
-				u8			port_num)
+				u8			port_num,
+				union ib_gid		gid)
 {
 	const char *digits = "0123456789";
 
@@ -609,6 +686,7 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	ip_config[ip_port_cnt].rds_ibdev = rds_ibdev;
 	ip_config[ip_port_cnt].ip_active_port = 0;
 	strcpy(ip_config[ip_port_cnt].if_name, net_dev->name);
+	memcpy(&ip_config[ip_port_cnt].gid, &gid, sizeof(union ib_gid));
 
 	if (net_dev->operstate == IF_OPER_UP)
 		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
@@ -643,7 +721,8 @@ static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
 	}
 }
 
-static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port)
+static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
+				int event_type)
 {
 	u8      j;
 	int	ret;
@@ -667,6 +746,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 			ip_config[from_port].ip_addr,
 			ip_config[from_port].ip_bcast,
 			ip_config[from_port].ip_mask,
+			event_type,
 			1)) {
 
 			ip_config[from_port].ip_active_port = to_port;
@@ -686,13 +766,14 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port)
 						aliases[j].ip_bcast,
 					ip_config[from_port].
 						aliases[j].ip_mask,
+					event_type,
 					1);
 			}
 		}
 	}
 }
 
-static void rds_ib_do_failback(u8 port)
+static void rds_ib_do_failback(u8 port, int event_type)
 {
 	u8      ip_active_port = ip_config[port].ip_active_port;
 	u8      j;
@@ -711,6 +792,7 @@ static void rds_ib_do_failback(u8 port)
 			ip_config[port].ip_addr,
 			ip_config[port].ip_bcast,
 			ip_config[port].ip_mask,
+			event_type,
 			0)) {
 
 			ip_config[port].ip_active_port = port;
@@ -731,6 +813,7 @@ static void rds_ib_do_failback(u8 port)
 						aliases[j].ip_bcast,
 					ip_config[port].
 						aliases[j].ip_mask,
+					event_type,
 					0);
 			}
 		}
@@ -758,12 +841,12 @@ static void rds_ib_failover(struct work_struct *_work)
 			if_name[IFNAMSIZ-1] = 0;
 			ret = rds_ib_set_ip(NULL, NULL, if_name, 0, 0, 0);
 
-			rds_ib_do_failover(i, 0, 0);
+			rds_ib_do_failover(i, 0, 0, work->event_type);
 		}
 	}
 
 	if (ip_config[work->port].ip_addr)
-		rds_ib_do_failover(work->port, 0, 0);
+		rds_ib_do_failover(work->port, 0, 0, work->event_type);
 
 	if (ip_config[work->port].ip_active_port == work->port) {
 		ret = rds_ib_set_ip(NULL, NULL,
@@ -784,7 +867,7 @@ static void rds_ib_failback(struct work_struct *_work)
 
 	ip_active_port = ip_config[port].ip_active_port;
 
-	rds_ib_do_failback(port);
+	rds_ib_do_failback(port, work->event_type);
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i == port ||
@@ -793,15 +876,19 @@ static void rds_ib_failback(struct work_struct *_work)
 			continue;
 
 		if (ip_config[i].ip_active_port == i) {
-			rds_ib_do_failover(i, 0, ip_active_port);
+			rds_ib_do_failover(i, 0, ip_active_port,
+						work->event_type);
 		} else if (ip_config[i].ip_active_port == port) {
-			rds_ib_do_failover(i, port, ip_active_port);
+			rds_ib_do_failover(i, port, ip_active_port,
+						work->event_type);
 		} else if (ip_config[ip_config[i].ip_active_port].port_state ==
 				RDS_IB_PORT_DOWN) {
-			rds_ib_do_failover(i, 0, ip_active_port);
+			rds_ib_do_failover(i, 0, ip_active_port,
+						work->event_type);
 		} else if (ip_config[port].failover_group ==
 				ip_config[i].failover_group) {
-			rds_ib_do_failover(i, port, ip_active_port);
+			rds_ib_do_failover(i, port, ip_active_port,
+						work->event_type);
 		}
 	}
 
@@ -812,7 +899,8 @@ static void rds_ib_failback(struct work_struct *_work)
 				ip_config[i].ip_active_port == ip_active_port) {
 
 				rds_ib_do_failover(i, ip_active_port,
-							ip_active_port);
+							ip_active_port,
+							work->event_type);
 			}
 		}
 	}
@@ -888,6 +976,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		}
 
 		work->port = port;
+		work->event_type = RDS_IB_PORT_EVENT_IB;
 
 		if (event->event == IB_EVENT_PORT_ACTIVE) {
 			if (rds_ib_haip_fallback) {
@@ -953,6 +1042,8 @@ static int rds_ib_ip_config_init(void)
 	if (!rds_ib_haip_enabled)
 		return 0;
 
+	rds_ib_check_up_port();
+
 	rcu_read_unlock();
 
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
@@ -988,7 +1079,7 @@ static int rds_ib_ip_config_init(void)
 					RDS_IB_GID_ARG(gid));
 			} else {
 				port = rds_ib_init_port(rds_ibdev, dev,
-					port_num);
+					port_num, gid);
 				if (port > 0) {
 					for (ifap = &in_dev->ifa_list;
 						(ifa = *ifap);
@@ -1229,6 +1320,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 
 	work->dev = ndev;
 	work->port = port;
+	work->event_type = RDS_IB_PORT_EVENT_NET;
 
 	switch (event) {
 	case NETDEV_UP:
