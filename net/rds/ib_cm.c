@@ -207,35 +207,40 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
 #if RDMA_RDS_APM_SUPPORTED
-	if (rds_ib_apm_enabled && !ic->conn->c_reconnect) {
-		memcpy(&ic->i_pri_path.p_sgid,
-			&ic->i_cm_id->route.path_rec[0].sgid,
-			sizeof(union ib_gid));
+	if (rds_ib_apm_enabled) {
+		struct rdma_dev_addr *dev_addr;
 
-		memcpy(&ic->i_pri_path.p_dgid,
-			&ic->i_cm_id->route.path_rec[0].dgid,
-			sizeof(union ib_gid));
+		dev_addr = &ic->i_cm_id->route.addr.dev_addr;
 
-		memcpy(&ic->i_cur_path.p_sgid,
-			&ic->i_cm_id->route.path_rec[0].sgid,
-			sizeof(union ib_gid));
-
-		memcpy(&ic->i_cur_path.p_dgid,
-			&ic->i_cm_id->route.path_rec[0].dgid,
-			sizeof(union ib_gid));
-
-		printk(KERN_NOTICE "RDS/IB: connection "
-			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> primary path "
-			"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-			NIPQUAD(conn->c_laddr),
-			NIPQUAD(conn->c_faddr),
-			conn->c_tos,
-			RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
-			RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
+		if (!ic->conn->c_reconnect) {
+			rdma_addr_get_sgid(dev_addr,
+				(union ib_gid *)&ic->i_pri_path.p_sgid);
+			rdma_addr_get_dgid(dev_addr,
+				(union ib_gid *)&ic->i_pri_path.p_dgid);
+			printk(KERN_NOTICE "RDS/IB: connection "
+				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> primary path "
+				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr),
+				conn->c_tos,
+				RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
+				RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
+		}
+		rdma_addr_get_sgid(dev_addr,
+			(union ib_gid *)&ic->i_cur_path.p_sgid);
+		rdma_addr_get_dgid(dev_addr,
+			(union ib_gid *)&ic->i_cur_path.p_dgid);
 	}
 #endif
 
 	rds_connect_complete(conn);
+
+#if RDMA_RDS_APM_SUPPORTED
+        if (ic->i_last_migration) {
+                rds_ib_stats_inc(s_ib_failed_apm);
+                ic->i_last_migration = 0;
+        }
+#endif
 }
 
 static void rds_ib_cm_fill_conn_param(struct rds_connection *conn,
@@ -435,6 +440,7 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 				RDS_IB_GID_ARG(ic->i_cur_path.p_sgid),
 				RDS_IB_GID_ARG(ic->i_cur_path.p_dgid));
 		}
+		ic->i_last_migration = get_seconds();
 
 		break;
 	case IB_EVENT_PATH_MIG_ERR:
@@ -993,7 +999,7 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
 	ic->i_cm_id = rdma_create_id(rds_rdma_cm_event_handler, conn,
-				     RDMA_PS_TCP, IB_QPT_RC);
+					RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
