@@ -48,6 +48,7 @@
 
 #include <linux/jhash.h>
 #include <net/arp.h>
+#include <net/dst.h>
 
 MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("IP-over-InfiniBand net driver");
@@ -887,11 +888,32 @@ static int ipoib_start_xmit(struct sk_buff *skb, struct net_device *dev)
 send_using_neigh:
 	/* note we now hold a ref to neigh */
 	if (ipoib_cm_get(neigh)) {
-		if (ipoib_cm_up(neigh)) {
-			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
+		/* in select queue cm wasn't enabled ring is likely wrong */
+		if (!IPOIB_CM_SUPPORTED(cb->hwaddr)) {
+			ipoib_dbg(priv, "CM NOT supported,ring likely wrong, sending via UD\n");
+			skb_orphan(skb);
+			skb_dst_drop(skb);
+			ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 			goto unref;
 		}
+
+		if (ipoib_cm_up(neigh))
+			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
+
+		goto unref;
 	} else if (neigh->ah) {
+		/* in select queue cm was enabled ring is likely wrong */
+		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
+				ipoib_dbg(priv, "CM supported,ring likely wrong, dropping.cm is: %d\n",
+					   ipoib_cm_admin_enabled(dev));
+			++send_ring->stats.tx_dropped;
+			skb_orphan(skb);
+			skb_dst_drop(skb);
+			ipoib_cm_skb_too_long(dev, skb, priv->mcast_mtu);
+
+			dev_kfree_skb_any(skb);
+			goto unref;
+		}
 		ipoib_send(dev, skb, neigh->ah, IPOIB_QPN(cb->hwaddr));
 		goto unref;
 	}
