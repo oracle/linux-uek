@@ -575,6 +575,7 @@ static int create_user_qp(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		mlx5_ib_dbg(dev, "copy failed\n");
 		goto err_unmap;
 	}
+	qp->create_type = MLX5_QP_USER;
 
 	return 0;
 
@@ -680,6 +681,7 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 		mlx5_ib_dbg(dev, "err %d\n", err);
 		goto err_wrid;
 	}
+	qp->create_type = MLX5_QP_KERNEL;
 
 	return 0;
 
@@ -799,6 +801,8 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 		in = vzalloc(sizeof(*in));
 		if (!in)
 			return -ENOMEM;
+
+		qp->create_type = MLX5_QP_EMPTY;
 	}
 
 	if (is_sqp(init_attr->qp_type))
@@ -895,12 +899,10 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	return 0;
 
 err_create:
-	if (pd) {
-		if (pd->uobject)
-			destroy_qp_user(pd, qp);
-		else
-			destroy_qp_kernel(dev, qp);
-	}
+	if (qp->create_type == MLX5_QP_USER)
+		destroy_qp_user(pd, qp);
+	else if (qp->create_type == MLX5_QP_KERNEL)
+		destroy_qp_kernel(dev, qp);
 
 	vfree(in);
 	return err;
@@ -993,8 +995,7 @@ static void get_cqs(struct mlx5_ib_qp *qp,
 	}
 }
 
-static void destroy_qp_common(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
-			      int is_user)
+static void destroy_qp_common(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp)
 {
 	struct mlx5_ib_cq *send_cq, *recv_cq;
 	struct mlx5_modify_qp_mbox_in *in;
@@ -1013,7 +1014,7 @@ static void destroy_qp_common(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 
 	get_cqs(qp, &send_cq, &recv_cq);
 
-	if (!is_user) {
+	if (qp->create_type == MLX5_QP_KERNEL) {
 		mlx5_ib_lock_cqs(send_cq, recv_cq);
 		__mlx5_ib_cq_clean(recv_cq, qp->mqp.qpn,
 				   qp->ibqp.srq ? to_msrq(qp->ibqp.srq) : NULL);
@@ -1028,10 +1029,10 @@ static void destroy_qp_common(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp,
 	kfree(in);
 
 
-	if (is_user)
-		destroy_qp_user(&get_pd(qp)->ibpd, qp);
-	else
+	if (qp->create_type == MLX5_QP_KERNEL)
 		destroy_qp_kernel(dev, qp);
+	else if (qp->create_type == MLX5_QP_USER)
+		destroy_qp_user(&get_pd(qp)->ibpd, qp);
 }
 
 static const char *ib_qp_type_str(enum ib_qp_type type)
@@ -1152,10 +1153,8 @@ int mlx5_ib_destroy_qp(struct ib_qp *qp)
 {
 	struct mlx5_ib_dev *dev = to_mdev(qp->device);
 	struct mlx5_ib_qp *mqp = to_mqp(qp);
-	struct mlx5_ib_pd *pd;
 
-	pd = get_pd(mqp);
-	destroy_qp_common(dev, mqp, pd && !!pd->ibpd.uobject);
+	destroy_qp_common(dev, mqp);
 
 	kfree(mqp);
 

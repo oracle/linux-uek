@@ -145,6 +145,12 @@ struct mlx5_ib_wq {
 	void		       *qend;
 };
 
+enum {
+	MLX5_QP_USER,
+	MLX5_QP_KERNEL,
+	MLX5_QP_EMPTY
+};
+
 struct mlx5_ib_qp {
 	struct ib_qp		ibqp;
 	struct mlx5_core_qp	mqp;
@@ -185,7 +191,9 @@ struct mlx5_ib_qp {
 	 * only for user space QPs. For kernel
 	 * we have it from the bf object
 	 */
-	int uuarn;
+	int			uuarn;
+
+	int			create_type;
 };
 
 struct mlx5_ib_cq_buf {
