@@ -963,9 +963,9 @@ static u16 ipoib_select_queue_sw(struct net_device *dev, struct sk_buff *skb)
 			cb->hwaddr[0] &= ~IPOIB_FLAGS_RC;
 	}
 
-	/* Did neighbour advertise TSS support? if not stay on the same cpu */
+	/* Did neighbour advertise TSS support */
 	if (unlikely(!IPOIB_TSS_SUPPORTED(cb->hwaddr)))
-		return smp_processor_id() % priv->tss_qp_num;
+		return priv->tss_qp_num;
 
 	/* We are after ipoib_hard_header so skb->data is O.K. */
 	header = (struct ipoib_header *) skb->data;
