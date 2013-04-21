@@ -2711,7 +2711,8 @@ static int be_vfs_if_create(struct be_adapter *adapter)
 
 	for_all_vfs(adapter, vf_cfg, vf) {
 		if (!BE3_chip(adapter))
-			be_cmd_get_profile_config(adapter, &cap_flags, vf + 1);
+			be_cmd_get_profile_config(adapter, &cap_flags,
+						  NULL, vf + 1);
 
 		/* If a FW profile exists, then cap_flags are updated */
 		en_flags = cap_flags & (BE_IF_FLAGS_UNTAGGED |
@@ -2876,11 +2877,14 @@ static void be_get_resources(struct be_adapter *adapter)
 	u16 dev_num_vfs;
 	int pos, status;
 	bool profile_present = false;
+	u16 txq_count = 0;
 
 	if (!BEx_chip(adapter)) {
 		status = be_cmd_get_func_config(adapter);
 		if (!status)
 			profile_present = true;
+	} else if (BE3_chip(adapter) && be_physfn(adapter)) {
+		be_cmd_get_profile_config(adapter, NULL, &txq_count, 0);
 	}
 
 	if (profile_present) {
@@ -2918,7 +2922,9 @@ static void be_get_resources(struct be_adapter *adapter)
 			adapter->max_vlans = BE_NUM_VLANS_SUPPORTED;
 
 		adapter->max_mcast_mac = BE_MAX_MC;
-		adapter->max_tx_queues = MAX_TX_QS;
+		adapter->max_tx_queues = txq_count ? txq_count : MAX_TX_QS;
+		adapter->max_tx_queues = min_t(u16, adapter->max_tx_queues,
+					       MAX_TX_QS);
 		adapter->max_rss_queues = (adapter->be3_native) ?
 					   BE3_MAX_RSS_QS : BE2_MAX_RSS_QS;
 		adapter->max_event_queues = BE3_MAX_RSS_QS;
@@ -4119,6 +4125,11 @@ static int be_probe(struct pci_dev *pdev, const struct pci_device_id *pdev_id)
 
 	status = dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
 	if (!status) {
+		status = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
+		if (status < 0) {
+			dev_err(&pdev->dev, "dma_set_coherent_mask failed\n");
+			goto free_netdev;
+		}
 		netdev->features |= NETIF_F_HIGHDMA;
 	} else {
 		status = dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
