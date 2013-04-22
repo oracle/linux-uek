@@ -532,7 +532,7 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 						>> log_mtts_per_seg)));
 		/* set the actual value, so it will be reflected to the user
 		   using the sysfs */
-		mod_param_profile.num_mtt = ilog2(profile->num_mtt * (1 << log_mtts_per_seg));
+		mod_param_profile.num_mtt = ilog2(profile->num_mtt);
 	}
 }
 
