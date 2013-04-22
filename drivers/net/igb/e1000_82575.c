@@ -137,6 +137,8 @@ static bool e1000_sgmii_uses_mdio_82575(struct e1000_hw *hw)
 		break;
 	case e1000_82580:
 	case e1000_i350:
+	case e1000_i210:
+	case e1000_i211:
 		reg = E1000_READ_REG(hw, E1000_MDICNFG);
 		ext_mdio = !!(reg & E1000_MDICNFG_EXT_MDIO);
 		break;
@@ -325,6 +327,7 @@ s32 e1000_init_nvm_params_82575(struct e1000_hw *hw)
 	} else {
 		nvm->type = e1000_nvm_flash_hw;
 	}
+
 	/* Function Pointers */
 	nvm->ops.acquire = e1000_acquire_nvm_82575;
 	nvm->ops.release = e1000_release_nvm_82575;
@@ -378,11 +381,12 @@ static s32 e1000_init_mac_params_82575(struct e1000_hw *hw)
 		mac->rar_entry_count = E1000_RAR_ENTRIES_82576;
 	if (mac->type == e1000_82580)
 		mac->rar_entry_count = E1000_RAR_ENTRIES_82580;
-	if (mac->type == e1000_i350) {
+	if (mac->type == e1000_i350)
 		mac->rar_entry_count = E1000_RAR_ENTRIES_I350;
-		/* Enable EEE default settings for i350 */
+
+	/* Enable EEE default settings for EEE supported devices */
+	if (mac->type >= e1000_i350)
 		dev_spec->eee_disable = false;
-	}
 
 	/* Set if part includes ASF firmware */
 	mac->asf_firmware_present = true;
@@ -635,6 +639,8 @@ static s32 e1000_get_phy_id_82575(struct e1000_hw *hw)
 			break;
 		case e1000_82580:
 		case e1000_i350:
+		case e1000_i210:
+		case e1000_i211:
 			mdic = E1000_READ_REG(hw, E1000_MDICNFG);
 			mdic &= E1000_MDICNFG_PHY_MASK;
 			phy->addr = mdic >> E1000_MDICNFG_PHY_SHIFT;
@@ -1232,6 +1238,7 @@ static s32 e1000_get_pcs_speed_and_duplex_82575(struct e1000_hw *hw,
 			*duplex = FULL_DUPLEX;
 		else
 			*duplex = HALF_DUPLEX;
+
 	} else {
 		mac->serdes_has_link = false;
 		*speed = 0;
@@ -1441,12 +1448,16 @@ static s32 e1000_setup_copper_link_82575(struct e1000_hw *hw)
 	switch (hw->phy.type) {
 	case e1000_phy_i210:
 	case e1000_phy_m88:
-		if (hw->phy.id == I347AT4_E_PHY_ID ||
-		    hw->phy.id == M88E1112_E_PHY_ID ||
-		    hw->phy.id == M88E1340M_E_PHY_ID)
+		switch (hw->phy.id) {
+		case I347AT4_E_PHY_ID:
+		case M88E1112_E_PHY_ID:
+		case M88E1340M_E_PHY_ID:
 			ret_val = e1000_copper_link_setup_m88_gen2(hw);
-		else
+			break;
+		default:
 			ret_val = e1000_copper_link_setup_m88(hw);
+			break;
+		}
 		break;
 	case e1000_phy_igp_3:
 		ret_val = e1000_copper_link_setup_igp(hw);
@@ -2389,6 +2400,10 @@ static s32 e1000_reset_hw_82580(struct e1000_hw *hw)
 
 	hw->dev_spec._82575.global_device_reset = false;
 
+	/* 82580 does not reliably do global_device_reset due to hw errata */
+	if (hw->mac.type == e1000_82580)
+		global_device_reset = false;
+
 	/* Get current control state. */
 	ctrl = E1000_READ_REG(hw, E1000_CTRL);
 
@@ -2715,18 +2730,15 @@ s32 e1000_set_eee_i350(struct e1000_hw *hw)
 
 	/* enable or disable per user setting */
 	if (!(hw->dev_spec._82575.eee_disable)) {
+		u32 eee_su = E1000_READ_REG(hw, E1000_EEE_SU);
+
 		ipcnfg |= (E1000_IPCNFG_EEE_1G_AN | E1000_IPCNFG_EEE_100M_AN);
 		eeer |= (E1000_EEER_TX_LPI_EN | E1000_EEER_RX_LPI_EN |
 			 E1000_EEER_LPI_FC);
 
-		/* keep the LPI clock running before EEE is enabled */
-		if (hw->mac.type == e1000_i210 || hw->mac.type == e1000_i211) {
-			u32 eee_su;
-			eee_su = E1000_READ_REG(hw, E1000_EEE_SU);
-			eee_su &= ~E1000_EEE_SU_LPI_CLK_STP;
-			E1000_WRITE_REG(hw, E1000_EEE_SU, eee_su);
-		}
-
+		/* This bit should not be set in normal operation. */
+		if (eee_su & E1000_EEE_SU_LPI_CLK_STP)
+			DEBUGOUT("LPI Clock Stop Bit should not be set!\n");
 	} else {
 		ipcnfg &= ~(E1000_IPCNFG_EEE_1G_AN | E1000_IPCNFG_EEE_100M_AN);
 		eeer &= ~(E1000_EEER_TX_LPI_EN | E1000_EEER_RX_LPI_EN |
@@ -3476,3 +3488,4 @@ s32 e1000_init_thermal_sensor_thresh_generic(struct e1000_hw *hw)
 	}
 	return status;
 }
+
