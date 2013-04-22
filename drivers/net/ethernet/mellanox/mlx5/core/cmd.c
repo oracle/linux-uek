@@ -1432,7 +1432,7 @@ static const char *cmd_status_str(u8 status)
 	case 0x0:	return "OK";
 	case 0x1:	return "internal error";
 	case 0x2:	return "bad operation";
-	case 0x3:	return "bas parameter";
+	case 0x3:	return "bad parameter";
 	case 0x4:	return "bad system state";
 	case 0x5:	return "bad resource";
 	case 0x6:	return "resource busy";
