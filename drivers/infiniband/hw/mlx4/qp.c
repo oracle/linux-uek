@@ -2102,6 +2102,11 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 		}
 	}
 
+	if ((qp->port && rdma_port_get_link_layer(&dev->ib_dev, qp->port) ==
+	    IB_LINK_LAYER_ETHERNET) && (qp->ibqp.qp_type == IB_QPT_RAW_PACKET))
+		context->pri_path.ackto = (context->pri_path.ackto & 0xf8) |
+					  MLX4_IB_LINK_TYPE_ETH;
+
 	err = mlx4_qp_modify(dev->dev, &qp->mtt, to_mlx4_state(cur_state),
 			     to_mlx4_state(new_state), context, optpar,
 			     sqd_event, &qp->mqp);
