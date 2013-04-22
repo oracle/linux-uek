@@ -1,5 +1,7 @@
+
 /*
- * Copyright (C) 2007 Oracle.  All rights reserved.
+ * Copyright (C) 2012 Fujitsu.  All rights reserved.
+ * Written by Miao Xie <miaox@cn.fujitsu.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public
@@ -16,22 +18,27 @@
  * Boston, MA 021110-1307, USA.
  */
 
-#ifndef __HASH__
-#define __HASH__
+#ifndef __BTRFS_MATH_H
+#define __BTRFS_MATH_H
 
-#include <linux/crc32c.h>
-static inline u64 btrfs_name_hash(const char *name, int len)
+#include <asm/div64.h>
+
+static inline u64 div_factor(u64 num, int factor)
 {
-	return crc32c((u32)~1, name, len);
+	if (factor == 10)
+		return num;
+	num *= factor;
+	do_div(num, 10);
+	return num;
 }
 
-/*
- * Figure the key offset of an extended inode ref
- */
-static inline u64 btrfs_extref_hash(u64 parent_objectid, const char *name,
-				    int len)
+static inline u64 div_factor_fine(u64 num, int factor)
 {
-	return (u64) crc32c(parent_objectid, name, len);
+	if (factor == 100)
+		return num;
+	num *= factor;
+	do_div(num, 100);
+	return num;
 }
 
 #endif

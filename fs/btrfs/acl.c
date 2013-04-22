@@ -124,6 +124,8 @@ static int btrfs_set_acl(struct btrfs_trans_handle *trans,
 			if (ret < 0)
 				return ret;
 			inode->i_mode = mode;
+			if (ret == 0)
+				acl = NULL;
 		}
 		ret = 0;
 		break;
@@ -262,8 +264,12 @@ int btrfs_init_acl(struct btrfs_trans_handle *trans,
 				ret = btrfs_set_acl(trans, inode, clone,
 						    ACL_TYPE_ACCESS);
 			}
+		} else {
+			cache_no_acl(inode);
 		}
 		posix_acl_release(clone);
+	} else {
+		cache_no_acl(inode);
 	}
 failed:
 	posix_acl_release(acl);
