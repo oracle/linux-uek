@@ -250,7 +250,7 @@ void mlx4_en_get_ethtool_stats(struct net_device *dev,
 	int index = 0;
 	int i, j = 0;
 
-	if (!data)
+	if (!data || !priv->port_up)
 		return;
 
 	spin_lock_bh(&priv->stats_lock);
@@ -296,7 +296,7 @@ void mlx4_en_restore_ethtool_stats(struct mlx4_en_priv *priv, u64 *data)
 	int index = 0;
 	int i, j = 0;
 
-	if (!data)
+	if (!data || !priv->port_up)
 		return;
 
 	spin_lock_bh(&priv->stats_lock);
@@ -618,6 +618,9 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	int i, n_stats;
 	u64 *data = NULL;
 
+	if (!priv->port_up)
+		return -ENOMEM;
+
 	if (param->rx_jumbo_pending || param->rx_mini_pending)
 		return -EINVAL;
 
@@ -692,6 +695,9 @@ static void mlx4_en_get_ringparam(struct net_device *dev,
 				  struct ethtool_ringparam *param)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
+
+	if (!priv->port_up)
+		return;
 
 	memset(param, 0, sizeof(*param));
 	param->rx_max_pending = MLX4_EN_MAX_RX_SIZE;

@@ -1866,6 +1866,7 @@ err:
 		if (priv->tx_cq[i])
 			mlx4_en_destroy_cq(priv, &priv->tx_cq[i]);
 	}
+	priv->port_up = false;
 	return -ENOMEM;
 }
 
