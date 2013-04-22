@@ -1215,19 +1215,15 @@ static int ib_rate_to_mlx5(struct mlx5_ib_dev *dev, u8 rate)
 
 static int mlx5_set_path(struct mlx5_ib_dev *dev, const struct ib_ah_attr *ah,
 			 struct mlx5_qp_path *path, u8 port, int attr_mask,
-			 enum mlx5_qp_optpar *optpar, u32 path_flags,
-			 const struct ib_qp_attr *attr)
+			 u32 path_flags, const struct ib_qp_attr *attr)
 {
 	int err;
 
-	*optpar = 0;
 	path->fl = (path_flags & MLX5_PATH_FLAG_FL) ? 0x80 : 0;
 	path->free_ar = (path_flags & MLX5_PATH_FLAG_FREE_AR) ? 0x80 : 0;
 
-	if (attr_mask & IB_QP_PKEY_INDEX) {
+	if (attr_mask & IB_QP_PKEY_INDEX)
 		path->pkey_index = attr->pkey_index;
-		*optpar |= MLX5_QP_OPTPAR_PKEY_INDEX;
-	}
 
 	path->grh_mlid	= ah->src_path_bits & 0x7f;
 	path->rlid	= cpu_to_be16(ah->dlid);
@@ -1264,10 +1260,8 @@ static int mlx5_set_path(struct mlx5_ib_dev *dev, const struct ib_ah_attr *ah,
 		memcpy(path->rgid, ah->grh.dgid.raw, 16);
 	}
 
-	if (attr_mask & IB_QP_TIMEOUT) {
+	if (attr_mask & IB_QP_TIMEOUT)
 		path->ackto_lt = attr->timeout << 3;
-		*optpar |= MLX5_QP_OPTPAR_ACK_TIMEOUT;
-	}
 
 	path->sl = ah->sl & 0xf;
 
@@ -1337,6 +1331,73 @@ static enum mlx5_qp_optpar opt_mask[MLX5_QP_NUM_STATE][MLX5_QP_NUM_STATE][MLX5_Q
 	},
 };
 
+static int ib_nr_to_mlx5_nr(int ib_mask)
+{
+	switch (ib_mask) {
+	case IB_QP_STATE:
+		return 0;
+	case IB_QP_CUR_STATE:
+		return 0;
+	case IB_QP_EN_SQD_ASYNC_NOTIFY:
+		return 0;
+	case IB_QP_ACCESS_FLAGS:
+		return MLX5_QP_OPTPAR_RWE | MLX5_QP_OPTPAR_RRE |
+			MLX5_QP_OPTPAR_RAE;
+	case IB_QP_PKEY_INDEX:
+		return MLX5_QP_OPTPAR_PKEY_INDEX;
+	case IB_QP_PORT:
+		return MLX5_QP_OPTPAR_PRI_PORT;
+	case IB_QP_QKEY:
+		return MLX5_QP_OPTPAR_Q_KEY;
+	case IB_QP_AV:
+		return MLX5_QP_OPTPAR_PRIMARY_ADDR_PATH |
+			MLX5_QP_OPTPAR_PRI_PORT;
+	case IB_QP_PATH_MTU:
+		return 0;
+	case IB_QP_TIMEOUT:
+		return MLX5_QP_OPTPAR_ACK_TIMEOUT;
+	case IB_QP_RETRY_CNT:
+		return MLX5_QP_OPTPAR_RETRY_COUNT;
+	case IB_QP_RNR_RETRY:
+		return MLX5_QP_OPTPAR_RNR_RETRY;
+	case IB_QP_RQ_PSN:
+		return 0;
+	case IB_QP_MAX_QP_RD_ATOMIC:
+		return MLX5_QP_OPTPAR_SRA_MAX;
+	case IB_QP_ALT_PATH:
+		return MLX5_QP_OPTPAR_ALT_ADDR_PATH;
+	case IB_QP_MIN_RNR_TIMER:
+		return MLX5_QP_OPTPAR_RNR_TIMEOUT;
+	case IB_QP_SQ_PSN:
+		return 0;
+	case IB_QP_MAX_DEST_RD_ATOMIC:
+		return MLX5_QP_OPTPAR_RRA_MAX | MLX5_QP_OPTPAR_RWE |
+			MLX5_QP_OPTPAR_RRE | MLX5_QP_OPTPAR_RAE;
+	case IB_QP_PATH_MIG_STATE:
+		return MLX5_QP_OPTPAR_PM_STATE;
+	case IB_QP_CAP:
+		return 0;
+	case IB_QP_DEST_QPN:
+		return 0;
+	case IB_QP_GROUP_RSS:
+		return 0;
+	}
+	return 0;
+}
+
+static int ib_mask_to_mlx5_opt(int ib_mask)
+{
+	int i;
+	int result = 0;
+
+	for (i = 0; i < 8 * sizeof(int); ++i) {
+		if ((1 << i) & ib_mask)
+			result |= ib_nr_to_mlx5_nr(1 << i);
+	}
+
+	return result;
+}
+
 static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 			       const struct ib_qp_attr *attr, int attr_mask,
 			       enum ib_qp_state cur_state, enum ib_qp_state new_state)
@@ -1347,7 +1408,7 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	struct mlx5_ib_cq *send_cq, *recv_cq;
 	struct mlx5_qp_context *context;
 	struct mlx5_modify_qp_mbox_in *in;
-	enum mlx5_qp_optpar optpar = 0;
+	enum mlx5_qp_optpar optpar;
 	int sqd_event;
 	int err;
 	enum mlx5_qp_state mlx5_cur, mlx5_new;
@@ -1367,7 +1428,6 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (!(attr_mask & IB_QP_PATH_MIG_STATE)) {
 		context->flags |= cpu_to_be32(MLX5_QP_PM_MIGRATED << 11);
 	} else {
-		optpar |= MLX5_QP_OPTPAR_PM_STATE;
 		switch (attr->path_mig_state) {
 		case IB_MIG_MIGRATED:
 			context->flags |= cpu_to_be32(MLX5_QP_PM_MIGRATED << 11);
@@ -1398,10 +1458,8 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (attr_mask & IB_QP_DEST_QPN)
 		context->log_pg_sz_remote_qpn = cpu_to_be32(attr->dest_qp_num);
 
-	if (attr_mask & IB_QP_PKEY_INDEX) {
+	if (attr_mask & IB_QP_PKEY_INDEX)
 		context->pri_path.pkey_index = attr->pkey_index;
-		optpar |= MLX5_QP_OPTPAR_PKEY_INDEX;
-	}
 
 	/* todo implement counter_index functionality */
 
@@ -1414,22 +1472,17 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (attr_mask & IB_QP_AV) {
 		err = mlx5_set_path(dev, &attr->ah_attr, &context->pri_path,
 				    attr_mask & IB_QP_PORT ? attr->port_num : qp->port,
-				    attr_mask, &optpar, 0, attr);
+				    attr_mask, 0, attr);
 		if (err)
 			goto out;
-
-		optpar |= (MLX5_QP_OPTPAR_PRIMARY_ADDR_PATH |
-			   MLX5_QP_OPTPAR_PRI_PORT);
 	}
 
-	if (attr_mask & IB_QP_TIMEOUT) {
+	if (attr_mask & IB_QP_TIMEOUT)
 		context->pri_path.ackto_lt |= attr->timeout << 3;
-		optpar |= MLX5_QP_OPTPAR_ACK_TIMEOUT;
-	}
 
 	if (attr_mask & IB_QP_ALT_PATH) {
 		err = mlx5_set_path(dev, &attr->alt_ah_attr, &context->alt_path,
-				    attr->alt_port_num, attr_mask, &optpar, 0, attr);
+				    attr->alt_port_num, attr_mask, 0, attr);
 		if (err)
 			goto out;
 	}
@@ -1446,21 +1499,16 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (!qp->ibqp.uobject)
 		context->params1 |= cpu_to_be32(1 << 11);
 
-	if (attr_mask & IB_QP_RNR_RETRY) {
+	if (attr_mask & IB_QP_RNR_RETRY)
 		context->params1 |= cpu_to_be32(attr->rnr_retry << 13);
-		optpar |= MLX5_QP_OPTPAR_RNR_RETRY;
-	}
 
-	if (attr_mask & IB_QP_RETRY_CNT) {
+	if (attr_mask & IB_QP_RETRY_CNT)
 		context->params1 |= cpu_to_be32(attr->retry_cnt << 16);
-		optpar |= MLX5_QP_OPTPAR_RETRY_COUNT;
-	}
 
 	if (attr_mask & IB_QP_MAX_QP_RD_ATOMIC) {
 		if (attr->max_rd_atomic)
 			context->params1 |=
 				cpu_to_be32(fls(attr->max_rd_atomic - 1) << 21);
-		optpar |= MLX5_QP_OPTPAR_SRA_MAX;
 	}
 
 	if (attr_mask & IB_QP_SQ_PSN)
@@ -1470,25 +1518,19 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 		if (attr->max_dest_rd_atomic)
 			context->params2 |=
 				cpu_to_be32(fls(attr->max_dest_rd_atomic - 1) << 21);
-		optpar |= MLX5_QP_OPTPAR_RRA_MAX;
 	}
 
-	if (attr_mask & (IB_QP_ACCESS_FLAGS | IB_QP_MAX_DEST_RD_ATOMIC)) {
+	if (attr_mask & (IB_QP_ACCESS_FLAGS | IB_QP_MAX_DEST_RD_ATOMIC))
 		context->params2 |= to_mlx5_access_flags(qp, attr, attr_mask);
-		optpar |= MLX5_QP_OPTPAR_RWE | MLX5_QP_OPTPAR_RRE | MLX5_QP_OPTPAR_RAE;
-	}
 
-	if (attr_mask & IB_QP_MIN_RNR_TIMER) {
+	if (attr_mask & IB_QP_MIN_RNR_TIMER)
 		context->rnr_nextrecvpsn |= cpu_to_be32(attr->min_rnr_timer << 24);
-		optpar |= MLX5_QP_OPTPAR_RNR_TIMEOUT;
-	}
+
 	if (attr_mask & IB_QP_RQ_PSN)
 		context->rnr_nextrecvpsn |= cpu_to_be32(attr->rq_psn);
 
-	if (attr_mask & IB_QP_QKEY) {
+	if (attr_mask & IB_QP_QKEY)
 		context->qkey = cpu_to_be32(attr->qkey);
-		optpar |= MLX5_QP_OPTPAR_Q_KEY;
-	}
 
 	if (qp->rq.wqe_cnt && cur_state == IB_QPS_RESET && new_state == IB_QPS_INIT)
 		context->db_rec_addr = cpu_to_be64(qp->db.dma);
@@ -1509,6 +1551,7 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	if (mlx5_cur < 0 || mlx5_new < 0 || mlx5_st < 0)
 		goto out;
 
+	optpar = ib_mask_to_mlx5_opt(attr_mask);
 	optpar &= opt_mask[mlx5_cur][mlx5_new][mlx5_st];
 	in->optparam = cpu_to_be32(optpar);
 	err = mlx5_core_qp_modify(&dev->mdev, to_mlx5_state(cur_state),
