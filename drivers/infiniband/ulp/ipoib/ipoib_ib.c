@@ -659,9 +659,6 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 		netif_stop_subqueue(dev, queue_index);
 	}
 
-	skb_orphan(skb);
-	skb_dst_drop(skb);
-
 	/*
 	 * Incrementing the reference count after submitting
 	 * may create race condition
