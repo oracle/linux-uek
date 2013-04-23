@@ -417,6 +417,11 @@ int iser_reg_rdma_mem(struct iscsi_iser_task *iser_task,
 			 (unsigned long)regd_buf->reg.va,
 			 (unsigned long)regd_buf->reg.len);
 	} else { /* use FMR for multiple dma entries */
+
+		WARN_ON(!ib_conn->fmr_pool);
+		if (!ib_conn->fmr_pool)
+			return -EINVAL;
+
 		iser_page_vec_build(mem, ib_conn->page_vec, ibdev);
 		err = iser_reg_page_vec(ib_conn, ib_conn->page_vec, &regd_buf->reg);
 		if (err) {

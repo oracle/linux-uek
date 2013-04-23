@@ -262,6 +262,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 	params.dirty_watermark	 = ISCSI_DEF_XMIT_CMDS_MAX;
 	params.cache		 = 0;
 	params.flush_function	 = NULL;
+	params.flush_arg	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
 				    IB_ACCESS_REMOTE_WRITE |
 				    IB_ACCESS_REMOTE_READ);
