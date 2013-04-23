@@ -1072,6 +1072,8 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_cm_tx *tx)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+	unsigned long flags;
+
 	struct ib_qp_init_attr attr = {
 		.srq			= priv->cm.srq,
 		.cap.max_send_wr	= ipoib_sendq_size,
@@ -1081,9 +1083,21 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.qp_type		= IB_QPT_RC,
 		.qp_context		= tx
 	};
+	/*
+	 * check that the driver is not doing reinit or
+	 * the neigh was not deleted via neigh_put/flash_pathes.
+	 */
+	spin_lock_irqsave(&priv->lock, flags);
+	if (!priv->recv_ring || !tx || !tx->neigh) {
+		ipoib_warn(priv, "TX obj at the middle of destruction\n");
+		spin_unlock_irqrestore(&priv->lock, flags);
+		return ERR_PTR(-EIDRM);
+	}
 
 	/* CM uses ipoib_ib_completion for TX completion and work using NAPI */
 	attr.send_cq = attr.recv_cq = priv->recv_ring[tx->neigh->index].recv_cq;
+
+	spin_unlock_irqrestore(&priv->lock, flags);
 
 	return ib_create_qp(priv->pd, &attr);
 }
@@ -1155,6 +1169,12 @@ static int ipoib_cm_tx_init(struct ipoib_cm_tx *p, u32 qpn,
 {
 	struct ipoib_dev_priv *priv = netdev_priv(p->dev);
 	int ret;
+
+	/* make sure we are not at the middle of destruction */
+	if (!test_bit(IPOIB_FLAG_INITIALIZED, &p->flags)) {
+		ipoib_warn(priv, "tx is at the middle of destruction, returning !!\n");
+		return -ENOENT;
+	}
 
 	p->tx_ring = vzalloc(ipoib_sendq_size * sizeof *p->tx_ring);
 	if (!p->tx_ring) {
