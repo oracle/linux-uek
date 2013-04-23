@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -409,6 +409,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 	int bd = adapter->bd_number;
 	u32 *aflags = &adapter->flags;
 	struct ixgbe_ring_feature *feature = adapter->ring_feature;
+	unsigned int vmdq;
 
 	if (bd >= IXGBE_MAX_NIC) {
 		printk(KERN_NOTICE
@@ -618,7 +619,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 #ifdef module_param_array
 		if (num_VMDQ > bd) {
 #endif
-			unsigned int vmdq = VMDQ[bd];
+			vmdq = VMDQ[bd];
 
 			ixgbe_validate_option(&vmdq, &opt);
 

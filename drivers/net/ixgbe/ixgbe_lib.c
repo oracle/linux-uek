@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -424,7 +424,6 @@ static bool ixgbe_set_dcb_vmdq_queues(struct ixgbe_adapter *adapter)
 		fcoe = &adapter->ring_feature[RING_F_FCOE];
 
 		/* limit ourselves based on feature limits */
-		fcoe_i = min_t(u16, fcoe_i, num_online_cpus());
 		fcoe_i = min_t(u16, fcoe_i, fcoe->limit);
 
 		if (fcoe_i) {
@@ -640,9 +639,6 @@ static bool ixgbe_set_vmdq_queues(struct ixgbe_adapter *adapter)
 		fcoe_i = min_t(u16, fcoe_i, fcoe->limit);
 
 		if (vmdq_i > 1 && fcoe_i) {
-			/* reserve no more than number of CPUs */
-			fcoe_i = min_t(u16, fcoe_i, num_online_cpus());
-
 			/* alloc queues for FCoE separately */
 			fcoe->indices = fcoe_i;
 			fcoe->offset = vmdq_i * rss_i;
@@ -700,8 +696,7 @@ static bool ixgbe_set_rss_queues(struct ixgbe_adapter *adapter)
 	if (rss_i > 1 && adapter->atr_sample_rate) {
 		f = &adapter->ring_feature[RING_F_FDIR];
 
-		f->indices = min_t(u16, num_online_cpus(), f->limit);
-		rss_i = max_t(u16, rss_i, f->indices);
+		rss_i = f->indices = f->limit;
 
 		if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
 			adapter->flags |= IXGBE_FLAG_FDIR_HASH_CAPABLE;
@@ -857,6 +852,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	int node = -1;
 #ifdef HAVE_IRQ_AFFINITY_HINT
 	int cpu = -1;
+	u8 tcs = netdev_get_num_tc(adapter->netdev);
 #endif
 	int ring_count, size;
 
@@ -866,10 +862,13 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 #ifdef HAVE_IRQ_AFFINITY_HINT
 	/* customize cpu for Flow Director mapping */
-	if (adapter->flags & IXGBE_FLAG_FDIR_HASH_CAPABLE) {
-		if (cpu_online(v_idx)) {
-			cpu = v_idx;
-			node = cpu_to_node(cpu);
+	if ((tcs <= 1) && !(adapter->flags & IXGBE_FLAG_VMDQ_ENABLED)) {
+		u16 rss_i = adapter->ring_feature[RING_F_RSS].indices;
+		if (rss_i > 1 && adapter->atr_sample_rate) {
+			if (cpu_online(v_idx)) {
+				cpu = v_idx;
+				node = cpu_to_node(cpu);
+			}
 		}
 	}
 
@@ -885,8 +884,6 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 #ifdef HAVE_IRQ_AFFINITY_HINT
 	if (cpu != -1)
 		cpumask_set_cpu(cpu, &q_vector->affinity_mask);
-	else
-		cpumask_copy(&q_vector->affinity_mask, cpu_online_mask);
 #endif
 	q_vector->numa_node = node;
 
@@ -913,6 +910,21 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 
 	/* initialize pointer to rings */
 	ring = q_vector->ring;
+
+	/* intialize ITR */
+	if (txr_count && !rxr_count) {
+		/* tx only vector */
+		if (adapter->tx_itr_setting == 1)
+			q_vector->itr = IXGBE_10K_ITR;
+		else
+			q_vector->itr = adapter->tx_itr_setting;
+	} else {
+		/* rx or rx/tx vector */
+		if (adapter->rx_itr_setting == 1)
+			q_vector->itr = IXGBE_20K_ITR;
+		else
+			q_vector->itr = adapter->rx_itr_setting;
+	}
 
 	while (txr_count) {
 		/* assign generic ring traits */
@@ -1180,11 +1192,9 @@ try_msi:
 
 	/* disable VMDq */
 	adapter->flags &= ~IXGBE_FLAG_VMDQ_ENABLED;
-
 #ifdef CONFIG_PCI_IOV
 	/* disable SR-IOV */
 	ixgbe_disable_sriov(adapter);
-
 #endif /* CONFIG_PCI_IOV */
 	/* disable RSS */
 	adapter->ring_feature[RING_F_RSS].limit = 1;
