@@ -446,11 +446,7 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 					STACKTRACE_KERNEL
 				     };
 
-#if 0
-	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
-#else
 	dtrace_stacktrace(&st);
-#endif
 
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
@@ -459,18 +455,16 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 {
 	struct stacktrace_state	st = {
-					pcstack,
+					pcstack + 1,		/* 0 = PID */
 					NULL,
-					pcstack_limit,
+					pcstack_limit - 1,	/* skip PID */
 					0,
 					STACKTRACE_USER
 				     };
 
-#if 0
-	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
-#else
+	*pcstack++ = (uint64_t)current->pid;
+
 	dtrace_stacktrace(&st);
-#endif
 
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
@@ -480,18 +474,16 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 			int pcstack_limit)
 {
 	struct stacktrace_state	st = {
-					pcstack,
+					pcstack + 1,		/* 0 = PID */
 					fpstack,
-					pcstack_limit,
+					pcstack_limit - 1,	/* skip PID */
 					0,
 					STACKTRACE_USER
 				     };
 
-#if 0
-	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops_alt, &st);
-#else
+	*pcstack++ = (uint64_t)current->pid;
+
 	dtrace_stacktrace(&st);
-#endif
 
 	while (st.depth < st.limit) {
 		fpstack[st.depth] = 0;
