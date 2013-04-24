@@ -76,24 +76,9 @@
  * Default Value: 8000
  */
 #define DEFAULT_ITR                 8000
-IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281), default 8000");
+IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281), default 8000, use 1 for dynamic");
 #define MAX_ITR       IXGBE_MAX_INT_RATE
 #define MIN_ITR       IXGBE_MIN_INT_RATE
-
-/* Rx buffer mode
- *
- * Valid Range: 0-2 0 = 1buf_mode_always, 1 = ps_mode_always and 2 = optimal
- *
- * Default Value: 0
- */
-IXGBE_PARAM(RxBufferMode, "0 (default) =use 1 descriptor per packet,\n"
-                          "\t\t\t1=use packet split, multiple descriptors per jumbo frame\n"
-                          "\t\t\t2 =use 1buf mode for 1500 mtu, packet split for jumbo");
-
-#define IXGBE_RXBUFMODE_1BUF_ALWAYS			0
-#define IXGBE_RXBUFMODE_PS_ALWAYS			1
-#define IXGBE_RXBUFMODE_OPTIMAL				2
-#define IXGBE_DEFAULT_RXBUFMODE	  IXGBE_RXBUFMODE_1BUF_ALWAYS
 
 struct ixgbevf_option {
 	enum { enable_option, range_option, list_option } type;
@@ -136,7 +121,7 @@ static int __devinit ixgbevf_validate_option(unsigned int *value,
 		break;
 	case range_option:
 		if (*value >= opt->arg.r.min && *value <= opt->arg.r.max) {
-			printk(KERN_INFO "ixgbe: %s set to %d\n", opt->name, *value);
+			printk(KERN_INFO "ixgbevf: %s set to %d\n", opt->name, *value);
 			return 0;
 		}
 		break;
@@ -201,74 +186,31 @@ void __devinit ixgbevf_check_options(struct ixgbevf_adapter *adapter)
 #ifdef module_param_array
 		if (num_InterruptThrottleRate > bd) {
 #endif
-			u32 eitr = InterruptThrottleRate[bd];
-			switch (eitr) {
+			u32 itr = InterruptThrottleRate[bd];
+			switch (itr) {
 			case 0:
 				DPRINTK(PROBE, INFO, "%s turned off\n",
 				        opt.name);
-				/*
-				 * zero is a special value, we don't want to
-				 * turn off ITR completely, just set it to an
-				 * insane interrupt rate
-				 */
-				adapter->eitr_param = IXGBE_MAX_INT_RATE;
-				adapter->itr_setting = 0;
+				adapter->rx_itr_setting = 0;
 				break;
 			case 1:
 				DPRINTK(PROBE, INFO, "dynamic interrupt "
-                                        "throttling enabled\n");
-				adapter->eitr_param = 20000;
-				adapter->itr_setting = 1;
+					"throttling enabled\n");
+				adapter->rx_itr_setting = 1;
 				break;
 			default:
-				ixgbevf_validate_option(&eitr, &opt);
-				adapter->eitr_param = eitr;
+				ixgbevf_validate_option(&itr, &opt);
 				/* the first bit is used as control */
-				adapter->itr_setting = eitr & ~1;
+				adapter->rx_itr_setting = (1000000/itr) << 2;
 				break;
 			}
 #ifdef module_param_array
+		} else if (opt.def < 2) {
+			adapter->rx_itr_setting = opt.def;
 		} else {
-			adapter->eitr_param = DEFAULT_ITR;
-			adapter->itr_setting = DEFAULT_ITR;
+			adapter->rx_itr_setting = (1000000/opt.def) << 2;
 		}
 #endif
-	}
-	{ /* Rx buffer mode */
-		unsigned int rx_buf_mode;
-		static struct ixgbevf_option opt = {
-			.type = range_option,
-			.name = "Rx buffer mode",
-			.err = "using default of "
-				__MODULE_STRING(IXGBE_DEFAULT_RXBUFMODE),
-			.def = IXGBE_DEFAULT_RXBUFMODE,
-			.arg = {.r = {.min = IXGBE_RXBUFMODE_1BUF_ALWAYS,
-				      .max = IXGBE_RXBUFMODE_OPTIMAL}}
-		};
-
-#ifdef module_param_array
-		if (num_RxBufferMode > bd) {
-#endif
-			rx_buf_mode = RxBufferMode[bd];
-			ixgbevf_validate_option(&rx_buf_mode, &opt);
-			switch (rx_buf_mode) {
-			case IXGBE_RXBUFMODE_OPTIMAL:
-				adapter->flags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
-				adapter->flags |= IXGBE_FLAG_RX_PS_CAPABLE;
-				break;
-			case IXGBE_RXBUFMODE_PS_ALWAYS:
-				adapter->flags |= IXGBE_FLAG_RX_PS_CAPABLE;
-				break;
-			case IXGBE_RXBUFMODE_1BUF_ALWAYS:
-				adapter->flags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
-			default:
-				break;
-			}
-#ifdef module_param_array
-		} else {
-			adapter->flags |= IXGBE_FLAG_RX_1BUF_CAPABLE;
-			adapter->flags |= IXGBE_FLAG_RX_PS_CAPABLE;
-		}
-#endif
+		adapter->tx_itr_setting = adapter->rx_itr_setting;
 	}
 }

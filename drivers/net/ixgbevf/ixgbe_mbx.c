@@ -50,6 +50,10 @@ static s32 ixgbe_poll_for_msg(struct ixgbe_hw *hw, u16 mbx_id)
 		udelay(mbx->udelay);
 	}
 
+	if (countdown == 0)
+		ERROR_REPORT2(IXGBE_ERROR_POLLING,
+			   "Polling for VF%d mailbox message timedout", mbx_id);
+
 out:
 	return countdown ? 0 : IXGBE_ERR_MBX;
 }
@@ -75,6 +79,10 @@ static s32 ixgbe_poll_for_ack(struct ixgbe_hw *hw, u16 mbx_id)
 			break;
 		udelay(mbx->udelay);
 	}
+
+	if (countdown == 0)
+		ERROR_REPORT2(IXGBE_ERROR_POLLING,
+			     "Polling for VF%d mailbox ack timedout", mbx_id);
 
 out:
 	return countdown ? 0 : IXGBE_ERR_MBX;
@@ -483,6 +491,10 @@ static s32 ixgbe_obtain_mbx_lock_pf(struct ixgbe_hw *hw, u16 vf_number)
 	p2v_mailbox = IXGBE_READ_REG(hw, IXGBE_PFMAILBOX(vf_number));
 	if (p2v_mailbox & IXGBE_PFMAILBOX_PFU)
 		ret_val = 0;
+	else
+		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
+			   "Failed to obtain mailbox lock for VF%d", vf_number);
+
 
 	return ret_val;
 }

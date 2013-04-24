@@ -103,4 +103,8 @@ extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define IXGBE_HTONL(_i) htonl(_i)
 #define IXGBE_HTONS(_i) htons(_i)
 
+#define ERROR_REPORT(...) do {} while (0)
+#define ERROR_REPORT1(...) do {} while (0)
+#define ERROR_REPORT2(...) do {} while (0)
+
 #endif /* _IXGBE_OSDEP_H_ */
