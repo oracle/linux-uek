@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2005 - 2012 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -161,7 +161,9 @@ static int beiscsi_bindconn_cid(struct beiscsi_hba *phba,
 				struct beiscsi_conn *beiscsi_conn,
 				unsigned int cid)
 {
-	if (phba->conn_table[cid]) {
+	uint16_t cri_index = BE_GET_CRI_FROM_CID(cid);
+
+	if (phba->conn_table[cri_index]) {
 		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
 			    "BS_%d : Connection table already occupied. Detected clash\n");
 
@@ -169,9 +171,9 @@ static int beiscsi_bindconn_cid(struct beiscsi_hba *phba,
 	} else {
 		beiscsi_log(phba, KERN_INFO, BEISCSI_LOG_CONFIG,
 			    "BS_%d : phba->conn_table[%d]=%p(beiscsi_conn)\n",
-			    cid, beiscsi_conn);
+			    cri_index, beiscsi_conn);
 
-		phba->conn_table[cid] = beiscsi_conn;
+		phba->conn_table[cri_index] = beiscsi_conn;
 	}
 	return 0;
 }
@@ -685,6 +687,7 @@ int beiscsi_set_param(struct iscsi_cls_conn *cls_conn,
  * @buf: buffer bointer
  * @phba: The device priv structure instance
  *
+ * returns number of bytes
  */
 static int beiscsi_get_initname(char *buf, struct beiscsi_hba *phba)
 {
@@ -712,6 +715,70 @@ static int beiscsi_get_initname(char *buf, struct beiscsi_hba *phba)
 	resp = embedded_payload(wrb);
 	rc = sprintf(buf, "%s\n", resp->initiator_name);
 	return rc;
+}
+
+/**
+ * beiscsi_get_port_state - Get the Port State
+ * @shost : pointer to scsi_host structure
+ *
+ */
+static void beiscsi_get_port_state(struct Scsi_Host *shost)
+{
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+	struct iscsi_cls_host *ihost = shost->shost_data;
+
+	ihost->port_state = (phba->state == BE_ADAPTER_UP) ?
+		ISCSI_PORT_STATE_UP : ISCSI_PORT_STATE_DOWN;
+}
+
+/**
+ * beiscsi_get_port_speed  - Get the Port Speed from Adapter
+ * @shost : pointer to scsi_host structure
+ *
+ * returns Success/Failure
+ */
+static int beiscsi_get_port_speed(struct Scsi_Host *shost)
+{
+	int rc;
+	unsigned int tag;
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_ntwk_link_status_resp *resp;
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+	struct iscsi_cls_host *ihost = shost->shost_data;
+
+	tag = be_cmd_get_port_speed(phba);
+	if (!tag) {
+		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
+			    "BS_%d : Getting Port Speed Failed\n");
+
+		 return -EBUSY;
+	}
+	rc = beiscsi_mccq_compl(phba, tag, &wrb, NULL);
+	if (rc) {
+		beiscsi_log(phba, KERN_ERR,
+			    BEISCSI_LOG_CONFIG | BEISCSI_LOG_MBOX,
+			    "BS_%d : Port Speed MBX Failed\n");
+		return rc;
+	}
+	resp = embedded_payload(wrb);
+
+	switch (resp->mac_speed) {
+	case BE2ISCSI_LINK_SPEED_10MBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_10MBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_100MBPS:
+		ihost->port_speed = BE2ISCSI_LINK_SPEED_100MBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_1GBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_1GBPS;
+		break;
+	case BE2ISCSI_LINK_SPEED_10GBPS:
+		ihost->port_speed = ISCSI_PORT_SPEED_10GBPS;
+		break;
+	default:
+		ihost->port_speed = ISCSI_PORT_SPEED_UNKNOWN;
+	}
+	return 0;
 }
 
 /**
@@ -748,6 +815,19 @@ int beiscsi_get_host_param(struct Scsi_Host *shost,
 				    "BS_%d : Retreiving Initiator Name Failed\n");
 			return status;
 		}
+		break;
+	case ISCSI_HOST_PARAM_PORT_STATE:
+		beiscsi_get_port_state(shost);
+		status = sprintf(buf, "%s\n", iscsi_get_port_state_name(shost));
+		break;
+	case ISCSI_HOST_PARAM_PORT_SPEED:
+		status = beiscsi_get_port_speed(shost);
+		if (status) {
+			beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
+				    "BS_%d : Retreiving Port Speed Failed\n");
+			return status;
+		}
+		status = sprintf(buf, "%s\n", iscsi_get_port_speed_name(shost));
 		break;
 	default:
 		return iscsi_host_get_param(shost, param, buf);
@@ -912,9 +992,27 @@ static void beiscsi_put_cid(struct beiscsi_hba *phba, unsigned short cid)
 static void beiscsi_free_ep(struct beiscsi_endpoint *beiscsi_ep)
 {
 	struct beiscsi_hba *phba = beiscsi_ep->phba;
+	struct beiscsi_conn *beiscsi_conn;
 
 	beiscsi_put_cid(phba, beiscsi_ep->ep_cid);
 	beiscsi_ep->phba = NULL;
+	phba->ep_array[BE_GET_CRI_FROM_CID
+		       (beiscsi_ep->ep_cid)] = NULL;
+
+	/**
+	 * Check if any connection resource allocated by driver
+	 * is to be freed.This case occurs when target redirection
+	 * or connection retry is done.
+	 **/
+	if (!beiscsi_ep->conn)
+		return;
+
+	beiscsi_conn = beiscsi_ep->conn;
+	if (beiscsi_conn->login_in_progress) {
+		beiscsi_free_mgmt_task_handles(beiscsi_conn,
+					       beiscsi_conn->task);
+		beiscsi_conn->login_in_progress = 0;
+	}
 }
 
 /**
@@ -931,7 +1029,6 @@ static int beiscsi_open_conn(struct iscsi_endpoint *ep,
 {
 	struct beiscsi_endpoint *beiscsi_ep = ep->dd_data;
 	struct beiscsi_hba *phba = beiscsi_ep->phba;
-	struct be_mcc_wrb *wrb;
 	struct tcp_connect_and_offload_out *ptcpcnct_out;
 	struct be_dma_mem nonemb_cmd;
 	unsigned int tag;
@@ -951,15 +1048,8 @@ static int beiscsi_open_conn(struct iscsi_endpoint *ep,
 		    "BS_%d : In beiscsi_open_conn, ep_cid=%d\n",
 		    beiscsi_ep->ep_cid);
 
-	phba->ep_array[beiscsi_ep->ep_cid -
-		       phba->fw_config.iscsi_cid_start] = ep;
-	if (beiscsi_ep->ep_cid > (phba->fw_config.iscsi_cid_start +
-				  phba->params.cxns_per_ctrl * 2)) {
-
-		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
-			    "BS_%d : Failed in allocate iscsi cid\n");
-		goto free_ep;
-	}
+	phba->ep_array[BE_GET_CRI_FROM_CID
+		       (beiscsi_ep->ep_cid)] = ep;
 
 	beiscsi_ep->cid_vld = 0;
 	nonemb_cmd.va = pci_alloc_consistent(phba->ctrl.pdev,
@@ -971,24 +1061,24 @@ static int beiscsi_open_conn(struct iscsi_endpoint *ep,
 			    "BS_%d : Failed to allocate memory for"
 			    " mgmt_open_connection\n");
 
-		beiscsi_put_cid(phba, beiscsi_ep->ep_cid);
+		beiscsi_free_ep(beiscsi_ep);
 		return -ENOMEM;
 	}
 	nonemb_cmd.size = sizeof(struct tcp_connect_and_offload_in);
 	memset(nonemb_cmd.va, 0, nonemb_cmd.size);
 	tag = mgmt_open_connection(phba, dst_addr, beiscsi_ep, &nonemb_cmd);
-	if (!tag) {
+	if (tag <= 0) {
 		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_CONFIG,
 			    "BS_%d : mgmt_open_connection Failed for cid=%d\n",
 			    beiscsi_ep->ep_cid);
 
-		beiscsi_put_cid(phba, beiscsi_ep->ep_cid);
 		pci_free_consistent(phba->ctrl.pdev, nonemb_cmd.size,
 				    nonemb_cmd.va, nonemb_cmd.dma);
+		beiscsi_free_ep(beiscsi_ep);
 		return -EAGAIN;
 	}
 
-	ret = beiscsi_mccq_compl(phba, tag, &wrb, NULL);
+	ret = beiscsi_mccq_compl(phba, tag, NULL, nonemb_cmd.va);
 	if (ret) {
 		beiscsi_log(phba, KERN_ERR,
 			    BEISCSI_LOG_CONFIG | BEISCSI_LOG_MBOX,
@@ -996,10 +1086,11 @@ static int beiscsi_open_conn(struct iscsi_endpoint *ep,
 
 		pci_free_consistent(phba->ctrl.pdev, nonemb_cmd.size,
 			    nonemb_cmd.va, nonemb_cmd.dma);
-		goto free_ep;
+		beiscsi_free_ep(beiscsi_ep);
+		return -EBUSY;
 	}
 
-	ptcpcnct_out = embedded_payload(wrb);
+	ptcpcnct_out = (struct tcp_connect_and_offload_out *)nonemb_cmd.va;
 	beiscsi_ep = ep->dd_data;
 	beiscsi_ep->fw_handle = ptcpcnct_out->connection_handle;
 	beiscsi_ep->cid_vld = 1;
@@ -1009,10 +1100,6 @@ static int beiscsi_open_conn(struct iscsi_endpoint *ep,
 	pci_free_consistent(phba->ctrl.pdev, nonemb_cmd.size,
 			    nonemb_cmd.va, nonemb_cmd.dma);
 	return 0;
-
-free_ep:
-	beiscsi_free_ep(beiscsi_ep);
-	return -EBUSY;
 }
 
 /**
@@ -1038,6 +1125,13 @@ beiscsi_ep_connect(struct Scsi_Host *shost, struct sockaddr *dst_addr,
 		ret = -ENXIO;
 		printk(KERN_ERR
 		       "beiscsi_ep_connect shost is NULL\n");
+		return ERR_PTR(ret);
+	}
+
+	if (beiscsi_error(phba)) {
+		ret = -EIO;
+		beiscsi_log(phba, KERN_WARNING, BEISCSI_LOG_CONFIG,
+			    "BS_%d : The FW state Not Stable!!!\n");
 		return ERR_PTR(ret);
 	}
 
@@ -1123,8 +1217,10 @@ static int beiscsi_close_conn(struct  beiscsi_endpoint *beiscsi_ep, int flag)
 static int beiscsi_unbind_conn_to_cid(struct beiscsi_hba *phba,
 				      unsigned int cid)
 {
-	if (phba->conn_table[cid])
-		phba->conn_table[cid] = NULL;
+	uint16_t cri_index = BE_GET_CRI_FROM_CID(cid);
+
+	if (phba->conn_table[cri_index])
+		phba->conn_table[cri_index] = NULL;
 	else {
 		beiscsi_log(phba, KERN_INFO, BEISCSI_LOG_CONFIG,
 			    "BS_%d : Connection table Not occupied.\n");
@@ -1202,6 +1298,9 @@ mode_t be2iscsi_attr_is_visible(int param_type, int param)
 	case ISCSI_HOST_PARAM:
 		switch (param) {
 		case ISCSI_HOST_PARAM_HWADDRESS:
+		case ISCSI_HOST_PARAM_INITIATOR_NAME:
+		case ISCSI_HOST_PARAM_PORT_STATE:
+		case ISCSI_HOST_PARAM_PORT_SPEED:
 			return S_IRUGO;
 		default:
 			return 0;

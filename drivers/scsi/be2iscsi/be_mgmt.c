@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2005 - 2012 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -368,6 +368,8 @@ int mgmt_check_supported_fw(struct be_ctrl_info *ctrl,
 		beiscsi_log(phba, KERN_INFO, BEISCSI_LOG_INIT,
 			    "BM_%d : phba->fw_config.iscsi_features = %d\n",
 			    phba->fw_config.iscsi_features);
+		memcpy(phba->fw_ver_str, resp->params.hba_attribs.
+		       firmware_version_string, BEISCSI_VER_STRLEN);
 	} else
 		beiscsi_log(phba, KERN_ERR, BEISCSI_LOG_INIT,
 			    "BG_%d :  Failed in mgmt_check_supported_fw\n");
@@ -772,7 +774,7 @@ static int mgmt_alloc_cmd_data(struct beiscsi_hba *phba, struct be_dma_mem *cmd,
 			    "BG_%d : Failed to allocate memory for if info\n");
 		return -ENOMEM;
 	}
-	memset(cmd->va, 0, sizeof(size));
+	memset(cmd->va, 0, size);
 	cmd->size = size;
 	be_cmd_hdr_prepare(cmd->va, CMD_SUBSYSTEM_ISCSI, iscsi_cmd, size);
 	return 0;
@@ -1096,6 +1098,33 @@ unsigned int be_cmd_get_initname(struct beiscsi_hba *phba)
 	return tag;
 }
 
+unsigned int be_cmd_get_port_speed(struct beiscsi_hba *phba)
+{
+	unsigned int tag = 0;
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_ntwk_link_status_req *req;
+	struct be_ctrl_info *ctrl = &phba->ctrl;
+
+	spin_lock(&ctrl->mbox_lock);
+	tag = alloc_mcc_tag(phba);
+	if (!tag) {
+		spin_unlock(&ctrl->mbox_lock);
+		return tag;
+	}
+
+	wrb = wrb_from_mccq(phba);
+	req = embedded_payload(wrb);
+	wrb->tag0 |= tag;
+	be_wrb_hdr_prepare(wrb, sizeof(*req), true, 0);
+	be_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
+			OPCODE_COMMON_NTWK_LINK_STATUS_QUERY,
+			sizeof(*req));
+
+	be_mcc_notify(phba);
+	spin_unlock(&ctrl->mbox_lock);
+	return tag;
+}
+
 /**
  * be_mgmt_get_boot_shandle()- Get the session handle
  * @phba: device priv structure instance
@@ -1230,6 +1259,45 @@ beiscsi_drvr_ver_disp(struct device *dev, struct device_attribute *attr,
 		       char *buf)
 {
 	return snprintf(buf, PAGE_SIZE, BE_NAME "\n");
+}
+
+/**
+ * beiscsi_fw_ver_disp()- Display Firmware Version
+ * @dev: ptr to device not used.
+ * @attr: device attribute, not used.
+ * @buf: contains formatted text Firmware version
+ *
+ * return
+ * size of the formatted string
+ **/
+ssize_t
+beiscsi_fw_ver_disp(struct device *dev, struct device_attribute *attr,
+		     char *buf)
+{
+	struct Scsi_Host *shost = class_to_shost(dev);
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", phba->fw_ver_str);
+}
+
+/**
+ * beiscsi_active_cid_disp()- Display Sessions Active
+ * @dev: ptr to device not used.
+ * @attr: device attribute, not used.
+ * @buf: contains formatted text Session Count
+ *
+ * return
+ * size of the formatted string
+ **/
+ssize_t
+beiscsi_active_cid_disp(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct Scsi_Host *shost = class_to_shost(dev);
+	struct beiscsi_hba *phba = iscsi_host_priv(shost);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n",
+		       (phba->params.cxns_per_ctrl - phba->avlbl_cids));
 }
 
 /**
