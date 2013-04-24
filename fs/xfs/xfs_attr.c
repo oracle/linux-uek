@@ -15,7 +15,6 @@
  * along with this program; if not, write the Free Software Foundation,
  * Inc.,  51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
-
 #include "xfs.h"
 #include "xfs_fs.h"
 #include "xfs_types.h"
@@ -1236,7 +1235,7 @@ restart:
 	 * Search to see if name already exists, and get back a pointer
 	 * to where it should go.
 	 */
-	error = xfs_da_node_lookup_int(state, &retval);
+	error = xfs_da3_node_lookup_int(state, &retval);
 	if (error)
 		goto out;
 	blk = &state->path.blk[ state->path.active-1 ];
@@ -1308,7 +1307,7 @@ restart:
 		 * in the index2/blkno2/rmtblkno2/rmtblkcnt2 fields.
 		 */
 		xfs_bmap_init(args->flist, args->firstblock);
-		error = xfs_da_split(state);
+		error = xfs_da3_split(state);
 		if (!error) {
 			error = xfs_bmap_finish(&args->trans, args->flist,
 						&committed);
@@ -1330,7 +1329,7 @@ restart:
 		/*
 		 * Addition succeeded, update Btree hashvals.
 		 */
-		xfs_da_fixhashpath(state, &state->path);
+		xfs_da3_fixhashpath(state, &state->path);
 	}
 
 	/*
@@ -1401,7 +1400,7 @@ restart:
 		state->blocksize = state->mp->m_sb.sb_blocksize;
 		state->node_ents = state->mp->m_attr_node_ents;
 		state->inleaf = 0;
-		error = xfs_da_node_lookup_int(state, &retval);
+		error = xfs_da3_node_lookup_int(state, &retval);
 		if (error)
 			goto out;
 
@@ -1411,14 +1410,14 @@ restart:
 		blk = &state->path.blk[ state->path.active-1 ];
 		ASSERT(blk->magic == XFS_ATTR_LEAF_MAGIC);
 		error = xfs_attr_leaf_remove(blk->bp, args);
-		xfs_da_fixhashpath(state, &state->path);
+		xfs_da3_fixhashpath(state, &state->path);
 
 		/*
 		 * Check to see if the tree needs to be collapsed.
 		 */
 		if (retval && (state->path.active > 1)) {
 			xfs_bmap_init(args->flist, args->firstblock);
-			error = xfs_da_join(state);
+			error = xfs_da3_join(state);
 			if (!error) {
 				error = xfs_bmap_finish(&args->trans,
 							args->flist,
@@ -1496,7 +1495,7 @@ xfs_attr_node_removename(xfs_da_args_t *args)
 	/*
 	 * Search to see if name exists, and get back a pointer to it.
 	 */
-	error = xfs_da_node_lookup_int(state, &retval);
+	error = xfs_da3_node_lookup_int(state, &retval);
 	if (error || (retval != EEXIST)) {
 		if (error == 0)
 			error = retval;
@@ -1547,14 +1546,14 @@ xfs_attr_node_removename(xfs_da_args_t *args)
 	blk = &state->path.blk[ state->path.active-1 ];
 	ASSERT(blk->magic == XFS_ATTR_LEAF_MAGIC);
 	retval = xfs_attr_leaf_remove(blk->bp, args);
-	xfs_da_fixhashpath(state, &state->path);
+	xfs_da3_fixhashpath(state, &state->path);
 
 	/*
 	 * Check to see if the tree needs to be collapsed.
 	 */
 	if (retval && (state->path.active > 1)) {
 		xfs_bmap_init(args->flist, args->firstblock);
-		error = xfs_da_join(state);
+		error = xfs_da3_join(state);
 		if (!error) {
 			error = xfs_bmap_finish(&args->trans, args->flist,
 						&committed);
@@ -1700,7 +1699,7 @@ xfs_attr_refillstate(xfs_da_state_t *state)
 	ASSERT((path->active >= 0) && (path->active < XFS_DA_NODE_MAXDEPTH));
 	for (blk = path->blk, level = 0; level < path->active; blk++, level++) {
 		if (blk->disk_blkno) {
-			error = xfs_da_node_read(state->args->trans,
+			error = xfs_da3_node_read(state->args->trans,
 						state->args->dp,
 						blk->blkno, blk->disk_blkno,
 						&blk->bp, XFS_ATTR_FORK);
@@ -1719,7 +1718,7 @@ xfs_attr_refillstate(xfs_da_state_t *state)
 	ASSERT((path->active >= 0) && (path->active < XFS_DA_NODE_MAXDEPTH));
 	for (blk = path->blk, level = 0; level < path->active; blk++, level++) {
 		if (blk->disk_blkno) {
-			error = xfs_da_node_read(state->args->trans,
+			error = xfs_da3_node_read(state->args->trans,
 						state->args->dp,
 						blk->blkno, blk->disk_blkno,
 						&blk->bp, XFS_ATTR_FORK);
@@ -1759,7 +1758,7 @@ xfs_attr_node_get(xfs_da_args_t *args)
 	/*
 	 * Search to see if name exists, and get back a pointer to it.
 	 */
-	error = xfs_da_node_lookup_int(state, &retval);
+	error = xfs_da3_node_lookup_int(state, &retval);
 	if (error) {
 		retval = error;
 	} else if (retval == EEXIST) {
@@ -1811,7 +1810,7 @@ xfs_attr_node_list(xfs_attr_list_context_t *context)
 	 */
 	bp = NULL;
 	if (cursor->blkno > 0) {
-		error = xfs_da_node_read(NULL, context->dp, cursor->blkno, -1,
+		error = xfs_da3_node_read(NULL, context->dp, cursor->blkno, -1,
 					      &bp, XFS_ATTR_FORK);
 		if ((error != 0) && (error != EFSCORRUPTED))
 			return(error);
@@ -1853,7 +1852,7 @@ xfs_attr_node_list(xfs_attr_list_context_t *context)
 	if (bp == NULL) {
 		cursor->blkno = 0;
 		for (;;) {
-			error = xfs_da_node_read(NULL, context->dp,
+			error = xfs_da3_node_read(NULL, context->dp,
 						      cursor->blkno, -1, &bp,
 						      XFS_ATTR_FORK);
 			if (error)
@@ -1871,7 +1870,7 @@ xfs_attr_node_list(xfs_attr_list_context_t *context)
 				xfs_trans_brelse(NULL, bp);
 				return(XFS_ERROR(EFSCORRUPTED));
 			}
-			btree = node->btree;
+			btree = xfs_da3_node_tree_p(node);
 			for (i = 0; i < be16_to_cpu(node->hdr.count);
 								btree++, i++) {
 				if (cursor->hashval
