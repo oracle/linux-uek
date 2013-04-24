@@ -84,6 +84,8 @@ struct be_mcc_compl {
 #define ASYNC_EVENT_QOS_SPEED		0x1
 #define ASYNC_EVENT_COS_PRIORITY	0x2
 #define ASYNC_EVENT_PVID_STATE		0x3
+#define ASYNC_EVENT_CODE_QNQ		0x6
+#define ASYNC_DEBUG_EVENT_TYPE_QNQ	1
 struct be_async_event_trailer {
 	u32 code;
 };
@@ -141,6 +143,16 @@ struct be_async_event_grp5_pvid_state {
 	u16 tag;
 	u32 event_tag;
 	u32 rsvd1;
+	struct be_async_event_trailer trailer;
+} __packed;
+
+/* async event indicating outer VLAN tag in QnQ */
+struct be_async_event_qnq {
+	u8 valid;	/* Indicates if outer VLAN is valid */
+	u8 rsvd0;
+	u16 vlan_tag;
+	u32 event_tag;
+	u8 rsvd1[4];
 	struct be_async_event_trailer trailer;
 } __packed;
 
@@ -1687,9 +1699,11 @@ struct be_cmd_req_set_ext_fat_caps {
 	struct be_fat_conf_params set_params;
 };
 
-#define RESOURCE_DESC_SIZE			72
-#define NIC_RESOURCE_DESC_TYPE_ID		0x41
+#define RESOURCE_DESC_SIZE			88
+#define NIC_RESOURCE_DESC_TYPE_V0		0x41
+#define NIC_RESOURCE_DESC_TYPE_V1		0x51
 #define MAX_RESOURCE_DESC			4
+#define MAX_RESOURCE_DESC_V1			32
 
 /* QOS unit number */
 #define QUN					4
@@ -1753,6 +1767,12 @@ struct be_cmd_resp_get_profile_config {
 	struct be_cmd_req_hdr hdr;
 	u32 desc_count;
 	u8 func_param[MAX_RESOURCE_DESC * RESOURCE_DESC_SIZE];
+};
+
+struct be_cmd_resp_get_profile_config_v1 {
+	struct be_cmd_req_hdr hdr;
+	u32 desc_count;
+	u8 func_param[MAX_RESOURCE_DESC_V1 * RESOURCE_DESC_SIZE];
 };
 
 struct be_cmd_req_set_profile_config {
@@ -1917,7 +1937,7 @@ extern int lancer_test_and_set_rdy_state(struct be_adapter *adapter);
 extern int be_cmd_query_port_name(struct be_adapter *adapter, u8 *port_name);
 extern int be_cmd_get_func_config(struct be_adapter *adapter);
 extern int be_cmd_get_profile_config(struct be_adapter *adapter, u32 *cap_flags,
-				     u8 domain);
+				     u16 *txq_count, u8 domain);
 
 extern int be_cmd_set_profile_config(struct be_adapter *adapter, u32 bps,
 				     u8 domain);
