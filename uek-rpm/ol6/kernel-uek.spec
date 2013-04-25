@@ -1450,7 +1450,7 @@ then\
 fi\
 if [ "$HARDLINK" != "no" -a -x /usr/sbin/hardlink ]\
 then\
-    (cd /usr/src/kernels/linux-%{kversion}-%{release}%{?1:.%{1}} &&\
+    (cd /usr/src/kernels/%{kversion}-%{release}%{?1:.%{1}}.%{_arch} &&\
      /usr/bin/find . -type f | while read f; do\
        hardlink -c /usr/src/kernels/*.fc*.*/$f $f\
      done)\
