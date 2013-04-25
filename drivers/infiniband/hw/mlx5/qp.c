@@ -2420,7 +2420,7 @@ int mlx5_ib_query_qp(struct ib_qp *ibqp, struct ib_qp_attr *qp_attr, int qp_attr
 	/* qp_attr->en_sqd_async_notify is only applicable in modify qp */
 	qp_attr->sq_draining = mlx5_state == MLX5_QP_STATE_SQ_DRAINING;
 
-	qp_attr->max_rd_atomic = 1 << ((be32_to_cpu(context->params1) >> 21) & 0x7);
+	qp_attr->max_rd_atomic = 1 << ((be32_to_cpu(context->params2) >> 21) & 0x7);
 
 	qp_attr->max_dest_rd_atomic =
 		1 << ((be32_to_cpu(context->params2) >> 21) & 0x7);
