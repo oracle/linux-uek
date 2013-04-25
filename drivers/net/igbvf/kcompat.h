@@ -2905,7 +2905,7 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
-//typedef u32 netdev_features_t;
+/* typedef u32 netdev_features_t; removed for uek2 */
 #else /* ! < 3.3.0 */
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #endif /* < 3.3.0 */
