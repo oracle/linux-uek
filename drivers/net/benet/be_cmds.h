@@ -602,8 +602,8 @@ struct be_port_rxf_stats_v0 {
 	u32 rx_in_range_errors;	/* dword 10*/
 	u32 rx_out_range_errors;	/* dword 11*/
 	u32 rx_frame_too_long;	/* dword 12*/
-	u32 rx_address_mismatch_drops;	/* dword 13*/
-	u32 rx_vlan_mismatch_drops;	/* dword 14*/
+	u32 rx_address_filtered;	/* dword 13*/
+	u32 rx_vlan_filtered;	/* dword 14*/
 	u32 rx_dropped_too_small;	/* dword 15*/
 	u32 rx_dropped_too_short;	/* dword 16*/
 	u32 rx_dropped_header_too_small;	/* dword 17*/
@@ -809,8 +809,8 @@ struct lancer_pport_stats {
 	u32 rx_control_frames_unknown_opcode_hi;
 	u32 rx_in_range_errors;
 	u32 rx_out_of_range_errors;
-	u32 rx_address_mismatch_drops;
-	u32 rx_vlan_mismatch_drops;
+	u32 rx_address_filtered;
+	u32 rx_vlan_filtered;
 	u32 rx_dropped_too_small;
 	u32 rx_dropped_too_short;
 	u32 rx_dropped_header_too_small;
@@ -1101,6 +1101,9 @@ struct be_cmd_resp_query_fw_cfg {
 #define RSS_ENABLE_TCP_IPV6			0x8
 #define RSS_ENABLE_UDP_IPV4			0x10
 #define RSS_ENABLE_UDP_IPV6			0x20
+
+#define L3_RSS_FLAGS				(RXH_IP_DST | RXH_IP_SRC)
+#define L4_RSS_FLAGS				(RXH_L4_B_0_1 | RXH_L4_B_2_3)
 
 struct be_cmd_req_rss_config {
 	struct be_cmd_req_hdr hdr;
@@ -1585,7 +1588,7 @@ struct be_port_rxf_stats_v1 {
 	u32 rx_in_range_errors;
 	u32 rx_out_range_errors;
 	u32 rx_frame_too_long;
-	u32 rx_address_mismatch_drops;
+	u32 rx_address_filtered;
 	u32 rx_dropped_too_small;
 	u32 rx_dropped_too_short;
 	u32 rx_dropped_header_too_small;
@@ -1872,7 +1875,7 @@ extern int be_cmd_query_fw_cfg(struct be_adapter *adapter, u32 *port_num,
 			u32 *function_mode, u32 *function_caps, u16 *asic_rev);
 extern int be_cmd_reset_function(struct be_adapter *adapter);
 extern int be_cmd_rss_config(struct be_adapter *adapter, u8 *rsstable,
-			u16 table_size);
+			     u32 rss_hash_opts, u16 table_size);
 extern int be_process_mcc(struct be_adapter *adapter);
 extern int be_cmd_set_beacon_state(struct be_adapter *adapter,
 			u8 port_num, u8 beacon, u8 status, u8 state);

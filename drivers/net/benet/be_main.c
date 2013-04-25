@@ -352,9 +352,9 @@ static void populate_be_v0_stats(struct be_adapter *adapter)
 	drvs->rx_input_fifo_overflow_drop = port_stats->rx_input_fifo_overflow;
 	drvs->rx_dropped_header_too_small =
 		port_stats->rx_dropped_header_too_small;
-	drvs->rx_address_mismatch_drops =
-					port_stats->rx_address_mismatch_drops +
-					port_stats->rx_vlan_mismatch_drops;
+	drvs->rx_address_filtered =
+					port_stats->rx_address_filtered +
+					port_stats->rx_vlan_filtered;
 	drvs->rx_alignment_symbol_errors =
 		port_stats->rx_alignment_symbol_errors;
 
@@ -403,7 +403,7 @@ static void populate_be_v1_stats(struct be_adapter *adapter)
 		port_stats->rx_dropped_header_too_small;
 	drvs->rx_input_fifo_overflow_drop =
 		port_stats->rx_input_fifo_overflow_drop;
-	drvs->rx_address_mismatch_drops = port_stats->rx_address_mismatch_drops;
+	drvs->rx_address_filtered = port_stats->rx_address_filtered;
 	drvs->rx_alignment_symbol_errors =
 		port_stats->rx_alignment_symbol_errors;
 	drvs->rxpp_fifo_overflow_drop = port_stats->rxpp_fifo_overflow_drop;
@@ -444,9 +444,9 @@ static void populate_lancer_stats(struct be_adapter *adapter)
 	drvs->rx_dropped_header_too_small =
 				pport_stats->rx_dropped_header_too_small;
 	drvs->rx_input_fifo_overflow_drop = pport_stats->rx_fifo_overflow;
-	drvs->rx_address_mismatch_drops =
-					pport_stats->rx_address_mismatch_drops +
-					pport_stats->rx_vlan_mismatch_drops;
+	drvs->rx_address_filtered =
+					pport_stats->rx_address_filtered +
+					pport_stats->rx_vlan_filtered;
 	drvs->rx_alignment_symbol_errors = pport_stats->rx_symbol_errors_lo;
 	drvs->rxpp_fifo_overflow_drop = pport_stats->rx_fifo_overflow;
 	drvs->tx_pauseframes = pport_stats->tx_pause_frames_lo;
