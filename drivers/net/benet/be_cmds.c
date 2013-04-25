@@ -2489,6 +2489,9 @@ int be_cmd_get_cntl_attributes(struct be_adapter *adapter)
 	struct mgmt_controller_attrib *attribs;
 	struct be_dma_mem attribs_cmd;
 
+	if (mutex_lock_interruptible(&adapter->mbox_lock))
+		return -1;
+
 	memset(&attribs_cmd, 0, sizeof(struct be_dma_mem));
 	attribs_cmd.size = sizeof(struct be_cmd_resp_cntl_attribs);
 	attribs_cmd.va = pci_alloc_consistent(adapter->pdev, attribs_cmd.size,
@@ -2496,11 +2499,9 @@ int be_cmd_get_cntl_attributes(struct be_adapter *adapter)
 	if (!attribs_cmd.va) {
 		dev_err(&adapter->pdev->dev,
 				"Memory allocation failure\n");
-		return -ENOMEM;
+		status = -ENOMEM;
+		goto err;
 	}
-
-	if (mutex_lock_interruptible(&adapter->mbox_lock))
-		return -1;
 
 	wrb = wrb_from_mbox(adapter);
 	if (!wrb) {
@@ -2522,8 +2523,9 @@ int be_cmd_get_cntl_attributes(struct be_adapter *adapter)
 
 err:
 	mutex_unlock(&adapter->mbox_lock);
-	pci_free_consistent(adapter->pdev, attribs_cmd.size, attribs_cmd.va,
-					attribs_cmd.dma);
+	if (attribs_cmd.va)
+		pci_free_consistent(adapter->pdev, attribs_cmd.size,
+				    attribs_cmd.va, attribs_cmd.dma);
 	return status;
 }
 
@@ -2821,6 +2823,9 @@ int be_cmd_get_acpi_wol_cap(struct be_adapter *adapter)
 			    CMD_SUBSYSTEM_ETH))
 		return -EPERM;
 
+	if (mutex_lock_interruptible(&adapter->mbox_lock))
+		return -1;
+
 	memset(&cmd, 0, sizeof(struct be_dma_mem));
 	cmd.size = sizeof(struct be_cmd_resp_acpi_wol_magic_config_v1);
 	cmd.va = pci_alloc_consistent(adapter->pdev, cmd.size,
@@ -2828,11 +2833,9 @@ int be_cmd_get_acpi_wol_cap(struct be_adapter *adapter)
 	if (!cmd.va) {
 		dev_err(&adapter->pdev->dev,
 				"Memory allocation failure\n");
-		return -ENOMEM;
+		status = -ENOMEM;
+		goto err;
 	}
-
-	if (mutex_lock_interruptible(&adapter->mbox_lock))
-		return -1;
 
 	wrb = wrb_from_mbox(adapter);
 	if (!wrb) {
@@ -2864,7 +2867,8 @@ int be_cmd_get_acpi_wol_cap(struct be_adapter *adapter)
 	}
 err:
 	mutex_unlock(&adapter->mbox_lock);
-	pci_free_consistent(adapter->pdev, cmd.size, cmd.va, cmd.dma);
+	if (cmd.va)
+		pci_free_consistent(adapter->pdev, cmd.size, cmd.va, cmd.dma);
 	return status;
 
 }
@@ -2997,16 +3001,18 @@ int be_cmd_get_func_config(struct be_adapter *adapter)
 	int status;
 	struct be_dma_mem cmd;
 
+	if (mutex_lock_interruptible(&adapter->mbox_lock))
+		return -1;
+
 	memset(&cmd, 0, sizeof(struct be_dma_mem));
 	cmd.size = sizeof(struct be_cmd_resp_get_func_config);
 	cmd.va = pci_alloc_consistent(adapter->pdev, cmd.size,
 				      &cmd.dma);
 	if (!cmd.va) {
 		dev_err(&adapter->pdev->dev, "Memory alloc failure\n");
-		return -ENOMEM;
+		status = -ENOMEM;
+		goto err;
 	}
-	if (mutex_lock_interruptible(&adapter->mbox_lock))
-		return -1;
 
 	wrb = wrb_from_mbox(adapter);
 	if (!wrb) {
@@ -3046,8 +3052,8 @@ int be_cmd_get_func_config(struct be_adapter *adapter)
 	}
 err:
 	mutex_unlock(&adapter->mbox_lock);
-	pci_free_consistent(adapter->pdev, cmd.size,
-			    cmd.va, cmd.dma);
+	if (cmd.va)
+		pci_free_consistent(adapter->pdev, cmd.size, cmd.va, cmd.dma);
 	return status;
 }
 
