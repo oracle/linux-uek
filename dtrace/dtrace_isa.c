@@ -27,6 +27,7 @@
 
 #include <linux/dtrace_cpu.h>
 #include <linux/hardirq.h>
+#include <linux/mm.h>
 #include <linux/smp.h>
 #include <asm/stacktrace.h>
 
@@ -328,113 +329,6 @@ ktime_t dtrace_gethrestime(void)
 	return dtrace_gethrtime();
 }
 
-#if 0
-#define STACKTRACE_KERNEL	0x01
-#define STACKTRACE_USER		0x02
-#define STACKTRACE_SKIP		0x10
-
-struct stacktrace_state {
-	uint64_t	*pcs;
-	uint64_t	*fps;
-	int		limit;
-	int		depth;
-	int		flags;
-};
-
-static int dtrace_stacktrace_stack(void *data, char *name)
-{
-	struct stacktrace_state	*st = (struct stacktrace_state *)data;
-
-	/*
-	 * We do not skip anything for non-user stack analysis.
-	 */
-	if (!(st->flags & STACKTRACE_USER))
-		return 0;
-
-	if (name != NULL && strlen(name) > 3) {
-		/*
-		 * Sadly, the dump stack code calls us with both <EOE> and EOI.
-		 * Consistency would be much nicer.
-		 */
-		if ((name[0] == '<' && name[1] == 'E' && name[2] == 'O') ||
-		    (name[0] == 'E' && name[2] == 'O'))
-			st->flags &= ~STACKTRACE_SKIP;
-	}
-
-	return 0;
-}
-
-static void dtrace_stacktrace_address(void *data, unsigned long addr,
-				      int reliable)
-{
-	struct stacktrace_state	*st = (struct stacktrace_state *)data;
-
-	if (st->flags & STACKTRACE_SKIP)
-		return;
-
-	if (reliable == 2) {
-		if (st->fps)
-			st->fps[st->depth] = addr;
-	} else {
-		if (st->pcs != NULL) {
-			if (st->depth < st->limit)
-				st->pcs[st->depth++] = addr;
-		} else
-			st->depth++;
-	}
-}
-
-static inline int valid_sp(struct thread_info *tinfo, void *p,
-			   unsigned int size, void *end)
-{
-	void	*t = tinfo;
-
-	if (end) {
-		if (p < end && p >= (end - THREAD_SIZE))
-			return 1;
-		else
-			return 0;
-	}
-
-	return p > t && p < t + THREAD_SIZE - size;
-}
-
-static unsigned long dtrace_stacktrace_walk_stack(
-					struct thread_info *tinfo,
-					unsigned long *stack,
-					unsigned long bp,
-					const struct stacktrace_ops *ops,
-					void *data, unsigned long *end,
-					int *graph)
-{
-	struct frame	*fr = (struct frame *)bp;
-	unsigned long	*pcp = &(fr->fr_savpc);
-
-	while (valid_sp(tinfo, pcp, sizeof(*pcp), end)) {
-		unsigned long	addr = *pcp;
-
-		fr = fr->fr_savfp;
-		ops->address(data, (unsigned long)fr, 2);
-		ops->address(data, addr, 1);
-		pcp = &(fr->fr_savpc);
-	}
-
-	return (unsigned long)fr;
-}
-
-static const struct stacktrace_ops	dtrace_tracetrace_ops = {
-	.stack		= dtrace_stacktrace_stack,
-	.address	= dtrace_stacktrace_address,
-	.walk_stack	= print_context_stack
-};
-
-static const struct stacktrace_ops	dtrace_tracetrace_ops_alt = {
-	.stack		= dtrace_stacktrace_stack,
-	.address	= dtrace_stacktrace_address,
-	.walk_stack	= dtrace_stacktrace_walk_stack
-};
-#endif
-
 void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 		       uint32_t *intrpc)
 {
@@ -452,43 +346,58 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 		pcstack[st.depth++] = 0;
 }
 
-void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
-{
-	struct stacktrace_state	st = {
-					pcstack + 1,		/* 0 = PID */
-					NULL,
-					pcstack_limit - 1,	/* skip PID */
-					0,
-					STACKTRACE_USER
-				     };
+static int is_code_addr(unsigned long addr) {
+	struct vm_area_struct   *vma, *first;
 
-	*pcstack++ = (uint64_t)current->pid;
+	first = NULL;
+	for (vma = current->mm->mmap;
+	     vma != NULL && vma != first;
+	     vma = vma->vm_next) {
+		if (!first)
+			first = vma;
 
-	dtrace_stacktrace(&st);
+		if (!(vma->vm_flags & VM_EXEC))
+			continue;
 
-	while (st.depth < st.limit)
-		pcstack[st.depth++] = 0;
+		if (addr < vma->vm_start)
+			return 0;
+		if (addr <= vma->vm_end)
+			return 1;
+	}
+
+	return 0;
 }
 
 void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 			int pcstack_limit)
 {
-	struct stacktrace_state	st = {
-					pcstack + 1,		/* 0 = PID */
-					fpstack,
-					pcstack_limit - 1,	/* skip PID */
-					0,
-					STACKTRACE_USER
-				     };
+	struct task_struct	*p = current;
+	unsigned long		*sp = (unsigned long *)p->thread.usersp;
+	unsigned long		*bos = (unsigned long *)p->mm->start_stack;
 
-	*pcstack++ = (uint64_t)current->pid;
+	*pcstack++ = (uint64_t)p->pid;
+	pcstack_limit--;
 
-	dtrace_stacktrace(&st);
+	while (sp <= bos && pcstack_limit) {
+		unsigned long	addr = *sp;
 
-	while (st.depth < st.limit) {
-		fpstack[st.depth] = 0;
-		pcstack[st.depth++] = 0;
+		if (is_code_addr(addr)) {
+			*pcstack++ = addr;
+			pcstack_limit--;
+		}
+
+		sp++;
 	}
+
+	while (pcstack_limit--)
+		*pcstack++ = 0;
+
+	ASSERT(current == p);
+}
+
+void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
+{
+	dtrace_getufpstack(pcstack, NULL, pcstack_limit);
 }
 
 int dtrace_getstackdepth(int aframes)
@@ -501,11 +410,7 @@ int dtrace_getstackdepth(int aframes)
 					STACKTRACE_KERNEL
 				     };
 
-#if 0
-	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
-#else
 	dtrace_stacktrace(&st);
-#endif
 
 	if (st.depth <= aframes)
 		return 0;
@@ -515,19 +420,17 @@ int dtrace_getstackdepth(int aframes)
 
 int dtrace_getustackdepth(void)
 {
-	struct stacktrace_state	st = {
-					NULL,
-					NULL,
-					0,
-					0,
-					STACKTRACE_USER
-				     };
+	int			depth = 0;
+	struct task_struct	*p = current;
+	unsigned long		*sp = (unsigned long *)p->thread.usersp;
+	unsigned long		*bos = (unsigned long *)p->mm->start_stack;
 
-#if 0
-	dump_trace(NULL, NULL, NULL, 0, &dtrace_tracetrace_ops, &st);
-#else
-	dtrace_stacktrace(&st);
-#endif
+	while (sp <= bos) {
+		if (is_code_addr(*sp))
+			depth++;
 
-	return st.depth;
+		sp++;
+	}
+
+	return depth;
 }
