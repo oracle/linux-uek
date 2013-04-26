@@ -4990,12 +4990,6 @@ static void rbd_dev_release(struct device *dev)
 	module_put(THIS_MODULE);
 }
 
-static void __rbd_remove(struct rbd_device *rbd_dev)
-{
-	rbd_remove_all_snaps(rbd_dev);
-	rbd_bus_del_dev(rbd_dev);
-}
-
 static void rbd_dev_remove_parent(struct rbd_device *rbd_dev)
 {
 	while (rbd_dev->parent_spec) {
@@ -5011,7 +5005,8 @@ static void rbd_dev_remove_parent(struct rbd_device *rbd_dev)
 			first = second;
 			second = third;
 		}
-		__rbd_remove(second);
+		rbd_remove_all_snaps(second);
+		rbd_bus_del_dev(second);
 		rbd_spec_put(first->parent_spec);
 		first->parent_spec = NULL;
 		first->parent_overlap = 0;
@@ -5056,8 +5051,8 @@ static ssize_t rbd_remove(struct bus_type *bus,
 
 	rbd_dev_remove_parent(rbd_dev);
 
-	__rbd_remove(rbd_dev);
-
+	rbd_remove_all_snaps(rbd_dev);
+	rbd_bus_del_dev(rbd_dev);
 done:
 	mutex_unlock(&ctl_mutex);
 
