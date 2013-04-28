@@ -433,6 +433,7 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
@@ -510,6 +511,7 @@ Source16: perf
 Source17: kabitool
 Source18: check-kabi
 Source19: extrakeys.pub
+Source20: x86_energy_perf_policy
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -1081,6 +1083,17 @@ hwcap 0 nosegneg"
 	cd ../..
     fi
 %endif
+%ifarch x86_64 %{all_x86}
+# build tools/power/x86/x86_energy_perf_policy:
+    if [ -d tools/power/x86/x86_energy_perf_policy ]; then
+       cd tools/power/x86/x86_energy_perf_policy
+       make
+# and install it:
+       mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+       install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
+       cd ../../../../
+    fi
+%endif
 %endif
 
     # And save the headers/makefiles etc for building modules against
@@ -1391,6 +1404,14 @@ cp $RPM_SOURCE_DIR/perf $RPM_BUILD_ROOT/usr/sbin/perf
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
 %endif
 
+%ifarch x86_64 %{all_x86}
+# x86_energy_perf_policy shell wrapper
+mkdir -p $RPM_BUILD_ROOT/usr/sbin/
+cp $RPM_SOURCE_DIR/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+chmod 0755 $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+%endif
+
+
 %if %{with_headers}
 # Install kernel headers
 make ARCH=%{hdrarch} INSTALL_HDR_PATH=$RPM_BUILD_ROOT/usr headers_install
@@ -1660,6 +1681,8 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
+/usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
+/usr/sbin/x86_energy_perf_policy\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
