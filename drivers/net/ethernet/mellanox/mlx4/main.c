@@ -1132,6 +1132,13 @@ static ssize_t set_port_type(struct device *dev,
 		return -EINVAL;
 	}
 
+	if ((info->tmp_type & mdev->caps.supported_type[info->port]) !=
+	    info->tmp_type) {
+		mlx4_err(mdev, "Requested port type for port %d is not supported on this HCA\n",
+			 info->port);
+		return -EINVAL;
+	}
+
 	mlx4_stop_sense(mdev);
 	mutex_lock(&priv->port_mutex);
 	/* Possible type is always the one that was delivered */
