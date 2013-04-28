@@ -457,6 +457,7 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
@@ -512,6 +513,7 @@ BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 Source0: ftp://ftp.kernel.org/pub/linux/kernel/v2.6/linux-%{kversion}.tar.bz2
 
 Source11: genkey
+Source13: x86_energy_perf_policy
 Source14: find-provides
 Source15: merge.pl
 Source16: perf
@@ -1151,6 +1153,17 @@ hwcap 0 nosegneg"
 	cd ../..
     fi
 %endif
+%ifarch x86_64 %{all_x86}
+# build tools/power/x86/x86_energy_perf_policy:
+    if [ -d tools/power/x86/x86_energy_perf_policy ]; then
+        cd tools/power/x86/x86_energy_perf_policy
+        make
+# and install it:
+        mkdir -p $RPM_BUILD_ROOT/usr/bin/$KernelVer/
+        install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/bin/$KernelVer/x86_energy_perf_policy
+        cd ../../../../
+    fi
+%endif
 %endif
 
     # And save the headers/makefiles etc for building modules against
@@ -1393,6 +1406,14 @@ mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/perf $RPM_BUILD_ROOT/usr/sbin/perf
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
 %endif
+
+%ifarch x86_64 %{all_x86}
+# x86_energy_perf_policy shell wrapper
+mkdir -p $RPM_BUILD_ROOT/usr/sbin/
+cp $RPM_SOURCE_DIR/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+chmod 0755 $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+%endif
+
 
 %if %{with_headers}
 # Install kernel headers
@@ -1658,6 +1679,8 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/bin/%{KVERREL}%{?2:.%{2}}/perf\
 /usr/sbin/perf\
+/usr/bin/%{KVERREL}%{?2:.%{2}}/x86_energy_perf_policy\
+/usr/sbin/x86_energy_perf_policy\
 %ghost /boot/initrd-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
