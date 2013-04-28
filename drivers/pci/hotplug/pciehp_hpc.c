@@ -71,6 +71,9 @@ static inline int pciehp_writel(struct controller *ctrl, int reg, u32 value)
 
 static irqreturn_t pcie_isr(int irq, void *dev_id);
 static void start_int_poll_timer(struct controller *ctrl, int sec);
+static int pciehp_link_enable(struct controller *ctrl);
+static int pciehp_link_disable(struct controller *ctrl);
+static int __pciehp_link_set(struct controller *ctrl, bool enable);
 
 /* This is the interrupt polling timeout function. */
 static void int_poll_timeout(unsigned long data)
@@ -250,19 +253,30 @@ static inline int check_link_active(struct controller *ctrl)
 	return !!(link_status & PCI_EXP_LNKSTA_DLLLA);
 }
 
+static void __pcie_wait_link_active(struct controller *ctrl, bool active)
+ {
+ 	int timeout = 1000;
+ 
+	if (check_link_active(ctrl) == active)
+ 		return;
+ 	while (timeout > 0) {
+ 		msleep(10);
+ 		timeout -= 10;
+		if (check_link_active(ctrl) == active)
+ 			return;
+ 	}
+	ctrl_dbg(ctrl, "Data Link Layer Link Active not %s in 1000 msec\n",
+			active ? "set" : "cleared");
+}
+
 static void pcie_wait_link_active(struct controller *ctrl)
 {
-	int timeout = 1000;
+	__pcie_wait_link_active(ctrl, true);
+}
 
-	if (check_link_active(ctrl))
-		return;
-	while (timeout > 0) {
-		msleep(10);
-		timeout -= 10;
-		if (check_link_active(ctrl))
-			return;
-	}
-	ctrl_dbg(ctrl, "Data Link Layer Link Active not set in 1000 msec\n");
+static void pcie_wait_link_not_active(struct controller *ctrl)
+{
+	__pcie_wait_link_active(ctrl, false);
 }
 
 static bool pci_bus_check_dev(struct pci_bus *bus, int devfn)
@@ -339,6 +353,42 @@ int pciehp_check_link_status(struct controller *ctrl)
 		retval = -1;
 
 	return retval;
+}
+
+static int __pciehp_link_set(struct controller *ctrl, bool enable)
+{
+	u16 lnk_ctrl;
+	int retval = 0;
+
+	retval = pciehp_readw(ctrl, PCI_EXP_LNKCTL, &lnk_ctrl);
+	if (retval) {
+		ctrl_err(ctrl, "Cannot read LNKCTRL register\n");
+		return retval;
+	}
+
+	if (enable)
+		lnk_ctrl &= ~PCI_EXP_LNKCTL_LD;
+	else
+		lnk_ctrl |= PCI_EXP_LNKCTL_LD;
+
+	retval = pciehp_writew(ctrl, PCI_EXP_LNKCTL, lnk_ctrl);
+	if (retval) {
+		ctrl_err(ctrl, "Cannot write LNKCTRL register\n");
+		return retval;
+	}
+	ctrl_dbg(ctrl, "%s: lnk_ctrl = %x\n", __func__, lnk_ctrl);
+
+	return retval;
+}
+
+static int pciehp_link_enable(struct controller *ctrl)
+{
+	return __pciehp_link_set(ctrl, true);
+}
+
+static int pciehp_link_disable(struct controller *ctrl)
+{
+	return __pciehp_link_set(ctrl, false);
 }
 
 int pciehp_get_attention_status(struct slot *slot, u8 *status)
@@ -560,6 +610,10 @@ int pciehp_power_on_slot(struct slot * slot)
 	ctrl_dbg(ctrl, "%s: SLOTCTRL %x write cmd %x\n", __func__,
 		 pci_pcie_cap(ctrl->pcie->port) + PCI_EXP_SLTCTL, slot_cmd);
 
+	retval = pciehp_link_enable(ctrl);
+	if (retval)
+		ctrl_err(ctrl, "%s: Can not enable the link!\n", __func__);
+
 	retval = pciehp_readw(ctrl, PCI_EXP_LNKSTA, &lnk_status);
 	if (retval) {
 		ctrl_err(ctrl, "%s: Cannot read LNKSTA register\n",
@@ -577,6 +631,14 @@ int pciehp_power_off_slot(struct slot * slot)
 	u16 slot_cmd;
 	u16 cmd_mask;
 	int retval;
+
+	/* Disable the link at first */
+	pciehp_link_disable(ctrl);
+	/* wait the link is down */
+	if (ctrl->link_active_reporting)
+		pcie_wait_link_not_active(ctrl);
+	else
+		msleep(1000);
 
 	slot_cmd = POWER_OFF;
 	cmd_mask = PCI_EXP_SLTCTL_PCC;
