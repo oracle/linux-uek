@@ -492,10 +492,10 @@ void __init efi_init(void)
 		printk(KERN_ERR "Could not map the EFI memory map!\n");
 	memmap.map_end = memmap.map + (memmap.nr_map * memmap.desc_size);
 
-	if (memmap.desc_size != sizeof(efi_memory_desc_t))
+	if (memmap.desc_size < sizeof(efi_memory_desc_t))
 		printk(KERN_WARNING
-		  "Kernel-defined memdesc doesn't match the one from EFI!\n");
-
+			"Kernel-defined memdesc size is bigger than the one from EFI! %ld > %ld\n",
+			sizeof(efi_memory_desc_t), memmap.desc_size);
 	if (add_efi_memmap)
 		do_add_efi_memmap();
 
