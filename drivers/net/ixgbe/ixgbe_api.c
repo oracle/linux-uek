@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -27,6 +27,19 @@
 
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
+
+/**     
+ * ixgbe_dcb_get_rtrup2tc - read rtrup2tc reg
+ * @hw: pointer to hardware structure
+ * @map: pointer to u8 arr for returning map
+ *
+ * Read the rtrup2tc HW register and resolve its content into map
+ **/
+void ixgbe_dcb_get_rtrup2tc(struct ixgbe_hw *hw, u8 *map)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.get_rtrup2tc,(hw, map),
+			IXGBE_NOT_IMPLEMENTED);
+}
 
 /**
  *  ixgbe_init_shared_code - Initialize the shared code
@@ -103,7 +116,6 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
 	case IXGBE_DEV_ID_82599_SFP_SF2:
-	case IXGBE_DEV_ID_82599_SFP_SF_QP:
 	case IXGBE_DEV_ID_82599EN_SFP:
 	case IXGBE_DEV_ID_82599_CX4:
 	case IXGBE_DEV_ID_82599_LS:
@@ -121,6 +133,18 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	hw_dbg(hw, "ixgbe_set_mac_type found mac: %d, returns: %d\n",
 		  hw->mac.type, ret_val);
 	return ret_val;
+}
+
+/**
+ *  ixgbe_mng_fw_enable - Return condition of MNG FW
+ *  @hw: pointer to hardware structure
+ *
+ *  Return either true/false base on if MNG FW is on.
+ **/
+s32 ixgbe_mng_fw_enable(struct ixgbe_hw *hw)
+{
+	return ixgbe_call_func(hw, hw->mac.ops.mng_enabled, (hw),
+			       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**
@@ -457,16 +481,14 @@ s32 ixgbe_check_phy_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
  *  ixgbe_setup_phy_link_speed - Set auto advertise
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if autonegotiation enabled
  *
  *  Sets the auto advertised capabilities
  **/
 s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-			       bool autoneg,
 			       bool autoneg_wait_to_complete)
 {
 	return ixgbe_call_func(hw, hw->phy.ops.setup_link_speed, (hw, speed,
-			       autoneg, autoneg_wait_to_complete),
+			       autoneg_wait_to_complete),
 			       IXGBE_NOT_IMPLEMENTED);
 }
 
@@ -526,17 +548,15 @@ void ixgbe_flap_tx_laser(struct ixgbe_hw *hw)
  *  ixgbe_setup_link - Set link speed
  *  @hw: pointer to hardware structure
  *  @speed: new link speed
- *  @autoneg: true if autonegotiation enabled
  *
  *  Configures link settings.  Restarts the link.
  *  Performs autonegotiation if needed.
  **/
 s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-		     bool autoneg,
 		     bool autoneg_wait_to_complete)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.setup_link, (hw, speed,
-			       autoneg, autoneg_wait_to_complete),
+			       autoneg_wait_to_complete),
 			       IXGBE_NOT_IMPLEMENTED);
 }
 

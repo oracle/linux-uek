@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -34,7 +34,7 @@ s32 ixgbe_get_link_capabilities_X540(struct ixgbe_hw *hw,
 				     ixgbe_link_speed *speed, bool *autoneg);
 enum ixgbe_media_type ixgbe_get_media_type_X540(struct ixgbe_hw *hw);
 s32 ixgbe_setup_mac_link_X540(struct ixgbe_hw *hw, ixgbe_link_speed speed,
-			      bool autoneg, bool link_up_wait_to_complete);
+			      bool link_up_wait_to_complete);
 s32 ixgbe_reset_hw_X540(struct ixgbe_hw *hw);
 s32 ixgbe_start_hw_X540(struct ixgbe_hw *hw);
 u32 ixgbe_get_supported_physical_layer_X540(struct ixgbe_hw *hw);
@@ -55,4 +55,7 @@ void ixgbe_release_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask);
 
 s32 ixgbe_blink_led_start_X540(struct ixgbe_hw *hw, u32 index);
 s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index);
+s32 ixgbe_get_thermal_sensor_data_X540(struct ixgbe_hw *hw);
+s32 ixgbe_init_thermal_sensor_thresh_X540(struct ixgbe_hw *hw);
 #endif /* _IXGBE_X540_H_ */
+

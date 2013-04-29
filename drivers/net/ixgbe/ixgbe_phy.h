@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,7 +29,9 @@
 #define _IXGBE_PHY_H_
 
 #include "ixgbe_type.h"
-#define IXGBE_I2C_EEPROM_DEV_ADDR    0xA0
+#define IXGBE_I2C_EEPROM_DEV_ADDR	0xA0
+#define IXGBE_I2C_EEPROM_DEV_ADDR2	0xA2
+#define IXGBE_I2C_EEPROM_BANK_LEN	0xFF
 
 /* EEPROM byte offsets */
 #define IXGBE_SFF_IDENTIFIER		0x0
@@ -41,6 +43,8 @@
 #define IXGBE_SFF_10GBE_COMP_CODES	0x3
 #define IXGBE_SFF_CABLE_TECHNOLOGY	0x8
 #define IXGBE_SFF_CABLE_SPEC_COMP	0x3C
+#define IXGBE_SFF_SFF_8472_SWAP		0x5C
+#define IXGBE_SFF_SFF_8472_COMP		0x5E
 
 /* Bitmasks */
 #define IXGBE_SFF_DA_PASSIVE_CABLE	0x4
@@ -88,6 +92,14 @@
 #define IXGBE_TN_LASI_STATUS_REG	0x9005
 #define IXGBE_TN_LASI_STATUS_TEMP_ALARM	0x0008
 
+/* SFP+ SFF-8472 Compliance */
+#define IXGBE_SFF_SFF_8472_UNSUP	0x00
+#define IXGBE_SFF_SFF_8472_REV_9_3	0x01
+#define IXGBE_SFF_SFF_8472_REV_9_5	0x02
+#define IXGBE_SFF_SFF_8472_REV_10_2	0x03
+#define IXGBE_SFF_SFF_8472_REV_10_4	0x04
+#define IXGBE_SFF_SFF_8472_REV_11_0	0x05
+
 s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr);
 enum ixgbe_phy_type ixgbe_get_phy_type_from_id(u32 phy_id);
@@ -101,7 +113,6 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw);
 s32 ixgbe_setup_phy_link_speed_generic(struct ixgbe_hw *hw,
 				       ixgbe_link_speed speed,
-				       bool autoneg,
 				       bool autoneg_wait_to_complete);
 s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 					       ixgbe_link_speed *speed,

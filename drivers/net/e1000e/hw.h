@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -26,8 +26,8 @@
 
 *******************************************************************************/
 
-#ifndef _E1000_HW_H_
-#define _E1000_HW_H_
+#ifndef _E1000E_HW_H_
+#define _E1000E_HW_H_
 
 #include "regs.h"
 #include "defines.h"
@@ -37,12 +37,12 @@ struct e1000_hw;
 #define E1000_DEV_ID_82571EB_COPPER		0x105E
 #define E1000_DEV_ID_82571EB_FIBER		0x105F
 #define E1000_DEV_ID_82571EB_SERDES		0x1060
-#define E1000_DEV_ID_82571EB_SERDES_DUAL	0x10D9
-#define E1000_DEV_ID_82571EB_SERDES_QUAD	0x10DA
 #define E1000_DEV_ID_82571EB_QUAD_COPPER	0x10A4
 #define E1000_DEV_ID_82571PT_QUAD_COPPER	0x10D5
 #define E1000_DEV_ID_82571EB_QUAD_FIBER		0x10A5
 #define E1000_DEV_ID_82571EB_QUAD_COPPER_LP	0x10BC
+#define E1000_DEV_ID_82571EB_SERDES_DUAL	0x10D9
+#define E1000_DEV_ID_82571EB_SERDES_QUAD	0x10DA
 #define E1000_DEV_ID_82572EI_COPPER		0x107D
 #define E1000_DEV_ID_82572EI_FIBER		0x107E
 #define E1000_DEV_ID_82572EI_SERDES		0x107F
@@ -65,11 +65,11 @@ struct e1000_hw;
 #define E1000_DEV_ID_ICH8_IFE_GT		0x10C4
 #define E1000_DEV_ID_ICH8_IFE_G			0x10C5
 #define E1000_DEV_ID_ICH8_IGP_M			0x104D
-#define E1000_DEV_ID_ICH9_IGP_M			0x10BF
-#define E1000_DEV_ID_ICH9_IGP_M_AMT		0x10F5
-#define E1000_DEV_ID_ICH9_IGP_M_V		0x10CB
 #define E1000_DEV_ID_ICH9_IGP_AMT		0x10BD
 #define E1000_DEV_ID_ICH9_BM			0x10E5
+#define E1000_DEV_ID_ICH9_IGP_M_AMT		0x10F5
+#define E1000_DEV_ID_ICH9_IGP_M			0x10BF
+#define E1000_DEV_ID_ICH9_IGP_M_V		0x10CB
 #define E1000_DEV_ID_ICH9_IGP_C			0x294C
 #define E1000_DEV_ID_ICH9_IFE			0x10C0
 #define E1000_DEV_ID_ICH9_IFE_GT		0x10C3
@@ -80,7 +80,6 @@ struct e1000_hw;
 #define E1000_DEV_ID_ICH10_D_BM_LM		0x10DE
 #define E1000_DEV_ID_ICH10_D_BM_LF		0x10DF
 #define E1000_DEV_ID_ICH10_D_BM_V		0x1525
-
 #define E1000_DEV_ID_PCH_M_HV_LM		0x10EA
 #define E1000_DEV_ID_PCH_M_HV_LC		0x10EB
 #define E1000_DEV_ID_PCH_D_HV_DM		0x10EF
@@ -89,19 +88,17 @@ struct e1000_hw;
 #define E1000_DEV_ID_PCH2_LV_V			0x1503
 #define E1000_DEV_ID_PCH_LPT_I217_LM		0x153A
 #define E1000_DEV_ID_PCH_LPT_I217_V		0x153B
-#define E1000_REVISION_0	0
-#define E1000_REVISION_1	1
-#define E1000_REVISION_3	3
+#define E1000_DEV_ID_PCH_LPTLP_I218_LM		0x155A
+#define E1000_DEV_ID_PCH_LPTLP_I218_V		0x1559
+
 #define E1000_REVISION_4	4
 
-#define E1000_FUNC_0		0
 #define E1000_FUNC_1		1
 
 #define E1000_ALT_MAC_ADDRESS_OFFSET_LAN0	0
 #define E1000_ALT_MAC_ADDRESS_OFFSET_LAN1	3
 
 enum e1000_mac_type {
-	e1000_undefined = 0,
 	e1000_82571,
 	e1000_82572,
 	e1000_82573,
@@ -114,7 +111,6 @@ enum e1000_mac_type {
 	e1000_pchlan,
 	e1000_pch2lan,
 	e1000_pch_lpt,
-	e1000_num_macs		/* List is 1-based, so subtract 1 for true count. */
 };
 
 enum e1000_media_type {
@@ -136,7 +132,7 @@ enum e1000_nvm_type {
 enum e1000_nvm_override {
 	e1000_nvm_override_none = 0,
 	e1000_nvm_override_spi_small,
-	e1000_nvm_override_spi_large,
+	e1000_nvm_override_spi_large
 };
 
 enum e1000_phy_type {
@@ -153,26 +149,6 @@ enum e1000_phy_type {
 	e1000_phy_82577,
 	e1000_phy_82579,
 	e1000_phy_i217,
-};
-
-enum e1000_bus_type {
-	e1000_bus_type_unknown = 0,
-	e1000_bus_type_pci,
-	e1000_bus_type_pcix,
-	e1000_bus_type_pci_express,
-	e1000_bus_type_reserved
-};
-
-enum e1000_bus_speed {
-	e1000_bus_speed_unknown = 0,
-	e1000_bus_speed_33,
-	e1000_bus_speed_66,
-	e1000_bus_speed_100,
-	e1000_bus_speed_120,
-	e1000_bus_speed_133,
-	e1000_bus_speed_2500,
-	e1000_bus_speed_5000,
-	e1000_bus_speed_reserved
 };
 
 enum e1000_bus_width {
@@ -427,7 +403,6 @@ struct e1000_hw_stats {
 	u64 ictxqmtc;
 	u64 icrxdmtc;
 	u64 icrxoc;
-	u64 doosync;
 };
 
 struct e1000_phy_stats {
@@ -480,13 +455,12 @@ struct e1000_host_mng_command_info {
 #include "nvm.h"
 #include "manage.h"
 
+/* Function pointers for the MAC. */
 struct e1000_mac_operations {
-	/* Function pointers for the MAC. */
-	s32(*init_params) (struct e1000_hw *);
 	s32(*id_led_init) (struct e1000_hw *);
 	s32(*blink_led) (struct e1000_hw *);
-	s32(*check_for_link) (struct e1000_hw *);
-	bool (*check_mng_mode) (struct e1000_hw *hw);
+	bool (*check_mng_mode) (struct e1000_hw *);
+	 s32(*check_for_link) (struct e1000_hw *);
 	 s32(*cleanup_led) (struct e1000_hw *);
 	void (*clear_hw_cntrs) (struct e1000_hw *);
 	void (*clear_vfta) (struct e1000_hw *);
@@ -506,17 +480,10 @@ struct e1000_mac_operations {
 	void (*rar_set) (struct e1000_hw *, u8 *, u32);
 	 s32(*read_mac_addr) (struct e1000_hw *);
 	 s32(*validate_mdi_setting) (struct e1000_hw *);
-	 s32(*mng_host_if_write) (struct e1000_hw *, u8 *, u16, u16, u8 *);
-	 s32(*mng_write_cmd_header) (struct e1000_hw *hw,
-				     struct e1000_host_mng_command_header *);
-	 s32(*mng_enable_host_if) (struct e1000_hw *);
-	 s32(*wait_autoneg) (struct e1000_hw *);
-	 s32(*acquire_swfw_sync) (struct e1000_hw *, u16);
-	void (*release_swfw_sync) (struct e1000_hw *, u16);
+	 s32(*set_obff_timer) (struct e1000_hw *, u32);
 };
 
-/*
- * When to use various PHY register access functions:
+/* When to use various PHY register access functions:
  *
  *                 Func   Caller
  *   Function      Does   Does    When to use
@@ -531,7 +498,6 @@ struct e1000_mac_operations {
  *
  */
 struct e1000_phy_operations {
-	s32(*init_params) (struct e1000_hw *);
 	s32(*acquire) (struct e1000_hw *);
 	s32(*cfg_on_link_up) (struct e1000_hw *);
 	s32(*check_polarity) (struct e1000_hw *);
@@ -556,8 +522,8 @@ struct e1000_phy_operations {
 	void (*power_down) (struct e1000_hw *);
 };
 
+/* Function pointers for the NVM. */
 struct e1000_nvm_operations {
-	s32(*init_params) (struct e1000_hw *);
 	s32(*acquire) (struct e1000_hw *);
 	s32(*read) (struct e1000_hw *, u16, u16, u16 *);
 	void (*release) (struct e1000_hw *);
@@ -604,13 +570,14 @@ struct e1000_mac_info {
 	bool autoneg_failed;
 	bool get_link_status;
 	bool in_ifs_mode;
-	enum e1000_serdes_link_state serdes_link_state;
 	bool serdes_has_link;
 	bool tx_pkt_filtering;
+	enum e1000_serdes_link_state serdes_link_state;
 };
 
 struct e1000_phy_info {
 	struct e1000_phy_operations ops;
+
 	enum e1000_phy_type type;
 
 	enum e1000_1000t_rx_status local_rx;
@@ -644,6 +611,7 @@ struct e1000_phy_info {
 
 struct e1000_nvm_info {
 	struct e1000_nvm_operations ops;
+
 	enum e1000_nvm_type type;
 	enum e1000_nvm_override override;
 
@@ -658,12 +626,9 @@ struct e1000_nvm_info {
 };
 
 struct e1000_bus_info {
-	enum e1000_bus_type type;
-	enum e1000_bus_speed speed;
 	enum e1000_bus_width width;
 
 	u16 func;
-	u16 pci_cmd_word;
 };
 
 struct e1000_fc_info {
@@ -691,7 +656,7 @@ struct e1000_shadow_ram {
 	bool modified;
 };
 
-#define E1000_ICH8_SHADOW_RAM_WORDS  2048
+#define E1000_ICH8_SHADOW_RAM_WORDS		2048
 
 struct e1000_dev_spec_ich8lan {
 	bool kmrn_lock_loss_workaround_enabled;
@@ -724,8 +689,5 @@ struct e1000_hw {
 #include "82571.h"
 #include "80003es2lan.h"
 #include "ich8lan.h"
-
-/* These functions must be implemented by drivers */
-s32 e1000_read_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value);
 
 #endif

@@ -79,7 +79,7 @@ enum E1000_INVM_STRUCTURE_TYPE {
 					 (ID_LED_DEF1_DEF2 <<  4) | \
 					 (ID_LED_DEF1_DEF2))
 
-/* NVM offset defaults for Pearsonville device */
+/* NVM offset defaults for I211 devices */
 #define NVM_INIT_CTRL_2_DEFAULT_I211	0X7243
 #define NVM_INIT_CTRL_4_DEFAULT_I211	0x00C1
 #define NVM_LED_1_CFG_DEFAULT_I211	0x0184

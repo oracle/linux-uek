@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -630,15 +630,7 @@ int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask)
 	bool enable = ((event_mask & 0x10000000U) != 0);
 
 	if (enable) {
-		random_ether_addr(vf_mac_addr);
-		e_info(probe, "IOV: VF %d is enabled "
-		       "mac %02X:%02X:%02X:%02X:%02X:%02X\n",
-		       vfn,
-		       vf_mac_addr[0], vf_mac_addr[1], vf_mac_addr[2],
-		       vf_mac_addr[3], vf_mac_addr[4], vf_mac_addr[5]);
-		/* Store away the VF "permananet" MAC address, it will ask
-		 * for it later.
-		 */
+		memset(vf_mac_addr, 0, ETH_ALEN);
 		memcpy(adapter->vfinfo[vfn].vf_mac_addresses, vf_mac_addr, 6);
 	}
 
@@ -663,7 +655,8 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	ixgbe_vf_reset_event(adapter, vf);
 
 	/* set vf mac address */
-	ixgbe_set_vf_mac(adapter, vf, vf_mac);
+	if (!is_zero_ether_addr(vf_mac))
+		ixgbe_set_vf_mac(adapter, vf, vf_mac);
 
 	vf_shift = vf % 32;
 	reg_offset = vf / 32;
@@ -712,8 +705,16 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	}
 
 	/* reply to reset with ack and vf mac address */
-	msgbuf[0] = IXGBE_VF_RESET | IXGBE_VT_MSGTYPE_ACK;
-	memcpy(addr, vf_mac, ETH_ALEN);
+	msgbuf[0] = IXGBE_VF_RESET;
+	if (!is_zero_ether_addr(vf_mac)) {
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_ACK;
+		memcpy(addr, vf_mac, ETH_ALEN);
+	} else {
+		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
+		dev_warn(&adapter->pdev->dev,
+			 "VF %d has no MAC address assigned, you may have to assign one manually\n",
+			 vf);
+	}
 
 	/*
 	 * Piggyback the multicast filter type so VF can compute the
@@ -738,14 +739,15 @@ static int ixgbe_set_vf_mac_addr(struct ixgbe_adapter *adapter,
 	if (adapter->vfinfo[vf].pf_set_mac &&
 	    memcmp(adapter->vfinfo[vf].vf_mac_addresses, new_mac,
 		   ETH_ALEN)) {
+		u8 *pm = adapter->vfinfo[vf].vf_mac_addresses;
 		e_warn(drv,
-		       "VF %d attempted to override administratively set MAC address\n"
-		       "Reload the VF driver to resume operations\n",
-		       vf);
+		       "VF %d attempted to set a new MAC address but it already has an administratively set MAC address %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X\n",
+		       vf, pm[0], pm[1], pm[2], pm[3], pm[4], pm[5]);
+		e_warn(drv, "Check the VF driver and if it is not using the correct MAC address you may need to reload the VF driver\n");
 		return -1;
 	}
 
-	return !!(ixgbe_set_vf_mac(adapter, vf, new_mac) < 0);
+	return ixgbe_set_vf_mac(adapter, vf, new_mac) < 0;
 }
 
 static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
@@ -814,7 +816,7 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 		       "VF %d has requested a MACVLAN filter but there is no space for it\n",
 		       vf);
 
-	return !!err < 0;
+	return err < 0;
 }
 
 static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)

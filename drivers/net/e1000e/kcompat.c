@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -613,6 +613,42 @@ size_t _kc_strlcpy(char *dest, const char *src, size_t size)
 	return ret;
 }
 
+#ifndef do_div
+#if BITS_PER_LONG == 32
+uint32_t __attribute__ ((weak)) _kc__div64_32(uint64_t * n, uint32_t base)
+{
+	uint64_t rem = *n;
+	uint64_t b = base;
+	uint64_t res, d = 1;
+	uint32_t high = rem >> 32;
+
+	/* Reduce the thing a bit first */
+	res = 0;
+	if (high >= base) {
+		high /= base;
+		res = (uint64_t) high << 32;
+		rem -= (uint64_t) (high * base) << 32;
+	}
+
+	while ((int64_t) b > 0 && b < rem) {
+		b = b + b;
+		d = d + d;
+	}
+
+	do {
+		if (rem >= b) {
+			rem -= b;
+			res += d;
+		}
+		b >>= 1;
+		d >>= 1;
+	} while (d);
+
+	*n = res;
+	return rem;
+}
+#endif /* BITS_PER_LONG == 32 */
+#endif /* do_div */
 #endif /* 2.6.0 => 2.4.6 */
 
 /*****************************************************************************/
@@ -909,6 +945,7 @@ void _kc_print_hex_dump(const char *level,
 		}
 	}
 }
+
 #endif /* < 2.6.22 */
 
 /*****************************************************************************/
@@ -1084,10 +1121,6 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 }
 #endif /* < 2.6.36 */
 
-/*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38) )
-#endif /* < 2.6.38 */
-
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,0)))
@@ -1097,4 +1130,176 @@ int _kc_ethtool_op_set_flags(struct net_device *dev, u32 data, u32 supported)
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,4,0) )
+void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
+			 int off, int size, unsigned int truesize)
+{
+	skb_fill_page_desc(skb, i, page, off, size);
+	skb->len += size;
+	skb->data_len += size;
+	skb->truesize += truesize;
+}
+
 #endif /* < 3.4.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0) )
+#if !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
+static inline int __kc_pcie_cap_version(struct pci_dev *dev)
+{
+	int pos;
+	u16 reg16;
+
+	pos = pci_find_capability(dev, PCI_CAP_ID_EXP);
+	if (!pos)
+		return 0;
+	pci_read_config_word(dev, pos + PCI_EXP_FLAGS, &reg16);
+	return reg16 & PCI_EXP_FLAGS_VERS;
+}
+
+static inline bool __kc_pcie_cap_has_devctl(const struct pci_dev __always_unused
+					    *dev)
+{
+	return true;
+}
+
+static inline bool __kc_pcie_cap_has_lnkctl(struct pci_dev *dev)
+{
+	int type = pci_pcie_type(dev);
+
+	return __kc_pcie_cap_version(dev) > 1 ||
+	    type == PCI_EXP_TYPE_ROOT_PORT ||
+	    type == PCI_EXP_TYPE_ENDPOINT || type == PCI_EXP_TYPE_LEG_END;
+}
+
+static inline bool __kc_pcie_cap_has_sltctl(struct pci_dev *dev)
+{
+	int type = pci_pcie_type(dev);
+	int pos;
+	u16 pcie_flags_reg;
+
+	pos = pci_find_capability(dev, PCI_CAP_ID_EXP);
+	if (!pos)
+		return 0;
+	pci_read_config_word(dev, pos + PCI_EXP_FLAGS, &pcie_flags_reg);
+
+	return __kc_pcie_cap_version(dev) > 1 ||
+	    type == PCI_EXP_TYPE_ROOT_PORT ||
+	    (type == PCI_EXP_TYPE_DOWNSTREAM &&
+	     pcie_flags_reg & PCI_EXP_FLAGS_SLOT);
+}
+
+static inline bool __kc_pcie_cap_has_rtctl(struct pci_dev *dev)
+{
+	int type = pci_pcie_type(dev);
+
+	return __kc_pcie_cap_version(dev) > 1 ||
+	    type == PCI_EXP_TYPE_ROOT_PORT || type == PCI_EXP_TYPE_RC_EC;
+}
+
+static bool __kc_pcie_capability_reg_implemented(struct pci_dev *dev, int pos)
+{
+	if (!pci_is_pcie(dev))
+		return false;
+
+	switch (pos) {
+	case PCI_EXP_FLAGS_TYPE:
+		return true;
+	case PCI_EXP_DEVCAP:
+	case PCI_EXP_DEVCTL:
+	case PCI_EXP_DEVSTA:
+		return __kc_pcie_cap_has_devctl(dev);
+	case PCI_EXP_LNKCAP:
+	case PCI_EXP_LNKCTL:
+	case PCI_EXP_LNKSTA:
+		return __kc_pcie_cap_has_lnkctl(dev);
+	case PCI_EXP_SLTCAP:
+	case PCI_EXP_SLTCTL:
+	case PCI_EXP_SLTSTA:
+		return __kc_pcie_cap_has_sltctl(dev);
+	case PCI_EXP_RTCTL:
+	case PCI_EXP_RTCAP:
+	case PCI_EXP_RTSTA:
+		return __kc_pcie_cap_has_rtctl(dev);
+	case PCI_EXP_DEVCAP2:
+	case PCI_EXP_DEVCTL2:
+	case PCI_EXP_LNKCAP2:
+	case PCI_EXP_LNKCTL2:
+	case PCI_EXP_LNKSTA2:
+		return __kc_pcie_cap_version(dev) > 1;
+	default:
+		return false;
+	}
+}
+
+/*
+ * Note that these accessor functions are only for the "PCI Express
+ * Capability" (see PCIe spec r3.0, sec 7.8).  They do not apply to the
+ * other "PCI Express Extended Capabilities" (AER, VC, ACS, MFVC, etc.)
+ */
+int __kc_pcie_capability_read_word(struct pci_dev *dev, int pos, u16 *val)
+{
+	int ret;
+
+	*val = 0;
+	if (pos & 1)
+		return -EINVAL;
+
+	if (__kc_pcie_capability_reg_implemented(dev, pos)) {
+		ret = pci_read_config_word(dev, pci_pcie_cap(dev) + pos, val);
+		/*
+		 * Reset *val to 0 if pci_read_config_word() fails, it may
+		 * have been written as 0xFFFF if hardware error happens
+		 * during pci_read_config_word().
+		 */
+		if (ret)
+			*val = 0;
+		return ret;
+	}
+
+	/*
+	 * For Functions that do not implement the Slot Capabilities,
+	 * Slot Status, and Slot Control registers, these spaces must
+	 * be hardwired to 0b, with the exception of the Presence Detect
+	 * State bit in the Slot Status register of Downstream Ports,
+	 * which must be hardwired to 1b.  (PCIe Base Spec 3.0, sec 7.8)
+	 */
+	if (pci_is_pcie(dev) && pos == PCI_EXP_SLTSTA &&
+	    pci_pcie_type(dev) == PCI_EXP_TYPE_DOWNSTREAM) {
+		*val = PCI_EXP_SLTSTA_PDS;
+	}
+
+	return 0;
+}
+
+int __kc_pcie_capability_write_word(struct pci_dev *dev, int pos, u16 val)
+{
+	if (pos & 1)
+		return -EINVAL;
+
+	if (!__kc_pcie_capability_reg_implemented(dev, pos))
+		return 0;
+
+	return pci_write_config_word(dev, pci_pcie_cap(dev) + pos, val);
+}
+
+int __kc_pcie_capability_clear_and_set_word(struct pci_dev *dev, int pos,
+					    u16 clear, u16 set)
+{
+	int ret;
+	u16 val;
+
+	ret = __kc_pcie_capability_read_word(dev, pos, &val);
+	if (!ret) {
+		val &= ~clear;
+		val |= set;
+		ret = __kc_pcie_capability_write_word(dev, pos, val);
+	}
+
+	return ret;
+}
+#endif /* !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0)) */
+#endif /* < 3.7.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0) )
+#endif /* 3.9.0 */

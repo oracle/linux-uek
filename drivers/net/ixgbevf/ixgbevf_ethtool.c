@@ -78,7 +78,6 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	 IXGBEVF_STAT(hw_csum_rx_error, zero_base, zero_base)},
 	{"tx_csum_offload_ctxt",
 	 IXGBEVF_STAT(hw_csum_tx_good, zero_base, zero_base)},
-	{"rx_header_split", IXGBEVF_STAT(rx_hdr_split, zero_base, zero_base)},
 };
 
 #define IXGBE_QUEUE_STATS_LEN 0
@@ -108,6 +107,7 @@ static int ixgbevf_get_settings(struct net_device *netdev,
 	ecmd->port = -1;
 
 	if (!in_interrupt()) {
+		hw->mac.get_link_status = 1;
 		hw->mac.ops.check_link(hw, &link_speed, &link_up, false);
 	} else {
 		/*
@@ -145,6 +145,7 @@ static int ixgbevf_set_settings(struct net_device *netdev,
 	return -EINVAL;
 }
 
+#ifndef HAVE_NDO_SET_FEATURES
 static u32 ixgbevf_get_rx_csum(struct net_device *netdev)
 {
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
@@ -190,7 +191,9 @@ static int ixgbevf_set_tx_csum(struct net_device *netdev, u32 data)
 
 	return 0;
 }
+#endif
 
+#ifndef HAVE_NDO_SET_FEATURES
 #ifdef NETIF_F_TSO
 static int ixgbevf_set_tso(struct net_device *netdev, u32 data)
 {
@@ -234,6 +237,7 @@ static int ixgbevf_set_tso(struct net_device *netdev, u32 data)
 	return 0;
 }
 #endif /* NETIF_F_TSO */
+#endif
 
 static u32 ixgbevf_get_msglevel(struct net_device *netdev)
 {
@@ -397,6 +401,7 @@ static void ixgbevf_get_drvinfo(struct net_device *netdev,
 	strncpy(drvinfo->driver, ixgbevf_driver_name, 32);
 	strncpy(drvinfo->version, ixgbevf_driver_version, 32);
 
+	strncpy(drvinfo->fw_version, "N/A", 4);
 	strncpy(drvinfo->bus_info, pci_name(adapter->pdev), 32);
 	drvinfo->n_stats = IXGBEVF_STATS_LEN;
 	drvinfo->testinfo_len = IXGBE_TEST_LEN;
@@ -462,82 +467,98 @@ static int ixgbevf_set_ringparam(struct net_device *netdev,
 		goto clear_reset;
 	}
 
-	tx_ring = kcalloc(adapter->num_tx_queues,
-			  sizeof(struct ixgbevf_ring), GFP_KERNEL);
-	if (!tx_ring) {
-		err = -ENOMEM;
-		goto clear_reset;
+	if (new_tx_count != adapter->tx_ring_count) {
+		tx_ring = vmalloc(adapter->num_tx_queues * sizeof(*tx_ring));
+		if (!tx_ring) {
+			err = -ENOMEM;
+			goto clear_reset;
+		}
+
+		for (i = 0; i < adapter->num_tx_queues; i++) {
+			/* clone ring and setup updated count */
+			tx_ring[i] = adapter->tx_ring[i];
+			tx_ring[i].count = new_tx_count;
+			err = ixgbevf_setup_tx_resources(adapter, &tx_ring[i]);
+			if (!err)
+				continue;
+			while (i) {
+				i--;
+				ixgbevf_free_tx_resources(adapter, &tx_ring[i]);
+			}
+
+			vfree(tx_ring);
+			tx_ring = NULL;
+
+			goto clear_reset;
+		}
 	}
 
-	rx_ring = kcalloc(adapter->num_rx_queues,
-			  sizeof(struct ixgbevf_ring), GFP_KERNEL);
-	if (!rx_ring) {
-		err = -ENOMEM;
-		goto err_rx_setup;
+	if (new_rx_count != adapter->rx_ring_count) {
+		rx_ring = vmalloc(adapter->num_rx_queues * sizeof(*rx_ring));
+		if (!rx_ring) {
+			err = -ENOMEM;
+			goto clear_reset;
+		}
+
+		for (i = 0; i < adapter->num_rx_queues; i++) {
+			/* clone ring and setup updated count */
+			rx_ring[i] = adapter->rx_ring[i];
+			rx_ring[i].count = new_rx_count;
+			err = ixgbevf_setup_rx_resources(adapter, &rx_ring[i]);
+			if (!err)
+				continue;
+			while (i) {
+				i--;
+				ixgbevf_free_rx_resources(adapter, &rx_ring[i]);
+			}
+
+			vfree(rx_ring);
+			rx_ring = NULL;
+
+			goto clear_reset;
+		}
 	}
 
+	/* bring interface down to prepare for update */
 	ixgbevf_down(adapter);
 
-	memcpy(tx_ring, adapter->tx_ring,
-	       adapter->num_tx_queues * sizeof(struct ixgbevf_ring));
-	for (i = 0; i < adapter->num_tx_queues; i++) {
-		tx_ring[i].count = new_tx_count;
-		err = ixgbevf_setup_tx_resources(adapter, &tx_ring[i]);
-		if (err) {
-			while (i) {
-				i--;
-				ixgbevf_free_tx_resources(adapter,
-							  &tx_ring[i]);
-			}
-			goto err_tx_ring_setup;
+	/* Tx */
+	if (tx_ring) {
+		for (i = 0; i < adapter->num_tx_queues; i++) {
+			ixgbevf_free_tx_resources(adapter,
+						  &adapter->tx_ring[i]);
+			adapter->tx_ring[i] = tx_ring[i];
 		}
-		tx_ring[i].v_idx = adapter->tx_ring[i].v_idx;
+		adapter->tx_ring_count = new_tx_count;
+
+		vfree(tx_ring);
+		tx_ring = NULL;
 	}
 
-	memcpy(rx_ring, adapter->rx_ring,
-	       adapter->num_rx_queues * sizeof(struct ixgbevf_ring));
-	for (i = 0; i < adapter->num_rx_queues; i++) {
-		rx_ring[i].count = new_rx_count;
-		err = ixgbevf_setup_rx_resources(adapter, &rx_ring[i]);
-		if (err) {
-			while (i) {
-				i--;
-				ixgbevf_free_rx_resources(adapter,
-							  &rx_ring[i]);
-			}
-				goto err_rx_ring_setup;
+	/* Rx */
+	if (rx_ring) {
+		for (i = 0; i < adapter->num_rx_queues; i++) {
+			ixgbevf_free_rx_resources(adapter,
+						  &adapter->rx_ring[i]);
+			adapter->rx_ring[i] = rx_ring[i];
 		}
-		rx_ring[i].v_idx = adapter->rx_ring[i].v_idx;
+		adapter->rx_ring_count = new_rx_count;
+
+		vfree(rx_ring);
+		rx_ring = NULL;
 	}
 
-	/*
-	 * Only switch to new rings if all the prior allocations
-	 * and ring setups have succeeded.
-	 */
-	kfree(adapter->tx_ring);
-	adapter->tx_ring = tx_ring;
-	adapter->tx_ring_count = new_tx_count;
-
-	kfree(adapter->rx_ring);
-	adapter->rx_ring = rx_ring;
-	adapter->rx_ring_count = new_rx_count;
-
-	/* success! */
+	/* restore interface using new values */
 	ixgbevf_up(adapter);
 
-	goto clear_reset;
-
-err_rx_ring_setup:
-	for(i = 0; i < adapter->num_tx_queues; i++)
-		ixgbevf_free_tx_resources(adapter, &tx_ring[i]);
-
-err_tx_ring_setup:
-	kfree(rx_ring);
-
-err_rx_setup:
-	kfree(tx_ring);
-
 clear_reset:
+	/* free Tx resources if Rx error is encountered */
+	if (tx_ring) {
+		for (i = 0; i < adapter->num_tx_queues; i++)
+			ixgbevf_free_tx_resources(adapter, &tx_ring[i]);
+		vfree(tx_ring);
+	}
+
 	clear_bit(__IXGBEVF_RESETTING, &adapter->state);
 	return err;
 }
@@ -801,11 +822,8 @@ static int ixgbevf_nway_reset(struct net_device *netdev)
 {
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
 
-	if (netif_running(netdev)) {
-		if (!adapter->dev_closed) {
-			ixgbevf_reinit_locked(adapter);
-		}
-	}
+	if (netif_running(netdev))
+		ixgbevf_reinit_locked(adapter);
 
 	return 0;
 }
@@ -822,17 +840,19 @@ static struct ethtool_ops ixgbevf_ethtool_ops = {
 	.set_eeprom             = ixgbevf_set_eeprom,
 	.get_ringparam          = ixgbevf_get_ringparam,
 	.set_ringparam          = ixgbevf_set_ringparam,
+	.get_msglevel           = ixgbevf_get_msglevel,
+	.set_msglevel           = ixgbevf_set_msglevel,
+#ifndef HAVE_NDO_SET_FEATURES
 	.get_rx_csum            = ixgbevf_get_rx_csum,
 	.set_rx_csum            = ixgbevf_set_rx_csum,
 	.get_tx_csum            = ixgbevf_get_tx_csum,
 	.set_tx_csum            = ixgbevf_set_tx_csum,
 	.get_sg                 = ethtool_op_get_sg,
 	.set_sg                 = ethtool_op_set_sg,
-	.get_msglevel           = ixgbevf_get_msglevel,
-	.set_msglevel           = ixgbevf_set_msglevel,
 #ifdef NETIF_F_TSO
 	.get_tso                = ethtool_op_get_tso,
 	.set_tso                = ixgbevf_set_tso,
+#endif
 #endif
 	.self_test              = ixgbevf_diag_test,
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT

@@ -62,8 +62,8 @@
 #define VERSION_SUFFIX
 
 #define MAJ 4
-#define MIN 0
-#define BUILD 17
+#define MIN 1
+#define BUILD 2
 #define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." __stringify(BUILD) VERSION_SUFFIX DRV_DEBUG DRV_HW_PERF
 
 char igb_driver_name[] = "igb";
@@ -2221,9 +2221,9 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 
 	e1000_validate_mdi_setting(hw);
 
-	/* Initial Wake on LAN setting If APM wake is enabled in the EEPROM,
-	 * enable the ACPI Magic Packet filter
-	 */
+	/* By default, support wake on port A */
+	if (hw->bus.func == 0)
+		adapter->flags |= IGB_FLAG_WOL_SUPPORTED;
 
 	/* Check the NVM for wake support for non-port A ports */
 	if (hw->mac.type >= e1000_82580)
@@ -2234,14 +2234,14 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 		e1000_read_nvm(hw, NVM_INIT_CONTROL3_PORT_B, 1, &eeprom_data);
 
 	if (eeprom_data & IGB_EEPROM_APME)
-		adapter->wol_supported = true;
+		adapter->flags |= IGB_FLAG_WOL_SUPPORTED;
 
 	/* now that we have the eeprom settings, apply the special cases where
 	 * the eeprom may be wrong or the board simply won't support wake on
 	 * lan on a particular port */
 	switch (pdev->device) {
 	case E1000_DEV_ID_82575GB_QUAD_COPPER:
-		adapter->wol_supported = false;
+		adapter->flags &= ~IGB_FLAG_WOL_SUPPORTED;
 		break;
 	case E1000_DEV_ID_82575EB_FIBER_SERDES:
 	case E1000_DEV_ID_82576_FIBER:
@@ -2249,13 +2249,13 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 		/* Wake events only supported on port A for dual fiber
 		 * regardless of eeprom setting */
 		if (E1000_READ_REG(hw, E1000_STATUS) & E1000_STATUS_FUNC_1)
-			adapter->wol_supported = false;
+			adapter->flags &= ~IGB_FLAG_WOL_SUPPORTED;
 		break;
 	case E1000_DEV_ID_82576_QUAD_COPPER:
 	case E1000_DEV_ID_82576_QUAD_COPPER_ET2:
 		/* if quad port adapter, disable WoL on all but port A */
 		if (global_quad_port_a != 0)
-			adapter->wol_supported = false;
+			adapter->flags &= ~IGB_FLAG_WOL_SUPPORTED;
 		else
 			adapter->flags |= IGB_FLAG_QUAD_PORT_A;
 		/* Reset for multiple quad port adapters */
@@ -2263,25 +2263,25 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 			global_quad_port_a = 0;
 		break;
 	default:
-		/* For all other devices, support wake on port A */
-		if (hw->bus.func == 0)
-			adapter->wol_supported = true;
+		/* If the device can't wake, don't set software support */
+		if (!device_can_wakeup(&adapter->pdev->dev))
+			adapter->flags &= ~IGB_FLAG_WOL_SUPPORTED;
 		break;
 	}
 
 	/* initialize the wol settings based on the eeprom settings */
-	if (adapter->wol_supported)
+	if (adapter->flags & IGB_FLAG_WOL_SUPPORTED)
 		adapter->wol |= E1000_WUFC_MAG;
 
 	/* Some vendors want WoL disabled by default, but still supported */
 	if ((hw->mac.type == e1000_i350) &&
 	    (pdev->subsystem_vendor == PCI_VENDOR_ID_HP)) {
-		adapter->wol_supported = true;
+		adapter->flags |= IGB_FLAG_WOL_SUPPORTED;
 		adapter->wol = 0;
 	}
 
 	device_set_wakeup_enable(pci_dev_to_dev(adapter->pdev),
-				 adapter->wol_supported);
+				 adapter->flags & IGB_FLAG_WOL_SUPPORTED);
 
 	/* reset the hardware with the new settings */
 	igb_reset(adapter);
@@ -2340,22 +2340,26 @@ static int __devinit igb_probe(struct pci_dev *pdev,
 
 
 	/* Initialize the thermal sensor on i350 devices. */
-	if (hw->mac.type == e1000_i350 && hw->bus.func == 0) {
-		u16 ets_word;
+	if (hw->mac.type == e1000_i350) {
+		if (hw->bus.func == 0) {
+			u16 ets_word;
 
-		/*
-		 * Read the NVM to determine if this i350 device supports an
-		 * external thermal sensor.
-		 */
-		e1000_read_nvm(hw, NVM_ETS_CFG, 1, &ets_word);
-		if (ets_word != 0x0000 && ets_word != 0xFFFF)
-			adapter->ets = true;
-		else
-			adapter->ets = false;
+			/*
+			 * Read the NVM to determine if this i350 device
+			 * supports an external thermal sensor.
+			 */
+			e1000_read_nvm(hw, NVM_ETS_CFG, 1, &ets_word);
+			if (ets_word != 0x0000 && ets_word != 0xFFFF)
+				adapter->ets = true;
+			else
+				adapter->ets = false;
+		}
 #ifdef IGB_SYSFS
+
 		igb_sysfs_init(adapter);
 #else
 #ifdef IGB_PROCFS
+
 		igb_procfs_init(adapter);
 #endif /* IGB_PROCFS */
 #endif /* IGB_SYSFS */
@@ -3027,15 +3031,19 @@ static void igb_setup_mrqc(struct igb_adapter *adapter)
 	igb_vmm_control(adapter);
 
 	/*
-	 * Generate RSS hash based on TCP port numbers and/or
-	 * IPv4/v6 src and dst addresses since UDP cannot be
-	 * hashed reliably due to IP fragmentation
+	 * Generate RSS hash based on packet types, TCP/UDP
+	 * port numbers and/or IPv4/v6 src and dst addresses
 	 */
 	mrqc |= E1000_MRQC_RSS_FIELD_IPV4 |
 		E1000_MRQC_RSS_FIELD_IPV4_TCP |
 		E1000_MRQC_RSS_FIELD_IPV6 |
 		E1000_MRQC_RSS_FIELD_IPV6_TCP |
 		E1000_MRQC_RSS_FIELD_IPV6_TCP_EX;
+
+	if (adapter->flags & IGB_FLAG_RSS_FIELD_IPV4_UDP)
+		mrqc |= E1000_MRQC_RSS_FIELD_IPV4_UDP;
+	if (adapter->flags & IGB_FLAG_RSS_FIELD_IPV6_UDP)
+		mrqc |= E1000_MRQC_RSS_FIELD_IPV6_UDP;
 
 	E1000_WRITE_REG(hw, E1000_MRQC, mrqc);
 }
@@ -3881,6 +3889,7 @@ static void igb_watchdog_task(struct work_struct *work)
 	int i;
 	u32 thstat, ctrl_ext;
 
+
 	link = igb_has_link(adapter);
 	if (link) {
 		/* Cancel scheduled suspend requests. */
@@ -3912,6 +3921,8 @@ static void igb_watchdog_task(struct work_struct *work)
 				break;
 			case SPEED_100:
 				/* maybe add some timeout factor ? */
+				break;
+			default:
 				break;
 			}
 
@@ -7497,15 +7508,20 @@ int igb_set_spd_dplx(struct igb_adapter *adapter, u16 spddplx)
 	mac->autoneg = 0;
 
 	/*
-	 * Fiber NIC's only allow 1000 gbps Full duplex
+	 * SerDes device's only allow 2.5/1000 gbps Full duplex
 	 * and 100Mbps Full duplex for 100baseFx sfp
 	 */
-	if (adapter->hw.phy.media_type == e1000_media_type_internal_serdes)
-		if (spddplx != (SPEED_1000 + DUPLEX_FULL) ||
-		    spddplx != (SPEED_100 + DUPLEX_FULL)) {
+	if (adapter->hw.phy.media_type == e1000_media_type_internal_serdes) {
+		switch (spddplx) {
+		case SPEED_10 + DUPLEX_HALF:
+		case SPEED_10 + DUPLEX_FULL:
+		case SPEED_100 + DUPLEX_HALF:
 			dev_err(pci_dev_to_dev(pdev),
-			 "Unsupported Speed/Duplex configuration\n");
-		return -EINVAL;
+				"Unsupported Speed/Duplex configuration\n");
+			return -EINVAL;
+		default:
+			break;
+		}
 	}
 
 	switch (spddplx) {
@@ -7833,7 +7849,7 @@ static pci_ers_result_t igb_io_error_detected(struct pci_dev *pdev,
 		goto skip_bad_vf_detection;
 
 	bdev = pdev->bus->self;
-	while (bdev && (bdev->pcie_type != PCI_EXP_TYPE_ROOT_PORT))
+	while (bdev && (pci_pcie_type(bdev) != PCI_EXP_TYPE_ROOT_PORT))
 		bdev = bdev->bus->self;
 
 	if (!bdev)

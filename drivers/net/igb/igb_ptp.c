@@ -761,7 +761,8 @@ void igb_ptp_init(struct igb_adapter *adapter)
 		E1000_WRITE_REG(hw, E1000_IMS, E1000_IMS_TS);
 	}
 
-	adapter->ptp_clock = ptp_clock_register(&adapter->ptp_caps);
+	adapter->ptp_clock = ptp_clock_register(&adapter->ptp_caps,
+						&adapter->pdev->dev);
 	if (IS_ERR(adapter->ptp_clock)) {
 		adapter->ptp_clock = NULL;
 		dev_err(&adapter->pdev->dev, "ptp_clock_register failed\n");

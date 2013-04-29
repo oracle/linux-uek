@@ -1342,6 +1342,11 @@ extern uint32_t _kc__div64_32(uint64_t *dividend, uint32_t divisor);
 # error do_div() does not yet support the C64
 #endif /* BITS_PER_LONG */
 #endif /* do_div */
+
+#ifndef NSEC_PER_SEC
+#define NSEC_PER_SEC	1000000000L
+#endif
+
 #endif /* 2.6.0 => 2.5.28 */
 
 /*****************************************************************************/
@@ -2064,6 +2069,12 @@ extern void _kc_print_hex_dump(const char *level, const char *prefix_str,
 			       const void *buf, size_t len, bool ascii);
 #define print_hex_dump(lvl, s, t, r, g, b, l, a) \
 		_kc_print_hex_dump(lvl, s, t, r, g, b, l, a)
+#ifndef ADVERTISED_2500baseX_Full
+#define ADVERTISED_2500baseX_Full (1 << 15)
+#endif
+#ifndef SUPPORTED_2500baseX_Full
+#define SUPPORTED_2500baseX_Full (1 << 15)
+#endif
 #else /* 2.6.22 */
 #define ETH_TYPE_TRANS_SETS_DEV
 #define HAVE_NETDEV_STATS_IN_NETDEV
@@ -2851,6 +2862,8 @@ do {								\
 #define usleep_range(min, max)	msleep(DIV_ROUND_UP(min, 1000))
 
 #else /* < 2.6.36 */
+
+
 #define HAVE_PM_QOS_REQUEST_ACTIVE
 #define HAVE_8021P_SUPPORT
 #define HAVE_NDO_GET_STATS64
@@ -3044,7 +3057,6 @@ struct _kc_ethtool_rx_flow_spec {
 #define HAVE_ETHTOOL_SET_PHYS_ID
 #endif /* < 2.6.40 */
 
-/*****************************************************************************/
 
 /*****************************************************************************/
 #undef CONFIG_IGB_PTP
@@ -3055,8 +3067,6 @@ struct _kc_ethtool_rx_flow_spec {
 #error Cannot enable PTP Hardware Clock due to insufficient kernel support
 #endif
 #endif /* IGB_PTP */
-
-/*****************************************************************************/
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,1,0) )
@@ -3150,7 +3160,7 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #endif
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,3,0) )
-//typedef u32 netdev_features_t;
+/* typedef u32 netdev_features_t; removed for UEK2 */
 #else /* ! < 3.3.0 */
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
@@ -3170,7 +3180,24 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #define NUMTCS_RETURNS_U8
 
 
-#endif /* < 3.4.0 */
+
+#ifdef IS_ENABLED
+#undef IS_ENABLED
+#endif
+#define IS_ENABLED(option) (defined(option) || defined(option##_MODULE))
+
+#else /* < 3.4.0 */
+#include <linux/kconfig.h>
+#endif /* >= 3.4.0 */
+
+/*****************************************************************************/
+#if defined(E1000E_PTP) || defined(IXGBE_PTP)
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) ) && IS_ENABLED(CONFIG_PTP_1588_CLOCK)
+#define HAVE_PTP_1588_CLOCK
+#else
+#error Cannot enable PTP Hardware Clock support due to a pre-3.0 kernel version or CONFIG_PTP_1588_CLOCK not enabled in the kernel
+#endif /* > 3.0.0 && IS_ENABLED(CONFIG_PTP_1588_CLOCK) */
+#endif /* E1000E_PTP || IXGBE_PTP */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
@@ -3239,5 +3266,12 @@ static inline u32 mmd_eee_adv_to_ethtool_adv_t(u16 eee_adv)
 	return adv;
 }
 #endif /* ETHTOOL_GEEE */
+
+#ifndef pci_pcie_type
+#define pci_pcie_type(x)	(x)->pcie_type
+#endif
+
+#define ptp_clock_register(caps, args...) ptp_clock_register(caps)
+
 #endif /* < 3.7.0 */
 #endif /* _KCOMPAT_H_ */

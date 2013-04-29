@@ -194,8 +194,8 @@ s32 e1000_set_mac_type(struct e1000_hw *hw)
 		mac->type = e1000_i210;
 		break;
 	case E1000_DEV_ID_I211_COPPER:
-	mac->type = e1000_i211;
-	break;
+		mac->type = e1000_i211;
+		break;
 
 	default:
 		/* Should never have loaded on this device */
@@ -1177,3 +1177,4 @@ s32 e1000_init_thermal_sensor_thresh(struct e1000_hw *hw)
 
 	return E1000_SUCCESS;
 }
+
