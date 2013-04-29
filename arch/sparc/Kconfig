@@ -298,6 +298,15 @@ config US3_MC
 
 	  If in doubt, say Y, as this information can be very useful.
 
+config SPARC_PGTABLE_LEVEL4
+	bool "Page Table Level"
+	depends on SPARC64 && SMP
+	help
+	  This enables sparc64 to access large physical memory
+	  configuration. For example consider 45 bits of physical address
+	  space (32 Tb).  This option might impact your performance
+	  in small memory configurations.
+
 # Global things across all Sun machines.
 config GENERIC_LOCKBREAK
 	bool
