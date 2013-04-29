@@ -1,11 +1,13 @@
 /* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
 
-#ifndef _DTRACE_OS_H_
-#define _DTRACE_OS_H_
-
-#include <asm/asm-offsets.h>
+#ifndef _LINUX_DTRACE_OS_H_
+#define _LINUX_DTRACE_OS_H_
 
 typedef uint32_t dtrace_id_t;
+
+#ifndef HEADERS_CHECK
+
+#include <asm/asm-offsets.h>
 
 #define DTRACE_IDNONE 0
 
@@ -80,4 +82,6 @@ extern void dtrace_task_cleanup(struct task_struct *tsk);
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 
-#endif /* _DTRACE_OS_H_ */
+#endif
+
+#endif /* _LINUX_DTRACE_OS_H_ */
