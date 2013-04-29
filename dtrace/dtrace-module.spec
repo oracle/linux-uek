@@ -5,13 +5,18 @@
 %define karch x86_64
 %endif
 
+# Set this to the version of the kernel this module is compiled against.
 %define kver 2.6.39-201.0.1.el6uek
+
+# Increment this whenever the DTrace/userspace interface changes in an
+# incompatible way.
+%define dtrace_kernel_interface 1
 
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
-Version: 0.3.0
-Release: 2.el6
-Provides: dtrace-kernel-interface = 2
+Version: 0.4.0
+Release: 1.el6
+Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
 Group: System Environment/Kernel
 Requires: kernel-uek-dtrace = %{kver}
@@ -32,13 +37,28 @@ Maintainers:
 Nick Alcock <nick.alcock@oracle.com>
 Kris van Hees <kris.van.hees@oracle.com>
 
+%package headers
+Summary:	Header files for communication with the DTrace kernel module.
+Requires:	dtrace-modules-%{kver}
+Provides:	dtrace-modules-headers = %{dtrace_kernel_interface}
+%description headers
+This package contains header files describing the protocol used by userspace to
+communicate with the DTrace kernel module.
+
+%package provider-headers
+Summary:	Header files for implementation of DTrace providers.
+Requires:	dtrace-modules-headers-%{kver}
+Provides:	dtrace-modules-provider-headers = %{dtrace_kernel_interface}
+%description provider-headers
+This package contains header files defining the API used to implement DTrace
+providers.
+
 %prep
 rm -rf %{BuildRoot}
 
 %setup -c -n %{name}
 
 %build
-ls
 cd dtrace
 KSRC=/usr/src/kernels/%{kver}.%{karch}
 make KERNELDIR=$KSRC karch=%{karch} modules
@@ -49,6 +69,9 @@ mkdir -p %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace
 install -m0644 ${RPM_BUILD_DIR}/%{name}/dtrace/*.ko %{buildroot}/lib/modules/%{kver}.%{karch}/kernel/drivers/dtrace/
 mkdir -p %{buildroot}/usr/share/doc/dtrace-modules-%{kver}
 install -m0644 ${RPM_BUILD_DIR}/%{name}/dtrace/NEWS %{buildroot}/usr/share/doc/dtrace-modules-%{kver}
+cd dtrace
+KSRC=/usr/src/kernels/%{kver}.%{karch}
+make KERNELDIR=$KSRC karch=%{karch} headers_install INSTALL_HDR_PATH=%{buildroot}
 
 %post
 depmod -a %{kver}.%{karch} > /dev/null 2> /dev/null
@@ -59,7 +82,18 @@ rm -rf %{buildroot}
 %files
 %defattr(-,root,root,-)
 /lib
-/usr
+/usr/share/doc
+
+%files headers
+%defattr(-,root,root,-)
+/usr/include/linux/dtrace
+%exclude /usr/include/linux/dtrace/provider*.h
+%exclude /usr/include/linux/dtrace/types.h
+
+%files provider-headers
+%defattr(-,root,root,-)
+/usr/include/linux/dtrace/provider*.h
+/usr/include/linux/dtrace/types.h
 
 %changelog
 * Mon Sep 17 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0-2
