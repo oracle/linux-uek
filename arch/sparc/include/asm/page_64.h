@@ -49,12 +49,16 @@ extern void copy_user_page(void *to, void *from, unsigned long vaddr, struct pag
 
 #define STRICT_MM_TYPECHECKS
 
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#include "page_64_lvl4.h"
+#else
+#include "page_64_lvl3.h"
+#endif
+
 #ifdef STRICT_MM_TYPECHECKS
 /* These are used to make use of C type-checking.. */
 typedef struct { unsigned long pte; } pte_t;
 typedef struct { unsigned long iopte; } iopte_t;
-typedef struct { unsigned int pmd; } pmd_t;
-typedef struct { unsigned int pgd; } pgd_t;
 typedef struct { unsigned long pgprot; } pgprot_t;
 
 #define pte_val(x)	((x).pte)
@@ -73,8 +77,6 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 /* .. while these make it easier on the compiler */
 typedef unsigned long pte_t;
 typedef unsigned long iopte_t;
-typedef unsigned int pmd_t;
-typedef unsigned int pgd_t;
 typedef unsigned long pgprot_t;
 
 #define pte_val(x)	(x)
