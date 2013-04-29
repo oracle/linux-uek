@@ -166,6 +166,8 @@ static int efi_pstore_erase_func(struct efivar_entry *entry, void *data)
 
 	/* found */
 	__efivar_entry_delete(entry);
+	list_del(&entry->list);
+
 	return 1;
 }
 
