@@ -104,7 +104,15 @@ typedef pte_t *pgtable_t;
 /* We used to stick this into a hard-coded global register (%g4)
  * but that does not make sense anymore.
  */
-#define PAGE_OFFSET		_AC(0xFFFFF80000000000,UL)
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#define	PO_LOWBITS		_AC(47,UL)
+#define	PO_DELTA		_AC(0, UL)
+#else
+#define	PO_LOWBITS		_AC(43,UL)
+#define	PO_DELTA		_AC(2, UL)
+#endif
+#define	PO_HIBITS		(BITS_PER_LONG - PO_LOWBITS)
+#define	PAGE_OFFSET		(-(_AC(1,UL) << PO_LOWBITS))
 
 #ifndef __ASSEMBLY__
 
