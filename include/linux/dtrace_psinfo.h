@@ -1,7 +1,7 @@
 /* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
 
-#ifndef _DTRACE_PSINFO_H_
-#define _DTRACE_PSINFO_H_
+#ifndef _LINUX_DTRACE_PSINFO_H_
+#define _LINUX_DTRACE_PSINFO_H_
 
 #define PR_PSARGS_SZ		80
 
@@ -18,4 +18,4 @@ typedef struct dtrace_psinfo {
 extern dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *);
 extern void dtrace_psinfo_free(dtrace_psinfo_t *);
 
-#endif /* _DTRACE_PSINFO_H_ */
+#endif /* _LINUX_DTRACE_PSINFO_H_ */
