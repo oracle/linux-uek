@@ -26,8 +26,8 @@
  */
 
 #include <linux/delay.h>
-#include <linux/dtrace_cpu.h>
-#include <linux/dtrace_ioctl.h>
+#include <dtrace/types.h>
+#include <linux/dtrace/ioctl.h>
 #include <linux/fs.h>
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
@@ -912,6 +912,15 @@ static long dtrace_ioctl(struct file *file,
 	return -ENOTTY;
 }
 
+#ifdef CONFIG_DT_DEBUG
+
+void dtrace_size_dbg_print(const char *type, size_t size)
+{
+	dt_dbg_ioctl("Size of %s: %lx\n", type, size);
+}
+
+#endif
+
 static int dtrace_close(struct inode *inode, struct file *file)
 {
 	dtrace_state_t	*state = file->private_data;
@@ -1287,6 +1296,10 @@ int dtrace_dev_init(void)
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
+
+#ifdef CONFIG_DT_DEBUG
+	dtrace_ioctl_sizes();
+#endif
 
 	/*
 	 * Register the device for the DTrace core.

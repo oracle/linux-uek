@@ -3281,7 +3281,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONS:
 	case DIF_SUBR_NTOHS:
-#ifdef _BIG_ENDIAN
+#ifndef __LITTLE_ENDIAN
 		regs[rd] = (uint16_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_16((uint16_t)tupregs[0].dttk_value);
@@ -3291,7 +3291,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONL:
 	case DIF_SUBR_NTOHL:
-#ifdef _BIG_ENDIAN
+#ifndef __LITTLE_ENDIAN
 		regs[rd] = (uint32_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_32((uint32_t)tupregs[0].dttk_value);
@@ -3301,7 +3301,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONLL:
 	case DIF_SUBR_NTOHLL:
-#ifdef _BIG_ENDIAN
+#ifndef __LITTLE_ENDIAN
 		regs[rd] = (uint64_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_64((uint64_t)tupregs[0].dttk_value);
