@@ -1,12 +1,14 @@
 obj-$(CONFIG_FCOE_FNIC) += fnic.o
 
-fnic-y	:= \
+fnic-y := \
 	fnic_attrs.o \
 	fnic_isr.o \
 	fnic_main.o \
 	fnic_res.o \
 	fnic_fcs.o \
 	fnic_scsi.o \
+	fnic_trace.o \
+	fnic_debugfs.o \
 	vnic_cq.o \
 	vnic_dev.o \
 	vnic_intr.o \
