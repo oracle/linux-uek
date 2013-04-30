@@ -811,7 +811,7 @@ xfs_dir2_leafn_rebalance(
 	xfs_dir2_leaf_t		*leaf1;		/* first leaf structure */
 	xfs_dir2_leaf_t		*leaf2;		/* second leaf structure */
 	int			mid;		/* midpoint leaf index */
-#ifdef DEBUG
+#if defined(DEBUG) || defined(XFS_WARN)
 	int			oldstale;	/* old count of stale leaves */
 #endif
 	int			oldsum;		/* old total leaf count */
@@ -831,7 +831,7 @@ xfs_dir2_leafn_rebalance(
 	leaf1 = blk1->bp->b_addr;
 	leaf2 = blk2->bp->b_addr;
 	oldsum = be16_to_cpu(leaf1->hdr.count) + be16_to_cpu(leaf2->hdr.count);
-#ifdef DEBUG
+#if defined(DEBUG) || defined(XFS_WARN)
 	oldstale = be16_to_cpu(leaf1->hdr.stale) + be16_to_cpu(leaf2->hdr.stale);
 #endif
 	mid = oldsum >> 1;
