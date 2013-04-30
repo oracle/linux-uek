@@ -429,8 +429,8 @@ static int rbd_img_obj_request_submit(struct rbd_obj_request *obj_request);
 static void rbd_img_parent_read(struct rbd_obj_request *obj_request);
 static void rbd_dev_remove_parent(struct rbd_device *rbd_dev);
 
-static int rbd_dev_refresh(struct rbd_device *rbd_dev, u64 *hver);
-static int rbd_dev_v2_refresh(struct rbd_device *rbd_dev, u64 *hver);
+static int rbd_dev_refresh(struct rbd_device *rbd_dev);
+static int rbd_dev_v2_refresh(struct rbd_device *rbd_dev);
 
 static int rbd_open(struct block_device *bdev, fmode_t mode)
 {
@@ -2469,8 +2469,7 @@ out_err:
 	obj_request_done_set(obj_request);
 }
 
-static int rbd_obj_notify_ack(struct rbd_device *rbd_dev,
-				   u64 ver, u64 notify_id)
+static int rbd_obj_notify_ack(struct rbd_device *rbd_dev, u64 notify_id)
 {
 	struct rbd_obj_request *obj_request;
 	struct ceph_osd_client *osdc = &rbd_dev->rbd_client->client->osdc;
@@ -2488,7 +2487,7 @@ static int rbd_obj_notify_ack(struct rbd_device *rbd_dev,
 	obj_request->callback = rbd_obj_request_put;
 
 	osd_req_op_watch_init(obj_request->osd_req, 0, CEPH_OSD_OP_NOTIFY_ACK,
-					notify_id, ver, 0);
+					notify_id, 0, 0);
 	rbd_osd_req_format_read(obj_request);
 
 	ret = rbd_obj_request_submit(osdc, obj_request);
@@ -2502,17 +2501,16 @@ out:
 static void rbd_watch_cb(u64 ver, u64 notify_id, u8 opcode, void *data)
 {
 	struct rbd_device *rbd_dev = (struct rbd_device *)data;
-	u64 hver;
 
 	if (!rbd_dev)
 		return;
 
 	dout("%s: \"%s\" notify_id %llu opcode %u\n", __func__,
-		rbd_dev->header_name, (unsigned long long) notify_id,
-		(unsigned int) opcode);
-	(void)rbd_dev_refresh(rbd_dev, &hver);
+		rbd_dev->header_name, (unsigned long long)notify_id,
+		(unsigned int)opcode);
+	(void)rbd_dev_refresh(rbd_dev);
 
-	rbd_obj_notify_ack(rbd_dev, hver, notify_id);
+	rbd_obj_notify_ack(rbd_dev, notify_id);
 }
 
 /*
@@ -3015,7 +3013,7 @@ static void rbd_update_mapping_size(struct rbd_device *rbd_dev)
 /*
  * only read the first part of the ondisk header, without the snaps info
  */
-static int rbd_dev_v1_refresh(struct rbd_device *rbd_dev, u64 *hver)
+static int rbd_dev_v1_refresh(struct rbd_device *rbd_dev)
 {
 	int ret;
 	struct rbd_image_header h;
@@ -3052,7 +3050,7 @@ static int rbd_dev_v1_refresh(struct rbd_device *rbd_dev, u64 *hver)
 	return ret;
 }
 
-static int rbd_dev_refresh(struct rbd_device *rbd_dev, u64 *hver)
+static int rbd_dev_refresh(struct rbd_device *rbd_dev)
 {
 	u64 image_size;
 	int ret;
@@ -3061,9 +3059,9 @@ static int rbd_dev_refresh(struct rbd_device *rbd_dev, u64 *hver)
 	image_size = rbd_dev->header.image_size;
 	mutex_lock_nested(&ctl_mutex, SINGLE_DEPTH_NESTING);
 	if (rbd_dev->image_format == 1)
-		ret = rbd_dev_v1_refresh(rbd_dev, hver);
+		ret = rbd_dev_v1_refresh(rbd_dev);
 	else
-		ret = rbd_dev_v2_refresh(rbd_dev, hver);
+		ret = rbd_dev_v2_refresh(rbd_dev);
 	mutex_unlock(&ctl_mutex);
 	if (ret)
 		rbd_warn(rbd_dev, "got notification but failed to "
@@ -3272,7 +3270,7 @@ static ssize_t rbd_image_refresh(struct device *dev,
 	struct rbd_device *rbd_dev = dev_to_rbd_dev(dev);
 	int ret;
 
-	ret = rbd_dev_refresh(rbd_dev, NULL);
+	ret = rbd_dev_refresh(rbd_dev);
 
 	return ret < 0 ? ret : size;
 }
@@ -3825,7 +3823,7 @@ out_err:
 	return ret;
 }
 
-static int rbd_dev_v2_snap_context(struct rbd_device *rbd_dev, u64 *ver)
+static int rbd_dev_v2_snap_context(struct rbd_device *rbd_dev)
 {
 	size_t size;
 	int ret;
@@ -3851,7 +3849,7 @@ static int rbd_dev_v2_snap_context(struct rbd_device *rbd_dev, u64 *ver)
 
 	ret = rbd_obj_method_sync(rbd_dev, rbd_dev->header_name,
 				"rbd", "get_snapcontext", NULL, 0,
-				reply_buf, size, ver);
+				reply_buf, size, NULL);
 	dout("%s: rbd_obj_method_sync returned %d\n", __func__, ret);
 	if (ret < 0)
 		goto out;
@@ -3979,7 +3977,7 @@ static const char *rbd_dev_snap_info(struct rbd_device *rbd_dev, u32 which,
 	return ERR_PTR(-EINVAL);
 }
 
-static int rbd_dev_v2_refresh(struct rbd_device *rbd_dev, u64 *hver)
+static int rbd_dev_v2_refresh(struct rbd_device *rbd_dev)
 {
 	int ret;
 
@@ -3990,7 +3988,7 @@ static int rbd_dev_v2_refresh(struct rbd_device *rbd_dev, u64 *hver)
 		goto out;
 	rbd_update_mapping_size(rbd_dev);
 
-	ret = rbd_dev_v2_snap_context(rbd_dev, hver);
+	ret = rbd_dev_v2_snap_context(rbd_dev);
 	dout("rbd_dev_v2_snap_context returned %d\n", ret);
 	if (ret)
 		goto out;
@@ -4592,7 +4590,6 @@ out_err:
 static int rbd_dev_v2_probe(struct rbd_device *rbd_dev)
 {
 	int ret;
-	u64 ver = 0;
 
 	ret = rbd_dev_v2_image_size(rbd_dev);
 	if (ret)
@@ -4642,7 +4639,7 @@ static int rbd_dev_v2_probe(struct rbd_device *rbd_dev)
 
 	/* Get the snapshot context, plus the header version */
 
-	ret = rbd_dev_v2_snap_context(rbd_dev, &ver);
+	ret = rbd_dev_v2_snap_context(rbd_dev);
 	if (ret)
 		goto out_err;
 
