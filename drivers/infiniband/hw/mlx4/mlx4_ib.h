@@ -194,7 +194,7 @@ enum mlx4_ib_qp_type {
 	MLX4_IB_QPT_UD = IB_QPT_UD,
 	MLX4_IB_QPT_XRC = IB_QPT_XRC,
 	MLX4_IB_QPT_RAW_IPV6 = IB_QPT_RAW_IPV6,
-	MLX4_IB_QPT_RAW_ETY = IB_QPT_RAW_ETY,
+	MLX4_IB_QPT_RAW_ETY = IB_QPT_RAW_ETHERTYPE,
 
 	MLX4_IB_QPT_PROXY_SMI = 100,
 	MLX4_IB_QPT_PROXY_GSI,
@@ -703,6 +703,7 @@ int mlx4_ib_mcg_port_init(struct mlx4_ib_demux_ctx *ctx);
 void mlx4_ib_mcg_port_cleanup(struct mlx4_ib_demux_ctx *ctx, int destroy_wq);
 void clean_vf_mcast(struct mlx4_ib_demux_ctx *ctx, int slave);
 int mlx4_ib_mcg_init(void);
+void mlx4_ib_mcg_flush(void);
 void mlx4_ib_mcg_destroy(void);
 int mlx4_ib_mcg_multiplex_handler(struct ib_device *ibdev, int port, int slave,
 				  struct ib_sa_mad *sa_mad);

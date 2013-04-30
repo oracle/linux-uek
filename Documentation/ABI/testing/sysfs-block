@@ -206,3 +206,25 @@ Description:
 		when a discarded area is read the discard_zeroes_data
 		parameter will be set to one. Otherwise it will be 0 and
 		the result of reading a discarded area is undefined.
+What:		/sys/block/<disk>/queue/rq_timeout_secs
+Date:		June 2012
+Contact:	Martin K. Petersen <martin.petersen@oracle.com>
+Description:
+		This is the timeout in seconds for regular filesystem
+		I/O requests.  If the disk device has not completed the
+		request in this many seconds the kernel will fail the
+		I/O and initiate the subsystem-specific error handling
+		process.
+
+What:		/sys/block/<disk>/queue/eh_timeout_secs
+Date:		June 2012
+Contact:	Martin K. Petersen <martin.petersen@oracle.com>
+Description:
+		If a device has timed out while processing regular
+		filesystem I/O the kernel will attempt to bring the
+		device back online.  This typically involves an
+		escalating set of approaches (device reset, bus reset,
+		controller reset).  eh_timeout_secs describes how many
+		seconds should be spent waiting for response after each
+		recovery attempt before moving on to the next step in
+		the error handling process.

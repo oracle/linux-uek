@@ -296,6 +296,7 @@ static int mlx4_MAP_FMR(struct mlx4_dev *dev, struct mlx4_icm *icm, u64 virt)
 					 err);
 				goto out_unshare;
 			}
+			vpm_raw = mailbox->buf;
 			nent = 0;
 		}
 	}
@@ -415,6 +416,8 @@ int mlx4_UNMAP_ICM_wrapper(struct mlx4_dev *dev, int slave,
 			 (unsigned long long)virt, page_count, err);
 		return err;
 	}
+	if (!vhcr->op_modifier)
+	   return err;
 
 	for (i = 0; i < page_count; ++i, virt += PAGE_SIZE)
 		mlx4_fmr_master_dma_unmap(dev, slave, virt);

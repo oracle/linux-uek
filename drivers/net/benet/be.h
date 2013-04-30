@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2011 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -35,15 +35,15 @@
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"4.4.161.0o"
+#define DRV_VER			"4.6.62.0u"
 #define DRV_NAME		"be2net"
-#define BE_NAME			"ServerEngines BladeEngine2 10Gbps NIC"
-#define BE3_NAME		"ServerEngines BladeEngine3 10Gbps NIC"
-#define OC_NAME			"Emulex OneConnect 10Gbps NIC"
+#define BE_NAME			"Emulex BladeEngine2"
+#define BE3_NAME		"Emulex BladeEngine3"
+#define OC_NAME			"Emulex OneConnect"
 #define OC_NAME_BE		OC_NAME	"(be3)"
 #define OC_NAME_LANCER		OC_NAME "(Lancer)"
 #define OC_NAME_SH		OC_NAME "(Skyhawk)"
-#define DRV_DESC		"ServerEngines BladeEngine 10Gbps NIC Driver"
+#define DRV_DESC		"Emulex OneConnect 10Gbps NIC Driver"
 
 #define BE_VENDOR_ID 		0x19a2
 #define EMULEX_VENDOR_ID	0x10df
@@ -191,6 +191,7 @@ struct be_eq_obj {
 
 	u8 idx;			/* array index */
 	u16 tx_budget;
+	u16 spurious_intr;
 	struct napi_struct napi;
 	struct be_adapter *adapter;
 } ____cacheline_aligned_in_smp;
@@ -349,6 +350,7 @@ struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
 
+	u8 __iomem *csr;	/* CSR BAR used only for BE2/3 */
 	u8 __iomem *db;		/* Door Bell */
 
 	struct mutex mbox_lock; /* For serializing mbox cmds to BE card */
@@ -617,7 +619,7 @@ static inline bool be_error(struct be_adapter *adapter)
 	return adapter->eeh_error || adapter->hw_error || adapter->fw_timeout;
 }
 
-static inline bool be_crit_error(struct be_adapter *adapter)
+static inline bool be_hw_error(struct be_adapter *adapter)
 {
 	return adapter->eeh_error || adapter->hw_error;
 }

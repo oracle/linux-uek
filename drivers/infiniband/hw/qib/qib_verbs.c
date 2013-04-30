@@ -2160,7 +2160,7 @@ int qib_register_ib_device(struct qib_devdata *dd)
 	snprintf(ibdev->node_desc, sizeof(ibdev->node_desc),
 		 QIB_IDSTR " %s", init_utsname()->nodename);
 
-	ret = ib_register_device(ibdev);
+	ret = ib_register_device(ibdev, qib_create_port_files);
 	if (ret)
 		goto err_reg;
 

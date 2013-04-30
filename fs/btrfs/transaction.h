@@ -42,8 +42,16 @@ struct btrfs_transaction {
 	wait_queue_head_t writer_wait;
 	wait_queue_head_t commit_wait;
 	struct list_head pending_snapshots;
+	struct list_head ordered_operations;
 	struct btrfs_delayed_ref_root delayed_refs;
 	int aborted;
+};
+
+enum btrfs_trans_type {
+	TRANS_START,
+	TRANS_JOIN,
+	TRANS_USERSPACE,
+	TRANS_JOIN_NOLOCK,
 };
 
 struct btrfs_trans_handle {
@@ -56,11 +64,16 @@ struct btrfs_trans_handle {
 	struct btrfs_transaction *transaction;
 	struct btrfs_block_rsv *block_rsv;
 	struct btrfs_block_rsv *orig_rsv;
-	int aborted;
+	short aborted;
+	short adding_csums;
+	bool allocating_chunk;
+	enum btrfs_trans_type type;
+	struct list_head new_bgs;
 };
 
 struct btrfs_pending_snapshot {
 	struct dentry *dentry;
+	struct inode *dir;
 	struct btrfs_root *root;
 	struct btrfs_root *snap;
 	/* block reservation for the operation */
@@ -76,14 +89,15 @@ static inline void btrfs_set_inode_last_trans(struct btrfs_trans_handle *trans,
 {
 	BTRFS_I(inode)->last_trans = trans->transaction->transid;
 	BTRFS_I(inode)->last_sub_trans = BTRFS_I(inode)->root->log_transid;
+	BTRFS_I(inode)->last_log_commit = BTRFS_I(inode)->root->last_log_commit;
 }
 
 int btrfs_end_transaction(struct btrfs_trans_handle *trans,
 			  struct btrfs_root *root);
-int btrfs_end_transaction_nolock(struct btrfs_trans_handle *trans,
-				 struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_start_transaction(struct btrfs_root *root,
 						   int num_items);
+struct btrfs_trans_handle *btrfs_start_transaction_lflush(
+					struct btrfs_root *root, int num_items);
 struct btrfs_trans_handle *btrfs_join_transaction(struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_join_transaction_nolock(struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_start_ioctl_transaction(struct btrfs_root *root);
@@ -92,7 +106,7 @@ int btrfs_write_and_wait_transaction(struct btrfs_trans_handle *trans,
 				     struct btrfs_root *root);
 
 int btrfs_add_dead_root(struct btrfs_root *root);
-int btrfs_defrag_root(struct btrfs_root *root, int cacheonly);
+int btrfs_defrag_root(struct btrfs_root *root);
 int btrfs_clean_old_snapshots(struct btrfs_root *root);
 int btrfs_commit_transaction(struct btrfs_trans_handle *trans,
 			     struct btrfs_root *root);

@@ -302,7 +302,7 @@ static int send_wqe_overhead(enum ib_qp_type type, u32 flags)
 			ALIGN(4 +
 			      sizeof (struct mlx4_wqe_inline_seg),
 			      sizeof (struct mlx4_wqe_data_seg));
-	case IB_QPT_RAW_ETY:
+	case IB_QPT_RAW_ETHERTYPE:
 		return sizeof(struct mlx4_wqe_ctrl_seg) +
 			ALIGN(MLX4_IB_MAX_RAW_ETY_HDR_SIZE +
 			      sizeof(struct mlx4_wqe_inline_seg),
@@ -388,7 +388,7 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 		return -EINVAL;
 	}
 
-	if (type == IB_QPT_RAW_ETY &&
+	if (type == IB_QPT_RAW_ETHERTYPE &&
 	    cap->max_send_sge + 1 > dev->dev->caps.max_sq_sg) {
 		mlx4_ib_dbg("No space for RAW ETY hdr");
 		return -EINVAL;
@@ -434,7 +434,7 @@ static int set_kernel_sq_size(struct mlx4_ib_dev *dev, struct ib_qp_cap *cap,
 	 */
 	if (dev->dev->caps.fw_ver >= MLX4_FW_VER_WQE_CTRL_NEC &&
 	    qp->sq_signal_bits && BITS_PER_LONG == 64 &&
-	    type != IB_QPT_SMI && type != IB_QPT_GSI && type != IB_QPT_RAW_ETY)
+	    type != IB_QPT_SMI && type != IB_QPT_GSI && type != IB_QPT_RAW_ETHERTYPE)
 		qp->sq.wqe_shift = ilog2(64);
 	else
 		qp->sq.wqe_shift = ilog2(roundup_pow_of_two(s));

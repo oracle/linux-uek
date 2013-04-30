@@ -1018,7 +1018,6 @@ found:
 static void queue_req(struct mcast_req *req)
 {
 	struct mcast_group *group = req->group;
-
 	atomic_inc(&group->refcount); /* for the request */
 	atomic_inc(&group->refcount); /* for scheduling the work */
 	list_add_tail(&req->group_list, &group->pending_list);
@@ -1105,7 +1104,8 @@ int mlx4_ib_mcg_multiplex_handler(struct ib_device *ibdev, int port,
 			  slave, port, sa_mad->mad_hdr.method, debug_mcg_method_name(sa_mad->mad_hdr.method),
 			  be64_to_cpu(rec->mgid.global.subnet_prefix), be64_to_cpu(rec->mgid.global.interface_id),
 			  rec->scope_join_state & 0xf, be64_to_cpu(sa_mad->mad_hdr.tid));
-
+		if (dev->sriov.is_going_down)
+			return -EBUSY;
 		req = kzalloc(sizeof *req, GFP_KERNEL);
 		if (!req)
 			return -ENOMEM;
@@ -1277,7 +1277,6 @@ int mlx4_ib_mcg_port_init(struct mlx4_ib_demux_ctx *ctx)
 	ctx->mcg_wq = create_singlethread_workqueue(name);
 	if (!ctx->mcg_wq)
 		return -ENOMEM;
-
 	mutex_init(&ctx->mcg_table_lock);
 	ctx->mcg_table = RB_ROOT;
 	INIT_LIST_HEAD(&ctx->mcg_mgid0_list);
@@ -1326,7 +1325,7 @@ static void _mlx4_ib_mcg_port_cleanup(struct mlx4_ib_demux_ctx *ctx, int destroy
 	} while (time_after(end, jiffies));
 
 	flush_workqueue(ctx->mcg_wq);
-        if (destroy_wq)
+	if (destroy_wq)
 		destroy_workqueue(ctx->mcg_wq);
 
 	mutex_lock(&ctx->mcg_table_lock);
@@ -1349,8 +1348,10 @@ struct clean_work {
 static void mcg_clean_task(struct work_struct *work)
 {
 	struct clean_work *cw = container_of(work, struct clean_work, work);
-
+	if (cw->ctx->dev->sriov.is_going_down)
+		goto abort; /* mlx4_ib_close_sriov will flush this work and clean port mcgs itself */
 	_mlx4_ib_mcg_port_cleanup(cw->ctx, cw->destroy_wq);
+abort:
 	cw->ctx->flushing = 0;
 	kfree(cw);
 }
@@ -1358,12 +1359,10 @@ static void mcg_clean_task(struct work_struct *work)
 void mlx4_ib_mcg_port_cleanup(struct mlx4_ib_demux_ctx *ctx, int destroy_wq)
 {
 	struct clean_work *work;
-
 	if (ctx->flushing)
 		return;
 
 	ctx->flushing = 1;
-
 	if (destroy_wq) {
 		_mlx4_ib_mcg_port_cleanup(ctx, destroy_wq);
 		ctx->flushing = 0;
@@ -1500,5 +1499,11 @@ int mlx4_ib_mcg_init(void)
 
 void mlx4_ib_mcg_destroy(void)
 {
+	flush_workqueue(clean_wq);
 	destroy_workqueue(clean_wq);
+}
+
+void mlx4_ib_mcg_flush(void)
+{
+	flush_workqueue(clean_wq);
 }

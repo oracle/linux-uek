@@ -1,6 +1,6 @@
 /***************************************************************************
  *                                                                         *
- *  Copyright (c) 2000-2008 LSI Corporation.  All rights reserved.         *
+ *  Copyright (c) 200-2010 LSI Corporation.  All rights reserved.         *
  *                                                                         *
  * Description                                                             *
  * ------------                                                            *
@@ -56,9 +56,9 @@
 #define IOP_LOGINFO_CODE_FWUPLOAD_NO_FLASH_AVAILABLE         (0x0003E000) /* Tried to upload from flash, but there is none */
 #define IOP_LOGINFO_CODE_FWUPLOAD_UNKNOWN_IMAGE_TYPE         (0x0003E001) /* ImageType field contents were invalid */
 #define IOP_LOGINFO_CODE_FWUPLOAD_WRONG_IMAGE_SIZE           (0x0003E002) /* ImageSize field in TCSGE was bad/offset in MfgPg 4 was wrong */
-#define IOP_LOGINFO_CODE_FWUPLOAD_ENTIRE_FLASH_UPLOAD_FAILED (0x0003E003) /* Error occurred while attempting to upload the entire flash */
-#define IOP_LOGINFO_CODE_FWUPLOAD_REGION_UPLOAD_FAILED       (0x0003E004) /* Error occurred while attempting to upload single flash region */
-#define IOP_LOGINFO_CODE_FWUPLOAD_DMA_FAILURE                (0x0003E005) /* Problem occurred while DMAing FW to host memory */
+#define IOP_LOGINFO_CODE_FWUPLOAD_ENTIRE_FLASH_UPLOAD_FAILED (0x0003E003) /* Error occured while attempting to upload the entire flash */
+#define IOP_LOGINFO_CODE_FWUPLOAD_REGION_UPLOAD_FAILED       (0x0003E004) /* Error occured while attempting to upload single flash region */
+#define IOP_LOGINFO_CODE_FWUPLOAD_DMA_FAILURE                (0x0003E005) /* Problem occured while DMAing FW to host memory */
 
 #define IOP_LOGINFO_CODE_DIAG_MSG_ERROR                      (0x00040000) /* Error handling diag msg - or'd with diag status */
 
@@ -161,11 +161,10 @@
 
 #define PL_LOGINFO_SUB_CODE_INVALID_SGL                      (0x00000200)
 #define PL_LOGINFO_SUB_CODE_WRONG_REL_OFF_OR_FRAME_LENGTH    (0x00000300)
-#define PL_LOGINFO_SUB_CODE_FRAME_XFER_ERROR                 (0x00000400)
-/* Bits 0-3 encode Transport Status Register (offset 0x08) */
-/* Bit 0 is Status Bit 0: FrameXferErr */
-/* Bit 1 & 2 are Status Bits 16 and 17: FrameXmitErrStatus */
-/* Bit 3 is Status Bit 18 WriteDataLenghtGTDataLengthErr */
+#define PL_LOGINFO_SUB_CODE_FRAME_XFER_ERROR                 (0x00000400) /* Bits 0-3 encode Transport Status Register (offset 0x08) */
+                                                                          /* Bit 0 is Status Bit 0: FrameXferErr */
+                                                                          /* Bit 1 & 2 are Status Bits 16 and 17: FrameXmitErrStatus */
+                                                                          /* Bit 3 is Status Bit 18 WriteDataLenghtGTDataLengthErr */
 
 #define PL_LOGINFO_SUB_CODE_TX_FM_CONNECTED_LOW              (0x00000500)
 #define PL_LOGINFO_SUB_CODE_SATA_NON_NCQ_RW_ERR_BIT_SET      (0x00000600)
@@ -180,15 +179,14 @@
 #define PL_LOGINFO_SUB_CODE_DISCOVERY_REMOTE_SEP_RESET       (0x00000E01)
 #define PL_LOGINFO_SUB_CODE_SECOND_OPEN                      (0x00000F00)
 #define PL_LOGINFO_SUB_CODE_DSCVRY_SATA_INIT_TIMEOUT         (0x00001000)
-#define PL_LOGINFO_SUB_CODE_BREAK_ON_SATA_CONNECTION         (0x00002000)
-/* not currently used in mainline */
+#define PL_LOGINFO_SUB_CODE_BREAK_ON_SATA_CONNECTION  		 (0x00002000) /* not currently used in mainline */
 #define PL_LOGINFO_SUB_CODE_BREAK_ON_STUCK_LINK              (0x00003000)
 #define PL_LOGINFO_SUB_CODE_BREAK_ON_STUCK_LINK_AIP          (0x00004000)
 #define PL_LOGINFO_SUB_CODE_BREAK_ON_INCOMPLETE_BREAK_RCVD   (0x00005000)
 
 #define PL_LOGINFO_CODE_ENCL_MGMT_SMP_FRAME_FAILURE          (0x00200000) /* Can't get SMP Frame */
-#define PL_LOGINFO_CODE_ENCL_MGMT_SMP_READ_ERROR             (0x00200010) /* Error occurred on SMP Read */
-#define PL_LOGINFO_CODE_ENCL_MGMT_SMP_WRITE_ERROR            (0x00200020) /* Error occurred on SMP Write */
+#define PL_LOGINFO_CODE_ENCL_MGMT_SMP_READ_ERROR             (0x00200010) /* Error occured on SMP Read */
+#define PL_LOGINFO_CODE_ENCL_MGMT_SMP_WRITE_ERROR            (0x00200020) /* Error occured on SMP Write */
 #define PL_LOGINFO_CODE_ENCL_MGMT_NOT_SUPPORTED_ON_ENCL      (0x00200040) /* Encl Mgmt services not available for this WWID */
 #define PL_LOGINFO_CODE_ENCL_MGMT_ADDR_MODE_NOT_SUPPORTED    (0x00200050) /* Address Mode not suppored */
 #define PL_LOGINFO_CODE_ENCL_MGMT_BAD_SLOT_NUM               (0x00200060) /* Invalid Slot Number in SEP Msg */
@@ -207,8 +205,8 @@
 #define PL_LOGINFO_DA_SEP_RECEIVED_NACK_FROM_SLAVE           (0x00200103) /* SEP NACK'd, it is busy */
 #define PL_LOGINFO_DA_SEP_DID_NOT_RECEIVE_ACK                (0x00200104) /* SEP didn't rcv. ACK (Last Rcvd Bit = 1) */
 #define PL_LOGINFO_DA_SEP_BAD_STATUS_HDR_CHKSUM              (0x00200105) /* SEP stopped or sent bad chksum in Hdr */
-#define PL_LOGINFO_DA_SEP_STOP_ON_DATA                       (0x00200106) /* SEP stopped while transferring data */
-#define PL_LOGINFO_DA_SEP_STOP_ON_SENSE_DATA                 (0x00200107) /* SEP stopped while transferring sense data */
+#define PL_LOGINFO_DA_SEP_STOP_ON_DATA                       (0x00200106) /* SEP stopped while transfering data */
+#define PL_LOGINFO_DA_SEP_STOP_ON_SENSE_DATA                 (0x00200107) /* SEP stopped while transfering sense data */
 #define PL_LOGINFO_DA_SEP_UNSUPPORTED_SCSI_STATUS_1          (0x00200108) /* SEP returned unknown scsi status */
 #define PL_LOGINFO_DA_SEP_UNSUPPORTED_SCSI_STATUS_2          (0x00200109) /* SEP returned unknown scsi status */
 #define PL_LOGINFO_DA_SEP_CHKSUM_ERROR_AFTER_STOP            (0x0020010A) /* SEP returned bad chksum after STOP */
@@ -268,7 +266,7 @@
 
 /* Compatibility Error : IR Disabled */
 #define IR_LOGINFO_COMPAT_ERROR_RAID_DISABLED                  (0x00010030)
-/* Compatibility Error : Inquiry Command failed */
+/* Compatibility Error : Inquiry Comand failed */
 #define IR_LOGINFO_COMPAT_ERROR_INQUIRY_FAILED                 (0x00010031)
 /* Compatibility Error : Device not direct access device */
 #define IR_LOGINFO_COMPAT_ERROR_NOT_DIRECT_ACCESS              (0x00010032)
@@ -309,6 +307,8 @@
 #define IR_LOGINFO_DEV_FW_UPDATE_ERR_PORT_IO_TIMEOUTS_REQUIRED  (0x00010055)
 /* Device Firmware Update: Unable to allocate memory for page */
 #define IR_LOGINFO_DEV_FW_UPDATE_ERR_ALLOC_CFG_PAGE             (0x00010056)
+/* Device Firmware Update:  */
+//#define IR_LOGINFO_DEV_FW_UPDATE_ERR_                         (0x00010054)
 
 
 /****************************************************************************/

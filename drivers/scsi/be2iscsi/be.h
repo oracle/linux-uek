@@ -1,5 +1,5 @@
 /**
- * Copyright (C) 2005 - 2012 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -134,10 +134,6 @@ struct be_ctrl_info {
 #define PAGES_4K_SPANNED(_address, size)				\
 		((u32)((((size_t)(_address) & (PAGE_SIZE_4K - 1)) +	\
 			(size) + (PAGE_SIZE_4K - 1)) >> PAGE_SHIFT_4K))
-
-/* Byte offset into the page corresponding to given address */
-#define OFFSET_IN_PAGE(addr)						\
-		((size_t)(addr) & (PAGE_SIZE_4K-1))
 
 /* Returns bit offset within a DWORD of a bitfield */
 #define AMAP_BIT_OFFSET(_struct, field)					\

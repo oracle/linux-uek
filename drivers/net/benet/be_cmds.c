@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2011 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -93,13 +93,16 @@ static void be_mcc_notify(struct be_adapter *adapter)
  * little endian) */
 static inline bool be_mcc_compl_is_new(struct be_mcc_compl *compl)
 {
+	u32 flags;
+
 	if (compl->flags != 0) {
-		compl->flags = le32_to_cpu(compl->flags);
-		BUG_ON((compl->flags & CQE_FLAGS_VALID_MASK) == 0);
-		return true;
-	} else {
-		return false;
+		flags = le32_to_cpu(compl->flags);
+		if (flags & CQE_FLAGS_VALID_MASK) {
+			compl->flags = flags;
+			return true;
+		}
 	}
+	return false;
 }
 
 /* Need to reset the entire word that houses the valid bit */
@@ -298,7 +301,12 @@ void be_async_mcc_enable(struct be_adapter *adapter)
 
 void be_async_mcc_disable(struct be_adapter *adapter)
 {
+	spin_lock_bh(&adapter->mcc_cq_lock);
+
 	adapter->mcc_obj.rearm_cq = false;
+	be_cq_notify(adapter, adapter->mcc_obj.cq.id, false, 0);
+
+	spin_unlock_bh(&adapter->mcc_cq_lock);
 }
 
 int be_process_mcc(struct be_adapter *adapter)
@@ -465,19 +473,17 @@ static int be_mbox_notify_wait(struct be_adapter *adapter)
 	return 0;
 }
 
-static int be_POST_stage_get(struct be_adapter *adapter, u16 *stage)
+static u16 be_POST_stage_get(struct be_adapter *adapter)
 {
 	u32 sem;
-	u32 reg = skyhawk_chip(adapter) ? SLIPORT_SEMAPHORE_OFFSET_SH :
-					  SLIPORT_SEMAPHORE_OFFSET_BE;
 
-	pci_read_config_dword(adapter->pdev, reg, &sem);
-	*stage = sem & POST_STAGE_MASK;
-
-	if ((sem >> POST_ERR_SHIFT) & POST_ERR_MASK)
-		return -1;
+	if (BEx_chip(adapter))
+		sem  = ioread32(adapter->csr + SLIPORT_SEMAPHORE_OFFSET_BEx);
 	else
-		return 0;
+		pci_read_config_dword(adapter->pdev,
+				      SLIPORT_SEMAPHORE_OFFSET_SH, &sem);
+
+	return sem & POST_STAGE_MASK;
 }
 
 int lancer_wait_ready(struct be_adapter *adapter)
@@ -571,19 +577,17 @@ int be_fw_wait_ready(struct be_adapter *adapter)
 	}
 
 	do {
-		status = be_POST_stage_get(adapter, &stage);
-		if (status) {
-			dev_err(dev, "POST error; stage=0x%x\n", stage);
-			return -1;
-		} else if (stage != POST_STAGE_ARMFW_RDY) {
-			if (msleep_interruptible(2000)) {
-				dev_err(dev, "Waiting for POST aborted\n");
-				return -EINTR;
-			}
-			timeout += 2;
-		} else {
+		stage = be_POST_stage_get(adapter);
+		if (stage == POST_STAGE_ARMFW_RDY)
 			return 0;
+
+		dev_info(dev, "Waiting for POST, %ds elapsed\n",
+			 timeout);
+		if (msleep_interruptible(2000)) {
+			dev_err(dev, "Waiting for POST aborted\n");
+			return -EINTR;
 		}
+		timeout += 2;
 	} while (timeout < 60);
 
 	dev_err(dev, "POST timeout; stage=0x%x\n", stage);
@@ -2664,10 +2668,8 @@ int be_cmd_set_mac_list(struct be_adapter *adapter, u8 *mac_array,
 	cmd.size = sizeof(struct be_cmd_req_set_mac_list);
 	cmd.va = dma_alloc_coherent(&adapter->pdev->dev, cmd.size,
 			&cmd.dma, GFP_KERNEL);
-	if (!cmd.va) {
-		dev_err(&adapter->pdev->dev, "Memory alloc failure\n");
+	if (!cmd.va)
 		return -ENOMEM;
-	}
 
 	spin_lock_bh(&adapter->mcc_lock);
 
@@ -3134,6 +3136,39 @@ err:
 	return status;
 }
 
+int be_cmd_get_if_id(struct be_adapter *adapter, struct be_vf_cfg *vf_cfg,
+		     int vf_num)
+{
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_req_get_iface_list *req;
+	struct be_cmd_resp_get_iface_list *resp;
+	int status;
+
+	spin_lock_bh(&adapter->mcc_lock);
+
+	wrb = wrb_from_mccq(adapter);
+	if (!wrb) {
+		status = -EBUSY;
+		goto err;
+	}
+	req = embedded_payload(wrb);
+
+	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
+			       OPCODE_COMMON_GET_IFACE_LIST, sizeof(*resp),
+			       wrb, NULL);
+	req->hdr.domain = vf_num + 1;
+
+	status = be_mcc_notify_wait(adapter);
+	if (!status) {
+		resp = (struct be_cmd_resp_get_iface_list *)req;
+		vf_cfg->if_handle = le32_to_cpu(resp->if_desc.if_id);
+	}
+
+err:
+	spin_unlock_bh(&adapter->mcc_lock);
+	return status;
+}
+
 /* Uses sync mcc */
 int be_cmd_enable_vf(struct be_adapter *adapter, u8 domain)
 {
@@ -3163,6 +3198,31 @@ int be_cmd_enable_vf(struct be_adapter *adapter, u8 domain)
 	status = be_mcc_notify_wait(adapter);
 err:
 	spin_unlock_bh(&adapter->mcc_lock);
+	return status;
+}
+
+int be_cmd_intr_set(struct be_adapter *adapter, bool intr_enable)
+{
+	struct be_mcc_wrb *wrb;
+	struct be_cmd_req_intr_set *req;
+	int status;
+
+	if (mutex_lock_interruptible(&adapter->mbox_lock))
+		return -1;
+
+	wrb = wrb_from_mbox(adapter);
+
+	req = embedded_payload(wrb);
+
+	be_wrb_cmd_hdr_prepare(&req->hdr, CMD_SUBSYSTEM_COMMON,
+			       OPCODE_COMMON_SET_INTERRUPT_ENABLE, sizeof(*req),
+			       wrb, NULL);
+
+	req->intr_enabled = intr_enable;
+
+	status = be_mbox_notify_wait(adapter);
+
+	mutex_unlock(&adapter->mbox_lock);
 	return status;
 }
 

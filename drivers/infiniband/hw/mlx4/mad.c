@@ -744,12 +744,6 @@ static int ib_process_mad(struct ib_device *ibdev, int mad_flags, u8 port_num,
 	return IB_MAD_RESULT_SUCCESS | IB_MAD_RESULT_REPLY;
 }
 
-static __be32 be64_to_be32(__be64 b64)
-{
-	return cpu_to_be32(be64_to_cpu(b64) & 0xffffffff);
-}
-
-
 static void edit_counter(struct mlx4_counters *cnt, void *counters,
              __be16 attr_id)
 {
@@ -1945,10 +1939,11 @@ void mlx4_ib_close_sriov(struct mlx4_ib_dev *dev)
 
         if (!mlx4_is_mfunc(dev->dev))
                 return;
-
 	spin_lock_irqsave(&dev->sriov.going_down_lock, flags);
 	dev->sriov.is_going_down = 1;
 	spin_unlock_irqrestore(&dev->sriov.going_down_lock, flags);
+	/* flush clean_wq so we can destroy mcgs in mlx4_ib_free_demux_ctx*/
+	mlx4_ib_mcg_flush();
 	if (dev->dev->caps.sqp_demux) {
 		for (i = 0; i < dev->num_ports; i++) {
 			flush_workqueue(dev->sriov.demux[i].ud_wq);
@@ -2006,7 +2001,6 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev)
 {
 	struct ib_mad_agent *agent;
 	int p, q;
-
 	for (p = 0; p < dev->num_ports; ++p) {
 		for (q = 0; q <= 1; ++q) {
 			agent = dev->send_agent[p][q];
@@ -2015,8 +2009,9 @@ void mlx4_ib_mad_cleanup(struct mlx4_ib_dev *dev)
 				ib_unregister_mad_agent(agent);
 			}
 		}
-
+		spin_lock(&dev->sm_lock);
 		if (dev->sm_ah[p])
 			ib_destroy_ah(dev->sm_ah[p]);
+		spin_unlock(&dev->sm_lock);
 	}
 }

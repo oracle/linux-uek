@@ -204,7 +204,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.100.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.101.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
@@ -1511,7 +1511,7 @@ then\
 fi\
 if [ "$HARDLINK" != "no" -a -x /usr/sbin/hardlink ]\
 then\
-    (cd /usr/src/kernels/linux-%{kversion}-%{release}%{?1:.%{1}} &&\
+    (cd /usr/src/kernels/%{kversion}-%{release}%{?1:.%{1}}.%{_arch} &&\
      /usr/bin/find . -type f | while read f; do\
        hardlink -c /usr/src/kernels/*.fc*.*/$f $f\
      done)\
@@ -1758,6 +1758,54 @@ fi
 %kernel_variant_files -k vmlinux %{with_kdump} kdump
 
 %changelog
+* Tue Apr 02 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.101.0.el6uek]
+- PCI: Set device power state to PCI_D0 for device without native PM support
+  (Ajaykumar Hotchandani) [Orabug: 16482495]
+- xfs: don't assert on delalloc regions beyond EOF (Dave Chinner)
+- ovmapi: several fixes and cleanups (Sasha Levin) [Orabug: 16541619]
+- x86: ignore changes to paravirt_lazy_mode while in an interrupt context
+  (Chuck Anderson) [Orabug: 16417326]
+- RDS: fix rds-ping spinlock recursion (jeff.liu) [Orabug: 16223050]
+- vhost: fix length for cross region descriptor (Michael S. Tsirkin) [Orabug:
+  16387183] {CVE-2013-0311}
+- kabifix: block/scsi: Allow request and error handling timeouts to be
+  specified (Maxim Uvarov)
+- block/scsi: Allow request and error handling timeouts to be specified (Martin
+  K. Petersen) [Orabug: 16372401]
+- [SCSI] Shorten the path length of scsi_cmd_to_driver() (Li Zhong) [Orabug:
+  16372401]
+- Fix NULL dereferences in scsi_cmd_to_driver (Mark Rustad) [Orabug: 16372401]
+- SCSI: Fix error handling when no ULD is attached (Martin K. Petersen)
+  [Orabug: 16372401]
+- Handle disk devices which can not process medium access commands (Martin K.
+  Petersen) [Orabug: 16372401]
+- IB/core: Allow device-specific per-port sysfs files (Ralph Campbell)
+- RDMA/cma: Pass QP type into rdma_create_id() (Sean Hefty)
+- IB: Rename RAW_ETY to RAW_ETHERTYPE (Aleksey Senin)
+- IB: Warning Resolution. (Ajaykumar Hotchandani)
+- mlx4_core: fix FMR flags in free MTT range (Saeed Mahameed)
+- mlx4_core/ib: sriov fmr bug fixes (Saeed Mahameed)
+- mlx4_core: Change bitmap allocator to work in round-robin fashion (Saeed
+  Mahameed)
+- mlx4_vnic: move host admin vnics to closed state when closing the vnic.
+  (Saeed Mahameed)
+- mlx4_ib: make sure to flush clean_wq while closing sriov device (Saeed
+  Mahameed)
+- ib_sdp: fix deadlock when sdp_cma_handler is called while socket is being
+  closed (Saeed Mahameed)
+- ib_sdp: add unhandled events to rdma_cm_event_str (Saeed Mahameed)
+- mlx4_core: use dev->sriov instead of hardcoed 127 vfs when initializing FMR
+  MPT tables (Saeed Mahameed)
+- mlx4_vnic: print vnic keep alive info in mlx4_vnic_info (Saeed Mahameed)
+- drm/i915: bounds check execbuffer relocation count (Kees Cook) [Orabug:
+  16482650] {CVE-2013-0913}
+- sched: Fix cgroup movement of waking process (Daisuke Nishimura) [Orabug:
+  13740515]
+- sched: Fix cgroup movement of newly created process (Daisuke Nishimura)
+  [Orabug: 13740515]
+- sched: Fix cgroup movement of forking process (Daisuke Nishimura) [Orabug:
+  13740515]
+
 * Thu Mar 21 2013 Maxim Uvarov <maxim.uvarov@oracle.com> [2.6.39-400.100.0.el6uek]
 - xfs: prevent recursion in xfs_buf_iorequest (Christoph Hellwig)
 - xfs: punch new delalloc blocks out of failed writes inside (Dave Chinner)

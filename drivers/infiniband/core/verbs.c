@@ -387,8 +387,8 @@ EXPORT_SYMBOL(ib_create_qp);
 
 static const struct {
 	int			valid;
-	enum ib_qp_attr_mask	req_param[IB_QPT_RAW_ETY + 1];
-	enum ib_qp_attr_mask	opt_param[IB_QPT_RAW_ETY + 1];
+	enum ib_qp_attr_mask	req_param[IB_QPT_RAW_ETHERTYPE + 1];
+	enum ib_qp_attr_mask	opt_param[IB_QPT_RAW_ETHERTYPE + 1];
 } qp_state_table[IB_QPS_ERR + 1][IB_QPS_ERR + 1] = {
 	[IB_QPS_RESET] = {
 		[IB_QPS_RESET] = { .valid = 1 },
@@ -1039,7 +1039,7 @@ int ib_attach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 			return -EINVAL;
 		break;
 	case RDMA_TRANSPORT_IWARP:
-		if (qp->qp_type != IB_QPT_RAW_ETY)
+		if (qp->qp_type != IB_QPT_RAW_ETHERTYPE)
 			return -EINVAL;
 		break;
 	}
@@ -1058,7 +1058,7 @@ int ib_detach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 			return -EINVAL;
 		break;
 	case RDMA_TRANSPORT_IWARP:
-		if (qp->qp_type != IB_QPT_RAW_ETY)
+		if (qp->qp_type != IB_QPT_RAW_ETHERTYPE)
 			return -EINVAL;
 		break;
 	}

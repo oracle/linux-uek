@@ -218,11 +218,11 @@ static void ipoib_get_ringparam(struct net_device *dev,
 	param->rx_pending = ipoib_recvq_size;
 	param->tx_pending = ipoib_sendq_size;
 }
-int ipoib_set_flags(struct net_device *dev, u32 data, u32 supported)
+int ipoib_set_flags(struct net_device *dev, u32 data)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 
-	ethtool_op_set_flags(dev, data, supported);
+	ethtool_op_set_flags(dev, data, ETH_FLAG_LRO);
 	/*no support in LRO with 4k mtu.*/
 	if (ipoib_ud_need_sg(priv->max_ib_mtu) && (data & NETIF_F_LRO)) {
 

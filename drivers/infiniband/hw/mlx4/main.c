@@ -1736,7 +1736,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	mutex_init(&ibdev->cap_mask_mutex);
 	mutex_init(&ibdev->xrc_reg_mutex);
 
-	if (ib_register_device(&ibdev->ib_dev))
+	if (ib_register_device(&ibdev->ib_dev, NULL))
 		goto err_counter;
 
 	if (mlx4_ib_mad_init(ibdev))

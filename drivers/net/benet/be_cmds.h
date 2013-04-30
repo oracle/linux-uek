@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2011 Emulex
+ * Copyright (C) 2005 - 2013 Emulex
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -188,6 +188,7 @@ struct be_mcc_mailbox {
 #define OPCODE_COMMON_GET_BEACON_STATE			70
 #define OPCODE_COMMON_READ_TRANSRECV_DATA		73
 #define OPCODE_COMMON_GET_PORT_NAME			77
+#define OPCODE_COMMON_SET_INTERRUPT_ENABLE		89
 #define OPCODE_COMMON_GET_PHY_DETAILS			102
 #define OPCODE_COMMON_SET_DRIVER_FUNCTION_CAP		103
 #define OPCODE_COMMON_GET_CNTL_ADDITIONAL_ATTRIBUTES	121
@@ -203,6 +204,7 @@ struct be_mcc_mailbox {
 #define OPCODE_COMMON_GET_FN_PRIVILEGES			170
 #define OPCODE_COMMON_READ_OBJECT			171
 #define OPCODE_COMMON_WRITE_OBJECT			172
+#define OPCODE_COMMON_GET_IFACE_LIST			194
 #define OPCODE_COMMON_ENABLE_DISABLE_VF			196
 
 #define OPCODE_ETH_RSS_CONFIG				1
@@ -1790,10 +1792,33 @@ struct be_cmd_enable_disable_vf {
 	u8 rsvd[3];
 };
 
+struct be_cmd_req_intr_set {
+	struct be_cmd_req_hdr hdr;
+	u8 intr_enabled;
+	u8 rsvd[3];
+};
+
 static inline bool check_privilege(struct be_adapter *adapter, u32 flags)
 {
 	return flags & adapter->cmd_privileges ? true : false;
 }
+
+/************** Get IFACE LIST *******************/
+struct be_if_desc {
+	u32 if_id;
+	u32 cap_flags;
+	u32 en_flags;
+};
+
+struct be_cmd_req_get_iface_list {
+	struct be_cmd_req_hdr hdr;
+};
+
+struct be_cmd_resp_get_iface_list {
+	struct be_cmd_req_hdr hdr;
+	u32 if_cnt;
+	struct be_if_desc if_desc;
+};
 
 extern int be_pci_fnum_get(struct be_adapter *adapter);
 extern int be_fw_wait_ready(struct be_adapter *adapter);
@@ -1917,4 +1942,7 @@ extern int be_cmd_get_profile_config(struct be_adapter *adapter, u32 *cap_flags,
 
 extern int be_cmd_set_profile_config(struct be_adapter *adapter, u32 bps,
 				     u8 domain);
+extern int be_cmd_get_if_id(struct be_adapter *adapter,
+			    struct be_vf_cfg *vf_cfg, int vf_num);
 extern int be_cmd_enable_vf(struct be_adapter *adapter, u8 domain);
+extern int be_cmd_intr_set(struct be_adapter *adapter, bool intr_enable);
