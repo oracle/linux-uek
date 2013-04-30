@@ -1,3 +1,10 @@
+/*
+ * QLogic qlcnic NIC Driver
+ * Copyright (c) 2009-2013 QLogic Corporation
+ *
+ * See LICENSE.qlcnic for copyright and licensing details.
+ */
+
 #include "qlcnic.h"
 #include "qlcnic_hw.h"
 
@@ -290,7 +297,7 @@ qlcnic_83xx_init_privileged_vnic(struct qlcnic_adapter *adapter)
 	adapter->ahw->msix_supported = !!use_msi_x;
 	adapter->flags |= QLCNIC_ADAPTER_INITIALIZED;
 
-	netdev_info(adapter->netdev, "HAL Version: %d, Privileged function\n",
+	dev_info(&adapter->pdev->dev, "HAL Version: %d, Privileged function\n",
 			adapter->ahw->fw_hal_version);
 	return 0;
 }

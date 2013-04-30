@@ -1,3 +1,10 @@
+/*
+ * QLogic qlcnic NIC Driver
+ * Copyright (c) 2009-2013 QLogic Corporation
+ *
+ * See LICENSE.qlcnic for copyright and licensing details.
+ */
+
 #ifndef __QLCNIC_83XX_H
 #define __QLCNIC_83XX_H
 
@@ -460,7 +467,7 @@ struct qlcnic_83xx_idc {
 
 #define QLCNIC_83XX_TX_STAT_REGS	14
 #define QLCNIC_83XX_RX_STAT_REGS	40
-#define QLCNIC_83XX_MAC_STAT_REGS	80
+#define QLCNIC_83XX_MAC_STAT_REGS	94
 
 #define QLCNIC_GET_VPORT_INFO	1
 

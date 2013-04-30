@@ -1,3 +1,9 @@
+/*
+ * QLogic qlcnic NIC Driver
+ * Copyright (c) 2009-2013 QLogic Corporation
+ *
+ * See LICENSE.qlcnic for copyright and licensing details.
+ */
 
 #include "qlcnic.h"
 #include "qlcnic_hdr.h"
@@ -764,9 +770,11 @@ int qlcnic_dump_fw(struct qlcnic_adapter *adapter)
 
 	fw_dump->data = vmalloc(dump_size);
 	if (!fw_dump->data) {
-		dev_info(&adapter->pdev->dev,
-			"Unable to allocate (%d KB) for fw dump\n",
+		dev_err(&adapter->pdev->dev,
+			"Unable to allocate (%d KB) memory for firmware dump\n",
 			dump_size/1024);
+		dev_err(&adapter->pdev->dev,
+			"Firmware dump will not be captured\n");
 		return -ENOMEM;
 	}
 	memset(fw_dump->data, 0, dump_size);
