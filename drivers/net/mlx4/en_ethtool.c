@@ -40,33 +40,35 @@
 #include "en_port.h"
 
 
-static void mlx4_en_update_lro_stats(struct mlx4_en_priv *priv)
-{
-	int i;
-
-	priv->port_stats.lro_aggregated = 0;
-	priv->port_stats.lro_flushed = 0;
-	priv->port_stats.lro_no_desc = 0;
-
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->port_stats.lro_aggregated += priv->rx_ring[i].lro.stats.aggregated;
-		priv->port_stats.lro_flushed += priv->rx_ring[i].lro.stats.flushed;
-		priv->port_stats.lro_no_desc += priv->rx_ring[i].lro.stats.no_desc;
-	}
-}
-
 static void
 mlx4_en_get_drvinfo(struct net_device *dev, struct ethtool_drvinfo *drvinfo)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
 
-	sprintf(drvinfo->driver, DRV_NAME " (%s)", mdev->dev->board_id);
+	switch (mdev->dev->rev_id) {
+	case 0x0:	/* Kfir 0xa0 */
+	case 0x1:	/* Kfir 0xa1 */
+		snprintf(drvinfo->driver, 32, DRV_NAME " (%s_CX-3)", mdev->dev->board_id);
+		break;
+	case 0xa0:
+		snprintf(drvinfo->driver, 32, DRV_NAME " (%s_CX)", mdev->dev->board_id);
+		break;
+	case 0xb0:
+		snprintf(drvinfo->driver, 32, DRV_NAME " (%s_CX-2)", mdev->dev->board_id);
+		break;
+	default:
+		snprintf(drvinfo->driver, 32, DRV_NAME " (%s)", mdev->dev->board_id);
+		break;
+	}
 	strncpy(drvinfo->version, DRV_VERSION " (" DRV_RELDATE ")", 32);
-	sprintf(drvinfo->fw_version, "%d.%d.%d",
+	snprintf(drvinfo->fw_version, ETHTOOL_FWVERS_LEN, "%d.%d.%d",
 		(u16) (mdev->dev->caps.fw_ver >> 32),
 		(u16) ((mdev->dev->caps.fw_ver >> 16) & 0xffff),
 		(u16) (mdev->dev->caps.fw_ver & 0xffff));
+	if (mdev->dev->caps.clp_ver)
+		snprintf(drvinfo->fw_version, ETHTOOL_FWVERS_LEN, "%s-%d", drvinfo->fw_version,
+			mdev->dev->caps.clp_ver);
 	strncpy(drvinfo->bus_info, pci_name(mdev->dev->pdev), 32);
 	drvinfo->n_stats = 0;
 	drvinfo->regdump_len = 0;
@@ -94,8 +96,10 @@ static int mlx4_en_set_tso(struct net_device *dev, u32 data)
 			struct net_device *vdev;
 			for (i = 0; i < VLAN_N_VID; i++) {
 				vdev = vlan_group_get_device(priv->vlgrp, i);
-				vdev->features |= (NETIF_F_TSO | NETIF_F_TSO6);
-				vlan_group_set_device(priv->vlgrp, i, vdev);
+				if (vdev) {
+					vdev->features |= (NETIF_F_TSO | NETIF_F_TSO6);
+					vlan_group_set_device(priv->vlgrp, i, vdev);
+				}
 			}
 		}
 #endif
@@ -109,8 +113,10 @@ static int mlx4_en_set_tso(struct net_device *dev, u32 data)
 			struct net_device *vdev;
 			for (i = 0; i < VLAN_N_VID; i++) {
 				vdev = vlan_group_get_device(priv->vlgrp, i);
-				vdev->features &= ~(NETIF_F_TSO | NETIF_F_TSO6);
-				vlan_group_set_device(priv->vlgrp, i, vdev);
+				if (vdev) {
+					vdev->features &= ~(NETIF_F_TSO | NETIF_F_TSO6);
+					vlan_group_set_device(priv->vlgrp, i, vdev);
+				}
 			}
 		}
 #endif
@@ -140,9 +146,9 @@ static const char main_strings[][ETH_GSTRING_LEN] = {
 	"tx_heartbeat_errors", "tx_window_errors",
 
 	/* port statistics */
-	"lro_aggregated", "lro_flushed", "lro_no_desc", "tso_packets",
-	"queue_stopped", "wake_queue", "tx_timeout", "rx_alloc_failed",
-	"rx_csum_good", "rx_csum_none", "tx_chksum_offload",
+	"tso_packets", "queue_stopped", "wake_queue", 
+	"tx_timeout", "rx_alloc_failed", "rx_csum_good", 
+	"rx_csum_none", "tx_chksum_offload",
 
 	/* packet statistics */
 	"broadcast", "rx_prio_0", "rx_prio_1", "rx_prio_2", "rx_prio_3",
@@ -154,7 +160,7 @@ static const char main_strings[][ETH_GSTRING_LEN] = {
 #define NUM_ALL_STATS	(NUM_MAIN_STATS + NUM_PORT_STATS + NUM_PKT_STATS + NUM_PERF_STATS)
 
 static const char mlx4_en_test_names[][ETH_GSTRING_LEN]= {
-	"Interupt Test",
+	"Interrupt Test",
 	"Link Test",
 	"Speed Test",
 	"Register Test",
@@ -170,78 +176,6 @@ static void mlx4_en_set_msglevel(struct net_device *dev, u32 val)
 {
 	((struct mlx4_en_priv *) netdev_priv(dev))->msg_enable = val;
 }
-
-static void mlx4_en_get_wol(struct net_device *netdev,
-			    struct ethtool_wolinfo *wol)
-{
-	struct mlx4_en_priv *priv = netdev_priv(netdev);
-	int err = 0;
-	struct mlx4_wol_struct wol_info;
-
-	if (!priv->mdev->dev->caps.wol) {
-		wol->supported = 0;
-		wol->wolopts = 0;
-		return;
-	}
-
-	memset(&wol_info, 0, sizeof(wol_info));
-
-	err = mlx4_wol_read(priv->mdev->dev, &wol_info, priv->port);
-	if (err) {
-		en_err(priv, "Failed to get WoL information\n");
-		return;
-	}
-
-	if (be32_to_cpu(wol_info.flags) & MLX4_EN_WOL_MAGIC)
-		wol->supported = WAKE_MAGIC;
-	else
-		wol->supported = 0;
-
-	if (be32_to_cpu(wol_info.flags) & MLX4_EN_WOL_ENABLED)
-		wol->wolopts = WAKE_MAGIC;
-	else
-		wol->wolopts = 0;
-}
-
-static int mlx4_en_set_wol(struct net_device *netdev,
-			    struct ethtool_wolinfo *wol)
-{
-	struct mlx4_en_priv *priv = netdev_priv(netdev);
-	struct mlx4_wol_struct wol_info;
-	int err = 0;
-
-	if (!priv->mdev->dev->caps.wol) {
-		wol->supported = 0;
-		wol->wolopts = 0;
-		return -EOPNOTSUPP;
-	}
-
-	if (wol->supported & ~WAKE_MAGIC)
-		return -EINVAL;
-
-	memset(&wol_info, 0, sizeof(wol_info));
-
-	err = mlx4_wol_read(priv->mdev->dev, &wol_info, priv->port);
-	if (err)
-		en_err(priv, "Failed to get WoL information\n");
-
-	if (wol->wolopts & WAKE_MAGIC) {
-		wol_info.flags |= cpu_to_be32(MLX4_EN_WOL_DO_MODIFY |
-					      MLX4_EN_WOL_ENABLED |
-					      MLX4_EN_WOL_MAGIC);
-	} else {
-		wol_info.flags |=
-			cpu_to_be32(MLX4_EN_WOL_DO_MODIFY & ~MLX4_EN_WOL_MAGIC);
-	}
-	err = mlx4_wol_write(priv->mdev->dev, &wol_info, priv->port);
-
-	if (err) {
-		en_err(priv, "Failed to set WoL information\n");
-		return err;
-	}
-
-	return 0;
- }
 
 static int mlx4_en_get_sset_count(struct net_device *dev, int sset)
 {
@@ -267,19 +201,17 @@ static void mlx4_en_get_ethtool_stats(struct net_device *dev,
 
 	spin_lock_bh(&priv->stats_lock);
 
-	mlx4_en_update_lro_stats(priv);
-
 	for (i = 0; i < NUM_MAIN_STATS; i++)
 		data[index++] = ((unsigned long *) &priv->stats)[i];
 	for (i = 0; i < NUM_PORT_STATS; i++)
 		data[index++] = ((unsigned long *) &priv->port_stats)[i];
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		data[index++] = priv->tx_ring[i].packets;
-		data[index++] = priv->tx_ring[i].bytes;
+		data[index++] = priv->tx_ring[i]->packets;
+		data[index++] = priv->tx_ring[i]->bytes;
 	}
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		data[index++] = priv->rx_ring[i].packets;
-		data[index++] = priv->rx_ring[i].bytes;
+		data[index++] = priv->rx_ring[i]->packets;
+		data[index++] = priv->rx_ring[i]->bytes;
 	}
 	for (i = 0; i < NUM_PKT_STATS; i++)
 		data[index++] = ((unsigned long *) &priv->pkstats)[i];
@@ -303,34 +235,34 @@ static void mlx4_en_get_strings(struct net_device *dev,
 	switch (stringset) {
 	case ETH_SS_TEST:
 		for (i = 0; i < MLX4_EN_NUM_SELF_TEST - 2; i++)
-			strcpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i]);
+			strncpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i], ETH_GSTRING_LEN);
 		if (priv->mdev->dev->caps.loopback_support)
 			for (; i < MLX4_EN_NUM_SELF_TEST; i++)
-				strcpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i]);
+				strncpy(data + i * ETH_GSTRING_LEN, mlx4_en_test_names[i], ETH_GSTRING_LEN);
 		break;
 
 	case ETH_SS_STATS:
 		/* Add main counters */
 		for (i = 0; i < NUM_MAIN_STATS; i++)
-			strcpy(data + (index++) * ETH_GSTRING_LEN, main_strings[i]);
+			strncpy(data + (index++) * ETH_GSTRING_LEN, main_strings[i], ETH_GSTRING_LEN);
 		for (i = 0; i< NUM_PORT_STATS; i++)
-			strcpy(data + (index++) * ETH_GSTRING_LEN,
-			main_strings[i + NUM_MAIN_STATS]);
+			strncpy(data + (index++) * ETH_GSTRING_LEN,
+			main_strings[i + NUM_MAIN_STATS], ETH_GSTRING_LEN);
 		for (i = 0; i < priv->tx_ring_num; i++) {
-			sprintf(data + (index++) * ETH_GSTRING_LEN,
+			snprintf(data + (index++) * ETH_GSTRING_LEN, ETH_GSTRING_LEN,
 				"tx%d_packets", i);
-			sprintf(data + (index++) * ETH_GSTRING_LEN,
+			snprintf(data + (index++) * ETH_GSTRING_LEN, ETH_GSTRING_LEN,
 				"tx%d_bytes", i);
 		}
 		for (i = 0; i < priv->rx_ring_num; i++) {
-			sprintf(data + (index++) * ETH_GSTRING_LEN,
+			snprintf(data + (index++) * ETH_GSTRING_LEN, ETH_GSTRING_LEN,
 				"rx%d_packets", i);
-			sprintf(data + (index++) * ETH_GSTRING_LEN,
+			snprintf(data + (index++) * ETH_GSTRING_LEN, ETH_GSTRING_LEN,
 				"rx%d_bytes", i);
 		}
 		for (i = 0; i< NUM_PKT_STATS; i++)
-			strcpy(data + (index++) * ETH_GSTRING_LEN,
-			main_strings[i + NUM_MAIN_STATS + NUM_PORT_STATS]);
+			strncpy(data + (index++) * ETH_GSTRING_LEN,
+			main_strings[i + NUM_MAIN_STATS + NUM_PORT_STATS], ETH_GSTRING_LEN);
 		break;
 	}
 }
@@ -340,12 +272,24 @@ static int mlx4_en_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int trans_type;
 
-	cmd->autoneg = AUTONEG_DISABLE;
-	cmd->supported = SUPPORTED_10000baseT_Full;
-	cmd->advertising = ADVERTISED_10000baseT_Full;
-
-	if (mlx4_en_QUERY_PORT(priv->mdev, priv->port))
-		return -ENOMEM;
+	switch (priv->mdev->pdev->device) {
+	case 0x6764:
+	case 0x6765:
+	case 0x6746:
+	case 0x6747:
+		cmd->autoneg = AUTONEG_ENABLE;
+		cmd->supported = SUPPORTED_10000baseT_Full |
+				 SUPPORTED_1000baseT_Full |
+				 SUPPORTED_Autoneg;
+		cmd->advertising = ADVERTISED_10000baseT_Full |
+				   ADVERTISED_1000baseT_Full |
+				   ADVERTISED_Autoneg;
+		break;
+	default:
+		cmd->autoneg = AUTONEG_DISABLE;
+		cmd->supported = SUPPORTED_10000baseT_Full;
+		cmd->advertising = ADVERTISED_10000baseT_Full;
+	}
 
 	trans_type = priv->port_state.transciver;
 	if (netif_carrier_ok(dev)) {
@@ -388,8 +332,8 @@ static int mlx4_en_get_coalesce(struct net_device *dev,
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 
-	coal->tx_coalesce_usecs = 0;
-	coal->tx_max_coalesced_frames = 0;
+	coal->tx_coalesce_usecs = priv->tx_usecs;
+	coal->tx_max_coalesced_frames = priv->tx_frames;
 	coal->rx_coalesce_usecs = priv->rx_usecs;
 	coal->rx_max_coalesced_frames = priv->rx_frames;
 
@@ -418,6 +362,21 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 				MLX4_EN_RX_COAL_TIME :
 				coal->rx_coalesce_usecs;
 
+	/* Setting TX coalescing parameters */
+	if (coal->tx_coalesce_usecs != priv->tx_usecs ||
+	    coal->tx_max_coalesced_frames != priv->tx_frames) {
+		priv->tx_usecs = coal->tx_coalesce_usecs;
+		priv->tx_frames = coal->tx_max_coalesced_frames;
+		for (i = 0; i < priv->tx_ring_num; i++) {
+			priv->tx_cq[i]->moder_cnt = priv->tx_frames;
+			priv->tx_cq[i]->moder_time = priv->tx_usecs;
+			if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i])) {
+				en_warn(priv, "Failed changing moderation "
+					      "for TX cq %d\n", i);
+			}
+		}
+	}
+
 	/* Set adaptive coalescing params */
 	priv->pkt_rate_low = coal->pkt_rate_low;
 	priv->rx_usecs_low = coal->rx_coalesce_usecs_low;
@@ -425,14 +384,14 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	priv->rx_usecs_high = coal->rx_coalesce_usecs_high;
 	priv->sample_interval = coal->rate_sample_interval;
 	priv->adaptive_rx_coal = coal->use_adaptive_rx_coalesce;
-	priv->last_moder_time = MLX4_EN_AUTO_CONF;
 	if (priv->adaptive_rx_coal)
 		return 0;
 
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i].moder_cnt = priv->rx_frames;
-		priv->rx_cq[i].moder_time = priv->rx_usecs;
-		err = mlx4_en_set_cq_moder(priv, &priv->rx_cq[i]);
+		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+		priv->rx_cq[i]->moder_time = priv->rx_usecs;
+		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
 		if (err)
 			return err;
 	}
@@ -448,12 +407,15 @@ static int mlx4_en_set_pauseparam(struct net_device *dev,
 
 	priv->prof->tx_pause = pause->tx_pause != 0;
 	priv->prof->rx_pause = pause->rx_pause != 0;
-	err = mlx4_SET_PORT_general(mdev->dev, priv->port,
+	err = mlx4_SET_PORT_general(mdev->mlx4_intf, mdev->dev, priv->port,
 				    priv->rx_skb_size + ETH_FCS_LEN,
-				    priv->prof->tx_pause,
-				    priv->prof->tx_ppp,
-				    priv->prof->rx_pause,
-				    priv->prof->rx_ppp);
+				    &priv->prof->tx_pause,
+				    &priv->prof->rx_pause);
+
+	if ((priv->prof->tx_pause != (pause->tx_pause != 0)) ||
+	    (priv->prof->rx_pause != (pause->rx_pause != 0)))
+		err = -EINVAL;
+
 	if (err)
 		en_err(priv, "Failed setting pause params\n");
 
@@ -477,6 +439,7 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	u32 rx_size, tx_size;
 	int port_up = 0;
 	int err = 0;
+	int i;
 
 	if (param->rx_jumbo_pending || param->rx_mini_pending)
 		return -EINVAL;
@@ -488,9 +451,9 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 	tx_size = max_t(u32, tx_size, MLX4_EN_MIN_TX_SIZE);
 	tx_size = min_t(u32, tx_size, MLX4_EN_MAX_TX_SIZE);
 
-	if (rx_size == (priv->port_up ? priv->rx_ring[0].actual_size :
-					priv->rx_ring[0].size) &&
-	    tx_size == priv->tx_ring[0].size)
+	if (rx_size == (priv->port_up ? priv->rx_ring[0]->actual_size :
+					priv->rx_ring[0]->size) &&
+	    tx_size == priv->tx_ring[0]->size)
 		return 0;
 
 	mutex_lock(&mdev->state_lock);
@@ -515,6 +478,15 @@ static int mlx4_en_set_ringparam(struct net_device *dev,
 			en_err(priv, "Failed starting port\n");
 	}
 
+	for (i = 0; i < priv->rx_ring_num; i++) {
+		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+		priv->rx_cq[i]->moder_time = priv->rx_usecs;
+		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+		if (err)
+			goto out;
+	}
+
 out:
 	mutex_unlock(&mdev->state_lock);
 	return err;
@@ -529,14 +501,13 @@ static void mlx4_en_get_ringparam(struct net_device *dev,
 	param->rx_max_pending = MLX4_EN_MAX_RX_SIZE;
 	param->tx_max_pending = MLX4_EN_MAX_TX_SIZE;
 	param->rx_pending = priv->port_up ?
-		priv->rx_ring[0].actual_size : priv->rx_ring[0].size;
-	param->tx_pending = priv->tx_ring[0].size;
+		priv->rx_ring[0]->actual_size : priv->rx_ring[0]->size;
+	param->tx_pending = priv->tx_ring[0]->size;
 }
 
 static int mlx4_en_set_flags(struct net_device *dev, u32 data)
 {
-	return ethtool_op_set_flags(dev, data, 0);
-
+    return ethtool_op_set_flags(dev, data, 0);
 }
 
 const struct ethtool_ops mlx4_en_ethtool_ops = {
@@ -558,8 +529,8 @@ const struct ethtool_ops mlx4_en_ethtool_ops = {
 	.get_sset_count = mlx4_en_get_sset_count,
 	.get_ethtool_stats = mlx4_en_get_ethtool_stats,
 	.self_test = mlx4_en_self_test,
-	.get_wol = mlx4_en_get_wol,
-	.set_wol = mlx4_en_set_wol,
+//	.get_wol = mlx4_en_get_wol,
+//	.set_wol = mlx4_en_set_wol,
 	.get_msglevel = mlx4_en_get_msglevel,
 	.set_msglevel = mlx4_en_set_msglevel,
 	.get_coalesce = mlx4_en_get_coalesce,

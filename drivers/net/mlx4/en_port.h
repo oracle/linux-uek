@@ -35,10 +35,23 @@
 #define _MLX4_EN_PORT_H_
 
 
+#define VLAN_FLTR_SIZE	128
+struct mlx4_set_vlan_fltr_mbox {
+    __be32 entry[VLAN_FLTR_SIZE];
+};
+
 enum {
 	MLX4_MCAST_CONFIG       = 0,
 	MLX4_MCAST_DISABLE      = 1,
 	MLX4_MCAST_ENABLE       = 2,
+};
+
+enum {
+	MLX4_EN_1G_SPEED	= 0x02,
+	MLX4_EN_10G_SPEED_XFI	= 0x01,
+	MLX4_EN_10G_SPEED_XAUI	= 0x00,
+	MLX4_EN_40G_SPEED	= 0x40,
+	MLX4_EN_OTHER_SPEED	= 0x0f,
 };
 
 struct mlx4_en_query_port_context {
@@ -48,11 +61,11 @@ struct mlx4_en_query_port_context {
 	__be16 mtu;
 	u8 reserved2;
 	u8 link_speed;
-#define MLX4_EN_SPEED_MASK	0x3
-#define MLX4_EN_1G_SPEED	0x2
+#define MLX4_EN_SPEED_MASK	0x43
 	u16 reserved3[5];
 	__be64 mac;
 	u8 transceiver;
+	u8 actual_speed;
 };
 
 #endif

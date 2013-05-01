@@ -31,6 +31,7 @@
  *
  */
 
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <linux/mlx4/qp.h>
 
@@ -43,7 +44,7 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 	struct mlx4_en_dev *mdev = priv->mdev;
 
 	memset(context, 0, sizeof *context);
-	context->flags = cpu_to_be32(7 << 16 | rss << 13);
+	context->flags = cpu_to_be32(7 << 16 | rss << MLX4_RSS_QPC_FLAG_OFFSET);
 	context->pd = cpu_to_be32(mdev->priv_pdn);
 	context->mtu_msgmax = 0xff;
 	if (!is_tx && !rss) {
@@ -64,7 +65,7 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 }
 
 
-int mlx4_en_map_buffer(struct mlx4_buf *buf)
+int mlx4_en_map_buffer(struct mlx4_buf *buf, int numa_node)
 {
 	struct page **pages;
 	int i;
@@ -72,7 +73,11 @@ int mlx4_en_map_buffer(struct mlx4_buf *buf)
 	if (BITS_PER_LONG == 64 || buf->nbufs == 1)
 		return 0;
 
-	pages = kmalloc(sizeof *pages * buf->nbufs, GFP_KERNEL);
+	pages = kmalloc_node(sizeof *pages * buf->nbufs, GFP_KERNEL, numa_node);
+
+	if (!pages)
+		pages = kmalloc(sizeof *pages * buf->nbufs, GFP_KERNEL);
+
 	if (!pages)
 		return -ENOMEM;
 

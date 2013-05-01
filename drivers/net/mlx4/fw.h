@@ -122,8 +122,10 @@ struct mlx4_dev_cap {
 	u32 max_basic_counters;
 	u32 max_ext_counters;
 	int wol;
+	u16 clp_ver;
 	u32 mad_demux;
 	u32 max_funix;
+	int qinq;
 };
 
 struct mlx4_adapter {

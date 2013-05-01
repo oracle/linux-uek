@@ -832,18 +832,21 @@ static int mlx4_MCAST(struct mlx4_dev *dev, struct mlx4_qp *qp,
 	return err;
 }
 
-
 int mlx4_multicast_attach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 			  int block_mcast_loopback, enum mlx4_protocol prot)
 {
+	enum mlx4_steer_type steer = MLX4_MC_STEER;
+
 	if (prot == MLX4_PROT_ETH && !dev->caps.vep_mc_steering)
 		return 0;
 
 	if (mlx4_is_mfunc(dev))
 		return mlx4_MCAST(dev, qp, gid, 1, block_mcast_loopback, prot);
 
-	if (prot == MLX4_PROT_ETH)
-		gid[7] |= (dev->caps.function << 4 | MLX4_MC_STEER << 1);
+	if (prot == MLX4_PROT_ETH) {
+		gid[4] = (dev->caps.vep_num);
+		gid[7] |= (steer << 1);
+	}
 
 	return mlx4_qp_attach_common(dev, qp, gid,
 				     block_mcast_loopback, prot,
@@ -851,21 +854,27 @@ int mlx4_multicast_attach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 }
 EXPORT_SYMBOL_GPL(mlx4_multicast_attach);
 
+
 int mlx4_multicast_detach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
-						enum mlx4_protocol prot)
+			  enum mlx4_protocol prot)
 {
+	enum mlx4_steer_type steer = MLX4_MC_STEER;
+
 	if (prot == MLX4_PROT_ETH && !dev->caps.vep_mc_steering)
 		return 0;
 
 	if (mlx4_is_mfunc(dev))
 		return mlx4_MCAST(dev, qp, gid, 0, 0, prot);
 
-	if (prot == MLX4_PROT_ETH)
-		gid[7] |= (dev->caps.function << 4 | MLX4_MC_STEER << 1);
+	if (prot == MLX4_PROT_ETH) {
+		gid[4] = (dev->caps.vep_num);
+		gid[7] |= (steer << 1);
+	}
 
 	return mlx4_qp_detach_common(dev, qp, gid, prot, MLX4_MC_STEER);
 }
 EXPORT_SYMBOL_GPL(mlx4_multicast_detach);
+
 
 int mlx4_PROMISC_wrapper(struct mlx4_dev *dev, int slave,
 			 struct mlx4_vhcr *vhcr,

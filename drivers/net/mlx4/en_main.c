@@ -35,6 +35,7 @@
 #include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/netdevice.h>
+#include <linux/slab.h>
 
 #include <linux/mlx4/driver.h>
 #include <linux/mlx4/device.h>
@@ -56,55 +57,56 @@ static const char mlx4_en_version[] =
 	module_param(X , uint, 0444); \
 	MODULE_PARM_DESC(X, desc);
 
-
+#define MLX4_EN_PARM_BOOL(X, def_val, desc) \
+	static unsigned int X = def_val;\
+	module_param(X , bool, 0444); \
+	MODULE_PARM_DESC(X, desc);
 /*
  * Device scope module parameters
  */
 
 
-/* Enable RSS TCP traffic */
-MLX4_EN_PARM_INT(tcp_rss, 1,
-		 "Enable RSS for incomming TCP traffic or disabled (0)");
+/* Total number of RX Rings */
+MLX4_EN_PARM_INT(num_rx_rings, MAX_RX_RINGS,
+		 "Total number of RX Rings (default 16, range 1-16, power of 2)");
+
 /* Enable RSS UDP traffic */
-MLX4_EN_PARM_INT(udp_rss, 1,
+MLX4_EN_PARM_BOOL(udp_rss, true,
 		 "Enable RSS for incomming UDP traffic or disabled (0)");
 
-/* Number of LRO sessions per Rx ring (rounded up to a power of two) */
-MLX4_EN_PARM_INT(num_lro, MLX4_EN_MAX_LRO_DESCRIPTORS,
-		 "Number of LRO sessions per ring or disabled (0)");
+MLX4_EN_PARM_BOOL(enable_sys_tune, false, "Tune the cpu's for better performance (default 0)");
 
-/* Allow reassembly of fragmented IP packets */
-MLX4_EN_PARM_INT(ip_reasm, 1, "Allow reassembly of fragmented IP packets (!0)");
-
-/* Priority pausing */
-MLX4_EN_PARM_INT(pfctx, 0, "Priority based Flow Control policy on TX[7:0]."
-			   " Per priority bit mask");
-MLX4_EN_PARM_INT(pfcrx, 0, "Priority based Flow Control policy on RX[7:0]."
-			   " Per priority bit mask");
+MLX4_EN_PARM_INT(mem_node, -1,
+		 "Default Node for memory allocation (default -1)");
 
 static int mlx4_en_get_profile(struct mlx4_en_dev *mdev)
 {
 	struct mlx4_en_profile *params = &mdev->profile;
 	int i;
+	u8 pfctx, pfcrx;
 
-	params->tcp_rss = tcp_rss;
 	params->udp_rss = udp_rss;
 	if (params->udp_rss && !mdev->dev->caps.udp_rss) {
 		mlx4_warn(mdev, "UDP RSS is not supported on this device.\n");
 		params->udp_rss = 0;
 	}
-	params->num_lro = min_t(int, num_lro , MLX4_EN_MAX_LRO_DESCRIPTORS);
-	params->ip_reasm = ip_reasm;
 	for (i = 1; i <= MLX4_MAX_PORTS; i++) {
+		mlx4_get_port_pfc(mdev->dev, i, &pfctx, &pfcrx);
 		params->prof[i].rx_pause = 1;
-		params->prof[i].rx_ppp = pfcrx;
 		params->prof[i].tx_pause = 1;
-		params->prof[i].tx_ppp = pfctx;
 		params->prof[i].tx_ring_size = MLX4_EN_DEF_TX_RING_SIZE;
 		params->prof[i].rx_ring_size = MLX4_EN_DEF_RX_RING_SIZE;
-		params->prof[i].tx_ring_num = MLX4_EN_NUM_HASH_RINGS + 1 +
+		params->prof[i].tx_ring_num = MLX4_EN_NUM_HASH_RINGS +
 			(!!pfcrx) * MLX4_EN_NUM_PPP_RINGS;
+		params->prof[i].rx_ppp = pfcrx;
 	}
+	/* validate mem_node parameter */
+	if (mem_node != -1 && !node_online(mem_node)) {
+		mlx4_warn(mdev, "Illegal value for Memory node: %d,"
+				" reseting to default\n", mem_node);
+		mem_node = -1;
+	}
+	params->mem_node = mem_node;
 
 	return 0;
 }
@@ -117,8 +119,7 @@ static void *get_netdev(struct mlx4_dev *dev, void *ctx, u8 port)
 }
 
 static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
-			  enum mlx4_dev_event event,
-			  unsigned long port)
+			  enum mlx4_dev_event event, unsigned long port)
 {
 	struct mlx4_en_dev *mdev = (struct mlx4_en_dev *) endev_ptr;
 	struct mlx4_en_priv *priv;
@@ -127,20 +128,20 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 	switch (event) {
 	case MLX4_DEV_EVENT_PORT_UP:
 	case MLX4_DEV_EVENT_PORT_DOWN:
+		 if (!mdev->pndev[port])
+            return;
+        priv = netdev_priv(mdev->pndev[port]);
+
 		/* To prevent races, we poll the link state in a separate
 		  task rather than changing it here */
-		if (!mdev->pndev[port])
-			return;
-		priv = netdev_priv(mdev->pndev[port]);
-
 		priv->link_state = event;
 		queue_work(mdev->workqueue, &priv->linkstate_task);
 		break;
 
 	case MLX4_EVENT_TYPE_MAC_UPDATE:
-		if (!mdev->pndev[port])
-			return;
-		priv = netdev_priv(mdev->pndev[port]);
+		 if (!mdev->pndev[port])
+            return;
+        priv = netdev_priv(mdev->pndev[port]);
 
 		priv->mac = dev->caps.def_mac[port];
 		for (i = 0; i < ETH_ALEN; i++) {
@@ -152,9 +153,6 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 
 	case MLX4_DEV_EVENT_CATASTROPHIC_ERROR:
 		mlx4_err(mdev, "Internal error detected, restarting device\n");
-		break;
-
-	case MLX4_DEV_EVENT_PORT_MGMT_CHANGE: /* ignore event */
 		break;
 
 	default:
@@ -178,10 +176,13 @@ static void mlx4_en_remove(struct mlx4_dev *dev, void *endev_ptr)
 	flush_workqueue(mdev->workqueue);
 	destroy_workqueue(mdev->workqueue);
 	mlx4_mr_free(dev, &mdev->mr);
+	iounmap(mdev->uar_map);
 	mlx4_uar_free(dev, &mdev->priv_uar);
 	mlx4_pd_free(dev, mdev->priv_pdn);
 	kfree(mdev);
 }
+
+static struct mlx4_interface mlx4_en_interface;
 
 static void *mlx4_en_add(struct mlx4_dev *dev)
 {
@@ -218,6 +219,7 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 	mdev->dma_device = &(dev->pdev->dev);
 	mdev->pdev = dev->pdev;
 	mdev->device_up = false;
+	mdev->mlx4_intf = &mlx4_en_interface;
 
 	mdev->LSO_support = !!(dev->caps.flags & (1 << 15));
 	if (!mdev->LSO_support)
@@ -228,7 +230,7 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 			 MLX4_PERM_LOCAL_WRITE |  MLX4_PERM_LOCAL_READ,
 			 0, 0, &mdev->mr)) {
 		mlx4_err(mdev, "Failed allocating memory region\n");
-		goto err_uar;
+		goto err_map;
 	}
 	if (mlx4_mr_enable(mdev->dev, &mdev->mr)) {
 		mlx4_err(mdev, "Failed enabling memory region\n");
@@ -249,10 +251,19 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 
 	/* Number of RX rings is between (MIN_RX_RINGS, MAX_RX_RINGS) + 1
 	 * and depends on number of completion vectors */
-	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_ETH)
-		mdev->profile.prof[i].rx_ring_num = rounddown_pow_of_two(
-			max_t(int, MIN_RX_RINGS,
-			      min_t(int, dev->caps.num_comp_vectors, MAX_RX_RINGS - 1))) + 1;
+	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_ETH) {
+			if (!dev->caps.poolsz) {
+				int def_rings = max_t(int, dev->caps.num_comp_vectors,
+						      MIN_DEF_RX_RINGS);
+				mdev->profile.prof[i].rx_ring_num =
+					rounddown_pow_of_two(min_t(int, def_rings,
+								   min_t(int, MAX_RX_RINGS, num_rx_rings)));
+			} else {
+				mdev->profile.prof[i].rx_ring_num =
+					rounddown_pow_of_two(min_t(int, dev->caps.poolsz/
+					      dev->caps.num_ports - 1,
+					      min_t(int, MAX_RX_RINGS, num_rx_rings)));			}
+	}
 
 	/* Create our own workqueue for reset/multicast tasks
 	 * Note: we cannot use the shared workqueue because of deadlocks caused
@@ -297,6 +308,9 @@ err_free_netdev:
 
 err_mr:
 	mlx4_mr_free(dev, &mdev->mr);
+err_map:
+	if (mdev->uar_map)
+		iounmap(mdev->uar_map);
 err_uar:
 	mlx4_uar_free(dev, &mdev->priv_uar);
 err_pd:
@@ -356,21 +370,48 @@ static struct pci_device_id mlx4_en_pci_table[] = {
 MODULE_DEVICE_TABLE(pci, mlx4_en_pci_table);
 
 static struct mlx4_interface mlx4_en_interface = {
-	.add	= mlx4_en_add,
-	.remove	= mlx4_en_remove,
-	.event	= mlx4_en_event,
-	.query  = mlx4_en_query,
+	.add		= mlx4_en_add,
+	.remove		= mlx4_en_remove,
+	.event		= mlx4_en_event,
+	.query		= mlx4_en_query,
 	.get_prot_dev	= get_netdev,
 	.protocol	= MLX4_PROT_EN,
 };
 
+void mlx4_en_verify_params(void)
+{
+	if (num_rx_rings < MIN_RX_RINGS || num_rx_rings > MAX_RX_RINGS) {
+		printk(KERN_WARNING "mlx4_en: WARNING: illegal module parameter num_rx_rings %d - "
+		       "should be in range %d-%d, will be changed to %d\n",
+		       num_rx_rings, MIN_RX_RINGS, MAX_RX_RINGS, MAX_RX_RINGS);
+		num_rx_rings = MAX_RX_RINGS;
+	} else if (rounddown_pow_of_two(num_rx_rings) != num_rx_rings) {
+		printk(KERN_WARNING "mlx4_en: WARNING: illegal module parameter num_rx_rings %d - "
+		       "should be power of 2, will be changed to %lu\n",
+		       num_rx_rings, rounddown_pow_of_two(num_rx_rings));
+		num_rx_rings = rounddown_pow_of_two(num_rx_rings);
+	}
+}
+
 static int __init mlx4_en_init(void)
 {
-	return mlx4_register_interface(&mlx4_en_interface);
+	int err;
+
+	mlx4_en_verify_params();
+	if (enable_sys_tune)
+		sys_tune_init();
+
+	 err = mlx4_register_interface(&mlx4_en_interface);
+	 if (err && enable_sys_tune)
+		 sys_tune_fini();
+	 return err;
+		 
 }
 
 static void __exit mlx4_en_cleanup(void)
 {
+	if (enable_sys_tune)
+		sys_tune_fini();
 	mlx4_unregister_interface(&mlx4_en_interface);
 }
 

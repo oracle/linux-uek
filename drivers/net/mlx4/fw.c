@@ -256,6 +256,24 @@ out:
 	return err;
 }
 
+#define STAT_CLP_OFFSET		0x88
+#define CLP_VER_MASK		0xffff
+static u16 mlx4_QUERY_CLP(struct mlx4_dev* dev)
+{
+	u64 output;
+	int err;
+
+	err = mlx4_cmd_imm(dev, 0, &output, STAT_CLP_OFFSET, 0x3,
+			   MLX4_CMD_MOD_STAT_CFG, MLX4_CMD_TIME_CLASS_A, 1);
+
+	if (err) {
+		mlx4_warn(dev, "failed to retrieve clp version : %d", err);
+		return 0;
+	}
+
+	return (u16) ((output >> 32) & CLP_VER_MASK);
+}
+
 static int query_port_common(struct mlx4_dev *dev,
 				  struct mlx4_cmd_mailbox *outbox, u8 port,
 				  u8 function)
@@ -519,7 +537,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_ETH_UC_LOOPBACK_OFFSET);
 	dev_cap->loopback_support = field & 0x1;
 	dev_cap->vep_uc_steering = field & 0x4;
-	dev_cap->vep_mc_steering = field & 0x8;
+	//dev_cap->vep_mc_steering = field & 0x8;
+	dev_cap->vep_mc_steering = 0; /* TODO : EN won't work wit SRIOV mode */
 	dev_cap->wol = field & 0x40;
 	MLX4_GET(tmp1, outbox, QUERY_DEV_CAP_EXT_FLAGS_OFFSET);
 	MLX4_GET(tmp2, outbox, QUERY_DEV_CAP_FLAGS_OFFSET);
@@ -601,6 +620,7 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 
 	MLX4_GET(dev_cap->bmme_flags, outbox,
 		 QUERY_DEV_CAP_BMME_FLAGS_OFFSET);
+	dev_cap->qinq = (dev_cap->bmme_flags & 0x4000) >> 14;
 	MLX4_GET(dev_cap->reserved_lkey, outbox,
 		 QUERY_DEV_CAP_RSVD_LKEY_OFFSET);
 	MLX4_GET(dev_cap->max_icm_sz, outbox,
@@ -706,6 +726,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	 */
 	dev_cap->reserved_eqs = max(dev_cap->reserved_uars * 4,
 				    dev_cap->reserved_eqs);
+
+	dev_cap->clp_ver = mlx4_QUERY_CLP(dev);
 
 	mlx4_dbg(dev, "Max ICM size %lld MB\n",
 		 (unsigned long long) dev_cap->max_icm_sz >> 20);
@@ -1034,6 +1056,7 @@ int mlx4_INIT_HCA(struct mlx4_dev *dev, struct mlx4_init_hca_param *param)
 #define INIT_HCA_X86_64_BYTE_CACHELINE_SZ	 0x40
 #define INIT_HCA_FLAGS_OFFSET		 0x014
 #define INIT_HCA_QPC_OFFSET		 0x020
+#define INIT_HCA_EQE_CQE_OFFSETS	 (INIT_HCA_QPC_OFFSET + 0x38)
 #define	 INIT_HCA_QPC_BASE_OFFSET	 (INIT_HCA_QPC_OFFSET + 0x10)
 #define	 INIT_HCA_LOG_QP_OFFSET		 (INIT_HCA_QPC_OFFSET + 0x17)
 #define	 INIT_HCA_SRQC_BASE_OFFSET	 (INIT_HCA_QPC_OFFSET + 0x28)
@@ -1245,6 +1268,7 @@ int mlx4_INIT_PORT(struct mlx4_dev *dev, int port)
 	int err;
 	u32 flags;
 	u16 field;
+	struct mlx4_priv *priv = mlx4_priv(dev);
 
 	if (dev->flags & MLX4_FLAG_OLD_PORT_CMDS) {
 #define INIT_PORT_IN_SIZE          256
@@ -1264,6 +1288,7 @@ int mlx4_INIT_PORT(struct mlx4_dev *dev, int port)
 		mailbox = mlx4_alloc_cmd_mailbox(dev);
 		if (IS_ERR(mailbox))
 			return PTR_ERR(mailbox);
+		mutex_lock(&priv->port_ops_mutex);
 		inbox = mailbox->buf;
 
 		memset(inbox, 0, INIT_PORT_IN_SIZE);
@@ -1284,11 +1309,11 @@ int mlx4_INIT_PORT(struct mlx4_dev *dev, int port)
 			       MLX4_CMD_TIME_CLASS_A, 1);
 
 		mlx4_free_cmd_mailbox(dev, mailbox);
+		mutex_unlock(&priv->port_ops_mutex);
 	} else {
 		err = mlx4_cmd(dev, 0, port, 0, MLX4_CMD_INIT_PORT,
 			       MLX4_CMD_TIME_CLASS_A, 0);
 	}
-
 	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_INIT_PORT);
@@ -1344,7 +1369,12 @@ int mlx4_CLOSE_PORT_wrapper(struct mlx4_dev *dev, int slave,
 
 int mlx4_CLOSE_PORT(struct mlx4_dev *dev, int port)
 {
-	return mlx4_cmd(dev, 0, port, 0, MLX4_CMD_CLOSE_PORT, 1000, 0);
+	int err;
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	mutex_lock(&priv->port_ops_mutex);
+	err = mlx4_cmd(dev, 0, port, 0, MLX4_CMD_CLOSE_PORT, 1000, 0);
+	mutex_unlock(&priv->port_ops_mutex);
+	return err;
 }
 EXPORT_SYMBOL_GPL(mlx4_CLOSE_PORT);
 

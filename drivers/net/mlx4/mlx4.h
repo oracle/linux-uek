@@ -866,7 +866,6 @@ enum {
 	MCAST_DEFAULT		= 2
 };
 
-
 struct mlx4_set_port_general_context {
 	u8 reserved[3];
 	u8 flags;
@@ -878,6 +877,8 @@ struct mlx4_set_port_general_context {
 	u8 pprx;
 	u8 pfcrx;
 	u16 reserved4;
+	u8 qinq;
+	u8 reserved5[3];
 };
 
 struct mlx4_set_port_rqp_calc_context {
@@ -969,9 +970,11 @@ struct mlx4_priv {
 	int                     changed_ports;
 	struct mlx4_sense       sense;
 	struct mutex		port_mutex;
+	int			iboe_counter_index[MLX4_MAX_PORTS];
 	struct mlx4_steer	*steer;
 	bool			link_up[MLX4_MAX_PORTS + 1];
 	bool			vep_mode[MLX4_MAX_PORTS + 1];
+	struct mutex		port_ops_mutex;
 	u8			virt2phys_pkey[MLX4_MFUNC_MAX][MLX4_MAX_PORTS][MLX4_MAX_PORT_PKEYS];
 	int			reserved_mtts;
 	struct io_mapping      *bf_mapping;
@@ -1123,6 +1126,8 @@ int mlx4_restart_one(struct pci_dev *pdev);
 int mlx4_register_device(struct mlx4_dev *dev);
 void mlx4_unregister_device(struct mlx4_dev *dev);
 void mlx4_dispatch_event(struct mlx4_dev *dev, enum mlx4_dev_event type, unsigned long param);
+u16 mlx4_set_interface_mtu_get_max(struct mlx4_interface *intf,
+		struct mlx4_dev *dev, int port, u16 new_mtu);
 void *mlx4_find_get_prot_dev(struct mlx4_dev *dev, enum mlx4_prot proto, int port);
 
 struct mlx4_dev_cap;

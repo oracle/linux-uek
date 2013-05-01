@@ -72,6 +72,10 @@ int mlx4_blck_lb=1;
 module_param_named(block_loopback, mlx4_blck_lb, int, 0644);
 MODULE_PARM_DESC(block_loopback, "Block multicast loopback packets if > 0");
 
+static int enable_qinq;
+module_param(enable_qinq, bool, 0444);
+MODULE_PARM_DESC(enable_qinq, "Set the device skips the first q-tag(vlan) in the packet and treat the secound vlan as the vlan tag."
+			"(0/1 default: 0)");
 
 #ifdef CONFIG_PCI_MSI
 
@@ -216,6 +220,22 @@ void *mlx4_get_prot_dev(struct mlx4_dev *dev, enum mlx4_prot proto, int port)
 }
 EXPORT_SYMBOL(mlx4_get_prot_dev);
 
+void mlx4_set_iboe_counter(struct mlx4_dev *dev, int index, u8 port)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	priv->iboe_counter_index[port - 1] = index;
+}
+EXPORT_SYMBOL(mlx4_set_iboe_counter);
+
+int mlx4_get_iboe_counter(struct mlx4_dev *dev, u8 port)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+
+	return priv->iboe_counter_index[port - 1];
+}
+EXPORT_SYMBOL(mlx4_get_iboe_counter);
+
 int mlx4_check_port_params(struct mlx4_dev *dev,
 			   enum mlx4_port_type *port_type)
 {
@@ -300,6 +320,11 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		return -ENODEV;
 	}
 
+	if (enable_qinq && !dev_cap->qinq) {
+		mlx4_warn(dev, "Ignoring setting of QinQ"
+				"No HW capability\n");
+	}
+
 	dev->caps.pf_num = dev_cap->pf_num;
 	dev->caps.num_ports	     = dev_cap->num_ports;
 	for (i = 1; i <= dev->caps.num_ports; ++i) {
@@ -370,7 +395,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 
 	dev->caps.log_num_macs  = log_num_mac;
 	dev->caps.log_num_prios = use_prio ? 3 : 0;
-
+	dev->caps.qinq          = dev_cap->qinq && enable_qinq;
 	for (i = 1; i <= dev->caps.num_ports; ++i) {
 		dev->caps.port_type[i] = MLX4_PORT_TYPE_NONE;
 		if (dev->caps.supported_type[i]) {
@@ -418,6 +443,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 
 	/* Master function demultiplexes mads */
 	dev->caps.sqp_demux = (mlx4_is_master(dev)) ? MLX4_MAX_NUM_SLAVES : 0;
+	dev->caps.clp_ver = dev_cap->clp_ver;
 	return 0;
 }
 /*The function checks if there are live vf, return the num of them*/
@@ -1723,7 +1749,7 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 	int nreq;
 	int err;
 	int i;
-
+	dev->caps.poolsz           = 0;
 	if (msi_x) {
 		nreq = min_t(int, dev->caps.num_eqs - dev->caps.reserved_eqs,
 				     num_online_cpus() + 1);
@@ -1871,7 +1897,7 @@ static int __mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct mlx4_priv *priv;
 	struct mlx4_dev *dev;
-	int err;
+	int err, i;
 	int port;
 	int mfunc_cleaned_up = 0;
 
@@ -1956,9 +1982,13 @@ static int __mlx4_init_one(struct pci_dev *pdev, const struct pci_device_id *id)
 	spin_lock_init(&priv->ctx_lock);
 
 	mutex_init(&priv->port_mutex);
+	mutex_init(&priv->port_ops_mutex);
 
 	INIT_LIST_HEAD(&priv->pgdir_list);
 	mutex_init(&priv->pgdir_mutex);
+
+	for (i = 0; i < MLX4_MAX_PORTS; ++i)
+		priv->iboe_counter_index[i] = -1;
 
 	INIT_LIST_HEAD(&priv->bf_list);
 	mutex_init(&priv->bf_mutex);

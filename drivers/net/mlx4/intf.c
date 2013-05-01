@@ -36,7 +36,8 @@
 struct mlx4_device_context {
 	struct list_head	list;
 	struct mlx4_interface  *intf;
-	void		       *context;
+	void *context;
+	u16 port_mtu[MLX4_MAX_PORTS + 1];
 };
 
 static LIST_HEAD(intf_list);
@@ -191,6 +192,26 @@ void mlx4_unregister_device(struct mlx4_dev *dev)
 	list_del(&priv->dev_list);
 
 	mutex_unlock(&intf_mutex);
+}
+
+u16 mlx4_set_interface_mtu_get_max(struct mlx4_interface *intf,
+		struct mlx4_dev *dev, int port, u16 new_mtu)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_device_context *dev_ctx;
+	unsigned long flags;
+	int max_mtu = 0;
+
+	spin_lock_irqsave(&priv->ctx_lock, flags);
+	list_for_each_entry(dev_ctx, &priv->ctx_list, list) {
+		if (dev_ctx->intf == intf)
+			dev_ctx->port_mtu[port] = new_mtu;
+		if (dev_ctx->port_mtu[port] > max_mtu)
+			max_mtu = dev_ctx->port_mtu[port];
+	}
+	spin_unlock_irqrestore(&priv->ctx_lock, flags);
+
+	return max_mtu;
 }
 
 void *mlx4_find_get_prot_dev(struct mlx4_dev *dev, enum mlx4_prot proto, int port)

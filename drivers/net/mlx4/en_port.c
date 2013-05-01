@@ -53,8 +53,7 @@ int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port)
 	if (IS_ERR(mailbox))
 		return PTR_ERR(mailbox);
 	memset(mailbox->buf, 0, sizeof(*qport_context));
-	err = mlx4_cmd_box(mdev->dev, 0, mailbox->dma, port, 0,
-			   MLX4_CMD_QUERY_PORT, MLX4_CMD_TIME_CLASS_B, 0);
+	err = mlx4_QUERY_PORT(mdev->dev, mailbox, port);
 	if (err)
 		goto out;
 	qport_context = mailbox->buf;
@@ -62,11 +61,24 @@ int mlx4_en_QUERY_PORT(struct mlx4_en_dev *mdev, u8 port)
 	/* This command is always accessed from Ethtool context
 	 * already synchronized, no need in locking */
 	state->link_state = !!(qport_context->link_up & MLX4_EN_LINK_UP_MASK);
-	if ((qport_context->link_speed & MLX4_EN_SPEED_MASK) ==
-	    MLX4_EN_1G_SPEED)
-		state->link_speed = 1000;
-	else
-		state->link_speed = 10000;
+	if (qport_context->link_speed != 0xff) {
+		switch (qport_context->link_speed & MLX4_EN_SPEED_MASK) {
+		case MLX4_EN_1G_SPEED:
+			state->link_speed = 1000;
+			break;
+		case MLX4_EN_10G_SPEED_XAUI:
+		case MLX4_EN_10G_SPEED_XFI:
+			state->link_speed = 10000;
+			break;
+		case MLX4_EN_40G_SPEED:
+			state->link_speed = 40000;
+			break;
+		default:
+			state->link_speed = -1;
+			break;
+		}
+	} else
+		state->link_speed = qport_context->actual_speed * 100;
 	state->transciver = qport_context->transceiver;
 
 out:
