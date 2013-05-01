@@ -688,7 +688,7 @@ static inline pmd_t pmdp_get_and_clear(struct mm_struct *mm,
 				       pmd_t *pmdp)
 {
 	pmd_t pmd = *pmdp;
-	set_pmd_at(mm, addr, pmdp, __pmd(0U));
+	set_pmd_at(mm, addr, pmdp, __pmd(0UL));
 	return pmd;
 }
 

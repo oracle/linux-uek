@@ -1370,6 +1370,14 @@ static unsigned long __ref kernel_map_range(unsigned long pstart,
 		pmd_t *pmd;
 		pte_t *pte;
 
+		if (pgd_none(*pgd)) {
+			pud_t *pud;
+
+			pud = __alloc_bootmem(PAGE_SIZE,  PAGE_SIZE, PAGE_SIZE);
+			alloc_bytes += PAGE_SIZE;
+			pgd_populate(&init_mm, pgd, pud);
+		}
+
 		pud = pud_offset(pgd, vstart);
 		if (pud_none(*pud)) {
 			pmd_t *new;
@@ -1746,7 +1754,12 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 /* paging_init() sets up the page tables */
 
 static unsigned long last_valid_pfn;
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+pgd_t swapper_pg_dir[PTRS_PER_PGD];
+static pud_t swapper_pud_dir[PTRS_PER_PUD];
+#else
 pgd_t swapper_pg_dir[2048];
+#endif
 
 static void sun4u_pgprot_init(void);
 static void sun4v_pgprot_init(void);
@@ -1847,11 +1860,21 @@ void __init paging_init(void)
 	 */
 	init_mm.pgd += ((shift) / (sizeof(pgd_t)));
 	
+	/* Now can init the kernel/bad page tables. */
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+	{
+	pud_t *shift_pud = swapper_pud_dir + (shift / sizeof(pud_t));
+	unsigned long  pgdoffset = pgd_offset(&swapper_pg_dir[0], 0UL);
+	pgd_t *pgd = &swapper_pg_dir[pgdoffset];
+
+	pgd_set(pgd, (unsigned long) shift_pud);
+	}
+#else
 	memset(swapper_low_pmd_dir, 0, sizeof(swapper_low_pmd_dir));
 
-	/* Now can init the kernel/bad page tables. */
 	pud_set(pud_offset(&swapper_pg_dir[0], 0),
 		swapper_low_pmd_dir + (shift / sizeof(pgd_t)));
+#endif
 	
 	inherit_prom_mappings();
 	
