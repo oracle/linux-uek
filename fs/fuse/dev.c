@@ -104,6 +104,10 @@ struct fuse_req *fuse_get_req(struct fuse_conn *fc)
 	int intr;
 	int err;
 
+	err = -EAGAIN;
+	if (!fc->conn_init)
+		return ERR_PTR(err);
+
 	atomic_inc(&fc->num_waiting);
 	block_sigs(&oldset);
 	intr = wait_event_interruptible(fc->blocked_waitq, !fc->blocked);
