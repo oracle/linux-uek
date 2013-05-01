@@ -40,6 +40,7 @@
 #include <linux/module.h>
 #include <linux/fs.h>
 #include <linux/blkdev.h>
+#include <linux/slab.h>
 
 #include "rbd_types.h"
 
@@ -343,6 +344,8 @@ static DEFINE_SPINLOCK(rbd_dev_list_lock);
 
 static LIST_HEAD(rbd_client_list);		/* clients */
 static DEFINE_SPINLOCK(rbd_client_list_lock);
+
+static struct kmem_cache	*rbd_img_request_cache;
 
 static int rbd_img_request_submit(struct rbd_img_request *img_request);
 
@@ -1822,7 +1825,7 @@ static struct rbd_img_request *rbd_img_request_create(
 {
 	struct rbd_img_request *img_request;
 
-	img_request = kmalloc(sizeof (*img_request), GFP_ATOMIC);
+	img_request = kmem_cache_alloc(rbd_img_request_cache, GFP_ATOMIC);
 	if (!img_request)
 		return NULL;
 
@@ -1885,7 +1888,7 @@ static void rbd_img_request_destroy(struct kref *kref)
 	if (img_request_child_test(img_request))
 		rbd_obj_request_put(img_request->obj_request);
 
-	kfree(img_request);
+	kmem_cache_free(rbd_img_request_cache, img_request);
 }
 
 static bool rbd_img_obj_end_request(struct rbd_obj_request *obj_request)
@@ -4990,6 +4993,26 @@ static void rbd_sysfs_cleanup(void)
 	device_unregister(&rbd_root_dev);
 }
 
+static int rbd_slab_init(void)
+{
+	rbd_assert(!rbd_img_request_cache);
+	rbd_img_request_cache = kmem_cache_create("rbd_img_request",
+					sizeof (struct rbd_img_request),
+					__alignof__(struct rbd_img_request),
+					0, NULL);
+	if (rbd_img_request_cache)
+		return 0;
+
+	return -ENOMEM;
+}
+
+static void rbd_slab_exit(void)
+{
+	rbd_assert(rbd_img_request_cache);
+	kmem_cache_destroy(rbd_img_request_cache);
+	rbd_img_request_cache = NULL;
+}
+
 static int __init rbd_init(void)
 {
 	int rc;
@@ -4999,16 +5022,22 @@ static int __init rbd_init(void)
 
 		return -EINVAL;
 	}
-	rc = rbd_sysfs_init();
+	rc = rbd_slab_init();
 	if (rc)
 		return rc;
-	pr_info("loaded " RBD_DRV_NAME_LONG "\n");
-	return 0;
+	rc = rbd_sysfs_init();
+	if (rc)
+		rbd_slab_exit();
+	else
+		pr_info("loaded " RBD_DRV_NAME_LONG "\n");
+
+	return rc;
 }
 
 static void __exit rbd_exit(void)
 {
 	rbd_sysfs_cleanup();
+	rbd_slab_exit();
 }
 
 module_init(rbd_init);
