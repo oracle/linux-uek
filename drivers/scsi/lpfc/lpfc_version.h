@@ -30,4 +30,4 @@
 
 #define LPFC_MODULE_DESC "Emulex LightPulse Fibre Channel SCSI driver " \
 		LPFC_DRIVER_VERSION
-#define LPFC_COPYRIGHT "Copyright(c) 2004-2011 Emulex.  All rights reserved."
+#define LPFC_COPYRIGHT "Copyright(c) 2004-2013 Emulex.  All rights reserved."
