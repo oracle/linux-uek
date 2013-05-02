@@ -1,6 +1,6 @@
 /*
  * QLogic qlcnic NIC Driver
- * Copyright (c)  2009-2010 QLogic Corporation
+ * Copyright (c) 2009-2013 QLogic Corporation
  *
  * See LICENSE.qlcnic for copyright and licensing details.
  */
@@ -37,9 +37,9 @@
 #include "qlcnic_83xx.h"
 
 #define _QLCNIC_LINUX_MAJOR 5
-#define _QLCNIC_LINUX_MINOR 1
-#define _QLCNIC_LINUX_SUBVERSION 27
-#define QLCNIC_LINUX_VERSIONID  "5.1.27.35"
+#define _QLCNIC_LINUX_MINOR 2
+#define _QLCNIC_LINUX_SUBVERSION 29
+#define QLCNIC_LINUX_VERSIONID  "5.2.29.45"
 #define QLCNIC_DRV_IDC_VER  0x01
 #define QLCNIC_DRIVER_VERSION  ((_QLCNIC_LINUX_MAJOR << 16) |\
 		 (_QLCNIC_LINUX_MINOR << 8) | (_QLCNIC_LINUX_SUBVERSION))
@@ -439,8 +439,14 @@ struct qlcnic_rx_buffer {
  * Interrupt coalescing defaults. The defaults are for 1500 MTU. It is
  * adjusted based on configured MTU.
  */
-#define QLCNIC_DEFAULT_INTR_COALESCE_RX_TIME_US	3
-#define QLCNIC_DEFAULT_INTR_COALESCE_RX_PACKETS	256
+#define QLCNIC_INTR_COAL_TYPE_RX		1
+#define QLCNIC_INTR_COAL_TYPE_TX		2
+
+#define QLCNIC_DEF_INTR_COALESCE_RX_TIME_US	3
+#define QLCNIC_DEF_INTR_COALESCE_RX_PACKETS	256
+
+#define QLCNIC_DEF_INTR_COALESCE_TX_TIME_US	64
+#define QLCNIC_DEF_INTR_COALESCE_TX_PACKETS	64
 
 #define QLCNIC_INTR_DEFAULT			0x04
 #define QLCNIC_CONFIG_INTR_COALESCE		3
@@ -450,6 +456,8 @@ struct qlcnic_nic_intr_coalesce {
 	u8	sts_ring_mask;
 	u16	rx_packets;
 	u16	rx_time_us;
+	u16	tx_packets;
+	u16	tx_time_us;
 	u16	flag;
 	u32	timer_out;
 };
@@ -569,6 +577,7 @@ struct qlcnic_adapter_stats {
 	u64  tx_dma_map_error;
 	u64  mac_filter_limit_overrun;
 	u64  spurious_intr;
+	u64  invalid_tso_pkt;
 };
 
 /*
@@ -603,13 +612,13 @@ struct qlcnic_host_sds_ring {
 	int irq;
 
 	dma_addr_t phys_addr;
-	char name[IFNAMSIZ+4];
+	char name[IFNAMSIZ + 12];
 } ____cacheline_internodealigned_in_smp;
 
 struct qlcnic_host_tx_ring {
 	int irq;
 	void __iomem *crb_intr_mask;
-	char name[IFNAMSIZ+4];
+	char name[IFNAMSIZ + 12];
 	u16 ctx_id;
 	u32 producer;
 	u32 sw_consumer;
@@ -668,7 +677,11 @@ struct qlcnic_recv_context {
 #define QLCNIC_CDRP_FORM_CMD(cmd)	(QLCNIC_CDRP_CMD_BIT | (cmd))
 
 #define QLCNIC_RCODE_SUCCESS		0
+#define QLCNIC_RCODE_INVALID_ARGS	6
 #define QLCNIC_RCODE_NOT_SUPPORTED	9
+#define QLCNIC_RCODE_NOT_PERMITTED	10
+#define QLCNIC_RCODE_NOT_IMPL		15
+#define QLCNIC_RCODE_INVALID		16
 #define QLCNIC_RCODE_TIMEOUT		17
 
 /*
@@ -990,6 +1003,7 @@ struct qlcnic_ipaddr {
 #define __QLCNIC_DIAG_RES_ALLOC		6
 #define	__QLCNIC_LED_ENABLE		7
 #define __QLCNIC_ELB_INPROGRESS		8
+#define __QLCNIC_MBX_POLL_ENABLE       13
 
 #define QLCNIC_INTERRUPT_TEST		1
 #define QLCNIC_LOOPBACK_TEST		2
@@ -1007,9 +1021,11 @@ struct qlcnic_ipaddr {
 #define QLCNIC_LB_CABLE_NOT_CONN	54
 
 /* Loopback test */
-#define QLCNIC_ILB_PKT_SIZE 	64
-#define QLCNIC_NUM_ILB_PKT 	16
-#define QLCNIC_ILB_MAX_RCV_LOOP	10
+#define QLCNIC_ILB_PKT_SIZE		64
+#define QLCNIC_NUM_ILB_PKT		16
+#define QLCNIC_ILB_MAX_RCV_LOOP		10
+#define QLCNIC_LB_PKT_POLL_DELAY_MSEC	1
+#define QLCNIC_LB_PKT_POLL_COUNT	20
 
 struct qlcnic_filter {
 	struct hlist_node fnode;
@@ -1086,11 +1102,15 @@ struct qlcnic_adapter {
 	struct workqueue_struct *qlcnic_wq;
 	struct delayed_work fw_work;
 	struct delayed_work idc_aen_work;
+	struct delayed_work mbx_poll_work;
 
 	struct qlcnic_filter_hash fhash;
+	struct qlcnic_filter_hash rx_fhash;
 
 	spinlock_t tx_clean_lock;
 	spinlock_t mac_learn_lock;
+	/* spinlock for catching rcv filters for eswitch traffic */
+	spinlock_t rx_mac_learn_lock;
 	__le32 file_prd_off;	/*File fw product offset*/
 	u32 fw_version;
 	const struct firmware *fw;
@@ -1496,6 +1516,10 @@ enum op_codes {
 #define QLCNIC_ENABLE_FW_DUMP		0xaddfeed
 #define QLCNIC_DISABLE_FW_DUMP		0xbadfeed
 #define QLCNIC_FORCE_FW_RESET		0xdeaddead
+#define QLCNIC_SET_QUIESCENT		0xadd00010
+#define QLCNIC_RESET_QUIESCENT		0xadd00020
+
+#define QLCNIC_INVALID_KEY		EINVAL
 
 #ifndef SPEED_UNKNOWN
 #define SPEED_UNKNOWN	-1
@@ -1618,6 +1642,7 @@ void qlcnic_config_intr_coalesce(struct qlcnic_adapter *);
 int qlcnic_config_rss(struct qlcnic_adapter *, int);
 void qlcnic_config_ipaddr(struct qlcnic_adapter *, __be32, int);
 void qlcnic_83xx_config_ipaddr(struct qlcnic_adapter *, __be32, int);
+void qlcnic_83xx_process_aen(struct qlcnic_adapter *);
 int qlcnic_linkevent_request(struct qlcnic_adapter *, int);
 int qlcnic_fw_cmd_set_mtu(struct qlcnic_adapter *, int);
 int qlcnic_fw_cmd_set_drv_version(struct qlcnic_adapter *adapter);
@@ -1650,7 +1675,7 @@ int qlcnic_issue_cmd(struct qlcnic_adapter *adapter, struct qlcnic_cmd_args *);
 void qlcnic_diag_free_res(struct net_device *netdev, int max_sds_rings);
 int qlcnic_diag_alloc_res(struct net_device *netdev, int test);
 netdev_tx_t qlcnic_xmit_frame(struct sk_buff *skb, struct net_device *netdev);
-int qlcnic_validate_max_rss(u8 max_hw, u8 val);
+int qlcnic_validate_max_rss(struct qlcnic_adapter *adapter, u8);
 int qlcnic_set_max_rss(struct qlcnic_adapter *adapter, u8 data);
 void qlcnic_dev_request_reset(struct qlcnic_adapter *, u32);
 void qlcnic_alloc_lb_filters_mem(struct qlcnic_adapter *adapter);
@@ -1770,8 +1795,10 @@ int qlcnic_83xx_get_vnic_pf_info(struct qlcnic_adapter *, struct qlcnic_info *);
 void qlcnic_83xx_register_nic_idc_func(struct qlcnic_adapter *, int);
 int qlcnic_83xx_interrupt_test(struct net_device *);
 void qlcnic_83xx_idc_aen_work(struct work_struct *);
+void qlcnic_83xx_mbx_poll_work(struct work_struct *);
+inline void qlcnic_83xx_enable_mbx_poll(struct qlcnic_adapter *);
+inline void qlcnic_83xx_disable_mbx_poll(struct qlcnic_adapter *);
 int qlcnic_83xx_config_led(struct qlcnic_adapter *, u32, u32);
-void qlcnic_83xx_process_aen(struct qlcnic_adapter *);
 int qlcnic_83xx_loopback_test(struct net_device *, u8);
 
 /* 83xx MS memory access API's */
@@ -1831,21 +1858,15 @@ int qlcnic_83xx_reg_test(struct qlcnic_adapter *);
 int qlcnic_83xx_eeprom_test(struct qlcnic_adapter *);
 int qlcnic_83xx_get_regs_len(struct qlcnic_adapter *);
 int qlcnic_83xx_get_registers(struct qlcnic_adapter *, u32 *);
+irqreturn_t qlcnic_83xx_intr(int, void *);
 irqreturn_t qlcnic_83xx_clear_legacy_intr(struct qlcnic_adapter *);
 irqreturn_t qlcnic_83xx_tmp_intr(int, void *);
-void qlcnic_83xx_enable_intr(struct qlcnic_adapter *,
-		struct qlcnic_host_sds_ring *);
-void qlcnic_83xx_enable_tx_intr(struct qlcnic_adapter *,
-		struct qlcnic_host_tx_ring *);
-void qlcnic_83xx_disable_tx_intr(struct qlcnic_adapter *,
-	struct qlcnic_host_tx_ring *);
 void qlcnic_83xx_check_vf(struct qlcnic_adapter *,
 		const struct pci_device_id *);
 void qlcnic_83xx_register_map(struct qlcnic_hardware_context *);
-
 int qlcnic_is_valid_nic_func(struct qlcnic_adapter *, u8);
-
 int qlcnic_enable_eswitch(struct qlcnic_adapter *, u8, u8);
+void qlcnic_add_lb_filter(struct qlcnic_adapter *, struct sk_buff *, int, u16);
 
 /*
  * QLOGIC Board information
@@ -1870,6 +1891,7 @@ static inline u32 qlcnic_tx_avail(struct qlcnic_host_tx_ring *tx_ring)
 }
 
 extern const struct ethtool_ops qlcnic_ethtool_ops;
+extern const struct ethtool_ops qlcnic_ethtool_failed_ops;
 
 struct qlcnic_nic_template {
 	int (*config_bridged_mode) (struct qlcnic_adapter *, u32);

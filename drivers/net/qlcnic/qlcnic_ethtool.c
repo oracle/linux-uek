@@ -1,6 +1,6 @@
 /*
  * QLogic qlcnic NIC Driver
- * Copyright (c)  2009-2010 QLogic Corporation
+ * Copyright (c) 2009-2013 QLogic Corporation
  *
  * See LICENSE.qlcnic for copyright and licensing details.
  */
@@ -62,6 +62,8 @@ static const struct qlcnic_stats qlcnic_gstrings_stats[] = {
 				QLC_OFF(stats.mac_filter_limit_overrun)},
 	{"spurious intr", QLC_SIZEOF(stats.spurious_intr),
 	 QLC_OFF(stats.spurious_intr)},
+	{"invalid_tso_pkt", QLC_SIZEOF(stats.invalid_tso_pkt),
+			QLC_OFF(stats.invalid_tso_pkt)},
 
 };
 
@@ -123,6 +125,13 @@ static const char qlc_83xx_mac_stats_strings [][ETH_GSTRING_LEN] = {
 	"mac_rx_dropped",
 	"mac_crc_error",
 	"mac_align_error",
+	"eswitch_frames",
+	"eswitch_bytes",
+	"eswitch_multicast_frames",
+	"eswitch_broadcast_frames",
+	"eswitch_unicast_frames",
+	"eswitch_error_free_frames",
+	"eswitch_error_free_bytes",
 };
 static const char qlc_83xx_rx_stats_strings [][ETH_GSTRING_LEN] = {
 	"ctx_rx_bytes",
@@ -130,12 +139,13 @@ static const char qlc_83xx_rx_stats_strings [][ETH_GSTRING_LEN] = {
 	"ctx_lro_pkt_cnt",
 	"ctx_ip_csum_error",
 	"ctx_rx_pkts_wo_ctx",
-	"ctx_rx_pkts_dropped_wo_sts",
+	"ctx_rx_pkts_drop_wo_sds_on_card",
+	"ctx_rx_pkts_drop_wo_sds_on_host",
 	"ctx_rx_osized_pkts",
 	"ctx_rx_pkts_dropped_wo_rds",
 	"ctx_rx_unexpected_mcast_pkts",
 	"ctx_invalid_mac_address",
-	"ctx_rx_rds_ring_prim_attemoted",
+	"ctx_rx_rds_ring_prim_attempted",
 	"ctx_rx_rds_ring_prim_success",
 	"ctx_num_lro_flows_added",
 	"ctx_num_lro_flows_removed",
@@ -207,6 +217,9 @@ qlcnic_83xx_fill_stats(struct qlcnic_adapter *adapter,
 		/* fill in MAC rx frame stats */
 		for (k += 6; k < 80; k += 2)
 			data = qlcnic_83xx_copy_stats(cmd, data, k);
+		/* fill in eSwitch stats */
+		for (; k < total_regs; k += 2)
+			data = qlcnic_83xx_copy_stats(cmd, data, k);
 		break;
 	case QLCNIC_83XX_STAT_RX:
 		for (k = 2; k < 8; k += 2)
@@ -251,7 +264,7 @@ qlcnic_83xx_get_stats(struct qlcnic_adapter *adapter, u64 *data)
 					QLCNIC_83XX_STAT_TX, &ret);
 	if (ret) {
 		dev_info(&adapter->pdev->dev,
-			"Error getting MAC stats\n");
+			"Error getting Tx stats\n");
 		goto out;
 	}
 	/* Get MAC stats */
@@ -262,7 +275,7 @@ qlcnic_83xx_get_stats(struct qlcnic_adapter *adapter, u64 *data)
 					QLCNIC_83XX_STAT_MAC, &ret);
 	if (ret) {
 		dev_info(&adapter->pdev->dev,
-			"Error getting Rx stats\n");
+			"Error getting MAC stats\n");
 		goto out;
 	}
 	/* Get Rx stats */
@@ -273,7 +286,7 @@ qlcnic_83xx_get_stats(struct qlcnic_adapter *adapter, u64 *data)
 					QLCNIC_83XX_STAT_RX, &ret);
 	if (ret)
 		dev_info(&adapter->pdev->dev,
-			"Error in getting Tx stats\n");
+			"Error in getting Rx stats\n");
 out:
 	qlcnic_free_mbx_args(&cmd);
 }
@@ -747,7 +760,7 @@ static int qlcnic_set_channels(struct net_device *dev,
 		return -EINVAL;
 	}
 
-	err = qlcnic_validate_max_rss(channel->max_rx, channel->rx_count);
+	err = qlcnic_validate_max_rss(adapter, channel->rx_count);
 	if (err) {
 		netdev_err(dev, "rss_ring valid range[1 - %d] in powers of 2\n",
 			   err);
@@ -1011,9 +1024,9 @@ int qlcnic_do_lb_test(struct qlcnic_adapter *adapter, u8 mode)
 
 		loop = 0;
 		do {
-			msleep(1);
+			msleep(QLCNIC_LB_PKT_POLL_DELAY_MSEC);
 			adapter->ahw->hw_ops->process_lb_rcv_ring_diag(sds_ring);
-			if (loop++ > QLCNIC_ILB_MAX_RCV_LOOP)
+			if (loop++ > QLCNIC_LB_PKT_POLL_COUNT)
 				break;
 		} while (!adapter->ahw->diag_cnt);
 
@@ -1032,8 +1045,7 @@ int qlcnic_do_lb_test(struct qlcnic_adapter *adapter, u8 mode)
 			i, cnt);
 		if (mode != QLCNIC_ILB_MODE) {
 			dev_warn(&adapter->pdev->dev,
-				"WARNING: Please make sure external"
-				"loopback connector is plugged in\n");
+				"WARNING: Please make sure external loopback connector is plugged in\n");
 		}
 		return -1;
 	}
@@ -1434,6 +1446,9 @@ static int qlcnic_set_intr_coalesce(struct net_device *netdev,
 			struct ethtool_coalesce *ethcoal)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(netdev);
+	struct qlcnic_nic_intr_coalesce *coal;
+	u32 rx_coalesce_usecs, rx_max_frames;
+	u32 tx_coalesce_usecs, tx_max_frames;
 
 	if (!test_bit(__QLCNIC_DEV_UP, &adapter->state))
 		return -EINVAL;
@@ -1444,8 +1459,8 @@ static int qlcnic_set_intr_coalesce(struct net_device *netdev,
 	*/
 	if (ethcoal->rx_coalesce_usecs > 0xffff ||
 		ethcoal->rx_max_coalesced_frames > 0xffff ||
-		ethcoal->tx_coalesce_usecs ||
-		ethcoal->tx_max_coalesced_frames ||
+		ethcoal->tx_coalesce_usecs > 0xffff ||
+		ethcoal->tx_max_coalesced_frames > 0xffff ||
 		ethcoal->rx_coalesce_usecs_irq ||
 		ethcoal->rx_max_coalesced_frames_irq ||
 		ethcoal->tx_coalesce_usecs_irq ||
@@ -1465,18 +1480,55 @@ static int qlcnic_set_intr_coalesce(struct net_device *netdev,
 		ethcoal->tx_max_coalesced_frames_high)
 		return -EINVAL;
 
-	if (!ethcoal->rx_coalesce_usecs ||
-		!ethcoal->rx_max_coalesced_frames) {
-		adapter->ahw->coal.flag = QLCNIC_INTR_DEFAULT;
-		adapter->ahw->coal.rx_time_us =
-			QLCNIC_DEFAULT_INTR_COALESCE_RX_TIME_US;
-		adapter->ahw->coal.rx_packets =
-			QLCNIC_DEFAULT_INTR_COALESCE_RX_PACKETS;
+	coal = &adapter->ahw->coal;
+
+	if (QLCNIC_IS_83XX(adapter)) {
+		if (!ethcoal->tx_coalesce_usecs ||
+		    !ethcoal->tx_max_coalesced_frames ||
+		    !ethcoal->rx_coalesce_usecs ||
+		    !ethcoal->rx_max_coalesced_frames) {
+			coal->flag = QLCNIC_INTR_DEFAULT;
+			coal->type = QLCNIC_INTR_COAL_TYPE_RX;
+			coal->rx_time_us = QLCNIC_DEF_INTR_COALESCE_RX_TIME_US;
+			coal->rx_packets = QLCNIC_DEF_INTR_COALESCE_RX_PACKETS;
+			coal->tx_time_us = QLCNIC_DEF_INTR_COALESCE_TX_TIME_US;
+			coal->tx_packets = QLCNIC_DEF_INTR_COALESCE_TX_PACKETS;
+		} else {
+			tx_coalesce_usecs = ethcoal->tx_coalesce_usecs;
+			tx_max_frames = ethcoal->tx_max_coalesced_frames;
+			rx_coalesce_usecs = ethcoal->rx_coalesce_usecs;
+			rx_max_frames = ethcoal->rx_max_coalesced_frames;
+			coal->flag = 0;
+
+			if ((coal->rx_time_us == rx_coalesce_usecs) &&
+			    (coal->rx_packets == rx_max_frames)) {
+				coal->type = QLCNIC_INTR_COAL_TYPE_TX;
+				coal->tx_time_us = tx_coalesce_usecs;
+				coal->tx_packets = tx_max_frames;
+			} else if ((coal->tx_time_us == tx_coalesce_usecs) &&
+				   (coal->tx_packets == tx_max_frames)) {
+				coal->type = QLCNIC_INTR_COAL_TYPE_RX;
+				coal->rx_time_us = rx_coalesce_usecs;
+				coal->rx_packets = rx_max_frames;
+			} else {
+				coal->type = QLCNIC_INTR_COAL_TYPE_RX;
+				coal->rx_time_us = rx_coalesce_usecs;
+				coal->rx_packets = rx_max_frames;
+				coal->tx_time_us = tx_coalesce_usecs;
+				coal->tx_packets = tx_max_frames;
+			}
+		}
 	} else {
-		adapter->ahw->coal.flag = 0;
-		adapter->ahw->coal.rx_time_us = ethcoal->rx_coalesce_usecs;
-		adapter->ahw->coal.rx_packets =
-			ethcoal->rx_max_coalesced_frames;
+		if (!ethcoal->rx_coalesce_usecs ||
+		    !ethcoal->rx_max_coalesced_frames) {
+			coal->flag = QLCNIC_INTR_DEFAULT;
+			coal->rx_time_us = QLCNIC_DEF_INTR_COALESCE_RX_TIME_US;
+			coal->rx_packets = QLCNIC_DEF_INTR_COALESCE_RX_PACKETS;
+		} else {
+			coal->flag = 0;
+			coal->rx_time_us = ethcoal->rx_coalesce_usecs;
+			coal->rx_packets = ethcoal->rx_max_coalesced_frames;
+		}
 	}
 
 	adapter->ahw->hw_ops->config_intr_coal(adapter);
@@ -1494,6 +1546,8 @@ static int qlcnic_get_intr_coalesce(struct net_device *netdev,
 
 	ethcoal->rx_coalesce_usecs = adapter->ahw->coal.rx_time_us;
 	ethcoal->rx_max_coalesced_frames = adapter->ahw->coal.rx_packets;
+	ethcoal->tx_coalesce_usecs = adapter->ahw->coal.tx_time_us;
+	ethcoal->tx_max_coalesced_frames = adapter->ahw->coal.tx_packets;
 
 	return 0;
 }
@@ -1645,4 +1699,11 @@ const struct ethtool_ops qlcnic_ethtool_ops = {
 	.get_dump_flag = qlcnic_get_dump_flag,
 	.get_dump_data = qlcnic_get_dump_data,
 	.set_dump = qlcnic_set_dump,
+};
+
+const struct ethtool_ops qlcnic_ethtool_failed_ops = {
+	.get_settings = qlcnic_get_settings,
+	.get_drvinfo = qlcnic_get_drvinfo,
+	.set_msglevel = qlcnic_set_msglevel,
+	.get_msglevel = qlcnic_get_msglevel,
 };

@@ -1,6 +1,6 @@
 /*
  * QLogic qlcnic NIC Driver
- * Copyright (c)  2009-2010 QLogic Corporation
+ * Copyright (c) 2009-2013 QLogic Corporation
  *
  * See LICENSE.qlcnic for copyright and licensing details.
  */
@@ -653,6 +653,8 @@ enum {
 #define QLCNIC_DEV_FAILED		0x6
 #define QLCNIC_DEV_QUISCENT		0x7
 
+#define QLCNIC_DEV_BADBAD		0xbad0bad0
+
 #define QLCNIC_DEV_NPAR_NON_OPER	0 /* NON Operational */
 #define QLCNIC_DEV_NPAR_OPER		1 /* NPAR Operational */
 #define QLCNIC_DEV_NPAR_OPER_TIMEO	30 /* Operational time out */
@@ -720,6 +722,9 @@ struct qlcnic_legacy_intr_set {
 /* FW dump defines */
 #define FLASH_ROM_WINDOW	0x42110030
 #define FLASH_ROM_DATA		0x42150000
+
+static const u32 FW_DUMP_LEVELS[] = {
+	0x3, 0x7, 0xf, 0x1f, 0x3f, 0x7f, 0xff };
 
 #define QLCNIC_FW_DUMP_REG1	0x00130060
 #define QLCNIC_FW_DUMP_REG2	0x001e0000

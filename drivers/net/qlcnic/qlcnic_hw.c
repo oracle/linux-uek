@@ -1,6 +1,6 @@
 /*
  * QLogic qlcnic NIC Driver
- * Copyright (c)  2009-2010 QLogic Corporation
+ * Copyright (c) 2009-2013 QLogic Corporation
  *
  * See LICENSE.qlcnic for copyright and licensing details.
  */
@@ -514,6 +514,21 @@ void qlcnic_prune_lb_filters(struct qlcnic_adapter *adapter)
 			}
 		}
 	}
+	for (i = 0; i < adapter->rx_fhash.fbucket_size; i++) {
+		head = &(adapter->rx_fhash.fhead[i]);
+
+		hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode)
+		{
+			if (jiffies >
+				(QLCNIC_FILTER_AGE * HZ + tmp_fil->ftime)) {
+				spin_lock_bh(&adapter->rx_mac_learn_lock);
+				adapter->rx_fhash.fnum--;
+				hlist_del(&tmp_fil->fnode);
+				spin_unlock_bh(&adapter->rx_mac_learn_lock);
+				kfree(tmp_fil);
+			}
+		}
+	}
 }
 
 void qlcnic_delete_lb_filters(struct qlcnic_adapter *adapter)
@@ -834,24 +849,19 @@ int qlcnic_set_features(struct net_device *netdev, u32 features)
 	u32 changed = netdev->features ^ features;
 	int hw_lro = (features & NETIF_F_LRO) ? QLCNIC_LRO_ENABLED : 0;
 
-	if ((adapter->flags & QLCNIC_ESWITCH_ENABLED) &&
-					QLCNIC_IS_82XX(adapter))
-		return -EOPNOTSUPP;
 	if (!(changed & NETIF_F_LRO))
 		return 0;
 
-	netdev->features = features ^ NETIF_F_LRO;
-
+	netdev->features ^= NETIF_F_LRO;
 	if (test_bit(__QLCNIC_DEV_UP, &adapter->state)) {
 		if (adapter->ahw->hw_ops->config_hw_lro(adapter, hw_lro))
 			return -EIO;
 	}
 
-	if (QLCNIC_IS_83XX(adapter))
-		return 0;
-
-	if ((hw_lro == 0) && qlcnic_send_lro_cleanup(adapter))
-		return -EIO;
+	if ((hw_lro == 0) && QLCNIC_IS_82XX(adapter)) {
+		if (qlcnic_send_lro_cleanup(adapter))
+			return -EIO;
+	}
 
 	return 0;
 }
@@ -1312,7 +1322,7 @@ int qlcnic_config_led(struct qlcnic_adapter *adapter, u32 state, u32 rate)
 	word = QLCNIC_H2C_OPCODE_CONFIG_LED | ((u64)adapter->portnum << 16);
 	req.req_hdr = cpu_to_le64(word);
 
-	req.words[0] = cpu_to_le64((u64)rate << 32);
+	req.words[0] = cpu_to_le64(((u64)rate << 32) | adapter->portnum);
 	req.words[1] = cpu_to_le64(state);
 
 	rv = qlcnic_send_cmd_descs(adapter, (struct cmd_desc_type0 *)&req, 1);

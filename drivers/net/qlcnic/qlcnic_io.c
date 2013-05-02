@@ -1,3 +1,10 @@
+/*
+ * QLogic qlcnic NIC Driver
+ * Copyright (c) 2009-2013 QLogic Corporation
+ *
+ * See LICENSE.qlcnic for copyright and licensing details.
+ */
+
 #include <linux/netdevice.h>
 #include <linux/if_vlan.h>
 #include <net/ip.h>
@@ -5,6 +12,91 @@
 
 #include "qlcnic.h"
 #include "qlcnic_hw.h"
+
+#define STATUS_CKSUM_LB 0
+#define QLCNIC_IS_LOOPBACK_PKT(STS_DATA0)	\
+	((qlcnic_get_sts_status((STS_DATA0))) == STATUS_CKSUM_LB ? 1 : 0)
+
+static inline u8 qlcnic_mac_hash(u64 mac)
+{
+	return (u8)((mac & 0xff) ^ ((mac >> 40) & 0xff));
+}
+
+void qlcnic_add_lb_filter(struct qlcnic_adapter *adapter, struct sk_buff *skb,
+			  int loopback_pkt, u16 vlan_id)
+{
+	struct ethhdr *phdr = (struct ethhdr *)(skb->data);
+	struct qlcnic_filter *fil, *tmp_fil;
+	struct hlist_node *tmp_hnode, *n;
+	struct hlist_head *head;
+	struct qlcnic_hardware_ops *hw_ops = adapter->ahw->hw_ops;
+	u64 src_addr = 0;
+	u8 hindex, found = 0, op;
+
+	memcpy(&src_addr, phdr->h_source, ETH_ALEN);
+
+	if (loopback_pkt) {
+
+		if (adapter->rx_fhash.fnum >= adapter->rx_fhash.fmax)
+			return;
+
+		hindex = qlcnic_mac_hash(src_addr) &
+			 (adapter->fhash.fbucket_size - 1);
+		head = &(adapter->rx_fhash.fhead[hindex]);
+
+		hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
+			if (!memcmp(tmp_fil->faddr, &src_addr, ETH_ALEN) &&
+			    tmp_fil->vlan_id == vlan_id) {
+				if (jiffies >
+				    (QLCNIC_READD_AGE * HZ + tmp_fil->ftime))
+					tmp_fil->ftime = jiffies;
+				return;
+			}
+		}
+
+		fil = kzalloc(sizeof(struct qlcnic_filter), GFP_ATOMIC);
+		if (!fil)
+			return;
+
+		fil->ftime = jiffies;
+		memcpy(fil->faddr, &src_addr, ETH_ALEN);
+		fil->vlan_id = vlan_id;
+		spin_lock(&adapter->rx_mac_learn_lock);
+		hlist_add_head(&(fil->fnode), head);
+		adapter->rx_fhash.fnum++;
+		spin_unlock(&adapter->rx_mac_learn_lock);
+	} else {
+		hindex = qlcnic_mac_hash(src_addr) &
+			 (adapter->fhash.fbucket_size - 1);
+		head = &(adapter->rx_fhash.fhead[hindex]);
+		spin_lock(&adapter->rx_mac_learn_lock);
+		hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
+			if (!memcmp(tmp_fil->faddr, &src_addr, ETH_ALEN) &&
+			    tmp_fil->vlan_id == vlan_id) {
+				found = 1;
+				break;
+			}
+		}
+
+		if (!found) {
+			spin_unlock(&adapter->rx_mac_learn_lock);
+			return;
+		}
+
+		op = vlan_id ? QLCNIC_MAC_VLAN_ADD : QLCNIC_MAC_ADD;
+		if (!hw_ops->change_macvlan(adapter, (u8 *)&src_addr,
+					    vlan_id, op)) {
+			op = vlan_id ? QLCNIC_MAC_VLAN_DEL : QLCNIC_MAC_DEL;
+
+			if (!hw_ops->change_macvlan(adapter, (u8 *)&src_addr,
+						    vlan_id, op)) {
+				hlist_del(&(tmp_fil->fnode));
+				adapter->rx_fhash.fnum--;
+			}
+		}
+		spin_unlock(&adapter->rx_mac_learn_lock);
+	}
+}
 
 void qlcnic_change_filter(struct qlcnic_adapter *adapter,
 		u64 *uaddr, __le16 vlan_id)
@@ -38,11 +130,6 @@ void qlcnic_change_filter(struct qlcnic_adapter *adapter,
 	smp_mb();
 }
 
-static inline u8 qlcnic_mac_hash(u64 mac)
-{
-	return (u8)((mac & 0xff) ^ ((mac >> 40) & 0xff));
-}
-
 static void
 qlcnic_send_filter(struct qlcnic_adapter *adapter,
 		struct qlcnic_host_tx_ring *tx_ring,
@@ -68,9 +155,6 @@ qlcnic_send_filter(struct qlcnic_adapter *adapter,
 		return;
 	}
 
-	/* Only NPAR capable devices support vlan based learning*/
-	if (adapter->flags & QLCNIC_ESWITCH_ENABLED)
-		vlan_id = first_desc->vlan_TCI;
 	memcpy(&src_addr, phdr->h_source, ETH_ALEN);
 	hindex = qlcnic_mac_hash(src_addr) & (adapter->fhash.fbucket_size - 1);
 	head = &(adapter->fhash.fhead[hindex]);
@@ -121,6 +205,7 @@ qlcnic_tx_pkt(struct qlcnic_adapter *adapter,
 		vh = (struct vlan_ethhdr *)skb->data;
 		flags = FLAGS_VLAN_TAGGED;
 		vlan_tci = vh->h_vlan_TCI;
+		protocol = ntohs(vh->h_vlan_encapsulated_proto);
 	} else if (vlan_tx_tag_present(skb)) {
 		flags = FLAGS_VLAN_OOB;
 		vlan_tci = vlan_tx_tag_get(skb);
@@ -143,8 +228,12 @@ set_flags:
 		memcpy(&first_desc->eth_addr, skb->data, ETH_ALEN);
 	}
 	opcode = TX_ETHER_PKT;
-	if ((adapter->netdev->features & (NETIF_F_TSO | NETIF_F_TSO6)) &&
-			skb_shinfo(skb)->gso_size > 0) {
+
+	if (skb_shinfo(skb)->gso_size > 0) {
+		if (!(adapter->netdev->features &
+		      (NETIF_F_TSO | NETIF_F_TSO6))) {
+			adapter->stats.invalid_tso_pkt++;
+		}
 
 		hdr_len = skb_transport_offset(skb) + tcp_hdrlen(skb);
 
@@ -729,8 +818,6 @@ struct sk_buff *qlcnic_process_rxbuf(struct qlcnic_adapter *adapter,
 		skb_checksum_none_assert(skb);
 	}
 
-	skb->dev = adapter->netdev;
-
 	buffer->skb = NULL;
 
 	return skb;
@@ -771,8 +858,8 @@ qlcnic_process_rcv(struct qlcnic_adapter *adapter,
 	struct qlcnic_rx_buffer *buffer;
 	struct sk_buff *skb;
 	struct qlcnic_host_rds_ring *rds_ring;
-	int index, length, cksum, pkt_offset;
-	u16 vid = 0xffff;
+	int index, length, cksum, pkt_offset, is_lb_pkt;
+	u16 vid = 0xffff, t_vid;
 
 	if (unlikely(ring >= adapter->max_rds_rings))
 		return NULL;
@@ -792,6 +879,12 @@ qlcnic_process_rcv(struct qlcnic_adapter *adapter,
 	skb = qlcnic_process_rxbuf(adapter, rds_ring, index, cksum);
 	if (!skb)
 		return buffer;
+
+	if (adapter->mac_learn && (adapter->flags & QLCNIC_ESWITCH_ENABLED)) {
+		t_vid = 0;
+		is_lb_pkt = QLCNIC_IS_LOOPBACK_PKT(sts_data0);
+		qlcnic_add_lb_filter(adapter, skb, is_lb_pkt, t_vid);
+	}
 
 	if (length > rds_ring->skb_size)
 		skb_put(skb, rds_ring->skb_size);
@@ -834,10 +927,10 @@ qlcnic_process_lro(struct qlcnic_adapter *adapter,
 	struct tcphdr *th;
 	bool push, timestamp;
 	int l2_hdr_offset, l4_hdr_offset;
-	int index;
+	int index, is_lb_pkt;
 	u16 lro_length, length, data_offset;
 	u32 seq_number;
-	u16 vid = 0xffff;
+	u16 vid = 0xffff, t_vid;
 
 	if (unlikely(ring > adapter->max_rds_rings))
 		return NULL;
@@ -860,6 +953,12 @@ qlcnic_process_lro(struct qlcnic_adapter *adapter,
 	skb = qlcnic_process_rxbuf(adapter, rds_ring, index, STATUS_CKSUM_OK);
 	if (!skb)
 		return buffer;
+
+	if (adapter->mac_learn && (adapter->flags & QLCNIC_ESWITCH_ENABLED)) {
+		t_vid = 0;
+		is_lb_pkt = QLCNIC_IS_LOOPBACK_PKT(sts_data0);
+		qlcnic_add_lb_filter(adapter, skb, is_lb_pkt, t_vid);
+	}
 
 	if (timestamp)
 		data_offset = l4_hdr_offset + QLC_TCP_TS_HDR_SIZE;

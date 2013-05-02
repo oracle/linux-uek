@@ -1,3 +1,10 @@
+/*
+ * QLogic qlcnic NIC Driver
+ * Copyright (c) 2009-2013 QLogic Corporation
+ *
+ * See LICENSE.qlcnic for copyright and licensing details.
+ */
+
 #include <linux/sysfs.h>
 #include "qlcnic.h"
 
@@ -179,10 +186,10 @@ beacon_err:
 
 	err = qlcnic_config_led(adapter, b_state, b_rate);
 
-	if (!err)
+	if (!err) {
 		err = len;
-	else
 		adapter->ahw->beacon_state = b_state;
+	}
 
 	if (dev_down) {
 		qlcnic_diag_free_res(adapter->netdev, max_sds_rings);
@@ -283,14 +290,9 @@ qlcnic_store_max_rss(struct device *dev,
 		goto done;
 	}
 
-	err = qlcnic_validate_max_rss(adapter->ahw->max_rx_ques, data);
-	if (err) {
-		netdev_err(netdev,
-			   "rss_ring valid range[1 - %d] in powers of 2\n",
-			   err);
-		err = -EINVAL;
+	err = qlcnic_validate_max_rss(adapter, data);
+	if (err)
 		goto done;
-	}
 
 	rtnl_lock();
 	err = qlcnic_set_max_rss(adapter, data);
@@ -441,6 +443,11 @@ qlcnic_sysfs_read_fw_dump(struct file *filp, struct kobject *kobj,
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
 	struct qlcnic_fw_dump *fw_dump = &adapter->ahw->fw_dump;
 
+	if (!fw_dump->tmpl_hdr) {
+		netdev_err(adapter->netdev, "FW Dump not supported\n");
+		return -ENOTSUPP;
+	}
+
 	if (offset >= size || offset < 0)
 		return 0;
 
@@ -509,11 +516,18 @@ qlcnic_sysfs_write_fw_dump(struct file *filp, struct kobject *kobj,
 	struct qlcnic_fw_dump *fw_dump = &adapter->ahw->fw_dump;
 	struct net_device *netdev = adapter->netdev;
 	unsigned long data;
+	u32 state;
+	int err = size;
 
 	data = simple_strtoul(buf, NULL, 16);
 	rtnl_lock();
 	switch (data) {
 	case QLCNIC_FORCE_FW_DUMP_KEY:
+		if (!fw_dump->tmpl_hdr) {
+			netdev_err(netdev, "FW dump not supported\n");
+			err = -ENOTSUPP;
+			goto out;
+		}
 		if (!fw_dump->enable) {
 			netdev_info(netdev, "FW dump not enabled\n");
 			goto out;
@@ -528,13 +542,18 @@ qlcnic_sysfs_write_fw_dump(struct file *filp, struct kobject *kobj,
 						QLCNIC_FORCE_FW_DUMP_KEY);
 		break;
 	case QLCNIC_DISABLE_FW_DUMP:
-		if (fw_dump->enable) {
+		if (fw_dump->enable && fw_dump->tmpl_hdr) {
 			netdev_info(netdev, "Disabling FW dump\n");
 			fw_dump->enable = 0;
 		}
 		break;
 	case QLCNIC_ENABLE_FW_DUMP:
-		if (!fw_dump->enable && fw_dump->tmpl_hdr) {
+		if (!fw_dump->tmpl_hdr) {
+			netdev_info(netdev, "FW dump not supported\n");
+			err = -ENOTSUPP;
+			goto out;
+		}
+		if (!fw_dump->enable) {
 			netdev_info(netdev, "Enabling FW dump\n");
 			fw_dump->enable = 1;
 		}
@@ -545,34 +564,44 @@ qlcnic_sysfs_write_fw_dump(struct file *filp, struct kobject *kobj,
 						QLCNIC_FORCE_FW_RESET);
 		adapter->flags &= ~QLCNIC_FW_RESET_OWNER;
 		break;
+	case QLCNIC_SET_QUIESCENT:
+	case QLCNIC_RESET_QUIESCENT:
+		state = QLCRD(adapter, QLCNIC_CRB_DEV_STATE);
+		if (state == QLCNIC_DEV_FAILED || (state == QLCNIC_DEV_BADBAD))
+			netdev_info(netdev, "Device is in FAILED state\n");
+		break;
 	default:
 		netdev_info(netdev, "Invalid dump key, 0x%lx\n", data);
+		err = -QLCNIC_INVALID_KEY;
 		break;
 	}
 out:
 	rtnl_unlock();
-	return size;
+	return err;
 }
 
 static ssize_t
 qlcnic_store_fwdump_level(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
+	int i;
 	unsigned long int val;
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
 
 	val = simple_strtoul(buf, NULL, 16);
 
-	if (val <= QLCNIC_DUMP_MASK_MAX && val >= QLCNIC_DUMP_MASK_MIN) {
-		rtnl_lock();
-		adapter->ahw->fw_dump.tmpl_hdr->drv_cap_mask = val & 0xff;
-		rtnl_unlock();
-		dev_info(dev, "Driver mask changed to: 0x%x\n",
-			adapter->ahw->fw_dump.tmpl_hdr->drv_cap_mask);
-	} else
-		dev_info(dev, "Invalid Dump Level: 0x%lx\n",
-			(unsigned long int) val);
-	return size;
+	for (i = 0; i < ARRAY_SIZE(FW_DUMP_LEVELS); i++) {
+		if (val == FW_DUMP_LEVELS[i]) {
+			rtnl_lock();
+			adapter->ahw->fw_dump.tmpl_hdr->drv_cap_mask = val;
+			rtnl_unlock();
+			dev_info(dev, "Driver mask changed to: 0x%x\n",
+				 adapter->ahw->fw_dump.tmpl_hdr->drv_cap_mask);
+			return size;
+		}
+	}
+	dev_info(dev, "Invalid Dump Level: 0x%lx\n", (unsigned long int) val);
+	return -EINVAL;
 }
 
 static ssize_t
@@ -1248,6 +1277,7 @@ void
 qlcnic_create_diag_entries(struct qlcnic_adapter *adapter)
 {
 	struct device *dev = &adapter->pdev->dev;
+	u32 state = QLCRD(adapter, QLCNIC_CRB_DEV_STATE);
 
 	if (device_create_bin_file(dev, &bin_attr_port_stats))
 		dev_info(dev, "failed to create port stats sysfs entry");
@@ -1256,19 +1286,13 @@ qlcnic_create_diag_entries(struct qlcnic_adapter *adapter)
 		return;
 	if (device_create_file(dev, &dev_attr_diag_mode))
 		dev_info(dev, "failed to create diag_mode sysfs entry\n");
-	if (device_create_file(dev, &dev_attr_beacon))
-		dev_info(dev, "failed to create beacon sysfs entry");
-	if (device_create_file(dev, &dev_attr_max_rss))
-		dev_info(dev, "failed to create rss sysfs entry\n");
-	if (device_create_file(dev, &dev_attr_elb_mode))
-		dev_info(dev, "failed to create elb_mode sysfs entry\n");
 	if (device_create_bin_file(dev, &bin_attr_crb))
 		dev_info(dev, "failed to create crb sysfs entry\n");
 	if (device_create_bin_file(dev, &bin_attr_mem))
 		dev_info(dev, "failed to create mem sysfs entry\n");
+	if (device_create_bin_file(dev, &bin_attr_fw_dump))
+		dev_info(dev, "failed to create fw_dump sysfs entry");
 	if (adapter->ahw->fw_dump.tmpl_hdr) {
-		if (device_create_bin_file(dev, &bin_attr_fw_dump))
-			dev_info(dev, "failed to create fw_dump sysfs entry");
 		if (device_create_file(dev, &dev_attr_fwdump_size))
 			dev_info(dev,
 				"failed to create fwdump_size sysfs entry");
@@ -1279,6 +1303,14 @@ qlcnic_create_diag_entries(struct qlcnic_adapter *adapter)
 			dev_info(dev,
 				"failed to create fwdump_state sysfs entry");
 	}
+	if (state == QLCNIC_DEV_FAILED || (state == QLCNIC_DEV_BADBAD))
+		return;
+	if (device_create_file(dev, &dev_attr_beacon))
+		dev_info(dev, "failed to create beacon sysfs entry");
+	if (device_create_file(dev, &dev_attr_max_rss))
+		dev_info(dev, "failed to create rss sysfs entry\n");
+	if (device_create_file(dev, &dev_attr_elb_mode))
+		dev_info(dev, "failed to create elb_mode sysfs entry\n");
 	if (device_create_bin_file(dev, &bin_attr_pci_config))
 		dev_info(dev, "failed to create pci config sysfs entry");
 	if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED))
@@ -1299,23 +1331,26 @@ void
 qlcnic_remove_diag_entries(struct qlcnic_adapter *adapter)
 {
 	struct device *dev = &adapter->pdev->dev;
+	u32 state = QLCRD(adapter, QLCNIC_CRB_DEV_STATE);
 
 	device_remove_bin_file(dev, &bin_attr_port_stats);
 
 	if (adapter->ahw->op_mode == QLCNIC_NON_PRIV_FUNC)
 		return;
 	device_remove_file(dev, &dev_attr_diag_mode);
-	device_remove_file(dev, &dev_attr_beacon);
-	device_remove_file(dev, &dev_attr_max_rss);
-	device_remove_file(dev, &dev_attr_elb_mode);
 	device_remove_bin_file(dev, &bin_attr_crb);
 	device_remove_bin_file(dev, &bin_attr_mem);
+	device_remove_bin_file(dev, &bin_attr_fw_dump);
 	if (adapter->ahw->fw_dump.tmpl_hdr) {
-		device_remove_bin_file(dev, &bin_attr_fw_dump);
 		device_remove_file(dev, &dev_attr_fwdump_size);
 		device_remove_file(dev, &dev_attr_fwdump_level);
 		device_remove_file(dev, &dev_attr_fwdump_state);
 	}
+	if (state == QLCNIC_DEV_FAILED || (state == QLCNIC_DEV_BADBAD))
+		return;
+	device_remove_file(dev, &dev_attr_max_rss);
+	device_remove_file(dev, &dev_attr_elb_mode);
+	device_remove_file(dev, &dev_attr_beacon);
 	device_remove_bin_file(dev, &bin_attr_pci_config);
 	if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED))
 		return;
