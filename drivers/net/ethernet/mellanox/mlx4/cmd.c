@@ -39,6 +39,7 @@
 #include <linux/errno.h>
 
 #include <linux/mlx4/cmd.h>
+#include <linux/mlx4/device.h>
 #include <linux/semaphore.h>
 #include <rdma/ib_smi.h>
 
@@ -2505,3 +2506,49 @@ int mlx4_get_vf_config(struct mlx4_dev *dev, int port, int vf, struct ifla_vf_in
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_get_vf_config);
+
+int mlx4_set_vf_link_state(struct mlx4_dev *dev, int port, int vf, int link_state)
+{
+	struct mlx4_priv *priv = mlx4_priv(dev);
+	struct mlx4_vport_state *s_info;
+	struct mlx4_vport_oper_state *vp_oper;
+	int slave;
+	u8 link_stat_event;
+
+	slave = mlx4_get_slave_indx(dev, vf);
+	if (slave < 0)
+		return -EINVAL;
+
+	switch (link_state) {
+	case IFLA_VF_LINK_STATE_AUTO:
+		/* get link curent state */
+		if (!priv->sense.do_sense_port[port])
+			link_stat_event = MLX4_PORT_CHANGE_SUBTYPE_ACTIVE;
+		else
+			link_stat_event = MLX4_PORT_CHANGE_SUBTYPE_DOWN;
+	    break;
+
+	case IFLA_VF_LINK_STATE_ENABLE:
+		link_stat_event = MLX4_PORT_CHANGE_SUBTYPE_ACTIVE;
+	    break;
+
+	case IFLA_VF_LINK_STATE_DISABLE:
+		link_stat_event = MLX4_PORT_CHANGE_SUBTYPE_DOWN;
+	    break;
+
+	default:
+		mlx4_warn(dev, "unknown value for link_state %02x on slave %d port %d\n",
+			  link_state, slave, port);
+		return -EINVAL;
+	};
+	/* update the admin & oper state on the link state */
+	s_info = &priv->mfunc.master.vf_admin[slave].vport[port];
+	vp_oper = &priv->mfunc.master.vf_oper[slave].vport[port];
+	s_info->link_state = link_state;
+	vp_oper->state.link_state = link_state;
+
+	/* send event */
+	mlx4_gen_port_state_change_eqe(dev, slave, port, link_stat_event);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_vf_link_state);

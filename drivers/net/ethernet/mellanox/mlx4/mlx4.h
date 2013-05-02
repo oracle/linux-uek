@@ -460,12 +460,14 @@ struct mlx4_slave_state {
 #define MLX4_VGT 4095
 #define NO_INDX  (-1)
 
+
 struct mlx4_vport_state {
 	u64 mac;
 	u16 default_vlan;
 	u8  default_qos;
 	u32 tx_rate;
 	bool spoofchk;
+	u32 link_state;
 };
 
 struct mlx4_vf_admin_state {
