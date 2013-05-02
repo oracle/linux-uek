@@ -950,44 +950,47 @@ lpfc_config_pcb_setup(struct lpfc_hba * phba)
 	for (i = 0; i < psli->num_rings; i++) {
 		pring = &psli->ring[i];
 
-		pring->sizeCiocb = phba->sli_rev == 3 ? SLI3_IOCB_CMD_SIZE:
+		pring->sli.sli3.sizeCiocb =
+			phba->sli_rev == 3 ? SLI3_IOCB_CMD_SIZE :
 							SLI2_IOCB_CMD_SIZE;
-		pring->sizeRiocb = phba->sli_rev == 3 ? SLI3_IOCB_RSP_SIZE:
+		pring->sli.sli3.sizeRiocb =
+			phba->sli_rev == 3 ? SLI3_IOCB_RSP_SIZE :
 							SLI2_IOCB_RSP_SIZE;
 		/* A ring MUST have both cmd and rsp entries defined to be
 		   valid */
-		if ((pring->numCiocb == 0) || (pring->numRiocb == 0)) {
+		if ((pring->sli.sli3.numCiocb == 0) ||
+			(pring->sli.sli3.numRiocb == 0)) {
 			pcbp->rdsc[i].cmdEntries = 0;
 			pcbp->rdsc[i].rspEntries = 0;
 			pcbp->rdsc[i].cmdAddrHigh = 0;
 			pcbp->rdsc[i].rspAddrHigh = 0;
 			pcbp->rdsc[i].cmdAddrLow = 0;
 			pcbp->rdsc[i].rspAddrLow = 0;
-			pring->cmdringaddr = NULL;
-			pring->rspringaddr = NULL;
+			pring->sli.sli3.cmdringaddr = NULL;
+			pring->sli.sli3.rspringaddr = NULL;
 			continue;
 		}
 		/* Command ring setup for ring */
-		pring->cmdringaddr = (void *)&phba->IOCBs[iocbCnt];
-		pcbp->rdsc[i].cmdEntries = pring->numCiocb;
+		pring->sli.sli3.cmdringaddr = (void *)&phba->IOCBs[iocbCnt];
+		pcbp->rdsc[i].cmdEntries = pring->sli.sli3.numCiocb;
 
 		offset = (uint8_t *) &phba->IOCBs[iocbCnt] -
 			 (uint8_t *) phba->slim2p.virt;
 		pdma_addr = phba->slim2p.phys + offset;
 		pcbp->rdsc[i].cmdAddrHigh = putPaddrHigh(pdma_addr);
 		pcbp->rdsc[i].cmdAddrLow = putPaddrLow(pdma_addr);
-		iocbCnt += pring->numCiocb;
+		iocbCnt += pring->sli.sli3.numCiocb;
 
 		/* Response ring setup for ring */
-		pring->rspringaddr = (void *) &phba->IOCBs[iocbCnt];
+		pring->sli.sli3.rspringaddr = (void *) &phba->IOCBs[iocbCnt];
 
-		pcbp->rdsc[i].rspEntries = pring->numRiocb;
+		pcbp->rdsc[i].rspEntries = pring->sli.sli3.numRiocb;
 		offset = (uint8_t *)&phba->IOCBs[iocbCnt] -
 			 (uint8_t *)phba->slim2p.virt;
 		pdma_addr = phba->slim2p.phys + offset;
 		pcbp->rdsc[i].rspAddrHigh = putPaddrHigh(pdma_addr);
 		pcbp->rdsc[i].rspAddrLow = putPaddrLow(pdma_addr);
-		iocbCnt += pring->numRiocb;
+		iocbCnt += pring->sli.sli3.numRiocb;
 	}
 }
 
@@ -2123,33 +2126,44 @@ void
 lpfc_reg_vfi(struct lpfcMboxq *mbox, struct lpfc_vport *vport, dma_addr_t phys)
 {
 	struct lpfc_mbx_reg_vfi *reg_vfi;
+	struct lpfc_hba *phba = vport->phba;
 
 	memset(mbox, 0, sizeof(*mbox));
 	reg_vfi = &mbox->u.mqe.un.reg_vfi;
 	bf_set(lpfc_mqe_command, &mbox->u.mqe, MBX_REG_VFI);
 	bf_set(lpfc_reg_vfi_vp, reg_vfi, 1);
 	bf_set(lpfc_reg_vfi_vfi, reg_vfi,
-	       vport->phba->sli4_hba.vfi_ids[vport->vfi]);
-	bf_set(lpfc_reg_vfi_fcfi, reg_vfi, vport->phba->fcf.fcfi);
-	bf_set(lpfc_reg_vfi_vpi, reg_vfi, vport->phba->vpi_ids[vport->vpi]);
+	       phba->sli4_hba.vfi_ids[vport->vfi]);
+	bf_set(lpfc_reg_vfi_fcfi, reg_vfi, phba->fcf.fcfi);
+	bf_set(lpfc_reg_vfi_vpi, reg_vfi, phba->vpi_ids[vport->vpi]);
 	memcpy(reg_vfi->wwn, &vport->fc_portname, sizeof(struct lpfc_name));
 	reg_vfi->wwn[0] = cpu_to_le32(reg_vfi->wwn[0]);
 	reg_vfi->wwn[1] = cpu_to_le32(reg_vfi->wwn[1]);
-	reg_vfi->e_d_tov = vport->phba->fc_edtov;
-	reg_vfi->r_a_tov = vport->phba->fc_ratov;
+	reg_vfi->e_d_tov = phba->fc_edtov;
+	reg_vfi->r_a_tov = phba->fc_ratov;
 	reg_vfi->bde.addrHigh = putPaddrHigh(phys);
 	reg_vfi->bde.addrLow = putPaddrLow(phys);
 	reg_vfi->bde.tus.f.bdeSize = sizeof(vport->fc_sparam);
 	reg_vfi->bde.tus.f.bdeFlags = BUFF_TYPE_BDE_64;
 	bf_set(lpfc_reg_vfi_nport_id, reg_vfi, vport->fc_myDID);
+
+	/* Only FC supports upd bit */
+	if ((phba->sli4_hba.lnk_info.lnk_tp == LPFC_LNK_TYPE_FC) &&
+	    (vport->fc_flag & FC_VFI_REGISTERED) &&
+	    (!phba->fc_topology_changed)) {
+		bf_set(lpfc_reg_vfi_vp, reg_vfi, 0);
+		bf_set(lpfc_reg_vfi_upd, reg_vfi, 1);
+	}
 	lpfc_printf_vlog(vport, KERN_INFO, LOG_MBOX,
 			"3134 Register VFI, mydid:x%x, fcfi:%d, "
-			" vfi:%d, vpi:%d, fc_pname:%x%x\n",
+			" vfi:%d, vpi:%d, fc_pname:%x%x fc_flag:x%x"
+			" port_state:x%x topology chg:%d\n",
 			vport->fc_myDID,
-			vport->phba->fcf.fcfi,
-			vport->phba->sli4_hba.vfi_ids[vport->vfi],
-			vport->phba->vpi_ids[vport->vpi],
-			reg_vfi->wwn[0], reg_vfi->wwn[1]);
+			phba->fcf.fcfi,
+			phba->sli4_hba.vfi_ids[vport->vfi],
+			phba->vpi_ids[vport->vpi],
+			reg_vfi->wwn[0], reg_vfi->wwn[1], vport->fc_flag,
+			vport->port_state, phba->fc_topology_changed);
 }
 
 /**

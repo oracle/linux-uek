@@ -538,6 +538,7 @@ struct fc_vft_header {
 #define ELS_CMD_ECHO      0x10000000
 #define ELS_CMD_TEST      0x11000000
 #define ELS_CMD_RRQ       0x12000000
+#define ELS_CMD_REC       0x13000000
 #define ELS_CMD_PRLI      0x20100014
 #define ELS_CMD_PRLO      0x21100014
 #define ELS_CMD_PRLO_ACC  0x02100014
@@ -574,6 +575,7 @@ struct fc_vft_header {
 #define ELS_CMD_ECHO      0x10
 #define ELS_CMD_TEST      0x11
 #define ELS_CMD_RRQ       0x12
+#define ELS_CMD_REC       0x13
 #define ELS_CMD_PRLI      0x14001020
 #define ELS_CMD_PRLO      0x14001021
 #define ELS_CMD_PRLO_ACC  0x14001002
@@ -1188,8 +1190,8 @@ typedef struct {
  */
 
 /* Number of rings currently used and available. */
-#define MAX_CONFIGURED_RINGS     3
-#define MAX_RINGS                4
+#define MAX_SLI3_CONFIGURED_RINGS     3
+#define MAX_SLI3_RINGS                4
 
 /* IOCB / Mailbox is owned by FireFly */
 #define OWN_CHIP        1
@@ -1665,6 +1667,7 @@ enum lpfc_protgrp_type {
 #define	BG_OP_IN_CSUM_OUT_CSUM		0x5
 #define	BG_OP_IN_CRC_OUT_CSUM		0x6
 #define	BG_OP_IN_CSUM_OUT_CRC		0x7
+#define	BG_OP_RAW_MODE			0x8
 
 struct lpfc_pde5 {
 	uint32_t word0;
@@ -2994,7 +2997,7 @@ typedef struct _PCB {
 
 	uint32_t pgpAddrLow;
 	uint32_t pgpAddrHigh;
-	SLI2_RDSC rdsc[MAX_RINGS];
+	SLI2_RDSC rdsc[MAX_SLI3_RINGS];
 } PCB_t;
 
 /* NEW_FEATURE */
@@ -3104,18 +3107,18 @@ struct lpfc_pgp {
 
 struct sli2_desc {
 	uint32_t unused1[16];
-	struct lpfc_hgp host[MAX_RINGS];
-	struct lpfc_pgp port[MAX_RINGS];
+	struct lpfc_hgp host[MAX_SLI3_RINGS];
+	struct lpfc_pgp port[MAX_SLI3_RINGS];
 };
 
 struct sli3_desc {
-	struct lpfc_hgp host[MAX_RINGS];
+	struct lpfc_hgp host[MAX_SLI3_RINGS];
 	uint32_t reserved[8];
 	uint32_t hbq_put[16];
 };
 
 struct sli3_pgp {
-	struct lpfc_pgp port[MAX_RINGS];
+	struct lpfc_pgp port[MAX_SLI3_RINGS];
 	uint32_t hbq_get[16];
 };
 
