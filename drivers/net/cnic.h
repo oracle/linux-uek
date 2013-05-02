@@ -21,30 +21,6 @@
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #endif
 
-/*  Taken from arch/x86/include/asm/atomic.h */
-/*
- * cnic_atomic_dec_if_positive - decrement by 1 if old value positive
- * @v: pointer of type atomic_t
- *
- * The function returns the old value of *v minus 1, even if
- * the atomic variable, v, was not decremented.
- */
-static inline int cnic_atomic_dec_if_positive(atomic_t *v)
-{
-	int c, old, dec;
-	c = atomic_read(v);
-	for (;;) {
-		dec = c - 1;
-		if (unlikely(dec < 0))
-			break;
-		old = atomic_cmpxchg((v), c, dec);
-		if (likely(old == c))
-			break;
-		c = old;
-	}
-	return dec;
-}
-
 #ifndef ISCSI_DEF_FIRST_BURST_LEN
 #define ISCSI_DEF_FIRST_BURST_LEN		65536
 #endif
@@ -68,6 +44,39 @@ static inline int cnic_atomic_dec_if_positive(atomic_t *v)
 #define __rcu
 #endif
 
+#ifndef RCU_INIT_POINTER
+#define RCU_INIT_POINTER(p, v) \
+		p = (typeof(*v) __force __rcu *)(v)
+#endif
+
+#ifndef pr_warning
+#define pr_warning(fmt, ...) \
+	printk(KERN_WARNING pr_fmt(fmt), ##__VA_ARGS__)
+#endif
+
+#ifndef pr_warn
+#define pr_warn pr_warning
+#endif
+
+#if !defined(netdev_printk) && (LINUX_VERSION_CODE < 0x020624)
+
+#if (LINUX_VERSION_CODE < 0x020615)
+#define NET_PARENT_DEV(netdev)  ((netdev)->class_dev.dev)
+#else
+#define NET_PARENT_DEV(netdev)  ((netdev)->dev.parent)
+#endif
+
+#define netdev_printk(level, netdev, format, args...)		\
+	dev_printk(level, NET_PARENT_DEV(netdev),	\
+		   "%s: " format,				\
+		   netdev_name(netdev), ##args)
+#endif
+
+#ifndef netdev_warn
+#define netdev_warn(dev, format, args...)			\
+	netdev_printk(KERN_WARNING, dev, format, ##args)
+#endif
+
 #define ISCSI_DEFAULT_MAX_OUTSTANDING_R2T 	(1)
 
 /* Formerly Cstorm iSCSI EQ index (HC_INDEX_C_ISCSI_EQ_CONS) */
@@ -76,8 +85,7 @@ static inline int cnic_atomic_dec_if_positive(atomic_t *v)
 /* Formerly Ustorm iSCSI EQ index (HC_INDEX_U_FCOE_EQ_CONS) */
 #define HC_INDEX_FCOE_EQ_CONS			3
 
-#define HC_INDEX_FWD_TX_CQ_CONS			5
-#define HC_INDEX_OOO_RX_CQ_CONS			1
+#define C_SB_ETH_TX_CQ_INDEX			5
 
 #define HC_SP_INDEX_ETH_ISCSI_CQ_CONS		5
 #define HC_SP_INDEX_ETH_ISCSI_RX_CQ_CONS	1
@@ -140,18 +148,18 @@ static inline int cnic_atomic_dec_if_positive(atomic_t *v)
 #define CNIC_LOCAL_PORT_MAX	61024
 #define CNIC_LOCAL_PORT_RANGE	(CNIC_LOCAL_PORT_MAX - CNIC_LOCAL_PORT_MIN)
 
-#define KWQE_CNT (BCM_PAGE_SIZE / sizeof(struct kwqe))
-#define KCQE_CNT (BCM_PAGE_SIZE / sizeof(struct kcqe))
+#define KWQE_CNT (BNX2_PAGE_SIZE / sizeof(struct kwqe))
+#define KCQE_CNT (BNX2_PAGE_SIZE / sizeof(struct kcqe))
 #define MAX_KWQE_CNT (KWQE_CNT - 1)
 #define MAX_KCQE_CNT (KCQE_CNT - 1)
 
 #define MAX_KWQ_IDX	((KWQ_PAGE_CNT * KWQE_CNT) - 1)
 #define MAX_KCQ_IDX	((KCQ_PAGE_CNT * KCQE_CNT) - 1)
 
-#define KWQ_PG(x) (((x) & ~MAX_KWQE_CNT) >> (BCM_PAGE_BITS - 5))
+#define KWQ_PG(x) (((x) & ~MAX_KWQE_CNT) >> (BNX2_PAGE_BITS - 5))
 #define KWQ_IDX(x) ((x) & MAX_KWQE_CNT)
 
-#define KCQ_PG(x) (((x) & ~MAX_KCQE_CNT) >> (BCM_PAGE_BITS - 5))
+#define KCQ_PG(x) (((x) & ~MAX_KCQE_CNT) >> (BNX2_PAGE_BITS - 5))
 #define KCQ_IDX(x) ((x) & MAX_KCQE_CNT)
 
 #define BNX2X_NEXT_KCQE(x) (((x) & (MAX_KCQE_CNT - 1)) ==		\
@@ -182,10 +190,10 @@ static inline int cnic_atomic_dec_if_positive(atomic_t *v)
 #define CNIC_ISCSI_OOO_SUPPORT		(1)
 
 #define MAX_IOOO_BLOCK_SUPPORTED	(256)
-#define MAX_OOO_RX_DESC_CNT		(RX_DESC_CNT * 4)
-#define MAX_OOO_TX_DESC_CNT		(RX_DESC_CNT * 4)
-#define MAX_BNX2_OOO_RX_DESC_CNT	(RX_DESC_CNT * 2)
-#define MAX_BNX2_OOO_TX_DESC_CNT	(RX_DESC_CNT * 2)
+#define MAX_OOO_RX_DESC_CNT		(BNX2_RX_DESC_CNT * 4)
+#define MAX_OOO_TX_DESC_CNT		(BNX2_RX_DESC_CNT * 4)
+#define MAX_BNX2_OOO_RX_DESC_CNT	(BNX2_RX_DESC_CNT * 2)
+#define MAX_BNX2_OOO_TX_DESC_CNT	(BNX2_RX_DESC_CNT * 2)
 
 #define MAX_RX_OOO_RING			(10)
 #define MAX_TX_OOO_RING			(10)
@@ -262,7 +270,7 @@ struct iooo_tx_ring_info {
 	u32			tx_pend_pd_cnt;
 	u32			tx_total_pkt_sent;
 
-	struct tx_bd		*tx_desc_ring[MAX_TX_OOO_RING];
+	struct bnx2_tx_bd	*tx_desc_ring[MAX_TX_OOO_RING];
 	struct iooo_pkt_desc	*tx_pkt_desc[MAX_OOO_TX_DESC_CNT];
 
 	u16			tx_cons;
@@ -288,7 +296,7 @@ struct iooo_rx_ring_info {
 	u32			rx_buf_size;
 
 	struct iooo_pkt_desc	*rx_pkt_desc[MAX_OOO_RX_DESC_CNT];
-	struct rx_bd		*rx_desc_ring[MAX_RX_OOO_RING];
+	struct bnx2_rx_bd	*rx_desc_ring[MAX_RX_OOO_RING];
 
 	dma_addr_t		rx_desc_mapping[MAX_RX_OOO_RING];
 };
@@ -406,14 +414,6 @@ struct kcq_info {
 
 struct l5cm_spe;
 
-struct iro {
-	u32 base;
-	u16 m1;
-	u16 m2;
-	u16 m3;
-	u16 size;
-};
-
 struct cnic_uio_dev {
 	struct uio_info		cnic_uinfo;
 	u32			uio_dev;
@@ -460,9 +460,6 @@ struct cnic_local {
 	u16		*tx_cons_ptr;
 	u16		rx_cons;
 	u16		tx_cons;
-
-	const struct iro	*iro_arr;
-#define IRO (((struct cnic_local *) dev->cnic_priv)->iro_arr)
 
 	struct cnic_dma		kwq_info;
 	struct kwqe		**kwq;
@@ -552,14 +549,8 @@ struct cnic_local {
 	int			func;
 	u32			pfid;
 	u8			port_mode;
-#define CHIP_4_PORT_MODE	0
-#define CHIP_2_PORT_MODE	1
-#define CHIP_PORT_MODE_NONE	2
 
 	u32			shmem_base;
-
-	atomic_t		nl_count;
-	unsigned long		nl_timestamp;
 
 #if (CNIC_ISCSI_OOO_SUPPORT)
 	struct iooo_mgmt	iooo_mgmr;
@@ -712,11 +703,9 @@ static u8 calc_crc8( u32 data, u8 crc)
 	 BNX2X_CHIP_IS_57840(x))
 #define BNX2X_CHIP_IS_E2_PLUS(x) (BNX2X_CHIP_IS_E2(x) || BNX2X_CHIP_IS_E3(x))
 
-#define IS_E1H_OFFSET       		BNX2X_CHIP_IS_E1H(cp->chip_id)
-
-#define BNX2X_RX_DESC_CNT		(BCM_PAGE_SIZE / sizeof(struct eth_rx_bd))
+#define BNX2X_RX_DESC_CNT		(BNX2_PAGE_SIZE / sizeof(struct eth_rx_bd))
 #define BNX2X_MAX_RX_DESC_CNT		(BNX2X_RX_DESC_CNT - 2)
-#define BNX2X_RCQ_DESC_CNT		(BCM_PAGE_SIZE / sizeof(union eth_rx_cqe))
+#define BNX2X_RCQ_DESC_CNT		(BNX2_PAGE_SIZE / sizeof(union eth_rx_cqe))
 #define BNX2X_MAX_RCQ_DESC_CNT		(BNX2X_RCQ_DESC_CNT - 1)
 
 #define BNX2X_NEXT_RCQE(x) (((x) & BNX2X_MAX_RCQ_DESC_CNT) ==		\

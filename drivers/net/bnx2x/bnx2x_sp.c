@@ -1,6 +1,6 @@
 /* bnx2x_sp.c: Broadcom Everest network driver.
  *
- * Copyright 2011-2012 Broadcom Corporation
+ * Copyright 2011-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -5483,6 +5483,7 @@ static int bnx2x_func_chk_transition(struct bnx2x *bp,
 		else if ((cmd == BNX2X_F_CMD_AFEX_VIFLISTS) &&
 			 (!test_bit(BNX2X_F_CMD_STOP, &o->pending)))
 			next_state = BNX2X_F_STATE_STARTED;
+
 		else if (cmd == BNX2X_F_CMD_TX_STOP)
 			next_state = BNX2X_F_STATE_TX_STOPPED;
 
@@ -5752,7 +5753,7 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 	memset(rdata, 0, sizeof(*rdata));
 
 	/* Fill the ramrod data with provided parameters */
-	rdata->function_mode = cpu_to_le16(start_params->mf_mode);
+	rdata->function_mode = (u8)start_params->mf_mode;
 	rdata->sd_vlan_tag   = cpu_to_le16(start_params->sd_vlan_tag);
 	rdata->path_id       = BP_PATH(bp);
 	rdata->network_cos_mode = start_params->network_cos_mode;
@@ -5950,16 +5951,30 @@ int bnx2x_func_state_change(struct bnx2x *bp,
 			    struct bnx2x_func_state_params *params)
 {
 	struct bnx2x_func_sp_obj *o = params->f_obj;
-	int rc;
+	int rc, cnt = 300;
 	enum bnx2x_func_cmd cmd = params->cmd;
 	unsigned long *pending = &o->pending;
 
 	mutex_lock(&o->one_pending_mutex);
 
 	/* Check that the requested transition is legal */
-	if (o->check_transition(bp, o, params)) {
+	rc = o->check_transition(bp, o, params);
+	if ((rc == -EBUSY) &&
+	    (test_bit(RAMROD_RETRY, &params->ramrod_flags))) {
+		while ((rc == -EBUSY) && (--cnt > 0)) {
+			mutex_unlock(&o->one_pending_mutex);
+			msleep(10);
+			mutex_lock(&o->one_pending_mutex);
+			rc = o->check_transition(bp, o, params);
+		}
+		if (rc == -EBUSY) {
+			mutex_unlock(&o->one_pending_mutex);
+			BNX2X_ERR("timeout waiting for previous ramrod completion\n");
+			return rc;
+		}
+	} else if (rc) {
 		mutex_unlock(&o->one_pending_mutex);
-		return -EINVAL;
+		return rc;
 	}
 
 	/* Set "pending" bit */

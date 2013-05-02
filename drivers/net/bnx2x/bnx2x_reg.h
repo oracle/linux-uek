@@ -1,6 +1,6 @@
 /* bnx2x_reg.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -1328,6 +1328,7 @@
 #define NIG_REG_LLH1_CLS_TYPE					 0x16084
 /* [R 1] FIFO empty in LLH port1 */
 #define NIG_REG_LLH1_FIFO_EMPTY					 0x10558
+#define NIG_REG_LLH1_FUNC_EN					 0x16104
 #define NIG_REG_LLH1_FUNC_MEM					 0x161c0
 #define NIG_REG_LLH1_FUNC_MEM_ENABLE				 0x16160
 #define NIG_REG_LLH1_FUNC_MEM_SIZE				 16
@@ -1353,6 +1354,8 @@
 /* [R 32] Interrupt register #0 read */
 #define NIG_REG_NIG_INT_STS_0					 0x103b0
 #define NIG_REG_NIG_INT_STS_1					 0x103c0
+/* [RC 32] Interrupt register #0 read clear */
+#define NIG_REG_NIG_INT_STS_CLR_0				 0x103b4
 /* [R 32] Legacy E1 and E1H location for parity error mask register. */
 #define NIG_REG_NIG_PRTY_MASK					 0x103dc
 /* [RW 32] Parity mask register #0 read/write */
@@ -1521,6 +1524,14 @@
 #define NIG_REG_P0_TX_ARB_PRIORITY_CLIENT2_MSB			 0x18684
 /* [R 1] TX FIFO for transmitting data to MAC is empty. */
 #define NIG_REG_P0_TX_MACFIFO_EMPTY				 0x18578
+/* [RW 1] MCP-to-host path enable. Set this bit to enable the routing of MCP
+ * packets to BRB LB interface to forward the packet to the host. All
+ * packets from MCP are forwarded to the network when this bit is cleared -
+ * regardless of the configured destination in tx_mng_destination register.
+ * When MCP-to-host paths for both ports 0 and 1 are disabled - the arbiter
+ * for BRB LB interface is bypassed and PBF LB traffic is always selected to
+ * send to BRB LB. */
+#define NIG_REG_P0_TX_MNG_HOST_ENABLE				 0x182f4
 /* [R 1] FIFO empty status of the MCP TX FIFO used for storing MCP packets
  * forwarded to the host. */
 #define NIG_REG_P0_TX_MNG_HOST_FIFO_EMPTY			 0x182a8
@@ -1652,6 +1663,11 @@
 #define NIG_REG_P1_TX_ARB_PRIORITY_CLIENT2_MSB			 0x186e4
 /* [R 1] TX FIFO for transmitting data to MAC is empty. */
 #define NIG_REG_P1_TX_MACFIFO_EMPTY				 0x18594
+/* [RW 1] MCP-to-host path enable. Set this bit to enable the routing of MCP
+ * packets to BRB LB interface to forward the packet to the host. All
+ * packets from MCP are forwarded to the network when this bit is cleared -
+ * regardless of the configured destination in tx_mng_destination register. */
+#define NIG_REG_P1_TX_MNG_HOST_ENABLE				 0x182f8
 /* [R 1] FIFO empty status of the MCP TX FIFO used for storing MCP packets
  * forwarded to the host. */
 #define NIG_REG_P1_TX_MNG_HOST_FIFO_EMPTY			 0x182b8
@@ -2327,54 +2343,6 @@
  * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
  * [2:0] - PFID. */
 #define PXP2_REG_PGL_PRETEND_FUNC_F1				 0x120678
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F2				 0x12067c
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F3				 0x120680
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F4				 0x120684
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F5				 0x120688
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F6				 0x12068c
-/* [RW 16] this field allows one function to pretend being another function
- * when accessing any BAR mapped resource within the device. the value of
- * the field is the number of the function that will be accessed
- * effectively. after software write to this bit it must read it in order to
- * know that the new value is updated. Bits [15] - force. Bits [14] - path
- * ID. Bits [13:10] - Reserved. Bits [9:4] - VFID. Bits [3] - VF valid. Bits
- * [2:0] - PFID. */
-#define PXP2_REG_PGL_PRETEND_FUNC_F7				 0x120690
 /* [R 1] this bit indicates that a read request was blocked because of
  * bus_master_en was deasserted */
 #define PXP2_REG_PGL_READ_BLOCKED				 0x120568
@@ -3400,6 +3368,7 @@
 #define XMAC_CTRL_REG_RX_EN					 (0x1<<1)
 #define XMAC_CTRL_REG_SOFT_RESET				 (0x1<<6)
 #define XMAC_CTRL_REG_TX_EN					 (0x1<<0)
+#define XMAC_CTRL_REG_XLGMII_ALIGN_ENB				 (0x1<<7)
 #define XMAC_PAUSE_CTRL_REG_RX_PAUSE_EN				 (0x1<<18)
 #define XMAC_PAUSE_CTRL_REG_TX_PAUSE_EN				 (0x1<<17)
 #define XMAC_PFC_CTRL_HI_REG_FORCE_PFC_XON			 (0x1<<1)
@@ -3420,11 +3389,14 @@
 #define XMAC_REG_PAUSE_CTRL					 0x68
 #define XMAC_REG_PFC_CTRL					 0x70
 #define XMAC_REG_PFC_CTRL_HI					 0x74
+#define XMAC_REG_RX_LSS_CTRL					 0x50
 #define XMAC_REG_RX_LSS_STATUS					 0x58
 /* [RW 14] Maximum packet size in receive direction; exclusive of preamble &
  * CRC in strip mode */
 #define XMAC_REG_RX_MAX_SIZE					 0x40
 #define XMAC_REG_TX_CTRL					 0x20
+#define XMAC_RX_LSS_CTRL_REG_LOCAL_FAULT_DISABLE		 (0x1<<0)
+#define XMAC_RX_LSS_CTRL_REG_REMOTE_FAULT_DISABLE		 (0x1<<1)
 /* [W 17] Generate an operation after completion; bit-16 is
  * AggVectIdx_valid; bits 15:8 are AggVectIdx; bits 7:5 are the TRIG and
  * bits 4:0 are the T124Param[4:0] */
@@ -4596,6 +4568,7 @@
 #define MDIO_GP_STATUS_TOP_AN_STATUS1_ACTUAL_SPEED_10G_XFI	0x1B00
 #define MDIO_GP_STATUS_TOP_AN_STATUS1_ACTUAL_SPEED_20G_DXGXS	0x1E00
 #define MDIO_GP_STATUS_TOP_AN_STATUS1_ACTUAL_SPEED_10G_SFI	0x1F00
+#define MDIO_GP_STATUS_TOP_AN_STATUS1_ACTUAL_SPEED_20G_KR2	0x3900
 
 
 #define MDIO_REG_BANK_10G_PARALLEL_DETECT		0x8130
@@ -5011,6 +4984,7 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_XGXS_STATUS3			0x8129
 #define MDIO_WC_REG_PAR_DET_10G_STATUS			0x8130
 #define MDIO_WC_REG_PAR_DET_10G_CTRL			0x8131
+#define MDIO_WC_REG_XGXS_STATUS4			0x813c
 #define MDIO_WC_REG_XGXS_X2_CONTROL2			0x8141
 #define MDIO_WC_REG_XGXS_RX_LN_SWAP1			0x816B
 #define MDIO_WC_REG_XGXS_TX_LN_SWAP1			0x8169
@@ -5065,9 +5039,16 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_DIGITAL4_MISC5			0x833e
 #define MDIO_WC_REG_DIGITAL5_MISC6			0x8345
 #define MDIO_WC_REG_DIGITAL5_MISC7			0x8349
+#define MDIO_WC_REG_DIGITAL5_LINK_STATUS		0x834d
 #define MDIO_WC_REG_DIGITAL5_ACTUAL_SPEED		0x834e
 #define MDIO_WC_REG_DIGITAL6_MP5_NEXTPAGECTRL		0x8350
 #define MDIO_WC_REG_CL49_USERB0_CTRL			0x8368
+#define MDIO_WC_REG_CL73_USERB0_CTRL			0x8370
+#define MDIO_WC_REG_CL73_USERB0_USTAT			0x8371
+#define MDIO_WC_REG_CL73_BAM_CTRL1			0x8372
+#define MDIO_WC_REG_CL73_BAM_CTRL2			0x8373
+#define MDIO_WC_REG_CL73_BAM_CTRL3			0x8374
+#define MDIO_WC_REG_CL73_BAM_CODE_FIELD			0x837b
 #define MDIO_WC_REG_EEE_COMBO_CONTROL0			0x8390
 #define MDIO_WC_REG_TX66_CONTROL			0x83b0
 #define MDIO_WC_REG_RX66_CONTROL			0x83c0
@@ -5081,7 +5062,17 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_RX66_SCW3_MASK			0x83c9
 #define MDIO_WC_REG_FX100_CTRL1				0x8400
 #define MDIO_WC_REG_FX100_CTRL3				0x8402
-
+#define MDIO_WC_REG_CL82_USERB1_TX_CTRL5		0x8436
+#define MDIO_WC_REG_CL82_USERB1_TX_CTRL6		0x8437
+#define MDIO_WC_REG_CL82_USERB1_TX_CTRL7		0x8438
+#define MDIO_WC_REG_CL82_USERB1_TX_CTRL9		0x8439
+#define MDIO_WC_REG_CL82_USERB1_RX_CTRL10		0x843a
+#define MDIO_WC_REG_CL82_USERB1_RX_CTRL11		0x843b
+#define MDIO_WC_REG_ETA_CL73_OUI1			0x8453
+#define MDIO_WC_REG_ETA_CL73_OUI2			0x8454
+#define MDIO_WC_REG_ETA_CL73_OUI3			0x8455
+#define MDIO_WC_REG_ETA_CL73_LD_BAM_CODE		0x8456
+#define MDIO_WC_REG_ETA_CL73_LD_UD_CODE			0x8457
 #define MDIO_WC_REG_MICROBLK_CMD			0xffc2
 #define MDIO_WC_REG_MICROBLK_DL_STATUS			0xffc5
 #define MDIO_WC_REG_MICROBLK_CMD3			0xffcc

@@ -2,7 +2,7 @@
  *               Static functions needed during the initialization.
  *               This file is "included" in bnx2x_main.c.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -650,15 +650,25 @@ static int bnx2x_ilt_client_mem_op(struct bnx2x *bp, int cli_num,
 	return rc;
 }
 
+static int bnx2x_ilt_mem_op_cnic(struct bnx2x *bp, u8 memop)
+{
+	int rc = 0;
+
+	if (CONFIGURE_NIC_MODE(bp))
+		rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_SRC, memop);
+	if (!rc)
+		rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_TM, memop);
+
+	return rc;
+}
+
 static int bnx2x_ilt_mem_op(struct bnx2x *bp, u8 memop)
 {
 	int rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_CDU, memop);
 	if (!rc)
 		rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_QM, memop);
-	if (!rc)
+	if (!rc && CNIC_SUPPORT(bp) && !CONFIGURE_NIC_MODE(bp))
 		rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_SRC, memop);
-	if (!rc)
-		rc = bnx2x_ilt_client_mem_op(bp, ILT_CLIENT_TM, memop);
 
 	return rc;
 }
@@ -783,12 +793,19 @@ static void bnx2x_ilt_client_id_init_op(struct bnx2x *bp,
 	bnx2x_ilt_client_init_op(bp, ilt_cli, initop);
 }
 
-static void bnx2x_ilt_init_op(struct bnx2x *bp, u8 initop)
+static void bnx2x_ilt_init_op_cnic(struct bnx2x *bp, u8 initop)
+{
+	if (CONFIGURE_NIC_MODE(bp))
+		bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_SRC, initop);
+	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_TM, initop);
+}
+
+static void bnx2x_ilt_init_op_no_cnic(struct bnx2x *bp, u8 initop)
 {
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_CDU, initop);
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_QM, initop);
-	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_SRC, initop);
-	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_TM, initop);
+	if (CNIC_SUPPORT(bp) && !CONFIGURE_NIC_MODE(bp))
+		bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_SRC, initop);
 }
 
 static void bnx2x_ilt_init_client_psz(struct bnx2x *bp, int cli_num,

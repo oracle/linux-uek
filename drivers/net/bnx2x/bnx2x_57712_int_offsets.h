@@ -5,7 +5,7 @@
 * you under the terms of the GNU General Public License version 2,
 * available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
 */
-static const struct iro e2_iro_arr[378] = {
+static const struct iro e2_iro_arr[379] = {
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_SIZE
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_DATA_SIZE
 	{     0x28,      0x0,      0x0,      0x0,      0x0},	// COMMON_SP_SB_SIZE
@@ -109,19 +109,19 @@ static const struct iro e2_iro_arr[378] = {
 	{   0x16c8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_COMMON_RTC_PARAMS_OFFSET
 	{   0x2008,     0x10,      0x0,      0x0,     0x10},	// TSTORM_ASSERT_LIST_OFFSET(assertListEntry)
 	{   0x2000,      0x0,      0x0,      0x0,      0x8},	// TSTORM_ASSERT_LIST_INDEX_OFFSET
-	{   0x17d0,      0x8,      0x0,      0x0,      0x1},	// TSTORM_FUNC_EN_OFFSET(funcId)
-	{   0x17d1,      0x8,      0x0,      0x0,      0x1},	// TSTORM_VF_TO_PF_OFFSET(funcId)
-	{   0x17d2,      0x8,      0x0,      0x0,      0x1},	// TSTORM_RECORD_SLOW_PATH_OFFSET(funcId)
+	{   0x17e0,      0x8,      0x0,      0x0,      0x1},	// TSTORM_FUNC_EN_OFFSET(funcId)
+	{   0x17e1,      0x8,      0x0,      0x0,      0x1},	// TSTORM_VF_TO_PF_OFFSET(funcId)
+	{   0x17e2,      0x8,      0x0,      0x0,      0x1},	// TSTORM_RECORD_SLOW_PATH_OFFSET(funcId)
 	{  0x62078,     0x38,      0x0,      0x0,     0x38},	// TSTORM_PER_QUEUE_STATS_OFFSET(tStatQueueId)
-	{   0x16e0,      0x0,      0x0,      0x0,      0x2},	// TSTORM_COMMON_SAFC_WORKAROUND_ENABLE_OFFSET
-	{   0x16e2,      0x0,      0x0,      0x0,      0x2},	// TSTORM_COMMON_SAFC_WORKAROUND_TIMEOUT_10USEC_OFFSET
+	{   0x16f0,      0x0,      0x0,      0x0,      0x2},	// TSTORM_COMMON_SAFC_WORKAROUND_ENABLE_OFFSET
+	{   0x16f2,      0x0,      0x0,      0x0,      0x2},	// TSTORM_COMMON_SAFC_WORKAROUND_TIMEOUT_10USEC_OFFSET
 	{   0xa040,      0x0,      0x0,      0x0,     0x20},	// TSTORM_ERROR_HANDLER_STATISTICS_RAM_OFFSET
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_VFC_TEST_RSS_KEY_OFFSET(portId)
 	{   0xe000,     0x20,      0x0,      0x0,     0x20},	// TSTORM_QUEUE_ZONE_OFFSET(queueId)
 	{   0xf300,      0x8,      0x0,      0x0,      0x8},	// TSTORM_VF_ZONE_OFFSET(vfId)
-	{   0x16f8,      0x0,      0x0,      0x0,     0xd8},	// TSTORM_E2_INTEG_RAM_OFFSET
-	{   0x173f,      0x0,      0x0,      0x0,      0x1},	// TSTORM_LSB_SIDE_BAND_INFO_OFFSET
-	{   0x1717,      0x0,      0x0,      0x0,      0x1},	// TSTORM_MSB_SIDE_BAND_INFO_OFFSET
+	{   0x1708,      0x0,      0x0,      0x0,     0xd8},	// TSTORM_E2_INTEG_RAM_OFFSET
+	{   0x174f,      0x0,      0x0,      0x0,      0x1},	// TSTORM_LSB_SIDE_BAND_INFO_OFFSET
+	{   0x1727,      0x0,      0x0,      0x0,      0x1},	// TSTORM_MSB_SIDE_BAND_INFO_OFFSET
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_VFC_TEST_LINE_OFFSET
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_VFC_TEST_RESULT_OFFSET
 	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_VFC_OP_GEN_VALUE
@@ -129,15 +129,15 @@ static const struct iro e2_iro_arr[378] = {
 	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_INBOUND_INTERRUPT_TEST_AGG_INT_1_INDEX
 	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_INBOUND_INTERRUPT_TEST_AGG_INT_2_INDEX
 	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_INBOUND_INTERRUPT_TEST_AGG_INT_3_INDEX
-	{   0x1778,      0x0,      0x0,      0x0,      0x1},	// TSTORM_KUKU_TEST_OPCODE_OFFSET
-	{   0x17b8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_KUKU_LOAD_CONTEXT_TEST_OFFSET
+	{   0x1788,      0x0,      0x0,      0x0,      0x1},	// TSTORM_KUKU_TEST_OPCODE_OFFSET
+	{   0x17c8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_KUKU_LOAD_CONTEXT_TEST_OFFSET
 	{     0x51,      0x0,      0x0,      0x0,      0x0},	// TSTORM_KUKU_OP_GEN_VALUE
-	{   0x17a0,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_ADDRESS_LO_OFFSET
-	{   0x17a4,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_ADDRESS_HI_OFFSET
-	{   0x17a8,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_RAM_ADDRESS_OFFSET
-	{   0x17ac,      0x0,      0x0,      0x0,      0x8},	// TSTORM_PCI_READ_TEST_PCI_ENTITY_OFFSET
-	{   0x1798,      0x0,      0x0,      0x0,      0x8},	// TSTORM_TIME_SYNC_TEST_ADDRESS_OFFSET
-	{   0x17c8,      0x0,      0x0,      0x0,      0x2},	// TSTORM_KUKU_NIG_PAUSE_TEST_MASK_OFFSET
+	{   0x17b0,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_ADDRESS_LO_OFFSET
+	{   0x17b4,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_ADDRESS_HI_OFFSET
+	{   0x17b8,      0x0,      0x0,      0x0,      0x4},	// TSTORM_PCI_READ_TEST_RAM_ADDRESS_OFFSET
+	{   0x17bc,      0x0,      0x0,      0x0,      0x8},	// TSTORM_PCI_READ_TEST_PCI_ENTITY_OFFSET
+	{   0x17a8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_TIME_SYNC_TEST_ADDRESS_OFFSET
+	{   0x17d8,      0x0,      0x0,      0x0,      0x2},	// TSTORM_KUKU_NIG_PAUSE_TEST_MASK_OFFSET
 	{  0x60000,     0x40,      0x0,      0x0,     0x40},	// CSTORM_STATUS_BLOCK_OFFSET(sbId)
 	{   0xc000,     0x40,      0x0,      0x0,     0x40},	// CSTORM_STATUS_BLOCK_DATA_OFFSET(sbId)
 	{   0xc02e,     0x40,      0x0,      0x0,      0x1},	// CSTORM_STATUS_BLOCK_DATA_STATE_OFFSET(sbId)
@@ -283,6 +283,7 @@ static const struct iro e2_iro_arr[378] = {
 	{   0x6104,      0x8,      0x0,      0x0,      0x1},	// TSTORM_ISCSI_L2_ISCSI_OOO_CLIENT_ID_TABLE_OFFSET(pfId)
 	{   0x6140,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_PROD_OFFSET(pfId)
 	{   0x6144,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_RX_BDS_THRSHLD_OFFSET(pfId)
+	{   0x6142,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_CONS_OFFSET(pfId)
 	{   0x6180,      0x8,      0x0,      0x0,      0x4},	// TSTORM_ISCSI_TCP_LOCAL_ADV_WND_OFFSET(pfId)
 	{   0x3000,      0x8,      0x0,      0x0,      0x2},	// USTORM_ISCSI_PAGE_SIZE_OFFSET(pfId)
 	{   0x3002,      0x8,      0x0,      0x0,      0x1},	// USTORM_ISCSI_PAGE_SIZE_LOG_OFFSET(pfId)

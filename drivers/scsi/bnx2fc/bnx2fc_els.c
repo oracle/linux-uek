@@ -873,6 +873,8 @@ static void bnx2fc_flogi_resp(struct fc_seq *seq, struct fc_frame *fp,
 	struct fcoe_ctlr *fip = arg;
 	struct fc_exch *exch = fc_seq_exch(seq);
 	struct fc_lport *lport = exch->lp;
+	struct fcoe_port *port = lport_priv(lport);
+	struct bnx2fc_interface *interface = port->priv;
 	u8 *mac;
 	u8 op;
 
@@ -894,6 +896,18 @@ static void bnx2fc_flogi_resp(struct fc_seq *seq, struct fc_frame *fp,
 	}
 	if (!is_zero_ether_addr(mac))
 		fip->update_mac(lport, mac);
+
+	if (!is_valid_ether_addr(interface->dest_addr)) {
+		BNX2FC_MISC_DBG("Using ctlr dst addr %2x:%2x:%2x:%2x:%2x:%2x\n",
+				interface->ctlr.dest_addr[0],
+				interface->ctlr.dest_addr[1],
+				interface->ctlr.dest_addr[2],
+				interface->ctlr.dest_addr[3],
+				interface->ctlr.dest_addr[4],
+				interface->ctlr.dest_addr[5]);
+		memcpy(interface->dest_addr, interface->ctlr.dest_addr,
+		       ETH_ALEN);
+	}
 done:
 	fc_lport_flogi_resp(seq, fp, lport);
 }

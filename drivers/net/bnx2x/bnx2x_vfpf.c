@@ -1,6 +1,6 @@
 /* bnx2x_vfpf.c: Broadcom Everest network driver.
  *
- * Copyright 2009-2012 Broadcom Corporation
+ * Copyright 2009-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -182,7 +182,6 @@ static int bnx2x_copy32_vf_dmae(struct bnx2x *bp, u8 from_vf,
 	}
 	dmae.len = len32;
 
-	bnx2x_dp_dmae(bp, &dmae, BNX2X_MSG_DMAE);
 
 	/* issue the command and wait for completion */
 	return bnx2x_issue_dmae_with_comp(bp, &dmae);

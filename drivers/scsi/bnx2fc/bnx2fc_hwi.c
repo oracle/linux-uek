@@ -315,13 +315,13 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req4.src_mac_addr_mid[1] =  port->data_src_addr[2];
 	ofld_req4.src_mac_addr_hi[0] =  port->data_src_addr[1];
 	ofld_req4.src_mac_addr_hi[1] =  port->data_src_addr[0];
-	ofld_req4.dst_mac_addr_lo[0] =  interface->ctlr.dest_addr[5];
+	ofld_req4.dst_mac_addr_lo[0] =  interface->dest_addr[5];
 							/* fcf mac */
-	ofld_req4.dst_mac_addr_lo[1] =  interface->ctlr.dest_addr[4];
-	ofld_req4.dst_mac_addr_mid[0] =  interface->ctlr.dest_addr[3];
-	ofld_req4.dst_mac_addr_mid[1] =  interface->ctlr.dest_addr[2];
-	ofld_req4.dst_mac_addr_hi[0] =  interface->ctlr.dest_addr[1];
-	ofld_req4.dst_mac_addr_hi[1] =  interface->ctlr.dest_addr[0];
+	ofld_req4.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	ofld_req4.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	ofld_req4.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	ofld_req4.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	ofld_req4.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	ofld_req4.lcq_addr_lo = (u32) tgt->lcq_dma;
 	ofld_req4.lcq_addr_hi = (u32)((u64) tgt->lcq_dma >> 32);
@@ -347,7 +347,7 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
  * @port:		port structure pointer
  * @tgt:		bnx2fc_rport structure pointer
  */
-static int bnx2fc_send_session_enable_req(struct fcoe_port *port,
+int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 					struct bnx2fc_rport *tgt)
 {
 	struct kwqe *kwqe_arr[2];
@@ -375,12 +375,12 @@ static int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 	enbl_req.src_mac_addr_hi[1] =  port->data_src_addr[0];
 	memcpy(tgt->src_addr, port->data_src_addr, ETH_ALEN);
 
-	enbl_req.dst_mac_addr_lo[0] =  interface->ctlr.dest_addr[5];
-	enbl_req.dst_mac_addr_lo[1] =  interface->ctlr.dest_addr[4];
-	enbl_req.dst_mac_addr_mid[0] =  interface->ctlr.dest_addr[3];
-	enbl_req.dst_mac_addr_mid[1] =  interface->ctlr.dest_addr[2];
-	enbl_req.dst_mac_addr_hi[0] =  interface->ctlr.dest_addr[1];
-	enbl_req.dst_mac_addr_hi[1] =  interface->ctlr.dest_addr[0];
+	enbl_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
+	enbl_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	enbl_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	enbl_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	enbl_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	enbl_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	port_id = fc_host_port_id(lport->host);
 	if (port_id != tgt->sid) {
@@ -460,12 +460,12 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 	}
 
 
-	disable_req.dst_mac_addr_lo[0] =  interface->ctlr.dest_addr[5];
-	disable_req.dst_mac_addr_lo[1] =  interface->ctlr.dest_addr[4];
-	disable_req.dst_mac_addr_mid[0] =  interface->ctlr.dest_addr[3];
-	disable_req.dst_mac_addr_mid[1] =  interface->ctlr.dest_addr[2];
-	disable_req.dst_mac_addr_hi[0] =  interface->ctlr.dest_addr[1];
-	disable_req.dst_mac_addr_hi[1] =  interface->ctlr.dest_addr[0];
+	disable_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
+	disable_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	disable_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	disable_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	disable_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	disable_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	port_id = tgt->sid;
 	disable_req.s_id[0] = (port_id & 0x000000FF);
@@ -1101,6 +1101,8 @@ unlock:
 		/* Arm CQ only if doorbell is mapped */
 		if (tgt->ctx_base)
 			bnx2fc_arm_cq(tgt);
+		else
+			BUG_ON(1);
 		atomic_add(num_free_sqes, &tgt->free_sqes);
 	} else
 		/* REVISIT: for initial debugging. remove it later */
@@ -1148,7 +1150,6 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 	struct bnx2fc_interface		*interface;
 	u32				conn_id;
 	u32				context_id;
-	int				rc;
 
 	conn_id = ofld_kcqe->fcoe_conn_id;
 	context_id = ofld_kcqe->fcoe_conn_context_id;
@@ -1180,18 +1181,11 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 			set_bit(BNX2FC_FLAG_CTX_ALLOC_FAILURE, &tgt->flags);
 			hba->stats.num_tgt_offload_failed++;
 		}
-		goto ofld_cmpl_err;
 	} else {
-
-		/* now enable the session */
-		rc = bnx2fc_send_session_enable_req(port, tgt);
-		if (rc) {
-			printk(KERN_ERR PFX "enable session failed\n");
-			hba->stats.num_tgt_enable_failed++;
-			goto ofld_cmpl_err;
-		}
+		/* FW offload request successfully completed */
+		set_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
 	}
-	return;
+
 ofld_cmpl_err:
 	set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
 	wake_up_interruptible(&tgt->ofld_wait);
@@ -1238,15 +1232,9 @@ static void bnx2fc_process_enable_conn_cmpl(struct bnx2fc_hba *hba,
 		printk(KERN_ERR PFX "bnx2fc-enbl_cmpl: HBA mis-match\n");
 		goto enbl_cmpl_err;
 	}
-	if (ofld_kcqe->completion_status)
-		goto enbl_cmpl_err;
-	else {
+	if (!ofld_kcqe->completion_status)
 		/* enable successful - rport ready for issuing IOs */
-		set_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
-		set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
-		wake_up_interruptible(&tgt->ofld_wait);
-	}
-	return;
+		set_bit(BNX2FC_FLAG_ENABLED, &tgt->flags);
 
 enbl_cmpl_err:
 	set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
@@ -1280,6 +1268,7 @@ static void bnx2fc_process_conn_disable_cmpl(struct bnx2fc_hba *hba,
 		/* disable successful */
 		BNX2FC_TGT_DBG(tgt, "disable successful\n");
 		clear_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
+		clear_bit(BNX2FC_FLAG_ENABLED, &tgt->flags);
 		set_bit(BNX2FC_FLAG_DISABLED, &tgt->flags);
 		set_bit(BNX2FC_FLAG_UPLD_REQ_COMPL, &tgt->flags);
 		wake_up_interruptible(&tgt->upld_wait);

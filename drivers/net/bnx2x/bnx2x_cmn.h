@@ -1,6 +1,6 @@
 /* bnx2x_cmn.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -255,6 +255,7 @@ void bnx2x_igu_ack_sb(struct bnx2x *bp, u8 igu_sb_id, u8 segment,
 
 /* Disable transactions from chip to host */
 void bnx2x_pf_disable(struct bnx2x *bp);
+int bnx2x_pretend_func(struct bnx2x *bp, u16 pretend_func_val);
 
 /**
  * bnx2x__link_status_update - handles link status change.
@@ -375,7 +376,7 @@ void bnx2x_int_disable(struct bnx2x *bp);
 void bnx2x_int_disable_sync(struct bnx2x *bp, int disable_hw);
 
 /**
- * bnx2x_nic_init - init driver internals.
+ * bnx2x_nic_init_cnic - init driver internals for cnic.
  *
  * @bp:		driver handle
  * @load_code:	COMMON, PORT or FUNCTION
@@ -385,15 +386,37 @@ void bnx2x_int_disable_sync(struct bnx2x *bp, int disable_hw);
  *  - status blocks
  *  - etc.
  */
-void bnx2x_nic_init(struct bnx2x *bp, u32 load_code);
+void bnx2x_nic_init_cnic(struct bnx2x *bp);
 
+/**
+ * bnx2x_nic_init - init driver internals.
+ *
+ * @bp:		driver handle
+ *
+ * Initializes:
+ *  - rings
+ *  - status blocks
+ *  - etc.
+ */
+void bnx2x_nic_init(struct bnx2x *bp, u32 load_code);
+/**
+ * bnx2x_alloc_mem_cnic - allocate driver's memory for cnic.
+ *
+ * @bp:		driver handle
+ */
+int bnx2x_alloc_mem_cnic(struct bnx2x *bp);
 /**
  * bnx2x_alloc_mem - allocate driver's memory.
  *
  * @bp:		driver handle
  */
 int bnx2x_alloc_mem(struct bnx2x *bp);
-
+/**
+ * bnx2x_free_mem_cnic - release driver's memory for cnic.
+ *
+ * @bp:		driver handle
+ */
+void bnx2x_free_mem_cnic(struct bnx2x *bp);
 /**
  * bnx2x_free_mem - release driver's memory.
  *
@@ -512,6 +535,7 @@ bool bnx2x_reset_is_done(struct bnx2x *bp, int engine);
 void bnx2x_set_reset_in_progress(struct bnx2x *bp);
 void bnx2x_set_reset_global(struct bnx2x *bp);
 void bnx2x_disable_close_the_gate(struct bnx2x *bp);
+int bnx2x_init_hw_func_cnic(struct bnx2x *bp);
 
 /**
  * bnx2x_sp_event - handle ramrods completion.
@@ -527,6 +551,14 @@ void bnx2x_sp_event(struct bnx2x_fastpath *fp, union eth_rx_cqe *rr_cqe);
  * @bp:		driver handle
  */
 void bnx2x_ilt_set_info(struct bnx2x *bp);
+
+/**
+ * bnx2x_ilt_set_cnic_info - prepare ILT configurations for SRC
+ * and TM.
+ *
+ * @bp:		driver handle
+ */
+void bnx2x_ilt_set_info_cnic(struct bnx2x *bp);
 
 /**
  * bnx2x_dcbx_init - initialize dcbx protocol.
@@ -633,12 +665,17 @@ int bnx2x_resume(struct pci_dev *pdev);
 /* Release IRQ vectors */
 void bnx2x_free_irq(struct bnx2x *bp);
 
+void bnx2x_free_fp_mem_cnic(struct bnx2x *bp);
 void bnx2x_free_fp_mem(struct bnx2x *bp);
+int bnx2x_alloc_fp_mem_cnic(struct bnx2x *bp);
 int bnx2x_alloc_fp_mem(struct bnx2x *bp);
 void bnx2x_init_rx_rings(struct bnx2x *bp);
+void bnx2x_init_rx_rings_cnic(struct bnx2x *bp);
+void bnx2x_free_skbs_cnic(struct bnx2x *bp);
 void bnx2x_free_skbs(struct bnx2x *bp);
 void bnx2x_netif_stop(struct bnx2x *bp, int disable_hw);
 void bnx2x_netif_start(struct bnx2x *bp);
+int bnx2x_load_cnic(struct bnx2x *bp);
 
 /**
  * bnx2x_enable_msix - set msix configuration.
@@ -933,18 +970,12 @@ static inline void bnx2x_free_rx_sge(struct bnx2x *bp,
 	sge->addr_lo = 0;
 }
 
-static inline void bnx2x_add_all_napi(struct bnx2x *bp)
+static inline void bnx2x_add_all_napi_cnic(struct bnx2x *bp)
 {
 	int i;
 
-	bp->num_napi_queues = bp->num_queues;
-
 	/* Add NAPI objects */
-#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
-	for_each_rx_queue(bp, i)
-#else
-	for_each_napi_rx_queue(bp, i)
-#endif
+	for_each_rx_queue_cnic(bp, i)
 #ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
 #if (VMWARE_ESX_DDK_VERSION >= 50000)
@@ -974,16 +1005,57 @@ static inline void bnx2x_add_all_napi(struct bnx2x *bp)
 #endif
 }
 
+static inline void bnx2x_add_all_napi(struct bnx2x *bp)
+{
+	int i;
+
+	/* Add NAPI objects */
+	for_each_eth_queue(bp, i)
+#ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+#if (VMWARE_ESX_DDK_VERSION >= 50000)
+		if (!bnx2x_fp(bp, i, napi).net_poll)
+#else
+		if (!bnx2x_fp(bp, i, napi).worldlet)
+#endif
+#ifdef BNX2X_ESX_CNA
+		if (!IS_FCOE_IDX(i))
+#endif
+#endif /* __VMKLNX__ */
+		netif_napi_add(bp->dev, &bnx2x_fp(bp, i, napi),
+			       bnx2x_poll, BNX2X_NAPI_WEIGHT);
+#else /* non BNX2X_UPSTREAM */
+	{
+		/* initialize net_device for each rx queue */
+		struct net_device *dummy_netdev = &bnx2x_fp(bp, i, dummy_netdev);
+#if defined(USE_NAPI_GRO)
+		struct napi_struct *napi = &bnx2x_fp(bp, i, napi);
+		napi->dev = bp->dev;
+#endif
+		dummy_netdev->priv = &bp->fp[i];
+		dummy_netdev->poll = bnx2x_poll;
+		dummy_netdev->weight = BNX2X_NAPI_WEIGHT;
+		set_bit(__LINK_STATE_START, &dummy_netdev->state);
+	}
+#endif
+}
+
+static inline void bnx2x_del_all_napi_cnic(struct bnx2x *bp)
+{
+#if defined(BNX2X_NEW_NAPI) && (LINUX_VERSION_CODE >= 0x02061b) /* BNX2X_UPSTREAM */
+	int i;
+
+	for_each_rx_queue_cnic(bp, i)
+		netif_napi_del(&bnx2x_fp(bp, i, napi));
+#endif
+}
+
 static inline void bnx2x_del_all_napi(struct bnx2x *bp)
 {
 #if defined(BNX2X_NEW_NAPI) && (LINUX_VERSION_CODE >= 0x02061b) /* BNX2X_UPSTREAM */
 	int i;
 
-#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
-	for_each_rx_queue(bp, i)
-#else
-	for_each_napi_rx_queue(bp, i)
-#endif
+	for_each_eth_queue(bp, i)
 		netif_napi_del(&bnx2x_fp(bp, i, napi));
 #endif
 }
@@ -1721,7 +1793,7 @@ static inline bool bnx2x_is_valid_ether_addr(struct bnx2x *bp, u8 *addr)
 {
 	if (is_valid_ether_addr(addr))
 		return true;
-	if (CNIC_ENABLED(bp) && is_zero_ether_addr(addr) &&
+	if (is_zero_ether_addr(addr) &&
 	    (IS_MF_STORAGE_SD(bp) || IS_MF_FCOE_AFEX(bp)))
 		return true;
 
@@ -1743,5 +1815,7 @@ void bnx2x_csum_validate(struct sk_buff *skb, union eth_rx_cqe *cqe,
  *
  */
 void bnx2x_fill_fw_str(struct bnx2x *bp, char *buf, size_t buf_len);
+
+void bnx2x_init_searcher(struct bnx2x *bp);
 
 #endif /* BNX2X_CMN_H */

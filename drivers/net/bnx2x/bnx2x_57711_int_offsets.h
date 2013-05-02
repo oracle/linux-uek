@@ -5,7 +5,7 @@
 * you under the terms of the GNU General Public License version 2,
 * available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
 */
-static const struct iro e1h_iro_arr[378] = {
+static const struct iro e1h_iro_arr[379] = {
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_SIZE
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_DATA_SIZE
 	{     0x28,      0x0,      0x0,      0x0,      0x0},	// COMMON_SP_SB_SIZE
@@ -283,6 +283,7 @@ static const struct iro e1h_iro_arr[378] = {
 	{   0x6104,      0x8,      0x0,      0x0,      0x1},	// TSTORM_ISCSI_L2_ISCSI_OOO_CLIENT_ID_TABLE_OFFSET(pfId)
 	{   0x6140,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_PROD_OFFSET(pfId)
 	{   0x6144,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_RX_BDS_THRSHLD_OFFSET(pfId)
+	{   0x6142,      0x8,      0x0,      0x0,      0x2},	// TSTORM_ISCSI_L2_ISCSI_OOO_CONS_OFFSET(pfId)
 	{   0x6180,      0x8,      0x0,      0x0,      0x4},	// TSTORM_ISCSI_TCP_LOCAL_ADV_WND_OFFSET(pfId)
 	{   0x7000,      0x8,      0x0,      0x0,      0x2},	// USTORM_ISCSI_PAGE_SIZE_OFFSET(pfId)
 	{   0x7002,      0x8,      0x0,      0x0,      0x1},	// USTORM_ISCSI_PAGE_SIZE_LOG_OFFSET(pfId)

@@ -1,6 +1,6 @@
 /* bnx2x.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,8 +33,8 @@
 #define BNX2X_MOD_VER ""
 #endif
 #define DRV_MODULE_NAME         "bnx2x"
-#define DRV_MODULE_VERSION      "1.74.17" BNX2X_MOD_VER
-#define DRV_MODULE_RELDATE      "$DateTime: 2012/09/14 10:33:32 $"
+#define DRV_MODULE_VERSION      "1.76.54" BNX2X_MOD_VER
+#define DRV_MODULE_RELDATE      "$DateTime: 2013/02/28 01:52:59 $"
 #define BNX2X_BC_VER            0x040200
 
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
@@ -144,17 +144,18 @@ enum bnx2x_int_mode {
 	BNX2X_INT_MODE_MSI
 };
 
-#if defined(__VMKLNX__) && defined(__VMKNETDDI_QUEUEOPS__) /* ! BNX2X_UPSTREAM */
-#define BNX2X_NETQ
+#if defined(__VMKLNX__) /* ! BNX2X_UPSTREAM */
 
-struct netq_mac_filter {
-	u16	flags;
-	u8	mac[ETH_ALEN];
-};
+#if defined(__VMKNETDDI_QUEUEOPS__)
+#define BNX2X_NETQ
 #endif
 
-#if defined(__VMKLNX__) && (((VMWARE_ESX_DDK_VERSION == 50000) && !defined(BNX2X_INBOX)) || (VMWARE_ESX_DDK_VERSION > 50000)) /* ! BNX2X_UPSTREAM */
+#if (((VMWARE_ESX_DDK_VERSION == 50000) && !defined(BNX2X_INBOX)) || \
+	(VMWARE_ESX_DDK_VERSION > 50000))
 #define BNX2X_ESX_CNA
+#endif
+
+#include "bnx2x_esx.h"
 #endif
 
 
@@ -398,7 +399,13 @@ enum {
 #define	BNX2X_FCOE_ETH_CID(bp)		(BNX2X_CNIC_START_ETH_CID(bp) + 3)
 #endif
 
+#define CNIC_SUPPORT(bp)		((bp)->cnic_support)
 #define CNIC_ENABLED(bp)		((bp)->cnic_enabled)
+#define CNIC_LOADED(bp)			((bp)->cnic_loaded)
+#define FCOE_INIT(bp)			((bp)->fcoe_init)
+#ifdef BCM_OOO /* ! BNX2X_UPSTREAM */
+#define OOO_INIT(bp)			((bp)->ooo_init)
+#endif
 
 #define AEU_IN_ATTN_BITS_PXPPCICLOCKCLIENT_PARITY_ERROR \
 	AEU_INPUTS_ATTN_BITS_PXPPCICLOCKCLIENT_PARITY_ERROR
@@ -791,16 +798,14 @@ enum {
 #endif
 
 #define IS_ETH_FP(fp)		((fp)->index < BNX2X_NUM_ETH_QUEUES((fp)->bp))
-#define IS_FCOE_FP(fp)		((fp)->index == FCOE_IDX((fp)->bp) && \
-					       CNIC_ENABLED((fp)->bp))
-#define IS_FCOE_IDX(idx)	(CNIC_ENABLED(bp) && ((idx) == FCOE_IDX(bp)))
+#define IS_FCOE_FP(fp)		((fp)->index == FCOE_IDX((fp)->bp))
+#define IS_FCOE_IDX(idx)	((idx) == FCOE_IDX(bp))
 #ifdef BCM_OOO /* ! BNX2X_UPSTREAM */
-#define IS_FWD_FP(fp)		((fp->index == FWD_IDX(fp->bp)) && \
-					       CNIC_ENABLED(fp->bp))
-#define IS_FWD_IDX(idx)		(((idx) == FWD_IDX(bp)) && CNIC_ENABLED(bp))
-#define IS_OOO_FP(fp)		((fp)->index == OOO_IDX((fp)->bp) && \
-					       CNIC_ENABLED((fp)->bp))
-#define IS_OOO_IDX(idx)		(((idx) == OOO_IDX(bp)) && CNIC_ENABLED(bp))
+#define IS_FWD_FP(fp)		((fp)->index == FWD_IDX((fp)->bp))
+
+#define IS_FWD_IDX(idx)		((idx) == FWD_IDX(bp))
+#define IS_OOO_FP(fp)		((fp)->index == OOO_IDX((fp)->bp))
+#define IS_OOO_IDX(idx)		((idx) == OOO_IDX(bp))
 #endif
 
 #endif /* BYPASS_APP */
@@ -1032,8 +1037,11 @@ struct bnx2x_common {
 #define CHIP_NUM_57811			0x163d
 #define CHIP_NUM_57811_MF		0x163e
 #define CHIP_NUM_57811_VF		0x163f
-#define CHIP_NUM_57840			0x168d
-#define CHIP_NUM_57840_MF		0x16ab
+#define CHIP_NUM_57840_OBSOLETE		0x168d
+#define CHIP_NUM_57840_MF_OBSOLETE	0x16ab
+#define CHIP_NUM_57840_4_10		0x16a1
+#define CHIP_NUM_57840_2_20		0x16a2
+#define CHIP_NUM_57840_MF		0x16a4
 #define CHIP_NUM_57840_VF		0x16ad
 #define CHIP_IS_E1(bp)			(CHIP_NUM(bp) == CHIP_NUM_57710)
 #define CHIP_IS_57711(bp)		(CHIP_NUM(bp) == CHIP_NUM_57711)
@@ -1050,8 +1058,12 @@ struct bnx2x_common {
 #define CHIP_IS_57811(bp)		(CHIP_NUM(bp) == CHIP_NUM_57811)
 #define CHIP_IS_57811_MF(bp)		(CHIP_NUM(bp) == CHIP_NUM_57811_MF)
 #define CHIP_IS_57811_VF(bp)		(CHIP_NUM(bp) == CHIP_NUM_57811_VF)
-#define CHIP_IS_57840(bp)		(CHIP_NUM(bp) == CHIP_NUM_57840)
-#define CHIP_IS_57840_MF(bp)		(CHIP_NUM(bp) == CHIP_NUM_57840_MF)
+#define CHIP_IS_57840(bp)		\
+		((CHIP_NUM(bp) == CHIP_NUM_57840_4_10) || \
+		(CHIP_NUM(bp) == CHIP_NUM_57840_2_20) || \
+		(CHIP_NUM(bp) == CHIP_NUM_57840_OBSOLETE))
+#define CHIP_IS_57840_MF(bp)	((CHIP_NUM(bp) == CHIP_NUM_57840_MF) || \
+		(CHIP_NUM(bp) == CHIP_NUM_57840_MF_OBSOLETE))
 #define CHIP_IS_57840_VF(bp)		(CHIP_NUM(bp) == CHIP_NUM_57840_VF)
 #define CHIP_IS_E1H(bp)			(CHIP_IS_57711(bp) || \
 					 CHIP_IS_57711E(bp))
@@ -1105,6 +1117,18 @@ struct bnx2x_common {
 					 (CHIP_REV(bp) == CHIP_REV_Bx))
 #define CHIP_IS_E3A0(bp)		(CHIP_IS_E3(bp) && \
 					 (CHIP_REV(bp) == CHIP_REV_Ax))
+/* This define is used in two main places:
+ * 1. In the early stages of nic_load, to know if to configrue Parser / Searcher
+ * to nic-only mode or to offload mode. Offload mode is configured if either the
+ * chip is E1x (where MIC_MODE register is not applicable), or if cnic already
+ * registered for this port (which means that the user wants storage services).
+ * 2. During cnic-related load, to know if offload mode is already configured in
+ * the HW or needs to be configrued.
+ * Since the transition from nic-mode to offload-mode in HW causes traffic
+ * coruption, nic-mode is configured only in ports on which storage services
+ * where never requested.
+ */
+#define CONFIGURE_NIC_MODE(bp)		(!CHIP_IS_E1x(bp) && !CNIC_ENABLED(bp))
 
 	int			flash_size;
 #define BNX2X_NVRAM_1MB_SIZE			0x20000	/* 1M bit in bytes */
@@ -1167,7 +1191,6 @@ struct bnx2x_port {
 
 	/* used to synchronize phy accesses */
 	struct mutex		phy_mutex;
-	int			need_hw_lock;
 
 	u32			port_stx;
 
@@ -1303,7 +1326,7 @@ struct bnx2x_slowpath {
 	 * Therefore, if they would have been defined in the same union,
 	 * data can get corrupted.
 	 */
-	struct afex_vif_list_ramrod_data func_afex_rdata;
+	struct afex_vif_list_ramrod_data	func_afex_rdata;
 
 #ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
 	/*
@@ -1489,6 +1512,11 @@ struct bnx2x_fp_stats {
 };
 
 struct bnx2x {
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+	u32			version;
+#define BNX2X_DEV_VER 0xb3b30000 /* Change this when the structure changes */
+#endif
+
 	/* Fields used in the tx and intr/napi performance paths
 	 * are grouped together in the beginning of the structure
 	 */
@@ -1591,16 +1619,8 @@ struct bnx2x {
 	__le16			*eq_cons_sb;
 	atomic_t		eq_spq_left; /* COMMON_XXX ramrods credit */
 
-
-#ifdef BNX2X_NETQ /* ! BNX2X_UPSTREAM */
-	u16			number_of_mac_filters;
-
-	/* n queues allocated */
-	u16			n_rx_queues_allocated;
-	u16			n_tx_queues_allocated;
-
-	/* used to synchronize netq accesses */
-	spinlock_t		netq_lock;
+#if defined(__VMKLNX__) /* ! BNX2X_UPSTREAM */
+	struct bnx2x_esx	esx;
 #endif
 
 	/* Counter for marking that there is a STAT_QUERY ramrod pending */
@@ -1648,7 +1668,18 @@ struct bnx2x {
 #define NO_ISCSI_OOO(bp)	((bp)->flags & NO_ISCSI_OOO_FLAG)
 #define NO_FCOE(bp)		((bp)->flags & NO_FCOE_FLAG)
 
-	int			cnic_enabled;
+	u8			cnic_support;
+	bool			cnic_enabled;
+	bool			cnic_loaded;
+	struct cnic_eth_dev	*(*cnic_probe)(struct net_device *);
+
+	/* Flag that indicates that we can start looking for FCoE L2 queue
+	 * completions in the default status block.
+	 */
+	bool			fcoe_init;
+#ifdef BCM_OOO /* ! BNX2X_UPSTREAM */
+	bool			ooo_init;
+#endif
 
 	int			pm_cap;
 	int			mrrs;
@@ -1731,8 +1762,6 @@ struct bnx2x {
 	uint			num_queues;
 	uint			num_ethernet_queues;
 	uint			num_cnic_queues;
-	/* The number of queues to whom MSI-X vector and napi was allocated */
-	uint			num_napi_queues;
 	int			disable_tpa;
 
 	u32			rx_mode;
@@ -1792,7 +1821,7 @@ struct bnx2x {
  * Maximum supported number of RSS queues: number of IGU SBs minus one that goes
  * to CNIC.
  */
-#define BNX2X_MAX_RSS_COUNT(bp)	((bp)->igu_sb_cnt - CNIC_ENABLED(bp))
+#define BNX2X_MAX_RSS_COUNT(bp)	((bp)->igu_sb_cnt - CNIC_SUPPORT(bp))
 
 /*
  * Maximum CID count that might be required by the bnx2x:
@@ -1800,17 +1829,17 @@ struct bnx2x {
  */
 #ifndef BCM_OOO /* BNX2X_UPSTREAM */
 #define BNX2X_L2_CID_COUNT(bp)	(BNX2X_NUM_ETH_QUEUES(bp) * BNX2X_MULTI_TX_COS \
-				+ 2 * CNIC_ENABLED(bp))
-#else /* ! BNX2X_UPSTREAM */
+				+ 2 * CNIC_SUPPORT(bp))
+#else /* not BNX2X_UPSTREAM */
 #define BNX2X_L2_CID_COUNT(bp)	(BNX2X_NUM_ETH_QUEUES(bp) * BNX2X_MULTI_TX_COS \
-				+ 4 * CNIC_ENABLED(bp))
+				+ 4 * CNIC_SUPPORT(bp))
 #endif
 #ifndef BCM_OOO /* BNX2X_UPSTREAM */
 #define BNX2X_L2_MAX_CID(bp)	(BNX2X_MAX_RSS_COUNT(bp) * BNX2X_MULTI_TX_COS \
-				+ 2 * CNIC_ENABLED(bp))
-#else /* ! BNX2X_UPSTREAM */
+				+ 2 * CNIC_SUPPORT(bp))
+#else /* not BNX2X_UPSTREAM */
 #define BNX2X_L2_MAX_CID(bp)	(BNX2X_MAX_RSS_COUNT(bp) * BNX2X_MULTI_TX_COS \
-				+ 4 * CNIC_ENABLED(bp))
+				+ 4 * CNIC_SUPPORT(bp))
 #endif
 #define L2_ILT_LINES(bp)	(DIV_ROUND_UP(BNX2X_L2_CID_COUNT(bp),\
 					ILT_PAGE_CIDS))
@@ -1996,11 +2025,8 @@ struct bnx2x {
 	enum bnx2x_bypass_state			bypass_state;
 #endif
 
-#ifdef BNX2X_NETQ /* ! BNX2X_UPSTREAM */
-	int rss_p_num;
-	int rss_p_size;
-#endif
 	int fp_array_size;
+	u32 dump_preset_idx;
 };
 
 /* Tx queues may be less or equal to Rx queues */
@@ -2018,7 +2044,7 @@ extern uint num_queues;
 #ifndef BCM_OOO /* BNX2X_UPSTREAM */
 #define BNX2X_NUM_RX_QUEUES(bp)	BNX2X_NUM_QUEUES(bp)
 #else /* ! BNX2X_UPSTREAM */
-#define BNX2X_NUM_RX_QUEUES(bp)	(BNX2X_NUM_QUEUES(bp) - CNIC_ENABLED(bp))
+#define BNX2X_NUM_RX_QUEUES(bp)	(BNX2X_NUM_QUEUES(bp) - CNIC_SUPPORT(bp))
 #endif
 
 #define is_multi(bp)		(BNX2X_NUM_QUEUES(bp) > 1)
@@ -2050,7 +2076,7 @@ extern uint num_queues;
 				  BNX2X_MAX_QUEUES_E1H))
 
 /* the max number of queues dictated by the HW/FW */
-#define BNX2X_MAX_HW_QUEUES(bp)  (bp->igu_sb_cnt - CNIC_ENABLED(bp))
+#define BNX2X_MAX_HW_QUEUES(bp)  (bp->igu_sb_cnt - CNIC_SUPPORT(bp))
 
 /* If num_queue is provided then we're in engineering mode and the max is set
  * the through the HW max, otherwise limit the number of queues according to
@@ -2107,6 +2133,13 @@ struct bnx2x_func_init_params {
 	u16		spq_prod;	/* valid iff FUNC_FLG_SPQ */
 };
 
+#define for_each_cnic_queue(bp, var) \
+	for ((var) = BNX2X_NUM_ETH_QUEUES(bp); (var) < BNX2X_NUM_QUEUES(bp); \
+	     (var)++) \
+		if (skip_queue(bp, var))	\
+			continue;		\
+		else
+
 #define for_each_eth_queue(bp, var) \
 	for ((var) = 0; (var) < BNX2X_NUM_ETH_QUEUES(bp); (var)++)
 
@@ -2120,17 +2153,45 @@ struct bnx2x_func_init_params {
 		else
 
 /* Skip forwarding FP */
+#define for_each_valid_rx_queue(bp, var)			\
+	for ((var) = 0;						\
+	     (var) < (CNIC_LOADED(bp) ? BNX2X_NUM_QUEUES(bp) :	\
+		      BNX2X_NUM_ETH_QUEUES(bp));		\
+	     (var)++)						\
+		if (skip_rx_queue(bp, var))			\
+			continue;				\
+		else
+
+#define for_each_rx_queue_cnic(bp, var) \
+	for ((var) = BNX2X_NUM_ETH_QUEUES(bp); (var) < BNX2X_NUM_QUEUES(bp); \
+	     (var)++) \
+		if (skip_rx_queue(bp, var))	\
+			continue;		\
+		else
+
 #define for_each_rx_queue(bp, var) \
 	for ((var) = 0; (var) < BNX2X_NUM_QUEUES(bp); (var)++) \
 		if (skip_rx_queue(bp, var))	\
 			continue;		\
 		else
-#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-#define for_each_napi_rx_queue(bp, var) \
-	for ((var) = 0; (var) < bp->num_napi_queues; (var)++)
-#endif
 
 /* Skip OOO FP */
+#define for_each_valid_tx_queue(bp, var)			\
+	for ((var) = 0;						\
+	     (var) < (CNIC_LOADED(bp) ? BNX2X_NUM_QUEUES(bp) :	\
+		      BNX2X_NUM_ETH_QUEUES(bp));		\
+	     (var)++)						\
+		if (skip_tx_queue(bp, var))			\
+			continue;				\
+		else
+
+#define for_each_tx_queue_cnic(bp, var) \
+	for ((var) = BNX2X_NUM_ETH_QUEUES(bp); (var) < BNX2X_NUM_QUEUES(bp); \
+	     (var)++) \
+		if (skip_tx_queue(bp, var))	\
+			continue;		\
+		else
+
 #define for_each_tx_queue(bp, var) \
 	for ((var) = 0; (var) < BNX2X_NUM_QUEUES(bp); (var)++) \
 		if (skip_tx_queue(bp, var))	\
@@ -2315,7 +2376,6 @@ u32 bnx2x_dmae_opcode(struct bnx2x *bp, u8 src_type, u8 dst_type,
 void bnx2x_prep_dmae_with_comp(struct bnx2x *bp, struct dmae_command *dmae,
 			       u8 src_type, u8 dst_type);
 int bnx2x_issue_dmae_with_comp(struct bnx2x *bp, struct dmae_command *dmae);
-void bnx2x_dp_dmae(struct bnx2x *bp, struct dmae_command *dmae, int msglvl);
 
 /* FLR related routines */
 u32 bnx2x_flr_clnup_poll_count(struct bnx2x *bp);
@@ -2769,8 +2829,7 @@ void bnx2x_notify_link_changed(struct bnx2x *bp);
 #define BNX2X_MF_EXT_PROTOCOL_FCOE(bp)  ((bp)->mf_ext_config & \
 					   MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD)
 
-#define IS_MF_FCOE_AFEX(bp) (IS_MF_AFEX(bp) && \
-			     BNX2X_MF_EXT_PROTOCOL_FCOE(bp) && CNIC_ENABLED(bp))
+#define IS_MF_FCOE_AFEX(bp) (IS_MF_AFEX(bp) && BNX2X_MF_EXT_PROTOCOL_FCOE(bp))
 
 #define IS_MF_STORAGE_SD(bp) (IS_MF_SD(bp) && \
 				(BNX2X_IS_MF_SD_PROTOCOL_ISCSI(bp) || \
@@ -2789,5 +2848,7 @@ void bnx2x_notify_link_changed(struct bnx2x *bp);
 
 #define GET_FIELD(value, fname) \
 	(((value) & (fname##_MASK)) >> (fname##_SHIFT))
+
+#define NUM_MACS	8
 
 #endif /* bnx2x.h */

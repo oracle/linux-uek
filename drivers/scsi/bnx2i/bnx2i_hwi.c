@@ -1275,6 +1275,9 @@ int bnx2i_send_fw_iscsi_init_msg(struct bnx2i_hba *hba)
 		ISCSI_PAGE_SIZE_4K << ISCSI_KWQE_INIT1_PAGE_SIZE_SHIFT;
 	if (en_tcp_dack)
 		iscsi_init.flags |= ISCSI_KWQE_INIT1_DELAYED_ACK_ENABLE;
+	if (test_bit(BNX2I_NX2_DEV_57710, &hba->cnic_dev_type) && time_stamps)
+		iscsi_init.flags |= ISCSI_KWQE_INIT1_TIME_STAMPS_ENABLE;
+
 	iscsi_init.num_cqs = 1;
 	iscsi_init.hdr.op_code = ISCSI_KWQE_OPCODE_INIT1;
 	iscsi_init.hdr.flags =

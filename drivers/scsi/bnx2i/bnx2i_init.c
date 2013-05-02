@@ -1,6 +1,6 @@
 /* bnx2i.c: Broadcom NetXtreme II iSCSI driver.
  *
- * Copyright (c) 2006 - 2012 Broadcom Corporation
+ * Copyright (c) 2006 - 2013 Broadcom Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
  *
@@ -18,8 +18,8 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION	"2.7.4.1f"
-#define DRV_MODULE_RELDATE	"Aug 27, 2012"
+#define DRV_MODULE_VERSION	"2.7.6.1d"
+#define DRV_MODULE_RELDATE	"Jan 25, 2013"
 
 static char version[] __devinitdata =
 		"Broadcom NetXtreme II iSCSI Driver " DRV_MODULE_NAME \
@@ -89,39 +89,28 @@ static struct notifier_block bnx2i_cpu_notifier = {
 /**
  * bnx2i_identify_device - identifies NetXtreme II device type
  * @hba: 		Adapter structure pointer
+ * @cnic:		Corresponding cnic device
  *
  * This function identifies the NX2 device type and sets appropriate
  *	queue mailbox register access method, 5709 requires driver to
  *	access MBOX regs using *bin* mode
  */
-void bnx2i_identify_device(struct bnx2i_hba *hba)
+void bnx2i_identify_device(struct bnx2i_hba *hba, struct cnic_dev *dev)
 {
 	hba->cnic_dev_type = 0;
-	if ((hba->pci_did == PCI_DEVICE_ID_NX2_5706) ||
-	    (hba->pci_did == PCI_DEVICE_ID_NX2_5706S))
-		set_bit(BNX2I_NX2_DEV_5706, &hba->cnic_dev_type);
-	else if ((hba->pci_did == PCI_DEVICE_ID_NX2_5708) ||
-	    (hba->pci_did == PCI_DEVICE_ID_NX2_5708S))
-		set_bit(BNX2I_NX2_DEV_5708, &hba->cnic_dev_type);
-	else if ((hba->pci_did == PCI_DEVICE_ID_NX2_5709) ||
-	    (hba->pci_did == PCI_DEVICE_ID_NX2_5709S)) {
-		set_bit(BNX2I_NX2_DEV_5709, &hba->cnic_dev_type);
-		hba->mail_queue_access = BNX2I_MQ_BIN_MODE;
-	} else if (hba->pci_did == PCI_DEVICE_ID_NX2_57710    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57711    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57711E   ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57712    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57712_VF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57712_MF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57800    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57800_MF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57800_VF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57810    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57810_MF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57810_VF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57840    ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57840_MF ||
-		   hba->pci_did == PCI_DEVICE_ID_NX2_57840_VF)
+	if (test_bit(CNIC_F_BNX2_CLASS, &dev->flags)) {
+		if ((hba->pci_did == PCI_DEVICE_ID_NX2_5706) ||
+		    (hba->pci_did == PCI_DEVICE_ID_NX2_5706S))
+			set_bit(BNX2I_NX2_DEV_5706, &hba->cnic_dev_type);
+		else if ((hba->pci_did == PCI_DEVICE_ID_NX2_5708) ||
+		    (hba->pci_did == PCI_DEVICE_ID_NX2_5708S))
+			set_bit(BNX2I_NX2_DEV_5708, &hba->cnic_dev_type);
+		else if ((hba->pci_did == PCI_DEVICE_ID_NX2_5709) ||
+		    (hba->pci_did == PCI_DEVICE_ID_NX2_5709S)) {
+			set_bit(BNX2I_NX2_DEV_5709, &hba->cnic_dev_type);
+			hba->mail_queue_access = BNX2I_MQ_BIN_MODE;
+		}
+	} else if (test_bit(CNIC_F_BNX2X_CLASS, &dev->flags))
 		set_bit(BNX2I_NX2_DEV_57710, &hba->cnic_dev_type);
 	else
 		printk(KERN_ALERT "bnx2i: unknown device, 0x%x\n",
@@ -421,7 +410,7 @@ int bnx2i_get_stats(void *handle)
 	if (!stats)
 		return -ENOMEM;
 
-	memcpy(stats->version, DRV_MODULE_VERSION, sizeof(stats->version));
+	strlcpy(stats->version, DRV_MODULE_VERSION, sizeof(stats->version));
 	memcpy(stats->mac_add1 + 2, hba->cnic->mac_addr, ETH_ALEN);
 
 	stats->max_frame_size = hba->netdev->mtu;

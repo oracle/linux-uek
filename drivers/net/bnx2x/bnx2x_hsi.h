@@ -1,6 +1,6 @@
 /* bnx2x_hsi.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -115,6 +115,11 @@ struct license_key {
 #define EPIO_CFG_EPIO29                     0x0000001e
 #define EPIO_CFG_EPIO30                     0x0000001f
 #define EPIO_CFG_EPIO31                     0x00000020
+
+struct mac_addr {
+	u32 upper;
+	u32 lower;
+};
 
 
 struct shared_hw_cfg {			 /* NVRAM Offset */
@@ -475,7 +480,22 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	#define PORT_HW_CFG_PAUSE_ON_HOST_RING_DISABLED               0x00000000
 	#define PORT_HW_CFG_PAUSE_ON_HOST_RING_ENABLED                0x00000001
 
-	u32 reserved0[6];				    /* 0x178 */
+	/* SFP+ Tx Equalization: NIC recommended and tested value is 0xBEB2.
+	 * LOM recommended and tested value is 0xBEB2. Using a different
+	 * value means using a value not tested by BRCM
+	 */
+	u32 sfi_tap_values;                                 /* 0x178 */
+	#define PORT_HW_CFG_TX_EQUALIZATION_MASK                      0x0000FFFF
+	#define PORT_HW_CFG_TX_EQUALIZATION_SHIFT                     0
+
+	/* SFP+ Tx driver broadcast IDRIVER: NIC recommended and tested
+	 * value is 0x2. LOM recommended and tested value is 0x2. Using a
+	 * different value means using a value not tested by BRCM
+	 */
+	#define PORT_HW_CFG_TX_DRV_BROADCAST_MASK                     0x000F0000
+	#define PORT_HW_CFG_TX_DRV_BROADCAST_SHIFT                    16
+
+	u32 reserved0[5];				    /* 0x17c */
 
 	u32 aeu_int_mask;				    /* 0x190 */
 
@@ -510,7 +530,22 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	u32 fcoe_wwn_node_name_upper;
 	u32 fcoe_wwn_node_name_lower;
 
-	u32 Reserved4[48];                                  /* 0x1C0 */
+	/*  wwpn for npiv enabled */
+	u32 wwpn_for_npiv_config;                           /* 0x1C0 */
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_MASK                0x00000001
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_SHIFT               0
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_DISABLED            0x00000000
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_ENABLED             0x00000001
+
+	/*  wwpn for npiv valid addresses */
+	u32 wwpn_for_npiv_valid_addresses;                  /* 0x1C4 */
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ADDRESS_BITMAP_MASK         0x0000FFFF
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ADDRESS_BITMAP_SHIFT        0
+
+	struct mac_addr wwpn_for_niv_macs[16];
+
+	/* Reserved bits: 2272-2336 For storing FCOE mac on shared memory */
+	u32 Reserved1[14];
 
 	u32 pf_allocation;                                  /* 0x280 */
 	/* number of vfs per PF, if 0 - sriov disabled */
@@ -605,6 +640,15 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	#define PORT_HW_CFG_NET_SERDES_IF_DXGXS                      0x04000000
 	#define PORT_HW_CFG_NET_SERDES_IF_KR2                        0x05000000
 
+	/*  SFP+ main TAP and post TAP volumes */
+	#define PORT_HW_CFG_TAP_LEVELS_MASK                           0x70000000
+	#define PORT_HW_CFG_TAP_LEVELS_SHIFT                          28
+	#define PORT_HW_CFG_TAP_LEVELS_POST_15_MAIN_43                0x00000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_14_MAIN_44                0x10000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_13_MAIN_45                0x20000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_12_MAIN_46                0x30000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_11_MAIN_47                0x40000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_10_MAIN_48                0x50000000
 
 	u32 speed_capability_mask2;			    /* 0x28C */
 	#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_MASK       0x0000FFFF
@@ -676,6 +720,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM54618SE    0x00000e00
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM8722       0x00000f00
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM54616      0x00001000
+		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM84834      0x00001100
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_FAILURE       0x0000fd00
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_NOT_CONN      0x0000ff00
 
@@ -732,6 +777,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM54618SE     0x00000e00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM8722        0x00000f00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM54616       0x00001000
+		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM84834       0x00001100
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_DIRECT_WC      0x0000fc00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_FAILURE        0x0000fd00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_NOT_CONN       0x0000ff00
@@ -1230,6 +1276,36 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX1_MASK    0xFF000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX1_SHIFT   24
 
+	/*  General debug nvm cfg */
+	u32 dbg_cfg_flags;                                  /* 0x401C */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_MASK                 0x000FFFFF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SHIFT                0
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_ENABLE               0x00000001
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_EN_SIGDET_FILTER     0x00000002
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_LP_TX_PRESET7    0x00000004
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_TX_ANA_DEFAULT   0x00000008
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_PLL_ANA_DEFAULT  0x00000010
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FORCE_G1PLL_RETUNE   0x00000020
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_RX_ANA_DEFAULT   0x00000040
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FORCE_SERDES_RX_CLK  0x00000080
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_DIS_RX_LP_EIEOS      0x00000100
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FINALIZE_UCODE       0x00000200
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_HOLDOFF_REQ          0x00000400
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_OVERRIDE   0x00000800
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_GP_PORG_UC_RESET     0x00001000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SUPPRESS_COMPEN_EVT  0x00002000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_ADJ_TXEQ_P0_P1       0x00004000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_G3_PLL_RETUNE        0x00008000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_MAC_PHY_CTL8     0x00010000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_DIS_MAC_G3_FRM_ERR   0x00020000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_INFERRED_EI          0x00040000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_GEN3_COMPLI_ENA      0x00080000
+
+	/*  Debug signet rx threshold */
+	u32 dbg_rx_sigdet_threshold;                        /* 0x4020 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_MASK       0x00000007
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_SHIFT      0
+
 };
 
 
@@ -1384,6 +1460,7 @@ struct drv_func_mb {
 	#define DRV_MSG_CODE_VRFY_AFEX_SUPPORTED        0xa2000000
 	#define REQ_BC_VER_4_VRFY_AFEX_SUPPORTED        0x00070002
 	#define REQ_BC_VER_4_SFP_TX_DISABLE_SUPPORTED   0x00070014
+	#define REQ_BC_VER_4_MT_SUPPORTED               0x00070201
 	#define REQ_BC_VER_4_PFC_STATS_SUPPORTED        0x00070201
 	#define REQ_BC_VER_4_FCOE_FEATURES              0x00070209
 
@@ -2994,8 +3071,8 @@ struct port_info {
 
 
 #define BCM_5710_FW_MAJOR_VERSION			7
-#define BCM_5710_FW_MINOR_VERSION			4
-#define BCM_5710_FW_REVISION_VERSION		12
+#define BCM_5710_FW_MINOR_VERSION			6
+#define BCM_5710_FW_REVISION_VERSION		57
 #define BCM_5710_FW_ENGINEERING_VERSION		0
 #define BCM_5710_FW_COMPILE_FLAGS			1
 
@@ -3750,7 +3827,7 @@ enum eth_addr_type {
 
 
 /*
- * 
+ *
  */
 struct eth_classify_cmd_header {
 	u8 cmd_general_data;
@@ -3867,7 +3944,7 @@ struct xstorm_eth_st_context {
 };
 
 /*
- * Ethernet connection context 
+ * Ethernet connection context
  */
 struct eth_context {
 	struct ustorm_eth_st_context ustorm_st_context;
@@ -4676,7 +4753,7 @@ struct afex_vif_list_ramrod_data {
 
 
 /*
- * cfc delete event data 
+ * cfc delete event data
  */
 struct cfc_del_event_data {
 	u32 cid;
@@ -4984,7 +5061,7 @@ struct e2_integ_data {
 
 
 /*
- * set mac event data 
+ * set mac event data
  */
 struct eth_event_data {
 	u32 echo;
@@ -4994,7 +5071,7 @@ struct eth_event_data {
 
 
 /*
- * pf-vf event data 
+ * pf-vf event data
  */
 struct vf_pf_event_data {
 	u8 vf_id;
@@ -5005,7 +5082,7 @@ struct vf_pf_event_data {
 };
 
 /*
- * VF FLR event data 
+ * VF FLR event data
  */
 struct vf_flr_event_data {
 	u8 vf_id;
@@ -5016,7 +5093,7 @@ struct vf_flr_event_data {
 };
 
 /*
- * malicious VF event data 
+ * malicious VF event data
  */
 struct malicious_vf_event_data {
 	u8 vf_id;
@@ -5027,7 +5104,7 @@ struct malicious_vf_event_data {
 };
 
 /*
- * vif list event data 
+ * vif list event data
  */
 struct vif_list_event_data {
 	u8 func_bit_map;
@@ -5152,7 +5229,7 @@ struct flow_control_configuration {
 
 
 /*
- * 
+ *
  */
 struct function_start_data {
 	__le16 function_mode;
@@ -5164,7 +5241,7 @@ struct function_start_data {
 
 
 /*
- * 
+ *
  */
 struct function_update_data {
 	u8 vif_id_change_flg;
@@ -5175,8 +5252,8 @@ struct function_update_data {
 	__le16 afex_default_vlan;
 	u8 allowed_priorities;
 	u8 network_cos_mode;
+	u8 lb_mode_en_change_flg;
 	u8 lb_mode_en;
-	u8 reserved0;
 	__le32 reserved1;
 };
 
@@ -5209,7 +5286,7 @@ struct fw_version {
 
 
 /*
- * Dynamic Host-Coalescing - Driver(host) counters 
+ * Dynamic Host-Coalescing - Driver(host) counters
  */
 struct hc_dynamic_sb_drv_counters {
 	u32 dynamic_hc_drv_counter[HC_SB_MAX_DYNAMIC_INDICES];
@@ -5387,7 +5464,7 @@ struct tstorm_per_pf_stats {
 };
 
 /*
- * 
+ *
  */
 struct per_pf_stats {
 	struct tstorm_per_pf_stats tstorm_pf_statistics;
@@ -5407,7 +5484,7 @@ struct tstorm_per_port_stats {
 };
 
 /*
- * 
+ *
  */
 struct per_port_stats {
 	struct tstorm_per_port_stats tstorm_port_statistics;
@@ -5449,7 +5526,7 @@ struct ustorm_per_queue_stats {
 };
 
 /*
- * Protocol-common statistics collected by the Xstorm (per client) 
+ * Protocol-common statistics collected by the Xstorm (per client)
  */
 struct xstorm_per_queue_stats {
 	struct regpair ucast_bytes_sent;
@@ -5462,7 +5539,7 @@ struct xstorm_per_queue_stats {
 };
 
 /*
- * 
+ *
  */
 struct per_queue_stats {
 	struct tstorm_per_queue_stats tstorm_queue_statistics;
@@ -5541,7 +5618,7 @@ struct stats_counter {
 
 
 /*
- * 
+ *
  */
 struct stats_query_entry {
 	u8 kind;
