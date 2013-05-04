@@ -1013,16 +1013,12 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 
 	err = -EACCES;
 	if (ipcperms(ns, &sma->sem_perm,
-		     (cmd == SETVAL || cmd == SETALL) ? S_IWUGO : S_IRUGO)) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+		     (cmd == SETVAL || cmd == SETALL) ? S_IWUGO : S_IRUGO))
+		goto out_rcu_wakeup;
 
 	err = security_sem_semctl(sma, cmd);
-	if (err) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+	if (err)
+		goto out_rcu_wakeup;
 
 	err = -EACCES;
 	switch (cmd) {
@@ -1123,10 +1119,8 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 	/* GETVAL, GETPID, GETNCTN, GETZCNT, SETVAL: fall-through */
 	}
 	err = -EINVAL;
-	if (semnum < 0 || semnum >= nsems) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+	if (semnum < 0 || semnum >= nsems)
+		goto out_rcu_wakeup;
 
 	sem_lock(sma, NULL, -1);
 	curr = &sma->sem_base[semnum];
@@ -1169,8 +1163,8 @@ static int semctl_main(struct ipc_namespace *ns, int semid, int semnum,
 
 out_unlock:
 	sem_unlock(sma, -1);
+out_rcu_wakeup:
 	rcu_read_unlock();
-out_wakeup:
 	wake_up_sem_queue_do(&tasks);
 out_free:
 	if(sem_io != fast_sem_io)
@@ -1550,22 +1544,16 @@ SYSCALL_DEFINE4(semtimedop, int, semid, struct sembuf __user *, tsops,
 	}
 
 	error = -EFBIG;
-	if (max >= sma->sem_nsems) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+	if (max >= sma->sem_nsems)
+		goto out_rcu_wakeup;
 
 	error = -EACCES;
-	if (ipcperms(ns, &sma->sem_perm, alter ? S_IWUGO : S_IRUGO)) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+	if (ipcperms(ns, &sma->sem_perm, alter ? S_IWUGO : S_IRUGO))
+		goto out_rcu_wakeup;
 
 	error = security_sem_semop(sma, sops, nsops, alter);
-	if (error) {
-		rcu_read_unlock();
-		goto out_wakeup;
-	}
+	if (error)
+		goto out_rcu_wakeup;
 
 	/*
 	 * semid identifiers are not unique - find_alloc_undo may have
@@ -1683,8 +1671,8 @@ sleep_again:
 
 out_unlock_free:
 	sem_unlock(sma, locknum);
+out_rcu_wakeup:
 	rcu_read_unlock();
-out_wakeup:
 	wake_up_sem_queue_do(&tasks);
 out_free:
 	if(sops != fast_sops)
