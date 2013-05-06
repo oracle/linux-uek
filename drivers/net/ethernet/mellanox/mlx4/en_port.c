@@ -193,6 +193,7 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 		priv->port_stats.queue_stopped += priv->tx_ring[i]->queue_stopped;
 		priv->port_stats.wake_queue += priv->tx_ring[i]->wake_queue;
 	}
+	priv->port_stats.no_wqes = priv->if_counters_rx_no_buffer;
 
 	stats->rx_errors = be64_to_cpu(mlx4_en_stats->PCS) +
 			   be32_to_cpu(mlx4_en_stats->RdropLength) +
@@ -224,7 +225,6 @@ int mlx4_en_DUMP_ETH_STATS(struct mlx4_en_dev *mdev, u8 port, u8 reset)
 	stats->tx_heartbeat_errors = 0;
 	stats->tx_window_errors = 0;
 
-	priv->pkstats.no_wqes = priv->if_counters_rx_no_buffer;
 	priv->pkstats.broadcast =
 				be64_to_cpu(mlx4_en_stats->RBCAST_prio_0) +
 				be64_to_cpu(mlx4_en_stats->RBCAST_prio_1) +

@@ -376,11 +376,10 @@ struct mlx4_en_port_state {
 };
 
 struct mlx4_en_pkt_stats {
-	unsigned long no_wqes;
 	unsigned long broadcast;
 	unsigned long rx_prio[8];
 	unsigned long tx_prio[8];
-#define NUM_PKT_STATS		18
+#define NUM_PKT_STATS		17
 };
 
 struct mlx4_en_port_stats {
@@ -392,7 +391,8 @@ struct mlx4_en_port_stats {
 	unsigned long rx_chksum_good;
 	unsigned long rx_chksum_none;
 	unsigned long tx_chksum_offload;
-#define NUM_PORT_STATS		8
+	unsigned long no_wqes;
+#define NUM_PORT_STATS		9
 };
 
 struct mlx4_en_perf_stats {
