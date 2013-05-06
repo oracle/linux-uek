@@ -68,7 +68,7 @@
 
 /* driver info definition */
 #define DRV_NAME  "mlx4_vnic"
-#define DRV_VER   "1.3.9"
+#define DRV_VER   "1.4.0"
 #define DRV_LIC   "Dual BSD/GPL"
 #define DRV_DESC  "Mellanox BridgeX Virtual NIC Driver"
 #define DRV_AUTH  "Ali Ayoub & Gabi Liron"

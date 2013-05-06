@@ -147,87 +147,6 @@ static int vnic_set_coalesce(struct net_device *dev,
 	return 0;
 }
 
-static u32 vnic_get_rx_csum(struct net_device *dev)
-{
-	struct vnic_login *login = vnic_netdev_priv(dev);
-
-	return login->rx_csum;
-}
-
-static int vnic_set_rx_csum(struct net_device *dev, u32 data)
-{
-	struct vnic_login *login = vnic_netdev_priv(dev);
-
-	login->rx_csum = (data != 0);
-
-	return 0;
-}
-
-static u32 vnic_get_tx_csum(struct net_device *dev)
-{
-	return (dev->features & NETIF_F_IP_CSUM) != 0;
-}
-
-static int vnic_set_tx_csum(struct net_device *dev, u32 data)
-{
-	struct vnic_login *login = vnic_netdev_priv(dev);
-
-	/* check capability bit of SWP */
-	if (!(login->port->dev->mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_UD_SWP))
-		return -EPERM;
-
-	if (data)
-		dev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
-	else
-		dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM);
-
-	return 0;
-}
-
-static u32 vnic_get_tso(struct net_device *dev)
-{
-	return (dev->features & NETIF_F_TSO) != 0;
-}
-
-static int vnic_set_tso(struct net_device *dev, u32 data)
-{
-	if (data)
-		dev->features |= (NETIF_F_TSO | NETIF_F_TSO6);
-	else
-		dev->features &= ~(NETIF_F_TSO | NETIF_F_TSO6);
-
-	return 0;
-}
-
-#ifndef _BP_ETHTOOL_NO_GSFLAGS
-#if !(defined(NETIF_F_GRO) && !defined(_BP_NO_GRO))
-static int vnic_set_flags(struct net_device *dev, u32 data)
-{
-	int rc = 0, changed = 0;
-
-	if (data & ~ETH_FLAG_LRO)
-		return -EOPNOTSUPP;
-
-	if (data & ETH_FLAG_LRO) {
-		if (vnic_lro_num == 0)
-			return -EOPNOTSUPP;
-		if (!(dev->features & NETIF_F_LRO))
-			changed = 1;
-	} else if (dev->features & NETIF_F_LRO) {
-		changed = 1;
-	}
-
-	if (changed) {
-		dev->features ^= NETIF_F_LRO;
-		/* stop/start interface to cleanup any pending LRO sessions */
-		rc = vnic_restart(dev);
-	}
-
-	return rc;
-}
-#endif
-#endif
-
 static int vnic_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
 	cmd->autoneg = AUTONEG_DISABLE;
@@ -388,24 +307,6 @@ void vnic_set_ethtool_ops(struct net_device *dev)
 
 static struct ethtool_ops vnic_ethtool_ops = {
 	.get_link = ethtool_op_get_link,
-	.get_sg = ethtool_op_get_sg,
-	.set_sg = ethtool_op_set_sg,
-#ifdef NETIF_F_TSO
-	.get_tso = vnic_get_tso,
-	.set_tso = vnic_set_tso,
-#endif
-	.get_ufo = ethtool_op_get_ufo,
-	.set_ufo = ethtool_op_set_ufo,
-#ifndef _BP_ETHTOOL_NO_GSFLAGS
-	.get_flags = ethtool_op_get_flags,
-#if !(defined(NETIF_F_GRO) && !defined(_BP_NO_GRO))
-	.set_flags = vnic_set_flags,
-#endif
-#endif
-	.get_tx_csum = vnic_get_tx_csum,
-	.set_tx_csum = vnic_set_tx_csum,
-	.get_rx_csum = vnic_get_rx_csum,
-	.set_rx_csum = vnic_set_rx_csum,
 	.get_drvinfo = vnic_get_drvinfo,
 	.get_msglevel = vnic_get_msglevel,
 	.set_msglevel = vnic_set_msglevel,

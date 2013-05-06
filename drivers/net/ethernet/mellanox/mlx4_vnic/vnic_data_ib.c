@@ -396,7 +396,8 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
 	ib_dma_sync_single_for_cpu(ib_device,
 				   ring->rx_info[wr_id].dma_addr[0] + IB_GRH_BYTES,
 				   MAX_HEADER_SIZE, DMA_FROM_DEVICE);
-	va = page_address(ring->rx_info[wr_id].frags[0].page) +
+
+	va = page_address(ring->rx_info[wr_id].frags[0].page.p) +
 		ring->rx_info[wr_id].frags[0].page_offset + IB_GRH_BYTES;
 
 	/* check EoIB header signature and version */
@@ -1139,7 +1140,6 @@ int vnic_create_qp_range(struct vnic_login *login)
 		qp_res = &login->qp_res[qp_index];
 		qp_res->tx_index = qp_index % login->tx_rings_num;
 		qp_res->rx_index = qp_index % login->rx_rings_num;
-
 		memset(&attr[qp_index], 0, sizeof(struct ib_qp_init_attr));
 		attr[qp_index].cap.max_send_wr = vnic_tx_rings_len;
 		attr[qp_index].cap.max_send_sge = VNIC_MAX_TX_FRAGS;
@@ -1360,7 +1360,7 @@ static int vnic_dma_map_tx(struct ib_device *ca, struct vnic_tx_buf *tx_req)
 
 	for (i = 0; i < shinfo->nr_frags; ++i) {
 		skb_frag_t *frag = &shinfo->frags[i];
-		mapping[i + off] = ib_dma_map_page(ca, frag->page,
+		mapping[i + off] = ib_dma_map_page(ca, frag->page.p,
 						   frag->page_offset,
 						   frag->size, DMA_TO_DEVICE);
 		if (unlikely(ib_dma_mapping_error(ca, mapping[i + off])))

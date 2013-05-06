@@ -35,18 +35,20 @@
 
 extern struct net_device_stats *mlx4_vnic_stats_func_container(struct net_device *n);
 
-static void mlx4_vnic_vlan_rx_add_vid(struct net_device *dev, unsigned short vid)
+static int mlx4_vnic_vlan_rx_add_vid(struct net_device *dev, unsigned short vid)
 {
 	struct vnic_login *login = vnic_netdev_priv(dev);
 
 	vnic_dbg_data(login->name, "add VLAN:%d was called\n", vid);
+	return 0;
 }
 
-static void mlx4_vnic_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
+static int mlx4_vnic_vlan_rx_kill_vid(struct net_device *dev, unsigned short vid)
 {
 	struct vnic_login *login = vnic_netdev_priv(dev);
 
 	vnic_dbg_data(login->name, "Kill VID:%d was called\n", vid);
+	return 0;
 }
 
 void vnic_carrier_update(struct vnic_login *login)
@@ -829,7 +831,7 @@ static struct net_device_ops vnic_netdev_ops = {
 	.ndo_stop = vnic_stop,
 	.ndo_start_xmit = vnic_tx,
 	.ndo_get_stats = mlx4_vnic_stats_func_container,
-	.ndo_set_multicast_list = vnic_set_multicast_list,
+	.ndo_set_rx_mode = vnic_set_multicast_list,
 	.ndo_change_mtu = vnic_change_mtu,
 	.ndo_tx_timeout = vnic_tx_timeout,
 	.ndo_set_mac_address = vnic_set_mac,
@@ -879,8 +881,7 @@ static int vnic_get_frag_header(struct skb_frag_struct *frags, void **mac_hdr,
 				u64 *hdr_flags, void *priv)
 {
 	struct iphdr *iph;
-
-	*mac_hdr = page_address(frags->page) + frags->page_offset;
+	*mac_hdr = page_address(frags->page.p) + frags->page_offset;
 	*ip_hdr = iph = (struct iphdr *)(*mac_hdr + ETH_HLEN);
 	*tcpudp_hdr = (struct tcphdr *)(iph + (iph->ihl << 2));
 	*hdr_flags = LRO_IPV4 | LRO_TCP;
@@ -1012,17 +1013,12 @@ struct net_device *vnic_alloc_netdev(struct vnic_port *port)
 	INIT_DELAYED_WORK(&login->mcast_task, vnic_mcast_reattach);
 	INIT_DELAYED_WORK(&login->restart_task, vnic_restart_task);
 
-	/* init ethtool */
 	vnic_set_ethtool_ops(dev);
-	do {
-		login->dev->ethtool_ops->set_rx_csum(login->dev, 1);
-		if (login->dev->ethtool_ops->set_tx_csum(login->dev, 1))
-			break;
-		if (login->dev->ethtool_ops->set_sg(login->dev, 1))
-			break;
-		if (login->dev->ethtool_ops->set_tso(login->dev, 1))
-			break;
-	} while (0);
+	/* init ethtool */
+	dev->hw_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
+	dev->hw_features |= NETIF_F_RXCSUM | NETIF_F_RXHASH;
+	dev->hw_features |= NETIF_F_TSO | NETIF_F_TSO6;
+	dev->features |= dev->hw_features;
 
 	/* init NAPI (must be before LRO init) */
 	login->napi_num = login->rx_rings_num;

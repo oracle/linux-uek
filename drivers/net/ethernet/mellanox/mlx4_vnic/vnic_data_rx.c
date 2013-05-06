@@ -33,15 +33,15 @@
 #include "vnic.h"
 #include "vnic_data.h"
 
-#define FREE_SINGLE_FRAG(ring, e, i)					\
-	do {								\
-		ib_dma_unmap_single(ring->port->dev->ca,		\
-			ring->rx_info[e].dma_addr[i],			\
-			ring->frag_info[i].frag_size,			\
-			PCI_DMA_FROMDEVICE);				\
-		ring->rx_info[e].dma_addr[i] = 0;			\
-		put_page(ring->rx_info[e].frags[i].page);		\
-	} while (0);
+static inline void free_single_frag(struct vnic_rx_ring *ring, int e,int i)
+{
+		ib_dma_unmap_single(ring->port->dev->ca,
+			ring->rx_info[e].dma_addr[i],
+			ring->frag_info[i].frag_size,
+			PCI_DMA_FROMDEVICE);
+		ring->rx_info[e].dma_addr[i] = 0;
+		put_page(ring->rx_info[e].frags[i].page.p);
+}
 
 #ifndef _BP_NETDEV_NO_TMQ
 /* this functions used only in no_bxm mode,
@@ -71,7 +71,7 @@ unlock:
 	for (--i; i >= 0; --i) {
 		struct netdev_queue *txq = netdev_get_tx_queue(dev, i);
 		clear_bit(__QUEUE_STATE_FROZEN, &txq->state);
-		if (!test_bit(__QUEUE_STATE_XOFF, &txq->state))
+		if (!test_bit(QUEUE_STATE_ANY_XOFF, &txq->state))
 			__netif_schedule(txq->qdisc);
 	}
 	spin_unlock(&dev->tx_global_lock);
@@ -283,19 +283,18 @@ static int vnic_alloc_frag(struct vnic_rx_ring *ring,
 			   ring->need_refill = 1; */
 			return -ENOMEM;
 		}
-		skbf.page = page_alloc->page;
+		skbf.page.p = page_alloc->page;
 		skbf.page_offset = page_alloc->offset;
 	} else {
 		decision = 1;
 		page = page_alloc->page;
 		get_page(page);
-		skbf.page = page;
+		skbf.page.p = page;
 		skbf.page_offset = page_alloc->offset;
 	}
 
 	skbf.size = frag_info->frag_size;
-
-	dma = ib_dma_map_single(ib_device, page_address(skbf.page) +
+	dma = ib_dma_map_single(ib_device, page_address(skbf.page.p) +
 			     skbf.page_offset, frag_info->frag_size,
 			     PCI_DMA_FROMDEVICE);
 	if (unlikely(ib_dma_mapping_error(ib_device, dma))) {
@@ -388,7 +387,7 @@ static void vnic_empty_rx_entry(struct vnic_rx_ring *ring, int i)
 
 	/* non linear buffers */
 	for (frag_num = 0; frag_num < ring->num_frags; frag_num++)
-		FREE_SINGLE_FRAG(ring, i, frag_num);
+		free_single_frag(ring, i, frag_num);
 }
 
 static int vnic_fill_rx_buffer(struct vnic_rx_ring *ring)
@@ -433,7 +432,7 @@ err_linear:
 
 err_frags:
 	for (--frag_num; frag_num >= 0; frag_num--)
-		FREE_SINGLE_FRAG(ring, buf_ind, frag_num);
+		free_single_frag(ring, buf_ind, frag_num);
 
 	for (--buf_ind; buf_ind >= 0; buf_ind--)
 		vnic_empty_rx_entry(ring, buf_ind);
@@ -507,7 +506,7 @@ fail:
 	 * the descriptor) of this packet; remaining fragments are reused... */
 	while (nr > 0) {
 		nr--;
-		put_page(skb_frags_rx[nr].page);
+		put_page(skb_frags_rx[nr].page.p);
 	}
 
 	return 0;

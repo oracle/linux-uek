@@ -41,6 +41,12 @@
 
 #define ALL_VLAN_GW_VID "all"
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,1,0))
+#define __MODULE_KOBJ_TYPE struct module_kobject
+#else
+#define __MODULE_KOBJ_TYPE struct module
+#endif
+
 char *login_dentry_name(char *buf, struct vnic_login *login, char *str)
 {
 	snprintf(buf, VNIC_SYSFS_FLEN, "%s%d-%s", "vnic",
@@ -155,7 +161,7 @@ static const char *port_state_str(enum ib_port_state pstate)
 
 /* store/show functions */
 static ssize_t vnic_neigh_show(struct module_attribute *attr,
-			       struct module *mod, char *buf)
+			       __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf;
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -213,7 +219,7 @@ out:
 
 /* store/show functions */
 static ssize_t vnic_member_show(struct module_attribute *attr,
-			       struct module *mod, char *buf)
+			       __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf;
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -254,7 +260,7 @@ out:
 }
 
 static ssize_t vnic_login_show(struct module_attribute *attr,
-			       struct module *mod, char *buf)
+			     __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf, tmp_line[VNIC_SYSFS_LLEN];
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -414,7 +420,7 @@ static ssize_t vnic_login_show(struct module_attribute *attr,
 }
 
 static ssize_t vnic_qps_show(struct module_attribute *attr,
-			     struct module *mod, char *buf)
+			     __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf;
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -500,7 +506,7 @@ int port_vnics_sysfs_show(struct vnic_port *port, char *buf)
 
 #ifdef VNIC_PROFILLNG
 static ssize_t vnic_dentry_prof_skb_show(struct module_attribute *attr,
-				     struct module *mod, char *buf)
+				     __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf;
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -624,7 +630,7 @@ int vnic_login_cmd_set(char *buf, struct fip_hadmin_cmd *cmd)
  * +00:11:22:33:44:55
  */
 static ssize_t vnic_child_write(struct module_attribute *attr,
-				struct module *mod,
+				__MODULE_KOBJ_TYPE *mod,
 				const char *buf, size_t count)
 {
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -824,7 +830,7 @@ updated_discover:
 }
 
 static ssize_t vnic_login_cmd(struct module_attribute *attr,
-			      struct module *mod, char *buf)
+			      __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	char *p = buf;
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -904,7 +910,7 @@ void vnic_delete_dentry(struct vnic_login *login)
 }
 
 static ssize_t port_gw_fs_show(struct module_attribute *attr,
-			       struct module *mod, char *buf)
+			       __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	struct vnic_sysfs_attr *vnic_dentry =
 		container_of(attr, struct vnic_sysfs_attr, dentry);
@@ -915,7 +921,7 @@ static ssize_t port_gw_fs_show(struct module_attribute *attr,
 
 
 static ssize_t port_vnics_fs_show(struct module_attribute *attr,
-			       struct module *mod, char *buf)
+			       __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	struct vnic_sysfs_attr *vnic_dentry =
 		container_of(attr, struct vnic_sysfs_attr, dentry);
@@ -924,14 +930,14 @@ static ssize_t port_vnics_fs_show(struct module_attribute *attr,
 }
 
 static ssize_t port_hadmin_syntax(struct module_attribute *attr,
-				  struct module *mod, char *buf)
+				  __MODULE_KOBJ_TYPE *mod, char *buf)
 {
 	/* print cmd syntax only (for usage) */
 	return vnic_login_cmd_set(buf, NULL);
 }
 
 static ssize_t port_hadmin_add_write(struct module_attribute *attr,
-				     struct module *mod,
+				     __MODULE_KOBJ_TYPE *mod,
 				     const char *buf, size_t count)
 {
 	struct vnic_sysfs_attr *vnic_dentry =
@@ -942,7 +948,7 @@ static ssize_t port_hadmin_add_write(struct module_attribute *attr,
 }
 
 static ssize_t port_hadmin_del_write(struct module_attribute *attr,
-				     struct module *mod,
+				     __MODULE_KOBJ_TYPE *mod,
 				     const char *buf, size_t count)
 {
 	struct vnic_sysfs_attr *vnic_dentry =

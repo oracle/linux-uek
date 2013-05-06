@@ -11,13 +11,18 @@ MODULE_LICENSE("Dual BSD/GPL");
 DEFINE_SPINLOCK(spl);
 static int busy;
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,1,0))
+#define __MODULE_KOBJ_TYPE struct module_kobject
+#else
+#define __MODULE_KOBJ_TYPE struct module
+#endif
 static struct net_device_stats *(*stat_func)(struct net_device *n);
 
 static	struct module_attribute dentry;
 int ref_count = 1;
 
 static ssize_t mlx4_vnic_reduce_ref_cnt(struct module_attribute *attr,
-			   struct module *mod, const char *buf, size_t count)
+			   __MODULE_KOBJ_TYPE *mod, const char *buf, size_t count)
 {
 	if (ref_count == 1) {
 		module_put(THIS_MODULE);
