@@ -789,7 +789,7 @@ static int rbd_header_from_disk(struct rbd_device *rbd_dev,
 		 * Copy the names, and fill in each snapshot's id
 		 * and size.
 		 *
-		 * Note that rbd_dev_v1_header_read() guarantees the
+		 * Note that rbd_dev_v1_header_info() guarantees the
 		 * ondisk buffer we're working with has
 		 * snap_names_len bytes beyond the end of the
 		 * snapshot id array, this memcpy() is safe.
@@ -3051,7 +3051,7 @@ out:
  * return, the rbd_dev->header field will contain up-to-date
  * information about the image.
  */
-static int rbd_dev_v1_header_read(struct rbd_device *rbd_dev)
+static int rbd_dev_v1_header_info(struct rbd_device *rbd_dev)
 {
 	struct rbd_image_header_ondisk *ondisk = NULL;
 	u32 snap_count = 0;
@@ -3107,14 +3107,6 @@ out:
 }
 
 /*
- * only read the first part of the ondisk header, without the snaps info
- */
-static int rbd_dev_v1_refresh(struct rbd_device *rbd_dev)
-{
-	return rbd_dev_v1_header_read(rbd_dev);
-}
-
-/*
  * Clear the rbd device's EXISTS flag if the snapshot it's mapped to
  * has disappeared from the (just updated) snapshot context.
  */
@@ -3142,7 +3134,7 @@ static int rbd_dev_refresh(struct rbd_device *rbd_dev)
 	mapping_size = rbd_dev->mapping.size;
 	mutex_lock_nested(&ctl_mutex, SINGLE_DEPTH_NESTING);
 	if (rbd_dev->image_format == 1)
-		ret = rbd_dev_v1_refresh(rbd_dev);
+		ret = rbd_dev_v1_header_info(rbd_dev);
 	else
 		ret = rbd_dev_v2_refresh(rbd_dev);
 
@@ -4468,11 +4460,6 @@ static void rbd_dev_unprobe(struct rbd_device *rbd_dev)
 	memset(header, 0, sizeof (*header));
 }
 
-static int rbd_dev_v1_probe(struct rbd_device *rbd_dev)
-{
-	return rbd_dev_v1_header_read(rbd_dev);
-}
-
 static int rbd_dev_v2_probe(struct rbd_device *rbd_dev)
 {
 	int ret;
@@ -4715,7 +4702,7 @@ static int rbd_dev_image_probe(struct rbd_device *rbd_dev, bool read_only)
 		goto out_header_name;
 
 	if (rbd_dev->image_format == 1)
-		ret = rbd_dev_v1_probe(rbd_dev);
+		ret = rbd_dev_v1_header_info(rbd_dev);
 	else
 		ret = rbd_dev_v2_probe(rbd_dev);
 	if (ret)
