@@ -1575,6 +1575,22 @@ static void mlx4_set_sched(struct mlx4_qp_path *path, u8 port)
 	path->sched_queue = (path->sched_queue & 0xbf) | ((port - 1) << 6);
 }
 
+static int ib_rate_to_mlx4(struct mlx4_ib_dev *dev, u8 rate)
+{
+	if (rate == IB_RATE_PORT_CURRENT) {
+		return 0;
+	} else if (rate < IB_RATE_2_5_GBPS || rate > IB_RATE_300_GBPS) {
+		return -EINVAL;
+	} else {
+		while (rate != IB_RATE_2_5_GBPS &&
+		!(1 << (rate + MLX4_STAT_RATE_OFFSET) &
+		dev->dev->caps.stat_rate_support))
+			--rate;
+	}
+
+	return rate + MLX4_STAT_RATE_OFFSET;
+}
+
 static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 			 struct mlx4_ib_qp *qp, struct mlx4_qp_path *path,
 			 u8 port, int is_primary)
@@ -1594,13 +1610,11 @@ static int mlx4_set_path(struct mlx4_ib_dev *dev, const struct ib_ah_attr *ah,
 
 	path->grh_mylmc     = ah->src_path_bits & 0x7f;
 	path->rlid	    = cpu_to_be16(ah->dlid);
-	if (ah->static_rate) {
-		path->static_rate = ah->static_rate + MLX4_STAT_RATE_OFFSET;
-		while (path->static_rate > IB_RATE_2_5_GBPS + MLX4_STAT_RATE_OFFSET &&
-		       !(1 << path->static_rate & dev->dev->caps.stat_rate_support))
-			--path->static_rate;
-	} else
-		path->static_rate = 0;
+
+	err = ib_rate_to_mlx4(dev, ah->static_rate);
+	if (err < 0)
+		return err;
+	path->static_rate = err;
 
 	if (ah->ah_flags & IB_AH_GRH) {
 		if (ah->grh.sgid_index >= dev->dev->caps.gid_table_len[port]) {
