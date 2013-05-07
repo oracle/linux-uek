@@ -206,10 +206,22 @@ static void handle_responder(struct ib_wc *wc, struct mlx5_cqe64 *cqe,
 	wc->pkey_index     = be32_to_cpu(cqe->imm_inval_pkey) & 0xffff;
 }
 
+static void dump_cqe(struct mlx5_ib_dev *dev, struct mlx5_err_cqe *cqe)
+{
+	__be32 *p = (__be32 *)cqe;
+	int i;
+
+	mlx5_ib_warn(dev, "dump error cqe\n");
+	for (i = 0; i < sizeof(*cqe) / 16; ++i, p += 4)
+		pr_info("%08x %08x %08x %08x\n", p[0], p[1], p[2], p[3]);
+}
+
 static void mlx5_handle_error_cqe(struct mlx5_ib_dev *dev,
 				  struct mlx5_err_cqe *cqe,
 				  struct ib_wc *wc)
 {
+	int dump = 1;
+
 	switch (cqe->syndrome) {
 	case MLX5_CQE_SYNDROME_LOCAL_LENGTH_ERR:
 		wc->status = IB_WC_LOC_LEN_ERR;
@@ -221,6 +233,7 @@ static void mlx5_handle_error_cqe(struct mlx5_ib_dev *dev,
 		wc->status = IB_WC_LOC_PROT_ERR;
 		break;
 	case MLX5_CQE_SYNDROME_WR_FLUSH_ERR:
+		dump = 0;
 		wc->status = IB_WC_WR_FLUSH_ERR;
 		break;
 	case MLX5_CQE_SYNDROME_MW_BIND_ERR:
@@ -243,9 +256,11 @@ static void mlx5_handle_error_cqe(struct mlx5_ib_dev *dev,
 		break;
 	case MLX5_CQE_SYNDROME_TRANSPORT_RETRY_EXC_ERR:
 		wc->status = IB_WC_RETRY_EXC_ERR;
+		dump = 0;
 		break;
 	case MLX5_CQE_SYNDROME_RNR_RETRY_EXC_ERR:
 		wc->status = IB_WC_RNR_RETRY_EXC_ERR;
+		dump = 0;
 		break;
 	case MLX5_CQE_SYNDROME_REMOTE_ABORTED_ERR:
 		wc->status = IB_WC_REM_ABORT_ERR;
@@ -256,6 +271,8 @@ static void mlx5_handle_error_cqe(struct mlx5_ib_dev *dev,
 	}
 
 	wc->vendor_err = cqe->vendor_err_synd;
+	if (dump)
+		dump_cqe(dev, cqe);
 }
 
 static int is_atomic_response(struct mlx5_ib_qp *qp, uint16_t idx)
