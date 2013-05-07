@@ -644,7 +644,7 @@ void mlx5_umr_cq_handler(struct ib_cq *cq, void *cq_context)
 		if (err == 0)
 			break;
 
-		mr = (struct mlx5_ib_mr *)wc.wr_id;
+		mr = (struct mlx5_ib_mr *)(unsigned long)wc.wr_id;
 		mr->status = wc.status;
 		complete(&mr->done);
 	}
