@@ -3025,16 +3025,6 @@ static int suspend(struct pci_dev *pdev, pm_message_t state)
 {
 	mlx4_remove_one(pdev);
 
-	if (mlx4_log_num_mgm_entry_size != -1 &&
-	    (mlx4_log_num_mgm_entry_size < MLX4_MIN_MGM_LOG_ENTRY_SIZE ||
-	     mlx4_log_num_mgm_entry_size > MLX4_MAX_MGM_LOG_ENTRY_SIZE)) {
-		pr_warning("mlx4_core: mlx4_log_num_mgm_entry_size (%d) not "
-			   "in legal range (-1 or %d..%d)\n",
-			   mlx4_log_num_mgm_entry_size,
-			   MLX4_MIN_MGM_LOG_ENTRY_SIZE,
-			   MLX4_MAX_MGM_LOG_ENTRY_SIZE);
-		return -1;
-	}
 	return 0;
 }
 
