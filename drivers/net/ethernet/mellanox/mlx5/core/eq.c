@@ -234,7 +234,7 @@ static int mlx5_eq_int(struct mlx5_core_dev *dev, struct mlx5_eq *eq)
 		case MLX5_EVENT_TYPE_SRQ_RQ_LIMIT:
 		case MLX5_EVENT_TYPE_SRQ_CATAS_ERROR:
 			srqn = be32_to_cpu(eqe->data.qp_srq.qp_srq_n) & 0xffffff;
-			mlx5_core_warn(dev, "SRQ event %s(%d): srqn 0x%x\n",
+			mlx5_core_dbg(dev, "SRQ event %s(%d): srqn 0x%x\n",
 				       eqe_type_str(eqe->type), eqe->type, srqn);
 			mlx5_srq_event(dev, srqn, eqe->type);
 			break;
