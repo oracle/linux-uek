@@ -1085,6 +1085,9 @@ static void destroy_umrc_res(struct mlx5_ib_dev *dev)
 	ib_dealloc_pd(dev->umrc.pd);
 }
 
+enum {
+	MAX_UMR_WR = 128,
+};
 
 static int create_umr_res(struct mlx5_ib_dev *dev)
 {
@@ -1117,18 +1120,20 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 		goto error_1;
 	}
 
-	cq = ib_create_cq(&dev->ib_dev, NULL, NULL, NULL, 128, 0);
+	cq = ib_create_cq(&dev->ib_dev, mlx5_umr_cq_handler, NULL, NULL, 128,
+			  0);
 	if (IS_ERR(cq)) {
 		mlx5_ib_dbg(dev, "Couldn't create CQ for sync UMR QP\n");
 		ret = PTR_ERR(cq);
 		goto error_2;
 	}
+	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
 
 	init_attr->send_cq = cq;
 	init_attr->recv_cq = cq;
 	init_attr->sq_sig_type = IB_SIGNAL_ALL_WR;
-	init_attr->cap.max_send_wr = 128;
-	init_attr->cap.max_send_sge = 32;
+	init_attr->cap.max_send_wr = MAX_UMR_WR;
+	init_attr->cap.max_send_sge = 1;
 	init_attr->qp_type = IB_QPT_SYNC_UMR;
 	init_attr->port_num = 1;
 	qp = ib_create_qp(pd, init_attr);
@@ -1170,7 +1175,7 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 	dev->umrc.mr = mr;
 	dev->umrc.pd = pd;
 
-	mutex_init(&dev->umrc.lock);
+	sema_init(&dev->umrc.sem, MAX_UMR_WR);
 	ret = mlx5_mr_cache_init(dev);
 	if (ret) {
 		mlx5_ib_warn(dev, "mr cache init failed %d\n", ret);

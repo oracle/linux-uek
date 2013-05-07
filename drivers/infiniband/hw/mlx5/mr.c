@@ -629,59 +629,26 @@ static void prep_umr_unreg_wqe(struct mlx5_ib_dev *dev,
 	wr->wr.umr.mkey = key;
 }
 
-static int poll_timeout(struct mlx5_ib_dev *dev, u64 wrid)
+void mlx5_umr_cq_handler(struct ib_cq *cq, void *cq_context)
 {
-	struct umr_common *umrc = &dev->umrc;
-	unsigned long end;
-	struct ib_wc wc;
 	int err;
-	unsigned long start, delta;
+	struct ib_wc wc;
+	struct mlx5_ib_mr *mr;
 
-	start = jiffies;
-poll_again:
-	end = jiffies + HZ;
-	do {
-		err = ib_poll_cq(umrc->cq, 1, &wc);
+	while (1) {
+		err = ib_poll_cq(cq, 1, &wc);
 		if (err < 0) {
-			mlx5_ib_warn(dev, "poll err %d\n", err);
-			while (1)
-				msleep(10000);
-
-			return err;
-		} else if (err > 1) {
-			err = -EIO;
-			mlx5_ib_warn(dev, "expected 1 completion but got %d\n",
-				     err);
-			while (1)
-				msleep(10000);
-
-			return err;
+			pr_warn("poll cq error %d\n", err);
+			return;
 		}
-	} while (err == 0 && time_before(jiffies, end));
+		if (err == 0)
+			break;
 
-	if (err == 0) {
-		mlx5_ib_warn(dev, "waited too long with no completion: wrid: 0x%llx\n", wrid);
-		while (1) {
-			msleep(10000);
-			goto poll_again;
-		}
-		return -ENOENT;
+		mr = (struct mlx5_ib_mr *)wc.wr_id;
+		mr->status = wc.status;
+		complete(&mr->done);
 	}
-
-	delta = jiffies - start;
-	if (wc.wr_id != wrid || wc.status != IB_WC_SUCCESS) {
-		mlx5_ib_warn(dev, "expected wrid 0x%llx, got 0x%llx, status %d, total time %lu\n",
-			     wrid, wc.wr_id, wc.status, delta);
-		return -EINVAL;
-	}
-
-	if (delta > HZ) {
-		mlx5_ib_warn(dev, "UMR completed in %lu jiffies - freezing\n", delta);
-		while (1)
-			msleep(10000);
-	}
-
-	return 0;
+	ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
 }
 
 static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
@@ -702,7 +669,7 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	mlx5_ib_populate_pas(dev, umem, page_shift, mr_align(mr->pas, 0x40), 1);
 
 	memset(&wr, 0, sizeof(wr));
-	get_random_bytes(&wr.wr_id, sizeof(wr.wr_id));
+	wr.wr_id = (u64)(unsigned long)mr;
 	prep_umr_reg_wqe(pd, &wr, &sg, mr->dma, npages, mr->mmr.key, page_shift, virt_addr, len, access_flags);
 
 	/*
@@ -710,22 +677,26 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	 * completion. This is not a problem since wr is completed in
 	 * around 1 usec
 	 */
-	mutex_lock(&umrc->lock);
+	down(&umrc->sem);
+	init_completion(&mr->done);
 	err = ib_post_send(umrc->qp, &wr, &bad);
 	if (err) {
 		mlx5_ib_warn(dev, "post send failed, err %d\n", err);
+		up(&umrc->sem);
 		goto error;
 	}
-	err = poll_timeout(dev, wr.wr_id);
-	if (err)
-		goto error;
+	wait_for_completion(&mr->done);
+	up(&umrc->sem);
 
-	mutex_unlock(&umrc->lock);
+	if (mr->status != IB_WC_SUCCESS) {
+		mlx5_ib_warn(dev, "reg umr failed\n");
+		err = -EFAULT;
+		goto error;
+	}
 
 	return mr;
 
 error:
-	mutex_unlock(&umrc->lock);
 	free_cached_mr(dev, mr);
 	return ERR_PTR(err);
 }
@@ -854,27 +825,34 @@ error:
 	return ERR_PTR(err);
 }
 
-static int unreg_umr(struct mlx5_ib_dev *dev, u32 key)
+static int unreg_umr(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 {
 	struct umr_common *umrc = &dev->umrc;
 	struct ib_send_wr wr, *bad;
 	int err;
 
 	memset(&wr, 0, sizeof(wr));
-	get_random_bytes(&wr.wr_id, sizeof(wr.wr_id));
-	prep_umr_unreg_wqe(dev, &wr, key);
+	wr.wr_id = (u64)(unsigned long)mr;
+	prep_umr_unreg_wqe(dev, &wr, mr->mmr.key);
 
-	mutex_lock(&umrc->lock);
+	down(&umrc->sem);
+	init_completion(&mr->done);
 	err = ib_post_send(umrc->qp, &wr, &bad);
 	if (err) {
+		up(&umrc->sem);
 		mlx5_ib_dbg(dev, "err %d\n", err);
 		goto error;
 	}
-
-	err = poll_timeout(dev, wr.wr_id);
+	wait_for_completion(&mr->done);
+	up(&umrc->sem);
+	if (mr->status != IB_WC_SUCCESS) {
+		mlx5_ib_warn(dev, "unreg umr failed\n");
+		err = -EFAULT;
+		goto error;
+	}
+	return 0;
 
 error:
-	mutex_unlock(&umrc->lock);
 	return err;
 }
 
@@ -895,7 +873,7 @@ int mlx5_ib_dereg_mr(struct ib_mr *ibmr)
 			return err;
 		}
 	} else {
-		err = unreg_umr(dev, mr->mmr.key);
+		err = unreg_umr(dev, mr);
 		if (err) {
 			mlx5_ib_warn(dev, "failed unregister\n");
 			return err;

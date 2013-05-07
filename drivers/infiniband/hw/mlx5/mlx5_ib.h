@@ -269,6 +269,8 @@ struct mlx5_ib_mr {
 	__be64			*pas;
 	dma_addr_t		dma;
 	int			npages;
+	struct completion	done;
+	enum ib_wc_status	status;
 };
 
 struct mlx5_ib_fast_reg_page_list {
@@ -283,9 +285,9 @@ struct umr_common {
 	struct ib_qp	*qp;
 	struct ib_mr	*mr;
 	/*
-	 * serialize access to the UMR QP
+	 * control access to UMR QP
 	 */
-	struct mutex	lock;
+	struct semaphore	sem;
 };
 
 enum {
@@ -543,6 +545,7 @@ int mlx5_ib_get_cqe_size(struct mlx5_ib_dev *dev, struct ib_cq *ibcq);
 int mlx5_mr_cache_init(struct mlx5_ib_dev *dev);
 int mlx5_mr_cache_cleanup(struct mlx5_ib_dev *dev);
 int mlx5_mr_ib_cont_pages(struct ib_umem *umem, u64 addr, int *count, int *shift);
+void mlx5_umr_cq_handler(struct ib_cq *cq, void *cq_context);
 
 static inline void init_query_mad(struct ib_smp *mad)
 {
