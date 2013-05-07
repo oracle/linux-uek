@@ -2285,6 +2285,24 @@ static ssize_t get_tx_max_channel(struct device *dev,
 
 static DEVICE_ATTR(tx_max_channels, S_IRUGO, get_tx_max_channel, NULL);
 
+int ipoib_add_channels_attr(struct net_device *dev)
+{
+	int err = 0;
+	err = device_create_file(&dev->dev, &dev_attr_tx_max_channels);
+	if (err)
+		return err;
+	err = device_create_file(&dev->dev, &dev_attr_rx_max_channels);
+	if (err)
+		return err;
+	err = device_create_file(&dev->dev, &dev_attr_tx_channels);
+	if (err)
+		return err;
+	err = device_create_file(&dev->dev, &dev_attr_rx_channels);
+	if (err)
+		return err;
+	return err;
+}
+
 static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 				  struct ib_device *hca)
 {
@@ -2485,13 +2503,7 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto sysfs_failed;
 	if (device_create_file(&priv->dev->dev, &dev_attr_delete_child))
 		goto sysfs_failed;
-	if (device_create_file(&priv->dev->dev, &dev_attr_tx_max_channels))
-		goto sysfs_failed;
-	if (device_create_file(&priv->dev->dev, &dev_attr_rx_max_channels))
-		goto sysfs_failed;
-	if (device_create_file(&priv->dev->dev, &dev_attr_tx_channels))
-		goto sysfs_failed;
-	if (device_create_file(&priv->dev->dev, &dev_attr_rx_channels))
+	if (ipoib_add_channels_attr(priv->dev))
 		goto sysfs_failed;
 
 	return priv->dev;

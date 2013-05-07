@@ -96,8 +96,9 @@ int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 			goto sysfs_failed;
 		if (ipoib_add_umcast_attr(priv->dev))
 			goto sysfs_failed;
-
 		if (device_create_file(&priv->dev->dev, &dev_attr_parent))
+			goto sysfs_failed;
+		if (ipoib_add_channels_attr(priv->dev))
 			goto sysfs_failed;
 	}
 
