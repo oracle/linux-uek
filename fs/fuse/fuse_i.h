@@ -419,6 +419,9 @@ struct fuse_conn {
 	/** rbtree of fuse_files waiting for poll events indexed by ph */
 	struct rb_root polled_files;
 
+	/** waitq for poll requests */
+	wait_queue_head_t poll_waitq;
+
 	/** waitq for reserved requests */
 	wait_queue_head_t reserved_req_waitq;
 
@@ -668,9 +671,9 @@ void fuse_ctl_cleanup(void);
 /**
  * Allocate a request
  */
-struct fuse_req *fuse_request_alloc(void);
+struct fuse_req *fuse_request_alloc(struct fuse_conn *fc);
 
-struct fuse_req *fuse_request_alloc_nofs(void);
+struct fuse_req *fuse_request_alloc_nofs(struct fuse_conn *fc);
 
 /**
  * Free a request
