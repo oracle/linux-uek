@@ -211,6 +211,9 @@ enum fuse_req_state {
  * A request to the client
  */
 struct fuse_req {
+	/* numa node number on which fuse_req is allocated from */
+	int numa_id;
+
 	/** This can be on either pending processing or io lists in
 	    fuse_conn */
 	struct list_head list;
@@ -312,6 +315,66 @@ struct fuse_req {
 	struct file *stolen_file;
 };
 
+/* structure that tracks numa node specific fields */
+struct fuse_numa_node {
+	/* numa node id */
+	int numa_id;
+
+	/* Lock protecting accessess to members of this structure */
+	spinlock_t lock;
+
+	/* pointer to main fuse_connection */
+	struct fuse_conn *fc;
+
+	/* Flag indicating if queue is blocked.  This will be
+	   the case before the INIT reply is received, and if there
+	   are too many outstading backgrounds requests */
+	int blocked;
+
+	/* Maximum number of outstanding background requests */
+	unsigned max_background;
+
+	/* Number of background requests at which congestion starts */
+	unsigned congestion_threshold;
+
+	/* Number of requests currently in the background */
+	unsigned num_background;
+
+	/* Number of background requests currently queued for userspace */
+	unsigned active_background;
+
+	/* The number of requests waiting for completion */
+	atomic_t num_waiting;
+
+	/** Queue of pending forgets */
+	struct fuse_forget_link forget_list_head;
+	struct fuse_forget_link *forget_list_tail;
+
+	/** Batching of FORGET requests (positive indicates FORGET batch) */
+	int forget_batch;
+
+	/* waitq for blocked connection */
+	wait_queue_head_t blocked_waitq;
+
+	/* Readers of the connection are waiting on this */
+	wait_queue_head_t waitq;
+
+	/* The list of background requests set aside for later queuing */
+	struct list_head bg_queue;
+
+	/* Pending interrupts */
+	struct list_head interrupts;
+
+	/* The list of pending requests */
+	struct list_head pending;
+
+	/* The list of requests being processed */
+	struct list_head processing;
+
+	/* The list of requests under I/O */
+	struct list_head io;
+};
+
 /**
  * A Fuse connection.
  *
@@ -322,6 +385,12 @@ struct fuse_req {
 struct fuse_conn {
 	/** Lock protecting accessess to  members of this structure */
 	spinlock_t lock;
+
+	/** tracks if numa enabled */
+	int numa_on;
+
+	/** Number of numa nodes */
+	int nr_nodes;
 
 	/** Mutex protecting against directory alias creation */
 	struct mutex inst_mutex;
@@ -344,56 +413,14 @@ struct fuse_conn {
 	/** Maximum write size */
 	unsigned max_write;
 
-	/** Readers of the connection are waiting on this */
-	wait_queue_head_t waitq;
-
-	/** The list of pending requests */
-	struct list_head pending;
-
-	/** The list of requests being processed */
-	struct list_head processing;
-
-	/** The list of requests under I/O */
-	struct list_head io;
-
 	/** The next unique kernel file handle */
 	u64 khctr;
 
 	/** rbtree of fuse_files waiting for poll events indexed by ph */
 	struct rb_root polled_files;
 
-	/** Maximum number of outstanding background requests */
-	unsigned max_background;
-
-	/** Number of background requests at which congestion starts */
-	unsigned congestion_threshold;
-
-	/** Number of requests currently in the background */
-	unsigned num_background;
-
-	/** Number of background requests currently queued for userspace */
-	unsigned active_background;
-
-	/** The list of background requests set aside for later queuing */
-	struct list_head bg_queue;
-
-	/** Pending interrupts */
-	struct list_head interrupts;
-
-	/** Queue of pending forgets */
-	struct fuse_forget_link forget_list_head;
-	struct fuse_forget_link *forget_list_tail;
-
-	/** Batching of FORGET requests (positive indicates FORGET batch) */
-	int forget_batch;
-
-	/** Flag indicating if connection is blocked.  This will be
-	    the case before the INIT reply is received, and if there
-	    are too many outstading backgrounds requests */
-	int blocked;
-
-	/** waitq for blocked connection */
-	wait_queue_head_t blocked_waitq;
+	/** waitq for poll requests */
+	wait_queue_head_t poll_waitq;
 
 	/** waitq for reserved requests */
 	wait_queue_head_t reserved_req_waitq;
@@ -475,9 +502,6 @@ struct fuse_conn {
 	/** Don't apply umask to creation modes */
 	unsigned dont_mask:1;
 
-	/** The number of requests waiting for completion */
-	atomic_t num_waiting;
-
 	/** Negotiated minor version */
 	unsigned minor;
 
@@ -516,6 +540,8 @@ struct fuse_conn {
 
 	/** Read/write semaphore to hold when accessing sb. */
 	struct rw_semaphore killsb;
+
+	struct fuse_numa_node **nn;
 };
 
 static inline struct fuse_conn *get_fuse_conn_super(struct super_block *sb)
@@ -645,9 +671,9 @@ void fuse_ctl_cleanup(void);
 /**
  * Allocate a request
  */
-struct fuse_req *fuse_request_alloc(void);
+struct fuse_req *fuse_request_alloc(struct fuse_conn *fc);
 
-struct fuse_req *fuse_request_alloc_nofs(void);
+struct fuse_req *fuse_request_alloc_nofs(struct fuse_conn *fc);
 
 /**
  * Free a request
@@ -703,7 +729,7 @@ void fuse_conn_kill(struct fuse_conn *fc);
 /**
  * Initialize fuse_conn
  */
-void fuse_conn_init(struct fuse_conn *fc);
+int fuse_conn_init(struct fuse_conn *fc, int numa_on);
 
 /**
  * Release reference to fuse_conn
