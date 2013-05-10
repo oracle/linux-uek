@@ -44,8 +44,6 @@
 
 static void scsi_eh_done(struct scsi_cmnd *scmd);
 
-#define SENSE_TIMEOUT		(10*HZ)
-
 /*
  * These should *probably* be handled by the host itself.
  * Since it is allowed to sleep, it probably should.
@@ -864,7 +862,7 @@ static int scsi_send_eh_cmnd(struct scsi_cmnd *scmd, unsigned char *cmnd,
  */
 static int scsi_request_sense(struct scsi_cmnd *scmd)
 {
-	return scsi_send_eh_cmnd(scmd, NULL, 0, SENSE_TIMEOUT, ~0);
+	return scsi_send_eh_cmnd(scmd, NULL, 0, scmd->device->eh_timeout, ~0);
 }
 
 /**
@@ -965,7 +963,8 @@ static int scsi_eh_tur(struct scsi_cmnd *scmd)
 	int retry_cnt = 1, rtn;
 
 retry_tur:
-	rtn = scsi_send_eh_cmnd(scmd, tur_command, 6, SENSE_TIMEOUT, 0);
+	rtn = scsi_send_eh_cmnd(scmd, tur_command, 6,
+				scmd->device->eh_timeout, 0);
 
 	SCSI_LOG_ERROR_RECOVERY(3, printk("%s: scmd %p rtn %x\n",
 		__func__, scmd, rtn));
