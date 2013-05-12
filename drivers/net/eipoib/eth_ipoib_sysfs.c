@@ -73,21 +73,6 @@ static int get_emac(u8 *mac, char *s)
 	return 0;
 }
 
-static int get_imac(u8 *mac, char *s)
-{
-	if (sscanf(s, "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:"
-		   "%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:%hhx:"
-		   "%hhx:%hhx:%hhx:%hhx",
-		   mac + 0, mac + 1, mac + 2, mac + 3, mac + 4,
-		   mac + 5, mac + 6, mac + 7, mac + 8, mac + 9,
-		   mac + 10, mac + 11, mac + 12, mac + 13,
-		   mac + 14, mac + 15, mac + 16, mac + 17,
-		   mac + 18, mac + 19) != 20)
-		return -1;
-
-	return 0;
-}
-
 /* show/store functions per module (CLASS_ATTR) */
 static ssize_t show_parents(struct class *cls, struct class_attribute *attr,
 			    char *buf)
@@ -113,21 +98,26 @@ static ssize_t parent_show_neighs(struct device *d,
 				  struct device_attribute *attr, char *buf)
 {
 	struct slave *slave;
-	struct neigh *neigh;
 	struct parent *parent = to_parent(d);
 	char *p = buf;
+	int i;
 
 	read_lock_bh(&parent->lock);
+	rcu_read_lock_bh();
+
 	parent_for_each_slave(parent, slave) {
-		list_for_each_entry(neigh, &slave->neigh_list, list) {
-			p += _sprintf(p, buf, "SLAVE=%-10s EMAC=%pM IMAC=%pM:%pM:%pM:%.2x:%.2x\n",
-				      slave->dev->name,
-				      neigh->emac,
-				      neigh->imac, neigh->imac + 6, neigh->imac + 12,
-				      neigh->imac[18], neigh->imac[19]);
+		for (i = 0; i < NEIGH_HASH_SIZE; i++) {
+			struct neigh *neigh;
+			struct hlist_node *n;
+			hlist_for_each_entry_rcu(neigh, n, &slave->hash[i], hlist)
+				p += _sprintf(p, buf, "SLAVE=%-10s EMAC=%pM IMAC=%pM:%pM:%pM:%.2x:%.2x\n",
+					      slave->dev->name,
+					      neigh->emac,
+					      neigh->imac, neigh->imac + 6, neigh->imac + 12,
+					      neigh->imac[18], neigh->imac[19]);
 		}
 	}
-
+	rcu_read_unlock_bh();
 	read_unlock_bh(&parent->lock);
 
 	_end_of_line(p, buf);
@@ -160,135 +150,8 @@ out:
 	return neigh_cmd;
 }
 
-/* write_lock_bh(&parent->lock) must be held */
-ssize_t __parent_store_neighs(struct device *d,
-			      struct device_attribute *attr,
-			      const char *buffer, size_t count)
-{
-	char command[IFNAMSIZ + 1] = { 0, };
-	char emac_str[ETH_ALEN * 3] = { 0, };
-	u8 emac[ETH_ALEN];
-	char imac_str[INFINIBAND_ALEN * 3] = { 0, };
-	u8 imac[INFINIBAND_ALEN];
-	char *ifname;
-	int found = 0, ret = count;
-	struct slave *slave = NULL, *slave_tmp;
-	struct neigh *neigh;
-	struct parent *parent = to_parent(d);
-
-	sscanf(buffer, "%s %s %s", command, emac_str, imac_str);
-
-	/* check ifname */
-	ifname = command + 1;
-	if ((strlen(command) <= 1) || !dev_valid_name(ifname) ||
-	    (command[0] != '+' && command[0] != '-'))
-		goto err_no_cmd;
-
-	/* check if ifname exist */
-	parent_for_each_slave(parent, slave_tmp) {
-		if (!strcmp(slave_tmp->dev->name, ifname)) {
-			found = 1;
-			slave = slave_tmp;
-		}
-	}
-
-	if (!found) {
-		pr_err("%s could not find slave\n", ifname);
-		ret = -EINVAL;
-		goto out;
-	}
-
-	if (get_emac(emac, emac_str)) {
-		pr_err("%s bad emac %s\n", ifname, emac_str);
-		ret = -EINVAL;
-		goto out;
-	}
-
-	if (get_imac(imac, imac_str)) {
-		pr_err("%s bad imac %s\n", ifname, imac_str);
-		ret = -EINVAL;
-		goto out;
-	}
-
-	/* process command */
-	if (command[0] == '+') {
-		found = 0;
-		list_for_each_entry(neigh, &slave->neigh_list, list) {
-			if (!memcmp(neigh->emac, emac, ETH_ALEN))
-				found = 1;
-		}
-
-		if (found) {
-			pr_err("%s: cannot update neigh, slave already has "
-			       "this neigh mac %pM\n",
-			       slave->dev->name, emac);
-			ret = -EINVAL;
-			goto out;
-		}
-
-		neigh = kzalloc(sizeof(*neigh), GFP_KERNEL);
-		if (!neigh) {
-			pr_err("%s cannot allocate neigh struct, no mem\n",
-			       slave->dev->name);
-			ret = -ENOMEM;
-			goto out;
-		}
-
-		/* ready to go */
-		pr_info("%s: slave %s neigh mac is set to %pM\n",
-			ifname, parent->dev->name, emac);
-		memcpy(neigh->emac, emac, ETH_ALEN);
-		memcpy(neigh->imac, imac, INFINIBAND_ALEN);
-
-		list_add_tail(&neigh->list, &slave->neigh_list);
-
-		goto out;
-	}
-
-	if (command[0] == '-') {
-		found = 0;
-		list_for_each_entry(neigh, &slave->neigh_list, list) {
-			if (!memcmp(neigh->emac, emac, ETH_ALEN))
-				found = 1;
-		}
-
-		if (!found) {
-			pr_err("%s cannot delete neigh mac %pM\n",
-			       ifname, emac);
-			ret = -EINVAL;
-			goto out;
-		}
-
-		list_del(&neigh->list);
-		kfree(neigh);
-
-		goto out;
-	}
-
-err_no_cmd:
-	pr_err("%s USAGE: (-|+)ifname emac imac\n", DRV_NAME);
-	ret = -EPERM;
-
-out:
-	return ret;
-}
-
-static ssize_t parent_store_neighs(struct device *d,
-				   struct device_attribute *attr,
-				   const char *buffer, size_t count)
-{
-	struct parent *parent = to_parent(d);
-	ssize_t rc;
-
-	write_lock_bh(&parent->lock);
-	rc = __parent_store_neighs(d, attr, buffer, count);
-	write_unlock_bh(&parent->lock);
-
-	return rc;
-}
-
-static DEVICE_ATTR(neighs, S_IRUGO | S_IWUSR, parent_show_neighs,
-		   parent_store_neighs);
+static DEVICE_ATTR(neighs, S_IRUGO, parent_show_neighs,
+		   NULL);
 
 static ssize_t parent_show_vifs(struct device *d,
 				struct device_attribute *attr, char *buf)

@@ -33,6 +33,8 @@
 #include "eth_ipoib.h"
 #include <net/ip.h>
 #include <linux/if_link.h>
+#include <linux/etherdevice.h>
+#include <linux/jhash.h>
 
 #define EMAC_IP_GC_TIME (10 * HZ)
 
@@ -52,6 +54,7 @@ static int eipoib_device_event(struct notifier_block *unused,
 			       unsigned long event, void *ptr);
 static void free_all_ip_ent_in_emac_rec(struct guest_emac_info *emac_info);
 static void neigh_learn_task(struct work_struct *work);
+static void slave_neigh_flush(struct slave *slave);
 static const char * const version =
 	DRV_DESCRIPTION ": v" DRV_VERSION " (" DRV_RELDATE ")\n";
 
@@ -497,8 +500,6 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
 		goto err_undo_flags;
 	}
 
-	INIT_LIST_HEAD(&new_slave->neigh_list);
-
 	/* save slave's vlan */
 	new_slave->pkey = slave_get_pkey(slave_dev);
 
@@ -566,16 +567,12 @@ err_undo_flags:
 	return res;
 }
 
-static void slave_free(struct parent *parent, struct slave *slave)
+static void slave_free(struct slave *slave)
 {
-	struct neigh *neigh, *neigh_tmp;
-
-	list_for_each_entry_safe(neigh, neigh_tmp, &slave->neigh_list, list) {
-		list_del(&neigh->list);
-		kfree(neigh);
-	}
 
 	netdev_rx_handler_unregister(slave->dev);
+
+	slave_neigh_flush(slave);
 
 	kfree(slave);
 }
@@ -642,7 +639,7 @@ int parent_release_slave(struct net_device *parent_dev,
 
 	dev_close(slave_dev);
 
-	slave_free(parent, slave);
+	slave_free(slave);
 
 	return 0;  /* deletion OK */
 }
@@ -678,7 +675,7 @@ static int parent_release_all(struct net_device *parent_dev)
 
 		dev_close(slave_dev);
 
-		slave_free(parent, slave);
+		slave_free(slave);
 
 		write_lock_bh(&parent->lock);
 	}
@@ -749,20 +746,184 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 }
 
 /* ---------------------------- Main funcs ---------------------------------- */
-static struct neigh *neigh_find_by_mac(struct slave *slave, u8 *mac)
-{
-	struct neigh *neigh;
-	int found = 0;
 
-	list_for_each_entry(neigh, &slave->neigh_list, list) {
-		if (!memcmp(neigh->emac, mac, ETH_ALEN)) {
-			found = 1;
-			break;
-		}
+static inline int eipoib_mac_hash(const unsigned char *mac)
+{
+	/* use 1 byte of OUI cnd 3 bytes of NIC */
+	u32 key = get_unaligned((u32 *)(mac));
+	/* TODO: replace the 0 with some salt */
+	return jhash_1word(key, 0) & (NEIGH_HASH_SIZE - 1);
+}
+
+static struct neigh *neigh_find(struct hlist_head *head,
+				const u8 *addr)
+{
+	struct hlist_node *h;
+	struct neigh *neigh;
+
+	hlist_for_each_entry(neigh, h, head, hlist) {
+		if (ether_addr_equal(neigh->emac, addr))
+			return neigh;
+	}
+	return NULL;
+}
+
+static struct neigh *neigh_find_rcu(struct hlist_head *head,
+				const u8 *addr)
+{
+	struct hlist_node *h;
+	struct neigh *neigh;
+
+	hlist_for_each_entry_rcu(neigh, h, head, hlist) {
+		if (ether_addr_equal(neigh->emac, addr))
+			return neigh;
+	}
+	return NULL;
+}
+
+static void neigh_rcu_free(struct rcu_head *head)
+{
+	struct neigh *n
+		= container_of(head, struct neigh, rcu);
+	kfree(n);
+}
+
+static void neigh_delete(struct neigh *n)
+{
+	hlist_del_rcu(&n->hlist);
+	call_rcu(&n->rcu, neigh_rcu_free);
+}
+
+void eipoib_neigh_put(struct neigh *neigh)
+{
+	if (atomic_dec_and_test(&neigh->refcnt))
+		neigh_delete(neigh);
+}
+
+static struct neigh *__eipoib_neigh_create(struct hlist_head *head,
+					 const u8 *emac, const u8 *imac)
+{
+
+	struct neigh *neigh;
+	neigh = kzalloc(sizeof(*neigh), GFP_ATOMIC);
+	if (!neigh) {
+		pr_err("Cannot allocate neigh struct, no mem\n");
+		return NULL;
+	}
+	memcpy(neigh->emac, emac, ETH_ALEN);
+	memcpy(neigh->imac, imac, INFINIBAND_ALEN);
+	hlist_add_head_rcu(&neigh->hlist, head);
+	atomic_set(&neigh->refcnt, 1);
+
+	pr_info("neigh mac %pM is set to %pI6\n", emac, imac);
+
+	/* TODO ref count */
+	return neigh;
+}
+
+/* call under spin_lock_bh */
+static int neigh_insert(struct slave *slave, const u8 *emac, const u8 *imac)
+{
+	struct hlist_head *head = &slave->hash[eipoib_mac_hash(emac)];
+	struct neigh *neigh;
+
+	if (!is_valid_ether_addr(emac))
+		return -EINVAL;
+
+	neigh = neigh_find(head, emac);
+	if (neigh) {
+		pr_err("%s: cannot update neigh, slave already has "
+		       "this neigh mac %pM\n",
+		       slave->dev->name, emac);
+		return -EEXIST;
 	}
 
-	return found ? neigh : NULL;
+	neigh = __eipoib_neigh_create(head, emac, imac);
+	if (!neigh)
+		return -ENOMEM;
+
+	return 0;
 }
+
+/* Add entry for local address of interface */
+int eipoib_neigh_insert(struct slave *slave, const u8 *emac, const u8 *imac)
+{
+	int ret;
+
+	spin_lock_bh(&slave->hash_lock);
+	ret = neigh_insert(slave, emac, imac);
+	spin_unlock_bh(&slave->hash_lock);
+	return ret;
+}
+
+static int neigh_delete_by_addr(struct slave *slave, const u8 *emac)
+{
+
+	struct hlist_head *head = &slave->hash[eipoib_mac_hash(emac)];
+	struct neigh *neigh;
+
+	neigh = neigh_find(head, emac);
+	if (!neigh)
+		return -ENOENT;
+
+	eipoib_neigh_put(neigh);
+	return 0;
+}
+
+/* Remove neighbor entry from slave hash*/
+int eipoib_neigh_delete(struct slave *slave, const u8 *emac)
+{
+	int err;
+
+	spin_lock_bh(&slave->hash_lock);
+	err = neigh_delete_by_addr(slave, emac);
+	spin_unlock_bh(&slave->hash_lock);
+
+	return err;
+}
+
+/* Completely flush all dynamic entries in neigh database.*/
+static void slave_neigh_flush(struct slave *slave)
+{
+	int i;
+
+	spin_lock_bh(&slave->hash_lock);
+	for (i = 0; i < NEIGH_HASH_SIZE; i++) {
+		struct neigh *neigh;
+		struct hlist_node *h, *n;
+		hlist_for_each_entry_safe(neigh, h, n, &slave->hash[i], hlist) {
+			/* perhasps use neigh_delete instead of eipoib_neigh_put? */
+			eipoib_neigh_put(neigh);
+		}
+	}
+	spin_unlock_bh(&slave->hash_lock);
+}
+
+struct neigh *eipoib_neigh_get(struct slave *slave, const u8 *emac)
+{
+
+	struct hlist_head *head;
+	struct neigh *neigh = NULL;
+
+	rcu_read_lock_bh();
+
+	head = &slave->hash[eipoib_mac_hash(emac)];
+
+	neigh = neigh_find_rcu(head, emac);
+
+	if (neigh) {
+		if (!atomic_inc_not_zero(&neigh->refcnt)) {
+			/* deleted */
+			neigh = NULL;
+			goto out_unlock;
+		}
+	}
+out_unlock:
+	rcu_read_unlock_bh();
+	return neigh;
+}
+
+/*******************************************************************************/
 
 static int neigh_learn(struct slave *slave, struct sk_buff *skb, u8 *remac)
 {
@@ -806,31 +967,18 @@ static void neigh_learn_task(struct work_struct *work)
 
 	struct parent *parent = learn_neigh->parent;
 	struct slave *slave = learn_neigh->slave;
-	struct neigh *neigh_cmd;
 
-	write_lock_bh(&parent->lock);
-
-	if (parent->kill_timers)
-		goto out;
-
-	if (neigh_find_by_mac(slave, learn_neigh->remac))
-		goto out;
-
-	neigh_cmd = parent_get_neigh_cmd('+', slave->dev->name,
-					 learn_neigh->remac,
-					 learn_neigh->rimac);
-	if (!neigh_cmd) {
-		pr_err("%s cannot build neigh cmd\n", slave->dev->name);
+	read_lock_bh(&parent->lock);
+	if (parent->kill_timers) {
+		read_unlock_bh(&parent->lock);
 		goto out;
 	}
+	read_unlock_bh(&parent->lock);
 
-	__parent_store_neighs(&parent->dev->dev, NULL, neigh_cmd->cmd,
-			      PAGE_SIZE);
-	kfree(neigh_cmd);
+	eipoib_neigh_insert(slave, learn_neigh->remac, learn_neigh->rimac);
 
 out:
 	kfree(learn_neigh);
-	write_unlock_bh(&parent->lock);
 	return;
 }
 
@@ -1280,9 +1428,10 @@ static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
 	if (is_multicast_ether_addr(ethh->h_dest)) {
 		memcpy(rimac, dev->broadcast, INFINIBAND_ALEN);
 	} else {
-		neigh = neigh_find_by_mac(slave, ethh->h_dest);
+		neigh = eipoib_neigh_get(slave, ethh->h_dest);
 		if (neigh) {
 			memcpy(rimac, neigh->imac, INFINIBAND_ALEN);
+
 		} else {
 			++parent->port_stats.tx_neigh_miss;
 			/*
@@ -1338,6 +1487,11 @@ static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
 		dev_kfree_skb(skb);
 
 	nskb->dev = slave->dev;
+
+	/* decrease ref count on neigh */
+	if (neigh)
+		eipoib_neigh_put(neigh);
+
 	return nskb;
 
 out_arp_sent_instead:/* whenever sent arp instead of ip packet */
@@ -1345,6 +1499,8 @@ err:
 	/* got error after nskb was adjusted/allocated */
 	if (nskb && (nskb != skb))
 		dev_kfree_skb(nskb);
+	if (neigh) /* no neigh from out_arp_sent_instead flow */
+		eipoib_neigh_put(neigh);
 
 	return NULL;
 }

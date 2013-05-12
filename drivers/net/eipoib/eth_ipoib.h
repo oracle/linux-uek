@@ -60,6 +60,11 @@
 #define GID_LEN			16
 #define GUID_LEN		8
 
+
+#define NEIGH_HASH_BITS 8
+#define NEIGH_HASH_SIZE (1 << NEIGH_HASH_BITS)
+
+
 #define PARENT_VLAN_FEATURES (NETIF_F_HW_VLAN_RX | NETIF_F_HW_VLAN_TX)
 
 #define parent_for_each_slave(_parent, slave)		\
@@ -138,6 +143,11 @@ struct neigh {
 	u8 imac[INFINIBAND_ALEN];
 	/* this part is used for neigh_add_list */
 	char cmd[PAGE_SIZE];
+
+	/* new implementation for hash & rcu */
+	struct rcu_head rcu;
+	struct hlist_node hlist;
+	atomic_t refcnt;
 };
 
 struct slave {
@@ -147,7 +157,10 @@ struct slave {
 	u16    vlan;
 	u8     emac[ETH_ALEN];
 	u8     imac[INFINIBAND_ALEN];
-	struct list_head neigh_list;
+
+	/* hash & rcu for neigh objects */
+	spinlock_t		hash_lock;
+	struct hlist_head	hash[NEIGH_HASH_SIZE];
 };
 
 struct port_stats {
