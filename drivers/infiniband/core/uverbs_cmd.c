@@ -3052,6 +3052,7 @@ ssize_t ib_uverbs_destroy_srq(struct ib_uverbs_file *file,
 	struct ib_srq               	 *srq;
 	struct ib_uevent_object        	 *obj;
 	int                         	  ret = -EINVAL;
+	struct ib_usrq_object	*us;
 
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
@@ -3065,6 +3066,11 @@ ssize_t ib_uverbs_destroy_srq(struct ib_uverbs_file *file,
 	ret = ib_destroy_srq(srq);
 	if (!ret)
 		uobj->live = 0;
+
+	if (srq->srq_type == IB_SRQT_XRC) {
+		us = container_of(obj, struct ib_usrq_object, uevent);
+		atomic_dec(&us->uxrcd->refcnt);
+	}
 
 	put_uobj_write(uobj);
 
