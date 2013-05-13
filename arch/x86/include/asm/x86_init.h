@@ -149,6 +149,8 @@ struct x86_cpuinit_ops {
 	void (*setup_percpu_clockev)(void);
 };
 
+struct timespec;
+
 /**
  * struct x86_platform_ops - platform specific runtime functions
  * @calibrate_tsc:		calibrate TSC
@@ -160,8 +162,8 @@ struct x86_cpuinit_ops {
  */
 struct x86_platform_ops {
 	unsigned long (*calibrate_tsc)(void);
-	unsigned long (*get_wallclock)(void);
-	int (*set_wallclock)(unsigned long nowtime);
+	void (*get_wallclock)(struct timespec *ts);
+	int (*set_wallclock)(const struct timespec *ts);
 	void (*iommu_shutdown)(void);
 	bool (*is_untracked_pat_range)(u64 start, u64 end);
 	void (*nmi_init)(void);

@@ -172,36 +172,44 @@ static efi_status_t __init phys_efi_get_time(efi_time_t *tm,
 	return status;
 }
 
-int efi_set_rtc_mmss(unsigned long nowtime)
+int efi_set_rtc_mmss(const struct timespec *now)
 {
-	int real_seconds, real_minutes;
+	unsigned long nowtime = now->tv_sec;
 	efi_status_t 	status;
 	efi_time_t 	eft;
 	efi_time_cap_t 	cap;
+	struct rtc_time tm;
 
 	status = efi.get_time(&eft, &cap);
 	if (status != EFI_SUCCESS) {
-		printk(KERN_ERR "Oops: efitime: can't read time!\n");
+		pr_err("Oops: efitime: can't read time!\n");
 		return -1;
 	}
 
-	real_seconds = nowtime % 60;
-	real_minutes = nowtime / 60;
-	if (((abs(real_minutes - eft.minute) + 15)/30) & 1)
-		real_minutes += 30;
-	real_minutes %= 60;
-	eft.minute = real_minutes;
-	eft.second = real_seconds;
+	rtc_time_to_tm(nowtime, &tm);
+	if (!rtc_valid_tm(&tm)) {
+		eft.year = tm.tm_year + 1900; 
+		eft.month = tm.tm_mon + 1;
+		eft.day = tm.tm_mday;
+		eft.minute = tm.tm_min;
+		eft.second = tm.tm_sec;
+		eft.nanosecond = 0;
+	} else {
+		printk(KERN_ERR
+			   "%s: Invalid EFI RTC value: write of %lx to EFI RTC failed\n",
+			   __FUNCTION__, nowtime);
+		return -1;
+	}
 
 	status = efi.set_time(&eft);
 	if (status != EFI_SUCCESS) {
-		printk(KERN_ERR "Oops: efitime: can't write time!\n");
+		pr_err("Oops: efitime: can't write time!\n");
 		return -1;
 	}
 	return 0;
 }
 
-unsigned long efi_get_time(void)
+void efi_get_time(struct timespec *now)
 {
 	efi_status_t status;
 	efi_time_t eft;
@@ -211,8 +219,9 @@ unsigned long efi_get_time(void)
 	if (status != EFI_SUCCESS)
 		printk(KERN_ERR "Oops: efitime: can't read time!\n");
 
-	return mktime(eft.year, eft.month, eft.day, eft.hour,
-		      eft.minute, eft.second);
+	now->tv_sec = mktime(eft.year, eft.month, eft.day, eft.hour,
+			     eft.minute, eft.second);
+	now->tv_nsec = 0;
 }
 
 /*
