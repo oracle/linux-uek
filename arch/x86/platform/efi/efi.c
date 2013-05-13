@@ -272,8 +272,9 @@ static efi_status_t __init phys_efi_get_time(efi_time_t *tm,
 	return status;
 }
 
-int efi_set_rtc_mmss(unsigned long nowtime)
+int efi_set_rtc_mmss(const struct timespec *now)
 {
+	unsigned long nowtime = now->tv_sec;
 	efi_status_t 	status;
 	efi_time_t 	eft;
 	efi_time_cap_t 	cap;
@@ -308,7 +309,7 @@ int efi_set_rtc_mmss(unsigned long nowtime)
 	return 0;
 }
 
-unsigned long efi_get_time(void)
+void efi_get_time(struct timespec *now)
 {
 	efi_status_t status;
 	efi_time_t eft;
@@ -318,8 +319,9 @@ unsigned long efi_get_time(void)
 	if (status != EFI_SUCCESS)
 		pr_err("Oops: efitime: can't read time!\n");
 
-	return mktime(eft.year, eft.month, eft.day, eft.hour,
-		      eft.minute, eft.second);
+	now->tv_sec = mktime(eft.year, eft.month, eft.day, eft.hour,
+			     eft.minute, eft.second);
+	now->tv_nsec = 0;
 }
 
 /*
