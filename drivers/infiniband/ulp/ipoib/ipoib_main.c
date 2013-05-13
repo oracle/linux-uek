@@ -58,15 +58,15 @@ int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
 
 module_param_named(send_queue_size, ipoib_sendq_size, int, 0444);
-MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue");
+MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue (default = 512) (2-8192)");
 module_param_named(recv_queue_size, ipoib_recvq_size, int, 0444);
-MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue");
+MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue (default = 512) (2-8192)");
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 int ipoib_debug_level;
 
 module_param_named(debug_level, ipoib_debug_level, int, 0644);
-MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
+MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0 (default: 0) (0-1)");
 #endif
 
 struct ipoib_path_iter {
@@ -2660,6 +2660,11 @@ static int __init ipoib_init_module(void)
 		       IPOIB_TX_RING_SIZE);
 		ipoib_sendq_size  = IPOIB_TX_RING_SIZE;
 	}
+
+#ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
+	if (ipoib_debug_level < 0 || ipoib_debug_level > 1)
+		ipoib_debug_level = 0;
+#endif
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 	ipoib_max_conn_qp = min(ipoib_max_conn_qp, IPOIB_CM_MAX_CONN_QP);

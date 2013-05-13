@@ -41,20 +41,20 @@
 
 #include "ipoib.h"
 
-int ipoib_max_conn_qp = 128;
+int ipoib_max_conn_qp = IPOIB_DEFAULT_CONN_QP;
 int ipoib_inline_thold = 160;
 
 module_param_named(max_nonsrq_conn_qp, ipoib_max_conn_qp, int, 0444);
 MODULE_PARM_DESC(max_nonsrq_conn_qp,
 		 "Max number of connected-mode QPs per interface "
-		 "(applied only if shared receive queue is not available)");
+		 "(applied only if shared receive queue is not available) (default: 128) (2-8192)");
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG_DATA
 static int data_debug_level;
 
 module_param_named(cm_data_debug_level, data_debug_level, int, 0644);
 MODULE_PARM_DESC(cm_data_debug_level,
-		 "Enable data path debug tracing for connected mode if > 0");
+		 "Enable data path debug tracing for connected mode if > 0 (0-1)");
 #endif
 
 #define IPOIB_CM_IETF_ID 0x1000000000000000ULL
@@ -1644,6 +1644,16 @@ int ipoib_cm_dev_init(struct net_device *dev)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int i, ret;
 	struct ib_device_attr attr;
+
+	if (ipoib_max_conn_qp < IPOIB_MIN_CONN_QP ||
+		ipoib_max_conn_qp > IPOIB_MAX_CONN_QP)
+			ipoib_max_conn_qp = IPOIB_DEFAULT_CONN_QP;
+
+#ifdef CONFIG_INFINIBAND_IPOIB_DEBUG_DATA
+	if (data_debug_level < 0 || data_debug_level > 1)
+			data_debug_level = 0;
+#endif
+
 
 	INIT_LIST_HEAD(&priv->cm.passive_ids);
 	INIT_LIST_HEAD(&priv->cm.reap_list);
