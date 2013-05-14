@@ -346,7 +346,7 @@ struct mlx5_caps {
 	struct mlx5_port_caps	port[MLX5_MAX_PORTS];
 	u8			ext_port_cap[MLX5_MAX_PORTS];
 	int	max_vf;
-	__be32	reserved_lkey;
+	u32	reserved_lkey;
 	u8	local_ca_ack_delay;
 	u8	log_max_mcg;
 	u16	max_qp_mcg;

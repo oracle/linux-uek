@@ -95,8 +95,8 @@ static const u32 mlx5_ib_opcode[] = {
 	[IB_WR_ATOMIC_CMP_AND_SWP]		= MLX5_OPCODE_ATOMIC_CS,
 	[IB_WR_ATOMIC_FETCH_AND_ADD]		= MLX5_OPCODE_ATOMIC_FA,
 	[IB_WR_SEND_WITH_INV]			= MLX5_OPCODE_SEND_INVAL,
-	[IB_WR_LOCAL_INV]			= MLX5_OPCODE_LOCAL_INVAL,
-	[IB_WR_FAST_REG_MR]			= MLX5_OPCODE_FMR,
+	[IB_WR_LOCAL_INV]			= MLX5_OPCODE_UMR,
+	[IB_WR_FAST_REG_MR]			= MLX5_OPCODE_UMR,
 	[IB_WR_MASKED_ATOMIC_CMP_AND_SWP]	= MLX5_OPCODE_ATOMIC_MASKED_CS,
 	[IB_WR_MASKED_ATOMIC_FETCH_AND_ADD]	= MLX5_OPCODE_ATOMIC_MASKED_FA,
 	[IB_WR_SET_PSV]				= MLX5_OPCODE_SET_PSV,
@@ -669,6 +669,9 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	}
 	(*in)->ctx.qp_counter_set_usr_page = cpu_to_be32(uar_index);
 	(*in)->ctx.log_pg_sz_remote_qpn = cpu_to_be32((qp->buf.page_shift - PAGE_SHIFT) << 24);
+	/* Set "fast registration enabled" for all kernel QPs */
+	(*in)->ctx.params1 |= cpu_to_be32(1 << 11);
+	(*in)->ctx.sq_crq_size |= cpu_to_be16(1 << 4);
 
 	mlx5_ib_dbg(dev, "\n");
 	mlx5_fill_page_array(&qp->buf, (*in)->pas);
@@ -684,13 +687,13 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	qp->db.db[1] = 0;
 
 	qp->sq.wrid = kmalloc(qp->sq.wqe_cnt * sizeof(*qp->sq.wrid), GFP_KERNEL);
-	qp->sq.num_unsig = kmalloc(qp->sq.wqe_cnt * sizeof(*qp->sq.num_unsig), GFP_KERNEL);
+	qp->sq.wr_data = kmalloc(qp->sq.wqe_cnt * sizeof(*qp->sq.wr_data), GFP_KERNEL);
 	qp->rq.wrid = kmalloc(qp->rq.wqe_cnt * sizeof(*qp->rq.wrid), GFP_KERNEL);
 	qp->sq.w_list = kmalloc(qp->sq.wqe_cnt * sizeof(*qp->sq.w_list), GFP_KERNEL);
 	qp->sq.wqe_head = kmalloc(qp->sq.wqe_cnt * sizeof(*qp->sq.wqe_head), GFP_KERNEL);
 
 	mlx5_ib_dbg(dev, "\n");
-	if (!qp->sq.wrid || !qp->sq.num_unsig || !qp->rq.wrid ||
+	if (!qp->sq.wrid || !qp->sq.wr_data || !qp->rq.wrid ||
 	    !qp->sq.w_list || !qp->sq.wqe_head) {
 		err = -ENOMEM;
 		mlx5_ib_dbg(dev, "err %d\n", err);
@@ -705,7 +708,7 @@ err_wrid:
 	kfree(qp->sq.wqe_head);
 	kfree(qp->sq.w_list);
 	kfree(qp->sq.wrid);
-	kfree(qp->sq.num_unsig);
+	kfree(qp->sq.wr_data);
 	kfree(qp->rq.wrid);
 
 err_free:
@@ -725,7 +728,7 @@ static void destroy_qp_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp)
 	kfree(qp->sq.wqe_head);
 	kfree(qp->sq.w_list);
 	kfree(qp->sq.wrid);
-	kfree(qp->sq.num_unsig);
+	kfree(qp->sq.wr_data);
 	kfree(qp->rq.wrid);
 	mlx5_buf_free(&dev->mdev, &qp->buf);
 	free_uuar(&dev->mdev.priv.uuari, qp->bf->uuarn);
@@ -808,6 +811,8 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			err = create_kernel_qp(dev, init_attr, qp, &in, &inlen);
 			if (err)
 				mlx5_ib_dbg(dev, "err %d\n", err);
+			else
+				qp->pa_lkey = to_mpd(pd)->pa_lkey;
 		}
 
 		if (err)
@@ -862,9 +867,9 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	in->ctx.rq_type_srqn = get_rx_type(qp, init_attr);
 
 	if (qp->sq.wqe_cnt)
-		in->ctx.sq_crq_size = cpu_to_be16(ilog2(qp->sq.wqe_cnt) << 11);
+		in->ctx.sq_crq_size |= cpu_to_be16(ilog2(qp->sq.wqe_cnt) << 11);
 	else
-		in->ctx.sq_crq_size = cpu_to_be16(0x8000);
+		in->ctx.sq_crq_size |= cpu_to_be16(0x8000);
 
 	/* Set default resources */
 	switch (init_attr->qp_type) {
@@ -1515,10 +1520,6 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	context->cqn_recv = recv_cq ? cpu_to_be32(recv_cq->mcq.cqn) : 0;
 	context->params1  = cpu_to_be32(MLX5_IB_ACK_REQ_FREQ << 28);
 
-	/* Set "fast registration enabled" for all kernel QPs */
-	if (!qp->ibqp.uobject)
-		context->params1 |= cpu_to_be32(1 << 11);
-
 	if (attr_mask & IB_QP_RNR_RETRY)
 		context->params1 |= cpu_to_be32(attr->rnr_retry << 13);
 
@@ -1726,7 +1727,12 @@ static void set_data_ptr_seg(struct mlx5_wqe_data_seg *dseg, struct ib_sge *sg)
 	dseg->addr       = cpu_to_be64(sg->addr);
 }
 
-static __be64 def_mkey_mask(void)
+static __be16 get_klm_octo(int npages)
+{
+	return cpu_to_be16(ALIGN(npages, 8) / 2);
+}
+
+static __be64 frwr_mkey_mask(void)
 {
 	u64 result;
 
@@ -1741,27 +1747,25 @@ static __be64 def_mkey_mask(void)
 		MLX5_MKEY_MASK_RW		|
 		MLX5_MKEY_MASK_A		|
 		MLX5_MKEY_MASK_SMALL_FENCE	|
-		MLX5_MKEY_MASK_GOTO_PCI		|
-		MLX5_MKEY_MASK_RLEAXED_ORDERING	|
-		MLX5_MKEY_MASK_NO_SNOOP		|
-		MLX5_MKEY_MASK_TLP_HINTS	|
-		MLX5_MKEY_MASK_TLP_HINTS_EN	|
 		MLX5_MKEY_MASK_FREE;
 
 	return cpu_to_be64(result);
 }
 
-static void set_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
-			    struct ib_send_wr *wr, int li)
+static void set_frwr_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
+				 struct ib_send_wr *wr, int li)
 {
 	memset(umr, 0, sizeof(*umr));
 
-	if (li)
+	if (li) {
+		umr->mkey_mask = cpu_to_be64(MLX5_MKEY_MASK_FREE);
+		umr->flags = 1 << 7;
 		return;
+	}
 
 	umr->flags = (1 << 5); /* fail if not free */
-	umr->klm_octowords = cpu_to_be16(wr->wr.fast_reg.page_list_len);
-	umr->mkey_mask = def_mkey_mask();
+	umr->klm_octowords = get_klm_octo(wr->wr.fast_reg.page_list_len);
+	umr->mkey_mask = frwr_mkey_mask();
 }
 
 static void set_reg_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
@@ -1773,11 +1777,11 @@ static void set_reg_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
 
 	if (!(wr->send_flags & IB_SEND_UMR_UNREG)) {
 		umr->flags = 1 << 5; /* fail if not free */
-		umr->klm_octowords = cpu_to_be16(ALIGN(wr->wr.umr.npages, 8) / 2);
+		umr->klm_octowords = get_klm_octo(wr->wr.umr.npages);
 		mask =  MLX5_MKEY_MASK_LEN		|
 			MLX5_MKEY_MASK_PAGE_SIZE	|
 			MLX5_MKEY_MASK_START_ADDR	|
-			MLX5_MKEY_MASK_PAGE_SHIFT	|
+			MLX5_MKEY_MASK_PD		|
 			MLX5_MKEY_MASK_LR		|
 			MLX5_MKEY_MASK_LW		|
 			MLX5_MKEY_MASK_RR		|
@@ -1804,19 +1808,22 @@ static u8 get_umr_flags(int acc)
 		MLX5_PERM_LOCAL_READ | MLX5_PERM_UMR_EN | MLX5_ACCESS_MODE_MTT;
 }
 
-static void set_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *wr, int li)
+static void set_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *wr,
+			     int li, int *writ)
 {
 	memset(seg, 0, sizeof(*seg));
-	if (li)
+	if (li) {
+		seg->status = 1 << 6;
 		return;
+	}
 
-	seg->status = 1 << 7;
 	seg->flags = get_umr_flags(wr->wr.fast_reg.access_flags);
+	*writ = seg->flags & (MLX5_PERM_LOCAL_WRITE | IB_ACCESS_REMOTE_WRITE);
 	seg->qpn_mkey7_0 = cpu_to_be32((wr->wr.fast_reg.rkey & 0xff) | 0xffffff00);
 	seg->flags_pd = cpu_to_be32(MLX5_MKEY_REMOTE_INVAL);
 	seg->start_addr = cpu_to_be64(wr->wr.fast_reg.iova_start);
 	seg->len = cpu_to_be64(wr->wr.fast_reg.length);
-	seg->xlt_oct_size = 0; /* TBD need to calculate this */
+	seg->xlt_oct_size = cpu_to_be32((wr->wr.fast_reg.page_list_len + 1) / 2);
 	seg->log2_page_size = wr->wr.fast_reg.page_shift;
 }
 
@@ -1838,17 +1845,20 @@ static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *w
 
 static void set_frwr_pages(struct mlx5_wqe_data_seg *dseg,
 			   struct ib_send_wr *wr,
-			   struct mlx5_core_dev *mdev)
+			   struct mlx5_core_dev *mdev,
+			   struct mlx5_ib_pd *pd,
+			   int writ)
 {
 	struct mlx5_ib_fast_reg_page_list *mfrpl = to_mfrpl(wr->wr.fast_reg.page_list);
 	int i;
+	u64 *page_list = wr->wr.fast_reg.page_list->page_list;
+	u64 perm = MLX5_EN_RD | (writ ? MLX5_EN_WR : 0);
 
 	for (i = 0; i < wr->wr.fast_reg.page_list_len; ++i)
-		mfrpl->mapped_page_list[i] =
-			cpu_to_be64(wr->wr.fast_reg.page_list->page_list[i] | MLX5_EN_RD);
+		mfrpl->mapped_page_list[i] = cpu_to_be64(page_list[i] | perm);
 	dseg->addr = cpu_to_be64(mfrpl->map);
-	dseg->byte_count = cpu_to_be32(sizeof(u64) * wr->wr.fast_reg.page_list_len);
-	dseg->lkey = mdev->caps.reserved_lkey;
+	dseg->byte_count = cpu_to_be32(ALIGN(sizeof(u64) * wr->wr.fast_reg.page_list_len, 64));
+	dseg->lkey = cpu_to_be32(pd->pa_lkey);
 }
 
 static __be32 send_ieth(struct ib_send_wr *wr)
@@ -1923,38 +1933,30 @@ static int set_data_inl_seg(struct mlx5_ib_qp *qp, struct ib_send_wr *wr,
 }
 
 static int set_frwr_li_wr(void **seg, struct ib_send_wr *wr, int *size,
-			  struct mlx5_core_dev *mdev)
+			  struct mlx5_core_dev *mdev, struct mlx5_ib_pd *pd, struct mlx5_ib_qp *qp)
 {
 	int li;
+	int writ = 0;
 
 	li = wr->opcode == IB_WR_LOCAL_INV ? 1 : 0;
 	if (unlikely(wr->send_flags & IB_SEND_INLINE))
 		return -EINVAL;
 
-	set_umr_segment(*seg, wr, li);
+	set_frwr_umr_segment(*seg, wr, li);
 	*seg += sizeof(struct mlx5_wqe_umr_ctrl_seg);
-	set_mkey_segment(*seg, wr, li);
+	*size += sizeof(struct mlx5_wqe_umr_ctrl_seg) / 16;
+	if (unlikely((*seg == qp->sq.qend)))
+		*seg = mlx5_get_send_wqe(qp, 0);
+	set_mkey_segment(*seg, wr, li, &writ);
 	*seg += sizeof(struct mlx5_mkey_seg);
-	*size += (sizeof(struct mlx5_wqe_umr_ctrl_seg) +
-		sizeof(struct mlx5_mkey_seg)) / 16;
+	*size += sizeof(struct mlx5_mkey_seg) / 16;
+	if (unlikely((*seg == qp->sq.qend)))
+		*seg = mlx5_get_send_wqe(qp, 0);
 	if (!li) {
-		set_frwr_pages(*seg, wr, mdev);
+		set_frwr_pages(*seg, wr, mdev, pd, writ);
 		*seg += sizeof(struct mlx5_wqe_data_seg);
 		*size += (sizeof(struct mlx5_wqe_data_seg) / 16);
 	}
-	return 0;
-}
-
-static u8 get_fence(u8 *old)
-{
-	u8 ret;
-
-	if (unlikely(*old)) {
-		ret = *old;
-		*old = 0;
-		return ret;
-	}
-
 	return 0;
 }
 
@@ -1996,6 +1998,23 @@ static void mlx5_bf_copy(u64 __iomem *dst, u64 *src,
 	}
 }
 
+static u8 get_fence(u8 fence, struct ib_send_wr *wr)
+{
+	if (unlikely(wr->opcode == IB_WR_LOCAL_INV &&
+		     wr->send_flags & IB_SEND_FENCE))
+		return MLX5_FENCE_MODE_STRONG_ORDERING;
+
+	if (unlikely(fence)) {
+		if (wr->send_flags & IB_SEND_FENCE)
+			return MLX5_FENCE_MODE_SMALL_AND_FENCE;
+		else
+			return fence;
+
+	} else {
+		return 0;
+	}
+}
+
 int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		      struct ib_send_wr **bad_wr)
 {
@@ -2017,6 +2036,9 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	void *qend = qp->sq.qend;
 	u32 mlx5_opcode;
 	struct mlx5_wqe_xrc_seg *xrc;
+	u8 fence;
+	u8 next_fence = 0;
+	int num_sge;
 
 	spin_lock_irqsave(&qp->sq.lock, flags);
 
@@ -2035,7 +2057,9 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 			goto out;
 		}
 
-		if (unlikely(wr->num_sge > qp->sq.max_gs)) {
+		fence = qp->fm_cache;
+		num_sge = wr->num_sge;
+		if (unlikely(num_sge > qp->sq.max_gs)) {
 			mlx5_ib_warn(dev, "\n");
 			err = -ENOMEM;
 			*bad_wr = wr;
@@ -2100,14 +2124,30 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 				break;
 
 			case IB_WR_LOCAL_INV:
-				qp->fm_cache = MLX5_FENCE_MODE_INITIATOR_SMALL;
-			case IB_WR_FAST_REG_MR:
-				err = set_frwr_li_wr(&seg, wr, &size, mdev);
+				next_fence = MLX5_FENCE_MODE_INITIATOR_SMALL;
+				qp->sq.wr_data[idx] = IB_WR_LOCAL_INV;
+				ctrl->imm = cpu_to_be32(wr->ex.invalidate_rkey);
+				err = set_frwr_li_wr(&seg, wr, &size, mdev, to_mpd(ibqp->pd), qp);
 				if (err) {
 					mlx5_ib_warn(dev, "\n");
 					*bad_wr = wr;
 					goto out;
 				}
+				num_sge = 0;
+				break;
+
+			case IB_WR_FAST_REG_MR:
+				next_fence = MLX5_FENCE_MODE_INITIATOR_SMALL;
+				qp->sq.wr_data[idx] = IB_WR_FAST_REG_MR;
+				ctrl->imm = cpu_to_be32(wr->wr.fast_reg.rkey);
+				err = set_frwr_li_wr(&seg, wr, &size, mdev, to_mpd(ibqp->pd), qp);
+				if (err) {
+					mlx5_ib_warn(dev, "\n");
+					*bad_wr = wr;
+					goto out;
+				}
+				num_sge = 0;
+				break;
 
 			default:
 				break;
@@ -2145,6 +2185,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 				mlx5_ib_warn(dev, "bad opcode\n");
 				goto out;
 			}
+			qp->sq.wr_data[idx] = IB_WR_UMR;
 			ctrl->imm = cpu_to_be32(wr->wr.umr.mkey);
 			set_reg_umr_segment(seg, wr);
 			seg += sizeof(struct mlx5_wqe_umr_ctrl_seg);
@@ -2162,7 +2203,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 			break;
 		}
 
-		if (wr->send_flags & IB_SEND_INLINE && wr->num_sge) {
+		if (wr->send_flags & IB_SEND_INLINE && num_sge) {
 			int uninitialized_var(sz);
 
 			err = set_data_inl_seg(qp, wr, seg, &sz);
@@ -2175,7 +2216,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 			size += sz;
 		} else {
 			dpseg = seg;
-			for (i = 0; i < wr->num_sge; ++i) {
+			for (i = 0; i < num_sge; ++i) {
 				if (unlikely(dpseg == qend)) {
 					seg = mlx5_get_send_wqe(qp, 0);
 					dpseg = seg;
@@ -2193,7 +2234,8 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 						     mlx5_opcode			|
 						     ((u32)opmod << 24));
 		ctrl->qpn_ds = cpu_to_be32(size | (qp->mqp.qpn << 8));
-		ctrl->fm_ce_se |= get_fence(&qp->fm_cache);
+		ctrl->fm_ce_se |= get_fence(fence, wr);
+		qp->fm_cache = next_fence;
 		if (unlikely(qp->wq_sig))
 			ctrl->signature = wq_sig(ctrl);
 

@@ -91,7 +91,26 @@ static void *next_cqe_sw(struct mlx5_ib_cq *cq)
 	return get_sw_cqe(cq, cq->mcq.cons_index);
 }
 
-static void handle_good_req(struct ib_wc *wc, struct mlx5_cqe64 *cqe)
+static enum ib_wc_opcode get_umr_comp(struct mlx5_ib_wq *wq, int idx)
+{
+	switch (wq->wr_data[idx]) {
+	case IB_WR_UMR:
+		return 0;
+
+	case IB_WR_LOCAL_INV:
+		return IB_WC_LOCAL_INV;
+
+	case IB_WR_FAST_REG_MR:
+		return IB_WC_FAST_REG_MR;
+
+	default:
+		pr_warn("unkonwn completion status\n");
+		return 0;
+	}
+}
+
+static void handle_good_req(struct ib_wc *wc, struct mlx5_cqe64 *cqe,
+			    struct mlx5_ib_wq *wq, int idx)
 {
 	wc->wc_flags = 0;
 	switch (be32_to_cpu(cqe->sop_drop_qpn) >> 24) {
@@ -129,11 +148,8 @@ static void handle_good_req(struct ib_wc *wc, struct mlx5_cqe64 *cqe)
 	case MLX5_OPCODE_BIND_MW:
 		wc->opcode    = IB_WC_BIND_MW;
 		break;
-	case MLX5_OPCODE_FMR:
-		wc->opcode    = IB_WC_FAST_REG_MR;
-		break;
-	case MLX5_OPCODE_LOCAL_INVAL:
-		wc->opcode    = IB_WC_LOCAL_INV;
+	case MLX5_OPCODE_UMR:
+		wc->opcode = get_umr_comp(wq, idx);
 		break;
 	}
 }
@@ -213,7 +229,10 @@ static void dump_cqe(struct mlx5_ib_dev *dev, struct mlx5_err_cqe *cqe)
 
 	mlx5_ib_warn(dev, "dump error cqe\n");
 	for (i = 0; i < sizeof(*cqe) / 16; ++i, p += 4)
-		pr_info("%08x %08x %08x %08x\n", p[0], p[1], p[2], p[3]);
+		pr_info("%08x %08x %08x %08x\n", be32_to_cpu(p[0]),
+						 be32_to_cpu(p[1]),
+						 be32_to_cpu(p[2]),
+						 be32_to_cpu(p[3]));
 }
 
 static void mlx5_handle_error_cqe(struct mlx5_ib_dev *dev,
@@ -391,7 +410,7 @@ static int mlx5_poll_one(struct mlx5_ib_cq *cq,
 		wq = &(*cur_qp)->sq;
 		wqe_ctr = be16_to_cpu(cqe64->wqe_counter);
 		idx = wqe_ctr & (wq->wqe_cnt - 1);
-		handle_good_req(wc, cqe64);
+		handle_good_req(wc, cqe64, wq, idx);
 		handle_atomics(*cur_qp, cqe64, wq->last_poll, idx);
 		wc->wr_id = wq->wrid[idx];
 		wq->tail = wq->wqe_head[idx] + 1;

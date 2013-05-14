@@ -115,6 +115,7 @@ static inline struct mlx5_ib_ucontext *to_mucontext(struct ib_ucontext *ibuconte
 struct mlx5_ib_pd {
 	struct ib_pd		ibpd;
 	u32			pdn;
+	u32			pa_lkey;
 };
 
 struct wr_list {
@@ -124,7 +125,7 @@ struct wr_list {
 
 struct mlx5_ib_wq {
 	u64		       *wrid;
-	u32		       *num_unsig;
+	u32		       *wr_data;
 	struct wr_list	       *w_list;
 	unsigned	       *wqe_head;
 	u16		        unsig_count;
@@ -194,6 +195,7 @@ struct mlx5_ib_qp {
 	int			uuarn;
 
 	int			create_type;
+	u32			pa_lkey;
 };
 
 struct mlx5_ib_cq_buf {

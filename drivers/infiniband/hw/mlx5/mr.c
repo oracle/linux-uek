@@ -115,7 +115,7 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		in->seg.status = 1 << 6;
 		in->seg.xlt_oct_size = cpu_to_be32((npages + 1) / 2);
 		in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
-		in->seg.flags = MLX5_ACCESS_MODE_MTT | 0x80;
+		in->seg.flags = MLX5_ACCESS_MODE_MTT | MLX5_PERM_UMR_EN;
 		in->seg.log2_page_size = 12;
 
 		err = mlx5_core_create_mkey(&dev->mdev, &mr->mmr, in,
@@ -913,9 +913,13 @@ struct ib_mr *mlx5_ib_alloc_fast_reg_mr(struct ib_pd *pd,
 	}
 
 	in->seg.status = 1 << 6; /* free */
+	in->seg.xlt_oct_size = cpu_to_be32((max_page_list_len + 1) / 2);
+	in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
 	in->seg.flags = MLX5_PERM_UMR_EN | MLX5_ACCESS_MODE_MTT;
-	in->seg.flags_pd = cpu_to_be32(to_mpd(pd)->pdn | MLX5_MKEY_REMOTE_INVAL);
-	in->seg.xlt_oct_size = cpu_to_be32(max_page_list_len);
+	in->seg.flags_pd = cpu_to_be32(to_mpd(pd)->pdn);
+	/*
+	 * TBD not needed - issue 197292 */
+	in->seg.log2_page_size = PAGE_SHIFT;
 
 	err = mlx5_core_create_mkey(&dev->mdev, &mr->mmr, in, sizeof(*in));
 	kfree(in);
