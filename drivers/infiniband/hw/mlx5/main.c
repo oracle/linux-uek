@@ -552,6 +552,7 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	int err;
 	int i;
 	struct mlx5_uuar_info *uuari;
+	int uuarn;
 
 	if (!dev->ib_active)
 		return ERR_PTR(-EAGAIN);
@@ -598,6 +599,14 @@ static struct ib_ucontext *mlx5_ib_alloc_ucontext(struct ib_device *ibdev,
 	if (!uuari->bitmap) {
 		err = -ENOMEM;
 		goto out_uar_ctx;
+	}
+	/*
+	 * clear all fast path uuars
+	 */
+	for (i = 0; i < req.total_num_uuars; ++i) {
+		uuarn = i & 3;
+		if (uuarn == 2 || uuarn == 3)
+			set_bit(i, uuari->bitmap);
 	}
 
 	uuari->count = kcalloc(req.total_num_uuars, sizeof(*uuari->count), GFP_KERNEL);

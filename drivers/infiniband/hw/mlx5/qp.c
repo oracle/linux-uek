@@ -81,7 +81,8 @@ enum {
 enum ib_latency_class {
 	IB_LATENCY_CLASS_LOW,
 	IB_LATENCY_CLASS_MEDIUM,
-	IB_LATENCY_CLASS_HIGH
+	IB_LATENCY_CLASS_HIGH,
+	IB_LATENCY_CLASS_FAST_PATH
 };
 /* <=== this should be passed to the vergbs layer */
 
@@ -380,12 +381,18 @@ static int alloc_med_class_uuar(struct mlx5_uuar_info *uuari)
 	int nuuars = uuari->num_uars * MLX5_BF_REGS_PER_PAGE;
 	int i;
 	int minidx = 1;
+	int uuarn;
 
 	end = nuuars - uuari->num_low_latency_uuars;
 
-	for (i = 1; i < end; ++i)
+	for (i = 1; i < end; ++i) {
+		uuarn = i & 3;
+		if (uuarn == 2 || uuarn == 3)
+			continue;
+
 		if (uuari->count[i] < uuari->count[minidx])
 			minidx = i;
+	}
 
 	++uuari->count[minidx];
 	return minidx;
@@ -408,6 +415,10 @@ static int alloc_uuar(struct mlx5_uuar_info *uuari, enum ib_latency_class lat)
 
 	case IB_LATENCY_CLASS_HIGH:
 		uuarn = alloc_high_class_uuar(uuari);
+		break;
+
+	case IB_LATENCY_CLASS_FAST_PATH:
+		uuarn = 2;
 		break;
 	}
 	mutex_unlock(&uuari->lock);
@@ -612,12 +623,16 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	int uuarn;
 	int uar_index;
 	int err;
+	enum ib_latency_class lc = IB_LATENCY_CLASS_LOW;
 
 	uuari = &dev->mdev.priv.uuari;
 	if (init_attr->create_flags & IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK)
 		qp->flags |= MLX5_IB_QP_BLOCK_MULTICAST_LOOPBACK;
 
-	uuarn = alloc_uuar(uuari, IB_LATENCY_CLASS_LOW);
+	if (init_attr->qp_type == IB_QPT_SYNC_UMR)
+		lc = IB_LATENCY_CLASS_FAST_PATH;
+
+	uuarn = alloc_uuar(uuari, lc);
 	if (uuarn < 0) {
 		mlx5_ib_dbg(dev, "\n");
 		return -ENOMEM;
@@ -813,6 +828,8 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 
 	if (init_attr->qp_type != IB_QPT_SYNC_UMR)
 		in->ctx.flags_pd = cpu_to_be32(to_mpd(pd ? pd : devr->p0)->pdn);
+	else
+		in->ctx.flags_pd = cpu_to_be32(MLX5_QP_LAT_SENSITIVE);
 
 	if (qp->wq_sig)
 		in->ctx.flags_pd |= cpu_to_be32(MLX5_QP_ENABLE_SIG);
