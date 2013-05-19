@@ -69,6 +69,30 @@ static void health_care(struct work_struct *work)
 	}
 }
 
+static const char *hsynd_str(u8 synd)
+{
+	switch (synd) {
+	case 0x1:
+		return "firmware internal error";
+	case 0x7:
+		return "irisc not responding";
+	case 0x9:
+		return "firmware CRC error";
+	case 0xa:
+		return "ICM fetch PCI error";
+	case 0xb:
+		return "HW fatal error\n";
+	case 0xc:
+		return "async EQ buffer overrun";
+	case 0xd:
+		return "EQ error";
+	case 0xf:
+		return "FFSER error";
+	default:
+		return "unrecognized error";
+	}
+}
+
 static void print_health_info(struct mlx5_core_dev *dev)
 {
 	struct mlx5_core_health *health = &dev->priv.health;
@@ -83,7 +107,7 @@ static void print_health_info(struct mlx5_core_dev *dev)
 	pr_info("fw_ver 0x%08x\n", be32_to_cpu(h->fw_ver));
 	pr_info("hw_id 0x%08x\n", be32_to_cpu(h->hw_id));
 	pr_info("irisc_index %d\n", h->irisc_index);
-	pr_info("synd 0x%x\n", h->synd);
+	pr_info("synd 0x%x: %s\n", h->synd, hsynd_str(h->synd));
 	pr_info("ext_sync 0x%04x\n", be16_to_cpu(h->ext_sync));
 }
 
