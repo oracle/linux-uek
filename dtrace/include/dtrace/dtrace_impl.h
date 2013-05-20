@@ -846,8 +846,8 @@ extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 
 extern void ctf_forceload(void);
 
-#define dtrace_membar_producer()	mb()
-#define dtrace_membar_consumer()	mb()
+#define dtrace_membar_producer()	wmb()
+#define dtrace_membar_consumer()	rmb()
 
 typedef unsigned long	dtrace_icookie_t;
 
