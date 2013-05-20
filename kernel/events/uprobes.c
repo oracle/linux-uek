@@ -479,6 +479,7 @@ static void handler_chain(struct uprobe *uprobe, struct pt_regs *regs)
 
 	down_read(&uprobe->consumer_rwsem);
 	for (uc = uprobe->consumers; uc; uc = uc->next) {
+pr_info("UPROBES: Running handler 0x%p, next is 0x%p\n", uc, uc->next);
 		if (!uc->filter || uc->filter(uc, current))
 			uc->handler(uc, regs);
 	}
@@ -492,6 +493,7 @@ consumer_add(struct uprobe *uprobe, struct uprobe_consumer *uc)
 	down_write(&uprobe->consumer_rwsem);
 	uc->next = uprobe->consumers;
 	uprobe->consumers = uc;
+pr_info("UPROBES: Adding handler 0x%p, next is 0x%p\n", uc, uc->next);
 	up_write(&uprobe->consumer_rwsem);
 
 	return uc->next;
@@ -1500,11 +1502,17 @@ static void handle_swbp(struct pt_regs *regs)
 			goto restart;
 	}
 
+pr_info("UPROBES: Calling handler chain...\n");
 	handler_chain(uprobe, regs);
+pr_info("UPROBES: Done with handler chain...\n");
 	if (can_skip_sstep(uprobe, regs))
+{
+pr_info("UPROBES: Can skip single-stepping...\n");
 		goto out;
+}
 
 	if (!pre_ssout(uprobe, regs, bp_vaddr)) {
+pr_info("UPROBES: Starting the single-stepping...\n");
 		utask->active_uprobe = uprobe;
 		utask->state = UTASK_SSTEP;
 		return;
@@ -1515,6 +1523,7 @@ restart:
 	 * cannot singlestep; cannot skip instruction;
 	 * re-execute the instruction.
 	 */
+pr_info("UPROBES: Re-execute the instruction...\n");
 	instruction_pointer_set(regs, bp_vaddr);
 out:
 	put_uprobe(uprobe);
