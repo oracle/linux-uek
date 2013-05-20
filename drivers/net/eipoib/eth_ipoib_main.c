@@ -500,6 +500,8 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
 		goto err_undo_flags;
 	}
 
+	spin_lock_init(&new_slave->hash_lock);
+
 	/* save slave's vlan */
 	new_slave->pkey = slave_get_pkey(slave_dev);
 
@@ -790,8 +792,14 @@ static void neigh_rcu_free(struct rcu_head *head)
 
 static void neigh_delete(struct neigh *n)
 {
-	hlist_del_rcu(&n->hlist);
-	call_rcu(&n->rcu, neigh_rcu_free);
+	struct neigh *neigh;
+
+	neigh = rcu_dereference_protected(n, lockdep_is_held(&n->slave->hash_lock));
+	if (neigh) {
+		hlist_del_rcu(&neigh->hlist);
+		call_rcu_bh(&neigh->rcu, neigh_rcu_free);
+	}
+
 }
 
 void eipoib_neigh_put(struct neigh *neigh)
@@ -832,10 +840,14 @@ static int neigh_insert(struct slave *slave, const u8 *emac, const u8 *imac)
 
 	neigh = neigh_find(head, emac);
 	if (neigh) {
-		pr_err("%s: cannot update neigh, slave already has "
-		       "this neigh mac %pM\n",
-		       slave->dev->name, emac);
-		return -EEXIST;
+		if (!memcmp(neigh->imac, imac, INFINIBAND_ALEN)) {
+			return -EEXIST;
+		} else {
+			pr_info("%s: update neigh (%pM), old imac: %pI6, new imac: %pI6\n",
+				slave->dev->name, emac, neigh->imac, imac);
+			memcpy(neigh->imac, imac, INFINIBAND_ALEN);
+			return 0;
+		}
 	}
 
 	neigh = __eipoib_neigh_create(head, emac, imac);
