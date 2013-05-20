@@ -1539,6 +1539,7 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 		if (attr->max_dest_rd_atomic)
 			context->params2 |=
 				cpu_to_be32(fls(attr->max_dest_rd_atomic - 1) << 21);
+	}
 
 	if (attr_mask & (IB_QP_ACCESS_FLAGS | IB_QP_MAX_DEST_RD_ATOMIC))
 		context->params2 |= to_mlx5_access_flags(qp, attr, attr_mask);
