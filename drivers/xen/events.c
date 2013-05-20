@@ -112,6 +112,27 @@ struct irq_info {
 #define PIRQ_NEEDS_EOI	(1 << 0)
 #define PIRQ_SHAREABLE	(1 << 1)
 
+/*
+ * The PHYSDEVOP_get_free_pirq allocates a set of PIRQs for the guest and
+ * the PHYSDEVOP_unmap_pirq is suppose to return them to the hypervisor.
+ * Unfortunatly that is not the case and we exhaust all of the PIRQs that are
+ * allocated for the domain if a driver is loaded/unloaded in a loop.
+ * The pirq_info serves a cache of the allocated PIRQs so that we can reuse
+ * for drivers. Note, it is only used by the MSI, MSI-X routines.
+ */
+#ifdef CONFIG_PCI_MSI
+static LIST_HEAD(xen_pirq_list_head);
+#endif
+enum xen_pirq_status {
+	PIRQ_FREE = 1,
+	PIRQ_BUSY
+};
+struct pirq_info {
+	struct list_head list;
+	int pirq;
+	enum xen_pirq_status status;
+};
+
 static int *evtchn_to_irq;
 #ifdef CONFIG_X86
 static unsigned long *pirq_eoi_map;
@@ -144,6 +165,86 @@ static struct irq_chip xen_percpu_chip;
 static struct irq_chip xen_pirq_chip;
 static void enable_dynirq(struct irq_data *data);
 static void disable_dynirq(struct irq_data *data);
+
+#ifdef CONFIG_PCI_MSI
+static void xen_pirq_add(int pirq)
+{
+	struct pirq_info *p_info;
+
+	if (!xen_hvm_domain())
+		return;
+
+	p_info = kzalloc(sizeof(*p_info), GFP_KERNEL);
+	if (!p_info)
+		return;
+
+	p_info->pirq = pirq;
+	p_info->status = PIRQ_FREE;
+
+	mutex_lock(&irq_mapping_update_lock);
+	list_add_tail(&p_info->list, &xen_pirq_list_head);
+	mutex_unlock(&irq_mapping_update_lock);
+}
+static void xen_update_pirq_status(int pirq, enum xen_pirq_status status)
+{
+	struct pirq_info *p_info = NULL;
+	bool found = false;
+
+	if (!xen_hvm_domain())
+		return;
+
+	/*
+	 * The irq_mapping_update_lock is being held while this is called.
+	 */
+	list_for_each_entry(p_info, &xen_pirq_list_head, list) {
+
+		if (p_info->pirq != pirq)
+			continue;
+		found = true;
+		break;
+	}
+	if (found && p_info)
+		p_info->status = status;
+}
+static int xen_pirq_get_free(void)
+{
+	int pirq = -EBUSY;
+	struct pirq_info *p_info = NULL;
+
+	if (!xen_hvm_domain())
+		return -ENODEV;
+
+	mutex_lock(&irq_mapping_update_lock);
+	list_for_each_entry(p_info, &xen_pirq_list_head, list) {
+		if (p_info->status == PIRQ_BUSY)
+			continue;
+		pirq = p_info->pirq;
+		break;
+	}
+	mutex_unlock(&irq_mapping_update_lock);
+	return pirq;
+}
+static void xen_pirq_clear_all(void)
+{
+	struct pirq_info *p_info = NULL, *tmp;
+
+	if (!xen_hvm_domain())
+		return;
+
+	list_for_each_entry_safe(p_info, tmp, &xen_pirq_list_head, list) {
+		/*
+		 * When migrating to a new host, the PT PCI devices _should_
+		 * be unplugged!
+		 */
+		WARN_ON(p_info->status == PIRQ_BUSY);
+		list_del(&p_info->list);
+		kfree(p_info);
+	}
+}
+#else
+static void xen_update_pirq_status(int pirq, enum xen_pirq_status status) { }
+static void xen_pirq_clear_all(void) { }
+#endif
 
 /* Get info for IRQ */
 static struct irq_info *info_for_irq(unsigned irq)
@@ -220,6 +321,8 @@ static void xen_irq_info_pirq_init(unsigned irq,
 	info->u.pirq.gsi = gsi;
 	info->u.pirq.domid = domid;
 	info->u.pirq.flags = flags;
+
+	xen_update_pirq_status(pirq, PIRQ_BUSY);
 }
 
 /*
@@ -278,7 +381,6 @@ static unsigned cpu_from_irq(unsigned irq)
 {
 	return info_for_irq(irq)->cpu;
 }
-
 static unsigned int cpu_from_evtchn(unsigned int evtchn)
 {
 	int irq = evtchn_to_irq[evtchn];
@@ -518,6 +620,12 @@ static void xen_free_irq(unsigned irq)
 	if (WARN_ON(!info))
 		return;
 
+	/*
+	 * Update the list of PIRQs (for PVHVM guests) that it is free.
+	 */
+	if (info->type == IRQT_PIRQ)
+		xen_update_pirq_status(info->u.pirq.pirq, PIRQ_FREE);
+
 	list_del(&info->list);
 
 	irq_set_handler_data(irq, NULL);
@@ -748,14 +856,21 @@ out:
 #ifdef CONFIG_PCI_MSI
 int xen_allocate_pirq_msi(struct pci_dev *dev, struct msi_desc *msidesc)
 {
-	int rc;
+	int rc, pirq;
 	struct physdev_get_free_pirq op_get_free_pirq;
+
+	pirq = xen_pirq_get_free();
+	if (pirq >= 0)
+		return pirq;
 
 	op_get_free_pirq.type = MAP_PIRQ_TYPE_MSI;
 	rc = HYPERVISOR_physdev_op(PHYSDEVOP_get_free_pirq, &op_get_free_pirq);
 
 	WARN_ONCE(rc == -ENOSYS,
 		  "hypervisor does not support the PHYSDEVOP_get_free_pirq interface\n");
+
+	if (rc == 0)
+		xen_pirq_add(op_get_free_pirq.pirq);
 
 	return rc ? -1 : op_get_free_pirq.pirq;
 }
@@ -1628,6 +1743,11 @@ static void restore_pirqs(void)
 
 		__startup_pirq(irq);
 	}
+
+	/* For PVHVM guests with PCI passthrough devices (that got unplugged
+	 * before the migrate) we MUST clear our cache.
+	 */
+	xen_pirq_clear_all();
 }
 
 static void restore_cpu_virqs(unsigned int cpu)
