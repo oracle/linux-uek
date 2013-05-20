@@ -1079,6 +1079,7 @@ struct task_struct {
 
 	void *dtrace_helpers;
 	uint32_t dtrace_probes;
+	uint64_t dtrace_tp_count;
 #endif
 #ifdef CONFIG_UPROBES
 	struct uprobe_task		*utask;

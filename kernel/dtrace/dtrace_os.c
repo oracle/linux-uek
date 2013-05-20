@@ -24,6 +24,9 @@
 #include <asm/stacktrace.h>
 #include <asm/syscalls.h>
 
+#include <linux/uprobes.h>
+#include <asm/ptrace.h>
+
 /*---------------------------------------------------------------------------*\
 (* OS SPECIFIC DTRACE SETUP                                                  *)
 \*---------------------------------------------------------------------------*/
@@ -983,6 +986,8 @@ void (*dtrace_helpers_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_helpers_cleanup);
 void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_fasttrap_probes_cleanup);
+void (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
 void dtrace_task_init(struct task_struct *tsk)
 {
@@ -1005,3 +1010,104 @@ void dtrace_task_cleanup(struct task_struct *tsk)
 			(*dtrace_fasttrap_probes_cleanup)(tsk);
 	}
 }
+
+static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
+{
+	pr_info("USDT-HANDLER: Called for PC %lx\n", GET_IP(regs));
+	read_lock(&this_cpu_core->cpu_ft_lock);
+	if (dtrace_tracepoint_hit == NULL)
+		pr_warn("Fasttrap probes, but no handler\n");
+	else
+		(*dtrace_tracepoint_hit)(self, regs);
+	read_unlock(&this_cpu_core->cpu_ft_lock);
+
+	return 0;
+}
+
+static struct uprobe_consumer	usdt_hndlr = { handler, };
+static int done = 0;
+
+int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
+			     fasttrap_machtp_t *mtp)
+{
+	struct task_struct	*p;
+	struct inode		*ino;
+	struct vm_area_struct	*vma;
+	loff_t			off;
+	int			rc = 0;
+
+	p = find_task_by_vpid(pid);
+	if (!p) {
+		pr_warn("PID %d not found\n", pid);
+		return -ESRCH;
+	}
+
+	vma = p->mm->mmap;
+	if (vma->vm_file == NULL) {
+		pr_warn("DTRACE: vma->vm_file is NULL\n");
+		return -ESRCH;
+	}
+
+	ino = vma->vm_file->f_mapping->host;
+	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
+pr_info("DEBUG: PID %d: vma 0x%p, mapping 0x%p, inode 0x%p, offset 0x%llx\n", pid, vma, vma->vm_file->f_mapping, ino, off);
+
+	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
+pr_info("DEBUG: Registering uprobe...\n");
+		mtp->handler = handler;
+		rc = uprobe_register(ino, off, mtp);
+
+		/*
+		 * If successful, increment the count of the number of
+		 * tracepoints active in the victim process.
+		 */
+		if (rc == 0)
+			p->dtrace_tp_count++;
+	}
+
+	return rc;
+}
+EXPORT_SYMBOL(dtrace_tracepoint_enable);
+
+int dtrace_tracepoint_disable(pid_t pid, uintptr_t addr,
+			      fasttrap_machtp_t *mtp)
+{
+	struct task_struct	*p;
+	struct inode		*ino;
+	struct vm_area_struct	*vma;
+	loff_t			off;
+
+	if (!mtp || !mtp->handler) {
+		pr_warn("DTRACE: No handler for tracepoint\n");
+		return -ENOENT;
+	}
+
+	p = find_task_by_vpid(pid);
+	if (!p) {
+		pr_warn("PID %d not found\n", pid);
+		return -ESRCH;
+	}
+
+	vma = p->mm->mmap;
+	if (vma->vm_file == NULL) {
+		pr_warn("DTRACE: vma->vm_file is NULL\n");
+		return -ESRCH;
+	}
+
+	ino = vma->vm_file->f_mapping->host;
+	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
+pr_info("DEBUG: PID %d: vma 0x%p, mapping 0x%p, inode 0x%p, offset 0x%llx\n", pid, vma, vma->vm_file->f_mapping, ino, off);
+
+	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
+pr_info("DEBUG: Registering uprobe...\n");
+		uprobe_unregister(ino, off, mtp);
+		/*
+		 * Decrement the count of the number of tracepoints active in
+		 * the victim process.
+		 */
+		p->dtrace_tp_count--;
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(dtrace_tracepoint_disable);
