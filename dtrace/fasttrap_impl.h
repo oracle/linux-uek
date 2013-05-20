@@ -1,7 +1,7 @@
 #ifndef _FASTTRAP_IMPL_H_
 #define _FASTTRAP_IMPL_H_
 
-#include <linux/fasttrap.h>
+#include <linux/dtrace/fasttrap.h>
 
 /*
  * Fasttrap Providers, Probes and Tracepoints
@@ -66,8 +66,6 @@ struct fasttrap_id {
 	fasttrap_probe_type_t fti_ptype;	/* probe type */
 };
 
-typedef unsigned long			fasttrap_machtp_t;	/* FIXME */
-
 struct fasttrap_tracepoint {
 	fasttrap_proc_t *ftt_proc;		/* associated process struct */
 	uintptr_t ftt_pc;			/* address of tracepoint */
@@ -112,10 +110,15 @@ typedef struct fasttrap_hash {
 	fasttrap_bucket_t *fth_table;		/* array of buckets */
 } fasttrap_hash_t;
 
+extern fasttrap_hash_t			fasttrap_tpoints;
+
 #define	FASTTRAP_ID_INDEX(id)						      \
 	((fasttrap_id_tp_t *)(((char *)(id) -				      \
 	 offsetof(fasttrap_id_tp_t, fit_id))) -				      \
 	 &(id)->fti_probe->ftp_tps[0])
+#define FASTTRAP_TPOINTS_INDEX(pid, pc)					      \
+	(((pc) / sizeof (fasttrap_instr_t) + (pid)) &			      \
+	 fasttrap_tpoints.fth_mask)
 
 #define FASTTRAP_OFFSET_AFRAMES		3
 
