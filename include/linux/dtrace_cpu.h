@@ -5,6 +5,7 @@
 
 #include <linux/ktime.h>
 #include <linux/mutex.h>
+#include <linux/rwlock.h>
 #include <linux/dtrace_cpu_defines.h>
 
 typedef struct cpu_core {
@@ -17,6 +18,7 @@ typedef struct cpu_core {
 	uintptr_t cpu_dtrace_caller;
 	ktime_t cpu_dtrace_chillmark;
 	ktime_t cpu_dtrace_chilled;
+	rwlock_t cpu_ft_lock;
 } cpu_core_t;
 
 DECLARE_PER_CPU_SHARED_ALIGNED(cpu_core_t, dtrace_cpu_core);
