@@ -21,12 +21,20 @@ void dtrace_cpu_init(void)
 
 	for_each_present_cpu(cpu) {
 		struct cpuinfo_x86	*c = &cpu_data(cpu);
-		cpuinfo_t		*i = per_cpu_info(cpu);
+		cpuinfo_t		*cpui = per_cpu_info(cpu);
+		cpu_core_t		*cpuc = per_cpu_core(cpu);
 
-		i->cpu_id = cpu;
-		i->cpu_pset = 0;
-		i->cpu_chip = c->phys_proc_id;
-		i->cpu_lgrp = 0;
-		i->cpu_info = c;
+		cpui->cpu_id = cpu;
+		cpui->cpu_pset = 0;
+		cpui->cpu_chip = c->phys_proc_id;
+		cpui->cpu_lgrp = 0;
+		cpui->cpu_info = c;
+
+		cpuc->cpuc_dtrace_flags = 0;
+		cpuc->cpuc_dcpc_intr_state = 0;
+		cpuc->cpuc_dtrace_illval = 0;
+		mutex_init(&cpuc->cpuc_pid_lock);
+		cpuc->cpu_dtrace_caller = 0;
+		rwlock_init(&cpuc->cpu_ft_lock);
 	}
 }

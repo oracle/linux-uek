@@ -79,8 +79,14 @@ extern void unregister_pid_provider(pid_t);
 extern void dtrace_task_init(struct task_struct *tsk);
 extern void dtrace_task_cleanup(struct task_struct *tsk);
 
+typedef struct uprobe_consumer	fasttrap_machtp_t;
+
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
+extern void (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+
+extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);
+extern int dtrace_tracepoint_disable(pid_t, uintptr_t, fasttrap_machtp_t *);
 
 #endif
 
