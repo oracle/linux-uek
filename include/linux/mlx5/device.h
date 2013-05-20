@@ -255,10 +255,9 @@ struct mlx5_hca_cap {
 	u8	log_max_qp_sz;
 	u8	rsvd2;
 	u8	log_max_qp;
-	u8	rsvd3;
+	u8	log_max_strq_sz;
 	u8	log_max_srqs;
-	u8	rsvd4;
-	u8	log_max_scqs;
+	u8	rsvd4[2];
 	u8	rsvd5;
 	u8	log_max_cq_sz;
 	u8	rsvd6;
@@ -267,16 +266,19 @@ struct mlx5_hca_cap {
 	u8	log_max_mkey;
 	u8	rsvd7;
 	u8	log_max_eq;
-	u8	rsvd8;
+	u8	max_indirection;
 	u8	log_max_mrw_sz;
 	u8	log_max_bsf_list_sz;
-	u8	log_max_buffer_list_sz;
-	u8	rsvd9[5];
+	u8	log_max_klm_list_sz;
+	u8	rsvd_8_0;
+	u8	log_max_ra_req_dc;
+	u8	rsvd_8_1;
+	u8	log_max_ra_res_dc;
+	u8	rsvd9;
 	u8	log_max_ra_req_qp;
 	u8	rsvd10;
 	u8	log_max_ra_res_qp;
-	u8	rsvd11[3];
-	u8	log_max_ra_res_global;
+	u8	rsvd11[4];
 	__be16	max_qp_count;
 	__be16	rsvd12;
 	u8	rsvd13;
@@ -297,7 +299,7 @@ struct mlx5_hca_cap {
 	__be16	max_desc_sz_sq;
 	u8	rsvd20[2];
 	__be16	max_desc_sz_rq;
-	u8	rsvd21;
+	u8	rsvd21[2];
 	__be16	max_desc_sz_sq_dc;
 	u8	rsvd22[4];
 	__be16	max_qp_mcg;
@@ -310,8 +312,10 @@ struct mlx5_hca_cap {
 	u8	rsvd26[40];
 	__be32  uar_page_sz;
 	u8	rsvd27[28];
-	u8	log_msx_atomic_size;
-	u8	rsvd28[75];
+	u8	log_msx_atomic_size_qp;
+	u8	rsvd28[2];
+	u8	log_msx_atomic_size_dc;
+	u8	rsvd29[76];
 };
 
 
