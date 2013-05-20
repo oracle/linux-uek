@@ -37,18 +37,21 @@
 #include "fasttrap_impl.h"
 
 #define FASTTRAP_MAX_DEFAULT	250000
-static uint32_t		fasttrap_max;
-static atomic_t		fasttrap_total;
+static uint32_t			fasttrap_max;
+static uint64_t			fasttrap_pid_count;
+static atomic_t			fasttrap_total;
 
 #define FASTTRAP_TPOINTS_DEFAULT_SIZE	0x4000
 #define FASTTRAP_PROVIDERS_DEFAULT_SIZE	0x100
 #define FASTTRAP_PROCS_DEFAULT_SIZE	0x100
 
 #define FASTTRAP_PID_NAME	"pid"
+#define FASTTRAP_ENABLE_FAIL	1
+#define FASTTRAP_ENABLE_PARTIAL	2
 
-fasttrap_hash_t		fasttrap_tpoints;
-static fasttrap_hash_t	fasttrap_provs;
-static fasttrap_hash_t	fasttrap_procs;
+fasttrap_hash_t			fasttrap_tpoints;
+static fasttrap_hash_t		fasttrap_provs;
+static fasttrap_hash_t		fasttrap_procs;
 
 #define FASTTRAP_PROVS_INDEX(pid, name) \
 	((fasttrap_hash_str(name) + (pid)) & fasttrap_provs.fth_mask)
@@ -59,8 +62,31 @@ static fasttrap_hash_t	fasttrap_procs;
 #define CLEANUP_DEFERRED	2
 
 DEFINE_MUTEX(fasttrap_cleanup_mtx);
-static uint_t		fasttrap_cleanup_state;
-static uint_t		fasttrap_cleanup_work;
+DEFINE_MUTEX(fasttrap_count_mtx);
+static uint_t			fasttrap_cleanup_state;
+static uint_t			fasttrap_cleanup_work;
+
+/*
+ * Generation count on modifications to the global tracepoint lookup table.
+ */
+static volatile uint64_t	fasttrap_mod_gen;
+
+static void fasttrap_pid_cleanup(void);
+
+static void fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
+	fasttrap_tracepoint_t	*tp = container_of(mtp, fasttrap_tracepoint_t,
+						   ftt_mtp);
+	fasttrap_id_t		*id;
+
+pr_info("fasttrap_pid_probe(PID %d, PC %lx)\n", tp->ftt_pid, tp->ftt_pc);
+	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
+		fasttrap_probe_t	*ftp = id->fti_probe;
+
+pr_info("    Probe ID %d for PID %d\n", ftp->ftp_id, ftp->ftp_pid);
+		dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
+			     regs->cx, regs->r8);
+	}
+}
 
 static void fasttrap_pid_provide(void *arg, const dtrace_probedesc_t *desc)
 {
@@ -69,15 +95,510 @@ static void fasttrap_pid_provide(void *arg, const dtrace_probedesc_t *desc)
 	 */
 }
 
-static int
-fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
+static void fasttrap_enable_callbacks(void)
 {
-	return 0;	/* FIXME */
+	/*
+	 * We don't have to play the RW lock game here because we're providing
+	 * something rather than taking something away -- we can be sure that
+	 * no threads have tried to follow these function pointers yet.
+	 */
+	mutex_lock(&fasttrap_count_mtx);
+	if (fasttrap_pid_count == 0) {
+		ASSERT(dtrace_tracepoint_hit == NULL);
+
+		dtrace_tracepoint_hit = &fasttrap_pid_probe;
+	}
+
+	ASSERT(dtrace_tracepoint_hit == &fasttrap_pid_probe);
+
+	fasttrap_pid_count++;
+	mutex_unlock(&fasttrap_count_mtx);
+}
+
+static void fasttrap_disable_callbacks(void)
+{
+	ASSERT(MUTEX_HELD(&cpu_lock));
+
+	mutex_lock(&fasttrap_count_mtx);
+	ASSERT(fasttrap_pid_count > 0);
+	fasttrap_pid_count--;
+
+	if (fasttrap_pid_count == 0) {
+		int	cpu;
+
+		for_each_present_cpu(cpu) {
+			cpu_core_t	*cpuc = per_cpu_core(cpu);
+
+			write_lock(&cpuc->cpu_ft_lock);
+		}
+
+		dtrace_tracepoint_hit = NULL;
+
+		for_each_present_cpu(cpu) {
+			cpu_core_t	*cpuc = per_cpu_core(cpu);
+
+			write_unlock(&cpuc->cpu_ft_lock);
+		}
+	}
+
+	mutex_unlock(&fasttrap_count_mtx);
+}
+
+/*
+ * his function ensures that no threads are actively using the memory
+ * associated with probes that were formerly live.
+ */
+static void fasttrap_mod_barrier(uint64_t gen)
+{
+	int	cpu;
+
+	if (gen < fasttrap_mod_gen)
+		return;
+
+	fasttrap_mod_gen++;
+
+	for_each_present_cpu(cpu) {
+		cpu_core_t	*cpuc = per_cpu_core(cpu);
+
+		mutex_lock(&cpuc->cpuc_pid_lock);
+		mutex_unlock(&cpuc->cpuc_pid_lock);
+	}
+}
+
+static int fasttrap_tracepoint_enable(fasttrap_probe_t *probe, uint_t index)
+{
+	fasttrap_tracepoint_t	*tp, *new_tp = NULL;
+	fasttrap_bucket_t	*bucket;
+	fasttrap_id_t		*id;
+	pid_t			pid;
+	uintptr_t		pc;
+
+	ASSERT(index < probe->ftp_ntps);
+
+	pid = probe->ftp_pid;
+	pc = probe->ftp_tps[index].fit_tp->ftt_pc;
+	id = &probe->ftp_tps[index].fit_id;
+
+	ASSERT(probe->ftp_tps[index].fit_tp->ftt_pid == pid);
+
+	/*
+	 * Before we make any modifications, make sure we've imposed a barrier
+	 * on the generation in which this probe was last modified.
+	 */
+	fasttrap_mod_barrier(probe->ftp_gen);
+
+	bucket = &fasttrap_tpoints.fth_table[FASTTRAP_TPOINTS_INDEX(pid, pc)];
+
+	/*
+	 * If the tracepoint has already been enabled, just add our id to the
+	 * list of interested probes. This may be our second time through
+	 * this path in which case we'll have constructed the tracepoint we'd
+	 * like to install. If we can't find a match, and have an allocated
+	 * tracepoint ready to go, enable that one now.
+	 *
+	 * A tracepoint whose process is defunct is also considered defunct.
+	 */
+again:
+	mutex_lock(&bucket->ftb_mtx);
+	for (tp = bucket->ftb_data; tp != NULL; tp = tp->ftt_next) {
+		/*
+		 * Note that it's safe to access the active count on the
+		 * associated proc structure because we know that at least one
+		 * provider (this one) will still be around throughout this
+		 * operation.
+		 */
+		if (tp->ftt_pid != pid || tp->ftt_pc != pc ||
+		    atomic64_read(&tp->ftt_proc->ftpc_acount) == 0)
+			continue;
+
+		/*
+		 * Now that we've found a matching tracepoint, it would be
+		 * a decent idea to confirm that the tracepoint is still
+		 * enabled and the trap instruction hasn't been overwritten.
+		 * Since this is a little hairy, we'll punt for now.
+		 */
+
+		/*
+		 * This can't be the first interested probe. We don't have
+		 * to worry about another thread being in the midst of
+		 * deleting this tracepoint (which would be the only valid
+		 * reason for a tracepoint to have no interested probes)
+		 * since we're holding P_PR_LOCK for this process.
+		 */
+		ASSERT(tp->ftt_ids != NULL || tp->ftt_retids != NULL);
+
+		switch (id->fti_ptype) {
+		case DTFTP_ENTRY:
+		case DTFTP_OFFSETS:
+		case DTFTP_IS_ENABLED:
+			id->fti_next = tp->ftt_ids;
+			dtrace_membar_producer();
+			tp->ftt_ids = id;
+			dtrace_membar_producer();
+			break;
+
+		case DTFTP_RETURN:
+		case DTFTP_POST_OFFSETS:
+			id->fti_next = tp->ftt_retids;
+			dtrace_membar_producer();
+			tp->ftt_retids = id;
+			dtrace_membar_producer();
+			break;
+
+		default:
+			ASSERT(0);	/* FIXME */
+		}
+
+		mutex_unlock(&bucket->ftb_mtx);
+
+		if (new_tp != NULL) {
+			new_tp->ftt_ids = NULL;
+			new_tp->ftt_retids = NULL;
+		}
+
+		return 0;
+	}
+
+	/*
+	 * If we have a good tracepoint ready to go, install it now while
+	 * we have the lock held and no one can screw with us.
+	 */
+	if (new_tp != NULL) {
+		int	rc = 0;
+
+		new_tp->ftt_next = bucket->ftb_data;
+		dtrace_membar_producer();
+		bucket->ftb_data = new_tp;
+		dtrace_membar_producer();
+		mutex_unlock(&bucket->ftb_mtx);
+
+		/*
+		 * Activate the tracepoint in the ISA-specific manner.
+		 * If this fails, we need to report the failure, but
+		 * indicate that this tracepoint must still be disabled
+		 * by calling fasttrap_tracepoint_disable().
+		 */
+		if (dtrace_tracepoint_enable(pid, pc, &new_tp->ftt_mtp) != 0)
+			rc = FASTTRAP_ENABLE_PARTIAL;
+
+		return rc;
+	}
+
+	mutex_unlock(&bucket->ftb_mtx);
+
+	/*
+	 * Initialize the tracepoint that's been preallocated with the probe.
+	 */
+	new_tp = probe->ftp_tps[index].fit_tp;
+
+	ASSERT(new_tp->ftt_pid == pid);
+	ASSERT(new_tp->ftt_pc == pc);
+	ASSERT(new_tp->ftt_proc == probe->ftp_prov->ftp_proc);
+	ASSERT(new_tp->ftt_ids == NULL);
+	ASSERT(new_tp->ftt_retids == NULL);
+
+	switch (id->fti_ptype) {
+	case DTFTP_ENTRY:
+	case DTFTP_OFFSETS:
+	case DTFTP_IS_ENABLED:
+		id->fti_next = NULL;
+		new_tp->ftt_ids = id;
+		break;
+
+	case DTFTP_RETURN:
+	case DTFTP_POST_OFFSETS:
+		id->fti_next = NULL;
+		new_tp->ftt_retids = id;
+		break;
+
+	default:
+		ASSERT(0);
+	}
+
+	goto again;
+}
+
+static void fasttrap_tracepoint_disable(fasttrap_probe_t *probe, uint_t index)
+{
+	fasttrap_bucket_t	*bucket;
+	fasttrap_provider_t	*prov = probe->ftp_prov;
+	fasttrap_tracepoint_t	**pp, *tp;
+	fasttrap_id_t		*id, **idp = NULL;
+	pid_t			pid;
+	uintptr_t		pc;
+
+	ASSERT(index < probe->ftp_ntps);
+
+	pid = probe->ftp_pid;
+	pc = probe->ftp_tps[index].fit_tp->ftt_pc;
+	id = &probe->ftp_tps[index].fit_id;
+
+	ASSERT(probe->ftp_tps[index].fit_tp->ftt_pid == pid);
+
+	/*
+	 * Find the tracepoint and make sure that our id is one of the
+	 * ones registered with it.
+	 */
+	bucket = &fasttrap_tpoints.fth_table[FASTTRAP_TPOINTS_INDEX(pid, pc)];
+	mutex_lock(&bucket->ftb_mtx);
+	for (tp = bucket->ftb_data; tp != NULL; tp = tp->ftt_next) {
+		if (tp->ftt_pid == pid && tp->ftt_pc == pc &&
+		    tp->ftt_proc == prov->ftp_proc)
+			break;
+	}
+
+	/*
+	 * If we somehow lost this tracepoint, we are in trouble.
+	 */
+	ASSERT(tp != NULL);
+
+	switch (id->fti_ptype) {
+	case DTFTP_ENTRY:
+	case DTFTP_OFFSETS:
+	case DTFTP_IS_ENABLED:
+		ASSERT(tp->ftt_ids != NULL);
+		idp = &tp->ftt_ids;
+		break;
+
+	case DTFTP_RETURN:
+	case DTFTP_POST_OFFSETS:
+		ASSERT(tp->ftt_retids != NULL);
+		idp = &tp->ftt_retids;
+		break;
+
+	default:
+		ASSERT(0);
+	}
+
+	while ((*idp)->fti_probe != probe) {
+		idp = &(*idp)->fti_next;
+		ASSERT(*idp != NULL);
+	}
+
+	id = *idp;
+	*idp = id->fti_next;
+	dtrace_membar_producer();
+
+	ASSERT(id->fti_probe == probe);
+
+	/*
+	 * If there are other registered enablings of this tracepoint, we're
+	 * all done, but if this was the last probe assocated with this
+	 * this tracepoint, we need to remove and free it.
+	 */
+	if (tp->ftt_ids != NULL || tp->ftt_retids != NULL) {
+		/*
+		 * If the current probe's tracepoint is in use, swap it
+		 * for an unused tracepoint.
+		 */
+		if (tp == probe->ftp_tps[index].fit_tp) {
+			fasttrap_probe_t	*tmp_probe;
+			fasttrap_tracepoint_t	**tmp_tp;
+			uint_t			tmp_index;
+
+			if (tp->ftt_ids != NULL) {
+				tmp_probe = tp->ftt_ids->fti_probe;
+				tmp_index = FASTTRAP_ID_INDEX(tp->ftt_ids);
+				tmp_tp = &tmp_probe->ftp_tps[tmp_index].fit_tp;
+			} else {
+				tmp_probe = tp->ftt_retids->fti_probe;
+				tmp_index = FASTTRAP_ID_INDEX(tp->ftt_retids);
+				tmp_tp = &tmp_probe->ftp_tps[tmp_index].fit_tp;
+			}
+
+			ASSERT(*tmp_tp != NULL);
+			ASSERT(*tmp_tp != probe->ftp_tps[index].fit_tp);
+			ASSERT((*tmp_tp)->ftt_ids == NULL);
+			ASSERT((*tmp_tp)->ftt_retids == NULL);
+
+			probe->ftp_tps[index].fit_tp = *tmp_tp;
+			*tmp_tp = tp;
+		}
+
+		mutex_unlock(&bucket->ftb_mtx);
+
+		/*
+		 * Tag the modified probe with the generation in which it was
+		 * changed.
+		 */
+		probe->ftp_gen = fasttrap_mod_gen;
+		return;
+	}
+
+	mutex_unlock(&bucket->ftb_mtx);
+
+	dtrace_tracepoint_disable(pid, pc, &tp->ftt_mtp);
+
+	/*
+	 * Remove the probe from the hash table of active tracepoints.
+	 */
+	mutex_lock(&bucket->ftb_mtx);
+	pp = (fasttrap_tracepoint_t **)&bucket->ftb_data;
+	ASSERT(*pp != NULL);
+	while (*pp != tp) {
+		pp = &(*pp)->ftt_next;
+		ASSERT(*pp != NULL);
+	}
+
+	*pp = tp->ftt_next;
+	dtrace_membar_producer();
+
+	mutex_unlock(&bucket->ftb_mtx);
+
+	/*
+	 * Tag the modified probe with the generation in which it was changed.
+	 */
+	probe->ftp_gen = fasttrap_mod_gen;
+}
+
+static int fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
+{
+	fasttrap_probe_t	*probe = parg;
+	int			i, rc;
+
+	ASSERT(probe != NULL);
+	ASSERT(!probe->ftp_enabled);
+	ASSERT(id == probe->ftp_id);
+	ASSERT(MUTEX_HELD(&cpu_lock));
+
+	/*
+	 * Increment the count of enabled probes on this probe's provider;
+	 * the provider can't go away while the probe still exists. We
+	 * must increment this even if we aren't able to properly enable
+	 * this probe.
+	 */
+	mutex_lock(&probe->ftp_prov->ftp_mtx);
+	probe->ftp_prov->ftp_rcount++;
+	mutex_unlock(&probe->ftp_prov->ftp_mtx);
+
+	/*
+	 * If this probe's provider is retired (meaning it was valid in a
+	 * previously exec'ed incarnation of this address space), bail out. The
+	 * provider can't go away while we're in this code path.
+	 */
+	if (probe->ftp_prov->ftp_retired)
+		return 0;
+
+#ifdef FIXME
+	/*
+	 * If we can't find the process, it may be that we're in the context of
+	 * a fork in which the traced process is being born and we're copying
+	 * USDT probes. Otherwise, the process is gone so bail.
+	 */
+	if ((p = sprlock(probe->ftp_pid)) == NULL) {
+		if ((curproc->p_flag & SFORKING) == 0)
+			return 0;
+
+		mutex_enter(&pidlock);
+		p = prfind(probe->ftp_pid);
+
+		/*
+		 * Confirm that curproc is indeed forking the process in which
+		 * we're trying to enable probes.
+		 */
+		ASSERT(p != NULL);
+		ASSERT(p->p_parent == curproc);
+		ASSERT(p->p_stat == SIDL);
+
+		mutex_enter(&p->p_lock);
+		mutex_exit(&pidlock);
+
+		sprlock_proc(p);
+	}
+
+	ASSERT(!(p->p_flag & SVFORK));
+	mutex_exit(&p->p_lock);
+#endif
+
+	/*
+	 * We have to enable the trap entry point before any user threads have
+	 * the chance to execute the trap instruction we're about to place
+	 * in their process's text.
+	 */
+	fasttrap_enable_callbacks();
+
+	/*
+	 * Enable all the tracepoints and add this probe's id to each
+	 * tracepoint's list of active probes.
+	 */
+	for (i = 0; i < probe->ftp_ntps; i++) {
+		if ((rc = fasttrap_tracepoint_enable(probe, i)) != 0) {
+			/*
+			 * If enabling the tracepoint failed completely,
+			 * we don't have to disable it; if the failure
+			 * was only partial we must disable it.
+			 */
+			if (rc == FASTTRAP_ENABLE_FAIL)
+				i--;
+			else
+				ASSERT(rc == FASTTRAP_ENABLE_PARTIAL);
+
+			/*
+			 * Back up and pull out all the tracepoints we've
+			 * created so far for this probe.
+			 */
+			while (i >= 0) {
+				fasttrap_tracepoint_disable(probe, i);
+				i--;
+			}
+
+#ifdef FIXME
+			mutex_enter(&p->p_lock);
+			sprunlock(p);
+#endif
+
+			/*
+			 * Since we're not actually enabling this probe,
+			 * drop our reference on the trap table entry.
+			 */
+			fasttrap_disable_callbacks();
+			return 0;
+		}
+	}
+
+#ifdef FIXME
+	mutex_enter(&p->p_lock);
+	sprunlock(p);
+
+	probe->ftp_enabled = 1;
+#endif
+	return 0;
 }
 
 static void fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 {
-	/* FIXME */
+	fasttrap_probe_t	*probe = parg;
+	fasttrap_provider_t	*prov = probe->ftp_prov;
+	int			i, whack = 0;
+
+	ASSERT(id == probe->ftp_id);
+
+	mutex_lock(&prov->ftp_mtx);
+
+	/*
+	 * Disable all the associated tracepoints (for fully enabled probes).
+	 */
+	if (probe->ftp_enabled) {
+		for (i = 0; i < probe->ftp_ntps; i++)
+			fasttrap_tracepoint_disable(probe, i);
+	}
+
+	ASSERT(prov->ftp_rcount > 0);
+	prov->ftp_rcount--;
+
+	if ((prov->ftp_retired || prov->ftp_rcount == 0) && !prov->ftp_marked)
+		whack = prov->ftp_marked = 1;
+
+	if (whack)
+		fasttrap_pid_cleanup();
+
+	if (!probe->ftp_enabled)
+		return;
+
+	probe->ftp_enabled = 0;
+
+	ASSERT(MUTEX_HELD(&cpu_lock));
+	fasttrap_disable_callbacks();
 }
 
 static void fasttrap_pid_getargdesc(void *arg, dtrace_id_t id, void *parg,
@@ -706,6 +1227,7 @@ static void fasttrap_pid_cleanup(void)
         mutex_lock(&fasttrap_cleanup_mtx);
         fasttrap_cleanup_work = 1;
         fasttrap_cleanup_state = CLEANUP_SCHEDULED;
+pr_info("FASTTRAP:     -> Scheduling delayed cleanup...\n");
 	schedule_delayed_work(&fasttrap_cleanup, 3);
         mutex_unlock(&fasttrap_cleanup_mtx);
 }
@@ -717,6 +1239,7 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 	dtrace_provider_id_t	provid;
 
 	ASSERT(strlen(name) < sizeof (fp->ftp_name));
+pr_info("FASTTRAP: Retiring provider '%s' for PID %d\n", name, pid);
 
 	bucket = &fasttrap_provs.fth_table[FASTTRAP_PROVS_INDEX(pid, name)];
 	mutex_lock(&bucket->ftb_mtx);
@@ -729,6 +1252,7 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 
 	if (fp == NULL) {
 		mutex_unlock(&bucket->ftb_mtx);
+pr_info("FASTTRAP:   -> Provider not found...\n");
 		return;
 	}
 
@@ -770,10 +1294,12 @@ void fasttrap_provider_retire(pid_t pid, const char *name, int mprov)
 	 * since fasttrap_provider_lookup() will ignore provider that have
 	 * been marked as retired.
 	 */
+pr_info("FASTTRAP:   -> Invalidating provider...\n");
 	dtrace_invalidate(provid);
 
 	mutex_unlock(&bucket->ftb_mtx);
 
+pr_info("FASTTRAP:   -> Calling fasttrap_pid_cleanup()...\n");
 	fasttrap_pid_cleanup();
 }
 
