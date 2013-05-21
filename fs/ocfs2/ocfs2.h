@@ -272,6 +272,7 @@ enum ocfs2_mount_options
 						     writes */
 	OCFS2_MOUNT_HB_NONE = 1 << 13, /* No heartbeat */
 	OCFS2_MOUNT_HB_GLOBAL = 1 << 14, /* Global heartbeat */
+	OCFS2_MOUNT_COMPAT_OCFS = 1 << 30, /* ocfs1 compatibility mode */
 };
 
 #define OCFS2_OSB_SOFT_RO			0x0001
