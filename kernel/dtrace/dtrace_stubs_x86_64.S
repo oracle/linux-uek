@@ -158,10 +158,25 @@ ENTRY(\label)
 END(\label)
 	.endm
 
-	PTREGSCALL dtrace_stub_clone, dtrace_clone, %r8
-	PTREGSCALL dtrace_stub_fork, dtrace_fork, %rdi
-	PTREGSCALL dtrace_stub_vfork, dtrace_vfork, %rdi
-	PTREGSCALL dtrace_stub_sigaltstack, dtrace_sigaltstack, %rdx
+	.macro FORK_LIKE func
+ENTRY(dtrace_stub_\func)
+	CFI_STARTPROC
+	popq	%r11			/* save return address */
+	PARTIAL_FRAME 0
+	SAVE_REST
+	pushq	%r11			/* put it back on stack */
+	FIXUP_TOP_OF_STACK %r11, 8
+	DEFAULT_FRAME 0 8		/* offset 8: return address */
+	call dtrace_\func
+	RESTORE_TOP_OF_STACK %r11, 8
+	ret $REST_SKIP			/* pop extended registers */
+	CFI_ENDPROC
+END(dtrace_stub_\func)
+	.endm
+
+        FORK_LIKE  clone
+        FORK_LIKE  fork
+        FORK_LIKE  vfork
 	PTREGSCALL dtrace_stub_iopl, dtrace_iopl, %rsi
 
 ENTRY(dtrace_stub_execve)
