@@ -1869,6 +1869,57 @@ err:
 	return -ENOMEM;
 }
 
+static ssize_t mlx4_en_show_vf_link_state(struct device *dev,
+					  struct device_attribute *attr,
+					  char *buf)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct mlx4_en_priv *en_priv = netdev_priv(netdev);
+	struct mlx4_en_dev *mdev = en_priv->mdev;
+	int port = en_priv->port;
+	char *str[] = { "auto", "enable", "disable" };
+	int link_state, vf = 0;
+	ssize_t len = 0;
+
+	while ((link_state = mlx4_get_vf_link_state(mdev->dev, port, vf)) >= 0) {
+		len += sprintf(&buf[len], "vf %d %s\n", vf, str[link_state]);
+		vf++;
+	}
+
+	return len;
+}
+
+static ssize_t mlx4_en_store_vf_link_state(struct device *dev,
+					   struct device_attribute *attr,
+					   const char *buf, size_t count)
+{
+	struct net_device *netdev = to_net_dev(dev);
+	struct mlx4_en_priv *en_priv = netdev_priv(netdev);
+	struct mlx4_en_dev *mdev = en_priv->mdev;
+	int err, vf, link_state;
+
+	if (count > 128)
+		return -EINVAL;
+
+	err = sscanf(buf, "vf %d", &vf);
+	if (err != 1)
+		return -EINVAL;
+
+	if (strstr(buf, "auto"))
+		link_state = IFLA_VF_LINK_STATE_AUTO;
+	else if (strstr(buf, "enable"))
+		link_state = IFLA_VF_LINK_STATE_ENABLE;
+	else if (strstr(buf, "disable"))
+		link_state = IFLA_VF_LINK_STATE_DISABLE;
+	else
+		return -EINVAL;
+
+	err = mlx4_set_vf_link_state(mdev->dev, en_priv->port, vf, link_state);
+	return err ? err : count;
+}
+
+static DEVICE_ATTR(vf_link_state, S_IRUGO | S_IWUSR , mlx4_en_show_vf_link_state, mlx4_en_store_vf_link_state);
+
 
 void mlx4_en_destroy_netdev(struct net_device *dev)
 {
@@ -1894,6 +1945,8 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	mutex_unlock(&mdev->state_lock);
 
 	mlx4_en_free_resources(priv);
+	if (mlx4_is_master(priv->mdev->dev))
+		device_remove_file(&dev->dev, &dev_attr_vf_link_state);
 
 	kfree(priv->tx_queue);
 	kfree(priv->tx_ring);
@@ -2348,6 +2401,14 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 
 	en_warn(priv, "Using %d TX rings\n", prof->tx_ring_num);
 	en_warn(priv, "Using %d RX rings\n", prof->rx_ring_num);
+
+	if (mlx4_is_master(priv->mdev->dev)) {
+		err = device_create_file(&dev->dev, &dev_attr_vf_link_state);
+		if (err) {
+			en_err(priv, "Sysfs link_state registration failed for port %d\n", port);
+			goto out;
+		}
+	}
 
 	mlx4_en_update_loopback_state(priv->dev, priv->dev->features);
 
