@@ -98,8 +98,6 @@ static dt_sys_call_t get_intercept(int sysnum)
 		return systrace_info->stubs[SCE_FORK];
 	case __NR_vfork:
 		return systrace_info->stubs[SCE_VFORK];
-	case __NR_sigaltstack:
-		return systrace_info->stubs[SCE_SIGALTSTACK];
 	case __NR_iopl:
 		return systrace_info->stubs[SCE_IOPL];
 	case __NR_execve:
