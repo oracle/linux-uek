@@ -121,6 +121,8 @@ Summary: The Linux kernel
 
 # Control whether we perform a compat. check against published ABI.
 %define with_kabichk 1
+# Control whether we build the hmac for fips mode.
+%define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
 
 %define fancy_debuginfo 1
 %if %{fancy_debuginfo}
@@ -519,6 +521,9 @@ BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
 BuildRequires: gnupg
+%endif
+%if %{with_fips}
+BuildRequires: hmaccalc
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
@@ -1132,6 +1137,13 @@ BuildKernel() {
     		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
     chmod 755 $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
 
+%if %{with_fips}
+    # hmac sign the kernel for FIPS
+    echo "Creating hmac file: $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac"
+    ls -l $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
+    sha512hmac $RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer | sed -e "s,$RPM_BUILD_ROOT,," > $RPM_BUILD_ROOT/%{image_install_path}/.vmlinuz-$KernelVer.hmac;
+%endif
+
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer
     # Override $(mod-fw) because we don't want it to install any firmware
     # We'll do that ourselves with 'make firmware_install'
@@ -1702,6 +1714,9 @@ fi
 %{expand:%%files %{?2}}\
 %defattr(-,root,root)\
 /%{image_install_path}/%{?-k:%{-k*}}%{!?-k:vmlinuz}-%{KVERREL}%{?2:.%{2}}\
+%if %{with_fips} \
+/%{image_install_path}/.vmlinuz-%{KVERREL}%{?2:.%{2}}.hmac \
+%endif \
 /boot/System.map-%{KVERREL}%{?2:.%{2}}\
 /boot/symvers-%{KVERREL}%{?2:.%{2}}.gz\
 /boot/config-%{KVERREL}%{?2:.%{2}}\
