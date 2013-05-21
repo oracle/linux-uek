@@ -427,7 +427,6 @@ err_dbg:
 }
 EXPORT_SYMBOL(mlx5_dev_init);
 
-
 void mlx5_dev_cleanup(struct mlx5_core_dev *dev)
 {
 	struct mlx5_priv *priv = &dev->priv;
