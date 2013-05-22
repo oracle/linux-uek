@@ -434,7 +434,7 @@ pr_info("fasttrap_tracepoint_disable(PID %d, PC %ld)\n", pid, pc);
 	mutex_unlock(&bucket->ftb_mtx);
 
 pr_info("fasttrap_tracepoint_disable: Disabling tracepoint for PID %d, PC %ld\n", pid, pc);
-	dtrace_tracepoint_disable(pid, pc, &tp->ftt_mtp);
+	dtrace_tracepoint_disable(pid, &tp->ftt_mtp);
 
 	/*
 	 * Remove the probe from the hash table of active tracepoints.
@@ -545,6 +545,7 @@ static int fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 			 * created so far for this probe.
 			 */
 			while (i >= 0) {
+pr_info("%s: Calling fasttrap_tracepoint_disable()...\n", __FUNCTION__);
 				fasttrap_tracepoint_disable(probe, i);
 				i--;
 			}
@@ -566,9 +567,9 @@ static int fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 #ifdef FIXME
 	mutex_enter(&p->p_lock);
 	sprunlock(p);
+#endif
 
 	probe->ftp_enabled = 1;
-#endif
 	return 0;
 }
 
@@ -587,9 +588,13 @@ pr_info("    Locked ftp_mtx...\n");
 	/*
 	 * Disable all the associated tracepoints (for fully enabled probes).
 	 */
+pr_info("%s: probe->ftp_enabled = %d\n", __FUNCTION__, probe->ftp_enabled);
 	if (probe->ftp_enabled) {
 		for (i = 0; i < probe->ftp_ntps; i++)
+{
+pr_info("%s: Calling fasttrap_tracepoint_disable()...\n", __FUNCTION__);
 			fasttrap_tracepoint_disable(probe, i);
+}
 	}
 
 	ASSERT(prov->ftp_rcount > 0);
@@ -1132,6 +1137,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 {
 pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_work = %d, fasttrap_cleanup_state = %d -> nothing to do\n", smp_processor_id(), fasttrap_cleanup_work, fasttrap_cleanup_state);
 		mutex_unlock(&fasttrap_cleanup_mtx);
+		in = 0;
 		return;
 }
 pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_work = %d\n", smp_processor_id(), fasttrap_cleanup_work);
