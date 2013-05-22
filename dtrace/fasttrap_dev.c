@@ -79,6 +79,11 @@ static void fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	fasttrap_id_t		*id;
 
 pr_info("fasttrap_pid_probe(PID %d, PC %lx)\n", tp->ftt_pid, tp->ftt_pc);
+	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0) {
+pr_info("    Ignored (no longer active)\n");
+		return;
+	}
+
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		fasttrap_probe_t	*ftp = id->fti_probe;
 
@@ -332,6 +337,7 @@ static void fasttrap_tracepoint_disable(fasttrap_probe_t *probe, uint_t index)
 	pid = probe->ftp_pid;
 	pc = probe->ftp_tps[index].fit_tp->ftt_pc;
 	id = &probe->ftp_tps[index].fit_id;
+pr_info("fasttrap_tracepoint_disable(PID %d, PC %ld)\n", pid, pc);
 
 	ASSERT(probe->ftp_tps[index].fit_tp->ftt_pid == pid);
 
@@ -427,6 +433,7 @@ static void fasttrap_tracepoint_disable(fasttrap_probe_t *probe, uint_t index)
 
 	mutex_unlock(&bucket->ftb_mtx);
 
+pr_info("fasttrap_tracepoint_disable: Disabling tracepoint for PID %d, PC %ld\n", pid, pc);
 	dtrace_tracepoint_disable(pid, pc, &tp->ftt_mtp);
 
 	/*
@@ -573,7 +580,9 @@ static void fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 
 	ASSERT(id == probe->ftp_id);
 
+pr_info("fasttrap_pid_disable(%s%d (%p))...\n", prov->ftp_name, prov->ftp_pid, prov);
 	mutex_lock(&prov->ftp_mtx);
+pr_info("    Locked ftp_mtx...\n");
 
 	/*
 	 * Disable all the associated tracepoints (for fully enabled probes).
@@ -588,6 +597,9 @@ static void fasttrap_pid_disable(void *arg, dtrace_id_t id, void *parg)
 
 	if ((prov->ftp_retired || prov->ftp_rcount == 0) && !prov->ftp_marked)
 		whack = prov->ftp_marked = 1;
+
+	mutex_unlock(&prov->ftp_mtx);
+pr_info("    Unlocked ftp_mtx...\n");
 
 	if (whack)
 		fasttrap_pid_cleanup();
@@ -1116,7 +1128,15 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 	in = 1;
 
 	mutex_lock(&fasttrap_cleanup_mtx);
+	if (!fasttrap_cleanup_work && fasttrap_cleanup_state == CLEANUP_NONE)
+{
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_work = %d, fasttrap_cleanup_state = %d -> nothing to do\n", smp_processor_id(), fasttrap_cleanup_work, fasttrap_cleanup_state);
+		mutex_unlock(&fasttrap_cleanup_mtx);
+		return;
+}
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_work = %d\n", smp_processor_id(), fasttrap_cleanup_work);
 	while (fasttrap_cleanup_work) {
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] -> fasttrap_cleanup_work = %d\n", smp_processor_id(), fasttrap_cleanup_work);
 		fasttrap_cleanup_work = 0;
 		mutex_unlock(&fasttrap_cleanup_mtx);
 
@@ -1134,12 +1154,16 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 			fpp = (fasttrap_provider_t **)&bucket->ftb_data;
 
 			while ((fp = *fpp) != NULL) {
+pr_info("    Checking provider %s%d (%p)", fp->ftp_name, fp->ftp_pid, fp);
 				if (!fp->ftp_marked) {
+pr_info("      Not marked, so ignoring it...\n");
 					fpp = &fp->ftp_next;
 					continue;
 				}
+pr_info("      Marked...\n");
 
 				mutex_lock(&fp->ftp_mtx);
+pr_info("      Locked ftp_mtx...\n");
 
 				/*
 				 * If this provider has consumers actively
@@ -1147,8 +1171,10 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 				 * provider (ftp_mcount), we can't unregister
 				 * or even condense.
 				 */
+pr_info("      ccount %lld, mcount %lld, rcount %lld, retired %d\n", fp->ftp_ccount, fp->ftp_mcount, fp->ftp_rcount, fp->ftp_retired);
 				if (fp->ftp_ccount != 0 ||
 				    fp->ftp_mcount != 0) {
+pr_info("      %s, so ignoring it...\n", fp->ftp_ccount != 0 ? "Consumers found" : fp->ftp_mcount ? "USDT consumers found" : "BUG");
 					mutex_unlock(&fp->ftp_mtx);
 					fp->ftp_marked = 0;
 					continue;
@@ -1158,6 +1184,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 					fp->ftp_marked = 0;
 
 				mutex_unlock(&fp->ftp_mtx);
+pr_info("      Unlocked ftp_mtx...\n");
 
 				/*
 				 * If we successfully unregister this
@@ -1171,16 +1198,25 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 				 * clean out the unenabled probes.
 				 */
 				provid = fp->ftp_provid;
-				if (dtrace_unregister(provid) != 0) {
+pr_info("      Calling dtrace_unregister() for %s%d (%p)\n", fp->ftp_name, fp->ftp_pid, fp);
+{
+int rc;
+				if ((rc = dtrace_unregister(provid)) != 0) {
+pr_info("       -> returns %d for %s%d\n", rc, fp->ftp_name, fp->ftp_pid);
 					if (atomic_read(&fasttrap_total) >
-					    fasttrap_max / 2)
+					    fasttrap_max / 2) {
+pr_info("      Calling dtrace_condense() for %s%d\n", fp->ftp_name, fp->ftp_pid);
 						dtrace_condense(provid);
+}
 					later += fp->ftp_marked;
+pr_info("      Increasing later to %d\n", later);
 					fpp = &fp->ftp_next;
 				} else {
 					*fpp = fp->ftp_next;
+pr_info("      Calling fasttrap_provider_free() for %s%d (%p)\n", fp->ftp_name, fp->ftp_pid, fp);
 					fasttrap_provider_free(fp);
 				}
+}
 			}
 
 			mutex_unlock(&bucket->ftb_mtx);
@@ -1189,6 +1225,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 		mutex_lock(&fasttrap_cleanup_mtx);
 	}
 
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_state = %d\n", smp_processor_id(), fasttrap_cleanup_state);
 	ASSERT(fasttrap_cleanup_state != CLEANUP_NONE);
 
 	/*
@@ -1201,17 +1238,24 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 	 * get a chance to do that work if and when the timeout is reenabled
 	 * (if detach fails).
 	 */
-	if (later > 0 && fasttrap_cleanup_state != CLEANUP_DEFERRED) {
-		struct delayed_work	*dw = container_of(work,
-							   struct delayed_work,
-							   work);
+	if (later > 0) {
+		if (fasttrap_cleanup_state == CLEANUP_DEFERRED)
+			fasttrap_cleanup_work = 1;
+		else {
+			struct delayed_work	*dw = container_of(
+							work,
+							struct delayed_work,
+							work);
 
-		fasttrap_cleanup_state = CLEANUP_SCHEDULED;
-		schedule_delayed_work(dw, HZ);
-	} else if (later > 0) {
-		fasttrap_cleanup_work = 1;
+			fasttrap_cleanup_state = CLEANUP_SCHEDULED;
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_state <- %d (%s:%d\n", smp_processor_id(), fasttrap_cleanup_state, __FILE__, __LINE__);
+			schedule_delayed_work(dw, HZ);
+		}
 	} else
+{
 		fasttrap_cleanup_state = CLEANUP_NONE;
+pr_info("fasttrap_pid_cleanup_cb: [CPU%02d] fasttrap_cleanup_state <- %d (%s:%d\n", smp_processor_id(), fasttrap_cleanup_state, __FILE__, __LINE__);
+}
 
 	mutex_unlock(&fasttrap_cleanup_mtx);
 	in = 0;
@@ -1228,6 +1272,7 @@ static void fasttrap_pid_cleanup(void)
         fasttrap_cleanup_work = 1;
         fasttrap_cleanup_state = CLEANUP_SCHEDULED;
 pr_info("FASTTRAP:     -> Scheduling delayed cleanup...\n");
+pr_info("fasttrap_pid_cleanup: [CPU%02d] fasttrap_cleanup_state <- %d (%s:%d\n", smp_processor_id(), fasttrap_cleanup_state, __FILE__, __LINE__);
 	schedule_delayed_work(&fasttrap_cleanup, 3);
         mutex_unlock(&fasttrap_cleanup_mtx);
 }
@@ -1427,6 +1472,7 @@ void fasttrap_dev_exit(void)
 
 		tmp = fasttrap_cleanup_state;
 		fasttrap_cleanup_state = CLEANUP_DEFERRED;
+pr_info("fasttrap_dev_exit: [CPU%02d] fasttrap_cleanup_state <- %d (%s:%d\n", smp_processor_id(), fasttrap_cleanup_state, __FILE__, __LINE__);
 
 		if (tmp != CLEANUP_NONE) {
 			mutex_unlock(&fasttrap_cleanup_mtx);
