@@ -84,6 +84,10 @@
 #define MLX4_EN_FILTER_HASH_SHIFT 4
 #define MLX4_EN_FILTER_EXPIRY_QUOTA 60
 
+#ifdef CONFIG_NET_LL_RX_POLL
+#define LL_EXTENDED_STATS
+#endif
+
 /* vlan valid range */
 #define VLAN_MIN_VALUE		1
 #define VLAN_MAX_VALUE		4094
@@ -289,6 +293,11 @@ struct mlx4_en_rx_ring {
 	void *rx_info;
 	unsigned long bytes;
 	unsigned long packets;
+#ifdef LL_EXTENDED_STATS
+	unsigned long yields;
+	unsigned long misses;
+	unsigned long cleaned;
+#endif
 	unsigned long csum_ok;
 	unsigned long csum_none;
 	int hwtstamp_rx_filter;
