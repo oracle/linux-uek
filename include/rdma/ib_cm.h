@@ -69,6 +69,13 @@ enum ib_cm_lap_state {
 	IB_CM_MRA_LAP_RCVD,
 };
 
+enum ib_cm_sap_state {
+	IB_CM_SAP_UNINIT,
+	IB_CM_SAP_IDLE,
+	IB_CM_SAP_SENT,
+	IB_CM_SAP_RCVD,
+};
+
 enum ib_cm_event_type {
 	IB_CM_REQ_ERROR,
 	IB_CM_REQ_RECEIVED,
@@ -87,7 +94,9 @@ enum ib_cm_event_type {
 	IB_CM_APR_RECEIVED,
 	IB_CM_SIDR_REQ_ERROR,
 	IB_CM_SIDR_REQ_RECEIVED,
-	IB_CM_SIDR_REP_RECEIVED
+	IB_CM_SIDR_REP_RECEIVED,
+	IB_CM_SAP_RECEIVED,
+	IB_CM_SPR_RECEIVED
 };
 
 enum ib_cm_data_size {
@@ -197,6 +206,10 @@ struct ib_cm_lap_event_param {
 	struct ib_sa_path_rec	*alternate_path;
 };
 
+struct ib_cm_sap_event_param {
+	struct ib_sa_path_rec	*alternate_path;
+};
+
 enum ib_cm_apr_status {
 	IB_CM_APR_SUCCESS,
 	IB_CM_APR_INVALID_COMM_ID,
@@ -214,9 +227,21 @@ enum ib_cm_apr_status {
 	IB_CM_APR_INVALID_SL
 };
 
+enum ib_cm_spr_status {
+	IB_CM_SPR_SUCCESS,
+	IB_CM_SPR_BUSY,
+	IB_CM_SPR_REJECT,
+};
+
 struct ib_cm_apr_event_param {
 	enum ib_cm_apr_status	ap_status;
 	void			*apr_info;
+	u8			info_len;
+};
+
+struct ib_cm_spr_event_param {
+	enum ib_cm_apr_status	ap_status;
+	void			*spr_info;
 	u8			info_len;
 };
 
@@ -252,7 +277,9 @@ struct ib_cm_event {
 		struct ib_cm_rej_event_param	rej_rcvd;
 		struct ib_cm_mra_event_param	mra_rcvd;
 		struct ib_cm_lap_event_param	lap_rcvd;
+		struct ib_cm_sap_event_param	sap_rcvd;
 		struct ib_cm_apr_event_param	apr_rcvd;
+		struct ib_cm_spr_event_param	spr_rcvd;
 		/* No data for DREQ/DREP received events. */
 		struct ib_cm_sidr_req_event_param sidr_req_rcvd;
 		struct ib_cm_sidr_rep_event_param sidr_rep_rcvd;
@@ -273,6 +300,9 @@ struct ib_cm_event {
 #define CM_SIDR_REP_ATTR_ID	cpu_to_be16(0x0018)
 #define CM_LAP_ATTR_ID		cpu_to_be16(0x0019)
 #define CM_APR_ATTR_ID		cpu_to_be16(0x001A)
+#define CM_SAP_ATTR_ID		cpu_to_be16(0x001B)
+#define CM_SPR_ATTR_ID		cpu_to_be16(0x001C)
+
 
 /**
  * ib_cm_handler - User-defined callback to process communication events.
@@ -301,9 +331,17 @@ struct ib_cm_id {
 	__be64			service_mask;
 	enum ib_cm_state	state;		/* internal CM/debug use */
 	enum ib_cm_lap_state	lap_state;	/* internal CM/debug use */
+	enum ib_cm_sap_state	sap_state;	/* internal CM/debug use */
 	__be32			local_id;
 	__be32			remote_id;
 	u32			remote_cm_qpn;  /* 1 unless redirected */
+
+	/*
+	 * used by the passive side to indicate whether the active peer
+	 * supports SAP
+	 */
+	u8 remote_sap_support;
+	int sap_support_disabled;
 };
 
 /**
@@ -505,6 +543,40 @@ int ib_send_cm_rej(struct ib_cm_id *cm_id,
  */
 int ib_send_cm_mra(struct ib_cm_id *cm_id,
 		   u8 service_timeout,
+		   const void *private_data,
+		   u8 private_data_len);
+
+/**
+ * ib_send_cm_sap - Sends a suggest alternate path request.
+ * @cm_id: Connection identifier associated with the suggest alternate path
+ *   message.
+ * @alternate_path: A path record that identifies the suggested path.
+ *
+ * @private_data: Optional user-defined private data sent with the
+ *   suggest alternate path message.
+ * @private_data_len: Size of the private data buffer, in bytes.
+ */
+int ib_send_cm_sap(struct ib_cm_id *cm_id,
+		   struct ib_sa_path_rec *alternate_path,
+		   const void *private_data,
+		   u8 private_data_len);
+
+/**
+ * ib_send_cm_spr - Sends an suggest path response message in response to
+ *   a suggest alternate path request.
+ * @cm_id: Connection identifier associated with the suggest path response.
+ * @status: Reply status sent with the suggest path response.
+ * @info: Optional additional information sent with the suggest path
+ *   response.
+ * @info_length: Size of the additional information, in bytes.
+ * @private_data: Optional user-defined private data sent with the
+ *   suggest path response message.
+ * @private_data_len: Size of the private data buffer, in bytes.
+ */
+int ib_send_cm_spr(struct ib_cm_id *cm_id,
+		   enum ib_cm_spr_status status,
+		   void *info,
+		   u8 info_length,
 		   const void *private_data,
 		   u8 private_data_len);
 

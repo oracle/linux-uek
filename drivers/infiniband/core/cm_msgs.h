@@ -100,7 +100,7 @@ struct cm_req_msg {
 	u8 alt_hop_limit;
 	/* SL:4, subnet local:1, rsvd:3 */
 	u8 alt_offset138;
-	/* local ACK timeout:5, rsvd:3 */
+	/* local ACK timeout:5, SAP support:1, rsvd:2 */
 	u8 alt_offset139;
 
 	u8 private_data[IB_CM_REQ_PRIVATE_DATA_SIZE];
@@ -411,6 +411,17 @@ static inline void cm_req_set_alt_local_ack_timeout(struct cm_req_msg *req_msg,
 				       (local_ack_timeout << 3));
 }
 
+static inline void cm_req_set_sap_support(struct cm_req_msg *req_msg, u8 supported)
+{
+	req_msg->alt_offset139 = (u8) ((req_msg->alt_offset139 & 0xfb) |
+				       (!!supported << 2));
+}
+
+static inline u8 cm_req_get_sap_support(struct cm_req_msg *req_msg)
+{
+	return (u8) ((req_msg->alt_offset139 >> 2 & 1));
+}
+
 /* Message REJected or MRAed */
 enum cm_msg_response {
 	CM_MSG_RESPONSE_REQ = 0x0,
@@ -684,6 +695,24 @@ struct cm_lap_msg {
 	u8 private_data[IB_CM_LAP_PRIVATE_DATA_SIZE];
 } __attribute__  ((packed));
 
+struct cm_sap_msg {
+	struct ib_mad_hdr hdr;
+
+	__be32 local_comm_id;
+	__be32 remote_comm_id;
+
+	__be32 rsvd8;
+	/* remote QPN/EECN:24, rsvd:8 */
+	__be32 offset12;
+	__be32 rsvd16;
+
+	__be16 alt_local_lid;
+	__be16 rsvd22;
+	union ib_gid alt_local_gid;
+	__be32 rsvd6[6];
+	u8 private_data[IB_CM_LAP_PRIVATE_DATA_SIZE];
+} __attribute__  ((packed));
+
 static inline __be32 cm_lap_get_remote_qpn(struct cm_lap_msg *lap_msg)
 {
 	return cpu_to_be32(be32_to_cpu(lap_msg->offset12) >> 8);
@@ -779,7 +808,32 @@ static inline void cm_lap_set_local_ack_timeout(struct cm_lap_msg *lap_msg,
 			    (lap_msg->offset63 & 0x07);
 }
 
+static inline void cm_sap_set_remote_qpn(struct cm_sap_msg *sap_msg, __be32 qpn)
+{
+	sap_msg->offset12 = cpu_to_be32((be32_to_cpu(qpn) << 8) |
+					(be32_to_cpu(sap_msg->offset12) & 0x000000FF));
+}
+
+static inline __be32 cm_sap_get_remote_qpn(struct cm_sap_msg *sap_msg)
+{
+	return cpu_to_be32(be32_to_cpu(sap_msg->offset12) >> 8);
+}
+
 struct cm_apr_msg {
+	struct ib_mad_hdr hdr;
+
+	__be32 local_comm_id;
+	__be32 remote_comm_id;
+
+	u8 info_length;
+	u8 ap_status;
+	__be16 rsvd;
+	u8 info[IB_CM_APR_INFO_LENGTH];
+
+	u8 private_data[IB_CM_APR_PRIVATE_DATA_SIZE];
+} __attribute__ ((packed));
+
+struct cm_spr_msg {
 	struct ib_mad_hdr hdr;
 
 	__be32 local_comm_id;

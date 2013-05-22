@@ -345,6 +345,7 @@ static ssize_t ucma_get_event(struct ucma_file *file, const char __user *inbuf,
 		ctx->cm_id = uevent->cm_id;
 		ctx->cm_id->context = ctx;
 		uevent->resp.id = ctx->id;
+		ctx->cm_id->ucontext = ctx;
 	}
 
 	if (copy_to_user((void __user *)(unsigned long)cmd.response,
@@ -412,6 +413,7 @@ static ssize_t ucma_create_id(struct ucma_file *file, const char __user *inbuf,
 		ret = PTR_ERR(ctx->cm_id);
 		goto err1;
 	}
+	ctx->cm_id->ucontext = ctx;
 
 	resp.id = ctx->id;
 	if (copy_to_user((void __user *)(unsigned long)cmd.response,
@@ -962,6 +964,16 @@ static int ucma_set_option_ib(struct ucma_context *ctx, int optname,
 	case RDMA_OPTION_IB_PATH:
 		ret = ucma_set_ib_path(ctx, optval, optlen);
 		break;
+
+	case RDMA_OPTION_IB_APM:
+		if (optlen != sizeof(u8)) {
+			ret = -EINVAL;
+			break;
+		}
+		if (*(u8 *)optval)
+			ret = rdma_enable_apm(ctx->cm_id, RDMA_ALT_PATH_BEST);
+		break;
+
 	default:
 		ret = -ENOSYS;
 	}
