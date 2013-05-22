@@ -162,9 +162,13 @@ int mlx4_en_activate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq,
 	if (cq->is_tx)
 		netif_napi_add(cq->dev, &cq->napi,
 			       mlx4_en_poll_tx_cq, MLX4_EN_TX_BUDGET);
-	else
+	else {
 		netif_napi_add(cq->dev, &cq->napi,
 			       mlx4_en_poll_rx_cq, MLX4_EN_RX_BUDGET);
+#ifdef CONFIG_NET_LL_RX_POLL
+		napi_hash_add(&cq->napi);
+#endif
+	}
 	napi_enable(&cq->napi);
 
 	return 0;
@@ -186,6 +190,9 @@ void mlx4_en_destroy_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq **pcq)
 void mlx4_en_deactivate_cq(struct mlx4_en_priv *priv, struct mlx4_en_cq *cq)
 {
 	napi_disable(&cq->napi);
+#ifdef CONFIG_NET_LL_RX_POLL
+	napi_hash_del(&cq->napi);
+#endif
 	netif_napi_del(&cq->napi);
 
 	mlx4_cq_free(priv->mdev->dev, &cq->mcq);

@@ -40,6 +40,9 @@
 #include <linux/vmalloc.h>
 #include <linux/prefetch.h>
 #include <linux/mlx4/driver.h>
+#ifdef CONFIG_NET_LL_RX_POLL
+#include <net/ll_poll.h>
+#endif
 
 #include "mlx4_en.h"
 
@@ -524,8 +527,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 					       timestamp);
 		}
 
+#ifdef CONFIG_NET_LL_RX_POLL
+		skb_mark_ll(skb, &cq->napi);
+#endif
+
 		/* Push it up the stack */
-		napi_gro_receive(&cq->napi, skb);
+		if (mlx4_en_cq_ll_polling(cq))
+			netif_receive_skb(skb);
+		else
+			napi_gro_receive(&cq->napi, skb);
 
 next:
 		++cons_index;
@@ -569,7 +579,12 @@ int mlx4_en_poll_rx_cq(struct napi_struct *napi, int budget)
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	int done;
 
+	if (!mlx4_en_cq_lock_napi(cq))
+		return budget;
+
 	done = mlx4_en_process_rx_cq(dev, cq, budget);
+
+	mlx4_en_cq_unlock_napi(cq);
 
 	/* If we used up all the quota - we're probably not done yet... */
 	cq->tot_rx += done;

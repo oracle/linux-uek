@@ -38,6 +38,9 @@
 #include <linux/slab.h>
 #include <linux/hash.h>
 #include <net/ip.h>
+#ifdef CONFIG_NET_LL_RX_POLL
+#include <net/ll_poll.h>
+#endif
 
 #include <linux/mlx4/driver.h>
 #include <linux/mlx4/device.h>
@@ -66,6 +69,36 @@ int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 
 	return 0;
 }
+
+#ifdef CONFIG_NET_LL_RX_POLL
+/* must be called with local_bh_disable()d */
+static int mlx4_en_low_latency_recv(struct napi_struct *napi)
+{
+	struct mlx4_en_cq *cq = container_of(napi, struct mlx4_en_cq, napi);
+	struct net_device *dev = cq->dev;
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_rx_ring *rx_ring = priv->rx_ring[cq->ring];
+	int done;
+
+	if (!priv->port_up)
+		return LL_FLUSH_FAILED;
+
+	if (!mlx4_en_cq_lock_poll(cq))
+		return LL_FLUSH_BUSY;
+
+	done = mlx4_en_process_rx_cq(dev, cq, 4);
+#ifdef LL_EXTENDED_STATS
+	if (done)
+		rx_ring->cleaned += done;
+	else
+		rx_ring->misses++;
+#endif
+
+	mlx4_en_cq_unlock_poll(cq);
+
+	return done;
+}
+#endif	/* CONFIG_NET_LL_RX_POLL */
 
 #ifdef CONFIG_RFS_ACCEL
 
@@ -1414,6 +1447,8 @@ int mlx4_en_start_port(struct net_device *dev)
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		cq = priv->rx_cq[i];
 
+		mlx4_en_cq_init_lock(cq);
+
 		err = mlx4_en_activate_cq(priv, cq, i);
 		if (err) {
 			en_err(priv, "Failed activating Rx CQ\n");
@@ -1682,10 +1717,19 @@ void mlx4_en_stop_port(struct net_device *dev)
 
 	/* Free RX Rings */
 	for (i = 0; i < priv->rx_ring_num; i++) {
-		while (test_bit(NAPI_STATE_SCHED, &priv->rx_cq[i]->napi.state))
+		struct mlx4_en_cq *cq = priv->rx_cq[i];
+
+		local_bh_disable();
+		while (!mlx4_en_cq_lock_napi(cq)) {
+			pr_info("CQ %d locked\n", i);
+			mdelay(1);
+		}
+		local_bh_enable();
+
+		while (test_bit(NAPI_STATE_SCHED, &cq->napi.state))
 			msleep(1);
 		mlx4_en_deactivate_rx_ring(priv, priv->rx_ring[i]);
-		mlx4_en_deactivate_cq(priv, priv->rx_cq[i]);
+		mlx4_en_deactivate_cq(priv, cq);
 	}
 }
 
@@ -2189,6 +2233,9 @@ static const struct net_device_ops mlx4_netdev_ops = {
 	.ndo_setup_tc		= mlx4_en_setup_tc,
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= mlx4_en_filter_rfs,
+#endif
+#ifdef CONFIG_NET_LL_RX_POLL
+	.ndo_ll_poll		= mlx4_en_low_latency_recv,
 #endif
 	.ndo_fdb_add		= mlx4_en_fdb_add,
 	.ndo_fdb_del		= mlx4_en_fdb_del,
