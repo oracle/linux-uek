@@ -978,12 +978,15 @@ void dtrace_task_cleanup(struct task_struct *tsk)
 
 static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
 {
+	fasttrap_machtp_t	*mtp = container_of(self, fasttrap_machtp_t,
+						    fmtp_cns);
+
 	pr_info("USDT-HANDLER: Called for PC %lx\n", GET_IP(regs));
 	read_lock(&this_cpu_core->cpu_ft_lock);
 	if (dtrace_tracepoint_hit == NULL)
 		pr_warn("Fasttrap probes, but no handler\n");
 	else
-		(*dtrace_tracepoint_hit)(self, regs);
+		(*dtrace_tracepoint_hit)(mtp, regs);
 	read_unlock(&this_cpu_core->cpu_ft_lock);
 
 	return 0;
@@ -998,6 +1001,9 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
 	loff_t			off;
 	int			rc = 0;
 
+	mtp->fmtp_ino = NULL;
+	mtp->fmtp_off = 0;
+
 	p = find_task_by_vpid(pid);
 	if (!p) {
 		pr_warn("PID %d not found\n", pid);
@@ -1016,59 +1022,53 @@ pr_info("DEBUG: PID %d: vma 0x%p, mapping 0x%p, inode 0x%p, offset 0x%llx\n", pi
 
 	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
 pr_info("DEBUG: Registering uprobe...\n");
-		mtp->handler = handler;
-		rc = uprobe_register(ino, off, mtp);
+		mtp->fmtp_cns.handler = handler;
+
+		rc = uprobe_register(ino, off, &mtp->fmtp_cns);
 
 		/*
 		 * If successful, increment the count of the number of
 		 * tracepoints active in the victim process.
 		 */
-		if (rc == 0)
+		if (rc == 0) {
+			mtp->fmtp_ino = ino;
+			mtp->fmtp_off = off;
+
 			p->dtrace_tp_count++;
+		}
 	}
 
 	return rc;
 }
 EXPORT_SYMBOL(dtrace_tracepoint_enable);
 
-int dtrace_tracepoint_disable(pid_t pid, uintptr_t addr,
-			      fasttrap_machtp_t *mtp)
+int dtrace_tracepoint_disable(pid_t pid, fasttrap_machtp_t *mtp)
 {
 	struct task_struct	*p;
-	struct inode		*ino;
-	struct vm_area_struct	*vma;
-	loff_t			off;
 
-	if (!mtp || !mtp->handler) {
+	if (!mtp || !mtp->fmtp_ino) {
+		pr_warn("DTRACE: Tracepoint was never enabled\n");
+		return -ENOENT;
+	}
+
+	if (!mtp->fmtp_cns.handler) {
 		pr_warn("DTRACE: No handler for tracepoint\n");
 		return -ENOENT;
 	}
 
+pr_info("DEBUG: Unregistering uprobe...\n");
+	uprobe_unregister(mtp->fmtp_ino, mtp->fmtp_off, &mtp->fmtp_cns);
+
+	mtp->fmtp_ino = NULL;
+	mtp->fmtp_off = 0;
+
+	/*
+	 * Decrement the count of the number of tracepoints active in
+	 * the victim process (if it still exists).
+	 */
 	p = find_task_by_vpid(pid);
-	if (!p) {
-		pr_warn("PID %d not found\n", pid);
-		return -ESRCH;
-	}
-
-	vma = p->mm->mmap;
-	if (vma->vm_file == NULL) {
-		pr_warn("DTRACE: vma->vm_file is NULL\n");
-		return -ESRCH;
-	}
-
-	ino = vma->vm_file->f_mapping->host;
-	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
-pr_info("DEBUG: PID %d: vma 0x%p, mapping 0x%p, inode 0x%p, offset 0x%llx\n", pid, vma, vma->vm_file->f_mapping, ino, off);
-
-	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
-pr_info("DEBUG: Registering uprobe...\n");
-		uprobe_unregister(ino, off, mtp);
-		/*
-		 * Decrement the count of the number of tracepoints active in
-		 * the victim process.
-		 */
+	if (p)
 		p->dtrace_tp_count--;
-	}
 
 	return 0;
 }
