@@ -1608,6 +1608,13 @@ static int btrfs_unfreeze(struct super_block *sb)
 	return 0;
 }
 
+static void btrfs_fs_dirty_inode(struct inode *inode, int flags)
+{
+	int ret;
+
+	ret = btrfs_dirty_inode(inode);
+}
+
 static const struct super_operations btrfs_super_ops = {
 	.drop_inode	= btrfs_drop_inode,
 	.evict_inode	= btrfs_evict_inode,
@@ -1615,6 +1622,7 @@ static const struct super_operations btrfs_super_ops = {
 	.sync_fs	= btrfs_sync_fs,
 	.show_options	= btrfs_show_options,
 	.write_inode	= btrfs_write_inode,
+	.dirty_inode	= btrfs_fs_dirty_inode,
 	.alloc_inode	= btrfs_alloc_inode,
 	.destroy_inode	= btrfs_destroy_inode,
 	.statfs		= btrfs_statfs,
