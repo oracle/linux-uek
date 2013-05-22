@@ -7,6 +7,7 @@ typedef uint32_t dtrace_id_t;
 
 #ifndef HEADERS_CHECK
 
+#include <linux/uprobes.h>
 #include <asm/asm-offsets.h>
 
 #define DTRACE_IDNONE 0
@@ -79,14 +80,18 @@ extern void unregister_pid_provider(pid_t);
 extern void dtrace_task_init(struct task_struct *tsk);
 extern void dtrace_task_cleanup(struct task_struct *tsk);
 
-typedef struct uprobe_consumer	fasttrap_machtp_t;
+typedef struct fasttrap_machtp {
+	struct inode		*fmtp_ino;
+	loff_t			fmtp_off;
+	struct uprobe_consumer	fmtp_cns;
+} fasttrap_machtp_t;
 
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 extern void (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 
 extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);
-extern int dtrace_tracepoint_disable(pid_t, uintptr_t, fasttrap_machtp_t *);
+extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
 
 #endif
 
