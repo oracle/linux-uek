@@ -73,12 +73,25 @@ static struct proc_dir_entry *mlx4_ib_driver_dir_entry;
 module_param_named(sm_guid_assign, mlx4_ib_sm_guid_assign, int, 0444);
 MODULE_PARM_DESC(sm_guid_assign, "Enable SM alias_GUID assignment if sm_guid_assign > 0 (Default: 1)");
 
-static char dev_assign_str[512];
-module_param_string(dev_assign_str, dev_assign_str, sizeof(dev_assign_str), 0644);
-MODULE_PARM_DESC(dev_assign_str, "Map all device function numbers to "
-		 "IB device numbers following the  pattern: "
-		 "bb:dd.f-0,bb:dd.f-1,... (all numbers are hexadecimals)."
-		 " Max supported devices - 32");
+enum {
+	MAX_NUM_STR_BITMAP = 1 << 15,
+	DEFAULT_TBL_VAL = -1
+};
+
+static struct mlx4_dbdf2val_lst dev_assign_str = {
+	.name		= "dev_assign_str param",
+	.num_vals	= 1,
+	.def_val	= {DEFAULT_TBL_VAL},
+	.range		= {0, MAX_NUM_STR_BITMAP - 1}
+};
+module_param_string(dev_assign_str, dev_assign_str.str,
+		    sizeof(dev_assign_str.str), 0444);
+MODULE_PARM_DESC(dev_assign_str,
+		 "Map device function numbers to IB device numbers (e.g. '0000:04:00.0-0,002b:1c:0b.a-1,...').\n"
+		 "\t\tHexadecimal digits for the device function (e.g. 002b:1c:0b.a) and decimal for IB device numbers (e.g. 1).\n"
+		 "\t\tMax supported devices - 32");
+
+
 static unsigned long *dev_num_str_bitmap;
 static spinlock_t dev_num_str_lock;
 
@@ -100,9 +113,6 @@ struct dev_rec {
 	int	nr;
 };
 
-#define MAX_DR 32
-#define MAX_NUM_STR_BITMAP (1 << 15)
-static struct dev_rec dr[MAX_DR];
 static int dr_active;
 
 static void do_slave_init(struct mlx4_ib_dev *ibdev, int slave, int do_init);
@@ -1845,19 +1855,11 @@ error:
 
 static void init_dev_assign(void)
 {
-	int bus, slot, fn, ib_idx;
-	char *p = dev_assign_str, *t;
-	char curr_val[32] = {0};
-	int ret;
-	int j, i = 0;
+	int i = 1;
 
 	spin_lock_init(&dev_num_str_lock);
-
-	memset(dr, 0, sizeof dr);
-
-	if (dev_assign_str[0] == 0)
+	if (mlx4_fill_dbdf2val_tbl(&dev_assign_str))
 		return;
-
 	dev_num_str_bitmap =
 		kmalloc(BITS_TO_LONGS(MAX_NUM_STR_BITMAP) * sizeof(long),
 			GFP_KERNEL);
@@ -1865,44 +1867,18 @@ static void init_dev_assign(void)
 		pr_warn("bitmap alloc failed -- cannot apply dev_assign_str parameter\n");
 		return;
 	}
-
 	bitmap_zero(dev_num_str_bitmap, MAX_NUM_STR_BITMAP);
-
-	while (strlen(p)) {
-		ret = sscanf(p, "%02x:%02x.%x-%x", &bus, &slot, &fn, &ib_idx);
-		if (ret != 4 || ib_idx < 0)
+	while ((i < MLX4_DEVS_TBL_SIZE) && (dev_assign_str.tbl[i].dbdf !=
+	       MLX4_ENDOF_TBL)) {
+		if (bitmap_allocate_region(dev_num_str_bitmap,
+					   dev_assign_str.tbl[i].val[0], 0))
 			goto err;
-
-		for (j = 0; j < i; j++)
-			if (dr[j].nr == ib_idx)
-				goto err;
-
-		dr[i].bus = bus;
-		dr[i].dev = slot;
-		dr[i].func = fn;
-		dr[i].nr = ib_idx;
-		if (bitmap_allocate_region(dev_num_str_bitmap, ib_idx, 0))
-			goto err;
-
-		t = strchr(p, ',');
-		sprintf(curr_val, "%02x:%02x.%x-%x", bus, slot, fn, ib_idx);
-		if ((!t) && strlen(p) == strlen(curr_val))
-			break;
-
-		if (!t || (t + 1) >= dev_assign_str + sizeof dev_assign_str)
-			goto err;
-
-		++i;
-		if (i >= MAX_DR)
-			goto err;
-
-		p = t + 1;
+		i++;
 	}
 	dr_active = 1;
 	return;
 
 err:
-	memset(dr, 0, sizeof dr);
 	kfree(dev_num_str_bitmap);
 	dev_num_str_bitmap = NULL;
 	printk(KERN_WARNING "mlx4_ib: The value of 'dev_assign_str' parameter "
@@ -1911,29 +1887,18 @@ err:
 
 static int mlx4_ib_dev_idx(struct mlx4_dev *dev)
 {
-	int bus, slot, fn;
-	int i;
+	int i, val;
 
 	if (!dr_active)
 		return -1;
 	if (!dev)
 		return -1;
-	else if (!dev->pdev)
-		return -1;
-	else if (!dev->pdev->bus)
+	if (mlx4_get_val(dev_assign_str.tbl, dev->pdev, 0, &val))
 		return -1;
 
-	bus	= dev->pdev->bus->number;
-	slot	= PCI_SLOT(dev->pdev->devfn);
-	fn	= PCI_FUNC(dev->pdev->devfn);
-
-	for (i = 0; i < MAX_DR; ++i) {
-		if (dr[i].bus == bus &&
-		    dr[i].dev == slot &&
-		    dr[i].func == fn) {
-			dev->flags |= MLX4_FLAG_DEV_NUM_STR;
-			return dr[i].nr;
-		}
+	if (val != DEFAULT_TBL_VAL) {
+		dev->flags |= MLX4_FLAG_DEV_NUM_STR;
+		return val;
 	}
 
 	spin_lock(&dev_num_str_lock);
