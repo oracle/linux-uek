@@ -951,7 +951,7 @@ void (*dtrace_helpers_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_helpers_cleanup);
 void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_fasttrap_probes_cleanup);
-void (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
 void dtrace_task_init(struct task_struct *tsk)
@@ -980,16 +980,17 @@ static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
 {
 	fasttrap_machtp_t	*mtp = container_of(self, fasttrap_machtp_t,
 						    fmtp_cns);
+	int			rc = 0;
 
 	pr_info("USDT-HANDLER: Called for PC %lx\n", GET_IP(regs));
 	read_lock(&this_cpu_core->cpu_ft_lock);
 	if (dtrace_tracepoint_hit == NULL)
 		pr_warn("Fasttrap probes, but no handler\n");
 	else
-		(*dtrace_tracepoint_hit)(mtp, regs);
+		rc = (*dtrace_tracepoint_hit)(mtp, regs);
 	read_unlock(&this_cpu_core->cpu_ft_lock);
 
-	return 0;
+	return rc;
 }
 
 int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,

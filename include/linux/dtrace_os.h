@@ -88,7 +88,7 @@ typedef struct fasttrap_machtp {
 
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
-extern void (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
+extern int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 
 extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);
 extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
