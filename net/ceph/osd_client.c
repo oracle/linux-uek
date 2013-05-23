@@ -1185,6 +1185,7 @@ static void __register_linger_request(struct ceph_osd_client *osdc,
 				    struct ceph_osd_request *req)
 {
 	dout("__register_linger_request %p\n", req);
+	ceph_osdc_get_request(req);
 	list_add_tail(&req->r_linger_item, &osdc->req_linger);
 	if (req->r_osd)
 		list_add_tail(&req->r_linger_osd,
@@ -1207,6 +1208,7 @@ static void __unregister_linger_request(struct ceph_osd_client *osdc,
 		if (list_empty(&req->r_osd_item))
 			req->r_osd = NULL;
 	}
+	ceph_osdc_put_request(req);
 }
 
 void ceph_osdc_unregister_linger_request(struct ceph_osd_client *osdc,
@@ -1214,9 +1216,8 @@ void ceph_osdc_unregister_linger_request(struct ceph_osd_client *osdc,
 {
 	mutex_lock(&osdc->request_mutex);
 	if (req->r_linger) {
-		__unregister_linger_request(osdc, req);
 		req->r_linger = 0;
-		ceph_osdc_put_request(req);
+		__unregister_linger_request(osdc, req);
 	}
 	mutex_unlock(&osdc->request_mutex);
 }
@@ -1228,11 +1229,6 @@ void ceph_osdc_set_request_linger(struct ceph_osd_client *osdc,
 	if (!req->r_linger) {
 		dout("set_request_linger %p\n", req);
 		req->r_linger = 1;
-		/*
-		 * caller is now responsible for calling
-		 * unregister_linger_request
-		 */
-		ceph_osdc_get_request(req);
 	}
 }
 EXPORT_SYMBOL(ceph_osdc_set_request_linger);
@@ -1648,8 +1644,10 @@ static void kick_requests(struct ceph_osd_client *osdc, bool force_resend,
 			dout("%p tid %llu restart on osd%d\n",
 			     req, req->r_tid,
 			     req->r_osd ? req->r_osd->o_osd : -1);
+			ceph_osdc_get_request(req);
 			__unregister_request(osdc, req);
 			__register_linger_request(osdc, req);
+			ceph_osdc_put_request(req);
 			continue;
 		}
 
