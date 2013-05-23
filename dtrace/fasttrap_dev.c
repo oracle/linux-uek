@@ -73,24 +73,49 @@ static volatile uint64_t	fasttrap_mod_gen;
 
 static void fasttrap_pid_cleanup(void);
 
-static void fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
+static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	fasttrap_tracepoint_t	*tp = container_of(mtp, fasttrap_tracepoint_t,
 						   ftt_mtp);
 	fasttrap_id_t		*id;
+	int			is_enabled = 0;
 
+pr_info("fasttrap_pid_probe(PID %d, PC %lx) regs(ip %lx, ax %lx)\n", tp->ftt_pid, tp->ftt_pc, regs->ip, regs->ax);
 pr_info("fasttrap_pid_probe(PID %d, PC %lx)\n", tp->ftt_pid, tp->ftt_pc);
 	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0) {
 pr_info("    Ignored (no longer active)\n");
-		return;
+		return 0;
 	}
 
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		fasttrap_probe_t	*ftp = id->fti_probe;
 
+		if (id->fti_ptype == DTFTP_IS_ENABLED) {
+pr_info("    Probe ID %d for PID %d (is-enabled)\n", ftp->ftp_id, ftp->ftp_pid);
+			is_enabled = 1;
+		} else if (ftp->ftp_argmap == NULL) {
 pr_info("    Probe ID %d for PID %d\n", ftp->ftp_id, ftp->ftp_pid);
-		dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
-			     regs->cx, regs->r8);
+			dtrace_probe(ftp->ftp_id, regs->di, regs->si, regs->dx,
+				     regs->cx, regs->r8);
+		} else {
+			uintptr_t	t[5];
+
+#ifdef FIXME
+			fasttrap_usdt_args64(probe, regs,
+					     sizeof(t) / sizeof(t[0]), t);
+#endif
+pr_info("    Probe ID %d for PID %d (arg-mapped)\n", ftp->ftp_id, ftp->ftp_pid);
+			dtrace_probe(ftp->ftp_id, t[0], t[1], t[2], t[3],
+				     t[4]);
+		}
 	}
+
+	if (is_enabled)
+{
+pr_info("    Setting EAX to 1 due to is-enabled probe\n");
+		regs->ax = 1;
+}
+
+	return 0;
 }
 
 static void fasttrap_pid_provide(void *arg, const dtrace_probedesc_t *desc)
@@ -183,6 +208,7 @@ static int fasttrap_tracepoint_enable(fasttrap_probe_t *probe, uint_t index)
 	pid = probe->ftp_pid;
 	pc = probe->ftp_tps[index].fit_tp->ftt_pc;
 	id = &probe->ftp_tps[index].fit_id;
+pr_info("fasttrap_tracepoint_enable(ID %d, index %d) -> (pid %d, pc %lx)\n", probe->ftp_id, index, pid, pc);
 
 	ASSERT(probe->ftp_tps[index].fit_tp->ftt_pid == pid);
 
@@ -529,6 +555,7 @@ static int fasttrap_pid_enable(void *arg, dtrace_id_t id, void *parg)
 	 * tracepoint's list of active probes.
 	 */
 	for (i = 0; i < probe->ftp_ntps; i++) {
+pr_info("fasttrap_pid_enable() -> Calling fasttrap_tracepoint_enable(ID %d, i %d)\n", probe->ftp_id, i);
 		if ((rc = fasttrap_tracepoint_enable(probe, i)) != 0) {
 			/*
 			 * If enabling the tracepoint failed completely,
@@ -772,6 +799,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_offs[i];
 		tp->ftt_pid = provider->ftp_pid;
+pr_info("%s: Creating tp %d (pid %d, pc %lx) [regular]\n", __FUNCTION__, i, tp->ftt_pid, tp->ftt_pc);
 
 		pp->ftp_tps[i].fit_tp = tp;
 		pp->ftp_tps[i].fit_id.fti_probe = pp;
@@ -791,6 +819,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_enoffs[j];
 		tp->ftt_pid = provider->ftp_pid;
+pr_info("%s: Creating tp %d (pid %d, pc %lx) [is-enabled]\n", __FUNCTION__, i, tp->ftt_pid, tp->ftt_pc);
 
 		pp->ftp_tps[i].fit_tp = tp;
 		pp->ftp_tps[i].fit_id.fti_probe = pp;

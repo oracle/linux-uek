@@ -1651,7 +1651,7 @@ static void dtrace_helper_provide_one(dof_helper_t *dhp, dof_sec_t *sec,
 	if (dof->dofh_ident[DOF_ID_VERSION] != DOF_VERSION_1 &&
 	    prov->dofpv_prenoffs != DOF_SECT_NONE) {
 		enoff_sec = (dof_sec_t *)(uintptr_t)(daddr + dof->dofh_secoff +
-						     prov->dofpv_proffs *
+						     prov->dofpv_prenoffs *
 							dof->dofh_secsize);
 		enoff = (uint32_t *)(uintptr_t)(daddr +
 						enoff_sec->dofs_offset);
