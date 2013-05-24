@@ -1670,7 +1670,7 @@ bail:
 	brelse(old_dir_bh);
 	brelse(new_dir_bh);
 
-	if (status)
+	if (status && (status != -ENOTEMPTY))
 		mlog_errno(status);
 
 	return status;
