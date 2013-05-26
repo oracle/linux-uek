@@ -203,6 +203,10 @@ struct mlx4_cmd_info {
 		       struct mlx4_cmd_info *cmd);
 };
 
+enum {
+	MLX4_DEBUG_MASK_CMD_TIME = 0x100,
+};
+
 #ifdef CONFIG_MLX4_DEBUG
 extern int mlx4_debug_level;
 #else /* CONFIG_MLX4_DEBUG */

@@ -448,9 +448,9 @@ static int get_status(struct mlx4_dev *dev, u32 *status, int *go_bit,
 	return 0;
 }
 
-static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
-			 u32 in_modifier, u8 op_modifier, u16 op, u16 token,
-			 int event)
+static int mlx4_cmd_post(struct mlx4_dev *dev, struct timespec *ts1,
+			 u64 in_param, u64 out_param, u32 in_modifier,
+			 u8 op_modifier, u16 op, u16 token, int event)
 {
 	struct mlx4_cmd *cmd = &mlx4_priv(dev)->cmd;
 	u32 __iomem *hcr = cmd->hcr;
@@ -503,6 +503,9 @@ static int mlx4_cmd_post(struct mlx4_dev *dev, u64 in_param, u64 out_param,
 	__raw_writel((__force u32) cpu_to_be32(out_param >> 32),	  hcr + 3);
 	__raw_writel((__force u32) cpu_to_be32(out_param & 0xfffffffful), hcr + 4);
 	__raw_writel((__force u32) cpu_to_be32(token << 16),		  hcr + 5);
+
+	if (ts1)
+		ktime_get_ts(ts1);
 
 	/* __raw_writel may not order writes. */
 	wmb();
@@ -617,7 +620,7 @@ static int mlx4_cmd_poll(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 		goto out;
 	}
 
-	err = mlx4_cmd_post(dev, in_param, out_param ? *out_param : 0,
+	err = mlx4_cmd_post(dev, NULL, in_param, out_param ? *out_param : 0,
 			    in_modifier, op_modifier, op, CMD_POLL_TOKEN, 0);
 	if (err)
 		goto out;
@@ -687,6 +690,9 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 	int err = 0;
 	int go_bit = 0, t_bit = 0, stat_err;
 	u32 status = 0;
+	struct timespec	ts1, ts2;
+	ktime_t t1, t2, delta;
+	s64 ds;
 
 	if (out_is_imm && !out_param)
 		return -EINVAL;
@@ -702,7 +708,7 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 
 	init_completion(&context->done);
 
-	err = mlx4_cmd_post(dev, in_param, out_param ? *out_param : 0,
+	err = mlx4_cmd_post(dev, &ts1, in_param, out_param ? *out_param : 0,
 			    in_modifier, op_modifier, op, context->token, 1);
 	if (err)
 		goto out;
@@ -718,6 +724,14 @@ static int mlx4_cmd_wait(struct mlx4_dev *dev, u64 in_param, u64 *out_param,
 			  mlx4_priv(dev)->cmd.toggle);
 		err = -EBUSY;
 		goto out;
+	}
+	if (mlx4_debug_level & MLX4_DEBUG_MASK_CMD_TIME) {
+		ktime_get_ts(&ts2);
+		t1 = timespec_to_ktime(ts1);
+		t2 = timespec_to_ktime(ts2);
+		delta = ktime_sub(t2, t1);
+		ds = ktime_to_ns(delta);
+		pr_info("mlx4: fw exec time for %s is %lld nsec\n", cmd_to_str(op), ds);
 	}
 
 	err = context->result;
