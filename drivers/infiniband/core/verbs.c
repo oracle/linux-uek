@@ -1297,12 +1297,16 @@ EXPORT_SYMBOL(ib_create_flow);
 int ib_destroy_flow(struct ib_flow *flow_id)
 {
 	int err;
-	if (!flow_id->qp->device->destroy_flow)
-		return -ENOSYS;
+	struct ib_qp *qp;
 
-	err = flow_id->qp->device->destroy_flow(flow_id);
+	if (!flow_id)
+		return -EINVAL;
+	qp = flow_id->qp;
+	if (!qp->device->destroy_flow)
+		return -ENOSYS;
+	err = qp->device->destroy_flow(flow_id);
 	if (!err)
-		atomic_dec(&flow_id->qp->usecnt);
+		atomic_dec(&qp->usecnt);
 	return err;
 }
 EXPORT_SYMBOL(ib_destroy_flow);
