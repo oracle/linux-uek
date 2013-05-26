@@ -1134,7 +1134,7 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 		goto err_free;
 	}
 
-	while (type[i] && i < ARRAY_SIZE(type)) {
+	while (i < ARRAY_SIZE(type) && type[i]) {
 		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
 					    &flow_handle->reg_id[i]);
 		if (err)
@@ -1157,8 +1157,7 @@ int mlx4_ib_destroy_flow(struct ib_flow *flow_id)
 	struct mlx4_flow_handle *flow_handle;
 
 	flow_handle = flow_id->flow_context;
-	while (flow_handle->reg_id[i] &&
-	       i < ARRAY_SIZE(flow_handle->reg_id)) {
+	while (i < ARRAY_SIZE(flow_handle->reg_id) && flow_handle->reg_id[i]) {
 		err = __mlx4_ib_destroy_flow(mdev->dev, flow_handle->reg_id[i]);
 		if (err)
 			ret = err;
