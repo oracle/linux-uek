@@ -461,6 +461,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 
 		if (unlikely(priv->validate_loopback)) {
 			validate_loopback(priv, skb);
+			kfree_skb(skb);
 			goto next;
 		}
 
@@ -490,6 +491,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 				if (ether_addr_equal_64bits(entry->mac,
 							    ethh->h_source)) {
 					rcu_read_unlock();
+					kfree_skb(skb);
 					goto next;
 				}
 			}
