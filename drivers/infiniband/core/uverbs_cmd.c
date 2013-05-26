@@ -2765,9 +2765,6 @@ ssize_t ib_uverbs_destroy_flow(struct ib_uverbs_file *file,
 
 	put_uobj_write(uobj);
 
-	if (ret)
-		return ret;
-
 	idr_remove_uobj(&ib_uverbs_rule_idr, uobj);
 
 	mutex_lock(&file->mutex);
@@ -2776,7 +2773,7 @@ ssize_t ib_uverbs_destroy_flow(struct ib_uverbs_file *file,
 
 	put_uobj(uobj);
 
-	return in_len;
+	return ret ? ret : in_len;
 }
 
 static int __uverbs_create_xsrq(struct ib_uverbs_file *file,
