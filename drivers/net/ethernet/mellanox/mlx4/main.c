@@ -1307,7 +1307,7 @@ err_set_port:
 static int mlx4_load_fw(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
-	int err;
+	int err, unmap_flag = 0;
 
 	priv->fw.fw_icm = mlx4_alloc_icm(dev, priv->fw.fw_pages,
 					 GFP_HIGHUSER | __GFP_NOWARN, 0);
@@ -1331,10 +1331,13 @@ static int mlx4_load_fw(struct mlx4_dev *dev)
 	return 0;
 
 err_unmap_fa:
-	mlx4_UNMAP_FA(dev);
+	unmap_flag = mlx4_UNMAP_FA(dev);
+	if (unmap_flag)
+		pr_warn("mlx4_core: mlx4_UNMAP_FA failed.\n");
 
 err_free:
-	mlx4_free_icm(dev, priv->fw.fw_icm, 0);
+	if (!unmap_flag)
+		mlx4_free_icm(dev, priv->fw.fw_icm, 0);
 	return err;
 }
 
@@ -1404,7 +1407,7 @@ static int mlx4_init_icm(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap,
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	u64 aux_pages;
 	int num_eqs;
-	int err;
+	int err, unmap_flag = 0;
 
 	err = mlx4_SET_ICM_SIZE(dev, icm_size, &aux_pages);
 	if (err) {
@@ -1595,10 +1598,13 @@ err_unmap_cmpt:
 	mlx4_cleanup_icm_table(dev, &priv->qp_table.cmpt_table);
 
 err_unmap_aux:
-	mlx4_UNMAP_ICM_AUX(dev);
+	unmap_flag = mlx4_UNMAP_ICM_AUX(dev);
+	if (unmap_flag)
+		pr_warn("mlx4_core: mlx4_UNMAP_ICM_AUX failed.\n");
 
 err_free_aux:
-	mlx4_free_icm(dev, priv->fw.aux_icm, 0);
+	if (!unmap_flag)
+		mlx4_free_icm(dev, priv->fw.aux_icm, 0);
 
 	return err;
 }
@@ -1622,8 +1628,10 @@ static void mlx4_free_icms(struct mlx4_dev *dev)
 	mlx4_cleanup_icm_table(dev, &priv->srq_table.cmpt_table);
 	mlx4_cleanup_icm_table(dev, &priv->qp_table.cmpt_table);
 
-	mlx4_UNMAP_ICM_AUX(dev);
-	mlx4_free_icm(dev, priv->fw.aux_icm, 0);
+	if (!mlx4_UNMAP_ICM_AUX(dev))
+		mlx4_free_icm(dev, priv->fw.aux_icm, 0);
+	else
+		pr_warn("mlx4_core: mlx4_UNMAP_ICM_AUX failed.\n");
 }
 
 static void mlx4_slave_exit(struct mlx4_dev *dev)
@@ -1711,13 +1719,16 @@ static void mlx4_close_hca(struct mlx4_dev *dev)
 {
 	unmap_internal_clock(dev);
 	unmap_bf_area(dev);
-	if (mlx4_is_slave(dev))
+	if (mlx4_is_slave(dev)) {
 		mlx4_slave_exit(dev);
-	else {
+	} else {
 		mlx4_CLOSE_HCA(dev, 0);
 		mlx4_free_icms(dev);
-		mlx4_UNMAP_FA(dev);
-		mlx4_free_icm(dev, mlx4_priv(dev)->fw.fw_icm, 0);
+
+		if (!mlx4_UNMAP_FA(dev))
+			 mlx4_free_icm(dev, mlx4_priv(dev)->fw.fw_icm, 0);
+		else
+			pr_warn("mlx4_core: mlx4_UNMAP_FA failed.\n");
 	}
 }
 
@@ -2033,10 +2044,13 @@ err_free_icm:
 
 err_stop_fw:
 	if (!mlx4_is_slave(dev)) {
-		mlx4_UNMAP_FA(dev);
-		mlx4_free_icm(dev, priv->fw.fw_icm, 0);
-		if (dev_cap)
-			kfree(dev_cap);
+		if (!mlx4_UNMAP_FA(dev)) {
+			mlx4_free_icm(dev, priv->fw.fw_icm, 0);
+			if (dev_cap)
+				kfree(dev_cap);
+		} else {
+			pr_warn("mlx4_core: mlx4_UNMAP_FA failed.\n");
+		}
 	}
 	return err;
 }
