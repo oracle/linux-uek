@@ -31,6 +31,7 @@
 #include <linux/pci.h>
 #include <linux/gfp.h>
 #include <linux/memblock.h>
+#include <linux/kexec.h>
 
 #include <xen/xen.h>
 #include <xen/events.h>
@@ -68,6 +69,7 @@
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
 #include <asm/pat.h>
+#include <asm/xen/kexec.h>
 
 #ifdef CONFIG_ACPI
 #include <linux/acpi.h>
@@ -1277,6 +1279,12 @@ static void xen_machine_power_off(void)
 
 static void xen_crash_shutdown(struct pt_regs *regs)
 {
+#ifdef CONFIG_KEXEC
+	if (kexec_crash_image) {
+		crash_save_cpu(regs, safe_smp_processor_id());
+		return;
+	}
+#endif
 	xen_reboot(SHUTDOWN_crash);
 }
 
@@ -1353,6 +1361,10 @@ asmlinkage void __init xen_start_kernel(void)
 	 */
 
 	xen_init_mmu_ops();
+
+#ifdef CONFIG_KEXEC
+	xen_init_kexec_ops();
+#endif
 
 	/* Prevent unwanted bits from being set in PTEs. */
 	__supported_pte_mask &= ~_PAGE_GLOBAL;
