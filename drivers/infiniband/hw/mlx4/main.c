@@ -967,18 +967,14 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 		       ETH_ALEN);
 		memcpy(mlx4_spec->eth.dst_mac_msk, ib_spec->eth.mask.dst_mac,
 		       ETH_ALEN);
-		mlx4_spec->eth.vlan_tag =
-			cpu_to_be16(ib_spec->eth.val.vlan_tag);
-		mlx4_spec->eth.vlan_tag_msk =
-			cpu_to_be16(ib_spec->eth.mask.vlan_tag);
+		mlx4_spec->eth.vlan_tag = ib_spec->eth.val.vlan_tag;
+		mlx4_spec->eth.vlan_tag_msk = ib_spec->eth.mask.vlan_tag;
 		break;
 
 	case IB_FLOW_SPEC_IB:
 		type = MLX4_NET_TRANS_RULE_ID_IB;
-		mlx4_spec->ib.l3_qpn =
-			cpu_to_be32(ib_spec->ib.val.l3_type_qpn);
-		mlx4_spec->ib.qpn_mask =
-			cpu_to_be32(ib_spec->ib.mask.l3_type_qpn);
+		mlx4_spec->ib.l3_qpn = ib_spec->ib.val.l3_type_qpn;
+		mlx4_spec->ib.qpn_mask = ib_spec->ib.mask.l3_type_qpn;
 		memcpy(&mlx4_spec->ib.dst_gid, ib_spec->ib.val.dst_gid, 16);
 		memcpy(&mlx4_spec->ib.dst_gid_msk,
 		       ib_spec->ib.mask.dst_gid, 16);
@@ -986,13 +982,10 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 
 	case IB_FLOW_SPEC_IPV4:
 		type = MLX4_NET_TRANS_RULE_ID_IPV4;
-		mlx4_spec->ipv4.src_ip = cpu_to_be32(ib_spec->ipv4.val.src_ip);
-		mlx4_spec->ipv4.src_ip_msk =
-			cpu_to_be32(ib_spec->ipv4.mask.src_ip);
-		mlx4_spec->ipv4.dst_ip =
-			cpu_to_be32(ib_spec->ipv4.val.dst_ip);
-		mlx4_spec->ipv4.dst_ip_msk =
-			cpu_to_be32(ib_spec->ipv4.mask.dst_ip);
+		mlx4_spec->ipv4.src_ip = ib_spec->ipv4.val.src_ip;
+		mlx4_spec->ipv4.src_ip_msk = ib_spec->ipv4.mask.src_ip;
+		mlx4_spec->ipv4.dst_ip = ib_spec->ipv4.val.dst_ip;
+		mlx4_spec->ipv4.dst_ip_msk = ib_spec->ipv4.mask.dst_ip;
 		break;
 
 	case IB_FLOW_SPEC_TCP:
@@ -1000,14 +993,12 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 		type = ib_spec->type == IB_FLOW_SPEC_TCP ?
 					MLX4_NET_TRANS_RULE_ID_TCP :
 					MLX4_NET_TRANS_RULE_ID_UDP;
-		mlx4_spec->tcp_udp.dst_port =
-			cpu_to_be16(ib_spec->tcp_udp.val.dst_port);
+		mlx4_spec->tcp_udp.dst_port = ib_spec->tcp_udp.val.dst_port;
 		mlx4_spec->tcp_udp.dst_port_msk =
-			cpu_to_be16(ib_spec->tcp_udp.mask.dst_port);
-		mlx4_spec->tcp_udp.src_port =
-			cpu_to_be16(ib_spec->tcp_udp.val.src_port);
+			ib_spec->tcp_udp.mask.dst_port;
+		mlx4_spec->tcp_udp.src_port = ib_spec->tcp_udp.val.src_port;
 		mlx4_spec->tcp_udp.src_port_msk =
-			cpu_to_be16(ib_spec->tcp_udp.mask.src_port);
+			ib_spec->tcp_udp.mask.src_port;
 		break;
 
 	default:

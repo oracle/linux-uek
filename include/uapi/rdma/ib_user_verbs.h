@@ -770,8 +770,8 @@ struct ib_uverbs_detach_mcast {
 struct ib_kern_eth_filter {
 	__u8	dst_mac[6];
 	__u8	src_mac[6];
-	__u16	ether_type;
-	__u16	vlan_tag;
+	__be16	ether_type;
+	__be16	vlan_tag;
 };
 
 struct ib_kern_spec_eth {
@@ -783,7 +783,7 @@ struct ib_kern_spec_eth {
 };
 
 struct ib_kern_ib_filter {
-	__u32	l3_type_qpn;
+	__be32	l3_type_qpn;
 	__u8	dst_gid[16];
 };
 
@@ -796,8 +796,8 @@ struct ib_kern_spec_ib {
 };
 
 struct ib_kern_ipv4_filter {
-	__u32	src_ip;
-	__u32	dst_ip;
+	__be32	src_ip;
+	__be32	dst_ip;
 };
 
 struct ib_kern_spec_ipv4 {
@@ -809,8 +809,8 @@ struct ib_kern_spec_ipv4 {
 };
 
 struct ib_kern_tcp_udp_filter {
-	__u16	dst_port;
-	__u16	src_port;
+	__be16	dst_port;
+	__be16	src_port;
 };
 
 struct ib_kern_spec_tcp_udp {
