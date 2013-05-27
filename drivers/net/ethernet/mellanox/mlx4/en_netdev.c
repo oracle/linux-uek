@@ -1654,7 +1654,6 @@ void mlx4_en_stop_port(struct net_device *dev)
 	/* Remove flow steering rules for the port*/
 	if (mdev->dev->caps.steering_mode ==
 	    MLX4_STEERING_MODE_DEVICE_MANAGED) {
-		ASSERT_RTNL();
 		list_for_each_entry_safe(flow, tmp_flow,
 					 &priv->ethtool_list, list) {
 			mlx4_flow_detach(mdev->dev, flow->id);

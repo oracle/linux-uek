@@ -1032,6 +1032,7 @@ static int mlx4_en_flow_replace(struct net_device *dev,
 {
 	int err;
 	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
 	struct ethtool_flow_id *loc_rule;
 	struct mlx4_spec_list *spec, *tmp_spec;
 	u32 qpn;
@@ -1071,13 +1072,14 @@ static int mlx4_en_flow_replace(struct net_device *dev,
 	if (err)
 		goto out_free_list;
 
+	mutex_lock(&mdev->state_lock);
 	loc_rule = &priv->ethtool_rules[cmd->fs.location];
 	if (loc_rule->id) {
 		err = mlx4_flow_detach(priv->mdev->dev, loc_rule->id);
 		if (err) {
 			en_err(priv, "Fail to detach network rule at location %d. registration id = %llx\n",
 			       cmd->fs.location, loc_rule->id);
-			goto out_free_list;
+			goto unlock;
 		}
 		loc_rule->id = 0;
 		memset(&loc_rule->flow_spec, 0,
@@ -1088,13 +1090,15 @@ static int mlx4_en_flow_replace(struct net_device *dev,
 	if (err) {
 		en_err(priv, "Fail to attach network rule at location %d.\n",
 		       cmd->fs.location);
-		goto out_free_list;
+		goto unlock;
 	}
 	loc_rule->id = reg_id;
 	memcpy(&loc_rule->flow_spec, &cmd->fs,
 	       sizeof(struct ethtool_rx_flow_spec));
 	list_add_tail(&loc_rule->list, &priv->ethtool_list);
 
+unlock:
+	mutex_unlock(&mdev->state_lock);
 out_free_list:
 	list_for_each_entry_safe(spec, tmp_spec, &rule.list, list) {
 		list_del(&spec->list);
@@ -1109,10 +1113,12 @@ static int mlx4_en_flow_detach(struct net_device *dev,
 	int err = 0;
 	struct ethtool_flow_id *rule;
 	struct mlx4_en_priv *priv = netdev_priv(dev);
+	struct mlx4_en_dev *mdev = priv->mdev;
 
 	if (cmd->fs.location >= MAX_NUM_OF_FS_RULES)
 		return -EINVAL;
 
+	mutex_lock(&mdev->state_lock);
 	rule = &priv->ethtool_rules[cmd->fs.location];
 	if (!rule->id) {
 		err =  -ENOENT;
@@ -1127,8 +1133,10 @@ static int mlx4_en_flow_detach(struct net_device *dev,
 	}
 	rule->id = 0;
 	memset(&rule->flow_spec, 0, sizeof(struct ethtool_rx_flow_spec));
+
 	list_del(&rule->list);
 out:
+	mutex_unlock(&mdev->state_lock);
 	return err;
 
 }
