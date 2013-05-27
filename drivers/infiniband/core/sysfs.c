@@ -743,14 +743,9 @@ static ssize_t set_cmd_perf(struct device *device,
 			    const char *buf, size_t count)
 {
 	struct ib_device *dev = container_of(device, struct ib_device, dev);
-	int val;
+	u32 val;
 
-	if (count < 1)
-		return -EINVAL;
-
-	val = buf[0] - '0';
-
-	if (val < 0 || val > 1)
+	if (sscanf(buf, "0x%x", &val) != 1)
 		return -EINVAL;
 
 	dev->cmd_perf = val;
@@ -758,11 +753,43 @@ static ssize_t set_cmd_perf(struct device *device,
 	return count;
 }
 
+static ssize_t show_cmd_avg(struct device *device,
+			    struct device_attribute *attr, char *buf)
+{
+	struct ib_device *dev = container_of(device, struct ib_device, dev);
+
+	return sprintf(buf, "%ld\n", dev->cmd_avg);
+}
+
+static ssize_t set_cmd_avg(struct device *device,
+			   struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	struct ib_device *dev = container_of(device, struct ib_device, dev);
+
+	spin_lock(&dev->cmd_perf_lock);
+	dev->cmd_avg = 0;
+	dev->cmd_n = 0;
+	spin_unlock(&dev->cmd_perf_lock);
+
+	return count;
+}
+
+static ssize_t show_cmd_n(struct device *device,
+			 struct device_attribute *attr, char *buf)
+{
+	struct ib_device *dev = container_of(device, struct ib_device, dev);
+
+	return sprintf(buf, "%d\n", dev->cmd_n);
+}
+
 static DEVICE_ATTR(node_type, S_IRUGO, show_node_type, NULL);
 static DEVICE_ATTR(sys_image_guid, S_IRUGO, show_sys_image_guid, NULL);
 static DEVICE_ATTR(node_guid, S_IRUGO, show_node_guid, NULL);
 static DEVICE_ATTR(node_desc, S_IRUGO | S_IWUSR, show_node_desc, set_node_desc);
 static DEVICE_ATTR(cmd_perf, S_IRUGO | S_IWUSR, show_cmd_perf, set_cmd_perf);
+static DEVICE_ATTR(cmd_avg, S_IRUGO | S_IWUSR, show_cmd_avg, set_cmd_avg);
+static DEVICE_ATTR(cmd_n, S_IRUGO | S_IWUSR, show_cmd_n, NULL);
 
 static struct device_attribute *ib_class_attributes[] = {
 	&dev_attr_node_type,
@@ -770,6 +797,8 @@ static struct device_attribute *ib_class_attributes[] = {
 	&dev_attr_node_guid,
 	&dev_attr_node_desc,
 	&dev_attr_cmd_perf,
+	&dev_attr_cmd_avg,
+	&dev_attr_cmd_n,
 };
 
 static struct class ib_class = {

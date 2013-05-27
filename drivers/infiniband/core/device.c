@@ -175,9 +175,14 @@ static int end_port(struct ib_device *device)
  */
 struct ib_device *ib_alloc_device(size_t size)
 {
+	struct ib_device *dev;
+
 	BUG_ON(size < sizeof (struct ib_device));
 
-	return kzalloc(size, GFP_KERNEL);
+	dev = kzalloc(size, GFP_KERNEL);
+	spin_lock_init(&dev->cmd_perf_lock);
+
+	return dev;
 }
 EXPORT_SYMBOL(ib_alloc_device);
 

@@ -654,16 +654,22 @@ static const char *verbs_cmd_str(__u32 cmd)
 	return "Unknown command";
 }
 
+enum {
+	COMMAND_INFO_MASK = 0x1000,
+};
+
 static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 			     size_t count, loff_t *pos)
 {
 	struct ib_uverbs_file *file = filp->private_data;
+	struct ib_device *dev = file->device->ib_dev;
 	struct ib_uverbs_cmd_hdr hdr;
 	struct timespec ts1;
 	struct timespec ts2;
 	ktime_t t1, t2, delta;
 	s64 ds;
 	ssize_t ret;
+	unsigned long long tmp;
 
 	if (count < sizeof hdr)
 		return -EINVAL;
@@ -679,7 +685,7 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	    hdr.command != IB_USER_VERBS_CMD_GET_CONTEXT)
 		return -EINVAL;
 
-	if (!(file->device->ib_dev->uverbs_cmd_mask & (1ull << hdr.command)))
+	if (!(dev->uverbs_cmd_mask & (1ull << hdr.command)))
 		return -ENOSYS;
 
 	ktime_get_ts(&ts1);
@@ -706,15 +712,22 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 				buf + sizeof(hdr),
 				hdr.in_words * 4, hdr.out_words * 4);
 	}
-	if (file->device->ib_dev->cmd_perf) {
+	if ((dev->cmd_perf & (COMMAND_INFO_MASK - 1)) == hdr.command) {
 		ktime_get_ts(&ts2);
 		t1 = timespec_to_ktime(ts1);
 		t2 = timespec_to_ktime(ts2);
 		delta = ktime_sub(t2, t1);
 		ds = ktime_to_ns(delta);
-		pr_info("%s: %s execution time = %lld nsec\n",
-			file->device->ib_dev->name,
-			verbs_cmd_str(hdr.command), ds);
+		spin_lock(&dev->cmd_perf_lock);
+		tmp = dev->cmd_avg * dev->cmd_n + ds;
+		++dev->cmd_n;
+		dev->cmd_avg = tmp / dev->cmd_n;
+		spin_unlock(&dev->cmd_perf_lock);
+		if (dev->cmd_perf & COMMAND_INFO_MASK) {
+			pr_info("%s: %s execution time = %lld nsec\n",
+				file->device->ib_dev->name,
+				verbs_cmd_str(hdr.command), ds);
+		}
 	}
 	return ret;
 }

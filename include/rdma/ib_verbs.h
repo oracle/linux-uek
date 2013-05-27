@@ -1462,6 +1462,9 @@ struct ib_device {
 	u8                           node_type;
 	u8                           phys_port_cnt;
 	int			     cmd_perf;
+	unsigned long		     cmd_avg;
+	int			     cmd_n;
+	spinlock_t		     cmd_perf_lock;
 };
 
 struct ib_client {
