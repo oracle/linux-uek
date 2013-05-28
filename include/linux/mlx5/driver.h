@@ -285,6 +285,14 @@ struct cmd_msg_cache {
 
 };
 
+struct mlx5_cmd_stats {
+	u64		average;
+	u64		n;
+	struct dentry  *root;
+	struct dentry  *avg;
+	struct dentry  *count;
+};
+
 struct mlx5_cmd {
 	void	       *cmd_buf;
 	dma_addr_t	dma;
@@ -316,6 +324,8 @@ struct mlx5_cmd {
 	struct mlx5_cmd_debug dbg;
 	struct cmd_msg_cache cache;
 	int checksum_disabled;
+	struct mlx5_cmd_stats	stats[0x80a];
+	spinlock_t		stats_spl;
 };
 
 struct mlx5_port_caps {
@@ -489,6 +499,7 @@ struct mlx5_priv {
 	struct dentry	       *qp_debugfs;
 	struct dentry	       *eq_debugfs;
 	struct dentry	       *cq_debugfs;
+	struct dentry	       *cmdif_debugfs;
 	/* end: qp staff */
 
 	/* start: cq staff */
@@ -713,6 +724,9 @@ void mlx5_db_free(struct mlx5_core_dev *dev, struct mlx5_db *db);
 typedef void (*health_handler_t)(struct pci_dev *pdev, void *buf, int size);
 int mlx5_register_health_report_handler(health_handler_t handler);
 void mlx5_unregister_health_report_handler(void);
+const char *mlx5_command_str(int command);
+int mlx5_cmdif_debugfs_init(struct mlx5_core_dev *dev);
+void mlx5_cmdif_debugfs_cleanup(struct mlx5_core_dev *dev);
 
 static inline u32 mlx5_mkey_to_idx(u32 mkey)
 {

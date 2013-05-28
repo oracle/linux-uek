@@ -243,7 +243,7 @@ static void dump_buf(void *buf, int size, int data_only, int offset)
 		pr_debug("\n");
 }
 
-static const char *command_str(int command)
+const char *mlx5_command_str(int command)
 {
 	switch (command) {
 	case MLX5_CMD_OP_QUERY_HCA_CAP:
@@ -442,10 +442,11 @@ static void dump_command(struct mlx5_core_dev *dev,
 
 	if (data_only)
 		mlx5_core_dbg_mask(dev, mask, "dump command data %s(0x%x) %s\n",
-				   command_str(op), op,
+				   mlx5_command_str(op), op,
 				   input ? "INPUT" : "OUTPUT");
 	else
-		mlx5_core_dbg(dev, "dump command %s(0x%x) %s\n", command_str(op), op,
+		mlx5_core_dbg(dev, "dump command %s(0x%x) %s\n",
+			      mlx5_command_str(op), op,
 			      input ? "INPUT" : "OUTPUT");
 
 	if (data_only) {
@@ -589,7 +590,7 @@ static int wait_func(struct mlx5_core_dev *dev, struct mlx5_cmd_work_ent *ent)
 	}
 	if (err == -ETIMEDOUT) {
 		mlx5_core_warn(dev, "%s(0x%x) timeout. Will cause a leak of a command resource\n",
-			       command_str(msg_to_opcode(ent->in)),
+			       mlx5_command_str(msg_to_opcode(ent->in)),
 			       msg_to_opcode(ent->in));
 	}
 	mlx5_core_dbg(dev, "err %d, status %s(%d)\n", err,
@@ -612,6 +613,8 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 	ktime_t t1, t2, delta;
 	s64 ds;
 	u16 op;
+	u64 tmp;
+	struct mlx5_cmd_stats *stats;
 
 	if (callback && page_queue)
 		return -EINVAL;
@@ -642,8 +645,17 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 		delta = ktime_sub(t2, t1);
 		ds = ktime_to_ns(delta);
 		op = be16_to_cpu(((struct mlx5_inbox_hdr *)in->first.data)->opcode);
+		if (op < ARRAY_SIZE(cmd->stats)) {
+			stats = &cmd->stats[op];
+			spin_lock(&cmd->stats_spl);
+			tmp = stats->average * stats->n + ds;
+			++stats->n;
+			stats->average = tmp / stats->n;
+			spin_unlock(&cmd->stats_spl);
+		}
 		mlx5_core_dbg_mask(dev, 1 << MLX5_CMD_DATA_TIME,
-				   "fw exec time for %s is %lld nsec\n", command_str(op), ds);
+				   "fw exec time for %s is %lld nsec\n",
+				   mlx5_command_str(op), ds);
 		*status = ent->status;
 		free_cmd(ent);
 	}
@@ -993,6 +1005,7 @@ static void clean_debug_files(struct mlx5_core_dev *dev)
 	if (!mlx5_debugfs_root)
 		return;
 
+	mlx5_cmdif_debugfs_cleanup(dev);
 	debugfs_remove_recursive(dbg->dbg_root);
 }
 
@@ -1031,6 +1044,8 @@ static int create_debugfs_files(struct mlx5_core_dev *dev)
 	dbg->dbg_run = debugfs_create_file("run", 0200, dbg->dbg_root, dev, &fops);
 	if (!dbg->dbg_run)
 		goto err_dbg;
+
+	mlx5_cmdif_debugfs_init(dev);
 
 	return 0;
 
@@ -1349,6 +1364,7 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 
 	spin_lock_init(&cmd->alloc_spl);
 	spin_lock_init(&cmd->token_spl);
+	spin_lock_init(&cmd->stats_spl);
 	sema_init(&cmd->sem, cmd->max_reg_cmds);
 	sema_init(&cmd->pages_sem, 1);
 
