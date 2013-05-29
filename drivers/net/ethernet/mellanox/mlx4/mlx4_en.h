@@ -98,6 +98,9 @@
 
 #define MLX4_EN_WATCHDOG_TIMEOUT	(15 * HZ)
 
+#define MLX4_EN_ALLOC_SIZE     PAGE_ALIGN(PAGE_SIZE)
+#define MLX4_EN_ALLOC_ORDER    get_order(MLX4_EN_ALLOC_SIZE)
+
 /* Minimum packet number till arming the CQ */
 #define MLX4_EN_MIN_RX_ARM	2048
 #define MLX4_EN_MIN_TX_ARM	2048
@@ -272,6 +275,12 @@ struct mlx4_en_rx_desc {
 	struct mlx4_wqe_data_seg data[0];
 };
 
+struct mlx4_en_rx_buf {
+	dma_addr_t dma;
+	struct page *page;
+	unsigned int page_offset;
+};
+
 struct mlx4_en_rx_ring {
 	struct mlx4_hwq_resources wqres;
 	u32 size ;	/* number of Rx descs*/
@@ -284,9 +293,12 @@ struct mlx4_en_rx_ring {
 	u32 cons;
 	u32 buf_size;
 	u8  fcs_del;
+	u16 rx_alloc_order;
+	u32 rx_alloc_size;
+	u32 rx_buf_size;
 	int qpn;
 	void *buf;
-	void *rx_info;
+	struct mlx4_en_rx_buf *rx_info;
 	unsigned long bytes;
 	unsigned long packets;
 	unsigned long csum_ok;
@@ -520,6 +532,10 @@ struct mlx4_en_priv {
 	u32 tx_queue_num;
 	u32 rx_ring_num;
 	u32 rx_skb_size;
+	u16 rx_alloc_order;
+	u32 rx_alloc_size;
+	u32 rx_buf_size;
+	u16 log_rx_info;
 
 	struct mlx4_en_tx_ring **tx_ring;
 	struct mlx4_en_tx_queue *tx_queue;
