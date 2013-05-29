@@ -263,6 +263,7 @@ struct be_rx_compl_info {
 	u8 ipv6;
 	u8 vtm;
 	u8 pkt_type;
+	u8 ip_frag;
 };
 
 struct be_rx_obj {
