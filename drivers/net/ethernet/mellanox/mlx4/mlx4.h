@@ -581,6 +581,24 @@ struct mlx4_cmd {
 	u8			comm_toggle;
 };
 
+enum {
+	MLX4_VF_IMMED_VLAN_FLAG_VLAN = 1 << 0,
+	MLX4_VF_IMMED_VLAN_FLAG_QOS = 1 << 1,
+};
+struct mlx4_vf_immed_vlan_work {
+	struct work_struct	work;
+	struct mlx4_priv	*priv;
+	int			flags;
+	int			slave;
+	int			vlan_ix;
+	int			orig_vlan_ix;
+	u8			port;
+	u8			qos;
+	u16			vlan_id;
+	u16			orig_vlan_id;
+};
+
+
 struct mlx4_uar_table {
 	struct mlx4_bitmap	bitmap;
 };
@@ -1242,5 +1260,6 @@ void mlx4_init_quotas(struct mlx4_dev *dev);
 
 int mlx4_get_slave_num_gids(struct mlx4_dev *dev, int slave);
 int mlx4_get_base_gid_ix(struct mlx4_dev *dev, int slave);
+void mlx4_vf_immed_vlan_work_handler(struct work_struct *_work);
 
 #endif /* MLX4_H */
