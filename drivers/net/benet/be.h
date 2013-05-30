@@ -350,6 +350,10 @@ struct phy_info {
 #define BE_VF_UC_PMAC_COUNT		2
 #define BE_FLAGS_QNQ_ASYNC_EVT_RCVD		(1 << 11)
 
+/* Ethtool set_dump flags */
+#define LANCER_INITIATE_FW_DUMP			0x1
+
+
 struct be_adapter {
 	struct pci_dev *pdev;
 	struct net_device *netdev;
