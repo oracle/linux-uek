@@ -127,6 +127,7 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 			kfree(mr);
 			goto out;
 		}
+		cache->last_add = jiffies;
 
 		spin_lock(&ent->lock);
 		list_add_tail(&mr->list, &ent->head);
@@ -235,7 +236,6 @@ static const struct file_operations size_fops = {
 	.read	= size_read,
 };
 
-
 static ssize_t limit_write(struct file *filp, const char __user *buf,
 			   size_t count, loff_t *pos)
 {
@@ -298,41 +298,100 @@ static const struct file_operations limit_fops = {
 	.read	= limit_read,
 };
 
+static int someone_adding(struct mlx5_mr_cache *cache)
+{
+	int i;
+
+	for (i = 0; i < MAX_MR_CACHE_ENTRIES; ++i) {
+		if (cache->ent[i].cur < cache->ent[i].limit)
+			return 1;
+	}
+
+	return 0;
+}
+
+static void __cache_work_func(struct mlx5_cache_ent *ent)
+{
+	struct mlx5_ib_dev *dev = ent->dev;
+	struct mlx5_mr_cache *cache = &dev->cache;
+	int i = order2idx(dev, ent->order);
+
+	if (cache->stopped)
+		return;
+
+	ent = &dev->cache.ent[i];
+	if (ent->cur < 2 * ent->limit) {
+		add_keys(dev, i, 1);
+		if (ent->cur < 2 * ent->limit)
+			queue_work(cache->wq, &ent->work);
+	} else if (ent->cur > 2 * ent->limit) {
+		if (!someone_adding(cache) &&
+		    time_after(jiffies, cache->last_add + 60 * HZ)) {
+			remove_keys(dev, i, 1);
+			if (ent->cur > ent->limit)
+				queue_work(cache->wq, &ent->work);
+		} else {
+			queue_delayed_work(cache->wq, &ent->dwork, 60 * HZ);
+		}
+	}
+}
+
+static void delayed_cache_work_func(struct work_struct *work)
+{
+	struct mlx5_cache_ent *ent;
+
+	ent = container_of(work, struct mlx5_cache_ent, dwork.work);
+	__cache_work_func(ent);
+}
+
+static void cache_work_func(struct work_struct *work)
+{
+	struct mlx5_cache_ent *ent;
+
+	ent = container_of(work, struct mlx5_cache_ent, work);
+	__cache_work_func(ent);
+}
+
 static struct mlx5_ib_mr *alloc_cached_mr(struct mlx5_ib_dev *dev, int order)
 {
 	struct mlx5_mr_cache *cache = &dev->cache;
 	struct mlx5_cache_ent *ent;
-	struct mlx5_ib_mr *mr;
+	struct mlx5_ib_mr *mr = NULL;
 	int c;
-	int requeue = 0;
+	int i;
 
 	c = order2idx(dev, order);
-	if (c < 0 || c > 17) {
+	if (c < 0 || c >= MAX_MR_CACHE_ENTRIES) {
 		mlx5_ib_warn(dev, "order %d, cache index %d\n", order, c);
 		return NULL;
 	}
 
-	ent = &cache->ent[c];
+	for (i = c; i < MAX_MR_CACHE_ENTRIES; ++i) {
+		ent = &cache->ent[i];
 
-	mlx5_ib_dbg(dev, "order %d, cache index %d\n", order, c);
+		mlx5_ib_dbg(dev, "order %d, cache index %d\n", ent->order, i);
 
-	spin_lock(&ent->lock);
-	if (!list_empty(&ent->head)) {
-		mr = list_first_entry(&ent->head, struct mlx5_ib_mr, list);
-		list_del(&mr->list);
-		ent->cur--;
-	} else {
-		ent->miss++;
-		mr = NULL;
+		spin_lock(&ent->lock);
+		if (!list_empty(&ent->head)) {
+			mr = list_first_entry(&ent->head, struct mlx5_ib_mr,
+					      list);
+			list_del(&mr->list);
+			ent->cur--;
+			spin_unlock(&ent->lock);
+			if (ent->cur < ent->limit)
+				queue_work(cache->wq, &ent->work);
+			break;
+		}
+		spin_unlock(&ent->lock);
+
+		queue_work(cache->wq, &ent->work);
+
+		if (mr)
+			break;
 	}
 
-	if (ent->cur < ent->limit)
-		requeue = 1;
-
-	spin_unlock(&ent->lock);
-
-	if (requeue)
-		queue_work(cache->wq, &cache->work.work);
+	if (!mr)
+		cache->ent[c].miss++;
 
 	return mr;
 }
@@ -342,18 +401,23 @@ static void free_cached_mr(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 	struct mlx5_mr_cache *cache = &dev->cache;
 	struct mlx5_cache_ent *ent;
 	int c;
+	int shrink = 0;
 
 	c = order2idx(dev, mr->order);
-	if (c < 0 || c > 17) {
+	if (c < 0 || c >= MAX_MR_CACHE_ENTRIES) {
 		mlx5_ib_warn(dev, "order %d, cache index %d\n", mr->order, c);
 		return;
 	}
 	ent = &cache->ent[c];
-
 	spin_lock(&ent->lock);
 	list_add_tail(&mr->list, &ent->head);
 	ent->cur++;
+	if (ent->cur > 2 * ent->limit)
+		shrink = 1;
 	spin_unlock(&ent->lock);
+
+	if (shrink)
+		queue_work(cache->wq, &ent->work);
 }
 
 static void clean_keys(struct mlx5_ib_dev *dev, int c)
@@ -386,24 +450,6 @@ static void clean_keys(struct mlx5_ib_dev *dev, int c)
 			kfree(mr);
 		}
 	};
-}
-
-static void cache_work_func(struct work_struct *work)
-{
-	struct mlx5_mkey_work *mkw = container_of(work, struct mlx5_mkey_work,
-						  work);
-	struct mlx5_ib_dev *dev = mkw->dev;
-	struct mlx5_cache_ent *ent;
-	int i;
-
-	if (dev->cache.stopped)
-		return;
-
-	for (i = 0; i < MAX_MR_CACHE_ENTRIES; ++i) {
-		ent = &dev->cache.ent[i];
-		if (ent->cur < ent->limit)
-			add_keys(dev, i, 2 * ent->limit - ent->cur);
-	}
 }
 
 static int mlx5_mr_cache_debugfs_init(struct mlx5_ib_dev *dev)
@@ -490,30 +536,17 @@ int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 			size = DEF_CACHE_SIZE;
 			limit = 0;
 		}
-		err = add_keys(dev, i, size);
-		if (err) {
-			mlx5_ib_warn(dev, "add keys failed %d\n", err);
-			goto error;
-		}
+		INIT_WORK(&ent->work, cache_work_func);
+		INIT_DELAYED_WORK(&ent->dwork, delayed_cache_work_func);
 		ent->limit = limit;
+		queue_work(cache->wq, &ent->work);
 	}
-	INIT_WORK(&cache->work.work, cache_work_func);
 
 	err = mlx5_mr_cache_debugfs_init(dev);
 	if (err)
 		mlx5_ib_warn(dev, "cache debugfs failure\n");
 
-
-	cache->work.dev = dev;
-
 	return 0;
-
-error:
-	for (--i; i >= 0; --i)
-		clean_keys(dev, i);
-
-	destroy_workqueue(cache->wq);
-	return err;
 }
 
 int mlx5_mr_cache_cleanup(struct mlx5_ib_dev *dev)
@@ -661,8 +694,20 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	struct ib_send_wr wr, *bad;
 	struct ib_sge sg;
 	int err;
+	int i;
 
-	mr = alloc_cached_mr(dev, order);
+	for (i = 0; i < 10; ++i) {
+		mr = alloc_cached_mr(dev, order);
+		if (mr)
+			break;
+
+		err = add_keys(dev, order2idx(dev, order), 1);
+		if (err) {
+			mlx5_ib_warn(dev, "add_keys failed\n");
+			break;
+		}
+	}
+
 	if (!mr)
 		return ERR_PTR(-EAGAIN);
 

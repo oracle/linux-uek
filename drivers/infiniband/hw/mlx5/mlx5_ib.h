@@ -335,19 +335,16 @@ struct mlx5_cache_ent {
 	struct dentry          *flimit;
 
 	struct mlx5_ib_dev     *dev;
-};
-
-struct mlx5_mkey_work {
-	struct work_struct work;
-	struct mlx5_ib_dev *dev;
+	struct work_struct	work;
+	struct delayed_work	dwork;
 };
 
 struct mlx5_mr_cache {
 	struct workqueue_struct *wq;
 	struct mlx5_cache_ent	ent[MAX_MR_CACHE_ENTRIES];
 	int			stopped;
-	struct mlx5_mkey_work	work;
 	struct dentry		*root;
+	unsigned long		last_add;
 };
 
 struct mlx5_ib_resources {
