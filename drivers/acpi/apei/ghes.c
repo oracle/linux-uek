@@ -494,7 +494,9 @@ static void ghes_do_proc(const struct acpi_hest_generic_status *estatus)
 				aer_severity = cper_severity_to_aer(sev);
 				aer_recover_queue(pcie_err->device_id.segment,
 						  pcie_err->device_id.bus,
-						  devfn, aer_severity);
+						  devfn, aer_severity,
+						  (struct aer_capability_regs *)
+						  pcie_err->aer_info);
 			}
 
 		}
