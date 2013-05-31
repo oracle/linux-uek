@@ -982,7 +982,6 @@ static int handler(struct uprobe_consumer *self, struct pt_regs *regs)
 						    fmtp_cns);
 	int			rc = 0;
 
-	pr_info("USDT-HANDLER: Called for PC %lx\n", GET_IP(regs));
 	read_lock(&this_cpu_core->cpu_ft_lock);
 	if (dtrace_tracepoint_hit == NULL)
 		pr_warn("Fasttrap probes, but no handler\n");
@@ -1019,10 +1018,8 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
 
 	ino = vma->vm_file->f_mapping->host;
 	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
-pr_info("DEBUG: PID %d: vma 0x%p, mapping 0x%p, inode 0x%p, offset 0x%llx\n", pid, vma, vma->vm_file->f_mapping, ino, off);
 
 	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
-pr_info("DEBUG: Registering uprobe...\n");
 		mtp->fmtp_cns.handler = handler;
 
 		rc = uprobe_register(ino, off, &mtp->fmtp_cns);
@@ -1057,7 +1054,6 @@ int dtrace_tracepoint_disable(pid_t pid, fasttrap_machtp_t *mtp)
 		return -ENOENT;
 	}
 
-pr_info("DEBUG: Unregistering uprobe...\n");
 	uprobe_unregister(mtp->fmtp_ino, mtp->fmtp_off, &mtp->fmtp_cns);
 
 	mtp->fmtp_ino = NULL;
