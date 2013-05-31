@@ -179,7 +179,7 @@ struct lpfc_sli3_ring {
 };
 
 struct lpfc_sli4_ring {
-	struct lpfc_queue 	*wqp;	/* Pointer to associated WQ */
+	struct lpfc_queue *wqp;	/* Pointer to associated WQ */
 };
 
 
