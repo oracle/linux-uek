@@ -1011,6 +1011,7 @@ __lpfc_sli_release_iocbq_s4(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq)
 	else
 		sglq = __lpfc_clear_active_sglq(phba, iocbq->sli4_lxritag);
 
+
 	if (sglq)  {
 		if ((iocbq->iocb_flag & LPFC_EXCHANGE_BUSY) &&
 			(sglq->state != SGL_XRI_ABORTED)) {
@@ -1057,6 +1058,7 @@ static void
 __lpfc_sli_release_iocbq_s3(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq)
 {
 	size_t start_clean = offsetof(struct lpfc_iocbq, iocb);
+
 
 	/*
 	 * Clean all volatile data fields, preserve iotag and node struct.
