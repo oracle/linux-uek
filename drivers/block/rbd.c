@@ -372,7 +372,7 @@ enum rbd_dev_flags {
 	RBD_DEV_FLAG_REMOVING,	/* this mapping is being removed */
 };
 
-static DEFINE_MUTEX(ctl_mutex);	  /* Serialize open/close/setup/teardown */
+static DEFINE_MUTEX(client_mutex);	/* Serialize client creation */
 
 static LIST_HEAD(rbd_dev_list);    /* devices */
 static DEFINE_SPINLOCK(rbd_dev_list_lock);
@@ -518,7 +518,7 @@ static const struct block_device_operations rbd_bd_ops = {
 
 /*
  * Initialize an rbd client instance.  Success or not, this function
- * consumes ceph_opts.  Caller holds ctl_mutex.
+ * consumes ceph_opts.  Caller holds client_mutex.
  */
 static struct rbd_client *rbd_client_create(struct ceph_options *ceph_opts)
 {
@@ -675,13 +675,13 @@ static struct rbd_client *rbd_get_client(struct ceph_options *ceph_opts)
 {
 	struct rbd_client *rbdc;
 
-	mutex_lock_nested(&ctl_mutex, SINGLE_DEPTH_NESTING);
+	mutex_lock_nested(&client_mutex, SINGLE_DEPTH_NESTING);
 	rbdc = rbd_client_find(ceph_opts);
 	if (rbdc)	/* using an existing client */
 		ceph_destroy_options(ceph_opts);
 	else
 		rbdc = rbd_client_create(ceph_opts);
-	mutex_unlock(&ctl_mutex);
+	mutex_unlock(&client_mutex);
 
 	return rbdc;
 }
@@ -835,7 +835,6 @@ static int rbd_header_from_disk(struct rbd_device *rbd_dev,
 
 	/* We won't fail any more, fill in the header */
 
-	down_write(&rbd_dev->header_rwsem);
 	if (first_time) {
 		header->object_prefix = object_prefix;
 		header->obj_order = ondisk->options.order;
@@ -863,8 +862,6 @@ static int rbd_header_from_disk(struct rbd_device *rbd_dev,
 	if (rbd_dev->spec->snap_id == CEPH_NOSNAP || first_time)
 		if (rbd_dev->mapping.size != header->image_size)
 			rbd_dev->mapping.size = header->image_size;
-
-	up_write(&rbd_dev->header_rwsem);
 
 	return 0;
 out_2big:
@@ -3335,7 +3332,7 @@ static int rbd_dev_refresh(struct rbd_device *rbd_dev)
 	int ret;
 
 	rbd_assert(rbd_image_format_valid(rbd_dev->image_format));
-	mutex_lock_nested(&ctl_mutex, SINGLE_DEPTH_NESTING);
+	down_write(&rbd_dev->header_rwsem);
 	mapping_size = rbd_dev->mapping.size;
 	if (rbd_dev->image_format == 1)
 		ret = rbd_dev_v1_header_info(rbd_dev);
@@ -3345,7 +3342,8 @@ static int rbd_dev_refresh(struct rbd_device *rbd_dev)
 	/* If it's a mapped snapshot, validate its EXISTS flag */
 
 	rbd_exists_validate(rbd_dev);
-	mutex_unlock(&ctl_mutex);
+	up_write(&rbd_dev->header_rwsem);
+
 	if (mapping_size != rbd_dev->mapping.size) {
 		sector_t size;
 
@@ -4274,16 +4272,14 @@ static int rbd_dev_v2_header_info(struct rbd_device *rbd_dev)
 	bool first_time = rbd_dev->header.object_prefix == NULL;
 	int ret;
 
-	down_write(&rbd_dev->header_rwsem);
-
 	ret = rbd_dev_v2_image_size(rbd_dev);
 	if (ret)
-		goto out;
+		return ret;
 
 	if (first_time) {
 		ret = rbd_dev_v2_header_onetime(rbd_dev);
 		if (ret)
-			goto out;
+			return ret;
 	}
 
 	/*
@@ -4298,7 +4294,7 @@ static int rbd_dev_v2_header_info(struct rbd_device *rbd_dev)
 
 		ret = rbd_dev_v2_parent_info(rbd_dev);
 		if (ret)
-			goto out;
+			return ret;
 
 		/*
 		 * Print a warning if this is the initial probe and
@@ -4319,8 +4315,6 @@ static int rbd_dev_v2_header_info(struct rbd_device *rbd_dev)
 
 	ret = rbd_dev_v2_snap_context(rbd_dev);
 	dout("rbd_dev_v2_snap_context returned %d\n", ret);
-out:
-	up_write(&rbd_dev->header_rwsem);
 
 	return ret;
 }
