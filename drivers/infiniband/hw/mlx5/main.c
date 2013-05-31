@@ -1148,7 +1148,7 @@ static void destroy_umrc_res(struct mlx5_ib_dev *dev)
 	if (err)
 		mlx5_ib_warn(dev, "mr cache cleanup failed\n");
 
-	ib_destroy_qp(dev->umrc.qp);
+	mlx5_ib_destroy_qp(dev->umrc.qp);
 	ib_destroy_cq(dev->umrc.cq);
 	ib_dereg_mr(dev->umrc.mr);
 	ib_dealloc_pd(dev->umrc.pd);
@@ -1203,19 +1203,23 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 	init_attr->sq_sig_type = IB_SIGNAL_ALL_WR;
 	init_attr->cap.max_send_wr = MAX_UMR_WR;
 	init_attr->cap.max_send_sge = 1;
-	init_attr->qp_type = IB_QPT_SYNC_UMR;
+	init_attr->qp_type = IB_QPT_REG_UMR;
 	init_attr->port_num = 1;
-	qp = ib_create_qp(pd, init_attr);
+	qp = mlx5_ib_create_qp(pd, init_attr, NULL);
 	if (IS_ERR(qp)) {
 		mlx5_ib_dbg(dev, "Couldn't create sync UMR QP\n");
 		ret = PTR_ERR(qp);
 		goto error_3;
 	}
+	qp->device     = &dev->ib_dev;
+	qp->real_qp    = qp;
+	qp->uobject    = NULL;
+	qp->qp_type    = IB_QPT_REG_UMR;
 
 	attr->qp_state = IB_QPS_INIT;
 	attr->port_num = 1;
-	ret = ib_modify_qp(qp, attr, IB_QP_STATE | IB_QP_PKEY_INDEX |
-			   IB_QP_PORT);
+	ret = mlx5_ib_modify_qp(qp, attr, IB_QP_STATE | IB_QP_PKEY_INDEX |
+				IB_QP_PORT, NULL);
 	if (ret) {
 		mlx5_ib_dbg(dev, "Couldn't modify UMR QP\n");
 		goto error_4;
@@ -1225,7 +1229,7 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 	attr->qp_state = IB_QPS_RTR;
 	attr->path_mtu = IB_MTU_256;
 
-	ret = ib_modify_qp(qp, attr, IB_QP_STATE);
+	ret = mlx5_ib_modify_qp(qp, attr, IB_QP_STATE, NULL);
 	if (ret) {
 		mlx5_ib_dbg(dev, "Couldn't modify umr QP to rtr\n");
 		goto error_4;
@@ -1233,7 +1237,7 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 
 	memset(attr, 0, sizeof(*attr));
 	attr->qp_state = IB_QPS_RTS;
-	ret = ib_modify_qp(qp, attr, IB_QP_STATE);
+	ret = mlx5_ib_modify_qp(qp, attr, IB_QP_STATE, NULL);
 	if (ret) {
 		mlx5_ib_dbg(dev, "Couldn't modify umr QP to rts\n");
 		goto error_4;
@@ -1257,7 +1261,7 @@ static int create_umr_res(struct mlx5_ib_dev *dev)
 	return 0;
 
 error_4:
-	ib_destroy_qp(qp);
+	mlx5_ib_destroy_qp(qp);
 
 error_3:
 	ib_destroy_cq(cq);

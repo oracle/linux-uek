@@ -250,7 +250,7 @@ static int sq_overhead(enum ib_qp_type qp_type)
 			sizeof(struct mlx5_wqe_datagram_seg);
 		break;
 
-	case IB_QPT_SYNC_UMR:
+	case IB_QPT_REG_UMR:
 		size = sizeof(struct mlx5_wqe_ctrl_seg) +
 			sizeof(struct mlx5_wqe_umr_ctrl_seg) +
 			sizeof(struct mlx5_mkey_seg);
@@ -350,7 +350,7 @@ static int qp_has_rq(struct ib_qp_init_attr *attr)
 {
 	if (attr->qp_type == IB_QPT_XRC_INI ||
 	    attr->qp_type == IB_QPT_XRC_TGT || attr->srq ||
-	    attr->qp_type == IB_QPT_SYNC_UMR ||
+	    attr->qp_type == IB_QPT_REG_UMR ||
 	    !attr->cap.max_recv_wr)
 		return 0;
 
@@ -480,7 +480,7 @@ static int to_mlx5_st(enum ib_qp_type type)
 	case IB_QPT_RC:			return MLX5_QP_ST_RC;
 	case IB_QPT_UC:			return MLX5_QP_ST_UC;
 	case IB_QPT_UD:			return MLX5_QP_ST_UD;
-	case IB_QPT_SYNC_UMR:		return MLX5_QP_ST_SYNC_UMR;
+	case IB_QPT_REG_UMR:		return MLX5_QP_ST_REG_UMR;
 	case IB_QPT_XRC_INI:
 	case IB_QPT_XRC_TGT:		return MLX5_QP_ST_XRC;
 	case IB_QPT_SMI:		return MLX5_QP_ST_QP0;
@@ -629,7 +629,7 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	if (init_attr->create_flags & IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK)
 		qp->flags |= MLX5_IB_QP_BLOCK_MULTICAST_LOOPBACK;
 
-	if (init_attr->qp_type == IB_QPT_SYNC_UMR)
+	if (init_attr->qp_type == IB_QPT_REG_UMR)
 		lc = IB_LATENCY_CLASS_FAST_PATH;
 
 	uuarn = alloc_uuar(uuari, lc);
@@ -831,7 +831,7 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	in->ctx.flags = cpu_to_be32(to_mlx5_st(init_attr->qp_type) << 16 |
 				    MLX5_QP_PM_MIGRATED << 11);
 
-	if (init_attr->qp_type != IB_QPT_SYNC_UMR)
+	if (init_attr->qp_type != IB_QPT_REG_UMR)
 		in->ctx.flags_pd = cpu_to_be32(to_mpd(pd ? pd : devr->p0)->pdn);
 	else
 		in->ctx.flags_pd = cpu_to_be32(MLX5_QP_LAT_SENSITIVE);
@@ -991,7 +991,7 @@ static void get_cqs(struct mlx5_ib_qp *qp,
 		*send_cq = NULL;
 		*recv_cq = NULL;
 		break;
-	case IB_QPT_SYNC_UMR:
+	case IB_QPT_REG_UMR:
 	case IB_QPT_XRC_INI:
 		*send_cq = to_mcq(qp->ibqp.send_cq);
 		*recv_cq = NULL;
@@ -1080,8 +1080,8 @@ static const char *ib_qp_type_str(enum ib_qp_type type)
 		return "IB_QPT_XRC_TGT";
 	case IB_QPT_RAW_PACKET:
 		return "IB_QPT_RAW_PACKET";
-	case IB_QPT_SYNC_UMR:
-		return "IB_QPT_SYNC_UMR";
+	case IB_QPT_REG_UMR:
+		return "IB_QPT_REG_UMR";
 	case IB_QPT_MAX:
 	default:
 		return "Invalid QP type";
@@ -1101,7 +1101,8 @@ struct ib_qp *mlx5_ib_create_qp(struct ib_pd *pd,
 		dev = to_mdev(pd->device);
 	} else {
 		/* being cautious here */
-		if (init_attr->qp_type != IB_QPT_XRC_TGT && init_attr->qp_type != IB_QPT_SYNC_UMR) {
+		if (init_attr->qp_type != IB_QPT_XRC_TGT &&
+		    init_attr->qp_type != IB_QPT_REG_UMR) {
 			pr_warn("%s: no PD for transport %s\n", __func__,
 				ib_qp_type_str(init_attr->qp_type));
 			return ERR_PTR(-EINVAL);
@@ -1128,7 +1129,7 @@ struct ib_qp *mlx5_ib_create_qp(struct ib_pd *pd,
 	case IB_QPT_UD:
 	case IB_QPT_SMI:
 	case IB_QPT_GSI:
-	case IB_QPT_SYNC_UMR:
+	case IB_QPT_REG_UMR:
 		qp = kzalloc(sizeof(*qp), GFP_KERNEL);
 		if (!qp) {
 			mlx5_ib_dbg(dev, "XRC not supported\n");
@@ -1468,7 +1469,8 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 
 	if (ibqp->qp_type == IB_QPT_GSI || ibqp->qp_type == IB_QPT_SMI) {
 		context->mtu_msgmax = (IB_MTU_256 << 5) | 8;
-	} else if (ibqp->qp_type == IB_QPT_UD || ibqp->qp_type == IB_QPT_SYNC_UMR) {
+	} else if (ibqp->qp_type == IB_QPT_UD ||
+		   ibqp->qp_type == IB_QPT_REG_UMR) {
 		context->mtu_msgmax = (IB_MTU_4096 << 5) | 12;
 	} else if (attr_mask & IB_QP_PATH_MTU) {
 		if (attr->path_mtu < IB_MTU_256 ||
@@ -1631,7 +1633,8 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	cur_state = attr_mask & IB_QP_CUR_STATE ? attr->cur_qp_state : qp->state;
 	new_state = attr_mask & IB_QP_STATE ? attr->qp_state : cur_state;
 
-	if (ibqp->qp_type != IB_QPT_SYNC_UMR && !ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type, attr_mask))
+	if (ibqp->qp_type != IB_QPT_REG_UMR &&
+	    !ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type, attr_mask))
 		goto out;
 
 	if ((attr_mask & IB_QP_PORT) &&
@@ -2179,7 +2182,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 				seg = mlx5_get_send_wqe(qp, 0);
 			break;
 
-		case IB_QPT_SYNC_UMR:
+		case IB_QPT_REG_UMR:
 			if (wr->opcode != IB_WR_UMR) {
 				err = -EINVAL;
 				mlx5_ib_warn(dev, "bad opcode\n");

@@ -90,6 +90,12 @@ enum {
 	MLX5_IB_MOD_SRQ,
 };
 
+/*
+ * we do not expose this yet so we use a value out of range */
+enum {
+	IB_QPT_REG_UMR = IB_QPT_MAX + 0x1234,
+};
+
 enum mlx5_ib_mad_ifc_flags {
 	MLX5_MAD_IFC_IGNORE_MKEY	= 1,
 	MLX5_MAD_IFC_IGNORE_BKEY	= 2,

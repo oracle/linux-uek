@@ -617,7 +617,6 @@ enum ib_qp_type {
 	IB_QPT_RAW_PACKET = 8,
 	IB_QPT_XRC_INI = 9,
 	IB_QPT_XRC_TGT,
-	IB_QPT_SYNC_UMR,
 	IB_QPT_MAX
 };
 
