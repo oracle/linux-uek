@@ -286,11 +286,12 @@ struct cmd_msg_cache {
 };
 
 struct mlx5_cmd_stats {
-	u64		average;
-	u64		n;
+	u64		sum;
+	u32		n;
 	struct dentry  *root;
 	struct dentry  *avg;
 	struct dentry  *count;
+	spinlock_t	spl;
 };
 
 struct mlx5_cmd {
@@ -325,7 +326,6 @@ struct mlx5_cmd {
 	struct cmd_msg_cache cache;
 	int checksum_disabled;
 	struct mlx5_cmd_stats	stats[0x80a];
-	spinlock_t		stats_spl;
 };
 
 struct mlx5_port_caps {

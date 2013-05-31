@@ -613,7 +613,6 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 	ktime_t t1, t2, delta;
 	s64 ds;
 	u16 op;
-	u64 tmp;
 	struct mlx5_cmd_stats *stats;
 
 	if (callback && page_queue)
@@ -647,11 +646,10 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 		op = be16_to_cpu(((struct mlx5_inbox_hdr *)in->first.data)->opcode);
 		if (op < ARRAY_SIZE(cmd->stats)) {
 			stats = &cmd->stats[op];
-			spin_lock(&cmd->stats_spl);
-			tmp = stats->average * stats->n + ds;
+			spin_lock(&stats->spl);
+			stats->sum += ds;
 			++stats->n;
-			stats->average = tmp / stats->n;
-			spin_unlock(&cmd->stats_spl);
+			spin_unlock(&stats->spl);
 		}
 		mlx5_core_dbg_mask(dev, 1 << MLX5_CMD_DATA_TIME,
 				   "fw exec time for %s is %lld nsec\n",
@@ -1310,6 +1308,7 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 	int size = sizeof(struct mlx5_cmd_prot_block);
 	int align = roundup_pow_of_two(size);
 	u16 cmd_if_rev;
+	int i;
 
 	cmd_if_rev = cmdif_rev(dev);
 	if (cmd_if_rev != CMD_IF_REV) {
@@ -1364,7 +1363,9 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 
 	spin_lock_init(&cmd->alloc_spl);
 	spin_lock_init(&cmd->token_spl);
-	spin_lock_init(&cmd->stats_spl);
+	for (i = 0; i < ARRAY_SIZE(cmd->stats); ++i)
+		spin_lock_init(&cmd->stats[i].spl);
+
 	sema_init(&cmd->sem, cmd->max_reg_cmds);
 	sema_init(&cmd->pages_sem, 1);
 

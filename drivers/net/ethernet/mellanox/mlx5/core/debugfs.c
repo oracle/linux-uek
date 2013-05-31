@@ -144,6 +144,75 @@ void mlx5_eq_debugfs_cleanup(struct mlx5_core_dev *dev)
 	debugfs_remove_recursive(dev->priv.eq_debugfs);
 }
 
+static int dbg_open(struct inode *inode, struct file *file)
+{
+	/*
+	 * inode.i_private is equal to the data argument passed to
+	 * debugfs_create_file
+	 */
+	file->private_data = inode->i_private;
+
+	return 0;
+}
+
+static ssize_t average_read(struct file *filp, char __user *buf, size_t count,
+			    loff_t *pos)
+{
+	struct mlx5_cmd_stats *stats;
+	u32 field = 0;
+	u64 dividend;
+	u32 divisor;
+	int ret;
+	int err;
+	char tbuf[22];
+
+	if (*pos)
+		return 0;
+
+	stats = filp->private_data;
+	spin_lock(&stats->spl);
+	if (stats->n) {
+		dividend = stats->sum;
+		divisor = stats->n;
+		do_div(dividend, divisor);
+		field = dividend;
+	}
+	spin_unlock(&stats->spl);
+	ret = snprintf(tbuf, sizeof(tbuf), "%u\n", field);
+	if (ret > 0) {
+		err = copy_to_user(buf, tbuf, ret);
+		if (err)
+			return err;
+	}
+
+	*pos += ret;
+	return ret;
+}
+
+
+static ssize_t average_write(struct file *filp, const char __user *buf,
+			     size_t count, loff_t *pos)
+{
+	struct mlx5_cmd_stats *stats;
+
+	stats = filp->private_data;
+	spin_lock(&stats->spl);
+	stats->sum = 0;
+	stats->n = 0;
+	spin_unlock(&stats->spl);
+
+	*pos += count;
+
+	return count;
+}
+
+static const struct file_operations stats_fops = {
+	.owner	= THIS_MODULE,
+	.open	= dbg_open,
+	.read	= average_read,
+	.write	= average_write,
+};
+
 int mlx5_cmdif_debugfs_init(struct mlx5_core_dev *dev)
 {
 	struct mlx5_cmd_stats *stats;
@@ -172,16 +241,16 @@ int mlx5_cmdif_debugfs_init(struct mlx5_core_dev *dev)
 				goto out;
 			}
 
-			stats->avg = debugfs_create_u64("average", 0400,
-							stats->root,
-							&stats->average);
+			stats->avg = debugfs_create_file("average", 0400,
+							 stats->root, stats,
+							 &stats_fops);
 			if (!stats->avg) {
 				mlx5_core_warn(dev, "failed creating debugfs file\n");
 				err = -ENOMEM;
 				goto out;
 			}
 
-			stats->count = debugfs_create_u64("n", 0400,
+			stats->count = debugfs_create_u32("n", 0400,
 							  stats->root,
 							  &stats->n);
 			if (!stats->count) {
@@ -224,17 +293,6 @@ void mlx5_cq_debugfs_cleanup(struct mlx5_core_dev *dev)
 		return;
 
 	debugfs_remove_recursive(dev->priv.cq_debugfs);
-}
-
-static int dbg_open(struct inode *inode, struct file *file)
-{
-	/*
-	 * inode.i_private is equal to the data argument passed to
-	 * debugfs_create_dir
-	 */
-	file->private_data = inode->i_private;
-
-	return 0;
 }
 
 static u64 qp_read_field(struct mlx5_core_dev *dev, struct mlx5_core_qp *qp,
@@ -404,7 +462,7 @@ static ssize_t dbg_read(struct file *filp, char __user *buf, size_t count,
 		return -EINVAL;
 	}
 
-	ret = sprintf(tbuf, "0x%llx\n", field);
+	ret = snprintf(tbuf, sizeof(tbuf), "0x%llx\n", field);
 	if (ret > 0) {
 		err = copy_to_user(buf, tbuf, ret);
 		if (err)
