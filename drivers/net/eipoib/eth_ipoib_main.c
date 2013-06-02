@@ -924,14 +924,12 @@ struct neigh *eipoib_neigh_get(struct slave *slave, const u8 *emac)
 	neigh = neigh_find_rcu(head, emac);
 
 	if (neigh) {
-		if (!atomic_inc_not_zero(&neigh->refcnt)) {
-			/* deleted */
-			neigh = NULL;
-			goto out_unlock;
-		}
+		if (!atomic_inc_not_zero(&neigh->refcnt))
+			neigh = NULL;/* deleted */
 	}
-out_unlock:
+
 	rcu_read_unlock_bh();
+
 	return neigh;
 }
 
