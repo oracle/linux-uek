@@ -75,13 +75,17 @@ struct mlx5_profile profile[] = {
 		.mask		= 0,
 	},
 	[1] = {
-		.mask		= MLX5_PROF_MASK_QP_SIZE,
+		.mask		= MLX5_PROF_MASK_QP_SIZE	|
+				  MLX5_PROF_MASK_DCT,
 		.log_max_qp	= 12,
+		.dct_enable	= 1,
 	},
 	[2] = {
-		.mask		= MLX5_PROF_MASK_QP_SIZE |
-				  MLX5_PROF_MASK_MR_CACHE,
+		.mask		= MLX5_PROF_MASK_QP_SIZE	|
+				  MLX5_PROF_MASK_MR_CACHE	|
+				  MLX5_PROF_MASK_DCT,
 		.log_max_qp	= 17,
+		.dct_enable	= 1,
 		.mr_cache[0]	= {
 			.size	= 500,
 			.limit	= 250
@@ -1447,7 +1451,9 @@ static int init_one(struct pci_dev *pdev,
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP)		|
+		(1ull << IB_USER_VERBS_CMD_CREATE_QP_EX)	|
+		(1ull << IB_USER_VERBS_CMD_MODIFY_QP_EX);
 
 	dev->ib_dev.query_device	= mlx5_ib_query_device;
 	dev->ib_dev.query_port		= mlx5_ib_query_port;

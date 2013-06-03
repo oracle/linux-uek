@@ -487,6 +487,8 @@ static int to_mlx5_st(enum ib_qp_type type)
 	case IB_QPT_GSI:		return MLX5_QP_ST_QP1;
 	case IB_QPT_RAW_IPV6:		return MLX5_QP_ST_RAW_IPV6;
 	case IB_QPT_RAW_ETHERTYPE:	return MLX5_QP_ST_RAW_ETHERTYPE;
+	case IB_QPT_DC_INI:
+	case IB_QPT_DC_TGT:		return MLX5_QP_ST_DC;
 	case IB_QPT_RAW_PACKET:
 	case IB_QPT_MAX:
 	default:		return -EINVAL;
@@ -736,8 +738,10 @@ static void destroy_qp_kernel(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp)
 
 static __be32 get_rx_type(struct mlx5_ib_qp *qp, struct ib_qp_init_attr *attr)
 {
-	if (attr->srq || (attr->qp_type == IB_QPT_XRC_TGT) ||
-	    (attr->qp_type == IB_QPT_XRC_INI))
+	enum ib_qp_type qt = attr->qp_type;
+
+	if (attr->srq || (qt == IB_QPT_XRC_TGT) || (qt == IB_QPT_XRC_INI) ||
+	    (qt == IB_QPT_DC_INI) || (qt == IB_QPT_DC_TGT))
 		return cpu_to_be32(MLX5_SRQ_RQ);
 	else if (!qp->has_rq)
 		return cpu_to_be32(MLX5_ZERO_LEN_RQ);
@@ -1130,6 +1134,8 @@ struct ib_qp *mlx5_ib_create_qp(struct ib_pd *pd,
 	case IB_QPT_SMI:
 	case IB_QPT_GSI:
 	case IB_QPT_REG_UMR:
+	case IB_QPT_DC_INI:
+	case IB_QPT_DC_TGT:
 		qp = kzalloc(sizeof(*qp), GFP_KERNEL);
 		if (!qp) {
 			mlx5_ib_dbg(dev, "XRC not supported\n");
@@ -1184,7 +1190,8 @@ int mlx5_ib_destroy_qp(struct ib_qp *qp)
 	return 0;
 }
 
-static __be32 to_mlx5_access_flags(struct mlx5_ib_qp *qp, const struct ib_qp_attr *attr,
+static __be32 to_mlx5_access_flags(struct mlx5_ib_qp *qp,
+				   const struct ib_qp_attr_ex *attr,
 				   int attr_mask)
 {
 	u8 dest_rd_atomic;
@@ -1238,7 +1245,7 @@ static int ib_rate_to_mlx5(struct mlx5_ib_dev *dev, u8 rate)
 
 static int mlx5_set_path(struct mlx5_ib_dev *dev, const struct ib_ah_attr *ah,
 			 struct mlx5_qp_path *path, u8 port, int attr_mask,
-			 u32 path_flags, const struct ib_qp_attr *attr)
+			 u32 path_flags, const struct ib_qp_attr_ex *attr)
 {
 	int err;
 
@@ -1425,7 +1432,7 @@ static int ib_mask_to_mlx5_opt(int ib_mask)
 }
 
 static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
-			       const struct ib_qp_attr *attr, int attr_mask,
+			       const struct ib_qp_attr_ex *attr, int attr_mask,
 			       enum ib_qp_state cur_state, enum ib_qp_state new_state)
 {
 	struct mlx5_ib_dev *dev = to_mdev(ibqp->device);
@@ -1484,6 +1491,9 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 
 	if (attr_mask & IB_QP_DEST_QPN)
 		context->log_pg_sz_remote_qpn = cpu_to_be32(attr->dest_qp_num);
+
+	if (attr_mask & IB_QP_DC_KEY)
+		context->dc_access_key = cpu_to_be64(attr->dct_key);
 
 	if (attr_mask & IB_QP_PKEY_INDEX)
 		context->pri_path.pkey_index = attr->pkey_index;
@@ -1610,8 +1620,11 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 		qp->sq.tail = 0;
 		qp->sq.cur_post = 0;
 		qp->sq.last_poll = 0;
-		qp->db.db[MLX5_RCV_DBR] = 0;
-		qp->db.db[MLX5_SND_DBR] = 0;
+
+		if (qp->db.db) {
+			qp->db.db[MLX5_RCV_DBR] = 0;
+			qp->db.db[MLX5_SND_DBR] = 0;
+		}
 	}
 
 out:
@@ -1627,32 +1640,33 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	enum ib_qp_state cur_state, new_state;
 	int port;
 	int err = -EINVAL;
+	struct ib_qp_attr_ex *attrx = (struct ib_qp_attr_ex *)attr;
 
 	mutex_lock(&qp->mutex);
 
-	cur_state = attr_mask & IB_QP_CUR_STATE ? attr->cur_qp_state : qp->state;
-	new_state = attr_mask & IB_QP_STATE ? attr->qp_state : cur_state;
+	cur_state = attr_mask & IB_QP_CUR_STATE ? attrx->cur_qp_state : qp->state;
+	new_state = attr_mask & IB_QP_STATE ? attrx->qp_state : cur_state;
 
 	if (ibqp->qp_type != IB_QPT_REG_UMR &&
 	    !ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type, attr_mask))
 		goto out;
 
 	if ((attr_mask & IB_QP_PORT) &&
-	    (attr->port_num == 0 || attr->port_num > dev->mdev.caps.num_ports))
+	    (attrx->port_num == 0 || attrx->port_num > dev->mdev.caps.num_ports))
 		goto out;
 
 	if (attr_mask & IB_QP_PKEY_INDEX) {
-		port = attr_mask & IB_QP_PORT ? attr->port_num : qp->port;
-		if (attr->pkey_index >= dev->mdev.caps.port[port - 1].pkey_table_len)
+		port = attr_mask & IB_QP_PORT ? attrx->port_num : qp->port;
+		if (attrx->pkey_index >= dev->mdev.caps.port[port - 1].pkey_table_len)
 			goto out;
 	}
 
 	if (attr_mask & IB_QP_MAX_QP_RD_ATOMIC &&
-	    attr->max_rd_atomic > dev->mdev.caps.max_ra_res_qp)
+	    attrx->max_rd_atomic > dev->mdev.caps.max_ra_res_qp)
 		goto out;
 
 	if (attr_mask & IB_QP_MAX_DEST_RD_ATOMIC &&
-	    attr->max_dest_rd_atomic > dev->mdev.caps.max_ra_req_qp)
+	    attrx->max_dest_rd_atomic > dev->mdev.caps.max_ra_req_qp)
 		goto out;
 
 	if (cur_state == new_state && cur_state == IB_QPS_RESET) {
@@ -1660,7 +1674,7 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 		goto out;
 	}
 
-	err = __mlx5_ib_modify_qp(ibqp, attr, attr_mask, cur_state, new_state);
+	err = __mlx5_ib_modify_qp(ibqp, attrx, attr_mask, cur_state, new_state);
 
 out:
 	mutex_unlock(&qp->mutex);

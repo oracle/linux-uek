@@ -603,7 +603,7 @@ enum ib_uverbs_modify_qp_ex_comp_mask {
 };
 
 struct ib_uverbs_modify_qp_ex {
-	__u64 comp_mask;
+	__u32 comp_mask;
 	struct ib_uverbs_qp_dest dest;
 	struct ib_uverbs_qp_dest alt_dest;
 	__u32 qp_handle;

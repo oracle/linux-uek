@@ -199,16 +199,23 @@ static int handle_hca_cap(struct mlx5_core_dev *dev)
 	memcpy(&set_ctx->hca_cap, &query_out->hca_cap,
 	       sizeof(set_ctx->hca_cap));
 
+	flags = be64_to_cpu(set_ctx->hca_cap.flags);
 	if (prof->mask & MLX5_PROF_MASK_CMDIF_CSUM) {
 		csum = !!prof->cmdif_csum;
-		flags = be64_to_cpu(set_ctx->hca_cap.flags);
 		if (csum)
 			flags |= MLX5_DEV_CAP_FLAG_CMDIF_CSUM;
 		else
 			flags &= ~MLX5_DEV_CAP_FLAG_CMDIF_CSUM;
-
-		set_ctx->hca_cap.flags = cpu_to_be64(flags);
 	}
+
+	if (prof->mask & MLX5_PROF_MASK_DCT) {
+		if (prof->dct_enable)
+			flags |= MLX5_DEV_CAP_FLAG_DCT;
+		else
+			flags &= ~MLX5_DEV_CAP_FLAG_DCT;
+	}
+
+	set_ctx->hca_cap.flags = cpu_to_be64(flags);
 
 	if (dev->profile->mask & MLX5_PROF_MASK_QP_SIZE)
 		set_ctx->hca_cap.log_max_qp = dev->profile->log_max_qp;
