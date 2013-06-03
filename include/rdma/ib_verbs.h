@@ -617,6 +617,8 @@ enum ib_qp_type {
 	IB_QPT_RAW_PACKET = 8,
 	IB_QPT_XRC_INI = 9,
 	IB_QPT_XRC_TGT,
+	IB_QPT_DC_INI,
+	IB_QPT_DC_TGT,
 	IB_QPT_MAX
 };
 
@@ -727,7 +729,8 @@ enum ib_qp_attr_mask {
 	IB_QP_PATH_MIG_STATE		= (1<<18),
 	IB_QP_CAP			= (1<<19),
 	IB_QP_DEST_QPN			= (1<<20),
-	IB_QP_GROUP_RSS			= (1<<21)
+	IB_QP_GROUP_RSS			= (1<<21),
+	IB_QP_DC_KEY			= (1<<22)
 };
 
 enum ib_qp_state {
@@ -772,6 +775,35 @@ struct ib_qp_attr {
 	u8			rnr_retry;
 	u8			alt_port_num;
 	u8			alt_timeout;
+};
+
+struct ib_qp_attr_ex {
+	enum ib_qp_state	qp_state;
+	enum ib_qp_state	cur_qp_state;
+	enum ib_mtu		path_mtu;
+	enum ib_mig_state	path_mig_state;
+	u32			qkey;
+	u32			rq_psn;
+	u32			sq_psn;
+	u32			dest_qp_num;
+	int			qp_access_flags;
+	struct ib_qp_cap	cap;
+	struct ib_ah_attr	ah_attr;
+	struct ib_ah_attr	alt_ah_attr;
+	u16			pkey_index;
+	u16			alt_pkey_index;
+	u8			en_sqd_async_notify;
+	u8			sq_draining;
+	u8			max_rd_atomic;
+	u8			max_dest_rd_atomic;
+	u8			min_rnr_timer;
+	u8			port_num;
+	u8			timeout;
+	u8			retry_cnt;
+	u8			rnr_retry;
+	u8			alt_port_num;
+	u8			alt_timeout;
+	u64			dct_key;
 };
 
 enum ib_wr_opcode {

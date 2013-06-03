@@ -117,6 +117,7 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_MODIFY_CQ_EX]        = ib_uverbs_modify_cq_ex,
 	[IB_USER_VERBS_CMD_CREATE_FLOW]		= ib_uverbs_create_flow,
 	[IB_USER_VERBS_CMD_DESTROY_FLOW]	= ib_uverbs_destroy_flow,
+	[IB_USER_VERBS_CMD_MODIFY_QP_EX]        = ib_uverbs_modify_qp_ex,
 };
 
 static void ib_uverbs_add_one(struct ib_device *device);

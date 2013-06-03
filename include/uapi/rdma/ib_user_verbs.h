@@ -91,7 +91,8 @@ enum {
 	IB_USER_VERBS_CMD_CREATE_QP_EX  = IB_USER_VERBS_CMD_THRESHOLD,
 	IB_USER_VERBS_CMD_MODIFY_CQ_EX,
 	IB_USER_VERBS_CMD_CREATE_FLOW,
-	IB_USER_VERBS_CMD_DESTROY_FLOW
+	IB_USER_VERBS_CMD_DESTROY_FLOW,
+	IB_USER_VERBS_CMD_MODIFY_QP_EX,
 };
 
 /*
@@ -594,6 +595,42 @@ struct ib_uverbs_modify_qp {
 	__u8  alt_port_num;
 	__u8  alt_timeout;
 	__u8  reserved[2];
+	__u64 driver_data[0];
+};
+
+enum ib_uverbs_modify_qp_ex_comp_mask {
+	IB_UVERBS_QP_ATTR_DCT_KEY	= 1ULL << 0,
+};
+
+struct ib_uverbs_modify_qp_ex {
+	__u64 comp_mask;
+	struct ib_uverbs_qp_dest dest;
+	struct ib_uverbs_qp_dest alt_dest;
+	__u32 qp_handle;
+	__u32 attr_mask;
+	__u32 qkey;
+	__u32 rq_psn;
+	__u32 sq_psn;
+	__u32 dest_qp_num;
+	__u32 qp_access_flags;
+	__u16 pkey_index;
+	__u16 alt_pkey_index;
+	__u8  qp_state;
+	__u8  cur_qp_state;
+	__u8  path_mtu;
+	__u8  path_mig_state;
+	__u8  en_sqd_async_notify;
+	__u8  max_rd_atomic;
+	__u8  max_dest_rd_atomic;
+	__u8  min_rnr_timer;
+	__u8  port_num;
+	__u8  timeout;
+	__u8  retry_cnt;
+	__u8  rnr_retry;
+	__u8  alt_port_num;
+	__u8  alt_timeout;
+	__u8  reserved[2];
+	__u64 dct_key;
 	__u64 driver_data[0];
 };
 

@@ -218,5 +218,6 @@ IB_UVERBS_DECLARE_CMD(create_qp_ex);
 IB_UVERBS_DECLARE_CMD(modify_cq_ex);
 IB_UVERBS_DECLARE_CMD(create_flow);
 IB_UVERBS_DECLARE_CMD(destroy_flow);
+IB_UVERBS_DECLARE_CMD(modify_qp_ex);
 
 #endif /* UVERBS_H */

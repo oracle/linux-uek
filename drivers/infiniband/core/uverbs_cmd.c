@@ -1875,25 +1875,37 @@ static int modify_qp_mask(enum ib_qp_type qp_type, int mask)
 	}
 }
 
-ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
-			    const char __user *buf, int in_len,
-			    int out_len)
+static ssize_t __uverbs_modify_qp(struct ib_uverbs_file *file,
+				  const char __user *buf, int in_len,
+				  int out_len,
+				  enum uverbs_cmd_type cmd_type)
 {
-	struct ib_uverbs_modify_qp cmd;
-	struct ib_udata            udata;
-	struct ib_qp              *qp;
-	struct ib_qp_attr         *attr;
-	int                        ret;
+	struct ib_uverbs_modify_qp_ex	cmd;
+	struct ib_udata			udata;
+	struct ib_qp		       *qp;
+	struct ib_qp_attr	       *attr;
+	struct ib_qp_attr_ex	       *attrx;
+	int				ret;
+	void			       *p;
 
-	if (copy_from_user(&cmd, buf, sizeof cmd))
-		return -EFAULT;
+	if (cmd_type == IB_USER_VERBS_CMD_BASIC) {
+		p = &cmd;
+		p += sizeof(cmd.comp_mask);
+		if (copy_from_user(p, buf,
+				   sizeof(struct ib_uverbs_modify_qp)))
+			return -EFAULT;
+	} else {
+		if (copy_from_user(&cmd, buf, sizeof(cmd)))
+			return -EFAULT;
+	}
 
 	INIT_UDATA(&udata, buf + sizeof cmd, NULL, in_len - sizeof cmd,
 		   out_len);
 
-	attr = kmalloc(sizeof *attr, GFP_KERNEL);
-	if (!attr)
+	attrx = kzalloc(sizeof(*attrx), GFP_KERNEL);
+	if (!attrx)
 		return -ENOMEM;
+	attr = (struct ib_qp_attr *)attrx;
 
 	qp = idr_read_qp(cmd.qp_handle, file->ucontext);
 	if (!qp) {
@@ -1946,6 +1958,10 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	attr->alt_ah_attr.static_rate       = cmd.alt_dest.static_rate;
 	attr->alt_ah_attr.ah_flags 	    = cmd.alt_dest.is_global ? IB_AH_GRH : 0;
 	attr->alt_ah_attr.port_num 	    = cmd.alt_dest.port_num;
+	if (cmd_type == IB_USER_VERBS_CMD_EXTENDED) {
+		if (cmd.comp_mask & IB_UVERBS_QP_ATTR_DCT_KEY)
+			attrx->dct_key = cmd.dct_key;
+	}
 
 	if (qp->real_qp == qp) {
 		ret = qp->device->modify_qp(qp, attr,
@@ -1962,9 +1978,25 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	ret = in_len;
 
 out:
-	kfree(attr);
+	kfree(attrx);
 
 	return ret;
+}
+
+ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
+			    const char __user *buf, int in_len,
+			    int out_len)
+{
+	return __uverbs_modify_qp(file, buf, in_len, out_len,
+				  IB_USER_VERBS_CMD_BASIC);
+}
+
+ssize_t ib_uverbs_modify_qp_ex(struct ib_uverbs_file *file,
+			       const char __user *buf, int in_len,
+			       int out_len)
+{
+	return __uverbs_modify_qp(file, buf, in_len, out_len,
+				  IB_USER_VERBS_CMD_EXTENDED);
 }
 
 ssize_t ib_uverbs_destroy_qp(struct ib_uverbs_file *file,
