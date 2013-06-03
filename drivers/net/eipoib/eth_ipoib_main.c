@@ -1916,7 +1916,7 @@ int parent_add_vif_param(struct net_device *parent_dev,
 	/* check another slave has this mac/vlan */
 	parent_for_each_slave(parent, slave_tmp) {
 		if (!memcmp(slave_tmp->emac, mac, ETH_ALEN) &&
-		    slave_tmp->vlan == new_slave->vlan) {
+		    slave_tmp->vlan == vlan) {
 			pr_err("cannot update %s, slave %s already has"
 			       " vlan 0x%x mac %pM\n",
 			       parent->dev->name, new_slave->dev->name,
