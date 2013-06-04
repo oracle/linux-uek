@@ -357,3 +357,6 @@
 348	i386	process_vm_writev	sys_process_vm_writev		compat_sys_process_vm_writev
 349	i386	kcmp			sys_kcmp
 350	i386	finit_module		sys_finit_module
+# This one is a temporary number, designed for no clashes.
+# Nothing but DTrace should use it.
+473	i386	waitfd			sys_waitfd

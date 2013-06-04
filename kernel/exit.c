@@ -1004,10 +1004,8 @@ static int wait_noreap_copyout(struct wait_opts *wo, struct task_struct *p,
 	put_task_struct(p);
 	infop = wo->wo_info;
 	if (infop) {
-		if (!retval)
-			retval = put_user(SIGCHLD, &infop->si_signo);
-		if (!retval)
-			retval = put_user(0, &infop->si_errno);
+		retval = put_user(SIGCHLD, &infop->si_signo);
+		retval |= put_user(0, &infop->si_errno);
 		if (!retval)
 			retval = put_user((short)why, &infop->si_code);
 		if (!retval)
@@ -1571,9 +1569,11 @@ end:
 	return retval;
 }
 
-SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
-		infop, int, options, struct rusage __user *, ru)
+long do_waitid(int which, pid_t upid,
+	       struct siginfo __user *infop, int options,
+	       struct rusage __user *ru)
 {
+
 	struct wait_opts wo;
 	struct pid *pid = NULL;
 	enum pid_type type;
@@ -1612,6 +1612,20 @@ SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
 	wo.wo_stat	= NULL;
 	wo.wo_rusage	= ru;
 	ret = do_wait(&wo);
+	put_pid(pid);
+
+	return ret;
+}
+
+SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
+		infop, int, options, struct rusage __user *, ru)
+{
+	long ret;
+
+	if (infop && !access_ok (VERIFY_WRITE, infop, sizeof(siginfo_t)))
+		return -EFAULT;
+
+	ret = do_waitid(which, upid, infop, options, ru);
 
 	if (ret > 0) {
 		ret = 0;
@@ -1621,21 +1635,13 @@ SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
 		 * we would set so the user can easily tell the
 		 * difference.
 		 */
-		if (!ret)
-			ret = put_user(0, &infop->si_signo);
-		if (!ret)
-			ret = put_user(0, &infop->si_errno);
-		if (!ret)
-			ret = put_user(0, &infop->si_code);
-		if (!ret)
-			ret = put_user(0, &infop->si_pid);
-		if (!ret)
-			ret = put_user(0, &infop->si_uid);
-		if (!ret)
-			ret = put_user(0, &infop->si_status);
+		ret = __put_user(0, &infop->si_signo);
+		ret |= __put_user(0, &infop->si_errno);
+		ret |= __put_user(0, &infop->si_code);
+		ret |= __put_user(0, &infop->si_pid);
+		ret |= __put_user(0, &infop->si_uid);
+		ret |= __put_user(0, &infop->si_status);
 	}
-
-	put_pid(pid);
 
 	/* avoid REGPARM breakage on x86: */
 	asmlinkage_protect(5, ret, which, upid, infop, options, ru);
