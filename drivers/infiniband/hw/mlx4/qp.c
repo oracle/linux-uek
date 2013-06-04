@@ -3625,6 +3625,9 @@ done:
 	else
 		qp_init_attr->cap.qpg_tss_mask_sz = 0;
 
+	qp_init_attr->sq_sig_type = qp->sq_signal_bits == cpu_to_be32(
+              MLX4_WQE_CTRL_CQ_UPDATE) ? IB_SIGNAL_ALL_WR : IB_SIGNAL_REQ_WR;
+
 out:
 	mutex_unlock(&qp->mutex);
 	return err;
