@@ -339,6 +339,9 @@
 330	common	pkey_alloc		sys_pkey_alloc
 331	common	pkey_free		sys_pkey_free
 332	common	statx			sys_statx
+# This one is a temporary number, designed for no clashes.
+# Nothing but DTrace should use it.
+473	common	waitfd			sys_waitfd
 
 #
 # x32-specific system call numbers start at 512 to avoid cache impact
