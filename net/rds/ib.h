@@ -337,6 +337,8 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
+	wait_queue_head_t       wait;
+	int                     done;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
