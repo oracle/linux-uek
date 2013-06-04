@@ -153,14 +153,16 @@ static void rds_ib_dev_free(struct work_struct *work)
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, free_work);
 
-	if (rds_ibdev->mr_8k_pool)
-		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
-	if (rds_ibdev->mr_1m_pool)
-		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-	if (rds_ibdev->mr)
-		ib_dereg_mr(rds_ibdev->mr);
-	if (rds_ibdev->pd)
-		ib_dealloc_pd(rds_ibdev->pd);
+	if (rds_ibdev->dev) {
+		if (rds_ibdev->mr_8k_pool)
+			rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
+		if (rds_ibdev->mr_1m_pool)
+			rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
+		if (rds_ibdev->mr)
+			ib_dereg_mr(rds_ibdev->mr);
+		if (rds_ibdev->pd)
+			ib_dealloc_pd(rds_ibdev->pd);
+	}
 	kfree(rds_ibdev->srq);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
@@ -171,10 +173,13 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	WARN_ON(!waitqueue_active(&rds_ibdev->wait));
+	if (rds_ibdev->dev) {
+		WARN_ON(!waitqueue_active(&rds_ibdev->wait));
 
-	rds_ibdev->done = 1;
-	wake_up(&rds_ibdev->wait);
+		rds_ibdev->done = 1;
+		wake_up(&rds_ibdev->wait);
+	} else
+		kfree(rds_ibdev);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -248,12 +253,20 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	rds_ib_dev_put(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
 
-	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ))
+	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ)) {
 		printk(KERN_WARNING "RDS/IB: device cleanup timed out after "
 			" 30 secs (refcount=%d)\n",
 			 atomic_read(&rds_ibdev->refcount));
-
-	kfree(rds_ibdev);
+		/* when rds_ib_remove_one return, driver's mlx4_ib_removeone
+		 * function destroy ib_device, so we must clear rds_ibdev->dev
+		 * to NULL, or will cause crash when rds connection be released,
+		 * at the moment rds_ib_dev_free through ib_device
+		 * .i.e rds_ibdev->dev to release mr and fmr, reusing the
+		 * released ib_device will cause crash.
+		 */
+		rds_ibdev->dev = NULL;
+	} else
+		kfree(rds_ibdev);
 }
 
 struct ib_client rds_ib_client = {
