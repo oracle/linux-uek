@@ -8,6 +8,7 @@ menuconfig DTRACE
 	default y
 	depends on X86_64 && !DEBUG_LOCK_ALLOC
 	select KALLSYMS
+	select WAITFD
 	select CTF if (!DT_DISABLE_CTF)
 	select STRIP_ASM_SYMS if (!DT_DISABLE_CTF)
 	select DEBUG_INFO if (!DT_DISABLE_CTF)
