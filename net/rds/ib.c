@@ -1027,7 +1027,7 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
-static int rds_ib_ip_config_init(void)
+static int rds_ib_ip_config_init(bool reinit)
 {
 	struct net_device	*dev;
 	struct in_ifaddr	*ifa;
@@ -1042,17 +1042,21 @@ static int rds_ib_ip_config_init(void)
 	if (!rds_ib_haip_enabled)
 		return 0;
 
-	rds_ib_check_up_port();
+	if (!reinit)
+		rds_ib_check_up_port();
 
 	rcu_read_unlock();
 
-	ip_config = kzalloc(sizeof(struct rds_ib_port) *
-				(ip_port_max + 1), GFP_KERNEL);
-	if (!ip_config) {
-		printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
-		return 1;
+	if (reinit)
+		ip_port_cnt = 0;
+	else {
+		ip_config = kzalloc(sizeof(struct rds_ib_port) *
+					(ip_port_max + 1), GFP_KERNEL);
+		if (!ip_config) {
+			printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
+			return 1;
+		}
 	}
-
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
@@ -1293,34 +1297,36 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	if (!rds_ib_haip_enabled || !ip_port_cnt)
 		return NOTIFY_DONE;
 
-	if (event != NETDEV_UP && event != NETDEV_DOWN)
+	if (event != NETDEV_UP && event != NETDEV_DOWN &&
+		event != NETDEV_REGISTER && event != NETDEV_UNREGISTER)
 		return NOTIFY_DONE;
 
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (!strcmp(ndev->name, ip_config[i].if_name)) {
-			port = i;
-			break;
+	if (event == NETDEV_UP || event == NETDEV_DOWN) {
+		for (i = 1; i <= ip_port_cnt; i++) {
+			if (!strcmp(ndev->name, ip_config[i].if_name)) {
+				port = i;
+				break;
+			}
 		}
+
+		if (!port)
+			return NOTIFY_DONE;
+
+		work = kzalloc(sizeof *work, GFP_ATOMIC);
+		if (!work) {
+			printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
+			return NOTIFY_DONE;
+		}
+
+		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
+			ip_config[port].rds_ibdev->dev->name,
+			ip_config[port].port_num, ndev->name,
+			(event == NETDEV_UP) ? "UP" : "DOWN");
+
+		work->dev = ndev;
+		work->port = port;
+		work->event_type = RDS_IB_PORT_EVENT_NET;
 	}
-
-	if (!port)
-		return NOTIFY_DONE;
-
-
-	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		ip_config[port].rds_ibdev->dev->name,
-		ip_config[port].port_num, ndev->name,
-		(event == NETDEV_UP) ? "UP" : "DOWN");
-
-	work = kzalloc(sizeof *work, GFP_ATOMIC);
-	if (!work) {
-		printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
-		return NOTIFY_DONE;
-	}
-
-	work->dev = ndev;
-	work->port = port;
-	work->event_type = RDS_IB_PORT_EVENT_NET;
 
 	switch (event) {
 	case NETDEV_UP:
@@ -1343,6 +1349,11 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	case NETDEV_DOWN:
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
+		break;
+	case NETDEV_UNREGISTER:
+	case NETDEV_REGISTER:
+		rds_ib_ip_config_init(1);
+		rds_ib_ip_failover_groups_init();
 		break;
 	}
 
@@ -1402,7 +1413,7 @@ int rds_ib_init(void)
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
-	ret = rds_ib_ip_config_init();
+	ret = rds_ib_ip_config_init(0);
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
 		goto out_srq;
