@@ -171,7 +171,10 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	kfree(rds_ibdev);
+	WARN_ON(!waitqueue_active(&rds_ibdev->wait));
+
+	rds_ibdev->done = 1;
+	wake_up(&rds_ibdev->wait);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -244,6 +247,13 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
+
+	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ))
+		printk(KERN_WARNING "RDS/IB: device cleanup timed out after "
+			" 30 secs (refcount=%d)\n",
+			 atomic_read(&rds_ibdev->refcount));
+
+	kfree(rds_ibdev);
 }
 
 struct ib_client rds_ib_client = {
@@ -1199,6 +1209,8 @@ void rds_ib_add_one(struct ib_device *device)
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->refcount, 1);
 	INIT_WORK(&rds_ibdev->free_work, rds_ib_dev_free);
+	init_waitqueue_head(&rds_ibdev->wait);
+	rds_ibdev->done = 0;
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
