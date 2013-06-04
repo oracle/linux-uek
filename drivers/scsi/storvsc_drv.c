@@ -1703,6 +1703,7 @@ static struct scsi_host_template scsi_driver = {
 enum {
 	SCSI_GUID,
 	IDE_GUID,
+	SFC_GUID,
 };
 
 static const struct hv_vmbus_device_id id_table[] = {
@@ -1713,6 +1714,11 @@ static const struct hv_vmbus_device_id id_table[] = {
 	/* IDE guid */
 	{ HV_IDE_GUID,
 	  .driver_data = IDE_GUID
+	},
+	/* Fibre Channel GUID */
+	{
+	  HV_SYNTHFC_GUID,
+	  .driver_data = SFC_GUID
 	},
 	{ },
 };
