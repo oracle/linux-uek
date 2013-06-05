@@ -54,13 +54,13 @@ unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 unsigned int rds_ib_apm_enabled = 0;
 unsigned int rds_ib_apm_fallback = 1;
-unsigned int rds_ib_haip_enabled = 0;
-unsigned int rds_ib_haip_fallback = 1;
+unsigned int rds_ib_active_bonding_enabled = 0;
+unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cq_balance_enabled = 1;
-static char *rds_ib_haip_failover_groups = NULL;
-unsigned int rds_ib_haip_arps = RDS_IB_DEFAULT_NUM_ARPS;
+static char *rds_ib_active_bonding_failover_groups = NULL;
+unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -70,23 +70,23 @@ module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
 module_param(rds_ib_apm_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
-module_param(rds_ib_haip_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_enabled, " High Availability IP enabled");
+module_param(rds_ib_active_bonding_enabled, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
 module_param(rds_ib_apm_timeout, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
 module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
-module_param(rds_ib_haip_fallback, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
-module_param(rds_ib_haip_failover_groups, charp, 0444);
-MODULE_PARM_DESC(rds_ib_haip_failover_groups,
+module_param(rds_ib_active_bonding_fallback, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabled");
+module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
-module_param(rds_ib_haip_arps, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_arps, " Num ARPs to be sent when IP moved");
+module_param(rds_ib_active_bonding_arps, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -218,7 +218,7 @@ void rds_ib_remove_one(struct ib_device *device)
 	if (!rds_ibdev)
 		return;
 
-	if (rds_ib_haip_enabled)
+	if (rds_ib_active_bonding_enabled)
 		ib_unregister_event_handler(&rds_ibdev->event_handler);
 
 	rds_ib_dev_shutdown(rds_ibdev);
@@ -389,7 +389,7 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 	int i;
 
 	/* Send multiple ARPs to improve reliability */
-	for (i = 0; i < rds_ib_haip_arps; i++) {
+	for (i = 0; i < rds_ib_active_bonding_arps; i++) {
 		arp_send(ARPOP_REQUEST, ETH_P_ARP,
 			ip_addr, out_dev,
 			ip_addr, NULL,
@@ -953,7 +953,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 	u8	port;
 	struct rds_ib_port_ud_work	*work;
 
-	if (!rds_ib_haip_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return;
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
@@ -983,7 +983,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		work->event_type = RDS_IB_PORT_EVENT_IB;
 
 		if (event->event == IB_EVENT_PORT_ACTIVE) {
-			if (rds_ib_haip_fallback) {
+			if (rds_ib_active_bonding_fallback) {
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 				queue_delayed_work(rds_wq, &work->work, 0);
 			} else
@@ -999,7 +999,7 @@ static void rds_ib_dump_ip_config(void)
 {
 	int	i, j;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return;
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
@@ -1046,7 +1046,7 @@ static int rds_ib_ip_config_init(bool reinit)
 	u8                      port_num;
 	u8                      port;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return 0;
 
 	if (!reinit)
@@ -1120,10 +1120,10 @@ void rds_ib_ip_failover_groups_init(void)
 	int i;
 	struct rds_ib_device *rds_ibdev;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return;
 
-	if (rds_ib_haip_failover_groups == NULL) {
+	if (rds_ib_active_bonding_failover_groups == NULL) {
 		rcu_read_lock();
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
 			for (i = 1; i <= ip_port_cnt; i++) {
@@ -1136,7 +1136,7 @@ void rds_ib_ip_failover_groups_init(void)
 		return;
 	}
 
-	strcpy(str, rds_ib_haip_failover_groups);
+	strcpy(str, rds_ib_active_bonding_failover_groups);
 	nxt_grp = strchr(str, ';');
 	if (nxt_grp) {
 		*nxt_grp = '\0';
@@ -1233,7 +1233,7 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	if (rds_ib_haip_enabled) {
+	if (rds_ib_active_bonding_enabled) {
 		INIT_IB_EVENT_HANDLER(&rds_ibdev->event_handler,
 				rds_ibdev->dev, rds_ib_event_handler);
 		if (ib_register_event_handler(&rds_ibdev->event_handler)) {
@@ -1306,7 +1306,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	u8 i;
 	struct rds_ib_port_ud_work *work;
 
-	if (!rds_ib_haip_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return NOTIFY_DONE;
 
 	if (event != NETDEV_UP && event != NETDEV_DOWN &&
@@ -1342,7 +1342,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 
 	switch (event) {
 	case NETDEV_UP:
-		if (rds_ib_haip_fallback) {
+		if (rds_ib_active_bonding_fallback) {
 			if (rds_ib_ip_config_down()) {
 				INIT_DELAYED_WORK(&work->work,
 					rds_ib_net_failback);

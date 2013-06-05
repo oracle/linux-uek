@@ -164,12 +164,13 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	printk(KERN_NOTICE
-		"RDS/IB: connected to %u.%u.%u.%u version %u.%u%s Tos %d\n",
+		"RDS/IB: connected <%u.%u.%u.%u,%u.%u.%u.%u,%d> version %u.%u%s\n",
+		NIPQUAD(conn->c_laddr),
 		NIPQUAD(conn->c_faddr),
+		conn->c_tos,
 		RDS_PROTOCOL_MAJOR(conn->c_version),
 		RDS_PROTOCOL_MINOR(conn->c_version),
-		ic->i_flowctl ? ", flow control" : "",
-		conn->c_tos);
+		ic->i_flowctl ? ", flow control" : "");
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 

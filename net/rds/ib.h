@@ -443,9 +443,8 @@ extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
-extern unsigned int rds_ib_haip_enabled;
-extern unsigned int rds_ib_haip_fallback;
-extern unsigned int rds_ib_haip_failover_enabled;
+extern unsigned int rds_ib_active_bonding_enabled;
+extern unsigned int rds_ib_active_bonding_fallback;
 extern unsigned int rds_ib_apm_timeout;
 extern unsigned int rds_ib_cq_balance_enabled;
 
