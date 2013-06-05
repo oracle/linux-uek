@@ -165,12 +165,13 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	printk(KERN_NOTICE
-		"RDS/IB: connected to %pI4 version %u.%u%s Tos %d\n",
+		"RDS/IB: connected <%pI4,%pI4,%d> version %u.%u%s\n",
+		&conn->c_laddr,
 		&conn->c_faddr,
+		conn->c_tos,
 		RDS_PROTOCOL_MAJOR(conn->c_version),
 		RDS_PROTOCOL_MINOR(conn->c_version),
-		ic->i_flowctl ? ", flow control" : "",
-		conn->c_tos);
+		ic->i_flowctl ? ", flow control" : "");
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 
@@ -208,33 +209,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
 #if RDMA_RDS_APM_SUPPORTED
-<<<<<<< HEAD
-	if (rds_ib_apm_enabled && !ic->conn->c_reconnect) {
-		memcpy(&ic->i_pri_path.p_sgid,
-			&ic->i_cm_id->route.path_rec[0].sgid,
-			sizeof(union ib_gid));
-
-		memcpy(&ic->i_pri_path.p_dgid,
-			&ic->i_cm_id->route.path_rec[0].dgid,
-			sizeof(union ib_gid));
-
-		memcpy(&ic->i_cur_path.p_sgid,
-			&ic->i_cm_id->route.path_rec[0].sgid,
-			sizeof(union ib_gid));
-
-		memcpy(&ic->i_cur_path.p_dgid,
-			&ic->i_cm_id->route.path_rec[0].dgid,
-			sizeof(union ib_gid));
-
-		printk(KERN_NOTICE "RDS/IB: connection "
-			"<%pI4,%pI4,%d> primary path "
-			"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-			&conn->c_laddr,
-			&conn->c_faddr,
-			conn->c_tos,
-			RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
-			RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
-=======
 	if (rds_ib_apm_enabled) {
 		struct rdma_dev_addr *dev_addr;
 
@@ -246,10 +220,10 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 			rdma_addr_get_dgid(dev_addr,
 				(union ib_gid *)&ic->i_pri_path.p_dgid);
 			printk(KERN_NOTICE "RDS/IB: connection "
-				"<%u.%u.%u.%u,%u.%u.%u.%u,%d> primary path "
+				"<%pI4,%pI4,%d> primary path "
 				"<"RDS_IB_GID_FMT","RDS_IB_GID_FMT">\n",
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
+				&conn->c_laddr,
+				&conn->c_faddr,
 				conn->c_tos,
 				RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
 				RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
@@ -258,7 +232,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 			(union ib_gid *)&ic->i_cur_path.p_sgid);
 		rdma_addr_get_dgid(dev_addr,
 			(union ib_gid *)&ic->i_cur_path.p_dgid);
->>>>>>> f09abac... RDS: Fixes to improve throughput performance
 	}
 #endif
 
