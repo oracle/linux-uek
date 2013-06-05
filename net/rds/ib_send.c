@@ -307,9 +307,11 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
 		rds_ib_conn_error(conn,
-			"send completion on %pI4 "
+			"send completion <%pI4,%pI4,%d> "
 			"had status %u, disconnecting and reconnecting\n",
-			&conn->c_faddr, wc->status);
+			&conn->c_laddr,
+			&conn->c_faddr,
+			conn->c_tos, wc->status);
 	} else
 		ic->i_last_migration = 0;
 }
