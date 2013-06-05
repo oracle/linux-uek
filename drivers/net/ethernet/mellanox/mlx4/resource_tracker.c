@@ -3071,7 +3071,6 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 	struct mlx4_resource_tracker *tracker = &priv->mfunc.master.res_tracker;
 	struct list_head *rlist = &tracker->slave_list[slave].res_list[RES_MAC];
 	int err;
-	int qpn;
 	struct mlx4_net_trans_rule_hw_ctrl *ctrl;
 	struct _rule_hw  *rule_header;
 	int header_id;
@@ -3081,21 +3080,13 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 		return -EOPNOTSUPP;
 
 	ctrl = (struct mlx4_net_trans_rule_hw_ctrl *)inbox->buf;
-	qpn = be32_to_cpu(ctrl->qpn) & 0xffffff;
-	err = get_res(dev, slave, qpn, RES_QP, NULL);
-	if (err) {
-		pr_err("Steering rule with qpn 0x%x rejected.\n", qpn);
-		return err;
-	}
 	rule_header = (struct _rule_hw *)(ctrl + 1);
 	header_id = map_hw_to_sw_id(be16_to_cpu(rule_header->id));
 
 	switch (header_id) {
 	case MLX4_NET_TRANS_RULE_ID_ETH:
-		if (validate_eth_header_mac(slave, rule_header, rlist)) {
-			err = -EINVAL;
-			goto err_put;
-		}
+		if (validate_eth_header_mac(slave, rule_header, rlist))
+			return -EINVAL;
 		break;
 	case MLX4_NET_TRANS_RULE_ID_IB:
 		break;
@@ -3103,17 +3094,14 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 	case MLX4_NET_TRANS_RULE_ID_TCP:
 	case MLX4_NET_TRANS_RULE_ID_UDP:
 		pr_warn("Can't attach FS rule without L2 headers, adding L2 header.\n");
-		if (add_eth_header(dev, slave, inbox, rlist, header_id)) {
-			err = -EINVAL;
-			goto err_put;
-		}
+		if (add_eth_header(dev, slave, inbox, rlist, header_id))
+			return -EINVAL;
 		vhcr->in_modifier +=
 			sizeof(struct mlx4_net_trans_rule_hw_eth) >> 2;
 		break;
 	default:
 		pr_err("Corrupted mailbox.\n");
-		err = -EINVAL;
-		goto err_put;
+		return -EINVAL;
 	}
 
 	err = mlx4_cmd_imm(dev, inbox->dma, &vhcr->out_param,
@@ -3121,7 +3109,7 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 			   MLX4_QP_FLOW_STEERING_ATTACH, MLX4_CMD_TIME_CLASS_A,
 			   MLX4_CMD_NATIVE);
 	if (err)
-		goto err_put;
+		return err;
 
 	err = add_res_range(dev, slave, vhcr->out_param, 1, RES_FS_RULE, 0);
 	if (err) {
@@ -3131,8 +3119,6 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 			 MLX4_QP_FLOW_STEERING_ATTACH, MLX4_CMD_TIME_CLASS_A,
 			 MLX4_CMD_NATIVE);
 	}
-err_put:
-	put_res(dev, slave, qpn, RES_QP);
 	return err;
 }
 
