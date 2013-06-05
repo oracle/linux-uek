@@ -407,7 +407,6 @@ void mlx4_master_handle_slave_flr(struct work_struct *work)
 	struct mlx4_slave_state *slave_state = priv->mfunc.master.slave_state;
 	int i;
 	int err;
-	unsigned long flags;
 
 	mlx4_dbg(dev, "mlx4_handle_slave_flr\n");
 
@@ -419,10 +418,10 @@ void mlx4_master_handle_slave_flr(struct work_struct *work)
 
 			mlx4_delete_all_resources_for_slave(dev, i);
 			/*return the slave to running mode*/
-			spin_lock_irqsave(&priv->mfunc.master.slave_state_lock, flags);
+			spin_lock(&priv->mfunc.master.slave_state_lock);
 			slave_state[i].last_cmd = MLX4_COMM_CMD_RESET;
 			slave_state[i].is_slave_going_down = 0;
-			spin_unlock_irqrestore(&priv->mfunc.master.slave_state_lock, flags);
+			spin_unlock(&priv->mfunc.master.slave_state_lock);
 			/*notify the FW:*/
 			err = mlx4_cmd(dev, 0, i, 0, MLX4_CMD_INFORM_FLR_DONE,
 				       MLX4_CMD_TIME_CLASS_A, MLX4_CMD_WRAPPED);
@@ -447,7 +446,6 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 	u8 update_slave_state;
 	int i;
 	enum slave_port_gen_event gen_event;
-	unsigned long flags;
 
 	while ((eqe = next_eqe_sw(eq, dev->caps.eqe_factor))) {
 		/*
@@ -655,13 +653,13 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 			} else
 				update_slave_state = 1;
 
-			spin_lock_irqsave(&priv->mfunc.master.slave_state_lock, flags);
+			spin_lock(&priv->mfunc.master.slave_state_lock);
 			if (update_slave_state) {
 				priv->mfunc.master.slave_state[flr_slave].active = false;
 				priv->mfunc.master.slave_state[flr_slave].last_cmd = MLX4_COMM_CMD_FLR;
 				priv->mfunc.master.slave_state[flr_slave].is_slave_going_down = 1;
 			}
-			spin_unlock_irqrestore(&priv->mfunc.master.slave_state_lock, flags);
+			spin_unlock(&priv->mfunc.master.slave_state_lock);
 			queue_work(priv->mfunc.master.comm_wq,
 				   &priv->mfunc.master.slave_flr_event_work);
 			break;
