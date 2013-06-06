@@ -201,7 +201,7 @@ ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $@)).mod.ctf)
 # We also take advantage of the opportunity to strip the guaranteed-
 # useless debugging information out of ctf.ko at the same time.
 
-module-ctf-flags = $(if $(filter ctf.ko ctf.ko.unsigned,$(notdir $@)), \
+module-ctf-flags = $(if $(filter ctf.ko,$(notdir $@)), \
 		   --strip-debug \
 		   $(foreach builtin,$(wildcard $(ctf-dir)/*.builtin.ctf), \
 			     --add-section $(patsubst %.builtin.ctf,.ctf.%,$(notdir $(builtin)))=$(builtin)), \
