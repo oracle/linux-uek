@@ -631,7 +631,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 			if ((cqe->status & cpu_to_be16(MLX4_CQE_STATUS_IPOK)) &&
 			    (cqe->checksum == cpu_to_be16(0xffff))) {
 				ring->csum_ok++;
-				/* This packet is eligible for GRO if it is:
+				/* This packet is eligible for LRO if it is:
 				 * - DIX Ethernet (type interpretation)
 				 * - TCP/IP (v4)
 				 * - without IP options
@@ -668,7 +668,7 @@ int mlx4_en_process_rx_cq(struct net_device *dev, struct mlx4_en_cq *cq, int bud
 					goto next;
 				}
 
-				/* GRO not possible, complete processing here */
+				/* LRO not possible, complete processing here */
 				ip_summed = CHECKSUM_UNNECESSARY;
 			} else {
 				ip_summed = CHECKSUM_NONE;
@@ -711,8 +711,11 @@ next:
 		++cq->mcq.cons_index;
 		index = (cq->mcq.cons_index) & ring->size_mask;
 		cqe = &cq->buf[(index << factor) + factor];
-		if (++polled == budget)
+		if (++polled == budget) {
+			/* We are here because we reached the NAPI budget -
+			 * flush only pending LRO sessions */
 			goto out;
+		}
 	}
 
 out:
