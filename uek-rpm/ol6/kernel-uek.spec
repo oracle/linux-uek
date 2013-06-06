@@ -590,16 +590,6 @@ BuildRoot: %{_tmppath}/kernel-%{KVERREL}-root
 %define __find_provides %_sourcedir/find-provides %{_tmppath}
 %define __find_requires /usr/lib/rpm/redhat/find-requires kernel
 
-# TEMPORARY HACK.
-# Override __debug_install_post to use a patched script that supports -g1.
-%define __debug_install_post \
-  %{_builddir}/find-debuginfo.sh %{?_missing_build_ids_terminate_build:--strict-build-id} %{?_find_debuginfo_opts} "%{_builddir}/%{?buildsubdir}"\
-%{nil}
-
-# Only strip debugging information out of the compiled files, not any
-# other sections.
-%define _find_debuginfo_opts -g1
-
 %description
 The kernel package contains the Linux kernel (vmlinuz), the core of any
 Linux operating system.  The kernel handles the basic functions
@@ -1387,17 +1377,19 @@ find Documentation -type d | xargs chmod u+w
 ###
 
 # This macro is used by %%install, so we must redefine it before that.
+# TEMPORARY HACK: use the debuginfo in the build tree, passing it -g1 so as
+# to strip out only debugging sections.
 %define debug_package %{nil}
 %if %{fancy_debuginfo}
 %define __debug_install_post \
-  /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
 %{nil}
 %endif
 
 %if %{with_debuginfo}
 
 %define __debug_install_post \
-  /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
 %{nil}
 
 %ifnarch noarch
