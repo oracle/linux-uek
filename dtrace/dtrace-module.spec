@@ -22,7 +22,7 @@ Group: System Environment/Kernel
 Requires: kernel-uek-dtrace = %{kver}
 Source0: dtrace-module-%{kver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: kernel-uek-devel = %{kver}
+BuildRequires: kernel-uek-dtrace-devel = %{kver}
 BuildRequires: libdtrace-ctf
 ExclusiveArch: x86_64
 
