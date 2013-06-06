@@ -6,7 +6,7 @@
 %endif
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver 2.6.39-201.0.1.el6uek
+%define kver 3.8.12-101.1.0.el6uek
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
