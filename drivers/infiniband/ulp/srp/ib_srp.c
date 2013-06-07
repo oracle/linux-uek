@@ -646,15 +646,12 @@ static void srp_reset_req(struct srp_target_port *target, struct srp_request *re
 
 static int srp_reconnect_target(struct srp_target_port *target)
 {
-	struct Scsi_Host *shost = target->scsi_host;
 	struct ib_qp_attr qp_attr;
 	struct ib_wc wc;
 	int i, ret;
 
-	if (target->state != SRP_TARGET_LIVE)
+	if (!srp_change_state(target, SRP_TARGET_LIVE, SRP_TARGET_CONNECTING))
 		return -EAGAIN;
-
-	scsi_target_block(&shost->shost_gendev);
 
 	srp_disconnect_target(target);
 	/*
@@ -663,16 +660,16 @@ static int srp_reconnect_target(struct srp_target_port *target)
 	 */
 	ret = srp_new_cm_id(target);
 	if (ret)
-		goto unblock;
+		goto err;
 
 	qp_attr.qp_state = IB_QPS_RESET;
 	ret = ib_modify_qp(target->qp, &qp_attr, IB_QP_STATE);
 	if (ret)
-		goto unblock;
+		goto err;
 
 	ret = srp_init_qp(target, target->qp);
 	if (ret)
-		goto unblock;
+		goto err;
 
 	while (ib_poll_cq(target->recv_cq, 1, &wc) > 0)
 		; /* nothing */
@@ -691,15 +688,11 @@ static int srp_reconnect_target(struct srp_target_port *target)
 
 	target->qp_in_error = 0;
 	ret = srp_connect_target(target);
-
-unblock:
-	scsi_target_unblock(&shost->shost_gendev, ret == 0 ? SDEV_RUNNING :
-			    SDEV_TRANSPORT_OFFLINE);
-
 	if (ret)
 		goto err;
 
-	shost_printk(KERN_INFO, target->scsi_host, PFX "reconnect succeeded\n");
+	if (!srp_change_state(target, SRP_TARGET_CONNECTING, SRP_TARGET_LIVE))
+		ret = -EAGAIN;
 
 	return ret;
 
@@ -717,7 +710,7 @@ err:
 	 * the flush_scheduled_work() in srp_remove_one().
 	 */
 	spin_lock_irq(&target->lock);
-	if (target->state == SRP_TARGET_LIVE) {
+	if (target->state == SRP_TARGET_CONNECTING) {
 		target->state = SRP_TARGET_DEAD;
 		INIT_WORK(&target->work, srp_remove_work);
 		queue_work(ib_wq, &target->work);
@@ -1318,6 +1311,9 @@ static int srp_queuecommand(struct Scsi_Host *shost, struct scsi_cmnd *scmnd)
 	unsigned long flags;
 	int len;
 
+	if (target->state == SRP_TARGET_CONNECTING)
+		goto err;
+
 	if (target->state == SRP_TARGET_DEAD ||
 	    target->state == SRP_TARGET_REMOVED) {
 		scmnd->result = DID_BAD_TARGET << 16;
@@ -1381,6 +1377,7 @@ err_iu:
 err_unlock:
 	spin_unlock_irqrestore(&target->lock, flags);
 
+err:
 	return SCSI_MLQUEUE_HOST_BUSY;
 }
 

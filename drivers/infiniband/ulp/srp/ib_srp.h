@@ -80,6 +80,7 @@ enum {
 
 enum srp_target_state {
 	SRP_TARGET_LIVE,
+	SRP_TARGET_CONNECTING,
 	SRP_TARGET_DEAD,
 	SRP_TARGET_REMOVED
 };
