@@ -47,7 +47,7 @@
 
 #define DRIVER_NAME "mlx5_ib"
 #define DRIVER_VERSION "1.0"
-#define DRIVER_RELDATE	"December 18, 2011"
+#define DRIVER_RELDATE	"June 2013"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");
 MODULE_DESCRIPTION("Mellanox Connect-IB HCA IB driver");
