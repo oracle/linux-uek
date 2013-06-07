@@ -758,7 +758,7 @@ static ssize_t show_cmd_avg(struct device *device,
 {
 	struct ib_device *dev = container_of(device, struct ib_device, dev);
 
-	return sprintf(buf, "%ld\n", dev->cmd_avg);
+	return sprintf(buf, "%lld\n", dev->cmd_avg);
 }
 
 static ssize_t set_cmd_avg(struct device *device,

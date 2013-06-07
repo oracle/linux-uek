@@ -670,7 +670,8 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	ktime_t t1, t2, delta;
 	s64 ds;
 	ssize_t ret;
-	unsigned long long tmp;
+	u64 dividend;
+	u32 divisor;
 
 	if (count < sizeof hdr)
 		return -EINVAL;
@@ -720,9 +721,11 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		delta = ktime_sub(t2, t1);
 		ds = ktime_to_ns(delta);
 		spin_lock(&dev->cmd_perf_lock);
-		tmp = dev->cmd_avg * dev->cmd_n + ds;
+		dividend = dev->cmd_avg * dev->cmd_n + ds;
 		++dev->cmd_n;
-		dev->cmd_avg = tmp / dev->cmd_n;
+		divisor = dev->cmd_n;
+		do_div(dividend, divisor);
+		dev->cmd_avg = dividend;
 		spin_unlock(&dev->cmd_perf_lock);
 		if (dev->cmd_perf & COMMAND_INFO_MASK) {
 			pr_info("%s: %s execution time = %lld nsec\n",
