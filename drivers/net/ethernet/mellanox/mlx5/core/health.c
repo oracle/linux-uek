@@ -76,15 +76,16 @@ EXPORT_SYMBOL(mlx5_unregister_health_report_handler);
 static void health_care(struct work_struct *work)
 {
 	LIST_HEAD(tlist);
-	struct mlx5_core_health *health;
+	struct mlx5_core_health *health, *n;
 	struct mlx5_priv *priv;
 	struct mlx5_core_dev *dev;
 
 	spin_lock_irq(&health_lock);
 	list_splice_init(&health_list, &tlist);
+
 	spin_unlock_irq(&health_lock);
 
-	list_for_each_entry(health, &tlist, list) {
+	list_for_each_entry_safe(health, n, &tlist, list) {
 		priv = container_of(health, struct mlx5_priv, health);
 		dev = container_of(priv, struct mlx5_core_dev, priv);
 		mlx5_core_warn(dev, "handling bad device here\n");
@@ -92,8 +93,9 @@ static void health_care(struct work_struct *work)
 		if (reg_handler)
 			reg_handler(dev->pdev, health->health,
 				    sizeof(health->health));
-		spin_unlock_irq(&health_lock);
 
+		list_del_init(&health->list);
+		spin_unlock_irq(&health_lock);
 	}
 }
 
@@ -157,7 +159,7 @@ static void poll_health(unsigned long data)
 		mlx5_core_err(dev, "device's health compromised\n");
 		print_health_info(dev);
 		spin_lock_irq(&health_lock);
-		list_add(&health->list, &health_list);
+		list_add_tail(&health->list, &health_list);
 		spin_unlock_irq(&health_lock);
 
 		queue_work(mlx5_core_wq, &health_work);
