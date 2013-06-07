@@ -508,6 +508,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	int			ret = 0;
 	u8			active_port;
 	struct in_device	*in_dev;
+	unsigned long flags;
+	struct rds_ib_connection *ic;
+	struct rds_ib_device *rds_ibdev;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -605,27 +608,21 @@ static int rds_ib_move_ip(char			*from_dev,
 			"RDS/IB: IP %u.%u.%u.%u migrated from %s to %s\n",
 				NIPQUAD(addr), from_dev2, to_dev2);
 
-		if (event_type == RDS_IB_PORT_EVENT_NET) {
-			unsigned long flags;
-			struct rds_ib_connection *ic;
-			struct rds_ib_device *rds_ibdev;
-
-			rds_ibdev = ip_config[to_port].rds_ibdev;
-			spin_lock_irqsave(&rds_ibdev->spinlock, flags);
-			list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
-				if (ic->conn->c_laddr == addr) {
-					if (rds_ib_apm_enabled) {
-						if (!memcmp(
-							&ic->i_cur_path.p_sgid,
-							&ip_config[to_port].gid,
-							sizeof(union ib_gid))) {
-							continue;
-						}
+		rds_ibdev = ip_config[from_port].rds_ibdev;
+		spin_lock_irqsave(&rds_ibdev->spinlock, flags);
+		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
+			if (ic->conn->c_laddr == addr) {
+				if (rds_ib_apm_enabled) {
+					if (!memcmp(
+						&ic->i_cur_path.p_sgid,
+						&ip_config[to_port].gid,
+						sizeof(union ib_gid))) {
+						continue;
 					}
-					rds_conn_drop(ic->conn);
 				}
-			spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
-		}
+				rds_conn_drop(ic->conn);
+			}
+		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 	}
 
 out:
