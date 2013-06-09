@@ -131,6 +131,7 @@ static const dev_t base_dev = MKDEV(IB_UMAD_MAJOR, IB_UMAD_MINOR_BASE);
 
 static DEFINE_SPINLOCK(port_lock);
 static DECLARE_BITMAP(dev_map, IB_UMAD_MAX_PORTS);
+static DECLARE_BITMAP(overflow_map, IB_UMAD_MAX_PORTS);
 
 static void ib_umad_add_one(struct ib_device *device);
 static void ib_umad_remove_one(struct ib_device *device);
@@ -168,6 +169,10 @@ static void put_umad_dev(struct kref *ref)
 	spin_unlock(&ports_list_lock);
 	if (ret) {
 		for (i = 0; i <= dev->end_port - dev->start_port; ++i) {
+			if (dev->port[i].dev_num < IB_UMAD_MAX_PORTS)
+				clear_bit(dev->port[i].dev_num, dev_map);
+			else
+				clear_bit(dev->port[i].dev_num - IB_UMAD_MAX_PORTS, overflow_map);
 			cdev_del(dev->port[i].cdev);
 			cdev_del(dev->port[i].sm_cdev);
 		}
@@ -1034,7 +1039,6 @@ static CLASS_ATTR_STRING(abi_version, S_IRUGO,
 			 __stringify(IB_USER_MAD_ABI_VERSION));
 
 static dev_t overflow_maj;
-static DECLARE_BITMAP(overflow_map, IB_UMAD_MAX_PORTS);
 static int find_overflow_devnum(void)
 {
 	int ret;
@@ -1177,11 +1181,6 @@ static void ib_umad_kill_port(struct ib_umad_port *port)
 	}
 
 	mutex_unlock(&port->file_mutex);
-
-	if (port->dev_num < IB_UMAD_MAX_PORTS)
-		clear_bit(port->dev_num, dev_map);
-	else
-		clear_bit(port->dev_num - IB_UMAD_MAX_PORTS, overflow_map);
 }
 
 static void ib_umad_add_one(struct ib_device *device)
