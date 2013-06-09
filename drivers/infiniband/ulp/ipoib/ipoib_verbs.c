@@ -566,6 +566,9 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 			size += ipoib_recvq_size + 1; /* 1 extra for rx_drain_qp */
 		else
 			size += ipoib_recvq_size * ipoib_max_conn_qp;
+	} else {
+		pr_warn("%s: ipoib_cm_dev_init failed\n", ca->name);
+		goto out_free_mr;
 	}
 
 
@@ -573,7 +576,7 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 	ret = ipoib_transport_cq_init(dev, size);
 	if (ret) {
 		pr_warn("%s: ipoib_transport_cq_init failed\n", ca->name);
-		goto out_free_mr;
+		goto out_free_cm_dev;
 	}
 
 
@@ -653,9 +656,11 @@ out_free_cqs:
 		priv->send_ring[i].send_cq = NULL;
 	}
 
+out_free_cm_dev:
+	ipoib_cm_dev_cleanup(dev);
+
 out_free_mr:
 	ib_dereg_mr(priv->mr);
-	ipoib_cm_dev_cleanup(dev);
 
 out_free_pd:
 	ib_dealloc_pd(priv->pd);
