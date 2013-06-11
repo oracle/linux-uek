@@ -261,6 +261,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 	params.pool_size	 = ISCSI_DEF_XMIT_CMDS_MAX * 2;
 	params.dirty_watermark	 = ISCSI_DEF_XMIT_CMDS_MAX;
 	params.cache		 = 0;
+	params.relaxed		 = 0;
 	params.flush_function	 = NULL;
 	params.flush_arg	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
@@ -718,7 +719,7 @@ int iser_reg_page_vec(struct iser_conn     *ib_conn,
 	mem  = ib_fmr_pool_map_phys(ib_conn->fmr_pool,
 				    page_list,
 				    page_vec->length,
-				    io_addr);
+				    io_addr, NULL);
 
 	if (IS_ERR(mem)) {
 		status = (int)PTR_ERR(mem);

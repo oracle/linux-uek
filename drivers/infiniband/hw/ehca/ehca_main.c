@@ -509,6 +509,8 @@ static int ehca_init_device(struct ehca_shca *shca)
 	shca->ib_device.process_mad	    = ehca_process_mad;
 	shca->ib_device.mmap		    = ehca_mmap;
 	shca->ib_device.dma_ops		    = &ehca_dma_mapping_ops;
+	shca->ib_device.set_fmr_pd          = NULL;
+
 
 	if (EHCA_BMASK_GET(HCA_CAP_SRQ, shca->hca_cap)) {
 		shca->ib_device.uverbs_cmd_mask |=
