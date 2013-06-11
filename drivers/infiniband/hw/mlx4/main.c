@@ -1994,7 +1994,11 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 		(1ull << IB_USER_VERBS_CMD_QUERY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_DESTROY_SRQ)		|
 		(1ull << IB_USER_VERBS_CMD_CREATE_XSRQ)		|
-		(1ull << IB_USER_VERBS_CMD_OPEN_QP);
+		(1ull << IB_USER_VERBS_CMD_OPEN_QP)         |
+		(1ull << IB_USER_VERBS_CMD_REG_MR_RELAXED)  |
+		(1ull << IB_USER_VERBS_CMD_DEREG_MR_RELAXED)|
+		(1ull << IB_USER_VERBS_CMD_FLUSH_RELAXED_MR);
+
 
 	ibdev->ib_dev.query_device	= mlx4_ib_query_device;
 	ibdev->ib_dev.query_port	= mlx4_ib_query_port;
@@ -2038,6 +2042,7 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	ibdev->ib_dev.attach_mcast	= mlx4_ib_mcg_attach;
 	ibdev->ib_dev.detach_mcast	= mlx4_ib_mcg_detach;
 	ibdev->ib_dev.process_mad	= mlx4_ib_process_mad;
+	ibdev->ib_dev.set_fmr_pd 	= mlx4_ib_set_fmr_pd;
 
 	ibdev->ib_dev.uverbs_cmd_mask	|=
 		(1ull << IB_USER_VERBS_CMD_CREATE_QP_EX)        |
