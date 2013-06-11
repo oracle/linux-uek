@@ -88,6 +88,9 @@ enum {
 	IB_USER_VERBS_CMD_CLOSE_XRCD,
 	IB_USER_VERBS_CMD_CREATE_XSRQ,
 	IB_USER_VERBS_CMD_OPEN_QP,
+	IB_USER_VERBS_CMD_REG_MR_RELAXED,
+	IB_USER_VERBS_CMD_DEREG_MR_RELAXED,
+	IB_USER_VERBS_CMD_FLUSH_RELAXED_MR,
 	IB_USER_VERBS_CMD_CREATE_QP_EX  = IB_USER_VERBS_CMD_THRESHOLD,
 	IB_USER_VERBS_CMD_MODIFY_CQ_EX,
 	IB_USER_VERBS_CMD_CREATE_FLOW,
@@ -276,6 +279,11 @@ struct ib_uverbs_reg_mr_resp {
 struct ib_uverbs_dereg_mr {
 	__u32 mr_handle;
 };
+
+struct ib_uverbs_flush_relaxed_mr {
+	__u32 pd_handle;
+};
+
 
 struct ib_uverbs_create_comp_channel {
 	__u64 response;
