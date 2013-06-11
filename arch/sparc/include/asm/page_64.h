@@ -33,6 +33,7 @@ extern void hugetlb_setup(struct pt_regs *regs);
 
 #define WANT_PAGE_VIRTUAL
 
+extern int devmem_is_allowed(unsigned long pagenr);
 extern void _clear_page(void *page);
 #define clear_page(X)	_clear_page((void *)(X))
 struct page;
