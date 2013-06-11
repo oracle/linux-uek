@@ -54,6 +54,18 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("InfiniBand userspace verbs access");
 MODULE_LICENSE("Dual BSD/GPL");
 
+module_param(ufmr_pool1_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_blocksize, "Block size for Usermode FMR Pool 1");
+
+module_param(ufmr_pool1_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_nelems, "No of FMRs in Usermode FMR Pool 1");
+
+module_param(ufmr_pool2_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_blocksize, "Block size for Usermode FMR Pool 2");
+
+module_param(ufmr_pool2_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_nelems, "No of FMRs in Usermode FMR Pool 2");
+
 enum {
 	IB_UVERBS_MAJOR       = 231,
 	IB_UVERBS_BASE_MINOR  = 192,
@@ -74,6 +86,7 @@ DEFINE_IDR(ib_uverbs_qp_idr);
 DEFINE_IDR(ib_uverbs_srq_idr);
 DEFINE_IDR(ib_uverbs_xrcd_idr);
 DEFINE_IDR(ib_uverbs_rule_idr);
+DEFINE_IDR(ib_uverbs_fmr_idr);
 
 static DEFINE_SPINLOCK(map_lock);
 static DECLARE_BITMAP(dev_map, IB_UVERBS_MAX_DEVICES);
@@ -118,6 +131,9 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_CREATE_FLOW]		= ib_uverbs_create_flow,
 	[IB_USER_VERBS_CMD_DESTROY_FLOW]	= ib_uverbs_destroy_flow,
 	[IB_USER_VERBS_CMD_MODIFY_QP_EX]        = ib_uverbs_modify_qp_ex,
+	[IB_USER_VERBS_CMD_REG_MR_RELAXED]      = ib_uverbs_reg_mr_relaxed,
+	[IB_USER_VERBS_CMD_DEREG_MR_RELAXED]    = ib_uverbs_dereg_mr_relaxed,
+	[IB_USER_VERBS_CMD_FLUSH_RELAXED_MR]    = ib_uverbs_flush_relaxed_mr,
 };
 
 static void ib_uverbs_add_one(struct ib_device *device);
@@ -270,6 +286,15 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 		kfree(uobj);
 	}
 
+	list_for_each_entry_safe(uobj, tmp, &context->fmr_list, list) {
+		struct ib_pool_fmr *fmr = uobj->object;
+		struct ib_pd *pd = fmr->pd;
+		idr_remove_uobj(&ib_uverbs_fmr_idr, uobj);
+		ib_fmr_pool_unmap(fmr);
+		atomic_dec(&pd->usecnt);
+		kfree(uobj);
+	}
+
 	mutex_lock(&file->device->xrcd_tree_mutex);
 	list_for_each_entry_safe(uobj, tmp, &context->xrcd_list, list) {
 		struct ib_xrcd *xrcd = uobj->object;
@@ -284,7 +309,11 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 	list_for_each_entry_safe(uobj, tmp, &context->pd_list, list) {
 		struct ib_pd *pd = uobj->object;
-
+		struct ib_relaxed_pool_data *pos;
+		/* flush fmr pool associated with this pd */
+		list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+			ib_flush_fmr_pool(pos->fmr_pool);
+		}
 		idr_remove_uobj(&ib_uverbs_pd_idr, uobj);
 		ib_dealloc_pd(pd);
 		kfree(uobj);
@@ -987,6 +1016,12 @@ static void ib_uverbs_add_one(struct ib_device *device)
 	if (device_create_file(uverbs_dev->dev, &dev_attr_abi_version))
 		goto err_class;
 
+	device->relaxed_pd = ib_alloc_pd(device);
+	if (IS_ERR(device->relaxed_pd)) {
+		device->relaxed_pd = NULL;
+		goto err_class;
+	}
+
 	ib_set_client_data(device, &uverbs_client, uverbs_dev);
 
 	return;
@@ -1011,9 +1046,21 @@ err:
 static void ib_uverbs_remove_one(struct ib_device *device)
 {
 	struct ib_uverbs_device *uverbs_dev = ib_get_client_data(device, &uverbs_client);
+	struct ib_relaxed_pool_data *pos;
+	struct ib_relaxed_pool_data *tmp;
+	int ret = 0;
 
 	if (!uverbs_dev)
 		return;
+
+	list_for_each_entry_safe(pos, tmp, &device->relaxed_pool_list, pool_list) {
+		ib_destroy_fmr_pool(pos->fmr_pool);
+		list_del(&pos->pool_list);
+		kfree(pos);
+		}
+
+	ret = ib_dealloc_pd(device->relaxed_pd);
+	device->relaxed_pd = NULL;
 
 	dev_set_drvdata(uverbs_dev->dev, NULL);
 	device_destroy(uverbs_class, uverbs_dev->cdev.dev);
@@ -1089,6 +1136,7 @@ static void __exit ib_uverbs_cleanup(void)
 		unregister_chrdev_region(overflow_maj, IB_UVERBS_MAX_DEVICES);
 	idr_destroy(&ib_uverbs_pd_idr);
 	idr_destroy(&ib_uverbs_mr_idr);
+	idr_destroy(&ib_uverbs_fmr_idr);
 	idr_destroy(&ib_uverbs_mw_idr);
 	idr_destroy(&ib_uverbs_ah_idr);
 	idr_destroy(&ib_uverbs_cq_idr);
