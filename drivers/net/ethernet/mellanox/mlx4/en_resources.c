@@ -63,6 +63,15 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 		context->pri_path.feup = 1 << 6;
 	}
 	context->pri_path.counter_index = (u8)(priv->counter_index);
+	if (!rss &&
+	    (mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_LB_SRC_CHK) &&
+	    context->pri_path.counter_index != 0xFF) {
+		/* disable multicast loopback to qp with same counter */
+		context->pri_path.fl |= MLX4_FL_ETH_SRC_CHECK_MC_LB;
+		context->pri_path.vlan_control |=
+			MLX4_VLAN_CTRL_ETH_SRC_CHECK_IF_COUNTER;
+	}
+
 	context->cqn_send = cpu_to_be32(cqn);
 	context->cqn_recv = cpu_to_be32(cqn);
 	context->db_rec_addr = cpu_to_be64(priv->res.db.dma << 2);

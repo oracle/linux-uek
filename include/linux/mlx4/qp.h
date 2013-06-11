@@ -160,9 +160,12 @@ struct mlx4_qp_path {
 
 enum { /* fl */
 	MLX4_FL_CV	= 1 << 6,
-	MLX4_FL_ETH_HIDE_CQE_VLAN	= 1 << 2
+	MLX4_FL_ETH_HIDE_CQE_VLAN	= 1 << 2,
+	MLX4_FL_ETH_SRC_CHECK_MC_LB	= 1 << 1,
+	MLX4_FL_ETH_SRC_CHECK_UC_LB	= 1 << 0,
 };
 enum { /* vlan_control */
+	MLX4_VLAN_CTRL_ETH_SRC_CHECK_IF_COUNTER	= 1 << 7,
 	MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED	= 1 << 6,
 	MLX4_VLAN_CTRL_ETH_RX_BLOCK_TAGGED	= 1 << 2,
 	MLX4_VLAN_CTRL_ETH_RX_BLOCK_PRIO_TAGGED	= 1 << 1,/* 802.1p priorty tag*/

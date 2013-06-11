@@ -645,9 +645,20 @@ static int update_vport_qp_param(struct mlx4_dev *dev,
 	port = (qpc->pri_path.sched_queue & 0x40) ? 2 : 1;
 	priv = mlx4_priv(dev);
 	vp_oper = &priv->mfunc.master.vf_oper[slave].vport[port];
+	qp_type	= (be32_to_cpu(qpc->flags) >> 16) & 0xff;
+
+	if ((dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_LB_SRC_CHK) &&
+	    dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH &&
+	    !mlx4_is_qp_reserved(dev, qpn) &&
+	    qp_type == MLX4_QP_ST_MLX &&
+	    qpc->pri_path.counter_index != 0xFF) {
+		/* disable multicast loopback to qp with same counter */
+		qpc->pri_path.fl |= MLX4_FL_ETH_SRC_CHECK_MC_LB;
+		qpc->pri_path.vlan_control |=
+			MLX4_VLAN_CTRL_ETH_SRC_CHECK_IF_COUNTER;
+	}
 
 	if (MLX4_VGT != vp_oper->state.default_vlan) {
-		qp_type	= (be32_to_cpu(qpc->flags) >> 16) & 0xff;
 		if (MLX4_QP_ST_RC == qp_type ||
 		    (MLX4_QP_ST_UD == qp_type &&
 		     !mlx4_is_qp_reserved(dev, qpn)))
@@ -661,13 +672,16 @@ static int update_vport_qp_param(struct mlx4_dev *dev,
 
 		/* force strip vlan by clear vsd */
 		qpc->param3 &= ~cpu_to_be32(MLX4_STRIP_VLAN);
+		/* preserve IF_COUNTER flag */
+		qpc->pri_path.vlan_control &=
+			MLX4_VLAN_CTRL_ETH_SRC_CHECK_IF_COUNTER;
 		if (0 != vp_oper->state.default_vlan) {
-			qpc->pri_path.vlan_control =
+			qpc->pri_path.vlan_control |=
 				MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
 				MLX4_VLAN_CTRL_ETH_RX_BLOCK_PRIO_TAGGED |
 				MLX4_VLAN_CTRL_ETH_RX_BLOCK_UNTAGGED;
 		} else { /* priority tagged */
-			qpc->pri_path.vlan_control =
+			qpc->pri_path.vlan_control |=
 				MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
 				MLX4_VLAN_CTRL_ETH_RX_BLOCK_TAGGED;
 		}
@@ -3346,9 +3360,6 @@ int mlx4_INIT2RTR_QP_wrapper(struct mlx4_dev *dev, int slave,
 	update_gid(dev, inbox, (u8)slave);
 	adjust_proxy_tun_qkey(dev, vhcr, qpc);
 	orig_sched_queue = qpc->pri_path.sched_queue;
-	err = update_vport_qp_param(dev, inbox, slave, qpn);
-	if (err)
-		return err;
 
 	err = get_res(dev, slave, qpn, RES_QP, &qp);
 	if (err)
@@ -3356,6 +3367,13 @@ int mlx4_INIT2RTR_QP_wrapper(struct mlx4_dev *dev, int slave,
 	if (qp->com.from_state != RES_QP_HW) {
 		err = -EBUSY;
 		goto out;
+	}
+
+	/* do not modify vport QP params for RSS QPs */
+	if (!(qp->qpc_flags & (1 << MLX4_RSS_QPC_FLAG_OFFSET))) {
+		err = update_vport_qp_param(dev, inbox, slave, qpn);
+		if (err)
+			goto out;
 	}
 
 	err = mlx4_DMA_wrapper(dev, slave, vhcr, inbox, outbox, cmd);

@@ -132,7 +132,8 @@ static void dump_dev_cap_flags2(struct mlx4_dev *dev, u64 flags)
 		[3] = "Device manage flow steering support",
 		[4] = "FSM (MAC unti-spoofing) support",
 		[5] = "VST (control vlan insertion/stripping) support",
-		[6] = "Dynamic QP updates support"
+		[6] = "Dynamic QP updates support",
+		[7] = "Loopback source checks support"
 	};
 	int i;
 
@@ -665,6 +666,8 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	MLX4_GET(field32, outbox, QUERY_DEV_CAP_EXT_2_FLAGS_OFFSET);
 	if (field32 & (1 << 16))
 		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_UPDATE_QP;
+	if (field32 & (1 << 19))
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_LB_SRC_CHK;
 	if (field32 & (1 << 20))
 		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_FSM;
 	if (field32 & (1 << 26))
