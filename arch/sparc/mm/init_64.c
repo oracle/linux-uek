@@ -2806,13 +2806,26 @@ void hugetlb_setup(struct pt_regs *regs)
 #endif
 
 #ifdef CONFIG_STRICT_DEVMEM
+static int devmem_allowed;
+static int __init devmem_allowed_setup(char *str)
+{
+	devmem_allowed = 1;
+	return 1;
+}
+__setup("devmem_allowed", devmem_allowed_setup);
+
 /* devmem_is_allowed for sparc.
  */
 int devmem_is_allowed(unsigned long pagenr)
 {
-	if (!page_is_ram(pagenr))
-		return 0;
-	return 1;
+	int ret;
+
+	if (devmem_allowed)
+		ret = 1;
+	else
+		ret = page_is_ram(pagenr);
+
+	return ret;
 }
 #endif
 
