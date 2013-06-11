@@ -22,6 +22,7 @@
 #include <linux/kprobes.h>
 #include <linux/cache.h>
 #include <linux/sort.h>
+#include <linux/ioport.h>
 #include <linux/percpu.h>
 #include <linux/memblock.h>
 #include <linux/mmzone.h>
@@ -2814,3 +2815,67 @@ int devmem_is_allowed(unsigned long pagenr)
 	return 1;
 }
 #endif
+
+static struct resource code_resource = {
+	.name	= "Kernel code",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static struct resource data_resource = {
+	.name	= "Kernel data",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static struct resource bss_resource = {
+	.name	= "Kernel bss",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static inline resource_size_t compute_kern_paddr(void *addr)
+{
+	return (resource_size_t) (addr - KERNBASE + kern_base);
+}
+
+static void __init kernel_lds_init(void)
+{
+	code_resource.start = compute_kern_paddr(_text);
+	code_resource.end   = compute_kern_paddr(_etext - 1);
+	data_resource.start = compute_kern_paddr(_etext);
+	data_resource.end   = compute_kern_paddr(_edata - 1);
+	bss_resource.start  = compute_kern_paddr(__bss_start);
+	bss_resource.end    = compute_kern_paddr(_end - 1);
+}
+
+static int __init report_memory(void)
+{
+	int i;
+	struct resource *res;
+
+	kernel_lds_init();
+
+	for (i = 0; i < pavail_ents; i++) {
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+
+		if (!res) {
+			pr_warning("failed to allocate source\n");
+			break;
+		}
+
+		res->name = "System RAM";
+		res->start = pavail[i].phys_addr;
+		res->end = pavail[i].phys_addr + pavail[i].reg_size - 1;
+		res->flags = IORESOURCE_BUSY | IORESOURCE_MEM;
+
+		if (insert_resource(&iomem_resource, res) < 0) {
+			pr_warning("resource insertion failed\n");
+			break;
+		}
+
+		insert_resource(res, &code_resource);
+		insert_resource(res, &data_resource);
+		insert_resource(res, &bss_resource);
+	}
+
+	return 0;
+}
+__initcall(report_memory);
