@@ -769,7 +769,8 @@ static int iser_drain_tx_cq(struct iser_device  *device)
 
 	while (ib_poll_cq(cq, 1, &wc) == 1) {
 		tx_desc	= (struct iser_tx_desc *) (unsigned long) wc.wr_id;
-		ib_conn = wc.qp->qp_context;
+		ib_conn = rdma_id_2_qp_ctx(
+			(struct rdma_cm_id *)(wc.qp->qp_context));
 		if (wc.status == IB_WC_SUCCESS) {
 			if (wc.opcode == IB_WC_SEND)
 				iser_snd_completion(tx_desc, ib_conn);
