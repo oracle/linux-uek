@@ -261,6 +261,7 @@ int iser_create_fmr_pool(struct iser_conn *ib_conn, unsigned cmds_max)
 	params.pool_size	 = cmds_max * 2;
 	params.dirty_watermark	 = cmds_max;
 	params.cache		 = 0;
+	params.relaxed		 = 0;
 	params.flush_function	 = NULL;
 	params.flush_arg	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
@@ -823,7 +824,7 @@ int iser_reg_page_vec(struct iser_conn     *ib_conn,
 	mem  = ib_fmr_pool_map_phys(ib_conn->fastreg.fmr.pool,
 				    page_list,
 				    page_vec->length,
-				    io_addr);
+				    io_addr, NULL);
 
 	if (IS_ERR(mem)) {
 		status = (int)PTR_ERR(mem);
