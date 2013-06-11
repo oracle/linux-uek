@@ -835,7 +835,7 @@ static int find_node(unsigned long addr)
 		if ((addr & p->mask) == p->val)
 			return i;
 	}
-	return -1;
+	return 0;
 }
 
 static u64 memblock_nid_range(u64 start, u64 end, int *nid)
