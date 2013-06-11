@@ -135,20 +135,20 @@ struct mlx5_profile profile[] = {
 			.limit	= 250
 		},
 		.mr_cache[12]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 64,
+			.limit	= 32
 		},
 		.mr_cache[13]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 32,
+			.limit	= 16
 		},
 		.mr_cache[14]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 16,
+			.limit	= 8
 		},
 		.mr_cache[15]	= {
-			.size	= 500,
-			.limit	= 250
+			.size	= 8,
+			.limit	= 4
 		},
 	},
 };
