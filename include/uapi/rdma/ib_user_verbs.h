@@ -91,6 +91,8 @@ enum {
 	IB_USER_VERBS_CMD_REG_MR_RELAXED,
 	IB_USER_VERBS_CMD_DEREG_MR_RELAXED,
 	IB_USER_VERBS_CMD_FLUSH_RELAXED_MR,
+	IB_USER_VERBS_CMD_ALLOC_SHPD,
+	IB_USER_VERBS_CMD_SHARE_PD,
 	IB_USER_VERBS_CMD_CREATE_QP_EX  = IB_USER_VERBS_CMD_THRESHOLD,
 	IB_USER_VERBS_CMD_MODIFY_CQ_EX,
 	IB_USER_VERBS_CMD_CREATE_FLOW,
@@ -238,6 +240,26 @@ struct ib_uverbs_alloc_pd {
 };
 
 struct ib_uverbs_alloc_pd_resp {
+	__u32 pd_handle;
+};
+
+struct ib_uverbs_alloc_shpd {
+	__u64 response;
+	__u32 pd_handle;
+	__u64 share_key;
+};
+
+struct ib_uverbs_alloc_shpd_resp {
+	__u32 shpd_handle;
+};
+
+struct ib_uverbs_share_pd {
+	__u64 response;
+	__u32 shpd_handle;
+	__u64 share_key;
+};
+
+struct ib_uverbs_share_pd_resp {
 	__u32 pd_handle;
 };
 
