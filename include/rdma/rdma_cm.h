@@ -393,4 +393,12 @@ int rdma_set_reuseaddr(struct rdma_cm_id *id, int reuse);
  */
 int rdma_set_afonly(struct rdma_cm_id *id, int afonly);
 
+/**
+ * rdma_set_timeout - Set the QP timeout associated with a connection
+ * identifier.
+ * @id: Communication identifier to associated with service type.
+ * @timeout: QP timeout
+ */
+void rdma_set_timeout(struct rdma_cm_id *id, int timeout);
+
 #endif /* RDMA_CM_H */
