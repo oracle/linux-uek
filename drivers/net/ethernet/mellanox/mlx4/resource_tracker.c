@@ -110,7 +110,6 @@ struct res_qp {
 	struct list_head	mcg_list;
 	spinlock_t		mcg_spl;
 	int			local_qpn;
-	atomic_t		ref_count;
 };
 
 enum res_mtt_states {
@@ -209,7 +208,6 @@ enum res_fs_rule_states {
 
 struct res_fs_rule {
 	struct res_common	com;
-	int			qpn;
 };
 
 static int mlx4_is_eth(struct mlx4_dev *dev, int port)
@@ -773,7 +771,6 @@ static struct res_common *alloc_qp_tr(int id)
 	ret->local_qpn = id;
 	INIT_LIST_HEAD(&ret->mcg_list);
 	spin_lock_init(&ret->mcg_spl);
-	atomic_set(&ret->ref_count, 0);
 
 	return &ret->com;
 }
@@ -881,7 +878,7 @@ static struct res_common *alloc_xrcdn_tr(int id)
 	return &ret->com;
 }
 
-static struct res_common *alloc_fs_rule_tr(u64 id, int qpn)
+static struct res_common *alloc_fs_rule_tr(u64 id)
 {
 	struct res_fs_rule *ret;
 
@@ -891,7 +888,7 @@ static struct res_common *alloc_fs_rule_tr(u64 id, int qpn)
 
 	ret->com.res_id = id;
 	ret->com.state = RES_FS_RULE_ALLOCATED;
-	ret->qpn = qpn;
+
 	return &ret->com;
 }
 
@@ -929,7 +926,7 @@ static struct res_common *alloc_tr(u64 id, enum mlx4_resource type, int slave,
 		ret = alloc_xrcdn_tr(id);
 		break;
 	case RES_FS_RULE:
-		ret = alloc_fs_rule_tr(id, extra);
+		ret = alloc_fs_rule_tr(id);
 		break;
 	default:
 		return NULL;
@@ -998,14 +995,10 @@ undo:
 
 static int remove_qp_ok(struct res_qp *res)
 {
-	if (res->com.state == RES_QP_BUSY || atomic_read(&res->ref_count) ||
-	    !list_empty(&res->mcg_list)) {
-		pr_err("resource tracker: fail to remove qp, state %d, ref_count %d\n",
-		       res->com.state, atomic_read(&res->ref_count));
+	if (res->com.state == RES_QP_BUSY)
 		return -EBUSY;
-	} else if (res->com.state != RES_QP_RESERVED) {
+	else if (res->com.state != RES_QP_RESERVED)
 		return -EPERM;
-	}
 
 	return 0;
 }
@@ -3700,8 +3693,6 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 	struct mlx4_resource_tracker *tracker = &priv->mfunc.master.res_tracker;
 	struct list_head *rlist = &tracker->slave_list[slave].res_list[RES_MAC];
 	int err;
-	int qpn;
-	struct res_qp *rqp;
 	struct mlx4_net_trans_rule_hw_ctrl *ctrl;
 	struct _rule_hw  *rule_header;
 	int header_id;
@@ -3711,12 +3702,6 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 		return -EOPNOTSUPP;
 
 	ctrl = (struct mlx4_net_trans_rule_hw_ctrl *)inbox->buf;
-	qpn = be32_to_cpu(ctrl->qpn) & 0xffffff;
-	err = get_res(dev, slave, qpn, RES_QP, &rqp);
-	if (err) {
-		pr_err("Steering rule with qpn 0x%x rejected.\n", qpn);
-		return err;
-	}
 	rule_header = (struct _rule_hw *)(ctrl + 1);
 	header_id = map_hw_to_sw_id(be16_to_cpu(rule_header->id));
 
@@ -3748,18 +3733,14 @@ int mlx4_QP_FLOW_STEERING_ATTACH_wrapper(struct mlx4_dev *dev, int slave,
 	if (err)
 		return err;
 
-	err = add_res_range(dev, slave, vhcr->out_param, 1, RES_FS_RULE, qpn);
+	err = add_res_range(dev, slave, vhcr->out_param, 1, RES_FS_RULE, 0);
 	if (err) {
 		mlx4_err(dev, "Fail to add flow steering resources.\n ");
 		/* detach rule*/
 		mlx4_cmd(dev, vhcr->out_param, 0, 0,
 			 MLX4_QP_FLOW_STEERING_ATTACH, MLX4_CMD_TIME_CLASS_A,
 			 MLX4_CMD_NATIVE);
-		goto err_put;
 	}
-	atomic_inc(&rqp->ref_count);
-err_put:
-	put_res(dev, slave, qpn, RES_QP);
 	return err;
 }
 
@@ -3770,35 +3751,20 @@ int mlx4_QP_FLOW_STEERING_DETACH_wrapper(struct mlx4_dev *dev, int slave,
 					 struct mlx4_cmd_info *cmd)
 {
 	int err;
-	struct res_qp *rqp;
-	struct res_fs_rule *rrule;
 
 	if (dev->caps.steering_mode !=
 	    MLX4_STEERING_MODE_DEVICE_MANAGED)
 		return -EOPNOTSUPP;
 
-	err = get_res(dev, slave, vhcr->in_param, RES_FS_RULE, &rrule);
-	if (err)
-		return err;
-	/* Release the rule form busy state before removal */
-	put_res(dev, slave, vhcr->in_param, RES_FS_RULE);
-	err = get_res(dev, slave, rrule->qpn, RES_QP, &rqp);
-	if (err)
-		return err;
-
 	err = rem_res_range(dev, slave, vhcr->in_param, 1, RES_FS_RULE, 0);
 	if (err) {
 		mlx4_err(dev, "Fail to remove flow steering resources.\n ");
-		goto out;
+		return err;
 	}
 
 	err = mlx4_cmd(dev, vhcr->in_param, 0, 0,
 		       MLX4_QP_FLOW_STEERING_DETACH, MLX4_CMD_TIME_CLASS_A,
 		       MLX4_CMD_NATIVE);
-	if (!err)
-		atomic_dec(&rqp->ref_count);
-out:
-	put_res(dev, slave, rrule->qpn, RES_QP);
 	return err;
 }
 
