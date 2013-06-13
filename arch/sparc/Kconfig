@@ -183,7 +183,7 @@ config NR_CPUS
 	int "Maximum number of CPUs"
 	depends on SMP
 	range 2 32 if SPARC32
-	range 2 1024 if SPARC64
+	range 2 2048 if SPARC64
 	default 32 if SPARC32
 	default 64 if SPARC64
 
@@ -320,7 +320,7 @@ config NUMA
 
 config NODES_SHIFT
 	int
-	default "4"
+	default "5"
 	depends on NEED_MULTIPLE_NODES
 
 # Some NUMA nodes have memory ranges that span
