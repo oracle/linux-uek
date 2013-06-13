@@ -983,19 +983,22 @@ free_mcasts:
 
 int vnic_member_add(struct vnic_login *login, int member_id, struct lag_member *member)
 {
-	struct vnic_gw_info *member_e;
+	struct vnic_gw_info *member_e = NULL;
 	int ret;
 
 	if (member_id >= MAX_LAG_MEMBERS || member_id < 0)
 		return -1;
 
-	vnic_dbg_lag(login->name,"vnic_member_add id:%d gw_id:%d lid:%x qpn:%x sl:%d\n",
-			  member_id, member_e->gw_id, member->lid, member->qpn, member->sl);
 	/* member id is already in use */
 	if (login->lag_gw_neigh[member_id].info & GW_MEMBER_INFO_CREATED)
 		return -1;
 
 	member_e = &login->lag_gw_neigh[member_id];
+
+	vnic_dbg_lag(login->name,
+		     "vnic_member_add id:%d gw_id:%d lid:%x qpn:%x sl:%d\n",
+		     member_id, member_e->gw_id, member->lid, member->qpn,
+		     member->sl);
 
 	/* create new entry */
 	member_e->member_id = member_id;
