@@ -162,7 +162,7 @@ int __init arch_probe_nr_irqs(void)
 #define DEFAULT_NUM_IVECS	(0xffff)
 #define MAX_NUM_IVECS						\
 	((MAX_ORDER_NR_PAGES << PAGE_SHIFT) / sizeof (struct ino_bucket))
-static unsigned int nr_ivec __initdata = DEFAULT_NUM_IVECS;
+static unsigned int nr_ivec = DEFAULT_NUM_IVECS;
 #define NUM_IVECS (nr_ivec)
 
 static int __init early_num_ivecs(char *p)
