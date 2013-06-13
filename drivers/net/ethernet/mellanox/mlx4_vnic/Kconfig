@@ -1,0 +1,6 @@
+config MLX4_VNIC
+	tristate "Mellanox Technologies VNIC support"
+	depends on PCI && INFINIBAND && INFINIBAND_ADDR_TRANS
+	select MLX4_CORE
+	help
+	  Mellanox Technologies VNIC functionality.

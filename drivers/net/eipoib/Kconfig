@@ -1,0 +1,5 @@
+config E_IPOIB
+	tristate "Ethernet over IPoIB support"
+	depends on PCI && INFINIBAND && INFINIBAND_ADDR_TRANS
+	help
+	  Ethernet over IPoIB functionality.
