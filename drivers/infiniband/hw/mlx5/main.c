@@ -1304,7 +1304,7 @@ static void destroy_dev_resources(struct mlx5_ib_resources *devr)
 	mlx5_ib_dealloc_pd(devr->p0);
 }
 
-static int __devinit init_one(struct pci_dev *pdev,
+static int init_one(struct pci_dev *pdev,
 			      const struct pci_device_id *id)
 {
 	struct mlx5_ib_dev *dev;
@@ -1495,7 +1495,7 @@ static struct pci_driver mlx5_ib_driver = {
 	.name		= DRIVER_NAME,
 	.id_table	= mlx5_ib_pci_table,
 	.probe		= init_one,
-	.remove		= __devexit_p(remove_one)
+	.remove		= remove_one
 };
 
 static int __init mlx5_ib_init(void)
