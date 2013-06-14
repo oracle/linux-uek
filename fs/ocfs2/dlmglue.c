@@ -1471,6 +1471,7 @@ again:
 				     lkm_flags,
 				     lockres->l_name,
 				     OCFS2_LOCK_ID_MAX_LEN - 1);
+		lockres_clear_pending(lockres, gen, osb);
 		if (ret) {
 			if (!(lkm_flags & DLM_LKF_NOQUEUE) ||
 			    (ret != -EAGAIN)) {

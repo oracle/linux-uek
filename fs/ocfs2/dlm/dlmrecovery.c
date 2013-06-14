@@ -1406,7 +1406,14 @@ int dlm_mig_lockres_handler(struct o2net_msg *msg, u32 len, void *data,
 				mlog(ML_ERROR, "node is attempting to migrate "
 				     "lock %.*s, but marked as recovering!\n",
 				     mres->lockname_len, mres->lockname);
-				ret = -EFAULT;
+				ret = -EAGAIN;
+				spin_unlock(&res->spinlock);
+				goto leave;
+			} else if (res->state & DLM_LOCK_RES_IN_PROGRESS) {
+				mlog(ML_ERROR, "node is attempting to migrate "
+				     "lock %.*s, but marked as in progress!\n",
+				     mres->lockname_len, mres->lockname);
+				ret = -EAGAIN;
 				spin_unlock(&res->spinlock);
 				goto leave;
 			}

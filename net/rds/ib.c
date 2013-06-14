@@ -54,13 +54,13 @@ unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
 unsigned int rds_ib_apm_enabled = 0;
 unsigned int rds_ib_apm_fallback = 1;
-unsigned int rds_ib_haip_enabled = 0;
-unsigned int rds_ib_haip_fallback = 1;
+unsigned int rds_ib_active_bonding_enabled = 0;
+unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 unsigned int rds_ib_cq_balance_enabled = 1;
-static char *rds_ib_haip_failover_groups = NULL;
-unsigned int rds_ib_haip_arps = RDS_IB_DEFAULT_NUM_ARPS;
+static char *rds_ib_active_bonding_failover_groups = NULL;
+unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -70,23 +70,23 @@ module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
 module_param(rds_ib_apm_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
-module_param(rds_ib_haip_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_enabled, " High Availability IP enabled");
+module_param(rds_ib_active_bonding_enabled, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_enabled, " Active Bonding enabled");
 module_param(rds_ib_apm_timeout, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
 module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
-module_param(rds_ib_haip_fallback, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
-module_param(rds_ib_haip_failover_groups, charp, 0444);
-MODULE_PARM_DESC(rds_ib_haip_failover_groups,
+module_param(rds_ib_active_bonding_fallback, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabled");
+module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
-module_param(rds_ib_haip_arps, int, 0444);
-MODULE_PARM_DESC(rds_ib_haip_arps, " Num ARPs to be sent when IP moved");
+module_param(rds_ib_active_bonding_arps, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -139,14 +139,16 @@ static void rds_ib_dev_free(struct work_struct *work)
 	struct rds_ib_device *rds_ibdev = container_of(work,
 					struct rds_ib_device, free_work);
 
-	if (rds_ibdev->mr_8k_pool)
-		rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
-	if (rds_ibdev->mr_1m_pool)
-		rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
-	if (rds_ibdev->mr)
-		ib_dereg_mr(rds_ibdev->mr);
-	if (rds_ibdev->pd)
-		ib_dealloc_pd(rds_ibdev->pd);
+	if (rds_ibdev->dev) {
+		if (rds_ibdev->mr_8k_pool)
+			rds_ib_destroy_mr_pool(rds_ibdev->mr_8k_pool);
+		if (rds_ibdev->mr_1m_pool)
+			rds_ib_destroy_mr_pool(rds_ibdev->mr_1m_pool);
+		if (rds_ibdev->mr)
+			ib_dereg_mr(rds_ibdev->mr);
+		if (rds_ibdev->pd)
+			ib_dealloc_pd(rds_ibdev->pd);
+	}
 	kfree(rds_ibdev->srq);
 
 	list_for_each_entry_safe(i_ipaddr, i_next, &rds_ibdev->ipaddr_list, list) {
@@ -157,7 +159,13 @@ static void rds_ib_dev_free(struct work_struct *work)
 	if (rds_ibdev->vector_load)
 		kfree(rds_ibdev->vector_load);
 
-	kfree(rds_ibdev);
+	if (rds_ibdev->dev) {
+		WARN_ON(!waitqueue_active(&rds_ibdev->wait));
+
+		rds_ibdev->done = 1;
+		wake_up(&rds_ibdev->wait);
+	} else
+		kfree(rds_ibdev);
 }
 
 void rds_ib_dev_put(struct rds_ib_device *rds_ibdev)
@@ -210,7 +218,7 @@ void rds_ib_remove_one(struct ib_device *device)
 	if (!rds_ibdev)
 		return;
 
-	if (rds_ib_haip_enabled)
+	if (rds_ib_active_bonding_enabled)
 		ib_unregister_event_handler(&rds_ibdev->event_handler);
 
 	rds_ib_dev_shutdown(rds_ibdev);
@@ -230,6 +238,21 @@ void rds_ib_remove_one(struct ib_device *device)
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
+
+	if (!wait_event_timeout(rds_ibdev->wait, rds_ibdev->done, 30*HZ)) {
+		printk(KERN_WARNING "RDS/IB: device cleanup timed out after "
+			" 30 secs (refcount=%d)\n",
+			 atomic_read(&rds_ibdev->refcount));
+		/* when rds_ib_remove_one return, driver's mlx4_ib_removeone
+		 * function destroy ib_device, so we must clear rds_ibdev->dev
+		 * to NULL, or will cause crash when rds connection be released,
+		 * at the moment rds_ib_dev_free through ib_device
+		 * .i.e rds_ibdev->dev to release mr and fmr, reusing the
+		 * released ib_device will cause crash.
+		 */
+		rds_ibdev->dev = NULL;
+	} else
+		kfree(rds_ibdev);
 }
 
 struct ib_client rds_ib_client = {
@@ -366,7 +389,7 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 	int i;
 
 	/* Send multiple ARPs to improve reliability */
-	for (i = 0; i < rds_ib_haip_arps; i++) {
+	for (i = 0; i < rds_ib_active_bonding_arps; i++) {
 		arp_send(ARPOP_REQUEST, ETH_P_ARP,
 			ip_addr, out_dev,
 			ip_addr, NULL,
@@ -485,6 +508,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	int			ret = 0;
 	u8			active_port;
 	struct in_device	*in_dev;
+	unsigned long flags;
+	struct rds_ib_connection *ic;
+	struct rds_ib_device *rds_ibdev;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -582,27 +608,21 @@ static int rds_ib_move_ip(char			*from_dev,
 			"RDS/IB: IP %u.%u.%u.%u migrated from %s to %s\n",
 				NIPQUAD(addr), from_dev2, to_dev2);
 
-		if (event_type == RDS_IB_PORT_EVENT_NET) {
-			unsigned long flags;
-			struct rds_ib_connection *ic;
-			struct rds_ib_device *rds_ibdev;
-
-			rds_ibdev = ip_config[to_port].rds_ibdev;
-			spin_lock_irqsave(&rds_ibdev->spinlock, flags);
-			list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
-				if (ic->conn->c_laddr == addr) {
-					if (rds_ib_apm_enabled) {
-						if (!memcmp(
-							&ic->i_cur_path.p_sgid,
-							&ip_config[to_port].gid,
-							sizeof(union ib_gid))) {
-							continue;
-						}
+		rds_ibdev = ip_config[from_port].rds_ibdev;
+		spin_lock_irqsave(&rds_ibdev->spinlock, flags);
+		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
+			if (ic->conn->c_laddr == addr) {
+				if (rds_ib_apm_enabled) {
+					if (!memcmp(
+						&ic->i_cur_path.p_sgid,
+						&ip_config[to_port].gid,
+						sizeof(union ib_gid))) {
+						continue;
 					}
-					rds_conn_drop(ic->conn);
 				}
-			spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
-		}
+				rds_conn_drop(ic->conn);
+			}
+		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
 	}
 
 out:
@@ -930,7 +950,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 	u8	port;
 	struct rds_ib_port_ud_work	*work;
 
-	if (!rds_ib_haip_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return;
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
@@ -960,7 +980,7 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		work->event_type = RDS_IB_PORT_EVENT_IB;
 
 		if (event->event == IB_EVENT_PORT_ACTIVE) {
-			if (rds_ib_haip_fallback) {
+			if (rds_ib_active_bonding_fallback) {
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 				queue_delayed_work(rds_wq, &work->work, 0);
 			} else
@@ -976,7 +996,7 @@ static void rds_ib_dump_ip_config(void)
 {
 	int	i, j;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return;
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
@@ -1011,7 +1031,7 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
-static int rds_ib_ip_config_init(void)
+static int rds_ib_ip_config_init(bool reinit)
 {
 	struct net_device	*dev;
 	struct in_ifaddr	*ifa;
@@ -1023,20 +1043,24 @@ static int rds_ib_ip_config_init(void)
 	u8                      port_num;
 	u8                      port;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return 0;
 
-	rds_ib_check_up_port();
+	if (!reinit)
+		rds_ib_check_up_port();
 
 	rcu_read_unlock();
 
-	ip_config = kzalloc(sizeof(struct rds_ib_port) *
-				(ip_port_max + 1), GFP_KERNEL);
-	if (!ip_config) {
-		printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
-		return 1;
+	if (reinit)
+		ip_port_cnt = 0;
+	else {
+		ip_config = kzalloc(sizeof(struct rds_ib_port) *
+					(ip_port_max + 1), GFP_KERNEL);
+		if (!ip_config) {
+			printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
+			return 1;
+		}
 	}
-
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
@@ -1093,10 +1117,10 @@ void rds_ib_ip_failover_groups_init(void)
 	int i;
 	struct rds_ib_device *rds_ibdev;
 
-	if (!rds_ib_haip_enabled)
+	if (!rds_ib_active_bonding_enabled)
 		return;
 
-	if (rds_ib_haip_failover_groups == NULL) {
+	if (rds_ib_active_bonding_failover_groups == NULL) {
 		rcu_read_lock();
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
 			for (i = 1; i <= ip_port_cnt; i++) {
@@ -1109,7 +1133,7 @@ void rds_ib_ip_failover_groups_init(void)
 		return;
 	}
 
-	strcpy(str, rds_ib_haip_failover_groups);
+	strcpy(str, rds_ib_active_bonding_failover_groups);
 	nxt_grp = strchr(str, ';');
 	if (nxt_grp) {
 		*nxt_grp = '\0';
@@ -1178,6 +1202,8 @@ void rds_ib_add_one(struct ib_device *device)
 	spin_lock_init(&rds_ibdev->spinlock);
 	atomic_set(&rds_ibdev->refcount, 1);
 	INIT_WORK(&rds_ibdev->free_work, rds_ib_dev_free);
+	init_waitqueue_head(&rds_ibdev->wait);
+	rds_ibdev->done = 0;
 
 	rds_ibdev->max_wrs = dev_attr->max_qp_wr;
 	rds_ibdev->max_sge = min(dev_attr->max_sge, RDS_IB_MAX_SGE);
@@ -1204,7 +1230,7 @@ void rds_ib_add_one(struct ib_device *device)
 		goto put_dev;
 	}
 
-	if (rds_ib_haip_enabled) {
+	if (rds_ib_active_bonding_enabled) {
 		INIT_IB_EVENT_HANDLER(&rds_ibdev->event_handler,
 				rds_ibdev->dev, rds_ib_event_handler);
 		if (ib_register_event_handler(&rds_ibdev->event_handler)) {
@@ -1277,41 +1303,43 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	u8 i;
 	struct rds_ib_port_ud_work *work;
 
-	if (!rds_ib_haip_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return NOTIFY_DONE;
 
-	if (event != NETDEV_UP && event != NETDEV_DOWN)
+	if (event != NETDEV_UP && event != NETDEV_DOWN &&
+		event != NETDEV_REGISTER && event != NETDEV_UNREGISTER)
 		return NOTIFY_DONE;
 
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (!strcmp(ndev->name, ip_config[i].if_name)) {
-			port = i;
-			break;
+	if (event == NETDEV_UP || event == NETDEV_DOWN) {
+		for (i = 1; i <= ip_port_cnt; i++) {
+			if (!strcmp(ndev->name, ip_config[i].if_name)) {
+				port = i;
+				break;
+			}
 		}
+
+		if (!port)
+			return NOTIFY_DONE;
+
+		work = kzalloc(sizeof *work, GFP_ATOMIC);
+		if (!work) {
+			printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
+			return NOTIFY_DONE;
+		}
+
+		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
+			ip_config[port].rds_ibdev->dev->name,
+			ip_config[port].port_num, ndev->name,
+			(event == NETDEV_UP) ? "UP" : "DOWN");
+
+		work->dev = ndev;
+		work->port = port;
+		work->event_type = RDS_IB_PORT_EVENT_NET;
 	}
-
-	if (!port)
-		return NOTIFY_DONE;
-
-
-	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		ip_config[port].rds_ibdev->dev->name,
-		ip_config[port].port_num, ndev->name,
-		(event == NETDEV_UP) ? "UP" : "DOWN");
-
-	work = kzalloc(sizeof *work, GFP_ATOMIC);
-	if (!work) {
-		printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
-		return NOTIFY_DONE;
-	}
-
-	work->dev = ndev;
-	work->port = port;
-	work->event_type = RDS_IB_PORT_EVENT_NET;
 
 	switch (event) {
 	case NETDEV_UP:
-		if (rds_ib_haip_fallback) {
+		if (rds_ib_active_bonding_fallback) {
 			if (rds_ib_ip_config_down()) {
 				INIT_DELAYED_WORK(&work->work,
 					rds_ib_net_failback);
@@ -1330,6 +1358,11 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	case NETDEV_DOWN:
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
+		break;
+	case NETDEV_UNREGISTER:
+	case NETDEV_REGISTER:
+		rds_ib_ip_config_init(1);
+		rds_ib_ip_failover_groups_init();
 		break;
 	}
 
@@ -1388,7 +1421,7 @@ int rds_ib_init(void)
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
-	ret = rds_ib_ip_config_init();
+	ret = rds_ib_ip_config_init(0);
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
 		goto out_srq;

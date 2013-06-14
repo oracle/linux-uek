@@ -333,6 +333,8 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
+	wait_queue_head_t       wait;
+	int                     done;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -441,9 +443,8 @@ extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
-extern unsigned int rds_ib_haip_enabled;
-extern unsigned int rds_ib_haip_fallback;
-extern unsigned int rds_ib_haip_failover_enabled;
+extern unsigned int rds_ib_active_bonding_enabled;
+extern unsigned int rds_ib_active_bonding_fallback;
 extern unsigned int rds_ib_apm_timeout;
 extern unsigned int rds_ib_cq_balance_enabled;
 
