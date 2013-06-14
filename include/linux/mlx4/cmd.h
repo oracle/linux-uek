@@ -34,6 +34,7 @@
 #define MLX4_CMD_H
 
 #include <linux/dma-mapping.h>
+#include <linux/if_link.h>
 
 enum {
 	/* initialization and general commands */
