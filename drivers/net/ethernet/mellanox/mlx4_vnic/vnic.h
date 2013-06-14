@@ -61,8 +61,8 @@
 #include <rdma/ib_sa.h>
 
 /* for mlx4_ib dev attr, used also in vnic_qp.c */
-#include "../../infiniband/hw/mlx4/mlx4_ib.h"
-#include "../../infiniband/hw/mlx4/user.h"
+#include "../../../../infiniband/hw/mlx4/mlx4_ib.h"
+#include "../../../../infiniband/hw/mlx4/user.h"
 
 #include "vnic_utils.h"
 
