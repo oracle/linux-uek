@@ -1878,6 +1878,31 @@ static int parent_init(struct net_device *parent_dev)
 	return 0;
 }
 
+/* calculate parent hw address according to pif */
+static void parent_set_dev_addr(struct net_device *ibd,
+				struct net_device *parent_dev)
+{
+	union ib_gid gid;
+	int i, j;
+	struct parent *parent = netdev_priv(parent_dev);
+	if (!parent)
+		return;
+
+	memcpy(&gid, ibd->dev_addr + 4, sizeof(union ib_gid));
+
+	/* eIPoIB interface mac format. */
+	for (i = 0, j = 0; i < 8; i++) {
+		if ((PARENT_MAC_MASK >> i) & 0x1) {
+			if (j < 6) /* only 6 bytes eth address */
+				parent_dev->dev_addr[j] =
+					gid.raw[GUID_LEN + i];
+			j++;
+		}
+	}
+
+	memcpy(parent->gid.raw, gid.raw, GID_LEN);
+}
+
 static u16 parent_select_q(struct net_device *dev, struct sk_buff *skb)
 {
 	return skb_tx_hash(dev, skb);
@@ -2002,11 +2027,8 @@ static struct parent *parent_create(struct net_device *ibd)
 	struct net_device *parent_dev;
 	u32 num_queues;
 	int rc;
-	union ib_gid gid;
 	struct parent *parent = NULL;
-	int i, j;
 
-	memcpy(&gid, ibd->dev_addr + 4, sizeof(union ib_gid));
 	num_queues = num_online_cpus();
 	num_queues = roundup_pow_of_two(num_queues);
 
@@ -2022,15 +2044,7 @@ static struct parent *parent_create(struct net_device *ibd)
 	if (rc < 0)
 		goto out_netdev;
 
-	/* eIPoIB interface mac format. */
-	for (i = 0, j = 0; i < 8; i++) {
-		if ((PARENT_MAC_MASK >> i) & 0x1) {
-			if (j < 6) /* only 6 bytes eth address */
-				parent_dev->dev_addr[j] =
-					gid.raw[GUID_LEN + i];
-			j++;
-		}
-	}
+	parent_set_dev_addr(ibd, parent_dev);
 
 	/* assuming that the ibd->dev.parent was alreadey been set. */
 	SET_NETDEV_DEV(parent_dev, ibd->dev.parent);
@@ -2046,7 +2060,7 @@ static struct parent *parent_create(struct net_device *ibd)
 		goto out_unreg;
 
 	parent = netdev_priv(parent_dev);
-	memcpy(parent->gid.raw, gid.raw, GID_LEN);
+
 	strncpy(parent->ipoib_main_interface, ibd->name, IFNAMSIZ);
 	parent_dev->dev_id = ibd->dev_id;
 
@@ -2131,6 +2145,8 @@ static int parent_slave_netdev_event(unsigned long event,
 		parent_release_slave(parent_dev, slave_dev);
 		break;
 	case NETDEV_CHANGE:
+		parent_set_dev_addr(slave_dev, parent_dev);
+		/*no break*/
 	case NETDEV_UP:
 	case NETDEV_DOWN:
 		parent_set_carrier(parent);
@@ -2196,6 +2212,11 @@ static int eipoib_device_event(struct notifier_block *unused,
 		parent = get_parent_by_pif_name(dev->name);
 		if (parent)
 			parent_free(parent);
+		break;
+	case NETDEV_CHANGE:
+		parent = get_parent_by_pif_name(dev->name);
+		if (parent)
+			parent_set_dev_addr(dev, parent->dev);
 		break;
 	default:
 		break;
