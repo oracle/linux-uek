@@ -214,7 +214,7 @@ void mlx4_unregister_device(struct mlx4_dev *dev)
 	list_for_each_entry(intf, &intf_list, list)
 		mlx4_remove_device(intf, priv);
 
-	list_del(&priv->dev_list);
+	list_del_init(&priv->dev_list);
 	dev->persist->interface_state &= ~MLX4_INTERFACE_STATE_UP;
 
 	mutex_unlock(&intf_mutex);
