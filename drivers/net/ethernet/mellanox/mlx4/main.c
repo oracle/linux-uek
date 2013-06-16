@@ -2656,6 +2656,7 @@ static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 
 	dev       = &priv->dev;
 	dev->pdev = pdev;
+	INIT_LIST_HEAD(&priv->dev_list);
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
 

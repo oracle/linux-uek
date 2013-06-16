@@ -157,11 +157,13 @@ void mlx4_stop_catas_poll(struct mlx4_dev *dev)
 
 	del_timer_sync(&priv->catas_err.timer);
 
-	if (priv->catas_err.map)
+	if (priv->catas_err.map) {
 		iounmap(priv->catas_err.map);
+		priv->catas_err.map = NULL;
+	}
 
 	spin_lock_irq(&catas_lock);
-	list_del(&priv->catas_err.list);
+	list_del_init(&priv->catas_err.list);
 	spin_unlock_irq(&catas_lock);
 }
 
