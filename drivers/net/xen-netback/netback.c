@@ -70,6 +70,7 @@ struct pending_tx_info {
 struct netbk_rx_meta {
 	int id;
 	int size;
+	int gso_type;
 	int gso_size;
 };
 
@@ -265,8 +266,8 @@ static int max_required_rx_slots(struct xenvif *vif)
 {
 	int max = DIV_ROUND_UP(vif->dev->mtu, PAGE_SIZE);
 
-	/* XXX FIXME: RX path dependent on MAX_SKB_FRAGS */
-	if (vif->can_sg || vif->gso || vif->gso_prefix)
+	if (vif->can_sg || vif->gso_tcpv4 || vif->gso_tcpv4_prefix
+		|| vif->gso_tcpv6 || vif->gso_tcpv6_prefix)
 		max += MAX_SKB_FRAGS + 1; /* extra_info + frags */
 
 	return max;
@@ -405,6 +406,7 @@ static struct netbk_rx_meta *get_next_rx_buffer(struct xenvif *vif,
 
 	meta = npo->meta + npo->meta_prod++;
 	meta->gso_size = 0;
+	meta->gso_type = 0;
 	meta->size = 0;
 	meta->id = req->id;
 
@@ -501,7 +503,10 @@ static void netbk_gop_frag_copy(struct xenvif *vif, struct sk_buff *skb,
 		}
 
 		/* Leave a gap for the GSO descriptor. */
-		if (*head && skb_shinfo(skb)->gso_size && !vif->gso_prefix)
+		if (*head && (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
+		     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
+		    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
+		     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)))
 			vif->rx.req_cons++;
 
 		*head = 0; /* There must be something in this buffer now. */
@@ -535,10 +540,19 @@ static int netbk_gop_skb(struct sk_buff *skb,
 
 	old_meta_prod = npo->meta_prod;
 
+	BUG_ON((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
+		vif->gso_tcpv4_mode == NETBK_GSO_INVALID);
+	BUG_ON((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
+		vif->gso_tcpv6_mode == NETBK_GSO_INVALID);
+
 	/* Set up a GSO prefix descriptor, if necessary */
-	if (skb_shinfo(skb)->gso_size && vif->gso_prefix) {
+	if (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
+	     vif->gso_tcpv4_mode == NETBK_GSO_PREFIX) ||
+	    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
+	     vif->gso_tcpv6_mode == NETBK_GSO_PREFIX)) {
 		req = RING_GET_REQUEST(&vif->rx, vif->rx.req_cons++);
 		meta = npo->meta + npo->meta_prod++;
+		meta->gso_type = skb_shinfo(skb)->gso_type;
 		meta->gso_size = skb_shinfo(skb)->gso_size;
 		meta->size = 0;
 		meta->id = req->id;
@@ -547,10 +561,16 @@ static int netbk_gop_skb(struct sk_buff *skb,
 	req = RING_GET_REQUEST(&vif->rx, vif->rx.req_cons++);
 	meta = npo->meta + npo->meta_prod++;
 
-	if (!vif->gso_prefix)
+	if (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
+	     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
+	    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
+	     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)) {
+		meta->gso_type = skb_shinfo(skb)->gso_type;
 		meta->gso_size = skb_shinfo(skb)->gso_size;
-	else
+	} else {
+		meta->gso_type = 0;
 		meta->gso_size = 0;
+	}
 
 	meta->size = 0;
 	meta->id = req->id;
@@ -691,7 +711,10 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 
 		vif = netdev_priv(skb->dev);
 
-		if (netbk->meta[npo.meta_cons].gso_size && vif->gso_prefix) {
+		if (((netbk->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4) &&
+		     vif->gso_tcpv4_mode == NETBK_GSO_PREFIX) ||
+		    ((netbk->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV6) &&
+		     vif->gso_tcpv6_mode == NETBK_GSO_PREFIX)) {
 			resp = RING_GET_RESPONSE(&vif->rx,
 						vif->rx.rsp_prod_pvt++);
 
@@ -728,7 +751,10 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 					netbk->meta[npo.meta_cons].size,
 					flags);
 
-		if (netbk->meta[npo.meta_cons].gso_size && !vif->gso_prefix) {
+		if (((netbk->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4) &&
+		     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
+		    ((netbk->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV6) &&
+		     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)) {
 			struct xen_netif_extra_info *gso =
 				(struct xen_netif_extra_info *)
 				RING_GET_RESPONSE(&vif->rx,
@@ -737,7 +763,10 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 			resp->flags |= XEN_NETRXF_extra_info;
 
 			gso->u.gso.size = netbk->meta[npo.meta_cons].gso_size;
-			gso->u.gso.type = XEN_NETIF_GSO_TYPE_TCPV4;
+			if (netbk->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4)
+				gso->u.gso.type = XEN_NETIF_GSO_TYPE_TCPV4;
+			else
+				gso->u.gso.type = XEN_NETIF_GSO_TYPE_TCPV6;
 			gso->u.gso.pad = 0;
 			gso->u.gso.features = 0;
 
@@ -1271,15 +1300,19 @@ static int netbk_set_skb_gso(struct xenvif *vif,
 		return -EINVAL;
 	}
 
-	/* Currently only TCPv4 S.O. is supported. */
-	if (gso->u.gso.type != XEN_NETIF_GSO_TYPE_TCPV4) {
+	/* Currently only TCPv4/TCPv6 S.O. is supported. */
+	if (gso->u.gso.type != XEN_NETIF_GSO_TYPE_TCPV4 &&
+	    gso->u.gso.type != XEN_NETIF_GSO_TYPE_TCPV6) {
 		netdev_err(vif->dev, "Bad GSO type %d.\n", gso->u.gso.type);
 		netbk_fatal_tx_err(vif);
 		return -EINVAL;
 	}
 
 	skb_shinfo(skb)->gso_size = gso->u.gso.size;
-	skb_shinfo(skb)->gso_type = SKB_GSO_TCPV4;
+	if (gso->u.gso.type == XEN_NETIF_GSO_TYPE_TCPV4)
+		skb_shinfo(skb)->gso_type = SKB_GSO_TCPV4;
+	else
+		skb_shinfo(skb)->gso_type = SKB_GSO_TCPV6;
 
 	/* Header must be checked, and gso_segs computed. */
 	skb_shinfo(skb)->gso_type |= SKB_GSO_DODGY;
@@ -1290,7 +1323,8 @@ static int netbk_set_skb_gso(struct xenvif *vif,
 
 static int checksum_setup(struct xenvif *vif, struct sk_buff *skb)
 {
-	struct iphdr *iph;
+	struct iphdr *iph = NULL;
+	u8 protocol;
 	unsigned char *th;
 	int err = -EPROTO;
 	int recalculate_partial_csum = 0;
@@ -1311,16 +1345,65 @@ static int checksum_setup(struct xenvif *vif, struct sk_buff *skb)
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		return 0;
 
-	if (skb->protocol != htons(ETH_P_IP))
+	if (skb->protocol != htons(ETH_P_IP) &&
+	    skb->protocol != htons(ETH_P_IPV6))
 		goto out;
 
-	iph = (void *)skb->data;
-	th = skb->data + 4 * iph->ihl;
+	if (skb->protocol == htons(ETH_P_IP)) {
+		iph = (void *)skb->data;
+		protocol = iph->protocol;
+		th = skb->data + 4 * iph->ihl;
+	} else {
+		struct ipv6hdr *ipv6h = (void *)skb->data;
+		u8 nexthdr = ipv6h->nexthdr;
+		unsigned int off;
+		int done;
+
+		done = 0;
+		off = 0;
+		while (off <= ntohs(ipv6h->payload_len) && !done) {
+			switch (nexthdr) {
+			case IPPROTO_FRAGMENT: {
+				struct frag_hdr *hp = (void *)(skb->data +
+							sizeof(struct ipv6hdr) +
+							off);
+				nexthdr = hp->nexthdr;
+				off += 8;
+				break;
+			}
+			case IPPROTO_DSTOPTS:
+			case IPPROTO_HOPOPTS:
+			case IPPROTO_ROUTING: {
+				struct ipv6_opt_hdr *hp = (void *)(skb->data +
+							sizeof(struct ipv6hdr) +
+							off);
+				nexthdr = hp->nexthdr;
+				off += ipv6_optlen(hp);
+				break;
+			}
+			case IPPROTO_AH: {
+				struct ip_auth_hdr *hp = (void *)(skb->data +
+							sizeof(struct ipv6hdr) +
+							off);
+				nexthdr = hp->nexthdr;
+				off += (hp->hdrlen+2)<<2;
+				break;
+			}
+			default:
+				done = 1;
+				break;
+			}
+		}
+		protocol = (off <= ntohs(ipv6h->payload_len)) ?
+					nexthdr : IPPROTO_NONE;
+		th = skb->data + sizeof(struct ipv6hdr) + off;
+	}
+
 	if (th >= skb_tail_pointer(skb))
 		goto out;
 
 	skb->csum_start = th - skb->head;
-	switch (iph->protocol) {
+	switch (protocol) {
 	case IPPROTO_TCP:
 		skb->csum_offset = offsetof(struct tcphdr, check);
 
@@ -1345,7 +1428,7 @@ static int checksum_setup(struct xenvif *vif, struct sk_buff *skb)
 		if (net_ratelimit())
 			netdev_err(vif->dev,
 				   "Attempting to checksum a non-TCP/UDP packet, dropping a protocol %d packet\n",
-				   iph->protocol);
+				   protocol);
 		goto out;
 	}
 

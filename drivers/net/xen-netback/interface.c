@@ -166,16 +166,58 @@ static int xenvif_change_mtu(struct net_device *dev, int mtu)
 	return 0;
 }
 
+void xenvif_set_features(struct xenvif *vif)
+{
+	struct net_device *dev = vif->dev;
+	int features;
+
+	features = dev->features & ~(NETIF_F_SG|NETIF_F_TSO|NETIF_F_TSO6
+					|NETIF_F_IP_CSUM|NETIF_F_IPV6_CSUM);
+	if (vif->can_sg)
+		features |= NETIF_F_SG;
+
+	if (vif->gso_tcpv4 || vif->gso_tcpv4_prefix) {
+		features |= NETIF_F_TSO;
+		vif->gso_tcpv4_mode = (vif->gso_tcpv4_prefix) ?
+					NETBK_GSO_PREFIX :
+					NETBK_GSO_STANDARD;
+	}
+
+	if (vif->gso_tcpv6 || vif->gso_tcpv6_prefix) {
+		features |= NETIF_F_TSO6;
+		vif->gso_tcpv6_mode = (vif->gso_tcpv6_prefix) ?
+					NETBK_GSO_PREFIX :
+					NETBK_GSO_STANDARD;
+	}
+
+	if (vif->ip_csum)
+		features |= NETIF_F_IP_CSUM;
+
+	if (vif->ipv6_csum)
+		features |= NETIF_F_IPV6_CSUM;
+
+	dev->hw_features = features;
+	dev->features = features;
+}
+
 static u32 xenvif_fix_features(struct net_device *dev, u32 features)
 {
 	struct xenvif *vif = netdev_priv(dev);
 
 	if (!vif->can_sg)
 		features &= ~NETIF_F_SG;
-	if (!vif->gso && !vif->gso_prefix)
+
+	if (!vif->gso_tcpv4 && !vif->gso_tcpv4_prefix)
 		features &= ~NETIF_F_TSO;
-	if (!vif->csum)
+
+	if (!vif->gso_tcpv6 && !vif->gso_tcpv6_prefix)
+		features &= ~NETIF_F_TSO6;
+
+	if (!vif->ip_csum)
 		features &= ~NETIF_F_IP_CSUM;
+
+	if (!vif->ipv6_csum)
+		features &= ~NETIF_F_IPV6_CSUM;
 
 	return features;
 }
@@ -264,7 +306,7 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	vif->handle = handle;
 	vif->netbk  = NULL;
 	vif->can_sg = 1;
-	vif->csum = 1;
+	vif->ip_csum = 1;
 	atomic_set(&vif->refcnt, 1);
 	init_waitqueue_head(&vif->waiting_to_free);
 	vif->dev = dev;
@@ -278,8 +320,8 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	vif->credit_timeout.expires = jiffies;
 
 	dev->netdev_ops	= &xenvif_netdev_ops;
-	dev->hw_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_TSO;
-	dev->features = dev->hw_features;
+	xenvif_set_features(vif);
+
 	SET_ETHTOOL_OPS(dev, &xenvif_ethtool_ops);
 
 	dev->tx_queue_len = XENVIF_QUEUE_LENGTH;

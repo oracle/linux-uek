@@ -69,9 +69,12 @@ struct xenvif {
 
 	/* Frontend feature information. */
 	u8 can_sg:1;
-	u8 gso:1;
-	u8 gso_prefix:1;
-	u8 csum:1;
+	u8 gso_tcpv4:1;
+	u8 gso_tcpv4_prefix:1;
+	u8 gso_tcpv6:1;
+	u8 gso_tcpv6_prefix:1;
+	u8 ip_csum:1;
+	u8 ipv6_csum:1;
 
 	/* Internal feature information. */
 	u8 can_queue:1;	    /* can queue packets for receiver? */
@@ -82,6 +85,11 @@ struct xenvif {
 	 * once all queued skbs are put on the ring.
 	 */
 	RING_IDX rx_req_cons_peek;
+
+	/* Does the frontend end want the gso information prefixed, or
+	 * in an extra segment? */
+	int gso_tcpv4_mode;
+	int gso_tcpv6_mode;
 
 	/* Transmit shaping: allow 'credit_bytes' every 'credit_usec'. */
 	unsigned long   credit_bytes;
@@ -98,6 +106,12 @@ struct xenvif {
 	struct net_device *dev;
 
 	wait_queue_head_t waiting_to_free;
+};
+
+enum {
+	NETBK_GSO_INVALID = 0,
+	NETBK_GSO_PREFIX = 1,
+	NETBK_GSO_STANDARD = 2,
 };
 
 static inline struct xenbus_device *xenvif_to_xenbus_device(struct xenvif *vif)
