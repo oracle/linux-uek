@@ -29,6 +29,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+#include <linux/moduleparam.h>
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
 #include <linux/rcupdate.h>
@@ -195,13 +196,14 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 			pages_alloced++;
 		}
 		frag = &skb_shinfo(skb)->frags[i];
-		frag->page                = page;
+		frag->page.p              = page;
 		frag->page_offset         = 0;
 		frag->size                = min(PAGE_SIZE, SDP_MAX_PAYLOAD);
 		++skb_shinfo(skb)->nr_frags;
 	}
 	skb->truesize += ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD);
-	if (!sk_rmem_schedule(sk, ssk->recv_frags * min(PAGE_SIZE, SDP_MAX_PAYLOAD))) {
+	if (!sk_rmem_schedule(sk, skb, ssk->recv_frags * min(PAGE_SIZE,
+		SDP_MAX_PAYLOAD))) {
 		sdp_dbg(sk, "RX couldn't post, rx posted = %d.",
 				rx_ring_posted(sdp_sk(sk)));
 		sdp_dbg(sk, "Out of memory\n");
@@ -224,10 +226,11 @@ static int sdp_post_recv(struct sdp_sock *ssk)
 		if (rx_req->mapping[i + 1]) {
 			addr = rx_req->mapping[i + 1];
 		} else {
-			addr = ib_dma_map_page(dev, skb_shinfo(skb)->frags[i].page,
-				       skb_shinfo(skb)->frags[i].page_offset,
-				       skb_shinfo(skb)->frags[i].size,
-				       DMA_FROM_DEVICE);
+			addr = ib_dma_map_page(dev,
+					skb_shinfo(skb)->frags[i].page.p,
+					skb_shinfo(skb)->frags[i].page_offset,
+					skb_shinfo(skb)->frags[i].size,
+					DMA_FROM_DEVICE);
 			BUG_ON(ib_dma_mapping_error(dev, addr));
 			rx_req->mapping[i + 1] = addr;
 		}
@@ -561,7 +564,7 @@ static int sdp_process_rx_skb(struct sdp_sock *ssk, struct sk_buff *skb)
 	skb_shinfo(skb)->nr_frags = pagesz / PAGE_SIZE;
 
 	for (i = skb_shinfo(skb)->nr_frags; i < frags; ++i) {
-		put_page(skb_shinfo(skb)->frags[i].page);
+		put_page(skb_shinfo(skb)->frags[i].page.p);
 	}
 
 	if (unlikely(h->flags & SDP_OOB_PEND))
@@ -884,6 +887,9 @@ static void sdp_arm_cq_timer(unsigned long data)
 	SDPSTATS_COUNTER_INC(rx_cq_arm_timer);
 	sdp_arm_rx_cq(sk_ssk(ssk));
 }
+
+/* SHAMIR - TODOL; remove this!!! */
+#define IB_CQ_VECTOR_LEAST_ATTACHED 0
 
 int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 {

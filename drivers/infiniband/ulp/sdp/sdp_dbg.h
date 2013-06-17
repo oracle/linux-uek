@@ -19,8 +19,8 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk);
 	printk(level "%s:%d sdp_sock(%5d:%d %d:%d): " format,             \
 	       func, line, \
 	       current->pid, smp_processor_id(), \
-	       (sk) ? inet_num(sk) : -1,                 \
-	       (sk) ? ntohs(inet_dport(sk)) : -1, ## arg); \
+	       (sk) ? sdp_inet_num(sk) : -1,                 \
+	       (sk) ? ntohs(sdp_inet_dport(sk)) : -1, ## arg); \
 	preempt_enable(); \
 } while (0)
 #define sdp_printk(level, sk, format, arg...)                \
@@ -40,6 +40,7 @@ static inline struct sdp_sock *sdp_sk(const struct sock *sk);
 	int var = def_val; \
 	module_param_named(var, var, int, 0644); \
 	MODULE_PARM_DESC(var, msg " [" #def_val "]"); \
+
 
 #ifdef SDP_PROFILING
 struct sk_buff;
@@ -70,8 +71,8 @@ extern atomic_t sdpprf_log_count;
 	preempt_disable(); \
 	l->idx = idx; \
 	l->pid = current->pid; \
-	l->sk_num = (sk) ? inet_num(sk) : -1;                 \
-	l->sk_dport = (sk) ? ntohs(inet_dport(sk)) : -1; \
+	l->sk_num = (sk) ? sdp_inet_num(sk) : -1;                 \
+	l->sk_dport = (sk) ? ntohs(sdp_inet_dport(sk)) : -1; \
 	l->cpu = smp_processor_id(); \
 	l->skb = s; \
 	snprintf(l->msg, sizeof(l->msg) - 1, format, ## arg); \
@@ -277,11 +278,7 @@ static inline const char* rdma_cm_event_str(int event)
 		ENUM2STR(RDMA_CM_EVENT_MULTICAST_JOIN),
 		ENUM2STR(RDMA_CM_EVENT_MULTICAST_ERROR),
 		ENUM2STR(RDMA_CM_EVENT_ADDR_CHANGE),
-		ENUM2STR(RDMA_CM_EVENT_TIMEWAIT_EXIT),
-		ENUM2STR(RDMA_CM_EVENT_ALT_ROUTE_RESOLVED),
-		ENUM2STR(RDMA_CM_EVENT_ALT_ROUTE_ERROR),
-		ENUM2STR(RDMA_CM_EVENT_LOAD_ALT_PATH),
-		ENUM2STR(RDMA_CM_EVENT_ALT_PATH_LOADED)
+		ENUM2STR(RDMA_CM_EVENT_TIMEWAIT_EXIT)
 	};
 
 	if (event < 0 || event >= ARRAY_SIZE(state2str)) {

@@ -75,10 +75,13 @@ unsigned int csum_partial_copy_from_user_new (const char *src, char *dst,
 #include <rdma/sdp_socket.h>
 #include "sdp.h"
 #include <linux/delay.h>
+#include <linux/module.h>
 
 MODULE_AUTHOR("Michael S. Tsirkin");
 MODULE_DESCRIPTION("InfiniBand SDP module");
 MODULE_LICENSE("Dual BSD/GPL");
+
+#define ipv6_addr_copy(a, b) (*(a) = *(b))
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
 SDP_MODPARAM_INT(sdp_debug_level, 0, "Enable debug tracing if > 0.");
@@ -209,7 +212,7 @@ static int sdp_get_port(struct sock *sk, unsigned short snum)
 	}
 
 	src_addr = (struct sockaddr_in *)&(ssk->id->route.addr.src_addr);
-	inet_num(sk) = ntohs(src_addr->sin_port);
+	sdp_inet_num(sk) = ntohs(src_addr->sin_port);
 #ifdef SDP_SOCK_HISTORY
 	sdp_ssk_hist_rename(sk);
 #endif
@@ -319,8 +322,12 @@ void sdp_set_default_moderation(struct sdp_sock *ssk)
 		mod->adaptive_rx_coal = 0;
 
 		if (hw_int_mod_count > 0 && hw_int_mod_usec > 0) {
-			err = ib_modify_cq(ssk->rx_ring.cq, hw_int_mod_count,
-					hw_int_mod_usec);
+			struct ib_cq_attr attr;
+			memset(&attr, 0, sizeof(struct ib_cq_attr));
+			attr.moderation.cq_count	= hw_int_mod_count;
+			attr.moderation.cq_period	= hw_int_mod_usec;
+			err = ib_modify_cq(ssk->rx_ring.cq, &attr,
+				IB_CQ_MODERATION);
 			if (unlikely(err))
 				sdp_warn(sk,
 					"Failed modifying moderation for cq\n");
@@ -440,8 +447,12 @@ static void sdp_auto_moderation(struct sdp_sock *ssk)
 			avg_pkt_size, rate);
 
 	if (moder_time != mod->last_moder_time) {
+		struct ib_cq_attr attr;
+		memset(&attr, 0, sizeof(struct ib_cq_attr));
+		attr.moderation.cq_count        = mod->moder_cnt;
+		attr.moderation.cq_period       = moder_time;
 		mod->last_moder_time = moder_time;
-		err = ib_modify_cq(ssk->rx_ring.cq, mod->moder_cnt, moder_time);
+		err = ib_modify_cq(ssk->rx_ring.cq, &attr, IB_CQ_MODERATION);
 		if (unlikely(err)) {
 			sdp_dbg_data(sk_ssk(ssk),
 					"Failed modifying moderation for cq");
@@ -511,13 +522,6 @@ static void sdp_destroy_resources(struct sock *sk)
 
 	sk->sk_send_head = NULL;
 	skb_queue_purge(&sk->sk_write_queue);
-        /*
-         * If sendmsg cached page exists, toss it.
-         */
-        if (sk->sk_sndmsg_page) {
-                __free_page(sk->sk_sndmsg_page);
-                sk->sk_sndmsg_page = NULL;
-        }
 
 	id = ssk->id;
 	if (ssk->id) {
@@ -828,7 +832,7 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 	sk->sk_bound_dev_if = usin->sin6_scope_id;
 
 	src_addr->sin6_family = AF_INET6;
-	src_addr->sin6_port = htons(inet_sport(sk));
+	src_addr->sin6_port = htons(sdp_inet_sport(sk));
 	src_addr->sin6_addr = inet6_sk(sk)->saddr;
 
 	if (ssk->id && (addr_type != ipv6_addr_type(&inet6_sk(sk)->rcv_saddr))) {
@@ -843,10 +847,10 @@ static int sdp_ipv6_connect(struct sock *sk, struct sockaddr_storage *saddr,
 		if (addr_type == IPV6_ADDR_MAPPED)
 			ipv6_addr_set(&inet6_sk(sk)->rcv_saddr, 0, 0, htonl(0x0000FFFF), 0);
 
-		rc = sdp_get_port(sk, htons(inet_sport(sk)));
+		rc = sdp_get_port(sk, htons(sdp_inet_sport(sk)));
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
 	ipv6_addr_copy(&inet6_sk(sk)->daddr, &usin->sin6_addr);
@@ -889,15 +893,15 @@ static int sdp_ipv4_connect(struct sock *sk, struct sockaddr_storage *saddr,
 		return -EAFNOSUPPORT;
 
 	if (!ssk->id) {
-		rc = sdp_get_port(sk, htons(inet_num(sk)));
+		rc = sdp_get_port(sk, htons(sdp_inet_num(sk)));
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
 	src_addr->sin_family = AF_INET;
-	src_addr->sin_port = htons(inet_sport(sk));
-	src_addr->sin_addr.s_addr = inet_saddr(sk);
+	src_addr->sin_port = htons(sdp_inet_sport(sk));
+	src_addr->sin_addr.s_addr = sdp_inet_saddr(sk);
 
 	sdp_dbg(sk, "%s " NIPQUAD_FMT ":%hu -> " NIPQUAD_FMT ":%hu\n", __func__,
 		NIPQUAD(src_addr->sin_addr.s_addr),
@@ -1280,7 +1284,7 @@ int sdp_init_sock(struct sock *sk)
 	lockdep_set_class(&sk->sk_callback_lock,
 					&ib_sdp_sk_callback_lock_key);
 
-	sk->sk_route_caps |= NETIF_F_SG | NETIF_F_NO_CSUM;
+	sk->sk_route_caps |= NETIF_F_SG;
 
 	skb_queue_head_init(&ssk->rx_ctl_q);
 
@@ -1649,8 +1653,6 @@ void sdp_skb_entail(struct sock *sk, struct sk_buff *skb)
                 sdp_sk(sk)->nonagle &= ~TCP_NAGLE_PUSH;
 }
 
-#define TCP_PAGE(sk)	(sk->sk_sndmsg_page)
-#define TCP_OFF(sk)	(sk->sk_sndmsg_off)
 static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 				char __user *from, int copy)
 {
@@ -1670,6 +1672,10 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		int i = skb_shinfo(skb)->nr_frags;
 		struct page *page = TCP_PAGE(sk);
 		int off = TCP_OFF(sk);
+		struct page_frag *pfrag = sk_page_frag(sk);
+
+		if (!sk_page_frag_refill(sk, pfrag))
+			return SDP_DO_WAIT_MEM;
 
 		if (skb_can_coalesce(skb, i, page, off) &&
 		    off != PAGE_SIZE) {
@@ -1699,7 +1705,10 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 
 		if (!page) {
 			/* Allocate new cache page. */
-			page = sk_stream_alloc_page(sk);
+			pfrag = sk_page_frag(sk);
+			page = pfrag->page;
+			if (!sk_page_frag_refill(sk, pfrag))
+				return SDP_DO_WAIT_MEM;
 			if (!page)
 				return SDP_DO_WAIT_MEM;
 		}
@@ -1710,13 +1719,8 @@ static inline int sdp_bcopy_get(struct sock *sk, struct sk_buff *skb,
 		err = skb_copy_to_page(sk, from, skb, page,
 				       off, copy);
 		if (err) {
-			/* If this page was new, give it to the
-			 * socket so it does not get leaked.
-			 */
-			if (!TCP_PAGE(sk)) {
-				TCP_PAGE(sk) = page;
-				TCP_OFF(sk) = 0;
-			}
+			/* Nothing to do here. see tcp_sendmsg,
+			* call to skb_copy_to_page_nocache */
 			return SDP_ERR_ERROR;
 		}
 
@@ -1946,7 +1950,7 @@ new_segment:
 				 * Check whether we can use HW checksum.
 				 */
 				if (sk->sk_route_caps &
-				    (NETIF_F_IP_CSUM | NETIF_F_NO_CSUM |
+				    (NETIF_F_IP_CSUM |
 				     NETIF_F_HW_CSUM))
 					skb->ip_summed = CHECKSUM_PARTIAL;
 
@@ -2485,7 +2489,7 @@ static int sdp_listen(struct sock *sk, int backlog)
 		rc = sdp_get_port(sk, 0);
 		if (rc)
 			return rc;
-		inet_sport(sk) = htons(inet_num(sk));
+		sdp_inet_sport(sk) = htons(sdp_inet_num(sk));
 	}
 
 	rc = rdma_listen(ssk->id, backlog);
@@ -2623,7 +2627,7 @@ struct proto sdp_proto = {
 	.enter_memory_pressure = sdp_enter_memory_pressure,
 	.memory_allocated = &memory_allocated,
 	.memory_pressure = &memory_pressure,
-        .sysctl_mem             = sysctl_tcp_mem,
+	.sysctl_mem	= init_net.ipv4.sysctl_tcp_mem,
         .sysctl_wmem            = sysctl_tcp_wmem,
         .sysctl_rmem            = sysctl_tcp_rmem,
 	.max_header  = sizeof(struct sdp_bsdh),

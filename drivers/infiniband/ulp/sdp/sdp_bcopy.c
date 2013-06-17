@@ -107,10 +107,10 @@ static inline void update_send_head(struct sock *sk, struct sk_buff *skb)
 	sk->sk_send_head = skb->next;
 	if (sk->sk_send_head == (struct sk_buff *)&sk->sk_write_queue) {
 		sk->sk_send_head = NULL;
-		page = sk->sk_sndmsg_page;
+		page = TCP_PAGE(sk);
 		if (page) {
 			put_page(page);
-			sk->sk_sndmsg_page = NULL;
+			TCP_PAGE(sk) = NULL;
 		}
 	}
 }

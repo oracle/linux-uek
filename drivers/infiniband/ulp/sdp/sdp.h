@@ -42,15 +42,18 @@
 #endif
 #endif
 
-#define inet_num(sk) inet_sk(sk)->inet_num
-#define inet_sport(sk) inet_sk(sk)->inet_sport
-#define inet_dport(sk) inet_sk(sk)->inet_dport
-#define inet_saddr(sk) inet_sk(sk)->inet_saddr
-#define sdp_inet_daddr(sk) inet_sk(sk)->inet_daddr
-#define sdp_inet_rcv_saddr(sk) inet_sk(sk)->inet_rcv_saddr
+#define sdp_inet_num(sk)	(inet_sk(sk)->inet_num)
+#define sdp_inet_sport(sk)	(inet_sk(sk)->inet_sport)
+#define sdp_inet_dport(sk)	(inet_sk(sk)->inet_dport)
+#define sdp_inet_saddr(sk)	(inet_sk(sk)->inet_saddr)
+#define sdp_inet_daddr(sk)	(inet_sk(sk)->inet_daddr)
+#define sdp_inet_rcv_saddr(sk)	(inet_sk(sk)->inet_rcv_saddr)
 
 #define sdp_sk_sleep(sk) sk_sleep(sk)
 #define sk_ssk(ssk) ((struct sock *)ssk)
+
+#define TCP_PAGE(sk)    ((sk_page_frag(sk))->page)
+#define TCP_OFF(sk)     ((sk_page_frag(sk))->offset)
 
 /* Interval between sucessive polls in the Tx routine when polling is used
    instead of interrupts (in per-core Tx rings) - should be power of 2 */
@@ -628,8 +631,10 @@ static inline struct sk_buff *sdp_stream_alloc_skb(struct sock *sk, int size,
 	skb = alloc_skb_fclone(size + sk->sk_prot->max_header, gfp);
 	if (skb) {
 
-		if ((kind == SK_MEM_RECV && sk_rmem_schedule(sk, skb->truesize)) ||
-				(kind == SK_MEM_SEND && sk_wmem_schedule(sk, skb->truesize))) {
+		if ((kind == SK_MEM_RECV && sk_rmem_schedule(sk, skb,
+			skb->truesize)) ||
+			(kind == SK_MEM_SEND && sk_wmem_schedule(sk,
+			skb->truesize))) {
 			/*
 			 * Make sure that we have exactly size bytes
 			 * available to the caller, no more, no less.

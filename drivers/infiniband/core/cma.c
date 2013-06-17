@@ -2189,8 +2189,10 @@ static void cma_set_compare_data(enum rdma_port_space ps, struct sockaddr *addr,
 		if (ps == RDMA_PS_SDP) {
 			sdp_set_ip_ver(sdp_data, 4);
 			sdp_set_ip_ver(sdp_mask, 0xF);
-			sdp_data->dst_addr.ip4.addr = ip4_addr;
-			sdp_mask->dst_addr.ip4.addr = htonl(~0);
+			if (!cma_any_addr(addr)) {
+				sdp_data->dst_addr.ip4.addr = ip4_addr;
+				sdp_mask->dst_addr.ip4.addr = htonl(~0);
+			}
 		} else {
 			cma_set_ip_ver(cma_data, 4);
 			cma_set_ip_ver(cma_mask, 0xF);
@@ -2205,16 +2207,18 @@ static void cma_set_compare_data(enum rdma_port_space ps, struct sockaddr *addr,
 		if (ps == RDMA_PS_SDP) {
 			sdp_set_ip_ver(sdp_data, 6);
 			sdp_set_ip_ver(sdp_mask, 0xF);
-			sdp_data->dst_addr.ip6 = ip6_addr;
-			memset(&sdp_mask->dst_addr.ip6, 0xFF,
-			       sizeof sdp_mask->dst_addr.ip6);
+			if (!cma_any_addr(addr)) {
+				sdp_data->dst_addr.ip6 = ip6_addr;
+				memset(&sdp_mask->dst_addr.ip6, 0xFF,
+					sizeof(sdp_mask->dst_addr.ip6));
+			}
 		} else {
 			cma_set_ip_ver(cma_data, 6);
 			cma_set_ip_ver(cma_mask, 0xF);
 			if (!cma_any_addr(addr)) {
 				cma_data->dst_addr.ip6 = ip6_addr;
 				memset(&cma_mask->dst_addr.ip6, 0xFF,
-				       sizeof cma_mask->dst_addr.ip6);
+					sizeof(cma_mask->dst_addr.ip6));
 			}
 		}
 		break;
