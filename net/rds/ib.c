@@ -489,6 +489,7 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 	struct in_ifaddr        **ifap;
 	int			found = 0;
 
+	rtnl_lock();
 	in_dev = in_dev_get(ndev);
 	if (in_dev) {
 		for (ifap = &in_dev->ifa_list; (ifa = *ifap);
@@ -500,8 +501,9 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 				break;
 			}
 		}
+		in_dev_put(in_dev);
 	}
-	in_dev_put(in_dev);
+	rtnl_unlock();
 
 	return found;
 }
@@ -573,7 +575,8 @@ static int rds_ib_move_ip(char			*from_dev,
 			strcat(to_dev2, ip_config[from_port].port_label);
 			to_dev2[IFNAMSIZ-1] = 0;
 		}
-		in_dev_put(in_dev);
+		if (in_dev)
+			in_dev_put(in_dev);
 
 		/* Bailout if IP already exists on target port */
 		if (rds_ib_addr_exist(ip_config[to_port].dev, addr, NULL))
@@ -662,6 +665,7 @@ retry:
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		if ((dev->type == ARPHRD_INFINIBAND) &&
+				(dev->flags & IFF_UP) &&
 				!(dev->flags & IFF_SLAVE) &&
 				!(dev->flags & IFF_MASTER)) {
 			if (dev->operstate != IF_OPER_UP)
@@ -958,7 +962,8 @@ static void rds_ib_net_failback(struct work_struct *_work)
 		rds_ib_failback((struct work_struct *)&work->work);
 	}
 
-	in_dev_put(in_dev);
+	if (in_dev)
+		in_dev_put(in_dev);
 }
 
 static void rds_ib_event_handler(struct ib_event_handler *handler,
@@ -1015,7 +1020,7 @@ static void rds_ib_dump_ip_config(void)
 {
 	int	i, j;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return;
 
 	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
@@ -1047,7 +1052,7 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
-static int rds_ib_ip_config_init(bool reinit)
+static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
 	struct in_ifaddr	*ifa;
@@ -1062,31 +1067,27 @@ static int rds_ib_ip_config_init(bool reinit)
 	if (!rds_ib_active_bonding_enabled)
 		return 0;
 
-	if (!reinit)
-		rds_ib_check_up_port();
+	rds_ib_check_up_port();
 
 	rcu_read_unlock();
 
-	if (reinit)
-		ip_port_cnt = 0;
-	else {
-		ip_config = kzalloc(sizeof(struct rds_ib_port) *
-					(ip_port_max + 1), GFP_KERNEL);
-		if (!ip_config) {
-			printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
-			return 1;
-		}
+	ip_config = kzalloc(sizeof(struct rds_ib_port) *
+				(ip_port_max + 1), GFP_KERNEL);
+	if (!ip_config) {
+		printk(KERN_ERR "RDS/IB: failed to allocate IP config\n");
+		return 1;
 	}
+
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
 		if ((dev->type == ARPHRD_INFINIBAND) &&
+			(dev->flags & IFF_UP) &&
 			!(dev->flags & IFF_SLAVE) &&
 			!(dev->flags & IFF_MASTER) &&
 			in_dev) {
 			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
 
-			rcu_read_lock();
 			list_for_each_entry_rcu(rds_ibdev,
 					&rds_ib_devices, list) {
 				ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
@@ -1095,7 +1096,6 @@ static int rds_ib_ip_config_init(bool reinit)
 				if (!ret)
 					break;
 			}
-			rcu_read_unlock();
 
 			if (ret) {
 				printk(KERN_ERR "RDS/IB: GID "RDS_IB_GID_FMT
@@ -1118,7 +1118,8 @@ static int rds_ib_ip_config_init(bool reinit)
 				}
 			}
 		}
-		in_dev_put(in_dev);
+		if (in_dev)
+			in_dev_put(in_dev);
 	}
 
 	rds_ib_dump_ip_config();
@@ -1138,7 +1139,6 @@ void rds_ib_ip_failover_groups_init(void)
 		return;
 
 	if (rds_ib_active_bonding_failover_groups == NULL) {
-		rcu_read_lock();
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
 			for (i = 1; i <= ip_port_cnt; i++) {
 				if (ip_config[i].rds_ibdev == rds_ibdev)
@@ -1146,7 +1146,6 @@ void rds_ib_ip_failover_groups_init(void)
 			}
 			grp_id++;
 		}
-		rcu_read_unlock();
 		return;
 	}
 
@@ -1309,6 +1308,34 @@ static void rds_ib_unregister_client(void)
 	flush_workqueue(rds_wq);
 }
 
+static void rds_ib_update_ip_config(void)
+{
+	struct net_device	*dev;
+	struct in_device	*in_dev;
+	int			i;
+
+	read_lock(&dev_base_lock);
+	for_each_netdev(&init_net, dev) {
+		in_dev = in_dev_get(dev);
+		if (in_dev) {
+			for (i = 0; i <= ip_port_cnt; i++) {
+				if (!strcmp(dev->name, ip_config[i].if_name)) {
+					if (ip_config[i].dev != dev) {
+						ip_config[i].dev = dev;
+						printk(KERN_NOTICE "RDS/IB: "
+							"dev %s/port_%d/%s updated",
+							ip_config[i].rds_ibdev->dev->name,
+							ip_config[i].port_num,
+							dev->name);
+					}
+				}
+			}
+			in_dev_put(in_dev);
+		}
+	}
+	read_unlock(&dev_base_lock);
+}
+
 static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
@@ -1319,36 +1346,35 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return NOTIFY_DONE;
 
-	if (event != NETDEV_UP && event != NETDEV_DOWN &&
-		event != NETDEV_REGISTER && event != NETDEV_UNREGISTER)
+	if (event != NETDEV_UP && event != NETDEV_DOWN)
 		return NOTIFY_DONE;
 
-	if (event == NETDEV_UP || event == NETDEV_DOWN) {
-		for (i = 1; i <= ip_port_cnt; i++) {
-			if (!strcmp(ndev->name, ip_config[i].if_name)) {
-				port = i;
-				break;
-			}
+	for (i = 1; i <= ip_port_cnt; i++) {
+		if (!strcmp(ndev->name, ip_config[i].if_name)) {
+			if (event == NETDEV_UP)
+				rds_ib_update_ip_config();
+			port = i;
+			break;
 		}
-
-		if (!port)
-			return NOTIFY_DONE;
-
-		work = kzalloc(sizeof *work, GFP_ATOMIC);
-		if (!work) {
-			printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
-			return NOTIFY_DONE;
-		}
-
-		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-			ip_config[port].rds_ibdev->dev->name,
-			ip_config[port].port_num, ndev->name,
-			(event == NETDEV_UP) ? "UP" : "DOWN");
-
-		work->dev = ndev;
-		work->port = port;
-		work->event_type = RDS_IB_PORT_EVENT_NET;
 	}
+
+	if (!port)
+		return NOTIFY_DONE;
+
+	work = kzalloc(sizeof *work, GFP_ATOMIC);
+	if (!work) {
+		printk(KERN_ERR "RDS/IB: failed to allocate port work\n");
+		return NOTIFY_DONE;
+	}
+
+	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
+		ip_config[port].rds_ibdev->dev->name,
+		ip_config[port].port_num, ndev->name,
+		(event == NETDEV_UP) ? "UP" : "DOWN");
+
+	work->dev = ndev;
+	work->port = port;
+	work->event_type = RDS_IB_PORT_EVENT_NET;
 
 	switch (event) {
 	case NETDEV_UP:
@@ -1371,11 +1397,6 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	case NETDEV_DOWN:
 		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 		queue_delayed_work(rds_wq, &work->work, 0);
-		break;
-	case NETDEV_UNREGISTER:
-	case NETDEV_REGISTER:
-		rds_ib_ip_config_init(1);
-		rds_ib_ip_failover_groups_init();
 		break;
 	}
 
@@ -1435,7 +1456,7 @@ int rds_ib_init(void)
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
 
-	ret = rds_ib_ip_config_init(0);
+	ret = rds_ib_ip_config_init();
 	if (ret) {
 		printk(KERN_ERR "RDS/IB: failed to init port\n");
 		goto out_srq;
