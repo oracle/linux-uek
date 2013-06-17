@@ -117,7 +117,18 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		/* XXX worry about racing with listen acceptance */
 		conn->c_to_index = 0;
-		ret = trans->cm_initiate_connect(cm_id);
+
+		/* Connection could have been dropped so make sure the
+		 * cm_id is valid before proceeding */
+		if (conn) {
+			struct rds_ib_connection *ibic;
+
+			ibic = conn->c_transport_data;
+			if (ibic && ibic->i_cm_id == cm_id)
+				ret = trans->cm_initiate_connect(cm_id);
+			else
+				rds_conn_drop(conn);
+		}
 		break;
 
 #if RDMA_RDS_APM_SUPPORTED
