@@ -284,7 +284,7 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 	list_for_each_entry_safe(uobj, tmp, &context->fmr_list, list) {
 		struct ib_pool_fmr *fmr = uobj->object;
-		struct ib_pd *pd = fmr->pd;
+		struct ib_pd *pd = fmr->fmr->pd;
 		idr_remove_uobj(&ib_uverbs_fmr_idr, uobj);
 		ib_fmr_pool_unmap(fmr);
 		atomic_dec(&pd->usecnt);
