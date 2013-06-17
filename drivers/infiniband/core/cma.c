@@ -1993,14 +1993,30 @@ static void cma_cancel_operation(struct rdma_id_private *id_priv,
 
 static void cma_release_port(struct rdma_id_private *id_priv)
 {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	struct rdma_bind_list *bind_list = id_priv->bind_list;
+#else
+	struct rdma_bind_list *bind_list;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	struct net *net = id_priv->id.route.addr.dev_addr.net;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	if (!bind_list)
 		return;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
 	mutex_lock(&lock);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	bind_list = id_priv->bind_list;
+	if (!bind_list) {
+		mutex_unlock(&lock);
+		return;
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	hlist_del(&id_priv->node);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	id_priv->bind_list = NULL;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	if (hlist_empty(&bind_list->owners)) {
 		cma_ps_remove(net, bind_list->ps, bind_list->port);
 		kfree(bind_list);
