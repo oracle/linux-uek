@@ -39,16 +39,13 @@ static unsigned int waitfd_poll(struct file *file, poll_table *wait)
 	struct waitfd_ctx *ctx = file->private_data;
 	long value;
 
-	printk(KERN_INFO "DEBUG: %i: about to sleep on waitqueue at %p\n", current->pid, &current->signal->wait_chldexit);
-	poll_wait(file, &current->signal->wait_chldexit, wait);
-	printk(KERN_INFO "DEBUG: waitfd poll woken up and checking pid %i, options are %i\n", ctx->upid, ctx->options);
+	poll_wait_fixed(file, &current->signal->wait_chldexit, wait,
+		POLLIN);
 
 	value = do_waitid(ctx->which, ctx->upid, NULL,
 			   ctx->options | WNOHANG | WNOWAIT, NULL);
 	if (value > 0 || value == -ECHILD)
 		return POLLIN | POLLRDNORM;
-
-	printk(KERN_INFO "DEBUG: waitfd poll returning zilch\n");
 
 	return 0;
 }
