@@ -13,12 +13,6 @@
 #include <string.h>
 #include <poll.h>
 
-#if 0
-#ifndef SYS_waitfd
-#define SYS_waitfd 473
-#endif
-#endif
-
 int waitfd(int which, pid_t upid, int options, int flags)
 {
         return syscall(__NR_waitfd, which, upid, options, flags);
@@ -26,8 +20,8 @@ int waitfd(int which, pid_t upid, int options, int flags)
 
 void sleeper(void)
 {
-        sleep(10);
-        exit(0);
+	sleep(10);
+	exit(0);
 }
 
 int main (void)
