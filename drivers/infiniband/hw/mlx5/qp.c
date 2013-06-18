@@ -227,8 +227,9 @@ static int set_rq_size(struct mlx5_ib_dev *dev, struct ib_qp_cap *cap,
 static int sq_overhead(enum ib_qp_type qp_type)
 {
 	int size;
+	int qpt = qp_type;
 
-	switch (qp_type) {
+	switch (qpt) {
 	case IB_QPT_XRC_INI:
 		size = sizeof(struct mlx5_wqe_xrc_seg);
 		/* fall through */
@@ -348,10 +349,10 @@ static int set_user_buf_size(struct mlx5_ib_dev *dev,
 
 static int qp_has_rq(struct ib_qp_init_attr *attr)
 {
-	if (attr->qp_type == IB_QPT_XRC_INI ||
-	    attr->qp_type == IB_QPT_XRC_TGT || attr->srq ||
-	    attr->qp_type == IB_QPT_REG_UMR ||
-	    !attr->cap.max_recv_wr)
+	int qpt = attr->qp_type;
+
+	if (qpt == IB_QPT_XRC_INI || qpt == IB_QPT_XRC_TGT || attr->srq ||
+	    qpt == IB_QPT_REG_UMR || !attr->cap.max_recv_wr)
 		return 0;
 
 	return 1;
@@ -476,7 +477,9 @@ static enum mlx5_qp_state to_mlx5_state(enum ib_qp_state state)
 
 static int to_mlx5_st(enum ib_qp_type type)
 {
-	switch (type) {
+	int qpt = type;
+
+	switch (qpt) {
 	case IB_QPT_RC:			return MLX5_QP_ST_RC;
 	case IB_QPT_UC:			return MLX5_QP_ST_UC;
 	case IB_QPT_UD:			return MLX5_QP_ST_UD;
@@ -626,12 +629,13 @@ static int create_kernel_qp(struct mlx5_ib_dev *dev,
 	int uar_index;
 	int err;
 	enum ib_latency_class lc = IB_LATENCY_CLASS_LOW;
+	int qpt = init_attr->qp_type;
 
 	uuari = &dev->mdev.priv.uuari;
 	if (init_attr->create_flags & IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK)
 		qp->flags |= MLX5_IB_QP_BLOCK_MULTICAST_LOOPBACK;
 
-	if (init_attr->qp_type == IB_QPT_REG_UMR)
+	if (qpt == IB_QPT_REG_UMR)
 		lc = IB_LATENCY_CLASS_FAST_PATH;
 
 	uuarn = alloc_uuar(uuari, lc);
@@ -767,6 +771,7 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 	int inlen = sizeof(*in);
 	struct mlx5_ib_create_qp ucmd;
 	struct mlx5_ib_resources *devr = &dev->devr;
+	int qpt;
 
 	mutex_init(&qp->mutex);
 	spin_lock_init(&qp->sq.lock);
@@ -834,8 +839,8 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 
 	in->ctx.flags = cpu_to_be32(to_mlx5_st(init_attr->qp_type) << 16 |
 				    MLX5_QP_PM_MIGRATED << 11);
-
-	if (init_attr->qp_type != IB_QPT_REG_UMR)
+	qpt = init_attr->qp_type;
+	if (qpt != IB_QPT_REG_UMR)
 		in->ctx.flags_pd = cpu_to_be32(to_mpd(pd ? pd : devr->p0)->pdn);
 	else
 		in->ctx.flags_pd = cpu_to_be32(MLX5_QP_LAT_SENSITIVE);
@@ -990,7 +995,9 @@ static struct mlx5_ib_pd *get_pd(struct mlx5_ib_qp *qp)
 static void get_cqs(struct mlx5_ib_qp *qp,
 		    struct mlx5_ib_cq **send_cq, struct mlx5_ib_cq **recv_cq)
 {
-	switch (qp->ibqp.qp_type) {
+	int qpt = qp->ibqp.qp_type;
+
+	switch (qpt) {
 	case IB_QPT_XRC_TGT:
 		*send_cq = NULL;
 		*recv_cq = NULL;
@@ -1063,7 +1070,9 @@ static void destroy_qp_common(struct mlx5_ib_dev *dev, struct mlx5_ib_qp *qp)
 
 static const char *ib_qp_type_str(enum ib_qp_type type)
 {
-	switch (type) {
+	int qpt = type;
+
+	switch (qpt) {
 	case IB_QPT_SMI:
 		return "IB_QPT_SMI";
 	case IB_QPT_GSI:
@@ -1100,21 +1109,21 @@ struct ib_qp *mlx5_ib_create_qp(struct ib_pd *pd,
 	int err;
 	u16 xrcdn = 0;
 	struct mlx5_ib_dev *dev;
+	int qpt = init_attr->qp_type;
 
 	if (pd) {
 		dev = to_mdev(pd->device);
 	} else {
 		/* being cautious here */
-		if (init_attr->qp_type != IB_QPT_XRC_TGT &&
-		    init_attr->qp_type != IB_QPT_REG_UMR) {
+		if (qpt != IB_QPT_XRC_TGT && qpt != IB_QPT_REG_UMR) {
 			pr_warn("%s: no PD for transport %s\n", __func__,
-				ib_qp_type_str(init_attr->qp_type));
+				ib_qp_type_str(qpt));
 			return ERR_PTR(-EINVAL);
 		}
 		dev = to_mdev(to_mxrcd(init_attr->xrcd)->ibxrcd.device);
 	}
 
-	switch (init_attr->qp_type) {
+	switch (qpt) {
 	case IB_QPT_XRC_TGT:
 	case IB_QPT_XRC_INI:
 		if (!(dev->mdev.caps.flags & MLX5_DEV_CAP_FLAG_XRC)) {
@@ -1446,6 +1455,7 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 	int err;
 	enum mlx5_qp_state mlx5_cur, mlx5_new;
 	int mlx5_st;
+	int qpt;
 
 	in = kzalloc(sizeof(*in), GFP_KERNEL);
 	if (!in)
@@ -1474,10 +1484,10 @@ static int __mlx5_ib_modify_qp(struct ib_qp *ibqp,
 		}
 	}
 
-	if (ibqp->qp_type == IB_QPT_GSI || ibqp->qp_type == IB_QPT_SMI) {
+	qpt = ibqp->qp_type;
+	if (qpt == IB_QPT_GSI || qpt == IB_QPT_SMI) {
 		context->mtu_msgmax = (IB_MTU_256 << 5) | 8;
-	} else if (ibqp->qp_type == IB_QPT_UD ||
-		   ibqp->qp_type == IB_QPT_REG_UMR) {
+	} else if (qpt == IB_QPT_UD || qpt == IB_QPT_REG_UMR) {
 		context->mtu_msgmax = (IB_MTU_4096 << 5) | 12;
 	} else if (attr_mask & IB_QP_PATH_MTU) {
 		if (attr->path_mtu < IB_MTU_256 ||
@@ -1641,14 +1651,15 @@ int mlx5_ib_modify_qp(struct ib_qp *ibqp, struct ib_qp_attr *attr,
 	int port;
 	int err = -EINVAL;
 	struct ib_qp_attr_ex *attrx = (struct ib_qp_attr_ex *)attr;
+	int qpt = ibqp->qp_type;
 
 	mutex_lock(&qp->mutex);
 
 	cur_state = attr_mask & IB_QP_CUR_STATE ? attrx->cur_qp_state : qp->state;
 	new_state = attr_mask & IB_QP_STATE ? attrx->qp_state : cur_state;
 
-	if (ibqp->qp_type != IB_QPT_REG_UMR &&
-	    !ib_modify_qp_is_ok(cur_state, new_state, ibqp->qp_type, attr_mask))
+	if (qpt != IB_QPT_REG_UMR &&
+	    !ib_modify_qp_is_ok(cur_state, new_state, qpt, attr_mask))
 		goto out;
 
 	if ((attr_mask & IB_QP_PORT) &&
@@ -2056,6 +2067,7 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 	u8 fence;
 	u8 next_fence = 0;
 	int num_sge;
+	int qpt;
 
 	spin_lock_irqsave(&qp->sq.lock, flags);
 
@@ -2097,7 +2109,8 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 		seg += sizeof(*ctrl);
 		size = sizeof(*ctrl) / 16;
 
-		switch (ibqp->qp_type) {
+		qpt = ibqp->qp_type;
+		switch (qpt) {
 		case IB_QPT_XRC_INI:
 			xrc = seg;
 			xrc->xrc_srqn = htonl(wr->xrc_remote_srq_num);
