@@ -3797,7 +3797,8 @@ static int cgroup_event_wake(wait_queue_t *wait, unsigned mode,
 }
 
 static void cgroup_event_ptable_queue_proc(struct file *file,
-		wait_queue_head_t *wqh, poll_table *pt)
+		wait_queue_head_t *wqh, poll_table *pt,
+		unsigned long unused)
 {
 	struct cgroup_event *event = container_of(pt,
 			struct cgroup_event, pt);
