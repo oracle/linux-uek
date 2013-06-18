@@ -1342,7 +1342,7 @@ static const struct machine_ops xen_machine_ops __initconst = {
 
 static void __init xen_boot_params_init_edd(void)
 {
-#if IS_ENABLED(CONFIG_EDD)
+#ifdef CONFIG_EDD
 	struct xen_platform_op op;
 	struct edd_info *edd_info;
 	u32 *mbr_signature;
