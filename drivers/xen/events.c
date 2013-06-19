@@ -381,7 +381,6 @@ static unsigned cpu_from_irq(unsigned irq)
 {
 	return info_for_irq(irq)->cpu;
 }
-
 static unsigned int cpu_from_evtchn(unsigned int evtchn)
 {
 	int irq = evtchn_to_irq[evtchn];
@@ -620,6 +619,12 @@ static void xen_free_irq(unsigned irq)
 
 	if (WARN_ON(!info))
 		return;
+	/*
+	 * Update the list of PIRQs (for PVHVM guests) that it is free.
+	 */
+	if (info->type == IRQT_PIRQ)
+		xen_update_pirq_status(info->u.pirq.pirq, PIRQ_FREE);
+
 	/*
 	 * Update the list of PIRQs (for PVHVM guests) that it is free.
 	 */

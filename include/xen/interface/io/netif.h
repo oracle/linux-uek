@@ -84,6 +84,7 @@ struct xen_netif_tx_request {
 
 /* GSO types - only TCPv4 currently supported. */
 #define XEN_NETIF_GSO_TYPE_TCPV4	(1)
+#define XEN_NETIF_GSO_TYPE_TCPV6	(2)
 
 /*
  * This structure needs to fit within both netif_tx_request and

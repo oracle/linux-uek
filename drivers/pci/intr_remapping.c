@@ -21,6 +21,7 @@ static int ir_ioapic_num, ir_hpet_num;
 int intr_remapping_enabled;
 
 static int disable_intremap;
+static int irq_remap_broken;
 static int disable_sourceid_checking;
 
 static __init int setup_nointremap(char *str)
@@ -502,6 +503,11 @@ end:
 	spin_unlock_irqrestore(&iommu->register_lock, flags);
 }
 
+void set_irq_remapping_broken(void)
+{
+	irq_remap_broken = 1;
+}
+
 int __init intr_remapping_supported(void)
 {
 	struct dmar_drhd_unit *drhd;
@@ -517,6 +523,17 @@ int __init intr_remapping_supported(void)
 
 		if (!ecap_ir_support(iommu->ecap))
 			return 0;
+	}
+
+	if (irq_remap_broken) {
+		WARN_TAINT(1, TAINT_FIRMWARE_WORKAROUND,
+			   "This system BIOS has enabled interrupt remapping\n"
+			   "on a chipset that contains an erratum making that\n"
+			   "feature unstable.  To maintain system stability\n"
+			   "interrupt remapping is being disabled.  Please\n"
+			   "contact your BIOS vendor for an update\n");
+		disable_intremap = 1;
+		return 0;
 	}
 
 	return 1;
