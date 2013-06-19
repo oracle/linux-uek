@@ -767,7 +767,7 @@ static int create_qp_common(struct mlx5_ib_dev *dev, struct ib_pd *pd,
 			    struct ib_udata *udata, struct mlx5_ib_qp *qp)
 {
 	int err;
-	struct mlx5_create_qp_mbox_in *in;
+	struct mlx5_create_qp_mbox_in *uninitialized_var(in);
 	struct mlx5_ib_create_qp_resp resp;
 	int inlen = sizeof(*in);
 	struct mlx5_ib_create_qp ucmd;
