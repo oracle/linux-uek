@@ -2342,7 +2342,8 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 	num_cores = roundup_pow_of_two(num_cores);
 	if (priv->hca_caps & IB_DEVICE_UD_RSS) {
 		int max_rss_tbl_sz;
-		max_rss_tbl_sz = device_attr->max_rss_tbl_sz;
+		max_rss_tbl_sz = min(device_attr->max_rss_tbl_sz,
+				     IPOIB_MAX_RX_QUEUES);
 		max_rss_tbl_sz = min(num_cores, max_rss_tbl_sz);
 		max_rss_tbl_sz = rounddown_pow_of_two(max_rss_tbl_sz);
 		priv->rss_qp_num    = max_rss_tbl_sz;
