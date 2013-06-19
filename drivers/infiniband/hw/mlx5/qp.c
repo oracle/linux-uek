@@ -310,7 +310,8 @@ static int calc_sq_size(struct mlx5_ib_dev *dev, struct ib_qp_init_attr *attr,
 	qp->sq.wqe_cnt = wq_size / MLX5_SEND_WQE_BB;
 	qp->sq.wqe_shift = ilog2(MLX5_SEND_WQE_BB);
 	qp->sq.max_gs = attr->cap.max_send_sge;
-	qp->sq.max_post = 1 << ilog2(wq_size / wqe_size);
+	qp->sq.max_post = wq_size / wqe_size;
+	attr->cap.max_send_wr = qp->sq.max_post;
 
 	return wq_size;
 }
