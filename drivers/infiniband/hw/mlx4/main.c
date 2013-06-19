@@ -1539,8 +1539,8 @@ static void handle_en_event(struct mlx4_ib_dev *dev, int port, unsigned long eve
 		break;
 
 	case NETDEV_DOWN:
+	case NETDEV_UNREGISTER:
 		update_ipv6_gids(dev, port, 1);
-		dev->iboe.netdevs[port - 1] = NULL;
 	}
 }
 
@@ -1588,6 +1588,16 @@ static int mlx4_ib_netdev_event(struct notifier_block *this, unsigned long event
 	else if (dev == iboe->netdevs[1]
 		 || (iboe->netdevs[1] && rdma_vlan_dev_real_dev(dev) == iboe->netdevs[1]))
 		handle_en_event(ibdev, 2, event);
+
+	if (event == NETDEV_DOWN) {
+		/* Only if parent was changed set as NULL, otherwise
+		*   vlan operations will cause port to be seen as down.
+		*/
+		if (dev == iboe->netdevs[0])
+			iboe->netdevs[0] = NULL;
+		else if (dev == iboe->netdevs[1])
+			iboe->netdevs[1] = NULL;
+	}
 
 	spin_unlock(&iboe->lock);
 
