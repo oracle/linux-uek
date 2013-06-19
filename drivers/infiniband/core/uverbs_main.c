@@ -193,6 +193,7 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 				      struct ib_ucontext *context)
 {
 	struct ib_uobject *uobj, *tmp;
+	int err;
 
 	if (!context)
 		return 0;
@@ -221,14 +222,27 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 			container_of(uobj, struct ib_uqp_object, uevent.uobject);
 
 		idr_remove_uobj(&ib_uverbs_qp_idr, uobj);
-		if (qp != qp->real_qp) {
-			ib_close_qp(qp);
-		} else {
-			ib_uverbs_detach_umcast(qp, uqp);
-			ib_destroy_qp(qp);
-		}
+
+		ib_uverbs_detach_umcast(qp, uqp);
+		err = ib_destroy_qp(qp);
+		if (err)
+			pr_info("destroying uverbs qp failed: err %d\n", err);
+
 		ib_uverbs_release_uevent(file, &uqp->uevent);
 		kfree(uqp);
+	}
+
+	list_for_each_entry_safe(uobj, tmp, &context->srq_list, list) {
+		struct ib_srq *srq = uobj->object;
+		struct ib_uevent_object *uevent =
+			container_of(uobj, struct ib_uevent_object, uobject);
+
+		idr_remove_uobj(&ib_uverbs_srq_idr, uobj);
+		err = ib_destroy_srq(srq);
+		if (err)
+			pr_info("destroying uverbs srq failed: err %d\n", err);
+		ib_uverbs_release_uevent(file, uevent);
+		kfree(uevent);
 	}
 
 	list_for_each_entry_safe(uobj, tmp, &context->cq_list, list) {
@@ -238,20 +252,12 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 			container_of(uobj, struct ib_ucq_object, uobject);
 
 		idr_remove_uobj(&ib_uverbs_cq_idr, uobj);
-		ib_destroy_cq(cq);
+		err = ib_destroy_cq(cq);
+		if (err)
+			pr_info("destroying uverbs cq failed: err %d\n", err);
+
 		ib_uverbs_release_ucq(file, ev_file, ucq);
 		kfree(ucq);
-	}
-
-	list_for_each_entry_safe(uobj, tmp, &context->srq_list, list) {
-		struct ib_srq *srq = uobj->object;
-		struct ib_uevent_object *uevent =
-			container_of(uobj, struct ib_uevent_object, uobject);
-
-		idr_remove_uobj(&ib_uverbs_srq_idr, uobj);
-		ib_destroy_srq(srq);
-		ib_uverbs_release_uevent(file, uevent);
-		kfree(uevent);
 	}
 
 	/* XXX Free MWs */
