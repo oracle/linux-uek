@@ -1141,16 +1141,15 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				dt_dbg_buf("    Store: %p[%ld] <- %d "
 					   "(from %s::%d)\n",
 					   buf, valoffs,
-					   valoffs + sizeof(uint32_t) - 1,
 					   (uint32_t)val,
 					   __FUNCTION__, __LINE__);
 				break;
 			case sizeof(uint64_t):
 				DTRACE_STORE(uint64_t, tomax, valoffs, val);
-				dt_dbg_buf("    Store: %p[%ld] <- %d "
+				dt_dbg_buf("    Store: %p[%ld] <- %lld "
 					   "(from %s::%d)\n",
 					   buf, valoffs,
-					   valoffs + sizeof(uint64_t) - 1, val,
+					   val,
 					   __FUNCTION__, __LINE__);
 				break;
 			default:
