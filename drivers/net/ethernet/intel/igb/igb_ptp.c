@@ -1,27 +1,41 @@
-/*
- * PTP Hardware Clock (PHC) driver for the Intel 82576 and 82580
- *
- * Copyright (C) 2011 Richard Cochran <richardcochran@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- */
+/*******************************************************************************
+
+  Intel(R) Gigabit Ethernet Linux driver
+  Copyright(c) 2007-2013 Intel Corporation.
+
+  This program is free software; you can redistribute it and/or modify it
+  under the terms and conditions of the GNU General Public License,
+  version 2, as published by the Free Software Foundation.
+
+  This program is distributed in the hope it will be useful, but WITHOUT
+  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+  more details.
+
+  You should have received a copy of the GNU General Public License along with
+  this program; if not, write to the Free Software Foundation, Inc.,
+  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+
+  The full GNU General Public License is included in this distribution in
+  the file called "COPYING".
+
+  Contact Information:
+  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
+  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+
+*******************************************************************************/
+
+/******************************************************************************
+ Copyright(c) 2011 Richard Cochran <richardcochran@gmail.com> for some of the
+ 82576 and 82580 code
+******************************************************************************/
+
+#include "igb.h"
+
 #include <linux/module.h>
 #include <linux/device.h>
 #include <linux/pci.h>
-
-#include "igb.h"
+#include <linux/ptp_classify.h>
 
 #define INCVALUE_MASK		0x7fffffff
 #define ISGN			0x80000000
@@ -70,6 +84,7 @@
  */
 
 #define IGB_SYSTIM_OVERFLOW_PERIOD	(HZ * 60 * 9)
+#define IGB_PTP_TX_TIMEOUT		(HZ * 15)
 #define INCPERIOD_82576			(1 << E1000_TIMINCA_16NS_SHIFT)
 #define INCVALUE_82576_MASK		((1 << E1000_TIMINCA_16NS_SHIFT) - 1)
 #define INCVALUE_82576			(16 << IGB_82576_TSYNC_SHIFT)
@@ -86,8 +101,8 @@ static cycle_t igb_ptp_read_82576(const struct cyclecounter *cc)
 	u64 val;
 	u32 lo, hi;
 
-	lo = rd32(E1000_SYSTIML);
-	hi = rd32(E1000_SYSTIMH);
+	lo = E1000_READ_REG(hw, E1000_SYSTIML);
+	hi = E1000_READ_REG(hw, E1000_SYSTIMH);
 
 	val = ((u64) hi) << 32;
 	val |= lo;
@@ -111,9 +126,9 @@ static cycle_t igb_ptp_read_82580(const struct cyclecounter *cc)
 	 * the lowest register is SYSTIMR instead of SYSTIML.  However we only
 	 * need to provide nanosecond resolution, so we just ignore it.
 	 */
-	jk = rd32(E1000_SYSTIMR);
-	lo = rd32(E1000_SYSTIML);
-	hi = rd32(E1000_SYSTIMH);
+	jk = E1000_READ_REG(hw, E1000_SYSTIMR);
+	lo = E1000_READ_REG(hw, E1000_SYSTIML);
+	hi = E1000_READ_REG(hw, E1000_SYSTIMH);
 
 	val = ((u64) hi) << 32;
 	val |= lo;
@@ -135,9 +150,9 @@ static void igb_ptp_read_i210(struct igb_adapter *adapter, struct timespec *ts)
 	 * lowest register is SYSTIMR. Since we only need to provide nanosecond
 	 * resolution, we can ignore it.
 	 */
-	jk = rd32(E1000_SYSTIMR);
-	nsec = rd32(E1000_SYSTIML);
-	sec = rd32(E1000_SYSTIMH);
+	jk = E1000_READ_REG(hw, E1000_SYSTIMR);
+	nsec = E1000_READ_REG(hw, E1000_SYSTIML);
+	sec = E1000_READ_REG(hw, E1000_SYSTIMH);
 
 	ts->tv_sec = sec;
 	ts->tv_nsec = nsec;
@@ -152,8 +167,8 @@ static void igb_ptp_write_i210(struct igb_adapter *adapter,
 	 * Writing the SYSTIMR register is not necessary as it only provides
 	 * sub-nanosecond resolution.
 	 */
-	wr32(E1000_SYSTIML, ts->tv_nsec);
-	wr32(E1000_SYSTIMH, ts->tv_sec);
+	E1000_WRITE_REG(hw, E1000_SYSTIML, ts->tv_nsec);
+	E1000_WRITE_REG(hw, E1000_SYSTIMH, ts->tv_sec);
 }
 
 /**
@@ -233,7 +248,7 @@ static int igb_ptp_adjfreq_82576(struct ptp_clock_info *ptp, s32 ppb)
 	else
 		incvalue += rate;
 
-	wr32(E1000_TIMINCA, INCPERIOD_82576 | (incvalue & INCVALUE_82576_MASK));
+	E1000_WRITE_REG(hw, E1000_TIMINCA, INCPERIOD_82576 | (incvalue & INCVALUE_82576_MASK));
 
 	return 0;
 }
@@ -259,7 +274,7 @@ static int igb_ptp_adjfreq_82580(struct ptp_clock_info *ptp, s32 ppb)
 	if (neg_adj)
 		inca |= ISGN;
 
-	wr32(E1000_TIMINCA, inca);
+	E1000_WRITE_REG(hw, E1000_TIMINCA, inca);
 
 	return 0;
 }
@@ -396,7 +411,16 @@ void igb_ptp_tx_work(struct work_struct *work)
 	if (!adapter->ptp_tx_skb)
 		return;
 
-	tsynctxctl = rd32(E1000_TSYNCTXCTL);
+	if (time_is_before_jiffies(adapter->ptp_tx_start +
+				   IGB_PTP_TX_TIMEOUT)) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+		adapter->tx_hwtstamp_timeouts++;
+		dev_warn(&adapter->pdev->dev, "clearing Tx timestamp hang");
+		return;
+	}
+
+	tsynctxctl = E1000_READ_REG(hw, E1000_TSYNCTXCTL);
 	if (tsynctxctl & E1000_TSYNCTXCTL_VALID)
 		igb_ptp_tx_hwtstamp(adapter);
 	else
@@ -419,6 +443,51 @@ static void igb_ptp_overflow_check(struct work_struct *work)
 }
 
 /**
+ * igb_ptp_rx_hang - detect error case when Rx timestamp registers latched
+ * @adapter: private network adapter structure
+ *
+ * This watchdog task is scheduled to detect error case where hardware has
+ * dropped an Rx packet that was timestamped when the ring is full. The
+ * particular error is rare but leaves the device in a state unable to timestamp
+ * any future packets.
+ */
+void igb_ptp_rx_hang(struct igb_adapter *adapter)
+{
+	struct e1000_hw *hw = &adapter->hw;
+	struct igb_ring *rx_ring;
+	u32 tsyncrxctl = E1000_READ_REG(hw, E1000_TSYNCRXCTL);
+	unsigned long rx_event;
+	int n;
+
+	if (hw->mac.type != e1000_82576)
+		return;
+
+	/* If we don't have a valid timestamp in the registers, just update the
+	 * timeout counter and exit
+	 */
+	if (!(tsyncrxctl & E1000_TSYNCRXCTL_VALID)) {
+		adapter->last_rx_ptp_check = jiffies;
+		return;
+	}
+
+	/* Determine the most recent watchdog or rx_timestamp event */
+	rx_event = adapter->last_rx_ptp_check;
+	for (n = 0; n < adapter->num_rx_queues; n++) {
+		rx_ring = adapter->rx_ring[n];
+		if (time_after(rx_ring->last_rx_timestamp, rx_event))
+			rx_event = rx_ring->last_rx_timestamp;
+	}
+
+	/* Only need to read the high RXSTMP register to clear the lock */
+	if (time_is_before_jiffies(rx_event + 5 * HZ)) {
+		E1000_READ_REG(hw, E1000_RXSTMPH);
+		adapter->last_rx_ptp_check = jiffies;
+		adapter->rx_hwtstamp_cleared++;
+		dev_warn(&adapter->pdev->dev, "clearing Rx timestamp hang");
+	}
+}
+
+/**
  * igb_ptp_tx_hwtstamp - utility function which checks for TX time stamp
  * @adapter: Board private structure.
  *
@@ -432,8 +501,8 @@ void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter)
 	struct skb_shared_hwtstamps shhwtstamps;
 	u64 regval;
 
-	regval = rd32(E1000_TXSTMPL);
-	regval |= (u64)rd32(E1000_TXSTMPH) << 32;
+	regval = E1000_READ_REG(hw, E1000_TXSTMPL);
+	regval |= (u64)E1000_READ_REG(hw, E1000_TXSTMPH) << 32;
 
 	igb_ptp_systim_to_hwtstamp(adapter, &shhwtstamps, regval);
 	skb_tstamp_tx(adapter->ptp_tx_skb, &shhwtstamps);
@@ -492,11 +561,11 @@ void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
 	 * If nothing went wrong, then it should have a shared tx_flags that we
 	 * can turn into a skb_shared_hwtstamps.
 	 */
-	if (!(rd32(E1000_TSYNCRXCTL) & E1000_TSYNCRXCTL_VALID))
+	if (!(E1000_READ_REG(hw, E1000_TSYNCRXCTL) & E1000_TSYNCRXCTL_VALID))
 		return;
 
-	regval = rd32(E1000_RXSTMPL);
-	regval |= (u64)rd32(E1000_RXSTMPH) << 32;
+	regval = E1000_READ_REG(hw, E1000_RXSTMPL);
+	regval |= (u64)E1000_READ_REG(hw, E1000_RXSTMPH) << 32;
 
 	igb_ptp_systim_to_hwtstamp(adapter, skb_hwtstamps(skb), regval);
 }
@@ -579,7 +648,8 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 		break;
 	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
 	case HWTSTAMP_FILTER_ALL:
-		/* 82576 cannot timestamp all packets, which it needs to do to
+		/*
+		 * 82576 cannot timestamp all packets, which it needs to do to
 		 * support both V1 Sync and Delay_Req messages
 		 */
 		if (hw->mac.type != e1000_82576) {
@@ -613,37 +683,36 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 
 		if ((hw->mac.type == e1000_i210) ||
 		    (hw->mac.type == e1000_i211)) {
-			regval = rd32(E1000_RXPBS);
+			regval = E1000_READ_REG(hw, E1000_RXPBS);
 			regval |= E1000_RXPBS_CFG_TS_EN;
-			wr32(E1000_RXPBS, regval);
+			E1000_WRITE_REG(hw, E1000_RXPBS, regval);
 		}
 	}
 
 	/* enable/disable TX */
-	regval = rd32(E1000_TSYNCTXCTL);
+	regval = E1000_READ_REG(hw, E1000_TSYNCTXCTL);
 	regval &= ~E1000_TSYNCTXCTL_ENABLED;
 	regval |= tsync_tx_ctl;
-	wr32(E1000_TSYNCTXCTL, regval);
+	E1000_WRITE_REG(hw, E1000_TSYNCTXCTL, regval);
 
 	/* enable/disable RX */
-	regval = rd32(E1000_TSYNCRXCTL);
+	regval = E1000_READ_REG(hw, E1000_TSYNCRXCTL);
 	regval &= ~(E1000_TSYNCRXCTL_ENABLED | E1000_TSYNCRXCTL_TYPE_MASK);
 	regval |= tsync_rx_ctl;
-	wr32(E1000_TSYNCRXCTL, regval);
+	E1000_WRITE_REG(hw, E1000_TSYNCRXCTL, regval);
 
 	/* define which PTP packets are time stamped */
-	wr32(E1000_TSYNCRXCFG, tsync_rx_cfg);
+	E1000_WRITE_REG(hw, E1000_TSYNCRXCFG, tsync_rx_cfg);
 
 	/* define ethertype filter for timestamped packets */
 	if (is_l2)
-		wr32(E1000_ETQF(3),
+		E1000_WRITE_REG(hw, E1000_ETQF(3),
 		     (E1000_ETQF_FILTER_ENABLE | /* enable filter */
 		      E1000_ETQF_1588 | /* enable timestamping */
 		      ETH_P_1588));     /* 1588 eth protocol type */
 	else
-		wr32(E1000_ETQF(3), 0);
+		E1000_WRITE_REG(hw, E1000_ETQF(3), 0);
 
-#define PTP_PORT 319
 	/* L4 Queue Filter[3]: filter by destination port and protocol */
 	if (is_l4) {
 		u32 ftqf = (IPPROTO_UDP /* UDP */
@@ -652,25 +721,25 @@ int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 			| E1000_FTQF_MASK); /* mask all inputs */
 		ftqf &= ~E1000_FTQF_MASK_PROTO_BP; /* enable protocol check */
 
-		wr32(E1000_IMIR(3), htons(PTP_PORT));
-		wr32(E1000_IMIREXT(3),
+		E1000_WRITE_REG(hw, E1000_IMIR(3), htons(PTP_EV_PORT));
+		E1000_WRITE_REG(hw, E1000_IMIREXT(3),
 		     (E1000_IMIREXT_SIZE_BP | E1000_IMIREXT_CTRL_BP));
 		if (hw->mac.type == e1000_82576) {
 			/* enable source port check */
-			wr32(E1000_SPQF(3), htons(PTP_PORT));
+			E1000_WRITE_REG(hw, E1000_SPQF(3), htons(PTP_EV_PORT));
 			ftqf &= ~E1000_FTQF_MASK_SOURCE_PORT_BP;
 		}
-		wr32(E1000_FTQF(3), ftqf);
+		E1000_WRITE_REG(hw, E1000_FTQF(3), ftqf);
 	} else {
-		wr32(E1000_FTQF(3), E1000_FTQF_MASK);
+		E1000_WRITE_REG(hw, E1000_FTQF(3), E1000_FTQF_MASK);
 	}
-	wrfl();
+	E1000_WRITE_FLUSH(hw);
 
 	/* clear TX/RX time stamp registers, just to be sure */
-	regval = rd32(E1000_TXSTMPL);
-	regval = rd32(E1000_TXSTMPH);
-	regval = rd32(E1000_RXSTMPL);
-	regval = rd32(E1000_RXSTMPH);
+	regval = E1000_READ_REG(hw, E1000_TXSTMPL);
+	regval = E1000_READ_REG(hw, E1000_TXSTMPH);
+	regval = E1000_READ_REG(hw, E1000_RXSTMPL);
+	regval = E1000_READ_REG(hw, E1000_RXSTMPH);
 
 	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ?
 		-EFAULT : 0;
@@ -685,7 +754,7 @@ void igb_ptp_init(struct igb_adapter *adapter)
 	case e1000_82576:
 		snprintf(adapter->ptp_caps.name, 16, "%pm", netdev->dev_addr);
 		adapter->ptp_caps.owner = THIS_MODULE;
-		adapter->ptp_caps.max_adj = 1000000000;
+		adapter->ptp_caps.max_adj = 999999881;
 		adapter->ptp_caps.n_ext_ts = 0;
 		adapter->ptp_caps.pps = 0;
 		adapter->ptp_caps.adjfreq = igb_ptp_adjfreq_82576;
@@ -698,7 +767,8 @@ void igb_ptp_init(struct igb_adapter *adapter)
 		adapter->cc.mult = 1;
 		adapter->cc.shift = IGB_82576_TSYNC_SHIFT;
 		/* Dial the nominal frequency. */
-		wr32(E1000_TIMINCA, INCPERIOD_82576 | INCVALUE_82576);
+		E1000_WRITE_REG(hw, E1000_TIMINCA, INCPERIOD_82576 |
+						   INCVALUE_82576);
 		break;
 	case e1000_82580:
 	case e1000_i350:
@@ -717,7 +787,7 @@ void igb_ptp_init(struct igb_adapter *adapter)
 		adapter->cc.mult = 1;
 		adapter->cc.shift = 0;
 		/* Enable the timer functions by clearing bit 31. */
-		wr32(E1000_TSAUXC, 0x0);
+		E1000_WRITE_REG(hw, E1000_TSAUXC, 0x0);
 		break;
 	case e1000_i210:
 	case e1000_i211:
@@ -732,14 +802,14 @@ void igb_ptp_init(struct igb_adapter *adapter)
 		adapter->ptp_caps.settime = igb_ptp_settime_i210;
 		adapter->ptp_caps.enable = igb_ptp_enable;
 		/* Enable the timer functions by clearing bit 31. */
-		wr32(E1000_TSAUXC, 0x0);
+		E1000_WRITE_REG(hw, E1000_TSAUXC, 0x0);
 		break;
 	default:
 		adapter->ptp_clock = NULL;
 		return;
 	}
 
-	wrfl();
+	E1000_WRITE_FLUSH(hw);
 
 	spin_lock_init(&adapter->tmreg_lock);
 	INIT_WORK(&adapter->ptp_tx_work, igb_ptp_tx_work);
@@ -762,8 +832,8 @@ void igb_ptp_init(struct igb_adapter *adapter)
 
 	/* Initialize the time sync interrupts for devices that support it. */
 	if (hw->mac.type >= e1000_82580) {
-		wr32(E1000_TSIM, E1000_TSIM_TXTS);
-		wr32(E1000_IMS, E1000_IMS_TS);
+		E1000_WRITE_REG(hw, E1000_TSIM, E1000_TSIM_TXTS);
+		E1000_WRITE_REG(hw, E1000_IMS, E1000_IMS_TS);
 	}
 
 	adapter->ptp_clock = ptp_clock_register(&adapter->ptp_caps,
@@ -801,6 +871,10 @@ void igb_ptp_stop(struct igb_adapter *adapter)
 	}
 
 	cancel_work_sync(&adapter->ptp_tx_work);
+	if (adapter->ptp_tx_skb) {
+		dev_kfree_skb_any(adapter->ptp_tx_skb);
+		adapter->ptp_tx_skb = NULL;
+	}
 
 	if (adapter->ptp_clock) {
 		ptp_clock_unregister(adapter->ptp_clock);
@@ -826,16 +900,17 @@ void igb_ptp_reset(struct igb_adapter *adapter)
 	switch (adapter->hw.mac.type) {
 	case e1000_82576:
 		/* Dial the nominal frequency. */
-		wr32(E1000_TIMINCA, INCPERIOD_82576 | INCVALUE_82576);
+		E1000_WRITE_REG(hw, E1000_TIMINCA, INCPERIOD_82576 |
+						   INCVALUE_82576);
 		break;
 	case e1000_82580:
 	case e1000_i350:
 	case e1000_i210:
 	case e1000_i211:
 		/* Enable the timer functions and interrupts. */
-		wr32(E1000_TSAUXC, 0x0);
-		wr32(E1000_TSIM, E1000_TSIM_TXTS);
-		wr32(E1000_IMS, E1000_IMS_TS);
+		E1000_WRITE_REG(hw, E1000_TSAUXC, 0x0);
+		E1000_WRITE_REG(hw, E1000_TSIM, E1000_TSIM_TXTS);
+		E1000_WRITE_REG(hw, E1000_IMS, E1000_IMS_TS);
 		break;
 	default:
 		/* No work to do. */
