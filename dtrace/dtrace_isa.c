@@ -383,12 +383,8 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 		unsigned long	addr = *sp;
 
 		if (addr >= stack_vma->vm_start && addr < stack_vma->vm_end) {
-pr_info("DEBUG: PID %5d stk[%05ld] %p = %lx -> %lx [FP?]\n", p->pid, bos - sp, sp, addr, *(unsigned long *)addr);
-pr_info("DEBUG:     Skipping...\n");
 			/* stack address - may need it for the fpstack. */
 		} else if (is_code_addr(addr)) {
-pr_info("DEBUG: PID %5d stk[%05ld] %p = %lx\n", p->pid, bos - sp, sp, addr);
-pr_info("DEBUG:     Adding...\n");
 			*pcstack++ = addr;
 			pcstack_limit--;
 		}
