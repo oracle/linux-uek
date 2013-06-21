@@ -70,15 +70,18 @@ xfs_setattr(
 
 	trace_xfs_setattr(ip);
 
-	if (mp->m_flags & XFS_MOUNT_RDONLY)
-		return XFS_ERROR(EROFS);
+	/* If acls are being inherited, we already have this checked */
+	if (!(flags & XFS_ATTR_NOACL)) {
+		if (mp->m_flags & XFS_MOUNT_RDONLY)
+			return XFS_ERROR(EROFS);
 
-	if (XFS_FORCED_SHUTDOWN(mp))
-		return XFS_ERROR(EIO);
+		if (XFS_FORCED_SHUTDOWN(mp))
+			return XFS_ERROR(EIO);
 
-	code = -inode_change_ok(inode, iattr);
-	if (code)
-		return code;
+		code = -inode_change_ok(inode, iattr);
+		if (code)
+			return code;
+	}
 
 	olddquot1 = olddquot2 = NULL;
 	udqp = gdqp = NULL;
@@ -373,9 +376,6 @@ xfs_setattr(
 	 */
 	if (mask & ATTR_MODE) {
 		umode_t mode = iattr->ia_mode;
-
-		if (!in_group_p(inode->i_gid) && !capable(CAP_FSETID))
-			mode &= ~S_ISGID;
 
 		ip->i_d.di_mode &= S_IFMT;
 		ip->i_d.di_mode |= mode & ~S_IFMT;
