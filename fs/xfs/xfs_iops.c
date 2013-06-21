@@ -612,9 +612,6 @@ xfs_setattr_nonsize(
 	if (mask & ATTR_MODE) {
 		umode_t mode = iattr->ia_mode;
 
-		if (!in_group_p(inode->i_gid) && !capable(CAP_FSETID))
-			mode &= ~S_ISGID;
-
 		ip->i_d.di_mode &= S_IFMT;
 		ip->i_d.di_mode |= mode & ~S_IFMT;
 
