@@ -1193,7 +1193,7 @@ static void ib_sa_add_one(struct ib_device *device)
 	return;
 
 err:
-	while (--i >= 0)
+	for (; i >= 0; --i)
 		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND)
 			ib_unregister_mad_agent(sa_dev->port[i].agent);
 
