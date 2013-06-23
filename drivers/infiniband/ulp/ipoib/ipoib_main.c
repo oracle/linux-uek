@@ -2116,7 +2116,7 @@ int parse_child(struct device *dev, const char *buf, int *pkey,
 	if (*child_index < 0 || *child_index > 0xff)
 		return -EINVAL;
 
-	if (*pkey < 0 || *pkey > 0xffff)
+	if (*pkey <= 0 || *pkey > 0xffff || *pkey == 0x8000)
 		return -EINVAL;
 
 	ipoib_dbg(priv, "parse_child inp %s out pkey %04x index %d\n",
