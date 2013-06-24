@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -29,14 +29,21 @@
 #include "ixgbe_common.h"
 #include "ixgbe_type.h"
 
+#ifdef IXGBE_SYSFS
+
 #include <linux/module.h>
 #include <linux/types.h>
 #include <linux/sysfs.h>
 #include <linux/kobject.h>
 #include <linux/device.h>
 #include <linux/netdevice.h>
+#include <linux/time.h>
+#ifdef IXGBE_HWMON
 #include <linux/hwmon.h>
+#endif
 
+
+#ifdef IXGBE_HWMON
 /* hwmon callback functions */
 static ssize_t ixgbe_hwmon_show_location(struct device *dev,
 					 struct device_attribute *attr,
@@ -148,7 +155,7 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 	ixgbe_attr->dev_attr.attr.mode = S_IRUGO;
 	ixgbe_attr->dev_attr.attr.name = ixgbe_attr->name;
 
-	rc = device_create_file(&adapter->pdev->dev,
+	rc = device_create_file(pci_dev_to_dev(adapter->pdev),
 				&ixgbe_attr->dev_attr);
 
 	if (rc == 0)
@@ -156,16 +163,18 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 
 	return rc;
 }
+#endif /* IXGBE_HWMON */
 
 static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter *adapter)
 {
+#ifdef IXGBE_HWMON
 	int i;
 
 	if (adapter == NULL)
 		return;
 
 	for (i = 0; i < adapter->ixgbe_hwmon_buff.n_hwmon; i++) {
-		device_remove_file(&adapter->pdev->dev,
+		device_remove_file(pci_dev_to_dev(adapter->pdev),
 			   &adapter->ixgbe_hwmon_buff.hwmon_list[i].dev_attr);
 	}
 
@@ -173,6 +182,7 @@ static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter *adapter)
 
 	if (adapter->ixgbe_hwmon_buff.device)
 		hwmon_device_unregister(adapter->ixgbe_hwmon_buff.device);
+#endif /* IXGBE_HWMON */
 }
 
 /* called from ixgbe_main.c */
@@ -184,19 +194,26 @@ void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter)
 /* called from ixgbe_main.c */
 int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 {
+	int rc = 0;
+#ifdef IXGBE_HWMON
 	struct hwmon_buff *ixgbe_hwmon = &adapter->ixgbe_hwmon_buff;
 	unsigned int i;
 	int n_attrs;
-	int rc = 0;
 
+#endif /* IXGBE_HWMON */
+	if (adapter == NULL)
+		goto err;
+
+
+#ifdef IXGBE_HWMON
 	/* If this method isn't defined we don't support thermals */
 	if (adapter->hw.mac.ops.init_thermal_sensor_thresh == NULL) {
-		goto exit;
+		goto no_thermal;
 	}
 
 	/* Don't create thermal hwmon interface if no sensors present */
 	if (adapter->hw.mac.ops.init_thermal_sensor_thresh(&adapter->hw))
-		goto exit;
+		goto no_thermal;
 
 	/*
 	 * Allocation space for max attributs
@@ -210,7 +227,7 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 		goto err;
 	}
 
-	ixgbe_hwmon->device = hwmon_device_register(&adapter->pdev->dev);
+	ixgbe_hwmon->device = hwmon_device_register(pci_dev_to_dev(adapter->pdev));
 	if (IS_ERR(ixgbe_hwmon->device)) {
 		rc = PTR_ERR(ixgbe_hwmon->device);
 		goto err;
@@ -233,6 +250,8 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 			goto err;
 	}
 
+no_thermal:
+#endif /* IXGBE_HWMON */
 	goto exit;
 
 err:
@@ -240,4 +259,4 @@ err:
 exit:
 	return rc;
 }
-
+#endif /* IXGBE_SYSFS */

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -28,58 +28,92 @@
 #ifndef _IXGBE_H_
 #define _IXGBE_H_
 
-#include <linux/bitops.h>
-#include <linux/types.h>
+#ifndef IXGBE_NO_LRO
+#include <net/tcp.h>
+#else
+#include <net/ip.h>
+#endif
+
 #include <linux/pci.h>
 #include <linux/netdevice.h>
-#include <linux/cpumask.h>
-#include <linux/aer.h>
+#include <linux/vmalloc.h>
+
+#ifdef SIOCETHTOOL
+#include <linux/ethtool.h>
+#endif
+#ifdef NETIF_F_HW_VLAN_TX
 #include <linux/if_vlan.h>
-
-#include <linux/clocksource.h>
-#include <linux/net_tstamp.h>
-#include <linux/ptp_clock_kernel.h>
-
-#include "ixgbe_type.h"
-#include "ixgbe_common.h"
+#endif
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#define IXGBE_DCA
+#include <linux/dca.h>
+#endif
 #include "ixgbe_dcb.h"
+
+#include "kcompat.h"
+
+#ifdef HAVE_SCTP
+#include <linux/sctp.h>
+#endif
+
+#ifdef HAVE_INCLUDE_LINUX_MDIO_H
+#include <linux/mdio.h>
+#endif
+
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #define IXGBE_FCOE
 #include "ixgbe_fcoe.h"
 #endif /* CONFIG_FCOE or CONFIG_FCOE_MODULE */
-#ifdef CONFIG_IXGBE_DCA
-#include <linux/dca.h>
+
+#include "ixgbe_api.h"
+
+#include "ixgbe_common.h"
+
+#define PFX "ixgbe: "
+#define DPRINTK(nlevel, klevel, fmt, args...) \
+	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
+	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
+		__func__ , ## args)))
+
+#ifdef HAVE_PTP_1588_CLOCK
+#include <linux/clocksource.h>
+#include <linux/net_tstamp.h>
+#include <linux/ptp_clock_kernel.h>
 #endif
 
-/* common prefix used by pr_<> macros */
-#undef pr_fmt
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 /* TX/RX descriptor defines */
-#define IXGBE_DEFAULT_TXD		    512
-#define IXGBE_DEFAULT_TX_WORK		    256
-#define IXGBE_MAX_TXD			   4096
-#define IXGBE_MIN_TXD			     64
+#define IXGBE_DEFAULT_TXD		512
+#define IXGBE_DEFAULT_TX_WORK		256
+#define IXGBE_MAX_TXD			4096
+#define IXGBE_MIN_TXD			64
 
-#define IXGBE_DEFAULT_RXD		    512
-#define IXGBE_MAX_RXD			   4096
-#define IXGBE_MIN_RXD			     64
+#define IXGBE_DEFAULT_RXD		512
+#define IXGBE_DEFAULT_RX_WORK		256
+#define IXGBE_MAX_RXD			4096
+#define IXGBE_MIN_RXD			64
+
 
 /* flow control */
-#define IXGBE_MIN_FCRTL			   0x40
+#define IXGBE_MIN_FCRTL			0x40
 #define IXGBE_MAX_FCRTL			0x7FF80
-#define IXGBE_MIN_FCRTH			  0x600
+#define IXGBE_MIN_FCRTH			0x600
 #define IXGBE_MAX_FCRTH			0x7FFF0
-#define IXGBE_DEFAULT_FCPAUSE		 0xFFFF
-#define IXGBE_MIN_FCPAUSE		      0
-#define IXGBE_MAX_FCPAUSE		 0xFFFF
+#define IXGBE_DEFAULT_FCPAUSE		0xFFFF
+#define IXGBE_MIN_FCPAUSE		0
+#define IXGBE_MAX_FCPAUSE		0xFFFF
 
 /* Supported Rx Buffer Sizes */
-#define IXGBE_RXBUFFER_256    256  /* Used for skb receive header */
-#define IXGBE_RXBUFFER_2K    2048
-#define IXGBE_RXBUFFER_3K    3072
-#define IXGBE_RXBUFFER_4K    4096
-#define IXGBE_MAX_RXBUFFER  16384  /* largest size for a single descriptor */
+#define IXGBE_RXBUFFER_256       256  /* Used for skb receive header */
+#define IXGBE_RXBUFFER_2K	2048
+#define IXGBE_RXBUFFER_3K	3072
+#define IXGBE_RXBUFFER_4K	4096
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+#define IXGBE_RXBUFFER_1536	1536
+#define IXGBE_RXBUFFER_7K	7168
+#define IXGBE_RXBUFFER_8K	8192
+#define IXGBE_RXBUFFER_15K	15360
+#endif /* CONFIG_IXGBE_DISABLE_PACKET_SPLIT */
+#define IXGBE_MAX_RXBUFFER	16384  /* largest size for single descriptor */
 
 /*
  * NOTE: netdev_alloc_skb reserves up to 64 bytes, NET_IP_ALIGN means we
@@ -89,37 +123,81 @@
  * Since netdev_alloc_skb now allocates a page fragment we can use a value
  * of 256 and the resultant skb will have a truesize of 960 or less.
  */
-#define IXGBE_RX_HDR_SIZE IXGBE_RXBUFFER_256
+#define IXGBE_RX_HDR_SIZE	IXGBE_RXBUFFER_256
 
-#define MAXIMUM_ETHERNET_VLAN_SIZE (ETH_FRAME_LEN + ETH_FCS_LEN + VLAN_HLEN)
+#define MAXIMUM_ETHERNET_VLAN_SIZE	(VLAN_ETH_FRAME_LEN + ETH_FCS_LEN)
 
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBE_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
-#define IXGBE_TX_FLAGS_CSUM		(u32)(1)
-#define IXGBE_TX_FLAGS_HW_VLAN		(u32)(1 << 1)
-#define IXGBE_TX_FLAGS_SW_VLAN		(u32)(1 << 2)
-#define IXGBE_TX_FLAGS_TSO		(u32)(1 << 3)
-#define IXGBE_TX_FLAGS_IPV4		(u32)(1 << 4)
-#define IXGBE_TX_FLAGS_FCOE		(u32)(1 << 5)
-#define IXGBE_TX_FLAGS_FSO		(u32)(1 << 6)
-#define IXGBE_TX_FLAGS_TXSW		(u32)(1 << 7)
-#define IXGBE_TX_FLAGS_TSTAMP		(u32)(1 << 8)
-#define IXGBE_TX_FLAGS_NO_IFCS		(u32)(1 << 9)
+enum ixgbe_tx_flags {
+	/* cmd_type flags */
+	IXGBE_TX_FLAGS_HW_VLAN	= 0x01,
+	IXGBE_TX_FLAGS_TSO	= 0x02,
+	IXGBE_TX_FLAGS_TSTAMP	= 0x04,
+
+	/* olinfo flags */
+	IXGBE_TX_FLAGS_CC	= 0x08,
+	IXGBE_TX_FLAGS_IPV4	= 0x10,
+	IXGBE_TX_FLAGS_CSUM	= 0x20,
+
+	/* software defined flags */
+	IXGBE_TX_FLAGS_SW_VLAN	= 0x40,
+	IXGBE_TX_FLAGS_FCOE	= 0x80,
+};
+
+/* VLAN info */
 #define IXGBE_TX_FLAGS_VLAN_MASK	0xffff0000
 #define IXGBE_TX_FLAGS_VLAN_PRIO_MASK	0xe0000000
-#define IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT  29
+#define IXGBE_TX_FLAGS_VLAN_PRIO_SHIFT	29
 #define IXGBE_TX_FLAGS_VLAN_SHIFT	16
 
-#define IXGBE_MAX_VF_MC_ENTRIES         30
-#define IXGBE_MAX_VF_FUNCTIONS          64
-#define IXGBE_MAX_VFTA_ENTRIES          128
-#define MAX_EMULATION_MAC_ADDRS         16
-#define IXGBE_MAX_PF_MACVLANS           15
-#define VMDQ_P(p)   ((p) + adapter->ring_feature[RING_F_VMDQ].offset)
-#define IXGBE_82599_VF_DEVICE_ID        0x10ED
-#define IXGBE_X540_VF_DEVICE_ID         0x1515
+#define IXGBE_MAX_RX_DESC_POLL		10
 
+#define IXGBE_MAX_VF_MC_ENTRIES		30
+#define IXGBE_MAX_VF_FUNCTIONS		64
+#define IXGBE_MAX_VFTA_ENTRIES		128
+#define MAX_EMULATION_MAC_ADDRS		16
+#define IXGBE_MAX_PF_MACVLANS		15
+#define IXGBE_82599_VF_DEVICE_ID	0x10ED
+#define IXGBE_X540_VF_DEVICE_ID		0x1515
+
+#ifdef CONFIG_PCI_IOV
+#define VMDQ_P(p)	((p) + adapter->ring_feature[RING_F_VMDQ].offset)
+#else
+#define VMDQ_P(p)	(p)
+#endif
+
+#define UPDATE_VF_COUNTER_32bit(reg, last_counter, counter)	\
+	{							\
+		u32 current_counter = IXGBE_READ_REG(hw, reg);	\
+		if (current_counter < last_counter)		\
+			counter += 0x100000000LL;		\
+		last_counter = current_counter;			\
+		counter &= 0xFFFFFFFF00000000LL;		\
+		counter |= current_counter;			\
+	}
+
+#define UPDATE_VF_COUNTER_36bit(reg_lsb, reg_msb, last_counter, counter) \
+	{								 \
+		u64 current_counter_lsb = IXGBE_READ_REG(hw, reg_lsb);	 \
+		u64 current_counter_msb = IXGBE_READ_REG(hw, reg_msb);	 \
+		u64 current_counter = (current_counter_msb << 32) |	 \
+			current_counter_lsb;				 \
+		if (current_counter < last_counter)			 \
+			counter += 0x1000000000LL;			 \
+		last_counter = current_counter;				 \
+		counter &= 0xFFFFFFF000000000LL;			 \
+		counter |= current_counter;				 \
+	}
+
+struct vf_stats {
+	u64 gprc;
+	u64 gorc;
+	u64 gptc;
+	u64 gotc;
+	u64 mprc;
+};
 struct vf_data_storage {
 	unsigned char vf_mac_addresses[ETH_ALEN];
 	u16 vf_mc_hashes[IXGBE_MAX_VF_MC_ENTRIES];
@@ -127,6 +205,9 @@ struct vf_data_storage {
 	u16 default_vf_vlan_id;
 	u16 vlans_enabled;
 	bool clear_to_send;
+	struct vf_stats vfstats;
+	struct vf_stats last_vfstats;
+	struct vf_stats saved_rst_vfstats;
 	bool pf_set_mac;
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
@@ -139,18 +220,53 @@ struct vf_data_storage {
 struct vf_macvlans {
 	struct list_head l;
 	int vf;
-	int rar_entry;
 	bool free;
 	bool is_macvlan;
 	u8 vf_macvlan[ETH_ALEN];
 };
 
+#ifndef IXGBE_NO_LRO
+#define IXGBE_LRO_MAX		32	/*Maximum number of LRO descriptors*/
+#define IXGBE_LRO_GLOBAL	10
+
+struct ixgbe_lro_stats {
+	u32 flushed;
+	u32 coal;
+};
+
+/*
+ * ixgbe_lro_header - header format to be aggregated by LRO
+ * @iph: IP header without options
+ * @tcp: TCP header
+ * @ts:  Optional TCP timestamp data in TCP options
+ *
+ * This structure relies on the check above that verifies that the header
+ * is IPv4 and does not contain any options.
+ */
+struct ixgbe_lrohdr {
+	struct iphdr iph;
+	struct tcphdr th;
+	__be32 ts[0];
+};
+
+struct ixgbe_lro_list {
+	struct sk_buff_head active;
+	struct ixgbe_lro_stats stats;
+};
+
+#endif /* IXGBE_NO_LRO */
 #define IXGBE_MAX_TXD_PWR	14
 #define IXGBE_MAX_DATA_PER_TXD	(1 << IXGBE_MAX_TXD_PWR)
 
 /* Tx Descriptors needed, worst case */
-#define TXD_USE_COUNT(S) DIV_ROUND_UP((S), IXGBE_MAX_DATA_PER_TXD)
-#define DESC_NEEDED ((MAX_SKB_FRAGS * TXD_USE_COUNT(PAGE_SIZE)) + 4)
+#define TXD_USE_COUNT(S)	DIV_ROUND_UP((S), IXGBE_MAX_DATA_PER_TXD)
+#ifndef MAX_SKB_FRAGS
+#define DESC_NEEDED	4
+#elif (MAX_SKB_FRAGS < 16)
+#define DESC_NEEDED	((MAX_SKB_FRAGS * TXD_USE_COUNT(PAGE_SIZE)) + 4)
+#else
+#define DESC_NEEDED	(MAX_SKB_FRAGS + 4)
+#endif
 
 /* wrapper around a pointer to a socket buffer,
  * so a DMA handle can be stored along with the buffer */
@@ -169,8 +285,10 @@ struct ixgbe_tx_buffer {
 struct ixgbe_rx_buffer {
 	struct sk_buff *skb;
 	dma_addr_t dma;
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	struct page *page;
 	unsigned int page_offset;
+#endif
 };
 
 struct ixgbe_queue_stats {
@@ -195,11 +313,17 @@ struct ixgbe_rx_queue_stats {
 
 enum ixgbe_ring_state_t {
 	__IXGBE_TX_FDIR_INIT_DONE,
+	__IXGBE_TX_XPS_INIT_DONE,
 	__IXGBE_TX_DETECT_HANG,
 	__IXGBE_HANG_CHECK_ARMED,
 	__IXGBE_RX_RSC_ENABLED,
+#ifndef HAVE_NDO_SET_FEATURES
+	__IXGBE_RX_CSUM_ENABLED,
+#endif
 	__IXGBE_RX_CSUM_UDP_ZERO_ERR,
+#ifdef IXGBE_FCOE
 	__IXGBE_RX_FCOE,
+#endif
 };
 
 #define check_for_tx_hang(ring) \
@@ -208,12 +332,20 @@ enum ixgbe_ring_state_t {
 	set_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
 #define clear_check_for_tx_hang(ring) \
 	clear_bit(__IXGBE_TX_DETECT_HANG, &(ring)->state)
+#ifndef IXGBE_NO_HW_RSC
 #define ring_is_rsc_enabled(ring) \
 	test_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+#else
+#define ring_is_rsc_enabled(ring)	false
+#endif
 #define set_ring_rsc_enabled(ring) \
 	set_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
 #define clear_ring_rsc_enabled(ring) \
 	clear_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
+#define netdev_ring(ring) (ring->netdev)
+#define ring_queue_index(ring) (ring->queue_index)
+
+
 struct ixgbe_ring {
 	struct ixgbe_ring *next;	/* pointer to next ring in q_vector */
 	struct ixgbe_q_vector *q_vector; /* backpointer to host q_vector */
@@ -240,8 +372,16 @@ struct ixgbe_ring {
 	u16 next_to_use;
 	u16 next_to_clean;
 
+#ifdef HAVE_PTP_1588_CLOCK
+	unsigned long last_rx_timestamp;
+
+#endif
 	union {
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+		u16 rx_buf_len;
+#else
 		u16 next_to_alloc;
+#endif
 		struct {
 			u8 atr_sample_rate;
 			u8 atr_count;
@@ -250,7 +390,6 @@ struct ixgbe_ring {
 
 	u8 dcb_tc;
 	struct ixgbe_queue_stats stats;
-	struct u64_stats_sync syncp;
 	union {
 		struct ixgbe_tx_queue_stats tx_stats;
 		struct ixgbe_rx_queue_stats rx_stats;
@@ -265,32 +404,33 @@ enum ixgbe_ring_f_enum {
 #ifdef IXGBE_FCOE
 	RING_F_FCOE,
 #endif /* IXGBE_FCOE */
-
-	RING_F_ARRAY_SIZE      /* must be last in enum set */
+	RING_F_ARRAY_SIZE  /* must be last in enum set */
 };
 
-#define IXGBE_MAX_RSS_INDICES  16
-#define IXGBE_MAX_VMDQ_INDICES 64
-#define IXGBE_MAX_FDIR_INDICES 64
+#define IXGBE_MAX_DCB_INDICES		8
+#define IXGBE_MAX_RSS_INDICES		16
+#define IXGBE_MAX_VMDQ_INDICES		64
+#define IXGBE_MAX_FDIR_INDICES		63
 #ifdef IXGBE_FCOE
-#define IXGBE_MAX_FCOE_INDICES  8
-#define MAX_RX_QUEUES (IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
-#define MAX_TX_QUEUES (IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
+#define IXGBE_MAX_FCOE_INDICES	8
+#define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
+#define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
 #else
-#define MAX_RX_QUEUES IXGBE_MAX_FDIR_INDICES
-#define MAX_TX_QUEUES IXGBE_MAX_FDIR_INDICES
+#define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
+#define MAX_TX_QUEUES	(IXGBE_MAX_FDIR_INDICES + 1)
 #endif /* IXGBE_FCOE */
 struct ixgbe_ring_feature {
 	u16 limit;	/* upper limit on feature indices */
 	u16 indices;	/* current value of indices */
 	u16 mask;	/* Mask used for feature to ring mapping */
 	u16 offset;	/* offset to start of feature */
-} ____cacheline_internodealigned_in_smp;
+};
 
 #define IXGBE_82599_VMDQ_8Q_MASK 0x78
 #define IXGBE_82599_VMDQ_4Q_MASK 0x7C
 #define IXGBE_82599_VMDQ_2Q_MASK 0x7E
 
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 /*
  * FCoE requires that all Rx buffers be over 2200 bytes in length.  Since
  * this is twice the size of a half page we need to double the page order
@@ -298,12 +438,16 @@ struct ixgbe_ring_feature {
  */
 static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring *ring)
 {
+#if MAX_SKB_FRAGS < 8
+	return ALIGN(IXGBE_MAX_RXBUFFER / MAX_SKB_FRAGS, 1024);
+#else
 #ifdef IXGBE_FCOE
 	if (test_bit(__IXGBE_RX_FCOE, &ring->state))
 		return (PAGE_SIZE < 8192) ? IXGBE_RXBUFFER_4K :
 					    IXGBE_RXBUFFER_3K;
 #endif
 	return IXGBE_RXBUFFER_2K;
+#endif
 }
 
 static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring *ring)
@@ -316,6 +460,7 @@ static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring *ring)
 }
 #define ixgbe_rx_pg_size(_ring) (PAGE_SIZE << ixgbe_rx_pg_order(_ring))
 
+#endif
 struct ixgbe_ring_container {
 	struct ixgbe_ring *ring;	/* pointer to linked list of rings */
 	unsigned int total_bytes;	/* total bytes processed this int */
@@ -329,34 +474,39 @@ struct ixgbe_ring_container {
 #define ixgbe_for_each_ring(pos, head) \
 	for (pos = (head).ring; pos != NULL; pos = pos->next)
 
-#define MAX_RX_PACKET_BUFFERS ((adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
-                              ? 8 : 1)
-#define MAX_TX_PACKET_BUFFERS MAX_RX_PACKET_BUFFERS
+#define MAX_RX_PACKET_BUFFERS	((adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
+				 ? 8 : 1)
+#define MAX_TX_PACKET_BUFFERS	MAX_RX_PACKET_BUFFERS
 
-/* MAX_Q_VECTORS of these are allocated,
+/* MAX_MSIX_Q_VECTORS of these are allocated,
  * but we only use one per queue-specific vector.
  */
 struct ixgbe_q_vector {
 	struct ixgbe_adapter *adapter;
-#ifdef CONFIG_IXGBE_DCA
-	int cpu;	    /* CPU for DCA */
-#endif
-	u16 v_idx;		/* index of q_vector within array, also used for
-				 * finding the bit in EICR and friends that
-				 * represents the vector for this ring */
-	u16 itr;		/* Interrupt throttle rate written to EITR */
+	int cpu;	/* CPU for DCA */
+	u16 v_idx;	/* index of q_vector within array, also used for
+			 * finding the bit in EICR and friends that
+			 * represents the vector for this ring */
+	u16 itr;	/* Interrupt throttle rate written to EITR */
 	struct ixgbe_ring_container rx, tx;
 
 	struct napi_struct napi;
+#ifndef HAVE_NETDEV_NAPI_LIST
+	struct net_device poll_dev;
+#endif
+#ifdef HAVE_IRQ_AFFINITY_HINT
 	cpumask_t affinity_mask;
+#endif
+#ifndef IXGBE_NO_LRO
+	struct ixgbe_lro_list lrolist;   /* LRO list for queue vector*/
+#endif
 	int numa_node;
-	struct rcu_head rcu;	/* to avoid race with update stats on free */
 	char name[IFNAMSIZ + 9];
 
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
 };
-#ifdef CONFIG_IXGBE_HWMON
+#ifdef IXGBE_HWMON
 
 #define IXGBE_HWMON_TYPE_LOC		0
 #define IXGBE_HWMON_TYPE_TEMP		1
@@ -375,7 +525,7 @@ struct hwmon_buff {
 	struct hwmon_attr *hwmon_list;
 	unsigned int n_hwmon;
 };
-#endif /* CONFIG_IXGBE_HWMON */
+#endif /* IXGBE_HWMON */
 
 /*
  * microsecond values for various ITR rates shifted by 2 to fit itr register
@@ -384,6 +534,7 @@ struct hwmon_buff {
 #define IXGBE_MIN_RSC_ITR	24
 #define IXGBE_100K_ITR		40
 #define IXGBE_20K_ITR		200
+#define IXGBE_16K_ITR		248
 #define IXGBE_10K_ITR		400
 #define IXGBE_8K_ITR		500
 
@@ -394,6 +545,7 @@ static inline __le32 ixgbe_test_staterr(union ixgbe_adv_rx_desc *rx_desc,
 	return rx_desc->wb.upper.status_error & cpu_to_le32(stat_err_bits);
 }
 
+/* ixgbe_desc_unused - calculate if we have unused descriptors */
 static inline u16 ixgbe_desc_unused(struct ixgbe_ring *ring)
 {
 	u16 ntc = ring->next_to_clean;
@@ -402,39 +554,66 @@ static inline u16 ixgbe_desc_unused(struct ixgbe_ring *ring)
 	return ((ntc > ntu) ? 0 : ring->count) + ntc - ntu - 1;
 }
 
-#define IXGBE_RX_DESC(R, i)	    \
+#define IXGBE_RX_DESC(R, i)	\
 	(&(((union ixgbe_adv_rx_desc *)((R)->desc))[i]))
-#define IXGBE_TX_DESC(R, i)	    \
+#define IXGBE_TX_DESC(R, i)	\
 	(&(((union ixgbe_adv_tx_desc *)((R)->desc))[i]))
-#define IXGBE_TX_CTXTDESC(R, i)	    \
+#define IXGBE_TX_CTXTDESC(R, i)	\
 	(&(((struct ixgbe_adv_tx_context_desc *)((R)->desc))[i]))
 
-#define IXGBE_MAX_JUMBO_FRAME_SIZE	9728 /* Maximum Supported Size 9.5KB */
+#define IXGBE_MAX_JUMBO_FRAME_SIZE	9728
 #ifdef IXGBE_FCOE
-/* Use 3K as the baby jumbo frame size for FCoE */
-#define IXGBE_FCOE_JUMBO_FRAME_SIZE       3072
+/* use 3K as the baby jumbo frame size for FCoE */
+#define IXGBE_FCOE_JUMBO_FRAME_SIZE	3072
 #endif /* IXGBE_FCOE */
 
-#define OTHER_VECTOR 1
-#define NON_Q_VECTORS (OTHER_VECTOR)
+#define TCP_TIMER_VECTOR	0
+#define OTHER_VECTOR	1
+#define NON_Q_VECTORS	(OTHER_VECTOR + TCP_TIMER_VECTOR)
 
-#define MAX_MSIX_VECTORS_82599 64
-#define MAX_Q_VECTORS_82599 64
-#define MAX_MSIX_VECTORS_82598 18
-#define MAX_Q_VECTORS_82598 16
+#define IXGBE_MAX_MSIX_Q_VECTORS_82599	64
+#define IXGBE_MAX_MSIX_Q_VECTORS_82598	16
 
-#define MAX_Q_VECTORS MAX_Q_VECTORS_82599
-#define MAX_MSIX_COUNT MAX_MSIX_VECTORS_82599
+struct ixgbe_mac_addr {
+	u8 addr[ETH_ALEN];
+	u16 queue;
+	u16 state; /* bitmask */
+};
+#define IXGBE_MAC_STATE_DEFAULT		0x1
+#define IXGBE_MAC_STATE_MODIFIED	0x2
+#define IXGBE_MAC_STATE_IN_USE		0x4
 
-#define MIN_MSIX_Q_VECTORS 1
-#define MIN_MSIX_COUNT (MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
+#ifdef IXGBE_PROCFS
+struct ixgbe_therm_proc_data {
+	struct ixgbe_hw *hw;
+	struct ixgbe_thermal_diode_data *sensor_data;
+};
+
+#endif /* IXGBE_PROCFS */
+/*
+ * Only for array allocations in our adapter struct.  On 82598, there will be
+ * unused entries in the array, but that's not a big deal.  Also, in 82599,
+ * we can actually assign 64 queue vectors based on our extended-extended
+ * interrupt registers.  This is different than 82598, which is limited to 16.
+ */
+#define MAX_MSIX_Q_VECTORS	IXGBE_MAX_MSIX_Q_VECTORS_82599
+#define MAX_MSIX_COUNT		IXGBE_MAX_MSIX_VECTORS_82599
+
+#define MIN_MSIX_Q_VECTORS	1
+#define MIN_MSIX_COUNT		(MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
 
 /* default to trying for four seconds */
-#define IXGBE_TRY_LINK_TIMEOUT (4 * HZ)
+#define IXGBE_TRY_LINK_TIMEOUT	(4 * HZ)
 
 /* board specific private data structure */
 struct ixgbe_adapter {
+#ifdef NETIF_F_HW_VLAN_TX
+#ifdef HAVE_VLAN_RX_REGISTER
+	struct vlan_group *vlgrp; /* must be first, see ixgbe_receive_skb */
+#else
 	unsigned long active_vlans[BITS_TO_LONGS(VLAN_N_VID)];
+#endif
+#endif /* NETIF_F_HW_VLAN_TX */
 	/* OS defined structs */
 	struct net_device *netdev;
 	struct pci_dev *pdev;
@@ -445,45 +624,71 @@ struct ixgbe_adapter {
 	 * thus the additional *_CAPABLE flags.
 	 */
 	u32 flags;
-#define IXGBE_FLAG_MSI_CAPABLE                  (u32)(1 << 0)
-#define IXGBE_FLAG_MSI_ENABLED                  (u32)(1 << 1)
-#define IXGBE_FLAG_MSIX_CAPABLE                 (u32)(1 << 2)
-#define IXGBE_FLAG_MSIX_ENABLED                 (u32)(1 << 3)
-#define IXGBE_FLAG_RX_1BUF_CAPABLE              (u32)(1 << 4)
-#define IXGBE_FLAG_RX_PS_CAPABLE                (u32)(1 << 5)
-#define IXGBE_FLAG_RX_PS_ENABLED                (u32)(1 << 6)
-#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 7)
-#define IXGBE_FLAG_DCA_ENABLED                  (u32)(1 << 8)
-#define IXGBE_FLAG_DCA_CAPABLE                  (u32)(1 << 9)
-#define IXGBE_FLAG_IMIR_ENABLED                 (u32)(1 << 10)
-#define IXGBE_FLAG_MQ_CAPABLE                   (u32)(1 << 11)
-#define IXGBE_FLAG_DCB_ENABLED                  (u32)(1 << 12)
-#define IXGBE_FLAG_VMDQ_CAPABLE                 (u32)(1 << 13)
-#define IXGBE_FLAG_VMDQ_ENABLED                 (u32)(1 << 14)
-#define IXGBE_FLAG_FAN_FAIL_CAPABLE             (u32)(1 << 15)
-#define IXGBE_FLAG_NEED_LINK_UPDATE             (u32)(1 << 16)
-#define IXGBE_FLAG_NEED_LINK_CONFIG             (u32)(1 << 17)
-#define IXGBE_FLAG_FDIR_HASH_CAPABLE            (u32)(1 << 18)
-#define IXGBE_FLAG_FDIR_PERFECT_CAPABLE         (u32)(1 << 19)
-#define IXGBE_FLAG_FCOE_CAPABLE                 (u32)(1 << 20)
-#define IXGBE_FLAG_FCOE_ENABLED                 (u32)(1 << 21)
-#define IXGBE_FLAG_SRIOV_CAPABLE                (u32)(1 << 22)
-#define IXGBE_FLAG_SRIOV_ENABLED                (u32)(1 << 23)
+#define IXGBE_FLAG_MSI_CAPABLE			(u32)(1 << 0)
+#define IXGBE_FLAG_MSI_ENABLED			(u32)(1 << 1)
+#define IXGBE_FLAG_MSIX_CAPABLE			(u32)(1 << 2)
+#define IXGBE_FLAG_MSIX_ENABLED			(u32)(1 << 3)
+#ifndef IXGBE_NO_LLI
+#define IXGBE_FLAG_LLI_PUSH			(u32)(1 << 4)
+#endif
+#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 5)
+#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#define IXGBE_FLAG_DCA_ENABLED			(u32)(1 << 6)
+#define IXGBE_FLAG_DCA_CAPABLE			(u32)(1 << 7)
+#define IXGBE_FLAG_DCA_ENABLED_DATA		(u32)(1 << 8)
+#else
+#define IXGBE_FLAG_DCA_ENABLED			(u32)0
+#define IXGBE_FLAG_DCA_CAPABLE			(u32)0
+#define IXGBE_FLAG_DCA_ENABLED_DATA             (u32)0
+#endif
+#define IXGBE_FLAG_MQ_CAPABLE			(u32)(1 << 9)
+#define IXGBE_FLAG_DCB_ENABLED			(u32)(1 << 10)
+#define IXGBE_FLAG_VMDQ_ENABLED			(u32)(1 << 11)
+#define IXGBE_FLAG_FAN_FAIL_CAPABLE		(u32)(1 << 12)
+#define IXGBE_FLAG_NEED_LINK_UPDATE		(u32)(1 << 13)
+#define IXGBE_FLAG_NEED_LINK_CONFIG		(u32)(1 << 14)
+#define IXGBE_FLAG_FDIR_HASH_CAPABLE		(u32)(1 << 15)
+#define IXGBE_FLAG_FDIR_PERFECT_CAPABLE		(u32)(1 << 16)
+#ifdef IXGBE_FCOE
+#define IXGBE_FLAG_FCOE_CAPABLE			(u32)(1 << 17)
+#define IXGBE_FLAG_FCOE_ENABLED			(u32)(1 << 18)
+#endif /* IXGBE_FCOE */
+#define IXGBE_FLAG_SRIOV_CAPABLE		(u32)(1 << 19)
+#define IXGBE_FLAG_SRIOV_ENABLED		(u32)(1 << 20)
+#define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE	(u32)(1 << 21)
+#define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	(u32)(1 << 22)
+#define IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE	(u32)(1 << 23)
+#define IXGBE_FLAG_RX_HWTSTAMP_ENABLED          (u32)(1 << 24)
+
+/* preset defaults */
+#define IXGBE_FLAGS_82598_INIT		(IXGBE_FLAG_MSI_CAPABLE |	\
+					 IXGBE_FLAG_MSIX_CAPABLE |	\
+					 IXGBE_FLAG_MQ_CAPABLE)
+
+#define IXGBE_FLAGS_82599_INIT		(IXGBE_FLAGS_82598_INIT |	\
+					 IXGBE_FLAG_SRIOV_CAPABLE)
+
+#define IXGBE_FLAGS_X540_INIT		IXGBE_FLAGS_82599_INIT
+
 
 	u32 flags2;
-#define IXGBE_FLAG2_RSC_CAPABLE                 (u32)(1 << 0)
-#define IXGBE_FLAG2_RSC_ENABLED                 (u32)(1 << 1)
-#define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE         (u32)(1 << 2)
-#define IXGBE_FLAG2_TEMP_SENSOR_EVENT           (u32)(1 << 3)
-#define IXGBE_FLAG2_SEARCH_FOR_SFP              (u32)(1 << 4)
-#define IXGBE_FLAG2_SFP_NEEDS_RESET             (u32)(1 << 5)
-#define IXGBE_FLAG2_RESET_REQUESTED             (u32)(1 << 6)
-#define IXGBE_FLAG2_FDIR_REQUIRES_REINIT        (u32)(1 << 7)
-#define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 8)
-#define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 9)
-#define IXGBE_FLAG2_PTP_ENABLED			(u32)(1 << 10)
-#define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
-#define IXGBE_FLAG2_BRIDGE_MODE_VEB		(u32)(1 << 12)
+#ifndef IXGBE_NO_HW_RSC
+#define IXGBE_FLAG2_RSC_CAPABLE			(u32)(1 << 0)
+#define IXGBE_FLAG2_RSC_ENABLED			(u32)(1 << 1)
+#else
+#define IXGBE_FLAG2_RSC_CAPABLE			0
+#define IXGBE_FLAG2_RSC_ENABLED			0
+#endif
+#define IXGBE_FLAG2_TEMP_SENSOR_CAPABLE		(u32)(1 << 3)
+#define IXGBE_FLAG2_TEMP_SENSOR_EVENT		(u32)(1 << 4)
+#define IXGBE_FLAG2_SEARCH_FOR_SFP		(u32)(1 << 5)
+#define IXGBE_FLAG2_SFP_NEEDS_RESET		(u32)(1 << 6)
+#define IXGBE_FLAG2_RESET_REQUESTED		(u32)(1 << 7)
+#define IXGBE_FLAG2_FDIR_REQUIRES_REINIT	(u32)(1 << 8)
+#define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
+#define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
+#define IXGBE_FLAG2_PTP_ENABLED                 (u32)(1 << 11)
+#define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 12)
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -493,6 +698,7 @@ struct ixgbe_adapter {
 	/* Rx fast path data */
 	int num_rx_queues;
 	u16 rx_itr_setting;
+	u16 rx_work_limit;
 
 	/* TX */
 	struct ixgbe_ring *tx_ring[MAX_TX_QUEUES] ____cacheline_aligned_in_smp;
@@ -513,31 +719,51 @@ struct ixgbe_adapter {
 	u32 alloc_rx_page_failed;
 	u32 alloc_rx_buff_failed;
 
-	struct ixgbe_q_vector *q_vector[MAX_Q_VECTORS];
+	struct ixgbe_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
 
-	/* DCB parameters */
+#ifdef HAVE_DCBNL_IEEE
 	struct ieee_pfc *ixgbe_ieee_pfc;
 	struct ieee_ets *ixgbe_ieee_ets;
+#endif
 	struct ixgbe_dcb_config dcb_cfg;
 	struct ixgbe_dcb_config temp_dcb_cfg;
 	u8 dcb_set_bitmap;
 	u8 dcbx_cap;
+#ifndef HAVE_MQPRIO
+	u8 dcb_tc;
+#endif
 	enum ixgbe_fc_mode last_lfc_mode;
 
 	int num_q_vectors;	/* current number of q_vectors for device */
-	int max_q_vectors;	/* true count of q_vectors for device */
+	int max_q_vectors;	/* upper limit of q_vectors for device */
 	struct ixgbe_ring_feature ring_feature[RING_F_ARRAY_SIZE];
 	struct msix_entry *msix_entries;
 
+#ifndef HAVE_NETDEV_STATS_IN_NETDEV
+	struct net_device_stats net_stats;
+#endif
+#ifndef IXGBE_NO_LRO
+	struct ixgbe_lro_stats lro_stats;
+#endif
+
+#ifdef ETHTOOL_TEST
 	u32 test_icr;
 	struct ixgbe_ring test_tx_ring;
 	struct ixgbe_ring test_rx_ring;
+#endif
 
 	/* structs defined in ixgbe_hw.h */
 	struct ixgbe_hw hw;
 	u16 msg_enable;
 	struct ixgbe_hw_stats stats;
+#ifndef IXGBE_NO_LLI
+	u32 lli_port;
+	u32 lli_size;
+	u32 lli_etype;
+	u32 lli_vlan_pri;
+#endif /* IXGBE_NO_LLI */
 
+	u32 *config_space;
 	u64 tx_busy;
 	unsigned int tx_ring_count;
 	unsigned int rx_ring_count;
@@ -564,45 +790,76 @@ struct ixgbe_adapter {
 
 	u16 bd_number;
 
-	u16 eeprom_verh;
-	u16 eeprom_verl;
+	char eeprom_id[32];
 	u16 eeprom_cap;
-
+	bool netdev_registered;
 	u32 interrupt_event;
+#ifdef HAVE_ETHTOOL_SET_PHYS_ID
 	u32 led_reg;
+#endif
 
+#ifdef HAVE_PTP_1588_CLOCK
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_caps;
+	struct work_struct ptp_tx_work;
+	struct sk_buff *ptp_tx_skb;
+	unsigned long ptp_tx_start;
 	unsigned long last_overflow_check;
+	unsigned long last_rx_ptp_check;
 	spinlock_t tmreg_lock;
-	struct cyclecounter cc;
-	struct timecounter tc;
-	int rx_hwtstamp_filter;
+	struct cyclecounter hw_cc;
+	struct timecounter hw_tc;
 	u32 base_incval;
+	u32 tx_hwtstamp_timeouts;
+	u32 rx_hwtstamp_cleared;
+#endif /* HAVE_PTP_1588_CLOCK */
 
-	/* SR-IOV */
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
 	unsigned int num_vfs;
 	struct vf_data_storage *vfinfo;
 	int vf_rate_link_speed;
 	struct vf_macvlans vf_mvs;
 	struct vf_macvlans *mv_list;
-
+#ifdef CONFIG_PCI_IOV
 	u32 timer_event_accumulator;
 	u32 vferr_refcount;
-	struct kobject *info_kobj;
-#ifdef CONFIG_IXGBE_HWMON
+#endif
+	struct ixgbe_mac_addr *mac_table;
+#ifdef IXGBE_SYSFS
+#ifdef IXGBE_HWMON
 	struct hwmon_buff ixgbe_hwmon_buff;
-#endif /* CONFIG_IXGBE_HWMON */
-#ifdef CONFIG_DEBUG_FS
-	struct dentry *ixgbe_dbg_adapter;
-#endif /*CONFIG_DEBUG_FS*/
+#endif /* IXGBE_HWMON */
+#else /* IXGBE_SYSFS */
+#ifdef IXGBE_PROCFS
+	struct proc_dir_entry *eth_dir;
+	struct proc_dir_entry *info_dir;
+	struct proc_dir_entry *therm_dir[IXGBE_MAX_SENSORS];
+	struct ixgbe_therm_proc_data therm_data[IXGBE_MAX_SENSORS];
+#endif /* IXGBE_PROCFS */
+#endif /* IXGBE_SYSFS */
 
+#ifdef HAVE_IXGBE_DEBUG_FS
+	struct dentry *ixgbe_dbg_adapter;
+#endif /*HAVE_IXGBE_DEBUG_FS*/
 	u8 default_up;
 };
 
+static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
+{
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82598EB:
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		return IXGBE_MAX_RSS_INDICES;
+		break;
+	default:
+		return 0;
+		break;
+	}
+}
+
 struct ixgbe_fdir_filter {
-	struct hlist_node fdir_node;
+	struct  hlist_node fdir_node;
 	union ixgbe_atr_input filter;
 	u16 sw_idx;
 	u16 action;
@@ -617,34 +874,56 @@ enum ixgbe_state_t {
 };
 
 struct ixgbe_cb {
+#ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
 	union {				/* Union defining head/tail partner */
 		struct sk_buff *head;
 		struct sk_buff *tail;
 	};
+#endif
 	dma_addr_t dma;
-	u16 append_cnt;
-	bool page_released;
+#ifndef IXGBE_NO_LRO
+	__be32	tsecr;			/* timestamp echo response */
+	u32	tsval;			/* timestamp value in host order */
+	u32	next_seq;		/* next expected sequence number */
+	u16	free;			/* 65521 minus total size */
+	u16	mss;			/* size of data portion of packet */
+#endif /* IXGBE_NO_LRO */
+#ifdef HAVE_VLAN_RX_REGISTER
+	u16	vid;			/* VLAN tag */
+#endif
+	u16	append_cnt;		/* number of skb's appended */
+#ifndef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
+	bool	page_released;
+#endif
 };
 #define IXGBE_CB(skb) ((struct ixgbe_cb *)(skb)->cb)
 
-enum ixgbe_boards {
-	board_82598,
-	board_82599,
-	board_X540,
-};
+/* ESX ixgbe CIM IOCTL definition */
 
-extern struct ixgbe_info ixgbe_82598_info;
-extern struct ixgbe_info ixgbe_82599_info;
-extern struct ixgbe_info ixgbe_X540_info;
-#ifdef CONFIG_IXGBE_DCB
-extern const struct dcbnl_rtnl_ops dcbnl_ops;
-#endif
+#ifdef IXGBE_SYSFS
+void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter);
+int ixgbe_sysfs_init(struct ixgbe_adapter *adapter);
+#endif /* IXGBE_SYSFS */
+#ifdef IXGBE_PROCFS
+void ixgbe_procfs_exit(struct ixgbe_adapter *adapter);
+int ixgbe_procfs_init(struct ixgbe_adapter *adapter);
+int ixgbe_procfs_topdir_init(void);
+void ixgbe_procfs_topdir_exit(void);
+#endif /* IXGBE_PROCFS */
 
+extern struct dcbnl_rtnl_ops dcbnl_ops;
+extern int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max);
+
+extern u8 ixgbe_dcb_txq_to_tc(struct ixgbe_adapter *adapter, u8 index);
+
+/* needed by ixgbe_main.c */
+extern int ixgbe_validate_mac_addr(u8 *mc_addr);
+extern void ixgbe_check_options(struct ixgbe_adapter *adapter);
+extern void ixgbe_assign_netdev_ops(struct net_device *netdev);
+
+/* needed by ixgbe_ethtool.c */
 extern char ixgbe_driver_name[];
 extern const char ixgbe_driver_version[];
-#ifdef IXGBE_FCOE
-extern char ixgbe_default_device_descr[];
-#endif /* IXGBE_FCOE */
 
 extern void ixgbe_up(struct ixgbe_adapter *adapter);
 extern void ixgbe_down(struct ixgbe_adapter *adapter);
@@ -655,53 +934,39 @@ extern int ixgbe_setup_rx_resources(struct ixgbe_ring *);
 extern int ixgbe_setup_tx_resources(struct ixgbe_ring *);
 extern void ixgbe_free_rx_resources(struct ixgbe_ring *);
 extern void ixgbe_free_tx_resources(struct ixgbe_ring *);
-extern void ixgbe_configure_rx_ring(struct ixgbe_adapter *,struct ixgbe_ring *);
-extern void ixgbe_configure_tx_ring(struct ixgbe_adapter *,struct ixgbe_ring *);
-extern void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
-				   struct ixgbe_ring *);
+extern void ixgbe_configure_rx_ring(struct ixgbe_adapter *,
+				    struct ixgbe_ring *);
+extern void ixgbe_configure_tx_ring(struct ixgbe_adapter *,
+				    struct ixgbe_ring *);
 extern void ixgbe_update_stats(struct ixgbe_adapter *adapter);
 extern int ixgbe_init_interrupt_scheme(struct ixgbe_adapter *adapter);
-extern int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
-			       u16 subdevice_id);
 extern void ixgbe_clear_interrupt_scheme(struct ixgbe_adapter *adapter);
+extern bool ixgbe_is_ixgbe(struct pci_dev *pcidev);
 extern netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *,
 					 struct ixgbe_adapter *,
 					 struct ixgbe_ring *);
 extern void ixgbe_unmap_and_free_tx_resource(struct ixgbe_ring *,
-                                             struct ixgbe_tx_buffer *);
+					     struct ixgbe_tx_buffer *);
 extern void ixgbe_alloc_rx_buffers(struct ixgbe_ring *, u16);
-extern void ixgbe_write_eitr(struct ixgbe_q_vector *);
-extern int ixgbe_poll(struct napi_struct *napi, int budget);
-extern int ethtool_ioctl(struct ifreq *ifr);
-extern s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw);
-extern s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl);
-extern s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl);
-extern s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
-						 union ixgbe_atr_hash_dword input,
-						 union ixgbe_atr_hash_dword common,
-                                                 u8 queue);
-extern s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
-					   union ixgbe_atr_input *input_mask);
-extern s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
-						 union ixgbe_atr_input *input,
-						 u16 soft_id, u8 queue);
-extern s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
-						 union ixgbe_atr_input *input,
-						 u16 soft_id);
-extern void ixgbe_atr_compute_perfect_hash_82599(union ixgbe_atr_input *input,
-						 union ixgbe_atr_input *mask);
-extern bool ixgbe_verify_lesm_fw_enabled_82599(struct ixgbe_hw *hw);
+extern void ixgbe_configure_rscctl(struct ixgbe_adapter *adapter,
+				   struct ixgbe_ring *);
+extern void ixgbe_clear_rscctl(struct ixgbe_adapter *adapter,
+			       struct ixgbe_ring *);
 extern void ixgbe_set_rx_mode(struct net_device *netdev);
-#ifdef CONFIG_IXGBE_DCB
-extern void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
+extern int ixgbe_write_mc_addr_list(struct net_device *netdev);
 extern int ixgbe_setup_tc(struct net_device *dev, u8 tc);
-#endif
 extern void ixgbe_tx_ctxtdesc(struct ixgbe_ring *, u32, u32, u32, u32);
 extern void ixgbe_do_reset(struct net_device *netdev);
-#ifdef CONFIG_IXGBE_HWMON
-extern void ixgbe_sysfs_exit(struct ixgbe_adapter *adapter);
-extern int ixgbe_sysfs_init(struct ixgbe_adapter *adapter);
-#endif /* CONFIG_IXGBE_HWMON */
+extern void ixgbe_write_eitr(struct ixgbe_q_vector *q_vector);
+extern int ixgbe_poll(struct napi_struct *napi, int budget);
+extern void ixgbe_disable_rx_queue(struct ixgbe_adapter *adapter,
+				   struct ixgbe_ring *);
+extern void ixgbe_vlan_stripping_enable(struct ixgbe_adapter *adapter);
+extern void ixgbe_vlan_stripping_disable(struct ixgbe_adapter *adapter);
+#ifdef ETHTOOL_OPS_COMPAT
+extern int ethtool_ioctl(struct ifreq *ifr);
+#endif
+
 #ifdef IXGBE_FCOE
 extern void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter);
 extern int ixgbe_fso(struct ixgbe_ring *tx_ring,
@@ -711,46 +976,92 @@ extern int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 			  union ixgbe_adv_rx_desc *rx_desc,
 			  struct sk_buff *skb);
 extern int ixgbe_fcoe_ddp_get(struct net_device *netdev, u16 xid,
-                              struct scatterlist *sgl, unsigned int sgc);
+			      struct scatterlist *sgl, unsigned int sgc);
+#ifdef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
 extern int ixgbe_fcoe_ddp_target(struct net_device *netdev, u16 xid,
 				 struct scatterlist *sgl, unsigned int sgc);
+#endif /* HAVE_NETDEV_OPS_FCOE_DDP_TARGET */
 extern int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid);
 extern int ixgbe_setup_fcoe_ddp_resources(struct ixgbe_adapter *adapter);
 extern void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter);
+#ifdef HAVE_NETDEV_OPS_FCOE_ENABLE
 extern int ixgbe_fcoe_enable(struct net_device *netdev);
 extern int ixgbe_fcoe_disable(struct net_device *netdev);
-#ifdef CONFIG_IXGBE_DCB
-extern u8 ixgbe_fcoe_getapp(struct ixgbe_adapter *adapter);
+#else
+int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter);
+void ixgbe_fcoe_ddp_disable(struct ixgbe_adapter *adapter);
+#endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
+#ifdef CONFIG_DCB
+#ifdef HAVE_DCBNL_OPS_GETAPP
+extern u8 ixgbe_fcoe_getapp(struct net_device *netdev);
+#endif /* HAVE_DCBNL_OPS_GETAPP */
 extern u8 ixgbe_fcoe_setapp(struct ixgbe_adapter *adapter, u8 up);
-#endif /* CONFIG_IXGBE_DCB */
-extern int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
-extern int ixgbe_fcoe_get_hbainfo(struct net_device *netdev,
-				  struct netdev_fcoe_hbainfo *info);
+#endif /* CONFIG_DCB */
 extern u8 ixgbe_fcoe_get_tc(struct ixgbe_adapter *adapter);
+#ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
+extern int ixgbe_fcoe_get_wwn(struct net_device *netdev, u64 *wwn, int type);
+#endif
 #endif /* IXGBE_FCOE */
-#ifdef CONFIG_DEBUG_FS
+
+#ifdef HAVE_IXGBE_DEBUG_FS
 extern void ixgbe_dbg_adapter_init(struct ixgbe_adapter *adapter);
 extern void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter);
 extern void ixgbe_dbg_init(void);
 extern void ixgbe_dbg_exit(void);
-#endif /* CONFIG_DEBUG_FS */
-static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
-{
-	return netdev_get_tx_queue(ring->netdev, ring->queue_index);
-}
+#endif /* HAVE_IXGBE_DEBUG_FS */
 
+#ifdef CONFIG_DCB
+#ifdef HAVE_DCBNL_IEEE
+s32 ixgbe_dcb_hw_ets(struct ixgbe_hw *hw, struct ieee_ets *ets, int max_frame);
+#endif /* HAVE_DCBNL_IEEE */
+#endif /* CONFIG_DCB */
+
+extern int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
+			       u16 subdevice_id);
+extern void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
+extern int ixgbe_get_settings(struct net_device *netdev,
+			      struct ethtool_cmd *ecmd);
+extern int ixgbe_write_uc_addr_list(struct ixgbe_adapter *adapter,
+				    struct net_device *netdev, int vfn);
+extern void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
+extern int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
+				u8 *addr, u16 queue);
+extern int ixgbe_del_mac_filter(struct ixgbe_adapter *adapter,
+				u8 *addr, u16 queue);
+extern int ixgbe_available_rars(struct ixgbe_adapter *adapter);
+#ifndef HAVE_VLAN_RX_REGISTER
+extern void ixgbe_vlan_mode(struct net_device *, u32);
+#endif
+
+#ifdef HAVE_PTP_1588_CLOCK
 extern void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
-extern void ixgbe_ptp_tx_hwtstamp(struct ixgbe_q_vector *q_vector,
+extern void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
+extern void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
 				  struct sk_buff *skb);
-extern void ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
-				  union ixgbe_adv_rx_desc *rx_desc,
-				  struct sk_buff *skb);
+static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
+					 union ixgbe_adv_rx_desc *rx_desc,
+					 struct sk_buff *skb)
+{
+
+	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
+		return;
+
+	ixgbe_ptp_rx_rgtstamp(rx_ring->q_vector, skb);
+
+	/* Update the last_rx_timestamp timer in order to enable watchdog check
+	 * for error case of latched timestamp on a dropped packet.
+	 */
+	rx_ring->last_rx_timestamp = jiffies;
+}
+
 extern int ixgbe_ptp_hwtstamp_ioctl(struct ixgbe_adapter *adapter,
 				    struct ifreq *ifr, int cmd);
 extern void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
+#endif /* HAVE_PTP_1588_CLOCK */
 
+extern void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
 #endif /* _IXGBE_H_ */

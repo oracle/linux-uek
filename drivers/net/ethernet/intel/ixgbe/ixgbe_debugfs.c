@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright(c) 1999 - 2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -24,10 +24,12 @@
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
 *******************************************************************************/
-#include <linux/debugfs.h>
-#include <linux/module.h>
 
 #include "ixgbe.h"
+
+#ifdef HAVE_IXGBE_DEBUG_FS
+#include <linux/debugfs.h>
+#include <linux/module.h>
 
 static struct dentry *ixgbe_dbg_root;
 
@@ -204,7 +206,11 @@ static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
 	ixgbe_dbg_netdev_ops_buf[len] = '\0';
 
 	if (strncmp(ixgbe_dbg_netdev_ops_buf, "tx_timeout", 10) == 0) {
+#ifdef HAVE_NET_DEVICE_OPS
 		adapter->netdev->netdev_ops->ndo_tx_timeout(adapter->netdev);
+#else
+		adapter->netdev->tx_timeout(adapter->netdev);
+#endif /* HAVE_NET_DEVICE_OPS */
 		e_dev_info("tx_timeout called\n");
 	} else {
 		e_dev_info("Unknown command: %s\n", ixgbe_dbg_netdev_ops_buf);
@@ -214,7 +220,7 @@ static ssize_t ixgbe_dbg_netdev_ops_write(struct file *filp,
 	return count;
 }
 
-static const struct file_operations ixgbe_dbg_netdev_ops_fops = {
+static struct file_operations ixgbe_dbg_netdev_ops_fops = {
 	.owner = THIS_MODULE,
 	.open = simple_open,
 	.read = ixgbe_dbg_netdev_ops_read,
@@ -274,3 +280,5 @@ void ixgbe_dbg_exit(void)
 {
 	debugfs_remove_recursive(ixgbe_dbg_root);
 }
+
+#endif /* HAVE_IXGBE_DEBUG_FS */
