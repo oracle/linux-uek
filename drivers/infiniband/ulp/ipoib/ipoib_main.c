@@ -233,6 +233,11 @@ int ipoib_set_mode(struct net_device *dev, const char *buf)
 	struct ipoib_send_ring *send_ring;
 	int i;
 
+	if (priv->dev->flags & IFF_UP) {
+		ipoib_warn(priv, "interface is up, cannot change mode\n");
+		return -EINVAL;
+	}
+
 	/* flush paths if we switch modes so that connections are restarted */
 	if (IPOIB_CM_SUPPORTED(dev->dev_addr) && !strcmp(buf, "connected\n")) {
 		set_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags);
