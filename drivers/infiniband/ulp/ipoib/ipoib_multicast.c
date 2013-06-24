@@ -580,10 +580,17 @@ void ipoib_mcast_join_task(struct work_struct *work)
 		return;
 	}
 
-	if (ib_query_gid(priv->ca, priv->port, 0, &priv->local_gid))
+	if (ib_query_gid(priv->ca, priv->port, 0, &priv->local_gid)) {
 		ipoib_warn(priv, "ib_query_gid() failed\n");
-	else
+	} else {
 		memcpy(priv->dev->dev_addr + 4, priv->local_gid.raw, sizeof (union ib_gid));
+		/*
+		 * update the pkey in the broadcast address,
+		 * it can be changed according to pkey change event.
+		 */
+		priv->dev->broadcast[8] = priv->pkey >> 8;
+		priv->dev->broadcast[9] = priv->pkey & 0xff;
+	}
 
 	{
 		struct ib_port_attr attr;

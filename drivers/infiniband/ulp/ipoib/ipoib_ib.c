@@ -1232,12 +1232,49 @@ int ipoib_ib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 	return 0;
 }
 
+/*
+ * Takes whatever it is in pkey-index 0.
+ * return 0 if the pkey value was changed.
+ * the function updates priv->pkey.
+ * relevant only for parent interfaces (ib0, ib1, etc.)
+ */
+static inline int update_pkey_index_0(struct ipoib_dev_priv *priv)
+{
+	int result;
+	u16 prev_pkey;
+
+	if (test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
+		ipoib_warn(priv, "%s: child interface should not call that func.\n",
+			   __func__);
+		return -1;
+	}
+
+	prev_pkey = priv->pkey;
+
+	result = ib_query_pkey(priv->ca, priv->port, 0, &priv->pkey);
+	if (!result) {
+		if (prev_pkey != priv->pkey) {
+			ipoib_warn(priv, "%s: pkey changed from 0x%x to 0x%x\n",
+				   __func__, prev_pkey, priv->pkey);
+			priv->pkey_index = 0;
+			return 0;
+		}
+	}
+
+	if (result)
+		ipoib_warn(priv, "%s: ib_query_pkey port %d failed (ret = %d)\n",
+			   __func__, priv->port, result);
+
+	return -1;
+}
+
 static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 				enum ipoib_flush_level level)
 {
 	struct ipoib_dev_priv *cpriv;
 	struct net_device *dev = priv->dev;
 	u16 new_index;
+	int result;
 
 	down_read(&priv->vlan_rwsem);
 
@@ -1251,8 +1288,11 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	up_read(&priv->vlan_rwsem);
 
 	if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags)) {
-		ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
-		return;
+		/* check if needs to update the pkey value */
+		if (level == IPOIB_FLUSH_HEAVY)
+			update_pkey_index_0(priv);
+			ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
+			return;
 	}
 
 	if (!test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
@@ -1261,21 +1301,35 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	}
 
 	if (level == IPOIB_FLUSH_HEAVY) {
-		if (ib_find_pkey(priv->ca, priv->port, priv->pkey, &new_index)) {
-			clear_bit(IPOIB_PKEY_ASSIGNED, &priv->flags);
-			ipoib_ib_dev_down(dev, 0);
-			ipoib_ib_dev_stop(dev, 0);
-			if (ipoib_pkey_dev_delay_open(dev))
+		/*
+		 * child-interface should chase after its origin pkey value.
+		 * parent interface should always takes what it finds in
+		 * pkey-index 0.
+		 */
+		if (test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
+			if (ib_find_pkey(priv->ca, priv->port, priv->pkey, &new_index)) {
+				clear_bit(IPOIB_PKEY_ASSIGNED, &priv->flags);
+				ipoib_ib_dev_down(dev, 0);
+				ipoib_ib_dev_stop(dev, 0);
+				if (ipoib_pkey_dev_delay_open(dev))
+					return;
+			}
+			/* restart QP only if P_Key index is changed */
+			if (test_and_set_bit(IPOIB_PKEY_ASSIGNED, &priv->flags) &&
+			    new_index == priv->pkey_index) {
+				ipoib_dbg(priv, "Not flushing - P_Key index not changed.\n");
 				return;
+			}
+			priv->pkey_index = new_index;
+		} else {
+			/* takes whatever find in index 0, return 0 if value changed. */
+			result = update_pkey_index_0(priv);
+			/* only if pkey value changed, force heavy_flush */
+			if (result) {
+				ipoib_dbg(priv, "Not flushing - P_Key index not changed.\n");
+				return;
+			}
 		}
-
-		/* restart QP only if P_Key index is changed */
-		if (test_and_set_bit(IPOIB_PKEY_ASSIGNED, &priv->flags) &&
-		    new_index == priv->pkey_index) {
-			ipoib_dbg(priv, "Not flushing - P_Key index not changed.\n");
-			return;
-		}
-		priv->pkey_index = new_index;
 	}
 
 	if (level == IPOIB_FLUSH_LIGHT) {
