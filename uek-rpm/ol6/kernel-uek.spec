@@ -1,3 +1,4 @@
+%define kernel_git_commit 74c661676446c010ea6f46dab7231d98761d66a5
 %global __spec_install_pre %{___build_pre}
 
 # Errors in specfile are causing builds to fail. Adding workarounds.
@@ -132,7 +133,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %if 0%{?stable_rc}
 %define stable_rctag .rc%{stable_rc}
 %endif
-%define pkg_release %{distro_build}%{?stable_rctag}%{?dist}%{?buildid}
+%define pkg_release 1%{?dist}uek%{?buildid}
 
 %else
 
@@ -147,12 +148,12 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %else
 %define gittag .git0
 %endif
-%define pkg_release 0.%{distro_build}%{?rctag}%{?gittag}%{?dist}%{?buildid}
+%define pkg_release 1%{?dist}uek%{?buildid}
 
 %endif
 
 # The kernel tarball/base version
-%define kversion 3.8.%{base_sublevel}
+%define kversion 3.8.13
 
 %define make_target bzImage
 
@@ -169,7 +170,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %define with_bootwrapper 0
 
-%define pkg_release %{distro_build}.1.0%{?dist}uek%{?buildid}
+%define pkg_release 1%{?dist}uek%{?buildid}
 
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
