@@ -31,8 +31,5 @@
 
 obj-$(CONFIG_IGBVF) += igbvf.o
 
-igbvf-objs := vf.o \
-              mbx.o \
-              ethtool.o \
-              netdev.o
-
+igbvf-objs := e1000_mbx.o e1000_vf.o ethtool.o \
+	  netdev.o param.o kcompat.o
