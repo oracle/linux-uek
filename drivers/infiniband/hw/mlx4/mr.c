@@ -138,7 +138,7 @@ static int handle_hugetlb_user_mr(struct ib_pd *pd, struct mlx4_ib_mr *mr,
 	int off = start & (HPAGE_SIZE - 1);
 
 	n = DIV_ROUND_UP(off + umem->length, HPAGE_SIZE);
-	arr = kmalloc(n * sizeof *arr, GFP_KERNEL);
+	arr = vmalloc(n * sizeof *arr);
 	if (!arr)
 		return -ENOMEM;
 
@@ -147,11 +147,17 @@ static int handle_hugetlb_user_mr(struct ib_pd *pd, struct mlx4_ib_mr *mr,
 			daddr = sg_dma_address(&chunk->page_list[i]);
 			dsize = sg_dma_len(&chunk->page_list[i]);
 			if (!cur_size) {
-				cur_addr = daddr;
-				cur_size = dsize;
+				cur_addr = daddr & HPAGE_MASK;
+				cur_size = (daddr & (HPAGE_SIZE - 1)) + dsize;
 			} else if (cur_addr + cur_size != daddr) {
-				err = -EINVAL;
-				goto out;
+				if ((cur_addr + cur_size) & (HPAGE_SIZE - 1)) {
+					err = -EINVAL;
+					goto out;
+				} else {
+					arr[j++] = cur_addr;
+					cur_addr = daddr & HPAGE_MASK;
+					cur_size = (daddr & (HPAGE_SIZE - 1)) + dsize;
+				}
 			} else
 				cur_size += dsize;
 
@@ -164,9 +170,8 @@ static int handle_hugetlb_user_mr(struct ib_pd *pd, struct mlx4_ib_mr *mr,
 			}
 		}
 
-	if (cur_size) {
+	if (cur_size)
 		arr[j++] = cur_addr;
-	}
 
 	err = mlx4_mr_alloc(dev->dev, to_mpd(pd)->pdn, virt_addr, umem->length,
 			    convert_access(access_flags), n, HPAGE_SHIFT, &mr->mmr);
@@ -176,7 +181,7 @@ static int handle_hugetlb_user_mr(struct ib_pd *pd, struct mlx4_ib_mr *mr,
 	err = mlx4_write_mtt(dev->dev, &mr->mmr.mtt, 0, n, arr);
 
 out:
-	kfree(arr);
+	vfree(arr);
 	return err;
 #else
 	return -ENOSYS;
