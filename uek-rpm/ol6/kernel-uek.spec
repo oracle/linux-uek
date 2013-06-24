@@ -516,15 +516,11 @@ Source20: x86_energy_perf_policy
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
-Source1002: config-i686
-Source1003: config-i686-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
 
-Source25: Module.kabi_i686
 Source26: Module.kabi_x86_64
 
-Source200: kabi_whitelist_i686
 Source201: kabi_whitelist_x86_64
 
 # Here should be only the patches up to the upstream canonical Linus tree.
