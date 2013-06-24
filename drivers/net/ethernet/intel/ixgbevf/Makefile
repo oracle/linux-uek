@@ -31,8 +31,6 @@
 
 obj-$(CONFIG_IXGBEVF) += ixgbevf.o
 
-ixgbevf-objs := vf.o \
-                mbx.o \
-                ethtool.o \
-                ixgbevf_main.o
+ixgbevf-objs := ixgbe_mbx.o ixgbe_vf.o ixgbevf_ethtool.o ixgbevf_main.o \
+		 ixgbevf_param.o kcompat.o
 
