@@ -48,7 +48,7 @@
 MLX5_MOD_DBG_MASK(MLX5_MOD_CMDIF);
 
 enum {
-	CMD_IF_REV = 3,
+	CMD_IF_REV = 4,
 };
 
 enum {
