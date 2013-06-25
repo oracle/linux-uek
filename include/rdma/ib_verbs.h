@@ -1225,7 +1225,6 @@ struct ib_flow_attr {
 struct ib_flow {
 	struct ib_qp		*qp;
 	struct ib_uobject	*uobject;
-	void			*flow_context;
 };
 
 struct ib_mad;

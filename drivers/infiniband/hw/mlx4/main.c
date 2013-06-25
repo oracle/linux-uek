@@ -1101,14 +1101,13 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 				    int domain)
 {
 	int err = 0, i = 0;
-	struct ib_flow *flow_id = NULL;
-	struct mlx4_flow_handle *flow_handle;
+	struct mlx4_ib_flow *mflow;
 	enum mlx4_net_trans_promisc_mode type[2];
+
 	memset(type, 0, sizeof(type));
 
-	flow_id = kzalloc(sizeof(struct ib_flow), GFP_KERNEL);
-	flow_handle = kzalloc(sizeof(struct mlx4_flow_handle), GFP_KERNEL);
-	if (!flow_id || !flow_handle) {
+	mflow = kzalloc(sizeof(struct mlx4_ib_flow), GFP_KERNEL);
+	if (!mflow) {
 		err = -ENOMEM;
 		goto err_free;
 	}
@@ -1138,16 +1137,16 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 
 	while (i < ARRAY_SIZE(type) && type[i]) {
 		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
-					    &flow_handle->reg_id[i]);
+					    &mflow->reg_id[i]);
 		if (err)
 			goto err_free;
 		i++;
 	}
-	flow_id->flow_context = flow_handle;
-	return flow_id;
+
+	return &mflow->ibflow;
+
 err_free:
-	kfree(flow_handle);
-	kfree(flow_id);
+	kfree(mflow);
 	return ERR_PTR(err);
 }
 
@@ -1156,17 +1155,16 @@ int mlx4_ib_destroy_flow(struct ib_flow *flow_id)
 	int err, ret = 0;
 	int i = 0;
 	struct mlx4_ib_dev *mdev = to_mdev(flow_id->qp->device);
-	struct mlx4_flow_handle *flow_handle;
+	struct mlx4_ib_flow *mflow = to_mflow(flow_id);
 
-	flow_handle = flow_id->flow_context;
-	while (i < ARRAY_SIZE(flow_handle->reg_id) && flow_handle->reg_id[i]) {
-		err = __mlx4_ib_destroy_flow(mdev->dev, flow_handle->reg_id[i]);
+	while (i < ARRAY_SIZE(mflow->reg_id) && mflow->reg_id[i]) {
+		err = __mlx4_ib_destroy_flow(mdev->dev, mflow->reg_id[i]);
 		if (err)
 			ret = err;
 		i++;
 	}
-	kfree(flow_id->flow_context);
-	kfree(flow_id);
+
+	kfree(mflow);
 	return ret;
 }
 
