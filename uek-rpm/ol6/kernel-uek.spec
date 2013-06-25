@@ -489,7 +489,7 @@ BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
 BuildRequires: openssl
-BuildRequires: pesign >= 0.10-4
+#BuildRequires: pesign >= 0.10-4
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
