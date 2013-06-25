@@ -848,12 +848,6 @@ struct ib_kern_flow_attr {
 	 */
 };
 
-struct ib_kern_flow {
-	struct ib_device	*device;
-	struct ib_uobject	*uobject;
-	void			*flow_context;
-};
-
 struct ib_uverbs_create_flow  {
 	__u32 comp_mask;
 	__u64 response;
