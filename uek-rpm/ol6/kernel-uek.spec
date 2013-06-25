@@ -206,7 +206,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 %if %{rhel}
-%define pkg_release %{distro_build}.101.0%{?dist}uek%{?buildid}
+%define pkg_release %{distro_build}.201.0%{?dist}uek%{?buildid}
 %endif
 %define KVERREL %{rpmversion}-%{pkg_release}.%{_target_cpu}
 
