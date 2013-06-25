@@ -261,6 +261,12 @@ const char *mlx5_command_str(int command)
 	case MLX5_CMD_OP_TEARDOWN_HCA:
 		return "TEARDOWN_HCA";
 
+	case MLX5_CMD_OP_ENABLE_HCA:
+		return "MLX5_CMD_OP_ENABLE_HCA";
+
+	case MLX5_CMD_OP_DISABLE_HCA:
+		return "MLX5_CMD_OP_DISABLE_HCA";
+
 	case MLX5_CMD_OP_QUERY_PAGES:
 		return "QUERY_PAGES";
 
@@ -1476,7 +1482,6 @@ int mlx5_cmd_status_to_err(struct mlx5_outbox_hdr *hdr)
 		be32_to_cpu(hdr->syndrome));
 
 	switch (hdr->status) {
-	case 0x0:	return 0;
 	case 0x1:	return -EIO;
 	case 0x2:	return -EINVAL;
 	case 0x3:	return -EINVAL;
