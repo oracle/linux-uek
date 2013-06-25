@@ -530,10 +530,9 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 		for (i = 0; i < priv->tx_ring_num; i++) {
 			priv->tx_cq[i]->moder_cnt = priv->tx_frames;
 			priv->tx_cq[i]->moder_time = priv->tx_usecs;
-			if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i])) {
-				en_warn(priv, "Failed changing moderation "
-					      "for TX cq %d\n", i);
-			}
+			if (priv->port_up)
+				if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i]))
+					en_warn(priv, "Failed changing moderation for TX cq %d\n", i);
 		}
 	}
 
@@ -551,10 +550,13 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
 		priv->rx_cq[i]->moder_time = priv->rx_usecs;
 		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
-		if (err)
-			return err;
+		if (priv->port_up) {
+			err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+			if (err)
+				return err;
+		}
 	}
+
 	return 0;
 }
 
@@ -1280,7 +1282,7 @@ static int mlx4_en_set_channels(struct net_device *dev,
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
-	int port_up;
+	int port_up = 0;
 	int i;
 	int err = 0;
 
@@ -1332,9 +1334,11 @@ static int mlx4_en_set_channels(struct net_device *dev,
 		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
 		priv->rx_cq[i]->moder_time = priv->rx_usecs;
 		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
-		if (err)
-			goto out;
+		if (port_up) {
+			err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+			if (err)
+				goto out;
+		}
 	}
 
 out:
