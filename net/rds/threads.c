@@ -139,8 +139,12 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	rdsdebug("%lu delay %lu ceil conn %p for %pI4 -> %pI4\n",
 		 rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		 conn, &conn->c_laddr, &conn->c_faddr);
-	queue_delayed_work(rds_wq, &conn->c_conn_w,
+	if (conn->c_laddr >= conn->c_faddr)
+		queue_delayed_work(rds_wq, &conn->c_conn_w,
 			   rand % conn->c_reconnect_jiffies);
+	else
+		queue_delayed_work(rds_wq, &conn->c_conn_w,
+					msecs_to_jiffies(100));
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
