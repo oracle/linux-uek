@@ -1289,10 +1289,11 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 
 	if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags)) {
 		/* check if needs to update the pkey value */
-		if (level == IPOIB_FLUSH_HEAVY)
+		if (level == IPOIB_FLUSH_HEAVY &&
+		    !test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags))
 			update_pkey_index_0(priv);
-			ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
-			return;
+		ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
+		return;
 	}
 
 	if (!test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {
