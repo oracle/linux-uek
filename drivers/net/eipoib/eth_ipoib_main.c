@@ -823,7 +823,7 @@ static struct neigh *__eipoib_neigh_create(struct hlist_head *head,
 	hlist_add_head_rcu(&neigh->hlist, head);
 	atomic_set(&neigh->refcnt, 1);
 
-	pr_info("neigh mac %pM is set to %pI6\n", emac, imac);
+	pr_info("neigh mac %pM is set to %pI6\n", emac, imac+4);
 
 	/* TODO ref count */
 	return neigh;
@@ -1241,15 +1241,14 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 		return -ENXIO;
 	}
 
-	read_lock_bh(&parent->emac_info_lock);
+	write_lock_bh(&parent->emac_info_lock);
 	ret = is_mac_info_contain_new_ip(parent, mac, ip, emac_info, vlan);
 	if (ret) {
-		read_unlock_bh(&parent->emac_info_lock);
-		return 0;
+		ret = 0;
+		goto out;
 	}
 
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, mac, vlan);
-	read_unlock_bh(&parent->emac_info_lock);
 
 	/* new ip add it to the emc_ip obj */
 	if (!emac_info) {
@@ -1257,7 +1256,8 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 		if (!emac_info) {
 			pr_err("%s: Failed allocating emac_info\n",
 			       parent_dev->name);
-			return -ENOMEM;
+			ret = -ENOMEM;
+			goto out;
 		}
 		strcpy(emac_info->ifname, slave->dev->name);
 		memcpy(emac_info->emac, mac, ETH_ALEN);
@@ -1274,13 +1274,12 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 		       parent_dev->name);
 		if (is_just_alloc_emac_info)
 			kfree(emac_info);
-		return -ENOMEM;
+		ret = -ENOMEM;
+		goto out;
 	}
 
 	ipm->ip = ip;
 	ipm->state = IP_NEW;
-
-	write_lock_bh(&parent->emac_info_lock);
 
 	list_add_tail(&ipm->list, &emac_info->ip_list);
 	/* force gart-arp announce */
@@ -1290,12 +1289,13 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	if (is_just_alloc_emac_info)
 		list_add_tail(&emac_info->list, &parent->emac_ip_list);
 
-	write_unlock_bh(&parent->emac_info_lock);
-
 	/* send gart arp to the world.*/
 	queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
 
-	return 0;
+	ret = 0;
+out:
+	write_unlock_bh(&parent->emac_info_lock);
+	return ret;
 }
 
 /* build ipoib arp/rarp request/reply packet */
@@ -1324,8 +1324,8 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
 		err = add_emac_ip_info(slave->dev->master, arp_data->arp_sip,
 				       arp_data->arp_sha, slave->vlan, GFP_ATOMIC);
 	if (err)
-		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4",
-			__func__, &arp_data->arp_sip);
+		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 err: %d",
+			__func__, &arp_data->arp_sip, err);
 	/*
 	 * live migration support:
 	 * 1.checck if we are in live migration process
