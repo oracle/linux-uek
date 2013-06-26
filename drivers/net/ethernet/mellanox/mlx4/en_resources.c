@@ -39,10 +39,10 @@
 
 void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 			     int is_tx, int rss, int qpn, int cqn,
-			     int user_prio, struct mlx4_qp_context *context,
-			     int disable_vstrip)
+			     int user_prio, struct mlx4_qp_context *context)
 {
 	struct mlx4_en_dev *mdev = priv->mdev;
+	struct net_device *dev = priv->dev;
 
 	memset(context, 0, sizeof *context);
 	context->flags = cpu_to_be32(7 << 16 | rss << MLX4_RSS_QPC_FLAG_OFFSET);
@@ -75,7 +75,7 @@ void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 	context->cqn_send = cpu_to_be32(cqn);
 	context->cqn_recv = cpu_to_be32(cqn);
 	context->db_rec_addr = cpu_to_be64(priv->res.db.dma << 2);
-	if (disable_vstrip)
+	if (!(dev->features & NETIF_F_HW_VLAN_RX))
 		context->param3 |= cpu_to_be32(1 << 30);
 }
 
