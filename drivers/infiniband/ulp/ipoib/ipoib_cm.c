@@ -1054,7 +1054,6 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	if (p->neigh)
 		while ((skb = __skb_dequeue(&p->neigh->queue)))
 			__skb_queue_tail(&skqueue, skb);
-	spin_unlock_irq(&priv->lock);
 
 	while ((skb = __skb_dequeue(&skqueue))) {
 		skb->dev = p->dev;
@@ -1063,6 +1062,8 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 			ipoib_warn(priv, "%s:dev_queue_xmit failed to requeue"
 					 " packet, ret:%d\n", __func__, ret);
 	}
+
+	spin_unlock_irq(&priv->lock);
 
 	ret = ib_send_cm_rtu(cm_id, NULL, 0);
 	if (ret) {
