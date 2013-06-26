@@ -2005,3 +2005,19 @@ static inline __u32 ethtool_cmd_speed_set(struct ethtool_cmd *ep, __u32 speed)
 #else
 #define busn_res_end subordinate
 #endif
+
+#ifndef BCM_HAS_DEVINIT
+#define __devinit
+#define __devinitdata
+#define __devexit
+#define __devexit_p(x) (x)
+#endif
+
+#ifndef BCM_HAS_SSB
+#define ssb_gige_get_macaddr(a, b) (0)
+#define pdev_is_ssb_gige_core(a) (0)
+#define ssb_gige_must_flush_posted_writes(a) (0)
+#define ssb_gige_one_dma_at_once(a) (0)
+#define ssb_gige_have_roboswitch(a) (0)
+#define ssb_gige_is_rgmii(a) (0)
+#endif

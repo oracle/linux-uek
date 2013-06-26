@@ -1,4 +1,4 @@
-/* $Id: //depot/main/NetXtreme/drivers/linux/tg3-new/tg3.h#62 $
+/* $Id$
  * tg3.h: Definitions for Broadcom Tigon3 ethernet driver.
  *
  * Copyright (C) 2001, 2002, 2003, 2004 David S. Miller (davem@redhat.com)
@@ -125,9 +125,7 @@
 #define  MISC_HOST_CTRL_TAGGED_STATUS	 0x00000200
 #define  MISC_HOST_CTRL_CHIPREV		 0xffff0000
 #define  MISC_HOST_CTRL_CHIPREV_SHIFT	 16
-#define  GET_CHIP_REV_ID(MISC_HOST_CTRL) \
-	 (((MISC_HOST_CTRL) & MISC_HOST_CTRL_CHIPREV) >> \
-	  MISC_HOST_CTRL_CHIPREV_SHIFT)
+
 #define  CHIPREV_ID_5700_A0		 0x7000
 #define  CHIPREV_ID_5700_A1		 0x7001
 #define  CHIPREV_ID_5700_B0		 0x7100
@@ -168,7 +166,7 @@
 #define  CHIPREV_ID_5719_A0		 0x05719000
 #define  CHIPREV_ID_5720_A0		 0x05720000
 #define  CHIPREV_ID_5762_A0		 0x05762000
-#define  GET_ASIC_REV(CHIP_REV_ID)	((CHIP_REV_ID) >> 12)
+
 #define   ASIC_REV_5700			 0x07
 #define   ASIC_REV_5701			 0x00
 #define   ASIC_REV_5703			 0x01
@@ -192,7 +190,6 @@
 #define   ASIC_REV_5720			 0x5720
 #define   ASIC_REV_57766		 0x57766
 #define   ASIC_REV_5762			 0x5762
-#define  GET_CHIP_REV(CHIP_REV_ID)	((CHIP_REV_ID) >> 8)
 #define   CHIPREV_5700_AX		 0x70
 #define   CHIPREV_5700_BX		 0x71
 #define   CHIPREV_5700_CX		 0x72
@@ -205,7 +202,6 @@
 #define   CHIPREV_5784_AX		 0x57840
 #define   CHIPREV_5761_AX		 0x57610
 #define   CHIPREV_57765_AX		 0x577650
-#define  GET_METAL_REV(CHIP_REV_ID)	((CHIP_REV_ID) & 0xff)
 #define   METAL_REV_A0			 0x00
 #define   METAL_REV_A1			 0x01
 #define   METAL_REV_B0			 0x00
@@ -1240,7 +1236,11 @@
 #define  HOSTCC_STATUS_ERROR_ATTN	 0x00000004
 #define HOSTCC_RXCOL_TICKS		0x00003c08
 #define  LOW_RXCOL_TICKS		 0x00000032
+#if defined(__VMKLNX__)
+#define  LOW_RXCOL_TICKS_CLRTCKS	 0x00000012
+#else
 #define  LOW_RXCOL_TICKS_CLRTCKS	 0x00000014
+#endif
 #define  DEFAULT_RXCOL_TICKS		 0x00000048
 #define  HIGH_RXCOL_TICKS		 0x00000096
 #define  MAX_RXCOL_TICKS		 0x000003ff
@@ -1251,7 +1251,11 @@
 #define  HIGH_TXCOL_TICKS		 0x00000145
 #define  MAX_TXCOL_TICKS		 0x000003ff
 #define HOSTCC_RXMAX_FRAMES		0x00003c10
+#if defined(__VMKLNX__)
+#define  LOW_RXMAX_FRAMES		 0x0000000f
+#else
 #define  LOW_RXMAX_FRAMES		 0x00000005
+#endif
 #define  DEFAULT_RXMAX_FRAMES		 0x00000008
 #define  HIGH_RXMAX_FRAMES		 0x00000012
 #define  MAX_RXMAX_FRAMES		 0x000000ff
@@ -2268,8 +2272,9 @@
 #define  NIC_SRAM_MBUF_POOL_BASE5705	0x00010000
 #define  NIC_SRAM_MBUF_POOL_SIZE5705	0x0000e000
 
-#define TG3_SRAM_RXCPU_SCRATCH_BASE_57766	0x08000000
+#define TG3_SRAM_RXCPU_SCRATCH_BASE_57766	0x00030000
 #define  TG3_SRAM_RXCPU_SCRATCH_SIZE_57766	 0x00010000
+#define TG3_SBROM_IN_SERVICE_LOOP		0x51
 
 #define TG3_SRAM_RX_STD_BDCACHE_SIZE_5700	128
 #define TG3_SRAM_RX_STD_BDCACHE_SIZE_5755	64
@@ -2429,6 +2434,13 @@
 #define MII_TG3_FET_SHDW_AUXSTAT2	0x1b
 #define  MII_TG3_FET_SHDW_AUXSTAT2_APD	0x0020
 
+/* Serdes PHY Register Definitions */
+#define SERDES_TG3_1000X_STATUS		0x14
+#define  SERDES_TG3_SGMII_MODE		 0x0001
+#define  SERDES_TG3_LINK_UP		 0x0002
+#define  SERDES_TG3_FULL_DUPLEX		 0x0004
+#define  SERDES_TG3_SPEED_100		 0x0008
+#define  SERDES_TG3_SPEED_1000		 0x0010
 
 /* APE registers.  Accessible through BAR1 */
 #define TG3_APE_GPIO_MSG		0x0008
@@ -2445,7 +2457,7 @@
 #define  APE_OTP_CTRL_CMD_RD		 0x000000
 #define  APE_OTP_CTRL_START		 0x000001
 #define TG3_APE_OTP_STATUS		0x00ec
-#define  APE_OTP_STATUS_CMD_DONE	 0x000001
+#define  APE_OTP_STATUS_CMD_DONE	 0x000001	
 #define TG3_APE_OTP_ADDR		0x00f0
 #define  APE_OTP_ADDR_CPU_ENABLE	 0x80000000
 #define TG3_APE_OTP_RD_DATA		0x00f8
@@ -3150,6 +3162,11 @@ enum TG3_FLAGS {
 	TG3_FLAG_57765_PLUS,
 	TG3_FLAG_57765_CLASS,
 	TG3_FLAG_5717_PLUS,
+	TG3_FLAG_IS_SSB_CORE,
+	TG3_FLAG_FLUSH_POSTED_WRITES,
+	TG3_FLAG_ROBOSWITCH,
+	TG3_FLAG_ONE_DMA_AT_ONCE,
+	TG3_FLAG_RGMII_MODE,
 
 	TG3_FLAG_IOV_CAPABLE,
 	TG3_FLAG_ENABLE_IOV,
@@ -3495,5 +3512,19 @@ struct tg3 {
 
 	bool				link_up;
 };
+
+/* Accessor macros for chip and asic attributes
+ *
+ * nb: Using static inlines equivalent to the accessor macros generates
+ *     larger object code with gcc 4.7.
+ *     Using statement expression macros to check tp with
+ *     typecheck(struct tg3 *, tp) also creates larger objects.
+ */
+#define tg3_chip_rev_id(tp)					\
+	((tp)->pci_chip_rev_id)
+#define tg3_asic_rev(tp)					\
+	((tp)->pci_chip_rev_id >> 12)
+#define tg3_chip_rev(tp)					\
+	((tp)->pci_chip_rev_id >> 8)
 
 #endif /* !(_T3_H) */

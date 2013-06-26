@@ -252,11 +252,11 @@ static int tg3_set_tso(struct net_device *dev, u32 value)
 		if (value) {
 			dev->features |= NETIF_F_TSO6;
 			if (tg3_flag(tp, HW_TSO_3) ||
-			    GET_ASIC_REV(tp->pci_chip_rev_id) == ASIC_REV_5761 ||
-			    (GET_ASIC_REV(tp->pci_chip_rev_id) == ASIC_REV_5784 &&
-			     GET_CHIP_REV(tp->pci_chip_rev_id) != CHIPREV_5784_AX) ||
-			    GET_ASIC_REV(tp->pci_chip_rev_id) == ASIC_REV_5785 ||
-			    GET_ASIC_REV(tp->pci_chip_rev_id) == ASIC_REV_57780)
+			    tg3_asic_rev(tp) == ASIC_REV_5761 ||
+			    (tg3_asic_rev(tp) == ASIC_REV_5784 &&
+			     tg3_chip_rev(tp) != CHIPREV_5784_AX) ||
+			    tg3_asic_rev(tp) == ASIC_REV_5785 ||
+			    tg3_asic_rev(tp) == ASIC_REV_57780)
 				dev->features |= NETIF_F_TSO_ECN;
 		} else
 			dev->features &= ~(NETIF_F_TSO6 | NETIF_F_TSO_ECN);
