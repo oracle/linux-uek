@@ -2362,7 +2362,7 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 
 	kfree(device_attr);
 
-	priv->tss_qp_num = num_cores;
+	priv->tss_qp_num = min(num_cores, IPOIB_MAX_TX_QUEUES);
 	if (priv->hca_caps & IB_DEVICE_UD_TSS)
 		/* TSS is supported by HW */
 		priv->max_tx_queues = priv->tss_qp_num;
