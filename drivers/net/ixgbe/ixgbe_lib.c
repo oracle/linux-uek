@@ -217,7 +217,7 @@ static bool ixgbe_cache_ring_dcb(struct ixgbe_adapter *adapter)
  * @adapter: board private structure to initialize
  *
  * Cache the descriptor ring offsets for VMDq to the assigned rings.  It
- * will also try to cache the proper offsets if RSS/FCoE are enabled along
+ * will also try to cache the proper offsets if RSS/FCoE/SRIOV are enabled along
  * with VMDq.
  *
  **/

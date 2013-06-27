@@ -31,6 +31,7 @@
 #include "ixgbe_type.h"
 
 void ixgbe_dcb_get_rtrup2tc_generic(struct ixgbe_hw *hw, u8 *map);
+
 u16 ixgbe_get_pcie_msix_count_generic(struct ixgbe_hw *hw);
 s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw_generic(struct ixgbe_hw *hw);
@@ -84,7 +85,7 @@ s32 ixgbe_disable_sec_rx_path_generic(struct ixgbe_hw *hw);
 s32 ixgbe_enable_sec_rx_path_generic(struct ixgbe_hw *hw);
 
 s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw);
-s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw);
+bool ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw);
 void ixgbe_fc_autoneg(struct ixgbe_hw *hw);
 
 s32 ixgbe_validate_mac_addr(u8 *mac_addr);
@@ -131,6 +132,7 @@ s32 ixgbe_host_interface_command(struct ixgbe_hw *hw, u32 *buffer,
 void ixgbe_clear_tx_pending(struct ixgbe_hw *hw);
 
 extern s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw);
+extern void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw);
 
 #define IXGBE_I2C_THERMAL_SENSOR_ADDR	0xF8
 #define IXGBE_EMC_INTERNAL_DATA		0x00

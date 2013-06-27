@@ -198,7 +198,6 @@ struct vf_stats {
 	u64 gotc;
 	u64 mprc;
 };
-
 struct vf_data_storage {
 	unsigned char vf_mac_addresses[ETH_ALEN];
 	u16 vf_mc_hashes[IXGBE_MAX_VF_MC_ENTRIES];
@@ -325,7 +324,6 @@ enum ixgbe_ring_state_t {
 #ifdef IXGBE_FCOE
 	__IXGBE_RX_FCOE,
 #endif
-	__IXGBE_RX_BUILD_SKB_ENABLED,
 };
 
 #define check_for_tx_hang(ring) \
@@ -344,12 +342,6 @@ enum ixgbe_ring_state_t {
 	set_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
 #define clear_ring_rsc_enabled(ring) \
 	clear_bit(__IXGBE_RX_RSC_ENABLED, &(ring)->state)
-#define ring_uses_build_skb(ring) \
-	test_bit(__IXGBE_RX_BUILD_SKB_ENABLED, &(ring)->state)
-#define set_ring_build_skb_enabled(ring) \
-	set_bit(__IXGBE_RX_BUILD_SKB_ENABLED, &(ring)->state)
-#define clear_ring_build_skb_enabled(ring) \
-	clear_bit(__IXGBE_RX_BUILD_SKB_ENABLED, &(ring)->state)
 #define netdev_ring(ring) (ring->netdev)
 #define ring_queue_index(ring) (ring->queue_index)
 
@@ -415,10 +407,10 @@ enum ixgbe_ring_f_enum {
 	RING_F_ARRAY_SIZE  /* must be last in enum set */
 };
 
-#define IXGBE_MAX_DCB_INDICES	8
-#define IXGBE_MAX_RSS_INDICES	16
-#define IXGBE_MAX_VMDQ_INDICES	64
-#define IXGBE_MAX_FDIR_INDICES	63
+#define IXGBE_MAX_DCB_INDICES		8
+#define IXGBE_MAX_RSS_INDICES		16
+#define IXGBE_MAX_VMDQ_INDICES		64
+#define IXGBE_MAX_FDIR_INDICES		63
 #ifdef IXGBE_FCOE
 #define IXGBE_MAX_FCOE_INDICES	8
 #define MAX_RX_QUEUES	(IXGBE_MAX_FDIR_INDICES + IXGBE_MAX_FCOE_INDICES)
@@ -818,6 +810,8 @@ struct ixgbe_adapter {
 	struct cyclecounter hw_cc;
 	struct timecounter hw_tc;
 	u32 base_incval;
+	u32 tx_hwtstamp_timeouts;
+	u32 rx_hwtstamp_cleared;
 #endif /* HAVE_PTP_1588_CLOCK */
 
 	DECLARE_BITMAP(active_vfs, IXGBE_MAX_VF_FUNCTIONS);
@@ -849,6 +843,20 @@ struct ixgbe_adapter {
 #endif /*HAVE_IXGBE_DEBUG_FS*/
 	u8 default_up;
 };
+
+static inline u8 ixgbe_max_rss_indices(struct ixgbe_adapter *adapter)
+{
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_82598EB:
+	case ixgbe_mac_82599EB:
+	case ixgbe_mac_X540:
+		return IXGBE_MAX_RSS_INDICES;
+		break;
+	default:
+		return 0;
+		break;
+	}
+}
 
 struct ixgbe_fdir_filter {
 	struct  hlist_node fdir_node;
@@ -1030,16 +1038,17 @@ extern void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
 extern void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
-extern void __ixgbe_ptp_rx_hwtstamp(struct ixgbe_q_vector *q_vector,
+extern void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
 				  struct sk_buff *skb);
 static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
 					 union ixgbe_adv_rx_desc *rx_desc,
 					 struct sk_buff *skb)
 {
+
 	if (unlikely(!ixgbe_test_staterr(rx_desc, IXGBE_RXDADV_STAT_TS)))
 		return;
 
-	__ixgbe_ptp_rx_hwtstamp(rx_ring->q_vector, skb);
+	ixgbe_ptp_rx_rgtstamp(rx_ring->q_vector, skb);
 
 	/* Update the last_rx_timestamp timer in order to enable watchdog check
 	 * for error case of latched timestamp on a dropped packet.

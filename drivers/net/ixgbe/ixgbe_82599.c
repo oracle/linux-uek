@@ -326,6 +326,8 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
 	/* Check if 1G SFP module. */
 	if (hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
 	    hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1 ||
+	    hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core0 ||
+	    hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core1 ||
 	    hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core0 ||
 	    hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core1) {
 		*speed = IXGBE_LINK_SPEED_1GB_FULL;
@@ -454,12 +456,34 @@ enum ixgbe_media_type ixgbe_get_media_type_82599(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_LS:
 		media_type = ixgbe_media_type_fiber_lco;
 		break;
+	case IXGBE_DEV_ID_82599_BYPASS:
+		media_type = ixgbe_media_type_fiber_fixed;
+		hw->phy.multispeed_fiber = true;
+		break;
 	default:
 		media_type = ixgbe_media_type_unknown;
 		break;
 	}
 out:
 	return media_type;
+}
+
+/**
+ *  ixgbe_stop_mac_link_on_d3_82599 - Disables link on D3
+ *  @hw: pointer to hardware structure
+ *
+ *  Disables link during D3 power down sequence.
+ *
+ **/
+void ixgbe_stop_mac_link_on_d3_82599(struct ixgbe_hw *hw)
+{
+	u32 autoc2_reg;
+
+	if (!hw->mng_fw_enabled && !hw->wol_enabled) {
+		autoc2_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
+		autoc2_reg |= IXGBE_AUTOC2_LINK_DISABLE_ON_D3_MASK;
+		IXGBE_WRITE_REG(hw, IXGBE_AUTOC2, autoc2_reg);
+	}
 }
 
 /**
@@ -586,6 +610,74 @@ void ixgbe_flap_tx_laser_multispeed_fiber(struct ixgbe_hw *hw)
 	}
 }
 
+/**
+ *  ixgbe_set_fiber_fixed_speed - Set module link speed for fixed fiber
+ *  @hw: pointer to hardware structure
+ *  @speed: link speed to set
+ *
+ *  We set the module speed differently for fixed fiber.  For other
+ *  multi-speed devices we don't have an error value so here if we
+ *  detect an error we just log it and exit.
+ */
+static void ixgbe_set_fiber_fixed_speed(struct ixgbe_hw *hw,
+					ixgbe_link_speed speed)
+{
+	s32 status;
+	u8 rs, eeprom_data;
+
+	switch (speed) {
+	case IXGBE_LINK_SPEED_10GB_FULL:
+		/* one bit mask same as setting on */
+		rs = IXGBE_SFF_SOFT_RS_SELECT_10G;
+		break;
+	case IXGBE_LINK_SPEED_1GB_FULL:
+		rs = IXGBE_SFF_SOFT_RS_SELECT_1G;
+		break;
+	default:
+		hw_dbg(hw, "Invalid fixed module speed\n");
+		return;
+	}
+
+	/* Set RS0 */
+	status = hw->phy.ops.read_i2c_byte(hw, IXGBE_SFF_SFF_8472_OSCB,
+					   IXGBE_I2C_EEPROM_DEV_ADDR2,
+					   &eeprom_data);
+	if (status) {
+		hw_dbg(hw, "Failed to read Rx Rate Select RS0\n");
+		goto out;
+	}
+
+	eeprom_data = (eeprom_data & ~IXGBE_SFF_SOFT_RS_SELECT_MASK) & rs;
+
+	status = hw->phy.ops.write_i2c_byte(hw, IXGBE_SFF_SFF_8472_OSCB,
+					    IXGBE_I2C_EEPROM_DEV_ADDR2,
+					    eeprom_data);
+	if (status) {
+		hw_dbg(hw, "Failed to write Rx Rate Select RS0\n");
+		goto out;
+	}
+
+	/* Set RS1 */
+	status = hw->phy.ops.read_i2c_byte(hw, IXGBE_SFF_SFF_8472_ESCB,
+					   IXGBE_I2C_EEPROM_DEV_ADDR2,
+					   &eeprom_data);
+	if (status) {
+		hw_dbg(hw, "Failed to read Rx Rate Select RS1\n");
+		goto out;
+	}
+
+	eeprom_data = (eeprom_data & ~IXGBE_SFF_SOFT_RS_SELECT_MASK) & rs;
+
+	status = hw->phy.ops.write_i2c_byte(hw, IXGBE_SFF_SFF_8472_ESCB,
+					    IXGBE_I2C_EEPROM_DEV_ADDR2,
+					    eeprom_data);
+	if (status) {
+		hw_dbg(hw, "Failed to write Rx Rate Select RS1\n");
+		goto out;
+	}
+out:
+	return;
+}
 
 /**
  *  ixgbe_setup_mac_link_multispeed_fiber - Set MAC link speed
@@ -631,9 +723,14 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
 			goto out;
 
 		/* Set the module link speed */
-		esdp_reg |= (IXGBE_ESDP_SDP5_DIR | IXGBE_ESDP_SDP5);
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-		IXGBE_WRITE_FLUSH(hw);
+		if (hw->phy.media_type == ixgbe_media_type_fiber_fixed) {
+			ixgbe_set_fiber_fixed_speed(hw,
+						    IXGBE_LINK_SPEED_10GB_FULL);
+		} else {
+			esdp_reg |= (IXGBE_ESDP_SDP5_DIR | IXGBE_ESDP_SDP5);
+			IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
+			IXGBE_WRITE_FLUSH(hw);
+		}
 
 		/* Allow module to change analog characteristics (1G->10G) */
 		msleep(40);
@@ -681,10 +778,15 @@ s32 ixgbe_setup_mac_link_multispeed_fiber(struct ixgbe_hw *hw,
 			goto out;
 
 		/* Set the module link speed */
-		esdp_reg &= ~IXGBE_ESDP_SDP5;
-		esdp_reg |= IXGBE_ESDP_SDP5_DIR;
-		IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
-		IXGBE_WRITE_FLUSH(hw);
+		if (hw->phy.media_type == ixgbe_media_type_fiber_fixed) {
+			ixgbe_set_fiber_fixed_speed(hw,
+						    IXGBE_LINK_SPEED_1GB_FULL);
+		} else {
+			esdp_reg &= ~IXGBE_ESDP_SDP5;
+			esdp_reg |= IXGBE_ESDP_SDP5_DIR;
+			IXGBE_WRITE_REG(hw, IXGBE_ESDP, esdp_reg);
+			IXGBE_WRITE_FLUSH(hw);
+		}
 
 		/* Allow module to change analog characteristics (10G->1G) */
 		msleep(40);
@@ -1053,7 +1155,7 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 		curr_lms = hw->mac.cached_autoc & IXGBE_AUTOC_LMS_MASK;
 	else
 		curr_lms = IXGBE_READ_REG(hw, IXGBE_AUTOC) &
-				IXGBE_AUTOC_LMS_MASK;
+					  IXGBE_AUTOC_LMS_MASK;
 
 mac_reset_top:
 	/*
@@ -1126,7 +1228,7 @@ mac_reset_top:
 		 * LMS state.
 		 */
 		if ((hw->phy.multispeed_fiber && hw->mng_fw_enabled) ||
-		    hw->wol_supported)
+		    hw->wol_enabled)
 			hw->mac.orig_autoc =
 				(hw->mac.orig_autoc & ~IXGBE_AUTOC_LMS_MASK) |
 				curr_lms;

@@ -65,7 +65,7 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	 */
 	if (pre_existing_vfs) {
 		adapter->num_vfs = pre_existing_vfs;
-		dev_warn(&adapter->pdev->dev, "Virtual Functions already "
+		dev_warn(pci_dev_to_dev(adapter->pdev), "Virtual Functions already "
 			 "enabled for this device - Please reload all "
 			 "VF drivers to avoid spoofed packet errors\n");
 	} else {
@@ -160,41 +160,6 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	ixgbe_disable_sriov(adapter);
 }
 
-static bool ixgbe_vfs_are_assigned(struct ixgbe_adapter *adapter)
-{
-#ifdef HAVE_PCI_DEV_FLAGS_ASSIGNED
-	struct pci_dev *pdev = adapter->pdev;
-	struct pci_dev *vfdev;
-	int dev_id;
-
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_82599EB:
-		dev_id = IXGBE_DEV_ID_82599_VF;
-		break;
-	case ixgbe_mac_X540:
-		dev_id = IXGBE_DEV_ID_X540_VF;
-		break;
-	default:
-		return false;
-	}
-
-	/* loop through all the VFs to see if we own any that are assigned */
-	vfdev = pci_get_device(PCI_VENDOR_ID_INTEL, dev_id, NULL);
-	while (vfdev) {
-		/* if we don't own it we don't care */
-		if (vfdev->is_virtfn && vfdev->physfn == pdev) {
-			/* if it is assigned we cannot release it */
-			if (vfdev->dev_flags & PCI_DEV_FLAGS_ASSIGNED)
-				return true;
-		}
-
-		vfdev = pci_get_device(PCI_VENDOR_ID_INTEL, dev_id, vfdev);
-	}
-
-#endif
-	return false;
-}
-
 #endif /* CONFIG_PCI_IOV */
 void ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 {
@@ -225,7 +190,7 @@ void ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	 * without causing issues, so just leave the hardware
 	 * available but disabled
 	 */
-	if (ixgbe_vfs_are_assigned(adapter)) {
+	if (pci_vfs_assigned(adapter->pdev)) {
 		e_dev_warn("Unloading driver while VFs are assigned "
 			   "- VFs will not be deallocated\n");
 		return;
@@ -340,7 +305,6 @@ int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 
 	return hw->mac.ops.set_vfta(hw, vid, vf, (bool)add);
 }
-
 static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -711,7 +675,7 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 		memcpy(addr, vf_mac, ETH_ALEN);
 	} else {
 		msgbuf[0] |= IXGBE_VT_MSGTYPE_NACK;
-		dev_warn(&adapter->pdev->dev,
+		dev_warn(pci_dev_to_dev(adapter->pdev),
 			 "VF %d has no MAC address assigned, you may have to assign one manually\n",
 			 vf);
 	}
@@ -746,9 +710,33 @@ static int ixgbe_set_vf_mac_addr(struct ixgbe_adapter *adapter,
 		e_warn(drv, "Check the VF driver and if it is not using the correct MAC address you may need to reload the VF driver\n");
 		return -1;
 	}
-
 	return ixgbe_set_vf_mac(adapter, vf, new_mac) < 0;
 }
+
+#ifdef CONFIG_PCI_IOV
+static int ixgbe_find_vlvf_entry(struct ixgbe_hw *hw, u32 vlan)
+{
+	u32 vlvf;
+	s32 regindex;
+
+	/* short cut the special case */
+	if (vlan == 0)
+		return 0;
+
+	/* Search for the vlan id in the VLVF entries */
+	for (regindex = 1; regindex < IXGBE_VLVF_ENTRIES; regindex++) {
+		vlvf = IXGBE_READ_REG(hw, IXGBE_VLVF(regindex));
+		if ((vlvf & VLAN_VID_MASK) == vlan)
+			break;
+	}
+
+	/* Return a negative value if not found */
+	if (regindex >= IXGBE_VLVF_ENTRIES)
+		regindex = -1;
+
+	return regindex;
+}
+#endif
 
 static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 				 u32 *msgbuf, u32 vf)
@@ -772,9 +760,56 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 	else if (adapter->vfinfo[vf].vlan_count)
 		adapter->vfinfo[vf].vlan_count--;
 
+	/* in case of promiscuous mode any VLAN filter set for a VF must
+	 * also have the PF pool added to it.
+	 */
+	if (add && adapter->netdev->flags & IFF_PROMISC)
+		err = ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
+
 	err = ixgbe_set_vf_vlan(adapter, add, vid, vf);
 	if (!err && adapter->vfinfo[vf].spoofchk_enabled)
 		hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
+
+#ifdef CONFIG_PCI_IOV
+	/* Go through all the checks to see if the VLAN filter should
+	 * be wiped completely.
+	 */
+	if (!add && adapter->netdev->flags & IFF_PROMISC) {
+		u32 bits, reg_ndx, vlvf;
+
+		reg_ndx = ixgbe_find_vlvf_entry(hw, vid);
+		if (reg_ndx < 0)
+			goto out;
+		vlvf = IXGBE_READ_REG(hw, IXGBE_VLVF(reg_ndx));
+		/* See if any other pools are set for this VLAN filter
+		 * entry other than the PF.
+		 */
+		if (VMDQ_P(0) < 32) {
+			bits = IXGBE_READ_REG(hw, IXGBE_VLVFB(reg_ndx * 2));
+			bits &= ~(1 << VMDQ_P(0));
+			bits |= IXGBE_READ_REG(hw,
+					       IXGBE_VLVFB(reg_ndx * 2) + 1);
+		} else {
+			bits = IXGBE_READ_REG(hw,
+					      IXGBE_VLVFB(reg_ndx * 2) + 1);
+			bits &= ~(1 << (VMDQ_P(0) - 32));
+			bits |= IXGBE_READ_REG(hw, IXGBE_VLVFB(reg_ndx * 2));
+		}
+
+		/* If the filter was removed then ensure PF pool bit
+		 * is cleared if the PF only added itself to the pool
+		 * because the PF is in promiscuous mode.
+		 */
+		if ((vlvf & VLAN_VID_MASK) == vid &&
+#ifndef HAVE_VLAN_RX_REGISTER
+		    !test_bit(vid, adapter->active_vlans) &&
+#endif
+		    !bits)
+			ixgbe_set_vf_vlan(adapter, add, vid, VMDQ_P(0));
+	}
+
+out:
+#endif
 
 	return err;
 }
@@ -825,7 +860,6 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 	u32 msgbuf[mbx_size];
 	struct ixgbe_hw *hw = &adapter->hw;
 	s32 retval;
-
 	retval = ixgbe_read_mbx(hw, msgbuf, mbx_size, vf);
 
 	if (retval)
@@ -953,17 +987,18 @@ int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int vf, u8 *mac)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	if (!is_valid_ether_addr(mac) || (vf >= adapter->num_vfs))
 		return -EINVAL;
-	dev_info(&adapter->pdev->dev, "setting MAC %pM on VF %d\n", mac, vf);
-	dev_info(&adapter->pdev->dev, "Reload the VF driver to make this change effective.\n");
+	dev_info(pci_dev_to_dev(adapter->pdev), "setting MAC %pM on VF %d\n", mac, vf);
+	dev_info(pci_dev_to_dev(adapter->pdev), "Reload the VF driver to make this change effective.\n");
 	retval = ixgbe_set_vf_mac(adapter, vf, mac);
 	if (retval >= 0) {
+		/* pf_set_mac is used in ESX5.1 and base driver but not in ESX5.5 */
 		adapter->vfinfo[vf].pf_set_mac = true;
 		if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-			dev_warn(&adapter->pdev->dev, "The VF MAC address has been set, but the PF device is not up.\n");
-			dev_warn(&adapter->pdev->dev, "Bring the PF device up before attempting to use the VF device.\n");
+			dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address has been set, but the PF device is not up.\n");
+			dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
 		}
 	} else {
-		dev_warn(&adapter->pdev->dev, "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
+		dev_warn(pci_dev_to_dev(adapter->pdev), "The VF MAC address was NOT set due to invalid or duplicate MAC address.\n");
 	}
 	return retval;
 }
@@ -984,11 +1019,11 @@ static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
 	adapter->vfinfo[vf].vlan_count++;
 	adapter->vfinfo[vf].pf_vlan = vlan;
 	adapter->vfinfo[vf].pf_qos = qos;
-	dev_info(&adapter->pdev->dev,
+	dev_info(pci_dev_to_dev(adapter->pdev),
 		 "Setting VLAN %d, QOS 0x%x on VF %d\n", vlan, qos, vf);
 	if (test_bit(__IXGBE_DOWN, &adapter->state)) {
-		dev_warn(&adapter->pdev->dev, "The VF VLAN has been set, but the PF device is not up.\n");
-		dev_warn(&adapter->pdev->dev, "Bring the PF device up before attempting to use the VF device.\n");
+		dev_warn(pci_dev_to_dev(adapter->pdev), "The VF VLAN has been set, but the PF device is not up.\n");
+		dev_warn(pci_dev_to_dev(adapter->pdev), "Bring the PF device up before attempting to use the VF device.\n");
 	}
 
 out:
@@ -1042,6 +1077,7 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
+
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {
@@ -1119,7 +1155,7 @@ void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
 
 	if (ixgbe_link_mbps(adapter) != adapter->vf_rate_link_speed) {
 		adapter->vf_rate_link_speed = 0;
-		dev_info(&adapter->pdev->dev,
+		dev_info(pci_dev_to_dev(adapter->pdev),
 		         "Link speed has been changed. VF Transmit rate is disabled\n");
 	}
 

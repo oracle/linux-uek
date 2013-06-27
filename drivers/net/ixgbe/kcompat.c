@@ -949,7 +949,7 @@ int ixgbe_copy_dcb_cfg(struct ixgbe_adapter *adapter, int tc_max)
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
 #ifdef NAPI
-struct net_device *napi_to_poll_dev(struct napi_struct *napi)
+struct net_device *napi_to_poll_dev(const struct napi_struct *napi)
 {
 	struct adapter_q_vector *q_vector = container_of(napi,
 	                                                struct adapter_q_vector,
@@ -1078,6 +1078,33 @@ out:
 	return err;
 }
 #endif /* < 2.6.28 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29) )
+static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
+{
+	u16 old_cmd, cmd;
+
+	pci_read_config_word(pdev, PCI_COMMAND, &old_cmd);
+	if (enable)
+		cmd = old_cmd | PCI_COMMAND_MASTER;
+	else
+		cmd = old_cmd & ~PCI_COMMAND_MASTER;
+	if (cmd != old_cmd) {
+		dev_dbg(pci_dev_to_dev(pdev), "%s bus mastering\n",
+			enable ? "enabling" : "disabling");
+		pci_write_config_word(pdev, PCI_COMMAND, cmd);
+	}
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7) )
+	pdev->is_busmaster = enable;
+#endif
+}
+
+void _kc_pci_clear_master(struct pci_dev *dev)
+{
+	__kc_pci_set_master(dev, false);
+}
+#endif /* < 2.6.29 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
@@ -1482,17 +1509,17 @@ int __kc_netif_set_xps_queue(struct net_device *dev, struct cpumask *mask,
 
 	if (!ktype)
 		return -ENOMEM;
-	
+
 	/* attempt to locate the XPS attribute in the Tx queue */
 	for (i = 0; (attr = ktype->default_attrs[i]); i++) {
 		if (!strcmp("xps_cpus", attr->name))
 			break;
 	}
-	
+
 	/* if we did not find it return an error */
 	if (!attr)
 		return -EINVAL;
-	
+
 	/* copy the mask into a string */
 	len = bitmap_scnprintf(buf, _KC_XPS_BUFLEN,
 			       cpumask_bits(mask), _KC_MAX_XPS_CPUS);
@@ -1502,7 +1529,7 @@ int __kc_netif_set_xps_queue(struct net_device *dev, struct cpumask *mask,
 	xps_attr = to_kc_netdev_queue_attr(attr);
 
 	/* Store the XPS value using the SYSFS store call */
-	err = xps_attr->store(txq, xps_attr, buf, len);	
+	err = xps_attr->store(txq, xps_attr, buf, len);
 
 	/* we only had an error on err < 0 */
 	return (err < 0) ? err : 0;
@@ -1595,3 +1622,50 @@ u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
 
 #endif /* HAVE_NETDEV_SELECT_QUEUE */
 #endif /* 3.9.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#ifdef CONFIG_PCI_IOV
+int pci_vfs_assigned(struct pci_dev *dev)
+{
+	unsigned int vfs_assigned = 0;
+#ifdef HAVE_PCI_DEV_FLAGS_ASSIGNED
+	int pos;
+	struct pci_dev *vfdev;
+	unsigned short dev_id;
+
+	/* only search if we are a PF */
+	if (!dev->is_physfn)
+		return 0;
+
+	/* find SR-IOV capability */
+	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+	if (!pos)
+		return 0;
+
+	/*
+	 * determine the device ID for the VFs, the vendor ID will be the
+	 * same as the PF so there is no need to check for that one
+	 */
+	pci_read_config_word(dev, pos + PCI_SRIOV_VF_DID, &dev_id);
+
+	/* loop through all the VFs to see if we own any that are assigned */
+	vfdev = pci_get_device(dev->vendor, dev_id, NULL);
+	while (vfdev) {
+		/*
+		 * It is considered assigned if it is a virtual function with
+		 * our dev as the physical function and the assigned bit is set
+		 */
+		if (vfdev->is_virtfn && (vfdev->physfn == dev) &&
+		    (vfdev->dev_flags & PCI_DEV_FLAGS_ASSIGNED))
+			vfs_assigned++;
+
+		vfdev = pci_get_device(dev->vendor, dev_id, vfdev);
+	}
+
+#endif /* HAVE_PCI_DEV_FLAGS_ASSIGNED */
+	return vfs_assigned;
+}
+
+#endif /* CONFIG_PCI_IOV */
+#endif /* 3.10.0 */

@@ -127,29 +127,61 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.get_link_capabilities = NULL;
 	mac->ops.setup_link = NULL;
 	mac->ops.check_link = NULL;
+	mac->ops.dmac_config = NULL;
+	mac->ops.dmac_update_tcs = NULL;
+	mac->ops.dmac_config_tcs = NULL;
 
 	return 0;
 }
 
 /**
- *  ixgbe_device_supports_autoneg_fc - Check if phy supports autoneg flow
- *  control
- *  @hw: pointer to hardware structure
+ * ixgbe_device_supports_autoneg_fc - Check if device supports autonegotiation
+ * of flow control
+ * @hw: pointer to hardware structure
  *
- *  There are several phys that do not support autoneg flow control. This
- *  function check the device id to see if the associated phy supports
- *  autoneg flow control.
+ * This function returns true if the device supports flow control
+ * autonegotiation, and false if it does not.
+ *
  **/
-s32 ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
+bool ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
 {
+	bool supported = false;
+	ixgbe_link_speed speed;
+	bool link_up;
 
-	switch (hw->device_id) {
-	case IXGBE_DEV_ID_82599_T3_LOM:
-	case IXGBE_DEV_ID_X540T:
-		return 0;
+	switch (hw->phy.media_type) {
+	case ixgbe_media_type_fiber_fixed:
+	case ixgbe_media_type_fiber:
+		hw->mac.ops.check_link(hw, &speed, &link_up, false);
+		/* if link is down, assume supported */
+		if (link_up)
+			supported = speed == IXGBE_LINK_SPEED_1GB_FULL ?
+				true : false;
+		else
+			supported = true;
+		break;
+	case ixgbe_media_type_backplane:
+		supported = true;
+		break;
+	case ixgbe_media_type_copper:
+		/* only some copper devices support flow control autoneg */
+		switch (hw->device_id) {
+		case IXGBE_DEV_ID_82599_T3_LOM:
+		case IXGBE_DEV_ID_X540T:
+		case IXGBE_DEV_ID_X540_BYPASS:
+			supported = true;
+			break;
+		default:
+			supported = false;
+		}
 	default:
-		return IXGBE_ERR_FC_NOT_SUPPORTED;
+		break;
 	}
+
+	ERROR_REPORT2(IXGBE_ERROR_UNSUPPORTED,
+		      "Device %x does not support flow control autoneg",
+		      hw->device_id);
+	return supported;
 }
 
 /**
@@ -170,7 +202,8 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 	 * ixgbe_fc_rx_pause because it will cause us to fail at UNH.
 	 */
 	if (hw->fc.strict_ieee && hw->fc.requested_mode == ixgbe_fc_rx_pause) {
-		hw_dbg(hw, "ixgbe_fc_rx_pause not valid in strict IEEE mode\n");
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+			   "ixgbe_fc_rx_pause not valid in strict IEEE mode\n");
 		ret_val = IXGBE_ERR_INVALID_LINK_SETTINGS;
 		goto out;
 	}
@@ -188,6 +221,7 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 	 * we link at 10G, the 1G advertisement is harmless and vice versa.
 	 */
 	switch (hw->phy.media_type) {
+	case ixgbe_media_type_fiber_fixed:
 	case ixgbe_media_type_fiber:
 	case ixgbe_media_type_backplane:
 		reg = IXGBE_READ_REG(hw, IXGBE_PCS1GANA);
@@ -256,7 +290,8 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 			reg_cu |= IXGBE_TAF_SYM_PAUSE | IXGBE_TAF_ASM_PAUSE;
 		break;
 	default:
-		hw_dbg(hw, "Flow control param set incorrectly\n");
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+			     "Flow control param set incorrectly\n");
 		ret_val = IXGBE_ERR_CONFIG;
 		goto out;
 		break;
@@ -308,7 +343,7 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 			hw->mac.ops.release_swfw_sync(hw,
 						      IXGBE_GSSR_MAC_CSR_SM);
 	} else if ((hw->phy.media_type == ixgbe_media_type_copper) &&
-		    (ixgbe_device_supports_autoneg_fc(hw) == 0)) {
+		    (ixgbe_device_supports_autoneg_fc(hw))) {
 		hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_ADVT,
 				      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, reg_cu);
 	}
@@ -1212,11 +1247,13 @@ s32 ixgbe_read_eerd_buffer_generic(struct ixgbe_hw *hw, u16 offset,
 
 	if (words == 0) {
 		status = IXGBE_ERR_INVALID_ARGUMENT;
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE, "Invalid EEPROM words");
 		goto out;
 	}
 
 	if (offset >= hw->eeprom.word_size) {
 		status = IXGBE_ERR_EEPROM;
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE, "Invalid EEPROM offset");
 		goto out;
 	}
 
@@ -1314,11 +1351,13 @@ s32 ixgbe_write_eewr_buffer_generic(struct ixgbe_hw *hw, u16 offset,
 
 	if (words == 0) {
 		status = IXGBE_ERR_INVALID_ARGUMENT;
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE, "Invalid EEPROM words");
 		goto out;
 	}
 
 	if (offset >= hw->eeprom.word_size) {
 		status = IXGBE_ERR_EEPROM;
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE, "Invalid EEPROM offset");
 		goto out;
 	}
 
@@ -1385,6 +1424,11 @@ s32 ixgbe_poll_eerd_eewr_done(struct ixgbe_hw *hw, u32 ee_reg)
 		}
 		udelay(5);
 	}
+
+	if (i == IXGBE_EERD_EEWR_ATTEMPTS)
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			     "EEPROM read/write done polling timed out");
+
 	return status;
 }
 
@@ -1515,14 +1559,15 @@ static s32 ixgbe_get_eeprom_semaphore(struct ixgbe_hw *hw)
 		 * was not granted because we don't have access to the EEPROM
 		 */
 		if (i >= timeout) {
-			hw_dbg(hw, "SWESMBI Software EEPROM semaphore "
-				 "not granted.\n");
+			ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			    "SWESMBI Software EEPROM semaphore not granted.\n");
 			ixgbe_release_eeprom_semaphore(hw);
 			status = IXGBE_ERR_EEPROM;
 		}
 	} else {
-		hw_dbg(hw, "Software semaphore SMBI between device drivers "
-			 "not granted.\n");
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			     "Software semaphore SMBI between device drivers "
+			     "not granted.\n");
 	}
 
 	return status;
@@ -1920,7 +1965,8 @@ s32 ixgbe_set_rar_generic(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 
 	/* Make sure we are using a valid rar index range */
 	if (index >= rar_entries) {
-		hw_dbg(hw, "RAR index %d is out of range.\n", index);
+		ERROR_REPORT2(IXGBE_ERROR_SOFTWARE,
+			     "RAR index %d is out of range.\n", index);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -1967,7 +2013,8 @@ s32 ixgbe_clear_rar_generic(struct ixgbe_hw *hw, u32 index)
 
 	/* Make sure we are using a valid rar index range */
 	if (index >= rar_entries) {
-		hw_dbg(hw, "RAR index %d is out of range.\n", index);
+		ERROR_REPORT2(IXGBE_ERROR_SOFTWARE,
+			     "RAR index %d is out of range.\n", index);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -2391,7 +2438,8 @@ s32 ixgbe_fc_enable_generic(struct ixgbe_hw *hw)
 		fccfg_reg |= IXGBE_FCCFG_TFCE_802_3X;
 		break;
 	default:
-		hw_dbg(hw, "Flow control param set incorrectly\n");
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+			     "Flow control param set incorrectly\n");
 		ret_val = IXGBE_ERR_CONFIG;
 		goto out;
 		break;
@@ -2452,8 +2500,13 @@ out:
 static s32 ixgbe_negotiate_fc(struct ixgbe_hw *hw, u32 adv_reg, u32 lp_reg,
 			      u32 adv_sym, u32 adv_asm, u32 lp_sym, u32 lp_asm)
 {
-	if ((!(adv_reg)) ||  (!(lp_reg)))
+	if ((!(adv_reg)) ||  (!(lp_reg))) {
+		ERROR_REPORT3(IXGBE_ERROR_SOFTWARE,
+			     "Local or link partner's advertised flow control "
+			     "settings are NULL. Local: %x, link partner: %x\n",
+			     adv_reg, lp_reg);
 		return IXGBE_ERR_FC_NOT_NEGOTIATED;
+	}
 
 	if ((adv_reg & adv_sym) && (lp_reg & lp_sym)) {
 		/*
@@ -2504,8 +2557,11 @@ static s32 ixgbe_fc_autoneg_fiber(struct ixgbe_hw *hw)
 
 	linkstat = IXGBE_READ_REG(hw, IXGBE_PCS1GLSTA);
 	if ((!!(linkstat & IXGBE_PCS1GLSTA_AN_COMPLETE) == 0) ||
-	    (!!(linkstat & IXGBE_PCS1GLSTA_AN_TIMED_OUT) == 1))
+	    (!!(linkstat & IXGBE_PCS1GLSTA_AN_TIMED_OUT) == 1)) {
+		ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE,
+			     "Auto-Negotiation did not complete or timed out");
 		goto out;
+	}
 
 	pcs_anadv_reg = IXGBE_READ_REG(hw, IXGBE_PCS1GANA);
 	pcs_lpab_reg = IXGBE_READ_REG(hw, IXGBE_PCS1GANLP);
@@ -2537,13 +2593,19 @@ static s32 ixgbe_fc_autoneg_backplane(struct ixgbe_hw *hw)
 	 * - we are 82599 and link partner is not AN enabled
 	 */
 	links = IXGBE_READ_REG(hw, IXGBE_LINKS);
-	if ((links & IXGBE_LINKS_KX_AN_COMP) == 0)
+	if ((links & IXGBE_LINKS_KX_AN_COMP) == 0) {
+		ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE,
+			     "Auto-Negotiation did not complete");
 		goto out;
+	}
 
 	if (hw->mac.type == ixgbe_mac_82599EB) {
 		links2 = IXGBE_READ_REG(hw, IXGBE_LINKS2);
-		if ((links2 & IXGBE_LINKS2_AN_SUPPORTED) == 0)
+		if ((links2 & IXGBE_LINKS2_AN_SUPPORTED) == 0) {
+			ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE,
+				     "Link partner is not AN enabled");
 			goto out;
+		}
 	}
 	/*
 	 * Read the 10g AN autoc and LP ability registers and resolve
@@ -2603,15 +2665,21 @@ void ixgbe_fc_autoneg(struct ixgbe_hw *hw)
 	 * - FC autoneg is disabled, or if
 	 * - link is not up.
 	 */
-	if (hw->fc.disable_fc_autoneg)
+	if (hw->fc.disable_fc_autoneg) {
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+			     "Flow control autoneg is disabled");
 		goto out;
+	}
 
 	hw->mac.ops.check_link(hw, &speed, &link_up, false);
-	if (!link_up)
+	if (!link_up) {
+		ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE, "The link is down");
 		goto out;
+	}
 
 	switch (hw->phy.media_type) {
 	/* Autoneg flow control on fiber adapters */
+	case ixgbe_media_type_fiber_fixed:
 	case ixgbe_media_type_fiber:
 		if (speed == IXGBE_LINK_SPEED_1GB_FULL)
 			ret_val = ixgbe_fc_autoneg_fiber(hw);
@@ -2624,7 +2692,7 @@ void ixgbe_fc_autoneg(struct ixgbe_hw *hw)
 
 	/* Autoneg flow control on copper adapters */
 	case ixgbe_media_type_copper:
-		if (ixgbe_device_supports_autoneg_fc(hw) == 0)
+		if (ixgbe_device_supports_autoneg_fc(hw))
 			ret_val = ixgbe_fc_autoneg_copper(hw);
 		break;
 
@@ -2739,7 +2807,8 @@ s32 ixgbe_disable_pcie_master(struct ixgbe_hw *hw)
 			goto out;
 	}
 
-	hw_dbg(hw, "PCIe transaction pending bit also did not clear.\n");
+	ERROR_REPORT1(IXGBE_ERROR_POLLING,
+		     "PCIe transaction pending bit also did not clear.\n");
 	status = IXGBE_ERR_MASTER_REQUESTS_PENDING;
 
 out:
@@ -2783,7 +2852,8 @@ s32 ixgbe_acquire_swfw_sync(struct ixgbe_hw *hw, u16 mask)
 	}
 
 	if (!timeout) {
-		hw_dbg(hw, "Driver can't access resource, SW_FW_SYNC timeout.\n");
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+		    "Driver can't access resource, SW_FW_SYNC timeout.\n");
 		return IXGBE_ERR_SWFW_SYNC;
 	}
 
@@ -3210,7 +3280,8 @@ s32 ixgbe_clear_vmdq_generic(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
-		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
+		ERROR_REPORT2(IXGBE_ERROR_SOFTWARE,
+			     "RAR index %d is out of range.\n", rar);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -3257,7 +3328,8 @@ s32 ixgbe_set_vmdq_generic(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
-		hw_dbg(hw, "RAR index %d is out of range.\n", rar);
+		ERROR_REPORT2(IXGBE_ERROR_SOFTWARE,
+			     "RAR index %d is out of range.\n", rar);
 		return IXGBE_ERR_INVALID_ARGUMENT;
 	}
 
@@ -3353,7 +3425,8 @@ s32 ixgbe_find_vlvf_slot(struct ixgbe_hw *hw, u32 vlan)
 		if (first_empty_slot)
 			regindex = first_empty_slot;
 		else {
-			hw_dbg(hw, "No space in VLVF.\n");
+			ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+				     "No space in VLVF.\n");
 			regindex = IXGBE_ERR_NO_SPACE;
 		}
 	}
@@ -4211,7 +4284,7 @@ s32 ixgbe_init_thermal_sensor_thresh_generic(struct ixgbe_hw *hw)
 }
 
 
-/**     
+/**
  * ixgbe_dcb_get_rtrup2tc_generic - read rtrup2tc reg
  * @hw: pointer to hardware structure
  * @map: pointer to u8 arr for returning map
@@ -4219,7 +4292,7 @@ s32 ixgbe_init_thermal_sensor_thresh_generic(struct ixgbe_hw *hw)
  * Read the rtrup2tc HW register and resolve its content into map
  **/
 void ixgbe_dcb_get_rtrup2tc_generic(struct ixgbe_hw *hw, u8 *map)
-{       
+{
 	u32 reg, i;
 
 	reg = IXGBE_READ_REG(hw, IXGBE_RTRUP2TC);
