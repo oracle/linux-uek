@@ -24,6 +24,7 @@
 
 #define TK_CLEAR_NTP     (1 << 0)
 #define TK_MIRROR        (1 << 1)
+#define TK_CLOCK_WAS_SET (1 << 2)
 
 /* Structure holding internal timekeeping values. */
 struct timekeeper {
@@ -187,9 +188,9 @@ static void update_rt_offset(void)
 
 static RAW_NOTIFIER_HEAD(pvclock_gtod_chain);
 
-static void update_pvclock_gtod(struct timekeeper *tk)
+static void update_pvclock_gtod(struct timekeeper *tk, bool was_set)
 {
-	raw_notifier_call_chain(&pvclock_gtod_chain, 0, tk);
+	raw_notifier_call_chain(&pvclock_gtod_chain, was_set, tk);
 }
 
 /**
@@ -206,7 +207,7 @@ int pvclock_gtod_register_notifier(struct notifier_block *nb)
 	write_seqlock_irqsave(&xtime_lock, flags);
 	ret = raw_notifier_chain_register(&pvclock_gtod_chain, nb);
 	/* update timekeeping data */
-	update_pvclock_gtod(tk);
+	update_pvclock_gtod(tk, true);
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 
 	return ret;
@@ -243,7 +244,7 @@ static void timekeeping_update(unsigned int action)
 	update_rt_offset();
 	update_vsyscall(&xtime, &wall_to_monotonic,
 			 timekeeper.clock, timekeeper.mult);
-	update_pvclock_gtod(&timekeeper);
+	update_pvclock_gtod(&timekeeper, action & TK_CLOCK_WAS_SET);
 }
 
 
@@ -447,7 +448,7 @@ int do_settimeofday(const struct timespec *tv)
 
 	xtime = *tv;
 
-	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 
@@ -489,7 +490,7 @@ int timekeeping_inject_offset(struct timespec *ts)
 	wall_to_monotonic = timespec_sub(wall_to_monotonic, *ts);
 
 error: /* even if we error out, we forwarded the time, so call update */
-	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 
@@ -518,7 +519,7 @@ static int change_clocksource(void *data)
 		if (old->disable)
 			old->disable(old);
 	}
-	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	return 0;
 }
@@ -740,7 +741,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 
 	__timekeeping_inject_sleeptime(delta);
 
-	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&xtime_lock, flags);
 
@@ -775,8 +776,7 @@ static void timekeeping_resume(void)
 	timekeeper.clock->cycle_last = timekeeper.clock->read(timekeeper.clock);
 	timekeeper.ntp_error = 0;
 	timekeeping_suspended = 0;
-	timekeeping_update(TK_MIRROR);
-	write_sequnlock_irqrestore(&xtime_lock, flags);
+	timekeeping_update(TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	touch_softlockup_watchdog();
 
