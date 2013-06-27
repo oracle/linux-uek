@@ -26,6 +26,7 @@
 
 #define TK_CLEAR_NTP		(1 << 0)
 #define TK_MIRROR		(1 << 1)
+#define TK_CLOCK_WAS_SET	(1 << 2)
 
 static struct timekeeper timekeeper;
 
@@ -180,9 +181,9 @@ static inline s64 timekeeping_get_ns_raw(struct timekeeper *tk)
 
 static RAW_NOTIFIER_HEAD(pvclock_gtod_chain);
 
-static void update_pvclock_gtod(struct timekeeper *tk)
+static void update_pvclock_gtod(struct timekeeper *tk, bool was_set)
 {
-	raw_notifier_call_chain(&pvclock_gtod_chain, 0, tk);
+	raw_notifier_call_chain(&pvclock_gtod_chain, was_set, tk);
 }
 
 /**
@@ -199,7 +200,7 @@ int pvclock_gtod_register_notifier(struct notifier_block *nb)
 	write_seqlock_irqsave(&tk->lock, flags);
 	ret = raw_notifier_chain_register(&pvclock_gtod_chain, nb);
 	/* update timekeeping data */
-	update_pvclock_gtod(tk);
+	update_pvclock_gtod(tk, true);
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
 	return ret;
@@ -234,7 +235,7 @@ static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 		ntp_clear();
 	}
 	update_vsyscall(tk);
-	update_pvclock_gtod(tk);
+	update_pvclock_gtod(tk, action & TK_CLOCK_WAS_SET);
 }
 
 /**
@@ -427,7 +428,7 @@ int do_settimeofday(const struct timespec *tv)
 
 	tk_set_xtime(tk, tv);
 
-	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -469,7 +470,7 @@ int timekeeping_inject_offset(struct timespec *ts)
 	tk_set_wall_to_mono(tk, timespec_sub(tk->wall_to_monotonic, *ts));
 
 error: /* even if we error out, we forwarded the time, so call update */
-	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -502,7 +503,7 @@ static int change_clocksource(void *data)
 		if (old->disable)
 			old->disable(old);
 	}
-	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -734,7 +735,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 
 	__timekeeping_inject_sleeptime(tk, delta);
 
-	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR | TK_CLOCK_WAS_SET);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -770,7 +771,7 @@ static void timekeeping_resume(void)
 	tk->clock->cycle_last = tk->clock->read(tk->clock);
 	tk->ntp_error = 0;
 	timekeeping_suspended = 0;
-	timekeeping_update(tk, TK_MIRROR);
+	timekeeping_update(tk, TK_MIRROR | TK_CLOCK_WAS_SET);
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
 	touch_softlockup_watchdog();
@@ -1044,7 +1045,7 @@ out_adjust:
 static inline unsigned int accumulate_nsecs_to_secs(struct timekeeper *tk)
 {
 	u64 nsecps = (u64)NSEC_PER_SEC << tk->shift;
-	unsigned int clock_set = 0;
+	unsigned int action = 0;
 
 	while (tk->xtime_nsec >= nsecps) {
 		int leap;
@@ -1064,10 +1065,10 @@ static inline unsigned int accumulate_nsecs_to_secs(struct timekeeper *tk)
 			tk_set_wall_to_mono(tk,
 				timespec_sub(tk->wall_to_monotonic, ts));
 
-			clock_set = 1;
+			action = TK_CLOCK_WAS_SET;
 		}
 	}
-	return clock_set;
+	return action;
 }
 
 /**
@@ -1080,8 +1081,7 @@ static inline unsigned int accumulate_nsecs_to_secs(struct timekeeper *tk)
  * Returns the unconsumed cycles.
  */
 static cycle_t logarithmic_accumulation(struct timekeeper *tk, cycle_t offset,
-						u32 shift,
-						unsigned int *clock_set)
+						u32 shift)
 {
 	u64 raw_nsecs;
 
@@ -1094,7 +1094,6 @@ static cycle_t logarithmic_accumulation(struct timekeeper *tk, cycle_t offset,
 	tk->clock->cycle_last += tk->cycle_interval << shift;
 
 	tk->xtime_nsec += tk->xtime_interval << shift;
-	*clock_set |= accumulate_nsecs_to_secs(tk);
 
 	/* Accumulate raw time */
 	raw_nsecs = (u64)tk->raw_interval << shift;
@@ -1151,7 +1150,7 @@ static void update_wall_time(void)
 	struct timekeeper *tk = &timekeeper;
 	cycle_t offset;
 	int shift = 0, maxshift;
-	unsigned int clock_set = 0;
+	unsigned int action = 0;
 	unsigned long flags;
 
 	write_seqlock_irqsave(&tk->lock, flags);
@@ -1186,8 +1185,7 @@ static void update_wall_time(void)
 	maxshift = (64 - (ilog2(ntp_tick_length())+1)) - 1;
 	shift = min(shift, maxshift);
 	while (offset >= tk->cycle_interval) {
-		offset = logarithmic_accumulation(tk, offset, shift,
-							&clock_set);
+		offset = logarithmic_accumulation(tk, offset, shift);
 		if (offset < tk->cycle_interval<<shift)
 			shift--;
 	}
@@ -1205,13 +1203,13 @@ static void update_wall_time(void)
 	 * Finally, make sure that after the rounding
 	 * xtime_nsec isn't larger than NSEC_PER_SEC
 	 */
-	clock_set |= accumulate_nsecs_to_secs(tk);
+	action = accumulate_nsecs_to_secs(tk);
 
 	timekeeping_update(tk, 0);
 
 out:
 	write_sequnlock_irqrestore(&tk->lock, flags);
-	if (clock_set)
+	if (action)
 		/* have to call outside the timekeeper_seq */
 		clock_was_set_delayed();
 }
