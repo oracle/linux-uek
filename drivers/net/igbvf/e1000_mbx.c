@@ -210,7 +210,8 @@ static s32 e1000_check_for_bit_vf(struct e1000_hw *hw, u32 mask)
  *
  *  returns SUCCESS if the PF has set the Status bit or else ERR_MBX
  **/
-static s32 e1000_check_for_msg_vf(struct e1000_hw *hw, u16 mbx_id)
+static s32 e1000_check_for_msg_vf(struct e1000_hw *hw,
+				  u16 E1000_UNUSEDARG mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
@@ -231,7 +232,8 @@ static s32 e1000_check_for_msg_vf(struct e1000_hw *hw, u16 mbx_id)
  *
  *  returns SUCCESS if the PF has set the ACK bit or else ERR_MBX
  **/
-static s32 e1000_check_for_ack_vf(struct e1000_hw *hw, u16 mbx_id)
+static s32 e1000_check_for_ack_vf(struct e1000_hw *hw,
+				  u16 E1000_UNUSEDARG mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
@@ -252,7 +254,8 @@ static s32 e1000_check_for_ack_vf(struct e1000_hw *hw, u16 mbx_id)
  *
  *  returns true if the PF has set the reset done bit or else false
  **/
-static s32 e1000_check_for_rst_vf(struct e1000_hw *hw, u16 mbx_id)
+static s32 e1000_check_for_rst_vf(struct e1000_hw *hw,
+				  u16 E1000_UNUSEDARG mbx_id)
 {
 	s32 ret_val = -E1000_ERR_MBX;
 
@@ -299,7 +302,7 @@ static s32 e1000_obtain_mbx_lock_vf(struct e1000_hw *hw)
  *  returns SUCCESS if it successfully copied message into the buffer
  **/
 static s32 e1000_write_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
-			      u16 mbx_id)
+			      u16 E1000_UNUSEDARG mbx_id)
 {
 	s32 ret_val;
 	u16 i;
@@ -340,7 +343,7 @@ out_no_write:
  *  returns SUCCESS if it successfuly read message from buffer
  **/
 static s32 e1000_read_mbx_vf(struct e1000_hw *hw, u32 *msg, u16 size,
-			     u16 mbx_id)
+			     u16 E1000_UNUSEDARG mbx_id)
 {
 	s32 ret_val = E1000_SUCCESS;
 	u16 i;

@@ -231,7 +231,6 @@ struct igbvf_adapter {
 	unsigned int restart_queue;
 	u32 txd_cmd;
 
-
 	unsigned int total_tx_bytes;
 	unsigned int total_tx_packets;
 	unsigned int total_rx_bytes;
