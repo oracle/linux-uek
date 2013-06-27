@@ -1,0 +1,17 @@
+#define NEW_SKB
+#define HAVE_IP_HDR
+#define HAVE_GFP
+#define HAVE_BOOL
+#define HAVE_AER
+#define HAVE_DEV_ERR
+#define HAVE_DEV_PRINTK
+#define HAVE_REAL_TX
+#define HAVE_REAL_RX
+#define HAVE_FIX_FEATURES
+#define HAVE_NETDEV_FEATURES
+#define NEW_ETHTOOL
+#define HAVE_SKB_FRAG
+#define HAVE_SKB_FRAG_PAGE
+#define HAVE_ETHTOOL_TO_MII
+#define HAVE_IS_PCIE
+#define HAVE_LE32
