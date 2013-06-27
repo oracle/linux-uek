@@ -24,6 +24,9 @@
 #include <linux/pvclock_gtod.h>
 
 
+#define TK_CLEAR_NTP		(1 << 0)
+#define TK_MIRROR		(1 << 1)
+
 static struct timekeeper timekeeper;
 
 /* flag for if timekeeping is suspended */
@@ -224,9 +227,9 @@ int pvclock_gtod_unregister_notifier(struct notifier_block *nb)
 EXPORT_SYMBOL_GPL(pvclock_gtod_unregister_notifier);
 
 /* must hold write on timekeeper.lock */
-static void timekeeping_update(struct timekeeper *tk, bool clearntp)
+static void timekeeping_update(struct timekeeper *tk, unsigned int action)
 {
-	if (clearntp) {
+	if (action & TK_CLEAR_NTP) {
 		tk->ntp_error = 0;
 		ntp_clear();
 	}
@@ -424,7 +427,7 @@ int do_settimeofday(const struct timespec *tv)
 
 	tk_set_xtime(tk, tv);
 
-	timekeeping_update(tk, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -466,7 +469,7 @@ int timekeeping_inject_offset(struct timespec *ts)
 	tk_set_wall_to_mono(tk, timespec_sub(tk->wall_to_monotonic, *ts));
 
 error: /* even if we error out, we forwarded the time, so call update */
-	timekeeping_update(tk, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -499,7 +502,7 @@ static int change_clocksource(void *data)
 		if (old->disable)
 			old->disable(old);
 	}
-	timekeeping_update(tk, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -731,7 +734,7 @@ void timekeeping_inject_sleeptime(struct timespec *delta)
 
 	__timekeeping_inject_sleeptime(tk, delta);
 
-	timekeeping_update(tk, true);
+	timekeeping_update(tk, TK_CLEAR_NTP | TK_MIRROR);
 
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
@@ -767,7 +770,7 @@ static void timekeeping_resume(void)
 	tk->clock->cycle_last = tk->clock->read(tk->clock);
 	tk->ntp_error = 0;
 	timekeeping_suspended = 0;
-	timekeeping_update(tk, false);
+	timekeeping_update(tk, TK_MIRROR);
 	write_sequnlock_irqrestore(&tk->lock, flags);
 
 	touch_softlockup_watchdog();
@@ -1204,7 +1207,7 @@ static void update_wall_time(void)
 	 */
 	clock_set |= accumulate_nsecs_to_secs(tk);
 
-	timekeeping_update(tk, false);
+	timekeeping_update(tk, 0);
 
 out:
 	write_sequnlock_irqrestore(&tk->lock, flags);
