@@ -762,17 +762,24 @@ void clock_was_set(void)
 
 /*
  * During resume we might have to reprogram the high resolution timer
- * interrupt (on the local CPU):
+ * interrupt on all online CPUs.  However, all other CPUs will be
+ * stopped with IRQs interrupts disabled so the clock_was_set() call
+ * must be deferred to the softirq.
+ *
+ * The one-shot timer has already been programmed to fire immediately
+ * (see tick_resume_oneshot()) and this interrupt will trigger the
+ * softirq to run early enough to correctly reprogram the timers on
+ * all CPUs.
  */
 void hrtimers_resume(void)
 {
+	struct hrtimer_cpu_base *cpu_base = &__get_cpu_var(hrtimer_bases);
+
 	WARN_ONCE(!irqs_disabled(),
 		  KERN_INFO "hrtimers_resume() called with IRQs enabled!");
 
-	/* Retrigger on the local CPU */
-	retrigger_next_event(NULL);
-	/* And schedule a retrigger for all others */
-	clock_was_set_delayed();
+	cpu_base->clock_was_set = 1;
+	__raise_softirq_irqoff(HRTIMER_SOFTIRQ);
 }
 
 static inline void timer_stats_hrtimer_set_start_info(struct hrtimer *timer)
