@@ -39,6 +39,7 @@
 #define E1000_SCTL	0x00024	/* SerDes Control - RW */
 #define E1000_FCAL	0x00028	/* Flow Control Address Low - RW */
 #define E1000_FCAH	0x0002C	/* Flow Control Address High -RW */
+#define E1000_FEXT	0x0002C	/* Future Extended - RW */
 #define E1000_FEXTNVM	0x00028	/* Future Extended NVM - RW */
 #define E1000_FEXTNVM3	0x0003C	/* Future Extended NVM 3 - RW */
 #define E1000_FEXTNVM4	0x00024	/* Future Extended NVM 4 - RW */
@@ -88,8 +89,6 @@
 /* Split and Replication Rx Control - RW */
 #define E1000_RDTR	0x02820	/* Rx Delay Timer - RW */
 #define E1000_RADV	0x0282C	/* Rx Interrupt Absolute Delay Timer - RW */
-#define E1000_EMIADD	0x10	/* Extended Memory Indirect Address */
-#define E1000_EMIDATA	0x11	/* Extended Memory Indirect Data */
 /* Convenience macros
  *
  * Note: "_n" is the queue number of the register to be written to.

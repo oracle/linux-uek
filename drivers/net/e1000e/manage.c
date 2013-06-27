@@ -341,7 +341,8 @@ bool e1000e_enable_mng_pass_thru(struct e1000_hw *hw)
 		    ((data & E1000_NVM_INIT_CTRL2_MNGM) ==
 		     (e1000_mng_mode_pt << 13)))
 			return true;
-	} else if ((manc & E1000_MANC_SMBUS_EN) && !(manc & E1000_MANC_ASF_EN)) {
+	} else if ((manc & E1000_MANC_SMBUS_EN) &&
+		   !(manc & E1000_MANC_ASF_EN)) {
 		return true;
 	}
 

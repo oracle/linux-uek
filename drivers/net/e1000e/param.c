@@ -246,21 +246,20 @@ static int e1000_validate_option(unsigned int *value,
 			return 0;
 		}
 		break;
-	case list_option:{
-			int i;
-			struct e1000_opt_list *ent;
+	case list_option: {
+		int i;
+		struct e1000_opt_list *ent;
 
-			for (i = 0; i < opt->arg.l.nr; i++) {
-				ent = &opt->arg.l.p[i];
-				if (*value == ent->i) {
-					if (ent->str[0] != '\0')
-						dev_info(pci_dev_to_dev
-							 (adapter->pdev),
-							 "%s\n", ent->str);
-					return 0;
-				}
+		for (i = 0; i < opt->arg.l.nr; i++) {
+			ent = &opt->arg.l.p[i];
+			if (*value == ent->i) {
+				if (ent->str[0] != '\0')
+					dev_info(pci_dev_to_dev(adapter->pdev), "%s\n",
+						 ent->str);
+				return 0;
 			}
 		}
+	}
 		break;
 	default:
 		BUG();
@@ -300,7 +299,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 
 	/* Transmit Interrupt Delay */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = range_option,
 			.name = "Transmit Interrupt Delay",
@@ -310,7 +308,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = MIN_TXDELAY,
 					 .max = MAX_TXDELAY } }
 		};
-/* *INDENT-ON* */
 
 		if (num_TxIntDelay > bd) {
 			adapter->tx_int_delay = TxIntDelay[bd];
@@ -322,7 +319,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Transmit Absolute Interrupt Delay */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = range_option,
 			.name = "Transmit Absolute Interrupt Delay",
@@ -332,7 +328,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = MIN_TXABSDELAY,
 					 .max = MAX_TXABSDELAY } }
 		};
-/* *INDENT-ON* */
 
 		if (num_TxAbsIntDelay > bd) {
 			adapter->tx_abs_int_delay = TxAbsIntDelay[bd];
@@ -344,7 +339,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Receive Interrupt Delay */
 	{
-/* *INDENT-OFF* */
 		static struct e1000_option opt = {
 			.type = range_option,
 			.name = "Receive Interrupt Delay",
@@ -354,7 +348,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = MIN_RXDELAY,
 					 .max = MAX_RXDELAY } }
 		};
-/* *INDENT-ON* */
 
 		if (num_RxIntDelay > bd) {
 			adapter->rx_int_delay = RxIntDelay[bd];
@@ -366,7 +359,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Receive Absolute Interrupt Delay */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = range_option,
 			.name = "Receive Absolute Interrupt Delay",
@@ -376,7 +368,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = MIN_RXABSDELAY,
 					 .max = MAX_RXABSDELAY } }
 		};
-/* *INDENT-ON* */
 
 		if (num_RxAbsIntDelay > bd) {
 			adapter->rx_abs_int_delay = RxAbsIntDelay[bd];
@@ -388,7 +379,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Interrupt Throttling Rate */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = range_option,
 			.name = "Interrupt Throttling Rate (ints/sec)",
@@ -398,7 +388,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = MIN_ITR,
 					 .max = MAX_ITR } }
 		};
-/* *INDENT-ON* */
 
 		if (num_InterruptThrottleRate > bd) {
 			adapter->itr = InterruptThrottleRate[bd];
@@ -461,7 +450,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Interrupt Mode */
 	{
-/* *INDENT-OFF* */
 		static struct e1000_option opt = {
 			.type = range_option,
 			.name = "Interrupt Mode",
@@ -472,7 +460,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 					 .max = 0 } }
 #endif
 		};
-/* *INDENT-ON* */
 
 #ifdef CONFIG_PCI_MSI
 		if (adapter->flags & FLAG_HAS_MSIX) {
@@ -507,14 +494,12 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Smart Power Down */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = enable_option,
 			.name = "PHY Smart Power Down",
 			.err  = "defaulting to Disabled",
 			.def  = OPTION_DISABLED
 		};
-/* *INDENT-ON* */
 
 		if (num_SmartPowerDownEnable > bd) {
 			unsigned int spd = SmartPowerDownEnable[bd];
@@ -525,14 +510,12 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* CRC Stripping */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = enable_option,
 			.name = "CRC Stripping",
 			.err  = "defaulting to Enabled",
 			.def  = OPTION_ENABLED
 		};
-/* *INDENT-ON* */
 
 		if (num_CrcStripping > bd) {
 			unsigned int crc_stripping = CrcStripping[bd];
@@ -548,38 +531,32 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 	}
 	/* Kumeran Lock Loss Workaround */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = enable_option,
 			.name = "Kumeran Lock Loss Workaround",
 			.err  = "defaulting to Enabled",
 			.def  = OPTION_ENABLED
 		};
-/* *INDENT-ON* */
+		bool enabled = opt.def;
 
 		if (num_KumeranLockLoss > bd) {
 			unsigned int kmrn_lock_loss = KumeranLockLoss[bd];
 			e1000_validate_option(&kmrn_lock_loss, &opt, adapter);
-			if (hw->mac.type == e1000_ich8lan)
-				e1000e_set_kmrn_lock_loss_workaround_ich8lan(hw,
-									     kmrn_lock_loss);
-		} else {
-			if (hw->mac.type == e1000_ich8lan)
-				e1000e_set_kmrn_lock_loss_workaround_ich8lan(hw,
-									     opt.
-									     def);
+			enabled = kmrn_lock_loss;
 		}
+
+		if (hw->mac.type == e1000_ich8lan)
+			e1000e_set_kmrn_lock_loss_workaround_ich8lan(hw,
+								     enabled);
 	}
 	/* EEE for parts supporting the feature */
 	{
-/* *INDENT-OFF* */
 		static const struct e1000_option opt = {
 			.type = enable_option,
 			.name = "EEE Support",
-			.err  = "defaulting to Enabled",
+			.err  = "defaulting to Enabled (100T/1000T full)",
 			.def  = OPTION_ENABLED
 		};
-/* *INDENT-ON* */
 
 		if (adapter->flags2 & FLAG2_HAS_EEE) {
 			/* Currently only supported on 82579 and newer */
@@ -590,15 +567,10 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			} else {
 				hw->dev_spec.ich8lan.eee_disable = !opt.def;
 			}
-
-			if (!hw->dev_spec.ich8lan.eee_disable)
-				adapter->eee_advert = (MDIO_EEE_100TX |
-						       MDIO_EEE_1000T);
 		}
 	}
 	/* configure node specific allocation */
 	{
-/* *INDENT-OFF* */
 		static struct e1000_option opt = {
 			.type = range_option,
 			.name = "Node used to allocate memory",
@@ -611,7 +583,6 @@ void e1000e_check_options(struct e1000_adapter *adapter)
 			.arg  = { .r = { .min = 0,
 					 .max = MAX_NUMNODES - 1 } }
 		};
-/* *INDENT-ON* */
 		int node = opt.def;
 
 		/* if the default was zero then we need to set the

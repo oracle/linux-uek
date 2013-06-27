@@ -54,20 +54,25 @@
 #define ICH_FLASH_SEG_SIZE_8K		8192
 #define ICH_FLASH_SEG_SIZE_64K		65536
 
-#define E1000_ICH_FWSM_RSPCIPHY		0x00000040	/* Reset PHY on PCI Reset */
+#define E1000_ICH_FWSM_RSPCIPHY	0x00000040	/* Reset PHY on PCI Reset */
 /* FW established a valid mode */
-#define E1000_ICH_FWSM_FW_VALID		0x00008000
-#define E1000_ICH_FWSM_PCIM2PCI		0x01000000	/* ME PCIm-to-PCI active */
+#define E1000_ICH_FWSM_FW_VALID	0x00008000
+#define E1000_ICH_FWSM_PCIM2PCI	0x01000000	/* ME PCIm-to-PCI active */
 #define E1000_ICH_FWSM_PCIM2PCI_COUNT	2000
 
 #define E1000_ICH_MNG_IAMT_MODE		0x2
 
 #define E1000_FWSM_WLOCK_MAC_MASK	0x0380
 #define E1000_FWSM_WLOCK_MAC_SHIFT	7
+#define E1000_FWSM_ULP_CFG_DONE		0x00000400	/* Low power cfg done */
 
 /* Shared Receive Address Registers */
 #define E1000_SHRAL_PCH_LPT(_i)		(0x05408 + ((_i) * 8))
 #define E1000_SHRAH_PCH_LPT(_i)		(0x0540C + ((_i) * 8))
+
+#define E1000_H2ME		0x05B50	/* Host to ME */
+#define E1000_H2ME_ULP		0x00000800	/* ULP Indication Bit */
+#define E1000_H2ME_ENFORCE_SETTINGS	0x00001000	/* Enforce Settings */
 
 #define ID_LED_DEFAULT_ICH8LAN	((ID_LED_DEF1_DEF2 << 12) | \
 				 (ID_LED_OFF1_OFF2 <<  8) | \
@@ -81,8 +86,11 @@
 
 #define E1000_ICH8_LAN_INIT_TIMEOUT	1500
 
+/* FEXT register bit definition */
+#define E1000_FEXT_PHY_CABLE_DISCONNECTED	0x00000004
+
 #define E1000_FEXTNVM_SW_CONFIG		1
-#define E1000_FEXTNVM_SW_CONFIG_ICH8M	(1 << 27)	/* Bit redefined for ICH8M */
+#define E1000_FEXTNVM_SW_CONFIG_ICH8M	(1 << 27)	/* different on ICH8M */
 
 #define E1000_FEXTNVM3_PHY_CFG_COUNTER_MASK	0x0C000000
 #define E1000_FEXTNVM3_PHY_CFG_COUNTER_50MSEC	0x08000000
@@ -92,6 +100,9 @@
 #define E1000_FEXTNVM4_BEACON_DURATION_16USEC	0x3
 
 #define E1000_FEXTNVM6_REQ_PLL_CLK	0x00000100
+#define E1000_FEXTNVM6_ENABLE_K1_ENTRY_CONDITION	0x00000200
+
+#define E1000_FEXTNVM7_DISABLE_SMB_PERST	0x00000020
 
 #define PCIE_ICH8_SNOOP_ALL	PCIE_NO_SNOOP_ALL
 
@@ -102,8 +113,8 @@
 #define PHY_PAGE_SHIFT		5
 #define PHY_REG(page, reg)	(((page) << PHY_PAGE_SHIFT) | \
 				 ((reg) & MAX_PHY_REG_ADDRESS))
-#define IGP3_KMRN_DIAG		PHY_REG(770, 19)	/* KMRN Diagnostic */
-#define IGP3_VR_CTRL		PHY_REG(776, 18)	/* Voltage Regulator Control */
+#define IGP3_KMRN_DIAG	PHY_REG(770, 19)	/* KMRN Diagnostic */
+#define IGP3_VR_CTRL	PHY_REG(776, 18)	/* Voltage Regulator Control */
 
 #define IGP3_KMRN_DIAG_PCS_LOCK_LOSS		0x0002
 #define IGP3_VR_CTRL_DEV_POWERDOWN_MODE_MASK	0x0300
@@ -134,19 +145,20 @@
 #define HV_MUX_DATA_CTRL_GEN_TO_MAC	0x0400
 #define HV_MUX_DATA_CTRL_FORCE_SPEED	0x0004
 #define HV_STATS_PAGE	778
-#define HV_SCC_UPPER	PHY_REG(HV_STATS_PAGE, 16)	/* Single Collision Count */
+/* Half-duplex collision counts */
+#define HV_SCC_UPPER	PHY_REG(HV_STATS_PAGE, 16)	/* Single Collision */
 #define HV_SCC_LOWER	PHY_REG(HV_STATS_PAGE, 17)
-#define HV_ECOL_UPPER	PHY_REG(HV_STATS_PAGE, 18)	/* Excessive Coll. Count */
+#define HV_ECOL_UPPER	PHY_REG(HV_STATS_PAGE, 18)	/* Excessive Coll. */
 #define HV_ECOL_LOWER	PHY_REG(HV_STATS_PAGE, 19)
-#define HV_MCC_UPPER	PHY_REG(HV_STATS_PAGE, 20)	/* Multiple Coll. Count */
+#define HV_MCC_UPPER	PHY_REG(HV_STATS_PAGE, 20)	/* Multiple Collision */
 #define HV_MCC_LOWER	PHY_REG(HV_STATS_PAGE, 21)
-#define HV_LATECOL_UPPER PHY_REG(HV_STATS_PAGE, 23)	/* Late Collision Count */
+#define HV_LATECOL_UPPER PHY_REG(HV_STATS_PAGE, 23)	/* Late Collision */
 #define HV_LATECOL_LOWER PHY_REG(HV_STATS_PAGE, 24)
-#define HV_COLC_UPPER	PHY_REG(HV_STATS_PAGE, 25)	/* Collision Count */
+#define HV_COLC_UPPER	PHY_REG(HV_STATS_PAGE, 25)	/* Collision */
 #define HV_COLC_LOWER	PHY_REG(HV_STATS_PAGE, 26)
 #define HV_DC_UPPER	PHY_REG(HV_STATS_PAGE, 27)	/* Defer Count */
 #define HV_DC_LOWER	PHY_REG(HV_STATS_PAGE, 28)
-#define HV_TNCRS_UPPER	PHY_REG(HV_STATS_PAGE, 29)	/* Transmit with no CRS */
+#define HV_TNCRS_UPPER	PHY_REG(HV_STATS_PAGE, 29)	/* Tx with no CRS */
 #define HV_TNCRS_LOWER	PHY_REG(HV_STATS_PAGE, 30)
 
 #define E1000_FCRTV_PCH	0x05F40	/* PCH Flow Control Refresh Timer Value */
@@ -157,6 +169,16 @@
 /* SMBus Control Phy Register */
 #define CV_SMB_CTRL		PHY_REG(769, 23)
 #define CV_SMB_CTRL_FORCE_SMBUS	0x0001
+
+/* I218 Ultra Low Power Configuration 1 Register */
+#define I218_ULP_CONFIG1		PHY_REG(779, 16)
+#define I218_ULP_CONFIG1_START		0x0001	/* Start auto ULP config */
+#define I218_ULP_CONFIG1_IND		0x0004	/* Pwr up from ULP indication */
+#define I218_ULP_CONFIG1_STICKY_ULP	0x0010	/* Set sticky ULP mode */
+#define I218_ULP_CONFIG1_INBAND_EXIT	0x0020	/* Inband on ULP exit */
+#define I218_ULP_CONFIG1_WOL_HOST	0x0040	/* WoL Host on ULP exit */
+#define I218_ULP_CONFIG1_RESET_TO_SMBUS	0x0100	/* Reset to SMBus mode */
+#define I218_ULP_CONFIG1_DISABLE_SMB_PERST	0x1000	/* Disable on PERST# */
 
 /* SMBus Address Phy Register */
 #define HV_SMB_ADDR		PHY_REG(768, 26)
@@ -192,8 +214,18 @@
 /* PHY Power Management Control */
 #define HV_PM_CTRL		PHY_REG(770, 17)
 #define HV_PM_CTRL_PLL_STOP_IN_K1_GIGA	0x100
+#define HV_PM_CTRL_K1_ENABLE		0x4000
 
 #define SW_FLAG_TIMEOUT		1000	/* SW Semaphore flag timeout in ms */
+
+/* Inband Control */
+#define I217_INBAND_CTRL				PHY_REG(770, 18)
+#define I217_INBAND_CTRL_LINK_STAT_TX_TIMEOUT_MASK	0x3F00
+#define I217_INBAND_CTRL_LINK_STAT_TX_TIMEOUT_SHIFT	8
+
+/* Low Power Idle GPIO Control */
+#define I217_LPI_GPIO_CTRL			PHY_REG(772, 18)
+#define I217_LPI_GPIO_CTRL_AUTO_EN_LPI		0x0800
 
 /* PHY Low Power Idle Control */
 #define I82579_LPI_CTRL				PHY_REG(772, 20)
@@ -201,6 +233,10 @@
 #define I82579_LPI_CTRL_1000_ENABLE		0x4000
 #define I82579_LPI_CTRL_ENABLE_MASK		0x6000
 #define I82579_LPI_CTRL_FORCE_PLL_LOCK_COUNT	0x80
+
+/* 82579 DFT Control */
+#define I82579_DFT_CTRL			PHY_REG(769, 20)
+#define I82579_DFT_CTRL_GATE_PHY_RESET	0x0040	/* Gate PHY Reset on MAC Reset */
 
 /* Extended Management Interface (EMI) Registers */
 #define I82579_EMI_ADDR		0x10
@@ -214,8 +250,8 @@
 #define I82579_EEE_CAPABILITY		0x0410	/* IEEE MMD Register 3.20 */
 #define I82579_EEE_ADVERTISEMENT	0x040E	/* IEEE MMD Register 7.60 */
 #define I82579_EEE_LP_ABILITY		0x040F	/* IEEE MMD Register 7.61 */
-#define I82579_EEE_100_SUPPORTED	(1 << 1)	/* 100BaseTx EEE supported */
-#define I82579_EEE_1000_SUPPORTED	(1 << 2)	/* 1000BaseTx EEE supported */
+#define I82579_EEE_100_SUPPORTED	(1 << 1)	/* 100BaseTx EEE */
+#define I82579_EEE_1000_SUPPORTED	(1 << 2)	/* 1000BaseTx EEE */
 #define I217_EEE_PCS_STATUS	0x9401	/* IEEE MMD Register 3.1 */
 #define I217_EEE_CAPABILITY	0x8000	/* IEEE MMD Register 3.20 */
 #define I217_EEE_ADVERTISEMENT	0x8001	/* IEEE MMD Register 7.60 */
@@ -248,13 +284,6 @@
 /* Proprietary Latency Tolerance Reporting PCI Capability */
 #define E1000_PCI_LTR_CAP_LPT		0xA8
 
-/* OBFF Control & Threshold Defines */
-#define E1000_SVCR_OFF_EN		0x00000001
-#define E1000_SVCR_OFF_MASKINT		0x00001000
-#define E1000_SVCR_OFF_TIMER_MASK	0xFFFF0000
-#define E1000_SVCR_OFF_TIMER_SHIFT	16
-#define E1000_SVT_OFF_HWM_MASK		0x0000001F
-
 #define E1000_PCI_REVISION_ID_REG	0x08
 void e1000e_set_kmrn_lock_loss_workaround_ich8lan(struct e1000_hw *hw,
 						  bool state);
@@ -267,4 +296,6 @@ void e1000_copy_rx_addrs_to_phy_ich8lan(struct e1000_hw *hw);
 s32 e1000_lv_jumbo_workaround_ich8lan(struct e1000_hw *hw, bool enable);
 s32 e1000_read_emi_reg_locked(struct e1000_hw *hw, u16 addr, u16 *data);
 s32 e1000_write_emi_reg_locked(struct e1000_hw *hw, u16 addr, u16 data);
+s32 e1000_enable_ulp_lpt_lp(struct e1000_hw *hw, bool to_sx);
+s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force);
 #endif /* _E1000E_ICH8LAN_H_ */

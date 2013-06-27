@@ -37,6 +37,8 @@
 /* Wake Up Control */
 #define E1000_WUC_APME		0x00000001	/* APM Enable */
 #define E1000_WUC_PME_EN	0x00000002	/* PME Enable */
+#define E1000_WUC_PME_STATUS	0x00000004	/* PME Status */
+#define E1000_WUC_APMPME	0x00000008	/* Assert PME on APM Wakeup */
 #define E1000_WUC_PHY_WAKE	0x00000100	/* if PHY supports wakeup */
 
 /* Wake Up Filter Control */
@@ -410,9 +412,6 @@
 #define E1000_ICR_TXQ0		0x00400000	/* Tx Queue 0 Interrupt */
 #define E1000_ICR_TXQ1		0x00800000	/* Tx Queue 1 Interrupt */
 #define E1000_ICR_OTHER		0x01000000	/* Other Interrupts */
-
-#define E1000_ITR_MASK		0x000FFFFF	/* ITR value bitfield */
-#define E1000_ITR_MULT		256	/* ITR mulitplier in nsec */
 
 /* PBA ECC Register */
 #define E1000_PBA_ECC_COUNTER_MASK	0xFFF00000	/* ECC counter mask */
