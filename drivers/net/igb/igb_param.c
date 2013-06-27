@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2012 Intel Corporation.
+  Copyright(c) 2007-2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -59,12 +59,12 @@
  */
 
 #define IGB_PARAM(X, desc) \
-	static const int __devinitdata X[IGB_MAX_NIC+1] = IGB_PARAM_INIT; \
+	static const int X[IGB_MAX_NIC+1] = IGB_PARAM_INIT; \
 	MODULE_PARM(X, "1-" __MODULE_STRING(IGB_MAX_NIC) "i"); \
 	MODULE_PARM_DESC(X, desc);
 #else
 #define IGB_PARAM(X, desc) \
-	static int __devinitdata X[IGB_MAX_NIC+1] = IGB_PARAM_INIT; \
+	static int X[IGB_MAX_NIC+1] = IGB_PARAM_INIT; \
 	static unsigned int num_##X; \
 	module_param_array_named(X, X, int, &num_##X, 0); \
 	MODULE_PARM_DESC(X, desc);
@@ -255,9 +255,9 @@ struct igb_option {
 	} arg;
 };
 
-static int __devinit igb_validate_option(unsigned int *value,
-                                         struct igb_option *opt,
-                                         struct igb_adapter *adapter)
+static int igb_validate_option(unsigned int *value,
+			       struct igb_option *opt,
+			       struct igb_adapter *adapter)
 {
 	if (*value == OPTION_UNSET) {
 		*value = opt->def;
@@ -316,7 +316,7 @@ static int __devinit igb_validate_option(unsigned int *value,
  * in a variable in the adapter structure.
  **/
 
-void __devinit igb_check_options(struct igb_adapter *adapter)
+void igb_check_options(struct igb_adapter *adapter)
 {
 	int bd = adapter->bd_number;
 	struct e1000_hw *hw = &adapter->hw;
@@ -601,6 +601,12 @@ void __devinit igb_check_options(struct igb_adapter *adapter)
 			if (!!adapter->vmdq_pools)
 				opt.arg.r.max = 1;
 			break;
+		}
+
+		if (adapter->int_mode != IGB_INT_MODE_MSIX) {
+			DPRINTK(PROBE, INFO, "RSS is not supported when in MSI/Legacy Interrupt mode, %s\n",
+				opt.err);
+			opt.arg.r.max = 1;
 		}
 
 #ifdef module_param_array

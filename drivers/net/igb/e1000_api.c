@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2012 Intel Corporation.
+  Copyright(c) 2007-2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -182,9 +182,8 @@ s32 e1000_set_mac_type(struct e1000_hw *hw)
 	case E1000_DEV_ID_I350_DA4:
 		mac->type = e1000_i350;
 		break;
-#if defined(QV_RELEASE) && defined(SPRINGVILLE_FLASHLESS_HW)
-	case E1000_DEV_ID_I210_NVMLESS:
-#endif /* QV_RELEASE && SPRINGVILLE_FLASHLESS_HW */
+	case E1000_DEV_ID_I210_COPPER_FLASHLESS:
+	case E1000_DEV_ID_I210_SERDES_FLASHLESS:
 	case E1000_DEV_ID_I210_COPPER:
 	case E1000_DEV_ID_I210_COPPER_OEM1:
 	case E1000_DEV_ID_I210_COPPER_IT:
@@ -687,11 +686,7 @@ bool e1000_enable_tx_pkt_filtering(struct e1000_hw *hw)
 s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer, u16 length,
 			    u16 offset, u8 *sum)
 {
-	if (hw->mac.ops.mng_host_if_write)
-		return hw->mac.ops.mng_host_if_write(hw, buffer, length,
-						     offset, sum);
-
-	return E1000_NOT_IMPLEMENTED;
+	return e1000_mng_host_if_write_generic(hw, buffer, length, offset, sum);
 }
 
 /**
@@ -704,10 +699,7 @@ s32 e1000_mng_host_if_write(struct e1000_hw *hw, u8 *buffer, u16 length,
 s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
 			       struct e1000_host_mng_command_header *hdr)
 {
-	if (hw->mac.ops.mng_write_cmd_header)
-		return hw->mac.ops.mng_write_cmd_header(hw, hdr);
-
-	return E1000_NOT_IMPLEMENTED;
+	return e1000_mng_write_cmd_header_generic(hw, hdr);
 }
 
 /**
@@ -722,25 +714,7 @@ s32 e1000_mng_write_cmd_header(struct e1000_hw *hw,
  **/
 s32 e1000_mng_enable_host_if(struct e1000_hw *hw)
 {
-	if (hw->mac.ops.mng_enable_host_if)
-		return hw->mac.ops.mng_enable_host_if(hw);
-
-	return E1000_NOT_IMPLEMENTED;
-}
-
-/**
- *  e1000_wait_autoneg - Waits for autonegotiation completion
- *  @hw: pointer to the HW structure
- *
- *  Waits for autoneg to complete. Currently no func pointer exists and all
- *  implementations are handled in the generic version of this function.
- **/
-s32 e1000_wait_autoneg(struct e1000_hw *hw)
-{
-	if (hw->mac.ops.wait_autoneg)
-		return hw->mac.ops.wait_autoneg(hw);
-
-	return E1000_SUCCESS;
+	return e1000_mng_enable_host_if_generic(hw);
 }
 
 /**
