@@ -31,6 +31,9 @@
 #include "ixgbe_osdep.h"
 
 
+/* Vendor ID */
+#define IXGBE_INTEL_VENDOR_ID			0x8086
+
 /* Device IDs */
 #define IXGBE_DEV_ID_82598			0x10B6
 #define IXGBE_DEV_ID_82598_BX			0x1508
@@ -56,15 +59,19 @@
 #define IXGBE_SUBDEV_ID_82599_560FLR		0x17D0
 #define IXGBE_SUBDEV_ID_82599_ECNA_DP		0x0470
 #define IXGBE_SUBDEV_ID_82599_SP_560FLR		0x211B
+#define IXGBE_SUBDEV_ID_82599_LOM_SFP		0x8976
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
+#define IXGBE_SUBDEV_ID_82599EN_SFP_OCP1	0x0001
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
 #define IXGBE_DEV_ID_82599_LS			0x154F
+#define IXGBE_DEV_ID_82599_BYPASS		0x155D
 #define IXGBE_DEV_ID_X540T			0x1528
+#define IXGBE_DEV_ID_X540_BYPASS		0x155C
 
 /* General Registers */
 #define IXGBE_CTRL		0x00000
@@ -225,6 +232,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RXCTRL		0x03000
 #define IXGBE_DROPEN		0x03D04
 #define IXGBE_RXPBSIZE_SHIFT	10
+#define IXGBE_RXPBSIZE_MASK	0x000FFC00
 
 /* Receive Registers */
 #define IXGBE_RXCSUM		0x05000
@@ -451,6 +459,7 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_TDTQ2TCSR(_i)	(0x0622C + ((_i) * 0x40)) /* 8 of these (0-7) */
 #define IXGBE_TDPT2TCCR(_i)	(0x0CD20 + ((_i) * 4)) /* 8 of these (0-7) */
 #define IXGBE_TDPT2TCSR(_i)	(0x0CD40 + ((_i) * 4)) /* 8 of these (0-7) */
+
 
 
 /* Security Control Registers */
@@ -882,8 +891,6 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_RDPROBE		0x02F20
 #define IXGBE_RDMAM		0x02F30
 #define IXGBE_RDMAD		0x02F34
-#define IXGBE_TDSTATCTL		0x07C20
-#define IXGBE_TDSTAT(_i)	(0x07C00 + ((_i) * 4)) /* 0x07C00 - 0x07C1C */
 #define IXGBE_TDHMPN		0x07F08
 #define IXGBE_TDHMPN2		0x082FC
 #define IXGBE_TXDESCIC		0x082CC
@@ -1681,7 +1688,8 @@ enum {
 #define IXGBE_AUTOC2_10G_KR	(0x0 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
 #define IXGBE_AUTOC2_10G_XFI	(0x1 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
 #define IXGBE_AUTOC2_10G_SFI	(0x2 << IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_SHIFT)
-#define IXGBE_AUTOC2_LINK_DISABLE_MASK	0x70000000
+#define IXGBE_AUTOC2_LINK_DISABLE_ON_D3_MASK	0x50000000
+#define IXGBE_AUTOC2_LINK_DISABLE_MASK		0x70000000
 
 #define IXGBE_MACC_FLU		0x00000001
 #define IXGBE_MACC_FSV_10G	0x00030000
@@ -1911,6 +1919,18 @@ enum {
 #define IXGBE_ALT_SAN_MAC_ADDR_WWPN_OFFSET	0x8 /* Alt WWPN prefix offset */
 #define IXGBE_ALT_SAN_MAC_ADDR_CAPS_SANMAC	0x0 /* Alt SAN MAC exists */
 #define IXGBE_ALT_SAN_MAC_ADDR_CAPS_ALTWWN	0x1 /* Alt WWN base exists */
+
+/* FW header offset */
+#define IXGBE_X540_FW_PASSTHROUGH_PATCH_CONFIG_PTR	0x4
+#define IXGBE_X540_FW_MODULE_MASK			0x7FFF
+/* 4KB multiplier */
+#define IXGBE_X540_FW_MODULE_LENGTH			0x1000
+/* version word 2 (month & day) */
+#define IXGBE_X540_FW_PATCH_VERSION_2		0x5
+/* version word 3 (silicon compatibility & year) */
+#define IXGBE_X540_FW_PATCH_VERSION_3		0x6
+/* version word 4 (major & minor numbers) */
+#define IXGBE_X540_FW_PATCH_VERSION_4		0x7
 
 #define IXGBE_DEVICE_CAPS_WOL_PORT0_1	0x4 /* WoL supported on ports 0 & 1 */
 #define IXGBE_DEVICE_CAPS_WOL_PORT0	0x8 /* WoL supported on port 0 */
@@ -2855,6 +2875,8 @@ enum ixgbe_sfp_type {
 	ixgbe_sfp_type_1g_cu_core1 = 10,
 	ixgbe_sfp_type_1g_sx_core0 = 11,
 	ixgbe_sfp_type_1g_sx_core1 = 12,
+	ixgbe_sfp_type_1g_lx_core0 = 13,
+	ixgbe_sfp_type_1g_lx_core1 = 14,
 	ixgbe_sfp_type_not_present = 0xFFFE,
 	ixgbe_sfp_type_unknown = 0xFFFF
 };
@@ -2862,6 +2884,7 @@ enum ixgbe_sfp_type {
 enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
+	ixgbe_media_type_fiber_fixed,
 	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
@@ -3124,6 +3147,9 @@ struct ixgbe_mac_operations {
 	s32 (*set_fw_drv_ver)(struct ixgbe_hw *, u8, u8, u8, u8);
 	s32 (*get_thermal_sensor_data)(struct ixgbe_hw *);
 	s32 (*init_thermal_sensor_thresh)(struct ixgbe_hw *hw);
+	s32 (*dmac_config)(struct ixgbe_hw *hw);
+	s32 (*dmac_update_tcs)(struct ixgbe_hw *hw);
+	s32 (*dmac_config_tcs)(struct ixgbe_hw *hw);
 	void (*get_rtrup2tc)(struct ixgbe_hw *hw, u8 *map);
 };
 
@@ -3259,7 +3285,7 @@ struct ixgbe_hw {
 	bool force_full_reset;
 	bool allow_unsupported_sfp;
 	bool mng_fw_enabled;
-	bool wol_supported;
+	bool wol_enabled;
 };
 
 #define ixgbe_call_func(hw, func, params, error) \

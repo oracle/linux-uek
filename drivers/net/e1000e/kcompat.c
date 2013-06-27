@@ -1074,6 +1074,33 @@ out:
 }
 #endif /* < 2.6.28 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29) )
+static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
+{
+	u16 old_cmd, cmd;
+
+	pci_read_config_word(pdev, PCI_COMMAND, &old_cmd);
+	if (enable)
+		cmd = old_cmd | PCI_COMMAND_MASTER;
+	else
+		cmd = old_cmd & ~PCI_COMMAND_MASTER;
+	if (cmd != old_cmd) {
+		dev_dbg(pci_dev_to_dev(pdev), "%s bus mastering\n",
+			enable ? "enabling" : "disabling");
+		pci_write_config_word(pdev, PCI_COMMAND, cmd);
+	}
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7) )
+	pdev->is_busmaster = enable;
+#endif
+}
+
+void _kc_pci_clear_master(struct pci_dev *dev)
+{
+	__kc_pci_set_master(dev, false);
+}
+#endif /* < 2.6.29 */
+
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
 int _kc_pci_num_vf(struct pci_dev *dev)
@@ -1303,3 +1330,7 @@ int __kc_pcie_capability_clear_and_set_word(struct pci_dev *dev, int pos,
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0) )
 #endif /* 3.9.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#endif /* 3.10.0 */

@@ -155,7 +155,7 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 	ixgbe_attr->dev_attr.attr.mode = S_IRUGO;
 	ixgbe_attr->dev_attr.attr.name = ixgbe_attr->name;
 
-	rc = device_create_file(&adapter->pdev->dev,
+	rc = device_create_file(pci_dev_to_dev(adapter->pdev),
 				&ixgbe_attr->dev_attr);
 
 	if (rc == 0)
@@ -174,7 +174,7 @@ static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter *adapter)
 		return;
 
 	for (i = 0; i < adapter->ixgbe_hwmon_buff.n_hwmon; i++) {
-		device_remove_file(&adapter->pdev->dev,
+		device_remove_file(pci_dev_to_dev(adapter->pdev),
 			   &adapter->ixgbe_hwmon_buff.hwmon_list[i].dev_attr);
 	}
 
@@ -227,7 +227,7 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 		goto err;
 	}
 
-	ixgbe_hwmon->device = hwmon_device_register(&adapter->pdev->dev);
+	ixgbe_hwmon->device = hwmon_device_register(pci_dev_to_dev(adapter->pdev));
 	if (IS_ERR(ixgbe_hwmon->device)) {
 		rc = PTR_ERR(ixgbe_hwmon->device);
 		goto err;

@@ -563,9 +563,11 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			.err  = "using default.",
 			.def  = 0,
 			.arg  = { .r = { .min = 0,
-					 .max = IXGBE_MAX_RSS_INDICES} }
+					 .max = 1} }
 		};
 		unsigned int rss = RSS[bd];
+		/* adjust Max allowed RSS queues based on MAC type */
+		opt.arg.r.max = ixgbe_max_rss_indices(adapter);
 
 #ifdef module_param_array
 		if (num_RSS > bd) {
@@ -573,7 +575,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			ixgbe_validate_option(&rss, &opt);
 			/* base it off num_online_cpus() with hardware limit */
 			if (!rss)
-				rss = min_t(int, IXGBE_MAX_RSS_INDICES,
+				rss = min_t(int, opt.arg.r.max,
 					    num_online_cpus());
 			else
 				feature[RING_F_FDIR].limit = rss;
@@ -581,7 +583,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			feature[RING_F_RSS].limit = rss;
 #ifdef module_param_array
 		} else if (opt.def == 0) {
-			rss = min_t(int, IXGBE_MAX_RSS_INDICES,
+			rss = min_t(int, ixgbe_max_rss_indices(adapter),
 				    num_online_cpus());
 			feature[RING_F_RSS].limit = rss;
 		}
@@ -625,8 +627,9 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 
 			/* zero or one both mean disabled from our driver's
 			 * perspective */
-			if (vmdq > 1)
+			if (vmdq > 1) {
 				*aflags |= IXGBE_FLAG_VMDQ_ENABLED;
+			}
 			else
 				*aflags &= ~IXGBE_FLAG_VMDQ_ENABLED;
 
@@ -708,7 +711,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 					"Disabling IOV.\n");
 				*aflags &= ~IXGBE_FLAG_SRIOV_ENABLED;
 				adapter->num_vfs = 0;
-			}
+			} 
 		}
 	}
 	{ /* L2 Loopback Enable in SR-IOV mode */

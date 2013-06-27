@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2012 Intel Corporation.
+  Copyright(c) 2007-2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -72,11 +72,16 @@ struct igb_adapter;
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
 		__FUNCTION__ , ## args))
 
-#ifdef CONFIG_IGB_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 #include <linux/clocksource.h>
 #include <linux/net_tstamp.h>
 #include <linux/ptp_clock_kernel.h>
-#endif /* CONFIG_IGB_PTP */
+#endif /* HAVE_PTP_1588_CLOCK */
+
+#ifdef HAVE_I2C_SUPPORT
+#include <linux/i2c.h>
+#include <linux/i2c-algo-bit.h>
+#endif /* HAVE_I2C_SUPPORT */
 
 /* Interrupt defines */
 #define IGB_START_ITR                    648 /* ~6000 ints/sec */
@@ -91,9 +96,9 @@ struct igb_adapter;
 
 /* TX/RX descriptor defines */
 #define IGB_DEFAULT_TXD                  256
+#define IGB_DEFAULT_TX_WORK		 128
 #define IGB_MIN_TXD                       80
 #define IGB_MAX_TXD                     4096
-#define IGB_DEFAULT_TX_WORK		 128
 
 #define IGB_DEFAULT_RXD                  256
 #define IGB_MIN_RXD                       80
@@ -133,6 +138,9 @@ struct vf_data_storage {
 	u16 pf_vlan; /* When set, guest VLAN config not allowed. */
 	u16 pf_qos;
 	u16 tx_rate;
+#ifdef HAVE_VF_SPOOFCHK_CONFIGURE
+	bool spoofchk_enabled;
+#endif
 #endif
 	struct pci_dev *vfdev;
 };
@@ -153,14 +161,12 @@ struct vf_data_storage {
  *           descriptors until either it has this many to write back, or the
  *           ITR timer expires.
  */
-#define IGB_RX_PTHRESH                     8
-#define IGB_RX_HTHRESH                     8
-#define IGB_TX_PTHRESH                     8
-#define IGB_TX_HTHRESH                     1
-#define IGB_RX_WTHRESH                     ((hw->mac.type == e1000_82576 && \
-                                             adapter->msix_entries) ? 1 : 4)
-#define IGB_TX_WTHRESH                     ((hw->mac.type == e1000_82576 && \
-                                             adapter->msix_entries) ? 1 : 16)
+#define IGB_RX_PTHRESH	8
+#define IGB_RX_HTHRESH	8
+#define IGB_TX_PTHRESH	8
+#define IGB_TX_HTHRESH	1
+#define IGB_RX_WTHRESH	((hw->mac.type == e1000_82576 && \
+			  adapter->msix_entries) ? 1 : 4)
 
 /* this is the size past which hardware will drop packets when setting LPE=0 */
 #define MAXIMUM_ETHERNET_VLAN_SIZE 1522
@@ -172,9 +178,15 @@ struct vf_data_storage {
  * i.e. RXBUFFER_512 --> size-1024 slab
  */
 /* Supported Rx Buffer Sizes */
-#define IGB_RXBUFFER_512   512
+#define IGB_RXBUFFER_256   256
+#define IGB_RXBUFFER_2048  2048
 #define IGB_RXBUFFER_16384 16384
-#define IGB_RX_HDR_LEN     IGB_RXBUFFER_512
+#define IGB_RX_HDR_LEN	   IGB_RXBUFFER_256
+#if MAX_SKB_FRAGS < 8
+#define IGB_RX_BUFSZ	   ALIGN(MAX_JUMBO_FRAME_SIZE / MAX_SKB_FRAGS, 1024)
+#else
+#define IGB_RX_BUFSZ	   IGB_RXBUFFER_2048
+#endif
 
 
 /* Packet Buffer allocations */
@@ -184,8 +196,6 @@ struct vf_data_storage {
 
 #define IGB_FC_PAUSE_TIME 0x0680 /* 858 usec */
 
-/* How many Tx Descriptors do we need to call netif_wake_queue ? */
-#define IGB_TX_QUEUE_WAKE	32
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IGB_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
@@ -204,7 +214,6 @@ struct vf_data_storage {
 struct igb_lro_stats {
 	u32 flushed;
 	u32 coal;
-	u32 recycled;
 };
 
 /*
@@ -230,10 +239,12 @@ struct igb_lro_list {
 #endif /* IGB_NO_LRO */
 struct igb_cb {
 #ifndef IGB_NO_LRO
+#ifdef CONFIG_IGB_DISABLE_PACKET_SPLIT
 	union {				/* Union defining head/tail partner */
 		struct sk_buff *head;
 		struct sk_buff *tail;
 	};
+#endif
 	__be32	tsecr;			/* timestamp echo response */
 	u32	tsval;			/* timestamp value in host order */
 	u32	next_seq;		/* next expected sequence number */
@@ -247,13 +258,37 @@ struct igb_cb {
 };
 #define IGB_CB(skb) ((struct igb_cb *)(skb)->cb)
 
-#define IGB_TX_FLAGS_CSUM		0x00000001
-#define IGB_TX_FLAGS_VLAN		0x00000002
-#define IGB_TX_FLAGS_TSO		0x00000004
-#define IGB_TX_FLAGS_IPV4		0x00000008
-#define IGB_TX_FLAGS_TSTAMP		0x00000010
+enum igb_tx_flags {
+	/* cmd_type flags */
+	IGB_TX_FLAGS_VLAN	= 0x01,
+	IGB_TX_FLAGS_TSO	= 0x02,
+	IGB_TX_FLAGS_TSTAMP	= 0x04,
+
+	/* olinfo flags */
+	IGB_TX_FLAGS_IPV4	= 0x10,
+	IGB_TX_FLAGS_CSUM	= 0x20,
+};
+
+/* VLAN info */
 #define IGB_TX_FLAGS_VLAN_MASK		0xffff0000
 #define IGB_TX_FLAGS_VLAN_SHIFT		        16
+
+/*
+ * The largest size we can write to the descriptor is 65535.  In order to
+ * maintain a power of two alignment we have to limit ourselves to 32K.
+ */
+#define IGB_MAX_TXD_PWR		15
+#define IGB_MAX_DATA_PER_TXD	(1 << IGB_MAX_TXD_PWR)
+
+/* Tx Descriptors needed, worst case */
+#define TXD_USE_COUNT(S)	DIV_ROUND_UP((S), IGB_MAX_DATA_PER_TXD)
+#ifndef MAX_SKB_FRAGS
+#define DESC_NEEDED	4
+#elif (MAX_SKB_FRAGS < 16)
+#define DESC_NEEDED	((MAX_SKB_FRAGS * TXD_USE_COUNT(PAGE_SIZE)) + 4)
+#else
+#define DESC_NEEDED	(MAX_SKB_FRAGS + 4)
+#endif
 
 /* wrapper around a pointer to a socket buffer,
  * so a DMA handle can be stored along with the buffer */
@@ -270,11 +305,11 @@ struct igb_tx_buffer {
 };
 
 struct igb_rx_buffer {
-	struct sk_buff *skb;
 	dma_addr_t dma;
-#ifndef CONFIG_IGB_DISABLE_PACKET_SPLIT
+#ifdef CONFIG_IGB_DISABLE_PACKET_SPLIT
+	struct sk_buff *skb;
+#else
 	struct page *page;
-	dma_addr_t page_dma;
 	u32 page_offset;
 #endif
 };
@@ -302,28 +337,6 @@ struct igb_ring_container {
 	u8 itr;				/* current ITR setting for ring */
 };
 
-struct igb_q_vector {
-	struct igb_adapter *adapter;	/* backlink */
-	int cpu;			/* CPU for DCA */
-	u32 eims_value;			/* EIMS mask value */
-
-	struct igb_ring_container rx, tx;
-
-	struct napi_struct napi;
-
-	u16 itr_val;
-	u8 set_itr;
-	void __iomem *itr_register;
-
-#ifndef IGB_NO_LRO
-	struct igb_lro_list *lrolist;   /* LRO list for queue vector*/
-#endif
-	char name[IFNAMSIZ + 9];
-#ifndef HAVE_NETDEV_NAPI_LIST
-	struct net_device poll_dev;
-#endif
-} ____cacheline_internodealigned_in_smp;
-
 struct igb_ring {
 	struct igb_q_vector *q_vector;  /* backlink to q_vector */
 	struct net_device *netdev;      /* back pointer to net_device */
@@ -332,18 +345,23 @@ struct igb_ring {
 		struct igb_tx_buffer *tx_buffer_info;
 		struct igb_rx_buffer *rx_buffer_info;
 	};
+#ifdef HAVE_PTP_1588_CLOCK
+	unsigned long last_rx_timestamp;
+#endif /* HAVE_PTP_1588_CLOCK */
 	void *desc;                     /* descriptor ring memory */
 	unsigned long flags;            /* ring specific flags */
 	void __iomem *tail;             /* pointer to ring tail register */
+	dma_addr_t dma;			/* phys address of the ring */
+	unsigned int size;		/* length of desc. ring in bytes */
 
 	u16 count;                      /* number of desc. in the ring */
 	u8 queue_index;                 /* logical index of the ring*/
 	u8 reg_idx;                     /* physical index of the ring */
-	u32 size;                       /* length of desc. ring in bytes */
 
 	/* everything past this point are written often */
-	u16 next_to_clean ____cacheline_aligned_in_smp;
+	u16 next_to_clean;
 	u16 next_to_use;
+	u16 next_to_alloc;
 
 	union {
 		/* TX */
@@ -355,6 +373,8 @@ struct igb_ring {
 			struct igb_rx_queue_stats rx_stats;
 #ifdef CONFIG_IGB_DISABLE_PACKET_SPLIT
 			u16 rx_buffer_len;
+#else
+			struct sk_buff *skb;
 #endif
 		};
 	};
@@ -362,9 +382,31 @@ struct igb_ring {
 	struct net_device *vmdq_netdev;
 	int vqueue_index;		/* queue index for virtual netdev */
 #endif
-	/* Items past this point are only used during ring alloc / free */
-	dma_addr_t dma;                 /* phys address of the ring */
 } ____cacheline_internodealigned_in_smp;
+
+struct igb_q_vector {
+	struct igb_adapter *adapter;	/* backlink */
+	int cpu;			/* CPU for DCA */
+	u32 eims_value;			/* EIMS mask value */
+
+	u16 itr_val;
+	u8 set_itr;
+	void __iomem *itr_register;
+
+	struct igb_ring_container rx, tx;
+
+	struct napi_struct napi;
+#ifndef IGB_NO_LRO
+	struct igb_lro_list lrolist;   /* LRO list for queue vector*/
+#endif
+	char name[IFNAMSIZ + 9];
+#ifndef HAVE_NETDEV_NAPI_LIST
+	struct net_device poll_dev;
+#endif
+
+	/* for dynamic allocation of rings associated with this q_vector */
+	struct igb_ring ring[0] ____cacheline_internodealigned_in_smp;
+};
 
 enum e1000_ring_flags_t {
 #ifndef HAVE_NDO_SET_FEATURES
@@ -375,6 +417,7 @@ enum e1000_ring_flags_t {
 	IGB_RING_FLAG_TX_CTX_IDX,
 	IGB_RING_FLAG_TX_DETECT_HANG,
 };
+
 struct igb_mac_addr {
 	u8 addr[ETH_ALEN];
 	u16 queue;
@@ -436,6 +479,33 @@ struct igb_therm_proc_data
 
 //  #endif /* IGB_PROCFS */
 // #endif /* EXT_THERMAL_SENSOR_SUPPORT */
+
+#ifdef HAVE_I2C_SUPPORT
+struct igb_i2c_client_list {
+	struct i2c_client *client;
+	struct igb_i2c_client_list *next;
+};
+#endif /* HAVE_I2C_SUPPORT */
+
+#ifdef IGB_HWMON
+#define IGB_HWMON_TYPE_LOC	0
+#define IGB_HWMON_TYPE_TEMP	1
+#define IGB_HWMON_TYPE_CAUTION	2
+#define IGB_HWMON_TYPE_MAX	3
+
+struct hwmon_attr {
+	struct device_attribute dev_attr;
+	struct e1000_hw *hw;
+	struct e1000_thermal_diode_data *sensor;
+	char name[12];
+	};
+
+struct hwmon_buff {
+	struct device *device;
+	struct hwmon_attr *hwmon_list;
+	unsigned int n_hwmon;
+	};
+#endif /* IGB_HWMON */
 
 /* board specific private data structure */
 struct igb_adapter {
@@ -546,29 +616,39 @@ struct igb_adapter {
 
 	/* External Thermal Sensor support flag */
 	bool ets;
-#ifdef IGB_SYSFS
-	struct kobject *info_kobj;
-	struct kobject *therm_kobj[E1000_MAX_SENSORS];
-#else /* IGB_SYSFS */
+#ifdef IGB_HWMON
+	struct hwmon_buff igb_hwmon_buff;
+#else /* IGB_HWMON */
 #ifdef IGB_PROCFS
 	struct proc_dir_entry *eth_dir;
 	struct proc_dir_entry *info_dir;
 	struct proc_dir_entry *therm_dir[E1000_MAX_SENSORS];
 	struct igb_therm_proc_data therm_data[E1000_MAX_SENSORS];
 #endif /* IGB_PROCFS */
-#endif /* IGB_SYSFS */
+#endif /* IGB_HWMON */
 	u32 etrack_id;
 
-#ifdef CONFIG_IGB_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 	struct ptp_clock *ptp_clock;
 	struct ptp_clock_info ptp_caps;
 	struct delayed_work ptp_overflow_work;
 	struct work_struct ptp_tx_work;
 	struct sk_buff *ptp_tx_skb;
+	unsigned long ptp_tx_start;
+	unsigned long last_rx_ptp_check;
 	spinlock_t tmreg_lock;
 	struct cyclecounter cc;
 	struct timecounter tc;
-#endif /* CONFIG_IGB_PTP */
+	u32 tx_hwtstamp_timeouts;
+	u32 rx_hwtstamp_cleared;
+#endif /* HAVE_PTP_1588_CLOCK */
+
+#ifdef HAVE_I2C_SUPPORT
+	struct i2c_algo_bit_data i2c_algo;
+	struct i2c_adapter i2c_adap;
+	struct igb_i2c_client_list *i2c_clients;
+#endif /* HAVE_I2C_SUPPORT */
+	unsigned long link_check_timeout;
 };
 
 #ifdef CONFIG_IGB_VMDQ_NETDEV
@@ -588,18 +668,18 @@ struct igb_vmdq_adapter {
 #endif
 
 #define IGB_FLAG_HAS_MSI		(1 << 0)
-#define IGB_FLAG_MSI_ENABLE		(1 << 1)
-#define IGB_FLAG_DCA_ENABLED		(1 << 2)
-#define IGB_FLAG_LLI_PUSH		(1 << 3)
-#define IGB_FLAG_QUAD_PORT_A		(1 << 4)
-#define IGB_FLAG_QUEUE_PAIRS		(1 << 5)
-#define IGB_FLAG_EEE			(1 << 6)
-#define IGB_FLAG_DMAC			(1 << 7)
-#define IGB_FLAG_DETECT_BAD_DMA		(1 << 8)
-#define IGB_FLAG_PTP			(1 << 9)
-#define IGB_FLAG_RSS_FIELD_IPV4_UDP	(1 << 10)
-#define IGB_FLAG_RSS_FIELD_IPV6_UDP	(1 << 11)
-#define IGB_FLAG_WOL_SUPPORTED		(1 << 12)
+#define IGB_FLAG_DCA_ENABLED		(1 << 1)
+#define IGB_FLAG_LLI_PUSH		(1 << 2)
+#define IGB_FLAG_QUAD_PORT_A		(1 << 3)
+#define IGB_FLAG_QUEUE_PAIRS		(1 << 4)
+#define IGB_FLAG_EEE			(1 << 5)
+#define IGB_FLAG_DMAC			(1 << 6)
+#define IGB_FLAG_DETECT_BAD_DMA		(1 << 7)
+#define IGB_FLAG_PTP			(1 << 8)
+#define IGB_FLAG_RSS_FIELD_IPV4_UDP	(1 << 9)
+#define IGB_FLAG_RSS_FIELD_IPV6_UDP	(1 << 10)
+#define IGB_FLAG_WOL_SUPPORTED		(1 << 11)
+#define IGB_FLAG_NEED_LINK_UPDATE	(1 << 12)
 
 #define IGB_MIN_TXPBSIZE           20408
 #define IGB_TX_BUF_4096            4096
@@ -691,18 +771,37 @@ extern bool igb_has_link(struct igb_adapter *adapter);
 extern void igb_set_ethtool_ops(struct net_device *);
 extern void igb_check_options(struct igb_adapter *);
 extern void igb_power_up_link(struct igb_adapter *);
-#ifdef CONFIG_IGB_PTP
+#ifdef HAVE_PTP_1588_CLOCK
 extern void igb_ptp_init(struct igb_adapter *adapter);
 extern void igb_ptp_stop(struct igb_adapter *adapter);
 extern void igb_ptp_reset(struct igb_adapter *adapter);
 extern void igb_ptp_tx_work(struct work_struct *work);
+extern void igb_ptp_rx_hang(struct igb_adapter *adapter);
 extern void igb_ptp_tx_hwtstamp(struct igb_adapter *adapter);
-extern void igb_ptp_rx_hwtstamp(struct igb_q_vector *q_vector,
-				union e1000_adv_rx_desc *rx_desc,
+extern void igb_ptp_rx_rgtstamp(struct igb_q_vector *q_vector,
 				struct sk_buff *skb);
+extern void igb_ptp_rx_pktstamp(struct igb_q_vector *q_vector,
+				unsigned char *va,
+				struct sk_buff *skb);
+static inline void igb_ptp_rx_hwtstamp(struct igb_q_vector *q_vector,
+				       union e1000_adv_rx_desc *rx_desc,
+				       struct sk_buff *skb)
+{
+	if (igb_test_staterr(rx_desc, E1000_RXDADV_STAT_TSIP)) {
+#ifdef CONFIG_IGB_DISABLE_PACKET_SPLIT
+		igb_ptp_rx_pktstamp(q_vector, skb->data, skb);
+		skb_pull(skb, IGB_TS_HDR_LEN);
+#endif
+		return;
+	}
+
+	if (igb_test_staterr(rx_desc, E1000_RXDADV_STAT_TS))
+		igb_ptp_rx_rgtstamp(q_vector, skb);
+}
+
 extern int igb_ptp_hwtstamp_ioctl(struct net_device *netdev,
 				  struct ifreq *ifr, int cmd);
-#endif /* CONFIG_IGB_PTP */
+#endif /* HAVE_PTP_1588_CLOCK */
 #ifdef ETHTOOL_OPS_COMPAT
 extern int ethtool_ioctl(struct ifreq *);
 #endif
@@ -719,7 +818,7 @@ extern void igb_vlan_mode(struct net_device *, u32);
 
 #define E1000_PCS_CFG_IGN_SD	1
 
-#ifdef IGB_SYSFS
+#ifdef IGB_HWMON
 void igb_sysfs_exit(struct igb_adapter *adapter);
 int igb_sysfs_init(struct igb_adapter *adapter);
 #else
@@ -729,6 +828,6 @@ void igb_procfs_exit(struct igb_adapter* adapter);
 int igb_procfs_topdir_init(void);
 void igb_procfs_topdir_exit(void);
 #endif /* IGB_PROCFS */
-#endif /* IGB_SYSFS */
+#endif /* IGB_HWMON */
 
 #endif /* _IGB_H_ */

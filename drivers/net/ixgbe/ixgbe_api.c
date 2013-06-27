@@ -28,7 +28,7 @@
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 
-/**     
+/**
  * ixgbe_dcb_get_rtrup2tc - read rtrup2tc reg
  * @hw: pointer to hardware structure
  * @map: pointer to u8 arr for returning map
@@ -37,8 +37,8 @@
  **/
 void ixgbe_dcb_get_rtrup2tc(struct ixgbe_hw *hw, u8 *map)
 {
-	return ixgbe_call_func(hw, hw->mac.ops.get_rtrup2tc,(hw, map),
-			IXGBE_NOT_IMPLEMENTED);
+	if (hw->mac.ops.get_rtrup2tc)
+		hw->mac.ops.get_rtrup2tc(hw, map);
 }
 
 /**
@@ -91,6 +91,12 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 {
 	s32 ret_val = 0;
 
+	if (hw->vendor_id != IXGBE_INTEL_VENDOR_ID) {
+		ERROR_REPORT2(IXGBE_ERROR_UNSUPPORTED,
+			     "Unsupported vendor id: %x", hw->vendor_id);
+		return IXGBE_ERR_DEVICE_NOT_SUPPORTED;
+	}
+
 	switch (hw->device_id) {
 	case IXGBE_DEV_ID_82598:
 	case IXGBE_DEV_ID_82598_BX:
@@ -119,14 +125,19 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599EN_SFP:
 	case IXGBE_DEV_ID_82599_CX4:
 	case IXGBE_DEV_ID_82599_LS:
+	case IXGBE_DEV_ID_82599_BYPASS:
 	case IXGBE_DEV_ID_82599_T3_LOM:
 		hw->mac.type = ixgbe_mac_82599EB;
 		break;
 	case IXGBE_DEV_ID_X540T:
+	case IXGBE_DEV_ID_X540_BYPASS:
 		hw->mac.type = ixgbe_mac_X540;
 		break;
 	default:
 		ret_val = IXGBE_ERR_DEVICE_NOT_SUPPORTED;
+		ERROR_REPORT2(IXGBE_ERROR_UNSUPPORTED,
+			     "Unsupported device id: %x",
+			     hw->device_id);
 		break;
 	}
 
@@ -136,12 +147,12 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 }
 
 /**
- *  ixgbe_mng_fw_enable - Return condition of MNG FW
+ *  ixgbe_mng_fw_enabled - Return condition of MNG FW
  *  @hw: pointer to hardware structure
  *
  *  Return either true/false base on if MNG FW is on.
  **/
-s32 ixgbe_mng_fw_enable(struct ixgbe_hw *hw)
+s32 ixgbe_mng_fw_enabled(struct ixgbe_hw *hw)
 {
 	return ixgbe_call_func(hw, hw->mac.ops.mng_enabled, (hw),
 			       IXGBE_NOT_IMPLEMENTED);
@@ -992,6 +1003,8 @@ s32 ixgbe_init_thermal_sensor_thresh(struct ixgbe_hw *hw)
 	return ixgbe_call_func(hw, hw->mac.ops.init_thermal_sensor_thresh, (hw),
 				IXGBE_NOT_IMPLEMENTED);
 }
+
+
 /**
  *  ixgbe_read_analog_reg8 - Reads 8 bit analog register
  *  @hw: pointer to hardware structure

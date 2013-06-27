@@ -137,6 +137,7 @@ static int igbvf_set_pauseparam(struct net_device *netdev,
 	return -EOPNOTSUPP;
 }
 
+#ifndef HAVE_NDO_SET_FEATURES
 static u32 igbvf_get_rx_csum(struct net_device *netdev)
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
@@ -219,6 +220,7 @@ static int igbvf_set_tso(struct net_device *netdev, u32 data)
 	return 0;
 }
 #endif
+#endif /* HAVE_NDO_SET_FEATURES */
 
 static u32 igbvf_get_msglevel(struct net_device *netdev)
 {
@@ -461,21 +463,28 @@ static int igbvf_set_coalesce(struct net_device *netdev,
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
 
-	if ((ec->rx_coalesce_usecs > IGBVF_MAX_ITR_USECS) ||
-	    ((ec->rx_coalesce_usecs > 3) &&
-	     (ec->rx_coalesce_usecs < IGBVF_MIN_ITR_USECS)) ||
-	    (ec->rx_coalesce_usecs == 2))
-		return -EINVAL;
-
-	/* convert to rate of irq's per second */
-	if (ec->rx_coalesce_usecs && ec->rx_coalesce_usecs <= 3) {
-		adapter->current_itr = IGBVF_START_ITR;
-		adapter->requested_itr = ec->rx_coalesce_usecs;
-	} else {
+	if ((ec->rx_coalesce_usecs >= IGBVF_MIN_ITR_USECS) &&
+	     (ec->rx_coalesce_usecs <= IGBVF_MAX_ITR_USECS)) {
 		adapter->current_itr = ec->rx_coalesce_usecs << 2;
 		adapter->requested_itr = 1000000000 /
 					(adapter->current_itr * 256);
-	}
+	} else if ((ec->rx_coalesce_usecs == 3) ||
+		   (ec->rx_coalesce_usecs == 2)) {
+		adapter->current_itr = IGBVF_START_ITR;
+		adapter->requested_itr = ec->rx_coalesce_usecs;
+	} else if (ec->rx_coalesce_usecs == 0) {
+		/*
+		 * The user's desire is to turn off interrupt throttling
+		 * altogether, but due to HW limitations, we can't do that.
+		 * Instead we set a very small value in EITR, which would
+		 * allow ~967k interrupts per second, but allow the adapter's
+		 * internal clocking to still function properly.
+		 */
+		adapter->current_itr = 4;
+		adapter->requested_itr = 1000000000 /
+					(adapter->current_itr * 256);
+	} else
+		return -EINVAL;
 
 	writel(adapter->current_itr,
 	       hw->hw_addr + adapter->rx_ring->itr_register);
@@ -574,6 +583,7 @@ static const struct ethtool_ops igbvf_ethtool_ops = {
 	.set_ringparam		= igbvf_set_ringparam,
 	.get_pauseparam		= igbvf_get_pauseparam,
 	.set_pauseparam		= igbvf_set_pauseparam,
+#ifndef HAVE_NDO_SET_FEATURES
 	.get_rx_csum            = igbvf_get_rx_csum,
 	.set_rx_csum            = igbvf_set_rx_csum,
 	.get_tx_csum		= igbvf_get_tx_csum,
@@ -584,6 +594,7 @@ static const struct ethtool_ops igbvf_ethtool_ops = {
 	.get_tso		= ethtool_op_get_tso,
 	.set_tso		= igbvf_set_tso,
 #endif
+#endif /* HAVE_NDO_SET_FEATURES */
 	.self_test		= igbvf_diag_test,
 #ifdef HAVE_ETHTOOL_GET_SSET_COUNT
 	.get_sset_count		= igbvf_get_sset_count,

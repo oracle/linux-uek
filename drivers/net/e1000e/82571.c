@@ -437,7 +437,7 @@ static s32 e1000_get_phy_id_82571(struct e1000_hw *hw)
 			return ret_val;
 
 		phy->id = (u32)(phy_id << 16);
-		udelay(20);
+		usleep_range(20, 40);
 		ret_val = e1e_rphy(hw, MII_PHYSID2, &phy_id);
 		if (ret_val)
 			return ret_val;
@@ -482,7 +482,7 @@ static s32 e1000_get_hw_semaphore_82571(struct e1000_hw *hw)
 		if (!(swsm & E1000_SWSM_SMBI))
 			break;
 
-		udelay(50);
+		usleep_range(50, 100);
 		i++;
 	}
 
@@ -499,7 +499,7 @@ static s32 e1000_get_hw_semaphore_82571(struct e1000_hw *hw)
 		if (er32(SWSM) & E1000_SWSM_SWESMBI)
 			break;
 
-		udelay(50);
+		usleep_range(50, 100);
 	}
 
 	if (i == fw_timeout) {
@@ -847,9 +847,9 @@ static s32 e1000_write_nvm_eewr_82571(struct e1000_hw *hw, u16 offset,
 	}
 
 	for (i = 0; i < words; i++) {
-		eewr = (data[i] << E1000_NVM_RW_REG_DATA) |
-		    ((offset + i) << E1000_NVM_RW_ADDR_SHIFT) |
-		    E1000_NVM_RW_REG_START;
+		eewr = ((data[i] << E1000_NVM_RW_REG_DATA) |
+			((offset + i) << E1000_NVM_RW_ADDR_SHIFT) |
+			E1000_NVM_RW_REG_START);
 
 		ret_val = e1000e_poll_eerd_eewr_done(hw, E1000_NVM_POLL_WRITE);
 		if (ret_val)
@@ -1003,8 +1003,6 @@ static s32 e1000_reset_hw_82571(struct e1000_hw *hw)
 	default:
 		break;
 	}
-	if (ret_val)
-		e_dbg("Cannot acquire MDIO ownership\n");
 
 	ctrl = er32(CTRL);
 
@@ -1015,14 +1013,16 @@ static s32 e1000_reset_hw_82571(struct e1000_hw *hw)
 	switch (hw->mac.type) {
 	case e1000_82574:
 	case e1000_82583:
-		e1000_put_hw_semaphore_82574(hw);
+		/* Release mutex only if the hw semaphore is acquired */
+		if (!ret_val)
+			e1000_put_hw_semaphore_82574(hw);
 		break;
 	default:
 		break;
 	}
 
 	if (hw->nvm.type == e1000_nvm_flash_hw) {
-		udelay(10);
+		usleep_range(10, 20);
 		ctrl_ext = er32(CTRL_EXT);
 		ctrl_ext |= E1000_CTRL_EXT_EE_RST;
 		ew32(CTRL_EXT, ctrl_ext);
@@ -1122,8 +1122,8 @@ static s32 e1000_init_hw_82571(struct e1000_hw *hw)
 
 	/* Set the transmit descriptor write-back policy */
 	reg_data = er32(TXDCTL(0));
-	reg_data = (reg_data & ~E1000_TXDCTL_WTHRESH) |
-	    E1000_TXDCTL_FULL_TX_DESC_WB | E1000_TXDCTL_COUNT_DESC;
+	reg_data = ((reg_data & ~E1000_TXDCTL_WTHRESH) |
+		    E1000_TXDCTL_FULL_TX_DESC_WB | E1000_TXDCTL_COUNT_DESC);
 	ew32(TXDCTL(0), reg_data);
 
 	/* ...for both queues. */
@@ -1139,8 +1139,9 @@ static s32 e1000_init_hw_82571(struct e1000_hw *hw)
 		break;
 	default:
 		reg_data = er32(TXDCTL(1));
-		reg_data = (reg_data & ~E1000_TXDCTL_WTHRESH) |
-		    E1000_TXDCTL_FULL_TX_DESC_WB | E1000_TXDCTL_COUNT_DESC;
+		reg_data = ((reg_data & ~E1000_TXDCTL_WTHRESH) |
+			    E1000_TXDCTL_FULL_TX_DESC_WB |
+			    E1000_TXDCTL_COUNT_DESC);
 		ew32(TXDCTL(1), reg_data);
 		break;
 	}
@@ -1528,7 +1529,7 @@ static s32 e1000_check_for_serdes_link_82571(struct e1000_hw *hw)
 	status = er32(STATUS);
 	er32(RXCW);
 	/* SYNCH bit and IV bit are sticky */
-	udelay(10);
+	usleep_range(10, 20);
 	rxcw = er32(RXCW);
 
 	if ((rxcw & E1000_RXCW_SYNCH) && !(rxcw & E1000_RXCW_IV)) {
@@ -1631,7 +1632,7 @@ static s32 e1000_check_for_serdes_link_82571(struct e1000_hw *hw)
 			 * the IV bit and restart Autoneg
 			 */
 			for (i = 0; i < AN_RETRY_COUNT; i++) {
-				udelay(10);
+				usleep_range(10, 20);
 				rxcw = er32(RXCW);
 				if ((rxcw & E1000_RXCW_SYNCH) &&
 				    (rxcw & E1000_RXCW_C))
@@ -1875,7 +1876,6 @@ static void e1000_clear_hw_cntrs_82571(struct e1000_hw *hw)
 	er32(ICRXDMTC);
 }
 
-/* *INDENT-OFF* */
 static const struct e1000_mac_operations e82571_mac_ops = {
 	/* .check_mng_mode: mac type dependent */
 	/* .check_for_link: media type dependent */
@@ -2073,6 +2073,7 @@ const struct e1000_info e1000_82583_info = {
 				  | FLAG_HAS_JUMBO_FRAMES
 				  | FLAG_HAS_CTRLEXT_ON_LOAD,
 	.flags2			= FLAG2_DISABLE_ASPM_L0S
+				  | FLAG2_DISABLE_ASPM_L1
 				  | FLAG2_NO_DISABLE_RX,
 	.pba			= 32,
 	.max_hw_frame_size	= DEFAULT_JUMBO,
@@ -2081,4 +2082,3 @@ const struct e1000_info e1000_82583_info = {
 	.phy_ops		= &e82_phy_ops_bm,
 	.nvm_ops		= &e82571_nvm_ops,
 };
-/* *INDENT-ON* */

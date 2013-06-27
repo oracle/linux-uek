@@ -129,4 +129,8 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
 #define EWARN(H, W, S) ewarn(H, W, S) 
 
+#define ERROR_REPORT(...) do {} while (0)
+#define ERROR_REPORT1(...) do {} while (0)
+#define ERROR_REPORT2(...) do {} while (0)
+#define ERROR_REPORT3(...) do {} while (0)
 #endif /* _IXGBE_OSDEP_H_ */

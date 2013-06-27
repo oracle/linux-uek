@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2012 Intel Corporation.
+  Copyright(c) 2007-2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -56,20 +56,20 @@ struct e1000_hw;
 #define E1000_DEV_ID_I350_SERDES		0x1523
 #define E1000_DEV_ID_I350_SGMII			0x1524
 #define E1000_DEV_ID_I350_DA4			0x1546
-#if defined(QV_RELEASE) && defined(SPRINGVILLE_FLASHLESS_HW)
-#define E1000_DEV_ID_I210_NVMLESS		0x1531
-#endif /* QV_RELEASE && SPRINGVILLE_FLASHLESS_HW */
 #define E1000_DEV_ID_I210_COPPER		0x1533
 #define E1000_DEV_ID_I210_COPPER_OEM1		0x1534
 #define E1000_DEV_ID_I210_COPPER_IT		0x1535
 #define E1000_DEV_ID_I210_FIBER			0x1536
 #define E1000_DEV_ID_I210_SERDES		0x1537
 #define E1000_DEV_ID_I210_SGMII			0x1538
+#define E1000_DEV_ID_I210_COPPER_FLASHLESS	0x157B
+#define E1000_DEV_ID_I210_SERDES_FLASHLESS	0x157C
 #define E1000_DEV_ID_I211_COPPER		0x1539
 #define E1000_DEV_ID_DH89XXCC_SGMII		0x0438
 #define E1000_DEV_ID_DH89XXCC_SERDES		0x043A
 #define E1000_DEV_ID_DH89XXCC_BACKPLANE		0x043C
 #define E1000_DEV_ID_DH89XXCC_SFP		0x0440
+
 #define E1000_REVISION_0	0
 #define E1000_REVISION_1	1
 #define E1000_REVISION_2	2
@@ -110,6 +110,7 @@ enum e1000_nvm_type {
 	e1000_nvm_none,
 	e1000_nvm_eeprom_spi,
 	e1000_nvm_flash_hw,
+	e1000_nvm_invm,
 	e1000_nvm_flash_sw
 };
 
@@ -486,13 +487,13 @@ struct e1000_host_mng_command_info {
 #include "e1000_manage.h"
 #include "e1000_mbx.h"
 
+/* Function pointers for the MAC. */
 struct e1000_mac_operations {
-	/* Function pointers for the MAC. */
 	s32  (*init_params)(struct e1000_hw *);
 	s32  (*id_led_init)(struct e1000_hw *);
 	s32  (*blink_led)(struct e1000_hw *);
+	bool (*check_mng_mode)(struct e1000_hw *);
 	s32  (*check_for_link)(struct e1000_hw *);
-	bool (*check_mng_mode)(struct e1000_hw *hw);
 	s32  (*cleanup_led)(struct e1000_hw *);
 	void (*clear_hw_cntrs)(struct e1000_hw *);
 	void (*clear_vfta)(struct e1000_hw *);
@@ -514,19 +515,13 @@ struct e1000_mac_operations {
 	void (*rar_set)(struct e1000_hw *, u8*, u32);
 	s32  (*read_mac_addr)(struct e1000_hw *);
 	s32  (*validate_mdi_setting)(struct e1000_hw *);
-	s32  (*mng_host_if_write)(struct e1000_hw *, u8*, u16, u16, u8*);
-	s32  (*mng_write_cmd_header)(struct e1000_hw *hw,
-				     struct e1000_host_mng_command_header*);
-	s32  (*mng_enable_host_if)(struct e1000_hw *);
-	s32  (*wait_autoneg)(struct e1000_hw *);
 	s32 (*get_thermal_sensor_data)(struct e1000_hw *);
 	s32 (*init_thermal_sensor_thresh)(struct e1000_hw *);
 	s32  (*acquire_swfw_sync)(struct e1000_hw *, u16);
 	void (*release_swfw_sync)(struct e1000_hw *, u16);
 };
 
-/*
- * When to use various PHY register access functions:
+/* When to use various PHY register access functions:
  *
  *                 Func   Caller
  *   Function      Does   Does    When to use
@@ -567,6 +562,7 @@ struct e1000_phy_operations {
 	s32 (*write_i2c_byte)(struct e1000_hw *, u8, u8, u8);
 };
 
+/* Function pointers for the NVM. */
 struct e1000_nvm_operations {
 	s32  (*init_params)(struct e1000_hw *);
 	s32  (*acquire)(struct e1000_hw *);
@@ -738,6 +734,7 @@ struct e1000_dev_spec_82575 {
 	bool global_device_reset;
 	bool eee_disable;
 	bool module_plugged;
+	bool clear_semaphore_once;
 	u32 mtu;
 	struct sfp_e1000_flags eth_flags;
 };

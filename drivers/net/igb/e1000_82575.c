@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2012 Intel Corporation.
+  Copyright(c) 2007-2013 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -387,6 +387,10 @@ static s32 e1000_init_mac_params_82575(struct e1000_hw *hw)
 	/* Enable EEE default settings for EEE supported devices */
 	if (mac->type >= e1000_i350)
 		dev_spec->eee_disable = false;
+
+	/* Allow a single clear of the SW semaphore on I210 and newer */
+	if (mac->type >= e1000_i210)
+		dev_spec->clear_semaphore_once = true;
 
 	/* Set if part includes ASF firmware */
 	mac->asf_firmware_present = true;
@@ -1452,6 +1456,7 @@ static s32 e1000_setup_copper_link_82575(struct e1000_hw *hw)
 		case I347AT4_E_PHY_ID:
 		case M88E1112_E_PHY_ID:
 		case M88E1340M_E_PHY_ID:
+		case I210_I_PHY_ID:
 			ret_val = e1000_copper_link_setup_m88_gen2(hw);
 			break;
 		default:
@@ -1632,140 +1637,70 @@ static s32 e1000_setup_serdes_link_82575(struct e1000_hw *hw)
  **/
 static s32 e1000_get_media_type_82575(struct e1000_hw *hw)
 {
-	u32 lan_id = 0;
-	s32 ret_val = E1000_ERR_CONFIG;
 	struct e1000_dev_spec_82575 *dev_spec = &hw->dev_spec._82575;
+	s32 ret_val = E1000_SUCCESS;
 	u32 ctrl_ext = 0;
-	u32 current_link_mode = 0;
-	u16 init_ctrl_wd_3 = 0;
-	u8 init_ctrl_wd_3_offset = 0;
-	u8 init_ctrl_wd_3_bit_offset = 0;
+	u32 link_mode = 0;
 
 	/* Set internal phy as default */
 	dev_spec->sgmii_active = false;
 	dev_spec->module_plugged = false;
 
-	/*
-	 * Check if NVM access method is attached already.
-	 * If it is then Init Control Word #3 is considered
-	 * otherwise runtime CSR register content is taken.
-	 */
-
 	/* Get CSR setting */
 	ctrl_ext = E1000_READ_REG(hw, E1000_CTRL_EXT);
 
-	/* Get link mode setting */
-	if ((hw->nvm.ops.read) && (hw->nvm.ops.read != e1000_null_read_nvm)) {
-		/* Take link mode from EEPROM */
+	/* extract link mode setting */
+	link_mode = ctrl_ext & E1000_CTRL_EXT_LINK_MODE_MASK;
 
-		/*
-		 * Get LAN port ID to derive its
-		 * adequate Init Control Word #3
-		 */
-		lan_id = ((E1000_READ_REG(hw, E1000_STATUS) &
-		      E1000_STATUS_LAN_ID_MASK) >> E1000_STATUS_LAN_ID_OFFSET);
-		/*
-		 * Derive Init Control Word #3 offset
-		 * and mask to pick up link mode setting.
-		 */
-		if (hw->mac.type < e1000_82580) {
-			init_ctrl_wd_3_offset = lan_id ?
-			   NVM_INIT_CONTROL3_PORT_A : NVM_INIT_CONTROL3_PORT_B;
-			init_ctrl_wd_3_bit_offset = NVM_WORD24_LNK_MODE_OFFSET;
-		} else {
-			init_ctrl_wd_3_offset =
-					    NVM_82580_LAN_FUNC_OFFSET(lan_id) +
-					    NVM_INIT_CONTROL3_PORT_A;
-			init_ctrl_wd_3_bit_offset =
-					      NVM_WORD24_82580_LNK_MODE_OFFSET;
-		}
-		/* Read Init Control Word #3*/
-		hw->nvm.ops.read(hw, init_ctrl_wd_3_offset, 1, &init_ctrl_wd_3);
-
-		/*
-		 * Align link mode bits to
-		 * their CTRL_EXT location.
-		 */
-		current_link_mode = init_ctrl_wd_3;
-		current_link_mode <<= (E1000_CTRL_EXT_LINK_MODE_OFFSET -
-				       init_ctrl_wd_3_bit_offset);
-		current_link_mode &= E1000_CTRL_EXT_LINK_MODE_MASK;
-
-		/*
-		 * Switch to CSR for all but internal PHY.
-		 */
-		if (current_link_mode != E1000_CTRL_EXT_LINK_MODE_GMII)
-			/* Take link mode from CSR */
-			current_link_mode = ctrl_ext &
-					    E1000_CTRL_EXT_LINK_MODE_MASK;
-	} else {
-		/* Take link mode from CSR */
-		current_link_mode = ctrl_ext & E1000_CTRL_EXT_LINK_MODE_MASK;
-	}
-
-	switch (current_link_mode) {
-
+	switch (link_mode) {
 	case E1000_CTRL_EXT_LINK_MODE_1000BASE_KX:
 		hw->phy.media_type = e1000_media_type_internal_serdes;
-		current_link_mode = E1000_CTRL_EXT_LINK_MODE_1000BASE_KX;
 		break;
 	case E1000_CTRL_EXT_LINK_MODE_GMII:
 		hw->phy.media_type = e1000_media_type_copper;
-		current_link_mode = E1000_CTRL_EXT_LINK_MODE_GMII;
 		break;
 	case E1000_CTRL_EXT_LINK_MODE_SGMII:
-	case E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES:
 		/* Get phy control interface type set (MDIO vs. I2C)*/
 		if (e1000_sgmii_uses_mdio_82575(hw)) {
 			hw->phy.media_type = e1000_media_type_copper;
 			dev_spec->sgmii_active = true;
-			current_link_mode = E1000_CTRL_EXT_LINK_MODE_SGMII;
-		} else {
-			ret_val = e1000_set_sfp_media_type_82575(hw);
-			if (ret_val != E1000_SUCCESS)
-				goto out;
-			if (hw->phy.media_type ==
-				e1000_media_type_internal_serdes) {
-				/* Keep Link Mode as SGMII for 100BaseFX */
-				if (!dev_spec->eth_flags.e100_base_fx) {
-					current_link_mode =
-					 E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES;
-				}
-			} else if (hw->phy.media_type ==
-				e1000_media_type_copper) {
-				current_link_mode =
-					       E1000_CTRL_EXT_LINK_MODE_SGMII;
-			}
+			break;
 		}
-		break;
-	default:
-		DEBUGOUT("Link mode mask doesn't fit bit field size\n");
-		goto out;
-	}
-	/*
-	 * Do not change current link mode setting
-	 * if media type is fibre or has not been
-	 * recognized.
-	 */
-	if ((hw->phy.media_type != e1000_media_type_unknown) &&
-	    (hw->phy.media_type != e1000_media_type_fiber)) {
-		/* Update link mode */
-		ctrl_ext &= ~E1000_CTRL_EXT_LINK_MODE_MASK;
-		E1000_WRITE_REG(hw, E1000_CTRL_EXT, ctrl_ext |
-				current_link_mode);
-	}
-
-	ret_val = E1000_SUCCESS;
-out:
-	/*
-	 * If media type was not identified then return media type
-	 * defined by the CTRL_EXT settings.
-	 */
-	if (hw->phy.media_type == e1000_media_type_unknown) {
-		if (current_link_mode == E1000_CTRL_EXT_LINK_MODE_SGMII)
-			hw->phy.media_type = e1000_media_type_copper;
-		else
+		/* fall through for I2C based SGMII */
+	case E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES:
+		/* read media type from SFP EEPROM */
+		ret_val = e1000_set_sfp_media_type_82575(hw);
+		if ((ret_val != E1000_SUCCESS) ||
+		    (hw->phy.media_type == e1000_media_type_unknown)) {
+			/*
+			 * If media type was not identified then return media
+			 * type defined by the CTRL_EXT settings.
+			 */
 			hw->phy.media_type = e1000_media_type_internal_serdes;
+
+			if (link_mode == E1000_CTRL_EXT_LINK_MODE_SGMII) {
+				hw->phy.media_type = e1000_media_type_copper;
+				dev_spec->sgmii_active = true;
+			}
+
+			break;
+		}
+
+		/* do not change link mode for 100BaseFX */
+		if (dev_spec->eth_flags.e100_base_fx)
+			break;
+
+		/* change current link mode setting */
+		ctrl_ext &= ~E1000_CTRL_EXT_LINK_MODE_MASK;
+
+		if (hw->phy.media_type == e1000_media_type_copper)
+			ctrl_ext |= E1000_CTRL_EXT_LINK_MODE_SGMII;
+		else
+			ctrl_ext |= E1000_CTRL_EXT_LINK_MODE_PCIE_SERDES;
+
+		E1000_WRITE_REG(hw, E1000_CTRL_EXT, ctrl_ext);
+
+		break;
 	}
 
 	return ret_val;
@@ -1806,15 +1741,14 @@ static s32 e1000_set_sfp_media_type_82575(struct e1000_hw *hw)
 	}
 	if (ret_val != E1000_SUCCESS)
 		goto out;
+
 	ret_val = e1000_read_sfp_data_byte(hw,
 			E1000_I2CCMD_SFP_DATA_ADDR(E1000_SFF_ETH_FLAGS_OFFSET),
 			(u8 *)eth_flags);
 	if (ret_val != E1000_SUCCESS)
 		goto out;
-	/*
-	 * Check if there is some SFP
-	 * module plugged and powered
-	 */
+
+	/* Check if there is some SFP module plugged and powered */
 	if ((tranceiver_type == E1000_SFF_IDENTIFIER_SFP) ||
 	    (tranceiver_type == E1000_SFF_IDENTIFIER_SFF)) {
 		dev_spec->module_plugged = true;
@@ -1827,9 +1761,9 @@ static s32 e1000_set_sfp_media_type_82575(struct e1000_hw *hw)
 			dev_spec->sgmii_active = true;
 			hw->phy.media_type = e1000_media_type_copper;
 		} else {
-				hw->phy.media_type = e1000_media_type_unknown;
-				DEBUGOUT("PHY module has not been recognized\n");
-				goto out;
+			hw->phy.media_type = e1000_media_type_unknown;
+			DEBUGOUT("PHY module has not been recognized\n");
+			goto out;
 		}
 	} else {
 		hw->phy.media_type = e1000_media_type_unknown;
@@ -2196,42 +2130,32 @@ out:
  **/
 void e1000_vmdq_set_anti_spoofing_pf(struct e1000_hw *hw, bool enable, int pf)
 {
-	u32 dtxswc;
+	u32 reg_val, reg_offset;
 
 	switch (hw->mac.type) {
 	case e1000_82576:
-		dtxswc = E1000_READ_REG(hw, E1000_DTXSWC);
-		if (enable) {
-			dtxswc |= (E1000_DTXSWC_MAC_SPOOF_MASK |
-				   E1000_DTXSWC_VLAN_SPOOF_MASK);
-			/* The PF can spoof - it has to in order to
-			 * support emulation mode NICs */
-			dtxswc ^= (1 << pf | 1 << (pf +
-				   E1000_DTXSWC_VLAN_SPOOF_SHIFT));
-		} else {
-			dtxswc &= ~(E1000_DTXSWC_MAC_SPOOF_MASK |
-				    E1000_DTXSWC_VLAN_SPOOF_MASK);
-		}
-		E1000_WRITE_REG(hw, E1000_DTXSWC, dtxswc);
+		reg_offset = E1000_DTXSWC;
 		break;
 	case e1000_i350:
-		dtxswc = E1000_READ_REG(hw, E1000_TXSWC);
-		if (enable) {
-			dtxswc |= (E1000_DTXSWC_MAC_SPOOF_MASK |
-				   E1000_DTXSWC_VLAN_SPOOF_MASK);
-			/* The PF can spoof - it has to in order to
-			 * support emulation mode NICs
-			 */
-			dtxswc ^= (1 << pf | 1 << (pf +
-				   E1000_DTXSWC_VLAN_SPOOF_SHIFT));
-		} else {
-			dtxswc &= ~(E1000_DTXSWC_MAC_SPOOF_MASK |
-				    E1000_DTXSWC_VLAN_SPOOF_MASK);
-		}
-		E1000_WRITE_REG(hw, E1000_TXSWC, dtxswc);
-	default:
+		reg_offset = E1000_TXSWC;
 		break;
+	default:
+		return;
 	}
+
+	reg_val = E1000_READ_REG(hw, reg_offset);
+	if (enable) {
+		reg_val |= (E1000_DTXSWC_MAC_SPOOF_MASK |
+			     E1000_DTXSWC_VLAN_SPOOF_MASK);
+		/* The PF can spoof - it has to in order to
+		 * support emulation mode NICs
+		 */
+		reg_val ^= (1 << pf | 1 << (pf + MAX_NUM_VFS));
+	} else {
+		reg_val &= ~(E1000_DTXSWC_MAC_SPOOF_MASK |
+			     E1000_DTXSWC_VLAN_SPOOF_MASK);
+	}
+	E1000_WRITE_REG(hw, reg_offset, reg_val);
 }
 
 /**
@@ -2450,10 +2374,6 @@ static s32 e1000_reset_hw_82580(struct e1000_hw *hw)
 		 */
 		DEBUGOUT("Auto Read Done did not complete\n");
 	}
-
-	/* If EEPROM is not present, run manual init scripts */
-	if (!(E1000_READ_REG(hw, E1000_EECD) & E1000_EECD_PRES))
-		e1000_reset_init_script_82575(hw);
 
 	/* clear global device reset status bit */
 	E1000_WRITE_REG(hw, E1000_STATUS, E1000_STAT_DEV_RST_SET);
@@ -2706,6 +2626,45 @@ static s32 e1000_update_nvm_checksum_i350(struct e1000_hw *hw)
 
 out:
 	return ret_val;
+}
+
+/**
+ *  __e1000_access_emi_reg - Read/write EMI register
+ *  @hw: pointer to the HW structure
+ *  @addr: EMI address to program
+ *  @data: pointer to value to read/write from/to the EMI address
+ *  @read: boolean flag to indicate read or write
+ **/
+static s32 __e1000_access_emi_reg(struct e1000_hw *hw, u16 address,
+				  u16 *data, bool read)
+{
+	s32 ret_val = E1000_SUCCESS;
+
+	DEBUGFUNC("__e1000_access_emi_reg");
+
+	ret_val = hw->phy.ops.write_reg(hw, E1000_EMIADD, address);
+	if (ret_val)
+		return ret_val;
+
+	if (read)
+		ret_val = hw->phy.ops.read_reg(hw, E1000_EMIDATA, data);
+	else
+		ret_val = hw->phy.ops.write_reg(hw, E1000_EMIDATA, *data);
+
+	return ret_val;
+}
+
+/**
+ *  e1000_read_emi_reg - Read Extended Management Interface register
+ *  @hw: pointer to the HW structure
+ *  @addr: EMI address to program
+ *  @data: value to be read from the EMI address
+ **/
+s32 e1000_read_emi_reg(struct e1000_hw *hw, u16 addr, u16 *data)
+{
+	DEBUGFUNC("e1000_read_emi_reg");
+
+	return __e1000_access_emi_reg(hw, addr, data, true);
 }
 
 /**
@@ -3488,4 +3447,3 @@ s32 e1000_init_thermal_sensor_thresh_generic(struct e1000_hw *hw)
 	}
 	return status;
 }
-

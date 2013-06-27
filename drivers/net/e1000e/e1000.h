@@ -46,6 +46,9 @@
 #include <linux/ptp_classify.h>
 #endif
 #include <linux/mii.h>
+#ifdef ETHTOOL_GEEE
+#include <linux/mdio.h>
+#endif
 #include "hw.h"
 
 struct e1000_info;
@@ -79,14 +82,14 @@ struct e1000_info;
 #define E1000_MAX_RXD			4096
 #define E1000_MIN_RXD			64
 
-#define E1000_MIN_ITR_USECS		10	/* 100000 irq/sec */
-#define E1000_MAX_ITR_USECS		10000	/* 100    irq/sec */
+#define E1000_MIN_ITR_USECS		10 /* 100000 irq/sec */
+#define E1000_MAX_ITR_USECS		10000 /* 100    irq/sec */
 
-#define E1000_FC_PAUSE_TIME		0x0680	/* 858 usec */
+#define E1000_FC_PAUSE_TIME		0x0680 /* 858 usec */
 
 /* How many Tx Descriptors do we need to call netif_wake_queue ? */
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
-#define E1000_RX_BUFFER_WRITE		16	/* Must be power of 2 */
+#define E1000_RX_BUFFER_WRITE		16 /* Must be power of 2 */
 
 #define AUTO_ALL_MODES			0
 #define E1000_EEPROM_APME		0x0400
@@ -121,13 +124,13 @@ struct e1000_info;
 	 E1000_TXDCTL_COUNT_DESC |                             \
 	 (1 << 16) | /* wthresh must be +1 more than desired */\
 	 (1 << 8)  | /* hthresh */                             \
-	 0x1f)			/* pthresh */
+	 0x1f)       /* pthresh */
 
 #define E1000_RXDCTL_DMA_BURST_ENABLE                          \
 	(0x01000000 | /* set descriptor granularity */         \
 	 (4 << 16)  | /* set writeback threshold    */         \
 	 (4 << 8)   | /* set prefetch threshold     */         \
-	 0x20)			/* set hthresh                */
+	 0x20)        /* set hthresh                */
 
 #define E1000_TIDV_FPD (1 << 31)
 #define E1000_RDTR_FPD (1 << 31)
@@ -149,7 +152,7 @@ enum e1000_boards {
 
 struct e1000_ps_page {
 	struct page *page;
-	u64 dma;		/* must be u64 - written to hw */
+	u64 dma; /* must be u64 - written to hw */
 };
 
 /* wrappers around a pointer to a socket buffer,
@@ -179,10 +182,10 @@ struct e1000_buffer {
 
 struct e1000_ring {
 	struct e1000_adapter *adapter;	/* back pointer to adapter */
-	void *desc;		/* pointer to ring memory  */
-	dma_addr_t dma;		/* phys address of ring    */
-	unsigned int size;	/* length of ring in bytes */
-	unsigned int count;	/* number of desc. in ring */
+	void *desc;			/* pointer to ring memory  */
+	dma_addr_t dma;			/* phys address of ring    */
+	unsigned int size;		/* length of ring in bytes */
+	unsigned int count;		/* number of desc. in ring */
 
 	u16 next_to_use;
 	u16 next_to_clean;
@@ -287,9 +290,9 @@ struct e1000_adapter {
 	/* Rx */
 #ifdef CONFIG_E1000E_NAPI
 	bool (*clean_rx) (struct e1000_ring *ring, int *work_done,
-			  int work_to_do)____cacheline_aligned_in_smp;
+			  int work_to_do) ____cacheline_aligned_in_smp;
 #else
-	bool (*clean_rx) (struct e1000_ring *ring)____cacheline_aligned_in_smp;
+	bool (*clean_rx) (struct e1000_ring *ring) ____cacheline_aligned_in_smp;
 #endif
 	void (*alloc_rx_buf) (struct e1000_ring *ring, int cleaned_count,
 			      gfp_t gfp);
@@ -313,7 +316,7 @@ struct e1000_adapter {
 	unsigned int rx_ps_pages;
 	u16 rx_ps_bsize0;
 #ifndef CONFIG_E1000E_NAPI
-	u64 rx_dropped_backlog;	/* count drops from rx int handler */
+	u64 rx_dropped_backlog;		/* count drops from rx int handler */
 #endif
 	u32 max_frame_size;
 	u32 min_frame_size;
@@ -371,8 +374,7 @@ struct e1000_adapter {
 	struct work_struct print_hang_task;
 	u32 *config_space;
 
-	bool idle_check;
-	int node;		/* store the node to allocate memory on */
+	int node; /* store the node to allocate memory on */
 	int phy_hang_count;
 
 	u16 tx_ring_count;
@@ -397,12 +399,12 @@ struct e1000_adapter {
 };
 
 struct e1000_info {
-	enum e1000_mac_type mac;
-	unsigned int flags;
-	unsigned int flags2;
-	u32 pba;
-	u32 max_hw_frame_size;
-	 s32(*get_variants) (struct e1000_adapter *);
+	enum e1000_mac_type	mac;
+	unsigned int		flags;
+	unsigned int		flags2;
+	u32			pba;
+	u32			max_hw_frame_size;
+	s32			(*get_variants)(struct e1000_adapter *);
 	const struct e1000_mac_operations *mac_ops;
 	const struct e1000_phy_operations *phy_ops;
 	const struct e1000_nvm_operations *nvm_ops;
@@ -498,7 +500,6 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca);
 #define FLAG2_PCIM2PCI_ARBITER_WA         (1 << 11)
 #define FLAG2_DFLT_CRC_STRIPPING          (1 << 12)
 #define FLAG2_CHECK_RX_HWTSTAMP           (1 << 13)
-#define FLAG2_NEEDS_OBFF_WORKAROUND       (1 << 29)
 
 #define E1000_RX_DESC_PS(R, i)	    \
 	(&(((union e1000_rx_desc_packet_split *)((R).desc))[i]))
@@ -510,6 +511,7 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca);
 
 enum e1000_state_t {
 	__E1000_OBFF_DISABLED,
+	__E1000_SHUTDOWN,
 	__E1000_TESTING,
 	__E1000_RESETTING,
 	__E1000_ACCESS_SHARED_RESOURCE,
@@ -536,7 +538,7 @@ extern int ethtool_ioctl(struct ifreq *ifr);
 #endif
 
 extern int e1000e_up(struct e1000_adapter *adapter);
-extern void e1000e_down(struct e1000_adapter *adapter);
+extern void e1000e_down(struct e1000_adapter *adapter, bool reset);
 extern void e1000e_reinit_locked(struct e1000_adapter *adapter);
 extern void e1000e_reset(struct e1000_adapter *adapter);
 extern void e1000e_power_up_phy(struct e1000_adapter *adapter);
@@ -545,7 +547,8 @@ extern int e1000e_setup_tx_resources(struct e1000_ring *ring);
 extern void e1000e_free_rx_resources(struct e1000_ring *ring);
 extern void e1000e_free_tx_resources(struct e1000_ring *ring);
 #ifdef HAVE_NDO_GET_STATS64
-extern struct rtnl_link_stats64 *e1000e_get_stats64(struct net_device *netdev, struct rtnl_link_stats64
+extern struct rtnl_link_stats64 *e1000e_get_stats64(struct net_device *netdev,
+						    struct rtnl_link_stats64
 						    *stats);
 #else /* HAVE_NDO_GET_STATS64 */
 extern void e1000e_update_stats(struct e1000_adapter *adapter);

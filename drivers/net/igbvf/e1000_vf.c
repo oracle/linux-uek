@@ -198,7 +198,8 @@ static s32 e1000_init_hw_vf(struct e1000_hw *hw)
  *  @addr: pointer to the receive address
  *  @index receive address array register
  **/
-static void e1000_rar_set_vf(struct e1000_hw *hw, u8 * addr, u32 index)
+static void e1000_rar_set_vf(struct e1000_hw *hw, u8 *addr,
+			     u32 E1000_UNUSEDARG index)
 {
 	struct e1000_mbx_info *mbx = &hw->mbx;
 	u32 msgbuf[3];

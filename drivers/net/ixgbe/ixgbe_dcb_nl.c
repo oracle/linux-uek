@@ -634,7 +634,7 @@ static int ixgbe_dcbnl_ieee_setets(struct net_device *dev,
 		for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++)
 			adapter->ixgbe_ieee_ets->prio_tc[i] =
 				IEEE_8021QAZ_MAX_TCS;
-		/* if possible, update UP2TC mappings from HW */
+		/* if possible update UP2TC mappings from HW */
 		if (adapter->hw.mac.ops.get_rtrup2tc)
 			adapter->hw.mac.ops.get_rtrup2tc(&adapter->hw,
 					adapter->ixgbe_ieee_ets->prio_tc);

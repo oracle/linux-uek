@@ -114,8 +114,11 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 			}
 		}
 		/* clear value if nothing found */
-		if (status != 0)
+		if (status != 0) {
 			hw->phy.addr = 0;
+			ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE,
+				     "Could not identify valid PHY address");
+		}
 	} else {
 		status = 0;
 	}
@@ -246,7 +249,8 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 
 	if (ctrl & IXGBE_MDIO_PHY_XS_RESET) {
 		status = IXGBE_ERR_RESET_FAILED;
-		hw_dbg(hw, "PHY reset polling failed to complete.\n");
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			     "PHY reset polling failed to complete.\n");
 	}
 
 out:
@@ -300,7 +304,8 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		}
 
 		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-			hw_dbg(hw, "PHY address command did not complete.\n");
+			ERROR_REPORT1(IXGBE_ERROR_POLLING,
+				     "PHY address command did not complete.\n");
 			status = IXGBE_ERR_PHY;
 		}
 
@@ -331,7 +336,8 @@ s32 ixgbe_read_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			}
 
 			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-				hw_dbg(hw, "PHY read command didn't complete\n");
+				ERROR_REPORT1(IXGBE_ERROR_POLLING,
+					  "PHY read command didn't complete\n");
 				status = IXGBE_ERR_PHY;
 			} else {
 				/*
@@ -400,7 +406,8 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 		}
 
 		if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-			hw_dbg(hw, "PHY address cmd didn't complete\n");
+			ERROR_REPORT1(IXGBE_ERROR_POLLING,
+				     "PHY address cmd didn't complete\n");
 			status = IXGBE_ERR_PHY;
 		}
 
@@ -431,7 +438,8 @@ s32 ixgbe_write_phy_reg_generic(struct ixgbe_hw *hw, u32 reg_addr,
 			}
 
 			if ((command & IXGBE_MSCA_MDI_COMMAND) != 0) {
-				hw_dbg(hw, "PHY address cmd didn't complete\n");
+				ERROR_REPORT1(IXGBE_ERROR_POLLING,
+					     "PHY write cmd didn't complete\n");
 				status = IXGBE_ERR_PHY;
 			}
 		}
@@ -531,7 +539,8 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 
 	if (time_out == max_time_out) {
 		status = IXGBE_ERR_LINK_SETUP;
-		hw_dbg(hw, "ixgbe_setup_phy_link_generic: time out");
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			     "PHY autonegotiation time out");
 	}
 
 	return status;
@@ -1028,6 +1037,13 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 				else
 					hw->phy.sfp_type =
 						ixgbe_sfp_type_1g_sx_core1;
+			} else if (comp_codes_1g & IXGBE_SFF_1GBASELX_CAPABLE) {
+				if (hw->bus.lan_id == 0)
+					hw->phy.sfp_type =
+						ixgbe_sfp_type_1g_lx_core0;
+				else
+					hw->phy.sfp_type =
+						ixgbe_sfp_type_1g_lx_core1;
 			} else {
 				hw->phy.sfp_type = ixgbe_sfp_type_unknown;
 			}
@@ -1115,7 +1131,9 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 		if (comp_codes_10g == 0 &&
 		    !(hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1 ||
 		      hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
-		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core0  ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core0 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core1 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core0 ||
 		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core1)) {
 			hw->phy.type = ixgbe_phy_sfp_unsupported;
 			status = IXGBE_ERR_SFP_NOT_SUPPORTED;
@@ -1130,10 +1148,12 @@ s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw)
 
 		ixgbe_get_device_caps(hw, &enforce_sfp);
 		if (!(enforce_sfp & IXGBE_DEVICE_CAPS_ALLOW_ANY_SFP) &&
-		    !((hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0) ||
-		      (hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1) ||
-		      (hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core0)  ||
-		      (hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core1))) {
+		    !(hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_cu_core1 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core0 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_lx_core1 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core0 ||
+		      hw->phy.sfp_type == ixgbe_sfp_type_1g_sx_core1)) {
 			/* Make sure we're a supported PHY type */
 			if (hw->phy.type == ixgbe_phy_sfp_intel) {
 				status = 0;
@@ -1207,10 +1227,12 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 	 * SR modules
 	 */
 	if (sfp_type == ixgbe_sfp_type_da_act_lmt_core0 ||
+	    sfp_type == ixgbe_sfp_type_1g_lx_core0 ||
 	    sfp_type == ixgbe_sfp_type_1g_cu_core0 ||
 	    sfp_type == ixgbe_sfp_type_1g_sx_core0)
 		sfp_type = ixgbe_sfp_type_srlr_core0;
 	else if (sfp_type == ixgbe_sfp_type_da_act_lmt_core1 ||
+		 sfp_type == ixgbe_sfp_type_1g_lx_core1 ||
 		 sfp_type == ixgbe_sfp_type_1g_cu_core1 ||
 		 sfp_type == ixgbe_sfp_type_1g_sx_core1)
 		sfp_type = ixgbe_sfp_type_srlr_core1;
@@ -1600,7 +1622,8 @@ static s32 ixgbe_get_i2c_ack(struct ixgbe_hw *hw)
 	}
 
 	if (ack == 1) {
-		hw_dbg(hw, "I2C ack was not received.\n");
+		ERROR_REPORT1(IXGBE_ERROR_POLLING,
+			     "I2C ack was not received.\n");
 		status = IXGBE_ERR_I2C;
 	}
 
@@ -1666,7 +1689,8 @@ static s32 ixgbe_clock_out_i2c_bit(struct ixgbe_hw *hw, bool data)
 		udelay(IXGBE_I2C_T_LOW);
 	} else {
 		status = IXGBE_ERR_I2C;
-		hw_dbg(hw, "I2C data was not set to %X\n", data);
+		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
+			     "I2C data was not set to %X\n", data);
 	}
 
 	return status;
@@ -1744,7 +1768,9 @@ static s32 ixgbe_set_i2c_data(struct ixgbe_hw *hw, u32 *i2cctl, bool data)
 	*i2cctl = IXGBE_READ_REG(hw, IXGBE_I2CCTL);
 	if (data != ixgbe_get_i2c_data(i2cctl)) {
 		status = IXGBE_ERR_I2C;
-		hw_dbg(hw, "Error - I2C data was not set to %X.\n", data);
+		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
+			     "Error - I2C data was not set to %X.\n",
+			     data);
 	}
 
 	return status;
@@ -1825,6 +1851,7 @@ s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw)
 		goto out;
 
 	status = IXGBE_ERR_OVERTEMP;
+	ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE, "Device over temperature");
 out:
 	return status;
 }

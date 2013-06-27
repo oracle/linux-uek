@@ -50,7 +50,7 @@
 
 #define DRV_DEBUG ""
 
-#define DRV_VERSION "2.0.4" DRV_DEBUG
+#define DRV_VERSION "2.3.2" DRV_DEBUG
 char igbvf_driver_name[] = "igbvf";
 const char igbvf_driver_version[] = DRV_VERSION;
 
@@ -102,12 +102,12 @@ s32 e1000_read_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value)
 /**
  * igbvf_desc_unused - calculate if we have unused descriptors
  **/
-static int igbvf_desc_unused(struct igbvf_ring *ring)
+static inline int igbvf_desc_unused(struct igbvf_ring *ring)
 {
-	if (ring->next_to_clean > ring->next_to_use)
-		return ring->next_to_clean - ring->next_to_use - 1;
+	u16 ntc = ring->next_to_clean;
+	u16 ntu = ring->next_to_use;
 
-	return ring->count + ring->next_to_clean - ring->next_to_use - 1;
+	return ((ntc > ntu) ? 0 : ring->count) + ntc - ntu - 1;
 }
 
 /**
@@ -127,9 +127,9 @@ static void igbvf_receive_skb(struct igbvf_adapter *adapter,
 	if (status & E1000_RXD_STAT_VP) {
 		if ((adapter->flags & IGBVF_FLAG_RX_LB_VLAN_BSWAP) &&
 		    (status & E1000_RXDEXT_STATERR_LB))
-			vid = be16_to_cpu(vlan & E1000_RXD_SPC_VLAN_MASK);
+			vid = be16_to_cpu(vlan) & E1000_RXD_SPC_VLAN_MASK;
 		else
-			vid = le16_to_cpu(vlan & E1000_RXD_SPC_VLAN_MASK);
+			vid = le16_to_cpu(vlan) & E1000_RXD_SPC_VLAN_MASK;
 	}
 	/*
 	 * On some adapters, trunk VLANs are incorrectly indicated in the
@@ -370,7 +370,7 @@ static bool igbvf_clean_rx_irq(struct igbvf_adapter *adapter,
 
 			skb->len += length;
 			skb->data_len += length;
-			skb->truesize += length;
+			skb->truesize += PAGE_SIZE / 2;
 		}
 
 		if (!(staterr & E1000_RXD_STAT_EOP)) {
@@ -450,6 +450,7 @@ static void igbvf_put_txbuf(struct igbvf_adapter *adapter,
 	}
 	buffer_info->time_stamp = 0;
 }
+
 
 /**
  * igbvf_setup_tx_resources - allocate Tx resources (Descriptors)
@@ -835,12 +836,20 @@ static bool igbvf_clean_tx_irq(struct igbvf_ring *tx_ring)
 	unsigned int i, eop, count = 0;
 	bool cleaned = false;
 
+	if (test_bit(__IGBVF_DOWN, &adapter->state))
+		return true;
+
 	i = tx_ring->next_to_clean;
 	eop = tx_ring->buffer_info[i].next_to_watch;
 	eop_desc = IGBVF_TX_DESC_ADV(*tx_ring, eop);
 
 	while ((eop_desc->wb.status & cpu_to_le32(E1000_TXD_STAT_DD)) &&
 	       (count < tx_ring->count)) {
+		rmb(); /* read buffer_info after eop_desc */
+		/* eop could change between read and DD-check */
+		if (unlikely(eop != tx_ring->buffer_info[i].next_to_watch))
+			goto cont_loop;
+
 		for (cleaned = false; !cleaned; count++) {
 			tx_desc = IGBVF_TX_DESC_ADV(*tx_ring, i);
 			buffer_info = &tx_ring->buffer_info[i];
@@ -871,6 +880,7 @@ static bool igbvf_clean_tx_irq(struct igbvf_ring *tx_ring)
 			if (i == tx_ring->count)
 				i = 0;
 		}
+cont_loop:
 		eop = tx_ring->buffer_info[i].next_to_watch;
 		eop_desc = IGBVF_TX_DESC_ADV(*tx_ring, eop);
 	}
@@ -890,7 +900,6 @@ static bool igbvf_clean_tx_irq(struct igbvf_ring *tx_ring)
 			++adapter->restart_queue;
 		}
 	}
-
 	adapter->net_stats.tx_bytes += total_bytes;
 	adapter->net_stats.tx_packets += total_packets;
 	return (count < tx_ring->count);
@@ -1297,8 +1306,11 @@ static int igbvf_poll(struct napi_struct *napi, int budget)
 
 	return work_done;
 }
-
+#ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+static int igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
+#else
 static void igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
+#endif
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 #ifndef HAVE_NETDEV_VLAN_FEATURES
@@ -1318,9 +1330,16 @@ static void igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 	v_netdev->features |= adapter->netdev->features;
 	vlan_group_set_device(adapter->vlgrp, vid, v_netdev);
 #endif
+#ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+	return 0;
+#endif
 }
 
+#ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+static int igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
+#else
 static void igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
+#endif
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 
@@ -1333,6 +1352,9 @@ static void igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 #endif
 	e1000_vfta_set_vf(&adapter->hw, vid, FALSE);
 	clear_bit(vid, adapter->active_vlans);
+#ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+	return 0;
+#endif
 }
 
 #ifdef HAVE_VLAN_RX_REGISTER
@@ -1487,15 +1509,15 @@ static void igbvf_configure_rx(struct igbvf_adapter *adapter)
 }
 
 /**
- * igbvf_set_multi - Multicast and Promiscuous mode set
+ * igbvf_set_rx_mode - Multicast and Promiscuous mode set
  * @netdev: network interface device structure
  *
- * The set_multi entry point is called whenever the multicast address
+ * The set_rx_mode entry point is called whenever the multicast address
  * list or the network interface flags are updated.  This routine is
  * responsible for configuring the hardware for proper multicast,
  * promiscuous mode, and all-multi behavior.
  **/
-static void igbvf_set_multi(struct net_device *netdev)
+static void igbvf_set_rx_mode(struct net_device *netdev)
 {
 	struct igbvf_adapter *adapter = netdev_priv(netdev);
 	struct e1000_hw *hw = &adapter->hw;
@@ -1545,7 +1567,7 @@ static void igbvf_set_multi(struct net_device *netdev)
  **/
 static void igbvf_configure(struct igbvf_adapter *adapter)
 {
-	igbvf_set_multi(adapter->netdev);
+	igbvf_set_rx_mode(adapter->netdev);
 
 	igbvf_restore_vlan(adapter);
 
@@ -2211,6 +2233,7 @@ static inline int igbvf_tx_map_adv(struct igbvf_adapter *adapter,
 				   unsigned int first)
 {
 	struct igbvf_buffer *buffer_info;
+	struct pci_dev *pdev = adapter->pdev;
 	unsigned int len = skb_headlen(skb);
 	unsigned int count = 0, i;
 	unsigned int f;
@@ -2228,7 +2251,7 @@ static inline int igbvf_tx_map_adv(struct igbvf_adapter *adapter,
 			       len, DMA_TO_DEVICE);
 
 	for (f = 0; f < skb_shinfo(skb)->nr_frags; f++) {
-		struct skb_frag_struct *frag;
+		const struct skb_frag_struct *frag;
 
 		count++;
 		i++;
@@ -2236,17 +2259,13 @@ static inline int igbvf_tx_map_adv(struct igbvf_adapter *adapter,
 			i = 0;
 
 		frag = &skb_shinfo(skb)->frags[f];
-		len = frag->size;
+		len = skb_frag_size(frag);
 
 		buffer_info = &tx_ring->buffer_info[i];
 		BUG_ON(len >= IGBVF_MAX_DATA_PER_TXD);
 		buffer_info->length = len;
 		buffer_info->time_stamp = jiffies;
-		buffer_info->page_dma =
-			dma_map_page(pci_dev_to_dev(adapter->pdev),
-		                     frag->page,
-		                     frag->page_offset,
-		                     len,
+		buffer_info->dma = skb_frag_dma_map(&pdev->dev, frag, 0, len,
 		                     DMA_TO_DEVICE);
 	}
 
@@ -2723,13 +2742,28 @@ static void igbvf_print_device_info(struct igbvf_adapter *adapter)
 	       netdev->dev_addr[4], netdev->dev_addr[5]);
 }
 
+#ifdef HAVE_NDO_SET_FEATURES
+static int igbvf_set_features(struct net_device *netdev,
+			      netdev_features_t features)
+{
+       struct igbvf_adapter *adapter = netdev_priv(netdev);
+
+       if (features & NETIF_F_RXCSUM)
+               adapter->flags &= ~IGBVF_FLAG_RX_CSUM_DISABLED;
+       else
+               adapter->flags |= IGBVF_FLAG_RX_CSUM_DISABLED;
+
+       return 0;
+}
+#endif
+
 #ifdef HAVE_NET_DEVICE_OPS
 static const struct net_device_ops igbvf_netdev_ops = {
 	.ndo_open			= igbvf_open,
 	.ndo_stop			= igbvf_close,
 	.ndo_start_xmit			= igbvf_xmit_frame,
 	.ndo_get_stats			= igbvf_get_stats,
-	.ndo_set_multicast_list		= igbvf_set_multi,
+	.ndo_set_rx_mode		= igbvf_set_rx_mode,
 	.ndo_set_mac_address		= igbvf_set_mac,
 	.ndo_change_mtu			= igbvf_change_mtu,
 	.ndo_do_ioctl			= igbvf_ioctl,
@@ -2741,6 +2775,9 @@ static const struct net_device_ops igbvf_netdev_ops = {
 	.ndo_vlan_rx_kill_vid		= igbvf_vlan_rx_kill_vid,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller		= igbvf_netpoll,
+#endif
+#ifdef HAVE_NDO_SET_FEATURES
+	.ndo_set_features		= igbvf_set_features,
 #endif
 };
 
@@ -2852,7 +2889,10 @@ static int __devinit igbvf_probe(struct pci_dev *pdev,
 	netdev->stop			= &igbvf_close;
 	netdev->hard_start_xmit		= &igbvf_xmit_frame;
 	netdev->get_stats		= &igbvf_get_stats;
-	netdev->set_multicast_list	= &igbvf_set_multi;
+#ifdef HAVE_SET_RX_MODE
+	netdev->set_rx_mode		= &igbvf_set_rx_mode;
+#endif
+	netdev->set_multicast_list	= &igbvf_set_rx_mode;
 	netdev->set_mac_address		= &igbvf_set_mac;
 	netdev->change_mtu		= &igbvf_change_mtu;
 	netdev->do_ioctl		= &igbvf_ioctl;
@@ -2872,20 +2912,27 @@ static int __devinit igbvf_probe(struct pci_dev *pdev,
 
 	adapter->bd_number = cards_found++;
 
-	netdev->features = NETIF_F_SG |
-			   NETIF_F_IP_CSUM |
-			   NETIF_F_HW_VLAN_TX |
-			   NETIF_F_HW_VLAN_RX |
-			   NETIF_F_HW_VLAN_FILTER;
-
+	netdev->features |= NETIF_F_SG |
+			    NETIF_F_IP_CSUM |
 #ifdef NETIF_F_IPV6_CSUM
-	netdev->features |= NETIF_F_IPV6_CSUM;
+			    NETIF_F_IPV6_CSUM |
 #endif
 #ifdef NETIF_F_TSO
-	netdev->features |= NETIF_F_TSO;
+			    NETIF_F_TSO |
 #ifdef NETIF_F_TSO6
-	netdev->features |= NETIF_F_TSO6;
+			    NETIF_F_TSO6 |
 #endif
+#endif /* NETIF_F_TSO */
+#ifdef HAVE_NDO_SET_FEATURES
+			    NETIF_F_RXCSUM |
+#endif
+			    NETIF_F_HW_VLAN_RX |
+			    NETIF_F_HW_VLAN_TX |
+			    NETIF_F_HW_VLAN_FILTER;
+
+#ifdef HAVE_NDO_SET_FEATURES
+	/* copy netdev features into list of user selectable features */
+	netdev->hw_features |= netdev->features;
 #endif
 
 	if (pci_using_dac)
@@ -2902,30 +2949,24 @@ static int __devinit igbvf_probe(struct pci_dev *pdev,
 	/*reset the controller to put the device in a known good state */
 	err = hw->mac.ops.reset_hw(hw);
 	if (err) {
-		e_early_info("PF still in reset state\n");
-		random_ether_addr(hw->mac.addr);
+		dev_info(&pdev->dev,
+			 "PF still in reset state. Is the PF interface up?\n");
 	} else {
 		err = hw->mac.ops.read_mac_addr(hw);
-		if (err) {
-			e_early_err("Error reading MAC address\n");
-			goto err_hw_init;
-		}
+		if (err)
+			dev_info(&pdev->dev, "Error reading MAC address.\n");
+		else if (is_zero_ether_addr(adapter->hw.mac.addr))
+			dev_info(&pdev->dev,
+				 "MAC address not assigned by administrator.\n");
+		memcpy(netdev->dev_addr, adapter->hw.mac.addr,
+		       netdev->addr_len);
 	}
 
-	memcpy(netdev->dev_addr, adapter->hw.mac.addr, netdev->addr_len);
-#ifdef ETHTOOL_GPERMADDR
-	memcpy(netdev->perm_addr, adapter->hw.mac.addr, netdev->addr_len);
-
-	if (!is_valid_ether_addr(netdev->perm_addr)) {
-#else
 	if (!is_valid_ether_addr(netdev->dev_addr)) {
-#endif
-		e_err("Invalid MAC Address: %02x:%02x:%02x:%02x:%02x:%02x\n",
-		      netdev->dev_addr[0], netdev->dev_addr[1],
-		      netdev->dev_addr[2], netdev->dev_addr[3],
-		      netdev->dev_addr[4], netdev->dev_addr[5]);
-		err = -EIO;
-		goto err_hw_init;
+		dev_info(&pdev->dev, "Assigning random MAC address.\n");
+		eth_hw_addr_random(netdev);
+		memcpy(adapter->hw.mac.addr, netdev->dev_addr,
+			netdev->addr_len);
 	}
 
 	init_timer(&adapter->watchdog_timer);
