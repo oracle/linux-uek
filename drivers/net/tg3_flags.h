@@ -1,3 +1,4 @@
+#define BCM_HAS_DEVINIT
 #define BCM_HAS_BOOL
 #define BCM_HAS_LE32
 #define BCM_HAS_RESOURCE_SIZE_T
