@@ -549,11 +549,11 @@ struct iscsi_kwqe_header {
 struct iscsi_kwqe_init1 {
 #if defined(__BIG_ENDIAN)
 	struct iscsi_kwqe_header hdr;
-	u8 reserved0;
+	u8 hsi_version;
 	u8 num_cqs;
 #elif defined(__LITTLE_ENDIAN)
 	u8 num_cqs;
-	u8 reserved0;
+	u8 hsi_version;
 	struct iscsi_kwqe_header hdr;
 #endif
 	u32 dummy_buffer_addr_lo;
@@ -581,8 +581,10 @@ struct iscsi_kwqe_init1 {
 #define ISCSI_KWQE_INIT1_DELAYED_ACK_ENABLE_SHIFT 4
 #define ISCSI_KWQE_INIT1_KEEP_ALIVE_ENABLE (0x1<<5)
 #define ISCSI_KWQE_INIT1_KEEP_ALIVE_ENABLE_SHIFT 5
-#define ISCSI_KWQE_INIT1_RESERVED1 (0x3<<6)
-#define ISCSI_KWQE_INIT1_RESERVED1_SHIFT 6
+#define ISCSI_KWQE_INIT1_TIME_STAMPS_ENABLE (0x1<<6)
+#define ISCSI_KWQE_INIT1_TIME_STAMPS_ENABLE_SHIFT 6
+#define ISCSI_KWQE_INIT1_RESERVED1 (0x1<<7)
+#define ISCSI_KWQE_INIT1_RESERVED1_SHIFT 7
 	u16 cq_num_wqes;
 #elif defined(__LITTLE_ENDIAN)
 	u16 cq_num_wqes;
@@ -593,8 +595,10 @@ struct iscsi_kwqe_init1 {
 #define ISCSI_KWQE_INIT1_DELAYED_ACK_ENABLE_SHIFT 4
 #define ISCSI_KWQE_INIT1_KEEP_ALIVE_ENABLE (0x1<<5)
 #define ISCSI_KWQE_INIT1_KEEP_ALIVE_ENABLE_SHIFT 5
-#define ISCSI_KWQE_INIT1_RESERVED1 (0x3<<6)
-#define ISCSI_KWQE_INIT1_RESERVED1_SHIFT 6
+#define ISCSI_KWQE_INIT1_TIME_STAMPS_ENABLE (0x1<<6)
+#define ISCSI_KWQE_INIT1_TIME_STAMPS_ENABLE_SHIFT 6
+#define ISCSI_KWQE_INIT1_RESERVED1 (0x1<<7)
+#define ISCSI_KWQE_INIT1_RESERVED1_SHIFT 7
 	u8 cq_log_wqes_per_page;
 #endif
 #if defined(__BIG_ENDIAN)
