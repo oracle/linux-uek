@@ -11,8 +11,6 @@
  * Written by: Bhanu Prakash Gollapudi (bprakash@broadcom.com)
  */
 
-#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
-
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
@@ -40,6 +38,7 @@
 #include <linux/interrupt.h>
 #include <linux/sched.h>
 #include <linux/io.h>
+#include <linux/rtnetlink.h>
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_host.h>
@@ -47,24 +46,85 @@
 #include <scsi/scsi_cmnd.h>
 #include <scsi/scsi_eh.h>
 #include <scsi/scsi_tcq.h>
+
+#include <linux/version.h>
+
+#ifdef __BNX2FC_SLES11SP1__
+
+#include <scsi/libfc2.h>
+#include <scsi/libfcoe2.h>
+#include <scsi/fc_frame2.h>
+#include <scsi/fc_encode2.h>
+
+#define fc_disc_init fc_disc_init2
+#define fc_elsct_init fc_elsct_init2
+#define fc_exch_init fc_exch_init2
+#define fc_exch_mgr_alloc fc_exch_mgr_alloc2
+#define fc_exch_mgr_alloc fc_exch_mgr_alloc2
+#define fc_exch_mgr_free fc_exch_mgr_free2
+#define fc_exch_mgr_list_clone fc_exch_mgr_list_clone2
+#define fc_fabric_login fc_fabric_login2
+#define fc_fabric_login fc_fabric_login2
+#define fc_fabric_logoff fc_fabric_logoff2
+#define fc_get_host_stats fc_get_host_stats2
+#define fc_lport_config fc_lport_config2
+#define fc_lport_destroy fc_lport_destroy2
+#define fc_lport_logo_resp fc_lport_logo_resp2
+#define fc_lport_init fc_lport_init2
+#define fc_lport_reset fc_lport_reset2
+#define fcoe_ctlr_destroy fcoe_ctlr_destroy2
+#define fcoe_ctlr_els_send fcoe_ctlr_els_send2
+#define fcoe_ctlr_init fcoe_ctlr_init2
+#define fcoe_ctlr_link_down fcoe_ctlr_link_down2
+#define fcoe_ctlr_link_up fcoe_ctlr_link_up2
+#define fcoe_ctlr_recv fcoe_ctlr_recv2
+#define fcoe_ctlr_recv_flogi fcoe_ctlr_recv_flogi2
+#define fc_rport_init fc_rport_init2
+#define fc_set_mfs fc_set_mfs2
+#define fc_vport_id_lookup fc_vport_id_lookup2
+#define fc_vport_setlink fc_vport_setlink2
+#define libfc_function_template libfc_function_template2
+#define libfc_vport_create libfc_vport_create2
+#define fc_exch_recv fc_exch_recv2
+#define fcoe_wwn_from_mac fcoe_wwn_from_mac2
+#define fc_get_host_speed fc_get_host_speed2
+#define fc_get_host_port_state fc_get_host_port_state2
+#define fc_set_rport_loss_tmo fc_set_rport_loss_tmo2
+#define fc_rport_terminate_io fc_rport_terminate_io2
+#define fc_eh_host_reset fc_eh_host_reset2
+#define fc_slave_alloc fc_slave_alloc2
+#define fc_change_queue_depth fc_change_queue_depth2
+#define fc_change_queue_type fc_change_queue_type2
+#define fc_lport_flogi_resp fc_lport_flogi_resp2
+#define fc_lport_bsg_request fc_lport_bsg_request2
+#define fc_elsct_send fc_elsct_send2
+
+
+
+#else
+
 #include <scsi/libfc.h>
 #include <scsi/libfcoe.h>
+#include <scsi/fc_frame.h>
 #include <scsi/fc_encode.h>
+
+#endif
+
 #include <scsi/scsi_transport.h>
 #include <scsi/scsi_transport_fc.h>
 #include <scsi/fc/fc_fip.h>
 #include <scsi/fc/fc_fc2.h>
-#include <scsi/fc_frame.h>
 #include <scsi/fc/fc_fcoe.h>
 #include <scsi/fc/fc_fcp.h>
 
+#include "../../net/ethernet/broadcom/bnx2x/bnx2x_mfw_req.h"
 #include "57xx_hsi_bnx2fc.h"
+#include "bnx2fc_debug.h"
 #include "../../net/ethernet/broadcom/cnic_if.h"
-#include  "../../net/ethernet/broadcom/bnx2x/bnx2x_mfw_req.h"
 #include "bnx2fc_constants.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"1.0.12"
+#define BNX2FC_VERSION		"2.3.4"
 
 #define PFX			"bnx2fc: "
 
@@ -127,9 +187,8 @@
 #define BNX2FC_MIN_XID			0
 #define BNX2FC_MAX_XID			\
 			(BNX2FC_MAX_OUTSTANDING_CMNDS + BNX2FC_ELSTM_XIDS - 1)
-#define FCOE_MAX_NUM_XIDS		0x2000
 #define FCOE_MIN_XID			(BNX2FC_MAX_XID + 1)
-#define FCOE_MAX_XID			(FCOE_MIN_XID + FCOE_MAX_NUM_XIDS - 1)
+#define FCOE_MAX_XID			(FCOE_MIN_XID + 8191)
 #define FCOE_XIDS_PER_CPU		(FCOE_MIN_XID + (512 * nr_cpu_ids) - 1)
 #define BNX2FC_MAX_LUN			0xFFFF
 #define BNX2FC_MAX_FCP_TGT		256
@@ -153,8 +212,25 @@
 #define REC_RETRY_COUNT			1
 #define BNX2FC_NUM_ERR_BITS		63
 
+#ifndef USHORT_MAX
+#define USHORT_MAX USHRT_MAX
+#endif
+
 #define BNX2FC_RELOGIN_WAIT_TIME	200
 #define BNX2FC_RELOGIN_WAIT_CNT		10
+
+#define BNX2FC_STATS(hba, stat, cnt)					\
+	do {								\
+		u32 val;						\
+									\
+		val = fw_stats->stat.cnt;				\
+		if (hba->prev_stats.stat.cnt <= val)			\
+			val -= hba->prev_stats.stat.cnt;		\
+		else							\
+			val += (0xfffffff - hba->prev_stats.stat.cnt);	\
+		hba->bfw_stats.cnt += val;				\
+	} while (0);
+
 
 /* bnx2fc driver uses only one instance of fcoe_percpu_s */
 extern struct fcoe_percpu_s bnx2fc_global;
@@ -165,6 +241,19 @@ struct bnx2fc_percpu_s {
 	struct task_struct *iothread;
 	struct list_head work_list;
 	spinlock_t fp_work_lock;
+};
+
+struct bnx2fc_hba_dbg_stats {
+	u32 num_tgt_offload_failed;
+	u32 num_tgt_enable_failed;
+};
+
+struct bnx2fc_fw_stats {
+	u64	fc_crc_cnt;
+	u64	fcoe_tx_pkt_cnt;
+	u64	fcoe_rx_pkt_cnt;
+	u64	fcoe_tx_byte_cnt;
+	u64	fcoe_rx_byte_cnt;
 };
 
 struct bnx2fc_hba {
@@ -207,6 +296,8 @@ struct bnx2fc_hba {
 	struct bnx2fc_rport **tgt_ofld_list;
 
 	/* statistics */
+	struct bnx2fc_fw_stats bfw_stats;
+	struct fcoe_statistics_params prev_stats;
 	struct fcoe_statistics_params *stats_buffer;
 	dma_addr_t stats_buf_dma;
 	struct completion stat_req_done;
@@ -221,6 +312,9 @@ struct bnx2fc_hba {
 	int wait_for_link_down;
 	int num_ofld_sess;
 	struct list_head vports;
+
+	struct list_head bnx2fc_stat_list;
+	struct bnx2fc_hba_dbg_stats stats;
 };
 
 struct bnx2fc_interface {
@@ -229,20 +323,19 @@ struct bnx2fc_interface {
 		#define BNX2FC_CTLR_INIT_DONE		0
 	struct bnx2fc_hba *hba;
 	struct net_device *netdev;
+	struct net_device *v_netdev;
 	struct packet_type fcoe_packet_type;
 	struct packet_type fip_packet_type;
 	struct workqueue_struct *timer_work_queue;
 	struct kref kref;
+	struct fcoe_ctlr ctlr;
+	u8 dest_addr[ETH_ALEN];
 	u8 vlan_enabled;
 	int vlan_id;
 	bool enabled;
 };
 
-#define bnx2fc_from_ctlr(x)			\
-	((struct bnx2fc_interface *)((x) + 1))
-
-#define bnx2fc_to_ctlr(x)					\
-	((struct fcoe_ctlr *)(((struct fcoe_ctlr *)(x)) - 1))
+#define bnx2fc_from_ctlr(fip) container_of(fip, struct bnx2fc_interface, ctlr)
 
 struct bnx2fc_lport {
 	struct list_head list;
@@ -256,6 +349,34 @@ struct bnx2fc_cmd_mgr {
 	spinlock_t *free_list_lock;
 	struct io_bdt **io_bdt_pool;
 	struct bnx2fc_cmd **cmds;
+};
+
+struct bnx2fc_tgt_dbg_stats {
+	struct list_head list;
+	u32 port_id;
+	u32 num_cmd_timeouts;
+	u32 num_eh_abort_timeouts;
+	u32 num_abts_timeouts;
+	u32 num_explicit_logos;
+	u32 num_io_compl_before_abts;
+	u32 num_els_abts_timeouts;
+	u32 num_els_timeouts;
+	u32 num_rrq_issued;
+	u32 num_cleanup_issued;
+	u32 num_cleanup_compl;
+	u32 num_rec_issued;
+	u32 num_rec_compl;
+	u32 num_srr_issued;
+	u32 num_srr_compl;
+	u32 num_seq_cleanup_issued;
+	u32 num_seq_cleanup_compl;
+	u32 num_cmd_lost;
+	u32 num_rsp_lost;
+	u32 num_data_lost;
+	u32 num_xfer_rdy_lost;
+	u32 num_pending_ios_after_flush;
+	u32 num_unsol_requests;
+	u32 num_adisc_issued;
 };
 
 struct bnx2fc_rport {
@@ -280,6 +401,7 @@ struct bnx2fc_rport {
 #define BNX2FC_FLAG_UPLD_REQ_COMPL	0x7
 #define BNX2FC_FLAG_EXPL_LOGO		0x8
 #define BNX2FC_FLAG_DISABLE_FAILED	0x9
+#define BNX2FC_FLAG_ENABLED		0xa
 
 	u8 src_addr[ETH_ALEN];
 	u32 max_sqes;
@@ -354,6 +476,9 @@ struct bnx2fc_rport {
 
 	struct timer_list upld_timer;
 	wait_queue_head_t upld_wait;
+
+
+	struct bnx2fc_tgt_dbg_stats stats;
 };
 
 struct bnx2fc_mp_req {
@@ -463,10 +588,18 @@ struct bnx2fc_unsol_els {
 struct bnx2fc_cmd *bnx2fc_cmd_alloc(struct bnx2fc_rport *tgt);
 struct bnx2fc_cmd *bnx2fc_elstm_alloc(struct bnx2fc_rport *tgt, int type);
 void bnx2fc_cmd_release(struct kref *ref);
+#if (LINUX_VERSION_CODE >= 0x20626)
 int bnx2fc_queuecommand(struct Scsi_Host *host, struct scsi_cmnd *sc_cmd);
+#else
+int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
+				void (*done)(struct scsi_cmnd *));
+#endif
+
 int bnx2fc_send_fw_fcoe_init_msg(struct bnx2fc_hba *hba);
 int bnx2fc_send_fw_fcoe_destroy_msg(struct bnx2fc_hba *hba);
 int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
+					struct bnx2fc_rport *tgt);
+int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 					struct bnx2fc_rport *tgt);
 int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 				    struct bnx2fc_rport *tgt);
@@ -561,6 +694,13 @@ int bnx2fc_initiate_seq_cleanup(struct bnx2fc_cmd *orig_io_req, u32 offset,
 				enum fc_rctl r_ctl);
 
 
-#include "bnx2fc_debug.h"
+
+void bnx2fc_debugfs_init(void);
+void bnx2fc_debugfs_remove(void);
+void bnx2fc_debugfs_sync_stat(struct bnx2fc_hba *hba, struct bnx2fc_rport *tgt);
+extern struct list_head adapter_list;
+extern u32 adapter_count;
+extern struct mutex bnx2fc_dev_lock;
+
 
 #endif

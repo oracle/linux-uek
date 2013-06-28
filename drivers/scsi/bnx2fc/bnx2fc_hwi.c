@@ -167,7 +167,6 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 {
 	struct fc_lport *lport = port->lport;
 	struct bnx2fc_interface *interface = port->priv;
-	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
 	struct bnx2fc_hba *hba = interface->hba;
 	struct kwqe *kwqe_arr[4];
 	struct fcoe_kwqe_conn_offload1 ofld_req1;
@@ -285,6 +284,7 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	 * recovery support
 	 */
 	if (tgt->dev_type == TYPE_TAPE) {
+		printk(KERN_ERR PFX "Enable CONF, REC in offload\n");
 		ofld_req3.flags |= 1 <<
 				    FCOE_KWQE_CONN_OFFLOAD3_B_CONF_REQ_SHIFT;
 		ofld_req3.flags |= (((rdata->flags & FC_RP_FLAGS_REC_SUPPORTED)
@@ -296,7 +296,7 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req3.flags |= (interface->vlan_enabled <<
 			    FCOE_KWQE_CONN_OFFLOAD3_B_VLAN_FLAG_SHIFT);
 
-	/* C2_VALID and ACK flags are not set as they are not supported */
+	/* C2_VALID and ACK flags are not set as they are not suppported */
 
 
 	/* Initialize offload request 4 structure */
@@ -315,13 +315,13 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req4.src_mac_addr_mid[1] =  port->data_src_addr[2];
 	ofld_req4.src_mac_addr_hi[0] =  port->data_src_addr[1];
 	ofld_req4.src_mac_addr_hi[1] =  port->data_src_addr[0];
-	ofld_req4.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
+	ofld_req4.dst_mac_addr_lo[0] =  interface->dest_addr[5];
 							/* fcf mac */
-	ofld_req4.dst_mac_addr_lo[1] = ctlr->dest_addr[4];
-	ofld_req4.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
-	ofld_req4.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
-	ofld_req4.dst_mac_addr_hi[0] = ctlr->dest_addr[1];
-	ofld_req4.dst_mac_addr_hi[1] = ctlr->dest_addr[0];
+	ofld_req4.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	ofld_req4.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	ofld_req4.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	ofld_req4.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	ofld_req4.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	ofld_req4.lcq_addr_lo = (u32) tgt->lcq_dma;
 	ofld_req4.lcq_addr_hi = (u32)((u64) tgt->lcq_dma >> 32);
@@ -347,12 +347,11 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
  * @port:		port structure pointer
  * @tgt:		bnx2fc_rport structure pointer
  */
-static int bnx2fc_send_session_enable_req(struct fcoe_port *port,
+int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 					struct bnx2fc_rport *tgt)
 {
 	struct kwqe *kwqe_arr[2];
 	struct bnx2fc_interface *interface = port->priv;
-	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
 	struct bnx2fc_hba *hba = interface->hba;
 	struct fcoe_kwqe_conn_enable_disable enbl_req;
 	struct fc_lport *lport = port->lport;
@@ -376,12 +375,12 @@ static int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 	enbl_req.src_mac_addr_hi[1] =  port->data_src_addr[0];
 	memcpy(tgt->src_addr, port->data_src_addr, ETH_ALEN);
 
-	enbl_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
-	enbl_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
-	enbl_req.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
-	enbl_req.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
-	enbl_req.dst_mac_addr_hi[0] = ctlr->dest_addr[1];
-	enbl_req.dst_mac_addr_hi[1] = ctlr->dest_addr[0];
+	enbl_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
+	enbl_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	enbl_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	enbl_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	enbl_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	enbl_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	port_id = fc_host_port_id(lport->host);
 	if (port_id != tgt->sid) {
@@ -421,7 +420,6 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 				    struct bnx2fc_rport *tgt)
 {
 	struct bnx2fc_interface *interface = port->priv;
-	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
 	struct bnx2fc_hba *hba = interface->hba;
 	struct fcoe_kwqe_conn_enable_disable disable_req;
 	struct kwqe *kwqe_arr[2];
@@ -443,12 +441,31 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 	disable_req.src_mac_addr_hi[0] =  tgt->src_addr[1];
 	disable_req.src_mac_addr_hi[1] =  tgt->src_addr[0];
 
-	disable_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
-	disable_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
-	disable_req.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
-	disable_req.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
-	disable_req.dst_mac_addr_hi[0] = ctlr->dest_addr[1];
-	disable_req.dst_mac_addr_hi[1] = ctlr->dest_addr[0];
+	if (compare_ether_addr(port->data_src_addr, tgt->src_addr) != 0) {
+		BNX2FC_TGT_DBG(tgt, "using saved src_addr for FW disable\n");
+		BNX2FC_TGT_DBG(tgt, "port_src - %2x:%2x:%2x:%2x:%2x:%2x",
+				   port->data_src_addr[0],
+				   port->data_src_addr[1],
+				   port->data_src_addr[2],
+				   port->data_src_addr[3],
+				   port->data_src_addr[4],
+				   port->data_src_addr[5]);
+		BNX2FC_TGT_DBG(tgt, "src - %2x:%2x:%2x:%2x:%2x:%2x",
+				   tgt->src_addr[0],
+				   tgt->src_addr[1],
+				   tgt->src_addr[2],
+				   tgt->src_addr[3],
+				   tgt->src_addr[4],
+				   tgt->src_addr[5]);
+	}
+
+
+	disable_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
+	disable_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
+	disable_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
+	disable_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
+	disable_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
+	disable_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
 
 	port_id = tgt->sid;
 	disable_req.s_id[0] = (port_id & 0x000000FF);
@@ -554,6 +571,7 @@ void bnx2fc_process_l2_frame_compl(struct bnx2fc_rport *tgt,
 	u32 crc;
 	u8 op;
 
+	tgt->stats.num_unsol_requests++;
 
 	unsol_els = kzalloc(sizeof(*unsol_els), GFP_ATOMIC);
 	if (!unsol_els) {
@@ -793,7 +811,8 @@ skip_rec:
 			printk(KERN_ERR PFX "err_warn: initiate_abts "
 				"failed xid = 0x%x. issue cleanup\n",
 				io_req->xid);
-			bnx2fc_initiate_cleanup(io_req);
+			rc = bnx2fc_initiate_cleanup(io_req);
+			BUG_ON(rc);
 		}
 ret_err_rqe:
 		bnx2fc_return_rqe(tgt, 1);
@@ -922,6 +941,8 @@ void bnx2fc_process_cq_compl(struct bnx2fc_rport *tgt, u16 wqe)
 			return;
 		}
 
+		BNX2FC_IO_DBG(io_req, "complete - rx_state = %d\n", rx_state);
+
 		if (rx_state == FCOE_TASK_RX_STATE_ABTS_COMPLETED)
 			bnx2fc_process_abts_compl(io_req, task, num_rq);
 		else if (rx_state ==
@@ -948,6 +969,7 @@ void bnx2fc_process_cq_compl(struct bnx2fc_rport *tgt, u16 wqe)
 		break;
 
 	case BNX2FC_ELS:
+		BNX2FC_IO_DBG(io_req, "cq_compl - call process_els_compl\n");
 		if (rx_state == FCOE_TASK_RX_STATE_COMPLETED)
 			bnx2fc_process_els_compl(io_req, task, num_rq);
 		else if (rx_state == FCOE_TASK_RX_STATE_ABTS_COMPLETED)
@@ -1079,8 +1101,12 @@ unlock:
 		/* Arm CQ only if doorbell is mapped */
 		if (tgt->ctx_base)
 			bnx2fc_arm_cq(tgt);
+		else
+			BUG_ON(1);
 		atomic_add(num_free_sqes, &tgt->free_sqes);
-	}
+	} else
+		/* REVISIT: for initial debugging. remove it later */
+		printk(KERN_ERR "cq_loop: no CQEs in this loop\n");
 	spin_unlock_bh(&tgt->cq_lock);
 	return 0;
 }
@@ -1124,21 +1150,22 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 	struct bnx2fc_interface		*interface;
 	u32				conn_id;
 	u32				context_id;
-	int				rc;
 
 	conn_id = ofld_kcqe->fcoe_conn_id;
 	context_id = ofld_kcqe->fcoe_conn_context_id;
 	tgt = hba->tgt_ofld_list[conn_id];
 	if (!tgt) {
-		printk(KERN_ALERT PFX "ERROR:ofld_cmpl: No pending ofld req\n");
+		printk(KERN_ERR PFX "ERROR:ofld_cmpl: No pending ofld req\n");
 		return;
 	}
 	BNX2FC_TGT_DBG(tgt, "Entered ofld compl - context_id = 0x%x\n",
 		ofld_kcqe->fcoe_conn_context_id);
+
 	port = tgt->port;
 	interface = tgt->port->priv;
 	if (hba != interface->hba) {
 		printk(KERN_ERR PFX "ERROR:ofld_cmpl: HBA mis-match\n");
+		hba->stats.num_tgt_offload_failed++;
 		goto ofld_cmpl_err;
 	}
 	/*
@@ -1152,18 +1179,13 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 			printk(KERN_ERR PFX "unable to allocate FCoE context "
 				"resources\n");
 			set_bit(BNX2FC_FLAG_CTX_ALLOC_FAILURE, &tgt->flags);
+			hba->stats.num_tgt_offload_failed++;
 		}
-		goto ofld_cmpl_err;
 	} else {
-
-		/* now enable the session */
-		rc = bnx2fc_send_session_enable_req(port, tgt);
-		if (rc) {
-			printk(KERN_ERR PFX "enable session failed\n");
-			goto ofld_cmpl_err;
-		}
+		/* FW offload request successfully completed */
+		set_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
 	}
-	return;
+
 ofld_cmpl_err:
 	set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
 	wake_up_interruptible(&tgt->ofld_wait);
@@ -1210,15 +1232,9 @@ static void bnx2fc_process_enable_conn_cmpl(struct bnx2fc_hba *hba,
 		printk(KERN_ERR PFX "bnx2fc-enbl_cmpl: HBA mis-match\n");
 		goto enbl_cmpl_err;
 	}
-	if (ofld_kcqe->completion_status)
-		goto enbl_cmpl_err;
-	else {
+	if (!ofld_kcqe->completion_status)
 		/* enable successful - rport ready for issuing IOs */
-		set_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
-		set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
-		wake_up_interruptible(&tgt->ofld_wait);
-	}
-	return;
+		set_bit(BNX2FC_FLAG_ENABLED, &tgt->flags);
 
 enbl_cmpl_err:
 	set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
@@ -1235,7 +1251,8 @@ static void bnx2fc_process_conn_disable_cmpl(struct bnx2fc_hba *hba,
 	conn_id = disable_kcqe->fcoe_conn_id;
 	tgt = hba->tgt_ofld_list[conn_id];
 	if (!tgt) {
-		printk(KERN_ERR PFX "ERROR: disable_cmpl: No disable req\n");
+		printk(KERN_ERR PFX "ERROR:disable_cmpl:conn_id %d not found\n",
+		       conn_id);
 		return;
 	}
 
@@ -1251,6 +1268,7 @@ static void bnx2fc_process_conn_disable_cmpl(struct bnx2fc_hba *hba,
 		/* disable successful */
 		BNX2FC_TGT_DBG(tgt, "disable successful\n");
 		clear_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
+		clear_bit(BNX2FC_FLAG_ENABLED, &tgt->flags);
 		set_bit(BNX2FC_FLAG_DISABLED, &tgt->flags);
 		set_bit(BNX2FC_FLAG_UPLD_REQ_COMPL, &tgt->flags);
 		wake_up_interruptible(&tgt->upld_wait);
@@ -1323,7 +1341,7 @@ static void bnx2fc_init_failure(struct bnx2fc_hba *hba, u32 err_code)
 void bnx2fc_indicate_kcqe(void *context, struct kcqe *kcq[],
 					u32 num_cqe)
 {
-	struct bnx2fc_hba *hba = (struct bnx2fc_hba *)context;
+	struct bnx2fc_hba *hba = context;
 	int i = 0;
 	struct fcoe_kcqe *kcqe = NULL;
 
@@ -1420,7 +1438,6 @@ void bnx2fc_ring_doorbell(struct bnx2fc_rport *tgt)
 	msg = *((u32 *)sq_db);
 	writel(cpu_to_le32(msg), tgt->ctx_base);
 	mmiowb();
-
 }
 
 int bnx2fc_map_doorbell(struct bnx2fc_rport *tgt)
@@ -1634,6 +1651,8 @@ void bnx2fc_init_mp_task(struct bnx2fc_cmd *io_req,
 		task->txwr_only.sgl_ctx.sgl.mul_sgl.cur_sge_addr.hi =
 				(u32)((u64)mp_req->mp_req_bd_dma >> 32);
 		task->txwr_only.sgl_ctx.sgl.mul_sgl.sgl_size = 1;
+		BNX2FC_IO_DBG(io_req, "init_mp_task - bd_dma = 0x%llx\n",
+			      (unsigned long long)mp_req->mp_req_bd_dma);
 	}
 
 	/* Tx Write Rx Read */
@@ -1654,6 +1673,9 @@ void bnx2fc_init_mp_task(struct bnx2fc_cmd *io_req,
 	/* tx flags */
 	task->txwr_rxrd.const_ctx.tx_flags = FCOE_TASK_TX_STATE_INIT <<
 				FCOE_TCE_TX_WR_RX_RD_CONST_TX_STATE_SHIFT;
+
+	task->txwr_rxrd.const_ctx.verify_tx_seq = 0;
+
 
 	/* Rx Write Tx Read */
 	task->rxwr_txrd.const_ctx.data_2_trns = io_req->data_xfer_len;
@@ -1757,7 +1779,7 @@ void bnx2fc_init_task(struct bnx2fc_cmd *io_req,
 				FCOE_TASK_DEV_TYPE_TAPE <<
 				FCOE_TCE_TX_WR_RX_RD_CONST_DEV_TYPE_SHIFT;
 		io_req->rec_retry = 0;
-		io_req->rec_retry = 0;
+		io_req->srr_retry = 0;
 	} else
 		task->txwr_rxrd.const_ctx.init_flags |=
 				FCOE_TASK_DEV_TYPE_DISK <<
@@ -1767,6 +1789,8 @@ void bnx2fc_init_task(struct bnx2fc_cmd *io_req,
 	/* tx flags */
 	task->txwr_rxrd.const_ctx.tx_flags = FCOE_TASK_TX_STATE_NORMAL <<
 				FCOE_TCE_TX_WR_RX_RD_CONST_TX_STATE_SHIFT;
+
+	task->txwr_rxrd.const_ctx.verify_tx_seq = 0;
 
 	/* Set initial seq counter */
 	task->txwr_rxrd.union_ctx.tx_seq.ctx.seq_cnt = 1;
@@ -2046,9 +2070,9 @@ static int bnx2fc_allocate_hash_table(struct bnx2fc_hba *hba)
 			printk(KERN_ERR PFX "hash segment alloc failed\n");
 			while (--i >= 0) {
 				dma_free_coherent(&hba->pcidev->dev,
-						    BNX2FC_HASH_TBL_CHUNK_SIZE,
-						    hba->hash_tbl_segments[i],
-						    dma_segment_array[i]);
+						  BNX2FC_HASH_TBL_CHUNK_SIZE,
+						  hba->hash_tbl_segments[i],
+						  dma_segment_array[i]);
 				hba->hash_tbl_segments[i] = NULL;
 			}
 			kfree(dma_segment_array);
