@@ -2,7 +2,7 @@
  *               Static functions needed during the initialization.
  *               This file is "included" in bnx2x_main.c.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -39,6 +39,8 @@
 #ifndef ILOG2
 #define ILOG2(x)	x
 #endif
+
+
 
 static int bnx2x_gunzip(struct bnx2x *bp, const u8 *zbuf, int len);
 static void bnx2x_reg_wr_ind(struct bnx2x *bp, u32 addr, u32 val);
@@ -218,7 +220,7 @@ static void bnx2x_init_wr_zp(struct bnx2x *bp, u32 addr, u32 len,
 	/* gunzip_outlen is in dwords */
 	len = GUNZIP_OUTLEN(bp);
 	for (i = 0; i < len; i++)
-		((u32 *)GUNZIP_BUF(bp))[i] =
+		((u32 *)GUNZIP_BUF(bp))[i] = (__force u32)
 				cpu_to_le32(((u32 *)GUNZIP_BUF(bp))[i]);
 
 	bnx2x_write_big_buf_wb(bp, addr, len);
@@ -798,7 +800,7 @@ static void bnx2x_ilt_init_op_cnic(struct bnx2x *bp, u8 initop)
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_TM, initop);
 }
 
-static void bnx2x_ilt_init_op(struct bnx2x *bp, u8 initop)
+static void bnx2x_ilt_init_op_no_cnic(struct bnx2x *bp, u8 initop)
 {
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_CDU, initop);
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_QM, initop);
@@ -877,7 +879,8 @@ static void bnx2x_qm_set_ptr_table(struct bnx2x *bp, int qm_cid_count,
 	for (i = 0; i < 4 * QM_QUEUES_PER_FUNC; i++) {
 		REG_WR(bp, base_reg + i*4,
 		       qm_cid_count * 4 * (i % QM_QUEUES_PER_FUNC));
-		bnx2x_init_wr_wb(bp, reg + i*8,	 wb_data, 2);
+		bnx2x_init_wr_wb(bp, reg + i*8,
+				 wb_data, 2);
 	}
 }
 

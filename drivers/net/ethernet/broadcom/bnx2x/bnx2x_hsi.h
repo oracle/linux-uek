@@ -1,6 +1,6 @@
 /* bnx2x_hsi.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2007-2012 Broadcom Corporation
+ * Copyright (c) 2007-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -33,6 +33,8 @@ struct license_key {
 
 	u32 reserved_b[4];
 };
+
+
 
 /****************************************************************************
  * Shared HW configuration                                                  *
@@ -114,6 +116,11 @@ struct license_key {
 #define EPIO_CFG_EPIO30                     0x0000001f
 #define EPIO_CFG_EPIO31                     0x00000020
 
+struct mac_addr {
+	u32 upper;
+	u32 lower;
+};
+
 
 struct shared_hw_cfg {			 /* NVRAM Offset */
 	/* Up to 16 bytes of NULL-terminated string */
@@ -124,14 +131,13 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_MDIO_VOLTAGE_SHIFT             0
 		#define SHARED_HW_CFG_MDIO_VOLTAGE_1_2V              0x00000000
 		#define SHARED_HW_CFG_MDIO_VOLTAGE_2_5V              0x00000001
-	#define SHARED_HW_CFG_MCP_RST_ON_CORE_RST_EN        0x00000002
 
 	#define SHARED_HW_CFG_PORT_SWAP                     0x00000004
 
-	#define SHARED_HW_CFG_BEACON_WOL_EN                 0x00000008
+	    #define SHARED_HW_CFG_BEACON_WOL_EN                  0x00000008
 
-	#define SHARED_HW_CFG_PCIE_GEN3_DISABLED            0x00000000
-	#define SHARED_HW_CFG_PCIE_GEN3_ENABLED             0x00000010
+	    #define SHARED_HW_CFG_PCIE_GEN3_DISABLED            0x00000000
+	    #define SHARED_HW_CFG_PCIE_GEN3_ENABLED             0x00000010
 
 	#define SHARED_HW_CFG_MFW_SELECT_MASK               0x00000700
 		#define SHARED_HW_CFG_MFW_SELECT_SHIFT               8
@@ -151,7 +157,14 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 	  (can only be used when an add-in board, not BMC, pulls-down SPIO4) */
 		#define SHARED_HW_CFG_MFW_SELECT_SPIO4_NC_SI_UMP     0x00000600
 
-	#define SHARED_HW_CFG_LED_MODE_MASK                 0x000f0000
+	/* Adjust the PCIe G2 Tx amplitude driver for all Tx lanes. For
+	   backwards compatibility, value of 0 is disabling this feature.
+	    That means that though 0 is a valid value, it cannot be
+	    configured. */
+	#define SHARED_HW_CFG_G2_TX_DRIVE_MASK                        0x0000F000
+	#define SHARED_HW_CFG_G2_TX_DRIVE_SHIFT                       12
+
+	#define SHARED_HW_CFG_LED_MODE_MASK                 0x000F0000
 		#define SHARED_HW_CFG_LED_MODE_SHIFT                 16
 		#define SHARED_HW_CFG_LED_MAC1                       0x00000000
 		#define SHARED_HW_CFG_LED_PHY1                       0x00010000
@@ -169,17 +182,7 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_LED_PHY8                       0x000d0000
 		#define SHARED_HW_CFG_LED_EXTPHY1                    0x000e0000
 
-
-	#define SHARED_HW_CFG_AN_ENABLE_MASK                0x3f000000
-		#define SHARED_HW_CFG_AN_ENABLE_SHIFT                24
-		#define SHARED_HW_CFG_AN_ENABLE_CL37                 0x01000000
-		#define SHARED_HW_CFG_AN_ENABLE_CL73                 0x02000000
-		#define SHARED_HW_CFG_AN_ENABLE_BAM                  0x04000000
-		#define SHARED_HW_CFG_AN_ENABLE_PARALLEL_DETECTION   0x08000000
-		#define SHARED_HW_CFG_AN_EN_SGMII_FIBER_AUTO_DETECT  0x10000000
-		#define SHARED_HW_CFG_AN_ENABLE_REMOTE_PHY           0x20000000
-
-	#define SHARED_HW_CFG_SRIOV_MASK                    0x40000000
+    #define SHARED_HW_CFG_SRIOV_MASK                    0x40000000
 		#define SHARED_HW_CFG_SRIOV_DISABLED                 0x00000000
 		#define SHARED_HW_CFG_SRIOV_ENABLED                  0x40000000
 
@@ -188,17 +191,11 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_ATC_ENABLED                    0x80000000
 
 	u32 config2;			    /* 0x118 */
-	/* one time auto detect grace period (in sec) */
-	#define SHARED_HW_CFG_GRACE_PERIOD_MASK             0x000000ff
-	#define SHARED_HW_CFG_GRACE_PERIOD_SHIFT                     0
 
-	#define SHARED_HW_CFG_PCIE_GEN2_ENABLED             0x00000100
-	#define SHARED_HW_CFG_PCIE_GEN2_DISABLED            0x00000000
-
-	/* The default value for the core clock is 250MHz and it is
-	   achieved by setting the clock change to 4 */
-	#define SHARED_HW_CFG_CLOCK_CHANGE_MASK             0x00000e00
-	#define SHARED_HW_CFG_CLOCK_CHANGE_SHIFT                     9
+	#define SHARED_HW_CFG_PCIE_GEN2_MASK                0x00000100
+	    #define SHARED_HW_CFG_PCIE_GEN2_SHIFT                8
+	    #define SHARED_HW_CFG_PCIE_GEN2_DISABLED             0x00000000
+	#define SHARED_HW_CFG_PCIE_GEN2_ENABLED              0x00000100
 
 	#define SHARED_HW_CFG_SMBUS_TIMING_MASK             0x00001000
 		#define SHARED_HW_CFG_SMBUS_TIMING_100KHZ            0x00000000
@@ -206,9 +203,6 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 
 	#define SHARED_HW_CFG_HIDE_PORT1                    0x00002000
 
-	#define SHARED_HW_CFG_WOL_CAPABLE_MASK              0x00004000
-		#define SHARED_HW_CFG_WOL_CAPABLE_DISABLED           0x00000000
-		#define SHARED_HW_CFG_WOL_CAPABLE_ENABLED            0x00004000
 
 		/* Output low when PERST is asserted */
 	#define SHARED_HW_CFG_SPIO4_FOLLOW_PERST_MASK       0x00008000
@@ -249,13 +243,6 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_PREVENT_L1_ENTRY_DISABLED      0x00000000
 		#define SHARED_HW_CFG_PREVENT_L1_ENTRY_ENABLED       0x00800000
 
-	#define SHARED_HW_CFG_PORT_MODE_MASK                0x01000000
-		#define SHARED_HW_CFG_PORT_MODE_2                    0x00000000
-		#define SHARED_HW_CFG_PORT_MODE_4                    0x01000000
-
-	#define SHARED_HW_CFG_PATH_SWAP_MASK                0x02000000
-		#define SHARED_HW_CFG_PATH_SWAP_DISABLED             0x00000000
-		#define SHARED_HW_CFG_PATH_SWAP_ENABLED              0x02000000
 
 	/*  Set the MDC/MDIO access for the first external phy */
 	#define SHARED_HW_CFG_MDC_MDIO_ACCESS1_MASK         0x1C000000
@@ -275,17 +262,10 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_MDC_MDIO_ACCESS2_BOTH          0x60000000
 		#define SHARED_HW_CFG_MDC_MDIO_ACCESS2_SWAPPED       0x80000000
 
-
-	u32 power_dissipated;			/* 0x11c */
-	#define SHARED_HW_CFG_POWER_MGNT_SCALE_MASK         0x00ff0000
-		#define SHARED_HW_CFG_POWER_MGNT_SCALE_SHIFT         16
-		#define SHARED_HW_CFG_POWER_MGNT_UNKNOWN_SCALE       0x00000000
-		#define SHARED_HW_CFG_POWER_MGNT_DOT_1_WATT          0x00010000
-		#define SHARED_HW_CFG_POWER_MGNT_DOT_01_WATT         0x00020000
-		#define SHARED_HW_CFG_POWER_MGNT_DOT_001_WATT        0x00030000
-
-	#define SHARED_HW_CFG_POWER_DIS_CMN_MASK            0xff000000
-	#define SHARED_HW_CFG_POWER_DIS_CMN_SHIFT                    24
+	/*  Max number of PF MSIX vectors */
+	u32 config_3;                                       /* 0x11C */
+	#define SHARED_HW_CFG_PF_MSIX_MAX_NUM_MASK                    0x0000007F
+	#define SHARED_HW_CFG_PF_MSIX_MAX_NUM_SHIFT                   0
 
 	u32 ump_nc_si_config;			/* 0x120 */
 	#define SHARED_HW_CFG_UMP_NC_SI_MII_MODE_MASK       0x00000003
@@ -295,27 +275,24 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_UMP_NC_SI_MII_MODE_MII         0x00000000
 		#define SHARED_HW_CFG_UMP_NC_SI_MII_MODE_RMII        0x00000002
 
-	#define SHARED_HW_CFG_UMP_NC_SI_NUM_DEVS_MASK       0x00000f00
-		#define SHARED_HW_CFG_UMP_NC_SI_NUM_DEVS_SHIFT       8
+	/* Reserved bits: 226-230 */
 
-	#define SHARED_HW_CFG_UMP_NC_SI_EXT_PHY_TYPE_MASK   0x00ff0000
-		#define SHARED_HW_CFG_UMP_NC_SI_EXT_PHY_TYPE_SHIFT   16
-		#define SHARED_HW_CFG_UMP_NC_SI_EXT_PHY_TYPE_NONE    0x00000000
-		#define SHARED_HW_CFG_UMP_NC_SI_EXT_PHY_TYPE_BCM5221 0x00010000
-
+	/*  The output pin template BSC_SEL which selects the I2C for this
+	port in the I2C Mux */
 	u32 board;			/* 0x124 */
 	#define SHARED_HW_CFG_E3_I2C_MUX0_MASK              0x0000003F
-	#define SHARED_HW_CFG_E3_I2C_MUX0_SHIFT                      0
+	    #define SHARED_HW_CFG_E3_I2C_MUX0_SHIFT              0
+
 	#define SHARED_HW_CFG_E3_I2C_MUX1_MASK              0x00000FC0
 	#define SHARED_HW_CFG_E3_I2C_MUX1_SHIFT                      6
 	/* Use the PIN_CFG_XXX defines on top */
-	#define SHARED_HW_CFG_BOARD_REV_MASK                0x00ff0000
+	#define SHARED_HW_CFG_BOARD_REV_MASK                0x00FF0000
 	#define SHARED_HW_CFG_BOARD_REV_SHIFT                        16
 
-	#define SHARED_HW_CFG_BOARD_MAJOR_VER_MASK          0x0f000000
+	#define SHARED_HW_CFG_BOARD_MAJOR_VER_MASK          0x0F000000
 	#define SHARED_HW_CFG_BOARD_MAJOR_VER_SHIFT                  24
 
-	#define SHARED_HW_CFG_BOARD_MINOR_VER_MASK          0xf0000000
+	#define SHARED_HW_CFG_BOARD_MINOR_VER_MASK          0xF0000000
 	#define SHARED_HW_CFG_BOARD_MINOR_VER_SHIFT                  28
 
 	u32 wc_lane_config;				    /* 0x128 */
@@ -359,37 +336,44 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 
 	u32 pci_id;
-	#define PORT_HW_CFG_PCI_VENDOR_ID_MASK              0xffff0000
-	#define PORT_HW_CFG_PCI_DEVICE_ID_MASK              0x0000ffff
+	#define PORT_HW_CFG_PCI_DEVICE_ID_MASK              0x0000FFFF
+	#define PORT_HW_CFG_PCI_DEVICE_ID_SHIFT             0
+
+	#define PORT_HW_CFG_PCI_VENDOR_ID_MASK              0xFFFF0000
+	#define PORT_HW_CFG_PCI_VENDOR_ID_SHIFT             16
 
 	u32 pci_sub_id;
-	#define PORT_HW_CFG_PCI_SUBSYS_DEVICE_ID_MASK       0xffff0000
-	#define PORT_HW_CFG_PCI_SUBSYS_VENDOR_ID_MASK       0x0000ffff
+	#define PORT_HW_CFG_PCI_SUBSYS_VENDOR_ID_MASK       0x0000FFFF
+	#define PORT_HW_CFG_PCI_SUBSYS_VENDOR_ID_SHIFT      0
+
+	#define PORT_HW_CFG_PCI_SUBSYS_DEVICE_ID_MASK       0xFFFF0000
+	#define PORT_HW_CFG_PCI_SUBSYS_DEVICE_ID_SHIFT      16
 
 	u32 power_dissipated;
-	#define PORT_HW_CFG_POWER_DIS_D0_MASK               0x000000ff
+	#define PORT_HW_CFG_POWER_DIS_D0_MASK               0x000000FF
 	#define PORT_HW_CFG_POWER_DIS_D0_SHIFT                       0
-	#define PORT_HW_CFG_POWER_DIS_D1_MASK               0x0000ff00
+	#define PORT_HW_CFG_POWER_DIS_D1_MASK               0x0000FF00
 	#define PORT_HW_CFG_POWER_DIS_D1_SHIFT                       8
-	#define PORT_HW_CFG_POWER_DIS_D2_MASK               0x00ff0000
+	#define PORT_HW_CFG_POWER_DIS_D2_MASK               0x00FF0000
 	#define PORT_HW_CFG_POWER_DIS_D2_SHIFT                       16
-	#define PORT_HW_CFG_POWER_DIS_D3_MASK               0xff000000
+	#define PORT_HW_CFG_POWER_DIS_D3_MASK               0xFF000000
 	#define PORT_HW_CFG_POWER_DIS_D3_SHIFT                       24
 
 	u32 power_consumed;
-	#define PORT_HW_CFG_POWER_CONS_D0_MASK              0x000000ff
+	#define PORT_HW_CFG_POWER_CONS_D0_MASK              0x000000FF
 	#define PORT_HW_CFG_POWER_CONS_D0_SHIFT                      0
-	#define PORT_HW_CFG_POWER_CONS_D1_MASK              0x0000ff00
+	#define PORT_HW_CFG_POWER_CONS_D1_MASK              0x0000FF00
 	#define PORT_HW_CFG_POWER_CONS_D1_SHIFT                      8
-	#define PORT_HW_CFG_POWER_CONS_D2_MASK              0x00ff0000
+	#define PORT_HW_CFG_POWER_CONS_D2_MASK              0x00FF0000
 	#define PORT_HW_CFG_POWER_CONS_D2_SHIFT                      16
-	#define PORT_HW_CFG_POWER_CONS_D3_MASK              0xff000000
+	#define PORT_HW_CFG_POWER_CONS_D3_MASK              0xFF000000
 	#define PORT_HW_CFG_POWER_CONS_D3_SHIFT                      24
 
 	u32 mac_upper;
-	#define PORT_HW_CFG_UPPERMAC_MASK                   0x0000ffff
+	u32 mac_lower;                                      /* 0x140 */
+	#define PORT_HW_CFG_UPPERMAC_MASK                   0x0000FFFF
 	#define PORT_HW_CFG_UPPERMAC_SHIFT                           0
-	u32 mac_lower;
+
 
 	u32 iscsi_mac_upper;  /* Upper 16 bits are always zeroes */
 	u32 iscsi_mac_lower;
@@ -398,29 +382,17 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	u32 rdma_mac_lower;
 
 	u32 serdes_config;
-	#define PORT_HW_CFG_SERDES_TX_DRV_PRE_EMPHASIS_MASK 0x0000ffff
+	#define PORT_HW_CFG_SERDES_TX_DRV_PRE_EMPHASIS_MASK 0x0000FFFF
 	#define PORT_HW_CFG_SERDES_TX_DRV_PRE_EMPHASIS_SHIFT         0
 
-	#define PORT_HW_CFG_SERDES_RX_DRV_EQUALIZER_MASK    0xffff0000
+	#define PORT_HW_CFG_SERDES_RX_DRV_EQUALIZER_MASK    0xFFFF0000
 	#define PORT_HW_CFG_SERDES_RX_DRV_EQUALIZER_SHIFT            16
 
 
 	/*  Default values: 2P-64, 4P-32 */
-	u32 pf_config;					    /* 0x158 */
-	#define PORT_HW_CFG_PF_NUM_VF_MASK                  0x0000007F
-	#define PORT_HW_CFG_PF_NUM_VF_SHIFT                          0
-
-	/*  Default values: 17 */
-	#define PORT_HW_CFG_PF_NUM_MSIX_VECTORS_MASK        0x00007F00
-	#define PORT_HW_CFG_PF_NUM_MSIX_VECTORS_SHIFT                8
-
-	#define PORT_HW_CFG_ENABLE_FLR_MASK                 0x00010000
-	#define PORT_HW_CFG_FLR_ENABLED                     0x00010000
+	u32 reserved;
 
 	u32 vf_config;					    /* 0x15C */
-	#define PORT_HW_CFG_VF_NUM_MSIX_VECTORS_MASK        0x0000007F
-	#define PORT_HW_CFG_VF_NUM_MSIX_VECTORS_SHIFT                0
-
 	#define PORT_HW_CFG_VF_PCI_DEVICE_ID_MASK           0xFFFF0000
 	#define PORT_HW_CFG_VF_PCI_DEVICE_ID_SHIFT                   16
 
@@ -508,7 +480,22 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	#define PORT_HW_CFG_PAUSE_ON_HOST_RING_DISABLED               0x00000000
 	#define PORT_HW_CFG_PAUSE_ON_HOST_RING_ENABLED                0x00000001
 
-	u32 reserved0[6];				    /* 0x178 */
+	/* SFP+ Tx Equalization: NIC recommended and tested value is 0xBEB2.
+	 * LOM recommended and tested value is 0xBEB2. Using a different
+	 * value means using a value not tested by BRCM
+	 */
+	u32 sfi_tap_values;                                 /* 0x178 */
+	#define PORT_HW_CFG_TX_EQUALIZATION_MASK                      0x0000FFFF
+	#define PORT_HW_CFG_TX_EQUALIZATION_SHIFT                     0
+
+	/* SFP+ Tx driver broadcast IDRIVER: NIC recommended and tested
+	 * value is 0x2. LOM recommended and tested value is 0x2. Using a
+	 * different value means using a value not tested by BRCM
+	 */
+	#define PORT_HW_CFG_TX_DRV_BROADCAST_MASK                     0x000F0000
+	#define PORT_HW_CFG_TX_DRV_BROADCAST_SHIFT                    16
+
+	u32 reserved0[5];				    /* 0x17c */
 
 	u32 aeu_int_mask;				    /* 0x190 */
 
@@ -530,6 +517,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	u16 xgxs_config_rx[4];			/* 0x198 */
 	u16 xgxs_config_tx[4];			/* 0x1A0 */
 
+
 	/* For storing FCOE mac on shared memory */
 	u32 fcoe_fip_mac_upper;
 	#define PORT_HW_CFG_FCOE_UPPERMAC_MASK              0x0000ffff
@@ -542,7 +530,27 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	u32 fcoe_wwn_node_name_upper;
 	u32 fcoe_wwn_node_name_lower;
 
-	u32 Reserved1[49];				    /* 0x1C0 */
+	/*  wwpn for npiv enabled */
+	u32 wwpn_for_npiv_config;                           /* 0x1C0 */
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_MASK                0x00000001
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_SHIFT               0
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_DISABLED            0x00000000
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ENABLED_ENABLED             0x00000001
+
+	/*  wwpn for npiv valid addresses */
+	u32 wwpn_for_npiv_valid_addresses;                  /* 0x1C4 */
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ADDRESS_BITMAP_MASK         0x0000FFFF
+	#define PORT_HW_CFG_WWPN_FOR_NPIV_ADDRESS_BITMAP_SHIFT        0
+
+	struct mac_addr wwpn_for_niv_macs[16];
+
+	/* Reserved bits: 2272-2336 For storing FCOE mac on shared memory */
+	u32 Reserved1[14];
+
+	u32 pf_allocation;                                  /* 0x280 */
+	/* number of vfs per PF, if 0 - sriov disabled */
+	#define PORT_HW_CFG_NUMBER_OF_VFS_MASK                        0x000000FF
+	#define PORT_HW_CFG_NUMBER_OF_VFS_SHIFT                       0
 
 	/*  Enable RJ45 magjack pair swapping on 10GBase-T PHY (0=default),
 	      84833 only */
@@ -632,27 +640,36 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	#define PORT_HW_CFG_NET_SERDES_IF_DXGXS                      0x04000000
 	#define PORT_HW_CFG_NET_SERDES_IF_KR2                        0x05000000
 
+	/*  SFP+ main TAP and post TAP volumes */
+	#define PORT_HW_CFG_TAP_LEVELS_MASK                           0x70000000
+	#define PORT_HW_CFG_TAP_LEVELS_SHIFT                          28
+	#define PORT_HW_CFG_TAP_LEVELS_POST_15_MAIN_43                0x00000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_14_MAIN_44                0x10000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_13_MAIN_45                0x20000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_12_MAIN_46                0x30000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_11_MAIN_47                0x40000000
+	#define PORT_HW_CFG_TAP_LEVELS_POST_10_MAIN_48                0x50000000
 
 	u32 speed_capability_mask2;			    /* 0x28C */
 	#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_MASK       0x0000FFFF
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_SHIFT       0
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_10M_FULL    0x00000001
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3__           0x00000002
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3___          0x00000004
+		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_10M_HALF    0x00000002
+	    #define PORT_HW_CFG_SPEED_CAPABILITY2_D3_100M_HALF   0x00000004
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_100M_FULL   0x00000008
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_1G          0x00000010
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_2_DOT_5G    0x00000020
+		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_2_5G        0x00000020
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_10G         0x00000040
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D3_20G         0x00000080
 
 	#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_MASK       0xFFFF0000
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_SHIFT       16
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_10M_FULL    0x00010000
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0__           0x00020000
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0___          0x00040000
+		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_10M_HALF    0x00020000
+	    #define PORT_HW_CFG_SPEED_CAPABILITY2_D0_100M_HALF   0x00040000
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_100M_FULL   0x00080000
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_1G          0x00100000
-		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_2_DOT_5G    0x00200000
+		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_2_5G        0x00200000
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_10G         0x00400000
 		#define PORT_HW_CFG_SPEED_CAPABILITY2_D0_20G         0x00800000
 
@@ -714,7 +731,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	u16 xgxs_config2_tx[4];				    /* 0x2A0 */
 
 	u32 lane_config;
-	#define PORT_HW_CFG_LANE_SWAP_CFG_MASK              0x0000ffff
+	#define PORT_HW_CFG_LANE_SWAP_CFG_MASK              0x0000FFFF
 		#define PORT_HW_CFG_LANE_SWAP_CFG_SHIFT              0
 		/* AN and forced */
 		#define PORT_HW_CFG_LANE_SWAP_CFG_01230123           0x00001b1b
@@ -724,11 +741,11 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_LANE_SWAP_CFG_31203120           0x0000d8d8
 		/* forced only */
 		#define PORT_HW_CFG_LANE_SWAP_CFG_32103210           0x0000e4e4
-	#define PORT_HW_CFG_LANE_SWAP_CFG_TX_MASK           0x000000ff
+	#define PORT_HW_CFG_LANE_SWAP_CFG_TX_MASK           0x000000FF
 	#define PORT_HW_CFG_LANE_SWAP_CFG_TX_SHIFT                   0
-	#define PORT_HW_CFG_LANE_SWAP_CFG_RX_MASK           0x0000ff00
+	#define PORT_HW_CFG_LANE_SWAP_CFG_RX_MASK           0x0000FF00
 	#define PORT_HW_CFG_LANE_SWAP_CFG_RX_SHIFT                   8
-	#define PORT_HW_CFG_LANE_SWAP_CFG_MASTER_MASK       0x0000c000
+	#define PORT_HW_CFG_LANE_SWAP_CFG_MASTER_MASK       0x0000C000
 	#define PORT_HW_CFG_LANE_SWAP_CFG_MASTER_SHIFT               14
 
 	/*  Indicate whether to swap the external phy polarity */
@@ -738,10 +755,10 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 
 
 	u32 external_phy_config;
-	#define PORT_HW_CFG_XGXS_EXT_PHY_ADDR_MASK          0x000000ff
+	#define PORT_HW_CFG_XGXS_EXT_PHY_ADDR_MASK          0x000000FF
 	#define PORT_HW_CFG_XGXS_EXT_PHY_ADDR_SHIFT                  0
 
-	#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_MASK          0x0000ff00
+	#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_MASK          0x0000FF00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_SHIFT          8
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_DIRECT         0x00000000
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM8071        0x00000100
@@ -765,10 +782,10 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_FAILURE        0x0000fd00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_NOT_CONN       0x0000ff00
 
-	#define PORT_HW_CFG_SERDES_EXT_PHY_ADDR_MASK        0x00ff0000
+	#define PORT_HW_CFG_SERDES_EXT_PHY_ADDR_MASK        0x00FF0000
 	#define PORT_HW_CFG_SERDES_EXT_PHY_ADDR_SHIFT                16
 
-	#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_MASK        0xff000000
+	#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_MASK        0xFF000000
 		#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_SHIFT        24
 		#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_DIRECT       0x00000000
 		#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_BCM5482      0x01000000
@@ -776,7 +793,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_SERDES_EXT_PHY_TYPE_NOT_CONN     0xff000000
 
 	u32 speed_capability_mask;
-	#define PORT_HW_CFG_SPEED_CAPABILITY_D3_MASK        0x0000ffff
+	#define PORT_HW_CFG_SPEED_CAPABILITY_D3_MASK        0x0000FFFF
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D3_SHIFT        0
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D3_10M_FULL     0x00000001
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D3_10M_HALF     0x00000002
@@ -788,7 +805,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D3_20G          0x00000080
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D3_RESERVED     0x0000f000
 
-	#define PORT_HW_CFG_SPEED_CAPABILITY_D0_MASK        0xffff0000
+	#define PORT_HW_CFG_SPEED_CAPABILITY_D0_MASK        0xFFFF0000
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D0_SHIFT        16
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D0_10M_FULL     0x00010000
 		#define PORT_HW_CFG_SPEED_CAPABILITY_D0_10M_HALF     0x00020000
@@ -840,13 +857,19 @@ struct shared_feat_cfg {		 /* NVRAM Offset */
 		#define SHARED_FEAT_CFG_FORCE_SF_MODE_SWITCH_INDEPT  0x00000300
 		#define SHARED_FEAT_CFG_FORCE_SF_MODE_AFEX_MODE      0x00000400
 
+	/*  Act as if the FCoE license is invalid */
+	#define SHARED_FEAT_CFG_PREVENT_FCOE                0x00001000
+
+    /*  Force FLR capability to all ports */
+	#define SHARED_FEAT_CFG_FORCE_FLR_CAPABILITY        0x00002000
+
 	/* The interval in seconds between sending LLDP packets. Set to zero
 	   to disable the feature */
-	#define SHARED_FEAT_CFG_LLDP_XMIT_INTERVAL_MASK     0x00ff0000
+	#define SHARED_FEAT_CFG_LLDP_XMIT_INTERVAL_MASK     0x00FF0000
 	#define SHARED_FEAT_CFG_LLDP_XMIT_INTERVAL_SHIFT             16
 
 	/* The assigned device type ID for LLDP usage */
-	#define SHARED_FEAT_CFG_LLDP_DEVICE_TYPE_ID_MASK    0xff000000
+	#define SHARED_FEAT_CFG_LLDP_DEVICE_TYPE_ID_MASK    0xFF000000
 	#define SHARED_FEAT_CFG_LLDP_DEVICE_TYPE_ID_SHIFT            24
 
 };
@@ -858,52 +881,57 @@ struct shared_feat_cfg {		 /* NVRAM Offset */
 struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 
 	u32 config;
-	#define PORT_FEATURE_BAR1_SIZE_MASK                 0x0000000f
-		#define PORT_FEATURE_BAR1_SIZE_SHIFT                 0
-		#define PORT_FEATURE_BAR1_SIZE_DISABLED              0x00000000
-		#define PORT_FEATURE_BAR1_SIZE_64K                   0x00000001
-		#define PORT_FEATURE_BAR1_SIZE_128K                  0x00000002
-		#define PORT_FEATURE_BAR1_SIZE_256K                  0x00000003
-		#define PORT_FEATURE_BAR1_SIZE_512K                  0x00000004
-		#define PORT_FEATURE_BAR1_SIZE_1M                    0x00000005
-		#define PORT_FEATURE_BAR1_SIZE_2M                    0x00000006
-		#define PORT_FEATURE_BAR1_SIZE_4M                    0x00000007
-		#define PORT_FEATURE_BAR1_SIZE_8M                    0x00000008
-		#define PORT_FEATURE_BAR1_SIZE_16M                   0x00000009
-		#define PORT_FEATURE_BAR1_SIZE_32M                   0x0000000a
-		#define PORT_FEATURE_BAR1_SIZE_64M                   0x0000000b
-		#define PORT_FEATURE_BAR1_SIZE_128M                  0x0000000c
-		#define PORT_FEATURE_BAR1_SIZE_256M                  0x0000000d
-		#define PORT_FEATURE_BAR1_SIZE_512M                  0x0000000e
-		#define PORT_FEATURE_BAR1_SIZE_1G                    0x0000000f
-	#define PORT_FEATURE_BAR2_SIZE_MASK                 0x000000f0
-		#define PORT_FEATURE_BAR2_SIZE_SHIFT                 4
-		#define PORT_FEATURE_BAR2_SIZE_DISABLED              0x00000000
-		#define PORT_FEATURE_BAR2_SIZE_64K                   0x00000010
-		#define PORT_FEATURE_BAR2_SIZE_128K                  0x00000020
-		#define PORT_FEATURE_BAR2_SIZE_256K                  0x00000030
-		#define PORT_FEATURE_BAR2_SIZE_512K                  0x00000040
-		#define PORT_FEATURE_BAR2_SIZE_1M                    0x00000050
-		#define PORT_FEATURE_BAR2_SIZE_2M                    0x00000060
-		#define PORT_FEATURE_BAR2_SIZE_4M                    0x00000070
-		#define PORT_FEATURE_BAR2_SIZE_8M                    0x00000080
-		#define PORT_FEATURE_BAR2_SIZE_16M                   0x00000090
-		#define PORT_FEATURE_BAR2_SIZE_32M                   0x000000a0
-		#define PORT_FEATURE_BAR2_SIZE_64M                   0x000000b0
-		#define PORT_FEATURE_BAR2_SIZE_128M                  0x000000c0
-		#define PORT_FEATURE_BAR2_SIZE_256M                  0x000000d0
-		#define PORT_FEATURE_BAR2_SIZE_512M                  0x000000e0
-		#define PORT_FEATURE_BAR2_SIZE_1G                    0x000000f0
+	#define PORT_FEAT_CFG_BAR1_SIZE_MASK                 0x0000000F
+		#define PORT_FEAT_CFG_BAR1_SIZE_SHIFT                 0
+		#define PORT_FEAT_CFG_BAR1_SIZE_DISABLED              0x00000000
+		#define PORT_FEAT_CFG_BAR1_SIZE_64K                   0x00000001
+		#define PORT_FEAT_CFG_BAR1_SIZE_128K                  0x00000002
+		#define PORT_FEAT_CFG_BAR1_SIZE_256K                  0x00000003
+		#define PORT_FEAT_CFG_BAR1_SIZE_512K                  0x00000004
+		#define PORT_FEAT_CFG_BAR1_SIZE_1M                    0x00000005
+		#define PORT_FEAT_CFG_BAR1_SIZE_2M                    0x00000006
+		#define PORT_FEAT_CFG_BAR1_SIZE_4M                    0x00000007
+		#define PORT_FEAT_CFG_BAR1_SIZE_8M                    0x00000008
+		#define PORT_FEAT_CFG_BAR1_SIZE_16M                   0x00000009
+		#define PORT_FEAT_CFG_BAR1_SIZE_32M                   0x0000000a
+		#define PORT_FEAT_CFG_BAR1_SIZE_64M                   0x0000000b
+		#define PORT_FEAT_CFG_BAR1_SIZE_128M                  0x0000000c
+		#define PORT_FEAT_CFG_BAR1_SIZE_256M                  0x0000000d
+		#define PORT_FEAT_CFG_BAR1_SIZE_512M                  0x0000000e
+		#define PORT_FEAT_CFG_BAR1_SIZE_1G                    0x0000000f
+	#define PORT_FEAT_CFG_BAR2_SIZE_MASK                 0x000000F0
+		#define PORT_FEAT_CFG_BAR2_SIZE_SHIFT                 4
+		#define PORT_FEAT_CFG_BAR2_SIZE_DISABLED              0x00000000
+		#define PORT_FEAT_CFG_BAR2_SIZE_64K                   0x00000010
+		#define PORT_FEAT_CFG_BAR2_SIZE_128K                  0x00000020
+		#define PORT_FEAT_CFG_BAR2_SIZE_256K                  0x00000030
+		#define PORT_FEAT_CFG_BAR2_SIZE_512K                  0x00000040
+		#define PORT_FEAT_CFG_BAR2_SIZE_1M                    0x00000050
+		#define PORT_FEAT_CFG_BAR2_SIZE_2M                    0x00000060
+		#define PORT_FEAT_CFG_BAR2_SIZE_4M                    0x00000070
+		#define PORT_FEAT_CFG_BAR2_SIZE_8M                    0x00000080
+		#define PORT_FEAT_CFG_BAR2_SIZE_16M                   0x00000090
+		#define PORT_FEAT_CFG_BAR2_SIZE_32M                   0x000000a0
+		#define PORT_FEAT_CFG_BAR2_SIZE_64M                   0x000000b0
+		#define PORT_FEAT_CFG_BAR2_SIZE_128M                  0x000000c0
+		#define PORT_FEAT_CFG_BAR2_SIZE_256M                  0x000000d0
+		#define PORT_FEAT_CFG_BAR2_SIZE_512M                  0x000000e0
+		#define PORT_FEAT_CFG_BAR2_SIZE_1G                    0x000000f0
 
 	#define PORT_FEAT_CFG_DCBX_MASK                     0x00000100
 		#define PORT_FEAT_CFG_DCBX_DISABLED                  0x00000000
 		#define PORT_FEAT_CFG_DCBX_ENABLED                   0x00000100
 
+    #define PORT_FEAT_CFG_AUTOGREEEN_MASK               0x00000200
+	    #define PORT_FEAT_CFG_AUTOGREEEN_SHIFT               9
+	    #define PORT_FEAT_CFG_AUTOGREEEN_DISABLED            0x00000000
+	    #define PORT_FEAT_CFG_AUTOGREEEN_ENABLED             0x00000200
+
 	#define PORT_FEATURE_EN_SIZE_MASK                   0x0f000000
-	#define PORT_FEATURE_EN_SIZE_SHIFT                           24
-	#define PORT_FEATURE_WOL_ENABLED                             0x01000000
-	#define PORT_FEATURE_MBA_ENABLED                             0x02000000
-	#define PORT_FEATURE_MFW_ENABLED                             0x04000000
+	#define PORT_FEATURE_EN_SIZE_SHIFT                       24
+	#define PORT_FEATURE_WOL_ENABLED                         0x01000000
+	#define PORT_FEATURE_MBA_ENABLED                         0x02000000
+	#define PORT_FEATURE_MFW_ENABLED                         0x04000000
 
 	/* Advertise expansion ROM even if MBA is disabled */
 	#define PORT_FEAT_CFG_FORCE_EXP_ROM_ADV_MASK        0x08000000
@@ -912,7 +940,7 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 
 	/* Check the optic vendor via i2c against a list of approved modules
 	   in a separate nvram image */
-	#define PORT_FEAT_CFG_OPT_MDL_ENFRCMNT_MASK         0xe0000000
+	#define PORT_FEAT_CFG_OPT_MDL_ENFRCMNT_MASK         0xE0000000
 		#define PORT_FEAT_CFG_OPT_MDL_ENFRCMNT_SHIFT         29
 		#define PORT_FEAT_CFG_OPT_MDL_ENFRCMNT_NO_ENFORCEMENT \
 								     0x00000000
@@ -923,14 +951,6 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 
 	u32 wol_config;
 	/* Default is used when driver sets to "auto" mode */
-	#define PORT_FEATURE_WOL_DEFAULT_MASK               0x00000003
-		#define PORT_FEATURE_WOL_DEFAULT_SHIFT               0
-		#define PORT_FEATURE_WOL_DEFAULT_DISABLE             0x00000000
-		#define PORT_FEATURE_WOL_DEFAULT_MAGIC               0x00000001
-		#define PORT_FEATURE_WOL_DEFAULT_ACPI                0x00000002
-		#define PORT_FEATURE_WOL_DEFAULT_MAGIC_AND_ACPI      0x00000003
-	#define PORT_FEATURE_WOL_RES_PAUSE_CAP              0x00000004
-	#define PORT_FEATURE_WOL_RES_ASYM_PAUSE_CAP         0x00000008
 	#define PORT_FEATURE_WOL_ACPI_UPON_MGMT             0x00000010
 
 	u32 mba_config;
@@ -946,13 +966,12 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 	#define PORT_FEATURE_MBA_BOOT_RETRY_MASK            0x00000038
 	#define PORT_FEATURE_MBA_BOOT_RETRY_SHIFT                    3
 
-	#define PORT_FEATURE_MBA_RES_PAUSE_CAP              0x00000100
-	#define PORT_FEATURE_MBA_RES_ASYM_PAUSE_CAP         0x00000200
-	#define PORT_FEATURE_MBA_SETUP_PROMPT_ENABLE        0x00000400
+    #define PORT_FEATURE_MBA_SETUP_PROMPT_ENABLE        0x00000400
 	#define PORT_FEATURE_MBA_HOTKEY_MASK                0x00000800
 		#define PORT_FEATURE_MBA_HOTKEY_CTRL_S               0x00000000
 		#define PORT_FEATURE_MBA_HOTKEY_CTRL_B               0x00000800
-	#define PORT_FEATURE_MBA_EXP_ROM_SIZE_MASK          0x000ff000
+
+	#define PORT_FEATURE_MBA_EXP_ROM_SIZE_MASK          0x000FF000
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_SHIFT          12
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_DISABLED       0x00000000
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_2K             0x00001000
@@ -970,7 +989,7 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_8M             0x0000d000
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_16M            0x0000e000
 		#define PORT_FEATURE_MBA_EXP_ROM_SIZE_32M            0x0000f000
-	#define PORT_FEATURE_MBA_MSG_TIMEOUT_MASK           0x00f00000
+	#define PORT_FEATURE_MBA_MSG_TIMEOUT_MASK           0x00F00000
 	#define PORT_FEATURE_MBA_MSG_TIMEOUT_SHIFT                   20
 	#define PORT_FEATURE_MBA_BIOS_BOOTSTRAP_MASK        0x03000000
 		#define PORT_FEATURE_MBA_BIOS_BOOTSTRAP_SHIFT        24
@@ -978,40 +997,32 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 		#define PORT_FEATURE_MBA_BIOS_BOOTSTRAP_BBS          0x01000000
 		#define PORT_FEATURE_MBA_BIOS_BOOTSTRAP_INT18H       0x02000000
 		#define PORT_FEATURE_MBA_BIOS_BOOTSTRAP_INT19H       0x03000000
-	#define PORT_FEATURE_MBA_LINK_SPEED_MASK            0x3c000000
+	#define PORT_FEATURE_MBA_LINK_SPEED_MASK            0x3C000000
 		#define PORT_FEATURE_MBA_LINK_SPEED_SHIFT            26
 		#define PORT_FEATURE_MBA_LINK_SPEED_AUTO             0x00000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_10HD             0x04000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_10FD             0x08000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_100HD            0x0c000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_100FD            0x10000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_1GBPS            0x14000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_2_5GBPS          0x18000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_10GBPS_CX4       0x1c000000
-		#define PORT_FEATURE_MBA_LINK_SPEED_20GBPS           0x20000000
-	u32 bmc_config;
-	#define PORT_FEATURE_BMC_LINK_OVERRIDE_MASK         0x00000001
-		#define PORT_FEATURE_BMC_LINK_OVERRIDE_DEFAULT       0x00000000
-		#define PORT_FEATURE_BMC_LINK_OVERRIDE_EN            0x00000001
+		#define PORT_FEATURE_MBA_LINK_SPEED_10M_HALF         0x04000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_10M_FULL         0x08000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_100M_HALF        0x0c000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_100M_FULL        0x10000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_1G               0x14000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_2_5G             0x18000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_10G              0x1c000000
+		#define PORT_FEATURE_MBA_LINK_SPEED_20G              0x20000000
+
+	u32 Reserved0;                                      /* 0x460 */
 
 	u32 mba_vlan_cfg;
-	#define PORT_FEATURE_MBA_VLAN_TAG_MASK              0x0000ffff
+	#define PORT_FEATURE_MBA_VLAN_TAG_MASK              0x0000FFFF
 	#define PORT_FEATURE_MBA_VLAN_TAG_SHIFT                      0
 	#define PORT_FEATURE_MBA_VLAN_EN                    0x00010000
 
-	u32 resource_cfg;
-	#define PORT_FEATURE_RESOURCE_CFG_VALID             0x00000001
-	#define PORT_FEATURE_RESOURCE_CFG_DIAG              0x00000002
-	#define PORT_FEATURE_RESOURCE_CFG_L2                0x00000004
-	#define PORT_FEATURE_RESOURCE_CFG_ISCSI             0x00000008
-	#define PORT_FEATURE_RESOURCE_CFG_RDMA              0x00000010
-
+	u32 Reserved1;
 	u32 smbus_config;
 	#define PORT_FEATURE_SMBUS_ADDR_MASK                0x000000fe
 	#define PORT_FEATURE_SMBUS_ADDR_SHIFT                        1
 
 	u32 vf_config;
-	#define PORT_FEAT_CFG_VF_BAR2_SIZE_MASK             0x0000000f
+	#define PORT_FEAT_CFG_VF_BAR2_SIZE_MASK             0x0000000F
 		#define PORT_FEAT_CFG_VF_BAR2_SIZE_SHIFT             0
 		#define PORT_FEAT_CFG_VF_BAR2_SIZE_DISABLED          0x00000000
 		#define PORT_FEAT_CFG_VF_BAR2_SIZE_4K                0x00000001
@@ -1031,16 +1042,19 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 		#define PORT_FEAT_CFG_VF_BAR2_SIZE_64M               0x0000000f
 
 	u32 link_config;    /* Used as HW defaults for the driver */
-	#define PORT_FEATURE_CONNECTED_SWITCH_MASK          0x03000000
-		#define PORT_FEATURE_CONNECTED_SWITCH_SHIFT          24
-		/* (forced) low speed switch (< 10G) */
-		#define PORT_FEATURE_CON_SWITCH_1G_SWITCH            0x00000000
-		/* (forced) high speed switch (>= 10G) */
-		#define PORT_FEATURE_CON_SWITCH_10G_SWITCH           0x01000000
-		#define PORT_FEATURE_CON_SWITCH_AUTO_DETECT          0x02000000
-		#define PORT_FEATURE_CON_SWITCH_ONE_TIME_DETECT      0x03000000
 
-	#define PORT_FEATURE_LINK_SPEED_MASK                0x000f0000
+    #define PORT_FEATURE_FLOW_CONTROL_MASK              0x00000700
+		#define PORT_FEATURE_FLOW_CONTROL_SHIFT              8
+		#define PORT_FEATURE_FLOW_CONTROL_AUTO               0x00000000
+		#define PORT_FEATURE_FLOW_CONTROL_TX                 0x00000100
+		#define PORT_FEATURE_FLOW_CONTROL_RX                 0x00000200
+		#define PORT_FEATURE_FLOW_CONTROL_BOTH               0x00000300
+		#define PORT_FEATURE_FLOW_CONTROL_NONE               0x00000400
+		#define PORT_FEATURE_FLOW_CONTROL_SAFC_RX            0x00000500
+		#define PORT_FEATURE_FLOW_CONTROL_SAFC_TX            0x00000600
+		#define PORT_FEATURE_FLOW_CONTROL_SAFC_BOTH          0x00000700
+
+    #define PORT_FEATURE_LINK_SPEED_MASK                0x000F0000
 		#define PORT_FEATURE_LINK_SPEED_SHIFT                16
 		#define PORT_FEATURE_LINK_SPEED_AUTO                 0x00000000
 		#define PORT_FEATURE_LINK_SPEED_10M_FULL             0x00010000
@@ -1052,13 +1066,15 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 		#define PORT_FEATURE_LINK_SPEED_10G_CX4              0x00070000
 		#define PORT_FEATURE_LINK_SPEED_20G                  0x00080000
 
-	#define PORT_FEATURE_FLOW_CONTROL_MASK              0x00000700
-		#define PORT_FEATURE_FLOW_CONTROL_SHIFT              8
-		#define PORT_FEATURE_FLOW_CONTROL_AUTO               0x00000000
-		#define PORT_FEATURE_FLOW_CONTROL_TX                 0x00000100
-		#define PORT_FEATURE_FLOW_CONTROL_RX                 0x00000200
-		#define PORT_FEATURE_FLOW_CONTROL_BOTH               0x00000300
-		#define PORT_FEATURE_FLOW_CONTROL_NONE               0x00000400
+	#define PORT_FEATURE_CONNECTED_SWITCH_MASK          0x03000000
+		#define PORT_FEATURE_CONNECTED_SWITCH_SHIFT          24
+		/* (forced) low speed switch (< 10G) */
+		#define PORT_FEATURE_CON_SWITCH_1G_SWITCH            0x00000000
+		/* (forced) high speed switch (>= 10G) */
+		#define PORT_FEATURE_CON_SWITCH_10G_SWITCH           0x01000000
+		#define PORT_FEATURE_CON_SWITCH_AUTO_DETECT          0x02000000
+		#define PORT_FEATURE_CON_SWITCH_ONE_TIME_DETECT      0x03000000
+
 
 	/* The default for MCP link configuration,
 	   uses the same defines as link_config */
@@ -1086,7 +1102,6 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 	u32 Reserved2[16];                                  /* 0x488 */
 };
 
-
 /****************************************************************************
  * Device Information                                                       *
  ****************************************************************************/
@@ -1101,6 +1116,195 @@ struct shm_dev_info {				/* size */
 	struct shared_feat_cfg   shared_feature_config;		   /* 4 */
 
 	struct port_feat_cfg     port_feature_config[PORT_MAX];/* 116*2=232 */
+
+};
+
+struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
+
+	/*  Threshold in celcius to start using the fan */
+	u32 temperature_monitor1;                           /* 0x4000 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_THRESH_MASK     0x0000007F
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_THRESH_SHIFT    0
+
+	/*  Threshold in celcius to shut down the board */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_THRESH_MASK    0x00007F00
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_THRESH_SHIFT   8
+
+	/*  EPIO of fan temperature status */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_MASK       0x00FF0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_SHIFT      16
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_NA         0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO0      0x00010000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO1      0x00020000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO2      0x00030000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO3      0x00040000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO4      0x00050000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO5      0x00060000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO6      0x00070000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO7      0x00080000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO8      0x00090000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO9      0x000a0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO10     0x000b0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO11     0x000c0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO12     0x000d0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO13     0x000e0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO14     0x000f0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO15     0x00100000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO16     0x00110000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO17     0x00120000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO18     0x00130000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO19     0x00140000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO20     0x00150000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO21     0x00160000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO22     0x00170000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO23     0x00180000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO24     0x00190000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO25     0x001a0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO26     0x001b0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO27     0x001c0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO28     0x001d0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO29     0x001e0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO30     0x001f0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_FAN_EPIO_EPIO31     0x00200000
+
+	/*  EPIO of shut down temperature status */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_MASK      0xFF000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_SHIFT     24
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_NA        0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO0     0x01000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO1     0x02000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO2     0x03000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO3     0x04000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO4     0x05000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO5     0x06000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO6     0x07000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO7     0x08000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO8     0x09000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO9     0x0a000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO10    0x0b000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO11    0x0c000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO12    0x0d000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO13    0x0e000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO14    0x0f000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO15    0x10000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO16    0x11000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO17    0x12000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO18    0x13000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO19    0x14000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO20    0x15000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO21    0x16000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO22    0x17000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO23    0x18000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO24    0x19000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO25    0x1a000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO26    0x1b000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO27    0x1c000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO28    0x1d000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO29    0x1e000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO30    0x1f000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SHUT_EPIO_EPIO31    0x20000000
+
+
+	/*  EPIO of shut down temperature status */
+	u32 temperature_monitor2;                           /* 0x4004 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_PERIOD_MASK         0x0000FFFF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_PERIOD_SHIFT        0
+
+
+	/*  MFW flavor to be used */
+	u32 mfw_cfg;                                        /* 0x4008 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_MFW_FLAVOR_MASK          0x000000FF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_MFW_FLAVOR_SHIFT         0
+	#define EXTENDED_DEV_INFO_SHARED_CFG_MFW_FLAVOR_NA            0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_MFW_FLAVOR_A             0x00000001
+
+
+	u32 smbus_config;                                   /* 0x400C */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SMBUS_ADDR_MASK          0x000000FF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SMBUS_ADDR_SHIFT         0
+
+
+	/*  Switching regulator loop gain */
+	u32 board_cfg;                                      /* 0x4010 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_MASK           0x0000000F
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_SHIFT          0
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_HW_DEFAULT     0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_X2             0x00000008
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_X4             0x00000009
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_X8             0x0000000a
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_X16            0x0000000b
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_DIV8           0x0000000c
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_DIV4           0x0000000d
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_DIV2           0x0000000e
+	#define EXTENDED_DEV_INFO_SHARED_CFG_LOOP_GAIN_X1             0x0000000f
+
+	/*  whether shadow swim feature is supported */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SHADOW_SWIM_MASK         0x00000100
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SHADOW_SWIM_SHIFT        8
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SHADOW_SWIM_DISABLED     0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SHADOW_SWIM_ENABLED      0x00000100
+
+    /*  whether to show/hide SRIOV menu in CCM */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SRIOV_SHOW_MENU_MASK     0x00000200
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SRIOV_SHOW_MENU_SHIFT    9
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SRIOV_SHOW_MENU          0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SRIOV_HIDE_MENU          0x00000200
+
+	/*  Threshold in celcius for max continuous operation */
+	u32 temperature_report;                             /* 0x4014 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_MCOT_MASK           0x0000007F
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_MCOT_SHIFT          0
+
+	/*  Threshold in celcius for sensor caution */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SCT_MASK            0x00007F00
+	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_SCT_SHIFT           8
+
+
+	/*  wwn node prefix to be used (unless value is 0) */
+	u32 wwn_prefix;                                     /* 0x4018 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_NODE_PREFIX0_MASK    0x000000FF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_NODE_PREFIX0_SHIFT   0
+
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_NODE_PREFIX1_MASK    0x0000FF00
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_NODE_PREFIX1_SHIFT   8
+
+	/*  wwn port prefix to be used (unless value is 0) */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX0_MASK    0x00FF0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX0_SHIFT   16
+
+	/*  wwn port prefix to be used (unless value is 0) */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX1_MASK    0xFF000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_WWN_PORT_PREFIX1_SHIFT   24
+
+	/*  General debug nvm cfg */
+	u32 dbg_cfg_flags;                                  /* 0x401C */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_MASK                 0x000FFFFF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SHIFT                0
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_ENABLE               0x00000001
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_EN_SIGDET_FILTER     0x00000002
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_LP_TX_PRESET7    0x00000004
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_TX_ANA_DEFAULT   0x00000008
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_PLL_ANA_DEFAULT  0x00000010
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FORCE_G1PLL_RETUNE   0x00000020
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_RX_ANA_DEFAULT   0x00000040
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FORCE_SERDES_RX_CLK  0x00000080
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_DIS_RX_LP_EIEOS      0x00000100
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_FINALIZE_UCODE       0x00000200
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_HOLDOFF_REQ          0x00000400
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_OVERRIDE   0x00000800
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_GP_PORG_UC_RESET     0x00001000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SUPPRESS_COMPEN_EVT  0x00002000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_ADJ_TXEQ_P0_P1       0x00004000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_G3_PLL_RETUNE        0x00008000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_SET_MAC_PHY_CTL8     0x00010000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_DIS_MAC_G3_FRM_ERR   0x00020000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_INFERRED_EI          0x00040000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_GEN3_COMPLI_ENA      0x00080000
+
+	/*  Debug signet rx threshold */
+	u32 dbg_rx_sigdet_threshold;                        /* 0x4020 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_MASK       0x00000007
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DBG_RX_SIGDET_SHIFT      0
 
 };
 
@@ -1297,6 +1501,7 @@ struct drv_func_mb {
 	#define DRV_MSG_CODE_SET_MF_BW_MIN_MASK         0x00ff0000
 	#define DRV_MSG_CODE_SET_MF_BW_MAX_MASK         0xff000000
 
+	#define DRV_MSG_CODE_UNLOAD_NON_D3_POWER        0x00000001
 	#define DRV_MSG_CODE_UNLOAD_SKIP_LINK_RESET     0x00000002
 
 	#define DRV_MSG_CODE_LOAD_REQ_WITH_LFA          0x0000100a
@@ -1351,6 +1556,9 @@ struct drv_func_mb {
 	#define FW_MSG_CODE_SET_MF_BW_DONE              0xe1000000
 
 	#define FW_MSG_CODE_LINK_CHANGED_ACK            0x01100000
+
+	#define FW_MSG_CODE_FLR_ACK                     0x02000000
+	#define FW_MSG_CODE_FLR_NACK                    0x02100000
 
 	#define FW_MSG_CODE_LIC_CHALLENGE               0xff010000
 	#define FW_MSG_CODE_LIC_RESPONSE                0xff020000
@@ -1514,7 +1722,10 @@ struct func_mf_cfg {
 	#define FUNC_MF_CFG_AFEX_VLAN_MODE_MASK                      0x000f0000
 	#define FUNC_MF_CFG_AFEX_VLAN_MODE_SHIFT                     16
 
-	u32 reserved;
+	u32 pf_allocation;
+	/* number of vfs in function, if 0 - sriov disabled */
+	#define FUNC_MF_CFG_NUMBER_OF_VFS_MASK                      0x000000FF
+	#define FUNC_MF_CFG_NUMBER_OF_VFS_SHIFT                     0
 };
 
 enum mf_cfg_afex_vlan_mode {
@@ -1532,7 +1743,7 @@ struct func_ext_cfg {
 	#define MACP_FUNC_CFG_FLAGS_ETHERNET            0x00000002
 	#define MACP_FUNC_CFG_FLAGS_ISCSI_OFFLOAD       0x00000004
 	#define MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD        0x00000008
-	#define MACP_FUNC_CFG_PAUSE_ON_HOST_RING        0x00000080
+    #define MACP_FUNC_CFG_PAUSE_ON_HOST_RING        0x00000080
 
 	u32 iscsi_mac_addr_upper;
 	u32 iscsi_mac_addr_lower;
@@ -1558,8 +1769,8 @@ struct func_ext_cfg {
 struct mf_cfg {
 
 	struct shared_mf_cfg    shared_mf_config;       /* 0x4 */
-							/* 0x8*2*2=0x20 */
 	struct port_mf_cfg  port_mf_config[NVM_PATH_MAX][PORT_MAX];
+    /* 0x10*2=0x20 */
 	/* for all chips, there are 8 mf functions */
 	struct func_mf_cfg  func_mf_config[E1H_FUNC_MAX]; /* 0x18 * 8 = 0xc0 */
 	/*
@@ -1604,6 +1815,7 @@ struct shmem_region {		       /*   SharedMem Offset (size) */
 	struct mgmtfw_state mgmtfw_state;	/* 0x4ac     (0x1b8) */
 
 	struct drv_port_mb  port_mb[PORT_MAX];	/* 0x664 (16*2=0x20) */
+
 
 #ifdef BMAPI
 	/* This is a variable length array */
@@ -1718,6 +1930,7 @@ do {									   \
 	SHMEM_ARRAY_SET(a, i, DCBX_BW_PG_BITWIDTH, DCBX_BW_PG_BITWIDTH, val)
 #define DCBX_STRICT_PRI_PG		15
 #define DCBX_MAX_APP_PROTOCOL		16
+#define DCBX_MAX_APP_LOCAL	    32
 #define FCOE_APP_IDX			0
 #define ISCSI_APP_IDX			1
 #define PREDEFINED_APP_IDX_MAX		2
@@ -1915,11 +2128,18 @@ struct lldp_local_mib {
 	#define DCBX_LOCAL_APP_ERROR             0x00000004
 	#define DCBX_LOCAL_PFC_MISMATCH          0x00000010
 	#define DCBX_LOCAL_APP_MISMATCH          0x00000020
-	#define DCBX_REMOTE_MIB_ERROR		 0x00000040
+	#define DCBX_REMOTE_MIB_ERROR            0x00000040
 	#define DCBX_REMOTE_ETS_TLV_NOT_FOUND    0x00000080
 	#define DCBX_REMOTE_PFC_TLV_NOT_FOUND    0x00000100
 	#define DCBX_REMOTE_APP_TLV_NOT_FOUND    0x00000200
 	struct dcbx_features   features;
+	u32 suffix_seq_num;
+};
+
+struct lldp_local_mib_ext {
+	u32 prefix_seq_num;
+	/* APP TLV extension - 16 more entries for negotiation results*/
+	struct dcbx_app_priority_entry  app_pri_tbl_ext[DCBX_MAX_APP_PROTOCOL];
 	u32 suffix_seq_num;
 };
 /***END OF DCBX STRUCTURES DECLARATIONS***/
@@ -1970,38 +2190,7 @@ struct shmem_lfa {
 
 	#define LFA_FLAGS_MASK				0xff000000
 	#define SHMEM_LFA_DONT_CLEAR_STAT		(1<<24)
-};
 
-struct ncsi_oem_fcoe_features {
-	u32 fcoe_features1;
-	#define FCOE_FEATURES1_IOS_PER_CONNECTION_MASK          0x0000FFFF
-	#define FCOE_FEATURES1_IOS_PER_CONNECTION_OFFSET        0
-
-	#define FCOE_FEATURES1_LOGINS_PER_PORT_MASK             0xFFFF0000
-	#define FCOE_FEATURES1_LOGINS_PER_PORT_OFFSET           16
-
-	u32 fcoe_features2;
-	#define FCOE_FEATURES2_EXCHANGES_MASK                   0x0000FFFF
-	#define FCOE_FEATURES2_EXCHANGES_OFFSET                 0
-
-	#define FCOE_FEATURES2_NPIV_WWN_PER_PORT_MASK           0xFFFF0000
-	#define FCOE_FEATURES2_NPIV_WWN_PER_PORT_OFFSET         16
-
-	u32 fcoe_features3;
-	#define FCOE_FEATURES3_TARGETS_SUPPORTED_MASK           0x0000FFFF
-	#define FCOE_FEATURES3_TARGETS_SUPPORTED_OFFSET         0
-
-	#define FCOE_FEATURES3_OUTSTANDING_COMMANDS_MASK        0xFFFF0000
-	#define FCOE_FEATURES3_OUTSTANDING_COMMANDS_OFFSET      16
-
-	u32 fcoe_features4;
-	#define FCOE_FEATURES4_FEATURE_SETTINGS_MASK            0x0000000F
-	#define FCOE_FEATURES4_FEATURE_SETTINGS_OFFSET          0
-};
-
-struct ncsi_oem_data {
-	u32 driver_version[4];
-	struct ncsi_oem_fcoe_features ncsi_oem_fcoe_features;
 };
 
 struct shmem2_region {
@@ -2080,7 +2269,8 @@ struct shmem2_region {
 	/* driver receives addr in scratchpad to which it should respond */
 	u32 afex_scratchpad_addr_to_write[E2_FUNC_MAX];
 
-	/* generic params from MCP to driver (value depends on the msg sent
+	/*
+	 * generic params from MCP to driver (value depends on the msg sent
 	 * to driver
 	 */
 	u32 afex_param1_to_driver[E2_FUNC_MAX];		/* 0x0088 */
@@ -2090,7 +2280,8 @@ struct shmem2_region {
 	u32 swim_funcs;
 	u32 swim_main_cb;
 
-	/* bitmap notifying which VIF profiles stored in nvram are enabled by
+	/*
+	 * bitmap notifying which VIF profiles stored in nvram are enabled by
 	 * switch
 	 */
 	u32 afex_profiles_enabled[2];
@@ -2101,27 +2292,40 @@ struct shmem2_region {
 	#define DRV_FLAGS_DCB_CONFIGURATION_ABORTED	0x1
 	#define DRV_FLAGS_DCB_MFW_CONFIGURED	0x2
 
-	#define DRV_FLAGS_PORT_MASK	((1 << DRV_FLAGS_DCB_CONFIGURED) | \
+    #define DRV_FLAGS_PORT_MASK	((1 << DRV_FLAGS_DCB_CONFIGURED) | \
 			(1 << DRV_FLAGS_DCB_CONFIGURATION_ABORTED) | \
 			(1 << DRV_FLAGS_DCB_MFW_CONFIGURED))
+	/* Port offset*/
+	#define DRV_FLAGS_P0_OFFSET		0
+	#define DRV_FLAGS_P1_OFFSET		16
+	#define DRV_FLAGS_GET_PORT_OFFSET(_port)	((0 == _port) ? \
+						DRV_FLAGS_P0_OFFSET : \
+						DRV_FLAGS_P1_OFFSET)
+
+	#define DRV_FLAGS_GET_PORT_MASK(_port)	(DRV_FLAGS_PORT_MASK << \
+	DRV_FLAGS_GET_PORT_OFFSET(_port))
+
+	#define DRV_FLAGS_FILED_BY_PORT(_field_bit, _port)	(1 << ( \
+	(_field_bit) + DRV_FLAGS_GET_PORT_OFFSET(_port)))
+
 	/* pointer to extended dev_info shared data copied from nvm image */
 	u32 extended_dev_info_shared_addr;
 	u32 ncsi_oem_data_addr;
 
-	u32 ocsd_host_addr; /* initialized by option ROM */
-	u32 ocbb_host_addr; /* initialized by option ROM */
-	u32 ocsd_req_update_interval; /* initialized by option ROM */
+	u32 sensor_data_addr;
+	u32 buffer_block_addr;
+	u32 sensor_data_req_update_interval;
 	u32 temperature_in_half_celsius;
 	u32 glob_struct_in_host;
 
 	u32 dcbx_neg_res_ext_offset;
-#define SHMEM_DCBX_NEG_RES_EXT_NONE			0x00000000
+	#define SHMEM_DCBX_NEG_RES_EXT_NONE			0x00000000
 
 	u32 drv_capabilities_flag[E2_FUNC_MAX];
-#define DRV_FLAGS_CAPABILITIES_LOADED_SUPPORTED 0x00000001
-#define DRV_FLAGS_CAPABILITIES_LOADED_L2        0x00000002
-#define DRV_FLAGS_CAPABILITIES_LOADED_FCOE      0x00000004
-#define DRV_FLAGS_CAPABILITIES_LOADED_ISCSI     0x00000008
+	#define DRV_FLAGS_CAPABILITIES_LOADED_SUPPORTED 0x00000001
+	#define DRV_FLAGS_CAPABILITIES_LOADED_L2        0x00000002
+	#define DRV_FLAGS_CAPABILITIES_LOADED_FCOE      0x00000004
+	#define DRV_FLAGS_CAPABILITIES_LOADED_ISCSI     0x00000008
 
 	u32 extended_dev_info_shared_cfg_size;
 
@@ -2136,14 +2340,16 @@ struct shmem2_region {
 
 	/* general values written by the MFW (such as current version) */
 	u32 drv_info_control;
-#define DRV_INFO_CONTROL_VER_MASK          0x000000ff
-#define DRV_INFO_CONTROL_VER_SHIFT         0
-#define DRV_INFO_CONTROL_OP_CODE_MASK      0x0000ff00
-#define DRV_INFO_CONTROL_OP_CODE_SHIFT     8
+	#define DRV_INFO_CONTROL_VER_MASK          0x000000ff
+	#define DRV_INFO_CONTROL_VER_SHIFT         0
+	#define DRV_INFO_CONTROL_OP_CODE_MASK      0x0000ff00
+	#define DRV_INFO_CONTROL_OP_CODE_SHIFT     8
 	u32 ibft_host_addr; /* initialized by option ROM */
-	struct eee_remote_vals eee_remote_vals[PORT_MAX];
-	u32 reserved[E2_FUNC_MAX];
 
+	struct eee_remote_vals eee_remote_vals[PORT_MAX];
+	u32 pf_allocation[E2_FUNC_MAX];
+	#define PF_ALLOACTION_MSIX_VECTORS_MASK    0x000000ff /* real value, as PCI config space can show only maximum of 64 vectors */
+	#define PF_ALLOACTION_MSIX_VECTORS_SHIFT   0
 
 	/* the status of EEE auto-negotiation
 	 * bits 15:0 the configured tx-lpi entry timer value. Depends on bit 31.
@@ -2179,13 +2385,15 @@ struct shmem2_region {
 
 	/* Link Flap Avoidance */
 	u32 lfa_host_addr[PORT_MAX];
-	u32 reserved1;
 
-	u32 reserved2;				/* Offset 0x148 */
-	u32 reserved3;				/* Offset 0x14C */
-	u32 reserved4;				/* Offset 0x150 */
-	u32 link_attr_sync[PORT_MAX];		/* Offset 0x154 */
-	#define LINK_ATTR_SYNC_KR2_ENABLE	(1<<0)
+    /* External PHY temperature in deg C. */
+	u32 extphy_temps_in_celsius;
+	#define EXTPHY1_TEMP_MASK                  0x0000ffff
+	#define EXTPHY1_TEMP_SHIFT                 0
+
+	u32 ocdata_info_addr;			/* Offset 0x148 */
+	u32 drv_func_info_addr;			/* Offset 0x14C */
+	u32 drv_func_info_size;			/* Offset 0x150*/
 };
 
 
@@ -2727,7 +2935,8 @@ struct host_port_stats {
 	u32            brb_drop_hi;
 	u32            brb_drop_lo;
 
-	u32            not_used; /* obsolete */
+	u32            not_used; /* obsolete as of MFW 7.2.1 */
+
 	u32            pfc_frames_tx_hi;
 	u32            pfc_frames_tx_lo;
 	u32            pfc_frames_rx_hi;
@@ -2774,8 +2983,8 @@ struct host_func_stats {
 /* VIC definitions */
 #define VICSTATST_UIF_INDEX 2
 
-
-/* stats collected for afex.
+/*
+ * stats collected for afex.
  * NOTE: structure is exactly as expected to be received by the switch.
  *       order must remain exactly as is unless protocol changes !
  */
@@ -2815,10 +3024,56 @@ struct afex_stats {
 	u32 rx_frames_dropped_lo;
 };
 
+/* To maintain backward compatibility between FW and drivers, new elements */
+/* should be added to the end of the structure. */
+
+/* Per  Port Statistics    */
+struct port_info {
+	u32 size; /* size of this structure (i.e. sizeof(port_info))  */
+	u32 enabled;      /* 0 =Disabled, 1= Enabled */
+	u32 link_speed;   /* multiplier of 100Mb */
+	u32 wol_support;  /* WoL Support (i.e. Non-Zero if WOL supported ) */
+	u32 flow_control; /* 802.3X Flow Ctrl. 0=off 1=RX 2=TX 3=RX&TX.*/
+	u32 flex10;     /* Flex10 mode enabled. non zero = yes */
+	u32 rx_drops;  /* RX Discards. Counters roll over, never reset */
+	u32 rx_errors; /* RX Errors. Physical Port Stats L95, All PFs and NC-SI.
+				   This is flagged by Consumer as an error. */
+	u32 rx_uncast_lo;   /* RX Unicast Packets. Free running counters: */
+	u32 rx_uncast_hi;   /* RX Unicast Packets. Free running counters: */
+	u32 rx_mcast_lo;    /* RX Multicast Packets  */
+	u32 rx_mcast_hi;    /* RX Multicast Packets  */
+	u32 rx_bcast_lo;    /* RX Broadcast Packets  */
+	u32 rx_bcast_hi;    /* RX Broadcast Packets  */
+	u32 tx_uncast_lo;   /* TX Unicast Packets   */
+	u32 tx_uncast_hi;   /* TX Unicast Packets   */
+	u32 tx_mcast_lo;    /* TX Multicast Packets  */
+	u32 tx_mcast_hi;    /* TX Multicast Packets  */
+	u32 tx_bcast_lo;    /* TX Broadcast Packets  */
+	u32 tx_bcast_hi;    /* TX Broadcast Packets  */
+	u32 tx_errors;      /* TX Errors              */
+	u32 tx_discards;    /* TX Discards          */
+	u32 rx_frames_lo;   /* RX Frames received  */
+	u32 rx_frames_hi;   /* RX Frames received  */
+	u32 rx_bytes_lo;    /* RX Bytes received    */
+	u32 rx_bytes_hi;    /* RX Bytes received    */
+	u32 tx_frames_lo;   /* TX Frames sent      */
+	u32 tx_frames_hi;   /* TX Frames sent      */
+	u32 tx_bytes_lo;    /* TX Bytes sent        */
+	u32 tx_bytes_hi;    /* TX Bytes sent        */
+	u32 link_status;  /* Port P Link Status. 1:0 bit for port enabled.
+				1:1 bit for link good,
+				2:1 Set if link changed between last poll. */
+	u32 tx_pfc_frames_lo;   /* PFC Frames sent.    */
+	u32 tx_pfc_frames_hi;   /* PFC Frames sent.    */
+	u32 rx_pfc_frames_lo;   /* PFC Frames Received. */
+	u32 rx_pfc_frames_hi;   /* PFC Frames Received. */
+};
+
+
 #define BCM_5710_FW_MAJOR_VERSION			7
-#define BCM_5710_FW_MINOR_VERSION			8
-#define BCM_5710_FW_REVISION_VERSION		2
-#define BCM_5710_FW_ENGINEERING_VERSION			0
+#define BCM_5710_FW_MINOR_VERSION			6
+#define BCM_5710_FW_REVISION_VERSION		57
+#define BCM_5710_FW_ENGINEERING_VERSION		0
 #define BCM_5710_FW_COMPILE_FLAGS			1
 
 
@@ -3136,8 +3391,7 @@ union igu_consprod_reg {
 enum igu_ctrl_cmd {
 	IGU_CTRL_CMD_TYPE_RD,
 	IGU_CTRL_CMD_TYPE_WR,
-	MAX_IGU_CTRL_CMD
-};
+	MAX_IGU_CTRL_CMD};
 
 
 /*
@@ -3166,8 +3420,7 @@ enum igu_int_cmd {
 	IGU_INT_DISABLE,
 	IGU_INT_NOP,
 	IGU_INT_NOP2,
-	MAX_IGU_INT_CMD
-};
+	MAX_IGU_INT_CMD};
 
 
 /*
@@ -3177,8 +3430,7 @@ enum igu_seg_access {
 	IGU_SEG_ACCESS_NORM,
 	IGU_SEG_ACCESS_DEF,
 	IGU_SEG_ACCESS_ATTN,
-	MAX_IGU_SEG_ACCESS
-};
+	MAX_IGU_SEG_ACCESS};
 
 
 /*
@@ -3221,8 +3473,7 @@ struct parsing_flags {
 enum prs_flags_ack_type {
 	PRS_FLAG_PUREACK_PIGGY,
 	PRS_FLAG_PUREACK_PURE,
-	MAX_PRS_FLAGS_ACK_TYPE
-};
+	MAX_PRS_FLAGS_ACK_TYPE};
 
 
 /*
@@ -3231,8 +3482,7 @@ enum prs_flags_ack_type {
 enum prs_flags_eth_addr_type {
 	PRS_FLAG_ETHTYPE_NON_UNICAST,
 	PRS_FLAG_ETHTYPE_UNICAST,
-	MAX_PRS_FLAGS_ETH_ADDR_TYPE
-};
+	MAX_PRS_FLAGS_ETH_ADDR_TYPE};
 
 
 /*
@@ -3243,8 +3493,7 @@ enum prs_flags_over_eth {
 	PRS_FLAG_OVERETH_IPV4,
 	PRS_FLAG_OVERETH_IPV6,
 	PRS_FLAG_OVERETH_LLCSNAP_UNKNOWN,
-	MAX_PRS_FLAGS_OVER_ETH
-};
+	MAX_PRS_FLAGS_OVER_ETH};
 
 
 /*
@@ -3254,8 +3503,7 @@ enum prs_flags_over_ip {
 	PRS_FLAG_OVERIP_UNKNOWN,
 	PRS_FLAG_OVERIP_TCP,
 	PRS_FLAG_OVERIP_UDP,
-	MAX_PRS_FLAGS_OVER_IP
-};
+	MAX_PRS_FLAGS_OVER_IP};
 
 
 /*
@@ -3375,6 +3623,12 @@ struct regpair {
 };
 
 
+struct regpair_native {
+	u32 lo;
+	u32 hi;
+};
+
+
 /*
  * Classify rule opcodes in E2/E3
  */
@@ -3382,8 +3636,7 @@ enum classify_rule {
 	CLASSIFY_RULE_OPCODE_MAC,
 	CLASSIFY_RULE_OPCODE_VLAN,
 	CLASSIFY_RULE_OPCODE_PAIR,
-	MAX_CLASSIFY_RULE
-};
+	MAX_CLASSIFY_RULE};
 
 
 /*
@@ -3392,8 +3645,7 @@ enum classify_rule {
 enum classify_rule_action_type {
 	CLASSIFY_RULE_REMOVE,
 	CLASSIFY_RULE_ADD,
-	MAX_CLASSIFY_RULE_ACTION_TYPE
-};
+	MAX_CLASSIFY_RULE_ACTION_TYPE};
 
 
 /*
@@ -3571,8 +3823,7 @@ enum eth_addr_type {
 	UNICAST_ADDRESS,
 	MULTICAST_ADDRESS,
 	BROADCAST_ADDRESS,
-	MAX_ETH_ADDR_TYPE
-};
+	MAX_ETH_ADDR_TYPE};
 
 
 /*
@@ -3904,8 +4155,7 @@ enum eth_rss_hash_type {
 	VLAN_PRI_HASH_TYPE,
 	E1HOV_PRI_HASH_TYPE,
 	DSCP_HASH_TYPE,
-	MAX_ETH_RSS_HASH_TYPE
-};
+	MAX_ETH_RSS_HASH_TYPE};
 
 
 /*
@@ -3917,8 +4167,7 @@ enum eth_rss_mode {
 	ETH_RSS_MODE_VLAN_PRI,
 	ETH_RSS_MODE_E1HOV_PRI,
 	ETH_RSS_MODE_IP_DSCP,
-	MAX_ETH_RSS_MODE
-};
+	MAX_ETH_RSS_MODE};
 
 
 /*
@@ -3939,11 +4188,14 @@ struct eth_rss_update_ramrod_data {
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_TCP_CAPABILITY_SHIFT 4
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_UDP_CAPABILITY (0x1<<5)
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_UDP_CAPABILITY_SHIFT 5
+#define ETH_RSS_UPDATE_RAMROD_DATA_EN_5_TUPLE_CAPABILITY (0x1<<6)
+#define ETH_RSS_UPDATE_RAMROD_DATA_EN_5_TUPLE_CAPABILITY_SHIFT 6
 #define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY (0x1<<7)
 #define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY_SHIFT 7
 	u8 rss_result_mask;
 	u8 rss_mode;
-	__le32 __reserved2;
+	__le16 udp_4tuple_dst_port_mask;
+	__le16 udp_4tuple_dst_port_value;
 	u8 indirection_table[T_ETH_INDIRECTION_TABLE_SIZE];
 	__le32 rss_key[T_ETH_RSS_KEY];
 	__le32 echo;
@@ -4011,8 +4263,7 @@ enum eth_rx_cqe_type {
 	RX_ETH_CQE_TYPE_ETH_RAMROD,
 	RX_ETH_CQE_TYPE_ETH_START_AGG,
 	RX_ETH_CQE_TYPE_ETH_STOP_AGG,
-	MAX_ETH_RX_CQE_TYPE
-};
+	MAX_ETH_RX_CQE_TYPE};
 
 
 /*
@@ -4021,8 +4272,7 @@ enum eth_rx_cqe_type {
 enum eth_rx_fp_sel {
 	ETH_FP_CQE_REGULAR,
 	ETH_FP_CQE_RAW,
-	MAX_ETH_RX_FP_SEL
-};
+	MAX_ETH_RX_FP_SEL};
 
 
 /*
@@ -4093,8 +4343,7 @@ enum eth_spqe_cmd_id {
 	RAMROD_CMD_ID_ETH_MULTICAST_RULES,
 	RAMROD_CMD_ID_ETH_RSS_UPDATE,
 	RAMROD_CMD_ID_ETH_SET_MAC,
-	MAX_ETH_SPQE_CMD_ID
-};
+	MAX_ETH_SPQE_CMD_ID};
 
 
 /*
@@ -4104,8 +4353,7 @@ enum eth_tpa_update_command {
 	TPA_UPDATE_NONE_COMMAND,
 	TPA_UPDATE_ENABLE_COMMAND,
 	TPA_UPDATE_DISABLE_COMMAND,
-	MAX_ETH_TPA_UPDATE_COMMAND
-};
+	MAX_ETH_TPA_UPDATE_COMMAND};
 
 
 /*
@@ -4263,8 +4511,7 @@ enum eth_tx_vlan_type {
 	X_ETH_OUTBAND_VLAN,
 	X_ETH_INBAND_VLAN,
 	X_ETH_FW_ADDED_VLAN,
-	MAX_ETH_TX_VLAN_TYPE
-};
+	MAX_ETH_TX_VLAN_TYPE};
 
 
 /*
@@ -4274,8 +4521,7 @@ enum eth_vlan_filter_mode {
 	ETH_VLAN_FILTER_ANY_VLAN,
 	ETH_VLAN_FILTER_SPECIFIC_VLAN,
 	ETH_VLAN_FILTER_CLASSIFY,
-	MAX_ETH_VLAN_FILTER_MODE
-};
+	MAX_ETH_VLAN_FILTER_MODE};
 
 
 /*
@@ -4329,8 +4575,7 @@ struct mac_configuration_cmd {
 enum set_mac_action_type {
 	T_ETH_MAC_COMMAND_INVALIDATE,
 	T_ETH_MAC_COMMAND_SET,
-	MAX_SET_MAC_ACTION_TYPE
-};
+	MAX_SET_MAC_ACTION_TYPE};
 
 
 /*
@@ -4400,13 +4645,13 @@ struct tstorm_eth_function_common_config {
  * MAC filtering configuration parameters per port in Tstorm
  */
 struct tstorm_eth_mac_filter_config {
-	__le32 ucast_drop_all;
-	__le32 ucast_accept_all;
-	__le32 mcast_drop_all;
-	__le32 mcast_accept_all;
-	__le32 bcast_accept_all;
-	__le32 vlan_filter[2];
-	__le32 unmatched_unicast;
+	u32 ucast_drop_all;
+	u32 ucast_accept_all;
+	u32 mcast_drop_all;
+	u32 mcast_accept_all;
+	u32 bcast_accept_all;
+	u32 vlan_filter[2];
+	u32 unmatched_unicast;
 };
 
 
@@ -4655,8 +4900,7 @@ enum common_spqe_cmd_id {
 	RAMROD_CMD_ID_COMMON_STOP_TRAFFIC,
 	RAMROD_CMD_ID_COMMON_START_TRAFFIC,
 	RAMROD_CMD_ID_COMMON_AFEX_VIF_LISTS,
-	MAX_COMMON_SPQE_CMD_ID
-};
+	MAX_COMMON_SPQE_CMD_ID};
 
 
 /*
@@ -4672,8 +4916,7 @@ enum connection_type {
 	RESERVED_CONNECTION_TYPE_1,
 	RESERVED_CONNECTION_TYPE_2,
 	NONE_CONNECTION_TYPE,
-	MAX_CONNECTION_TYPE
-};
+	MAX_CONNECTION_TYPE};
 
 
 /*
@@ -4683,8 +4926,7 @@ enum cos_mode {
 	OVERRIDE_COS,
 	STATIC_COS,
 	FW_WRR,
-	MAX_COS_MODE
-};
+	MAX_COS_MODE};
 
 
 /*
@@ -4872,17 +5114,9 @@ struct vif_list_event_data {
 	__le32 reserved2;
 };
 
-/* function update event data */
-struct function_update_event_data {
-	u8 echo;
-	u8 reserved;
-	__le16 reserved0;
-	__le32 reserved1;
-	__le32 reserved2;
-};
-
-
-/* union for all event ring message types */
+/*
+ * union for all event ring message types
+ */
 union event_data {
 	struct vf_pf_event_data vf_pf_event;
 	struct eth_event_data eth_event;
@@ -4890,7 +5124,6 @@ union event_data {
 	struct vf_flr_event_data vf_flr_event;
 	struct malicious_vf_event_data malicious_vf_event;
 	struct vif_list_event_data vif_list_event;
-	struct function_update_event_data function_update_event;
 };
 
 
@@ -4898,7 +5131,7 @@ union event_data {
  * per PF event ring data
  */
 struct event_ring_data {
-	struct regpair base_addr;
+	struct regpair_native base_addr;
 #if defined(__BIG_ENDIAN)
 	u8 index_id;
 	u8 sb_id;
@@ -4961,8 +5194,7 @@ enum event_ring_opcode {
 	EVENT_RING_OPCODE_CLASSIFICATION_RULES,
 	EVENT_RING_OPCODE_FILTERS_RULES,
 	EVENT_RING_OPCODE_MULTICAST_RULES,
-	MAX_EVENT_RING_OPCODE
-};
+	MAX_EVENT_RING_OPCODE};
 
 
 /*
@@ -4971,8 +5203,7 @@ enum event_ring_opcode {
 enum fairness_mode {
 	FAIRNESS_COS_WRR_MODE,
 	FAIRNESS_COS_ETS_MODE,
-	MAX_FAIRNESS_MODE
-};
+	MAX_FAIRNESS_MODE};
 
 
 /*
@@ -5001,8 +5232,7 @@ struct flow_control_configuration {
  *
  */
 struct function_start_data {
-	u8 function_mode;
-	u8 reserved;
+	__le16 function_mode;
 	__le16 sd_vlan_tag;
 	__le16 vif_id;
 	u8 path_id;
@@ -5010,6 +5240,9 @@ struct function_start_data {
 };
 
 
+/*
+ *
+ */
 struct function_update_data {
 	u8 vif_id_change_flg;
 	u8 afex_default_vlan_change_flg;
@@ -5019,11 +5252,9 @@ struct function_update_data {
 	__le16 afex_default_vlan;
 	u8 allowed_priorities;
 	u8 network_cos_mode;
+	u8 lb_mode_en_change_flg;
 	u8 lb_mode_en;
-	u8 tx_switch_suspend_change_flg;
-	u8 tx_switch_suspend;
-	u8 echo;
-	__le16 reserved1;
+	__le32 reserved1;
 };
 
 
@@ -5131,7 +5362,7 @@ struct pci_entity {
  * The fast-path status block meta-data, common to all chips
  */
 struct hc_sb_data {
-	struct regpair host_sb_addr;
+	struct regpair_native host_sb_addr;
 	struct hc_status_block_sm state_machine[HC_SB_MAX_SM];
 	struct pci_entity p_func;
 #if defined(__BIG_ENDIAN)
@@ -5145,7 +5376,7 @@ struct hc_sb_data {
 	u8 state;
 	u8 rsrv0;
 #endif
-	struct regpair rsrv1[2];
+	struct regpair_native rsrv1[2];
 };
 
 
@@ -5155,15 +5386,14 @@ struct hc_sb_data {
 enum hc_segment {
 	HC_REGULAR_SEGMENT,
 	HC_DEFAULT_SEGMENT,
-	MAX_HC_SEGMENT
-};
+	MAX_HC_SEGMENT};
 
 
 /*
  * The fast-path status block meta-data
  */
 struct hc_sp_status_block_data {
-	struct regpair host_sb_addr;
+	struct regpair_native host_sb_addr;
 #if defined(__BIG_ENDIAN)
 	u8 rsrv1;
 	u8 state;
@@ -5203,8 +5433,7 @@ struct hc_status_block_data_e2 {
 enum igu_mode {
 	HC_IGU_BC_MODE,
 	HC_IGU_NBC_MODE,
-	MAX_IGU_MODE
-};
+	MAX_IGU_MODE};
 
 
 /*
@@ -5213,8 +5442,7 @@ enum igu_mode {
 enum ip_ver {
 	IP_V4,
 	IP_V6,
-	MAX_IP_VER
-};
+	MAX_IP_VER};
 
 
 /*
@@ -5225,8 +5453,8 @@ enum mf_mode {
 	MULTI_FUNCTION_SD,
 	MULTI_FUNCTION_SI,
 	MULTI_FUNCTION_AFEX,
-	MAX_MF_MODE
-};
+	MAX_MF_MODE};
+
 
 /*
  * Protocol-common statistics collected by the Tstorm (per pf)
@@ -5429,8 +5657,7 @@ enum stats_query_type {
 	STATS_TYPE_PF,
 	STATS_TYPE_TOE,
 	STATS_TYPE_FCOE,
-	MAX_STATS_QUERY_TYPE
-};
+	MAX_STATS_QUERY_TYPE};
 
 
 /*
@@ -5440,8 +5667,7 @@ enum status_block_state {
 	SB_DISABLED,
 	SB_ENABLED,
 	SB_CLEANED,
-	MAX_STATUS_BLOCK_STATE
-};
+	MAX_STATUS_BLOCK_STATE};
 
 
 /*
@@ -5453,8 +5679,7 @@ enum storm_id {
 	XSTORM_ID,
 	TSTORM_ID,
 	ATTENTION_ID,
-	MAX_STORM_ID
-};
+	MAX_STORM_ID};
 
 
 /*
@@ -5464,8 +5689,7 @@ enum traffic_type {
 	LLFC_TRAFFIC_TYPE_NW,
 	LLFC_TRAFFIC_TYPE_FCOE,
 	LLFC_TRAFFIC_TYPE_ISCSI,
-	MAX_TRAFFIC_TYPE
-};
+	MAX_TRAFFIC_TYPE};
 
 
 /*
@@ -5524,8 +5748,7 @@ struct vf_pf_channel_data {
 enum vf_pf_channel_state {
 	VF_PF_CHANNEL_STATE_READY,
 	VF_PF_CHANNEL_STATE_WAITING_FOR_ACK,
-	MAX_VF_PF_CHANNEL_STATE
-};
+	MAX_VF_PF_CHANNEL_STATE};
 
 
 /*
@@ -5536,8 +5759,7 @@ enum vif_list_rule_kind {
 	VIF_LIST_RULE_GET,
 	VIF_LIST_RULE_CLEAR_ALL,
 	VIF_LIST_RULE_CLEAR_FUNC,
-	MAX_VIF_LIST_RULE_KIND
-};
+	MAX_VIF_LIST_RULE_KIND};
 
 
 /*
