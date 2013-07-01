@@ -66,6 +66,7 @@ config SPARC64
 	select HAVE_FTRACE_MCOUNT_RECORD
 	select HAVE_SYSCALL_TRACEPOINTS
 	select HAVE_DEBUG_KMEMLEAK
+	select MAY_HAVE_SPARSE_IRQ
 	select RTC_DRV_CMOS
 	select RTC_DRV_BQ4802
 	select RTC_DRV_SUN4V
@@ -182,7 +183,7 @@ config NR_CPUS
 	int "Maximum number of CPUs"
 	depends on SMP
 	range 2 32 if SPARC32
-	range 2 1024 if SPARC64
+	range 2 2048 if SPARC64
 	default 32 if SPARC32
 	default 64 if SPARC64
 
@@ -298,6 +299,15 @@ config US3_MC
 
 	  If in doubt, say Y, as this information can be very useful.
 
+config SPARC_PGTABLE_LEVEL4
+	bool "Page Table Level"
+	depends on SPARC64 && SMP
+	help
+	  This enables sparc64 to access large physical memory
+	  configuration. For example consider 45 bits of physical address
+	  space (32 Tb).  This option might impact your performance
+	  in small memory configurations.
+
 # Global things across all Sun machines.
 config GENERIC_LOCKBREAK
 	bool
@@ -310,7 +320,7 @@ config NUMA
 
 config NODES_SHIFT
 	int
-	default "4"
+	default "5"
 	depends on NEED_MULTIPLE_NODES
 
 # Some NUMA nodes have memory ranges that span

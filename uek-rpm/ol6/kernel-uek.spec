@@ -390,7 +390,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # integration in the distro harder than needed.
 #
 ##%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, iwl4965-firmware < 228.57.2, selinux-policy-targeted < 1.25.3-14, squashfs-tools < 4.0, wireless-tools < 29-3
-%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14
+%define package_conflicts initscripts < 7.23, udev < 063-6, iptables < 1.3.2-1, ipw2200-firmware < 2.4, selinux-policy-targeted < 1.25.3-14, device-mapper-multipath < 0.4.9-64
 
 #
 # The ld.so.conf.d file we install uses syntax older ldconfig's don't grok.
@@ -433,6 +433,7 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
 Requires(pre): %{kernel_prereq}\
@@ -510,6 +511,7 @@ Source16: perf
 Source17: kabitool
 Source18: check-kabi
 Source19: extrakeys.pub
+Source20: x86_energy_perf_policy
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -897,9 +899,8 @@ if [ -d linux-%{kversion}.%{_target_cpu} ]; then
   rm -rf deleteme.%{_target_cpu} &
 fi
 
-cp -rl vanilla-%{vanillaversion} linux-%{kversion}.%{_target_cpu}
-
-cd linux-%{kversion}.%{_target_cpu}
+cp -rl vanilla-%{vanillaversion} linux-%{kversion}-%{release}
+cd linux-%{kversion}-%{release}
 
 # released_kernel with possible stable updates
 %if 0%{?stable_base}
@@ -1082,6 +1083,17 @@ hwcap 0 nosegneg"
 	cd ../..
     fi
 %endif
+%ifarch x86_64 %{all_x86}
+# build tools/power/x86/x86_energy_perf_policy:
+    if [ -d tools/power/x86/x86_energy_perf_policy ]; then
+       cd tools/power/x86/x86_energy_perf_policy
+       make
+# and install it:
+       mkdir -p $RPM_BUILD_ROOT/usr/libexec/
+       install -m 755 x86_energy_perf_policy $RPM_BUILD_ROOT/usr/libexec/x86_energy_perf_policy.$KernelVer
+       cd ../../../../
+    fi
+%endif
 %endif
 
     # And save the headers/makefiles etc for building modules against
@@ -1160,9 +1172,9 @@ hwcap 0 nosegneg"
     cp -a acpi config generated crypto keys linux math-emu media uapi net pcmcia rdma rxrpc scsi sound trace video asm-generic drm xen $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
     asmdir=../arch/%{asmarch}/include/asm
     cp -a $asmdir $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/
-    pushd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
+    cd $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include 
     ln -s $asmdir asm
-    popd
+    cd -
     # Make sure the Makefile and version.h have a matching timestamp so that
     # external modules can be built
     touch -r $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/Makefile $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include/generated/uapi/linux/version.h
@@ -1259,7 +1271,7 @@ hwcap 0 nosegneg"
 rm -rf $RPM_BUILD_ROOT
 mkdir -p $RPM_BUILD_ROOT/boot
 
-cd linux-%{kversion}.%{_target_cpu}
+cd linux-%{version}-%{release}
 
 %if %{with_debug}
 %if %{with_up}
@@ -1342,8 +1354,8 @@ find Documentation -type d | xargs chmod u+w
 %global __debug_package 1
 %files debuginfo-common
 %defattr(-,root,root)
-/usr/src/debug/kernel-%{version}/linux-%{kversion}.%{_target_cpu}
 %dir /usr/src/debug
+/usr/src/debug/kernel-%{version}/linux-%{kversion}-%{release}
 %dir %{debuginfodir}
 %dir %{debuginfodir}/%{image_install_path}
 %dir %{debuginfodir}/lib
@@ -1368,8 +1380,7 @@ find Documentation -type d | xargs chmod u+w
 ###
 
 %install
-
-cd linux-%{kversion}.%{_target_cpu}
+cd linux-%{version}-%{release}
 
 %if %{with_doc}
 docdir=$RPM_BUILD_ROOT%{_datadir}/doc/kernel-doc-%{rpmversion}
@@ -1392,6 +1403,14 @@ mkdir -p $RPM_BUILD_ROOT/usr/sbin/
 cp $RPM_SOURCE_DIR/perf $RPM_BUILD_ROOT/usr/sbin/perf
 chmod 0755 $RPM_BUILD_ROOT/usr/sbin/perf
 %endif
+
+%ifarch x86_64 %{all_x86}
+# x86_energy_perf_policy shell wrapper
+mkdir -p $RPM_BUILD_ROOT/usr/sbin/
+cp $RPM_SOURCE_DIR/x86_energy_perf_policy $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+chmod 0755 $RPM_BUILD_ROOT/usr/sbin/x86_energy_perf_policy
+%endif
+
 
 %if %{with_headers}
 # Install kernel headers
@@ -1452,7 +1471,7 @@ then\
 fi\
 if [ "$HARDLINK" != "no" -a -x /usr/sbin/hardlink ]\
 then\
-    (cd /usr/src/kernels/%{KVERREL}%{?1:.%{1}} &&\
+    (cd /usr/src/kernels/%{kversion}-%{release}.%{_arch}%{?1:.%{1}} &&\
      /usr/bin/find . -type f | while read f; do\
        hardlink -c /usr/src/kernels/*.fc*.*/$f $f\
      done)\
@@ -1608,7 +1627,7 @@ fi
 %files firmware
 %defattr(-,root,root)
 /lib/firmware/*
-%doc linux-%{kversion}.%{_target_cpu}/firmware/WHENCE
+%doc linux-%{version}-%{release}/firmware/WHENCE
 %endif
 
 %if %{with_bootwrapper}
@@ -1662,6 +1681,8 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
+/usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
+/usr/sbin/x86_energy_perf_policy\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\

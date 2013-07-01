@@ -154,14 +154,16 @@ kvmap_dtlb_tsb4m_miss:
 	/* Clear the PAGE_OFFSET top virtual bits, shift
 	 * down to get PFN, and make sure PFN is in range.
 	 */
-	sllx		%g4, 21, %g5
+	sllx		%g4, PO_HIBITS, %g5
 
+#ifndef CONFIG_SPARC_PGTABLE_LEVEL4
 	/* Check to see if we know about valid memory at the 4MB
 	 * chunk this physical address will reside within.
 	 */
-	srlx		%g5, 21 + 41, %g2
+	srlx		%g5, PO_HIBITS + PO_LOWBITS - PO_DELTA, %g2
 	brnz,pn		%g2, kvmap_dtlb_longpath
 	 nop
+#endif
 
 	/* This unconditional branch and delay-slot nop gets patched
 	 * by the sethi sequence once the bitmap is properly setup.
@@ -177,7 +179,7 @@ valid_addr_bitmap_patch:
 	or		%g7, %lo(sparc64_valid_addr_bitmap), %g7
 	.previous
 
-	srlx		%g5, 21 + 22, %g2
+	srlx		%g5, PO_HIBITS + 22, %g2
 	srlx		%g2, 6, %g5
 	and		%g2, 63, %g2
 	sllx		%g5, 3, %g5
@@ -190,9 +192,9 @@ valid_addr_bitmap_patch:
 2:	 sethi		%hi(kpte_linear_bitmap), %g2
 
 	/* Get the 256MB physical address index. */
-	sllx		%g4, 21, %g5
+	sllx            %g4, PO_HIBITS, %g5
 	or		%g2, %lo(kpte_linear_bitmap), %g2
-	srlx		%g5, 21 + 28, %g5
+	srlx            %g5, PO_HIBITS + 28, %g5
 	and		%g5, (32 - 1), %g7
 
 	/* Divide by 32 to get the offset into the bitmask.  */

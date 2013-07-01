@@ -137,6 +137,33 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	 * REG1.  Jumps to FAIL_LABEL on early page table walk termination.
 	 * VADDR will not be clobbered, but REG2 will.
 	 */
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#define	PTESLOT		0x3ff
+#define HPTESLOT	0x1ff
+#define KERN_PGTABLE_WALK(VADDR, REG1, REG2, FAIL_LABEL)	\
+	sethi		%hi(swapper_pg_dir), REG1; \
+	or		REG1, %lo(swapper_pg_dir), REG1; \
+	srlx		VADDR, PGDIR_SHIFT , REG2; \
+	and		REG2, PTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	ldx		[REG1 + REG2], REG2; \
+	brz,pn          REG2, FAIL_LABEL; \
+	srlx		VADDR, PUD_SHIFT , REG1; \
+	and		REG1, PTESLOT, REG1; \
+	sllx		REG1, 3, REG1; \
+	ldxa		[REG2 + REG1] ASI_PHYS_USE_EC, REG1; \
+	brz,pn          REG1, FAIL_LABEL; \
+	srlx		VADDR, PMD_SHIFT , REG2; \
+	and		REG2, PTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	ldxa		[REG1 + REG2] ASI_PHYS_USE_EC, REG1; \
+	brz,pn          REG1, FAIL_LABEL; \
+	srlx		VADDR, PAGE_SHIFT , REG2; \
+	and		REG2, HPTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	add		REG1, REG2, REG1;
+
+#else
 #define KERN_PGTABLE_WALK(VADDR, REG1, REG2, FAIL_LABEL)	\
 	sethi		%hi(swapper_pg_dir), REG1; \
 	or		REG1, %lo(swapper_pg_dir), REG1; \
@@ -156,6 +183,7 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	sllx		REG1, PMD_PADDR_SHIFT, REG1; \
 	andn		REG2, 0x7, REG2; \
 	add		REG1, REG2, REG1;
+#endif /* CONFIG_SPARC_PGTABLE_LEVEL4 */
 
 	/* These macros exists only to make the PMD translator below
 	 * easier to read.  It hides the ELF section switch for the
@@ -250,6 +278,32 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	 *
 	 * VADDR will not be clobbered, but REG1 and REG2 will.
 	 */
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#define USER_PGTABLE_WALK_TL1(VADDR, PHYS_PGD, REG1, REG2, FAIL_LABEL)	\
+	srlx		VADDR, PGDIR_SHIFT , REG2; \
+	and		REG2, PTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	ldxa		[PHYS_PGD + REG2] ASI_PHYS_USE_EC, REG2; \
+	brz,pn          REG2, FAIL_LABEL; \
+	srlx		VADDR, PUD_SHIFT , REG1; \
+	and		REG1, PTESLOT, REG1; \
+	sllx		REG1, 3, REG1; \
+	ldxa		[REG2 + REG1] ASI_PHYS_USE_EC, REG1; \
+	brz,pn          REG1, FAIL_LABEL; \
+	srlx		VADDR, PMD_SHIFT , REG2; \
+	and		REG2, PTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	ldxa		[REG1 + REG2] ASI_PHYS_USE_EC, REG1; \
+	USER_PGTABLE_CHECK_PMD_HUGE(VADDR, REG1, REG2, FAIL_LABEL, 800f) \
+	srlx		VADDR, PAGE_SHIFT , REG2; \
+	and		REG2, HPTESLOT, REG2; \
+	sllx		REG2, 3, REG2; \
+	add		REG1, REG2, REG1; \
+	ldxa		[REG1] ASI_PHYS_USE_EC, REG1; \
+	brgez,pn	REG1, FAIL_LABEL; \
+	 nop; \
+800:
+#else
 #define USER_PGTABLE_WALK_TL1(VADDR, PHYS_PGD, REG1, REG2, FAIL_LABEL)	\
 	sllx		VADDR, 64 - (PGDIR_SHIFT + PGDIR_BITS), REG2; \
 	srlx		REG2, 64 - PAGE_SHIFT, REG2; \
@@ -271,6 +325,7 @@ extern struct tsb_phys_patch_entry __tsb_phys_patch, __tsb_phys_patch_end;
 	brgez,pn	REG1, FAIL_LABEL; \
 	 nop; \
 800:
+#endif	/* CONFIG_SPARC_PGTABLE_LEVEL4 */
 
 /* Lookup a OBP mapping on VADDR in the prom_trans[] table at TL>0.
  * If no entry is found, FAIL_LABEL will be branched to.  On success

@@ -5,7 +5,11 @@
  * marked non-static so that assembler code can get at them.
  */
 
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#define MAX_PHYS_ADDRESS	(1UL << 47UL)
+#else
 #define MAX_PHYS_ADDRESS	(1UL << 41UL)
+#endif
 #define KPTE_BITMAP_CHUNK_SZ		(256UL * 1024UL * 1024UL)
 #define KPTE_BITMAP_BYTES	\
 	((MAX_PHYS_ADDRESS / KPTE_BITMAP_CHUNK_SZ) / 4)

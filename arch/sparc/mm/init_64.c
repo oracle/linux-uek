@@ -22,6 +22,7 @@
 #include <linux/kprobes.h>
 #include <linux/cache.h>
 #include <linux/sort.h>
+#include <linux/ioport.h>
 #include <linux/percpu.h>
 #include <linux/memblock.h>
 #include <linux/mmzone.h>
@@ -835,7 +836,7 @@ static int find_node(unsigned long addr)
 		if ((addr & p->mask) == p->val)
 			return i;
 	}
-	return -1;
+	return 0;
 }
 
 static u64 memblock_nid_range(u64 start, u64 end, int *nid)
@@ -1099,7 +1100,14 @@ static int __init grab_mblocks(struct mdesc_handle *md)
 		m->size = *val;
 		val = mdesc_get_property(md, node,
 					 "address-congruence-offset", NULL);
-		m->offset = *val;
+
+		/* The address-congruence-offset property is optional.
+		 * Explicity zero it be identifty this.
+		 */
+		if (val)
+			m->offset = *val;
+		else
+			m->offset = 0UL;
 
 		numadbg("MBLOCK[%d]: base[%llx] size[%llx] offset[%llx]\n",
 			count - 1, m->base, m->size, m->offset);
@@ -1369,6 +1377,14 @@ static unsigned long __ref kernel_map_range(unsigned long pstart,
 		pud_t *pud;
 		pmd_t *pmd;
 		pte_t *pte;
+
+		if (pgd_none(*pgd)) {
+			pud_t *pud;
+
+			pud = __alloc_bootmem(PAGE_SIZE,  PAGE_SIZE, PAGE_SIZE);
+			alloc_bytes += PAGE_SIZE;
+			pgd_populate(&init_mm, pgd, pud);
+		}
 
 		pud = pud_offset(pgd, vstart);
 		if (pud_none(*pud)) {
@@ -1716,7 +1732,7 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 #ifndef CONFIG_DEBUG_PAGEALLOC
 	if (cpu_pgsz_mask & HV_PGSZ_MASK_256MB) {
 		kern_linear_pte_xor[1] = (_PAGE_VALID | _PAGE_SZ256MB_4V) ^
-			0xfffff80000000000UL;
+			PAGE_OFFSET;
 		kern_linear_pte_xor[1] |= (_PAGE_CP_4V | _PAGE_CV_4V |
 					   _PAGE_P_4V | _PAGE_W_4V);
 	} else {
@@ -1725,7 +1741,7 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 
 	if (cpu_pgsz_mask & HV_PGSZ_MASK_2GB) {
 		kern_linear_pte_xor[2] = (_PAGE_VALID | _PAGE_SZ2GB_4V) ^
-			0xfffff80000000000UL;
+			PAGE_OFFSET;
 		kern_linear_pte_xor[2] |= (_PAGE_CP_4V | _PAGE_CV_4V |
 					   _PAGE_P_4V | _PAGE_W_4V);
 	} else {
@@ -1734,7 +1750,7 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 
 	if (cpu_pgsz_mask & HV_PGSZ_MASK_16GB) {
 		kern_linear_pte_xor[3] = (_PAGE_VALID | _PAGE_SZ16GB_4V) ^
-			0xfffff80000000000UL;
+			PAGE_OFFSET;
 		kern_linear_pte_xor[3] |= (_PAGE_CP_4V | _PAGE_CV_4V |
 					   _PAGE_P_4V | _PAGE_W_4V);
 	} else {
@@ -1746,7 +1762,12 @@ static void __init sun4v_linear_pte_xor_finalize(void)
 /* paging_init() sets up the page tables */
 
 static unsigned long last_valid_pfn;
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+pgd_t swapper_pg_dir[PTRS_PER_PGD];
+static pud_t swapper_pud_dir[PTRS_PER_PUD];
+#else
 pgd_t swapper_pg_dir[2048];
+#endif
 
 static void sun4u_pgprot_init(void);
 static void sun4v_pgprot_init(void);
@@ -1847,11 +1868,21 @@ void __init paging_init(void)
 	 */
 	init_mm.pgd += ((shift) / (sizeof(pgd_t)));
 	
+	/* Now can init the kernel/bad page tables. */
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+	{
+	pud_t *shift_pud = swapper_pud_dir + (shift / sizeof(pud_t));
+	unsigned long  pgdoffset = pgd_offset(&swapper_pg_dir[0], 0UL);
+	pgd_t *pgd = &swapper_pg_dir[pgdoffset];
+
+	pgd_set(pgd, (unsigned long) shift_pud);
+	}
+#else
 	memset(swapper_low_pmd_dir, 0, sizeof(swapper_low_pmd_dir));
 
-	/* Now can init the kernel/bad page tables. */
 	pud_set(pud_offset(&swapper_pg_dir[0], 0),
 		swapper_low_pmd_dir + (shift / sizeof(pgd_t)));
+#endif
 	
 	inherit_prom_mappings();
 	
@@ -2336,10 +2367,9 @@ static void __init sun4v_pgprot_init(void)
 	_PAGE_CACHE = _PAGE_CACHE_4V;
 
 #ifdef CONFIG_DEBUG_PAGEALLOC
-	kern_linear_pte_xor[0] = _PAGE_VALID ^ 0xfffff80000000000UL;
+	kern_linear_pte_xor[0] = _PAGE_VALID ^ PAGE_OFFSET;
 #else
-	kern_linear_pte_xor[0] = (_PAGE_VALID | _PAGE_SZ4MB_4V) ^
-		0xfffff80000000000UL;
+	kern_linear_pte_xor[0] = (_PAGE_VALID | _PAGE_SZ4MB_4V) ^ PAGE_OFFSET;
 #endif
 	kern_linear_pte_xor[0] |= (_PAGE_CP_4V | _PAGE_CV_4V |
 				   _PAGE_P_4V | _PAGE_W_4V);
@@ -2774,3 +2804,91 @@ void hugetlb_setup(struct pt_regs *regs)
 	}
 }
 #endif
+
+#ifdef CONFIG_STRICT_DEVMEM
+static int devmem_allowed;
+static int __init devmem_allowed_setup(char *str)
+{
+	devmem_allowed = 1;
+	return 1;
+}
+__setup("devmem_allowed", devmem_allowed_setup);
+
+/* devmem_is_allowed for sparc.
+ */
+int devmem_is_allowed(unsigned long pagenr)
+{
+	int ret;
+
+	if (devmem_allowed)
+		ret = 1;
+	else
+		ret = page_is_ram(pagenr);
+
+	return ret;
+}
+#endif
+
+static struct resource code_resource = {
+	.name	= "Kernel code",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static struct resource data_resource = {
+	.name	= "Kernel data",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static struct resource bss_resource = {
+	.name	= "Kernel bss",
+	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM
+};
+
+static inline resource_size_t compute_kern_paddr(void *addr)
+{
+	return (resource_size_t) (addr - KERNBASE + kern_base);
+}
+
+static void __init kernel_lds_init(void)
+{
+	code_resource.start = compute_kern_paddr(_text);
+	code_resource.end   = compute_kern_paddr(_etext - 1);
+	data_resource.start = compute_kern_paddr(_etext);
+	data_resource.end   = compute_kern_paddr(_edata - 1);
+	bss_resource.start  = compute_kern_paddr(__bss_start);
+	bss_resource.end    = compute_kern_paddr(_end - 1);
+}
+
+static int __init report_memory(void)
+{
+	int i;
+	struct resource *res;
+
+	kernel_lds_init();
+
+	for (i = 0; i < pavail_ents; i++) {
+		res = kzalloc(sizeof(struct resource), GFP_KERNEL);
+
+		if (!res) {
+			pr_warning("failed to allocate source\n");
+			break;
+		}
+
+		res->name = "System RAM";
+		res->start = pavail[i].phys_addr;
+		res->end = pavail[i].phys_addr + pavail[i].reg_size - 1;
+		res->flags = IORESOURCE_BUSY | IORESOURCE_MEM;
+
+		if (insert_resource(&iomem_resource, res) < 0) {
+			pr_warning("resource insertion failed\n");
+			break;
+		}
+
+		insert_resource(res, &code_resource);
+		insert_resource(res, &data_resource);
+		insert_resource(res, &bss_resource);
+	}
+
+	return 0;
+}
+__initcall(report_memory);

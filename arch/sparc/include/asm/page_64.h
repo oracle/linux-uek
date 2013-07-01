@@ -33,6 +33,7 @@ extern void hugetlb_setup(struct pt_regs *regs);
 
 #define WANT_PAGE_VIRTUAL
 
+extern int devmem_is_allowed(unsigned long pagenr);
 extern void _clear_page(void *page);
 #define clear_page(X)	_clear_page((void *)(X))
 struct page;
@@ -49,12 +50,16 @@ extern void copy_user_page(void *to, void *from, unsigned long vaddr, struct pag
 
 #define STRICT_MM_TYPECHECKS
 
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#include "page_64_lvl4.h"
+#else
+#include "page_64_lvl3.h"
+#endif
+
 #ifdef STRICT_MM_TYPECHECKS
 /* These are used to make use of C type-checking.. */
 typedef struct { unsigned long pte; } pte_t;
 typedef struct { unsigned long iopte; } iopte_t;
-typedef struct { unsigned int pmd; } pmd_t;
-typedef struct { unsigned int pgd; } pgd_t;
 typedef struct { unsigned long pgprot; } pgprot_t;
 
 #define pte_val(x)	((x).pte)
@@ -73,8 +78,6 @@ typedef struct { unsigned long pgprot; } pgprot_t;
 /* .. while these make it easier on the compiler */
 typedef unsigned long pte_t;
 typedef unsigned long iopte_t;
-typedef unsigned int pmd_t;
-typedef unsigned int pgd_t;
 typedef unsigned long pgprot_t;
 
 #define pte_val(x)	(x)
@@ -104,7 +107,15 @@ typedef pte_t *pgtable_t;
 /* We used to stick this into a hard-coded global register (%g4)
  * but that does not make sense anymore.
  */
-#define PAGE_OFFSET		_AC(0xFFFFF80000000000,UL)
+#ifdef CONFIG_SPARC_PGTABLE_LEVEL4
+#define	PO_LOWBITS		_AC(47,UL)
+#define	PO_DELTA		_AC(0, UL)
+#else
+#define	PO_LOWBITS		_AC(43,UL)
+#define	PO_DELTA		_AC(2, UL)
+#endif
+#define	PO_HIBITS		(BITS_PER_LONG - PO_LOWBITS)
+#define	PAGE_OFFSET		(-(_AC(1,UL) << PO_LOWBITS))
 
 #ifndef __ASSEMBLY__
 
