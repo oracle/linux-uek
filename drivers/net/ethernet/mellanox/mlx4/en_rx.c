@@ -505,13 +505,10 @@ static void validate_loopback(struct mlx4_en_priv *priv, struct sk_buff *skb)
 
 	for (i = 0; i < MLX4_LOOPBACK_TEST_PAYLOAD; i++, offset++) {
 		if (*(skb->data + offset) != (unsigned char) (i & 0xff))
-			goto out_loopback;
+			return;
 	}
 	/* Loopback found */
 	priv->loopback_ok = 1;
-
-out_loopback:
-	dev_kfree_skb_any(skb);
 }
 
 static inline int invalid_cqe(struct mlx4_en_priv *priv,
