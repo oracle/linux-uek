@@ -702,6 +702,8 @@ static int __cpuinit xen_hvm_cpu_up(unsigned int cpu, struct task_struct *tidle)
 static void xen_hvm_cpu_die(unsigned int cpu)
 {
 	xen_cpu_die(cpu);
+	xen_uninit_lock_cpu(cpu);
+	xen_teardown_timer(cpu);
 	native_cpu_die(cpu);
 }
 

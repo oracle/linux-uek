@@ -157,9 +157,13 @@ struct kimage_arch {
 };
 #else
 struct kimage_arch {
-	pud_t *pud;
-	pmd_t *pmd;
-	pte_t *pte;
+	pgd_t *pgd;
+	pud_t *pud0;
+	pud_t *pud1;
+	pmd_t *pmd0;
+	pmd_t *pmd1;
+	pte_t *pte0;
+	pte_t *pte1;
 };
 #endif
 

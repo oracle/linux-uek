@@ -137,9 +137,9 @@ out:
 
 static void free_transition_pgtable(struct kimage *image)
 {
-	free_page((unsigned long)image->arch.pud);
-	free_page((unsigned long)image->arch.pmd);
-	free_page((unsigned long)image->arch.pte);
+	free_page((unsigned long)image->arch.pud0);
+	free_page((unsigned long)image->arch.pmd0);
+	free_page((unsigned long)image->arch.pte0);
 }
 
 static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
@@ -157,7 +157,7 @@ static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
 		pud = (pud_t *)get_zeroed_page(GFP_KERNEL);
 		if (!pud)
 			goto err;
-		image->arch.pud = pud;
+		image->arch.pud0 = pud;
 		set_pgd(pgd, __pgd(__pa(pud) | _KERNPG_TABLE));
 	}
 	pud = pud_offset(pgd, vaddr);
@@ -165,7 +165,7 @@ static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
 		pmd = (pmd_t *)get_zeroed_page(GFP_KERNEL);
 		if (!pmd)
 			goto err;
-		image->arch.pmd = pmd;
+		image->arch.pmd0 = pmd;
 		set_pud(pud, __pud(__pa(pmd) | _KERNPG_TABLE));
 	}
 	pmd = pmd_offset(pud, vaddr);
@@ -173,7 +173,7 @@ static int init_transition_pgtable(struct kimage *image, pgd_t *pgd)
 		pte = (pte_t *)get_zeroed_page(GFP_KERNEL);
 		if (!pte)
 			goto err;
-		image->arch.pte = pte;
+		image->arch.pte0 = pte;
 		set_pmd(pmd, __pmd(__pa(pte) | _KERNPG_TABLE));
 	}
 	pte = pte_offset_kernel(pmd, vaddr);

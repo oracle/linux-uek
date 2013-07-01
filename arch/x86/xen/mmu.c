@@ -48,6 +48,7 @@
 #include <linux/memblock.h>
 #include <linux/seq_file.h>
 #include <linux/crash_dump.h>
+#include <linux/hugetlb.h>
 
 #include <trace/events/xen.h>
 
@@ -766,6 +767,9 @@ static int __xen_pgd_walk(struct mm_struct *mm, pgd_t *pgd,
 					goto out;
 
 				if (pmd_none(pmd[pmdidx]))
+					continue;
+
+				if (pmd_huge(pmd[pmdidx]))
 					continue;
 
 				pte = pmd_page(pmd[pmdidx]);
@@ -2193,6 +2197,7 @@ static const struct pv_mmu_ops xen_mmu_ops __initconst = {
 	.lazy_mode = {
 		.enter = paravirt_enter_lazy_mmu,
 		.leave = xen_leave_lazy_mmu,
+		.flush = paravirt_flush_lazy_mmu,
 	},
 
 	.set_fixmap = xen_set_fixmap,
@@ -2558,3 +2563,48 @@ int xen_unmap_domain_mfn_range(struct vm_area_struct *vma,
 	return -EINVAL;
 }
 EXPORT_SYMBOL_GPL(xen_unmap_domain_mfn_range);
+
+int xen_prepare_hugepage(struct page *page)
+{
+	struct mmuext_op op;
+	unsigned long pfn, mfn, m;
+	int i;
+	int rc;
+
+	if (!xen_pv_domain())
+		return 0;
+
+	pfn = page_to_pfn(page);
+	mfn = pfn_to_mfn(pfn);
+	if (mfn & ((HPAGE_SIZE/PAGE_SIZE)-1)) {
+		printk("Guest pages are not properly aligned to use hugepages\n");
+		return 1;
+	}
+	for (i = 0, m = mfn; i < HPAGE_SIZE/PAGE_SIZE; i++, pfn++, m++) {
+		if (pfn_to_mfn(pfn) != m) {
+			printk("Guest pages are not properly aligned to use hugepages\n");
+			return 1;
+		}
+	}
+
+	op.cmd = MMUEXT_MARK_SUPER;
+	op.arg1.mfn = mfn;
+	rc = HYPERVISOR_mmuext_op(&op, 1, NULL, DOMID_SELF);
+	if (rc) {
+		printk("Xen hypervisor is not configured to allow hugepages\n");
+		return 1;
+	}
+	return 0;
+}
+
+void xen_release_hugepage(struct page *page)
+{
+	struct mmuext_op op;
+
+	if (!xen_pv_domain())
+		return;
+
+	op.cmd = MMUEXT_UNMARK_SUPER;
+	op.arg1.mfn = pfn_to_mfn(page_to_pfn(page));
+	HYPERVISOR_mmuext_op(&op, 1, NULL, DOMID_SELF);
+}
