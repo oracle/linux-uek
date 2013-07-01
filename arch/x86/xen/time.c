@@ -376,7 +376,7 @@ static const struct clock_event_device xen_vcpuop_clockevent = {
 
 static const struct clock_event_device *xen_clockevent =
 	&xen_timerop_clockevent;
-static DEFINE_PER_CPU(struct clock_event_device, xen_clock_events);
+static DEFINE_PER_CPU(struct clock_event_device, xen_clock_events) = { .irq = -1 };
 
 static irqreturn_t xen_timer_interrupt(int irq, void *dev_id)
 {
@@ -400,6 +400,9 @@ void xen_setup_timer(int cpu)
 	struct clock_event_device *evt;
 	int irq;
 
+	evt = &per_cpu(xen_clock_events, cpu);
+	WARN(evt->irq >= 0, "IRQ%d for CPU%d is already allocated\n", evt->irq, cpu);
+
 	printk(KERN_INFO "installing Xen timer for CPU %d\n", cpu);
 
 	name = kasprintf(GFP_KERNEL, "timer%d", cpu);
@@ -412,7 +415,6 @@ void xen_setup_timer(int cpu)
 				      IRQF_FORCE_RESUME,
 				      name, NULL);
 
-	evt = &per_cpu(xen_clock_events, cpu);
 	memcpy(evt, xen_clockevent, sizeof(*evt));
 
 	evt->cpumask = cpumask_of(cpu);
@@ -425,6 +427,7 @@ void xen_teardown_timer(int cpu)
 	BUG_ON(cpu == 0);
 	evt = &per_cpu(xen_clock_events, cpu);
 	unbind_from_irqhandler(evt->irq, NULL);
+	evt->irq = -1;
 }
 
 void xen_setup_cpu_clockevents(void)
@@ -496,7 +499,11 @@ static void xen_hvm_setup_cpu_clockevents(void)
 {
 	int cpu = smp_processor_id();
 	xen_setup_runstate_info(cpu);
-	xen_setup_timer(cpu);
+	/*
+	 * xen_setup_timer(cpu) - snprintf is bad in atomic context. Hence
+	 * doing it xen_hvm_cpu_notify (which gets called by smp_init during
+	 * early bootup and also during CPU hotplug events).
+	 */
 	xen_setup_cpu_clockevents();
 }
 

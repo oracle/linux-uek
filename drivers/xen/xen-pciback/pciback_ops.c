@@ -10,6 +10,8 @@
 #include <linux/sched.h>
 #include <linux/ratelimit.h>
 #include "pciback.h"
+#include <linux/printk.h>
+#include <linux/ratelimit.h>
 
 int verbose_request;
 module_param(verbose_request, int, 0644);
