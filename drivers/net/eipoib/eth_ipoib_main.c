@@ -1233,6 +1233,10 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	int ret;
 	int is_just_alloc_emac_info = 0;
 
+	if (0 == ip) {
+		pr_warn("%s: No valid IP (%d)\n", __func__, ip);
+		return -EINVAL;
+	}
 	/* check if exists such slave at all */
 	slave = get_slave_by_mac_and_vlan(parent, mac, vlan);
 	if (unlikely(!slave)) {
