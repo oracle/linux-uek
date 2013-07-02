@@ -2782,7 +2782,7 @@ static void sdp_add_device(struct ib_device *device)
 	memset(&fmr_param, 0, sizeof fmr_param);
 	fmr_param.pool_size	    = sdp_fmr_pool_size;
 	fmr_param.dirty_watermark   = sdp_fmr_dirty_wm;
-	fmr_param.cache		    = 1;
+	fmr_param.cache		    = 0;
 	fmr_param.relaxed           = 0;
 	fmr_param.max_pages_per_fmr = SDP_FMR_SIZE;
 	fmr_param.page_shift	    = PAGE_SHIFT;
