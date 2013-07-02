@@ -508,6 +508,27 @@ static int rds_ib_addr_exist(struct net_device *ndev,
 	return found;
 }
 
+static void rds_ib_update_arp_cache(struct net_device      *out_dev,
+					unsigned char      *dev_addr,
+					__be32             ip_addr)
+{
+	int ret = 0;
+	struct neighbour *neigh;
+
+	neigh = __neigh_lookup_errno(&arp_tbl, &ip_addr, out_dev);
+	if (!IS_ERR(neigh)) {
+		ret = neigh_update(neigh, dev_addr, NUD_STALE,
+				   NEIGH_UPDATE_F_OVERRIDE |
+				   NEIGH_UPDATE_F_ADMIN,
+				   0);
+		if (ret)
+			printk(KERN_ERR "RDS/IB: neigh_update failed (%d) "
+				"for out_dev %s IP %pI4\n",
+				ret, out_dev->name, &ip_addr);
+		neigh_release(neigh);
+	}
+}
+
 static int rds_ib_move_ip(char			*from_dev,
 			char			*to_dev,
 			u8			from_port,
@@ -525,10 +546,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	char			from_dev2[2*IFNAMSIZ + 1];
 	char			to_dev2[2*IFNAMSIZ + 1];
 	int			ret = 0;
-	u8			active_port;
+	u8			active_port, i, port = 0;
 	struct in_device	*in_dev;
-	unsigned long flags;
-	struct rds_ib_connection *ic;
+	struct rds_ib_connection *ic, *ic2;
 	struct rds_ib_device *rds_ibdev;
 
 	page = alloc_page(GFP_HIGHUSER);
@@ -629,8 +649,8 @@ static int rds_ib_move_ip(char			*from_dev,
 		       &addr, from_dev2, to_dev2);
 
 		rds_ibdev = ip_config[from_port].rds_ibdev;
-		spin_lock_irqsave(&rds_ibdev->spinlock, flags);
-		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
+		spin_lock_bh(&rds_ibdev->spinlock);
+		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
 			if (ic->conn->c_laddr == addr) {
 #if RDMA_RDS_APM_SUPPORTED
 				if (rds_ib_apm_enabled) {
@@ -642,9 +662,54 @@ static int rds_ib_move_ip(char			*from_dev,
 					}
 				}
 #endif
+				/* if local connection, update the ARP cache */
+				if (ic->conn->c_loopback) {
+					for (i = 1; i <= ip_port_cnt; i++) {
+						if (ip_config[i].ip_addr ==
+							ic->conn->c_faddr) {
+							port = i;
+							break;
+						}
+					}
+
+					BUG_ON(!port);
+
+					rds_ib_update_arp_cache(
+						ip_config[from_port].dev,
+						ip_config[port].dev->dev_addr,
+						ic->conn->c_faddr);
+
+					rds_ib_update_arp_cache(
+						ip_config[to_port].dev,
+						ip_config[port].dev->dev_addr,
+						ic->conn->c_faddr);
+
+					rds_ib_update_arp_cache(
+						ip_config[from_port].dev,
+						ip_config[to_port].dev->dev_addr,
+						ic->conn->c_laddr);
+
+					rds_ib_update_arp_cache(
+						ip_config[to_port].dev,
+						ip_config[to_port].dev->dev_addr,
+						ic->conn->c_laddr);
+
+					list_for_each_entry(ic2,
+						&rds_ibdev->conn_list,
+							ib_node) {
+						if (ic2->conn->c_laddr ==
+							ic->conn->c_faddr &&
+							ic2->conn->c_faddr ==
+							ic->conn->c_laddr) {
+							rds_conn_drop(ic2->conn);
+						}
+					}
+				}
+
 				rds_conn_drop(ic->conn);
 			}
-		spin_unlock_irqrestore(&rds_ibdev->spinlock, flags);
+		}
+		spin_unlock_bh(&rds_ibdev->spinlock);
 	}
 
 out:
@@ -675,7 +740,7 @@ retry:
 	read_unlock(&dev_base_lock);
 
 	if (downs) {
-		if (retries++ <= 60) {
+		if (retries++ <= 30) {
 			msleep(1000);
 			goto retry;
 		} else {
@@ -887,6 +952,18 @@ static void rds_ib_failback(struct work_struct *_work)
 		container_of(_work, struct rds_ib_port_ud_work, work.work);
 	u8				i, ip_active_port, port = work->port;
 
+	if (ip_config[port].port_state == RDS_IB_PORT_INIT) {
+		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is ERROR\n",
+			ip_config[port].rds_ibdev->dev->name,
+			ip_config[port].port_num,
+			ip_config[port].if_name);
+
+		rds_ib_do_failover(port, 0, 0, work->event_type);
+		if (ip_config[port].ip_active_port != port)
+			ip_config[port].port_state = RDS_IB_PORT_DOWN;
+		goto out;
+	}
+
 	ip_config[port].port_state = RDS_IB_PORT_UP;
 
 	ip_active_port = ip_config[port].ip_active_port;
@@ -929,6 +1006,7 @@ static void rds_ib_failback(struct work_struct *_work)
 		}
 	}
 
+out:
 	kfree(work);
 }
 
@@ -1379,7 +1457,9 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	switch (event) {
 	case NETDEV_UP:
 		if (rds_ib_active_bonding_fallback) {
-			if (rds_ib_ip_config_down()) {
+			if (rds_ib_ip_config_down() ||
+				ip_config[port].port_state ==
+					RDS_IB_PORT_INIT) {
 				INIT_DELAYED_WORK(&work->work,
 					rds_ib_net_failback);
 				work->timeout = msecs_to_jiffies(10000);
@@ -1389,7 +1469,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 				work->timeout = msecs_to_jiffies(1000);
 			}
 			queue_delayed_work(rds_wq, &work->work,
-				msecs_to_jiffies(100));
+					msecs_to_jiffies(100));
 		} else
 			kfree(work);
 
