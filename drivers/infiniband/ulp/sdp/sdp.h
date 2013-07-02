@@ -359,6 +359,7 @@ struct sdp_device {
 	struct ib_pd 		*pd;
 	struct ib_mr 		*mr;
 	struct ib_fmr_pool 	*fmr_pool;
+	u32			cq_cr_count;
 };
 
 struct sdp_moderation {
@@ -939,6 +940,18 @@ static inline struct ipv6_pinfo *sdp_inet6_sk_generic(struct sock *sk)
 	return (struct ipv6_pinfo *)(((u8 *)sk) + offset);
 }
 #endif
+
+static inline int sdp_get_vector_num(struct ib_device *device)
+{
+	struct sdp_device *sdp_dev;
+	int vector;
+
+	sdp_dev = ib_get_client_data(device, &sdp_client);
+	BUG_ON(sdp_dev == NULL);
+	vector =  sdp_dev->cq_cr_count % device->num_comp_vectors;
+	sdp_dev->cq_cr_count++;
+	return vector;
+}
 
 /* sdp_main.c */
 void sdp_set_default_moderation(struct sdp_sock *ssk);

@@ -2763,6 +2763,8 @@ static void sdp_add_device(struct ib_device *device)
 	if (!sdp_dev)
 		return;
 
+	memset(sdp_dev, 0, sizeof(*sdp_dev));
+
 	sdp_dev->pd = ib_alloc_pd(device);
 	if (IS_ERR(sdp_dev->pd)) {
 		printk(KERN_WARNING "Unable to allocate PD: %ld.\n",

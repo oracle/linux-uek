@@ -454,13 +454,10 @@ static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
 {
 }
 
-/* SHAMIR - TODO: remove this!!! */
-#define IB_CQ_VECTOR_LEAST_ATTACHED 0
-
 int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 {
 	struct ib_cq *tx_cq;
-	int rc = 0;
+	int rc = 0, vector = 0;
 
 	atomic_set(&ssk->tx_ring.head, 1);
 	atomic_set(&ssk->tx_ring.tail, 1);
@@ -475,8 +472,10 @@ int sdp_tx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		goto out;
 	}
 
+	vector = sdp_get_vector_num(device);
+
 	tx_cq = ib_create_cq(device, sdp_tx_irq, sdp_tx_cq_event_handler,
-			  sk_ssk(ssk), SDP_TX_SIZE, IB_CQ_VECTOR_LEAST_ATTACHED);
+			  sk_ssk(ssk), SDP_TX_SIZE, vector);
 
 	if (IS_ERR(tx_cq)) {
 		rc = PTR_ERR(tx_cq);

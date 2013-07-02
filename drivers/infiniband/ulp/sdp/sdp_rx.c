@@ -888,13 +888,10 @@ static void sdp_arm_cq_timer(unsigned long data)
 	sdp_arm_rx_cq(sk_ssk(ssk));
 }
 
-/* SHAMIR - TODOL; remove this!!! */
-#define IB_CQ_VECTOR_LEAST_ATTACHED 0
-
 int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 {
 	struct ib_cq *rx_cq;
-	int rc = 0;
+	int rc = 0, vector = 0;
 
 	atomic_set(&ssk->rx_ring.head, 1);
 	atomic_set(&ssk->rx_ring.tail, 1);
@@ -909,8 +906,10 @@ int sdp_rx_ring_create(struct sdp_sock *ssk, struct ib_device *device)
 		return -ENOMEM;
 	}
 
+	vector = sdp_get_vector_num(device);
+
 	rx_cq = ib_create_cq(device, sdp_rx_irq, sdp_rx_cq_event_handler,
-			  sk_ssk(ssk), sdp_rx_size, IB_CQ_VECTOR_LEAST_ATTACHED);
+			  sk_ssk(ssk), sdp_rx_size, vector);
 
 	if (IS_ERR(rx_cq)) {
 		rc = PTR_ERR(rx_cq);
