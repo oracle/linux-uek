@@ -115,7 +115,7 @@ static inline void acpi_disable_pci(void)
 }
 
 /* Low-level suspend routine. */
-extern int acpi_suspend_lowlevel(void);
+extern int (*acpi_suspend_lowlevel)(void);
 
 /* Physical address to resume after wakeup */
 #define acpi_wakeup_address ((unsigned long)(real_mode_header->wakeup_start))

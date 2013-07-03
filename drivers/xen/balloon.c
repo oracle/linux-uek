@@ -36,6 +36,8 @@
  * IN THE SOFTWARE.
  */
 
+#define pr_fmt(fmt) "xen:" KBUILD_MODNAME ": " fmt
+
 #include <linux/kernel.h>
 #include <linux/sched.h>
 #include <linux/errno.h>
@@ -281,7 +283,7 @@ static enum bp_state reserve_additional_memory(long credit)
 	rc = add_memory(nid, hotplug_start_paddr, balloon_hotplug << PAGE_SHIFT);
 
 	if (rc) {
-		pr_info("xen_balloon: %s: add_memory() failed: %i\n", __func__, rc);
+		pr_info("%s: add_memory() failed: %i\n", __func__, rc);
 		return BP_EAGAIN;
 	}
 
@@ -451,7 +453,8 @@ static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
 		nr_pages = ARRAY_SIZE(frame_list);
 
 	for (i = 0; i < nr_pages; i++) {
-		if ((page = alloc_pages(gfp, balloon_order)) == NULL) {
+		page = alloc_pages(gfp, balloon_order);
+		if (page == NULL) {
 			nr_pages = i;
 			state = BP_EAGAIN;
 			break;
@@ -651,7 +654,7 @@ static int __init balloon_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 
-	pr_info("xen_balloon: Initialising balloon driver with page order %d.\n",
+	pr_info("Initialising balloon driver with page order %d.\n",
 		balloon_order);
 
 	balloon_npages = 1 << balloon_order;

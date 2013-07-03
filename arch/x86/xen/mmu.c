@@ -435,13 +435,13 @@ static pteval_t iomap_pte(pteval_t val)
 static pteval_t xen_pte_val(pte_t pte)
 {
 	pteval_t pteval = pte.pte;
-#if 0
+
 	/* If this is a WC pte, convert back from Xen WC to Linux WC */
 	if ((pteval & (_PAGE_PAT | _PAGE_PCD | _PAGE_PWT)) == _PAGE_PAT) {
 		WARN_ON(!pat_enabled);
 		pteval = (pteval & ~_PAGE_PAT) | _PAGE_PWT;
 	}
-#endif
+
 	if (xen_initial_domain() && (pteval & _PAGE_IOMAP))
 		return pteval;
 
@@ -483,7 +483,7 @@ void xen_set_pat(u64 pat)
 static pte_t xen_make_pte(pteval_t pte)
 {
 	phys_addr_t addr = (pte & PTE_PFN_MASK);
-#if 0
+
 	/* If Linux is trying to set a WC pte, then map to the Xen WC.
 	 * If _PAGE_PAT is set, then it probably means it is really
 	 * _PAGE_PSE, so avoid fiddling with the PAT mapping and hope
@@ -496,7 +496,7 @@ static pte_t xen_make_pte(pteval_t pte)
 		if ((pte & (_PAGE_PCD | _PAGE_PWT)) == _PAGE_PWT)
 			pte = (pte & ~(_PAGE_PCD | _PAGE_PWT)) | _PAGE_PAT;
 	}
-#endif
+
 	/*
 	 * Unprivileged domains are allowed to do IOMAPpings for
 	 * PCI passthrough, but not map ISA space.  The ISA
@@ -1989,8 +1989,6 @@ static void __init xen_write_cr3_init(unsigned long cr3)
 			  PFN_DOWN(__pa(initial_page_table)));
 	set_page_prot(initial_page_table, PAGE_KERNEL);
 	set_page_prot(initial_kernel_pmd, PAGE_KERNEL);
-
-	pv_mmu_ops.write_cr3 = &xen_write_cr3;
 }
 
 void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
@@ -2119,6 +2117,7 @@ static void __init xen_post_allocator_init(void)
 #endif
 
 #ifdef CONFIG_X86_64
+	pv_mmu_ops.write_cr3 = &xen_write_cr3;
 	SetPagePinned(virt_to_page(level3_user_vsyscall));
 #endif
 	xen_mark_init_mm_pinned();
