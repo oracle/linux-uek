@@ -2015,7 +2015,7 @@ static int mlx4_en_change_mtu(struct net_device *dev, int new_mtu)
 
 	if ((new_mtu < MLX4_EN_MIN_MTU) || (new_mtu > priv->max_mtu)) {
 		en_err(priv, "Bad MTU size:%d.\n", new_mtu);
-		return -EPERM;
+		return -EINVAL;
 	}
 	dev->mtu = new_mtu;
 
