@@ -105,7 +105,7 @@ static ssize_t parent_show_neighs(struct device *d,
 	read_lock_bh(&parent->lock);
 	rcu_read_lock_bh();
 
-	parent_for_each_slave(parent, slave) {
+	parent_for_each_slave_rcu(parent, slave) {
 		for (i = 0; i < NEIGH_HASH_SIZE; i++) {
 			struct neigh *neigh;
 			struct hlist_node *n;
@@ -161,7 +161,9 @@ static ssize_t parent_show_vifs(struct device *d,
 	char *p = buf;
 
 	read_lock_bh(&parent->lock);
-	parent_for_each_slave(parent, slave) {
+	rcu_read_lock_bh();
+
+	parent_for_each_slave_rcu(parent, slave) {
 		if (is_zero_ether_addr(slave->emac)) {
 			p += _sprintf(p, buf, "SLAVE=%-10s MAC=%-17s "
 				      "VLAN=%s\n", slave->dev->name,
@@ -178,6 +180,7 @@ static ssize_t parent_show_vifs(struct device *d,
 				      slave->vlan);
 		}
 	}
+	rcu_read_unlock_bh();
 	read_unlock_bh(&parent->lock);
 
 	_end_of_line(p, buf);
@@ -206,60 +209,56 @@ static ssize_t parent_store_vifs(struct device *d,
 	    (command[0] != '+' && command[0] != '-'))
 		goto err_no_cmd;
 
-	read_lock_bh(&parent->lock);
+	rcu_read_lock_bh();
 	/* check if ifname exist */
-	parent_for_each_slave(parent, slave_tmp) {
+	parent_for_each_slave_rcu(parent, slave_tmp) {
 		if (!strcmp(slave_tmp->dev->name, ifname)) {
 			found = 1;
 			slave = slave_tmp;
 		}
 	}
-	read_unlock_bh(&parent->lock);
 
 	if (!found) {
 		pr_err("%s could not find slave\n", ifname);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out_free_lock;
 	}
 
 	/* process command */
 	if (command[0] == '+') {
 		if (get_emac(mac, mac_str)) {
 			pr_err("%s invalid mac input\n", ifname);
-			return -EINVAL;
+			ret = -EINVAL;
+			goto out_free_lock;
 		}
 		found = parent_add_vif_param(parent->dev, slave->dev, vlan, mac);
 		if (found)
-			return -EINVAL;
-		return ret;
+			ret = -EINVAL;
+		goto out_free_lock;
 	}
 
 	if (command[0] == '-') {
-
-		write_lock_bh(&parent->lock);
-
 		if (is_zero_ether_addr(slave->emac)) {
 			pr_err("%s slave mac already unset %pM\n",
 			       ifname, slave->emac);
 			ret = -EINVAL;
-			goto out;
+			goto out_free_lock;
 		}
 
 		pr_info("slave %s mac is unset (was %pM)\n",
 			ifname, slave->emac);
-
+		write_lock_bh(&parent->lock);
 		memset(slave->emac, 0, ETH_ALEN);
-
-		goto out;
+		write_unlock_bh(&parent->lock);
 	}
 
+out_free_lock:
+	rcu_read_unlock_bh();
+	return ret;
 err_no_cmd:
 	pr_err("%s USAGE: (-|+)ifname [mac]\n", DRV_NAME);
-	ret = -EPERM;
+	return -EPERM;
 
-out:
-	write_unlock_bh(&parent->lock);
-
-	return ret;
 }
 
 static DEVICE_ATTR(vifs, S_IRUGO | S_IWUSR, parent_show_vifs,
@@ -273,8 +272,12 @@ static ssize_t parent_show_slaves(struct device *d,
 	char *p = buf;
 
 	read_lock_bh(&parent->lock);
-	parent_for_each_slave(parent, slave)
+	rcu_read_lock_bh();
+
+	parent_for_each_slave_rcu(parent, slave)
 		p += _sprintf(p, buf, "%s\n", slave->dev->name);
+
+	rcu_read_unlock_bh();
 	read_unlock_bh(&parent->lock);
 
 	_end_of_line(p, buf);
@@ -299,8 +302,11 @@ static ssize_t parent_store_slaves(struct device *d,
 			"interface is down.\n", dev->name);
 	}
 
-	if (!rtnl_trylock()) /* because __dev_get_by_name */
+	if (!rtnl_trylock()) {/* because __dev_get_by_name */
+		pr_warn("%s: %s not available right now\n",
+			parent->dev->name, __func__);
 		return restart_syscall();
+	}
 
 	sscanf(buffer, "%16s", command);
 
@@ -318,15 +324,15 @@ static ssize_t parent_store_slaves(struct device *d,
 			goto out;
 		}
 
-		read_lock_bh(&parent->lock);
-		parent_for_each_slave(parent, slave) {
+		rcu_read_lock_bh();
+		parent_for_each_slave_rcu(parent, slave) {
 			if (slave->dev == dev) {
 				pr_err("%s ERR- Interface %s is already enslaved!\n",
 				       parent->dev->name, dev->name);
 				ret = -EPERM;
 			}
 		}
-		read_unlock_bh(&parent->lock);
+		rcu_read_unlock_bh();
 
 		if (ret < 0)
 			goto out;
@@ -344,13 +350,13 @@ static ssize_t parent_store_slaves(struct device *d,
 	if (command[0] == '-') {
 		dev = NULL;
 
-		read_lock_bh(&parent->lock);
-		parent_for_each_slave(parent, slave)
+		rcu_read_lock_bh();
+		parent_for_each_slave_rcu(parent, slave)
 			if (strnicmp(slave->dev->name, ifname, IFNAMSIZ) == 0) {
 				dev = slave->dev;
 				break;
 			}
-		read_unlock_bh(&parent->lock);
+		rcu_read_unlock_bh();
 
 		if (dev) {
 			pr_info("%s: removing slave %s\n",

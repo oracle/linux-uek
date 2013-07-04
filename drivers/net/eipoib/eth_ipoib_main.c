@@ -55,6 +55,7 @@ static int eipoib_device_event(struct notifier_block *unused,
 static void free_all_ip_ent_in_emac_rec(struct guest_emac_info *emac_info);
 static void neigh_learn_task(struct work_struct *work);
 static void slave_neigh_flush(struct slave *slave);
+static void slave_free(struct rcu_head *head);
 static const char * const version =
 	DRV_DESCRIPTION ": v" DRV_VERSION " (" DRV_RELDATE ")\n";
 
@@ -98,6 +99,7 @@ void build_neigh_mac(u8 *_mac, u32 _qpn, u16 _lid)
 	*(__be16 *)(_mac + sizeof(_qpn)) = cpu_to_be16(_lid);
 }
 
+/* must call under rcu_read_lock_bh*/
 static inline
 struct slave *get_slave_by_dev(struct parent *parent,
 			       struct net_device *slave_dev)
@@ -105,7 +107,7 @@ struct slave *get_slave_by_dev(struct parent *parent,
 	struct slave *slave, *slave_tmp;
 	int found = 0;
 
-	parent_for_each_slave(parent, slave_tmp) {
+	parent_for_each_slave_rcu(parent, slave_tmp) {
 		if (slave_tmp->dev == slave_dev) {
 			found = 1;
 			slave = slave_tmp;
@@ -123,7 +125,8 @@ struct slave *get_slave_by_mac_and_vlan(struct parent *parent, u8 *mac,
 	struct slave *slave, *slave_tmp;
 	int found = 0;
 
-	parent_for_each_slave(parent, slave_tmp) {
+	rcu_read_lock_bh();
+	parent_for_each_slave_rcu(parent, slave_tmp) {
 		if ((!memcmp(slave_tmp->emac, mac, ETH_ALEN)) &&
 		    (slave_tmp->vlan == vlan)) {
 			found = 1;
@@ -131,6 +134,7 @@ struct slave *get_slave_by_mac_and_vlan(struct parent *parent, u8 *mac,
 			break;
 		}
 	}
+	rcu_read_unlock_bh();
 
 	return found ? slave : NULL;
 }
@@ -256,15 +260,19 @@ static int parent_set_carrier(struct parent *parent)
 		goto down;
 
 	/* bring parent link up if one slave (at least) is up */
-	parent_for_each_slave(parent, slave) {
+	rcu_read_lock_bh();
+	parent_for_each_slave_rcu(parent, slave) {
 		if (netif_carrier_ok(slave->dev)) {
 			if (!netif_carrier_ok(parent->dev)) {
 				netif_carrier_on(parent->dev);
+				rcu_read_unlock_bh();
 				return 1;
 			}
+			rcu_read_unlock_bh();
 			return 0;
 		}
 	}
+	rcu_read_unlock_bh();
 
 down:
 	if (netif_carrier_ok(parent->dev)) {
@@ -279,23 +287,26 @@ static int parent_set_mtu(struct parent *parent)
 {
 	struct slave *slave, *f_slave;
 	unsigned int mtu;
+	int ret = 0;
 
 	if (parent->slave_cnt == 0)
 		return 0;
 
 	/* find min mtu */
+	rcu_read_lock_bh();
 	f_slave = list_first_entry(&parent->slave_list, struct slave, list);
 	mtu = f_slave->dev->mtu;
 
-	parent_for_each_slave(parent, slave)
+	parent_for_each_slave_rcu(parent, slave)
 		mtu = min(slave->dev->mtu, mtu);
 
 	if (parent->dev->mtu != mtu) {
 		dev_set_mtu(parent->dev, mtu);
-		return 1;
+		ret = 1;
 	}
+	rcu_read_unlock_bh();
 
-	return 0;
+	return ret;
 }
 
 /*
@@ -329,14 +340,15 @@ static void parent_self_features(struct net_device *parent_dev, u64 *take,
 static void parent_attach_slave(struct parent *parent,
 				struct slave *new_slave)
 {
-	list_add_tail(&new_slave->list, &parent->slave_list);
+	list_add_tail_rcu(&new_slave->list, &parent->slave_list);
 	parent->slave_cnt++;
 }
 
 static void parent_detach_slave(struct parent *parent, struct slave *slave)
 {
-	list_del(&slave->list);
+	list_del_rcu(&slave->list);
 	parent->slave_cnt--;
+	call_rcu_bh(&slave->rcu, slave_free);
 }
 
 static netdev_features_t parent_fix_features(struct net_device *dev,
@@ -349,13 +361,13 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 
 	parent_self_features(parent->dev, &take, &drop);
 
-	read_lock_bh(&parent->lock);
+	rcu_read_lock_bh();
 
 	mask = features;
 	features &= ~NETIF_F_ONE_FOR_ALL;
 	features |= NETIF_F_ALL_FOR_ALL;
 
-	parent_for_each_slave(parent, slave)
+	parent_for_each_slave_rcu(parent, slave)
 		features = netdev_increment_features(features,
 						     slave->dev->features,
 						     mask);
@@ -365,7 +377,7 @@ static netdev_features_t parent_fix_features(struct net_device *dev,
 
 	features |= take;
 
-	read_unlock_bh(&parent->lock);
+	rcu_read_unlock_bh();
 	return features;
 }
 
@@ -375,6 +387,7 @@ static int parent_compute_features(struct parent *parent)
 	u64 hw_features, features, take, drop;
 	struct slave *slave;
 
+	rcu_read_lock_bh();
 	if (list_empty(&parent->slave_list))
 		goto done;
 
@@ -385,7 +398,7 @@ static int parent_compute_features(struct parent *parent)
 	hw_features = features = ~0LL;
 
 	/* gets the common features from all slaves */
-	parent_for_each_slave(parent, slave) {
+	parent_for_each_slave_rcu(parent, slave) {
 		features &= slave->dev->features;
 		hw_features &= slave->dev->hw_features;
 	}
@@ -405,6 +418,7 @@ done:
 	pr_info("%s: %s: Features: 0x%llx\n",
 		__func__, parent_dev->name, parent_dev->features);
 
+	rcu_read_unlock_bh();
 	return 0;
 }
 
@@ -529,11 +543,7 @@ int parent_enslave(struct net_device *parent_dev, struct net_device *slave_dev)
 
 	write_unlock_bh(&parent->lock);
 
-	read_lock_bh(&parent->lock);
-
 	parent_set_carrier(parent);
-
-	read_unlock_bh(&parent->lock);
 
 	res = create_slave_symlinks(parent_dev, slave_dev);
 	if (res)
@@ -569,8 +579,10 @@ err_undo_flags:
 	return res;
 }
 
-static void slave_free(struct slave *slave)
+static void slave_free(struct rcu_head *head)
 {
+	struct slave *slave
+		= container_of(head, struct slave, rcu);
 
 	netdev_rx_handler_unregister(slave->dev);
 
@@ -595,12 +607,14 @@ int parent_release_slave(struct net_device *parent_dev,
 	}
 
 	write_lock_bh(&parent->lock);
+	rcu_read_lock_bh();
 
 	slave = get_slave_by_dev(parent, slave_dev);
 	if (!slave) {
 		/* not a slave of this parent */
 		pr_warn("%s not enslaved %s\n",
 			parent_dev->name, slave_dev->name);
+		rcu_read_unlock_bh();
 		write_unlock_bh(&parent->lock);
 		return -EINVAL;
 	}
@@ -622,16 +636,18 @@ int parent_release_slave(struct net_device *parent_dev,
 			__func__, slave->emac);
 		queue_delayed_work(parent->wq, &parent->arp_gen_work, 0);
 	}
-	write_unlock_bh(&parent->emac_info_lock);
 
 	/* release the slave from its parent */
 	parent_detach_slave(parent, slave);
 
 	parent_compute_features(parent);
 
+	write_unlock_bh(&parent->emac_info_lock);
+
 	if (parent->slave_cnt == 0)
 		parent_set_carrier(parent);
 
+	rcu_read_unlock_bh();
 	write_unlock_bh(&parent->lock);
 
 	/* must do this from outside any spinlocks */
@@ -641,8 +657,6 @@ int parent_release_slave(struct net_device *parent_dev,
 
 	dev_close(slave_dev);
 
-	slave_free(slave);
-
 	return 0;  /* deletion OK */
 }
 
@@ -651,51 +665,27 @@ static int parent_release_all(struct net_device *parent_dev)
 	struct parent *parent = netdev_priv(parent_dev);
 	struct slave *slave, *slave_tmp;
 	struct net_device *slave_dev;
-	struct guest_emac_info *emac_info, *emac_info_tmp;
-	struct slave;
 
-	write_lock_bh(&parent->lock);
+	pr_info("%s: going to release all slaves\n", parent_dev->name);
 
 	netif_carrier_off(parent_dev);
 
+	write_lock_bh(&parent->lock);
 	if (parent->slave_cnt == 0)
 		goto out;
+	write_unlock_bh(&parent->lock);
 
 	list_for_each_entry_safe(slave, slave_tmp, &parent->slave_list, list) {
 		slave_dev = slave->dev;
-
-		/* remove slave from parent's slave-list */
-		parent_detach_slave(parent, slave);
-
-		parent_compute_features(parent);
-
-		write_unlock_bh(&parent->lock);
-
-		destroy_slave_symlinks(parent_dev, slave_dev);
-
-		netdev_set_parent_master(slave_dev, NULL);
-
-		dev_close(slave_dev);
-
-		slave_free(slave);
-
-		write_lock_bh(&parent->lock);
+		dev_change_flags(slave_dev, slave_dev->flags & ~IFF_UP);
+		parent_release_slave(parent_dev, slave_dev);
 	}
-
-	write_lock_bh(&parent->emac_info_lock);
-	list_for_each_entry_safe(emac_info, emac_info_tmp,
-				 &parent->emac_ip_list, list) {
-		free_all_ip_ent_in_emac_rec(emac_info);
-		list_del(&emac_info->list);
-		kfree(emac_info);
-	}
-	write_unlock_bh(&parent->emac_info_lock);
 
 	pr_info("%s: released all slaves\n", parent_dev->name);
+	return 0;
 
 out:
 	write_unlock_bh(&parent->lock);
-
 	return 0;
 }
 
@@ -709,9 +699,8 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 
 	memset(stats, 0, sizeof(*stats));
 
-	read_lock_bh(&parent->lock);
-
-	parent_for_each_slave(parent, slave) {
+	rcu_read_lock_bh();
+	parent_for_each_slave_rcu(parent, slave) {
 		const struct rtnl_link_stats64 *sstats =
 			dev_get_stats(slave->dev, &temp);
 
@@ -742,7 +731,7 @@ static struct rtnl_link_stats64 *parent_get_stats(struct net_device *parent_dev,
 		stats->tx_window_errors += sstats->tx_window_errors;
 	}
 
-	read_unlock_bh(&parent->lock);
+	rcu_read_unlock_bh();
 
 	return stats;
 }
@@ -1701,10 +1690,13 @@ static rx_handler_result_t eipoib_handle_frame(struct sk_buff **pskb)
 {
 	struct sk_buff *skb = *pskb;
 	struct slave *slave;
+	rcu_read_lock_bh();
 
 	slave = eipoib_slave_get_rcu(skb->dev);
 
 	parent_rx(skb, slave);
+
+	rcu_read_unlock_bh();
 
 	return RX_HANDLER_CONSUMED;
 }
@@ -1719,7 +1711,7 @@ static netdev_tx_t parent_tx(struct sk_buff *skb, struct net_device *dev)
 	u16 vlan;
 	u8 mac_no_admin_bit[ETH_ALEN];
 
-	read_lock(&parent->lock);
+	rcu_read_lock_bh();
 
 	if (unlikely(!IS_E_IPOIB_PROTO(ethh->h_proto))) {
 		++parent->port_stats.tx_proto_errors;
@@ -1800,7 +1792,7 @@ drop:
 	dev_kfree_skb(skb);
 
 out:
-	read_unlock(&parent->lock);
+	rcu_read_unlock_bh();
 	return NETDEV_TX_OK;
 }
 
@@ -1926,6 +1918,7 @@ int parent_add_vif_param(struct net_device *parent_dev,
 	}
 
 	write_lock_bh(&parent->lock);
+	rcu_read_lock_bh();
 
 	new_slave = get_slave_by_dev(parent, new_vif_dev);
 	if (!new_slave) {
@@ -1943,7 +1936,7 @@ int parent_add_vif_param(struct net_device *parent_dev,
 	}
 
 	/* check another slave has this mac/vlan */
-	parent_for_each_slave(parent, slave_tmp) {
+	parent_for_each_slave_rcu(parent, slave_tmp) {
 		if (!memcmp(slave_tmp->emac, mac, ETH_ALEN) &&
 		    slave_tmp->vlan == vlan) {
 			pr_err("cannot update %s, slave %s already has"
@@ -1965,6 +1958,8 @@ int parent_add_vif_param(struct net_device *parent_dev,
 	new_slave->vlan = vlan;
 
 out:
+	rcu_read_unlock_bh();
+
 	write_unlock_bh(&parent->lock);
 
 	return ret;

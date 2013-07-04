@@ -67,6 +67,9 @@
 
 #define PARENT_VLAN_FEATURES (NETIF_F_HW_VLAN_RX | NETIF_F_HW_VLAN_TX)
 
+#define parent_for_each_slave_rcu(_parent, slave)		\
+		list_for_each_entry_rcu(slave, &(_parent)->slave_list, list)\
+
 #define parent_for_each_slave(_parent, slave)		\
 		list_for_each_entry(slave, &(_parent)->slave_list, list)\
 
@@ -153,6 +156,7 @@ struct neigh {
 struct slave {
 	struct net_device *dev;
 	struct list_head list;
+	struct rcu_head rcu;
 	u16    pkey;
 	u16    vlan;
 	u8     emac[ETH_ALEN];
