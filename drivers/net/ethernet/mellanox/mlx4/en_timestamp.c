@@ -35,7 +35,7 @@
 
 #include "mlx4_en.h"
 
-#define CORE_CLOCK_MASK 0xffffffffffff
+#define CORE_CLOCK_MASK 0xffffffffffffULL
 
 int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 {
