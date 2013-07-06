@@ -130,6 +130,17 @@ static ssize_t show_crash_notes(struct sys_device *dev, struct sysdev_attribute 
 	return rc;
 }
 static SYSDEV_ATTR(crash_notes, 0400, show_crash_notes, NULL);
+
+static ssize_t show_crash_notes_size(struct sys_device *dev,
+				     struct sysdev_attribute *attr,
+				     char *buf)
+{
+	ssize_t rc;
+
+	rc = sprintf(buf, "%lu\n", sizeof(note_buf_t));
+	return rc;
+}
+static SYSDEV_ATTR(crash_notes_size, 0400, show_crash_notes_size, NULL);
 #endif
 
 /*
@@ -234,6 +245,9 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 #ifdef CONFIG_KEXEC
 	if (!error)
 		error = sysdev_create_file(&cpu->sysdev, &attr_crash_notes);
+	if (!error)
+		error = sysdev_create_file(&cpu->sysdev,
+					   &attr_crash_notes_size);
 #endif
 	return error;
 }
