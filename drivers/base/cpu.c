@@ -62,17 +62,11 @@ static ssize_t __ref store_online(struct sys_device *dev, struct sysdev_attribut
 }
 static SYSDEV_ATTR(online, 0644, show_online, store_online);
 
-static void __cpuinit register_cpu_control(struct cpu *cpu)
-{
-	sysdev_create_file(&cpu->sysdev, &attr_online);
-}
 void unregister_cpu(struct cpu *cpu)
 {
 	int logical_cpu = cpu->sysdev.id;
 
 	unregister_cpu_under_node(logical_cpu, cpu_to_node(logical_cpu));
-
-	sysdev_remove_file(&cpu->sysdev, &attr_online);
 
 	sysdev_unregister(&cpu->sysdev);
 	per_cpu(cpu_sys_devices, logical_cpu) = NULL;
@@ -99,11 +93,6 @@ static ssize_t cpu_release_store(struct sysdev_class *class,
 static SYSDEV_CLASS_ATTR(probe, S_IWUSR, NULL, cpu_probe_store);
 static SYSDEV_CLASS_ATTR(release, S_IWUSR, NULL, cpu_release_store);
 #endif /* CONFIG_ARCH_CPU_PROBE_RELEASE */
-
-#else /* ... !CONFIG_HOTPLUG_CPU */
-static inline void register_cpu_control(struct cpu *cpu)
-{
-}
 #endif /* CONFIG_HOTPLUG_CPU */
 
 #ifdef CONFIG_KEXEC
@@ -235,8 +224,6 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 
 	error = sysdev_register(&cpu->sysdev);
 
-	if (!error && cpu->hotpluggable)
-		register_cpu_control(cpu);
 	if (!error)
 		per_cpu(cpu_sys_devices, num) = &cpu->sysdev;
 	if (!error)
@@ -257,9 +244,15 @@ EXPORT_SYMBOL_GPL(get_cpu_sysdev);
 static int cpu_add_dev(struct sys_device *sys_dev)
 {
 	int ret = 0;
+	struct cpu *cpu;
 
+	cpu = container_of(sys_dev, struct cpu, sysdev);
+
+	if (cpu->hotpluggable)
+		ret = sysdev_create_file(sys_dev, &attr_online);
 #ifdef CONFIG_KEXEC
-	ret = sysdev_create_file(sys_dev, &attr_crash_notes);
+	if (!ret)
+		ret = sysdev_create_file(sys_dev, &attr_crash_notes);
 	if (!ret)
 		ret = sysdev_create_file(sys_dev,
 					 &attr_crash_notes_size);
@@ -270,6 +263,12 @@ static int cpu_add_dev(struct sys_device *sys_dev)
 
 static int cpu_remove_dev(struct sys_device *sys_dev)
 {
+	struct cpu *cpu;
+
+	cpu = container_of(sys_dev, struct cpu, sysdev);
+
+	if (cpu->hotpluggable)
+		sysdev_remove_file(sys_dev, &attr_online);
 #ifdef CONFIG_KEXEC
 	sysdev_remove_file(sys_dev, &attr_crash_notes);
 	sysdev_remove_file(sys_dev, &attr_crash_notes_size);
