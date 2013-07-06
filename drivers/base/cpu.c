@@ -137,7 +137,7 @@ static ssize_t show_crash_notes_size(struct sys_device *dev,
 {
 	ssize_t rc;
 
-	rc = sprintf(buf, "%lu\n", sizeof(note_buf_t));
+	rc = sprintf(buf, "%zu\n", sizeof(note_buf_t));
 	return rc;
 }
 static SYSDEV_ATTR(crash_notes_size, 0400, show_crash_notes_size, NULL);
