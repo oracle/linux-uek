@@ -242,13 +242,6 @@ int __cpuinit register_cpu(struct cpu *cpu, int num)
 	if (!error)
 		register_cpu_under_node(num, cpu_to_node(num));
 
-#ifdef CONFIG_KEXEC
-	if (!error)
-		error = sysdev_create_file(&cpu->sysdev, &attr_crash_notes);
-	if (!error)
-		error = sysdev_create_file(&cpu->sysdev,
-					   &attr_crash_notes_size);
-#endif
 	return error;
 }
 
@@ -261,11 +254,43 @@ struct sys_device *get_cpu_sysdev(unsigned cpu)
 }
 EXPORT_SYMBOL_GPL(get_cpu_sysdev);
 
+static int cpu_add_dev(struct sys_device *sys_dev)
+{
+	int ret = 0;
+
+#ifdef CONFIG_KEXEC
+	ret = sysdev_create_file(sys_dev, &attr_crash_notes);
+	if (!ret)
+		ret = sysdev_create_file(sys_dev,
+					 &attr_crash_notes_size);
+#endif
+
+	return ret;
+}
+
+static int cpu_remove_dev(struct sys_device *sys_dev)
+{
+#ifdef CONFIG_KEXEC
+	sysdev_remove_file(sys_dev, &attr_crash_notes);
+	sysdev_remove_file(sys_dev, &attr_crash_notes_size);
+#endif
+
+	return 0;
+}
+
+static struct sysdev_driver cpu_sysdev_driver = {
+	.add		= cpu_add_dev,
+	.remove		= cpu_remove_dev,
+};
+
 int __init cpu_dev_init(void)
 {
 	int err;
 
 	err = sysdev_class_register(&cpu_sysdev_class);
+	if (!err)
+		err = sysdev_driver_register(&cpu_sysdev_class,
+					     &cpu_sysdev_driver);
 #if defined(CONFIG_SCHED_MC) || defined(CONFIG_SCHED_SMT)
 	if (!err)
 		err = sched_create_sysfs_power_savings_entries(&cpu_sysdev_class);
