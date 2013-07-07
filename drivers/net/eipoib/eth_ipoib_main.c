@@ -606,6 +606,9 @@ int parent_release_slave(struct net_device *parent_dev,
 		return -EINVAL;
 	}
 
+	/* make sure no packets are at the middle of sw/hw processing */
+	slave_dev->netdev_ops->ndo_stop(slave_dev);
+
 	write_lock_bh(&parent->lock);
 	rcu_read_lock_bh();
 
@@ -677,7 +680,6 @@ static int parent_release_all(struct net_device *parent_dev)
 
 	list_for_each_entry_safe(slave, slave_tmp, &parent->slave_list, list) {
 		slave_dev = slave->dev;
-		dev_change_flags(slave_dev, slave_dev->flags & ~IFF_UP);
 		parent_release_slave(parent_dev, slave_dev);
 	}
 
