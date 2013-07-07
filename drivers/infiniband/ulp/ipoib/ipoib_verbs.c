@@ -369,7 +369,8 @@ static int ipoib_create_parent_qp(struct net_device *dev,
 		init_attr.parent_attrib.rss_child_count = priv->rss_qp_num;
 	}
 
-	init_attr.create_flags |= IB_QP_CREATE_NETIF_QP;
+	if (priv->hca_caps & IB_DEVICE_MANAGED_FLOW_STEERING)
+		init_attr.create_flags |= IB_QP_CREATE_NETIF_QP;
 
 	/*
 	 * NO TSS (tss_qp_num = 0 priv->num_tx_queues  == 1)
