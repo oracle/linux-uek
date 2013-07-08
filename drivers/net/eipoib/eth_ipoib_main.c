@@ -2146,7 +2146,11 @@ static int parent_slave_netdev_event(unsigned long event,
 		parent_release_slave(parent_dev, slave_dev);
 		break;
 	case NETDEV_CHANGE:
-		parent_set_dev_addr(slave_dev, parent_dev);
+		if (is_zero_ether_addr(parent_dev->dev_addr)) {
+			pr_info("%s parent: %s needs to update hw address\n",
+				__func__, parent_dev->name);
+			parent_set_dev_addr(slave_dev, parent_dev);
+		}
 		/*no break*/
 	case NETDEV_UP:
 	case NETDEV_DOWN:
@@ -2216,8 +2220,11 @@ static int eipoib_device_event(struct notifier_block *unused,
 		break;
 	case NETDEV_CHANGE:
 		parent = get_parent_by_pif_name(dev->name);
-		if (parent)
+		if (parent && (is_zero_ether_addr(parent->dev->dev_addr))) {
+			pr_info("%s parent: %s needs to update hw address\n",
+				__func__, parent->dev->name);
 			parent_set_dev_addr(dev, parent->dev);
+		}
 		break;
 	default:
 		break;
