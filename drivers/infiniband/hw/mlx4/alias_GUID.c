@@ -471,9 +471,8 @@ void mlx4_ib_invalidate_all_guid_record(struct mlx4_ib_dev *dev, int port)
 		make sure no work waits in the queue, if the work is already
 		queued(not on the timer) the cancel will fail. That is not a problem
 		because we just want the work started.
-		in IRQ context use __cancel_delayed_work instead of cancel_delayed_work
 		*/
-		__cancel_delayed_work(&dev->sriov.alias_guid.
+		cancel_delayed_work(&dev->sriov.alias_guid.
 				      ports_guid[port - 1].alias_guid_work);
 		queue_delayed_work(dev->sriov.alias_guid.ports_guid[port - 1].wq,
 				   &dev->sriov.alias_guid.ports_guid[port - 1].alias_guid_work,
