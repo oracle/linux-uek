@@ -322,51 +322,86 @@ static bool start_new_rx_buffer(int offset, unsigned long size, int head)
  * the guest. This function is essentially a dry run of
  * netbk_gop_frag_copy.
  */
+static void netbk_get_slots(struct xenvif *vif, struct sk_buff *skb,
+			    struct page *page, int *copy_off,
+			    unsigned long size, unsigned long offset,
+			    int *head, int *count)
+{
+	unsigned long bytes;
+
+	/* Data must not cross a page boundary. */
+	BUG_ON(size + offset > PAGE_SIZE<<compound_order(page));
+
+	/* Skip unused frames from start of page */
+	page += offset >> PAGE_SHIFT;
+	offset &= ~PAGE_MASK;
+
+	while (size > 0) {
+		BUG_ON(offset >= PAGE_SIZE);
+		BUG_ON(*copy_off > MAX_BUFFER_OFFSET);
+
+		bytes = PAGE_SIZE - offset;
+
+		if (bytes > size)
+			bytes = size;
+
+		if (start_new_rx_buffer(*copy_off, bytes, *head)) {
+			*count = *count + 1;
+			*copy_off = 0;
+		}
+
+		if (*copy_off + bytes > MAX_BUFFER_OFFSET)
+			bytes = MAX_BUFFER_OFFSET - *copy_off;
+
+		*copy_off += bytes;
+
+		offset += bytes;
+		size -= bytes;
+
+		/* Next frame */
+		if (offset == PAGE_SIZE && size) {
+			BUG_ON(!PageCompound(page));
+			page++;
+			offset = 0;
+		}
+
+		if (*head)
+			*count = *count + 1;
+		*head = 0; /* There must be something in this buffer now. */
+	}
+}
+
 unsigned int xen_netbk_count_skb_slots(struct xenvif *vif, struct sk_buff *skb)
 {
-	unsigned int count;
-	int i, copy_off;
-
-	count = DIV_ROUND_UP(skb_headlen(skb), PAGE_SIZE);
-
-	copy_off = skb_headlen(skb) % PAGE_SIZE;
+	int i, copy_off = 0;
+	int nr_frags = skb_shinfo(skb)->nr_frags;
+	unsigned char *data;
+	int head = 1;
+	unsigned int count = 0;
 
 	if (skb_shinfo(skb)->gso_size)
 		count++;
 
-	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
-		unsigned long size = skb_frag_size(&skb_shinfo(skb)->frags[i]);
-		unsigned long offset = skb_shinfo(skb)->frags[i].page_offset;
-		unsigned long bytes;
+	data = skb->data;
+	while (data < skb_tail_pointer(skb)) {
+		unsigned int offset = offset_in_page(data);
+		unsigned int len = PAGE_SIZE - offset;
 
-		offset &= ~PAGE_MASK;
+		if (data + len > skb_tail_pointer(skb))
+			len = skb_tail_pointer(skb) - data;
 
-		while (size > 0) {
-			BUG_ON(offset >= PAGE_SIZE);
-			BUG_ON(copy_off > MAX_BUFFER_OFFSET);
-
-			bytes = PAGE_SIZE - offset;
-
-			if (bytes > size)
-				bytes = size;
-
-			if (start_new_rx_buffer(copy_off, bytes, 0)) {
-				count++;
-				copy_off = 0;
-			}
-
-			if (copy_off + bytes > MAX_BUFFER_OFFSET)
-				bytes = MAX_BUFFER_OFFSET - copy_off;
-
-			copy_off += bytes;
-
-			offset += bytes;
-			size -= bytes;
-
-			if (offset == PAGE_SIZE)
-				offset = 0;
-		}
+		netbk_get_slots(vif, skb, virt_to_page(data), &copy_off,
+				len, offset, &head, &count);
+		data += len;
 	}
+
+	for (i = 0; i < nr_frags; i++) {
+		netbk_get_slots(vif, skb, skb_frag_page(&skb_shinfo(skb)->frags[i]),
+				&copy_off, skb_frag_size(&skb_shinfo(skb)->frags[i]),
+				skb_shinfo(skb)->frags[i].page_offset,
+				&head, &count);
+	}
+
 	return count;
 }
 
