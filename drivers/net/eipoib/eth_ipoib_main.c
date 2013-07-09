@@ -276,7 +276,7 @@ static int parent_set_carrier(struct parent *parent)
 
 down:
 	if (netif_carrier_ok(parent->dev)) {
-		pr_info("bring down carrier\n");
+		pr_debug("bring down carrier\n");
 		netif_carrier_off(parent->dev);
 		return 1;
 	}
@@ -629,7 +629,7 @@ int parent_release_slave(struct net_device *parent_dev,
 	write_lock_bh(&parent->emac_info_lock);
 	emac_info = get_mac_ip_info_by_mac_and_vlan(parent, slave->emac, slave->vlan);
 	if (!emac_info)
-		pr_warn("%s %s didn't find emac: %pM\n",
+		pr_info("%s %s didn't find emac: %pM\n",
 			parent_dev->name, slave_dev->name, slave->emac);
 	else {
 		emac_info->rec_state = MIGRATED_OUT;
@@ -1225,7 +1225,7 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	int is_just_alloc_emac_info = 0;
 
 	if (0 == ip) {
-		pr_warn("%s: No valid IP (%d)\n", __func__, ip);
+		pr_debug("%s: No valid IP (%d)\n", __func__, ip);
 		return -EINVAL;
 	}
 	/* check if exists such slave at all */
