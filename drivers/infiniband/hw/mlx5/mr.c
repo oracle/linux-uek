@@ -212,7 +212,7 @@ static ssize_t size_write(struct file *filp, const char __user *buf,
 	int c;
 
 	if (copy_from_user(lbuf, buf, sizeof(lbuf)))
-		return -EPERM;
+		return -EFAULT;
 
 	c = order2idx(dev, ent->order);
 	lbuf[sizeof(lbuf) - 1] = 0;
@@ -253,7 +253,7 @@ static ssize_t size_read(struct file *filp, char __user *buf, size_t count,
 		return err;
 
 	if (copy_to_user(buf, lbuf, err))
-		return -EPERM;
+		return -EFAULT;
 
 	*pos += err;
 
@@ -278,7 +278,7 @@ static ssize_t limit_write(struct file *filp, const char __user *buf,
 	int c;
 
 	if (copy_from_user(lbuf, buf, sizeof(lbuf)))
-		return -EPERM;
+		return -EFAULT;
 
 	c = order2idx(dev, ent->order);
 	lbuf[sizeof(lbuf) - 1] = 0;
@@ -315,7 +315,7 @@ static ssize_t limit_read(struct file *filp, char __user *buf, size_t count,
 		return err;
 
 	if (copy_to_user(buf, lbuf, err))
-		return -EPERM;
+		return -EFAULT;
 
 	*pos += err;
 
