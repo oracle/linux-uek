@@ -4158,6 +4158,9 @@ static int be_probe(struct pci_dev *pdev, const struct pci_device_id *pdev_id)
 	/* Wait for interrupts to quiesce after an FLR */
 	msleep(100);
 
+	/* Allow interrupts for other ULPs running on NIC function */
+	be_intr_set(adapter, true);
+
 	status = be_stats_init(adapter);
 	if (status)
 		goto ctrl_clean;
