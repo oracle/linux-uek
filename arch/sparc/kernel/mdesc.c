@@ -552,22 +552,6 @@ static void __init report_platform_properties(void)
 		printk("PLATFORM: max-cpus [%llu]\n", max_cpus);
 	}
 
-#ifdef CONFIG_SMP
-	{
-		int max_cpu, i;
-
-		if (v) {
-			max_cpu = *v;
-			if (max_cpu > NR_CPUS)
-				max_cpu = NR_CPUS;
-		} else {
-			max_cpu = NR_CPUS;
-		}
-		for (i = 0; i < max_cpu; i++)
-			set_cpu_possible(i, true);
-	}
-#endif
-
 	mdesc_release(hp);
 }
 
@@ -803,7 +787,10 @@ static void * __cpuinit record_one_cpu(struct mdesc_handle *hp, u64 mp, int cpui
 {
 	ncpus_probed++;
 #ifdef CONFIG_SMP
-	set_cpu_present(cpuid, true);
+	if (cpuid < nr_cpu_ids) {
+		set_cpu_present(cpuid, true);
+		set_cpu_possible(cpuid, true);
+	}
 #endif
 	return NULL;
 }
