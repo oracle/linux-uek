@@ -903,10 +903,10 @@ send_using_neigh:
 			goto unref;
 		}
 
-		if (ipoib_cm_up(neigh))
+		if (ipoib_cm_up(neigh)) {
 			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
-
-		goto unref;
+			goto unref;
+		}
 	} else if (neigh->ah) {
 		/* in select queue cm was enabled ring is likely wrong */
 		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
