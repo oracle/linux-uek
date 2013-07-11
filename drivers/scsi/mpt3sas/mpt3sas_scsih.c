@@ -53,6 +53,7 @@
 #include <linux/interrupt.h>
 #include <linux/aer.h>
 #include <linux/raid_class.h>
+#include <linux/version.h>
 
 #include "mpt3sas_base.h"
 
@@ -2616,7 +2617,11 @@ _scsih_ublock_io_all_device(struct MPT3SAS_ADAPTER *ioc)
 		dewtprintk(ioc, sdev_printk(KERN_INFO, sdev,
 			"device_running, handle(0x%04x)\n",
 		    sas_device_priv_data->sas_target->handle));
-		scsi_internal_device_unblock(sdev, SDEV_RUNNING);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
+		scsi_internal_device_unblock(sdev, SDEV_RUNNING );
+#else
+		scsi_internal_device_unblock(sdev);
+#endif
 	}
 }
 
@@ -2643,7 +2648,11 @@ _scsih_ublock_io_device(struct MPT3SAS_ADAPTER *ioc, u64 sas_address)
 			continue;
 		if (sas_device_priv_data->block) {
 			sas_device_priv_data->block = 0;
-			scsi_internal_device_unblock(sdev, SDEV_RUNNING);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
+                        scsi_internal_device_unblock(sdev, SDEV_RUNNING );
+#else
+                        scsi_internal_device_unblock(sdev);
+#endif
 		}
 	}
 }

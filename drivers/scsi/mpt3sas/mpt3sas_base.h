@@ -62,6 +62,7 @@
 #include <scsi/scsi_transport_sas.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/scsi_eh.h>
+#include <linux/version.h>
 
 #include "mpt3sas_debug.h"
 #include "mpt3sas_trigger_diag.h"
@@ -1121,8 +1122,13 @@ void mpt3sas_transport_update_links(struct MPT3SAS_ADAPTER *ioc,
 extern struct sas_function_template mpt3sas_transport_functions;
 extern struct scsi_transport_template *mpt3sas_transport_template;
 extern int scsi_internal_device_block(struct scsi_device *sdev);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
 extern int scsi_internal_device_unblock(struct scsi_device *sdev,
-				enum scsi_device_state new_state);
+                                        enum scsi_device_state new_state);
+#else
+extern int scsi_internal_device_unblock(struct scsi_device *sdev);
+#endif
+
 /* trigger data externs */
 void mpt3sas_send_trigger_data_event(struct MPT3SAS_ADAPTER *ioc,
 	struct SL_WH_TRIGGERS_EVENT_DATA_T *event_data);

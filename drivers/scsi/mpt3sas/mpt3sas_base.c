@@ -41,7 +41,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301,
  * USA.
  */
-
+#include <linux/version.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/errno.h>
@@ -127,7 +127,11 @@ static int mpt3sas_remove_dead_ioc_func(void *arg)
 	pdev = ioc->pdev;
 	if ((pdev == NULL))
 		return -1;
-	pci_stop_and_remove_bus_device(pdev);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,3))
+        pci_stop_and_remove_bus_device(pdev);
+#else
+        pci_remove_bus_device(pdev);
+#endif
 	return 0;
 }
 
