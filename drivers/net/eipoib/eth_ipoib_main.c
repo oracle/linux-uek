@@ -1782,9 +1782,9 @@ static netdev_tx_t parent_tx(struct sk_buff *skb, struct net_device *dev)
 
 	rc = dev_queue_xmit(skb);
 	if (unlikely(rc)) {
-		pr_err("slave tx method failed %d\n", rc);
+		pr_err("slave tx method failed dev_queue_xmit returned:%d\n",
+		       rc);
 		++parent->port_stats.tx_slave_err;
-		dev_kfree_skb(skb);
 	}
 
 	goto out;
