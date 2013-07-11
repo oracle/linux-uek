@@ -2995,6 +2995,11 @@ static int sxge_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	u64 ip_summed = 0;
 	u32 orphan = 0;
 
+	if (!sxgep->vmac_stats.rxvmac_link_state) { /* Link is down */
+		dev_kfree_skb_any(skb);
+		return NETDEV_TX_OK;
+	}
+
 	i = skb_get_queue_mapping(skb);
 	txringp = &sxgep->tx_rings[i];
 	txq = netdev_get_tx_queue(dev, i);
