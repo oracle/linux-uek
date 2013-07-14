@@ -1012,7 +1012,6 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
 	struct sk_buff *skb;
-	unsigned long flags;
 
 	p->mtu = be32_to_cpu(data->mtu);
 
@@ -1050,21 +1049,23 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 
 	skb_queue_head_init(&skqueue);
 
-	spin_lock_irqsave(&priv->lock, flags);
+	spin_lock_irq(&priv->lock);
 	set_bit(IPOIB_FLAG_OPER_UP, &p->flags);
 	if (p->neigh)
 		while ((skb = __skb_dequeue(&p->neigh->queue)))
 			__skb_queue_tail(&skqueue, skb);
 
 	while ((skb = __skb_dequeue(&skqueue))) {
+		spin_unlock_irq(&priv->lock);
 		skb->dev = p->dev;
 		ret = dev_queue_xmit(skb);
 		if (ret)
 			ipoib_warn(priv, "%s:dev_queue_xmit failed to requeue"
 					 " packet, ret:%d\n", __func__, ret);
+		spin_lock_irq(&priv->lock);
 	}
 
-	spin_unlock_irqrestore(&priv->lock, flags);
+	spin_unlock_irq(&priv->lock);
 
 	ret = ib_send_cm_rtu(cm_id, NULL, 0);
 	if (ret) {
