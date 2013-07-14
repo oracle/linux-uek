@@ -177,6 +177,7 @@ enum {
 	MLX4_DEV_CAP_FLAG2_VLAN_CONTROL		= 1LL <<  5,
 	MLX4_DEV_CAP_FLAG2_UPDATE_QP		= 1LL <<  6,
 	MLX4_DEV_CAP_FLAG2_LB_SRC_CHK		= 1LL <<  7,
+	MLX4_DEV_CAP_FLAG2_DMFS_IPOIB		= 1LL <<  8,
 };
 
 /* bit enums for an 8-bit flags field indicating special use

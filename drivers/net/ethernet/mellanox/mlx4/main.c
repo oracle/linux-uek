@@ -1842,7 +1842,6 @@ static void choose_steering_mode(struct mlx4_dev *dev,
 
 	if (mlx4_log_num_mgm_entry_size == -1 &&
 	    dev_cap->flags2 & MLX4_DEV_CAP_FLAG2_FS_EN &&
-	    dev_cap->fs_log_max_ucast_qp_range_size == 0 &&
 	    (!mlx4_is_mfunc(dev) ||
 	     (dev_cap->fs_max_num_qp_per_entry >= (nvfs + 1))) &&
 	    choose_log_fs_mgm_entry_size(dev_cap->fs_max_num_qp_per_entry) >=

@@ -131,19 +131,26 @@ static union ib_gid zgid;
 
 static int check_flow_steering_support(struct mlx4_dev *dev)
 {
+	int eth_num_ports = 0;
 	int ib_num_ports = 0;
-	int i;
+	int dmfs = dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED;
 
-	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB)
-		ib_num_ports++;
-	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
-		if (!ib_num_ports ||
-		    (ib_num_ports && !mlx4_is_mfunc(dev)))
-			return 1;
-		if (ib_num_ports && mlx4_is_mfunc(dev))
+	if (dmfs) {
+		int i;
+		mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_ETH)
+			eth_num_ports++;
+		mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB)
+			ib_num_ports++;
+		dmfs &= (!ib_num_ports ||
+			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_DMFS_IPOIB)) &&
+			(!eth_num_ports ||
+			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_FS_EN));
+		if (ib_num_ports && mlx4_is_mfunc(dev)) {
 			pr_warn("Device managed flow steering is unavailable for IB port in multifunction env.\n");
+			dmfs = 0;
+		}
 	}
-	return 0;
+	return dmfs;
 }
 
 static int mlx4_ib_query_device(struct ib_device *ibdev,
