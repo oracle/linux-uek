@@ -1744,14 +1744,18 @@ int mlx4_master_immediate_activate_vlan_qos(struct mlx4_priv *priv,
 		return -ENOMEM;
 
 	if (vp_oper->state.default_vlan != vp_admin->default_vlan) {
-		err = __mlx4_register_vlan(&priv->dev, port,
-					   vp_admin->default_vlan,
-					   &admin_vlan_ix);
-		if (err) {
-			mlx4_warn((&priv->dev),
-				  "No vlan resources slave %d, port %d\n",
-				  slave, port);
-			return err;
+		if (MLX4_VGT != vp_admin->default_vlan) {
+			err = __mlx4_register_vlan(&priv->dev, port,
+						   vp_admin->default_vlan,
+						   &admin_vlan_ix);
+			if (err) {
+				mlx4_warn((&priv->dev),
+					  "No vlan resources slave %d, port %d\n",
+					  slave, port);
+				return err;
+			}
+		} else {
+			admin_vlan_ix = NO_INDX;
 		}
 		work->flags |= MLX4_VF_IMMED_VLAN_FLAG_VLAN;
 		mlx4_dbg((&(priv->dev)),
@@ -2404,18 +2408,12 @@ int mlx4_set_vf_mac(struct mlx4_dev *dev, int port, int vf, u8 *mac)
 }
 EXPORT_SYMBOL_GPL(mlx4_set_vf_mac);
 
-static int calculate_transition(u16 oper_vlan, u16 admin_vlan)
-{
-	return (2 * (oper_vlan == MLX4_VGT) + (admin_vlan == MLX4_VGT));
-}
-
 int mlx4_set_vf_vlan(struct mlx4_dev *dev, int port, int vf, u16 vlan, u8 qos)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_vport_oper_state *vf_oper;
 	struct mlx4_vport_state *vf_admin;
 	int slave;
-	enum mlx4_vlan_transition vlan_trans;
 
 	if ((!mlx4_is_master(dev)) ||
 	    !(dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_VLAN_CONTROL))
@@ -2437,12 +2435,8 @@ int mlx4_set_vf_vlan(struct mlx4_dev *dev, int port, int vf, u16 vlan, u8 qos)
 		vf_admin->default_vlan = vlan;
 	vf_admin->default_qos = qos;
 
-	vlan_trans = calculate_transition(vf_oper->state.default_vlan,
-					  vf_admin->default_vlan);
-
 	if (priv->mfunc.master.slave_state[slave].active &&
-	    dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_UPDATE_QP &&
-	    vlan_trans == MLX4_VLAN_TRANSITION_VST_VST) {
+	    dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_UPDATE_QP) {
 		mlx4_info(dev, "updating vf %d port %d config params immediately\n",
 			  vf, port);
 		mlx4_master_immediate_activate_vlan_qos(priv, slave, port);
