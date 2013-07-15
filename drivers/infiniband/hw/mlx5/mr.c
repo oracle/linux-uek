@@ -79,8 +79,6 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 	struct mlx5_create_mkey_mbox_in *in;
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	int npages = 1 << ent->order;
-	struct device *ddev = dev->ib_dev.dma_device;
-	int size = sizeof(u64) * npages;
 
 	in = kzalloc(sizeof(*in), GFP_KERNEL);
 	if (!in) {
@@ -97,21 +95,6 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		}
 		mr->order = ent->order;
 		mr->umred = 1;
-		mr->pas = kmalloc(size + 0x3f, GFP_KERNEL);
-		if (!mr->pas) {
-			kfree(mr);
-			err = -ENOMEM;
-			goto out;
-		}
-		mr->dma = dma_map_single(ddev, mr_align(mr->pas, 0x40), size,
-					 DMA_TO_DEVICE);
-		if (dma_mapping_error(ddev, mr->dma)) {
-			kfree(mr->pas);
-			kfree(mr);
-			err = -ENOMEM;
-			goto out;
-		}
-
 		in->seg.status = 1 << 6;
 		in->seg.xlt_oct_size = cpu_to_be32((npages + 1) / 2);
 		in->seg.qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
@@ -122,8 +105,6 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 					    sizeof(*in));
 		if (err) {
 			mlx5_ib_warn(dev, "create mkey failed %d\n", err);
-			dma_unmap_single(ddev, mr->dma, size, DMA_TO_DEVICE);
-			kfree(mr->pas);
 			kfree(mr);
 			goto out;
 		}
@@ -147,7 +128,6 @@ static void remove_keys(struct mlx5_ib_dev *dev, int c, int num)
 	struct mlx5_ib_mr *mr;
 	int err;
 	struct mlx5_cache_ent *ent = &cache->ent[c];
-	struct device *ddev = dev->ib_dev.dma_device;
 	int size;
 	int i;
 
@@ -167,8 +147,6 @@ static void remove_keys(struct mlx5_ib_dev *dev, int c, int num)
 			mlx5_ib_warn(dev, "failed destroy mkey\n");
 		} else {
 			size = ALIGN(sizeof(u64) * (1 << mr->order), 0x40);
-			dma_unmap_single(ddev, mr->dma, size, DMA_TO_DEVICE);
-			kfree(mr->pas);
 			kfree(mr);
 		}
 	};
@@ -426,7 +404,6 @@ static void clean_keys(struct mlx5_ib_dev *dev, int c)
 	struct mlx5_ib_mr *mr;
 	int err;
 	struct mlx5_cache_ent *ent = &cache->ent[c];
-	struct device *ddev = dev->ib_dev.dma_device;
 	int size;
 
 	cancel_delayed_work(&ent->dwork);
@@ -446,8 +423,6 @@ static void clean_keys(struct mlx5_ib_dev *dev, int c)
 			mlx5_ib_warn(dev, "failed destroy mkey\n");
 		} else {
 			size = ALIGN(sizeof(u64) * (1 << mr->order), 0x40);
-			dma_unmap_single(ddev, mr->dma, size, DMA_TO_DEVICE);
-			kfree(mr->pas);
 			kfree(mr);
 		}
 	};
@@ -693,7 +668,9 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 				  int page_shift, int order, int access_flags)
 {
 	struct mlx5_ib_dev *dev = to_mdev(pd->device);
+	struct device *ddev = dev->ib_dev.dma_device;
 	struct umr_common *umrc = &dev->umrc;
+	int size = sizeof(u64) * npages;
 	struct mlx5_ib_mr *mr;
 	struct ib_send_wr wr, *bad;
 	struct ib_sge sg;
@@ -714,6 +691,19 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 
 	if (!mr)
 		return ERR_PTR(-EAGAIN);
+
+	mr->pas = kmalloc(size + 0x3f, GFP_KERNEL);
+	if (!mr->pas) {
+		err = -ENOMEM;
+		goto error;
+	}
+	mr->dma = dma_map_single(ddev, mr_align(mr->pas, 0x40), size,
+				 DMA_TO_DEVICE);
+	if (dma_mapping_error(ddev, mr->dma)) {
+		kfree(mr->pas);
+		err = -ENOMEM;
+		goto error;
+	}
 
 	mlx5_ib_populate_pas(dev, umem, page_shift, mr_align(mr->pas, 0x40), 1);
 
@@ -736,6 +726,9 @@ static struct mlx5_ib_mr *reg_umr(struct ib_pd *pd, struct ib_umem *umem,
 	}
 	wait_for_completion(&mr->done);
 	up(&umrc->sem);
+
+	dma_unmap_single(ddev, mr->dma, size, DMA_TO_DEVICE);
+	kfree(mr->pas);
 
 	if (mr->status != IB_WC_SUCCESS) {
 		mlx5_ib_warn(dev, "reg umr failed\n");
