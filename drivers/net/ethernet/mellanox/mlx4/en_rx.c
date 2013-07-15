@@ -55,9 +55,7 @@ static int mlx4_en_alloc_frag(struct mlx4_en_priv *priv,
 	struct device *dev = priv->ddev;
 	struct page *page;
 	dma_addr_t dma = 0;
-	gfp_t gfp = ((type == MLX4_EN_ALLOC_NEW) ? GFP_KERNEL : GFP_ATOMIC);
-
-	gfp |= __GFP_COLD | __GFP_COMP | __GFP_NOWARN;
+	gfp_t gfp = GFP_ATOMIC | __GFP_COLD | __GFP_COMP | __GFP_NOWARN;
 
 	/* alloc new page */
 	page = alloc_pages_node(ring->numa_node, gfp, ring->rx_alloc_order);
