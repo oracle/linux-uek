@@ -1104,6 +1104,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 	mlx5_cmd_cbk_t callback;
 	int err;
 	void *context;
+	int page_queue;
 
 	for (i = 0; i < (1 << cmd->log_sz); ++i) {
 		if (test_bit(i, &vector)) {
@@ -1120,6 +1121,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 				mlx5_core_dbg(dev, "command completed. ret 0x%x, status %s(0x%x)\n", ent->ret,
 					      status_to_str(ent->status), ent->status);
 			}
+			page_queue = ent->page_queue;
 			free_ent(cmd, ent->idx);
 			if (ent->callback) {
 				callback = ent->callback;
@@ -1130,7 +1132,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 			} else {
 				complete(&ent->done);
 			}
-			if (ent->page_queue)
+			if (page_queue)
 				up(&cmd->pages_sem);
 			else
 				up(&cmd->sem);
