@@ -1276,7 +1276,8 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	u16 new_index;
 	int result;
 
-	down_read(&priv->vlan_rwsem);
+	down_read_nested(&priv->vlan_rwsem,
+			 test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags));
 
 	/*
 	 * Flush any child interfaces too -- they might be up even if
