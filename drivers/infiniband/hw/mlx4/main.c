@@ -1470,7 +1470,13 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 
 	rcu_read_lock();
 	for_each_netdev_rcu(&init_net, tmp) {
-		if (ndev && (tmp == ndev || rdma_vlan_dev_real_dev(tmp) == ndev)) {
+		if (!ndev)
+			break;
+		if (tmp == ndev ||
+		    rdma_vlan_dev_real_dev(tmp) == ndev ||
+		    (dev->iboe.masters[port - 1] &&
+		     rdma_vlan_dev_real_dev(tmp) ==
+		     dev->iboe.masters[port - 1])) {
 			gid.global.subnet_prefix = cpu_to_be64(0xfe80000000000000LL);
 			vid = rdma_vlan_dev_vlan_id(tmp);
 			mlx4_addrconf_ifid_eui48(&gid.raw[8], vid, ndev);
@@ -1537,6 +1543,7 @@ static void handle_en_event(struct mlx4_ib_dev *dev, int port, unsigned long eve
 	case NETDEV_DOWN:
 	case NETDEV_UNREGISTER:
 		update_ipv6_gids(dev, port, 1);
+		dev->iboe.masters[port - 1] = NULL;
 	}
 }
 
@@ -1578,11 +1585,32 @@ static int mlx4_ib_netdev_event(struct notifier_block *this, unsigned long event
 		}
 	}
 
-	if (dev == iboe->netdevs[0] ||
-	    (iboe->netdevs[0] && rdma_vlan_dev_real_dev(dev) == iboe->netdevs[0]))
+	if (iboe->netdevs[0] && netif_is_bond_slave(iboe->netdevs[0])) {
+		if (!iboe->masters[0] && iboe->netdevs[0]->master) {
+			iboe->masters[0] = iboe->netdevs[0]->master;
+			netdev_added(ibdev, 1);
+		}
+
+		if (iboe->masters[0] && !iboe->netdevs[0]->master) {
+			iboe->masters[0] = NULL;
+			netdev_removed(ibdev, 1);
+		}
+	}
+
+	if (iboe->netdevs[1] && netif_is_bond_slave(iboe->netdevs[1])) {
+		if (!iboe->masters[1] && iboe->netdevs[1]->master) {
+			iboe->masters[1] = iboe->netdevs[1]->master;
+			netdev_added(ibdev, 2);
+		}
+		if (iboe->masters[1] && !iboe->netdevs[1]->master) {
+			iboe->masters[1] = NULL;
+			netdev_removed(ibdev, 2);
+		}
+	}
+
+	if (iboe->netdevs[0])
 		handle_en_event(ibdev, 1, event);
-	else if (dev == iboe->netdevs[1]
-		 || (iboe->netdevs[1] && rdma_vlan_dev_real_dev(dev) == iboe->netdevs[1]))
+	if (iboe->netdevs[1])
 		handle_en_event(ibdev, 2, event);
 
 	if (event == NETDEV_DOWN) {
