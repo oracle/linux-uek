@@ -384,7 +384,7 @@ static int ipoib_create_parent_qp(struct net_device *dev,
 
 	/* No RSS parent QP will be used for RX */
 	if (priv->rss_qp_num == 0) {
-		init_attr.cap.max_recv_wr  = ipoib_recvq_size;
+		init_attr.cap.max_recv_wr  = ipoib_ud_recvq_size;
 		init_attr.cap.max_recv_sge = IPOIB_UD_RX_SG;
 	}
 
@@ -463,7 +463,7 @@ static struct ib_qp *ipoib_create_rss_qp(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ib_qp_init_attr init_attr = {
 		.cap = {
-			.max_recv_wr  = ipoib_recvq_size,
+			.max_recv_wr  = ipoib_ud_recvq_size,
 			.max_recv_sge = IPOIB_UD_RX_SG
 		},
 		.sq_sig_type = IB_SIGNAL_ALL_WR,
@@ -559,14 +559,17 @@ int ipoib_transport_dev_init(struct net_device *dev, struct ib_device *ca)
 		goto out_free_pd;
 	}
 
-	size = ipoib_recvq_size + 1;
+	size = max(ipoib_ud_recvq_size, ipoib_cm_recvq_size) + 1;
 	ret = ipoib_cm_dev_init(dev);
 	if (!ret) {
 		size += ipoib_sendq_size;
 		if (ipoib_cm_has_srq(dev))
-			size += ipoib_recvq_size + 1; /* 1 extra for rx_drain_qp */
+			size += max(ipoib_ud_recvq_size,
+				    ipoib_cm_recvq_size) +
+				    1; /* 1 extra for rx_drain_qp */
 		else
-			size += ipoib_recvq_size * ipoib_max_conn_qp;
+			size += max(ipoib_ud_recvq_size,
+				    ipoib_cm_recvq_size) * ipoib_max_conn_qp;
 	} else {
 		pr_warn("%s: ipoib_cm_dev_init failed\n", ca->name);
 		goto out_free_mr;

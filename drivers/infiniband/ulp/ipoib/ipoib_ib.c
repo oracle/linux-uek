@@ -174,7 +174,7 @@ static int ipoib_ib_post_ring_receives(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int i;
 
-	for (i = 0; i < ipoib_recvq_size; ++i) {
+	for (i = 0; i < ipoib_ud_recvq_size; ++i) {
 		if (!ipoib_alloc_rx_skb(dev, recv_ring, i)) {
 			ipoib_warn(priv,
 				"failed to allocate receive buffer (%d,%d)\n",
@@ -258,9 +258,9 @@ static void ipoib_ib_handle_rx_wc(struct net_device *dev,
 	ipoib_dbg_data(priv, "recv completion: id %d, status: %d\n",
 		       wr_id, wc->status);
 
-	if (unlikely(wr_id >= ipoib_recvq_size)) {
+	if (unlikely(wr_id >= ipoib_ud_recvq_size)) {
 		ipoib_warn(priv, "recv completion event with wrid %d (> %d)\n",
-			   wr_id, ipoib_recvq_size);
+			   wr_id, ipoib_ud_recvq_size);
 		return;
 	}
 
@@ -870,7 +870,7 @@ static int recvs_pending(struct net_device *dev)
 
 	recv_ring = priv->recv_ring;
 	for (j = 0; j < priv->num_rx_queues; j++) {
-		for (i = 0; i < ipoib_recvq_size; ++i) {
+		for (i = 0; i < ipoib_ud_recvq_size; ++i) {
 			if (recv_ring->rx_ring[i].skb)
 				++pending;
 		}
@@ -1008,7 +1008,7 @@ static void ipoib_ib_recv_ring_stop(struct ipoib_dev_priv *priv)
 
 	recv_ring = priv->recv_ring;
 	for (j = 0; j < priv->num_rx_queues; ++j) {
-		for (i = 0; i < ipoib_recvq_size; ++i) {
+		for (i = 0; i < ipoib_ud_recvq_size; ++i) {
 			struct ipoib_rx_buf *rx_req;
 
 			rx_req = &recv_ring->rx_ring[i];

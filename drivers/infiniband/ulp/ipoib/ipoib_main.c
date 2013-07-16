@@ -55,12 +55,15 @@ MODULE_DESCRIPTION("IP-over-InfiniBand net driver");
 MODULE_LICENSE("Dual BSD/GPL");
 
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
-int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
+int ipoib_ud_recvq_size __read_mostly = IPOIB_UD_RX_RING_SIZE;
+int ipoib_cm_recvq_size __read_mostly = IPOIB_CM_RX_RING_SIZE;
 
 module_param_named(send_queue_size, ipoib_sendq_size, int, 0444);
 MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue (default = 512) (2-8192)");
-module_param_named(recv_queue_size, ipoib_recvq_size, int, 0444);
-MODULE_PARM_DESC(recv_queue_size, "Number of descriptors in receive queue (default = 512) (2-8192)");
+module_param_named(ud_recv_queue_size, ipoib_ud_recvq_size, int, 0444);
+MODULE_PARM_DESC(ud_recv_queue_size, "Number of descriptors in datagram mode receive queue (default = 512) (2-8192)");
+module_param_named(cm_recv_queue_size, ipoib_cm_recvq_size, int, 0444);
+MODULE_PARM_DESC(cm_recv_queue_size, "Number of descriptors in connected mode receive queue (default = 64) (2-8192)");
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 int ipoib_debug_level;
@@ -1727,14 +1730,14 @@ int ipoib_dev_init(struct net_device *dev, struct ib_device *ca, int port)
 		goto out_neigh_hash_cleanup;
 	}
 
-	alloc_size = ipoib_recvq_size * sizeof(*recv_ring->rx_ring);
+	alloc_size = ipoib_ud_recvq_size * sizeof(*recv_ring->rx_ring);
 	rx_allocated = 0;
 	recv_ring = priv->recv_ring;
 	for (i = 0; i < priv->num_rx_queues; i++) {
 		recv_ring->rx_ring = kzalloc(alloc_size, GFP_KERNEL);
 		if (!recv_ring->rx_ring) {
 			pr_warn("%s: failed to allocate RX ring (%d entries)\n",
-			ca->name, ipoib_recvq_size);
+			ca->name, ipoib_ud_recvq_size);
 			goto out_recv_ring_cleanup;
 		}
 		recv_ring->dev = dev;
@@ -2643,23 +2646,40 @@ static int __init ipoib_init_module(void)
 {
 	int ret;
 
-	if (ipoib_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
-	    ipoib_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
-		ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
-		ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
-		ipoib_recvq_size = max(ipoib_recvq_size, IPOIB_MIN_QUEUE_SIZE);
+	if (ipoib_ud_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_ud_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_ud_recvq_size = roundup_pow_of_two(ipoib_ud_recvq_size);
+		ipoib_ud_recvq_size = min(ipoib_ud_recvq_size,
+					  IPOIB_MAX_QUEUE_SIZE);
+		ipoib_ud_recvq_size = max(ipoib_ud_recvq_size,
+					  IPOIB_MIN_QUEUE_SIZE);
 	} else {
-		pr_err(KERN_ERR "ipoib_recvq_size is out of bounds [%d-%d], seting to default %d\n",
+		pr_err(KERN_ERR "ipoib_ud_recvq_size is out of bounds [%d-%d], seting to default %d\n",
 		       IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
-		       IPOIB_RX_RING_SIZE);
-		ipoib_recvq_size  = IPOIB_RX_RING_SIZE;
+		       IPOIB_UD_RX_RING_SIZE);
+		ipoib_ud_recvq_size  = IPOIB_UD_RX_RING_SIZE;
+	}
+
+	if (ipoib_cm_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_cm_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_cm_recvq_size = roundup_pow_of_two(ipoib_cm_recvq_size);
+		ipoib_cm_recvq_size = min(ipoib_cm_recvq_size,
+					  IPOIB_MAX_QUEUE_SIZE);
+		ipoib_cm_recvq_size = max(ipoib_cm_recvq_size,
+					  IPOIB_MIN_QUEUE_SIZE);
+	} else {
+		pr_err(KERN_ERR "ipoib_cm_recvq_size is out of bounds [%d-%d], seting to default %d\n",
+			   IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
+			   IPOIB_CM_RX_RING_SIZE);
+		ipoib_cm_recvq_size  = IPOIB_CM_RX_RING_SIZE;
 	}
 
 	if (ipoib_sendq_size <= IPOIB_MAX_QUEUE_SIZE &&
 	    ipoib_sendq_size >= IPOIB_MIN_QUEUE_SIZE) {
 		ipoib_sendq_size = roundup_pow_of_two(ipoib_sendq_size);
 		ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
-		ipoib_sendq_size = max3(ipoib_sendq_size, 2 * MAX_SEND_CQE,
+		ipoib_sendq_size = max3(ipoib_sendq_size,
+					2 * MAX_SEND_CQE,
 					IPOIB_MIN_QUEUE_SIZE);
 	} else {
 		pr_err(KERN_ERR "ipoib_sendq_size is out of bounds [%d-%d], seting to default %d\n",

@@ -74,7 +74,8 @@ enum {
 	IPOIB_CM_BUF_SIZE	  = IPOIB_CM_MTU  + IPOIB_ENCAP_LEN,
 	IPOIB_CM_HEAD_SIZE	  = IPOIB_CM_BUF_SIZE % PAGE_SIZE,
 	IPOIB_CM_RX_SG		  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
-	IPOIB_RX_RING_SIZE	  = 512,
+	IPOIB_UD_RX_RING_SIZE	  = 512,
+	IPOIB_CM_RX_RING_SIZE	  = 64,
 	IPOIB_TX_RING_SIZE	  = 512,
 	IPOIB_MAX_QUEUE_SIZE	  = 8192,
 	IPOIB_MIN_QUEUE_SIZE	  = 2,
@@ -858,7 +859,8 @@ static inline void ipoib_unregister_debugfs(void) { }
 	ipoib_printk(KERN_WARNING, priv, format , ## arg)
 
 extern int ipoib_sendq_size;
-extern int ipoib_recvq_size;
+extern int ipoib_ud_recvq_size;
+extern int ipoib_cm_recvq_size;
 extern int ipoib_inline_thold;
 
 extern struct ib_sa_client ipoib_sa_client;
