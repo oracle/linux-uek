@@ -1906,6 +1906,7 @@ void __init paging_init(void)
 		mdesc_fill_in_cpu_data(cpu_all_mask);
 #endif
 		mdesc_get_page_sizes(cpu_all_mask, &cpu_pgsz_mask);
+		niagara_va_limits_init();
 
 		sun4v_linear_pte_xor_finalize();
 

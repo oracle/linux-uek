@@ -60,6 +60,9 @@ enum ultra_tlb_layout {
 extern enum ultra_tlb_layout tlb_type;
 
 extern int sun4v_chip_type;
+extern unsigned long sparc64_task_unmmaped_base, sparc64_task_size_max;
+extern void sparc64_va_hole(unsigned long *start, unsigned long *end);
+extern void niagara_va_limits_init(void);
 
 extern int cheetah_pcache_forced_on;
 extern void cheetah_enable_pcache(void);

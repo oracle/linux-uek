@@ -18,20 +18,17 @@
 #include <asm/cacheflush.h>
 #include <asm/mmu_context.h>
 
-/* Slightly simplified from the non-hugepage variant because by
- * definition we don't have to worry about any page coloring stuff
- */
-#define VA_EXCLUDE_START (0x0000080000000000UL - (1UL << 32UL))
-#define VA_EXCLUDE_END   (0xfffff80000000000UL + (1UL << 32UL))
-
 static unsigned long hugetlb_get_unmapped_area_bottomup(struct file *filp,
 							unsigned long addr,
 							unsigned long len,
 							unsigned long pgoff,
 							unsigned long flags)
 {
+	unsigned long va_hole_start, va_hole_end;
 	unsigned long task_size = TASK_SIZE;
 	struct vm_unmapped_area_info info;
+
+	sparc64_va_hole(&va_hole_start, &va_hole_end);
 
 	if (test_thread_flag(TIF_32BIT))
 		task_size = STACK_TOP32;
@@ -39,14 +36,14 @@ static unsigned long hugetlb_get_unmapped_area_bottomup(struct file *filp,
 	info.flags = 0;
 	info.length = len;
 	info.low_limit = TASK_UNMAPPED_BASE;
-	info.high_limit = min(task_size, VA_EXCLUDE_START);
+	info.high_limit = min(task_size, va_hole_start);
 	info.align_mask = PAGE_MASK & ~HPAGE_MASK;
 	info.align_offset = 0;
 	addr = vm_unmapped_area(&info);
 
-	if ((addr & ~PAGE_MASK) && task_size > VA_EXCLUDE_END) {
+	if ((addr & ~PAGE_MASK) && task_size > va_hole_end) {
 		VM_BUG_ON(addr != -ENOMEM);
-		info.low_limit = VA_EXCLUDE_END;
+		info.low_limit = va_hole_end;
 		info.high_limit = task_size;
 		addr = vm_unmapped_area(&info);
 	}

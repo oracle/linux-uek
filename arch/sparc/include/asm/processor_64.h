@@ -39,12 +39,13 @@
 #define VPTE_SIZE	(1 << (VA_BITS - PAGE_SHIFT + 3))
 #endif
 
+#define	TASK_SIZE_MAX	(sparc64_task_size_max)
 #define TASK_SIZE_OF(tsk) \
 	(test_tsk_thread_flag(tsk,TIF_32BIT) ? \
-	 (1UL << 32UL) : ((unsigned long)-VPTE_SIZE))
+	 (1UL << 32UL) : TASK_SIZE_MAX)
 #define TASK_SIZE \
 	(test_thread_flag(TIF_32BIT) ? \
-	 (1UL << 32UL) : ((unsigned long)-VPTE_SIZE))
+	 (1UL << 32UL) : TASK_SIZE_MAX)
 #ifdef __KERNEL__
 
 #define STACK_TOP32	((1UL << 32UL) - PAGE_SIZE)

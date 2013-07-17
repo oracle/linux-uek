@@ -39,28 +39,51 @@ asmlinkage unsigned long sys_getpagesize(void)
 	return PAGE_SIZE;
 }
 
-#define VA_EXCLUDE_START (0x0000080000000000UL - (1UL << 32UL))
-#define VA_EXCLUDE_END   (0xfffff80000000000UL + (1UL << 32UL))
+static unsigned long va_hole_start = 0x0000080000000000UL - (1UL << 32UL);
+static unsigned long va_hole_end = 0xfffff80000000000UL + (1UL << 32UL);
+#define VA_LIMIT_NIAGARA_48	(1UL << 47UL)
+#define VA_LIMIT_NIAGARA_52	(1UL << 51UL)
+#define	VA_NIAGARA_BASE		(0x0000080000000000UL)
+
+/* Let's default to historical values. */
+unsigned long sparc64_task_unmmaped_base = 0xfffff80000000000UL + (1UL << 32UL);
+unsigned long sparc64_task_size_max = (unsigned long ) -VPTE_SIZE;
+
+/* For three level page table we default to original values. */
+void __init niagara_va_limits_init(void)
+{
+#if PGDIR_SHIFT > 33
+	if (sun4v_chip_type > SUN4V_CHIP_NIAGARA3)
+		va_hole_start = VA_LIMIT_NIAGARA_52;
+	else
+		va_hole_start = VA_LIMIT_NIAGARA_48;
+
+	va_hole_end = -va_hole_start;
+	sparc64_task_size_max = -(1UL << HPAGE_SHIFT);
+	sparc64_task_unmmaped_base = VA_NIAGARA_BASE;
+#endif
+}
+
+void sparc64_va_hole(unsigned long *start, unsigned long *end)
+{
+	*start = va_hole_start;
+	*end = va_hole_end;
+}
 
 /* Does addr --> addr+len fall within 4GB of the VA-space hole or
  * overflow past the end of the 64-bit address space?
  */
 static inline int invalid_64bit_range(unsigned long addr, unsigned long len)
 {
-	unsigned long va_exclude_start, va_exclude_end;
-
-	va_exclude_start = VA_EXCLUDE_START;
-	va_exclude_end   = VA_EXCLUDE_END;
-
-	if (unlikely(len >= va_exclude_start))
+	if (unlikely(len >= va_hole_start))
 		return 1;
 
 	if (unlikely((addr + len) < addr))
 		return 1;
 
-	if (unlikely((addr >= va_exclude_start && addr < va_exclude_end) ||
-		     ((addr + len) >= va_exclude_start &&
-		      (addr + len) < va_exclude_end)))
+	if (unlikely((addr >= va_hole_start && addr < va_hole_end) ||
+		     ((addr + len) >= va_hole_start &&
+		      (addr + len) < va_hole_end)))
 		return 1;
 
 	return 0;
@@ -104,11 +127,11 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 
 	if (test_thread_flag(TIF_32BIT))
 		task_size = STACK_TOP32;
-	if (unlikely(len > task_size || len >= VA_EXCLUDE_START))
+	if (unlikely(len > task_size || len >= va_hole_start))
 		return -ENOMEM;
 
 	do_color_align = 0;
-	if (filp || (flags & MAP_SHARED))
+	if (!filp || (flags & MAP_SHARED))
 		do_color_align = 1;
 
 	if (addr) {
@@ -126,14 +149,14 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 	info.flags = 0;
 	info.length = len;
 	info.low_limit = TASK_UNMAPPED_BASE;
-	info.high_limit = min(task_size, VA_EXCLUDE_START);
+	info.high_limit = min(task_size, va_hole_start);
 	info.align_mask = do_color_align ? (PAGE_MASK & (SHMLBA - 1)) : 0;
 	info.align_offset = pgoff << PAGE_SHIFT;
 	addr = vm_unmapped_area(&info);
 
-	if ((addr & ~PAGE_MASK) && task_size > VA_EXCLUDE_END) {
+	if ((addr & ~PAGE_MASK) && task_size > va_hole_end) {
 		VM_BUG_ON(addr != -ENOMEM);
-		info.low_limit = VA_EXCLUDE_END;
+		info.low_limit = va_hole_end;
 		info.high_limit = task_size;
 		addr = vm_unmapped_area(&info);
 	}
@@ -437,7 +460,7 @@ int sparc_mmap_check(unsigned long addr, unsigned long len)
 		if (addr > STACK_TOP32 - len)
 			return -EINVAL;
 	} else {
-		if (len >= VA_EXCLUDE_START)
+		if (len >= va_hole_start)
 			return -EINVAL;
 
 		if (invalid_64bit_range(addr, len))

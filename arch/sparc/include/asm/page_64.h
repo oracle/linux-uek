@@ -98,7 +98,7 @@ typedef pte_t *pgtable_t;
 
 #define TASK_UNMAPPED_BASE	(test_thread_flag(TIF_32BIT) ? \
 				 (_AC(0x0000000070000000,UL)) : \
-				 (_AC(0xfffff80000000000,UL) + (1UL << 32UL)))
+				 sparc64_task_unmmaped_base)
 
 #include <asm-generic/memory_model.h>
 
