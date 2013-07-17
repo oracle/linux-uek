@@ -1776,6 +1776,7 @@ static void cma_query_handler(int status, struct ib_sa_path_rec *path_rec,
 {
 	struct cma_work *work = context;
 	struct rdma_route *route;
+	struct rdma_id_private *id_priv = work->id;
 
 	route = &work->id->id.route;
 
@@ -1783,6 +1784,9 @@ static void cma_query_handler(int status, struct ib_sa_path_rec *path_rec,
 		route->num_paths = 1;
 		*route->path_rec = *path_rec;
 	} else {
+		if (status != -EBUSY && status != -ETIMEDOUT)
+			if (printk_ratelimit())
+				cma_warn(id_priv, "bad status %d from path query\n", status);
 		work->old_state = RDMA_CM_ROUTE_QUERY;
 		work->new_state = RDMA_CM_ADDR_RESOLVED;
 		work->event.event = RDMA_CM_EVENT_ROUTE_ERROR;

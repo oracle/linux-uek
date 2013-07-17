@@ -1137,12 +1137,18 @@ static void recv_handler(struct ib_mad_agent *mad_agent,
 	query = mad_buf->context[0];
 
 	if (query->callback) {
-		if (mad_recv_wc->wc->status == IB_WC_SUCCESS)
-			query->callback(query,
-					mad_recv_wc->recv_buf.mad->mad_hdr.status ?
-					-EINVAL : 0,
+		if (mad_recv_wc->wc->status == IB_WC_SUCCESS) {
+			int mad_status = mad_recv_wc->recv_buf.mad->mad_hdr.status;
+			int status = 0;
+
+			if ((mad_status & IB_MGMT_MAD_STATUS_BUSY) && (mad_status & \
+				~(IB_MGMT_MAD_STATUS_BUSY|IB_MGMT_MAD_STATUS_REDIRECT_REQD)) == 0)
+				status = -EBUSY;
+			else if (mad_status)
+				status = -EINVAL;
+			query->callback(query, status,
 					(struct ib_sa_mad *) mad_recv_wc->recv_buf.mad);
-		else
+		} else
 			query->callback(query, -EIO, NULL);
 	}
 
