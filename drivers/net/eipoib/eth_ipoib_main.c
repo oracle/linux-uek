@@ -1931,12 +1931,9 @@ int parent_add_vif_param(struct net_device *parent_dev,
 		goto out;
 	}
 
-	if (!is_zero_ether_addr(new_slave->emac)) {
-		pr_err("slave %s mac already set to %pM\n",
-		       new_slave->dev->name, new_slave->emac);
-		ret = -EINVAL;
-		goto out;
-	}
+	if (!is_zero_ether_addr(new_slave->emac))
+		pr_info("slave %s mac is going to over write by %pM\n",
+			new_slave->dev->name, new_slave->emac);
 
 	/* check another slave has this mac/vlan */
 	parent_for_each_slave_rcu(parent, slave_tmp) {

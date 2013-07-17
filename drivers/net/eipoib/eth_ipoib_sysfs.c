@@ -234,22 +234,6 @@ static ssize_t parent_store_vifs(struct device *d,
 		found = parent_add_vif_param(parent->dev, slave->dev, vlan, mac);
 		if (found)
 			ret = -EINVAL;
-		goto out_free_lock;
-	}
-
-	if (command[0] == '-') {
-		if (is_zero_ether_addr(slave->emac)) {
-			pr_err("%s slave mac already unset %pM\n",
-			       ifname, slave->emac);
-			ret = -EINVAL;
-			goto out_free_lock;
-		}
-
-		pr_info("slave %s mac is unset (was %pM)\n",
-			ifname, slave->emac);
-		write_lock_bh(&parent->lock);
-		memset(slave->emac, 0, ETH_ALEN);
-		write_unlock_bh(&parent->lock);
 	}
 
 out_free_lock:
