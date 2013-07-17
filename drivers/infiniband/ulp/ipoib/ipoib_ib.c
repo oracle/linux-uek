@@ -1246,29 +1246,29 @@ static inline int update_pkey_index_0(struct ipoib_dev_priv *priv)
 	int result;
 	u16 prev_pkey;
 
-	if (test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
-		ipoib_warn(priv, "%s: child interface should not call that func.\n",
-			   __func__);
-		return -1;
-	}
-
 	prev_pkey = priv->pkey;
-
 	result = ib_query_pkey(priv->ca, priv->port, 0, &priv->pkey);
-	if (!result) {
-		if (prev_pkey != priv->pkey) {
-			ipoib_warn(priv, "%s: pkey changed from 0x%x to 0x%x\n",
-				   __func__, prev_pkey, priv->pkey);
-			priv->pkey_index = 0;
-			return 0;
-		}
+	if (result) {
+		ipoib_warn(priv, "ib_query_pkey port %d failed (ret = %d)\n",
+			   priv->port, result);
+		return result;
 	}
 
-	if (result)
-		ipoib_warn(priv, "%s: ib_query_pkey port %d failed (ret = %d)\n",
-			   __func__, priv->port, result);
+	priv->pkey |= 0x8000;
 
-	return -1;
+	if (prev_pkey != priv->pkey) {
+		ipoib_dbg(priv, "pkey changed from 0x%x to 0x%x\n",
+			  prev_pkey, priv->pkey);
+		/*
+		 * Update the pkey in the broadcast address, while making sure to set
+		 * the full membership bit, so that we join the right broadcast group.
+		 */
+		priv->dev->broadcast[8] = priv->pkey >> 8;
+		priv->dev->broadcast[9] = priv->pkey & 0xff;
+		return 0;
+	}
+
+	return 1;
 }
 
 static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
