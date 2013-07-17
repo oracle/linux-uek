@@ -2531,7 +2531,9 @@ static void cma_query_handler(int status, struct ib_sa_path_rec *path_rec,
 		}
 		spin_unlock_irqrestore(&id_priv->lock, flags);
 	} else {
-		cma_warn(id_priv, "bad status %d from path query\n", status);
+		if (status != -EBUSY && status != -ETIMEDOUT)
+			if (printk_ratelimit())
+				cma_warn(id_priv, "bad status %d from path query\n", status);
 		if (!route->num_paths) {
 			work->old_state = CMA_ROUTE_QUERY;
 			work->new_state = CMA_ADDR_RESOLVED;
