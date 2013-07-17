@@ -1224,10 +1224,9 @@ inline int add_emac_ip_info(struct net_device *parent_dev, __be32 ip,
 	int ret;
 	int is_just_alloc_emac_info = 0;
 
-	if (0 == ip) {
-		pr_debug("%s: No valid IP (%d)\n", __func__, ip);
+	if (0 == ip)
 		return -EINVAL;
-	}
+
 	/* check if exists such slave at all */
 	slave = get_slave_by_mac_and_vlan(parent, mac, vlan);
 	if (unlikely(!slave)) {
@@ -1318,7 +1317,7 @@ static struct sk_buff *get_slave_skb_arp(struct slave *slave,
 	if (skb->protocol == htons(ETH_P_ARP))
 		err = add_emac_ip_info(slave->dev->master, arp_data->arp_sip,
 				       arp_data->arp_sha, slave->vlan, GFP_ATOMIC);
-	if (err)
+	if (err && err != -EINVAL)
 		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 err: %d",
 			__func__, &arp_data->arp_sip, err);
 	/*
@@ -1374,6 +1373,7 @@ static void get_slave_skb_arp_by_ip(struct slave *slave,
 	struct sk_buff *nskb = NULL;
 	struct iphdr *iph = ip_hdr(skb);
 	struct ethhdr *ethh = (struct ethhdr *)(skb->data);
+	int ret;
 
 	pr_info("Sending arp on behalf of slave %s, from %pI4"
 		" to %pI4" , slave->dev->name, &(iph->saddr),
@@ -1394,8 +1394,9 @@ static void get_slave_skb_arp_by_ip(struct slave *slave,
 		       __func__, slave->dev->name);
 
 	/* add new source IP as served via the driver. */
-	if (add_emac_ip_info(slave->dev->master, iph->saddr, ethh->h_source,
-			     slave->vlan, GFP_ATOMIC))
+	ret = add_emac_ip_info(slave->dev->master, iph->saddr, ethh->h_source,
+			     slave->vlan, GFP_ATOMIC);
+	if (ret && ret != -EINVAL)
 		pr_warn("%s: Failed creating: emac_ip_info for ip: %pI4 mac: %pM",
 			__func__, &iph->saddr, ethh->h_source);
 
