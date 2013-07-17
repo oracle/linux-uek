@@ -31,6 +31,7 @@
  *
  */
 #include <linux/kernel.h>
+#include <linux/moduleparam.h>
 #include <linux/random.h>
 
 #include "rds.h"

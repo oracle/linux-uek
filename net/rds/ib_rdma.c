@@ -32,6 +32,7 @@
  */
 #include <linux/kernel.h>
 #include <linux/rculist.h>
+#include <linux/llist.h>
 
 #include "rds.h"
 #include "ib.h"

@@ -37,6 +37,7 @@
 #include <linux/inetdevice.h>
 #include <linux/if_arp.h>
 #include <linux/delay.h>
+#include <linux/module.h>
 
 #include "rds.h"
 #include "iw.h"

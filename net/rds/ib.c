@@ -43,6 +43,7 @@
 #include <net/route.h>
 #include <net/inet_common.h>
 #include <linux/rtnetlink.h>
+#include <linux/module.h>
 
 #include "rds.h"
 #include "ib.h"
@@ -58,7 +59,6 @@ unsigned int rds_ib_haip_enabled = 0;
 unsigned int rds_ib_haip_fallback = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
-unsigned int rds_ib_cq_balance_enabled = 1;
 static char *rds_ib_haip_failover_groups = NULL;
 unsigned int rds_ib_haip_arps = RDS_IB_DEFAULT_NUM_ARPS;
 
@@ -83,8 +83,6 @@ MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
 module_param(rds_ib_haip_failover_groups, charp, 0444);
 MODULE_PARM_DESC(rds_ib_haip_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
-module_param(rds_ib_cq_balance_enabled, int, 0444);
-MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
 module_param(rds_ib_haip_arps, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_arps, " Num ARPs to be sent when IP moved");
 
