@@ -286,6 +286,9 @@ static int reclaim_pages(struct mlx5_core_dev *dev, u32 func_id, int npages,
 	int outlen;
 	int num_claimed;
 
+	if (nclaimed)
+		*nclaimed = 0;
+
 	memset(&in, 0, sizeof(in));
 	outlen = sizeof(*out) + npages * sizeof(out->pas[0]);
 	out = vzalloc(outlen);
@@ -399,17 +402,22 @@ int mlx5_reclaim_startup_pages(struct mlx5_core_dev *dev)
 	struct rb_node *p;
 	struct fw_page *fwp;
 	int err;
+	int nclaimed = 0;
 	unsigned long end = jiffies + msecs_to_jiffies(5000);
 
 	do {
 		p = rb_first(&dev->priv.page_root);
 		if (p) {
 			fwp = rb_entry(p, struct fw_page, rb_node);
-			err = reclaim_pages(dev, fwp->func_id, optimal_reclaimed_pages(), NULL);
+			err = reclaim_pages(dev, fwp->func_id,
+					    optimal_reclaimed_pages(),
+					    &nclaimed);
 			if (err) {
 				mlx5_core_warn(dev, "failed reclaiming pages (%d)\n", err);
 				return err;
 			}
+			if (nclaimed)
+				end = jiffies + msecs_to_jiffies(5000);
 		}
 		if (time_after(jiffies, end)) {
 			mlx5_core_warn(dev, "FW did not return all pages. giving up...\n");
