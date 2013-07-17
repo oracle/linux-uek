@@ -59,15 +59,16 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
  * rings from ib_cm_connect_complete() back into ib_setup_qp()
  * will cause credits to be added before protocol negotiation.
  */
+
 unsigned int rds_ib_sysctl_flow_control = 0;
 
-static ctl_table rds_ib_sysctl_table[] = {
+ctl_table rds_ib_sysctl_table[] = {
 	{
 		.procname       = "max_send_wr",
 		.data		= &rds_ib_sysctl_max_send_wr,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_ib_sysctl_max_wr_min,
 		.extra2		= &rds_ib_sysctl_max_wr_max,
 	},
@@ -76,7 +77,7 @@ static ctl_table rds_ib_sysctl_table[] = {
 		.data		= &rds_ib_sysctl_max_recv_wr,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_ib_sysctl_max_wr_min,
 		.extra2		= &rds_ib_sysctl_max_wr_max,
 	},
@@ -85,7 +86,7 @@ static ctl_table rds_ib_sysctl_table[] = {
 		.data		= &rds_ib_sysctl_max_unsig_wrs,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 		.extra1		= &rds_ib_sysctl_max_unsig_wr_min,
 		.extra2		= &rds_ib_sysctl_max_unsig_wr_max,
 	},
@@ -94,27 +95,34 @@ static ctl_table rds_ib_sysctl_table[] = {
 		.data		= &rds_ib_sysctl_max_recv_allocation,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = proc_doulongvec_minmax,
+		.proc_handler   = &proc_doulongvec_minmax,
 	},
 	{
 		.procname	= "flow_control",
 		.data		= &rds_ib_sysctl_flow_control,
 		.maxlen		= sizeof(rds_ib_sysctl_flow_control),
 		.mode		= 0644,
-		.proc_handler	= proc_dointvec,
+		.proc_handler	= &proc_dointvec,
 	},
+	{ }
+};
+
+static struct ctl_path rds_ib_sysctl_path[] = {
+	{ .procname = "net", },
+	{ .procname = "rds", },
+	{ .procname = "ib",  },
 	{ }
 };
 
 void rds_ib_sysctl_exit(void)
 {
 	if (rds_ib_sysctl_hdr)
-		unregister_net_sysctl_table(rds_ib_sysctl_hdr);
+		unregister_sysctl_table(rds_ib_sysctl_hdr);
 }
 
 int rds_ib_sysctl_init(void)
 {
-	rds_ib_sysctl_hdr = register_net_sysctl(&init_net, "net/rds/ib", rds_ib_sysctl_table);
+	rds_ib_sysctl_hdr = register_sysctl_paths(rds_ib_sysctl_path, rds_ib_sysctl_table);
 	if (!rds_ib_sysctl_hdr)
 		return -ENOMEM;
 	return 0;

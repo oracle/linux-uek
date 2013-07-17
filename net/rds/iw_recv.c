@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <rdma/rdma_cm.h>
@@ -231,8 +230,8 @@ int rds_iw_recv_refill(struct rds_connection *conn, gfp_t kptr_gfp,
 	int ret = 0;
 	u32 pos;
 
-	while ((prefill || rds_conn_up(conn)) &&
-	       rds_iw_ring_alloc(&ic->i_recv_ring, 1, &pos)) {
+	while ((prefill || rds_conn_up(conn))
+			&& rds_iw_ring_alloc(&ic->i_recv_ring, 1, &pos)) {
 		if (pos >= ic->i_recv_ring.w_nr) {
 			printk(KERN_NOTICE "Argh - ring alloc returned pos=%u\n",
 					pos);
@@ -526,7 +525,7 @@ void rds_iw_attempt_ack(struct rds_iw_connection *ic)
 	}
 
 	/* Can we get a send credit? */
-	if (!rds_iw_send_grab_credits(ic, 1, &adv_credits, 0, RDS_MAX_ADV_CREDIT)) {
+	if (!rds_iw_send_grab_credits(ic, 1, &adv_credits, 0)) {
 		rds_iw_stats_inc(s_iw_tx_throttle);
 		clear_bit(IB_ACK_IN_FLIGHT, &ic->i_ack_flags);
 		return;
@@ -598,7 +597,7 @@ static void rds_iw_cong_recv(struct rds_connection *conn,
 		to_copy = min(RDS_FRAG_SIZE - frag_off, PAGE_SIZE - map_off);
 		BUG_ON(to_copy & 7); /* Must be 64bit aligned. */
 
-		addr = kmap_atomic(frag->f_page);
+		addr = kmap_atomic(frag->f_page, KM_SOFTIRQ0);
 
 		src = addr + frag_off;
 		dst = (void *)map->m_page_addrs[map_page] + map_off;
@@ -608,7 +607,7 @@ static void rds_iw_cong_recv(struct rds_connection *conn,
 			uncongested |= ~(*src) & *dst;
 			*dst++ = *src++;
 		}
-		kunmap_atomic(addr);
+		kunmap_atomic(addr, KM_SOFTIRQ0);
 
 		copied += to_copy;
 
@@ -661,7 +660,7 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 
 	if (byte_len < sizeof(struct rds_header)) {
 		rds_iw_conn_error(conn, "incoming message "
-		       "from %pI4 didn't include a "
+		       "from %pI4 didn't inclue a "
 		       "header, disconnecting and "
 		       "reconnecting\n",
 		       &conn->c_faddr);
@@ -731,10 +730,10 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 		hdr = &iwinc->ii_inc.i_hdr;
 		/* We can't just use memcmp here; fragments of a
 		 * single message may carry different ACKs */
-		if (hdr->h_sequence != ihdr->h_sequence ||
-		    hdr->h_len != ihdr->h_len ||
-		    hdr->h_sport != ihdr->h_sport ||
-		    hdr->h_dport != ihdr->h_dport) {
+		if (hdr->h_sequence != ihdr->h_sequence
+		 || hdr->h_len != ihdr->h_len
+		 || hdr->h_sport != ihdr->h_sport
+		 || hdr->h_dport != ihdr->h_dport) {
 			rds_iw_conn_error(conn,
 				"fragment header mismatch; forcing reconnect\n");
 			return;
@@ -754,7 +753,8 @@ static void rds_iw_process_recv(struct rds_connection *conn,
 			rds_iw_cong_recv(conn, iwinc);
 		else {
 			rds_recv_incoming(conn, conn->c_faddr, conn->c_laddr,
-					  &iwinc->ii_inc, GFP_ATOMIC);
+					  &iwinc->ii_inc, GFP_ATOMIC,
+					  KM_SOFTIRQ0);
 			state->ack_next = be64_to_cpu(hdr->h_sequence);
 			state->ack_next_valid = 1;
 		}

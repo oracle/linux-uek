@@ -30,24 +30,32 @@
  * SOFTWARE.
  *
  */
+#include <linux/string.h>
 #include <linux/module.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
-#include <linux/gfp.h>
 #include <linux/in.h>
 #include <linux/poll.h>
+#include <linux/version.h>
 #include <net/sock.h>
 
 #include "rds.h"
+#include "tcp.h"
+/* UNUSED for backwards compat only */
+static unsigned int rds_ib_retry_count = 0xdead;
+module_param(rds_ib_retry_count, int, 0444);
+MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
 
-char *rds_str_array(char **array, size_t elements, size_t index)
-{
-	if ((index < elements) && array[index])
-		return array[index];
-	else
-		return "unknown";
-}
-EXPORT_SYMBOL(rds_str_array);
+static char *rds_qos_threshold = NULL;
+module_param(rds_qos_threshold, charp, 0444);
+MODULE_PARM_DESC(rds_qos_threshold, "<tos>:<max_msg_size>[,<tos>:<max_msg_size>]*");
+
+static	int rds_qos_threshold_action = 0;
+module_param(rds_qos_threshold_action, int, 0444);
+MODULE_PARM_DESC(rds_qos_threshold_action,
+	"0=Ignore,1=Error,2=Statistic,3=Error_Statistic");
+
+static unsigned long rds_qos_threshold_tbl[256];
 
 /* this is just used for stats gathering :/ */
 static DEFINE_SPINLOCK(rds_sock_lock);
@@ -81,13 +89,7 @@ static int rds_release(struct socket *sock)
 	rds_clear_recv_queue(rs);
 	rds_cong_remove_socket(rs);
 
-	/*
-	 * the binding lookup hash uses rcu, we need to
-	 * make sure we sychronize_rcu before we free our
-	 * entry
-	 */
 	rds_remove_bound(rs);
-	synchronize_rcu();
 
 	rds_send_drop_to(rs, NULL);
 	rds_rdma_drop_keys(rs);
@@ -101,7 +103,7 @@ static int rds_release(struct socket *sock)
 	rds_trans_put(rs->rs_transport);
 
 	sock->sk = NULL;
-	sock_put(sk);
+	debug_sock_put(sk);
 out:
 	return 0;
 }
@@ -193,8 +195,8 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 			mask |= (POLLIN | POLLRDNORM);
 		spin_unlock(&rs->rs_lock);
 	}
-	if (!list_empty(&rs->rs_recv_queue) ||
-	    !list_empty(&rs->rs_notify_queue))
+	if (!list_empty(&rs->rs_recv_queue)
+	 || !list_empty(&rs->rs_notify_queue))
 		mask |= (POLLIN | POLLRDNORM);
 	if (rs->rs_snd_bytes < rds_sk_sndbuf(rs))
 		mask |= (POLLOUT | POLLWRNORM);
@@ -209,7 +211,34 @@ static unsigned int rds_poll(struct file *file, struct socket *sock,
 
 static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
-	return -ENOIOCTLCMD;
+	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
+	rds_tos_t tos;
+
+	switch (cmd) {
+	case SIOCRDSSETTOS:
+		if (get_user(tos, (rds_tos_t __user *)arg))
+			return -EFAULT;
+
+		spin_lock_bh(&rds_sock_lock);
+		if (rs->rs_tos || rs->rs_conn) {
+			spin_unlock_bh(&rds_sock_lock);
+			return -EINVAL;
+		}
+		rs->rs_tos = tos;
+		spin_unlock_bh(&rds_sock_lock);
+		break;
+        case SIOCRDSGETTOS:
+                spin_lock_bh(&rds_sock_lock);
+                tos = rs->rs_tos;
+                spin_unlock_bh(&rds_sock_lock);
+                if (put_user(tos, (rds_tos_t __user *)arg))
+                        return -EFAULT;
+                break;
+	default:
+		return -ENOIOCTLCMD;
+	}
+
+	return 0;
 }
 
 static int rds_cancel_sent_to(struct rds_sock *rs, char __user *optval,
@@ -270,6 +299,32 @@ static int rds_cong_monitor(struct rds_sock *rs, char __user *optval,
 	return ret;
 }
 
+static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
+{
+	struct rds_reset reset;
+	struct rds_connection *conn;
+
+	if (optlen != sizeof(struct rds_reset))
+		return -EINVAL;
+
+	if (copy_from_user(&reset, (struct rds_reset __user *)optval,
+				sizeof(struct rds_reset)))
+		return -EFAULT;
+
+	conn = rds_conn_find(reset.src.s_addr, reset.dst.s_addr,
+			rs->rs_transport, reset.tos);
+
+	if (conn) {
+		printk(KERN_NOTICE "Resetting RDS/IB connection "
+				"<%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
+				NIPQUAD(reset.src.s_addr),
+				NIPQUAD(reset.dst.s_addr), conn->c_tos);
+		rds_conn_drop(conn);
+	}
+
+	return 0;
+}
+
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
@@ -299,6 +354,9 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 		break;
 	case RDS_CONG_MONITOR:
 		ret = rds_cong_monitor(rs, optval, optlen);
+		break;
+	case RDS_CONN_RESET:
+		ret = rds_user_reset(rs, optval, optlen);
 		break;
 	default:
 		ret = -ENOPROTOOPT;
@@ -331,8 +389,8 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 		if (len < sizeof(int))
 			ret = -EINVAL;
 		else
-		if (put_user(rs->rs_recverr, (int __user *) optval) ||
-		    put_user(sizeof(int), optlen))
+		if (put_user(rs->rs_recverr, (int __user *) optval)
+		 || put_user(sizeof(int), optlen))
 			ret = -EFAULT;
 		else
 			ret = 0;
@@ -385,7 +443,7 @@ static struct proto rds_proto = {
 	.obj_size = sizeof(struct rds_sock),
 };
 
-static const struct proto_ops rds_proto_ops = {
+static struct proto_ops rds_proto_ops = {
 	.family =	AF_RDS,
 	.owner =	THIS_MODULE,
 	.release =	rds_release,
@@ -406,6 +464,14 @@ static const struct proto_ops rds_proto_ops = {
 	.sendpage =	sock_no_sendpage,
 };
 
+static void rds_sock_destruct(struct sock *sk)
+{
+	struct rds_sock *rs = rds_sk_to_rs(sk);
+
+	BUG_ON((&rs->rs_item != rs->rs_item.next ||
+	    &rs->rs_item != rs->rs_item.prev));
+}
+
 static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 {
 	struct rds_sock *rs;
@@ -413,6 +479,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	sock_init_data(sock, sk);
 	sock->ops		= &rds_proto_ops;
 	sk->sk_protocol		= protocol;
+	sk->sk_destruct		= rds_sock_destruct;
 
 	rs = rds_sk_to_rs(sk);
 	spin_lock_init(&rs->rs_lock);
@@ -423,6 +490,12 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	INIT_LIST_HEAD(&rs->rs_cong_list);
 	spin_lock_init(&rs->rs_rdma_lock);
 	rs->rs_rdma_keys = RB_ROOT;
+	rs->poison = 0xABABABAB;
+	rs->rs_tos = 0;
+	rs->rs_conn = 0;
+
+	if (rs->rs_bound_addr)
+		printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
 
 	spin_lock_bh(&rds_sock_lock);
 	list_add_tail(&rs->rs_item, &rds_sock_list);
@@ -432,32 +505,64 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	return 0;
 }
 
-static int rds_create(struct net *net, struct socket *sock, int protocol,
-		      int kern)
+static int rds_create(struct net *net, struct socket *sock, int protocol, int kern)
 {
 	struct sock *sk;
 
 	if (sock->type != SOCK_SEQPACKET || protocol)
 		return -ESOCKTNOSUPPORT;
 
-	sk = sk_alloc(net, AF_RDS, GFP_ATOMIC, &rds_proto);
+	sk = sk_alloc(net, AF_RDS, GFP_KERNEL, &rds_proto);
 	if (!sk)
 		return -ENOMEM;
 
 	return __rds_create(sock, sk, protocol);
 }
 
+void debug_sock_hold(struct sock *sk)
+{
+	struct rds_sock *rs = rds_sk_to_rs(sk);
+	if ((atomic_read(&sk->sk_refcnt) == 0)) {
+		printk(KERN_CRIT "zero refcnt on sock hold\n");
+		WARN_ON(1);
+	}
+	if (rs->poison != 0xABABABAB) {
+		printk(KERN_CRIT "bad poison on hold %x\n", rs->poison);
+		WARN_ON(1);
+	}
+	sock_hold(sk);
+}
+
+
 void rds_sock_addref(struct rds_sock *rs)
 {
-	sock_hold(rds_rs_to_sk(rs));
+	debug_sock_hold(rds_rs_to_sk(rs));
 }
+
+void debug_sock_put(struct sock *sk)
+{
+	if ((atomic_read(&sk->sk_refcnt) == 0)) {
+		printk(KERN_CRIT "zero refcnt on sock put\n");
+		WARN_ON(1);
+	}
+	if (atomic_dec_and_test(&sk->sk_refcnt)) {
+		struct rds_sock *rs = rds_sk_to_rs(sk);
+		if (rs->poison != 0xABABABAB) {
+			printk(KERN_CRIT "bad poison on put %x\n", rs->poison);
+			WARN_ON(1);
+		}
+		rs->poison = 0xDEADBEEF;
+		sk_free(sk);
+	}
+}
+
 
 void rds_sock_put(struct rds_sock *rs)
 {
-	sock_put(rds_rs_to_sk(rs));
+	debug_sock_put(rds_rs_to_sk(rs));
 }
 
-static const struct net_proto_family rds_family_ops = {
+static struct net_proto_family rds_family_ops = {
 	.family =	AF_RDS,
 	.create =	rds_create,
 	.owner	=	THIS_MODULE,
@@ -468,6 +573,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 			      struct rds_info_lengths *lens)
 {
 	struct rds_sock *rs;
+	struct sock *sk;
 	struct rds_incoming *inc;
 	unsigned int total = 0;
 
@@ -476,6 +582,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	spin_lock_bh(&rds_sock_lock);
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
+		sk = rds_rs_to_sk(rs);
 		read_lock(&rs->rs_recv_lock);
 
 		/* XXX too lazy to maintain counts.. */
@@ -528,6 +635,105 @@ out:
 	spin_unlock_bh(&rds_sock_lock);
 }
 
+static unsigned long parse_ul(char *ptr, unsigned long max)
+{
+	unsigned long val;
+	char *endptr;
+
+	val = simple_strtoul(ptr, &endptr, 0);
+	switch (*endptr) {
+	case 'k': case 'K':
+		val <<= 10;
+		endptr++;
+		break;
+	case 'm': case 'M':
+		val <<= 20;
+		endptr++;
+		break;
+	}
+
+	if (*ptr && !*endptr && val <= max)
+		return val;
+
+	printk(KERN_WARNING "RDS: Invalid threshold number\n");
+	return 0;
+}
+
+int rds_check_qos_threshold(u8 tos, size_t payload_len)
+{
+	if (rds_qos_threshold_action == 0)
+		return 0;
+
+	if (rds_qos_threshold_tbl[tos] && payload_len &&
+		rds_qos_threshold_tbl[tos] < payload_len) {
+		if (rds_qos_threshold_action == 1)
+			return 1;
+		else if (rds_qos_threshold_action == 2) {
+			rds_stats_inc(s_qos_threshold_exceeded);
+			return 0;
+		} else if (rds_qos_threshold_action == 3) {
+			rds_stats_inc(s_qos_threshold_exceeded);
+			return 1;
+		} else
+			return 0;
+	} else
+		return 0;
+}
+
+static void rds_qos_threshold_init(void)
+{
+	char *tok, *nxt_tok, *end;
+	char str[1024];
+	int	i;
+
+	for (i = 0; i < 256; i++)
+		rds_qos_threshold_tbl[i] = 0;
+
+	if (rds_qos_threshold == NULL)
+		return;
+
+	strcpy(str, rds_qos_threshold);
+	nxt_tok = strchr(str, ',');
+	if (nxt_tok) {
+		*nxt_tok = '\0';
+		nxt_tok++;
+	}
+
+	tok = str;
+	while (tok) {
+		char *qos_str, *threshold_str;
+		
+		qos_str = tok;
+		threshold_str = strchr(tok, ':');
+		if (threshold_str) {
+			unsigned long qos, threshold;
+
+			*threshold_str = '\0';
+			threshold_str++;
+			qos = simple_strtol(qos_str, &end, 0);
+			if (*end) {
+				printk(KERN_WARNING "RDS: Warning: QoS "
+					"%s is improperly formatted\n", qos_str);
+			} else if (qos > 255) {
+				printk(KERN_WARNING "RDS: Warning: QoS "
+					"%s out of range\n", qos_str);
+			}
+			threshold = parse_ul(threshold_str, (u32)~0);
+			rds_qos_threshold_tbl[qos] = threshold;
+		} else {
+			printk(KERN_WARNING "RDS: Warning: QoS:Threshold "
+				"%s is improperly formatted\n", tok);
+		}
+
+		tok = nxt_tok;
+		nxt_tok = strchr(str, ',');
+		if (nxt_tok) {
+			*nxt_tok = '\0';
+			nxt_tok++;
+		}
+	}
+}
+
 static void rds_exit(void)
 {
 	sock_unregister(rds_family_ops.family);
@@ -569,6 +775,8 @@ static int rds_init(void)
 	rds_info_register_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_register_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
 
+	rds_qos_threshold_init();
+
 	goto out;
 
 out_proto:
@@ -588,8 +796,8 @@ out:
 }
 module_init(rds_init);
 
-#define DRV_VERSION     "4.0"
-#define DRV_RELDATE     "Feb 12, 2009"
+#define DRV_VERSION     "4.1"
+#define DRV_RELDATE     "Jan 04, 2013"
 
 MODULE_AUTHOR("Oracle Corporation <rds-devel@oss.oracle.com>");
 MODULE_DESCRIPTION("RDS: Reliable Datagram Sockets"

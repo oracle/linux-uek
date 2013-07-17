@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <net/tcp.h>
 
 #include "rds.h"
@@ -169,6 +168,7 @@ static void rds_tcp_cong_recv(struct rds_connection *conn,
 struct rds_tcp_desc_arg {
 	struct rds_connection *conn;
 	gfp_t gfp;
+	enum km_type km;
 };
 
 static int rds_tcp_data_recv(read_descriptor_t *desc, struct sk_buff *skb,
@@ -254,7 +254,7 @@ static int rds_tcp_data_recv(read_descriptor_t *desc, struct sk_buff *skb,
 			else
 				rds_recv_incoming(conn, conn->c_faddr,
 						  conn->c_laddr, &tinc->ti_inc,
-						  arg->gfp);
+						  arg->gfp, arg->km);
 
 			tc->t_tinc_hdr_rem = sizeof(struct rds_header);
 			tc->t_tinc_data_rem = 0;
@@ -271,7 +271,7 @@ out:
 }
 
 /* the caller has to hold the sock lock */
-static int rds_tcp_read_sock(struct rds_connection *conn, gfp_t gfp)
+int rds_tcp_read_sock(struct rds_connection *conn, gfp_t gfp, enum km_type km)
 {
 	struct rds_tcp_connection *tc = conn->c_transport_data;
 	struct socket *sock = tc->t_sock;
@@ -281,6 +281,7 @@ static int rds_tcp_read_sock(struct rds_connection *conn, gfp_t gfp)
 	/* It's like glib in the kernel! */
 	arg.conn = conn;
 	arg.gfp = gfp;
+	arg.km = km;
 	desc.arg.data = &arg;
 	desc.error = 0;
 	desc.count = 1; /* give more than one skb per call */
@@ -308,7 +309,7 @@ int rds_tcp_recv(struct rds_connection *conn)
 	rdsdebug("recv worker conn %p tc %p sock %p\n", conn, tc, sock);
 
 	lock_sock(sock->sk);
-	ret = rds_tcp_read_sock(conn, GFP_KERNEL);
+	ret = rds_tcp_read_sock(conn, GFP_KERNEL, KM_USER0);
 	release_sock(sock->sk);
 
 	return ret;
@@ -333,7 +334,7 @@ void rds_tcp_data_ready(struct sock *sk, int bytes)
 	ready = tc->t_orig_data_ready;
 	rds_tcp_stats_inc(s_tcp_data_ready_calls);
 
-	if (rds_tcp_read_sock(conn, GFP_ATOMIC) == -ENOMEM)
+	if (rds_tcp_read_sock(conn, GFP_ATOMIC, KM_SOFTIRQ0) == -ENOMEM)
 		queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
 out:
 	read_unlock(&sk->sk_callback_lock);
