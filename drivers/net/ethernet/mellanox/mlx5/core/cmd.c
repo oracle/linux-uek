@@ -74,6 +74,7 @@ static int dbg_open(struct inode *inode, struct file *file)
 static struct mlx5_cmd_work_ent *alloc_cmd(struct mlx5_cmd *cmd,
 					   struct mlx5_cmd_msg *in,
 					   struct mlx5_cmd_msg *out,
+					   void *uout, int uout_size,
 					   mlx5_cmd_cbk_t cbk,
 					   void *context, int page_queue)
 {
@@ -86,6 +87,8 @@ static struct mlx5_cmd_work_ent *alloc_cmd(struct mlx5_cmd *cmd,
 
 	ent->in		= in;
 	ent->out	= out;
+	ent->uout	= uout;
+	ent->uout_size	= uout_size;
 	ent->callback	= cbk;
 	ent->context	= context;
 	ent->cmd	= cmd;
@@ -516,6 +519,7 @@ static void cmd_work_handler(struct work_struct *work)
 	ent->lay = lay;
 	memset(lay, 0, sizeof(*lay));
 	memcpy(lay->in, ent->in->first.data, sizeof(lay->in));
+	ent->op = be32_to_cpu(lay->in[0]) >> 16;
 	if (ent->in->next)
 		lay->in_ptr = cpu_to_be64(ent->in->next->dma);
 	lay->inlen = cpu_to_be32(ent->in->len);
@@ -613,7 +617,8 @@ static int wait_func(struct mlx5_core_dev *dev, struct mlx5_cmd_work_ent *ent)
  *    2. page queue commands do not support asynchrous completion
  */
 static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
-			   struct mlx5_cmd_msg *out, mlx5_cmd_cbk_t callback,
+			   struct mlx5_cmd_msg *out, void *uout, int uout_size,
+			   mlx5_cmd_cbk_t callback,
 			   void *context, int page_queue, u8 *status)
 {
 	struct mlx5_cmd *cmd = &dev->cmd;
@@ -627,7 +632,8 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 	if (callback && page_queue)
 		return -EINVAL;
 
-	ent = alloc_cmd(cmd, in, out, callback, context, page_queue);
+	ent = alloc_cmd(cmd, in, out, uout, uout_size, callback, context,
+			page_queue);
 	if (IS_ERR(ent))
 		return PTR_ERR(ent);
 
@@ -813,7 +819,7 @@ static struct mlx5_cmd_msg *mlx5_alloc_cmd_msg(struct mlx5_core_dev *dev,
 	int blen;
 	int err;
 
-	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	msg = kzalloc(sizeof(*msg), flags);
 	if (!msg)
 		return ERR_PTR(-ENOMEM);
 
@@ -1105,6 +1111,9 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 	int err;
 	void *context;
 	int page_queue;
+	ktime_t t1, t2, delta;
+	s64 ds;
+	struct mlx5_cmd_stats *stats;
 
 	for (i = 0; i < (1 << cmd->log_sz); ++i) {
 		if (test_bit(i, &vector)) {
@@ -1124,9 +1133,30 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 			page_queue = ent->page_queue;
 			free_ent(cmd, ent->idx);
 			if (ent->callback) {
+				t1 = timespec_to_ktime(ent->ts1);
+				t2 = timespec_to_ktime(ent->ts2);
+				delta = ktime_sub(t2, t1);
+				ds = ktime_to_ns(delta);
+				if (ent->op < ARRAY_SIZE(cmd->stats)) {
+					stats = &cmd->stats[ent->op];
+					spin_lock(&stats->spl);
+					stats->sum += ds;
+					++stats->n;
+					spin_unlock(&stats->spl);
+				}
+
 				callback = ent->callback;
 				context = ent->context;
 				err = ent->ret;
+				if (!err) {
+					err = mlx5_copy_from_msg(ent->uout,
+								 ent->out,
+								 ent->uout_size);
+				}
+
+				mlx5_free_cmd_msg(dev, ent->out);
+				mlx5_free_cmd_msg(dev, ent->in);
+
 				free_cmd(ent);
 				callback(err, context);
 			} else {
@@ -1146,7 +1176,8 @@ static int status_to_err(u8 status)
 	return status ? -1 : 0; /* TBD more meaningful codes */
 }
 
-static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size)
+static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
+				      gfp_t gfp)
 {
 	struct mlx5_cmd *cmd = &dev->cmd;
 	struct mlx5_cmd_msg *msg = ERR_PTR(-ENOMEM);
@@ -1172,7 +1203,7 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size)
 	}
 
 	if (IS_ERR(msg))
-		msg = mlx5_alloc_cmd_msg(dev, GFP_KERNEL, in_size);
+		msg = mlx5_alloc_cmd_msg(dev, gfp, in_size);
 
 	return msg;
 }
@@ -1193,18 +1224,20 @@ static int is_manage_pages(struct mlx5_inbox_hdr *in)
 	return be16_to_cpu(in->opcode) == MLX5_CMD_OP_MANAGE_PAGES;
 }
 
-int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
-		  int out_size)
+static int cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
+		    int out_size, mlx5_cmd_cbk_t callback, void *context)
 {
 	struct mlx5_cmd_msg *inb;
 	struct mlx5_cmd_msg *outb;
+	gfp_t gfp;
 	int err;
 	u8 status = 0;
 	int pages_queue;
 
 	pages_queue = is_manage_pages(in);
+	gfp = callback ? GFP_ATOMIC : GFP_KERNEL;
 
-	inb = alloc_msg(dev, in_size);
+	inb = alloc_msg(dev, in_size, gfp);
 	if (IS_ERR(inb)) {
 		err = PTR_ERR(inb);
 		return err;
@@ -1216,13 +1249,14 @@ int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 		goto out_in;
 	}
 
-	outb = mlx5_alloc_cmd_msg(dev, GFP_KERNEL, out_size);
+	outb = mlx5_alloc_cmd_msg(dev, gfp, out_size);
 	if (IS_ERR(outb)) {
 		err = PTR_ERR(outb);
 		goto out_in;
 	}
 
-	err = mlx5_cmd_invoke(dev, inb, outb, NULL, NULL, pages_queue, &status);
+	err = mlx5_cmd_invoke(dev, inb, outb, out, out_size, callback, context,
+			      pages_queue, &status);
 	if (err)
 		goto out_out;
 
@@ -1235,13 +1269,29 @@ int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
 	err = mlx5_copy_from_msg(out, outb, out_size);
 
 out_out:
-	mlx5_free_cmd_msg(dev, outb);
+	if (!callback)
+		mlx5_free_cmd_msg(dev, outb);
 
 out_in:
-	free_msg(dev, inb);
+	if (!callback)
+		free_msg(dev, inb);
 	return err;
 }
+
+int mlx5_cmd_exec(struct mlx5_core_dev *dev, void *in, int in_size, void *out,
+		  int out_size)
+{
+	return cmd_exec(dev, in, in_size, out, out_size, NULL, NULL);
+}
 EXPORT_SYMBOL(mlx5_cmd_exec);
+
+int mlx5_cmd_exec_cb(struct mlx5_core_dev *dev, void *in, int in_size,
+		     void *out, int out_size, mlx5_cmd_cbk_t callback,
+		     void *context)
+{
+	return cmd_exec(dev, in, in_size, out, out_size, callback, context);
+}
+EXPORT_SYMBOL(mlx5_cmd_exec_cb);
 
 static int create_msg_cache(struct mlx5_core_dev *dev)
 {

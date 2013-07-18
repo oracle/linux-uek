@@ -1813,6 +1813,7 @@ static void set_reg_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
 			MLX5_MKEY_MASK_PD		|
 			MLX5_MKEY_MASK_LR		|
 			MLX5_MKEY_MASK_LW		|
+			MLX5_MKEY_MASK_KEY		|
 			MLX5_MKEY_MASK_RR		|
 			MLX5_MKEY_MASK_RW		|
 			MLX5_MKEY_MASK_A		|
@@ -1869,7 +1870,8 @@ static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *w
 	seg->start_addr = cpu_to_be64(wr->wr.umr.virt_addr);
 	seg->len = cpu_to_be64(wr->wr.umr.length);
 	seg->log2_page_size = wr->wr.umr.page_shift;
-	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
+	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff00 |
+				       mlx5_mkey_variant(wr->wr.umr.mkey));
 }
 
 static void set_frwr_pages(struct mlx5_wqe_data_seg *dseg,
