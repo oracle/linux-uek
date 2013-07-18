@@ -371,7 +371,9 @@ static int fall_to_bounce_buf(struct iscsi_iser_task *iser_task,
 	iscsi_conn->fmr_unalign_cnt++;
 	iser_warn("rdma alignment violation (%d/%d aligned) or FMR not supported\n",
 		  aligned_len, mem->size);
-	iser_data_buf_dump(mem, ibdev);
+
+	if (iser_debug_level > 0)
+		iser_data_buf_dump(mem, ibdev);
 
 	/* unmap the command data before accessing it */
 	iser_dma_unmap_task_data(iser_task);
