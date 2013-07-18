@@ -36,6 +36,7 @@
 #include <linux/list.h>
 
 #include "rds.h"
+#include "tcp.h"
 
 /* When transmitting messages in rds_send_xmit, we need to emerge from
  * time to time and briefly release the CPU. Otherwise the softlock watchdog
@@ -1212,7 +1213,7 @@ int rds_sendmsg(struct socket *sock, struct msghdr *msg, size_t payload_len)
 	/* Attach data to the rm */
 	if (payload_len) {
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
-		ret = rds_message_copy_from_user(rm, &msg->msg_iter);
+		ret = rds_message_copy_from_user(rm, &msg->msg_iter, GFP_KERNEL);
 		if (ret)
 			goto out;
 	}
@@ -1354,6 +1355,151 @@ out:
 	 * or in any other way, we need to destroy the MR again */
 	if (allocated_mr)
 		rds_rdma_unuse(rs, rds_rdma_cookie_key(rm->m_rdma_cookie), 1);
+
+	if (rm)
+		rds_message_put(rm);
+	return ret;
+}
+
+/* this function and rds_sendmsg can likely be folded together into a single function that understand to package
+ * up a message for transmission either from the user or from an internal source.
+ *
+ * Also there is potentially a need to allow either for a retry of the send attempt if we are at a high enough level
+ * in the stack, or for only a single shot attempt for the send if we are low enough in the stack that we cannot afford
+ * to sleep or block forever.
+ *
+ * At present this form of the code will only ever do a single shot at the send and it assumes that the source is internal
+ */
+
+int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
+		      struct sk_buff *skb, gfp_t gfp)
+{
+	struct rds_nf_hdr *dst;
+	struct rds_message *rm = NULL;
+	struct scatterlist *sg;
+	skb_frag_t *frags;
+	int ret = 0;
+	int queued = 0;
+	int i;
+
+	/* pull out the destination info */
+	dst = rds_nf_hdr_dst(skb);
+
+	/* size of rm including all sgs */
+	ret = ceil(skb->len, PAGE_SIZE) * sizeof(struct scatterlist);
+	if (ret < 0)
+		goto out;
+
+	/* create ourselves a new message to send out the data */
+	rm = rds_message_alloc(ret, gfp);
+	if (!rm) {
+		rdsdebug("failed to allocate response message rs %p", rs);
+		ret = -ENOMEM;
+		goto out;
+	}
+
+	/* Attach data to the rm */
+	if (skb->len) {
+		/* innitialize the segments we need to use */
+		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(skb->len, PAGE_SIZE));
+
+		/* copy out all the pages from the skb */
+		for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
+			/* one to one mapping from skb info to rm info */
+			frags = &skb_shinfo(skb)->frags[i];
+			sg    = &rm->data.op_sg[i];
+
+			/* just save the pieces directly */
+			sg_set_page(sg, frags->page.p, frags->size, frags->page_offset);
+
+			/* and take an extra reference on the page */
+			get_page(frags->page.p);
+		}
+
+		/* finalization of the pieces of the message */
+		rm->m_inc.i_hdr.h_len = cpu_to_be32(skb->len);
+		rm->data.op_nents     = skb_shinfo(skb)->nr_frags;
+	}
+
+	rdsdebug("Created send rm %p, nents %d, len %d, skbLen %d\n",
+		 rm, rm->data.op_nents, be32_to_cpu(rm->m_inc.i_hdr.h_len), skb->len);
+
+	/* initializes all the subpieces of the message */
+	rm->data.op_active = 1;
+	rm->m_daddr = dst->daddr;
+
+	if (rm->rdma.op_active && !conn->c_trans->xmit_rdma) {
+		if (printk_ratelimit())
+			printk(KERN_NOTICE "rdma_op %p conn xmit_rdma %p\n",
+			       &rm->rdma, conn->c_trans->xmit_rdma);
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	if (rm->atomic.op_active && !conn->c_trans->xmit_atomic) {
+		if (printk_ratelimit())
+			printk(KERN_NOTICE "atomic_op %p conn xmit_atomic %p\n",
+			       &rm->atomic, conn->c_trans->xmit_atomic);
+		ret = -EOPNOTSUPP;
+		goto out;
+	}
+
+	/* retry the connection if it hasn't actually been made */
+	rds_conn_connect_if_down(conn);
+
+	/* simple congestion check */
+	ret = rds_cong_wait(conn->c_fcong, dst->dport, 1, rs);
+	if (ret) {
+		rs->rs_seen_congestion = 1;
+		goto out;
+	}
+
+	/* only take a single pass */
+	if (!rds_send_queue_rm(rs, conn, rm, rs->rs_bound_port,
+			       dst->dport, &queued)) {
+		rdsdebug("cannot block on internal send rs %p", rs);
+		rds_stats_inc(s_send_queue_full);
+
+		/* force a requeue of the work for later */
+		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+
+		ret = -EAGAIN;
+		goto out;
+	}
+
+	/*
+	 * By now we've committed to the send.  We reuse rds_send_worker()
+	 * to retry sends in the rds thread if the transport asks us to.
+	 */
+	rds_stats_inc(s_send_queued);
+
+/* Set this to 1 for normal testing but 0 when building the TCP version
+ * of the code.  The TCP version has hang issues otherwise. */
+#if 1
+	/* for the time being it looks like the send_xmit code may lead to a
+	 * deadlock/hang, so we are not going to use it yet */
+	ret = rds_send_xmit(conn);
+	if (ret == -ENOMEM || ret == -EAGAIN)
+		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
+#else
+	/* always hand the send off to the worker thread */
+	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
+#endif
+
+	rdsdebug("message sent for rs %p, conn %p, len %d, %pI4 : %u -> %pI4 : %u\n",
+		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr, dst->dport);
+	ret = skb->len;
+
+out:
+	/* on error free up page references but don't allow the pages to be freed */
+	if (ret < 0 && rm) {
+		for (i = 0; i < rm->data.op_nents; i++) {
+			sg = &rm->data.op_sg[i];
+			put_page(sg_page(sg));
+			sg_set_page(sg, NULL, 0, 0);
+		}
+		rm->data.op_nents = 0;
+	}
 
 	if (rm)
 		rds_message_put(rm);
