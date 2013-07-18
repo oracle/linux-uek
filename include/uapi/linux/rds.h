@@ -35,6 +35,7 @@
 #define _LINUX_RDS_H
 
 #include <linux/types.h>
+#include <net/sock.h>
 
 /* These sparse annotated types shouldn't be in any user
  * visible header file. We should clean this up rather
@@ -64,9 +65,11 @@
 */
 #define SIOCRDSSETTOS                   (SIOCPROTOPRIVATE)
 #define SIOCRDSGETTOS                  (SIOCPROTOPRIVATE + 1)
+#define SIOCRDSENABLENETFILTER          (SIOCPROTOPRIVATE + 2)
+
+#define IPPROTO_OKA (142)
 
 typedef u_int8_t         rds_tos_t;
-
 
 /*
  * Control message types for SOL_RDS.
@@ -311,6 +314,39 @@ struct rds_rdma_send_notify {
 #define RDS_RDMA_SILENT		0x0040	/* Do not interrupt remote */
 #define RDS_RDMA_REMOTE_COMPLETE 0x0080 /* Notify when data is available */
 #define RDS_SEND_NOTIFY_ME      0x0100  /* Notify when operation completes */
+
+/* netfilter related components */
+struct rds_nf_hdr {
+	__be32 saddr;     /* source address of request */
+	__be32 daddr;     /* destination address */
+	__be16 sport;     /* source port number */
+	__be16 dport;     /* destination port number */
+	__be16 protocol;  /* rds socket protocol family to use */
+
+#define RDS_NF_HDR_FLAG_BOTH (0x1) /* request needs to go locally and remote */
+#define RDS_NF_HDR_FLAG_DONE (0x2) /* the request is consumed and done */
+	__be16 flags;     /* any configuration flags */
+	struct sock *sk;
+};
+
+/* pull out the 2 rdshdr from the SKB structures passed around */
+#define rds_nf_hdr_dst(skb) (&(((struct rds_nf_hdr *)skb_tail_pointer((skb)))[0]))
+#define rds_nf_hdr_org(skb) (&(((struct rds_nf_hdr *)skb_tail_pointer((skb)))[1]))
+
+/* temporary hack for a family that exists in the netfilter family */
+#define PF_RDS_HOOK   11
+
+enum rds_inet_hooks {
+	NF_RDS_PRE_ROUTING,
+	NF_RDS_FORWARD_ERROR,
+	NF_RDS_NUMHOOKS
+};
+
+enum rds_hook_priorities {
+	NF_RDS_PRI_FIRST = INT_MIN,
+	NF_RDS_PRI_OKA   = 0,
+	NF_RDS_PRI_LAST  = INT_MAX
+};
 
 
 #endif /* IB_RDS_H */
