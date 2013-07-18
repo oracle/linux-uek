@@ -47,13 +47,28 @@
 #include <asm/xen/hypercall.h>
 #include <asm/xen/page.h>
 
+/* Provide an option to disable split event channels at load time as
+ * event channels are limited resource. Split event channels are
+ * enabled by default.
+ */
+bool separate_tx_rx_irq = 1;
+module_param(separate_tx_rx_irq, bool, 0644);
+
 /*
  * This is the maximum slots a skb can have. If a guest sends a skb
  * which exceeds this limit it is considered malicious.
  */
-#define MAX_SKB_SLOTS_DEFAULT 20
-static unsigned int max_skb_slots = MAX_SKB_SLOTS_DEFAULT;
-module_param(max_skb_slots, uint, 0444);
+#define FATAL_SKB_SLOTS_DEFAULT 20
+static unsigned int fatal_skb_slots = FATAL_SKB_SLOTS_DEFAULT;
+module_param(fatal_skb_slots, uint, 0444);
+
+/*
+ * To avoid confusion, we define XEN_NETBK_LEGACY_SLOTS_MAX indicating
+ * the maximum slots a valid packet can use. Now this value is defined
+ * to be XEN_NETIF_NR_SLOTS_MIN, which is supposed to be supported by
+ * all backend.
+ */
+#define XEN_NETBK_LEGACY_SLOTS_MAX XEN_NETIF_NR_SLOTS_MIN
 
 typedef unsigned int pending_ring_idx_t;
 #define INVALID_PENDING_RING_IDX (~0U)
@@ -696,7 +711,7 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 {
 	struct xenvif *vif = NULL, *tmp;
 	s8 status;
-	u16 irq, flags;
+	u16 flags;
 	struct xen_netif_rx_response *resp;
 	struct sk_buff_head rxq;
 	struct sk_buff *skb;
@@ -814,20 +829,21 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 					 sco->meta_slots_used);
 
 		RING_PUSH_RESPONSES_AND_CHECK_NOTIFY(&vif->rx, ret);
-		irq = vif->irq;
-		if (ret && list_empty(&vif->notify_list))
-			list_add_tail(&vif->notify_list, &notify);
 
 		xenvif_notify_tx_completion(vif);
 
-		xenvif_put(vif);
+		if (ret && list_empty(&vif->notify_list))
+			list_add_tail(&vif->notify_list, &notify);
+		else
+			xenvif_put(vif);
 		npo.meta_cons += sco->meta_slots_used;
 		dev_kfree_skb(skb);
 	}
 
 	list_for_each_entry_safe(vif, tmp, &notify, notify_list) {
-		notify_remote_via_irq(vif->irq);
+		notify_remote_via_irq(vif->rx_irq);
 		list_del_init(&vif->notify_list);
+		xenvif_put(vif);
 	}
 
 	/* More work to do? */
@@ -979,18 +995,20 @@ static void netbk_fatal_tx_err(struct xenvif *vif)
 
 static int netbk_count_requests(struct xenvif *vif,
 				struct xen_netif_tx_request *first,
-				RING_IDX first_idx,
 				struct xen_netif_tx_request *txp,
 				int work_to_do)
 {
 	RING_IDX cons = vif->tx.req_cons;
 	int slots = 0;
 	int drop_err = 0;
+	int more_data;
 
 	if (!(first->flags & XEN_NETTXF_more_data))
 		return 0;
 
 	do {
+		struct xen_netif_tx_request dropped_tx = { 0 };
+
 		if (slots >= work_to_do) {
 			netdev_err(vif->dev,
 				   "Asked for %d slots but exceeds this limit\n",
@@ -1002,27 +1020,31 @@ static int netbk_count_requests(struct xenvif *vif,
 		/* This guest is really using too many slots and
 		 * considered malicious.
 		 */
-		if (unlikely(slots >= max_skb_slots)) {
+		if (unlikely(slots >= fatal_skb_slots)) {
 			netdev_err(vif->dev,
 				   "Malicious frontend using %d slots, threshold %u\n",
-				   slots, max_skb_slots);
+				   slots, fatal_skb_slots);
 			netbk_fatal_tx_err(vif);
 			return -E2BIG;
 		}
 
 		/* Xen network protocol had implicit dependency on
-		 * MAX_SKB_FRAGS. XEN_NETIF_NR_SLOTS_MIN is set to the
-		 * historical MAX_SKB_FRAGS value 18 to honor the same
-		 * behavior as before. Any packet using more than 18
-		 * slots but less than max_skb_slots slots is dropped
+		 * MAX_SKB_FRAGS. XEN_NETBK_LEGACY_SLOTS_MAX is set to
+		 * the historical MAX_SKB_FRAGS value 18 to honor the
+		 * same behavior as before. Any packet using more than
+		 * 18 slots but less than fatal_skb_slots slots is
+		 * dropped
 		 */
-		if (!drop_err && slots >= XEN_NETIF_NR_SLOTS_MIN) {
+		if (!drop_err && slots >= XEN_NETBK_LEGACY_SLOTS_MAX) {
 			if (net_ratelimit())
 				netdev_dbg(vif->dev,
 					   "Too many slots (%d) exceeding limit (%d), dropping packet\n",
-					   slots, XEN_NETIF_NR_SLOTS_MIN);
+					   slots, XEN_NETBK_LEGACY_SLOTS_MAX);
 			drop_err = -E2BIG;
 		}
+
+		if (drop_err)
+			txp = &dropped_tx;
 
 		memcpy(txp, RING_GET_REQUEST(&vif->tx, cons + slots),
 		       sizeof(*txp));
@@ -1053,10 +1075,16 @@ static int netbk_count_requests(struct xenvif *vif,
 			netbk_fatal_tx_err(vif);
 			return -EINVAL;
 		}
-	} while ((txp++)->flags & XEN_NETTXF_more_data);
+
+		more_data = txp->flags & XEN_NETTXF_more_data;
+
+		if (!drop_err)
+			txp++;
+
+	} while (more_data);
 
 	if (drop_err) {
-		netbk_tx_err(vif, first, first_idx + slots);
+		netbk_tx_err(vif, first, cons + slots);
 		return drop_err;
 	}
 
@@ -1093,7 +1121,7 @@ static struct gnttab_copy *xen_netbk_get_requests(struct xen_netbk *netbk,
 	struct pending_tx_info *first = NULL;
 
 	/* At this point shinfo->nr_frags is in fact the number of
-	 * slots, which can be as large as XEN_NETIF_NR_SLOTS_MIN.
+	 * slots, which can be as large as XEN_NETBK_LEGACY_SLOTS_MAX.
 	 */
 	nr_slots = shinfo->nr_frags;
 
@@ -1514,12 +1542,12 @@ static unsigned xen_netbk_tx_build_gops(struct xen_netbk *netbk)
 	struct sk_buff *skb;
 	int ret;
 
-	while ((nr_pending_reqs(netbk) + XEN_NETIF_NR_SLOTS_MIN
+	while ((nr_pending_reqs(netbk) + XEN_NETBK_LEGACY_SLOTS_MAX
 		< MAX_PENDING_REQS) &&
 		!list_empty(&netbk->net_schedule_list)) {
 		struct xenvif *vif;
 		struct xen_netif_tx_request txreq;
-		struct xen_netif_tx_request txfrags[max_skb_slots];
+		struct xen_netif_tx_request txfrags[XEN_NETBK_LEGACY_SLOTS_MAX];
 		struct page *page;
 		struct xen_netif_extra_info extras[XEN_NETIF_EXTRA_TYPE_MAX-1];
 		u16 pending_idx;
@@ -1581,8 +1609,7 @@ static unsigned xen_netbk_tx_build_gops(struct xen_netbk *netbk)
 				continue;
 		}
 
-		ret = netbk_count_requests(vif, &txreq, idx,
-					   txfrags, work_to_do);
+		ret = netbk_count_requests(vif, &txreq, txfrags, work_to_do);
 		if (unlikely(ret < 0))
 			continue;
 
@@ -1609,7 +1636,7 @@ static unsigned xen_netbk_tx_build_gops(struct xen_netbk *netbk)
 		pending_idx = netbk->pending_ring[index];
 
 		data_len = (txreq.size > PKT_PROT_LEN &&
-			    ret < XEN_NETIF_NR_SLOTS_MIN) ?
+			    ret < XEN_NETBK_LEGACY_SLOTS_MAX) ?
 			PKT_PROT_LEN : txreq.size;
 
 		skb = alloc_skb(data_len + NET_SKB_PAD + NET_IP_ALIGN,
@@ -1850,7 +1877,7 @@ static void make_tx_response(struct xenvif *vif,
 	vif->tx.rsp_prod_pvt = ++i;
 	RING_PUSH_RESPONSES_AND_CHECK_NOTIFY(&vif->tx, notify);
 	if (notify)
-		notify_remote_via_irq(vif->irq);
+		notify_remote_via_irq(vif->tx_irq);
 }
 
 static struct xen_netif_rx_response *make_rx_response(struct xenvif *vif,
@@ -1884,7 +1911,7 @@ static inline int rx_work_todo(struct xen_netbk *netbk)
 static inline int tx_work_todo(struct xen_netbk *netbk)
 {
 
-	if ((nr_pending_reqs(netbk) + XEN_NETIF_NR_SLOTS_MIN
+	if ((nr_pending_reqs(netbk) + XEN_NETBK_LEGACY_SLOTS_MAX
 	     < MAX_PENDING_REQS) &&
 	     !list_empty(&netbk->net_schedule_list))
 		return 1;
@@ -1969,11 +1996,10 @@ static int __init netback_init(void)
 	if (!xen_domain())
 		return -ENODEV;
 
-	if (max_skb_slots < XEN_NETIF_NR_SLOTS_MIN) {
-		printk(KERN_INFO
-		       "xen-netback: max_skb_slots too small (%d), bump it to XEN_NETIF_NR_SLOTS_MIN (%d)\n",
-		       max_skb_slots, XEN_NETIF_NR_SLOTS_MIN);
-		max_skb_slots = XEN_NETIF_NR_SLOTS_MIN;
+	if (fatal_skb_slots < XEN_NETBK_LEGACY_SLOTS_MAX) {
+		pr_info("fatal_skb_slots too small (%d), bump it to XEN_NETBK_LEGACY_SLOTS_MAX (%d)\n",
+			fatal_skb_slots, XEN_NETBK_LEGACY_SLOTS_MAX);
+		fatal_skb_slots = XEN_NETBK_LEGACY_SLOTS_MAX;
 	}
 
 	xen_netbk_group_nr = num_online_cpus();
@@ -2003,7 +2029,7 @@ static int __init netback_init(void)
 					     "netback/%u", group);
 
 		if (IS_ERR(netbk->task)) {
-			printk(KERN_ALERT "kthread_create() fails at netback\n");
+			pr_alert("kthread_create() fails at netback\n");
 			del_timer(&netbk->net_timer);
 			rc = PTR_ERR(netbk->task);
 			goto failed_init;
@@ -2029,10 +2055,6 @@ static int __init netback_init(void)
 failed_init:
 	while (--group >= 0) {
 		struct xen_netbk *netbk = &xen_netbk[group];
-		for (i = 0; i < MAX_PENDING_REQS; i++) {
-			if (netbk->mmap_pages[i])
-				__free_page(netbk->mmap_pages[i]);
-		}
 		del_timer(&netbk->net_timer);
 		kthread_stop(netbk->task);
 	}
@@ -2042,6 +2064,26 @@ failed_init:
 }
 
 module_init(netback_init);
+
+static void __exit netback_fini(void)
+{
+	int i, j;
+
+	xenvif_xenbus_fini();
+
+	for (i = 0; i < xen_netbk_group_nr; i++) {
+		struct xen_netbk *netbk = &xen_netbk[i];
+		del_timer_sync(&netbk->net_timer);
+		kthread_stop(netbk->task);
+		for (j = 0; j < MAX_PENDING_REQS; j++) {
+			if (netbk->mmap_pages[j])
+				__free_page(netbk->mmap_pages[j]);
+		}
+	}
+
+	vfree(xen_netbk);
+}
+module_exit(netback_fini);
 
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_ALIAS("xen-backend:vif");
