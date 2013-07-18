@@ -406,8 +406,7 @@ int iser_reg_rdma_mem_fmr(struct iscsi_iser_task *iser_task,
 	regd_buf = &iser_task->rdma_regd[cmd_dir];
 
 	aligned_len = iser_data_buf_aligned_len(mem, ibdev);
-	if (aligned_len != mem->dma_nents ||
-	    (!ib_conn->fastreg.fmr.pool && mem->dma_nents > 1)) {
+	if (aligned_len != mem->dma_nents) {
 		err = fall_to_bounce_buf(iser_task, ibdev,
 					 cmd_dir, aligned_len);
 		if (err) {
