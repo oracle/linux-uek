@@ -280,7 +280,7 @@ struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned in
 }
 
 int rds_message_copy_from_user(struct rds_message *rm, struct iovec *first_iov,
-					       size_t total_len)
+			       size_t total_len, gfp_t gfp)
 {
 	unsigned long to_copy;
 	unsigned long iov_off;
@@ -302,7 +302,9 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iovec *first_iov,
 	while (total_len) {
 		if (!sg_page(sg)) {
 			ret = rds_page_remainder_alloc(sg, total_len,
-						       GFP_HIGHUSER);
+							GFP_ATOMIC == gfp ?
+								      gfp :
+								      GFP_HIGHUSER);
 			if (ret)
 				goto out;
 			rm->data.op_nents++;
@@ -415,3 +417,50 @@ void rds_message_unmapped(struct rds_message *rm)
 }
 EXPORT_SYMBOL_GPL(rds_message_unmapped);
 
+int rds_message_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
+{
+	struct rds_message *rm;
+	struct scatterlist *sg;
+	skb_frag_t *frag;
+	int ret = 0;
+	u32 len;
+	int i;
+
+	rm  = container_of(inc, struct rds_message, m_inc);
+	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
+	i   = 0;
+
+	/* for now we will only have a single chain of fragments in the skb */
+	if (rm->data.op_nents >= MAX_SKB_FRAGS) {
+		rdsdebug("too many fragments in op %u > max %u, rm %p",
+			 rm->data.op_nents, (int)MAX_SKB_FRAGS, rm);
+		goto done;
+	}
+
+	/* run through the entire scatter gather list and save off the buffers */
+	for (i = 0; i < rm->data.op_nents; i++) {
+		/* one to one mapping of frags to sg structures */
+		frag = &skb_shinfo(skb)->frags[i];
+		sg   = &rm->data.op_sg[i];
+
+		/* save off all the sg pieces to the skb frags we are creating */
+		frag->size        = sg->length;
+		frag->page_offset = sg->offset;
+		frag->page        = sg_page(sg);
+
+		/* AA: do we need to bump up the page reference too */
+		/* get_page(frag->page); */
+	}
+
+	/* track the full message length too */
+	skb->len = len;
+
+	/* all good */
+	ret = 1;
+
+done:
+	/* track all the fragments we saved */
+	skb_shinfo(skb)->nr_frags = i;
+
+	return ret;
+}
