@@ -234,6 +234,11 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
                 if (put_user(tos, (rds_tos_t __user *)arg))
                         return -EFAULT;
                 break;
+	case SIOCRDSENABLENETFILTER:
+		spin_lock_bh(&rds_sock_lock);
+		rs->rs_netfilter_enabled = 1;
+		spin_unlock_bh(&rds_sock_lock);
+		break;
 	default:
 		return -ENOIOCTLCMD;
 	}
@@ -493,6 +498,7 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->poison = 0xABABABAB;
 	rs->rs_tos = 0;
 	rs->rs_conn = 0;
+	rs->rs_netfilter_enabled = 0;
 
 	if (rs->rs_bound_addr)
 		printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
@@ -509,7 +515,8 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 {
 	struct sock *sk;
 
-	if (sock->type != SOCK_SEQPACKET || protocol)
+	if (sock->type != SOCK_SEQPACKET ||
+	    (protocol && IPPROTO_OKA != protocol))
 		return -ESOCKTNOSUPPORT;
 
 	sk = sk_alloc(net, AF_RDS, GFP_KERNEL, &rds_proto, kern);
@@ -552,6 +559,7 @@ void debug_sock_put(struct sock *sk)
 			WARN_ON(1);
 		}
 		rs->poison = 0xDEADBEEF;
+		rs->rs_netfilter_enabled = 0;
 		sk_free(sk);
 	}
 }
