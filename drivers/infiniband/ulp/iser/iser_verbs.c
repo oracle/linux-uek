@@ -81,21 +81,35 @@ static int iser_create_device_ib_res(struct iser_device *device)
 {
 	int i, j, ret;
 	struct iser_cq_desc *cq_desc;
+	struct ib_device_attr *dev_attr;
+
+	dev_attr = kmalloc(sizeof(*dev_attr), GFP_KERNEL);
+	if (!dev_attr)
+		return -ENOMEM;
+
+	if (ib_query_device(device->ib_device, dev_attr)) {
+		pr_warn("Query device failed for %s\n", device->ib_device->name);
+		goto dev_attr_err;
+	}
 
 	/* Assign function handles  - based on FMR support */
-	if (!device->ib_device->alloc_fmr || !device->ib_device->dealloc_fmr ||
-	    !device->ib_device->map_phys_fmr || !device->ib_device->unmap_fmr) {
-		iser_dbg("FMR not supported, using FRWR for registration\n");
+	if (device->ib_device->alloc_fmr && device->ib_device->dealloc_fmr &&
+	    device->ib_device->map_phys_fmr && device->ib_device->unmap_fmr) {
+		iser_info("FMR supported, using FMR for registration\n");
+		device->iser_alloc_rdma_res = iser_create_fmr_pool;
+		device->iser_free_rdma_res = iser_free_fmr_pool;
+		device->iser_reg_rdma_mem = iser_reg_rdma_mem_fmr;
+		device->iser_unreg_rdma_mem = iser_unreg_mem_fmr;
+	} else
+	if (dev_attr->device_cap_flags & IB_DEVICE_MEM_MGT_EXTENSIONS) {
+		iser_info("FRWR supported, using FRWR for registration\n");
 		device->iser_alloc_rdma_res = iser_create_frwr_pool;
 		device->iser_free_rdma_res = iser_free_frwr_pool;
 		device->iser_reg_rdma_mem = iser_reg_rdma_mem_frwr;
 		device->iser_unreg_rdma_mem = iser_unreg_mem_frwr;
 	} else {
-		iser_dbg("FMR supported, using FMR for registration\n");
-		device->iser_alloc_rdma_res = iser_create_fmr_pool;
-		device->iser_free_rdma_res = iser_free_fmr_pool;
-		device->iser_reg_rdma_mem = iser_reg_rdma_mem_fmr;
-		device->iser_unreg_rdma_mem = iser_unreg_mem_fmr;
+		iser_err("IB device does not support FMRs nor FRWRs, can't register memory\n");
+		goto dev_attr_err;
 	}
 
 	device->cqs_used = min(ISER_MAX_CQ, device->ib_device->num_comp_vectors);
@@ -167,6 +181,7 @@ static int iser_create_device_ib_res(struct iser_device *device)
 	if (ib_register_event_handler(&device->event_handler))
 		goto handler_err;
 
+	kfree(dev_attr);
 	return 0;
 
 handler_err:
@@ -186,6 +201,8 @@ pd_err:
 	kfree(device->cq_desc);
 cq_desc_err:
 	iser_err("failed to allocate an IB resource\n");
+dev_attr_err:
+	kfree(dev_attr);
 	return -1;
 }
 
