@@ -1594,6 +1594,8 @@ struct rds_transport rds_ib_transport = {
 	.conn_shutdown		= rds_ib_conn_shutdown,
 	.inc_copy_to_user	= rds_ib_inc_copy_to_user,
 	.inc_free		= rds_ib_inc_free,
+	.inc_to_skb		= rds_ib_inc_to_skb,
+	.skb_local		= rds_skb_local,
 	.cm_initiate_connect	= rds_ib_cm_initiate_connect,
 	.cm_handle_connect	= rds_ib_cm_handle_connect,
 	.cm_connect_complete	= rds_ib_cm_connect_complete,
@@ -1610,6 +1612,63 @@ struct rds_transport rds_ib_transport = {
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB
 };
+
+int rds_ib_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
+{
+	skb_frag_t *frag;
+	int ret = 0, slen;
+	u32 len;
+	int i;
+	struct rds_ib_incoming *ibinc;
+	struct rds_page_frag *ibfrag;
+
+	/* pull out initial pointers */
+	ibinc  = container_of(inc, struct rds_ib_incoming, ii_inc);
+	ibfrag = list_entry(ibinc->ii_frags.next, struct rds_page_frag, f_item);
+	len    = be32_to_cpu(inc->i_hdr.h_len);
+	slen   = len;
+	i      = 0;
+
+	/* run through the entire ib fragment list and save off the buffers */
+	while (NULL != ibfrag && slen > 0) {
+		/* one to one mapping of frags to sg structures */
+		frag = &skb_shinfo(skb)->frags[i];
+
+		/* save off all the sg pieces to the skb frags we are creating */
+		frag->size        = ibfrag->f_sg.length;
+		frag->page_offset = ibfrag->f_sg.offset;
+		frag->page.p      = sg_page(&ibfrag->f_sg);
+
+		/* AA:  do we need to bump up the page reference */
+		/* get_page(frag->page); */
+
+		/* dec the amount of data we are consuming */
+		slen -= frag->size;
+
+		/* bump to the next entry */
+		ibfrag = list_entry(ibfrag->f_item.next, struct rds_page_frag, f_item);
+		i++;
+
+		/* for now we will only have a single chain of fragments in the skb */
+		if (i >= MAX_SKB_FRAGS) {
+			rdsdebug("too many fragments in op %u > max %u, skb %p",
+				 i, (int)MAX_SKB_FRAGS, skb);
+			goto done;
+		}
+	}
+
+	/* track the full message length too */
+	skb->len = len;
+
+	/* all good */
+	ret = 1;
+
+done:
+	/* track all the fragments we saved */
+	skb_shinfo(skb)->nr_frags = i;
+
+	return ret;
+}
 
 MODULE_LICENSE("GPL");
 
