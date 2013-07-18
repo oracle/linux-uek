@@ -57,6 +57,9 @@ int rds_page_copy_user(struct page *page, unsigned long offset,
 	unsigned long ret;
 	void *addr;
 
+	/* AA:  can this be removed as sometimes it gives false negative - this doesn't
+	 * exist in the OFA 1.5.3 code line */
+#if 0
 	if (to_user)
 		ret = access_ok(VERIFY_WRITE, ptr, bytes);
 	else
@@ -64,6 +67,7 @@ int rds_page_copy_user(struct page *page, unsigned long offset,
 
 	if (!ret)
 		return -EFAULT;
+#endif
 
 	if (to_user)
 		rds_stats_add(s_copy_to_user, bytes);
