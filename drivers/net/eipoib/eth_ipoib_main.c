@@ -1431,7 +1431,8 @@ static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
 	int ret = 0;
 
 	/* set neigh mac */
-	if (is_multicast_ether_addr(ethh->h_dest)) {
+	if (is_multicast_ether_addr(ethh->h_dest) ||
+	    is_broadcast_ether_addr(ethh->h_dest)) {
 		memcpy(rimac, dev->broadcast, INFINIBAND_ALEN);
 	} else {
 		neigh = eipoib_neigh_get(slave, ethh->h_dest);
@@ -1462,7 +1463,7 @@ static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
 			goto err;
 		}
 	} else {
-		if (!neigh)
+		if (!neigh && !is_broadcast_ether_addr(ethh->h_dest))
 			goto err;
 		/* pull ethernet header here */
 		nskb = get_slave_skb_ip(slave, skb);
@@ -1475,7 +1476,8 @@ static struct sk_buff *get_slave_skb(struct slave *slave, struct sk_buff *skb)
 		goto err;
 	}
 
-	if (neigh && nskb == skb) { /* ucast & non-arp/rarp */
+	if ((neigh && nskb == skb) ||
+	    (is_broadcast_ether_addr(ethh->h_dest) && nskb == skb)) { /* ucast & bc */
 		/* dev_hard_header only for ucast, for arp done already.*/
 		if (dev_hard_header(nskb, dev, ntohs(skb->protocol), rimac,
 				    dev->dev_addr, nskb->len) < 0) {
@@ -1605,7 +1607,11 @@ static struct sk_buff *get_parent_skb(struct slave *slave,
 	}
 
 	/* set new skb fields */
-	skb->pkt_type = PACKET_HOST;
+	if (unlikely(PACKET_BROADCAST == skb->pkt_type))
+		memcpy(ethh->h_dest, dev->broadcast, ETH_ALEN);
+	else
+		skb->pkt_type = PACKET_HOST;
+
 	/*
 	 * use master dev, to allow netpoll_receive_skb()
 	 * in netif_receive_skb()
