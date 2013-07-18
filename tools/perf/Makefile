@@ -64,6 +64,12 @@ NO_PERF_REGS := 1
 CC = $(CROSS_COMPILE)gcc
 AR = $(CROSS_COMPILE)ar
 
+#Additional ARCH settings for sparc
+
+ifeq ($(ARCH),sparc64)
+	ARCH := sparc
+endif
+
 # Additional ARCH settings for x86
 ifeq ($(ARCH),i386)
 	override ARCH := x86
