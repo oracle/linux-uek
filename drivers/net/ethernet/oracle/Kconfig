@@ -1,0 +1,32 @@
+#
+# Intel network device configuration
+#
+
+config NET_VENDOR_ORACLE
+	bool "Intel devices"
+	default y
+	depends on PCI || PCI_MSI
+	---help---
+	  If you have a network (Ethernet) card belonging to this class, say Y
+	  and read the Ethernet-HOWTO, available from
+	  <http://www.tldp.org/docs.html#howto>.
+
+	  Note that the answer to this question doesn't directly affect the
+	  kernel: saying N will just cause the configurator to skip all
+	  the questions about Intel cards. If you say Y, you will be asked for
+	  your specific card in the following questions.
+
+if NET_VENDOR_ORACLE
+config SXGE 
+        tristate "SXGE SOL ethernet driver "
+        depends on PCI
+        ---help---
+          This driver supports the SXGE SOL 40Gb Ethernet driver.  
+
+config SXGEVF 
+        tristate "SXGEVF SOL ethernet driver "
+        depends on PCI
+        ---help---
+          This driver supports the SXGEVF SOL 40Gb Ethernet driver.  
+
+endif # NET_VENDOR_ORACLE
