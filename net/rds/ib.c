@@ -538,6 +538,7 @@ static int rds_ib_move_ip(char			*from_dev,
 			__be32			bcast,
 			__be32			mask,
 			int			event_type,
+			int                     alias,
 			int			failover)
 {
 	struct ifreq		*ir;
@@ -545,8 +546,9 @@ static int rds_ib_move_ip(char			*from_dev,
 	struct page		*page;
 	char			from_dev2[2*IFNAMSIZ + 1];
 	char			to_dev2[2*IFNAMSIZ + 1];
+	char                    *tmp_str;
 	int			ret = 0;
-	u8			active_port, i, port = 0;
+	u8			active_port, i, j, port = 0;
 	struct in_device	*in_dev;
 	struct rds_ib_connection *ic, *ic2;
 	struct rds_ib_device *rds_ibdev;
@@ -593,6 +595,10 @@ static int rds_ib_move_ip(char			*from_dev,
 			strcpy(to_dev2, to_dev);
 			strcat(to_dev2, ":");
 			strcat(to_dev2, ip_config[from_port].port_label);
+			if (alias) {
+				tmp_str = strchr(from_dev, ':');
+				strcat(to_dev2, tmp_str);
+			}
 			to_dev2[IFNAMSIZ-1] = 0;
 		}
 		if (in_dev)
@@ -603,7 +609,7 @@ static int rds_ib_move_ip(char			*from_dev,
 			goto out;
 
 		active_port = ip_config[from_port].ip_active_port;
-		if (active_port == from_port) {
+		if (alias || active_port == from_port) {
 			strcpy(from_dev2, from_dev);
 		} else if (ip_config[active_port].port_state ==
 				RDS_IB_PORT_UP) {
@@ -669,6 +675,13 @@ static int rds_ib_move_ip(char			*from_dev,
 							ic->conn->c_faddr) {
 							port = i;
 							break;
+						}
+
+						for (j = 0; j < ip_config[i].alias_cnt; j++) {
+							if (ip_config[i].aliases[j].ip_addr == ic->conn->c_faddr) {
+								port = i;
+								break;
+							}
 						}
 					}
 
@@ -836,6 +849,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 			ip_config[from_port].ip_bcast,
 			ip_config[from_port].ip_mask,
 			event_type,
+			0,
 			1)) {
 
 			ip_config[from_port].ip_active_port = to_port;
@@ -856,6 +870,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 					ip_config[from_port].
 						aliases[j].ip_mask,
 					event_type,
+					1,
 					1);
 			}
 		}
@@ -882,6 +897,7 @@ static void rds_ib_do_failback(u8 port, int event_type)
 			ip_config[port].ip_bcast,
 			ip_config[port].ip_mask,
 			event_type,
+			0,
 			0)) {
 
 			ip_config[port].ip_active_port = port;
@@ -903,6 +919,7 @@ static void rds_ib_do_failback(u8 port, int event_type)
 					ip_config[port].
 						aliases[j].ip_mask,
 					event_type,
+					1,
 					0);
 			}
 		}
