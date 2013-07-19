@@ -736,6 +736,22 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
+	if (conn->c_reconnect && (conn->c_version != version)) {
+		printk(KERN_WARNING "RDS/IB: connection "
+			"<%pI4,%pI4,%d,%u.%u> rejecting version "
+			"(%u/%u)\n",
+			&conn->c_laddr,
+			&conn->c_faddr,
+			conn->c_tos,
+			RDS_PROTOCOL_MAJOR(conn->c_version),
+			RDS_PROTOCOL_MINOR(conn->c_version),
+			RDS_PROTOCOL_MAJOR(version),
+			RDS_PROTOCOL_MINOR(version));
+
+		conn = NULL;
+		goto out;
+	}
+
 	/*
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
@@ -767,9 +783,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 */
 			if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > 15) {
-				printk(KERN_CRIT "rds connection racing for 15s, forcing reset "
-					"connection %pI4->%pI4\n",
-					&conn->c_laddr, &conn->c_faddr);
+				printk(KERN_CRIT "RDS/IB: connection "
+					"<%pI4,%pI4,%d> "
+					"racing for 15s, forcing reset ",
+					&conn->c_laddr,
+					&conn->c_faddr,
+					conn->c_tos);
 				rds_conn_drop(conn);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
@@ -859,7 +878,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	/* If the peer doesn't do protocol negotiation, we must
 	 * default to RDSv3.0 */
-	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_0);
+	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 
 	ret = rds_ib_setup_qp(conn);
