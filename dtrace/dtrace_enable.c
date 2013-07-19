@@ -320,8 +320,21 @@ int dtrace_enabling_match(dtrace_enabling_t *enab, int *nmatched)
 		enab->dten_current = ep;
 		enab->dten_error = 0;
 
-		if ((matched = dtrace_probe_enable(&ep->dted_probe, enab)) < 0)
+		dt_dbg_enable("  Matching enabling %p[%d] for %s:%s:%s:%s\n",
+			      enab, i, ep->dted_probe.dtpd_provider,
+			      ep->dted_probe.dtpd_mod,
+			      ep->dted_probe.dtpd_func,
+			      ep->dted_probe.dtpd_name);
+
+		if ((matched = dtrace_probe_enable(&ep->dted_probe, enab))
+		    < 0) {
+			dt_dbg_enable("  Matching enabling %p[%d] failed: "
+				      "busy\n", enab, i);
 			return -EBUSY;
+		}
+
+		dt_dbg_enable("  Matching enabling %p[%d] found %d matches.\n",
+			      enab, i, matched);
 
 		total_matched += matched;
 
