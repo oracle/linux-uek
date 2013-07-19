@@ -1420,7 +1420,7 @@ static long fasttrap_ioctl(struct file *file,
 
 static int fasttrap_open(struct inode *inode, struct file *file)
 {
-	return -EAGAIN;
+	return 0;
 }
 
 static int fasttrap_close(struct inode *inode, struct file *file)
