@@ -62,29 +62,4 @@
 #define DTRACEHIOC_REMOVE	_IOW(DTRACEHIOC, 2, int)
 #define DTRACEHIOC_ADDDOF	_IOW(DTRACEHIOC, 3, dof_helper_t)
 
-/*
- * This file can be #included by DTrace itself, which cannot parse C functions.
- */
-#ifndef __SUNW_D
-
-void dtrace_size_dbg_print(const char *type, size_t size);
-
-static void dtrace_ioctl_sizes(void) {
-#define DBG_PRINT(x) dtrace_size_dbg_print(#x, sizeof(x))
-	DBG_PRINT(dtrace_providerdesc_t);
-	DBG_PRINT(dtrace_probedesc_t);
-	DBG_PRINT(dtrace_bufdesc_t);
-	DBG_PRINT(dtrace_eprobedesc_t);
-	DBG_PRINT(dtrace_argdesc_t);
-	DBG_PRINT(dtrace_conf_t);
-	DBG_PRINT(dtrace_status_t);
-	DBG_PRINT(processorid_t);
-	DBG_PRINT(dtrace_aggdesc_t);
-	DBG_PRINT(dtrace_fmtdesc_t);
-	DBG_PRINT(dof_hdr_t);
-#undef DBG_PRINT
-}
-
-#endif
-
 #endif /* _LINUX_DTRACE_IOCTL_H */

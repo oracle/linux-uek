@@ -166,12 +166,12 @@ static long dtrace_ioctl(struct file *file,
 		state = state->dts_anon;
 	}
 
-	dt_dbg_ioctl("IOCTL (%#x, argp %p) ...\n", cmd, argp);
-
 	switch (cmd) {
 	case DTRACEIOC_PROVIDER: {
 		dtrace_providerdesc_t	pvd;
 		dtrace_provider_t	*pvp;
+
+		dt_dbg_ioctl("IOCTL PROVIDER (cmd %#x), argp %p\n", cmd, argp);
 
 		if (copy_from_user(&pvd, argp, sizeof(pvd)) != 0)
 			return -EFAULT;
@@ -208,6 +208,8 @@ static long dtrace_ioctl(struct file *file,
 		size_t			size;
 		uint8_t			*dest;
 		int			nrecs;
+
+		dt_dbg_ioctl("IOCTL EPROBE (cmd %#x), argp %p\n", cmd, argp);
 
 		if (copy_from_user(&epdesc, argp, sizeof(epdesc)) != 0)
 			return -EFAULT;
@@ -285,6 +287,8 @@ static long dtrace_ioctl(struct file *file,
 		void			*buf;
 		size_t			size;
 		uint8_t			*dest;
+
+		dt_dbg_ioctl("IOCTL AGGDESC (cmd %#x), argp %p\n", cmd, argp);
 
 		if (copy_from_user(&aggdesc, argp, sizeof(aggdesc)) != 0)
 			return -EFAULT;
@@ -386,6 +390,8 @@ static long dtrace_ioctl(struct file *file,
 		int			err = 0;
 		int			rv;
 
+		dt_dbg_ioctl("IOCTL ENABLE (cmd %#x), argp %p\n", cmd, argp);
+
 		rv = 0;
 
 		/*
@@ -446,6 +452,9 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_probedesc_t	*create = &desc.dtrpd_create;
 		int			err;
 
+		dt_dbg_ioctl("IOCTL REPLICATE (cmd %#x), argp %p\n",
+			     cmd, argp);
+
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -473,6 +482,11 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_probekey_t	pkey;
 		uint32_t		priv;
 		uid_t			uid;
+
+		dt_dbg_ioctl("IOCTL %s (cmd %#x), argp %p\n",
+			     cmd == DTRACEIOC_PROBES ? "PROBES"
+						     : "PROBEMATCH",
+			     cmd, argp);
 
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
@@ -546,6 +560,8 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_probe_t		*probe;
 		dtrace_provider_t	*prov;
 
+		dt_dbg_ioctl("IOCTL PROBEARG (cmd %#x), argp %p\n", cmd, argp);
+
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
 
@@ -600,6 +616,8 @@ static long dtrace_ioctl(struct file *file,
 	case DTRACEIOC_GO: {
 		processorid_t	cpuid;
 
+		dt_dbg_ioctl("IOCTL GO (cmd %#x), argp %p\n", cmd, argp);
+
 		rval = dtrace_state_go(state, &cpuid);
 
 		if (rval != 0)
@@ -613,6 +631,8 @@ static long dtrace_ioctl(struct file *file,
 
 	case DTRACEIOC_STOP: {
 		processorid_t	cpuid;
+
+		dt_dbg_ioctl("IOCTL STOP (cmd %#x), argp %p\n", cmd, argp);
 
 		mutex_lock(&dtrace_lock);
 		rval = dtrace_state_stop(state, &cpuid);
@@ -630,6 +650,8 @@ static long dtrace_ioctl(struct file *file,
 	case DTRACEIOC_DOFGET: {
 		dof_hdr_t	hdr, *dof;
 		uint64_t	len;
+
+		dt_dbg_ioctl("IOCTL DOFGET (cmd %#x), argp %p\n", cmd, argp);
 
 		if (copy_from_user(&hdr, argp, sizeof(hdr)) != 0)
 			return -EFAULT;
@@ -650,6 +672,11 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_bufdesc_t	desc;
 		caddr_t			cached;
 		dtrace_buffer_t		*buf;
+
+		dt_dbg_ioctl("IOCTL %s (cmd %#x), argp %p\n",
+			     cmd == DTRACEIOC_AGGSNAP ? "AGGSNAP"
+						      : "BUFSNAP",
+			     cmd, argp);
 
 		if (copy_from_user(&desc, argp, sizeof(desc)) != 0)
 			return -EFAULT;
@@ -777,6 +804,8 @@ static long dtrace_ioctl(struct file *file,
 	case DTRACEIOC_CONF: {
 		dtrace_conf_t	conf;
 
+		dt_dbg_ioctl("IOCTL CONF (cmd %#x), argp %p\n", cmd, argp);
+
 		memset(&conf, 0, sizeof(conf));
 		conf.dtc_difversion = DIF_VERSION;
 		conf.dtc_difintregs = DIF_DIR_NREGS;
@@ -795,6 +824,8 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_dstate_t	*dstate;
 		int		i, j;
 		uint64_t	nerrs;
+
+		dt_dbg_ioctl("IOCTL STATUS (cmd %#x), argp %p\n", cmd, argp);
 
 		/*
 		 * See the comment in dtrace_state_deadman() for the reason
@@ -863,6 +894,8 @@ static long dtrace_ioctl(struct file *file,
 		char			*str;
 		int			len;
 
+		dt_dbg_ioctl("IOCTL FORMAT (cmd %#x), argp %p\n", cmd, argp);
+
 		if (copy_from_user(&fmt, argp, sizeof (fmt)) != 0)
 			return -EFAULT;
 
@@ -906,6 +939,8 @@ static long dtrace_ioctl(struct file *file,
 	}
 
 	default:
+		dt_dbg_ioctl("IOCTL *UNKNOWN* (cmd %#x), argp %p\n",
+			     cmd, argp);
 		break;
 	}
 
@@ -975,6 +1010,9 @@ static long dtrace_helper_ioctl(struct file *file,
 
 	switch (cmd) {
 	case DTRACEHIOC_ADDDOF:
+		dt_dbg_ioctl("Helper IOCTL ADDDOF (cmd %#x), argp %p\n",
+			     cmd, argp);
+
 		if (copy_from_user(&help, argp, sizeof(help)) != 0) {
 			dtrace_dof_error(NULL, "failed to copy DOF helper");
 			return -EFAULT;
@@ -991,8 +1029,9 @@ static long dtrace_helper_ioctl(struct file *file,
 		if (dof == NULL)
 			return rval;
 
-		dt_dbg_ioctl("Helper IOCTL: %s\n",
-			     cmd == DTRACEHIOC_ADD ? "AddProbe" : "AddDOF");
+		if (cmd == DTRACEHIOC_ADD)
+			dt_dbg_ioctl("Helper IOCTL ADD (cmd %#x), argp %p\n",
+				     cmd, argp);
 
 		mutex_lock(&dtrace_lock);
 
@@ -1006,21 +1045,25 @@ static long dtrace_helper_ioctl(struct file *file,
 
 		mutex_unlock(&dtrace_lock);
 
-		dt_dbg_ioctl("Helper IOCTL: %s returning %d\n",
-			     cmd == DTRACEHIOC_ADD ? "AddProbe" : "AddDOF",
+		dt_dbg_ioctl("Helper IOCTL %s returning %d\n",
+			     cmd == DTRACEHIOC_ADD ? "ADD"
+						   : "ADDDOF",
 			     rval);
 
 		return rval;
 	}
 
 	case DTRACEHIOC_REMOVE:
-		dt_dbg_ioctl("Helper IOCTL: Remove gen %ld\n", (uintptr_t)argp);
+		dt_dbg_ioctl("Helper IOCTL REMOVE (cmd %#x), argp %p\n",
+			     cmd, argp);
 
 		mutex_lock(&dtrace_lock);
 
 		rval = dtrace_helper_destroygen((uintptr_t)argp);
 
 		mutex_unlock(&dtrace_lock);
+
+		dt_dbg_ioctl("Helper IOCTL REMOVE returning %d\n", rval);
 
 		return rval;
 	default:
@@ -1297,10 +1340,6 @@ int dtrace_dev_init(void)
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
-#ifdef CONFIG_DT_DEBUG
-	dtrace_ioctl_sizes();
-#endif
-
 	/*
 	 * Register the device for the DTrace core.
 	 */
@@ -1338,7 +1377,6 @@ int dtrace_dev_init(void)
 	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 #ifdef FIXME
 	dtrace_cpu_init = dtrace_cpu_setup_initial;
-	dtrace_helpers_fork = dtrace_helpers_duplicate;
 	dtrace_cpustart_init = dtrace_suspend;
 	dtrace_cpustart_fini = dtrace_resume;
 	dtrace_debugger_init = dtrace_suspend;
