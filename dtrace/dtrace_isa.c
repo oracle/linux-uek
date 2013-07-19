@@ -129,13 +129,6 @@ uint64_t dtrace_getarg(int arg, int aframes)
 	uintptr_t	*stack;
 	int		i;
 	uint64_t	val;
-#ifdef __i386__
-	int		regmap[] = {
-					REG_EAX,
-					REG_EDX,
-					REG_ECX
-				   };
-#else
 	int		regmap[] = {
 					REG_RDI,
 					REG_RSI,
@@ -144,18 +137,13 @@ uint64_t dtrace_getarg(int arg, int aframes)
 					REG_R8,
 					REG_R9
 				   };
-#endif
 	int		nreg = sizeof(regmap) / sizeof(regmap[0]) - 1;
 
 	for (i = 1; i <= aframes; i++) {
 		fp = fp->fr_savfp;
 
 		if (fp->fr_savpc == (uintptr_t)dtrace_invop_callsite) {
-#ifdef __i386__
 			/* FIXME */
-#else
-			/* FIXME */
-#endif
 
 			goto load;
 		}
@@ -170,18 +158,16 @@ uint64_t dtrace_getarg(int arg, int aframes)
 	 */
 	arg++;
 
-#ifndef __i386__
 	if (arg <= nreg) {
 		/*
 		 * This should not happen.  If the argument was passed in a
-		 * register then it should have been, ...passed in a reguster.
+		 * register then it should have been, ...passed in a register.
 		 */
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return 0;
 	}
 
 	arg -= nreg + 1;
-#endif
 
 	stack = (uintptr_t *)&fp[1];
 
@@ -202,51 +188,6 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 {
 	struct pt_regs	*rp = task_pt_regs(task);
 
-#ifdef __i386__
-	if (reg > REG_SS) {
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-		return 0;
-	}
-
-	switch (reg) {
-	case REG_GS:
-	case REG_FS:
-	case REG_ES:
-	case REG_DS:
-	case REG_CS:
-		return rp->cs;
-	case REG_EDI:
-		return rp->di;
-	case REG_ESI:
-		return rp->si;
-	case REG_EBP:
-		return rp->bp;
-	case REG_ESP:
-	case REG_UESP:
-		return rp->sp;
-	case REG_EBX:
-		return rp->bx;
-	case REG_EDX:
-		return rp->dx;
-	case REG_ECX:
-		return rp->cx;
-	case REG_EAX:
-		return rp->ax;
-	case REG_TRAPNO:
-		return rp->orig_ax;
-	case REG_ERR:
-		return rp->di;
-	case REG_EIP:
-		return rp->ip;
-	case REG_EFL:
-		return rp->flags;
-	case REG_SS:
-		return rp->ss;
-	default:
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-		return 0;
-	}
-#else
 	int	regmap[] = {
 				REG_RBX,	/*  0 -> EBX */
 				REG_RCX,	/*  1 -> ECX */
@@ -266,11 +207,11 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 				REG_RSP,	/* 15 -> UESP */
 				REG_SS,		/* 16 -> SS */
 			   };
-	if (reg > REG_GS) {
+	if (reg > REG_TRAPNO) {
 		/*
 		 * Convert register alias index into register mapping index.
 		 */
-		reg -= REG_GS + 1;
+		reg -= REG_TRAPNO + 1;
 
 		if (reg >= sizeof(regmap) / sizeof(int)) {
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
@@ -295,11 +236,12 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		return task->thread.fs;
 	case REG_GS:
 		return task->thread.gs;
+	case REG_TRAPNO:
+		return task->thread.trap_nr;
 	default:
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
 		return 0;
 	}
-#endif
 }
 
 static void dtrace_sync_func(void)
