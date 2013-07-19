@@ -843,6 +843,10 @@ static int __init init_tis(void)
 		return pnp_register_driver(&tis_pnp_driver);
 #endif
 
+#ifdef	__sparc__
+	printk(KERN_INFO "Not supported on sparc yet.\n");
+	return -ENODEV;
+#endif
 	rc = platform_driver_register(&tis_drv);
 	if (rc < 0)
 		return rc;

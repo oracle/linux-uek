@@ -118,7 +118,11 @@ struct vio_disk_attr_info {
 	u8			vdisk_type;
 #define VD_DISK_TYPE_SLICE	0x01 /* Slice in block device	*/
 #define VD_DISK_TYPE_DISK	0x02 /* Entire block device	*/
-	u16			resv1;
+	u8			vdisk_mtype;
+#define VD_MEDIA_TYPE_FIXED	0x01 /* Fixed device */
+#define VD_MEDIA_TYPE_CD	0x02 /* CD Device    */
+#define VD_MEDIA_TYPE_DVD	0x03 /* DVD Device   */
+	u8			resv1;
 	u32			vdisk_block_size;
 	u64			operations;
 	u64			vdisk_size;

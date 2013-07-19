@@ -267,7 +267,7 @@ void do_rt_sigreturn(struct pt_regs *regs)
 
 	synchronize_user_stack ();
 	sf = (struct rt_signal_frame __user *)
-		(regs->u_regs [UREG_FP] + STACK_BIAS);
+		(regs->u_regs[UREG_FP] + STACK_BIAS);
 
 	/* 1. Make sure we are not getting garbage from the user */
 	if (((unsigned long) sf) & 3)

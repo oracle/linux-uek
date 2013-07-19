@@ -52,6 +52,14 @@
 
 #include "kstack.h"
 
+static inline int enter_yield(int cpu)
+{
+	if (!need_resched() && !cpu_is_offline(cpu) && !rcu_needs_cpu(cpu))
+		return 1;
+	else
+		return 0;
+}
+
 static void sparc64_yield(int cpu)
 {
 	if (tlb_type != hypervisor) {
@@ -62,7 +70,7 @@ static void sparc64_yield(int cpu)
 	clear_thread_flag(TIF_POLLING_NRFLAG);
 	smp_mb__after_clear_bit();
 
-	while (!need_resched() && !cpu_is_offline(cpu)) {
+	while (enter_yield(cpu)) {
 		unsigned long pstate;
 
 		/* Disable interrupts. */
@@ -74,6 +82,11 @@ static void sparc64_yield(int cpu)
 			: "i" (PSTATE_IE));
 
 		if (!need_resched() && !cpu_is_offline(cpu))
+		/*
+		 * We only do this when idle.
+		 * Otherwise you will hang cpu (during boot).
+		 */
+		if (enter_yield(cpu))
 			sun4v_cpu_yield();
 
 		/* Re-enable interrupts. */
@@ -99,18 +112,16 @@ void cpu_idle(void)
 		tick_nohz_idle_enter();
 		rcu_idle_enter();
 
-		while (!need_resched() && !cpu_is_offline(cpu))
+		while (enter_yield(cpu))
 			sparc64_yield(cpu);
 
 		rcu_idle_exit();
 		tick_nohz_idle_exit();
 
-#ifdef CONFIG_HOTPLUG_CPU
 		if (cpu_is_offline(cpu)) {
 			sched_preempt_enable_no_resched();
 			cpu_play_dead();
 		}
-#endif
 		schedule_preempt_disabled();
 	}
 }

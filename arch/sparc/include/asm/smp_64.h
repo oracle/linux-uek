@@ -45,7 +45,6 @@ extern int hard_smp_processor_id(void);
 #define raw_smp_processor_id() (current_thread_info()->cpu)
 
 extern void smp_fill_in_sib_core_maps(void);
-extern void cpu_play_dead(void);
 
 extern void smp_fetch_global_regs(void);
 extern void smp_fetch_global_pmu(void);
@@ -57,6 +56,9 @@ void smp_info(struct seq_file *);
 #ifdef CONFIG_HOTPLUG_CPU
 extern int __cpu_disable(void);
 extern void __cpu_die(unsigned int cpu);
+extern void cpu_play_dead(void);
+else
+static inline void cpu_play_dead(void) {}
 #endif
 
 #endif /* !(__ASSEMBLY__) */
