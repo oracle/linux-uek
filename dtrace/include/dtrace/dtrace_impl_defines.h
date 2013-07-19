@@ -164,54 +164,32 @@ typedef enum dtrace_vtime_state {
 /*
  * regset.h information
  */
-#ifdef __i386__
-# define REG_SS		18      /* only stored on a privilege transition */
-# define REG_UESP	17      /* only stored on a privilege transition */
-# define REG_EFL	16
-# define REG_CS		15
-# define REG_EIP	14
-# define REG_ERR	13
-# define REG_TRAPNO	12
-# define REG_EAX	11
-# define REG_ECX	10
-# define REG_EDX	9
-# define REG_EBX	8
-# define REG_ESP	7
-# define REG_EBP	6
-# define REG_ESI	5
-# define REG_EDI	4
-# define REG_DS		3
-# define REG_ES		2
-# define REG_FS		1
-# define REG_GS		0
-#else
-# define REG_GS		24
-# define REG_FS		23
-# define REG_ES		22
-# define REG_DS		21
-# define REG_SS		20
-# define REG_RSP	19
-# define REG_RFL	18
-# define REG_CS		17
-# define REG_RIP	16
-# define REG_ERR	15
-# define REG_TRAPNO	15
-# define REG_RDI	14
-# define REG_RSI	13
-# define REG_RDX	12
-# define REG_RCX	11
-# define REG_RAX	10
-# define REG_R8		9
-# define REG_R9		8
-# define REG_R10	7
-# define REG_R11	6
-# define REG_RBX	5
-# define REG_RBP	4
-# define REG_R12	3
-# define REG_R13	2
-# define REG_R14	1
-# define REG_R15	0
-#endif
+#define REG_TRAPNO	25
+#define REG_GS		24
+#define REG_FS		23
+#define REG_ES		22
+#define REG_DS		21
+#define REG_SS		20
+#define REG_RSP		19
+#define REG_RFL		18
+#define REG_CS		17
+#define REG_RIP		16
+#define REG_ERR		15
+#define REG_RDI		14
+#define REG_RSI		13
+#define REG_RDX		12
+#define REG_RCX		11
+#define REG_RAX		10
+#define REG_R8		9
+#define REG_R9		8
+#define REG_R10		7
+#define REG_R11		6
+#define REG_RBX		5
+#define REG_RBP		4
+#define REG_R12		3
+#define REG_R13		2
+#define REG_R14		1
+#define REG_R15		0
 
 #if defined(__i386__) || defined(__x86_64__)
 # define DTRACE_INVOP_PUSHL_EBP	1
