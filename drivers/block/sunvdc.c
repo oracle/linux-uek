@@ -96,13 +96,17 @@ static inline u32 vdc_tx_dring_avail(struct vio_dring_state *dr)
 static int vdc_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 {
 	struct gendisk *disk = bdev->bd_disk;
-	struct vdc_port *port = disk->private_data;
+	sector_t nsect = get_capacity(disk)
+	sector_t cylinders = nsect;
 
-	geo->heads = (u8) port->geom.num_hd;
-	geo->sectors = (u8) port->geom.num_sec;
-	geo->cylinders = port->geom.num_cyl;
+	geo->heads = 0xff;
+	geo->sectors = 0x3f;
+	sector_div(cylinders, geo->heads * geo->sectors);
+	geo->cylinders = cylinders;
+	if ((sector_t)(geo->cylinders + 1) * geo->heads * geo->sectors < nsect)
+		geo->cylinders = 0xffff;
 
-	return 0;
+	return 0	;
 }
 
 static void vdc_finish(struct vio_driver_state *vio, int err, int waiting_for)
@@ -678,7 +682,6 @@ static int probe_disk(struct vdc_port *port)
 	struct vio_completion comp;
 	struct request_queue *q;
 	struct gendisk *g;
-	int err;
 
 	init_completion(&comp.com);
 	comp.err = 0;
@@ -690,24 +693,6 @@ static int probe_disk(struct vdc_port *port)
 	wait_for_completion(&comp.com);
 	if (comp.err)
 		return comp.err;
-
-	/* for now call VD_OP_GET_DISKGEOM to get the capacity of the vdisk
-	 * volume. but only do this for VD_MEDIA_TYPE_FIXED
-	 * ultimately we want to call VD_OP_GET_CAPACITY only
-	 */
-
-	if (port->vdisk_mtype == VD_MEDIA_TYPE_FIXED) {
-		err = generic_request(port, VD_OP_GET_DISKGEOM,
-			&port->geom, sizeof(port->geom));
-		if (err < 0) {
-			printk(KERN_ERR PFX "VD_OP_GET_DISKGEOM returns "
-				"error %d\n", err);
-			return err;
-		}
-
-	port->vdisk_size = ((u64)port->geom.num_cyl *
-			    (u64)port->geom.num_hd *
-			    (u64)port->geom.num_sec);
 
 	q = blk_init_queue(do_vdc_request, &port->vio.lock);
 	if (!q) {
