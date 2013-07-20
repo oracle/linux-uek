@@ -31,8 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -83,8 +81,8 @@ void rds_message_put(struct rds_message *rm)
 {
 	rdsdebug("put rm %p ref %d\n", rm, atomic_read(&rm->m_refcount));
 	if (atomic_read(&rm->m_refcount) == 0) {
-printk(KERN_CRIT "danger refcount zero on %p\n", rm);
-WARN_ON(1);
+		printk(KERN_CRIT "danger refcount zero on %p\n", rm);
+		WARN_ON(1);
 	}
 	if (atomic_dec_and_test(&rm->m_refcount)) {
 		BUG_ON(!list_empty(&rm->m_sock_item));
@@ -107,8 +105,8 @@ void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 }
 EXPORT_SYMBOL_GPL(rds_message_populate_header);
 
-int rds_message_add_extension(struct rds_header *hdr, unsigned int type,
-			      const void *data, unsigned int len)
+int rds_message_add_extension(struct rds_header *hdr,
+		unsigned int type, const void *data, unsigned int len)
 {
 	unsigned int ext_len = sizeof(u8) + len;
 	unsigned char *dst;
@@ -117,7 +115,8 @@ int rds_message_add_extension(struct rds_header *hdr, unsigned int type,
 	if (hdr->h_exthdr[0] != RDS_EXTHDR_NONE)
 		return 0;
 
-	if (type >= __RDS_EXTHDR_MAX || len != rds_exthdr_size[type])
+	if (type >= __RDS_EXTHDR_MAX
+	 || len != rds_exthdr_size[type])
 		return 0;
 
 	if (ext_len >= RDS_HEADER_EXT_SPACE)
@@ -178,6 +177,26 @@ none:
 	return RDS_EXTHDR_NONE;
 }
 
+int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version)
+{
+	struct rds_ext_header_version ext_hdr;
+
+	ext_hdr.h_version = cpu_to_be32(version);
+	return rds_message_add_extension(hdr, RDS_EXTHDR_VERSION, &ext_hdr, sizeof(ext_hdr));
+}
+
+int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version)
+{
+	struct rds_ext_header_version ext_hdr;
+	unsigned int pos = 0, len = sizeof(ext_hdr);
+
+	/* We assume the version extension is the only one present */
+	if (rds_message_next_extension(hdr, &pos, &ext_hdr, &len) != RDS_EXTHDR_VERSION)
+		return 0;
+	*version = be32_to_cpu(ext_hdr.h_version);
+	return 1;
+}
+
 int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset)
 {
 	struct rds_ext_header_rdma_dest ext_hdr;
@@ -196,9 +215,6 @@ EXPORT_SYMBOL_GPL(rds_message_add_rdma_dest_extension);
 struct rds_message *rds_message_alloc(unsigned int extra_len, gfp_t gfp)
 {
 	struct rds_message *rm;
-
-	if (extra_len > KMALLOC_MAX_SIZE - sizeof(struct rds_message))
-		return NULL;
 
 	rm = kzalloc(sizeof(struct rds_message) + extra_len, gfp);
 	if (!rm)
@@ -228,9 +244,6 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 	WARN_ON(rm->m_used_sgs + nents > rm->m_total_sgs);
 	WARN_ON(!nents);
 
-	if (rm->m_used_sgs + nents > rm->m_total_sgs)
-		return NULL;
-
 	sg_ret = &sg_first[rm->m_used_sgs];
 	sg_init_table(sg_ret, nents);
 	rm->m_used_sgs += nents;
@@ -253,10 +266,6 @@ struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned in
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
 	rm->data.op_nents = ceil(total_len, PAGE_SIZE);
 	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
-	if (!rm->data.op_sg) {
-		rds_message_put(rm);
-		return ERR_PTR(-ENOMEM);
-	}
 
 	for (i = 0; i < rm->data.op_nents; ++i) {
 		sg_set_page(&rm->data.op_sg[i],

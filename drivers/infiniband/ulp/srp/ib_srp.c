@@ -30,6 +30,9 @@
  * SOFTWARE.
  */
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
 #define pr_fmt(fmt) PFX fmt
 
 #include <linux/module.h>
@@ -53,13 +56,12 @@
 
 #define DRV_NAME	"ib_srp"
 #define PFX		DRV_NAME ": "
-#define DRV_VERSION	"0.2"
-#define DRV_RELDATE	"November 1, 2005"
+#define DRV_VERSION	"1.2"
 
 MODULE_AUTHOR("Roland Dreier");
-MODULE_DESCRIPTION("InfiniBand SCSI RDMA Protocol initiator "
-		   "v" DRV_VERSION " (" DRV_RELDATE ")");
+MODULE_DESCRIPTION("InfiniBand SCSI RDMA Protocol initiator");
 MODULE_LICENSE("Dual BSD/GPL");
+MODULE_VERSION(DRV_VERSION);
 
 static unsigned int srp_sg_tablesize;
 static unsigned int cmd_sg_entries;
@@ -790,7 +792,7 @@ static int srp_map_finish_fmr(struct srp_map_state *state,
 	}
 
 	fmr = ib_fmr_pool_map_phys(dev->fmr_pool, state->pages,
-				   state->npages, io_addr);
+				   state->npages, io_addr, NULL);
 	if (IS_ERR(fmr))
 		return PTR_ERR(fmr);
 
@@ -2458,6 +2460,7 @@ static void srp_add_one(struct ib_device *device)
 		fmr_param.pool_size	    = SRP_FMR_POOL_SIZE;
 		fmr_param.dirty_watermark   = SRP_FMR_DIRTY_SIZE;
 		fmr_param.cache		    = 1;
+		fmr_param.relaxed           = 0;
 		fmr_param.max_pages_per_fmr = max_pages_per_fmr;
 		fmr_param.page_shift	    = fmr_page_shift;
 		fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
@@ -2507,6 +2510,8 @@ static void srp_remove_one(struct ib_device *device)
 	struct srp_target_port *target;
 
 	srp_dev = ib_get_client_data(device, &srp_client);
+	if (!srp_dev)
+		return;
 
 	list_for_each_entry_safe(host, tmp_host, &srp_dev->dev_list, list) {
 		device_unregister(&host->dev);

@@ -464,6 +464,9 @@ static struct ehca_qp *internal_create_qp(
 	int is_llqp = 0, has_srq = 0, is_user = 0;
 	int qp_type, max_send_sge, max_recv_sge, ret;
 
+	if (init_attr->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	/* h_call's out parameters */
 	struct ehca_alloc_qp_parms parms;
 	u32 swqe_size = 0, rwqe_size = 0, ib_qp_num;

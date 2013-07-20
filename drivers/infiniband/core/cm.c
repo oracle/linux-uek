@@ -56,6 +56,11 @@ MODULE_AUTHOR("Sean Hefty");
 MODULE_DESCRIPTION("InfiniBand CM");
 MODULE_LICENSE("Dual BSD/GPL");
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
 static void cm_add_one(struct ib_device *device);
 static void cm_remove_one(struct ib_device *device);
 
@@ -93,7 +98,9 @@ enum {
 	CM_SIDR_REQ_COUNTER,
 	CM_SIDR_REP_COUNTER,
 	CM_LAP_COUNTER,
+	CM_SAP_COUNTER,
 	CM_APR_COUNTER,
+	CM_SPR_COUNTER,
 	CM_ATTR_COUNT,
 	CM_ATTR_ID_OFFSET = 0x0010,
 };
@@ -211,6 +218,7 @@ struct cm_id_private {
 	atomic_t refcount;
 
 	struct ib_mad_send_buf *msg;
+	struct ib_mad_send_buf *lap_msg;
 	struct cm_timewait_info *timewait_info;
 	/* todo: use alternate port on send failure */
 	struct cm_av av;
@@ -782,11 +790,11 @@ static void cm_cleanup_timewait(struct cm_timewait_info *timewait_info)
 	}
 }
 
-static struct cm_timewait_info * cm_create_timewait_info(__be32 local_id)
+static struct cm_timewait_info * cm_create_timewait_info(__be32 local_id, gfp_t flags)
 {
 	struct cm_timewait_info *timewait_info;
 
-	timewait_info = kzalloc(sizeof *timewait_info, GFP_KERNEL);
+	timewait_info = kzalloc(sizeof *timewait_info, flags);
 	if (!timewait_info)
 		return ERR_PTR(-ENOMEM);
 
@@ -840,6 +848,24 @@ static void cm_destroy_id(struct ib_cm_id *cm_id, int err)
 	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
 retest:
 	spin_lock_irq(&cm_id_priv->lock);
+
+	/* handle lap states first */
+	switch (cm_id->lap_state) {
+	case IB_CM_LAP_UNINIT:
+	case IB_CM_LAP_IDLE:
+		break;
+	case IB_CM_LAP_SENT:
+		cm_id_priv->id.lap_state = IB_CM_LAP_IDLE;
+		ib_cancel_mad(cm_id_priv->av.port->mad_agent, cm_id_priv->lap_msg);
+		cm_id_priv->lap_msg = NULL;
+		break;
+	case IB_CM_LAP_RCVD:
+	case IB_CM_MRA_LAP_SENT:
+	case IB_CM_MRA_LAP_RCVD:
+	default:
+		break;
+	}
+
 	switch (cm_id->state) {
 	case IB_CM_LISTEN:
 		cm_id->state = IB_CM_IDLE;
@@ -907,6 +933,7 @@ retest:
 		spin_unlock_irq(&cm_id_priv->lock);
 		break;
 	}
+
 
 	cm_free_id(cm_id->local_id);
 	cm_deref_id(cm_id_priv);
@@ -1072,6 +1099,12 @@ static void cm_format_req(struct cm_req_msg *req_msg,
 				       alt_path->packet_life_time));
 	}
 
+	/*
+	 * this version supports APM extensions. R1 and and drivers
+	 * not supporting SAP extensions ignore this field.
+	 */
+	cm_req_set_sap_support(req_msg, 1);
+
 	if (param->private_data && param->private_data_len)
 		memcpy(req_msg->private_data, param->private_data,
 		       param->private_data_len);
@@ -1119,27 +1152,28 @@ int ib_send_cm_req(struct ib_cm_id *cm_id,
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_IDLE) {
 		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
-		ret = -EINVAL;
-		goto out;
+		return -EINVAL;
 	}
-	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 
 	cm_id_priv->timewait_info = cm_create_timewait_info(cm_id_priv->
-							    id.local_id);
+							    id.local_id,
+							    GFP_ATOMIC);
 	if (IS_ERR(cm_id_priv->timewait_info)) {
-		ret = PTR_ERR(cm_id_priv->timewait_info);
-		goto out;
+		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+		return (PTR_ERR(cm_id_priv->timewait_info));
 	}
 
 	ret = cm_init_av_by_path(param->primary_path, &cm_id_priv->av);
-	if (ret)
-		goto error1;
-	if (param->alternate_path) {
+	if (!ret && param->alternate_path) {
 		ret = cm_init_av_by_path(param->alternate_path,
 					 &cm_id_priv->alt_av);
-		if (ret)
-			goto error1;
 	}
+	if (ret) {
+		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+		goto error1;
+	}
+	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+
 	cm_id->service_id = param->service_id;
 	cm_id->service_mask = ~cpu_to_be64(0);
 	cm_id_priv->timeout_ms = cm_convert_to_ms(
@@ -1178,9 +1212,11 @@ int ib_send_cm_req(struct ib_cm_id *cm_id,
 	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 	return 0;
 
-error2:	cm_free_msg(cm_id_priv->msg);
-error1:	kfree(cm_id_priv->timewait_info);
-out:	return ret;
+error2:
+	cm_free_msg(cm_id_priv->msg);
+error1:
+	kfree(cm_id_priv->timewait_info);
+	return ret;
 }
 EXPORT_SYMBOL(ib_send_cm_req);
 
@@ -1533,7 +1569,8 @@ static int cm_req_handler(struct cm_work *work)
 				work->mad_recv_wc->recv_buf.grh,
 				&cm_id_priv->av);
 	cm_id_priv->timewait_info = cm_create_timewait_info(cm_id_priv->
-							    id.local_id);
+							    id.local_id,
+							    GFP_KERNEL);
 	if (IS_ERR(cm_id_priv->timewait_info)) {
 		ret = PTR_ERR(cm_id_priv->timewait_info);
 		goto destroy;
@@ -1587,6 +1624,14 @@ static int cm_req_handler(struct cm_work *work)
 	cm_id_priv->retry_count = cm_req_get_retry_count(req_msg);
 	cm_id_priv->rnr_retry_count = cm_req_get_rnr_retry_count(req_msg);
 	cm_id_priv->qp_type = cm_req_get_qp_type(req_msg);
+	/* We only mark whether the remote explicitly declared SAP support.
+	 * Even if it did not, we assume it could be R1 implementation so
+	 * we will not refrain from sending SAP messgaes. However, if we
+	 * don't get a SPR for a SAP message, we will assume that the
+	 * remote simply does not support SAP extenstions and we will
+	 * refrain from sending any more SAPs
+	 */
+	cm_id->remote_sap_support = cm_req_get_sap_support(req_msg);
 
 	cm_format_req_event(work, cm_id_priv, &listen_cm_id_priv->id);
 	cm_process_work(cm_id_priv, work);
@@ -1648,6 +1693,7 @@ int ib_send_cm_rep(struct ib_cm_id *cm_id,
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_REQ_RCVD &&
 	    cm_id->state != IB_CM_MRA_REQ_SENT) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1714,6 +1760,7 @@ int ib_send_cm_rtu(struct ib_cm_id *cm_id,
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_REP_RCVD &&
 	    cm_id->state != IB_CM_MRA_REP_SENT) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto error;
 	}
@@ -1818,6 +1865,7 @@ static int cm_rep_handler(struct cm_work *work)
 	cm_id_priv = cm_acquire_id(rep_msg->remote_comm_id, 0);
 	if (!cm_id_priv) {
 		cm_dup_rep_handler(work);
+		pr_debug("no cm_id_priv\n");
 		return -EINVAL;
 	}
 
@@ -1831,6 +1879,7 @@ static int cm_rep_handler(struct cm_work *work)
 	default:
 		spin_unlock_irq(&cm_id_priv->lock);
 		ret = -EINVAL;
+		pr_debug("cm_id_priv->id.state: %d\n", cm_id_priv->id.state);
 		goto error;
 	}
 
@@ -1844,6 +1893,7 @@ static int cm_rep_handler(struct cm_work *work)
 		spin_unlock(&cm.lock);
 		spin_unlock_irq(&cm_id_priv->lock);
 		ret = -EINVAL;
+		pr_debug("Failed to insert remote id\n");
 		goto error;
 	}
 	/* Check for a stale connection. */
@@ -1857,6 +1907,7 @@ static int cm_rep_handler(struct cm_work *work)
 			     IB_CM_REJ_STALE_CONN, CM_MSG_RESPONSE_REP,
 			     NULL, 0);
 		ret = -EINVAL;
+		pr_debug("Stale connection.\n");
 		goto error;
 	}
 	spin_unlock(&cm.lock);
@@ -1997,6 +2048,7 @@ int ib_send_cm_dreq(struct ib_cm_id *cm_id,
 	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_ESTABLISHED) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2066,6 +2118,7 @@ int ib_send_cm_drep(struct ib_cm_id *cm_id,
 	if (cm_id->state != IB_CM_DREQ_RCVD) {
 		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 		kfree(data);
+		pr_debug("cm_id->state(%d) != IB_CM_DREQ_RCVD\n", cm_id->state);
 		return -EINVAL;
 	}
 
@@ -2131,6 +2184,7 @@ static int cm_dreq_handler(struct cm_work *work)
 		atomic_long_inc(&work->port->counter_group[CM_RECV_DUPLICATES].
 				counter[CM_DREQ_COUNTER]);
 		cm_issue_drep(work->port, work->mad_recv_wc);
+		pr_debug("no cm_id_priv\n");
 		return -EINVAL;
 	}
 
@@ -2171,6 +2225,7 @@ static int cm_dreq_handler(struct cm_work *work)
 				counter[CM_DREQ_COUNTER]);
 		goto unlock;
 	default:
+		pr_debug("cm_id_priv->id.state: %d\n", cm_id_priv->id.state);
 		goto unlock;
 	}
 	cm_id_priv->id.state = IB_CM_DREQ_RCVD;
@@ -2274,6 +2329,7 @@ int ib_send_cm_rej(struct ib_cm_id *cm_id,
 		cm_enter_timewait(cm_id_priv);
 		break;
 	default:
+		pr_debug("cm_id->state: 0x%x\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2384,6 +2440,7 @@ static int cm_rej_handler(struct cm_work *work)
 		/* fall through */
 	default:
 		spin_unlock_irq(&cm_id_priv->lock);
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2446,6 +2503,7 @@ int ib_send_cm_mra(struct ib_cm_id *cm_id,
 			break;
 		}
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		goto error1;
 	}
@@ -2547,6 +2605,7 @@ static int cm_mra_handler(struct cm_work *work)
 				counter[CM_MRA_COUNTER]);
 		/* fall through */
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		goto out;
 	}
 
@@ -2566,6 +2625,25 @@ out:
 	spin_unlock_irq(&cm_id_priv->lock);
 	cm_deref_id(cm_id_priv);
 	return -EINVAL;
+}
+
+static void cm_format_sap(struct cm_sap_msg *sap_msg,
+			  struct cm_id_private *cm_id_priv,
+			  struct ib_sa_path_rec *alternate_path,
+			  const void *private_data,
+			  u8 private_data_len)
+{
+	cm_format_mad_hdr(&sap_msg->hdr, CM_SAP_ATTR_ID,
+			  cm_form_tid(cm_id_priv, CM_MSG_SEQUENCE_LAP));
+	sap_msg->local_comm_id = cm_id_priv->id.local_id;
+	sap_msg->remote_comm_id = cm_id_priv->id.remote_id;
+	cm_sap_set_remote_qpn(sap_msg, cm_id_priv->local_qpn);
+	/* todo: need remote CM response timeout */
+	sap_msg->alt_local_lid = alternate_path->slid;
+	sap_msg->alt_local_gid = alternate_path->sgid;
+
+	if (private_data && private_data_len)
+		memcpy(sap_msg->private_data, private_data, private_data_len);
 }
 
 static void cm_format_lap(struct cm_lap_msg *lap_msg,
@@ -2645,12 +2723,70 @@ int ib_send_cm_lap(struct ib_cm_id *cm_id,
 	}
 
 	cm_id->lap_state = IB_CM_LAP_SENT;
-	cm_id_priv->msg = msg;
+	cm_id_priv->lap_msg = msg;
 
 out:	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL(ib_send_cm_lap);
+
+int ib_send_cm_sap(struct ib_cm_id *cm_id,
+		   struct ib_sa_path_rec *alternate_path,
+		   const void *private_data,
+		   u8 private_data_len)
+{
+	struct cm_id_private *cm_id_priv;
+	struct ib_mad_send_buf *msg;
+	unsigned long flags;
+	int ret;
+
+	if (private_data && private_data_len > IB_CM_LAP_PRIVATE_DATA_SIZE)
+		return -EINVAL;
+
+	if (cm_id->sap_support_disabled)
+		return -EPERM;
+
+	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
+	spin_lock_irqsave(&cm_id_priv->lock, flags);
+	if (cm_id->state != IB_CM_ESTABLISHED ||
+	    (cm_id->sap_state != IB_CM_SAP_UNINIT &&
+	     cm_id->sap_state != IB_CM_SAP_IDLE)) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = cm_alloc_msg(cm_id_priv, &msg);
+	if (ret)
+		goto out;
+
+	cm_format_sap((struct cm_sap_msg *) msg->mad, cm_id_priv,
+		      alternate_path, private_data, private_data_len);
+	msg->timeout_ms = cm_id_priv->timeout_ms;
+	msg->context[1] = (void *) (unsigned long) IB_CM_ESTABLISHED;
+
+	ret = ib_post_send_mad(msg, NULL);
+	if (ret) {
+		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+		cm_free_msg(msg);
+		return ret;
+	}
+
+	cm_id->sap_state = IB_CM_SAP_SENT;
+	cm_id_priv->lap_msg = msg;
+
+out:	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL(ib_send_cm_sap);
+
+static void cm_format_path_from_sap(struct cm_id_private *cm_id_priv,
+				    struct ib_sa_path_rec *path,
+				    struct cm_sap_msg *sap_msg)
+{
+	memset(path, 0, sizeof *path);
+	path->dgid = sap_msg->alt_local_gid;
+	path->dlid = sap_msg->alt_local_lid;
+}
 
 static void cm_format_path_from_lap(struct cm_id_private *cm_id_priv,
 				    struct ib_sa_path_rec *path,
@@ -2674,6 +2810,64 @@ static void cm_format_path_from_lap(struct cm_id_private *cm_id_priv,
 	path->packet_life_time_selector = IB_SA_EQ;
 	path->packet_life_time = cm_lap_get_local_ack_timeout(lap_msg);
 	path->packet_life_time -= (path->packet_life_time > 0);
+}
+
+static int cm_sap_handler(struct cm_work *work)
+{
+	struct cm_id_private *cm_id_priv;
+	struct cm_sap_msg *sap_msg;
+	struct ib_cm_sap_event_param *param;
+	int ret;
+	__be32 qpn;
+
+	/* todo: verify LAP request and send reject APR if invalid. */
+	sap_msg = (struct cm_sap_msg *)work->mad_recv_wc->recv_buf.mad;
+	cm_id_priv = cm_acquire_id(sap_msg->remote_comm_id,
+				   sap_msg->local_comm_id);
+	if (!cm_id_priv)
+		return -EINVAL;
+
+	param = &work->cm_event.param.sap_rcvd;
+	param->alternate_path = &work->path[0];
+	cm_format_path_from_sap(cm_id_priv, param->alternate_path, sap_msg);
+	work->cm_event.private_data = &sap_msg->private_data;
+
+	spin_lock_irq(&cm_id_priv->lock);
+	if (cm_id_priv->id.state != IB_CM_ESTABLISHED)
+		goto unlock;
+
+	switch (cm_id_priv->id.sap_state) {
+	case IB_CM_SAP_UNINIT:
+	case IB_CM_SAP_IDLE:
+		break;
+	case IB_CM_SAP_RCVD:
+		atomic_long_inc(&work->port->counter_group[CM_RECV_DUPLICATES].
+				counter[CM_SAP_COUNTER]);
+		goto unlock;
+	default:
+		goto unlock;
+	}
+
+	qpn = cm_sap_get_remote_qpn(sap_msg);
+	if (qpn && qpn != cm_id_priv->remote_qpn)
+		goto unlock;
+
+	cm_id_priv->id.sap_state = IB_CM_SAP_RCVD;
+	cm_id_priv->tid = sap_msg->hdr.tid;
+	ret = atomic_inc_and_test(&cm_id_priv->work_count);
+	if (!ret)
+		list_add_tail(&work->list, &cm_id_priv->work_list);
+	spin_unlock_irq(&cm_id_priv->lock);
+
+	if (ret)
+		cm_process_work(cm_id_priv, work);
+	else
+		cm_deref_id(cm_id_priv);
+	return 0;
+
+unlock:	spin_unlock_irq(&cm_id_priv->lock);
+	cm_deref_id(cm_id_priv);
+	return -EINVAL;
 }
 
 static int cm_lap_handler(struct cm_work *work)
@@ -2733,7 +2927,8 @@ static int cm_lap_handler(struct cm_work *work)
 	cm_init_av_for_response(work->port, work->mad_recv_wc->wc,
 				work->mad_recv_wc->recv_buf.grh,
 				&cm_id_priv->av);
-	cm_init_av_by_path(param->alternate_path, &cm_id_priv->alt_av);
+	if (cm_init_av_by_path(param->alternate_path, &cm_id_priv->alt_av))
+		goto unlock;
 	ret = atomic_inc_and_test(&cm_id_priv->work_count);
 	if (!ret)
 		list_add_tail(&work->list, &cm_id_priv->work_list);
@@ -2816,6 +3011,72 @@ out:	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 }
 EXPORT_SYMBOL(ib_send_cm_apr);
 
+static void cm_format_spr(struct cm_spr_msg *spr_msg,
+			  struct cm_id_private *cm_id_priv,
+			  enum ib_cm_spr_status status,
+			  void *info,
+			  u8 info_length,
+			  const void *private_data,
+			  u8 private_data_len)
+{
+	cm_format_mad_hdr(&spr_msg->hdr, CM_SPR_ATTR_ID, cm_id_priv->tid);
+	spr_msg->local_comm_id = cm_id_priv->id.local_id;
+	spr_msg->remote_comm_id = cm_id_priv->id.remote_id;
+	spr_msg->ap_status = (u8) status;
+
+	if (info && info_length) {
+		spr_msg->info_length = info_length;
+		memcpy(spr_msg->info, info, info_length);
+	}
+
+	if (private_data && private_data_len)
+		memcpy(spr_msg->private_data, private_data, private_data_len);
+}
+
+int ib_send_cm_spr(struct ib_cm_id *cm_id,
+		   enum ib_cm_spr_status status,
+		   void *info,
+		   u8 info_length,
+		   const void *private_data,
+		   u8 private_data_len)
+{
+	struct cm_id_private *cm_id_priv;
+	struct ib_mad_send_buf *msg;
+	unsigned long flags;
+	int ret;
+
+	if ((private_data && private_data_len > IB_CM_APR_PRIVATE_DATA_SIZE) ||
+	    (info && info_length > IB_CM_APR_INFO_LENGTH)) {
+		return -EINVAL;
+	}
+
+	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
+	spin_lock_irqsave(&cm_id_priv->lock, flags);
+	if (cm_id->state != IB_CM_ESTABLISHED ||
+	    (cm_id->sap_state != IB_CM_SAP_RCVD )) {
+		ret = -EINVAL;
+		goto out;
+	}
+
+	ret = cm_alloc_msg(cm_id_priv, &msg);
+	if (ret)
+		goto out;
+
+	cm_format_spr((struct cm_spr_msg *) msg->mad, cm_id_priv, status,
+		      info, info_length, private_data, private_data_len);
+	ret = ib_post_send_mad(msg, NULL);
+	if (ret) {
+		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+		cm_free_msg(msg);
+		return ret;
+	}
+
+	cm_id->sap_state = IB_CM_SAP_IDLE;
+out:	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
+	return ret;
+}
+EXPORT_SYMBOL(ib_send_cm_spr);
+
 static int cm_apr_handler(struct cm_work *work)
 {
 	struct cm_id_private *cm_id_priv;
@@ -2841,8 +3102,50 @@ static int cm_apr_handler(struct cm_work *work)
 		goto out;
 	}
 	cm_id_priv->id.lap_state = IB_CM_LAP_IDLE;
-	ib_cancel_mad(cm_id_priv->av.port->mad_agent, cm_id_priv->msg);
-	cm_id_priv->msg = NULL;
+	ib_cancel_mad(cm_id_priv->av.port->mad_agent, cm_id_priv->lap_msg);
+	cm_id_priv->lap_msg = NULL;
+
+	ret = atomic_inc_and_test(&cm_id_priv->work_count);
+	if (!ret)
+		list_add_tail(&work->list, &cm_id_priv->work_list);
+	spin_unlock_irq(&cm_id_priv->lock);
+
+	if (ret)
+		cm_process_work(cm_id_priv, work);
+	else
+		cm_deref_id(cm_id_priv);
+	return 0;
+out:
+	cm_deref_id(cm_id_priv);
+	return -EINVAL;
+}
+
+static int cm_spr_handler(struct cm_work *work)
+{
+	struct cm_id_private *cm_id_priv;
+	struct cm_spr_msg *spr_msg;
+	int ret;
+
+	spr_msg = (struct cm_spr_msg *)work->mad_recv_wc->recv_buf.mad;
+	cm_id_priv = cm_acquire_id(spr_msg->remote_comm_id,
+				   spr_msg->local_comm_id);
+	if (!cm_id_priv)
+		return -EINVAL; /* Unmatched reply. */
+
+	work->cm_event.param.spr_rcvd.ap_status = spr_msg->ap_status;
+	work->cm_event.param.spr_rcvd.spr_info = &spr_msg->info;
+	work->cm_event.param.spr_rcvd.info_len = spr_msg->info_length;
+	work->cm_event.private_data = &spr_msg->private_data;
+
+	spin_lock_irq(&cm_id_priv->lock);
+	if (cm_id_priv->id.state != IB_CM_ESTABLISHED ||
+	    (cm_id_priv->id.sap_state != IB_CM_SAP_SENT)) {
+		spin_unlock_irq(&cm_id_priv->lock);
+		goto out;
+	}
+	cm_id_priv->id.sap_state = IB_CM_SAP_IDLE;
+	ib_cancel_mad(cm_id_priv->av.port->mad_agent, cm_id_priv->lap_msg);
+	cm_id_priv->lap_msg = NULL;
 
 	ret = atomic_inc_and_test(&cm_id_priv->work_count);
 	if (!ret)
@@ -2925,6 +3228,9 @@ int ib_send_cm_sidr_req(struct ib_cm_id *cm_id,
 		return -EINVAL;
 
 	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
+
+	spin_lock_irqsave(&cm_id_priv->lock, flags);
+
 	ret = cm_init_av_by_path(param->path, &cm_id_priv->av);
 	if (ret)
 		goto out;
@@ -2942,21 +3248,19 @@ int ib_send_cm_sidr_req(struct ib_cm_id *cm_id,
 	msg->timeout_ms = cm_id_priv->timeout_ms;
 	msg->context[1] = (void *) (unsigned long) IB_CM_SIDR_REQ_SENT;
 
-	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state == IB_CM_IDLE)
 		ret = ib_post_send_mad(msg, NULL);
 	else
 		ret = -EINVAL;
 
 	if (ret) {
-		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 		cm_free_msg(msg);
 		goto out;
 	}
 	cm_id->state = IB_CM_SIDR_REQ_SENT;
 	cm_id_priv->msg = msg;
-	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 out:
+	spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 	return ret;
 }
 EXPORT_SYMBOL(ib_send_cm_sidr_req);
@@ -3155,7 +3459,6 @@ static void cm_process_send_error(struct ib_mad_send_buf *msg,
 
 	memset(&cm_event, 0, sizeof cm_event);
 	cm_id_priv = msg->context[0];
-
 	/* Discard old sends or ones without a response. */
 	spin_lock_irq(&cm_id_priv->lock);
 	state = (enum ib_cm_state) (unsigned long) msg->context[1];
@@ -3277,13 +3580,20 @@ static void cm_work_handler(struct work_struct *_work)
 	case IB_CM_LAP_RECEIVED:
 		ret = cm_lap_handler(work);
 		break;
+	case IB_CM_SAP_RECEIVED:
+		ret = cm_sap_handler(work);
+		break;
 	case IB_CM_APR_RECEIVED:
 		ret = cm_apr_handler(work);
+		break;
+	case IB_CM_SPR_RECEIVED:
+		ret = cm_spr_handler(work);
 		break;
 	case IB_CM_TIMEWAIT_EXIT:
 		ret = cm_timewait_handler(work);
 		break;
 	default:
+		pr_debug("work->cm_event.event: 0x%x\n", work->cm_event.event);
 		ret = -EINVAL;
 		break;
 	}
@@ -3314,6 +3624,7 @@ static int cm_establish(struct ib_cm_id *cm_id)
 		ret = -EISCONN;
 		break;
 	default:
+		pr_debug("cm_id->state: 0x%x\n", cm_id->state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3421,8 +3732,15 @@ static void cm_recv_handler(struct ib_mad_agent *mad_agent,
 		paths = 1;
 		event = IB_CM_LAP_RECEIVED;
 		break;
+	case CM_SAP_ATTR_ID:
+		paths = 1;
+		event = IB_CM_SAP_RECEIVED;
+		break;
 	case CM_APR_ATTR_ID:
 		event = IB_CM_APR_RECEIVED;
+		break;
+	case CM_SPR_ATTR_ID:
+		event = IB_CM_SPR_RECEIVED;
 		break;
 	default:
 		ib_free_recv_mad(mad_recv_wc);
@@ -3476,6 +3794,7 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3523,6 +3842,7 @@ static int cm_init_qp_rtr_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3582,6 +3902,7 @@ static int cm_init_qp_rts_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3608,6 +3929,7 @@ int ib_cm_init_qp_attr(struct ib_cm_id *cm_id,
 		ret = cm_init_qp_rts_attr(cm_id_priv, qp_attr, qp_attr_mask);
 		break;
 	default:
+		pr_debug("qp_attr->qp_state: 0x%x\n", qp_attr->qp_state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3844,7 +4166,8 @@ static int __init ib_cm_init(void)
 	cm.remote_sidr_table = RB_ROOT;
 	idr_init(&cm.local_id_table);
 	get_random_bytes(&cm.random_id_operand, sizeof cm.random_id_operand);
-	idr_pre_get(&cm.local_id_table, GFP_KERNEL);
+	if (!idr_pre_get(&cm.local_id_table, GFP_KERNEL))
+		return -ENOMEM;
 	INIT_LIST_HEAD(&cm.timewait_list);
 
 	ret = class_register(&cm_class);

@@ -64,13 +64,16 @@ static const char mlx4_en_version[] =
 
 /* Enable RSS UDP traffic */
 MLX4_EN_PARM_INT(udp_rss, 1,
-		 "Enable RSS for incomming UDP traffic or disabled (0)");
+		 "Enable RSS for incoming UDP traffic");
 
 /* Priority pausing */
 MLX4_EN_PARM_INT(pfctx, 0, "Priority based Flow Control policy on TX[7:0]."
 			   " Per priority bit mask");
 MLX4_EN_PARM_INT(pfcrx, 0, "Priority based Flow Control policy on RX[7:0]."
 			   " Per priority bit mask");
+
+#define MAX_PFC_TX	0xff
+#define MAX_PFC_RX	0xff
 
 int en_print(const char *level, const struct mlx4_en_priv *priv,
 	     const char *format, ...)
@@ -95,6 +98,28 @@ int en_print(const char *level, const struct mlx4_en_priv *priv,
 	return i;
 }
 
+void mlx4_en_update_loopback_state(struct net_device *dev,
+				   netdev_features_t features)
+{
+	struct mlx4_en_priv *priv = netdev_priv(dev);
+
+	priv->flags &= ~(MLX4_EN_FLAG_RX_FILTER_NEEDED|
+			MLX4_EN_FLAG_ENABLE_HW_LOOPBACK);
+
+	/* Drop the packet if SRIOV is not enabled
+	 * and not performing the selftest or flb disabled
+	 */
+	if (mlx4_is_mfunc(priv->mdev->dev) &&
+	    !(features & NETIF_F_LOOPBACK) && !priv->validate_loopback)
+		priv->flags |= MLX4_EN_FLAG_RX_FILTER_NEEDED;
+
+	/* Set dmac in Tx WQE if we are in SRIOV mode or if loopback selftest
+	 * is requested
+	 */
+	if (mlx4_is_mfunc(priv->mdev->dev) || priv->validate_loopback)
+		priv->flags |= MLX4_EN_FLAG_ENABLE_HW_LOOPBACK;
+}
+
 static int mlx4_en_get_profile(struct mlx4_en_dev *mdev)
 {
 	struct mlx4_en_profile *params = &mdev->profile;
@@ -115,8 +140,13 @@ static int mlx4_en_get_profile(struct mlx4_en_dev *mdev)
 		params->prof[i].tx_ppp = pfctx;
 		params->prof[i].tx_ring_size = MLX4_EN_DEF_TX_RING_SIZE;
 		params->prof[i].rx_ring_size = MLX4_EN_DEF_RX_RING_SIZE;
+		/*
+		 * Double the number of default TX rings (for up = 0)
+		 * to enable splitting traffic by size
+		 */
+		params->prof[i].tx_queue_num = params->num_tx_rings_p_up;
 		params->prof[i].tx_ring_num = params->num_tx_rings_p_up *
-			MLX4_EN_NUM_UP;
+			MLX4_EN_NUM_UP + params->prof[i].tx_queue_num;
 		params->prof[i].rss_rings = 0;
 	}
 
@@ -152,6 +182,9 @@ static void mlx4_en_event(struct mlx4_dev *dev, void *endev_ptr,
 		mlx4_err(mdev, "Internal error detected, restarting device\n");
 		break;
 
+	case MLX4_DEV_EVENT_SLAVE_INIT:
+	case MLX4_DEV_EVENT_SLAVE_SHUTDOWN:
+		break;
 	default:
 		if (port < 1 || port > dev->caps.num_ports ||
 		    !mdev->pndev[port])
@@ -280,12 +313,17 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 		if (mlx4_en_init_netdev(mdev, i, &mdev->profile.prof[i]))
 			mdev->pndev[i] = NULL;
 	}
+
+	/* Initialize time stamp mechanism */
+	if (mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_TS)
+		mlx4_en_init_timestamp(mdev);
+
 	return mdev;
 
 err_mr:
 	mlx4_mr_free(dev, &mdev->mr);
 err_map:
-	if (!mdev->uar_map)
+	if (mdev->uar_map)
 		iounmap(mdev->uar_map);
 err_uar:
 	mlx4_uar_free(dev, &mdev->priv_uar);
@@ -305,14 +343,42 @@ static struct mlx4_interface mlx4_en_interface = {
 	.protocol	= MLX4_PROT_ETH,
 };
 
+void mlx4_en_verify_params(void)
+{
+	if (pfctx > MAX_PFC_TX) {
+		pr_warn("mlx4_en: WARNING: illegal module parameter pfctx 0x%x - "
+		       "should be in range 0-0x%x, will be changed to default (0)\n",
+		       pfctx, MAX_PFC_TX);
+		pfctx = 0;
+	}
+
+	if (pfcrx > MAX_PFC_RX) {
+		pr_warn("mlx4_en: WARNING: illegal module parameter pfcrx 0x%x - "
+		       "should be in range 0-0x%x, will be changed to default (0)\n",
+		       pfcrx, MAX_PFC_RX);
+		pfcrx = 0;
+	}
+}
+
 static int __init mlx4_en_init(void)
 {
+	int err = 0;
+
+	mlx4_en_verify_params();
+#ifdef CONFIG_DEBUG_FS
+	err = mlx4_en_register_debugfs();
+	if (err)
+		pr_err(KERN_ERR "Failed to register debugfs\n");
+#endif
 	return mlx4_register_interface(&mlx4_en_interface);
 }
 
 static void __exit mlx4_en_cleanup(void)
 {
 	mlx4_unregister_interface(&mlx4_en_interface);
+#ifdef CONFIG_DEBUG_FS
+	mlx4_en_unregister_debugfs();
+#endif
 }
 
 module_init(mlx4_en_init);

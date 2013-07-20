@@ -1,0 +1,5 @@
+digraph {
+	-> FIP_NO_FLUSH [label="fip_vnic_alloc"];
+	FIP_PARTIAL_FLUSH;
+	FIP_FULL_FLUSH;
+}

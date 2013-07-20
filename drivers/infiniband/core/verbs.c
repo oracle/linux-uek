@@ -348,7 +348,8 @@ static void __ib_shared_qp_event_handler(struct ib_event *event, void *context)
 	struct ib_qp *qp = context;
 
 	list_for_each_entry(event->element.qp, &qp->open_list, open_list)
-		event->element.qp->event_handler(event, event->element.qp->qp_context);
+		if (event->element.qp->event_handler)
+			event->element.qp->event_handler(event, event->element.qp->qp_context);
 }
 
 static void __ib_insert_xrcd_qp(struct ib_xrcd *xrcd, struct ib_qp *qp)
@@ -486,16 +487,27 @@ static const struct {
 				[IB_QPT_RC]  = (IB_QP_PKEY_INDEX		|
 						IB_QP_PORT			|
 						IB_QP_ACCESS_FLAGS),
+				[IB_QPT_DC_INI]  = (IB_QP_PKEY_INDEX		|
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_DC_KEY),
+				[IB_QPT_DC_TGT]  = (IB_QP_PKEY_INDEX		|
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_DC_KEY),
 				[IB_QPT_XRC_INI] = (IB_QP_PKEY_INDEX		|
-						IB_QP_PORT			|
-						IB_QP_ACCESS_FLAGS),
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS),
 				[IB_QPT_XRC_TGT] = (IB_QP_PKEY_INDEX		|
-						IB_QP_PORT			|
-						IB_QP_ACCESS_FLAGS),
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS),
 				[IB_QPT_SMI] = (IB_QP_PKEY_INDEX		|
 						IB_QP_QKEY),
 				[IB_QPT_GSI] = (IB_QP_PKEY_INDEX		|
 						IB_QP_QKEY),
+			},
+			.opt_param = {
+				[IB_QPT_UD]  = IB_QP_GROUP_RSS
 			}
 		},
 	},
@@ -514,6 +526,12 @@ static const struct {
 				[IB_QPT_RC]  = (IB_QP_PKEY_INDEX		|
 						IB_QP_PORT			|
 						IB_QP_ACCESS_FLAGS),
+				[IB_QPT_DC_INI]  = (IB_QP_PKEY_INDEX		|
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS),
+				[IB_QPT_DC_TGT]  = (IB_QP_PKEY_INDEX		|
+						    IB_QP_PORT			|
+						    IB_QP_ACCESS_FLAGS),
 				[IB_QPT_XRC_INI] = (IB_QP_PKEY_INDEX		|
 						IB_QP_PORT			|
 						IB_QP_ACCESS_FLAGS),
@@ -539,6 +557,12 @@ static const struct {
 						IB_QP_RQ_PSN			|
 						IB_QP_MAX_DEST_RD_ATOMIC	|
 						IB_QP_MIN_RNR_TIMER),
+				[IB_QPT_DC_INI]  = (IB_QP_PATH_MTU		|
+						    IB_QP_MAX_DEST_RD_ATOMIC	|
+						    IB_QP_MIN_RNR_TIMER),
+				[IB_QPT_DC_TGT]  = (IB_QP_PATH_MTU		|
+						    IB_QP_MAX_DEST_RD_ATOMIC	|
+						    IB_QP_MIN_RNR_TIMER),
 				[IB_QPT_XRC_INI] = (IB_QP_AV			|
 						IB_QP_PATH_MTU			|
 						IB_QP_DEST_QPN			|
@@ -559,6 +583,12 @@ static const struct {
 				 [IB_QPT_RC]  = (IB_QP_ALT_PATH			|
 						 IB_QP_ACCESS_FLAGS		|
 						 IB_QP_PKEY_INDEX),
+				 [IB_QPT_DC_INI]  = (IB_QP_ALT_PATH		|
+						     IB_QP_ACCESS_FLAGS		|
+						     IB_QP_PKEY_INDEX),
+				[IB_QPT_DC_TGT]  = (IB_QP_ALT_PATH		|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_PKEY_INDEX),
 				 [IB_QPT_XRC_INI] = (IB_QP_ALT_PATH		|
 						 IB_QP_ACCESS_FLAGS		|
 						 IB_QP_PKEY_INDEX),
@@ -569,6 +599,7 @@ static const struct {
 						 IB_QP_QKEY),
 				 [IB_QPT_GSI] = (IB_QP_PKEY_INDEX		|
 						 IB_QP_QKEY),
+				[IB_QPT_RAW_PACKET] = IB_QP_AV,
 			 }
 		}
 	},
@@ -585,6 +616,14 @@ static const struct {
 						IB_QP_RNR_RETRY			|
 						IB_QP_SQ_PSN			|
 						IB_QP_MAX_QP_RD_ATOMIC),
+				[IB_QPT_DC_INI]  = (IB_QP_TIMEOUT		|
+						    IB_QP_RETRY_CNT		|
+						    IB_QP_RNR_RETRY		|
+						    IB_QP_MAX_QP_RD_ATOMIC),
+				[IB_QPT_DC_TGT]  = (IB_QP_TIMEOUT		|
+						    IB_QP_RETRY_CNT		|
+						    IB_QP_RNR_RETRY		|
+						    IB_QP_MAX_QP_RD_ATOMIC),
 				[IB_QPT_XRC_INI] = (IB_QP_TIMEOUT		|
 						IB_QP_RETRY_CNT			|
 						IB_QP_RNR_RETRY			|
@@ -607,6 +646,16 @@ static const struct {
 						 IB_QP_ACCESS_FLAGS		|
 						 IB_QP_MIN_RNR_TIMER		|
 						 IB_QP_PATH_MIG_STATE),
+				 [IB_QPT_DC_INI] = (IB_QP_CUR_STATE		|
+						    IB_QP_ALT_PATH		|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_MIN_RNR_TIMER		|
+						    IB_QP_PATH_MIG_STATE),
+				[IB_QPT_DC_TGT] = (IB_QP_CUR_STATE		|
+						   IB_QP_ALT_PATH		|
+						   IB_QP_ACCESS_FLAGS		|
+						   IB_QP_MIN_RNR_TIMER		|
+						   IB_QP_PATH_MIG_STATE),
 				 [IB_QPT_XRC_INI] = (IB_QP_CUR_STATE		|
 						 IB_QP_ALT_PATH			|
 						 IB_QP_ACCESS_FLAGS		|
@@ -640,6 +689,16 @@ static const struct {
 						IB_QP_ALT_PATH			|
 						IB_QP_PATH_MIG_STATE		|
 						IB_QP_MIN_RNR_TIMER),
+				[IB_QPT_DC_INI]  = (IB_QP_CUR_STATE		|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_ALT_PATH		|
+						    IB_QP_PATH_MIG_STATE	|
+						    IB_QP_MIN_RNR_TIMER),
+				[IB_QPT_DC_TGT]  = (IB_QP_CUR_STATE		|
+						    IB_QP_ACCESS_FLAGS		|
+						    IB_QP_ALT_PATH		|
+						    IB_QP_PATH_MIG_STATE	|
+						    IB_QP_MIN_RNR_TIMER),
 				[IB_QPT_XRC_INI] = (IB_QP_CUR_STATE		|
 						IB_QP_ACCESS_FLAGS		|
 						IB_QP_ALT_PATH			|
@@ -926,10 +985,12 @@ struct ib_cq *ib_create_cq(struct ib_device *device,
 }
 EXPORT_SYMBOL(ib_create_cq);
 
-int ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period)
+int ib_modify_cq(struct ib_cq *cq,
+		 struct ib_cq_attr *cq_attr,
+		 int cq_attr_mask)
 {
 	return cq->device->modify_cq ?
-		cq->device->modify_cq(cq, cq_count, cq_period) : -ENOSYS;
+		cq->device->modify_cq(cq, cq_attr, cq_attr_mask) : -ENOSYS;
 }
 EXPORT_SYMBOL(ib_modify_cq);
 
@@ -1154,6 +1215,21 @@ struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 }
 EXPORT_SYMBOL(ib_alloc_fmr);
 
+int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd)
+{
+	int ret = 0;
+	if (fmr->device->set_fmr_pd) {
+		ret = fmr->device->set_fmr_pd(fmr, pd);
+		if (!ret)
+			fmr->pd = pd;
+
+		return ret;
+	} else
+		return -ENOSYS;
+}
+EXPORT_SYMBOL(ib_set_fmr_pd);
+
+
 int ib_unmap_fmr(struct list_head *fmr_list)
 {
 	struct ib_fmr *fmr;
@@ -1188,8 +1264,18 @@ int ib_attach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->attach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
-		return -EINVAL;
+
+	switch (rdma_node_get_transport(qp->device->node_type)) {
+	case RDMA_TRANSPORT_IB:
+		if ((gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD) &&
+		    qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		 break;
+	case RDMA_TRANSPORT_IWARP:
+		if (qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		break;
+	}
 
 	ret = qp->device->attach_mcast(qp, gid, lid);
 	if (!ret)
@@ -1204,8 +1290,18 @@ int ib_detach_mcast(struct ib_qp *qp, union ib_gid *gid, u16 lid)
 
 	if (!qp->device->detach_mcast)
 		return -ENOSYS;
-	if (gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD)
-		return -EINVAL;
+
+	switch (rdma_node_get_transport(qp->device->node_type)) {
+	case RDMA_TRANSPORT_IB:
+		if ((gid->raw[0] != 0xff || qp->qp_type != IB_QPT_UD) &&
+		    qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		 break;
+	case RDMA_TRANSPORT_IWARP:
+		if (qp->qp_type != IB_QPT_RAW_PACKET)
+			return -EINVAL;
+		break;
+	}
 
 	ret = qp->device->detach_mcast(qp, gid, lid);
 	if (!ret)
@@ -1252,3 +1348,35 @@ int ib_dealloc_xrcd(struct ib_xrcd *xrcd)
 	return xrcd->device->dealloc_xrcd(xrcd);
 }
 EXPORT_SYMBOL(ib_dealloc_xrcd);
+
+struct ib_flow *ib_create_flow(struct ib_qp *qp,
+			       struct ib_flow_attr *flow_attr,
+			       int domain)
+{
+	struct ib_flow *flow_id;
+	if (!qp->device->create_flow)
+		return ERR_PTR(-ENOSYS);
+
+	flow_id = qp->device->create_flow(qp, flow_attr, domain);
+	if (!IS_ERR(flow_id))
+		atomic_inc(&qp->usecnt);
+	return flow_id;
+}
+EXPORT_SYMBOL(ib_create_flow);
+
+int ib_destroy_flow(struct ib_flow *flow_id)
+{
+	int err;
+	struct ib_qp *qp;
+
+	if (!flow_id)
+		return -EINVAL;
+	qp = flow_id->qp;
+	if (!qp->device->destroy_flow)
+		return -ENOSYS;
+	err = qp->device->destroy_flow(flow_id);
+	if (!err)
+		atomic_dec(&qp->usecnt);
+	return err;
+}
+EXPORT_SYMBOL(ib_destroy_flow);

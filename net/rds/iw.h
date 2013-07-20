@@ -269,6 +269,8 @@ static inline u32 rds_iw_local_dma_lkey(struct rds_iw_connection *ic)
 
 /* ib.c */
 extern struct rds_transport rds_iw_transport;
+extern void rds_iw_add_one(struct ib_device *device);
+extern void rds_iw_remove_one(struct ib_device *device);
 extern struct ib_client rds_iw_client;
 
 extern unsigned int fastreg_pool_size;
@@ -317,6 +319,7 @@ void *rds_iw_get_mr(struct scatterlist *sg, unsigned long nents,
 void rds_iw_sync_mr(void *trans_private, int dir);
 void rds_iw_free_mr(void *trans_private, int invalidate);
 void rds_iw_flush_mrs(void);
+void rds_iw_remove_cm_id(struct rds_iw_device *rds_iwdev, struct rdma_cm_id *cm_id);
 
 /* ib_recv.c */
 int rds_iw_recv_init(void);
@@ -359,7 +362,7 @@ int rds_iw_xmit_rdma(struct rds_connection *conn, struct rm_rdma_op *op);
 void rds_iw_send_add_credits(struct rds_connection *conn, unsigned int credits);
 void rds_iw_advertise_credits(struct rds_connection *conn, unsigned int posted);
 int rds_iw_send_grab_credits(struct rds_iw_connection *ic, u32 wanted,
-			     u32 *adv_credits, int need_posted, int max_posted);
+			     u32 *adv_credits, int need_posted);
 
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_iw_statistics, rds_iw_stats);
@@ -376,6 +379,7 @@ extern unsigned long rds_iw_sysctl_max_unsig_wrs;
 extern unsigned long rds_iw_sysctl_max_unsig_bytes;
 extern unsigned long rds_iw_sysctl_max_recv_allocation;
 extern unsigned int rds_iw_sysctl_flow_control;
+extern ctl_table rds_iw_sysctl_table[];
 
 /*
  * Helper functions for getting/setting the header and data SGEs in

@@ -42,6 +42,7 @@
 
 #include <linux/types.h>
 #include <linux/net.h>
+#include <linux/printk.h>
 #include <scsi/libiscsi.h>
 #include <scsi/scsi_transport_iscsi.h>
 
@@ -65,20 +66,26 @@
 
 #define DRV_NAME	"iser"
 #define PFX		DRV_NAME ": "
-#define DRV_VER		"0.1"
-#define DRV_DATE	"May 7th, 2006"
+#define DRV_VER		"1.1"
 
 #define iser_dbg(fmt, arg...)				\
 	do {						\
-		if (iser_debug_level > 1)		\
+		if (iser_debug_level > 2)		\
 			printk(KERN_DEBUG PFX "%s:" fmt,\
 				__func__ , ## arg);	\
 	} while (0)
 
 #define iser_warn(fmt, arg...)				\
 	do {						\
-		if (iser_debug_level > 0)		\
+		if (iser_debug_level > 1)		\
 			printk(KERN_DEBUG PFX "%s:" fmt,\
+				__func__ , ## arg);	\
+	} while (0)
+
+#define iser_info(fmt, arg...)				\
+	do {						\
+		if (iser_debug_level > 0)		\
+			pr_info(PFX "%s:" fmt,          \
 				__func__ , ## arg);	\
 	} while (0)
 

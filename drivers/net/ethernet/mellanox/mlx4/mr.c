@@ -197,7 +197,7 @@ u32 __mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order)
 
 static u32 mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order)
 {
-	u64 in_param;
+	u64 in_param = 0;
 	u64 out_param;
 	int err;
 
@@ -231,8 +231,11 @@ int mlx4_mtt_init(struct mlx4_dev *dev, int npages, int page_shift,
 		++mtt->order;
 
 	mtt->offset = mlx4_alloc_mtt_range(dev, mtt->order);
-	if (mtt->offset == -1)
+	if (mtt->offset == -1) {
+		mlx4_err(dev, "Failed to allocate mtts for %d pages(order %d)\n",
+			 npages, mtt->order);
 		return -ENOMEM;
+	}
 
 	return 0;
 }
@@ -254,7 +257,7 @@ void __mlx4_free_mtt_range(struct mlx4_dev *dev, u32 offset, int order)
 
 static void mlx4_free_mtt_range(struct mlx4_dev *dev, u32 offset, int order)
 {
-	u64 in_param;
+	u64 in_param = 0;
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
@@ -365,7 +368,7 @@ void __mlx4_mr_release(struct mlx4_dev *dev, u32 index)
 
 static void mlx4_mr_release(struct mlx4_dev *dev, u32 index)
 {
-	u64 in_param;
+	u64 in_param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&in_param, index);
@@ -388,7 +391,7 @@ int __mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index)
 
 static int mlx4_mr_alloc_icm(struct mlx4_dev *dev, u32 index)
 {
-	u64 param;
+	u64 param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&param, index);
@@ -409,7 +412,7 @@ void __mlx4_mr_free_icm(struct mlx4_dev *dev, u32 index)
 
 static void mlx4_mr_free_icm(struct mlx4_dev *dev, u32 index)
 {
-	u64 in_param;
+	u64 in_param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&in_param, index);
@@ -663,13 +666,13 @@ int mlx4_init_mr_table(struct mlx4_dev *dev)
 	struct mlx4_mr_table *mr_table = &priv->mr_table;
 	int err;
 
-	if (!is_power_of_2(dev->caps.num_mpts))
-		return -EINVAL;
-
 	/* Nothing to do for slaves - all MR handling is forwarded
 	* to the master */
 	if (mlx4_is_slave(dev))
 		return 0;
+
+	if (!is_power_of_2(dev->caps.num_mpts))
+		return -EINVAL;
 
 	err = mlx4_bitmap_init(&mr_table->mpt_bitmap, dev->caps.num_mpts,
 			       ~0, dev->caps.reserved_mrws, 0);
@@ -746,6 +749,13 @@ static inline int mlx4_check_fmr(struct mlx4_fmr *fmr, u64 *page_list,
 	return 0;
 }
 
+int mlx4_set_fmr_pd(struct mlx4_fmr *fmr, u32 pd)
+{
+	fmr->mr.pd = pd;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(mlx4_set_fmr_pd);
+
 int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list,
 		      int npages, u64 iova, u32 *lkey, u32 *rkey)
 {
@@ -764,6 +774,11 @@ int mlx4_map_phys_fmr(struct mlx4_dev *dev, struct mlx4_fmr *fmr, u64 *page_list
 
 	*(u8 *) fmr->mpt = MLX4_MPT_STATUS_SW;
 
+	fmr->mpt->pd_flags = cpu_to_be32(fmr->mr.pd | MLX4_MPT_PD_FLAG_EN_INV);
+	if (fmr->mr.mtt.order >= 0 && fmr->mr.mtt.page_shift == 0) {
+		fmr->mpt->pd_flags |= cpu_to_be32(MLX4_MPT_PD_FLAG_FAST_REG |
+                                          MLX4_MPT_PD_FLAG_RAE);
+	}
 	/* Make sure MPT status is visible before writing MTT entries */
 	wmb();
 
@@ -868,8 +883,7 @@ void mlx4_fmr_unmap(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
 	if (IS_ERR(mailbox)) {
 		err = PTR_ERR(mailbox);
-		printk(KERN_WARNING "mlx4_ib: mlx4_alloc_cmd_mailbox"
-		       " failed (%d)\n", err);
+		mlx4_warn(dev, "mlx4_alloc_cmd_mailbox failed (%d)\n", err);
 		return;
 	}
 
@@ -878,8 +892,7 @@ void mlx4_fmr_unmap(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 			     (dev->caps.num_mpts - 1));
 	mlx4_free_cmd_mailbox(dev, mailbox);
 	if (err) {
-		printk(KERN_WARNING "mlx4_ib: mlx4_HW2SW_MPT failed (%d)\n",
-		       err);
+		mlx4_warn(dev, "mlx4_HW2SW_MPT failed (%d)\n", err);
 		return;
 	}
 	fmr->mr.enabled = MLX4_MR_EN_SW;

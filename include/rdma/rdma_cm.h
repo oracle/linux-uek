@@ -59,7 +59,11 @@ enum rdma_cm_event_type {
 	RDMA_CM_EVENT_MULTICAST_JOIN,
 	RDMA_CM_EVENT_MULTICAST_ERROR,
 	RDMA_CM_EVENT_ADDR_CHANGE,
-	RDMA_CM_EVENT_TIMEWAIT_EXIT
+	RDMA_CM_EVENT_TIMEWAIT_EXIT,
+	RDMA_CM_EVENT_ALT_ROUTE_RESOLVED,
+	RDMA_CM_EVENT_ALT_ROUTE_ERROR,
+	RDMA_CM_EVENT_LOAD_ALT_PATH,
+	RDMA_CM_EVENT_ALT_PATH_LOADED,
 };
 
 enum rdma_port_space {
@@ -68,6 +72,13 @@ enum rdma_port_space {
 	RDMA_PS_IB    = 0x013F,
 	RDMA_PS_TCP   = 0x0106,
 	RDMA_PS_UDP   = 0x0111,
+};
+
+enum alt_path_type {
+	RDMA_ALT_PATH_NONE,
+	RDMA_ALT_PATH_PORT,
+	RDMA_ALT_PATH_LID,
+	RDMA_ALT_PATH_BEST
 };
 
 struct rdma_addr {
@@ -101,6 +112,7 @@ struct rdma_ud_param {
 	struct ib_ah_attr ah_attr;
 	u32 qp_num;
 	u32 qkey;
+	u8 alt_path_index;
 };
 
 struct rdma_cm_event {
@@ -147,6 +159,7 @@ struct rdma_cm_id {
 	enum rdma_port_space	 ps;
 	enum ib_qp_type		 qp_type;
 	u8			 port_num;
+	void			 *ucontext;
 };
 
 /**
@@ -207,6 +220,21 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
  * into an RDMA address before calling this routine.
  */
 int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms);
+
+/**
+ * rdma_enable_apm - Get ready to use APM for the given ID.
+ * Actual Alternate path discovery and load will take place only
+ * after a connection has been established.
+ *
+ * Calling this function only has an effect on the connection's client side.
+ * It should be called after rdma_resolve_route and before rdma_connect.
+ *
+ * @id: RDMA identifier.
+ * @alt_type: Alternate path type to resolve.
+ */
+int rdma_enable_apm(struct rdma_cm_id *id, enum alt_path_type alt_type);
+
+void *rdma_id_2_qp_ctx(struct rdma_cm_id *id);
 
 /**
  * rdma_create_qp - Allocate a QP and associate it with the specified RDMA
@@ -366,5 +394,13 @@ int rdma_set_reuseaddr(struct rdma_cm_id *id, int reuse);
  * Must be set before identifier is in the listening state.
  */
 int rdma_set_afonly(struct rdma_cm_id *id, int afonly);
+
+/**
+ * rdma_set_timeout - Set the QP timeout associated with a connection
+ * identifier.
+ * @id: Communication identifier to associated with service type.
+ * @timeout: QP timeout
+ */
+void rdma_set_timeout(struct rdma_cm_id *id, int timeout);
 
 #endif /* RDMA_CM_H */

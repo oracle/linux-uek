@@ -54,6 +54,18 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("InfiniBand userspace verbs access");
 MODULE_LICENSE("Dual BSD/GPL");
 
+module_param(ufmr_pool1_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_blocksize, "Block size for Usermode FMR Pool 1");
+
+module_param(ufmr_pool1_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool1_nelems, "No of FMRs in Usermode FMR Pool 1");
+
+module_param(ufmr_pool2_blocksize, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_blocksize, "Block size for Usermode FMR Pool 2");
+
+module_param(ufmr_pool2_nelems, int, 0444);
+MODULE_PARM_DESC(ufmr_pool2_nelems, "No of FMRs in Usermode FMR Pool 2");
+
 enum {
 	IB_UVERBS_MAJOR       = 231,
 	IB_UVERBS_BASE_MINOR  = 192,
@@ -66,6 +78,7 @@ static struct class *uverbs_class;
 
 DEFINE_SPINLOCK(ib_uverbs_idr_lock);
 DEFINE_IDR(ib_uverbs_pd_idr);
+DEFINE_IDR(ib_uverbs_shpd_idr);
 DEFINE_IDR(ib_uverbs_mr_idr);
 DEFINE_IDR(ib_uverbs_mw_idr);
 DEFINE_IDR(ib_uverbs_ah_idr);
@@ -73,6 +86,8 @@ DEFINE_IDR(ib_uverbs_cq_idr);
 DEFINE_IDR(ib_uverbs_qp_idr);
 DEFINE_IDR(ib_uverbs_srq_idr);
 DEFINE_IDR(ib_uverbs_xrcd_idr);
+DEFINE_IDR(ib_uverbs_rule_idr);
+DEFINE_IDR(ib_uverbs_fmr_idr);
 
 static DEFINE_SPINLOCK(map_lock);
 static DECLARE_BITMAP(dev_map, IB_UVERBS_MAX_DEVICES);
@@ -111,11 +126,32 @@ static ssize_t (*uverbs_cmd_table[])(struct ib_uverbs_file *file,
 	[IB_USER_VERBS_CMD_OPEN_XRCD]		= ib_uverbs_open_xrcd,
 	[IB_USER_VERBS_CMD_CLOSE_XRCD]		= ib_uverbs_close_xrcd,
 	[IB_USER_VERBS_CMD_CREATE_XSRQ]		= ib_uverbs_create_xsrq,
-	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp
+	[IB_USER_VERBS_CMD_OPEN_QP]		= ib_uverbs_open_qp,
+	[IB_USER_VERBS_CMD_CREATE_QP_EX]        = ib_uverbs_create_qp_ex,
+	[IB_USER_VERBS_CMD_MODIFY_CQ_EX]        = ib_uverbs_modify_cq_ex,
+	[IB_USER_VERBS_CMD_CREATE_FLOW]		= ib_uverbs_create_flow,
+	[IB_USER_VERBS_CMD_DESTROY_FLOW]	= ib_uverbs_destroy_flow,
+	[IB_USER_VERBS_CMD_MODIFY_QP_EX]        = ib_uverbs_modify_qp_ex,
+	[IB_USER_VERBS_CMD_REG_MR_RELAXED]      = ib_uverbs_reg_mr_relaxed,
+	[IB_USER_VERBS_CMD_DEREG_MR_RELAXED]    = ib_uverbs_dereg_mr_relaxed,
+	[IB_USER_VERBS_CMD_FLUSH_RELAXED_MR]    = ib_uverbs_flush_relaxed_mr,
+	[IB_USER_VERBS_CMD_ALLOC_SHPD]          = ib_uverbs_alloc_shpd,
+	[IB_USER_VERBS_CMD_SHARE_PD]            = ib_uverbs_share_pd,
+
 };
 
 static void ib_uverbs_add_one(struct ib_device *device);
 static void ib_uverbs_remove_one(struct ib_device *device);
+
+static void release_uobj(struct kref *kref)
+{
+        kfree(container_of(kref, struct ib_uobject, ref));
+}
+
+static void put_uobj(struct ib_uobject *uobj)
+{
+        kref_put(&uobj->ref, release_uobj);
+}
 
 static void ib_uverbs_release_dev(struct kref *ref)
 {
@@ -187,6 +223,7 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 				      struct ib_ucontext *context)
 {
 	struct ib_uobject *uobj, *tmp;
+	int err;
 
 	if (!context)
 		return 0;
@@ -201,20 +238,41 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 		kfree(uobj);
 	}
 
+	list_for_each_entry_safe(uobj, tmp, &context->rule_list, list) {
+		struct ib_flow *flow_id = uobj->object;
+
+		idr_remove_uobj(&ib_uverbs_rule_idr, uobj);
+		ib_destroy_flow(flow_id);
+		kfree(uobj);
+	}
+
 	list_for_each_entry_safe(uobj, tmp, &context->qp_list, list) {
 		struct ib_qp *qp = uobj->object;
 		struct ib_uqp_object *uqp =
 			container_of(uobj, struct ib_uqp_object, uevent.uobject);
 
 		idr_remove_uobj(&ib_uverbs_qp_idr, uobj);
-		if (qp != qp->real_qp) {
-			ib_close_qp(qp);
-		} else {
-			ib_uverbs_detach_umcast(qp, uqp);
-			ib_destroy_qp(qp);
-		}
+
+		ib_uverbs_detach_umcast(qp, uqp);
+		err = ib_destroy_qp(qp);
+		if (err)
+			pr_info("destroying uverbs qp failed: err %d\n", err);
+
 		ib_uverbs_release_uevent(file, &uqp->uevent);
 		kfree(uqp);
+	}
+
+	list_for_each_entry_safe(uobj, tmp, &context->srq_list, list) {
+		struct ib_srq *srq = uobj->object;
+		struct ib_uevent_object *uevent =
+			container_of(uobj, struct ib_uevent_object, uobject);
+
+		idr_remove_uobj(&ib_uverbs_srq_idr, uobj);
+		err = ib_destroy_srq(srq);
+		if (err)
+			pr_info("destroying uverbs srq failed: err %d\n", err);
+		ib_uverbs_release_uevent(file, uevent);
+		kfree(uevent);
 	}
 
 	list_for_each_entry_safe(uobj, tmp, &context->cq_list, list) {
@@ -224,20 +282,12 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 			container_of(uobj, struct ib_ucq_object, uobject);
 
 		idr_remove_uobj(&ib_uverbs_cq_idr, uobj);
-		ib_destroy_cq(cq);
+		err = ib_destroy_cq(cq);
+		if (err)
+			pr_info("destroying uverbs cq failed: err %d\n", err);
+
 		ib_uverbs_release_ucq(file, ev_file, ucq);
 		kfree(ucq);
-	}
-
-	list_for_each_entry_safe(uobj, tmp, &context->srq_list, list) {
-		struct ib_srq *srq = uobj->object;
-		struct ib_uevent_object *uevent =
-			container_of(uobj, struct ib_uevent_object, uobject);
-
-		idr_remove_uobj(&ib_uverbs_srq_idr, uobj);
-		ib_destroy_srq(srq);
-		ib_uverbs_release_uevent(file, uevent);
-		kfree(uevent);
 	}
 
 	/* XXX Free MWs */
@@ -247,6 +297,15 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 		idr_remove_uobj(&ib_uverbs_mr_idr, uobj);
 		ib_dereg_mr(mr);
+		kfree(uobj);
+	}
+
+	list_for_each_entry_safe(uobj, tmp, &context->fmr_list, list) {
+		struct ib_pool_fmr *fmr = uobj->object;
+		struct ib_pd *pd = fmr->pd;
+		idr_remove_uobj(&ib_uverbs_fmr_idr, uobj);
+		ib_fmr_pool_unmap(fmr);
+		atomic_dec(&pd->usecnt);
 		kfree(uobj);
 	}
 
@@ -264,9 +323,36 @@ static int ib_uverbs_cleanup_ucontext(struct ib_uverbs_file *file,
 
 	list_for_each_entry_safe(uobj, tmp, &context->pd_list, list) {
 		struct ib_pd *pd = uobj->object;
+		struct ib_relaxed_pool_data *pos;
+		struct ib_uobject          *shuobj = NULL;
+		struct ib_shpd             *shpd = NULL;
+		/* flush fmr pool associated with this pd */
+		list_for_each_entry(pos, &pd->device->relaxed_pool_list, pool_list) {
+			ib_flush_fmr_pool(pos->fmr_pool);
+		}
 
 		idr_remove_uobj(&ib_uverbs_pd_idr, uobj);
+		/* is pd shared ?*/
+		if (pd->shpd) {
+			shpd = pd->shpd;
+			shuobj = shpd->uobject;
+		}
+
 		ib_dealloc_pd(pd);
+		if(shpd) {
+			down_write(&shuobj->mutex);
+			/* if this shpd is no longer shared */
+			if (atomic_dec_and_test(&shpd->shared)) {
+				/* free the shpd info from device driver */
+				file->device->ib_dev->remove_shpd(file->device->ib_dev, shpd, 0);
+				shuobj->live = 0;
+				up_write(&shuobj->mutex);
+				idr_remove_uobj(&ib_uverbs_shpd_idr, shuobj);
+				/* there could some one waiting to lock this shared object */
+				put_uobj(shuobj);
+			} else
+				up_write(&shuobj->mutex);
+		}
 		kfree(uobj);
 	}
 
@@ -562,20 +648,108 @@ out:
 	return ev_file;
 }
 
+static const char *verbs_cmd_str(__u32 cmd)
+{
+	switch (cmd) {
+	case IB_USER_VERBS_CMD_GET_CONTEXT:
+		return "GET_CONTEXT";
+	case IB_USER_VERBS_CMD_QUERY_DEVICE:
+		return "QUERY_DEVICE";
+	case IB_USER_VERBS_CMD_QUERY_PORT:
+		return "QUERY_PORT";
+	case IB_USER_VERBS_CMD_ALLOC_PD:
+		return "ALLOC_PD";
+	case IB_USER_VERBS_CMD_DEALLOC_PD:
+		return "DEALLOC_PD";
+	case IB_USER_VERBS_CMD_REG_MR:
+		return "REG_MR";
+	case IB_USER_VERBS_CMD_DEREG_MR:
+		return "DEREG_MR";
+	case IB_USER_VERBS_CMD_CREATE_COMP_CHANNEL:
+		return "CREATE_COMP_CHANNEL";
+	case IB_USER_VERBS_CMD_CREATE_CQ:
+		return "CREATE_CQ";
+	case IB_USER_VERBS_CMD_RESIZE_CQ:
+		return "RESIZE_CQ";
+	case IB_USER_VERBS_CMD_POLL_CQ:
+		return "POLL_CQ";
+	case IB_USER_VERBS_CMD_REQ_NOTIFY_CQ:
+		return "REQ_NOTIFY_CQ";
+	case IB_USER_VERBS_CMD_DESTROY_CQ:
+		return "DESTROY_CQ";
+	case IB_USER_VERBS_CMD_CREATE_QP:
+		return "CREATE_QP";
+	case IB_USER_VERBS_CMD_QUERY_QP:
+		return "QUERY_QP";
+	case IB_USER_VERBS_CMD_MODIFY_QP:
+		return "MODIFY_QP";
+	case IB_USER_VERBS_CMD_DESTROY_QP:
+		return "DESTROY_QP";
+	case IB_USER_VERBS_CMD_POST_SEND:
+		return "POST_SEND";
+	case IB_USER_VERBS_CMD_POST_RECV:
+		return "POST_RECV";
+	case IB_USER_VERBS_CMD_POST_SRQ_RECV:
+		return "POST_SRQ_RECV";
+	case IB_USER_VERBS_CMD_CREATE_AH:
+		return "CREATE_AH";
+	case IB_USER_VERBS_CMD_DESTROY_AH:
+		return "DESTROY_AH";
+	case IB_USER_VERBS_CMD_ATTACH_MCAST:
+		return "ATTACH_MCAST";
+	case IB_USER_VERBS_CMD_DETACH_MCAST:
+		return "DETACH_MCAST";
+	case IB_USER_VERBS_CMD_CREATE_SRQ:
+		return "CREATE_SRQ";
+	case IB_USER_VERBS_CMD_MODIFY_SRQ:
+		return "MODIFY_SRQ";
+	case IB_USER_VERBS_CMD_QUERY_SRQ:
+		return "QUERY_SRQ";
+	case IB_USER_VERBS_CMD_DESTROY_SRQ:
+		return "DESTROY_SRQ";
+	case IB_USER_VERBS_CMD_OPEN_XRCD:
+		return "OPEN_XRCD";
+	case IB_USER_VERBS_CMD_CLOSE_XRCD:
+		return "CLOSE_XRCD";
+	case IB_USER_VERBS_CMD_CREATE_XSRQ:
+		return "CREATE_XSRQ";
+	case IB_USER_VERBS_CMD_OPEN_QP:
+		return "OPEN_QP";
+	case IB_USER_VERBS_CMD_CREATE_QP_EX:
+		return "CREATE_QP_EX";
+	case IB_USER_VERBS_CMD_MODIFY_CQ_EX:
+		return "MODIFY_CQ_EX";
+	case IB_USER_VERBS_CMD_CREATE_FLOW:
+		return "CREATE_FLOW";
+	case IB_USER_VERBS_CMD_DESTROY_FLOW:
+		return "DESTROY_FLOW";
+	}
+	return "Unknown command";
+}
+
+enum {
+	COMMAND_INFO_MASK = 0x1000,
+};
+
 static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 			     size_t count, loff_t *pos)
 {
 	struct ib_uverbs_file *file = filp->private_data;
+	struct ib_device *dev = file->device->ib_dev;
 	struct ib_uverbs_cmd_hdr hdr;
+	struct timespec ts1;
+	struct timespec ts2;
+	ktime_t t1, t2, delta;
+	s64 ds;
+	ssize_t ret;
+	u64 dividend;
+	u32 divisor;
 
 	if (count < sizeof hdr)
 		return -EINVAL;
 
 	if (copy_from_user(&hdr, buf, sizeof hdr))
 		return -EFAULT;
-
-	if (hdr.in_words * 4 != count)
-		return -EINVAL;
 
 	if (hdr.command >= ARRAY_SIZE(uverbs_cmd_table) ||
 	    !uverbs_cmd_table[hdr.command])
@@ -585,11 +759,53 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	    hdr.command != IB_USER_VERBS_CMD_GET_CONTEXT)
 		return -EINVAL;
 
-	if (!(file->device->ib_dev->uverbs_cmd_mask & (1ull << hdr.command)))
+	if (!(dev->uverbs_cmd_mask & (1ull << hdr.command)))
 		return -ENOSYS;
 
-	return uverbs_cmd_table[hdr.command](file, buf + sizeof hdr,
-					     hdr.in_words * 4, hdr.out_words * 4);
+	ktime_get_ts(&ts1);
+	if (hdr.command >= IB_USER_VERBS_CMD_THRESHOLD) {
+		struct ib_uverbs_cmd_hdr_ex hdr_ex;
+
+		if (copy_from_user(&hdr_ex, buf, sizeof(hdr_ex)))
+			return -EFAULT;
+
+		if (((hdr_ex.in_words + hdr_ex.provider_in_words) * 4) != count)
+			return -EINVAL;
+
+		ret = uverbs_cmd_table[hdr.command](
+				file,
+				buf + sizeof(hdr_ex),
+				(hdr_ex.in_words + hdr_ex.provider_in_words) * 4,
+				(hdr_ex.out_words + hdr_ex.provider_out_words) * 4);
+	} else {
+		if (hdr.in_words * 4 != count)
+			return -EINVAL;
+
+		ret = uverbs_cmd_table[hdr.command](
+				file,
+				buf + sizeof(hdr),
+				hdr.in_words * 4, hdr.out_words * 4);
+	}
+	if ((dev->cmd_perf & (COMMAND_INFO_MASK - 1)) == hdr.command) {
+		ktime_get_ts(&ts2);
+		t1 = timespec_to_ktime(ts1);
+		t2 = timespec_to_ktime(ts2);
+		delta = ktime_sub(t2, t1);
+		ds = ktime_to_ns(delta);
+		spin_lock(&dev->cmd_perf_lock);
+		dividend = dev->cmd_avg * dev->cmd_n + ds;
+		++dev->cmd_n;
+		divisor = dev->cmd_n;
+		do_div(dividend, divisor);
+		dev->cmd_avg = dividend;
+		spin_unlock(&dev->cmd_perf_lock);
+		if (dev->cmd_perf & COMMAND_INFO_MASK) {
+			pr_info("%s: %s execution time = %lld nsec\n",
+				file->device->ib_dev->name,
+				verbs_cmd_str(hdr.command), ds);
+		}
+	}
+	return ret;
 }
 
 static int ib_uverbs_mmap(struct file *filp, struct vm_area_struct *vma)
@@ -601,6 +817,25 @@ static int ib_uverbs_mmap(struct file *filp, struct vm_area_struct *vma)
 	else
 		return file->device->ib_dev->mmap(file->ucontext, vma);
 }
+
+static unsigned long ib_uverbs_get_unmapped_area(struct file *filp,
+		unsigned long addr,
+		unsigned long len, unsigned long pgoff, unsigned long flags)
+{
+	struct ib_uverbs_file *file = filp->private_data;
+
+	if (!file->ucontext)
+		return -ENODEV;
+	else {
+		if (!file->device->ib_dev->get_unmapped_area)
+			return current->mm->get_unmapped_area(filp, addr, len,
+								pgoff, flags);
+
+		return file->device->ib_dev->get_unmapped_area(filp, addr, len,
+								pgoff, flags);
+	}
+}
+
 
 /*
  * ib_uverbs_open() does not need the BKL:
@@ -682,6 +917,7 @@ static const struct file_operations uverbs_mmap_fops = {
 	.open	 = ib_uverbs_open,
 	.release = ib_uverbs_close,
 	.llseek	 = no_llseek,
+	.get_unmapped_area = ib_uverbs_get_unmapped_area,
 };
 
 static struct ib_client uverbs_client = {
@@ -701,6 +937,18 @@ static ssize_t show_ibdev(struct device *device, struct device_attribute *attr,
 	return sprintf(buf, "%s\n", dev->ib_dev->name);
 }
 static DEVICE_ATTR(ibdev, S_IRUGO, show_ibdev, NULL);
+
+static ssize_t show_dev_ref_cnt(struct device *device,
+				struct device_attribute *attr, char *buf)
+{
+	struct ib_uverbs_device *dev = dev_get_drvdata(device);
+
+	if (!dev)
+		return -ENODEV;
+
+	return sprintf(buf, "%d\n",  atomic_read(&dev->ref.refcount));
+}
+static DEVICE_ATTR(ref_cnt, S_IRUGO, show_dev_ref_cnt, NULL);
 
 static ssize_t show_dev_abi_version(struct device *device,
 				    struct device_attribute *attr, char *buf)
@@ -800,8 +1048,16 @@ static void ib_uverbs_add_one(struct ib_device *device)
 
 	if (device_create_file(uverbs_dev->dev, &dev_attr_ibdev))
 		goto err_class;
+	if (device_create_file(uverbs_dev->dev, &dev_attr_ref_cnt))
+		goto err_class;
 	if (device_create_file(uverbs_dev->dev, &dev_attr_abi_version))
 		goto err_class;
+
+	device->relaxed_pd = ib_alloc_pd(device);
+	if (IS_ERR(device->relaxed_pd)) {
+		device->relaxed_pd = NULL;
+		goto err_class;
+	}
 
 	ib_set_client_data(device, &uverbs_client, uverbs_dev);
 
@@ -827,9 +1083,21 @@ err:
 static void ib_uverbs_remove_one(struct ib_device *device)
 {
 	struct ib_uverbs_device *uverbs_dev = ib_get_client_data(device, &uverbs_client);
+	struct ib_relaxed_pool_data *pos;
+	struct ib_relaxed_pool_data *tmp;
+	int ret = 0;
 
 	if (!uverbs_dev)
 		return;
+
+	list_for_each_entry_safe(pos, tmp, &device->relaxed_pool_list, pool_list) {
+		ib_destroy_fmr_pool(pos->fmr_pool);
+		list_del(&pos->pool_list);
+		kfree(pos);
+		}
+
+	ret = ib_dealloc_pd(device->relaxed_pd);
+	device->relaxed_pd = NULL;
 
 	dev_set_drvdata(uverbs_dev->dev, NULL);
 	device_destroy(uverbs_class, uverbs_dev->cdev.dev);
@@ -904,7 +1172,9 @@ static void __exit ib_uverbs_cleanup(void)
 	if (overflow_maj)
 		unregister_chrdev_region(overflow_maj, IB_UVERBS_MAX_DEVICES);
 	idr_destroy(&ib_uverbs_pd_idr);
+	idr_destroy(&ib_uverbs_shpd_idr);
 	idr_destroy(&ib_uverbs_mr_idr);
+	idr_destroy(&ib_uverbs_fmr_idr);
 	idr_destroy(&ib_uverbs_mw_idr);
 	idr_destroy(&ib_uverbs_ah_idr);
 	idr_destroy(&ib_uverbs_cq_idr);

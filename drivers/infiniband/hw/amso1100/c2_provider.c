@@ -241,6 +241,9 @@ static struct ib_qp *c2_create_qp(struct ib_pd *pd,
 	if (init_attr->create_flags)
 		return ERR_PTR(-EINVAL);
 
+	if (init_attr->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	switch (init_attr->qp_type) {
 	case IB_QPT_RC:
 		qp = kzalloc(sizeof(*qp), GFP_KERNEL);
@@ -830,6 +833,11 @@ int c2_register_device(struct c2_dev *dev)
 	dev->ibdev.unmap_fmr = NULL;
 	dev->ibdev.dealloc_fmr = NULL;
 	dev->ibdev.map_phys_fmr = NULL;
+	dev->ib_dev.set_fmr_pd = NULL;
+
+	dev->ib_dev.alloc_shpd = NULL;
+	dev->ib_dev.share_pd = NULL;
+	dev->ib_dev.remove_shpd = NULL;
 
 	dev->ibdev.attach_mcast = c2_multicast_attach;
 	dev->ibdev.detach_mcast = c2_multicast_detach;

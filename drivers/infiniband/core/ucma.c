@@ -54,6 +54,7 @@ MODULE_LICENSE("Dual BSD/GPL");
 
 static unsigned int max_backlog = 1024;
 
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 static struct ctl_table_header *ucma_ctl_table_hdr;
 static ctl_table ucma_ctl_table[] = {
 	{
@@ -65,6 +66,7 @@ static ctl_table ucma_ctl_table[] = {
 	},
 	{ }
 };
+#endif
 
 struct ucma_file {
 	struct mutex		mut;
@@ -343,6 +345,7 @@ static ssize_t ucma_get_event(struct ucma_file *file, const char __user *inbuf,
 		ctx->cm_id = uevent->cm_id;
 		ctx->cm_id->context = ctx;
 		uevent->resp.id = ctx->id;
+		ctx->cm_id->ucontext = ctx;
 	}
 
 	if (copy_to_user((void __user *)(unsigned long)cmd.response,
@@ -410,6 +413,7 @@ static ssize_t ucma_create_id(struct ucma_file *file, const char __user *inbuf,
 		ret = PTR_ERR(ctx->cm_id);
 		goto err1;
 	}
+	ctx->cm_id->ucontext = ctx;
 
 	resp.id = ctx->id;
 	if (copy_to_user((void __user *)(unsigned long)cmd.response,
@@ -960,6 +964,16 @@ static int ucma_set_option_ib(struct ucma_context *ctx, int optname,
 	case RDMA_OPTION_IB_PATH:
 		ret = ucma_set_ib_path(ctx, optval, optlen);
 		break;
+
+	case RDMA_OPTION_IB_APM:
+		if (optlen != sizeof(u8)) {
+			ret = -EINVAL;
+			break;
+		}
+		if (*(u8 *)optval)
+			ret = rdma_enable_apm(ctx->cm_id, RDMA_ALT_PATH_BEST);
+		break;
+
 	default:
 		ret = -ENOSYS;
 	}
@@ -1387,15 +1401,19 @@ static int __init ucma_init(void)
 		goto err1;
 	}
 
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 	ucma_ctl_table_hdr = register_net_sysctl(&init_net, "net/rdma_ucm", ucma_ctl_table);
 	if (!ucma_ctl_table_hdr) {
 		printk(KERN_ERR "rdma_ucm: couldn't register sysctl paths\n");
 		ret = -ENOMEM;
 		goto err2;
 	}
+#endif
 	return 0;
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 err2:
 	device_remove_file(ucma_misc.this_device, &dev_attr_abi_version);
+#endif
 err1:
 	misc_deregister(&ucma_misc);
 	return ret;
@@ -1403,7 +1421,9 @@ err1:
 
 static void __exit ucma_cleanup(void)
 {
+#ifndef CONFIG_SYSCTL_SYSCALL_CHECK
 	unregister_net_sysctl_table(ucma_ctl_table_hdr);
+#endif
 	device_remove_file(ucma_misc.this_device, &dev_attr_abi_version);
 	misc_deregister(&ucma_misc);
 	idr_destroy(&ctx_idr);

@@ -115,6 +115,13 @@ enum ib_device_cap_flags {
 	IB_DEVICE_XRC			= (1<<20),
 	IB_DEVICE_MEM_MGT_EXTENSIONS	= (1<<21),
 	IB_DEVICE_BLOCK_MULTICAST_LOOPBACK = (1<<22),
+	IB_DEVICE_MR_ALLOCATE		= (1<<23),
+	IB_DEVICE_SHARED_MR             = (1<<24),
+	IB_DEVICE_QPG			= (1<<25),
+	IB_DEVICE_UD_RSS		= (1<<26),
+	IB_DEVICE_UD_TSS		= (1<<27),
+	IB_DEVICE_CROSS_CHANNEL		= (1<<28),
+	IB_DEVICE_MANAGED_FLOW_STEERING = (1<<29)
 };
 
 enum ib_atomic_cap {
@@ -162,6 +169,7 @@ struct ib_device_attr {
 	int			max_srq_wr;
 	int			max_srq_sge;
 	unsigned int		max_fast_reg_page_list_len;
+	int			max_rss_tbl_sz;
 	u16			max_pkeys;
 	u8			local_ca_ack_delay;
 };
@@ -584,6 +592,7 @@ struct ib_qp_cap {
 	u32	max_send_sge;
 	u32	max_recv_sge;
 	u32	max_inline_data;
+	u32	qpg_tss_mask_sz;
 };
 
 enum ib_sig_type {
@@ -608,15 +617,33 @@ enum ib_qp_type {
 	IB_QPT_RAW_PACKET = 8,
 	IB_QPT_XRC_INI = 9,
 	IB_QPT_XRC_TGT,
+	IB_QPT_DC_INI,
+	IB_QPT_DC_TGT,
 	IB_QPT_MAX
 };
 
 enum ib_qp_create_flags {
 	IB_QP_CREATE_IPOIB_UD_LSO		= 1 << 0,
 	IB_QP_CREATE_BLOCK_MULTICAST_LOOPBACK	= 1 << 1,
+	IB_QP_CREATE_CROSS_CHANNEL		= 1 << 2,
+	IB_QP_CREATE_MANAGED_SEND		= 1 << 3,
+	IB_QP_CREATE_MANAGED_RECV		= 1 << 4,
+	IB_QP_CREATE_NETIF_QP			= 1 << 5,
 	/* reserve bits 26-31 for low level drivers' internal use */
 	IB_QP_CREATE_RESERVED_START		= 1 << 26,
 	IB_QP_CREATE_RESERVED_END		= 1 << 31,
+};
+
+enum ib_qpg_type {
+	IB_QPG_NONE	= 0,
+	IB_QPG_PARENT	= (1<<0),
+	IB_QPG_CHILD_RX = (1<<1),
+	IB_QPG_CHILD_TX = (1<<2)
+};
+
+struct ib_qpg_init_attrib {
+	u32 tss_child_count;
+	u32 rss_child_count;
 };
 
 struct ib_qp_init_attr {
@@ -627,9 +654,14 @@ struct ib_qp_init_attr {
 	struct ib_srq	       *srq;
 	struct ib_xrcd	       *xrcd;     /* XRC TGT QPs only */
 	struct ib_qp_cap	cap;
+	union {
+		struct ib_qp *qpg_parent; /* see qpg_type */
+		struct ib_qpg_init_attrib parent_attrib;
+	};
 	enum ib_sig_type	sq_sig_type;
 	enum ib_qp_type		qp_type;
 	enum ib_qp_create_flags	create_flags;
+	enum ib_qpg_type	qpg_type;
 	u8			port_num; /* special QP types only */
 };
 
@@ -696,7 +728,9 @@ enum ib_qp_attr_mask {
 	IB_QP_MAX_DEST_RD_ATOMIC	= (1<<17),
 	IB_QP_PATH_MIG_STATE		= (1<<18),
 	IB_QP_CAP			= (1<<19),
-	IB_QP_DEST_QPN			= (1<<20)
+	IB_QP_DEST_QPN			= (1<<20),
+	IB_QP_GROUP_RSS			= (1<<21),
+	IB_QP_DC_KEY			= (1<<22)
 };
 
 enum ib_qp_state {
@@ -743,6 +777,35 @@ struct ib_qp_attr {
 	u8			alt_timeout;
 };
 
+struct ib_qp_attr_ex {
+	enum ib_qp_state	qp_state;
+	enum ib_qp_state	cur_qp_state;
+	enum ib_mtu		path_mtu;
+	enum ib_mig_state	path_mig_state;
+	u32			qkey;
+	u32			rq_psn;
+	u32			sq_psn;
+	u32			dest_qp_num;
+	int			qp_access_flags;
+	struct ib_qp_cap	cap;
+	struct ib_ah_attr	ah_attr;
+	struct ib_ah_attr	alt_ah_attr;
+	u16			pkey_index;
+	u16			alt_pkey_index;
+	u8			en_sqd_async_notify;
+	u8			sq_draining;
+	u8			max_rd_atomic;
+	u8			max_dest_rd_atomic;
+	u8			min_rnr_timer;
+	u8			port_num;
+	u8			timeout;
+	u8			retry_cnt;
+	u8			rnr_retry;
+	u8			alt_port_num;
+	u8			alt_timeout;
+	u64			dct_key;
+};
+
 enum ib_wr_opcode {
 	IB_WR_RDMA_WRITE,
 	IB_WR_RDMA_WRITE_WITH_IMM,
@@ -758,6 +821,7 @@ enum ib_wr_opcode {
 	IB_WR_FAST_REG_MR,
 	IB_WR_MASKED_ATOMIC_CMP_AND_SWP,
 	IB_WR_MASKED_ATOMIC_FETCH_AND_ADD,
+	IB_WR_UMR,
 };
 
 enum ib_send_flags {
@@ -765,7 +829,8 @@ enum ib_send_flags {
 	IB_SEND_SIGNALED	= (1<<1),
 	IB_SEND_SOLICITED	= (1<<2),
 	IB_SEND_INLINE		= (1<<3),
-	IB_SEND_IP_CSUM		= (1<<4)
+	IB_SEND_IP_CSUM		= (1<<4),
+	IB_SEND_UMR_UNREG       = (1<<5)
 };
 
 struct ib_sge {
@@ -823,6 +888,15 @@ struct ib_send_wr {
 			int				access_flags;
 			u32				rkey;
 		} fast_reg;
+		struct {
+			int		npages;
+			int		access_flags;
+			u32		mkey;
+			struct ib_pd   *pd;
+			u64		virt_addr;
+			u64		length;
+			int		page_shift;
+		} umr;
 	} wr;
 	u32			xrc_remote_srq_num;	/* XRC TGT QPs only */
 };
@@ -839,7 +913,15 @@ enum ib_access_flags {
 	IB_ACCESS_REMOTE_WRITE	= (1<<1),
 	IB_ACCESS_REMOTE_READ	= (1<<2),
 	IB_ACCESS_REMOTE_ATOMIC	= (1<<3),
-	IB_ACCESS_MW_BIND	= (1<<4)
+	IB_ACCESS_MW_BIND	= (1<<4),
+	IB_ACCESS_ALLOCATE_MR	= (1<<5),
+	IB_ACCESS_SHARED_MR_USER_READ   = (1<<6),
+	IB_ACCESS_SHARED_MR_USER_WRITE  = (1<<7),
+	IB_ACCESS_SHARED_MR_GROUP_READ  = (1<<8),
+	IB_ACCESS_SHARED_MR_GROUP_WRITE = (1<<9),
+	IB_ACCESS_SHARED_MR_OTHER_READ  = (1<<10),
+	IB_ACCESS_SHARED_MR_OTHER_WRITE = (1<<11)
+
 };
 
 struct ib_phys_buf {
@@ -881,12 +963,14 @@ struct ib_ucontext {
 	struct ib_device       *device;
 	struct list_head	pd_list;
 	struct list_head	mr_list;
+	struct list_head	fmr_list;
 	struct list_head	mw_list;
 	struct list_head	cq_list;
 	struct list_head	qp_list;
 	struct list_head	srq_list;
 	struct list_head	ah_list;
 	struct list_head	xrcd_list;
+	struct list_head	rule_list;
 	int			closing;
 };
 
@@ -911,7 +995,15 @@ struct ib_udata {
 struct ib_pd {
 	struct ib_device       *device;
 	struct ib_uobject      *uobject;
+	struct ib_shpd         *shpd;    /* global uobj id if this pd is shared */
 	atomic_t          	usecnt; /* count all resources */
+};
+
+struct ib_shpd {
+	struct ib_device       *device;
+	struct ib_uobject      *uobject;
+	atomic_t                shared; /* count procs sharing the pd*/
+	u64                     share_key;
 };
 
 struct ib_xrcd {
@@ -927,6 +1019,23 @@ struct ib_ah {
 	struct ib_device	*device;
 	struct ib_pd		*pd;
 	struct ib_uobject	*uobject;
+};
+
+enum ib_cq_attr_mask {
+	IB_CQ_MODERATION               = (1 << 0),
+	IB_CQ_CAP_FLAGS                = (1 << 1)
+};
+
+enum ib_cq_cap_flags {
+	IB_CQ_IGNORE_OVERRUN           = (1 << 0)
+};
+
+struct ib_cq_attr {
+	struct {
+		u16     cq_count;
+		u16     cq_period;
+	} moderation;
+	u32     cq_cap_flags;
 };
 
 typedef void (*ib_comp_handler)(struct ib_cq *cq, void *cq_context);
@@ -967,7 +1076,8 @@ struct ib_qp {
 	struct ib_srq	       *srq;
 	struct ib_xrcd	       *xrcd; /* XRC TGT QPs only */
 	struct list_head	xrcd_list;
-	atomic_t		usecnt; /* count times opened, mcast attaches */
+	/* count times opened, mcast attaches, flow attaches */
+	atomic_t		usecnt;
 	struct list_head	open_list;
 	struct ib_qp           *real_qp;
 	struct ib_uobject      *uobject;
@@ -975,6 +1085,7 @@ struct ib_qp {
 	void		       *qp_context;
 	u32			qp_num;
 	enum ib_qp_type		qp_type;
+	enum ib_qpg_type	qpg_type;
 };
 
 struct ib_mr {
@@ -999,6 +1110,131 @@ struct ib_fmr {
 	struct list_head	list;
 	u32			lkey;
 	u32			rkey;
+};
+
+/* Supported steering options */
+enum ib_flow_attr_type {
+	/* steering according to rule specifications */
+	IB_FLOW_ATTR_NORMAL		= 0x0,
+	/* default unicast and multicast rule -
+	 * receive all Eth traffic which isn't steered to any QP
+	 */
+	IB_FLOW_ATTR_ALL_DEFAULT	= 0x1,
+	/* default multicast rule -
+	 * receive all Eth multicast traffic which isn't steered to any QP
+	 */
+	IB_FLOW_ATTR_MC_DEFAULT		= 0x2,
+	/* sniffer rule - receive all port traffic */
+	IB_FLOW_ATTR_SNIFFER		= 0x3
+};
+
+/* Supported steering header types */
+enum ib_flow_spec_type {
+	/* L2 headers*/
+	IB_FLOW_SPEC_ETH	= 0x20,
+	IB_FLOW_SPEC_IB		= 0x21,
+	/* L3 header*/
+	IB_FLOW_SPEC_IPV4	= 0x30,
+	/* L4 headers*/
+	IB_FLOW_SPEC_TCP	= 0x40,
+	IB_FLOW_SPEC_UDP	= 0x41
+};
+
+/* Flow steering rule priority is set according to it's domain.
+ * Lower domain value means higher priority.
+ */
+enum ib_flow_domain {
+	IB_FLOW_DOMAIN_USER,
+	IB_FLOW_DOMAIN_ETHTOOL,
+	IB_FLOW_DOMAIN_RFS,
+	IB_FLOW_DOMAIN_NIC,
+	IB_FLOW_DOMAIN_NUM /* Must be last */
+};
+
+enum ib_flow_flags {
+	IB_FLOW_ATTR_FLAGS_ALLOW_LOOP_BACK = 1
+};
+
+struct ib_flow_eth_filter {
+	u8	dst_mac[6];
+	u8	src_mac[6];
+	u16	ether_type;
+	u16	vlan_tag;
+};
+
+struct ib_flow_spec_eth {
+	enum ib_flow_spec_type	  type;
+	u16			  size;
+	struct ib_flow_eth_filter val;
+	struct ib_flow_eth_filter mask;
+};
+
+struct ib_flow_ib_filter {
+	u32	l3_type_qpn;
+	u8	dst_gid[16];
+};
+
+struct ib_flow_spec_ib {
+	enum ib_flow_spec_type	 type;
+	u16			 size;
+	struct ib_flow_ib_filter val;
+	struct ib_flow_ib_filter mask;
+};
+
+struct ib_flow_ipv4_filter {
+	u32	src_ip;
+	u32	dst_ip;
+};
+
+struct ib_flow_spec_ipv4 {
+	enum ib_flow_spec_type	   type;
+	u16			   size;
+	struct ib_flow_ipv4_filter val;
+	struct ib_flow_ipv4_filter mask;
+};
+
+struct ib_flow_tcp_udp_filter {
+	u16	dst_port;
+	u16	src_port;
+};
+
+struct ib_flow_spec_tcp_udp {
+	enum ib_flow_spec_type	      type;
+	u16			      size;
+	struct ib_flow_tcp_udp_filter val;
+	struct ib_flow_tcp_udp_filter mask;
+};
+
+struct _ib_flow_spec {
+	union {
+		struct {
+			enum ib_flow_spec_type	type;
+			u16			size;
+		};
+		struct ib_flow_spec_ib ib;
+		struct ib_flow_spec_eth eth;
+		struct ib_flow_spec_ipv4 ipv4;
+		struct ib_flow_spec_tcp_udp tcp_udp;
+	};
+};
+
+struct ib_flow_attr {
+	enum ib_flow_attr_type type;
+	u16	     size;
+	u16	     priority;
+	u8	     num_of_specs;
+	u8	     port;
+	u32	     flags;
+	/* Following are the optional layers according to user request
+	 * struct ib_flow_spec_xxx
+	 * struct ib_flow_spec_yyy
+	 */
+};
+
+struct ib_flow {
+	struct ib_qp		*qp;
+	struct ib_uobject	*uobject;
+	void			*flow_context;
 };
 
 struct ib_mad;
@@ -1163,8 +1399,9 @@ struct ib_device {
 						int comp_vector,
 						struct ib_ucontext *context,
 						struct ib_udata *udata);
-	int                        (*modify_cq)(struct ib_cq *cq, u16 cq_count,
-						u16 cq_period);
+	int                        (*modify_cq)(struct ib_cq *cq,
+						struct ib_cq_attr *cq_attr,
+						int cq_attr_mask);
 	int                        (*destroy_cq)(struct ib_cq *cq);
 	int                        (*resize_cq)(struct ib_cq *cq, int cqe,
 						struct ib_udata *udata);
@@ -1186,7 +1423,8 @@ struct ib_device {
 						  u64 start, u64 length,
 						  u64 virt_addr,
 						  int mr_access_flags,
-						  struct ib_udata *udata);
+						  struct ib_udata *udata,
+						  int mr_id);
 	int                        (*query_mr)(struct ib_mr *mr,
 					       struct ib_mr_attr *mr_attr);
 	int                        (*dereg_mr)(struct ib_mr *mr);
@@ -1232,6 +1470,23 @@ struct ib_device {
 						 struct ib_ucontext *ucontext,
 						 struct ib_udata *udata);
 	int			   (*dealloc_xrcd)(struct ib_xrcd *xrcd);
+	struct ib_flow *	   (*create_flow)(struct ib_qp *qp,
+						  struct ib_flow_attr
+						  *flow_attr,
+						  int domain);
+	int			   (*destroy_flow)(struct ib_flow *flow_id);
+
+	unsigned long		   (*get_unmapped_area)(struct file *file,
+					unsigned long addr,
+					unsigned long len, unsigned long pgoff,
+					unsigned long flags);
+	int                        (*set_fmr_pd)(struct ib_fmr *fmr, struct ib_pd *pd);
+	struct ib_shpd            *(*alloc_shpd)(struct ib_device *ibdev, struct ib_pd *pd);
+	struct ib_pd              *(*share_pd)(struct ib_device *ibdev,
+                                           struct ib_ucontext *context,
+                                           struct ib_udata *udata, struct ib_shpd *shpd);
+	int                        (*remove_shpd)(struct ib_device *ibdev,
+                                              struct ib_shpd *shpd, int atinit);
 
 	struct ib_dma_mapping_ops   *dma_ops;
 
@@ -1254,6 +1509,19 @@ struct ib_device {
 	u32			     local_dma_lkey;
 	u8                           node_type;
 	u8                           phys_port_cnt;
+	int			     cmd_perf;
+	u64			     cmd_avg;
+	u32			     cmd_n;
+	spinlock_t		     cmd_perf_lock;
+	struct ib_pd		     *relaxed_pd;
+	struct list_head	     relaxed_pool_list;
+};
+
+struct ib_relaxed_pool_data {
+	struct ib_fmr_pool *fmr_pool;
+	u32 access_flags;
+	int max_pages;
+	struct list_head pool_list;
 };
 
 struct ib_client {
@@ -1609,13 +1877,16 @@ struct ib_cq *ib_create_cq(struct ib_device *device,
 int ib_resize_cq(struct ib_cq *cq, int cqe);
 
 /**
- * ib_modify_cq - Modifies moderation params of the CQ
+ * ib_modify_cq - Modifies the attributes for the specified CQ and then
+ *   transitions the CQ to the given state.
  * @cq: The CQ to modify.
- * @cq_count: number of CQEs that will trigger an event
- * @cq_period: max period of time in usec before triggering an event
- *
+ * @cq_attr: specifies the CQ attributes to modify.
+ * @cq_attr_mask: A bit-mask used to specify which attributes of the CQ
+ *   are being modified.
  */
-int ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period);
+int ib_modify_cq(struct ib_cq *cq,
+		 struct ib_cq_attr *cq_attr,
+		 int cq_attr_mask);
 
 /**
  * ib_destroy_cq - Destroys the specified CQ.
@@ -2115,6 +2386,13 @@ struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 			    struct ib_fmr_attr *fmr_attr);
 
 /**
+ * ib_set_fmr_pd - set new PD for an FMR
+ * @fmr: The fast memory region to associate with the pd.
+ * @pd: new pd.
+ */
+int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd);
+
+/**
  * ib_map_phys_fmr - Maps a list of physical pages to a fast memory region.
  * @fmr: The fast memory region to associate with the pages.
  * @page_list: An array of physical pages to map to the fast memory region.
@@ -2173,5 +2451,9 @@ struct ib_xrcd *ib_alloc_xrcd(struct ib_device *device);
  * @xrcd: The XRC domain to deallocate.
  */
 int ib_dealloc_xrcd(struct ib_xrcd *xrcd);
+
+struct ib_flow *ib_create_flow(struct ib_qp *qp,
+			       struct ib_flow_attr *flow_attr, int domain);
+int ib_destroy_flow(struct ib_flow *flow_id);
 
 #endif /* IB_VERBS_H */
