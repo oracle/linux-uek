@@ -2195,11 +2195,21 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 		goto err_xrcd_table_free;
 	}
 
+	if (!mlx4_is_slave(dev)) {
+		err = mlx4_init_mcg_table(dev);
+		if (err) {
+			mlx4_err(dev, "Failed to initialize "
+				 "multicast group table (err=%d), aborting.\n",
+				 err);
+			goto err_mr_table_free;
+		}
+	}
+
 	err = mlx4_init_eq_table(dev);
 	if (err) {
 		mlx4_err(dev, "Failed to initialize "
 			 "event queue table (err=%d), aborting.\n", err);
-		goto err_mr_table_free;
+		goto err_mcg_table_free;
 	}
 
 	err = mlx4_cmd_use_events(dev);
@@ -2251,19 +2261,11 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 	}
 
 	if (!mlx4_is_slave(dev)) {
-		err = mlx4_init_mcg_table(dev);
-		if (err) {
-			mlx4_err(dev, "Failed to initialize "
-				 "multicast group table (err=%d), aborting.\n",
-				 err);
-			goto err_qp_table_free;
-		}
-
 		err = mlx4_init_counters_table(dev);
 		if (err && err != -ENOENT) {
 			mlx4_err(dev, "Failed to initialize counters table (err=%d), "
 				 "aborting.\n", err);
-			goto err_mcg_table_free;
+			goto err_qp_table_free;
 		}
 
 		for (port = 1; port <= dev->caps.num_ports; port++) {
@@ -2307,9 +2309,6 @@ static int mlx4_setup_hca(struct mlx4_dev *dev)
 err_counters_table_free:
 	mlx4_cleanup_counters_table(dev);
 
-err_mcg_table_free:
-	mlx4_cleanup_mcg_table(dev);
-
 err_qp_table_free:
 	mlx4_cleanup_qp_table(dev);
 
@@ -2324,6 +2323,10 @@ err_cmd_poll:
 
 err_eq_table_free:
 	mlx4_cleanup_eq_table(dev);
+
+err_mcg_table_free:
+	if (!mlx4_is_slave(dev))
+		mlx4_cleanup_mcg_table(dev);
 
 err_mr_table_free:
 	mlx4_cleanup_mr_table(dev);
@@ -2835,12 +2838,12 @@ err_port:
 		mlx4_cleanup_port_info(&priv->port[port]);
 
 	mlx4_cleanup_counters_table(dev);
-	mlx4_cleanup_mcg_table(dev);
 	mlx4_cleanup_qp_table(dev);
 	mlx4_cleanup_srq_table(dev);
 	mlx4_cleanup_cq_table(dev);
 	mlx4_cmd_use_polling(dev);
 	mlx4_cleanup_eq_table(dev);
+	mlx4_cleanup_mcg_table(dev);
 	mlx4_cleanup_mr_table(dev);
 	mlx4_cleanup_xrcd_table(dev);
 	mlx4_cleanup_pd_table(dev);
@@ -2932,12 +2935,12 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 						   RES_TR_FREE_SLAVES_ONLY);
 
 		mlx4_cleanup_counters_table(dev);
-		mlx4_cleanup_mcg_table(dev);
 		mlx4_cleanup_qp_table(dev);
 		mlx4_cleanup_srq_table(dev);
 		mlx4_cleanup_cq_table(dev);
 		mlx4_cmd_use_polling(dev);
 		mlx4_cleanup_eq_table(dev);
+		mlx4_cleanup_mcg_table(dev);
 		mlx4_cleanup_mr_table(dev);
 		mlx4_cleanup_xrcd_table(dev);
 		mlx4_cleanup_pd_table(dev);

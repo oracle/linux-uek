@@ -1456,7 +1456,6 @@ int mlx4_init_mcg_table(struct mlx4_dev *dev)
 		return err;
 
 	mutex_init(&priv->mcg_table.mutex);
-	priv->mcg_table.inited = true;
 
 	return 0;
 }

@@ -659,7 +659,6 @@ struct mlx4_mcg_table {
 	struct mutex		mutex;
 	struct mlx4_bitmap	bitmap;
 	struct mlx4_icm_table	table;
-	bool			inited;
 };
 
 struct mlx4_catas_err {

@@ -1801,11 +1801,6 @@ void mlx4_opreq_action(struct work_struct *work)
 
 		switch (type) {
 		case ADD_TO_MCG:
-			if (!priv->mcg_table.inited) {
-				mlx4_warn(dev, "ADD MCG operation cannot be performed\n");
-				err = EAGAIN;
-				break;
-			}
 			if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
 				mlx4_warn(dev, "ADD MCG operation is not supported in "
 					       "DEVICE_MANAGED steerign mode\n");
