@@ -208,7 +208,7 @@ static void ipoib_cm_free_rx_ring(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int i;
 
-	for (i = 0; i < ipoib_cm_recvq_size; ++i)
+	for (i = 0; i < ipoib_recvq_size; ++i)
 		if (rx_ring[i].skb) {
 			ipoib_cm_dma_unmap_rx(priv, IPOIB_CM_RX_SG - 1,
 					      rx_ring[i].mapping);
@@ -276,7 +276,7 @@ static struct ib_qp *ipoib_cm_create_rx_qp(struct net_device *dev,
 	int index;
 
 	if (!ipoib_cm_has_srq(dev)) {
-		attr.cap.max_recv_wr  = ipoib_cm_recvq_size;
+		attr.cap.max_recv_wr  = ipoib_recvq_size;
 		attr.cap.max_recv_sge = IPOIB_CM_RX_SG;
 	}
 
@@ -378,10 +378,10 @@ static int ipoib_cm_nonsrq_init_rx(struct net_device *dev, struct ib_cm_id *cm_i
 	int ret;
 	int i;
 
-	rx->rx_ring = vzalloc(ipoib_cm_recvq_size * sizeof(*rx->rx_ring));
+	rx->rx_ring = vzalloc(ipoib_recvq_size * sizeof *rx->rx_ring);
 	if (!rx->rx_ring) {
 		printk(KERN_WARNING "%s: failed to allocate CM non-SRQ ring (%d entries)\n",
-		       priv->ca->name, ipoib_cm_recvq_size);
+		       priv->ca->name, ipoib_recvq_size);
 		return -ENOMEM;
 	}
 
@@ -397,7 +397,7 @@ static int ipoib_cm_nonsrq_init_rx(struct net_device *dev, struct ib_cm_id *cm_i
 
 	spin_unlock_irq(&priv->lock);
 
-	for (i = 0; i < ipoib_cm_recvq_size; ++i) {
+	for (i = 0; i < ipoib_recvq_size; ++i) {
 		if (!ipoib_cm_alloc_rx_skb(dev, rx->rx_ring, i, IPOIB_CM_RX_SG - 1,
 					   rx->rx_ring[i].mapping,
 					   GFP_ATOMIC)) {
@@ -414,7 +414,7 @@ static int ipoib_cm_nonsrq_init_rx(struct net_device *dev, struct ib_cm_id *cm_i
 		}
 	}
 
-	rx->recv_count = ipoib_cm_recvq_size;
+	rx->recv_count = ipoib_recvq_size;
 
 	return 0;
 
@@ -591,7 +591,7 @@ void ipoib_cm_handle_rx_wc(struct net_device *dev,
 	ipoib_dbg_data(priv, "cm recv completion: id %d, status: %d\n",
 		       wr_id, wc->status);
 
-	if (unlikely(wr_id >= ipoib_cm_recvq_size)) {
+	if (unlikely(wr_id >= ipoib_recvq_size)) {
 		if (wr_id == (IPOIB_CM_RX_DRAIN_WRID & ~(IPOIB_OP_CM | IPOIB_OP_RECV))) {
 			spin_lock_irqsave(&priv->lock, flags);
 			list_splice_init(&priv->cm.rx_drain_list, &priv->cm.rx_reap_list);
@@ -600,7 +600,7 @@ void ipoib_cm_handle_rx_wc(struct net_device *dev,
 			spin_unlock_irqrestore(&priv->lock, flags);
 		} else
 			ipoib_warn(priv, "cm recv completion event with wrid %d (> %d)\n",
-				   wr_id, ipoib_cm_recvq_size);
+				   wr_id, ipoib_recvq_size);
 		return;
 	}
 
@@ -1620,7 +1620,7 @@ static void ipoib_cm_create_srq(struct net_device *dev, int max_sge)
 	struct ib_srq_init_attr srq_init_attr = {
 		.srq_type = IB_SRQT_BASIC,
 		.attr = {
-			.max_wr  = ipoib_cm_recvq_size,
+			.max_wr  = ipoib_recvq_size,
 			.max_sge = max_sge
 		}
 	};
@@ -1634,11 +1634,10 @@ static void ipoib_cm_create_srq(struct net_device *dev, int max_sge)
 		return;
 	}
 
-	priv->cm.srq_ring = vzalloc(ipoib_cm_recvq_size *
-				    sizeof(*priv->cm.srq_ring));
+	priv->cm.srq_ring = vzalloc(ipoib_recvq_size * sizeof *priv->cm.srq_ring);
 	if (!priv->cm.srq_ring) {
 		printk(KERN_WARNING "%s: failed to allocate CM SRQ ring (%d entries)\n",
-		       priv->ca->name, ipoib_cm_recvq_size);
+		       priv->ca->name, ipoib_recvq_size);
 		ib_destroy_srq(priv->cm.srq);
 		priv->cm.srq = NULL;
 		return;
@@ -1700,7 +1699,7 @@ int ipoib_cm_dev_init(struct net_device *dev)
 	ipoib_cm_init_rx_wr(dev);
 
 	if (ipoib_cm_has_srq(dev)) {
-		for (i = 0; i < ipoib_cm_recvq_size; ++i) {
+		for (i = 0; i < ipoib_recvq_size; ++i) {
 			if (!ipoib_cm_alloc_rx_skb(dev, priv->cm.srq_ring, i,
 						   priv->cm.num_frags - 1,
 						   priv->cm.srq_ring[i].mapping,
