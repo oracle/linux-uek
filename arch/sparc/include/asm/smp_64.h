@@ -57,7 +57,7 @@ void smp_info(struct seq_file *);
 extern int __cpu_disable(void);
 extern void __cpu_die(unsigned int cpu);
 extern void cpu_play_dead(void);
-else
+#else
 static inline void cpu_play_dead(void) {}
 #endif
 
