@@ -80,14 +80,14 @@ static void reg_mr_callback(int status, void *context)
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	u8 key;
 	unsigned long delta = jiffies - mr->start;
-	unsigned long index;
+	int index;
 
-	index = find_last_bit(&delta, 8 * sizeof(delta));
-	if (index == 64)
-		index = 0;
+	for (index = 0; index < (8 * sizeof(delta) - 1); index++)
+		if (!(delta >> (index + 1)))
+			break;
 
 	if (index > ARRAY_SIZE(dev->mr_perf))
-		pr_warn("array overflow %lu, delta 0x%lu\n", index, delta);
+		pr_warn("array overflow %d, delta 0x%lu\n", index, delta);
 	else
 		dev->mr_perf[index]++;
 
