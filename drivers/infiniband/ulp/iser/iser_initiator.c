@@ -255,7 +255,7 @@ int iser_alloc_rx_descriptors(struct iser_conn *ib_conn, struct iscsi_session *s
 	ib_conn->min_posted_rx = ib_conn->qp_max_recv_dtos >> 2;
 
 	if (device->iser_alloc_rdma_res(ib_conn, session->scsi_cmds_max))
-		goto create_fmr_pool_failed;
+		goto create_rdma_reg_res_failed;
 
 	if (iser_alloc_login_buf(ib_conn))
 		goto alloc_login_buf_fail;
@@ -295,7 +295,7 @@ rx_desc_alloc_fail:
 	iser_free_login_buf(ib_conn);
 alloc_login_buf_fail:
 	device->iser_free_rdma_res(ib_conn);
-create_fmr_pool_failed:
+create_rdma_reg_res_failed:
 	iser_err("failed allocating rx descriptors / data buffers\n");
 	return -ENOMEM;
 }
