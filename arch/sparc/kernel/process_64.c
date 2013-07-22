@@ -54,7 +54,9 @@
 
 static inline int enter_yield(int cpu)
 {
-	if (!need_resched() && !cpu_is_offline(cpu) && !rcu_needs_cpu(cpu))
+	unsigned long delta_jiffies;
+	if (!need_resched() && !cpu_is_offline(cpu) &&
+	    !rcu_needs_cpu(cpu, &delta_jiffies))
 		return 1;
 	else
 		return 0;
