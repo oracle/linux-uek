@@ -362,7 +362,7 @@ void iser_free_frwr_pool(struct iser_conn *ib_conn)
 	if (list_empty(&ib_conn->fastreg.frwr.pool))
 		return;
 
-	iser_err("freeing conn %p frwr pool\n", ib_conn);
+	iser_info("freeing conn %p frwr pool\n", ib_conn);
 
 	list_for_each_entry_safe(desc, tmp, &ib_conn->fastreg.frwr.pool, list) {
 		list_del(&desc->list);
