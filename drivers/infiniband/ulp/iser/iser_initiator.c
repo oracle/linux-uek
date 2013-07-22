@@ -309,6 +309,9 @@ void iser_free_rx_descriptors(struct iser_conn *ib_conn)
 	if (!ib_conn->rx_descs)
 		goto free_login_buf;
 
+	if (device && device->iser_free_rdma_res)
+		device->iser_free_rdma_res(ib_conn);
+
 	rx_desc = ib_conn->rx_descs;
 	for (i = 0; i < ib_conn->qp_max_recv_dtos; i++, rx_desc++)
 		ib_dma_unmap_single(device->ib_device, rx_desc->dma_addr,
@@ -319,7 +322,6 @@ void iser_free_rx_descriptors(struct iser_conn *ib_conn)
 
 free_login_buf:
 	iser_free_login_buf(ib_conn);
-	device->iser_free_rdma_res(ib_conn);
 }
 
 static int iser_post_rx_bufs(struct iscsi_conn *conn, struct iscsi_hdr *req)
