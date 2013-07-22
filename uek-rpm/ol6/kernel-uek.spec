@@ -102,7 +102,11 @@ Summary: The Linux kernel
 # Control whether we build the hmac for fips mode.
 %define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
 
+%define fancy_debuginfo 0
+%ifnarch sparc64
 %define fancy_debuginfo 1
+%endif 
+
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
 %define debuginfo_args --strict-build-id
@@ -211,8 +215,8 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 # Overrides for generic default options
 
-# only ppc and sparc64 need separate smp kernels
-%ifnarch ppc sparc64 alphaev56
+# only ppc need separate smp kernels
+%ifnarch ppc alphaev56
 %define with_smp 0
 %endif
 
@@ -434,9 +438,14 @@ Provides: kernel%{?variant}-drm-nouveau = 12\
 Provides: kernel%{?variant}-modeset = 1\
 Provides: kernel%{?variant}-uname-r = %{KVERREL}%{?1:.%{1}}\
 Provides: oracleasm = 2.0.5\
+%ifnarch sparc64\
 Provides: x86_energy_perf_policy = %{KVERREL}%{?1:.%{1}}\
+%endif\
 Provides: perf = %{KVERREL}%{?1:.%{1}}\
 #Provides: libperf.a = %{KVERREL}%{?1:.%{1}}\
+%ifarch sparc64\
+Provides: kernel = %{rpmversion}-%{pkg_release}\
+%endif\
 Requires(pre): %{kernel_prereq}\
 Requires(pre): %{initrd_prereq}\
 Requires(post): /sbin/new-kernel-pkg\
@@ -610,6 +619,9 @@ License: GPL+ and GPLv2+ and MIT and Redistributable, no modification permitted
 %if "x%{?variant}" != "x"
 Provides: kernel-firmware = %{rpmversion}-%{pkg_release}
 %endif
+%ifarch sparc64
+Provides: kernel-firmware = %{rpmversion}-%{pkg_release}
+%endif
 %description firmware
 Kernel firmware includes firmware files required for some devices to
 operate.
@@ -661,6 +673,9 @@ Provides: kernel%{?variant}-xen-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-%{_target_cpu} = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel = %{version}-%{release}%{?1:.%{1}}\
 Provides: kernel%{?variant}-devel-uname-r = %{KVERREL}%{?1:.%{1}}\
+%ifarch sparc64\
+Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
+%endif\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 %description -n kernel%{?variant}%{?1:-%{1}}-devel\
@@ -781,7 +796,7 @@ ApplyPatch()
 test_config_file()
 {
   TestConfig=$1
-  Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1 | sed s/sparc/sparc64/`
+  Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
   if [ `make ARCH=$Arch listnewconfig 2>/dev/null | grep -c CONFIG`  -ne 0 ]; then 
 	echo "Following config options are unconfigured"
 	make ARCH=$Arch listnewconfig 2> /dev/null
@@ -993,7 +1008,7 @@ BuildKernel() {
 	cp configs/config .config
     fi
 
-    Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1 | sed s/sparc/sparc64/`
+    Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch 
     make -s ARCH=$Arch %{oldconfig_target} > /dev/null
     make -s ARCH=$Arch V=1 %{?_smp_mflags} $MakeTarget %{?sparse_mflags}
@@ -1067,6 +1082,8 @@ hwcap 0 nosegneg"
     fi
     %{__install} -D -m 444 ldconfig-kernel.conf \
         $RPM_BUILD_ROOT/etc/ld.so.conf.d/kernel-$KernelVer.conf
+%endif
+%ifarch %{vdso_arches} sparc64
 %ifnarch noarch
 # build tools/perf:
     if [ -d tools/perf ]; then
@@ -1161,7 +1178,9 @@ hwcap 0 nosegneg"
     cp -a --parents Kbuild $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents kernel/bounds.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%ifnarch %{sparc}
     cp -a --parents arch/%{asmarch}/kernel/asm-offsets_64.c $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/
+%endif
     cp -a --parents security/selinux/include $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/ 
     
     mkdir -p $RPM_BUILD_ROOT/lib/modules/$KernelVer/build/include
@@ -1678,8 +1697,10 @@ fi
 /lib/modules/%{KVERREL}%{?2:.%{2}}/modules.*\
 /usr/libexec/perf.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/perf\
+%ifnarch sparc64\
 /usr/libexec/x86_energy_perf_policy.%{KVERREL}%{?2:.%{2}}\
 /usr/sbin/x86_energy_perf_policy\
+%endif\
 %ghost /boot/initramfs-%{KVERREL}%{?2:.%{2}}.img\
 %{expand:%%files %{?2:%{2}-}devel}\
 %defattr(-,root,root)\
