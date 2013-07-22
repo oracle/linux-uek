@@ -1273,8 +1273,7 @@ static void mlx4_en_get_channels(struct net_device *dev,
 	channel->max_tx = MLX4_EN_MAX_TX_RING_P_UP;
 
 	channel->rx_count = priv->rx_ring_num;
-	channel->tx_count = (priv->tx_ring_num - priv->tx_queue_num) /
-		MLX4_EN_NUM_UP;
+	channel->tx_count = priv->tx_ring_num / MLX4_EN_NUM_UP;
 }
 
 static int mlx4_en_set_channels(struct net_device *dev,
@@ -1304,10 +1303,8 @@ static int mlx4_en_set_channels(struct net_device *dev,
 
 	mlx4_en_free_resources(priv);
 
-	priv->tx_queue_num = channel->tx_count;
 	priv->num_tx_rings_p_up = channel->tx_count;
-	priv->tx_ring_num = channel->tx_count * MLX4_EN_NUM_UP +
-		priv->tx_queue_num;
+	priv->tx_ring_num = channel->tx_count * MLX4_EN_NUM_UP;
 	priv->rx_ring_num = channel->rx_count;
 
 	err = mlx4_en_alloc_resources(priv);
@@ -1316,7 +1313,7 @@ static int mlx4_en_set_channels(struct net_device *dev,
 		goto out;
 	}
 
-	netif_set_real_num_tx_queues(dev, priv->tx_ring_num - priv->tx_queue_num);
+	netif_set_real_num_tx_queues(dev, priv->tx_ring_num);
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 	mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
