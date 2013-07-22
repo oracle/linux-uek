@@ -949,16 +949,17 @@ static int wait_noreap_copyout(struct wait_opts *wo, struct task_struct *p,
 	put_task_struct(p);
 	infop = wo->wo_info;
 	if (infop) {
-		retval = put_user(SIGCHLD, &infop->si_signo);
-		retval |= put_user(0, &infop->si_errno);
-		if (!retval)
-			retval = put_user((short)why, &infop->si_code);
-		if (!retval)
-			retval = put_user(pid, &infop->si_pid);
-		if (!retval)
-			retval = put_user(uid, &infop->si_uid);
-		if (!retval)
-			retval = put_user(status, &infop->si_status);
+		int put_user_retval;
+
+		put_user_retval = put_user(SIGCHLD, &infop->si_signo);
+		put_user_retval |= put_user(0, &infop->si_errno);
+		put_user_retval |= put_user((short)why, &infop->si_code);
+		put_user_retval |= put_user(pid, &infop->si_pid);
+		put_user_retval |= put_user(uid, &infop->si_uid);
+		put_user_retval |= put_user(status, &infop->si_status);
+
+		if (put_user_retval != 0)
+			retval = put_user_retval;
 	}
 	if (!retval)
 		retval = pid;
@@ -1581,17 +1582,22 @@ SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
 	if (ret > 0) {
 		ret = 0;
 	} else if (infop) {
+		int put_user_ret;
+
 		/*
 		 * For a WNOHANG return, clear out all the fields
 		 * we would set so the user can easily tell the
 		 * difference.
 		 */
-		ret = __put_user(0, &infop->si_signo);
-		ret |= __put_user(0, &infop->si_errno);
-		ret |= __put_user(0, &infop->si_code);
-		ret |= __put_user(0, &infop->si_pid);
-		ret |= __put_user(0, &infop->si_uid);
-		ret |= __put_user(0, &infop->si_status);
+		put_user_ret = __put_user(0, &infop->si_signo);
+		put_user_ret |= __put_user(0, &infop->si_errno);
+		put_user_ret |= __put_user(0, &infop->si_code);
+		put_user_ret |= __put_user(0, &infop->si_pid);
+		put_user_ret |= __put_user(0, &infop->si_uid);
+		put_user_ret |= __put_user(0, &infop->si_status);
+
+		if (put_user_ret != 0)
+			ret = put_user_ret;
 	}
 
 	return ret;
