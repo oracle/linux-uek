@@ -5,7 +5,7 @@
 %define _unpackaged_files_terminate_build       0
 %define _missing_doc_files_terminate_build      0
 
-Summary: The Linux kernel for DTrace
+Summary: The Linux kernel
 
 # For a stable, released kernel, released_kernel should be 1. For rawhide
 # and/or a kernel built from an rc or git snapshot, released_kernel should
@@ -20,7 +20,7 @@ Summary: The Linux kernel for DTrace
 #
 # % define buildid .local
 
-%define distro_build 101
+%define distro_build 100
 %define signmodules 0
 
 # base_sublevel is the kernel version we're starting with and patching
@@ -83,7 +83,7 @@ Summary: The Linux kernel for DTrace
 # dtrace
 %define with_dtrace    0
 # kernel-firmware
-%define with_firmware  1
+%define with_firmware  0
 # kernel-debuginfo
 %define with_debuginfo %{?_without_debuginfo: 0} %{?!_without_debuginfo: 1}
 # kernel-bootwrapper (for creating zImages from kernel + initrd)
@@ -469,7 +469,7 @@ AutoReq: no\
 AutoProv: yes\
 %{nil}
 
-%define variant -uek-dtrace
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
@@ -540,6 +540,10 @@ Source1000: config-x86_64
 Source1001: config-x86_64-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
+
+%if %{with_dtrace}
+Source1100: config-dtrace
+%endif
 
 Source26: Module.kabi_x86_64
 
@@ -944,8 +948,6 @@ cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
 patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
 chmod +x %{_builddir}/find-debuginfo.sh
 
-chmod +x scripts/checkpatch.pl
-
 # only deal with configs if we are going to build for the arch
 # %ifnarch %nobuildarches
 
@@ -964,6 +966,10 @@ mkdir -p configs
 	cp %{SOURCE1005} configs/config-debug
 	cp %{SOURCE1004} configs/config
 %endif #ifarch sparc
+
+%if %{with_dtrace}
+	cp %{SOURCE1100} configs/config-dtrace
+%endif #with_dtrace
 
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
@@ -1031,6 +1037,10 @@ BuildKernel() {
     else
 	cp configs/config .config
     fi
+
+%if %{with_dtrace}
+    cat configs/config-dtrace >> .config
+%endif
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch 
@@ -1629,9 +1639,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel-uek-dtrace|kernel-uek-dtrace-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %else
-%kernel_variant_post -u -v uek -r (kernel-uek-dtrace|kernel-uek-dtrace-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %endif
 
 %kernel_variant_pre smp
