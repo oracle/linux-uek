@@ -43,7 +43,7 @@
 #define HOST_DIAG_WRITE_ENABLE			    0x80
 #define HOST_DIAG_RESET_ADAPTER			    0x4
 #define MEGASAS_FUSION_MAX_RESET_TRIES		    3
-#define MAX_MSIX_QUEUES_FUSION			    16
+#define MAX_MSIX_QUEUES_FUSION			    128
 
 /* Invader defines */
 #define MPI2_TYPE_CUDA				    0x2
@@ -61,6 +61,9 @@
 #define MEGASAS_SCSI_ADDL_CDB_LEN                   0x18
 #define MEGASAS_RD_WR_PROTECT_CHECK_ALL		    0x20
 #define MEGASAS_RD_WR_PROTECT_CHECK_NONE	    0x60
+
+#define MPI2_SUP_REPLY_POST_HOST_INDEX_OFFSET   (0x0000030C)
+#define MPI2_REPLY_POST_HOST_INDEX_OFFSET	(0x0000006C)
 
 /*
  * Raid context flags
@@ -524,6 +527,7 @@ typedef struct _MPI2_IOC_INIT_REQUEST
 /* mrpriv defines */
 #define MR_PD_INVALID 0xFFFF
 #define MAX_SPAN_DEPTH 8
+#define MAX_QUAD_DEPTH	MAX_SPAN_DEPTH
 #define MAX_RAIDMAP_SPAN_DEPTH (MAX_SPAN_DEPTH)
 #define MAX_ROW_SIZE 32
 #define MAX_RAIDMAP_ROW_SIZE (MAX_ROW_SIZE)
@@ -572,7 +576,9 @@ typedef struct _MR_LD_SPAN_ {           // SPAN structure
 	u64      startBlk;                  // 0x00, starting block number in array
 	u64      numBlks;                   // 0x08, number of blocks
 	u16      arrayRef;                  // 0x10, array reference
-	u8       reserved[6];               // 0x12
+	u8       spanRowSize;               // 0x11, span row size
+	u8       spanRowDataSize;           // 0x12, span row data size
+	u8       reserved[4];               // 0x13, reserved
 } MR_LD_SPAN;                           // 0x18, Total Size
 
 typedef struct _MR_SPAN_BLOCK_INFO {
@@ -667,6 +673,10 @@ struct IO_REQUEST_INFO {
 	u16 devHandle;
 	u64 pdBlock;
 	u8 fpOkForIo;
+	u8 IoforUnevenSpan;
+	u8 start_span;
+	u8 reserved;
+	u64 start_row;
 };
 
 typedef struct _MR_LD_TARGET_SYNC {
@@ -729,6 +739,27 @@ typedef struct _LD_LOAD_BALANCE_INFO
 	u64     last_accessed_block[2];
 } LD_LOAD_BALANCE_INFO, *PLD_LOAD_BALANCE_INFO;
 
+/* SPAN_SET is info caclulated from span info from Raid map per ld */
+typedef struct _LD_SPAN_SET {
+    u64  log_start_lba;
+    u64  log_end_lba;
+    u64  span_row_start;
+    u64  span_row_end;
+    u64  data_strip_start;
+    u64  data_strip_end;
+    u64  data_row_start;
+    u64  data_row_end;
+    u8   strip_offset[MAX_SPAN_DEPTH];
+    u32    span_row_data_width;
+    u32    diff;
+    u32    reserved[2];
+}LD_SPAN_SET, *PLD_SPAN_SET;
+
+typedef struct LOG_BLOCK_SPAN_INFO {
+    LD_SPAN_SET  span_set[MAX_SPAN_DEPTH];
+}LD_SPAN_INFO, *PLD_SPAN_INFO;
+
+
 typedef struct _MR_FW_RAID_MAP_ALL {
 
 	MR_FW_RAID_MAP raidMap;
@@ -775,6 +806,7 @@ struct fusion_context
 	u32 map_sz;
 	u8 fast_path_io;
 	LD_LOAD_BALANCE_INFO load_balance_info[MAX_LOGICAL_DRIVES];
+	LD_SPAN_INFO log_to_span[MAX_LOGICAL_DRIVES];
 };
 
 union desc_value {
