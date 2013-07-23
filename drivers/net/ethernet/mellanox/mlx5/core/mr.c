@@ -46,11 +46,13 @@ int mlx5_core_create_mkey(struct mlx5_core_dev *dev, struct mlx5_core_mr *mr,
 	int err;
 	u8 key;
 	struct mlx5_create_mkey_mbox_out lout;
+	unsigned long flags;
+
 
 	memset(&lout, 0, sizeof(lout));
-	spin_lock(&dev->priv.mkey_lock);
+	spin_lock_irqsave(&dev->priv.mkey_lock, flags);
 	key = dev->priv.mkey_key++;
-	spin_unlock(&dev->priv.mkey_lock);
+	spin_unlock_irqrestore(&dev->priv.mkey_lock, flags);
 	in->seg.qpn_mkey7_0 |= cpu_to_be32(key);
 	in->hdr.opcode = cpu_to_be16(MLX5_CMD_OP_CREATE_MKEY);
 	if (callback) {

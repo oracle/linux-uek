@@ -628,6 +628,7 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 	s64 ds;
 	u16 op;
 	struct mlx5_cmd_stats *stats;
+	unsigned long flags;
 
 	if (callback && page_queue)
 		return -EINVAL;
@@ -661,10 +662,10 @@ static int mlx5_cmd_invoke(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *in,
 		op = be16_to_cpu(((struct mlx5_inbox_hdr *)in->first.data)->opcode);
 		if (op < ARRAY_SIZE(cmd->stats)) {
 			stats = &cmd->stats[op];
-			spin_lock(&stats->spl);
+			spin_lock_irqsave(&stats->spl, flags);
 			stats->sum += ds;
 			++stats->n;
-			spin_unlock(&stats->spl);
+			spin_unlock_irqrestore(&stats->spl, flags);
 		}
 		mlx5_core_dbg_mask(dev, 1 << MLX5_CMD_DATA_TIME,
 				   "fw exec time for %s is %lld nsec\n",
@@ -1114,6 +1115,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 	ktime_t t1, t2, delta;
 	s64 ds;
 	struct mlx5_cmd_stats *stats;
+	unsigned long flags;
 
 	for (i = 0; i < (1 << cmd->log_sz); ++i) {
 		if (test_bit(i, &vector)) {
@@ -1139,10 +1141,10 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 				ds = ktime_to_ns(delta);
 				if (ent->op < ARRAY_SIZE(cmd->stats)) {
 					stats = &cmd->stats[ent->op];
-					spin_lock(&stats->spl);
+					spin_lock_irqsave(&stats->spl, flags);
 					stats->sum += ds;
 					++stats->n;
-					spin_unlock(&stats->spl);
+					spin_unlock_irqrestore(&stats->spl, flags);
 				}
 
 				callback = ent->callback;
@@ -1182,6 +1184,7 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 	struct mlx5_cmd *cmd = &dev->cmd;
 	struct mlx5_cmd_msg *msg = ERR_PTR(-ENOMEM);
 	struct cache_ent *ent = NULL;
+	unsigned long flags;
 
 	if (in_size > MED_LIST_SIZE && in_size <= LONG_LIST_SIZE)
 		ent = &cmd->cache.large;
@@ -1189,7 +1192,7 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 		ent = &cmd->cache.med;
 
 	if (ent) {
-		spin_lock(&ent->lock);
+		spin_lock_irqsave(&ent->lock, flags);
 		if (!list_empty(&ent->head)) {
 			msg = list_entry(ent->head.next, typeof(*msg), list);
 			/*
@@ -1199,7 +1202,7 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 			msg->len = in_size;
 			list_del(&msg->list);
 		}
-		spin_unlock(&ent->lock);
+		spin_unlock_irqrestore(&ent->lock, flags);
 	}
 
 	if (IS_ERR(msg))

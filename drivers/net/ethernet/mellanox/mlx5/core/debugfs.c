@@ -165,19 +165,20 @@ static ssize_t average_read(struct file *filp, char __user *buf, size_t count,
 	int ret;
 	int err;
 	char tbuf[22];
+	unsigned long flags;
 
 	if (*pos)
 		return 0;
 
 	stats = filp->private_data;
-	spin_lock(&stats->spl);
+	spin_lock_irqsave(&stats->spl, flags);
 	if (stats->n) {
 		dividend = stats->sum;
 		divisor = stats->n;
 		do_div(dividend, divisor);
 		field = dividend;
 	}
-	spin_unlock(&stats->spl);
+	spin_unlock_irqrestore(&stats->spl, flags);
 	ret = snprintf(tbuf, sizeof(tbuf), "%u\n", field);
 	if (ret > 0) {
 		err = copy_to_user(buf, tbuf, ret);
@@ -194,12 +195,13 @@ static ssize_t average_write(struct file *filp, const char __user *buf,
 			     size_t count, loff_t *pos)
 {
 	struct mlx5_cmd_stats *stats;
+	unsigned long flags;
 
 	stats = filp->private_data;
-	spin_lock(&stats->spl);
+	spin_lock_irqsave(&stats->spl, flags);
 	stats->sum = 0;
 	stats->n = 0;
-	spin_unlock(&stats->spl);
+	spin_unlock_irqrestore(&stats->spl, flags);
 
 	*pos += count;
 
