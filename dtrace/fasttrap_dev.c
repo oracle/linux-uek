@@ -337,8 +337,11 @@ again:
 		 * indicate that this tracepoint must still be disabled
 		 * by calling fasttrap_tracepoint_disable().
 		 */
-		if (dtrace_tracepoint_enable(pid, pc, &new_tp->ftt_mtp) != 0)
+		rc = dtrace_tracepoint_enable(pid, pc, &new_tp->ftt_mtp);
+		if (rc != 0) {
+			pr_warn("FASTTRAP: Failed to enable tp: rc %d\n", rc);
 			rc = FASTTRAP_ENABLE_PARTIAL;
+		}
 
 		return rc;
 	}
