@@ -5,8 +5,12 @@
 %define karch x86_64
 %endif
 
+# Redefine 'build_variant' at build time to create a kernel package named
+# something like 'kernel-uek-dtrace'.
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
+
 # Set this to the version of the kernel this module is compiled against.
-%define kver 3.8.12-101.1.0.el6uek
+%define kver 3.8.13-1.el6uek
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
@@ -19,10 +23,10 @@ Release: 1.el6
 Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
 Group: System Environment/Kernel
-Requires: kernel-uek-dtrace = %{kver}
+Requires: kernel%{variant} = %{kver}
 Source0: dtrace-module-%{kver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: kernel-uek-dtrace-devel = %{kver}
+BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
 ExclusiveArch: x86_64
 
