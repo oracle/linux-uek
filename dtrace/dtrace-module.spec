@@ -51,7 +51,7 @@ communicate with the DTrace kernel module.
 
 %package provider-headers
 Summary:	Header files for implementation of DTrace providers.
-Requires:	dtrace-modules-headers-%{kver}
+Requires:	dtrace-modules-headers = %{dtrace_kernel_interface}
 Provides:	dtrace-modules-provider-headers = %{dtrace_kernel_interface}
 %description provider-headers
 This package contains header files defining the API used to implement DTrace
