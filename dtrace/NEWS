@@ -1,6 +1,43 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.4.0 (Jul 23, 2013)
+----------------------------
+Kernel release: 3.8.13-1.el6uek
+
+New features:
+
+ - Support for meta-providers, such as fasttrap (used for userspace tracing).
+   A meta-provider implements a framework to instantiate providers dynamically
+   (on demand).
+ - Userspace Statically Defined Tracing (USDT) provides support for SDT-alike
+   probes in userspace executable and libraries.  Two types of probes are
+   available: regular SDT-alike probes, and is-enabled probes.
+ - The fasttrap provider has been implemented, although it is currently only
+   supporting USDT probes.
+
+Changes:
+
+ - What was previously defined as a meta-provider (see 0.2.0 below) is in fact
+   better defined as a multi-provider, i.e. a provider framework that handles
+   multiple providers that essentially share (the majority of) a single
+   implementation, such as SDT where probes are grouped together into providers
+   even though they are all provided by the same provider (sdt).
+ - The DTrace header files in the kernel proper, the kernel modules, and the
+   userspace utility have been restructured to avoid duplication and to offer
+   a more consistent and clean design.  This also offers better support for
+   custom consumers or other DTrace-related utilities.
+ - The systrace provider has been updated to account for changes in the Linux
+   kernel (between 2.6.39 and 3.8.13).
+
+Bugfixes:
+
+ - It is now possible to get the correct value for the ERR registers.
+ - The ustack() and jstack() actions were not passing the PID correctly as the
+   first element in the result array.
+ - The ustack() action implementation has been replaced.
+ - Several obscure locking problems have been resolved.
+
 Release 0.3.0 (Sep 14, 2012)
 ----------------------------
 Kernel release: 2.6.39-201.0.1.el6uek
