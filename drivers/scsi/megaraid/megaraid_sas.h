@@ -33,9 +33,9 @@
 /*
  * MegaRAID SAS Driver meta data
  */
-#define MEGASAS_VERSION				"06.504.01.00-rc1"
-#define MEGASAS_RELDATE				"Oct. 1, 2012"
-#define MEGASAS_EXT_VERSION			"Mon. Oct. 1 17:00:00 PDT 2012"
+#define MEGASAS_VERSION				"06.600.18.00"
+#define MEGASAS_RELDATE				"Mar. 07, 2013"
+#define MEGASAS_EXT_VERSION			"Mar. 07, 17:00:00 PDT 2013"
 
 /*
  * Device IDs
@@ -49,6 +49,33 @@
 #define	PCI_DEVICE_ID_LSI_SAS0071SKINNY		0x0071
 #define	PCI_DEVICE_ID_LSI_FUSION		0x005b
 #define PCI_DEVICE_ID_LSI_INVADER		0x005d
+#define PCI_DEVICE_ID_LSI_FURY			0x005f
+
+/*                      
+ * Intel HBA SSDIDs         
+ */ 
+#define MEGARAID_INTEL_RS3DC080_SSDID 		0x9360    
+#define MEGARAID_INTEL_RS3DC040_SSDID 		0x9362    
+#define MEGARAID_INTEL_RS3SC008_SSDID 		0x9380    
+#define MEGARAID_INTEL_RS3MC044_SSDID 		0x9381    
+#define MEGARAID_INTEL_RS3WC080_SSDID 		0x9341    
+#define MEGARAID_INTEL_RS3WC040_SSDID 		0x9343    
+
+/*
+ * Intel HBA branding
+ */
+#define MEGARAID_INTEL_RS3DC080_BRANDING	\
+	"Intel(R) RAID Controller RS3DC080"
+#define MEGARAID_INTEL_RS3DC040_BRANDING	\
+	"Intel(R) RAID Controller RS3DC040"
+#define MEGARAID_INTEL_RS3SC008_BRANDING	\
+	"Intel(R) RAID Controller RS3SC008"
+#define MEGARAID_INTEL_RS3MC044_BRANDING	\
+	"Intel(R) RAID Controller RS3MC044"
+#define MEGARAID_INTEL_RS3WC080_BRANDING	\
+	"Intel(R) RAID Controller RS3WC080"
+#define MEGARAID_INTEL_RS3WC040_BRANDING	\
+	"Intel(R) RAID Controller RS3WC040"
 
 /*
  * =====================================
@@ -91,8 +118,9 @@
  * HOTPLUG	: Resume from Hotplug
  * MFI_STOP_ADP	: Send signal to FW to stop processing
  */
-#define WRITE_SEQUENCE_OFFSET		(0x0000000FC) /* I20 */
-#define HOST_DIAGNOSTIC_OFFSET		(0x000000F8)  /* I20 */
+
+#define WRITE_SEQUENCE_OFFSET		(0x0000000FC) // I20
+#define HOST_DIAGNOSTIC_OFFSET		(0x000000F8)  // I20
 #define DIAG_WRITE_ENABLE			(0x00000080)
 #define DIAG_RESET_ADAPTER			(0x00000004)
 
@@ -161,6 +189,32 @@
 #define MR_DCMD_CLUSTER_RESET_ALL		0x08010100
 #define MR_DCMD_CLUSTER_RESET_LD		0x08010200
 #define MR_DCMD_PD_LIST_QUERY                   0x02010100
+
+#define MR_DCMD_CTRL_MISC_CPX                   0x0100e200
+#define MR_DCMD_CTRL_MISC_CPX_INIT_DATA_GET     0x0100e201
+#define MR_DCMD_CTRL_MISC_CPX_QUEUE_DATA        0x0100e202
+#define MR_DCMD_CTRL_MISC_CPX_UNREGISTER        0x0100e203
+#define MAX_MR_ROW_SIZE                         32
+#define MR_CPX_DIR_WRITE                        1
+#define MR_CPX_DIR_READ                         0
+#define MR_CPX_VERSION                          1
+
+#define MR_DCMD_CTRL_IO_METRICS_GET             0x01170200   // get IO metrics
+
+#define MR_EVT_CFG_CLEARED			0x0004
+
+#define MR_EVT_LD_STATE_CHANGE			0x0051
+#define MR_EVT_PD_INSERTED			0x005b
+#define MR_EVT_PD_REMOVED			0x0070
+#define MR_EVT_LD_CREATED			0x008a
+#define MR_EVT_LD_DELETED			0x008b
+#define MR_EVT_FOREIGN_CFG_IMPORTED		0x00db
+#define MR_EVT_LD_OFFLINE			0x00fc
+#define MR_EVT_CTRL_HOST_BUS_SCAN_REQUESTED	0x0152
+#define MR_EVT_CTRL_PERF_COLLECTION		0x017e
+
+#define MAX_LOGICAL_DRIVES                      64
+
 
 /*
  * MFI command completion codes
@@ -376,31 +430,33 @@ struct megasas_pd_list {
 	u8             driveState;
 } __packed;
 
+
  /*
  * defines the logical drive reference structure
  */
-union  MR_LD_REF {
-	struct {
-		u8      targetId;
-		u8      reserved;
-		u16     seqNum;
-	};
-	u32     ref;
-} __packed;
+typedef union  _MR_LD_REF {        // LD reference structure
+    struct {
+        u8      targetId;           // LD target id (0 to MAX_TARGET_ID)
+        u8      reserved;           // reserved to make in line with MR_PD_REF
+        u16     seqNum;             // Sequence Number
+    };
+    u32     ref;                    // shorthand reference to full 32-bits
+} MR_LD_REF;                        // 4 bytes
+
 
 /*
  * defines the logical drive list structure
  */
 struct MR_LD_LIST {
-	u32     ldCount;
-	u32     reserved;
-	struct {
-		union MR_LD_REF   ref;
-		u8          state;
-		u8          reserved[3];
-		u64         size;
-	} ldList[MAX_LOGICAL_DRIVES];
-} __packed;
+    u32     ldCount;                // number of LDs
+    u32     reserved;               // pad to 8-byte boundary
+    struct {
+        MR_LD_REF   ref;            // LD reference
+        u8          state;          // current LD state (MR_LD_STATE)
+        u8          reserved[3];    // pad to 8-byte boundary
+        u64         size;           // LD size
+    } ldList[MAX_LOGICAL_DRIVES];
+} __attribute__ ((packed));
 
 /*
  * SAS controller properties
@@ -428,39 +484,46 @@ struct megasas_ctrl_prop {
 	u16 ecc_bucket_leak_rate;
 	u8 restore_hotspare_on_insertion;
 	u8 expose_encl_devices;
-	u8 maintainPdFailHistory;
-	u8 disallowHostRequestReordering;
-	u8 abortCCOnError;
-	u8 loadBalanceMode;
-	u8 disableAutoDetectBackplane;
+        u8      maintainPdFailHistory;
+    u8      disallowHostRequestReordering;
+    u8      abortCCOnError;                 // set TRUE to abort CC on detecting an inconsistency
+    u8      loadBalanceMode;                // load balance mode (MR_LOAD_BALANCE_MODE)
+    u8      disableAutoDetectBackplane;     // 0 - use auto detect logic of backplanes like SGPIO, i2c SEP using h/w mechansim like GPIO pins
+                                            // 1 - disable auto detect SGPIO,
+                                            // 2 - disable i2c SEP auto detect
+                                            // 3 - disable both auto detect
+    u8      snapVDSpace;                    // % of source LD to be reserved for a VDs snapshot in snapshot repository, for metadata and user data
+                                            // 1=5%, 2=10%, 3=15% and so on
 
-	u8 snapVDSpace;
+    /*
+     * Add properties that can be controlled by a bit in the following structure.
+     */
+    struct {
+        u32     copyBackDisabled            : 1;     // set TRUE to disable copyBack (0=copback enabled)
+        u32     SMARTerEnabled              : 1;
+        u32     prCorrectUnconfiguredAreas  : 1;
+        u32     useFdeOnly                  : 1;
+        u32     disableNCQ                  : 1;
+       u32     SSDSMARTerEnabled           : 1;
+        u32     SSDPatrolReadEnabled        : 1;
+        u32     enableSpinDownUnconfigured  : 1;
+        u32     autoEnhancedImport          : 1;
+        u32     enableSecretKeyControl      : 1;
+        u32     disableOnlineCtrlReset      : 1;
+        u32     allowBootWithPinnedCache    : 1;
+        u32     disableSpinDownHS           : 1;
+        u32     enableJBOD                  : 1;
+        u32     reserved                    :18;
+    } OnOffProperties;
+    u8      autoSnapVDSpace;                // % of source LD to be reserved for auto snapshot in snapshot repository, for metadata and user data
+                                            // 1=5%, 2=10%, 3=15% and so on
+    u8      viewSpace;                      // snapshot writeable VIEWs capacity as a % of source LD capacity. 0=READ only
+                                            // 1=5%, 2=10%, 3=15% and so on
 
-	/*
-	* Add properties that can be controlled by
-	* a bit in the following structure.
-	*/
-	struct {
-		u32     copyBackDisabled            : 1;
-		u32     SMARTerEnabled              : 1;
-		u32     prCorrectUnconfiguredAreas  : 1;
-		u32     useFdeOnly                  : 1;
-		u32     disableNCQ                  : 1;
-		u32     SSDSMARTerEnabled           : 1;
-		u32     SSDPatrolReadEnabled        : 1;
-		u32     enableSpinDownUnconfigured  : 1;
-		u32     autoEnhancedImport          : 1;
-		u32     enableSecretKeyControl      : 1;
-		u32     disableOnlineCtrlReset      : 1;
-		u32     allowBootWithPinnedCache    : 1;
-		u32     disableSpinDownHS           : 1;
-		u32     enableJBOD                  : 1;
-		u32     reserved                    :18;
-	} OnOffProperties;
-	u8 autoSnapVDSpace;
-	u8 viewSpace;
-	u16 spinDownTime;
-	u8  reserved[24];
+    u16     spinDownTime;                   // # of idle minutes before device is spun down (0=use FW defaults)
+
+    u8      reserved[24];
+
 } __packed;
 
 /*
@@ -702,8 +765,125 @@ struct megasas_ctrl_info {
 	 */
 	char package_version[0x60];
 
-	u8 pad[0x800 - 0x6a0];
+    
+	/*
+	* If adapterOperations.supportMoreThan8Phys is set, and deviceInterface.portCount is greater than 8,
+	* SAS Addrs for first 8 ports shall be populated in deviceInterface.portAddr, and the rest shall be
+	* populated in deviceInterfacePortAddr2.
+	*/
+	u64         deviceInterfacePortAddr2[8]; //0x6a0 
+	u8          reserved3[128];              //0x6e0 
+						     
+	struct {                                //0x760
+		u16 minPdRaidLevel_0                : 4;
+		u16 maxPdRaidLevel_0                : 12;
 
+		u16 minPdRaidLevel_1                : 4;
+		u16 maxPdRaidLevel_1                : 12;
+
+		u16 minPdRaidLevel_5                : 4;
+		u16 maxPdRaidLevel_5                : 12;
+
+		u16 minPdRaidLevel_1E               : 4;
+		u16 maxPdRaidLevel_1E               : 12;
+
+		u16 minPdRaidLevel_6                : 4;
+		u16 maxPdRaidLevel_6                : 12;
+
+		u16 minPdRaidLevel_10               : 4;
+		u16 maxPdRaidLevel_10               : 12;
+
+		u16 minPdRaidLevel_50               : 4;
+		u16 maxPdRaidLevel_50               : 12;
+
+		u16 minPdRaidLevel_60               : 4;
+		u16 maxPdRaidLevel_60               : 12;
+
+		u16 minPdRaidLevel_1E_RLQ0          : 4;
+		u16 maxPdRaidLevel_1E_RLQ0          : 12;
+
+		u16 minPdRaidLevel_1E0_RLQ0         : 4;
+		u16 maxPdRaidLevel_1E0_RLQ0         : 12;
+
+		u16 reserved[6];                    
+	} pdsForRaidLevels;
+
+	u16 maxPds;                             //0x780 
+	u16 maxDedHSPs;                         //0x782 
+	u16 maxGlobalHSPs;                      //0x784 
+	u16 ddfSize;                            //0x786 
+	u8  maxLdsPerArray;                     //0x788 
+	u8  partitionsInDDF;                    //0x789 
+	u8  lockKeyBinding;                     //0x78a 
+	u8  maxPITsPerLd;                       //0x78b 
+	u8  maxViewsPerLd;                      //0x78c 
+	u8  maxTargetId;                        //0x78d 
+	u16 maxBvlVdSize;                       //0x78e 
+
+	u16 maxConfigurableSSCSize;             //0x790 
+	u16 currentSSCsize;                     //0x792 
+
+	char    expanderFwVersion[12];          //0x794 
+
+	u16 PFKTrialTimeRemaining;              //0x7A0 
+
+	u16 cacheMemorySize;                    //0x7A2 
+
+	struct {                                //0x7A4
+		u32     supportPIcontroller         :1;         
+		u32     supportLdPIType1            :1;         
+		u32     supportLdPIType2            :1;         
+		u32     supportLdPIType3            :1;         
+		u32     supportLdBBMInfo            :1;         
+		u32     supportShieldState          :1;         
+		u32     blockSSDWriteCacheChange    :1;         
+		u32     supportSuspendResumeBGops   :1;         
+		u32     supportEmergencySpares      :1;         
+		u32     supportSetLinkSpeed         :1;         
+		u32     supportBootTimePFKChange    :1;         
+		u32     supportJBOD                 :1;         
+		u32     disableOnlinePFKChange      :1;         
+		u32     supportPerfTuning           :1;         
+		u32     supportSSDPatrolRead        :1;         
+		u32     realTimeScheduler           :1;         
+								
+		u32     supportResetNow             :1;         
+		u32     supportEmulatedDrives       :1;         
+		u32     headlessMode                :1;         
+		u32     dedicatedHotSparesLimited   :1;         
+								
+								
+		u32     supportUnevenSpans          :1;
+		u32     reserved                    :11;        
+	} adapterOperations2;
+
+	u8  driverVersion[32];                  //0x7A8 
+	u8  maxDAPdCountSpinup60;               //0x7C8 
+	u8  temperatureROC;                     //0x7C9 
+	u8  temperatureCtrl;                    //0x7CA 
+	u8  reserved4;                          //0x7CB
+	u16 maxConfigurablePds;                 //0x7CC 
+						    
+
+	u8  reserved5[2];                       //0x7CD reserved for future use
+
+	/*
+	* HA cluster information
+	*/
+	struct {
+		u32     peerIsPresent               :1;         
+		u32     peerIsIncompatible          :1;         
+								
+		u32     hwIncompatible              :1;         
+		u32     fwVersionMismatch           :1;         
+		u32     ctrlPropIncompatible        :1;         
+		u32     premiumFeatureMismatch      :1;         
+		u32     reserved                    :26;
+	} cluster;
+
+	char clusterId[16];                     //0x7D4 
+
+	u8          pad[0x800-0x7E4];           //0x7E4 
 } __packed;
 
 /*
@@ -723,10 +903,10 @@ struct megasas_ctrl_info {
 #define MEGASAS_MAX_PD                          (MEGASAS_MAX_PD_CHANNELS * \
 						MEGASAS_MAX_DEV_PER_CHANNEL)
 #define MEGASAS_MAX_LD_IDS			(MEGASAS_MAX_LD_CHANNELS * \
-						MEGASAS_MAX_DEV_PER_CHANNEL)
-
+							MEGASAS_MAX_DEV_PER_CHANNEL)
+#define MEGASAS_MAX_NAME                        32
 #define MEGASAS_MAX_SECTORS                    (2*1024)
-#define MEGASAS_MAX_SECTORS_IEEE		(2*128)
+#define MEGASAS_MAX_SECTORS_IEEE               (2*128)
 #define MEGASAS_DBG_LVL				1
 
 #define MEGASAS_FW_BUSY				1
@@ -759,31 +939,46 @@ struct megasas_ctrl_info {
 #define MEGASAS_INT_CMDS			32
 #define MEGASAS_SKINNY_INT_CMDS			5
 
-#define MEGASAS_MAX_MSIX_QUEUES			16
+#define MEGASAS_MAX_MSIX_QUEUES			128
 /*
  * FW can accept both 32 and 64 bit SGLs. We want to allocate 32/64 bit
  * SGLs based on the size of dma_addr_t
  */
 #define IS_DMA64				(sizeof(dma_addr_t) == 8)
 
-#define MFI_XSCALE_OMR0_CHANGE_INTERRUPT		0x00000001
+#define MFI_XSCALE_OMR0_CHANGE_INTERRUPT            0x00000001  /* MFI state change interrupt */
 
-#define MFI_INTR_FLAG_REPLY_MESSAGE			0x00000001
-#define MFI_INTR_FLAG_FIRMWARE_STATE_CHANGE		0x00000002
-#define MFI_G2_OUTBOUND_DOORBELL_CHANGE_INTERRUPT	0x00000004
+#define MFI_INTR_FLAG_REPLY_MESSAGE                 0x00000001
+#define MFI_INTR_FLAG_FIRMWARE_STATE_CHANGE         0x00000002
+#define MFI_G2_OUTBOUND_DOORBELL_CHANGE_INTERRUPT 0x00000004  /* MFI state change interrrupt */
 
 #define MFI_OB_INTR_STATUS_MASK			0x00000002
 #define MFI_POLL_TIMEOUT_SECS			60
 
 #define MFI_REPLY_1078_MESSAGE_INTERRUPT	0x80000000
 #define MFI_REPLY_GEN2_MESSAGE_INTERRUPT	0x00000001
-#define MFI_GEN2_ENABLE_INTERRUPT_MASK		(0x00000001 | 0x00000004)
+#define MFI_GEN2_ENABLE_INTERRUPT_MASK		(0x00000001 | 0x00000004) 
 #define MFI_REPLY_SKINNY_MESSAGE_INTERRUPT	0x40000000
 #define MFI_SKINNY_ENABLE_INTERRUPT_MASK	(0x00000001)
-
 #define MFI_1068_PCSR_OFFSET			0x84
 #define MFI_1068_FW_HANDSHAKE_OFFSET		0x64
 #define MFI_1068_FW_READY			0xDDDD0000
+
+
+/*       U32     maxReplyQueues   : 5;
+ *       U32     maxChainSize     : 5;
+ *       U32     maxChainBuffers  : 4;
+ *       U32     maxReplyQueuesExt: 8;
+ *       U32     reserved1        : 6;
+ *       U32     state            : 4;
+ */
+
+#define MR_MAX_REPLY_QUEUES_OFFSET		0X0000001F
+#define MR_MAX_REPLY_QUEUES_EXT_OFFSET		0X003FC000
+#define MR_MAX_REPLY_QUEUES_EXT_OFFSET_SHIFT	14
+#define MR_MAX_MSIX_REG_ARRAY			16
+
+
 /*
 * register set for both 1068 and 1078 controllers
 * structure extended for 1078 registers
@@ -793,7 +988,7 @@ struct megasas_register_set {
 	u32	doorbell;                       /*0000h*/
 	u32	fusion_seq_offset;		/*0004h*/
 	u32	fusion_host_diag;		/*0008h*/
-	u32	reserved_01;			/*000Ch*/
+	u32 	reserved_01;			/*000Ch*/
 
 	u32 	inbound_msg_0;			/*0010h*/
 	u32 	inbound_msg_1;			/*0014h*/
@@ -813,9 +1008,9 @@ struct megasas_register_set {
 	u32 	inbound_queue_port;		/*0040h*/
 	u32 	outbound_queue_port;		/*0044h*/
 
-	u32	reserved_2[9];			/*0048h*/
-	u32	reply_post_host_index;		/*006Ch*/
-	u32	reserved_2_2[12];		/*0070h*/
+	u32 	reserved_2[9];			/*0048h*/
+	u32 	reply_post_host_index;		/*006Ch*/
+	u32 	reserved_2_2[12];		/*0070h*/
 
 	u32 	outbound_doorbell_clear;	/*00A0h*/
 
@@ -824,17 +1019,18 @@ struct megasas_register_set {
 	u32 	outbound_scratch_pad ;		/*00B0h*/
 	u32	outbound_scratch_pad_2;         /*00B4h*/
 
-	u32	reserved_4[2];			/*00B8h*/
+	u32 	reserved_4[2];			/*00B8h*/
 
 	u32 	inbound_low_queue_port ;	/*00C0h*/
 
 	u32 	inbound_high_queue_port ;	/*00C4h*/
 
 	u32 	reserved_5;			/*00C8h*/
-	u32	res_6[11];			/*CCh*/
-	u32	host_diag;
-	u32	seq_offset;
+	u32		res_6[11];			/*CCh*/
+	u32		host_diag;
+	u32		seq_offset;
 	u32 	index_registers[807];		/*00CCh*/
+
 } __attribute__ ((packed));
 
 struct megasas_sge32 {
@@ -893,6 +1089,15 @@ union megasas_sgl_frame {
 
 } __attribute__ ((packed));
 
+typedef union _MFI_CAPABILITIES {
+	struct {
+		u32     support_fp_remote_lun:1;
+		u32     support_additional_msix:1;
+		u32     reserved:30;
+	} mfi_capabilities;
+	u32     reg;
+} MFI_CAPABILITIES;
+
 struct megasas_init_frame {
 
 	u8 cmd;			/*00h */
@@ -900,7 +1105,7 @@ struct megasas_init_frame {
 	u8 cmd_status;		/*02h */
 
 	u8 reserved_1;		/*03h */
-	u32 reserved_2;		/*04h */
+	MFI_CAPABILITIES driver_operations; /*04h*/
 
 	u32 context;		/*08h */
 	u32 pad_0;		/*0Ch */
@@ -913,8 +1118,9 @@ struct megasas_init_frame {
 	u32 queue_info_new_phys_addr_hi;	/*1Ch */
 	u32 queue_info_old_phys_addr_lo;	/*20h */
 	u32 queue_info_old_phys_addr_hi;	/*24h */
-
-	u32 reserved_4[6];	/*28h */
+	u32 driver_ver_lo;      /*28h */
+	u32 driver_ver_hi;      /*2Ch */
+	u32 reserved_4[4];	/*30h */
 
 } __attribute__ ((packed));
 
@@ -1106,7 +1312,6 @@ union megasas_frame {
 	struct megasas_abort_frame abort;
 	struct megasas_smp_frame smp;
 	struct megasas_stp_frame stp;
-
 	u8 raw_bytes[64];
 };
 
@@ -1275,10 +1480,279 @@ struct megasas_evt_detail {
 
 } __attribute__ ((packed));
 
+#define MIN(a,b) ((a)<(b) ? (a):(b))
+typedef void (*XOR_LOW_LEVEL_GEN_FUNC)(u32 **, u32);
+typedef u8 (*XOR_LOW_LEVEL_CHECK_FUNC)(u32 **, u32);
+
+/*
+ * enumerates type of descriptor
+ */
+typedef  enum _MR_CPX_DESCRIPTOR_TYPE {
+	MR_CPX_DESCRIPTOR_TYPE_COPY   = 1,
+	MR_CPX_DESCRIPTOR_TYPE_XOR    = 2
+} MR_CPX_DESCRIPTOR_TYPE;
+
+/*
+ * status information of copy or xor operation
+ */
+typedef enum _MR_CPX_STATUS {
+	MR_CPX_STATUS_SUCCESS      = 0,
+	MR_CPX_STATUS_INCONSISTENT = 1,
+	MR_CPX_STATUS_FAILURE      = 2,
+} MR_CPX_STATUS;     
+
+/*
+ * define the XOR opcodes
+ */
+typedef enum _mr_cpx_xor_op {
+	MR_CPX_XOR_OP_GEN_P    = 0x01,                  // generate P buffer
+	MR_CPX_XOR_OP_GEN_Q    = 0x02,                  // generate Q buffer
+	MR_CPX_XOR_OP_GEN_PQ   = 0x03,                  // generate P+Q buffers
+	MR_CPX_XOR_OP_CHECK_P  = 0x11,                  // check P buffer (and generate if bad)
+	MR_CPX_XOR_OP_CHECK_Q  = 0x12,                  // check Q buffer (and generate if bad)
+	MR_CPX_XOR_OP_CHECK_PQ = 0x13,                  // check P+Q buffers (and generate if bad)
+} MR_CPX_XOR_OP;
+
+#define MR_CPX_XOR_OP_IS_CHECK(xorOp)  ((xorOp & 0x10)!=0)              // TRUE if operation is a CHECK operation
+#define MR_CPX_XOR_OP_IS_GEN(xorOp)    (!MR_CPX_XOR_OP_IS_CHECK(xorOp)) // TRUE if operation is a GEN operation
+#define MR_CPX_XOR_OP_IS_P(xorOp)      ((xorOp & 0x01)!=0)              // TRUE if operation is for P or P/Q
+#define MR_CPX_XOR_OP_IS_Q(xorOp)      ((xorOp & 0x02)!=0)              // TRUE if operation is for Q or P/Q
+#define MR_CPX_XOR_OP_IS_PQ(xorOp)     ((xorOp & 0x03)==3)              // TRUE if operation is for P/Q
+
+/*
+ * this data is passed to driver during driver init.
+ */
+struct mr_cpx_init_data {
+	u32	cpx_desc_count;		// Number of cpx desc required by fw.
+	u32     size;                   // size of the buffer
+	u64     phys_addr_cache_buf;       // physical address of cache buffer allocated by pre-boot
+
+} __attribute__ ((packed));
+
+/*
+ * header passed with each descriptor
+ */
+struct mr_cpx_header {
+	u32        context   : 24;       // context information passed by firmware, to be passed back in response data
+	u32        type     :  4;       // type of descriptor
+	u32        resvd    :  4;
+} __attribute__ ((packed));
+
+/*
+ * xor descriptor data
+ */
+struct mr_cpx_xor_descriptor {
+	struct mr_cpx_header      hdr;
+	MR_CPX_XOR_OP      op;                           // xor operation for gen/check of p/q/p+q
+	u32             size;                         // number of bytes to gen/check for this operation
+	u32             buff_valid_bitmap;              // bitmap of valid buffers for input
+	u8              p_idx;                       // index of p buffer within list (for p/pq gen/check functions)
+	u8              q_idx;                       // index of q buffer within list (for q/pq gen/check functions)
+	u8              pad[2];             
+	u32             buff_list[MAX_MR_ROW_SIZE];    // list of buffers for this xor operation (32 bit offset)
+	u32             mult_list[MAX_MR_ROW_SIZE];    // list of coefficient multipliers for q operations
+} __attribute__ ((packed));
+
+/*
+ * copy buffer for each transfer. each such tranfer between
+ * user spare host address and firmware allocated cache data.
+ */
+struct mr_cpx_copy_mr_buffer {
+	u32     buf;                       // buffer address/offset 
+	u32     size;                      // size of copy 
+} __attribute__ ((packed));
+
+/*
+ * copy descriptor data
+ */
+struct mr_cpx_copy_descriptor {
+	struct mr_cpx_header              hdr;
+	u32                     mfi_cmd_cxt;          // mfi context
+	u32                     total_byte_count;         // total byte count for this transfer 
+	u32                     host_skip_count;          // skip count from starting address of host buffer 
+	u8                      dir;                    // direction of transfer 
+	u8                      pad[3];
+	struct mr_cpx_copy_mr_buffer      copy_buf[MAX_MR_ROW_SIZE];
+} __attribute__ ((packed)) ;
+
+/*
+ * users of this interface must allocate memory for the size of
+ * this structure while allocating memory for descriptors
+ */
+union mr_cpx_descriptor {
+	struct mr_cpx_xor_descriptor       cpx_xor_desc;
+	struct mr_cpx_copy_descriptor     cpx_copy_desc;
+	u8                      pad[512];
+} __attribute__ ((packed));
+
+/*
+ * request queue.
+ * firmware manages producerindex, driver manages consumerindex.
+ * number of decriptors is kept as variable. driver must use
+ * max host commands supported for allocation.
+ */
+struct mr_cpx_request_queue {
+	u32             consumer_idx;
+	u32             producer_idx;
+	union mr_cpx_descriptor   cpxdescriptor[1]; // use max host commands 
+} __attribute__ ((packed));
+
+/*
+ * response data. this data will be posted by driver after copy/xor
+ * operation is compete.
+ */
+union mr_cpx_response_data {
+	struct {
+		u32         context     : 24;                // context  
+		u32         status      :  4;                // status in the form of cpx_status
+		u32         type        :  4;
+	} r;
+	u32         w;
+} __attribute__ ((packed));
+
+/*
+ * response queue.
+ * driver manages producerindex, firmware manages consumerindex.
+ * number of decriptors is kept as variable. driver must use
+ * max host commands supported for allocation.
+ */
+struct  mr_cpx_response_queue {
+	u32                 consumer_idx;
+	u32                 producer_idx;
+	union mr_cpx_response_data   cpx_resp_data[1]; // use max host commands 
+} __attribute__ ((packed));
+
+/*
+ * the size of each of the structure within this is determined at run time.
+ * this structure is for document purpose and shows that the structures
+ * lay as shown below in memory
+ */
+struct  mr_cpx_queues {
+	struct mr_cpx_request_queue     requestqueue;
+	struct mr_cpx_response_queue    responsequeue;
+} __attribute__ ((packed));
+
+/*
+ * driver sends this queue data during mfi init. firmware
+ * will not use the interface if the versions do not match.
+ */
+struct mr_cpx_queue_data {
+	u32         version;
+	u32         count_queue_entries;
+	u64         phys_addr_cpx_queues;
+} __attribute__ ((packed));
+
 struct megasas_aen_event {
-	struct delayed_work hotplug_work;
+	struct work_struct hotplug_work;
 	struct megasas_instance *instance;
 };
+
+#define MAX_PERF_COLLECTION_VD  MAX_LOGICAL_DRIVES
+#define BLOCKTOMB_BITSHIFT      11
+
+/*                                                                              
+ * defines the logical drive performance metrics structure                      
+ * These metrics are valid for the current collection period                    
+ */
+
+typedef struct _MR_IO_METRICS_SIZE {
+    u32         lessThan512B;                       // Number of IOs: size <= 512B                                                                             
+    u32         between512B_4K;                     // Number of IOs: 512B < size <=4K                                                                         
+    u32         between4K_16K;                      // Number of IOs:   4K < size <=16K                                                                        
+    u32         between16K_64K;                     // Number of IOs:  16K < size <=64K                                                                        
+    u32         between64K_256K;                    // Number of IOs:  64K < size <=256K                                                                       
+    u32         moreThan256K;                       // Number of IOs: 256K < size                                                                              
+} __attribute__ ((packed)) MR_IO_METRICS_SIZE;
+
+/*                                                                              
+ * define the structure to capture the randomness of the IOs                    
+ * each counter is for IOs, whose LBA is set distance apart from the previous I\
+O.                                                                              
+ */
+typedef struct _MR_IO_METRICS_RANDOMNESS {
+    u32         sequential;                         // Number of IOs: sequential ( inter-LBA distance is 0)                                                    
+    u32         lessThan64K;                        // Number of IOs: within 64KB of previous IO                                                               
+    u32         between64K_512K;                    // Number of IOs:  64K < LBA <=512K                                                                        
+    u32         between512K_16M;                    // Number of IOs: 512K < LBA <=16M                                                                         
+    u32         between16M_256M;                    // Number of IOs:  16M < LBA <=256M                                                                        
+    u32         between256M_1G;                     // Number of IOs: 256M < LBA <=1G                                                                          
+    u32         moreThan1G;                         // Number of IOs:   1G < LBA                                                                               
+} __attribute__ ((packed)) MR_IO_METRICS_RANDOMNESS;
+
+/*                                                                              
+ * define the structure for LD cache usage                                      
+ */
+typedef struct _MR_IO_METRICS_LD_CACHE {
+    u8                          targetId;
+    u8                          reserved[7];        // For future use           
+    MR_IO_METRICS_SIZE          readSizeCache;      // Reads to Primary Cache   
+    MR_IO_METRICS_SIZE          writeSizeCache;     // Writes to Primary Cache  
+    MR_IO_METRICS_SIZE          readSizeSSC;        // Reads to Secondary Cache
+    MR_IO_METRICS_SIZE          writeSizeSSC;       // Writes to Secondary Cache                                                                               
+} __attribute__ ((packed)) MR_IO_METRICS_LD_CACHE;
+
+/*                                                                              
+ * define the structure for controller cache usage                              
+ */
+typedef struct _MR_IO_METRICS_CACHE {
+    u32                         size;               // size of this data structure (including size field)                                                      
+    u32                         collectionPeriod;   // Time (sec), taken to collect this data                                                                  
+
+    u32                         avgDirtyCache;      // Running average of dirty cache (% of cache size)                                                        
+    u32                         avgCacheUsed;       // Running average of total cache in use                                                                   
+    u32                         readAheadCache;     // Cache(MB) used for Read Ahead data                                                                      
+    u32                         readAheadSSC;       // Secondary Cache(MB) used for Read Ahead data                                                            
+    u32                         unusedReadAheadCache;   // Cache(MB) for Read Ahead data, that wasn't accessed                                                 
+    u32                         unusedReadAheadSSC; // Secondary Cache(MB) for Read Ahead data, that wasn't accessed                                           
+    u32                         flushBlockTime;     // Time(ms) IOs were blocked while cache is flushed etc.                                                   
+
+    u8                          reserved[2];        // For future use           
+    u16                         count;              // count of number of targetId entries in this list                                                        
+    MR_IO_METRICS_LD_CACHE      ldIoCache[1];       // Variable list of LD IO metrics                                                                          
+} __attribute__ ((packed)) MR_IO_METRICS_CACHE;
+
+/*                                                                              
+ * define the structure for overall LD IO metrics (from host perspective)       
+ */
+typedef struct _MR_IO_METRICS_LD_OVERALL {
+    u8                          targetId;
+    u8                          pad;
+    u16                         idleTime;           // Total seconds, LD has been idle                                                                         
+    u32                         reserved;
+    u32                         readMB;             // Total read data transferred in MB                                                                       
+    u32                         writeMB;            // Total write data transferred in MB                                                                      
+    MR_IO_METRICS_SIZE          readSize;           // Aggregagate the number of read IOs for total IO count                                                   
+    MR_IO_METRICS_SIZE          writeSize;          // Aggregate the number write IOs for write total IO count                                                 
+    MR_IO_METRICS_RANDOMNESS    readRandomness;
+    MR_IO_METRICS_RANDOMNESS    writeRandomness;
+} __attribute__ ((packed)) MR_IO_METRICS_LD_OVERALL;
+
+typedef struct _MR_IO_METRICS_LD_OVERALL_LIST {
+    u32                         size;               // size of this data structure (including size field)                                                      
+    u32                         collectionPeriod;   // Time (sec), taken to collect this data                                                                  
+
+    MR_IO_METRICS_LD_OVERALL    ldIOOverall[1];     // Variable list of overall LD IO metrics                                                                  
+} __attribute__ ((packed)) MR_IO_METRICS_LD_OVERALL_LIST;
+
+/*                                                                              
+ * define the structure for controller's IO metrics                             
+ */
+typedef struct _MR_IO_METRICS {
+    MR_IO_METRICS_CACHE             ctrlIoCache;    // controller cache usage   
+    MR_IO_METRICS_LD_OVERALL_LIST   ldIoMetrics;    // overall host IO metrics  
+} __attribute__ ((packed)) MR_IO_METRICS;
+
+typedef struct _PERFORMANCEMETRIC
+{
+    u8                          LogOn;
+    MR_IO_METRICS_LD_OVERALL    IoMetricsLD[MAX_PERF_COLLECTION_VD];
+    MR_IO_METRICS_LD_OVERALL    SavedIoMetricsLD[MAX_PERF_COLLECTION_VD];
+    u64                         LastBlock[MAX_LOGICAL_DRIVES];
+    u64                         LastIOTime[MAX_PERF_COLLECTION_VD];
+    u64                         CollectEndTime;
+    u64                         CollectStartTime;
+    u32                         SavedCollectTimeSecs;
+}PERFORMANCEMETRIC;
 
 struct megasas_irq_context {
 	struct megasas_instance *instance;
@@ -1291,33 +1765,34 @@ struct megasas_instance {
 	dma_addr_t producer_h;
 	u32 *consumer;
 	dma_addr_t consumer_h;
+	u32 *verbuf;
+	dma_addr_t verbuf_h;
 
 	u32 *reply_queue;
 	dma_addr_t reply_queue_h;
 
 	unsigned long base_addr;
 	struct megasas_register_set __iomem *reg_set;
-
+	u32 *reply_post_host_index_addr[MR_MAX_MSIX_REG_ARRAY];
 	struct megasas_pd_list          pd_list[MEGASAS_MAX_PD];
 	u8     ld_ids[MEGASAS_MAX_LD_IDS];
+
 	s8 init_id;
 
 	u16 max_num_sge;
 	u16 max_fw_cmds;
-	/* For Fusion its num IOCTL cmds, for others MFI based its
-	   max_fw_cmds */
+	/* For Fusion its num IOCTL cmds, for others MFI based its max_fw_cmds */
 	u16 max_mfi_cmds;
 	u32 max_sectors_per_req;
 	struct megasas_aen_event *ev;
 
 	struct megasas_cmd **cmd_list;
 	struct list_head cmd_pool;
-	/* used to sync fire the cmd to fw */
 	spinlock_t cmd_pool_lock;
-	/* used to sync fire the cmd to fw */
 	spinlock_t hba_lock;
 	/* used to synch producer, consumer ptrs in dpc */
 	spinlock_t completion_lock;
+
 	struct dma_pool *frame_dma_pool;
 	struct dma_pool *sense_dma_pool;
 
@@ -1348,6 +1823,7 @@ struct megasas_instance {
 	u8 flag_ieee;
 	u8 issuepend_done;
 	u8 disableOnlineCtrlReset;
+	u8 UnevenSpanSupport;
 	u8 adprecovery;
 	unsigned long last_time;
 	u32 mfiStatus;
@@ -1355,7 +1831,16 @@ struct megasas_instance {
 
 	struct list_head internal_reset_pending_q;
 
-	/* Ptr to hba specific information */
+        u32 cpx_supported;
+        struct mr_cpx_request_queue *cpx_request_queue;
+        dma_addr_t cpx_request_queue_h;
+        union mr_cpx_descriptor *cpx_dscrptr;
+        u32 cpx_dscrptr_cnt;
+        u64 host_mem_phys;
+        u32 host_mem_len;
+        u8 *host_mem_virt;
+
+	/* Ptr to hba specfic information */
 	void *ctrl_context;
 	unsigned int msix_vectors;
 	struct msix_entry msixentry[MEGASAS_MAX_MSIX_QUEUES];
@@ -1364,8 +1849,12 @@ struct megasas_instance {
 	struct megasas_cmd *map_update_cmd;
 	unsigned long bar;
 	long reset_flags;
+	PERFORMANCEMETRIC PerformanceMetric;
+	u32 CurLdCount;
 	struct mutex reset_mutex;
 	int throttlequeuedepth;
+	u8 is_imr;
+	u8 mask_interrupts;
 };
 
 enum {
@@ -1377,27 +1866,27 @@ enum {
 	MEGASAS_ADPRESET_INPROG_SIGN		= 0xDEADDEAD,
 };
 
+
 struct megasas_instance_template {
 	void (*fire_cmd)(struct megasas_instance *, dma_addr_t, \
 		u32, struct megasas_register_set __iomem *);
 
-	void (*enable_intr)(struct megasas_register_set __iomem *) ;
-	void (*disable_intr)(struct megasas_register_set __iomem *);
+	void (*enable_intr)(struct megasas_instance *) ;
+	void (*disable_intr)(struct megasas_instance *);
 
 	int (*clear_intr)(struct megasas_register_set __iomem *);
 
 	u32 (*read_fw_status_reg)(struct megasas_register_set __iomem *);
-	int (*adp_reset)(struct megasas_instance *, \
-		struct megasas_register_set __iomem *);
-	int (*check_reset)(struct megasas_instance *, \
-		struct megasas_register_set __iomem *);
-	irqreturn_t (*service_isr)(int irq, void *devp);
+	int (*adp_reset)(struct megasas_instance *, struct megasas_register_set __iomem *);
+	int (*check_reset)(struct megasas_instance *, struct megasas_register_set __iomem *);
+
+	//irqreturn_t (*service_isr )(int irq, void *devp, struct pt_regs *regs);
+	irqreturn_t (*service_isr )(int irq, void *devp);
 	void (*tasklet)(unsigned long);
 	u32 (*init_adapter)(struct megasas_instance *);
-	u32 (*build_and_issue_cmd) (struct megasas_instance *,
-				    struct scsi_cmnd *);
+	u32 (*build_and_issue_cmd) (struct megasas_instance *, struct scsi_cmnd *);
 	void (*issue_dcmd) (struct megasas_instance *instance,
-			    struct megasas_cmd *cmd);
+				struct megasas_cmd *cmd);
 };
 
 #define MEGASAS_IS_LOGICAL(scp)						\
@@ -1418,8 +1907,7 @@ struct megasas_cmd {
 	u8 sync_cmd;
 	u8 cmd_status;
 	u8 abort_aen;
-	u8 retry_for_fw_reset;
-
+        u8 retry_for_fw_reset;
 
 	struct list_head list;
 	struct scsi_cmnd *scmd;
