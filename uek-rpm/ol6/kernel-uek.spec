@@ -541,9 +541,7 @@ Source1001: config-x86_64-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
 
-%if %{with_dtrace}
 Source1100: config-dtrace
-%endif
 
 Source26: Module.kabi_x86_64
 
