@@ -81,20 +81,19 @@ static void reg_mr_callback(int status, void *context)
 	u8 key;
 	unsigned long delta = jiffies - mr->start;
 	int index;
-	unsigned long flags;
 
 	for (index = 0; index < (8 * sizeof(delta) - 1); index++)
 		if (!(delta >> (index + 1)))
 			break;
 
-	if (index >= ARRAY_SIZE(dev->mr_perf))
+	if (index > ARRAY_SIZE(dev->mr_perf))
 		pr_warn("array overflow %d, delta 0x%lu\n", index, delta);
 	else
 		dev->mr_perf[index]++;
 
-	spin_lock_irqsave(&ent->lock, flags);
+	spin_lock_irq(&ent->lock);
 	ent->pending--;
-	spin_unlock_irqrestore(&ent->lock, flags);
+	spin_unlock_irq(&ent->lock);
 	if (status) {
 		mlx5_ib_warn(dev, "async reg mr failed. status %d\n", status);
 		kfree(mr);
@@ -109,18 +108,18 @@ static void reg_mr_callback(int status, void *context)
 		return;
 	}
 
-	spin_lock_irqsave(&dev->mdev.priv.mkey_lock, flags);
+	spin_lock_irq(&dev->mdev.priv.mkey_lock);
 	key = dev->mdev.priv.mkey_key++;
-	spin_unlock_irqrestore(&dev->mdev.priv.mkey_lock, flags);
+	spin_unlock_irq(&dev->mdev.priv.mkey_lock);
 	mr->mmr.key = mlx5_idx_to_mkey(be32_to_cpu(mr->out.mkey) & 0xffffff) | key;
 
 	cache->last_add = jiffies;
 
-	spin_lock_irqsave(&ent->lock, flags);
+	spin_lock_irq(&ent->lock);
 	list_add_tail(&mr->list, &ent->head);
 	ent->cur++;
 	ent->size++;
-	spin_unlock_irqrestore(&ent->lock, flags);
+	spin_unlock_irq(&ent->lock);
 }
 
 static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
@@ -132,7 +131,6 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 	struct mlx5_create_mkey_mbox_in *in;
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	int npages = 1 << ent->order;
-	unsigned long flags;
 
 	in = kzalloc(sizeof(*in), GFP_KERNEL);
 	if (!in) {
@@ -162,17 +160,17 @@ static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
 		in->seg.flags = MLX5_ACCESS_MODE_MTT | MLX5_PERM_UMR_EN;
 		in->seg.log2_page_size = 12;
 
-		spin_lock_irqsave(&ent->lock, flags);
+		spin_lock_irq(&ent->lock);
 		ent->pending++;
-		spin_unlock_irqrestore(&ent->lock, flags);
+		spin_unlock_irq(&ent->lock);
 		mr->start = jiffies;
 		err = mlx5_core_create_mkey(&dev->mdev, &mr->mmr, in,
 					    sizeof(*in), reg_mr_callback,
 					    mr, &mr->out);
 		if (err) {
-			spin_lock_irqsave(&ent->lock, flags);
+			spin_lock_irq(&ent->lock);
 			ent->pending--;
-			spin_unlock_irqrestore(&ent->lock, flags);
+			spin_unlock_irq(&ent->lock);
 			mlx5_ib_warn(dev, "create mkey failed %d\n", err);
 			kfree(mr);
 			break;
@@ -191,19 +189,18 @@ static void remove_keys(struct mlx5_ib_dev *dev, int c, int num)
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	int size;
 	int i;
-	unsigned long flags;
 
 	for (i = 0; i < num; ++i) {
-		spin_lock_irqsave(&ent->lock, flags);
+		spin_lock_irq(&ent->lock);
 		if (list_empty(&ent->head)) {
-			spin_unlock_irqrestore(&ent->lock, flags);
+			spin_unlock_irq(&ent->lock);
 			return;
 		}
 		mr = list_first_entry(&ent->head, struct mlx5_ib_mr, list);
 		list_del(&mr->list);
 		ent->cur--;
 		ent->size--;
-		spin_unlock_irqrestore(&ent->lock, flags);
+		spin_unlock_irq(&ent->lock);
 		err = mlx5_core_destroy_mkey(&dev->mdev, &mr->mmr);
 		if (err) {
 			mlx5_ib_warn(dev, "failed destroy mkey\n");
@@ -412,7 +409,6 @@ static struct mlx5_ib_mr *alloc_cached_mr(struct mlx5_ib_dev *dev, int order)
 	struct mlx5_ib_mr *mr = NULL;
 	int c;
 	int i;
-	unsigned long flags;
 
 	c = order2idx(dev, order);
 	if (c < 0 || c >= MAX_MR_CACHE_ENTRIES) {
@@ -425,18 +421,18 @@ static struct mlx5_ib_mr *alloc_cached_mr(struct mlx5_ib_dev *dev, int order)
 
 		mlx5_ib_dbg(dev, "order %d, cache index %d\n", ent->order, i);
 
-		spin_lock_irqsave(&ent->lock, flags);
+		spin_lock_irq(&ent->lock);
 		if (!list_empty(&ent->head)) {
 			mr = list_first_entry(&ent->head, struct mlx5_ib_mr,
 					      list);
 			list_del(&mr->list);
 			ent->cur--;
-			spin_unlock_irqrestore(&ent->lock, flags);
+			spin_unlock_irq(&ent->lock);
 			if (ent->cur < ent->limit)
 				queue_work(cache->wq, &ent->work);
 			break;
 		}
-		spin_unlock_irqrestore(&ent->lock, flags);
+		spin_unlock_irq(&ent->lock);
 
 		queue_work(cache->wq, &ent->work);
 
@@ -456,7 +452,6 @@ static void free_cached_mr(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 	struct mlx5_cache_ent *ent;
 	int c;
 	int shrink = 0;
-	unsigned long flags;
 
 	c = order2idx(dev, mr->order);
 	if (c < 0 || c >= MAX_MR_CACHE_ENTRIES) {
@@ -464,12 +459,12 @@ static void free_cached_mr(struct mlx5_ib_dev *dev, struct mlx5_ib_mr *mr)
 		return;
 	}
 	ent = &cache->ent[c];
-	spin_lock_irqsave(&ent->lock, flags);
+	spin_lock_irq(&ent->lock);
 	list_add_tail(&mr->list, &ent->head);
 	ent->cur++;
 	if (ent->cur > 2 * ent->limit)
 		shrink = 1;
-	spin_unlock_irqrestore(&ent->lock, flags);
+	spin_unlock_irq(&ent->lock);
 
 	if (shrink)
 		queue_work(cache->wq, &ent->work);
@@ -482,20 +477,19 @@ static void clean_keys(struct mlx5_ib_dev *dev, int c)
 	int err;
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	int size;
-	unsigned long flags;
 
 	cancel_delayed_work(&ent->dwork);
 	while (1) {
-		spin_lock_irqsave(&ent->lock, flags);
+		spin_lock_irq(&ent->lock);
 		if (list_empty(&ent->head)) {
-			spin_unlock_irqrestore(&ent->lock, flags);
+			spin_unlock_irq(&ent->lock);
 			return;
 		}
 		mr = list_first_entry(&ent->head, struct mlx5_ib_mr, list);
 		list_del(&mr->list);
 		ent->cur--;
 		ent->size--;
-		spin_unlock_irqrestore(&ent->lock, flags);
+		spin_unlock_irq(&ent->lock);
 		err = mlx5_core_destroy_mkey(&dev->mdev, &mr->mmr);
 		if (err) {
 			mlx5_ib_warn(dev, "failed destroy mkey\n");
