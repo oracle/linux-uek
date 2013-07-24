@@ -32,18 +32,6 @@ config DT_FASTTRAP
 	help
 	  To be written.
 
-config DT_FBT
-	tristate "Function Boundary Tracing"
-	default m
-	help
-	  To be written.
-
-config DT_LOCKSTAT
-	tristate "Lock Statistics"
-	default m
-	help
-	  To be written.
-
 config DT_PROFILE
 	tristate "Profile Interrupt Tracing"
 	default m
