@@ -81,6 +81,7 @@ static void reg_mr_callback(int status, void *context)
 	u8 key;
 	unsigned long delta = jiffies - mr->start;
 	int index;
+	unsigned long flags;
 
 	for (index = 0; index < (8 * sizeof(delta) - 1); index++)
 		if (!(delta >> (index + 1)))
@@ -91,9 +92,9 @@ static void reg_mr_callback(int status, void *context)
 	else
 		dev->mr_perf[index]++;
 
-	spin_lock_irq(&ent->lock);
+	spin_lock_irqsave(&ent->lock, flags);
 	ent->pending--;
-	spin_unlock_irq(&ent->lock);
+	spin_unlock_irqrestore(&ent->lock, flags);
 	if (status) {
 		mlx5_ib_warn(dev, "async reg mr failed. status %d\n", status);
 		kfree(mr);
@@ -108,18 +109,18 @@ static void reg_mr_callback(int status, void *context)
 		return;
 	}
 
-	spin_lock_irq(&dev->mdev.priv.mkey_lock);
+	spin_lock_irqsave(&dev->mdev.priv.mkey_lock, flags);
 	key = dev->mdev.priv.mkey_key++;
-	spin_unlock_irq(&dev->mdev.priv.mkey_lock);
+	spin_unlock_irqrestore(&dev->mdev.priv.mkey_lock, flags);
 	mr->mmr.key = mlx5_idx_to_mkey(be32_to_cpu(mr->out.mkey) & 0xffffff) | key;
 
 	cache->last_add = jiffies;
 
-	spin_lock_irq(&ent->lock);
+	spin_lock_irqsave(&ent->lock, flags);
 	list_add_tail(&mr->list, &ent->head);
 	ent->cur++;
 	ent->size++;
-	spin_unlock_irq(&ent->lock);
+	spin_unlock_irqrestore(&ent->lock, flags);
 }
 
 static int add_keys(struct mlx5_ib_dev *dev, int c, int num)
