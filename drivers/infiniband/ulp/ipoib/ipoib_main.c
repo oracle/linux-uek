@@ -1835,13 +1835,15 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	ipoib_delete_debug_files(dev);
 
 	/* Delete any child interfaces first */
-	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list)
+	list_for_each_entry_safe_reverse(cpriv, tcpriv,
+					 &priv->child_intfs, list)
 		unregister_netdevice_queue(cpriv->dev, &head);
 
 	/*
 	 * the next function calls the ipoib_uninit which calls for
 	 * ipoib_dev_cleanup for each devices at the head list.
 	 */
+
 	unregister_netdevice_many(&head);
 
 	ipoib_dev_uninit(dev);
