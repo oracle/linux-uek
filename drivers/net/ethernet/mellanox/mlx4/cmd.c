@@ -1551,6 +1551,17 @@ static struct mlx4_cmd_info cmd_info[] = {
 		.verify = NULL,
 		.wrapper = mlx4_QP_FLOW_STEERING_DETACH_wrapper
 	},
+	/* wol commands */
+	{
+		.opcode = MLX4_CMD_MOD_STAT_CFG,
+		.has_inbox = false,
+		.has_outbox = false,
+		.out_is_imm = false,
+		.encode_slave_id = false,
+		.skip_err_print = true,
+		.verify = NULL,
+		.wrapper = mlx4_MOD_STAT_CFG_wrapper
+	},
 };
 
 static int mlx4_master_process_vhcr(struct mlx4_dev *dev, int slave,

@@ -1729,6 +1729,15 @@ out:
 }
 EXPORT_SYMBOL_GPL(mlx4_query_diag_counters);
 
+int mlx4_MOD_STAT_CFG_wrapper(struct mlx4_dev *dev, int slave,
+			  struct mlx4_vhcr *vhcr,
+			  struct mlx4_cmd_mailbox *inbox,
+			  struct mlx4_cmd_mailbox *outbox,
+			  struct mlx4_cmd_info *cmd)
+{
+	return -EPERM;
+}
+
 #define MLX4_WOL_SETUP_MODE (5 << 28)
 int mlx4_wol_read(struct mlx4_dev *dev, u64 *config, int port)
 {
