@@ -87,7 +87,7 @@ static void reg_mr_callback(int status, void *context)
 		if (!(delta >> (index + 1)))
 			break;
 
-	if (index > ARRAY_SIZE(dev->mr_perf))
+	if (index >= ARRAY_SIZE(dev->mr_perf))
 		pr_warn("array overflow %d, delta 0x%lu\n", index, delta);
 	else
 		dev->mr_perf[index]++;
