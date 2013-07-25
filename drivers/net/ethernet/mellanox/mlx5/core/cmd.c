@@ -1102,6 +1102,19 @@ void mlx5_cmd_use_polling(struct mlx5_core_dev *dev)
 		up(&cmd->sem);
 }
 
+static void free_msg(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *msg)
+{
+	unsigned long flags;
+
+	if (msg->cache) {
+		spin_lock_irqsave(&msg->cache->lock, flags);
+		list_add_tail(&msg->list, &msg->cache->head);
+		spin_unlock_irqrestore(&msg->cache->lock, flags);
+	} else {
+		mlx5_free_cmd_msg(dev, msg);
+	}
+}
+
 void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 {
 	struct mlx5_cmd *cmd = &dev->cmd;
@@ -1156,7 +1169,7 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 				}
 
 				mlx5_free_cmd_msg(dev, ent->out);
-				mlx5_free_cmd_msg(dev, ent->in);
+				free_msg(dev, ent->in);
 
 				free_cmd(ent);
 				callback(err, context);
@@ -1190,7 +1203,7 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 		ent = &cmd->cache.med;
 
 	if (ent) {
-		spin_lock(&ent->lock);
+		spin_lock_irq(&ent->lock);
 		if (!list_empty(&ent->head)) {
 			msg = list_entry(ent->head.next, typeof(*msg), list);
 			/*
@@ -1200,24 +1213,13 @@ static struct mlx5_cmd_msg *alloc_msg(struct mlx5_core_dev *dev, int in_size,
 			msg->len = in_size;
 			list_del(&msg->list);
 		}
-		spin_unlock(&ent->lock);
+		spin_unlock_irq(&ent->lock);
 	}
 
 	if (IS_ERR(msg))
 		msg = mlx5_alloc_cmd_msg(dev, gfp, in_size);
 
 	return msg;
-}
-
-static void free_msg(struct mlx5_core_dev *dev, struct mlx5_cmd_msg *msg)
-{
-	if (msg->cache) {
-		spin_lock(&msg->cache->lock);
-		list_add_tail(&msg->list, &msg->cache->head);
-		spin_unlock(&msg->cache->lock);
-	} else {
-		mlx5_free_cmd_msg(dev, msg);
-	}
 }
 
 static int is_manage_pages(struct mlx5_inbox_hdr *in)
