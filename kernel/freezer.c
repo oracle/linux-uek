@@ -39,7 +39,7 @@ static DEFINE_SPINLOCK(freezer_lock);
  */
 bool freezing_slow_path(struct task_struct *p)
 {
-	if (p->flags & PF_NOFREEZE)
+	if (p->flags & (PF_NOFREEZE | PF_SUSPEND_TASK))
 		return false;
 
 	if (test_tsk_thread_flag(p, TIF_FREEZE))
