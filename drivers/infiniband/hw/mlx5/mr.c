@@ -79,18 +79,7 @@ static void reg_mr_callback(int status, void *context)
 	int c = order2idx(dev, mr->order);
 	struct mlx5_cache_ent *ent = &cache->ent[c];
 	u8 key;
-	unsigned long delta = jiffies - mr->start;
-	int index;
 	unsigned long flags;
-
-	for (index = 0; index < (8 * sizeof(delta) - 1); index++)
-		if (!(delta >> (index + 1)))
-			break;
-
-	if (index >= ARRAY_SIZE(dev->mr_perf))
-		pr_warn("array overflow %d, delta 0x%lu\n", index, delta);
-	else
-		dev->mr_perf[index]++;
 
 	spin_lock_irqsave(&ent->lock, flags);
 	ent->pending--;
@@ -230,15 +219,6 @@ static ssize_t size_write(struct file *filp, const char __user *buf,
 
 	if (sscanf(lbuf, "%u", &var) != 1)
 		return -EINVAL;
-
-	if (var == 0x9876) {
-		int k;
-
-		for (k = 0; k < ARRAY_SIZE(dev->mr_perf); ++k)
-			pr_info("%d: %u\n", k, dev->mr_perf[k]);
-
-		return -EPERM;
-	}
 
 	if (var < ent->limit)
 		return -EINVAL;
