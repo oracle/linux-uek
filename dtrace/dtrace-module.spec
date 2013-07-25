@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver 3.8.13-1.el6uek
+%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-1.el6uek}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
@@ -100,6 +100,11 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Thu Jul 25 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
+- Support meta-providers, USDT, and fasttrap (for USDT only).
+- Export DTrace kernel headers to userspace.
+- Reimplemented ustack().
+- Bugfixes.
 * Mon Sep 17 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0-2
 - Remove development-only providers because they should not be built/released.
 * Fri Sep 14 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0
