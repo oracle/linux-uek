@@ -499,6 +499,7 @@ static void cmd_work_handler(struct work_struct *work)
 	struct mlx5_core_dev *dev = container_of(cmd, struct mlx5_core_dev, cmd);
 	struct mlx5_cmd_layout *lay;
 	struct semaphore *sem;
+	unsigned long flags;
 
 	sem = ent->page_queue ? &cmd->pages_sem : &cmd->sem;
 	down(sem);
@@ -532,6 +533,9 @@ static void cmd_work_handler(struct work_struct *work)
 	set_signature(ent, !cmd->checksum_disabled);
 	dump_command(dev, ent, 1);
 	ktime_get_ts(&ent->ts1);
+	spin_lock_irqsave(&cmd->pl_lock, flags);
+	cmd->pending |= (1 << ent->idx);
+	spin_unlock_irqrestore(&cmd->pl_lock, flags);
 	/*
 	 * ring doorbell after the descriptor is valid
 	 */
@@ -1131,6 +1135,15 @@ void mlx5_cmd_comp_handler(struct mlx5_core_dev *dev, unsigned long vector)
 
 	for (i = 0; i < (1 << cmd->log_sz); ++i) {
 		if (test_bit(i, &vector)) {
+			spin_lock_irqsave(&cmd->pl_lock, flags);
+			if (!(cmd->pending & (1 << i))) {
+				mlx5_core_warn(dev, "fw bug: completed %d, mask 0x%x\n",
+					       i, cmd->pending);
+				spin_unlock_irqrestore(&cmd->pl_lock, flags);
+				return;
+			}
+			cmd->pending &= (~(1 << i));
+			spin_unlock_irqrestore(&cmd->pl_lock, flags);
 			ent = cmd->ent_arr[i];
 			ktime_get_ts(&ent->ts2);
 			memcpy(ent->out->first.data, ent->lay->out, sizeof(ent->lay->out));
@@ -1426,6 +1439,7 @@ int mlx5_cmd_init(struct mlx5_core_dev *dev)
 
 	spin_lock_init(&cmd->alloc_spl);
 	spin_lock_init(&cmd->token_spl);
+	spin_lock_init(&cmd->pl_lock);
 	for (i = 0; i < ARRAY_SIZE(cmd->stats); ++i)
 		spin_lock_init(&cmd->stats[i].spl);
 

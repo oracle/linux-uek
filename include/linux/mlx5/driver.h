@@ -328,6 +328,8 @@ struct mlx5_cmd {
 	struct cmd_msg_cache cache;
 	int checksum_disabled;
 	struct mlx5_cmd_stats	stats[0x80a];
+	spinlock_t	pl_lock;
+	u32 pending;
 };
 
 struct mlx5_port_caps {
