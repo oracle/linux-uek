@@ -227,13 +227,19 @@ struct rds_ib_device *rds_ib_get_client_data(struct ib_device *device)
 void rds_ib_remove_one(struct ib_device *device, void *client_data)
 {
 	struct rds_ib_device *rds_ibdev;
+	int i;
 
 	rds_ibdev = ib_get_client_data(device, &rds_ib_client);
 	if (!rds_ibdev)
 		return;
 
-	if (rds_ib_active_bonding_enabled)
+	if (rds_ib_active_bonding_enabled) {
+		for (i = 1; i <= ip_port_cnt; i++) {
+			if (ip_config[i].rds_ibdev == rds_ibdev)
+				ip_config[i].rds_ibdev = NULL;
+		}
 		ib_unregister_event_handler(&rds_ibdev->event_handler);
+	}
 
 	rds_ib_dev_shutdown(rds_ibdev);
 
@@ -655,6 +661,9 @@ static int rds_ib_move_ip(char			*from_dev,
 		       &addr, from_dev2, to_dev2);
 
 		rds_ibdev = ip_config[from_port].rds_ibdev;
+		if (!rds_ibdev)
+			goto out;
+
 		spin_lock_bh(&rds_ibdev->spinlock);
 		list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node) {
 			if (ic->conn->c_laddr == addr) {
@@ -1454,6 +1463,9 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	}
 
 	if (!port)
+		return NOTIFY_DONE;
+
+	if (ip_config[port].rds_ibdev == NULL)
 		return NOTIFY_DONE;
 
 	work = kzalloc(sizeof *work, GFP_ATOMIC);
