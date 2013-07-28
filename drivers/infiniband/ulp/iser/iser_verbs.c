@@ -327,6 +327,7 @@ int iser_create_frwr_pool(struct iser_conn *ib_conn, unsigned cmds_max)
 		desc->data_frpl = ib_alloc_fast_reg_page_list(device->ib_device,
 							 ISCSI_ISER_SG_TABLESIZE + 1);
 		if (IS_ERR(desc->data_frpl)) {
+			ret = PTR_ERR(desc->data_frpl);
 			iser_err("Failed to allocate ib_fast_reg_page_list err=%ld\n",
 				 PTR_ERR(desc->data_frpl));
 			goto err;
@@ -335,6 +336,7 @@ int iser_create_frwr_pool(struct iser_conn *ib_conn, unsigned cmds_max)
 		desc->data_mr = ib_alloc_fast_reg_mr(device->pd,
 						     ISCSI_ISER_SG_TABLESIZE + 1);
 		if (IS_ERR(desc->data_mr)) {
+			ret = PTR_ERR(desc->data_mr);
 			iser_err("Failed to allocate ib_fast_reg_mr err=%ld\n",
 				 PTR_ERR(desc->data_mr));
 			ib_free_fast_reg_page_list(desc->data_frpl);
