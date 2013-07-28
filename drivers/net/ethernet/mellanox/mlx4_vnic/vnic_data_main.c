@@ -540,7 +540,9 @@ void vnic_login_destroy_wq_stopped(struct fip_vnic_data *vnic, enum fip_flush fl
 
 	vnic_dbg_mark();
 	/* login_ctx was in pre created state [always true] */
+	spin_lock_bh(&login->stats_lock);
 	if (test_and_clear_bit(VNIC_STATE_LOGIN_PRECREATE_2, &vnic->login_state)) {
+		spin_unlock_bh(&login->stats_lock);
 		vnic_dbg_mark();
 		/* take port->mlock in case of refresh event is being called vnic_refresh_mcasts */
 		mutex_lock(&login->port->mlock);
@@ -558,7 +560,8 @@ void vnic_login_destroy_wq_stopped(struct fip_vnic_data *vnic, enum fip_flush fl
 		ib_dma_unmap_single(login->port->dev->ca, login->pad_dma,
 				    VNIC_EOIB_ZLEN_MAX, DMA_TO_DEVICE);
 		kfree(login->pad_va);
-	}
+	} else
+		spin_unlock_bh(&login->stats_lock);
 
 	if (flush == FIP_FULL_FLUSH &&
 	    test_and_clear_bit(VNIC_STATE_LOGIN_PRECREATE_1, &vnic->login_state)) {

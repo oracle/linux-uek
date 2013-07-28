@@ -775,11 +775,15 @@ struct net_device_stats *vnic_get_stats(struct net_device *dev)
 {
 	struct vnic_login *login = vnic_netdev_priv(dev);
 
+	if (dev->reg_state != NETREG_REGISTERED)
+		return &dev->stats;
+
 	spin_lock_bh(&login->stats_lock);
-	memcpy(&login->ret_stats, &login->stats, sizeof(login->stats));
+	if (test_bit(VNIC_STATE_LOGIN_PRECREATE_2, &login->fip_vnic->login_state))
+		memcpy(&dev->stats, &login->stats, sizeof(login->stats));
 	spin_unlock_bh(&login->stats_lock);
 
-	return &login->ret_stats;
+	return &dev->stats;
 }
 
 static void vnic_tx_timeout(struct net_device *dev)
@@ -830,7 +834,7 @@ static struct net_device_ops vnic_netdev_ops = {
 	.ndo_open = vnic_open,
 	.ndo_stop = vnic_stop,
 	.ndo_start_xmit = vnic_tx,
-	.ndo_get_stats = mlx4_vnic_stats_func_container,
+	.ndo_get_stats = vnic_get_stats,
 	.ndo_set_rx_mode = vnic_set_multicast_list,
 	.ndo_change_mtu = vnic_change_mtu,
 	.ndo_tx_timeout = vnic_tx_timeout,
