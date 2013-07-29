@@ -150,6 +150,9 @@ mlx4_en_dcbnl_ieee_setets(struct net_device *dev, struct ieee_ets *ets)
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int err;
 
+	if (!(mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG))
+		return -EOPNOTSUPP;
+
 	err = mlx4_en_ets_validate(priv, ets);
 	if (err)
 		return err;
@@ -249,6 +252,9 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	u16 tmp[IEEE_8021QAZ_MAX_TCS];
 	int i, err;
+
+	if (!(priv->mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG))
+		return -EOPNOTSUPP;
 
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 		/* Convert from Kbps into HW units, rounding result up.
