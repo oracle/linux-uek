@@ -188,6 +188,7 @@ static int alloc_comp_eqs(struct mlx5_ib_dev *dev)
 	int err;
 	int i;
 	int nent;
+	char name[MLX5_MAX_EQ_NAME];
 
 	INIT_LIST_HEAD(&dev->eqs_list);
 	ncomp_vec = table->num_comp_vectors;
@@ -199,10 +200,10 @@ static int alloc_comp_eqs(struct mlx5_ib_dev *dev)
 			goto clean;
 		}
 
-		snprintf(eq->name, MLX5_MAX_EQ_NAME, "mlx5_comp%d", i);
+		snprintf(name, MLX5_MAX_EQ_NAME, "mlx5_comp%d", i);
 		err = mlx5_create_map_eq(&dev->mdev, eq,
 					 i + MLX5_EQ_VEC_COMP_BASE, nent, 0,
-					 eq->name,
+					 name,
 					 &dev->mdev.priv.uuari.uars[0]);
 		if (err) {
 			kfree(eq);
