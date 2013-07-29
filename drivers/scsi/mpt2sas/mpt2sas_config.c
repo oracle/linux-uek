@@ -541,7 +541,6 @@ mpt2sas_config_get_manufacturing_pg10(struct MPT2SAS_ADAPTER *ioc,
 	return r;
 }
 
-#if defined(EEDP_SUPPORT)
 /**
  * mpt2sas_config_get_manufacturing_pg11 - obtain manufacturing page 11
  * @ioc: per adapter object
@@ -619,7 +618,6 @@ mpt2sas_config_set_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
  out:
 	return r;
 }
-#endif
 
 /**
  * mpt2sas_config_get_bios_pg2 - obtain bios page 2

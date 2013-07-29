@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2012 LSI Corporation.
+ *  Copyright (c) 2009 LSI Corporation.
  *
  *
  *           Name:  mpi2_ra.h
@@ -81,3 +81,5 @@ typedef struct _MPI2_RAID_ACCELERATOR_REPLY
 
 
 #endif
+
+
