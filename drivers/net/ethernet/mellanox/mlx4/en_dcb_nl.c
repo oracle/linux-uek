@@ -191,7 +191,7 @@ static int mlx4_en_dcbnl_ieee_setpfc(struct net_device *dev,
 			pfc->mbc,
 			pfc->delay);
 
-	priv->prof->rx_pause = priv->prof->tx_pause = !!pfc->pfc_en;
+	priv->prof->rx_pause = priv->prof->tx_pause = !pfc->pfc_en;
 	priv->prof->rx_ppp = priv->prof->tx_ppp = pfc->pfc_en;
 
 	err = mlx4_SET_PORT_general(mdev->dev, priv->port,
