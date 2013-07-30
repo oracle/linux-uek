@@ -584,8 +584,6 @@ static void slave_free(struct rcu_head *head)
 	struct slave *slave
 		= container_of(head, struct slave, rcu);
 
-	netdev_rx_handler_unregister(slave->dev);
-
 	slave_neigh_flush(slave);
 
 	kfree(slave);
@@ -654,6 +652,8 @@ int parent_release_slave(struct net_device *parent_dev,
 	write_unlock_bh(&parent->lock);
 
 	/* must do this from outside any spinlocks */
+	netdev_rx_handler_unregister(slave->dev);
+
 	destroy_slave_symlinks(parent_dev, slave_dev);
 
 	netdev_set_parent_master(slave_dev, NULL);
