@@ -72,10 +72,10 @@
 #define MPT2SAS_DRIVER_NAME		"mpt2sas"
 #define MPT2SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
 #define MPT2SAS_DESCRIPTION	"LSI MPT Fusion SAS 2.0 Device Driver"
-#define MPT2SAS_DRIVER_VERSION		"16.05.01.00"
-#define MPT2SAS_MAJOR_VERSION		16
-#define MPT2SAS_MINOR_VERSION		5
-#define MPT2SAS_BUILD_VERSION		1
+#define MPT2SAS_DRIVER_VERSION		"17.00.00.00"
+#define MPT2SAS_MAJOR_VERSION		17
+#define MPT2SAS_MINOR_VERSION		0
+#define MPT2SAS_BUILD_VERSION		0
 #define MPT2SAS_RELEASE_VERSION		0
 
 /*
@@ -239,16 +239,6 @@
 #define MPT2SAS_HP_DAUGHTER_2_4_INTERNAL_BRANDING	\
 	"HP H210i Host Bus Adapter"
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,20))
-#define MPT2SAS_MULTIPROBE_SUPPORT
-/**
- */
-struct mpt2sas_thread_structure {
-	struct pci_dev			*pdev;
-	const struct pci_device_id	*id;
-};
-#endif
-
 /*
  * HO HBA SSDIDs
  */
@@ -269,8 +259,6 @@ struct mpt2sas_thread_structure {
 /*
  *  End to End Data Protection Support
  */
-#define EEDP_SUPPORT
-#ifdef EEDP_SUPPORT
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27))
 
 #define PRO_R MPI2_SCSIIO_EEDPFLAGS_CHECK_REMOVE_OP
@@ -290,7 +278,6 @@ struct read_cap_parameter {
 	u16	reserved2:2;
 	u8	reserved3[16];
 };
-#endif
 #endif
 
 /* OEM Identifiers */
@@ -322,7 +309,6 @@ struct Mpi2ManufacturingPage10_t {
 	U32	Reserved5[18];			/* 24h - 60h*/
 };
 
-#if defined(EEDP_SUPPORT)
 /* Miscellaneous options */
 struct Mpi2ManufacturingPage11_t {
 	MPI2_CONFIG_PAGE_HEADER Header;		/* 00h */
@@ -333,7 +319,6 @@ struct Mpi2ManufacturingPage11_t {
 	u8	Reserved4;			/* 0Bh */
 	__le32	Reserved5[23];			/* 0Ch-60h*/
 };
-#endif
 
 /**
  * struct MPT2SAS_TARGET - starget private hostdata
@@ -384,11 +369,9 @@ struct MPT2SAS_DEVICE {
 	u8	block;
 	u8	deleted;
 	u8	tlr_snoop_check;
-#ifdef EEDP_SUPPORT
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27))
 	u8	eedp_enable;
 	u8	eedp_type;
-#endif
 #endif
 };
 
@@ -414,6 +397,26 @@ struct _internal_cmd {
 	void	*sense;
 	u16	status;
 	u16	smid;
+};
+
+/**
+ * struct _internal_qcmd - internal q commands struct
+ * @list: list of internal q cmds
+ * @request: request message pointer
+ * @reply: reply message pointer
+ * @sense: sense data
+ * @status: MPT2_CMD_XXX status
+ * @smid: system message id
+ * @transfer_packet: SCSI IO transfer packet pointer
+ */
+struct _internal_qcmd {
+	struct list_head list;
+	void *request;
+	void	*reply;
+	void	*sense;
+	u16	status;
+	u16	smid;
+	struct _scsi_io_transfer *transfer_packet;
 };
 
 #if (defined(CONFIG_SUSE_KERNEL) && defined(scsi_is_sas_phy_local)) || LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
@@ -444,6 +447,7 @@ struct _internal_cmd {
  * @slot: number number
  * @phy: phy identifier provided in sas device page 0
  * @responding: used in _scsih_sas_device_mark_responding
+ * @fault_led_on: flag for PFA LED status
  */
 struct _sas_device {
 	struct list_head list;
@@ -462,6 +466,7 @@ struct _sas_device {
 	u16	slot;
 	u8	phy;
 	u8	responding;
+	u8  fault_led_on;
 	struct kref kref;
 	u8	*serial_number;
 #ifdef MPT2SAS_MULTIPATH
@@ -788,18 +793,22 @@ typedef void (*MPT2SAS_FLUSH_RUNNING_CMDS)(struct MPT2SAS_ADAPTER *ioc);
  * @scsi_io_cb_idx: shost generated commands
  * @tm_cb_idx: task management commands
  * @scsih_cb_idx: scsih internal commands
+ * @scsih_q_cb_idx: scsih queue internal commands callback index
  * @ctl_cb_idx: ctl internal commands
  * @ctl_tm_cb_idx: ctl task management commands
  * @base_cb_idx: base internal commands
  * @config_cb_idx: base internal commands
  * @tm_tr_cb_idx : device removal target reset handshake
  * @tm_tr_volume_cb_idx : volume removal target reset
+ * @tm_tr_internal_cb_idx : internal task managemnet commands queue
  * @base_cmds:
  * @transport_cmds:
  * @scsih_cmds:
  * @tm_cmds:
  * @ctl_cmds:
  * @config_cmds:
+ * @scsih_q_intenal_cmds: base internal queue commands list
+ * @scsih_q_internal_lock: internal queue commands lock
  * @base_add_sg_single: handler for either 32/64 bit sgl's
  * @event_type: bits indicating which events to log
  * @event_context: unique id for each logged event
@@ -887,6 +896,7 @@ typedef void (*MPT2SAS_FLUSH_RUNNING_CMDS)(struct MPT2SAS_ADAPTER *ioc);
  * @reply_post_host_index: head index in the pool where FW completes IO
  * @delayed_tr_list: target reset link list
  * @delayed_tr_volume_list: volume target reset link list
+ * @delayed_internal_tm_list: internal tmf link list
  */
 struct MPT2SAS_ADAPTER {
 	struct list_head list;
@@ -968,12 +978,14 @@ struct MPT2SAS_ADAPTER {
 	u16		cpu_msix_table_sz;
 	u32		ioc_reset_count;
 	MPT2SAS_FLUSH_RUNNING_CMDS schedule_dead_ioc_flush_running_cmds;
+	u32             non_operational_loop;
 
 	/* internal commands, callback index */
 	u8		scsi_io_cb_idx;
 	u8		tm_cb_idx;
 	u8		transport_cb_idx;
 	u8		scsih_cb_idx;
+	u8		scsih_q_cb_idx;
 	u8		ctl_cb_idx;
 	u8		ctl_tm_cb_idx;
 	u8		ctl_diag_cb_idx;
@@ -982,6 +994,7 @@ struct MPT2SAS_ADAPTER {
 	u8		config_cb_idx;
 	u8		tm_tr_cb_idx;
 	u8		tm_tr_volume_cb_idx;
+	u8		tm_tr_internal_cb_idx;
 #ifdef MPT2SAS_MULTIPATH
 	u8		tm_tr_mp_cb_idx;
 #endif
@@ -995,6 +1008,9 @@ struct MPT2SAS_ADAPTER {
 	struct _internal_cmd ctl_diag_cmds;
 	struct _internal_cmd config_cmds;
 
+	struct list_head scsih_q_intenal_cmds;
+	spinlock_t	scsih_q_internal_lock;
+	
 	MPT_ADD_SGE	base_add_sg_single;
 
 	/* event log */
@@ -1002,15 +1018,15 @@ struct MPT2SAS_ADAPTER {
 	u32		event_context;
 	void		*event_log;
 	u32		event_masks[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];
+	
+	u8      disable_eedp_support;
 
 	/* static config pages */
 	struct mpt2sas_facts facts;
 	struct mpt2sas_port_facts *pfacts;
 	Mpi2ManufacturingPage0_t manu_pg0;
 	struct Mpi2ManufacturingPage10_t manu_pg10;
-#if defined(EEDP_SUPPORT)
 	struct Mpi2ManufacturingPage11_t manu_pg11;
-#endif
 	Mpi2BiosPage2_t	bios_pg2;
 	Mpi2BiosPage3_t	bios_pg3;
 	Mpi2IOCPage8_t ioc_pg8;
@@ -1129,6 +1145,7 @@ struct MPT2SAS_ADAPTER {
 #ifdef MPT2SAS_MULTIPATH
 	struct list_head delayed_tr_mp_list;
 #endif
+	struct list_head delayed_internal_tm_list;
 
 	/* diag buffer support */
 	u8		*diag_buffer[MPI2_DIAG_BUF_TYPE_COUNT];
@@ -1241,6 +1258,7 @@ int mpt2sas_port_enable(struct MPT2SAS_ADAPTER *ioc);
 void mpt2sas_scsih_event_callback(struct MPT2SAS_ADAPTER *ioc, u8 msix_index,
 	u32 reply);
 void mpt2sas_scsih_reset_handler(struct MPT2SAS_ADAPTER *ioc, int reset_phase);
+void mpt2sas_scsih_detach_pci(struct pci_dev *pdev);
 #ifdef MPT2SAS_MULTIPATH
 void mpt2sas_scsih_check_tm_for_multipath(struct MPT2SAS_ADAPTER *ioc,
 	u16 handle, u8 task_type);
@@ -1276,14 +1294,12 @@ int mpt2sas_config_get_manufacturing_pg7(struct MPT2SAS_ADAPTER *ioc,
 int mpt2sas_config_get_manufacturing_pg10(struct MPT2SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage10_t *config_page);
-#if defined(EEDP_SUPPORT)
 int mpt2sas_config_get_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage11_t  *config_page);
 int mpt2sas_config_set_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage11_t *config_page);
-#endif
 int mpt2sas_config_get_bios_pg2(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
 	*mpi_reply, Mpi2BiosPage2_t *config_page);
 int mpt2sas_config_get_bios_pg3(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
