@@ -731,10 +731,12 @@ enum {
 };
 
 #define	CX3_PPF_DEV_ID 0x1003
+#define	CX3_PRO_PPF_DEV_ID 0x1007
 static int vl_cap_start(struct mlx4_dev *dev)
 {
 	/* for non CX3 devices, start with 4 VLs to avoid errors in syslog */
-	if (dev->pdev->device != CX3_PPF_DEV_ID)
+	if ((dev->pdev->device != CX3_PPF_DEV_ID) &&
+	    (dev->pdev->device != CX3_PRO_PPF_DEV_ID))
 		return 4;
 	return 8;
 }
