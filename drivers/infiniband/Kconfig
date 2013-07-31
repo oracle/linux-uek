@@ -53,6 +53,7 @@ source "drivers/infiniband/hw/mlx4/Kconfig"
 source "drivers/infiniband/hw/nes/Kconfig"
 
 source "drivers/infiniband/ulp/ipoib/Kconfig"
+source "drivers/infiniband/ulp/xsigo/Kconfig"
 
 source "drivers/infiniband/ulp/srp/Kconfig"
 
