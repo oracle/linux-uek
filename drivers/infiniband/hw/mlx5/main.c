@@ -46,7 +46,14 @@
 #include "mlx5_ib.h"
 
 #define DRIVER_NAME "mlx5_ib"
-#define DRIVER_VERSION "1.0"
+#define DRIVER_BASE_VERSION "1.0"
+#if defined(MLX5_GITVER)
+	#define DRIVER_VERSION DRIVER_BASE_VERSION "-g" MLX5_GITVER
+#elif defined(MOFED_MLX5_GITVER)
+	#define DRIVER_VERSION DRIVER_BASE_VERSION "-g" MOFED_MLX5_GITVER
+#else
+	#define DRIVER_VERSION DRIVER_BASE_VERSION "-g???????"
+#endif
 #define DRIVER_RELDATE	"June 2013"
 
 MODULE_AUTHOR("Eli Cohen <eli@mellanox.com>");

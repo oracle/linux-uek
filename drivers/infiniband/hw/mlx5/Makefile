@@ -1,4 +1,5 @@
+MLX5_GITVER=$(shell ./gitver.sh)
 obj-$(CONFIG_MLX5_INFINIBAND)	+= mlx5_ib.o
-ccflags-y += -Wall -Werror -DDEBUG
+ccflags-y += -Wall -Werror -DDEBUG $(MLX5_GITVER)
 
 mlx5_ib-y :=	main.o cq.o doorbell.o qp.o mem.o srq.o mr.o ah.o mad.o
