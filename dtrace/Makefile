@@ -11,14 +11,14 @@ install:: modules_install
 %::
 	$(MAKE) -C $(KERNELDIR) M=`pwd` $@
 
-# One header, ioctl.h, has to be compiled in kernel mode so that typechecking
-# is enabled.  The rest get compiled in user mode.  We go to some lengths
-# to use any ioctl() identifiers, since typechecking only kicks in at
+# Headers named *_ioctl.h have to be compiled in kernel mode so that
+# typechecking is enabled. The rest get compiled in user mode. We go to some
+# lengths to use any ioctl() identifiers, since typechecking only kicks in at
 # time of use.
 
 headers_check:
 	@for name in $(notdir $(wildcard include/uapi/linux/dtrace/*.h)); do \
-		if [[ $$name = ioctl.h ]]; then \
+		if [[ $$name =~ .*ioctl\.h$$ ]]; then \
 			INC="-I../arch/x86/include -I../include -I../include/asm-generic -Iinclude -D__KERNEL__ -include linux/types.h -include dtrace/types.h"; \
 		else \
 			INC="-include sys/types.h -include sys/ctf_types.h -include unistd.h -I../include"; \
