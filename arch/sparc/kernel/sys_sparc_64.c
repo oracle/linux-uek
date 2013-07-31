@@ -131,7 +131,7 @@ unsigned long arch_get_unmapped_area(struct file *filp, unsigned long addr, unsi
 		return -ENOMEM;
 
 	do_color_align = 0;
-	if (!filp || (flags & MAP_SHARED))
+	if (filp || (flags & MAP_SHARED))
 		do_color_align = 1;
 
 	if (addr) {
