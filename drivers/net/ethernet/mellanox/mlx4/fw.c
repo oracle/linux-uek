@@ -133,7 +133,8 @@ static void dump_dev_cap_flags2(struct mlx4_dev *dev, u64 flags)
 		[4] = "FSM (MAC unti-spoofing) support",
 		[5] = "VST (control vlan insertion/stripping) support",
 		[6] = "Dynamic QP updates support",
-		[7] = "Loopback source checks support"
+		[7] = "Loopback source checks support",
+		[8] = "Device managed flow steering IPoIB support"
 	};
 	int i;
 
