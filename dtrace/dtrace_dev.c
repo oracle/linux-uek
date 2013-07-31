@@ -38,6 +38,7 @@
 #include "ctf_api.h"
 #include "dtrace.h"
 #include "dtrace_dev.h"
+#include <linux/dtrace/ioctl_debug.h>
 
 uint32_t			dtrace_helptrace_next = 0;
 uint32_t			dtrace_helptrace_nlocals;
@@ -103,6 +104,9 @@ static int dtrace_open(struct inode *inode, struct file *file)
 	if (priv == DTRACE_PRIV_NONE)
 		return -EACCES;
 
+#ifdef CONFIG_DT_DEBUG
+	dtrace_ioctl_sizes();
+#endif
 	mutex_lock(&dtrace_provider_lock);
 	dtrace_probe_provide(NULL, NULL);
 	mutex_unlock(&dtrace_provider_lock);
