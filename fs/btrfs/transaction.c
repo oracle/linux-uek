@@ -51,6 +51,14 @@ static noinline void switch_commit_root(struct btrfs_root *root)
 	root->commit_root = btrfs_root_node(root);
 }
 
+static inline int can_join_transaction(struct btrfs_transaction *trans,
+				       int type)
+{
+	return !(trans->in_commit &&
+		 type != TRANS_JOIN &&
+		 type != TRANS_JOIN_NOLOCK);
+}
+
 /*
  * either allocate a new transaction or hop into the existing one
  */
@@ -85,6 +93,10 @@ loop:
 		if (cur_trans->aborted) {
 			spin_unlock(&fs_info->trans_lock);
 			return cur_trans->aborted;
+		}
+		if (!can_join_transaction(cur_trans, type)) {
+			spin_unlock(&fs_info->trans_lock);
+			return -EBUSY;
 		}
 		atomic_inc(&cur_trans->use_count);
 		atomic_inc(&cur_trans->num_writers);
@@ -360,8 +372,11 @@ again:
 
 	do {
 		ret = join_transaction(root, type);
-		if (ret == -EBUSY)
+		if (ret == -EBUSY) {
 			wait_current_trans(root);
+			if (unlikely(type == TRANS_ATTACH))
+				ret = -ENOENT;
+		}
 	} while (ret == -EBUSY);
 
 	if (ret < 0) {
@@ -574,14 +589,13 @@ static int __btrfs_end_transaction(struct btrfs_trans_handle *trans,
 
 	btrfs_trans_release_metadata(trans, root);
 	trans->block_rsv = NULL;
-	/*
-	 * the same root has to be passed to start_transaction and
-	 * end_transaction. Subvolume quota depends on this.
-	 */
-	WARN_ON(trans->root != root);
 
 	if (trans->qgroup_reserved) {
-		btrfs_qgroup_free(root, trans->qgroup_reserved);
+		/*
+		 * the same root has to be passed here between start_transaction
+		 * and end_transaction. Subvolume quota depends on this.
+		 */
+		btrfs_qgroup_free(trans->root, trans->qgroup_reserved);
 		trans->qgroup_reserved = 0;
 	}
 
@@ -1063,6 +1077,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 
 	rsv = trans->block_rsv;
 	trans->block_rsv = &pending->block_rsv;
+	trans->bytes_reserved = trans->block_rsv->reserved;
 
 	dentry = pending->dentry;
 	parent = dget_parent(dentry);
@@ -1216,6 +1231,7 @@ static noinline int create_pending_snapshot(struct btrfs_trans_handle *trans,
 fail:
 	dput(parent);
 	trans->block_rsv = rsv;
+	trans->bytes_reserved = 0;
 no_free_objectid:
 	kfree(new_root_item);
 root_item_alloc_fail:
@@ -1385,6 +1401,7 @@ static void cleanup_transaction(struct btrfs_trans_handle *trans,
 				struct btrfs_root *root, int err)
 {
 	struct btrfs_transaction *cur_trans = trans->transaction;
+	DEFINE_WAIT(wait);
 
 	WARN_ON(trans->use_count > 1);
 
@@ -1393,8 +1410,13 @@ static void cleanup_transaction(struct btrfs_trans_handle *trans,
 	spin_lock(&root->fs_info->trans_lock);
 	list_del_init(&cur_trans->list);
 	if (cur_trans == root->fs_info->running_transaction) {
+		root->fs_info->trans_no_join = 1;
+		spin_unlock(&root->fs_info->trans_lock);
+		wait_event(cur_trans->writer_wait,
+			   atomic_read(&cur_trans->num_writers) == 1);
+
+		spin_lock(&root->fs_info->trans_lock);
 		root->fs_info->running_transaction = NULL;
-		root->fs_info->trans_no_join = 0;
 	}
 	spin_unlock(&root->fs_info->trans_lock);
 

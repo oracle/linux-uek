@@ -220,7 +220,7 @@ static struct extent_map *btree_get_extent(struct inode *inode,
 	em->bdev = BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev;
 
 	write_lock(&em_tree->lock);
-	ret = add_extent_mapping(em_tree, em);
+	ret = add_extent_mapping(em_tree, em, 0);
 	if (ret == -EEXIST) {
 		free_extent_map(em);
 		em = lookup_extent_mapping(em_tree, start, len);
@@ -634,10 +634,9 @@ static int btree_readpage_end_io_hook(struct page *page, u64 start, u64 end,
 	if (!ret)
 		set_extent_buffer_uptodate(eb);
 err:
-	if (test_bit(EXTENT_BUFFER_READAHEAD, &eb->bflags)) {
-		clear_bit(EXTENT_BUFFER_READAHEAD, &eb->bflags);
+	if (reads_done &&
+	    test_and_clear_bit(EXTENT_BUFFER_READAHEAD, &eb->bflags))
 		btree_readahead_hook(root, eb, eb->start, ret);
-	}
 
 	if (ret)
 		clear_extent_buffer_uptodate(eb);
@@ -1276,6 +1275,7 @@ struct btrfs_root *btrfs_create_tree(struct btrfs_trans_handle *trans,
 				      0, objectid, NULL, 0, 0, 0);
 	if (IS_ERR(leaf)) {
 		ret = PTR_ERR(leaf);
+		leaf = NULL;
 		goto fail;
 	}
 
@@ -1319,11 +1319,16 @@ struct btrfs_root *btrfs_create_tree(struct btrfs_trans_handle *trans,
 
 	btrfs_tree_unlock(leaf);
 
-fail:
-	if (ret)
-		return ERR_PTR(ret);
-
 	return root;
+
+fail:
+	if (leaf) {
+		btrfs_tree_unlock(leaf);
+		free_extent_buffer(leaf);
+	}
+	kfree(root);
+
+	return ERR_PTR(ret);
 }
 
 static struct btrfs_root *alloc_log_tree(struct btrfs_trans_handle *trans,
@@ -2694,13 +2699,13 @@ fail_cleaner:
 	 * kthreads
 	 */
 	filemap_write_and_wait(fs_info->btree_inode->i_mapping);
-	invalidate_inode_pages2(fs_info->btree_inode->i_mapping);
 
 fail_block_groups:
 	btrfs_free_block_groups(fs_info);
 
 fail_tree_roots:
 	free_root_pointers(fs_info, 1);
+	invalidate_inode_pages2(fs_info->btree_inode->i_mapping);
 
 fail_sb_buffer:
 	btrfs_stop_workers(&fs_info->generic_worker);
@@ -2721,7 +2726,6 @@ fail_alloc:
 fail_iput:
 	btrfs_mapping_tree_free(&fs_info->mapping_tree);
 
-	invalidate_inode_pages2(fs_info->btree_inode->i_mapping);
 	iput(fs_info->btree_inode);
 fail_bdi:
 	bdi_destroy(&fs_info->bdi);
@@ -3195,6 +3199,11 @@ void btrfs_free_fs_root(struct btrfs_fs_info *fs_info, struct btrfs_root *root)
 	if (btrfs_root_refs(&root->root_item) == 0)
 		synchronize_srcu(&fs_info->subvol_srcu);
 
+	if (fs_info->fs_state & BTRFS_SUPER_FLAG_ERROR) {
+		btrfs_free_log(NULL, root);
+		btrfs_free_log_root_tree(NULL, fs_info);
+	}
+
 	__btrfs_remove_free_space_cache(root->free_ino_pinned);
 	__btrfs_remove_free_space_cache(root->free_ino_ctl);
 	free_fs_root(root);
@@ -3544,35 +3553,16 @@ static void btrfs_destroy_ordered_operations(struct btrfs_root *root)
 
 static void btrfs_destroy_ordered_extents(struct btrfs_root *root)
 {
-	struct list_head splice;
 	struct btrfs_ordered_extent *ordered;
-	struct inode *inode;
-
-	INIT_LIST_HEAD(&splice);
 
 	spin_lock(&root->fs_info->ordered_extent_lock);
-
-	list_splice_init(&root->fs_info->ordered_extents, &splice);
-	while (!list_empty(&splice)) {
-		ordered = list_entry(splice.next, struct btrfs_ordered_extent,
-				     root_extent_list);
-
-		list_del_init(&ordered->root_extent_list);
-		atomic_inc(&ordered->refs);
-
-		/* the inode may be getting freed (in sys_unlink path). */
-		inode = igrab(ordered->inode);
-
-		spin_unlock(&root->fs_info->ordered_extent_lock);
-		if (inode)
-			iput(inode);
-
-		atomic_set(&ordered->refs, 1);
-		btrfs_put_ordered_extent(ordered);
-
-		spin_lock(&root->fs_info->ordered_extent_lock);
-	}
-
+	/*
+	 * This will just short circuit the ordered completion stuff which will
+	 * make sure the ordered extent gets properly cleaned up.
+	 */
+	list_for_each_entry(ordered, &root->fs_info->ordered_extents,
+			    root_extent_list)
+		set_bit(BTRFS_ORDERED_IOERR, &ordered->flags);
 	spin_unlock(&root->fs_info->ordered_extent_lock);
 }
 
@@ -3594,11 +3584,11 @@ int btrfs_destroy_delayed_refs(struct btrfs_transaction *trans,
 	}
 
 	while ((node = rb_first(&delayed_refs->root)) != NULL) {
-		ref = rb_entry(node, struct btrfs_delayed_ref_node, rb_node);
+		struct btrfs_delayed_ref_head *head = NULL;
 
+		ref = rb_entry(node, struct btrfs_delayed_ref_node, rb_node);
 		atomic_set(&ref->refs, 1);
 		if (btrfs_delayed_ref_is_head(ref)) {
-			struct btrfs_delayed_ref_head *head;
 
 			head = btrfs_delayed_node_to_head(ref);
 			if (!mutex_trylock(&head->mutex)) {
@@ -3620,10 +3610,12 @@ int btrfs_destroy_delayed_refs(struct btrfs_transaction *trans,
 				delayed_refs->num_heads_ready--;
 			list_del_init(&head->cluster);
 		}
+
 		ref->in_tree = 0;
 		rb_erase(&ref->rb_node, &delayed_refs->root);
 		delayed_refs->num_entries--;
-
+		if (head)
+			mutex_unlock(&head->mutex);
 		spin_unlock(&delayed_refs->lock);
 		btrfs_put_delayed_ref(ref);
 
@@ -3714,10 +3706,9 @@ static int btrfs_destroy_marked_extents(struct btrfs_root *root,
 			if (eb)
 				ret = test_and_clear_bit(EXTENT_BUFFER_DIRTY,
 							 &eb->bflags);
-			if (PageWriteback(page))
-				end_page_writeback(page);
-
 			lock_page(page);
+
+			wait_on_page_writeback(page);
 			if (PageDirty(page)) {
 				clear_page_dirty_for_io(page);
 				spin_lock_irq(&page->mapping->tree_lock);

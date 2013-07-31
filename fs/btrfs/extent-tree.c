@@ -405,8 +405,7 @@ again:
 			if (ret)
 				break;
 
-			if (need_resched() ||
-			    btrfs_next_leaf(extent_root, path)) {
+			if (need_resched()) {
 				caching_ctl->progress = last;
 				btrfs_release_path(path);
 				up_read(&fs_info->extent_commit_sem);
@@ -414,6 +413,12 @@ again:
 				cond_resched();
 				goto again;
 			}
+
+			ret = btrfs_next_leaf(extent_root, path);
+			if (ret < 0)
+				goto err;
+			if (ret)
+				break;
 			leaf = path->nodes[0];
 			nritems = btrfs_header_nritems(leaf);
 			continue;
@@ -3653,13 +3658,31 @@ static int can_overcommit(struct btrfs_root *root,
 			  struct btrfs_space_info *space_info, u64 bytes,
 			  enum btrfs_reserve_flush_enum flush)
 {
+	struct btrfs_block_rsv *global_rsv = &root->fs_info->global_block_rsv;
 	u64 profile = btrfs_get_alloc_profile(root, 0);
+	u64 rsv_size = 0;
 	u64 avail;
 	u64 used;
+	u64 to_add;
 
 	used = space_info->bytes_used + space_info->bytes_reserved +
-		space_info->bytes_pinned + space_info->bytes_readonly +
-		space_info->bytes_may_use;
+		space_info->bytes_pinned + space_info->bytes_readonly;
+
+	spin_lock(&global_rsv->lock);
+	rsv_size = global_rsv->size;
+	spin_unlock(&global_rsv->lock);
+
+	/*
+	 * We only want to allow over committing if we have lots of actual space
+	 * free, but if we don't have enough space to handle the global reserve
+	 * space then we could end up having a real enospc problem when trying
+	 * to allocate a chunk or some other such important allocation.
+	 */
+	rsv_size <<= 1;
+	if (used + rsv_size >= space_info->total_bytes)
+		return 0;
+
+	used += space_info->bytes_may_use;
 
 	spin_lock(&root->fs_info->free_chunk_lock);
 	avail = root->fs_info->free_chunk_space;
@@ -3674,17 +3697,25 @@ static int can_overcommit(struct btrfs_root *root,
 		       BTRFS_BLOCK_GROUP_RAID10))
 		avail >>= 1;
 
+	to_add = space_info->total_bytes;
+
 	/*
 	 * If we aren't flushing all things, let us overcommit up to
 	 * 1/2th of the space. If we can flush, don't let us overcommit
 	 * too much, let it overcommit up to 1/8 of the space.
 	 */
 	if (flush == BTRFS_RESERVE_FLUSH_ALL)
-		avail >>= 3;
+		to_add >>= 3;
 	else
-		avail >>= 1;
+		to_add >>= 1;
 
-	if (used + bytes < space_info->total_bytes + avail)
+	/*
+	 * Limit the overcommit to the amount of free space we could possibly
+	 * allocate for chunks.
+	 */
+	to_add = min(avail, to_add);
+
+	if (used + bytes < space_info->total_bytes + to_add)
 		return 1;
 	return 0;
 }
@@ -4703,7 +4734,8 @@ void btrfs_delalloc_release_metadata(struct inode *inode, u64 num_bytes)
 	spin_lock(&BTRFS_I(inode)->lock);
 	dropped = drop_outstanding_extent(inode);
 
-	to_free = calc_csum_metadata_size(inode, num_bytes, 0);
+	if (num_bytes)
+		to_free = calc_csum_metadata_size(inode, num_bytes, 0);
 	spin_unlock(&BTRFS_I(inode)->lock);
 	if (dropped > 0)
 		to_free += btrfs_calc_trans_metadata_size(root, dropped);
@@ -6966,6 +6998,7 @@ int btrfs_drop_snapshot(struct btrfs_root *root,
 	int err = 0;
 	int ret;
 	int level;
+	bool root_dropped = false;
 
 	path = btrfs_alloc_path();
 	if (!path) {
@@ -7023,6 +7056,7 @@ int btrfs_drop_snapshot(struct btrfs_root *root,
 		while (1) {
 			btrfs_tree_lock(path->nodes[level]);
 			btrfs_set_lock_blocking(path->nodes[level]);
+			path->locks[level] = BTRFS_WRITE_LOCK_BLOCKING;
 
 			ret = btrfs_lookup_extent_info(trans, root,
 						path->nodes[level]->start,
@@ -7039,6 +7073,7 @@ int btrfs_drop_snapshot(struct btrfs_root *root,
 				break;
 
 			btrfs_tree_unlock(path->nodes[level]);
+			path->locks[level] = 0;
 			WARN_ON(wc->refs[level] != 1);
 			level--;
 		}
@@ -7134,12 +7169,22 @@ int btrfs_drop_snapshot(struct btrfs_root *root,
 		free_extent_buffer(root->commit_root);
 		kfree(root);
 	}
+	root_dropped = true;
 out_end_trans:
 	btrfs_end_transaction_throttle(trans, tree_root);
 out_free:
 	kfree(wc);
 	btrfs_free_path(path);
 out:
+	/*
+	 * So if we need to stop dropping the snapshot for whatever reason we
+	 * need to make sure to add it back to the dead root list so that we
+	 * keep trying to do the work later.  This also cleans up roots if we
+	 * don't have it in the radix (like when we recover after a power fail
+	 * or unmount) so we don't leak memory.
+	 */
+	if (root_dropped == false)
+		btrfs_add_dead_root(root);
 	if (err)
 		btrfs_std_error(root->fs_info, err);
 	return err;

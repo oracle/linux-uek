@@ -98,7 +98,8 @@ static noinline int cow_file_range(struct inode *inode,
 static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 					   u64 len, u64 orig_start,
 					   u64 block_start, u64 block_len,
-					   u64 orig_block_len, int type);
+					   u64 orig_block_len, u64 ram_bytes,
+					   int type);
 
 static int btrfs_init_inode_security(struct btrfs_trans_handle *trans,
 				     struct inode *inode,  struct inode *dir,
@@ -623,7 +624,7 @@ static noinline int submit_compressed_extents(struct inode *inode,
 	if (list_empty(&async_cow->extents))
 		return 0;
 
-
+again:
 	while (!list_empty(&async_cow->extents)) {
 		async_extent = list_entry(async_cow->extents.next,
 					  struct async_extent, list);
@@ -663,6 +664,8 @@ retry:
 						  async_extent->ram_size - 1,
 						  btrfs_get_extent,
 						  WB_SYNC_ALL);
+			else if (ret)
+				unlock_page(async_cow->locked_page);
 			kfree(async_extent);
 			cond_resched();
 			continue;
@@ -687,6 +690,7 @@ retry:
 
 		if (ret) {
 			int i;
+
 			for (i = 0; i < async_extent->nr_pages; i++) {
 				WARN_ON(async_extent->pages[i]->mapping);
 				page_cache_release(async_extent->pages[i]);
@@ -694,12 +698,14 @@ retry:
 			kfree(async_extent->pages);
 			async_extent->nr_pages = 0;
 			async_extent->pages = NULL;
-			unlock_extent(io_tree, async_extent->start,
-				      async_extent->start +
-				      async_extent->ram_size - 1);
-			if (ret == -ENOSPC)
+
+			if (ret == -ENOSPC) {
+				unlock_extent(io_tree, async_extent->start,
+					      async_extent->start +
+					      async_extent->ram_size - 1);
 				goto retry;
-			goto out_free; /* JDM: Requeue? */
+			}
+			goto out_free;
 		}
 
 		/*
@@ -711,7 +717,8 @@ retry:
 					async_extent->ram_size - 1, 0);
 
 		em = alloc_extent_map();
-		BUG_ON(!em); /* -ENOMEM */
+		if (!em)
+			goto out_free_reserve;
 		em->start = async_extent->start;
 		em->len = async_extent->ram_size;
 		em->orig_start = em->start;
@@ -719,6 +726,7 @@ retry:
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = async_extent->ram_size;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		em->compress_type = async_extent->compress_type;
 		set_bit(EXTENT_FLAG_PINNED, &em->flags);
@@ -727,10 +735,7 @@ retry:
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST) {
 				free_extent_map(em);
@@ -741,6 +746,9 @@ retry:
 						async_extent->ram_size - 1, 0);
 		}
 
+		if (ret)
+			goto out_free_reserve;
+
 		ret = btrfs_add_ordered_extent_compress(inode,
 						async_extent->start,
 						ins.objectid,
@@ -748,7 +756,8 @@ retry:
 						ins.offset,
 						BTRFS_ORDERED_COMPRESSED,
 						async_extent->compress_type);
-		BUG_ON(ret); /* -ENOMEM */
+		if (ret)
+			goto out_free_reserve;
 
 		/*
 		 * clear dirty, set writeback and unlock the pages.
@@ -769,18 +778,30 @@ retry:
 				    ins.objectid,
 				    ins.offset, async_extent->pages,
 				    async_extent->nr_pages);
-
-		BUG_ON(ret); /* -ENOMEM */
 		alloc_hint = ins.objectid + ins.offset;
 		kfree(async_extent);
+		if (ret)
+			goto out;
 		cond_resched();
 	}
 	ret = 0;
 out:
 	return ret;
+out_free_reserve:
+	btrfs_free_reserved_extent(root, ins.objectid, ins.offset);
 out_free:
+	extent_clear_unlock_delalloc(inode, &BTRFS_I(inode)->io_tree,
+				     async_extent->start,
+				     async_extent->start +
+				     async_extent->ram_size - 1,
+				     NULL, EXTENT_CLEAR_UNLOCK_PAGE |
+				     EXTENT_CLEAR_UNLOCK |
+				     EXTENT_CLEAR_DELALLOC |
+				     EXTENT_CLEAR_DIRTY |
+				     EXTENT_SET_WRITEBACK |
+				     EXTENT_END_WRITEBACK);
 	kfree(async_extent);
-	goto out;
+	goto again;
 }
 
 static u64 get_extent_allocation_hint(struct inode *inode, u64 start,
@@ -911,16 +932,14 @@ static noinline int __cow_file_range(struct btrfs_trans_handle *trans,
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = ram_size;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		set_bit(EXTENT_FLAG_PINNED, &em->flags);
 		em->generation = -1;
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST) {
 				free_extent_map(em);
@@ -1173,6 +1192,7 @@ static noinline int run_delalloc_nocow(struct inode *inode,
 	u64 disk_bytenr;
 	u64 num_bytes;
 	u64 disk_num_bytes;
+	u64 ram_bytes;
 	int extent_type;
 	int ret, err;
 	int type;
@@ -1269,6 +1289,7 @@ next_slot:
 				    struct btrfs_file_extent_item);
 		extent_type = btrfs_file_extent_type(leaf, fi);
 
+		ram_bytes = btrfs_file_extent_ram_bytes(leaf, fi);
 		if (extent_type == BTRFS_FILE_EXTENT_REG ||
 		    extent_type == BTRFS_FILE_EXTENT_PREALLOC) {
 			disk_bytenr = btrfs_file_extent_disk_bytenr(leaf, fi);
@@ -1352,16 +1373,14 @@ out_check:
 			em->block_len = num_bytes;
 			em->block_start = disk_bytenr;
 			em->orig_block_len = disk_num_bytes;
+			em->ram_bytes = ram_bytes;
 			em->bdev = root->fs_info->fs_devices->latest_bdev;
 			set_bit(EXTENT_FLAG_PINNED, &em->flags);
 			set_bit(EXTENT_FLAG_FILLING, &em->flags);
 			em->generation = -1;
 			while (1) {
 				write_lock(&em_tree->lock);
-				ret = add_extent_mapping(em_tree, em);
-				if (!ret)
-					list_move(&em->list,
-						  &em_tree->modified_extents);
+				ret = add_extent_mapping(em_tree, em, 1);
 				write_unlock(&em_tree->lock);
 				if (ret != -EEXIST) {
 					free_extent_map(em);
@@ -2016,10 +2035,22 @@ out:
 	if (trans)
 		btrfs_end_transaction(trans, root);
 
-	if (ret)
+	if (ret) {
 		clear_extent_uptodate(io_tree, ordered_extent->file_offset,
 				      ordered_extent->file_offset +
 				      ordered_extent->len - 1, NULL, GFP_NOFS);
+
+		/*
+		 * If the ordered extent had an IOERR or something else went
+		 * wrong we need to return the space for this ordered extent
+		 * back to the allocator.
+		 */
+		if (!test_bit(BTRFS_ORDERED_NOCOW, &ordered_extent->flags) &&
+		    !test_bit(BTRFS_ORDERED_PREALLOC, &ordered_extent->flags))
+			btrfs_free_reserved_extent(root, ordered_extent->start,
+						   ordered_extent->disk_len);
+	}
+
 
 	/*
 	 * This needs to be done to make sure anybody waiting knows we are done
@@ -3744,16 +3775,14 @@ int btrfs_cont_expand(struct inode *inode, loff_t oldsize, loff_t size)
 			hole_em->block_start = EXTENT_MAP_HOLE;
 			hole_em->block_len = 0;
 			hole_em->orig_block_len = 0;
+			hole_em->ram_bytes = hole_size;
 			hole_em->bdev = root->fs_info->fs_devices->latest_bdev;
 			hole_em->compress_type = BTRFS_COMPRESS_NONE;
 			hole_em->generation = trans->transid;
 
 			while (1) {
 				write_lock(&em_tree->lock);
-				err = add_extent_mapping(em_tree, hole_em);
-				if (!err)
-					list_move(&hole_em->list,
-						  &em_tree->modified_extents);
+				err = add_extent_mapping(em_tree, hole_em, 1);
 				write_unlock(&em_tree->lock);
 				if (err != -EEXIST)
 					break;
@@ -4872,7 +4901,8 @@ static struct inode *btrfs_new_inode(struct btrfs_trans_handle *trans,
 		if (btrfs_test_opt(root, NODATASUM))
 			BTRFS_I(inode)->flags |= BTRFS_INODE_NODATASUM;
 		if (btrfs_test_opt(root, NODATACOW))
-			BTRFS_I(inode)->flags |= BTRFS_INODE_NODATACOW;
+			BTRFS_I(inode)->flags |= BTRFS_INODE_NODATACOW |
+				BTRFS_INODE_NODATASUM;
 	}
 
 	insert_inode_hash(inode);
@@ -5267,7 +5297,7 @@ static int merge_extent_mapping(struct extent_map_tree *em_tree,
 		em->block_start += start_diff;
 		em->block_len -= start_diff;
 	}
-	return add_extent_mapping(em_tree, em);
+	return add_extent_mapping(em_tree, em, 0);
 }
 
 static noinline int uncompress_inline(struct btrfs_path *path,
@@ -5442,6 +5472,7 @@ again:
 		goto not_found_em;
 	}
 
+	em->ram_bytes = btrfs_file_extent_ram_bytes(leaf, item);
 	if (found_type == BTRFS_FILE_EXTENT_REG ||
 	    found_type == BTRFS_FILE_EXTENT_PREALLOC) {
 		em->start = extent_start;
@@ -5562,7 +5593,7 @@ insert:
 
 	err = 0;
 	write_lock(&em_tree->lock);
-	ret = add_extent_mapping(em_tree, em);
+	ret = add_extent_mapping(em_tree, em, 0);
 	/* it is possible that someone inserted the extent into the tree
 	 * while we had the lock dropped.  It is also possible that
 	 * an overlapping map exists in the tree
@@ -5774,7 +5805,7 @@ static struct extent_map *btrfs_new_extent_direct(struct inode *inode,
 	}
 
 	em = create_pinned_em(inode, start, ins.offset, start, ins.objectid,
-			      ins.offset, ins.offset, 0);
+			      ins.offset, ins.offset, ins.offset, 0);
 	if (IS_ERR(em))
 		goto out;
 
@@ -5960,7 +5991,8 @@ static int lock_extent_direct(struct inode *inode, u64 lockstart, u64 lockend,
 static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 					   u64 len, u64 orig_start,
 					   u64 block_start, u64 block_len,
-					   u64 orig_block_len, int type)
+					   u64 orig_block_len, u64 ram_bytes,
+					   int type)
 {
 	struct extent_map_tree *em_tree;
 	struct extent_map *em;
@@ -5979,6 +6011,7 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 	em->block_start = block_start;
 	em->bdev = root->fs_info->fs_devices->latest_bdev;
 	em->orig_block_len = orig_block_len;
+	em->ram_bytes = ram_bytes;
 	em->generation = -1;
 	set_bit(EXTENT_FLAG_PINNED, &em->flags);
 	if (type == BTRFS_ORDERED_PREALLOC)
@@ -5988,10 +6021,7 @@ static struct extent_map *create_pinned_em(struct inode *inode, u64 start,
 		btrfs_drop_extent_cache(inode, em->start,
 				em->start + em->len - 1, 0);
 		write_lock(&em_tree->lock);
-		ret = add_extent_mapping(em_tree, em);
-		if (!ret)
-			list_move(&em->list,
-				  &em_tree->modified_extents);
+		ret = add_extent_mapping(em_tree, em, 1);
 		write_unlock(&em_tree->lock);
 	} while (ret == -EEXIST);
 
@@ -6015,16 +6045,12 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	u64 len = bh_result->b_size;
 	struct btrfs_trans_handle *trans;
 	int unlock_bits = EXTENT_LOCKED;
-	int ret;
+	int ret = 0;
 
-	if (create) {
-		ret = btrfs_delalloc_reserve_space(inode, len);
-		if (ret)
-			return ret;
+	if (create)
 		unlock_bits |= EXTENT_DELALLOC | EXTENT_DIRTY;
-	} else {
+	else
 		len = min_t(u64, len, root->sectorsize);
-	}
 
 	lockstart = start;
 	lockend = start + len - 1;
@@ -6035,14 +6061,6 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	 */
 	if (lock_extent_direct(inode, lockstart, lockend, &cached_state, create))
 		return -ENOTBLK;
-
-	if (create) {
-		ret = set_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
-				     lockend, EXTENT_DELALLOC, NULL,
-				     &cached_state, GFP_NOFS);
-		if (ret)
-			goto unlock_err;
-	}
 
 	em = btrfs_get_extent(inode, NULL, 0, start, len, 0);
 	if (IS_ERR(em)) {
@@ -6075,7 +6093,6 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 	if (!create && (em->block_start == EXTENT_MAP_HOLE ||
 			test_bit(EXTENT_FLAG_PREALLOC, &em->flags))) {
 		free_extent_map(em);
-		ret = 0;
 		goto unlock_err;
 	}
 
@@ -6124,7 +6141,8 @@ static int btrfs_get_blocks_direct(struct inode *inode, sector_t iblock,
 				em = create_pinned_em(inode, start, len,
 						       orig_start,
 						       block_start, len,
-						       orig_block_len, type);
+						       orig_block_len,
+						       ram_bytes, type);
 				if (IS_ERR(em)) {
 					btrfs_end_transaction(trans, root);
 					goto unlock_err;
@@ -6171,6 +6189,15 @@ unlock:
 		 */
 		if (start + len > i_size_read(inode))
 			i_size_write(inode, start + len);
+
+		spin_lock(&BTRFS_I(inode)->lock);
+		BTRFS_I(inode)->outstanding_extents++;
+		spin_unlock(&BTRFS_I(inode)->lock);
+
+		ret = set_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
+				     lockstart + len - 1, EXTENT_DELALLOC, NULL,
+				     &cached_state, GFP_NOFS);
+		BUG_ON(ret);
 	}
 
 	/*
@@ -6179,24 +6206,9 @@ unlock:
 	 * aren't using if there is any left over space.
 	 */
 	if (lockstart < lockend) {
-		if (create && len < lockend - lockstart) {
-			clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
-					 lockstart + len - 1,
-					 unlock_bits | EXTENT_DEFRAG, 1, 0,
-					 &cached_state, GFP_NOFS);
-			/*
-			 * Beside unlock, we also need to cleanup reserved space
-			 * for the left range by attaching EXTENT_DO_ACCOUNTING.
-			 */
-			clear_extent_bit(&BTRFS_I(inode)->io_tree,
-					 lockstart + len, lockend,
-					 unlock_bits | EXTENT_DO_ACCOUNTING |
-					 EXTENT_DEFRAG, 1, 0, NULL, GFP_NOFS);
-		} else {
-			clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
-					 lockend, unlock_bits, 1, 0,
-					 &cached_state, GFP_NOFS);
-		}
+		clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart,
+				 lockend, unlock_bits, 1, 0,
+				 &cached_state, GFP_NOFS);
 	} else {
 		free_extent_state(cached_state);
 	}
@@ -6206,9 +6218,6 @@ unlock:
 	return 0;
 
 unlock_err:
-	if (create)
-		unlock_bits |= EXTENT_DO_ACCOUNTING;
-
 	clear_extent_bit(&BTRFS_I(inode)->io_tree, lockstart, lockend,
 			 unlock_bits, 1, 0, &cached_state, GFP_NOFS);
 	return ret;
@@ -6646,15 +6655,36 @@ static ssize_t btrfs_direct_IO(int rw, struct kiocb *iocb,
 {
 	struct file *file = iocb->ki_filp;
 	struct inode *inode = file->f_mapping->host;
+	size_t count = 0;
+	ssize_t ret;
 
 	if (check_direct_IO(BTRFS_I(inode)->root, rw, iocb, iov,
 			    offset, nr_segs))
 		return 0;
 
-	return __blockdev_direct_IO(rw, iocb, inode,
-		   BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
-		   iov, offset, nr_segs, btrfs_get_blocks_direct, NULL,
-		   btrfs_submit_direct, 0);
+	if (rw & WRITE) {
+		count = iov_length(iov, nr_segs);
+		ret = btrfs_delalloc_reserve_space(inode, count);
+		if (ret)
+			return ret;
+	}
+
+	ret = __blockdev_direct_IO(rw, iocb, inode,
+			BTRFS_I(inode)->root->fs_info->fs_devices->latest_bdev,
+			iov, offset, nr_segs, btrfs_get_blocks_direct, NULL,
+			btrfs_submit_direct, 0);
+
+	if (rw & WRITE) {
+		if (ret < 0 && ret != -EIOCBQUEUED)
+			btrfs_delalloc_release_space(inode, count);
+		else if (ret >= 0 && (size_t)ret < count)
+			btrfs_delalloc_release_space(inode,
+						     count - (size_t)ret);
+		else
+			btrfs_delalloc_release_metadata(inode, 0);
+	}
+
+	return ret;
 }
 
 #define BTRFS_FIEMAP_FLAGS	(FIEMAP_FLAG_SYNC)
@@ -7239,8 +7269,9 @@ int btrfs_drop_inode(struct inode *inode)
 {
 	struct btrfs_root *root = BTRFS_I(inode)->root;
 
+	/* the snap/subvol tree is on deleting */
 	if (btrfs_root_refs(&root->root_item) == 0 &&
-	    !btrfs_is_free_space_inode(inode))
+	    root != root->fs_info->tree_root)
 		return 1;
 	else
 		return generic_drop_inode(inode);
@@ -7331,29 +7362,6 @@ static int btrfs_getattr(struct vfsmount *mnt,
 	stat->blocks = (ALIGN(inode_get_bytes(inode), blocksize) +
 		ALIGN(BTRFS_I(inode)->delalloc_bytes, blocksize)) >> 9;
 	return 0;
-}
-
-/*
- * If a file is moved, it will inherit the cow and compression flags of the new
- * directory.
- */
-static void fixup_inode_flags(struct inode *dir, struct inode *inode)
-{
-	struct btrfs_inode *b_dir = BTRFS_I(dir);
-	struct btrfs_inode *b_inode = BTRFS_I(inode);
-
-	if (b_dir->flags & BTRFS_INODE_NODATACOW)
-		b_inode->flags |= BTRFS_INODE_NODATACOW;
-	else
-		b_inode->flags &= ~BTRFS_INODE_NODATACOW;
-
-	if (b_dir->flags & BTRFS_INODE_COMPRESS) {
-		b_inode->flags |= BTRFS_INODE_COMPRESS;
-		b_inode->flags &= ~BTRFS_INODE_NOCOMPRESS;
-	} else {
-		b_inode->flags &= ~(BTRFS_INODE_COMPRESS |
-				    BTRFS_INODE_NOCOMPRESS);
-	}
 }
 
 static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
@@ -7520,8 +7528,6 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			goto out_fail;
 		}
 	}
-
-	fixup_inode_flags(new_dir, old_inode);
 
 	ret = btrfs_add_link(trans, new_dir, old_inode,
 			     new_dentry->d_name.name,
@@ -7859,16 +7865,14 @@ static int __btrfs_prealloc_file_range(struct inode *inode, int mode,
 		em->block_start = ins.objectid;
 		em->block_len = ins.offset;
 		em->orig_block_len = ins.offset;
+		em->ram_bytes = ins.offset;
 		em->bdev = root->fs_info->fs_devices->latest_bdev;
 		set_bit(EXTENT_FLAG_PREALLOC, &em->flags);
 		em->generation = trans->transid;
 
 		while (1) {
 			write_lock(&em_tree->lock);
-			ret = add_extent_mapping(em_tree, em);
-			if (!ret)
-				list_move(&em->list,
-					  &em_tree->modified_extents);
+			ret = add_extent_mapping(em_tree, em, 1);
 			write_unlock(&em_tree->lock);
 			if (ret != -EEXIST)
 				break;

@@ -3134,6 +3134,11 @@ int btrfs_balance(struct btrfs_balance_control *bctl,
 	mutex_lock(&fs_info->balance_mutex);
 	atomic_dec(&fs_info->balance_running);
 
+	if (bctl->sys.flags & BTRFS_BALANCE_ARGS_CONVERT) {
+		fs_info->num_tolerated_disk_barrier_failures =
+			btrfs_calc_num_tolerated_disk_barrier_failures(fs_info);
+	}
+
 	if (bargs) {
 		memset(bargs, 0, sizeof(*bargs));
 		update_ioctl_balance_args(fs_info, 0, bargs);
@@ -3142,11 +3147,6 @@ int btrfs_balance(struct btrfs_balance_control *bctl,
 	if ((ret && ret != -ECANCELED && ret != -ENOSPC) ||
 	    balance_need_close(fs_info)) {
 		__cancel_balance(fs_info);
-	}
-
-	if (bctl->sys.flags & BTRFS_BALANCE_ARGS_CONVERT) {
-		fs_info->num_tolerated_disk_barrier_failures =
-			btrfs_calc_num_tolerated_disk_barrier_failures(fs_info);
 	}
 
 	wake_up(&fs_info->balance_wait_q);
@@ -3723,17 +3723,12 @@ static int __btrfs_alloc_chunk(struct btrfs_trans_handle *trans,
 
 	em_tree = &extent_root->fs_info->mapping_tree.map_tree;
 	write_lock(&em_tree->lock);
-	ret = add_extent_mapping(em_tree, em);
+	ret = add_extent_mapping(em_tree, em, 0);
 	write_unlock(&em_tree->lock);
-	free_extent_map(em);
-	if (ret)
+	if (ret) {
+		free_extent_map(em);
 		goto error;
-
-	ret = btrfs_make_block_group(trans, extent_root, 0, type,
-				     BTRFS_FIRST_CHUNK_TREE_OBJECTID,
-				     start, num_bytes);
-	if (ret)
-		goto error;
+	}
 
 	for (i = 0; i < map->num_stripes; ++i) {
 		struct btrfs_device *device;
@@ -3746,15 +3741,42 @@ static int __btrfs_alloc_chunk(struct btrfs_trans_handle *trans,
 				info->chunk_root->root_key.objectid,
 				BTRFS_FIRST_CHUNK_TREE_OBJECTID,
 				start, dev_offset, stripe_size);
-		if (ret) {
-			btrfs_abort_transaction(trans, extent_root, ret);
-			goto error;
-		}
+		if (ret)
+			goto error_dev_extent;
 	}
 
+	ret = btrfs_make_block_group(trans, extent_root, 0, type,
+				     BTRFS_FIRST_CHUNK_TREE_OBJECTID,
+				     start, num_bytes);
+	if (ret) {
+		i = map->num_stripes - 1;
+		goto error_dev_extent;
+	}
+
+	free_extent_map(em);
 	kfree(devices_info);
 	return 0;
 
+error_dev_extent:
+	for (; i >= 0; i--) {
+		struct btrfs_device *device;
+		int err;
+
+		device = map->stripes[i].dev;
+		err = btrfs_free_dev_extent(trans, device, start);
+		if (err) {
+			btrfs_abort_transaction(trans, extent_root, err);
+			break;
+		}
+	}
+	write_lock(&em_tree->lock);
+	remove_extent_mapping(em_tree, em);
+	write_unlock(&em_tree->lock);
+
+	/* One for our allocation */
+	free_extent_map(em);
+	/* One for the tree reference */
+	free_extent_map(em);
 error:
 	kfree(map);
 	kfree(devices_info);
@@ -5026,7 +5048,7 @@ static int read_one_chunk(struct btrfs_root *root, struct btrfs_key *key,
 	}
 
 	write_lock(&map_tree->map_tree.lock);
-	ret = add_extent_mapping(&map_tree->map_tree, em);
+	ret = add_extent_mapping(&map_tree->map_tree, em, 0);
 	write_unlock(&map_tree->map_tree.lock);
 	BUG_ON(ret); /* Tree corruption */
 	free_extent_map(em);
