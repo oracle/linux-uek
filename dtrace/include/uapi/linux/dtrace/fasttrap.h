@@ -35,10 +35,6 @@
 #include <linux/dtrace/universal.h>
 #include <linux/dtrace/fasttrap_defines.h>
 
-#define FASTTRAPIOC		0xf4
-#define FASTTRAPIOC_MAKEPROBE	_IOW(FASTTRAPIOC, 1, fasttrap_probe_spec_t)
-#define FASTTRAPIOC_GETINSTR	_IOR(FASTTRAPIOC, 2, fasttrap_instr_query_t)
-
 typedef enum fasttrap_probe_type {
 	DTFTP_NONE = 0,
 	DTFTP_ENTRY,
@@ -66,5 +62,13 @@ typedef struct fasttrap_instr_query {
 	pid_t ftiq_pid;
 	fasttrap_instr_t ftiq_instr;
 } fasttrap_instr_query_t;
+
+/*
+ * Include after the definitions, to get ioctl()s when fasttrap.h is included.
+ * fasttrap_ioctl.h also #includes this header, to get structures when it is
+ * included itself, as is done by headers_check.
+ */
+
+#include <linux/dtrace/fasttrap_ioctl.h>
 
 #endif /* _LINUX_DTRACE_FASTTRAP_H */
