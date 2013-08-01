@@ -2,7 +2,7 @@
  * This module provides common API for accessing firmware configuration pages
  *
  * This code is based on drivers/scsi/mpt3sas/mpt3sas_base.c
- * Copyright (C) 2012-2013  LSI Corporation
+ * Copyright (C) 2013  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -92,7 +92,7 @@ struct config_request {
  * @mpi_reply: reply message frame
  * Context: none.
  *
- * Function for displaying debug info helpful when debugging issues
+ * Function for displaying debug info helpfull when debugging issues
  * in this module.
  */
 static void
@@ -158,9 +158,8 @@ _config_display_some_debug(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 	if (!desc)
 		return;
 
-	pr_info(MPT3SAS_FMT
-		"%s: %s(%d), action(%d), form(0x%08x), smid(%d)\n",
-		ioc->name, calling_function_name, desc,
+	printk(MPT3SAS_INFO_FMT "%s: %s(%d), action(%d), form(0x%08x), "
+	    "smid(%d)\n", ioc->name, calling_function_name, desc,
 	    mpi_request->Header.PageNumber, mpi_request->Action,
 	    le32_to_cpu(mpi_request->PageAddress), smid);
 
@@ -168,7 +167,7 @@ _config_display_some_debug(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 		return;
 
 	if (mpi_reply->IOCStatus || mpi_reply->IOCLogInfo)
-		pr_info(MPT3SAS_FMT
+		printk(MPT3SAS_INFO_FMT
 		    "\tiocstatus(0x%04x), loginfo(0x%08x)\n",
 		    ioc->name, le16_to_cpu(mpi_reply->IOCStatus),
 		    le32_to_cpu(mpi_reply->IOCLogInfo));
@@ -194,8 +193,8 @@ _config_alloc_config_dma_memory(struct MPT3SAS_ADAPTER *ioc,
 		mem->page = dma_alloc_coherent(&ioc->pdev->dev, mem->sz,
 		    &mem->page_dma, GFP_KERNEL);
 		if (!mem->page) {
-			pr_err(MPT3SAS_FMT
-				"%s: dma_alloc_coherent failed asking for (%d) bytes!!\n",
+			printk(MPT3SAS_ERR_FMT "%s: dma_alloc_coherent"
+			    " failed asking for (%d) bytes!!\n",
 			    ioc->name, __func__, mem->sz);
 			r = -ENOMEM;
 		}
@@ -258,7 +257,7 @@ mpt3sas_config_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 #ifdef CONFIG_SCSI_MPT3SAS_LOGGING
 	_config_display_some_debug(ioc, smid, "config_done", mpi_reply);
 #endif
-	ioc->config_cmds.smid = USHRT_MAX;
+	ioc->config_cmds.smid = USHORT_MAX;
 	complete(&ioc->config_cmds.done);
 	return 1;
 }
@@ -299,7 +298,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 
 	mutex_lock(&ioc->config_cmds.mutex);
 	if (ioc->config_cmds.status != MPT3_CMD_NOT_USED) {
-		pr_err(MPT3SAS_FMT "%s: config_cmd in use\n",
+		printk(MPT3SAS_ERR_FMT "%s: config_cmd in use\n",
 		    ioc->name, __func__);
 		mutex_unlock(&ioc->config_cmds.mutex);
 		return -EAGAIN;
@@ -348,14 +347,14 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 			r = -EFAULT;
 			goto free_mem;
 		}
-		pr_info(MPT3SAS_FMT "%s: attempting retry (%d)\n",
+		printk(MPT3SAS_INFO_FMT "%s: attempting retry (%d)\n",
 		    ioc->name, __func__, retry_count);
 	}
 	wait_state_count = 0;
 	ioc_state = mpt3sas_base_get_iocstate(ioc, 1);
 	while (ioc_state != MPI2_IOC_STATE_OPERATIONAL) {
 		if (wait_state_count++ == MPT3_CONFIG_PAGE_DEFAULT_TIMEOUT) {
-			pr_err(MPT3SAS_FMT
+			printk(MPT3SAS_ERR_FMT
 			    "%s: failed due to ioc not operational\n",
 			    ioc->name, __func__);
 			ioc->config_cmds.status = MPT3_CMD_NOT_USED;
@@ -364,17 +363,17 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 		}
 		ssleep(1);
 		ioc_state = mpt3sas_base_get_iocstate(ioc, 1);
-		pr_info(MPT3SAS_FMT
-			"%s: waiting for operational state(count=%d)\n",
-			ioc->name, __func__, wait_state_count);
+		printk(MPT3SAS_INFO_FMT "%s: waiting for "
+		    "operational state(count=%d)\n", ioc->name,
+		    __func__, wait_state_count);
 	}
 	if (wait_state_count)
-		pr_info(MPT3SAS_FMT "%s: ioc is operational\n",
+		printk(MPT3SAS_INFO_FMT "%s: ioc is operational\n",
 		    ioc->name, __func__);
 
 	smid = mpt3sas_base_get_smid(ioc, ioc->config_cb_idx);
 	if (!smid) {
-		pr_err(MPT3SAS_FMT "%s: failed obtaining a smid\n",
+		printk(MPT3SAS_ERR_FMT "%s: failed obtaining a smid\n",
 		    ioc->name, __func__);
 		ioc->config_cmds.status = MPT3_CMD_NOT_USED;
 		r = -EAGAIN;
@@ -395,7 +394,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 	timeleft = wait_for_completion_timeout(&ioc->config_cmds.done,
 	    timeout*HZ);
 	if (!(ioc->config_cmds.status & MPT3_CMD_COMPLETE)) {
-		pr_err(MPT3SAS_FMT "%s: timeout\n",
+		printk(MPT3SAS_ERR_FMT "%s: timeout\n",
 		    ioc->name, __func__);
 		_debug_dump_mf(mpi_request,
 		    sizeof(Mpi2ConfigRequest_t)/4);
@@ -419,9 +418,9 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 		    (mpi_reply->Header.PageType & 0xF)) {
 			_debug_dump_mf(mpi_request, ioc->request_sz/4);
 			_debug_dump_reply(mpi_reply, ioc->request_sz/4);
-			panic(KERN_WARNING MPT3SAS_FMT "%s: Firmware BUG:" \
-			    " mpi_reply mismatch: Requested PageType(0x%02x)" \
-			    " Reply PageType(0x%02x)\n", \
+			panic(MPT3SAS_WARN_FMT "%s: Firmware BUG:"
+			    " mpi_reply mismatch: Requested PageType(0x%02x)"
+			    " Reply PageType(0x%02x)\n",
 			    ioc->name, __func__,
 			    (mpi_request->Header.PageType & 0xF),
 			    (mpi_reply->Header.PageType & 0xF));
@@ -432,7 +431,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 		    mpi_request->ExtPageType != mpi_reply->ExtPageType) {
 			_debug_dump_mf(mpi_request, ioc->request_sz/4);
 			_debug_dump_reply(mpi_reply, ioc->request_sz/4);
-			panic(KERN_WARNING MPT3SAS_FMT "%s: Firmware BUG:" \
+			panic(MPT3SAS_WARN_FMT "%s: Firmware BUG:"
 			    " mpi_reply mismatch: Requested ExtPageType(0x%02x)"
 			    " Reply ExtPageType(0x%02x)\n",
 			    ioc->name, __func__, mpi_request->ExtPageType,
@@ -443,7 +442,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 	}
 
 	if (retry_count)
-		pr_info(MPT3SAS_FMT "%s: retry (%d) completed!!\n", \
+		printk(MPT3SAS_INFO_FMT "%s: retry (%d) completed!!\n",
 		    ioc->name, __func__, retry_count);
 
 	if ((ioc_status == MPI2_IOCSTATUS_SUCCESS) &&
@@ -459,8 +458,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 				_debug_dump_reply(mpi_reply, ioc->request_sz/4);
 				_debug_dump_config(p, min_t(u16, mem.sz,
 				    config_page_sz)/4);
-				panic(KERN_WARNING MPT3SAS_FMT
-					"%s: Firmware BUG:" \
+				panic(MPT3SAS_WARN_FMT "%s: Firmware BUG:"
 				    " config page mismatch:"
 				    " Requested PageType(0x%02x)"
 				    " Reply PageType(0x%02x)\n",
@@ -476,8 +474,7 @@ _config_request(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
 				_debug_dump_reply(mpi_reply, ioc->request_sz/4);
 				_debug_dump_config(p, min_t(u16, mem.sz,
 				    config_page_sz)/4);
-				panic(KERN_WARNING MPT3SAS_FMT
-					"%s: Firmware BUG:" \
+				panic(MPT3SAS_WARN_FMT "%s: Firmware BUG:"
 				    " config page mismatch:"
 				    " Requested ExtPageType(0x%02x)"
 				    " Reply ExtPageType(0x%02x)\n",
@@ -1115,6 +1112,9 @@ mpt3sas_config_get_sas_iounit_pg1(struct MPT3SAS_ADAPTER *ioc,
  out:
 	return r;
 }
+#if defined(TARGET_MODE)
+EXPORT_SYMBOL(mpt3sas_config_get_sas_iounit_pg1);
+#endif
 
 /**
  * mpt3sas_config_set_sas_iounit_pg1 - send sas iounit page 1
@@ -1159,6 +1159,9 @@ mpt3sas_config_set_sas_iounit_pg1(struct MPT3SAS_ADAPTER *ioc,
  out:
 	return r;
 }
+#if defined(TARGET_MODE)
+EXPORT_SYMBOL(mpt3sas_config_set_sas_iounit_pg1);
+#endif
 
 /**
  * mpt3sas_config_get_expander_pg0 - obtain expander page 0
