@@ -1805,6 +1805,8 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	ASSERT_RTNL();
 
+	ipoib_neigh_hash_uninit(dev);
+
 	ipoib_ib_dev_cleanup(dev);
 
 	/* no more access to rings */
@@ -1820,8 +1822,6 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	priv->recv_ring = NULL;
 	priv->send_ring = NULL;
-
-	ipoib_neigh_hash_uninit(dev);
 }
 
 void ipoib_dev_cleanup(struct net_device *dev)
