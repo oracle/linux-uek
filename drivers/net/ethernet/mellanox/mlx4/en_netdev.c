@@ -1972,6 +1972,9 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 
 	en_dbg(DRV, priv, "Destroying netdev on port:%d\n", priv->port);
 
+	if (mlx4_is_master(priv->mdev->dev))
+		device_remove_file(&dev->dev, &dev_attr_vf_link_state);
+
 	/* Unregister device - this will close the port if it was up */
 	if (priv->registered)
 		unregister_netdev(dev);
@@ -1989,8 +1992,6 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	mutex_unlock(&mdev->state_lock);
 
 	mlx4_en_free_resources(priv);
-	if (mlx4_is_master(priv->mdev->dev))
-		device_remove_file(&dev->dev, &dev_attr_vf_link_state);
 
 	kfree(priv->tx_ring);
 	kfree(priv->tx_cq);
