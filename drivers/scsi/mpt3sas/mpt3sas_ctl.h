@@ -3,7 +3,7 @@
  * controllers
  *
  * This code is based on drivers/scsi/mpt3sas/mpt3sas_ctl.h
- * Copyright (C) 2012-2013  LSI Corporation
+ * Copyright (C) 2013  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -49,7 +49,15 @@
 #include <linux/miscdevice.h>
 #endif
 
+/**
+ * NOTE
+ * FWDOWNLOAD - PR is let me know if we need to implement this
+ * DIAGBUFFER - PR said hold off
+ */
 
+/**
+ * HACK - changeme (MPT_MINOR = 220 )
+ */
 #ifndef MPT3SAS_MINOR
 #define MPT3SAS_MINOR		(MPT_MINOR + 2)
 #endif
@@ -415,4 +423,6 @@ struct mpt3_diag_read_buffer {
 	uint32_t diagnostic_data[1];
 };
 
+/* Chunk size to use when doing a FW Download */
+#define FW_DL_CHUNK_SIZE 0x4000
 #endif /* MPT3SAS_CTL_H_INCLUDED */

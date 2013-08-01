@@ -3,7 +3,7 @@
  * for access to MPT (Message Passing Technology) firmware.
  *
  * This code is based on drivers/scsi/mpt3sas/mpt3sas_base.h
- * Copyright (C) 2012-2013  LSI Corporation
+ * Copyright (C) 2013  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -51,6 +51,7 @@
 #include "mpi/mpi2_cnfg.h"
 #include "mpi/mpi2_init.h"
 #include "mpi/mpi2_raid.h"
+#include "mpi/mpi2_targ.h"
 #include "mpi/mpi2_tool.h"
 #include "mpi/mpi2_sas.h"
 
@@ -62,8 +63,8 @@
 #include <scsi/scsi_transport_sas.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/scsi_eh.h>
-#include <linux/version.h>
 
+#include "mpt3sas_compatibility.h"
 #include "mpt3sas_debug.h"
 #include "mpt3sas_trigger_diag.h"
 
@@ -71,16 +72,20 @@
 #define MPT3SAS_DRIVER_NAME		"mpt3sas"
 #define MPT3SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
 #define MPT3SAS_DESCRIPTION	"LSI MPT Fusion SAS 3.0 Device Driver"
-#define MPT3SAS_DRIVER_VERSION		"02.100.00.00"
-#define MPT3SAS_MAJOR_VERSION		2
-#define MPT3SAS_MINOR_VERSION		100
+#define MPT3SAS_DRIVER_VERSION		"3.00.00.00"
+#define MPT3SAS_MAJOR_VERSION		3
+#define MPT3SAS_MINOR_VERSION		0
 #define MPT3SAS_BUILD_VERSION		0
-#define MPT3SAS_RELEASE_VERSION	00
+#define MPT3SAS_RELEASE_VERSION		0
 
 /*
  * Set MPT3SAS_SG_DEPTH value based on user input.
  */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25))
+#define MPT3SAS_MAX_PHYS_SEGMENTS	MAX_PHYS_SEGMENTS
+#else
 #define MPT3SAS_MAX_PHYS_SEGMENTS	SCSI_MAX_SG_SEGMENTS
+#endif
 #define MPT3SAS_MIN_PHYS_SEGMENTS	16
 #ifdef CONFIG_SCSI_MPT3SAS_MAX_SGE
 #define MPT3SAS_SG_DEPTH		CONFIG_SCSI_MPT3SAS_MAX_SGE
@@ -88,6 +93,9 @@
 #define MPT3SAS_SG_DEPTH		MPT3SAS_MAX_PHYS_SEGMENTS
 #endif
 
+#if defined(TARGET_MODE)
+#include "../target/mpt3sas_stm_common.h"
+#endif
 
 /*
  * Generic Defines
@@ -101,6 +109,10 @@
 
 #define MPT_MAX_CALLBACKS		32
 
+#if defined(TARGET_MODE)
+#undef  MPT_MAX_CALLBACKS
+#define MPT_MAX_CALLBACKS		32
+#endif
 
 #define	 CAN_SLEEP			1
 #define  NO_SLEEP			0
@@ -122,6 +134,10 @@
  * logging format
  */
 #define MPT3SAS_FMT			"%s: "
+#define MPT3SAS_INFO_FMT		KERN_INFO MPT3SAS_FMT
+#define MPT3SAS_NOTE_FMT		KERN_NOTICE MPT3SAS_FMT
+#define MPT3SAS_WARN_FMT		KERN_WARNING MPT3SAS_FMT
+#define MPT3SAS_ERR_FMT			KERN_ERR MPT3SAS_FMT
 
 /*
  * per target private data
@@ -131,6 +147,8 @@
 #define MPT_TARGET_FLAGS_DELETED	0x04
 #define MPT_TARGET_FASTPATH_IO		0x08
 
+/* Enable Multipath suport */
+#define MPT3SAS_MULTIPATH
 
 
 /*
@@ -140,6 +158,29 @@
 #define MPT3_DIAG_BUFFER_IS_RELEASED	(0x02)
 #define MPT3_DIAG_BUFFER_IS_DIAG_RESET	(0x04)
 
+/*
+ *  End to End Data Protection Support
+ */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27))
+
+#define PRO_R MPI2_SCSIIO_EEDPFLAGS_CHECK_REMOVE_OP
+#define PRO_W MPI2_SCSIIO_EEDPFLAGS_INSERT_OP
+#define PRO_V MPI2_SCSIIO_EEDPFLAGS_INSERT_OP
+
+/* the read capacity 16 byte parameter block - defined in SBC-3 */
+struct read_cap_parameter {
+	u64	logical_block_addr;
+	u32	logical_block_length;
+	u8	prot_en:1;
+	u8	p_type:3;
+	u8	reserved0:4;
+	u8	logical_blocks_per_phyical_block:4;
+	u8	reserved1:4;
+	u16	lowest_aligned_log_block_address:14;
+	u16	reserved2:2;
+	u8	reserved3[16];
+};
+#endif
 
 /* OEM Identifiers */
 #define MFG10_OEM_ID_INVALID                   (0x00000000)
@@ -169,7 +210,6 @@ struct Mpi2ManufacturingPage10_t {
 	U32	OEMSpecificFlags1;		/* 20h */
 	U32	Reserved5[18];			/* 24h - 60h*/
 };
-
 
 /* Miscellaneous options */
 struct Mpi2ManufacturingPage11_t {
@@ -227,7 +267,12 @@ struct MPT3SAS_DEVICE {
 	u32	flags;
 	u8	configured_lun;
 	u8	block;
+	u8	deleted;
 	u8	tlr_snoop_check;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27))
+	u8	eedp_enable;
+	u8	eedp_type;
+#endif
 };
 
 #define MPT3_CMD_NOT_USED	0x8000	/* free */
@@ -253,6 +298,30 @@ struct _internal_cmd {
 	u16	status;
 	u16	smid;
 };
+/**
+ * struct _internal_qcmd - internal q commands struct
+ * @list: list of internal q cmds
+ * @request: request message pointer
+ * @reply: reply message pointer
+ * @sense: sense data
+ * @status: MPT2_CMD_XXX status
+ * @smid: system message id
+ * @transfer_packet: SCSI IO transfer packet pointer
+ */
+struct _internal_qcmd {
+	struct list_head list;
+	void *request;
+	void	*reply;
+	void	*sense;
+	u16	status;
+	u16	smid;
+	struct _scsi_io_transfer *transfer_packet;
+};
+#if (defined(CONFIG_SUSE_KERNEL) && defined(scsi_is_sas_phy_local)) || \
+	LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18)
+#define MPT_WIDE_PORT_API	1
+#define MPT_WIDE_PORT_API_PLUS	1
+#endif
 
 
 
@@ -273,8 +342,9 @@ struct _internal_cmd {
  * @channel: target channel
  * @slot: number number
  * @phy: phy identifier provided in sas device page 0
- * @fast_path: fast path feature enable bit
  * @responding: used in _scsih_sas_device_mark_responding
+ * @fast_path: fast path feature enable bit
+ * @pfa_led_on: flag for PFA LED status
  */
 struct _sas_device {
 	struct list_head list;
@@ -294,6 +364,13 @@ struct _sas_device {
 	u8	phy;
 	u8	responding;
 	u8	fast_path;
+	u8  pfa_led_on;
+	struct kref kref;
+	u8	*serial_number;
+#ifdef MPT3SAS_MULTIPATH
+	struct MPT3SAS_ADAPTER *ioc;
+	struct _sas_device *sas_device_alt;
+#endif
 };
 
 /**
@@ -352,7 +429,9 @@ struct _sas_port {
 	u8	num_phys;
 	struct sas_identify remote_identify;
 	struct sas_rphy *rphy;
+#if defined(MPT_WIDE_PORT_API)
 	struct sas_port *port;
+#endif
 	struct list_head phy_list;
 };
 
@@ -466,6 +545,16 @@ struct _tr_list {
 	u16	state;
 };
 
+typedef void (*MPT_ADD_SGE)(void *paddr, u32 flags_length, dma_addr_t dma_addr);
+
+/* SAS3.0 support */
+typedef int (*MPT_BUILD_SG_SCMD)(struct MPT3SAS_ADAPTER *ioc,
+	struct scsi_cmnd *scmd, u16 smid);
+typedef void (*MPT_BUILD_SG)(struct MPT3SAS_ADAPTER *ioc, void *psge,
+	dma_addr_t data_out_dma, size_t data_out_sz, dma_addr_t data_in_dma,
+	size_t data_in_sz);
+typedef void (*MPT_BUILD_ZERO_LEN_SGE)(struct MPT3SAS_ADAPTER *ioc,
+	void *paddr);
 
 /**
  * struct adapter_reply_queue - the reply queue struct
@@ -488,19 +577,6 @@ struct adapter_reply_queue {
 	atomic_t		busy;
 	struct list_head	list;
 };
-
-typedef void (*MPT_ADD_SGE)(void *paddr, u32 flags_length, dma_addr_t dma_addr);
-
-/* SAS3.0 support */
-typedef int (*MPT_BUILD_SG_SCMD)(struct MPT3SAS_ADAPTER *ioc,
-		struct scsi_cmnd *scmd, u16 smid);
-typedef void (*MPT_BUILD_SG)(struct MPT3SAS_ADAPTER *ioc, void *psge,
-		dma_addr_t data_out_dma, size_t data_out_sz,
-		dma_addr_t data_in_dma, size_t data_in_sz);
-typedef void (*MPT_BUILD_ZERO_LEN_SGE)(struct MPT3SAS_ADAPTER *ioc,
-		void *paddr);
-
-
 
 /* IOC Facts and Port Facts converted from little endian to cpu */
 union mpi3_version_union {
@@ -589,7 +665,7 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @shost_recovery: host reset in progress
  * @ioc_reset_in_progress_lock:
  * @ioc_link_reset_in_progress: phy/hard reset in progress
- * @ignore_loginfos: ignore loginfos during task management
+ * @ignore_loginfos: ignore loginfos during task managment
  * @remove_host: flag for when driver unloads, to avoid sending dev resets
  * @pci_error_recovery: flag to prevent ioc access until slot reset completes
  * @wait_for_discovery_to_complete: flag set at driver load time when
@@ -600,24 +676,29 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @start_scan_failed: means port enable failed, return's the ioc_status
  * @msix_enable: flag indicating msix is enabled
  * @msix_vector_count: number msix vectors
+ * @msix_table: virt address to the msix table
  * @cpu_msix_table: table for mapping cpus to msix index
  * @cpu_msix_table_sz: table size
  * @schedule_dead_ioc_flush_running_cmds: callback to flush pending commands
  * @scsi_io_cb_idx: shost generated commands
  * @tm_cb_idx: task management commands
  * @scsih_cb_idx: scsih internal commands
- * @transport_cb_idx: transport internal commands
- * @ctl_cb_idx: clt internal commands
+ * @scsih_q_cb_idx: scsih queue internal commands callback index
+ * @ctl_cb_idx: ctl internal commands
+ * @ctl_tm_cb_idx: ctl task management commands
  * @base_cb_idx: base internal commands
  * @config_cb_idx: base internal commands
  * @tm_tr_cb_idx : device removal target reset handshake
  * @tm_tr_volume_cb_idx : volume removal target reset
+ * @tm_tr_internal_cb_idx : internal task managemnet commands queue
  * @base_cmds:
  * @transport_cmds:
  * @scsih_cmds:
  * @tm_cmds:
  * @ctl_cmds:
  * @config_cmds:
+ * @scsih_q_intenal_cmds: base internal queue commands list
+ * @scsih_q_internal_lock: internal queue commands lock
  * @base_add_sg_single: handler for either 32/64 bit sgl's
  * @event_type: bits indicating which events to log
  * @event_context: unique id for each logged event
@@ -660,6 +741,11 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @free_list: free list of request
  * @pending_io_count:
  * @reset_wq:
+ * @pending_tm_count: pending task mangement request
+ * @terminated_tm_count: terminated request
+ * @pending_tm_wq: wait queue
+ * @out_of_frames
+ * @no_frames_tm_wq
  * @chain: pool of chains
  * @chain_dma:
  * @max_sges_in_main_message: number sg elements in main message
@@ -696,9 +782,11 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @reply_post_free_dma:
  * @reply_queue_count: number of reply queue's
  * @reply_queue_list: link list contaning the reply queue info
- * @reply_post_host_index: head index in the pool where FW completes IO
+ * @msix96_vector: 96 MSI-X vector support
+ * @replyPostRegisterIndex: index of next position in Reply Desc Post Queue
  * @delayed_tr_list: target reset link list
  * @delayed_tr_volume_list: volume target reset link list
+ * @delayed_internal_tm_list: internal tmf link list
  */
 struct MPT3SAS_ADAPTER {
 	struct list_head list;
@@ -709,17 +797,31 @@ struct MPT3SAS_ADAPTER {
 	char		tmp_string[MPT_STRING_LENGTH];
 	struct pci_dev	*pdev;
 	Mpi2SystemInterfaceRegs_t __iomem *chip;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
 	resource_size_t	chip_phys;
+#else
+	u64		chip_phys;
+#endif
 	int		logging_level;
 	int		fwfault_debug;
 	u8		ir_firmware;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,25))
 	int		bars;
+#endif
 	u8		mask_interrupts;
+
+#ifdef CONFIG_PCI_IOV
+	u8		sriov_enabled;
+#endif
 
 	/* fw fault handler */
 	char		fault_reset_work_q_name[20];
 	struct workqueue_struct *fault_reset_work_q;
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19))
 	struct delayed_work fault_reset_work;
+#else
+	struct work_struct fault_reset_work;
+#endif
 
 	/* fw event handler */
 	char		firmware_event_name[20];
@@ -744,8 +846,10 @@ struct MPT3SAS_ADAPTER {
 	u8		wait_for_discovery_to_complete;
 	u8		is_driver_loading;
 	u8		port_enable_failed;
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20))
 	u8		start_scan;
 	u16		start_scan_failed;
+#endif
 
 	u8		msix_enable;
 	u16		msix_vector_count;
@@ -753,18 +857,26 @@ struct MPT3SAS_ADAPTER {
 	u16		cpu_msix_table_sz;
 	u32		ioc_reset_count;
 	MPT3SAS_FLUSH_RUNNING_CMDS schedule_dead_ioc_flush_running_cmds;
+	u32             non_operational_loop;
 
 	/* internal commands, callback index */
 	u8		scsi_io_cb_idx;
 	u8		tm_cb_idx;
 	u8		transport_cb_idx;
 	u8		scsih_cb_idx;
+	u8		scsih_q_cb_idx;
 	u8		ctl_cb_idx;
+	u8		ctl_tm_cb_idx;
+	u8		ctl_diag_cb_idx;
 	u8		base_cb_idx;
 	u8		port_enable_cb_idx;
 	u8		config_cb_idx;
 	u8		tm_tr_cb_idx;
 	u8		tm_tr_volume_cb_idx;
+	u8		tm_tr_internal_cb_idx;
+#ifdef MPT3SAS_MULTIPATH
+	u8		tm_tr_mp_cb_idx;
+#endif
 	u8		tm_sas_control_cb_idx;
 	struct _internal_cmd base_cmds;
 	struct _internal_cmd port_enable_cmds;
@@ -772,7 +884,11 @@ struct MPT3SAS_ADAPTER {
 	struct _internal_cmd scsih_cmds;
 	struct _internal_cmd tm_cmds;
 	struct _internal_cmd ctl_cmds;
+	struct _internal_cmd ctl_diag_cmds;
 	struct _internal_cmd config_cmds;
+
+	struct list_head scsih_q_intenal_cmds;
+	spinlock_t	scsih_q_internal_lock;
 
 	MPT_ADD_SGE	base_add_sg_single;
 
@@ -792,6 +908,8 @@ struct MPT3SAS_ADAPTER {
 	u32		event_context;
 	void		*event_log;
 	u32		event_masks[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];
+	
+	u8      disable_eedp_support;
 
 	/* static config pages */
 	struct mpt3sas_facts facts;
@@ -826,6 +944,9 @@ struct MPT3SAS_ADAPTER {
 	void		*pd_handles;
 	u16		pd_handles_sz;
 
+	void		*pend_os_device_add;
+	u16		pend_os_device_add_sz;
+
 	/* config page */
 	u16		config_page_sz;
 	void		*config_page;
@@ -845,6 +966,11 @@ struct MPT3SAS_ADAPTER {
 	struct list_head free_list;
 	int		pending_io_count;
 	wait_queue_head_t reset_wq;
+	int		pending_tm_count;
+	u32		terminated_tm_count;
+	wait_queue_head_t pending_tm_wq;
+	u8		  out_of_frames;
+	wait_queue_head_t no_frames_tm_wq;
 
 	/* chain */
 	struct chain_tracker *chain_lookup;
@@ -900,8 +1026,20 @@ struct MPT3SAS_ADAPTER {
 	u8		reply_queue_count;
 	struct list_head reply_queue_list;
 
+	u8 		msix96_vector;
+	/* reply post register index */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,18))
+	resource_size_t	**replyPostRegisterIndex;
+#else
+	u64		**replyPostRegisterIndex;
+#endif
+
 	struct list_head delayed_tr_list;
 	struct list_head delayed_tr_volume_list;
+#ifdef MPT3SAS_MULTIPATH
+	struct list_head delayed_tr_mp_list;
+#endif
+	struct list_head delayed_internal_tm_list;
 
 	/* diag buffer support */
 	u8		*diag_buffer[MPI2_DIAG_BUF_TYPE_COUNT];
@@ -913,6 +1051,16 @@ struct MPT3SAS_ADAPTER {
 	u32		diagnostic_flags[MPI2_DIAG_BUF_TYPE_COUNT];
 	u32		ring_buffer_offset;
 	u32		ring_buffer_sz;
+#if defined(TARGET_MODE)
+	char		stm_name[MPT_NAME_LENGTH];
+	u8		stm_io_cb_idx; /* normal io */
+	u8		stm_tm_cb_idx; /* task managment */
+	u8		stm_tm_imm_cb_idx; /* immediate TM request */
+	u8		stm_post_cb_idx; /* post all buffers */
+	struct _internal_cmd stm_tm_cmds; /* TM requests */
+	struct _internal_cmd stm_post_cmds; /* post cmd buffer request */
+	void		*priv;
+#endif
 	spinlock_t	diag_trigger_lock;
 	u8		diag_trigger_active;
 	struct SL_WH_MASTER_TRIGGER_T diag_trigger_master;
@@ -924,6 +1072,25 @@ struct MPT3SAS_ADAPTER {
 typedef u8 (*MPT_CALLBACK)(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
 
+#if defined(TARGET_MODE)
+typedef  void (*STM_CALLBACK_WITH_IOC)(struct MPT3SAS_ADAPTER *ioc);
+typedef  void (*STM_CALLBACK_FOR_TGT_CMD)(struct MPT3SAS_ADAPTER *ioc,
+    Mpi2TargetCommandBufferReplyDescriptor_t *rpf,   u8 msix_index);
+typedef  void (*STM_CALLBACK_FOR_TGT_ASSIST)(struct MPT3SAS_ADAPTER *ioc,
+    Mpi2TargetAssistSuccessReplyDescriptor_t *rpf);
+typedef  u8 (*STM_CALLBACK_FOR_SMID)(struct MPT3SAS_ADAPTER *ioc,
+    u8 msix_index, u32 reply);
+typedef  void (*STM_CALLBACK_FOR_RESET)(struct MPT3SAS_ADAPTER *ioc,
+    int reset_phase);
+
+struct STM_CALLBACK {
+	STM_CALLBACK_WITH_IOC  watchdog;
+	STM_CALLBACK_FOR_TGT_CMD target_command;
+	STM_CALLBACK_FOR_TGT_ASSIST target_assist;
+	STM_CALLBACK_FOR_SMID smid_handler;
+	STM_CALLBACK_FOR_RESET reset_handler;
+};
+#endif
 
 /* base shared API */
 extern struct list_head mpt3sas_ioc_list;
@@ -955,6 +1122,10 @@ void mpt3sas_base_put_smid_scsi_io(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 void mpt3sas_base_put_smid_fast_path(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 	u16 handle);
 void mpt3sas_base_put_smid_hi_priority(struct MPT3SAS_ADAPTER *ioc, u16 smid);
+#if defined(TARGET_MODE)
+void mpt3sas_base_put_smid_target_assist(struct MPT3SAS_ADAPTER *ioc, u16 smid,
+	u16 io_index);
+#endif
 void mpt3sas_base_put_smid_default(struct MPT3SAS_ADAPTER *ioc, u16 smid);
 void mpt3sas_base_initialize_callback_handler(void);
 u8 mpt3sas_base_register_callback_handler(MPT_CALLBACK cb_func);
@@ -984,14 +1155,18 @@ void mpt3sas_halt_firmware(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_update_missing_delay(struct MPT3SAS_ADAPTER *ioc,
 	u16 device_missing_delay, u8 io_missing_delay);
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,20))
 int mpt3sas_port_enable(struct MPT3SAS_ADAPTER *ioc);
-
+#endif
 
 /* scsih shared API */
 u8 mpt3sas_scsih_event_callback(struct MPT3SAS_ADAPTER *ioc, u8 msix_index,
 	u32 reply);
 void mpt3sas_scsih_reset_handler(struct MPT3SAS_ADAPTER *ioc, int reset_phase);
-
+#ifdef MPT3SAS_MULTIPATH
+void mpt3sas_scsih_check_tm_for_multipath(struct MPT3SAS_ADAPTER *ioc,
+	u16 handle, u8 task_type);
+#endif
 int mpt3sas_scsih_issue_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle,
 	uint channel, uint id, uint lun, u8 type, u16 smid_task,
 	ulong timeout, unsigned long serial_number,  enum mutex_type m_type);
@@ -1023,14 +1198,12 @@ int mpt3sas_config_get_manufacturing_pg7(struct MPT3SAS_ADAPTER *ioc,
 int mpt3sas_config_get_manufacturing_pg10(struct MPT3SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage10_t *config_page);
-
 int mpt3sas_config_get_manufacturing_pg11(struct MPT3SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage11_t  *config_page);
 int mpt3sas_config_set_manufacturing_pg11(struct MPT3SAS_ADAPTER *ioc,
 	Mpi2ConfigReply_t *mpi_reply,
 	struct Mpi2ManufacturingPage11_t *config_page);
-
 int mpt3sas_config_get_bios_pg2(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigReply_t
 	*mpi_reply, Mpi2BiosPage2_t *config_page);
 int mpt3sas_config_get_bios_pg3(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigReply_t
@@ -1088,11 +1261,19 @@ int mpt3sas_config_get_volume_wwid(struct MPT3SAS_ADAPTER *ioc,
 	u16 volume_handle, u64 *wwid);
 
 /* ctl shared API */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,25))
 extern struct device_attribute *mpt3sas_host_attrs[];
+#else
+extern struct class_device_attribute *mpt3sas_host_attrs[];
+#endif
 extern struct device_attribute *mpt3sas_dev_attrs[];
 void mpt3sas_ctl_init(void);
 void mpt3sas_ctl_exit(void);
 u8 mpt3sas_ctl_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
+	u32 reply);
+u8 mpt3sas_ctl_tm_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
+	u32 reply);
+u8 mpt3sas_ctl_diag_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
 void mpt3sas_ctl_reset_handler(struct MPT3SAS_ADAPTER *ioc, int reset_phase);
 u8 mpt3sas_ctl_event_callback(struct MPT3SAS_ADAPTER *ioc,
@@ -1104,7 +1285,7 @@ void mpt3sas_enable_diag_buffer(struct MPT3SAS_ADAPTER *ioc,
 	u8 bits_to_regsiter);
 int mpt3sas_send_diag_release(struct MPT3SAS_ADAPTER *ioc, u8 buffer_type,
 	u8 *issue_reset);
-
+ 
 /* transport shared API */
 u8 mpt3sas_transport_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
@@ -1121,12 +1302,14 @@ void mpt3sas_transport_update_links(struct MPT3SAS_ADAPTER *ioc,
 	u64 sas_address, u16 handle, u8 phy_number, u8 link_rate);
 extern struct sas_function_template mpt3sas_transport_functions;
 extern struct scsi_transport_template *mpt3sas_transport_template;
-extern int scsi_internal_device_block(struct scsi_device *sdev);
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,6,0))
-extern int scsi_internal_device_unblock(struct scsi_device *sdev,
-                                        enum scsi_device_state new_state);
-#else
-extern int scsi_internal_device_unblock(struct scsi_device *sdev);
+
+#if defined(TARGET_MODE)
+void mpt3sas_base_stm_initialize_callback_handler(void);
+void mpt3sas_base_stm_release_callback_handler(void);
+#if defined(STM_RING_BUFFER)
+extern void sysfs_dump_kernel_thread_state(struct MPT_STM_PRIV *priv);
+extern void sysfs_dump_ring_buffer(struct MPT_STM_PRIV *priv);
+#endif /* STM_RING_BUFFER */
 #endif
 
 /* trigger data externs */
