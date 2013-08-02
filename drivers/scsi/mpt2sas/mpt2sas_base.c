@@ -83,6 +83,10 @@ static int msix_disable = -1;
 module_param(msix_disable, int, 0);
 MODULE_PARM_DESC(msix_disable, " disable msix routed interrupts (default=0)");
 
+static int max_msix_vectors = -1;
+module_param(max_msix_vectors, int, 0);
+MODULE_PARM_DESC(max_msix_vectors, " max msix vectors ");
+
 static int mpt2sas_fwfault_debug;
 MODULE_PARM_DESC(mpt2sas_fwfault_debug, " enable detection of firmware fault "
 	"and halt firmware - (default=0)");
@@ -129,28 +133,15 @@ module_param_call(mpt2sas_fwfault_debug, _scsih_set_fwfault_debug,
 
 /**
  *  mpt2sas_remove_dead_ioc_func - kthread context to remove dead ioc
- * @arg: input argument, used to derive ioc
+ * @arg: input argument, used to derive PCI device struct 
  *
- * Return 0 if controller is removed from pci subsystem.
- * Return -1 for other case.
+ * Return 0.
  */
-static int mpt2sas_remove_dead_ioc_func(void *arg)
+static int
+mpt2sas_remove_dead_ioc_func(void *arg)
 {
-	struct MPT2SAS_ADAPTER *ioc = (struct MPT2SAS_ADAPTER *)arg;
-	struct pci_dev *pdev;
-
-	if ((ioc == NULL))
-		return -1;
-
-	pdev = ioc->pdev;
-	if ((pdev == NULL))
-		return -1;
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3,4,3))
-	pci_stop_and_remove_bus_device(pdev);
-#else
-	pci_remove_bus_device(pdev);
-#endif
+	/* mpt2sas_scsih_detach_pci will validate pci_dev */
+	mpt2sas_scsih_detach_pci((struct pci_dev *)arg);
 	return 0;
 }
 
@@ -179,7 +170,7 @@ _base_fault_reset_work(void *arg)
 
 
 	spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock, flags);
-	if (ioc->shost_recovery)
+	if (ioc->shost_recovery || ioc->pci_error_recovery)
 		goto rearm_timer;
 	spin_unlock_irqrestore(&ioc->ioc_reset_in_progress_lock, flags);
 
@@ -187,6 +178,20 @@ _base_fault_reset_work(void *arg)
 	if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_MASK) {
 		printk(MPT2SAS_ERR_FMT "SAS host is non-operational !!!!\n",
 		    ioc->name);
+
+		/* It may be possible that EEH recovery can resolve some of
+		 * pci bus failure issues rather removing the dead ioc function
+		 * by considering controller is in a non-operational state. So
+		 * here priority is given to the EEH recovery. If it doesn't
+		 * not resolve this issue, mpt2sas driver will consider this
+		 * controller to non-operational state and remove the dead ioc
+		 * function.
+		 */
+		if (ioc->non_operational_loop++ < 5) {
+			spin_lock_irqsave(&ioc->ioc_reset_in_progress_lock,
+							 flags);
+			goto rearm_timer;
+		}
 
 		/*
 		 * Call _scsih_flush_pending_cmds callback so that we flush all
@@ -202,7 +207,7 @@ _base_fault_reset_work(void *arg)
 		 */
 		ioc->remove_host = 1;
 		/*Remove the Dead Host */
-		p = kthread_run(mpt2sas_remove_dead_ioc_func, ioc,
+		p = kthread_run(mpt2sas_remove_dead_ioc_func, ioc->pdev,
 		    "mpt2sas_dead_ioc_%d", ioc->id);
 		if (IS_ERR(p))
 			printk(MPT2SAS_ERR_FMT "%s: Running mpt2sas_dead_ioc "
@@ -212,6 +217,8 @@ _base_fault_reset_work(void *arg)
 			    "thread success !!!!\n", ioc->name, __func__);
 		return; /* don't rearm timer */
 	}
+
+	ioc->non_operational_loop = 0;
 
 	if ((doorbell & MPI2_IOC_STATE_MASK) == MPI2_IOC_STATE_FAULT) {
 		rc = mpt2sas_base_hard_reset_handler(ioc, CAN_SLEEP,
@@ -455,17 +462,18 @@ _base_sas_ioc_info(struct MPT2SAS_ADAPTER *ioc, MPI2DefaultReply_t *mpi_reply,
 *  For use by SCSI Initiator and SCSI Target end-to-end data protection
 ****************************************************************************/
 
-#if defined(EEDP_SUPPORT)
 	case MPI2_IOCSTATUS_EEDP_GUARD_ERROR:
-		desc = "eedp guard error";
+		if (!ioc->disable_eedp_support)
+			desc = "eedp guard error";
 		break;
 	case MPI2_IOCSTATUS_EEDP_REF_TAG_ERROR:
-		desc = "eedp ref tag error";
+		if (!ioc->disable_eedp_support)
+			desc = "eedp ref tag error";
 		break;
 	case MPI2_IOCSTATUS_EEDP_APP_TAG_ERROR:
-		desc = "eedp app tag error";
+		if (!ioc->disable_eedp_support)
+			desc = "eedp app tag error";
 		break;
-#endif /* EEDP Support */
 
 /****************************************************************************
 *  SCSI Target values
@@ -1540,6 +1548,16 @@ _base_enable_msix(struct MPT2SAS_ADAPTER *ioc)
 	ioc->reply_queue_count = min_t(int, ioc->cpu_count,
 	    ioc->msix_vector_count);
 
+	printk(MPT2SAS_INFO_FMT "MSI-X vectors supported: %d, no of cores"
+	    ": %d, max_msix_vectors: %d\n", ioc->name, ioc->msix_vector_count,
+	    ioc->cpu_count, max_msix_vectors);
+
+	if (max_msix_vectors > 0) {
+		ioc->reply_queue_count = min_t(int, max_msix_vectors,
+		    ioc->reply_queue_count);
+		ioc->msix_vector_count = ioc->reply_queue_count;
+	}
+
 	entries = kcalloc(ioc->reply_queue_count, sizeof(struct msix_entry),
 	    GFP_KERNEL);
 	if (!entries) {
@@ -2456,21 +2474,21 @@ _base_static_config_pages(struct MPT2SAS_ADAPTER *ioc)
 		mpt2sas_config_get_manufacturing_pg10(ioc, &mpi_reply,
 		    &ioc->manu_pg10);
 
-#if defined(EEDP_SUPPORT)
+	if (!ioc->disable_eedp_support) {
 	/*
 	 * Ensure correct T10 PI operation if vendor left EEDPTagMode
 	 * flag unset in NVDATA.
 	 */
-	mpt2sas_config_get_manufacturing_pg11(ioc, &mpi_reply, &ioc->manu_pg11);
-	if (ioc->manu_pg11.EEDPTagMode == 0) {
-		printk(KERN_ERR "%s: overriding NVDATA EEDPTagMode setting\n",
-		    ioc->name);
-		ioc->manu_pg11.EEDPTagMode &= ~0x3;
-		ioc->manu_pg11.EEDPTagMode |= 0x1;
-		mpt2sas_config_set_manufacturing_pg11(ioc, &mpi_reply,
-		    &ioc->manu_pg11);
+		mpt2sas_config_get_manufacturing_pg11(ioc, &mpi_reply, &ioc->manu_pg11);
+		if (ioc->manu_pg11.EEDPTagMode == 0) {
+			printk(KERN_ERR "%s: overriding NVDATA EEDPTagMode setting\n",
+			    ioc->name);
+			ioc->manu_pg11.EEDPTagMode &= ~0x3;
+			ioc->manu_pg11.EEDPTagMode |= 0x1;
+			mpt2sas_config_set_manufacturing_pg11(ioc, &mpi_reply,
+			    &ioc->manu_pg11);
+		}
 	}
-#endif
 
 	mpt2sas_config_get_bios_pg2(ioc, &mpi_reply, &ioc->bios_pg2);
 	mpt2sas_config_get_bios_pg3(ioc, &mpi_reply, &ioc->bios_pg3);
@@ -4295,6 +4313,12 @@ _base_make_ioc_operational(struct MPT2SAS_ADAPTER *ioc, int sleep_flag)
 		kfree(delayed_tr);
 	}
 
+	list_for_each_entry_safe(delayed_tr, delayed_tr_next,
+	    &ioc->delayed_internal_tm_list, list) {
+		list_del(&delayed_tr->list);
+		kfree(delayed_tr);
+	}
+
 	/* initialize the scsi lookup free list */
 	spin_lock_irqsave(&ioc->scsi_lookup_lock, flags);
 	INIT_LIST_HEAD(&ioc->free_list);
@@ -4657,6 +4681,8 @@ mpt2sas_base_attach(struct MPT2SAS_ADAPTER *ioc)
 	if (r)
 		goto out_free_resources;
 
+	ioc->non_operational_loop = 0;
+
 	return 0;
 
  out_free_resources:
@@ -4748,6 +4774,8 @@ mpt2sas_base_detach(struct MPT2SAS_ADAPTER *ioc)
 static void
 _base_reset_handler(struct MPT2SAS_ADAPTER *ioc, int reset_phase)
 {
+	struct _internal_qcmd *scsih_qcmd, *scsih_qcmd_next;
+	unsigned long flags;
 	mpt2sas_scsih_reset_handler(ioc, reset_phase);
 	mpt2sas_ctl_reset_handler(ioc, reset_phase);
 #if defined(TARGET_MODE)
@@ -4794,6 +4822,15 @@ _base_reset_handler(struct MPT2SAS_ADAPTER *ioc, int reset_phase)
 			ioc->config_cmds.smid = USHORT_MAX;
 			complete(&ioc->config_cmds.done);
 		}
+
+		spin_lock_irqsave(&ioc->scsih_q_internal_lock, flags);
+		list_for_each_entry_safe(scsih_qcmd, scsih_qcmd_next, &ioc->scsih_q_intenal_cmds, list) {
+		if ((scsih_qcmd->status) & MPT2_CMD_PENDING)
+			scsih_qcmd->status |= MPT2_CMD_RESET;
+			mpt2sas_base_free_smid(ioc, scsih_qcmd->smid);
+		}
+		spin_unlock_irqrestore(&ioc->scsih_q_internal_lock, flags);
+		
 		break;
 	case MPT2_IOC_DONE_RESET:
 		dtmprintk(ioc, printk(MPT2SAS_INFO_FMT "%s: "
