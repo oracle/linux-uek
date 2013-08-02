@@ -2089,7 +2089,7 @@ static int qla4_8xxx_minidump_process_rdmem(struct scsi_qla_host *ha,
 
 	if (r_addr & 0xf) {
 		DEBUG2(ql4_printk(KERN_INFO, ha,
-				  "[%s]: Read addr 0x%x not 16 bytes alligned\n",
+				  "[%s]: Read addr 0x%x not 16 bytes aligned\n",
 				  __func__, r_addr));
 		return QLA_ERROR;
 	}
@@ -2986,7 +2986,7 @@ int qla4_8xxx_load_risc(struct scsi_qla_host *ha)
 
 	retval = qla4_8xxx_device_state_handler(ha);
 
-	if (retval == QLA_SUCCESS && !test_bit(AF_INIT_DONE, &ha->flags))
+	if (retval == QLA_SUCCESS && !test_bit(AF_IRQ_ATTACHED, &ha->flags))
 		retval = qla4xxx_request_irqs(ha);
 
 	return retval;
@@ -3154,6 +3154,10 @@ qla4_8xxx_get_flt_info(struct scsi_qla_host *ha, uint32_t flt_addr)
 			hw->flt_region_chap =  start;
 			hw->flt_chap_size =  le32_to_cpu(region->size);
 			break;
+		case FLT_REG_ISCSI_DDB:
+			hw->flt_region_ddb =  start;
+			hw->flt_ddb_size =  le32_to_cpu(region->size);
+			break;
 		}
 	}
 	goto done;
@@ -3166,14 +3170,19 @@ no_flash_data:
 	hw->flt_region_boot     = FA_BOOT_CODE_ADDR_82;
 	hw->flt_region_bootload = FA_BOOT_LOAD_ADDR_82;
 	hw->flt_region_fw       = FA_RISC_CODE_ADDR_82;
-	hw->flt_region_chap	= FA_FLASH_ISCSI_CHAP;
+	hw->flt_region_chap	= FA_FLASH_ISCSI_CHAP >> 2;
 	hw->flt_chap_size	= FA_FLASH_CHAP_SIZE;
+	hw->flt_region_ddb	= FA_FLASH_ISCSI_DDB >> 2;
+	hw->flt_ddb_size	= FA_FLASH_DDB_SIZE;
 
 done:
-	DEBUG2(ql4_printk(KERN_INFO, ha, "FLT[%s]: flt=0x%x fdt=0x%x "
-	    "boot=0x%x bootload=0x%x fw=0x%x\n", loc, hw->flt_region_flt,
-	    hw->flt_region_fdt,	hw->flt_region_boot, hw->flt_region_bootload,
-	    hw->flt_region_fw));
+	DEBUG2(ql4_printk(KERN_INFO, ha,
+			  "FLT[%s]: flt=0x%x fdt=0x%x boot=0x%x bootload=0x%x fw=0x%x chap=0x%x chap_size=0x%x ddb=0x%x  ddb_size=0x%x\n",
+			  loc, hw->flt_region_flt, hw->flt_region_fdt,
+			  hw->flt_region_boot, hw->flt_region_bootload,
+			  hw->flt_region_fw, hw->flt_region_chap,
+			  hw->flt_chap_size, hw->flt_region_ddb,
+			  hw->flt_ddb_size));
 }
 
 static void
@@ -3427,11 +3436,11 @@ int qla4_8xxx_get_sys_info(struct scsi_qla_host *ha)
 	}
 
 	/* Make sure we receive the minimum required data to cache internally */
-	if (mbox_sts[4] < offsetof(struct mbx_sys_info, reserved)) {
+	if ((is_qla8032(ha) ? mbox_sts[3] : mbox_sts[4]) <
+	    offsetof(struct mbx_sys_info, reserved)) {
 		DEBUG2(printk("scsi%ld: %s: GET_SYS_INFO data receive"
 		    " error (%x)\n", ha->host_no, __func__, mbox_sts[4]));
 		goto exit_validate_mac82;
-
 	}
 
 	/* Save M.A.C. address & serial_number */
@@ -3463,7 +3472,7 @@ exit_validate_mac82:
 
 /* Interrupt handling helpers. */
 
-int qla4_8xxx_mbx_intr_enable(struct scsi_qla_host *ha)
+int qla4_8xxx_intr_enable(struct scsi_qla_host *ha)
 {
 	uint32_t mbox_cmd[MBOX_REG_COUNT];
 	uint32_t mbox_sts[MBOX_REG_COUNT];
@@ -3484,7 +3493,7 @@ int qla4_8xxx_mbx_intr_enable(struct scsi_qla_host *ha)
 	return QLA_SUCCESS;
 }
 
-int qla4_8xxx_mbx_intr_disable(struct scsi_qla_host *ha)
+int qla4_8xxx_intr_disable(struct scsi_qla_host *ha)
 {
 	uint32_t mbox_cmd[MBOX_REG_COUNT];
 	uint32_t mbox_sts[MBOX_REG_COUNT];
@@ -3509,7 +3518,7 @@ int qla4_8xxx_mbx_intr_disable(struct scsi_qla_host *ha)
 void
 qla4_82xx_enable_intrs(struct scsi_qla_host *ha)
 {
-	qla4_8xxx_mbx_intr_enable(ha);
+	qla4_8xxx_intr_enable(ha);
 
 	spin_lock_irq(&ha->hardware_lock);
 	/* BIT 10 - reset */
@@ -3522,7 +3531,7 @@ void
 qla4_82xx_disable_intrs(struct scsi_qla_host *ha)
 {
 	if (test_and_clear_bit(AF_INTERRUPTS_ON, &ha->flags))
-		qla4_8xxx_mbx_intr_disable(ha);
+		qla4_8xxx_intr_disable(ha);
 
 	spin_lock_irq(&ha->hardware_lock);
 	/* BIT 10 - set */

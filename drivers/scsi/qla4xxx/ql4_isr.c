@@ -396,7 +396,6 @@ static void qla4xxx_passthru_status_entry(struct scsi_qla_host *ha,
 
 	task_data = task->dd_data;
 	memcpy(&task_data->sts, sts_entry, sizeof(struct passthru_status));
-	ha->req_q_count += task_data->iocb_req_cnt;
 	ha->iocb_cnt -= task_data->iocb_req_cnt;
 	queue_work(ha->task_wq, &task_data->task_work);
 }
@@ -416,7 +415,6 @@ static struct mrb *qla4xxx_del_mrb_from_active_array(struct scsi_qla_host *ha,
 		return mrb;
 
 	/* update counters */
-	ha->req_q_count += mrb->iocb_cnt;
 	ha->iocb_cnt -= mrb->iocb_cnt;
 
 	return mrb;
@@ -582,6 +580,33 @@ exit_prq_error:
 }
 
 /**
+ * qla4_83xx_loopback_in_progress: Is loopback in progress?
+ * @ha: Pointer to host adapter structure.
+ * @ret: 1 = loopback in progress, 0 = loopback not in progress
+ **/
+static int qla4_83xx_loopback_in_progress(struct scsi_qla_host *ha)
+{
+	int rval = 1;
+
+	if (is_qla8032(ha)) {
+		if ((ha->idc_info.info2 & ENABLE_INTERNAL_LOOPBACK) ||
+		    (ha->idc_info.info2 & ENABLE_EXTERNAL_LOOPBACK)) {
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "%s: Loopback diagnostics in progress\n",
+					  __func__));
+			rval = 1;
+		} else {
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "%s: Loopback diagnostics not in progress\n",
+					  __func__));
+			rval = 0;
+		}
+	}
+
+	return rval;
+}
+
+/**
  * qla4xxx_isr_decode_mailbox - decodes mailbox status
  * @ha: Pointer to host adapter structure.
  * @mailbox_status: Mailbox status.
@@ -676,8 +701,10 @@ static void qla4xxx_isr_decode_mailbox(struct scsi_qla_host * ha,
 
 		case MBOX_ASTS_LINK_DOWN:
 			clear_bit(AF_LINK_UP, &ha->flags);
-			if (test_bit(AF_INIT_DONE, &ha->flags))
+			if (test_bit(AF_INIT_DONE, &ha->flags)) {
 				set_bit(DPC_LINK_CHANGED, &ha->dpc_flags);
+				qla4xxx_wake_dpc(ha);
+			}
 
 			ql4_printk(KERN_INFO, ha, "%s: LINK DOWN\n", __func__);
 			qla4xxx_post_aen_work(ha, ISCSI_EVENT_LINKDOWN,
@@ -806,7 +833,7 @@ static void qla4xxx_isr_decode_mailbox(struct scsi_qla_host * ha,
 			    " removed\n",  ha->host_no, mbox_sts[0]));
 			break;
 
-		case MBOX_ASTS_IDC_NOTIFY:
+		case MBOX_ASTS_IDC_REQUEST_NOTIFICATION:
 		{
 			uint32_t opcode;
 			if (is_qla8032(ha)) {
@@ -840,7 +867,49 @@ static void qla4xxx_isr_decode_mailbox(struct scsi_qla_host * ha,
 				DEBUG2(ql4_printk(KERN_INFO, ha,
 						  "scsi:%ld: AEN %04x IDC Complete notification\n",
 						  ha->host_no, mbox_sts[0]));
+
+				if (qla4_83xx_loopback_in_progress(ha))
+					set_bit(AF_LOOPBACK, &ha->flags);
+				else
+					clear_bit(AF_LOOPBACK, &ha->flags);
 			}
+			break;
+
+		case MBOX_ASTS_IPV6_DEFAULT_ROUTER_CHANGED:
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "scsi%ld: AEN %04x, mbox_sts[1]=%08x, mbox_sts[2]=%08x, mbox_sts[3]=%08x, mbox_sts[4]=%08x mbox_sts[5]=%08x\n",
+					  ha->host_no, mbox_sts[0], mbox_sts[1],
+					  mbox_sts[2], mbox_sts[3], mbox_sts[4],
+					  mbox_sts[5]));
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "scsi%ld: AEN %04x Received IPv6 default router changed notification\n",
+					  ha->host_no, mbox_sts[0]));
+			break;
+
+		case MBOX_ASTS_INITIALIZATION_FAILED:
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "scsi%ld: AEN %04x, mbox_sts[3]=%08x\n",
+					  ha->host_no, mbox_sts[0],
+					  mbox_sts[3]));
+			break;
+
+		case MBOX_ASTS_SYSTEM_WARNING_EVENT:
+			DEBUG2(ql4_printk(KERN_WARNING, ha,
+					  "scsi%ld: AEN %04x, mbox_sts[1]=%08x, mbox_sts[2]=%08x, mbox_sts[3]=%08x, mbox_sts[4]=%08x mbox_sts[5]=%08x\n",
+					  ha->host_no, mbox_sts[0], mbox_sts[1],
+					  mbox_sts[2], mbox_sts[3], mbox_sts[4],
+					  mbox_sts[5]));
+			break;
+
+		case MBOX_ASTS_DCBX_CONF_CHANGE:
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "scsi%ld: AEN %04x, mbox_sts[1]=%08x, mbox_sts[2]=%08x, mbox_sts[3]=%08x, mbox_sts[4]=%08x mbox_sts[5]=%08x\n",
+					  ha->host_no, mbox_sts[0], mbox_sts[1],
+					  mbox_sts[2], mbox_sts[3], mbox_sts[4],
+					  mbox_sts[5]));
+			DEBUG2(ql4_printk(KERN_INFO, ha,
+					  "scsi%ld: AEN %04x Received DCBX configuration changed notification\n",
+					  ha->host_no, mbox_sts[0]));
 			break;
 
 		default:
@@ -1065,8 +1134,8 @@ irqreturn_t qla4_82xx_intr_handler(int irq, void *dev_id)
 
 	status = qla4_82xx_rd_32(ha, ISR_INT_STATE_REG);
 	if (!ISR_IS_LEGACY_INTR_TRIGGERED(status)) {
-		DEBUG2(ql4_printk(KERN_INFO, ha,
-		    "%s legacy Int not triggered\n", __func__));
+		DEBUG7(ql4_printk(KERN_INFO, ha,
+				  "%s legacy Int not triggered\n", __func__));
 		return IRQ_NONE;
 	}
 
@@ -1124,17 +1193,18 @@ irqreturn_t qla4_83xx_intr_handler(int irq, void *dev_id)
 
 	/* Legacy interrupt is valid if bit31 of leg_int_ptr is set */
 	if (!(leg_int_ptr & LEG_INT_PTR_B31)) {
-		ql4_printk(KERN_ERR, ha,
-			   "%s: Legacy Interrupt Bit 31 not set, spurious interrupt!\n",
-			   __func__);
+		DEBUG7(ql4_printk(KERN_ERR, ha,
+				  "%s: Legacy Interrupt Bit 31 not set, spurious interrupt!\n",
+				  __func__));
 		return IRQ_NONE;
 	}
 
 	/* Validate the PCIE function ID set in leg_int_ptr bits [19..16] */
 	if ((leg_int_ptr & PF_BITS_MASK) != ha->pf_bit) {
-		ql4_printk(KERN_ERR, ha,
-			   "%s: Incorrect function ID 0x%x in legacy interrupt register, ha->pf_bit = 0x%x\n",
-			   __func__, (leg_int_ptr & PF_BITS_MASK), ha->pf_bit);
+		DEBUG7(ql4_printk(KERN_ERR, ha,
+				  "%s: Incorrect function ID 0x%x in legacy interrupt register, ha->pf_bit = 0x%x\n",
+				  __func__, (leg_int_ptr & PF_BITS_MASK),
+				  ha->pf_bit));
 		return IRQ_NONE;
 	}
 
@@ -1437,11 +1507,14 @@ irq_not_attached:
 
 void qla4xxx_free_irqs(struct scsi_qla_host *ha)
 {
-	if (test_bit(AF_MSIX_ENABLED, &ha->flags))
-		qla4_8xxx_disable_msix(ha);
-	else if (test_and_clear_bit(AF_MSI_ENABLED, &ha->flags)) {
-		free_irq(ha->pdev->irq, ha);
-		pci_disable_msi(ha->pdev);
-	} else if (test_and_clear_bit(AF_INTx_ENABLED, &ha->flags))
-		free_irq(ha->pdev->irq, ha);
+	if (test_and_clear_bit(AF_IRQ_ATTACHED, &ha->flags)) {
+		if (test_bit(AF_MSIX_ENABLED, &ha->flags)) {
+			qla4_8xxx_disable_msix(ha);
+		} else if (test_and_clear_bit(AF_MSI_ENABLED, &ha->flags)) {
+			free_irq(ha->pdev->irq, ha);
+			pci_disable_msi(ha->pdev);
+		} else if (test_and_clear_bit(AF_INTx_ENABLED, &ha->flags)) {
+			free_irq(ha->pdev->irq, ha);
+		}
+	}
 }

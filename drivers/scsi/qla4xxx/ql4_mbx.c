@@ -5,6 +5,7 @@
  * See LICENSE.qla4xxx for copyright and licensing details.
  */
 
+#include <linux/ctype.h>
 #include "ql4_def.h"
 #include "ql4_glbl.h"
 #include "ql4_dbg.h"
@@ -41,6 +42,30 @@ void qla4xxx_process_mbox_intr(struct scsi_qla_host *ha, int out_count)
 		ha->mbox_status_count = out_count;
 		ha->isp_ops->interrupt_service_routine(ha, intr_status);
 	}
+}
+
+/**
+ * qla4xxx_is_intr_poll_mode – Are we allowed to poll for interrupts?
+ * @ha: Pointer to host adapter structure.
+ * @ret: 1=polling mode, 0=non-polling mode
+ **/
+static int qla4xxx_is_intr_poll_mode(struct scsi_qla_host *ha)
+{
+	int rval = 1;
+
+	if (is_qla8032(ha)) {
+		if (test_bit(AF_IRQ_ATTACHED, &ha->flags) &&
+		    test_bit(AF_83XX_MBOX_INTR_ON, &ha->flags))
+			rval = 0;
+	} else {
+		if (test_bit(AF_IRQ_ATTACHED, &ha->flags) &&
+		    test_bit(AF_INTERRUPTS_ON, &ha->flags) &&
+		    test_bit(AF_ONLINE, &ha->flags) &&
+		    !test_bit(AF_HA_REMOVAL, &ha->flags))
+			rval = 0;
+	}
+
+	return rval;
 }
 
 /**
@@ -153,33 +178,28 @@ int qla4xxx_mailbox_command(struct scsi_qla_host *ha, uint8_t inCount,
 	/*
 	 * Wait for completion: Poll or completion queue
 	 */
-	if (test_bit(AF_IRQ_ATTACHED, &ha->flags) &&
-	    test_bit(AF_INTERRUPTS_ON, &ha->flags) &&
-	    test_bit(AF_ONLINE, &ha->flags) &&
-	    !test_bit(AF_HA_REMOVAL, &ha->flags)) {
-		/* Do not poll for completion. Use completion queue */
-		set_bit(AF_MBOX_COMMAND_NOPOLL, &ha->flags);
-		wait_for_completion_timeout(&ha->mbx_intr_comp, MBOX_TOV * HZ);
-		clear_bit(AF_MBOX_COMMAND_NOPOLL, &ha->flags);
-	} else {
+	if (qla4xxx_is_intr_poll_mode(ha)) {
 		/* Poll for command to complete */
 		wait_count = jiffies + MBOX_TOV * HZ;
 		while (test_bit(AF_MBOX_COMMAND_DONE, &ha->flags) == 0) {
 			if (time_after_eq(jiffies, wait_count))
 				break;
-
 			/*
 			 * Service the interrupt.
 			 * The ISR will save the mailbox status registers
 			 * to a temporary storage location in the adapter
 			 * structure.
 			 */
-
 			spin_lock_irqsave(&ha->hardware_lock, flags);
 			ha->isp_ops->process_mailbox_interrupt(ha, outCount);
 			spin_unlock_irqrestore(&ha->hardware_lock, flags);
 			msleep(10);
 		}
+	} else {
+		/* Do not poll for completion. Use completion queue */
+		set_bit(AF_MBOX_COMMAND_NOPOLL, &ha->flags);
+		wait_for_completion_timeout(&ha->mbx_intr_comp, MBOX_TOV * HZ);
+		clear_bit(AF_MBOX_COMMAND_NOPOLL, &ha->flags);
 	}
 
 	/* Check for mailbox timeout. */
@@ -678,8 +698,24 @@ int qla4xxx_get_firmware_status(struct scsi_qla_host * ha)
 		return QLA_ERROR;
 	}
 
-	ql4_printk(KERN_INFO, ha, "%ld firmware IOCBs available (%d).\n",
-	    ha->host_no, mbox_sts[2]);
+	/* High-water mark of IOCBs */
+	ha->iocb_hiwat = mbox_sts[2];
+	DEBUG2(ql4_printk(KERN_INFO, ha,
+			  "%s: firmware IOCBs available = %d\n", __func__,
+			  ha->iocb_hiwat));
+
+	if (ha->iocb_hiwat > IOCB_HIWAT_CUSHION)
+		ha->iocb_hiwat -= IOCB_HIWAT_CUSHION;
+
+	/* Ideally, we should not enter this code, as the # of firmware
+	 * IOCBs is hard-coded in the firmware. We set a default
+	 * iocb_hiwat here just in case */
+	if (ha->iocb_hiwat == 0) {
+		ha->iocb_hiwat = REQUEST_QUEUE_DEPTH / 4;
+		DEBUG2(ql4_printk(KERN_WARNING, ha,
+				  "%s: Setting IOCB's to = %d\n", __func__,
+				  ha->iocb_hiwat));
+	}
 
 	return QLA_SUCCESS;
 }
@@ -1094,6 +1130,7 @@ int qla4xxx_reset_lun(struct scsi_qla_host * ha, struct ddb_entry * ddb_entry,
 {
 	uint32_t mbox_cmd[MBOX_REG_COUNT];
 	uint32_t mbox_sts[MBOX_REG_COUNT];
+	uint32_t scsi_lun[2];
 	int status = QLA_SUCCESS;
 
 	DEBUG2(printk("scsi%ld:%d:%d: lun reset issued\n", ha->host_no,
@@ -1105,10 +1142,16 @@ int qla4xxx_reset_lun(struct scsi_qla_host * ha, struct ddb_entry * ddb_entry,
 	 */
 	memset(&mbox_cmd, 0, sizeof(mbox_cmd));
 	memset(&mbox_sts, 0, sizeof(mbox_sts));
+	int_to_scsilun(lun, (struct scsi_lun *) scsi_lun);
 
 	mbox_cmd[0] = MBOX_CMD_LUN_RESET;
 	mbox_cmd[1] = ddb_entry->fw_ddb_index;
-	mbox_cmd[2] = lun << 8;
+	/* FW expects LUN bytes 0-3 in Incoming Mailbox 2
+	 * (LUN byte 0 is LSByte, byte 3 is MSByte) */
+	mbox_cmd[2] = cpu_to_le32(scsi_lun[0]);
+	/* FW expects LUN bytes 4-7 in Incoming Mailbox 3
+	 * (LUN byte 4 is LSByte, byte 7 is MSByte) */
+	mbox_cmd[3] = cpu_to_le32(scsi_lun[1]);
 	mbox_cmd[5] = 0x01;	/* Immediate Command Enable */
 
 	qla4xxx_mailbox_command(ha, MBOX_REG_COUNT, 1, &mbox_cmd[0], &mbox_sts[0]);
@@ -1228,16 +1271,28 @@ int qla4xxx_about_firmware(struct scsi_qla_host *ha)
 	}
 
 	/* Save version information. */
-	ha->firmware_version[0] = le16_to_cpu(about_fw->fw_major);
-	ha->firmware_version[1] = le16_to_cpu(about_fw->fw_minor);
-	ha->patch_number = le16_to_cpu(about_fw->fw_patch);
-	ha->build_number = le16_to_cpu(about_fw->fw_build);
-	ha->iscsi_major = le16_to_cpu(about_fw->iscsi_major);
-	ha->iscsi_minor = le16_to_cpu(about_fw->iscsi_minor);
-	ha->bootload_major = le16_to_cpu(about_fw->bootload_major);
-	ha->bootload_minor = le16_to_cpu(about_fw->bootload_minor);
-	ha->bootload_patch = le16_to_cpu(about_fw->bootload_patch);
-	ha->bootload_build = le16_to_cpu(about_fw->bootload_build);
+	ha->fw_info.fw_major = le16_to_cpu(about_fw->fw_major);
+	ha->fw_info.fw_minor = le16_to_cpu(about_fw->fw_minor);
+	ha->fw_info.fw_patch = le16_to_cpu(about_fw->fw_patch);
+	ha->fw_info.fw_build = le16_to_cpu(about_fw->fw_build);
+	memcpy(ha->fw_info.fw_build_date, about_fw->fw_build_date,
+	       sizeof(about_fw->fw_build_date));
+	memcpy(ha->fw_info.fw_build_time, about_fw->fw_build_time,
+	       sizeof(about_fw->fw_build_time));
+	strcpy((char *)ha->fw_info.fw_build_user,
+	       skip_spaces((char *)about_fw->fw_build_user));
+	ha->fw_info.fw_load_source = le16_to_cpu(about_fw->fw_load_source);
+	ha->fw_info.iscsi_major = le16_to_cpu(about_fw->iscsi_major);
+	ha->fw_info.iscsi_minor = le16_to_cpu(about_fw->iscsi_minor);
+	ha->fw_info.bootload_major = le16_to_cpu(about_fw->bootload_major);
+	ha->fw_info.bootload_minor = le16_to_cpu(about_fw->bootload_minor);
+	ha->fw_info.bootload_patch = le16_to_cpu(about_fw->bootload_patch);
+	ha->fw_info.bootload_build = le16_to_cpu(about_fw->bootload_build);
+	strcpy((char *)ha->fw_info.extended_timestamp,
+	       skip_spaces((char *)about_fw->extended_timestamp));
+
+	ha->fw_uptime_secs = le32_to_cpu(mbox_sts[5]);
+	ha->fw_uptime_msecs = le32_to_cpu(mbox_sts[6]);
 	status = QLA_SUCCESS;
 
 exit_about_fw:
@@ -1246,8 +1301,8 @@ exit_about_fw:
 	return status;
 }
 
-static int qla4xxx_get_default_ddb(struct scsi_qla_host *ha, uint32_t options,
-				   dma_addr_t dma_addr)
+int qla4xxx_get_default_ddb(struct scsi_qla_host *ha, uint32_t options,
+			    dma_addr_t dma_addr)
 {
 	uint32_t mbox_cmd[MBOX_REG_COUNT];
 	uint32_t mbox_sts[MBOX_REG_COUNT];
@@ -1375,6 +1430,55 @@ exit_bootdb_failed:
 	return status;
 }
 
+int qla4xxx_flashdb_by_index(struct scsi_qla_host *ha,
+			     struct dev_db_entry *fw_ddb_entry,
+			     dma_addr_t fw_ddb_entry_dma, uint16_t ddb_index)
+{
+	uint32_t dev_db_start_offset;
+	uint32_t dev_db_end_offset;
+	int status = QLA_ERROR;
+
+	memset(fw_ddb_entry, 0, sizeof(*fw_ddb_entry));
+
+	if (is_qla40XX(ha)) {
+		dev_db_start_offset = FLASH_OFFSET_DB_INFO;
+		dev_db_end_offset = FLASH_OFFSET_DB_END;
+	} else {
+		dev_db_start_offset = FLASH_RAW_ACCESS_ADDR +
+				      (ha->hw.flt_region_ddb << 2);
+		/* flt_ddb_size is DDB table size for both ports
+		 * so divide it by 2 to calculate the offset for second port
+		 */
+		if (ha->port_num == 1)
+			dev_db_start_offset += (ha->hw.flt_ddb_size / 2);
+
+		dev_db_end_offset = dev_db_start_offset +
+				    (ha->hw.flt_ddb_size / 2);
+	}
+
+	dev_db_start_offset += (ddb_index * sizeof(*fw_ddb_entry));
+
+	if (dev_db_start_offset > dev_db_end_offset) {
+		DEBUG2(ql4_printk(KERN_ERR, ha,
+				  "%s:Invalid DDB index %d", __func__,
+				  ddb_index));
+		goto exit_fdb_failed;
+	}
+
+	if (qla4xxx_get_flash(ha, fw_ddb_entry_dma, dev_db_start_offset,
+			      sizeof(*fw_ddb_entry)) != QLA_SUCCESS) {
+		ql4_printk(KERN_ERR, ha, "scsi%ld: %s: Get Flash failed\n",
+			   ha->host_no, __func__);
+		goto exit_fdb_failed;
+	}
+
+	if (fw_ddb_entry->cookie == DDB_VALID_COOKIE)
+		status = QLA_SUCCESS;
+
+exit_fdb_failed:
+	return status;
+}
+
 int qla4xxx_get_chap(struct scsi_qla_host *ha, char *username, char *password,
 		     uint16_t idx)
 {
@@ -1385,10 +1489,8 @@ int qla4xxx_get_chap(struct scsi_qla_host *ha, char *username, char *password,
 	dma_addr_t chap_dma;
 
 	chap_table = dma_pool_alloc(ha->chap_dma_pool, GFP_KERNEL, &chap_dma);
-	if (chap_table == NULL) {
-		ret = -ENOMEM;
-		goto exit_get_chap;
-	}
+	if (chap_table == NULL)
+		return -ENOMEM;
 
 	chap_size = sizeof(struct ql4_chap_table);
 	memset(chap_table, 0, chap_size);
@@ -1470,6 +1572,62 @@ exit_set_chap:
 	return ret;
 }
 
+
+int qla4xxx_get_uni_chap_at_index(struct scsi_qla_host *ha, char *username,
+				  char *password, uint16_t chap_index)
+{
+	int rval = QLA_ERROR;
+	struct ql4_chap_table *chap_table = NULL;
+	int max_chap_entries;
+
+	if (!ha->chap_list) {
+		ql4_printk(KERN_ERR, ha, "Do not have CHAP table cache\n");
+		rval = QLA_ERROR;
+		goto exit_uni_chap;
+	}
+
+	if (!username || !password) {
+		ql4_printk(KERN_ERR, ha, "No memory for username & secret\n");
+		rval = QLA_ERROR;
+		goto exit_uni_chap;
+	}
+
+	if (is_qla80XX(ha))
+		max_chap_entries = (ha->hw.flt_chap_size / 2) /
+				   sizeof(struct ql4_chap_table);
+	else
+		max_chap_entries = MAX_CHAP_ENTRIES_40XX;
+
+	if (chap_index > max_chap_entries) {
+		ql4_printk(KERN_ERR, ha, "Invalid Chap index\n");
+		rval = QLA_ERROR;
+		goto exit_uni_chap;
+	}
+
+	mutex_lock(&ha->chap_sem);
+	chap_table = (struct ql4_chap_table *)ha->chap_list + chap_index;
+	if (chap_table->cookie != __constant_cpu_to_le16(CHAP_VALID_COOKIE)) {
+		rval = QLA_ERROR;
+		goto exit_unlock_uni_chap;
+	}
+
+	if (!(chap_table->flags & BIT_6)) {
+		ql4_printk(KERN_ERR, ha, "Unidirectional entry not set\n");
+		rval = QLA_ERROR;
+		goto exit_unlock_uni_chap;
+	}
+
+	strncpy(password, chap_table->secret, MAX_CHAP_SECRET_LEN);
+	strncpy(username, chap_table->name, MAX_CHAP_NAME_LEN);
+
+	rval = QLA_SUCCESS;
+
+exit_unlock_uni_chap:
+	mutex_unlock(&ha->chap_sem);
+exit_uni_chap:
+	return rval;
+}
+
 /**
  * qla4xxx_get_chap_index - Get chap index given username and secret
  * @ha: pointer to adapter structure
@@ -1491,7 +1649,7 @@ int qla4xxx_get_chap_index(struct scsi_qla_host *ha, char *username,
 	int max_chap_entries = 0;
 	struct ql4_chap_table *chap_table;
 
-	if (is_qla8022(ha))
+	if (is_qla80XX(ha))
 		max_chap_entries = (ha->hw.flt_chap_size / 2) /
 						sizeof(struct ql4_chap_table);
 	else
