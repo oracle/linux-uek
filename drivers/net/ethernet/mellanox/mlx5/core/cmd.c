@@ -1559,7 +1559,7 @@ int mlx5_cmd_status_to_err(struct mlx5_outbox_hdr *hdr)
 	case 0x4:	return -EIO;
 	case 0x5:	return -EINVAL;
 	case 0x6:	return -EBUSY;
-	case 0x8:	return -EINVAL;
+	case 0x8:	return -ENOMEM;
 	case 0x9:	return -EINVAL;
 	case 0xa:	return -EINVAL;
 	case 0xf:	return -EAGAIN;
