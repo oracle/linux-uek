@@ -791,7 +791,7 @@ void __mlx5_ib_cq_clean(struct mlx5_ib_cq *cq, u32 rsn, struct mlx5_ib_srq *srq)
 		cqe = get_cqe(cq, prod_index & cq->ibcq.cqe);
 		cqe64 = (cq->mcq.cqe_sz == 64) ? cqe : cqe + 64;
 		if (is_equal_rsn(cqe64, rsn)) {
-			if (srq)
+			if (srq && (ntohl(cqe64->srqn) & 0xffffff))
 				mlx5_ib_free_srq_wqe(srq, be16_to_cpu(cqe64->wqe_counter));
 			++nfreed;
 		} else if (nfreed) {
