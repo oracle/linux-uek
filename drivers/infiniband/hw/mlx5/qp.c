@@ -308,6 +308,11 @@ static int calc_sq_size(struct mlx5_ib_dev *dev, struct ib_qp_init_attr *attr,
 
 	wq_size = roundup_pow_of_two(attr->cap.max_send_wr * wqe_size);
 	qp->sq.wqe_cnt = wq_size / MLX5_SEND_WQE_BB;
+	if (qp->sq.wqe_cnt > dev->mdev.caps.max_wqes) {
+		mlx5_ib_dbg(dev, "wqe count exceeds limits %d\n",
+			    qp->sq.wqe_cnt);
+		return -ENOMEM;
+	}
 	qp->sq.wqe_shift = ilog2(MLX5_SEND_WQE_BB);
 	qp->sq.max_gs = attr->cap.max_send_sge;
 	qp->sq.max_post = wq_size / wqe_size;
