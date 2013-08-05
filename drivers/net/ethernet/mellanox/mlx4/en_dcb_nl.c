@@ -150,9 +150,6 @@ mlx4_en_dcbnl_ieee_setets(struct net_device *dev, struct ieee_ets *ets)
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int err;
 
-	if (!(mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG))
-		return -EOPNOTSUPP;
-
 	err = mlx4_en_ets_validate(priv, ets);
 	if (err)
 		return err;
@@ -253,9 +250,6 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 	u16 tmp[IEEE_8021QAZ_MAX_TCS];
 	int i, err;
 
-	if (!(priv->mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG))
-		return -EOPNOTSUPP;
-
 	for (i = 0; i < IEEE_8021QAZ_MAX_TCS; i++) {
 		/* Convert from Kbps into HW units, rounding result up.
 		 * Setting to 0, means unlimited BW.
@@ -275,11 +269,20 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 }
 
 const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops = {
-	.getstate       = mlx4_en_dcbnl_get_state,
+	.getstate	= mlx4_en_dcbnl_get_state,
 	.ieee_getets	= mlx4_en_dcbnl_ieee_getets,
 	.ieee_setets	= mlx4_en_dcbnl_ieee_setets,
 	.ieee_getmaxrate = mlx4_en_dcbnl_ieee_getmaxrate,
 	.ieee_setmaxrate = mlx4_en_dcbnl_ieee_setmaxrate,
+	.ieee_getpfc	= mlx4_en_dcbnl_ieee_getpfc,
+	.ieee_setpfc	= mlx4_en_dcbnl_ieee_setpfc,
+	.getcap		= mlx4_en_dcbnl_getcap,
+	.getdcbx	= mlx4_en_dcbnl_getdcbx,
+	.setdcbx	= mlx4_en_dcbnl_setdcbx,
+};
+
+const struct dcbnl_rtnl_ops mlx4_en_dcbnl_pfc_ops = {
+	.getstate	= mlx4_en_dcbnl_get_state,
 	.ieee_getpfc	= mlx4_en_dcbnl_ieee_getpfc,
 	.ieee_setpfc	= mlx4_en_dcbnl_ieee_setpfc,
 	.getcap		= mlx4_en_dcbnl_getcap,

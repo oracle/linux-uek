@@ -2340,11 +2340,15 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->if_counters_rx_errors = 0;
 	priv->if_counters_rx_no_buffer = 0;
 #ifdef CONFIG_MLX4_EN_DCB
-	if (!mlx4_is_slave(priv->mdev->dev) &&
-	    (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_SET_PORT_ETH_SCHED)) {
+	if (!mlx4_is_slave(priv->mdev->dev)) {
 		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
 		priv->flags |= MLX4_EN_FLAG_DCB_ENABLED;
-		dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
+		if (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG2_ETS_CFG) {
+			dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
+		} else {
+			en_info(priv, "QoS disabled - no HW support\n");
+			dev->dcbnl_ops = &mlx4_en_dcbnl_pfc_ops;
+		}
 	}
 #endif
 
