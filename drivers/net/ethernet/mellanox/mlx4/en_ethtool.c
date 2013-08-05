@@ -527,12 +527,13 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	    coal->tx_max_coalesced_frames != priv->tx_frames) {
 		priv->tx_usecs = coal->tx_coalesce_usecs;
 		priv->tx_frames = coal->tx_max_coalesced_frames;
-		for (i = 0; i < priv->tx_ring_num; i++) {
-			priv->tx_cq[i]->moder_cnt = priv->tx_frames;
-			priv->tx_cq[i]->moder_time = priv->tx_usecs;
-			if (priv->port_up)
+		if (priv->port_up) {
+			for (i = 0; i < priv->tx_ring_num; i++) {
+				priv->tx_cq[i]->moder_cnt = priv->tx_frames;
+				priv->tx_cq[i]->moder_time = priv->tx_usecs;
 				if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i]))
 					en_warn(priv, "Failed changing moderation for TX cq %d\n", i);
+			}
 		}
 	}
 
@@ -546,12 +547,12 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	if (priv->adaptive_rx_coal)
 		return 0;
 
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
-		priv->rx_cq[i]->moder_time = priv->rx_usecs;
-		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		if (priv->port_up) {
-			err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+	if (priv->port_up) {
+		for (i = 0; i < priv->rx_ring_num; i++) {
+			priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+			priv->rx_cq[i]->moder_time = priv->rx_usecs;
+			priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+				err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
 			if (err)
 				return err;
 		}
@@ -1325,13 +1326,11 @@ static int mlx4_en_set_channels(struct net_device *dev,
 		err = mlx4_en_start_port(dev);
 		if (err)
 			en_err(priv, "Failed starting port\n");
-	}
 
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
-		priv->rx_cq[i]->moder_time = priv->rx_usecs;
-		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		if (port_up) {
+		for (i = 0; i < priv->rx_ring_num; i++) {
+			priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+			priv->rx_cq[i]->moder_time = priv->rx_usecs;
+			priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
 			err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
 			if (err)
 				goto out;
