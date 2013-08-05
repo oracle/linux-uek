@@ -64,7 +64,11 @@ MODULE_PARM_DESC(debug_mask, "mask of debug sources");
 
 static int prof_sel = 2;
 module_param_named(prof_sel, prof_sel, int, 0444);
-MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
+MODULE_PARM_DESC(prof_sel,
+		 "Profile selector (default=2):\n"
+		 "\t\t0 - for medium resources, medium performance\n"
+		 "\t\t1 - for low resources\n"
+		 "\t\t2 - for high performance");
 
 static char mlx5_version[] =
 	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
