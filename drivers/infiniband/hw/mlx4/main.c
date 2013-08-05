@@ -1190,10 +1190,16 @@ static int mlx4_ib_mcg_attach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 			return -ENOMEM;
 	}
 
+	if (mdev->dev->caps.steering_mode == MLX4_STEERING_MODE_B0 &&
+	    ibqp->qp_type == IB_QPT_RAW_PACKET)
+		gid->raw[5] = mqp->port;
+
 	err = mlx4_multicast_attach(mdev->dev, &mqp->mqp, gid->raw, mqp->port,
 				    !!(mqp->flags &
 				       MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK),
-				    MLX4_PROT_IB_IPV6, &reg_id);
+				    (ibqp->qp_type == IB_QPT_RAW_PACKET) ?
+					MLX4_PROT_ETH : MLX4_PROT_IB_IPV6,
+				    &reg_id);
 	if (err)
 		goto err_malloc;
 
@@ -1265,8 +1271,14 @@ static int mlx4_ib_mcg_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 		kfree(ib_steering);
 	}
 
+	if (mdev->dev->caps.steering_mode == MLX4_STEERING_MODE_B0 &&
+	    ibqp->qp_type == IB_QPT_RAW_PACKET)
+		gid->raw[5] = mqp->port;
+
 	err = mlx4_multicast_detach(mdev->dev, &mqp->mqp, gid->raw,
-				    MLX4_PROT_IB_IPV6, reg_id);
+				    (ibqp->qp_type == IB_QPT_RAW_PACKET) ?
+				    MLX4_PROT_ETH : MLX4_PROT_IB_IPV6,
+				    reg_id);
 	if (err)
 		return err;
 
