@@ -1609,11 +1609,13 @@ u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
 		new_index = skb_tx_hash(dev, skb);
 
 	if (queue_index != new_index && sk) {
+		rcu_read_lock();
 		struct dst_entry *dst =
 			    rcu_dereference(sk->sk_dst_cache);
 
 		if (dst && skb_dst(skb) == dst)
 			sk_tx_queue_set(sk, queue_index);
+		rcu_read_unlock();
 
 	}
 
