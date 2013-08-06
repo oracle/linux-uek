@@ -639,11 +639,18 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 					       "for non master device\n");
 				break;
 			}
+
 			memcpy(&priv->mfunc.master.comm_arm_bit_vector,
 			       eqe->event.comm_channel_arm.bit_vec,
 			       sizeof eqe->event.comm_channel_arm.bit_vec);
-			queue_work(priv->mfunc.master.comm_wq,
-				   &priv->mfunc.master.comm_work);
+
+			if (!queue_work(priv->mfunc.master.comm_wq,
+				   &priv->mfunc.master.comm_work))
+				mlx4_warn(dev, "Failed to queue comm channel work\n");
+
+			if (!queue_work(priv->mfunc.master.comm_wq,
+				   &priv->mfunc.master.arm_comm_work))
+				mlx4_warn(dev, "Failed to queue arm comm channel work\n");
 			break;
 
 		case MLX4_EVENT_TYPE_FLR_EVENT:

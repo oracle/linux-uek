@@ -379,6 +379,17 @@ static int mlx4_comm_cmd_wait(struct mlx4_dev *dev, u8 op,
 
 	down(&cmd->event_sem);
 
+	end = msecs_to_jiffies(timeout) + jiffies;
+	while (comm_pending(dev) && time_before(jiffies, end))
+		cond_resched();
+	if (comm_pending(dev)) {
+		mlx4_warn(dev, "mlx4_comm_cmd_wait: Comm channel "
+			  "is not idle. My toggle is %d (op: 0x%x)\n",
+			  mlx4_priv(dev)->cmd.comm_toggle, op);
+		up(&cmd->event_sem);
+		return -EAGAIN;
+	}
+
 	spin_lock(&cmd->context_lock);
 	BUG_ON(cmd->free_head < 0);
 	context = &cmd->context[cmd->free_head];
@@ -390,12 +401,8 @@ static int mlx4_comm_cmd_wait(struct mlx4_dev *dev, u8 op,
 
 	mlx4_comm_cmd_post(dev, op, param);
 
-	if (!wait_for_completion_timeout(&context->done,
-					 msecs_to_jiffies(timeout))) {
-		mlx4_warn(dev, "communication channel command 0x%x timed out\n", op);
-		err = -EBUSY;
-		goto out;
-	}
+	/* In slave, wait unconditionally for completion */
+	wait_for_completion(&context->done);
 
 	err = context->result;
 	if (err && context->fw_status != CMD_STAT_MULTI_FUNC_REQ) {
@@ -2036,7 +2043,10 @@ void mlx4_master_comm_channel(struct work_struct *work)
 						   comm_cmd >> 16 & 0xff,
 						   comm_cmd & 0xffff, toggle);
 				++served;
-			}
+			} else
+				mlx4_err(dev, "slave %d out of sync."
+				  " read toggle %d, write toggle %d.\n", slave, slt,
+				  toggle);
 		}
 	}
 
@@ -2044,6 +2054,19 @@ void mlx4_master_comm_channel(struct work_struct *work)
 		mlx4_warn(dev, "Got command event with bitmask from %d slaves"
 			  " but %d were served\n",
 			  reported, served);
+}
+/* master command processing */
+void mlx4_master_arm_comm_channel(struct work_struct *work)
+{
+	struct mlx4_mfunc_master_ctx *master =
+		container_of(work,
+			     struct mlx4_mfunc_master_ctx,
+			     arm_comm_work);
+	struct mlx4_mfunc *mfunc =
+		container_of(master, struct mlx4_mfunc, master);
+	struct mlx4_priv *priv =
+		container_of(mfunc, struct mlx4_priv, mfunc);
+	struct mlx4_dev *dev = &priv->dev;
 
 	if (mlx4_ARM_COMM_CHANNEL(dev))
 		mlx4_warn(dev, "Failed to arm comm channel events\n");
@@ -2154,6 +2177,8 @@ int mlx4_multi_func_init(struct mlx4_dev *dev)
 		priv->mfunc.master.cmd_eqe.type = MLX4_EVENT_TYPE_CMD;
 		INIT_WORK(&priv->mfunc.master.comm_work,
 			  mlx4_master_comm_channel);
+		INIT_WORK(&priv->mfunc.master.arm_comm_work,
+			  mlx4_master_arm_comm_channel);
 		INIT_WORK(&priv->mfunc.master.slave_event_work,
 			  mlx4_gen_slave_eqe);
 		INIT_WORK(&priv->mfunc.master.slave_flr_event_work,
