@@ -46,6 +46,7 @@
 #include <rdma/ib_verbs.h>
 #include <rdma/ib_umem.h>
 #include <rdma/ib_user_verbs.h>
+#include <rdma/ib_fmr_pool.h>
 
 /*
  * Our lifetime rules for these structs are the following:
@@ -134,7 +135,7 @@ struct ib_usrq_object {
 
 struct ib_uqp_object {
 	struct ib_uevent_object	uevent;
-	struct list_head 	mcast_list;
+	struct list_head	mcast_list;
 };
 
 struct ib_ucq_object {
@@ -148,13 +149,16 @@ struct ib_ucq_object {
 
 extern spinlock_t ib_uverbs_idr_lock;
 extern struct idr ib_uverbs_pd_idr;
+extern struct idr ib_uverbs_shpd_idr;
 extern struct idr ib_uverbs_mr_idr;
+extern struct idr ib_uverbs_fmr_idr;
 extern struct idr ib_uverbs_mw_idr;
 extern struct idr ib_uverbs_ah_idr;
 extern struct idr ib_uverbs_cq_idr;
 extern struct idr ib_uverbs_qp_idr;
 extern struct idr ib_uverbs_srq_idr;
 extern struct idr ib_uverbs_xrcd_idr;
+extern struct idr ib_uverbs_rule_idr;
 
 void idr_remove_uobj(struct idr *idp, struct ib_uobject *uobj);
 
@@ -213,5 +217,21 @@ IB_UVERBS_DECLARE_CMD(destroy_srq);
 IB_UVERBS_DECLARE_CMD(create_xsrq);
 IB_UVERBS_DECLARE_CMD(open_xrcd);
 IB_UVERBS_DECLARE_CMD(close_xrcd);
+IB_UVERBS_DECLARE_CMD(create_qp_ex);
+IB_UVERBS_DECLARE_CMD(modify_cq_ex);
+IB_UVERBS_DECLARE_CMD(create_flow);
+IB_UVERBS_DECLARE_CMD(destroy_flow);
+IB_UVERBS_DECLARE_CMD(modify_qp_ex);
+IB_UVERBS_DECLARE_CMD(reg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(dereg_mr_relaxed);
+IB_UVERBS_DECLARE_CMD(flush_relaxed_mr);
+IB_UVERBS_DECLARE_CMD(alloc_shpd);
+IB_UVERBS_DECLARE_CMD(share_pd);
+
+/* FMR parameters */
+extern int ufmr_pool1_blocksize;
+extern int ufmr_pool1_nelems;
+extern int ufmr_pool2_blocksize;
+extern int ufmr_pool2_nelems;
 
 #endif /* UVERBS_H */

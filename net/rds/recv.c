@@ -31,10 +31,8 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <net/sock.h>
 #include <linux/in.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -49,11 +47,12 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 }
 EXPORT_SYMBOL_GPL(rds_inc_init);
 
-static void rds_inc_addref(struct rds_incoming *inc)
+void rds_inc_addref(struct rds_incoming *inc)
 {
 	rdsdebug("addref inc %p ref %d\n", inc, atomic_read(&inc->i_refcount));
 	atomic_inc(&inc->i_refcount);
 }
+EXPORT_SYMBOL_GPL(rds_inc_addref);
 
 void rds_inc_put(struct rds_incoming *inc)
 {
@@ -195,16 +194,23 @@ void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	 * XXX we could spend more on the wire to get more robust failure
 	 * detection, arguably worth it to avoid data corruption.
 	 */
-	if (be64_to_cpu(inc->i_hdr.h_sequence) < conn->c_next_rx_seq &&
-	    (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
+
+	if (be64_to_cpu(inc->i_hdr.h_sequence) < conn->c_next_rx_seq
+	 && (inc->i_hdr.h_flags & RDS_FLAG_RETRANSMITTED)) {
 		rds_stats_inc(s_recv_drop_old_seq);
 		goto out;
 	}
 	conn->c_next_rx_seq = be64_to_cpu(inc->i_hdr.h_sequence) + 1;
 
 	if (rds_sysctl_ping_enable && inc->i_hdr.h_dport == 0) {
-		rds_stats_inc(s_recv_ping);
-		rds_send_pong(conn, inc->i_hdr.h_sport);
+		if (inc->i_hdr.h_flags & RDS_FLAG_HB_PING) {
+			rds_send_hb(conn, 1);
+		} else if (inc->i_hdr.h_flags & RDS_FLAG_HB_PONG) {
+			conn->c_hb_start = 0;
+		} else {
+			rds_stats_inc(s_recv_ping);
+			rds_send_pong(conn, inc->i_hdr.h_sport);
+		}
 		goto out;
 	}
 
@@ -296,7 +302,7 @@ static int rds_still_queued(struct rds_sock *rs, struct rds_incoming *inc,
 int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 {
 	struct rds_notifier *notifier;
-	struct rds_rdma_notify cmsg = { 0 }; /* fill holes with zero */
+	struct rds_rdma_send_notify cmsg;
 	unsigned int count = 0, max_messages = ~0U;
 	unsigned long flags;
 	LIST_HEAD(copy);
@@ -320,7 +326,7 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 	while (!list_empty(&rs->rs_notify_queue) && count < max_messages) {
 		notifier = list_entry(rs->rs_notify_queue.next,
 				struct rds_notifier, n_list);
-		list_move(&notifier->n_list, &copy);
+		list_move_tail(&notifier->n_list, &copy);
 		count++;
 	}
 	spin_unlock_irqrestore(&rs->rs_lock, flags);
@@ -335,10 +341,22 @@ int rds_notify_queue_get(struct rds_sock *rs, struct msghdr *msghdr)
 			cmsg.user_token = notifier->n_user_token;
 			cmsg.status = notifier->n_status;
 
-			err = put_cmsg(msghdr, SOL_RDS, RDS_CMSG_RDMA_STATUS,
+			err = put_cmsg(msghdr, SOL_RDS,
+					RDS_CMSG_RDMA_SEND_STATUS,
 				       sizeof(cmsg), &cmsg);
 			if (err)
 				break;
+		}
+
+		/* If this is the last failed op, re-open the connection for
+		   traffic */
+		if (notifier->n_conn) {
+			spin_lock_irqsave(&notifier->n_conn->c_lock, flags);
+			if (notifier->n_conn->c_pending_flush)
+				notifier->n_conn->c_pending_flush--;
+			else
+				printk(KERN_ERR "rds_notify_queue_get: OOPS!\n");
+			spin_unlock_irqrestore(&notifier->n_conn->c_lock, flags);
 		}
 
 		list_del_init(&notifier->n_list);
@@ -410,8 +428,6 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	rdsdebug("size %zu flags 0x%x timeo %ld\n", size, msg_flags, timeo);
 
-	msg->msg_namelen = 0;
-
 	if (msg_flags & MSG_OOB)
 		goto out;
 
@@ -434,9 +450,10 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			}
 
 			timeo = wait_event_interruptible_timeout(*sk_sleep(sk),
-					(!list_empty(&rs->rs_notify_queue) ||
-					 rs->rs_cong_notify ||
-					 rds_next_incoming(rs, &inc)), timeo);
+						(!list_empty(&rs->rs_notify_queue)
+						|| rs->rs_cong_notify
+						|| rds_next_incoming(rs, &inc)),
+						timeo);
 			rdsdebug("recvmsg woke inc %p timeo %ld\n", inc,
 				 timeo);
 			if (timeo > 0 || timeo == MAX_SCHEDULE_TIMEOUT)
@@ -487,7 +504,6 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			sin->sin_port = inc->i_hdr.h_sport;
 			sin->sin_addr.s_addr = inc->i_saddr;
 			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
-			msg->msg_namelen = sizeof(*sin);
 		}
 		break;
 	}
@@ -533,6 +549,7 @@ void rds_inc_info_copy(struct rds_incoming *inc,
 
 	minfo.seq = be64_to_cpu(inc->i_hdr.h_sequence);
 	minfo.len = be32_to_cpu(inc->i_hdr.h_len);
+	minfo.tos = inc->i_conn->c_tos;
 
 	if (flip) {
 		minfo.laddr = daddr;

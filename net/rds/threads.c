@@ -31,10 +31,15 @@
  *
  */
 #include <linux/kernel.h>
+#include <linux/moduleparam.h>
 #include <linux/random.h>
-#include <linux/export.h>
 
 #include "rds.h"
+#include "tcp.h"
+static unsigned int rds_conn_hb_timeout = 0;
+module_param(rds_conn_hb_timeout, int, 0444);
+MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
+
 
 /*
  * All of connection management is simplified by serializing it through
@@ -74,8 +79,8 @@ EXPORT_SYMBOL_GPL(rds_wq);
 void rds_connect_complete(struct rds_connection *conn)
 {
 	if (!rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_UP)) {
-		printk(KERN_WARNING "%s: Cannot transition to state UP, "
-				"current state is %d\n",
+		printk(KERN_WARNING "%s: Cannot transition to state UP"
+				", current state is %d\n",
 				__func__,
 				atomic_read(&conn->c_state));
 		atomic_set(&conn->c_state, RDS_CONN_ERROR);
@@ -90,6 +95,11 @@ void rds_connect_complete(struct rds_connection *conn)
 	set_bit(0, &conn->c_map_queued);
 	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
 	queue_delayed_work(rds_wq, &conn->c_recv_w, 0);
+	queue_delayed_work(rds_wq, &conn->c_hb_w, 0);
+	conn->c_hb_start = 0;
+
+	conn->c_connection_start = get_seconds();
+	conn->c_reconnect = 1;
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
@@ -144,14 +154,20 @@ void rds_connect_worker(struct work_struct *work)
 
 	clear_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
 	if (rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_CONNECTING)) {
+		/*
+		 * record the time we started trying to connect so that we can
+		 * drop the connection if it doesn't work out after a while
+		 */
+		conn->c_connection_start = get_seconds();
+
 		ret = conn->c_trans->conn_connect(conn);
 		rdsdebug("conn %p for %pI4 to %pI4 dispatched, ret %d\n",
 			conn, &conn->c_laddr, &conn->c_faddr, ret);
 
 		if (ret) {
-			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN))
+			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN)) {
 				rds_queue_reconnect(conn);
-			else
+			} else
 				rds_conn_error(conn, "RDS: connect failed\n");
 		}
 	}
@@ -163,7 +179,9 @@ void rds_send_worker(struct work_struct *work)
 	int ret;
 
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
+		clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 		ret = rds_send_xmit(conn);
+		cond_resched();
 		rdsdebug("conn %p ret %d\n", conn, ret);
 		switch (ret) {
 		case -EAGAIN:
@@ -198,6 +216,37 @@ void rds_recv_worker(struct work_struct *work)
 		default:
 			break;
 		}
+	}
+}
+
+void rds_hb_worker(struct work_struct *work)
+{
+	struct rds_connection *conn = container_of(work, struct rds_connection, c_hb_w.work);
+	unsigned long now = get_seconds();
+	int ret;
+
+	if (!rds_conn_hb_timeout || conn->c_loopback)
+		return;
+
+	if (rds_conn_state(conn) == RDS_CONN_UP) {
+		if (!conn->c_hb_start) {
+			ret = rds_send_hb(conn, 0);
+			if (ret) {
+				rdsdebug("RDS/IB: rds_hb_worker: failed %d\n", ret);
+				return;
+			}
+			conn->c_hb_start = now;
+		} else if (now - conn->c_hb_start > rds_conn_hb_timeout) {
+			printk(KERN_NOTICE
+				"RDS/IB: connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> "
+				"timed out (0x%lx,0x%lx)..disconnecting and reconnecting\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr), conn->c_tos,
+				conn->c_hb_start, now);
+				rds_conn_drop(conn);
+			return;
+		}
+		queue_delayed_work(rds_wq, &conn->c_hb_w, HZ);
 	}
 }
 

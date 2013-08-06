@@ -53,8 +53,15 @@ static int iser_start_rdma_unaligned_sg(struct iscsi_iser_task *iser_task,
 	unsigned long  cmd_data_len = data->data_len;
 
 	if (cmd_data_len > ISER_KMALLOC_THRESHOLD)
+#ifdef _BullseyeCoverage
+		/* BullseyeCoverage doesn't process ilog2 correctly */
+	#pragma BullseyeCoverage off
+#endif
 		mem = (void *)__get_free_pages(GFP_ATOMIC,
 		      ilog2(roundup_pow_of_two(cmd_data_len)) - PAGE_SHIFT);
+#ifdef _BullseyeCoverage
+	#pragma BullseyeCoverage on
+#endif
 	else
 		mem = kmalloc(cmd_data_len, GFP_ATOMIC);
 
@@ -145,8 +152,15 @@ void iser_finalize_rdma_unaligned_sg(struct iscsi_iser_task *iser_task,
 	cmd_data_len = iser_task->data[cmd_dir].data_len;
 
 	if (cmd_data_len > ISER_KMALLOC_THRESHOLD)
+#ifdef _BullseyeCoverage
+		/* BullseyeCoverage doesn't process ilog2 correctly */
+	#pragma BullseyeCoverage off
+#endif
 		free_pages((unsigned long)mem_copy->copy_buf,
 			   ilog2(roundup_pow_of_two(cmd_data_len)) - PAGE_SHIFT);
+#ifdef _BullseyeCoverage
+	#pragma BullseyeCoverage on
+#endif
 	else
 		kfree(mem_copy->copy_buf);
 
@@ -369,10 +383,11 @@ int iser_reg_rdma_mem(struct iscsi_iser_task *iser_task,
 	regd_buf = &iser_task->rdma_regd[cmd_dir];
 
 	aligned_len = iser_data_buf_aligned_len(mem, ibdev);
-	if (aligned_len != mem->dma_nents) {
+	if (aligned_len != mem->dma_nents ||
+	    (!ib_conn->fmr_pool && mem->dma_nents > 1)) {
 		iscsi_conn->fmr_unalign_cnt++;
-		iser_warn("rdma alignment violation %d/%d aligned\n",
-			 aligned_len, mem->size);
+		iser_warn("rdma alignment violation %d/%d aligned or FMR not supported.\n",
+			  aligned_len, mem->size);
 		iser_data_buf_dump(mem, ibdev);
 
 		/* unmap the command data before accessing it */
@@ -402,6 +417,11 @@ int iser_reg_rdma_mem(struct iscsi_iser_task *iser_task,
 			 (unsigned long)regd_buf->reg.va,
 			 (unsigned long)regd_buf->reg.len);
 	} else { /* use FMR for multiple dma entries */
+
+		WARN_ON(!ib_conn->fmr_pool);
+		if (!ib_conn->fmr_pool)
+			return -EINVAL;
+
 		iser_page_vec_build(mem, ib_conn->page_vec, ibdev);
 		err = iser_reg_page_vec(ib_conn, ib_conn->page_vec, &regd_buf->reg);
 		if (err) {

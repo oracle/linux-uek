@@ -38,9 +38,21 @@
 #include <linux/slab.h>
 #include <linux/bitops.h>
 #include <linux/random.h>
+#include <linux/moduleparam.h>
 
 #include <rdma/ib_cache.h>
 #include "sa.h"
+
+static int mcast_leave_retries = 3;
+
+static const struct kernel_param_ops retry_ops = {
+	.set = param_set_int,
+	.get = param_get_int,
+};
+
+module_param_cb(mcast_leave_retries, &retry_ops, &mcast_leave_retries, 0644);
+MODULE_PARM_DESC(mcast_leave_retries, "Number of retries for multicast leave "
+				      "requests before giving up (default: 3)");
 
 static void mcast_add_one(struct ib_device *device);
 static void mcast_remove_one(struct ib_device *device);
@@ -550,8 +562,12 @@ static void leave_handler(int status, struct ib_sa_mcmember_rec *rec,
 	if (status && group->retries > 0 &&
 	    !send_leave(group, group->leave_state))
 		group->retries--;
-	else
+	else {
+		if (status && group->retries <= 0)
+			printk(KERN_WARNING "reached max retry count. "
+			       "status=%d. Giving up\n", status);
 		mcast_work_handler(&group->work);
+	}
 }
 
 static struct mcast_group *acquire_group(struct mcast_port *port,
@@ -574,7 +590,7 @@ static struct mcast_group *acquire_group(struct mcast_port *port,
 	if (!group)
 		return NULL;
 
-	group->retries = 3;
+	group->retries = mcast_leave_retries;
 	group->port = port;
 	group->rec.mgid = *mgid;
 	group->pkey_index = MCAST_INVALID_PKEY_INDEX;

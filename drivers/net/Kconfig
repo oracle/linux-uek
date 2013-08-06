@@ -351,5 +351,6 @@ config VMXNET3
 	  module will be called vmxnet3.
 
 source "drivers/net/hyperv/Kconfig"
+source "drivers/net/eipoib/Kconfig"
 
 endif # NETDEVICES

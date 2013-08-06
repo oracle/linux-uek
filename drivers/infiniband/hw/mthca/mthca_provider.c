@@ -518,6 +518,9 @@ static struct ib_qp *mthca_create_qp(struct ib_pd *pd,
 	if (init_attr->create_flags)
 		return ERR_PTR(-EINVAL);
 
+	if (init_attr->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	switch (init_attr->qp_type) {
 	case IB_QPT_RC:
 	case IB_QPT_UC:
@@ -1326,6 +1329,10 @@ int mthca_register_device(struct mthca_dev *dev)
 	dev->ib_dev.reg_phys_mr          = mthca_reg_phys_mr;
 	dev->ib_dev.reg_user_mr          = mthca_reg_user_mr;
 	dev->ib_dev.dereg_mr             = mthca_dereg_mr;
+	dev->ib_dev.set_fmr_pd           = NULL;
+	dev->ib_dev.alloc_shpd           = NULL;
+	dev->ib_dev.share_pd             = NULL;
+	dev->ib_dev.remove_shpd          = NULL;
 
 	if (dev->mthca_flags & MTHCA_FLAG_FMR) {
 		dev->ib_dev.alloc_fmr            = mthca_alloc_fmr;

@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <net/tcp.h>
 
 #include "rds.h"
@@ -271,7 +270,7 @@ out:
 }
 
 /* the caller has to hold the sock lock */
-static int rds_tcp_read_sock(struct rds_connection *conn, gfp_t gfp)
+int rds_tcp_read_sock(struct rds_connection *conn, gfp_t gfp)
 {
 	struct rds_tcp_connection *tc = conn->c_transport_data;
 	struct socket *sock = tc->t_sock;

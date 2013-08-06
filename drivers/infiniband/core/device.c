@@ -175,9 +175,14 @@ static int end_port(struct ib_device *device)
  */
 struct ib_device *ib_alloc_device(size_t size)
 {
+	struct ib_device *dev;
+
 	BUG_ON(size < sizeof (struct ib_device));
 
-	return kzalloc(size, GFP_KERNEL);
+	dev = kzalloc(size, GFP_KERNEL);
+	spin_lock_init(&dev->cmd_perf_lock);
+
+	return dev;
 }
 EXPORT_SYMBOL(ib_alloc_device);
 
@@ -293,6 +298,8 @@ int ib_register_device(struct ib_device *device,
 	INIT_LIST_HEAD(&device->client_data_list);
 	spin_lock_init(&device->event_handler_lock);
 	spin_lock_init(&device->client_data_lock);
+	device->relaxed_pd = NULL;
+	INIT_LIST_HEAD(&device->relaxed_pool_list);
 
 	ret = read_port_table_lengths(device);
 	if (ret) {

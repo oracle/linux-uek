@@ -1,0 +1,5 @@
+digraph {
+	FIP_GW_HOST_ADMIN;
+	FIP_GW_MCAST_RCVD;
+	FIP_GW_CONNECTED;
+}

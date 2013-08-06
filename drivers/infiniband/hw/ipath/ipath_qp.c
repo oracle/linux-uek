@@ -755,6 +755,9 @@ struct ib_qp *ipath_create_qp(struct ib_pd *ibpd,
 		goto bail;
 	}
 
+	if (init_attr->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	if (init_attr->cap.max_send_sge > ib_ipath_max_sges ||
 	    init_attr->cap.max_send_wr > ib_ipath_max_qp_wrs) {
 		ret = ERR_PTR(-EINVAL);

@@ -33,10 +33,15 @@
 
 #include <linux/mlx4/cq.h>
 #include <linux/mlx4/qp.h>
+#include <linux/mlx4/srq.h>
 #include <linux/slab.h>
 
 #include "mlx4_ib.h"
 #include "user.h"
+
+/* Which firmware version adds support for Resize CQ */
+#define MLX4_FW_VER_RESIZE_CQ  mlx4_fw_ver(2, 5, 0)
+#define MLX4_FW_VER_IGNORE_OVERRUN_CQ mlx4_fw_ver(2, 7, 8200)
 
 static void mlx4_ib_cq_comp(struct mlx4_cq *cq)
 {
@@ -88,12 +93,29 @@ static struct mlx4_cqe *next_cqe_sw(struct mlx4_ib_cq *cq)
 	return get_sw_cqe(cq, cq->mcq.cons_index);
 }
 
-int mlx4_ib_modify_cq(struct ib_cq *cq, u16 cq_count, u16 cq_period)
+int mlx4_ib_modify_cq(struct ib_cq *cq,
+		      struct ib_cq_attr *cq_attr,
+		      int cq_attr_mask)
 {
+	int err = 0;
 	struct mlx4_ib_cq *mcq = to_mcq(cq);
 	struct mlx4_ib_dev *dev = to_mdev(cq->device);
 
-	return mlx4_cq_modify(dev->dev, &mcq->mcq, cq_count, cq_period);
+	if (cq_attr_mask & IB_CQ_CAP_FLAGS)
+		if (cq_attr->cq_cap_flags & IB_CQ_IGNORE_OVERRUN) {
+			if (dev->dev->caps.cq_flags & MLX4_DEV_CAP_CQ_FLAG_IO)
+				err = mlx4_cq_ignore_overrun(dev->dev, &mcq->mcq);
+			else
+				err = -ENOSYS;
+		}
+
+	if (!err)
+		if (cq_attr_mask & IB_CQ_MODERATION)
+			err = mlx4_cq_modify(dev->dev, &mcq->mcq,
+					cq_attr->moderation.cq_count,
+					cq_attr->moderation.cq_period);
+
+	return err;
 }
 
 static int mlx4_ib_alloc_cq_buf(struct mlx4_ib_dev *dev, struct mlx4_ib_cq_buf *buf, int nent)
@@ -139,14 +161,18 @@ static int mlx4_ib_get_cq_umem(struct mlx4_ib_dev *dev, struct ib_ucontext *cont
 {
 	int err;
 	int cqe_size = dev->dev->caps.cqe_size;
+	int shift;
+	int n;
 
 	*umem = ib_umem_get(context, buf_addr, cqe * cqe_size,
 			    IB_ACCESS_LOCAL_WRITE, 1);
 	if (IS_ERR(*umem))
 		return PTR_ERR(*umem);
 
-	err = mlx4_mtt_init(dev->dev, ib_umem_page_count(*umem),
-			    ilog2((*umem)->page_size), &buf->mtt);
+	n = ib_umem_page_count(*umem);
+	shift = mlx4_ib_umem_calc_optimal_mtt_size(*umem, 0, &n);
+	err = mlx4_mtt_init(dev->dev, n, shift, &buf->mtt);
+
 	if (err)
 		goto err_buf;
 
@@ -228,7 +254,7 @@ struct ib_cq *mlx4_ib_create_cq(struct ib_device *ibdev, int entries, int vector
 		vector = dev->eq_table[vector % ibdev->num_comp_vectors];
 
 	err = mlx4_cq_alloc(dev->dev, entries, &cq->buf.mtt, uar,
-			    cq->db.dma, &cq->mcq, vector, 0);
+			    cq->db.dma, &cq->mcq, vector, 0, 0);
 	if (err)
 		goto err_dbmap;
 
@@ -362,6 +388,9 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 	int outst_cqe;
 	int err;
 
+	if (dev->dev->caps.fw_ver < MLX4_FW_VER_RESIZE_CQ)
+		return -ENOSYS;
+
 	mutex_lock(&cq->resize_mutex);
 
 	if (entries < 1 || entries > dev->dev->caps.max_cqes) {
@@ -449,6 +478,17 @@ out:
 	mutex_unlock(&cq->resize_mutex);
 
 	return err;
+}
+
+int mlx4_ib_ignore_overrun_cq(struct ib_cq *ibcq)
+{
+	struct mlx4_ib_dev *dev = to_mdev(ibcq->device);
+	struct mlx4_ib_cq *cq = to_mcq(ibcq);
+
+	if (dev->dev->caps.fw_ver < MLX4_FW_VER_IGNORE_OVERRUN_CQ)
+		return -ENOSYS;
+
+	return mlx4_cq_ignore_overrun(dev->dev, &cq->mcq);
 }
 
 int mlx4_ib_destroy_cq(struct ib_cq *cq)
@@ -585,6 +625,7 @@ static int mlx4_ib_poll_one(struct mlx4_ib_cq *cq,
 	struct mlx4_qp *mqp;
 	struct mlx4_ib_wq *wq;
 	struct mlx4_ib_srq *srq;
+	struct mlx4_srq *msrq = NULL;
 	int is_send;
 	int is_error;
 	u32 g_mlpath_rqpn;
@@ -653,6 +694,20 @@ repoll:
 
 	wc->qp = &(*cur_qp)->ibqp;
 
+	if (wc->qp->qp_type == IB_QPT_XRC_TGT) {
+		u32 srq_num;
+		g_mlpath_rqpn = be32_to_cpu(cqe->g_mlpath_rqpn);
+		srq_num       = g_mlpath_rqpn & 0xffffff;
+		/* SRQ is also in the radix tree */
+		msrq = mlx4_srq_lookup(to_mdev(cq->ibcq.device)->dev,
+				       srq_num);
+		if (unlikely(!msrq)) {
+			pr_warn("CQ %06x with entry for unknown SRQN %06x\n",
+				cq->mcq.cqn, srq_num);
+			return -EINVAL;
+		}
+	}
+
 	if (is_send) {
 		wq = &(*cur_qp)->sq;
 		if (!(*cur_qp)->sq_signal_bits) {
@@ -663,6 +718,11 @@ repoll:
 		++wq->tail;
 	} else if ((*cur_qp)->ibqp.srq) {
 		srq = to_msrq((*cur_qp)->ibqp.srq);
+		wqe_ctr = be16_to_cpu(cqe->wqe_index);
+		wc->wr_id = srq->wrid[wqe_ctr];
+		mlx4_ib_free_srq_wqe(srq, wqe_ctr);
+	} else if (msrq) {
+		srq = to_mibsrq(msrq);
 		wqe_ctr = be16_to_cpu(cqe->wqe_index);
 		wc->wr_id = srq->wrid[wqe_ctr];
 		mlx4_ib_free_srq_wqe(srq, wqe_ctr);
@@ -685,6 +745,7 @@ repoll:
 		switch (cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) {
 		case MLX4_OPCODE_RDMA_WRITE_IMM:
 			wc->wc_flags |= IB_WC_WITH_IMM;
+			/* fall through */
 		case MLX4_OPCODE_RDMA_WRITE:
 			wc->opcode    = IB_WC_RDMA_WRITE;
 			break;
@@ -808,7 +869,7 @@ int mlx4_ib_arm_cq(struct ib_cq *ibcq, enum ib_cq_notify_flags flags)
 	mlx4_cq_arm(&to_mcq(ibcq)->mcq,
 		    (flags & IB_CQ_SOLICITED_MASK) == IB_CQ_SOLICITED ?
 		    MLX4_CQ_DB_REQ_NOT_SOL : MLX4_CQ_DB_REQ_NOT,
-		    to_mdev(ibcq->device)->uar_map,
+		    to_mdev(ibcq->device)->priv_uar.map,
 		    MLX4_GET_DOORBELL_LOCK(&to_mdev(ibcq->device)->uar_lock));
 
 	return 0;

@@ -37,6 +37,15 @@
 
 #include "iscsi_iser.h"
 
+int iser_cq_completions = 0;
+int iser_cq_timeout     = 0;
+
+module_param_named(cq_completions, iser_cq_completions, int, 0644);
+MODULE_PARM_DESC(cq_completions, "moderate CQ to N completions if N > 0 (default:disabled)");
+
+module_param_named(cq_timeout, iser_cq_timeout, int, 0644);
+MODULE_PARM_DESC(cq_timeout, "moderate CQ to max T micro-sec if T > 0 (default:disabled)");
+
 #define ISCSI_ISER_MAX_CONN	8
 #define ISER_MAX_RX_CQ_LEN	(ISER_QP_MAX_RECV_DTOS * ISCSI_ISER_MAX_CONN)
 #define ISER_MAX_TX_CQ_LEN	(ISER_QP_MAX_REQ_DTOS  * ISCSI_ISER_MAX_CONN)
@@ -70,12 +79,13 @@ static void iser_event_handler(struct ib_event_handler *handler,
  */
 static int iser_create_device_ib_res(struct iser_device *device)
 {
-	int i, j;
+	int i, j, ret;
 	struct iser_cq_desc *cq_desc;
 
 	device->cqs_used = min(ISER_MAX_CQ, device->ib_device->num_comp_vectors);
-	iser_err("using %d CQs, device %s supports %d vectors\n", device->cqs_used,
-		 device->ib_device->name, device->ib_device->num_comp_vectors);
+	iser_info("using %d CQs, device %s supports %d vectors\n",
+		  device->cqs_used, device->ib_device->name,
+		  device->ib_device->num_comp_vectors);
 
 	device->cq_desc = kmalloc(sizeof(struct iser_cq_desc) * device->cqs_used,
 				  GFP_KERNEL);
@@ -109,6 +119,21 @@ static int iser_create_device_ib_res(struct iser_device *device)
 
 		if (ib_req_notify_cq(device->rx_cq[i], IB_CQ_NEXT_COMP))
 			goto cq_err;
+
+                if (iser_cq_completions && iser_cq_timeout) {
+			struct ib_cq_attr  attr;
+
+			attr.moderation.cq_count = iser_cq_completions;
+			attr.moderation.cq_period = iser_cq_timeout;
+
+			iser_info("applying CQ moderation - to be max {%d completions, %d us timeout}\n",
+				  iser_cq_completions, iser_cq_timeout);
+			ret = ib_modify_cq(device->rx_cq[i], &attr, IB_CQ_MODERATION);
+                        if (ret == -ENOSYS)
+                                iser_err("device does not support CQ moderation\n");
+                        else
+                                iser_err("failed modifying RX CQ err %d\n", ret);
+                }
 
 		tasklet_init(&device->cq_tasklet[i],
 			     iser_cq_tasklet_fn,
@@ -236,16 +261,22 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 	params.pool_size	 = ISCSI_DEF_XMIT_CMDS_MAX * 2;
 	params.dirty_watermark	 = ISCSI_DEF_XMIT_CMDS_MAX;
 	params.cache		 = 0;
+	params.relaxed		 = 0;
 	params.flush_function	 = NULL;
+	params.flush_arg	 = NULL;
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
 				    IB_ACCESS_REMOTE_WRITE |
 				    IB_ACCESS_REMOTE_READ);
 
 	ib_conn->fmr_pool = ib_create_fmr_pool(device->pd, &params);
-	if (IS_ERR(ib_conn->fmr_pool)) {
-		ret = PTR_ERR(ib_conn->fmr_pool);
+	ret = PTR_ERR(ib_conn->fmr_pool);
+	if (IS_ERR(ib_conn->fmr_pool) && ret != -ENOSYS) {
 		ib_conn->fmr_pool = NULL;
 		goto out_err;
+	} else if (ret == -ENOSYS) {
+		ib_conn->fmr_pool = NULL;
+		iser_warn("FMRs are not supported, using unaligned mode\n");
+		ret = 0;
 	}
 
 	memset(&init_attr, 0, sizeof init_attr);
@@ -258,7 +289,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 			min_index = index;
 	device->cq_active_qps[min_index]++;
 	mutex_unlock(&ig.connlist_mutex);
-	iser_err("cq index %d used for ib_conn %p\n", min_index, ib_conn);
+	iser_info("cq index %d used for ib_conn %p\n", min_index, ib_conn);
 
 	init_attr.event_handler = iser_qp_event_callback;
 	init_attr.qp_context	= (void *)ib_conn;
@@ -276,9 +307,9 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 		goto out_err;
 
 	ib_conn->qp = ib_conn->cma_id->qp;
-	iser_err("setting conn %p cma_id %p: fmr_pool %p qp %p\n",
-		 ib_conn, ib_conn->cma_id,
-		 ib_conn->fmr_pool, ib_conn->cma_id->qp);
+	iser_info("setting conn %p cma_id %p: fmr_pool %p qp %p\n",
+		  ib_conn, ib_conn->cma_id,
+		  ib_conn->fmr_pool, ib_conn->cma_id->qp);
 	return ret;
 
 out_err:
@@ -287,17 +318,17 @@ out_err:
 }
 
 /**
- * releases the FMR pool, QP and CMA ID objects, returns 0 on success,
+ * releases the FMR pool and QP objects, returns 0 on success,
  * -1 on failure
  */
-static int iser_free_ib_conn_res(struct iser_conn *ib_conn, int can_destroy_id)
+static int iser_free_ib_conn_res(struct iser_conn *ib_conn)
 {
 	int cq_index;
 	BUG_ON(ib_conn == NULL);
 
-	iser_err("freeing conn %p cma_id %p fmr pool %p qp %p\n",
-		 ib_conn, ib_conn->cma_id,
-		 ib_conn->fmr_pool, ib_conn->qp);
+	iser_info("freeing conn %p cma_id %p fmr pool %p qp %p\n",
+		  ib_conn, ib_conn->cma_id,
+		  ib_conn->fmr_pool, ib_conn->qp);
 
 	/* qp is created only once both addr & route are resolved */
 	if (ib_conn->fmr_pool != NULL)
@@ -309,13 +340,9 @@ static int iser_free_ib_conn_res(struct iser_conn *ib_conn, int can_destroy_id)
 
 		rdma_destroy_qp(ib_conn->cma_id);
 	}
-	/* if cma handler context, the caller acts s.t the cma destroy the id */
-	if (ib_conn->cma_id != NULL && can_destroy_id)
-		rdma_destroy_id(ib_conn->cma_id);
 
 	ib_conn->fmr_pool = NULL;
 	ib_conn->qp	  = NULL;
-	ib_conn->cma_id   = NULL;
 	kfree(ib_conn->page_vec);
 
 	if (ib_conn->login_buf) {
@@ -375,7 +402,7 @@ static void iser_device_try_release(struct iser_device *device)
 {
 	mutex_lock(&ig.device_list_mutex);
 	device->refcount--;
-	iser_err("device %p refcount %d\n",device,device->refcount);
+	iser_info("device %p refcount %d\n", device, device->refcount);
 	if (!device->refcount) {
 		iser_free_device_ib_res(device);
 		list_del(&device->ig_list);
@@ -410,11 +437,16 @@ static void iser_conn_release(struct iser_conn *ib_conn, int can_destroy_id)
 	list_del(&ib_conn->conn_list);
 	mutex_unlock(&ig.connlist_mutex);
 	iser_free_rx_descriptors(ib_conn);
-	iser_free_ib_conn_res(ib_conn, can_destroy_id);
+	iser_free_ib_conn_res(ib_conn);
 	ib_conn->device = NULL;
 	/* on EVENT_ADDR_ERROR there's no device yet for this conn */
 	if (device != NULL)
 		iser_device_try_release(device);
+	/* if cma handler context, the caller actually destroy the id */
+	if (ib_conn->cma_id != NULL && can_destroy_id) {
+		rdma_destroy_id(ib_conn->cma_id);
+		ib_conn->cma_id = NULL;
+	}
 	iscsi_destroy_endpoint(ib_conn->ep);
 }
 
@@ -535,9 +567,13 @@ static int iser_disconnected_handler(struct rdma_cm_id *cma_id)
 	/* getting here when the state is UP means that the conn is being *
 	 * terminated asynchronously from the iSCSI layer's perspective.  */
 	if (iser_conn_state_comp_exch(ib_conn, ISER_CONN_UP,
-				      ISER_CONN_TERMINATING))
-		iscsi_conn_failure(ib_conn->iser_conn->iscsi_conn,
-				   ISCSI_ERR_CONN_FAILED);
+					ISER_CONN_TERMINATING)){
+		if (ib_conn->iser_conn)
+			iscsi_conn_failure(ib_conn->iser_conn->iscsi_conn,
+					ISCSI_ERR_CONN_FAILED);
+		else
+			iser_err("error. NULL pointer for ib_conn->iser_conn received.\n");
+	}
 
 	/* Complete the termination process if no posts are pending */
 	if (ib_conn->post_recv_buf_count == 0 &&
@@ -554,8 +590,8 @@ static int iser_cma_handler(struct rdma_cm_id *cma_id, struct rdma_cm_event *eve
 {
 	int ret = 0;
 
-	iser_err("event %d status %d conn %p id %p\n",
-		event->event, event->status, cma_id->context, cma_id);
+	iser_info("event %d status %d conn %p id %p\n",
+		  event->event, event->status, cma_id->context, cma_id);
 
 	switch (event->event) {
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
@@ -615,8 +651,8 @@ int iser_connect(struct iser_conn   *ib_conn,
 	/* the device is known only --after-- address resolution */
 	ib_conn->device = NULL;
 
-	iser_err("connecting to: %pI4, port 0x%x\n",
-		 &dst_addr->sin_addr, dst_addr->sin_port);
+	iser_info("connecting to: %pI4, port 0x%x\n",
+		  &dst_addr->sin_addr, dst_addr->sin_port);
 
 	ib_conn->state = ISER_CONN_PENDING;
 
@@ -683,7 +719,7 @@ int iser_reg_page_vec(struct iser_conn     *ib_conn,
 	mem  = ib_fmr_pool_map_phys(ib_conn->fmr_pool,
 				    page_list,
 				    page_vec->length,
-				    io_addr);
+				    io_addr, NULL);
 
 	if (IS_ERR(mem)) {
 		status = (int)PTR_ERR(mem);
@@ -845,7 +881,8 @@ static int iser_drain_tx_cq(struct iser_device  *device, int cq_index)
 
 	while (ib_poll_cq(cq, 1, &wc) == 1) {
 		tx_desc	= (struct iser_tx_desc *) (unsigned long) wc.wr_id;
-		ib_conn = wc.qp->qp_context;
+		ib_conn = rdma_id_2_qp_ctx(
+			(struct rdma_cm_id *)(wc.qp->qp_context));
 		if (wc.status == IB_WC_SUCCESS) {
 			if (wc.opcode == IB_WC_SEND)
 				iser_snd_completion(tx_desc, ib_conn);
@@ -880,7 +917,8 @@ static void iser_cq_tasklet_fn(unsigned long data)
 	while (ib_poll_cq(cq, 1, &wc) == 1) {
 		desc	 = (struct iser_rx_desc *) (unsigned long) wc.wr_id;
 		BUG_ON(desc == NULL);
-		ib_conn = wc.qp->qp_context;
+		ib_conn = rdma_id_2_qp_ctx(
+				(struct rdma_cm_id *)(wc.qp->qp_context));
 		if (wc.status == IB_WC_SUCCESS) {
 			if (wc.opcode == IB_WC_RECV) {
 				xfer_len = (unsigned long)wc.byte_len;

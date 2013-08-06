@@ -76,19 +76,21 @@ int ib_get_cached_gid(struct ib_device *device,
 {
 	struct ib_gid_cache *cache;
 	unsigned long flags;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	if (port_num < start_port(device) || port_num > end_port(device))
 		return -EINVAL;
 
 	read_lock_irqsave(&device->cache.lock, flags);
 
-	cache = device->cache.gid_cache[port_num - start_port(device)];
+	if (device->cache.gid_cache) {
+		cache = device->cache.gid_cache[port_num - start_port(device)];
 
-	if (index < 0 || index >= cache->table_len)
-		ret = -EINVAL;
-	else
-		*gid = cache->table[index];
+		if (cache && index >= 0 && index < cache->table_len) {
+			*gid = cache->table[index];
+			ret = 0;
+		}
+	}
 
 	read_unlock_irqrestore(&device->cache.lock, flags);
 
@@ -138,19 +140,21 @@ int ib_get_cached_pkey(struct ib_device *device,
 {
 	struct ib_pkey_cache *cache;
 	unsigned long flags;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	if (port_num < start_port(device) || port_num > end_port(device))
 		return -EINVAL;
 
 	read_lock_irqsave(&device->cache.lock, flags);
 
-	cache = device->cache.pkey_cache[port_num - start_port(device)];
+	if (device->cache.pkey_cache) {
+		cache = device->cache.pkey_cache[port_num - start_port(device)];
 
-	if (index < 0 || index >= cache->table_len)
-		ret = -EINVAL;
-	else
-		*pkey = cache->table[index];
+		if (cache && index >= 0 && index < cache->table_len) {
+			*pkey = cache->table[index];
+			ret = 0;
+		}
+	}
 
 	read_unlock_irqrestore(&device->cache.lock, flags);
 
@@ -236,13 +240,16 @@ int ib_get_cached_lmc(struct ib_device *device,
 		      u8                *lmc)
 {
 	unsigned long flags;
-	int ret = 0;
+	int ret = -EINVAL;
 
 	if (port_num < start_port(device) || port_num > end_port(device))
 		return -EINVAL;
 
 	read_lock_irqsave(&device->cache.lock, flags);
-	*lmc = device->cache.lmc_cache[port_num - start_port(device)];
+	if (device->cache.lmc_cache) {
+		*lmc = device->cache.lmc_cache[port_num - start_port(device)];
+		ret = 0;
+	}
 	read_unlock_irqrestore(&device->cache.lock, flags);
 
 	return ret;
@@ -403,11 +410,18 @@ err:
 	kfree(device->cache.pkey_cache);
 	kfree(device->cache.gid_cache);
 	kfree(device->cache.lmc_cache);
+	device->cache.pkey_cache = NULL;
+	device->cache.gid_cache = NULL;
+	device->cache.lmc_cache = NULL;
 }
 
 static void ib_cache_cleanup_one(struct ib_device *device)
 {
 	int p;
+
+	if (!(device->cache.pkey_cache && device->cache.gid_cache &&
+	      device->cache.lmc_cache))
+		return;
 
 	ib_unregister_event_handler(&device->cache.event_handler);
 	flush_workqueue(ib_wq);

@@ -43,6 +43,12 @@
 #include "mlx4.h"
 #include "icm.h"
 
+/*
+ * QP to support BF should have bits 6,7 cleared
+ */
+#define MLX4_BF_QP_SKIP_MASK	0xc0
+#define MLX4_MAX_BF_QP_RANGE	0x40
+
 void mlx4_qp_event(struct mlx4_dev *dev, u32 qpn, int event_type)
 {
 	struct mlx4_qp_table *qp_table = &mlx4_priv(dev)->qp_table;
@@ -208,26 +214,36 @@ int mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 EXPORT_SYMBOL_GPL(mlx4_qp_modify);
 
 int __mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
-				   int *base)
+			    int *base, u8 flags)
 {
+	int bf_qp = !!(flags & (u8) MLX4_RESERVE_BF_QP);
+
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_qp_table *qp_table = &priv->qp_table;
 
-	*base = mlx4_bitmap_alloc_range(&qp_table->bitmap, cnt, align);
+	/* Only IPoIB uses a large cnt. In this case, just allocate
+	 * as usual, ignoring bf skipping, since IPoIB does not run over RoCE
+	 */
+	if (cnt > MLX4_MAX_BF_QP_RANGE && bf_qp)
+		bf_qp = 0;
+
+	*base = mlx4_bitmap_alloc_range(&qp_table->bitmap, cnt, align,
+					bf_qp ? MLX4_BF_QP_SKIP_MASK : 0);
 	if (*base == -1)
 		return -ENOMEM;
 
 	return 0;
 }
 
-int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align, int *base)
+int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align,
+			  int *base, u8 flags)
 {
-	u64 in_param;
+	u64 in_param = 0;
 	u64 out_param;
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
-		set_param_l(&in_param, cnt);
+		set_param_l(&in_param, (((u32) flags) << 24) | (u32) cnt);
 		set_param_h(&in_param, align);
 		err = mlx4_cmd_imm(dev, in_param, &out_param,
 				   RES_QP, RES_OP_RESERVE,
@@ -239,7 +255,7 @@ int mlx4_qp_reserve_range(struct mlx4_dev *dev, int cnt, int align, int *base)
 		*base = get_param_l(&out_param);
 		return 0;
 	}
-	return __mlx4_qp_reserve_range(dev, cnt, align, base);
+	return __mlx4_qp_reserve_range(dev, cnt, align, base, flags);
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_reserve_range);
 
@@ -255,7 +271,7 @@ void __mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt)
 
 void mlx4_qp_release_range(struct mlx4_dev *dev, int base_qpn, int cnt)
 {
-	u64 in_param;
+	u64 in_param = 0;
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
@@ -319,7 +335,7 @@ err_out:
 
 static int mlx4_qp_alloc_icm(struct mlx4_dev *dev, int qpn)
 {
-	u64 param;
+	u64 param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&param, qpn);
@@ -344,7 +360,7 @@ void __mlx4_qp_free_icm(struct mlx4_dev *dev, int qpn)
 
 static void mlx4_qp_free_icm(struct mlx4_dev *dev, int qpn)
 {
-	u64 in_param;
+	u64 in_param = 0;
 
 	if (mlx4_is_mfunc(dev)) {
 		set_param_l(&in_param, qpn);
@@ -422,6 +438,7 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 	struct mlx4_qp_table *qp_table = &mlx4_priv(dev)->qp_table;
 	int err;
 	int reserved_from_top = 0;
+	int reserved_from_bot;
 	int k;
 
 	spin_lock_init(&qp_table->lock);
@@ -478,10 +495,15 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 	* b. All the proxy SQPs (8 per function)
 	* c. All the tunnel QPs (8 per function)
 	*/
+	reserved_from_bot = mlx4_num_reserved_sqps(dev);
+	if (reserved_from_bot + reserved_from_top > dev->caps.num_qps) {
+		mlx4_err(dev, "Number of reserved QPs is higher than number "
+			 "of QPs, increase the value of log_num_qp\n");
+		return -EINVAL;
+	}
 
 	err = mlx4_bitmap_init(&qp_table->bitmap, dev->caps.num_qps,
-			       (1 << 23) - 1, dev->phys_caps.base_sqpn + 8 +
-			       16 * MLX4_MFUNC_MAX * !!mlx4_is_master(dev),
+			       (1 << 23) - 1, reserved_from_bot,
 			       reserved_from_top);
 	if (err)
 		return err;

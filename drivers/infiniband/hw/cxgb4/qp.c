@@ -1489,6 +1489,9 @@ struct ib_qp *c4iw_create_qp(struct ib_pd *pd, struct ib_qp_init_attr *attrs,
 	if (attrs->qp_type != IB_QPT_RC)
 		return ERR_PTR(-EINVAL);
 
+	if (attrs->qpg_type != IB_QPG_NONE)
+		return ERR_PTR(-ENOSYS);
+
 	php = to_c4iw_pd(pd);
 	rhp = php->rhp;
 	schp = get_chp(rhp, ((struct c4iw_cq *)attrs->send_cq)->cq.cqid);

@@ -57,8 +57,13 @@ void mlx4_cq_completion(struct mlx4_dev *dev, u32 cqn)
 {
 	struct mlx4_cq *cq;
 
+	rcu_read_lock();
 	cq = radix_tree_lookup(&mlx4_priv(dev)->cq_table.tree,
 			       cqn & (dev->caps.num_cqs - 1));
+	if (cq)
+		atomic_inc(&cq->refcount);
+	rcu_read_unlock();
+
 	if (!cq) {
 		mlx4_dbg(dev, "Completion event for bogus CQ %08x\n", cqn);
 		return;
@@ -67,6 +72,9 @@ void mlx4_cq_completion(struct mlx4_dev *dev, u32 cqn)
 	++cq->arm_sn;
 
 	cq->comp(cq);
+
+	if (atomic_dec_and_test(&cq->refcount))
+		complete(&cq->free);
 }
 
 void mlx4_cq_event(struct mlx4_dev *dev, u32 cqn, int event_type)
@@ -74,13 +82,13 @@ void mlx4_cq_event(struct mlx4_dev *dev, u32 cqn, int event_type)
 	struct mlx4_cq_table *cq_table = &mlx4_priv(dev)->cq_table;
 	struct mlx4_cq *cq;
 
-	spin_lock(&cq_table->lock);
+	rcu_read_lock();
 
 	cq = radix_tree_lookup(&cq_table->tree, cqn & (dev->caps.num_cqs - 1));
 	if (cq)
 		atomic_inc(&cq->refcount);
 
-	spin_unlock(&cq_table->lock);
+	rcu_read_unlock();
 
 	if (!cq) {
 		mlx4_warn(dev, "Async event for bogus CQ %08x\n", cqn);
@@ -168,6 +176,28 @@ int mlx4_cq_resize(struct mlx4_dev *dev, struct mlx4_cq *cq,
 }
 EXPORT_SYMBOL_GPL(mlx4_cq_resize);
 
+int mlx4_cq_ignore_overrun(struct mlx4_dev *dev, struct mlx4_cq *cq)
+{
+	struct mlx4_cmd_mailbox *mailbox;
+	struct mlx4_cq_context *cq_context;
+	int err;
+
+	mailbox = mlx4_alloc_cmd_mailbox(dev);
+	if (IS_ERR(mailbox))
+		return PTR_ERR(mailbox);
+
+	cq_context = mailbox->buf;
+	memset(cq_context, 0, sizeof *cq_context);
+
+	cq_context->flags |= cpu_to_be32(MLX4_CQ_FLAG_OI);
+
+	err = mlx4_MODIFY_CQ(dev, mailbox, cq->cqn, 3);
+
+	mlx4_free_cmd_mailbox(dev, mailbox);
+	return err;
+}
+EXPORT_SYMBOL_GPL(mlx4_cq_ignore_overrun);
+
 int __mlx4_cq_alloc_icm(struct mlx4_dev *dev, int *cqn)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
@@ -226,7 +256,7 @@ void __mlx4_cq_free_icm(struct mlx4_dev *dev, int cqn)
 
 static void mlx4_cq_free_icm(struct mlx4_dev *dev, int cqn)
 {
-	u64 in_param;
+	u64 in_param = 0;
 	int err;
 
 	if (mlx4_is_mfunc(dev)) {
@@ -240,9 +270,10 @@ static void mlx4_cq_free_icm(struct mlx4_dev *dev, int cqn)
 		__mlx4_cq_free_icm(dev, cqn);
 }
 
-int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
-		  struct mlx4_uar *uar, u64 db_rec, struct mlx4_cq *cq,
-		  unsigned vector, int collapsed)
+int mlx4_cq_alloc(struct mlx4_dev *dev, int nent,
+		  struct mlx4_mtt *mtt, struct mlx4_uar *uar, u64 db_rec,
+		  struct mlx4_cq *cq, unsigned vector, int collapsed,
+		  int timestamp_en)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_cq_table *cq_table = &priv->cq_table;
@@ -276,6 +307,9 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 	memset(cq_context, 0, sizeof *cq_context);
 
 	cq_context->flags	    = cpu_to_be32(!!collapsed << 18);
+	if (timestamp_en)
+		cq_context->flags  |= cpu_to_be32(1 << 19);
+
 	cq_context->logsize_usrpage = cpu_to_be32((ilog2(nent) << 24) | uar->index);
 	cq_context->comp_eqn	    = priv->eq_table.eq[vector].eqn;
 	cq_context->log_page_size   = mtt->page_shift - MLX4_ICM_PAGE_SHIFT;
@@ -296,12 +330,16 @@ int mlx4_cq_alloc(struct mlx4_dev *dev, int nent, struct mlx4_mtt *mtt,
 	atomic_set(&cq->refcount, 1);
 	init_completion(&cq->free);
 
+	cq->eqn = priv->eq_table.eq[cq->vector].eqn;
+	cq->irq = priv->eq_table.eq[cq->vector].irq;
+
 	return 0;
 
 err_radix:
 	spin_lock_irq(&cq_table->lock);
 	radix_tree_delete(&cq_table->tree, cq->cqn);
 	spin_unlock_irq(&cq_table->lock);
+	synchronize_rcu();
 
 err_icm:
 	mlx4_cq_free_icm(dev, cq->cqn);
@@ -325,6 +363,7 @@ void mlx4_cq_free(struct mlx4_dev *dev, struct mlx4_cq *cq)
 	spin_lock_irq(&cq_table->lock);
 	radix_tree_delete(&cq_table->tree, cq->cqn);
 	spin_unlock_irq(&cq_table->lock);
+	synchronize_rcu();
 
 	if (atomic_dec_and_test(&cq->refcount))
 		complete(&cq->free);

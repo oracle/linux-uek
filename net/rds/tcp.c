@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/in.h>
 #include <linux/module.h>
 #include <net/tcp.h>
@@ -42,7 +41,7 @@
 /* only for info exporting */
 static DEFINE_SPINLOCK(rds_tcp_tc_list_lock);
 static LIST_HEAD(rds_tcp_tc_list);
-static unsigned int rds_tcp_tc_count;
+unsigned int rds_tcp_tc_count;
 
 /* Track rds_tcp_connection structs so they can be cleaned up */
 static DEFINE_SPINLOCK(rds_tcp_conn_lock);
@@ -222,13 +221,7 @@ static int rds_tcp_conn_alloc(struct rds_connection *conn, gfp_t gfp)
 static void rds_tcp_conn_free(void *arg)
 {
 	struct rds_tcp_connection *tc = arg;
-	unsigned long flags;
 	rdsdebug("freeing tc %p\n", tc);
-
-	spin_lock_irqsave(&rds_tcp_conn_lock, flags);
-	list_del(&tc->t_tcp_node);
-	spin_unlock_irqrestore(&rds_tcp_conn_lock, flags);
-
 	kmem_cache_free(rds_tcp_conn_slab, tc);
 }
 
@@ -250,7 +243,7 @@ static void rds_tcp_destroy_conns(void)
 	}
 }
 
-static void rds_tcp_exit(void)
+void rds_tcp_exit(void)
 {
 	rds_info_deregister_func(RDS_INFO_TCP_SOCKETS, rds_tcp_tc_info);
 	rds_tcp_listen_stop();
@@ -281,7 +274,7 @@ struct rds_transport rds_tcp_transport = {
 	.t_prefer_loopback	= 1,
 };
 
-static int rds_tcp_init(void)
+int rds_tcp_init(void)
 {
 	int ret;
 

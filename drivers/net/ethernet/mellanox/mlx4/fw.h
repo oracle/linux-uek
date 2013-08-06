@@ -119,7 +119,9 @@ struct mlx4_dev_cap {
 	u8  default_sense[MLX4_MAX_PORTS + 1];
 	u8  log_max_macs[MLX4_MAX_PORTS + 1];
 	u8  log_max_vlans[MLX4_MAX_PORTS + 1];
-	u32 max_counters;
+	u32 max_basic_counters;
+	u32 sync_qp;
+	u32 max_extended_counters;
 };
 
 struct mlx4_func_cap {
@@ -143,7 +145,9 @@ struct mlx4_func_cap {
 };
 
 struct mlx4_adapter {
+	u16 vsd_vendor_id;
 	char board_id[MLX4_BOARD_ID_LEN];
+	char vsd[MLX4_VSD_LEN];
 	u8   inta_pin;
 };
 
@@ -162,6 +166,7 @@ struct mlx4_init_hca_param {
 	u64 global_caps;
 	u16 log_mc_entry_sz;
 	u16 log_mc_hash_sz;
+	u16 hca_core_clock;
 	u8  log_num_qps;
 	u8  log_num_srqs;
 	u8  log_num_cqs;
@@ -171,7 +176,6 @@ struct mlx4_init_hca_param {
 	u8  log_mpt_sz;
 	u8  log_uar_sz;
 	u8  uar_page_sz; /* log pg sz in 4k chunks */
-	u8  fs_hash_enable_bits;
 	u8  steering_mode; /* for QUERY_HCA */
 	u64 dev_cap_enabled;
 };
@@ -219,5 +223,6 @@ int mlx4_MAP_ICM_AUX(struct mlx4_dev *dev, struct mlx4_icm *icm);
 int mlx4_UNMAP_ICM_AUX(struct mlx4_dev *dev);
 int mlx4_NOP(struct mlx4_dev *dev);
 int mlx4_MOD_STAT_CFG(struct mlx4_dev *dev, struct mlx4_mod_stat_cfg *cfg);
+void mlx4_opreq_action(struct work_struct *work);
 
 #endif /* MLX4_FW_H */

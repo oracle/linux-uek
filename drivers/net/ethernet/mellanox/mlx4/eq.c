@@ -79,6 +79,7 @@ enum {
 			       (1ull << MLX4_EVENT_TYPE_SRQ_QP_LAST_WQE)    | \
 			       (1ull << MLX4_EVENT_TYPE_SRQ_LIMIT)	    | \
 			       (1ull << MLX4_EVENT_TYPE_CMD)		    | \
+			       (1ull << MLX4_EVENT_TYPE_OP_REQUIRED)	    | \
 			       (1ull << MLX4_EVENT_TYPE_COMM_CHANNEL)       | \
 			       (1ull << MLX4_EVENT_TYPE_FLR_EVENT)	    | \
 			       (1ull << MLX4_EVENT_TYPE_FATAL_WARNING))
@@ -448,6 +449,7 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 	int i;
 	enum slave_port_gen_event gen_event;
 	unsigned long flags;
+	struct mlx4_vport_state *s_info;
 
 	while ((eqe = next_eqe_sw(eq, dev->caps.eqe_factor))) {
 		/*
@@ -497,8 +499,9 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 			break;
 
 		case MLX4_EVENT_TYPE_SRQ_LIMIT:
-			mlx4_warn(dev, "%s: MLX4_EVENT_TYPE_SRQ_LIMIT\n",
-				  __func__);
+			mlx4_dbg(dev, "%s: MLX4_EVENT_TYPE_SRQ_LIMIT\n",
+				 __func__);
+		/* fall through */
 		case MLX4_EVENT_TYPE_SRQ_CATAS_ERROR:
 			if (mlx4_is_master(dev)) {
 				/* forward only to slave owning the SRQ */
@@ -515,17 +518,15 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 						  eq->eqn, eq->cons_index, ret);
 					break;
 				}
-				mlx4_warn(dev, "%s: slave:%d, srq_no:0x%x,"
-					  " event: %02x(%02x)\n", __func__,
-					  slave,
-					  be32_to_cpu(eqe->event.srq.srqn),
-					  eqe->type, eqe->subtype);
+				mlx4_dbg(dev, "%s: slave:%d, srq_no:0x%x, event: %02x(%02x)\n",
+					 __func__, slave,
+					 be32_to_cpu(eqe->event.srq.srqn),
+					 eqe->type, eqe->subtype);
 
 				if (!ret && slave != dev->caps.function) {
-					mlx4_warn(dev, "%s: sending event "
-						  "%02x(%02x) to slave:%d\n",
-						   __func__, eqe->type,
-						  eqe->subtype, slave);
+					mlx4_dbg(dev, "%s: sending event %02x(%02x) to slave:%d\n",
+						 __func__, eqe->type,
+						 eqe->subtype, slave);
 					mlx4_slave_event(dev, slave, eqe);
 					break;
 				}
@@ -556,7 +557,9 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 						mlx4_dbg(dev, "%s: Sending MLX4_PORT_CHANGE_SUBTYPE_DOWN"
 							 " to slave: %d, port:%d\n",
 							 __func__, i, port);
-						mlx4_slave_event(dev, i, eqe);
+						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
+						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state)
+							mlx4_slave_event(dev, i, eqe);
 					} else {  /* IB port */
 						set_and_calc_slave_port_state(dev, i, port,
 									      MLX4_PORT_STATE_DEV_EVENT_PORT_DOWN,
@@ -580,7 +583,9 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 					for (i = 0; i < dev->num_slaves; i++) {
 						if (i == mlx4_master_func_num(dev))
 							continue;
-						mlx4_slave_event(dev, i, eqe);
+						s_info = &priv->mfunc.master.vf_oper[slave].vport[port].state;
+						if (IFLA_VF_LINK_STATE_AUTO == s_info->link_state)
+							mlx4_slave_event(dev, i, eqe);
 					}
 				else /* IB port */
 					/* port-up event will be sent to a slave when the
@@ -622,6 +627,13 @@ static int mlx4_eq_int(struct mlx4_dev *dev, struct mlx4_eq *eq)
 
 		case MLX4_EVENT_TYPE_EQ_OVERFLOW:
 			mlx4_warn(dev, "EQ overrun on EQN %d\n", eq->eqn);
+			break;
+
+		case MLX4_EVENT_TYPE_OP_REQUIRED:
+			atomic_inc(&priv->opreq_count);
+			/* FW commands can't be executed from interrupt context
+			   working in deferred task */
+			queue_work(mlx4_wq, &priv->opreq_task);
 			break;
 
 		case MLX4_EVENT_TYPE_COMM_CHANNEL:
@@ -771,7 +783,7 @@ int mlx4_MAP_EQ_wrapper(struct mlx4_dev *dev, int slave,
 	struct mlx4_slave_event_eq_info *event_eq =
 		priv->mfunc.master.slave_state[slave].event_eq;
 	u32 in_modifier = vhcr->in_modifier;
-	u32 eqn = in_modifier & 0x1FF;
+	u32 eqn = in_modifier & 0x3FF;
 	u64 in_param =  vhcr->in_param;
 	int err = 0;
 	int i;
@@ -872,7 +884,7 @@ static int mlx4_create_eq(struct mlx4_dev *dev, int nent,
 
 	eq->dev   = dev;
 	eq->nent  = roundup_pow_of_two(max(nent, 2));
-	/* CX3 is capable of extending the CQE/EQE from 32 to 64 bytes */
+	/* CX3 is capable of extending the CQE\EQE from 32 to 64 bytes */
 	npages = PAGE_ALIGN(eq->nent * (MLX4_EQ_ENTRY_SIZE << dev->caps.eqe_factor)) / PAGE_SIZE;
 
 	eq->page_list = kmalloc(npages * sizeof *eq->page_list,
@@ -976,7 +988,7 @@ static void mlx4_free_eq(struct mlx4_dev *dev,
 	struct mlx4_cmd_mailbox *mailbox;
 	int err;
 	int i;
-	/* CX3 is capable of extending the CQE/EQE from 32 to 64 bytes */
+	/* CX3 is capable of extending the CQE\EQE from 32 to 64 bytes */
 	int npages = PAGE_ALIGN((MLX4_EQ_ENTRY_SIZE << dev->caps.eqe_factor) * eq->nent) / PAGE_SIZE;
 
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
@@ -1118,7 +1130,7 @@ int mlx4_init_eq_table(struct mlx4_dev *dev)
 			GFP_KERNEL);
 	if (!priv->eq_table.irq_names) {
 		err = -ENOMEM;
-		goto err_out_bitmap;
+		goto err_out_clr_int;
 	}
 
 	for (i = 0; i < dev->caps.num_comp_vectors; ++i) {
@@ -1218,9 +1230,11 @@ err_out_unmap:
 		mlx4_free_eq(dev, &priv->eq_table.eq[i]);
 		--i;
 	}
+	mlx4_free_irqs(dev);
+
+err_out_clr_int:
 	if (!mlx4_is_slave(dev))
 		mlx4_unmap_clr_int(dev);
-	mlx4_free_irqs(dev);
 
 err_out_bitmap:
 	mlx4_unmap_uar(dev);
