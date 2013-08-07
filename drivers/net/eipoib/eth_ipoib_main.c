@@ -1120,8 +1120,8 @@ static int migrate_out_gen_arp_req(struct parent *parent, u8 *emac,
 
 	slave = get_slave_by_mac_and_vlan(parent, parent->dev->dev_addr, vlan);
 	if (unlikely(!slave)) {
-		pr_info("%s: Failed to find parent slave !!! %pM\n",
-			__func__, parent->dev->dev_addr);
+		pr_info_once("%s: Failed to find parent slave! %pM\n",
+			     __func__, parent->dev->dev_addr);
 		return -ENODEV;
 	}
 
@@ -1175,8 +1175,8 @@ static void arp_gen_work_task(struct work_struct *work)
 				ret = migrate_out_gen_arp_req(parent, emac_info->emac,
 							      emac_info->vlan);
 				if (ret)
-					pr_err("%s: migrate_out_gen_arp failed: %d\n",
-					       __func__, ret);
+					pr_err_once("%s: migrate_out_gen_arp failed: %d\n",
+						    __func__, ret);
 
 				emac_info->num_of_retries =
 					emac_info->num_of_retries - 1;
