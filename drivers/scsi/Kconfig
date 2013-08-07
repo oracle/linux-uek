@@ -624,6 +624,7 @@ config SCSI_ARCMSR_AER
 
 source "drivers/scsi/megaraid/Kconfig.megaraid"
 source "drivers/scsi/mpt2sas/Kconfig"
+source "drivers/scsi/mpt3sas/Kconfig"
 
 config SCSI_HPTIOP
 	tristate "HighPoint RocketRAID 3xxx/4xxx Controller support"
