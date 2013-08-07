@@ -384,6 +384,8 @@ struct mlx5_ib_dev {
 	spinlock_t			mr_lock;
 	struct mlx5_ib_resources	devr;
 	struct mlx5_mr_cache		cache;
+	struct timer_list		delay_timer;
+	int				fill_delay;
 };
 
 static inline struct mlx5_ib_cq *to_mibcq(struct mlx5_core_cq *mcq)

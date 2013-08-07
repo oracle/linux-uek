@@ -87,6 +87,8 @@ static void reg_mr_callback(int status, void *context)
 	if (status) {
 		mlx5_ib_warn(dev, "async reg mr failed. status %d\n", status);
 		kfree(mr);
+		dev->fill_delay = 1;
+		mod_timer(&dev->delay_timer, jiffies + HZ);
 		return;
 	}
 
@@ -95,6 +97,8 @@ static void reg_mr_callback(int status, void *context)
 			     mr->out.hdr.status,
 			     be32_to_cpu(mr->out.hdr.syndrome));
 		kfree(mr);
+		dev->fill_delay = 1;
+		mod_timer(&dev->delay_timer, jiffies + HZ);
 		return;
 	}
 
@@ -351,7 +355,7 @@ static void __cache_work_func(struct mlx5_cache_ent *ent)
 		return;
 
 	ent = &dev->cache.ent[i];
-	if (ent->cur < 2 * ent->limit) {
+	if (ent->cur < 2 * ent->limit && !dev->fill_delay) {
 		add_keys(dev, i, 1);
 		if (ent->cur < 2 * ent->limit)
 			queue_work(cache->wq, &ent->work);
@@ -533,6 +537,13 @@ static void mlx5_mr_cache_debugfs_cleanup(struct mlx5_ib_dev *dev)
 	debugfs_remove_recursive(dev->cache.root);
 }
 
+static void delay_time_func(unsigned long ctx)
+{
+	struct mlx5_ib_dev *dev = (struct mlx5_ib_dev *)ctx;
+
+	dev->fill_delay = 0;
+}
+
 int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 {
 	struct mlx5_mr_cache *cache = &dev->cache;
@@ -548,6 +559,7 @@ int mlx5_mr_cache_init(struct mlx5_ib_dev *dev)
 		return -ENOMEM;
 	}
 
+	setup_timer(&dev->delay_timer, delay_time_func, (unsigned long)dev);
 	for (i = 0; i < MAX_MR_CACHE_ENTRIES; ++i) {
 		INIT_LIST_HEAD(&cache->ent[i].head);
 		spin_lock_init(&cache->ent[i].lock);
@@ -592,6 +604,7 @@ int mlx5_mr_cache_cleanup(struct mlx5_ib_dev *dev)
 
 	flush_workqueue(dev->cache.wq);
 	destroy_workqueue(dev->cache.wq);
+	del_timer_sync(&dev->delay_timer);
 
 	return 0;
 }
