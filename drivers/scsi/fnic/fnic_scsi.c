@@ -15,7 +15,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  * [Insert appropriate license here when releasing outside of Cisco]
- * $Id: fnic_scsi.c 126531 2013-03-26 21:56:12Z hiralpat $
+ * $Id: fnic_scsi.c 133673 2013-06-04 23:21:29Z hiralpat $
  */
 #include <linux/mempool.h>
 #include <linux/errno.h>
@@ -790,7 +790,7 @@ static void fnic_fcpio_icmnd_cmpl_handler(struct fnic *fnic,
 	fcpio_tag_id_dec(&tag, &id);
 	icmnd_cmpl = &desc->u.icmnd_cmpl;
 
-	if (id >= fnic_max_tag_id) {
+	if (id >= fnic->fnic_max_tag_id) {
 		shost_printk(KERN_ERR, fnic->lport->host,
 			"Tag out of range tag %x hdr status = %s\n",
 			     id, fnic_fcpio_status_to_str(hdr_status));
@@ -1003,7 +1003,7 @@ static void fnic_fcpio_itmf_cmpl_handler(struct fnic *fnic,
 	fcpio_header_dec(&desc->hdr, &type, &hdr_status, &tag);
 	fcpio_tag_id_dec(&tag, &id);
 
-	if ((id & FNIC_TAG_MASK) >= fnic_max_tag_id) {
+	if ((id & FNIC_TAG_MASK) >= fnic->fnic_max_tag_id) {
 		shost_printk(KERN_ERR, fnic->lport->host,
 		"Tag out of range tag %x hdr status = %s\n",
 		id, fnic_fcpio_status_to_str(hdr_status));
@@ -1266,7 +1266,7 @@ static void fnic_cleanup_io(struct fnic *fnic, int exclude_id)
 	unsigned long start_time = 0;
 	struct fnic_stats *fnic_stats = &fnic->fnic_stats;
 
-	for (i = 0; i < fnic_max_tag_id; i++) {
+	for (i = 0; i < fnic->fnic_max_tag_id; i++) {
 		if (i == exclude_id)
 			continue;
 
@@ -1354,7 +1354,7 @@ void fnic_wq_copy_cleanup_handler(struct vnic_wq_copy *wq,
 	fcpio_tag_id_dec(&desc->hdr.tag, &id);
 	id &= FNIC_TAG_MASK;
 
-	if (id >= fnic_max_tag_id)
+	if (id >= fnic->fnic_max_tag_id)
 		return;
 
 	sc = scsi_host_find_tag(fnic->lport->host, id);
@@ -1469,7 +1469,7 @@ void fnic_rport_exch_reset(struct fnic *fnic, u32 port_id)
 	if (fnic->in_remove)
 		return;
 
-	for (tag = 0; tag < fnic_max_tag_id; tag++) {
+	for (tag = 0; tag < fnic->fnic_max_tag_id; tag++) {
 		abt_tag = tag;
 		io_lock = fnic_io_lock_tag(fnic, tag);
 		spin_lock_irqsave(io_lock, flags);
@@ -1581,14 +1581,31 @@ void fnic_terminate_rport_io(struct fc_rport *rport)
 	unsigned long flags;
 	struct scsi_cmnd *sc;
 	struct scsi_lun fc_lun;
-	struct fc_rport_libfc_priv *rdata = rport->dd_data;
-	struct fc_lport *lport = rdata->local_port;
-	struct fnic *fnic = lport_priv(lport);
+	struct fc_rport_libfc_priv *rdata;
+	struct fc_lport *lport;
+	struct fnic *fnic;
 	struct fc_rport *cmd_rport;
 	struct reset_stats *reset_stats;
 	struct terminate_stats *term_stats;
 	enum fnic_ioreq_state old_ioreq_state;
 
+	if (!rport) {
+		printk(KERN_ERR "fnic_terminate_rport_io: rport is NULL\n");
+		return;
+	}
+	rdata = rport->dd_data;
+
+	if (!rdata) {
+		printk(KERN_ERR "fnic_terminate_rport_io: rdata is NULL\n");
+		return;
+	}
+	lport = rdata->local_port;
+
+	if (!lport) {
+		printk(KERN_ERR "fnic_terminate_rport_io: lport is NULL\n");
+		return;
+	}
+	fnic = lport_priv(lport);
 	FNIC_SCSI_DBG(KERN_DEBUG,
 		      fnic->lport->host, "fnic_terminate_rport_io called"
 		      " wwpn 0x%llx, wwnn0x%llx, rport 0x%p, portid 0x%06x\n",
@@ -1601,7 +1618,7 @@ void fnic_terminate_rport_io(struct fc_rport *rport)
 	reset_stats = &fnic->fnic_stats.reset_stats;
 	term_stats = &fnic->fnic_stats.term_stats;
 
-	for (tag = 0; tag < fnic_max_tag_id; tag++) {
+	for (tag = 0; tag < fnic->fnic_max_tag_id; tag++) {
 		abt_tag = tag;
 		io_lock = fnic_io_lock_tag(fnic, tag);
 		spin_lock_irqsave(io_lock, flags);
@@ -1863,10 +1880,15 @@ int fnic_abort_cmd(struct scsi_cmnd *sc)
 	/* fw did not complete abort, timed out */
 	if (CMD_ABTS_STATUS(sc) == FCPIO_INVALID_CODE) {
 		spin_unlock_irqrestore(io_lock, flags);
-		if (task_req == FCPIO_ITMF_ABT_TASK)
+		if (task_req == FCPIO_ITMF_ABT_TASK) {
+			FNIC_SCSI_DBG(KERN_INFO,
+				fnic->lport->host, "Abort Driver Timeout\n");
 			atomic64_inc(&abts_stats->abort_drv_timeouts);
-		else
+		} else {
+			FNIC_SCSI_DBG(KERN_INFO,
+				fnic->lport->host, "Terminate Driver Timeout\n");
 			atomic64_inc(&term_stats->terminate_drv_timeouts);
+		}
 		CMD_FLAGS(sc) |= FNIC_IO_ABT_TERM_TIMED_OUT;
 		ret = FAILED;
 		goto fnic_abort_cmd_end;
@@ -1979,7 +2001,7 @@ static int fnic_clean_pending_aborts(struct fnic *fnic,
 	DECLARE_COMPLETION_ONSTACK(tm_done);
 	enum fnic_ioreq_state old_ioreq_state;
 
-	for (tag = 0; tag < fnic_max_tag_id; tag++) {
+	for (tag = 0; tag < fnic->fnic_max_tag_id; tag++) {
 		io_lock = fnic_io_lock_tag(fnic, tag);
 		spin_lock_irqsave(io_lock, flags);
 		sc = scsi_host_find_tag(fnic->lport->host, tag);
@@ -2620,7 +2642,6 @@ int fnic_is_abts_pending(struct fnic *fnic, struct scsi_cmnd *lr_sc)
 	struct fnic_io_req *io_req;
 	spinlock_t *io_lock;
 	unsigned long flags;
-	int ret = 0;
 	struct scsi_cmnd *sc;
 	struct scsi_device *lun_dev = NULL;
 
@@ -2628,7 +2649,7 @@ int fnic_is_abts_pending(struct fnic *fnic, struct scsi_cmnd *lr_sc)
 		lun_dev = lr_sc->device;
 
 	/* walk again to check, if IOs are still pending in fw */
-	for (tag = 0; tag < fnic_max_tag_id; tag++) {
+	for (tag = 0; tag < fnic->fnic_max_tag_id; tag++) {
 		sc = scsi_host_find_tag(fnic->lport->host, tag);
 		/*
 		 * ignore this lun reset cmd or cmds that do not belong to
@@ -2657,10 +2678,9 @@ int fnic_is_abts_pending(struct fnic *fnic, struct scsi_cmnd *lr_sc)
 
 		if (CMD_STATE(sc) == FNIC_IOREQ_ABTS_PENDING) {
 			spin_unlock_irqrestore(io_lock, flags);
-			ret = 1;
-			continue;
+			return 1;
 		}
+		spin_unlock_irqrestore(io_lock, flags);
 	}
-
-	return ret;
+	return 0;
 }

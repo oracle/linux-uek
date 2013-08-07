@@ -15,7 +15,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  * [Insert appropriate license here when releasing outside of Cisco]
- * $Id: fnic.h 126523 2013-03-26 20:49:05Z hiralpat $
+ * $Id: fnic.h 132955 2013-05-29 21:01:25Z hiralpat $
  */
 #ifndef _FNIC_H_
 #define _FNIC_H_
@@ -42,7 +42,7 @@
 
 #define DRV_NAME		"fnic"
 #define DRV_DESCRIPTION		"Cisco FCoE HBA Driver"
-#define DRV_VERSION		"1.5.0.42"
+#define DRV_VERSION		"1.5.0.45"
 #define PFX			DRV_NAME ": "
 #define DFX                     DRV_NAME "%d: "
 
@@ -233,6 +233,8 @@ struct fnic {
 	char name[IFNAMSIZ];
 	struct timer_list notify_timer; /* used for MSI interrupts */
 
+	unsigned int fnic_max_tag_id;
+
 	unsigned int err_intr_offset;
 	unsigned int link_intr_offset;
 
@@ -321,8 +323,6 @@ static inline struct fnic *fnic_from_ctlr(struct fcoe_ctlr *fip)
 {
 	return container_of(fip, struct fnic, ctlr);
 }
-
-extern unsigned int fnic_max_tag_id;
 
 extern struct workqueue_struct *fnic_event_queue;
 extern struct workqueue_struct *fnic_fip_queue;

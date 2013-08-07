@@ -15,7 +15,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  * [Insert appropriate license here when releasing outside of Cisco]
- * $Id: fnic_main.c 126729 2013-03-29 00:42:50Z hiralpat $
+ * $Id: fnic_main.c 132955 2013-05-29 21:01:25Z hiralpat $
  */
 #include <linux/module.h>
 #include <linux/mempool.h>
@@ -80,8 +80,6 @@ MODULE_PARM_DESC(fnic_trace_max_pages, "Total allocated memory pages "
 unsigned int fnic_max_qdepth = FNIC_DFLT_QUEUE_DEPTH;
 module_param(fnic_max_qdepth, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(fnic_max_qdepth, "Queue depth to report for each LUN");
-
-unsigned int fnic_max_tag_id = FNIC_MAX_IO_REQ;
 
 static struct libfc_function_template fnic_transport_template = {
 	.frame_send = fnic_send,
@@ -687,9 +685,9 @@ static int __devinit fnic_probe(struct pci_dev *pdev,
 					max_t(u32, FNIC_MIN_IO_REQ,
 					fnic->config.io_throttle_count));
 	}
-	fnic_max_tag_id = host->can_queue;
+	fnic->fnic_max_tag_id = host->can_queue;
 
-	err = scsi_init_shared_tag_map(host, fnic_max_tag_id);
+	err = scsi_init_shared_tag_map(host, fnic->fnic_max_tag_id);
 	if (err) {
 		shost_printk(KERN_ERR, fnic->lport->host,
 			  "Unable to alloc shared tag map\n");
