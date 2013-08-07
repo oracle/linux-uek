@@ -765,6 +765,18 @@ typedef struct dtrace_mprovider {
 	dtrace_provider_id_t	dtmp_id;
 } dtrace_mprovider_t;
 
+typedef struct dtrace_pmod {
+	struct module		*mod;
+	struct list_head	list;
+} dtrace_pmod_t;
+
+#ifdef CONFIG_DT_DEBUG
+extern void dtrace_pmod_debug(void);
+#endif
+extern void dtrace_pmod_register(dtrace_pmod_t *);
+extern void dtrace_pmod_add_consumer(void);
+extern void dtrace_pmod_del_consumer(void);
+extern void dtrace_pmod_unregister(dtrace_pmod_t *);
 extern int dtrace_register(const char *, const dtrace_pattr_t *, uint32_t,
 			   const cred_t *, const dtrace_pops_t *, void *,
 			   dtrace_provider_id_t *);
@@ -820,6 +832,7 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 
 #define DT_PROVIDER_MODULE(name, priv)					\
   dtrace_provider_id_t	name##_id;					\
+  static dtrace_pmod_t	name##_pmod = { THIS_MODULE, };			\
 									\
   static int __init name##_init(void)					\
   {									\
@@ -828,6 +841,8 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 	ret = name##_dev_init();					\
 	if (ret)							\
 		goto failed;						\
+									\
+	dtrace_pmod_register(&name##_pmod);				\
 									\
 	ret = dtrace_register(__stringify(name), &name##_attr, priv,	\
 			      NULL, &name##_pops, NULL, &name##_id);	\
@@ -843,6 +858,7 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
   static void __exit name##_exit(void)					\
   {									\
 	dtrace_unregister(name##_id);					\
+	dtrace_pmod_unregister(&name##_pmod);				\
 	name##_dev_exit();						\
   }									\
 									\
@@ -851,6 +867,7 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 
 #define DT_META_PROVIDER_MODULE(name)					\
   dtrace_meta_provider_id_t	name##_id;				\
+  static dtrace_pmod_t		name##_pmod = { THIS_MODULE, };		\
 									\
   static int __init name##_init(void)					\
   {									\
@@ -859,6 +876,8 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 	ret = name##_dev_init();					\
 	if (ret)							\
 		goto failed;						\
+									\
+	dtrace_pmod_register(&name##_pmod);				\
 									\
 	ret = dtrace_meta_register(__stringify(name), &name##_mops,	\
 				   NULL, &name##_id);			\
@@ -874,6 +893,7 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
   static void __exit name##_exit(void)					\
   {									\
 	dtrace_meta_unregister(name##_id);				\
+	dtrace_pmod_unregister(&name##_pmod);				\
 	name##_dev_exit();						\
   }									\
 									\
@@ -881,6 +901,8 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
   module_exit(name##_exit);
 
 #define DT_MULTI_PROVIDER_MODULE(name, plist)				\
+  static dtrace_pmod_t		name##_pmod = { THIS_MODULE, };		\
+									\
   static int __init name##_init(void)					\
   {									\
 	int			ret = 0;				\
@@ -889,6 +911,8 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 	ret = name##_dev_init();					\
 	if (ret)							\
 		goto failed;						\
+									\
+	dtrace_pmod_register(&name##_pmod);				\
 									\
 	for (prov = plist; prov->dtmp_name != NULL; prov++) {		\
 		if (dtrace_register(prov->dtmp_name, prov->dtmp_attr,	\
@@ -914,12 +938,15 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
 		if (prov->dtmp_id != DTRACE_PROVNONE) {			\
 			ret = dtrace_unregister(prov->dtmp_id);		\
 			if (ret != 0)					\
-				return;					\
+				pr_warning("Failed to unregister sdt "	\
+					   "provider %s: %d",		\
+					   prov->dtmp_name, ret);	\
 									\
 			prov->dtmp_id = DTRACE_PROVNONE;		\
 		}							\
 	}								\
 									\
+	dtrace_pmod_unregister(&name##_pmod);				\
 	name##_dev_exit();						\
   }									\
 									\

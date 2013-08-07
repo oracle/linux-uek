@@ -8,6 +8,7 @@
 # undef DT_DBG_DOF
 # undef DT_DBG_ENABLE
 # undef DT_DBG_IOCTL
+# undef DT_DBG_PMOD
 # undef DT_DBG_PROBE
 
 #else /* CONFIG_DT_DEBUG */
@@ -17,6 +18,7 @@
 # undef DT_DBG_DOF
 # undef DT_DBG_ENABLE
 # undef DT_DBG_IOCTL
+# undef DT_DBG_PMOD
 # undef DT_DBG_PROBE
 
 #endif /* CONFIG_DT_DEBUG */
@@ -52,6 +54,12 @@
 # define dt_dbg_ioctl(fmt, ...)		pr_info(fmt, ## __VA_ARGS__)
 #else
 # define dt_dbg_ioctl(fmt, ...)
+#endif
+
+#ifdef DT_DBG_PMOD
+# define dt_dbg_pmod(fmt, ...)		pr_info(fmt, ## __VA_ARGS__)
+#else
+# define dt_dbg_pmod(fmt, ...)
 #endif
 
 #ifdef DT_DBG_PROBE
