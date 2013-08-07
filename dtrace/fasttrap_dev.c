@@ -705,7 +705,6 @@ static void fasttrap_pid_getargdesc(void *arg, dtrace_id_t id, void *parg,
 static uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
 				     int argno, int aframes)
 {
-pr_info("FASTTRAP: fasttrap_usdt_getarg(%p, %d, %p, %d, %d) called\n", arg, id, parg, argno, aframes);
 	return 0;	/* FIXME */
 }
 
@@ -1196,6 +1195,8 @@ void *fasttrap_meta_provide(void *arg, dtrace_helper_provdesc_t *dhpv,
 
 	mutex_unlock(&provider->ftp_mtx);
 
+	__module_get(THIS_MODULE);
+
 	return provider;
 }
 
@@ -1283,6 +1284,8 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 				} else {
 					*fpp = fp->ftp_next;
 					fasttrap_provider_free(fp);
+
+					module_put(THIS_MODULE);
 				}
 			}
 
