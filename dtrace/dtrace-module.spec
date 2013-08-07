@@ -100,6 +100,8 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
+- Bugfix for module unloading.
 * Thu Jul 25 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
 - Support meta-providers, USDT, and fasttrap (for USDT only).
 - Export DTrace kernel headers to userspace.
