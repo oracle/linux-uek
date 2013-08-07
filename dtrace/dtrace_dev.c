@@ -153,6 +153,8 @@ static int dtrace_open(struct inode *inode, struct file *file)
 	if (dtrace_opens == 1)
 		dtrace_enable();
 
+	dtrace_pmod_add_consumer();
+
 	mutex_unlock(&dtrace_lock);
 
 	return 0;
@@ -993,6 +995,8 @@ static int dtrace_close(struct inode *inode, struct file *file)
 	if (--dtrace_opens == 0)
 		dtrace_disable();
 #endif
+
+	dtrace_pmod_del_consumer();
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&cpu_lock);
