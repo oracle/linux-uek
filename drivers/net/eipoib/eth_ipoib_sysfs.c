@@ -408,15 +408,15 @@ static ssize_t parent_show_served(struct device *d,
 
 }
 
-#define IP_ADDR_LEN 4/* in bytes */
+#define IP_ADDR_LEN 48/* in bytes: x.y.z.w*/
 
 static ssize_t parent_store_served(struct device *d,
 				   struct device_attribute *attr,
 				   const char *buffer, size_t count)
 {
-	char command[1024] = { 0, };
+	char command[512] = { 0, };
 	char *mac_str;
-	char ip_str[100] = { 0, };
+	char ip_str[IP_ADDR_LEN] = { 0, };
 	u8 mac[ETH_ALEN];
 	u16 vlan = VLAN_N_VID;
 	__be32 ip;
