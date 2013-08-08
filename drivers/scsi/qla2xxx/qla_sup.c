@@ -1,6 +1,6 @@
 /*
  * QLogic Fibre Channel HBA Driver
- * Copyright (c)  2003-2012 QLogic Corporation
+ * Copyright (c)  2003-2013 QLogic Corporation
  *
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
@@ -798,20 +798,8 @@ qla2xxx_get_flt_info(scsi_qla_host_t *vha, uint32_t flt_addr)
 		case FLT_REG_BOOTLOAD_82XX:
 			ha->flt_region_bootload = start;
 			break;
-		case FLT_REG_VPD_82XX:
-			ha->flt_region_vpd = start;
-			break;
-		case FLT_REG_FCOE_VPD_0:
-			if (!IS_QLA8031(ha))
-				break;
-			ha->flt_region_vpd_nvram = start;
-			if (ha->flags.port0)
-				ha->flt_region_vpd = start;
-			break;
-		case FLT_REG_FCOE_VPD_1:
-			if (!IS_QLA8031(ha))
-				break;
-			if (!ha->flags.port0)
+		case FLT_REG_VPD_8XXX:
+			if (IS_CNA_CAPABLE(ha))
 				ha->flt_region_vpd = start;
 			break;
 		case FLT_REG_FCOE_NVRAM_0:
@@ -1701,7 +1689,7 @@ qla83xx_beacon_blink(struct scsi_qla_host *vha)
 		qla83xx_wr_reg(vha, led_select_value + 4, 0x40002000);
 		msleep(1000);
 		qla83xx_wr_reg(vha, led_select_value, 0x40004000);
-		qla83xx_wr_reg(vha, led_select_value + 4, 0x40004000);
+		qla83xx_wr_reg(vha, led_select_value + 4 , 0x40004000);
 	} else if (IS_QLA8031(ha)) {
 		led_select_value = qla83xx_select_led_port(ha);
 
@@ -1721,33 +1709,33 @@ qla83xx_beacon_blink(struct scsi_qla_host *vha)
 		/* Do the blink */
 		if (rval == QLA_SUCCESS) {
 			if (IS_QLA81XX(ha)) {
-				led_cfg[0] = 0x4000;
-				led_cfg[1] = 0x2000;
-				led_cfg[2] = 0;
-				led_cfg[3] = 0;
-				led_cfg[4] = 0;
-				led_cfg[5] = 0;
+			    led_cfg[0] = 0x4000;
+			    led_cfg[1] = 0x2000;
+			    led_cfg[2] = 0;
+			    led_cfg[3] = 0;
+			    led_cfg[4] = 0;
+			    led_cfg[5] = 0;
 			} else {
-				led_cfg[0] = 0x4000;
-				led_cfg[1] = 0x4000;
-				led_cfg[2] = 0x4000;
-				led_cfg[3] = 0x2000;
-				led_cfg[4] = 0;
-				led_cfg[5] = 0x2000;
+			    led_cfg[0] = 0x4000;
+			    led_cfg[1] = 0x4000;
+			    led_cfg[2] = 0x4000;
+			    led_cfg[3] = 0x2000;
+			    led_cfg[4] = 0;
+			    led_cfg[5] = 0x2000;
 			}
 			rval = qla81xx_set_led_config(vha, led_cfg);
 			msleep(1000);
 			if (IS_QLA81XX(ha)) {
-				led_cfg[0] = 0x4000;
-				led_cfg[1] = 0x2000;
-				led_cfg[2] = 0;
+			    led_cfg[0] = 0x4000;
+			    led_cfg[1] = 0x2000;
+			    led_cfg[2] = 0;
 			} else {
-				led_cfg[0] = 0x4000;
-				led_cfg[1] = 0x2000;
-				led_cfg[2] = 0x4000;
-				led_cfg[3] = 0x4000;
-				led_cfg[4] = 0;
-				led_cfg[5] = 0x2000;
+			    led_cfg[0] = 0x4000;
+			    led_cfg[1] = 0x2000;
+			    led_cfg[2] = 0x4000;
+			    led_cfg[3] = 0x4000;
+			    led_cfg[4] = 0;
+			    led_cfg[5] = 0x2000;
 			}
 			rval = qla81xx_set_led_config(vha, led_cfg);
 		}
