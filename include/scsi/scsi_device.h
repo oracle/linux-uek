@@ -52,8 +52,18 @@ enum scsi_device_state {
 
 enum scsi_device_event {
 	SDEV_EVT_MEDIA_CHANGE	= 1,	/* media has changed */
+#ifndef __GENKSYMS__
+	SDEV_EVT_INQUIRY_CHANGE_REPORTED,		/* 3F 03  UA reported */
+	SDEV_EVT_CAPACITY_CHANGE_REPORTED,		/* 2A 09  UA reported */
+	SDEV_EVT_SOFT_THRESHOLD_REACHED_REPORTED,	/* 38 07  UA reported */
+	SDEV_EVT_MODE_PARAMETER_CHANGE_REPORTED,	/* 2A 01  UA reported */
+	SDEV_EVT_LUN_CHANGE_REPORTED,			/* 3F 0E  UA reported */
 
+	SDEV_EVT_FIRST		= SDEV_EVT_MEDIA_CHANGE,
+	SDEV_EVT_LAST		= SDEV_EVT_LUN_CHANGE_REPORTED,
+#else
 	SDEV_EVT_LAST		= SDEV_EVT_MEDIA_CHANGE,
+#endif
 	SDEV_EVT_MAXBITS	= SDEV_EVT_LAST + 1
 };
 
@@ -183,6 +193,9 @@ struct scsi_device {
 
 	struct scsi_dh_data	*scsi_dh_data;
 	enum scsi_device_state sdev_state;
+#ifndef __GENKSYMS__
+	DECLARE_BITMAP(pending_events, SDEV_EVT_MAXBITS); /* pending events */
+#endif
 	unsigned long		sdev_data[0];
 } __attribute__((aligned(sizeof(unsigned long))));
 
@@ -260,6 +273,11 @@ struct scsi_target {
 						 * means no lun present. */
 	unsigned int		no_report_luns:1;	/* Don't use
 						 * REPORT LUNS for scanning. */
+#ifndef __GENKSYMS__
+	unsigned int		expecting_lun_change:1;	/* A device has reported
+						 * a 3F/0E UA, other devices on
+						 * the same target will also. */
+#endif
 	/* commands actually active on LLD. protected by host lock. */
 	unsigned int		target_busy;
 	/*
