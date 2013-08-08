@@ -87,7 +87,7 @@ static int validate_index(struct mlx4_dev *dev,
 {
 	int err = 0;
 
-	if (index < 0 || index >= table->max || !table->entries[index]) {
+	if (index < 0 || index >= table->max || !table->refs[index]) {
 		mlx4_warn(dev, "No valid Mac entry for the given index\n");
 		err = -EINVAL;
 	}
@@ -142,14 +142,15 @@ int __mlx4_register_mac(struct mlx4_dev *dev, u8 port, u64 mac)
 
 	mutex_lock(&table->mutex);
 	for (i = 0; i < MLX4_MAX_MAC_NUM; i++) {
-		if (free < 0 && !table->entries[i]) {
+		if (free < 0 && !table->refs[i]) {
 			free = i;
 			continue;
 		}
 
-		if (mac == (MLX4_MAC_MASK & be64_to_cpu(table->entries[i]))) {
+		if ((mac == (MLX4_MAC_MASK & be64_to_cpu(table->entries[i]))) &&
+		    table->refs[i]) {
 			/* MAC already registered, Must not have duplicates */
-		       err = i;
+			err = i;
 			++table->refs[i];
 			goto out;
 		}
