@@ -487,34 +487,13 @@ enum {
 #define QLCNIC_NIU_GB_MAC_CONFIG_1(I)		\
 		(QLCNIC_CRB_NIU + 0x30004 + (I)*0x10000)
 
-#define MAX_CTL_CHECK   1000
+#define MAX_CTL_CHECK	1000
 #define TEST_AGT_CTRL	(0x00)
 
 #define TA_CTL_START	BIT_0
 #define TA_CTL_ENABLE	BIT_1
 #define TA_CTL_WRITE	BIT_2
 #define TA_CTL_BUSY	BIT_3
-
-#define QLCNIC_MS_CTRL     0x41000090
-#define QLCNIC_MS_ADDR_LO  0x41000094
-#define QLCNIC_MS_ADDR_HI  0x41000098
-
-#define QLCNIC_MS_WRTDATA_LO       0x410000A0
-#define QLCNIC_MS_WRTDATA_HI       0x410000A4
-#define QLCNIC_MS_WRTDATA_ULO      0x410000B0
-#define QLCNIC_MS_WRTDATA_UHI      0x410000B4
-
-#define QLCNIC_MS_RDDATA_LO        0x410000A8
-#define QLCNIC_MS_RDDATA_HI        0x410000AC
-#define QLCNIC_MS_RDDATA_ULO       0x410000B8
-#define QLCNIC_MS_RDDATA_UHI       0x410000BC
-
-static const u32 QLCNIC_MS_READ_DATA[] = {
-	0x410000A8, 0x410000AC, 0x410000B8, 0x410000BC, };
-
-#define QLC_TA_WRITE_ENABLE (TA_CTL_ENABLE | TA_CTL_WRITE)
-#define QLC_TA_WRITE_START (TA_CTL_START | TA_CTL_ENABLE | TA_CTL_WRITE)
-#define QLC_TA_START_ENABLE (TA_CTL_START | TA_CTL_ENABLE)
 
 /* XG Link status */
 #define XG_LINK_UP	0x10
@@ -545,15 +524,16 @@ static const u32 QLCNIC_MS_READ_DATA[] = {
 #define QLCNIC_REG_2(X) 	(NIC_CRB_BASE_2+(X))
 
 #define QLCNIC_CDRP_MAX_ARGS	4
-#define QLCNIC_CDRP_ARG(i)		(QLCNIC_REG(0x18 + ((i) * 4)))
+#define QLCNIC_CDRP_ARG(i)	(QLCNIC_REG(0x18 + ((i) * 4)))
+
 #define QLCNIC_CDRP_CRB_OFFSET		(QLCNIC_REG(0x18))
 #define QLCNIC_SIGN_CRB_OFFSET		(QLCNIC_REG(0x28))
 
 #define CRB_XG_STATE_P3P		(QLCNIC_REG(0x98))
 #define CRB_PF_LINK_SPEED_1		(QLCNIC_REG(0xe8))
-
 #define CRB_DRIVER_VERSION		(QLCNIC_REG(0x2a0))
-#define CRB_FW_CAPABILITIES_2           (QLCNIC_CAM_RAM(0x12c))
+
+#define CRB_FW_CAPABILITIES_2		(QLCNIC_CAM_RAM(0x12c))
 
 /*
  * CrbPortPhanCntrHi/Lo is used to pass the address of HostPhantomIndex address
@@ -689,7 +669,7 @@ enum {
 #define QLCNIC_CMDPEG_CHECK_RETRY_COUNT	60
 #define QLCNIC_CMDPEG_CHECK_DELAY	500
 #define QLCNIC_HEARTBEAT_PERIOD_MSECS	200
-#define QLCNIC_HEARTBEAT_CHECK_RETRY_COUNT	45
+#define QLCNIC_HEARTBEAT_CHECK_RETRY_COUNT	10
 
 #define QLCNIC_MAX_MC_COUNT		38
 #define QLCNIC_WATCHDOG_TIMEOUTVALUE	5
@@ -713,18 +693,22 @@ struct qlcnic_legacy_intr_set {
 	u32	int_vec_bit;
 	u32	tgt_status_reg;
 	u32	tgt_mask_reg;
+	u32	pci_int_reg;
 };
 
 #define QLCNIC_MSIX_BASE	0x132110
 #define QLCNIC_MAX_PCI_FUNC	8
 #define QLCNIC_MAX_VLAN_FILTERS	64
 
-/* FW dump defines */
 #define FLASH_ROM_WINDOW	0x42110030
 #define FLASH_ROM_DATA		0x42150000
 
-static const u32 FW_DUMP_LEVELS[] = {
+
+static const u32 qlcnic_fw_dump_level[] = {
 	0x3, 0x7, 0xf, 0x1f, 0x3f, 0x7f, 0xff };
+
+static const u32 MIU_TEST_READ_DATA[] = {
+	0x410000A8, 0x410000AC, 0x410000B8, 0x410000BC, };
 
 #define QLCNIC_FW_DUMP_REG1	0x00130060
 #define QLCNIC_FW_DUMP_REG2	0x001e0000
@@ -732,28 +716,14 @@ static const u32 FW_DUMP_LEVELS[] = {
 #define QLCNIC_FLASH_SEM2_ULK	0x0013C014
 #define QLCNIC_FLASH_LOCK_ID	0x001B2100
 
-#define QLCNIC_RD_DUMP_REG(addr, bar0, data) do {			\
-	writel((addr & 0xFFFF0000), (void *) (bar0 +			\
-		QLCNIC_FW_DUMP_REG1));					\
-	readl((void *) (bar0 + QLCNIC_FW_DUMP_REG1));			\
-	*data = readl((void *) (bar0 + QLCNIC_FW_DUMP_REG2 +		\
-		LSW(addr)));						\
-} while (0)
-
-#define QLCNIC_WR_DUMP_REG(addr, bar0, data) do {			\
-	writel((addr & 0xFFFF0000), (void *) (bar0 +			\
-		QLCNIC_FW_DUMP_REG1));					\
-	readl((void *) (bar0 + QLCNIC_FW_DUMP_REG1));			\
-	writel(data, (void *) (bar0 + QLCNIC_FW_DUMP_REG2 + LSW(addr)));\
-	readl((void *) (bar0 + QLCNIC_FW_DUMP_REG2 + LSW(addr)));	\
-} while (0)
-
 /* PCI function operational mode */
 enum {
 	QLCNIC_MGMT_FUNC	= 0,
 	QLCNIC_PRIV_FUNC	= 1,
 	QLCNIC_NON_PRIV_FUNC	= 2,
-	QLCNIC_UNKNOWN_FUNC_MODE = 3
+	QLCNIC_SRIOV_PF_FUNC	= 3,
+	QLCNIC_SRIOV_VF_FUNC	= 4,
+	QLCNIC_UNKNOWN_FUNC_MODE = 5
 };
 
 enum {
@@ -772,6 +742,22 @@ enum {
 
 #define LSD(x)  ((uint32_t)((uint64_t)(x)))
 #define MSD(x)  ((uint32_t)((((uint64_t)(x)) >> 16) >> 16))
+
+#define QLCNIC_MS_CTRL			0x41000090
+#define QLCNIC_MS_ADDR_LO		0x41000094
+#define QLCNIC_MS_ADDR_HI		0x41000098
+#define QLCNIC_MS_WRTDATA_LO		0x410000A0
+#define QLCNIC_MS_WRTDATA_HI		0x410000A4
+#define QLCNIC_MS_WRTDATA_ULO		0x410000B0
+#define QLCNIC_MS_WRTDATA_UHI		0x410000B4
+#define QLCNIC_MS_RDDATA_LO		0x410000A8
+#define QLCNIC_MS_RDDATA_HI		0x410000AC
+#define QLCNIC_MS_RDDATA_ULO		0x410000B8
+#define QLCNIC_MS_RDDATA_UHI		0x410000BC
+
+#define QLCNIC_TA_WRITE_ENABLE	(TA_CTL_ENABLE | TA_CTL_WRITE)
+#define QLCNIC_TA_WRITE_START	(TA_CTL_START | TA_CTL_ENABLE | TA_CTL_WRITE)
+#define QLCNIC_TA_START_ENABLE	(TA_CTL_START | TA_CTL_ENABLE)
 
 #define	QLCNIC_LEGACY_INTR_CONFIG					\
 {									\
@@ -966,5 +952,4 @@ struct crb_128M_2M_sub_block_map {
 struct crb_128M_2M_block_map{
 	struct crb_128M_2M_sub_block_map sub_block[16];
 };
-
 #endif				/* __QLCNIC_HDR_H_ */
