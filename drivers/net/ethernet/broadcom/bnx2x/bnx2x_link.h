@@ -1,4 +1,4 @@
-/* Copyright 2008-2012 Broadcom Corporation
+/* Copyright 2008-2013 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -18,6 +18,10 @@
 #define BNX2X_LINK_H
 
 
+
+
+#define _In_
+#define _Out_
 
 /***********************************************************/
 /*                         Defines                         */
@@ -147,14 +151,16 @@ struct bnx2x_phy {
 #define FLAGS_INIT_XGXS_FIRST		(1<<3)
 #define FLAGS_WC_DUAL_MODE		(1<<4)
 #define FLAGS_4_PORT_MODE		(1<<5)
-#define FLAGS_REARM_LATCH_SIGNAL	(1<<6)
+#define FLAGS_REARM_LATCH_SIGNAL		(1<<6)
 #define FLAGS_SFP_NOT_APPROVED		(1<<7)
 #define FLAGS_MDC_MDIO_WA		(1<<8)
-#define FLAGS_DUMMY_READ		(1<<9)
+#define FLAGS_DUMMY_READ			(1<<9)
 #define FLAGS_MDC_MDIO_WA_B0		(1<<10)
+#define FLAGS_SFP_MODULE_PLUGGED_IN_WC	(1<<11)
 #define FLAGS_TX_ERROR_CHECK		(1<<12)
 #define FLAGS_EEE			(1<<13)
-#define FLAGS_MDC_MDIO_WA_G		(1<<15)
+#define FLAGS_TEMPERATURE		(1<<14)
+#define FLAGS_MDC_MDIO_WA_G	(1<<15)
 
 	/* preemphasis values for the rx side */
 	u16 rx_preemphasis[4];
@@ -173,10 +179,10 @@ struct bnx2x_phy {
 #define	ETH_PHY_XFP_FIBER		0x2
 #define	ETH_PHY_DA_TWINAX		0x3
 #define	ETH_PHY_BASE_T		0x4
-#define	ETH_PHY_SFP_1G_FIBER	0x5
-#define	ETH_PHY_KR		0xf0
-#define	ETH_PHY_CX4		0xf1
-#define	ETH_PHY_NOT_PRESENT	0xff
+#define 	ETH_PHY_SFP_1G_FIBER	0x5
+#define	ETH_PHY_KR          	0xf0
+#define	ETH_PHY_CX4         	0xf1
+#define	ETH_PHY_NOT_PRESENT 	0xff
 
 	/* The address in which version is located*/
 	u32 ver_addr;
@@ -229,7 +235,7 @@ struct link_params {
 #define LOOPBACK_EMAC		1
 #define LOOPBACK_BMAC		2
 #define LOOPBACK_XGXS		3
-#define LOOPBACK_EXT_PHY	4
+#define LOOPBACK_EXT_PHY		4
 #define LOOPBACK_EXT		5
 #define LOOPBACK_UMAC		6
 #define LOOPBACK_XMAC		7
@@ -262,12 +268,16 @@ struct link_params {
 #define FEATURE_CONFIG_PFC_ENABLED			(1<<1)
 #define FEATURE_CONFIG_BC_SUPPORTS_OPT_MDL_VRFY		(1<<2)
 #define FEATURE_CONFIG_BC_SUPPORTS_DUAL_PHY_OPT_MDL_VRFY	(1<<3)
+#define FEATURE_CONFIG_EMUL_DISABLE_EMAC			(1<<4)
+#define FEATURE_CONFIG_EMUL_DISABLE_BMAC			(1<<5)
+#define FEATURE_CONFIG_EMUL_DISABLE_UMAC			(1<<6)
+#define FEATURE_CONFIG_EMUL_DISABLE_XMAC			(1<<7)
 #define FEATURE_CONFIG_BC_SUPPORTS_AFEX			(1<<8)
-#define FEATURE_CONFIG_AUTOGREEEN_ENABLED			(1<<9)
-#define FEATURE_CONFIG_BC_SUPPORTS_SFP_TX_DISABLED		(1<<10)
+#define FEATURE_CONFIG_AUTOGREEEN_ENABLED		(1<<9)
+#define FEATURE_CONFIG_BC_SUPPORTS_SFP_TX_DISABLED	(1<<10)
 #define FEATURE_CONFIG_DISABLE_REMOTE_FAULT_DET		(1<<11)
+#define FEATURE_CONFIG_IEEE_PHY_TEST			(1<<12)
 #define FEATURE_CONFIG_MT_SUPPORT			(1<<13)
-#define FEATURE_CONFIG_BOOT_FROM_SAN			(1<<14)
 
 	/* Will be populated during common init */
 	struct bnx2x_phy phy[MAX_PHYS];
@@ -275,7 +285,8 @@ struct link_params {
 	/* Will be populated during common init */
 	u8 num_phys;
 
-	u8 rsrv;
+	u8 kr2_wa_count;
+#define KR2_DISABLED 0xff
 
 	/* Used to configure the EEE Tx LPI timer, has several modes of
 	 * operation, according to bits 29:28 -
@@ -307,7 +318,8 @@ struct link_params {
 	struct bnx2x *bp;
 	u16 req_fc_auto_adv; /* Should be set to TX / BOTH when
 				req_flow_ctrl is set to AUTO */
-	u16 rsrv1;
+	u16 link_flags;
+#define LINK_FLAGS_INT_DISABLED		(1<<0)
 	u32 lfa_base;
 };
 
@@ -317,9 +329,10 @@ struct link_vars {
 #define PHY_XGXS_FLAG			(1<<0)
 #define PHY_SGMII_FLAG			(1<<1)
 #define PHY_PHYSICAL_LINK_FLAG		(1<<2)
-#define PHY_HALF_OPEN_CONN_FLAG		(1<<3)
+#define PHY_HALF_OPEN_CONN_FLAG	(1<<3)
 #define PHY_OVER_CURRENT_FLAG		(1<<4)
 #define PHY_SFP_TX_FAULT_FLAG		(1<<5)
+#define PHY_INT_DISABLED_FLAG		(1<<6)
 
 	u8 mac_type;
 #define MAC_TYPE_NONE		0
@@ -348,9 +361,7 @@ struct link_vars {
 	u32 aeu_int_mask;
 	u8 rx_tx_asic_rst;
 	u8 turn_to_run_wc_rt;
-	u16 rsrv2;
-	/* The same definitions as the shmem2 parameter */
-	u32 link_attr_sync;
+       u16 rsrv2;
 };
 
 /***********************************************************/
@@ -407,7 +418,7 @@ int bnx2x_test_link(struct link_params *params, struct link_vars *vars,
 
 /* One-time initialization for external phy after power up */
 int bnx2x_common_init_phy(struct bnx2x *bp, u32 shmem_base_path[],
-			  u32 shmem2_base_path[], u32 chip_id);
+			  u32 shmem2_base_path[], u32 chip_id, u8 one_port_enabled);
 
 /* Reset the external PHY using GPIO */
 void bnx2x_ext_phy_hw_reset(struct bnx2x *bp, u8 port);
@@ -425,6 +436,7 @@ void bnx2x_hw_reset_phy(struct link_params *params);
 /* Check swap bit and adjust PHY order */
 u32 bnx2x_phy_selection(struct link_params *params);
 
+
 /* Probe the phys on board, and populate them in "params" */
 int bnx2x_phy_probe(struct link_params *params);
 
@@ -434,6 +446,7 @@ u8 bnx2x_fan_failure_det_req(struct bnx2x *bp, u32 shmem_base,
 
 /* Open / close the gate between the NIG and the BRB */
 void bnx2x_set_rx_filter(struct link_params *params, u8 en);
+
 
 /* DCBX structs */
 
@@ -522,6 +535,7 @@ int bnx2x_ets_e3b0_config(const struct link_params *params,
 void bnx2x_pfc_statistic(struct link_params *params, struct link_vars *vars,
 						 u32 pfc_frames_sent[2],
 						 u32 pfc_frames_received[2]);
+
 void bnx2x_init_mod_abs_int(struct bnx2x *bp, struct link_vars *vars,
 			    u32 chip_id, u32 shmem_base, u32 shmem2_base,
 			    u8 port);
@@ -532,5 +546,18 @@ int bnx2x_sfp_module_detection(struct bnx2x_phy *phy,
 void bnx2x_period_func(struct link_params *params, struct link_vars *vars);
 
 int bnx2x_check_half_open_conn(struct link_params *params,
-			       struct link_vars *vars, u8 notify);
+				struct link_vars *vars, u8 notify);
+
+void bnx2x_enable_pmd_tx(struct link_params *params);
+
+int bnx2x_pre_init_phy(struct bnx2x *bp,
+				  u32 shmem_base,
+				  u32 shmem2_base,
+				  u32 chip_id,
+				  u8 port);
+
+void bnx2x_sfp_set_transmitter(struct link_params *params,
+			       struct bnx2x_phy *phy,
+			       u8 tx_en);
+
 #endif /* BNX2X_LINK_H */

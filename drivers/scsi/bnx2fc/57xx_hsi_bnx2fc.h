@@ -609,6 +609,39 @@ struct fcoe_rx_seq_ctx {
 
 
 /*
+ * FCoE RX statistics parameters section#0 $$KEEP_ENDIANNESS$$
+ */
+struct fcoe_rx_stat_params_section0 {
+	__le32 fcoe_rx_pkt_cnt;
+	__le32 fcoe_rx_byte_cnt;
+};
+
+
+/*
+ * FCoE RX statistics parameters section#1 $$KEEP_ENDIANNESS$$
+ */
+struct fcoe_rx_stat_params_section1 {
+	__le32 fcoe_ver_cnt;
+	__le32 fcoe_rx_drop_pkt_cnt;
+};
+
+
+/*
+ * FCoE RX statistics parameters section#2 $$KEEP_ENDIANNESS$$
+ */
+struct fcoe_rx_stat_params_section2 {
+	__le32 fc_crc_cnt;
+	__le32 eofa_del_cnt;
+	__le32 miss_frame_cnt;
+	__le32 seq_timeout_cnt;
+	__le32 drop_seq_cnt;
+	__le32 fcoe_rx_drop_pkt_cnt;
+	__le32 fcp_rx_pkt_cnt;
+	__le32 reserved0;
+};
+
+
+/*
  * Fcoe rx_wr union context $$KEEP_ENDIANNESS$$
  */
 union fcoe_rx_wr_union_ctx {
@@ -630,7 +663,25 @@ struct fcoe_sqe {
 #define FCOE_SQE_TOGGLE_BIT_SHIFT 15
 };
 
+/*
+ * FCoE TX statistics parameters $$KEEP_ENDIANNESS$$
+ */
+struct fcoe_tx_stat_params {
+	__le32 fcoe_tx_pkt_cnt;
+	__le32 fcoe_tx_byte_cnt;
+	__le32 fcp_tx_pkt_cnt;
+	__le32 reserved0;
+};
 
+/*
+ * FCoE statistics parameters $$KEEP_ENDIANNESS$$
+ */
+struct fcoe_statistics_params {
+	struct fcoe_tx_stat_params tx_stat;
+	struct fcoe_rx_stat_params_section0 rx_stat0;
+	struct fcoe_rx_stat_params_section1 rx_stat1;
+	struct fcoe_rx_stat_params_section2 rx_stat2;
+};
 
 /*
  * 14 regs $$KEEP_ENDIANNESS$$
@@ -639,6 +690,7 @@ struct fcoe_tce_tx_only {
 	union fcoe_sgl_union_ctx sgl_ctx;
 	__le32 rsrv0;
 };
+
 
 /*
  * 32 bytes (8 regs) used for TX only purposes $$KEEP_ENDIANNESS$$
@@ -676,8 +728,8 @@ struct fcoe_tce_tx_wr_rx_rd_const {
 #define FCOE_TCE_TX_WR_RX_RD_CONST_RSRV1_SHIFT 5
 #define FCOE_TCE_TX_WR_RX_RD_CONST_TX_SEQ_INIT (0x1<<6)
 #define FCOE_TCE_TX_WR_RX_RD_CONST_TX_SEQ_INIT_SHIFT 6
-#define FCOE_TCE_TX_WR_RX_RD_CONST_RSRV2 (0x1<<7)
-#define FCOE_TCE_TX_WR_RX_RD_CONST_RSRV2_SHIFT 7
+#define FCOE_TCE_TX_WR_RX_RD_CONST_TX_COMP_TRNS (0x1<<7)
+#define FCOE_TCE_TX_WR_RX_RD_CONST_TX_COMP_TRNS_SHIFT 7
 	__le16 rsrv3;
 	__le32 verify_tx_seq;
 };
@@ -904,60 +956,6 @@ struct fcoe_pend_wq_cqe {
 #define FCOE_PEND_WQ_CQE_CQE_TYPE_SHIFT 14
 #define FCOE_PEND_WQ_CQE_TOGGLE_BIT (0x1<<15)
 #define FCOE_PEND_WQ_CQE_TOGGLE_BIT_SHIFT 15
-};
-
-
-/*
- * FCoE RX statistics parameters section#0 $$KEEP_ENDIANNESS$$
- */
-struct fcoe_rx_stat_params_section0 {
-	__le32 fcoe_rx_pkt_cnt;
-	__le32 fcoe_rx_byte_cnt;
-};
-
-
-/*
- * FCoE RX statistics parameters section#1 $$KEEP_ENDIANNESS$$
- */
-struct fcoe_rx_stat_params_section1 {
-	__le32 fcoe_ver_cnt;
-	__le32 fcoe_rx_drop_pkt_cnt;
-};
-
-
-/*
- * FCoE RX statistics parameters section#2 $$KEEP_ENDIANNESS$$
- */
-struct fcoe_rx_stat_params_section2 {
-	__le32 fc_crc_cnt;
-	__le32 eofa_del_cnt;
-	__le32 miss_frame_cnt;
-	__le32 seq_timeout_cnt;
-	__le32 drop_seq_cnt;
-	__le32 fcoe_rx_drop_pkt_cnt;
-	__le32 fcp_rx_pkt_cnt;
-	__le32 reserved0;
-};
-
-
-/*
- * FCoE TX statistics parameters $$KEEP_ENDIANNESS$$
- */
-struct fcoe_tx_stat_params {
-	__le32 fcoe_tx_pkt_cnt;
-	__le32 fcoe_tx_byte_cnt;
-	__le32 fcp_tx_pkt_cnt;
-	__le32 reserved0;
-};
-
-/*
- * FCoE statistics parameters $$KEEP_ENDIANNESS$$
- */
-struct fcoe_statistics_params {
-	struct fcoe_tx_stat_params tx_stat;
-	struct fcoe_rx_stat_params_section0 rx_stat0;
-	struct fcoe_rx_stat_params_section1 rx_stat1;
-	struct fcoe_rx_stat_params_section2 rx_stat2;
 };
 
 
