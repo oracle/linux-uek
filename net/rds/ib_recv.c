@@ -207,7 +207,8 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 	rdsdebug("frag %p page %p\n", frag, sg_page(&frag->f_sg));
 
 	rds_ib_recv_cache_put(&frag->f_cache_entry, &ic->i_cache_frags);
-	atomic_inc(&ic->i_cache_allocs);
+	atomic_add(PAGE_SIZE/1024, &ic->i_cache_allocs);
+	rds_ib_stats_add(s_ib_recv_added_to_cache, PAGE_SIZE);
 }
 
 /* Recycle inc after freeing attached frags */
@@ -285,7 +286,8 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	cache_item = rds_ib_recv_cache_get(&ic->i_cache_frags);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
-		atomic_dec(&ic->i_cache_allocs);
+		atomic_sub(PAGE_SIZE/1024, &ic->i_cache_allocs);
+		rds_ib_stats_add(s_ib_recv_removed_from_cache, PAGE_SIZE);
 	} else {
 		frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 		if (!frag)
