@@ -794,7 +794,7 @@ static void neigh_delete(struct neigh *n)
 {
 	struct neigh *neigh;
 
-	neigh = rcu_dereference_protected(n, lockdep_is_held(&n->slave->hash_lock));
+	neigh = rcu_dereference_protected(n, 1);
 	if (neigh) {
 		hlist_del_rcu(&neigh->hlist);
 		call_rcu_bh(&neigh->rcu, neigh_rcu_free);
