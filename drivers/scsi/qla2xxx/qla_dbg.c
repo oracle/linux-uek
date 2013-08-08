@@ -1,6 +1,6 @@
 /*
  * QLogic Fibre Channel HBA Driver
- * Copyright (c)  2003-2012 QLogic Corporation
+ * Copyright (c)  2003-2013 QLogic Corporation
  *
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
@@ -11,36 +11,33 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0125       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x114f       | 0x111a-0x111b  |
- * |                              |                    | 0x112c-0x112e  |
- * |                              |                    | 0x113a         |
- * | Device Discovery             |       0x2087       | 0x2020-0x2022, |
- * |                              |                    | 0x2016         |
- * | Queue Command and IO tracing |       0x3030       | 0x3006-0x300b  |
+ * | Module Init and Probe        |       0x0150       | 0x4b,0xba,0xfa |
+ * | Mailbox commands             |       0x117b       | 0x111a-0x111b  |
+ * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
+ * |                              |                    | 0x2016		|
+ * | Queue Command and IO tracing |       0x3051       | 0x3006,0x300b  |
  * |                              |                    | 0x3027-0x3028  |
- * |                              |                    | 0x302d-0x302e  |
- * | DPC Thread                   |       0x401d       | 0x4002,0x4013  |
- * | Async Events                 |       0x5071       | 0x502b-0x502f  |
- * |                              |                    | 0x5047,0x5052  |
- * | Timer Routines               |       0x6011       |                |
- * | User Space Interactions      |       0x70c3       | 0x7018,0x702e, |
- * |                              |                    | 0x7039,0x7045, |
- * |                              |                    | 0x7073-0x7075, |
- * |                              |                    | 0x708c,        |
- * |                              |                    | 0x70a5,0x70a6, |
- * |                              |                    | 0x70a8,0x70ab, |
+ * |                              |                    | 0x302d,0x302e  |
+ * | DPC Thread                   |       0x4024       | 0x4002,0x4013  |
+ * | Async Events                 |       0x5082       | 0x502b-0x502f  |
+ * |                            |                    | 0x5047,0x5052  |
+ * |				  |		       | 0x5074,0x5075  |
+ * | Timer Routines               |       0x6011       |		|
+ * | User Space Interactions      |       0x70df       | 0x7018,0x702e  |
+ * |                              |                    | 0x7020,0x7024  |
+ * |                              |                    | 0x7039,0x7045  |
+ * |                              |                    | 0x7073-0x7075  |
+ * |                              |                    | 0x708c        |
+ * |                              |                    | 0x70a5-0x70a6  |
+ * |                              |                    | 0x70a8,0x70ab  |
  * |                              |                    | 0x70ad-0x70ae  |
  * | Task Management              |       0x803c       | 0x8025-0x8026  |
- * |                              |                    | 0x800b,0x8039  |
- * | AER/EEH                      |       0x9011       |		|
- * | Virtual Port                 |       0xa007       |		|
- * | ISP82XX Specific             |       0xb084       | 0xb002,0xb024  |
- * | MultiQ                       |       0xc00c       |		|
- * | Misc                         |       0xd010       |		|
- * | Target Mode		  |	  0xe06f       |		|
- * | Target Mode Management	  |	  0xf071       |		|
- * | Target Mode Task Management  |	  0x1000b      |		|
+ * |				  |		       | 0x800b,0x8039 |
+ * | AER/EEH                      |       0x9011       |               |
+ * | Virtual Port                 |       0xa008       |               |
+ * | ISP82XX Specific             |       0xb086       | 0xb002,0xb024 |
+ * | MultiQ                       |       0xc00c       |              |
+ * | Misc                         |       0xd010       |              |
  * ----------------------------------------------------------------------
  */
 
@@ -384,55 +381,7 @@ qla25xx_copy_fce(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 
 	memcpy(iter_reg, ha->fce, ntohl(fcec->size));
 
-	return (char *)iter_reg + ntohl(fcec->size);
-}
-
-static inline void *
-qla2xxx_copy_atioqueues(struct qla_hw_data *ha, void *ptr,
-	uint32_t **last_chain)
-{
-	struct qla2xxx_mqueue_chain *q;
-	struct qla2xxx_mqueue_header *qh;
-	uint32_t num_queues;
-	int que;
-	struct {
-		int length;
-		void *ring;
-	} aq, *aqp;
-
-	if (!ha->tgt.atio_q_length)
-		return ptr;
-
-	num_queues = 1;
-	aqp = &aq;
-	aqp->length = ha->tgt.atio_q_length;
-	aqp->ring = ha->tgt.atio_ring;
-
-	for (que = 0; que < num_queues; que++) {
-		/* aqp = ha->atio_q_map[que]; */
-		q = ptr;
-		*last_chain = &q->type;
-		q->type = __constant_htonl(DUMP_CHAIN_QUEUE);
-		q->chain_size = htonl(
-		    sizeof(struct qla2xxx_mqueue_chain) +
-		    sizeof(struct qla2xxx_mqueue_header) +
-		    (aqp->length * sizeof(request_t)));
-		ptr += sizeof(struct qla2xxx_mqueue_chain);
-
-		/* Add header. */
-		qh = ptr;
-		qh->queue = __constant_htonl(TYPE_ATIO_QUEUE);
-		qh->number = htonl(que);
-		qh->size = htonl(aqp->length * sizeof(request_t));
-		ptr += sizeof(struct qla2xxx_mqueue_header);
-
-		/* Add data. */
-		memcpy(ptr, aqp->ring, aqp->length * sizeof(request_t));
-
-		ptr += aqp->length * sizeof(request_t);
-	}
-
-	return ptr;
+	return (void *)iter_reg + ntohl(fcec->size);
 }
 
 static inline void *
@@ -930,8 +879,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	struct qla24xx_fw_dump *fw;
 	uint32_t	ext_mem_cnt;
 	void		*nxt;
-	void		*nxt_chain;
-	uint32_t	*last_chain = NULL;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
 	if (IS_QLA82XX(ha))
@@ -1149,16 +1096,6 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	nxt = qla2xxx_copy_queues(ha, nxt);
 
 	qla24xx_copy_eft(ha, nxt);
-
-	nxt_chain = (void *)ha->fw_dump + ha->chain_offset;
-	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
-	if (last_chain) {
-		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
-		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
-	}
-
-	/* Adjust valid length. */
-	ha->fw_dump_len = (nxt_chain - (void *)ha->fw_dump);
 
 qla24xx_fw_dump_failed_0:
 	qla2xxx_dump_post_process(base_vha, rval);
@@ -1468,7 +1405,6 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
-	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
@@ -1787,7 +1723,6 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
-	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);
@@ -1864,10 +1799,10 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	reg_data = RD_REG_DWORD(dmp_reg);
 	WRT_REG_DWORD(dmp_reg, 0);
 
-	/* select PCR and disable ecc checking and correction */
+	// select PCR and disable ecc checking and correction
 	WRT_REG_DWORD(&reg->iobase_addr, 0x0F70);
 	RD_REG_DWORD(&reg->iobase_addr);
-	WRT_REG_DWORD(&reg->iobase_select, 0x60000000);	/* write to F0h = PCR */
+	WRT_REG_DWORD(&reg->iobase_select, 0x60000000);	// write to F0h = PCR
 
 	/* Host/Risc registers. */
 	iter_reg = fw->host_risc_reg;
@@ -2263,8 +2198,9 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 		WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_RESET);
 		RD_REG_DWORD(&reg->hccr);
 
-		for (cnt = 30000; cnt && (RD_REG_WORD(&reg->mailbox0)); cnt--)
+		for (cnt = 30000; cnt && (RD_REG_WORD(&reg->mailbox0)); cnt--) {
 			udelay(5);
+		}
 
 		if (!cnt) {
 			nxt = fw->code_ram;
@@ -2289,7 +2225,6 @@ copy_queue:
 	/* Chain entries -- started with MQ. */
 	nxt_chain = qla25xx_copy_fce(ha, nxt_chain, &last_chain);
 	nxt_chain = qla25xx_copy_mqueues(ha, nxt_chain, &last_chain);
-	nxt_chain = qla2xxx_copy_atioqueues(ha, nxt_chain, &last_chain);
 	if (last_chain) {
 		ha->fw_dump->version |= __constant_htonl(DUMP_CHAIN_VARIANT);
 		*last_chain |= __constant_htonl(DUMP_CHAIN_LAST);

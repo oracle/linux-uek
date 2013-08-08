@@ -1,6 +1,6 @@
 /*
  * QLogic Fibre Channel HBA Driver
- * Copyright (c)  2003-2012 QLogic Corporation
+ * Copyright (c)  2003-2013 QLogic Corporation
  *
  * See LICENSE.qla2xxx for copyright and licensing details.
  */
@@ -14,7 +14,7 @@
 void
 qla2x00_bsg_job_done(void *data, void *ptr, int res)
 {
-	srb_t *sp = (srb_t *)ptr;
+	srb_t *sp = (srb_t*)ptr;
 	struct scsi_qla_host *vha = (scsi_qla_host_t *)data;
 	struct fc_bsg_job *bsg_job = sp->u.bsg_job;
 
@@ -26,21 +26,38 @@ qla2x00_bsg_job_done(void *data, void *ptr, int res)
 void
 qla2x00_bsg_sp_free(void *data, void *ptr)
 {
-	srb_t *sp = (srb_t *)ptr;
-	struct scsi_qla_host *vha = (scsi_qla_host_t *)data;
+	srb_t *sp = (srb_t*)ptr;
+	struct scsi_qla_host *vha = sp->fcport->vha;
 	struct fc_bsg_job *bsg_job = sp->u.bsg_job;
 	struct qla_hw_data *ha = vha->hw;
+	qla_mt_iocb_rqst_fx00_t *piocb_rqst;
 
-	dma_unmap_sg(&ha->pdev->dev, bsg_job->request_payload.sg_list,
-	    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+	if (sp->type == SRB_FXIOCB_BCMD) {
+		piocb_rqst = (qla_mt_iocb_rqst_fx00_t *)
+		    &bsg_job->request->rqst_data.h_vendor.vendor_cmd[1];
 
-	dma_unmap_sg(&ha->pdev->dev, bsg_job->reply_payload.sg_list,
-	    bsg_job->reply_payload.sg_cnt, DMA_FROM_DEVICE);
+		if (piocb_rqst->flags & SRB_FXDISC_REQ_DMA_VALID)
+			dma_unmap_sg(&ha->pdev->dev,
+			    bsg_job->request_payload.sg_list,
+			    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+
+		if (piocb_rqst->flags & SRB_FXDISC_RESP_DMA_VALID)
+			dma_unmap_sg(&ha->pdev->dev,
+			    bsg_job->reply_payload.sg_list,
+			    bsg_job->reply_payload.sg_cnt, DMA_FROM_DEVICE);
+	} else {
+		dma_unmap_sg(&ha->pdev->dev, bsg_job->request_payload.sg_list,
+		    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+
+		dma_unmap_sg(&ha->pdev->dev, bsg_job->reply_payload.sg_list,
+		    bsg_job->reply_payload.sg_cnt, DMA_FROM_DEVICE);
+	}
 
 	if (sp->type == SRB_CT_CMD ||
+	    sp->type == SRB_FXIOCB_BCMD ||
 	    sp->type == SRB_ELS_CMD_HST)
 		kfree(sp->fcport);
-	mempool_free(sp, vha->hw->srb_mempool);
+	qla2x00_rel_sp(vha, sp);
 }
 
 int
@@ -368,7 +385,7 @@ qla2x00_process_els(struct fc_bsg_job *bsg_job)
 	if (rval != QLA_SUCCESS) {
 		ql_log(ql_log_warn, vha, 0x700e,
 		    "qla2x00_start_sp failed = %d\n", rval);
-		mempool_free(sp, ha->srb_mempool);
+		qla2x00_rel_sp(vha, sp);
 		rval = -EIO;
 		goto done_unmap_sg;
 	}
@@ -515,7 +532,7 @@ qla2x00_process_ct(struct fc_bsg_job *bsg_job)
 	if (rval != QLA_SUCCESS) {
 		ql_log(ql_log_warn, vha, 0x7017,
 		    "qla2x00_start_sp failed=%d.\n", rval);
-		mempool_free(sp, ha->srb_mempool);
+		qla2x00_rel_sp(vha, sp);
 		rval = -EIO;
 		goto done_free_fcport;
 	}
@@ -531,13 +548,82 @@ done_unmap_sg:
 done:
 	return rval;
 }
+
+/* Disable loopback mode */
+static inline int
+qla81xx_reset_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
+    int wait, int wait2)
+{
+	int ret = 0;
+	int rval = 0;
+	uint16_t new_config[4];
+	struct qla_hw_data *ha = vha->hw;
+
+	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha))
+		goto done_reset_internal;
+
+	memset(new_config, 0 , sizeof(new_config));
+	if ((config[0] & INTERNAL_LOOPBACK_MASK) >> 1 ==
+	    ENABLE_INTERNAL_LOOPBACK ||
+	    (config[0] & INTERNAL_LOOPBACK_MASK) >> 1 ==
+	    ENABLE_EXTERNAL_LOOPBACK) {
+		new_config[0] = config[0] & ~INTERNAL_LOOPBACK_MASK;
+		ql_dbg(ql_dbg_user, vha, 0x70bf, "new_config[0]=%02x\n",
+		    (new_config[0] & INTERNAL_LOOPBACK_MASK));
+		memcpy(&new_config[1], &config[1], sizeof(uint16_t) * 3) ;
+
+		ha->notify_dcbx_comp = wait;
+		ha->notify_lb_portup_comp = wait2;
+
+		ret = qla81xx_set_port_config(vha, new_config);
+		if (ret != QLA_SUCCESS) {
+			ql_log(ql_log_warn, vha, 0x7025,
+			    "Set port config failed.\n");
+			ha->notify_dcbx_comp = 0;
+			ha->notify_lb_portup_comp = 0;
+			rval = -EINVAL;
+			goto done_reset_internal;
+		}
+
+		/* Wait for DCBX complete event */
+		if (wait && !wait_for_completion_timeout(&ha->dcbx_comp,
+			(DCBX_COMP_TIMEOUT * HZ))) {
+			ql_dbg(ql_dbg_user, vha, 0x7026,
+			    "DCBX completion not received.\n");
+			ha->notify_dcbx_comp = 0;
+			ha->notify_lb_portup_comp = 0;
+			rval = -EINVAL;
+			goto done_reset_internal;
+		} else
+			ql_dbg(ql_dbg_user, vha, 0x7027,
+			    "DCBX completion received.\n");
+
+		if (wait2 &&
+		    !wait_for_completion_timeout(&ha->lb_portup_comp,
+		    (LB_PORTUP_COMP_TIMEOUT * HZ))) {
+			ql_dbg(ql_dbg_user, vha, 0x70c5,
+			    "Port up completion not received.\n");
+			ha->notify_lb_portup_comp = 0;
+			rval = -EINVAL;
+			goto done_reset_internal;
+		} else
+			ql_dbg(ql_dbg_user, vha, 0x70c6,
+			    "Port up completion received.\n");
+
+		ha->notify_dcbx_comp = 0;
+		ha->notify_lb_portup_comp = 0;
+	}
+done_reset_internal:
+	return rval;
+}
+
 /*
  * Set the port configuration to enable the internal or external loopback
  * depending on the loopback mode.
  */
 static inline int
 qla81xx_set_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
-	uint16_t *new_config, uint16_t mode)
+    uint16_t *new_config, uint16_t mode)
 {
 	int ret = 0;
 	int rval = 0;
@@ -566,75 +652,34 @@ qla81xx_set_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
 	}
 
 	/* Wait for DCBX complete event */
-	if (!wait_for_completion_timeout(&ha->dcbx_comp, (20 * HZ))) {
+	if (!wait_for_completion_timeout(&ha->dcbx_comp,
+	    (DCBX_COMP_TIMEOUT * HZ))) {
 		ql_dbg(ql_dbg_user, vha, 0x7022,
-		    "State change notification not received.\n");
+		    "DCBX completion not received.\n");
+		ret = qla81xx_reset_loopback_mode(vha, new_config, 0, 0);
+		/*
+		 * If the reset of the loopback mode doesn't work take a FCoE
+		 * dump and reset the chip.
+		 */
+		if (ret) {
+			ha->isp_ops->fw_dump(vha, 0);
+			set_bit(ISP_ABORT_NEEDED, &vha->dpc_flags);
+		}
 		rval = -EINVAL;
 	} else {
-		if (ha->flags.idc_compl_status) {
+                if (ha->flags.idc_compl_status) {
 			ql_dbg(ql_dbg_user, vha, 0x70c3,
 			    "Bad status in IDC Completion AEN\n");
 			rval = -EINVAL;
 			ha->flags.idc_compl_status = 0;
 		} else
 			ql_dbg(ql_dbg_user, vha, 0x7023,
-			    "State change received.\n");
+			    "DCBX completion received.\n");
 	}
 
 	ha->notify_dcbx_comp = 0;
 
 done_set_internal:
-	return rval;
-}
-
-/* Disable loopback mode */
-static inline int
-qla81xx_reset_loopback_mode(scsi_qla_host_t *vha, uint16_t *config,
-    int wait)
-{
-	int ret = 0;
-	int rval = 0;
-	uint16_t new_config[4];
-	struct qla_hw_data *ha = vha->hw;
-
-	if (!IS_QLA81XX(ha) && !IS_QLA8031(ha))
-		goto done_reset_internal;
-
-	memset(new_config, 0 , sizeof(new_config));
-	if ((config[0] & INTERNAL_LOOPBACK_MASK) >> 1 ==
-	    ENABLE_INTERNAL_LOOPBACK ||
-	    (config[0] & INTERNAL_LOOPBACK_MASK) >> 1 ==
-	    ENABLE_EXTERNAL_LOOPBACK) {
-		new_config[0] = config[0] & ~INTERNAL_LOOPBACK_MASK;
-		ql_dbg(ql_dbg_user, vha, 0x70bf, "new_config[0]=%02x\n",
-		    (new_config[0] & INTERNAL_LOOPBACK_MASK));
-		memcpy(&new_config[1], &config[1], sizeof(uint16_t) * 3) ;
-
-		ha->notify_dcbx_comp = wait;
-		ret = qla81xx_set_port_config(vha, new_config);
-		if (ret != QLA_SUCCESS) {
-			ql_log(ql_log_warn, vha, 0x7025,
-			    "Set port config failed.\n");
-			ha->notify_dcbx_comp = 0;
-			rval = -EINVAL;
-			goto done_reset_internal;
-		}
-
-		/* Wait for DCBX complete event */
-		if (wait && !wait_for_completion_timeout(&ha->dcbx_comp,
-			(20 * HZ))) {
-			ql_dbg(ql_dbg_user, vha, 0x7026,
-			    "State change notification not received.\n");
-			ha->notify_dcbx_comp = 0;
-			rval = -EINVAL;
-			goto done_reset_internal;
-		} else
-			ql_dbg(ql_dbg_user, vha, 0x7027,
-			    "State change received.\n");
-
-		ha->notify_dcbx_comp = 0;
-	}
-done_reset_internal:
 	return rval;
 }
 
@@ -723,6 +768,8 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 	elreq.transfer_size = req_data_len;
 
 	elreq.options = bsg_job->request->rqst_data.h_vendor.vendor_cmd[1];
+	elreq.iteration_count =
+	    bsg_job->request->rqst_data.h_vendor.vendor_cmd[2];
 
 	if (atomic_read(&vha->loop_state) == LOOP_READY &&
 	    (ha->current_topology == ISP_CFG_F ||
@@ -739,10 +786,19 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 		if (IS_QLA81XX(ha) || IS_QLA8031(ha)) {
 			memset(config, 0, sizeof(config));
 			memset(new_config, 0, sizeof(new_config));
+
 			if (qla81xx_get_port_config(vha, config)) {
 				ql_log(ql_log_warn, vha, 0x701f,
 				    "Get port config failed.\n");
 				rval = -EPERM;
+				goto done_free_dma_rsp;
+			}
+
+			if ((config[0] & INTERNAL_LOOPBACK_MASK) != 0) {
+				ql_dbg(ql_dbg_user, vha, 0x70c4,
+				    "Loopback operation already in "
+				    "progress.\n");
+				rval = -EAGAIN;
 				goto done_free_dma_rsp;
 			}
 
@@ -755,7 +811,7 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 					    config, new_config, elreq.options);
 				else
 					rval = qla81xx_reset_loopback_mode(vha,
-					    config, 1);
+					    config, 1, 0);
 			else
 				rval = qla81xx_set_loopback_mode(vha, config,
 				    new_config, elreq.options);
@@ -772,14 +828,6 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 			command_sent = INT_DEF_LB_LOOPBACK_CMD;
 			rval = qla2x00_loopback_test(vha, &elreq, response);
 
-			if (new_config[0]) {
-				/* Revert back to original port config
-				 * Also clear internal loopback
-				 */
-				qla81xx_reset_loopback_mode(vha,
-				    new_config, 0);
-			}
-
 			if (response[0] == MBS_COMMAND_ERROR &&
 					response[1] == MBS_LB_RESET) {
 				ql_log(ql_log_warn, vha, 0x7029,
@@ -788,15 +836,39 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 				qla2xxx_wake_dpc(vha);
 				qla2x00_wait_for_chip_reset(vha);
 				/* Also reset the MPI */
-				if (qla81xx_restart_mpi_firmware(vha) !=
-				    QLA_SUCCESS) {
-					ql_log(ql_log_warn, vha, 0x702a,
-					    "MPI reset failed.\n");
+				if (IS_QLA81XX(ha)) {
+					if (qla81xx_restart_mpi_firmware(vha) !=
+					    QLA_SUCCESS) {
+						ql_log(ql_log_warn, vha, 0x702a,
+						    "MPI reset failed.\n");
+					}
 				}
 
 				rval = -EIO;
 				goto done_free_dma_rsp;
 			}
+
+			if (new_config[0]) {
+				int ret;
+
+				/* Revert back to original port config
+				 * Also clear internal loopback
+				 */
+				ret = qla81xx_reset_loopback_mode(vha,
+				    new_config, 0, 1);
+				if (ret) {
+					/*
+					 * If the reset of the loopback mode
+					 * doesn't work take FCoE dump and then
+					 * reset the chip.
+					 */
+					ha->isp_ops->fw_dump(vha, 0);
+					set_bit(ISP_ABORT_NEEDED,
+					    &vha->dpc_flags);
+				}
+
+			}
+
 		} else {
 			type = "FC_BSG_HST_VENDOR_LOOPBACK";
 			ql_dbg(ql_dbg_user, vha, 0x702b,
@@ -817,6 +889,8 @@ qla2x00_process_loopback(struct fc_bsg_job *bsg_job)
 		ql_dbg(ql_dbg_user, vha, 0x702d,
 		    "Vendor request %s completed.\n", type);
 		bsg_job->reply->result = (DID_OK << 16);
+		bsg_job->reply->reply_payload_rcv_len =
+			bsg_job->reply_payload.payload_len;
 		sg_copy_from_buffer(bsg_job->reply_payload.sg_list,
 			bsg_job->reply_payload.sg_cnt, rsp_data,
 			rsp_data_len);
@@ -1830,6 +1904,128 @@ done:
 }
 
 static int
+qlafx00_mgmt_cmd(struct fc_bsg_job *bsg_job)
+{
+	struct Scsi_Host *host = bsg_job->shost;
+	scsi_qla_host_t *vha = shost_priv(host);
+	struct qla_hw_data *ha = vha->hw;
+	int rval = (DRIVER_ERROR << 16);
+	qla_mt_iocb_rqst_fx00_t *piocb_rqst;
+	srb_t *sp;
+	int req_sg_cnt = 0, rsp_sg_cnt = 0;
+	struct fc_port *fcport;
+	char  *type = "FC_BSG_HST_FX_MGMT";
+
+	/* Copy the IOCB specific information */
+	piocb_rqst = (qla_mt_iocb_rqst_fx00_t *)
+	    &bsg_job->request->rqst_data.h_vendor.vendor_cmd[1];
+
+	/* Dump the vendor information */
+	ql_dump_buffer(ql_dbg_user + ql_dbg_verbose , vha, 0x70de,
+	    (uint8_t *)piocb_rqst, sizeof(qla_mt_iocb_rqst_fx00_t));
+
+	if (!vha->flags.online) {
+		ql_log(ql_log_warn, vha, 0x70df,
+		    "Host is not online.\n");
+		rval = -EIO;
+		goto done;
+	}
+
+	if (piocb_rqst->flags & SRB_FXDISC_REQ_DMA_VALID) {
+		req_sg_cnt = dma_map_sg(&ha->pdev->dev,
+		    bsg_job->request_payload.sg_list,
+		    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+		if (!req_sg_cnt) {
+			ql_log(ql_log_warn, vha, 0x70c7,
+			    "dma_map_sg return %d for request\n", req_sg_cnt);
+			rval = -ENOMEM;
+			goto done;
+		}
+	}
+
+	if (piocb_rqst->flags & SRB_FXDISC_RESP_DMA_VALID) {
+		rsp_sg_cnt = dma_map_sg(&ha->pdev->dev,
+		    bsg_job->reply_payload.sg_list,
+		    bsg_job->reply_payload.sg_cnt, DMA_FROM_DEVICE);
+		if (!rsp_sg_cnt) {
+			ql_log(ql_log_warn, vha, 0x70c8,
+			    "dma_map_sg return %d for reply\n", rsp_sg_cnt);
+			rval = -ENOMEM;
+			goto done_unmap_req_sg;
+		}
+	}
+
+	ql_dbg(ql_dbg_user, vha, 0x70c9,
+	    "request_sg_cnt: %x dma_request_sg_cnt: %x reply_sg_cnt:%x "
+	    "dma_reply_sg_cnt: %x\n", bsg_job->request_payload.sg_cnt,
+	    req_sg_cnt, bsg_job->reply_payload.sg_cnt, rsp_sg_cnt);
+
+	/* Allocate a dummy fcport structure, since functions preparing the
+	 * IOCB and mailbox command retrieves port specific information
+	 * from fcport structure. For Host based ELS commands there will be
+	 * no fcport structure allocated
+	 */
+	fcport = qla2x00_alloc_fcport(vha, GFP_KERNEL);
+	if (!fcport) {
+		ql_log(ql_log_warn, vha, 0x70ca,
+		    "Failed to allocate fcport.\n");
+		rval = -ENOMEM;
+		goto done_unmap_rsp_sg;
+	}
+
+	/* Alloc SRB structure */
+	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
+	if (!sp) {
+		ql_log(ql_log_warn, vha, 0x70cb,
+		    "qla2x00_get_sp failed.\n");
+		rval = -ENOMEM;
+		goto done_free_fcport;
+	}
+
+	/* Initialize all required  fields of fcport */
+	fcport->vha = vha;
+	fcport->loop_id = piocb_rqst->dataword;
+
+	sp->type = SRB_FXIOCB_BCMD;
+	sp->name = "bsg_fx_mgmt";
+	sp->iocbs = qla24xx_calc_ct_iocbs(req_sg_cnt + rsp_sg_cnt);
+	sp->u.bsg_job = bsg_job;
+	sp->free = qla2x00_bsg_sp_free;
+	sp->done = qla2x00_bsg_job_done;
+
+	ql_dbg(ql_dbg_user, vha, 0x70cc,
+	    "bsg rqst type: %s fx_mgmt_type: %x id=%x \n",
+	    type, piocb_rqst->func_type, fcport->loop_id);
+
+	rval = qla2x00_start_sp(sp);
+	if (rval != QLA_SUCCESS) {
+		ql_log(ql_log_warn, vha, 0x70cd,
+		    "qla2x00_start_sp failed=%d.\n", rval);
+		mempool_free(sp, ha->srb_mempool);
+		rval = -EIO;
+		goto done_free_fcport;
+	}
+	return rval;
+
+done_free_fcport:
+	kfree(fcport);
+
+done_unmap_rsp_sg:
+	if (piocb_rqst->flags & SRB_FXDISC_RESP_DMA_VALID)
+		dma_unmap_sg(&ha->pdev->dev,
+		    bsg_job->reply_payload.sg_list,
+		    bsg_job->reply_payload.sg_cnt, DMA_FROM_DEVICE);
+done_unmap_req_sg:
+	if (piocb_rqst->flags & SRB_FXDISC_REQ_DMA_VALID)
+		dma_unmap_sg(&ha->pdev->dev,
+		    bsg_job->request_payload.sg_list,
+		    bsg_job->request_payload.sg_cnt, DMA_TO_DEVICE);
+
+done:
+	return rval;
+}
+
+static int
 qla2x00_process_vendor_specific(struct fc_bsg_job *bsg_job)
 {
 	switch (bsg_job->request->rqst_data.h_vendor.vendor_cmd[0]) {
@@ -1875,6 +2071,8 @@ qla2x00_process_vendor_specific(struct fc_bsg_job *bsg_job)
 	case QL_VND_DIAG_IO_CMD:
 		return qla24xx_process_bidir_cmd(bsg_job);
 
+	case QL_VND_FX00_MGMT_CMD:
+		return qlafx00_mgmt_cmd(bsg_job);
 	default:
 		return -ENOSYS;
 	}
@@ -1950,11 +2148,12 @@ qla24xx_bsg_timeout(struct fc_bsg_job *bsg_job)
 		if (!req)
 			continue;
 
-		for (cnt = 1; cnt < MAX_OUTSTANDING_COMMANDS; cnt++) {
+		for (cnt = 1; cnt < req->num_outstanding_cmds; cnt++) {
 			sp = req->outstanding_cmds[cnt];
 			if (sp) {
 				if (((sp->type == SRB_CT_CMD) ||
-					(sp->type == SRB_ELS_CMD_HST))
+					(sp->type == SRB_ELS_CMD_HST) ||
+					(sp->type == SRB_FXIOCB_BCMD))
 					&& (sp->u.bsg_job == bsg_job)) {
 					spin_unlock_irqrestore(&ha->hardware_lock, flags);
 					if (ha->isp_ops->abort_command(sp)) {
@@ -1985,6 +2184,6 @@ done:
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	if (bsg_job->request->msgcode == FC_BSG_HST_CT)
 		kfree(sp->fcport);
-	mempool_free(sp, ha->srb_mempool);
+	qla2x00_rel_sp(vha, sp);
 	return 0;
 }
