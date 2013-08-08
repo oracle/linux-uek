@@ -39,8 +39,20 @@ static ssize_t bad_file_aio_read(struct kiocb *iocb, const struct iovec *iov,
 	return -EIO;
 }
 
+static ssize_t bad_file_read_iter(struct kiocb *iocb, struct iov_iter *iter,
+			loff_t pos)
+{
+	return -EIO;
+}
+
 static ssize_t bad_file_aio_write(struct kiocb *iocb, const struct iovec *iov,
 			unsigned long nr_segs, loff_t pos)
+{
+	return -EIO;
+}
+
+static ssize_t bad_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
+			loff_t pos)
 {
 	return -EIO;
 }
@@ -151,7 +163,9 @@ static const struct file_operations bad_file_ops =
 	.read		= bad_file_read,
 	.write		= bad_file_write,
 	.aio_read	= bad_file_aio_read,
+	.read_iter	= bad_file_read_iter,
 	.aio_write	= bad_file_aio_write,
+	.write_iter	= bad_file_write_iter,
 	.readdir	= bad_file_readdir,
 	.poll		= bad_file_poll,
 	.unlocked_ioctl	= bad_file_unlocked_ioctl,

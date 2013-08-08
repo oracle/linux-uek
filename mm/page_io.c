@@ -203,11 +203,14 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 	if (sis->flags & SWP_FILE) {
 		struct kiocb kiocb;
 		struct file *swap_file = sis->swap_file;
-		struct address_space *mapping = swap_file->f_mapping;
-		struct iovec iov = {
-			.iov_base = kmap(page),
-			.iov_len  = PAGE_SIZE,
+		struct bio_vec bvec = {
+			.bv_page = kmap(page),
+			.bv_len = PAGE_SIZE,
+			.bv_offset = 0,
 		};
+		struct iov_iter iter;
+
+		iov_iter_init_bvec(&iter, &bvec, 1, PAGE_SIZE, 0);
 
 		init_sync_kiocb(&kiocb, swap_file);
 		kiocb.ki_pos = page_file_offset(page);
@@ -216,9 +219,7 @@ int swap_writepage(struct page *page, struct writeback_control *wbc)
 
 		set_page_writeback(page);
 		unlock_page(page);
-		ret = mapping->a_ops->direct_IO(KERNEL_WRITE,
-						&kiocb, &iov,
-						kiocb.ki_pos, 1);
+		ret = swap_file->f_op->write_iter(&kiocb, &iter, kiocb.ki_pos);
 		kunmap(page);
 		if (ret == PAGE_SIZE) {
 			count_vm_event(PSWPOUT);
