@@ -538,7 +538,6 @@ static int rds_ib_move_ip(char			*from_dev,
 	int			ret = 0;
 	u8			active_port, i, j, port = 0;
 	struct in_device	*in_dev;
-	unsigned long flags;
 	struct rds_ib_connection *ic, *ic2;
 	struct rds_ib_device *rds_ibdev;
 
