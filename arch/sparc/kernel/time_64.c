@@ -801,6 +801,26 @@ void udelay(unsigned long usecs)
 }
 EXPORT_SYMBOL(udelay);
 
+void read_persistent_clock(struct timespec *ts)
+{
+	unsigned long seconds, ret;
+
+	ts->tv_sec = 0;
+
+	if (tlb_type != hypervisor)
+		goto out;
+
+	ret = sun4v_tod_get(&seconds);
+
+	if (ret != HV_EOK)
+		pr_err("%s: failed for sun4v_tod_get\n", __FILE__);
+	else
+		ts->tv_sec = seconds;
+
+out:
+	ts->tv_nsec = 0;
+}
+
 static cycle_t clocksource_tick_read(struct clocksource *cs)
 {
 	return tick_ops->get_tick();
