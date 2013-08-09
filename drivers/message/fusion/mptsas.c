@@ -169,6 +169,7 @@ static void mptsas_volume_delete(MPT_ADAPTER *ioc, u8 id);
 
 
 void	mptsas_schedule_target_reset(void *ioc);
+void __devexit mptsas_remove(struct pci_dev *pdev);
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,19))
 static void mptsas_firmware_event_work(struct work_struct *work);
 #else
@@ -6020,6 +6021,7 @@ __mptsas_probe(void *void_data)
 	ioc->TaskCtx = mptsasTaskCtx;
 	ioc->InternalCtx = mptsasInternalCtx;
 	ioc->schedule_target_reset = &mptsas_schedule_target_reset;
+	ioc->schedule_dead_ioc_sas_host_remove = &mptsas_remove;
 	ioc->schedule_dead_ioc_flush_running_cmds =
 				&mptscsih_flush_running_cmds;
 	/*  Added sanity check on readiness of the MPT adapter.
@@ -6236,12 +6238,24 @@ mptsas_shutdown(struct pci_dev *pdev)
  *	@pdev:
  *
  **/
-static void __devexit
+void __devexit
 mptsas_remove(struct pci_dev *pdev)
 {
 	MPT_ADAPTER *ioc = pci_get_drvdata(pdev);
 	struct mptsas_portinfo *p, *n;
 	int i;
+
+	if (!ioc) {
+		printk(KERN_INFO "IOC might be Dead and already taken offline\n");
+		return;
+	}
+
+	/* dead_host = 2 is indication when rmmod is called */
+	if (ioc->dead_host == 2) {
+		mpt_adapter_dispose(ioc);
+		pci_set_drvdata(pdev, NULL);
+		printk(MYIOC_s_INFO_FMT "IOC might be Dead and already taken offline\n", ioc->name);
+	}
 
 	if(!ioc->sh) {
 		printk(MYIOC_s_INFO_FMT "IOC is in Target mode\n", ioc->name);

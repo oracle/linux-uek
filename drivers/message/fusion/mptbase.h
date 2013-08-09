@@ -72,13 +72,13 @@
 #define COPYRIGHT	"Copyright (c) 1999-2010 " MODULEAUTHOR
 #endif
 
-#define MPT_LINUX_VERSION_COMMON	"4.28.20.01"
-#define MPT_LINUX_PACKAGE_NAME		"mptlinux-4.28.20.01"
+#define MPT_LINUX_VERSION_COMMON	"4.28.20.02"
+#define MPT_LINUX_PACKAGE_NAME		"mptlinux-4.28.20.02"
 #define WHAT_MAGIC_STRING		"@" "(" "#" ")"
 #define MPT_LINUX_MAJOR_VERSION		4
 #define MPT_LINUX_MINOR_VERSION		28
 #define MPT_LINUX_BUILD_VERSION		20
-#define MPT_LINUX_RELEASE_VERSION	1
+#define MPT_LINUX_RELEASE_VERSION	2
 
 #define show_mptmod_ver(s,ver)  \
 	printk(KERN_INFO "%s %s\n", s, ver);
@@ -649,7 +649,7 @@ typedef struct _MPT_SCSI_HOST {
 typedef void (*MPT_ADD_SGE)(void *pAddr, u32 flagslength, dma_addr_t dma_addr);
 typedef void (*MPT_ADD_CHAIN)(void *pAddr, u8 next, u16 length, dma_addr_t dma_addr);
 typedef void (*MPT_SCHEDULE_TARGET_RESET)(void *ioc);
-
+typedef void (*MPT_SAS_REMOVE_HOST)(struct pci_dev *pdev);
 typedef void (*MPT_FLUSH_RUNNING_CMDS)(MPT_SCSI_HOST *hd);
 /*
  *  Adapter Structure - pci_dev specific. Maximum: MPT_MAX_ADAPTERS
@@ -811,7 +811,8 @@ typedef struct _MPT_ADAPTER
 	u8			 reset_status;
 	u8			 wait_on_reset_completion;
 	MPT_SCHEDULE_TARGET_RESET schedule_target_reset;
-	MPT_FLUSH_RUNNING_CMDS schedule_dead_ioc_flush_running_cmds;
+	MPT_SAS_REMOVE_HOST      schedule_dead_ioc_sas_host_remove;
+	MPT_FLUSH_RUNNING_CMDS   schedule_dead_ioc_flush_running_cmds;
 	u8			 dead_host;
 #if defined(CPQ_CIM)
 	u8			 num_ports;
@@ -944,6 +945,7 @@ typedef struct _x_config_parms {
  */
 extern int	 mpt_attach(struct pci_dev *pdev, const struct pci_device_id *id);
 extern void	 mpt_detach(struct pci_dev *pdev);
+extern void      mpt_adapter_dispose(MPT_ADAPTER *ioc);
 #ifdef CONFIG_PM
 extern int	 mpt_suspend(struct pci_dev *pdev, pm_message_t state);
 extern int	 mpt_resume(struct pci_dev *pdev);

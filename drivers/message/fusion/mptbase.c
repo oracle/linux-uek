@@ -169,7 +169,6 @@ static int	mpt_handshake_req_reply_wait(MPT_ADAPTER *ioc, int reqBytes,
 static int	mpt_do_ioc_recovery(MPT_ADAPTER *ioc, u32 reason, int sleepFlag);
 static void	mpt_detect_bound_ports(MPT_ADAPTER *ioc, struct pci_dev *pdev);
 static void	mpt_adapter_disable(MPT_ADAPTER *ioc);
-static void	mpt_adapter_dispose(MPT_ADAPTER *ioc);
 
 static void	MptDisplayIocCapabilities(MPT_ADAPTER *ioc);
 static int	MakeIocReady(MPT_ADAPTER *ioc, int force, int sleepFlag);
@@ -350,6 +349,7 @@ static int mpt_remove_dead_ioc_func(void *arg)
 {
 	MPT_ADAPTER *ioc = (MPT_ADAPTER *)arg;
 	struct pci_dev *pdev;
+	MPT_SAS_REMOVE_HOST remove_dead_ioc_fn;
 
 	if ((ioc == NULL))
 		return -1;
@@ -358,7 +358,8 @@ static int mpt_remove_dead_ioc_func(void *arg)
 	if ((pdev == NULL))
 		return -1;
 
-	pci_remove_bus_device(pdev);
+	remove_dead_ioc_fn = ioc->schedule_dead_ioc_sas_host_remove;
+	remove_dead_ioc_fn(pdev);
 	return 0;
 }
 
@@ -394,6 +395,9 @@ mpt_fault_reset_work(void *arg)
 	if ((ioc_raw_state & MPI_IOC_STATE_MASK) == MPI_IOC_STATE_MASK) {
 		printk(MYIOC_s_INFO_FMT "%s: IOC is non-operational !!!!\n",
 		    ioc->name, __func__);
+		ioc->dead_host = 1;
+		if (ioc->alt_ioc)
+			ioc->alt_ioc->dead_host = 1;
 
 		/*
 		 * Call mptscsih_flush_pending_cmds callback so that we
@@ -2196,9 +2200,18 @@ mpt_detach(struct pci_dev *pdev)
 
 	CHIPREG_READ32(&ioc->chip->IntStatus);
 
-	mpt_adapter_dispose(ioc);
+	/* If IOC is dead don't remove the associated D.S. since "scsi_target_destroy"
+	 * is async call. Call this particular function in rmmod.
+	 */
 
-	pci_set_drvdata(pdev, NULL);
+	if (ioc->dead_host == 0) {
+		mpt_adapter_dispose(ioc);
+		pci_set_drvdata(pdev, NULL);
+	} else if (ioc->dead_host = 1) {
+		/* dead_host = 2 is indication when rmmod is called */
+		ioc->dead_host = 2;
+	}
+	printk(KERN_INFO "%s: ioc->dead_host value is %d\n", __func__, ioc->dead_host);
 }
 
 /**************************************************************************
@@ -2912,7 +2925,7 @@ mpt_adapter_disable(MPT_ADAPTER *ioc)
  *	This routine unregisters h/w resources and frees all alloc'd memory
  *	associated with a MPT adapter structure.
  */
-static void
+void
 mpt_adapter_dispose(MPT_ADAPTER *ioc)
 {
 	int sz_first, sz_last;
@@ -2960,6 +2973,7 @@ mpt_adapter_dispose(MPT_ADAPTER *ioc)
 
 	kfree(ioc);
 }
+EXPORT_SYMBOL(mpt_adapter_dispose);
 
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /**
