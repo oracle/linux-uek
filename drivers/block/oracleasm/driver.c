@@ -315,7 +315,7 @@ static void asmdisk_evict_inode(struct inode *inode)
 
 	mlog_entry("(0x%p)\n", inode);
 
-	end_writeback(inode);
+	clear_inode(inode);
 
 	mlog_bug_on_msg(atomic_read(&d->d_ios),
 			"Disk 0x%p has outstanding I/Os\n", d);
@@ -391,8 +391,8 @@ static int __init init_asmdiskcache(void)
 
 static void destroy_asmdiskcache(void)
 {
+	kern_unmount(asmdisk_mnt);
 	unregister_filesystem(&asmdisk_type);
-	mntput(asmdisk_mnt);
 	kmem_cache_destroy(asmdisk_cachep);
 }
 
@@ -506,7 +506,7 @@ static void destroy_requestcache(void)
 /*
  * Disk file creation in the disks directory.
  */
-static int asmfs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t dev)
+static int asmfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, dev_t dev)
 {
 	struct inode * inode;
 
@@ -538,7 +538,7 @@ static int asmfs_mknod(struct inode *dir, struct dentry *dentry, int mode, dev_t
 /*
  * Instance file creation in the iid directory.
  */
-static int asmfs_create(struct inode *dir, struct dentry *dentry, int mode, struct nameidata *nd)
+static int asmfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, bool excl)
 {
 	struct inode *inode;
 
@@ -2738,14 +2738,12 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_fop = &asmfs_dir_operations;
 	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	/* directory inodes start off with i_nlink == 2 (for "." entry) */
-	inode->i_nlink++;
+	set_nlink(inode, inode->i_nlink + 1);
 	parent = inode;
 
-	root = d_alloc_root(inode);
-	if (!root) {
-		iput(inode);
+	root = d_make_root(inode);
+	if (!root)
 		goto out_free_asb;
-	}
 
 	name.name = ASM_MANAGER_DISKS;
 	name.len = strlen(ASM_MANAGER_DISKS);
@@ -2753,7 +2751,7 @@ static int asmfs_fill_super(struct super_block *sb,
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
-	parent->i_nlink++;
+	set_nlink(parent, parent->i_nlink + 1);
 	inode = new_inode(sb);
 	if (!inode)
 		goto out_genocide;
@@ -2773,7 +2771,7 @@ static int asmfs_fill_super(struct super_block *sb,
 	dentry = d_alloc(root, &name);
 	if (!dentry)
 		goto out_genocide;
-	parent->i_nlink++;
+	set_nlink(parent, parent->i_nlink + 1);
 	inode = new_inode(sb);
 	if (!inode)
 		goto out_genocide;
