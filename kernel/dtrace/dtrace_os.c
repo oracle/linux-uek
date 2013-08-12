@@ -81,11 +81,8 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 	struct mm_struct	*mm;
 
 	psinfo = kzalloc(sizeof(dtrace_psinfo_t), GFP_KERNEL);
-	if (psinfo == NULL) {
-		pr_warning("%s: cannot allocate DTrace psinfo structure\n",
-			   __func__);
-		return NULL;
-	}
+	if (psinfo == NULL)
+		goto fail;
 
 	mm = get_task_mm(task);
 	if (mm) {
@@ -125,6 +122,8 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		}
 
 		psinfo->argv = vmalloc((psinfo->argc + 1) * sizeof(char *));
+		if (psinfo->argv == NULL)
+			goto fail;
 
 		/*
 		 * Now populate the array of argument strings.
@@ -149,6 +148,8 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		}
 
 		psinfo->envp = vmalloc((envc + 1) * sizeof(char *));
+		if (psinfo->envp == NULL)
+			goto fail;
 
 		/*
 		 * Now populate the array of environment variable strings.
@@ -161,6 +162,19 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 	}
 
 	return psinfo;
+
+fail:
+	pr_warning("%s: cannot allocate DTrace psinfo structure\n", __func__);
+	if (psinfo) {
+		if (psinfo->argv == NULL)
+			vfree(psinfo->argv);
+		if (psinfo->envp == NULL)
+			vfree(psinfo->envp);
+
+		kfree(psinfo);
+	}
+
+	return NULL;
 }
 
 static DEFINE_SPINLOCK(psinfo_lock);
@@ -554,14 +568,21 @@ void dtrace_disable(void)
 }
 EXPORT_SYMBOL(dtrace_disable);
 
-void dtrace_invop_add(uint8_t (*func)(struct pt_regs *))
+int dtrace_invop_add(uint8_t (*func)(struct pt_regs *))
 {
 	dtrace_invop_hdlr_t	*hdlr;
 
 	hdlr = kmalloc(sizeof(dtrace_invop_hdlr_t), GFP_KERNEL);
+	if (hdlr == NULL) {
+		pr_warn("Failed to add invop handler: out of memory\n");
+		return -ENOMEM;
+	}
+
 	hdlr->dtih_func = func;
 	hdlr->dtih_next = dtrace_invop_hdlrs;
 	dtrace_invop_hdlrs = hdlr;
+
+	return 0;
 }
 EXPORT_SYMBOL(dtrace_invop_add);
 
@@ -571,7 +592,7 @@ void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *))
 
 	for (;;) {
 		if (hdlr == NULL)
-			pr_err("attempt to remove non-existant invop handler");
+			return;
 
 		if (hdlr->dtih_func == func)
 			break;
