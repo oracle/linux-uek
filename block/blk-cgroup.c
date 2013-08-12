@@ -790,9 +790,9 @@ int blkcg_activate_policy(struct request_queue *q,
 	if (!blkg)
 		return -ENOMEM;
 
-	preloaded = !radix_tree_preload(GFP_KERNEL);
-
 	blk_queue_bypass_start(q);
+
+	preloaded = !radix_tree_preload(GFP_KERNEL);
 
 	/* make sure the root blkg exists and count the existing blkgs */
 	spin_lock_irq(q->queue_lock);
