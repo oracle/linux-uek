@@ -156,7 +156,12 @@ void sdt_provide_module(void *arg, struct module *mp)
 			}
 		}
 
-		nname = kmalloc(len = strlen(name) + 1, GFP_KERNEL);
+		nname = vmalloc(len = strlen(name) + 1);
+		if (nname == NULL) {
+			pr_warn("Unable to create probe%s: out-of-memory\n",
+				name);
+			continue;
+		}
 
 		for (i = j = 0; name[j] != '\0'; i++) {
 			if (name[j] == '_' && name[j + 1] == '_') {
@@ -168,7 +173,13 @@ void sdt_provide_module(void *arg, struct module *mp)
 
 		nname[i] = '\0';
 
-		sdp = kzalloc(sizeof(sdt_probe_t), GFP_KERNEL);
+		sdp = vzalloc(sizeof(sdt_probe_t));
+		if (sdp == NULL) {
+			pr_warn("Unable to create probe %s: out-of-memory\n",
+				nname);
+			continue;
+		}
+
 		sdp->sdp_loadcnt = 1; /* FIXME */
 		sdp->sdp_module = mp;
 		sdp->sdp_name = nname;
@@ -284,9 +295,9 @@ void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
 		else
 			sdt_probetab[ndx] = sdp->sdp_hashnext;
 
-		kfree(sdp->sdp_name);
+		vfree(sdp->sdp_name);
 		sdp = sdp->sdp_next;
-		kfree(old);
+		vfree(old);
 	}
 }
 
@@ -325,17 +336,21 @@ int sdt_dev_init(void)
 	int ret = 0;
 
 	ret = misc_register(&sdt_dev);
-	if (ret)
+	if (ret) {
 		pr_err("%s: Can't register misc device %d\n",
 		       sdt_dev.name, sdt_dev.minor);
+		return ret;
+	}
 
 	if (sdt_probetab_size == 0)
 		sdt_probetab_size = SDT_PROBETAB_SIZE;
 
 	sdt_probetab_mask = sdt_probetab_size - 1;
 	sdt_probetab = vzalloc(sdt_probetab_size * sizeof(sdt_probe_t *));
+	if (sdt_probetab == NULL)
+		return -ENOMEM;
 
-	dtrace_invop_add(sdt_invop);
+	ret = dtrace_invop_add(sdt_invop);
 
 	return ret;
 }

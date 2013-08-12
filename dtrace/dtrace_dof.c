@@ -78,7 +78,10 @@ dof_hdr_t *dtrace_dof_create(dtrace_state_t *state)
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	dof = kmalloc(len, GFP_KERNEL);
+	dof = vmalloc(len);
+	if (dof == NULL)
+		return NULL;
+
 	dof->dofh_ident[DOF_ID_MAG0] = DOF_MAG_MAG0;
 	dof->dofh_ident[DOF_ID_MAG1] = DOF_MAG_MAG1;
 	dof->dofh_ident[DOF_ID_MAG2] = DOF_MAG_MAG2;
@@ -155,11 +158,15 @@ dof_hdr_t *dtrace_dof_copyin(void __user *argp, int *errp)
 		return NULL;
 	}
 
-	dof = kmalloc(hdr.dofh_loadsz, GFP_KERNEL);
+	dof = vmalloc(hdr.dofh_loadsz);
+	if (dof == NULL) {
+		*errp = -ENOMEM;
+		return NULL;
+	}
 
 	if (copy_from_user(dof, argp, hdr.dofh_loadsz) != 0 ||
 		dof->dofh_loadsz != hdr.dofh_loadsz) {
-		kfree(dof);
+		vfree(dof);
 		*errp = -EFAULT;
 		return NULL;
 	}
@@ -215,7 +222,11 @@ dof_hdr_t *dtrace_dof_property(const char *name)
 		return NULL;
 	}
 
-	dof = kmalloc(loadsz, GFP_KERNEL);
+	dof = vmalloc(loadsz);
+	if (dof == NULL) {
+		dtrace_dof_error(NULL, "out-of-memory");
+		return NULL;
+	}
 	memcpy(dof, buf, loadsz);
 #ifdef FIXME
 	ddi_prop_free(buf);
@@ -226,7 +237,7 @@ dof_hdr_t *dtrace_dof_property(const char *name)
 
 void dtrace_dof_destroy(dof_hdr_t *dof)
 {
-	kfree(dof);
+	vfree(dof);
 }
 
 /*
@@ -413,7 +424,11 @@ static dtrace_difo_t *dtrace_dof_difo(dof_hdr_t *dof, dof_sec_t *sec,
 	dofd = (dof_difohdr_t *)(uintptr_t)(daddr + sec->dofs_offset);
 	n = (sec->dofs_size - sizeof(*dofd)) / sizeof(dof_secidx_t) + 1;
 
-	dp = kzalloc(sizeof(dtrace_difo_t), GFP_KERNEL);
+	dp = vzalloc(sizeof(dtrace_difo_t));
+	if (dp == NULL) {
+		dtrace_dof_error(dof, "out-of-memory");
+		return NULL;
+	}
 	dp->dtdo_rtype = dofd->dofd_rtype;
 
 	for (l = 0; l < n; l++) {
@@ -471,7 +486,11 @@ static dtrace_difo_t *dtrace_dof_difo(dof_hdr_t *dof, dof_sec_t *sec,
 			}
 
 			*lenp = subsec->dofs_size;
-			*bufp = kmalloc(subsec->dofs_size, GFP_KERNEL);
+			*bufp = vmalloc(subsec->dofs_size);
+			if (*bufp == NULL) {
+				dtrace_dof_error(dof, "out-of-memory");
+				goto err;
+			}
 			memcpy(*bufp,
 			       (char *)(uintptr_t)(daddr + subsec->dofs_offset),
 			       subsec->dofs_size);
@@ -527,12 +546,17 @@ static dtrace_difo_t *dtrace_dof_difo(dof_hdr_t *dof, dof_sec_t *sec,
 	return dp;
 
 err:
-	kfree(dp->dtdo_buf);
-	kfree(dp->dtdo_inttab);
-	kfree(dp->dtdo_strtab);
-	kfree(dp->dtdo_vartab);
+	if (dp->dtdo_buf != NULL)
+		vfree(dp->dtdo_buf);
+	if (dp->dtdo_inttab != NULL)
+		vfree(dp->dtdo_inttab);
+	if (dp->dtdo_strtab != NULL)
+		vfree(dp->dtdo_strtab);
+	if (dp->dtdo_vartab != NULL)
+		vfree(dp->dtdo_vartab);
 
-	kfree(dp);
+	vfree(dp);
+
 	return NULL;
 }
 
@@ -634,7 +658,11 @@ static dtrace_actdesc_t *dtrace_dof_actdesc(dof_hdr_t *dof, dof_sec_t *sec,
 			}
 
 			i -= desc->dofa_arg;
-			fmt = kmalloc(i + 1, GFP_KERNEL);
+			fmt = vmalloc(i + 1);
+			if (fmt == NULL) {
+				dtrace_dof_error(dof, "out-of-memory");
+				goto err;
+			}
 			memcpy(fmt, &str[desc->dofa_arg], i + 1);
 			arg = (uint64_t)(uintptr_t)fmt;
 		} else {
@@ -647,6 +675,8 @@ static dtrace_actdesc_t *dtrace_dof_actdesc(dof_hdr_t *dof, dof_sec_t *sec,
 
 		act = dtrace_actdesc_create(kind, desc->dofa_ntuple,
 					    desc->dofa_uarg, arg);
+		if (act == NULL)
+			goto err;
 
 		if (last != NULL)
 			last->dtad_next = act;
@@ -705,7 +735,9 @@ static dtrace_ecbdesc_t *dtrace_dof_ecbdesc(dof_hdr_t *dof, dof_sec_t *sec,
 	if (sec == NULL)
 		return NULL;
 
-	ep = kzalloc(sizeof(dtrace_ecbdesc_t), GFP_KERNEL);
+	ep = vzalloc(sizeof(dtrace_ecbdesc_t));
+	if (ep == NULL)
+		return NULL;
 	ep->dted_uarg = ecb->dofe_uarg;
 	desc = &ep->dted_probe;
 
@@ -739,7 +771,7 @@ static dtrace_ecbdesc_t *dtrace_dof_ecbdesc(dof_hdr_t *dof, dof_sec_t *sec,
 err:
 	if (pred != NULL)
 		dtrace_predicate_release(pred, vstate);
-	kfree(ep);
+	vfree(ep);
 	return NULL;
 }
 
@@ -1016,6 +1048,9 @@ int dtrace_dof_slurp(dof_hdr_t *dof, dtrace_vstate_t *vstate, const cred_t *cr,
 	if ((enab = *enabp) == NULL)
 		enab = *enabp = dtrace_enabling_create(vstate);
 
+	if (enab == NULL)
+		return -1;
+
 	for (i = 0; i < dof->dofh_secnum; i++) {
 		dof_sec_t	*sec =
 				(dof_sec_t *)(daddr +
@@ -1108,8 +1143,15 @@ static dtrace_helpers_t *dtrace_helpers_create(struct task_struct *curr)
 	ASSERT(curr->dtrace_helpers == NULL);
 
 	dth = vzalloc(sizeof(dtrace_helpers_t));
+	if (dth == NULL)
+		return NULL;
+
 	dth->dthps_actions = vzalloc(sizeof(dtrace_helper_action_t *) *
 				     DTRACE_NHELPER_ACTIONS);
+	if (dth->dthps_actions == NULL) {
+		vfree(dth);
+		return NULL;
+	}
 
 	curr->dtrace_helpers = dth;
 	dtrace_helpers++;
@@ -1403,6 +1445,9 @@ static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
 		return -ENOSPC;
 
 	helper = vzalloc(sizeof(dtrace_helper_action_t));
+	if (helper == NULL)
+		return -ENOMEM;
+
 	helper->dtha_generation = dth->dthps_generation;
 
 	if ((pred = ep->dted_pred.dtpdd_predicate) != NULL) {
@@ -1423,6 +1468,8 @@ static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
 
 	helper->dtha_actions = vzalloc(sizeof(dtrace_difo_t *) *
 				       (helper->dtha_nactions = nactions));
+	if (helper->dtha_actions == NULL)
+		goto err;
 
 	for (act = ep->dted_action, i = 0; act != NULL; act = act->dtad_next) {
 		dtrace_difo_hold(act->dtad_difo);
@@ -1446,6 +1493,11 @@ static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
 
 err:
 	dtrace_helper_action_destroy(helper, vstate);
+	if (helper->dtha_actions != NULL)
+		vfree(helper->dtha_actions);
+	else
+		return -ENOMEM;
+
 	return -EINVAL;
 }
 
@@ -1477,6 +1529,8 @@ static int dtrace_helper_provider_add(dof_helper_t *dofhp, int gen)
 	}
 
 	hprov = vzalloc(sizeof(dtrace_helper_provider_t));
+	if (hprov == NULL)
+		return -ENOMEM;
 	hprov->dthp_prov = *dofhp;
 	hprov->dthp_ref = 1;
 	hprov->dthp_generation = gen;
@@ -1500,6 +1554,10 @@ static int dtrace_helper_provider_add(dof_helper_t *dofhp, int gen)
 
 		dth->dthps_provs = vzalloc(dth->dthps_maxprovs *
 					   sizeof(dtrace_helper_provider_t *));
+		if (dth->dthps_provs == NULL) {
+			vfree(hprov);
+			return -ENOMEM;
+		}
 
 		if (tmp_provs != NULL) {
 			memcpy(dth->dthps_provs, tmp_provs,
@@ -1808,6 +1866,11 @@ int dtrace_helper_slurp(dof_hdr_t *dof, dof_helper_t *dhp)
 
 	if ((dth = current->dtrace_helpers) == NULL)
 		dth = dtrace_helpers_create(current);
+
+	if (dth == NULL) {
+		dtrace_dof_destroy(dof);
+		return -1;
+	}
 
 	vstate = &dth->dthps_vstate;
 

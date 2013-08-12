@@ -159,7 +159,7 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 {
 	size_t		hashsize, maxper, min,
 			chunksize = dstate->dtds_chunksize;
-	void		*base;
+	void		*base, *percpu;
 	uintptr_t	limit;
 	dtrace_dynvar_t	*dvar, *next, *start;
 	int		i;
@@ -175,12 +175,18 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 	if (size < (min = dstate->dtds_chunksize + sizeof (dtrace_dynhash_t)))
 		size = min;
 
-	if ((base = dtrace_vzalloc_try(size)) == NULL)
+	base = dtrace_vzalloc_try(size);
+	if (base == NULL)
 		return -ENOMEM;
+	percpu = kmem_cache_alloc(dtrace_state_cache, GFP_KERNEL);
+	if (percpu == NULL) {
+		vfree(base);
+		return -ENOMEM;
+	}
 
 	dstate->dtds_size = size;
 	dstate->dtds_base = base;
-	dstate->dtds_percpu = kmem_cache_alloc(dtrace_state_cache, GFP_KERNEL);
+	dstate->dtds_percpu = percpu;
 	memset(dstate->dtds_percpu, 0,
 	       NR_CPUS * sizeof (dtrace_dstate_percpu_t));
 
@@ -273,15 +279,15 @@ void dtrace_vstate_fini(dtrace_vstate_t *vstate)
 	ASSERT((vstate->dtvs_nglobals == 0) ^ (vstate->dtvs_globals != NULL));
 
 	if (vstate->dtvs_nglobals > 0)
-		kfree(vstate->dtvs_globals);
+		vfree(vstate->dtvs_globals);
 
 	if (vstate->dtvs_ntlocals > 0)
-		kfree(vstate->dtvs_tlocals);
+		vfree(vstate->dtvs_tlocals);
 
 	ASSERT((vstate->dtvs_nlocals == 0) ^ (vstate->dtvs_locals != NULL));
 
 	if (vstate->dtvs_nlocals > 0)
-		kfree(vstate->dtvs_locals);
+		vfree(vstate->dtvs_locals);
 }
 
 static void dtrace_state_clean(dtrace_state_t *state)
@@ -330,7 +336,9 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	dtrace_state_t	*state;
 	dtrace_optval_t	*opt;
 	int		bufsize = NR_CPUS * sizeof (dtrace_buffer_t), i;
+#ifdef FIXME
 	const cred_t	*cr = file->f_cred;
+#endif
 	int		err;
 	dtrace_aggid_t	aggid;
 
@@ -338,12 +346,23 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	ASSERT(MUTEX_HELD(&cpu_lock));
 
 	state = kzalloc(sizeof (dtrace_state_t), GFP_KERNEL);
+	if (state == NULL)
+		return NULL;
+
 	state->dts_epid = DTRACE_EPIDNONE + 1;
-	/* state->dts_dev = NULL;  -- FIXME: Do we even need this? */
-	state->dts_buffer = kzalloc(NR_CPUS * sizeof (dtrace_buffer_t),
-				    GFP_KERNEL);
-	state->dts_buffer = kzalloc(bufsize, GFP_KERNEL);
-	state->dts_aggbuffer = kzalloc(bufsize, GFP_KERNEL);
+	state->dts_buffer = vzalloc(bufsize);
+	if (state->dts_buffer == NULL) {
+		vfree(state);
+		return NULL;
+	}
+
+	state->dts_aggbuffer = vzalloc(bufsize);
+	if (state->dts_aggbuffer == NULL) {
+		vfree(state->dts_buffer);
+		vfree(state);
+		return NULL;
+	}
+
 	idr_init(&state->dts_agg_idr);
 	state->dts_naggs = 0;
 	state->dts_cleaner = 0;
@@ -529,7 +548,6 @@ static int dtrace_state_buffer(dtrace_state_t *state, dtrace_buffer_t *buf,
 		}
 
 		rval = dtrace_buffer_alloc(buf, size, flags, cpu);
-
 		if (rval != -ENOMEM) {
 			opt[which] = size;
 			return rval;
@@ -634,7 +652,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		goto out;
 	}
 
-	spec = kzalloc(nspec * sizeof(dtrace_speculation_t), GFP_KERNEL);
+	spec = vzalloc(nspec * sizeof(dtrace_speculation_t));
 	if (spec == NULL) {
 		rval = -ENOMEM;
 		goto out;
@@ -644,7 +662,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	state->dts_nspeculations = (int)nspec;
 
 	for (i = 0; i < nspec; i++) {
-		if ((buf = kzalloc(bufsize, GFP_KERNEL)) == NULL) {
+		if ((buf = vzalloc(bufsize)) == NULL) {
 			rval = -ENOMEM;
 			goto err;
 		}
@@ -845,10 +863,10 @@ err:
 			break;
 
 		dtrace_buffer_free(buf);
-		kfree(buf);
+		vfree(buf);
 	}
 
-	kfree(spec);
+	vfree(spec);
 	state->dts_nspeculations = 0;
 	state->dts_speculations = NULL;
 
@@ -1051,7 +1069,7 @@ void dtrace_state_destroy(dtrace_state_t *state)
 
 	dtrace_dstate_fini(&vstate->dtvs_dynvars);
 	dtrace_vstate_fini(vstate);
-	kfree(state->dts_ecbs);
+	vfree(state->dts_ecbs);
 
 	/*
 	 * If there were aggregations allocated, they should have been cleaned
@@ -1060,13 +1078,13 @@ void dtrace_state_destroy(dtrace_state_t *state)
 	idr_remove_all(&state->dts_agg_idr);
 	idr_destroy(&state->dts_agg_idr);
 
-	kfree(state->dts_buffer);
-	kfree(state->dts_aggbuffer);
+	vfree(state->dts_buffer);
+	vfree(state->dts_aggbuffer);
 
 	for (i = 0; i < nspec; i++)
-		kfree(spec[i].dtsp_buffer);
+		vfree(spec[i].dtsp_buffer);
 
-	kfree(spec);
+	vfree(spec);
 
 	dtrace_format_destroy(state);
 }
