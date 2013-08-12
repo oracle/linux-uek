@@ -3726,13 +3726,14 @@ make_io:
 		if (EXT4_SB(sb)->s_inode_readahead_blks) {
 			ext4_fsblk_t b, end, table;
 			unsigned num;
+			__u32 ra_blks = EXT4_SB(sb)->s_inode_readahead_blks;
 
 			table = ext4_inode_table(sb, gdp);
 			/* s_inode_readahead_blks is always a power of 2 */
-			b = block & ~(EXT4_SB(sb)->s_inode_readahead_blks-1);
+			b = block & ~((ext4_fsblk_t) ra_blks - 1);
 			if (table > b)
 				b = table;
-			end = b + EXT4_SB(sb)->s_inode_readahead_blks;
+			end = b + ra_blks;
 			num = EXT4_INODES_PER_GROUP(sb);
 			if (ext4_has_group_desc_csum(sb))
 				num -= ext4_itable_unused_count(sb, gdp);
@@ -4520,7 +4521,7 @@ int ext4_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		 struct kstat *stat)
 {
 	struct inode *inode;
-	unsigned long delalloc_blocks;
+	unsigned long long delalloc_blocks;
 
 	inode = dentry->d_inode;
 	generic_fillattr(inode, stat);
@@ -4538,7 +4539,7 @@ int ext4_getattr(struct vfsmount *mnt, struct dentry *dentry,
 	delalloc_blocks = EXT4_C2B(EXT4_SB(inode->i_sb),
 				EXT4_I(inode)->i_reserved_data_blocks);
 
-	stat->blocks += (delalloc_blocks << inode->i_sb->s_blocksize_bits)>>9;
+	stat->blocks += delalloc_blocks << (inode->i_sb->s_blocksize_bits-9);
 	return 0;
 }
 
