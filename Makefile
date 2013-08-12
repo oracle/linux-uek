@@ -764,7 +764,7 @@ quiet_cmd_link-vmlinux = LINK    $@
 
 # Include targets which we want to
 # execute if the rest of the kernel build went well.
-vmlinux: scripts/link-vmlinux.sh $(vmlinux-deps) FORCE
+vmlinux: scripts/link-vmlinux.sh $(vmlinux-deps) modules.builtin FORCE
 ifdef CONFIG_HEADERS_CHECK
 	$(Q)$(MAKE) -f $(srctree)/Makefile headers_check
 endif
@@ -938,18 +938,35 @@ all: modules
 #	using awk while concatenating to the final file.
 
 PHONY += modules
-modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin
+modules: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) modules.builtin objects.builtin
 	$(Q)$(AWK) '!x[$$0]++' $(vmlinux-dirs:%=$(objtree)/%/modules.order) > $(objtree)/modules.order
 	@$(kecho) '  Building modules, stage 2.';
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.modpost
 	$(Q)$(MAKE) -f $(srctree)/scripts/Makefile.fwinst obj=firmware __fw_modbuild
 
-modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
-	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
-
-%/modules.builtin: include/config/auto.conf
-	$(Q)$(MAKE) $(modbuiltin)=$*
-
+ifdef CONFIG_DTRACE
+ifndef CONFIG_DT_DISABLE_CTF
+# This contains all the object files that are unconditionally built into the
+# kernel, for consumption by dwarf2ctf in Makefile.modpost.
+# This is made doubly annoying by the presence of '.o' files which are actually
+# empty ar archives.
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
+		tr " " "\n" | grep "\.o$$" | xargs file | \
+		grep ELF | cut -d: -f1 > objects.builtin
+	@for archive in $$(echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) |\
+		tr " " "\n" | grep "\.a$$"); do \
+		ar t "$$archive" | grep '\.o$$' | \
+			sed "s,^,$${archive%/*}/," >> objects.builtin; \
+	done
+else
+PHONY += objects.builtin
+objects.builtin:
+endif
+else
+PHONY += objects.builtin
+objects.builtin:
+endif
 
 # Target to prepare building external modules
 PHONY += modules_prepare
@@ -1002,6 +1019,14 @@ modules modules_install: FORCE
 
 endif # CONFIG_MODULES
 
+# modules.builtin is used by kallsyms as well.
+
+modules.builtin: $(vmlinux-dirs:%=%/modules.builtin)
+	$(Q)$(AWK) '!x[$$0]++' $^ > $(objtree)/modules.builtin
+
+%/modules.builtin: include/config/auto.conf
+	$(Q)$(MAKE) $(modbuiltin)=$*
+
 ###
 # Cleaning is done on three levels.
 # make clean     Delete most generated files
@@ -1010,7 +1035,7 @@ endif # CONFIG_MODULES
 # make distclean Remove editor backup files, patch leftover files and the like
 
 # Directories & files removed with 'make clean'
-CLEAN_DIRS  += $(MODVERDIR)
+CLEAN_DIRS  += $(MODVERDIR) .ctf
 
 # Directories & files removed with 'make mrproper'
 MRPROPER_DIRS  += include/config usr/include include/generated          \
@@ -1268,7 +1293,8 @@ clean: $(clean-dirs)
 		-o -name '*.ko.*' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
-		-o -name modules.builtin -o -name '.tmp_*.o.*' \
+		-o -name 'modules.builtin' -o -name 'objects.builtin' \
+		-o -name '.tmp_*.o.*' \
 		-o -name '*.gcno' \) -type f -print | xargs rm -f
 
 # Generate tags for editors

@@ -39,7 +39,7 @@ static unsigned vhost_zcopy_mask __read_mostly;
 #define vhost_avail_event(vq) ((u16 __user *)&vq->used->ring[vq->num])
 
 static void vhost_poll_func(struct file *file, wait_queue_head_t *wqh,
-			    poll_table *pt)
+			    poll_table *pt, unsigned long unused)
 {
 	struct vhost_poll *poll;
 

@@ -21,7 +21,7 @@ Summary: The Linux kernel
 # % define buildid .local
 
 %define distro_build 100
-%define signmodules 1 
+%define signmodules 0
 
 # base_sublevel is the kernel version we're starting with and patching
 # on top of -- for example, 2.6.22-rc7-git1 starts with a 2.6.21 base,
@@ -80,6 +80,8 @@ Summary: The Linux kernel
 %define with_doc       1
 # kernel-headers
 %define with_headers   1
+# dtrace
+%define with_dtrace    0
 # kernel-firmware
 %define with_firmware  0
 # kernel-debuginfo
@@ -261,6 +263,11 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 # sparse blows up on ppc64 alpha and sparc64
 %ifarch ppc64 ppc alpha sparc64
 %define with_sparse 0
+%endif
+
+# Only x86_64 does dtrace
+%ifarch x86_64
+%define with_dtrace 1
 %endif
 
 # Per-arch tweaks
@@ -462,7 +469,7 @@ AutoReq: no\
 AutoProv: yes\
 %{nil}
 
-%define variant -uek
+%define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 Name: kernel%{?variant}
 Group: System Environment/Kernel
 License: GPLv2
@@ -503,6 +510,12 @@ BuildRequires: openssl
 %if %{with_fips}
 BuildRequires: hmaccalc
 %endif
+%if %{with_dtrace}
+BuildRequires: pkgconfig
+BuildRequires: glib2-devel
+BuildRequires: elfutils-devel
+BuildRequires: libdtrace-ctf-devel
+%endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
 
 Source0: ftp://ftp.kernel.org/pub/linux/kernel/v2.6/linux-%{kversion}.tar.bz2
@@ -528,9 +541,13 @@ Source1001: config-x86_64-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
 
+Source1100: config-dtrace
+
 Source26: Module.kabi_x86_64
 
 Source201: kabi_whitelist_x86_64
+
+Source300: debuginfo-g1.diff
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -922,6 +939,13 @@ ApplyPatch %{stable_patch_00}
 ApplyPatch %{stable_patch_01}
 %endif
 
+# Copy the RPM find-debuginfo.sh into the buildroot and patch it
+# to support -g1.  (This is a patch of *RPM*, not of the kernel,
+# so it is not governed by nopatches.)
+cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
+patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
+chmod +x %{_builddir}/find-debuginfo.sh
+
 # only deal with configs if we are going to build for the arch
 # %ifnarch %nobuildarches
 
@@ -940,6 +964,10 @@ mkdir -p configs
 	cp %{SOURCE1005} configs/config-debug
 	cp %{SOURCE1004} configs/config
 %endif #ifarch sparc
+
+%if %{with_dtrace}
+	cp %{SOURCE1100} configs/config-dtrace
+%endif #with_dtrace
 
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
@@ -1007,6 +1035,10 @@ BuildKernel() {
     else
 	cp configs/config .config
     fi
+
+%if %{with_dtrace}
+    cat configs/config-dtrace >> .config
+%endif
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch 
@@ -1353,17 +1385,19 @@ find Documentation -type d | xargs chmod u+w
 ###
 
 # This macro is used by %%install, so we must redefine it before that.
+# TEMPORARY HACK: use the debuginfo in the build tree, passing it -g1 so as
+# to strip out only debugging sections.
 %define debug_package %{nil}
 %if %{fancy_debuginfo}
 %define __debug_install_post \
-  /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
 %{nil}
 %endif
 
 %if %{with_debuginfo}
 
 %define __debug_install_post \
-  /usr/lib/rpm/find-debuginfo.sh %{debuginfo_args} %{_builddir}/%{?buildsubdir}\
+  %{_builddir}/find-debuginfo.sh %{debuginfo_args} -g1 %{_builddir}/%{?buildsubdir}\
 %{nil}
 
 %ifnarch noarch
@@ -1603,9 +1637,9 @@ fi\
 %kernel_variant_pre
 %kernel_variant_preun
 %ifarch x86_64
-%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %else
-%kernel_variant_post -u -v uek -r (kernel-uek|kernel-uek-debug|kernel-ovs)
+%kernel_variant_post -u -v uek -r (kernel%{variant}|kernel%{variant}-debug|kernel-ovs)
 %endif
 
 %kernel_variant_pre smp

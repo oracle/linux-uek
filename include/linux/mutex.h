@@ -176,4 +176,16 @@ extern int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock);
 #define arch_mutex_cpu_relax()	cpu_relax()
 #endif
 
+#ifdef CONFIG_SMP
+static inline int mutex_owned(struct mutex *lock)
+{
+	return lock->owner == current;
+}
+#else
+static inline int mutex_owned(struct mutex *lock)
+{
+	return mutex_is_locked(lock);
+}
+#endif
+
 #endif

@@ -70,6 +70,8 @@
 #include <linux/khugepaged.h>
 #include <linux/signalfd.h>
 #include <linux/uprobes.h>
+#include <linux/sdt.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -206,6 +208,10 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DTRACE
+	dtrace_psinfo_free(tsk->dtrace_psinfo);
+#endif
+
 	account_kernel_stack(tsk->stack, -1);
 	arch_release_thread_info(tsk->stack);
 	free_thread_info(tsk->stack);
@@ -333,6 +339,11 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->task_frag.page = NULL;
 
 	account_kernel_stack(ti, 1);
+
+#ifdef CONFIG_DTRACE
+	tsk->dtrace_psinfo = NULL;
+	dtrace_task_init(tsk);
+#endif
 
 	return tsk;
 
@@ -1618,6 +1629,8 @@ long do_fork(unsigned long clone_flags,
 			if (!wait_for_vfork_done(p, &vfork))
 				ptrace_event(PTRACE_EVENT_VFORK_DONE, nr);
 		}
+		DTRACE_PROC1(lwp__create, struct task_struct *, p);
+		DTRACE_PROC1(create, struct task_struct *, p);
 	} else {
 		nr = PTR_ERR(p);
 	}

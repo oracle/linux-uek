@@ -34,6 +34,7 @@
 #include <linux/compat.h>
 #define CREATE_TRACE_POINTS
 #include <trace/events/signal.h>
+#include <linux/sdt.h>
 
 #include <asm/param.h>
 #include <asm/uaccess.h>
@@ -1052,8 +1053,11 @@ static int __send_signal(int sig, struct siginfo *info, struct task_struct *t,
 
 	result = TRACE_SIGNAL_IGNORED;
 	if (!prepare_signal(sig, t,
-			from_ancestor_ns || (info == SEND_SIG_FORCED)))
+			    from_ancestor_ns || (info == SEND_SIG_FORCED))) {
+		DTRACE_PROC2(signal__discard, struct task_struct *, t,
+			     int, sig);
 		goto ret;
+	}
 
 	pending = group ? &t->signal->shared_pending : &t->pending;
 	/*
@@ -1139,6 +1143,7 @@ out_set:
 	signalfd_notify(t, sig);
 	sigaddset(&pending->signal, sig);
 	complete_signal(sig, t, group);
+	DTRACE_PROC2(signal__send, struct task_struct *, t, int, sig);
 ret:
 	trace_signal_generate(sig, info, t, group, result);
 	return ret;
@@ -2364,6 +2369,11 @@ relock:
 		/* NOTREACHED */
 	}
 	spin_unlock_irq(&sighand->siglock);
+	if (signr != 0) {
+		DTRACE_PROC3(signal__handle, int, signr, siginfo_t *,
+			     return_ka->sa.sa_handler != SIG_DFL ? NULL : info,
+			     void (*)(void), return_ka->sa.sa_handler);
+	}
 	return signr;
 }
 
@@ -2786,8 +2796,10 @@ int do_sigtimedwait(const sigset_t *which, siginfo_t *info,
 	}
 	spin_unlock_irq(&tsk->sighand->siglock);
 
-	if (sig)
+	if (sig) {
+		DTRACE_PROC1(signal__clear, int, sig);
 		return sig;
+	}
 	return timeout ? -EINTR : -EAGAIN;
 }
 

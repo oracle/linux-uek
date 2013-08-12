@@ -1,0 +1,58 @@
+--- find-debuginfo.sh.orig	2012-09-12 20:42:13.106294407 +0100
++++ find-debuginfo.sh	2012-09-12 20:49:52.496863002 +0100
+@@ -2,12 +2,14 @@
+ #find-debuginfo.sh - automagically generate debug info and file list
+ #for inclusion in an rpm spec file.
+ #
+-# Usage: find-debuginfo.sh [--strict-build-id] [-g]
++# Usage: find-debuginfo.sh [--strict-build-id] [-g|-g1]
+ #	 		   [-o debugfiles.list]
+ #			   [[-l filelist]... [-p 'pattern'] -o debuginfo.list]
+ #			   [builddir]
+ #
+ # The -g flag says to use strip -g instead of full strip on DSOs.
++# The -g1 flag says to use strip -g instead of full strip on
++# everything, DSO or not.
+ # The --strict-build-id flag says to exit with failure status if
+ # any ELF binary processed fails to contain a build-id note.
+ #
+@@ -36,6 +38,9 @@
+   --strict-build-id)
+     strict=true
+     ;;
++  -g1)
++    strip_g=full
++    ;;
+   -g)
+     strip_g=true
+     ;;
+@@ -88,11 +93,25 @@
+ 
+ strip_to_debug()
+ {
+-  local g=
+-  $strip_g && case "$(file -bi "$2")" in
+-  application/x-sharedlib*) g=-g ;;
++  local use_objcopy=false
++  case "$strip_g" in
++    true) case "$(file -bi "$2")" in
++            application/x-sharedlib*) use_objcopy=true ;;
++          esac;;
++    full) use_objcopy=true;;
+   esac
+-  eu-strip --remove-comment $g -f "$1" "$2" || exit
++  # Note: eu-strip fails to remove debugging info in files containing
++  # debugging relocations at present. objcopy works fine, so use that.
++  # (This does mean that .comment sections don't get stripped, but this
++  # seems an insignificant problem for now.  When elfutils is fixed this
++  # hack can be removed.)
++  if $use_objcopy; then
++    objcopy --only-keep-debug "$2" "$1" || exit
++    objcopy --strip-debug "$2" "$2.tmp" || exit
++    mv -f "$2.tmp" "$2" || exit
++  else
++    eu-strip --remove-comment -f "$1" "$2" || exit
++  fi
+   chmod 444 "$1" || exit
+ }
+ 
