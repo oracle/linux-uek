@@ -29,7 +29,7 @@ extern void dtrace_os_exit(void);
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
-extern void dtrace_invop_add(uint8_t (*func)(struct pt_regs *));
+extern int dtrace_invop_add(uint8_t (*func)(struct pt_regs *));
 extern void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *));
 
 extern void dtrace_invop_enable(uint8_t *);
