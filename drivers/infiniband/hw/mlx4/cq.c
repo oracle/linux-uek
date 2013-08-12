@@ -355,15 +355,17 @@ static int mlx4_ib_get_outstanding_cqes(struct mlx4_ib_cq *cq)
 	return i - cq->mcq.cons_index;
 }
 
-static void mlx4_ib_cq_resize_copy_cqes(struct mlx4_ib_cq *cq)
+static int mlx4_ib_cq_resize_copy_cqes(struct mlx4_ib_cq *cq)
 {
 	struct mlx4_cqe *cqe, *new_cqe;
 	int i;
 	int cqe_size = cq->buf.entry_size;
 	int cqe_inc = cqe_size == 64 ? 1 : 0;
+	struct mlx4_cqe *start_cqe;
 
 	i = cq->mcq.cons_index;
 	cqe = get_cqe(cq, i & cq->ibcq.cqe);
+	start_cqe = cqe;
 	cqe += cqe_inc;
 
 	while ((cqe->owner_sr_opcode & MLX4_CQE_OPCODE_MASK) != MLX4_CQE_OPCODE_RESIZE) {
@@ -375,9 +377,15 @@ static void mlx4_ib_cq_resize_copy_cqes(struct mlx4_ib_cq *cq)
 		new_cqe->owner_sr_opcode = (cqe->owner_sr_opcode & ~MLX4_CQE_OWNER_MASK) |
 			(((i + 1) & (cq->resize_buf->cqe + 1)) ? MLX4_CQE_OWNER_MASK : 0);
 		cqe = get_cqe(cq, ++i & cq->ibcq.cqe);
+		if (cqe == start_cqe) {
+			pr_warn("resize CQ failed to get resize CQE, CQN 0x%x\n", cq->mcq.cqn);
+			return -ENOMEM;
+		}
 		cqe += cqe_inc;
+
 	}
 	++cq->mcq.cons_index;
+	return 0;
 }
 
 int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
@@ -443,7 +451,7 @@ int mlx4_ib_resize_cq(struct ib_cq *ibcq, int entries, struct ib_udata *udata)
 
 		spin_lock_irq(&cq->lock);
 		if (cq->resize_buf) {
-			mlx4_ib_cq_resize_copy_cqes(cq);
+			err = mlx4_ib_cq_resize_copy_cqes(cq);
 			tmp_buf = cq->buf;
 			tmp_cqe = cq->ibcq.cqe;
 			cq->buf      = cq->resize_buf->buf;
