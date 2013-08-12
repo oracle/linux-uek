@@ -858,12 +858,12 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 				osz = otlocals * sizeof(dtrace_difv_t);
 				nsz = ntlocals * sizeof(dtrace_difv_t);
 
-				tlocals = kzalloc(nsz, GFP_KERNEL);
+				tlocals = vzalloc(nsz);
 
 				if (osz != 0) {
 					memcpy(tlocals, vstate->dtvs_tlocals,
 					       osz);
-					kfree(vstate->dtvs_tlocals);
+					vfree(vstate->dtvs_tlocals);
 				}
 
 				vstate->dtvs_tlocals = tlocals;
@@ -911,11 +911,11 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 			oldsize = oldsvars * sizeof(dtrace_statvar_t *);
 			newsize = newsvars * sizeof(dtrace_statvar_t *);
 
-			statics = kzalloc(newsize, GFP_KERNEL);
+			statics = vzalloc(newsize);
 
 			if (oldsize != 0) {
 				memcpy(statics, *svarp, oldsize);
-				kfree(*svarp);
+				vfree(*svarp);
 			}
 
 			*svarp = statics;
@@ -923,13 +923,12 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 		}
 
 		if ((svar = (*svarp)[id]) == NULL) {
-			svar = kzalloc(sizeof(dtrace_statvar_t), GFP_KERNEL);
+			svar = vzalloc(sizeof(dtrace_statvar_t));
 			svar->dtsv_var = *v;
 
 			if ((svar->dtsv_size = dsize) != 0) {
 				svar->dtsv_data =
-					(uint64_t)(uintptr_t)kzalloc(
-							dsize, GFP_KERNEL);
+					(uint64_t)(uintptr_t)vzalloc(dsize);
 			}
 
 			(*svarp)[id] = svar;
@@ -988,18 +987,18 @@ void dtrace_difo_destroy(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 
 		if (svar->dtsv_size != 0) {
 			ASSERT((void *)(uintptr_t)svar->dtsv_data != NULL);
-			kfree((void *)(uintptr_t)svar->dtsv_data);
+			vfree((void *)(uintptr_t)svar->dtsv_data);
 		}
 
-		kfree(svar);
+		vfree(svar);
 		svarp[id] = NULL;
 	}
 
-	kfree(dp->dtdo_buf);
-        kfree(dp->dtdo_inttab);
-        kfree(dp->dtdo_strtab);
-        kfree(dp->dtdo_vartab);
-        kfree(dp);
+	vfree(dp->dtdo_buf);
+        vfree(dp->dtdo_inttab);
+        vfree(dp->dtdo_strtab);
+        vfree(dp->dtdo_vartab);
+        vfree(dp);
 }
 
 void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)

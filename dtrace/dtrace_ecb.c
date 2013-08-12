@@ -43,7 +43,10 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 	dtrace_state_t		*state = ecb->dte_state;
 	int			err;
 
-	agg = kzalloc(sizeof(dtrace_aggregation_t), GFP_KERNEL);
+	agg = vzalloc(sizeof(dtrace_aggregation_t));
+	if (agg == NULL)
+		return NULL;
+
 	agg->dtag_ecb = ecb;
 
 	ASSERT(DTRACEACT_ISAGG(desc->dtad_kind));
@@ -119,7 +122,7 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 
 	ASSERT(ntuple != 0);
 err:
-	kfree(agg);
+	vfree(agg);
 	return NULL;
 
 success:
@@ -173,7 +176,7 @@ void dtrace_ecb_aggregation_destroy(dtrace_ecb_t *ecb, dtrace_action_t *act)
 	idr_remove(&state->dts_agg_idr, agg->dtag_id);
 	state->dts_naggs--;
 
-	kfree(agg);
+	vfree(agg);
 }
 
 static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
@@ -364,7 +367,10 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			}
 		}
 
-		action = kzalloc(sizeof(dtrace_action_t), GFP_KERNEL);
+		action = vzalloc(sizeof(dtrace_action_t));
+		if (action == NULL)
+			return -ENOMEM;
+
 		action->dta_rec.dtrd_size = size;
 	}
 
@@ -433,7 +439,7 @@ static void dtrace_ecb_action_remove(dtrace_ecb_t *ecb)
 			if (DTRACEACT_ISAGG(act->dta_kind))
 				dtrace_ecb_aggregation_destroy(ecb, act);
 			else
-				kfree(act);
+				vfree(act);
 		}
 	}
 
@@ -527,7 +533,10 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	ecb = kzalloc(sizeof(dtrace_ecb_t), GFP_KERNEL);
+	ecb = vzalloc(sizeof(dtrace_ecb_t));
+	if (ecb == NULL)
+		return NULL;
+
 	ecb->dte_predicate = NULL;
 	ecb->dte_probe = probe;
 	ecb->dte_size = ecb->dte_needed = sizeof(dtrace_epid_t);
@@ -547,7 +556,7 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 			necbs = 1;
 		}
 
-		ecbs = kcalloc(necbs, sizeof(*ecbs), GFP_KERNEL);
+		ecbs = vzalloc(necbs * sizeof(*ecbs));
 		if (oecbs != NULL)
 			memcpy(ecbs, oecbs, state->dts_necbs * sizeof(*ecbs));
 
@@ -559,7 +568,7 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 			if (state->dts_activity != DTRACE_ACTIVITY_INACTIVE)
 				dtrace_sync();
 
-			kfree(oecbs);
+			vfree(oecbs);
 		}
 
 		dtrace_membar_producer();
@@ -680,7 +689,7 @@ void dtrace_ecb_destroy(dtrace_ecb_t *ecb)
 	ASSERT(state->dts_ecbs[epid - 1] == ecb);
 	state->dts_ecbs[epid - 1] = NULL;
 
-	kfree(ecb);
+	vfree(ecb);
 }
 
 void dtrace_ecb_resize(dtrace_ecb_t *ecb)

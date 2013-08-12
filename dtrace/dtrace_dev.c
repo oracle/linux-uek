@@ -254,9 +254,11 @@ static long dtrace_ioctl(struct file *file,
 		size = sizeof(dtrace_eprobedesc_t) +
 		       (epdesc.dtepd_nrecs * sizeof(dtrace_recdesc_t));
 
-		buf = kmalloc(size, GFP_KERNEL);
-		dest = buf;
+		buf = vmalloc(size);
+		if (buf == NULL)
+			return -ENOMEM;
 
+		dest = buf;
 		memcpy(dest, &epdesc, sizeof(epdesc));
 		dest += offsetof(dtrace_eprobedesc_t, dtepd_rec[0]);
 
@@ -275,11 +277,11 @@ static long dtrace_ioctl(struct file *file,
 
 		if (copy_to_user(argp, buf,
 				 (uintptr_t)(dest - (uint8_t *)buf)) != 0) {
-			kfree(buf);
+			vfree(buf);
 			return -EFAULT;
 		}
 
-		kfree(buf);
+		vfree(buf);
 		return 0;
 	}
 
@@ -348,9 +350,11 @@ static long dtrace_ioctl(struct file *file,
 		size = sizeof(dtrace_aggdesc_t) +
 		       (aggdesc.dtagd_nrecs * sizeof(dtrace_recdesc_t));
 
-		buf = kmalloc(size, GFP_KERNEL);
-		dest = buf;
+		buf = vmalloc(size);
+		if (buf == NULL)
+			return -ENOMEM;
 
+		dest = buf;
 		memcpy(dest, &aggdesc, sizeof(aggdesc));
 		dest += offsetof(dtrace_aggdesc_t, dtagd_rec[0]);
 
@@ -381,11 +385,11 @@ static long dtrace_ioctl(struct file *file,
 
 		if (copy_to_user(argp, buf,
 				 (uintptr_t)(dest - (uint8_t *)buf)) != 0) {
-			kfree(buf);
+			vfree(buf);
 			return -EFAULT;
 		}
 
-		kfree(buf);
+		vfree(buf);
 		return 0;
 	}
 
@@ -665,6 +669,8 @@ static long dtrace_ioctl(struct file *file,
 		mutex_lock(&dtrace_lock);
 		dof = dtrace_dof_create(state);
 		mutex_unlock(&dtrace_lock);
+		if (dof == NULL)
+			return -ENOMEM;
 
 		len = min(hdr.dofh_loadsz, dof->dofh_loadsz);
 		rval = copy_to_user(argp, dof, len);
@@ -1286,13 +1292,17 @@ static void dtrace_toxrange_add(uintptr_t base, uintptr_t limit)
 			dtrace_toxranges_max <<= 1;
 
 		nsize = dtrace_toxranges_max * sizeof(dtrace_toxrange_t);
-		range = kzalloc(nsize, GFP_KERNEL);
+		range = vzalloc(nsize);
+		if (range == NULL) {
+			pr_warn("Failed to add toxic range: out of memory\n");
+			return;
+		}
 
 		if (dtrace_toxrange != NULL) {
 			ASSERT(osize != 0);
 
 			memcpy(range, dtrace_toxrange, osize);
-			kfree(dtrace_toxrange);
+			vfree(dtrace_toxrange);
 		}
 
 		dtrace_toxrange = range;
@@ -1470,6 +1480,12 @@ int dtrace_dev_init(void)
 
 		dtrace_helptrace_buffer = vzalloc(dtrace_helptrace_bufsize);
 		dtrace_helptrace_next = 0;
+
+		if (dtrace_helptrace_buffer == NULL) {
+			pr_warn("Cannot allocate helptrace buffer; "
+				"disabling dtrace_helptrace\n");
+			dtrace_helptrace_enabled = 0;
+		}
 	}
 
 #ifdef FIXME

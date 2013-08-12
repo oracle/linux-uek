@@ -453,7 +453,7 @@ extern void dtrace_aggregate(dtrace_aggregation_t *, dtrace_buffer_t *,
  */
 
 extern dtrace_hash_t *dtrace_hash_create(uintptr_t, uintptr_t, uintptr_t);
-extern void dtrace_hash_add(dtrace_hash_t *, dtrace_probe_t *);
+extern int dtrace_hash_add(dtrace_hash_t *, dtrace_probe_t *);
 extern dtrace_probe_t *dtrace_hash_lookup(dtrace_hash_t *, dtrace_probe_t *);
 extern int dtrace_hash_collisions(dtrace_hash_t *, dtrace_probe_t *);
 extern void dtrace_hash_remove(dtrace_hash_t *, dtrace_probe_t *);
