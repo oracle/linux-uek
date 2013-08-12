@@ -31,6 +31,7 @@ void xfs_debug(const struct xfs_mount *mp, const char *fmt, ...)
 #endif
 
 extern void assfail(char *expr, char *f, int l);
+extern void asswarn(char *expr, char *f, int l);
 
 extern void xfs_hex_dump(void *p, int length);
 
