@@ -2343,7 +2343,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	if (!mlx4_is_slave(priv->mdev->dev)) {
 		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
 		priv->flags |= MLX4_EN_FLAG_DCB_ENABLED;
-		if (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG2_ETS_CFG) {
+		if (mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG) {
 			dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
 		} else {
 			en_info(priv, "QoS disabled - no HW support\n");
