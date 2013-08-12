@@ -35,6 +35,8 @@ uint16_t dtrace_format_add(dtrace_state_t *state, char *str)
 	uint16_t	ndx;
 
 	fmt = dtrace_strdup(str);
+	if (fmt == NULL)
+		return 0;
 
 	for (ndx = 0; ndx < state->dts_nformats; ndx++) {
 		if (state->dts_formats[ndx] == NULL) {
@@ -50,13 +52,19 @@ uint16_t dtrace_format_add(dtrace_state_t *state, char *str)
 		return 0;
 	}
 
-	ndx = state->dts_nformats++;
-	new = kmalloc((ndx + 1) * sizeof (char *), GFP_KERNEL);
+	ndx = state->dts_nformats;
+	new = vmalloc((ndx + 1) * sizeof (char *));
+	if (new == NULL) {
+		kfree(fmt);
+		return 0;
+	}
+
+	state->dts_nformats++;
 
 	if (state->dts_formats != NULL) {
 		ASSERT(ndx != 0);
 		memcpy(new, state->dts_formats, ndx * sizeof (char *));
-		kfree(state->dts_formats);
+		vfree(state->dts_formats);
 	}
 
 	state->dts_formats = new;
@@ -98,7 +106,7 @@ void dtrace_format_destroy(dtrace_state_t *state)
 		kfree(fmt);
 	}
 
-	kfree(state->dts_formats);
+	vfree(state->dts_formats);
 	state->dts_nformats = 0;
 	state->dts_formats = NULL;
 }

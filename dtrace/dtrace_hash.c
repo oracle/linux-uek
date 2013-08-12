@@ -54,7 +54,10 @@ static uint_t dtrace_hash_str(char *p)
 dtrace_hash_t *dtrace_hash_create(uintptr_t stroffs, uintptr_t nextoffs,
 				  uintptr_t prevoffs)
 {
-	dtrace_hash_t	*hash = kzalloc(sizeof (dtrace_hash_t), GFP_KERNEL);
+	dtrace_hash_t	*hash = vzalloc(sizeof(dtrace_hash_t));
+
+	if (hash == NULL)
+		return NULL;
 
 	hash->dth_stroffs = stroffs;
 	hash->dth_nextoffs = nextoffs;
@@ -63,13 +66,18 @@ dtrace_hash_t *dtrace_hash_create(uintptr_t stroffs, uintptr_t nextoffs,
 	hash->dth_size = 1;
 	hash->dth_mask = hash->dth_size - 1;
 
-	hash->dth_tab = kzalloc(hash->dth_size *
-				sizeof (dtrace_hashbucket_t *), GFP_KERNEL);
+	hash->dth_tab = vzalloc(hash->dth_size *
+				sizeof(dtrace_hashbucket_t *));
+
+	if (hash->dth_tab == NULL) {
+		vfree(hash);
+		return NULL;
+	}
 
 	return hash;
 }
 
-static void dtrace_hash_resize(dtrace_hash_t *hash)
+static int dtrace_hash_resize(dtrace_hash_t *hash)
 {
 	int			size = hash->dth_size, i, ndx;
 	int			new_size = hash->dth_size << 1;
@@ -78,7 +86,9 @@ static void dtrace_hash_resize(dtrace_hash_t *hash)
 
 	ASSERT((new_size & new_mask) == 0);
 
-	new_tab = kzalloc(new_size * sizeof (void *), GFP_KERNEL);
+	new_tab = vzalloc(new_size * sizeof(void *));
+	if (new_tab == NULL)
+		return -ENOMEM;
 
 	for (i = 0; i < size; i++) {
 		for (bucket = hash->dth_tab[i]; bucket != NULL;
@@ -94,13 +104,15 @@ static void dtrace_hash_resize(dtrace_hash_t *hash)
 		}
 	}
 
-	kfree(hash->dth_tab);
+	vfree(hash->dth_tab);
 	hash->dth_tab = new_tab;
 	hash->dth_size = new_size;
 	hash->dth_mask = new_mask;
+
+	return 0;
 }
 
-void dtrace_hash_add(dtrace_hash_t *hash, dtrace_probe_t *new)
+int dtrace_hash_add(dtrace_hash_t *hash, dtrace_probe_t *new)
 {
 	int			hashval = DTRACE_HASHSTR(hash, new);
 	int			ndx = hashval & hash->dth_mask;
@@ -113,12 +125,19 @@ void dtrace_hash_add(dtrace_hash_t *hash, dtrace_probe_t *new)
 	}
 
 	if ((hash->dth_nbuckets >> 1) > hash->dth_size) {
-		dtrace_hash_resize(hash);
+		int	err = 0;
+
+		if ((err = dtrace_hash_resize(hash)) != 0)
+			return err;
+
 		dtrace_hash_add(hash, new);
 		return;
 	}
 
-	bucket = kzalloc(sizeof (dtrace_hashbucket_t), GFP_KERNEL);
+	bucket = vzalloc(sizeof(dtrace_hashbucket_t));
+	if (bucket == NULL)
+		return -ENOMEM;
+
 	bucket->dthb_next = hash->dth_tab[ndx];
 	hash->dth_tab[ndx] = bucket;
 	hash->dth_nbuckets++;
@@ -209,7 +228,7 @@ void dtrace_hash_remove(dtrace_hash_t *hash, dtrace_probe_t *probe)
 			ASSERT(hash->dth_nbuckets > 0);
 
 			hash->dth_nbuckets--;
-			kfree(bucket);
+			vfree(bucket);
 
 			return;
 		}

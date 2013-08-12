@@ -39,7 +39,10 @@ dtrace_enabling_t *dtrace_enabling_create(dtrace_vstate_t *vstate)
 {
 	dtrace_enabling_t	*enab;
 
-	enab = kzalloc(sizeof (dtrace_enabling_t), GFP_KERNEL);
+	enab = vzalloc(sizeof (dtrace_enabling_t));
+	if (enab == NULL)
+		return NULL;
+
 	enab->dten_vstate = vstate;
 
 	return enab;
@@ -72,9 +75,9 @@ void dtrace_enabling_add(dtrace_enabling_t *enab, dtrace_ecbdesc_t *ecb)
 	ASSERT(enab->dten_ndesc < enab->dten_maxdesc);
 
 	nsize = enab->dten_maxdesc * sizeof (dtrace_enabling_t *);
-	ndesc = kzalloc(nsize, GFP_KERNEL);
+	ndesc = vzalloc(nsize);
 	memcpy(ndesc, enab->dten_desc, osize);
-	kfree(enab->dten_desc);
+	vfree(enab->dten_desc);
 
 	enab->dten_desc = ndesc;
 	enab->dten_desc[enab->dten_ndesc++] = ecb;
@@ -92,7 +95,7 @@ static void dtrace_enabling_addlike(dtrace_enabling_t *enab,
 	 * We're going to create a new ECB description that matches the
 	 * specified ECB in every way, but has the specified probe description.
 	 */
-	new = kzalloc(sizeof (dtrace_ecbdesc_t), GFP_KERNEL);
+	new = vzalloc(sizeof (dtrace_ecbdesc_t));
 
 	if ((pred = ecb->dted_pred.dtpdd_predicate) != NULL)
 		dtrace_predicate_hold(pred);
@@ -144,10 +147,10 @@ void dtrace_enabling_destroy(dtrace_enabling_t *enab)
 			dtrace_actdesc_release(act, vstate);
 		}
 
-		kfree(ep);
+		vfree(ep);
 	}
 
-	kfree(enab->dten_desc);
+	vfree(enab->dten_desc);
 
 	/*
 	 * If this was a retained enabling, decrement the dts_nretained count
@@ -179,7 +182,7 @@ void dtrace_enabling_destroy(dtrace_enabling_t *enab)
 		enab->dten_next->dten_prev = enab->dten_prev;
 	}
 
-	kfree(enab);
+	vfree(enab);
 }
 
 int dtrace_enabling_retain(dtrace_enabling_t *enab)
@@ -227,6 +230,8 @@ int dtrace_enabling_replicate(dtrace_state_t *state, dtrace_probedesc_t *match,
 	ASSERT(strlen(match->dtpd_name) < DTRACE_NAMELEN);
 
 	new = dtrace_enabling_create(&state->dts_vstate);
+	if (new == NULL)
+		return -ENOMEM;
 
 	/*
 	 * Iterate over all retained enablings, looking for enablings that
