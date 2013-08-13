@@ -1,5 +1,5 @@
 /*
- *  Copyright (c) 2004-2008 LSI Corporation.
+ *  Copyright (c) 2004-2010 LSI Corporation.
  *
  *
  *           Name:  mpi_sas.h

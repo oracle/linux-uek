@@ -4,9 +4,8 @@
  *      For use with LSI Fibre Channel PCI chip/adapters
  *      running LSI Fusion MPT (Message Passing Technology) firmware.
  *
- *  Copyright (c) 2000-2008 LSI Corporation
+ *  Copyright (c) 2000-2010 LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
- *
  */
 /*=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=*/
 /*
@@ -55,6 +54,7 @@
 #include <linux/module.h>
 #endif
 
+#include <linux/version.h>
 #include <linux/netdevice.h>
 #include <linux/errno.h>
 // #include <linux/etherdevice.h>
@@ -69,9 +69,11 @@
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
 #include <linux/delay.h>
+// #include <linux/trdevice.h>
 
 #include <asm/uaccess.h>
 #include <asm/io.h>
+#include <linux/pci.h>
 
     /* Override mptbase.h by pre-defining these! */
 #define MODULEAUTHOR	"LSI Corporation"
