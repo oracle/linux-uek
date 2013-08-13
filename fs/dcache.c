@@ -487,7 +487,10 @@ relock:
 	 * inform the fs via d_prune that this dentry is about to be
 	 * unhashed and destroyed.
 	 */
-	dentry_lru_prune(dentry);
+	if ((dentry->d_flags & DCACHE_OP_PRUNE) && !d_unhashed(dentry))
+		dentry_lru_prune(dentry);
+
+	dentry_lru_del(dentry);
 	/* if it was on the hash then remove it */
 	__d_drop(dentry);
 	return d_kill(dentry, parent);
@@ -733,6 +736,14 @@ restart:
 	hlist_for_each_entry(dentry, p, &inode->i_dentry, d_alias) {
 		spin_lock(&dentry->d_lock);
 		if (!dentry->d_count) {
+			/*
+			 * inform the fs via d_prune that this dentry
+			 * is about to be unhashed and destroyed.
+			 */
+			if ((dentry->d_flags & DCACHE_OP_PRUNE) &&
+			    !d_unhashed(dentry))
+				dentry->d_op->d_prune(dentry);
+
 			__dget_dlock(dentry);
 			__d_drop(dentry);
 			spin_unlock(&dentry->d_lock);
@@ -922,7 +933,11 @@ static void shrink_dcache_for_umount_subtree(struct dentry *dentry)
 			 * the fs that this dentry is about to be
 			 * unhashed and destroyed.
 			 */
-			dentry_lru_prune(dentry);
+			if ((dentry->d_flags & DCACHE_OP_PRUNE) &&
+			    !d_unhashed(dentry))
+				dentry_lru_prune(dentry);
+
+			dentry_lru_del(dentry);
 			__d_shrink(dentry);
 
 			if (dentry->d_count != 0) {
