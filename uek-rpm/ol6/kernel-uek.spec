@@ -100,14 +100,16 @@ Summary: The Linux kernel
 %endif
 
 # Control whether we perform a compat. check against published ABI.
+%ifarch sparc64
 %define with_kabichk 0
+%define fancy_debuginfo 0
+%else
+%define with_kabichk 1 
+%define fancy_debuginfo 1
+%endif
+
 # Control whether we build the hmac for fips mode.
 %define with_fips      %{?_without_fips:      0} %{?!_without_fips:      1}
-
-%define fancy_debuginfo 0
-%ifnarch sparc64
-%define fancy_debuginfo 1
-%endif 
 
 %if %{fancy_debuginfo}
 BuildRequires: rpm-build >= 4.4.2.1-4
