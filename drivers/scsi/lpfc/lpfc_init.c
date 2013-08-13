@@ -4917,9 +4917,6 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	lpfc_get_cfgparam(phba);
 	phba->max_vpi = LPFC_MAX_VPI;
 
-	/* Eventually cfg_fcp_eq_count / cfg_fcp_wq_count will be depricated */
-	phba->cfg_fcp_io_channel = phba->cfg_fcp_eq_count;
-
 	/* This will be set to correct value after the read_config mbox */
 	phba->max_vports = 0;
 
