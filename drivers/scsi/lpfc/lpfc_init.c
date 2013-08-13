@@ -6877,11 +6877,7 @@ lpfc_sli4_queue_verify(struct lpfc_hba *phba)
 		cfg_fcp_io_channel = phba->sli4_hba.max_cfg_param.max_eq;
 	}
 
-	/* Eventually cfg_fcp_eq_count / cfg_fcp_wq_count will be depricated */
-
 	/* The actual number of FCP event queues adopted */
-	phba->cfg_fcp_eq_count = cfg_fcp_io_channel;
-	phba->cfg_fcp_wq_count = cfg_fcp_io_channel;
 	phba->cfg_fcp_io_channel = cfg_fcp_io_channel;
 
 	/* Get EQ depth from module parameter, fake the default for now */
