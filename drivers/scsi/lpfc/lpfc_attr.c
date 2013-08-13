@@ -4147,11 +4147,11 @@ LPFC_ATTR_R(enable_hba_heartbeat, 0, 0, 1, "Enable HBA Heartbeat.");
 
 /*
 # lpfc_enable_bg: Enable BlockGuard (Emulex's Implementation of T10-DIF)
-#       0  = BlockGuard disabled (default)
-#       1  = BlockGuard enabled
-# Value range is [0,1]. Default value is 0.
+#       0  = BlockGuard disabled
+#       1  = BlockGuard enabled (default)
+# Value range is [0,1]. Default value is 1.
 */
-LPFC_ATTR_R(enable_bg, 0, 0, 1, "Enable BlockGuard Support");
+LPFC_ATTR_R(enable_bg, 1, 0, 1, "Enable BlockGuard Support");
 
 /*
 # lpfc_fcp_look_ahead: Look ahead for completions in FCP start routine
