@@ -310,7 +310,7 @@ static void *mlx4_en_add(struct mlx4_dev *dev)
 	}
 
 	/* Initialize time stamp mechanism */
-	if (mdev->dev->caps.cq_timestamp)
+	if (mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_TS)
 		mlx4_en_init_timestamp(mdev);
 
 	return mdev;

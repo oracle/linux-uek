@@ -178,7 +178,8 @@ enum {
 	MLX4_DEV_CAP_FLAG2_UPDATE_QP		= 1LL <<  6,
 	MLX4_DEV_CAP_FLAG2_LB_SRC_CHK		= 1LL <<  7,
 	MLX4_DEV_CAP_FLAG2_DMFS_IPOIB		= 1LL <<  8,
-	MLX4_DEV_CAP_FLAG2_ETS_CFG		= 1LL <<  9
+	MLX4_DEV_CAP_FLAG2_ETS_CFG		= 1LL <<  9,
+	MLX4_DEV_CAP_FLAG2_TS                   = 1LL <<  10,
 };
 
 /* bit enums for an 8-bit flags field indicating special use
@@ -465,7 +466,6 @@ struct mlx4_caps {
 	u32			bmme_flags;
 	u32			reserved_lkey;
 	u16			stat_rate_support;
-	u8			cq_timestamp;
 	u8			port_width_cap[MLX4_MAX_PORTS + 1];
 	int			max_gso_sz;
 	int			max_rss_tbl_sz;

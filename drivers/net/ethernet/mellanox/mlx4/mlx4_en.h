@@ -41,7 +41,6 @@
 #include <linux/netdevice.h>
 #include <linux/if_vlan.h>
 #include <linux/net_tstamp.h>
-#include <linux/timecompare.h>
 #ifdef CONFIG_MLX4_EN_DCB
 #include <linux/dcbnl.h>
 #endif
@@ -396,7 +395,7 @@ struct mlx4_en_dev {
 	u8			mac_removed[MLX4_MAX_PORTS + 1];
 	struct cyclecounter	cycles;
 	struct timecounter	clock;
-	struct timecompare	compare;
+	unsigned long		last_overflow_check;
 };
 
 
@@ -770,7 +769,7 @@ int mlx4_en_poll_rx_cq(struct napi_struct *napi, int budget);
 int mlx4_en_poll_tx_cq(struct napi_struct *napi, int budget);
 void mlx4_en_fill_qp_context(struct mlx4_en_priv *priv, int size, int stride,
 		int is_tx, int rss, int qpn, int cqn, int user_prio,
-		struct mlx4_qp_context *context, int disable_vstrip);
+		struct mlx4_qp_context *context);
 void mlx4_en_sqp_event(struct mlx4_qp *qp, enum mlx4_event event);
 int mlx4_en_map_buffer(struct mlx4_buf *buf);
 void mlx4_en_unmap_buffer(struct mlx4_buf *buf);
