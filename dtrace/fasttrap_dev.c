@@ -118,10 +118,8 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	fasttrap_id_t		*id;
 	int			is_enabled = 0;
 
-	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0) {
-		pr_info("    Ignored (no longer active)\n");
+	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0)
 		return 0;
-	}
 
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		fasttrap_probe_t	*ftp = id->fti_probe;
@@ -858,6 +856,9 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_offs[i];
 		tp->ftt_pid = provider->ftp_pid;
+
+		dt_dbg_dof("        Tracepoint at 0x%lx (0x%llx + 0x%x)\n",
+			   tp->ftt_pc, dhpb->dthpb_base, dhpb->dthpb_offs[i]);
 
 		pp->ftp_tps[i].fit_tp = tp;
 		pp->ftp_tps[i].fit_id.fti_probe = pp;

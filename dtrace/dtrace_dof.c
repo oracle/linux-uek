@@ -838,6 +838,10 @@ static int dtrace_dof_relocate(dof_hdr_t *dof, dof_sec_t *sec, uint64_t ubase)
 				return -1;
 			}
 
+			dt_dbg_dof("      Relocate 0x%llx + 0x%llx = 0x%llx\n",
+				   *(uint64_t *)taddr, ubase,
+				   *(uint64_t *)taddr + ubase);
+
 			*(uint64_t *)taddr += ubase;
 			break;
 		default:
@@ -1722,11 +1726,11 @@ static void dtrace_helper_provide_one(dof_helper_t *dhp, dof_sec_t *sec,
 	 */
 	dtrace_dofprov2hprov(&dhpv, prov, strtab);
 
+	dt_dbg_dof("    Creating provider %s for PID %d\n",
+		   strtab + prov->dofpv_name, pid);
+
 	if ((parg = mops->dtms_provide_pid(meta->dtm_arg, &dhpv, pid)) == NULL)
 		return;
-
-	dt_dbg_dof("    Created provider %s for PID %d\n",
-		   strtab + prov->dofpv_name, pid);
 
 	meta->dtm_count++;
 
@@ -1759,11 +1763,11 @@ static void dtrace_helper_provide_one(dof_helper_t *dhp, dof_sec_t *sec,
 		dhpb.dthpb_ntypes = strtab + probe->dofpr_nargv;
 		dhpb.dthpb_xtypes = strtab + probe->dofpr_xargv;
 
-		mops->dtms_create_probe(meta->dtm_arg, parg, &dhpb);
-
-		dt_dbg_dof("      Created probe %s:%s:%s:%s\n",
+		dt_dbg_dof("      Creating probe %s:%s:%s:%s\n",
 			   strtab + prov->dofpv_name, "", dhpb.dthpb_func,
 			   dhpb.dthpb_name);
+
+		mops->dtms_create_probe(meta->dtm_arg, parg, &dhpb);
 	}
 }
 
