@@ -184,9 +184,6 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 
 %if !%{debugbuildsenabled}
 %define with_debug 0
-%else
-# Turn off kabi for debug kernels
-%define with_kabichk 0
 %endif
 
 %if !%{with_debuginfo}
