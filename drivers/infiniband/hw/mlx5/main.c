@@ -88,7 +88,7 @@ struct mlx5_profile profile[] = {
 		.mask		= MLX5_PROF_MASK_QP_SIZE	|
 				  MLX5_PROF_MASK_MR_CACHE	|
 				  MLX5_PROF_MASK_DCT,
-		.log_max_qp	= 17,
+		.log_max_qp	= 19,
 		.dct_enable	= 1,
 		.mr_cache[0]	= {
 			.size	= 500,
