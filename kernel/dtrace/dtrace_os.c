@@ -990,9 +990,7 @@ void dtrace_task_cleanup(struct task_struct *tsk)
 		(*dtrace_helpers_cleanup)(tsk);
 
 	if (tsk->dtrace_probes) {
-		if (dtrace_fasttrap_probes_cleanup == NULL)
-			pr_warn("Fasttrap probes, yet no cleanup routine\n");
-		else
+		if (dtrace_fasttrap_probes_cleanup != NULL)
 			(*dtrace_fasttrap_probes_cleanup)(tsk);
 	}
 }
@@ -1031,30 +1029,26 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
 		return -ESRCH;
 	}
 
-	vma = p->mm->mmap;
-	if (vma->vm_file == NULL) {
-		pr_warn("DTRACE: vma->vm_file is NULL\n");
+	vma = find_vma(p->mm, addr);
+	if (vma == NULL || vma->vm_file == NULL)
 		return -ESRCH;
-	}
 
 	ino = vma->vm_file->f_mapping->host;
 	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
 
-	if (((uintptr_t)ino & 0xffff880000000000ULL) == 0xffff880000000000ULL) {
-		mtp->fmtp_cns.handler = handler;
+	mtp->fmtp_cns.handler = handler;
 
-		rc = uprobe_register(ino, off, &mtp->fmtp_cns);
+	rc = uprobe_register(ino, off, &mtp->fmtp_cns);
 
-		/*
-		 * If successful, increment the count of the number of
-		 * tracepoints active in the victim process.
-		 */
-		if (rc == 0) {
-			mtp->fmtp_ino = ino;
-			mtp->fmtp_off = off;
+	/*
+	 * If successful, increment the count of the number of
+	 * tracepoints active in the victim process.
+	 */
+	if (rc == 0) {
+		mtp->fmtp_ino = ino;
+		mtp->fmtp_off = off;
 
-			p->dtrace_tp_count++;
-		}
+		p->dtrace_tp_count++;
 	}
 
 	return rc;
