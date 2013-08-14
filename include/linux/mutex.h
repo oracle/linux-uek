@@ -19,6 +19,10 @@
 #include <asm/processor.h>
 #include <linux/osq_lock.h>
 
+#ifdef CONFIG_SMP
+# include <asm/current.h>
+#endif
+
 /*
  * Simple, straightforward mutexes with strict semantics:
  *
