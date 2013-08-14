@@ -694,9 +694,9 @@ Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 %endif\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: elfutils-libelf
-Requires: elfutils-libs
-Requires: libdtrace-ctf
+Requires: elfutils-libelf\
+Requires: elfutils-libs\
+Requires: libdtrace-ctf\
 %description -n kernel%{?variant}%{?1:-%{1}}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
