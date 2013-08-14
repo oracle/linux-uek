@@ -83,14 +83,13 @@ extern int ext4_flush_completed_IO(struct inode *inode)
 	int ret = 0;
 	int ret2 = 0;
 
-	if (list_empty(&ei->i_completed_io_list))
-		return ret;
-
 	dump_completed_IO(inode);
 	spin_lock_irqsave(&ei->i_completed_io_lock, flags);
 	while (!list_empty(&ei->i_completed_io_list)){
 		io = list_entry(ei->i_completed_io_list.next,
 				ext4_io_end_t, list);
+		list_del_init(&io->list);
+		io->flag |= EXT4_IO_END_IN_FSYNC;
 		/*
 		 * Calling ext4_end_io_nolock() to convert completed
 		 * IO to written.
@@ -107,11 +106,10 @@ extern int ext4_flush_completed_IO(struct inode *inode)
 		 */
 		spin_unlock_irqrestore(&ei->i_completed_io_lock, flags);
 		ret = ext4_end_io_nolock(io);
-		spin_lock_irqsave(&ei->i_completed_io_lock, flags);
 		if (ret < 0)
 			ret2 = ret;
-		else
-			list_del_init(&io->list);
+		spin_lock_irqsave(&ei->i_completed_io_lock, flags);
+		io->flag &= ~EXT4_IO_END_IN_FSYNC;
 	}
 	spin_unlock_irqrestore(&ei->i_completed_io_lock, flags);
 	return (ret2 < 0) ? ret2 : 0;
