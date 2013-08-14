@@ -659,13 +659,12 @@ int main(int argc, char *argv[])
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if (((argc < 2) && (strcmp(argv[1], "-e") == 0)) ||
-	    (argc < 6 && (strcmp(argv[1], "-e") != 0))) {
+	if (argc < 2 || strcmp(argv[1], "-e") == 0 ||
+	    (argc < 6 && (strcmp(argv[2], "-e") != 0))) {
 		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin modules.builtin dedup.blacklist\n");
 		fprintf(stderr, "		   member.blacklist vmlinux.o module.o...,\n");
 		fprintf(stderr, "	 or dwarf2ctf outputdir -e module.o ... "
-			"for (inefficient)\n");
-		fprintf(stderr, "external module use\n");
+			"for external module use\n");
 		exit(1);
 	}
 
