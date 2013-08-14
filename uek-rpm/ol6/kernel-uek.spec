@@ -496,6 +496,9 @@ BuildRequires: net-tools
 BuildRequires: elfutils-libelf-devel
 BuildRequires: python
 BuildRequires: flex >= 2.5.19, bison >= 2.3
+BuildRequires: pkgconfig
+BuildRequires: glib2-devel
+BuildRequires: elfutils-devel
 %if %{with_doc}
 BuildRequires: xmlto
 %endif
@@ -510,9 +513,6 @@ BuildRequires: openssl
 BuildRequires: hmaccalc
 %endif
 %if %{with_dtrace}
-BuildRequires: pkgconfig
-BuildRequires: glib2-devel
-BuildRequires: elfutils-devel
 BuildRequires: libdtrace-ctf-devel
 %endif
 BuildConflicts: rhbuildsys(DiskFree) < 500Mb
@@ -694,6 +694,9 @@ Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 %endif\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
+Requires: elfutils-libelf
+Requires: elfutils-libs
+Requires: libdtrace-ctf
 %description -n kernel%{?variant}%{?1:-%{1}}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
