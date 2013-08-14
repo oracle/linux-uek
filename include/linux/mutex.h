@@ -17,6 +17,10 @@
 
 #include <linux/atomic.h>
 
+#ifdef CONFIG_SMP
+# include <asm/current.h>
+#endif
+
 /*
  * Simple, straightforward mutexes with strict semantics:
  *
