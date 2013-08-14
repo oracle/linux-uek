@@ -23,10 +23,8 @@ HOSTCFLAGS_asn1_compiler.o = -I$(srctree)/include
 
 always		:= $(hostprogs-y) $(hostprogs-m)
 
-ifeq ($(ARCH),x86_64)
-	HOSTCFLAGS_kallsyms.o := $(shell pkg-config --cflags glib-2.0) -g
-	HOSTLOADLIBES_kallsyms := $(shell pkg-config --libs glib-2.0) -ldw -g
-endif
+HOSTCFLAGS_kallsyms.o := $(shell pkg-config --cflags glib-2.0) -g
+HOSTLOADLIBES_kallsyms := $(shell pkg-config --libs glib-2.0) -ldw -g
 
 # The following hostprogs-y programs are only build on demand
 hostprogs-y += unifdef docproc
