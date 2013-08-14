@@ -327,7 +327,6 @@ int mgag200_bo_create(struct drm_device *dev, int size, int align,
 		return ret;
 	}
 
-	mgabo->gem.driver_private = NULL;
 	mgabo->bo.bdev = &mdev->ttm.bdev;
 	mgabo->bo.bdev->dev_mapping = dev->dev_mapping;
 
