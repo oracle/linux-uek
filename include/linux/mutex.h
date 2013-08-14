@@ -21,6 +21,10 @@
 #include <linux/osq_lock.h>
 #include <linux/debug_locks.h>
 
+#ifdef CONFIG_SMP
+# include <asm/current.h>
+#endif
+
 struct ww_acquire_ctx;
 
 /*
