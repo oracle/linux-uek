@@ -436,7 +436,9 @@ struct sk_buff {
 	union {
 		__u32		mark;
 		__u32		dropcount;
+#ifndef __GENKSYMS__
 		__u32		reserved_tailroom;
+#endif
 	};
 
 	__u16			vlan_tci;
