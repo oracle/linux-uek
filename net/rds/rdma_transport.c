@@ -109,9 +109,9 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn);
-			} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+			}
+		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
 				conn->c_to_index++;
-		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
