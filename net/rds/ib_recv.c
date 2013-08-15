@@ -35,6 +35,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/module.h>
 #include <rdma/rdma_cm.h>
+#include <linux/vmalloc.h>
 
 #include "rds.h"
 #include "ib.h"
