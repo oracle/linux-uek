@@ -171,6 +171,12 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 		RDS_PROTOCOL_MINOR(conn->c_version),
 		ic->i_flowctl ? ", flow control" : "");
 
+	/* The connection might have been dropped under us*/
+	if (!ic->i_cm_id) {
+		rds_conn_drop(conn);
+		return;
+	}
+
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 
 	/*
