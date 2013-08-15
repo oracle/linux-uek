@@ -296,6 +296,13 @@ struct rds_ib_port {
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
 
+#define RDS_IB_MAX_EXCL_IPS     20
+struct rds_ib_excl_ips {
+	__be32                  ip;
+	__be32                  prefix;
+	__be32                  mask;
+};
+
 enum {
 	RDS_IB_PORT_EVENT_IB,
 	RDS_IB_PORT_EVENT_NET,
