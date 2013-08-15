@@ -159,8 +159,6 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 				RDS_PROTOCOL_MINOR(conn->c_version));
 			rds_conn_destroy(conn);
 			return;
-		} else {
-			conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 		}
 	}
 
