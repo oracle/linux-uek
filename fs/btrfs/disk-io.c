@@ -1509,6 +1509,9 @@ struct btrfs_root *btrfs_read_fs_root_no_name(struct btrfs_fs_info *fs_info,
 	if (location->objectid == BTRFS_QUOTA_TREE_OBJECTID)
 		return fs_info->quota_root ? fs_info->quota_root :
 					     ERR_PTR(-ENOENT);
+	if (location->objectid == BTRFS_UUID_TREE_OBJECTID)
+		return fs_info->uuid_root ? fs_info->uuid_root :
+					    ERR_PTR(-ENOENT);
 again:
 	spin_lock(&fs_info->fs_roots_radix_lock);
 	root = radix_tree_lookup(&fs_info->fs_roots_radix,
@@ -1951,7 +1954,12 @@ static void free_root_pointers(struct btrfs_fs_info *info, int chunk_root)
 		info->quota_root->node = NULL;
 		info->quota_root->commit_root = NULL;
 	}
-
+	if (info->uuid_root) {
+		free_extent_buffer(info->uuid_root->node);
+		free_extent_buffer(info->uuid_root->commit_root);
+		info->uuid_root->node = NULL;
+		info->uuid_root->commit_root = NULL;
+	}
 	if (chunk_root) {
 		free_extent_buffer(info->chunk_root->node);
 		free_extent_buffer(info->chunk_root->commit_root);
@@ -1982,11 +1990,13 @@ int open_ctree(struct super_block *sb,
 	struct btrfs_root *chunk_root;
 	struct btrfs_root *dev_root;
 	struct btrfs_root *quota_root;
+	struct btrfs_root *uuid_root;
 	struct btrfs_root *log_tree_root;
 	int ret;
 	int err = -EINVAL;
 	int num_backups_tried = 0;
 	int backup_index = 0;
+	bool create_uuid_tree = false;
 
 	tree_root = fs_info->tree_root = btrfs_alloc_root(fs_info);
 	extent_root = fs_info->extent_root = btrfs_alloc_root(fs_info);
@@ -1994,9 +2004,10 @@ int open_ctree(struct super_block *sb,
 	chunk_root = fs_info->chunk_root = btrfs_alloc_root(fs_info);
 	dev_root = fs_info->dev_root = btrfs_alloc_root(fs_info);
 	quota_root = fs_info->quota_root = btrfs_alloc_root(fs_info);
+	uuid_root = fs_info->uuid_root = btrfs_alloc_root(fs_info);
 
 	if (!tree_root || !extent_root || !csum_root ||
-	    !chunk_root || !dev_root || !quota_root) {
+	    !chunk_root || !dev_root || !quota_root || !uuid_root) {
 		err = -ENOMEM;
 		goto fail;
 	}
@@ -2511,6 +2522,20 @@ retry_root_backup:
 		fs_info->pending_quota_state = 1;
 	}
 
+	ret = find_and_setup_root(tree_root, fs_info,
+				  BTRFS_UUID_TREE_OBJECTID, uuid_root);
+	if (ret) {
+		if (ret != -ENOENT)
+			goto recovery_tree_root;
+
+		create_uuid_tree = true;
+		kfree(uuid_root);
+		uuid_root = fs_info->uuid_root = NULL;
+	} else {
+		uuid_root->track_dirty = 1;
+		fs_info->uuid_root = uuid_root;
+	}
+
 	fs_info->generation = generation;
 	fs_info->last_trans_committed = generation;
 
@@ -2688,6 +2713,17 @@ retry_root_backup:
 		pr_warn("btrfs: failed to resume dev_replace\n");
 		close_ctree(tree_root);
 		return ret;
+	}
+
+	if (create_uuid_tree) {
+		pr_info("btrfs: creating UUID tree\n");
+		ret = btrfs_create_uuid_tree(fs_info);
+		if (ret) {
+			pr_warn("btrfs: failed to create the UUID tree %d\n",
+				ret);
+			close_ctree(tree_root);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -3368,6 +3404,12 @@ int close_ctree(struct btrfs_root *root)
 	if (fs_info->quota_root) {
 		free_extent_buffer(fs_info->quota_root->node);
 		free_extent_buffer(fs_info->quota_root->commit_root);
+	}
+	if (fs_info->uuid_root) {
+		free_extent_buffer(fs_info->uuid_root->node);
+		free_extent_buffer(fs_info->uuid_root->commit_root);
+		fs_info->uuid_root->node = NULL;
+		fs_info->uuid_root->commit_root = NULL;
 	}
 
 	btrfs_free_block_groups(fs_info);
