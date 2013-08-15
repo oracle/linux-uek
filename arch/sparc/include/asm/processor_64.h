@@ -257,6 +257,9 @@ static inline void prefetchw(const void *x)
 
 #define HAVE_ARCH_PICK_MMAP_LAYOUT
 
+extern unsigned long sparc64_task_size_max;
+extern unsigned long sparc64_task_unmmaped_base;
+
 #endif /* !(__ASSEMBLY__) */
 
 #endif /* !(__ASM_SPARC64_PROCESSOR_H) */

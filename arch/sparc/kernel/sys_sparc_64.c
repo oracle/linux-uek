@@ -48,6 +48,8 @@ static unsigned long va_hole_end = 0xfffff80000000000UL + (1UL << 32UL);
 /* Let's default to historical values. */
 unsigned long sparc64_task_unmmaped_base = 0xfffff80000000000UL + (1UL << 32UL);
 unsigned long sparc64_task_size_max = (unsigned long ) -VPTE_SIZE;
+EXPORT_SYMBOL(sparc64_task_unmmaped_base);
+EXPORT_SYMBOL(sparc64_task_size_max);
 
 /* For three level page table we default to original values. */
 void __init niagara_va_limits_init(void)
