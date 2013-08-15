@@ -68,6 +68,7 @@ unsigned int rds_ib_cq_balance_enabled = 1;
 #endif
 static char *rds_ib_active_bonding_failover_groups = NULL;
 unsigned int rds_ib_active_bonding_arps = RDS_IB_DEFAULT_NUM_ARPS;
+static char *rds_ib_active_bonding_excl_ips = "169.254/16,172.10/16";
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_1m_pool_size, " Max number of 1m fmr per HCA");
@@ -104,6 +105,9 @@ MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
 #endif
 module_param(rds_ib_active_bonding_arps, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_arps, " Num ARPs to be sent when IP moved");
+module_param(rds_ib_active_bonding_excl_ips, charp, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_excl_ips,
+	"[<IP>/<prefix>][,<IP>/<prefix>]*");
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
@@ -124,6 +128,9 @@ struct socket	*rds_ib_inet_socket;
 static struct rds_ib_port *ip_config;
 static u8	ip_port_cnt = 0;
 static u8	ip_port_max = RDS_IB_MAX_PORTS;
+
+static struct rds_ib_excl_ips excl_ips_tbl[RDS_IB_MAX_EXCL_IPS];
+static u8       excl_ips_cnt = 0;
 
 void rds_ib_nodev_connect(void)
 {
@@ -845,15 +852,27 @@ static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
 				__be32			ip_bcast,
 				__be32			ip_mask)
 {
-	unsigned int	idx;
+	unsigned int	idx, i;
+	__be32          excl_addr = 0;
+
+	for (i = 0; i < excl_ips_cnt; i++) {
+		if (!((excl_ips_tbl[i].ip ^ ip_addr) &
+			excl_ips_tbl[i].mask)) {
+			excl_addr = 1;
+			break;
+		}
+	}
 
 	if (!strcmp(net_dev->name, if_name)) {
+		if (excl_addr)
+			ip_addr = ip_bcast = ip_mask = 0;
+
 		strcpy(ip_config[port].if_name, if_name);
 		ip_config[port].ip_addr = ip_addr;
 		ip_config[port].ip_bcast = ip_bcast;
 		ip_config[port].ip_mask = ip_mask;
 		ip_config[port].ip_active_port = port;
-	} else {
+	} else if (!excl_addr) {
 		idx = ip_config[port].alias_cnt++;
 		strcpy(ip_config[port].aliases[idx].if_name, if_name);
 		ip_config[port].aliases[idx].ip_addr = ip_addr;
@@ -1261,6 +1280,103 @@ static int rds_ib_ip_config_init(void)
 	return ret;
 }
 
+static int rds_ib_excl_ip(char *str)
+{
+	char *tok, *nxt_tok, *end, *prefix_str;
+	unsigned int octet_cnt = 0;
+	unsigned long prefix = 0;
+	__be32  ip = 0;
+
+	prefix_str = strchr(str, '/');
+	if (prefix_str) {
+		*prefix_str = '\0';
+		prefix_str++;
+		prefix = simple_strtol(prefix_str, &end, 0);
+		if (*end) {
+			printk(KERN_WARNING "RDS/IP: Warning: IP prefix "
+				"%s improperly formatted\n", prefix_str);
+			goto err;
+		} else if (prefix > 32) {
+			printk(KERN_WARNING "RDS/IP: Warning: IP prefix "
+				"%lu out of range\n", prefix);
+			goto err;
+		} else {
+			tok = str;
+			while (tok && octet_cnt < 4) {
+				unsigned long octet;
+
+				nxt_tok = strchr(tok, '.');
+				if (nxt_tok) {
+					*nxt_tok = '\0';
+					nxt_tok++;
+				}
+				octet = simple_strtoul(tok, &end, 0);
+				if (*end) {
+					printk(KERN_WARNING "RDS/IP: Warning: "
+						"IP octet %s improperly "
+						" formatted\n", tok);
+					goto err;
+				} else if (octet > 255) {
+					printk(KERN_WARNING "RDS/IP: Warning: "
+						"IP octet %lu out of range\n",
+						octet);
+					goto err;
+				} else {
+					((unsigned char *)&ip)[octet_cnt] =
+						(unsigned char)octet;
+					octet_cnt++;
+				}
+				tok = nxt_tok;
+			}
+
+			if (tok) {
+				printk(KERN_WARNING "RDS/IP: Warning: IP "
+					"%s is improperly formatted\n", str);
+				goto err;
+			}
+		}
+	} else {
+		printk(KERN_WARNING "RDS/IP: Warning: IP prefix not "
+			"specified\n");
+		goto err;
+	}
+
+	excl_ips_tbl[excl_ips_cnt].ip = ip;
+	excl_ips_tbl[excl_ips_cnt].prefix = prefix;
+	excl_ips_tbl[excl_ips_cnt].mask = inet_make_mask(prefix);
+
+	excl_ips_cnt++;
+
+	return 0;
+err:
+	return 1;
+}
+
+void rds_ib_ip_excl_ips_init(void)
+{
+	char *tok, *nxt_tok;
+	char str[1024];
+
+	if (rds_ib_active_bonding_excl_ips == NULL)
+		return;
+
+	strcpy(str, rds_ib_active_bonding_excl_ips);
+
+	tok = str;
+	while (tok) {
+		nxt_tok = strchr(tok, ',');
+		if (nxt_tok) {
+			*nxt_tok = '\0';
+			nxt_tok++;
+		}
+
+		if (rds_ib_excl_ip(tok))
+			return;
+
+		tok = nxt_tok;
+	}
+}
+
 void rds_ib_ip_failover_groups_init(void)
 {
 	char *tok, *grp, *nxt_tok, *nxt_grp;
@@ -1595,6 +1711,8 @@ int rds_ib_init(void)
 		goto out_srq;
 
 	rds_info_register_func(RDS_INFO_IB_CONNECTIONS, rds_ib_ic_info);
+
+	rds_ib_ip_excl_ips_init();
 
 	ret = rds_ib_ip_config_init();
 	if (ret) {
