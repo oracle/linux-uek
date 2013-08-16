@@ -193,13 +193,13 @@ $(ctf-filelist): $(builtins) $(modules:.ko=.o)
 # (Standalone modules get their own per-module stamp files.)
 $(ctf-stamp): $(ctf-filelist)
 	$(call if_changed,ctf)
-	@shopt -s nullglob; \
+	@$(CONFIG_SHELL) -c 'shopt -s nullglob; \
 	for name in $(ctf-dir)/*.builtin.ctf; do \
 		[[ -f $${name}.new ]] || rm -f $$name; \
 	done; \
 	for name in $(ctf-dir)/*.ctf.new; do \
 		$(srctree)/scripts/move-if-change $$name $${name%.new}; \
-	done
+	done'
 	@touch $(ctf-stamp)
 
 # Expands to the names of the CTF files to be incorporated into this module.
