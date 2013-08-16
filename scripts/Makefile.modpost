@@ -124,7 +124,6 @@ targets += $(modules:.ko=.mod.o)
 # is a build of an external module.
 
 ifdef CONFIG_CTF
-ifndef CONFIG_DT_DISABLE_CTF
 
 # This is quite tricky.  If called for non-external-modules, dwarf2ctf needs to
 # be told about all the built-in objects as well as all the external modules --
@@ -231,14 +230,6 @@ cmd_touch_ctf = @for name in $(filter $(ctf-dir)/%,$(module-ctfs-modular)); do \
 		    test -f $$name || dd if=/dev/zero of=$$name bs=1 count=1 2>/dev/null; \
 		done
 
-else		# CONFIG_DT_DISABLE_CTF
-
-module-ctfs-modular-prereq =
-module-ctfs-builtin =
-module-ctf-flags =
-cmd-touch-ctf = @:
-
-endif
 else		# !CONFIG_CTF
 
 module-ctfs-modular-prereq =
