@@ -106,6 +106,8 @@ struct cpufreq_policy {
 	struct work_struct	update; /* if update_policy() needs to be
 					 * called, but you're in IRQ context */
 
+	bool                    governor_enabled; /* governor start/stop flag */
+
 	struct cpufreq_real_policy	user_policy;
 
 	struct kobject		kobj;
