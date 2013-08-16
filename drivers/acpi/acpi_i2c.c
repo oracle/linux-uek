@@ -14,8 +14,13 @@
 #include <linux/export.h>
 #include <linux/i2c.h>
 #include <linux/ioport.h>
+#include <linux/module.h>
 
 ACPI_MODULE_NAME("i2c");
+
+MODULE_DESCRIPTION("ACPI I2C enumeration support");
+MODULE_AUTHOR("Mika Westerberg");
+MODULE_LICENSE("GPL");
 
 static int acpi_i2c_add_resource(struct acpi_resource *ares, void *data)
 {
