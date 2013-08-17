@@ -309,6 +309,11 @@ struct rds_ib_port_ud_work {
 	int				event_type;
 };
 
+struct rds_ib_conn_drop_work {
+	struct delayed_work             work;
+	struct rds_ib_connection        *conn;
+};
+
 enum {
 	RDS_IB_MR_8K_POOL,
 	RDS_IB_MR_1M_POOL,

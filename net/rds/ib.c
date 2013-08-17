@@ -58,6 +58,7 @@ unsigned int rds_ib_apm_fallback = 1;
 #endif
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
+unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 #if RDMA_RDS_APM_SUPPORTED
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 #endif
@@ -95,6 +96,8 @@ MODULE_PARM_DESC(rds_ib_active_bonding_fallback, " Active Bonding failback Enabl
 module_param(rds_ib_active_bonding_failover_groups, charp, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
+module_param(rds_ib_active_bonding_reconnect_delay, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_reconnect_delay, " Active Bonding reconnect delay");
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
@@ -535,6 +538,17 @@ static void rds_ib_update_arp_cache(struct net_device      *out_dev,
 	}
 }
 
+static void rds_ib_conn_drop(struct work_struct *_work)
+{
+	struct rds_ib_conn_drop_work    *work =
+		container_of(_work, struct rds_ib_conn_drop_work, work.work);
+	struct rds_connection   *conn = (struct rds_connection *)work->conn;
+
+	rds_conn_drop(conn);
+
+	kfree(work);
+}
+
 static int rds_ib_move_ip(char			*from_dev,
 			char			*to_dev,
 			u8			from_port,
@@ -558,6 +572,7 @@ static int rds_ib_move_ip(char			*from_dev,
 	struct in_device	*in_dev;
 	struct rds_ib_connection *ic, *ic2;
 	struct rds_ib_device *rds_ibdev;
+	struct rds_ib_conn_drop_work *work;
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
@@ -728,7 +743,22 @@ static int rds_ib_move_ip(char			*from_dev,
 					}
 				}
 
-				rds_conn_drop(ic->conn);
+				if (event_type == RDS_IB_PORT_EVENT_IB &&
+					failover) {
+					work = kzalloc(sizeof *work, GFP_ATOMIC);
+					if (!work) {
+						printk(KERN_ERR
+							"RDS/IB: failed to allocate connection drop work\n");
+							spin_unlock_bh(&rds_ibdev->spinlock);
+							goto out;
+					}
+
+					work->conn = (struct rds_ib_connection *)ic->conn;
+					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
+					queue_delayed_work(rds_wq, &work->work,
+						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
+				} else
+					rds_conn_drop(ic->conn);
 			}
 		}
 		spin_unlock_bh(&rds_ibdev->spinlock);
@@ -1454,8 +1484,9 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		return NOTIFY_DONE;
 
 	for (i = 1; i <= ip_port_cnt; i++) {
-		if (!strcmp(ndev->name, ip_config[i].if_name)) {
-			if (event == NETDEV_UP)
+		if (!strcmp(ndev->name, ip_config[i].if_name) &&
+			ip_config[i].rds_ibdev) {
+			if (event == NETDEV_UP && ip_config[i].dev != ndev)
 				rds_ib_update_ip_config();
 			port = i;
 			break;
