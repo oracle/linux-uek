@@ -977,8 +977,15 @@ EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
 void dtrace_task_init(struct task_struct *tsk)
 {
+	tsk->predcache = 0;
+	tsk->dtrace_vtime = ktime_set(0, 0);
+	tsk->dtrace_start = ktime_set(0, 0);
+	tsk->dtrace_stop = 0;
+	tsk->dtrace_sig = 0;
+
 	tsk->dtrace_helpers = NULL;
 	tsk->dtrace_probes = 0;
+	tsk->dtrace_tp_count = 0;
 }
 
 void dtrace_task_cleanup(struct task_struct *tsk)
