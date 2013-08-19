@@ -28,7 +28,8 @@ if DT_CORE
 config DT_FASTTRAP
 	tristate "Fasttrap Tracing"
 	default m
-	select UPROBES
+	depends on ARCH_SUPPORTS_UPROBES
+	select UPROBE_EVENT
 	help
 	  To be written.
 
