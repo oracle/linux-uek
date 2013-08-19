@@ -3214,6 +3214,8 @@ static void free_fs_root(struct btrfs_root *root)
 {
 	iput(root->cache_inode);
 	WARN_ON(!RB_EMPTY_ROOT(&root->inode_tree));
+	btrfs_free_block_rsv(root, root->orphan_block_rsv);
+	root->orphan_block_rsv = NULL;
 	if (root->anon_dev)
 		free_anon_bdev(root->anon_dev);
 	free_extent_buffer(root->node);
@@ -3413,6 +3415,9 @@ int close_ctree(struct btrfs_root *root)
 
 	bdi_destroy(&fs_info->bdi);
 	cleanup_srcu_struct(&fs_info->subvol_srcu);
+
+	btrfs_free_block_rsv(root, root->orphan_block_rsv);
+	root->orphan_block_rsv = NULL;
 
 	return 0;
 }
