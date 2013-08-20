@@ -1014,22 +1014,10 @@ void rds_ib_check_migration(struct rds_connection *conn,
 }
 #endif
 
-static void rds_ib_destroy_id(struct work_struct *_work)
-{
-	struct rds_ib_destroy_id_work *work =
-		container_of(_work, struct rds_ib_destroy_id_work, work.work);
-	struct rdma_cm_id        *cm_id = work->cm_id;
-
-	rdma_destroy_id(cm_id);
-
-	kfree(work);
-}
-
 int rds_ib_conn_connect(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct sockaddr_in src, dest;
-	struct rds_ib_destroy_id_work *work;
 	int ret;
 
 	/* XXX I wonder what affect the port space has */
@@ -1060,13 +1048,7 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	if (ret) {
 		rdsdebug("addr resolve failed for cm id %p: %d\n", ic->i_cm_id,
 			 ret);
-		work = kzalloc(sizeof *work, GFP_KERNEL);
-		if (work) {
-			work->cm_id = ic->i_cm_id;
-			INIT_DELAYED_WORK(&work->work, rds_ib_destroy_id);
-			queue_delayed_work(rds_aux_wq, &work->work, 0);
-		} else
-			rdma_destroy_id(ic->i_cm_id);
+		rdma_destroy_id(ic->i_cm_id);
 
 		ic->i_cm_id = NULL;
 	}
@@ -1083,7 +1065,6 @@ out:
 void rds_ib_conn_shutdown(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct rds_ib_destroy_id_work *work;
 	int err = 0;
 
 	rdsdebug("cm %p pd %p cq %p qp %p\n", ic->i_cm_id,
@@ -1162,17 +1143,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		if (ic->i_recvs)
 			rds_ib_recv_clear_ring(ic);
 
-		/*
-		 * rdma_destroy_id may block so offload it to the aux
-		 * thread for processing.
-		 */
-		work = kzalloc(sizeof *work, GFP_KERNEL);
-		if (work) {
-			work->cm_id = ic->i_cm_id;
-			INIT_DELAYED_WORK(&work->work, rds_ib_destroy_id);
-			queue_delayed_work(rds_aux_wq, &work->work, 0);
-		} else
-			rdma_destroy_id(ic->i_cm_id);
+		rdma_destroy_id(ic->i_cm_id);
 
 		/*
 		 * Move connection back to the nodev list.
