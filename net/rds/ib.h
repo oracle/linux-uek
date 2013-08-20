@@ -141,11 +141,6 @@ struct rds_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct rds_ib_destroy_id_work {
-	struct delayed_work             work;
-	struct rdma_cm_id               *cm_id;
-};
-
 struct rds_ib_migrate_work {
 	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
