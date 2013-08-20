@@ -540,8 +540,6 @@ Source1001: config-x86_64-debug
 Source1004: config-sparc
 Source1005: config-sparc-debug
 
-Source1100: config-dtrace
-
 Source26: Module.kabi_x86_64
 
 Source201: kabi_whitelist_x86_64
@@ -967,10 +965,6 @@ mkdir -p configs
 	cp %{SOURCE1004} configs/config
 %endif #ifarch sparc
 
-%if %{with_dtrace}
-	cp %{SOURCE1100} configs/config-dtrace
-%endif #with_dtrace
-
 # get rid of unwanted files resulting from patch fuzz
 find . \( -name "*.orig" -o -name "*~" \) -exec rm -f {} \; >/dev/null
 
@@ -1037,10 +1031,6 @@ BuildKernel() {
     else
 	cp configs/config .config
     fi
-
-%if %{with_dtrace}
-    cat configs/config-dtrace >> .config
-%endif
 
     Arch=`head -n 3 .config |grep -e "Linux.*Kernel" |cut -d '/' -f 2 | cut -d ' ' -f 1`
     echo USING ARCH=$Arch 
