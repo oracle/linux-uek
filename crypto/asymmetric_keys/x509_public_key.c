@@ -27,10 +27,11 @@
 /*
  * Find a key in the given keyring by issuer and authority.
  */
-static struct key *x509_request_asymmetric_key(
-	struct key *keyring,
-	const char *signer, size_t signer_len,
-	const char *authority, size_t auth_len)
+static struct key *x509_request_asymmetric_key(struct key *keyring,
+					       const char *signer,
+					       size_t signer_len,
+					       const char *authority,
+					       size_t auth_len)
 {
 	key_ref_t key;
 	char *id;
@@ -67,7 +68,8 @@ static struct key *x509_request_asymmetric_key(
 		}
 	}
 
-	pr_devel("<==%s() = 0 [%x]\n", __func__, key_serial(key_ref_to_ptr(key)));
+	pr_devel("<==%s() = 0 [%x]\n", __func__,
+		 key_serial(key_ref_to_ptr(key)));
 	return key_ref_to_ptr(key);
 }
 
@@ -166,6 +168,9 @@ static int x509_validate_trust(struct x509_certificate *cert,
 	struct key *key;
 	int ret = 1;
 
+	if (!trust_keyring)
+		return -EOPNOTSUPP;
+
 	key = x509_request_asymmetric_key(trust_keyring,
 					  cert->issuer, strlen(cert->issuer),
 					  cert->authority,
@@ -173,6 +178,7 @@ static int x509_validate_trust(struct x509_certificate *cert,
 	if (!IS_ERR(key))  {
 		pk = key->payload.data;
 		ret = x509_check_signature(pk, cert);
+		key_put(key);
 	}
 	return ret;
 }
@@ -232,8 +238,8 @@ static int x509_key_preparse(struct key_preparsed_payload *prep)
 		ret = x509_check_signature(cert->pub, cert); /* self-signed */
 		if (ret < 0)
 			goto error_free_cert;
-	} else {
-		ret = x509_validate_trust(cert, system_trusted_keyring);
+	} else if (!prep->trusted) {
+		ret = x509_validate_trust(cert, get_system_trusted_keyring());
 		if (!ret)
 			prep->trusted = 1;
 	}
