@@ -434,6 +434,9 @@ struct mm_struct {
 	int first_nid;
 #endif
 	struct uprobes_state uprobes_state;
+#ifndef __GENKSYMS__
+	unsigned long mmap_legacy_base;         /* base of mmap area in bottom-up allocations */
+#endif
 };
 
 /* first nid will either be a valid NID or one of these values */
