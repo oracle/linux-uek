@@ -69,6 +69,7 @@ struct fuse_mount_data {
 	unsigned flags;
 	unsigned max_read;
 	unsigned blksize;
+	unsigned numaon;
 };
 
 struct fuse_forget_link *fuse_alloc_forget(void)
@@ -442,6 +443,7 @@ enum {
 	OPT_ALLOW_OTHER,
 	OPT_MAX_READ,
 	OPT_BLKSIZE,
+	OPT_NUMA_ON,
 	OPT_ERR
 };
 
@@ -454,6 +456,7 @@ static const match_table_t tokens = {
 	{OPT_ALLOW_OTHER,		"allow_other"},
 	{OPT_MAX_READ,			"max_read=%u"},
 	{OPT_BLKSIZE,			"blksize=%u"},
+	{OPT_NUMA_ON,			"numa"},
 	{OPT_ERR,			NULL}
 };
 
@@ -527,6 +530,10 @@ static int parse_fuse_opt(char *opt, struct fuse_mount_data *d, int is_bdev)
 			d->blksize = value;
 			break;
 
+		case OPT_NUMA_ON:
+			d->numaon = 1;
+			break;
+
 		default:
 			return 0;
 		}
@@ -554,16 +561,20 @@ static int fuse_show_options(struct seq_file *m, struct dentry *root)
 		seq_printf(m, ",max_read=%u", fc->max_read);
 	if (sb->s_bdev && sb->s_blocksize != FUSE_DEFAULT_BLKSIZE)
 		seq_printf(m, ",blksize=%lu", sb->s_blocksize);
+	if (fc->numa_on)
+		seq_puts(m, "numa");
 	return 0;
 }
 
-void fuse_conn_init(struct fuse_conn *fc)
+void fuse_conn_init(struct fuse_conn *fc, int numaon)
 {
 	memset(fc, 0, sizeof(*fc));
 	spin_lock_init(&fc->lock);
 	mutex_init(&fc->inst_mutex);
 	init_rwsem(&fc->killsb);
 	atomic_set(&fc->count, 1);
+	if (numaon)
+		fc->numa_on = 1;
 	init_waitqueue_head(&fc->waitq);
 	init_waitqueue_head(&fc->blocked_waitq);
 	init_waitqueue_head(&fc->reserved_req_waitq);
@@ -1002,7 +1013,7 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 	if (!fc)
 		goto err_fput;
 
-	fuse_conn_init(fc);
+	fuse_conn_init(fc, d.numaon);
 
 	fc->dev = sb->s_dev;
 	fc->sb = sb;

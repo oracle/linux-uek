@@ -326,6 +326,9 @@ struct fuse_conn {
 	/** Lock protecting accessess to  members of this structure */
 	spinlock_t lock;
 
+	/** tracks if numa enabled */
+	int numa_on;
+
 	/** Mutex protecting against directory alias creation */
 	struct mutex inst_mutex;
 
@@ -716,7 +719,7 @@ void fuse_conn_kill(struct fuse_conn *fc);
 /**
  * Initialize fuse_conn
  */
-void fuse_conn_init(struct fuse_conn *fc);
+void fuse_conn_init(struct fuse_conn *fc, int numaon);
 
 /**
  * Release reference to fuse_conn
