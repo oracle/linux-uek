@@ -48,12 +48,13 @@ static ssize_t fuse_conn_waiting_read(struct file *file, char __user *buf,
 	size_t size;
 
 	if (!*ppos) {
-		long value;
+		long i, value;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (!fc)
 			return 0;
 
-		value = atomic_read(&fc->num_waiting);
+		for (i = 0, value = 0; i < fc->nr_nodes; i++)
+			value += atomic_read(&fc->nn[i]->num_waiting);
 		file->private_data = (void *)value;
 		fuse_conn_put(fc);
 	}
@@ -101,13 +102,14 @@ static ssize_t fuse_conn_max_background_read(struct file *file,
 					     loff_t *ppos)
 {
 	struct fuse_conn *fc;
-	unsigned val;
+	unsigned i, val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
 
-	val = fc->max_background;
+	for (i = 0, val = 0; i < fc->nr_nodes; i++)
+		val += fc->nn[i]->max_background;
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -123,9 +125,12 @@ static ssize_t fuse_conn_max_background_write(struct file *file,
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
 				    max_user_bgreq);
 	if (ret > 0) {
+		int i;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fc->max_background = val;
+			val = (val  + fc->nr_nodes - 1) / fc->nr_nodes;
+			for (i = 0; i < fc->nr_nodes; i++)
+				fc->nn[i]->max_background = val;
 			fuse_conn_put(fc);
 		}
 	}
@@ -138,13 +143,14 @@ static ssize_t fuse_conn_congestion_threshold_read(struct file *file,
 						   loff_t *ppos)
 {
 	struct fuse_conn *fc;
-	unsigned val;
+	unsigned i, val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
 
-	val = fc->congestion_threshold;
+	for (i = 0, val = 0; i < fc->nr_nodes; i++)
+		val += fc->nn[i]->congestion_threshold;
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -160,9 +166,12 @@ static ssize_t fuse_conn_congestion_threshold_write(struct file *file,
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
 				    max_user_congthresh);
 	if (ret > 0) {
+		int i;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fc->congestion_threshold = val;
+			val = (val  + fc->nr_nodes - 1) / fc->nr_nodes;
+			for (i = 0; i < fc->nr_nodes; i++)
+				fc->nn[i]->congestion_threshold = val;
 			fuse_conn_put(fc);
 		}
 	}
