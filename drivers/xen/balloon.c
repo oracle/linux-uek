@@ -148,11 +148,12 @@ static unsigned long shrink_frame(unsigned long nr_pages)
 {
 	unsigned long i, j;
 
-	for (i = 0, j = 0; i < nr_pages; i++, j++) {
-		if (frame_list[i] == 0)
+	i = j = 0;
+	while (j < nr_pages) {
+		if (frame_list[j] == 0)
 			j++;
-		if (i != j)
-			frame_list[i] = frame_list[j];
+		else
+			frame_list[i++] = frame_list[j++];
 	}
 	return i;
 }
@@ -504,11 +505,13 @@ static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
 	if (discontig)
 		nr_pages = shrink_frame(nr_pages);
 
-	set_xen_guest_handle(reservation.extent_start, frame_list);
-	reservation.nr_extents   = nr_pages;
-	reservation.extent_order = balloon_order;
-	ret = HYPERVISOR_memory_op(XENMEM_decrease_reservation, &reservation);
-	BUG_ON(ret != nr_pages);
+	if (nr_pages) {
+		set_xen_guest_handle(reservation.extent_start, frame_list);
+		reservation.nr_extents   = nr_pages;
+		reservation.extent_order = balloon_order;
+		ret = HYPERVISOR_memory_op(XENMEM_decrease_reservation, &reservation);
+		BUG_ON(ret != nr_pages);
+	}
 
 	return state;
 }
