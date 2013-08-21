@@ -330,6 +330,9 @@ struct mm_struct {
 #ifdef CONFIG_CPUMASK_OFFSTACK
 	struct cpumask cpumask_allocation;
 #endif
+#ifndef __GENKSYMS__
+	unsigned long mmap_legacy_base;         /* base of mmap area in bottom-up allocations */
+#endif
 };
 
 static inline void mm_init_cpumask(struct mm_struct *mm)
