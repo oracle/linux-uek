@@ -523,8 +523,6 @@ Source0: ftp://ftp.kernel.org/pub/linux/kernel/v2.6/linux-%{kversion}.tar.bz2
 Source10: x509.genkey
 %endif
 
-Source11: mod-extra.list
-Source12: mod-extra.sh
 Source13: mod-sign.sh
 %define modsign_cmd %{SOURCE13}
 
@@ -1277,9 +1275,6 @@ hwcap 0 nosegneg"
 	  modinfo && exit 1
 
     rm -f modinfo modnames
-
-    # Call the modules-extra script to move things around
-    %{SOURCE12} $RPM_BUILD_ROOT/lib/modules/$KernelVer %{SOURCE11}
 
 %if %{signmodules}
     # Save off the .tmp_versions/ directory.  We'll use it in the 
