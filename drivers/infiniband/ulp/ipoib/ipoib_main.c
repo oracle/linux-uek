@@ -1330,12 +1330,17 @@ void ipoib_neigh_dtor(struct ipoib_neigh *neigh)
 	struct net_device *dev = neigh->dev;
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct sk_buff *skb;
+
 	if (neigh->ah)
 		ipoib_put_ah(neigh->ah);
+
+	spin_lock_irq(&priv->lock);
 	while ((skb = __skb_dequeue(&neigh->queue))) {
 		++dev->stats.tx_dropped;
 		dev_kfree_skb_any(skb);
 	}
+	spin_unlock_irq(&priv->lock);
+
 	if (ipoib_cm_get(neigh))
 		ipoib_cm_destroy_tx(ipoib_cm_get(neigh));
 	ipoib_dbg(netdev_priv(dev),
