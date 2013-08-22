@@ -2728,7 +2728,8 @@ static int asmfs_fill_super(struct super_block *sb,
 
 	inode->i_ino = (unsigned long)inode;
 	inode->i_mode = S_IFDIR | 0755;
-	inode->i_uid = inode->i_gid = 0;
+	inode->i_uid = GLOBAL_ROOT_UID;
+	inode->i_gid = GLOBAL_ROOT_GID;
 	set_i_blksize(inode, PAGE_CACHE_SIZE);
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
@@ -2758,7 +2759,8 @@ static int asmfs_fill_super(struct super_block *sb,
 		goto out_genocide;
 	inode->i_ino = (unsigned long)inode;
 	inode->i_mode = S_IFDIR | 0755;
-	inode->i_uid = inode->i_gid = 0;
+	inode->i_uid = GLOBAL_ROOT_UID;
+	inode->i_gid = GLOBAL_ROOT_GID;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &asmfs_disk_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
@@ -2777,7 +2779,8 @@ static int asmfs_fill_super(struct super_block *sb,
 		goto out_genocide;
 	inode->i_ino = (unsigned long)inode;
 	inode->i_mode = S_IFDIR | 0770;
-	inode->i_uid = inode->i_gid = 0;
+	inode->i_uid = GLOBAL_ROOT_UID;
+	inode->i_gid = GLOBAL_ROOT_GID;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &asmfs_iid_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
