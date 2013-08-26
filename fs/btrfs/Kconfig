@@ -50,3 +50,12 @@ config BTRFS_FS_CHECK_INTEGRITY
 	  In most cases, unless you are a btrfs developer who needs
 	  to verify the integrity of (super)-block write requests
 	  during the run of a regression test, say N
+
+config BTRFS_ASSERT
+	bool "Btrfs assert support"
+	depends on BTRFS_FS
+	help
+	  Enable run-time assertion checking.  This will result in panics if
+	  any of the assertions trip.  This is meant for btrfs developers only.
+
+	  If unsure, say N.
