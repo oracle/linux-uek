@@ -65,8 +65,19 @@ void dt_test_destroy(void *arg, dtrace_id_t id, void *parg)
 static long dt_test_ioctl(struct file *file,
 			 unsigned int cmd, unsigned long arg)
 {
+	/*
+	 * Yes, this is not nice.
+	 * Not at all.
+	 * But we're doing it anyway...
+	 */
+	void (*dt_test_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
+			      uintptr_t, uintptr_t, uintptr_t, uintptr_t,
+			      uintptr_t, uintptr_t, uintptr_t);
+
 	if (enabled) {
-		dtrace_probe(pid, cmd, arg, 2, 3, 4);
+		dt_test_probe = (void *)&dtrace_probe;
+		dt_test_probe(pid, cmd, arg, 2ULL, 3ULL, 4ULL, 5ULL,
+					     6ULL, 7ULL, 8ULL, 9ULL);
 
 		return 0;
 	}
