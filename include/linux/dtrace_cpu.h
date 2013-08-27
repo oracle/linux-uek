@@ -16,6 +16,7 @@ typedef struct cpu_core {
 	struct mutex cpuc_pid_lock;
 
 	uintptr_t cpu_dtrace_caller;
+	struct pt_regs *cpu_dtrace_regs;
 	ktime_t cpu_dtrace_chillmark;
 	ktime_t cpu_dtrace_chilled;
 	rwlock_t cpu_ft_lock;
