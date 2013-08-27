@@ -577,7 +577,11 @@ struct mlx4_caps {
 	int			num_comp_vectors;
 	int			num_mpts;
 	int			max_fmr_maps;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	int			num_mtts;
+#else
+	u64			num_mtts;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	int			fmr_reserved_mtts;
 	int			reserved_mtts;
 	int			reserved_mrws;
