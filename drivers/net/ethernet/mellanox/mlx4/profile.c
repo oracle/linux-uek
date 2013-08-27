@@ -76,7 +76,11 @@ u64 mlx4_make_profile(struct mlx4_dev *dev,
 		u64 size;
 		u64 start;
 		int type;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		u32 num;
+#else
+		u64 num;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 		int log_num;
 	};
 
@@ -130,7 +134,11 @@ u64 mlx4_make_profile(struct mlx4_dev *dev,
 					min_t(unsigned, dev_cap->max_eqs, MAX_MSIX);
 	profile[MLX4_RES_DMPT].num    = request->num_mpt;
 	profile[MLX4_RES_CMPT].num    = MLX4_NUM_CMPTS;
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	profile[MLX4_RES_MTT].num     = request->num_mtt * (1 << log_mtts_per_seg);
+#else
+	profile[MLX4_RES_MTT].num     = ((u64)request->num_mtt) * (1 << log_mtts_per_seg);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	profile[MLX4_RES_MCG].num     = request->num_mcg;
 
 	for (i = 0; i < MLX4_RES_NUM; ++i) {
