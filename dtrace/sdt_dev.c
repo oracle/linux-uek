@@ -29,6 +29,7 @@
 #include <linux/miscdevice.h>
 #include <linux/sdt.h>
 #include <linux/slab.h>
+#include <linux/uaccess.h>
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
@@ -108,8 +109,13 @@ static uint8_t sdt_invop(struct pt_regs *regs)
 
 	for (; sdt != NULL; sdt = sdt->sdp_hashnext) {
 		if ((uintptr_t)sdt->sdp_patchpoint == regs->ip) {
+			this_cpu_core->cpu_dtrace_regs = regs;
+
 			dtrace_probe(sdt->sdp_id, regs->di, regs->si,
 				     regs->dx, regs->cx, regs->r8);
+
+			this_cpu_core->cpu_dtrace_regs = NULL;
+
 			return DTRACE_INVOP_NOP;
 		}
 	}
@@ -267,7 +273,37 @@ void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
 uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
 		    int aframes)
 {
-	return 0;
+	struct pt_regs  *regs = this_cpu_core->cpu_dtrace_regs;
+	uint64_t	*st;
+	uint64_t	val;
+
+	if (regs == NULL)
+		return 0;
+
+	switch (argno) {
+	case 0:
+		return regs->di;
+	case 1:
+		return regs->si;
+	case 2:
+		return regs->dx;
+	case 3:
+		return regs->cx;
+	case 4:
+		return regs->r8;
+	case 5:
+		return regs->r9;
+	}
+
+	ASSERT(argno > 5);
+
+	st = (uint64_t *)regs->sp;
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+	__copy_from_user_inatomic_nocache(&val, (void *)&st[argno - 6],
+					  sizeof(st[0]));
+	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+	return val;
 }
 
 void sdt_destroy(void *arg, dtrace_id_t id, void *parg)

@@ -114,66 +114,35 @@ DTRACE_FUWORD(16)
 DTRACE_FUWORD(32)
 DTRACE_FUWORD(64)
 
-struct frame {
-	struct frame	*fr_savfp;
-	unsigned long	fr_savpc;
-} __attribute__((packed));
-
-static void dtrace_invop_callsite(void)
+uint64_t dtrace_getarg(int argno, int aframes)
 {
-}
-
-uint64_t dtrace_getarg(int arg, int aframes)
-{
-	struct frame	*fp = (struct frame *)dtrace_getfp();
-	uintptr_t	*stack;
-	int		i;
+	unsigned long	bp;
+	uint64_t	*st;
 	uint64_t	val;
-	int		regmap[] = {
-					REG_RDI,
-					REG_RSI,
-					REG_RDX,
-					REG_RCX,
-					REG_R8,
-					REG_R9
-				   };
-	int		nreg = sizeof(regmap) / sizeof(regmap[0]) - 1;
+	int		i;
 
-	for (i = 1; i <= aframes; i++) {
-		fp = fp->fr_savfp;
+	asm volatile("movq %%rbp,%0" : "=m"(bp));
 
-		if (fp->fr_savpc == (uintptr_t)dtrace_invop_callsite) {
-			/* FIXME */
+	for (i = 0; i < aframes; i++)
+		bp = *((unsigned long *)bp);
 
-			goto load;
-		}
-	}
+	ASSERT(argno >= 5);
 
 	/*
-	 * We know that we did not get here through a trap to get into the
-	 * dtrace_probe() function, so this was a straight call into it from
-	 * a provider.  In that case, we need to shift the argument that we
-	 * are looking for, because the probe ID will be the first argument to
-	 * dtrace_probe().
+	 * The first 5 arguments (arg0 through arg4) are passed in registers
+	 * to dtrace_probe().  The remaining arguments (arg5 through arg9) are
+	 * passed on the stack.
+	 *
+	 * Stack layout:
+	 * bp[0] = pushed bp from caller
+	 * bp[1] = return address
+	 * bp[2] = 6th argument (arg5 -> argno = 5)
+	 * bp[3] = 7th argument (arg6 -> argno = 6)
+	 * ...
 	 */
-	arg++;
-
-	if (arg <= nreg) {
-		/*
-		 * This should not happen.  If the argument was passed in a
-		 * register then it should have been, ...passed in a register.
-		 */
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-		return 0;
-	}
-
-	arg -= nreg + 1;
-
-	stack = (uintptr_t *)&fp[1];
-
-load:
 	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	val = stack[arg];
+	st = (uint64_t *)bp;
+	val = st[2 + (argno - 5)];
 	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	return val;

@@ -1985,7 +1985,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		if (ndx >=
 		    sizeof(mstate->dtms_arg) / sizeof(mstate->dtms_arg[0])) {
 			int			aframes =
-					mstate->dtms_probe->dtpr_aframes + 2;
+					mstate->dtms_probe->dtpr_aframes + 3;
 			dtrace_provider_t	*pv;
 			uint64_t		val;
 
@@ -2070,7 +2070,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		if (!dtrace_priv_kernel(state))
 			return 0;
 		if (!(mstate->dtms_present & DTRACE_MSTATE_STACKDEPTH)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 2;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
 
 			mstate->dtms_stackdepth = dtrace_getstackdepth(aframes);
 			mstate->dtms_present |= DTRACE_MSTATE_STACKDEPTH;
@@ -2106,7 +2106,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 2;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
 
 			if (!DTRACE_ANCHORED(mstate->dtms_probe)) {
 				/*
