@@ -121,6 +121,8 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0)
 		return 0;
 
+	this_cpu_core->cpu_dtrace_regs = regs;
+
 	for (id = tp->ftt_ids; id != NULL; id = id->fti_next) {
 		fasttrap_probe_t	*ftp = id->fti_probe;
 
@@ -138,6 +140,8 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 				     t[4]);
 		}
 	}
+
+	this_cpu_core->cpu_dtrace_regs = NULL;
 
 	if (is_enabled)
 		regs->ax = 1;
@@ -703,7 +707,37 @@ static void fasttrap_pid_getargdesc(void *arg, dtrace_id_t id, void *parg,
 static uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
 				     int argno, int aframes)
 {
-	return 0;	/* FIXME */
+	struct pt_regs	*regs = this_cpu_core->cpu_dtrace_regs;
+	uint64_t	*st;
+	uint64_t	val;
+
+	if (regs == NULL)
+		return 0;
+
+	switch (argno) {
+	case 0:
+		return regs->di;
+	case 1:
+		return regs->si;
+	case 2:
+		return regs->dx;
+	case 3:
+		return regs->cx;
+	case 4:
+		return regs->r8;
+	case 5:
+		return regs->r9;
+	}
+
+	ASSERT(argno > 5);
+
+	st = (uint64_t *)regs->sp;
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+	__copy_from_user_inatomic_nocache(&val, (void *)&st[argno - 6],
+					  sizeof(st[0]));
+	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+	return val;
 }
 
 static void fasttrap_pid_destroy(void *arg, dtrace_id_t id, void *parg)
