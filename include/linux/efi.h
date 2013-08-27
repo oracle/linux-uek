@@ -973,6 +973,7 @@ extern int __init efi_setup_pcdp_console(char *);
 #define EFI_PARAVIRT		6	/* Access is via a paravirt interface */
 #define EFI_ARCH_1		7	/* First arch-specific bit */
 #define EFI_DBG			8	/* Print additional debug info at runtime */
+#define EFI_SECURE_BOOT 	9	/* Are we in Secure Boot mode? */
 
 #ifdef CONFIG_EFI
 /*
