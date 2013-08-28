@@ -198,7 +198,7 @@ $(ctf-stamp): $(ctf-filelist)
 		[[ -f $${name}.new ]] || rm -f $$name; \
 	done; \
 	for name in $(ctf-dir)/*.ctf.new; do \
-		scripts/move-if-change $$name $${name%.new}; \
+		$(srctree)/scripts/move-if-change $$name $${name%.new}; \
 	done
 	@touch $(ctf-stamp)
 
