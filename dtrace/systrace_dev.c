@@ -33,7 +33,7 @@
 #include "dtrace_dev.h"
 #include "systrace.h"
 
-#define SYSTRACE_ARTIFICIAL_FRAMES	1
+#define SYSTRACE_ARTIFICIAL_FRAMES	0
 
 #define SYSTRACE_SHIFT			16
 #define SYSTRACE_ENTRY(id)		((1 << SYSTRACE_SHIFT) | (id))

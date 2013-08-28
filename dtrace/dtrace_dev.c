@@ -1466,7 +1466,7 @@ int dtrace_dev_init(void)
 				NULL, "END", 0, NULL);
 	dtrace_probeid_error = dtrace_probe_create(
 				(dtrace_provider_id_t)dtrace_provider, NULL,
-				NULL, "ERROR", 1, NULL);
+				NULL, "ERROR", 0, NULL);
 
 	dtrace_anon_property();
 	mutex_unlock(&cpu_lock);
