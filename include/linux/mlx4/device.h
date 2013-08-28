@@ -269,7 +269,6 @@ static inline u64 mlx4_fw_ver(u64 major, u64 minor, u64 subminor)
 struct mlx4_caps {
 	u64			fw_ver;
 	u32			function;
-	u32			vep_num;
 	u32			pf_num;
 	u32			num_ports;
 	u32			vl_cap[MLX4_MAX_PORTS + 1];
@@ -353,9 +352,6 @@ struct mlx4_caps {
 	u32			max_basic_counters;
 	u32			max_ext_counters;
 	u32			mc_promisc_mode;
-    u16			clp_ver;
-	u16			poolsz;
-	u32			cqe_size;
 	u32			mad_demux;
 	u32			dmpt_entry_sz;
 	u64			mtt_base;
@@ -368,6 +364,10 @@ struct mlx4_caps {
 	u32			fmr_num_mtt_segs;
 	u8			fmr_log_page_size;
 	u8			qinq;
+	u32			vep_num;
+	u16			clp_ver;
+	u16			poolsz;
+	u32			cqe_size;
 } __attribute__((packed));
 
 struct mlx4_buf_list {
