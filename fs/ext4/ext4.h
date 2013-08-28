@@ -1930,7 +1930,7 @@ int ext4_block_bitmap_csum_verify(struct super_block *sb, ext4_group_t group,
 /* balloc.c */
 extern void ext4_validate_block_bitmap(struct super_block *sb,
 				       struct ext4_group_desc *desc,
-				       unsigned int block_group,
+				       ext4_group_t block_group,
 				       struct buffer_head *bh);
 extern unsigned int ext4_block_group(struct super_block *sb,
 			ext4_fsblk_t blocknr);
