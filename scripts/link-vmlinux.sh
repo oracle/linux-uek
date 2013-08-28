@@ -89,7 +89,7 @@ sdtinfo()
 {
 	info DT-SDT ${3}
 
-	scripts/dtrace_sdt.sh ${1} ${2} > .tmp_sdtinfo.S
+	${srctree}/scripts/dtrace_sdt.sh ${1} ${2} > .tmp_sdtinfo.S
 
 	local aflags="${KBUILD_AFLAGS} ${KBUILD_AFLAGS_KERNEL}               \
 		      ${NOSTDINC_FLAGS} ${LINUXINCLUDE} ${KBUILD_CPPFLAGS}"
