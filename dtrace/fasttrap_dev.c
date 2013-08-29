@@ -110,6 +110,7 @@ static void fasttrap_usdt_args64(fasttrap_probe_t *probe, struct pt_regs *regs,
 
 	while (i < argc)
 		argv[i++] = 0;
+for (i = 0; i < argc; i++) pr_info("%s: argv[%2d] = %lx\n", __FUNCTION__, i, argv[i]);
 }
 
 static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
@@ -117,6 +118,19 @@ static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
 						   ftt_mtp);
 	fasttrap_id_t		*id;
 	int			is_enabled = 0;
+
+	/*
+	 * Verify that this probe event is actually related to the current
+	 * task.  If not, ignore it.
+	 *
+	 * TODO: The underlying probe mechanism should register a single
+	 * 	 handler for the (inode, offset) combination.  When the handler
+	 * 	 is called, it should run through a list of fasttrap
+	 * 	 tracepoints associated with the OS-level probe, looking for
+	 * 	 one that is related to the current task.
+	 */
+	if (tp->ftt_pid != current->pid)
+		return 0;
 
 	if (atomic64_read(&tp->ftt_proc->ftpc_acount) == 0)
 		return 0;
@@ -1114,7 +1128,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	fasttrap_bucket_t	*bucket;
 	char			provname[DTRACE_PROVNAMELEN];
 	struct task_struct	*p;
-	const cred_t		*cred;
+	const cred_t		*cred = NULL;
 
 	ASSERT(strlen(name) < sizeof (fp->ftp_name));
 	ASSERT(pa != NULL);
@@ -1210,10 +1224,10 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	return new_fp;
 
 fail:
-	put_cred(cred);
-
 	if (proc)
 		fasttrap_proc_release(proc);
+	if (cred)
+		put_cred(cred);
 	if (p)
 		unregister_pid_provider(pid);
 
@@ -1560,7 +1574,6 @@ int fasttrap_dev_init(void)
 	}
 
 #ifdef FIXME
-	dtrace_fasttrap_fork_ptr = &fasttrap_fork;
 	dtrace_fasttrap_exit_ptr = &fasttrap_exec_exit;
 	dtrace_fasttrap_exec_ptr = &fasttrap_exec_exit;
 #endif
@@ -1708,17 +1721,7 @@ void fasttrap_dev_exit(void)
 		vfree(fasttrap_procs.fth_table);
 	fasttrap_procs.fth_nent = 0;
 
-	/*
-	 * We know there are no tracepoints in any process anywhere in
-	 * the system so there is no process which has its p_dtrace_count
-	 * greater than zero, therefore we know that no thread can actively
-	 * be executing code in fasttrap_fork(). Similarly for p_dtrace_probes
-	 * and fasttrap_exec() and fasttrap_exit().
-	 */
 #ifdef FIXME
-	ASSERT(dtrace_fasttrap_fork_ptr == &fasttrap_fork);
-	dtrace_fasttrap_fork_ptr = NULL;
-
 	ASSERT(dtrace_fasttrap_exec_ptr == &fasttrap_exec_exit);
 	dtrace_fasttrap_exec_ptr = NULL;
 

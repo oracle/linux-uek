@@ -1393,6 +1393,7 @@ int dtrace_dev_init(void)
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
 	dtrace_helpers_cleanup = dtrace_helpers_destroy;
+	dtrace_helpers_fork = dtrace_helpers_duplicate;
 #ifdef FIXME
 	dtrace_cpu_init = dtrace_cpu_setup_initial;
 	dtrace_cpustart_init = dtrace_suspend;
@@ -1506,9 +1507,42 @@ int dtrace_dev_init(void)
 
 void dtrace_dev_exit(void)
 {
+	mutex_lock(&cpu_lock);
+	mutex_lock(&dtrace_provider_lock);
+	mutex_lock(&dtrace_lock);
+
+	dtrace_unregister((dtrace_provider_id_t)dtrace_provider);
+	dtrace_provider = NULL;
+
+	dtrace_probe_exit();
+
+	dtrace_modload = NULL;
+	dtrace_modunload = NULL;
+	dtrace_helpers_cleanup = NULL;
+	dtrace_helpers_fork = NULL;
+#ifdef FIXME
+	dtrace_cpu_init = NULL;
+	dtrace_cpustart_init = NULL;
+	dtrace_cpustart_fini = NULL;
+	dtrace_debugger_init = NULL;
+	dtrace_debugger_fini = NULL;
+
+	unregister_cpu_setup_func((cpu_setup_func_t *)dtrace_cpu_setup, NULL);
+#endif
+
+	mutex_unlock(&cpu_lock);
+
+	dtrace_hash_destroy(dtrace_bymod);
+	dtrace_hash_destroy(dtrace_byfunc);
+	dtrace_hash_destroy(dtrace_byname);
+	dtrace_bymod = NULL;
+	dtrace_byfunc = NULL;
+	dtrace_byname = NULL;
+
 	kmem_cache_destroy(dtrace_state_cache);
 	misc_deregister(&helper_dev);
 	misc_deregister(&dtrace_dev);
 
-	dtrace_probe_exit();
+	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_provider_lock);
 }

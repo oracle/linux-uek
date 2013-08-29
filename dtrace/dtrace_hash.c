@@ -77,6 +77,19 @@ dtrace_hash_t *dtrace_hash_create(uintptr_t stroffs, uintptr_t nextoffs,
 	return hash;
 }
 
+void dtrace_hash_destroy(dtrace_hash_t *hash)
+{
+#ifdef DEBUG
+	int	i;
+
+	for (i = 0; i < hash->dth_size; i++)
+		ASSERT(hash->dth_tab[i] == NULL);
+#endif
+
+	vfree(hash->dth_tab);
+	vfree(hash);
+}
+
 static int dtrace_hash_resize(dtrace_hash_t *hash)
 {
 	int			size = hash->dth_size, i, ndx;
