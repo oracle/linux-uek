@@ -1934,6 +1934,16 @@ static __latent_entropy struct task_struct *copy_process(
 	syscall_tracepoint_update(p);
 	write_unlock_irq(&tasklist_lock);
 
+#ifdef CONFIG_DTRACE
+	/*
+	 * We make this call fairly late into the copy_process() handling,
+	 * because we need to ensure that we can look up this task based on
+	 * its pid using find_task_by_vpid().  We also must ensure that the
+	 * tasklist_lock has been released.
+	 */
+	dtrace_task_fork(current, p);
+#endif
+
 	proc_fork_connector(p);
 	cgroup_post_fork(p);
 	cgroup_threadgroup_change_end(current);
