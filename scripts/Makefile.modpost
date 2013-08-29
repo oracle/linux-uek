@@ -140,17 +140,16 @@ ifndef CONFIG_DT_DISABLE_CTF
 # Out-of-tree module CTF gets its own per-module set of stamp files, since its
 # CTF is rebuilt independently.
 #
-# Warning: cmd_ctf can expand to an emormously long command line, long enough
-# that many shells dump core trying to parse it.  We must avoid most shell
-# metacharacters in the definition of cmd_ctf, whereupon GNU make will invoke
-# the command directly rather than going through $SHELL.
+# We write the names of the object files to be scanned for CTF content into a
+# file, then use that, to avoid hitting command-line length limits.
 
 ifeq ($(KBUILD_EXTMOD),)
 ctf-dir := .ctf
 quiet_cmd_ctf = CTF
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist scripts/dwarf2ctf/member.blacklist $^
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) objects.builtin modules.builtin scripts/dwarf2ctf/dedup.blacklist scripts/dwarf2ctf/member.blacklist $(ctf-filelist)
 builtins := $(shell cat objects.builtin 2>/dev/null)
 ctf-stamp := .ctf/ctf.stamp
+ctf-filelist := .ctf/ctf.filelist
 
 # The CTF module depends on the CTF stamp file, in lieu of the builtin
 # CTF files whose names we cannot determine until it is too late.
@@ -160,9 +159,10 @@ kernel/ctf/ctf.ko: .ctf/ctf.stamp
 else
 ctf-dir := $(KBUILD_EXTMOD)/.ctf
 quiet_cmd_ctf = CTF
-      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $^
+      cmd_ctf = scripts/dwarf2ctf/dwarf2ctf $(ctf-dir) -e $(ctf-filelist)
 builtins :=
 ctf-stamp := $(ctf-dir)/$(notdir $(M)-extmod).stamp
+ctf-filelist := $(ctf-dir)/$(notdir $(M)-extmod).ctf.filelist
 
 endif
 
@@ -171,10 +171,26 @@ endif
 all-module-ctfs = $(addprefix $(ctf-dir)/,$(notdir $(modules:.ko=.mod.ctf)))
 $(all-module-ctfs): $(ctf-stamp)
 
+# This ensures that the (possibly very long) prerequisite list is written out
+# using one shell invocation per prerequisite.
+#
+# The empty line in this definition is crucial.
+define add-ctf-filelist-cmd
+	@echo "$(1)" >> $(ctf-filelist)
+
+endef
+define add-ctf-filelists-cmd
+	$(foreach file,$(1),$(call add-ctf-filelist-cmd,$(file)))
+endef
+
+$(ctf-filelist): $(builtins) $(modules:.ko=.o)
+	@rm -f $(ctf-filelist);
+	$(call add-ctf-filelists-cmd,$^)
+
 # We depend upon a stamp file in lieu of the builtin modules' CTF files, because
 # the names of the generated CTF files for the builtins are so variable.
 # (Standalone modules get their own per-module stamp files.)
-$(ctf-stamp): $(builtins) $(modules:.ko=.o)
+$(ctf-stamp): $(ctf-filelist)
 	$(call if_changed,ctf)
 	@shopt -s nullglob; \
 	for name in $(ctf-dir)/*.builtin.ctf; do \
