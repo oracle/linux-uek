@@ -143,6 +143,7 @@ struct rds_connection {
 
 	/* Protocol version */
 	unsigned int		c_proposed_version;
+	unsigned int            c_committed_version;
 	unsigned int		c_version;
 
 	/* Re-connect stall diagnostics */
