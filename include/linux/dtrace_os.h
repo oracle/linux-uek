@@ -77,8 +77,9 @@ extern void dtrace_stacktrace(stacktrace_state_t *);
 
 extern struct task_struct *register_pid_provider(pid_t);
 extern void unregister_pid_provider(pid_t);
-extern void dtrace_task_init(struct task_struct *tsk);
-extern void dtrace_task_cleanup(struct task_struct *tsk);
+extern void dtrace_task_init(struct task_struct *);
+extern void dtrace_task_fork(struct task_struct *, struct task_struct *);
+extern void dtrace_task_cleanup(struct task_struct *);
 
 typedef struct fasttrap_machtp {
 	struct inode		*fmtp_ino;
@@ -88,6 +89,10 @@ typedef struct fasttrap_machtp {
 
 extern void (*dtrace_helpers_cleanup)(struct task_struct *);
 extern void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
+extern void (*dtrace_fasttrap_fork)(struct task_struct *,
+				    struct task_struct *);
+extern void (*dtrace_helpers_fork)(struct task_struct *,
+				   struct task_struct *);
 extern int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 
 extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);

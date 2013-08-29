@@ -978,6 +978,10 @@ void (*dtrace_helpers_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_helpers_cleanup);
 void (*dtrace_fasttrap_probes_cleanup)(struct task_struct *);
 EXPORT_SYMBOL(dtrace_fasttrap_probes_cleanup);
+void (*dtrace_fasttrap_fork)(struct task_struct *, struct task_struct *);
+EXPORT_SYMBOL(dtrace_fasttrap_fork);
+void (*dtrace_helpers_fork)(struct task_struct *, struct task_struct *);
+EXPORT_SYMBOL(dtrace_helpers_fork);
 int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
@@ -992,6 +996,15 @@ void dtrace_task_init(struct task_struct *tsk)
 	tsk->dtrace_helpers = NULL;
 	tsk->dtrace_probes = 0;
 	tsk->dtrace_tp_count = 0;
+}
+
+void dtrace_task_fork(struct task_struct *tsk, struct task_struct *child)
+{
+	if (likely(dtrace_helpers_fork == NULL))
+		return;
+
+	if (tsk->dtrace_helpers != NULL)
+		(*dtrace_helpers_fork)(tsk, child);
 }
 
 void dtrace_task_cleanup(struct task_struct *tsk)
