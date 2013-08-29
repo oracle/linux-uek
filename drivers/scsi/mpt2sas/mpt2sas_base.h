@@ -72,10 +72,10 @@
 #define MPT2SAS_DRIVER_NAME		"mpt2sas"
 #define MPT2SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
 #define MPT2SAS_DESCRIPTION	"LSI MPT Fusion SAS 2.0 Device Driver"
-#define MPT2SAS_DRIVER_VERSION		"17.00.00.00"
+#define MPT2SAS_DRIVER_VERSION		"17.00.01.00"
 #define MPT2SAS_MAJOR_VERSION		17
 #define MPT2SAS_MINOR_VERSION		0
-#define MPT2SAS_BUILD_VERSION		0
+#define MPT2SAS_BUILD_VERSION		1
 #define MPT2SAS_RELEASE_VERSION		0
 
 /*
@@ -1190,6 +1190,8 @@ typedef u8 (*MPT_CALLBACK)(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 
 /* base shared API */
 extern struct list_head mpt2sas_ioc_list;
+/* spinlock on list operations over IOCs */
+extern spinlock_t gioc_lock;
 void mpt2sas_base_start_watchdog(struct MPT2SAS_ADAPTER *ioc);
 void mpt2sas_base_stop_watchdog(struct MPT2SAS_ADAPTER *ioc);
 

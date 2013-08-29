@@ -112,7 +112,8 @@ static int _scsih_scan_finished(struct Scsi_Host *shost, unsigned long time);
 
 /* global parameters */
 LIST_HEAD(mpt2sas_ioc_list);
-
+/* global ioc lock for list operations */
+spinlock_t gioc_lock;
 /* local parameters */
 static u8 scsi_io_cb_idx = -1;
 static u8 tm_cb_idx = -1;
@@ -428,13 +429,16 @@ _scsih_set_debug_level(const char *val, struct kernel_param *kp)
 {
 	int ret = param_set_int(val, kp);
 	struct MPT2SAS_ADAPTER *ioc;
+	unsigned long flags;
 
 	if (ret)
 		return ret;
 
 	printk(KERN_INFO "setting logging_level(0x%08x)\n", logging_level);
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list)
 		ioc->logging_level = logging_level;
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	return 0;
 }
 module_param_call(logging_level, _scsih_set_debug_level, param_get_int,
@@ -10790,7 +10794,9 @@ mpt2sas_scsih_detach_pci(struct pci_dev *pdev)
 
 	sas_remove_host(shost);
 	mpt2sas_base_detach(ioc);
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_del(&ioc->list);
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	scsi_remove_host(shost);
 	scsi_host_put(shost);
 out:
@@ -11203,6 +11209,7 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	struct MPT2SAS_ADAPTER *ioc;
 	struct Scsi_Host *shost;
+	unsigned long flags;
 
 	shost = scsi_host_alloc(&scsih_driver_template,
 	    sizeof(struct MPT2SAS_ADAPTER));
@@ -11213,7 +11220,9 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	ioc = shost_private(shost);
 	memset(ioc, 0, sizeof(struct MPT2SAS_ADAPTER));
 	INIT_LIST_HEAD(&ioc->list);
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_add_tail(&ioc->list, &mpt2sas_ioc_list);
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	ioc->shost = shost;
 	ioc->id = mpt_ids++;
 	sprintf(ioc->name, "%s%d", MPT2SAS_DRIVER_NAME, ioc->id);
@@ -11301,7 +11310,9 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if ((scsi_add_host(shost, &pdev->dev))) {
 		printk(MPT2SAS_ERR_FMT "failure at %s:%d/%s()!\n",
 		    ioc->name, __FILE__, __LINE__, __func__);
+		spin_lock_irqsave(&gioc_lock, flags);
 		list_del(&ioc->list);
+		spin_unlock_irqrestore(&gioc_lock, flags);
 		goto out_add_shost_fail;
 	}
 
@@ -11364,7 +11375,9 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
  out_attach_fail:
 	destroy_workqueue(ioc->firmware_event_thread);
  out_thread_fail:
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_del(&ioc->list);
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	scsi_remove_host(shost);
  out_add_shost_fail:
 #if defined(CONFIG_PCI_IOV) && !defined(SRIOV_WHITELIST_FAILED)
@@ -11673,6 +11686,7 @@ _scsih_init(void)
 		return -ENODEV;
 	}
 #endif
+	spin_lock_init(&gioc_lock);
 
 	mpt2sas_base_initialize_callback_handler();
 

@@ -119,13 +119,16 @@ _scsih_set_fwfault_debug(const char *val, struct kernel_param *kp)
 {
 	int ret = param_set_int(val, kp);
 	struct MPT2SAS_ADAPTER *ioc;
+	unsigned long flags;
 
 	if (ret)
 		return ret;
 
 	printk(KERN_INFO "setting fwfault_debug(%d)\n", mpt2sas_fwfault_debug);
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list)
 		ioc->fwfault_debug = mpt2sas_fwfault_debug;
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	return 0;
 }
 module_param_call(mpt2sas_fwfault_debug, _scsih_set_fwfault_debug,

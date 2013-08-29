@@ -472,13 +472,16 @@ static int
 _ctl_verify_adapter(int ioc_number, struct MPT2SAS_ADAPTER **iocpp)
 {
 	struct MPT2SAS_ADAPTER *ioc;
-
+	unsigned long flags;
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list) {
 		if (ioc->id != ioc_number)
 			continue;
+		spin_unlock_irqrestore(&gioc_lock, flags);
 		*iocpp = ioc;
 		return ioc_number;
 	}
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	*iocpp = NULL;
 	return -1;
 }
@@ -582,13 +585,18 @@ static unsigned int
 _ctl_poll(struct file *filep, poll_table *wait)
 {
 	struct MPT2SAS_ADAPTER *ioc;
+	unsigned long flags;
 
 	poll_wait(filep, &ctl_poll_wait, wait);
 
+	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list) {
-		if (ioc->aen_event_read_flag)
+		if (ioc->aen_event_read_flag) {
+			spin_unlock_irqrestore(&gioc_lock, flags);
 			return POLLIN | POLLRDNORM;
+		}
 	}
+	spin_unlock_irqrestore(&gioc_lock, flags);
 	return 0;
 }
 
