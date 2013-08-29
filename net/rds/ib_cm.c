@@ -717,7 +717,7 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
-	if (conn->c_reconnect && (conn->c_version != version)) {
+	if (conn->c_reconnect && (conn->c_version > version)) {
 		printk(KERN_WARNING "RDS/IB: connection "
 			"<%u.%u.%u.%u,%u.%u.%u.%u,%d,%u.%u> rejecting version "
 			"(%u/%u)\n",
