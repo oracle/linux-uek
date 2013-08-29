@@ -99,6 +99,8 @@ void rds_connect_complete(struct rds_connection *conn)
 
 	conn->c_connection_start = get_seconds();
 	conn->c_reconnect = 1;
+	conn->c_committed_version = conn->c_version;
+	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
