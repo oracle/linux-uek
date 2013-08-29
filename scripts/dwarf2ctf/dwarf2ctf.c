@@ -54,10 +54,9 @@ static const char *trace;
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * starting_argv is the point in the argv array at which the arguments start.
  * output_dir is the directory into which the CTF goes.
  */
-static void run(int starting_argv, char *argv[], char *output_dir);
+static void run(char *output_dir);
 
 /*
  * A fully descriptive CTF type ID: both file and type ID in one place.
@@ -103,6 +102,18 @@ static GHashTable *id_to_module;
  * modules and non-built-in modules.)
  */
 static GHashTable *module_to_ctf_file;
+
+/*
+ * The names of the object files to run over.  Except in -e mode, this comes
+ * straight from the module filelist passed in.
+ */
+static char **object_names;
+static size_t object_names_cnt;
+
+/*
+ * Populate the object_names list from the module filelist.
+ */
+static void init_object_names(const char *object_names_file);
 
 /*
  * The names of module object files presently built in to the kernel, in the
@@ -254,7 +265,7 @@ static void process_tu_func(const char *module_name,
 /*
  * Scan and identify duplicates across the entire set of object files.
  */
-static void scan_duplicates(int starting_argv, char *argv[]);
+static void scan_duplicates(void);
 
 /*
  * Recursively detect duplicate types and types referenced by them, and
@@ -654,16 +665,15 @@ static void private_ctf_free(void *ctf_file);
 
 int main(int argc, char *argv[])
 {
-	int starting_argv = 3;
 	char *output_dir;
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if (argc < 2 || strcmp(argv[1], "-e") == 0 ||
-	    (argc < 6 && (strcmp(argv[2], "-e") != 0))) {
+	if ((argc != 4 && argc != 7) ||
+	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
 		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin modules.builtin dedup.blacklist\n");
-		fprintf(stderr, "		   member.blacklist vmlinux.o module.o...,\n");
-		fprintf(stderr, "	 or dwarf2ctf outputdir -e module.o ... "
+		fprintf(stderr, "                  member.blacklist filelist\n");
+		fprintf(stderr, "    or dwarf2ctf outputdir -e filelist"
 			"for external module use\n");
 		exit(1);
 	}
@@ -695,21 +705,34 @@ int main(int argc, char *argv[])
 		builtin_module_file = argv[3];
 		dedup_blacklist_file = argv[4];
 		member_blacklist_file = argv[5];
-		starting_argv = 6;
+
 		init_builtin(builtin_objects_file, builtin_module_file);
 		init_dedup_blacklist(dedup_blacklist_file);
 		init_member_blacklist(member_blacklist_file);
+		init_object_names(argv[6]);
 
-		run(starting_argv, argv, output_dir);
+		run(output_dir);
 	} else {
-		char **name;
+		char *single_object_name;
+		char **all_object_names;
+		size_t all_object_names_cnt;
+		size_t i;
 
-		for (name = &argv[starting_argv]; *name; name++) {
-			char *one_argv[2];
-			one_argv[0] = *name;
-			one_argv[1] = NULL;
+		init_object_names(argv[3]);
 
-			run(0, one_argv, output_dir);
+		/*
+		 * Repeatedly populate object_names with one object name, and
+		 * call run() with that.
+		 */
+		all_object_names = object_names;
+		all_object_names_cnt = object_names_cnt;
+		object_names = &single_object_name;
+		object_names_cnt = 1;
+
+		for (i = 0; i < all_object_names_cnt; i++) {
+			single_object_name = all_object_names[i];
+
+			run(output_dir);
 		}
 	}
 
@@ -722,12 +745,11 @@ int main(int argc, char *argv[])
 /*
  * Run dwarf2ctf over a single object file or set thereof.
  *
- * starting_argv is the point in the argv array at which the arguments start.
  * output_dir is the directory into which the CTF goes.
  */
-static void run(int starting_argv, char *argv[], char *output_dir)
+static void run(char *output_dir)
 {
-	char **name;
+	size_t i;
 
 	/*
 	 * Create all the hashes, assemble the translation unit->module list for
@@ -749,14 +771,14 @@ static void run(int starting_argv, char *argv[], char *output_dir)
 	if (builtin_modules != NULL)
 		init_ctf_table("shared_ctf");
 
-	scan_duplicates(starting_argv, argv);
+	scan_duplicates();
 
 	/*
 	 * Now construct CTF out of the types.
 	 */
 	dw_ctf_trace("CTF construction.\n");
-	for (name = &argv[starting_argv]; *name; name++)
-		process_file(*name, construct_ctf, NULL, NULL, NULL);
+	for (i = 0; i < object_names_cnt; i++)
+		process_file(object_names[i], construct_ctf, NULL, NULL, NULL);
 
 	/*
 	 * Finally, emit the types into their .ctf files, and generate the
@@ -769,6 +791,59 @@ static void run(int starting_argv, char *argv[], char *output_dir)
 	g_hash_table_destroy(id_to_module);
 	g_hash_table_destroy(tu_to_module);
 	g_hash_table_destroy(module_to_ctf_file);
+}
+
+
+/*
+ * Populate the builtin_modules and builtin_objects lists from the
+ * objects.builtin and modules.builtin file.
+ */
+static void init_object_names(const char *object_names_file)
+{
+	FILE *f;
+	char *line = NULL;
+	size_t line_size = 0;
+
+	if ((f = fopen(object_names_file, "r")) == NULL) {
+		fprintf(stderr, "Cannot open object names file %s: "
+			"%s\n", object_names_file, strerror(errno));
+		exit(1);
+	}
+
+	/*
+	 * This needs no massaging other than linefeed removal, just reading and
+	 * stashing.
+	 */
+
+	while (getline(&line, &line_size, f) >= 0) {
+		size_t len = strlen(line);
+
+		if (len == 0)
+			continue;
+
+		if (line[len-1] == '\n')
+			line[len-1] = '\0';
+
+		object_names = realloc(object_names,
+				       ++object_names_cnt *
+				       sizeof (char *));
+
+		if (object_names == NULL) {
+			fprintf(stderr, "Out of memory reading %s",
+				object_names_file);
+			exit(1);
+		}
+
+		object_names[object_names_cnt-1] = xstrdup(line);
+	}
+
+	if (ferror(f)) {
+		fprintf(stderr, "Error reading from %s: %s\n",
+			object_names_file, strerror(errno));
+		exit(1);
+	}
+
+	fclose(f);
 }
 
 /*
@@ -1607,9 +1682,9 @@ static void process_tu_func(const char *module_name,
 /*
  * Scan and identify duplicates across the entire set of object files.
  */
-static void scan_duplicates(int starting_argv, char *argv[])
+static void scan_duplicates(void)
 {
-	char **name;
+	size_t i;
 
 	/*
 	 * First, determine which types are referenced by more than one
@@ -1630,8 +1705,8 @@ static void scan_duplicates(int starting_argv, char *argv[])
 	dw_ctf_trace("Duplicate detection: primary pass.\n");
 
 	state.repeat_detection = 0;
-	for (name = &argv[starting_argv]; *name; name++)
-		process_file(*name, detect_duplicates,
+	for (i = 0; i < object_names_cnt; i++)
+		process_file(object_names[i], detect_duplicates,
 			     detect_duplicates_init,
 			     detect_duplicates_done, &state);
 
@@ -1651,8 +1726,9 @@ static void scan_duplicates(int starting_argv, char *argv[])
 
 		state.repeat_detection = 0;
 
-		for (name = &argv[starting_argv]; *name; name++)
-			process_file(*name, detect_duplicates_alias_fixup,
+		for (i = 0; i < object_names_cnt; i++)
+			process_file(object_names[i],
+				     detect_duplicates_alias_fixup,
 				     detect_duplicates_init,
 				     detect_duplicates_done, &state);
 	} while (state.repeat_detection);
