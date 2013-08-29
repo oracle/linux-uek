@@ -941,6 +941,51 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 	dtrace_difo_hold(dp);
 }
 
+dtrace_difo_t * dtrace_difo_duplicate(dtrace_difo_t *dp,
+				      dtrace_vstate_t *vstate)
+{
+	dtrace_difo_t	*new;
+	size_t		sz;
+
+	ASSERT(dp->dtdo_buf != NULL);
+	ASSERT(dp->dtdo_refcnt != 0);
+
+	new = vzalloc(sizeof(dtrace_difo_t));
+
+	ASSERT(dp->dtdo_buf != NULL);
+	sz = dp->dtdo_len * sizeof(dif_instr_t);
+	new->dtdo_buf = vmalloc(sz);
+	memcpy(new->dtdo_buf, dp->dtdo_buf, sz);
+	new->dtdo_len = dp->dtdo_len;
+
+	if (dp->dtdo_strtab != NULL) {
+		ASSERT(dp->dtdo_strlen != 0);
+		new->dtdo_strtab = vmalloc(dp->dtdo_strlen);
+		memcpy(new->dtdo_strtab, dp->dtdo_strtab, dp->dtdo_strlen);
+		new->dtdo_strlen = dp->dtdo_strlen;
+	}
+
+	if (dp->dtdo_inttab != NULL) {
+		ASSERT(dp->dtdo_intlen != 0);
+		sz = dp->dtdo_intlen * sizeof(uint64_t);
+		new->dtdo_inttab = vmalloc(sz);
+		memcpy(new->dtdo_inttab, dp->dtdo_inttab, sz);
+		new->dtdo_intlen = dp->dtdo_intlen;
+	}
+
+	if (dp->dtdo_vartab != NULL) {
+		ASSERT(dp->dtdo_varlen != 0);
+		sz = dp->dtdo_varlen * sizeof(dtrace_difv_t);
+		new->dtdo_vartab = vmalloc(sz);
+		memcpy(new->dtdo_vartab, dp->dtdo_vartab, sz);
+		new->dtdo_varlen = dp->dtdo_varlen;
+	}
+
+	dtrace_difo_init(new, vstate);
+
+	return new;
+}
+
 void dtrace_difo_destroy(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 {
 	int	i;
@@ -2275,7 +2320,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 	}
 }
 
-#define DTRACE_V4MAPPED_OFFSET	(sizeof (uint32_t) * 3)
+#define DTRACE_V4MAPPED_OFFSET	(sizeof(uint32_t) * 3)
 
 /*
  * Emulate the execution of DTrace ID subroutines invoked by the call opcode.

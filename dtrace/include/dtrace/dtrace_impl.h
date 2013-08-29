@@ -453,6 +453,7 @@ extern void dtrace_aggregate(dtrace_aggregation_t *, dtrace_buffer_t *,
  */
 
 extern dtrace_hash_t *dtrace_hash_create(uintptr_t, uintptr_t, uintptr_t);
+extern void dtrace_hash_destroy(dtrace_hash_t *);
 extern int dtrace_hash_add(dtrace_hash_t *, dtrace_probe_t *);
 extern dtrace_probe_t *dtrace_hash_lookup(dtrace_hash_t *, dtrace_probe_t *);
 extern int dtrace_hash_collisions(dtrace_hash_t *, dtrace_probe_t *);
@@ -546,6 +547,8 @@ extern int dtrace_difo_validate_helper(dtrace_difo_t *);
 extern int dtrace_difo_cacheable(dtrace_difo_t *);
 extern void dtrace_difo_hold(dtrace_difo_t *);
 extern void dtrace_difo_init(dtrace_difo_t *, dtrace_vstate_t *);
+extern dtrace_difo_t * dtrace_difo_duplicate(dtrace_difo_t *,
+					     dtrace_vstate_t *);
 extern void dtrace_difo_release(dtrace_difo_t *, dtrace_vstate_t *);
 
 extern uint64_t dtrace_dif_emulate(dtrace_difo_t *, dtrace_mstate_t *,
@@ -577,6 +580,8 @@ extern void dtrace_actdesc_release(dtrace_actdesc_t *, dtrace_vstate_t *);
  * DTrace Helper Functions
  */
 extern void dtrace_helpers_destroy(struct task_struct *);
+extern void dtrace_helpers_duplicate(struct task_struct *,
+				     struct task_struct *);
 extern uint64_t dtrace_helper(int, dtrace_mstate_t *, dtrace_state_t *,
 			      uint64_t, uint64_t);
 

@@ -1800,7 +1800,7 @@ void dtrace_helper_provide(dof_helper_t *dhp, pid_t pid)
 	dtrace_enabling_matchall();
 }
 
-static void dtrace_helper_provider_register(struct task_struct *curr,
+static void dtrace_helper_provider_register(struct task_struct *tsk,
 					    dtrace_helpers_t *dth,
 					    dof_helper_t *dofhp)
 {
@@ -1821,7 +1821,7 @@ static void dtrace_helper_provider_register(struct task_struct *curr,
 		if (dth->dthps_next == NULL && dth->dthps_prev == NULL &&
 		    dtrace_deferred_pid != dth) {
 			dth->dthps_deferred = 1;
-			dth->dthps_pid = current->pid;
+			dth->dthps_pid = tsk->pid;
 			dth->dthps_next = dtrace_deferred_pid;
 			dth->dthps_prev = NULL;
 			if (dtrace_deferred_pid != NULL)
@@ -1838,7 +1838,7 @@ static void dtrace_helper_provider_register(struct task_struct *curr,
 		 */
 		mutex_unlock(&dtrace_lock);
 
-		dtrace_helper_provide(dofhp, current->pid);
+		dtrace_helper_provide(dofhp, tsk->pid);
 	} else {
 		/*
 		 * Otherwise, just pass all the helper provider descriptions
@@ -1850,7 +1850,7 @@ static void dtrace_helper_provider_register(struct task_struct *curr,
 
 		for (i = 0; i < dth->dthps_nprovs; i++) {
 			dtrace_helper_provide(&dth->dthps_provs[i]->dthp_prov,
-					      current->pid);
+					      tsk->pid);
 		}
 	}
 
@@ -2057,6 +2057,90 @@ void dtrace_helpers_destroy(struct task_struct *tsk)
 
 	--dtrace_helpers;
 	mutex_unlock(&dtrace_lock);
+}
+
+void dtrace_helpers_duplicate(struct task_struct *from, struct task_struct *to)
+{
+	dtrace_helpers_t	*help, *newhelp;
+	dtrace_helper_action_t	*helper, *new, *last;
+	dtrace_difo_t		*dp;
+	dtrace_vstate_t		*vstate;
+	int			i, j, sz, hasprovs = 0;
+
+	mutex_lock(&dtrace_lock);
+
+	ASSERT(from->dtrace_helpers != NULL);
+	ASSERT(dtrace_helpers > 0);
+
+	help = from->dtrace_helpers;
+	newhelp = dtrace_helpers_create(to);
+
+	ASSERT(to->dtrace_helpers != NULL);
+
+	newhelp->dthps_generation = help->dthps_generation;
+	vstate = &newhelp->dthps_vstate;
+
+	/*
+	 * Duplicate the helper actions.
+	 */
+	for (i = 0; i < DTRACE_NHELPER_ACTIONS; i++) {
+		if ((helper = help->dthps_actions[i]) == NULL)
+			continue;
+
+		for (last = NULL; helper != NULL; helper = helper->dtha_next) {
+			new = vzalloc(sizeof(dtrace_helper_action_t));
+			new->dtha_generation = helper->dtha_generation;
+
+			if ((dp = helper->dtha_predicate) != NULL) {
+				dp = dtrace_difo_duplicate(dp, vstate);
+				new->dtha_predicate = dp;
+			}
+
+			new->dtha_nactions = helper->dtha_nactions;
+			sz = sizeof(dtrace_difo_t *) * new->dtha_nactions;
+			new->dtha_actions = vmalloc(sz);
+
+			for (j = 0; j < new->dtha_nactions; j++) {
+				dtrace_difo_t	*dp = helper->dtha_actions[j];
+
+				ASSERT(dp != NULL);
+
+				dp = dtrace_difo_duplicate(dp, vstate);
+				new->dtha_actions[j] = dp;
+			}
+
+			if (last != NULL)
+				last->dtha_next = new;
+			else
+				newhelp->dthps_actions[i] = new;
+
+			last = new;
+		}
+	}
+
+	/*
+	 * Duplicate the helper providers and register them with the
+	 * DTrace framework.
+	 */
+	if (help->dthps_nprovs > 0) {
+		newhelp->dthps_nprovs = help->dthps_nprovs;
+		newhelp->dthps_maxprovs = help->dthps_nprovs;
+		newhelp->dthps_provs = vmalloc(
+					newhelp->dthps_nprovs *
+					sizeof(dtrace_helper_provider_t *));
+
+		for (i = 0; i < newhelp->dthps_nprovs; i++) {
+			newhelp->dthps_provs[i] = help->dthps_provs[i];
+			newhelp->dthps_provs[i]->dthp_ref++;
+		}
+
+		hasprovs = 1;
+	}
+
+	mutex_unlock(&dtrace_lock);
+
+	if (hasprovs)
+		dtrace_helper_provider_register(to, newhelp, NULL);
 }
 
 int dtrace_helper_destroygen(int gen)
