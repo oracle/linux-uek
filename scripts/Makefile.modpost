@@ -185,6 +185,7 @@ endef
 
 $(ctf-filelist): $(builtins) $(modules:.ko=.o)
 	@rm -f $(ctf-filelist);
+	@mkdir -p $(ctf-dir);
 	$(call add-ctf-filelists-cmd,$^)
 
 # We depend upon a stamp file in lieu of the builtin modules' CTF files, because
