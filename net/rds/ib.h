@@ -138,11 +138,6 @@ struct rds_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct rds_ib_destroy_id_work {
-	struct delayed_work             work;
-	struct rdma_cm_id               *cm_id;
-};
-
 struct rds_ib_migrate_work {
 	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
@@ -293,6 +288,13 @@ struct rds_ib_port {
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
 
+#define RDS_IB_MAX_EXCL_IPS     20
+struct rds_ib_excl_ips {
+	__be32                  ip;
+	__be32                  prefix;
+	__be32                  mask;
+};
+
 enum {
 	RDS_IB_PORT_EVENT_IB,
 	RDS_IB_PORT_EVENT_NET,
@@ -304,6 +306,11 @@ struct rds_ib_port_ud_work {
 	unsigned int                    port;
 	int				timeout;
 	int				event_type;
+};
+
+struct rds_ib_conn_drop_work {
+	struct delayed_work             work;
+	struct rds_ib_connection        *conn;
 };
 
 enum {
@@ -334,6 +341,8 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
+	wait_queue_head_t       wait;
+	int                     done;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -390,6 +399,8 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_refills;
 	uint64_t        s_ib_srq_empty_refills;
 	uint64_t	s_ib_failed_apm;
+	uint64_t	s_ib_recv_added_to_cache;
+	uint64_t	s_ib_recv_removed_from_cache;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -442,9 +453,8 @@ extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
-extern unsigned int rds_ib_haip_enabled;
-extern unsigned int rds_ib_haip_fallback;
-extern unsigned int rds_ib_haip_failover_enabled;
+extern unsigned int rds_ib_active_bonding_enabled;
+extern unsigned int rds_ib_active_bonding_fallback;
 extern unsigned int rds_ib_apm_timeout;
 extern unsigned int rds_ib_cq_balance_enabled;
 
@@ -547,6 +557,8 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op);
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 #define rds_ib_stats_inc(member) rds_stats_inc_which(rds_ib_stats, member)
+#define rds_ib_stats_add(member, count) \
+		rds_stats_add_which(rds_ib_stats, member, count)
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 
