@@ -6,14 +6,15 @@
 #define PASTE(x,y) PASTE2(x,y)
 #define ASM_SYMBOL(sym) PASTE(SYMBOL_PREFIX, sym)
 #endif
+#include <linux/init.h>
 
 #define GLOBAL(name)	\
 	.globl ASM_SYMBOL(name);	\
 	ASM_SYMBOL(name):
 
-	.section ".init.data","aw"
+	__INITRODATA
 
-GLOBAL(modsign_certificate_list)
+GLOBAL(system_certificate_list)
 	.incbin "kernel/x509_certificate_list"
 	.incbin "ksplice_signing_key.x509"
-GLOBAL(modsign_certificate_list_end)
+GLOBAL(system_certificate_list_end)
