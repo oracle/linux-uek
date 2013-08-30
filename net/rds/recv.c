@@ -114,6 +114,10 @@ static void rds_recv_rcvbuf_delta(struct rds_sock *rs, struct sock *sk,
 		return;
 
 	rs->rs_rcv_bytes += delta;
+	if (delta > 0)
+		rds_stats_add(s_recv_bytes_added_to_socket, delta);
+	else
+		rds_stats_add(s_recv_bytes_removed_from_socket, -delta);
 	now_congested = rs->rs_rcv_bytes > rds_sk_rcvbuf(rs);
 
 	rdsdebug("rs %p (%pI4:%u) recv bytes %d buf %d "
@@ -704,6 +708,8 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	rdsdebug("size %zu flags 0x%x timeo %ld\n", size, msg_flags, timeo);
 
+	msg->msg_namelen = 0;
+
 	if (msg_flags & MSG_OOB)
 		goto out;
 
@@ -780,6 +786,7 @@ int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 			sin->sin_port = inc->i_hdr.h_sport;
 			sin->sin_addr.s_addr = inc->i_saddr;
 			memset(sin->sin_zero, 0, sizeof(sin->sin_zero));
+			msg->msg_namelen = sizeof(*sin);
 		}
 		break;
 	}

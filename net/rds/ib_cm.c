@@ -158,18 +158,23 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 				RDS_PROTOCOL_MINOR(conn->c_version));
 			rds_conn_destroy(conn);
 			return;
-		} else {
-			conn->c_proposed_version = RDS_PROTOCOL_VERSION;
 		}
 	}
 
 	printk(KERN_NOTICE
-		"RDS/IB: connected to %u.%u.%u.%u version %u.%u%s Tos %d\n",
+		"RDS/IB: connected <%u.%u.%u.%u,%u.%u.%u.%u,%d> version %u.%u%s\n",
+		NIPQUAD(conn->c_laddr),
 		NIPQUAD(conn->c_faddr),
+		conn->c_tos,
 		RDS_PROTOCOL_MAJOR(conn->c_version),
 		RDS_PROTOCOL_MINOR(conn->c_version),
-		ic->i_flowctl ? ", flow control" : "",
-		conn->c_tos);
+		ic->i_flowctl ? ", flow control" : "");
+
+	/* The connection might have been dropped under us*/
+	if (!ic->i_cm_id) {
+		rds_conn_drop(conn);
+		return;
+	}
 
 	ic->i_sl = ic->i_cm_id->route.path_rec->sl;
 
@@ -712,6 +717,22 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
+	if (conn->c_reconnect && (conn->c_version != version)) {
+		printk(KERN_WARNING "RDS/IB: connection "
+			"<%u.%u.%u.%u,%u.%u.%u.%u,%d,%u.%u> rejecting version "
+			"(%u/%u)\n",
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos,
+			RDS_PROTOCOL_MAJOR(conn->c_version),
+			RDS_PROTOCOL_MINOR(conn->c_version),
+			RDS_PROTOCOL_MAJOR(version),
+			RDS_PROTOCOL_MINOR(version));
+
+		conn = NULL;
+		goto out;
+	}
+
 	/*
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
@@ -743,9 +764,12 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			 */
 			if (now > conn->c_connection_start &&
 			    now - conn->c_connection_start > 15) {
-				printk(KERN_CRIT "rds connection racing for 15s, forcing reset "
-					"connection %u.%u.%u.%u->%u.%u.%u.%u\n",
-					NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
+				printk(KERN_CRIT "RDS/IB: connection "
+					"<%u.%u.%u.%u,%u.%u.%u.%u,%d> "
+					"racing for 15s, forcing reset ",
+					NIPQUAD(conn->c_laddr),
+					NIPQUAD(conn->c_faddr),
+					conn->c_tos);
 				rds_conn_drop(conn);
 				rds_ib_stats_inc(s_ib_listen_closed_stale);
 			} else {
@@ -830,7 +854,7 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 
 	/* If the peer doesn't do protocol negotiation, we must
 	 * default to RDSv3.0 */
-	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_0);
+	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 
 	ret = rds_ib_setup_qp(conn);
@@ -954,22 +978,10 @@ void rds_ib_check_migration(struct rds_connection *conn,
 	}
 }
 
-static void rds_ib_destroy_id(struct work_struct *_work)
-{
-	struct rds_ib_destroy_id_work *work =
-		container_of(_work, struct rds_ib_destroy_id_work, work.work);
-	struct rdma_cm_id        *cm_id = work->cm_id;
-
-	rdma_destroy_id(cm_id);
-
-	kfree(work);
-}
-
 int rds_ib_conn_connect(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
 	struct sockaddr_in src, dest;
-	struct rds_ib_destroy_id_work *work;
 	int ret;
 
 	/* XXX I wonder what affect the port space has */
@@ -999,13 +1011,7 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	if (ret) {
 		rdsdebug("addr resolve failed for cm id %p: %d\n", ic->i_cm_id,
 			 ret);
-		work = kzalloc(sizeof *work, GFP_KERNEL);
-		if (work) {
-			work->cm_id = ic->i_cm_id;
-			INIT_DELAYED_WORK(&work->work, rds_ib_destroy_id);
-			queue_delayed_work(rds_aux_wq, &work->work, 0);
-		} else
-			rdma_destroy_id(ic->i_cm_id);
+		rdma_destroy_id(ic->i_cm_id);
 
 		ic->i_cm_id = NULL;
 	}
@@ -1022,7 +1028,6 @@ out:
 void rds_ib_conn_shutdown(struct rds_connection *conn)
 {
 	struct rds_ib_connection *ic = conn->c_transport_data;
-	struct rds_ib_destroy_id_work *work;
 	int err = 0;
 
 	rdsdebug("cm %p pd %p cq %p qp %p\n", ic->i_cm_id,
@@ -1095,17 +1100,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		if (ic->i_recvs)
 			rds_ib_recv_clear_ring(ic);
 
-		/*
-		 * rdma_destroy_id may block so offload it to the aux
-		 * thread for processing.
-		 */
-		work = kzalloc(sizeof *work, GFP_KERNEL);
-		if (work) {
-			work->cm_id = ic->i_cm_id;
-			INIT_DELAYED_WORK(&work->work, rds_ib_destroy_id);
-			queue_delayed_work(rds_aux_wq, &work->work, 0);
-		} else
-			rdma_destroy_id(ic->i_cm_id);
+		rdma_destroy_id(ic->i_cm_id);
 
 		/*
 		 * Move connection back to the nodev list.

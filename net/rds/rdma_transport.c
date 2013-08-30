@@ -42,7 +42,7 @@
 #include <net/sock.h>
 #include <net/inet_common.h>
 
-#define RDS_IB_REJ_CONSUMER_DEFINED 28
+#define RDS_REJ_CONSUMER_DEFINED 28
 
 static struct rdma_cm_id *rds_iw_listen_id;
 
@@ -113,15 +113,26 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 				if (ibic && ibic->i_cm_id == cm_id)
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn);
-			} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+			}
+		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
 				conn->c_to_index++;
-		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		/* XXX worry about racing with listen acceptance */
 		conn->c_to_index = 0;
-		ret = trans->cm_initiate_connect(cm_id);
+
+		/* Connection could have been dropped so make sure the
+		 * cm_id is valid before proceeding */
+		if (conn) {
+			struct rds_ib_connection *ibic;
+
+			ibic = conn->c_transport_data;
+			if (ibic && ibic->i_cm_id == cm_id)
+				ret = trans->cm_initiate_connect(cm_id);
+			else
+				rds_conn_drop(conn);
+		}
 		break;
 
 	case RDMA_CM_EVENT_ALT_PATH_LOADED:
@@ -173,18 +184,22 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_REJECTED:
 		err = (int *)event->param.conn.private_data;
 		if (conn) {
-			if ((*err) == 0 &&
-				event->status == RDS_IB_REJ_CONSUMER_DEFINED) {
-				/* rejection from 3.x protocol */
-				if (!conn->c_tos) {
-					/* retry the connect with a
-					   lower compatible protocol */
-					conn->c_proposed_version =
+			if (!conn->c_reconnect) {
+				if ((*err) == 0 &&
+				event->status == RDS_REJ_CONSUMER_DEFINED) {
+					/* rejection from 3.x protocol */
+					if (!conn->c_tos) {
+						/* retry the connect with a
+						   lower compatible protocol */
+						conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
-					rds_conn_drop(conn);
+					}
+				} else {
+					conn->c_proposed_version =
+						RDS_PROTOCOL_VERSION;
 				}
-			} else
-				rds_conn_drop(conn);
+			}
+			rds_conn_drop(conn);
 		}
 		break;
 

@@ -340,8 +340,7 @@ void rds_conn_shutdown(struct rds_connection *conn)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node)) {
 		rcu_read_unlock();
-		if (conn->c_laddr >= conn->c_faddr)
-			rds_queue_reconnect(conn);
+		rds_queue_reconnect(conn);
 	} else {
 		rcu_read_unlock();
 	}
@@ -587,11 +586,20 @@ void rds_conn_drop(struct rds_connection *conn)
 		conn->c_reconnect_warn = 1;
 		conn->c_reconnect_drops = 0;
 		conn->c_reconnect_err = 0;
+		printk(KERN_INFO "RDS/IB: connection "
+			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> dropped\n",
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos);
 	} else if ((conn->c_reconnect_warn) &&
 		   (now - conn->c_reconnect_start > 60)) {
-		printk(KERN_INFO "RDS/IB: re-connect to %u.%u.%u.%u is "
-			"stalling for more than 1 min...(drops=%u err=%d)\n",
-			NIPQUAD(conn->c_faddr), conn->c_reconnect_drops,
+		printk(KERN_INFO "RDS/IB: re-connect "
+			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> stalling "
+			"for more than 1 min...(drops=%u err=%d)\n",
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos,
+			conn->c_reconnect_drops,
 			conn->c_reconnect_err);
 		conn->c_reconnect_warn = 0;
 	}
