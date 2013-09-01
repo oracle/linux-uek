@@ -662,8 +662,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 					       timestamp);
 		}
 
+#ifdef CONFIG_NET_RX_BUSY_POLL
+		skb_mark_napi_id(skb, &cq->napi);
+#endif
+
 		/* Push it up the stack */
-		napi_gro_receive(&cq->napi, skb);
+		if (mlx4_en_cq_ll_polling(cq))
+			netif_receive_skb(skb);
+		else
+			napi_gro_receive(&cq->napi, skb);
 
 next:
 		++cons_index;
