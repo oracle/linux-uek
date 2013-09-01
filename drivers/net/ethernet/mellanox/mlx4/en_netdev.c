@@ -38,8 +38,8 @@
 #include <linux/slab.h>
 #include <linux/hash.h>
 #include <net/ip.h>
-#ifdef CONFIG_NET_LL_RX_POLL
-#include <net/ll_poll.h>
+#ifdef CONFIG_NET_RX_BUSY_POLL
+#include <net/busy_poll.h>
 #endif
 
 #include <linux/mlx4/driver.h>
@@ -70,7 +70,7 @@ int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 	return 0;
 }
 
-#ifdef CONFIG_NET_LL_RX_POLL
+#ifdef CONFIG_NET_RX_BUSY_POLL
 /* must be called with local_bh_disable()d */
 static int mlx4_en_low_latency_recv(struct napi_struct *napi)
 {
@@ -98,7 +98,7 @@ static int mlx4_en_low_latency_recv(struct napi_struct *napi)
 
 	return done;
 }
-#endif	/* CONFIG_NET_LL_RX_POLL */
+#endif	/* CONFIG_NET_RX_BUSY_POLL */
 
 #ifdef CONFIG_RFS_ACCEL
 
@@ -2233,8 +2233,8 @@ static const struct net_device_ops mlx4_netdev_ops = {
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= mlx4_en_filter_rfs,
 #endif
-#ifdef CONFIG_NET_LL_RX_POLL
-	.ndo_ll_poll		= mlx4_en_low_latency_recv,
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	.ndo_busy_poll		= mlx4_en_low_latency_recv,
 #endif
 	.ndo_fdb_add		= mlx4_en_fdb_add,
 	.ndo_fdb_del		= mlx4_en_fdb_del,

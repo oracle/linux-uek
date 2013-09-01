@@ -40,8 +40,8 @@
 #include <linux/vmalloc.h>
 #include <linux/prefetch.h>
 #include <linux/mlx4/driver.h>
-#ifdef CONFIG_NET_LL_RX_POLL
-#include <net/ll_poll.h>
+#ifdef CONFIG_NET_RX_BUSY_POLL
+#include <net/busy_poll.h>
 #endif
 
 #include "mlx4_en.h"
