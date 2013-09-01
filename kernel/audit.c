@@ -449,8 +449,11 @@ static int kauditd_thread(void *dummy)
 		}
 
 		skb = skb_dequeue(&audit_skb_queue);
-		wake_up(&audit_backlog_wait);
+
 		if (skb) {
+			if(skb_queue_len(&audit_skb_queue) <= audit_backlog_limit)
+				wake_up(&audit_backlog_wait);
+
 			if (audit_pid)
 				kauditd_send_skb(skb);
 			else
@@ -1110,7 +1113,7 @@ static void wait_for_auditd(unsigned long sleep_time, int limit)
 {
 	DECLARE_WAITQUEUE(wait, current);
 	set_current_state(TASK_INTERRUPTIBLE);
-	add_wait_queue(&audit_backlog_wait, &wait);
+	add_wait_queue_exclusive(&audit_backlog_wait, &wait);
 
 	if (audit_backlog_limit &&
 	    skb_queue_len(&audit_skb_queue) > limit)
