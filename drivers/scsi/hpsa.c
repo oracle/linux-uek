@@ -158,6 +158,21 @@ static const struct pci_device_id hpsa_pci_device_id[] = {
 	{PCI_VENDOR_ID_HP,    PCI_DEVICE_ID_HP_CISSH,      0x103c, 0x1929},
 	{PCI_VENDOR_ID_HP,    PCI_DEVICE_ID_HP_CISSH,      0x103c, 0x192A},
 #endif
+#if SA_CONTROLLERS_GEN9
+/* PCI ID's for HP Smart Array Gen9 controllers. */
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21BD},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21BE},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21BF},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C0},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C1},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C2},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C3},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C4},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C5},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C7},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C8},
+	{PCI_VENDOR_ID_HP,     PCI_DEVICE_ID_HP_CISSI,     0x103C, 0x21C9},
+#endif
 	HPSA_STORAGEWORKS_1210m_PCI_IDS
         {PCI_VENDOR_ID_HP,     PCI_ANY_ID,       PCI_ANY_ID, PCI_ANY_ID,
                 PCI_CLASS_STORAGE_RAID << 8, 0xffff << 8, 0},
@@ -205,6 +220,20 @@ static struct board_type products[] = {
 	{0x1928103C, "Smart Array P230i", &SA5_access},
 	{0x1929103C, "Smart Array P531", &SA5_access},
 	{0x192A103C, "Smart Array P530", &SA5_access},
+#endif
+#if SA_CONTROLLERS_GEN9
+	{0x21BD103C, "Smart Array", &SA5_access},
+	{0x21BE103C, "Smart Array", &SA5_access},
+	{0x21BF103C, "Smart Array", &SA5_access},
+	{0x21C0103C, "Smart Array", &SA5_access},
+	{0x21C1103C, "Smart Array", &SA5_access},
+	{0x21C2103C, "Smart Array", &SA5_access},
+	{0x21C3103C, "Smart Array", &SA5_access},
+	{0x21C4103C, "Smart Array", &SA5_access},
+	{0x21C5103C, "Smart Array", &SA5_access},
+	{0x21C7103C, "Smart Array", &SA5_access},
+	{0x21C8103C, "Smart Array", &SA5_access},
+	{0x21C9103C, "Smart Array", &SA5_access},
 #endif
 	HPSA_STORAGEWORKS_1210m_PRODUCT_ENTRIES
 	{0xFFFF103C, "Unknown Smart Array", &SA5_access},

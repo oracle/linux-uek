@@ -188,6 +188,7 @@
 #define SA_CONTROLLERS_GEN8 1
 #define SA_CONTROLLERS_GEN8_2 1
 #define SA_CONTROLLERS_GEN8_5 1
+#define SA_CONTROLLERS_GEN9 1
 
 #endif /* SLES11sp2plus */
 #endif /* SLES11sp1 */
