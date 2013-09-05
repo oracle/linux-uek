@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-1.el6uek}
+%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-14.el6uek}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
@@ -34,7 +34,7 @@ ExclusiveArch: x86_64
 DTrace kernel modules.
 
 This package contains the DTrace core module, and standard provider modules:
-dtrace, profile, syscall, sdt (io, proc,sched).
+dtrace, profile, syscall, sdt (io, proc,sched), and fasttrap (USDT).
 
 Maintainers:
 ------------
@@ -100,9 +100,8 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
-* Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
+* Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
 - Bugfix for module unloading.
-* Thu Jul 25 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
 - Support meta-providers, USDT, and fasttrap (for USDT only).
 - Export DTrace kernel headers to userspace.
 - Reimplemented ustack().
