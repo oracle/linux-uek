@@ -110,7 +110,6 @@ static void fasttrap_usdt_args64(fasttrap_probe_t *probe, struct pt_regs *regs,
 
 	while (i < argc)
 		argv[i++] = 0;
-for (i = 0; i < argc; i++) pr_info("%s: argv[%2d] = %lx\n", __FUNCTION__, i, argv[i]);
 }
 
 static int fasttrap_pid_probe(fasttrap_machtp_t *mtp, struct pt_regs *regs) {
