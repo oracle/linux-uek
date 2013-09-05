@@ -123,12 +123,6 @@ uint64_t dtrace_getarg(int argno, int aframes)
 
 	asm volatile("movq %%rbp,%0" : "=m"(bp));
 
-#if 0
-for (i = 0, st = (uint64_t *)bp; i < 180; i++) pr_info("stack[%3d] %p = %llx\n", i, &st[i], st[i]);
-#endif
-#if 0
-for (i = 0, st = (uint64_t *)bp; i < 16; i++) { pr_info("BP at frame %d: %p -> (%llx, %llx)\n", i, st, st[0], st[1]); if (st[0] == 0) break; st = (uint64_t *)st[0]; }
-#endif
 	for (i = 0; i < aframes; i++)
 		bp = *((unsigned long *)bp);
 
