@@ -2480,6 +2480,7 @@ retry_root_backup:
 
 	btrfs_set_root_node(&tree_root->root_item, tree_root->node);
 	tree_root->commit_root = btrfs_root_node(tree_root);
+	btrfs_set_root_refs(&tree_root->root_item, 1);
 
 	ret = find_and_setup_root(tree_root, fs_info,
 				  BTRFS_EXTENT_TREE_OBJECTID, extent_root);
