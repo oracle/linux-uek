@@ -24,8 +24,6 @@
 # Copyright 2011 -- 2013 Oracle, Inc.  All rights reserved.
 # Use is subject to license terms.
 
-GCOV_PROFILE := y
-
 EXTRA_CFLAGS			:= -I$(src)/include -I$(src)/include/uapi
 
 obj-$(CONFIG_DT_CORE)		+= dtrace.o

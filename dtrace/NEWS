@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.4.0 (Jul 23, 2013)
+Release 0.4.0 (Aug 16, 2013)
 ----------------------------
-Kernel release: 3.8.13-1.el6uek
+Kernel release: 3.8.13-14.el6uek
 
 New features:
 
@@ -37,6 +37,7 @@ Bugfixes:
    first element in the result array.
  - The ustack() action implementation has been replaced.
  - Several obscure locking problems have been resolved.
+ - Correct handling of arg5 through arg9.
 
 Release 0.3.0 (Sep 14, 2012)
 ----------------------------
