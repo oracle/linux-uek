@@ -8411,6 +8411,9 @@ lpfc_sli4_set_affinity(struct lpfc_hba *phba, int vectors)
 	struct cpumask *mask;
 	uint8_t chann[LPFC_FCP_IO_CHAN_MAX+1];
 
+	/* Always start with not using cpu affinity for scheduling */
+	phba->cfg_fcp_io_sched = LPFC_FCP_SCHED_ROUND_ROBIN;
+
 	/* If there is no mapping, just return */
 	if (!phba->cfg_fcp_cpu_map)
 		return 1;
@@ -8597,6 +8600,7 @@ out:
 				num_io_channel, phba->sli4_hba.num_present_cpu,
 				vectors);
 
+	/* Enable using cpu affinity for scheduling */
 	phba->cfg_fcp_io_sched = LPFC_FCP_SCHED_BY_CPU;
 	return 1;
 }
