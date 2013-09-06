@@ -4343,6 +4343,7 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 	char tag[2];
 	uint8_t *ptr;
 	bool sli4;
+	uint32_t fcpdl;
 
 	if (!pnode || !NLP_CHK_NODE_ACT(pnode))
 		return;
@@ -4390,8 +4391,12 @@ lpfc_scsi_prep_cmnd(struct lpfc_vport *vport, struct lpfc_scsi_buf *lpfc_cmd,
 			iocb_cmd->ulpPU = PARM_READ_CHECK;
 			if (vport->cfg_first_burst_size &&
 			    (pnode->nlp_flag & NLP_FIRSTBURST)) {
-				piocbq->iocb.un.fcpi.fcpi_XRdy =
-					vport->cfg_first_burst_size;
+				fcpdl = scsi_bufflen(scsi_cmnd);
+				if (fcpdl < vport->cfg_first_burst_size)
+					piocbq->iocb.un.fcpi.fcpi_XRdy = fcpdl;
+				else
+					piocbq->iocb.un.fcpi.fcpi_XRdy =
+						vport->cfg_first_burst_size;
 			}
 			fcp_cmnd->fcpCntl3 = WRITE_DATA;
 			phba->fc4OutputRequests++;
