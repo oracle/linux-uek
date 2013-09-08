@@ -1110,30 +1110,34 @@ EXPORT_SYMBOL_GPL(mlx4_fmr_enable);
 void mlx4_fmr_unmap(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 		    u32 *lkey, u32 *rkey)
 {
-	struct mlx4_cmd_mailbox *mailbox;
-	int err;
+	u32 key;
 
 	if (!fmr->maps)
 		return;
 
+	key = key_to_hw_index(fmr->mr.key) & (dev->caps.num_mpts - 1);
+
+	*(u8 *)fmr->mpt = MLX4_MPT_STATUS_SW;
+
+	/* Make sure MPT status is visible before changing MPT fields */
+	wmb();
+
+	fmr->mr.key = hw_index_to_key(key);
+
+	fmr->mpt->key    = cpu_to_be32(key);
+	fmr->mpt->lkey   = cpu_to_be32(key);
+	fmr->mpt->length = 0;
+	fmr->mpt->start  = 0;
+
+	/* Make sure MPT data is visible before changing MPT status */
+	wmb();
+
+	*(u8 *)fmr->mpt = MLX4_MPT_STATUS_HW;
+
+	/* Make sure MPT satus is visible */
+	wmb();
+
 	fmr->maps = 0;
-
-	mailbox = mlx4_alloc_cmd_mailbox(dev);
-	if (IS_ERR(mailbox)) {
-		err = PTR_ERR(mailbox);
-		pr_warn("mlx4_ib: mlx4_alloc_cmd_mailbox failed (%d)\n", err);
-		return;
-	}
-
-	err = mlx4_HW2SW_MPT(dev, NULL,
-			     key_to_hw_index(fmr->mr.key) &
-			     (dev->caps.num_mpts - 1));
-	mlx4_free_cmd_mailbox(dev, mailbox);
-	if (err) {
-		pr_warn("mlx4_ib: mlx4_HW2SW_MPT failed (%d)\n", err);
-		return;
-	}
-	fmr->mr.enabled = MLX4_MPT_EN_SW;
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_unmap);
 
