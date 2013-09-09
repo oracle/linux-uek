@@ -37,6 +37,7 @@
 #include <linux/notifier.h>
 #include <linux/uaccess.h>
 #include <linux/gfp.h>
+#include <linux/security.h>
 
 #include <asm/processor.h>
 #include <asm/msr.h>
@@ -103,6 +104,9 @@ static ssize_t msr_write(struct file *file, const char __user *buf,
 	int err = 0;
 	ssize_t bytes = 0;
 
+	if (get_securelevel() > 0)
+		return -EPERM;
+
 	if (count % 8)
 		return -EINVAL;	/* Invalid chunk size */
 
@@ -148,6 +152,10 @@ static long msr_ioctl(struct file *file, unsigned int ioc, unsigned long arg)
 	case X86_IOC_WRMSR_REGS:
 		if (!(file->f_mode & FMODE_WRITE)) {
 			err = -EBADF;
+			break;
+		}
+		if (get_securelevel() > 0) {
+			err = -EPERM;
 			break;
 		}
 		if (copy_from_user(&regs, uregs, sizeof regs)) {
