@@ -45,6 +45,7 @@
 #include <linux/seq_file.h>
 #include <linux/platform_device.h>
 #include <linux/thermal.h>
+#include <linux/security.h>
 #include <acpi/acpi_bus.h>
 #include <acpi/acpi_drivers.h>
 #include <acpi/video.h>
@@ -1521,6 +1522,9 @@ static int show_dsts(struct seq_file *m, void *data)
 	int err;
 	u32 retval = -1;
 
+	if (get_securelevel() > 0)
+		return -EPERM;
+
 	err = asus_wmi_get_devstate(asus, asus->debug.dev_id, &retval);
 
 	if (err < 0)
@@ -1536,6 +1540,9 @@ static int show_devs(struct seq_file *m, void *data)
 	struct asus_wmi *asus = m->private;
 	int err;
 	u32 retval = -1;
+
+	if (get_securelevel() > 0)
+		return -EPERM;
 
 	err = asus_wmi_set_devstate(asus->debug.dev_id, asus->debug.ctrl_param,
 				    &retval);
@@ -1560,6 +1567,9 @@ static int show_call(struct seq_file *m, void *data)
 	struct acpi_buffer output = { ACPI_ALLOCATE_BUFFER, NULL };
 	union acpi_object *obj;
 	acpi_status status;
+
+	if (get_securelevel() > 0)
+		return -EPERM;
 
 	status = wmi_evaluate_method(ASUS_WMI_MGMT_GUID,
 				     1, asus->debug.method_id,
