@@ -35,6 +35,7 @@
 #include <linux/swap.h>
 #include <linux/syscore_ops.h>
 #include <linux/hugetlb.h>
+#include <linux/security.h>
 
 #include <asm/page.h>
 #include <asm/uaccess.h>
@@ -1314,6 +1315,9 @@ SYSCALL_DEFINE4(kexec_load, unsigned long, entry, unsigned long, nr_segments,
 
 	/* We only trust the superuser with rebooting the system. */
 	if (!capable(CAP_SYS_BOOT) || kexec_load_disabled)
+		return -EPERM;
+
+	if (get_securelevel() > 0)
 		return -EPERM;
 
 	/*
