@@ -1,0 +1,23 @@
+Linux securelevel interface
+---------------------------
+
+The Linux securelevel interface (inspired by the BSD securelevel interface)
+is a runtime mechanism for configuring coarse-grained kernel-level security
+restrictions. It provides a runtime configuration variable at
+/sys/kernel/security/securelevel which can be written to by root. The
+following values are supported:
+
+-1: Permanently insecure mode. This level is equivalent to level 0, but once
+    set cannot be changed.
+
+0:  Insecure mode (default). This level imposes no additional kernel
+    restrictions.
+
+1:  Secure mode. If set, userspace will be unable to perform direct access
+    to PCI devices, port IO access, access system memory directly via
+    /dev/mem and /dev/kmem, perform kexec_load(), use the userspace
+    software suspend mechanism, insert new ACPI code at runtime via the
+    custom_method interface or modify CPU MSRs (on x86). Certain drivers
+    may also limit additional interfaces.
+
+Once the securelevel value is increased, it may not be decreased.

@@ -70,6 +70,14 @@ config SECURITY_PATH
 	  implement pathname based access controls.
 	  If you are unsure how to answer this question, answer N.
 
+config SECURITY_SECURELEVEL
+        bool "Securelevel kernel restriction interface"
+	depends on SECURITY
+	help
+	  This enables support for adding a set of additional kernel security
+	  restrictions at runtime. See Documentation/security/securelevel.txt
+	  for further information.
+
 config INTEL_TXT
 	bool "Enable Intel(R) Trusted Execution Technology (Intel(R) TXT)"
 	depends on HAVE_INTEL_TXT
