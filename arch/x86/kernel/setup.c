@@ -50,6 +50,7 @@
 #include <linux/init_ohci1394_dma.h>
 #include <linux/kvm_para.h>
 #include <linux/dma-contiguous.h>
+#include <linux/security.h>
 
 #include <linux/errno.h>
 #include <linux/kernel.h>
@@ -1155,6 +1156,12 @@ void __init setup_arch(char **cmdline_p)
 	vsmp_init();
 
 	io_delay_init();
+
+#ifdef CONFIG_EFI_SECURE_BOOT_SECURELEVEL
+	if (boot_params.secure_boot) {
+		set_securelevel(1);
+	}
+#endif
 
 	/*
 	 * Parse the ACPI tables for possible boot-time SMP configuration.

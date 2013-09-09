@@ -72,7 +72,7 @@ config SECURITY_PATH
 	  If you are unsure how to answer this question, answer N.
 
 config SECURITY_SECURELEVEL
-        bool "Securelevel kernel restriction interface"
+	bool "Securelevel kernel restriction interface"
 	depends on SECURITY
 	help
 	  This enables support for adding a set of additional kernel security

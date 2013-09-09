@@ -12,6 +12,7 @@
 #include <asm/efi.h>
 #include <asm/setup.h>
 #include <asm/desc.h>
+#include <asm/bootparam_utils.h>
 
 #include "../string.h"
 #include "eboot.h"
@@ -1375,6 +1376,37 @@ free_mem_map:
 	return status;
 }
 
+static int get_secure_boot(void)
+{
+	u8 sb, setup;
+	unsigned long datasize = sizeof(sb);
+	efi_guid_t var_guid = EFI_GLOBAL_VARIABLE_GUID;
+	efi_status_t status;
+
+	status = efi_call_phys(sys_table->runtime->get_variable,
+			       L"SecureBoot", &var_guid, NULL, &datasize, &sb);
+
+	if (status != EFI_SUCCESS)
+		return 0;
+
+	if (sb == 0)
+		return 0;
+
+
+	status = efi_call_phys(sys_table->runtime->get_variable,
+			       L"SetupMode", &var_guid, NULL, &datasize,
+			       &setup);
+
+	if (status != EFI_SUCCESS)
+		return 0;
+
+	if (setup == 1)
+		return 0;
+
+	return 1;
+}
+
+
 /*
  * On success we return a pointer to a boot_params structure, and NULL
  * on failure.
@@ -1407,6 +1439,10 @@ struct boot_params *efi_main(struct efi_config *c,
 		setup_boot_services64(efi_early);
 	else
 		setup_boot_services32(efi_early);
+
+	sanitize_boot_params(boot_params);
+
+	boot_params->secure_boot = get_secure_boot();
 
 	setup_graphics(boot_params);
 
