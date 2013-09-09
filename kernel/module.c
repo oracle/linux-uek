@@ -2470,7 +2470,7 @@ static int module_sig_check(struct load_info *info)
 	if (err < 0 && fips_enabled)
 		panic("Module verification failed with error %d in FIPS mode\n",
 		      err);
-	if (err == -ENOKEY && !sig_enforce)
+	if ((err == -ENOKEY && !sig_enforce) && (get_securelevel() <= 0))
 		err = 0;
 
 	return err;
