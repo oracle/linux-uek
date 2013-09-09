@@ -24,6 +24,7 @@
 #include <linux/console.h>
 #include <linux/cpu.h>
 #include <linux/freezer.h>
+#include <linux/security.h>
 
 #include <asm/uaccess.h>
 
@@ -50,6 +51,9 @@ static int snapshot_open(struct inode *inode, struct file *filp)
 	int error;
 
 	if (!hibernation_available())
+		return -EPERM;
+
+	if (get_securelevel() > 0)
 		return -EPERM;
 
 	lock_system_sleep();
