@@ -8,6 +8,7 @@
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
 #include <linux/acpi.h>
+#include <linux/security.h>
 
 #include "internal.h"
 
@@ -28,6 +29,9 @@ static ssize_t cm_write(struct file *file, const char __user * user_buf,
 
 	struct acpi_table_header table;
 	acpi_status status;
+
+	if (get_securelevel() > 0)
+		return -EPERM;
 
 	if (!(*ppos)) {
 		/* parse the table header to get the table length */
