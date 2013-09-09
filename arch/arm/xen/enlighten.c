@@ -18,6 +18,8 @@
 #include <linux/of.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/cpuidle.h>
+#include <linux/cpufreq.h>
 
 #include <linux/mm.h>
 
@@ -220,6 +222,13 @@ static int __init xen_guest_init(void)
 	gnttab_init();
 	if (!xen_initial_domain())
 		xenbus_probe(NULL);
+
+	/*
+	 * Making sure board specific code will not set up ops for
+	 * cpu idle and cpu freq.
+	 */
+	disable_cpuidle();
+	disable_cpufreq();
 
 	return 0;
 }
