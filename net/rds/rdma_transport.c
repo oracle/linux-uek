@@ -182,23 +182,19 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	case RDMA_CM_EVENT_REJECTED:
 		err = (int *)event->param.conn.private_data;
 		if (conn) {
-			if (!conn->c_reconnect || conn->c_committed_version ==
-				RDS_PROTOCOL_COMPAT_VERSION) {
-				if ((*err) == 0 &&
-					event->status == RDS_REJ_CONSUMER_DEFINED) {
-					/* rejection from 3.x protocol */
-					if (!conn->c_tos) {
-						/* retry the connect with a
-						   lower compatible protocol */
-						conn->c_proposed_version =
-							RDS_PROTOCOL_COMPAT_VERSION;
-					}
-				} else {
+			if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
+				/* Rejection from RDSV3.1 */
+				if (!conn->c_tos) {
 					conn->c_proposed_version =
-						RDS_PROTOCOL_VERSION;
+						RDS_PROTOCOL_COMPAT_VERSION;
+					rds_conn_drop(conn);
+				} else {
+					queue_delayed_work(rds_wq,
+						&conn->c_reject_w,
+						msecs_to_jiffies(10));
 				}
-			}
-			rds_conn_drop(conn);
+			} else
+				rds_conn_drop(conn);
 		}
 		break;
 
