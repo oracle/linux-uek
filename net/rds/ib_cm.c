@@ -740,20 +740,13 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		goto out;
 	}
 
-	if (conn->c_reconnect && (conn->c_version > version)) {
-		printk(KERN_WARNING "RDS/IB: connection "
-			"<%pI4,%pI4,%d,%u.%u> rejecting version "
-			"(%u/%u)\n",
-			&conn->c_laddr,
-			&conn->c_faddr,
-			conn->c_tos,
-			RDS_PROTOCOL_MAJOR(conn->c_version),
-			RDS_PROTOCOL_MINOR(conn->c_version),
-			RDS_PROTOCOL_MAJOR(version),
-			RDS_PROTOCOL_MINOR(version));
-
-		conn = NULL;
-		goto out;
+	if (dp->dp_tos && !conn->c_base_conn) {
+		conn->c_base_conn = rds_conn_create(dp->dp_daddr, dp->dp_saddr,
+					&rds_ib_transport, 0, GFP_KERNEL);
+		if (IS_ERR(conn->c_base_conn)) {
+			conn = NULL;
+			goto out;
+		}
 	}
 
 	/*
@@ -880,8 +873,6 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	}
 #endif
 
-	/* If the peer doesn't do protocol negotiation, we must
-	 * default to RDSv3.0 */
 	rds_ib_set_protocol(conn, RDS_PROTOCOL_4_1);
 	ic->i_flowctl = rds_ib_sysctl_flow_control;	/* advertise flow control */
 
