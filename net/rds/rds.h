@@ -129,6 +129,7 @@ struct rds_connection {
 	struct delayed_work	c_send_w;
 	struct delayed_work	c_recv_w;
 	struct delayed_work	c_conn_w;
+	struct delayed_work     c_reject_w;
 	struct delayed_work     c_hb_w;
 	struct work_struct	c_down_w;
 	struct mutex		c_cm_lock;	/* protect conn state & cm */
@@ -143,7 +144,6 @@ struct rds_connection {
 
 	/* Protocol version */
 	unsigned int		c_proposed_version;
-	unsigned int            c_committed_version;
 	unsigned int		c_version;
 
 	/* Re-connect stall diagnostics */
@@ -163,6 +163,8 @@ struct rds_connection {
 	unsigned long           c_hb_start;
 
 	struct rds_connection	*c_base_conn;
+
+	unsigned int            c_route_to_base;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
@@ -671,7 +673,7 @@ struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
 				u8 tos, gfp_t gfp);
 struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
 					struct rds_transport *trans, u8 tos);
-void rds_conn_shutdown(struct rds_connection *conn);
+void rds_conn_shutdown(struct rds_connection *conn, int restart);
 void rds_conn_destroy(struct rds_connection *conn);
 void rds_conn_reset(struct rds_connection *conn);
 void rds_conn_drop(struct rds_connection *conn);
@@ -789,6 +791,7 @@ struct rds_message *rds_send_get_message(struct rds_connection *,
 					 struct rm_rdma_op *);
 int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 		      struct sk_buff *skb, gfp_t gfp);
+void rds_route_to_base(struct rds_connection *conn);
 
 extern unsigned int rds_async_send_enabled;
 
@@ -861,6 +864,7 @@ void rds_queue_reconnect(struct rds_connection *conn);
 void rds_connect_worker(struct work_struct *);
 void rds_shutdown_worker(struct work_struct *);
 void rds_send_worker(struct work_struct *);
+void rds_reject_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
 void rds_connect_complete(struct rds_connection *conn);
