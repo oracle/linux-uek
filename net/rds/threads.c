@@ -99,8 +99,8 @@ void rds_connect_complete(struct rds_connection *conn)
 
 	conn->c_connection_start = get_seconds();
 	conn->c_reconnect = 1;
-	conn->c_committed_version = conn->c_version;
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+	conn->c_route_to_base = 0;
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
@@ -224,6 +224,15 @@ void rds_recv_worker(struct work_struct *work)
 	}
 }
 
+void rds_reject_worker(struct work_struct *work)
+{
+	struct rds_connection *conn = container_of(work, struct rds_connection, c_reject_w.work);
+
+	atomic_set(&conn->c_state, RDS_CONN_ERROR);
+	rds_conn_shutdown(conn, 0);
+	rds_route_to_base(conn);
+}
+
 void rds_hb_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_hb_w.work);
@@ -259,7 +268,7 @@ void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
 
-	rds_conn_shutdown(conn);
+	rds_conn_shutdown(conn, 1);
 }
 
 void rds_threads_exit(void)
