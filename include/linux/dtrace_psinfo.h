@@ -4,6 +4,8 @@
 #define _LINUX_DTRACE_PSINFO_H_
 
 #define PR_PSARGS_SZ		80
+#define PR_ARGV_SZ		512
+#define PR_ENVP_SZ		512
 
 typedef struct dtrace_psinfo {
 	union {
