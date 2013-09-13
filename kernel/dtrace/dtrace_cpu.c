@@ -34,6 +34,7 @@ void dtrace_cpu_init(void)
 		cpuc->cpuc_dcpc_intr_state = 0;
 		cpuc->cpuc_dtrace_illval = 0;
 		mutex_init(&cpuc->cpuc_pid_lock);
+
 		cpuc->cpu_dtrace_regs = NULL;
 		cpuc->cpu_dtrace_caller = 0;
 		rwlock_init(&cpuc->cpu_ft_lock);
