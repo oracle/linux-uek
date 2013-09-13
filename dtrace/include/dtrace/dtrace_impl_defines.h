@@ -33,6 +33,7 @@
  */
 
 #include <linux/dtrace/universal.h>
+#include <linux/preempt.h>
 #include <asm/ptrace.h>
 
 typedef typeof(((struct pt_regs *)0)->ip)	pc_t;
@@ -205,20 +206,42 @@ typedef enum dtrace_vtime_state {
 
 # define mutex_lock(x)		do {					      \
 				    printk(KERN_DEBUG			      \
-					   "mutex_lock(%s) at %s::%d\n",      \
+					   "mutex_lock(%s) at %s::%d "	      \
+					   "for %p(PID %d)\n",		      \
 					   __stringify(x),		      \
-					   __FILE__, __LINE__);		      \
+					   __FILE__, __LINE__, current,	      \
+					   current ? current->pid : -1);      \
 				    _mutex_lock(x);			      \
 				} while (0)
 # define mutex_unlock(x)	do {					      \
 				    printk(KERN_DEBUG			      \
-					   "mutex_unlock(%s) at %s::%d\n",    \
+					   "mutex_unlock(%s) at %s::%d"	      \
+					   "for %p(PID %d)\n",		      \
 					   __stringify(x),		      \
-					   __FILE__, __LINE__);		      \
+					   __FILE__, __LINE__, current,	      \
+					   current ? current->pid : -1);      \
 				    _mutex_unlock(x);			      \
 				} while (0)
 #endif
 
 #define MUTEX_HELD(lock)	mutex_owned(lock)
+
+#ifdef CONFIG_PREEMPT_VOLUNTARY
+# define dtrace_is_preemptive()	(!(preempt_count() & PREEMPT_ACTIVE))
+# define dtrace_preempt_off()	do {					      \
+					add_preempt_count(PREEMPT_ACTIVE);    \
+					barrier();			      \
+				} while (0)
+# define dtrace_preempt_on()	do {					      \
+					sub_preempt_count(PREEMPT_ACTIVE);    \
+					barrier();			      \
+				} while (0)
+#endif
+
+#ifdef CONFIG_PREEMPT
+# define dtrace_is_preemptive()	(preempt_count() > 0)
+# define dtrace_preempt_off()	preempt_disable()
+# define dtrace_preempt_on()	preempt_enable_no_resched()
+#endif
 
 #endif /* _LINUX_DTRACE_IMPL_DEFINES_H */

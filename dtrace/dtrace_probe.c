@@ -162,7 +162,9 @@ void dtrace_probe_description(const dtrace_probe_t *prp,
 
 void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 {
+#ifdef FIXME
 	struct module	*mod;
+#endif
 	int		all = 0;
 
 	if (prv == NULL) {
@@ -548,6 +550,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	int			vtime, onintr;
 	volatile uint16_t	*flags;
 	ktime_t			now;
+	int			pflag = 0;
 
 #ifdef FIXME
 	/*
@@ -559,7 +562,15 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		return;
 #endif
 
+	/*
+	 * If preemption has already been disabled before we get here, we
+	 * accept it as a free gift.  We just need to make sure that we don't
+	 * re-enable preemption on the way out...
+	 */
 	local_irq_save(cookie);
+	if ((pflag = dtrace_is_preemptive()))
+		dtrace_preempt_off();
+
 	probe = dtrace_probe_lookup_id(id);
 	cpuid = smp_processor_id();
 	onintr = in_interrupt();
@@ -570,6 +581,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		 * We have hit in the predicate cache; we know that
 		 * this predicate would evaluate to be false.
 		 */
+		if (pflag)
+			dtrace_preempt_on();
 		local_irq_restore(cookie);
 		return;
 	}
@@ -579,6 +592,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		/*
 		 * We don't trace anything if we're panicking.
 		 */
+		if (pflag)
+			dtrace_preempt_on();
 		local_irq_restore(cookie);
 		return;
 	}
@@ -1227,6 +1242,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 	if (vtime)
 		current->dtrace_start = dtrace_gethrtime();
 
+	if (pflag)
+		dtrace_preempt_on();
 	local_irq_restore(cookie);
 
 	if (current->dtrace_sig != 0) {
