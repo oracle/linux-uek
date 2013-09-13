@@ -219,7 +219,7 @@ static void fasttrap_disable_callbacks(void)
 }
 
 /*
- * his function ensures that no threads are actively using the memory
+ * This function ensures that no threads are actively using the memory
  * associated with probes that were formerly live.
  */
 static void fasttrap_mod_barrier(uint64_t gen)

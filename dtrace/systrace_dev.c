@@ -75,10 +75,10 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 		if (dtrace_probe_lookup(syscall_id, NULL, nm, "entry") != 0)
 			continue;
 
-		dtrace_probe_create(syscall_id, NULL, nm, "entry",
+		dtrace_probe_create(syscall_id, dtrace_kmod->name, nm, "entry",
 				    SYSTRACE_ARTIFICIAL_FRAMES,
 				    (void *)((uintptr_t)SYSTRACE_ENTRY(i)));
-		dtrace_probe_create(syscall_id, NULL, nm, "return",
+		dtrace_probe_create(syscall_id, dtrace_kmod->name, nm, "return",
 				    SYSTRACE_ARTIFICIAL_FRAMES,
 				    (void *)((uintptr_t)SYSTRACE_RETURN(i)));
 
