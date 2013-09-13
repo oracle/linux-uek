@@ -179,7 +179,7 @@ extern void mutex_unlock(struct mutex *lock);
 
 extern int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock);
 
-#ifdef CONFIG_SMP
+#if defined(CONFIG_DEBUG_MUTEXES) || defined(CONFIG_SMP)
 static inline int mutex_owned(struct mutex *lock)
 {
 	return lock->owner == current;

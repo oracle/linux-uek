@@ -30,10 +30,12 @@
 /*---------------------------------------------------------------------------*\
 (* OS SPECIFIC DTRACE SETUP                                                  *)
 \*---------------------------------------------------------------------------*/
-struct module	*dtrace_kmod = NULL;
+struct module		*dtrace_kmod = NULL;
 EXPORT_SYMBOL(dtrace_kmod);
 
-int		dtrace_ustackdepth_max = 2048;
+int			dtrace_ustackdepth_max = 2048;
+
+struct kmem_cache	*psinfo_cachep;
 
 void dtrace_os_init(void)
 {
@@ -52,6 +54,11 @@ void dtrace_os_init(void)
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
 
+	psinfo_cachep = kmem_cache_create("psinfo_cache",
+				sizeof(dtrace_psinfo_t), 0,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				NULL);
+
 	dtrace_sdt_register(dtrace_kmod);
 }
 EXPORT_SYMBOL(dtrace_os_init);
@@ -64,6 +71,7 @@ void dtrace_os_exit(void)
 		return;
 	}
 
+	kmem_cache_destroy(psinfo_cachep);
 	kfree(dtrace_kmod);
 	dtrace_kmod = NULL;
 }
@@ -80,7 +88,7 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 	dtrace_psinfo_t		*psinfo;
 	struct mm_struct	*mm;
 
-	psinfo = kzalloc(sizeof(dtrace_psinfo_t), GFP_KERNEL);
+	psinfo = kmem_cache_alloc(psinfo_cachep, GFP_KERNEL);
 	if (psinfo == NULL)
 		goto fail;
 
@@ -111,6 +119,7 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		/*
 		 * Determine the number of arguments.
 		 */
+		psinfo->argc = 0;
 		for (p = (char *)mm->arg_start; p < (char *)mm->arg_end;
 		     psinfo->argc++) {
 			size_t	l = strnlen(p, MAX_ARG_STRLEN);
@@ -121,18 +130,24 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 			p += l + 1;
 		}
 
-		psinfo->argv = vmalloc((psinfo->argc + 1) * sizeof(char *));
+		/*
+		 * Limit the number of stored argument pointers.
+		 */
+		if ((len = psinfo->argc) >= PR_ARGV_SZ)
+			len = PR_ARGV_SZ - 1;
+
+		psinfo->argv = kmalloc((len + 1) * sizeof(char *), GFP_KERNEL);
 		if (psinfo->argv == NULL)
 			goto fail;
 
 		/*
 		 * Now populate the array of argument strings.
 		 */
-		for (i = 0, p = (char *)mm->arg_start; i < psinfo->argc; i++) {
+		for (i = 0, p = (char *)mm->arg_start; i < len; i++) {
 			psinfo->argv[i] = p;
 			p += strnlen(p, MAX_ARG_STRLEN) + 1;
 		}
-		psinfo->argv[psinfo->argc] = NULL;
+		psinfo->argv[len] = NULL;
 
 		/*
 		 * Determine the number of environment variables.
@@ -147,18 +162,24 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 			p += l + 1;
 		}
 
-		psinfo->envp = vmalloc((envc + 1) * sizeof(char *));
+		/*
+		 * Limit the number of stored environment pointers.
+		 */
+		if ((len = envc) >= PR_ENVP_SZ)
+			len = PR_ENVP_SZ - 1;
+
+		psinfo->envp = kmalloc((len + 1) * sizeof(char *), GFP_KERNEL);
 		if (psinfo->envp == NULL)
 			goto fail;
 
 		/*
 		 * Now populate the array of environment variable strings.
 		 */
-		for (i = 0, p = (char *)mm->env_start; i < envc; i++) {
+		for (i = 0, p = (char *)mm->env_start; i < len; i++) {
 			psinfo->envp[i] = p;
 			p += strnlen(p, MAX_ARG_STRLEN) + 1;
 		}
-		psinfo->envp[envc] = NULL;
+		psinfo->envp[len] = NULL;
 	}
 
 	return psinfo;
@@ -166,12 +187,12 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 fail:
 	pr_warning("%s: cannot allocate DTrace psinfo structure\n", __func__);
 	if (psinfo) {
-		if (psinfo->argv == NULL)
-			vfree(psinfo->argv);
-		if (psinfo->envp == NULL)
-			vfree(psinfo->envp);
+		if (psinfo->argv)
+			kfree(psinfo->argv);
+		if (psinfo->envp)
+			kfree(psinfo->envp);
 
-		kfree(psinfo);
+		kmem_cache_free(psinfo_cachep, psinfo);
 	}
 
 	return NULL;
@@ -204,11 +225,11 @@ static void psinfo_cleaner(struct work_struct *work)
 		dtrace_psinfo_t	*next = psinfo->next;
 
 		if (psinfo->argv)
-			vfree(psinfo->argv);
+			kfree(psinfo->argv);
 		if (psinfo->envp)
-			vfree(psinfo->envp);
+			kfree(psinfo->envp);
 
-		kfree(psinfo);
+		kmem_cache_free(psinfo_cachep, psinfo);
 		psinfo = next;
 	}
 }
