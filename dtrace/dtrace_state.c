@@ -35,7 +35,6 @@
 
 #include "dtrace.h"
 
-struct kmem_cache	*dtrace_state_cache;
 int			dtrace_destructive_disallow = 0;
 dtrace_optval_t		dtrace_nspec_default = 1;
 dtrace_optval_t		dtrace_specsize_default = 32 * 1024;
@@ -178,7 +177,7 @@ int dtrace_dstate_init(dtrace_dstate_t *dstate, size_t size)
 	base = dtrace_vzalloc_try(size);
 	if (base == NULL)
 		return -ENOMEM;
-	percpu = kmem_cache_alloc(dtrace_state_cache, GFP_KERNEL);
+	percpu = kmem_cache_alloc(dtrace_state_cachep, GFP_KERNEL);
 	if (percpu == NULL) {
 		vfree(base);
 		return -ENOMEM;
@@ -268,7 +267,7 @@ void dtrace_dstate_fini(dtrace_dstate_t *dstate)
 		return;
 
 	vfree(dstate->dtds_base);
-	kmem_cache_free(dtrace_state_cache, dstate->dtds_percpu);
+	kmem_cache_free(dtrace_state_cachep, dstate->dtds_percpu);
 }
 
 void dtrace_vstate_fini(dtrace_vstate_t *vstate)
