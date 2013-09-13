@@ -67,12 +67,13 @@ dtrace_pops_t			dtrace_provider_ops = {
 	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop
 };
 
-dtrace_toxrange_t		*dtrace_toxrange;
-int				dtrace_toxranges;
-
 static size_t			dtrace_retain_max = 1024;
 
+dtrace_toxrange_t		*dtrace_toxrange;
+int				dtrace_toxranges;
 static int			dtrace_toxranges_max;
+
+struct kmem_cache		*dtrace_state_cachep;
 
 static dtrace_pattr_t		dtrace_provider_attr = {
 { DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
@@ -81,6 +82,8 @@ static dtrace_pattr_t		dtrace_provider_attr = {
 { DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
 { DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
 };
+
+DEFINE_MUTEX(dtrace_lock);
 
 void (*dtrace_modload)(struct module *);
 void (*dtrace_modunload)(struct module *);
@@ -1411,10 +1414,10 @@ int dtrace_dev_init(void)
 				    0);
 #endif
 
-	dtrace_state_cache = kmem_cache_create("dtrace_state_cache",
-				sizeof(dtrace_dstate_percpu_t) * NR_CPUS,
-				__alignof__(dtrace_dstate_percpu_t),
-				SLAB_PANIC, NULL);
+        dtrace_state_cachep = kmem_cache_create("dtrace_state_cache",
+				sizeof(dtrace_dstate_percpu_t) * NR_CPUS, 0,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				NULL);
 
 	/*
 	 * Create the probe hashtables.
@@ -1539,7 +1542,7 @@ void dtrace_dev_exit(void)
 	dtrace_byfunc = NULL;
 	dtrace_byname = NULL;
 
-	kmem_cache_destroy(dtrace_state_cache);
+	kmem_cache_destroy(dtrace_state_cachep);
 	misc_deregister(&helper_dev);
 	misc_deregister(&dtrace_dev);
 
