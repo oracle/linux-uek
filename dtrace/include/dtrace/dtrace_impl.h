@@ -815,7 +815,7 @@ extern void dtrace_anon_property(void);
 /*
  * DTrace Consumer State Functions
  */
-extern struct kmem_cache	*dtrace_state_cache;
+extern struct kmem_cache	*dtrace_state_cachep;
 extern size_t			dtrace_strsize_default;
 
 extern ktime_t			dtrace_deadman_timeout;

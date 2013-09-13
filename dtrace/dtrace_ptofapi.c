@@ -36,7 +36,6 @@ dtrace_provider_t	*dtrace_provider;
 dtrace_meta_t		*dtrace_meta_pid;
 dtrace_helpers_t	*dtrace_deferred_pid;
 
-DEFINE_MUTEX(dtrace_lock);
 DEFINE_MUTEX(dtrace_provider_lock);
 DEFINE_MUTEX(dtrace_meta_lock);
 

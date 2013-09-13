@@ -144,7 +144,7 @@ int dtrace_hash_add(dtrace_hash_t *hash, dtrace_probe_t *new)
 			return err;
 
 		dtrace_hash_add(hash, new);
-		return;
+		return 0;
 	}
 
 	bucket = vzalloc(sizeof(dtrace_hashbucket_t));
@@ -172,6 +172,8 @@ add:
 
 	bucket->dthb_chain = new;
 	bucket->dthb_len++;
+
+	return 0;
 }
 
 dtrace_probe_t *dtrace_hash_lookup(dtrace_hash_t *hash,

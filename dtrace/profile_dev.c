@@ -92,10 +92,10 @@ static atomic_t	profile_total;		/* current number of profile probes */
 static void profile_tick(void *arg)
 {
 	profile_probe_t	*prof = arg;
-	struct pt_regs	*regs = get_irq_regs();
 	unsigned long	pc = 0, upc = 0;
-
 #ifdef PROBE_PCS
+	struct pt_regs	*regs = get_irq_regs();
+
 	if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
@@ -342,7 +342,9 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t		*prof = parg;
+#ifdef OMNI_CYCLICS
 	cyc_omni_handler_t	omni;
+#endif
 	cyc_handler_t		hdlr;
 	cyc_time_t		when;
 
