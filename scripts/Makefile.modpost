@@ -219,8 +219,9 @@ ctf-module-name = $(addprefix $(ctf-dir)/,$(notdir $(basename $@)).mod.ctf)
 
 module-ctf-flags = $(if $(filter ctf.ko,$(notdir $@)), \
 		   --strip-debug \
-		   $(foreach builtin,$(wildcard $(ctf-dir)/*.builtin.ctf), \
-			     --add-section $(patsubst %.builtin.ctf,.ctf.%,$(notdir $(builtin)))=$(builtin)), \
+		   $(shell for builtin in $(ctf-dir)/*.builtin.ctf; do \
+			       printf "%s" "--add-section .ctf.$$(basename $$builtin .builtin.ctf)=$$builtin "; \
+			   done), \
 		   --add-section .ctf=$(ctf-module-name))
 
 # We have to put content in our dummy no-CTF files because --add-section
