@@ -885,7 +885,7 @@ static int btrfs_insert_delayed_item(struct btrfs_trans_handle *trans,
 
 	leaf = path->nodes[0];
 
-	item = btrfs_item_nr(leaf, path->slots[0]);
+	item = btrfs_item_nr(path->slots[0]);
 	ptr = btrfs_item_ptr(leaf, path->slots[0], char);
 
 	write_extent_buffer(leaf, delayed_item->data, (unsigned long)ptr,

@@ -789,7 +789,7 @@ static int iterate_inode_ref(struct send_ctx *sctx,
 	if (found_key->type == BTRFS_INODE_REF_KEY) {
 		ptr = (unsigned long)btrfs_item_ptr(eb, slot,
 						    struct btrfs_inode_ref);
-		item = btrfs_item_nr(eb, slot);
+		item = btrfs_item_nr(slot);
 		total = btrfs_item_size(eb, item);
 		elem_size = sizeof(*iref);
 	} else {
@@ -904,7 +904,7 @@ static int iterate_dir_item(struct send_ctx *sctx,
 
 	eb = path->nodes[0];
 	slot = path->slots[0];
-	item = btrfs_item_nr(eb, slot);
+	item = btrfs_item_nr(slot);
 	di = btrfs_item_ptr(eb, slot, struct btrfs_dir_item);
 	cur = 0;
 	len = 0;
