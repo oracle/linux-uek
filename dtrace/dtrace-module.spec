@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-14.el6uek}
+%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-16.el6uek}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
