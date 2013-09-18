@@ -692,7 +692,9 @@ AutoReqProv: no\
 Requires(pre): /usr/bin/find\
 Requires: elfutils-libelf\
 Requires: elfutils-libs\
+%if %{with_dtrace}\
 Requires: libdtrace-ctf\
+%endif\
 %description -n kernel%{?variant}%{?1:-%{1}}-devel\
 This package provides kernel headers and makefiles sufficient to build modules\
 against the %{?2:%{2} }kernel package.\
