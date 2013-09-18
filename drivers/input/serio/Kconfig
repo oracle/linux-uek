@@ -243,4 +243,14 @@ config SERIO_ARC_PS2
 	  To compile this driver as a module, choose M here; the module
 	  will be called arc_ps2.
 
+config HYPERV_KEYBOARD
+	tristate "Microsoft Synthetic Keyboard driver"
+	depends on HYPERV
+	default HYPERV
+	help
+	  Select this option to enable the Hyper-V Keyboard driver.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called hyperv_keyboard.
+
 endif
