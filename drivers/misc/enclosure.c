@@ -322,6 +322,8 @@ int enclosure_add_device(struct enclosure_device *edev, int component,
 	if (cdev->dev == dev)
 		return -EEXIST;
 
+	enclosure_remove_device(edev, dev);
+
 	if (cdev->dev)
 		enclosure_remove_links(cdev);
 
