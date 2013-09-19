@@ -1261,7 +1261,7 @@ int scsi_prep_fn(struct request_queue *q, struct request *req)
 	struct scsi_device *sdev = q->queuedata;
 	int ret = BLKPREP_KILL;
 
-	if (req->cmd_type == REQ_TYPE_BLOCK_PC)
+	if (sdev && (req->cmd_type == REQ_TYPE_BLOCK_PC))
 		ret = scsi_setup_blk_pc_cmnd(sdev, req);
 	return scsi_prep_return(q, req, ret);
 }
