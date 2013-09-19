@@ -807,7 +807,7 @@ static struct request *get_request_wait(struct request_queue *q, int rw_flags,
 		trace_block_sleeprq(q, bio, rw_flags & 1);
 
 		spin_unlock_irq(q->queue_lock);
-		io_schedule();
+		io_schedule_timeout(HZ);
 
 		/*
 		 * After sleeping, we become a "batching" process and
