@@ -418,6 +418,7 @@ extern struct mutex		dtrace_provider_lock;
 extern struct mutex		dtrace_meta_lock;
 
 extern dtrace_genid_t		dtrace_probegen;
+extern struct kmem_cache	*dtrace_probe_cachep;
 
 extern dtrace_pops_t		dtrace_provider_ops;
 
@@ -518,11 +519,11 @@ extern int dtrace_probe_enable(const dtrace_probedesc_t *,
 extern void dtrace_probe_description(const dtrace_probe_t *,
 				     dtrace_probedesc_t *);
 extern void dtrace_probe_provide(dtrace_probedesc_t *, dtrace_provider_t *);
-extern void dtrace_probe_init(void);
+extern int dtrace_probe_init(void);
 extern void dtrace_probe_exit(void);
 extern void dtrace_probe_remove_id(dtrace_id_t);
 extern dtrace_probe_t *dtrace_probe_lookup_id(dtrace_id_t);
-extern dtrace_probe_t *dtrace_probe_get_next(dtrace_id_t);
+extern dtrace_probe_t *dtrace_probe_get_next(dtrace_id_t *);
 extern int dtrace_probe_for_each(int (*)(int, void *, void *), void *);
 
 /*

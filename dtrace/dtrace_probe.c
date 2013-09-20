@@ -42,6 +42,7 @@ ktime_t				dtrace_chill_max =
 						   500 * (NANOSEC / MILLISEC));
 
 dtrace_genid_t			dtrace_probegen;
+struct kmem_cache		*dtrace_probe_cachep;
 
 static struct idr		dtrace_probe_idr;
 static uint64_t			dtrace_vtime_references;
@@ -60,7 +61,7 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	dtrace_id_t		id;
 	int			err;
 
-	probe = kzalloc(sizeof(dtrace_probe_t), __GFP_NOFAIL);
+	probe = kmem_cache_alloc(dtrace_probe_cachep, __GFP_NOFAIL);
 
 	/*
 	 * The idr_pre_get() function should be called without holding locks.
@@ -83,13 +84,19 @@ again:
 	}
 
 	probe->dtpr_id = id;
-	probe->dtpr_gen = dtrace_probegen++;
+	probe->dtpr_ecb = NULL;
+	probe->dtpr_ecb_last = NULL;
+	probe->dtpr_arg = arg;
+	probe->dtpr_predcache = DTRACE_CACHEIDNONE;
+	probe->dtpr_aframes = aframes;
+	probe->dtpr_provider = provider;
 	probe->dtpr_mod = dtrace_strdup(mod);
 	probe->dtpr_func = dtrace_strdup(func);
 	probe->dtpr_name = dtrace_strdup(name);
-	probe->dtpr_arg = arg;
-	probe->dtpr_aframes = aframes;
-	probe->dtpr_provider = provider;
+	probe->dtpr_nextmod = probe->dtpr_prevmod = NULL;
+	probe->dtpr_nextfunc = probe->dtpr_prevfunc = NULL;
+	probe->dtpr_nextname = probe->dtpr_prevname = NULL;
+	probe->dtpr_gen = dtrace_probegen++;
 
 	dtrace_hash_add(dtrace_bymod, probe);
 	dtrace_hash_add(dtrace_byfunc, probe);
@@ -1256,10 +1263,14 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 }
 EXPORT_SYMBOL(dtrace_probe);
 
-void dtrace_probe_init(void)
+int dtrace_probe_init(void)
 {
 	dtrace_id_t	id;
 	int		err;
+
+	dtrace_probe_cachep = KMEM_CACHE(dtrace_probe, SLAB_HWCACHE_ALIGN);
+	if (dtrace_probe_cachep == NULL)
+		return -ENOMEM;
 
 	idr_init(&dtrace_probe_idr);
 
@@ -1286,13 +1297,14 @@ again:
 	if (err == -EAGAIN)
 		goto again;
 
-	ASSERT(id == 0);
+	return id == 0 ? 0 : -EAGAIN;
 }
 
 void dtrace_probe_exit(void)
 {
 	idr_remove_all(&dtrace_probe_idr);
 	idr_destroy(&dtrace_probe_idr);
+	kmem_cache_destroy(dtrace_probe_cachep);
 }
 
 void dtrace_probe_remove_id(dtrace_id_t id)
@@ -1340,9 +1352,9 @@ dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t prid, const char *mod,
 }
 EXPORT_SYMBOL(dtrace_probe_lookup);
 
-dtrace_probe_t *dtrace_probe_get_next(dtrace_id_t id)
+dtrace_probe_t *dtrace_probe_get_next(dtrace_id_t *idp)
 {
-	return idr_get_next(&dtrace_probe_idr, &id);
+	return idr_get_next(&dtrace_probe_idr, idp);
 }
 
 int dtrace_probe_for_each(int (*fn)(int id, void *p, void *data), void *data)

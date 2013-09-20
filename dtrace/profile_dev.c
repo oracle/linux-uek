@@ -172,7 +172,7 @@ static void profile_create(ktime_t interval, const char *name, int kind)
 	if (dtrace_probe_lookup(profile_id, NULL, NULL, name) != 0)
 		return;
 
-	prof = vzalloc(sizeof(profile_probe_t));
+	prof = kzalloc(sizeof(profile_probe_t), GFP_KERNEL);
 	if (prof == NULL) {
 		pr_warn("Unable to create probe %s: out-of-memory\n", name);
 		return;
@@ -180,7 +180,7 @@ static void profile_create(ktime_t interval, const char *name, int kind)
 
 	atomic_inc(&profile_total);
 	if (atomic_read(&profile_total) > profile_max) {
-		vfree(prof);
+		kfree(prof);
 		atomic_dec(&profile_total);
 		return;
 	}
@@ -396,7 +396,7 @@ void profile_destroy(void *arg, dtrace_id_t id, void *parg)
 	profile_probe_t	*prof = parg;
 
 	ASSERT(prof->prof_cyclic == CYCLIC_NONE);
-	vfree(prof);
+	kfree(prof);
 
 	ASSERT(atomic_read(&profile_total) >= 1);
 	atomic_dec(&profile_total);

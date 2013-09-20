@@ -490,6 +490,7 @@ static long dtrace_ioctl(struct file *file,
 
 	case DTRACEIOC_PROBEMATCH:
 	case DTRACEIOC_PROBES: {
+		int			id;
 		dtrace_probe_t		*probe = NULL;
 		dtrace_probedesc_t	desc;
 		dtrace_probekey_t	pkey;
@@ -528,16 +529,17 @@ static long dtrace_ioctl(struct file *file,
 
 		mutex_lock(&dtrace_lock);
 
+		id = desc.dtpd_id;
 		if (cmd == DTRACEIOC_PROBEMATCH)  {
 			int	m = 0;
 
-			while ((probe = dtrace_probe_get_next(desc.dtpd_id))
+			while ((probe = dtrace_probe_get_next(&id))
 			       != NULL) {
 				if ((m = dtrace_match_probe(
 						probe, &pkey, priv, uid)))
 					break;
 
-				desc.dtpd_id = probe->dtpr_id + 1;
+				id++;
 			}
 
 			if (m < 0) {
@@ -545,12 +547,12 @@ static long dtrace_ioctl(struct file *file,
 				return -EINVAL;
 			}
 		} else {
-			while ((probe = dtrace_probe_get_next(desc.dtpd_id))
+			while ((probe = dtrace_probe_get_next(&id))
 			       != NULL) {
 				if (dtrace_match_priv(probe, priv, uid))
 					break;
 
-				desc.dtpd_id = probe->dtpr_id + 1;
+				id++;
 			}
 		}
 
@@ -1361,6 +1363,17 @@ int dtrace_dev_init(void)
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
+	rc = dtrace_probe_init();
+	if (rc) {
+		pr_err("Failed to initialize DTrace core\n");
+
+		mutex_unlock(&cpu_lock);
+		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&dtrace_lock);
+
+		return rc;
+	}
+
 	/*
 	 * Register the device for the DTrace core.
 	 */
@@ -1406,8 +1419,6 @@ int dtrace_dev_init(void)
 
 	register_cpu_setup_func((cpu_setup_func_t *)dtrace_cpu_setup, NULL);
 #endif
-
-	dtrace_probe_init();
 
 #ifdef FIXME
 	dtrace_taskq = taskq_create("dtrace_taskq", 1, maxclsyspri, 1, INT_MAX,

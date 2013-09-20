@@ -162,9 +162,9 @@ void sdt_provide_module(void *arg, struct module *mp)
 			}
 		}
 
-		nname = vmalloc(len = strlen(name) + 1);
+		nname = kmalloc(len = strlen(name) + 1, GFP_KERNEL);
 		if (nname == NULL) {
-			pr_warn("Unable to create probe%s: out-of-memory\n",
+			pr_warn("Unable to create probe %s: out-of-memory\n",
 				name);
 			continue;
 		}
@@ -179,7 +179,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 
 		nname[i] = '\0';
 
-		sdp = vzalloc(sizeof(sdt_probe_t));
+		sdp = kzalloc(sizeof(sdt_probe_t), GFP_KERNEL);
 		if (sdp == NULL) {
 			pr_warn("Unable to create probe %s: out-of-memory\n",
 				nname);
@@ -331,9 +331,9 @@ void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
 		else
 			sdt_probetab[ndx] = sdp->sdp_hashnext;
 
-		vfree(sdp->sdp_name);
+		kfree(sdp->sdp_name);
 		sdp = sdp->sdp_next;
-		vfree(old);
+		kfree(old);
 	}
 }
 

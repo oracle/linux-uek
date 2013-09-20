@@ -67,6 +67,8 @@ DEFINE_MUTEX(fasttrap_count_mtx);
 static uint_t			fasttrap_cleanup_state;
 static uint_t			fasttrap_cleanup_work;
 
+static struct kmem_cache	*tracepoint_cachep;
+
 /*
  * Generation count on modifications to the global tracepoint lookup table.
  */
@@ -354,7 +356,8 @@ again:
 		 */
 		rc = dtrace_tracepoint_enable(pid, pc, &new_tp->ftt_mtp);
 		if (rc != 0) {
-			pr_warn("FASTTRAP: Failed to enable tp: rc %d\n", rc);
+			pr_warn("FASTTRAP: Failed to enable tp "
+				"(PID %d, pc %lx): rc %d\n", pid, pc, rc);
 			rc = FASTTRAP_ENABLE_PARTIAL;
 		}
 
@@ -755,7 +758,22 @@ static uint64_t fasttrap_usdt_getarg(void *arg, dtrace_id_t id, void *parg,
 
 static void fasttrap_pid_destroy(void *arg, dtrace_id_t id, void *parg)
 {
-	/* FIXME */
+	fasttrap_probe_t	*probe = parg;
+	int			i;
+
+	ASSERT(probe != NULL);
+	ASSERT(!probe->ftp_enabled);
+	ASSERT(atomic_read(&fasttrap_total) >= probe->ftp_ntps);
+
+	atomic_add(-probe->ftp_ntps, &fasttrap_total);
+
+	if (probe->ftp_gen + 1 >= fasttrap_mod_gen)
+		fasttrap_mod_barrier(probe->ftp_gen);
+
+	for (i = 0; i < probe->ftp_ntps; i++)
+		kmem_cache_free(tracepoint_cachep, probe->ftp_tps[i].fit_tp);
+
+	kfree(probe);
 }
 
 static const dtrace_pattr_t pid_attr = {
@@ -871,7 +889,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 	ntps = dhpb->dthpb_noffs + dhpb->dthpb_nenoffs;
 	ASSERT(ntps > 0);
 
-	pp = vzalloc(offsetof(fasttrap_probe_t, ftp_tps[ntps]));
+	pp = kzalloc(offsetof(fasttrap_probe_t, ftp_tps[ntps]), GFP_KERNEL);
 	if (pp == NULL) {
 		pr_warn("Unable to create probe %s: out-of-memory\n",
 			dhpb->dthpb_name);
@@ -881,7 +899,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 
 	atomic_add(ntps, &fasttrap_total);
 	if (atomic_read(&fasttrap_total) > fasttrap_max) {
-		vfree(pp);
+		kfree(pp);
 		atomic_add(-ntps, &fasttrap_total);
 		mutex_unlock(&provider->ftp_cmtx);
 		return;
@@ -898,13 +916,17 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 	 * First create a tracepoint for each actual point of interest.
 	 */
 	for (i = 0; i < dhpb->dthpb_noffs; i++) {
-		tp = vzalloc(sizeof(fasttrap_tracepoint_t));
+		tp = kmem_cache_alloc(tracepoint_cachep, GFP_KERNEL);
 		if (tp == NULL)
 			goto fail;
 
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_offs[i];
 		tp->ftt_pid = provider->ftp_pid;
+		memset(&tp->ftt_mtp, 0, sizeof(fasttrap_machtp_t));
+		tp->ftt_ids = NULL;
+		tp->ftt_retids = NULL;
+		tp->ftt_next = NULL;
 
 		dt_dbg_dof("        Tracepoint at 0x%lx (0x%llx + 0x%x)\n",
 			   tp->ftt_pc, dhpb->dthpb_base, dhpb->dthpb_offs[i]);
@@ -922,13 +944,17 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 	 * Then create a tracepoint for each is-enabled point.
 	 */
 	for (j = 0; i < ntps; i++, j++) {
-		tp = vzalloc(sizeof(fasttrap_tracepoint_t));
+		tp = kmem_cache_alloc(tracepoint_cachep, GFP_KERNEL);
 		if (tp == NULL)
 			goto fail;
 
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_enoffs[j];
 		tp->ftt_pid = provider->ftp_pid;
+
+		tp->ftt_ids = NULL;
+		tp->ftt_retids = NULL;
+		tp->ftt_next = NULL;
 
 		pp->ftp_tps[i].fit_tp = tp;
 		pp->ftp_tps[i].fit_id.fti_probe = pp;
@@ -962,9 +988,9 @@ fail:
 		dhpb->dthpb_name);
 
 	for (i = 0; i < ntps; i++)
-		vfree(pp->ftp_tps[i].fit_tp);
+		kmem_cache_free(tracepoint_cachep, pp->ftp_tps[i].fit_tp);
 
-	vfree(pp);
+	kfree(pp);
 	atomic_add(-ntps, &fasttrap_total);
 	mutex_unlock(&provider->ftp_cmtx);
 }
@@ -1013,7 +1039,7 @@ static void fasttrap_proc_release(fasttrap_proc_t *proc)
 
 	mutex_unlock(&bucket->ftb_mtx);
 
-	vfree(fprc);
+	kfree(fprc);
 }
 
 static void fasttrap_provider_free(fasttrap_provider_t *provider)
@@ -1040,7 +1066,7 @@ static void fasttrap_provider_free(fasttrap_provider_t *provider)
 
 	fasttrap_proc_release(provider->ftp_proc);
 
-	vfree(provider);
+	kfree(provider);
 
 	unregister_pid_provider(pid);
 }
@@ -1074,7 +1100,7 @@ static fasttrap_proc_t *fasttrap_proc_lookup(pid_t pid)
 	 */
 	mutex_unlock(&bucket->ftb_mtx);
 
-	new_fprc = vzalloc(sizeof(fasttrap_proc_t));
+	new_fprc = kzalloc(sizeof(fasttrap_proc_t), GFP_KERNEL);
 	if (new_fprc == NULL)
 		return NULL;
 
@@ -1100,7 +1126,7 @@ static fasttrap_proc_t *fasttrap_proc_lookup(pid_t pid)
 			       fprc->ftpc_rcount);
 			mutex_unlock(&fprc->ftpc_mtx);
 
-			vfree(new_fprc);
+			kfree(new_fprc);
 
 			return fprc;
 		}
@@ -1167,7 +1193,7 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	if ((proc = fasttrap_proc_lookup(pid)) == NULL)
 		goto fail;
 
-	if ((new_fp = vzalloc(sizeof(fasttrap_provider_t))) == NULL)
+	if ((new_fp = kzalloc(sizeof(fasttrap_provider_t), GFP_KERNEL)) == NULL)
 		goto fail;
 
 	new_fp->ftp_pid = pid;
@@ -1376,8 +1402,7 @@ static void fasttrap_pid_cleanup_cb(struct work_struct *work)
 					*fpp = fp->ftp_next;
 					fasttrap_provider_free(fp);
 
-					module_put(THIS_MODULE);
-				}
+					module_put(THIS_MODULE); }
 			}
 
 			mutex_unlock(&bucket->ftb_mtx);
@@ -1579,6 +1604,8 @@ int fasttrap_dev_init(void)
 	dtrace_fasttrap_exec_ptr = &fasttrap_exec_exit;
 #endif
 
+        tracepoint_cachep = KMEM_CACHE(fasttrap_tracepoint, 0);
+
 	fasttrap_max = FASTTRAP_MAX_DEFAULT;
 	atomic_set(&fasttrap_total, 0);
 
@@ -1721,6 +1748,8 @@ void fasttrap_dev_exit(void)
 	if (fasttrap_procs.fth_table)
 		vfree(fasttrap_procs.fth_table);
 	fasttrap_procs.fth_nent = 0;
+
+	kmem_cache_destroy(tracepoint_cachep);
 
 #ifdef FIXME
 	ASSERT(dtrace_fasttrap_exec_ptr == &fasttrap_exec_exit);
