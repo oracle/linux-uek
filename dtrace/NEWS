@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.4.0 (Aug 16, 2013)
+Release 0.4.0 (Sep 20, 2013)
 ----------------------------
-Kernel release: 3.8.13-14.el6uek
+Kernel release: 3.8.13-16.el6uek
 
 New features:
 
