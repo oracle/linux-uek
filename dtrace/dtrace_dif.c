@@ -923,7 +923,7 @@ void dtrace_difo_init(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 		}
 
 		if ((svar = (*svarp)[id]) == NULL) {
-			svar = vzalloc(sizeof(dtrace_statvar_t));
+			svar = kzalloc(sizeof(dtrace_statvar_t), GFP_KERNEL);
 			svar->dtsv_var = *v;
 
 			if ((svar->dtsv_size = dsize) != 0) {
@@ -950,7 +950,7 @@ dtrace_difo_t * dtrace_difo_duplicate(dtrace_difo_t *dp,
 	ASSERT(dp->dtdo_buf != NULL);
 	ASSERT(dp->dtdo_refcnt != 0);
 
-	new = vzalloc(sizeof(dtrace_difo_t));
+	new = kzalloc(sizeof(dtrace_difo_t), GFP_KERNEL);
 
 	ASSERT(dp->dtdo_buf != NULL);
 	sz = dp->dtdo_len * sizeof(dif_instr_t);
@@ -1035,7 +1035,7 @@ void dtrace_difo_destroy(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
 			vfree((void *)(uintptr_t)svar->dtsv_data);
 		}
 
-		vfree(svar);
+		kfree(svar);
 		svarp[id] = NULL;
 	}
 
@@ -1043,7 +1043,7 @@ void dtrace_difo_destroy(dtrace_difo_t *dp, dtrace_vstate_t *vstate)
         vfree(dp->dtdo_inttab);
         vfree(dp->dtdo_strtab);
         vfree(dp->dtdo_vartab);
-        vfree(dp);
+        kfree(dp);
 }
 
 void dtrace_difo_release(dtrace_difo_t *dp, dtrace_vstate_t *vstate)

@@ -424,7 +424,7 @@ static dtrace_difo_t *dtrace_dof_difo(dof_hdr_t *dof, dof_sec_t *sec,
 	dofd = (dof_difohdr_t *)(uintptr_t)(daddr + sec->dofs_offset);
 	n = (sec->dofs_size - sizeof(*dofd)) / sizeof(dof_secidx_t) + 1;
 
-	dp = vzalloc(sizeof(dtrace_difo_t));
+	dp = kzalloc(sizeof(dtrace_difo_t), GFP_KERNEL);
 	if (dp == NULL) {
 		dtrace_dof_error(dof, "out-of-memory");
 		return NULL;
@@ -555,7 +555,7 @@ err:
 	if (dp->dtdo_vartab != NULL)
 		vfree(dp->dtdo_vartab);
 
-	vfree(dp);
+	kfree(dp);
 
 	return NULL;
 }
@@ -735,7 +735,7 @@ static dtrace_ecbdesc_t *dtrace_dof_ecbdesc(dof_hdr_t *dof, dof_sec_t *sec,
 	if (sec == NULL)
 		return NULL;
 
-	ep = vzalloc(sizeof(dtrace_ecbdesc_t));
+	ep = kzalloc(sizeof(dtrace_ecbdesc_t), GFP_KERNEL);
 	if (ep == NULL)
 		return NULL;
 	ep->dted_uarg = ecb->dofe_uarg;
@@ -771,7 +771,7 @@ static dtrace_ecbdesc_t *dtrace_dof_ecbdesc(dof_hdr_t *dof, dof_sec_t *sec,
 err:
 	if (pred != NULL)
 		dtrace_predicate_release(pred, vstate);
-	vfree(ep);
+	kfree(ep);
 	return NULL;
 }
 
@@ -1146,14 +1146,14 @@ static dtrace_helpers_t *dtrace_helpers_create(struct task_struct *curr)
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(curr->dtrace_helpers == NULL);
 
-	dth = vzalloc(sizeof(dtrace_helpers_t));
+	dth = kzalloc(sizeof(dtrace_helpers_t), GFP_KERNEL);
 	if (dth == NULL)
 		return NULL;
 
 	dth->dthps_actions = vzalloc(sizeof(dtrace_helper_action_t *) *
 				     DTRACE_NHELPER_ACTIONS);
 	if (dth->dthps_actions == NULL) {
-		vfree(dth);
+		kfree(dth);
 		return NULL;
 	}
 
@@ -1416,7 +1416,7 @@ static void dtrace_helper_action_destroy(dtrace_helper_action_t *helper,
 	}
 
 	vfree(helper->dtha_actions);
-	vfree(helper);
+	kfree(helper);
 }
 
 static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
@@ -1448,7 +1448,7 @@ static int dtrace_helper_action_add(int which, dtrace_ecbdesc_t *ep)
 	if (count >= dtrace_helper_actions_max)
 		return -ENOSPC;
 
-	helper = vzalloc(sizeof(dtrace_helper_action_t));
+	helper = kzalloc(sizeof(dtrace_helper_action_t), GFP_KERNEL);
 	if (helper == NULL)
 		return -ENOMEM;
 
@@ -1532,7 +1532,7 @@ static int dtrace_helper_provider_add(dof_helper_t *dofhp, int gen)
 			return -EALREADY;
 	}
 
-	hprov = vzalloc(sizeof(dtrace_helper_provider_t));
+	hprov = kzalloc(sizeof(dtrace_helper_provider_t), GFP_KERNEL);
 	if (hprov == NULL)
 		return -ENOMEM;
 	hprov->dthp_prov = *dofhp;
@@ -1559,7 +1559,7 @@ static int dtrace_helper_provider_add(dof_helper_t *dofhp, int gen)
 		dth->dthps_provs = vzalloc(dth->dthps_maxprovs *
 					   sizeof(dtrace_helper_provider_t *));
 		if (dth->dthps_provs == NULL) {
-			vfree(hprov);
+			kfree(hprov);
 			return -ENOMEM;
 		}
 
@@ -1588,7 +1588,7 @@ static void dtrace_helper_provider_destroy(dtrace_helper_provider_t *hprov)
 
 		dof = (dof_hdr_t *)(uintptr_t)hprov->dthp_prov.dofhp_dof;
 		dtrace_dof_destroy(dof);
-		vfree(hprov);
+		kfree(hprov);
 	} else
 		mutex_unlock(&dtrace_lock);
 }
@@ -1876,6 +1876,11 @@ int dtrace_helper_slurp(dof_hdr_t *dof, dof_helper_t *dhp)
 		return -1;
 	}
 
+	dt_dbg_dof("DOF 0x%p from helper {'%s', %p, %p}...\n",
+		   dof, dhp ? dhp->dofhp_mod : "<none>",
+			dhp ? dhp->dofhp_addr : NULL,
+			dhp ? dhp->dofhp_dof : NULL);
+
 	vstate = &dth->dthps_vstate;
 
 	if ((rv = dtrace_dof_slurp(dof, vstate, NULL, &enab,
@@ -2053,7 +2058,7 @@ void dtrace_helpers_destroy(struct task_struct *tsk)
 
 	dtrace_vstate_fini(&help->dthps_vstate);
 	vfree(help->dthps_actions);
-	vfree(help);
+	kfree(help);
 
 	--dtrace_helpers;
 	mutex_unlock(&dtrace_lock);
@@ -2088,7 +2093,8 @@ void dtrace_helpers_duplicate(struct task_struct *from, struct task_struct *to)
 			continue;
 
 		for (last = NULL; helper != NULL; helper = helper->dtha_next) {
-			new = vzalloc(sizeof(dtrace_helper_action_t));
+			new = kzalloc(sizeof(dtrace_helper_action_t),
+				      GFP_KERNEL);
 			new->dtha_generation = helper->dtha_generation;
 
 			if ((dp = helper->dtha_predicate) != NULL) {

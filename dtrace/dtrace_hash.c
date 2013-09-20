@@ -54,7 +54,7 @@ static uint_t dtrace_hash_str(char *p)
 dtrace_hash_t *dtrace_hash_create(uintptr_t stroffs, uintptr_t nextoffs,
 				  uintptr_t prevoffs)
 {
-	dtrace_hash_t	*hash = vzalloc(sizeof(dtrace_hash_t));
+	dtrace_hash_t	*hash = kzalloc(sizeof(dtrace_hash_t), GFP_KERNEL);
 
 	if (hash == NULL)
 		return NULL;
@@ -70,7 +70,7 @@ dtrace_hash_t *dtrace_hash_create(uintptr_t stroffs, uintptr_t nextoffs,
 				sizeof(dtrace_hashbucket_t *));
 
 	if (hash->dth_tab == NULL) {
-		vfree(hash);
+		kfree(hash);
 		return NULL;
 	}
 
@@ -87,7 +87,7 @@ void dtrace_hash_destroy(dtrace_hash_t *hash)
 #endif
 
 	vfree(hash->dth_tab);
-	vfree(hash);
+	kfree(hash);
 }
 
 static int dtrace_hash_resize(dtrace_hash_t *hash)
@@ -147,7 +147,7 @@ int dtrace_hash_add(dtrace_hash_t *hash, dtrace_probe_t *new)
 		return 0;
 	}
 
-	bucket = vzalloc(sizeof(dtrace_hashbucket_t));
+	bucket = kzalloc(sizeof(dtrace_hashbucket_t), GFP_KERNEL);
 	if (bucket == NULL)
 		return -ENOMEM;
 
@@ -191,6 +191,14 @@ dtrace_probe_t *dtrace_hash_lookup(dtrace_hash_t *hash,
 	return NULL;
 }
 
+/*
+ * FIXME:
+ * It would be more accurate to calculate a lookup cost based on the number
+ * of buckets in the hash table slot, the length of the chain, and the length
+ * of the string being looked up.
+ * The hash tables can also be optimized by storing the hashval in each element
+ * rather than always performing string comparisons.
+ */
 int dtrace_hash_collisions(dtrace_hash_t *hash, dtrace_probe_t *template)
 {
 	int			hashval = DTRACE_HASHSTR(hash, template);
@@ -243,7 +251,7 @@ void dtrace_hash_remove(dtrace_hash_t *hash, dtrace_probe_t *probe)
 			ASSERT(hash->dth_nbuckets > 0);
 
 			hash->dth_nbuckets--;
-			vfree(bucket);
+			kfree(bucket);
 
 			return;
 		}
