@@ -39,7 +39,7 @@ dtrace_enabling_t *dtrace_enabling_create(dtrace_vstate_t *vstate)
 {
 	dtrace_enabling_t	*enab;
 
-	enab = vzalloc(sizeof (dtrace_enabling_t));
+	enab = kzalloc(sizeof (dtrace_enabling_t), GFP_KERNEL);
 	if (enab == NULL)
 		return NULL;
 
@@ -95,7 +95,7 @@ static void dtrace_enabling_addlike(dtrace_enabling_t *enab,
 	 * We're going to create a new ECB description that matches the
 	 * specified ECB in every way, but has the specified probe description.
 	 */
-	new = vzalloc(sizeof (dtrace_ecbdesc_t));
+	new = kzalloc(sizeof (dtrace_ecbdesc_t), GFP_KERNEL);
 
 	if ((pred = ecb->dted_pred.dtpdd_predicate) != NULL)
 		dtrace_predicate_hold(pred);
@@ -147,7 +147,7 @@ void dtrace_enabling_destroy(dtrace_enabling_t *enab)
 			dtrace_actdesc_release(act, vstate);
 		}
 
-		vfree(ep);
+		kfree(ep);
 	}
 
 	vfree(enab->dten_desc);
@@ -182,7 +182,7 @@ void dtrace_enabling_destroy(dtrace_enabling_t *enab)
 		enab->dten_next->dten_prev = enab->dten_prev;
 	}
 
-	vfree(enab);
+	kfree(enab);
 }
 
 int dtrace_enabling_retain(dtrace_enabling_t *enab)

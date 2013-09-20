@@ -44,7 +44,7 @@ dtrace_actdesc_t *dtrace_actdesc_create(dtrace_actkind_t kind, uint32_t ntuple,
 	       (arg == 0 && kind == DTRACEACT_PRINTA));
 #endif
 
-	act = vzalloc(sizeof (dtrace_actdesc_t));
+	act = kzalloc(sizeof (dtrace_actdesc_t), GFP_KERNEL);
 	if (act == NULL)
 		return NULL;
 
@@ -92,5 +92,5 @@ void dtrace_actdesc_release(dtrace_actdesc_t *act, dtrace_vstate_t *vstate)
 			vfree(str);
 	}
 
-	vfree(act);
+	kfree(act);
 }

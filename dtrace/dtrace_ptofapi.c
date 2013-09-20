@@ -191,12 +191,12 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 		return -EINVAL;
 	}
 
-	provider = vzalloc(sizeof (dtrace_provider_t));
+	provider = kzalloc(sizeof (dtrace_provider_t), GFP_KERNEL);
 	if (provider == NULL)
 		return -ENOMEM;
 	provider->dtpv_name = dtrace_strdup(name);
 	if (provider->dtpv_name == NULL) {
-		vfree(provider);
+		kfree(provider);
 		return -ENOMEM;
 	}
 	provider->dtpv_attr = *pap;
@@ -464,7 +464,7 @@ int dtrace_unregister(dtrace_provider_id_t id)
 		kfree(probe->dtpr_mod);
 		kfree(probe->dtpr_func);
 		kfree(probe->dtpr_name);
-		kfree(probe);
+		kmem_cache_free(dtrace_probe_cachep, probe);
 
 		dtrace_probe_remove_id(probe_id);
 	}
@@ -497,7 +497,7 @@ int dtrace_unregister(dtrace_provider_id_t id)
 	}
 
 	kfree(old->dtpv_name);
-	vfree(old);
+	kfree(old);
 
 	return 0;
 }
@@ -625,13 +625,13 @@ int dtrace_meta_register(const char *name, const dtrace_mops_t *mops,
 		return -EINVAL;
 	}
 
-	meta = vzalloc(sizeof(dtrace_meta_t));
+	meta = kzalloc(sizeof(dtrace_meta_t), GFP_KERNEL);
 	if (meta == NULL)
 		return -ENOMEM;
 	meta->dtm_mops = *mops;
-	meta->dtm_name = vmalloc(strlen(name) + 1);
+	meta->dtm_name = kmalloc(strlen(name) + 1, GFP_KERNEL);
 	if (meta->dtm_name == NULL) {
-		vfree(meta);
+		kfree(meta);
 		return -ENOMEM;
 	}
 	strcpy(meta->dtm_name, name);
@@ -707,8 +707,8 @@ int dtrace_meta_unregister(dtrace_meta_provider_id_t id)
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_meta_lock);
 
-	vfree(old->dtm_name);
-	vfree(old);
+	kfree(old->dtm_name);
+	kfree(old);
 
 	return 0;
 }

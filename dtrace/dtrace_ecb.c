@@ -43,7 +43,7 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 	dtrace_state_t		*state = ecb->dte_state;
 	int			err;
 
-	agg = vzalloc(sizeof(dtrace_aggregation_t));
+	agg = kzalloc(sizeof(dtrace_aggregation_t), GFP_KERNEL);
 	if (agg == NULL)
 		return NULL;
 
@@ -122,7 +122,7 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 
 	ASSERT(ntuple != 0);
 err:
-	vfree(agg);
+	kfree(agg);
 	return NULL;
 
 success:
@@ -176,7 +176,7 @@ void dtrace_ecb_aggregation_destroy(dtrace_ecb_t *ecb, dtrace_action_t *act)
 	idr_remove(&state->dts_agg_idr, agg->dtag_id);
 	state->dts_naggs--;
 
-	vfree(agg);
+	kfree(agg);
 }
 
 static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
@@ -367,7 +367,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			}
 		}
 
-		action = vzalloc(sizeof(dtrace_action_t));
+		action = kzalloc(sizeof(dtrace_action_t), GFP_KERNEL);
 		if (action == NULL)
 			return -ENOMEM;
 
@@ -439,7 +439,7 @@ static void dtrace_ecb_action_remove(dtrace_ecb_t *ecb)
 			if (DTRACEACT_ISAGG(act->dta_kind))
 				dtrace_ecb_aggregation_destroy(ecb, act);
 			else
-				vfree(act);
+				kfree(act);
 		}
 	}
 
@@ -533,7 +533,7 @@ static dtrace_ecb_t *dtrace_ecb_add(dtrace_state_t *state,
 
 	ASSERT(MUTEX_HELD(&dtrace_lock));
 
-	ecb = vzalloc(sizeof(dtrace_ecb_t));
+	ecb = kzalloc(sizeof(dtrace_ecb_t), GFP_KERNEL);
 	if (ecb == NULL)
 		return NULL;
 
@@ -689,7 +689,7 @@ void dtrace_ecb_destroy(dtrace_ecb_t *ecb)
 	ASSERT(state->dts_ecbs[epid - 1] == ecb);
 	state->dts_ecbs[epid - 1] = NULL;
 
-	vfree(ecb);
+	kfree(ecb);
 }
 
 void dtrace_ecb_resize(dtrace_ecb_t *ecb)

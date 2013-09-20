@@ -72,7 +72,8 @@ void systrace_provide(void *arg, const dtrace_probedesc_t *desc)
 		else if (sz > 5 && memcmp(nm, "stub_", 5) == 0)
 			nm += 5;
 
-		if (dtrace_probe_lookup(syscall_id, NULL, nm, "entry") != 0)
+		if (dtrace_probe_lookup(syscall_id, dtrace_kmod->name, nm,
+					"entry") != 0)
 			continue;
 
 		dtrace_probe_create(syscall_id, dtrace_kmod->name, nm, "entry",
