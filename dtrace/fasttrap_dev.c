@@ -951,7 +951,7 @@ void fasttrap_meta_create_probe(void *arg, void *parg,
 		tp->ftt_proc = provider->ftp_proc;
 		tp->ftt_pc = dhpb->dthpb_base + dhpb->dthpb_enoffs[j];
 		tp->ftt_pid = provider->ftp_pid;
-
+		memset(&tp->ftt_mtp, 0, sizeof(fasttrap_machtp_t));
 		tp->ftt_ids = NULL;
 		tp->ftt_retids = NULL;
 		tp->ftt_next = NULL;
