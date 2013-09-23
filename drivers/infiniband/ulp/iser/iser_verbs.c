@@ -178,6 +178,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 
 	ib_conn->page_vec->pages = (u64 *) (ib_conn->page_vec + 1);
 
+	memset(&params, 0, sizeof(params));
 	params.page_shift        = SHIFT_4K;
 	/* when the first/last SG element are not start/end *
 	 * page aligned, the map whould be of N+1 pages     */
@@ -191,6 +192,7 @@ static int iser_create_ib_conn_res(struct iser_conn *ib_conn)
 	params.access		 = (IB_ACCESS_LOCAL_WRITE  |
 				    IB_ACCESS_REMOTE_WRITE |
 				    IB_ACCESS_REMOTE_READ);
+	params.relaxed		 = 0;
 
 	ib_conn->fmr_pool = ib_create_fmr_pool(device->pd, &params);
 	if (IS_ERR(ib_conn->fmr_pool)) {
