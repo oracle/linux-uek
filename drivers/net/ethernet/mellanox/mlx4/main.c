@@ -121,7 +121,7 @@ static struct mlx4_profile low_mem_profile = {
 	.num_cq		= 1 << 8,
 	.num_mcg	= 1 << 8,
 	.num_mpt	= 1 << 9,
-	.num_mtt	= 1 << 7,
+	.num_mtt_segs	= 1 << 7,
 };
 
 static int log_num_mac = 7;
@@ -171,7 +171,7 @@ static struct mlx4_profile mod_param_profile = {
 	.num_cq         = 16,
 	.num_mcg        = 13,
 	.num_mpt        = 19,
-	.num_mtt        = 0, /* max(20, 2*MTTs for host memory)) */
+	.num_mtt_segs   = 0, /* max(20, 2*MTTs for host memory)) */
 };
 
 module_param_named(log_num_qp, mod_param_profile.num_qp, int, 0444);
@@ -198,7 +198,7 @@ MODULE_PARM_DESC(log_num_mpt,
 		 "log maximum number of memory protection table entries per "
 		 "HCA (default: 19)");
 
-module_param_named(log_num_mtt, mod_param_profile.num_mtt, int, 0444);
+module_param_named(log_num_mtt, mod_param_profile.num_mtt_segs, int, 0444);
 MODULE_PARM_DESC(log_num_mtt,
 		 "log maximum number of memory translation table segments per "
 		 "HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
@@ -230,11 +230,11 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * That limits us to 4TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
-	if (mod_param_profile.num_mtt)
-		profile->num_mtt = 1 << mod_param_profile.num_mtt;
+	if (mod_param_profile.num_mtt_segs)
+		profile->num_mtt_segs = 1 << mod_param_profile.num_mtt_segs;
 	else {
 		si_meminfo(&si);
-		profile->num_mtt =
+		profile->num_mtt_segs =
 			roundup_pow_of_two(max_t(unsigned,
 						1 << (MLX4_LOG_NUM_MTT -
 						      log_mtts_per_seg),
@@ -245,7 +245,7 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 						>> log_mtts_per_seg)));
 		/* set the actual value, so it will be reflected to the user
 		   using the sysfs */
-		mod_param_profile.num_mtt = ilog2(profile->num_mtt);
+		mod_param_profile.num_mtt_segs = ilog2(profile->num_mtt_segs);
 	}
 }
 
@@ -3857,15 +3857,16 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	if (mod_param_profile.num_mtt && mod_param_profile.num_mtt < 15) {
+	if (mod_param_profile.num_mtt_segs &&
+	    mod_param_profile.num_mtt_segs < 15) {
 		pr_warning("mlx4_core: too low log_num_mtt: %d\n",
-			   mod_param_profile.num_mtt);
+			   mod_param_profile.num_mtt_segs);
 		return -1;
 	}
 
-	if (mod_param_profile.num_mtt > MLX4_MAX_LOG_NUM_MTT) {
+	if (mod_param_profile.num_mtt_segs > MLX4_MAX_LOG_NUM_MTT) {
 		pr_warning("mlx4_core: too high log_num_mtt: %d\n",
-			   mod_param_profile.num_mtt);
+			   mod_param_profile.num_mtt_segs);
 		return -1;
 	}
 	return 0;

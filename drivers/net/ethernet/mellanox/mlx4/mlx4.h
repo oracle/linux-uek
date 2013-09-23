@@ -410,7 +410,7 @@ struct mlx4_profile {
 	int			num_cq;
 	int			num_mcg;
 	int			num_mpt;
-	unsigned		num_mtt;
+	unsigned		num_mtt_segs;
 };
 
 struct mlx4_fw {
