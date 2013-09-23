@@ -2179,21 +2179,21 @@ int ixgbevf_init_interrupt_scheme(struct ixgbevf_adapter *adapter)
 
 	err = ixgbevf_alloc_q_vectors(adapter);
 	if (err) {
-		DPRINTK(PROBE, ERR, "Unable to allocate memory for queue "
+		dev_err(pci_dev_to_dev(adapter->pdev), "Unable to allocate memory for queue "
 		        "vectors\n");
 		goto err_alloc_q_vectors;
 	}
 
 	err = ixgbevf_alloc_queues(adapter);
 	if (err) {
-		DPRINTK(PROBE, ERR, "Unable to allocate memory for queues\n");
+		dev_err(pci_dev_to_dev(adapter->pdev), "Unable to allocate memory for queues\n");
 		goto err_alloc_queues;
 	}
 
-	DPRINTK(DRV, INFO, "Multiqueue %s: Rx Queue count = %u, "
-	                   "Tx Queue count = %u\n",
-	        (adapter->num_rx_queues > 1) ? "Enabled" :
-	        "Disabled", adapter->num_rx_queues, adapter->num_tx_queues);
+	dev_info(pci_dev_to_dev(adapter->pdev), "Multiqueue %s: Rx Queue count = %u, "
+		 "Tx Queue count = %u\n",
+		 (adapter->num_rx_queues > 1) ? "Enabled" :
+		 "Disabled", adapter->num_rx_queues, adapter->num_tx_queues);
 
 	set_bit(__IXGBEVF_DOWN, &adapter->state);
 
