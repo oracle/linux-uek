@@ -479,7 +479,52 @@ static void watchdog_nmi_disable(unsigned int cpu) { return; }
 /* prepare/enable/disable routines */
 /* sysctl functions */
 #ifdef CONFIG_SYSCTL
-static void watchdog_enable_all_cpus(void)
+static void restart_watchdog_hrtimer(void *info)
+{
+	struct hrtimer *hrtimer = &__raw_get_cpu_var(watchdog_hrtimer);
+	int ret;
+
+	/*
+	 * No need to cancel and restart hrtimer if it is currently executing
+	 * because it will reprogram itself with the new period now.
+	 * We should never see it unqueued here because we are running per-cpu
+	 * with interrupts disabled.
+	 */
+	ret = hrtimer_try_to_cancel(hrtimer);
+	if (ret == 1)
+		hrtimer_start(hrtimer, ns_to_ktime(sample_period),
+				HRTIMER_MODE_REL_PINNED);
+}
+
+static void update_timers(int cpu)
+{
+	struct call_single_data data = {.func = restart_watchdog_hrtimer};
+	/*
+	 * Make sure that perf event counter will adopt to a new
+	 * sampling period. Updating the sampling period directly would
+	 * be much nicer but we do not have an API for that now so
+	 * let's use a big hammer.
+	 * Hrtimer will adopt the new period on the next tick but this
+	 * might be late already so we have to restart the timer as well.
+	 */
+	watchdog_nmi_disable(cpu);
+	__smp_call_function_single(cpu, &data, 1);
+	watchdog_nmi_enable(cpu);
+}
+
+static void update_timers_all_cpus(void)
+{
+	int cpu;
+
+	get_online_cpus();
+	preempt_disable();
+	for_each_online_cpu(cpu)
+		update_timers(cpu);
+	preempt_enable();
+	put_online_cpus();
+}
+
+static void watchdog_enable_all_cpus(bool sample_period_changed)
 {
 	unsigned int cpu;
 
@@ -487,6 +532,8 @@ static void watchdog_enable_all_cpus(void)
 		watchdog_disabled = 0;
 		for_each_online_cpu(cpu)
 			kthread_unpark(per_cpu(softlockup_watchdog, cpu));
+	} else if (sample_period_changed) {
+		update_timers_all_cpus();
 	}
 }
 
@@ -508,7 +555,9 @@ static void watchdog_disable_all_cpus(void)
 int proc_dowatchdog(struct ctl_table *table, int write,
 		    void __user *buffer, size_t *lenp, loff_t *ppos)
 {
-	int ret;
+	int ret, old_thresh;
+
+	old_thresh = ACCESS_ONCE(watchdog_thresh);
 
 	if (watchdog_disabled < 0)
 		return -ENODEV;
@@ -519,7 +568,7 @@ int proc_dowatchdog(struct ctl_table *table, int write,
 
 	set_sample_period();
 	if (watchdog_enabled && watchdog_thresh)
-		watchdog_enable_all_cpus();
+		watchdog_enable_all_cpus(old_thresh != watchdog_thresh);
 	else
 		watchdog_disable_all_cpus();
 
