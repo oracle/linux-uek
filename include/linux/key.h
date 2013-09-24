@@ -215,6 +215,7 @@ struct key {
 			unsigned long		value;
 			void __rcu		*rcudata;
 			void			*data;
+			void			*data2[2];
 		} payload;
 		struct assoc_array keys;
 	};
