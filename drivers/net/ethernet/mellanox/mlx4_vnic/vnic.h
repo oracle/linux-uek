@@ -322,9 +322,13 @@ extern struct ib_sa_client vnic_sa_client;
 #ifndef _BP_NETDEV_NO_TMQ /* >= 2.6.27 */
 #define VNIC_TXQ_GET_HASH(_skb, _max)	(skb_get_queue_mapping(_skb))
 #define VNIC_TXQ_ALLOC_NETDEV(sz, nm, sp, qm) alloc_netdev_mq(sz, nm, sp, qm)
-#define VNIC_TXQ_SET_ACTIVE(login, num)	(login->dev->real_num_tx_queues = \
-					login->real_tx_rings_num = \
-					login->ndo_tx_rings_num = num)
+#define VNIC_TXQ_SET_ACTIVE(login, num) \
+            do { \
+                rtnl_lock(); \
+                netif_set_real_num_tx_queues(login->dev,num); \
+                rtnl_unlock(); \
+                login->real_tx_rings_num = login->ndo_tx_rings_num = num; \
+            } while (0)
 #define VNIC_TXQ_GET_ACTIVE(login)	(login->real_tx_rings_num)
 #define VNIC_TXQ_GET(tx_res)		netdev_get_tx_queue(tx_res->login->dev, tx_res->index)
 #define VNIC_TXQ_STOP(tx_res) 		netif_tx_stop_queue(VNIC_TXQ_GET(tx_res))

@@ -60,8 +60,6 @@ err:
 
 static void __exit mlx4_ib_cleanup(void)
 {
-	int ret;
-
 	vnic_dbg_func("module_exit");
 	vnic_ports_cleanup();
 	vnic_dbg_mark();
