@@ -37,6 +37,8 @@
 #include "dtrace_dev.h"
 #include "fasttrap_impl.h"
 
+#define FIX_FORCE_UNIQUE_PROVNAME_PER_PID
+
 #define FASTTRAP_MAX_DEFAULT	250000
 static uint32_t			fasttrap_max;
 static uint64_t			fasttrap_pid_count;
@@ -1169,9 +1171,18 @@ static fasttrap_provider_t *fasttrap_provider_lookup(pid_t pid,
 	for (fp = bucket->ftb_data; fp != NULL; fp = fp->ftp_next) {
 		if (fp->ftp_pid == pid && strcmp(fp->ftp_name, name) == 0 &&
 		    !fp->ftp_retired) {
+#ifdef FIX_FORCE_UNIQUE_PROVNAME_PER_PID
+			/*
+			 * We disallow multiple providers with the same name
+			 * for a given PID.
+			 */
+			mutex_unlock(&bucket->ftb_mtx);
+			return NULL;
+#else
 			mutex_lock(&fp->ftp_mtx);
 			mutex_unlock(&bucket->ftb_mtx);
 			return fp;
+#endif
 		}
 	}
 
