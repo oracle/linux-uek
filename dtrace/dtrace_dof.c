@@ -1729,8 +1729,19 @@ static void dtrace_helper_provide_one(dof_helper_t *dhp, dof_sec_t *sec,
 	dt_dbg_dof("    Creating provider %s for PID %d\n",
 		   strtab + prov->dofpv_name, pid);
 
-	if ((parg = mops->dtms_provide_pid(meta->dtm_arg, &dhpv, pid)) == NULL)
+	/*
+	 * This used to just 'return;' when parg is NULL, but that causes the
+	 * cleanup code (dtrace_helper_provider_remove[_one]) to make a call
+	 * to dtms_remove_pid() for a provider that never got created.
+	 *
+	 * If we fail to provide this provider, mark it as something to ignore,
+	 * so we don't try to process it during cleanup.
+	 */
+	parg = mops->dtms_provide_pid(meta->dtm_arg, &dhpv, pid);
+	if (parg == NULL) {
+		sec->dofs_type = DOF_SECT_NONE;
 		return;
+	}
 
 	meta->dtm_count++;
 
