@@ -2374,6 +2374,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
 	struct inode *inode = file->f_mapping->host;
 	ssize_t ret;
 
+	sb_start_write(inode->i_sb);
 	mutex_lock(&inode->i_mutex);
 	ret = __generic_file_write_iter(iocb, iter, &iocb->ki_pos);
 	mutex_unlock(&inode->i_mutex);
@@ -2385,6 +2386,7 @@ ssize_t generic_file_write_iter(struct kiocb *iocb, struct iov_iter *iter,
 		if (err < 0 && ret > 0)
 			ret = err;
 	}
+	sb_end_write(inode->i_sb);
 	return ret;
 }
 EXPORT_SYMBOL(generic_file_write_iter);
