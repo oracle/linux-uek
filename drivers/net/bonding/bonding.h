@@ -253,6 +253,7 @@ struct bonding {
 	/* debugging suport via debugfs */
 	struct	 dentry *debug_dir;
 #endif /* CONFIG_DEBUG_FS */
+        bool arp_sent;
 };
 
 #define bond_slave_get_rcu(dev) \
