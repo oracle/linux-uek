@@ -704,14 +704,6 @@ static int cma_init_conn_qp(struct rdma_id_private *id_priv, struct ib_qp *qp)
 	return ib_modify_qp(qp, &qp_attr, qp_attr_mask);
 }
 
-void *rdma_id_2_qp_ctx(struct rdma_cm_id *id)
-{
-	struct rdma_id_private *id_priv;
-	id_priv = container_of(id, struct rdma_id_private, id);
-	return id_priv->qp_context;
-}
-EXPORT_SYMBOL(rdma_id_2_qp_ctx);
-
 int rdma_create_qp(struct rdma_cm_id *id, struct ib_pd *pd,
 		   struct ib_qp_init_attr *qp_init_attr)
 {

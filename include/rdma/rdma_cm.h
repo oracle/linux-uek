@@ -232,8 +232,6 @@ int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms);
  */
 int rdma_enable_apm(struct rdma_cm_id *id, enum alt_path_type alt_type);
 
-void *rdma_id_2_qp_ctx(struct rdma_cm_id *id);
-
 /**
  * rdma_create_qp - Allocate a QP and associate it with the specified RDMA
  * identifier.
