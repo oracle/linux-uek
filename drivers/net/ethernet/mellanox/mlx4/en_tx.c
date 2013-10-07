@@ -223,7 +223,7 @@ int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 	ring->doorbell_qpn = ring->qp.qpn << 8;
 
 	mlx4_en_fill_qp_context(priv, ring->size, ring->stride, 1, 0, ring->qpn,
-				ring->cqn, user_prio, &ring->context);
+				ring->cqn, user_prio, &ring->context, 0);
 	if (ring->bf_enabled)
 		ring->context.usr_page = cpu_to_be32(ring->bf.uar->index);
 

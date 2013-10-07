@@ -686,6 +686,7 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.bmme_flags	     = dev_cap->bmme_flags;
 	dev->caps.reserved_lkey	     = dev_cap->reserved_lkey;
 	dev->caps.stat_rate_support  = dev_cap->stat_rate_support;
+	dev->caps.cq_timestamp       = dev_cap->timestamp_support;
 	dev->caps.max_gso_sz	     = dev_cap->max_gso_sz;
 	dev->caps.max_rss_tbl_sz     = dev_cap->max_rss_tbl_sz;
 
@@ -1672,24 +1673,25 @@ static void unmap_bf_area(struct mlx4_dev *dev)
 
 cycle_t mlx4_read_clock(struct mlx4_dev *dev)
 {
-       u32 clockhi, clocklo, clockhi1;
-       cycle_t cycles;
-       int i;
-       struct mlx4_priv *priv = mlx4_priv(dev);
+	u32 clockhi, clocklo, clockhi1;
+	cycle_t cycles;
+	int i;
+	struct mlx4_priv *priv = mlx4_priv(dev);
 
-       for (i = 0; i < 10; i++) {
-               clockhi = swab32(readl(priv->clock_mapping));
-               clocklo = swab32(readl(priv->clock_mapping + 4));
-               clockhi1 = swab32(readl(priv->clock_mapping));
-               if (clockhi == clockhi1)
-                       break;
-       }
+	for (i = 0; i < 10; i++) {
+		clockhi = swab32(readl(priv->clock_mapping));
+		clocklo = swab32(readl(priv->clock_mapping + 4));
+		clockhi1 = swab32(readl(priv->clock_mapping));
+		if (clockhi == clockhi1)
+			break;
+	}
 
-       cycles = (u64) clockhi << 32 | (u64) clocklo;
+	cycles = (u64) clockhi << 32 | (u64) clocklo;
 
-       return cycles;
+	return cycles;
 }
 EXPORT_SYMBOL_GPL(mlx4_read_clock);
+
 
 int map_internal_clock(struct mlx4_dev *dev)
 {
@@ -1970,12 +1972,12 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 	/*
 	 * Read HCA frequency by QUERY_HCA command
 	 */
-	if (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_TS) {
+	if (dev->caps.cq_timestamp) {
 		memset(&init_hca, 0, sizeof(init_hca));
 		err = mlx4_QUERY_HCA(dev, &init_hca);
 		if (err) {
 			mlx4_err(dev, "QUERY_HCA command failed, disable timestamp.\n");
-			dev->caps.flags2 &= ~MLX4_DEV_CAP_FLAG2_TS;
+			dev->caps.cq_timestamp = 0;
 		} else
 			dev->caps.hca_core_clock = init_hca.hca_core_clock;
 
@@ -1984,7 +1986,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		 * to avoid dividing by zero
 		 */
 		if (!dev->caps.hca_core_clock) {
-			dev->caps.flags2 &= ~MLX4_DEV_CAP_FLAG2_TS;
+			dev->caps.cq_timestamp = 0;
 			mlx4_err(dev, "HCA frequency is 0. "
 				 "Timestamping is not supported.");
 		}
@@ -1993,7 +1995,7 @@ static int mlx4_init_hca(struct mlx4_dev *dev)
 		 * Map internal clock, in case of failure disable timestamping
 		 */
 		if (map_internal_clock(dev)) {
-			dev->caps.flags2 &= ~MLX4_DEV_CAP_FLAG2_TS;
+			dev->caps.cq_timestamp = 0;
 			mlx4_err(dev, "Failed to map internal clock. "
 				 "Timestamping is not supported.\n");
 		}

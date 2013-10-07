@@ -35,12 +35,19 @@
 
 #include "mlx4_en.h"
 
+#define CORE_CLOCK_MASK 0xffffffffffff
+
 int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
 	int port_up = 0;
-	int err = 0;
+	int n_stats, err = 0;
+	u64 *data = NULL;
+
+	err = mlx4_en_pre_config(priv);
+	if (err)
+		return err;
 
 	mutex_lock(&mdev->state_lock);
 	if (priv->port_up) {
@@ -48,9 +55,17 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 		mlx4_en_stop_port(dev);
 	}
 
+	/* Cache port statistics */
+	n_stats = mlx4_en_get_sset_count(dev, ETH_SS_STATS);
+	if (n_stats > 0) {
+		data = kmalloc(n_stats * sizeof(u64), GFP_KERNEL);
+		if (data)
+			mlx4_en_get_ethtool_stats(dev, NULL, data);
+	}
+
 	mlx4_en_free_resources(priv);
 
-	en_warn(priv, "Changing Time Stamp configuration\n");
+	en_err(priv, "Changing Time Stamp configuration\n");
 
 	priv->hwtstamp_config.tx_type = tx_type;
 	priv->hwtstamp_config.rx_filter = rx_filter;
@@ -60,11 +75,21 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	else
 		dev->features |= NETIF_F_HW_VLAN_RX;
 
+	if (tx_type != HWTSTAMP_TX_OFF)
+		dev->features &= ~NETIF_F_HW_VLAN_TX;
+	else
+		dev->features |= NETIF_F_HW_VLAN_TX;
+
 	err = mlx4_en_alloc_resources(priv);
 	if (err) {
 		en_err(priv, "Failed reallocating port resources\n");
 		goto out;
 	}
+
+	/* Restore port statistics */
+	if (n_stats > 0 && data)
+		mlx4_en_restore_ethtool_stats(priv, data);
+
 	if (port_up) {
 		err = mlx4_en_start_port(dev);
 		if (err)
@@ -72,20 +97,21 @@ int mlx4_en_timestamp_config(struct net_device *dev, int tx_type, int rx_filter)
 	}
 
 out:
+	kfree(data);
 	mutex_unlock(&mdev->state_lock);
-	netdev_features_change(dev);
 	return err;
 }
 
-/* mlx4_en_read_clock - read raw cycle counter (to be used by time counter)
+/*
+ * mlx4_en_read_clock - read raw cycle counter (to be used by time counter)
  */
-static cycle_t mlx4_en_read_clock(const struct cyclecounter *tc)
+cycle_t mlx4_en_read_clock(const struct cyclecounter *tc)
 {
 	struct mlx4_en_dev *mdev =
 		container_of(tc, struct mlx4_en_dev, cycles);
 	struct mlx4_dev *dev = mdev->dev;
 
-	return mlx4_read_clock(dev) & tc->mask;
+	return mlx4_read_clock(dev) & CORE_CLOCK_MASK;
 }
 
 u64 mlx4_en_get_cqe_ts(struct mlx4_cqe *cqe)
@@ -107,26 +133,46 @@ void mlx4_en_fill_hwtstamps(struct mlx4_en_dev *mdev,
 
 	nsec = timecounter_cyc2time(&mdev->clock, timestamp);
 
+	/*
+	 * force a timecompare_update here (even if less than a second
+	 * has passed) in order to prevent the case when ptpd or other
+	 * software jumps the clock offset. othwerise there is a small
+	 * window when the timestamp would be based on previous skew
+	 * and invalid results would be pushed to the network stack.
+	 */
+	timecompare_update(&mdev->compare, 0);
 	memset(hwts, 0, sizeof(struct skb_shared_hwtstamps));
 	hwts->hwtstamp = ns_to_ktime(nsec);
+	hwts->syststamp = timecompare_transform(&mdev->compare, nsec);
 }
 
 void mlx4_en_init_timestamp(struct mlx4_en_dev *mdev)
 {
 	struct mlx4_dev *dev = mdev->dev;
+	u64 temp_mult;
 
 	memset(&mdev->cycles, 0, sizeof(mdev->cycles));
 	mdev->cycles.read = mlx4_en_read_clock;
 	mdev->cycles.mask = CLOCKSOURCE_MASK(48);
-	/* Using shift to make calculation more accurate. Since current HW
-	 * clock frequency is 427 MHz, and cycles are given using a 48 bits
-	 * register, the biggest shift when calculating using u64, is 14
-	 * (max_cycles * multiplier < 2^64)
+
+	/*
+	 * we have hca_core_clock in MHz, so to translate cycles to nsecs
+	 * we need to divide cycles by freq and multiply by 1000;
+	 * in order to get precise result we shift left the value,
+	 * since we don't have floating point there;
+	 * at the end shift result back
 	 */
-	mdev->cycles.shift = 14;
-	mdev->cycles.mult =
-		clocksource_khz2mult(1000 * dev->caps.hca_core_clock, mdev->cycles.shift);
+	temp_mult = div_u64(((1ull * 1000) << 29), dev->caps.hca_core_clock);
+	mdev->cycles.mult = (u32)temp_mult;
+	mdev->cycles.shift = 29;
 
 	timecounter_init(&mdev->clock, &mdev->cycles,
 			 ktime_to_ns(ktime_get_real()));
+
+	memset(&mdev->compare, 0, sizeof(mdev->compare));
+	mdev->compare.source = &mdev->clock;
+	mdev->compare.target = ktime_get_real;
+	mdev->compare.num_samples = 10;
+	timecompare_update(&mdev->compare, 0);
 }
+
