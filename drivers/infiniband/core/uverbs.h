@@ -149,7 +149,6 @@ struct ib_ucq_object {
 
 extern spinlock_t ib_uverbs_idr_lock;
 extern struct idr ib_uverbs_pd_idr;
-extern struct idr ib_uverbs_shpd_idr;
 extern struct idr ib_uverbs_mr_idr;
 extern struct idr ib_uverbs_fmr_idr;
 extern struct idr ib_uverbs_mw_idr;
@@ -225,8 +224,6 @@ IB_UVERBS_DECLARE_CMD(modify_qp_ex);
 IB_UVERBS_DECLARE_CMD(reg_mr_relaxed);
 IB_UVERBS_DECLARE_CMD(dereg_mr_relaxed);
 IB_UVERBS_DECLARE_CMD(flush_relaxed_mr);
-IB_UVERBS_DECLARE_CMD(alloc_shpd);
-IB_UVERBS_DECLARE_CMD(share_pd);
 
 /* FMR parameters */
 extern int ufmr_pool1_blocksize;
