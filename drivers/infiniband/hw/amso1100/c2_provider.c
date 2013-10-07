@@ -833,7 +833,6 @@ int c2_register_device(struct c2_dev *dev)
 	dev->ibdev.unmap_fmr = NULL;
 	dev->ibdev.dealloc_fmr = NULL;
 	dev->ibdev.map_phys_fmr = NULL;
-        dev->ib_dev.set_fmr_pd = NULL;
 
 	dev->ibdev.attach_mcast = c2_multicast_attach;
 	dev->ibdev.detach_mcast = c2_multicast_detach;
