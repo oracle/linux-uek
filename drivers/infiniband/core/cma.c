@@ -192,7 +192,6 @@ struct rdma_id_private {
 	enum cma_apm_flags	apm_flags;
 	int			alt_path_index;
 	void		(*qp_event_handler)(struct ib_event *, void *);
-	void		*qp_context;
 };
 
 void cma_debug_routes(struct rdma_id_private *id_priv)
@@ -628,7 +627,7 @@ static void cma_qp_event_handler(struct ib_event *event, void *data)
 
 	/* call the consumer's event handler first */
 	if (id_priv->qp_event_handler && !id_priv->id.ucontext)
-		id_priv->qp_event_handler(event, id_priv->qp_context);
+		id_priv->qp_event_handler(event, data);
 
 	if (event->event == IB_EVENT_PATH_MIG_ERR && !id_priv->id.ucontext)
 		cma_dbg(id_priv, "\ngot event IB_EVENT_PATH_MIG_ERR, qpn=0x%x\n\n", event->element.qp->qp_num);
@@ -709,7 +708,6 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ib_pd *pd,
 	if (id->device != pd->device)
 		return -EINVAL;
 	id_priv->qp_event_handler = qp_init_attr->event_handler;
-	id_priv->qp_context = qp_init_attr->qp_context;
 	qp_init_attr->event_handler = cma_qp_event_handler;
 	qp_init_attr->qp_context = id_priv;
 	qp = ib_create_qp(pd, qp_init_attr);
