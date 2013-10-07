@@ -62,7 +62,6 @@ struct ib_fmr_pool_param {
 						void               *arg);
 	void                   *flush_arg;
 	unsigned                cache:1;
-	unsigned		relaxed:1;
 };
 
 struct ib_pool_fmr {
@@ -73,18 +72,8 @@ struct ib_pool_fmr {
 	int                 ref_count;
 	int                 remap_count;
 	u64                 io_virtual_address;
-	struct ib_pd	   *pd;
-	int		    list_id;
-	struct scatterlist *sg;
-	int		    sg_len;
 	int                 page_list_len;
 	u64                 page_list[0];
-};
-
-struct ib_fmr_args_relaxed {
-	struct ib_pd       *pd;
-	struct scatterlist *sg;
-	int		    sg_len;
 };
 
 struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
@@ -97,10 +86,8 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool);
 struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 					 u64                *page_list,
 					 int                 list_len,
-					 u64                 io_virtual_address,
-					 struct ib_fmr_args_relaxed *rargs);
+					 u64                 io_virtual_address);
 
 int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr);
-
 
 #endif /* IB_FMR_POOL_H */

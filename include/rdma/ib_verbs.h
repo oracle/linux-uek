@@ -963,7 +963,6 @@ struct ib_ucontext {
 	struct ib_device       *device;
 	struct list_head	pd_list;
 	struct list_head	mr_list;
-	struct list_head	fmr_list;
 	struct list_head	mw_list;
 	struct list_head	cq_list;
 	struct list_head	qp_list;
@@ -1472,7 +1471,6 @@ struct ib_device {
 					unsigned long addr,
 					unsigned long len, unsigned long pgoff,
 					unsigned long flags);
-	int                        (*set_fmr_pd)(struct ib_fmr *fmr, struct ib_pd *pd);
 	struct ib_dma_mapping_ops   *dma_ops;
 
 	struct module               *owner;
@@ -1498,15 +1496,6 @@ struct ib_device {
 	u64			     cmd_avg;
 	u32			     cmd_n;
 	spinlock_t		     cmd_perf_lock;
-	struct ib_pd		     *relaxed_pd;
-	struct list_head	     relaxed_pool_list;
-};
-
-struct ib_relaxed_pool_data {
-	struct ib_fmr_pool *fmr_pool;
-	u32 access_flags;
-	int max_pages;
-	struct list_head pool_list;
 };
 
 struct ib_client {
@@ -2369,13 +2358,6 @@ int ib_dealloc_mw(struct ib_mw *mw);
 struct ib_fmr *ib_alloc_fmr(struct ib_pd *pd,
 			    int mr_access_flags,
 			    struct ib_fmr_attr *fmr_attr);
-
-/**
- * ib_set_fmr_pd - set new PD for an FMR
- * @fmr: The fast memory region to associate with the pd.
- * @pd: new pd.
- */
-int ib_set_fmr_pd(struct ib_fmr *fmr, struct ib_pd *pd);
 
 /**
  * ib_map_phys_fmr - Maps a list of physical pages to a fast memory region.
