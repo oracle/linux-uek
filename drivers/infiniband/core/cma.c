@@ -193,7 +193,6 @@ struct rdma_id_private {
 	int			alt_path_index;
 	void		(*qp_event_handler)(struct ib_event *, void *);
 	void		*qp_context;
-	int 		qp_timeout;
 };
 
 void cma_debug_routes(struct rdma_id_private *id_priv)
@@ -800,12 +799,6 @@ static int cma_modify_qp_rts(struct rdma_id_private *id_priv,
 
 	if (conn_param)
 		qp_attr.max_rd_atomic = conn_param->initiator_depth;
-
-	if (id_priv->qp_timeout) {
-		qp_attr.timeout = id_priv->qp_timeout;
-		qp_attr_mask |= IB_QP_TIMEOUT;
-	}
-
 	ret = ib_modify_qp(id_priv->id.qp, &qp_attr, qp_attr_mask);
 out:
 	mutex_unlock(&id_priv->qp_mutex);
@@ -2480,15 +2473,6 @@ void rdma_set_service_type(struct rdma_cm_id *id, int tos)
 	id_priv->tos = (u8) tos;
 }
 EXPORT_SYMBOL(rdma_set_service_type);
-
-void rdma_set_timeout(struct rdma_cm_id *id, int timeout)
-{
-	struct rdma_id_private *id_priv;
-
-	id_priv = container_of(id, struct rdma_id_private, id);
-	id_priv->qp_timeout = (u8) timeout;
-}
-EXPORT_SYMBOL(rdma_set_timeout);
 
 static void cma_query_handler(int status, struct ib_sa_path_rec *path_rec,
 			      void *context)
