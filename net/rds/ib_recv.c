@@ -209,8 +209,7 @@ static void rds_ib_frag_free(struct rds_ib_connection *ic,
 	rdsdebug("frag %p page %p\n", frag, sg_page(&frag->f_sg));
 
 	rds_ib_recv_cache_put(&frag->f_cache_entry, &ic->i_cache_frags);
-	atomic_add(PAGE_SIZE/1024, &ic->i_cache_allocs);
-	rds_ib_stats_add(s_ib_recv_added_to_cache, PAGE_SIZE);
+	atomic_inc(&ic->i_cache_allocs);
 }
 
 /* Recycle inc after freeing attached frags */
@@ -288,8 +287,7 @@ static struct rds_page_frag *rds_ib_refill_one_frag(struct rds_ib_connection *ic
 	cache_item = rds_ib_recv_cache_get(&ic->i_cache_frags);
 	if (cache_item) {
 		frag = container_of(cache_item, struct rds_page_frag, f_cache_entry);
-		atomic_sub(PAGE_SIZE/1024, &ic->i_cache_allocs);
-		rds_ib_stats_add(s_ib_recv_removed_from_cache, PAGE_SIZE);
+		atomic_dec(&ic->i_cache_allocs);
 	} else {
 		frag = kmem_cache_alloc(rds_ib_frag_slab, slab_mask);
 		if (!frag)
@@ -1285,14 +1283,10 @@ void rds_ib_recv_cqe_handler(struct rds_ib_connection *ic,
 	} else {
 		/* We expect errors as the qp is drained during shutdown */
 		if (rds_conn_up(conn) || rds_conn_connecting(conn))
-			rds_ib_conn_error(conn, "recv completion "
-					"<%pI4,%pI4,%d> had "
-					"status %u, disconnecting and "
-					"reconnecting\n",
-					&conn->c_laddr,
-					&conn->c_faddr,
-					conn->c_tos,
-					wc->status);
+			rds_ib_conn_error(conn, "recv completion on "
+					  "%pI4 had status %u, disconnecting and "
+					  "reconnecting\n", &conn->c_faddr,
+					  wc->status);
 	}
 
 	/*
@@ -1456,13 +1450,13 @@ int rds_ib_recv_init(void)
 
 	rds_ib_incoming_slab = kmem_cache_create("rds_ib_incoming",
 					sizeof(struct rds_ib_incoming),
-					0, SLAB_HWCACHE_ALIGN, NULL);
+					SLAB_HWCACHE_ALIGN, 0, NULL);
 	if (!rds_ib_incoming_slab)
 		return -ENOMEM;
 
 	rds_ib_frag_slab = kmem_cache_create("rds_ib_frag",
 					sizeof(struct rds_page_frag),
-					0, SLAB_HWCACHE_ALIGN, NULL);
+					SLAB_HWCACHE_ALIGN, 0, NULL);
 	if (!rds_ib_frag_slab) {
 		kmem_cache_destroy(rds_ib_incoming_slab);
 		rds_ib_incoming_slab = NULL;

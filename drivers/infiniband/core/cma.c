@@ -229,7 +229,7 @@ struct alt_path_work {
 };
 
 struct cma_active_mig_send_lap_work {
-	struct delayed_work	work;
+	struct work_struct	work;
 	struct rdma_id_private	*id;
 };
 
@@ -674,13 +674,8 @@ static void cma_qp_event_handler(struct ib_event *event, void *data)
 		if (work) {
 			atomic_inc(&id_priv->refcount);
 			work->id = id_priv;
-			INIT_DELAYED_WORK(&work->work, cma_mig_send_lap_work);
-			/* LAP may race with IB_EVENT_PATH_MIG at the remote
-			   peer, causing a non-optimal path to be selected.
-			   Wait a bit to avoid the racing.
-			*/
-			queue_delayed_work(cma_wq, &work->work,
-					msecs_to_jiffies(1000));
+			INIT_WORK(&work->work, cma_mig_send_lap_work);
+			queue_work(cma_wq, &work->work);
 		} else {
 			cma_dbg(id_priv, "Failed to allocate send_lap work struct\n");
 		}
@@ -1099,16 +1094,13 @@ static void cma_cancel_operation(struct rdma_id_private *id_priv,
 
 static void cma_release_port(struct rdma_id_private *id_priv)
 {
-	struct rdma_bind_list *bind_list;
+	struct rdma_bind_list *bind_list = id_priv->bind_list;
+
+	if (!bind_list)
+		return;
 
 	mutex_lock(&lock);
-	bind_list = id_priv->bind_list;
-	if (!bind_list) {
-		mutex_unlock(&lock);
-		return;
-	}
 	hlist_del(&id_priv->node);
-	id_priv->bind_list = NULL;
 	if (hlist_empty(&bind_list->owners)) {
 		idr_remove(bind_list->ps, bind_list->port);
 		kfree(bind_list);
@@ -1656,8 +1648,7 @@ void cma_apr_handler(struct rdma_id_private *id_priv,
 static void cma_mig_send_lap_work(struct work_struct *_work)
 {
 	struct cma_active_mig_send_lap_work *work =
-		container_of(_work, struct cma_active_mig_send_lap_work,
-				work.work);
+		container_of(_work, struct cma_active_mig_send_lap_work, work);
 	struct rdma_id_private *id_priv = work->id;
 
 	mutex_lock(&id_priv->handler_mutex);
