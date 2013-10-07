@@ -2388,7 +2388,7 @@ static void srp_add_one(struct ib_device *device)
 		memset(&fmr_param, 0, sizeof fmr_param);
 		fmr_param.pool_size	    = SRP_FMR_POOL_SIZE;
 		fmr_param.dirty_watermark   = SRP_FMR_DIRTY_SIZE;
-		fmr_param.cache		    = 1;
+		fmr_param.cache		    = 0;
 		fmr_param.max_pages_per_fmr = max_pages_per_fmr;
 		fmr_param.page_shift	    = fmr_page_shift;
 		fmr_param.access	    = (IB_ACCESS_LOCAL_WRITE |
