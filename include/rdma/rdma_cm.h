@@ -63,7 +63,6 @@ enum rdma_cm_event_type {
 	RDMA_CM_EVENT_ALT_ROUTE_RESOLVED,
 	RDMA_CM_EVENT_ALT_ROUTE_ERROR,
 	RDMA_CM_EVENT_LOAD_ALT_PATH,
-	RDMA_CM_EVENT_ALT_PATH_LOADED,
 };
 
 enum rdma_port_space {
@@ -112,7 +111,6 @@ struct rdma_ud_param {
 	struct ib_ah_attr ah_attr;
 	u32 qp_num;
 	u32 qkey;
-	u8 alt_path_index;
 };
 
 struct rdma_cm_event {
