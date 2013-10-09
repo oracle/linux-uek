@@ -48,6 +48,7 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask,
 {
 	struct page *pages;
 	unsigned int address_bits, i;
+	dma_addr_t dma_addr;
 
 	pages = alloc_pages(gfp_mask, order);
 
@@ -58,7 +59,7 @@ static struct page *kimage_alloc_pages(gfp_t gfp_mask,
 
 	/* Relocate set of pages below given limit. */
 	if (xen_create_contiguous_region((unsigned long)page_address(pages),
-							order, address_bits)) {
+							order, address_bits, &dma_addr)) {
 		__free_pages(pages, order);
 		return NULL;
 	}
