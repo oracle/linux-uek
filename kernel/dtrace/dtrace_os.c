@@ -11,7 +11,7 @@
 #include <linux/dtrace_os.h>
 #include <linux/fs.h>
 #include <linux/hardirq.h>
-#include <linux/hrtimer.h>
+#include <linux/interrupt.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
 #include <linux/sched.h>
@@ -290,21 +290,24 @@ EXPORT_SYMBOL(dtrace_getwalltime);
 typedef union cyclic	cyclic_t;
 union cyclic {
 	struct {
-		cyc_time_t	when;
-		cyc_handler_t	hdlr;
-		struct hrtimer	timr;
+		cyc_time_t		when;
+		cyc_handler_t		hdlr;
+		struct tasklet_hrtimer	timr;
 	} cyc;
-	cyclic_t		*nxt;
+	cyclic_t			*nxt;
 };
 
 static enum hrtimer_restart cyclic_fire_fn(struct hrtimer *timr)
 {
-	cyclic_t	*cyc = container_of(timr, cyclic_t, cyc.timr);
+	struct tasklet_hrtimer	*thr = container_of(timr,
+						    struct tasklet_hrtimer,
+						    timer);
+	cyclic_t		*cyc = container_of(thr, cyclic_t, cyc.timr);
 
 	if (cyc->cyc.hdlr.cyh_func)
 		cyc->cyc.hdlr.cyh_func(cyc->cyc.hdlr.cyh_arg);
 
-	hrtimer_forward_now(&cyc->cyc.timr, cyc->cyc.when.cyt_interval);
+	hrtimer_forward_now(timr, cyc->cyc.when.cyt_interval);
 
 	return HRTIMER_RESTART;
 }
@@ -325,14 +328,15 @@ cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
 	cyc->cyc.when = *when;
 	cyc->cyc.hdlr = *hdlr;
 
-	hrtimer_init(&cyc->cyc.timr, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
-	cyc->cyc.timr.function = cyclic_fire_fn;
+	tasklet_hrtimer_init(&cyc->cyc.timr, cyclic_fire_fn, CLOCK_MONOTONIC,
+			     HRTIMER_MODE_REL);
 
 	if (cyc->cyc.when.cyt_when.tv64 == 0)
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_interval,
+		tasklet_hrtimer_start(&cyc->cyc.timr,
+				      cyc->cyc.when.cyt_interval,
 			      HRTIMER_MODE_REL_PINNED);
 	else
-		hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
+		tasklet_hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
 			      HRTIMER_MODE_ABS_PINNED);
 
 	return (cyclic_id_t)cyc;
@@ -358,7 +362,7 @@ void cyclic_remove(cyclic_id_t id)
 {
 	cyclic_t	*cyc = (cyclic_t *)id;
 
-	hrtimer_cancel(&cyc->cyc.timr);
+	tasklet_hrtimer_cancel(&cyc->cyc.timr);
 
 	kfree(cyc);
 }
@@ -1076,7 +1080,7 @@ int dtrace_tracepoint_enable(pid_t pid, uintptr_t addr,
 
 	vma = find_vma(p->mm, addr);
 	if (vma == NULL || vma->vm_file == NULL)
-		return -ESRCH;
+		return -EFAULT;
 
 	ino = vma->vm_file->f_mapping->host;
 	off = ((loff_t)vma->vm_pgoff << PAGE_SHIFT) + (addr - vma->vm_start);
