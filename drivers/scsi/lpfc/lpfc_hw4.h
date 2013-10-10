@@ -3625,7 +3625,6 @@ struct fcp_icmnd64_wqe {
 #define payload_offset_len_SHIFT 0
 #define payload_offset_len_MASK 0x0000ffff
 #define payload_offset_len_WORD word3
-	uint32_t rsrvd3;               /* word 3 */
 	uint32_t rsrvd4;               /* word 4 */
 	uint32_t rsrvd5;               /* word 5 */
 	struct wqe_common wqe_com;     /* words 6-11 */

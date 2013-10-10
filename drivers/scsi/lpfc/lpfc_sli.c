@@ -8282,7 +8282,6 @@ lpfc_sli4_iocb2wqe(struct lpfc_hba *phba, struct lpfc_iocbq *iocbq,
 		bf_set(cmd_buff_len, &wqe->fcp_icmd,
 		       0);
 		/* word3 iocb=IO_TAG wqe=reserved */
-		wqe->fcp_icmd.rsrvd3 = 0;
 		bf_set(wqe_pu, &wqe->fcp_icmd.wqe_com, 0);
 		/* Always open the exchange */
 		bf_set(wqe_xc, &wqe->fcp_icmd.wqe_com, 0);
