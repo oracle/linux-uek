@@ -283,26 +283,23 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 			int pcstack_limit)
 {
 	struct task_struct	*p = current;
-	unsigned long		*sp = (unsigned long *)this_cpu_read(old_rsp);
-	unsigned long		*bos;
-	struct vm_area_struct   *stack_vma;
-
-	if ((p->mm == NULL) || (p->flags & PF_KTHREAD))
-	    return;
-
-	bos = (unsigned long *)p->mm->start_stack;
-	stack_vma = find_vma(p->mm, p->thread.usersp);
-
-	if (stack_vma == NULL)
-	    return;
+	unsigned long		bos, tos;
+	unsigned long		*sp;
 
 	*pcstack++ = (uint64_t)p->pid;
 	pcstack_limit--;
 
-	while (sp <= bos && pcstack_limit) {
+	if (p->mm == NULL || (p->flags & PF_KTHREAD))
+	    goto out;
+
+	tos = this_cpu_read(old_rsp);
+	bos = p->mm->start_stack;
+
+	for (sp = (unsigned long *)tos;
+	     sp <= (unsigned long *)bos && pcstack_limit; sp++) {
 		unsigned long	addr = *sp;
 
-		if (addr >= stack_vma->vm_start && addr < stack_vma->vm_end) {
+		if (addr >= tos && addr <= bos) {
 			/* stack address - may need it for the fpstack. */
 		} else if (is_code_addr(addr)) {
 			*pcstack++ = addr;
@@ -312,11 +309,10 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 		sp++;
 	}
 
+out:
 	while (pcstack_limit--)
 		*pcstack++ = 0;
-
-	ASSERT(current == p);
-}
+} 
 
 void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 {
