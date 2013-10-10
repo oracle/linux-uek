@@ -284,8 +284,17 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 {
 	struct task_struct	*p = current;
 	unsigned long		*sp = (unsigned long *)this_cpu_read(old_rsp);
-	unsigned long		*bos = (unsigned long *)p->mm->start_stack;
-	struct vm_area_struct   *stack_vma = find_vma(p->mm, p->thread.usersp);
+	unsigned long		*bos;
+	struct vm_area_struct   *stack_vma;
+
+	if ((p->mm == NULL) || (p->flags & PF_KTHREAD))
+	    return;
+
+	bos = (unsigned long *)p->mm->start_stack;
+	stack_vma = find_vma(p->mm, p->thread.usersp);
+
+	if (stack_vma == NULL)
+	    return;
 
 	*pcstack++ = (uint64_t)p->pid;
 	pcstack_limit--;
