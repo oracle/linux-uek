@@ -1059,11 +1059,11 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 				  struct extent_buffer *eb, int slot,
 				  struct btrfs_key *key)
 {
-	struct inode *dir;
-	struct inode *inode;
+	struct inode *dir = NULL;
+	struct inode *inode = NULL;
 	unsigned long ref_ptr;
 	unsigned long ref_end;
-	char *name;
+	char *name = NULL;
 	int namelen;
 	int ret;
 	int search_done = 0;
@@ -1096,13 +1096,15 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 	 * care of the rest
 	 */
 	dir = read_one_inode(root, parent_objectid);
-	if (!dir)
-		return -ENOENT;
+	if (!dir) {
+		ret = -ENOENT;
+		goto out;
+	}
 
 	inode = read_one_inode(root, inode_objectid);
 	if (!inode) {
-		iput(dir);
-		return -EIO;
+		ret = -EIO;
+		goto out;
 	}
 
 	while (ref_ptr < ref_end) {
@@ -1115,14 +1117,16 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 			 */
 			if (!dir)
 				dir = read_one_inode(root, parent_objectid);
-			if (!dir)
-				return -ENOENT;
+			if (!dir) {
+				ret = -ENOENT;
+				goto out;
+			}
 		} else {
 			ret = ref_get_fields(eb, ref_ptr, &namelen, &name,
 					     &ref_index);
 		}
 		if (ret)
-			return ret;
+			goto out;
 
 		/* if we already have a perfect match, we're done */
 		if (!inode_in_dir(root, path, btrfs_ino(dir), btrfs_ino(inode),
@@ -1142,9 +1146,11 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 						      parent_objectid,
 						      ref_index, name, namelen,
 						      &search_done);
-				if (ret == 1)
+				if (ret) {
+					if (ret == 1)
+						ret = 0;
 					goto out;
-				BUG_ON(ret);
+				}
 			}
 
 			/* insert our name */
@@ -1157,6 +1163,7 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 
 		ref_ptr = (unsigned long)(ref_ptr + ref_struct_size) + namelen;
 		kfree(name);
+		name = NULL;
 		if (log_ref_ver) {
 			iput(dir);
 			dir = NULL;
@@ -1169,6 +1176,7 @@ static noinline int add_inode_ref(struct btrfs_trans_handle *trans,
 
 out:
 	btrfs_release_path(path);
+	kfree(name);
 	iput(dir);
 	iput(inode);
 	return 0;
