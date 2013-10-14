@@ -6097,7 +6097,14 @@ again:
 	found_type = btrfs_key_type(&found_key);
 	if (found_key.objectid != objectid ||
 	    found_type != BTRFS_EXTENT_DATA_KEY) {
-		goto not_found;
+		/*
+		 * If we backup past the first extent we want to move forward
+		 * and see if there is an extent in front of us, otherwise we'll
+		 * say there is a hole for our whole search range which can
+		 * cause problems.
+		 */
+		extent_end = start;
+		goto next;
 	}
 
 	found_type = btrfs_file_extent_type(leaf, item);
@@ -6113,7 +6120,7 @@ again:
 		extent_end = (extent_start + size + root->sectorsize - 1) &
 			~((u64)root->sectorsize - 1);
 	}
-
+next:
 	if (start >= extent_end) {
 		path->slots[0]++;
 		if (path->slots[0] >= btrfs_header_nritems(leaf)) {
