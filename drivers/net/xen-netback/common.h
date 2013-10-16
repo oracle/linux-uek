@@ -46,6 +46,9 @@
 #include <xen/xenbus.h>
 
 struct xen_netbk;
+#define GSO_BIT(type) \
+	(1 << XEN_NETIF_GSO_TYPE_ ## type)
+
 
 struct xenvif {
 	/* Unique identifier for this interface. */
@@ -72,9 +75,10 @@ struct xenvif {
 	struct xen_netif_rx_back_ring rx;
 
 	/* Frontend feature information. */
+	int gso_mask;
+	int gso_prefix_mask;
+
 	u8 can_sg:1;
-	u8 gso:1;
-	u8 gso_prefix:1;
 	u8 ip_csum:1;
 	u8 ipv6_csum:1;
 
