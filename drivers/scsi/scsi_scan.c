@@ -594,6 +594,16 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
 				     (sshdr.asc == 0x29)) &&
 				    (sshdr.ascq == 0))
 					continue;
+				/*
+				 * Some buggy implementations return
+				 * 'target port in unavailable state'
+				 * even on INQUIRY.
+				 */
+				if ((sshdr.sense_key == NOT_READY) &&
+				    (sshdr.asc == 0x04) &&
+				    (sshdr.ascq == 0x0c)) {
+					return SCSI_SCAN_TARGET_PRESENT;
+				}
 			}
 		} else {
 			/*
@@ -661,7 +671,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
 	/* If the last transfer attempt got an error, assume the
 	 * peripheral doesn't exist or is dead. */
 	if (result)
-		return -EIO;
+		return SCSI_SCAN_NO_RESPONSE;
 
 	/* Don't report any more data than the device says is valid */
 	sdev->inquiry_len = min(try_inquiry_len, response_len);
@@ -711,7 +721,7 @@ static int scsi_probe_lun(struct scsi_device *sdev, unsigned char *inq_result,
 		sdev->scsi_level++;
 	sdev->sdev_target->scsi_level = sdev->scsi_level;
 
-	return 0;
+	return SCSI_SCAN_LUN_PRESENT;
 }
 
 /**
@@ -1046,7 +1056,8 @@ static int scsi_probe_and_add_lun(struct scsi_target *starget,
 	if (!result)
 		goto out_free_sdev;
 
-	if (scsi_probe_lun(sdev, result, result_len, &bflags))
+	res = scsi_probe_lun(sdev, result, result_len, &bflags);
+	if (res != SCSI_SCAN_LUN_PRESENT)
 		goto out_free_result;
 
 	if (bflagsp)
