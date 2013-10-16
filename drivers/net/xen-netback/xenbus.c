@@ -105,15 +105,6 @@ static int netback_probe(struct xenbus_device *dev,
 			goto abort_transaction;
 		}
 
-		/* We support partial checksum setup for IPv6 packets */
-		err = xenbus_printf(xbt, dev->nodename,
-				    "feature-ipv6-csum-offload",
-				    "%d", 1);
-		if (err) {
-			message = "writing feature-ipv6-csum-offload";
-			goto abort_transaction;
-		}
-
 		err = xenbus_printf(xbt, dev->nodename, "feature-gso-tcpv6",
 				    "%d", sg);
 		if (err) {
@@ -121,10 +112,12 @@ static int netback_probe(struct xenbus_device *dev,
 			goto abort_transaction;
 		}
 
+		/* We support partial checksum setup for IPv6 packets */
 		err = xenbus_printf(xbt, dev->nodename,
-				    "feature-no-csum-offload", "%d", 0);
+				    "feature-ipv6-csum-offload",
+				    "%d", 1);
 		if (err) {
-			message = "writing feature-no-csum-offload";
+			message = "writing feature-ipv6-csum-offload";
 			goto abort_transaction;
 		}
 
