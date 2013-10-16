@@ -257,7 +257,6 @@ static netdev_features_t xenvif_fix_features(struct net_device *dev,
 
 	if (!vif->ip_csum)
 		features &= ~NETIF_F_IP_CSUM;
-
 	if (!vif->ipv6_csum)
 		features &= ~NETIF_F_IPV6_CSUM;
 
@@ -358,8 +357,11 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	vif->credit_timeout.expires = jiffies;
 
 	dev->netdev_ops	= &xenvif_netdev_ops;
+	dev->hw_features = NETIF_F_SG |
+		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
+		NETIF_F_TSO;
+	dev->features = dev->hw_features;
 	xenvif_set_features(vif);
-
 	SET_ETHTOOL_OPS(dev, &xenvif_ethtool_ops);
 
 	dev->tx_queue_len = XENVIF_QUEUE_LENGTH;
