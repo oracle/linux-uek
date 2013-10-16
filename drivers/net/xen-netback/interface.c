@@ -207,40 +207,6 @@ static int xenvif_change_mtu(struct net_device *dev, int mtu)
 	return 0;
 }
 
-void xenvif_set_features(struct xenvif *vif)
-{
-	struct net_device *dev = vif->dev;
-	int features;
-
-	features = dev->features & ~(NETIF_F_SG|NETIF_F_TSO|NETIF_F_TSO6
-					|NETIF_F_IP_CSUM|NETIF_F_IPV6_CSUM);
-	if (vif->can_sg)
-		features |= NETIF_F_SG;
-
-	if (vif->gso_tcpv4 || vif->gso_tcpv4_prefix) {
-		features |= NETIF_F_TSO;
-		vif->gso_tcpv4_mode = (vif->gso_tcpv4_prefix) ?
-					NETBK_GSO_PREFIX :
-					NETBK_GSO_STANDARD;
-	}
-
-	if (vif->gso_tcpv6 || vif->gso_tcpv6_prefix) {
-		features |= NETIF_F_TSO6;
-		vif->gso_tcpv6_mode = (vif->gso_tcpv6_prefix) ?
-					NETBK_GSO_PREFIX :
-					NETBK_GSO_STANDARD;
-	}
-
-	if (vif->ip_csum)
-		features |= NETIF_F_IP_CSUM;
-
-	if (vif->ipv6_csum)
-		features |= NETIF_F_IPV6_CSUM;
-
-	dev->hw_features = features;
-	dev->features = features;
-}
-
 static netdev_features_t xenvif_fix_features(struct net_device *dev,
 	netdev_features_t features)
 {
@@ -248,13 +214,10 @@ static netdev_features_t xenvif_fix_features(struct net_device *dev,
 
 	if (!vif->can_sg)
 		features &= ~NETIF_F_SG;
-
-	if (!vif->gso_tcpv4 && !vif->gso_tcpv4_prefix)
+	if (~(vif->gso_mask | vif->gso_prefix_mask) & GSO_BIT(TCPV4))
 		features &= ~NETIF_F_TSO;
-
-	if (!vif->gso_tcpv6 && !vif->gso_tcpv6_prefix)
+	if (~(vif->gso_mask | vif->gso_prefix_mask) & GSO_BIT(TCPV6))
 		features &= ~NETIF_F_TSO6;
-
 	if (!vif->ip_csum)
 		features &= ~NETIF_F_IP_CSUM;
 	if (!vif->ipv6_csum)
@@ -359,9 +322,8 @@ struct xenvif *xenvif_alloc(struct device *parent, domid_t domid,
 	dev->netdev_ops	= &xenvif_netdev_ops;
 	dev->hw_features = NETIF_F_SG |
 		NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
-		NETIF_F_TSO;
+		NETIF_F_TSO | NETIF_F_TSO6;
 	dev->features = dev->hw_features | NETIF_F_RXCSUM;
-	xenvif_set_features(vif);
 	SET_ETHTOOL_OPS(dev, &xenvif_ethtool_ops);
 
 	dev->tx_queue_len = XENVIF_QUEUE_LENGTH;

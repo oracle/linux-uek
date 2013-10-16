@@ -141,8 +141,8 @@ static int max_required_rx_slots(struct xenvif *vif)
 {
 	int max = DIV_ROUND_UP(vif->dev->mtu, PAGE_SIZE);
 
-	if (vif->can_sg || vif->gso_tcpv4 || vif->gso_tcpv4_prefix
-		|| vif->gso_tcpv6 || vif->gso_tcpv6_prefix)
+	/* XXX FIXME: RX path dependent on MAX_SKB_FRAGS */
+	if (vif->can_sg || vif->gso_mask || vif->gso_prefix_mask)
 		max += MAX_SKB_FRAGS + 1; /* extra_info + frags */
 
 	return max;
@@ -314,8 +314,8 @@ static struct xenvif_rx_meta *get_next_rx_buffer(struct xenvif *vif,
 	req = RING_GET_REQUEST(&vif->rx, vif->rx.req_cons++);
 
 	meta = npo->meta + npo->meta_prod++;
+	meta->gso_type = XEN_NETIF_GSO_TYPE_NONE;
 	meta->gso_size = 0;
-	meta->gso_type = 0;
 	meta->size = 0;
 	meta->id = req->id;
 
@@ -337,6 +337,7 @@ static void xenvif_gop_frag_copy(struct xenvif *vif, struct sk_buff *skb,
 	struct gnttab_copy *copy_gop;
 	struct xenvif_rx_meta *meta;
 	unsigned long bytes;
+	int gso_type;
 
 	/* Data must not cross a page boundary. */
 	BUG_ON(size + offset > PAGE_SIZE<<compound_order(page));
@@ -395,10 +396,14 @@ static void xenvif_gop_frag_copy(struct xenvif *vif, struct sk_buff *skb,
 		}
 
 		/* Leave a gap for the GSO descriptor. */
-		if (*head && (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
-		     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
-		    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
-		     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)))
+		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4)
+			gso_type = XEN_NETIF_GSO_TYPE_TCPV4;
+		else if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6)
+			gso_type = XEN_NETIF_GSO_TYPE_TCPV6;
+		else
+			gso_type = XEN_NETIF_GSO_TYPE_NONE;
+
+		if (*head && ((1 << gso_type) & vif->gso_mask))
 			vif->rx.req_cons++;
 
 		*head = 0; /* There must be something in this buffer now. */
@@ -429,23 +434,28 @@ static int xenvif_gop_skb(struct sk_buff *skb,
 	unsigned char *data;
 	int head = 1;
 	int old_meta_prod;
+	int gso_type;
+	int gso_size;
 
 	old_meta_prod = npo->meta_prod;
 
-	BUG_ON((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
-		vif->gso_tcpv4_mode == NETBK_GSO_INVALID);
-	BUG_ON((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
-		vif->gso_tcpv6_mode == NETBK_GSO_INVALID);
+	if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) {
+		gso_type = XEN_NETIF_GSO_TYPE_TCPV4;
+		gso_size = skb_shinfo(skb)->gso_size;
+	} else if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) {
+		gso_type = XEN_NETIF_GSO_TYPE_TCPV6;
+		gso_size = skb_shinfo(skb)->gso_size;
+	} else {
+		gso_type = XEN_NETIF_GSO_TYPE_NONE;
+		gso_size = 0;
+	}
 
 	/* Set up a GSO prefix descriptor, if necessary */
-	if (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
-	     vif->gso_tcpv4_mode == NETBK_GSO_PREFIX) ||
-	    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
-	     vif->gso_tcpv6_mode == NETBK_GSO_PREFIX)) {
+	if ((1 << skb_shinfo(skb)->gso_type) & vif->gso_prefix_mask) {
 		req = RING_GET_REQUEST(&vif->rx, vif->rx.req_cons++);
 		meta = npo->meta + npo->meta_prod++;
-		meta->gso_type = skb_shinfo(skb)->gso_type;
-		meta->gso_size = skb_shinfo(skb)->gso_size;
+		meta->gso_type = gso_type;
+		meta->gso_size = gso_size;
 		meta->size = 0;
 		meta->id = req->id;
 	}
@@ -453,14 +463,11 @@ static int xenvif_gop_skb(struct sk_buff *skb,
 	req = RING_GET_REQUEST(&vif->rx, vif->rx.req_cons++);
 	meta = npo->meta + npo->meta_prod++;
 
-	if (((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4) &&
-	     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
-	    ((skb_shinfo(skb)->gso_type & SKB_GSO_TCPV6) &&
-	     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)) {
-		meta->gso_type = skb_shinfo(skb)->gso_type;
-		meta->gso_size = skb_shinfo(skb)->gso_size;
+	if ((1 << gso_type) & vif->gso_mask) {
+		meta->gso_type = gso_type;
+		meta->gso_size = gso_size;
 	} else {
-		meta->gso_type = 0;
+		meta->gso_type = XEN_NETIF_GSO_TYPE_NONE;
 		meta->gso_size = 0;
 	}
 
@@ -608,10 +615,8 @@ void xenvif_rx_action(struct xenvif *vif)
 
 		vif = netdev_priv(skb->dev);
 
-		if (((vif->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4) &&
-		     vif->gso_tcpv4_mode == NETBK_GSO_PREFIX) ||
-		    ((vif->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV6) &&
-		     vif->gso_tcpv6_mode == NETBK_GSO_PREFIX)) {
+		if ((1 << vif->meta[npo.meta_cons].gso_type) &
+		    vif->gso_prefix_mask) {
 			resp = RING_GET_RESPONSE(&vif->rx,
 						 vif->rx.rsp_prod_pvt++);
 
@@ -648,10 +653,8 @@ void xenvif_rx_action(struct xenvif *vif)
 					vif->meta[npo.meta_cons].size,
 					flags);
 
-		if (((vif->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4) &&
-		     vif->gso_tcpv4_mode == NETBK_GSO_STANDARD) ||
-		    ((vif->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV6) &&
-		     vif->gso_tcpv6_mode == NETBK_GSO_STANDARD)) {
+		if ((1 << vif->meta[npo.meta_cons].gso_type) &
+		    vif->gso_mask) {
 			struct xen_netif_extra_info *gso =
 				(struct xen_netif_extra_info *)
 				RING_GET_RESPONSE(&vif->rx,
@@ -659,11 +662,8 @@ void xenvif_rx_action(struct xenvif *vif)
 
 			resp->flags |= XEN_NETRXF_extra_info;
 
+			gso->u.gso.type = vif->meta[npo.meta_cons].gso_type;
 			gso->u.gso.size = vif->meta[npo.meta_cons].gso_size;
-			if (vif->meta[npo.meta_cons].gso_type & SKB_GSO_TCPV4)
-				gso->u.gso.type = XEN_NETIF_GSO_TYPE_TCPV4;
-			else
-				gso->u.gso.type = XEN_NETIF_GSO_TYPE_TCPV6;
 			gso->u.gso.pad = 0;
 			gso->u.gso.features = 0;
 
@@ -1140,10 +1140,6 @@ static int xenvif_set_skb_gso(struct xenvif *vif,
 	}
 
 	skb_shinfo(skb)->gso_size = gso->u.gso.size;
-	if (gso->u.gso.type == XEN_NETIF_GSO_TYPE_TCPV4)
-		skb_shinfo(skb)->gso_type = SKB_GSO_TCPV4;
-	else
-		skb_shinfo(skb)->gso_type = SKB_GSO_TCPV6;
 
 	/* Header must be checked, and gso_segs computed. */
 	skb_shinfo(skb)->gso_type |= SKB_GSO_DODGY;

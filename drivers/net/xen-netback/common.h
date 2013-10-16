@@ -91,6 +91,9 @@ struct xenvif_rx_meta {
 	int gso_size;
 };
 
+#define GSO_BIT(type) \
+	(1 << XEN_NETIF_GSO_TYPE_ ## type)
+
 /* Discriminate from any valid pending_idx value. */
 #define INVALID_PENDING_IDX 0xFFFF
 
@@ -151,21 +154,15 @@ struct xenvif {
 	u8               fe_dev_addr[6];
 
 	/* Frontend feature information. */
+	int gso_mask;
+	int gso_prefix_mask;
+
 	u8 can_sg:1;
-	u8 gso_tcpv4:1;
-	u8 gso_tcpv4_prefix:1;
-	u8 gso_tcpv6:1;
-	u8 gso_tcpv6_prefix:1;
 	u8 ip_csum:1;
 	u8 ipv6_csum:1;
 
 	/* Internal feature information. */
 	u8 can_queue:1;	    /* can queue packets for receiver? */
-
-	/* Does the frontend end want the gso information prefixed, or
-	 * in an extra segment? */
-	int gso_tcpv4_mode;
-	int gso_tcpv6_mode;
 
 	/* Transmit shaping: allow 'credit_bytes' every 'credit_usec'. */
 	unsigned long   credit_bytes;
@@ -178,12 +175,6 @@ struct xenvif {
 
 	/* Miscellaneous private stuff. */
 	struct net_device *dev;
-};
-
-enum {
-	NETBK_GSO_INVALID = 0,
-	NETBK_GSO_PREFIX = 1,
-	NETBK_GSO_STANDARD = 2,
 };
 
 static inline struct xenbus_device *xenvif_to_xenbus_device(struct xenvif *vif)
