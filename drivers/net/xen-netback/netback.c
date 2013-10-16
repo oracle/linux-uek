@@ -109,15 +109,12 @@ static inline unsigned long idx_to_kaddr(struct xenvif *vif,
 	return (unsigned long)pfn_to_kaddr(idx_to_pfn(vif, idx));
 }
 
-/*
- * This is the amount of packet we copy rather than map, so that the
- * guest can't fiddle with the contents of the headers while we do
- * packet processing on them (netfilter, routing, etc).
+/* This is a miniumum size for the linear area to avoid lots of
+ * calls to __pskb_pull_tail() as we set up checksum offsets. The
+ * value 128 was chosen as it covers all IPv4 and most likely
+ * IPv6 headers.
  */
-#define PKT_PROT_LEN    (ETH_HLEN + \
-			 VLAN_HLEN + \
-			 sizeof(struct iphdr) + MAX_IPOPTLEN + \
-			 sizeof(struct tcphdr) + MAX_TCP_OPTION_SPACE)
+#define PKT_PROT_LEN 128
 
 static u16 frag_get_pending_idx(skb_frag_t *frag)
 {
@@ -1150,16 +1147,214 @@ static int xenvif_set_skb_gso(struct xenvif *vif,
 	return 0;
 }
 
+static inline void maybe_pull_tail(struct sk_buff *skb, unsigned int len)
+{
+	if (skb_is_nonlinear(skb) && skb_headlen(skb) < len) {
+		/* If we need to pullup then pullup to the max, so we
+		 * won't need to do it again.
+		 */
+		int target = min_t(int, skb->len, MAX_TCP_HEADER);
+		__pskb_pull_tail(skb, target - skb_headlen(skb));
+	}
+}
+
+static int checksum_setup_ip(struct xenvif *vif, struct sk_buff *skb,
+			     int recalculate_partial_csum)
+{
+	struct iphdr *iph = (void *)skb->data;
+	unsigned int header_size;
+	unsigned int off;
+	int err = -EPROTO;
+
+	off = sizeof(struct iphdr);
+
+	header_size = skb->network_header + off + MAX_IPOPTLEN;
+	maybe_pull_tail(skb, header_size);
+
+	off = iph->ihl * 4;
+
+	switch (iph->protocol) {
+	case IPPROTO_TCP:
+		if (!skb_partial_csum_set(skb, off,
+					  offsetof(struct tcphdr, check)))
+			goto out;
+
+		if (recalculate_partial_csum) {
+			struct tcphdr *tcph = tcp_hdr(skb);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct tcphdr);
+			maybe_pull_tail(skb, header_size);
+
+			tcph->check = ~csum_tcpudp_magic(iph->saddr, iph->daddr,
+							 skb->len - off,
+							 IPPROTO_TCP, 0);
+		}
+		break;
+	case IPPROTO_UDP:
+		if (!skb_partial_csum_set(skb, off,
+					  offsetof(struct udphdr, check)))
+			goto out;
+
+		if (recalculate_partial_csum) {
+			struct udphdr *udph = udp_hdr(skb);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct udphdr);
+			maybe_pull_tail(skb, header_size);
+
+			udph->check = ~csum_tcpudp_magic(iph->saddr, iph->daddr,
+							 skb->len - off,
+							 IPPROTO_UDP, 0);
+		}
+		break;
+	default:
+		if (net_ratelimit())
+			netdev_err(vif->dev,
+				   "Attempting to checksum a non-TCP/UDP packet, "
+				   "dropping a protocol %d packet\n",
+				   iph->protocol);
+		goto out;
+	}
+
+	err = 0;
+
+out:
+	return err;
+}
+
+static int checksum_setup_ipv6(struct xenvif *vif, struct sk_buff *skb,
+			       int recalculate_partial_csum)
+{
+	int err = -EPROTO;
+	struct ipv6hdr *ipv6h = (void *)skb->data;
+	u8 nexthdr;
+	unsigned int header_size;
+	unsigned int off;
+	bool fragment;
+	bool done;
+
+	done = false;
+
+	off = sizeof(struct ipv6hdr);
+
+	header_size = skb->network_header + off;
+	maybe_pull_tail(skb, header_size);
+
+	nexthdr = ipv6h->nexthdr;
+
+	while ((off <= sizeof(struct ipv6hdr) + ntohs(ipv6h->payload_len)) &&
+	       !done) {
+		switch (nexthdr) {
+		case IPPROTO_DSTOPTS:
+		case IPPROTO_HOPOPTS:
+		case IPPROTO_ROUTING: {
+			struct ipv6_opt_hdr *hp = (void *)(skb->data + off);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct ipv6_opt_hdr);
+			maybe_pull_tail(skb, header_size);
+
+			nexthdr = hp->nexthdr;
+			off += ipv6_optlen(hp);
+			break;
+		}
+		case IPPROTO_AH: {
+			struct ip_auth_hdr *hp = (void *)(skb->data + off);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct ip_auth_hdr);
+			maybe_pull_tail(skb, header_size);
+
+			nexthdr = hp->nexthdr;
+			off += (hp->hdrlen+2)<<2;
+			break;
+		}
+		case IPPROTO_FRAGMENT:
+			fragment = true;
+			/* fall through */
+		default:
+			done = true;
+			break;
+		}
+	}
+
+	if (!done) {
+		if (net_ratelimit())
+			netdev_err(vif->dev, "Failed to parse packet header\n");
+		goto out;
+	}
+
+	if (fragment) {
+		if (net_ratelimit())
+			netdev_err(vif->dev, "Packet is a fragment!\n");
+		goto out;
+	}
+
+	switch (nexthdr) {
+	case IPPROTO_TCP:
+		if (!skb_partial_csum_set(skb, off,
+					  offsetof(struct tcphdr, check)))
+			goto out;
+
+		if (recalculate_partial_csum) {
+			struct tcphdr *tcph = tcp_hdr(skb);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct tcphdr);
+			maybe_pull_tail(skb, header_size);
+
+			tcph->check = ~csum_ipv6_magic(&ipv6h->saddr,
+						       &ipv6h->daddr,
+						       skb->len - off,
+						       IPPROTO_TCP, 0);
+		}
+		break;
+	case IPPROTO_UDP:
+		if (!skb_partial_csum_set(skb, off,
+					  offsetof(struct udphdr, check)))
+			goto out;
+
+		if (recalculate_partial_csum) {
+			struct udphdr *udph = udp_hdr(skb);
+
+			header_size = skb->network_header +
+				off +
+				sizeof(struct udphdr);
+			maybe_pull_tail(skb, header_size);
+
+			udph->check = ~csum_ipv6_magic(&ipv6h->saddr,
+						       &ipv6h->daddr,
+						       skb->len - off,
+						       IPPROTO_UDP, 0);
+		}
+		break;
+	default:
+		if (net_ratelimit())
+			netdev_err(vif->dev,
+				   "Attempting to checksum a non-TCP/UDP packet, "
+				   "dropping a protocol %d packet\n",
+				   nexthdr);
+		goto out;
+	}
+
+	err = 0;
+
+out:
+	return err;
+}
+
 static int checksum_setup(struct xenvif *vif, struct sk_buff *skb)
 {
-	struct iphdr *iph = NULL;
-	u8 protocol;
-	unsigned char *th;
 	int err = -EPROTO;
 	int recalculate_partial_csum = 0;
 
-	/*
-	 * A GSO SKB must be CHECKSUM_PARTIAL. However some buggy
+	/* A GSO SKB must be CHECKSUM_PARTIAL. However some buggy
 	 * peers can fail to set NETRXF_csum_blank when sending a GSO
 	 * frame. In this case force the SKB to CHECKSUM_PARTIAL and
 	 * recalculate the partial checksum.
@@ -1174,99 +1369,11 @@ static int checksum_setup(struct xenvif *vif, struct sk_buff *skb)
 	if (skb->ip_summed != CHECKSUM_PARTIAL)
 		return 0;
 
-	if (skb->protocol != htons(ETH_P_IP) &&
-	    skb->protocol != htons(ETH_P_IPV6))
-		goto out;
+	if (skb->protocol == htons(ETH_P_IP))
+		err = checksum_setup_ip(vif, skb, recalculate_partial_csum);
+	else if (skb->protocol == htons(ETH_P_IPV6))
+		err = checksum_setup_ipv6(vif, skb, recalculate_partial_csum);
 
-	if (skb->protocol == htons(ETH_P_IP)) {
-		iph = (void *)skb->data;
-		protocol = iph->protocol;
-		th = skb->data + 4 * iph->ihl;
-	} else {
-		struct ipv6hdr *ipv6h = (void *)skb->data;
-		u8 nexthdr = ipv6h->nexthdr;
-		unsigned int off;
-		int done;
-
-		done = 0;
-		off = 0;
-		while (off <= ntohs(ipv6h->payload_len) && !done) {
-			switch (nexthdr) {
-			case IPPROTO_FRAGMENT: {
-				struct frag_hdr *hp = (void *)(skb->data +
-							sizeof(struct ipv6hdr) +
-							off);
-				nexthdr = hp->nexthdr;
-				off += 8;
-				break;
-			}
-			case IPPROTO_DSTOPTS:
-			case IPPROTO_HOPOPTS:
-			case IPPROTO_ROUTING: {
-				struct ipv6_opt_hdr *hp = (void *)(skb->data +
-							sizeof(struct ipv6hdr) +
-							off);
-				nexthdr = hp->nexthdr;
-				off += ipv6_optlen(hp);
-				break;
-			}
-			case IPPROTO_AH: {
-				struct ip_auth_hdr *hp = (void *)(skb->data +
-							sizeof(struct ipv6hdr) +
-							off);
-				nexthdr = hp->nexthdr;
-				off += (hp->hdrlen+2)<<2;
-				break;
-			}
-			default:
-				done = 1;
-				break;
-			}
-		}
-		protocol = (off <= ntohs(ipv6h->payload_len)) ?
-					nexthdr : IPPROTO_NONE;
-		th = skb->data + sizeof(struct ipv6hdr) + off;
-	}
-
-	if (th >= skb_tail_pointer(skb))
-		goto out;
-
-	skb->csum_start = th - skb->head;
-	switch (protocol) {
-	case IPPROTO_TCP:
-		skb->csum_offset = offsetof(struct tcphdr, check);
-
-		if (recalculate_partial_csum) {
-			struct tcphdr *tcph = (struct tcphdr *)th;
-			tcph->check = ~csum_tcpudp_magic(iph->saddr, iph->daddr,
-							 skb->len - iph->ihl*4,
-							 IPPROTO_TCP, 0);
-		}
-		break;
-	case IPPROTO_UDP:
-		skb->csum_offset = offsetof(struct udphdr, check);
-
-		if (recalculate_partial_csum) {
-			struct udphdr *udph = (struct udphdr *)th;
-			udph->check = ~csum_tcpudp_magic(iph->saddr, iph->daddr,
-							 skb->len - iph->ihl*4,
-							 IPPROTO_UDP, 0);
-		}
-		break;
-	default:
-		if (net_ratelimit())
-			netdev_err(vif->dev,
-				   "Attempting to checksum a non-TCP/UDP packet, dropping a protocol %d packet\n",
-				   protocol);
-		goto out;
-	}
-
-	if ((th + skb->csum_offset + 2) > skb_tail_pointer(skb))
-		goto out;
-
-	err = 0;
-
-out:
 	return err;
 }
 
@@ -1515,12 +1622,7 @@ static int xenvif_tx_submit(struct xenvif *vif, int budget)
 
 		xenvif_fill_frags(vif, skb);
 
-		/*
-		 * If the initial fragment was < PKT_PROT_LEN then
-		 * pull through some bytes from the other fragments to
-		 * increase the linear region to PKT_PROT_LEN bytes.
-		 */
-		if (skb_headlen(skb) < PKT_PROT_LEN && skb_is_nonlinear(skb)) {
+		if (skb_is_nonlinear(skb) && skb_headlen(skb) < PKT_PROT_LEN) {
 			int target = min_t(int, skb->len, PKT_PROT_LEN);
 			__pskb_pull_tail(skb, target - skb_headlen(skb));
 		}
