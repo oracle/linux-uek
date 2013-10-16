@@ -1609,11 +1609,10 @@ struct task_struct {
 	unsigned int memcg_kmem_skip_account;
 #ifndef __GENKSYMS__
 	struct memcg_oom_info {
+		struct mem_cgroup *memcg;
+		gfp_t gfp_mask;
+		int order;
 		unsigned int may_oom:1;
-		unsigned int in_memcg_oom:1;
-		unsigned int oom_locked:1;
-		int wakeups;
-		struct mem_cgroup *wait_on_memcg;
 	} memcg_oom;
 #endif /* __GENKSYMS__ */
 #endif
