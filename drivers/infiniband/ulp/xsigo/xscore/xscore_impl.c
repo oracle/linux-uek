@@ -57,9 +57,9 @@
 #define XSCORE_VERSION XSIGO_LOCAL_VERSION
 #endif
 
-MODULE_AUTHOR("Xsigo Systems Inc. (linux-drivers@xsigo.com)");
+MODULE_AUTHOR("Oracle corp (OVN-linux-drivers@oracle.com)");
 MODULE_LICENSE("Dual BSD/GPL");
-MODULE_DESCRIPTION("Xsigo core");
+MODULE_DESCRIPTION("OVN core driver");
 MODULE_VERSION(XSCORE_VERSION);
 
 int xscore_debug = 0x0;

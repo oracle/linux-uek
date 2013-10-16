@@ -44,8 +44,8 @@
 #include "xscore.h"
 #include <xs_compat.h>
 
-MODULE_AUTHOR("Xsigo Systems Inc. (linux-drivers@xsigo.com)");
-MODULE_DESCRIPTION("Xsigo XSVNIC network driver");
+MODULE_AUTHOR("Oracle corp (OVN-linux-drivers@oracle.com)");
+MODULE_DESCRIPTION("OVN XSVNIC network driver");
 MODULE_VERSION(XSVNIC_DRIVER_VERSION);
 MODULE_LICENSE("Dual BSD/GPL");
 

@@ -64,8 +64,8 @@ struct scsi_transport_template *vhba_transport_template;
 							DRIVER_VERSION
 #define VHBA_MAJOR				0
 
-MODULE_AUTHOR("Xsigo Systems Inc. (linux-drivers@xsigo.com)");
-MODULE_DESCRIPTION("Xsigo VHBA Driver");
+MODULE_AUTHOR("Oracle corp (OVN-linux-drivers@oracle.com)");
+MODULE_DESCRIPTION("OVN VHBA Driver");
 MODULE_LICENSE("Dual BSD/GPL");
 MODULE_VERSION(DRIVER_VERSION);
 

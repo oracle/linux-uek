@@ -33,14 +33,21 @@
 #include "xve.h"
 #include "xve_compat.h"
 
+#ifndef XSIGO_LOCAL_VERSION
+#define DRIVER_VERSION "0.31"
+#else
+#define DRIVER_VERSION XSIGO_LOCAL_VERSION
+#endif
+
 static int xve_xsmp_service_id = -1;
 struct mutex xve_mutex;
 static spinlock_t xve_lock;
 u32 xve_counters[XVE_MAX_GLOB_COUNTERS];
 
-MODULE_AUTHOR("Xsigo Systems");
-MODULE_DESCRIPTION("Xsigo Virtual Ethernet driver");
+MODULE_AUTHOR("Oracle corp (OVN-linux-drivers@oracle.com)");
+MODULE_DESCRIPTION("OVN Virtual Ethernet driver");
 MODULE_LICENSE("Dual BSD/GPL");
+MODULE_VERSION(DRIVER_VERSION);
 
 int xve_sendq_size __read_mostly = XVE_TX_RING_SIZE;
 int xve_recvq_size __read_mostly = XVE_RX_RING_SIZE;
