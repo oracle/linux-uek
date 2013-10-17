@@ -125,8 +125,8 @@ static int dtrace_open(struct inode *inode, struct file *file)
 	 */
 	if (kdi_dtrace_set(KDI_DTSET_DTRACE_ACTIVATE) != 0) {
 		dtrace_opens--;
-		mutex_unlock(&cpu_lock);
 		mutex_unlock(&dtrace_lock);
+		mutex_unlock(&cpu_lock);
 		return -EBUSY;
 	}
 #endif
@@ -592,9 +592,9 @@ static long dtrace_ioctl(struct file *file,
 
 		probe = dtrace_probe_lookup_id(desc.dtargd_id);
 		if (probe == NULL) {
-			mutex_unlock(&dtrace_lock);
-//			mutex_unlock(&module_mutex); /* FIXME */
 			mutex_unlock(&dtrace_provider_lock);
+//			mutex_unlock(&module_mutex); /* FIXME */
+			mutex_unlock(&dtrace_lock);
 
 			return -EINVAL;
 		}
@@ -1200,18 +1200,18 @@ dtrace_module_unloaded(struct module *module)
 		 * The DTrace module is loaded (obviously) but not attached;
 		 * we don't have any work to do.
 		 */
-		mutex_unlock(&dtrace_provider_lock);
-		/* FIXME: mutex_unlock(&mod_lock); */
 		mutex_unlock(&dtrace_lock);
+		/* FIXME: mutex_unlock(&mod_lock); */
+		mutex_unlock(&dtrace_provider_lock);
 		return;
 	}
 
 	for (probe = first = dtrace_hash_lookup(dtrace_bymod, &template);
 	    probe != NULL; probe = probe->dtpr_nextmod) {
 		if (probe->dtpr_ecb != NULL) {
-			mutex_unlock(&dtrace_provider_lock);
-			/* FIXME: mutex_unlock(&mod_lock); */
 			mutex_unlock(&dtrace_lock);
+			/* FIXME: mutex_unlock(&mod_lock); */
+			mutex_unlock(&dtrace_provider_lock);
 
 			/*
 			 * This shouldn't _actually_ be possible -- we're
@@ -1359,21 +1359,6 @@ int dtrace_dev_init(void)
 	dtrace_provider_id_t	id;
 	int			rc = 0;
 
-	mutex_lock(&cpu_lock);
-	mutex_lock(&dtrace_provider_lock);
-	mutex_lock(&dtrace_lock);
-
-	rc = dtrace_probe_init();
-	if (rc) {
-		pr_err("Failed to initialize DTrace core\n");
-
-		mutex_unlock(&cpu_lock);
-		mutex_unlock(&dtrace_provider_lock);
-		mutex_unlock(&dtrace_lock);
-
-		return rc;
-	}
-
 	/*
 	 * Register the device for the DTrace core.
 	 */
@@ -1381,10 +1366,6 @@ int dtrace_dev_init(void)
 	if (rc) {
 		pr_err("%s: Can't register misc device %d\n",
 		       dtrace_dev.name, dtrace_dev.minor);
-
-		mutex_unlock(&cpu_lock);
-		mutex_unlock(&dtrace_provider_lock);
-		mutex_unlock(&dtrace_lock);
 
 		return rc;
 	}
@@ -1397,14 +1378,25 @@ int dtrace_dev_init(void)
 		pr_err("%s: Can't register misc device %d\n",
 		       helper_dev.name, helper_dev.minor);
 
-		mutex_unlock(&cpu_lock);
-		mutex_unlock(&dtrace_provider_lock);
-		mutex_unlock(&dtrace_lock);
-
 		return rc;
 	}
 
 	ctf_forceload();
+
+	mutex_lock(&cpu_lock);
+	mutex_lock(&dtrace_provider_lock);
+	mutex_lock(&dtrace_lock);
+
+	rc = dtrace_probe_init();
+	if (rc) {
+		pr_err("Failed to initialize DTrace core\n");
+
+		mutex_unlock(&dtrace_lock);
+		mutex_unlock(&dtrace_provider_lock);
+		mutex_unlock(&cpu_lock);
+
+		return rc;
+	}
 
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
@@ -1484,7 +1476,6 @@ int dtrace_dev_init(void)
 				NULL, "ERROR", 0, NULL);
 
 	dtrace_anon_property();
-	mutex_unlock(&cpu_lock);
 
 	/*
 	 * If DTrace helper tracing is enabled, we need to allocate a trace
@@ -1513,8 +1504,9 @@ int dtrace_dev_init(void)
 	 * the first provider causing the core to be loaded.
 	 */
 #endif
-	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&cpu_lock);
 
 	return 0;
 }
@@ -1554,9 +1546,10 @@ void dtrace_dev_exit(void)
 	dtrace_byname = NULL;
 
 	kmem_cache_destroy(dtrace_state_cachep);
-	misc_deregister(&helper_dev);
-	misc_deregister(&dtrace_dev);
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+
+	misc_deregister(&helper_dev);
+	misc_deregister(&dtrace_dev);
 }

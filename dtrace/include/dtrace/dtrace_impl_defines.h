@@ -201,26 +201,26 @@ typedef enum dtrace_vtime_state {
 #endif
 
 #ifdef CONFIG_DT_DEBUG_MUTEX
-# define _mutex_lock(x)		mutex_lock(x)
-# define _mutex_unlock(x)	mutex_unlock(x)
+# define real_mutex_lock(x)		mutex_lock(x)
+# define real_mutex_unlock(x)		mutex_unlock(x)
 
 # define mutex_lock(x)		do {					      \
 				    printk(KERN_DEBUG			      \
 					   "mutex_lock(%s) at %s::%d "	      \
-					   "for %p(PID %d)\n",		      \
+					   " for %p (PID %d)\n",	      \
 					   __stringify(x),		      \
 					   __FILE__, __LINE__, current,	      \
 					   current ? current->pid : -1);      \
-				    _mutex_lock(x);			      \
+				    real_mutex_lock(x);			      \
 				} while (0)
 # define mutex_unlock(x)	do {					      \
 				    printk(KERN_DEBUG			      \
 					   "mutex_unlock(%s) at %s::%d"	      \
-					   "for %p(PID %d)\n",		      \
+					   " for %p (PID %d)\n",	      \
 					   __stringify(x),		      \
 					   __FILE__, __LINE__, current,	      \
 					   current ? current->pid : -1);      \
-				    _mutex_unlock(x);			      \
+				    real_mutex_unlock(x);		      \
 				} while (0)
 #endif
 
