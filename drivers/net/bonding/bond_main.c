@@ -2614,7 +2614,7 @@ static int bond_has_this_ip(struct bonding *bond, __be32 ip)
  * switches in VLAN mode (especially if ports are configured as
  * "native" to a VLAN) might not pass non-tagged frames.
  */
-static void bond_arp_send(struct net_device *slave_dev, int arp_op, __be32 dest_ip, __be32 src_ip, unsigned short vlan_id)
+static void bond_arp_send(struct bonding *bond, struct net_device *slave_dev, int arp_op, __be32 dest_ip, __be32 src_ip, unsigned short vlan_id)
 {
 	struct sk_buff *skb;
 
@@ -2636,6 +2636,7 @@ static void bond_arp_send(struct net_device *slave_dev, int arp_op, __be32 dest_
 		}
 	}
 	arp_xmit(skb);
+	bond->arp_sent = true;
 }
 
 
@@ -2655,7 +2656,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 		if (!bond_vlan_used(bond)) {
 			pr_debug("basa: empty vlan: arp_send\n");
 			addr = bond_confirm_addr(bond->dev, targets[i], 0);
-			bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+			bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 				      addr, 0);
 			continue;
 		}
@@ -2682,7 +2683,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 			ip_rt_put(rt);
 			pr_debug("basa: rtdev == bond->dev: arp_send\n");
 			addr = bond_confirm_addr(bond->dev, targets[i], 0);
-			bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+			bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 				      addr, 0);
 			continue;
 		}
@@ -2704,7 +2705,7 @@ static void bond_arp_send_all(struct bonding *bond, struct slave *slave)
 		if (vlan_id && vlan_dev) {
 			ip_rt_put(rt);
 			addr = bond_confirm_addr(vlan_dev, targets[i], 0);
-			bond_arp_send(slave->dev, ARPOP_REQUEST, targets[i],
+			bond_arp_send(bond, slave->dev, ARPOP_REQUEST, targets[i],
 				      addr, vlan_id);
 			continue;
 		}
@@ -3178,7 +3179,7 @@ void bond_activebackup_arp_mon(struct work_struct *work)
 
 	should_notify_peers = bond_should_notify_peers(bond);
 
-	if (bond_ab_arp_inspect(bond, delta_in_ticks)) {
+	if (bond->arp_sent && bond_ab_arp_inspect(bond, delta_in_ticks)) {
 		read_unlock(&bond->lock);
 
 		/* Race avoidance with bond_close flush of workqueue */
@@ -3198,6 +3199,7 @@ void bond_activebackup_arp_mon(struct work_struct *work)
 		read_lock(&bond->lock);
 	}
 
+	bond->arp_sent = false;
 	bond_ab_arp_probe(bond);
 
 re_arm:
@@ -4420,6 +4422,7 @@ static void bond_setup(struct net_device *bond_dev)
 
 	bond_dev->hw_features &= ~(NETIF_F_ALL_CSUM & ~NETIF_F_HW_CSUM);
 	bond_dev->features |= bond_dev->hw_features;
+	bond->arp_sent = false;
 }
 
 /*
