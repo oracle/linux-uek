@@ -1086,4 +1086,6 @@ void dtrace_state_destroy(dtrace_state_t *state)
 	vfree(spec);
 
 	dtrace_format_destroy(state);
+
+	kfree(state);
 }
