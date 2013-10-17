@@ -1283,15 +1283,15 @@ int dtrace_probe_init(void)
 	 * get them back right after.
 	 */
 again:
-	mutex_unlock(&cpu_lock);
-	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&dtrace_provider_lock);
+	mutex_unlock(&cpu_lock);
 
 	idr_pre_get(&dtrace_probe_idr, __GFP_NOFAIL);
 
-	mutex_lock(&dtrace_lock);
-	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&cpu_lock);
+	mutex_lock(&dtrace_provider_lock);
+	mutex_lock(&dtrace_lock);
 
 	err = idr_get_new(&dtrace_probe_idr, NULL, &id);
 	if (err == -EAGAIN)
