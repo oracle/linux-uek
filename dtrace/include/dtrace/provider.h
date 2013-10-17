@@ -809,11 +809,12 @@ extern void dtrace_probe(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
   {									\
 	int		rc = 0;						\
 									\
-	if (name##_refc++ == 0)	{					\
-		if ((rc = try_module_get(THIS_MODULE)) == 0)		\
-			return 0;					\
+	if (name##_refc == 0) {						\
+		if (!try_module_get(THIS_MODULE))			\
+			return -EAGAIN;					\
 	}								\
 									\
+	name##_refc++;							\
 	if ((rc  = _##name##_enable(arg, id, parg)) != 0) {		\
 		if (--name##_refc == 0)					\
 			module_put(THIS_MODULE);			\
