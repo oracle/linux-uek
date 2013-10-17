@@ -788,7 +788,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 		opt[DTRACEOPT_CLEANRATE] = dtrace_cleanrate_max;
 
 	hdlr.cyh_func = (cyc_func_t)dtrace_state_clean;
-	hdlr.cyh_arg = state;
+	hdlr.cyh_arg = (uintptr_t)state;
 	hdlr.cyh_level = CY_LOW_LEVEL;
 
 	when.cyt_when = ktime_set(0, 0);
@@ -797,7 +797,7 @@ int dtrace_state_go(dtrace_state_t *state, processorid_t *cpu)
 	state->dts_cleaner = cyclic_add(&hdlr, &when);
 
 	hdlr.cyh_func = (cyc_func_t)dtrace_state_deadman;
-	hdlr.cyh_arg = state;
+	hdlr.cyh_arg = (uintptr_t)state;
 	hdlr.cyh_level = CY_LOW_LEVEL;
 
 	when.cyt_when = ktime_set(0, 0);
