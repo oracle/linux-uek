@@ -291,7 +291,8 @@ void dtrace_vstate_fini(dtrace_vstate_t *vstate)
 
 static void dtrace_state_clean(dtrace_state_t *state)
 {
-	if (state->dts_activity == DTRACE_ACTIVITY_INACTIVE)
+	if (state->dts_activity != DTRACE_ACTIVITY_ACTIVE &&
+	    state->dts_activity != DTRACE_ACTIVITY_DRAINING)
 		return;
 
 	dtrace_dynvar_clean(&state->dts_vstate.dtvs_dynvars);
