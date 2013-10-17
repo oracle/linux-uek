@@ -960,6 +960,8 @@ int scsi_sysfs_add_sdev(struct scsi_device *sdev)
 void __scsi_remove_device(struct scsi_device *sdev)
 {
 	struct device *dev = &sdev->sdev_gendev;
+	unsigned long flags;
+	struct request_queue *q;
 
 	if (sdev->is_visible) {
 		if (scsi_device_set_state(sdev, SDEV_CANCEL) != 0)
@@ -977,7 +979,13 @@ void __scsi_remove_device(struct scsi_device *sdev)
 	transport_destroy_device(dev);
 
 	/* cause the request function to reject all I/O requests */
-	sdev->request_queue->queuedata = NULL;
+	q = sdev->request_queue;
+	spin_lock_irqsave(q->queue_lock, flags);
+	q->queuedata = NULL;
+
+	/* cause scsi_request_fn() to kill all non-finished requests */
+	q->request_fn(q);
+	spin_unlock_irqrestore(q->queue_lock, flags);
 
 	put_device(dev);
 }
