@@ -89,9 +89,9 @@ static int	profile_ticks[] = {
 static int	profile_max;		/* maximum number of profile probes */
 static atomic_t	profile_total;		/* current number of profile probes */
 
-static void profile_tick(void *arg)
+static void profile_tick(uintptr_t arg)
 {
-	profile_probe_t	*prof = arg;
+	profile_probe_t	*prof = (profile_probe_t *)arg;
 	unsigned long	pc = 0, upc = 0;
 #ifdef PROBE_PCS
 	struct pt_regs	*regs = get_irq_regs();
@@ -106,9 +106,9 @@ static void profile_tick(void *arg)
 }
 
 #ifdef OMNI_CYCLICS
-static void profile_prof(void *arg)
+static void profile_prof(uintptr_t arg)
 {
-	profile_probe_percpu_t	*pcpu = arg;
+	profile_probe_percpu_t	*pcpu = (profile_probe_percpu_t *)arg;
 	profile_probe_t		*prof = pcpu->profc_probe;
 	ktime_t			late;
 	struct pt_regs		*regs = get_irq_regs();
@@ -353,7 +353,7 @@ int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 
 	if (prof->prof_kind == PROF_TICK) {
 		hdlr.cyh_func = profile_tick;
-		hdlr.cyh_arg = prof;
+		hdlr.cyh_arg = (uintptr_t)prof;
 		hdlr.cyh_level = CY_HIGH_LEVEL;
 
 		when.cyt_interval = prof->prof_interval;
@@ -366,7 +366,7 @@ int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 
 		omni.cyo_online = profile_online;
 		omni.cyo_offline = profile_offline;
-		omni.cyo_arg = prof;
+		omni.cyo_arg = (uintptr_t)prof;
 
 		prof->prof_cyclic = cyclic_add_omni(&omni);
 #endif
