@@ -342,8 +342,8 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	int		err;
 	dtrace_aggid_t	aggid;
 
-	ASSERT(MUTEX_HELD(&dtrace_lock));
 	ASSERT(MUTEX_HELD(&cpu_lock));
+	ASSERT(MUTEX_HELD(&dtrace_lock));
 
 	state = kzalloc(sizeof (dtrace_state_t), GFP_KERNEL);
 	if (state == NULL)
@@ -374,13 +374,13 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	 * that gets used as meaning 'none'.
 	 */
 again:
-	mutex_unlock(&cpu_lock);
 	mutex_unlock(&dtrace_lock);
+	mutex_unlock(&cpu_lock);
 
 	idr_pre_get(&state->dts_agg_idr, __GFP_NOFAIL);
 
-	mutex_lock(&dtrace_lock);
 	mutex_lock(&cpu_lock);
+	mutex_lock(&dtrace_lock);
 
 	err = idr_get_new(&state->dts_agg_idr, NULL, &aggid);
 	if (err == -EAGAIN)
