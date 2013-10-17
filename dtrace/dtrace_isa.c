@@ -29,6 +29,7 @@
 #include <linux/hardirq.h>
 #include <linux/mm.h>
 #include <linux/smp.h>
+#include <linux/uaccess.h>
 #include <asm/stacktrace.h>
 
 #include "dtrace.h"
@@ -297,7 +298,14 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 
 	for (sp = (unsigned long *)tos;
 	     sp <= (unsigned long *)bos && pcstack_limit; sp++) {
-		unsigned long	addr = *sp;
+		unsigned long	addr;
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+		get_user(addr, sp);
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
+		if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT))
+			break;
 
 		if (addr >= tos && addr <= bos) {
 			/* stack address - may need it for the fpstack. */
