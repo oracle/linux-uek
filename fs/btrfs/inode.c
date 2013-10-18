@@ -5896,6 +5896,7 @@ static noinline int can_nocow_odirect(struct btrfs_trans_handle *trans,
 
 	if (btrfs_extent_readonly(root, disk_bytenr))
 		goto out;
+	btrfs_release_path(path);
 
 	/*
 	 * look for other files referencing this extent, if we
