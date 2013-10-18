@@ -973,6 +973,23 @@ static int loop_set_fd(struct loop_device *lo, fmode_t mode,
 
 	set_blocksize(bdev, lo_blocksize);
 
+#ifdef CONFIG_AIO
+	/*
+	 * Inherit queue limits from underlying device
+	 */
+	if ((lo_flags & LO_FLAGS_USE_AIO) && inode->i_sb->s_bdev) {
+		blk_set_stacking_limits(&lo->lo_queue->limits);
+
+		if (bdev_stack_limits(&lo->lo_queue->limits,
+				      inode->i_sb->s_bdev, 0) < 0) {
+			char devname[BDEVNAME_SIZE];
+			bdevname(inode->i_sb->s_bdev, devname);
+			printk(KERN_NOTICE "Warning: Device %s is misaligned\n",
+			       devname);
+		}
+	}
+#endif
+
 	lo->lo_thread = kthread_create(loop_thread, lo, "loop%d",
 						lo->lo_number);
 	if (IS_ERR(lo->lo_thread)) {
