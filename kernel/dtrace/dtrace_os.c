@@ -64,15 +64,8 @@ EXPORT_SYMBOL(dtrace_os_init);
 
 void dtrace_os_exit(void)
 {
-	if (dtrace_kmod == NULL) {
-		pr_warning("%s: kernel pseudo-module not allocated\n",
-			   __func__);
-		return;
-	}
-
-	kmem_cache_destroy(psinfo_cachep);
-	kfree(dtrace_kmod);
-	dtrace_kmod = NULL;
+	pr_warn_once("%s is being deprecated - please do not use.\n",
+		     __func__);
 }
 EXPORT_SYMBOL(dtrace_os_exit);
 
