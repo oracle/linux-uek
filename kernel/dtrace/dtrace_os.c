@@ -6,7 +6,6 @@
  */
 
 #include <linux/binfmts.h>
-#include <linux/cyclic.h>
 #include <linux/dtrace_cpu.h>
 #include <linux/dtrace_os.h>
 #include <linux/fs.h>
@@ -283,90 +282,6 @@ ktime_t dtrace_getwalltime(void)
 	return timespec_to_ktime(ts);
 }
 EXPORT_SYMBOL(dtrace_getwalltime);
-
-/*---------------------------------------------------------------------------*\
-(* CYCLICS                                                                   *)
-\*---------------------------------------------------------------------------*/
-typedef union cyclic	cyclic_t;
-union cyclic {
-	struct {
-		cyc_time_t		when;
-		cyc_handler_t		hdlr;
-		struct tasklet_hrtimer	timr;
-	} cyc;
-	cyclic_t			*nxt;
-};
-
-static enum hrtimer_restart cyclic_fire_fn(struct hrtimer *timr)
-{
-	struct tasklet_hrtimer	*thr = container_of(timr,
-						    struct tasklet_hrtimer,
-						    timer);
-	cyclic_t		*cyc = container_of(thr, cyclic_t, cyc.timr);
-
-	if (cyc->cyc.hdlr.cyh_func)
-		cyc->cyc.hdlr.cyh_func(cyc->cyc.hdlr.cyh_arg);
-
-	hrtimer_forward_now(timr, cyc->cyc.when.cyt_interval);
-
-	return HRTIMER_RESTART;
-}
-
-/*
- * Add a new cyclic to the system.
- */
-cyclic_id_t cyclic_add(cyc_handler_t *hdlr, cyc_time_t *when)
-{
-	cyclic_t	*cyc;
-
-	if (hdlr == NULL || when == NULL)
-		return CYCLIC_NONE;
-
-	if ((cyc = kmalloc(sizeof(cyclic_t), GFP_KERNEL)) == NULL)
-		return CYCLIC_NONE;
-
-	cyc->cyc.when = *when;
-	cyc->cyc.hdlr = *hdlr;
-
-	tasklet_hrtimer_init(&cyc->cyc.timr, cyclic_fire_fn, CLOCK_MONOTONIC,
-			     HRTIMER_MODE_REL);
-
-	if (cyc->cyc.when.cyt_when.tv64 == 0)
-		tasklet_hrtimer_start(&cyc->cyc.timr,
-				      cyc->cyc.when.cyt_interval,
-			      HRTIMER_MODE_REL_PINNED);
-	else
-		tasklet_hrtimer_start(&cyc->cyc.timr, cyc->cyc.when.cyt_when,
-			      HRTIMER_MODE_ABS_PINNED);
-
-	return (cyclic_id_t)cyc;
-}
-EXPORT_SYMBOL(cyclic_add);
-
-/*
- * Add a new omnipresent cyclic to the system.
- */
-cyclic_id_t cyclic_add_omni(cyc_omni_handler_t *omni)
-{
-	if (omni == NULL)
-		return CYCLIC_NONE;
-
-	return CYCLIC_NONE;
-}
-EXPORT_SYMBOL(cyclic_add_omni);
-
-/*
- * Remove a specific cyclic from the system.
- */
-void cyclic_remove(cyclic_id_t id)
-{
-	cyclic_t	*cyc = (cyclic_t *)id;
-
-	tasklet_hrtimer_cancel(&cyc->cyc.timr);
-
-	kfree(cyc);
-}
-EXPORT_SYMBOL(cyclic_remove);
 
 /*---------------------------------------------------------------------------*\
 (* STACK TRACES                                                              *)
