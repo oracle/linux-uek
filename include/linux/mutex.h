@@ -235,7 +235,7 @@ mutex_trylock_recursive(struct mutex *lock)
 #if defined(CONFIG_DEBUG_MUTEXES) || defined(CONFIG_SMP)
 static inline int mutex_owned(struct mutex *lock)
 {
-	return lock->owner == current;
+	return mutex_is_locked(lock) && lock->owner == current;
 }
 #else
 static inline int mutex_owned(struct mutex *lock)
