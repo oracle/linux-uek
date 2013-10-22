@@ -16,13 +16,13 @@
 
 typedef uintptr_t	cyclic_id_t;
 typedef uint16_t	cyc_level_t;
-typedef void		(*cyc_func_t)(void *);
+typedef void		(*cyc_func_t)(uintptr_t);
 
 #define CYCLIC_NONE	((cyclic_id_t)0)
 
 typedef struct cyc_handler {
 	cyc_func_t cyh_func;
-	void *cyh_arg;
+	uintptr_t cyh_arg;
 	cyc_level_t cyh_level;
 } cyc_handler_t;
 
