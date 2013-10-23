@@ -1,6 +1,29 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.4.1 (Oct 23, 2013)
+----------------------------
+Kernel release: 3.8.13-18.el6uek
+
+Changes:
+
+ - It is no longer permissible to have non-unique provider names within the
+   context of a userspace process.  I.e. it is not permissible for the main
+   executable and a loaded shared library, or two loaded shared libraries, to
+   list the same provider name in their DOF sections.
+ - A new cyclic implementation has been included in the UEK3 kernel, replacing
+   the more error prone former version.  The modules code has been updated to
+   use that new implementation.
+
+Bugfixes:
+
+ - Lock ordering problem that were inherited from the original code are fixed.
+ - Userspace stack memory accesses are now performed in a safe manner.
+ - A race condition between speculative tracing buffer cleaning and destroying
+   consumer state has been resolved.
+ - A memory leak related to consumer state has been fixed.
+ - A provider reference counter calculation problem was resolved.
+
 Release 0.4.0 (Sep 20, 2013)
 ----------------------------
 Kernel release: 3.8.13-16.el6uek
