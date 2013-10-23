@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-16.el6uek}
+%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-18.el6uek.dtrace2}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
@@ -18,7 +18,7 @@
 
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
-Version: 0.4.0
+Version: 0.4.1
 Release: 1.el6
 Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
@@ -100,11 +100,28 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+* Wed Oct 16 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-2
+- Fix lock ordering issues.
+  [Orabug: 17624236]
+* Wed Oct 16 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-1
+- Align with new cyclic implementation in UEK3 3.8.13-18 kernel.
+  [Orabug: 17553446]
+- Bugfix for module reference counting.
+- Fix memory leak.
+- Fix race condition in speculative tracing buffer cleaning.
+  [Orabug: 17591351]
+- Ensure safe access to userspace stack memory location.
+  [Orabug: 17591351]
+* Thu Oct 10 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
+- Bugfix for ustack() to avoid using vma data.
 * Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
 - Bugfix for module unloading.
 - Support meta-providers, USDT, and fasttrap (for USDT only).
 - Export DTrace kernel headers to userspace.
+- Improved ustack() robustness.
+  [Orabug: 17591351]
 - Reimplemented ustack().
+  (Nick Alcock) [Orabug: 17591351]
 - Bugfixes.
 * Mon Sep 17 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0-2
 - Remove development-only providers because they should not be built/released.
