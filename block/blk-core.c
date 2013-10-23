@@ -1166,6 +1166,9 @@ static bool attempt_plug_merge(struct task_struct *tsk, struct request_queue *q,
 	struct request *rq;
 	bool ret = false;
 
+	if (blk_queue_nomerges(q))
+		goto out;
+
 	plug = tsk->plug;
 	if (!plug)
 		goto out;
