@@ -1426,6 +1426,9 @@ static bool attempt_plug_merge(struct request_queue *q, struct bio *bio,
 	struct request *rq;
 	bool ret = false;
 
+	if (blk_queue_nomerges(q))
+		goto out;
+
 	plug = current->plug;
 	if (!plug)
 		goto out;
