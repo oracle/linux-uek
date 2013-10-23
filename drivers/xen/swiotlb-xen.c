@@ -45,7 +45,6 @@
 
 #include <asm/dma-mapping.h>
 #include <asm/xen/page-coherent.h>
-#define CREATE_TRACE_POINTS
 #include <trace/events/swiotlb.h>
 /*
  * Used to do a quick range check in swiotlb_tbl_unmap_single and
