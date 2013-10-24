@@ -1,4 +1,6 @@
 #include <linux/bio.h>
+#include <linux/blk_types.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <xen/page.h>
 
@@ -11,3 +13,5 @@ bool xen_biovec_phys_mergeable(const struct bio_vec *vec1,
 	return __BIOVEC_PHYS_MERGEABLE(vec1, vec2) &&
 		((mfn1 == mfn2) || ((mfn1+1) == mfn2));
 }
+
+EXPORT_SYMBOL(xen_biovec_phys_mergeable);
