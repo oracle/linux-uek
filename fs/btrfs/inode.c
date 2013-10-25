@@ -869,7 +869,10 @@ static noinline int __cow_file_range(struct btrfs_trans_handle *trans,
 	struct extent_map_tree *em_tree = &BTRFS_I(inode)->extent_tree;
 	int ret = 0;
 
-	BUG_ON(btrfs_is_free_space_inode(inode));
+	if (btrfs_is_free_space_inode(inode)) {
+		WARN_ON_ONCE(1);
+		return -EINVAL;
+	}
 
 	num_bytes = (end - start + blocksize) & ~(blocksize - 1);
 	num_bytes = max(blocksize,  num_bytes);
