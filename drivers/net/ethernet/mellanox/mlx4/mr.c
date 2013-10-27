@@ -930,8 +930,8 @@ int mlx4_init_mr_table(struct mlx4_dev *dev)
 		return err;
 
 	err = mlx4_buddy_init(&mr_table->mtt_buddy,
-			      ilog2(dev->caps.num_mtts /
-			      (1 << log_mtts_per_seg)));
+			      ilog2(div_u64(dev->caps.num_mtts,
+			      (1 << log_mtts_per_seg))));
 	if (err)
 		goto err_buddy;
 
