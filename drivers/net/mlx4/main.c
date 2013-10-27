@@ -397,16 +397,20 @@ static int mlx4_dev_cap(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev->caps.log_num_prios = use_prio ? 3 : 0;
 	dev->caps.qinq          = dev_cap->qinq && enable_qinq;
 	for (i = 1; i <= dev->caps.num_ports; ++i) {
-		dev->caps.port_type[i] = MLX4_PORT_TYPE_NONE;
+		dev->caps.port_type[i] = MLX4_PORT_TYPE_IB;
 		if (dev->caps.supported_type[i]) {
-			if (dev->caps.supported_type[i] != MLX4_PORT_TYPE_ETH)
-				dev->caps.port_type[i] = MLX4_PORT_TYPE_IB;
-			else
+			if (dev->caps.supported_type[i] == MLX4_PORT_TYPE_ETH)
 				dev->caps.port_type[i] = MLX4_PORT_TYPE_ETH;
+			else if (dev->caps.supported_type[i] ==
+				 MLX4_PORT_TYPE_IB)
+				dev->caps.port_type[i] = MLX4_PORT_TYPE_IB;
 		}
-		dev->caps.possible_type[i] = dev->caps.port_type[i];
 		mlx4_priv(dev)->sense.sense_allowed[i] =
 			dev->caps.supported_type[i] == MLX4_PORT_TYPE_AUTO;
+		if (mlx4_priv(dev)->sense.sense_allowed[i])
+			dev->caps.possible_type[i] = MLX4_PORT_TYPE_AUTO;
+		else
+			dev->caps.possible_type[i] = dev->caps.port_type[i];
 
 		if (dev->caps.log_num_macs > dev_cap->log_max_macs[i]) {
 			dev->caps.log_num_macs = dev_cap->log_max_macs[i];
@@ -636,11 +640,14 @@ static ssize_t show_port_type(struct device *dev,
 	struct mlx4_port_info *info = container_of(attr, struct mlx4_port_info,
 						   port_attr);
 	struct mlx4_dev *mdev = info->dev;
-	char type[8];
+	char type[16];
 
-	sprintf(type, "%s",
-		(mdev->caps.port_type[info->port] == MLX4_PORT_TYPE_IB) ?
-		"ib" : "eth");
+	if (mdev->caps.port_type[info->port] == MLX4_PORT_TYPE_IB)
+		strcpy(type, "ib");
+	else if (mdev->caps.port_type[info->port] == MLX4_PORT_TYPE_ETH)
+		strcpy(type, "eth");
+	else
+		strcpy(type, "not detected");
 	if (mdev->caps.possible_type[info->port] == MLX4_PORT_TYPE_AUTO)
 		sprintf(buf, "auto (%s)\n", type);
 	else
