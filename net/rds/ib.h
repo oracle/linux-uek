@@ -328,6 +328,11 @@ struct rds_ib_conn_drop_work {
 	struct rds_ib_connection        *conn;
 };
 
+struct rds_ib_addr_change_work {
+	struct delayed_work             work;
+	__be32                          addr;
+};
+
 enum {
 	RDS_IB_MR_8K_POOL,
 	RDS_IB_MR_1M_POOL,
