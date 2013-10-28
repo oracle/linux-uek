@@ -3648,6 +3648,67 @@ int rdma_set_reuseaddr(struct rdma_cm_id *id, int reuse)
 }
 EXPORT_SYMBOL(rdma_set_reuseaddr);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static inline bool _sockaddr_eq(struct sockaddr *a, struct sockaddr *b)
+{
+	if (a->sa_family != b->sa_family)
+		return false;
+
+	switch (a->sa_family) {
+	case AF_INET:
+		if (((struct sockaddr_in *)a)->sin_addr.s_addr !=
+		    ((struct sockaddr_in *)b)->sin_addr.s_addr)
+			return false;
+		break;
+
+	case AF_INET6:
+		if (!ipv6_addr_equal(&((struct sockaddr_in6 *)a)->sin6_addr,
+				     &((struct sockaddr_in6 *)b)->sin6_addr))
+			return false;
+		break;
+
+	default:
+		return false;
+	}
+
+	return true;
+}
+
+int rdma_notify_addr_change(struct sockaddr *addr)
+{
+	struct cma_device *cma_dev;
+	struct rdma_id_private *id_priv;
+	struct sockaddr *src_addr;
+	struct cma_work *work;
+	int ret = 0;
+
+	mutex_lock(&lock);
+	list_for_each_entry(cma_dev, &dev_list, list) {
+		list_for_each_entry(id_priv, &cma_dev->id_list, device_item) {
+			src_addr =
+			   (struct sockaddr *) &id_priv->id.route.addr.src_addr;
+			if (_sockaddr_eq(addr, src_addr)) {
+				work = kzalloc(sizeof(*work), GFP_ATOMIC);
+				if (!work) {
+					ret = -ENOMEM;
+					goto out;
+				}
+
+				INIT_WORK(&work->work, cma_work_handler);
+				work->id = id_priv;
+				work->event.event = RDMA_CM_EVENT_ADDR_CHANGE;
+				cma_id_get(id_priv);
+				queue_work(cma_wq, &work->work);
+			}
+		}
+	}
+out:
+	mutex_unlock(&lock);
+	return ret;
+}
+EXPORT_SYMBOL(rdma_notify_addr_change);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 int rdma_set_afonly(struct rdma_cm_id *id, int afonly)
 {
 	struct rdma_id_private *id_priv;
