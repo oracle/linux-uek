@@ -199,6 +199,8 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_CHANGE:
+		rdsdebug("ADDR_CHANGE event <%pI4,%pI4>\n",
+			 &conn->c_laddr, &conn->c_faddr);
 #if RDMA_RDS_APM_SUPPORTED
 		if (conn && !rds_ib_apm_enabled)
 			rds_conn_drop(conn);
