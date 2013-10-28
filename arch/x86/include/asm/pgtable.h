@@ -511,7 +511,7 @@ static inline unsigned long pages_to_mb(unsigned long npg)
 }
 
 #define io_remap_pfn_range(vma, vaddr, pfn, size, prot)	\
-	remap_pfn_range(vma, vaddr, pfn, size, prot)
+	remap_pfn_range(vma, vaddr, pfn, size, __pgprot(pgprot_val(prot) | _PAGE_IOMAP))
 
 #if PAGETABLE_LEVELS > 2
 static inline int pud_none(pud_t pud)
