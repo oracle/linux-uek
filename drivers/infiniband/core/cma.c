@@ -3181,6 +3181,43 @@ int rdma_set_afonly(struct rdma_cm_id *id, int afonly)
 }
 EXPORT_SYMBOL(rdma_set_afonly);
 
+int rdma_notify_addr_change(struct sockaddr *addr)
+{
+	struct cma_device *cma_dev;
+	struct rdma_id_private *id_priv;
+	struct rdma_cm_id *id;
+	struct sockaddr *src_addr;
+	struct cma_ndev_work *work;
+	int     ret;
+
+	mutex_lock(&lock);
+	list_for_each_entry(cma_dev, &dev_list, list) {
+		list_for_each_entry(id_priv, &cma_dev->id_list, list) {
+			src_addr = (struct sockaddr *) &id_priv->id.route.addr.src_addr;
+			if (addr->sa_family == AF_INET &&
+					addr->sa_family == src_addr->sa_family &&
+					((struct sockaddr_in *) addr)->sin_addr.s_addr ==
+					((struct sockaddr_in *) src_addr)->sin_addr.s_addr) {
+				work = kzalloc(sizeof *work, GFP_ATOMIC);
+				if (!work) {
+					ret = -ENOMEM;
+					goto out;
+				}
+
+				INIT_WORK(&work->work, cma_ndev_work_handler);
+				work->id = id_priv;
+				work->event.event = RDMA_CM_EVENT_ADDR_CHANGE;
+				atomic_inc(&id_priv->refcount);
+				queue_work(cma_wq, &work->work);
+			}
+		}
+	}
+out:
+	mutex_unlock(&lock);
+	return ret;
+}
+EXPORT_SYMBOL(rdma_notify_addr_change);
+
 static void cma_bind_port(struct rdma_bind_list *bind_list,
 			  struct rdma_id_private *id_priv)
 {

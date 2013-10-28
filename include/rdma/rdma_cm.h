@@ -199,6 +199,14 @@ void rdma_destroy_id(struct rdma_cm_id *id);
 int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr);
 
 /**
+ * rdma_notify_addr_change - Notify users that its IP has moved to a
+ * different device.
+ *
+ * @addr: address information.
+ */
+int rdma_notify_addr_change(struct sockaddr *addr);
+
+/**
  * rdma_resolve_addr - Resolve destination and optional source addresses
  *   from IP addresses to an RDMA address.  If successful, the specified
  *   rdma_cm_id will be bound to a local device.
