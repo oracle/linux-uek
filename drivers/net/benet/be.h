@@ -328,6 +328,7 @@ enum vf_state {
 };
 
 #define BE_FLAGS_LINK_STATUS_INIT		1
+#define BE_FLAGS_WORKER_SCHEDULED		(1 << 3)
 
 struct phy_info {
 	u8 transceiver;
