@@ -164,6 +164,9 @@ static int __add_prelim_ref(struct list_head *head, u64 root_id,
 {
 	struct __prelim_ref *ref;
 
+	if (root_id == BTRFS_DATA_RELOC_TREE_OBJECTID)
+		return 0;
+
 	/* in case we're adding delayed refs, we're holding the refs spinlock */
 	ref = kmalloc(sizeof(*ref), GFP_ATOMIC);
 	if (!ref)
