@@ -1221,7 +1221,11 @@ KBUILD_BUILTIN := 1
 # kernel, for consumption by dwarf2ctf in Makefile.modpost.
 # This is made doubly annoying by the presence of '.o' files which are actually
 # empty ar archives.
+ifeq ($(SRCARCH),x86)
+objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),bzImage) FORCE
+else
 objects.builtin: $(vmlinux-dirs) $(if $(KBUILD_BUILTIN),vmlinux) FORCE
+endif
 	@echo $(KBUILD_VMLINUX_INIT) $(KBUILD_VMLINUX_MAIN) | \
 		tr " " "\n" | grep "\.o$$" | xargs file | \
 		grep ELF | cut -d: -f1 > objects.builtin
