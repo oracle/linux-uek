@@ -453,7 +453,7 @@ try_preserve_large_page(pte_t *kpte, unsigned long address,
 	 * Check for races, another CPU might have split this page
 	 * up already:
 	 */
-	tmp = lookup_address(address, &level);
+	tmp = _lookup_address_cpa(cpa, address, &level);
 	if (tmp != kpte)
 		goto out_unlock;
 
@@ -548,7 +548,8 @@ out_unlock:
 	return do_split;
 }
 
-static int split_large_page(pte_t *kpte, unsigned long address)
+static int split_large_page(struct cpa_data *cpa, pte_t *kpte,
+			    unsigned long address)
 {
 	unsigned long pfn, pfninc = 1;
 	unsigned int i, level;
@@ -569,7 +570,7 @@ static int split_large_page(pte_t *kpte, unsigned long address)
 	 * Check for races, another CPU might have split this page
 	 * up for us already:
 	 */
-	tmp = lookup_address(address, &level);
+	tmp = _lookup_address_cpa(cpa, address, &level);
 	if (tmp != kpte)
 		goto out_unlock;
 
@@ -1010,6 +1011,9 @@ static int populate_pgd(struct cpa_data *cpa, unsigned long addr)
 static int __cpa_process_fault(struct cpa_data *cpa, unsigned long vaddr,
 			       int primary)
 {
+	if (cpa->pgd)
+		return populate_pgd(cpa, vaddr);
+
 	/*
 	 * Ignore all non primary paths.
 	 */
@@ -1054,7 +1058,7 @@ static int __change_page_attr(struct cpa_data *cpa, int primary)
 	else
 		address = *cpa->vaddr;
 repeat:
-	kpte = lookup_address(address, &level);
+	kpte = _lookup_address_cpa(cpa, address, &level);
 	if (!kpte)
 		return __cpa_process_fault(cpa, address, primary);
 
@@ -1106,7 +1110,7 @@ repeat:
 	/*
 	 * We have to split the large page:
 	 */
-	err = split_large_page(kpte, address);
+	err = split_large_page(cpa, kpte, address);
 	if (!err) {
 		/*
 	 	 * Do a global flush tlb after splitting the large page
@@ -1254,6 +1258,8 @@ static int change_page_attr_set_clr(unsigned long *addr, int numpages,
 	struct cpa_data cpa;
 	int ret, cache, checkalias;
 	unsigned long baddr = 0;
+
+	memset(&cpa, 0, sizeof(cpa));
 
 	/*
 	 * Check, if we are requested to change a not supported
@@ -1701,6 +1707,7 @@ static int __set_pages_p(struct page *page, int numpages)
 {
 	unsigned long tempaddr = (unsigned long) page_address(page);
 	struct cpa_data cpa = { .vaddr = &tempaddr,
+				.pgd = NULL,
 				.numpages = numpages,
 				.mask_set = __pgprot(_PAGE_PRESENT | _PAGE_RW),
 				.mask_clr = __pgprot(0),
@@ -1719,6 +1726,7 @@ static int __set_pages_np(struct page *page, int numpages)
 {
 	unsigned long tempaddr = (unsigned long) page_address(page);
 	struct cpa_data cpa = { .vaddr = &tempaddr,
+				.pgd = NULL,
 				.numpages = numpages,
 				.mask_set = __pgprot(0),
 				.mask_clr = __pgprot(_PAGE_PRESENT | _PAGE_RW),
@@ -1776,6 +1784,36 @@ bool kernel_page_present(struct page *page)
 #endif /* CONFIG_HIBERNATION */
 
 #endif /* CONFIG_DEBUG_PAGEALLOC */
+
+int kernel_map_pages_in_pgd(pgd_t *pgd, u64 pfn, unsigned long address,
+			    unsigned numpages, unsigned long page_flags)
+{
+	int retval = -EINVAL;
+
+	struct cpa_data cpa = {
+		.vaddr = &address,
+		.pfn = pfn,
+		.pgd = pgd,
+		.numpages = numpages,
+		.mask_set = __pgprot(0),
+		.mask_clr = __pgprot(0),
+		.flags = 0,
+	};
+
+	if (!(__supported_pte_mask & _PAGE_NX))
+		goto out;
+
+	if (!(page_flags & _PAGE_NX))
+		cpa.mask_clr = __pgprot(_PAGE_NX);
+
+	cpa.mask_set = __pgprot(_PAGE_PRESENT | page_flags);
+
+	retval = __change_page_attr_set_clr(&cpa, 0);
+	__flush_tlb_all();
+
+out:
+	return retval;
+}
 
 /*
  * The testcases use internal knowledge of the implementation that shouldn't
