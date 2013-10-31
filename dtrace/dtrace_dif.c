@@ -2301,15 +2301,43 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		 */
 		return (uint64_t)current->real_cred->gid;
 
-	case DIF_VAR_ERRNO:
+	case DIF_VAR_ERRNO: {
+		int64_t	arg0;
+
+		ASSERT(mstate->dtms_present & DTRACE_MSTATE_PROBE);
+
 		if (!dtrace_priv_proc(state))
 			return 0;
 
 		/*
-		 * It is always safe to dereference current, it always points
-		 * to a valid task_struct.
+		 * We need to do some magic here to get the correct semantics
+		 * for the 'errno' variable.  It can only have a non-zero value
+		 * when executing a system call, and for Linux, only after the
+		 * actual system call implementation has completed, indicating
+		 * in its return value either an error code (-2048 < errno < 0)
+		 * or a valid result.  So, the only time we can expect a valid
+		 * value in errno is during the processing of any return probe
+		 * in the syscall provider.  In all other cases, it should have
+		 * the value 0.
+		 *
+		 * So, we only look at probes that match: syscall:::return
 		 */
-		return (uint64_t)current->thread.error_code;
+		if (strncmp(mstate->dtms_probe->dtpr_provider->dtpv_name,
+			    "syscall", 7) != 0)
+			return 0;
+		if (strncmp(mstate->dtms_probe->dtpr_name, "return", 6) != 0)
+			return 0;
+
+		/*
+		 * Error number is present if arg0 lies between 0 and -2048,
+		 * exclusive.
+		 */
+		arg0 = (int64_t)mstate->dtms_arg[ndx];
+		if (arg0 < 0 && arg0 > -2048)
+			return (uint64_t)-arg0;
+
+		return 0;
+	}
 
 	case DIF_VAR_CURCPU:
 		return (uint64_t)(uintptr_t)this_cpu_info;
