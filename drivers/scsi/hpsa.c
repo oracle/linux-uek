@@ -48,6 +48,25 @@
 #include <linux/kthread.h>
 #include <linux/jiffies.h>
 #include <asm/div64.h>
+
+/*
+ * commit 54b956b903607f8f8878754dd4352da6a54a1da2 Remove __dev* markings from init.h,
+ * define them here to resolve compilation error.
+ * */
+#ifndef __devinit
+#define __devinit
+#endif
+#ifndef __devexit
+#define __devexit
+#endif
+#ifndef __devexit_p
+#if defined(MODULE) || defined(CONFIG_HOTPLUG)
+#define __devexit_p(x) x
+#else
+#define __devexit_p(x) NULL
+#endif
+#endif
+
 #include "hpsa_cmd.h"
 #include "hpsa.h"
 #include "hpsa_kernel_compat.h"
