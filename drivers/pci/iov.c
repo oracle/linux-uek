@@ -298,7 +298,6 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 	    (!(iov->cap & PCI_SRIOV_CAP_VFM) && (nr_virtfn > initial)))
 		return -EINVAL;
 
-	pci_write_config_word(dev, iov->pos + PCI_SRIOV_NUM_VF, nr_virtfn);
 	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_OFFSET, &offset);
 	pci_read_config_word(dev, iov->pos + PCI_SRIOV_VF_STRIDE, &stride);
 	if (!offset || (nr_virtfn > 1 && !stride))
@@ -339,6 +338,7 @@ static int sriov_enable(struct pci_dev *dev, int nr_virtfn)
 			return rc;
 	}
 
+	pci_write_config_word(dev, iov->pos + PCI_SRIOV_NUM_VF, nr_virtfn);
 	iov->ctrl |= PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE;
 	pci_block_user_cfg_access(dev);
 	pci_write_config_word(dev, iov->pos + PCI_SRIOV_CTRL, iov->ctrl);
@@ -373,6 +373,7 @@ failed:
 	iov->ctrl &= ~(PCI_SRIOV_CTRL_VFE | PCI_SRIOV_CTRL_MSE);
 	pci_block_user_cfg_access(dev);
 	pci_write_config_word(dev, iov->pos + PCI_SRIOV_CTRL, iov->ctrl);
+	pci_write_config_word(dev, iov->pos + PCI_SRIOV_NUM_VF, 0);
 	ssleep(1);
 	pci_unblock_user_cfg_access(dev);
 
@@ -406,6 +407,7 @@ static void sriov_disable(struct pci_dev *dev)
 		sysfs_remove_link(&dev->dev.kobj, "dep_link");
 
 	iov->nr_virtfn = 0;
+	pci_write_config_word(dev, iov->pos + PCI_SRIOV_NUM_VF, 0);
 }
 
 static int sriov_init(struct pci_dev *dev, int pos)
