@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-18.el6uek.dtrace2}
+%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-16.2.1.el6uek}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
@@ -100,11 +100,13 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
-* Wed Oct 16 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-2
+* Wed Nov  6 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-2
 - Fix lock ordering issues.
   [Orabug: 17624236]
+- Fix 'errno' implementation.
+  [Orabug: 17704568]
 * Wed Oct 16 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-1
-- Align with new cyclic implementation in UEK3 3.8.13-18 kernel.
+- Align with new cyclic implementation in UEK3 kernel.
   [Orabug: 17553446]
 - Bugfix for module reference counting.
 - Fix memory leak.
