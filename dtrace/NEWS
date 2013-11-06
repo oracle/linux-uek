@@ -1,9 +1,9 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.4.1 (Oct 23, 2013)
-----------------------------
-Kernel release: 3.8.13-18.el6uek
+Release 0.4.1 (Nov 6, 2013)
+---------------------------
+Kernel release: 3.8.13-16.2.1.el6uek
 
 Changes:
 
@@ -17,12 +17,15 @@ Changes:
 
 Bugfixes:
 
- - Lock ordering problem that were inherited from the original code are fixed.
+ - Lock ordering problems that were inherited from the original code are fixed.
  - Userspace stack memory accesses are now performed in a safe manner.
  - A race condition between speculative tracing buffer cleaning and destroying
    consumer state has been resolved.
  - A memory leak related to consumer state has been fixed.
  - A provider reference counter calculation problem was resolved.
+ - The 'errno' D variable now holds the correct value during syscall:::return
+   probe action execution, i.e. 0 if the syscall completed without an error,
+   and a valid error code if the syscall failed.
 
 Release 0.4.0 (Sep 20, 2013)
 ----------------------------
