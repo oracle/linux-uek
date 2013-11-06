@@ -19,7 +19,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: 0.4.1
-Release: 1.el6
+Release: 3.el6
 Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
 Group: System Environment/Kernel
@@ -100,11 +100,12 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
-* Wed Nov  6 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-2
-- Fix lock ordering issues.
-  [Orabug: 17624236]
+* Wed Nov  6 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-3
 - Fix 'errno' implementation.
   [Orabug: 17704568]
+* Wed Oct 26 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-2
+- Fix lock ordering issues.
+  [Orabug: 17624236]
 * Wed Oct 16 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-1
 - Align with new cyclic implementation in UEK3 kernel.
   [Orabug: 17553446]
