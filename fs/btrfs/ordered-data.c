@@ -764,7 +764,7 @@ void btrfs_wait_ordered_range(struct inode *inode, u64 start, u64 len)
 			btrfs_put_ordered_extent(ordered);
 			break;
 		}
-		if (ordered->file_offset + ordered->len < start) {
+		if (ordered->file_offset + ordered->len <= start) {
 			btrfs_put_ordered_extent(ordered);
 			break;
 		}
