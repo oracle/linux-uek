@@ -207,7 +207,7 @@ static struct board_type products[] = {
 	{0x3356103C, "Smart Array P721", &SA5_access},
 #endif
 #if SA_CONTROLLERS_GEN8_2
-   {0x334D103C, "Smart Array", &SA5_access},
+	{0x334D103C, "Smart Array P822se", &SA5_access},
 #endif
 #if SA_CONTROLLERS_GEN8_5
 	{0x1920103C, "Smart Array P430i", &SA5_access},
