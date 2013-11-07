@@ -1230,7 +1230,7 @@ reject:
 	cma_modify_qp_err(id_priv);
 	cma_dbg(id_priv, "sending REJ\n");
 	ib_send_cm_rej(id_priv->cm_id.ib, IB_CM_REJ_CONSUMER_DEFINED,
-		       NULL, 0, NULL, 0);
+		       NULL, 0, &ret, sizeof(int));
 	return ret;
 }
 
@@ -3930,7 +3930,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	return 0;
 reject:
 	cma_modify_qp_err(id_priv);
-	rdma_reject(id, NULL, 0);
+	rdma_reject(id, &ret, sizeof(int));
 	return ret;
 }
 EXPORT_SYMBOL(rdma_accept);

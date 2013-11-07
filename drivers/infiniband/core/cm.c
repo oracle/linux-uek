@@ -898,8 +898,10 @@ retest:
 			spin_unlock_irq(&cm_id_priv->lock);
 		} else {
 			spin_unlock_irq(&cm_id_priv->lock);
+			if (!err)
+				err = -EINVAL;
 			ib_send_cm_rej(cm_id, IB_CM_REJ_CONSUMER_DEFINED,
-				       NULL, 0, NULL, 0);
+				       NULL, 0, &err, sizeof(err));
 		}
 		break;
 	case IB_CM_MRA_REQ_RCVD:
@@ -911,8 +913,10 @@ retest:
 	case IB_CM_REP_RCVD:
 	case IB_CM_MRA_REP_SENT:
 		spin_unlock_irq(&cm_id_priv->lock);
+		if (!err)
+			err = -EINVAL;
 		ib_send_cm_rej(cm_id, IB_CM_REJ_CONSUMER_DEFINED,
-			       NULL, 0, NULL, 0);
+			       NULL, 0, &err, sizeof(err));
 		break;
 	case IB_CM_ESTABLISHED:
 		spin_unlock_irq(&cm_id_priv->lock);
