@@ -682,7 +682,7 @@ static void __init balloon_add_region(unsigned long start_pfn,
 	}
 }
 
-static int __cpuinit balloon_cpu_notify(struct notifier_block *self,
+static int balloon_cpu_notify(struct notifier_block *self,
 				    unsigned long action, void *hcpu)
 {
 	int cpu = (long)hcpu;
@@ -702,7 +702,7 @@ static int __cpuinit balloon_cpu_notify(struct notifier_block *self,
 	return NOTIFY_OK;
 }
 
-static struct notifier_block balloon_cpu_notifier __cpuinitdata = {
+static struct notifier_block balloon_cpu_notifier = {
 	.notifier_call	= balloon_cpu_notify,
 };
 
