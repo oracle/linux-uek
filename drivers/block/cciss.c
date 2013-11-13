@@ -222,8 +222,8 @@ static void cciss_geometry_inquiry(ctlr_info_t *h, int logvol,
 			sector_t total_size,
 			unsigned int block_size, InquiryData_struct *inq_buff,
 				   drive_info_struct *drv);
-static void __devinit cciss_interrupt_mode(ctlr_info_t *);
-static int __devinit cciss_enter_simple_mode(struct ctlr_info *h);
+static void cciss_interrupt_mode(ctlr_info_t *);
+static int cciss_enter_simple_mode(struct ctlr_info *h);
 static void start_io(ctlr_info_t *h);
 static int sendcmd_withirq(ctlr_info_t *h, __u8 cmd, void *buff, size_t size,
 			__u8 page_code, unsigned char scsi3addr[],
@@ -241,13 +241,13 @@ static void cciss_free_gendisk(ctlr_info_t *h, int drv_index);
 static void cciss_free_drive_info(ctlr_info_t *h, int drv_index);
 static inline void log_unit_to_scsi3addr(ctlr_info_t *h,
 	unsigned char scsi3addr[], uint32_t log_unit);
-static int __devinit cciss_find_cfg_addrs(struct pci_dev *pdev,
+static int cciss_find_cfg_addrs(struct pci_dev *pdev,
 	void __iomem *vaddr, u32 *cfg_base_addr, u64 *cfg_base_addr_index,
 	u64 *cfg_offset);
-static int __devinit cciss_pci_find_memory_BAR(struct pci_dev *pdev,
+static int cciss_pci_find_memory_BAR(struct pci_dev *pdev,
 	unsigned long *memory_bar);
 static inline u32 cciss_tag_discard_error_bits(ctlr_info_t *h, u32 tag);
-static __devinit int write_driver_ver_to_cfgtable(
+static int write_driver_ver_to_cfgtable(
 	CfgTable_struct __iomem *cfgtable);
 
 
@@ -597,7 +597,7 @@ static const struct file_operations cciss_proc_fops = {
 	.write	 = cciss_proc_write,
 };
 
-static void __devinit cciss_procinit(ctlr_info_t *h)
+static void cciss_procinit(ctlr_info_t *h)
 {
 	struct proc_dir_entry *pde;
 
@@ -2708,7 +2708,7 @@ static int fill_cmd(ctlr_info_t *h, CommandList_struct *c, __u8 cmd, void *buff,
 	return status;
 }
 
-static int __devinit cciss_send_reset(ctlr_info_t *h, unsigned char *scsi3addr,
+static int cciss_send_reset(ctlr_info_t *h, unsigned char *scsi3addr,
 	u8 reset_type)
 {
 	CommandList_struct *c;
@@ -3848,7 +3848,7 @@ static void  calc_bucket_map(int bucket[], int num_buckets,
 	}
 }
 
-static void __devinit cciss_wait_for_mode_change_ack(ctlr_info_t *h)
+static void cciss_wait_for_mode_change_ack(ctlr_info_t *h)
 {
 	int i;
 
@@ -3862,7 +3862,7 @@ static void __devinit cciss_wait_for_mode_change_ack(ctlr_info_t *h)
 	}
 }
 
-static __devinit void cciss_enter_performant_mode(ctlr_info_t *h,
+static void cciss_enter_performant_mode(ctlr_info_t *h,
 	u32 use_short_tags)
 {
 	/* This is a bit complicated.  There are 8 registers on
@@ -3929,7 +3929,7 @@ static __devinit void cciss_enter_performant_mode(ctlr_info_t *h,
 					" performant mode\n");
 }
 
-static void __devinit cciss_put_controller_into_performant_mode(ctlr_info_t *h)
+static void cciss_put_controller_into_performant_mode(ctlr_info_t *h)
 {
 	__u32 trans_support;
 
@@ -3991,7 +3991,7 @@ clean_up:
  * controllers that are capable. If not, we use IO-APIC mode.
  */
 
-static void __devinit cciss_interrupt_mode(ctlr_info_t *h)
+static void cciss_interrupt_mode(ctlr_info_t *h)
 {
 #ifdef CONFIG_PCI_MSI
 	int err;
@@ -4037,7 +4037,7 @@ default_int_mode:
 	return;
 }
 
-static int __devinit cciss_lookup_board_id(struct pci_dev *pdev, u32 *board_id)
+static int cciss_lookup_board_id(struct pci_dev *pdev, u32 *board_id)
 {
 	int i;
 	u32 subsystem_vendor_id, subsystem_device_id;
@@ -4067,7 +4067,7 @@ static inline bool cciss_board_disabled(ctlr_info_t *h)
 	return ((command & PCI_COMMAND_MEMORY) == 0);
 }
 
-static int __devinit cciss_pci_find_memory_BAR(struct pci_dev *pdev,
+static int cciss_pci_find_memory_BAR(struct pci_dev *pdev,
 	unsigned long *memory_bar)
 {
 	int i;
@@ -4084,7 +4084,7 @@ static int __devinit cciss_pci_find_memory_BAR(struct pci_dev *pdev,
 	return -ENODEV;
 }
 
-static int __devinit cciss_wait_for_board_state(struct pci_dev *pdev,
+static int cciss_wait_for_board_state(struct pci_dev *pdev,
 	void __iomem *vaddr, int wait_for_ready)
 #define BOARD_READY 1
 #define BOARD_NOT_READY 0
@@ -4112,7 +4112,7 @@ static int __devinit cciss_wait_for_board_state(struct pci_dev *pdev,
 	return -ENODEV;
 }
 
-static int __devinit cciss_find_cfg_addrs(struct pci_dev *pdev,
+static int cciss_find_cfg_addrs(struct pci_dev *pdev,
 	void __iomem *vaddr, u32 *cfg_base_addr, u64 *cfg_base_addr_index,
 	u64 *cfg_offset)
 {
@@ -4128,7 +4128,7 @@ static int __devinit cciss_find_cfg_addrs(struct pci_dev *pdev,
 	return 0;
 }
 
-static int __devinit cciss_find_cfgtables(ctlr_info_t *h)
+static int cciss_find_cfgtables(ctlr_info_t *h)
 {
 	u64 cfg_offset;
 	u32 cfg_base_addr;
@@ -4157,7 +4157,7 @@ static int __devinit cciss_find_cfgtables(ctlr_info_t *h)
 	return 0;
 }
 
-static void __devinit cciss_get_max_perf_mode_cmds(struct ctlr_info *h)
+static void cciss_get_max_perf_mode_cmds(struct ctlr_info *h)
 {
 	h->max_commands = readl(&(h->cfgtable->MaxPerformantModeCommands));
 
@@ -4178,7 +4178,7 @@ static void __devinit cciss_get_max_perf_mode_cmds(struct ctlr_info *h)
  * max commands, max SG elements without chaining, and with chaining,
  * SG chain block size, etc.
  */
-static void __devinit cciss_find_board_params(ctlr_info_t *h)
+static void cciss_find_board_params(ctlr_info_t *h)
 {
 	cciss_get_max_perf_mode_cmds(h);
 	h->nr_cmds = h->max_commands - 4 - cciss_tape_cmds;
@@ -4240,7 +4240,7 @@ static inline void cciss_p600_dma_prefetch_quirk(ctlr_info_t *h)
 	pci_write_config_dword(h->pdev, PCI_COMMAND_PARITY, dma_refetch);
 }
 
-static int __devinit cciss_pci_init(ctlr_info_t *h)
+static int cciss_pci_init(ctlr_info_t *h)
 {
 	int prod_index, err;
 
@@ -4356,7 +4356,7 @@ static void free_hba(ctlr_info_t *h)
 }
 
 /* Send a message CDB to the firmware. */
-static __devinit int cciss_message(struct pci_dev *pdev, unsigned char opcode, unsigned char type)
+static int cciss_message(struct pci_dev *pdev, unsigned char opcode, unsigned char type)
 {
 	typedef struct {
 		CommandListHeader_struct CommandHeader;
@@ -4496,13 +4496,13 @@ static int cciss_controller_hard_reset(struct pci_dev *pdev,
 	return 0;
 }
 
-static __devinit void init_driver_version(char *driver_version, int len)
+static void init_driver_version(char *driver_version, int len)
 {
 	memset(driver_version, 0, len);
 	strncpy(driver_version, "cciss " DRIVER_NAME, len - 1);
 }
 
-static __devinit int write_driver_ver_to_cfgtable(
+static int write_driver_ver_to_cfgtable(
 	CfgTable_struct __iomem *cfgtable)
 {
 	char *driver_version;
@@ -4519,7 +4519,7 @@ static __devinit int write_driver_ver_to_cfgtable(
 	return 0;
 }
 
-static __devinit void read_driver_ver_from_cfgtable(
+static void read_driver_ver_from_cfgtable(
 	CfgTable_struct __iomem *cfgtable, unsigned char *driver_ver)
 {
 	int i;
@@ -4528,7 +4528,7 @@ static __devinit void read_driver_ver_from_cfgtable(
 		driver_ver[i] = readb(&cfgtable->driver_version[i]);
 }
 
-static __devinit int controller_reset_failed(
+static int controller_reset_failed(
 	CfgTable_struct __iomem *cfgtable)
 {
 
@@ -4552,7 +4552,7 @@ static __devinit int controller_reset_failed(
 
 /* This does a hard reset of the controller using PCI power management
  * states or using the doorbell register. */
-static __devinit int cciss_kdump_hard_reset_controller(struct pci_dev *pdev)
+static int cciss_kdump_hard_reset_controller(struct pci_dev *pdev)
 {
 	u64 cfg_offset;
 	u32 cfg_base_addr;
@@ -4698,7 +4698,7 @@ unmap_vaddr:
 	return rc;
 }
 
-static __devinit int cciss_init_reset_devices(struct pci_dev *pdev)
+static int cciss_init_reset_devices(struct pci_dev *pdev)
 {
 	int rc, i;
 
@@ -4732,7 +4732,7 @@ static __devinit int cciss_init_reset_devices(struct pci_dev *pdev)
 	return 0;
 }
 
-static __devinit int cciss_allocate_cmd_pool(ctlr_info_t *h)
+static int cciss_allocate_cmd_pool(ctlr_info_t *h)
 {
 	h->cmd_pool_bits = kmalloc(
 		DIV_ROUND_UP(h->nr_cmds, BITS_PER_LONG) *
@@ -4752,7 +4752,7 @@ static __devinit int cciss_allocate_cmd_pool(ctlr_info_t *h)
 	return 0;
 }
 
-static __devinit int cciss_allocate_scatterlists(ctlr_info_t *h)
+static int cciss_allocate_scatterlists(ctlr_info_t *h)
 {
 	int i;
 
@@ -4820,7 +4820,7 @@ static int cciss_request_irq(ctlr_info_t *h,
 	return -1;
 }
 
-static int __devinit cciss_kdump_soft_reset(ctlr_info_t *h)
+static int cciss_kdump_soft_reset(ctlr_info_t *h)
 {
 	if (cciss_send_reset(h, CTLR_LUNID, CCISS_RESET_TYPE_CONTROLLER)) {
 		dev_warn(&h->pdev->dev, "Resetting array controller failed.\n");
@@ -4875,7 +4875,7 @@ static void cciss_undo_allocations_after_kdump_soft_reset(ctlr_info_t *h)
  *  stealing all these major device numbers.
  *  returns the number of block devices registered.
  */
-static int __devinit cciss_init_one(struct pci_dev *pdev,
+static int cciss_init_one(struct pci_dev *pdev,
 				    const struct pci_device_id *ent)
 {
 	int i;
@@ -5131,7 +5131,7 @@ static void cciss_shutdown(struct pci_dev *pdev)
 	free_irq(h->intr[h->intr_mode], h);
 }
 
-static int __devinit cciss_enter_simple_mode(struct ctlr_info *h)
+static int cciss_enter_simple_mode(struct ctlr_info *h)
 {
 	u32 trans_support;
 
@@ -5153,7 +5153,7 @@ static int __devinit cciss_enter_simple_mode(struct ctlr_info *h)
 }
 
 
-static void __devexit cciss_remove_one(struct pci_dev *pdev)
+static void cciss_remove_one(struct pci_dev *pdev)
 {
 	ctlr_info_t *h;
 	int i, j;
@@ -5230,7 +5230,7 @@ static void __devexit cciss_remove_one(struct pci_dev *pdev)
 static struct pci_driver cciss_pci_driver = {
 	.name = "cciss",
 	.probe = cciss_init_one,
-	.remove = __devexit_p(cciss_remove_one),
+	.remove = cciss_remove_one,
 	.id_table = cciss_pci_device_id,	/* id_table */
 	.shutdown = cciss_shutdown,
 };
