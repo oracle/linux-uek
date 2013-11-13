@@ -812,6 +812,14 @@ void *_kc_kmemdup(const void *src, size_t len, unsigned gfp)
 #endif /* <= 2.6.19 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
+struct pci_dev *_kc_netdev_to_pdev(struct net_device *netdev)
+{
+	return ((struct adapter_struct *)netdev_priv(netdev))->pdev;
+}
+#endif /* < 2.6.21 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22) )
 /* hexdump code taken from lib/hexdump.c */
 static void _kc_hex_dump_to_buffer(const void *buf, size_t len, int rowsize,
@@ -1609,13 +1617,11 @@ u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
 		new_index = skb_tx_hash(dev, skb);
 
 	if (queue_index != new_index && sk) {
-		rcu_read_lock();
 		struct dst_entry *dst =
 			    rcu_dereference(sk->sk_dst_cache);
 
 		if (dst && skb_dst(skb) == dst)
 			sk_tx_queue_set(sk, queue_index);
-		rcu_read_unlock();
 
 	}
 
@@ -1628,7 +1634,7 @@ u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb)
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
 #ifdef CONFIG_PCI_IOV
-int pci_vfs_assigned(struct pci_dev *dev)
+int __kc_pci_vfs_assigned(struct pci_dev *dev)
 {
 	unsigned int vfs_assigned = 0;
 #ifdef HAVE_PCI_DEV_FLAGS_ASSIGNED

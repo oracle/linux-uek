@@ -122,15 +122,16 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	case IXGBE_DEV_ID_82599_SFP_FCOE:
 	case IXGBE_DEV_ID_82599_SFP_EM:
 	case IXGBE_DEV_ID_82599_SFP_SF2:
+	case IXGBE_DEV_ID_82599_SFP_SF_QP:
+	case IXGBE_DEV_ID_82599_QSFP_SF_QP:
 	case IXGBE_DEV_ID_82599EN_SFP:
 	case IXGBE_DEV_ID_82599_CX4:
 	case IXGBE_DEV_ID_82599_LS:
-	case IXGBE_DEV_ID_82599_BYPASS:
 	case IXGBE_DEV_ID_82599_T3_LOM:
 		hw->mac.type = ixgbe_mac_82599EB;
 		break;
 	case IXGBE_DEV_ID_X540T:
-	case IXGBE_DEV_ID_X540_BYPASS:
+	case IXGBE_DEV_ID_X540T1:
 		hw->mac.type = ixgbe_mac_X540;
 		break;
 	default:
@@ -144,18 +145,6 @@ s32 ixgbe_set_mac_type(struct ixgbe_hw *hw)
 	hw_dbg(hw, "ixgbe_set_mac_type found mac: %d, returns: %d\n",
 		  hw->mac.type, ret_val);
 	return ret_val;
-}
-
-/**
- *  ixgbe_mng_fw_enabled - Return condition of MNG FW
- *  @hw: pointer to hardware structure
- *
- *  Return either true/false base on if MNG FW is on.
- **/
-s32 ixgbe_mng_fw_enabled(struct ixgbe_hw *hw)
-{
-	return ixgbe_call_func(hw, hw->mac.ops.mng_enabled, (hw),
-			       IXGBE_NOT_IMPLEMENTED);
 }
 
 /**

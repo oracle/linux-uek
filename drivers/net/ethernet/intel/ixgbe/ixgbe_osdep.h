@@ -59,6 +59,13 @@
 #define hw_dbg(hw, S, A...)	do {} while (0)
 #endif
 
+struct ixgbe_hw;
+struct ixgbe_msg {
+	u16 msg_enable;
+};
+struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw);
+struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
+
 #define e_dev_info(format, arg...) \
 	dev_info(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_warn(format, arg...) \
@@ -67,6 +74,8 @@
 	dev_err(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_notice(format, arg...) \
 	dev_notice(pci_dev_to_dev(adapter->pdev), format, ## arg)
+#define e_dbg(msglvl, format, arg...) \
+	netif_dbg(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_info(msglvl, format, arg...) \
 	netif_info(adapter, msglvl, adapter->netdev, format, ## arg)
 #define e_err(msglvl, format, arg...) \
@@ -114,7 +123,6 @@
 #define IXGBE_WRITE_REG64(a, reg, value) writeq((value), ((a)->hw_addr + (reg)))
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
-struct ixgbe_hw;
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
@@ -127,10 +135,37 @@ extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
 #define IXGBE_NTOHS(_i) ntohs(_i)
 #define IXGBE_CPU_TO_LE32(_i) cpu_to_le32(_i)
 #define IXGBE_LE32_TO_CPUS(_i) le32_to_cpus(_i)
-#define EWARN(H, W, S) ewarn(H, W, S) 
+#define EWARN(H, W, S) ewarn(H, W, S)
 
-#define ERROR_REPORT(...) do {} while (0)
-#define ERROR_REPORT1(...) do {} while (0)
-#define ERROR_REPORT2(...) do {} while (0)
-#define ERROR_REPORT3(...) do {} while (0)
+enum {
+	IXGBE_ERROR_SOFTWARE,
+	IXGBE_ERROR_POLLING,
+	IXGBE_ERROR_INVALID_STATE,
+	IXGBE_ERROR_UNSUPPORTED,
+	IXGBE_ERROR_ARGUMENT,
+	IXGBE_ERROR_CAUTION,
+};
+
+#define ERROR_REPORT(level, format, arg...) do {			\
+	switch (level) {						\
+	case IXGBE_ERROR_SOFTWARE:					\
+	case IXGBE_ERROR_CAUTION:					\
+	case IXGBE_ERROR_POLLING:					\
+		netif_dbg(ixgbe_hw_to_msg(hw), drv, ixgbe_hw_to_netdev(hw), \
+			  format, ## arg);				\
+		break;							\
+	case IXGBE_ERROR_INVALID_STATE:					\
+	case IXGBE_ERROR_UNSUPPORTED:					\
+	case IXGBE_ERROR_ARGUMENT:					\
+		netif_err(ixgbe_hw_to_msg(hw), hw, ixgbe_hw_to_netdev(hw), \
+			  format, ## arg);				\
+		break;							\
+	default:							\
+		break;							\
+	}								\
+} while (0)
+
+#define ERROR_REPORT1 ERROR_REPORT
+#define ERROR_REPORT2 ERROR_REPORT
+#define ERROR_REPORT3 ERROR_REPORT
 #endif /* _IXGBE_OSDEP_H_ */

@@ -113,6 +113,9 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 		}
 	}
 
+	/* Initialize default switching mode VEB */
+	IXGBE_WRITE_REG(hw, IXGBE_PFDTXGSWC, IXGBE_PFDTXGSWC_VT_LBEN);
+
 	/* If call to enable VFs succeeded then allocate memory
 	 * for per VF control structures.
 	 */
@@ -140,9 +143,9 @@ void ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 		}
 		adapter->dcb_cfg.vt_mode = true;
 
-		/* We do not support RSS w/ SR-IOV */
+#ifndef IXGBE_ENABLE_VF_MQ
 		adapter->ring_feature[RING_F_RSS].limit = 1;
-
+#endif
 		/* disable RSC when in SR-IOV mode */
 		adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
 				     IXGBE_FLAG2_RSC_ENABLED);
@@ -305,10 +308,9 @@ int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf)
 
 	return hw->mac.ops.set_vfta(hw, vid, vf, (bool)add);
 }
-static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
+static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
-	int max_frame = msgbuf[1];
 	u32 max_frs;
 
 	/*
@@ -319,6 +321,7 @@ static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 	 * account before we can enable the VF for receive
 	 */
 	if (adapter->hw.mac.type == ixgbe_mac_82599EB) {
+
 		struct net_device *dev = adapter->netdev;
 		int pf_max_frame = dev->mtu + ETH_HLEN;
 		u32 reg_offset, vf_shift, vfre;
@@ -367,12 +370,6 @@ static s32 ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 *msgbuf, u32 vf)
 			e_err(drv, "VF max_frame %d out of range\n", max_frame);
 			return err;
 		}
-	}
-
-	/* MTU < 68 is an error and causes problems on some kernels */
-	if (max_frame > IXGBE_MAX_JUMBO_FRAME_SIZE) {
-		e_err(drv, "VF max_frame %d out of range\n", max_frame);
-		return -EINVAL;
 	}
 
 	/* pull current max frame size from hardware */
@@ -606,8 +603,8 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	unsigned char *vf_mac = adapter->vfinfo[vf].vf_mac_addresses;
-	u32 reg, msgbuf[4];
-	u32 reg_offset, vf_shift;
+	u32 reg, reg_offset, vf_shift;
+	u32 msgbuf[4] = {0, 0, 0, 0};
 	u8 *addr = (u8 *)(&msgbuf[1]);
         /* q_per_pool assumes that DCB is not enabled, hence in 64 pool mode */
         u32 q_per_pool = 2;
@@ -775,7 +772,8 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 	 * be wiped completely.
 	 */
 	if (!add && adapter->netdev->flags & IFF_PROMISC) {
-		u32 bits, reg_ndx, vlvf;
+		u32 bits, vlvf;
+		s32 reg_ndx;
 
 		reg_ndx = ixgbe_find_vlvf_entry(hw, vid);
 		if (reg_ndx < 0)
@@ -857,7 +855,7 @@ static int ixgbe_set_vf_macvlan_msg(struct ixgbe_adapter *adapter,
 static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 {
 	u32 mbx_size = IXGBE_VFMAILBOX_SIZE;
-	u32 msgbuf[mbx_size];
+	u32 msgbuf[IXGBE_VFMAILBOX_SIZE];
 	struct ixgbe_hw *hw = &adapter->hw;
 	s32 retval;
 	retval = ixgbe_read_mbx(hw, msgbuf, mbx_size, vf);
@@ -894,7 +892,11 @@ static int ixgbe_rcv_msg_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		retval = ixgbe_set_vf_vlan_msg(adapter, msgbuf, vf);
 		break;
 	case IXGBE_VF_SET_LPE:
-		retval = ixgbe_set_vf_lpe(adapter, msgbuf, vf);
+		if (msgbuf[1] > IXGBE_MAX_JUMBO_FRAME_SIZE) {
+			e_err(drv, "VF max_frame %d out of range\n", msgbuf[1]);
+			return -EINVAL;
+		}
+		retval = ixgbe_set_vf_lpe(adapter, msgbuf[1], vf);
 		break;
 	case IXGBE_VF_SET_MACVLAN:
 		retval = ixgbe_set_vf_macvlan_msg(adapter, msgbuf, vf);

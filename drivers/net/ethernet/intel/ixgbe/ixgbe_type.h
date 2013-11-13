@@ -28,6 +28,44 @@
 #ifndef _IXGBE_TYPE_H_
 #define _IXGBE_TYPE_H_
 
+/*
+ * The following is a brief description of the error categories used by the
+ * ERROR_REPORT* macros.
+ *
+ * - IXGBE_ERROR_INVALID_STATE
+ * This category is for errors which represent a serious failure state that is
+ * unexpected, and could be potentially harmful to device operation. It should
+ * not be used for errors relating to issues that can be worked around or
+ * ignored.
+ *
+ * - IXGBE_ERROR_POLLING
+ * This category is for errors related to polling/timeout issues and should be
+ * used in any case where the timeout occured, or a failure to obtain a lock, or
+ * failure to receive data within the time limit.
+ *
+ * - IXGBE_ERROR_CAUTION
+ * This category should be used for reporting issues that may be the cause of
+ * other errors, such as temperature warnings. It should indicate an event which
+ * could be serious, but hasn't necessarily caused problems yet.
+ *
+ * - IXGBE_ERROR_SOFTWARE
+ * This category is intended for errors due to software state preventing
+ * something. The category is not intended for errors due to bad arguments, or
+ * due to unsupported features. It should be used when a state occurs which
+ * prevents action but is not a serious issue.
+ *
+ * - IXGBE_ERROR_ARGUMENT
+ * This category is for when a bad or invalid argument is passed. It should be
+ * used whenever a function is called and error checking has detected the
+ * argument is wrong or incorrect.
+ *
+ * - IXGBE_ERROR_UNSUPPORTED
+ * This category is for errors which are due to unsupported circumstances or
+ * configuration issues. It should not be used when the issue is due to an
+ * invalid argument, but for when something has occurred that is unsupported
+ * (Ex: Flow control autonegotiation or an unsupported SFP+ module.)
+ */
+
 #include "ixgbe_osdep.h"
 
 
@@ -64,14 +102,15 @@
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
 #define IXGBE_DEV_ID_82599_SFP_SF2		0x154D
+#define IXGBE_DEV_ID_82599_SFP_SF_QP		0x154A
+#define IXGBE_DEV_ID_82599_QSFP_SF_QP		0x1558
 #define IXGBE_DEV_ID_82599EN_SFP		0x1557
 #define IXGBE_SUBDEV_ID_82599EN_SFP_OCP1	0x0001
 #define IXGBE_DEV_ID_82599_XAUI_LOM		0x10FC
 #define IXGBE_DEV_ID_82599_T3_LOM		0x151C
 #define IXGBE_DEV_ID_82599_LS			0x154F
-#define IXGBE_DEV_ID_82599_BYPASS		0x155D
 #define IXGBE_DEV_ID_X540T			0x1528
-#define IXGBE_DEV_ID_X540_BYPASS		0x155C
+#define IXGBE_DEV_ID_X540T1			0x1560
 
 /* General Registers */
 #define IXGBE_CTRL		0x00000
@@ -593,8 +632,6 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_FCPTRH		0x02414 /* FC USer Desc. PTR High */
 #define IXGBE_FCBUFF		0x02418 /* FC Buffer Control */
 #define IXGBE_FCDMARW		0x02420 /* FC Receive DMA RW */
-#define IXGBE_FCINVST0		0x03FC0 /* FC Invalid DMA Context Status Reg 0*/
-#define IXGBE_FCINVST(_i)	(IXGBE_FCINVST0 + ((_i) * 4))
 #define IXGBE_FCBUFF_VALID	(1 << 0)   /* DMA Context Valid */
 #define IXGBE_FCBUFF_BUFFSIZE	(3 << 3)   /* User Buffer Size */
 #define IXGBE_FCBUFF_WRCONTX	(1 << 7)   /* 0: Initiator, 1: Target */
@@ -1795,28 +1832,28 @@ enum {
 #define IXGBE_PBANUM_LENGTH	11
 
 /* Checksum and EEPROM pointers */
-#define IXGBE_PBANUM_PTR_GUARD	0xFAFA
-#define IXGBE_EEPROM_CHECKSUM	0x3F
-#define IXGBE_EEPROM_SUM	0xBABA
-#define IXGBE_PCIE_ANALOG_PTR	0x03
-#define IXGBE_ATLAS0_CONFIG_PTR	0x04
-#define IXGBE_PHY_PTR		0x04
-#define IXGBE_ATLAS1_CONFIG_PTR	0x05
-#define IXGBE_OPTION_ROM_PTR	0x05
-#define IXGBE_PCIE_GENERAL_PTR	0x06
-#define IXGBE_PCIE_CONFIG0_PTR	0x07
-#define IXGBE_PCIE_CONFIG1_PTR	0x08
-#define IXGBE_CORE0_PTR		0x09
-#define IXGBE_CORE1_PTR		0x0A
-#define IXGBE_MAC0_PTR		0x0B
-#define IXGBE_MAC1_PTR		0x0C
-#define IXGBE_CSR0_CONFIG_PTR	0x0D
-#define IXGBE_CSR1_CONFIG_PTR	0x0E
-#define IXGBE_FW_PTR		0x0F
-#define IXGBE_PBANUM0_PTR	0x15
-#define IXGBE_PBANUM1_PTR	0x16
-#define IXGBE_ALT_MAC_ADDR_PTR	0x37
-#define IXGBE_FREE_SPACE_PTR	0X3E
+#define IXGBE_PBANUM_PTR_GUARD		0xFAFA
+#define IXGBE_EEPROM_CHECKSUM		0x3F
+#define IXGBE_EEPROM_SUM		0xBABA
+#define IXGBE_PCIE_ANALOG_PTR		0x03
+#define IXGBE_ATLAS0_CONFIG_PTR		0x04
+#define IXGBE_PHY_PTR			0x04
+#define IXGBE_ATLAS1_CONFIG_PTR		0x05
+#define IXGBE_OPTION_ROM_PTR		0x05
+#define IXGBE_PCIE_GENERAL_PTR		0x06
+#define IXGBE_PCIE_CONFIG0_PTR		0x07
+#define IXGBE_PCIE_CONFIG1_PTR		0x08
+#define IXGBE_CORE0_PTR			0x09
+#define IXGBE_CORE1_PTR			0x0A
+#define IXGBE_MAC0_PTR			0x0B
+#define IXGBE_MAC1_PTR			0x0C
+#define IXGBE_CSR0_CONFIG_PTR		0x0D
+#define IXGBE_CSR1_CONFIG_PTR		0x0E
+#define IXGBE_FW_PTR			0x0F
+#define IXGBE_PBANUM0_PTR		0x15
+#define IXGBE_PBANUM1_PTR		0x16
+#define IXGBE_ALT_MAC_ADDR_PTR		0x37
+#define IXGBE_FREE_SPACE_PTR		0X3E
 
 /* External Thermal Sensor Config */
 #define IXGBE_ETS_CFG			0x26
@@ -1876,6 +1913,8 @@ enum {
 #define IXGBE_EEPROM_PAGE_SIZE_MAX	128
 #define IXGBE_EEPROM_RD_BUFFER_MAX_COUNT	256 /* words rd in burst */
 #define IXGBE_EEPROM_WR_BUFFER_MAX_COUNT	256 /* words wr in burst */
+#define IXGBE_EEPROM_CTRL_2		1 /* EEPROM CTRL word 2 */
+#define IXGBE_EEPROM_CCD_BIT		2
 
 #ifndef IXGBE_EEPROM_GRANT_ATTEMPTS
 #define IXGBE_EEPROM_GRANT_ATTEMPTS	1000 /* EEPROM attempts to gain grant */
@@ -1987,7 +2026,7 @@ enum {
 #define IXGBE_RFCTL_ISCSI_DIS		0x00000001
 #define IXGBE_RFCTL_ISCSI_DWC_MASK	0x0000003E
 #define IXGBE_RFCTL_ISCSI_DWC_SHIFT	1
-#define IXGBE_RFCTL_RSC_DIS		0x00000010
+#define IXGBE_RFCTL_RSC_DIS		0x00000020
 #define IXGBE_RFCTL_NFSW_DIS		0x00000040
 #define IXGBE_RFCTL_NFSR_DIS		0x00000080
 #define IXGBE_RFCTL_NFS_VER_MASK	0x00000300
@@ -2844,6 +2883,10 @@ enum ixgbe_phy_type {
 	ixgbe_phy_sfp_ftl_active,
 	ixgbe_phy_sfp_unknown,
 	ixgbe_phy_sfp_intel,
+	ixgbe_phy_qsfp_passive_unknown,
+	ixgbe_phy_qsfp_active_unknown,
+	ixgbe_phy_qsfp_intel,
+	ixgbe_phy_qsfp_unknown,
 	ixgbe_phy_sfp_unsupported, /*Enforce bit set with unsupported module*/
 	ixgbe_phy_generic
 };
@@ -2884,7 +2927,7 @@ enum ixgbe_sfp_type {
 enum ixgbe_media_type {
 	ixgbe_media_type_unknown = 0,
 	ixgbe_media_type_fiber,
-	ixgbe_media_type_fiber_fixed,
+	ixgbe_media_type_fiber_qsfp,
 	ixgbe_media_type_fiber_lco,
 	ixgbe_media_type_copper,
 	ixgbe_media_type_backplane,
@@ -3107,7 +3150,6 @@ struct ixgbe_mac_operations {
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *, bool);
 	s32 (*get_link_capabilities)(struct ixgbe_hw *, ixgbe_link_speed *,
 				     bool *);
-	bool (*mng_enabled) (struct ixgbe_hw *hw);
 
 	/* Packet Buffer manipulation */
 	void (*setup_rxpba)(struct ixgbe_hw *, int, u32, int);
@@ -3160,6 +3202,8 @@ struct ixgbe_phy_operations {
 	s32 (*reset)(struct ixgbe_hw *);
 	s32 (*read_reg)(struct ixgbe_hw *, u32, u32, u16 *);
 	s32 (*write_reg)(struct ixgbe_hw *, u32, u32, u16);
+	s32 (*read_reg_mdi)(struct ixgbe_hw *, u32, u32, u16 *);
+	s32 (*write_reg_mdi)(struct ixgbe_hw *, u32, u32, u16);
 	s32 (*setup_link)(struct ixgbe_hw *);
 	s32 (*setup_link_speed)(struct ixgbe_hw *, ixgbe_link_speed, bool);
 	s32 (*check_link)(struct ixgbe_hw *, ixgbe_link_speed *, bool *);
@@ -3232,6 +3276,7 @@ struct ixgbe_phy_info {
 	bool smart_speed_active;
 	bool multispeed_fiber;
 	bool reset_if_overtemp;
+	bool qsfp_shared_i2c_bus;
 };
 
 #include "ixgbe_mbx.h"
