@@ -1542,7 +1542,7 @@ ssize_t blkdev_write_iter(struct kiocb *iocb, struct iov_iter *iter, loff_t pos)
 
 	blk_start_plug(&plug);
 	ret = __generic_file_write_iter(iocb, iter, &iocb->ki_pos);
-	if (ret > 0 || ret == -EIOCBQUEUED) {
+	if (ret > 0) {
 		ssize_t err;
 
 		err = generic_write_sync(file, pos, ret);
