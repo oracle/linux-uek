@@ -85,14 +85,6 @@ xfs_destroy_ioend(
 		bh->b_end_io(bh, !ioend->io_error);
 	}
 
-	if (ioend->io_iocb) {
-		inode_dio_done(ioend->io_inode);
-		if (ioend->io_isasync) {
-			aio_complete(ioend->io_iocb, ioend->io_error ?
-					ioend->io_error : ioend->io_result, 0);
-		}
-	}
-
 	mempool_free(ioend, xfs_ioend_pool);
 }
 
@@ -280,7 +272,6 @@ xfs_alloc_ioend(
 	 * all the I/O from calling the completion routine too early.
 	 */
 	atomic_set(&ioend->io_remaining, 1);
-	ioend->io_isasync = 0;
 	ioend->io_isdirect = 0;
 	ioend->io_error = 0;
 	ioend->io_list = NULL;
@@ -290,8 +281,6 @@ xfs_alloc_ioend(
 	ioend->io_buffer_tail = NULL;
 	ioend->io_offset = 0;
 	ioend->io_size = 0;
-	ioend->io_iocb = NULL;
-	ioend->io_result = 0;
 	ioend->io_append_trans = NULL;
 
 	INIT_WORK(&ioend->io_work, xfs_end_io);
@@ -1289,8 +1278,10 @@ __xfs_get_blocks(
 		if (create || !ISUNWRITTEN(&imap))
 			xfs_map_buffer(inode, bh_result, &imap, offset);
 		if (create && ISUNWRITTEN(&imap)) {
-			if (direct)
+			if (direct) {
 				bh_result->b_private = inode;
+				set_buffer_defer_completion(bh_result);
+			}
 			set_buffer_unwritten(bh_result);
 		}
 	}
@@ -1387,9 +1378,7 @@ xfs_end_io_direct_write(
 	struct kiocb		*iocb,
 	loff_t			offset,
 	ssize_t			size,
-	void			*private,
-	int			ret,
-	bool			is_async)
+	void			*private)
 {
 	struct xfs_ioend	*ioend = iocb->private;
 
@@ -1411,17 +1400,10 @@ xfs_end_io_direct_write(
 
 	ioend->io_offset = offset;
 	ioend->io_size = size;
-	ioend->io_iocb = iocb;
-	ioend->io_result = ret;
 	if (private && size > 0)
 		ioend->io_type = XFS_IO_UNWRITTEN;
 
-	if (is_async) {
-		ioend->io_isasync = 1;
-		xfs_finish_ioend(ioend);
-	} else {
-		xfs_finish_ioend_sync(ioend);
-	}
+	xfs_finish_ioend_sync(ioend);
 }
 
 STATIC ssize_t
