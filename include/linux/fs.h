@@ -63,7 +63,8 @@ struct buffer_head;
 typedef int (get_block_t)(struct inode *inode, sector_t iblock,
 			struct buffer_head *bh_result, int create);
 typedef void (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
-			ssize_t bytes, void *private);
+			ssize_t bytes, void *private, int ret_ignored,
+			bool is_async_ignored);
 
 #define MAY_EXEC		0x00000001
 #define MAY_WRITE		0x00000002
@@ -1412,10 +1413,20 @@ struct super_block {
 
 	/* Being remounted read-only */
 	int s_readonly_remount;
+};
+
+/* Tack your extra super_block fields on through here. */
+struct super_block_v2 {
+	struct super_block sb;
 
 	/* AIO completions deferred from interrupt context */
 	struct workqueue_struct *s_dio_done_wq;
 };
+
+static inline struct super_block_v2 *extract_super_v2(struct super_block *sbp)
+{
+	return container_of(sbp, struct super_block_v2, sb);
+}
 
 /* superblock cache pruning functions */
 extern void prune_icache_sb(struct super_block *sb, int nr_to_scan);
