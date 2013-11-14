@@ -1202,7 +1202,7 @@ static void ib_sa_add_one(struct ib_device *device)
 
 	INIT_IB_EVENT_HANDLER(&sa_dev->event_handler, device, ib_sa_event);
 	if (ib_register_event_handler(&sa_dev->event_handler))
-		goto err;
+		goto reg_err;
 
 	for (i = 0; i <= e - s; ++i)
 		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND)
@@ -1210,9 +1210,13 @@ static void ib_sa_add_one(struct ib_device *device)
 
 	return;
 
+reg_err:
+	ib_set_client_data(device, &sa_client, NULL);
+	i = e - s;
 err:
 	for (; i >= 0; --i)
-		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND)
+		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND &&
+		    !IS_ERR(sa_dev->port[i].agent))
 			ib_unregister_mad_agent(sa_dev->port[i].agent);
 
 	kfree(sa_dev);
