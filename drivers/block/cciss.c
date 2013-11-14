@@ -54,7 +54,6 @@
 #include <linux/scatterlist.h>
 #include "cciss_cmd.h"
 #include "cciss.h"
-#include "cciss_kernel_compat.h"
 #include <linux/cciss_ioctl.h>
 
 #define CCISS_DRIVER_VERSION(maj,min,submin) ((maj<<16)|(min<<8)|(submin))
@@ -86,6 +85,10 @@ MODULE_PARM_DESC(cciss_simple_mode,
 #ifndef PCI_DEVICE_ID_HP_CISSF
 #define PCI_DEVICE_ID_HP_CISSF 0x323B
 #endif
+
+#  define SA_CONTROLLERS_GEN8 0
+#  define SA_CONTROLLERS_GEN6 0
+#  define SA_CONTROLLERS_LEGACY 1
 
 /* define the PCI info for the cards we can control */
 static const struct pci_device_id cciss_pci_device_id[] = {
@@ -203,10 +206,8 @@ static int cciss_open(struct block_device *bdev, fmode_t mode);
 static int cciss_release(struct gendisk *disk, fmode_t mode);
 static int cciss_ioctl(struct block_device *bdev, fmode_t mode,
 		       unsigned int cmd, unsigned long arg);
-#if defined (CONFIG_COMPAT) || !KFEATURE_HAS_LOCKED_IOCTL
 static int do_ioctl(struct block_device *bdev, fmode_t mode,
 		    unsigned cmd, unsigned long arg);
-#endif
 static int cciss_getgeo(struct block_device *bdev, struct hd_geometry *geo);
 
 static int cciss_revalidate(struct gendisk *disk);
@@ -275,7 +276,7 @@ static const struct block_device_operations cciss_fops = {
 	.owner = THIS_MODULE,
 	.open = cciss_open,
 	.release = cciss_release,
-	SET_IOCTL_FUNCTION(cciss_ioctl, do_ioctl)
+	.ioctl = do_ioctl,
 	.getgeo = cciss_getgeo,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl = cciss_compat_ioctl,
@@ -1174,22 +1175,13 @@ static int cciss_release(struct gendisk *disk, fmode_t mode)
 	return 0;
 }
 
-/*
- * This area could use some work to make it easier to understand.
- */
-#if defined (CONFIG_COMPAT) || !KFEATURE_HAS_LOCKED_IOCTL
-
 static int do_ioctl(struct block_device *bdev, fmode_t mode,
 		    unsigned cmd, unsigned long arg)
 {
 	int ret;
-	lock_kernel();
 	ret = cciss_ioctl(bdev, mode, cmd, arg);
-	unlock_kernel();
 	return ret;
 }
-
-#endif
 
 #ifdef CONFIG_COMPAT
 
@@ -3339,13 +3331,7 @@ static void do_cciss_request(struct request_queue *q)
 	int sg_index = 0;
 	int chained = 0;
 
-	/* We call start_io here in case there is a command waiting on the
-	 * queue that has not been sent.
-	 */
-	if (BLK_QUEUE_PLUGGED(q))
-		goto startio;
-
-      queue:
+queue:
 	creq = blk_peek_request(q);
 	if (!creq)
 		goto startio;

@@ -62,8 +62,9 @@ static int cciss_scsi_proc_info(
 		int length, 	   /* length of data in buffer */
 		int func);	   /* 0 == read, 1 == write */
 
-DECLARE_QUEUECOMMAND(cciss_scsi_queue_command);
-DECLARE_QUEUECOMMAND_WRAPPER(cciss_scsi_queue_command);
+static int cciss_scsi_queue_command_lck(struct scsi_cmnd *cmd,
+	void (*done)(struct scsi_cmnd *));
+static DEF_SCSI_QCMD(cciss_scsi_queue_command);
 static int cciss_eh_device_reset_handler(struct scsi_cmnd *);
 static int cciss_eh_abort_handler(struct scsi_cmnd *);
 
@@ -1417,7 +1418,8 @@ static void cciss_scatter_gather(ctlr_info_t *h, CommandList_struct *c,
 	return;
 }
 
-DECLARE_QUEUECOMMAND(cciss_scsi_queue_command)
+static int cciss_scsi_queue_command_lck(struct scsi_cmnd *cmd,
+	void (*done)(struct scsi_cmnd *))
 {
 	ctlr_info_t *h;
 	int rc;
