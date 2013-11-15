@@ -1012,8 +1012,9 @@ int mlx4_qp_attach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 	if (err)
 		goto out;
 
+	/* if !link, still add the new entry. */
 	if (!link)
-		goto out;
+		goto skip_link;
 
 	err = mlx4_READ_ENTRY(dev, prev, mailbox);
 	if (err)
@@ -1025,6 +1026,7 @@ int mlx4_qp_attach_common(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 	if (err)
 		goto out;
 
+skip_link:
 	if (prot == MLX4_PROT_ETH) {
 		/* manage the steering entry for promisc mode */
 		if (new_entry)
@@ -1237,6 +1239,9 @@ int mlx4_multicast_attach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 			  u8 port, int block_mcast_loopback,
 			  enum mlx4_protocol prot, u64 *reg_id)
 {
+	enum mlx4_steer_type steer;
+	steer = (is_valid_ether_addr(&gid[10])) ? MLX4_UC_STEER : MLX4_MC_STEER;
+
 	switch (dev->caps.steering_mode) {
 	case MLX4_STEERING_MODE_A0:
 		if (prot == MLX4_PROT_ETH)
@@ -1244,7 +1249,7 @@ int mlx4_multicast_attach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 
 	case MLX4_STEERING_MODE_B0:
 		if (prot == MLX4_PROT_ETH)
-			gid[7] |= (MLX4_MC_STEER << 1);
+			gid[7] |= (steer << 1);
 
 		if (mlx4_is_mfunc(dev))
 			return mlx4_QP_ATTACH(dev, qp, gid, 1,
@@ -1266,6 +1271,9 @@ EXPORT_SYMBOL_GPL(mlx4_multicast_attach);
 int mlx4_multicast_detach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 			  enum mlx4_protocol prot, u64 reg_id)
 {
+	enum mlx4_steer_type steer;
+	steer = (is_valid_ether_addr(&gid[10])) ? MLX4_UC_STEER : MLX4_MC_STEER;
+
 	switch (dev->caps.steering_mode) {
 	case MLX4_STEERING_MODE_A0:
 		if (prot == MLX4_PROT_ETH)
@@ -1273,7 +1281,7 @@ int mlx4_multicast_detach(struct mlx4_dev *dev, struct mlx4_qp *qp, u8 gid[16],
 
 	case MLX4_STEERING_MODE_B0:
 		if (prot == MLX4_PROT_ETH)
-			gid[7] |= (MLX4_MC_STEER << 1);
+			gid[7] |= (steer << 1);
 
 		if (mlx4_is_mfunc(dev))
 			return mlx4_QP_ATTACH(dev, qp, gid, 0, 0, prot);

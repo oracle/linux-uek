@@ -131,19 +131,26 @@ static union ib_gid zgid;
 
 static int check_flow_steering_support(struct mlx4_dev *dev)
 {
+	int eth_num_ports = 0;
 	int ib_num_ports = 0;
-	int i;
+	int dmfs = dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED;
 
-	mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB)
-		ib_num_ports++;
-	if (dev->caps.steering_mode == MLX4_STEERING_MODE_DEVICE_MANAGED) {
-		if (!ib_num_ports ||
-		    (ib_num_ports && !mlx4_is_mfunc(dev)))
-			return 1;
-		if (ib_num_ports && mlx4_is_mfunc(dev))
+	if (dmfs) {
+		int i;
+		mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_ETH)
+			eth_num_ports++;
+		mlx4_foreach_port(i, dev, MLX4_PORT_TYPE_IB)
+			ib_num_ports++;
+		dmfs &= (!ib_num_ports ||
+			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_DMFS_IPOIB)) &&
+			(!eth_num_ports ||
+			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_FS_EN));
+		if (ib_num_ports && mlx4_is_mfunc(dev)) {
 			pr_warn("Device managed flow steering is unavailable for IB port in multifunction env.\n");
+			dmfs = 0;
+		}
 	}
-	return 0;
+	return dmfs;
 }
 
 static int mlx4_ib_query_device(struct ib_device *ibdev,
@@ -1024,18 +1031,14 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 		       ETH_ALEN);
 		memcpy(mlx4_spec->eth.dst_mac_msk, ib_spec->eth.mask.dst_mac,
 		       ETH_ALEN);
-		mlx4_spec->eth.vlan_tag =
-			cpu_to_be16(ib_spec->eth.val.vlan_tag);
-		mlx4_spec->eth.vlan_tag_msk =
-			cpu_to_be16(ib_spec->eth.mask.vlan_tag);
+		mlx4_spec->eth.vlan_tag = ib_spec->eth.val.vlan_tag;
+		mlx4_spec->eth.vlan_tag_msk = ib_spec->eth.mask.vlan_tag;
 		break;
 
 	case IB_FLOW_SPEC_IB:
 		type = MLX4_NET_TRANS_RULE_ID_IB;
-		mlx4_spec->ib.l3_qpn =
-			cpu_to_be32(ib_spec->ib.val.l3_type_qpn);
-		mlx4_spec->ib.qpn_mask =
-			cpu_to_be32(ib_spec->ib.mask.l3_type_qpn);
+		mlx4_spec->ib.l3_qpn = ib_spec->ib.val.l3_type_qpn;
+		mlx4_spec->ib.qpn_mask = ib_spec->ib.mask.l3_type_qpn;
 		memcpy(&mlx4_spec->ib.dst_gid, ib_spec->ib.val.dst_gid, 16);
 		memcpy(&mlx4_spec->ib.dst_gid_msk,
 		       ib_spec->ib.mask.dst_gid, 16);
@@ -1043,13 +1046,10 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 
 	case IB_FLOW_SPEC_IPV4:
 		type = MLX4_NET_TRANS_RULE_ID_IPV4;
-		mlx4_spec->ipv4.src_ip = cpu_to_be32(ib_spec->ipv4.val.src_ip);
-		mlx4_spec->ipv4.src_ip_msk =
-			cpu_to_be32(ib_spec->ipv4.mask.src_ip);
-		mlx4_spec->ipv4.dst_ip =
-			cpu_to_be32(ib_spec->ipv4.val.dst_ip);
-		mlx4_spec->ipv4.dst_ip_msk =
-			cpu_to_be32(ib_spec->ipv4.mask.dst_ip);
+		mlx4_spec->ipv4.src_ip = ib_spec->ipv4.val.src_ip;
+		mlx4_spec->ipv4.src_ip_msk = ib_spec->ipv4.mask.src_ip;
+		mlx4_spec->ipv4.dst_ip = ib_spec->ipv4.val.dst_ip;
+		mlx4_spec->ipv4.dst_ip_msk = ib_spec->ipv4.mask.dst_ip;
 		break;
 
 	case IB_FLOW_SPEC_TCP:
@@ -1057,14 +1057,12 @@ static int parse_flow_attr(struct mlx4_dev *dev,
 		type = ib_spec->type == IB_FLOW_SPEC_TCP ?
 					MLX4_NET_TRANS_RULE_ID_TCP :
 					MLX4_NET_TRANS_RULE_ID_UDP;
-		mlx4_spec->tcp_udp.dst_port =
-			cpu_to_be16(ib_spec->tcp_udp.val.dst_port);
+		mlx4_spec->tcp_udp.dst_port = ib_spec->tcp_udp.val.dst_port;
 		mlx4_spec->tcp_udp.dst_port_msk =
-			cpu_to_be16(ib_spec->tcp_udp.mask.dst_port);
-		mlx4_spec->tcp_udp.src_port =
-			cpu_to_be16(ib_spec->tcp_udp.val.src_port);
+			ib_spec->tcp_udp.mask.dst_port;
+		mlx4_spec->tcp_udp.src_port = ib_spec->tcp_udp.val.src_port;
 		mlx4_spec->tcp_udp.src_port_msk =
-			cpu_to_be16(ib_spec->tcp_udp.mask.src_port);
+			ib_spec->tcp_udp.mask.src_port;
 		break;
 
 	default:
@@ -1167,14 +1165,13 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 				    int domain)
 {
 	int err = 0, i = 0;
-	struct ib_flow *flow_id = NULL;
-	struct mlx4_flow_handle *flow_handle;
+	struct mlx4_ib_flow *mflow;
 	enum mlx4_net_trans_promisc_mode type[2];
+
 	memset(type, 0, sizeof(type));
 
-	flow_id = kzalloc(sizeof(struct ib_flow), GFP_KERNEL);
-	flow_handle = kzalloc(sizeof(struct mlx4_flow_handle), GFP_KERNEL);
-	if (!flow_id || !flow_handle) {
+	mflow = kzalloc(sizeof(struct mlx4_ib_flow), GFP_KERNEL);
+	if (!mflow) {
 		err = -ENOMEM;
 		goto err_free;
 	}
@@ -1204,16 +1201,16 @@ struct ib_flow *mlx4_ib_create_flow(struct ib_qp *qp,
 
 	while (i < ARRAY_SIZE(type) && type[i]) {
 		err = __mlx4_ib_create_flow(qp, flow_attr, domain, type[i],
-					    &flow_handle->reg_id[i]);
+					    &mflow->reg_id[i]);
 		if (err)
 			goto err_free;
 		i++;
 	}
-	flow_id->flow_context = flow_handle;
-	return flow_id;
+
+	return &mflow->ibflow;
+
 err_free:
-	kfree(flow_handle);
-	kfree(flow_id);
+	kfree(mflow);
 	return ERR_PTR(err);
 }
 
@@ -1222,17 +1219,16 @@ int mlx4_ib_destroy_flow(struct ib_flow *flow_id)
 	int err, ret = 0;
 	int i = 0;
 	struct mlx4_ib_dev *mdev = to_mdev(flow_id->qp->device);
-	struct mlx4_flow_handle *flow_handle;
+	struct mlx4_ib_flow *mflow = to_mflow(flow_id);
 
-	flow_handle = flow_id->flow_context;
-	while (i < ARRAY_SIZE(flow_handle->reg_id) && flow_handle->reg_id[i]) {
-		err = __mlx4_ib_destroy_flow(mdev->dev, flow_handle->reg_id[i]);
+	while (i < ARRAY_SIZE(mflow->reg_id) && mflow->reg_id[i]) {
+		err = __mlx4_ib_destroy_flow(mdev->dev, mflow->reg_id[i]);
 		if (err)
 			ret = err;
 		i++;
 	}
-	kfree(flow_id->flow_context);
-	kfree(flow_id);
+
+	kfree(mflow);
 	return ret;
 }
 
@@ -1251,10 +1247,16 @@ static int mlx4_ib_mcg_attach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 			return -ENOMEM;
 	}
 
+	if (mdev->dev->caps.steering_mode == MLX4_STEERING_MODE_B0 &&
+	    ibqp->qp_type == IB_QPT_RAW_PACKET)
+		gid->raw[5] = mqp->port;
+
 	err = mlx4_multicast_attach(mdev->dev, &mqp->mqp, gid->raw, mqp->port,
 				    !!(mqp->flags &
 				       MLX4_IB_QP_BLOCK_MULTICAST_LOOPBACK),
-				    MLX4_PROT_IB_IPV6, &reg_id);
+				    (ibqp->qp_type == IB_QPT_RAW_PACKET) ?
+					MLX4_PROT_ETH : MLX4_PROT_IB_IPV6,
+				    &reg_id);
 	if (err)
 		goto err_malloc;
 
@@ -1326,8 +1328,14 @@ static int mlx4_ib_mcg_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 		kfree(ib_steering);
 	}
 
+	if (mdev->dev->caps.steering_mode == MLX4_STEERING_MODE_B0 &&
+	    ibqp->qp_type == IB_QPT_RAW_PACKET)
+		gid->raw[5] = mqp->port;
+
 	err = mlx4_multicast_detach(mdev->dev, &mqp->mqp, gid->raw,
-				    MLX4_PROT_IB_IPV6, reg_id);
+				    (ibqp->qp_type == IB_QPT_RAW_PACKET) ?
+				    MLX4_PROT_ETH : MLX4_PROT_IB_IPV6,
+				    reg_id);
 	if (err)
 		return err;
 
@@ -1531,7 +1539,13 @@ static int update_ipv6_gids(struct mlx4_ib_dev *dev, int port, int clear)
 
 	rcu_read_lock();
 	for_each_netdev_rcu(&init_net, tmp) {
-		if (ndev && (tmp == ndev || rdma_vlan_dev_real_dev(tmp) == ndev)) {
+		if (!ndev)
+			break;
+		if (tmp == ndev ||
+		    rdma_vlan_dev_real_dev(tmp) == ndev ||
+		    (dev->iboe.masters[port - 1] &&
+		     rdma_vlan_dev_real_dev(tmp) ==
+		     dev->iboe.masters[port - 1])) {
 			gid.global.subnet_prefix = cpu_to_be64(0xfe80000000000000LL);
 			vid = rdma_vlan_dev_vlan_id(tmp);
 			mlx4_addrconf_ifid_eui48(&gid.raw[8], vid, ndev);
@@ -1596,8 +1610,9 @@ static void handle_en_event(struct mlx4_ib_dev *dev, int port, unsigned long eve
 		break;
 
 	case NETDEV_DOWN:
+	case NETDEV_UNREGISTER:
 		update_ipv6_gids(dev, port, 1);
-		dev->iboe.netdevs[port - 1] = NULL;
+		dev->iboe.masters[port - 1] = NULL;
 	}
 }
 
@@ -1639,12 +1654,43 @@ static int mlx4_ib_netdev_event(struct notifier_block *this, unsigned long event
 		}
 	}
 
-	if (dev == iboe->netdevs[0] ||
-	    (iboe->netdevs[0] && rdma_vlan_dev_real_dev(dev) == iboe->netdevs[0]))
+	if (iboe->netdevs[0] && netif_is_bond_slave(iboe->netdevs[0])) {
+		if (!iboe->masters[0] && iboe->netdevs[0]->master) {
+			iboe->masters[0] = iboe->netdevs[0]->master;
+			netdev_added(ibdev, 1);
+		}
+
+		if (iboe->masters[0] && !iboe->netdevs[0]->master) {
+			iboe->masters[0] = NULL;
+			netdev_removed(ibdev, 1);
+		}
+	}
+
+	if (iboe->netdevs[1] && netif_is_bond_slave(iboe->netdevs[1])) {
+		if (!iboe->masters[1] && iboe->netdevs[1]->master) {
+			iboe->masters[1] = iboe->netdevs[1]->master;
+			netdev_added(ibdev, 2);
+		}
+		if (iboe->masters[1] && !iboe->netdevs[1]->master) {
+			iboe->masters[1] = NULL;
+			netdev_removed(ibdev, 2);
+		}
+	}
+
+	if (iboe->netdevs[0])
 		handle_en_event(ibdev, 1, event);
-	else if (dev == iboe->netdevs[1]
-		 || (iboe->netdevs[1] && rdma_vlan_dev_real_dev(dev) == iboe->netdevs[1]))
+	if (iboe->netdevs[1])
 		handle_en_event(ibdev, 2, event);
+
+	if (event == NETDEV_DOWN) {
+		/* Only if parent was changed set as NULL, otherwise
+		*   vlan operations will cause port to be seen as down.
+		*/
+		if (dev == iboe->netdevs[0])
+			iboe->netdevs[0] = NULL;
+		else if (dev == iboe->netdevs[1])
+			iboe->netdevs[1] = NULL;
+	}
 
 	spin_unlock(&iboe->lock);
 

@@ -538,6 +538,7 @@ struct mlx4_mfunc_master_ctx {
 	struct mlx4_resource_tracker res_tracker;
 	struct workqueue_struct *comm_wq;
 	struct work_struct	comm_work;
+	struct work_struct	arm_comm_work;
 	struct work_struct	slave_event_work;
 	struct work_struct	slave_flr_event_work;
 	spinlock_t		slave_state_lock;
@@ -941,6 +942,7 @@ u64 mlx4_make_profile(struct mlx4_dev *dev,
 		      struct mlx4_dev_cap *dev_cap,
 		      struct mlx4_init_hca_param *init_hca);
 void mlx4_master_comm_channel(struct work_struct *work);
+void mlx4_master_arm_comm_channel(struct work_struct *work);
 void mlx4_gen_slave_eqe(struct work_struct *work);
 void mlx4_master_handle_slave_flr(struct work_struct *work);
 
@@ -1224,6 +1226,11 @@ int mlx4_QP_FLOW_STEERING_DETACH_wrapper(struct mlx4_dev *dev, int slave,
 					 struct mlx4_cmd_mailbox *inbox,
 					 struct mlx4_cmd_mailbox *outbox,
 					 struct mlx4_cmd_info *cmd);
+int mlx4_MOD_STAT_CFG_wrapper(struct mlx4_dev *dev, int slave,
+			  struct mlx4_vhcr *vhcr,
+			  struct mlx4_cmd_mailbox *inbox,
+			  struct mlx4_cmd_mailbox *outbox,
+			  struct mlx4_cmd_info *cmd);
 
 int mlx4_get_mgm_entry_size(struct mlx4_dev *dev);
 int mlx4_get_qp_per_mgm(struct mlx4_dev *dev);

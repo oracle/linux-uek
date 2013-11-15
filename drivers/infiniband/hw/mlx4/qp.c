@@ -999,11 +999,14 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (init_attr->create_flags & IB_QP_CREATE_IPOIB_UD_LSO)
 			qp->flags |= MLX4_IB_QP_LSO;
 
-		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP &&
-		    dev->dev->caps.steering_mode ==
-		    MLX4_STEERING_MODE_DEVICE_MANAGED &&
-		    !mlx4_is_mfunc(dev->dev))
-			qp->flags |= MLX4_IB_QP_NETIF;
+		if (init_attr->create_flags & IB_QP_CREATE_NETIF_QP) {
+			if (dev->dev->caps.steering_mode ==
+			    MLX4_STEERING_MODE_DEVICE_MANAGED &&
+			    !mlx4_is_mfunc(dev->dev))
+				qp->flags |= MLX4_IB_QP_NETIF;
+			else
+				goto err;
+		}
 
 		err = set_kernel_sq_size(dev, &init_attr->cap, qp_type, qp);
 		if (err)

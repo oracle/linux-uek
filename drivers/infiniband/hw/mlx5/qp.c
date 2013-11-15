@@ -226,7 +226,7 @@ static int set_rq_size(struct mlx5_ib_dev *dev, struct ib_qp_cap *cap,
 
 static int sq_overhead(enum ib_qp_type qp_type)
 {
-	int size;
+	int size = 0;
 	int qpt = qp_type;
 
 	switch (qpt) {
@@ -308,6 +308,11 @@ static int calc_sq_size(struct mlx5_ib_dev *dev, struct ib_qp_init_attr *attr,
 
 	wq_size = roundup_pow_of_two(attr->cap.max_send_wr * wqe_size);
 	qp->sq.wqe_cnt = wq_size / MLX5_SEND_WQE_BB;
+	if (qp->sq.wqe_cnt > dev->mdev.caps.max_wqes) {
+		mlx5_ib_dbg(dev, "wqe count exceeds limits %d\n",
+			    qp->sq.wqe_cnt);
+		return -ENOMEM;
+	}
 	qp->sq.wqe_shift = ilog2(MLX5_SEND_WQE_BB);
 	qp->sq.max_gs = attr->cap.max_send_sge;
 	qp->sq.max_post = wq_size / wqe_size;
@@ -1336,6 +1341,16 @@ static enum mlx5_qp_optpar opt_mask[MLX5_QP_NUM_STATE][MLX5_QP_NUM_STATE][MLX5_Q
 					  MLX5_QP_OPTPAR_Q_KEY,
 			[MLX5_QP_ST_MLX] = MLX5_QP_OPTPAR_PKEY_INDEX	|
 					   MLX5_QP_OPTPAR_Q_KEY,
+			[MLX5_QP_ST_XRC] = MLX5_QP_OPTPAR_ALT_ADDR_PATH |
+					  MLX5_QP_OPTPAR_RRE            |
+					  MLX5_QP_OPTPAR_RAE            |
+					  MLX5_QP_OPTPAR_RWE            |
+					  MLX5_QP_OPTPAR_PKEY_INDEX,
+			[MLX5_QP_ST_DC] = MLX5_QP_OPTPAR_ALT_ADDR_PATH	|
+					  MLX5_QP_OPTPAR_RRE            |
+					  MLX5_QP_OPTPAR_RAE            |
+					  MLX5_QP_OPTPAR_RWE            |
+					  MLX5_QP_OPTPAR_PKEY_INDEX,
 		},
 	},
 	[MLX5_QP_STATE_RTR] = {
@@ -1370,6 +1385,15 @@ static enum mlx5_qp_optpar opt_mask[MLX5_QP_NUM_STATE][MLX5_QP_NUM_STATE][MLX5_Q
 		[MLX5_QP_STATE_RTS] = {
 			[MLX5_QP_ST_UD]	 = MLX5_QP_OPTPAR_Q_KEY,
 			[MLX5_QP_ST_MLX] = MLX5_QP_OPTPAR_Q_KEY,
+			[MLX5_QP_ST_UC]	 = MLX5_QP_OPTPAR_RWE,
+			[MLX5_QP_ST_RC]	 = MLX5_QP_OPTPAR_RNR_TIMEOUT	|
+					   MLX5_QP_OPTPAR_RWE		|
+					   MLX5_QP_OPTPAR_RAE		|
+					   MLX5_QP_OPTPAR_RRE,
+			[MLX5_QP_ST_DC]	 = MLX5_QP_OPTPAR_RNR_TIMEOUT	|
+					   MLX5_QP_OPTPAR_RWE		|
+					   MLX5_QP_OPTPAR_RAE		|
+					   MLX5_QP_OPTPAR_RRE,
 		},
 	},
 };
@@ -1718,29 +1742,6 @@ static __always_inline void set_raddr_seg(struct mlx5_wqe_raddr_seg *rseg,
 	rseg->reserved = 0;
 }
 
-static void set_atomic_seg(struct mlx5_wqe_atomic_seg *aseg, struct ib_send_wr *wr)
-{
-	if (wr->opcode == IB_WR_ATOMIC_CMP_AND_SWP) {
-		aseg->swap_add = cpu_to_be64(wr->wr.atomic.swap);
-		aseg->compare  = cpu_to_be64(wr->wr.atomic.compare_add);
-	} else if (wr->opcode == IB_WR_MASKED_ATOMIC_FETCH_AND_ADD) {
-		aseg->swap_add = cpu_to_be64(wr->wr.atomic.compare_add);
-		aseg->compare  = cpu_to_be64(wr->wr.atomic.compare_add_mask);
-	} else {
-		aseg->swap_add = cpu_to_be64(wr->wr.atomic.compare_add);
-		aseg->compare  = 0;
-	}
-}
-
-static void set_masked_atomic_seg(struct mlx5_wqe_masked_atomic_seg *aseg,
-				  struct ib_send_wr *wr)
-{
-	aseg->swap_add		= cpu_to_be64(wr->wr.atomic.swap);
-	aseg->swap_add_mask	= cpu_to_be64(wr->wr.atomic.swap_mask);
-	aseg->compare		= cpu_to_be64(wr->wr.atomic.compare_add);
-	aseg->compare_mask	= cpu_to_be64(wr->wr.atomic.compare_add_mask);
-}
-
 static void set_datagram_seg(struct mlx5_wqe_datagram_seg *dseg,
 			     struct ib_send_wr *wr)
 {
@@ -1813,6 +1814,7 @@ static void set_reg_umr_segment(struct mlx5_wqe_umr_ctrl_seg *umr,
 			MLX5_MKEY_MASK_PD		|
 			MLX5_MKEY_MASK_LR		|
 			MLX5_MKEY_MASK_LW		|
+			MLX5_MKEY_MASK_KEY		|
 			MLX5_MKEY_MASK_RR		|
 			MLX5_MKEY_MASK_RW		|
 			MLX5_MKEY_MASK_A		|
@@ -1869,7 +1871,8 @@ static void set_reg_mkey_segment(struct mlx5_mkey_seg *seg, struct ib_send_wr *w
 	seg->start_addr = cpu_to_be64(wr->wr.umr.virt_addr);
 	seg->len = cpu_to_be64(wr->wr.umr.length);
 	seg->log2_page_size = wr->wr.umr.page_shift;
-	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
+	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff00 |
+				       mlx5_mkey_variant(wr->wr.umr.mkey));
 }
 
 static void set_frwr_pages(struct mlx5_wqe_data_seg *dseg,
@@ -1982,6 +1985,10 @@ static int set_frwr_li_wr(void **seg, struct ib_send_wr *wr, int *size,
 	if (unlikely((*seg == qp->sq.qend)))
 		*seg = mlx5_get_send_wqe(qp, 0);
 	if (!li) {
+		if (unlikely(wr->wr.fast_reg.page_list_len >
+			     wr->wr.fast_reg.page_list->max_page_list_len))
+			return	-ENOMEM;
+
 		set_frwr_pages(*seg, wr, mdev, pd, writ);
 		*seg += sizeof(struct mlx5_wqe_data_seg);
 		*size += (sizeof(struct mlx5_wqe_data_seg) / 16);
@@ -2131,28 +2138,11 @@ int mlx5_ib_post_send(struct ib_qp *ibqp, struct ib_send_wr *wr,
 
 			case IB_WR_ATOMIC_CMP_AND_SWP:
 			case IB_WR_ATOMIC_FETCH_AND_ADD:
-				set_raddr_seg(seg, wr->wr.atomic.remote_addr,
-					      wr->wr.atomic.rkey);
-				seg  += sizeof(struct mlx5_wqe_raddr_seg);
-
-				set_atomic_seg(seg, wr);
-				seg  += sizeof(struct mlx5_wqe_atomic_seg);
-
-				size += (sizeof(struct mlx5_wqe_raddr_seg) +
-					 sizeof(struct mlx5_wqe_atomic_seg)) / 16;
-				break;
-
 			case IB_WR_MASKED_ATOMIC_CMP_AND_SWP:
-				set_raddr_seg(seg, wr->wr.atomic.remote_addr,
-					      wr->wr.atomic.rkey);
-				seg  += sizeof(struct mlx5_wqe_raddr_seg);
-
-				set_masked_atomic_seg(seg, wr);
-				seg  += sizeof(struct mlx5_wqe_masked_atomic_seg);
-
-				size += (sizeof(struct mlx5_wqe_raddr_seg) +
-					 sizeof(struct mlx5_wqe_masked_atomic_seg)) / 16;
-				break;
+				mlx5_ib_warn(dev, "Atomic operations are not supported yet\n");
+				err = -ENOSYS;
+				*bad_wr = wr;
+				goto out;
 
 			case IB_WR_LOCAL_INV:
 				next_fence = MLX5_FENCE_MODE_INITIATOR_SMALL;

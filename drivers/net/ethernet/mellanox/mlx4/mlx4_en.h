@@ -56,7 +56,7 @@
 #include "en_port.h"
 
 #define DRV_NAME	"mlx4_en"
-#define DRV_VERSION	"2.1.4"
+#define DRV_VERSION	"2.1.8"
 #define DRV_RELDATE	__DATE__
 
 #define MLX4_EN_MSG_LEVEL	(NETIF_MSG_LINK | NETIF_MSG_IFDOWN)
@@ -83,7 +83,7 @@
 #define MLX4_EN_FILTER_HASH_SHIFT 4
 #define MLX4_EN_FILTER_EXPIRY_QUOTA 60
 
-#ifdef CONFIG_NET_LL_RX_POLL
+#ifdef CONFIG_NET_RX_BUSY_POLL
 #define LL_EXTENDED_STATS
 #endif
 
@@ -121,7 +121,7 @@ enum mlx4_en_alloc_type {
 #define MLX4_EN_MIN_RX_SIZE	(4096 / TXBB_SIZE)
 #define MLX4_EN_MIN_TX_SIZE	(4096 / TXBB_SIZE)
 
-#define MLX4_EN_SMALL_PKT_SIZE		128
+#define MLX4_EN_SMALL_PKT_SIZE		64
 
 #define MLX4_EN_MAX_TX_RING_P_UP	32
 #define MLX4_EN_NUM_UP			8
@@ -338,7 +338,7 @@ struct mlx4_en_cq {
 	u32 tot_rx;
 	u32 tot_tx;
 
-#ifdef CONFIG_NET_LL_RX_POLL
+#ifdef CONFIG_NET_RX_BUSY_POLL
 	unsigned int state;
 #define MLX4_EN_CQ_STATEIDLE        0
 #define MLX4_EN_CQ_STATENAPI     1    /* NAPI owns this CQ */
@@ -349,13 +349,12 @@ struct mlx4_en_cq {
 #define CQ_YIELD (MLX4_EN_CQ_STATENAPI_YIELD | MLX4_EN_CQ_STATEPOLL_YIELD)
 #define CQ_USER_PEND (MLX4_EN_CQ_STATEPOLL | MLX4_EN_CQ_STATEPOLL_YIELD)
 	spinlock_t poll_lock; /* protects from LLS/napi conflicts */
-#endif  /* CONFIG_NET_LL_RX_POLL */
+#endif  /* CONFIG_NET_RX_BUSY_POLL */
 };
 
 struct mlx4_en_port_profile {
 	u32 flags;
 	u32 tx_ring_num;
-	u32 tx_queue_num;
 	u32 rx_ring_num;
 	u32 tx_ring_size;
 	u32 rx_ring_size;
@@ -490,21 +489,6 @@ enum {
 #define MLX4_EN_MAC_HASH_SIZE (1 << BITS_PER_BYTE)
 #define MLX4_EN_MAC_HASH_IDX 5
 
-struct mlx4_en_tx_hash_entry {
-	u8		cnt;
-	unsigned int	small_pkts;
-	unsigned int	big_pkts;
-	unsigned int	ring;
-};
-
-struct mlx4_en_tx_queue {
-#define MLX4_EN_RINGS_PER_TX_QUEUE	2
-#define MLX4_EN_TX_HASH_SIZE		128
-#define MLX4_EN_TX_HASH_MASK		(MLX4_EN_TX_HASH_SIZE - 1)
-	unsigned int			tx_rings[MLX4_EN_RINGS_PER_TX_QUEUE];
-	struct mlx4_en_tx_hash_entry	tx_hash[MLX4_EN_TX_HASH_SIZE];
-};
-
 struct mlx4_en_priv {
 	struct mlx4_en_dev *mdev;
 	struct mlx4_en_port_profile *prof;
@@ -556,7 +540,6 @@ struct mlx4_en_priv {
 	u32 flags;
 	u8 num_tx_rings_p_up;
 	u32 tx_ring_num;
-	u32 tx_queue_num;
 	u32 rx_ring_num;
 	u32 rx_skb_size;
 	u16 rx_alloc_order;
@@ -565,7 +548,6 @@ struct mlx4_en_priv {
 	u16 log_rx_info;
 
 	struct mlx4_en_tx_ring **tx_ring;
-	struct mlx4_en_tx_queue *tx_queue;
 	struct mlx4_en_rx_ring *rx_ring[MAX_RX_RINGS];
 	struct mlx4_en_cq **tx_cq;
 	struct mlx4_en_cq *rx_cq[MAX_RX_RINGS];
@@ -620,7 +602,7 @@ struct mlx4_mac_entry {
 	struct rcu_head rcu;
 };
 
-#ifdef CONFIG_NET_LL_RX_POLL
+#ifdef CONFIG_NET_RX_BUSY_POLL
 static inline void mlx4_en_cq_init_lock(struct mlx4_en_cq *cq)
 {
 	spin_lock_init(&cq->poll_lock);
@@ -729,7 +711,7 @@ static inline bool mlx4_en_cq_ll_polling(struct mlx4_en_cq *cq)
 {
 	return false;
 }
-#endif /* CONFIG_NET_LL_RX_POLL */
+#endif /* CONFIG_NET_RX_BUSY_POLL */
 
 #define MLX4_EN_WOL_DO_MODIFY (1ULL << 63)
 
@@ -770,7 +752,6 @@ int mlx4_en_activate_tx_ring(struct mlx4_en_priv *priv,
 			     int cq, int user_prio);
 void mlx4_en_deactivate_tx_ring(struct mlx4_en_priv *priv,
 				struct mlx4_en_tx_ring *ring);
-void mlx4_en_create_tx_queues(struct mlx4_en_priv *priv);
 
 int mlx4_en_create_rx_ring(struct mlx4_en_priv *priv,
 			   struct mlx4_en_rx_ring **pring,
@@ -813,6 +794,7 @@ void mlx4_en_unregister_debugfs(void);
 
 #ifdef CONFIG_MLX4_EN_DCB
 extern const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops;
+extern const struct dcbnl_rtnl_ops mlx4_en_dcbnl_pfc_ops;
 #endif
 
 int mlx4_en_setup_tc(struct net_device *dev, u8 up);

@@ -903,10 +903,10 @@ send_using_neigh:
 			goto unref;
 		}
 
-		if (ipoib_cm_up(neigh))
+		if (ipoib_cm_up(neigh)) {
 			ipoib_cm_send(dev, skb, ipoib_cm_get(neigh));
-
-		goto unref;
+			goto unref;
+		}
 	} else if (neigh->ah) {
 		/* in select queue cm was enabled ring is likely wrong */
 		if (IPOIB_CM_SUPPORTED(cb->hwaddr) && priv->num_tx_queues > 1) {
@@ -1330,12 +1330,17 @@ void ipoib_neigh_dtor(struct ipoib_neigh *neigh)
 	struct net_device *dev = neigh->dev;
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct sk_buff *skb;
+
 	if (neigh->ah)
 		ipoib_put_ah(neigh->ah);
+
+	spin_lock_irq(&priv->lock);
 	while ((skb = __skb_dequeue(&neigh->queue))) {
 		++dev->stats.tx_dropped;
 		dev_kfree_skb_any(skb);
 	}
+	spin_unlock_irq(&priv->lock);
+
 	if (ipoib_cm_get(neigh))
 		ipoib_cm_destroy_tx(ipoib_cm_get(neigh));
 	ipoib_dbg(netdev_priv(dev),
@@ -1805,6 +1810,8 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	ASSERT_RTNL();
 
+	ipoib_neigh_hash_uninit(dev);
+
 	ipoib_ib_dev_cleanup(dev);
 
 	/* no more access to rings */
@@ -1820,8 +1827,6 @@ static void ipoib_dev_uninit(struct net_device *dev)
 
 	priv->recv_ring = NULL;
 	priv->send_ring = NULL;
-
-	ipoib_neigh_hash_uninit(dev);
 }
 
 void ipoib_dev_cleanup(struct net_device *dev)
@@ -1835,13 +1840,15 @@ void ipoib_dev_cleanup(struct net_device *dev)
 	ipoib_delete_debug_files(dev);
 
 	/* Delete any child interfaces first */
-	list_for_each_entry_safe(cpriv, tcpriv, &priv->child_intfs, list)
+	list_for_each_entry_safe_reverse(cpriv, tcpriv,
+					 &priv->child_intfs, list)
 		unregister_netdevice_queue(cpriv->dev, &head);
 
 	/*
 	 * the next function calls the ipoib_uninit which calls for
 	 * ipoib_dev_cleanup for each devices at the head list.
 	 */
+
 	unregister_netdevice_many(&head);
 
 	ipoib_dev_uninit(dev);
@@ -2362,7 +2369,7 @@ static int ipoib_get_hca_features(struct ipoib_dev_priv *priv,
 
 	kfree(device_attr);
 
-	priv->tss_qp_num = num_cores;
+	priv->tss_qp_num = min(num_cores, IPOIB_MAX_TX_QUEUES);
 	if (priv->hca_caps & IB_DEVICE_UD_TSS)
 		/* TSS is supported by HW */
 		priv->max_tx_queues = priv->tss_qp_num;

@@ -762,7 +762,6 @@ struct vnic_login {
 
 	/* statistics */
 	struct net_device_stats stats;
-	struct net_device_stats ret_stats;
 	struct vnic_port_stats port_stats;
 
 	/* tasks */

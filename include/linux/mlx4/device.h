@@ -177,7 +177,9 @@ enum {
 	MLX4_DEV_CAP_FLAG2_VLAN_CONTROL		= 1LL <<  5,
 	MLX4_DEV_CAP_FLAG2_UPDATE_QP		= 1LL <<  6,
 	MLX4_DEV_CAP_FLAG2_LB_SRC_CHK		= 1LL <<  7,
-	MLX4_DEV_CAP_FLAG2_TS			= 1LL <<  8,
+	MLX4_DEV_CAP_FLAG2_DMFS_IPOIB		= 1LL <<  8,
+	MLX4_DEV_CAP_FLAG2_ETS_CFG		= 1LL <<  9,
+	MLX4_DEV_CAP_FLAG2_TS                   = 1LL <<  10,
 };
 
 /* bit enums for an 8-bit flags field indicating special use
@@ -1147,10 +1149,6 @@ struct _rule_hw {
 		struct mlx4_net_trans_rule_hw_ipv4 ipv4;
 		struct mlx4_net_trans_rule_hw_tcp_udp tcp_udp;
 	};
-};
-
-struct mlx4_flow_handle {
-	u64 reg_id[2];
 };
 
 int mlx4_flow_steer_promisc_add(struct mlx4_dev *dev, u8 port, u32 qpn,

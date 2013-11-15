@@ -112,7 +112,14 @@ struct res_qp {
 	int			local_qpn;
 	atomic_t		ref_count;
 	u32			qpc_flags;
+	/* saved qp params before VST enforcement in order to restore on VGT */
 	u8			sched_queue;
+	__be32			param3;
+	u8			vlan_control;
+	u8			fvl_rx;
+	u8			pri_path_fl;
+	u8			vlan_index;
+	u8			feup;
 };
 
 enum res_mtt_states {
@@ -372,11 +379,6 @@ static inline void initialize_res_quotas(struct mlx4_dev *dev,
 {
 	res_alloc->guaranteed[vf] = num_instances / (2 * (dev->num_vfs + 1));
 	res_alloc->quota[vf] = (num_instances / 2) + res_alloc->guaranteed[vf];
-
-	/* upstream kernel code required that num_mpts and num_qps be power-of-2 */
-	if (res_type == RES_MPT || res_type == RES_QP)
-		res_alloc->quota[vf] = roundup_pow_of_two(res_alloc->quota[vf]);
-
 	if (vf == mlx4_master_func_num(dev)) {
 		res_alloc->res_free = num_instances;
 		if (res_type == RES_MTT) {
@@ -659,11 +661,6 @@ static int update_vport_qp_param(struct mlx4_dev *dev,
 	}
 
 	if (MLX4_VGT != vp_oper->state.default_vlan) {
-		if (MLX4_QP_ST_RC == qp_type ||
-		    (MLX4_QP_ST_UD == qp_type &&
-		     !mlx4_is_qp_reserved(dev, qpn)))
-			return -EINVAL;
-
 		/* the reserved QPs (special, proxy, tunnel)
 		 * do not operate over vlans
 		 */
@@ -675,15 +672,17 @@ static int update_vport_qp_param(struct mlx4_dev *dev,
 		/* preserve IF_COUNTER flag */
 		qpc->pri_path.vlan_control &=
 			MLX4_VLAN_CTRL_ETH_SRC_CHECK_IF_COUNTER;
-		if (0 != vp_oper->state.default_vlan) {
-			qpc->pri_path.vlan_control |=
-				MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
-				MLX4_VLAN_CTRL_ETH_RX_BLOCK_PRIO_TAGGED |
-				MLX4_VLAN_CTRL_ETH_RX_BLOCK_UNTAGGED;
-		} else { /* priority tagged */
-			qpc->pri_path.vlan_control |=
-				MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
-				MLX4_VLAN_CTRL_ETH_RX_BLOCK_TAGGED;
+		if (MLX4_QP_ST_RC != qp_type) {
+			if (0 != vp_oper->state.default_vlan) {
+				qpc->pri_path.vlan_control |=
+					MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
+					MLX4_VLAN_CTRL_ETH_RX_BLOCK_PRIO_TAGGED |
+					MLX4_VLAN_CTRL_ETH_RX_BLOCK_UNTAGGED;
+			} else { /* priority tagged */
+				qpc->pri_path.vlan_control |=
+					MLX4_VLAN_CTRL_ETH_TX_BLOCK_TAGGED |
+					MLX4_VLAN_CTRL_ETH_RX_BLOCK_TAGGED;
+			}
 		}
 		qpc->pri_path.fvl_rx |= MLX4_FVL_RX_FORCE_ETH_VLAN;
 		qpc->pri_path.vlan_index = vp_oper->vlan_idx;
@@ -2395,7 +2394,8 @@ static int qp_get_mtt_size(struct mlx4_qp_context *qpc)
 	int log_rq_stride = qpc->rq_size_stride & 7;
 	int srq = (be32_to_cpu(qpc->srqn) >> 24) & 1;
 	int rss = (be32_to_cpu(qpc->flags) >> 13) & 1;
-	int xrc = (be32_to_cpu(qpc->local_qpn) >> 23) & 1;
+	u32 ts = (be32_to_cpu(qpc->flags) >> 16) & 0xff;
+	int xrc = (ts == MLX4_QP_ST_XRC) ? 1 : 0;
 	int sq_size;
 	int rq_size;
 	int total_pages;
@@ -2592,6 +2592,12 @@ int mlx4_RST2INIT_QP_wrapper(struct mlx4_dev *dev, int slave,
 		return err;
 	qp->local_qpn = local_qpn;
 	qp->sched_queue = 0;
+	qp->param3 = 0;
+	qp->vlan_control = 0;
+	qp->fvl_rx = 0;
+	qp->pri_path_fl = 0;
+	qp->vlan_index = 0;
+	qp->feup = 0;
 	qp->qpc_flags = be32_to_cpu(qpc->flags);
 
 	err = get_res(dev, slave, mtt_base, RES_MTT, &mtt);
@@ -2909,6 +2915,12 @@ int mlx4_GEN_EQE(struct mlx4_dev *dev, int slave, struct mlx4_eqe *eqe)
 
 	if (!priv->mfunc.master.slave_state)
 		return -EINVAL;
+
+	/* check for slave valid, slave not PF, and slave active */
+	if (slave < 0 || slave >= dev->num_slaves ||
+	    slave == dev->caps.function ||
+	    !priv->mfunc.master.slave_state[slave].active)
+		return 0;
 
 	event_eq = &priv->mfunc.master.slave_state[slave].event_eq[eqe->type];
 
@@ -3350,6 +3362,12 @@ int mlx4_INIT2RTR_QP_wrapper(struct mlx4_dev *dev, int slave,
 	int qpn = vhcr->in_modifier & 0x7fffff;
 	struct res_qp *qp;
 	u8 orig_sched_queue;
+	__be32	orig_param3 = qpc->param3;
+	u8 orig_vlan_control = qpc->pri_path.vlan_control;
+	u8 orig_fvl_rx = qpc->pri_path.fvl_rx;
+	u8 orig_pri_path_fl = qpc->pri_path.fl;
+	u8 orig_vlan_index = qpc->pri_path.vlan_index;
+	u8 orig_feup = qpc->pri_path.feup;
 
 	err = verify_qp_parameters(dev, inbox, QP_TRANS_INIT2RTR, slave);
 	if (err)
@@ -3384,9 +3402,15 @@ out:
 	 * essentially the QOS value provided by the VF. This will be useful
 	 * if we allow dynamic changes from VST back to VGT
 	 */
-	if (!err)
+	if (!err) {
 		qp->sched_queue = orig_sched_queue;
-
+		qp->param3	= orig_param3;
+		qp->vlan_control = orig_vlan_control;
+		qp->fvl_rx	=  orig_fvl_rx;
+		qp->pri_path_fl = orig_pri_path_fl;
+		qp->vlan_index  = orig_vlan_index;
+		qp->feup	= orig_feup;
+	}
 	put_res(dev, slave, qpn, RES_QP);
 	return err;
 }
@@ -4487,13 +4511,20 @@ void mlx4_vf_immed_vlan_work_handler(struct work_struct *_work)
 		&tracker->slave_list[work->slave].res_list[RES_QP];
 	struct res_qp *qp;
 	struct res_qp *tmp;
-	u64 qp_mask = ((1ULL << MLX4_UPD_QP_PATH_MASK_ETH_TX_BLOCK_UNTAGGED) |
+	u64 qp_path_mask_vlan_ctrl =
+		       ((1ULL << MLX4_UPD_QP_PATH_MASK_ETH_TX_BLOCK_UNTAGGED) |
 		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_TX_BLOCK_1P) |
 		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_TX_BLOCK_TAGGED) |
 		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_RX_BLOCK_UNTAGGED) |
 		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_RX_BLOCK_1P) |
-		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_RX_BLOCK_TAGGED) |
-		       (1ULL << MLX4_UPD_QP_PATH_MASK_VLAN_INDEX) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_RX_BLOCK_TAGGED));
+
+	u64 qp_path_mask = ((1ULL << MLX4_UPD_QP_PATH_MASK_VLAN_INDEX) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_FVL) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_CV) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_ETH_HIDE_CQE_VLAN) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_FEUP) |
+		       (1ULL << MLX4_UPD_QP_PATH_MASK_FVL_RX) |
 		       (1ULL << MLX4_UPD_QP_PATH_MASK_SCHED_QUEUE));
 
 	int err;
@@ -4519,9 +4550,7 @@ void mlx4_vf_immed_vlan_work_handler(struct work_struct *_work)
 			MLX4_VLAN_CTRL_ETH_RX_BLOCK_UNTAGGED;
 
 	upd_context = mailbox->buf;
-	upd_context->primary_addr_path_mask = cpu_to_be64(qp_mask);
-	upd_context->qp_context.pri_path.vlan_control = vlan_control;
-	upd_context->qp_context.pri_path.vlan_index = work->vlan_ix;
+	upd_context->qp_mask = cpu_to_be64(MLX4_UPD_QP_MASK_VSD);
 
 	spin_lock_irq(mlx4_tlock(dev));
 	list_for_each_entry_safe(qp, tmp, qp_list, com.list) {
@@ -4539,10 +4568,35 @@ void mlx4_vf_immed_vlan_work_handler(struct work_struct *_work)
 				spin_lock_irq(mlx4_tlock(dev));
 				continue;
 			}
-			upd_context->qp_context.pri_path.sched_queue =
-				qp->sched_queue & 0xC7;
-			upd_context->qp_context.pri_path.sched_queue |=
-				((work->qos & 0x7) << 3);
+			if (MLX4_QP_ST_RC == ((qp->qpc_flags >> 16) & 0xff))
+				upd_context->primary_addr_path_mask = cpu_to_be64(qp_path_mask);
+			else
+				upd_context->primary_addr_path_mask =
+					cpu_to_be64(qp_path_mask | qp_path_mask_vlan_ctrl);
+			if (work->vlan_id == MLX4_VGT) {
+				upd_context->qp_context.param3 = qp->param3;
+				upd_context->qp_context.pri_path.vlan_control = qp->vlan_control;
+				upd_context->qp_context.pri_path.fvl_rx = qp->fvl_rx;
+				upd_context->qp_context.pri_path.vlan_index = qp->vlan_index;
+				upd_context->qp_context.pri_path.fl = qp->pri_path_fl;
+				upd_context->qp_context.pri_path.feup = qp->feup;
+				upd_context->qp_context.pri_path.sched_queue =
+					qp->sched_queue;
+			} else {
+				upd_context->qp_context.param3 = qp->param3 & ~cpu_to_be32(MLX4_STRIP_VLAN);
+				upd_context->qp_context.pri_path.vlan_control = vlan_control;
+				upd_context->qp_context.pri_path.vlan_index = work->vlan_ix;
+				upd_context->qp_context.pri_path.fvl_rx =
+					qp->fvl_rx | MLX4_FVL_RX_FORCE_ETH_VLAN;
+				upd_context->qp_context.pri_path.fl =
+					qp->pri_path_fl | MLX4_FL_CV | MLX4_FL_ETH_HIDE_CQE_VLAN;
+				upd_context->qp_context.pri_path.feup =
+					qp->feup | MLX4_FEUP_FORCE_ETH_UP | MLX4_FVL_FORCE_ETH_VLAN;
+				upd_context->qp_context.pri_path.sched_queue =
+					qp->sched_queue & 0xC7;
+				upd_context->qp_context.pri_path.sched_queue |=
+					((work->qos & 0x7) << 3);
+			}
 
 			err = mlx4_cmd(dev, mailbox->dma,
 				       qp->local_qpn & 0xffffff,

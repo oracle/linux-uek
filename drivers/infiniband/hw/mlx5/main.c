@@ -64,7 +64,11 @@ MODULE_PARM_DESC(debug_mask, "mask of debug sources");
 
 static int prof_sel = 2;
 module_param_named(prof_sel, prof_sel, int, 0444);
-MODULE_PARM_DESC(prof_sel, "profile selector. Valid range 0 - 2");
+MODULE_PARM_DESC(prof_sel,
+		 "Profile selector (default=2):\n"
+		 "\t\t0 - for medium resources, medium performance\n"
+		 "\t\t1 - for low resources\n"
+		 "\t\t2 - for high performance");
 
 static char mlx5_version[] =
 	DRIVER_NAME ": Mellanox Connect-IB Infiniband driver v"
@@ -84,7 +88,7 @@ struct mlx5_profile profile[] = {
 		.mask		= MLX5_PROF_MASK_QP_SIZE	|
 				  MLX5_PROF_MASK_MR_CACHE	|
 				  MLX5_PROF_MASK_DCT,
-		.log_max_qp	= 17,
+		.log_max_qp	= 19,
 		.dct_enable	= 1,
 		.mr_cache[0]	= {
 			.size	= 500,
@@ -181,6 +185,7 @@ static int alloc_comp_eqs(struct mlx5_ib_dev *dev)
 	int err;
 	int i;
 	int nent;
+	char name[MLX5_MAX_EQ_NAME];
 
 	INIT_LIST_HEAD(&dev->eqs_list);
 	ncomp_vec = table->num_comp_vectors;
@@ -192,10 +197,10 @@ static int alloc_comp_eqs(struct mlx5_ib_dev *dev)
 			goto clean;
 		}
 
-		snprintf(eq->name, MLX5_MAX_EQ_NAME, "mlx5_comp%d", i);
+		snprintf(name, MLX5_MAX_EQ_NAME, "mlx5_comp%d", i);
 		err = mlx5_create_map_eq(&dev->mdev, eq,
 					 i + MLX5_EQ_VEC_COMP_BASE, nent, 0,
-					 eq->name,
+					 name,
 					 &dev->mdev.priv.uuari.uars[0]);
 		if (err) {
 			kfree(eq);
@@ -313,9 +318,8 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	props->max_srq_sge	   = max_rq_sg - 1;
 	props->max_fast_reg_page_list_len = (unsigned int)-1;
 	props->local_ca_ack_delay  = dev->mdev.caps.local_ca_ack_delay;
-	props->atomic_cap	   = dev->mdev.caps.flags & MLX5_DEV_CAP_FLAG_ATOMIC ?
-		IB_ATOMIC_HCA : IB_ATOMIC_NONE;
-	props->masked_atomic_cap   = IB_ATOMIC_HCA;
+	props->atomic_cap	   = IB_ATOMIC_NONE;
+	props->masked_atomic_cap   = IB_ATOMIC_NONE;
 	props->max_pkeys	   = be16_to_cpup((__be16 *)(out_mad->data + 28));
 	props->max_mcast_grp	   = 1 << dev->mdev.caps.log_max_mcg;
 	props->max_mcast_qp_attach = dev->mdev.caps.max_qp_mcg;
@@ -832,7 +836,8 @@ static int alloc_pa_mkey(struct mlx5_ib_dev *dev, u32 *key, u32 pdn)
 	seg->qpn_mkey7_0 = cpu_to_be32(0xffffff << 8);
 	seg->start_addr = 0;
 
-	err = mlx5_core_create_mkey(&dev->mdev, &mr, in, sizeof(*in));
+	err = mlx5_core_create_mkey(&dev->mdev, &mr, in, sizeof(*in),
+				    NULL, NULL, NULL);
 	if (err) {
 		mlx5_ib_warn(dev, "failed to create mkey, %d\n", err);
 		goto err_in;
@@ -1091,6 +1096,11 @@ static void mlx5_ib_event(struct mlx5_core_dev *dev, enum mlx5_dev_event event,
 
 	ibev.device	      = &ibdev->ib_dev;
 	ibev.element.port_num = port;
+
+	if (port < 1 || port > ibdev->num_ports) {
+		mlx5_ib_warn(ibdev, "warning: event on port %d\n", port);
+		return;
+	}
 
 	if (ibdev->ib_active)
 		ib_dispatch_event(&ibev);

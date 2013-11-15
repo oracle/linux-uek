@@ -1,6 +1,4 @@
-obj-$(CONFIG_MLX4_VNIC)	+= mlx4_vnic.o mlx4_vnic_helper.o
-
-mlx4_vnic_helper-y := vnic_stats_helper.o
+obj-$(CONFIG_MLX4_VNIC)	+= mlx4_vnic.o
 
 mlx4_vnic-y :=  vnic_data_main.o    vnic_data_ib.o    vnic_data_netdev.o    vnic_data_neigh.o   \
 		vnic_data_fs.o      vnic_data_tx.o    vnic_data_ethtool.o   vnic_data_rx.o      \

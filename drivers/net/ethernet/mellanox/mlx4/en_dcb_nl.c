@@ -191,7 +191,7 @@ static int mlx4_en_dcbnl_ieee_setpfc(struct net_device *dev,
 			pfc->mbc,
 			pfc->delay);
 
-	priv->prof->rx_pause = priv->prof->tx_pause = !!pfc->pfc_en;
+	priv->prof->rx_pause = priv->prof->tx_pause = !pfc->pfc_en;
 	priv->prof->rx_ppp = priv->prof->tx_ppp = pfc->pfc_en;
 
 	err = mlx4_SET_PORT_general(mdev->dev, priv->port,
@@ -269,11 +269,20 @@ static int mlx4_en_dcbnl_ieee_setmaxrate(struct net_device *dev,
 }
 
 const struct dcbnl_rtnl_ops mlx4_en_dcbnl_ops = {
-	.getstate       = mlx4_en_dcbnl_get_state,
+	.getstate	= mlx4_en_dcbnl_get_state,
 	.ieee_getets	= mlx4_en_dcbnl_ieee_getets,
 	.ieee_setets	= mlx4_en_dcbnl_ieee_setets,
 	.ieee_getmaxrate = mlx4_en_dcbnl_ieee_getmaxrate,
 	.ieee_setmaxrate = mlx4_en_dcbnl_ieee_setmaxrate,
+	.ieee_getpfc	= mlx4_en_dcbnl_ieee_getpfc,
+	.ieee_setpfc	= mlx4_en_dcbnl_ieee_setpfc,
+	.getcap		= mlx4_en_dcbnl_getcap,
+	.getdcbx	= mlx4_en_dcbnl_getdcbx,
+	.setdcbx	= mlx4_en_dcbnl_setdcbx,
+};
+
+const struct dcbnl_rtnl_ops mlx4_en_dcbnl_pfc_ops = {
+	.getstate	= mlx4_en_dcbnl_get_state,
 	.ieee_getpfc	= mlx4_en_dcbnl_ieee_getpfc,
 	.ieee_setpfc	= mlx4_en_dcbnl_ieee_setpfc,
 	.getcap		= mlx4_en_dcbnl_getcap,

@@ -779,15 +779,13 @@ int ipoib_ib_dev_open(struct net_device *dev)
 	ret = ipoib_ib_post_receives(dev);
 	if (ret) {
 		ipoib_warn(priv, "ipoib_ib_post_receives returned %d\n", ret);
-		ipoib_ib_dev_stop(dev, 1);
-		return -1;
+		goto dev_stop;
 	}
 
 	ret = ipoib_cm_dev_open(dev);
 	if (ret) {
 		ipoib_warn(priv, "ipoib_cm_dev_open returned %d\n", ret);
-		ipoib_ib_dev_stop(dev, 1);
-		return -1;
+		goto dev_stop;
 	}
 
 	clear_bit(IPOIB_STOP_REAPER, &priv->flags);
@@ -798,6 +796,11 @@ int ipoib_ib_dev_open(struct net_device *dev)
 		ipoib_napi_enable(dev);
 
 	return 0;
+dev_stop:
+	if (!test_and_set_bit(IPOIB_FLAG_INITIALIZED, &priv->flags))
+		ipoib_napi_enable(dev);
+	ipoib_ib_dev_stop(dev, 1);
+	return -1;
 }
 
 static void ipoib_pkey_dev_check_presence(struct net_device *dev)
@@ -1243,29 +1246,42 @@ static inline int update_pkey_index_0(struct ipoib_dev_priv *priv)
 	int result;
 	u16 prev_pkey;
 
-	if (test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags)) {
-		ipoib_warn(priv, "%s: child interface should not call that func.\n",
-			   __func__);
-		return -1;
-	}
-
 	prev_pkey = priv->pkey;
-
 	result = ib_query_pkey(priv->ca, priv->port, 0, &priv->pkey);
-	if (!result) {
-		if (prev_pkey != priv->pkey) {
-			ipoib_warn(priv, "%s: pkey changed from 0x%x to 0x%x\n",
-				   __func__, prev_pkey, priv->pkey);
-			priv->pkey_index = 0;
-			return 0;
-		}
+	if (result) {
+		ipoib_warn(priv, "ib_query_pkey port %d failed (ret = %d)\n",
+			   priv->port, result);
+		return result;
 	}
 
-	if (result)
-		ipoib_warn(priv, "%s: ib_query_pkey port %d failed (ret = %d)\n",
-			   __func__, priv->port, result);
+	priv->pkey |= 0x8000;
 
-	return -1;
+	if (prev_pkey != priv->pkey) {
+		ipoib_dbg(priv, "pkey changed from 0x%x to 0x%x\n",
+			  prev_pkey, priv->pkey);
+		/*
+		 * Update the pkey in the broadcast address, while making sure to set
+		 * the full membership bit, so that we join the right broadcast group.
+		 */
+		priv->dev->broadcast[8] = priv->pkey >> 8;
+		priv->dev->broadcast[9] = priv->pkey & 0xff;
+
+		/*
+		 * update the broadcast address in the priv->broadcast object,
+		 * in case it already exists, otherwise no one will do that.
+		 */
+		if (priv->broadcast) {
+			spin_lock_irq(&priv->lock);
+			memcpy(priv->broadcast->mcmember.mgid.raw,
+			       priv->dev->broadcast + 4,
+			       sizeof(union ib_gid));
+			spin_unlock_irq(&priv->lock);
+		}
+
+		return 0;
+	}
+
+	return 1;
 }
 
 static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
@@ -1276,7 +1292,8 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 	u16 new_index;
 	int result;
 
-	down_read(&priv->vlan_rwsem);
+	down_read_nested(&priv->vlan_rwsem,
+			 test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags));
 
 	/*
 	 * Flush any child interfaces too -- they might be up even if
@@ -1289,10 +1306,11 @@ static void __ipoib_ib_dev_flush(struct ipoib_dev_priv *priv,
 
 	if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags)) {
 		/* check if needs to update the pkey value */
-		if (level == IPOIB_FLUSH_HEAVY)
+		if (level == IPOIB_FLUSH_HEAVY &&
+		    !test_bit(IPOIB_FLAG_SUBINTERFACE, &priv->flags))
 			update_pkey_index_0(priv);
-			ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
-			return;
+		ipoib_dbg(priv, "Not flushing - IPOIB_FLAG_INITIALIZED not set.\n");
+		return;
 	}
 
 	if (!test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags)) {

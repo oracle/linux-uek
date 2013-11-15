@@ -40,8 +40,8 @@
 #include <linux/vmalloc.h>
 #include <linux/prefetch.h>
 #include <linux/mlx4/driver.h>
-#ifdef CONFIG_NET_LL_RX_POLL
-#include <net/ll_poll.h>
+#ifdef CONFIG_NET_RX_BUSY_POLL
+#include <net/busy_poll.h>
 #endif
 
 #include "mlx4_en.h"
@@ -55,18 +55,15 @@ static int mlx4_en_alloc_frag(struct mlx4_en_priv *priv,
 	struct device *dev = priv->ddev;
 	struct page *page;
 	dma_addr_t dma = 0;
+	gfp_t gfp = GFP_ATOMIC | __GFP_COLD | __GFP_COMP | __GFP_NOWARN;
 
 	/* alloc new page */
-	page = alloc_pages_node(ring->numa_node,
-				GFP_ATOMIC | __GFP_COLD |
-				__GFP_COMP | __GFP_NOWARN,
-				ring->rx_alloc_order);
-	if (unlikely(!page))
-		page = alloc_pages(GFP_ATOMIC | __GFP_COLD |
-				   __GFP_COMP | __GFP_NOWARN,
-				   ring->rx_alloc_order);
-	if (unlikely(!page))
-		return -ENOMEM;
+	page = alloc_pages_node(ring->numa_node, gfp, ring->rx_alloc_order);
+	if (unlikely(!page)) {
+		page = alloc_pages(gfp, ring->rx_alloc_order);
+		if (unlikely(!page))
+			return -ENOMEM;
+	}
 
 	/* map new page */
 	dma = dma_map_page(dev, page, 0,
@@ -505,13 +502,10 @@ static void validate_loopback(struct mlx4_en_priv *priv, struct sk_buff *skb)
 
 	for (i = 0; i < MLX4_LOOPBACK_TEST_PAYLOAD; i++, offset++) {
 		if (*(skb->data + offset) != (unsigned char) (i & 0xff))
-			goto out_loopback;
+			return;
 	}
 	/* Loopback found */
 	priv->loopback_ok = 1;
-
-out_loopback:
-	dev_kfree_skb_any(skb);
 }
 
 static inline int invalid_cqe(struct mlx4_en_priv *priv,
@@ -668,8 +662,15 @@ int mlx4_en_process_rx_cq(struct net_device *dev,
 					       timestamp);
 		}
 
+#ifdef CONFIG_NET_RX_BUSY_POLL
+		skb_mark_napi_id(skb, &cq->napi);
+#endif
+
 		/* Push it up the stack */
-		napi_gro_receive(&cq->napi, skb);
+		if (mlx4_en_cq_ll_polling(cq))
+			netif_receive_skb(skb);
+		else
+			napi_gro_receive(&cq->napi, skb);
 
 next:
 		++cons_index;

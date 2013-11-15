@@ -1158,8 +1158,8 @@ enum ib_flow_flags {
 struct ib_flow_eth_filter {
 	u8	dst_mac[6];
 	u8	src_mac[6];
-	u16	ether_type;
-	u16	vlan_tag;
+	__be16	ether_type;
+	__be16	vlan_tag;
 };
 
 struct ib_flow_spec_eth {
@@ -1170,7 +1170,7 @@ struct ib_flow_spec_eth {
 };
 
 struct ib_flow_ib_filter {
-	u32	l3_type_qpn;
+	__be32	l3_type_qpn;
 	u8	dst_gid[16];
 };
 
@@ -1182,8 +1182,8 @@ struct ib_flow_spec_ib {
 };
 
 struct ib_flow_ipv4_filter {
-	u32	src_ip;
-	u32	dst_ip;
+	__be32	src_ip;
+	__be32	dst_ip;
 };
 
 struct ib_flow_spec_ipv4 {
@@ -1194,8 +1194,8 @@ struct ib_flow_spec_ipv4 {
 };
 
 struct ib_flow_tcp_udp_filter {
-	u16	dst_port;
-	u16	src_port;
+	__be16	dst_port;
+	__be16	src_port;
 };
 
 struct ib_flow_spec_tcp_udp {
@@ -1234,7 +1234,6 @@ struct ib_flow_attr {
 struct ib_flow {
 	struct ib_qp		*qp;
 	struct ib_uobject	*uobject;
-	void			*flow_context;
 };
 
 struct ib_mad;

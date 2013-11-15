@@ -38,8 +38,8 @@
 #include <linux/slab.h>
 #include <linux/hash.h>
 #include <net/ip.h>
-#ifdef CONFIG_NET_LL_RX_POLL
-#include <net/ll_poll.h>
+#ifdef CONFIG_NET_RX_BUSY_POLL
+#include <net/busy_poll.h>
 #endif
 
 #include <linux/mlx4/driver.h>
@@ -70,7 +70,7 @@ int mlx4_en_setup_tc(struct net_device *dev, u8 up)
 	return 0;
 }
 
-#ifdef CONFIG_NET_LL_RX_POLL
+#ifdef CONFIG_NET_RX_BUSY_POLL
 /* must be called with local_bh_disable()d */
 static int mlx4_en_low_latency_recv(struct napi_struct *napi)
 {
@@ -98,7 +98,7 @@ static int mlx4_en_low_latency_recv(struct napi_struct *napi)
 
 	return done;
 }
-#endif	/* CONFIG_NET_LL_RX_POLL */
+#endif	/* CONFIG_NET_RX_BUSY_POLL */
 
 #ifdef CONFIG_RFS_ACCEL
 
@@ -684,10 +684,11 @@ static int mlx4_en_do_set_mac(struct mlx4_en_priv *priv)
 					  priv->dev->dev_addr, priv->prev_mac);
 		if (err)
 			en_err(priv, "Failed changing HW MAC address\n");
-		memcpy(priv->prev_mac, priv->dev->dev_addr,
-		       sizeof(priv->prev_mac));
 	} else
 		en_dbg(HW, priv, "Port is down while registering mac, exiting...\n");
+
+	memcpy(priv->prev_mac, priv->dev->dev_addr,
+	       sizeof(priv->prev_mac));
 
 	return err;
 }
@@ -702,9 +703,8 @@ static int mlx4_en_set_mac(struct net_device *dev, void *addr)
 	if (!is_valid_ether_addr(saddr->sa_data))
 		return -EADDRNOTAVAIL;
 
-	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
-
 	mutex_lock(&mdev->state_lock);
+	memcpy(dev->dev_addr, saddr->sa_data, ETH_ALEN);
 	err = mlx4_en_do_set_mac(priv);
 	mutex_unlock(&mdev->state_lock);
 
@@ -1502,9 +1502,6 @@ int mlx4_en_start_port(struct net_device *dev)
 
 	/* Configure tx cq's and rings */
 	for (i = 0; i < priv->tx_ring_num; i++) {
-		int up = i < priv->tx_ring_num - priv->tx_queue_num ?
-			i / priv->num_tx_rings_p_up : -1;
-
 		/* Configure cq */
 		cq = priv->tx_cq[i];
 		err = mlx4_en_activate_cq(priv, cq, i);
@@ -1524,7 +1521,8 @@ int mlx4_en_start_port(struct net_device *dev)
 		/* Configure ring */
 		tx_ring = priv->tx_ring[i];
 
-		err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn, up);
+		err = mlx4_en_activate_tx_ring(priv, tx_ring, cq->mcq.cqn,
+					       i / priv->num_tx_rings_p_up);
 		if (err) {
 			en_err(priv, "Failed allocating Tx ring\n");
 			mlx4_en_deactivate_cq(priv, cq);
@@ -1862,9 +1860,6 @@ int mlx4_en_alloc_resources(struct mlx4_en_priv *priv)
 	int i;
 	int node;
 
-	/* Create TX Queues */
-	mlx4_en_create_tx_queues(priv);
-
 	/* Create rx Rings */
 	for (i = 0; i < priv->rx_ring_num; i++) {
 		node = cpu_to_node(i % num_online_cpus());
@@ -1977,6 +1972,9 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 
 	en_dbg(DRV, priv, "Destroying netdev on port:%d\n", priv->port);
 
+	if (mlx4_is_master(priv->mdev->dev))
+		device_remove_file(&dev->dev, &dev_attr_vf_link_state);
+
 	/* Unregister device - this will close the port if it was up */
 	if (priv->registered)
 		unregister_netdev(dev);
@@ -1994,10 +1992,7 @@ void mlx4_en_destroy_netdev(struct net_device *dev)
 	mutex_unlock(&mdev->state_lock);
 
 	mlx4_en_free_resources(priv);
-	if (mlx4_is_master(priv->mdev->dev))
-		device_remove_file(&dev->dev, &dev_attr_vf_link_state);
 
-	kfree(priv->tx_queue);
 	kfree(priv->tx_ring);
 	kfree(priv->tx_cq);
 
@@ -2015,7 +2010,7 @@ static int mlx4_en_change_mtu(struct net_device *dev, int new_mtu)
 
 	if ((new_mtu < MLX4_EN_MIN_MTU) || (new_mtu > priv->max_mtu)) {
 		en_err(priv, "Bad MTU size:%d.\n", new_mtu);
-		return -EPERM;
+		return -EINVAL;
 	}
 	dev->mtu = new_mtu;
 
@@ -2254,8 +2249,8 @@ static const struct net_device_ops mlx4_netdev_ops = {
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer	= mlx4_en_filter_rfs,
 #endif
-#ifdef CONFIG_NET_LL_RX_POLL
-	.ndo_ll_poll		= mlx4_en_low_latency_recv,
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	.ndo_busy_poll		= mlx4_en_low_latency_recv,
 #endif
 	.ndo_fdb_add		= mlx4_en_fdb_add,
 	.ndo_fdb_del		= mlx4_en_fdb_del,
@@ -2300,6 +2295,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	struct mlx4_en_priv *priv;
 	int i;
 	int err;
+	u64 mac_u64;
 
 	dev = alloc_etherdev_mqs(sizeof(struct mlx4_en_priv),
 				 MAX_TX_RINGS, MAX_RX_RINGS);
@@ -2348,13 +2344,6 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 		err = -ENOMEM;
 		goto out;
 	}
-	priv->tx_queue_num = prof->tx_queue_num;
-	priv->tx_queue = kcalloc(sizeof(struct mlx4_en_tx_queue),
-				 MLX4_EN_MAX_TX_RING_P_UP, GFP_KERNEL);
-	if (!priv->tx_queue) {
-		err = -ENOMEM;
-		goto out;
-	}
 	priv->tx_cq = kcalloc(sizeof(struct mlx4_en_cq *), MAX_TX_RINGS,
 			GFP_KERNEL);
 	if (!priv->tx_cq) {
@@ -2368,11 +2357,15 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	priv->if_counters_rx_errors = 0;
 	priv->if_counters_rx_no_buffer = 0;
 #ifdef CONFIG_MLX4_EN_DCB
-	if (!mlx4_is_slave(priv->mdev->dev) &&
-	    (mdev->dev->caps.flags & MLX4_DEV_CAP_FLAG_SET_PORT_ETH_SCHED)) {
+	if (!mlx4_is_slave(priv->mdev->dev)) {
 		priv->dcbx_cap = DCB_CAP_DCBX_HOST;
 		priv->flags |= MLX4_EN_FLAG_DCB_ENABLED;
-		dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
+		if (mdev->dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ETS_CFG) {
+			dev->dcbnl_ops = &mlx4_en_dcbnl_ops;
+		} else {
+			en_info(priv, "QoS disabled - no HW support\n");
+			dev->dcbnl_ops = &mlx4_en_dcbnl_pfc_ops;
+		}
 	}
 #endif
 
@@ -2386,10 +2379,17 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	dev->addr_len = ETH_ALEN;
 	mlx4_en_u64_to_mac(dev->dev_addr, mdev->dev->caps.def_mac[priv->port]);
 	if (!is_valid_ether_addr(dev->dev_addr)) {
-		en_err(priv, "Port: %d, invalid mac burned: %pM, quiting\n",
-		       priv->port, dev->dev_addr);
-		err = -EINVAL;
-		goto out;
+		if (mlx4_is_slave(priv->mdev->dev)) {
+			eth_hw_addr_random(dev);
+			en_warn(priv, "Assigned random MAC address %pM\n", dev->dev_addr);
+			mac_u64 = mlx4_mac_to_u64(dev->dev_addr);
+			mdev->dev->caps.def_mac[priv->port] = mac_u64;
+		} else {
+			en_err(priv, "Port: %d, invalid mac burned: %pM, quiting\n",
+			       priv->port, dev->dev_addr);
+			err = -EINVAL;
+			goto out;
+		}
 	}
 
 	memcpy(dev->perm_addr, dev->dev_addr, ETH_ALEN);
@@ -2433,7 +2433,7 @@ int mlx4_en_init_netdev(struct mlx4_en_dev *mdev, int port,
 	else
 		dev->netdev_ops = &mlx4_netdev_ops;
 	dev->watchdog_timeo = MLX4_EN_WATCHDOG_TIMEOUT;
-	netif_set_real_num_tx_queues(dev, priv->tx_ring_num - priv->tx_queue_num);
+	netif_set_real_num_tx_queues(dev, priv->tx_ring_num);
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 	SET_ETHTOOL_OPS(dev, &mlx4_en_ethtool_ops);

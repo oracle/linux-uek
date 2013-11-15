@@ -39,14 +39,10 @@ MODULE_DESCRIPTION(DRV_DESC);
 MODULE_LICENSE(DRV_LIC);
 MODULE_VERSION(DRV_VER);
 
-extern struct net_device_stats *vnic_get_stats(struct net_device *n);
-extern int mlx4_vnic_set_stats_function(struct net_device_stats *(*func)(struct net_device *n));
-
 static int __init mlx4_ib_init(void)
 {
 	vnic_dbg_func("module_init");
 
-	mlx4_vnic_set_stats_function(vnic_get_stats);
 	if (vnic_param_check())
 		goto err;
 	if (vnic_mcast_init())
@@ -59,7 +55,6 @@ static int __init mlx4_ib_init(void)
 free_mcast:
 	vnic_mcast_cleanup();
 err:
-	mlx4_vnic_set_stats_function(NULL);
 	return -EINVAL;
 }
 
@@ -68,13 +63,6 @@ static void __exit mlx4_ib_cleanup(void)
 	int ret;
 
 	vnic_dbg_func("module_exit");
-
-	do {
-		ret = mlx4_vnic_set_stats_function(NULL);
-		if (ret)
-			msleep(10);
-	} while(ret);
-
 	vnic_ports_cleanup();
 	vnic_dbg_mark();
 	vnic_mcast_cleanup();

@@ -527,12 +527,12 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	    coal->tx_max_coalesced_frames != priv->tx_frames) {
 		priv->tx_usecs = coal->tx_coalesce_usecs;
 		priv->tx_frames = coal->tx_max_coalesced_frames;
-		for (i = 0; i < priv->tx_ring_num; i++) {
-			priv->tx_cq[i]->moder_cnt = priv->tx_frames;
-			priv->tx_cq[i]->moder_time = priv->tx_usecs;
-			if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i])) {
-				en_warn(priv, "Failed changing moderation "
-					      "for TX cq %d\n", i);
+		if (priv->port_up) {
+			for (i = 0; i < priv->tx_ring_num; i++) {
+				priv->tx_cq[i]->moder_cnt = priv->tx_frames;
+				priv->tx_cq[i]->moder_time = priv->tx_usecs;
+				if (mlx4_en_set_cq_moder(priv, priv->tx_cq[i]))
+					en_warn(priv, "Failed changing moderation for TX cq %d\n", i);
 			}
 		}
 	}
@@ -547,14 +547,17 @@ static int mlx4_en_set_coalesce(struct net_device *dev,
 	if (priv->adaptive_rx_coal)
 		return 0;
 
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
-		priv->rx_cq[i]->moder_time = priv->rx_usecs;
-		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
-		if (err)
-			return err;
+	if (priv->port_up) {
+		for (i = 0; i < priv->rx_ring_num; i++) {
+			priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+			priv->rx_cq[i]->moder_time = priv->rx_usecs;
+			priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+				err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+			if (err)
+				return err;
+		}
 	}
+
 	return 0;
 }
 
@@ -861,10 +864,10 @@ static int mlx4_en_validate_flow(struct net_device *dev,
 		      cmd->fs.m_ext.vlan_tci == cpu_to_be16(0xfff)))
 			return -EINVAL;
 		if (cmd->fs.m_ext.vlan_tci) {
-			if (cmd->fs.h_ext.vlan_tci <
-			    cpu_to_be16(VLAN_MIN_VALUE) ||
-			    cmd->fs.h_ext.vlan_tci >
-			    cpu_to_be16(VLAN_MAX_VALUE))
+			if (be16_to_cpu(cmd->fs.h_ext.vlan_tci) <
+			    VLAN_MIN_VALUE ||
+			    be16_to_cpu(cmd->fs.h_ext.vlan_tci) >
+			    VLAN_MAX_VALUE)
 				return -EINVAL;
 		}
 	}
@@ -1271,8 +1274,7 @@ static void mlx4_en_get_channels(struct net_device *dev,
 	channel->max_tx = MLX4_EN_MAX_TX_RING_P_UP;
 
 	channel->rx_count = priv->rx_ring_num;
-	channel->tx_count = (priv->tx_ring_num - priv->tx_queue_num) /
-		MLX4_EN_NUM_UP;
+	channel->tx_count = priv->tx_ring_num / MLX4_EN_NUM_UP;
 }
 
 static int mlx4_en_set_channels(struct net_device *dev,
@@ -1280,7 +1282,7 @@ static int mlx4_en_set_channels(struct net_device *dev,
 {
 	struct mlx4_en_priv *priv = netdev_priv(dev);
 	struct mlx4_en_dev *mdev = priv->mdev;
-	int port_up;
+	int port_up = 0;
 	int i;
 	int err = 0;
 
@@ -1302,10 +1304,8 @@ static int mlx4_en_set_channels(struct net_device *dev,
 
 	mlx4_en_free_resources(priv);
 
-	priv->tx_queue_num = channel->tx_count;
 	priv->num_tx_rings_p_up = channel->tx_count;
-	priv->tx_ring_num = channel->tx_count * MLX4_EN_NUM_UP +
-		priv->tx_queue_num;
+	priv->tx_ring_num = channel->tx_count * MLX4_EN_NUM_UP;
 	priv->rx_ring_num = channel->rx_count;
 
 	err = mlx4_en_alloc_resources(priv);
@@ -1314,7 +1314,7 @@ static int mlx4_en_set_channels(struct net_device *dev,
 		goto out;
 	}
 
-	netif_set_real_num_tx_queues(dev, priv->tx_ring_num - priv->tx_queue_num);
+	netif_set_real_num_tx_queues(dev, priv->tx_ring_num);
 	netif_set_real_num_rx_queues(dev, priv->rx_ring_num);
 
 	mlx4_en_setup_tc(dev, MLX4_EN_NUM_UP);
@@ -1326,15 +1326,15 @@ static int mlx4_en_set_channels(struct net_device *dev,
 		err = mlx4_en_start_port(dev);
 		if (err)
 			en_err(priv, "Failed starting port\n");
-	}
 
-	for (i = 0; i < priv->rx_ring_num; i++) {
-		priv->rx_cq[i]->moder_cnt = priv->rx_frames;
-		priv->rx_cq[i]->moder_time = priv->rx_usecs;
-		priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
-		err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
-		if (err)
-			goto out;
+		for (i = 0; i < priv->rx_ring_num; i++) {
+			priv->rx_cq[i]->moder_cnt = priv->rx_frames;
+			priv->rx_cq[i]->moder_time = priv->rx_usecs;
+			priv->last_moder_time[i] = MLX4_EN_AUTO_CONF;
+			err = mlx4_en_set_cq_moder(priv, priv->rx_cq[i]);
+			if (err)
+				goto out;
+		}
 	}
 
 out:

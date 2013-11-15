@@ -1054,15 +1054,18 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	if (p->neigh)
 		while ((skb = __skb_dequeue(&p->neigh->queue)))
 			__skb_queue_tail(&skqueue, skb);
-	spin_unlock_irq(&priv->lock);
 
 	while ((skb = __skb_dequeue(&skqueue))) {
+		spin_unlock_irq(&priv->lock);
 		skb->dev = p->dev;
 		ret = dev_queue_xmit(skb);
 		if (ret)
 			ipoib_warn(priv, "%s:dev_queue_xmit failed to requeue"
 					 " packet, ret:%d\n", __func__, ret);
+		spin_lock_irq(&priv->lock);
 	}
+
+	spin_unlock_irq(&priv->lock);
 
 	ret = ib_send_cm_rtu(cm_id, NULL, 0);
 	if (ret) {
@@ -1235,6 +1238,9 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 	struct ipoib_dev_priv *priv = netdev_priv(p->dev);
 	unsigned long begin;
 	int num_tries = 0;
+	struct ipoib_send_ring *send_ring;
+	u16 queue_index;
+	struct ipoib_cm_tx_buf *tx_req;
 
 	ipoib_dbg(priv, "Destroy active connection 0x%x head 0x%x tail 0x%x\n",
 		  p->qp ? p->qp->qp_num : 0, p->tx_head, p->tx_tail);
@@ -1264,27 +1270,47 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 				 * check if we are in napi_disable state
 				 * (in port/module down etc.), if so we need
 				 * to force drain over the qp in order to get
-				 * all the comp, otherwise ib_req_notify_cq
-				 * to get the poll_tx at the next time.
+				 * all the wc's.
 				 */
 				if (!test_bit(IPOIB_FLAG_INITIALIZED, &priv->flags))
 					ipoib_drain_cq(p->dev);
+				/*TODO: do we need to ib_req_notify_cq in else?*/
 
 				begin = jiffies;
 				num_tries++;
-
 				if (num_tries == 5) {
 					ipoib_warn(priv, "%s: %d not completed "
-							 "Going out.\n",
+							 "force cleanup.\n",
 						   __func__, p->tx_head - p->tx_tail);
-					goto out;
+					goto timeout;
 				}
 			}
 			/*let the wc to arrived.*/
 			msleep(2);
 		}
 	}
-out:
+
+timeout:
+	while ((int) p->tx_tail - (int) p->tx_head < 0) {
+		tx_req = &p->tx_ring[p->tx_tail & (ipoib_sendq_size - 1)];
+		if (!tx_req->is_inline)
+			ib_dma_unmap_single(priv->ca, tx_req->mapping,
+					    tx_req->skb->len, DMA_TO_DEVICE);
+
+		queue_index = skb_get_queue_mapping(tx_req->skb);
+		send_ring = priv->send_ring + queue_index;
+
+		dev_kfree_skb_any(tx_req->skb);
+		++p->tx_tail;
+
+		netif_tx_lock_bh(p->dev);
+		if (unlikely(--send_ring->tx_outstanding <= ipoib_sendq_size >> 1) &&
+		    __netif_subqueue_stopped(p->dev, queue_index) &&
+		    test_bit(IPOIB_FLAG_ADMIN_UP, &priv->flags))
+			netif_wake_subqueue(p->dev, queue_index);
+		netif_tx_unlock_bh(p->dev);
+	}
+
 	if (p->qp)
 		ib_destroy_qp(p->qp);
 

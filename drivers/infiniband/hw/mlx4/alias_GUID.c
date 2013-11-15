@@ -58,7 +58,7 @@ struct mlx4_alias_guid_work_context {
 	int			query_id;
 	struct list_head	list;
 	int			block_num;
-	u8 			method;
+	u8			method;
 };
 
 struct mlx4_next_alias_guid_work {
@@ -242,22 +242,15 @@ static void aliasguid_query_handler(int status,
 	for (i = 0 ; i < NUM_ALIAS_GUID_IN_REC; i++) {
 		__be64 tmp_cur_ag;
 		tmp_cur_ag = *(__be64 *)&guid_rec->guid_info_list[i * GUID_REC_SIZE];
-		if (cb_ctx->method == MLX4_GUID_INFO_RECORD_DELETE) {
-			if (MLX4_NOT_SET_GUID == tmp_cur_ag) {
-				pr_debug("%s:Record num %d in block_num:%d was deleted by SM, "
-                                            "ownership by %d (0 = driver, 1=sysAdmin, 2=None)\n",
-                                            __func__, i, guid_rec->block_num, rec->ownership);
-			} else {
-				/* FIXME : in case of record wasn't deleted we only print an error
-                                 * we can't reschedule the task since the next task can be a set and
-                                 * not delete task.
-				 */
-				pr_debug("ERROR: %s:Record num %d in block_num:%d was Not deleted "
-                                            "by SM, ownership by %d (0 = driver, 1=sysAdmin, 2=None)\n",
-                                            __func__, i, guid_rec->block_num, rec->ownership);
-			}
-			/* turn OFF the block index bit so it won't be modified in next tasks */
-			rec->guid_indexes = rec->guid_indexes &  ~mlx4_ib_get_aguid_comp_mask_from_ix(i);
+		if ((cb_ctx->method == MLX4_GUID_INFO_RECORD_DELETE)
+		    && (MLX4_NOT_SET_GUID == tmp_cur_ag)) {
+			pr_debug("%s:Record num %d in block_num:%d "
+				"was deleted by SM,ownership by %d "
+				"(0 = driver, 1=sysAdmin, 2=None)\n",
+				__func__, i, guid_rec->block_num,
+				rec->ownership);
+			rec->guid_indexes = rec->guid_indexes &
+				~mlx4_ib_get_aguid_comp_mask_from_ix(i);
 			continue;
 		}
 

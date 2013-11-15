@@ -134,7 +134,9 @@ static void dump_dev_cap_flags2(struct mlx4_dev *dev, u64 flags)
 		[5] = "VST (control vlan insertion/stripping) support",
 		[6] = "Dynamic QP updates support",
 		[7] = "Loopback source checks support",
-		[8] = "Time stamping support"
+		[8] = "Device managed flow steering IPoIB support",
+		[9] = "MLX4_DEV_CAP_FLAG2_ETS_CFG",
+		[10] = "Time stamping support"
 	};
 	int i;
 
@@ -186,18 +188,26 @@ int mlx4_QUERY_FUNC_CAP_wrapper(struct mlx4_dev *dev, int slave,
 #define QUERY_FUNC_CAP_NUM_PORTS_OFFSET		0x1
 #define QUERY_FUNC_CAP_PF_BHVR_OFFSET		0x4
 #define QUERY_FUNC_CAP_FMR_OFFSET		0x8
-#define QUERY_FUNC_CAP_QP_QUOTA_OFFSET		0x10
-#define QUERY_FUNC_CAP_CQ_QUOTA_OFFSET		0x14
-#define QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET		0x18
-#define QUERY_FUNC_CAP_MPT_QUOTA_OFFSET		0x20
-#define QUERY_FUNC_CAP_MTT_QUOTA_OFFSET		0x24
-#define QUERY_FUNC_CAP_MCG_QUOTA_OFFSET		0x28
+#define QUERY_FUNC_CAP_QP_QUOTA_OFFSET_DEP	0x10
+#define QUERY_FUNC_CAP_CQ_QUOTA_OFFSET_DEP	0x14
+#define QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET_DEP	0x18
+#define QUERY_FUNC_CAP_MPT_QUOTA_OFFSET_DEP	0x20
+#define QUERY_FUNC_CAP_MTT_QUOTA_OFFSET_DEP	0x24
+#define QUERY_FUNC_CAP_MCG_QUOTA_OFFSET_DEP	0x28
 #define QUERY_FUNC_CAP_MAX_EQ_OFFSET		0x2c
 #define QUERY_FUNC_CAP_RESERVED_EQ_OFFSET	0x30
+
+#define QUERY_FUNC_CAP_QP_QUOTA_OFFSET		0x50
+#define QUERY_FUNC_CAP_CQ_QUOTA_OFFSET		0x54
+#define QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET		0x58
+#define QUERY_FUNC_CAP_MPT_QUOTA_OFFSET		0x60
+#define QUERY_FUNC_CAP_MTT_QUOTA_OFFSET		0x64
+#define QUERY_FUNC_CAP_MCG_QUOTA_OFFSET		0x68
 
 #define QUERY_FUNC_CAP_FMR_FLAG			0x80
 #define QUERY_FUNC_CAP_FLAG_RDMA		0x40
 #define QUERY_FUNC_CAP_FLAG_ETH			0x80
+#define QUERY_FUNC_CAP_FLAG_QUOTAS		0x10
 
 /* when opcode modifier = 1 */
 #define QUERY_FUNC_CAP_PHYS_PORT_OFFSET		0x3
@@ -238,8 +248,9 @@ int mlx4_QUERY_FUNC_CAP_wrapper(struct mlx4_dev *dev, int slave,
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_QP1_PROXY);
 
 	} else if (vhcr->op_modifier == 0) {
-		/* enable rdma and ethernet interfaces */
-		field = (QUERY_FUNC_CAP_FLAG_ETH | QUERY_FUNC_CAP_FLAG_RDMA);
+		/* enable rdma and ethernet interfaces, and new quota locations */
+		field = (QUERY_FUNC_CAP_FLAG_ETH | QUERY_FUNC_CAP_FLAG_RDMA |
+			 QUERY_FUNC_CAP_FLAG_QUOTAS);
 		MLX4_PUT(outbox->buf, field, QUERY_FUNC_CAP_FLAGS_OFFSET);
 
 		field = dev->caps.num_ports;
@@ -253,12 +264,18 @@ int mlx4_QUERY_FUNC_CAP_wrapper(struct mlx4_dev *dev, int slave,
 
 		size = priv->mfunc.master.res_tracker.res_alloc[RES_QP].quota[slave];
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_QP_QUOTA_OFFSET);
+		size = dev->caps.num_qps;
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_QP_QUOTA_OFFSET_DEP);
 
 		size = priv->mfunc.master.res_tracker.res_alloc[RES_SRQ].quota[slave];
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET);
+		size = dev->caps.num_srqs;
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET_DEP);
 
 		size = priv->mfunc.master.res_tracker.res_alloc[RES_CQ].quota[slave];
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_CQ_QUOTA_OFFSET);
+		size = dev->caps.num_cqs;
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_CQ_QUOTA_OFFSET_DEP);
 
 		size = dev->caps.num_eqs;
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MAX_EQ_OFFSET);
@@ -268,12 +285,17 @@ int mlx4_QUERY_FUNC_CAP_wrapper(struct mlx4_dev *dev, int slave,
 
 		size = priv->mfunc.master.res_tracker.res_alloc[RES_MPT].quota[slave];
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MPT_QUOTA_OFFSET);
+		size = dev->caps.num_mpts;
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MPT_QUOTA_OFFSET_DEP);
 
 		size = priv->mfunc.master.res_tracker.res_alloc[RES_MTT].quota[slave];
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MTT_QUOTA_OFFSET);
+		size = dev->caps.num_mtts;
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MTT_QUOTA_OFFSET_DEP);
 
 		size = dev->caps.num_mgms + dev->caps.num_amgms;
 		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MCG_QUOTA_OFFSET);
+		MLX4_PUT(outbox->buf, size, QUERY_FUNC_CAP_MCG_QUOTA_OFFSET_DEP);
 
 	} else
 		err = -EINVAL;
@@ -288,7 +310,7 @@ int mlx4_QUERY_FUNC_CAP(struct mlx4_dev *dev, u32 gen_or_port,
 	u32			*outbox;
 	u8			field, op_modifier;
 	u32			size;
-	int			err = 0;
+	int			err = 0, quotas = 0;
 
 	op_modifier = !!gen_or_port; /* 0 = general, 1 = logical port */
 
@@ -312,6 +334,7 @@ int mlx4_QUERY_FUNC_CAP(struct mlx4_dev *dev, u32 gen_or_port,
 			goto out;
 		}
 		func_cap->flags = field;
+		quotas = !!(func_cap->flags & QUERY_FUNC_CAP_FLAG_QUOTAS);
 
 		MLX4_GET(field, outbox, QUERY_FUNC_CAP_NUM_PORTS_OFFSET);
 		func_cap->num_ports = field;
@@ -319,29 +342,50 @@ int mlx4_QUERY_FUNC_CAP(struct mlx4_dev *dev, u32 gen_or_port,
 		MLX4_GET(size, outbox, QUERY_FUNC_CAP_PF_BHVR_OFFSET);
 		func_cap->pf_context_behaviour = size;
 
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_QP_QUOTA_OFFSET);
-		func_cap->qp_quota = size & 0xFFFFFF;
+		if (quotas) {
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_QP_QUOTA_OFFSET);
+			func_cap->qp_quota = size & 0xFFFFFF;
 
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET);
-		func_cap->srq_quota = size & 0xFFFFFF;
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET);
+			func_cap->srq_quota = size & 0xFFFFFF;
 
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_CQ_QUOTA_OFFSET);
-		func_cap->cq_quota = size & 0xFFFFFF;
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_CQ_QUOTA_OFFSET);
+			func_cap->cq_quota = size & 0xFFFFFF;
 
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MPT_QUOTA_OFFSET);
+			func_cap->mpt_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MTT_QUOTA_OFFSET);
+			func_cap->mtt_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MCG_QUOTA_OFFSET);
+			func_cap->mcg_quota = size & 0xFFFFFF;
+
+		} else {
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_QP_QUOTA_OFFSET_DEP);
+			func_cap->qp_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_SRQ_QUOTA_OFFSET_DEP);
+			func_cap->srq_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_CQ_QUOTA_OFFSET_DEP);
+			func_cap->cq_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MPT_QUOTA_OFFSET_DEP);
+			func_cap->mpt_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MTT_QUOTA_OFFSET_DEP);
+			func_cap->mtt_quota = size & 0xFFFFFF;
+
+			MLX4_GET(size, outbox, QUERY_FUNC_CAP_MCG_QUOTA_OFFSET_DEP);
+			func_cap->mcg_quota = size & 0xFFFFFF;
+		}
 		MLX4_GET(size, outbox, QUERY_FUNC_CAP_MAX_EQ_OFFSET);
 		func_cap->max_eq = size & 0xFFFFFF;
 
 		MLX4_GET(size, outbox, QUERY_FUNC_CAP_RESERVED_EQ_OFFSET);
 		func_cap->reserved_eq = size & 0xFFFFFF;
 
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_MPT_QUOTA_OFFSET);
-		func_cap->mpt_quota = size & 0xFFFFFF;
-
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_MTT_QUOTA_OFFSET);
-		func_cap->mtt_quota = size & 0xFFFFFF;
-
-		MLX4_GET(size, outbox, QUERY_FUNC_CAP_MCG_QUOTA_OFFSET);
-		func_cap->mcg_quota = size & 0xFFFFFF;
 		goto out;
 	}
 
@@ -476,6 +520,7 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 #define QUERY_DEV_CAP_MAX_EXTENDED_COUNTERS_OFFSET	0x6c
 #define QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET	0x76
 #define QUERY_DEV_CAP_EXT_2_FLAGS_OFFSET		0x70
+#define QUERY_DEV_CAP_FLOW_STEERING_IPOIB_OFFSET	0x74
 #define QUERY_DEV_CAP_FLOW_STEERING_MAX_QP_OFFSET	0x77
 #define QUERY_DEV_CAP_RDMARC_ENTRY_SZ_OFFSET	0x80
 #define QUERY_DEV_CAP_QPC_ENTRY_SZ_OFFSET	0x82
@@ -489,6 +534,7 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 #define QUERY_DEV_CAP_D_MPT_ENTRY_SZ_OFFSET	0x92
 #define QUERY_DEV_CAP_BMME_FLAGS_OFFSET		0x94
 #define QUERY_DEV_CAP_RSVD_LKEY_OFFSET		0x98
+#define QUERY_DEV_CAP_ETS_CFG_OFFSET		0x9c
 #define QUERY_DEV_CAP_MAX_ICM_SZ_OFFSET		0xa0
 
 	dev_cap->flags2 = 0;
@@ -563,6 +609,9 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_FLOW_STEERING_RANGE_EN_OFFSET);
 	if (field & 0x80)
 		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_FS_EN;
+	MLX4_GET(field, outbox, QUERY_DEV_CAP_FLOW_STEERING_IPOIB_OFFSET);
+	if (field & 0x80)
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_DMFS_IPOIB;
 	dev_cap->fs_log_max_ucast_qp_range_size = field & 0x1f;
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_FLOW_STEERING_MAX_QP_OFFSET);
 	dev_cap->fs_max_num_qp_per_entry = field;
@@ -654,6 +703,10 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 		 QUERY_DEV_CAP_BMME_FLAGS_OFFSET);
 	MLX4_GET(dev_cap->reserved_lkey, outbox,
 		 QUERY_DEV_CAP_RSVD_LKEY_OFFSET);
+	MLX4_GET(field32, outbox, QUERY_DEV_CAP_ETS_CFG_OFFSET);
+	if (field32 & (1 << 13))
+		dev_cap->flags2 |= MLX4_DEV_CAP_FLAG2_ETS_CFG;
+
 	MLX4_GET(dev_cap->max_icm_sz, outbox,
 		 QUERY_DEV_CAP_MAX_ICM_SZ_OFFSET);
 	if (dev_cap->flags & MLX4_DEV_CAP_FLAG_COUNTERS)
@@ -840,12 +893,8 @@ int mlx4_QUERY_PORT_wrapper(struct mlx4_dev *dev, int slave,
 			   MLX4_CMD_NATIVE);
 
 	if (!err && dev->caps.function != slave) {
-		/* set slave default_mac address */
-		MLX4_GET(def_mac, outbox->buf, QUERY_PORT_MAC_OFFSET);
-		def_mac += slave << 8;
-		/* if config MAC in DB use it */
-		if (priv->mfunc.master.vf_oper[slave].vport[vhcr->in_modifier].state.mac)
-			def_mac = priv->mfunc.master.vf_oper[slave].vport[vhcr->in_modifier].state.mac;
+		/* set slave default_mac address to be zero MAC */
+		def_mac = priv->mfunc.master.vf_oper[slave].vport[vhcr->in_modifier].state.mac;
 		MLX4_PUT(outbox->buf, def_mac, QUERY_PORT_MAC_OFFSET);
 
 		/* get port type - currently only eth is enabled */
@@ -1726,6 +1775,15 @@ out:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(mlx4_query_diag_counters);
+
+int mlx4_MOD_STAT_CFG_wrapper(struct mlx4_dev *dev, int slave,
+			  struct mlx4_vhcr *vhcr,
+			  struct mlx4_cmd_mailbox *inbox,
+			  struct mlx4_cmd_mailbox *outbox,
+			  struct mlx4_cmd_info *cmd)
+{
+	return -EPERM;
+}
 
 #define MLX4_WOL_SETUP_MODE (5 << 28)
 int mlx4_wol_read(struct mlx4_dev *dev, u64 *config, int port)
