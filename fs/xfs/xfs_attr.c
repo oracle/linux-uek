@@ -1264,6 +1264,7 @@ restart:
 			 * have been a b-tree.
 			 */
 			xfs_da_state_free(state);
+			state = NULL;
 			xfs_bmap_init(args->flist, args->firstblock);
 			error = xfs_attr_leaf_to_node(args);
 			if (!error) {
