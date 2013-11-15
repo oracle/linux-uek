@@ -2476,7 +2476,7 @@ static noinline_for_stack int scrub_stripe(struct scrub_ctx *sctx,
 			ret = scrub_extent(sctx, extent_logical, extent_len,
 					   extent_physical, extent_dev, flags,
 					   generation, extent_mirror_num,
-					   key.objectid - logical + physical);
+					   extent_logical - logical + physical);
 			if (ret)
 				goto out;
 

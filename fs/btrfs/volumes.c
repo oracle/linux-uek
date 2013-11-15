@@ -756,7 +756,8 @@ static int __btrfs_open_devices(struct btrfs_fs_devices *fs_devices,
 			fs_devices->rotating = 1;
 
 		fs_devices->open_devices++;
-		if (device->writeable && !device->is_tgtdev_for_dev_replace) {
+		if (device->writeable &&
+		    device->devid != BTRFS_DEV_REPLACE_DEVID) {
 			fs_devices->rw_devices++;
 			list_add(&device->dev_alloc_list,
 				 &fs_devices->alloc_list);
@@ -2895,10 +2896,6 @@ again:
 		if (found_key.objectid != key.objectid)
 			break;
 
-		/* chunk zero is special */
-		if (found_key.offset == 0)
-			break;
-
 		chunk = btrfs_item_ptr(leaf, slot, struct btrfs_chunk);
 
 		if (!counting) {
@@ -2934,6 +2931,8 @@ again:
 			spin_unlock(&fs_info->balance_lock);
 		}
 loop:
+		if (found_key.offset == 0)
+			break;
 		key.offset = found_key.offset - 1;
 	}
 

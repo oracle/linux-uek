@@ -5896,6 +5896,7 @@ static noinline int can_nocow_odirect(struct btrfs_trans_handle *trans,
 
 	if (btrfs_extent_readonly(root, disk_bytenr))
 		goto out;
+	btrfs_release_path(path);
 
 	/*
 	 * look for other files referencing this extent, if we
@@ -7408,7 +7409,7 @@ static int btrfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 
 
 	/* check for collisions, even if the  name isn't there */
-	ret = btrfs_check_dir_item_collision(root, new_dir->i_ino,
+	ret = btrfs_check_dir_item_collision(dest, new_dir->i_ino,
 			     new_dentry->d_name.name,
 			     new_dentry->d_name.len);
 
