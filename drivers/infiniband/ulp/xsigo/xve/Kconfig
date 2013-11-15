@@ -1,0 +1,44 @@
+config INFINIBAND_XVE
+	tristate "Xsigo Virtual Ethernet"
+	depends on INFINIBAND_XSCORE && NETDEVICES && INET && (IPV6 || IPV6=n)
+	select INET_LRO
+	---help---
+	  Support for the Xsigo Virtual Ethernet (XVE) protocol,
+	  Allowing private connectivity between servers using
+	  Fabric switched Traffic.
+
+config INFINIBAND_XVE_CM
+	bool "Xsigo Virtual Ethernet Connected Mode support"
+	depends on INFINIBAND_XVE
+	default n
+	---help---
+	  This option enables support for XVE connected mode.
+
+	  WARNING: Enabling connected mode will trigger some packet
+	  drops for multicast and UD mode traffic from this interface,
+	  unless you limit mtu for these destinations to 2030.
+
+config INFINIBAND_XVE_DEBUG
+	bool "Xsigo Virtual Ethernet debugging" if EMBEDDED
+	depends on INFINIBAND_XVE
+	default y
+	---help---
+	  This option causes debugging code to be compiled into the
+	  XVE driver.  The output can be turned on via the
+	  debug_level and mcast_debug_level module parameters (which
+	  can also be set after the driver is loaded through sysfs).
+
+	  This option also creates a directory tree under xve/ in
+	  debugfs, which contains files that expose debugging
+	  information about IB multicast groups used by the XVE
+	  driver.
+
+config INFINIBAND_XVE_DEBUG_DATA
+	bool "Xsigo Virtual Ethernet data path debugging"
+	depends on INFINIBAND_XVE_DEBUG
+	---help---
+	  This option compiles debugging code into the data path
+	  of the XVE driver.  The output can be turned on via the
+	  data_debug_level module parameter; however, even with output
+	  turned off, this debugging code will have some performance
+	  impact.

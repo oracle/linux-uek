@@ -1,0 +1,16 @@
+config INFINIBAND_XSVHBA
+        tristate "Xsigo Virtual HBA"
+        depends on INFINIBAND_XSCORE
+        ---help---
+	  Support for the Xsigo virtual HBA allowing SAN
+	  Connectivity.
+
+config VHBA_DEBUG
+        bool "Xsigo Virtual HBA debugging" if EMBEDDED
+        depends on INFINIBAND_XSVHBA
+        default y
+        ---help---
+          This option causes debugging code to be compiled into the
+          Xsigo xsvhba driver.  The output can be turned on via the
+          vhba_debug_level module parameter (which can also be
+          after the driver is loaded through sysfs).
