@@ -256,7 +256,18 @@ xfs_dquot_buf_verify(
 	struct xfs_dqblk	*d = (struct xfs_dqblk *)bp->b_addr;
 	struct xfs_disk_dquot	*ddq;
 	xfs_dqid_t		id = 0;
+	int			ndquots;
 	int			i;
+
+	/*
+	 * if we are in log recovery, the quota subsystem has not been
+	 * initialised so we have no quotainfo structure. In that case, we need
+	 * to manually calculate the number of dquots in the buffer.
+	 */
+	if (mp->m_quotainfo)
+		ndquots = mp->m_quotainfo->qi_dqperchunk;
+	else
+		ndquots = xfs_qm_calc_dquots_per_chunk(mp, bp->b_length);
 
 	/*
 	 * On the first read of the buffer, verify that each dquot is valid.
@@ -265,7 +276,7 @@ xfs_dquot_buf_verify(
 	 * first id is corrupt, then it will fail on the second dquot in the
 	 * buffer so corruptions could point to the wrong dquot in this case.
 	 */
-	for (i = 0; i < mp->m_quotainfo->qi_dqperchunk; i++) {
+	for (i = 0; i < ndquots; i++) {
 		int	error;
 
 		ddq = &d[i].dd_diskdq;
