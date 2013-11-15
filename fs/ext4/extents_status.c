@@ -328,6 +328,9 @@ static int __es_insert_extent(struct ext4_es_tree *tree, ext4_lblk_t offset,
 	struct extent_status *es;
 	ext4_lblk_t end = offset + len - 1;
 
+	if (!len)
+		return 0;
+
 	BUG_ON(end < offset);
 	es = tree->cache_es;
 	if (es && offset == (extent_status_end(es) + 1)) {
@@ -432,6 +435,9 @@ int ext4_es_remove_extent(struct inode *inode, ext4_lblk_t offset,
 	trace_ext4_es_remove_extent(inode, offset, len);
 	es_debug("remove [%u/%u) from extent status tree of inode %lu\n",
 		 offset, len, inode->i_ino);
+
+	if (!len)
+		return err;
 
 	end = offset + len - 1;
 	BUG_ON(end < offset);
