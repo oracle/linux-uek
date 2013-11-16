@@ -1527,7 +1527,10 @@ fi\
 if [ $? -eq 0 ];then\
   removeArgs="--remove-args=\"crashkernel=auto\""\
 fi\
-/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod ${removeArgs} --update %{KVERREL}%{?1:.%{1}} || exit $?\
+if [ -e /proc/xen/xsd_kva ]; then\
+   multibootArgs="--multiboot=/%{image_install_path}/xen.gz"\
+fi\
+/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod ${removeArgs} ${multibootArgs} --update %{KVERREL}%{?1:.%{1}} || exit $?\
 /sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
@@ -1552,7 +1555,10 @@ fi}\
 if grep --silent '^hwcap 0 nosegneg$' /etc/ld.so.conf.d/kernel-*.conf 2> /dev/null; then\
   sed -i '/^hwcap 0 nosegneg$/ s/0/1/' /etc/ld.so.conf.d/kernel-*.conf\
 fi\
-/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
+if [ -e /proc/xen/xsd_kva ]; then\
+   multibootArgs="--multiboot=/%{image_install_path}/xen.gz"\
+fi\
+/sbin/new-kernel-pkg --package kernel%{?-v:-%{-v*}} ${multibootArgs} --install %{KVERREL}%{!-u:%{?-v:.%{-v*}}} || exit $?\
 ln -sf /lib/firmware/%{rpmversion}-%{pkg_release} /lib/firmware/%{rpmversion}-%{pkg_release}.%{_target_cpu} \
 %{nil}
 
