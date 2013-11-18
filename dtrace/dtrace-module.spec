@@ -10,21 +10,53 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:{build_kver}}%{!?build_kver:3.8.13-16.2.1.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-16.2.1.el6uek}
 
 # Increment this whenever the DTrace/userspace interface changes in an
 # incompatible way.
 %define dtrace_kernel_interface 1
 
+# Select the correct source code version based on the kernel version.
+# Failing to pick the correct version can have disasterous effects!
+# For safety, we assume that the kernel version is not supported, unless we
+# explicitly recognize it below...  Unsupported versions will always have
+# version code 0.
+#
+# We also set a version code (vercode) to make it possible to make parts of
+# the specfile conditional on the modules version.
+%define dt_vcode	0
+%define dt_0_3_2	770
+%define dt_0_4_0	1024
+%define dt_0_4_1	1025
+%{lua:
+	local kver = rpm.expand("%{kver}")
+
+	if rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
+		rpm.define("srcver 0.4.1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_1}"))
+	elseif rpm.vercmp(kver, "3.8.13-16") >= 0 then
+		rpm.define("srcver 0.4.0")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_0}"))
+	elseif rpm.vercmp(kver, "3") >= 0 then
+		-- No DTrace in 3.x kernels until 3.8.13-16
+	elseif rpm.vercmp(kver, "2.6.39-201.0.2") >= 0 then
+		rpm.define("srcver 0.3.2")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_3_2}"))
+	end
+}
+%if %{dt_vcode} == 0
+ %{error:Kernel %{kver} is not supported for DTrace or source code missing}
+%endif
+
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
-Version: 0.4.1
+Version: %{srcver}
 Release: 3.el6
 Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
 Group: System Environment/Kernel
 Requires: kernel%{variant} = %{kver}
-Source0: dtrace-module-%{kver}.tar.bz2
+Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
@@ -100,6 +132,7 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_4_1}
 * Wed Nov  6 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-3
 - Fix 'errno' implementation.
   [Orabug: 17704568]
@@ -115,6 +148,8 @@ rm -rf %{buildroot}
   [Orabug: 17591351]
 - Ensure safe access to userspace stack memory location.
   [Orabug: 17591351]
+%endif
+%if %{dt_vcode} >= %{dt_0_4_0}
 * Thu Oct 10 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
 - Bugfix for ustack() to avoid using vma data.
 * Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
@@ -126,6 +161,13 @@ rm -rf %{buildroot}
 - Reimplemented ustack().
   (Nick Alcock) [Orabug: 17591351]
 - Bugfixes.
+%endif
+%if %{dt_vcode} >= %{dt_0_3_2}
+* Fri Nov  2 2012 Nick Alcock <nick.alcock@oracle.com> - 0.3.2
+- Release for new kernel and CTF section layout
+%endif
+* Mon Oct  1 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.1
+- Skipped version number
 * Mon Sep 17 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0-2
 - Remove development-only providers because they should not be built/released.
 * Fri Sep 14 2012 Kris Van Hees <kris.van.hees@oracle.com> - 0.3.0
