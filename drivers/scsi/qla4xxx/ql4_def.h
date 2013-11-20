@@ -765,6 +765,7 @@ struct scsi_qla_host {
 	uint32_t fw_dump_capture_mask;
 	void *fw_dump_tmplt_hdr;
 	uint32_t fw_dump_tmplt_size;
+	uint32_t fw_dump_skip_size;
 
 	struct completion mbx_intr_comp;
 
