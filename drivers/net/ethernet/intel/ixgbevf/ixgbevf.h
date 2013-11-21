@@ -96,8 +96,8 @@ struct ixgbevf_ring {
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBEVF_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
-#define MAX_RX_QUEUES 1
-#define MAX_TX_QUEUES 1
+#define MAX_RX_QUEUES IXGBE_VF_MAX_RX_QUEUES
+#define MAX_TX_QUEUES IXGBE_VF_MAX_TX_QUEUES
 
 #define IXGBEVF_DEFAULT_TXD   1024
 #define IXGBEVF_DEFAULT_RXD   512
@@ -241,6 +241,7 @@ struct ixgbevf_adapter {
 #define IXGBE_FLAG_RX_CSUM_ENABLED              (u32)(1)
 #define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 1)
 #define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 2)
+#define IXGBEVF_FLAG_QUEUE_RESET_REQUESTED      (u32)(1 << 3)
 
 	/* OS defined structs */
 	struct net_device *netdev;
@@ -251,7 +252,6 @@ struct ixgbevf_adapter {
 	struct ixgbe_hw hw;
 	u16 msg_enable;
 	struct ixgbevf_hw_stats stats;
-	u64 zero_base;
 
 	unsigned long state;
 

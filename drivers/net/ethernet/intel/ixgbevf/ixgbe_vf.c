@@ -125,7 +125,7 @@ s32 ixgbe_reset_hw_vf(struct ixgbe_hw *hw)
 	struct ixgbe_mbx_info *mbx = &hw->mbx;
 	u32 timeout = IXGBE_VF_INIT_TIMEOUT;
 	s32 ret_val = IXGBE_ERR_INVALID_MAC_ADDR;
-	u32 ctrl, msgbuf[IXGBE_VF_PERMADDR_MSG_LEN];
+	u32 msgbuf[IXGBE_VF_PERMADDR_MSG_LEN];
 	u8 *addr = (u8 *)(&msgbuf[1]);
 
 	/* Call adapter stop to disable tx/rx and clear interrupts */
@@ -136,8 +136,7 @@ s32 ixgbe_reset_hw_vf(struct ixgbe_hw *hw)
 
 	hw_dbg(hw, "Issuing a function level reset to MAC\n");
 
-	ctrl = IXGBE_VFREAD_REG(hw, IXGBE_VFCTRL) | IXGBE_CTRL_RST;
-	IXGBE_VFWRITE_REG(hw, IXGBE_VFCTRL, ctrl);
+	IXGBE_VFWRITE_REG(hw, IXGBE_VFCTRL, IXGBE_CTRL_RST);
 	IXGBE_WRITE_FLUSH(hw);
 
 	msleep(50);

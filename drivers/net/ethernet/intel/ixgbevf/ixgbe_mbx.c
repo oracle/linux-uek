@@ -492,7 +492,7 @@ static s32 ixgbe_obtain_mbx_lock_pf(struct ixgbe_hw *hw, u16 vf_number)
 	if (p2v_mailbox & IXGBE_PFMAILBOX_PFU)
 		ret_val = 0;
 	else
-		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
+		ERROR_REPORT2(IXGBE_ERROR_POLLING,
 			   "Failed to obtain mailbox lock for VF%d", vf_number);
 
 
