@@ -60,7 +60,7 @@
 #define DRV_EXTRAVERSION ""
 #endif
 
-#define DRV_VERSION "2.4.14" DRV_EXTRAVERSION
+#define DRV_VERSION "2.5.4" DRV_EXTRAVERSION
 char e1000e_driver_name[] = "e1000e";
 const char e1000e_driver_version[] = DRV_VERSION;
 
@@ -1174,8 +1174,14 @@ static void e1000_print_hw_hang(struct work_struct *work)
 		adapter->tx_hang_recheck = true;
 		return;
 	}
-	/* Real hang detected */
 	adapter->tx_hang_recheck = false;
+
+	if (er32(TDH(0)) == er32(TDT(0))) {
+		e_dbg("false hang detected, ignoring\n");
+		return;
+	}
+
+	/* Real hang detected */
 	netif_stop_queue(netdev);
 
 	e1e_rphy(hw, MII_BMSR, &phy_status);
@@ -1204,6 +1210,8 @@ static void e1000_print_hw_hang(struct work_struct *work)
 	      tx_ring->next_to_clean, tx_ring->buffer_info[eop].time_stamp,
 	      eop, jiffies, eop_desc->upper.fields.status, er32(STATUS),
 	      phy_status, phy_1000t_status, phy_ext_status, pci_status);
+
+	e1000e_dump(adapter);
 
 	/* Suggest workaround for known h/w issue */
 	if ((hw->mac.type == e1000_pchlan) && (er32(CTRL) & E1000_CTRL_TFCE))
@@ -3267,7 +3275,7 @@ static void e1000_configure_tx(struct e1000_adapter *adapter)
 	struct e1000_hw *hw = &adapter->hw;
 	struct e1000_ring *tx_ring = adapter->tx_ring;
 	u64 tdba;
-	u32 tdlen, tarc;
+	u32 tdlen, tctl, tarc;
 
 	/* Setup the HW Tx Head and Tail descriptor pointers */
 	tdba = tx_ring->dma;
@@ -3304,6 +3312,12 @@ static void e1000_configure_tx(struct e1000_adapter *adapter)
 	/* erratum work around: set txdctl the same for both queues */
 	ew32(TXDCTL(1), er32(TXDCTL(0)));
 
+	/* Program the Transmit Control Register */
+	tctl = er32(TCTL);
+	tctl &= ~E1000_TCTL_CT;
+	tctl |= E1000_TCTL_PSP | E1000_TCTL_RTLC |
+	    (E1000_COLLISION_THRESHOLD << E1000_CT_SHIFT);
+
 	if (adapter->flags & FLAG_TARC_SPEED_MODE_BIT) {
 		tarc = er32(TARC(0));
 		/* set the speed mode bit, we'll clear it if we're not at
@@ -3333,6 +3347,8 @@ static void e1000_configure_tx(struct e1000_adapter *adapter)
 
 	/* enable Report Status bit */
 	adapter->txd_cmd |= E1000_TXD_CMD_RS;
+
+	ew32(TCTL, tctl);
 
 	hw->mac.ops.config_collision_dist(hw);
 }
@@ -3378,8 +3394,9 @@ static void e1000_setup_rctl(struct e1000_adapter *adapter)
 	if (adapter->flags2 & FLAG2_CRC_STRIPPING)
 		rctl |= E1000_RCTL_SECRC;
 
-	/* Workaround Si errata on 82577 PHY - configure IPG for jumbos */
-	if ((hw->phy.type == e1000_phy_82577) && (rctl & E1000_RCTL_LPE)) {
+	/* Workaround Si errata on 82577/82578 - configure IPG for jumbos */
+	if ((hw->mac.type == e1000_pchlan) && (rctl & E1000_RCTL_LPE)) {
+		u32 mac_data;
 		u16 phy_data;
 
 		e1e_rphy(hw, PHY_REG(770, 26), &phy_data);
@@ -3387,12 +3404,18 @@ static void e1000_setup_rctl(struct e1000_adapter *adapter)
 		phy_data |= (1 << 2);
 		e1e_wphy(hw, PHY_REG(770, 26), phy_data);
 
-		e1e_rphy(hw, 22, &phy_data);
-		phy_data &= 0x0fff;
-		phy_data |= (1 << 14);
-		e1e_wphy(hw, 0x10, 0x2823);
-		e1e_wphy(hw, 0x11, 0x0003);
-		e1e_wphy(hw, 22, phy_data);
+		mac_data = er32(FFLT_DBG);
+		mac_data |= (1 << 17);
+		ew32(FFLT_DBG, mac_data);
+
+		if (hw->phy.type == e1000_phy_82577) {
+			e1e_rphy(hw, 22, &phy_data);
+			phy_data &= 0x0fff;
+			phy_data |= (1 << 14);
+			e1e_wphy(hw, 0x10, 0x2823);
+			e1e_wphy(hw, 0x11, 0x0003);
+			e1e_wphy(hw, 22, phy_data);
+		}
 	}
 
 	/* Setup buffer sizes */
@@ -4966,11 +4989,16 @@ static void e1000e_update_phy_task(struct work_struct *work)
 	struct e1000_adapter *adapter = container_of(work,
 						     struct e1000_adapter,
 						     update_phy_task);
+	struct e1000_hw *hw = &adapter->hw;
 
 	if (test_bit(__E1000_DOWN, &adapter->state))
 		return;
 
-	e1000_get_phy_info(&adapter->hw);
+	e1000_get_phy_info(hw);
+
+	/* Enable EEE on 82579 after link up */
+	if (hw->phy.type == e1000_phy_82579)
+		e1000_set_eee_pchlan(hw);
 }
 
 /**
@@ -5342,6 +5370,7 @@ static void e1000e_check_82574_phy_workaround(struct e1000_adapter *adapter)
 
 	if (adapter->phy_hang_count > 1) {
 		adapter->phy_hang_count = 0;
+		e_dbg("PHY appears hung - resetting\n");
 		schedule_work(&adapter->reset_task);
 	}
 }
@@ -5416,7 +5445,7 @@ static void e1000_watchdog_task(struct work_struct *work)
 			 */
 			if ((hw->phy.type == e1000_phy_igp_3 ||
 			     hw->phy.type == e1000_phy_bm) &&
-			    (hw->mac.autoneg == true) &&
+			    (hw->mac.autoneg) &&
 			    (adapter->link_speed == SPEED_10 ||
 			     adapter->link_speed == SPEED_100) &&
 			    (adapter->link_duplex == HALF_DUPLEX)) {
@@ -5505,15 +5534,11 @@ static void e1000_watchdog_task(struct work_struct *work)
 			pr_info("%s NIC Link is Down\n", adapter->netdev->name);
 			netif_carrier_off(netdev);
 
-			/* The link is lost so the controller stops DMA.
-			 * If there is queued Tx work that cannot be done
-			 * or if on an 8000ES2LAN which requires a Rx packet
-			 * buffer work-around on link down event, reset the
-			 * controller to flush the Tx/Rx packet buffers.
-			 * (Do the reset outside of interrupt context).
+			/* 8000ES2LAN requires a Rx packet buffer work-around
+			 * on link down event; reset the controller to flush
+			 * the Rx packet buffer.
 			 */
-			if ((adapter->flags & FLAG_RX_NEEDS_RESTART) ||
-			    (e1000_desc_unused(tx_ring) + 1 < tx_ring->count))
+			if (adapter->flags & FLAG_RX_NEEDS_RESTART)
 				adapter->flags |= FLAG_RESTART_NOW;
 			else
 				pm_schedule_suspend(netdev->dev.parent,
@@ -5540,6 +5565,15 @@ link_up:
 	spin_unlock(&adapter->stats64_lock);
 #endif
 
+	/* If the link is lost the controller stops DMA, but
+	 * if there is queued Tx work it cannot be done.  So
+	 * reset the controller to flush the Tx packet buffers.
+	 */
+	if (!netif_carrier_ok(netdev) &&
+	    (e1000_desc_unused(tx_ring) + 1 < tx_ring->count))
+		adapter->flags |= FLAG_RESTART_NOW;
+
+	/* If reset is necessary, do it outside of interrupt context. */
 	if (adapter->flags & FLAG_RESTART_NOW) {
 		schedule_work(&adapter->reset_task);
 		/* return immediately since reset is imminent */
@@ -6173,6 +6207,9 @@ static netdev_tx_t e1000_xmit_frame(struct sk_buff *skb,
 static void e1000_tx_timeout(struct net_device *netdev)
 {
 	struct e1000_adapter *adapter = netdev_priv(netdev);
+	struct e1000_hw *hw = &adapter->hw;
+
+	e_dbg("NETDEV WATCHDOG: transmit timed out - resetting\n");
 
 	/* Do the reset outside of interrupt context */
 	adapter->tx_timeout_count++;
@@ -6669,9 +6706,9 @@ static int __e1000_shutdown(struct pci_dev *pdev, bool runtime)
 		e1000_power_down_phy(adapter);
 	}
 
-	if (adapter->hw.phy.type == e1000_phy_igp_3)
+	if (adapter->hw.phy.type == e1000_phy_igp_3) {
 		e1000e_igp3_phy_powerdown_workaround_ich8lan(&adapter->hw);
-	else if (hw->mac.type == e1000_pch_lpt) {
+	} else if (hw->mac.type == e1000_pch_lpt) {
 		/* Disable ULP in S5; enable in other Sx and RPM */
 		if (test_bit(__E1000_SHUTDOWN, &adapter->state))
 			retval = e1000_disable_ulp_lpt_lp(hw, true);
@@ -6758,7 +6795,7 @@ static void e1000e_disable_aspm(struct pci_dev *pdev, u16 state)
 }
 
 #ifdef CONFIG_PM
-static int __e1000_resume(struct pci_dev *pdev, bool runtime)
+static int __e1000_resume(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct e1000_adapter *adapter = netdev_priv(netdev);
@@ -6892,7 +6929,7 @@ static int e1000e_pm_resume(struct pci_dev *pdev)
 #endif
 	int rc;
 
-	rc = __e1000_resume(pdev, false);
+	rc = __e1000_resume(pdev);
 	if (rc)
 		return rc;
 
@@ -6925,7 +6962,7 @@ static int e1000e_pm_runtime_resume(struct device *dev)
 	struct e1000_adapter *adapter = netdev_priv(netdev);
 	int rc;
 
-	rc = __e1000_resume(pdev, true);
+	rc = __e1000_resume(pdev);
 	if (rc)
 		return rc;
 
@@ -7896,6 +7933,10 @@ static DEFINE_PCI_DEVICE_TABLE(e1000_pci_tbl) = {
 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LPT_I217_V), board_pch_lpt },
 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LPTLP_I218_LM), board_pch_lpt },
 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_LPTLP_I218_V), board_pch_lpt },
+	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_LM2), board_pch_lpt },
+	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_V2), board_pch_lpt },
+	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_LM3), board_pch_lpt },
+	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_PCH_I218_V3), board_pch_lpt },
 
 	{ 0, 0, 0, 0, 0, 0, 0 }	/* terminate list */
 };
