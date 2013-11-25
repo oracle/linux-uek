@@ -2116,7 +2116,7 @@ static int bio_readpage_error(struct bio *failed_bio, struct page *page,
 			return -EIO;
 		}
 
-		if (em->start > start || em->start + em->len < start) {
+		if (em->start > start || em->start + em->len <= start) {
 			free_extent_map(em);
 			em = NULL;
 		}
