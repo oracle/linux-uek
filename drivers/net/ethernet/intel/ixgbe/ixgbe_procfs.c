@@ -361,11 +361,12 @@ static int ixgbe_txbytes(char *page, char **start, off_t off,
 static int ixgbe_linkstat(char *page, char **start, off_t off,
 			  int count, int *eof, void *data)
 {
-	u32 link_speed;
-	bool link_up = false;
-	int bitmask = 0;
 	struct ixgbe_hw *hw;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
+	int bitmask = 0;
+	u32 link_speed;
+	bool link_up = false;
+
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
@@ -373,8 +374,7 @@ static int ixgbe_linkstat(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-
-	if (test_bit(__IXGBE_DOWN, &adapter->state))
+	if (!test_bit(__IXGBE_DOWN, &adapter->state))
 		bitmask |= 1;
 
 	if (hw->mac.ops.check_link)
@@ -384,6 +384,12 @@ static int ixgbe_linkstat(char *page, char **start, off_t off,
 		link_up = true;
 	if (link_up)
 		bitmask |= 2;
+
+	if (adapter->old_lsc != adapter->lsc_int) {
+		bitmask |= 4;
+		adapter->old_lsc = adapter->lsc_int;
+	}
+
 	return snprintf(page, count, "0x%X\n", bitmask);
 }
 
@@ -421,7 +427,7 @@ static int ixgbe_macburn(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	return snprintf(page, count, "0x%X%X%X%X%X%X\n",
+	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.perm_addr[0],
 		       (unsigned int)hw->mac.perm_addr[1],
 		       (unsigned int)hw->mac.perm_addr[2],
@@ -442,7 +448,7 @@ static int ixgbe_macadmn(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	return snprintf(page, count, "0x%X%X%X%X%X%X\n",
+	return snprintf(page, count, "0x%02X%02X%02X%02X%02X%02X\n",
 		       (unsigned int)hw->mac.addr[0],
 		       (unsigned int)hw->mac.addr[1],
 		       (unsigned int)hw->mac.addr[2],
@@ -454,23 +460,31 @@ static int ixgbe_macadmn(char *page, char **start, off_t off,
 static int ixgbe_maclla1(char *page, char **start, off_t off,
 			 int count, int *eof, void *data)
 {
-	struct ixgbe_hw *hw;
-	u16 eeprom_buff[6];
-	int first_word = 0x37;
-	int word_count = 6;
-	int rc;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
+	struct ixgbe_hw *hw  = &adapter->hw;
+	u16 eeprom_buff[6];
+	const u16 word_count = ARRAY_SIZE(eeprom_buff);
+	u16 first_word = 0x37;
+	int rc;
+	
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
-	hw = &adapter->hw;
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
+	rc = hw->eeprom.ops.read_buffer(hw, first_word, 1, &first_word);
+	if (rc != 0)
+		return snprintf(page, count, "error: reading pointer to the EEPROM\n");
+	
+	if (first_word != 0x0000 && first_word != 0xFFFF) {
 	rc = hw->eeprom.ops.read_buffer(hw, first_word, word_count,
-					   eeprom_buff);
+					eeprom_buff);
 	if (rc != 0)
 		return snprintf(page, count, "error: reading buffer\n");
+	} else {
+		memset(eeprom_buff, 0, sizeof(eeprom_buff));
+	}
 
 	switch (hw->bus.func) {
 	case 0:
@@ -506,9 +520,6 @@ static int ixgbe_featflag(char *page, char **start, off_t off,
 			  int count, int *eof, void *data)
 {
 	int bitmask = 0;
-#ifndef HAVE_NDO_SET_FEATURES
-	struct ixgbe_ring *ring;
-#endif
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
 	struct net_device *netdev;
 
@@ -518,16 +529,9 @@ static int ixgbe_featflag(char *page, char **start, off_t off,
 	if (netdev == NULL)
 		return snprintf(page, count, "error: no net device\n");
 
-#ifndef HAVE_NDO_SET_FEATURES
-	/* ixgbe_get_rx_csum(netdev) doesn't compile so hard code */
-	ring = adapter->rx_ring[0];
-	bitmask = test_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-	return snprintf(page, count, "%d\n", bitmask);
-#else
 	if (adapter->netdev->features & NETIF_F_RXCSUM)
 		bitmask |= 1;
 	return snprintf(page, count, "%d\n", bitmask);
-#endif
 }
 
 static int ixgbe_lsominct(char *page, char **start, off_t off,

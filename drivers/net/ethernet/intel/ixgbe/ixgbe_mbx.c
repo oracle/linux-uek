@@ -68,7 +68,7 @@ s32 ixgbe_write_mbx(struct ixgbe_hw *hw, u32 *msg, u16 size, u16 mbx_id)
 
 	if (size > mbx->size) {
 		ret_val = IXGBE_ERR_MBX;
-		ERROR_REPORT2(IXGBE_ERROR_SOFTWARE,
+		ERROR_REPORT2(IXGBE_ERROR_ARGUMENT,
 			     "Invalid mailbox message size %d", size);
 	} else if (mbx->ops.write)
 		ret_val = mbx->ops.write(hw, msg, size, mbx_id);
@@ -593,7 +593,7 @@ static s32 ixgbe_obtain_mbx_lock_pf(struct ixgbe_hw *hw, u16 vf_number)
 	if (p2v_mailbox & IXGBE_PFMAILBOX_PFU)
 		ret_val = 0;
 	else
-		ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
+		ERROR_REPORT2(IXGBE_ERROR_POLLING,
 			   "Failed to obtain mailbox lock for VF%d", vf_number);
 
 

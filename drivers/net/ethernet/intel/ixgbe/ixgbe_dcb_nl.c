@@ -691,7 +691,6 @@ static int ixgbe_dcbnl_ieee_getpfc(struct net_device *dev,
 
 	return 0;
 }
-	int err;
 
 static int ixgbe_dcbnl_ieee_setpfc(struct net_device *dev,
 				   struct ieee_pfc *pfc)

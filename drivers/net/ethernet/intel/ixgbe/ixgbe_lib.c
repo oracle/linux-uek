@@ -65,11 +65,11 @@ static bool ixgbe_cache_ring_dcb_vmdq(struct ixgbe_adapter *adapter)
 		 * this out we have to swap the bits to get the correct layout
 		 */
 		for (i = 0; i < adapter->num_rx_queues; i++) {
-			u8 reg_idx = ((i >> 3) | (i << 3)) & 0x3F;
+			reg_idx = ((i >> 3) | (i << 3)) & 0x3F;
 			adapter->rx_ring[i]->reg_idx = reg_idx;
 		}
 		for (i = 0; i < adapter->num_tx_queues; i++) {
-			u8 reg_idx = ((i >> 4) | (i << 2)) & 0x1F;
+			reg_idx = ((i >> 4) | (i << 2)) & 0x1F;
 			adapter->tx_ring[i]->reg_idx = reg_idx;
 		}
 		break;
@@ -898,6 +898,9 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 	/* initialize NAPI */
 	netif_napi_add(adapter->netdev, &q_vector->napi,
 		       ixgbe_poll, 64);
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	napi_hash_add(&q_vector->napi);
+#endif
 
 	/* tie q_vector and adapter together */
 	adapter->q_vector[v_idx] = q_vector;
@@ -970,11 +973,6 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 		if (adapter->hw.mac.type == ixgbe_mac_82599EB)
 			set_bit(__IXGBE_RX_CSUM_UDP_ZERO_ERR, &ring->state);
 
-#ifndef HAVE_NDO_SET_FEATURES
-		/* enable rx csum by default */
-		set_bit(__IXGBE_RX_CSUM_ENABLED, &ring->state);
-
-#endif
 #ifdef IXGBE_FCOE
 		if (adapter->flags & IXGBE_FLAG_FCOE_ENABLED) {
 			struct ixgbe_ring_feature *f;
@@ -1026,6 +1024,9 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 		adapter->rx_ring[ring->queue_index] = NULL;
 
 	adapter->q_vector[v_idx] = NULL;
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	napi_hash_del(&q_vector->napi);
+#endif
 	netif_napi_del(&q_vector->napi);
 #ifndef IXGBE_NO_LRO
 	__skb_queue_purge(&q_vector->lrolist.active);

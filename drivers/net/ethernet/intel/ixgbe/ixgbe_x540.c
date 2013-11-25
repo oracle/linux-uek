@@ -561,7 +561,7 @@ s32 ixgbe_validate_eeprom_checksum_X540(struct ixgbe_hw *hw,
 		 */
 		if (read_checksum != checksum) {
 			status = IXGBE_ERR_EEPROM_CHECKSUM;
-			ERROR_REPORT1(IXGBE_ERROR_CHECKSUM,
+			ERROR_REPORT1(IXGBE_ERROR_INVALID_STATE,
 				     "Invalid EEPROM checksum");
 		}
 
@@ -747,10 +747,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 			msleep(5);
 		}
 	}
-	if (i == timeout) {
-		ret_val = IXGBE_ERR_SWFW_SYNC;
-		goto out;
-	}
+
 	/* Failed to get SW only semaphore */
 	if (swmask == IXGBE_GSSR_SW_MNG_SM) {
 		ret_val = IXGBE_ERR_SWFW_SYNC;
@@ -760,7 +757,7 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 	}
 
 	/* If the resource is not released by the FW/HW the SW can assume that
-	 * the FW/HW malfunctions. In that case the SW should sets the SW bit(s)
+	 * the FW/HW malfunctions. In that case the SW should set the SW bit(s)
 	 * of the requested resource(s) while ignoring the corresponding FW/HW
 	 * bits in the SW_FW_SYNC register.
 	 */
@@ -775,6 +772,17 @@ s32 ixgbe_acquire_swfw_sync_X540(struct ixgbe_hw *hw, u16 mask)
 		IXGBE_WRITE_REG(hw, IXGBE_SWFW_SYNC, swfw_sync);
 		ixgbe_release_swfw_sync_semaphore(hw);
 		msleep(5);
+	}
+	/* If the resource is not released by other SW the SW can assume that
+	 * the other SW malfunctions. In that case the SW should clear all SW
+	 * flags that it does not own and then repeat the whole process once
+	 * again.
+	 */
+	else if (swfw_sync & swmask) {
+		ixgbe_release_swfw_sync_X540(hw, IXGBE_GSSR_EEP_SM |
+			IXGBE_GSSR_PHY0_SM | IXGBE_GSSR_PHY1_SM |
+			IXGBE_GSSR_MAC_CSR_SM);
+		ret_val = IXGBE_ERR_SWFW_SYNC;
 	}
 
 out:
