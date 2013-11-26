@@ -769,6 +769,7 @@ again:
 		if (err)
 			extent_io_tree_panic(tree, err);
 
+		cache_state(prealloc, cached_state);
 		prealloc = NULL;
 		goto out;
 	}
@@ -990,9 +991,10 @@ again:
 			goto out;
 		}
 		err = insert_state(tree, prealloc, start, end, &bits);
-		prealloc = NULL;
 		if (err)
 			extent_io_tree_panic(tree, err);
+		cache_state(prealloc, cached_state);
+		prealloc = NULL;
 		goto out;
 	}
 	state = rb_entry(node, struct extent_state, rb_node);
