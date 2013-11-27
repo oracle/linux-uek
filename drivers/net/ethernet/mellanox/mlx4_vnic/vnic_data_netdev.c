@@ -650,7 +650,6 @@ static int _vnic_open(struct net_device *dev)
 		goto err_ib_stop;
 
 	/* configure */
-	vnic_set_default_moder(login);
 	if (vnic_ib_set_moder(login, login->last_moder_time, login->rx_frames,
 			      login->tx_usecs, login->tx_frames))
 		vnic_warn(login->name, "vnic_ib_set_moder failed!\n");
@@ -991,7 +990,7 @@ struct net_device *vnic_alloc_netdev(struct vnic_port *port)
 	sprintf(login->name, "%s-%d", "vnic", login->cnt);
 	sprintf(login->desc, "%s-P%d",
 		login->port->dev->ca->node_desc, port->num);
-
+	vnic_set_default_moder(login);
 	login->neigh_wq = create_singlethread_workqueue(login->name);
 	if (!login->neigh_wq) {
 		vnic_err(NULL, "create_singlethread_workqueue failed for %s\n",
