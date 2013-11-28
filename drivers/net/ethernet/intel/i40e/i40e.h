@@ -240,9 +240,6 @@ struct i40e_pf {
 #define I40E_FLAG_FDIR_ATR_ENABLED             (u64)(1 << 23)
 #define I40E_FLAG_MFP_ENABLED                  (u64)(1 << 27)
 
-	u16 num_tx_queues;
-	u16 num_rx_queues;
-
 	bool stat_offsets_loaded;
 	struct i40e_hw_port_stats stats;
 	struct i40e_hw_port_stats stats_offsets;
