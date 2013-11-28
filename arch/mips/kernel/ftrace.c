@@ -42,17 +42,14 @@ void arch_ftrace_update_code(int command)
 /*
  * Check if the address is in kernel space
  *
- * Clone core_kernel_text() from kernel/extable.c, but doesn't call
- * init_kernel_text() for Ftrace doesn't trace functions in init sections.
+ * Clone core_kernel_text() from kernel/extable.
  */
 static inline int in_kernel_space(unsigned long ip)
 {
 	if (IS_ENABLED(CONFIG_MAPPED_KERNEL))
 		return 1; /* For Mapped kernel everything has the kernel ABI */
-	if (ip >= (unsigned long)_stext &&
-	    ip <= (unsigned long)_etext)
-		return 1;
-	return 0;
+
+	return core_kernel_text(ip);
 }
 
 #ifdef CONFIG_DYNAMIC_FTRACE
