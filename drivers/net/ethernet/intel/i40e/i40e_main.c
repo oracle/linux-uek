@@ -5582,7 +5582,6 @@ static void i40e_init_interrupt_scheme(struct i40e_pf *pf)
 		if (err) {
 			pf->flags &= ~(I40E_FLAG_MSIX_ENABLED	   |
 					I40E_FLAG_RSS_ENABLED	   |
-					I40E_FLAG_MQ_ENABLED	   |
 					I40E_FLAG_DCB_ENABLED	   |
 					I40E_FLAG_SRIOV_ENABLED	   |
 					I40E_FLAG_FDIR_ENABLED	   |
@@ -5765,7 +5764,6 @@ static int i40e_sw_init(struct i40e_pf *pf)
 		    I40E_FLAG_MSI_ENABLED     |
 		    I40E_FLAG_MSIX_ENABLED    |
 		    I40E_FLAG_RX_PS_ENABLED   |
-		    I40E_FLAG_MQ_ENABLED      |
 		    I40E_FLAG_RX_1BUF_ENABLED;
 
 	/* Depending on PF configurations, it is possible that the RSS
@@ -7186,8 +7184,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 	 */
 	queues_left = pf->hw.func_caps.num_tx_qp;
 
-	if   (!((pf->flags & I40E_FLAG_MSIX_ENABLED)		 &&
-		(pf->flags & I40E_FLAG_MQ_ENABLED))		 ||
+	if   (!(pf->flags & I40E_FLAG_MSIX_ENABLED) ||
 		!(pf->flags & (I40E_FLAG_RSS_ENABLED |
 		I40E_FLAG_FDIR_ENABLED | I40E_FLAG_DCB_ENABLED)) ||
 		(queues_left == 1)) {
@@ -7198,7 +7195,6 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 
 		/* make sure all the fancies are disabled */
 		pf->flags &= ~(I40E_FLAG_RSS_ENABLED       |
-				I40E_FLAG_MQ_ENABLED	   |
 				I40E_FLAG_FDIR_ENABLED	   |
 				I40E_FLAG_FDIR_ATR_ENABLED |
 				I40E_FLAG_DCB_ENABLED	   |
