@@ -1209,6 +1209,10 @@ static int i40e_set_mac(struct net_device *netdev, void *p)
 	if (ether_addr_equal(netdev->dev_addr, addr->sa_data))
 		return 0;
 
+	if (test_bit(__I40E_DOWN, &vsi->back->state) ||
+	    test_bit(__I40E_RESET_RECOVERY_PENDING, &vsi->back->state))
+		return -EADDRNOTAVAIL;
+
 	if (vsi->type == I40E_VSI_MAIN) {
 		i40e_status ret;
 		ret = i40e_aq_mac_address_write(&vsi->back->hw,
@@ -1773,7 +1777,6 @@ int i40e_vsi_add_vlan(struct i40e_vsi *vsi, s16 vid)
 {
 	struct i40e_mac_filter *f, *add_f;
 	bool is_netdev, is_vf;
-	int ret;
 
 	is_vf = (vsi->type == I40E_VSI_SRIOV);
 	is_netdev = !!(vsi->netdev);
@@ -1797,13 +1800,6 @@ int i40e_vsi_add_vlan(struct i40e_vsi *vsi, s16 vid)
 				 vid, f->macaddr);
 			return -ENOMEM;
 		}
-	}
-
-	ret = i40e_sync_vsi_filters(vsi);
-	if (ret) {
-		dev_info(&vsi->back->pdev->dev,
-			 "Could not sync filters for vid %d\n", vid);
-		return ret;
 	}
 
 	/* Now if we add a vlan tag, make sure to check if it is the first
@@ -1842,10 +1838,13 @@ int i40e_vsi_add_vlan(struct i40e_vsi *vsi, s16 vid)
 				}
 			}
 		}
-		ret = i40e_sync_vsi_filters(vsi);
 	}
 
-	return ret;
+	if (test_bit(__I40E_DOWN, &vsi->back->state) ||
+	    test_bit(__I40E_RESET_RECOVERY_PENDING, &vsi->back->state))
+		return 0;
+
+	return i40e_sync_vsi_filters(vsi);
 }
 
 /**
@@ -1861,7 +1860,6 @@ int i40e_vsi_kill_vlan(struct i40e_vsi *vsi, s16 vid)
 	struct i40e_mac_filter *f, *add_f;
 	bool is_vf, is_netdev;
 	int filter_count = 0;
-	int ret;
 
 	is_vf = (vsi->type == I40E_VSI_SRIOV);
 	is_netdev = !!(netdev);
@@ -1871,12 +1869,6 @@ int i40e_vsi_kill_vlan(struct i40e_vsi *vsi, s16 vid)
 
 	list_for_each_entry(f, &vsi->mac_filter_list, list)
 		i40e_del_filter(vsi, f->macaddr, vid, is_vf, is_netdev);
-
-	ret = i40e_sync_vsi_filters(vsi);
-	if (ret) {
-		dev_info(&vsi->back->pdev->dev, "Could not sync filters\n");
-		return ret;
-	}
 
 	/* go through all the filters for this VSI and if there is only
 	 * vid == 0 it means there are no other filters, so vid 0 must
@@ -1919,6 +1911,10 @@ int i40e_vsi_kill_vlan(struct i40e_vsi *vsi, s16 vid)
 			}
 		}
 	}
+
+	if (test_bit(__I40E_DOWN, &vsi->back->state) ||
+	    test_bit(__I40E_RESET_RECOVERY_PENDING, &vsi->back->state))
+		return 0;
 
 	return i40e_sync_vsi_filters(vsi);
 }
