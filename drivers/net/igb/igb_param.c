@@ -132,11 +132,11 @@ IGB_PARAM(LLISize, "Low Latency Interrupt on Packet Size (0-1500), default 0=off
  *
  * Valid Range: 0 - 8
  *
- * Default Value:  1
+ * Default Value:  0
  */
-IGB_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues (0-8), default 1, 0=number of cpus");
+IGB_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues (0-8), default 0, 0=the lesser, number of cpus or 8");
 
-#define DEFAULT_RSS       1
+#define DEFAULT_RSS       0
 #define MAX_RSS           8
 #define MIN_RSS           0
 
@@ -626,7 +626,7 @@ void igb_check_options(struct igb_adapter *adapter)
 			}
 #ifdef module_param_array
 		} else {
-			adapter->rss_queues = opt.def;
+			adapter->rss_queues = !opt.def ? min_t(u32, opt.arg.r.max, num_online_cpus()) : opt.def;
 		}
 #endif
 	}
