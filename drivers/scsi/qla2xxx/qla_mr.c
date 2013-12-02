@@ -218,34 +218,6 @@ qlafx00_disable_intrs(struct qla_hw_data *ha)
 }
 
 int
-qlafx00_abort_command(srb_t *sp)
-{
-	unsigned long   flags = 0;
-
-	uint32_t	handle;
-	fc_port_t	*fcport = sp->fcport;
-	struct scsi_qla_host *vha = fcport->vha;
-	struct qla_hw_data *ha = vha->hw;
-	struct req_que *req = vha->req;
-
-	spin_lock_irqsave(&ha->hardware_lock, flags);
-	for (handle = 1; handle < DEFAULT_OUTSTANDING_COMMANDS; handle++) {
-		if (req->outstanding_cmds[handle] == sp)
-			break;
-	}
-	spin_unlock_irqrestore(&ha->hardware_lock, flags);
-	if (handle == DEFAULT_OUTSTANDING_COMMANDS) {
-		/* Command not found. */
-		return QLA_FUNCTION_FAILED;
-	}
-	if (sp->type == SRB_FXIOCB_DCMD)
-		return qlafx00_fx_disc(vha, &vha->hw->mr.fcport,
-		    FXDISC_ABORT_IOCTL);
-
-	return qlafx00_async_abt_cmd(sp);
-}
-
-int
 qlafx00_abort_target(fc_port_t *fcport, unsigned int l, int tag)
 {
 	return qla2x00_async_tm_cmd(fcport, TCF_TARGET_RESET, l, tag);
@@ -1742,66 +1714,6 @@ done_unmap_req:
 	if (fdisc->u.fxiocb.req_addr)
 		dma_free_coherent(&ha->pdev->dev, fdisc->u.fxiocb.req_len,
 		    fdisc->u.fxiocb.req_addr, fdisc->u.fxiocb.req_dma_handle);
-done_free_sp:
-	sp->free(vha, sp);
-done:
-	return rval;
-}
-
-static void
-qlafx00_abort_iocb_timeout(void *data)
-{
-	srb_t *sp = (srb_t *)data;
-	struct srb_iocb *abt = &sp->u.iocb_cmd;
-
-	abt->u.abt.comp_status = CS_TIMEOUT;
-	complete(&abt->u.abt.comp);
-}
-
-static void
-qlafx00_abort_sp_done(void *data, void *ptr, int res)
-{
-	srb_t *sp = (srb_t *)ptr;
-	struct srb_iocb *abt = &sp->u.iocb_cmd;
-
-	complete(&abt->u.abt.comp);
-}
-
-int
-qlafx00_async_abt_cmd(srb_t *cmd_sp)
-{
-	scsi_qla_host_t *vha = cmd_sp->fcport->vha;
-	fc_port_t *fcport = cmd_sp->fcport;
-	struct srb_iocb *abt_iocb;
-	srb_t *sp;
-	int rval = QLA_FUNCTION_FAILED;
-
-	sp = qla2x00_get_sp(vha, fcport, GFP_KERNEL);
-	if (!sp)
-		goto done;
-
-	abt_iocb = &sp->u.iocb_cmd;
-	sp->type = SRB_ABT_CMD;
-	sp->name = "abort";
-	qla2x00_init_timer(sp, FXDISC_TIMEOUT);
-	abt_iocb->u.abt.cmd_hndl = cmd_sp->handle;
-	sp->done = qlafx00_abort_sp_done;
-	abt_iocb->timeout = qlafx00_abort_iocb_timeout;
-	init_completion(&abt_iocb->u.abt.comp);
-
-	rval = qla2x00_start_sp(sp);
-	if (rval != QLA_SUCCESS)
-		goto done_free_sp;
-
-	ql_dbg(ql_dbg_async, vha, 0x507c,
-	    "Abort command issued - hdl=%x, target_id=%x\n",
-	    cmd_sp->handle, fcport->tgt_id);
-
-	wait_for_completion(&abt_iocb->u.abt.comp);
-
-	rval = abt_iocb->u.abt.comp_status == CS_COMPLETE ?
-	    QLA_SUCCESS : QLA_FUNCTION_FAILED;
-
 done_free_sp:
 	sp->free(vha, sp);
 done:

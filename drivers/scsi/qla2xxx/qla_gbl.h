@@ -324,6 +324,7 @@ qla24xx_get_isp_stats(scsi_qla_host_t *, struct link_statistics *,
     dma_addr_t);
 
 extern int qla24xx_abort_command(srb_t *);
+extern int qla24xx_async_abort_command(srb_t *);
 extern int
 qla24xx_abort_target(struct fc_port *, unsigned int, int);
 extern int
@@ -600,7 +601,6 @@ extern char *qlafx00_fw_version_str(struct scsi_qla_host *, char *);
 extern irqreturn_t qlafx00_intr_handler(int, void *);
 extern void qlafx00_enable_intrs(struct qla_hw_data *);
 extern void qlafx00_disable_intrs(struct qla_hw_data *);
-extern int qlafx00_abort_command(srb_t *);
 extern int qlafx00_abort_target(fc_port_t *, unsigned int, int);
 extern int qlafx00_lun_reset(fc_port_t *, unsigned int, int);
 extern void qlafx00_beacon_blink(struct scsi_qla_host *);
@@ -623,7 +623,6 @@ extern int qlafx00_process_aen(struct scsi_qla_host *, struct qla_work_evt *);
 extern int qla2x00_post_uevent_work(struct scsi_qla_host *, u32);
 extern int qlafx00_post_aenfx_work(struct scsi_qla_host *,  uint32_t,
     uint32_t *, int);
-extern int qlafx00_async_abt_cmd(srb_t *);
 extern uint32_t qlafx00_fw_state_show(struct device *,
     struct device_attribute *, char *);
 extern void qlafx00_get_host_speed(struct Scsi_Host *);
