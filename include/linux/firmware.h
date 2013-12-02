@@ -79,4 +79,11 @@ static inline int uncache_firmware(const char *name)
 }
 #endif
 
+#ifdef CONFIG_FW_LOADER_USER_HELPER
+int request_firmware_direct(const struct firmware **fw, const char *name,
+			    struct device *device);
+#else
+#define request_firmware_direct	request_firmware
+#endif
+
 #endif
