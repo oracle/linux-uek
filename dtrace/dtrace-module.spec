@@ -33,14 +33,17 @@
 
 	if rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
 		rpm.define("srcver 0.4.1")
+		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_1}"))
 	elseif rpm.vercmp(kver, "3.8.13-16") >= 0 then
 		rpm.define("srcver 0.4.0")
+		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_0}"))
 	elseif rpm.vercmp(kver, "3") >= 0 then
-		-- No DTrace in 3.x kernels until 3.8.13-16
+		-- No DTrace in 3.x kernels prior to 3.8.13-16
 	elseif rpm.vercmp(kver, "2.6.39-201.0.2") >= 0 then
 		rpm.define("srcver 0.3.2")
+		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_3_2}"))
 	end
 }
@@ -51,7 +54,7 @@
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: %{srcver}
-Release: 3.el6
+Release: %{bldrel}.el6
 Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
 License: CDDL
 Group: System Environment/Kernel
