@@ -90,6 +90,9 @@ static struct ctl_table cma_ctl_table[] = {
 	},
 	{ }
 };
+
+#define cma_pr(priv, format, arg...) \
+	pr_debug("CMA: %p: " format, ((struct rdma_id_priv *) priv), ## arg)
 #endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 static const char * const cma_events[] = {
@@ -2228,6 +2231,11 @@ static int cma_rep_recv(struct rdma_id_private *id_priv)
 		goto reject;
 
 	trace_cm_send_rtu(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "sending RTU local_id=%u remote_id=%u\n",
+	       id_priv->cm_id.ib->local_id,
+	       id_priv->cm_id.ib->remote_id);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	ret = ib_send_cm_rtu(id_priv->cm_id.ib, NULL, 0);
 	if (ret)
 		goto reject;
@@ -2237,6 +2245,9 @@ reject:
 	pr_debug_ratelimited("RDMA CM: CONNECT_ERROR: failed to handle reply. status %d\n", ret);
 	cma_modify_qp_err(id_priv);
 	trace_cm_send_rej(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "sending REJ\n");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	ib_send_cm_rej(id_priv->cm_id.ib, IB_CM_REJ_CONSUMER_DEFINED,
 		       NULL, 0, NULL, 0);
 	return ret;
@@ -2272,6 +2283,33 @@ static int cma_cm_event_handler(struct rdma_id_private *id_priv,
 	return ret;
 }
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+static const char *cm_event_str(enum ib_cm_event_type event)
+{
+	switch (event) {
+	case IB_CM_REQ_ERROR: return "IB_CM_REQ_ERROR";
+	case IB_CM_REQ_RECEIVED: return "IB_CM_REQ_RECEIVED";
+	case IB_CM_REP_ERROR: return "IB_CM_REP_ERROR";
+	case IB_CM_REP_RECEIVED: return "IB_CM_REP_RECEIVED";
+	case IB_CM_RTU_RECEIVED: return "IB_CM_RTU_RECEIVED";
+	case IB_CM_USER_ESTABLISHED: return "IB_CM_USER_ESTABLISHED";
+	case IB_CM_DREQ_ERROR: return "IB_CM_DREQ_ERROR";
+	case IB_CM_DREQ_RECEIVED: return "IB_CM_DREQ_RECEIVED";
+	case IB_CM_DREP_RECEIVED: return "IB_CM_DREP_RECEIVED";
+	case IB_CM_TIMEWAIT_EXIT: return "IB_CM_TIMEWAIT_EXIT";
+	case IB_CM_MRA_RECEIVED: return "IB_CM_MRA_RECEIVED";
+	case IB_CM_REJ_RECEIVED: return "IB_CM_REJ_RECEIVED";
+	case IB_CM_LAP_ERROR: return "IB_CM_LAP_ERROR";
+	case IB_CM_LAP_RECEIVED: return "IB_CM_LAP_RECEIVED";
+	case IB_CM_APR_RECEIVED: return "IB_CM_APR_RECEIVED";
+	case IB_CM_SIDR_REQ_ERROR: return "IB_CM_SIDR_REQ_ERROR";
+	case IB_CM_SIDR_REQ_RECEIVED: return "IB_CM_SIDR_REQ_RECEIVED";
+	case IB_CM_SIDR_REP_RECEIVED: return "IB_CM_SIDR_REP_RECEIVED";
+	default: return "unknown CM event";
+	}
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 static int cma_ib_handler(struct ib_cm_id *cm_id,
 			  const struct ib_cm_event *ib_event)
 {
@@ -2279,6 +2317,12 @@ static int cma_ib_handler(struct ib_cm_id *cm_id,
 	struct rdma_cm_event event = {};
 	enum rdma_cm_state state;
 	int ret;
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "received %s local_id=%u remote_id=%u\n",
+	       cm_event_str(ib_event->event),
+	       cm_id->local_id, cm_id->remote_id);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	mutex_lock(&id_priv->handler_mutex);
 	state = READ_ONCE(id_priv->state);
@@ -2298,6 +2342,9 @@ static int cma_ib_handler(struct ib_cm_id *cm_id,
 		if (state == RDMA_CM_CONNECT &&
 		    (id_priv->id.qp_type != IB_QPT_UD)) {
 			trace_cm_send_mra(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			cma_pr(id_priv, "sending MRA\n");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 			ib_send_cm_mra(cm_id, CMA_CM_MRA_SETTING, NULL, 0);
 		}
 		if (id_priv->id.qp) {
@@ -4508,8 +4555,9 @@ static int cma_resolve_ib_udp(struct rdma_id_private *id_priv,
 #else
 	req.timeout_ms = 1 << (cma_cm_response_timeout - 8);
 	req.max_cm_retries = cma_max_cm_retries;
-#endif /* WITHOUT_ORACLE_EXTENSIONS */
 
+	cma_pr(id_priv, "sending SIDR\n");
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	trace_cm_send_sidr_req(id_priv);
 	ret = ib_send_cm_sidr_req(id_priv->cm_id.ib, &req);
 	if (ret) {
@@ -4595,6 +4643,12 @@ static int cma_connect_ib(struct rdma_id_private *id_priv,
 	req.ece.attr_mod = id_priv->ece.attr_mod;
 
 	trace_cm_send_req(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "sending REQ local_id=%u remote_id=%u qp_num=%u\n",
+	       id_priv->cm_id.ib->local_id,
+	       id_priv->cm_id.ib->remote_id,
+	       id_priv->qp_num);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	ret = ib_send_cm_req(id_priv->cm_id.ib, &req);
 out:
 	if (ret && !IS_ERR(id)) {
@@ -4769,6 +4823,12 @@ static int cma_accept_ib(struct rdma_id_private *id_priv,
 	rep.ece.attr_mod = id_priv->ece.attr_mod;
 
 	trace_cm_send_rep(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "sending REP local_id=%u remote_id=%u qp_num=%u\n",
+	       id_priv->cm_id.ib->local_id,
+	       id_priv->cm_id.ib->remote_id,
+	       id_priv->qp_num);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	ret = ib_send_cm_rep(id_priv->cm_id.ib, &rep);
 out:
 	return ret;
@@ -4826,6 +4886,9 @@ static int cma_send_sidr_rep(struct rdma_id_private *id_priv,
 	rep.private_data_len = private_data_len;
 
 	trace_cm_send_sidr_rep(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	cma_pr(id_priv, "sending SIDR\n");
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 	return ib_send_cm_sidr_rep(id_priv->cm_id.ib, &rep);
 }
 
@@ -4963,6 +5026,11 @@ int rdma_reject(struct rdma_cm_id *id, const void *private_data,
 						private_data, private_data_len);
 		} else {
 			trace_cm_send_rej(id_priv);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+			cma_pr(id_priv, "sending REJ local_id=%u remote_id=%u\n",
+			       id_priv->cm_id.ib->local_id,
+			       id_priv->cm_id.ib->remote_id);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 			ret = ib_send_cm_rej(id_priv->cm_id.ib, reason, NULL, 0,
 					     private_data, private_data_len);
 		}
@@ -4992,12 +5060,25 @@ int rdma_disconnect(struct rdma_cm_id *id)
 			goto out;
 		/* Initiate or respond to a disconnect. */
 		trace_cm_disconnect(id_priv);
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		if (ib_send_cm_dreq(id_priv->cm_id.ib, NULL, 0)) {
 			if (!ib_send_cm_drep(id_priv->cm_id.ib, NULL, 0))
 				trace_cm_sent_drep(id_priv);
 		} else {
 			trace_cm_sent_dreq(id_priv);
 		}
+#else
+		cma_pr(id_priv, "attempt disconnect\n");
+		if (ib_send_cm_dreq(id_priv->cm_id.ib, NULL, 0)) {
+			if (!ib_send_cm_drep(id_priv->cm_id.ib, NULL, 0)) {
+				trace_cm_sent_drep(id_priv);
+				cma_pr(id_priv, "DREP sent\n");
+			}
+		} else {
+			trace_cm_sent_dreq(id_priv);
+			cma_pr(id_priv, "DREQ sent\n");
+		}
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	} else if (rdma_cap_iw_cm(id->device, id->port_num)) {
 		ret = iw_cm_disconnect(id_priv->cm_id.iw, 0);
 	} else
