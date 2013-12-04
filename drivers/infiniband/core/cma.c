@@ -69,6 +69,34 @@ static int cma_response_timeout = CMA_CM_RESPONSE_TIMEOUT;
 module_param_named(cma_response_timeout, cma_response_timeout, int, 0644);
 MODULE_PARM_DESC(cma_response_timeout, "CMA_CM_RESPONSE_TIMEOUT (default=20)");
 
+static int debug_level = 0;
+#define cma_pr(level, priv, format, arg...)		\
+	printk(level "CMA: %p: %s: " format, ((struct rdma_id_priv *) priv) , __func__, ## arg)
+
+#define cma_dbg(priv, format, arg...)		\
+	do { if (debug_level) cma_pr(KERN_DEBUG, priv, format, ## arg); } while (0)
+
+#define cma_warn(priv, format, arg...)		\
+	cma_pr(KERN_WARNING, priv, format, ## arg)
+
+#define CMA_GID_FMT        "%2.2x%2.2x:%2.2x%2.2x"
+#define CMA_GID_RAW_ARG(gid) ((u8 *)(gid))[12],\
+				   ((u8 *)(gid))[13],\
+				   ((u8 *)(gid))[14],\
+				   ((u8 *)(gid))[15]
+
+#define CMA_GID_ARG(gid)   CMA_GID_RAW_ARG((gid).raw)
+#define cma_debug_path(priv, pfx, p) \
+	cma_dbg(priv, pfx "sgid=" CMA_GID_FMT ",dgid="	\
+		CMA_GID_FMT "\n", CMA_GID_ARG(p.sgid),	\
+		CMA_GID_ARG(p.dgid))
+
+#define cma_debug_gid(priv, g) \
+	cma_dbg(priv, "gid=" CMA_GID_FMT "\n", CMA_GID_ARG(g)
+
+module_param_named(debug_level, debug_level, int, 0644);
+MODULE_PARM_DESC(debug_level, "debug level default=0");
+
 static void cma_add_one(struct ib_device *device);
 static void cma_remove_one(struct ib_device *device);
 
@@ -1108,6 +1136,7 @@ static int cma_rep_recv(struct rdma_id_private *id_priv)
 	if (ret)
 		goto reject;
 
+	cma_dbg(id_priv, "sending RTU\n");
 	ret = ib_send_cm_rtu(id_priv->cm_id.ib, NULL, 0);
 	if (ret)
 		goto reject;
@@ -1115,6 +1144,7 @@ static int cma_rep_recv(struct rdma_id_private *id_priv)
 	return 0;
 reject:
 	cma_modify_qp_err(id_priv);
+	cma_dbg(id_priv, "sending REJ\n");
 	ib_send_cm_rej(id_priv->cm_id.ib, IB_CM_REJ_CONSUMER_DEFINED,
 		       NULL, 0, NULL, 0);
 	return ret;
@@ -1145,7 +1175,6 @@ static int cma_ib_handler(struct ib_cm_id *cm_id, struct ib_cm_event *ib_event)
 	    (ib_event->event == IB_CM_TIMEWAIT_EXIT &&
 		cma_disable_callback(id_priv, RDMA_CM_DISCONNECT)))
 		return 0;
-
 	memset(&event, 0, sizeof event);
 	switch (ib_event->event) {
 	case IB_CM_REQ_ERROR:
@@ -1364,8 +1393,10 @@ static int cma_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *ib_event)
 	 */
 	mutex_lock(&lock);
 	if (cma_comp(conn_id, RDMA_CM_CONNECT) &&
-	    (conn_id->id.qp_type != IB_QPT_UD))
+	    (conn_id->id.qp_type != IB_QPT_UD)) {
+		cma_dbg(container_of(&conn_id->id, struct rdma_id_private, id), "sending MRA\n");
 		ib_send_cm_mra(cm_id, CMA_CM_MRA_SETTING, NULL, 0);
+	}
 	mutex_unlock(&lock);
 	mutex_unlock(&conn_id->handler_mutex);
 	mutex_unlock(&listen_id->handler_mutex);
@@ -1679,8 +1710,7 @@ static void cma_listen_on_dev(struct rdma_id_private *id_priv,
 
 	ret = rdma_listen(id, id_priv->backlog);
 	if (ret)
-		printk(KERN_WARNING "RDMA CMA: cma_listen_on_dev, error %d, "
-		       "listening on device %s\n", ret, cma_dev->device->name);
+		cma_warn(id_priv, "cma_listen_on_dev, error %d, listening on device %s\n", ret, cma_dev->device->name);
 }
 
 static void cma_listen_on_all(struct rdma_id_private *id_priv)
@@ -2779,6 +2809,7 @@ static int cma_resolve_ib_udp(struct rdma_id_private *id_priv,
 	req.timeout_ms = 1 << (cma_response_timeout - 8);
 	req.max_cm_retries = CMA_MAX_CM_RETRIES;
 
+	cma_dbg(id_priv, "sending SIDR\n");
 	ret = ib_send_cm_sidr_req(id_priv->cm_id.ib, &req);
 	if (ret) {
 		ib_destroy_cm_id(id_priv->cm_id.ib);
@@ -2849,6 +2880,7 @@ static int cma_connect_ib(struct rdma_id_private *id_priv,
 	req.max_cm_retries = CMA_MAX_CM_RETRIES;
 	req.srq = id_priv->srq ? 1 : 0;
 
+	cma_dbg(id_priv, "sending REQ\n");
 	ret = ib_send_cm_req(id_priv->cm_id.ib, &req);
 out:
 	if (ret && !IS_ERR(id)) {
@@ -2964,7 +2996,7 @@ static int cma_accept_ib(struct rdma_id_private *id_priv,
 	rep.flow_control = conn_param->flow_control;
 	rep.rnr_retry_count = min_t(u8, 7, conn_param->rnr_retry_count);
 	rep.srq = id_priv->srq ? 1 : 0;
-
+	cma_dbg(id_priv, "sending REP\n");
 	ret = ib_send_cm_rep(id_priv->cm_id.ib, &rep);
 out:
 	return ret;
@@ -3014,6 +3046,7 @@ static int cma_send_sidr_rep(struct rdma_id_private *id_priv,
 	rep.private_data = private_data;
 	rep.private_data_len = private_data_len;
 
+	cma_dbg(id_priv, "sending SIDR\n");
 	return ib_send_cm_sidr_rep(id_priv->cm_id.ib, &rep);
 }
 
@@ -3107,10 +3140,12 @@ int rdma_reject(struct rdma_cm_id *id, const void *private_data,
 		if (id->qp_type == IB_QPT_UD)
 			ret = cma_send_sidr_rep(id_priv, IB_SIDR_REJECT, 0,
 						private_data, private_data_len);
-		else
+		else {
+			cma_dbg(id_priv, "sending REJ\n");
 			ret = ib_send_cm_rej(id_priv->cm_id.ib,
 					     IB_CM_REJ_CONSUMER_DEFINED, NULL,
 					     0, private_data, private_data_len);
+		}
 		break;
 	case RDMA_TRANSPORT_IWARP:
 		ret = iw_cm_reject(id_priv->cm_id.iw,
@@ -3139,8 +3174,11 @@ int rdma_disconnect(struct rdma_cm_id *id)
 		if (ret)
 			goto out;
 		/* Initiate or respond to a disconnect. */
-		if (ib_send_cm_dreq(id_priv->cm_id.ib, NULL, 0))
+		cma_dbg(id_priv, "sending DREQ\n");
+		if (ib_send_cm_dreq(id_priv->cm_id.ib, NULL, 0)) {
+			cma_dbg(id_priv, "sending DREP\n");
 			ib_send_cm_drep(id_priv->cm_id.ib, NULL, 0);
+		}
 		break;
 	case RDMA_TRANSPORT_IWARP:
 		ret = iw_cm_disconnect(id_priv->cm_id.iw, 0);
