@@ -218,6 +218,11 @@ static int ipoib_change_mtu(struct net_device *dev, int new_mtu)
 	priv->admin_mtu = new_mtu;
 
 	dev->mtu = min(priv->mcast_mtu, priv->admin_mtu);
+	if (dev->mtu < new_mtu) {
+		ipoib_warn(priv, "mtu must be smaller than mcast_mtu (%d)\n",
+			   priv->mcast_mtu);
+		return -EINVAL;
+	}
 
 	return 0;
 }
