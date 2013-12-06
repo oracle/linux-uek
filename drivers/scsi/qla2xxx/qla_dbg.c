@@ -56,7 +56,7 @@
  * |                              |                    | 0xb13a,0xb142	|
  * |                              |                    | 0xb13c-0xb140	|
  * | MultiQ                       |       0xc00c       |		|
- * | Misc                         |       0xd2ff       | 0xd017-0xd019	|
+ * | Misc                         |       0xd300       | 0xd017-0xd019	|
  * |                              |                    | 0xd020		|
  * |                              |                    | 0xd02e-0xd0ff	|
  * |                              |                    | 0xd101-0xd1fe	|
