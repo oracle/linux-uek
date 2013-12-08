@@ -101,6 +101,11 @@ struct rdma_id_private {
 	u8			min_rnr_timer;
 	u8 used_resolve_ip;
 	enum ib_gid_type	gid_type;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	/* cache for mc record params */
+	struct ib_sa_mcmember_rec rec;
+	int is_valid_rec;
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	/*
 	 * Internal to RDMA/core, don't use in the drivers

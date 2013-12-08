@@ -4940,6 +4940,14 @@ static void cma_make_mc_event(int status, struct rdma_id_private *id_priv,
 	event->param.ud.private_data = mc->context;
 	if (status) {
 		event->event = RDMA_CM_EVENT_MULTICAST_ERROR;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+		/* mark that the cached record is no longer valid */
+		if (status != -ENETRESET && status != -EAGAIN) {
+			spin_lock(&id_priv->lock);
+			id_priv->is_valid_rec = 0;
+			spin_unlock(&id_priv->lock);
+		}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 		return;
 	}
 
@@ -5027,14 +5035,33 @@ static int cma_join_ib_multicast(struct rdma_id_private *id_priv,
 	struct ib_sa_mcmember_rec rec;
 	struct rdma_dev_addr *dev_addr = &id_priv->id.route.addr.dev_addr;
 	ib_sa_comp_mask comp_mask;
-	int ret;
+	int ret = 0;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	ib_addr_get_mgid(dev_addr, &rec.mgid);
 	ret = ib_sa_get_mcmember_rec(id_priv->id.device, id_priv->id.port_num,
 				     &rec.mgid, &rec);
 	if (ret)
 		return ret;
+#else
+	ib_addr_get_mgid(dev_addr, &id_priv->rec.mgid);
 
+	/* cache ipoib bc record */
+	spin_lock(&id_priv->lock);
+	if (!id_priv->is_valid_rec)
+		ret = ib_sa_get_mcmember_rec(id_priv->id.device,
+					    id_priv->id.port_num,
+					    &id_priv->rec.mgid,
+					    &id_priv->rec);
+	if (ret) {
+		id_priv->is_valid_rec = 0;
+		spin_unlock(&id_priv->lock);
+		return ret;
+	}
+	rec = id_priv->rec;
+	id_priv->is_valid_rec = 1;
+	spin_unlock(&id_priv->lock);
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 	if (!id_priv->qkey) {
 		ret = cma_set_default_qkey(id_priv);
 		if (ret)
