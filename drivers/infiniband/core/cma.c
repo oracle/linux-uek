@@ -180,6 +180,9 @@ struct rdma_id_private {
 	u8			tos;
 	u8			reuseaddr;
 	u8			afonly;
+	/* cache for mc record params */
+	struct ib_sa_mcmember_rec rec;
+	int is_valid_rec;
 };
 
 struct cma_multicast {
@@ -3222,8 +3225,16 @@ static int cma_ib_mc_handler(int status, struct ib_sa_multicast *multicast)
 					 &event.param.ud.ah_attr);
 		event.param.ud.qp_num = 0xFFFFFF;
 		event.param.ud.qkey = be32_to_cpu(multicast->rec.qkey);
-	} else
+	} else {
 		event.event = RDMA_CM_EVENT_MULTICAST_ERROR;
+
+		/* mark that the cached record is no longer valid */
+		if (status != -ENETRESET && status != -EAGAIN) {
+			spin_lock(&id_priv->lock);
+			id_priv->is_valid_rec = 0;
+			spin_unlock(&id_priv->lock);
+		}
+	}
 
 	ret = id_priv->id.event_handler(&id_priv->id, &event);
 	if (ret) {
@@ -3273,13 +3284,26 @@ static int cma_join_ib_multicast(struct rdma_id_private *id_priv,
 	struct ib_sa_mcmember_rec rec;
 	struct rdma_dev_addr *dev_addr = &id_priv->id.route.addr.dev_addr;
 	ib_sa_comp_mask comp_mask;
-	int ret;
+	int ret = 0;
 
-	ib_addr_get_mgid(dev_addr, &rec.mgid);
-	ret = ib_sa_get_mcmember_rec(id_priv->id.device, id_priv->id.port_num,
-				     &rec.mgid, &rec);
-	if (ret)
+	ib_addr_get_mgid(dev_addr, &id_priv->rec.mgid);
+
+	/* cache ipoib bc record */
+	spin_lock(&id_priv->lock);
+	if (!id_priv->is_valid_rec)
+		ret = ib_sa_get_mcmember_rec(id_priv->id.device,
+					     id_priv->id.port_num,
+					     &id_priv->rec.mgid,
+					     &id_priv->rec);
+	if (ret) {
+		id_priv->is_valid_rec = 0;
+		spin_unlock(&id_priv->lock);
 		return ret;
+	} else {
+		rec = id_priv->rec;
+		id_priv->is_valid_rec = 1;
+	}
+	spin_unlock(&id_priv->lock);
 
 	ret = cma_set_qkey(id_priv, 0);
 	if (ret)
