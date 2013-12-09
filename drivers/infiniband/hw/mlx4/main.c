@@ -114,7 +114,6 @@ static int check_flow_steering_support(struct mlx4_dev *dev)
 			(!eth_num_ports ||
 			 (dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_FS_EN));
 		if (ib_num_ports && mlx4_is_mfunc(dev)) {
-			pr_warn("Device managed flow steering is unavailable for IB port in multifunction env.\n");
 			dmfs = 0;
 		}
 	}
