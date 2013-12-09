@@ -26,11 +26,11 @@ typedef struct cmd_type_7_fx00 {
 	uint8_t port_path_ctrl;
 	uint16_t reserved_1;
 
-	uint16_t tgt_idx;		/* Target Idx. */
-	uint16_t timeout;		/* Command timeout. */
+	__le16 tgt_idx;		/* Target Idx. */
+	__le16 timeout;		/* Command timeout. */
 #define FW_MAX_TIMEOUT		0x1999
 
-	uint16_t dseg_count;		/* Data segment count. */
+	__le16 dseg_count;		/* Data segment count. */
 	uint8_t scsi_rsp_dsd_len;
 	uint8_t reserved_2;
 
@@ -59,10 +59,10 @@ typedef struct cmd_type_7_fx00 {
 	uint8_t crn;
 
 	uint8_t fcp_cdb[MAX_CMDSZ];	/* SCSI command words. */
-	uint32_t byte_count;		/* Total byte count. */
+	__le32 byte_count;		/* Total byte count. */
 
-	uint32_t dseg_0_address[2];	/* Data segment 0 address. */
-	uint32_t dseg_0_len;		/* Data segment 0 length. */
+	__le32 dseg_0_address[2];	/* Data segment 0 address. */
+	__le32 dseg_0_len;		/* Data segment 0 length. */
 } cmd_type_7_fx00_t;
 
 #define	STATUS_TYPE_FX00	0x01		/* Status entry. */
@@ -75,22 +75,22 @@ struct sts_entry_fx00 {
 	uint32_t handle;		/* System handle. */
 	uint32_t reserved_3;		/* System handle. */
 
-	uint16_t comp_status;		/* Completion status. */
+	__le16 comp_status;		/* Completion status. */
 	uint16_t reserved_0;			/* OX_ID used by the firmware. */
 
-	uint32_t residual_len;		/* FW calc residual transfer length. */
+	__le32 residual_len;		/* FW calc residual transfer length. */
 
 	uint16_t reserved_1;
-	uint16_t state_flags;		/* State flags. */
+	__le16 state_flags;		/* State flags. */
 
 #define SF_TRANSFERRED_DATA	BIT_11
 #define SF_FCP_RSP_DMA		BIT_0
 
 	uint16_t reserved_2;
-	uint16_t scsi_status;		/* SCSI status. */
+	__le16 scsi_status;		/* SCSI status. */
 #define SS_CONFIRMATION_REQ		BIT_12
 
-	uint32_t sense_len;		/* FCP SENSE length. */
+	__le32 sense_len;		/* FCP SENSE length. */
 	uint8_t data[32];		/* FCP response/sense information. */
 };
 
@@ -118,7 +118,7 @@ struct tsk_mgmt_entry_fx00 {
 
 	uint32_t reserved_0;		/* System handle. */
 
-	uint16_t tgt_id;		/* Target Idx. */
+	__le16 tgt_id;		/* Target Idx. */
 
 	uint16_t reserved_1;
 	uint16_t reserved_3;
@@ -126,7 +126,7 @@ struct tsk_mgmt_entry_fx00 {
 
 	struct scsi_lun lun;		/* LUN (LE). */
 
-	uint32_t control_flags;		/* Control Flags. */
+	__le32 control_flags;		/* Control Flags. */
 #define TCF_NOTMCMD_TO_TARGET	BIT_31
 #define TCF_LUN_RESET		BIT_4
 #define TCF_ABORT_TASK_SET	BIT_3
@@ -148,13 +148,13 @@ typedef struct abort_iocb_entry_fx00 {
 	uint32_t handle;		/* System handle. */
 	uint32_t reserved_0;
 
-	uint16_t tgt_id_sts;		/* Completion status. */
-	uint16_t options;
+	__le16 tgt_id_sts;		/* Completion status. */
+	__le16 options;
 
 	uint32_t abort_handle;		/* System handle. */
 	uint32_t reserved_2;
 
-	uint16_t req_que_no;
+	__le16 req_que_no;
 	uint8_t reserved_1[38];
 } abort_iocb_entry_fx00_t;
 
@@ -168,17 +168,17 @@ typedef struct ioctl_iocb_entry_fx00 {
 	uint32_t handle;		/* System handle. */
 	uint32_t reserved_0;		/* System handle. */
 
-	uint16_t comp_func_num;
-	uint16_t fw_iotcl_flags;
+	__le16 comp_func_num;
+	__le16 fw_iotcl_flags;
 
-	uint32_t dataword_r;		/* Data word returned */
-	uint64_t adapid;		/* Adapter ID */
-	uint32_t dataword_r_extra;
+	__le32 dataword_r;		/* Data word returned */
+	__le64 adapid;		/* Adapter ID */
+	__le32 dataword_r_extra;
 
-	uint32_t seq_no;
+	__le32 seq_no;
 	uint8_t reserved_2[20];
-	uint32_t residuallen;
-	uint32_t status;
+	__le32 residuallen;
+	__le32 status;
 } __packed ioctl_iocb_entry_fx00_t;
 
 #define STATUS_CONT_TYPE_FX00 0x04
@@ -193,28 +193,28 @@ typedef struct fxdisc_entry_fx00 {
 	uint32_t handle;		/* System handle. */
 	uint32_t reserved_0;		/* System handle. */
 
-	uint16_t func_num;
-	uint16_t req_xfrcnt;
-	uint16_t req_dsdcnt;
-	uint16_t rsp_xfrcnt;
-	uint16_t rsp_dsdcnt;
+	__le16 func_num;
+	__le16 req_xfrcnt;
+	__le16 req_dsdcnt;
+	__le16 rsp_xfrcnt;
+	__le16 rsp_dsdcnt;
 	uint8_t flags;
 	uint8_t reserved_1;
 
-	uint32_t dseg_rq_address[2];	/* Data segment 0 address. */
-	uint32_t dseg_rq_len;		/* Data segment 0 length. */
-	uint32_t dseg_rsp_address[2];	/* Data segment 1 address. */
-	uint32_t dseg_rsp_len;		/* Data segment 1 length. */
+	__le32 dseg_rq_address[2];	/* Data segment 0 address. */
+	__le32 dseg_rq_len;		/* Data segment 0 length. */
+	__le32 dseg_rsp_address[2];	/* Data segment 1 address. */
+	__le32 dseg_rsp_len;		/* Data segment 1 length. */
 
-	uint32_t dataword;
-	uint64_t adapid;
-	uint32_t dataword_extra;
+	__le32 dataword;
+	__le64 adapid;
+	__le32 dataword_extra;
 } __packed fxdisc_entry_fx00_t;
 
 struct qlafx00_tgt_node_info {
 	uint8_t tgt_node_wwpn[WWN_SIZE];
 	uint8_t tgt_node_wwnn[WWN_SIZE];
-	uint32_t tgt_node_state;
+	__le32 tgt_node_state;
 	uint8_t reserved[128];
 	uint32_t reserved_1[8];
 	uint64_t reserved_2[4];
@@ -233,32 +233,32 @@ typedef struct qlafx00_tgt_node_info qlafx00_tgt_node_info_t;
 struct port_info_data {
 	uint8_t         port_state;
 	uint8_t         port_type;
-	uint16_t        port_identifier;
-	uint32_t        up_port_state;
+	__le16          port_identifier;
+	__le32          up_port_state;
 	uint8_t         fw_ver_num[32];
 	uint8_t         portal_attrib;
-	uint16_t        host_option;
+	__le16          host_option;
 	uint8_t         reset_delay;
 	uint8_t         pdwn_retry_cnt;
-	uint16_t        max_luns2tgt;
+	__le16          max_luns2tgt;
 	uint8_t         risc_ver;
 	uint8_t         pconn_option;
-	uint16_t        risc_option;
-	uint16_t        max_frame_len;
-	uint16_t        max_iocb_alloc;
-	uint16_t        exec_throttle;
+	__le16          risc_option;
+	__le16          max_frame_len;
+	__le16          max_iocb_alloc;
+	__le16          exec_throttle;
 	uint8_t         retry_cnt;
 	uint8_t         retry_delay;
 	uint8_t         port_name[8];
 	uint8_t         port_id[3];
 	uint8_t         link_status;
 	uint8_t         plink_rate;
-	uint32_t        link_config;
-	uint16_t        adap_haddr;
+	__le32          link_config;
+	__le16          adap_haddr;
 	uint8_t         tgt_disc;
 	uint8_t         log_tout;
 	uint8_t         node_name[8];
-	uint16_t        erisc_opt1;
+	__le16          erisc_opt1;
 	uint8_t         resp_acc_tmr;
 	uint8_t         intr_del_tmr;
 	uint8_t         erisc_opt2;
@@ -286,7 +286,7 @@ typedef struct port_info_data port_info_data_t;
 #define HOSTNAME_LENGTH             64
 
 struct host_system_info {
-	uint32_t os_type;
+	__le32  os_type;
 	char    sysname[SYSNAME_LENGTH];
 	char    nodename[NODENAME_LENGTH];
 	char    release[RELEASE_LENGTH];
@@ -300,7 +300,7 @@ typedef struct host_system_info host_system_info_t;
 
 struct register_host_info {
 	struct host_system_info     hsi;	/* host system info */
-	uint64_t        utc;			/* UTC (system time) */
+	__le64          utc;			/* UTC (system time) */
 	uint32_t        reserved[64];		/* future additions */
 } __packed;
 
@@ -327,22 +327,22 @@ struct config_info_data {
 	uint8_t		log_level;
 	uint8_t		reserved2[2];
 
-	uint32_t	log_size;
+	__le32		log_size;
 
 	uint8_t		tgt_pres_mode;
 	uint8_t		iqn_flags;
 	uint8_t		lun_mapping;
 
-	uint64_t	adapter_id;
+	__le64		adapter_id;
 
-	uint32_t	cluster_key_len;
+	__le32		cluster_key_len;
 	uint8_t		cluster_key[16];
 
-	uint64_t	cluster_master_id;
-	uint64_t	cluster_slave_id;
+	__le64		cluster_master_id;
+	__le64		cluster_slave_id;
 	uint8_t		cluster_flags;
-	uint32_t	enabled_capabilities;
-	uint32_t	nominal_temp_value;
+	__le32		enabled_capabilities;
+	__le32		nominal_temp_value;
 } __packed;
 typedef struct config_info_data config_info_data_t;
 

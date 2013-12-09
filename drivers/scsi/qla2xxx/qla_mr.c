@@ -1419,7 +1419,7 @@ qlafx00_update_host_attr(scsi_qla_host_t *vha, port_info_data_t *pinfo)
 		atomic_set(&vha->loop_state, LOOP_READY);
 	else if (pinfo->link_status == QLAFX00_LINK_STATUS_DOWN)
 		atomic_set(&vha->loop_state, LOOP_DOWN);
-	vha->hw->link_data_rate = (uint16_t)pinfo->link_config;
+	vha->hw->link_data_rate = le32_to_cpu(pinfo->link_config);
 }
 
 static void
@@ -1669,9 +1669,11 @@ qlafx00_fx_disc(scsi_qla_host_t *vha, fc_port_t *fcport, uint8_t fx_type)
 		memcpy(&vha->hw->mr.fru_serial_num, pinfo->fru_serial_num,
 		    sizeof(vha->hw->mr.fru_serial_num));
 		vha->hw->mr.critical_temperature =
-		    (pinfo->nominal_temp_value) ?
-		    pinfo->nominal_temp_value : QLAFX00_CRITEMP_THRSHLD;
-		ha->mr.extended_io_enabled = (pinfo->enabled_capabilities &
+		    le32_to_cpu(pinfo->nominal_temp_value) ?
+		    le32_to_cpu(pinfo->nominal_temp_value) :
+		    QLAFX00_CRITEMP_THRSHLD;
+		ha->mr.extended_io_enabled =
+		    (le32_to_cpu(pinfo->enabled_capabilities) &
 		    QLAFX00_EXTENDED_IO_EN_MASK) != 0;
 	} else if (fx_type == FXDISC_GET_PORT_INFO) {
 		port_info_data_t *pinfo =
@@ -2395,7 +2397,7 @@ qlafx00_abort_iocb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 		return;
 
 	abt = &sp->u.iocb_cmd;
-	abt->u.abt.comp_status = le32_to_cpu(pkt->tgt_id_sts);
+	abt->u.abt.comp_status = le16_to_cpu(pkt->tgt_id_sts);
 	sp->done(vha, sp, 0);
 }
 
@@ -2426,7 +2428,7 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 	if (sp->type == SRB_FXIOCB_DCMD) {
 		iocb_job = &sp->u.iocb_cmd;
 		iocb_job->u.fxiocb.seq_number = le32_to_cpu(pkt->seq_no);
-		iocb_job->u.fxiocb.fw_flags = le32_to_cpu(pkt->fw_iotcl_flags);
+		iocb_job->u.fxiocb.fw_flags = le16_to_cpu(pkt->fw_iotcl_flags);
 		iocb_job->u.fxiocb.result = le32_to_cpu(pkt->status);
 		if (iocb_job->u.fxiocb.flags & SRB_FXDISC_RSP_DWRD_VALID)
 			iocb_job->u.fxiocb.req_data = le32_to_cpu(pkt->dataword_r);
@@ -2435,7 +2437,6 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 
 		memset(&fstatus, 0, sizeof(qla_mt_iocb_rsp_fx00_t));
 
-		fstatus.reserved_1 = le32_to_cpu(pkt->reserved_0);
 		fstatus.func_type = le16_to_cpu(pkt->comp_func_num);
 		fstatus.ioctl_flags = le16_to_cpu(pkt->fw_iotcl_flags);
 		fstatus.ioctl_data = le32_to_cpu(pkt->dataword_r);
@@ -2444,8 +2445,6 @@ qlafx00_ioctl_iosb_entry(scsi_qla_host_t *vha, struct rsp_que *rsp)
 		fstatus.res_count = le32_to_cpu(pkt->residuallen);
 		fstatus.status = le32_to_cpu(pkt->status);
 		fstatus.seq_number = le32_to_cpu(pkt->seq_no);
-		memcpy(fstatus.reserved_3,
-		    pkt->reserved_2, 20 * sizeof(uint8_t));
 
 		fw_sts_ptr = ((uint8_t *)bsg_job->req->sense) +
 		    sizeof(struct fc_bsg_reply);
@@ -3376,9 +3375,7 @@ qlafx00_start_scsi(srb_t *sp)
 	memset(&lcmd_pkt, 0, REQUEST_ENTRY_SIZE);
 
 	lcmd_pkt.handle = MAKE_HANDLE(req->id, sp->handle);
-	lcmd_pkt.reserved_0 = 0;
 	lcmd_pkt.port_path_ctrl = 0;
-	lcmd_pkt.reserved_1 = 0;
 	lcmd_pkt.dseg_count = cpu_to_le16(tot_dsds);
 	lcmd_pkt.tgt_idx = cpu_to_le16(sp->fcport->tgt_id);
 
@@ -3458,10 +3455,9 @@ qlafx00_tm_iocb(srb_t *sp, struct tsk_mgmt_entry_fx00 *ptm_iocb)
 	tm_iocb.entry_type = TSK_MGMT_IOCB_TYPE_FX00;
 	tm_iocb.entry_count = 1;
 	tm_iocb.handle = MAKE_HANDLE(req->id, sp->handle);
-	tm_iocb.reserved_0 = 0;
 	tm_iocb.tgt_id = cpu_to_le16(sp->fcport->tgt_id);
 	tm_iocb.control_flags = cpu_to_le32(fxio->u.tmf.flags);
-	if (tm_iocb.control_flags == TCF_LUN_RESET) {
+	if (le32_to_cpu(tm_iocb.control_flags) == TCF_LUN_RESET) {
 		int_to_scsilun(fxio->u.tmf.lun, &llun);
 		host_to_adap((uint8_t *)&llun, (uint8_t *)&tm_iocb.lun,
 		    sizeof(struct scsi_lun));
@@ -3485,7 +3481,7 @@ qlafx00_abort_iocb(srb_t *sp, struct abort_iocb_entry_fx00 *pabt_iocb)
 	abt_iocb.entry_count = 1;
 	abt_iocb.handle = MAKE_HANDLE(req->id, sp->handle);
 	abt_iocb.abort_handle =
-	    cpu_to_le32(MAKE_HANDLE(req->id, fxio->u.abt.cmd_hndl));
+	    MAKE_HANDLE(req->id, fxio->u.abt.cmd_hndl);
 	abt_iocb.tgt_id_sts = cpu_to_le16(sp->fcport->tgt_id);
 	abt_iocb.req_que_no = cpu_to_le16(req->id);
 
@@ -3512,8 +3508,6 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 		fx_iocb.func_num =
 		    cpu_to_le16(sp->u.iocb_cmd.u.fxiocb.req_func_type);
 		fx_iocb.adapid = cpu_to_le64(fxio->u.fxiocb.adapter_id);
-		fx_iocb.reserved_0 = cpu_to_le32(fxio->u.fxiocb.reserved_0);
-		fx_iocb.reserved_1 = fxio->u.fxiocb.reserved_1;
 		fx_iocb.dataword_extra = cpu_to_le32(fxio->u.fxiocb.req_data_extra);
 
 		if (fxio->u.fxiocb.flags & SRB_FXDISC_REQ_DMA_VALID) {
@@ -3553,8 +3547,6 @@ qlafx00_fxdisc_iocb(srb_t *sp, struct fxdisc_entry_fx00 *pfxiocb)
 
 		fx_iocb.func_num = cpu_to_le16(piocb_rqst->func_type);
 		fx_iocb.adapid = cpu_to_le64(piocb_rqst->adapid);
-		fx_iocb.reserved_0 = cpu_to_le32(piocb_rqst->reserved_0);
-		fx_iocb.reserved_1 = piocb_rqst->reserved_1;
 		fx_iocb.dataword_extra =
 		    cpu_to_le32(piocb_rqst->dataword_extra);
 		fx_iocb.dataword = cpu_to_le32(piocb_rqst->dataword);
