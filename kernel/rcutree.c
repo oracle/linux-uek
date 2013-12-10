@@ -202,7 +202,10 @@ module_param(qhimark, int, 0);
 module_param(qlowmark, int, 0);
 
 int rcu_cpu_stall_suppress __read_mostly;
+int rcu_cpu_stall_timeout __read_mostly = CONFIG_RCU_CPU_STALL_TIMEOUT;
+
 module_param(rcu_cpu_stall_suppress, int, 0644);
+module_param(rcu_cpu_stall_timeout, int, 0644);
 
 static void force_quiescent_state(struct rcu_state *rsp, int relaxed);
 static int rcu_pending(int cpu);
@@ -609,6 +612,25 @@ static void print_cpu_stall(struct rcu_state *rsp)
 	set_need_resched();  /* kick ourselves to get things going. */
 }
 
+static int jiffies_till_stall_check(void)
+{
+	int till_stall_check = ACCESS_ONCE(rcu_cpu_stall_timeout);
+
+	/*
+	 * Limit check must be consistent with the Kconfig limits
+	 * for CONFIG_RCU_CPU_STALL_TIMEOUT.
+	 */
+	if (till_stall_check < 3) {
+		ACCESS_ONCE(rcu_cpu_stall_timeout) = 3;
+		till_stall_check = 3;
+	} else if (till_stall_check > 300) {
+		ACCESS_ONCE(rcu_cpu_stall_timeout) = 300;
+		till_stall_check = 300;
+	}
+	return till_stall_check * HZ + RCU_STALL_DELAY_DELTA;
+}
+
+
 static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 {
 	unsigned long j;
@@ -621,15 +643,29 @@ static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 	js = ACCESS_ONCE(rsp->jiffies_stall);
 	rnp = rdp->mynode;
 	if ((ACCESS_ONCE(rnp->qsmask) & rdp->grpmask) && ULONG_CMP_GE(j, js)) {
+		unsigned long gp_start = ACCESS_ONCE(rsp->gp_start);
 
-		/* We haven't checked in, so go dump stack. */
-		print_cpu_stall(rsp);
-
+		/*
+		 * We have to recheck js > gp_start in both branches because we
+		 * are not holding rpn->lock and so we might race with
+		 * rcu_start_gp and see the new grace period which has started
+		 * right now but jiffies_stall has been fetched before it has
+		 * been updated or the update made visible. To be really sure
+		 * that we haven't missed record_gp_stall_check_time we have
+		 * to check that at least jiffies_till_stall_check() has
+		 * passed since the last update.
+		 */
+		if (ULONG_CMP_GE(js, gp_start) &&
+			(j - gp_start >= jiffies_till_stall_check()))
+			print_cpu_stall(rsp);
 	} else if (rcu_gp_in_progress(rsp) &&
 		   ULONG_CMP_GE(j, js + RCU_STALL_RAT_DELAY)) {
+		unsigned long gp_start = ACCESS_ONCE(rsp->gp_start);
 
 		/* They had a few time units to dump stack, so complain. */
-		print_other_cpu_stall(rsp);
+		if (ULONG_CMP_GE(js, gp_start) &&
+			(j - gp_start >= jiffies_till_stall_check()))
+			print_other_cpu_stall(rsp);
 	}
 }
 
