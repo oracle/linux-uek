@@ -1626,6 +1626,15 @@ static int update_gid_table(struct mlx4_ib_dev *dev, int port,
 		}
 	}
 
+	if (found == -1 && !clear && free < 0) {
+		pr_err("GID table of port %d is full. Can't add %pI6\n",
+		       port, gid);
+		return -ENOMEM;
+	}
+	if (found == -1 && clear) {
+		pr_err("%pI6 is not in GID table of port %d\n", gid, port);
+		return -EINVAL;
+	}
 	if (found == -1 && !clear && free >= 0) {
 		dev->iboe.gid_table[port - 1][free] = *gid;
 		need_update = 1;
