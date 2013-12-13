@@ -43,24 +43,6 @@ static __inline__ void unix_get_peersec_dgram(struct socket *sock, struct scm_co
 { }
 #endif /* CONFIG_SECURITY_NETWORK */
 
-static __inline__ void scm_set_cred(struct scm_cookie *scm,
-				    struct pid *pid, const struct cred *cred)
-{
-	scm->pid  = get_pid(pid);
-	scm->cred = get_cred(cred);
-	cred_to_ucred(pid, cred, &scm->creds, false);
-}
-
-static __inline__ void scm_destroy_cred(struct scm_cookie *scm)
-{
-	put_pid(scm->pid);
-	scm->pid  = NULL;
-
-	if (scm->cred)
-		put_cred(scm->cred);
-	scm->cred = NULL;
-}
-
 static __inline__ void scm_destroy(struct scm_cookie *scm)
 {
 	if (scm && scm->fp)
