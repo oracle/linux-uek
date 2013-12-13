@@ -64,7 +64,7 @@ void pci_realloc(void)
  * @add_size:	additional size to be optionally added
  *              to the resource
  */
-static void add_to_list(struct resource_list_x *head,
+static int add_to_list(struct resource_list_x *head,
 		 struct pci_dev *dev, struct resource *res,
 		 resource_size_t add_size, resource_size_t min_align)
 {
@@ -75,7 +75,7 @@ static void add_to_list(struct resource_list_x *head,
 	tmp = kmalloc(sizeof(*tmp), GFP_KERNEL);
 	if (!tmp) {
 		pr_warning("add_to_list: kmalloc() failed!\n");
-		return;
+		return -ENOMEM;
 	}
 
 	tmp->next = ln;
@@ -87,6 +87,7 @@ static void add_to_list(struct resource_list_x *head,
 	tmp->add_size = add_size;
 	tmp->min_align = min_align;
 	list->next = tmp;
+	return 0;
 }
 
 static void add_to_failed_list(struct resource_list_x *head,
@@ -95,6 +96,44 @@ static void add_to_failed_list(struct resource_list_x *head,
 	add_to_list(head, dev, res,
 			0 /* dont care */,
 			0 /* dont care */);
+}
+
+static void remove_from_list(struct resource_list_x *realloc_head,
+				 struct resource *res)
+{
+	struct resource_list_x *prev, *tmp, *list;
+
+	prev = realloc_head;
+	for (list = realloc_head->next; list;) {
+		if (list->res != res) {
+			prev = list;
+			list = list->next;
+			continue;
+		}
+		tmp = list;
+		prev->next = list = list->next;
+		kfree(tmp);
+	}
+}
+
+static resource_size_t get_res_add_size(struct resource_list_x *realloc_head,
+					struct resource *res)
+{
+	struct resource_list_x *list;
+
+	/* check if it is in realloc_head list */
+	for (list = realloc_head->next; list && list->res != res;
+			list = list->next)
+		;
+
+	if (list) {
+		dev_printk(KERN_DEBUG, &list->dev->dev,
+			 "%pR get_res_add_size  add_size %llx\n",
+			 list->res, (unsigned long long)list->add_size);
+		return list->add_size;
+	}
+
+	return 0;
 }
 
 static void __dev_sort_resources(struct pci_dev *dev,
@@ -217,16 +256,74 @@ static void assign_requested_resources_sorted(struct resource_list *head,
 }
 
 static void __assign_resources_sorted(struct resource_list *head,
-				 struct resource_list_x *add_head,
-				 struct resource_list_x *fail_head)
+		struct resource_list_x *realloc_head,
+		struct resource_list_x *fail_head)
 {
+	/*
+	 * Should not assign requested resources at first.
+	 *   they could be adjacent, so later reassign can not reallocate
+	 *   them one by one in parent resource window.
+	 * Try to assign requested + add_size at begining
+	 *  if could do that, could get out early.
+	 *  if could not do that, we still try to assign requested at first,
+	 *    then try to reassign add_size for some resources.
+	 */
+	struct resource_list_x save_head, local_fail_head, *list;
+	struct resource_list *l;
+
+	/* Check if optional add_size is there */
+	if (!realloc_head || !realloc_head->next)
+		goto requested_and_reassign;
+
+	/* Save original start, end, flags etc at first */
+	save_head.next = NULL;
+	for (l = head->next; l; l = l->next)
+		if (add_to_list(&save_head, l->dev, l->res, 0, 0)) {
+			free_list(resource_list_x, &save_head);
+			goto requested_and_reassign;
+		}
+
+	/* Update res in head list with add_size in realloc_head list */
+	for (l = head->next; l; l = l->next)
+		l->res->end += get_res_add_size(realloc_head, l->res);
+
+	/* Try updated head list with add_size added */
+	local_fail_head.next = NULL;
+	assign_requested_resources_sorted(head, &local_fail_head);
+
+	/* all assigned with add_size ? */
+	if (!local_fail_head.next) {
+		/* Remove head list from realloc_head list */
+		for (l = head->next; l; l = l->next)
+			remove_from_list(realloc_head, l->res);
+		free_list(resource_list_x, &save_head);
+		free_list(resource_list, head);
+		return;
+	}
+
+	free_list(resource_list_x, &local_fail_head);
+	/* Release assigned resource */
+	for (l = head->next; l; l = l->next)
+		if (l->res->parent)
+			release_resource(l->res);
+	/* Restore start/end/flags from saved list */
+	for (list = save_head.next; list; list = list->next) {
+		struct resource *res = list->res;
+
+		res->start = list->start;
+		res->end = list->end;
+		res->flags = list->flags;
+	}
+	free_list(resource_list_x, &save_head);
+
+requested_and_reassign:
 	/* Satisfy the must-have resource requests */
 	assign_requested_resources_sorted(head, fail_head);
 
 	/* Try to satisfy any additional nice-to-have resource
 		requests */
-	if (add_head)
-		adjust_resources_sorted(add_head, head);
+	if (realloc_head)
+		adjust_resources_sorted(realloc_head, head);
 	free_list(resource_list, head);
 }
 
@@ -548,20 +645,6 @@ static resource_size_t calculate_memsize(resource_size_t size,
 		size = old_size;
 	size = ALIGN(size + size1, align);
 	return size;
-}
-
-static resource_size_t get_res_add_size(struct resource_list_x *add_head,
-					struct resource *res)
-{
-	struct resource_list_x *list;
-
-	/* check if it is in add_head list */
-	for (list = add_head->next; list && list->res != res;
-			list = list->next);
-	if (list)
-		return list->add_size;
-
-	return 0;
 }
 
 /**
