@@ -50,6 +50,11 @@
 #include <linux/ethtool.h>
 #endif
 
+#ifdef CONFIG_SPARC
+#include <asm/idprom.h>
+#include <asm/prom.h>
+#endif
+
 #include <linux/if_bridge.h>
 #include "ixgbe.h"
 
@@ -8936,6 +8941,32 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 	return is_wol_supported;
 }
 
+#ifdef CONFIG_SPARC
+/**
+ * ixgbe_mac_addr_sparc - Look up MAC address on SPARC
+ * @adapter: Pointer to adapter struct
+ */
+static void __devinit ixgbe_mac_addr_sparc(struct ixgbe_adapter *adapter)
+{
+	struct device_node *dp = pci_device_to_OF_node(adapter->pdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	const unsigned char *addr;
+	int len;
+
+	addr = of_get_property(dp, "local-mac-address", &len);
+	if (addr && len == 6) {
+		e_dev_info("Using OpenPROM MAC address\n");
+		memcpy(hw->mac.perm_addr, addr, 6);
+	}
+
+	if (ixgbe_validate_mac_addr(hw->mac.perm_addr) ==
+	    IXGBE_ERR_INVALID_MAC_ADDR) {
+		e_dev_info("Using IDPROM MAC address\n");
+		memcpy(hw->mac.perm_addr, idprom->id_ethaddr, 6);
+	}
+}
+#endif
+
 /**
  * ixgbe_probe - Device Initialization Routine
  * @pdev: PCI device information struct
@@ -9279,6 +9310,10 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		err = -EIO;
 		goto err_sw_init;
 	}
+
+#ifdef CONFIG_SPARC
+	ixgbe_mac_addr_sparc(adapter);
+#endif
 
 	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
 #ifdef ETHTOOL_GPERMADDR
