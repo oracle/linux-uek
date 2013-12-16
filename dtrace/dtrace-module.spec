@@ -152,9 +152,11 @@ rm -rf %{buildroot}
 - Ensure safe access to userspace stack memory location.
   [Orabug: 17591351]
 %endif
-%if %{dt_vcode} >= %{dt_0_4_0}
+%if %{dt_vcode} == %{dt_0_4_0}
 * Thu Oct 17 2013 Nick Alcock <nick.alcock@oracle.com> - 0.4.0-3 
 - fix changelog, no code changes 
+%endif
+%if %{dt_vcode} >= %{dt_0_4_0}
 * Thu Oct 10 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-2
 - Bugfix for ustack() to avoid using vma data.
 * Wed Aug  7 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.0-1
