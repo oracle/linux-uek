@@ -251,8 +251,10 @@ void dtrace_psinfo_free(dtrace_psinfo_t *psinfo)
 }
 
 /*---------------------------------------------------------------------------*\
-(* TIME QUERIES                                                              *)
+(* TIME SUPPORT FUNCTIONS                                                    *)
 \*---------------------------------------------------------------------------*/
+dtrace_vtime_state_t	dtrace_vtime_active = 0;
+
 /*
  * Return a high resolution timer value that is guaranteed to always increase.
  */
@@ -276,6 +278,52 @@ ktime_t dtrace_getwalltime(void)
 	return timespec_to_ktime(ts);
 }
 EXPORT_SYMBOL(dtrace_getwalltime);
+
+void dtrace_vtime_enable(void)
+{
+	dtrace_vtime_state_t	old, new;
+
+	do {
+		old = dtrace_vtime_active;
+		if (old == DTRACE_VTIME_ACTIVE) {
+			pr_warn_once("DTrace virtual time already enabled");
+			return;
+		}
+
+		new = DTRACE_VTIME_ACTIVE;
+	} while (cmpxchg(&dtrace_vtime_active, old, new) != old);
+}
+EXPORT_SYMBOL(dtrace_vtime_enable);
+
+void dtrace_vtime_disable(void)
+{
+	int	old, new;
+
+	do {
+		old = dtrace_vtime_active;
+		if (old == DTRACE_VTIME_INACTIVE) {
+			pr_warn_once("DTrace virtual time already disabled");
+			return;
+		}
+
+		new = DTRACE_VTIME_INACTIVE;
+	} while (cmpxchg(&dtrace_vtime_active, old, new) != old);
+}
+EXPORT_SYMBOL(dtrace_vtime_disable);
+
+void dtrace_vtime_switch(struct task_struct *prev, struct task_struct *next)
+{
+	ktime_t	now = dtrace_gethrtime();
+
+	if (ktime_nz(prev->dtrace_start)) {
+		prev->dtrace_vtime = ktime_add(prev->dtrace_vtime,
+					       ktime_sub(now,
+							 prev->dtrace_start));
+		prev->dtrace_start = ktime_set(0, 0);
+	}
+
+	next->dtrace_start = now;
+}
 
 /*---------------------------------------------------------------------------*\
 (* STACK TRACES                                                              *)
@@ -917,17 +965,23 @@ EXPORT_SYMBOL(dtrace_helpers_fork);
 int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 EXPORT_SYMBOL(dtrace_tracepoint_hit);
 
-void dtrace_task_init(struct task_struct *tsk)
+void dtrace_task_reinit(struct task_struct *tsk)
 {
 	tsk->predcache = 0;
-	tsk->dtrace_vtime = ktime_set(0, 0);
-	tsk->dtrace_start = ktime_set(0, 0);
 	tsk->dtrace_stop = 0;
 	tsk->dtrace_sig = 0;
 
 	tsk->dtrace_helpers = NULL;
 	tsk->dtrace_probes = 0;
 	tsk->dtrace_tp_count = 0;
+}
+
+void dtrace_task_init(struct task_struct *tsk)
+{
+	dtrace_task_reinit(tsk);
+
+	tsk->dtrace_vtime = ktime_set(0, 0);
+	tsk->dtrace_start = ktime_set(0, 0);
 }
 
 void dtrace_task_fork(struct task_struct *tsk, struct task_struct *child)
