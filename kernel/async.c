@@ -135,9 +135,9 @@ static void async_run_entry_fn(struct work_struct *work)
 	/* 1) move self to the running queue, make sure it stays sorted */
 	spin_lock_irqsave(&async_lock, flags);
 	list_for_each_entry_reverse(pos, &running->domain, list)
-		if (entry->cookie < pos->cookie)
+		if (entry->cookie > pos->cookie)
 			break;
-	list_move_tail(&entry->list, &pos->list);
+	list_move(&entry->list, &pos->list);
 	spin_unlock_irqrestore(&async_lock, flags);
 
 	/* 2) run (and print duration) */
