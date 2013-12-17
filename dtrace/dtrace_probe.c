@@ -169,9 +169,7 @@ void dtrace_probe_description(const dtrace_probe_t *prp,
 
 void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 {
-#ifdef FIXME
 	struct module	*mod;
-#endif
 	int		all = 0;
 
 	if (prv == NULL) {
@@ -190,21 +188,46 @@ void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 		 * no need for code duplication in handling such probe points.
 		 */
 		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, dtrace_kmod);
-#ifdef FIXME
-/*
- * This needs work because (so far) I have not found a way to get access to the
- * list of modules in Linux.
- */
-		mutex_lock(&module_mutex);
 
-		list_for_each_entry(mod, &modules, list) {
+		/*
+		 * We need to explicitly make the call for the 'dtrace' module
+		 * itself, because the following loop does not actually process
+		 * the 'dtrace' module (it is used as a sentinel).
+		 */
+		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, THIS_MODULE);
+
+#ifdef FIXME
+		mutex_lock(&module_mutex);
+#else
+		rcu_read_lock();
+#endif
+
+		list_for_each_entry(mod, &(THIS_MODULE->list), list) {
+			/*
+			 * Skip over the modules list header, because it cannot
+			 * validly be interpreted as a 'struct module'.  It is
+			 * a basic list_head structure.
+			 */
+#ifdef MODULES_VADDR
+			if ((uintptr_t)mod < MODULES_VADDR ||
+			    (uintptr_t)mod >= MODULES_END)
+				continue;
+#else
+			if ((uintptr_t)mod < VMALLOC_START ||
+			    (uintptr_t)mod >= VMALLOC_END)
+				continue;
+#endif
+
 			if (mod->state != MODULE_STATE_LIVE)
 				continue;
 
 			prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mod);
 		}
 
+#ifdef FIXME
 		mutex_unlock(&module_mutex);
+#else
+		rcu_read_unlock();
 #endif
 	} while (all && (prv = prv->dtpv_next) != NULL);
 }

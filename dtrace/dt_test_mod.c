@@ -60,3 +60,8 @@ static dtrace_pops_t dt_test_pops = {
 };
 
 DT_PROVIDER_MODULE(dt_test, DTRACE_PRIV_USER)
+
+void foo(void)
+{
+	DTRACE_PROBE(sdt__test2);
+}
