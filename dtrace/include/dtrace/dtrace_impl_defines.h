@@ -153,13 +153,6 @@ typedef enum dtrace_speculation_state {
 	*((type *)((uintptr_t)(tomax) + (uintptr_t)(offset))) = (type)(what); \
 	} while (0)
 
-typedef enum dtrace_vtime_state {
-	DTRACE_VTIME_INACTIVE = 0,	/* No DTrace, no TNF */
-	DTRACE_VTIME_ACTIVE,		/* DTrace virtual time, no TNF */
-	DTRACE_VTIME_INACTIVE_TNF,	/* No DTrace, TNF active */
-	DTRACE_VTIME_ACTIVE_TNF		/* DTrace virtual time _and_ TNF */
-} dtrace_vtime_state_t;
-
 #define KERNELBASE	(uintptr_t)_text
 
 /*
