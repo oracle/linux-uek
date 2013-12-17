@@ -15,7 +15,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  * [Insert appropriate license here when releasing outside of Cisco]
- * $Id: fnic_main.c 132955 2013-05-29 21:01:25Z hiralpat $
+ * $Id: fnic_main.c 148477 2013-10-25 19:16:48Z hiralpat $
  */
 #include <linux/module.h>
 #include <linux/mempool.h>
@@ -73,9 +73,15 @@ module_param(fnic_log_level, int, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(fnic_log_level, "bit mask of fnic logging levels");
 
 unsigned int fnic_trace_max_pages = 16;
+unsigned int fnic_fc_trace_max_pages = 64;
+
 module_param(fnic_trace_max_pages, uint, S_IRUGO|S_IWUSR);
 MODULE_PARM_DESC(fnic_trace_max_pages, "Total allocated memory pages "
-					"for fnic trace buffer");
+                                       "for fnic trace buffer");
+
+module_param(fnic_fc_trace_max_pages, uint, S_IRUGO|S_IWUSR);
+MODULE_PARM_DESC(fnic_fc_trace_max_pages, "Total allocated memory pages "
+                                          "for fc trace buffer");
 
 unsigned int fnic_max_qdepth = FNIC_DFLT_QUEUE_DEPTH;
 module_param(fnic_max_qdepth, uint, S_IRUGO|S_IWUSR);
@@ -114,7 +120,7 @@ static struct scsi_host_template fnic_host_template = {
 	.change_queue_type = fc_change_queue_type,
 	.this_id = -1,
 	.cmd_per_lun = 3,
-	.can_queue = FNIC_MAX_IO_REQ,
+	.can_queue = FNIC_DFLT_IO_REQ,
 	.use_clustering = ENABLE_CLUSTERING,
 	.sg_tablesize = FNIC_MAX_SG_DESC_CNT,
 	.max_sectors = 0xffff,
@@ -511,7 +517,7 @@ static void fnic_iounmap(struct fnic *fnic)
 		iounmap(fnic->bar0.vaddr);
 }
 
-/**
+/*
  * fnic_get_mac() - get assigned data MAC address for FIP code.
  * @lport: 	local port.
  */
@@ -522,14 +528,18 @@ static u8 *fnic_get_mac(struct fc_lport *lport)
 	return fnic->data_src_addr;
 }
 
-void fnic_set_vlan(struct fnic *fnic, u16 vlan_id)
+static void fnic_set_vlan(struct fnic *fnic, u16 vlan_id)
 {
 	u16 old_vlan;
 	old_vlan = vnic_dev_set_default_vlan(fnic->vdev, vlan_id);
 }
-
-static int fnic_probe(struct pci_dev *pdev,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)
+static int __devinit fnic_probe(struct pci_dev *pdev,
 				const struct pci_device_id *ent)
+#else
+static int fnic_probe(struct pci_dev *pdev,
+			const struct pci_device_id *ent)
+#endif
 {
 	struct Scsi_Host *host;
 	struct fc_lport *lp;
@@ -588,10 +598,10 @@ static int fnic_probe(struct pci_dev *pdev,
 	pci_set_master(pdev);
 
 	/* Query PCI controller on system for DMA addressing
-	 * limitation for the device.  Try 40-bit first, and
+	 * limitation for the device.  Try 64-bit first, and
 	 * fail to 32-bit.
 	 */
-	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(40));
+	err = pci_set_dma_mask(pdev, DMA_BIT_MASK(64));
 	if (err) {
 		err = pci_set_dma_mask(pdev, DMA_BIT_MASK(32));
 		if (err) {
@@ -608,10 +618,10 @@ static int fnic_probe(struct pci_dev *pdev,
 			goto err_out_release_regions;
 		}
 	} else {
-		err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(40));
+		err = pci_set_consistent_dma_mask(pdev, DMA_BIT_MASK(64));
 		if (err) {
 			shost_printk(KERN_ERR, fnic->lport->host,
-				     "Unable to obtain 40-bit DMA "
+				     "Unable to obtain 64-bit DMA "
 				     "for consistent allocations, aborting.\n");
 			goto err_out_release_regions;
 		}
@@ -770,25 +780,13 @@ static int fnic_probe(struct pci_dev *pdev,
 		INIT_WORK(&fnic->fip_frame_work, fnic_handle_fip_frame);
 		INIT_WORK(&fnic->event_work, fnic_handle_event);
 		skb_queue_head_init(&fnic->fip_frame_queue);
-		spin_lock_irqsave(&fnic_list_lock, flags);
-		if (!fnic_fip_queue) {
-			fnic_fip_queue =
-				create_singlethread_workqueue("fnic_fip_q");
-			if (!fnic_fip_queue) {
-				spin_unlock_irqrestore(&fnic_list_lock, flags);
-				printk(KERN_ERR PFX "fnic FIP work queue "
-						 "create failed\n");
-				err = -ENOMEM;
-				goto err_out_free_max_pool;
-			}
-		}
-		spin_unlock_irqrestore(&fnic_list_lock, flags);
 		INIT_LIST_HEAD(&fnic->evlist);
 		INIT_LIST_HEAD(&fnic->vlans);
 	} else {
 		shost_printk(KERN_INFO, fnic->lport->host,
 			     "firmware uses non-FIP mode\n");
 		fcoe_ctlr_init(&fnic->ctlr, FIP_MODE_NON_FIP);
+		fnic->ctlr.state = FIP_ST_NON_FIP;
 	}
 	fnic->state = FNIC_IN_FC_MODE;
 
@@ -945,8 +943,11 @@ err_out_free_hba:
 err_out:
 	return err;
 }
-
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)
+static void __devexit fnic_remove(struct pci_dev *pdev)
+#else
 static void fnic_remove(struct pci_dev *pdev)
+#endif
 {
 	struct fnic *fnic = pci_get_drvdata(pdev);
 	struct fc_lport *lp = fnic->lport;
@@ -979,7 +980,6 @@ static void fnic_remove(struct pci_dev *pdev)
 		fnic_fcoe_reset_vlans(fnic);
 		fnic_fcoe_evlist_free(fnic);
 	}
-
 	/*
 	 * Log off the fabric. This stops all remote ports, dns port,
 	 * logs off the fabric. This flushes all rport, disc, lport work
@@ -1028,7 +1028,11 @@ static struct pci_driver fnic_driver = {
 	.name = DRV_NAME,
 	.id_table = fnic_id_table,
 	.probe = fnic_probe,
+#if LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0)
+	.remove = __devexit_p(fnic_remove),
+#else
 	.remove = fnic_remove,
+#endif
 };
 
 static int __init fnic_init_module(void)
@@ -1052,6 +1056,14 @@ static int __init fnic_init_module(void)
 		printk(KERN_ERR PFX "Trace buffer initialization Failed "
 				  "Fnic Tracing utility is disabled\n");
 		fnic_trace_free();
+	}
+
+    /* Allocate memory for fc trace buffer */
+	err = fnic_fc_trace_init();
+	if (err < 0) {
+		printk(KERN_ERR PFX "FC trace buffer initialization Failed "
+               "FC frame tracing utility is disabled\n");
+		fnic_fc_trace_free();
 	}
 
 	/* Create a cache for allocation of default size sgls */
@@ -1097,6 +1109,12 @@ static int __init fnic_init_module(void)
 
 	spin_lock_init(&fnic_list_lock);
 	INIT_LIST_HEAD(&fnic_list);
+	fnic_fip_queue = create_singlethread_workqueue("fnic_fip_q");
+	if (!fnic_fip_queue) {
+		printk(KERN_ERR PFX "fnic FIP work queue create failed\n");
+		err = -ENOMEM;
+		goto err_create_fip_workq;
+	}
 
 	fnic_fc_transport = fc_attach_transport(&fnic_fc_functions);
 	if (!fnic_fc_transport) {
@@ -1116,6 +1134,8 @@ static int __init fnic_init_module(void)
 err_pci_register:
 	fc_release_transport(fnic_fc_transport);
 err_fc_transport:
+	destroy_workqueue(fnic_fip_queue);
+err_create_fip_workq:
 	destroy_workqueue(fnic_event_queue);
 err_create_fnic_workq:
 	kmem_cache_destroy(fnic_io_req_cache);
@@ -1125,6 +1145,7 @@ err_create_fnic_sgl_slab_max:
 	kmem_cache_destroy(fnic_sgl_cache[FNIC_SGL_CACHE_DFLT]);
 err_create_fnic_sgl_slab_dflt:
 	fnic_trace_free();
+	fnic_fc_trace_free();
 	fnic_debugfs_terminate();
 	return err;
 }
@@ -1142,9 +1163,9 @@ static void __exit fnic_cleanup_module(void)
 	kmem_cache_destroy(fnic_io_req_cache);
 	fc_release_transport(fnic_fc_transport);
 	fnic_trace_free();
+	fnic_fc_trace_free();
 	fnic_debugfs_terminate();
 }
 
 module_init(fnic_init_module);
 module_exit(fnic_cleanup_module);
-

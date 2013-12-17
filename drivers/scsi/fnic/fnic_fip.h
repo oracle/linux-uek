@@ -32,7 +32,7 @@
  */
 struct fip_vlan_desc {
 	struct fip_desc fd_desc;
-	u16 fd_vlan;
+	__be16 fd_vlan;
 } __attribute__((packed));
 
 struct vlan {

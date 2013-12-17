@@ -15,7 +15,7 @@
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  * [Insert appropriate license here when releasing outside of Cisco]
- * $Id: fnic.h 132955 2013-05-29 21:01:25Z hiralpat $
+ * $Id: fnic.h 144147 2013-09-16 21:52:09Z hiralpat $
  */
 #ifndef _FNIC_H_
 #define _FNIC_H_
@@ -42,7 +42,7 @@
 
 #define DRV_NAME		"fnic"
 #define DRV_DESCRIPTION		"Cisco FCoE HBA Driver"
-#define DRV_VERSION		"1.5.0.45"
+#define DRV_VERSION		"1.6.0.8"
 #define PFX			DRV_NAME ": "
 #define DFX                     DRV_NAME "%d: "
 
@@ -50,6 +50,8 @@
 #define FNIC_UCSM_DFLT_THROTTLE_CNT_BLD	16 /* UCSM default throttle count */
 #define FNIC_MIN_IO_REQ			256 /* Min IO throttle count */
 #define FNIC_MAX_IO_REQ			2048 /* scsi_cmnd tag map entries */
+#define FNIC_DFLT_IO_REQ		256 /* Default IO throttle count or
+					     * scsi_cmnd tag map entries */
 #define FNIC_IO_LOCKS			64 /* IO locks: power of 2 */
 #define FNIC_DFLT_QUEUE_DEPTH		32
 #define FNIC_STATS_RATE_LIMIT		4 /* limit rate at which stats are
@@ -234,7 +236,6 @@ struct fnic {
 	struct timer_list notify_timer; /* used for MSI interrupts */
 
 	unsigned int fnic_max_tag_id;
-
 	unsigned int err_intr_offset;
 	unsigned int link_intr_offset;
 
@@ -256,7 +257,7 @@ struct fnic {
 
 	atomic_t in_flight;		/* io counter */
 	u32 _reserved;			/* fill hole */
-	u64 __bitwise__ state_flags;	/* protected by host lock */
+	unsigned long state_flags;	/* protected by host lock */
 	enum fnic_state state;
 	spinlock_t fnic_lock;
 
@@ -381,10 +382,10 @@ void fnic_fcoe_evlist_free(struct fnic *fnic);
 extern void fnic_handle_fip_timer(struct fnic *fnic);
 
 static inline int
-fnic_chk_state_flags_locked(struct fnic *fnic, u64 __bitwise__ st_flags)
+fnic_chk_state_flags_locked(struct fnic *fnic, unsigned long st_flags)
 {
 	return ((fnic->state_flags & st_flags) == st_flags);
 }
-void __fnic_set_state_flags(struct fnic *, u64 __bitwise__, u64 __bitwise__);
+void __fnic_set_state_flags(struct fnic *, unsigned long, unsigned long);
 void fnic_dump_fchost_stats(struct Scsi_Host *, struct fc_host_statistics *);
 #endif /* _FNIC_H_ */

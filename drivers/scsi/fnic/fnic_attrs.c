@@ -14,6 +14,8 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ * [Insert appropriate license here when releasing outside of Cisco]
+ * $Id: fnic_attrs.c 120749 2013-01-08 02:02:53Z hiralpat $
  */
 #include <linux/string.h>
 #include <linux/device.h>

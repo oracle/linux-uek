@@ -14,6 +14,8 @@
  * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
  * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
+ * [Insert appropriate license here when releasing outside of Cisco]
+ * $Id: wq_enet_desc.h 120749 2013-01-08 02:02:53Z hiralpat $
  */
 #ifndef _WQ_ENET_DESC_H_
 #define _WQ_ENET_DESC_H_
