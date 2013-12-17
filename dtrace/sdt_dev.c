@@ -129,7 +129,19 @@ void sdt_provide_module(void *arg, struct module *mp)
 	dtrace_mprovider_t	*prov;
 	sdt_probedesc_t		*sdpd;
 	sdt_probe_t		*sdp, *prv;
-	int			len;
+	int			idx, len;
+
+	/*
+	 * Nothing to do if the module SDT probes were already created.
+	 */
+	if (mp->sdt_nprobes != 0)
+		return;
+
+	/*
+	 * Nothing to do if there are no SDT probes.
+	 */
+	if (mp->num_dtrace_probes == 0)
+		return;
 
 	/*
 	 * Do not provide any probes unless all SDT providers have been created
@@ -140,13 +152,8 @@ void sdt_provide_module(void *arg, struct module *mp)
 			return;
 	}
 
-	/*
-	 * Nothing to do if the module SDT probes were already created.
-	 */
-	if (mp->sdt_nprobes != 0)
-		return;
-
-	for (sdpd = mp->sdt_probes; sdpd != NULL; sdpd = sdpd->sdpd_next) {
+	for (idx = 0, sdpd = mp->sdt_probes; idx < mp->num_dtrace_probes;
+	     idx++, sdpd++) {
 		char			*name = sdpd->sdpd_name, *nname;
 		int			i, j;
 		dtrace_mprovider_t	*prov;
@@ -223,7 +230,26 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 
-	dtrace_invop_enable(sdp->sdp_patchpoint);
+	/*
+	 * Ensure that we have a reference to the module.
+	 */
+	if (!try_module_get(sdp->sdp_module))
+		return -EAGAIN;
+
+	/*
+	 * If at least one other enabled probe exists for this module, drop the
+	 * reference we took above, because we only need one to prevent the
+	 * module from being unloaded.
+	 */
+	sdp->sdp_module->mod_nenabled++;
+	if (sdp->sdp_module->mod_nenabled > 1)
+		module_put(sdp->sdp_module);
+
+	while (sdp != NULL) {
+		dtrace_invop_enable(sdp->sdp_patchpoint);
+		sdp = sdp->sdp_next;
+	}
+
 	return 0;
 }
 
@@ -231,7 +257,20 @@ void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	sdt_probe_t	*sdp = parg;
 
-	dtrace_invop_disable(sdp->sdp_patchpoint, sdp->sdp_savedval);
+	/*
+	 * If we are disabling a probe, we know it was enabled, and therefore
+	 * we know that we have a reference on the module to prevent it from
+	 * being unloaded.  If we disable the last probe on the module, we can
+	 * drop the reference.
+	 */
+	sdp->sdp_module->mod_nenabled--;
+	if (sdp->sdp_module->mod_nenabled == 0)
+		module_put(sdp->sdp_module);
+
+	while (sdp != NULL) {
+		dtrace_invop_disable(sdp->sdp_patchpoint, sdp->sdp_savedval);
+		sdp = sdp->sdp_next;
+	}
 }
 
 void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,

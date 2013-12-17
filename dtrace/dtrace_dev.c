@@ -1125,33 +1125,22 @@ static struct miscdevice helper_dev = {
 	.fops = &helper_fops,
 };
 
-static void
-dtrace_module_loaded(struct module *module)
+static void dtrace_module_loaded(struct module *mod)
 {
 	dtrace_provider_t *prv;
 
 	mutex_lock(&dtrace_provider_lock);
-	/* FIXME: mutex_lock(&mod_lock); */
-
-	//ASSERT(ctl->mod_busy);
 
 	/*
-	 * We're going to call each providers per-module provide operation
-	 * specifying only this module.
+	 * Give all providers a chance to register probes for this module.
 	 */
 	for (prv = dtrace_provider; prv != NULL; prv = prv->dtpv_next)
-		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, module);
+		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mod);
 
-	/* FIXME: mutex_unlock(&mod_lock); */
 	mutex_unlock(&dtrace_provider_lock);
 
 	/*
 	 * If we have any retained enablings, we need to match against them.
-	 * Enabling probes requires that cpu_lock be held, and we cannot hold
-	 * cpu_lock here -- it is legal for cpu_lock to be held when loading a
-	 * module.  (In particular, this happens when loading scheduling
-	 * classes.)  So if we have any retained enablings, we need to dispatch
-	 * our task queue to do the match for us.
 	 */
 	mutex_lock(&dtrace_lock);
 
@@ -1160,39 +1149,18 @@ dtrace_module_loaded(struct module *module)
 		return;
 	}
 
-#ifdef FIXME
-	/* FIXME: maybe convert to a Linux workqueue */
-	(void) taskq_dispatch(dtrace_taskq,
-	    (task_func_t *)dtrace_enabling_matchall, NULL, TQ_SLEEP);
-#else
-	dtrace_enabling_matchall();
-#endif
-
 	mutex_unlock(&dtrace_lock);
-
-	/*
-	 * And now, for a little heuristic sleaze:  in general, we want to
-	 * match modules as soon as they load.  However, we cannot guarantee
-	 * this, because it would lead us to the lock ordering violation
-	 * outlined above.  The common case, of course, is that cpu_lock is
-	 * _not_ held -- so we delay here for a clock tick, hoping that that's
-	 * long enough for the task queue to do its work.  If it's not, it's
-	 * not a serious problem -- it just means that the module that we
-	 * just loaded may not be immediately instrumentable.
-	 */
-	udelay(jiffies_to_usecs(1));
+	dtrace_enabling_matchall();
 }
 
-static void
-dtrace_module_unloaded(struct module *module)
+static void dtrace_module_unloaded(struct module *mod)
 {
 	dtrace_probe_t template, *probe, *first, *next;
 	dtrace_provider_t *prov;
 
-	template.dtpr_mod = module->name;
+	template.dtpr_mod = mod->name;
 
 	mutex_lock(&dtrace_provider_lock);
-	/* FIXME: mutex_lock(&mod_lock); */
 	mutex_lock(&dtrace_lock);
 
 	if (dtrace_bymod == NULL) {
@@ -1201,16 +1169,14 @@ dtrace_module_unloaded(struct module *module)
 		 * we don't have any work to do.
 		 */
 		mutex_unlock(&dtrace_lock);
-		/* FIXME: mutex_unlock(&mod_lock); */
 		mutex_unlock(&dtrace_provider_lock);
 		return;
 	}
 
 	for (probe = first = dtrace_hash_lookup(dtrace_bymod, &template);
-	    probe != NULL; probe = probe->dtpr_nextmod) {
+	     probe != NULL; probe = probe->dtpr_nextmod) {
 		if (probe->dtpr_ecb != NULL) {
 			mutex_unlock(&dtrace_lock);
-			/* FIXME: mutex_unlock(&mod_lock); */
 			mutex_unlock(&dtrace_provider_lock);
 
 			/*
@@ -1225,7 +1191,7 @@ dtrace_module_unloaded(struct module *module)
 			 */
 			if (dtrace_err_verbose) {
 				pr_warning("unloaded module '%s' had "
-				    "enabled probes", module->name);
+				    "enabled probes", mod->name);
 			}
 
 			return;
@@ -1235,9 +1201,7 @@ dtrace_module_unloaded(struct module *module)
 	probe = first;
 
 	for (first = NULL; probe != NULL; probe = next) {
-//TBD		ASSERT(dtrace_probes[probe->dtpr_id - 1] == probe);
-
-//TBD		dtrace_probes[probe->dtpr_id - 1] = NULL;
+		dtrace_probe_remove_id(probe->dtpr_id);
 
 		next = probe->dtpr_nextmod;
 		dtrace_hash_remove(dtrace_bymod, probe);
@@ -1268,12 +1232,10 @@ dtrace_module_unloaded(struct module *module)
 		kfree(probe->dtpr_mod);
 		kfree(probe->dtpr_func);
 		kfree(probe->dtpr_name);
-//FIXME		vmem_free(dtrace_arena, (void *)(uintptr_t)probe->dtpr_id, 1);
 		kfree(probe);
 	}
 
 	mutex_unlock(&dtrace_lock);
-	/* FIXME: mutex_unlock(&mod_lock); */
 	mutex_unlock(&dtrace_provider_lock);
 }
 
@@ -1349,6 +1311,31 @@ int dtrace_istoxic(uintptr_t kaddr, size_t size)
 	return 0;
 }
 
+static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
+			       void *args)
+{
+	struct module	*mod = args;
+
+	if (!mod)
+		return NOTIFY_DONE;
+
+	switch (val) {
+	case MODULE_STATE_LIVE:
+		dtrace_module_loaded(mod);
+		break;
+
+	case MODULE_STATE_GOING:
+		dtrace_module_unloaded(mod);
+		break;
+	}
+
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block    dtrace_modmgmt = {
+	.notifier_call = dtrace_mod_notifier,
+};
+
 /*
  * Initialize the DTrace core.
  *
@@ -1398,8 +1385,12 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
+	register_module_notifier(&dtrace_modmgmt);
+
+#ifdef FIXME
 	dtrace_modload = dtrace_module_loaded;
 	dtrace_modunload = dtrace_module_unloaded;
+#endif
 	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 	dtrace_helpers_fork = dtrace_helpers_duplicate;
 #ifdef FIXME
@@ -1522,8 +1513,12 @@ void dtrace_dev_exit(void)
 
 	dtrace_probe_exit();
 
+	unregister_module_notifier(&dtrace_modmgmt);
+
+#ifdef FIXME
 	dtrace_modload = NULL;
 	dtrace_modunload = NULL;
+#endif
 	dtrace_helpers_cleanup = NULL;
 	dtrace_helpers_fork = NULL;
 #ifdef FIXME
