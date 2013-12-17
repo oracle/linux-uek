@@ -1576,6 +1576,7 @@ clean: $(clean-dirs)
 		-o -name '*.ko.*' \
 		-o -name '*.dwo'  \
 		-o -name '*.su'  \
+		-o -name '*.sdtinfo.c' -o -name '*.sdtstub.S' \
 		-o -name '.*.d' -o -name '.*.tmp' -o -name '*.mod.c' \
 		-o -name '*.symtypes' -o -name 'modules.order' \
 		-o -name modules.builtin -o -name 'objects.builtin' \

@@ -549,8 +549,37 @@ else
   cmd_link_multi-y = $(cmd_link_multi-link)
 endif
 
+ifdef CONFIG_DTRACE
+
+# We need secondary expansion for the %.sdtstub.S creation rule
+.SECONDEXPANSION:
+
+sdtgen = scripts/dtrace_sdt.sh
+
+quiet_cmd_sdtstub = SDTSTB  $@
+      cmd_sdtstub = $(sdtgen) sdtstub $@ \
+			      $(filter $(addprefix $(obj)/, \
+				$($(subst $(obj)/,,$(@:.sdtstub.S=-objs))) \
+				$($(subst $(obj)/,,$(@:.sdtstub.S=-y)))), \
+				$(multi-objs-m))
+
+$(multi-used-m:.o=.sdtstub.S) : %.sdtstub.S: $(multi-objs-m)
+	$(call if_changed,sdtstub)
+
+$(multi-used-m:.o=.sdtstub.o) : %.sdtstub.o: %.sdtstub.S
+	$(call if_changed,as_o_S)
+
+$(multi-used-m) : %.o: %.sdtstub.o
+
+quiet_cmd_link_multi-m = LD [M]  $@
+cmd_link_multi-m = $(LD) $(ld_flags) -r -o $@ $(link_multi_deps) $*.sdtstub.o $(cmd_secanalysis)
+
+else
+
 quiet_cmd_link_multi-m = LD [M]  $@
 cmd_link_multi-m = $(cmd_link_multi-link)
+
+endif
 
 $(multi-used-y): FORCE
 	$(call if_changed,link_multi-y)

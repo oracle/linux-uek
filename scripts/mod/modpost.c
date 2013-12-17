@@ -2139,9 +2139,20 @@ static int check_modname_len(struct module *mod)
  **/
 static void add_header(struct buffer *b, struct module *mod)
 {
+	const char *modname;
+
+	if ((modname = strrchr(mod->name, '/')) != NULL)
+		modname++;
+	else
+		modname = mod->name;
+
 	buf_printf(b, "#include <linux/module.h>\n");
 	buf_printf(b, "#include <linux/vermagic.h>\n");
 	buf_printf(b, "#include <linux/compiler.h>\n");
+	buf_printf(b, "\n");
+	buf_printf(b, "#ifdef CONFIG_DTRACE\n");
+	buf_printf(b, "# include \"%s.sdtinfo.c\"\n", modname);
+	buf_printf(b, "#endif\n");
 	buf_printf(b, "\n");
 	buf_printf(b, "MODULE_INFO(vermagic, VERMAGIC_STRING);\n");
 	buf_printf(b, "MODULE_INFO(name, KBUILD_MODNAME);\n");
@@ -2156,6 +2167,10 @@ static void add_header(struct buffer *b, struct module *mod)
 			      "\t.exit = cleanup_module,\n"
 			      "#endif\n");
 	buf_printf(b, "\t.arch = MODULE_ARCH_INIT,\n");
+	buf_printf(b, "#ifdef CONFIG_DTRACE\n");
+	buf_printf(b, "\t.sdt_probes = _sdt_probes,\n");
+	buf_printf(b, "\t.num_dtrace_probes = _sdt_probec,\n");
+	buf_printf(b, "#endif\n");
 	buf_printf(b, "};\n");
 }
 

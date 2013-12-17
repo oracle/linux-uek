@@ -106,17 +106,33 @@ vmlinux.o: FORCE
 # Declare generated files as targets for modpost
 $(modules:.ko=.mod.c): __modpost ;
 
-# Step 5), compile all *.mod.c files
+# Step 5), compile all *.mod.c files (includes the generation of SDT data)
 
 # modname is set to make c_flags define KBUILD_MODNAME
 modname = $(notdir $(@:.mod.o=))
 
 quiet_cmd_cc_o_c = CC      $@
       cmd_cc_o_c = $(CC) $(c_flags) $(KBUILD_CFLAGS_MODULE) $(CFLAGS_MODULE) \
-		   -c -o $@ $<
+		   -I$(dir $@) -c -o $@ $<
+
+ifdef CONFIG_DTRACE
+
+sdtgen = scripts/dtrace_sdt.sh
+
+quiet_cmd_sdtinfo = SDTINF  $@
+      cmd_sdtinfo = $(sdtgen) sdtinfo $@ $< kmod
+
+$(modules:.ko=.sdtinfo.c): %.sdtinfo.c: %.o
+	$(call cmd,sdtinfo)
+
+$(modules:.ko=.mod.o): %.mod.o: %.mod.c %.sdtinfo.c FORCE
+	$(call if_changed_dep,cc_o_c)
+else
 
 $(modules:.ko=.mod.o): %.mod.o: %.mod.c FORCE
 	$(call if_changed_dep,cc_o_c)
+
+endif
 
 targets += $(modules:.ko=.mod.o)
 

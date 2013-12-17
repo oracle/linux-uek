@@ -58,6 +58,7 @@ void dtrace_os_init(void)
 				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
 				NULL);
 
+	dtrace_sdt_init();
 	dtrace_sdt_register(dtrace_kmod);
 }
 EXPORT_SYMBOL(dtrace_os_init);

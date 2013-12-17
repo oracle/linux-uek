@@ -2,12 +2,54 @@
 
 LANG=C
 
+opr="$1"
+shift
+if [ -z "$opr" ]; then
+    echo "ERROR: Missing operation" > /dev/stderr
+    exit 1
+fi
+
+tfn="$1"
+shift
+if [ -z "$tfn" ]; then
+    echo "ERROR: Missing target filename" > /dev/stderr
+    exit 1
+fi
+
 ofn="$1"
 lfn="$2"
 
+if [ -z "$ofn" ]; then
+    echo "ERROR: Missing object file argument" > /dev/stderr
+    exit 1
+fi
+
+if [ "$opr" = "sdtstub" ]; then
+    ${NM} -u $* | \
+	grep __dtrace_probe_ | sort | uniq | \
+	${AWK} '{
+		    printf("\t.globl %s\n\t.type %s,@function\n%s:\n",
+			   $2, $2, $2);
+		    count++;
+		}
+
+		END {
+		    if (count)
+			print "\tret";
+		    else
+			exit(1);
+		}' > $tfn
+    exit 0
+fi
+
+if [ "$opr" != "sdtinfo" ]; then
+    echo "ERROR: Invalid operation, should be sdtstub or sdtinfo" > /dev/stderr
+    exit 1
+fi
+
 (
     objdump -htr "$ofn" | \
-	awk -v lfn=${lfn} \
+	awk -v lfn="${lfn}" \
 	    '/^Sections:/ {
 		 getline;
 		 getline;
@@ -27,7 +69,7 @@ lfn="$2"
 	     $3 == "F" {
 		 printf "%16s %s F %s\n", $4, $1, $6;
 
-		 if (!lfn)
+		 if (!lfn || lfn == "kmod")
 		     printf "%s t %s\n", $1, $6;
 
 		 next;
@@ -47,9 +89,10 @@ lfn="$2"
 		 next;
 	     }' | \
 	sort
-    [ "x${lfn}" != "x" ] && nm ${lfn}
+    [ "x${lfn}" != "x" -a "x${lfn}" != "xkmod" ] && nm ${lfn}
 ) | \
-    awk 'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
+    awk -v lfn="${lfn}" \
+	'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
 	     tmp = $0;
 	     if (length(v0) > 8) {
 		 d = length(v0);
@@ -111,21 +154,27 @@ lfn="$2"
 	 }
 
 	 BEGIN {
-	     print "#include <asm/types.h>";
-	     print "#if BITS_PER_LONG == 64";
-	     print "# define PTR .quad";
-	     print "# define ALGN .align 8";
-	     print "#else";
-	     print "# define PTR .long";
-	     print "# define ALGN .align 4";
-	     print "#endif";
+	     if (lfn != "kmod") {
+		 print "#include <asm/types.h>";
+		 print "#if BITS_PER_LONG == 64";
+		 print "# define PTR .quad";
+		 print "# define ALGN .align 8";
+		 print "#else";
+		 print "# define PTR .long";
+		 print "# define ALGN .align 4";
+		 print "#endif";
 
-	     print "\t.section .rodata, \042a\042";
-	     print "";
+		 print "\t.section .rodata, \042a\042";
+		 print "";
 
-	     print ".globl dtrace_sdt_probes";
-	     print "\tALGN";
-	     print "dtrace_sdt_probes:";
+		 print ".globl dtrace_sdt_probes";
+		 print "\tALGN";
+		 print "dtrace_sdt_probes:";
+	     } else {
+		 print "#include <linux/sdt.h>";
+	     }
+
+	     probec = 0;
 	 }
 
 	 $2 ~ /^[tT]$/ {
@@ -140,13 +189,21 @@ lfn="$2"
 		 for (i = 1; i <= NF; i++) {
 		     prb = $i;
 		     pn = fun":"prb;
+		     ad = addl(baseaddr, poffst[pn]);
 
-		     print "\tPTR\t0x" addl(baseaddr, poffst[pn]);
-		     print "\tPTR\t" length(prb);
-		     print "\tPTR\t" length(fun);
-		     print "\t.asciz\t\042" prb "\042";
-		     print "\t.asciz\t\042" fun "\042";
-		     print "\tALGN";
+		     if (lfn != "kmod") {
+			 print "\tPTR\t0x" ad;
+			 print "\tPTR\t" length(prb);
+			 print "\tPTR\t" length(fun);
+			 print "\t.asciz\t\042" prb "\042";
+			 print "\t.asciz\t\042" fun "\042";
+			 print "\tALGN";
+		     } else {
+			 if (probec == 0)
+			     print "static sdt_probedesc_t\t_sdt_probes[] = {";
+
+			 print "  {\042" prb "\042, \042"fun"\042, 0x" ad " },";
+		     }
 
 		     probec++;
 		 }
@@ -175,14 +232,25 @@ lfn="$2"
 	 }
 
 	 END {
-	     print "";
-	     print ".globl dtrace_sdt_nprobes";
-	     print "\tALGN";
-	     print "dtrace_sdt_nprobes:";
-	     print "\tPTR\t" probec;
+	     if (lfn != "kmod") {
+		 print "";
+		 print ".globl dtrace_sdt_nprobes";
+		 print "\tALGN";
+		 print "dtrace_sdt_nprobes:";
+		 print "\tPTR\t" probec;
+	     } else {
+		 if (probec > 0)
+		     print "};";
+		 else
+		     print "#define _sdt_probes\tNULL";
+
+		 print "#define _sdt_probec\t" probec;
+	     }
 
 	     if (errc > 0) {
 		 print errc " errors generating SDT probe data." > /dev/stderr;
 		 exit 1;
 	     }
-	 }'
+	 }' > $tfn
+
+exit 0
