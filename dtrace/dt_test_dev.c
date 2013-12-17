@@ -82,6 +82,8 @@ static long dt_test_ioctl(struct file *file,
 		return 0;
 	}
 
+	DTRACE_PROBE(sdt__test);
+
 	return -EAGAIN;
 }
 
