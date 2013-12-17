@@ -125,7 +125,6 @@ typedef enum {
 #define ktime_le(t0, t1)	((t0).tv64 <= (t1).tv64)
 #define ktime_ge(t0, t1)	((t0).tv64 >= (t1).tv64)
 #define ktime_gt(t0, t1)	((t0).tv64 > (t1).tv64)
-#define ktime_nz(t0)		((t0).tv64 != 0LL)
 #define ktime_cp(t0, t1)	((t0).tv64 = (t1).tv64)
 
 /*

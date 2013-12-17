@@ -45,7 +45,6 @@ dtrace_genid_t			dtrace_probegen;
 struct kmem_cache		*dtrace_probe_cachep;
 
 static struct idr		dtrace_probe_idr;
-static uint64_t			dtrace_vtime_references;
 
 static struct task_struct	*dtrace_panicked;
 
@@ -630,12 +629,12 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 #endif
 
 	now = dtrace_gethrtime();
-	vtime = dtrace_vtime_references != 0;
+	vtime = (dtrace_vtime_references > 0);
 
 	if (vtime && ktime_nz(current->dtrace_start))
 		current->dtrace_vtime =
 			ktime_add(current->dtrace_vtime,
-				  ktime_sub(now,current->dtrace_start));
+				  ktime_sub(now, current->dtrace_start));
 
 	mstate.dtms_difo = NULL;
 	mstate.dtms_probe = probe;

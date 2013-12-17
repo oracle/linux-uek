@@ -47,7 +47,7 @@ size_t				dtrace_global_maxsize = 16 * 1024;
  */
 const char			dtrace_zero[256] = { 0, };
 
-static uint64_t			dtrace_vtime_references;
+uint64_t			dtrace_vtime_references;
 
 static int dtrace_difo_err(uint_t pc, const char *format, ...)
 {

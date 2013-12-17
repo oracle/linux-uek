@@ -552,6 +552,8 @@ extern dtrace_difo_t * dtrace_difo_duplicate(dtrace_difo_t *,
 					     dtrace_vstate_t *);
 extern void dtrace_difo_release(dtrace_difo_t *, dtrace_vstate_t *);
 
+extern uint64_t			dtrace_vtime_references;
+
 extern uint64_t dtrace_dif_emulate(dtrace_difo_t *, dtrace_mstate_t *,
 				   dtrace_vstate_t *, dtrace_state_t *);
 
@@ -865,14 +867,6 @@ extern void dtrace_vpanic(const char *, va_list);
 extern int dtrace_getipl(void);
 
 extern ktime_t dtrace_gethrestime(void);
-
-extern dtrace_vtime_state_t	dtrace_vtime_active;
-
-extern void dtrace_vtime_enable(void);
-extern void dtrace_vtime_disable(void);
-
-extern ktime_t dtrace_gethrtime(void);
-extern ktime_t dtrace_getwalltime(void);
 
 extern dtrace_icookie_t dtrace_interrupt_disable(void);
 extern void dtrace_interrupt_enable(dtrace_icookie_t);
