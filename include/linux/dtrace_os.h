@@ -29,6 +29,20 @@ extern void dtrace_os_exit(void);
 extern void dtrace_enable(void);
 extern void dtrace_disable(void);
 
+extern ktime_t dtrace_gethrtime(void);
+extern ktime_t dtrace_getwalltime(void);
+
+typedef enum dtrace_vtime_state {
+	DTRACE_VTIME_INACTIVE = 0,
+	DTRACE_VTIME_ACTIVE
+} dtrace_vtime_state_t;
+
+extern dtrace_vtime_state_t dtrace_vtime_active;
+
+extern void dtrace_vtime_enable(void);
+extern void dtrace_vtime_disable(void);
+extern void dtrace_vtime_switch(struct task_struct *, struct task_struct *);
+
 extern int dtrace_invop_add(uint8_t (*func)(struct pt_regs *));
 extern void dtrace_invop_remove(uint8_t (*func)(struct pt_regs *));
 
@@ -77,6 +91,7 @@ extern void dtrace_stacktrace(stacktrace_state_t *);
 
 extern struct task_struct *register_pid_provider(pid_t);
 extern void unregister_pid_provider(pid_t);
+extern void dtrace_task_reinit(struct task_struct *);
 extern void dtrace_task_init(struct task_struct *);
 extern void dtrace_task_fork(struct task_struct *, struct task_struct *);
 extern void dtrace_task_cleanup(struct task_struct *);
