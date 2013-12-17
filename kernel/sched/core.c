@@ -26,6 +26,7 @@
 #include <linux/profile.h>
 #include <linux/security.h>
 #include <linux/syscalls.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -2636,6 +2637,11 @@ static struct rq *finish_task_switch(struct task_struct *prev)
 		preempt_count_set(FORK_PREEMPT_COUNT);
 
 	rq->prev_mm = NULL;
+
+#ifdef CONFIG_DTRACE
+	if (dtrace_vtime_active)
+		dtrace_vtime_switch(prev, current);
+#endif
 
 	/*
 	 * A task struct has one reference for the use as "current".
