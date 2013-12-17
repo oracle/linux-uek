@@ -134,7 +134,9 @@ typedef struct dtrace_sdt_probeinfo {
 	char name[0];
 } __aligned(sizeof(unsigned long)) dtrace_sdt_probeinfo_t;
 
+void dtrace_sdt_init(void);
 void dtrace_sdt_register(struct module *);
+void dtrace_sdt_exit(void);
 
 #endif /* __KERNEL__ */
 
@@ -434,7 +436,7 @@ typedef struct sdt_probedesc {
 	struct sdt_probedesc	*sdpd_next;	/* next static probe */
 } sdt_probedesc_t;
 
-extern void dtrace_register_builtins(void);
+/* extern void dtrace_register_builtins(void); */
 
 #ifdef	__cplusplus
 }
