@@ -301,6 +301,14 @@ static inline int ktime_compare(const ktime_t cmp1, const ktime_t cmp2)
 	return 0;
 }
 
+/*
+ * ktime_nz - Check whether a ktime_v variable is non-zero
+ */
+static inline int ktime_nz(const ktime_t kt)
+{
+	return kt.tv64 != 0LL;
+}
+
 static inline s64 ktime_to_us(const ktime_t kt)
 {
 	struct timeval tv = ktime_to_timeval(kt);

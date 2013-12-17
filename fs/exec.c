@@ -1550,7 +1550,7 @@ static int do_execve_common(const char *filename,
 	/* execve succeeded */
 #ifdef CONFIG_DTRACE
 	dtrace_task_cleanup(current);	/* get rid of probes from old ... */
-	dtrace_task_init(current);	/* ... be ready for probes from new */
+	dtrace_task_reinit(current);	/* ... be ready for probes from new */
 	current->dtrace_psinfo = dtrace_psinfo_alloc(current);
 #endif
 	current->fs->in_exec = 0;

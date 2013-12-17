@@ -73,6 +73,7 @@
 #include <linux/init_task.h>
 #include <linux/binfmts.h>
 #include <linux/context_tracking.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/switch_to.h>
 #include <asm/tlb.h>
@@ -1830,6 +1831,11 @@ static void finish_task_switch(struct rq *rq, struct task_struct *prev)
 	long prev_state;
 
 	rq->prev_mm = NULL;
+
+#ifdef CONFIG_DTRACE
+	if (dtrace_vtime_active)
+		dtrace_vtime_switch(prev, current);
+#endif
 
 	/*
 	 * A task struct has one reference for the use as "current".
