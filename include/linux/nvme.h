@@ -50,6 +50,7 @@ enum {
 	NVME_CC_SHN_NONE	= 0 << 14,
 	NVME_CC_SHN_NORMAL	= 1 << 14,
 	NVME_CC_SHN_ABRUPT	= 2 << 14,
+	NVME_CC_SHN_MASK	= 3 << 14,
 	NVME_CC_IOSQES		= 6 << 16,
 	NVME_CC_IOCQES		= 4 << 20,
 	NVME_CSTS_RDY		= 1 << 0,
@@ -57,6 +58,7 @@ enum {
 	NVME_CSTS_SHST_NORMAL	= 0 << 2,
 	NVME_CSTS_SHST_OCCUR	= 1 << 2,
 	NVME_CSTS_SHST_CMPLT	= 2 << 2,
+	NVME_CSTS_SHST_MASK	= 3 << 2,
 };
 
 struct nvme_id_power_state {
@@ -553,7 +555,7 @@ struct nvme_ns {
 	struct request_queue *queue;
 	struct gendisk *disk;
 
-	int ns_id;
+	unsigned ns_id;
 	int lba_shift;
 	int ms;
 	u64 mode_select_num_blocks;
@@ -572,6 +574,7 @@ struct nvme_iod {
 	int offset;		/* Of PRP list */
 	int nents;		/* Used in scatterlist */
 	int length;		/* Of data, in bytes */
+	unsigned long start_time;
 	dma_addr_t first_dma;
 	struct scatterlist sg[0];
 };
