@@ -1,6 +1,6 @@
 /*
  * QLogic iSCSI HBA Driver
- * Copyright (c)  2003-2012 QLogic Corporation
+ * Copyright (c)  2003-2013 QLogic Corporation
  *
  * See LICENSE.qla4xxx for copyright and licensing details.
  */
@@ -62,6 +62,10 @@
 
 #ifndef PCI_DEVICE_ID_QLOGIC_ISP8324
 #define PCI_DEVICE_ID_QLOGIC_ISP8324	0x8032
+#endif
+
+#ifndef PCI_DEVICE_ID_QLOGIC_ISP8042
+#define PCI_DEVICE_ID_QLOGIC_ISP8042	0x8042
 #endif
 
 #define ISP4XXX_PCI_FN_1	0x1
@@ -175,6 +179,10 @@
 		n &= ~v;	\
 }
 
+#define OP_STATE(o, f, p) {			\
+	p = (o & f) ? "enable" : "disable";	\
+}
+
 /*
  * Retry & Timeout Values
  */
@@ -201,6 +209,7 @@
 
 #define MAX_RESET_HA_RETRIES		2
 #define FW_ALIVE_WAIT_TOV		3
+#define IDC_EXTEND_TOV			8
 
 #define CMD_SP(Cmnd)			((Cmnd)->SCp.ptr)
 
@@ -301,6 +310,7 @@ struct ddb_entry {
 struct qla_ddb_index {
 	struct list_head list;
 	uint16_t fw_ddb_idx;
+	uint16_t flash_ddb_idx;
 	struct dev_db_entry fw_ddb;
 	uint8_t flash_isid[6];
 };
@@ -470,6 +480,34 @@ struct ipaddress_config {
 	uint16_t eth_mtu_size;
 	uint16_t ipv4_port;
 	uint16_t ipv6_port;
+	uint8_t control;
+	uint16_t ipv6_tcp_options;
+	uint8_t tcp_wsf;
+	uint8_t ipv6_tcp_wsf;
+	uint8_t ipv4_tos;
+	uint8_t ipv4_cache_id;
+	uint8_t ipv6_cache_id;
+	uint8_t ipv4_alt_cid_len;
+	uint8_t ipv4_alt_cid[11];
+	uint8_t ipv4_vid_len;
+	uint8_t ipv4_vid[11];
+	uint8_t ipv4_ttl;
+	uint16_t ipv6_flow_lbl;
+	uint8_t ipv6_traffic_class;
+	uint8_t ipv6_hop_limit;
+	uint32_t ipv6_nd_reach_time;
+	uint32_t ipv6_nd_rexmit_timer;
+	uint32_t ipv6_nd_stale_timeout;
+	uint8_t ipv6_dup_addr_detect_count;
+	uint32_t ipv6_gw_advrt_mtu;
+	uint16_t def_timeout;
+	uint8_t abort_timer;
+	uint16_t iscsi_options;
+	uint16_t iscsi_max_pdu_size;
+	uint16_t iscsi_first_burst_len;
+	uint16_t iscsi_max_outstnd_r2t;
+	uint16_t iscsi_max_burst_len;
+	uint8_t iscsi_name[224];
 };
 
 #define QL4_CHAP_MAX_NAME_LEN 256
@@ -558,6 +596,7 @@ struct scsi_qla_host {
 #define DPC_HA_UNRECOVERABLE		21 /* 0x00080000 ISP-82xx only*/
 #define DPC_HA_NEED_QUIESCENT		22 /* 0x00100000 ISP-82xx only*/
 #define DPC_POST_IDC_ACK		23 /* 0x00200000 */
+#define DPC_RESTORE_ACB			24 /* 0x01000000 */
 
 	struct Scsi_Host *host; /* pointer to host data */
 	uint32_t tot_ddbs;
@@ -778,9 +817,11 @@ struct scsi_qla_host {
 	uint32_t *reg_tbl;
 	struct qla4_83xx_reset_template reset_tmplt;
 	struct device_reg_83xx  __iomem *qla4_83xx_reg; /* Base I/O address
-							   for ISP8324 */
+							   for ISP8324 and
+							   and ISP8042 */
 	uint32_t pf_bit;
 	struct qla4_83xx_idc_information idc_info;
+	struct addr_ctrl_blk *saved_acb;
 };
 
 struct ql4_task_data {
@@ -848,9 +889,14 @@ static inline int is_qla8032(struct scsi_qla_host *ha)
 	return ha->pdev->device == PCI_DEVICE_ID_QLOGIC_ISP8324;
 }
 
+static inline int is_qla8042(struct scsi_qla_host *ha)
+{
+	return ha->pdev->device == PCI_DEVICE_ID_QLOGIC_ISP8042;
+}
+
 static inline int is_qla80XX(struct scsi_qla_host *ha)
 {
-	return is_qla8022(ha) || is_qla8032(ha);
+	return is_qla8022(ha) || is_qla8032(ha) || is_qla8042(ha);
 }
 
 static inline int is_aer_supported(struct scsi_qla_host *ha)
