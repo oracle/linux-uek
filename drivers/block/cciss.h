@@ -31,6 +31,7 @@ struct access_method {
 typedef struct _drive_info_struct
 {
 	unsigned char LunID[8];
+#define CCISS_HBA_LUNID "\0\0\0\0\0\0\0\0"
 	int 	usage_count;
 	struct request_queue *queue;
 	sector_t nr_blocks;
@@ -40,20 +41,24 @@ typedef struct _drive_info_struct
 	int 	cylinders;
 	int	raid_level; /* set to -1 to indicate that
 			     * the drive is not in use/configured
-			     */
-	int	busy_configuring; /* This is set when a drive is being removed
-				   * to prevent it from being opened or it's
-				   * queue from being started.
-				   */
-	struct	device dev;
-	__u8 serial_no[16]; /* from inquiry page 0x83,
-			     * not necc. null terminated.
-			     */
+			    */
+	int	busy_configuring; /*This is set when the drive is being removed
+				   *to prevent it from being opened or it's queue
+				   *from being started.
+				  */
+	struct device dev;
+	__u8 uid[16];	    /* from inquiry page 0x83, */
+			    /* not necc. null terminated. */
 	char vendor[VENDOR_LEN + 1]; /* SCSI vendor string */
 	char model[MODEL_LEN + 1];   /* SCSI model string */
 	char rev[REV_LEN + 1];       /* SCSI revision string */
 	char device_initialized;     /* indicates whether dev is initialized */
 } drive_info_struct;
+
+struct Cmd_sg_list {
+	dma_addr_t              sg_chain_dma;
+	int                     chain_block_size;
+};
 
 struct ctlr_info
 {
@@ -71,7 +76,7 @@ struct ctlr_info
 	int	major;
 	int 	max_commands;
 	int	commands_outstanding;
-	int 	max_outstanding; /* Debug */ 
+	int 	max_outstanding; /* Debug */
 	int	num_luns;
 	int 	highest_lun;
 	int	usage_count;  /* number of opens all all minor devices */
@@ -103,7 +108,7 @@ struct ctlr_info
 
 	struct access_method access;
 
-	/* queue and queue Info */ 
+	/* queue and queue Info */
 	struct list_head reqQ;
 	struct list_head cmpQ;
 	unsigned int Qdepth;
@@ -113,16 +118,15 @@ struct ctlr_info
 
 	/* pointers to command and error info pool */
 	CommandList_struct 	*cmd_pool;
-	dma_addr_t		cmd_pool_dhandle; 
+	dma_addr_t		cmd_pool_dhandle;
 	ErrorInfo_struct 	*errinfo_pool;
-	dma_addr_t		errinfo_pool_dhandle; 
+	dma_addr_t		errinfo_pool_dhandle;
         unsigned long  		*cmd_pool_bits;
 	int			nr_allocs;
-	int			nr_frees; 
+	int			nr_frees;
 	int			busy_configuring;
 	int			busy_initializing;
-	int			busy_scanning;
-	struct mutex		busy_shutting_down;
+	struct mutex   		busy_shutting_down;
 
 	/* This element holds the zero based queue number of the last
 	 * queue to be started.  It is used for fairness.
@@ -135,8 +139,6 @@ struct ctlr_info
 	struct cciss_scsi_adapter_data_t *scsi_ctlr;
 #endif
 	unsigned char alive;
-	struct list_head scan_list;
-	struct completion scan_wait;
 	struct device dev;
 	/*
 	 * Performant mode tables.
@@ -189,7 +191,7 @@ struct ctlr_info
 
 #define  CISS_ERROR_BIT		0x02
 
-#define CCISS_INTR_ON 	1 
+#define CCISS_INTR_ON 	1
 #define CCISS_INTR_OFF	0
 
 
@@ -210,34 +212,34 @@ struct ctlr_info
 	((CCISS_BOARD_NOT_READY_WAIT_SECS * 1000) / \
 		CCISS_BOARD_READY_POLL_INTERVAL_MSECS)
 #define CCISS_POST_RESET_PAUSE_MSECS (3000)
-#define CCISS_POST_RESET_NOOP_INTERVAL_MSECS (4000)
+#define CCISS_POST_RESET_NOOP_INTERVAL_MSECS (1000)
 #define CCISS_POST_RESET_NOOP_RETRIES (12)
 #define CCISS_POST_RESET_NOOP_TIMEOUT_MSECS (10000)
 
-/* 
-	Send the command to the hardware 
+/*
+	Send the command to the hardware
 */
-static void SA5_submit_command( ctlr_info_t *h, CommandList_struct *c) 
+static void SA5_submit_command( ctlr_info_t *h, CommandList_struct *c)
 {
 #ifdef CCISS_DEBUG
 	printk(KERN_WARNING "cciss%d: Sending %08x - down to controller\n",
 			h->ctlr, c->busaddr);
 #endif /* CCISS_DEBUG */
-         writel(c->busaddr, h->vaddr + SA5_REQUEST_PORT_OFFSET);
-	readl(h->vaddr + SA5_SCRATCHPAD_OFFSET);
-	 h->commands_outstanding++;
-	 if ( h->commands_outstanding > h->max_outstanding)
+	writel(c->busaddr, h->vaddr + SA5_REQUEST_PORT_OFFSET);
+	(void) readl(h->vaddr + SA5_SCRATCHPAD_OFFSET);
+	h->commands_outstanding++;
+	if ( h->commands_outstanding > h->max_outstanding)
 		h->max_outstanding = h->commands_outstanding;
 }
 
-/*  
- *  This card is the opposite of the other cards.  
- *   0 turns interrupts on... 
- *   0x08 turns them off... 
+/*
+ *  This card is the opposite of the other cards.
+ *   0 turns interrupts on...
+ *   0x08 turns them off...
  */
 static void SA5_intr_mask(ctlr_info_t *h, unsigned long val)
 {
-	if (val) 
+	if (val)
 	{ /* Turn interrupts on */
 		h->interrupts_enabled = 1;
 		writel(0, h->vaddr + SA5_REPLY_INTR_MASK_OFFSET);
@@ -245,7 +247,7 @@ static void SA5_intr_mask(ctlr_info_t *h, unsigned long val)
 	} else /* Turn them off */
 	{
 		h->interrupts_enabled = 0;
-        	writel( SA5_INTR_OFF, 
+		writel( SA5_INTR_OFF,
 			h->vaddr + SA5_REPLY_INTR_MASK_OFFSET);
 		(void) readl(h->vaddr + SA5_REPLY_INTR_MASK_OFFSET);
 	}
@@ -287,39 +289,39 @@ static void SA5_performant_intr_mask(ctlr_info_t *h, unsigned long val)
 }
 
 /*
- *  Returns true if fifo is full.  
- * 
- */ 
+ *  Returns true if fifo is full.
+ *
+ */
 static unsigned long SA5_fifo_full(ctlr_info_t *h)
 {
 	if( h->commands_outstanding >= h->max_commands)
 		return(1);
-	else 
+	else
 		return(0);
 
 }
-/* 
- *   returns value read from hardware. 
- *     returns FIFO_EMPTY if there is nothing to read 
- */ 
+/*
+ *   returns value read from hardware.
+ *     returns FIFO_EMPTY if there is nothing to read
+ */
 static unsigned long SA5_completed(ctlr_info_t *h)
 {
-	unsigned long register_value 
+	unsigned long register_value
 		= readl(h->vaddr + SA5_REPLY_PORT_OFFSET);
 	if(register_value != FIFO_EMPTY)
 	{
 		h->commands_outstanding--;
 #ifdef CCISS_DEBUG
 		printk("cciss:  Read %lx back from board\n", register_value);
-#endif /* CCISS_DEBUG */ 
-	} 
+#endif /* CCISS_DEBUG */
+	}
 #ifdef CCISS_DEBUG
 	else
 	{
 		printk("cciss:  FIFO Empty read\n");
 	}
-#endif 
-	return ( register_value); 
+#endif
+	return ( register_value);
 
 }
 
@@ -357,16 +359,16 @@ static unsigned long SA5_performant_completed(ctlr_info_t *h)
 	return register_value;
 }
 /*
- *	Returns true if an interrupt is pending.. 
+ *	Returns true if an interrupt is pending..
  */
 static bool SA5_intr_pending(ctlr_info_t *h)
 {
-	unsigned long register_value  = 
+	unsigned long register_value  =
 		readl(h->vaddr + SA5_INTR_STATUS);
 #ifdef CCISS_DEBUG
 	printk("cciss: intr_pending %lx\n", register_value);
 #endif  /* CCISS_DEBUG */
-	if( register_value &  SA5_INTR_PENDING) 
+	if( register_value &  SA5_INTR_PENDING)
 		return  1;	
 	return 0 ;
 }
