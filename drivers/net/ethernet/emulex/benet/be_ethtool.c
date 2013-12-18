@@ -116,7 +116,12 @@ static const struct be_ethtool_stat et_stats[] = {
 	{DRVSTAT_INFO(rx_drops_mtu)},
 	/* Number of packets dropped due to random early drop function */
 	{DRVSTAT_INFO(eth_red_drops)},
-	{DRVSTAT_INFO(be_on_die_temperature)}
+	{DRVSTAT_INFO(be_on_die_temperature)},
+	{DRVSTAT_INFO(rx_roce_bytes_lsd)},
+	{DRVSTAT_INFO(rx_roce_bytes_msd)},
+	{DRVSTAT_INFO(rx_roce_frames)},
+	{DRVSTAT_INFO(roce_drops_payload_len)},
+	{DRVSTAT_INFO(roce_drops_crc)}
 };
 #define ETHTOOL_STATS_NUM ARRAY_SIZE(et_stats)
 
@@ -155,7 +160,9 @@ static const struct be_ethtool_stat et_tx_stats[] = {
 	/* Number of times the TX queue was stopped due to lack
 	 * of spaces in the TXQ.
 	 */
-	{DRVSTAT_TX_INFO(tx_stops)}
+	{DRVSTAT_TX_INFO(tx_stops)},
+	/* Pkts dropped in the driver's transmit path */
+	{DRVSTAT_TX_INFO(tx_drv_drops)}
 };
 #define ETHTOOL_TXSTATS_NUM (ARRAY_SIZE(et_tx_stats))
 
@@ -290,19 +297,19 @@ static int be_get_coalesce(struct net_device *netdev,
 			   struct ethtool_coalesce *et)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
-	struct be_eq_obj *eqo = &adapter->eq_obj[0];
+	struct be_aic_obj *aic = &adapter->aic_obj[0];
 
 
-	et->rx_coalesce_usecs = eqo->cur_eqd;
-	et->rx_coalesce_usecs_high = eqo->max_eqd;
-	et->rx_coalesce_usecs_low = eqo->min_eqd;
+	et->rx_coalesce_usecs = aic->prev_eqd;
+	et->rx_coalesce_usecs_high = aic->max_eqd;
+	et->rx_coalesce_usecs_low = aic->min_eqd;
 
-	et->tx_coalesce_usecs = eqo->cur_eqd;
-	et->tx_coalesce_usecs_high = eqo->max_eqd;
-	et->tx_coalesce_usecs_low = eqo->min_eqd;
+	et->tx_coalesce_usecs = aic->prev_eqd;
+	et->tx_coalesce_usecs_high = aic->max_eqd;
+	et->tx_coalesce_usecs_low = aic->min_eqd;
 
-	et->use_adaptive_rx_coalesce = eqo->enable_aic;
-	et->use_adaptive_tx_coalesce = eqo->enable_aic;
+	et->use_adaptive_rx_coalesce = aic->enable;
+	et->use_adaptive_tx_coalesce = aic->enable;
 
 	return 0;
 }
@@ -314,14 +321,17 @@ static int be_set_coalesce(struct net_device *netdev,
 			   struct ethtool_coalesce *et)
 {
 	struct be_adapter *adapter = netdev_priv(netdev);
+	struct be_aic_obj *aic = &adapter->aic_obj[0];
 	struct be_eq_obj *eqo;
 	int i;
 
 	for_all_evt_queues(adapter, eqo, i) {
-		eqo->enable_aic = et->use_adaptive_rx_coalesce;
-		eqo->max_eqd = min(et->rx_coalesce_usecs_high, BE_MAX_EQD);
-		eqo->min_eqd = min(et->rx_coalesce_usecs_low, eqo->max_eqd);
-		eqo->eqd = et->rx_coalesce_usecs;
+		aic->enable = et->use_adaptive_rx_coalesce;
+		aic->max_eqd = min(et->rx_coalesce_usecs_high, BE_MAX_EQD);
+		aic->min_eqd = min(et->rx_coalesce_usecs_low, aic->max_eqd);
+		aic->et_eqd = min(et->rx_coalesce_usecs, aic->max_eqd);
+		aic->et_eqd = max(aic->et_eqd, aic->min_eqd);
+		aic++;
 	}
 
 	return 0;
@@ -1119,6 +1129,29 @@ static int be_set_rxnfc(struct net_device *netdev, struct ethtool_rxnfc *cmd)
 	return status;
 }
 
+static void be_get_channels(struct net_device *netdev,
+			    struct ethtool_channels *ch)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+
+	ch->combined_count = adapter->num_evt_qs;
+	ch->max_combined = be_max_qs(adapter);
+}
+
+static int be_set_channels(struct net_device  *netdev,
+			   struct ethtool_channels *ch)
+{
+	struct be_adapter *adapter = netdev_priv(netdev);
+
+	if (ch->rx_count || ch->tx_count || ch->other_count ||
+	    !ch->combined_count || ch->combined_count > be_max_qs(adapter))
+		return -EINVAL;
+
+	adapter->cfg_num_qs = ch->combined_count;
+
+	return be_update_queues(adapter);
+}
+
 const struct ethtool_ops be_ethtool_ops = {
 	.get_settings = be_get_settings,
 	.get_drvinfo = be_get_drvinfo,
@@ -1145,4 +1178,6 @@ const struct ethtool_ops be_ethtool_ops = {
 	.self_test = be_self_test,
 	.get_rxnfc = be_get_rxnfc,
 	.set_rxnfc = be_set_rxnfc,
+	.get_channels = be_get_channels,
+	.set_channels = be_set_channels
 };
