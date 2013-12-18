@@ -826,6 +826,14 @@ void *_kc_kmemdup(const void *src, size_t len, unsigned gfp)
 #endif /* <= 2.6.19 */
 
 /*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
+struct pci_dev *_kc_netdev_to_pdev(struct net_device *netdev)
+{
+	return ((struct adapter_struct *)netdev_priv(netdev))->pdev;
+}
+#endif /* < 2.6.21 */
+
+/*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22) )
 /* hexdump code taken from lib/hexdump.c */
 static void _kc_hex_dump_to_buffer(const void *buf, size_t len, int rowsize,

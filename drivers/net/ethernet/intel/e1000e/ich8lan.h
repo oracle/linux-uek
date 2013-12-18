@@ -107,7 +107,7 @@
 #define PCIE_ICH8_SNOOP_ALL	PCIE_NO_SNOOP_ALL
 
 #define E1000_ICH_RAR_ENTRIES	7
-#define E1000_PCH2_RAR_ENTRIES	5	/* RAR[0], SHRA[0-3] */
+#define E1000_PCH2_RAR_ENTRIES	11	/* RAR[0-6], SHRA[0-3] */
 #define E1000_PCH_LPT_RAR_ENTRIES	12	/* RAR[0], SHRA[0-10] */
 
 #define PHY_PAGE_SHIFT		5
@@ -296,6 +296,7 @@ void e1000_copy_rx_addrs_to_phy_ich8lan(struct e1000_hw *hw);
 s32 e1000_lv_jumbo_workaround_ich8lan(struct e1000_hw *hw, bool enable);
 s32 e1000_read_emi_reg_locked(struct e1000_hw *hw, u16 addr, u16 *data);
 s32 e1000_write_emi_reg_locked(struct e1000_hw *hw, u16 addr, u16 data);
+s32 e1000_set_eee_pchlan(struct e1000_hw *hw);
 s32 e1000_enable_ulp_lpt_lp(struct e1000_hw *hw, bool to_sx);
 s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force);
 #endif /* _E1000E_ICH8LAN_H_ */
