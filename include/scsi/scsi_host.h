@@ -474,7 +474,9 @@ struct scsi_host_template {
 	unsigned ordered_tag:1;
 
 	/* True if the controller does not support WRITE SAME */
+#ifndef __GENKSYMS__
 	unsigned no_write_same:1;
+#endif
 
 	/*
 	 * Countdown for host blocking with no commands outstanding.
@@ -676,7 +678,9 @@ struct Scsi_Host {
 	unsigned eh_noresume:1;
 
 	/* The controller does not support WRITE SAME */
+#ifndef __GENKSYMS__
 	unsigned no_write_same:1;
+#endif
 
 	/*
 	 * Optional work queue to be utilized by the transport
