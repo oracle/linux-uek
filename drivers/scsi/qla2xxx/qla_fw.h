@@ -1377,6 +1377,10 @@ struct qla_flt_header {
 #define FLT_REG_NVRAM_0		0x15
 #define FLT_REG_VPD_1		0x16
 #define FLT_REG_NVRAM_1		0x17
+#define FLT_REG_VPD_2		0xD4
+#define FLT_REG_NVRAM_2		0xD5
+#define FLT_REG_VPD_3		0xD6
+#define FLT_REG_NVRAM_3		0xD7
 #define FLT_REG_FDT		0x1a
 #define FLT_REG_FLT		0x1c
 #define FLT_REG_HW_EVENT_0	0x1d
@@ -1386,6 +1390,8 @@ struct qla_flt_header {
 #define FLT_REG_GOLD_FW		0x2f
 #define FLT_REG_FCP_PRIO_0	0x87
 #define FLT_REG_FCP_PRIO_1	0x88
+#define FLT_REG_CNA_FW		0x97
+#define FLT_REG_BOOT_CODE_8044	0xA2
 #define FLT_REG_FCOE_FW		0xA4
 #define FLT_REG_FCOE_NVRAM_0	0xAA
 #define FLT_REG_FCOE_NVRAM_1	0xAC

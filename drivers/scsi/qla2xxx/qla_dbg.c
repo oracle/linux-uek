@@ -11,33 +11,56 @@
  * ----------------------------------------------------------------------
  * |             Level            |   Last Value Used  |     Holes	|
  * ----------------------------------------------------------------------
- * | Module Init and Probe        |       0x0150       | 0x4b,0xba,0xfa |
- * | Mailbox commands             |       0x117b       | 0x111a-0x111b  |
+ * | Module Init and Probe        |       0x017d       | 0x004b,0x0141	|
+ * |                              |                    | 0x0144,0x0146	|
+ * |                              |                    | 0x015b-0x0160	|
+ * |                              |                    | 0x016e-0x0170	|
+ * | Mailbox commands             |       0x1185       | 0x1018-0x1019	|
+ * |                              |                    | 0x10ca         |
+ * |                              |                    | 0x1115-0x1116  |
+ * |                              |                    | 0x111a-0x111b  |
  * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
- * |                              |                    | 0x2016		|
- * | Queue Command and IO tracing |       0x3051       | 0x3006,0x300b  |
- * |                              |                    | 0x3027-0x3028  |
- * |                              |                    | 0x302d,0x302e  |
- * | DPC Thread                   |       0x4024       | 0x4002,0x4013  |
- * | Async Events                 |       0x5082       | 0x502b-0x502f  |
- * |                            |                    | 0x5047,0x5052  |
- * |				  |		       | 0x5074,0x5075  |
- * | Timer Routines               |       0x6011       |		|
- * | User Space Interactions      |       0x70df       | 0x7018,0x702e  |
- * |                              |                    | 0x7020,0x7024  |
+ * |                              |                    | 0x2016         |
+ * | Queue Command and IO tracing |       0x3052       | 0x3006-0x300b  |
+ * |				  |		       | 0x3027-0x3028  |
+ * |                              |                    | 0x304b-0x304c  |
+ * |                              |                    | 0x3031         |
+ * | DPC Thread                   |       0x4025       | 0x4002,0x4013  |
+ * |                              |                    | 0x401e-0x401f  |
+ * | Async Events                 |       0x5087       | 0x502b-0x502f  |
+ * |                              |                    | 0x503d,0x5044  |
+ * |				  | 		       | 0x5047,0x5052  |
+ * |				  | 		       | 0x5074,0x5075  |
+ * |				  | 		       | 0x507b	        |
+ * | Timer Routines               |       0x6012       |                |
+ * | User Space Interactions      |       0x70e1       | 0x7018,0x702e  |
+ * |				  |		       | 0x7020,0x7024  |
  * |                              |                    | 0x7039,0x7045  |
  * |                              |                    | 0x7073-0x7075  |
- * |                              |                    | 0x708c        |
  * |                              |                    | 0x70a5-0x70a6  |
  * |                              |                    | 0x70a8,0x70ab  |
  * |                              |                    | 0x70ad-0x70ae  |
- * | Task Management              |       0x803c       | 0x8025-0x8026  |
- * |				  |		       | 0x800b,0x8039 |
- * | AER/EEH                      |       0x9011       |               |
- * | Virtual Port                 |       0xa008       |               |
- * | ISP82XX Specific             |       0xb086       | 0xb002,0xb024 |
- * | MultiQ                       |       0xc00c       |              |
- * | Misc                         |       0xd010       |              |
+ * |                              |                    | 0x70cf		|
+ * |                              |                    | 0x70d7-0x70db  |
+ * | Task Management              |       0x803d       | 0x8025-0x8026  |
+ * |                              |                    | 0x800b,0x8039  |
+ * | AER/EEH                      |       0x9011       |		|
+ * | Virtual Port                 |       0xa008       |		|
+ * | ISP82XX Specific             |       0xb14f       | 0xb002,0xb024  |
+ * |                              |                    | 0xb09e,0xb0ae  |
+ * |                              |                    | 0xb0e0-0xb0ef  |
+ * |                              |                    | 0xb085,0xb0dc	|
+ * |                              |                    | 0xb107,0xb108	|
+ * |                              |                    | 0xb111,0xb11e	|
+ * |                              |                    | 0xb12c,0xb12d	|
+ * |                              |                    | 0xb13a,0xb142	|
+ * |                              |                    | 0xb13c-0xb140	|
+ * | MultiQ                       |       0xc00c       |		|
+ * | Misc                         |       0xd2ff       | 0xd017-0xd019	|
+ * |                              |                    | 0xd020		|
+ * |                              |                    | 0xd02e-0xd0ff	|
+ * |                              |                    | 0xd101-0xd1fe	|
+ * |                              |                    | 0xd212-0xd2fe	|
  * ----------------------------------------------------------------------
  */
 
@@ -78,7 +101,87 @@ qla2xxx_copy_queues(struct qla_hw_data *ha, void *ptr)
 	return ptr + (rsp->length * sizeof(response_t));
 }
 
-static int
+int
+qla27xx_dump_mpi_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
+    uint32_t ram_dwords, void **nxt)
+{
+	int rval;
+	uint32_t cnt, stat, timer, dwords, idx;
+	uint16_t mb0, mb1;
+	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
+	dma_addr_t dump_dma = ha->gid_list_dma;
+	uint32_t *dump = (uint32_t *)ha->gid_list;
+
+	rval = QLA_SUCCESS;
+	mb0 = 0;
+
+	WRT_REG_WORD(&reg->mailbox0, MBC_LOAD_DUMP_MPI_RAM);
+	clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags);
+
+	dwords = qla2x00_gid_list_size(ha) / 4;
+	for (cnt = 0; cnt < ram_dwords && rval == QLA_SUCCESS;
+	    cnt += dwords, addr += dwords) {
+		if (cnt + dwords > ram_dwords)
+			dwords = ram_dwords - cnt;
+
+		WRT_REG_WORD(&reg->mailbox1, LSW(addr));
+		WRT_REG_WORD(&reg->mailbox8, MSW(addr));
+
+		WRT_REG_WORD(&reg->mailbox2, MSW(dump_dma));
+		WRT_REG_WORD(&reg->mailbox3, LSW(dump_dma));
+		WRT_REG_WORD(&reg->mailbox6, MSW(MSD(dump_dma)));
+		WRT_REG_WORD(&reg->mailbox7, LSW(MSD(dump_dma)));
+
+		WRT_REG_WORD(&reg->mailbox4, MSW(dwords));
+		WRT_REG_WORD(&reg->mailbox5, LSW(dwords));
+
+		WRT_REG_WORD(&reg->mailbox9, 0);
+		WRT_REG_DWORD(&reg->hccr, HCCRX_SET_HOST_INT);
+
+		ha->flags.mbox_int = 0;
+		for (timer = 6000000; timer; timer--) {
+			/* Check for pending interrupts. */
+			stat = RD_REG_DWORD(&reg->host_status);
+			if (stat & HSRX_RISC_INT) {
+				stat &= 0xff;
+
+				if (stat == 0x1 || stat == 0x2 ||
+				    stat == 0x10 || stat == 0x11) {
+					set_bit(MBX_INTERRUPT,
+					    &ha->mbx_cmd_flags);
+
+					mb0 = RD_REG_WORD(&reg->mailbox0);
+					mb1 = RD_REG_WORD(&reg->mailbox1);
+
+					WRT_REG_DWORD(&reg->hccr,
+					    HCCRX_CLR_RISC_INT);
+					RD_REG_DWORD(&reg->hccr);
+					break;
+				}
+
+				/* Clear this intr; it wasn't a mailbox intr */
+				WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_INT);
+				RD_REG_DWORD(&reg->hccr);
+			}
+			udelay(5);
+		}
+		ha->flags.mbox_int = 1;
+
+		if (test_and_clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags)) {
+			rval = mb0 & MBS_MASK;
+			for (idx = 0; idx < dwords; idx++)
+				ram[cnt + idx] = IS_QLA27XX(ha) ?
+				    le32_to_cpu(dump[idx]) : swab32(dump[idx]);
+		} else {
+			rval = QLA_FUNCTION_FAILED;
+		}
+	}
+
+	*nxt = rval == QLA_SUCCESS ? &ram[cnt] : NULL;
+	return rval;
+}
+
+int
 qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
     uint32_t ram_dwords, void **nxt)
 {
@@ -113,6 +216,7 @@ qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 		WRT_REG_WORD(&reg->mailbox5, LSW(dwords));
 		WRT_REG_DWORD(&reg->hccr, HCCRX_SET_HOST_INT);
 
+		ha->flags.mbox_int = 0;
 		for (timer = 6000000; timer; timer--) {
 			/* Check for pending interrupts. */
 			stat = RD_REG_DWORD(&reg->host_status);
@@ -138,11 +242,13 @@ qla24xx_dump_ram(struct qla_hw_data *ha, uint32_t addr, uint32_t *ram,
 			}
 			udelay(5);
 		}
+		ha->flags.mbox_int = 1;
 
 		if (test_and_clear_bit(MBX_INTERRUPT, &ha->mbx_cmd_flags)) {
 			rval = mb0 & MBS_MASK;
 			for (idx = 0; idx < dwords; idx++)
-				ram[cnt + idx] = swab32(dump[idx]);
+				ram[cnt + idx] = IS_QLA27XX(ha) ?
+				    le32_to_cpu(dump[idx]) : swab32(dump[idx]);
 		} else {
 			rval = QLA_FUNCTION_FAILED;
 		}
@@ -182,7 +288,7 @@ qla24xx_read_window(struct device_reg_24xx __iomem *reg, uint32_t iobase,
 	return buf;
 }
 
-static inline int
+int
 qla24xx_pause_risc(struct device_reg_24xx __iomem *reg)
 {
 	int rval = QLA_SUCCESS;
@@ -201,7 +307,7 @@ qla24xx_pause_risc(struct device_reg_24xx __iomem *reg)
 	return rval;
 }
 
-static int
+int
 qla24xx_soft_reset(struct qla_hw_data *ha)
 {
 	int rval = QLA_SUCCESS;
@@ -461,9 +567,9 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 	uint32_t cnt, que_idx;
 	uint8_t que_cnt;
 	struct qla2xxx_mq_chain *mq = ptr;
-	struct device_reg_25xxmq __iomem *reg;
+	device_reg_t __iomem *reg;
 
-	if (!ha->mqenable || IS_QLA83XX(ha))
+	if (!ha->mqenable || IS_QLA83XX(ha) || IS_QLA27XX(ha))
 		return ptr;
 
 	mq = ptr;
@@ -475,13 +581,16 @@ qla25xx_copy_mq(struct qla_hw_data *ha, void *ptr, uint32_t **last_chain)
 		ha->max_req_queues : ha->max_rsp_queues;
 	mq->count = htonl(que_cnt);
 	for (cnt = 0; cnt < que_cnt; cnt++) {
-		reg = (struct device_reg_25xxmq __iomem *)
-			(ha->mqiobase + cnt * QLA_QUE_PAGE);
+		reg = ISP_QUE_REG(ha, cnt);
 		que_idx = cnt * 4;
-		mq->qregs[que_idx] = htonl(RD_REG_DWORD(&reg->req_q_in));
-		mq->qregs[que_idx+1] = htonl(RD_REG_DWORD(&reg->req_q_out));
-		mq->qregs[que_idx+2] = htonl(RD_REG_DWORD(&reg->rsp_q_in));
-		mq->qregs[que_idx+3] = htonl(RD_REG_DWORD(&reg->rsp_q_out));
+		mq->qregs[que_idx] =
+		    htonl(RD_REG_DWORD(&reg->isp25mq.req_q_in));
+		mq->qregs[que_idx+1] =
+		    htonl(RD_REG_DWORD(&reg->isp25mq.req_q_out));
+		mq->qregs[que_idx+2] =
+		    htonl(RD_REG_DWORD(&reg->isp25mq.rsp_q_in));
+		mq->qregs[que_idx+3] =
+		    htonl(RD_REG_DWORD(&reg->isp25mq.rsp_q_out));
 	}
 
 	return ptr + sizeof(struct qla2xxx_mq_chain);
@@ -881,7 +990,7 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 	void		*nxt;
 	struct scsi_qla_host *base_vha = pci_get_drvdata(ha->pdev);
 
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		return;
 
 	risc_address = ext_mem_cnt = 0;
@@ -2270,27 +2379,24 @@ void
 ql_dbg(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
 {
 	va_list va;
-	struct va_format vaf;
 
 	if (!ql_mask_match(level))
 		return;
 
 	va_start(va, fmt);
 
-	vaf.fmt = fmt;
-	vaf.va = &va;
-
 	if (vha != NULL) {
 		const struct pci_dev *pdev = vha->hw->pdev;
 		/* <module-name> <pci-name> <msg-id>:<host> Message */
-		pr_warn("%s [%s]-%04x:%ld: %pV",
+		pr_warning("%s [%s]-%04x:%ld: ",
 			QL_MSGHDR, dev_name(&(pdev->dev)), id + ql_dbg_offset,
-			vha->host_no, &vaf);
+			vha->host_no);
 	} else {
-		pr_warn("%s [%s]-%04x: : %pV",
-			QL_MSGHDR, "0000:00:00.0", id + ql_dbg_offset, &vaf);
+		pr_warning("%s [%s]-%04x: ",
+			QL_MSGHDR, "0000:00:00.0", id + ql_dbg_offset);
 	}
 
+	vprintk(fmt, va);
 	va_end(va);
 
 }
@@ -2314,7 +2420,6 @@ ql_dbg_pci(uint32_t level, struct pci_dev *pdev, int32_t id,
 	   const char *fmt, ...)
 {
 	va_list va;
-	struct va_format vaf;
 
 	if (pdev == NULL)
 		return;
@@ -2323,13 +2428,11 @@ ql_dbg_pci(uint32_t level, struct pci_dev *pdev, int32_t id,
 
 	va_start(va, fmt);
 
-	vaf.fmt = fmt;
-	vaf.va = &va;
-
 	/* <module-name> <dev-name>:<msg-id> Message */
-	pr_warn("%s [%s]-%04x: : %pV",
-		QL_MSGHDR, dev_name(&(pdev->dev)), id + ql_dbg_offset, &vaf);
+	pr_warning("%s [%s]-%04x: ",
+		QL_MSGHDR, dev_name(&(pdev->dev)), id + ql_dbg_offset);
 
+	vprintk(fmt, va);
 	va_end(va);
 }
 
@@ -2350,7 +2453,6 @@ void
 ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
 {
 	va_list va;
-	struct va_format vaf;
 	char pbuf[128];
 
 	if (level > ql_errlev)
@@ -2362,31 +2464,29 @@ ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
 		snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x:%ld: ",
 			QL_MSGHDR, dev_name(&(pdev->dev)), id, vha->host_no);
 	} else {
-		snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: : ",
+		snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: ",
 			QL_MSGHDR, "0000:00:00.0", id);
 	}
 	pbuf[sizeof(pbuf) - 1] = 0;
 
 	va_start(va, fmt);
 
-	vaf.fmt = fmt;
-	vaf.va = &va;
-
 	switch (level) {
 	case ql_log_fatal: /* FATAL LOG */
-		pr_crit("%s%pV", pbuf, &vaf);
+		pr_crit("%s", pbuf);
 		break;
 	case ql_log_warn:
-		pr_err("%s%pV", pbuf, &vaf);
+		pr_err("%s", pbuf);
 		break;
 	case ql_log_info:
-		pr_warn("%s%pV", pbuf, &vaf);
+		pr_warning("%s", pbuf);
 		break;
 	default:
-		pr_info("%s%pV", pbuf, &vaf);
+		pr_info("%s", pbuf);
 		break;
 	}
 
+	vprintk(fmt, va);
 	va_end(va);
 }
 
@@ -2406,42 +2506,37 @@ ql_log(uint32_t level, scsi_qla_host_t *vha, int32_t id, const char *fmt, ...)
  */
 void
 ql_log_pci(uint32_t level, struct pci_dev *pdev, int32_t id,
-	   const char *fmt, ...)
+	  const char *fmt, ...)
 {
 	va_list va;
-	struct va_format vaf;
 	char pbuf[128];
 
-	if (pdev == NULL)
-		return;
 	if (level > ql_errlev)
 		return;
 
 	/* <module-name> <dev-name>:<msg-id> Message */
-	snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: : ",
+	snprintf(pbuf, sizeof(pbuf), "%s [%s]-%04x: ",
 		 QL_MSGHDR, dev_name(&(pdev->dev)), id);
 	pbuf[sizeof(pbuf) - 1] = 0;
 
 	va_start(va, fmt);
 
-	vaf.fmt = fmt;
-	vaf.va = &va;
-
 	switch (level) {
 	case ql_log_fatal: /* FATAL LOG */
-		pr_crit("%s%pV", pbuf, &vaf);
+		pr_crit("%s", pbuf);
 		break;
 	case ql_log_warn:
-		pr_err("%s%pV", pbuf, &vaf);
+		pr_err("%s", pbuf);
 		break;
 	case ql_log_info:
-		pr_warn("%s%pV", pbuf, &vaf);
+		pr_warning("%s", pbuf);
 		break;
 	default:
-		pr_info("%s%pV", pbuf, &vaf);
+		pr_info("%s", pbuf);
 		break;
 	}
 
+	vprintk(fmt, va);
 	va_end(va);
 }
 
@@ -2458,7 +2553,7 @@ ql_dump_regs(uint32_t level, scsi_qla_host_t *vha, int32_t id)
 	if (!ql_mask_match(level))
 		return;
 
-	if (IS_QLA82XX(ha))
+	if (IS_P3P_TYPE(ha))
 		mbx_reg = &reg82->mailbox_in[0];
 	else if (IS_FWI2_CAPABLE(ha))
 		mbx_reg = &reg24->mailbox0;
