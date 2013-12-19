@@ -405,6 +405,7 @@ static struct fcoe_interface *fcoe_interface_create(struct net_device *netdev,
 	}
 
 	ctlr = fcoe_ctlr_device_priv(ctlr_dev);
+	ctlr->cdev = ctlr_dev;
 	fcoe = fcoe_ctlr_priv(ctlr);
 
 	dev_hold(netdev);
@@ -2238,6 +2239,8 @@ static int fcoe_create(struct net_device *netdev, enum fip_state fip_mode)
 
 	ctlr = fcoe_to_ctlr(fcoe);
 	ctlr_dev = fcoe_ctlr_to_ctlr_dev(ctlr);
+	if (!ctlr_dev)
+		goto out_nodev;
 	lport = fcoe_if_create(fcoe, &ctlr_dev->dev, 0);
 	if (IS_ERR(lport)) {
 		printk(KERN_ERR "fcoe: Failed to create interface (%s)\n",
