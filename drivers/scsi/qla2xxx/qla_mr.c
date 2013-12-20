@@ -3171,9 +3171,6 @@ qlafx00_intr_handler(int irq, void *dev_id)
 		if (intr_stat & QLAFX00_INTR_RSP_CMPLT) {
 			qlafx00_process_response_queue(vha, rsp);
 			clr_intr |= QLAFX00_INTR_RSP_CMPLT;
-		} else {
-			ql_dbg(ql_dbg_async, vha, 0x507a,
-			    "Unrecongnized interrupt type (%d).\n", stat);
 		}
 
 		QLAFX00_CLR_INTR_REG(ha, clr_intr);
