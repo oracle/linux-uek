@@ -46,7 +46,7 @@
  * |                              |                    | 0x800b,0x8039  |
  * | AER/EEH                      |       0x9011       |		|
  * | Virtual Port                 |       0xa008       |		|
- * | ISP82XX Specific             |       0xb155       | 0xb002,0xb024  |
+ * | ISP82XX Specific             |       0xb156       | 0xb002,0xb024  |
  * |                              |                    | 0xb09e,0xb0ae  |
  * |                              |                    | 0xb0e0-0xb0ef  |
  * |                              |                    | 0xb085,0xb0dc	|
