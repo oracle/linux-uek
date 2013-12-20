@@ -807,7 +807,7 @@ static unsigned int tcp_xmit_size_goal(struct sock *sk, u32 mss_now,
 		 * This preserves ACK clocking and is consistent
 		 * with tcp_tso_should_defer() heuristic.
 		 */
-		gso_size = sk->sk_pacing_rate / (2 * MSEC_PER_SEC);
+		gso_size = sk_extended(sk)->sk_pacing_rate / (2 * MSEC_PER_SEC);
 		gso_size = max_t(u32, gso_size,
 				 sysctl_tcp_min_tso_segs * mss_now);
 
