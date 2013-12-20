@@ -1,8 +1,17 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.4.1 (Nov 6, 2013)
----------------------------
+Release 0.4.2 (Dec 20th, 2013)
+------------------------------
+Kernel release: 3.8.13-21.el6uek
+
+Changes:
+
+ - SDT probe points in kernel modules are now supported.
+ - The 'vtimestamp' D variable has been implemented.
+
+Release 0.4.1 (Nov  6th, 2013)
+------------------------------
 Kernel release: 3.8.13-16.2.1.el6uek
 
 Changes:
@@ -27,8 +36,8 @@ Bugfixes:
    probe action execution, i.e. 0 if the syscall completed without an error,
    and a valid error code if the syscall failed.
 
-Release 0.4.0 (Sep 20, 2013)
-----------------------------
+Release 0.4.0 (Sep 20th, 2013)
+------------------------------
 Kernel release: 3.8.13-16.el6uek
 
 New features:
@@ -65,8 +74,8 @@ Bugfixes:
  - Several obscure locking problems have been resolved.
  - Correct handling of arg5 through arg9.
 
-Release 0.3.0 (Sep 14, 2012)
-----------------------------
+Release 0.3.0 (Sep 14th, 2012)
+------------------------------
 Kernel release: 2.6.39-201.0.1.el6uek
 
 New features:
