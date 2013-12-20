@@ -12,10 +12,6 @@
 # Set this to the version of the kernel this module is compiled against.
 %define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-16.2.1.el6uek}
 
-# Increment this whenever the DTrace/userspace interface changes in an
-# incompatible way.
-%define dtrace_kernel_interface 1
-
 # Select the correct source code version based on the kernel version.
 # Failing to pick the correct version can have disasterous effects!
 # For safety, we assume that the kernel version is not supported, unless we
@@ -28,10 +24,15 @@
 %define dt_0_3_2	770
 %define dt_0_4_0	1024
 %define dt_0_4_1	1025
+%define dt_0_4_2	1026
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
-	if rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
+	if rpm.vercmp(kver, "3.8.13-20") >= 0 then
+		rpm.define("srcver 0.4.2")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_2}"))
+	elseif rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
 		rpm.define("srcver 0.4.1")
 		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_1}"))
@@ -51,11 +52,57 @@
  %{error:Kernel %{kver} is not supported for DTrace or source code missing}
 %endif
 
+#
+# Current (new) RPM specification, with cleaned up dependencies.
+#
+%if %{dt_vcode} >= %{dt_0_4_2}
+
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: %{srcver}
 Release: %{bldrel}.el6
-Provides: dtrace-kernel-interface = %{dtrace_kernel_interface}
+Provides: dtrace-modules
+License: CDDL
+Group: System Environment/Kernel
+Requires: kernel%{variant} = %{kver}
+Source0: dtrace-module-%{srcver}.tar.bz2
+BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
+BuildRequires: kernel%{variant}-devel = %{kver}
+BuildRequires: libdtrace-ctf
+ExclusiveArch: x86_64
+
+%description
+DTrace kernel modules.
+
+This package contains the DTrace core module, and standard provider modules:
+dtrace, profile, syscall, sdt (io, proc,sched), and fasttrap (USDT).
+
+Maintainers:
+------------
+Nick Alcock <nick.alcock@oracle.com>
+Kris van Hees <kris.van.hees@oracle.com>
+
+%package -n dtrace-modules-headers
+Summary:	Header files for communication with the DTrace kernel module.
+%description -n dtrace-modules-headers
+This package contains header files describing the protocol used by userspace to
+communicate with the DTrace kernel module.
+
+%package provider-headers
+Summary:	Header files for implementation of DTrace providers.
+Requires:	dtrace-modules-headers
+Provides:	dtrace-modules-provider-headers
+%description provider-headers
+This package contains header files defining the API used to implement DTrace
+providers.
+
+%else
+
+Name: dtrace-modules-%{kver}
+Summary: dtrace module
+Version: %{srcver}
+Release: %{bldrel}.el6
+Provides: dtrace-kernel-interface = 1
 License: CDDL
 Group: System Environment/Kernel
 Requires: kernel%{variant} = %{kver}
@@ -79,18 +126,20 @@ Kris van Hees <kris.van.hees@oracle.com>
 %package headers
 Summary:	Header files for communication with the DTrace kernel module.
 Requires:	dtrace-modules-%{kver}
-Provides:	dtrace-modules-headers = %{dtrace_kernel_interface}
+Provides:	dtrace-modules-headers = 1
 %description headers
 This package contains header files describing the protocol used by userspace to
 communicate with the DTrace kernel module.
 
 %package provider-headers
 Summary:	Header files for implementation of DTrace providers.
-Requires:	dtrace-modules-headers = %{dtrace_kernel_interface}
-Provides:	dtrace-modules-provider-headers = %{dtrace_kernel_interface}
+Requires:	dtrace-modules-headers = 1
+Provides:	dtrace-modules-provider-headers = 1
 %description provider-headers
 This package contains header files defining the API used to implement DTrace
 providers.
+
+%endif
 
 %prep
 rm -rf %{BuildRoot}
@@ -123,11 +172,23 @@ rm -rf %{buildroot}
 /lib
 /usr/share/doc
 
+%if %{dt_vcode} >= %{dt_0_4_2}
+
+%files -n dtrace-modules-headers
+%defattr(-,root,root,-)
+/usr/include/linux/dtrace
+%exclude /usr/include/linux/dtrace/provider*.h
+%exclude /usr/include/linux/dtrace/types.h
+
+%else
+
 %files headers
 %defattr(-,root,root,-)
 /usr/include/linux/dtrace
 %exclude /usr/include/linux/dtrace/provider*.h
 %exclude /usr/include/linux/dtrace/types.h
+
+%endif
 
 %files provider-headers
 %defattr(-,root,root,-)
@@ -135,6 +196,13 @@ rm -rf %{buildroot}
 /usr/include/linux/dtrace/types.h
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_4_2}
+* Fri Dec 20 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.2-1
+- Fix 'vtimestamp' implementation.
+  [Orabug: 17741477]
+- Support SDT probes points in kernel modules.
+  [Orabug: 17851716]
+%endif
 %if %{dt_vcode} >= %{dt_0_4_1}
 * Wed Nov  6 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.1-3
 - Fix 'errno' implementation.
