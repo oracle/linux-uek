@@ -1247,6 +1247,13 @@ static int ocfs2_parse_options(struct super_block *sb,
 
 	mopt->commit_interval = 0;
 	mopt->mount_opt = OCFS2_MOUNT_NOINTR;
+
+	/*
+	 * Make 'buffered' as default coherency option. This is to keep the
+	 * default behaviour unchanged(same as in UEK1)
+	 */
+	mopt->mount_opt |= OCFS2_MOUNT_COHERENCY_BUFFERED;
+
 	mopt->atime_quantum = OCFS2_DEFAULT_ATIME_QUANTUM;
 	mopt->slot = OCFS2_INVALID_SLOT;
 	mopt->localalloc_opt = -1;
