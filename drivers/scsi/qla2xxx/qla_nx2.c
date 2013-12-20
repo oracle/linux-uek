@@ -10,6 +10,8 @@
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
 
+#define TIMEOUT_100_MS 100
+
 /* 8044 Flash Read/Write functions */
 uint32_t
 qla8044_rd_reg(struct qla_hw_data *ha, ulong addr)
@@ -115,6 +117,119 @@ qla8044_read_write_crb_reg(struct scsi_qla_host *vha,
 	qla8044_wr_reg_indirect(vha, waddr, value);
 }
 
+static long
+get_mtime(struct timeval *start_time)
+{
+	long sec, msec, usec;
+	struct timeval curr_time;
+
+	do_gettimeofday(&curr_time);
+
+	sec = curr_time.tv_sec - start_time->tv_sec;
+	usec = curr_time.tv_usec - start_time->tv_usec;
+	msec = ((sec) * 1000 + usec / 1000.0) + 0.5;
+
+	return msec;
+}
+
+static int
+qla8044_poll_wait_for_ready(struct scsi_qla_host *vha, uint32_t addr1,
+	uint32_t mask)
+{
+	struct timeval start_time;
+	long elapsed = 0, timeout = TIMEOUT_100_MS;
+	uint32_t temp;
+
+	do_gettimeofday(&start_time);
+
+	do {
+		elapsed = 0;
+		qla8044_rd_reg_indirect(vha, addr1, &temp);
+		if ((temp & mask) != 0)
+			break;
+		elapsed = get_mtime(&start_time);
+	} while (elapsed <= timeout);
+
+	if (elapsed > timeout) {
+		ql_log(ql_log_warn, vha, 0xb151,
+		    "Error in processing rdmdio entry\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static uint32_t
+qla8044_ipmdio_rd_reg(struct scsi_qla_host *vha,
+	uint32_t addr1, uint32_t addr3, uint32_t mask, uint32_t addr)
+{
+	uint32_t temp;
+	int ret = 0;
+
+	ret = qla8044_poll_wait_for_ready(vha, addr1, mask);
+	if (ret == -1)
+		return -1;
+
+	temp = (0x40000000 | addr);
+	qla8044_wr_reg_indirect(vha, addr1, temp);
+
+	ret = qla8044_poll_wait_for_ready(vha, addr1, mask);
+	if (ret == -1)
+		return 0;
+
+	qla8044_rd_reg_indirect(vha, addr3, &ret);
+
+	return ret;
+}
+
+
+static int
+qla8044_poll_wait_ipmdio_bus_idle(struct scsi_qla_host *vha,
+    uint32_t addr1, uint32_t addr2, uint32_t addr3, uint32_t mask)
+{
+	struct timeval start_time;
+	long elapsed = 0;
+	long timeout = TIMEOUT_100_MS;
+	uint32_t temp;
+
+	do_gettimeofday(&start_time);
+
+	do {
+		elapsed = 0;
+		temp = qla8044_ipmdio_rd_reg(vha, addr1, addr3, mask, addr2);
+		if ((temp & 0x1) != 1)
+			break;
+		elapsed = get_mtime(&start_time);
+	} while (elapsed <= timeout);
+
+	if (elapsed > timeout) {
+		ql_log(ql_log_warn, vha, 0xb152,
+		    "Error in processing mdiobus idle\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+int
+qla8044_ipmdio_wr_reg(struct scsi_qla_host *vha, uint32_t addr1,
+	uint32_t addr3, uint32_t mask, uint32_t addr, uint32_t value)
+{
+	int ret = 0;
+
+	ret = qla8044_poll_wait_for_ready(vha, addr1, mask);
+	if (ret == -1)
+		return -1;
+
+	qla8044_wr_reg_indirect(vha, addr3, value);
+	qla8044_wr_reg_indirect(vha, addr1, addr);
+
+	ret = qla8044_poll_wait_for_ready(vha, addr1, mask);
+	if (ret == -1)
+		return -1;
+
+	return 0;
+}
 /*
  * qla8044_rmw_crb_reg - Read value from raddr, AND with test_mask,
  * Shift Left,Right/OR/XOR with values RMW header and write value to waddr.
@@ -2891,6 +3006,232 @@ error_exit:
 	return rval;
 }
 
+static uint32_t
+qla8044_minidump_process_rddfe(struct scsi_qla_host *vha,
+    struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
+{
+	int loop_cnt;
+	uint32_t addr1, addr2, value, data, temp, wrVal;
+	uint8_t stride, stride2;
+	uint16_t count;
+	uint32_t poll, mask, data_size, modify_mask;
+	uint32_t wait_count = 0;
+
+	uint32_t *data_ptr = *d_ptr;
+
+	qla8044_minidump_entry_rddfe_t *rddfe;
+	rddfe = (qla8044_minidump_entry_rddfe_t *) entry_hdr;
+
+	addr1 = le32_to_cpu(rddfe->addr_1);
+	value = le32_to_cpu(rddfe->value);
+	stride = le32_to_cpu(rddfe->stride);
+	stride2 = le32_to_cpu(rddfe->stride2);
+	count = le32_to_cpu(rddfe->count);
+
+	poll = le32_to_cpu(rddfe->poll);
+	mask = le32_to_cpu(rddfe->mask);
+	modify_mask = le32_to_cpu(rddfe->modify_mask);
+	data_size = le32_to_cpu(rddfe->data_size);
+
+	addr2 = addr1 + stride;
+
+	for (loop_cnt = 0x0; loop_cnt < count; loop_cnt++) {
+		qla8044_wr_reg_indirect(vha, addr1, (0x40000000 | value));
+
+		wait_count = 0;
+		while (wait_count < poll) {
+			qla8044_rd_reg_indirect(vha, addr1, &temp);
+			if ((temp & mask) != 0)
+				break;
+			wait_count++;
+		}
+
+		if (wait_count == poll) {
+			ql_log(ql_log_warn, vha, 0xb153,
+			    "%s: TIMEOUT\n", __func__);
+			goto error;
+		} else {
+			qla8044_rd_reg_indirect(vha, addr2, &temp);
+			temp = temp & modify_mask;
+			temp = (temp | ((loop_cnt << 16) | loop_cnt));
+			wrVal = ((temp << 16) | temp);
+
+			qla8044_wr_reg_indirect(vha, addr2, wrVal);
+			qla8044_wr_reg_indirect(vha, addr1, value);
+
+			wait_count = 0;
+			while (wait_count < poll) {
+				qla8044_rd_reg_indirect(vha, addr1, &temp);
+				if ((temp & mask) != 0)
+					break;
+				wait_count++;
+			}
+			if (wait_count == poll) {
+				ql_log(ql_log_warn, vha, 0xb154,
+				    "%s: TIMEOUT\n", __func__);
+				goto error;
+			}
+
+			qla8044_wr_reg_indirect(vha, addr1,
+			    ((0x40000000 |value) + stride2));
+			wait_count = 0;
+			while (wait_count < poll) {
+				qla8044_rd_reg_indirect(vha, addr1, &temp);
+				if ((temp & mask) != 0)
+					break;
+				wait_count++;
+			}
+
+			if (wait_count == poll) {
+				ql_log(ql_log_warn, vha, 0xb155,
+				    "%s: TIMEOUT\n", __func__);
+				goto error;
+			}
+
+			qla8044_rd_reg_indirect(vha, addr2, &data);
+
+			*data_ptr++ = cpu_to_le32(wrVal);
+			*data_ptr++ = cpu_to_le32(data);
+		}
+
+	}
+
+	*d_ptr = data_ptr;
+	return QLA_SUCCESS;
+
+error:
+	return -1;
+
+}
+
+static uint32_t
+qla8044_minidump_process_rdmdio(struct scsi_qla_host *vha,
+    struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
+{
+	int ret = 0;
+	uint32_t addr1, addr2, value1, value2, data, selVal;
+	uint8_t stride1, stride2;
+	uint32_t addr3, addr4, addr5, addr6, addr7;
+	uint16_t count, loop_cnt;
+	uint32_t poll, mask;
+	uint32_t *data_ptr = *d_ptr;
+
+	qla8044_minidump_entry_rdmdio_t *rdmdio;
+
+	rdmdio = (qla8044_minidump_entry_rdmdio_t *) entry_hdr;
+
+	addr1 = le32_to_cpu(rdmdio->addr_1);
+	addr2 = le32_to_cpu(rdmdio->addr_2);
+	value1 = le32_to_cpu(rdmdio->value_1);
+	stride1 = le32_to_cpu(rdmdio->stride_1);
+	stride2 = le32_to_cpu(rdmdio->stride_2);
+	count = le32_to_cpu(rdmdio->count);
+
+	poll = le32_to_cpu(rdmdio->poll);
+	mask = le32_to_cpu(rdmdio->mask);
+	value2 = le32_to_cpu(rdmdio->value_2);
+
+	addr3 = addr1 + stride1;
+
+	for (loop_cnt = 0; loop_cnt < count; loop_cnt++) {
+		ret = qla8044_poll_wait_ipmdio_bus_idle(vha, addr1, addr2,
+		    addr3, mask);
+		if (ret == -1)
+			goto error;
+
+		addr4 = addr2 - stride1;
+		ret = qla8044_ipmdio_wr_reg(vha, addr1, addr3, mask, addr4,
+		    value2);
+		if (ret == -1)
+			goto error;
+
+		addr5 = addr2 - (2 * stride1);
+		ret = qla8044_ipmdio_wr_reg(vha, addr1, addr3, mask, addr5,
+		    value1);
+		if (ret == -1)
+			goto error;
+
+		addr6 = addr2 - (3 * stride1);
+		ret = qla8044_ipmdio_wr_reg(vha, addr1, addr3, mask,
+		    addr6, 0x2);
+		if (ret == -1)
+			goto error;
+
+		ret = qla8044_poll_wait_ipmdio_bus_idle(vha, addr1, addr2,
+		    addr3, mask);
+		if (ret == -1)
+			goto error;
+
+		addr7 = addr2 - (4 * stride1);
+			data = qla8044_ipmdio_rd_reg(vha, addr1, addr3,
+			    mask, addr7);
+		if(data == -1)
+			goto error;
+
+		selVal = (value2 << 18) | (value1 << 2) | 2;
+
+		stride2 = le32_to_cpu(rdmdio->stride_2);
+		*data_ptr++ = cpu_to_le32(selVal);
+		*data_ptr++ = cpu_to_le32(data);
+
+		value1 = value1 + stride2;
+		*d_ptr = data_ptr;
+	}
+
+	return 0;
+
+error:
+	return -1;
+}
+
+static uint32_t qla8044_minidump_process_pollwr(struct scsi_qla_host *vha,
+		struct qla8044_minidump_entry_hdr *entry_hdr, uint32_t **d_ptr)
+{
+	uint32_t addr1, addr2, value1, value2, poll, mask, r_value;
+	uint32_t wait_count = 0;
+	qla8044_minidump_entry_pollwr_t *pollwr_hdr;
+
+	pollwr_hdr = (qla8044_minidump_entry_pollwr_t *) entry_hdr;
+	addr1 = le32_to_cpu(pollwr_hdr->addr_1);
+	addr2 = le32_to_cpu(pollwr_hdr->addr_2);
+	value1 = le32_to_cpu(pollwr_hdr->value_1);
+	value2 = le32_to_cpu(pollwr_hdr->value_2);
+
+	poll = le32_to_cpu(pollwr_hdr->poll);
+	mask = le32_to_cpu(pollwr_hdr->mask);
+
+	while (wait_count < poll) {
+		qla8044_rd_reg_indirect(vha, addr1, &r_value);
+
+		if ((r_value & poll) != 0) {
+			break;
+		}
+		wait_count ++;
+	}
+
+	if (wait_count == poll) {
+		ql_log(ql_log_warn, vha, 0xb156, "%s: TIMEOUT\n", __func__);
+		goto error;
+	}
+
+	qla8044_wr_reg_indirect(vha, addr2, value2);
+	qla8044_wr_reg_indirect(vha, addr1, value1);
+
+	wait_count = 0;
+	while (wait_count < poll) {
+		qla8044_rd_reg_indirect(vha, addr1, &r_value);
+
+		if ((r_value & poll) != 0)
+			break;
+		wait_count++;
+	}
+
+	return QLA_SUCCESS;
+
+error:
+	return -1;
+}
+
 /*
  *
  * qla8044_collect_md_data - Retrieve firmware minidump data.
@@ -3095,6 +3436,21 @@ qla8044_collect_md_data(struct scsi_qla_host *vha)
 		case QLA8044_POLLRDMWR:
 			rval = qla8044_minidump_process_pollrdmwr(vha,
 			    entry_hdr, &data_ptr);
+			if (rval != QLA_SUCCESS)
+				qla8044_mark_entry_skipped(vha, entry_hdr, i);
+			break;
+		case QLA8044_RDDFE:
+			rval = qla8044_minidump_process_rddfe(vha, entry_hdr, &data_ptr);
+			if (rval != QLA_SUCCESS)
+				qla8044_mark_entry_skipped(vha, entry_hdr, i);
+			break;
+		case QLA8044_RDMDIO:
+			rval = qla8044_minidump_process_rdmdio(vha, entry_hdr, &data_ptr);
+			if (rval != QLA_SUCCESS)
+				qla8044_mark_entry_skipped(vha, entry_hdr, i);
+			break;
+		case QLA8044_POLLWR:
+			rval = qla8044_minidump_process_pollwr(vha, entry_hdr, &data_ptr);
 			if (rval != QLA_SUCCESS)
 				qla8044_mark_entry_skipped(vha, entry_hdr, i);
 			break;
