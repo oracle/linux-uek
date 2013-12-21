@@ -28,7 +28,7 @@
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
-	if rpm.vercmp(kver, "3.8.13-20") >= 0 then
+	if rpm.vercmp(kver, "3.8.13-22") >= 0 then
 		rpm.define("srcver 0.4.2")
 		rpm.define("bldrel 1")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_2}"))
