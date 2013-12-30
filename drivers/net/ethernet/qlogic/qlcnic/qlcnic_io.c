@@ -204,7 +204,7 @@ static struct qlcnic_filter *qlcnic_find_mac_filter(struct hlist_head *head,
 	struct hlist_node *n, *tmp_hnode;
 
 	hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
-		if (!memcmp(tmp_fil->faddr, addr, ETH_ALEN) &&
+		if (ether_addr_equal(tmp_fil->faddr, addr) &&
 		    tmp_fil->vlan_id == vlan_id)
 			return tmp_fil;
 	}
@@ -348,7 +348,7 @@ static void qlcnic_send_filter(struct qlcnic_adapter *adapter,
 	head = &(adapter->fhash.fhead[hindex]);
 
 	hlist_for_each_entry_safe(tmp_fil, tmp_hnode, n, head, fnode) {
-		if (!memcmp(tmp_fil->faddr, &src_addr, ETH_ALEN) &&
+		if (ether_addr_equal(tmp_fil->faddr, phdr->h_source) &&
 		    tmp_fil->vlan_id == vlan_id) {
 			if (jiffies > (QLCNIC_READD_AGE * HZ + tmp_fil->ftime))
 				qlcnic_change_filter(adapter, &src_addr,
