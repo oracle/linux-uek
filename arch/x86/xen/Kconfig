@@ -57,6 +57,6 @@ config MICROCODE_XEN
 
 config XEN_PVH
 	bool "Support for running as a PVH guest"
-	depends on X86_64 && XEN && BROKEN
+	depends on X86_64 && XEN
 	select XEN_PVHVM
 	def_bool n
