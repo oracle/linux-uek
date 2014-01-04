@@ -164,7 +164,8 @@ u64 btrfs_file_extent_length(struct btrfs_path *path)
 	    extent_type == BTRFS_FILE_EXTENT_PREALLOC)
 		len = btrfs_file_extent_num_bytes(path->nodes[0], fi);
 	else if (extent_type == BTRFS_FILE_EXTENT_INLINE)
-		len = btrfs_file_extent_inline_len(path->nodes[0], fi);
+		len = btrfs_file_extent_inline_len(path->nodes[0],
+						   path->slots[0], fi);
 	else
 		BUG();
 
