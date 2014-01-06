@@ -35,6 +35,8 @@
 #define ATC_REG_ATC_INT_STS_CLR					 0x1101c0
 /* [RW 5] Parity mask register #0 read/write */
 #define ATC_REG_ATC_PRTY_MASK					 0x1101d8
+/* [R 5] Parity register #0 read */
+#define ATC_REG_ATC_PRTY_STS					 0x1101cc
 /* [RC 5] Parity register #0 read clear */
 #define ATC_REG_ATC_PRTY_STS_CLR				 0x1101d0
 /* [RW 19] Interrupt mask register #0 read/write */
@@ -295,8 +297,6 @@
 #define DORQ_REG_DORQ_PRTY_STS					 0x170184
 /* [RC 2] Parity register #0 read clear */
 #define DORQ_REG_DORQ_PRTY_STS_CLR				 0x170188
-/* [RW 5] The DPM mode CID extraction offset. */
-#define DORQ_REG_DPM_CID_OFST					 0x170030
 /* [R 13] Current value of the DQ FIFO fill level according to following
  * pointer. The range is 0 - 256 FIFO rows; where each row stands for the
  * doorbell. */
@@ -305,6 +305,7 @@
  * equal to full threshold; reset on full clear. */
 #define DORQ_REG_DQ_FULL_ST					 0x1700c0
 #define DORQ_REG_MAX_RVFID_SIZE					 0x1701ec
+#define DORQ_REG_MODE_ACT					 0x170008
 /* [RW 5] The normal mode CID extraction offset. */
 #define DORQ_REG_NORM_CID_OFST					 0x17002c
 #define DORQ_REG_PF_USAGE_CNT					 0x1701d0
@@ -319,7 +320,6 @@
 #define DORQ_REG_VF_NORM_CID_BASE				 0x1701a0
 #define DORQ_REG_VF_NORM_CID_OFST				 0x1701f4
 #define DORQ_REG_VF_NORM_CID_WND_SIZE				 0x1701a4
-#define DORQ_REG_VF_NORM_MAX_CID_COUNT				 0x1701e4
 #define DORQ_REG_VF_NORM_VF_BASE				 0x1701a8
 /* [RW 10] VF type validation mask value */
 #define DORQ_REG_VF_TYPE_MASK_0					 0x170218
@@ -732,19 +732,12 @@
 /* [R 32] This field indicates the type of the device. '0' - 2 Ports; '1' -
  * 1 Port. Global register. */
 #define MISC_REG_BOND_ID					 0xa400
-/* [R 8] These bits indicate the metal revision of the chip. This value
- * starts at 0x00 for each all-layer tape-out and increments by one for each
- * tape-out. Global register. */
-#define MISC_REG_CHIP_METAL					 0xa404
 /* [R 16] These bits indicate the part number for the chip. Global register. */
 #define MISC_REG_CHIP_NUM					 0xa408
 /* [R 4] These bits indicate the base revision of the chip. This value
  * starts at 0x0 for the A0 tape-out and increments by one for each
  * all-layer tape-out. Global register. */
 #define MISC_REG_CHIP_REV					 0xa40c
-/* [R 8] These bits indicate the silent revision of the chip. Global
- * register. */
-#define MISC_REG_CHIP_TEST_REG					 0xa410
 /* [R 14] otp_misc_do[100:0] spare bits collection: 13:11-
  * otp_misc_do[100:98]; 10:7 - otp_misc_do[87:84]; 6:3 - otp_misc_do[75:72];
  * 2:1 - otp_misc_do[51:50]; 0 - otp_misc_do[1]. */
@@ -1988,6 +1981,8 @@
 #define PBF_REG_PBF_INT_STS					 0x1401c8
 /* [RW 28] Parity mask register #0 read/write */
 #define PBF_REG_PBF_PRTY_MASK					 0x1401e4
+/* [R 28] Parity register #0 read */
+#define PBF_REG_PBF_PRTY_STS					 0x1401d8
 /* [RC 28] Parity register #0 read clear */
 #define PBF_REG_PBF_PRTY_STS_CLR				 0x1401dc
 /* [RW 16] The Ethernet type value for L2 tag 0 */
@@ -2093,6 +2088,16 @@
 #define PGLUE_B_REG_INTERNAL_PFID_ENABLE_MASTER			 0x942c
 #define PGLUE_B_REG_INTERNAL_PFID_ENABLE_TARGET_READ		 0x9430
 #define PGLUE_B_REG_INTERNAL_VFID_ENABLE			 0x9438
+/* [W 7] Writing 1 to each bit in this register clears a corresponding error
+ * details register and enables logging new error details. Bit 0 - clears
+ * INCORRECT_RCV_DETAILS; Bit 1 - clears RX_ERR_DETAILS; Bit 2 - clears
+ * TX_ERR_WR_ADD_31_0 TX_ERR_WR_ADD_63_32 TX_ERR_WR_DETAILS
+ * TX_ERR_WR_DETAILS2 TX_ERR_RD_ADD_31_0 TX_ERR_RD_ADD_63_32
+ * TX_ERR_RD_DETAILS TX_ERR_RD_DETAILS2 TX_ERR_WR_DETAILS_ICPL; Bit 3 -
+ * clears VF_LENGTH_VIOLATION_DETAILS. Bit 4 - clears
+ * VF_GRC_SPACE_VIOLATION_DETAILS. Bit 5 - clears RX_TCPL_ERR_DETAILS. Bit 6
+ * - clears TCPL_IN_TWO_RCBS_DETAILS. */
+#define PGLUE_B_REG_LATCHED_ERRORS_CLR				 0x943c
 /* [R 11] Interrupt register #0 read */
 #define PGLUE_B_REG_PGLUE_B_INT_STS				 0x9298
 /* [RC 11] Interrupt register #0 read clear */
@@ -3098,6 +3103,8 @@
 #define TM_REG_TM_INT_STS					 0x1640f0
 /* [RW 7] Parity mask register #0 read/write */
 #define TM_REG_TM_PRTY_MASK					 0x16410c
+/* [R 7] Parity register #0 read */
+#define TM_REG_TM_PRTY_STS					 0x164100
 /* [RC 7] Parity register #0 read clear */
 #define TM_REG_TM_PRTY_STS_CLR					 0x164104
 #define TSDM_REG_ENABLE_IN1					 0x42238
@@ -3587,6 +3594,7 @@
 #define MISC_REGISTERS_RESET_REG_1_RST_PXP			 (0x1<<26)
 #define MISC_REGISTERS_RESET_REG_1_RST_PXPV			 (0x1<<27)
 #define MISC_REGISTERS_RESET_REG_1_RST_QM			 (0x1<<17)
+#define MISC_REGISTERS_RESET_REG_1_RST_XSEM			 (0x1<<22)
 #define MISC_REGISTERS_RESET_REG_1_SET				 0x584
 #define MISC_REGISTERS_RESET_REG_2_CLEAR			 0x598
 #define MISC_REGISTERS_RESET_REG_2_MSTAT0			 (0x1<<24)
@@ -3648,6 +3656,7 @@
 #define HW_LOCK_RESOURCE_SPIO					 2
 #define AEU_INPUTS_ATTN_BITS_ATC_HW_INTERRUPT			 (0x1<<4)
 #define AEU_INPUTS_ATTN_BITS_ATC_PARITY_ERROR			 (0x1<<5)
+#define AEU_INPUTS_ATTN_BITS_BRB_HW_INTERRUPT			 (0x1<<19)
 #define AEU_INPUTS_ATTN_BITS_BRB_PARITY_ERROR			 (0x1<<18)
 #define AEU_INPUTS_ATTN_BITS_CCM_HW_INTERRUPT			 (0x1<<31)
 #define AEU_INPUTS_ATTN_BITS_CCM_PARITY_ERROR			 (0x1<<30)
@@ -3890,12 +3899,17 @@
 #define PCICFG_PM_CSR_STATE			(0x3<<0)
 #define PCICFG_PM_CSR_PME_ENABLE		(1<<8)
 #define PCICFG_PM_CSR_PME_STATUS		(1<<15)
+#define PCICFG_VPD_FLAG_ADDR_OFFSET			0x50
+#define PCICFG_VPD_DATA_OFFSET				0x54
 #define PCICFG_MSI_CAP_ID_OFFSET			0x58
 #define PCICFG_MSI_CONTROL_ENABLE		(0x1<<16)
 #define PCICFG_MSI_CONTROL_MCAP			(0x7<<17)
 #define PCICFG_MSI_CONTROL_MENA			(0x7<<20)
 #define PCICFG_MSI_CONTROL_64_BIT_ADDR_CAP	(0x1<<23)
 #define PCICFG_MSI_CONTROL_MSI_PVMASK_CAPABLE	(0x1<<24)
+#define PCICFG_MSI_ADDR_LOW_OFFSET			0x5c
+#define PCICFG_MSI_ADDR_HIGH_OFFSET			0x60
+#define PCICFG_MSI_DATA_OFFSET				0x64
 #define PCICFG_GRC_ADDRESS				0x78
 #define PCICFG_GRC_DATA					0x80
 #define PCICFG_ME_REGISTER		    0x98
@@ -4402,6 +4416,11 @@
 #define PCIE_DEV_CTRL_FLR				0x8000;
 
 #define PCIE_DEV_STATUS				0x0A
+
+#define PCI_CAP_MSIX				0x11	/*MSI-X capability ID*/
+#define PCI_MSIX_CONTROL_SHIFT			16
+#define PCI_MSIX_TABLE_SIZE_MASK		0x07FF
+#define PCI_MSIX_TABLE_ENABLE_MASK		0x8000
 
 
 #if (defined(__LINUX)) || (defined(PCI_CAP_LIST_ID))
@@ -4951,7 +4970,8 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_AN_IEEE1BLK_AN_ADVERTISEMENT2	0x12
 #define MDIO_WC_REG_AN_IEEE1BLK_AN_ADV2_FEC_ABILITY	0x4000
 #define MDIO_WC_REG_AN_IEEE1BLK_AN_ADV2_FEC_REQ		0x8000
-#define MDIO_WC_REG_PMD_IEEE9BLK_TENGBASE_KR_PMD_CONTROL_REGISTER_150  0x96
+#define MDIO_WC_REG_PCS_STATUS2				0x0021
+#define MDIO_WC_REG_PMD_KR_CONTROL			0x0096
 #define MDIO_WC_REG_XGXSBLK0_XGXSCONTROL		0x8000
 #define MDIO_WC_REG_XGXSBLK0_MISCCONTROL1		0x800e
 #define MDIO_WC_REG_XGXSBLK1_DESKEW			0x8010
@@ -4980,12 +5000,14 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_RX1_PCI_CTRL			0x80ca
 #define MDIO_WC_REG_RX2_PCI_CTRL			0x80da
 #define MDIO_WC_REG_RX3_PCI_CTRL			0x80ea
+#define MDIO_WC_REG_RXB_ANA_RX_CONTROL_PCI		0x80fa
 #define MDIO_WC_REG_XGXSBLK2_UNICORE_MODE_10G		0x8104
 #define MDIO_WC_REG_XGXS_STATUS3			0x8129
 #define MDIO_WC_REG_PAR_DET_10G_STATUS			0x8130
 #define MDIO_WC_REG_PAR_DET_10G_CTRL			0x8131
 #define MDIO_WC_REG_XGXS_STATUS4			0x813c
 #define MDIO_WC_REG_XGXS_X2_CONTROL2			0x8141
+#define MDIO_WC_REG_XGXS_X2_CONTROL3			0x8142
 #define MDIO_WC_REG_XGXS_RX_LN_SWAP1			0x816B
 #define MDIO_WC_REG_XGXS_TX_LN_SWAP1			0x8169
 #define MDIO_WC_REG_GP2_STATUS_GP_2_0			0x81d0
@@ -5022,6 +5044,7 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_TX_FIR_TAP_POST_TAP_OFFSET		0x0a
 #define MDIO_WC_REG_TX_FIR_TAP_POST_TAP_MASK		0x7c00
 #define MDIO_WC_REG_TX_FIR_TAP_ENABLE		0x8000
+#define MDIO_WC_REG_CL72_USERB0_CL72_TX_FIR_TAP		0x82e2
 #define MDIO_WC_REG_CL72_USERB0_CL72_MISC1_CONTROL	0x82e3
 #define MDIO_WC_REG_CL72_USERB0_CL72_OS_DEF_CTRL	0x82e6
 #define MDIO_WC_REG_CL72_USERB0_CL72_BR_DEF_CTRL	0x82e7

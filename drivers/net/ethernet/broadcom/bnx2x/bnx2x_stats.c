@@ -19,15 +19,13 @@
 #include <linux/version.h>
 #endif
 
-#if (LINUX_VERSION_CODE > 0x02060f) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 15)) /* BNX2X_UPSTREAM */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #endif
 
 #include "bnx2x_stats.h"
 #include "bnx2x_cmn.h"
-
 #include "bnx2x_sriov.h"
-
 
 /* Statistics */
 
@@ -90,6 +88,7 @@ static inline u16 bnx2x_get_port_stats_dma_len(struct bnx2x *bp)
 static void bnx2x_dp_stats(struct bnx2x *bp)
 {
 	int i;
+
 	DP(BNX2X_MSG_STATS, "dumping stats:\n"
 	   "fw_stats_req\n"
 	   "    hdr\n"
@@ -144,11 +143,10 @@ static void bnx2x_storm_stats_post(struct bnx2x *bp)
 			cpu_to_le16(bp->stats_counter++);
 
 		DP(BNX2X_MSG_STATS, "Sending statistics ramrod %d\n",
-			bp->fw_stats_req->hdr.drv_stats_counter);
+		   le16_to_cpu(bp->fw_stats_req->hdr.drv_stats_counter));
 
 		/* adjust the ramrod to include VF queues statistics */
 		bnx2x_iov_adjust_stats_req(bp);
-
 		bnx2x_dp_stats(bp);
 
 		/* send FW stats ramrod */
@@ -204,11 +202,11 @@ static void bnx2x_hw_stats_post(struct bnx2x *bp)
 
 	} else if (bp->func_stx) {
 		*stats_comp = 0;
-		bnx2x_post_dmae(bp, dmae, INIT_DMAE_C(bp));
+		bnx2x_issue_dmae_with_comp(bp, dmae, stats_comp);
 	}
 }
 
-static int bnx2x_stats_comp(struct bnx2x *bp)
+static void bnx2x_stats_comp(struct bnx2x *bp)
 {
 	u32 *stats_comp = bnx2x_sp(bp, stats_comp);
 	int cnt = 10;
@@ -222,14 +220,14 @@ static int bnx2x_stats_comp(struct bnx2x *bp)
 		cnt--;
 		usleep_range(1000, 2000);
 	}
-	return 1;
 }
 
 /*
  * Statistics service functions
  */
 
-static void bnx2x_stats_pmf_update(struct bnx2x *bp)
+/* should be called under bnx2x_lock_stat_transition */
+static void __bnx2x_stats_pmf_update(struct bnx2x *bp)
 {
 	struct dmae_command *dmae;
 	u32 opcode;
@@ -526,29 +524,47 @@ static void bnx2x_func_stats_init(struct bnx2x *bp)
 	*stats_comp = 0;
 }
 
+/* should be called under bnx2x_lock_stat_transition */
+static void __bnx2x_stats_start(struct bnx2x *bp)
+{
+	if (IS_PF(bp)) {
+		if (bp->port.pmf)
+			bnx2x_port_stats_init(bp);
+
+		else if (bp->func_stx)
+			bnx2x_func_stats_init(bp);
+
+		bnx2x_hw_stats_post(bp);
+		bnx2x_storm_stats_post(bp);
+	}
+
+	bp->stats_started = true;
+}
+
 static void bnx2x_stats_start(struct bnx2x *bp)
 {
-	/* vfs travel through here as part of the statistics FSM, but no action
-	 * is required
-	 */
-	if (IS_VF(bp))
-		return;
-
-	if (bp->port.pmf)
-		bnx2x_port_stats_init(bp);
-
-	else if (bp->func_stx)
-		bnx2x_func_stats_init(bp);
-
-	bnx2x_hw_stats_post(bp);
-	bnx2x_storm_stats_post(bp);
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
+	__bnx2x_stats_start(bp);
+	up(&bp->stats_sema);
 }
 
 static void bnx2x_stats_pmf_start(struct bnx2x *bp)
 {
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
 	bnx2x_stats_comp(bp);
-	bnx2x_stats_pmf_update(bp);
-	bnx2x_stats_start(bp);
+	__bnx2x_stats_pmf_update(bp);
+	__bnx2x_stats_start(bp);
+	up(&bp->stats_sema);
+}
+
+static void bnx2x_stats_pmf_update(struct bnx2x *bp)
+{
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
+	__bnx2x_stats_pmf_update(bp);
+	up(&bp->stats_sema);
 }
 
 static void bnx2x_stats_restart(struct bnx2x *bp)
@@ -558,8 +574,11 @@ static void bnx2x_stats_restart(struct bnx2x *bp)
 	 */
 	if (IS_VF(bp))
 		return;
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
 	bnx2x_stats_comp(bp);
-	bnx2x_stats_start(bp);
+	__bnx2x_stats_start(bp);
+	up(&bp->stats_sema);
 }
 
 static void bnx2x_bmac_stats_update(struct bnx2x *bp)
@@ -897,36 +916,34 @@ static int bnx2x_storm_stats_validate_counters(struct bnx2x *bp)
 	/* Make sure we use the value of the counter
 	 * used for sending the last stats ramrod.
 	 */
-	spin_lock_bh(&bp->stats_lock);
 	cur_stats_counter = bp->stats_counter - 1;
-	spin_unlock_bh(&bp->stats_lock);
 
 	/* are storm stats valid? */
 	if (le16_to_cpu(counters->xstats_counter) != cur_stats_counter) {
 		DP(BNX2X_MSG_STATS,
 		   "stats not updated by xstorm  xstorm counter (0x%x) != stats_counter (0x%x)\n",
-		   le16_to_cpu(counters->xstats_counter), bp->stats_counter);
+		   le16_to_cpu(counters->xstats_counter), cur_stats_counter);
 		return -EAGAIN;
 	}
 
 	if (le16_to_cpu(counters->ustats_counter) != cur_stats_counter) {
 		DP(BNX2X_MSG_STATS,
 		   "stats not updated by ustorm  ustorm counter (0x%x) != stats_counter (0x%x)\n",
-		   le16_to_cpu(counters->ustats_counter), bp->stats_counter);
+		   le16_to_cpu(counters->ustats_counter), cur_stats_counter);
 		return -EAGAIN;
 	}
 
 	if (le16_to_cpu(counters->cstats_counter) != cur_stats_counter) {
 		DP(BNX2X_MSG_STATS,
 		   "stats not updated by cstorm  cstorm counter (0x%x) != stats_counter (0x%x)\n",
-		   le16_to_cpu(counters->cstats_counter), bp->stats_counter);
+		   le16_to_cpu(counters->cstats_counter), cur_stats_counter);
 		return -EAGAIN;
 	}
 
 	if (le16_to_cpu(counters->tstats_counter) != cur_stats_counter) {
 		DP(BNX2X_MSG_STATS,
 		   "stats not updated by tstorm  tstorm counter (0x%x) != stats_counter (0x%x)\n",
-		   le16_to_cpu(counters->tstats_counter), bp->stats_counter);
+		   le16_to_cpu(counters->tstats_counter), cur_stats_counter);
 		return -EAGAIN;
 	}
 	return 0;
@@ -1010,7 +1027,6 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 					qstats->total_bytes_received_hi;
 		qstats->valid_bytes_received_lo =
 					qstats->total_bytes_received_lo;
-
 
 		UPDATE_EXTEND_TSTAT(rcv_ucast_pkts,
 					total_unicast_packets_received);
@@ -1134,7 +1150,7 @@ static int bnx2x_storm_stats_update(struct bnx2x *bp)
 static void bnx2x_net_stats_update(struct bnx2x *bp)
 {
 	struct bnx2x_eth_stats *estats = &bp->eth_stats;
-#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 	struct net_device_stats *nstats = &bp->dev->stats;
 #else
 	struct net_device_stats *nstats = &bp->net_stats;
@@ -1225,8 +1241,14 @@ static void bnx2x_drv_stats_update(struct bnx2x *bp)
 
 static bool bnx2x_edebug_stats_stopped(struct bnx2x *bp)
 {
+	u32 val;
+
+#ifdef BNX2X_NO_STATS /* ! BNX2X_UPSTREAM */
+	return true;
+#endif
+
 	if (SHMEM2_HAS(bp, edebug_driver_if[1])) {
-		u32 val = SHMEM2_RD(bp, edebug_driver_if[1]);
+		val = SHMEM2_RD(bp, edebug_driver_if[1]);
 
 		if (val == EDEBUG_DRIVER_IF_OP_CODE_DISABLE_STAT)
 			return true;
@@ -1239,12 +1261,18 @@ static void bnx2x_stats_update(struct bnx2x *bp)
 {
 	u32 *stats_comp = bnx2x_sp(bp, stats_comp);
 
-	if (bnx2x_edebug_stats_stopped(bp))
+	/* we run update from timer context, so give up
+	 * if somebody in the middle of transition
+	 */
+	if (down_trylock(&bp->stats_sema))
 		return;
+
+	if (bnx2x_edebug_stats_stopped(bp) || !bp->stats_started)
+		goto out;
 
 	if (IS_PF(bp)) {
 		if (*stats_comp != DMAE_COMP_VAL)
-			return;
+			goto out;
 
 		if (bp->port.pmf)
 			bnx2x_hw_stats_update(bp);
@@ -1254,7 +1282,7 @@ static void bnx2x_stats_update(struct bnx2x *bp)
 				BNX2X_ERR("storm stats were not updated for 3 times\n");
 				bnx2x_panic();
 			}
-			return;
+			goto out;
 		}
 	} else {
 		/* vf doesn't collect HW statistics, and doesn't get completions
@@ -1268,7 +1296,7 @@ static void bnx2x_stats_update(struct bnx2x *bp)
 
 	/* vf is done */
 	if (IS_VF(bp))
-		return;
+		goto out;
 
 	if (netif_msg_timer(bp)) {
 		struct bnx2x_eth_stats *estats = &bp->eth_stats;
@@ -1279,6 +1307,9 @@ static void bnx2x_stats_update(struct bnx2x *bp)
 
 	bnx2x_hw_stats_post(bp);
 	bnx2x_storm_stats_post(bp);
+
+out:
+	up(&bp->stats_sema);
 }
 
 static void bnx2x_port_stats_stop(struct bnx2x *bp)
@@ -1340,16 +1371,18 @@ static void bnx2x_port_stats_stop(struct bnx2x *bp)
 	}
 }
 
-static void bnx2x_stats_stop(struct bnx2x *bp)
+static void __bnx2x_stats_stop(struct bnx2x *bp)
 {
 	bool update = false;
+
+	bp->stats_started = false;
 
 	bnx2x_stats_comp(bp);
 
 	if (bp->port.pmf)
-		update = bnx2x_hw_stats_update(bp) == 0;
+		update = (bnx2x_hw_stats_update(bp) == 0);
 
-	update |= bnx2x_storm_stats_update(bp) == 0;
+	update |= (bnx2x_storm_stats_update(bp) == 0);
 
 	if (update) {
 		bnx2x_net_stats_update(bp);
@@ -1360,6 +1393,15 @@ static void bnx2x_stats_stop(struct bnx2x *bp)
 		bnx2x_hw_stats_post(bp);
 		bnx2x_stats_comp(bp);
 	}
+}
+
+static void bnx2x_stats_stop(struct bnx2x *bp)
+{
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
+
+	__bnx2x_stats_stop(bp);
+	up(&bp->stats_sema);
 }
 
 static void bnx2x_stats_do_nothing(struct bnx2x *bp)
@@ -1388,15 +1430,17 @@ static const struct {
 void bnx2x_stats_handle(struct bnx2x *bp, enum bnx2x_stats_event event)
 {
 	enum bnx2x_stats_state state;
+	void (*action)(struct bnx2x *bp);
 	if (unlikely(bp->panic))
 		return;
 
 	spin_lock_bh(&bp->stats_lock);
 	state = bp->stats_state;
 	bp->stats_state = bnx2x_stats_stm[state][event].next_state;
+	action = bnx2x_stats_stm[state][event].action;
 	spin_unlock_bh(&bp->stats_lock);
 
-	bnx2x_stats_stm[state][event].action(bp);
+	action(bp);
 
 	if ((event != STATS_EVENT_UPDATE) || netif_msg_timer(bp))
 		DP(BNX2X_MSG_STATS, "state %d -> event %d -> state %d\n",
@@ -1558,11 +1602,60 @@ static void bnx2x_prep_fw_stats_req(struct bnx2x *bp)
 	}
 }
 
+void bnx2x_memset_stats(struct bnx2x *bp)
+{
+	int i;
+
+	/* function stats */
+	for_each_queue(bp, i) {
+		struct bnx2x_fp_stats *fp_stats = &bp->fp_stats[i];
+
+		memset(&fp_stats->old_tclient, 0,
+		       sizeof(fp_stats->old_tclient));
+		memset(&fp_stats->old_uclient, 0,
+		       sizeof(fp_stats->old_uclient));
+		memset(&fp_stats->old_xclient, 0,
+		       sizeof(fp_stats->old_xclient));
+		if (bp->stats_init) {
+			memset(&fp_stats->eth_q_stats, 0,
+			       sizeof(fp_stats->eth_q_stats));
+			memset(&fp_stats->eth_q_stats_old, 0,
+			       sizeof(fp_stats->eth_q_stats_old));
+		}
+	}
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
+	memset(&bp->dev->stats, 0, sizeof(bp->dev->stats));
+#else
+	memset(&bp->net_stats, 0, sizeof(bp->net_stats));
+#endif
+
+	if (bp->stats_init) {
+		memset(&bp->net_stats_old, 0, sizeof(bp->net_stats_old));
+		memset(&bp->fw_stats_old, 0, sizeof(bp->fw_stats_old));
+		memset(&bp->eth_stats_old, 0, sizeof(bp->eth_stats_old));
+		memset(&bp->eth_stats, 0, sizeof(bp->eth_stats));
+		memset(&bp->func_stats, 0, sizeof(bp->func_stats));
+	}
+
+	bp->stats_state = STATS_STATE_DISABLED;
+
+	if (bp->port.pmf && bp->port.port_stx)
+		bnx2x_port_stats_base_init(bp);
+
+	/* mark the end of statistics initializiation */
+	bp->stats_init = false;
+}
+
 void bnx2x_stats_init(struct bnx2x *bp)
 {
 	int /*abs*/port = BP_PORT(bp);
 	int mb_idx = BP_FW_MB_IDX(bp);
-	int i;
+
+	if (IS_VF(bp)) {
+		bnx2x_memset_stats(bp);
+		return;
+	}
 
 	bp->stats_pending = 0;
 	bp->executer_idx = 0;
@@ -1598,40 +1691,11 @@ void bnx2x_stats_init(struct bnx2x *bp)
 			    &(bp->port.old_nig_stats.egress_mac_pkt1_lo), 2);
 	}
 
-	/* function stats */
-	for_each_queue(bp, i) {
-		struct bnx2x_fp_stats *fp_stats = &bp->fp_stats[i];
-
-		memset(&fp_stats->old_tclient, 0,
-		       sizeof(fp_stats->old_tclient));
-		memset(&fp_stats->old_uclient, 0,
-		       sizeof(fp_stats->old_uclient));
-		memset(&fp_stats->old_xclient, 0,
-		       sizeof(fp_stats->old_xclient));
-		if (bp->stats_init) {
-			memset(&fp_stats->eth_q_stats, 0,
-			       sizeof(fp_stats->eth_q_stats));
-			memset(&fp_stats->eth_q_stats_old, 0,
-			       sizeof(fp_stats->eth_q_stats_old));
-		}
-	}
-
 	/* Prepare statistics ramrod data */
 	bnx2x_prep_fw_stats_req(bp);
 
-#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
-	memset(&bp->dev->stats, 0, sizeof(bp->dev->stats));
-#else
-	memset(&bp->net_stats, 0, sizeof(bp->net_stats));
-#endif
+	/* Clean SP from previous statistics */
 	if (bp->stats_init) {
-		memset(&bp->net_stats_old, 0, sizeof(bp->net_stats_old));
-		memset(&bp->fw_stats_old, 0, sizeof(bp->fw_stats_old));
-		memset(&bp->eth_stats_old, 0, sizeof(bp->eth_stats_old));
-		memset(&bp->eth_stats, 0, sizeof(bp->eth_stats));
-		memset(&bp->func_stats, 0, sizeof(bp->func_stats));
-
-		/* Clean SP from previous statistics */
 		if (bp->func_stx) {
 			memset(bnx2x_sp(bp, func_stats), 0,
 			       sizeof(struct host_func_stats));
@@ -1641,19 +1705,13 @@ void bnx2x_stats_init(struct bnx2x *bp)
 		}
 	}
 
-	bp->stats_state = STATS_STATE_DISABLED;
-
-	if (bp->port.pmf && bp->port.port_stx)
-		bnx2x_port_stats_base_init(bp);
-
-	/* mark the end of statistics initializiation */
-	bp->stats_init = false;
+	bnx2x_memset_stats(bp);
 }
 
 void bnx2x_save_statistics(struct bnx2x *bp)
 {
 	int i;
-#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) || defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 	struct net_device_stats *nstats = &bp->dev->stats;
 #else
 	struct net_device_stats *nstats = &bp->net_stats;
@@ -1974,4 +2032,38 @@ void bnx2x_afex_collect_stats(struct bnx2x *bp, void *void_afex_stats,
 		       afex_stats->rx_frames_discarded_lo,
 		       estats->mac_discard);
 	}
+}
+
+/* run an external piece of code with no stats interfering.
+ * What happens if the stats state changes (e.g. as a result of link up)
+ * during the critical section? no worries - the flow which changed the state
+ * is supposed to start/stop the stats and must take the stats_sema semaphore
+ * to do so, so it will be blocked until we are done here and will then change
+ * state accordingly.
+ */
+void bnx2x_stats_safe_exec(struct bnx2x *bp,
+			   void (func_to_exec)(void *cookie),
+			   void *cookie){
+	bool stats_started;
+
+	/* block any flow which may change the stats state*/
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
+
+	/* store state of stats machine */
+	stats_started = bp->stats_started;
+
+	/* stop stats machine */
+	if (stats_started)
+		__bnx2x_stats_stop(bp);
+
+	/* execute cookie */
+	func_to_exec(cookie);
+
+	/* in case stats were active, restart the statrs machine*/
+	if (stats_started)
+		__bnx2x_stats_start(bp);
+
+	/* allow other flows waiting for the stats lock to run */
+	up(&bp->stats_sema);
 }

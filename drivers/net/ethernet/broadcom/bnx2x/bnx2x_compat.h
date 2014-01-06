@@ -26,6 +26,7 @@
 #include <linux/version.h>
 #include <linux/netdevice.h>
 #include <linux/delay.h>
+#include <linux/pci.h>
 
 #ifndef KERNEL_VERSION
 #define KERNEL_VERSION(a,b,c) (((a) << 16) + ((b) << 8) + (c))
@@ -36,8 +37,57 @@
 #define XENSERVER_DISTRO		0
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02061D)
+/* LINUX_VERSION macros */
+#define LINUX_PRE_VERSION(a, b, c) \
+	(LINUX_VERSION_CODE < KERNEL_VERSION((a), (b), (c)))
+#define LINUX_POST_VERSION(a, b, c) \
+	(LINUX_VERSION_CODE > KERNEL_VERSION((a), (b), (c)))
+#define LINUX_STARTING_AT_VERSION(a, b, c) \
+	(LINUX_VERSION_CODE >= KERNEL_VERSION((a), (b), (c)))
+
+/* RHEL version macros */
+#define NOT_RHEL_OR_PRE_VERSION(a, b) \
+	(!defined(RHEL_RELEASE_CODE) || \
+	 RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION((a), (b)))
+#define RHEL_PRE_VERSION(a, b) \
+	(defined(RHEL_RELEASE_CODE) && \
+	 RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION((a), (b)))
+#define RHEL_STARTING_AT_VERSION(a, b) \
+	(defined(RHEL_RELEASE_CODE) && \
+	 RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION((a), (b)))
+#define RHEL_IS_VERSION(a, b) \
+	(defined(RHEL_RELEASE_CODE) && \
+	 RHEL_RELEASE_CODE ==  RHEL_RELEASE_VERSION((a), (b)))
+
+/* SLES version macros */
+#define NOT_SLES_OR_PRE_VERSION(a) \
+	(!defined(SLES_DISTRO) || (SLES_DISTRO < (a)))
+#define SLES_PRE_VERSION(a) \
+	(defined(SLES_DISTRO) && (SLES_DISTRO < (a)))
+#define SLES_STARTING_AT_VERSION(a) \
+	(defined(SLES_DISTRO) && (SLES_DISTRO >= (a)))
+#define SLES_IS_VERSION(a) \
+	(defined(SLES_DISTRO) && (SLES_DISTRO == (a)))
+#define SLES11		0x1100
+#define SLES11_SP1	0x1101
+#define SLES11_SP2	0x1102
+#define SLES11_SP3	0x1103
+#if defined(SLES_DISTRO) && (SLES_DISTRO == SLES11_SP1) && defined(MODULE_ALIAS_NETDEV)
+/* Special SLES11.1 updated kernel 2.6.32.XX */
+#define SLES11_SP1_UP1
+#endif
+
+/* VMWare version macros */
+#define ESX_STARTING_AT(a) \
+	(defined(__VMKLNX__) && VMWARE_ESX_DDK_VERSION >= (a))
+#define ESX_PRE(a) \
+	(defined(__VMKLNX__) && VMWARE_ESX_DDK_VERSION < (a))
+
+#if (LINUX_PRE_VERSION(2, 6, 29))
 #include <linux/pci.h> /* for vpd */
+#endif
+#if (LINUX_STARTING_AT_VERSION(2, 6, 19) && LINUX_PRE_VERSION(3, 12, 0))
+#include <linux/pci_hotplug.h> /* for pci_bus_speed & width */
 #endif
 
 #include <linux/in.h>
@@ -49,7 +99,7 @@
 #define RHEL_RELEASE_VERSION(a, b) 0
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 37)) && (!defined(RHEL_RELEASE_CODE) || (RHEL_RELEASE_CODE <= RHEL_RELEASE_VERSION(6, 4)))
+#if (LINUX_PRE_VERSION(2, 6, 37)) && (!defined(RHEL_RELEASE_CODE) || (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
 #define OLD_VLAN			1
 #endif
 
@@ -57,18 +107,21 @@
 #define BCM_VLAN			1
 #endif
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,38))
+#if (LINUX_POST_VERSION(2,6,38))
 #define BCM_MULTI_COS
 #endif
 
+#if (LINUX_STARTING_AT_VERSION(3,10,0))
+#define VLAN_8021AD_ADDED
+#endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,23)) && \
+#if (LINUX_STARTING_AT_VERSION(2,6,23)) && \
     !defined(NETIF_F_MULTI_QUEUE) || \
-    (defined(__VMKLNX__) && VMWARE_ESX_DDK_VERSION >= 40000)
+    ESX_STARTING_AT(40000)
 #define BNX2X_MULTI_QUEUE
 #endif
 
-#if (LINUX_VERSION_CODE >= 0x020618) || defined(__VMKLNX__)
+#if (LINUX_STARTING_AT_VERSION(2, 6, 24)) || defined(__VMKLNX__)
 #define BNX2X_NEW_NAPI
 #endif
 
@@ -79,6 +132,7 @@
 #if defined(BNX2X_MULTI_QUEUE) && !defined(__VMKLNX__)
 #define BNX2X_SAFC
 #endif
+
 
 #if defined(__VMKLNX__)
 #if (VMWARE_ESX_DDK_VERSION >= 40000)
@@ -98,7 +152,7 @@ typedef int bool;
 #endif
 
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 20))
+#if (LINUX_PRE_VERSION(2, 6, 20))
 #define __wsum u32
 #define __sum16 u16
 #endif
@@ -112,7 +166,7 @@ typedef int bool;
 #define wmb()   asm volatile("sfence" ::: "memory")
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,30))
+#if (LINUX_PRE_VERSION(2,6,30))
 #define skb_record_rx_queue(skb, index)
 #ifdef BNX2X_MULTI_QUEUE
 static inline bool skb_rx_queue_recorded(const struct sk_buff *skb)
@@ -172,8 +226,8 @@ static inline u32 jhash_1word(u32 a, u32 initval)
 #endif
 #endif
 #if defined(BNX2X_MULTI_QUEUE) && \
-	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,1)) && \
-	(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38))
+	NOT_RHEL_OR_PRE_VERSION(6, 1) && \
+	LINUX_PRE_VERSION(2, 6, 38)
 
 #include <net/sock.h>
 #if !defined(__VMKLNX__)
@@ -208,10 +262,10 @@ static inline u16 __skb_tx_hash(const struct net_device *dev,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020618) && (VMWARE_ESX_DDK_VERSION < 40000) && !defined(NETIF_F_GRO)
+#if (LINUX_PRE_VERSION(2, 6, 24)) && (VMWARE_ESX_DDK_VERSION < 40000) && !defined(NETIF_F_GRO)
 #define napi_complete(napi)		netif_rx_complete(dev)
 #endif
-#if (LINUX_VERSION_CODE < 0x020618) && (VMWARE_ESX_DDK_VERSION < 40000)
+#if (LINUX_PRE_VERSION(2, 6, 24)) && (VMWARE_ESX_DDK_VERSION < 40000)
 #define napi_schedule(dev)		netif_rx_schedule(dev)
 #endif
 
@@ -234,7 +288,7 @@ static inline u16 __skb_tx_hash(const struct net_device *dev,
 #define netif_tx_start_all_queues	netif_start_queue
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020616)
+#if (LINUX_PRE_VERSION(2, 6, 22))
 #define skb_copy_from_linear_data_offset(skb, pad, new_skb_data, len) \
 				memcpy(new_skb_data, skb->data + pad, len)
 
@@ -248,6 +302,12 @@ static inline u16 __skb_tx_hash(const struct net_device *dev,
 #define skb_mac_header(skb)		((skb)->mac.raw)
 #define skb_network_header(skb)		((skb)->nh.raw)
 #define skb_transport_header(skb)	((skb)->h.raw)
+#if (!defined(__VMKLNX__) && NOT_RHEL_OR_PRE_VERSION(5, 0))
+static inline int skb_transport_offset(const struct sk_buff *skb)
+{
+	return skb_transport_header(skb) - skb->data;
+}
+#endif
 #endif
 
 
@@ -256,7 +316,7 @@ static inline u16 __skb_tx_hash(const struct net_device *dev,
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020600)
+#if (LINUX_PRE_VERSION(2, 6, 0))
 #define might_sleep()
 
 #define num_online_cpus()		1
@@ -283,12 +343,12 @@ static inline int dma_mapping_error(dma_addr_t mapping)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020604)
+#if (LINUX_PRE_VERSION(2, 6, 4))
 #define MODULE_VERSION(version)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020605)
+#if (LINUX_PRE_VERSION(2, 6, 5))
 static inline void pci_dma_sync_single_for_device(struct pci_dev *dev,
 						  dma_addr_t map, size_t size,
 						  int dir)
@@ -297,12 +357,12 @@ static inline void pci_dma_sync_single_for_device(struct pci_dev *dev,
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020547)
+#if (LINUX_PRE_VERSION(2, 5, 71))
 #define pci_set_consistent_dma_mask(X, Y)	(0)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020607)
+#if (LINUX_PRE_VERSION(2, 6, 7))
 #define msleep(x) \
 	do { \
 		current->state = TASK_UNINTERRUPTIBLE; \
@@ -320,7 +380,7 @@ static inline struct mii_ioctl_data *if_mii(struct ifreq *rq)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020609)
+#if (LINUX_PRE_VERSION(2, 6, 9))
 #define msleep_interruptible(x) \
 	do{ \
 		current->state = TASK_INTERRUPTIBLE; \
@@ -330,7 +390,7 @@ static inline struct mii_ioctl_data *if_mii(struct ifreq *rq)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x02060b)
+#if (LINUX_PRE_VERSION(2, 6, 11))
 #define pm_message_t			u32
 #define pci_power_t			u32
 #define PCI_D0				0
@@ -339,12 +399,12 @@ static inline struct mii_ioctl_data *if_mii(struct ifreq *rq)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x02060e)
+#if (LINUX_PRE_VERSION(2, 6, 14))
 #define touch_softlockup_watchdog()
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020612)
+#if (LINUX_PRE_VERSION(2, 6, 18))
 static inline struct sk_buff *netdev_alloc_skb(struct net_device *dev,
 					       unsigned int length)
 {
@@ -357,13 +417,13 @@ static inline struct sk_buff *netdev_alloc_skb(struct net_device *dev,
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020614)
+#if (LINUX_PRE_VERSION(2, 6, 20))
 #define PCI_VDEVICE(vendor, device)             \
 	PCI_VENDOR_ID_##vendor, (device),       \
 	PCI_ANY_ID, PCI_ANY_ID, 0, 0
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020615)
+#if (LINUX_PRE_VERSION(2, 6, 21))
 #define vlan_group_set_device(vg, vlan_id, dev)	vg->vlan_devices[vlan_id] = dev
 #endif
 
@@ -469,7 +529,7 @@ static inline int skb_is_gso(const struct sk_buff *skb)
 #define work_struct			tq_struct
 #endif
 
-#if !defined(HAVE_NETDEV_PRIV) && (LINUX_VERSION_CODE < 0x030000) && (LINUX_VERSION_CODE != 0x020603) && (LINUX_VERSION_CODE != 0x020604) && (LINUX_VERSION_CODE != 0x020605)
+#if !defined(HAVE_NETDEV_PRIV) && (LINUX_PRE_VERSION(3, 0, 0)) && (LINUX_VERSION_CODE != 0x020603) && (LINUX_VERSION_CODE != 0x020604) && (LINUX_VERSION_CODE != KERNEL_VERSION(2, 6, 5))
 #define netdev_priv(dev)		(dev)->priv
 #endif
 
@@ -550,7 +610,7 @@ static inline int skb_is_gso(const struct sk_buff *skb)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020618)
+#if (LINUX_PRE_VERSION(2, 6, 24))
 
 #ifndef NETIF_F_HW_CSUM
 #define NETIF_F_HW_CSUM			8
@@ -581,12 +641,12 @@ static inline int bnx2x_set_tx_hw_csum(struct net_device *dev, u32 data)
 #endif
 
 
-#if (LINUX_VERSION_CODE < 0x020619)
+#if (LINUX_PRE_VERSION(2, 6, 25))
 #define le16_add_cpu(var, val) *var = cpu_to_le16(le16_to_cpup(var) + val)
 #define le32_add_cpu(var, val) *var = cpu_to_le32(le32_to_cpup(var) + val)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020620)
+#if (LINUX_PRE_VERSION(2, 6, 32))
 /* Driver transmit return codes */
 #undef NETDEV_TX_OK
 #undef NETDEV_TX_BUSY
@@ -599,7 +659,7 @@ enum netdev_tx {
 typedef enum netdev_tx netdev_tx_t;
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02061b) || defined(BNX2X_DRIVER_DISK) || defined(__VMKLNX__)
+#if (LINUX_PRE_VERSION(2, 6, 27)) || defined(BNX2X_DRIVER_DISK) || defined(__VMKLNX__)
 
 /*
  * This is the CRC-32C table
@@ -695,7 +755,7 @@ crc32c_le(u32 seed, unsigned char const *data, size_t length)
 #endif
 
 /* Taken from drivers/net/mdio.c */
-#if (LINUX_VERSION_CODE < 0x02061f)
+#if (LINUX_PRE_VERSION(2, 6, 31))
 #include <linux/mii.h>
 
 /* MDIO Manageable Devices (MMDs). */
@@ -849,8 +909,7 @@ static inline int mdio_mii_ioctl(const struct mdio_if_info *mdio,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020624) && \
-	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 3))
+#if (LINUX_PRE_VERSION(2, 6, 36) && NOT_RHEL_OR_PRE_VERSION(6, 3))
 static inline void usleep_range(unsigned long min, unsigned long max)
 {
 	if (min < 1000)
@@ -860,7 +919,7 @@ static inline void usleep_range(unsigned long min, unsigned long max)
 }
 #endif
 
-#if (defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6, 3))
+#if RHEL_IS_VERSION(6, 3)
 /** RHEL6.3 is missing in 'arch/x86/Kconfig' the logic which sets
  *  'CONFIG_NEED_DMA_MAP_STATE'. Therefore, we supplement that logic here,
  *  possibly replacing the 'dma_unmap_*' macros.
@@ -881,7 +940,7 @@ static inline void usleep_range(unsigned long min, unsigned long max)
 #endif
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 29))
+#if (LINUX_PRE_VERSION(2, 6, 29))
 static inline ssize_t
 pci_read_vpd(struct pci_dev *dev, loff_t pos, size_t count, u8 *buf)
 {
@@ -946,11 +1005,11 @@ int bnx2x_ilog2(int x)
 #define DIV_ROUND_UP(n,d) (((n) + (d) - 1) / (d))
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02060c) && !defined(RHEL_RELEASE_CODE)
+#if (LINUX_PRE_VERSION(2, 6, 12)) && !defined(RHEL_RELEASE_CODE)
 #define is_multicast_ether_addr(addr) (0x01 & (addr)[0])
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02060e) && !defined(RHEL_RELEASE_CODE)
+#if (LINUX_PRE_VERSION(2, 6, 14)) && !defined(RHEL_RELEASE_CODE)
 #define is_broadcast_ether_addr(addr)\
 	(((addr)[0] & (addr)[1] & (addr)[2] & (addr)[3] \
 	& (addr)[4] & (addr)[5]) == 0xff)
@@ -964,13 +1023,13 @@ int bnx2x_ilog2(int x)
 #define DEFINE_PCI_DEVICE_TABLE(tbl) const struct pci_device_id bnx2x_pci_tbl[]
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020606)
+#if (LINUX_PRE_VERSION(2, 6, 6))
 #undef netdev_printk
 #undef netdev_err
 #undef netdev_info
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020624)
+#if (LINUX_PRE_VERSION(2, 6, 36))
 #ifndef netdev_printk
 static inline const char *netdev_name(const struct net_device *dev)
 {
@@ -979,13 +1038,13 @@ static inline const char *netdev_name(const struct net_device *dev)
 	return dev->name;
 }
 #endif
-#if (LINUX_VERSION_CODE < 0x020615)
+#if (LINUX_PRE_VERSION(2, 6, 21))
 #define NET_PARENT_DEV(netdev)  ((netdev)->class_dev.dev)
 #else
 #define NET_PARENT_DEV(netdev)  ((netdev)->dev.parent)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020612)
+#if (LINUX_PRE_VERSION(2, 6, 18))
 static inline const char *dev_driver_string(struct device *dev)
 {
 	return dev->driver ? dev->driver->name :
@@ -994,7 +1053,7 @@ static inline const char *dev_driver_string(struct device *dev)
 #endif
 
 #if !defined(__VMKLNX__)
-#if (LINUX_VERSION_CODE < 0x02061a)
+#if (LINUX_PRE_VERSION(2, 6, 26))
 #undef netdev_printk
 #define netdev_printk(level, netdev, format, args...)		\
 	printk("%s"						\
@@ -1002,7 +1061,7 @@ static inline const char *dev_driver_string(struct device *dev)
 	       dev_driver_string(NET_PARENT_DEV(netdev)),	\
 	       NET_PARENT_DEV(netdev)->bus_id,			\
 	       netdev_name(netdev), ##args)
-#elif (LINUX_VERSION_CODE >= 0x02061a) && (LINUX_VERSION_CODE < 0x020624)
+#elif (LINUX_STARTING_AT_VERSION(2, 6, 26)) && (LINUX_PRE_VERSION(2, 6, 36))
 #undef netdev_printk
 #define netdev_printk(level, netdev, format, args...)		\
 	printk("%s"						\
@@ -1018,7 +1077,7 @@ static inline const char *dev_driver_string(struct device *dev)
 	       DRV_MODULE_NAME, pci_name(netdev->pdev),         \
 	       netdev_name(netdev), ##args)
 #endif/*(__VMKLNX__)*/
-#endif/*(LINUX_VERSION_CODE < 0x020624)*/
+#endif/*(LINUX_PRE_VERSION(2, 6, 36))*/
 
 #ifndef netdev_err
 #define netdev_err(dev, format, args...)			\
@@ -1083,7 +1142,7 @@ static inline const char *dev_driver_string(struct device *dev)
 	for (mclist = (dev)->mc_list; mclist; mclist = mclist->next)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02061f)
+#if (LINUX_PRE_VERSION(2, 6, 31))
 #define netdev_for_each_uc_addr(uclist, dev) \
 	for (uclist = (dev)->uc_list; uclist; uclist = uclist->next)
 #elif !defined(netdev_for_each_uc_addr)
@@ -1091,7 +1150,7 @@ static inline const char *dev_driver_string(struct device *dev)
 	list_for_each_entry(uclist, &((dev)->uc).list, list)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02061f)
+#if (LINUX_PRE_VERSION(2, 6, 31))
 #define bnx2x_uc_addr(ha)      ((ha)->dmi_addr)
 #else
 #define bnx2x_uc_addr(ha)      ((ha)->addr)
@@ -1150,29 +1209,29 @@ static inline const char *dev_driver_string(struct device *dev)
 #ifndef	PCI_EXP_DEVCTL2
 #define PCI_EXP_DEVCTL2		40
 #endif
-#if (LINUX_VERSION_CODE < 0x02061b)
+#if (LINUX_PRE_VERSION(2, 6, 27))
 #define netif_addr_lock_bh(dev) netif_tx_lock_bh(dev)
 #define netif_addr_unlock_bh(dev) netif_tx_unlock_bh(dev)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020623)
+#if (LINUX_PRE_VERSION(2, 6, 35))
 #define ETH_FLAG_RXHASH	(0x1 << 28)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020618)
+#if (LINUX_PRE_VERSION(2, 6, 24))
 #define ETH_FLAG_LRO	(1 << 15)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020622)
+#if (LINUX_PRE_VERSION(2, 6, 34))
 #define ETH_FLAG_NTUPLE	(1 << 27)
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020625)
+#if (LINUX_PRE_VERSION(2, 6, 37))
 #define ETH_FLAG_TXVLAN		(1 << 7) /* TX VLAN offload enabled */
 #define ETH_FLAG_RXVLAN		(1 << 8) /* RX VLAN offload enabled */
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020613)
+#if (LINUX_PRE_VERSION(2, 6, 19))
 
 /* The below code is similar to what is done random32() in
  * 2.6.19 but much simpler. ;)
@@ -1194,7 +1253,7 @@ static inline u32 random32(void) {
 
 	return (s1 ^ s2 ^ s3);
 }
-#elif (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,6))
+#elif RHEL_PRE_VERSION(5, 6)
 #define TAUSWORTHE(s,a,b,c,d) ((((s)&(c))<<(d)) ^ ((((s) <<(a)) ^ (s))>>(b)))
 static inline u32 random32(void) {
 	static u32 s1 = 4294967294UL;
@@ -1214,7 +1273,7 @@ static inline u32 random32(void) {
 #endif
 #endif
 
-#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_VERSION_CODE < 0x020625)) || \
+#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2, 6, 37))) || \
 	(defined(RHEL_RELEASE_CODE) && \
 		(((RHEL_MAJOR == 6) && (RHEL_MINOR < 1)) || \
 		 ((RHEL_MAJOR == 5) && (RHEL_MINOR < 7)) || \
@@ -1225,7 +1284,7 @@ static inline void skb_checksum_none_assert(struct sk_buff *skb)
 }
 #endif
 
-#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_VERSION_CODE < 0x020622)) || \
+#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2, 6, 34))) || \
       (defined(RHEL_RELEASE_CODE) && \
 		(((RHEL_MAJOR == 6) && (RHEL_MINOR < 1)) || \
 		 ((RHEL_MAJOR == 5) && (RHEL_MINOR < 7)) || \
@@ -1272,7 +1331,7 @@ static inline u8 pci_vpd_srdt_size(u8 *srdt)
 	return (*srdt) & PCI_VPD_SRDT_LEN_MASK;
 }
 
-static inline int pci_vpd_find_tag(char *data, unsigned int start,
+static inline int __devinit pci_vpd_find_tag(char *data, unsigned int start,
 				      unsigned int len, u8 tagid)
 {
 	int i;
@@ -1312,7 +1371,7 @@ static inline u8 pci_vpd_info_field_size(u8 *info_field)
 	return info_field[2];
 }
 
-static inline int pci_vpd_find_info_keyword(u8 *rodata,
+static inline int __devinit pci_vpd_find_info_keyword(u8 *rodata,
 					       unsigned int start,
 					       unsigned int rosize,
 					       char *kw)
@@ -1338,7 +1397,7 @@ static inline int pci_vpd_find_info_keyword(u8 *rodata,
 #define PCI_MSIX_FLAGS_QSIZE	0x7FF
 #endif
 
-#if (LINUX_VERSION_CODE < 0x02060f)
+#if (LINUX_PRE_VERSION(2, 6, 15))
 #define atomic_cmpxchg(p, old, new) cmpxchg((volatile int *)(p), old, new)
 #endif
 
@@ -1347,7 +1406,7 @@ static inline int pci_vpd_find_info_keyword(u8 *rodata,
 #define ARRAY_SIZE(arr)	(sizeof(arr) / sizeof((arr)[0]))
 #endif
 
-#if (!defined(SLES_DISTRO) || (LINUX_VERSION_CODE < 0x020610)) && (LINUX_VERSION_CODE < 0x020612)
+#if (!defined(SLES_DISTRO) || (LINUX_PRE_VERSION(2, 6, 16))) && (LINUX_PRE_VERSION(2, 6, 18))
 static inline int list_is_last(const struct list_head *list,
 				const struct list_head *head)
 {
@@ -1355,19 +1414,14 @@ static inline int list_is_last(const struct list_head *list,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020625) && (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4))
+#if (LINUX_PRE_VERSION(2, 6, 37) && NOT_RHEL_OR_PRE_VERSION(6, 4))
 static inline int netif_set_real_num_rx_queues(struct net_device *dev, int num)
 {
 	return 0;
 }
 #endif
 
-#if defined(SLES_DISTRO) && (SLES_DISTRO == 0x1101) && defined(MODULE_ALIAS_NETDEV)
-/* Special SLES11.1 updated kernel 2.6.32.XX */
-#define SLES11_SP1_UP1
-#endif
-
-#if !defined(RHEL_RELEASE_CODE) && (LINUX_VERSION_CODE < 0x020623) && defined(BNX2X_MULTI_QUEUE) && (!defined(SLES_DISTRO) || (SLES_DISTRO < 0x1102) && !defined(SLES11_SP1_UP1)) && (XENSERVER_DISTRO < XENSERVER_VERSION(6, 1, 0))
+#if !defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2, 6, 35) && defined(BNX2X_MULTI_QUEUE) && NOT_SLES_OR_PRE_VERSION(SLES11_SP2) && !defined(SLES11_SP1_UP1)) && (XENSERVER_DISTRO < XENSERVER_VERSION(6, 1, 0))
 static inline void netif_set_real_num_tx_queues(struct net_device *dev,
 						unsigned int txq)
 {
@@ -1420,7 +1474,7 @@ static inline __be16 vlan_get_protocol(const struct sk_buff *skb)
 }
 #endif
 
-#if (LINUX_VERSION_CODE < 0x020624)
+#if (LINUX_PRE_VERSION(2, 6, 36))
 
 static const u32 bnx2x_flags_dup_features =
 	(ETH_FLAG_LRO | ETH_FLAG_NTUPLE | ETH_FLAG_RXHASH);
@@ -1438,7 +1492,7 @@ static inline int bnx2x_ethtool_op_set_flags(struct net_device *dev, u32 data,
 }
 #endif
 
-#if defined(NETIF_F_TSO6) && ((!defined(RHEL_RELEASE_CODE) && (LINUX_VERSION_CODE < 0x020618)) || \
+#if defined(NETIF_F_TSO6) && ((!defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2, 6, 24))) || \
 			      (defined(RHEL_RELEASE_CODE) && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,5))) || \
 			      defined(__VMKLNX__))
 static inline int skb_is_gso_v6(const struct sk_buff *skb)
@@ -1447,14 +1501,14 @@ static inline int skb_is_gso_v6(const struct sk_buff *skb)
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= 0x020620) || \
+#if (LINUX_STARTING_AT_VERSION(2, 6, 32)) || \
 	(defined(__VMKLNX__) && \
 	 (((VMWARE_ESX_DDK_VERSION == 50000) && !defined(BNX2X_INBOX)) || \
 	  (VMWARE_ESX_DDK_VERSION > 50000)))
 #define BCM_DCB		1
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,27))
+#if (LINUX_PRE_VERSION(2,6,27))
 static inline void ethtool_cmd_speed_set(struct ethtool_cmd *ep,
 					 __u32 speed)
 {
@@ -1491,6 +1545,10 @@ static inline __u32 ethtool_cmd_speed(struct ethtool_cmd *ep)
 #define SUPPORTED_20000baseKR2_Full	(1 << 22)
 #endif
 
+#ifndef ADVERTISED_20000baseKR2_Full
+#define ADVERTISED_20000baseKR2_Full	(1 << 22)
+#endif
+
 #ifndef MDIO_PMA_LASI_RXCTRL
 #define	MDIO_PMA_LASI_RXCTRL	0x9000
 #endif
@@ -1519,8 +1577,7 @@ static inline __u32 ethtool_cmd_speed(struct ethtool_cmd *ep)
 #define rcu_dereference_protected(p, c) (p)
 #endif
 
-#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2,6,38)) && defined(BNX2X_MULTI_QUEUE)) && \
-	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,2))
+#if (LINUX_PRE_VERSION(2, 6, 38) && defined(BNX2X_MULTI_QUEUE) && NOT_RHEL_OR_PRE_VERSION(6,2))
 /* Older kernels do not support different amount of mqs.
  * Only txqs is used for TX structure allocation.
  */
@@ -1532,7 +1589,7 @@ static inline struct net_device *alloc_etherdev_mqs(int sizeof_priv,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27)) && !defined(__VMKLNX__)
+#if (LINUX_PRE_VERSION(2, 6, 27)) && !defined(__VMKLNX__)
 struct netdev_queue { };
 static inline struct netdev_queue *netdev_get_tx_queue(struct net_device *dev,
 						       int q)
@@ -1541,8 +1598,7 @@ static inline struct netdev_queue *netdev_get_tx_queue(struct net_device *dev,
 }
 #endif
 
-#if (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,1)) && \
-	(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39))
+#if (NOT_RHEL_OR_PRE_VERSION(6,1) && LINUX_PRE_VERSION(2,6,39))
 /* older kernels do not support the interface for multiple queues
  * for traffic classes
  */
@@ -1554,16 +1610,14 @@ static inline int netdev_get_num_tc(struct net_device *dev) { return 0; }
 static inline int netdev_set_prio_tc_map(struct net_device *dev, u8 prio, u8 tc) {return 0; }
 #endif
 
-#if (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5,8)) && \
-	(LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33)) && \
-	(!defined(DEBIAN_MERGED_PCI_CODE))
+#if (NOT_RHEL_OR_PRE_VERSION(5,8) && LINUX_PRE_VERSION(2,6,33) && !defined(DEBIAN_MERGED_PCI_CODE))
 static inline int pci_pcie_cap(struct pci_dev *dev)
 {
 	return pci_find_capability(dev, PCI_CAP_ID_EXP);
 }
 #endif
 
-#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,33))) || \
+#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2,6,33))) || \
 	(defined(RHEL_RELEASE_CODE) && \
 		(((RHEL_MAJOR == 6) && (RHEL_MINOR < 1)) || \
 		 ((RHEL_MAJOR == 5) && (RHEL_MINOR < 8)) || \
@@ -1578,9 +1632,7 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #define RCU_INIT_POINTER(ptr, val)  rcu_assign_pointer(ptr, val)
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 1, 0)) && \
-	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,2)) && \
-	(!defined(SLES_DISTRO) || (SLES_DISTRO != 0x1102))
+#if (LINUX_PRE_VERSION(3, 1, 0) && NOT_RHEL_OR_PRE_VERSION(6,2) && NOT_SLES_OR_PRE_VERSION(SLES11_SP2))
 #ifndef DCB_CMD_CEE_GET
 #define DCB_CMD_CEE_GET (-1) /* invalid value */
 #endif
@@ -1591,8 +1643,7 @@ static inline int dcbnl_cee_notify(struct net_device *dev, int event, int cmd,
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 2, 0)) && \
-	(!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 3))
+#if (LINUX_PRE_VERSION(3, 2, 0) && NOT_RHEL_OR_PRE_VERSION(6, 3) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3))
 static inline struct page *skb_frag_page(const skb_frag_t *frag)
 {
 	return frag->page;
@@ -1608,14 +1659,14 @@ static inline dma_addr_t skb_frag_dma_map(struct device *dev,
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || \
-	(defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6, 2))
+#if (LINUX_STARTING_AT_VERSION(3, 0, 0) || RHEL_STARTING_AT_VERSION(6, 2))
 #define  DCB_CEE_SUPPORT 1
 #endif
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0))
+#if (LINUX_PRE_VERSION(3, 3, 0))
 #define netdev_features_t u32
 
-#if (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4))
+#if NOT_SLES_OR_PRE_VERSION(SLES11_SP3)
+#if NOT_RHEL_OR_PRE_VERSION(6, 4)
 static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
 {
 	return index % n_rx_rings;
@@ -1627,12 +1678,20 @@ static inline void netdev_tx_reset_queue(struct netdev_queue *q) { }
 static inline void netdev_tx_sent_queue(struct netdev_queue *q,
 					unsigned int len) { }
 #endif
+#endif
 
 #ifndef eth_hw_addr_random
 #define eth_hw_addr_random(dev) random_ether_addr(dev->dev_addr)
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 14))
+#if defined(_DEFINE_ETH_ZERO_ADDR_)
+static inline void eth_zero_addr(u8 *addr)
+{
+	memset(addr, 0x00, ETH_ALEN);
+}
+#endif
+
+#if LINUX_PRE_VERSION(2, 6, 14)
 static inline void
 pci_intx(struct pci_dev *pdev, int enable)
 {
@@ -1696,32 +1755,33 @@ static inline void bnx2x_msix_set_enable(struct pci_dev *dev, int enable)
 #define	ETH_TEST_FL_EXTERNAL_LB_DONE	(1 << 3)
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 36) && (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4)))
+#if (LINUX_PRE_VERSION(2, 6, 36) && (NOT_RHEL_OR_PRE_VERSION(6, 4)))
 static inline void skb_tx_timestamp(struct sk_buff *skb)
 {
 	return;
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 2, 0))
+#if (LINUX_PRE_VERSION(3, 2, 0))
 #define skb_frag_size(frag) ((frag)->size)
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 6, 0) && (!defined(RHEL_RELEASE_CODE) || RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6, 4)))
+#if (LINUX_PRE_VERSION(3, 6, 0) && (NOT_RHEL_OR_PRE_VERSION(6, 4))) &&\
+	NOT_SLES_OR_PRE_VERSION(SLES11_SP3)
 static inline int netif_get_num_default_rss_queues(void)
 {
 	return min_t(int, 8, num_online_cpus());
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 12))
+#if (LINUX_PRE_VERSION(2, 6, 12))
 static inline int is_zero_ether_addr(const u8 *addr)
 {
 	return !(addr[0] | addr[1] | addr[2] | addr[3] | addr[4] | addr[5]);
 }
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 12))
+#if (LINUX_PRE_VERSION(2, 6, 12))
 /**
  * mutex_is_locked - is the mutex locked
  * @lock: the mutex to be queried
@@ -1734,7 +1794,7 @@ static inline int mutex_is_locked(struct mutex *lock)
 }
 #endif
 
-#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 19) && \
+#if ((LINUX_PRE_VERSION(2, 6, 19) && \
 	!defined SLES_DISTRO && !defined(RHEL_RELEASE_CODE)) || \
 	defined(RHEL_RELEASE_CODE) && (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5, 2)))
 static inline struct pci_dev *pci_get_bus_and_slot(unsigned int bus,
@@ -1742,25 +1802,31 @@ static inline struct pci_dev *pci_get_bus_and_slot(unsigned int bus,
 { return NULL; }
 #endif
 
-#if ((LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 30) && !defined(RHEL_RELEASE_CODE)) ||\
+#if ((LINUX_PRE_VERSION(2, 6, 30) && !defined(RHEL_RELEASE_CODE)) ||\
 	(defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(5, 4)))
 static inline int pci_enable_sriov(struct pci_dev *dev, int nr_virtfn) {return 0; }
 static inline void pci_disable_sriov(struct pci_dev *dev) { }
 #endif
 
+/* RH4.8 contains the prototype of pci_find_ext_capability but not the
+ * implementation, so had to resort to ugly preprocessing...
+ */
+#if (defined(RHEL_RELEASE_CODE) && RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(4, 9))
+#define pci_find_ext_capability dummy_find_ext_cap
+static inline int dummy_find_ext_cap(struct pci_dev *dev, int cap) {return 0;}
+#endif
 #if (defined(SLES_DISTRO) && (SLES_DISTRO < 0x1005))
 static inline int pci_find_ext_capability(struct pci_dev *dev, int cap) {return 0; }
 #define bnx2x_pci_find_ext_capability(dev, cap) \
 	pci_find_ext_capability(dev, cap)
-#elif defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 50000)
+#elif ESX_STARTING_AT(50000)
 
 #define PCI_CFG_SPACE_SIZE      256
 #define PCI_CFG_SPACE_EXP_SIZE  4096
 
 int bnx2x_vmk_pci_find_ext_capability(struct pci_dev *dev, int cap);
 
-#define pci_enable_sriov(pdev, x) vmklnx_enable_vfs(pdev, x, \
-						    NULL, NULL);
+#define pci_enable_sriov(pdev, x) (vmklnx_enable_vfs(pdev, x, NULL, NULL) != (x) ? -ENOTSUPP : 0)
 
 #define pci_disable_sriov(pdev) vmklnx_disable_vfs(pdev, \
 					(BP_VFDB(bp)->sriov.nr_virtfn), \
@@ -1788,8 +1854,7 @@ int bnx2x_vmk_pci_find_ext_capability(struct pci_dev *dev, int cap);
 #define bnx2x_vf_is_pcie_pending(bp, abs_vfid) \
 				bnx2x_vmk_vf_is_pcie_pending(bp, abs_vfid)
 
-
-#elif defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION < 50000)
+#elif ESX_PRE(50000)
 
 static inline int bnx2x_pci_find_ext_capability(struct pci_dev *dev, int cap) {return 0; }
 
@@ -1799,7 +1864,7 @@ static inline int bnx2x_pci_find_ext_capability(struct pci_dev *dev, int cap) {r
 
 #endif
 
-#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 50000) /* ! BNX2X_UPSTREAM */
+#if ESX_STARTING_AT(50000)
 #define bnx2x_open_epilog(bp)	bnx2x_vmk_open_epilog(bp)
 #endif
 
@@ -1820,7 +1885,7 @@ static inline int bnx2x_pci_find_ext_capability(struct pci_dev *dev, int cap) {r
 	(config_enabled(option) || config_enabled(option##_MODULE))
 #endif
 
-#if LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 14) && !defined(RHEL_RELEASE_CODE)
+#if LINUX_PRE_VERSION(2, 6, 14) && !defined(RHEL_RELEASE_CODE)
 /**
  * kzalloc - allocate memory. The memory is set to zero.
  * @size: how many bytes of memory are required.
@@ -1848,8 +1913,113 @@ static inline void *kzalloc(size_t size, unsigned int flags)
 #define system_state		SYSTEM_POWER_OFF
 #endif /* __VMKLNX__ */
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 7, 0))
+#if defined(_DEFINE_PCIE_CAPABILITY_READ_WORD_)
+static inline int pcie_capability_read_word(struct pci_dev *dev,
+					    int pos, u16 *val)
+{
+	return pci_read_config_word(dev, pci_pcie_cap(dev) + pos, val);
+}
+#endif /*LINUX_PRE_VERSION(3, 7, 0)*/
+
+#ifndef aligned_u64
+#define aligned_u64 __u64 __attribute__((aligned(8)))
+#endif
+
+/* RHEL did not port ENCAPSULATION infrastucture */
+#if (defined(NETIF_F_GSO_GRE) && !defined(RHEL_RELEASE_CODE))
+#define ENC_SUPPORTED 1
+#elif ESX_STARTING_AT(55000)
+#include <net/encap_offload.h>
+#define IS_ENCAP(skb) (vmklnx_skb_encap_present(skb) && \
+			 (skb->ip_summed == CHECKSUM_HW_ENCAP))
+#define skb_inner_network_header esx_skb_inner_network_header
+#define skb_inner_transport_header esx_skb_inner_transport_header
+#define inner_tcp_hdrlen esx_inner_tcp_hdrlen
+#define inner_ipv6_hdr esx_inner_ipv6_hdr
+#define inner_ip_hdr esx_inner_ip_hdr
+#define inner_tcp_hdr esx_inner_tcp_hdr
+
+static inline unsigned char *esx_skb_inner_network_header(
+					const struct sk_buff *skb)
+{
+	return skb->head + vmklnx_skb_encap_get_inner_ip_hdr_offset(skb);
+}
+
+static inline unsigned char *esx_skb_inner_transport_header(
+					const struct sk_buff *skb)
+{
+	return skb->head + vmklnx_skb_encap_get_inner_l4_hdr_offset(skb);
+}
+
+static inline struct tcphdr *esx_inner_tcp_hdr(const struct sk_buff *skb)
+{
+	return (struct tcphdr *)esx_skb_inner_transport_header(skb);
+}
+
+static inline unsigned int esx_inner_tcp_hdrlen(const struct sk_buff *skb)
+{
+	return esx_inner_tcp_hdr(skb)->doff * 4;
+}
+
+static inline struct ipv6hdr *esx_inner_ipv6_hdr(const struct sk_buff *skb)
+{
+	return (struct ipv6hdr *)esx_skb_inner_network_header(skb);
+}
+
+static inline struct iphdr *esx_inner_ip_hdr(const struct sk_buff *skb)
+{
+	return (struct iphdr *)esx_skb_inner_network_header(skb);
+}
+#else
+#ifndef NETIF_F_GSO_GRE
+#define NETIF_F_GSO_GRE		0
+#endif
+#define skb_inner_network_header skb_network_header
+#define skb_inner_transport_header skb_transport_header
+#define inner_tcp_hdrlen tcp_hdrlen
+
+#if LINUX_PRE_VERSION(3, 8, 0)
+static inline struct ipv6hdr *inner_ipv6_hdr(const struct sk_buff *skb)
+{
+	return (struct ipv6hdr *)skb_inner_network_header(skb);
+}
+
+static inline struct iphdr *inner_ip_hdr(const struct sk_buff *skb)
+{
+	return (struct iphdr *)skb_inner_network_header(skb);
+}
+
+static inline struct tcphdr *inner_tcp_hdr(const struct sk_buff *skb)
+{
+	return (struct tcphdr *)skb_transport_header(skb);
+}
+#endif /* LINUX_PRE_VERSION(3, 8, 0) */
+#endif /* NETIF_F_GSO_GRE */
+
+#ifndef NETIF_F_GSO_UDP_TUNNEL
+#define NETIF_F_GSO_UDP_TUNNEL 0
+#endif
+
+#if (LINUX_PRE_VERSION(2, 6, 33)) && !defined(__VMKLNX__)
+#define pci_wake_from_d3(dev, enable)	pci_enable_wake(dev, PCI_D3hot, enable)
+#endif
+
+#if (LINUX_STARTING_AT_VERSION(3, 7, 0))
+#undef __devinit
+#define __devinit
+#undef __devexit
+#define __devexit
+#undef __devinitdata
+#define __devinitdata
+#undef __devexit_p
+#define __devexit_p(val)	val
+#endif
+
+#if (LINUX_PRE_VERSION(3, 8, 0))
 #ifndef _HAVE_ARCH_IPV6_CSUM
+#if ((defined(RHEL_RELEASE_CODE) && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6, 0))) || (defined(SLES_DISTRO) && (SLES_DISTRO > SLES11_SP1)))
+#include <net/ip6_checksum.h>
+#else
 static inline __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
 					  const struct in6_addr *daddr,
 					  __u32 len, unsigned short proto,
@@ -1905,9 +2075,9 @@ static inline __sum16 csum_ipv6_magic(const struct in6_addr *saddr,
 
 	return csum_fold((__force __wsum)sum);
 }
-
 #endif
-
+#endif
+#if defined(_DEFINE_TCP_V6_CHECK_)
 static inline __sum16 tcp_v6_check(int len,
 					struct in6_addr *saddr,
 					struct in6_addr *daddr,
@@ -1915,11 +2085,346 @@ static inline __sum16 tcp_v6_check(int len,
 {
 	return csum_ipv6_magic(saddr, daddr, len, IPPROTO_TCP, base);
 }
-
+#endif
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 21))
+#if (LINUX_STARTING_AT_VERSION(2, 6, 21))
 #define TCP_V4_CHECK_NEW
+#endif
+
+#ifndef CONFIG_BNX2X_SRIOV
+#define CONFIG_BNX2X_SRIOV
+#endif
+
+#if RHEL_PRE_VERSION(6, 0) || \
+    SLES_PRE_VERSION(SLES11_SP2) || \
+    (0 < XENSERVER_DISTRO && XENSERVER_DISTRO < XENSERVER_VERSION(6, 1, 0)) || \
+    (!(defined(RHEL_RELEASE_CODE) || defined(SLES_DISTRO) || 0 < XENSERVER_DISTRO) && \
+     (LINUX_PRE_VERSION(2, 6, 34)))
+struct ifla_vf_info {
+	__u32 vf;
+	__u8 mac[32];
+	__u32 vlan;
+	__u32 qos;
+	__u32 tx_rate;
+};
+#endif
+
+#if (LINUX_STARTING_AT_VERSION(3, 3, 0))
+#define BCM_HAS_BUILD_SKB 1
+#if (LINUX_STARTING_AT_VERSION(3, 5, 0))
+#define BCM_HAS_BUILD_SKB_V2 1
+#endif
+#endif
+
+#ifndef NETIF_F_HW_VLAN_CTAG_RX
+#define NETIF_F_HW_VLAN_CTAG_RX	NETIF_F_HW_VLAN_RX
+#endif
+
+#ifndef NETIF_F_HW_VLAN_CTAG_TX
+#define NETIF_F_HW_VLAN_CTAG_TX	NETIF_F_HW_VLAN_TX
+#endif
+
+#if defined(_DEFINE_PRANDOM_BYTES_)
+static inline void prandom_bytes(void *buf, int bytes)
+{
+	int i;
+
+	for (i = 0; i < bytes / 4; i ++)
+		((u32*)buf)[i] = random32();
+
+}
+#endif
+
+#ifndef NAPI_POLL_WEIGHT
+#define NAPI_POLL_WEIGHT 64
+#endif
+
+#if ((!defined(RHEL_RELEASE_CODE) && (LINUX_PRE_VERSION(2, 6, 37))) || \
+	(defined(RHEL_RELEASE_CODE) && \
+		(((RHEL_MAJOR == 6) && (RHEL_MINOR < 1)) || \
+		 ((RHEL_MAJOR == 5) && (RHEL_MINOR < 7)) || \
+		  (RHEL_MAJOR < 5))))
+/**
+ * vzalloc - allocate memory. The memory is set to zero.
+ * @size: how many bytes of memory are required.
+ */
+static inline void *vzalloc(size_t size)
+{
+	void *ret = vmalloc(size);
+	if (ret)
+		memset(ret, 0, size);
+	return ret;
+}
+#endif
+
+#ifndef IFF_UNICAST_FLT
+#define IFF_UNICAST_FLT	0x20000
+#endif
+
+/* ESX / bnx2x queue loop difference */
+#if !defined(__VMKLNX__)
+#define for_each_eth_queue_(bp, var)	for_each_eth_queue(bp, var)
+#define for_each_tx_queue_(bp, var)	for_each_tx_queue(bp, var)
+#define for_each_rx_queue_(bp, var)	for_each_rx_queue(bp, var)
+#define for_each_nondefault_eth_queue_(bp, var) \
+	for_each_nondefault_eth_queue(bp, var)
+#define _STAEU	static
+#endif
+
+#if (LINUX_STARTING_AT_VERSION(2, 6, 34)) || \
+    RHEL_STARTING_AT_VERSION(6, 1) || \
+    SLES_STARTING_AT_VERSION(SLES11_SP2) || \
+    (0 < XENSERVER_DISTRO && (XENSERVER_DISTRO >= XENSERVER_VERSION(6, 1, 0)))
+#define BNX2X_COMPAT_VF_NDO /* BNX2X_UPSTREAM */
+#endif
+
+#if (LINUX_STARTING_AT_VERSION(3, 9, 0))
+#define BNX2X_COMPAT_NETDEV_PICK_TX
+#endif
+
+#if (defined(CONFIG_PCI_IOV) && ((LINUX_STARTING_AT_VERSION(3, 2, 0))  || \
+				 RHEL_STARTING_AT_VERSION(6, 3) || \
+				 SLES_STARTING_AT_VERSION(SLES11_SP3)))
+int bnx2x_get_vf_pci_id(struct pci_dev *dev);
+
+static inline int pci_vfs_assigned(struct pci_dev *dev)
+{
+	unsigned int vfs_assigned = 0;
+	struct pci_dev *vfdev;
+	u16 dev_id = bnx2x_get_vf_pci_id(dev);
+
+	/* only search if we are a PF */
+	if (!dev->is_physfn)
+		return 0;
+
+	/* loop through all the VFs to see if we own any that are assigned */
+	vfdev = pci_get_device(dev->vendor, dev_id, NULL);
+	while (vfdev) {
+		/* if we don't own it we don't care */
+		if ((vfdev->is_virtfn && vfdev->physfn == dev) &&
+		    (vfdev->dev_flags & PCI_DEV_FLAGS_ASSIGNED))
+			vfs_assigned++;
+
+		vfdev = pci_get_device(dev->vendor, dev_id, vfdev);
+	}
+
+	return vfs_assigned;
+}
+#elif defined(__VMKLNX__)
+static inline int pci_vfs_assigned(struct pci_dev *dev)
+{
+	return 0; /*  vmkernel will prevent unload if VF is in use */
+}
+#else /* PCI_DEV_FLAGS_ASSIGNED */
+static inline int pci_vfs_assigned(struct pci_dev *dev)
+{
+	return 1; /* try to avoid system crash */
+}
+#endif /* PCI_DEV_FLAGS_ASSIGNED */
+
+#if (LINUX_PRE_VERSION(2, 6, 26))
+#include <linux/sched.h>
+#include <linux/jiffies.h>
+#include <asm/semaphore.h>
+static inline int down_timeout(struct semaphore *sem, unsigned long wait)
+{
+	unsigned long target = jiffies + wait;
+	int result = down_trylock(sem);
+
+	while (time_after(jiffies, target) && result != 0) {
+#if (LINUX_PRE_VERSION(2, 6, 14))
+		set_current_state(TASK_INTERRUPTIBLE);
+		schedule_timeout(1);
+#else
+		schedule_timeout_interruptible(1);
+#endif
+		result = down_trylock(sem);
+	}
+	return result;
+}
+#endif /* KERNEL_VERSION(2, 6, 26) */
+
+#if (LINUX_PRE_VERSION(3, 12, 0))
+
+#if LINUX_PRE_VERSION(2, 6, 19)
+enum pcie_link_width {
+	PCIE_LNK_WIDTH_RESRV	= 0x00,
+	PCIE_LNK_X1		= 0x01,
+	PCIE_LNK_X2		= 0x02,
+	PCIE_LNK_X4		= 0x04,
+	PCIE_LNK_X8		= 0x08,
+	PCIE_LNK_X12		= 0x0C,
+	PCIE_LNK_X16		= 0x10,
+	PCIE_LNK_X32		= 0x20,
+	PCIE_LNK_WIDTH_UNKNOWN  = 0xFF,
+};
+#endif
+
+#if LINUX_PRE_VERSION(2, 6, 34)
+#if LINUX_STARTING_AT_VERSION(2, 6, 19) || XENSERVER_DISTRO
+#define PCIE_SPEED_2_5GT 0x14
+#define PCIE_SPEED_5_0GT 0x15
+#define PCIE_SPEED_8_0GT 0x16
+#elif NOT_SLES_OR_PRE_VERSION(SLES11)
+enum pci_bus_speed {
+	PCI_SPEED_33MHz			= 0x00,
+	PCI_SPEED_66MHz			= 0x01,
+	PCI_SPEED_66MHz_PCIX		= 0x02,
+	PCI_SPEED_100MHz_PCIX		= 0x03,
+	PCI_SPEED_133MHz_PCIX		= 0x04,
+	PCI_SPEED_66MHz_PCIX_ECC	= 0x05,
+	PCI_SPEED_100MHz_PCIX_ECC	= 0x06,
+	PCI_SPEED_133MHz_PCIX_ECC	= 0x07,
+	PCI_SPEED_66MHz_PCIX_266	= 0x09,
+	PCI_SPEED_100MHz_PCIX_266	= 0x0a,
+	PCI_SPEED_133MHz_PCIX_266	= 0x0b,
+	AGP_UNKNOWN			= 0x0c,
+	AGP_1X				= 0x0d,
+	AGP_2X				= 0x0e,
+	AGP_4X				= 0x0f,
+	AGP_8X				= 0x10,
+	PCI_SPEED_66MHz_PCIX_533	= 0x11,
+	PCI_SPEED_100MHz_PCIX_533	= 0x12,
+	PCI_SPEED_133MHz_PCIX_533	= 0x13,
+	PCIE_SPEED_2_5GT		= 0x14,
+	PCIE_SPEED_5_0GT		= 0x15,
+	PCIE_SPEED_8_0GT		= 0x16,
+	PCI_SPEED_UNKNOWN		= 0xff,
+};
+#endif
+#endif
+
+#define PCICFG_LINK_CONTROL		0xbc
+#define PCICFG_LINK_WIDTH		0x1f00000
+#define PCICFG_LINK_WIDTH_SHIFT		20
+#define PCICFG_LINK_SPEED		0xf0000
+#define PCICFG_LINK_SPEED_SHIFT		16
+
+static inline int __devinit pcie_get_minimum_link(struct pci_dev *pdev,
+						  enum pci_bus_speed *speed,
+						  enum pcie_link_width *width)
+
+{
+	u32 link_speed, val = 0;
+
+	pci_read_config_dword(pdev, PCICFG_LINK_CONTROL, &val);
+	*width = (enum pcie_link_width)
+		  ((val & PCICFG_LINK_WIDTH) >> PCICFG_LINK_WIDTH_SHIFT);
+
+	link_speed = (val & PCICFG_LINK_SPEED) >> PCICFG_LINK_SPEED_SHIFT;
+
+	switch (link_speed) {
+	case 3:
+		*speed = PCIE_SPEED_8_0GT;
+		break;
+	case 2:
+		*speed = PCIE_SPEED_5_0GT;
+		break;
+	default:
+		*speed = PCIE_SPEED_2_5GT;
+	}
+
+	return 0;
+}
+#endif
+
+#if LINUX_PRE_VERSION(2, 6, 14) && !defined(RHEL_RELEASE_CODE)
+typedef unsigned __bitwise gfp_t;
+#endif
+
+#if LINUX_PRE_VERSION(3, 2, 0) && NOT_RHEL_OR_PRE_VERSION(6, 4)
+#define gfp_t unsigned
+static inline void *dma_zalloc_coherent(struct device *dev, size_t size,
+					dma_addr_t *dma_handle, gfp_t flag)
+{
+	void *ret = dma_alloc_coherent(dev, size, dma_handle, flag);
+
+	if(ret)
+		memset(ret, 0, size);
+	return ret;
+}
+#endif
+
+#if LINUX_STARTING_AT_VERSION(2, 6, 27)
+#define BNX2X_MAC_FMT		"%pM"
+#define BNX2X_MAC_PRN_LIST(mac)	(mac)
+#else
+#define BNX2X_MAC_FMT		"%02x:%02x:%02x:%02x:%02x:%02x"
+#define BNX2X_MAC_PRN_LIST(mac)	(mac)[0], (mac)[1], (mac)[2], (mac)[3], \
+				(mac)[4], (mac)[5]
+#endif
+
+/* Defines which should be removed by flavouring script */
+#define _UP_UINT2INT uint /* int on upstream flavour */
+#define _UP_STATIC /* Static on upstream flavour */
+#define _UP_CONST /* const on upstream flavour */
+
+#if defined(_DEFINE_PCIE_WAIT_PEND_TRANS_)
+static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
+{
+	int i;
+	u16 status;
+
+	/* Wait for Transaction Pending bit clean */
+	for (i = 0; i < 4; i++) {
+		if (i)
+			msleep((1 << (i - 1)) * 100);
+
+		pcie_capability_read_word(dev, PCI_EXP_DEVSTA, &status);
+		if (!(status & PCI_EXP_DEVSTA_TRPND))
+			return 1;
+	}
+
+	return 0;
+}
+#endif
+
+#if LINUX_STARTING_AT_VERSION(2, 6, 27) /* BNX2X_UPSTREAM */
+#define BNX2X_PM_CAP(bp)		(bp)->pdev->pm_cap
+#define BNX2X_PDEV_PM_CAP(bp, pdev)	(pdev)->pm_cap
+#else
+#define BNX2X_PM_CAP_LEGACY
+#define BNX2X_PM_CAP(bp)		(bp)->pm_cap
+#define BNX2X_PDEV_PM_CAP(bp, pdev)	(bp)->pm_cap
+#endif
+
+#if LINUX_STARTING_AT_VERSION(3, 10, 0) /* BNX2X_UPSTREAM */
+#define BNX2X_PDEV_MSIX_CAP(pdev, pos)	(pdev)->msix_cap
+#else
+#define BNX2X_MSIX_CAP_LEGACY
+#define BNX2X_PDEV_MSIX_CAP(pdev, pos)	(pos)
+#endif
+
+#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
+#define PRINT_ENUM_ACCESS(p_enum, state)	(state)
+#define PRINT_ENUM_STRING				"%d"
+#else
+#define PRINT_ENUM_ACCESS(p_enum, state)	(p_enum[state])
+#define PRINT_ENUM_STRING				"%s"
+#endif
+
+#if (LINUX_STARTING_AT_VERSION(2, 6, 29) || RHEL_STARTING_AT_VERSION(5, 5))
+#define SUPPORT_PCIE_ARI_CHECK
+#endif
+
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+#define ESX_CHK_VF_COUNT_RTNL(bp, msg) \
+	do { \
+		if (bnx2x_esx_check_active_vf_count(bp, msg) > 0) { \
+			rtnl_unlock();\
+			return; \
+		} \
+	} while (0)
+#define ESX_CHK_VF_COUNT(bp, msg) \
+	do { \
+		if (bnx2x_esx_check_active_vf_count(bp, msg) > 0) { \
+			return -EINVAL; \
+		} \
+	} while (0)
+#else
+#define ESX_CHK_VF_COUNT(bp, msg)
+#define ESX_CHK_VF_COUNT_RTNL(bp, msg)
 #endif
 
 #endif /* __BNX2X_COMPAT_H__ */

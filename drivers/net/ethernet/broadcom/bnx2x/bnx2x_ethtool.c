@@ -18,24 +18,25 @@
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 #include <linux/version.h>
 #endif
-#if (LINUX_VERSION_CODE > 0x02060f) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 15)) /* BNX2X_UPSTREAM */
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #endif
 
+#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
+#include <linux/ethtool.h>
+#include <linux/netdevice.h>
+#include <linux/types.h>
+#else
 #include <linux/netdevice.h>
 #include <linux/types.h>
 #include <linux/ethtool.h>
+#endif
 #include <linux/sched.h>
 #include <linux/crc32.h>
 #include "bnx2x.h"
 #include "bnx2x_cmn.h"
-#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
-
-#endif
 #include "bnx2x_dump.h"
 #include "bnx2x_init.h"
-
-
 
 /* Note: in the format strings below %s is replaced by the queue-name which is
  * either its index or 'fcoe' for the fcoe queue. Make sure the format string
@@ -75,7 +76,6 @@ static const struct {
 	{ Q_STATS_OFFSET32(total_tpa_bytes_hi),	8, "[%s]: tpa_bytes"},
 	{ Q_STATS_OFFSET32(driver_filtered_tx_pkt),
 					4, "[%s]: driver_filtered_tx_pkt" }
-
 };
 
 #define BNX2X_NUM_Q_STATS ARRAY_SIZE(bnx2x_q_stats_arr)
@@ -255,6 +255,7 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	if ((bp->state == BNX2X_STATE_OPEN) && bp->link_vars.link_up &&
 	    !(bp->flags & MF_FUNC_DIS)) {
 		cmd->duplex = bp->link_vars.duplex;
+
 		if (IS_MF(bp) && !BP_NOMCP(bp))
 			ethtool_cmd_speed_set(cmd, bnx2x_get_mf_speed(bp));
 		else
@@ -274,7 +275,7 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	else
 		cmd->autoneg = AUTONEG_DISABLE;
 
-#if (LINUX_VERSION_CODE >= 0x02061f) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 31)) /* BNX2X_UPSTREAM */
 	/* Publish LP advertised speeds and FC */
 	if (bp->link_vars.link_status & LINK_STATUS_AUTO_NEGOTIATE_COMPLETE) {
 		u32 status = bp->link_vars.link_status;
@@ -301,6 +302,8 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 			cmd->lp_advertising |= ADVERTISED_2500baseX_Full;
 		if (status & LINK_STATUS_LINK_PARTNER_10GXFD_CAPABLE)
 			cmd->lp_advertising |= ADVERTISED_10000baseT_Full;
+		if (status & LINK_STATUS_LINK_PARTNER_20GXFD_CAPABLE)
+			cmd->lp_advertising |= ADVERTISED_20000baseKR2_Full;
 	}
 #endif
 
@@ -484,6 +487,10 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 						ADVERTISED_10000baseKR_Full))
 				bp->link_params.speed_cap_mask[cfg_idx] |=
 					PORT_HW_CFG_SPEED_CAPABILITY_D0_10G;
+
+			if (cmd->advertising & ADVERTISED_20000baseKR2_Full)
+				bp->link_params.speed_cap_mask[cfg_idx] |=
+					PORT_HW_CFG_SPEED_CAPABILITY_D0_20G;
 		}
 	} else { /* forced speed */
 		/* advertise the requested speed and duplex if supported */
@@ -649,10 +656,13 @@ static int __bnx2x_get_regs_len(struct bnx2x *bp)
 	return regdump_len;
 }
 
-static int bnx2x_get_regs_len(struct net_device *dev)
+_UP_STATIC int bnx2x_get_regs_len(struct net_device *dev)
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	int regdump_len = 0;
+
+	if (IS_VF(bp))
+		return 0;
 
 	regdump_len = __bnx2x_get_regs_len(bp);
 	regdump_len *= 4;
@@ -748,7 +758,6 @@ static bool bnx2x_is_reg_in_chip(struct bnx2x *bp,
 		return false;
 }
 
-
 static bool bnx2x_is_wreg_in_chip(struct bnx2x *bp,
 	const struct wreg_addr *wreg_info)
 {
@@ -772,11 +781,10 @@ static bool bnx2x_is_wreg_in_chip(struct bnx2x *bp,
  * @bp		device handle
  * @p		output buffer
  *
- * Reads "paged" memories: memories that may only be read by
- * first writing to a specific address ("write address") and
- * then reading from a specific address ("read address"). There
- * may be more than one write address per "page" and more than
- * one read address per write address.
+ * Reads "paged" memories: memories that may only be read by first writing to a
+ * specific address ("write address") and then reading from a specific address
+ * ("read address"). There may be more than one write address per "page" and
+ * more than one read address per write address.
  */
 static void bnx2x_read_pages_regs(struct bnx2x *bp, u32 *p, u32 preset)
 {
@@ -818,6 +826,7 @@ static int __bnx2x_get_preset_regs(struct bnx2x *bp, u32 *p, u32 preset)
 {
 	u32 i, j, addr;
 	const struct wreg_addr *wreg_addr_p = NULL;
+
 	if (CHIP_IS_E1(bp))
 		wreg_addr_p = &wreg_addr_e1;
 	else if (CHIP_IS_E1H(bp))
@@ -838,7 +847,6 @@ static int __bnx2x_get_preset_regs(struct bnx2x *bp, u32 *p, u32 preset)
 		}
 	}
 
-
 	/* Read the regular registers */
 	for (i = 0; i < REGS_COUNT; i++) {
 		if (bnx2x_is_reg_in_chip(bp, &reg_addrs[i]) &&
@@ -848,11 +856,9 @@ static int __bnx2x_get_preset_regs(struct bnx2x *bp, u32 *p, u32 preset)
 		}
 	}
 
-
 	/* Read the CAM registers */
 	if (bnx2x_is_wreg_in_chip(bp, wreg_addr_p) &&
 	    IS_REG_IN_PRESET(wreg_addr_p->presets, preset)) {
-
 		for (i = 0; i < wreg_addr_p->size; i++) {
 			*p++ = REG_RD(bp, wreg_addr_p->addr + i*4);
 
@@ -868,7 +874,7 @@ static int __bnx2x_get_preset_regs(struct bnx2x *bp, u32 *p, u32 preset)
 
 	/* Paged registers are supported in E2 & E3 only */
 	if (CHIP_IS_E2(bp) || CHIP_IS_E3(bp)) {
-		/* Read "paged" registes */
+		/* Read "paged" registers */
 		bnx2x_read_pages_regs(bp, p, preset);
 	}
 
@@ -892,34 +898,18 @@ static void __bnx2x_get_regs(struct bnx2x *bp, u32 *p)
 	}
 }
 
-static void bnx2x_get_regs(struct net_device *dev,
-			   struct ethtool_regs *regs, void *_p)
+void bnx2x_get_regs_buff(struct bnx2x *bp, u32 *p)
 {
-	u32 *p = _p;
-	struct bnx2x *bp = netdev_priv(dev);
 	struct dump_header dump_hdr = {0};
-
-	regs->version = 0;
-	memset(p, 0, regs->len);
 
 	if (!netif_running(bp->dev))
 		return;
-
 	/* Disable parity attentions as long as following dump may
 	 * cause false alarms by reading never written registers. We
 	 * will re-enable parity attentions right after the dump.
 	 */
 
-	/* Disable parity on path 0 */
-	bnx2x_pretend_func(bp, 0);
 	bnx2x_disable_blocks_parity(bp);
-
-	/* Disable parity on path 1 */
-	bnx2x_pretend_func(bp, 1);
-	bnx2x_disable_blocks_parity(bp);
-
-	/* Return to current function */
-	bnx2x_pretend_func(bp, BP_ABS_FUNC(bp));
 
 	dump_hdr.header_size = (sizeof(struct dump_header) / 4) - 1;
 	dump_hdr.preset = DUMP_ALL_PRESETS;
@@ -947,22 +937,34 @@ static void bnx2x_get_regs(struct net_device *dev,
 	/* Actually read the registers */
 	__bnx2x_get_regs(bp, p);
 
-	/* Re-enable parity attentions on path 0 */
-	bnx2x_pretend_func(bp, 0);
+	/* Re-enable parity attentions */
 	bnx2x_clear_blocks_parity(bp);
 	bnx2x_enable_blocks_parity(bp);
-
-	/* Re-enable parity attentions on path 1 */
-	bnx2x_pretend_func(bp, 1);
-	bnx2x_clear_blocks_parity(bp);
-	bnx2x_enable_blocks_parity(bp);
-
-	/* Return to current function */
-	bnx2x_pretend_func(bp, BP_ABS_FUNC(bp));
 }
 
-/* ethtool -w/-W only exists in kernel 3.0.0 and up */
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)
+static void bnx2x_get_regs(struct net_device *dev,
+			   struct ethtool_regs *regs, void *_p)
+{
+	u32 *p = _p;
+	struct bnx2x *bp = netdev_priv(dev);
+
+	regs->version = 2;
+	memset(p, 0, regs->len);
+
+	if (!netif_running(bp->dev))
+		return;
+
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+	if (atomic_read(&bp->dump_done)) {
+		memcpy(_p, bp->dump_buff, regs->len);
+		atomic_set(&bp->dump_done, 0);
+		return;
+	}
+#endif
+	bnx2x_get_regs_buff(bp, p);
+}
+
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) /* BNX2X_UPSTREAM */
 static int bnx2x_get_preset_regs_len(struct net_device *dev, u32 preset)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -980,6 +982,9 @@ static int bnx2x_set_dump(struct net_device *dev, struct ethtool_dump *val)
 	struct bnx2x *bp = netdev_priv(dev);
 
 	/* Use the ethtool_dump "flag" field as the dump preset index */
+	if (val->flag < 1 || val->flag > DUMP_MAX_PRESETS)
+		return -EINVAL;
+
 	bp->dump_preset_idx = val->flag;
 	return 0;
 }
@@ -989,12 +994,12 @@ static int bnx2x_get_dump_flag(struct net_device *dev,
 {
 	struct bnx2x *bp = netdev_priv(dev);
 
+	dump->version = BNX2X_DUMP_VERSION;
+	dump->flag = bp->dump_preset_idx;
 	/* Calculate the requested preset idx length */
 	dump->len = bnx2x_get_preset_regs_len(dev, bp->dump_preset_idx);
 	DP(BNX2X_MSG_ETHTOOL, "Get dump preset %d length=%d\n",
 	   bp->dump_preset_idx, dump->len);
-
-	dump->flag = ETHTOOL_GET_DUMP_DATA;
 	return 0;
 }
 
@@ -1005,24 +1010,13 @@ static int bnx2x_get_dump_data(struct net_device *dev,
 	u32 *p = buffer;
 	struct bnx2x *bp = netdev_priv(dev);
 	struct dump_header dump_hdr = {0};
-	memset(p, 0, dump->len);
-
 
 	/* Disable parity attentions as long as following dump may
 	 * cause false alarms by reading never written registers. We
 	 * will re-enable parity attentions right after the dump.
 	 */
 
-	/* Disable parity on path 0 */
-	bnx2x_pretend_func(bp, 0);
 	bnx2x_disable_blocks_parity(bp);
-
-	/* Disable parity on path 1 */
-	bnx2x_pretend_func(bp, 1);
-	bnx2x_disable_blocks_parity(bp);
-
-	/* Return to current function */
-	bnx2x_pretend_func(bp, BP_ABS_FUNC(bp));
 
 	dump_hdr.header_size = (sizeof(struct dump_header) / 4) - 1;
 	dump_hdr.preset = bp->dump_preset_idx;
@@ -1052,22 +1046,12 @@ static int bnx2x_get_dump_data(struct net_device *dev,
 	/* Actually read the registers */
 	__bnx2x_get_preset_regs(bp, p, dump_hdr.preset);
 
-	/* Re-enable parity attentions on path 0 */
-	bnx2x_pretend_func(bp, 0);
+	/* Re-enable parity attentions */
 	bnx2x_clear_blocks_parity(bp);
 	bnx2x_enable_blocks_parity(bp);
-
-	/* Re-enable parity attentions on path 1 */
-	bnx2x_pretend_func(bp, 1);
-	bnx2x_clear_blocks_parity(bp);
-	bnx2x_enable_blocks_parity(bp);
-
-	/* Return to current function */
-	bnx2x_pretend_func(bp, BP_ABS_FUNC(bp));
 
 	return 0;
 }
-
 #endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)*/
 
 static void bnx2x_get_drvinfo(struct net_device *dev,
@@ -1188,7 +1172,7 @@ static u32 bnx2x_get_link(struct net_device *dev)
 	return bp->link_vars.link_up;
 }
 
-#if (LINUX_VERSION_CODE >= 0x020418) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 24)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_eeprom_len(struct net_device *dev)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -1198,7 +1182,7 @@ static int bnx2x_get_eeprom_len(struct net_device *dev)
 #endif
 
 /* Per pf misc lock must be acquired before the per port mcp lock. Otherwise,
- * had we done things the other way around, if two pfs from the same port would
+ * HAD we done things the other way around, if two pfs from the same port would
  * attempt to access nvram at the same time, we could run into a scenario such
  * as:
  * pf A takes the port lock.
@@ -1208,13 +1192,18 @@ static int bnx2x_get_eeprom_len(struct net_device *dev)
  * Pf B takes the lock and proceeds to perform it's own access.
  * pf A unlocks the per port lock, while pf B is still working (!).
  * mcp takes the per port lock and corrupts pf B's access (and/or has it's own
- * access corrupted by pf B).*
+ * access corrupted by pf B)
  */
 static int bnx2x_acquire_nvram_lock(struct bnx2x *bp)
 {
 	int port = BP_PORT(bp);
 	int count, i;
+#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
+	u32 val;
+#else
+	/* Although unrequired, without this code won't compile on RHEL5.4 */
 	u32 val = 0;
+#endif
 
 	/* acquire HW lock: protect against other PFs in PF Direct Assignment */
 	bnx2x_acquire_hw_lock(bp, HW_LOCK_RESOURCE_NVRAM);
@@ -1249,7 +1238,11 @@ static int bnx2x_release_nvram_lock(struct bnx2x *bp)
 {
 	int port = BP_PORT(bp);
 	int count, i;
-	u32 val = 0;
+#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
+	u32 val;
+#else
+	u32 val = 0;/* old compilers need the assigment */
+#endif
 
 	/* adjust timeout for emulation/FPGA */
 	count = BNX2X_NVRAM_TIMEOUT_COUNT;
@@ -1406,17 +1399,35 @@ static int bnx2x_nvram_read(struct bnx2x *bp, u32 offset, u8 *ret_buf,
 	return rc;
 }
 
+static int bnx2x_nvram_read32(struct bnx2x *bp, u32 offset, u32 *buf,
+			      int buf_size)
+{
+	int rc;
+
+	rc = bnx2x_nvram_read(bp, offset, (u8 *)buf, buf_size);
+
+	if (!rc) {
+		__be32 *be = (__be32 *)buf;
+
+		while ((buf_size -= 4) >= 0)
+			*buf++ = be32_to_cpu(*be++);
+	}
+
+	return rc;
+}
+
 static bool bnx2x_is_nvm_accessible(struct bnx2x *bp)
 {
 	int rc = 1;
 	u16 pm = 0;
 	struct net_device *dev = pci_get_drvdata(bp->pdev);
 
-	if (bp->pm_cap)
+	if (BNX2X_PM_CAP(bp))
 		rc = pci_read_config_word(bp->pdev,
-					  bp->pm_cap + PCI_PM_CTRL, &pm);
+					  BNX2X_PM_CAP(bp) + PCI_PM_CTRL, &pm);
 
-	if ((rc && !netif_running(dev)) || (!rc && ((pm & PCI_D0) != PCI_D0)))
+	if ((rc && !netif_running(dev)) ||
+	    (!rc && ((pm & PCI_PM_CTRL_STATE_MASK) != (__force u16)PCI_D0)))
 		return false;
 
 	return true;
@@ -1426,11 +1437,10 @@ static int bnx2x_get_eeprom(struct net_device *dev,
 			    struct ethtool_eeprom *eeprom, u8 *eebuf)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int rc;
 
 	if (!bnx2x_is_nvm_accessible(bp)) {
-			DP(BNX2X_MSG_ETHTOOL  | BNX2X_MSG_NVM,
-			   "cannot access eeprom when the interface is down\n");
+		DP(BNX2X_MSG_ETHTOOL  | BNX2X_MSG_NVM,
+		   "cannot access eeprom when the interface is down\n");
 		return -EAGAIN;
 	}
 
@@ -1441,9 +1451,7 @@ static int bnx2x_get_eeprom(struct net_device *dev,
 
 	/* parameters already validated in ethtool_get_eeprom */
 
-	rc = bnx2x_nvram_read(bp, eeprom->offset, eebuf, eeprom->len);
-
-	return rc;
+	return bnx2x_nvram_read(bp, eeprom->offset, eebuf, eeprom->len);
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) /* BNX2X_UPSTREAM */
@@ -1452,10 +1460,9 @@ static int bnx2x_get_module_eeprom(struct net_device *dev,
 				   u8 *data)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int rc = 0, phy_idx;
+	int rc = -EINVAL, phy_idx;
 	u8 *user_data = data;
-	int remaining_len = ee->len, xfer_size;
-	unsigned int page_off = ee->offset;
+	unsigned int start_addr = ee->offset, xfer_size = 0;
 
 	if (!bnx2x_is_nvm_accessible(bp)) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
@@ -1464,21 +1471,52 @@ static int bnx2x_get_module_eeprom(struct net_device *dev,
 	}
 
 	phy_idx = bnx2x_get_cur_phy_idx(bp);
-	bnx2x_acquire_phy_lock(bp);
-	while (!rc && remaining_len > 0) {
-		xfer_size = (remaining_len > SFP_EEPROM_PAGE_SIZE) ?
-			SFP_EEPROM_PAGE_SIZE : remaining_len;
+
+	/* Read A0 section */
+	if (start_addr < ETH_MODULE_SFF_8079_LEN) {
+		/* Limit transfer size to the A0 section boundary */
+		if (start_addr + ee->len > ETH_MODULE_SFF_8079_LEN)
+			xfer_size = ETH_MODULE_SFF_8079_LEN - start_addr;
+		else
+			xfer_size = ee->len;
+		bnx2x_acquire_phy_lock(bp);
 		rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
 						  &bp->link_params,
-						  page_off,
+						  I2C_DEV_ADDR_A0,
+						  start_addr,
 						  xfer_size,
 						  user_data);
-		remaining_len -= xfer_size;
+		bnx2x_release_phy_lock(bp);
+		if (rc) {
+			DP(BNX2X_MSG_ETHTOOL, "Failed reading A0 section\n");
+
+			return -EINVAL;
+		}
 		user_data += xfer_size;
-		page_off += xfer_size;
+		start_addr += xfer_size;
 	}
 
-	bnx2x_release_phy_lock(bp);
+	/* Read A2 section */
+	if ((start_addr >= ETH_MODULE_SFF_8079_LEN) &&
+	    (start_addr < ETH_MODULE_SFF_8472_LEN)) {
+		xfer_size = ee->len - xfer_size;
+		/* Limit transfer size to the A2 section boundary */
+		if (start_addr + xfer_size > ETH_MODULE_SFF_8472_LEN)
+			xfer_size = ETH_MODULE_SFF_8472_LEN - start_addr;
+		start_addr -= ETH_MODULE_SFF_8079_LEN;
+		bnx2x_acquire_phy_lock(bp);
+		rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+						  &bp->link_params,
+						  I2C_DEV_ADDR_A2,
+						  start_addr,
+						  xfer_size,
+						  user_data);
+		bnx2x_release_phy_lock(bp);
+		if (rc) {
+			DP(BNX2X_MSG_ETHTOOL, "Failed reading A2 section\n");
+			return -EINVAL;
+		}
+	}
 	return rc;
 }
 
@@ -1486,25 +1524,50 @@ static int bnx2x_get_module_info(struct net_device *dev,
 				 struct ethtool_modinfo *modinfo)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int phy_idx;
+	int phy_idx, rc;
+	u8 sff8472_comp, diag_type;
 
 	if (!bnx2x_is_nvm_accessible(bp)) {
-		DP(BNX2X_MSG_ETHTOOL  | BNX2X_MSG_NVM,
+		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
 		   "cannot access eeprom when the interface is down\n");
 		return -EAGAIN;
 	}
-
 	phy_idx = bnx2x_get_cur_phy_idx(bp);
-	switch (bp->link_params.phy[phy_idx].media_type) {
-	case ETH_PHY_SFPP_10G_FIBER:
-	case ETH_PHY_SFP_1G_FIBER:
-	case ETH_PHY_DA_TWINAX:
+	bnx2x_acquire_phy_lock(bp);
+	rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+					  &bp->link_params,
+					  I2C_DEV_ADDR_A0,
+					  SFP_EEPROM_SFF_8472_COMP_ADDR,
+					  SFP_EEPROM_SFF_8472_COMP_SIZE,
+					  &sff8472_comp);
+	bnx2x_release_phy_lock(bp);
+	if (rc) {
+		DP(BNX2X_MSG_ETHTOOL, "Failed reading SFF-8472 comp field\n");
+		return -EINVAL;
+	}
+
+	bnx2x_acquire_phy_lock(bp);
+	rc = bnx2x_read_sfp_module_eeprom(&bp->link_params.phy[phy_idx],
+					  &bp->link_params,
+					  I2C_DEV_ADDR_A0,
+					  SFP_EEPROM_DIAG_TYPE_ADDR,
+					  SFP_EEPROM_DIAG_TYPE_SIZE,
+					  &diag_type);
+	bnx2x_release_phy_lock(bp);
+	if (rc) {
+		DP(BNX2X_MSG_ETHTOOL, "Failed reading Diag Type field\n");
+		return -EINVAL;
+	}
+
+	if (!sff8472_comp ||
+	    (diag_type & SFP_EEPROM_DIAG_ADDR_CHANGE_REQ)) {
 		modinfo->type = ETH_MODULE_SFF_8079;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
-		return 0;
-	default:
-		return -EOPNOTSUPP;
+	} else {
+		modinfo->type = ETH_MODULE_SFF_8472;
+		modinfo->eeprom_len = ETH_MODULE_SFF_8472_LEN;
 	}
+	return 0;
 }
 #endif
 
@@ -1557,9 +1620,8 @@ static int bnx2x_nvram_write1(struct bnx2x *bp, u32 offset, u8 *data_buf,
 			      int buf_size)
 {
 	int rc;
-	u32 cmd_flags;
-	u32 align_offset;
-	__be32 val;
+	u32 cmd_flags, align_offset, val;
+	__be32 val_be;
 
 	if (offset + buf_size > bp->common.flash_size) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
@@ -1578,16 +1640,18 @@ static int bnx2x_nvram_write1(struct bnx2x *bp, u32 offset, u8 *data_buf,
 
 	cmd_flags = (MCPR_NVM_COMMAND_FIRST | MCPR_NVM_COMMAND_LAST);
 	align_offset = (offset & ~0x03);
-	rc = bnx2x_nvram_read_dword(bp, align_offset, &val, cmd_flags);
+	rc = bnx2x_nvram_read_dword(bp, align_offset, &val_be, cmd_flags);
 
 	if (rc == 0) {
-		val &= ~(0xff << BYTE_OFFSET(offset));
-		val |= (*data_buf << BYTE_OFFSET(offset));
-
 		/* nvram data is returned as an array of bytes
 		 * convert it back to cpu order
 		 */
-		val = be32_to_cpu(val);
+		val = be32_to_cpu(val_be);
+
+		val &= ~le32_to_cpu((__force __le32)
+				    (0xff << BYTE_OFFSET(offset)));
+		val |= le32_to_cpu((__force __le32)
+				   (*data_buf << BYTE_OFFSET(offset)));
 
 		rc = bnx2x_nvram_write_dword(bp, align_offset, val,
 					     cmd_flags);
@@ -1810,7 +1874,8 @@ static int bnx2x_set_ringparam(struct net_device *dev,
 	}
 
 	if ((ering->rx_pending > MAX_RX_AVAIL) ||
-	    (ering->rx_pending < MIN_RX_SIZE_TPA) ||
+	    (ering->rx_pending < (bp->disable_tpa ? MIN_RX_SIZE_NONTPA :
+						    MIN_RX_SIZE_TPA)) ||
 	    (ering->tx_pending > (IS_MF_FCOE_AFEX(bp) ? 0 : MAX_TX_AVAIL)) ||
 	    (ering->tx_pending <= MAX_SKB_FRAGS + 4)) {
 		DP(BNX2X_MSG_ETHTOOL, "Command parameters not supported\n");
@@ -1881,12 +1946,15 @@ static int bnx2x_set_pauseparam(struct net_device *dev,
 			bp->link_params.req_flow_ctrl[cfg_idx] =
 				BNX2X_FLOW_CTRL_AUTO;
 		}
-		bp->link_params.req_fc_auto_adv = BNX2X_FLOW_CTRL_NONE;
+		bp->link_params.req_fc_auto_adv = 0;
 		if (epause->rx_pause)
 			bp->link_params.req_fc_auto_adv |= BNX2X_FLOW_CTRL_RX;
 
 		if (epause->tx_pause)
 			bp->link_params.req_fc_auto_adv |= BNX2X_FLOW_CTRL_TX;
+
+		if (!bp->link_params.req_fc_auto_adv)
+			bp->link_params.req_fc_auto_adv |= BNX2X_FLOW_CTRL_NONE;
 	}
 
 	DP(BNX2X_MSG_ETHTOOL,
@@ -1900,8 +1968,8 @@ static int bnx2x_set_pauseparam(struct net_device *dev,
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE < 0x020627) /* ! BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE >= 0x02061a)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
 static int bnx2x_set_flags(struct net_device *dev, u32 data)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -1913,7 +1981,7 @@ static int bnx2x_set_flags(struct net_device *dev, u32 data)
 		return -EAGAIN;
 	}
 
-#if (LINUX_VERSION_CODE >= 0x020625)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 37))
 	if (!(data & ETH_FLAG_RXVLAN)) {
 		DP(BNX2X_MSG_ETHTOOL, "Command parameters not supported\n");
 		return -EINVAL;
@@ -1925,7 +1993,7 @@ static int bnx2x_set_flags(struct net_device *dev, u32 data)
 		return -EINVAL;
 	}
 
-#if (LINUX_VERSION_CODE >= 0x020624)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36))
 	rc = ethtool_op_set_flags(dev, data, ETH_FLAG_LRO | ETH_FLAG_RXVLAN |
 					ETH_FLAG_TXVLAN | ETH_FLAG_RXHASH);
 #else
@@ -1972,7 +2040,7 @@ static int bnx2x_set_rx_csum(struct net_device *dev, u32 data)
 	 * TPA'ed packets will be discarded due to wrong TCP CSUM
 	 */
 	if (!data) {
-#if (LINUX_VERSION_CODE >= 0x02061a)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
 		u32 flags = ethtool_op_get_flags(dev);
 
 		bp->flags &= ~GRO_ENABLE_FLAG;
@@ -2034,6 +2102,18 @@ static const char bnx2x_tests_str_arr[BNX2X_NUM_TESTS_SF][ETH_GSTRING_LEN] = {
 	"idle check (online)        "
 };
 #endif
+
+enum {
+	BNX2X_PRI_FLAG_ISCSI,
+	BNX2X_PRI_FLAG_FCOE,
+	BNX2X_PRI_FLAG_STORAGE,
+	BNX2X_PRI_FLAG_LEN,
+};
+static const char bnx2x_private_arr[BNX2X_PRI_FLAG_LEN][ETH_GSTRING_LEN] = {
+	"iSCSI offload support",
+	"FCoE offload support",
+	"Storage only interface"
+};
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) /* BNX2X_UPSTREAM */
 static u32 bnx2x_eee_to_adv(u32 eee_adv)
@@ -2121,7 +2201,7 @@ static int bnx2x_set_eee(struct net_device *dev, struct ethtool_eee *edata)
 				      SHMEM_EEE_ADV_STATUS_SHIFT);
 	if ((advertised != (eee_cfg & SHMEM_EEE_ADV_STATUS_MASK))) {
 		DP(BNX2X_MSG_ETHTOOL,
-		   "Direct manipulation of EEE advertisment is not supported\n");
+		   "Direct manipulation of EEE advertisement is not supported\n");
 		return -EINVAL;
 	}
 
@@ -2156,7 +2236,7 @@ static int bnx2x_set_eee(struct net_device *dev, struct ethtool_eee *edata)
 				    EEE_MODE_OVERRIDE_NVRAM |
 				    EEE_MODE_OUTPUT_TIME;
 
-	/* Restart link to propogate changes */
+	/* Restart link to propagate changes */
 	if (netif_running(dev)) {
 		bnx2x_stats_handle(bp, STATS_EVENT_STOP);
 		bnx2x_force_link_reset(bp);
@@ -2294,8 +2374,8 @@ static int bnx2x_test_registers(struct bnx2x *bp)
 		hw = BNX2X_CHIP_MASK_E3;
 
 	/* Repeat the test twice:
-	   First by writing 0x00000000, second by writing 0xffffffff
-	   */
+	 * First by writing 0x00000000, second by writing 0xffffffff
+	 */
 	for (idx = 0; idx < 2; idx++) {
 
 		switch (idx) {
@@ -2520,14 +2600,14 @@ static int bnx2x_run_loopback(struct bnx2x *bp, int loopback_mode)
 	memset(packet + 2*ETH_ALEN, 0x77, (ETH_HLEN - 2*ETH_ALEN));
 	for (i = ETH_HLEN; i < pkt_size; i++)
 		packet[i] = (unsigned char) (i & 0xff);
-#if (LINUX_VERSION_CODE >= 0x020622) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
 	mapping = dma_map_single(&bp->pdev->dev, skb->data,
 				 skb_headlen(skb), DMA_TO_DEVICE);
 #else
 	mapping = pci_map_single(bp->pdev, skb->data,
 				 skb_headlen(skb), PCI_DMA_TODEVICE);
 #endif
-#if (LINUX_VERSION_CODE >= 0x02061b) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 27)) /* BNX2X_UPSTREAM */
 	if (unlikely(dma_mapping_error(&bp->pdev->dev, mapping))) {
 #else
 	if (unlikely(dma_mapping_error(mapping))) {
@@ -2597,7 +2677,7 @@ static int bnx2x_run_loopback(struct bnx2x *bp, int loopback_mode)
 
 	num_pkts++;
 	txdata->tx_bd_prod += 2; /* start + pbd */
-#if (LINUX_VERSION_CODE < 0x02061f) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 31)) /* ! BNX2X_UPSTREAM */
 	/* In kernels starting from 2.6.31 netdev layer does this */
 	bp->dev->trans_start = jiffies;
 #endif
@@ -2641,7 +2721,7 @@ static int bnx2x_run_loopback(struct bnx2x *bp, int loopback_mode)
 		goto test_loopback_rx_exit;
 
 	rx_buf = &fp_rx->rx_buf_ring[RX_BD(fp_rx->rx_bd_cons)];
-#if (LINUX_VERSION_CODE >= 0x020622) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
 	dma_sync_single_for_cpu(&bp->pdev->dev,
 				   dma_unmap_addr(rx_buf, mapping),
 				   fp_rx->rx_buf_size, DMA_FROM_DEVICE);
@@ -2664,7 +2744,7 @@ static int bnx2x_run_loopback(struct bnx2x *bp, int loopback_mode)
 	rc = 0;
 
 test_loopback_rx_exit:
-#if (LINUX_VERSION_CODE < 0x02061b) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27)) /* ! BNX2X_UPSTREAM */
 	bp->dev->last_rx = jiffies;
 #endif
 
@@ -2746,14 +2826,168 @@ static int bnx2x_test_ext_loopback(struct bnx2x *bp)
 	return rc;
 }
 
+struct code_entry {
+	u32 sram_start_addr;
+	u32 code_attribute;
+#define CODE_IMAGE_TYPE_MASK			0xf0800003
+#define CODE_IMAGE_VNTAG_PROFILES_DATA		0xd0000003
+#define CODE_IMAGE_LENGTH_MASK			0x007ffffc
+#define CODE_IMAGE_TYPE_EXTENDED_DIR		0xe0000000
+	u32 nvm_start_addr;
+};
+
+#define CODE_ENTRY_MAX			16
+#define CODE_ENTRY_EXTENDED_DIR_IDX	15
+#define MAX_IMAGES_IN_EXTENDED_DIR	64
+#define NVRAM_DIR_OFFSET		0x14
+
+#define EXTENDED_DIR_EXISTS(code)					  \
+	((code & CODE_IMAGE_TYPE_MASK) == CODE_IMAGE_TYPE_EXTENDED_DIR && \
+	 (code & CODE_IMAGE_LENGTH_MASK) != 0)
+
 #define CRC32_RESIDUAL			0xdebb20e3
+#define CRC_BUFF_SIZE			256
+
+static int bnx2x_nvram_crc(struct bnx2x *bp,
+			   int offset,
+			   int size,
+			   u8 *buff)
+{
+	u32 crc = ~0;
+	int rc = 0, done = 0;
+
+	DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
+	   "NVRAM CRC from 0x%08x to 0x%08x\n", offset, offset + size);
+
+	while (done < size) {
+		int count = min_t(int, size - done, CRC_BUFF_SIZE);
+
+		rc = bnx2x_nvram_read(bp, offset + done, buff, count);
+
+		if (rc)
+			return rc;
+
+		crc = crc32_le(crc, buff, count);
+		done += count;
+	}
+
+	if (crc != CRC32_RESIDUAL)
+		rc = -EINVAL;
+
+	return rc;
+}
+
+static int bnx2x_test_nvram_dir(struct bnx2x *bp,
+				struct code_entry *entry,
+				u8 *buff)
+{
+	size_t size = entry->code_attribute & CODE_IMAGE_LENGTH_MASK;
+	u32 type = entry->code_attribute & CODE_IMAGE_TYPE_MASK;
+	int rc;
+
+	/* Zero-length images and AFEX profiles do not have CRC */
+	if (size == 0 || type == CODE_IMAGE_VNTAG_PROFILES_DATA)
+		return 0;
+
+	rc = bnx2x_nvram_crc(bp, entry->nvm_start_addr, size, buff);
+	if (rc)
+		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
+		   "image %x has failed crc test (rc %d)\n", type, rc);
+
+	return rc;
+}
+
+static int bnx2x_test_dir_entry(struct bnx2x *bp, u32 addr, u8 *buff)
+{
+	int rc;
+	struct code_entry entry;
+
+	rc = bnx2x_nvram_read32(bp, addr, (u32 *)&entry, sizeof(entry));
+	if (rc)
+		return rc;
+
+	return bnx2x_test_nvram_dir(bp, &entry, buff);
+}
+
+static int bnx2x_test_nvram_ext_dirs(struct bnx2x *bp, u8 *buff)
+{
+	u32 rc, cnt, dir_offset = NVRAM_DIR_OFFSET;
+	struct code_entry entry;
+	int i;
+
+	rc = bnx2x_nvram_read32(bp,
+				dir_offset +
+				sizeof(entry) * CODE_ENTRY_EXTENDED_DIR_IDX,
+				(u32 *)&entry, sizeof(entry));
+	if (rc)
+		return rc;
+
+	if (!EXTENDED_DIR_EXISTS(entry.code_attribute))
+		return 0;
+
+	rc = bnx2x_nvram_read32(bp, entry.nvm_start_addr,
+				&cnt, sizeof(u32));
+	if (rc)
+		return rc;
+
+	dir_offset = entry.nvm_start_addr + 8;
+
+	for (i = 0; i < cnt && i < MAX_IMAGES_IN_EXTENDED_DIR; i++) {
+		rc = bnx2x_test_dir_entry(bp, dir_offset +
+					      sizeof(struct code_entry) * i,
+					  buff);
+		if (rc)
+			return rc;
+	}
+
+	return 0;
+}
+
+static int bnx2x_test_nvram_dirs(struct bnx2x *bp, u8 *buff)
+{
+	u32 rc, dir_offset = NVRAM_DIR_OFFSET;
+	int i;
+
+	DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM, "NVRAM DIRS CRC test-set\n");
+
+	for (i = 0; i < CODE_ENTRY_EXTENDED_DIR_IDX; i++) {
+		rc = bnx2x_test_dir_entry(bp, dir_offset +
+					      sizeof(struct code_entry) * i,
+					  buff);
+		if (rc)
+			return rc;
+	}
+
+	return bnx2x_test_nvram_ext_dirs(bp, buff);
+}
+
+struct crc_pair {
+	int offset;
+	int size;
+};
+
+static int bnx2x_test_nvram_tbl(struct bnx2x *bp,
+				const struct crc_pair *nvram_tbl, u8 *buf)
+{
+	int i;
+
+	for (i = 0; nvram_tbl[i].size; i++) {
+		int rc = bnx2x_nvram_crc(bp, nvram_tbl[i].offset,
+					 nvram_tbl[i].size, buf);
+		if (rc) {
+			DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
+			   "nvram_tbl[%d] has failed crc test (rc %d)\n",
+			   i, rc);
+			return rc;
+		}
+	}
+
+	return 0;
+}
 
 static int bnx2x_test_nvram(struct bnx2x *bp)
 {
-	static const struct {
-		int offset;
-		int size;
-	} nvram_tbl[] = {
+	const struct crc_pair nvram_tbl[] = {
 		{     0,  0x14 }, /* bootstrap */
 		{  0x14,  0xec }, /* dir */
 		{ 0x100, 0x350 }, /* manuf_info */
@@ -2762,30 +2996,33 @@ static int bnx2x_test_nvram(struct bnx2x *bp)
 		{ 0x708,  0x70 }, /* manuf_key_info */
 		{     0,     0 }
 	};
-	__be32 *buf;
-	u8 *data;
-	int i, rc;
-	u32 magic, crc;
+	const struct crc_pair nvram_tbl2[] = {
+		{ 0x7e8, 0x350 }, /* manuf_info2 */
+		{ 0xb38,  0xf0 }, /* feature_info */
+		{     0,     0 }
+	};
+
+	u8 *buf;
+	int rc;
+	u32 magic;
 
 	if (BP_NOMCP(bp))
 		return 0;
 
-	buf = kmalloc(0x350, GFP_KERNEL);
+	buf = kmalloc(CRC_BUFF_SIZE, GFP_KERNEL);
 	if (!buf) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM, "kmalloc failed\n");
 		rc = -ENOMEM;
 		goto test_nvram_exit;
 	}
-	data = (u8 *)buf;
 
-	rc = bnx2x_nvram_read(bp, 0, data, 4);
+	rc = bnx2x_nvram_read32(bp, 0, &magic, sizeof(magic));
 	if (rc) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
 		   "magic value read (rc %d)\n", rc);
 		goto test_nvram_exit;
 	}
 
-	magic = be32_to_cpu(buf[0]);
 	if (magic != 0x669955aa) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
 		   "wrong magic value (0x%08x)\n", magic);
@@ -2793,24 +3030,25 @@ static int bnx2x_test_nvram(struct bnx2x *bp)
 		goto test_nvram_exit;
 	}
 
-	for (i = 0; nvram_tbl[i].size; i++) {
+	DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM, "Port 0 CRC test-set\n");
+	rc = bnx2x_test_nvram_tbl(bp, nvram_tbl, buf);
+	if (rc)
+		goto test_nvram_exit;
 
-		rc = bnx2x_nvram_read(bp, nvram_tbl[i].offset, data,
-				      nvram_tbl[i].size);
-		if (rc) {
-			DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
-			   "nvram_tbl[%d] read data (rc %d)\n", i, rc);
-			goto test_nvram_exit;
-		}
+	if (!CHIP_IS_E1x(bp) && !CHIP_IS_57811xx(bp)) {
+		u32 hide = SHMEM_RD(bp, dev_info.shared_hw_config.config2) &
+			   SHARED_HW_CFG_HIDE_PORT1;
 
-		crc = ether_crc_le(nvram_tbl[i].size, data);
-		if (crc != CRC32_RESIDUAL) {
+		if (!hide) {
 			DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
-			   "nvram_tbl[%d] wrong crc value (0x%08x)\n", i, crc);
-			rc = -ENODEV;
-			goto test_nvram_exit;
+			   "Port 1 CRC test-set\n");
+			rc = bnx2x_test_nvram_tbl(bp, nvram_tbl2, buf);
+			if (rc)
+				goto test_nvram_exit;
 		}
 	}
+
+	rc = bnx2x_test_nvram_dirs(bp, buf);
 
 test_nvram_exit:
 	kfree(buf);
@@ -2849,8 +3087,6 @@ static void bnx2x_self_test(struct net_device *dev,
 		etest->flags |= ETH_TEST_FL_FAILED;
 		return;
 	}
-	if (IS_VF(bp))
-		return;
 
 	DP(BNX2X_MSG_ETHTOOL,
 	   "Self-test command parameters: offline = %d, external_lb = %d\n",
@@ -2859,9 +3095,16 @@ static void bnx2x_self_test(struct net_device *dev,
 
 	memset(buf, 0, sizeof(u64) * BNX2X_NUM_TESTS(bp));
 
+	if (bnx2x_test_nvram(bp) != 0) {
+		if (!IS_MF(bp))
+			buf[4] = 1;
+		else
+			buf[0] = 1;
+		etest->flags |= ETH_TEST_FL_FAILED;
+	}
+
 	if (!netif_running(dev)) {
-		DP(BNX2X_MSG_ETHTOOL,
-		   "Can't perform self-test when interface is down\n");
+		DP(BNX2X_MSG_ETHTOOL, "Interface is down\n");
 		return;
 	}
 
@@ -2923,13 +3166,7 @@ static void bnx2x_self_test(struct net_device *dev,
 		/* wait until link state is restored */
 		bnx2x_wait_for_link(bp, link_up, is_serdes);
 	}
-	if (bnx2x_test_nvram(bp) != 0) {
-		if (!IS_MF(bp))
-			buf[4] = 1;
-		else
-			buf[0] = 1;
-		etest->flags |= ETH_TEST_FL_FAILED;
-	}
+
 	if (bnx2x_test_intr(bp) != 0) {
 		if (!IS_MF(bp))
 			buf[5] = 1;
@@ -2962,10 +3199,6 @@ static void bnx2x_self_test(struct net_device *dev,
 	if (rc)
 		etest->flags |= ETH_TEST_FL_FAILED;
 #endif
-
-#ifdef BNX2X_EXTRA_DEBUG
-	bnx2x_panic_dump(bp);
-#endif
 }
 
 #define IS_PORT_STAT(i) \
@@ -2979,54 +3212,54 @@ static void bnx2x_self_test(struct net_device *dev,
  */
 static int bnx2x_num_stat_queues(struct bnx2x *bp)
 {
-#if 0
-	uint num_queues =  BNX2X_NUM_ETH_QUEUES(bp);
-
-	if (!NO_FCOE(bp))
-		num_queues += 1;
-#ifdef BCM_OOO /* ! BNX2X_UPSTREAM */
-	if (!NO_ISCSI_OOO(bp))
-		num_queues += 1;
-#endif
-
-	return num_queues;
-#else /* BNX2X_UPSTREAM */
 	return BNX2X_NUM_ETH_QUEUES(bp);
-#endif
 }
 
-#if (LINUX_VERSION_CODE >= 0x020618) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_sset_count(struct net_device *dev, int stringset)
 {
 	struct bnx2x *bp = netdev_priv(dev);
-	int i, num_stats;
+	int i, num_strings = 0;
 
 	switch (stringset) {
 	case ETH_SS_STATS:
 		if (is_multi(bp)) {
-			num_stats = bnx2x_num_stat_queues(bp) *
-						BNX2X_NUM_Q_STATS;
+			num_strings = bnx2x_num_stat_queues(bp) *
+				      BNX2X_NUM_Q_STATS;
 		} else
-			num_stats = 0;
+			num_strings = 0;
 		if (IS_MF_MODE_STAT(bp)) {
 			for (i = 0; i < BNX2X_NUM_STATS; i++)
 				if (IS_FUNC_STAT(i))
-					num_stats++;
+					num_strings++;
 		} else
-			num_stats += BNX2X_NUM_STATS;
+			num_strings += BNX2X_NUM_STATS;
 
-		return num_stats;
+		return num_strings;
 
 	case ETH_SS_TEST:
-		if (!BNX2X_NUM_TESTS(bp))
-			return -EOPNOTSUPP;
-		else
-			return BNX2X_NUM_TESTS(bp);
+		return BNX2X_NUM_TESTS(bp);
+
+	case ETH_SS_PRIV_FLAGS:
+		return BNX2X_PRI_FLAG_LEN;
 
 	default:
 		return -EINVAL;
 	}
 }
+
+static u32 bnx2x_get_private_flags(struct net_device *dev)
+{
+	struct bnx2x *bp = netdev_priv(dev);
+	u32 flags = 0;
+
+	flags |= (!(bp->flags & NO_ISCSI_FLAG) ? 1 : 0) << BNX2X_PRI_FLAG_ISCSI;
+	flags |= (!(bp->flags & NO_FCOE_FLAG)  ? 1 : 0) << BNX2X_PRI_FLAG_FCOE;
+	flags |= (!!IS_MF_STORAGE_ONLY(bp)) << BNX2X_PRI_FLAG_STORAGE;
+
+	return flags;
+}
+
 #else
 static int bnx2x_self_test_count(struct net_device *dev)
 {
@@ -3086,7 +3319,6 @@ static void bnx2x_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 			}
 		}
 
-
 		for (i = 0, j = 0; i < BNX2X_NUM_STATS; i++) {
 			if (IS_MF_MODE_STAT(bp) && IS_PORT_STAT(i))
 				continue;
@@ -3105,6 +3337,14 @@ static void bnx2x_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 			start = 4;
 		memcpy(buf, bnx2x_tests_str_arr + start,
 		       ETH_GSTRING_LEN * BNX2X_NUM_TESTS(bp));
+		break;
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
+	case ETH_SS_PRIV_FLAGS:
+		memcpy(buf, bnx2x_private_arr,
+		       ETH_GSTRING_LEN * BNX2X_PRI_FLAG_LEN);
+		break;
+#endif
 	}
 }
 
@@ -3161,7 +3401,7 @@ static void bnx2x_get_ethtool_stats(struct net_device *dev,
 	}
 }
 
-#if (LINUX_VERSION_CODE > 0x020627) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
 static int bnx2x_set_phys_id(struct net_device *dev,
 			     enum ethtool_phys_id_state state)
 {
@@ -3235,10 +3475,9 @@ static int bnx2x_phys_id(struct net_device *dev, u32 data)
 }
 #endif /* 0x020627 */
 
-#if (LINUX_VERSION_CODE >= 0x020624) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_rss_flags(struct bnx2x *bp, struct ethtool_rxnfc *info)
 {
-
 	switch (info->flow_type) {
 	case TCP_V4_FLOW:
 	case TCP_V6_FLOW:
@@ -3329,16 +3568,17 @@ static int bnx2x_set_rss_flags(struct bnx2x *bp, struct ethtool_rxnfc *info)
 			DP(BNX2X_MSG_ETHTOOL,
 			   "rss re-configured, UDP 4-tupple %s\n",
 			   udp_rss_requested ? "enabled" : "disabled");
-			return bnx2x_config_rss_pf(bp, &bp->rss_conf_obj, 0);
+			return bnx2x_rss(bp, &bp->rss_conf_obj, false, true);
 		} else if ((info->flow_type == UDP_V6_FLOW) &&
 			   (bp->rss_conf_obj.udp_rss_v6 != udp_rss_requested)) {
 			bp->rss_conf_obj.udp_rss_v6 = udp_rss_requested;
 			DP(BNX2X_MSG_ETHTOOL,
 			   "rss re-configured, UDP 4-tupple %s\n",
 			   udp_rss_requested ? "enabled" : "disabled");
-			return bnx2x_config_rss_pf(bp, &bp->rss_conf_obj, 0);
+			return bnx2x_rss(bp, &bp->rss_conf_obj, false, true);
 		}
 		return 0;
+
 	case IPV4_FLOW:
 	case IPV6_FLOW:
 		/* For IP only 2-tupple hash is supported */
@@ -3348,6 +3588,7 @@ static int bnx2x_set_rss_flags(struct bnx2x *bp, struct ethtool_rxnfc *info)
 			return -EINVAL;
 		}
 		return 0;
+
 	case SCTP_V4_FLOW:
 	case AH_ESP_V4_FLOW:
 	case AH_V4_FLOW:
@@ -3367,6 +3608,7 @@ static int bnx2x_set_rss_flags(struct bnx2x *bp, struct ethtool_rxnfc *info)
 		}
 		return 0;
 #endif
+
 	default:
 		return -EINVAL;
 	}
@@ -3390,7 +3632,7 @@ static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 	return T_ETH_INDIRECTION_TABLE_SIZE;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 static int bnx2x_get_rxfh_indir(struct net_device *dev, u32 *indir)
 #else
 static int bnx2x_get_rxfh_indir(struct net_device *dev,
@@ -3398,7 +3640,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 #endif
 {
 	struct bnx2x *bp = netdev_priv(dev);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
 	size_t copy_size = bnx2x_get_rxfh_indir_size(dev);
 #endif
 	u8 ind_table[T_ETH_INDIRECTION_TABLE_SIZE] = {0};
@@ -3416,7 +3658,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 	 * align the returned table to the Client ID of the leading RSS
 	 * queue.
 	 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++)
 		indir[i] = ind_table[i] - bp->fp->cl_id;
 #else
@@ -3424,13 +3666,13 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 		indir->ring_index[i] = ind_table[i] - bp->fp->cl_id;
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
 	indir->size = T_ETH_INDIRECTION_TABLE_SIZE;
 #endif
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 static int bnx2x_set_rxfh_indir(struct net_device *dev, const u32 *indir)
 #else
 static int bnx2x_set_rxfh_indir(struct net_device *dev,
@@ -3439,7 +3681,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	size_t i;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
 	u32 num_eth_queues = BNX2X_NUM_ETH_QUEUES(bp);
 
 	/* validate the size */
@@ -3450,7 +3692,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 #endif
 
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++) {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
 		/* validate the indices */
 		if (indir->ring_index[i] >= num_eth_queues) {
 			DP(BNX2X_MSG_ETHTOOL, "Ring index > num of queues\n");
@@ -3466,7 +3708,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 		 * align the received table to the Client ID of the leading RSS
 		 * queue
 		 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 		bp->rss_conf_obj.ind_table[i] = indir[i] + bp->fp->cl_id;
 #else
 		bp->rss_conf_obj.ind_table[i] =
@@ -3535,8 +3777,8 @@ static int bnx2x_set_channels(struct net_device *dev,
 	/* We don't support separate rx / tx channels.
 	 * We don't allow setting 'other' channels.
 	 */
-	if (channels->rx_count || channels->tx_count || channels->other_count ||
-	    (channels->combined_count == 0) ||
+	if (channels->rx_count || channels->tx_count || channels->other_count
+	    || (channels->combined_count == 0) ||
 	    (channels->combined_count > BNX2X_MAX_RSS_COUNT(bp))) {
 		DP(BNX2X_MSG_ETHTOOL, "command parameters not supported\n");
 		return -EINVAL;
@@ -3562,7 +3804,7 @@ static int bnx2x_set_channels(struct net_device *dev,
 }
 #endif
 
-#if (LINUX_VERSION_CODE >= 0x020613) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19)) /* BNX2X_UPSTREAM */
 static const struct ethtool_ops bnx2x_ethtool_ops = {
 #else
 static struct ethtool_ops bnx2x_ethtool_ops = {
@@ -3572,7 +3814,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.get_drvinfo		= bnx2x_get_drvinfo,
 	.get_regs_len		= bnx2x_get_regs_len,
 	.get_regs		= bnx2x_get_regs,
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) /* BNX2X_UPSTREAM */
 	.get_dump_flag		= bnx2x_get_dump_flag,
 	.get_dump_data		= bnx2x_get_dump_data,
 	.set_dump		= bnx2x_set_dump,
@@ -3583,7 +3825,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.set_msglevel		= bnx2x_set_msglevel,
 	.nway_reset		= bnx2x_nway_reset,
 	.get_link		= bnx2x_get_link,
-#if (LINUX_VERSION_CODE >= 0x020418) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 4, 24)) /* BNX2X_UPSTREAM */
 	.get_eeprom_len		= bnx2x_get_eeprom_len,
 #endif
 	.get_eeprom		= bnx2x_get_eeprom,
@@ -3594,16 +3836,16 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.set_ringparam		= bnx2x_set_ringparam,
 	.get_pauseparam		= bnx2x_get_pauseparam,
 	.set_pauseparam		= bnx2x_set_pauseparam,
-#if (LINUX_VERSION_CODE < 0x020627) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
 	.get_rx_csum		= bnx2x_get_rx_csum,
 	.set_rx_csum		= bnx2x_set_rx_csum,
 	.get_tx_csum		= ethtool_op_get_tx_csum,
-#if (LINUX_VERSION_CODE >= 0x020618)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
 	.set_tx_csum		= ethtool_op_set_tx_ipv6_csum,
 #else
 	.set_tx_csum		= bnx2x_set_tx_hw_csum,
 #endif
-#if (LINUX_VERSION_CODE >= 0x02061a)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
 	.set_flags		= bnx2x_set_flags,
 	.get_flags		= ethtool_op_get_flags,
 #endif
@@ -3615,30 +3857,31 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 #endif
 #endif /* 0x020627 */
 	.self_test		= bnx2x_self_test,
-#if (LINUX_VERSION_CODE >= 0x020618) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
 	.get_sset_count		= bnx2x_get_sset_count,
+	.get_priv_flags		= bnx2x_get_private_flags,
 #else
 	.get_stats_count	= bnx2x_get_stats_count,
 	.self_test_count	= bnx2x_self_test_count,
 #endif
 	.get_strings		= bnx2x_get_strings,
-#if (LINUX_VERSION_CODE > 0x020627) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
 	.set_phys_id		= bnx2x_set_phys_id,
 #else
 	.phys_id		= bnx2x_phys_id,
 #endif
 	.get_ethtool_stats	= bnx2x_get_ethtool_stats,
-#if (LINUX_VERSION_CODE >= 0x020624) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
 	.get_rxnfc		= bnx2x_get_rxnfc,
 	.set_rxnfc		= bnx2x_set_rxnfc,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
 	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
 #endif
 #ifdef ETHTOOL_GPERMADDR /* ! BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE < 0x020617)
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 23))
 	.get_perm_addr		= ethtool_op_get_perm_addr,
 #endif
 #endif
@@ -3647,7 +3890,6 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.set_channels		= bnx2x_set_channels,
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) /* BNX2X_UPSTREAM */
-	.get_ts_info		= ethtool_op_get_ts_info,
 	.get_module_info	= bnx2x_get_module_info,
 	.get_module_eeprom	= bnx2x_get_module_eeprom,
 #endif
@@ -3655,11 +3897,73 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.get_eee		= bnx2x_get_eee,
 	.set_eee		= bnx2x_set_eee,
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) /* BNX2X_UPSTREAM */
+	.get_ts_info		= ethtool_op_get_ts_info,
+#endif
 };
 
-void bnx2x_set_ethtool_ops(struct net_device *netdev)
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 19)) /* BNX2X_UPSTREAM */
+static const struct ethtool_ops bnx2x_vf_ethtool_ops = {
+#else
+static struct ethtool_ops bnx2x_vf_ethtool_ops = {
+#endif
+	.get_settings		= bnx2x_get_settings,
+	.set_settings		= bnx2x_set_settings,
+	.get_drvinfo		= bnx2x_get_drvinfo,
+	.get_msglevel		= bnx2x_get_msglevel,
+	.set_msglevel		= bnx2x_set_msglevel,
+	.get_link		= bnx2x_get_link,
+	.get_coalesce		= bnx2x_get_coalesce,
+	.get_ringparam		= bnx2x_get_ringparam,
+	.set_ringparam		= bnx2x_set_ringparam,
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
+	.get_rx_csum		= bnx2x_get_rx_csum,
+	.set_rx_csum		= bnx2x_set_rx_csum,
+	.get_tx_csum		= ethtool_op_get_tx_csum,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24))
+	.set_tx_csum		= ethtool_op_set_tx_ipv6_csum,
+#else
+	.set_tx_csum		= bnx2x_set_tx_hw_csum,
+#endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
+	.set_flags		= bnx2x_set_flags,
+	.get_flags		= ethtool_op_get_flags,
+#endif
+	.get_sg			= ethtool_op_get_sg,
+	.set_sg			= ethtool_op_set_sg,
+#ifdef NETIF_F_TSO
+	.get_tso		= ethtool_op_get_tso,
+	.set_tso		= bnx2x_set_tso,
+#endif
+#endif /* 0x020627 */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
+	.get_sset_count		= bnx2x_get_sset_count,
+#else
+	.get_stats_count	= bnx2x_get_stats_count,
+#endif
+	.get_strings		= bnx2x_get_strings,
+	.get_ethtool_stats	= bnx2x_get_ethtool_stats,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
+	.get_rxnfc		= bnx2x_get_rxnfc,
+	.set_rxnfc		= bnx2x_set_rxnfc,
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
+	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
+#endif
+	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
+	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+#endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
+	.get_channels		= bnx2x_get_channels,
+	.set_channels		= bnx2x_set_channels,
+#endif
+};
+
+void bnx2x_set_ethtool_ops(struct bnx2x *bp, struct net_device *netdev)
 {
-	SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
+	if (IS_PF(bp))
+		SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
+	else /* vf */
+		SET_ETHTOOL_OPS(netdev, &bnx2x_vf_ethtool_ops);
 }
 
 #if defined(__VMKLNX__) /* ! BNX2X_UPSTREAM */

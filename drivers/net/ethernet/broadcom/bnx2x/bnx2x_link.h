@@ -45,6 +45,9 @@
 #define SPEED_AUTO_NEG		0
 #define SPEED_20000		20000
 
+#define I2C_DEV_ADDR_A0			0xa0
+#define I2C_DEV_ADDR_A2			0xa2
+
 #define SFP_EEPROM_PAGE_SIZE			16
 #define SFP_EEPROM_VENDOR_NAME_ADDR		0x14
 #define SFP_EEPROM_VENDOR_NAME_SIZE		16
@@ -58,6 +61,15 @@
 #define SFP_EEPROM_SERIAL_SIZE			16
 #define SFP_EEPROM_DATE_ADDR			0x54 /* ASCII YYMMDD */
 #define SFP_EEPROM_DATE_SIZE			6
+#define SFP_EEPROM_DIAG_TYPE_ADDR			0x5c
+#define SFP_EEPROM_DIAG_TYPE_SIZE			1
+#define SFP_EEPROM_DIAG_ADDR_CHANGE_REQ		(1<<2)
+#define SFP_EEPROM_SFF_8472_COMP_ADDR		0x5e
+#define SFP_EEPROM_SFF_8472_COMP_SIZE		1
+
+#define SFP_EEPROM_A2_CHECKSUM_RANGE		0x5e
+#define SFP_EEPROM_A2_CC_DMI_ADDR			0x5f
+
 #define PWR_FLT_ERR_MSG_LEN			250
 
 #define XGXS_EXT_PHY_TYPE(ext_phy_config) \
@@ -109,7 +121,7 @@
 #define LINK_CONFIG_IDX(_phy_idx) ((_phy_idx == INT_PHY) ? \
 					 0 : (_phy_idx - 1))
 /***********************************************************/
-/*                      bnx2x_phy struct                     */
+/*                      bnx2x_phy struct                   */
 /*  Defines the required arguments and function per phy    */
 /***********************************************************/
 struct link_vars;
@@ -160,7 +172,7 @@ struct bnx2x_phy {
 #define FLAGS_TX_ERROR_CHECK		(1<<12)
 #define FLAGS_EEE			(1<<13)
 #define FLAGS_TEMPERATURE		(1<<14)
-#define FLAGS_MDC_MDIO_WA_G	(1<<15)
+#define FLAGS_MDC_MDIO_WA_G		(1<<15)
 
 	/* preemphasis values for the rx side */
 	u16 rx_preemphasis[4];
@@ -179,10 +191,10 @@ struct bnx2x_phy {
 #define	ETH_PHY_XFP_FIBER		0x2
 #define	ETH_PHY_DA_TWINAX		0x3
 #define	ETH_PHY_BASE_T		0x4
-#define 	ETH_PHY_SFP_1G_FIBER	0x5
-#define	ETH_PHY_KR          	0xf0
-#define	ETH_PHY_CX4         	0xf1
-#define	ETH_PHY_NOT_PRESENT 	0xff
+#define ETH_PHY_SFP_1G_FIBER	0x5
+#define	ETH_PHY_KR		0xf0
+#define	ETH_PHY_CX4		0xf1
+#define	ETH_PHY_NOT_PRESENT	0xff
 
 	/* The address in which version is located*/
 	u32 ver_addr;
@@ -278,6 +290,7 @@ struct link_params {
 #define FEATURE_CONFIG_DISABLE_REMOTE_FAULT_DET		(1<<11)
 #define FEATURE_CONFIG_IEEE_PHY_TEST			(1<<12)
 #define FEATURE_CONFIG_MT_SUPPORT			(1<<13)
+#define FEATURE_CONFIG_BOOT_FROM_SAN			(1<<14)
 
 	/* Will be populated during common init */
 	struct bnx2x_phy phy[MAX_PHYS];
@@ -285,8 +298,7 @@ struct link_params {
 	/* Will be populated during common init */
 	u8 num_phys;
 
-	u8 kr2_wa_count;
-#define KR2_DISABLED 0xff
+	u8 rsrv;
 
 	/* Used to configure the EEE Tx LPI timer, has several modes of
 	 * operation, according to bits 29:28 -
@@ -320,6 +332,7 @@ struct link_params {
 				req_flow_ctrl is set to AUTO */
 	u16 link_flags;
 #define LINK_FLAGS_INT_DISABLED		(1<<0)
+#define PHY_INITIALIZED		(1<<1)
 	u32 lfa_base;
 };
 
@@ -329,10 +342,9 @@ struct link_vars {
 #define PHY_XGXS_FLAG			(1<<0)
 #define PHY_SGMII_FLAG			(1<<1)
 #define PHY_PHYSICAL_LINK_FLAG		(1<<2)
-#define PHY_HALF_OPEN_CONN_FLAG	(1<<3)
+#define PHY_HALF_OPEN_CONN_FLAG		(1<<3)
 #define PHY_OVER_CURRENT_FLAG		(1<<4)
 #define PHY_SFP_TX_FAULT_FLAG		(1<<5)
-#define PHY_INT_DISABLED_FLAG		(1<<6)
 
 	u8 mac_type;
 #define MAC_TYPE_NONE		0
@@ -354,14 +366,17 @@ struct link_vars {
 	u32 link_status;
 	u32 eee_status;
 	u8 fault_detected;
-	u8 rsrv1;
+	u8 check_kr2_recovery_cnt;
+#define CHECK_KR2_RECOVERY_CNT	5
 	u16 periodic_flags;
 #define PERIODIC_FLAGS_LINK_EVENT	0x0001
 
 	u32 aeu_int_mask;
 	u8 rx_tx_asic_rst;
 	u8 turn_to_run_wc_rt;
-       u16 rsrv2;
+	u16 rsrv2;
+	/* The same definitions as the shmem2 parameter */
+	u32 link_attr_sync;
 };
 
 /***********************************************************/
@@ -416,6 +431,7 @@ void bnx2x_handle_module_detect_int(struct link_params *params);
 int bnx2x_test_link(struct link_params *params, struct link_vars *vars,
 		    u8 is_serdes);
 
+
 /* One-time initialization for external phy after power up */
 int bnx2x_common_init_phy(struct bnx2x *bp, u32 shmem_base_path[],
 			  u32 shmem2_base_path[], u32 chip_id, u8 one_port_enabled);
@@ -428,14 +444,13 @@ void bnx2x_sfx7101_sp_sw_reset(struct bnx2x *bp, struct bnx2x_phy *phy);
 
 /* Read "byte_cnt" bytes from address "addr" from the SFP+ EEPROM */
 int bnx2x_read_sfp_module_eeprom(struct bnx2x_phy *phy,
-				 struct link_params *params, u16 addr,
-				 u8 byte_cnt, u8 *o_buf);
+				 struct link_params *params, u8 dev_addr,
+				 u16 addr, u16 byte_cnt, u8 *o_buf);
 
 void bnx2x_hw_reset_phy(struct link_params *params);
 
 /* Check swap bit and adjust PHY order */
 u32 bnx2x_phy_selection(struct link_params *params);
-
 
 /* Probe the phys on board, and populate them in "params" */
 int bnx2x_phy_probe(struct link_params *params);
@@ -446,7 +461,6 @@ u8 bnx2x_fan_failure_det_req(struct bnx2x *bp, u32 shmem_base,
 
 /* Open / close the gate between the NIG and the BRB */
 void bnx2x_set_rx_filter(struct link_params *params, u8 en);
-
 
 /* DCBX structs */
 
@@ -535,7 +549,6 @@ int bnx2x_ets_e3b0_config(const struct link_params *params,
 void bnx2x_pfc_statistic(struct link_params *params, struct link_vars *vars,
 						 u32 pfc_frames_sent[2],
 						 u32 pfc_frames_received[2]);
-
 void bnx2x_init_mod_abs_int(struct bnx2x *bp, struct link_vars *vars,
 			    u32 chip_id, u32 shmem_base, u32 shmem2_base,
 			    u8 port);
@@ -546,18 +559,9 @@ int bnx2x_sfp_module_detection(struct bnx2x_phy *phy,
 void bnx2x_period_func(struct link_params *params, struct link_vars *vars);
 
 int bnx2x_check_half_open_conn(struct link_params *params,
-				struct link_vars *vars, u8 notify);
+			            struct link_vars *vars, u8 notify);
 
 void bnx2x_enable_pmd_tx(struct link_params *params);
 
-int bnx2x_pre_init_phy(struct bnx2x *bp,
-				  u32 shmem_base,
-				  u32 shmem2_base,
-				  u32 chip_id,
-				  u8 port);
-
-void bnx2x_sfp_set_transmitter(struct link_params *params,
-			       struct bnx2x_phy *phy,
-			       u8 tx_en);
 
 #endif /* BNX2X_LINK_H */

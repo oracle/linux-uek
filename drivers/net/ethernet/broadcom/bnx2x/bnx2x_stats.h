@@ -40,7 +40,6 @@ struct nig_stats {
 	u32 egress_mac_pkt1_hi;
 };
 
-
 enum bnx2x_stats_event {
 	STATS_EVENT_PMF = 0,
 	STATS_EVENT_LINK_UP,
@@ -203,13 +202,10 @@ struct bnx2x_eth_stats {
 	/* Recovery */
 	u32 recoverable_error;
 	u32 unrecoverable_error;
-
 	u32 driver_filtered_tx_pkt;
-
 	/* src: Clear-on-Read register; Will not survive PMF Migration */
 	u32 eee_tx_lpi;
 };
-
 
 struct bnx2x_eth_q_stats {
 	u32 total_unicast_bytes_received_hi;
@@ -267,7 +263,6 @@ struct bnx2x_eth_q_stats {
 	u32 total_tpa_aggregated_frames_lo;
 	u32 total_tpa_bytes_hi;
 	u32 total_tpa_bytes_lo;
-
 	u32 driver_filtered_tx_pkt;
 };
 
@@ -320,7 +315,6 @@ struct bnx2x_eth_q_stats_old {
 	u32 rx_err_discard_pkt_old;
 	u32 rx_skb_alloc_failed_old;
 	u32 hw_csum_err_old;
-
 	u32 driver_filtered_tx_pkt_old;
 };
 
@@ -339,7 +333,6 @@ struct bnx2x_fw_port_stats_old {
 	 u32 brb_truncate_discard;
 	 u32 mac_discard;
 };
-
 
 /****************************************************************************
 * Macros
@@ -468,8 +461,9 @@ struct bnx2x_fw_port_stats_old {
 
 #define UPDATE_QSTAT(s, t) \
 	do { \
-		qstats->t##_hi = qstats_old->t##_hi + le32_to_cpu(s.hi); \
 		qstats->t##_lo = qstats_old->t##_lo + le32_to_cpu(s.lo); \
+		qstats->t##_hi = qstats_old->t##_hi + le32_to_cpu(s.hi) \
+			+ ((qstats->t##_lo < qstats_old->t##_lo) ? 1 : 0); \
 	} while (0)
 
 #define UPDATE_QSTAT_OLD(f) \
@@ -544,18 +538,15 @@ struct bnx2x_fw_port_stats_old {
 		SUB_EXTEND_64(qstats->t##_hi, qstats->t##_lo, diff); \
 	} while (0)
 
-
 /* forward */
 struct bnx2x;
-/**
- *
- */
-void bnx2x_stats_init(struct bnx2x *bp);
 
-/**
- *
- */
+void bnx2x_memset_stats(struct bnx2x *bp);
+void bnx2x_stats_init(struct bnx2x *bp);
 void bnx2x_stats_handle(struct bnx2x *bp, enum bnx2x_stats_event event);
+void bnx2x_stats_safe_exec(struct bnx2x *bp,
+			   void (func_to_exec)(void *cookie),
+			   void *cookie);
 
 /**
  * bnx2x_save_statistics - save statistics when unloading.

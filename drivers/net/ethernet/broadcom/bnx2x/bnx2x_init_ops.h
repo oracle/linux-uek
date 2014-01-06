@@ -195,6 +195,7 @@ static void bnx2x_init_wr_wb(struct bnx2x *bp, u32 addr,
 		bnx2x_init_str_wr(bp, addr, data, len);
 }
 
+
 static void bnx2x_wr_64(struct bnx2x *bp, u32 reg, u32 val_lo,
 			u32 val_hi)
 {
@@ -204,6 +205,7 @@ static void bnx2x_wr_64(struct bnx2x *bp, u32 reg, u32 val_lo,
 	wb_write[1] = val_hi;
 	REG_WR_DMAE_LEN(bp, reg, wb_write, 2);
 }
+
 static void bnx2x_init_wr_zp(struct bnx2x *bp, u32 addr, u32 len,
 			     u32 blob_off)
 {
@@ -234,7 +236,7 @@ static void bnx2x_init_block(struct bnx2x *bp, u32 block, u32 stage)
 	u16 op_end =
 		INIT_OPS_OFFSETS(bp)[BLOCK_OPS_IDX(block, stage,
 						     STAGE_END)];
-	union init_op *op;
+	const union init_op *op;
 	u32 op_idx, op_type, addr, len;
 	const u32 *data, *data_base;
 
@@ -246,7 +248,7 @@ static void bnx2x_init_block(struct bnx2x *bp, u32 block, u32 stage)
 
 	for (op_idx = op_start; op_idx < op_end; op_idx++) {
 
-		op = (union init_op *)&(INIT_OPS(bp)[op_idx]);
+		op = (const union init_op *)&(INIT_OPS(bp)[op_idx]);
 		/* Get generic data */
 		op_type = op->raw.op;
 		addr = op->raw.offset;
@@ -479,12 +481,12 @@ static void bnx2x_init_pxp_arb(struct bnx2x *bp, int r_order,
 
 	if (r_order > MAX_RD_ORD) {
 		DP(NETIF_MSG_HW, "read order of %d  order adjusted to %d\n",
-		   r_order, MAX_RD_ORD);
+			   r_order, MAX_RD_ORD);
 		r_order = MAX_RD_ORD;
 	}
 	if (w_order > MAX_WR_ORD) {
 		DP(NETIF_MSG_HW, "write order of %d  order adjusted to %d\n",
-		   w_order, MAX_WR_ORD);
+			   w_order, MAX_WR_ORD);
 		w_order = MAX_WR_ORD;
 	}
 	if (CHIP_REV_IS_FPGA(bp)) {
@@ -800,7 +802,7 @@ static void bnx2x_ilt_init_op_cnic(struct bnx2x *bp, u8 initop)
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_TM, initop);
 }
 
-static void bnx2x_ilt_init_op_no_cnic(struct bnx2x *bp, u8 initop)
+static void bnx2x_ilt_init_op(struct bnx2x *bp, u8 initop)
 {
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_CDU, initop);
 	bnx2x_ilt_client_id_init_op(bp, ILT_CLIENT_QM, initop);

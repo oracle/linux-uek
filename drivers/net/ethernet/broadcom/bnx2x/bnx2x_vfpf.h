@@ -4,23 +4,25 @@
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
- * under the terms of the GNU General Public License version 2, available
- * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
+ * under the terms of the GNU General Public License version 2 (the “GPL”),
+ * available at http://www.broadcom.com/licenses/GPLv2.php, with the following
+ * added to such license:
  *
- * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
- * consent.
+ * As a special exception, the copyright holders of this software give you
+ * permission to link this software with independent modules, and to copy and
+ * distribute the resulting executable under terms of your choice, provided that
+ * you also meet, for each linked independent module, the terms and conditions
+ * of the license of that module.  An independent module is a module which is
+ * not derived from this software.  The special exception does not apply to any
+ * modifications of the software.
  *
  * Maintained by: Eilon Greenstein <eilong@broadcom.com>
  *
  */
+
 #ifndef VF_PF_IF_H
 #define VF_PF_IF_H
-#include <linux/types.h>
-#ifndef aligned_u64 /* ! BNX2X_UPSTREAM */
-#define aligned_u64 __u64 __attribute__((aligned(8)))
-#endif
+
 /***********************************************
  *
  * Common definitions for all HVs
@@ -48,7 +50,10 @@ struct hw_sb_info {
  *
  **/
 #define TLV_BUFFER_SIZE			1024
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 #define TLV_ALIGN			sizeof(u64)
+#endif
+#define PF_VF_BULLETIN_SIZE		512
 
 #define VFPF_QUEUE_FLG_TPA		0x0001
 #define VFPF_QUEUE_FLG_TPA_IPV6		0x0002
@@ -60,6 +65,7 @@ struct hw_sb_info {
 #define VFPF_QUEUE_FLG_COS		0x0080
 #define VFPF_QUEUE_FLG_HC		0x0100
 #define VFPF_QUEUE_FLG_DHC		0x0200
+#define VFPF_QUEUE_FLG_LEADING_RSS	0x0400
 
 #define VFPF_QUEUE_DROP_IP_CS_ERR	(1 << 0)
 #define VFPF_QUEUE_DROP_TCP_CS_ERR	(1 << 1)
@@ -74,7 +80,7 @@ struct hw_sb_info {
 #define VFPF_RX_MASK_ACCEPT_BROADCAST		0x00000010
 /* TODO: #define VFPF_RX_MASK_ACCEPT_ANY_VLAN	0x00000020 */
 
-#define BULLETIN_SIZE		(sizeof(struct pf_vf_bulletin))
+#define BULLETIN_CONTENT_SIZE		(sizeof(struct pf_vf_bulletin_content))
 #define BULLETIN_ATTEMPTS	5 /* crc failures before throwing towel */
 #define BULLETIN_CRC_SEED	0
 
@@ -125,14 +131,16 @@ struct vfpf_acquire_tlv {
 
 	struct vf_pf_vfdev_info {
 		/* the following fields are for debug purposes */
-		u8  vf_id;      	/* ME register value */
-		u8  vf_os;      	/* e.g. Linux, W2K8 */
-		u8 padding[2];
+		u8 vf_id;      	/* ME register value */
+		u8 vf_os;      	/* e.g. Linux, W2K8 */
+		u8 fp_hsi_ver;
+		u8 padding;
 	} vfdev_info;
 
 	struct vf_pf_resc_request resc_request;
-};
 
+	aligned_u64 bulletin_addr;
+};
 
 /* simple operation request on queue */
 struct vfpf_q_op_tlv {
@@ -145,14 +153,21 @@ struct vfpf_q_op_tlv {
 struct vfpf_rss_tlv {
 	struct vfpf_first_tlv	first_tlv;
 	u32			rss_flags;
-	u8			rss_result_mask; /* Number hash bits to take
-						  * into an account
-						  */
+#define VFPF_RSS_MODE_DISABLED	(1 << 0)
+#define VFPF_RSS_MODE_REGULAR	(1 << 1)
+#define VFPF_RSS_SET_SRCH 	(1 << 2)
+#define VFPF_RSS_IPV4		(1 << 3)
+#define VFPF_RSS_IPV4_TCP	(1 << 4)
+#define VFPF_RSS_IPV4_UDP	(1 << 5)
+#define VFPF_RSS_IPV6		(1 << 6)
+#define VFPF_RSS_IPV6_TCP	(1 << 7)
+#define VFPF_RSS_IPV6_UDP	(1 << 8)
+	u8			rss_result_mask;
 	u8			ind_table_size;
 	u8			rss_key_size;
 	u8			padding;
 	u8			ind_table[T_ETH_INDIRECTION_TABLE_SIZE];
-	u32			rss_key[10];	/* hash values */
+	u32			rss_key[T_ETH_RSS_KEY];	/* hash values */
 };
 
 /* acquire response tlv - carries the allocated resources */
@@ -186,9 +201,21 @@ struct pfvf_acquire_resp_tlv {
 		u8	num_mc_filters;
 		u8	permanent_mac_addr[ETH_ALEN];
 		u8	current_mac_addr[ETH_ALEN];
-		u8	padding[2];
+		u16	pf_link_speed;
+		u32	pf_link_supported;
 	} resc;
 };
+
+struct vfpf_port_phys_id_resp_tlv {
+	struct channel_tlv tl;
+	u8 id[ETH_ALEN];
+	u8 padding[2];
+};
+
+#define VFPF_INIT_FLG_STATS_COALESCE	(1 << 0) /* when set the VFs queues
+						  * stats will be coalesced on
+						  * the leading RSS queue
+						  */
 
 /* Init VF */
 struct vfpf_init_tlv {
@@ -196,7 +223,9 @@ struct vfpf_init_tlv {
 	aligned_u64 sb_addr[PFVF_MAX_SBS_PER_VF]; /* vf_sb based */
 	aligned_u64 spq_addr;
 	aligned_u64 stats_addr;
-	aligned_u64 bulletin_addr;
+	u16 stats_stride;
+	u32 flags;
+	u32 padding [2];
 };
 
 /* Setup Queue */
@@ -266,6 +295,10 @@ struct vfpf_q_mac_vlan_filter {
 	u16 vlan_tag;
 };
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#define _UP_ETH_ALEN	(6)
+#endif
+
 /* configure queue filters */
 struct vfpf_set_q_filters_tlv {
 	struct vfpf_first_tlv first_tlv;
@@ -282,12 +315,12 @@ struct vfpf_set_q_filters_tlv {
 
 	#define PFVF_MAX_MAC_FILTERS			16
 	#define PFVF_MAX_VLAN_FILTERS       		16
-	#define PFVF_MAX_FILTERS 			PFVF_MAX_MAC_FILTERS +\
-							PFVF_MAX_VLAN_FILTERS
+	#define PFVF_MAX_FILTERS 			(PFVF_MAX_MAC_FILTERS +\
+							 PFVF_MAX_VLAN_FILTERS)
 	struct vfpf_q_mac_vlan_filter filters[PFVF_MAX_FILTERS];
 
 	#define PFVF_MAX_MULTICAST_PER_VF   		32
-	u8  multicast[PFVF_MAX_MULTICAST_PER_VF][6];
+	u8  multicast[PFVF_MAX_MULTICAST_PER_VF][_UP_ETH_ALEN];
 
 	u32 rx_mask;	/* see mask constants at the top of the file */
 };
@@ -337,11 +370,16 @@ union pfvf_tlvs {
  * periodically by the VF. A copy per VF is maintained in the PF (to prevent
  * loss of data upon multiple updates (or the need for read modify write)).
  */
-struct pf_vf_bulletin {
+struct pf_vf_bulletin_size {
+	u8 size [PF_VF_BULLETIN_SIZE];
+};
+
+struct pf_vf_bulletin_content {
 	u32 crc;			/* crc of structure to ensure is not in
 					 * mid-update
 					 */
-	u32 version;
+	u16 version;
+	u16 length;
 
 	aligned_u64 valid_bitmap;	/* bitmap indicating wich fields
 					 * hold valid values
@@ -350,80 +388,53 @@ struct pf_vf_bulletin {
 #define MAC_ADDR_VALID		0	/* alert the vf that a new mac address
 					 * is available for it
 					 */
+#define VLAN_VALID		1	/* when set, the vf should no access the
+					 * vfpf channel
+					 */
+#define CHANNEL_DOWN		2	/* vfpf channel is disabled. VFs are not
+					 * to attempt to send messages on the
+					 * channel after this bit is set
+					 */
 	u8 mac[ETH_ALEN];
-	u8 padding[2];
+	u8 mac_padding[2];
+
+	u16 vlan;
+	u8 vlan_padding[6];
 };
 
-#define lookup_entry(v0) \
-		[v0] = #v0
-#define populate_lookup1(v0) \
-		lookup_entry(v0)
-#define populate_lookup2(v0, v1) \
-		populate_lookup1(v0), lookup_entry(v1)
-#define populate_lookup3(v0, v1, v2) \
-		populate_lookup2(v0, v1), lookup_entry(v2)
-#define populate_lookup4(v0, v1, v2, v3) \
-		populate_lookup3(v0, v1, v2), lookup_entry(v3)
-#define populate_lookup5(v0, v1, v2, v3, v4) \
-		populate_lookup4(v0, v1, v2, v3), lookup_entry(v4)
-#define populate_lookup6(v0, v1, v2, v3, v4, v5) \
-		populate_lookup5(v0, v1, v2, v3, v4), lookup_entry(v5)
-#define populate_lookup7(v0, v1, v2, v3, v4, v5, v6) \
-		populate_lookup6(v0, v1, v2, v3, v4, v5), lookup_entry(v6)
-#define populate_lookup8(v0, v1, v2, v3, v4, v5, v6, v7) \
-		populate_lookup7(v0, v1, v2, v3, v4, v5, v6), lookup_entry(v7)
-#define populate_lookup9(v0, v1, v2, v3, v4, v5, v6, v7, v8) \
-		populate_lookup8(v0, v1, v2, v3, v4, v5, v6, v7), lookup_entry(v8)
-#define populate_lookup10(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9) \
-		populate_lookup9(v0, v1, v2, v3, v4, v5, v6, v7, v8), lookup_entry(v9)
-#define populate_lookup11(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10) \
-		populate_lookup10(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9), lookup_entry(v10)
-#define populate_lookup12(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11) \
-		populate_lookup11(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10), lookup_entry(v11)
-#define populate_lookup13(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12) \
-		populate_lookup12(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11), lookup_entry(v12)
-#define populate_lookup14(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13) \
-		populate_lookup13(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12), lookup_entry(v13)
-#define populate_lookup15(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14) \
-		populate_lookup14(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13), lookup_entry(v14)
-#define populate_lookup16(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15) \
-		populate_lookup15(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14), lookup_entry(v15)
-#define populate_lookup17(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16) \
-		populate_lookup16(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15), lookup_entry(v16)
-#define populate_lookup18(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17) \
-		populate_lookup17(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16), lookup_entry(v17)
-
-#define VA_NUM_ARGS(...) \
-		VA_NUM_ARGS_IMPL(__VA_ARGS__, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define VA_NUM_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, N, ...) N
-
-#define macro_dispatcher__(func, nargs) \
-		func##nargs
-#define macro_dispatcher_(func, nargs) \
-		macro_dispatcher__(func, nargs)
-#define macro_dispatcher(func, ...) \
-		macro_dispatcher_(func, VA_NUM_ARGS(__VA_ARGS__))
-
-#define print_enum(name, ...) \
-		enum name {__VA_ARGS__}; \
-		static __attribute__((unused)) char *name##_string [] = { macro_dispatcher(populate_lookup, __VA_ARGS__)(__VA_ARGS__) };
-
-print_enum(channel_tlvs,
-	   CHANNEL_TLV_NONE, /* ends tlv sequence */
-	   CHANNEL_TLV_ACQUIRE,
-	   CHANNEL_TLV_INIT,
-	   CHANNEL_TLV_SETUP_Q,
-	   CHANNEL_TLV_SET_Q_FILTERS,
-	   CHANNEL_TLV_ACTIVATE_Q,
-	   CHANNEL_TLV_DEACTIVATE_Q,
-	   CHANNEL_TLV_TEARDOWN_Q,
-	   CHANNEL_TLV_CLOSE,
-	   CHANNEL_TLV_RELEASE,
-	   CHANNEL_TLV_UPDATE_RSS,
-	   CHANNEL_TLV_PF_RELEASE_VF,
-	   CHANNEL_TLV_LIST_END,
-	   CHANNEL_TLV_FLR,
-	   CHANNEL_TLV_PF_SET_MAC,
-	   CHANNEL_TLV_MAX);
+union pf_vf_bulletin {
+	struct pf_vf_bulletin_content content;
+	struct pf_vf_bulletin_size size;
+};
+#define MAX_TLVS_IN_LIST 50
+#ifndef print_enum /* BNX2X_UPSTREAM */
+enum channel_tlvs {
+#else
+print_enum (channel_tlvs,
+#endif
+	CHANNEL_TLV_NONE, /* ends tlv sequence */
+	CHANNEL_TLV_ACQUIRE,
+	CHANNEL_TLV_INIT,
+	CHANNEL_TLV_SETUP_Q,
+	CHANNEL_TLV_SET_Q_FILTERS,
+	CHANNEL_TLV_ACTIVATE_Q,
+	CHANNEL_TLV_DEACTIVATE_Q,
+	CHANNEL_TLV_TEARDOWN_Q,
+	CHANNEL_TLV_CLOSE,
+	CHANNEL_TLV_RELEASE,
+	CHANNEL_TLV_UPDATE_RSS_DEPRECATED,
+	CHANNEL_TLV_PF_RELEASE_VF,
+	CHANNEL_TLV_LIST_END,
+	CHANNEL_TLV_FLR,
+	CHANNEL_TLV_PF_SET_MAC,
+	CHANNEL_TLV_PF_SET_VLAN,
+	CHANNEL_TLV_UPDATE_RSS,
+	CHANNEL_TLV_PHYS_PORT_ID,
+	CHANNEL_TLV_MAX
+#ifndef print_enum /* BNX2X_UPSTREAM */
+};
+#else
+);
+#endif
 
 #endif /* VF_PF_IF_H */

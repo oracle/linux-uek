@@ -13,36 +13,33 @@
  * consent.
  *
  * Maintained by: Eilon Greenstein <eilong@broadcom.com>
- * Written by: Shmulik Ravid
- *
+ * Written by: Shmulik Ravid <shmulikr@broadcom.com>
+ *	       Ariel Elior <ariele@broadcom.com>
  */
 #ifndef BNX2X_SRIOV_H
 #define BNX2X_SRIOV_H
 
-/**
- * !BNX2X_VFOP_WQ - means SP ramrods can be invoked from a completion
- * context (may be NAPI context) ==> all memory allocated for these rmarods in
- * SP-VERBS must be GFP_ATOMIC
- */
-#define BNX2X_VFOP_WQ 1
-
 #include "bnx2x_vfpf.h"
-#include "bnx2x_cmn.h"
+#include "bnx2x.h"
 
-/*
- * The bnx2x device structure holds vfdb structure described below.
+enum sample_bulletin_result {
+	   PFVF_BULLETIN_UNCHANGED,
+	   PFVF_BULLETIN_UPDATED,
+	   PFVF_BULLETIN_CRC_ERR
+};
+
+#ifdef CONFIG_BNX2X_SRIOV
+
+/* The bnx2x device structure holds vfdb structure described below.
  * The VF array is indexed by the relative vfid.
  */
-
 #define BNX2X_VF_MAX_QUEUES		16
 #define BNX2X_VF_MAX_TPA_AGG_QUEUES	8
 
 struct bnx2x_sriov {
 	u32 first_vf_in_pf;
 
-	/*
-	 * standard SRIOV capability fields, mostly for debugging
-	 */
+	/* standard SRIOV capability fields, mostly for debugging */
 	int pos;		/* capability position */
 	int nres;		/* number of resources */
 	u32 cap;		/* SR-IOV Capabilities */
@@ -61,15 +58,15 @@ struct bnx2x_vf_bar {
 	u64 bar;
 	u32 size;
 };
+
 struct bnx2x_vf_bar_info {
 	struct bnx2x_vf_bar bars[PCI_SRIOV_NUM_BARS];
 	u8 nr_bars;
 };
 
-
 /* vf queue (used both for rx or tx) */
 struct bnx2x_vf_queue {
-	struct eth_context 		*cxt;
+	struct eth_context		*cxt;
 
 	/* MACs object */
 	struct bnx2x_vlan_mac_obj	mac_obj;
@@ -77,58 +74,18 @@ struct bnx2x_vf_queue {
 	/* VLANs object */
 	struct bnx2x_vlan_mac_obj	vlan_obj;
 	atomic_t vlan_count;		/* 0 means vlan-0 is set  ~ untagged */
+	unsigned long accept_flags;	/* last accept flags configured */
 
 	/* Queue Slow-path State object */
-	struct bnx2x_queue_sp_obj 	sp_obj;
+	struct bnx2x_queue_sp_obj	sp_obj;
 
 	u32 cid;
 	u16 index;
 	u16 sb_idx;
+	bool is_leading;
 };
 
-/* statistics */
-
-struct bnx2x_vfq_fw_stats {
-	/* RX */
-	u32 total_unicast_packets_received_hi;
-	u32 total_unicast_packets_received_lo;
-	u32 total_unicast_bytes_received_hi;
-	u32 total_unicast_bytes_received_lo;
-	u32 total_multicast_packets_received_hi;
-	u32 total_multicast_packets_received_lo;
-	u32 total_multicast_bytes_received_hi;
-	u32 total_multicast_bytes_received_lo;
-	u32 total_broadcast_packets_received_hi;
-	u32 total_broadcast_packets_received_lo;
-	u32 total_broadcast_bytes_received_hi;
-	u32 total_broadcast_bytes_received_lo;
-	u32 no_buff_discard_hi;
-	u32 no_buff_discard_lo;
-	u32 etherstatsoverrsizepkts_hi;
-	u32 etherstatsoverrsizepkts_lo;
-	u32 error_discard_hi;
-	u32 error_discard_lo;
-
-
-	/* TX */
-	u32 total_unicast_packets_sent_hi;
-	u32 total_unicast_packets_sent_lo;
-	u32 total_unicast_bytes_sent_hi;
-	u32 total_unicast_bytes_sent_lo;
-	u32 total_multicast_packets_sent_hi;
-	u32 total_multicast_packets_sent_lo;
-	u32 total_multicast_bytes_sent_hi;
-	u32 total_multicast_bytes_sent_lo;
-	u32 total_broadcast_packets_sent_hi;
-	u32 total_broadcast_packets_sent_lo;
-	u32 total_broadcast_bytes_sent_hi;
-	u32 total_broadcast_bytes_sent_lo;
-	u32 tx_error_packets_hi;
-	u32 tx_error_packets_lo;
-};
-
-/**
- * struct bnx2x_vfop_qctor_params - prepare queue construction parameters:
+/* struct bnx2x_vfop_qctor_params - prepare queue construction parameters:
  * q-init, q-setup and SB index
  */
 struct bnx2x_vfop_qctor_params {
@@ -136,10 +93,7 @@ struct bnx2x_vfop_qctor_params {
 	struct bnx2x_queue_setup_params		prep_qsetup;
 };
 
-
-/**
- * VFOP parameters (one copy per VF)
- */
+/* VFOP parameters (one copy per VF) */
 union bnx2x_vfop_params {
 	struct bnx2x_vlan_mac_ramrod_params	vlan_mac;
 	struct bnx2x_rx_mode_ramrod_params	rx_mode;
@@ -151,11 +105,8 @@ union bnx2x_vfop_params {
 /* forward */
 struct bnx2x_virtf;
 
-/**
- * VFOP definitions
- */
+/* VFOP definitions */
 typedef void (*vfop_handler_t)(struct bnx2x *bp, struct bnx2x_virtf *vf);
-
 
 struct bnx2x_vfop_cmd {
 	vfop_handler_t done;
@@ -180,8 +131,7 @@ struct bnx2x_vfop_filters {
 	struct bnx2x_vfop_filter filters[];
 };
 
-/**
- * transient list allocated, built and saved until its
+/* transient list allocated, built and saved until its
  * passed to the SP-VERBs layer.
  */
 struct bnx2x_vfop_args_mcast {
@@ -232,9 +182,7 @@ struct bnx2x_vfop {
 	union bnx2x_vfop_args	args;		/* extra arguments */
 	union bnx2x_vfop_params *op_p;		/* ramrod params */
 
-	/**
-	 *	state machine callbacks
-	 **/
+	/* state machine callbacks */
 	vfop_handler_t transition;
 	vfop_handler_t done;
 };
@@ -247,39 +195,41 @@ struct bnx2x_virtf {
 #define VF_CFG_TPA		0x0004
 #define VF_CFG_INT_SIMD		0x0008
 #define VF_CACHE_LINE		0x0010
-
-	/* rss params TODO */
+#define VF_CFG_VLAN		0x0020
+#define VF_CFG_STATS_COALESCE	0x0040
 
 	u8 state;
 #define VF_FREE		0	/* VF ready to be acquired holds no resc */
-#define VF_ACQUIRED	1	/* VF aquired, but not initalized */
+#define VF_ACQUIRED	1	/* VF acquired, but not initialized */
 #define VF_ENABLED	2	/* VF Enabled */
 #define VF_RESET	3	/* VF FLR'd, pending cleanup */
 
 	/* non 0 during flr cleanup */
 	u8 flr_clnup_stage;
 #define VF_FLR_CLN	1	/* reclaim resources and do 'final cleanup'
-				 * sans the end-wait */
+				 * sans the end-wait
+				 */
 #define VF_FLR_ACK	2	/* ACK flr notification */
 #define VF_FLR_EPILOG	3	/* wait for VF remnants to dissipate in the HW
-				 * ~ final cleanup' end wait */
+				 * ~ final cleanup' end wait
+				 */
 
 	/* dma */
 	dma_addr_t fw_stat_map;		/* valid iff VF_CFG_STATS */
+	u16 stats_stride;
 	dma_addr_t spq_map;
 	dma_addr_t bulletin_map;
 
-	/**
-	 * Allocated resources counters. Before the VF is acquired, the
+	/* Allocated resources counters. Before the VF is acquired, the
 	 * counters hold the following values:
 	 *
 	 * - xxq_count = 0 as the queues memory is not allocated yet.
 	 *
 	 * - sb_count  = The number of status blocks configured for this VF in
-	 *      	 the IGU CAM. Initially read during probe.
+	 *		 the IGU CAM. Initially read during probe.
 	 *
 	 * - xx_rules_count = The number of rules statically and equally
-	 *      	      allocated for each VF, during PF load.
+	 *		      allocated for each VF, during PF load.
 	 */
 	struct vf_pf_resc_request	alloc_resc;
 #define vf_rxq_count(vf)		((vf)->alloc_resc.num_rxqs)
@@ -289,12 +239,14 @@ struct bnx2x_virtf {
 #define vf_vlan_rules_cnt(vf)		((vf)->alloc_resc.num_vlan_filters)
 #define vf_mc_rules_cnt(vf)		((vf)->alloc_resc.num_mc_filters)
 
-	u8 sb_count;	/* actual number of SBs */
-	u8 igu_base_id;	/* base igu status block id */
-
+	u8 sb_count;		/* actual number of SBs */
+	u8 igu_base_id;		/* base igu status block id */
 
 	struct bnx2x_vf_queue	*vfqs;
-#define bnx2x_vfq(vf, nr, var)	((vf)->vfqs[(nr)].var)
+#define LEADING_IDX			0
+#define bnx2x_vfq_is_leading(vfq)	((vfq)->index == LEADING_IDX)
+#define bnx2x_vfq(vf, nr, var)		((vf)->vfqs[(nr)].var)
+#define bnx2x_leading_vfq(vf, var)	((vf)->vfqs[LEADING_IDX].var)
 
 	u8 index;	/* index in the vf array */
 	u8 abs_vfid;
@@ -311,13 +263,13 @@ struct bnx2x_virtf {
 	/* set-mac ramrod state 1-pending, 0-done */
 	unsigned long	filter_state;
 
-	/**
-	 * leading rss client id ~~ the client id of the first rxq, must be
+	/* leading rss client id ~~ the client id of the first rxq, must be
 	 * set for each txq.
 	 */
 	int leading_rss;
 
 	/* MCAST object */
+	int mcast_list_len;
 	struct bnx2x_mcast_obj		mcast_obj;
 
 	/* RSS configuration object */
@@ -333,19 +285,13 @@ struct bnx2x_virtf {
 	enum channel_tlvs		op_current;
 };
 
-#define BNX2X_NR_VIRTFN(bp)	(bp)->vfdb->sriov.nr_virtfn
+#define BNX2X_NR_VIRTFN(bp)	((bp)->vfdb->sriov.nr_virtfn)
 
 #define for_each_vf(bp, var) \
 		for ((var) = 0; (var) < BNX2X_NR_VIRTFN(bp); (var)++)
 
-#define for_each_vf_rxq(vf, var) \
-		for ((var) = 0; (var) < vf_rxq_count(vf); (var)++)
-
 #define for_each_vfq(vf, var) \
 		for ((var) = 0; (var) < vf_rxq_count(vf); (var)++)
-
-#define for_each_vf_txq(vf, var) \
-		for ((var) = 0; (var) < vf_txq_count(vf); (var)++)
 
 #define for_each_vf_sb(vf, var) \
 		for ((var) = 0; (var) < vf_sb_count(vf); (var)++)
@@ -360,11 +306,8 @@ struct bnx2x_virtf {
 #define FW_VF_HANDLE(abs_vfid)	\
 	(abs_vfid + FW_PF_MAX_HANDLE)
 
-#define ABS_VFID_FORM_FW_VF_HANDLE(funcid) \
-	(funcid - FW_PF_MAX_HANDLE)
-
-#define IS_PF_FORM_FW_VF_HANDLE(funcid) \
-	(funcid < FW_PF_MAX_HANDLE)
+#define GET_NUM_VFS_PER_PATH(bp)	0
+#define GET_NUM_VFS_PER_PF(bp)		0
 
 /* locking and unlocking the channel mutex */
 void bnx2x_lock_vf_pf_channel(struct bnx2x *bp, struct bnx2x_virtf *vf,
@@ -373,14 +316,12 @@ void bnx2x_lock_vf_pf_channel(struct bnx2x *bp, struct bnx2x_virtf *vf,
 void bnx2x_unlock_vf_pf_channel(struct bnx2x *bp, struct bnx2x_virtf *vf,
 				enum channel_tlvs expected_tlv);
 
-/*
- * VF mail box (aka vf-pf channel)
- */
+/* VF mail box (aka vf-pf channel) */
 
 /* a container for the bi-directional vf<-->pf messages.
-   The actual response will be placed according to the offset parameter
-   provided in the request
-*/
+ *  The actual response will be placed according to the offset parameter
+ *  provided in the request
+ */
 
 #define MBX_MSG_ALIGN	8
 #define MBX_MSG_ALIGNED_SIZE	(roundup(sizeof(struct bnx2x_vf_mbx_msg), \
@@ -407,12 +348,6 @@ struct bnx2x_vf_mbx {
 					 */
 };
 
-struct client_init_info {
-	struct client_init_ramrod_data *ramrod_data;
-	dma_addr_t ramrod_mapping;
-	size_t size;
-};
-
 struct bnx2x_vf_sp {
 	union {
 		struct eth_classify_rules_ramrod_data	e2;
@@ -434,6 +369,10 @@ struct bnx2x_vf_sp {
 		struct client_init_ramrod_data  init_data;
 		struct client_update_ramrod_data update_data;
 	} q_data;
+
+	union {
+		struct eth_rss_update_ramrod_data e2;
+	} rss_rdata;
 };
 
 struct hw_dma {
@@ -443,7 +382,6 @@ struct hw_dma {
 };
 
 struct bnx2x_vfdb {
-
 #define BP_VFDB(bp)		((bp)->vfdb)
 	/* vf array */
 	struct bnx2x_virtf	*vfs;
@@ -455,7 +393,7 @@ struct bnx2x_vfdb {
 
 	/* vf HW contexts */
 	struct hw_dma		context[BNX2X_VF_CIDS/ILT_PAGE_CIDS];
-#define	BP_VF_CXT_PAGE(bp,i)	(&(bp)->vfdb->context[(i)])
+#define	BP_VF_CXT_PAGE(bp, i)	(&(bp)->vfdb->context[(i)])
 
 	/* SR-IOV information */
 	struct bnx2x_sriov	sriov;
@@ -467,7 +405,8 @@ struct bnx2x_vfdb {
 	struct hw_dma		bulletin_dma;
 #define BP_VF_BULLETIN_DMA(bp)	(&((bp)->vfdb->bulletin_dma))
 #define	BP_VF_BULLETIN(bp, vf) \
-		(((struct pf_vf_bulletin *)(BP_VF_BULLETIN_DMA(bp)->addr)) + vf)
+	(((struct pf_vf_bulletin_content *)(BP_VF_BULLETIN_DMA(bp)->addr)) \
+	 + (vf))
 
 	struct hw_dma		sp_dma;
 #define bnx2x_vf_sp(bp, vf, field) ((bp)->vfdb->sp_dma.addr +		\
@@ -479,6 +418,10 @@ struct bnx2x_vfdb {
 
 #define FLRD_VFS_DWORDS (BNX2X_MAX_NUM_OF_VFS / 32)
 	u32 flrd_vfs[FLRD_VFS_DWORDS];
+
+	/* the number of msix vectors belonging to this PF designated for VFs */
+	u16 vf_sbs_pool;
+	u16 first_vf_igu_entry;
 };
 
 /* queue access */
@@ -487,47 +430,41 @@ static inline struct bnx2x_vf_queue *vfq_get(struct bnx2x_virtf *vf, u8 index)
 	return &(vf->vfqs[index]);
 }
 
-static inline bool vfq_is_leading(struct bnx2x_vf_queue *vfq)
-{
-	return (vfq->index == 0);
-}
-
 /* FW ids */
 static inline u8 vf_igu_sb(struct bnx2x_virtf *vf, u16 sb_idx)
 {
-	return (vf->igu_base_id + sb_idx);
+	return vf->igu_base_id + sb_idx;
 }
-static inline u8 vf_fw_sb(struct bnx2x_virtf *vf, u16 sb_idx)
-{
-	return vf_igu_sb(vf, sb_idx);
-}
+
 static inline u8 vf_hc_qzone(struct bnx2x_virtf *vf, u16 sb_idx)
 {
 	return vf_igu_sb(vf, sb_idx);
 }
-static inline u8 vfq_cl_id(struct bnx2x_virtf *vf, struct bnx2x_vf_queue *q)
+
+static u8 vfq_cl_id(struct bnx2x_virtf *vf, struct bnx2x_vf_queue *q)
 {
-	return (vf->igu_base_id + q->index);
+	return vf->igu_base_id + q->index;
 }
+
 static inline u8 vfq_stat_id(struct bnx2x_virtf *vf, struct bnx2x_vf_queue *q)
 {
-	return vfq_cl_id(vf, q);
+	if (vf->cfg_flags & VF_CFG_STATS_COALESCE)
+		return vf->leading_rss;
+	else
+		return vfq_cl_id(vf, q);
 }
+
 static inline u8 vfq_qzone_id(struct bnx2x_virtf *vf, struct bnx2x_vf_queue *q)
 {
 	return vfq_cl_id(vf, q);
 }
 
-
-/* forward */
-struct bnx2x;
-
 /* global iov routines */
 int bnx2x_iov_init_ilt(struct bnx2x *bp, u16 line);
 int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param, int num_vfs_param);
 void bnx2x_iov_remove_one(struct bnx2x *bp);
-void bnx2x_iov_free_mem(struct bnx2x* bp);
-int bnx2x_iov_alloc_mem(struct bnx2x* bp);
+void bnx2x_iov_free_mem(struct bnx2x *bp);
+int bnx2x_iov_alloc_mem(struct bnx2x *bp);
 int bnx2x_iov_nic_init(struct bnx2x *bp);
 int bnx2x_iov_chip_cleanup(struct bnx2x *bp);
 void bnx2x_iov_init_dq(struct bnx2x *bp);
@@ -535,40 +472,30 @@ void bnx2x_iov_init_dmae(struct bnx2x *bp);
 void bnx2x_iov_set_queue_sp_obj(struct bnx2x *bp, int vf_cid,
 				struct bnx2x_queue_sp_obj **q_obj);
 void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid, bool queue_work);
-int bnx2x_iov_eq_sp_event(struct bnx2x* bp, union event_ring_elem *elem);
-void bnx2x_iov_adjust_stats_req(struct bnx2x * bp);
+int bnx2x_iov_eq_sp_event(struct bnx2x *bp, union event_ring_elem *elem);
+void bnx2x_iov_adjust_stats_req(struct bnx2x *bp);
 void bnx2x_iov_storm_stats_update(struct bnx2x *bp);
 void bnx2x_iov_sp_task(struct bnx2x *bp);
-
 /* global vf mailbox routines */
 void bnx2x_vf_mbx(struct bnx2x *bp, struct vf_pf_event_data *vfpf_event);
 void bnx2x_vf_enable_mbx(struct bnx2x *bp, u8 abs_vfid);
 
-/**
- *  CORE VF API
- */
+/* CORE VF API */
 typedef u8 bnx2x_mac_addr_t[ETH_ALEN];
-
 
 /* acquire */
 int bnx2x_vf_acquire(struct bnx2x *bp, struct bnx2x_virtf *vf,
-			  struct vf_pf_resc_request* resc);
-
-
+		     struct vf_pf_resc_request *resc);
 /* init */
 int bnx2x_vf_init(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		  dma_addr_t *sb_map);
 
-
-/**
- * VFOP generic helpers
- */
+/* VFOP generic helpers */
 #define bnx2x_vfop_default(state) do {				\
 		BNX2X_ERR("Bad state %d\n", (state));		\
 		vfop->rc = -EINVAL;				\
 		goto op_err;					\
 	} while (0)
-
 
 enum {
 	VFOP_DONE,
@@ -584,9 +511,9 @@ enum {
 		else if ((next) == VFOP_DONE)				\
 			goto op_done;					\
 		else if ((next) == VFOP_VERIFY_PEND)			\
-			BNX2X_ERR("expected pending");			\
+			BNX2X_ERR("expected pending\n");		\
 		else {							\
-			DP(BNX2X_MSG_IOV, "no ramrod. scheduling");	\
+			DP(BNX2X_MSG_IOV, "no ramrod. Scheduling\n");	\
 			atomic_set(&vf->op_in_progress, 1);		\
 			queue_delayed_work(bnx2x_wq, &bp->sp_task, 0);  \
 			return;						\
@@ -604,7 +531,6 @@ enum {
 static inline struct bnx2x_vfop *bnx2x_vfop_cur(struct bnx2x *bp,
 						struct bnx2x_virtf *vf)
 {
-	/* sanity check - remove */
 	WARN(!mutex_is_locked(&vf->op_mutex), "about to access vf op linked list but mutex was not locked!");
 	WARN_ON(list_empty(&vf->op_list_head));
 	return list_first_entry(&vf->op_list_head, struct bnx2x_vfop, link);
@@ -623,7 +549,6 @@ static inline struct bnx2x_vfop *bnx2x_vfop_add(struct bnx2x *bp,
 	return vfop;
 }
 
-
 static inline void bnx2x_vfop_end(struct bnx2x *bp, struct bnx2x_virtf *vf,
 				  struct bnx2x_vfop *vfop)
 {
@@ -633,11 +558,11 @@ static inline void bnx2x_vfop_end(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		vfop->rc = 0;
 	DP(BNX2X_MSG_IOV, "rc is now %d\n", vfop->rc);
 
-	/**
-	 * unlink the current op context and propagete error code
+	/* unlink the current op context and propagate error code
 	 * must be done before invoking the 'done()' handler
 	 */
-	WARN(!mutex_is_locked(&vf->op_mutex), "about to access vf op linked list but mutex was not locked!");
+	WARN(!mutex_is_locked(&vf->op_mutex),
+	     "about to access vf op linked list but mutex was not locked!");
 	list_del(&vfop->link);
 
 	if (list_empty(&vf->op_list_head)) {
@@ -647,6 +572,7 @@ static inline void bnx2x_vfop_end(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		   vf->op_rc, vfop->rc);
 	} else {
 		struct bnx2x_vfop *cur_vfop;
+
 		DP(BNX2X_MSG_IOV, "list not empty %d\n", vfop->rc);
 		cur_vfop = bnx2x_vfop_cur(bp, vf);
 		cur_vfop->rc = vfop->rc;
@@ -668,8 +594,7 @@ static inline void bnx2x_vfop_end(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	DP(BNX2X_MSG_IOV, "done handler complete. vf->op_rc %d, vfop->rc %d\n",
 	   vf->op_rc, vfop->rc);
 
-	/**
-	 * if this is the last nested op reset the wait_blocking flag
+	/* if this is the last nested op reset the wait_blocking flag
 	 * to release any blocking wrappers, only after 'done()' is invoked
 	 */
 	if (list_empty(&vf->op_list_head)) {
@@ -685,9 +610,6 @@ static inline int bnx2x_vfop_wait_blocking(struct bnx2x *bp,
 {
 	/* can take a while if any port is running */
 	int cnt = 5000;
-
-	if (CHIP_REV_IS_EMUL(bp))
-		cnt *= 20;
 
 	might_sleep();
 	while (cnt--) {
@@ -724,10 +646,7 @@ static inline int bnx2x_vfop_transition(struct bnx2x *bp,
 	return 0;
 }
 
-
-/**
- * VFOP queue construction helpers
- */
+/* VFOP queue construction helpers */
 void bnx2x_vfop_qctor_dump_tx(struct bnx2x *bp, struct bnx2x_virtf *vf,
 			    struct bnx2x_queue_init_params *init_params,
 			    struct bnx2x_queue_setup_params *setup_params,
@@ -743,15 +662,6 @@ void bnx2x_vfop_qctor_prep(struct bnx2x *bp,
 			   struct bnx2x_vf_queue *q,
 			   struct bnx2x_vfop_qctor_params *p,
 			   unsigned long q_type);
-
-/**
- * VFOP commands
- */
-int bnx2x_vfop_mac_set_cmd(struct bnx2x *bp,
-			   struct bnx2x_virtf *vf,
-			   struct bnx2x_vfop_cmd *cmd,
-			   int qid, u8 *mac, bool add);
-
 int bnx2x_vfop_mac_list_cmd(struct bnx2x *bp,
 			    struct bnx2x_virtf *vf,
 			    struct bnx2x_vfop_cmd *cmd,
@@ -762,11 +672,6 @@ int bnx2x_vfop_vlan_set_cmd(struct bnx2x *bp,
 			    struct bnx2x_virtf *vf,
 			    struct bnx2x_vfop_cmd *cmd,
 			    int qid, u16 vid, bool add);
-
-int bnx2x_vfop_vlan_delall_cmd(struct bnx2x *bp,
-			       struct bnx2x_virtf *vf,
-			       struct bnx2x_vfop_cmd *cmd,
-			       int qid, bool drv_only);
 
 int bnx2x_vfop_vlan_list_cmd(struct bnx2x *bp,
 			     struct bnx2x_virtf *vf,
@@ -795,26 +700,6 @@ int bnx2x_vfop_rxmode_cmd(struct bnx2x *bp,
 			  struct bnx2x_vfop_cmd *cmd,
 			  int qid, unsigned long accept_flags);
 
-int bnx2x_vfop_qtrigger_cmd(struct bnx2x *bp,
-			    struct bnx2x_virtf *vf,
-			    struct bnx2x_vfop_cmd *cmd,
-			    struct bnx2x_vfop_args_qx *qx);
-
-int bnx2x_vfop_trigger_cmd(struct bnx2x *bp,
-			   struct bnx2x_virtf *vf,
-			   struct bnx2x_vfop_cmd *cmd,
-			   bool activate);
-
-int bnx2x_vfop_defvlan_cmd(struct bnx2x *bp,
-			   struct bnx2x_virtf *vf,
-			   struct bnx2x_vfop_cmd *cmd,
-			   bool enable, u16 vid, u8 prio);
-
-int bnx2x_vfop_antispoof_cmd(struct bnx2x *bp,
-			     struct bnx2x_virtf *vf,
-			     struct bnx2x_vfop_cmd *cmd,
-			     bool enable);
-
 int bnx2x_vfop_close_cmd(struct bnx2x *bp,
 			 struct bnx2x_virtf *vf,
 			 struct bnx2x_vfop_cmd *cmd);
@@ -823,111 +708,155 @@ int bnx2x_vfop_release_cmd(struct bnx2x *bp,
 			   struct bnx2x_virtf *vf,
 			   struct bnx2x_vfop_cmd *cmd);
 
-/**
- * VF release ~ VF close + VF release-resources
+int bnx2x_vfop_rss_cmd(struct bnx2x *bp,
+		       struct bnx2x_virtf *vf,
+		       struct bnx2x_vfop_cmd *cmd);
+
+/* VF release ~ VF close + VF release-resources
  *
  * Release is the ultimate SW shutdown and is called whenever an
  * irrecoverable error is encountered.
  */
 void bnx2x_vf_release(struct bnx2x *bp, struct bnx2x_virtf *vf, bool block);
-
-/**
- * helper routines
- */
-void bnx2x_vf_get_sbdf(struct bnx2x *bp, struct bnx2x_virtf *vf, u32* sbdf);
-
-void bnx2x_vf_get_bars(struct bnx2x *bp, struct bnx2x_virtf *vf,
-		       struct bnx2x_vf_bar_info *bar_info);
-
 int bnx2x_vf_idx_by_abs_fid(struct bnx2x *bp, u16 abs_vfid);
 u8 bnx2x_vf_max_queue_cnt(struct bnx2x *bp, struct bnx2x_virtf *vf);
 
-void storm_memset_rcq_np(struct bnx2x *bp, dma_addr_t np_map, u8 cl_id);
-
-/**
- *	FLR routines:
- */
+/* FLR routines */
 
 /* VF FLR helpers */
 int bnx2x_vf_flr_clnup_epilog(struct bnx2x *bp, u8 abs_vfid);
 void bnx2x_vf_enable_access(struct bnx2x *bp, u8 abs_vfid);
 
-/**
- *	bnx2x_pf_flr_clnup
- *	a. re-enable target read on the PF
- *	b. poll cfc per function usgae counter
- *	c. poll the qm perfunction usage counter
- *	d. poll the tm per function usage counter
- *	e. poll the tm per function scan-done indication
- *	f. clear the dmae channel associated wit hthe PF
- *	g. zero the igu 'trailing edge' and 'leading edge' regs (attentions)
- *	h. call the common flr cleanup code with -1 (pf indication)
- */
-int bnx2x_pf_flr_clnup(struct bnx2x *bp);
-
-/**
- *	bnx2x_vf_flr_clnup
- *	a. erase the vf queue ids (client ids) form the pxp protection table
- *	b. wait for outstanding vf ramrods to complete
- *	c. send terminate ramrod for each vf queue
- *	d. call the common flr cleanup code with the vfid
- */
-void bnx2x_vf_flr_clnup(struct bnx2x *bp, struct bnx2x_virtf *vf);
-
-/**
- *	bnx2x_flr_clnup - clenaup code share by vf and pf flr
- *	fn >= 0 -> called during vf flr cleanup and fn is vfid
- *
- *	a. poll DQ function usage counter
- *	b. Invoke FW cleanup
- *	c. ATC function cleanup
- *	d. PBF function cleanup
- */
-int bnx2x_flr_clnup(struct bnx2x *bp, int fn);
-
-
-/**
- *	bnx2x_flr_clnup_epilog (temporary name) -
- *
- *	bnx2x_flr_clnup_epilog (temporary name) - For vfs it must be called
- *	after bnx2x_flr_clnup and before any vf initializations take place.
- *	in the case VMware NPA the pf does all the initialization on behalf
- *	of the vf, so the routine is called during vf_init.
- *
- *	a. For vfs only - wait for all PF ramrods that access any vf DBs to
- *	complete. A prominent example is the statistics ramrod.
- *	(simplification - lock-out PF ramrods and wait for all outstanding
- *	PF ramrod to complete).
- *	b. wait 100 ms for VF remnants in the HW to dissipate.
- *	c. Verify that the pending-transaction bit in device-status register
- *	(capability structure) is cleared
- */
-int bnx2x_flr_clnup_epilog(struct bnx2x *bp, struct bnx2x_virtf *vf);
-
-
-
-/**
- * Handles an FLR (or VF_DISABLE) notification form the MCP
- */
-void bnx2x_vf_handle_flr_event(struct bnx2x* bp);
+/* Handles an FLR (or VF_DISABLE) notification form the MCP */
+void bnx2x_vf_handle_flr_event(struct bnx2x *bp);
 
 void bnx2x_add_tlv(struct bnx2x *bp, void *tlvs_list, u16 offset, u16 type,
 		   u16 length);
-
 void bnx2x_vfpf_prep(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv,
 		     u16 type, u16 length);
-
+void bnx2x_vfpf_finalize(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv);
 void bnx2x_dp_tlv_list(struct bnx2x *bp, void *tlvs_list);
 
-u32 bnx2x_crc_vf_bulletin(struct bnx2x *bp, struct pf_vf_bulletin *bulletin);
+bool bnx2x_tlv_supported(u16 tlvtype);
 
+u32 bnx2x_crc_vf_bulletin(struct bnx2x *bp,
+			  struct pf_vf_bulletin_content *bulletin);
 int bnx2x_post_vf_bulletin(struct bnx2x *bp, int vf);
-
-print_enum(sample_bulletin_result,
-	   PFVF_BULLETIN_UNCHANGED,
-	   PFVF_BULLETIN_UPDATED,
-	   PFVF_BULLETIN_CRC_ERR);
 
 enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp);
 
+/* VF side vfpf channel functions */
+int bnx2x_vfpf_acquire(struct bnx2x *bp, u8 tx_count, u8 rx_count);
+int bnx2x_vfpf_release(struct bnx2x *bp);
+int bnx2x_vfpf_release(struct bnx2x *bp);
+int bnx2x_vfpf_init(struct bnx2x *bp);
+void bnx2x_vfpf_close_vf(struct bnx2x *bp);
+int bnx2x_vfpf_setup_q(struct bnx2x *bp, struct bnx2x_fastpath *fp,
+		       bool is_leading);
+int bnx2x_vfpf_teardown_queue(struct bnx2x *bp, int qidx);
+int bnx2x_vfpf_config_mac(struct bnx2x *bp, u8 *addr, u8 vf_qid, bool set);
+int bnx2x_vfpf_config_rss(struct bnx2x *bp,
+			  struct bnx2x_config_rss_params *params);
+int bnx2x_vfpf_set_mcast(struct net_device *dev);
+int bnx2x_vfpf_storm_rx_mode(struct bnx2x *bp, int mode);
+
+static inline void bnx2x_vf_fill_fw_str(struct bnx2x *bp, char *buf,
+					size_t buf_len)
+{
+	strlcpy(buf, bp->acquire_resp.pfdev_info.fw_ver, buf_len);
+}
+
+static inline int bnx2x_vf_ustorm_prods_offset(struct bnx2x *bp,
+					       struct bnx2x_fastpath *fp)
+{
+	return PXP_VF_ADDR_USDM_QUEUES_START +
+		bp->acquire_resp.resc.hw_qid[fp->index] *
+		sizeof(struct ustorm_queue_zone_data);
+}
+
+enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp);
+void bnx2x_timer_sriov(struct bnx2x *bp);
+void __iomem *bnx2x_vf_doorbells(struct bnx2x *bp);
+int bnx2x_vf_pci_alloc(struct bnx2x *bp);
+int bnx2x_enable_sriov(struct bnx2x *bp);
+void bnx2x_disable_sriov(struct bnx2x *bp);
+static inline int bnx2x_vf_headroom(struct bnx2x *bp)
+{
+	return bp->vfdb->sriov.nr_virtfn * BNX2X_CIDS_PER_VF;
+}
+void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp);
+int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs);
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) /* BNX2X_UPSTREAM */
+int bnx2x_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh);
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)) /* BNX2X_UPSTREAM */
+int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
+			 struct net_device *dev,
+			 u32 filter_mask);
+#else
+int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
+			 struct net_device *dev);
+#endif /* 3.9.0 */
+#endif /* 3.8.0 */
+void bnx2x_iov_channel_down(struct bnx2x *bp);
+
+#else /* CONFIG_BNX2X_SRIOV */
+
+static inline void bnx2x_iov_set_queue_sp_obj(struct bnx2x *bp, int vf_cid,
+				struct bnx2x_queue_sp_obj **q_obj) {}
+static inline void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid,
+				      bool queue_work) {}
+static inline void bnx2x_vf_handle_flr_event(struct bnx2x *bp) {}
+static inline int bnx2x_iov_eq_sp_event(struct bnx2x *bp,
+					union event_ring_elem *elem) {return 1; }
+static inline void bnx2x_iov_sp_task(struct bnx2x *bp) {}
+static inline void bnx2x_vf_mbx(struct bnx2x *bp,
+				struct vf_pf_event_data *vfpf_event) {}
+static inline int bnx2x_iov_init_ilt(struct bnx2x *bp, u16 line) {return line; }
+static inline void bnx2x_iov_init_dq(struct bnx2x *bp) {}
+static inline int bnx2x_iov_alloc_mem(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_iov_free_mem(struct bnx2x *bp) {}
+static inline int bnx2x_iov_chip_cleanup(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_iov_init_dmae(struct bnx2x *bp) {}
+static inline int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
+				     int num_vfs_param) {return 0; }
+static inline void bnx2x_iov_remove_one(struct bnx2x *bp) {}
+static inline int bnx2x_enable_sriov(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_disable_sriov(struct bnx2x *bp) {}
+static inline int bnx2x_vfpf_acquire(struct bnx2x *bp,
+				     u8 tx_count, u8 rx_count) {return 0; }
+static inline int bnx2x_vfpf_release(struct bnx2x *bp) {return 0; }
+static inline int bnx2x_vfpf_init(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_vfpf_close_vf(struct bnx2x *bp) {}
+static inline int bnx2x_vfpf_setup_q(struct bnx2x *bp, struct bnx2x_fastpath *fp, bool is_leading) {return 0; }
+static inline int bnx2x_vfpf_teardown_queue(struct bnx2x *bp, int qidx) {return 0; }
+static inline int bnx2x_vfpf_config_mac(struct bnx2x *bp, u8 *addr,
+					u8 vf_qid, bool set) {return 0; }
+static inline int bnx2x_vfpf_set_mcast(struct net_device *dev) {return 0; }
+static inline int bnx2x_vfpf_storm_rx_mode(struct bnx2x *bp,
+					   int mode) {return 0; }
+static inline int bnx2x_iov_nic_init(struct bnx2x *bp) {return 0; }
+static inline int bnx2x_vf_headroom(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_iov_adjust_stats_req(struct bnx2x *bp) {}
+static inline void bnx2x_vf_fill_fw_str(struct bnx2x *bp, char *buf,
+					size_t buf_len) {}
+static inline int bnx2x_vf_ustorm_prods_offset(struct bnx2x *bp,
+					       struct bnx2x_fastpath *fp) {return 0; }
+static inline enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp)
+{
+	return PFVF_BULLETIN_UNCHANGED;
+}
+static inline void bnx2x_timer_sriov(struct bnx2x *bp) {}
+
+static inline void __iomem *bnx2x_vf_doorbells(struct bnx2x *bp)
+{
+	return NULL;
+}
+
+static inline int bnx2x_vf_pci_alloc(struct bnx2x *bp) {return 0; }
+static inline void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp) {}
+static inline int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs) {return 0; }
+static inline void bnx2x_iov_channel_down(struct bnx2x *bp) {}
+
+#endif /* CONFIG_BNX2X_SRIOV */
 #endif /* bnx2x_sriov.h */

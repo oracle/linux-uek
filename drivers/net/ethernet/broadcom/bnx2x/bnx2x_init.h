@@ -653,23 +653,35 @@ static const struct {
  * [30] MCP Latched ump_tx_parity
  * [31] MCP Latched scpad_parity
  */
-#define MISC_AEU_ENABLE_MCP_PRTY_BITS	\
+#define MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS	\
 	(AEU_INPUTS_ATTN_BITS_MCP_LATCHED_ROM_PARITY | \
 	 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_RX_PARITY | \
-	 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_TX_PARITY | \
+	 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_UMP_TX_PARITY)
+
+#define MISC_AEU_ENABLE_MCP_PRTY_BITS	\
+	(MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS | \
 	 AEU_INPUTS_ATTN_BITS_MCP_LATCHED_SCPAD_PARITY)
 
 /* Below registers control the MCP parity attention output. When
  * MISC_AEU_ENABLE_MCP_PRTY_BITS are set - attentions are
  * enabled, when cleared - disabled.
  */
-static const u32 mcp_attn_ctl_regs[] = {
-	MISC_REG_AEU_ENABLE4_FUNC_0_OUT_0,
-	MISC_REG_AEU_ENABLE4_NIG_0,
-	MISC_REG_AEU_ENABLE4_PXP_0,
-	MISC_REG_AEU_ENABLE4_FUNC_1_OUT_0,
-	MISC_REG_AEU_ENABLE4_NIG_1,
-	MISC_REG_AEU_ENABLE4_PXP_1
+static const struct {
+	u32 addr;
+	u32 bits;
+} mcp_attn_ctl_regs[] = {
+	{ MISC_REG_AEU_ENABLE4_FUNC_0_OUT_0,
+		MISC_AEU_ENABLE_MCP_PRTY_BITS },
+	{ MISC_REG_AEU_ENABLE4_NIG_0,
+		MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS },
+	{ MISC_REG_AEU_ENABLE4_PXP_0,
+		MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS },
+	{ MISC_REG_AEU_ENABLE4_FUNC_1_OUT_0,
+		MISC_AEU_ENABLE_MCP_PRTY_BITS },
+	{ MISC_REG_AEU_ENABLE4_NIG_1,
+		MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS },
+	{ MISC_REG_AEU_ENABLE4_PXP_1,
+		MISC_AEU_ENABLE_MCP_PRTY_SUB_BITS }
 };
 
 static inline void bnx2x_set_mcp_parity(struct bnx2x *bp, u8 enable)
@@ -678,14 +690,14 @@ static inline void bnx2x_set_mcp_parity(struct bnx2x *bp, u8 enable)
 	u32 reg_val;
 
 	for (i = 0; i < ARRAY_SIZE(mcp_attn_ctl_regs); i++) {
-		reg_val = REG_RD(bp, mcp_attn_ctl_regs[i]);
+		reg_val = REG_RD(bp, mcp_attn_ctl_regs[i].addr);
 
 		if (enable)
-			reg_val |= MISC_AEU_ENABLE_MCP_PRTY_BITS;
+			reg_val |= mcp_attn_ctl_regs[i].bits;
 		else
-			reg_val &= ~MISC_AEU_ENABLE_MCP_PRTY_BITS;
+			reg_val &= ~mcp_attn_ctl_regs[i].bits;
 
-		REG_WR(bp, mcp_attn_ctl_regs[i], reg_val);
+		REG_WR(bp, mcp_attn_ctl_regs[i].addr, reg_val);
 	}
 }
 
@@ -747,9 +759,9 @@ static inline void bnx2x_clear_blocks_parity(struct bnx2x *bp)
 					 sts_clr_addr);
 			if (reg_val & reg_mask)
 				DP(NETIF_MSG_HW,
-					    "Parity errors in %s: 0x%x\n",
-					    bnx2x_blocks_parity_data[i].name,
-					    reg_val & reg_mask);
+					   "Parity errors in %s: 0x%x\n",
+					   bnx2x_blocks_parity_data[i].name,
+					   reg_val & reg_mask);
 		}
 	}
 
@@ -757,7 +769,7 @@ static inline void bnx2x_clear_blocks_parity(struct bnx2x *bp)
 	reg_val = REG_RD(bp, MISC_REG_AEU_AFTER_INVERT_4_MCP);
 	if (reg_val & mcp_aeu_bits)
 		DP(NETIF_MSG_HW, "Parity error in MCP: 0x%x\n",
-		   reg_val & mcp_aeu_bits);
+			   reg_val & mcp_aeu_bits);
 
 	/* Clear parity attentions in MCP:
 	 * [7]  clears Latched rom_parity

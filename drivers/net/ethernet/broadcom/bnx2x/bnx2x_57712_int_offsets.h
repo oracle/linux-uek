@@ -104,7 +104,7 @@ static const struct iro e2_iro_arr[379] = {
 	{      0x1,      0x0,      0x0,      0x0,      0x0},	// XSTORM_KUKU_PBF_ECHO_RUN_PBF_ECHO_TEST
 	{     0x50,      0x0,      0x0,      0x0,      0x0},	// XSTORM_KUKU_PBF_ECHO_CID
 	{     0x89,      0x0,      0x0,      0x0,      0x0},	// XSTORM_KUKU_PBF_ECHO_SUCCESS_VALUE
-	{   0x9953,      0x8,      0x0,      0x0,      0x1},	// XSTORM_KUKU_TIME_SYNC_FLG_OFFSET(funcId)
+	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// XSTORM_KUKU_TIME_SYNC_FLG_OFFSET(funcId)
 	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_INDIRECTION_TABLE_ENTRY_SIZE
 	{   0x16c8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_COMMON_RTC_PARAMS_OFFSET
 	{   0x2008,     0x10,      0x0,      0x0,     0x10},	// TSTORM_ASSERT_LIST_OFFSET(assertListEntry)

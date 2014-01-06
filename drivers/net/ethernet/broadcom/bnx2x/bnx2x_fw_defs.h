@@ -136,9 +136,6 @@
 #define USTORM_ASSERT_LIST_INDEX_OFFSET	(IRO[177].base)
 #define USTORM_ASSERT_LIST_OFFSET(assertListEntry) \
 	(IRO[176].base + ((assertListEntry) * IRO[176].m1))
-#define USTORM_CQE_PAGE_NEXT_OFFSET(portId, clientId) \
-	(IRO[205].base + ((portId) * IRO[205].m1) + ((clientId) * \
-	IRO[205].m2))
 #define USTORM_ETH_PAUSE_ENABLED_OFFSET(portId) \
 	(IRO[183].base + ((portId) * IRO[183].m1))
 #define USTORM_FCOE_EQ_PROD_OFFSET(pfId) \
@@ -406,5 +403,9 @@
 
 /* used for indicating an undefined RAM offset in the IRO arrays */
 #define UNDEF_IRO 0x80000000
+
+/* used for defining the amount of FCoE tasks supported for PF */
+#define MAX_FCOE_FUNCS_PER_ENGINE 2
+#define MAX_NUM_FCOE_TASKS_PER_ENGINE 4096
 
 #endif /* BNX2X_FW_DEFS_H */

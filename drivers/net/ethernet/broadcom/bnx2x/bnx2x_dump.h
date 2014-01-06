@@ -1,19 +1,22 @@
 /* bnx2x_dump.h: Broadcom Everest network driver.
-*
-* Copyright (c) 2012-2013 Broadcom Corporation
-*
-* This program is free software; you can redistribute it and/or modify
-* it under the terms of the GNU General Public License as published by
-* the Free Software Foundation.
-*
-* Maintained by: Eilon Greenstein <eilong@broadcom.com>
-* Written by: Gil Berkovski
-*/
+ *
+ * Copyright (c) 2012-2013 Broadcom Corporation
+ *
+ * Unless you and Broadcom execute a separate written software license
+ * agreement governing use of this software, this software is licensed to you
+ * under the terms of the GNU General Public License version 2, available
+ * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
+ *
+ * Notwithstanding the above, under no circumstances may you combine this
+ * software in any way with any other Broadcom software provided under a
+ * license other than the GPL, without Broadcom's express prior written
+ * consent.
+ */
 
 #ifndef BNX2X_DUMP_H
 #define BNX2X_DUMP_H
 
-#ifndef ARRAY_SIZE
+#ifndef ARRAY_SIZE /* ! BNX2X_UPSTREAM */
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 #endif
 
@@ -22,7 +25,6 @@
 #define DRV_DUMP_TSTORM_WAITP_ADDRESS    0x1b8a80
 #define DRV_DUMP_USTORM_WAITP_ADDRESS    0x338a80
 #define DRV_DUMP_CSTORM_WAITP_ADDRESS    0x238a80
-
 
 /* Possible Chips */
 #define DUMP_CHIP_E1 1
@@ -39,10 +41,10 @@ struct	dump_header {
 	u32 header_size; /* Size in DWORDs excluding this field */
 	u32 version;
 	u32 preset;
-	u32	dump_meta_data; /* OR of CHIP and PATH. */
+	u32 dump_meta_data; /* OR of CHIP and PATH. */
 };
 
-#define  BNX2X_DUMP_VERSION 0x508e7cec
+#define BNX2X_DUMP_VERSION 0x50acff01
 struct reg_addr {
 	u32 addr;
 	u32 size;
@@ -62,7 +64,7 @@ struct wreg_addr {
 #define PAGE_MODE_VALUES_E2 2
 #define PAGE_READ_REGS_E2 1
 #define PAGE_WRITE_REGS_E2 1
-static const u32 page_vals_e2[] = { 0,  128};
+static const u32 page_vals_e2[] = {0, 128};
 static const u32 page_write_regs_e2[] = {328476};
 static const struct reg_addr page_read_regs_e2[] = {
 	{0x58000, 4608, DUMP_CHIP_E2, 0x30}
@@ -71,7 +73,7 @@ static const struct reg_addr page_read_regs_e2[] = {
 #define PAGE_MODE_VALUES_E3 2
 #define PAGE_READ_REGS_E3 1
 #define PAGE_WRITE_REGS_E3 1
-static const u32 page_vals_e3[] = { 0,  128};
+static const u32 page_vals_e3[] = {0, 128};
 static const u32 page_write_regs_e3[] = {328476};
 static const struct reg_addr page_read_regs_e3[] = {
 	{0x58000, 4608, DUMP_CHIP_E3A0 | DUMP_CHIP_E3B0, 0x30}
@@ -1553,17 +1555,13 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x1b8f40, 1, 0x1e, 0x924},
 	{ 0x1b8f80, 1, 0x1e, 0x924},
 	{ 0x1b8fc0, 1, 0x1e, 0x924},
-	{ 0x1b8fc4, 2, 0x1c, 0x924},
-	{ 0x1b8fd0, 6, 0x1c, 0x924},
+	{ 0x1b8fd4, 5, 0x1c, 0x924},
 	{ 0x1b8fe8, 2, 0x18, 0x924},
 	{ 0x1b9000, 1, 0x1c, 0x924},
 	{ 0x1b9040, 3, 0x1c, 0x924},
 	{ 0x1b905c, 1, 0x18, 0x924},
 	{ 0x1b9064, 1, 0x10, 0x924},
 	{ 0x1b9080, 10, 0x10, 0x924},
-	{ 0x1b9400, 14, 0x1c, 0x924},
-	{ 0x1b943c, 19, 0x1c, 0x924},
-	{ 0x1b9490, 10, 0x1c, 0x924},
 	{ 0x1c0000, 2, 0x1f, 0x924},
 	{ 0x200000, 65, 0x1f, 0x924},
 	{ 0x200124, 2, 0x1f, 0x1fff},
@@ -1669,8 +1667,7 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x238f40, 1, 0x1e, 0x924},
 	{ 0x238f80, 1, 0x1e, 0x924},
 	{ 0x238fc0, 1, 0x1e, 0x924},
-	{ 0x238fc4, 2, 0x1c, 0x924},
-	{ 0x238fd0, 6, 0x1c, 0x924},
+	{ 0x238fd4, 5, 0x1c, 0x924},
 	{ 0x238fe8, 2, 0x18, 0x924},
 	{ 0x239000, 1, 0x1c, 0x924},
 	{ 0x239040, 3, 0x1c, 0x924},
@@ -1782,17 +1779,13 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x2b8f40, 1, 0x1e, 0x924},
 	{ 0x2b8f80, 1, 0x1e, 0x924},
 	{ 0x2b8fc0, 1, 0x1e, 0x924},
-	{ 0x2b8fc4, 2, 0x1c, 0x924},
-	{ 0x2b8fd0, 6, 0x1c, 0x924},
+	{ 0x2b8fd4, 5, 0x1c, 0x924},
 	{ 0x2b8fe8, 2, 0x18, 0x924},
 	{ 0x2b9000, 1, 0x1c, 0x924},
 	{ 0x2b9040, 3, 0x1c, 0x924},
 	{ 0x2b905c, 1, 0x18, 0x924},
 	{ 0x2b9064, 1, 0x10, 0x924},
 	{ 0x2b9080, 10, 0x10, 0x924},
-	{ 0x2b9400, 14, 0x1c, 0x924},
-	{ 0x2b943c, 19, 0x1c, 0x924},
-	{ 0x2b9490, 10, 0x1c, 0x924},
 	{ 0x2c0000, 2, 0x1f, 0x1fff},
 	{ 0x300000, 65, 0x1f, 0x924},
 	{ 0x300124, 2, 0x1f, 0x1fff},
@@ -1898,8 +1891,7 @@ static const struct reg_addr reg_addrs[] = {
 	{ 0x338f40, 1, 0x1e, 0x924},
 	{ 0x338f80, 1, 0x1e, 0x924},
 	{ 0x338fc0, 1, 0x1e, 0x924},
-	{ 0x338fc4, 2, 0x1c, 0x924},
-	{ 0x338fd0, 6, 0x1c, 0x924},
+	{ 0x338fd4, 5, 0x1c, 0x924},
 	{ 0x338fe8, 2, 0x18, 0x924},
 	{ 0x339000, 1, 0x1c, 0x924},
 	{ 0x339040, 3, 0x1c, 0x924},
@@ -2219,14 +2211,14 @@ static const struct wreg_addr wreg_addr_e3b0 = {
 
 static const unsigned int dump_num_registers[NUM_CHIPS][NUM_PRESETS] = {
 	{20782, 18567, 27975, 19729, 18311, 27719, 20836, 32391, 41799, 20812,
-		26247, 35655, 19074}
-,	{32774, 19297, 33277, 31721, 19041, 33021, 32828, 33121, 47101, 32804,
-		26977, 40957, 35895}
-,	{36527, 17928, 33795, 35474, 18700, 34564, 36581, 31752, 47619, 36557,
-		25608, 41475, 43903}
-,	{45239, 17936, 34485, 44186, 18708, 35254, 45293, 31760, 48309, 45269,
-		25616, 42165, 43903}
-,	{45302, 17999, 34900, 44249, 18771, 35669, 45356, 31823, 48724, 45332,
-		25679, 42580, 43903}
+	 26247, 35655, 19074},
+	{32774, 19297, 33277, 31721, 19041, 33021, 32828, 33121, 47101, 32804,
+	 26977, 40957, 35895},
+	{36527, 17928, 33697, 35474, 18700, 34466, 36581, 31752, 47521, 36557,
+	 25608, 41377, 43903},
+	{45239, 17936, 34387, 44186, 18708, 35156, 45293, 31760, 48211, 45269,
+	 25616, 42067, 43903},
+	{45302, 17999, 34802, 44249, 18771, 35571, 45356, 31823, 48626, 45332,
+	 25679, 42482, 43903}
 };
 #endif
