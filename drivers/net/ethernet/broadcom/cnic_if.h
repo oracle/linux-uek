@@ -14,8 +14,8 @@
 
 #include "bnx2x/bnx2x_mfw_req.h"
 
-#define CNIC_MODULE_VERSION	"2.5.16g"
-#define CNIC_MODULE_RELDATE	"Mar 11, 2013"
+#define CNIC_MODULE_VERSION	"2.5.18c"
+#define CNIC_MODULE_RELDATE	"Oct 29, 2013"
 
 #define CNIC_ULP_RDMA		0
 #define CNIC_ULP_ISCSI		1
@@ -88,12 +88,12 @@ struct kcqe {
 #define MAX_CNIC_CTL_DATA	64
 #define MAX_DRV_CTL_DATA	64
 
-#define CNIC_CTL_STOP_CMD			1
-#define CNIC_CTL_START_CMD			2
-#define CNIC_CTL_COMPLETION_CMD			3
-#define CNIC_CTL_STOP_ISCSI_CMD			4
-#define CNIC_CTL_FCOE_STATS_GET_CMD		5
-#define CNIC_CTL_ISCSI_STATS_GET_CMD		6
+#define CNIC_CTL_STOP_CMD		1
+#define CNIC_CTL_START_CMD		2
+#define CNIC_CTL_COMPLETION_CMD		3
+#define CNIC_CTL_STOP_ISCSI_CMD		4
+#define CNIC_CTL_FCOE_STATS_GET_CMD	5
+#define CNIC_CTL_ISCSI_STATS_GET_CMD	6
 
 #define DRV_CTL_IO_WR_CMD		0x101
 #define DRV_CTL_IO_RD_CMD		0x102
@@ -121,16 +121,16 @@ struct cnic_ctl_completion {
 	u8	error;
 };
 
-struct drv_ctl_spq_credit {
-	u32	credit_count;
-};
-
 struct cnic_ctl_info {
 	int	cmd;
 	union {
 		struct cnic_ctl_completion comp;
 		char bytes[MAX_CNIC_CTL_DATA];
 	} data;
+};
+
+struct drv_ctl_spq_credit {
+	u32	credit_count;
 };
 
 struct drv_ctl_io {
@@ -231,7 +231,7 @@ struct cnic_irq {
 
 struct cnic_eth_dev {
 	u32		version;
-#define CNIC_ETH_DEV_VER 0x12340008 /* Change this when the structure changes */
+#define CNIC_ETH_DEV_VER 0x12340009 /* Change this when the structure changes */
 
 	struct module	*drv_owner;
 	u32		drv_state;
@@ -258,8 +258,8 @@ struct cnic_eth_dev {
 	u32		max_iscsi_conn;
 	u32		max_fcoe_conn;
 	u32		max_rdma_conn;
-
 	u32		fcoe_init_cid;
+	u32		max_fcoe_exchanges;
 	u32		fcoe_wwn_port_name_hi;
 	u32		fcoe_wwn_port_name_lo;
 	u32		fcoe_wwn_node_name_hi;
@@ -310,8 +310,8 @@ struct cnic_sock {
 	u16	src_port;
 	u16	dst_port;
 	u16	vlan_id;
-	unsigned char old_ha[6];
-	unsigned char ha[6];
+	unsigned char old_ha[ETH_ALEN];
+	unsigned char ha[ETH_ALEN];
 	u32	mtu;
 	u32	cid;
 	u32	l5_cid;
@@ -357,7 +357,7 @@ struct cnic_sock {
 
 struct cnic_dev {
 	u32		version;
-#define CNIC_DEV_VER 0xcdef0005 /* Change this when the structure changes */
+#define CNIC_DEV_VER 0xcdef0006 /* Change this when the structure changes */
 
 	struct net_device	*netdev;
 	struct pci_dev		*pcidev;
@@ -387,16 +387,19 @@ struct cnic_dev {
 #define CNIC_F_BNX2X_CLASS	4
 #define CNIC_F_ISCSI_OOO_ENABLE	8
 	atomic_t	ref_count;
-	u8		mac_addr[6];
+	u8		mac_addr[ETH_ALEN];
 
 	int		max_iscsi_conn;
 	int		max_fcoe_conn;
 	int		max_rdma_conn;
 
+	int		max_fcoe_exchanges;
+
 	union drv_info_to_mcp	*stats_addr;
 	struct fcoe_capabilities	*fcoe_cap;
 
 	void		*cnic_priv;
+	u64		ooo_tx_count;
 
 #if defined(__VMKLNX__)
 	u64		fcoe_wwnn;
