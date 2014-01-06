@@ -251,9 +251,10 @@ lpfc_els_abort(struct lpfc_hba *phba, struct lpfc_nodelist *ndlp)
 
 	list_for_each_entry_safe(iocb, next_iocb, &pring->txq, list) {
 		/* Check to see if iocb matches the nport we are looking for */
-		if (lpfc_check_sli_ndlp(phba, pring, iocb, ndlp))
+		if (lpfc_check_sli_ndlp(phba, pring, iocb, ndlp)) {
 			list_del_init(&iocb->list);
 			list_add_tail(&iocb->list, &abort_list);
+		}
 	}
 
 	if (phba->sli_rev == LPFC_SLI_REV4)
