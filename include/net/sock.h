@@ -228,6 +228,7 @@ struct cg_proto;
   *	@sk_wmem_queued: persistent queue size
   *	@sk_forward_alloc: space allocated forward
   *	@sk_allocation: allocation mode
+  *	@sk_pacing_rate: Pacing rate (if supported by transport/packet scheduler)
   *	@sk_sndbuf: size of send buffer in bytes
   *	@sk_flags: %SO_LINGER (l_onoff), %SO_BROADCAST, %SO_KEEPALIVE,
   *		   %SO_OOBINLINE settings, %SO_TIMESTAMPING settings
@@ -397,6 +398,28 @@ struct sock {
 						  struct sk_buff *skb);
 	void                    (*sk_destruct)(struct sock *sk);
 };
+
+/*
+ * To prevent KABI-breakage, struct sock_extended is added here to extend
+ * the original struct sock. Also two helpers are added:
+ * sk_alloc_size
+ *     - is used to adjust prot->obj_size
+ * sk_extended
+ *     - should be used to access items in struct sock_extended
+*/
+
+struct sock_extended {
+	u32                     sk_pacing_rate; /* bytes per second */
+};
+
+#define SOCK_EXTENDED_SIZE ALIGN(sizeof(struct sock_extended), sizeof(long))
+static inline struct sock_extended *sk_extended(const struct sock *sk);
+
+static inline unsigned int sk_alloc_size(unsigned int prot_sock_size)
+{
+        return ALIGN(prot_sock_size, sizeof(long)) + SOCK_EXTENDED_SIZE;
+}
+
 
 /*
  * SK_CAN_REUSE and SK_NO_REUSE on a socket mean that the socket is OK
@@ -1025,6 +1048,13 @@ struct cg_proto {
 
 extern int proto_register(struct proto *prot, int alloc_slab);
 extern void proto_unregister(struct proto *prot);
+
+static inline struct sock_extended *sk_extended(const struct sock *sk)
+{
+        unsigned int obj_size = sk->sk_prot_creator->obj_size;
+
+        return (struct sock_extended *) (((char *) sk) + obj_size);
+}
 
 static inline bool memcg_proto_active(struct cg_proto *cg_proto)
 {

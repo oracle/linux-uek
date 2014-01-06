@@ -1181,7 +1181,7 @@ static void sock_copy(struct sock *nsk, const struct sock *osk)
 	memcpy(nsk, osk, offsetof(struct sock, sk_dontcopy_begin));
 
 	memcpy(&nsk->sk_dontcopy_end, &osk->sk_dontcopy_end,
-	       osk->sk_prot->obj_size - offsetof(struct sock, sk_dontcopy_end));
+	       sk_alloc_size(osk->sk_prot->obj_size) - offsetof(struct sock, sk_dontcopy_end));
 
 #ifdef CONFIG_SECURITY_NETWORK
 	nsk->sk_security = sptr;
@@ -1220,12 +1220,12 @@ static struct sock *sk_prot_alloc(struct proto *prot, gfp_t priority,
 			return sk;
 		if (priority & __GFP_ZERO) {
 			if (prot->clear_sk)
-				prot->clear_sk(sk, prot->obj_size);
+				prot->clear_sk(sk, sk_alloc_size(prot->obj_size));
 			else
-				sk_prot_clear_nulls(sk, prot->obj_size);
+				sk_prot_clear_nulls(sk, sk_alloc_size(prot->obj_size));
 		}
 	} else
-		sk = kmalloc(prot->obj_size, priority);
+		sk = kmalloc(sk_alloc_size(prot->obj_size), priority);
 
 	if (sk != NULL) {
 		kmemcheck_annotate_bitfield(sk, flags);
@@ -2603,7 +2603,7 @@ static inline void release_proto_idx(struct proto *prot)
 int proto_register(struct proto *prot, int alloc_slab)
 {
 	if (alloc_slab) {
-		prot->slab = kmem_cache_create(prot->name, prot->obj_size, 0,
+		prot->slab = kmem_cache_create(prot->name, sk_alloc_size(prot->obj_size), 0,
 					SLAB_HWCACHE_ALIGN | prot->slab_flags,
 					NULL);
 
