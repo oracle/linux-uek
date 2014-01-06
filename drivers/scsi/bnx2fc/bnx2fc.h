@@ -2,7 +2,7 @@
 #define _BNX2FC_H_
 /* bnx2fc.h: Broadcom NetXtreme II Linux FCoE offload driver.
  *
- * Copyright (c) 2008 - 2011 Broadcom Corporation
+ * Copyright (c) 2008 - 2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -124,9 +124,62 @@
 #include "bnx2fc_constants.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"2.3.4"
+#define BNX2FC_VERSION		"2.4.1e"
 
 #define PFX			"bnx2fc: "
+
+#define BCM_CHIP_LEN		16
+
+#ifndef PCI_DEVICE_ID_NX2_57710
+#define PCI_DEVICE_ID_NX2_57710		0x164e
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57711
+#define PCI_DEVICE_ID_NX2_57711		0x164f
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57712
+#define PCI_DEVICE_ID_NX2_57712		0x1662
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57712_MF
+#define PCI_DEVICE_ID_NX2_57712_MF	0x1663
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57712_VF
+#define PCI_DEVICE_ID_NX2_57712_VF	0x166f
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57800
+#define PCI_DEVICE_ID_NX2_57800		0x168a
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57800_MF
+#define PCI_DEVICE_ID_NX2_57800_MF	0x16a5
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57800_VF
+#define PCI_DEVICE_ID_NX2_57800_VF	0x16a9
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57810
+#define PCI_DEVICE_ID_NX2_57810		0x168e
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57810_MF
+#define PCI_DEVICE_ID_NX2_57810_MF	0x16ae
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57810_VF
+#define PCI_DEVICE_ID_NX2_57810_VF	0x16af
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57840
+#define PCI_DEVICE_ID_NX2_57840		0x168d
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57840_MF
+#define PCI_DEVICE_ID_NX2_57840_MF	0x16a4
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57840_VF
+#define PCI_DEVICE_ID_NX2_57840_VF	0x16ad
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57840_2_20
+#define PCI_DEVICE_ID_NX2_57840_2_20	0x16a2
+#endif
+#ifndef PCI_DEVICE_ID_NX2_57840_4_10
+#define PCI_DEVICE_ID_NX2_57840_4_10	0x16a1
+#endif
+
+
 
 #define BNX2X_DOORBELL_PCI_BAR		2
 
@@ -148,9 +201,6 @@
 
 #define BNX2FC_MAX_NPIV		256
 
-#define BNX2FC_MAX_OUTSTANDING_CMNDS	2048
-#define BNX2FC_CAN_QUEUE		BNX2FC_MAX_OUTSTANDING_CMNDS
-#define BNX2FC_ELSTM_XIDS		BNX2FC_CAN_QUEUE
 #define BNX2FC_MIN_PAYLOAD		256
 #define BNX2FC_MAX_PAYLOAD		2048
 #define BNX2FC_MFS			\
@@ -166,13 +216,10 @@
 #define BNX2FC_RQ_WQE_SIZE		(BNX2FC_RQ_BUF_SZ)
 #define BNX2FC_XFERQ_WQE_SIZE		(sizeof(struct fcoe_xfrqe))
 #define BNX2FC_CONFQ_WQE_SIZE		(sizeof(struct fcoe_confqe))
-#define BNX2FC_5771X_DB_PAGE_SIZE	128
+#define BNX2X_DB_SHIFT			3
 
-#define BNX2FC_MAX_TASKS		\
-			     (BNX2FC_MAX_OUTSTANDING_CMNDS + BNX2FC_ELSTM_XIDS)
 #define BNX2FC_TASK_SIZE		128
 #define	BNX2FC_TASKS_PER_PAGE		(PAGE_SIZE/BNX2FC_TASK_SIZE)
-#define BNX2FC_TASK_CTX_ARR_SZ		(BNX2FC_MAX_TASKS/BNX2FC_TASKS_PER_PAGE)
 
 #define BNX2FC_MAX_ROWS_IN_HASH_TBL	8
 #define BNX2FC_HASH_TBL_CHUNK_SIZE	(16 * 1024)
@@ -185,11 +232,8 @@
 #define BNX2FC_WRITE			(1 << 0)
 
 #define BNX2FC_MIN_XID			0
-#define BNX2FC_MAX_XID			\
-			(BNX2FC_MAX_OUTSTANDING_CMNDS + BNX2FC_ELSTM_XIDS - 1)
-#define FCOE_MIN_XID			(BNX2FC_MAX_XID + 1)
-#define FCOE_MAX_XID			(FCOE_MIN_XID + 8191)
-#define FCOE_XIDS_PER_CPU		(FCOE_MIN_XID + (512 * nr_cpu_ids) - 1)
+#define FCOE_MAX_XID_OFFSET		8191
+#define FCOE_XIDS_PER_CPU_OFFSET	((512 * nr_cpu_ids) - 1)
 #define BNX2FC_MAX_LUN			0xFFFF
 #define BNX2FC_MAX_FCP_TGT		256
 #define BNX2FC_MAX_CMD_LEN		16
@@ -315,6 +359,13 @@ struct bnx2fc_hba {
 
 	struct list_head bnx2fc_stat_list;
 	struct bnx2fc_hba_dbg_stats stats;
+	char chip_num[BCM_CHIP_LEN];
+
+	/* xid resources */
+	u16 max_xid;
+	u32 max_tasks;
+	u32 max_outstanding_cmds;
+	u32 elstm_xids;
 };
 
 struct bnx2fc_interface {
@@ -328,14 +379,24 @@ struct bnx2fc_interface {
 	struct packet_type fip_packet_type;
 	struct workqueue_struct *timer_work_queue;
 	struct kref kref;
+#ifndef _DEFINE_FCOE_SYSFS_
 	struct fcoe_ctlr ctlr;
+#endif
 	u8 dest_addr[ETH_ALEN];
 	u8 vlan_enabled;
 	int vlan_id;
 	bool enabled;
 };
 
+#ifdef _DEFINE_FCOE_SYSFS_
+#define bnx2fc_from_ctlr(x)				\
+	((struct bnx2fc_interface *)((x) + 1))
+
+#define bnx2fc_to_ctlr(x)				\
+	((struct fcoe_ctlr *)(((struct fcoe_ctlr *)(x)) - 1))
+#else
 #define bnx2fc_from_ctlr(fip) container_of(fip, struct bnx2fc_interface, ctlr)
+#endif
 
 struct bnx2fc_lport {
 	struct list_head list;
@@ -612,8 +673,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba);
 void bnx2fc_free_task_ctx(struct bnx2fc_hba *hba);
 int bnx2fc_setup_fw_resc(struct bnx2fc_hba *hba);
 void bnx2fc_free_fw_resc(struct bnx2fc_hba *hba);
-struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba,
-						u16 min_xid, u16 max_xid);
+struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba);
 void bnx2fc_cmd_mgr_free(struct bnx2fc_cmd_mgr *cmgr);
 void bnx2fc_get_link_state(struct bnx2fc_hba *hba);
 char *bnx2fc_get_next_rqe(struct bnx2fc_rport *tgt, u8 num_items);

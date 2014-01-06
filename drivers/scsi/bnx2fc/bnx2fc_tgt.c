@@ -2,7 +2,7 @@
  * Handles operations such as session offload/upload etc, and manages
  * session resources such as connection id and qp resources.
  *
- * Copyright (c) 2008 - 2011 Broadcom Corporation
+ * Copyright (c) 2008 - 2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -75,6 +75,7 @@ static void bnx2fc_ofld_wait(struct bnx2fc_rport *tgt)
 
 	del_timer_sync(&tgt->ofld_timer);
 }
+
 static void bnx2fc_offload_session(struct fcoe_port *port,
 					struct bnx2fc_rport *tgt,
 					struct fc_rport_priv *rdata)
@@ -142,7 +143,7 @@ retry_ofld:
 	clear_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
 	rval = bnx2fc_send_session_enable_req(port, tgt);
 	if (rval) {
-		printk(KERN_ERR PFX "enable session failed\n");
+		pr_err(PFX "enable session failed\n");
 		hba->stats.num_tgt_enable_failed++;
 		goto ofld_err;
 	}
@@ -155,7 +156,7 @@ ofld_err:
 	/* couldn't offload the session. log off from this rport */
 	BNX2FC_TGT_DBG(tgt, "bnx2fc_offload_session - offload error\n");
 	clear_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
-	/* Free session resources before rport logoff*/
+	/* Free session resources */
 	bnx2fc_free_session_resc(hba, tgt);
 tgt_init_err:
 	if (tgt->fcoe_conn_id != -1)
@@ -165,9 +166,7 @@ tgt_init_err:
 
 void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 {
-	struct bnx2fc_cmd *io_req;
-	struct list_head *list;
-	struct list_head *tmp;
+	struct bnx2fc_cmd *io_req, *tmp;
 	int rc;
 	int i = 0;
 	BNX2FC_TGT_DBG(tgt, "Entered flush_active_ios - %d\n",
@@ -176,9 +175,8 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 	spin_lock_bh(&tgt->tgt_lock);
 	tgt->flush_in_prog = 1;
 
-	list_for_each_safe(list, tmp, &tgt->active_cmd_queue) {
+	list_for_each_entry_safe(io_req, tmp, &tgt->active_cmd_queue, link) {
 		i++;
-		io_req = (struct bnx2fc_cmd *)list;
 		list_del_init(&io_req->link);
 		io_req->on_active_queue = 0;
 		BNX2FC_IO_DBG(io_req, "cmd_queue cleanup\n");
@@ -207,9 +205,8 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 		}
 	}
 
-	list_for_each_safe(list, tmp, &tgt->active_tm_queue) {
+	list_for_each_entry_safe(io_req, tmp, &tgt->active_tm_queue, link) {
 		i++;
-		io_req = (struct bnx2fc_cmd *)list;
 		list_del_init(&io_req->link);
 		io_req->on_tmf_queue = 0;
 		BNX2FC_IO_DBG(io_req, "tm_queue cleanup\n");
@@ -217,9 +214,8 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 			complete(&io_req->tm_done);
 	}
 
-	list_for_each_safe(list, tmp, &tgt->els_queue) {
+	list_for_each_entry_safe(io_req, tmp, &tgt->els_queue, link) {
 		i++;
-		io_req = (struct bnx2fc_cmd *)list;
 		list_del_init(&io_req->link);
 		io_req->on_active_queue = 0;
 
@@ -243,9 +239,8 @@ void bnx2fc_flush_active_ios(struct bnx2fc_rport *tgt)
 		}
 	}
 
-	list_for_each_safe(list, tmp, &tgt->io_retire_queue) {
+	list_for_each_entry_safe(io_req, tmp, &tgt->io_retire_queue, link) {
 		i++;
-		io_req = (struct bnx2fc_cmd *)list;
 		list_del_init(&io_req->link);
 
 		BNX2FC_IO_DBG(io_req, "retire_queue flush\n");
@@ -295,6 +290,7 @@ static void bnx2fc_upld_wait(struct bnx2fc_rport *tgt)
 		flush_signals(current);
 	del_timer_sync(&tgt->upld_timer);
 }
+
 static void bnx2fc_upload_session(struct fcoe_port *port,
 					struct bnx2fc_rport *tgt)
 {
@@ -335,18 +331,20 @@ static void bnx2fc_upload_session(struct fcoe_port *port,
 
 		/* wait for destroy to complete */
 		bnx2fc_upld_wait(tgt);
+
 		if (!(test_bit(BNX2FC_FLAG_DESTROYED, &tgt->flags)))
 			printk(KERN_ERR PFX "ERROR!! destroy timed out\n");
 
 		BNX2FC_TGT_DBG(tgt, "destroy wait complete flags = 0x%lx\n",
 			tgt->flags);
 
-	} else if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags))
-		printk(KERN_ERR PFX "ERROR!! DISABLE req failed, destry"
+	} else if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags)) {
+		printk(KERN_ERR PFX "ERROR!! DISABLE req failed, destroy"
 				" not set to FW\n");
-	else
+	} else {
 		printk(KERN_ERR PFX "ERROR!! DISABLE req timed out, destroy"
 				" not sent to FW\n");
+	}
 
 	/* Free session resources */
 	bnx2fc_free_session_resc(hba, tgt);

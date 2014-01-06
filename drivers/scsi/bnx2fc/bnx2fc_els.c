@@ -3,7 +3,7 @@
  * This file contains helper routines that handle ELS requests
  * and responses.
  *
- * Copyright (c) 2008 - 2011 Broadcom Corporation
+ * Copyright (c) 2008 - 2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -414,6 +414,12 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			rc = bnx2fc_initiate_cleanup(rec_req);
 			BUG_ON(rc);
 		}
+		if (test_bit(BNX2FC_FLAG_IO_COMPL, &orig_io_req->req_flags)) {
+			BNX2FC_IO_DBG(rec_req, "IO completed"
+			       "orig_io - 0x%x\n",
+				orig_io_req->xid);
+			goto rec_compl_done;
+		}
 		orig_io_req->rec_retry++;
 		/* REC timedout. send ABTS to the orig IO req */
 		if (orig_io_req->rec_retry <= REC_RETRY_COUNT) {
@@ -491,7 +497,8 @@ void bnx2fc_rec_compl(struct bnx2fc_els_cb_arg *cb_arg)
 			tgt->stats.num_cmd_lost++;
 			bnx2fc_initiate_cleanup(orig_io_req);
 			/* Post a new IO req with the same sc_cmd */
-			BNX2FC_IO_DBG(rec_req, "Post IO request again\n");
+			BNX2FC_IO_DBG(rec_req, "Post IO request again - new xid = 0x%x\n",
+				      new_io_req->xid);
 			spin_unlock_bh(&tgt->tgt_lock);
 			rc = bnx2fc_post_io_req(tgt, new_io_req);
 			spin_lock_bh(&tgt->tgt_lock);
@@ -873,8 +880,10 @@ static void bnx2fc_flogi_resp(struct fc_seq *seq, struct fc_frame *fp,
 	struct fcoe_ctlr *fip = arg;
 	struct fc_exch *exch = fc_seq_exch(seq);
 	struct fc_lport *lport = exch->lp;
+#ifndef _DEFINE_FCOE_SYSFS_
 	struct fcoe_port *port = lport_priv(lport);
 	struct bnx2fc_interface *interface = port->priv;
+#endif
 	u8 *mac;
 	u8 op;
 
@@ -897,6 +906,7 @@ static void bnx2fc_flogi_resp(struct fc_seq *seq, struct fc_frame *fp,
 	if (!is_zero_ether_addr(mac))
 		fip->update_mac(lport, mac);
 
+#ifndef _DEFINE_FCOE_SYSFS_
 	if (!is_valid_ether_addr(interface->dest_addr)) {
 		BNX2FC_MISC_DBG("Using ctlr dst addr %2x:%2x:%2x:%2x:%2x:%2x\n",
 				interface->ctlr.dest_addr[0],
@@ -908,6 +918,7 @@ static void bnx2fc_flogi_resp(struct fc_seq *seq, struct fc_frame *fp,
 		memcpy(interface->dest_addr, interface->ctlr.dest_addr,
 		       ETH_ALEN);
 	}
+#endif
 done:
 	fc_lport_flogi_resp(seq, fp, lport);
 }
@@ -934,7 +945,11 @@ struct fc_seq *bnx2fc_elsct_send(struct fc_lport *lport, u32 did,
 {
 	struct fcoe_port *port = lport_priv(lport);
 	struct bnx2fc_interface *interface = port->priv;
+#ifdef _DEFINE_FCOE_SYSFS_
+	struct fcoe_ctlr *fip = bnx2fc_to_ctlr(interface);
+#else
 	struct fcoe_ctlr *fip = &interface->ctlr;
+#endif
 	struct fc_frame_header *fh = fc_frame_header_get(fp);
 
 	switch (op) {

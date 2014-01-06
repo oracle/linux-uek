@@ -77,7 +77,7 @@ int bnx2fc_send_fw_fcoe_init_msg(struct bnx2fc_hba *hba)
 	fcoe_init1.hdr.flags = (FCOE_KWQE_LAYER_CODE <<
 					FCOE_KWQE_HEADER_LAYER_CODE_SHIFT);
 
-	fcoe_init1.num_tasks = BNX2FC_MAX_TASKS;
+	fcoe_init1.num_tasks = hba->max_tasks;
 	fcoe_init1.sq_num_wqes = BNX2FC_SQ_WQES_MAX;
 	fcoe_init1.rq_num_wqes = BNX2FC_RQ_WQES_MAX;
 	fcoe_init1.rq_buffer_log_size = BNX2FC_RQ_BUF_LOG_SZ;
@@ -126,7 +126,11 @@ int bnx2fc_send_fw_fcoe_init_msg(struct bnx2fc_hba *hba)
 	fcoe_init3.error_bit_map_lo = 0xffffffff;
 	fcoe_init3.error_bit_map_hi = 0xffffffff;
 
-	fcoe_init3.perf_config = 1;
+	/*
+	 * set per_config to 3 to enable cached connection and cached tasks
+	 * 0 = none, 1 = cached connection, 2 = cached tasks
+	 */
+	fcoe_init3.perf_config = 3;
 
 	kwqe_arr[0] = (struct kwqe *) &fcoe_init1;
 	kwqe_arr[1] = (struct kwqe *) &fcoe_init2;
@@ -167,6 +171,9 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 {
 	struct fc_lport *lport = port->lport;
 	struct bnx2fc_interface *interface = port->priv;
+#ifdef _DEFINE_FCOE_SYSFS_
+	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
+#endif
 	struct bnx2fc_hba *hba = interface->hba;
 	struct kwqe *kwqe_arr[4];
 	struct fcoe_kwqe_conn_offload1 ofld_req1;
@@ -315,6 +322,14 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req4.src_mac_addr_mid[1] =  port->data_src_addr[2];
 	ofld_req4.src_mac_addr_hi[0] =  port->data_src_addr[1];
 	ofld_req4.src_mac_addr_hi[1] =  port->data_src_addr[0];
+#ifdef _DEFINE_FCOE_SYSFS_
+	ofld_req4.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
+	ofld_req4.dst_mac_addr_lo[1] = ctlr->dest_addr[4];
+	ofld_req4.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
+	ofld_req4.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
+	ofld_req4.dst_mac_addr_hi[0] = ctlr->dest_addr[1];
+	ofld_req4.dst_mac_addr_hi[1] = ctlr->dest_addr[0];
+#else
 	ofld_req4.dst_mac_addr_lo[0] =  interface->dest_addr[5];
 							/* fcf mac */
 	ofld_req4.dst_mac_addr_lo[1] =  interface->dest_addr[4];
@@ -322,6 +337,7 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req4.dst_mac_addr_mid[1] =  interface->dest_addr[2];
 	ofld_req4.dst_mac_addr_hi[0] =  interface->dest_addr[1];
 	ofld_req4.dst_mac_addr_hi[1] =  interface->dest_addr[0];
+#endif
 
 	ofld_req4.lcq_addr_lo = (u32) tgt->lcq_dma;
 	ofld_req4.lcq_addr_hi = (u32)((u64) tgt->lcq_dma >> 32);
@@ -352,6 +368,9 @@ int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 {
 	struct kwqe *kwqe_arr[2];
 	struct bnx2fc_interface *interface = port->priv;
+#ifdef _DEFINE_FCOE_SYSFS_
+	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
+#endif
 	struct bnx2fc_hba *hba = interface->hba;
 	struct fcoe_kwqe_conn_enable_disable enbl_req;
 	struct fc_lport *lport = port->lport;
@@ -375,12 +394,21 @@ int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 	enbl_req.src_mac_addr_hi[1] =  port->data_src_addr[0];
 	memcpy(tgt->src_addr, port->data_src_addr, ETH_ALEN);
 
+#ifdef _DEFINE_FCOE_SYSFS_
+	enbl_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
+	enbl_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
+	enbl_req.dst_mac_addr_mid[0] =  ctlr->dest_addr[3];
+	enbl_req.dst_mac_addr_mid[1] =  ctlr->dest_addr[2];
+	enbl_req.dst_mac_addr_hi[0] =  ctlr->dest_addr[1];
+	enbl_req.dst_mac_addr_hi[1] =  ctlr->dest_addr[0];
+#else
 	enbl_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
 	enbl_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
 	enbl_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
 	enbl_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
 	enbl_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
 	enbl_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
+#endif
 
 	port_id = fc_host_port_id(lport->host);
 	if (port_id != tgt->sid) {
@@ -420,6 +448,9 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 				    struct bnx2fc_rport *tgt)
 {
 	struct bnx2fc_interface *interface = port->priv;
+#ifdef _DEFINE_FCOE_SYSFS_
+	struct fcoe_ctlr *ctlr = bnx2fc_to_ctlr(interface);
+#endif
 	struct bnx2fc_hba *hba = interface->hba;
 	struct fcoe_kwqe_conn_enable_disable disable_req;
 	struct kwqe *kwqe_arr[2];
@@ -460,12 +491,22 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 	}
 
 
+#ifdef _DEFINE_FCOE_SYSFS_
+	disable_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
+	disable_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
+	disable_req.dst_mac_addr_mid[0] =  ctlr->dest_addr[3];
+	disable_req.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
+	disable_req.dst_mac_addr_hi[0] =  ctlr->dest_addr[1];
+	disable_req.dst_mac_addr_hi[1] =  ctlr->dest_addr[0];
+
+#else
 	disable_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
 	disable_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
 	disable_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
 	disable_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
 	disable_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
 	disable_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
+#endif
 
 	port_id = tgt->sid;
 	disable_req.s_id[0] = (port_id & 0x000000FF);
@@ -715,7 +756,7 @@ static void bnx2fc_process_unsol_compl(struct bnx2fc_rport *tgt, u16 wqe)
 			err_entry->data.tx_buf_off, err_entry->data.rx_buf_off);
 
 
-		if (xid > BNX2FC_MAX_XID) {
+		if (xid > hba->max_xid) {
 			BNX2FC_TGT_DBG(tgt, "xid(0x%x) out of FW range\n",
 				   xid);
 			goto ret_err_rqe;
@@ -836,7 +877,7 @@ ret_err_rqe:
 		BNX2FC_TGT_DBG(tgt, "buf_offsets - tx = 0x%x, rx = 0x%x",
 			err_entry->data.tx_buf_off, err_entry->data.rx_buf_off);
 
-		if (xid > BNX2FC_MAX_XID) {
+		if (xid > hba->max_xid) {
 			BNX2FC_TGT_DBG(tgt, "xid(0x%x) out of FW range\n", xid);
 			goto ret_warn_rqe;
 		}
@@ -903,7 +944,7 @@ void bnx2fc_process_cq_compl(struct bnx2fc_rport *tgt, u16 wqe)
 
 	spin_lock_bh(&tgt->tgt_lock);
 	xid = wqe & FCOE_PEND_WQ_CQE_TASK_ID;
-	if (xid >= BNX2FC_MAX_TASKS) {
+	if (xid >= hba->max_tasks) {
 		printk(KERN_ERR PFX "ERROR:xid out of range\n");
 		spin_unlock_bh(&tgt->tgt_lock);
 		return;
@@ -1451,8 +1492,7 @@ int bnx2fc_map_doorbell(struct bnx2fc_rport *tgt)
 
 	reg_base = pci_resource_start(hba->pcidev,
 					BNX2X_DOORBELL_PCI_BAR);
-	reg_off = BNX2FC_5771X_DB_PAGE_SIZE *
-			(context_id & 0x1FFFF) + DPM_TRIGER_TYPE;
+	reg_off = (1 << BNX2X_DB_SHIFT) * (context_id & 0x1FFFF);
 	tgt->ctx_base = ioremap_nocache(reg_base + reg_off, 4);
 	if (!tgt->ctx_base)
 		return -ENOMEM;
@@ -1883,6 +1923,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 	int rc = 0;
 	struct regpair *task_ctx_bdt;
 	dma_addr_t addr;
+	int task_ctx_arr_sz;
 	int i;
 
 	/*
@@ -1906,7 +1947,8 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 	 * Allocate task_ctx which is an array of pointers pointing to
 	 * a page containing 32 task contexts
 	 */
-	hba->task_ctx = kzalloc((BNX2FC_TASK_CTX_ARR_SZ * sizeof(void *)),
+	task_ctx_arr_sz = (hba->max_tasks / BNX2FC_TASKS_PER_PAGE);
+	hba->task_ctx = kzalloc((task_ctx_arr_sz * sizeof(void *)),
 				 GFP_KERNEL);
 	if (!hba->task_ctx) {
 		printk(KERN_ERR PFX "unable to allocate task context array\n");
@@ -1917,7 +1959,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 	/*
 	 * Allocate task_ctx_dma which is an array of dma addresses
 	 */
-	hba->task_ctx_dma = kmalloc((BNX2FC_TASK_CTX_ARR_SZ *
+	hba->task_ctx_dma = kmalloc((task_ctx_arr_sz *
 					sizeof(dma_addr_t)), GFP_KERNEL);
 	if (!hba->task_ctx_dma) {
 		printk(KERN_ERR PFX "unable to alloc context mapping array\n");
@@ -1926,7 +1968,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 	}
 
 	task_ctx_bdt = (struct regpair *)hba->task_ctx_bd_tbl;
-	for (i = 0; i < BNX2FC_TASK_CTX_ARR_SZ; i++) {
+	for (i = 0; i < task_ctx_arr_sz; i++) {
 
 		hba->task_ctx[i] = dma_alloc_coherent(&hba->pcidev->dev,
 						      PAGE_SIZE,
@@ -1946,7 +1988,7 @@ int bnx2fc_setup_task_ctx(struct bnx2fc_hba *hba)
 	return 0;
 
 out3:
-	for (i = 0; i < BNX2FC_TASK_CTX_ARR_SZ; i++) {
+	for (i = 0; i < task_ctx_arr_sz; i++) {
 		if (hba->task_ctx[i]) {
 
 			dma_free_coherent(&hba->pcidev->dev, PAGE_SIZE,
@@ -1970,6 +2012,7 @@ out:
 
 void bnx2fc_free_task_ctx(struct bnx2fc_hba *hba)
 {
+	int task_ctx_arr_sz;
 	int i;
 
 	if (hba->task_ctx_bd_tbl) {
@@ -1979,8 +2022,10 @@ void bnx2fc_free_task_ctx(struct bnx2fc_hba *hba)
 		hba->task_ctx_bd_tbl = NULL;
 	}
 
+	task_ctx_arr_sz = (hba->max_tasks / BNX2FC_TASKS_PER_PAGE);
+
 	if (hba->task_ctx) {
-		for (i = 0; i < BNX2FC_TASK_CTX_ARR_SZ; i++) {
+		for (i = 0; i < task_ctx_arr_sz; i++) {
 			if (hba->task_ctx[i]) {
 				dma_free_coherent(&hba->pcidev->dev, PAGE_SIZE,
 						    hba->task_ctx[i],

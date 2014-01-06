@@ -1,7 +1,7 @@
 /* bnx2fc_io.c: Broadcom NetXtreme II Linux FCoE offload driver.
  * IO manager and SCSI IO processing.
  *
- * Copyright (c) 2008 - 2011 Broadcom Corporation
+ * Copyright (c) 2008 - 2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -95,8 +95,9 @@ static void bnx2fc_cmd_timeout(struct work_struct *work)
 				/* Explicitly logo the target */
 				if (!logo_issued) {
 					BNX2FC_IO_DBG(io_req, "Explicit "
-						   "logo - tgt flags = 0x%lx\n",
-						   tgt->flags);
+						   "logo - tgt flags = 0x%lx, port_id = 0x%x\n",
+						   tgt->flags,
+						   tgt->rport->port_id);
 					tgt->stats.num_explicit_logos++;
 
 					mutex_lock(&lport->disc.disc_mutex);
@@ -135,8 +136,9 @@ static void bnx2fc_cmd_timeout(struct work_struct *work)
 
 				if (!logo_issued) {
 					BNX2FC_IO_DBG(io_req, "Explicit "
-						   "logo - tgt flags = 0x%lx\n",
-						   tgt->flags);
+						   "logo - tgt flags = 0x%lx, port_id = 0x%x\n",
+						   tgt->flags,
+						   tgt->rport->port_id);
 
 
 					mutex_lock(&lport->disc.disc_mutex);
@@ -227,6 +229,7 @@ static void bnx2fc_scsi_done(struct bnx2fc_cmd *io_req, int err_code)
 
 	BNX2FC_IO_DBG(io_req, "scsi_done. err_code = 0x%x\n", err_code);
 	if (test_bit(BNX2FC_FLAG_CMD_LOST, &io_req->req_flags)) {
+		set_bit(BNX2FC_FLAG_IO_COMPL, &io_req->req_flags);
 		/* Do not call scsi done for this IO */
 		return;
 	}
@@ -249,8 +252,7 @@ static void bnx2fc_scsi_done(struct bnx2fc_cmd *io_req, int err_code)
 	sc_cmd->scsi_done(sc_cmd);
 }
 
-struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba,
-						u16 min_xid, u16 max_xid)
+struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba)
 {
 	struct bnx2fc_cmd_mgr *cmgr;
 	struct io_bdt *bdt_info;
@@ -262,6 +264,8 @@ struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba,
 	int num_ios, num_pri_ios;
 	size_t bd_tbl_sz;
 	int arr_sz = num_possible_cpus() + 1;
+	u16 min_xid = BNX2FC_MIN_XID;
+	u16 max_xid = hba->max_xid;
 
 	if (max_xid <= min_xid || max_xid == FC_XID_UNKNOWN) {
 		printk(KERN_ERR PFX "cmd_mgr_alloc: Invalid min_xid 0x%x \
@@ -308,7 +312,7 @@ struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba,
 	 * of slow path requests.
 	 */
 	xid = BNX2FC_MIN_XID;
-	num_pri_ios = num_ios - BNX2FC_ELSTM_XIDS;
+	num_pri_ios = num_ios - hba->elstm_xids;
 	for (i = 0; i < num_ios; i++) {
 		io_req = kzalloc(sizeof(*io_req), GFP_KERNEL);
 
@@ -377,7 +381,7 @@ void bnx2fc_cmd_mgr_free(struct bnx2fc_cmd_mgr *cmgr)
 	struct bnx2fc_hba *hba = cmgr->hba;
 	size_t bd_tbl_sz;
 	u16 min_xid = BNX2FC_MIN_XID;
-	u16 max_xid = BNX2FC_MAX_XID;
+	u16 max_xid = hba->max_xid;
 	int num_ios;
 	int i;
 
@@ -415,11 +419,10 @@ free_cmd_pool:
 		goto free_cmgr;
 
 	for (i = 0; i < num_possible_cpus() + 1; i++)  {
-		struct list_head *list;
-		struct list_head *tmp;
+		struct bnx2fc_cmd *tmp, *io_req;
 
-		list_for_each_safe(list, tmp, &cmgr->free_list[i]) {
-			struct bnx2fc_cmd *io_req = (struct bnx2fc_cmd *)list;
+		list_for_each_entry_safe(io_req, tmp,
+					 &cmgr->free_list[i], link) {
 			list_del(&io_req->link);
 			kfree(io_req);
 		}
@@ -665,7 +668,7 @@ int bnx2fc_init_mp_req(struct bnx2fc_cmd *io_req)
 	mp_req->mp_resp_bd = dma_alloc_coherent(&hba->pcidev->dev, sz,
 						 &mp_req->mp_resp_bd_dma,
 						 GFP_ATOMIC);
-	if (!mp_req->mp_req_bd) {
+	if (!mp_req->mp_resp_bd) {
 		printk(KERN_ERR PFX "unable to alloc MP resp bd\n");
 		bnx2fc_free_mp_resc(io_req);
 		return FAILED;
@@ -696,7 +699,7 @@ int bnx2fc_init_mp_req(struct bnx2fc_cmd *io_req)
 static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 {
 	struct fc_lport *lport;
-	struct fc_rport *rport = starget_to_rport(scsi_target(sc_cmd->device));
+	struct fc_rport *rport;
 	struct fc_rport_libfc_priv *rp;
 	struct fcoe_port *port;
 	struct bnx2fc_interface *interface;
@@ -715,6 +718,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 	unsigned long start = jiffies;
 
 	lport = shost_priv(host);
+	rport = starget_to_rport(scsi_target(sc_cmd->device));
 	port = lport_priv(lport);
 	interface = port->priv;
 
@@ -751,6 +755,8 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 	/* rport and tgt are allocated together, so tgt should be non-NULL */
 	tgt = (struct bnx2fc_rport *)&rp[1];
 
+	BNX2FC_TGT_DBG(tgt, "Initiate TMF - tgt flags = 0x%lx, port = 0x%x\n",
+		       tgt->flags, tgt->rport->port_id);
 	if (!(test_bit(BNX2FC_FLAG_SESSION_READY, &tgt->flags))) {
 		printk(KERN_ERR PFX "device_reset: tgt not offloaded\n");
 		rc = FAILED;
@@ -1138,8 +1144,8 @@ int bnx2fc_expl_logo(struct fc_lport *lport, struct bnx2fc_cmd *io_req)
 	int rc = SUCCESS;
 	int wait_cnt = 0;
 
-	BNX2FC_IO_DBG(io_req, "Expl logo - tgt flags = 0x%lx\n",
-		      tgt->flags);
+	BNX2FC_IO_DBG(io_req, "Expl logo - tgt flags = 0x%lx, port_id = 0x%x\n",
+		      tgt->flags, tgt->rport->port_id);
 	logo_issued = test_and_set_bit(BNX2FC_FLAG_EXPL_LOGO,
 				       &tgt->flags);
 	io_req->wait_for_comp = 1;
@@ -1151,12 +1157,10 @@ int bnx2fc_expl_logo(struct fc_lport *lport, struct bnx2fc_cmd *io_req)
 
 	io_req->wait_for_comp = 0;
 	/*
-	 * release the reference taken in eh_abort
-	 * to allow the target to relogin
+	 * release the reference taken in eh_abort to allow the
+	 * target to relogin after flushing IOs
 	 */
-	spin_lock_bh(&tgt->tgt_lock);
 	kref_put(&io_req->refcount, bnx2fc_cmd_release);
-	spin_unlock_bh(&tgt->tgt_lock);
 
 	if (!logo_issued) {
 		clear_bit(BNX2FC_FLAG_SESSION_READY, &tgt->flags);
@@ -1286,6 +1290,11 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 			kref_put(&io_req->refcount,
 				 bnx2fc_cmd_release); /* drop timer hold */
 		rc = bnx2fc_expl_logo(lport, io_req);
+		/* This only occurs when an task abort was requested while ABTS is
+		   in progress.  Setting the IO_CLEANUP flag will skip the RRQ process
+		   in the case when the fw generated SCSI_CMD cmpl was a result from the
+		   ABTS request rather than the CLEANUP request */
+		set_bit(BNX2FC_FLAG_IO_CLEANUP,	&io_req->req_flags);
 		/* reference is released, unlock and exit */
 		goto out;
 	}
@@ -1311,7 +1320,11 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 
 	spin_lock_bh(&tgt->tgt_lock);
 	io_req->wait_for_comp = 0;
-	if (!(test_and_set_bit(BNX2FC_FLAG_ABTS_DONE,
+	if (test_bit(BNX2FC_FLAG_IO_COMPL, &io_req->req_flags)) {
+		printk(KERN_ERR PFX "IO completed from diff context - xid = 0x%x\n",
+		       io_req->xid);
+		rc = SUCCESS;
+	} else if (!(test_and_set_bit(BNX2FC_FLAG_ABTS_DONE,
 				    &io_req->req_flags))) {
 		/* Let the scsi-ml try to recover this command */
 		printk(KERN_ERR PFX "abort failed, xid = 0x%x\n",
@@ -1384,8 +1397,10 @@ void bnx2fc_process_cleanup_compl(struct bnx2fc_cmd *io_req,
 	io_req->tgt->stats.num_cleanup_compl++;
 	bnx2fc_scsi_done(io_req, DID_ERROR);
 	kref_put(&io_req->refcount, bnx2fc_cmd_release);
-	if (io_req->wait_for_comp)
+	if (io_req->wait_for_comp) {
+		BNX2FC_IO_DBG(io_req, "cleanup_compl: wakeup tm_done\n");
 		complete(&io_req->tm_done);
+	}
 }
 
 void bnx2fc_process_abts_compl(struct bnx2fc_cmd *io_req,
@@ -1482,9 +1497,7 @@ static void bnx2fc_lun_reset_cmpl(struct bnx2fc_cmd *io_req)
 {
 	struct scsi_cmnd *sc_cmd = io_req->sc_cmd;
 	struct bnx2fc_rport *tgt = io_req->tgt;
-	struct list_head *list;
-	struct list_head *tmp;
-	struct bnx2fc_cmd *cmd;
+	struct bnx2fc_cmd *cmd, *tmp;
 	int tm_lun = sc_cmd->device->lun;
 	int rc = 0;
 	int lun;
@@ -1495,9 +1508,8 @@ static void bnx2fc_lun_reset_cmpl(struct bnx2fc_cmd *io_req)
 	 * Walk thru the active_ios queue and ABORT the IO
 	 * that matches with the LUN that was reset
 	 */
-	list_for_each_safe(list, tmp, &tgt->active_cmd_queue) {
+	list_for_each_entry_safe(cmd, tmp, &tgt->active_cmd_queue, link) {
 		BNX2FC_TGT_DBG(tgt, "LUN RST cmpl: scan for pending IOs\n");
-		cmd = (struct bnx2fc_cmd *)list;
 		lun = cmd->sc_cmd->device->lun;
 		if (lun == tm_lun) {
 			/* Initiate ABTS on this cmd */
@@ -1522,9 +1534,7 @@ static void bnx2fc_lun_reset_cmpl(struct bnx2fc_cmd *io_req)
 static void bnx2fc_tgt_reset_cmpl(struct bnx2fc_cmd *io_req)
 {
 	struct bnx2fc_rport *tgt = io_req->tgt;
-	struct list_head *list;
-	struct list_head *tmp;
-	struct bnx2fc_cmd *cmd;
+	struct bnx2fc_cmd *cmd, *tmp;
 	int rc = 0;
 
 	/* called with tgt_lock held */
@@ -1533,9 +1543,8 @@ static void bnx2fc_tgt_reset_cmpl(struct bnx2fc_cmd *io_req)
 	 * Walk thru the active_ios queue and ABORT the IO
 	 * that matches with the LUN that was reset
 	 */
-	list_for_each_safe(list, tmp, &tgt->active_cmd_queue) {
+	list_for_each_entry_safe(cmd, tmp, &tgt->active_cmd_queue, link) {
 		BNX2FC_TGT_DBG(tgt, "TGT RST cmpl: scan for pending IOs\n");
-		cmd = (struct bnx2fc_cmd *)list;
 		/* Initiate ABTS */
 		if (!test_and_set_bit(BNX2FC_FLAG_ISSUE_ABTS,
 							&cmd->req_flags)) {
@@ -1756,7 +1765,13 @@ void bnx2fc_build_fcp_cmnd(struct bnx2fc_cmd *io_req,
 
 	memset(fcp_cmnd, 0, sizeof(struct fcp_cmnd));
 
+#ifdef _DEFINE_FCP_LUN_ARRAY_
+	int_to_scsilun(sc_cmd->device->lun,
+			(struct scsi_lun *) fcp_cmnd->fc_lun);
+#else
 	int_to_scsilun(sc_cmd->device->lun, &fcp_cmnd->fc_lun);
+#endif
+
 
 	fcp_cmnd->fc_dl = htonl(io_req->data_xfer_len);
 	memcpy(fcp_cmnd->fc_cdb, sc_cmd->cmnd, sc_cmd->cmd_len);
@@ -1872,6 +1887,7 @@ static void bnx2fc_parse_fcp_rsp(struct bnx2fc_cmd *io_req,
 
 /**
  * bnx2fc_queuecommand - Queuecommand function of the scsi template
+ * @host:	The Scsi_Host the comand was issued to
  * @sc_cmd:	struct scsi_cmnd to be executed
  * @done:	Callback function to be called when sc_cmd is complted
  *
@@ -1882,7 +1898,7 @@ int bnx2fc_queuecommand(struct Scsi_Host *host,
 			struct scsi_cmnd *sc_cmd)
 #else
 int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
-				void (*done)(struct scsi_cmnd *))
+			void (*done)(struct scsi_cmnd *))
 #endif
 {
 	struct fc_lport *lport;
@@ -2059,7 +2075,11 @@ int bnx2fc_post_io_req(struct bnx2fc_rport *tgt,
 	struct bnx2fc_interface *interface = port->priv;
 	struct bnx2fc_hba *hba = interface->hba;
 	struct fc_lport *lport = port->lport;
+#ifdef _DEFINE_FCOE_DEV_STATS_
+	struct fcoe_dev_stats *stats;
+#else
 	struct fc_stats *stats;
+#endif
 	int task_idx, index;
 	u16 xid;
 
@@ -2070,7 +2090,11 @@ int bnx2fc_post_io_req(struct bnx2fc_rport *tgt,
 	io_req->data_xfer_len = scsi_bufflen(sc_cmd);
 	sc_cmd->SCp.ptr = (char *)io_req;
 
+#ifdef _DEFINE_FCOE_DEV_STATS_
+	stats = per_cpu_ptr(lport->dev_stats, get_cpu());
+#else
 	stats = per_cpu_ptr(lport->stats, get_cpu());
+#endif
 	if (sc_cmd->sc_data_direction == DMA_FROM_DEVICE) {
 		io_req->io_req_flags = BNX2FC_READ;
 		stats->InputRequests++;

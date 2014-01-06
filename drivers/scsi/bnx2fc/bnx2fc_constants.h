@@ -9,7 +9,7 @@
 /* Implies on a change broken previous HSI */
 #define FCOE_HSI_MAJOR_VERSION (2)
 /* Implies on a change which does not broken previous HSI */
-#define FCOE_HSI_MINOR_VERSION (1)
+#define FCOE_HSI_MINOR_VERSION (2)
 
 /* KWQ/KCQ FCoE layer code */
 #define FCOE_KWQE_LAYER_CODE   (7)
@@ -189,6 +189,7 @@
 /* Error codes for Error Reporting in slow path flows */
 #define FCOE_SLOW_PATH_ERROR_CODE_TOO_MANY_FUNCS			0
 #define FCOE_SLOW_PATH_ERROR_CODE_NO_LICENSE				1
+#define FCOE_SLOW_PATH_ERROR_CODE_TOO_MANY_TASKS			2
 
 /* Error codes for Error Reporting in fast path flows
  * XFER error codes
@@ -269,6 +270,13 @@
 /* Timer error codes */
 #define FCOE_ERROR_CODE_E_D_TOV_TIMER_EXPIRATION			60
 #define FCOE_ERROR_CODE_REC_TOV_TIMER_EXPIRATION			61
+
+/* used for defining the amount of FCoE tasks supported for PF */
+#define MAX_FCOE_FUNCS_PER_ENGINE					2
+#define MAX_NUM_FCOE_TASKS_PER_ENGINE					4096
+					/*Each port can have at max 1 function*/
+
+
 
 
 #endif /* BNX2FC_CONSTANTS_H_ */
