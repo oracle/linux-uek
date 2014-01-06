@@ -1369,7 +1369,7 @@ typedef int	netdev_tx_t;
 #endif
 
 #ifndef BCM_HAS_NETDEV_FEATURES_T
-typedef u64 netdev_features_t;
+typedef u32 netdev_features_t;
 #endif
 
 #ifndef BCM_HAS_NETDEV_NAME
@@ -1447,8 +1447,8 @@ static inline void netif_tx_unlock(struct net_device *dev)
     (defined(__VMKLNX__) && defined(__USE_COMPAT_LAYER_2_6_18_PLUS__))
 
 #define TG3_NAPI
-#define tg3_netif_rx_complete(dev, napi)	napi_complete((napi))
-#define tg3_netif_rx_schedule(dev, napi)	napi_schedule((napi))
+#define napi_complete_(dev, napi)	napi_complete((napi))
+#define napi_schedule_(dev, napi)	napi_schedule((napi))
 #define tg3_netif_rx_schedule_prep(dev, napi)	napi_schedule_prep((napi))
 
 #else  /* BCM_HAS_STRUCT_NETDEV_QUEUE */
@@ -1467,12 +1467,12 @@ static inline void netif_tx_unlock(struct net_device *dev)
 
 #if defined(BCM_HAS_NEW_NETIF_INTERFACE)
 #define TG3_NAPI
-#define tg3_netif_rx_complete(dev, napi)	netif_rx_complete((dev), (napi))
-#define tg3_netif_rx_schedule(dev, napi)	netif_rx_schedule((dev), (napi))
+#define napi_complete_(dev, napi)	netif_rx_complete((dev), (napi))
+#define napi_schedule_(dev, napi)	netif_rx_schedule((dev), (napi))
 #define tg3_netif_rx_schedule_prep(dev, napi)	netif_rx_schedule_prep((dev), (napi))
 #else  /* BCM_HAS_NEW_NETIF_INTERFACE */
-#define tg3_netif_rx_complete(dev, napi)	netif_rx_complete((dev))
-#define tg3_netif_rx_schedule(dev, napi)	netif_rx_schedule((dev))
+#define napi_complete_(dev, napi)	netif_rx_complete((dev))
+#define napi_schedule_(dev, napi)	netif_rx_schedule((dev))
 #define tg3_netif_rx_schedule_prep(dev, napi)	netif_rx_schedule_prep((dev))
 #endif /* BCM_HAS_NEW_NETIF_INTERFACE */
 
@@ -1487,6 +1487,15 @@ static inline void netif_tx_unlock(struct net_device *dev)
         vlan_hwaccel_receive_skb((skb), (grp), (tag))
 #endif
 
+#ifndef NETIF_F_HW_VLAN_CTAG_TX
+#define NETIF_F_HW_VLAN_CTAG_TX NETIF_F_HW_VLAN_TX
+#else
+#define BCM_HWACCEL_HAS_PROTO_ARG
+#endif
+
+#ifndef NETIF_F_HW_VLAN_CTAG_RX
+#define NETIF_F_HW_VLAN_CTAG_RX NETIF_F_HW_VLAN_RX
+#endif
 #if !defined(TG3_NAPI) || !defined(BCM_HAS_NAPI_GRO_RECEIVE)
 #define napi_gro_receive(nap, skb) \
         netif_receive_skb((skb))
@@ -1730,6 +1739,23 @@ struct netdev_hw_addr {
 
 #ifndef MDIO_AN_EEE_ADV_1000T
 #define MDIO_AN_EEE_ADV_1000T		0x0004
+#endif
+
+#ifndef MDIO_AN_EEE_LPABLE
+#define MDIO_AN_EEE_LPABLE		61
+#define MDIO_EEE_100TX		MDIO_AN_EEE_ADV_100TX	/* 100TX EEE cap */
+#define MDIO_EEE_1000T		MDIO_AN_EEE_ADV_1000T	/* 1000T EEE cap */
+static inline u32 mmd_eee_adv_to_ethtool_adv_t(u16 eee_adv)
+{
+	u32 adv = 0;
+
+	if (eee_adv & MDIO_EEE_100TX)
+		adv |= ADVERTISED_100baseT_Full;
+	if (eee_adv & MDIO_EEE_1000T)
+		adv |= ADVERTISED_1000baseT_Full;
+
+	return adv;
+}
 #endif
 
 #ifndef SPEED_UNKNOWN
@@ -2006,18 +2032,94 @@ static inline __u32 ethtool_cmd_speed_set(struct ethtool_cmd *ep, __u32 speed)
 #define busn_res_end subordinate
 #endif
 
-#ifndef BCM_HAS_DEVINIT
+#ifndef __devinit
 #define __devinit
+#endif
+
+#ifndef __devinitdata
 #define __devinitdata
+#endif
+
+#ifndef __devexit
 #define __devexit
+#endif
+
+#ifndef __devexit_p
 #define __devexit_p(x) (x)
 #endif
 
-#ifndef BCM_HAS_SSB
+#ifndef CONFIG_SSB_DRIVER_GIGE
 #define ssb_gige_get_macaddr(a, b) (0)
+#define ssb_gige_get_phyaddr(a) (0)
 #define pdev_is_ssb_gige_core(a) (0)
 #define ssb_gige_must_flush_posted_writes(a) (0)
 #define ssb_gige_one_dma_at_once(a) (0)
 #define ssb_gige_have_roboswitch(a) (0)
 #define ssb_gige_is_rgmii(a) (0)
+#else
+#include <linux/ssb/ssb_driver_gige.h>
+#endif
+
+#ifndef ETHTOOL_GEEE
+struct ethtool_eee {
+	__u32   cmd;
+	__u32   supported;
+	__u32   advertised;
+	__u32   lp_advertised;
+	__u32   eee_active;
+	__u32   eee_enabled;
+	__u32   tx_lpi_enabled;
+	__u32   tx_lpi_timer;
+	__u32   reserved[2];
+};
+#endif
+
+#ifdef __VMKLNX__
+#ifndef SYSTEM_POWER_OFF
+#define SYSTEM_POWER_OFF (3)
+#endif
+
+#define system_state SYSTEM_POWER_OFF
+#endif
+
+#if (LINUX_VERSION_CODE < 0x020612)
+static inline int pci_channel_offline(struct pci_dev *pdev)
+{
+	return (pdev->error_state != pci_channel_io_normal);
+}
+#else
+#if defined (__VMKLNX__)
+static inline int pci_channel_offline(struct pci_dev *pdev)
+{
+	return 0;
+}
+#endif
+#endif
+
+#ifndef BCM_HAS_PCI_IS_ENABLED
+static inline int pci_is_enabled(struct pci_dev *pdev)
+{
+	return 1;
+}
+#endif
+
+#ifndef BCM_HAS_DMA_ZALLOC_COHERENT
+static inline void *dma_zalloc_coherent(struct device *dev, size_t size,
+					dma_addr_t *dma_handle, gfp_t flag)
+{
+	void *ret = dma_alloc_coherent(dev, size, dma_handle,
+				       flag | __GFP_ZERO);
+	return ret;
+}
+#endif
+
+#ifndef DEFAULT_MAX_NUM_RSS_QUEUES
+#define DEFAULT_MAX_NUM_RSS_QUEUES	(8)
+#endif
+
+#ifndef BCM_HAS_GET_NUM_DFLT_RSS_QS
+int netif_get_num_default_rss_queues(void)
+{
+	return min_t(int, DEFAULT_MAX_NUM_RSS_QUEUES, num_online_cpus());
+}
 #endif

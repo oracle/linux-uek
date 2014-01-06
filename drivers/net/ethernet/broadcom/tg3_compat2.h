@@ -17,6 +17,50 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 }
 #endif
 
+#ifndef BCM_HAS_PCIE_CAP_RW
+static inline int pcie_capability_set_word(struct pci_dev *dev, int pos,
+					   u16 set)
+{
+	u16 val;
+	int rval;
+
+	rval = pci_read_config_word(dev, pci_pcie_cap(dev) + pos, &val);
+
+	if (!rval) {
+		val |= set;
+		rval = pci_write_config_word(dev, pci_pcie_cap(dev) + pos, val);
+	}
+
+	return rval;
+}
+
+static inline int pcie_capability_clear_word(struct pci_dev *dev, int pos,
+					     u16 clear)
+{
+	u16 val;
+	int rval;
+
+	rval = pci_read_config_word(dev, pci_pcie_cap(dev) + pos, &val);
+
+	if (!rval) {
+		val &= ~clear;
+		rval = pci_write_config_word(dev, pci_pcie_cap(dev) + pos, val);
+	}
+
+	return rval;
+}
+
+static int pcie_capability_write_word(struct pci_dev *dev, int pos, u16 val)
+{
+	return pci_write_config_word(dev, pci_pcie_cap(dev) + pos, val);
+}
+
+static int pcie_capability_read_word(struct pci_dev *dev, int pos, u16 *val)
+{
+	return pci_read_config_word(dev, pci_pcie_cap(dev) + pos, val);
+}
+#endif
+
 #ifndef BCM_HAS_SKB_FRAG_DMA_MAP
 #define skb_frag_dma_map(x, frag, y, len, z) \
 	pci_map_page(tp->pdev, (frag)->page, \
@@ -73,11 +117,14 @@ static bool tg3_invalid_pci_state(struct tg3 *tp, pm_message_t state)
 
 
 #ifdef BCM_HAS_NEW_PCI_DMA_MAPPING_ERROR
-#define tg3_pci_dma_mapping_error(pdev, mapping)  pci_dma_mapping_error((pdev), (mapping))
+#define pci_dma_mapping_error_(pdev, mapping)  pci_dma_mapping_error((pdev), (mapping))
+#define dma_mapping_error_(pdev, mapping)  dma_mapping_error((pdev), (mapping))
 #elif defined(BCM_HAS_PCI_DMA_MAPPING_ERROR)
-#define tg3_pci_dma_mapping_error(pdev, mapping)  pci_dma_mapping_error((mapping))
+#define pci_dma_mapping_error_(pdev, mapping)  pci_dma_mapping_error((mapping))
+#define dma_mapping_error_(pdev, mapping)  dma_mapping_error((mapping))
 #else
-#define tg3_pci_dma_mapping_error(pdev, mapping)  0
+#define pci_dma_mapping_error_(pdev, mapping)  0
+#define dma_mapping_error_(pdev, mapping)  0
 #endif
 
 #ifndef BCM_HAS_HW_FEATURES
