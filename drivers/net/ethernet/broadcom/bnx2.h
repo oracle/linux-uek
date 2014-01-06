@@ -1,6 +1,6 @@
 /* bnx2.h: Broadcom NX2 network driver.
  *
- * Copyright (c) 2004-2012 Broadcom Corporation
+ * Copyright (c) 2004-2013 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -8158,7 +8158,7 @@ struct bnx2_ioctl_req
 } __attribute__((packed));
 #endif  /* BNX2_VMWARE_BMAPILNX */
 
-#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 60000)
+#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000)
 #define BNX2_FWDMP_GRC_DUMP     0
 #define BNX2_FWDMP_FTQ_DUMP     1
 #define BNX2_FWDMP_CPU_DUMP     2
@@ -8172,7 +8172,7 @@ struct bnx2_ioctl_req
 #define BNX2_FWDMP_MARKER_SZ    20
 
 #define NIC_NAME_SIZE		(sizeof(((struct net_device *)0)->name))
-struct fw_dmp_hdr {
+struct bnx2_fw_dmp_hdr {
 	u32	ver;
 	u32	len;
 	char	name[NIC_NAME_SIZE];
@@ -8183,10 +8183,10 @@ struct fw_dmp_hdr {
 	u32	reserved;
 };
 
-struct chip_core_dmp {
-	struct fw_dmp_hdr       fw_hdr;
+struct bnx2_chip_core_dmp {
+	struct bnx2_fw_dmp_hdr  fw_hdr;
 	u32                     fw_dmp_buf[(BNX2_FWDMP_SIZE -
-					   sizeof(struct fw_dmp_hdr))/4];
+					   sizeof(struct bnx2_fw_dmp_hdr))/4];
 };
 
 #define BNX2_CP_HSI_START           0x1a0010
@@ -8207,6 +8207,6 @@ struct chip_core_dmp {
 #define BNX2_MCP_DUMP_SIZE          128
 #define BNX2_TBDC_DUMP_SIZE         384
 
-#endif /* defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 60000) */
+#endif /* defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000) */
 
 #endif

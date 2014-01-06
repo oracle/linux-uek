@@ -6,6 +6,9 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
+ * This file is included by both bnx2.c and cnic.c so that CFLAGS that affect
+ * struct bnx2 will be set the same in both drivers.
+ *
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 

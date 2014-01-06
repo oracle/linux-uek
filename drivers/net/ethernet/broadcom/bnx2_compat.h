@@ -249,17 +249,28 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #define __releases(x)
 #endif
 
-#ifndef HAVE_LE32
-typedef u32 __le32;
-typedef u32 __be32;
-#endif
-
 #ifndef USEC_PER_SEC
 #define USEC_PER_SEC	1000000L
 #endif
 
 #ifndef __maybe_unused
 #define __maybe_unused
+#endif
+
+#ifndef __devinit
+#define __devinit
+#endif
+
+#ifndef __devinitdata
+#define __devinitdata
+#endif
+
+#ifndef __devexit
+#define __devexit
+#endif
+
+#ifndef __devexit_p
+#define __devexit_p(x) (x)
 #endif
 
 #ifndef uninitialized_var
@@ -272,6 +283,48 @@ typedef u32 pci_power_t;
 #define PCI_D0		0
 #define PCI_D3hot	3
 #endif
+
+#ifndef HAVE_DEVICE_SET_WAKEUP_CAP
+#define device_set_wakeup_capable(dev, val)
+#endif
+
+#ifndef HAVE_PCI_WAKE_FROM_D3
+#ifndef HAVE_PCI_PME_CAPABLE
+static bool pci_pme_capable(struct pci_dev *dev, pci_power_t state)
+{
+	int pm_cap;
+	u16 caps;
+	bool ret = false;
+
+	pm_cap = pci_find_capability(dev, PCI_CAP_ID_PM);
+	if (pm_cap == 0)
+		goto done;
+
+	pci_read_config_word(dev, pm_cap + PCI_PM_PMC, &caps);
+
+	if (state == PCI_D3cold &&
+		(caps & PCI_PM_CAP_PME_D3cold))
+			ret = true;
+
+done:
+	return ret;
+}
+#endif /* HAVE_PCI_PME_CAPABLE */
+
+static int pci_wake_from_d3(struct pci_dev *dev, bool enable)
+{
+	return pci_pme_capable(dev, PCI_D3cold) ?
+			pci_enable_wake(dev, PCI_D3cold, enable) :
+			pci_enable_wake(dev, PCI_D3hot, enable);
+}
+#endif /* HAVE_PCI_WAKE_FROM_D3 */
+
+#if defined(__VMKLNX__)
+#ifndef SYSTEM_POWER_OFF
+#define SYSTEM_POWER_OFF	(3)
+#endif
+#define system_state	SYSTEM_POWER_OFF
+#endif /* defined (__VMKLNX__) */
 
 #if (LINUX_VERSION_CODE < 0x020605)
 #define pci_dma_sync_single_for_cpu(pdev, map, len, dir)	\
@@ -381,6 +434,15 @@ static inline void vlan_group_set_device(struct vlan_group *vg, int vlan_id,
 	if (vg)
 		vg->vlan_devices[vlan_id] = dev;
 }
+#endif
+
+#ifndef NETIF_F_HW_VLAN_CTAG_TX
+#define NETIF_F_HW_VLAN_CTAG_TX NETIF_F_HW_VLAN_TX
+#define NETIF_F_HW_VLAN_CTAG_RX NETIF_F_HW_VLAN_RX
+#ifdef NEW_VLAN
+#define __vlan_hwaccel_put_tag(skb, proto, tag) \
+	__vlan_hwaccel_put_tag(skb, tag)
+#endif
 #endif
 
 #ifdef NETIF_F_TSO
