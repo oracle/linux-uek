@@ -24,7 +24,7 @@ struct scsi_transport_template *bnx2i_scsi_xport_template;
 struct iscsi_transport bnx2i_iscsi_transport;
 static struct scsi_host_template bnx2i_host_template;
 
-static void conn_err_recovery_task(struct work_struct *work);
+static void conn_err_recovery_task(struct work_struct *work, void *data);
 
 static void bnx2i_withdraw_conn_recovery(struct bnx2i_hba *hba,
 					 struct iscsi_conn *conn);
@@ -807,7 +807,6 @@ struct bnx2i_hba *bnx2i_alloc_hba(struct cnic_dev *cnic)
 	shost = iscsi_host_alloc(&bnx2i_host_template, sizeof(*hba), 0);
 	if (!shost)
 		return NULL;
-	shost->dma_boundary = cnic->pcidev->dma_mask;
 	shost->transportt = bnx2i_scsi_xport_template;
 	shost->max_id = ISCSI_MAX_CONNS_PER_HBA;
 	shost->max_channel = 0;
@@ -893,7 +892,7 @@ struct bnx2i_hba *bnx2i_alloc_hba(struct cnic_dev *cnic)
 		hba->conn_ctx_destroy_tmo = 2 * HZ;
 	}
 
-	INIT_WORK(&hba->err_rec_task, conn_err_recovery_task);
+	_INIT_WORK(&hba->err_rec_task, conn_err_recovery_task, hba);
 	hba->conn_recov_prod_idx = 0;
 	hba->conn_recov_cons_idx = 0;
 	hba->conn_recov_max_idx = 0;
@@ -942,10 +941,7 @@ void bnx2i_free_hba(struct bnx2i_hba *hba)
 	struct iscsi_host *ihost = shost_priv(shost);
 #define MAX_FREE_HBA_RETRY 10
 	int i = MAX_FREE_HBA_RETRY, rc = 0;
-#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
-     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
-     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+#ifdef ISCSI_UEVENT_SET_IFACE_PARAMS
 	struct list_head *pos, *q;
 	struct bnx2i_iface *bnx2i_iface;
 #endif
@@ -992,10 +988,7 @@ void bnx2i_free_hba(struct bnx2i_hba *hba)
 		hba->conn_recov_list = NULL;
 	}
 
-#if ((defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1102)) || \
-     (defined(__RHELS_DISTRO_5__) && (__RHELS_DISTRO_5__ > 0x0509)) || \
-     (defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0602)) || \
-     (!defined(__DISTRO__) && LINUX_VERSION_CODE > 0x020628))
+#ifdef ISCSI_UEVENT_SET_IFACE_PARAMS
 	list_for_each_safe(pos, q, &hba->iface_ipv4_list) {
 		bnx2i_iface = list_entry(pos, struct bnx2i_iface, link);
 		if (bnx2i_iface) {
@@ -1638,10 +1631,7 @@ static void bnx2i_conn_destroy(struct iscsi_cls_conn *cls_conn)
 	iscsi_conn_teardown(cls_conn);
 }
 
-#if ((!defined(__SLES_DISTRO__) || (__SLES_DISTRO__ < 0x1102)) && \
-     (!defined(__RHELS_DISTRO_5__) || (__RHELS_DISTRO_5__ < 0x050a)) && \
-     (!defined(__RHELS_DISTRO_6__) || (__RHELS_DISTRO_6__ < 0x0602)) && \
-     (defined(__DISTRO__) || LINUX_VERSION_CODE < 0x020626))
+#ifndef _DEFINE_GET_EP_PARAM_
 /**
  * bnx2i_conn_get_param - return iscsi connection parameter to caller
  * @cls_conn:	pointer to iscsi cls conn
@@ -1725,6 +1715,7 @@ static int bnx2i_ep_get_param(struct iscsi_endpoint *ep,
 }
 #endif
 
+#ifdef ISCSI_UEVENT_SET_IFACE_PARAMS
 /**
  * bnx2i_set_iface_param - sets iface related parameters
  * @shost:	scsi host pointer
@@ -1845,12 +1836,14 @@ static int bnx2i_get_iface_param(struct iscsi_iface *iface,
 					continue;
 				/* IPv4 */
 				if (!test_bit(SK_F_IPV6, &csk->flags) &&
-				    iface->iface_type == ISCSI_IFACE_TYPE_IPV4) {
+				    iface->iface_type ==
+						ISCSI_IFACE_TYPE_IPV4) {
 					FORMAT_IP(buf, "%pI4\n", csk->src_ip,
 						  len);
 					break;
 				} else if (test_bit(SK_F_IPV6, &csk->flags) &&
-				    iface->iface_type == ISCSI_IFACE_TYPE_IPV6) {
+				    iface->iface_type ==
+						ISCSI_IFACE_TYPE_IPV6) {
 					FORMAT_IP6(buf, "%pI6\n", csk->src_ip,
 						   len);
 					break;
@@ -1864,6 +1857,7 @@ static int bnx2i_get_iface_param(struct iscsi_iface *iface,
 	}
 	return len;
 }
+#endif
 
 
 /**
@@ -2115,7 +2109,7 @@ static struct iscsi_endpoint *bnx2i_ep_connect(struct Scsi_Host *shost,
 	struct cnic_sockaddr saddr;
 	struct iscsi_endpoint *ep;
 	int rc = 0;
-#ifndef _EP_CONNECT_IFACE_NUM_
+#ifndef _DEFINE_EP_CONNECT_IFACE_NUM_
 	u32 iface_num = -1;
 #endif
 
@@ -2533,7 +2527,7 @@ static int bnx2i_nl_set_path(struct Scsi_Host *shost, struct iscsi_path *params)
 }
 
 
-static mode_t bnx2i_attr_is_visible(int param_type, int param)
+static _UMODE_ bnx2i_attr_is_visible(int param_type, int param)
 {
 	switch (param_type) {
 	case ISCSI_HOST_PARAM:
@@ -2608,7 +2602,6 @@ static mode_t bnx2i_attr_is_visible(int param_type, int param)
 	return 0;
 }
 
-
 /**
  * conn_err_recovery_task - does recovery on all queued sessions
  *
@@ -2617,10 +2610,14 @@ static mode_t bnx2i_attr_is_visible(int param_type, int param)
  * iSCSI Session recovery queue manager
  */
 static void
-conn_err_recovery_task(struct work_struct *work)
+conn_err_recovery_task(struct work_struct *work, void *data)
 {
+#ifdef _DEFINE_USE_INIT_WORK_
 	struct bnx2i_hba *hba = container_of(work, struct bnx2i_hba,
 					     err_rec_task);
+#else
+	struct bnx2i_hba *hba = data;
+#endif
 	int cons_idx = hba->conn_recov_cons_idx;
 	unsigned int long flags;
 	struct iscsi_conn *conn;
@@ -2682,12 +2679,11 @@ static struct scsi_host_template bnx2i_host_template = {
 	.queuecommand		= iscsi_queuecommand,
 	.eh_abort_handler	= iscsi_eh_abort,
 	.eh_device_reset_handler = iscsi_eh_device_reset,
-#if (LINUX_VERSION_CODE >= 0x020622)
+#ifdef iscsi_eh_recover_target
 	.eh_target_reset_handler = iscsi_eh_recover_target,
 #endif
 	.change_queue_depth	= iscsi_change_queue_depth,
-#if ((defined(__RHELS_DISTRO_6__) && (__RHELS_DISTRO_6__ > 0x0600)) || \
-     (defined(__SLES_DISTRO__) && (__SLES_DISTRO__ > 0x1101)))
+#ifdef iscsi_target_alloc
 	.target_alloc		= iscsi_target_alloc,
 #endif
 	.can_queue		= 2048,
@@ -2696,7 +2692,7 @@ static struct scsi_host_template bnx2i_host_template = {
 	.this_id		= -1,
 	.use_clustering		= ENABLE_CLUSTERING,
 	.sg_tablesize		= ISCSI_MAX_BDS_PER_CMD,
-#if (defined(__RHELS_DISTRO_5__))
+#if (defined(__RHEL_DISTRO_5__))
 	.sdev_attrs		= bnx2i_dev_attributes,
 #else
 	.shost_attrs		= bnx2i_dev_attributes,
@@ -2717,9 +2713,16 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.destroy_conn		= bnx2i_conn_destroy,
 	.set_param		= iscsi_set_param,
 	.attr_is_visible	= bnx2i_attr_is_visible,
+#ifndef _DEFINE_GET_EP_PARAM_
 	.get_conn_param		= bnx2i_conn_get_param,
+#else
+	.get_conn_param		= iscsi_conn_get_param,
+	.get_ep_param		= bnx2i_ep_get_param,
+#endif
+#ifdef ISCSI_UEVENT_SET_IFACE_PARAMS
 	.set_iface_param	= bnx2i_set_iface_param,
 	.get_iface_param	= bnx2i_get_iface_param,
+#endif
 	.get_session_param	= iscsi_session_get_param,
 	.get_host_param		= bnx2i_host_get_param,
 	.start_conn		= bnx2i_conn_start,

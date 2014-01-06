@@ -18,10 +18,10 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION	"2.7.6.1d"
-#define DRV_MODULE_RELDATE	"Jan 25, 2013"
+#define DRV_MODULE_VERSION	"2.7.8.2b"
+#define DRV_MODULE_RELDATE	"Sep 12, 2013"
 
-static char version[] =
+static char version[] __devinitdata =
 		"Broadcom NetXtreme II iSCSI Driver " DRV_MODULE_NAME \
 		" v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
@@ -181,16 +181,14 @@ void bnx2i_start(void *handle)
 	struct bnx2i_hba *hba = handle;
 	int i = HZ;
 
-	/*
-	 * We should never register devices that don't support iSCSI
-	 * (see bnx2i_init_one), so something is wrong if we try to
-	 * start a iSCSI adapter on hardware with 0 supported iSCSI
-	 * connections
+	/* On some bnx2x devices, it is possible that iSCSI is no
+	 * longer supported after firmware is downloaded.  In that
+	 * case, the iscsi_init_msg will return failure.
 	 */
-	BUG_ON(!hba->cnic->max_iscsi_conn);
 
 	bnx2i_send_fw_iscsi_init_msg(hba);
-	while (!test_bit(ADAPTER_STATE_UP, &hba->adapter_state) && i--)
+	while (!test_bit(ADAPTER_STATE_UP, &hba->adapter_state) &&
+	       !test_bit(ADAPTER_STATE_INIT_FAILED, &hba->adapter_state) && i--)
 		msleep(BNX2I_INIT_POLL_TIME);
 }
 

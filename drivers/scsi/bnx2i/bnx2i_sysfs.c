@@ -20,7 +20,7 @@
  */
 static inline struct bnx2i_hba *bnx2i_dev_to_hba(struct device *dev)
 {
-#if (defined(__RHELS_DISTRO_5__))
+#if (defined(__RHEL_DISTRO_5__))
 	/* TODO: is the shost_gendev what we want here?  or
 		 do we want the actual class_dev */
 	struct Scsi_Host *shost = dev_to_shost(dev);
@@ -137,13 +137,56 @@ skip_config:
 }
 
 
+/**
+ * bnx2i_show_ooo_count - reads the OOO counter
+ * @dev:	device pointer
+ * @buf:	buffer to return current SQ size parameter
+ * @count:	parameter buffer size
+ *
+ * updates per-connection TCP history queue size parameter
+ */
+static ssize_t bnx2i_show_ooo_tx_count(struct device *dev,
+				       struct device_attribute *attr, char *buf)
+{
+	struct bnx2i_hba *hba = bnx2i_dev_to_hba(dev);
+
+	if (hba->cnic)
+		return sprintf(buf, "0x%llu\n", hba->cnic->ooo_tx_count);
+	else
+		return -EINVAL;
+}
+
+/**
+ * bnx2i_reset_ooo_count - reads the OOO counter
+ * @dev:	device pointer
+ * @buf:	buffer to return current SQ size parameter
+ * @count:	parameter buffer size
+ *
+ * updates per-connection TCP history queue size parameter
+ */
+static ssize_t bnx2i_reset_ooo_tx_count(struct device *dev,
+					struct device_attribute *attr,
+					const char *buf, size_t count)
+{
+	struct bnx2i_hba *hba = bnx2i_dev_to_hba(dev);
+
+	if (hba->cnic)
+		hba->cnic->ooo_tx_count = 0;
+
+	return 0;
+}
+
+
 static DEVICE_ATTR(sq_size, S_IRUGO | S_IWUSR,
 		   bnx2i_show_sq_info, bnx2i_set_sq_info);
 static DEVICE_ATTR(num_ccell, S_IRUGO | S_IWUSR,
 		   bnx2i_show_ccell_info, bnx2i_set_ccell_info);
+static DEVICE_ATTR(ooo_tx_count, S_IRUGO | S_IWUSR,
+		   bnx2i_show_ooo_tx_count, bnx2i_reset_ooo_tx_count);
 
 struct device_attribute *bnx2i_dev_attributes[] = {
 	&dev_attr_sq_size,
 	&dev_attr_num_ccell,
+	&dev_attr_ooo_tx_count,
 	NULL
 };
