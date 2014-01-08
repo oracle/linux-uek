@@ -289,23 +289,13 @@ qla24xx_read_window(struct device_reg_24xx __iomem *reg, uint32_t iobase,
 	return buf;
 }
 
-int
+void
 qla24xx_pause_risc(struct device_reg_24xx __iomem *reg)
 {
-	int rval = QLA_SUCCESS;
-	uint32_t cnt;
-
 	WRT_REG_DWORD(&reg->hccr, HCCRX_SET_RISC_PAUSE);
-	for (cnt = 30000;
-	    ((RD_REG_DWORD(&reg->host_status) & HSRX_RISC_PAUSED) == 0) &&
-	    rval == QLA_SUCCESS; cnt--) {
-		if (cnt)
-			udelay(100);
-		else
-			rval = QLA_FUNCTION_TIMEOUT;
-	}
 
-	return rval;
+	/* 100 usec delay is sufficient enough for hardware to pause RISC */
+	udelay(100);
 }
 
 int
@@ -313,10 +303,14 @@ qla24xx_soft_reset(struct qla_hw_data *ha)
 {
 	int rval = QLA_SUCCESS;
 	uint32_t cnt;
-	uint16_t mb0, wd;
+	uint16_t wd;
 	struct device_reg_24xx __iomem *reg = &ha->iobase->isp24;
 
-	/* Reset RISC. */
+	/*
+	 * Reset RISC. The delay is dependent on system architecture.
+	 * Driver can proceed with the reset sequence after waiting
+	 * for a timeout period.
+	 */
 	WRT_REG_DWORD(&reg->ctrl_status, CSRX_DMA_SHUTDOWN|MWB_4096_BYTES);
 	for (cnt = 0; cnt < 30000; cnt++) {
 		if ((RD_REG_DWORD(&reg->ctrl_status) & CSRX_DMA_ACTIVE) == 0)
@@ -330,13 +324,6 @@ qla24xx_soft_reset(struct qla_hw_data *ha)
 	pci_read_config_word(ha->pdev, PCI_COMMAND, &wd);
 
 	udelay(100);
-	/* Wait for firmware to complete NVRAM accesses. */
-	mb0 = (uint32_t) RD_REG_WORD(&reg->mailbox0);
-	for (cnt = 10000 ; cnt && mb0; cnt--) {
-		udelay(5);
-		mb0 = (uint32_t) RD_REG_WORD(&reg->mailbox0);
-		barrier();
-	}
 
 	/* Wait for soft-reset to complete. */
 	for (cnt = 0; cnt < 30000; cnt++) {
@@ -349,10 +336,10 @@ qla24xx_soft_reset(struct qla_hw_data *ha)
 	WRT_REG_DWORD(&reg->hccr, HCCRX_CLR_RISC_RESET);
 	RD_REG_DWORD(&reg->hccr);             /* PCI Posting. */
 
-	for (cnt = 30000; RD_REG_WORD(&reg->mailbox0) != 0 &&
+	for (cnt = 10000; RD_REG_WORD(&reg->mailbox0) != 0 &&
 	    rval == QLA_SUCCESS; cnt--) {
 		if (cnt)
-			udelay(100);
+			udelay(10);
 		else
 			rval = QLA_FUNCTION_TIMEOUT;
 	}
@@ -1018,10 +1005,11 @@ qla24xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	fw->host_status = htonl(RD_REG_DWORD(&reg->host_status));
 
-	/* Pause RISC. */
-	rval = qla24xx_pause_risc(reg);
-	if (rval != QLA_SUCCESS)
-		goto qla24xx_fw_dump_failed_0;
+	/*
+	 * Pause RISC. No need to track timeout, as resetting the chip
+	 * is the right approach incase of pause timeout
+	 */
+	qla24xx_pause_risc(reg);
 
 	/* Host interface registers. */
 	dmp_reg = &reg->flash_addr;
@@ -1258,10 +1246,11 @@ qla25xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	fw->host_status = htonl(RD_REG_DWORD(&reg->host_status));
 
-	/* Pause RISC. */
-	rval = qla24xx_pause_risc(reg);
-	if (rval != QLA_SUCCESS)
-		goto qla25xx_fw_dump_failed_0;
+	/*
+	 * Pause RISC. No need to track timeout, as resetting the chip
+	 * is the right approach incase of pause timeout
+	 */
+	qla24xx_pause_risc(reg);
 
 	/* Host/Risc registers. */
 	iter_reg = fw->host_risc_reg;
@@ -1573,10 +1562,11 @@ qla81xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	fw->host_status = htonl(RD_REG_DWORD(&reg->host_status));
 
-	/* Pause RISC. */
-	rval = qla24xx_pause_risc(reg);
-	if (rval != QLA_SUCCESS)
-		goto qla81xx_fw_dump_failed_0;
+	/*
+	 * Pause RISC. No need to track timeout, as resetting the chip
+	 * is the right approach incase of pause timeout
+	 */
+	qla24xx_pause_risc(reg);
 
 	/* Host/Risc registers. */
 	iter_reg = fw->host_risc_reg;
@@ -1890,10 +1880,11 @@ qla83xx_fw_dump(scsi_qla_host_t *vha, int hardware_locked)
 
 	fw->host_status = htonl(RD_REG_DWORD(&reg->host_status));
 
-	/* Pause RISC. */
-	rval = qla24xx_pause_risc(reg);
-	if (rval != QLA_SUCCESS)
-		goto qla83xx_fw_dump_failed_0;
+	/*
+	 * Pause RISC. No need to track timeout, as resetting the chip
+	 * is the right approach incase of pause timeout
+	 */
+	qla24xx_pause_risc(reg);
 
 	WRT_REG_DWORD(&reg->iobase_addr, 0x6000);
 	dmp_reg = &reg->iobase_window;
