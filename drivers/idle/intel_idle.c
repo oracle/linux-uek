@@ -345,6 +345,8 @@ static struct cpuidle_state avn_cstates[] = {
 		.exit_latency = 15,
 		.target_residency = 45,
 		.enter = &intel_idle },
+	{
+		.enter = NULL }
 };
 
 /**
