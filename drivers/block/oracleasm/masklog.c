@@ -192,11 +192,9 @@ int mlog_init_proc(struct proc_dir_entry *parent)
 	set_a_string(ERROR);
 	set_a_string(NOTICE);
 
-	p = create_proc_entry(LOGMASK_PROC_NAME, S_IRUGO, parent);
+	p = proc_create(LOGMASK_PROC_NAME, S_IRUGO, parent, &mlog_seq_fops);
 	if (p == NULL)
 		return -ENOMEM;
-
-	p->proc_fops = &mlog_seq_fops;
 
 	return 0;
 }
