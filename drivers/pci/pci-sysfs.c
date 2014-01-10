@@ -301,7 +301,6 @@ msi_irqs_show(struct device *dev, struct device_attribute *attr, char *buf)
 #endif
 
 #ifdef CONFIG_HOTPLUG
-static DEFINE_MUTEX(pci_remove_rescan_mutex);
 static ssize_t bus_rescan_store(struct bus_type *bus, const char *buf,
 				size_t count)
 {
@@ -312,10 +311,10 @@ static ssize_t bus_rescan_store(struct bus_type *bus, const char *buf,
 		return -EINVAL;
 
 	if (val) {
-		mutex_lock(&pci_remove_rescan_mutex);
+		pci_lock_rescan_remove();
 		while ((b = pci_find_next_bus(b)) != NULL)
 			pci_rescan_bus(b);
-		mutex_unlock(&pci_remove_rescan_mutex);
+		pci_unlock_rescan_remove();
 	}
 	return count;
 }
@@ -336,9 +335,9 @@ dev_rescan_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	if (val) {
-		mutex_lock(&pci_remove_rescan_mutex);
+		pci_lock_rescan_remove();
 		pci_rescan_bus(pdev->bus);
-		mutex_unlock(&pci_remove_rescan_mutex);
+		pci_unlock_rescan_remove();
 	}
 	return count;
 }
@@ -347,9 +346,9 @@ static void remove_callback(struct device *dev)
 {
 	struct pci_dev *pdev = to_pci_dev(dev);
 
-	mutex_lock(&pci_remove_rescan_mutex);
+	pci_lock_rescan_remove();
 	pci_remove_bus_device(pdev);
-	mutex_unlock(&pci_remove_rescan_mutex);
+	pci_unlock_rescan_remove();
 }
 
 static ssize_t
@@ -383,9 +382,9 @@ dev_bus_rescan_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 
 	if (val) {
-		mutex_lock(&pci_remove_rescan_mutex);
+		pci_lock_rescan_remove();
 		pci_rescan_bus(bus);
-		mutex_unlock(&pci_remove_rescan_mutex);
+		pci_unlock_rescan_remove();
 	}
 	return count;
 }

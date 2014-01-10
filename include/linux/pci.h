@@ -905,6 +905,8 @@ void set_pcie_hotplug_bridge(struct pci_dev *pdev);
 int pci_bus_find_capability(struct pci_bus *bus, unsigned int devfn, int cap);
 #ifdef CONFIG_HOTPLUG
 unsigned int pci_rescan_bus(struct pci_bus *bus);
+void pci_lock_rescan_remove(void);
+void pci_unlock_rescan_remove(void);
 #endif
 
 /* Vital product data routines */
