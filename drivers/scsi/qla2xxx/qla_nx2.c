@@ -117,44 +117,25 @@ qla8044_read_write_crb_reg(struct scsi_qla_host *vha,
 	qla8044_wr_reg_indirect(vha, waddr, value);
 }
 
-static long
-get_mtime(struct timeval *start_time)
-{
-	long sec, msec, usec;
-	struct timeval curr_time;
-
-	do_gettimeofday(&curr_time);
-
-	sec = curr_time.tv_sec - start_time->tv_sec;
-	usec = curr_time.tv_usec - start_time->tv_usec;
-	msec = ((sec) * 1000 + usec / 1000.0) + 0.5;
-
-	return msec;
-}
-
 static int
 qla8044_poll_wait_for_ready(struct scsi_qla_host *vha, uint32_t addr1,
 	uint32_t mask)
 {
-	struct timeval start_time;
-	long elapsed = 0, timeout = TIMEOUT_100_MS;
+	unsigned long timeout;
 	uint32_t temp;
 
-	do_gettimeofday(&start_time);
-
+	/* jiffies after 100ms */
+	timeout = jiffies + msecs_to_jiffies(TIMEOUT_100_MS);
 	do {
-		elapsed = 0;
 		qla8044_rd_reg_indirect(vha, addr1, &temp);
 		if ((temp & mask) != 0)
 			break;
-		elapsed = get_mtime(&start_time);
-	} while (elapsed <= timeout);
-
-	if (elapsed > timeout) {
-		ql_log(ql_log_warn, vha, 0xb151,
-		    "Error in processing rdmdio entry\n");
-		return -1;
-	}
+		if (time_after_eq(jiffies, timeout)) {
+			ql_log(ql_log_warn, vha, 0xb151,
+				"Error in processing rdmdio entry\n");
+			return -1;
+		}
+	} while (1);
 
 	return 0;
 }
@@ -187,22 +168,18 @@ static int
 qla8044_poll_wait_ipmdio_bus_idle(struct scsi_qla_host *vha,
     uint32_t addr1, uint32_t addr2, uint32_t addr3, uint32_t mask)
 {
-	struct timeval start_time;
-	long elapsed = 0;
-	long timeout = TIMEOUT_100_MS;
+	unsigned long timeout;
 	uint32_t temp;
 
-	do_gettimeofday(&start_time);
-
+	/* jiffies after 100 msecs */
+	timeout = jiffies + (HZ / 1000) * TIMEOUT_100_MS;
 	do {
-		elapsed = 0;
 		temp = qla8044_ipmdio_rd_reg(vha, addr1, addr3, mask, addr2);
 		if ((temp & 0x1) != 1)
 			break;
-		elapsed = get_mtime(&start_time);
-	} while (elapsed <= timeout);
+	} while (!time_after_eq(jiffies, timeout));
 
-	if (elapsed > timeout) {
+	if (time_after_eq(jiffies, timeout)) {
 		ql_log(ql_log_warn, vha, 0xb152,
 		    "Error in processing mdiobus idle\n");
 		return -1;
