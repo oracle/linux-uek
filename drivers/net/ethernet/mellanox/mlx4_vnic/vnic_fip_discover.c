@@ -1621,8 +1621,8 @@ static void handle_login_packet(struct fip_discover *discover,
 		fip_print_syndrome(vnic, synd);
 
 		if (synd == FIP_SYNDROM_UNRECOGNISED_HOST) {
-			vnic_info("%s %s sending ucast sloicit to Gateway\n",
-					  discover->name, vnic_name);
+			vnic_info("%s %s sending ucast solicit to Gateway\n",
+				  discover->name, vnic_name);
 			if(fip_solicit_send(gw->discover,
                                     FIP_DISCOVER_UCAST,
                                     gw->info.gw_qpn,
