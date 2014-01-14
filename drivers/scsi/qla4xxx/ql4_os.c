@@ -151,6 +151,7 @@ static int qla4xxx_get_chap_list(struct Scsi_Host *shost, uint16_t chap_tbl_idx,
 static int qla4xxx_delete_chap(struct Scsi_Host *shost, uint16_t chap_tbl_idx);
 static int qla4xxx_set_chap_entry(struct Scsi_Host *shost, void  *data,
 				  int len);
+static int qla4xxx_get_host_stats(struct Scsi_Host *shost, char *buf, int len);
 
 /*
  * SCSI host template entry points
@@ -262,6 +263,7 @@ static struct iscsi_transport qla4xxx_iscsi_transport = {
 	.login_flashnode	= qla4xxx_sysfs_ddb_login,
 	.logout_flashnode	= qla4xxx_sysfs_ddb_logout,
 	.logout_flashnode_sid	= qla4xxx_sysfs_ddb_logout_sid,
+	.get_host_stats		= qla4xxx_get_host_stats,
 };
 
 static struct scsi_transport_template *qla4xxx_scsi_transport;
@@ -419,6 +421,7 @@ static umode_t qla4_attr_is_visible(int param_type, int param)
 		case ISCSI_PARAM_EXP_STATSN:
 		case ISCSI_PARAM_DISCOVERY_PARENT_IDX:
 		case ISCSI_PARAM_DISCOVERY_PARENT_TYPE:
+		case ISCSI_PARAM_LOCAL_IPADDR:
 			return S_IRUGO;
 		default:
 			return 0;
@@ -570,6 +573,65 @@ static umode_t qla4_attr_is_visible(int param_type, int param)
 	return 0;
 }
 
+/**
+ * qla4xxx_create chap_list - Create CHAP list from FLASH
+ * @ha: pointer to adapter structure
+ *
+ * Read flash and make a list of CHAP entries, during login when a CHAP entry
+ * is received, it will be checked in this list. If entry exist then the CHAP
+ * entry index is set in the DDB. If CHAP entry does not exist in this list
+ * then a new entry is added in FLASH in CHAP table and the index obtained is
+ * used in the DDB.
+ **/
+static void qla4xxx_create_chap_list(struct scsi_qla_host *ha)
+{
+	int rval = 0;
+	uint8_t *chap_flash_data = NULL;
+	uint32_t offset;
+	dma_addr_t chap_dma;
+	uint32_t chap_size = 0;
+
+	if (is_qla40XX(ha))
+		chap_size = MAX_CHAP_ENTRIES_40XX *
+			    sizeof(struct ql4_chap_table);
+	else	/* Single region contains CHAP info for both
+		 * ports which is divided into half for each port.
+		 */
+		chap_size = ha->hw.flt_chap_size / 2;
+
+	chap_flash_data = dma_alloc_coherent(&ha->pdev->dev, chap_size,
+					     &chap_dma, GFP_KERNEL);
+	if (!chap_flash_data) {
+		ql4_printk(KERN_ERR, ha, "No memory for chap_flash_data\n");
+		return;
+	}
+
+	if (is_qla40XX(ha)) {
+		offset = FLASH_CHAP_OFFSET;
+	} else {
+		offset = FLASH_RAW_ACCESS_ADDR + (ha->hw.flt_region_chap << 2);
+		if (ha->port_num == 1)
+			offset += chap_size;
+	}
+
+	rval = qla4xxx_get_flash(ha, chap_dma, offset, chap_size);
+	if (rval != QLA_SUCCESS)
+		goto exit_chap_list;
+
+	if (ha->chap_list == NULL)
+		ha->chap_list = vmalloc(chap_size);
+	if (ha->chap_list == NULL) {
+		ql4_printk(KERN_ERR, ha, "No memory for ha->chap_list\n");
+		goto exit_chap_list;
+	}
+
+	memset(ha->chap_list, 0, chap_size);
+	memcpy(ha->chap_list, chap_flash_data, chap_size);
+
+exit_chap_list:
+	dma_free_coherent(&ha->pdev->dev, chap_size, chap_flash_data, chap_dma);
+}
+
 static int qla4xxx_get_chap_by_index(struct scsi_qla_host *ha,
 				     int16_t chap_index,
 				     struct ql4_chap_table **chap_entry)
@@ -682,6 +744,8 @@ static int qla4xxx_get_chap_list(struct Scsi_Host *shost, uint16_t chap_tbl_idx,
 		ret = -ENOMEM;
 		goto exit_get_chap_list;
 	}
+
+	qla4xxx_create_chap_list(ha);
 
 	chap_rec = (struct iscsi_chap_rec *) buf;
 	mutex_lock(&ha->chap_sem);
@@ -948,6 +1012,209 @@ exit_unlock_chap:
 
 exit_set_chap:
 	return rc;
+}
+
+
+static int qla4xxx_get_host_stats(struct Scsi_Host *shost, char *buf, int len)
+{
+	struct scsi_qla_host *ha = to_qla_host(shost);
+	struct iscsi_offload_host_stats *host_stats = NULL;
+	int host_stats_size;
+	int ret = 0;
+	int ddb_idx = 0;
+	struct ql_iscsi_stats *ql_iscsi_stats = NULL;
+	int stats_size;
+	dma_addr_t iscsi_stats_dma;
+
+	DEBUG2(ql4_printk(KERN_INFO, ha, "Func: %s\n", __func__));
+
+	host_stats_size = sizeof(struct iscsi_offload_host_stats);
+
+	if (host_stats_size != len) {
+		ql4_printk(KERN_INFO, ha, "%s: host_stats size mismatch expected = %d, is = %d\n",
+			   __func__, len, host_stats_size);
+		ret = -EINVAL;
+		goto exit_host_stats;
+	}
+	host_stats = (struct iscsi_offload_host_stats *)buf;
+
+	if (!buf) {
+		ret = -ENOMEM;
+		goto exit_host_stats;
+	}
+
+	stats_size = PAGE_ALIGN(sizeof(struct ql_iscsi_stats));
+
+	ql_iscsi_stats = dma_alloc_coherent(&ha->pdev->dev, stats_size,
+					    &iscsi_stats_dma, GFP_KERNEL);
+	if (!ql_iscsi_stats) {
+		ql4_printk(KERN_ERR, ha,
+			   "Unable to allocate memory for iscsi stats\n");
+		goto exit_host_stats;
+	}
+
+	ret =  qla4xxx_get_mgmt_data(ha, ddb_idx, stats_size,
+				     iscsi_stats_dma);
+	if (ret != QLA_SUCCESS) {
+		ql4_printk(KERN_ERR, ha,
+			   "Unable to retrieve iscsi stats\n");
+		goto exit_host_stats;
+	}
+	host_stats->mactx_frames = le64_to_cpu(ql_iscsi_stats->mac_tx_frames);
+	host_stats->mactx_bytes = le64_to_cpu(ql_iscsi_stats->mac_tx_bytes);
+	host_stats->mactx_multicast_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_multicast_frames);
+	host_stats->mactx_broadcast_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_broadcast_frames);
+	host_stats->mactx_pause_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_pause_frames);
+	host_stats->mactx_control_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_control_frames);
+	host_stats->mactx_deferral =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_deferral);
+	host_stats->mactx_excess_deferral =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_excess_deferral);
+	host_stats->mactx_late_collision =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_late_collision);
+	host_stats->mactx_abort	= le64_to_cpu(ql_iscsi_stats->mac_tx_abort);
+	host_stats->mactx_single_collision =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_single_collision);
+	host_stats->mactx_multiple_collision =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_multiple_collision);
+	host_stats->mactx_collision =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_collision);
+	host_stats->mactx_frames_dropped =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_frames_dropped);
+	host_stats->mactx_jumbo_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_tx_jumbo_frames);
+	host_stats->macrx_frames = le64_to_cpu(ql_iscsi_stats->mac_rx_frames);
+	host_stats->macrx_bytes = le64_to_cpu(ql_iscsi_stats->mac_rx_bytes);
+	host_stats->macrx_unknown_control_frames =
+		le64_to_cpu(ql_iscsi_stats->mac_rx_unknown_control_frames);
+	host_stats->macrx_pause_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_pause_frames);
+	host_stats->macrx_control_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_control_frames);
+	host_stats->macrx_dribble =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_dribble);
+	host_stats->macrx_frame_length_error =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_frame_length_error);
+	host_stats->macrx_jabber = le64_to_cpu(ql_iscsi_stats->mac_rx_jabber);
+	host_stats->macrx_carrier_sense_error =
+		le64_to_cpu(ql_iscsi_stats->mac_rx_carrier_sense_error);
+	host_stats->macrx_frame_discarded =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_frame_discarded);
+	host_stats->macrx_frames_dropped =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_frames_dropped);
+	host_stats->mac_crc_error = le64_to_cpu(ql_iscsi_stats->mac_crc_error);
+	host_stats->mac_encoding_error =
+			le64_to_cpu(ql_iscsi_stats->mac_encoding_error);
+	host_stats->macrx_length_error_large =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_length_error_large);
+	host_stats->macrx_length_error_small =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_length_error_small);
+	host_stats->macrx_multicast_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_multicast_frames);
+	host_stats->macrx_broadcast_frames =
+			le64_to_cpu(ql_iscsi_stats->mac_rx_broadcast_frames);
+	host_stats->iptx_packets = le64_to_cpu(ql_iscsi_stats->ip_tx_packets);
+	host_stats->iptx_bytes = le64_to_cpu(ql_iscsi_stats->ip_tx_bytes);
+	host_stats->iptx_fragments =
+			le64_to_cpu(ql_iscsi_stats->ip_tx_fragments);
+	host_stats->iprx_packets = le64_to_cpu(ql_iscsi_stats->ip_rx_packets);
+	host_stats->iprx_bytes = le64_to_cpu(ql_iscsi_stats->ip_rx_bytes);
+	host_stats->iprx_fragments =
+			le64_to_cpu(ql_iscsi_stats->ip_rx_fragments);
+	host_stats->ip_datagram_reassembly =
+			le64_to_cpu(ql_iscsi_stats->ip_datagram_reassembly);
+	host_stats->ip_invalid_address_error =
+			le64_to_cpu(ql_iscsi_stats->ip_invalid_address_error);
+	host_stats->ip_error_packets =
+			le64_to_cpu(ql_iscsi_stats->ip_error_packets);
+	host_stats->ip_fragrx_overlap =
+			le64_to_cpu(ql_iscsi_stats->ip_fragrx_overlap);
+	host_stats->ip_fragrx_outoforder =
+			le64_to_cpu(ql_iscsi_stats->ip_fragrx_outoforder);
+	host_stats->ip_datagram_reassembly_timeout =
+		le64_to_cpu(ql_iscsi_stats->ip_datagram_reassembly_timeout);
+	host_stats->ipv6tx_packets =
+			le64_to_cpu(ql_iscsi_stats->ipv6_tx_packets);
+	host_stats->ipv6tx_bytes = le64_to_cpu(ql_iscsi_stats->ipv6_tx_bytes);
+	host_stats->ipv6tx_fragments =
+			le64_to_cpu(ql_iscsi_stats->ipv6_tx_fragments);
+	host_stats->ipv6rx_packets =
+			le64_to_cpu(ql_iscsi_stats->ipv6_rx_packets);
+	host_stats->ipv6rx_bytes = le64_to_cpu(ql_iscsi_stats->ipv6_rx_bytes);
+	host_stats->ipv6rx_fragments =
+			le64_to_cpu(ql_iscsi_stats->ipv6_rx_fragments);
+	host_stats->ipv6_datagram_reassembly =
+			le64_to_cpu(ql_iscsi_stats->ipv6_datagram_reassembly);
+	host_stats->ipv6_invalid_address_error =
+		le64_to_cpu(ql_iscsi_stats->ipv6_invalid_address_error);
+	host_stats->ipv6_error_packets =
+			le64_to_cpu(ql_iscsi_stats->ipv6_error_packets);
+	host_stats->ipv6_fragrx_overlap =
+			le64_to_cpu(ql_iscsi_stats->ipv6_fragrx_overlap);
+	host_stats->ipv6_fragrx_outoforder =
+			le64_to_cpu(ql_iscsi_stats->ipv6_fragrx_outoforder);
+	host_stats->ipv6_datagram_reassembly_timeout =
+		le64_to_cpu(ql_iscsi_stats->ipv6_datagram_reassembly_timeout);
+	host_stats->tcptx_segments =
+			le64_to_cpu(ql_iscsi_stats->tcp_tx_segments);
+	host_stats->tcptx_bytes	= le64_to_cpu(ql_iscsi_stats->tcp_tx_bytes);
+	host_stats->tcprx_segments =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_segments);
+	host_stats->tcprx_byte = le64_to_cpu(ql_iscsi_stats->tcp_rx_byte);
+	host_stats->tcp_duplicate_ack_retx =
+			le64_to_cpu(ql_iscsi_stats->tcp_duplicate_ack_retx);
+	host_stats->tcp_retx_timer_expired =
+			le64_to_cpu(ql_iscsi_stats->tcp_retx_timer_expired);
+	host_stats->tcprx_duplicate_ack	=
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_duplicate_ack);
+	host_stats->tcprx_pure_ackr =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_pure_ackr);
+	host_stats->tcptx_delayed_ack =
+			le64_to_cpu(ql_iscsi_stats->tcp_tx_delayed_ack);
+	host_stats->tcptx_pure_ack =
+			le64_to_cpu(ql_iscsi_stats->tcp_tx_pure_ack);
+	host_stats->tcprx_segment_error =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_segment_error);
+	host_stats->tcprx_segment_outoforder =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_segment_outoforder);
+	host_stats->tcprx_window_probe =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_window_probe);
+	host_stats->tcprx_window_update =
+			le64_to_cpu(ql_iscsi_stats->tcp_rx_window_update);
+	host_stats->tcptx_window_probe_persist =
+		le64_to_cpu(ql_iscsi_stats->tcp_tx_window_probe_persist);
+	host_stats->ecc_error_correction =
+			le64_to_cpu(ql_iscsi_stats->ecc_error_correction);
+	host_stats->iscsi_pdu_tx = le64_to_cpu(ql_iscsi_stats->iscsi_pdu_tx);
+	host_stats->iscsi_data_bytes_tx =
+			le64_to_cpu(ql_iscsi_stats->iscsi_data_bytes_tx);
+	host_stats->iscsi_pdu_rx = le64_to_cpu(ql_iscsi_stats->iscsi_pdu_rx);
+	host_stats->iscsi_data_bytes_rx	=
+			le64_to_cpu(ql_iscsi_stats->iscsi_data_bytes_rx);
+	host_stats->iscsi_io_completed =
+			le64_to_cpu(ql_iscsi_stats->iscsi_io_completed);
+	host_stats->iscsi_unexpected_io_rx =
+			le64_to_cpu(ql_iscsi_stats->iscsi_unexpected_io_rx);
+	host_stats->iscsi_format_error =
+			le64_to_cpu(ql_iscsi_stats->iscsi_format_error);
+	host_stats->iscsi_hdr_digest_error =
+			le64_to_cpu(ql_iscsi_stats->iscsi_hdr_digest_error);
+	host_stats->iscsi_data_digest_error =
+			le64_to_cpu(ql_iscsi_stats->iscsi_data_digest_error);
+	host_stats->iscsi_sequence_error =
+			le64_to_cpu(ql_iscsi_stats->iscsi_sequence_error);
+exit_host_stats:
+	if (ql_iscsi_stats)
+		dma_free_coherent(&ha->pdev->dev, host_stats_size,
+				  ql_iscsi_stats, iscsi_stats_dma);
+
+	ql4_printk(KERN_INFO, ha, "%s: Get host stats done\n",
+		   __func__);
+	return ret;
 }
 
 static int qla4xxx_get_iface_param(struct iscsi_iface *iface,
@@ -1403,16 +1670,13 @@ qla4xxx_ep_connect(struct Scsi_Host *shost, struct sockaddr *dst_addr,
 	struct sockaddr_in *addr;
 	struct sockaddr_in6 *addr6;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	if (!shost) {
 		ret = -ENXIO;
-		printk(KERN_ERR "%s: shost is NULL\n",
-		       __func__);
+		pr_err("%s: shost is NULL\n", __func__);
 		return ERR_PTR(ret);
 	}
 
 	ha = iscsi_host_priv(shost);
-
 	ep = iscsi_create_endpoint(sizeof(struct qla_endpoint));
 	if (!ep) {
 		ret = -ENOMEM;
@@ -1432,6 +1696,9 @@ qla4xxx_ep_connect(struct Scsi_Host *shost, struct sockaddr *dst_addr,
 		addr6 = (struct sockaddr_in6 *)&qla_ep->dst_addr;
 		DEBUG2(ql4_printk(KERN_INFO, ha, "%s: %pI6\n", __func__,
 				  (char *)&addr6->sin6_addr));
+	} else {
+		ql4_printk(KERN_WARNING, ha, "%s: Invalid endpoint\n",
+			   __func__);
 	}
 
 	qla_ep->host = shost;
@@ -1445,9 +1712,9 @@ static int qla4xxx_ep_poll(struct iscsi_endpoint *ep, int timeout_ms)
 	struct scsi_qla_host *ha;
 	int ret = 0;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	qla_ep = ep->dd_data;
 	ha = to_qla_host(qla_ep->host);
+	DEBUG2(pr_info_ratelimited("%s: host: %ld\n", __func__, ha->host_no));
 
 	if (adapter_up(ha) && !test_bit(AF_BUILD_DDB_LIST, &ha->flags))
 		ret = 1;
@@ -1457,7 +1724,13 @@ static int qla4xxx_ep_poll(struct iscsi_endpoint *ep, int timeout_ms)
 
 static void qla4xxx_ep_disconnect(struct iscsi_endpoint *ep)
 {
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
+	struct qla_endpoint *qla_ep;
+	struct scsi_qla_host *ha;
+
+	qla_ep = ep->dd_data;
+	ha = to_qla_host(qla_ep->host);
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: host: %ld\n", __func__,
+			  ha->host_no));
 	iscsi_destroy_endpoint(ep);
 }
 
@@ -1467,8 +1740,11 @@ static int qla4xxx_get_ep_param(struct iscsi_endpoint *ep,
 {
 	struct qla_endpoint *qla_ep = ep->dd_data;
 	struct sockaddr *dst_addr;
+	struct scsi_qla_host *ha;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
+	ha = to_qla_host(qla_ep->host);
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: host: %ld\n", __func__,
+			  ha->host_no));
 
 	switch (param) {
 	case ISCSI_PARAM_CONN_PORT:
@@ -1499,13 +1775,13 @@ static void qla4xxx_conn_get_stats(struct iscsi_cls_conn *cls_conn,
 	int ret;
 	dma_addr_t iscsi_stats_dma;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
-
 	cls_sess = iscsi_conn_to_session(cls_conn);
 	sess = cls_sess->dd_data;
 	ddb_entry = sess->dd_data;
 	ha = ddb_entry->ha;
 
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: host: %ld\n", __func__,
+			  ha->host_no));
 	stats_size = PAGE_ALIGN(sizeof(struct ql_iscsi_stats));
 	/* Allocate memory */
 	ql_iscsi_stats = dma_alloc_coherent(&ha->pdev->dev, stats_size,
@@ -1833,7 +2109,8 @@ static void qla4xxx_set_ipv6(struct scsi_qla_host *ha,
 				cpu_to_le16(IPV6_TCPOPT_DELAYED_ACK_DISABLE);
 		else
 			init_fw_cb->ipv6_tcp_opts &=
-				cpu_to_le16(~IPV6_TCPOPT_DELAYED_ACK_DISABLE);
+				cpu_to_le16(~IPV6_TCPOPT_DELAYED_ACK_DISABLE &
+					    0xFFFF);
 		break;
 	case ISCSI_NET_PARAM_TCP_NAGLE_DISABLE:
 		if (iface_param->iface_num & 0x1)
@@ -2030,7 +2307,8 @@ static void qla4xxx_set_ipv4(struct scsi_qla_host *ha,
 				cpu_to_le16(TCPOPT_DELAYED_ACK_DISABLE);
 		else
 			init_fw_cb->ipv4_tcp_opts &=
-				cpu_to_le16(~TCPOPT_DELAYED_ACK_DISABLE);
+				cpu_to_le16(~TCPOPT_DELAYED_ACK_DISABLE &
+					    0xFFFF);
 		break;
 	case ISCSI_NET_PARAM_TCP_NAGLE_DISABLE:
 		if (iface_param->iface_num & 0x1)
@@ -2778,7 +3056,6 @@ qla4xxx_session_create(struct iscsi_endpoint *ep,
 	struct sockaddr *dst_addr;
 	int ret;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	if (!ep) {
 		printk(KERN_ERR "qla4xxx: missing ep.\n");
 		return NULL;
@@ -2787,6 +3064,8 @@ qla4xxx_session_create(struct iscsi_endpoint *ep,
 	qla_ep = ep->dd_data;
 	dst_addr = (struct sockaddr *)&qla_ep->dst_addr;
 	ha = to_qla_host(qla_ep->host);
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: host: %ld\n", __func__,
+			  ha->host_no));
 
 	ret = qla4xxx_get_ddb_index(ha, &ddb_index);
 	if (ret == QLA_ERROR)
@@ -2807,6 +3086,7 @@ qla4xxx_session_create(struct iscsi_endpoint *ep,
 	ddb_entry->sess = cls_sess;
 	ddb_entry->unblock_sess = qla4xxx_unblock_ddb;
 	ddb_entry->ddb_change = qla4xxx_ddb_change;
+	clear_bit(DDB_CONN_CLOSE_FAILURE, &ddb_entry->flags);
 	cls_sess->recovery_tmo = ql4xsess_recovery_tmo;
 	ha->fw_ddb_index_map[ddb_entry->fw_ddb_index] = ddb_entry;
 	ha->tot_ddbs++;
@@ -2825,10 +3105,11 @@ static void qla4xxx_session_destroy(struct iscsi_cls_session *cls_sess)
 	uint32_t ddb_state;
 	int ret;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	sess = cls_sess->dd_data;
 	ddb_entry = sess->dd_data;
 	ha = ddb_entry->ha;
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: host: %ld\n", __func__,
+			  ha->host_no));
 
 	fw_ddb_entry = dma_alloc_coherent(&ha->pdev->dev, sizeof(*fw_ddb_entry),
 					  &fw_ddb_entry_dma, GFP_KERNEL);
@@ -2856,7 +3137,8 @@ static void qla4xxx_session_destroy(struct iscsi_cls_session *cls_sess)
 
 destroy_session:
 	qla4xxx_clear_ddb_entry(ha, ddb_entry->fw_ddb_index);
-
+	if (test_and_clear_bit(DDB_CONN_CLOSE_FAILURE, &ddb_entry->flags))
+		clear_bit(ddb_entry->fw_ddb_index, ha->ddb_idx_map);
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	qla4xxx_free_ddb(ha, ddb_entry);
 	spin_unlock_irqrestore(&ha->hardware_lock, flags);
@@ -2874,17 +3156,23 @@ qla4xxx_conn_create(struct iscsi_cls_session *cls_sess, uint32_t conn_idx)
 	struct iscsi_cls_conn *cls_conn;
 	struct iscsi_session *sess;
 	struct ddb_entry *ddb_entry;
+	struct scsi_qla_host *ha;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	cls_conn = iscsi_conn_setup(cls_sess, sizeof(struct qla_conn),
 				    conn_idx);
-	if (!cls_conn)
+	if (!cls_conn) {
+		pr_info("%s: Can not create connection for conn_idx = %u\n",
+			__func__, conn_idx);
 		return NULL;
+	}
 
 	sess = cls_sess->dd_data;
 	ddb_entry = sess->dd_data;
 	ddb_entry->conn = cls_conn;
 
+	ha = ddb_entry->ha;
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: conn_idx = %u\n", __func__,
+			  conn_idx));
 	return cls_conn;
 }
 
@@ -2895,8 +3183,16 @@ static int qla4xxx_conn_bind(struct iscsi_cls_session *cls_session,
 	struct iscsi_conn *conn;
 	struct qla_conn *qla_conn;
 	struct iscsi_endpoint *ep;
+	struct ddb_entry *ddb_entry;
+	struct scsi_qla_host *ha;
+	struct iscsi_session *sess;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
+	sess = cls_session->dd_data;
+	ddb_entry = sess->dd_data;
+	ha = ddb_entry->ha;
+
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: sid = %d, cid = %d\n", __func__,
+			  cls_session->sid, cls_conn->cid));
 
 	if (iscsi_conn_bind(cls_session, cls_conn, is_leading))
 		return -EINVAL;
@@ -2919,10 +3215,11 @@ static int qla4xxx_conn_start(struct iscsi_cls_conn *cls_conn)
 	int ret = 0;
 	int status = QLA_SUCCESS;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	sess = cls_sess->dd_data;
 	ddb_entry = sess->dd_data;
 	ha = ddb_entry->ha;
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: sid = %d, cid = %d\n", __func__,
+			  cls_sess->sid, cls_conn->cid));
 
 	/* Check if we have  matching FW DDB, if yes then do not
 	 * login to this target. This could cause target to logout previous
@@ -2996,10 +3293,11 @@ static void qla4xxx_conn_destroy(struct iscsi_cls_conn *cls_conn)
 	struct ddb_entry *ddb_entry;
 	int options;
 
-	DEBUG2(printk(KERN_INFO "Func: %s\n", __func__));
 	sess = cls_sess->dd_data;
 	ddb_entry = sess->dd_data;
 	ha = ddb_entry->ha;
+	DEBUG2(ql4_printk(KERN_INFO, ha, "%s: cid = %d\n", __func__,
+			  cls_conn->cid));
 
 	options = LOGOUT_OPTION_CLOSE_SESSION;
 	if (qla4xxx_session_logout_ddb(ha, ddb_entry, options) == QLA_ERROR)
@@ -3417,6 +3715,7 @@ static void qla4xxx_copy_to_sess_conn_params(struct iscsi_conn *conn,
 	unsigned long options = 0;
 	uint16_t ddb_link;
 	uint16_t disc_parent;
+	char ip_addr[DDB_IPADDR_LEN];
 
 	options = le16_to_cpu(fw_ddb_entry->options);
 	conn->is_fw_assigned_ipv6 = test_bit(OPT_IS_FW_ASSIGNED_IPV6, &options);
@@ -3498,6 +3797,14 @@ static void qla4xxx_copy_to_sess_conn_params(struct iscsi_conn *conn,
 
 	iscsi_set_param(conn->cls_conn, ISCSI_PARAM_TARGET_ALIAS,
 			(char *)fw_ddb_entry->iscsi_alias, 0);
+
+	options = le16_to_cpu(fw_ddb_entry->options);
+	if (options & DDB_OPT_IPV6_DEVICE) {
+		memset(ip_addr, 0, sizeof(ip_addr));
+		sprintf(ip_addr, "%pI6", fw_ddb_entry->link_local_ipv6_addr);
+		iscsi_set_param(conn->cls_conn, ISCSI_PARAM_LOCAL_IPADDR,
+				(char *)ip_addr, 0);
+	}
 }
 
 static void qla4xxx_copy_fwddb_param(struct scsi_qla_host *ha,
@@ -4096,6 +4403,11 @@ void qla4_8xxx_watchdog(struct scsi_qla_host *ha)
 	uint32_t dev_state;
 	uint32_t idc_ctrl;
 
+	if (is_qla8032(ha) &&
+	    (qla4_83xx_is_detached(ha) == QLA_SUCCESS))
+		WARN_ONCE(1, "%s: iSCSI function %d marked invisible\n",
+			  __func__, ha->func_num);
+
 	/* don't poll if reset is going on */
 	if (!(test_bit(DPC_RESET_ACTIVE, &ha->dpc_flags) ||
 	    test_bit(DPC_RESET_HA, &ha->dpc_flags) ||
@@ -4278,11 +4590,19 @@ static int qla4xxx_cmd_wait(struct scsi_qla_host *ha)
 	uint32_t index = 0;
 	unsigned long flags;
 	struct scsi_cmnd *cmd;
+	unsigned long wtime;
+	uint32_t wtmo;
 
-	unsigned long wtime = jiffies + (WAIT_CMD_TOV * HZ);
+	if (is_qla40XX(ha))
+		wtmo = WAIT_CMD_TOV;
+	else
+		wtmo = ha->nx_reset_timeout / 2;
 
-	DEBUG2(ql4_printk(KERN_INFO, ha, "Wait up to %d seconds for cmds to "
-	    "complete\n", WAIT_CMD_TOV));
+	wtime = jiffies + (wtmo * HZ);
+
+	DEBUG2(ql4_printk(KERN_INFO, ha,
+			  "Wait up to %u seconds for cmds to complete\n",
+			  wtmo));
 
 	while (!time_after_eq(jiffies, wtime)) {
 		spin_lock_irqsave(&ha->hardware_lock, flags);
@@ -4585,11 +4905,11 @@ chip_reset:
 			qla4xxx_cmd_wait(ha);
 
 		qla4xxx_process_aen(ha, FLUSH_DDB_CHANGED_AENS);
-		qla4xxx_abort_active_cmds(ha, DID_RESET << 16);
 		DEBUG2(ql4_printk(KERN_INFO, ha,
 		    "scsi%ld: %s - Performing chip reset..\n",
 		    ha->host_no, __func__));
 		status = ha->isp_ops->reset_chip(ha);
+		qla4xxx_abort_active_cmds(ha, DID_RESET << 16);
 	}
 
 	/* Flush any pending ddb changed AENs */
@@ -4605,8 +4925,21 @@ recover_ha_init_adapter:
 			ssleep(6);
 
 		/* NOTE: AF_ONLINE flag set upon successful completion of
-		 *       qla4xxx_initialize_adapter */
+		 * qla4xxx_initialize_adapter */
 		status = qla4xxx_initialize_adapter(ha, RESET_ADAPTER);
+		if (is_qla80XX(ha) && (status == QLA_ERROR)) {
+			status = qla4_8xxx_check_init_adapter_retry(ha);
+			if (status == QLA_ERROR) {
+				ql4_printk(KERN_INFO, ha, "scsi%ld: %s: Don't retry recover adapter\n",
+					   ha->host_no, __func__);
+				qla4xxx_dead_adapter_cleanup(ha);
+				clear_bit(DPC_RETRY_RESET_HA, &ha->dpc_flags);
+				clear_bit(DPC_RESET_HA, &ha->dpc_flags);
+				clear_bit(DPC_RESET_HA_FW_CONTEXT,
+					  &ha->dpc_flags);
+				goto exit_recover;
+			}
+		}
 	}
 
 	/* Retry failed adapter initialization, if necessary
@@ -4952,9 +5285,9 @@ static void qla4xxx_do_dpc(struct work_struct *work)
 		container_of(work, struct scsi_qla_host, dpc_work);
 	int status = QLA_ERROR;
 
-	DEBUG2(printk("scsi%ld: %s: DPC handler waking up."
-	    "flags = 0x%08lx, dpc_flags = 0x%08lx\n",
-	    ha->host_no, __func__, ha->flags, ha->dpc_flags))
+	DEBUG2(ql4_printk(KERN_INFO, ha,
+			  "scsi%ld: %s: DPC handler waking up. flags = 0x%08lx, dpc_flags = 0x%08lx\n",
+			  ha->host_no, __func__, ha->flags, ha->dpc_flags));
 
 	/* Initialization not yet finished. Don't do anything yet. */
 	if (!test_bit(AF_INIT_DONE, &ha->flags))
@@ -5908,64 +6241,6 @@ kset_free:
 	return -ENOMEM;
 }
 
-
-/**
- * qla4xxx_create chap_list - Create CHAP list from FLASH
- * @ha: pointer to adapter structure
- *
- * Read flash and make a list of CHAP entries, during login when a CHAP entry
- * is received, it will be checked in this list. If entry exist then the CHAP
- * entry index is set in the DDB. If CHAP entry does not exist in this list
- * then a new entry is added in FLASH in CHAP table and the index obtained is
- * used in the DDB.
- **/
-static void qla4xxx_create_chap_list(struct scsi_qla_host *ha)
-{
-	int rval = 0;
-	uint8_t *chap_flash_data = NULL;
-	uint32_t offset;
-	dma_addr_t chap_dma;
-	uint32_t chap_size = 0;
-
-	if (is_qla40XX(ha))
-		chap_size = MAX_CHAP_ENTRIES_40XX  *
-					sizeof(struct ql4_chap_table);
-	else	/* Single region contains CHAP info for both
-		 * ports which is divided into half for each port.
-		 */
-		chap_size = ha->hw.flt_chap_size / 2;
-
-	chap_flash_data = dma_alloc_coherent(&ha->pdev->dev, chap_size,
-					  &chap_dma, GFP_KERNEL);
-	if (!chap_flash_data) {
-		ql4_printk(KERN_ERR, ha, "No memory for chap_flash_data\n");
-		return;
-	}
-	if (is_qla40XX(ha))
-		offset = FLASH_CHAP_OFFSET;
-	else {
-		offset = FLASH_RAW_ACCESS_ADDR + (ha->hw.flt_region_chap << 2);
-		if (ha->port_num == 1)
-			offset += chap_size;
-	}
-
-	rval = qla4xxx_get_flash(ha, chap_dma, offset, chap_size);
-	if (rval != QLA_SUCCESS)
-		goto exit_chap_list;
-
-	if (ha->chap_list == NULL)
-		ha->chap_list = vmalloc(chap_size);
-	if (ha->chap_list == NULL) {
-		ql4_printk(KERN_ERR, ha, "No memory for ha->chap_list\n");
-		goto exit_chap_list;
-	}
-
-	memcpy(ha->chap_list, chap_flash_data, chap_size);
-
-exit_chap_list:
-	dma_free_coherent(&ha->pdev->dev, chap_size,
-			chap_flash_data, chap_dma);
-}
 
 static void qla4xxx_get_param_ddb(struct ddb_entry *ddb_entry,
 				  struct ql4_tuple_ddb *tddb)
@@ -8400,6 +8675,9 @@ static int qla4xxx_probe_adapter(struct pci_dev *pdev,
 	mutex_init(&ha->chap_sem);
 	init_completion(&ha->mbx_intr_comp);
 	init_completion(&ha->disable_acb_comp);
+	init_completion(&ha->idc_comp);
+	init_completion(&ha->link_up_comp);
+	init_completion(&ha->disable_acb_comp);
 
 	spin_lock_init(&ha->hardware_lock);
 	spin_lock_init(&ha->work_lock);
@@ -8460,11 +8738,8 @@ static int qla4xxx_probe_adapter(struct pci_dev *pdev,
 	status = qla4xxx_initialize_adapter(ha, INIT_ADAPTER);
 
 	/* Dont retry adapter initialization if IRQ allocation failed */
-	if (is_qla80XX(ha) && !test_bit(AF_IRQ_ATTACHED, &ha->flags)) {
-		ql4_printk(KERN_WARNING, ha, "%s: Skipping retry of adapter initialization\n",
-			   __func__);
+	if (is_qla80XX(ha) && (status == QLA_ERROR))
 		goto skip_retry_init;
-	}
 
 	while ((!test_bit(AF_ONLINE, &ha->flags)) &&
 	    init_retry_count++ < MAX_INIT_RETRIES) {
@@ -8488,6 +8763,10 @@ static int qla4xxx_probe_adapter(struct pci_dev *pdev,
 			continue;
 
 		status = qla4xxx_initialize_adapter(ha, INIT_ADAPTER);
+		if (is_qla80XX(ha) && (status == QLA_ERROR)) {
+			if (qla4_8xxx_check_init_adapter_retry(ha) == QLA_ERROR)
+				goto skip_retry_init;
+		}
 	}
 
 skip_retry_init:
@@ -8636,10 +8915,54 @@ static void qla4xxx_prevent_other_port_reinit(struct scsi_qla_host *ha)
 	}
 }
 
+static void qla4xxx_destroy_ddb(struct scsi_qla_host *ha,
+		struct ddb_entry *ddb_entry)
+{
+	struct dev_db_entry *fw_ddb_entry = NULL;
+	dma_addr_t fw_ddb_entry_dma;
+	unsigned long wtime;
+	uint32_t ddb_state;
+	int options;
+	int status;
+
+	options = LOGOUT_OPTION_CLOSE_SESSION;
+	if (qla4xxx_session_logout_ddb(ha, ddb_entry, options) == QLA_ERROR) {
+		ql4_printk(KERN_ERR, ha, "%s: Logout failed\n", __func__);
+		goto clear_ddb;
+	}
+
+	fw_ddb_entry = dma_alloc_coherent(&ha->pdev->dev, sizeof(*fw_ddb_entry),
+					  &fw_ddb_entry_dma, GFP_KERNEL);
+	if (!fw_ddb_entry) {
+		ql4_printk(KERN_ERR, ha,
+			   "%s: Unable to allocate dma buffer\n", __func__);
+		goto clear_ddb;
+	}
+
+	wtime = jiffies + (HZ * LOGOUT_TOV);
+	do {
+		status = qla4xxx_get_fwddb_entry(ha, ddb_entry->fw_ddb_index,
+						 fw_ddb_entry, fw_ddb_entry_dma,
+						 NULL, NULL, &ddb_state, NULL,
+						 NULL, NULL);
+		if (status == QLA_ERROR)
+			goto clear_ddb;
+
+		if ((ddb_state == DDB_DS_NO_CONNECTION_ACTIVE) ||
+		    (ddb_state == DDB_DS_SESSION_FAILED))
+			goto clear_ddb;
+
+		schedule_timeout_uninterruptible(HZ);
+	} while ((time_after(wtime, jiffies)));
+
+clear_ddb:
+	qla4xxx_clear_ddb_entry(ha, ddb_entry->fw_ddb_index);
+	return;
+}
+
 static void qla4xxx_destroy_fw_ddb_session(struct scsi_qla_host *ha)
 {
 	struct ddb_entry *ddb_entry;
-	int options;
 	int idx;
 
 	for (idx = 0; idx < MAX_DDB_ENTRIES; idx++) {
@@ -8648,13 +8971,7 @@ static void qla4xxx_destroy_fw_ddb_session(struct scsi_qla_host *ha)
 		if ((ddb_entry != NULL) &&
 		    (ddb_entry->ddb_type == FLASH_DDB)) {
 
-			options = LOGOUT_OPTION_CLOSE_SESSION;
-			if (qla4xxx_session_logout_ddb(ha, ddb_entry, options)
-			    == QLA_ERROR)
-				ql4_printk(KERN_ERR, ha, "%s: Logout failed\n",
-					   __func__);
-
-			qla4xxx_clear_ddb_entry(ha, ddb_entry->fw_ddb_index);
+			qla4xxx_destroy_ddb(ha, ddb_entry);
 			/*
 			 * we have decremented the reference count of the driver
 			 * when we setup the session to have the driver unload
@@ -8916,14 +9233,15 @@ static int qla4xxx_eh_abort(struct scsi_cmnd *cmd)
 	int ret = SUCCESS;
 	int wait = 0;
 
-	ql4_printk(KERN_INFO, ha,
-	    "scsi%ld:%d:%d: Abort command issued cmd=%p\n",
-	    ha->host_no, id, lun, cmd);
+	ql4_printk(KERN_INFO, ha, "scsi%ld:%d:%d: Abort command issued cmd=%p, cdb=0x%x\n",
+		   ha->host_no, id, lun, cmd, cmd->cmnd[0]);
 
 	spin_lock_irqsave(&ha->hardware_lock, flags);
 	srb = (struct srb *) CMD_SP(cmd);
 	if (!srb) {
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
+		ql4_printk(KERN_INFO, ha, "scsi%ld:%d:%d: Specified command has already completed.\n",
+			   ha->host_no, id, lun);
 		return SUCCESS;
 	}
 	kref_get(&srb->srb_ref);
@@ -9340,28 +9658,36 @@ static uint32_t qla4_8xxx_error_recovery(struct scsi_qla_host *ha)
 	}
 
 	fn = PCI_FUNC(ha->pdev->devfn);
-	while (fn > 0) {
-		fn--;
-		ql4_printk(KERN_INFO, ha, "scsi%ld: %s: Finding PCI device at "
-		    "func %x\n", ha->host_no, __func__, fn);
-		/* Get the pci device given the domain, bus,
-		 * slot/function number */
-		other_pdev =
-		    pci_get_domain_bus_and_slot(pci_domain_nr(ha->pdev->bus),
-		    ha->pdev->bus->number, PCI_DEVFN(PCI_SLOT(ha->pdev->devfn),
-		    fn));
+	if (is_qla8022(ha)) {
+		while (fn > 0) {
+			fn--;
+			ql4_printk(KERN_INFO, ha, "scsi%ld: %s: Finding PCI device at func %x\n",
+				   ha->host_no, __func__, fn);
+			/* Get the pci device given the domain, bus,
+			 * slot/function number */
+			other_pdev = pci_get_domain_bus_and_slot(
+					   pci_domain_nr(ha->pdev->bus),
+					   ha->pdev->bus->number,
+					   PCI_DEVFN(PCI_SLOT(ha->pdev->devfn),
+					   fn));
 
-		if (!other_pdev)
-			continue;
+			if (!other_pdev)
+				continue;
 
-		if (atomic_read(&other_pdev->enable_cnt)) {
-			ql4_printk(KERN_INFO, ha, "scsi%ld: %s: Found PCI "
-			    "func in enabled state%x\n", ha->host_no,
-			    __func__, fn);
+			if (atomic_read(&other_pdev->enable_cnt)) {
+				ql4_printk(KERN_INFO, ha, "scsi%ld: %s: Found PCI func in enabled state%x\n",
+					   ha->host_no, __func__, fn);
+				pci_dev_put(other_pdev);
+				break;
+			}
 			pci_dev_put(other_pdev);
-			break;
 		}
-		pci_dev_put(other_pdev);
+	} else {
+		/* this case is meant for ISP83xx/ISP84xx only */
+		if (qla4_83xx_can_perform_reset(ha)) {
+			/* reset fn as iSCSI is going to perform the reset */
+			fn = 0;
+		}
 	}
 
 	/* The first function on the card, the reset owner will
@@ -9395,6 +9721,7 @@ static uint32_t qla4_8xxx_error_recovery(struct scsi_qla_host *ha)
 		if (rval != QLA_SUCCESS) {
 			ql4_printk(KERN_INFO, ha, "scsi%ld: %s: HW State: "
 			    "FAILED\n", ha->host_no, __func__);
+			qla4xxx_free_irqs(ha);
 			ha->isp_ops->idc_lock(ha);
 			qla4_8xxx_clear_drv_active(ha);
 			qla4_8xxx_wr_direct(ha, QLA8XXX_CRB_DEV_STATE,
@@ -9422,6 +9749,8 @@ static uint32_t qla4_8xxx_error_recovery(struct scsi_qla_host *ha)
 			rval = qla4xxx_initialize_adapter(ha, RESET_ADAPTER);
 			if (rval == QLA_SUCCESS)
 				ha->isp_ops->enable_intrs(ha);
+			else
+				qla4xxx_free_irqs(ha);
 
 			ha->isp_ops->idc_lock(ha);
 			qla4_8xxx_set_drv_active(ha);
