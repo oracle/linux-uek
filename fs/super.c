@@ -47,7 +47,9 @@ DEFINE_SPINLOCK(sb_lock);
  */
 static struct super_block *alloc_super(struct file_system_type *type)
 {
-	struct super_block *s = kzalloc(sizeof(struct super_block),  GFP_USER);
+	struct super_block_v2 *s2 = kzalloc(sizeof(struct super_block_v2),
+					    GFP_USER);
+	struct super_block *s = &s2->sb;
 	static const struct super_operations default_op;
 
 	if (s) {
@@ -275,6 +277,7 @@ EXPORT_SYMBOL(unlock_super);
 void generic_shutdown_super(struct super_block *sb)
 {
 	const struct super_operations *sop = sb->s_op;
+	struct super_block_v2 *sb2;
 
 
 	if (sb->s_root) {
@@ -287,9 +290,10 @@ void generic_shutdown_super(struct super_block *sb)
 
 		evict_inodes(sb);
 
-		if (sb->s_dio_done_wq) {
-			destroy_workqueue(sb->s_dio_done_wq);
-			sb->s_dio_done_wq = NULL;
+		sb2 = extract_super_v2(sb);
+		if (sb2->s_dio_done_wq) {
+			destroy_workqueue(sb2->s_dio_done_wq);
+			sb2->s_dio_done_wq = NULL;
 		}
 
 		if (sop->put_super)

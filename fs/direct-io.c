@@ -263,7 +263,8 @@ static ssize_t dio_complete(struct dio *dio, loff_t offset, ssize_t ret, bool is
 		ret = transferred;
 
 	if (dio->end_io && dio->result)
-		dio->end_io(dio->iocb, offset, transferred, dio->private);
+		dio->end_io(dio->iocb, offset, transferred, dio->private,
+			    0, 0);
 
 	if (dio->flags & DIO_LOCKING)
 		/* lockdep: non-owner release */
@@ -303,6 +304,7 @@ static void dio_bio_end_aio(struct bio *bio, int error)
 	struct dio *dio = bio->bi_private;
 	unsigned long remaining;
 	unsigned long flags;
+	struct super_block_v2 *s2;
 
 	/* cleanup the bio */
 	dio_bio_complete(dio, bio);
@@ -316,7 +318,8 @@ static void dio_bio_end_aio(struct bio *bio, int error)
 	if (remaining == 0) {
 		if (dio->result && dio->defer_completion) {
 			INIT_WORK(&dio->complete_work, dio_aio_complete_work);
-			queue_work(dio->inode->i_sb->s_dio_done_wq,
+			s2 = extract_super_v2(dio->inode->i_sb);
+			queue_work(s2->s_dio_done_wq,
 				   &dio->complete_work);
 		} else {
 			dio_complete(dio, dio->iocb->ki_pos, 0, true);
@@ -546,7 +549,7 @@ static inline int dio_bio_reap(struct dio *dio, struct dio_submit *sdio)
  * filesystems that don't need it and also allows us to create the workqueue
  * late enough so the we can include s_id in the name of the workqueue.
  */
-static int sb_init_dio_done_wq(struct super_block *sb)
+static int sb_init_dio_done_wq(struct super_block_v2 *sb)
 {
 #define DIO_QUEUE_NAME_SIZE	80
 	char queue_name[DIO_QUEUE_NAME_SIZE];
@@ -571,12 +574,13 @@ static int sb_init_dio_done_wq(struct super_block *sb)
 static int dio_set_defer_completion(struct dio *dio)
 {
 	struct super_block *sb = dio->inode->i_sb;
+	struct super_block_v2 *sb2 = extract_super_v2(sb);
 
 	if (dio->defer_completion)
 		return 0;
 	dio->defer_completion = true;
-	if (!sb->s_dio_done_wq)
-		return sb_init_dio_done_wq(sb);
+	if (!sb2->s_dio_done_wq)
+		return sb_init_dio_done_wq(sb2);
 	return 0;
 }
 

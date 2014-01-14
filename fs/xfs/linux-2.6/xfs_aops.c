@@ -1352,7 +1352,9 @@ xfs_end_io_direct_write(
 	struct kiocb		*iocb,
 	loff_t			offset,
 	ssize_t			size,
-	void			*private)
+	void			*private,
+	int			ret_ignored,
+	bool			is_async_ignored)
 {
 	struct xfs_ioend	*ioend = iocb->private;
 
