@@ -62,8 +62,10 @@ int pciehp_configure_device(struct slot *p_slot)
 	struct pci_dev *dev;
 	struct pci_dev *bridge = p_slot->ctrl->pcie->port;
 	struct pci_bus *parent = bridge->subordinate;
-	int num, fn;
+	int num, fn, ret = 0;
 	struct controller *ctrl = p_slot->ctrl;
+
+	pci_lock_rescan_remove();
 
 	dev = pci_get_slot(parent, PCI_DEVFN(0, 0));
 	if (dev) {
@@ -71,13 +73,15 @@ int pciehp_configure_device(struct slot *p_slot)
 			 "at %04x:%02x:00, cannot hot-add\n", pci_name(dev),
 			 pci_domain_nr(parent), parent->number);
 		pci_dev_put(dev);
-		return -EINVAL;
+		ret = -EINVAL;
+		goto out;
 	}
 
 	num = pci_scan_slot(parent, PCI_DEVFN(0, 0));
 	if (num == 0) {
 		ctrl_err(ctrl, "No new device found\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto out;
 	}
 
 	for (fn = 0; fn < 8; fn++) {
@@ -107,7 +111,9 @@ int pciehp_configure_device(struct slot *p_slot)
 
 	pci_bus_add_devices(parent);
 
-	return 0;
+ out:
+	pci_unlock_rescan_remove();
+	return ret;
 }
 
 int pciehp_unconfigure_device(struct slot *p_slot)
@@ -125,6 +131,8 @@ int pciehp_unconfigure_device(struct slot *p_slot)
 	ret = pciehp_get_adapter_status(p_slot, &presence);
 	if (ret)
 		presence = 0;
+
+	pci_lock_rescan_remove();
 
 	for (j = 0; j < 8; j++) {
 		struct pci_dev *temp = pci_get_slot(parent, PCI_DEVFN(0, j));
@@ -155,5 +163,6 @@ int pciehp_unconfigure_device(struct slot *p_slot)
 		pci_dev_put(temp);
 	}
 
+	pci_unlock_rescan_remove();
 	return rc;
 }
