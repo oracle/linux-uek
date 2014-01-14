@@ -269,8 +269,17 @@ static ssize_t dio_complete(struct dio *dio, loff_t offset, ssize_t ret, bool is
 		/* lockdep: non-owner release */
 		up_read_non_owner(&dio->inode->i_alloc_sem);
 
-	if (is_async)
+	if (is_async) {
+		if (dio->rw & WRITE) {
+			int err;
+
+			err = generic_write_sync(dio->iocb->ki_filp, offset,
+						 transferred);
+			if (err < 0 && ret > 0)
+				ret = err;
+		}
 		aio_complete(dio->iocb, ret, 0);
+	}
 
 	kmem_cache_free(dio_cache, dio);
 
@@ -1345,6 +1354,26 @@ do_blockdev_direct_IO(int rw, struct kiocb *iocb, struct inode *inode,
 		goto out;
 	}
 
+
+	/*
+	 * For AIO O_(D)SYNC writes we need to defer completions to a workqueue
+	 * so that we can call ->fsync.
+	 */
+	if (dio->is_async && (rw & WRITE) &&
+	    ((iocb->ki_filp->f_flags & O_DSYNC) ||
+	     IS_SYNC(iocb->ki_filp->f_mapping->host))) {
+		retval = dio_set_defer_completion(dio);
+		if (retval) {
+			/*
+			 * We grab i_mutex only for reads so we don't have
+			 * to release it here
+			 */
+			kmem_cache_free(dio_cache, dio);
+			goto out;
+		}
+	}
+
+	retval = 0;
 	sdio_init(&sdio, inode, offset, blkbits, get_block, submit_io);
 
 	for (seg = 0; seg < nr_segs; seg++) {

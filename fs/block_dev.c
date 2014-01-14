@@ -1556,7 +1556,7 @@ ssize_t blkdev_aio_write(struct kiocb *iocb, const struct iovec *iov,
 	BUG_ON(iocb->ki_pos != pos);
 
 	ret = __generic_file_aio_write(iocb, iov, nr_segs, &iocb->ki_pos);
-	if (ret > 0 || ret == -EIOCBQUEUED) {
+	if (ret > 0 ) {
 		ssize_t err;
 
 		err = generic_write_sync(file, pos, ret);
