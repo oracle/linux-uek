@@ -423,8 +423,7 @@ struct buffer_head;
 typedef int (get_block_t)(struct inode *inode, sector_t iblock,
 			struct buffer_head *bh_result, int create);
 typedef void (dio_iodone_t)(struct kiocb *iocb, loff_t offset,
-			ssize_t bytes, void *private, int ret,
-			bool is_async);
+			ssize_t bytes, void *private);
 
 /*
  * Attribute flags.  These should be or-ed together to figure out what
@@ -1530,6 +1529,9 @@ struct super_block {
 	 * Saved pool identifier for cleancache (-1 means none)
 	 */
 	int cleancache_poolid;
+
+	/* AIO completions deferred from interrupt context */
+	struct workqueue_struct *s_dio_done_wq;
 };
 
 extern struct timespec current_fs_time(struct super_block *sb);
@@ -1700,6 +1702,7 @@ struct inode_operations {
 } ____cacheline_aligned;
 
 struct seq_file;
+struct workqueue_struct;
 
 ssize_t rw_copy_check_uvector(int type, const struct iovec __user * uvector,
 				unsigned long nr_segs, unsigned long fast_segs,
