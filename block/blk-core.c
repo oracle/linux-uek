@@ -2298,6 +2298,9 @@ bool blk_update_request(struct request *req, int error, unsigned int nr_bytes)
 		case -EBADE:
 			error_type = "critical nexus";
 			break;
+		case -ENODATA:
+			error_type = "critical medium";
+			break;
 		case -EIO:
 		default:
 			error_type = "I/O";

@@ -364,6 +364,7 @@ static int scsi_check_sense(struct scsi_cmnd *scmd)
 		if (sshdr.asc == 0x11 || /* UNRECOVERED READ ERR */
 		    sshdr.asc == 0x13 || /* AMNF DATA FIELD */
 		    sshdr.asc == 0x14) { /* RECORD NOT FOUND */
+			set_host_byte(scmd, DID_MEDIUM_ERROR);
 			return TARGET_ERROR;
 		}
 		return NEEDS_RETRY;
