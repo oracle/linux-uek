@@ -1059,7 +1059,7 @@ struct btrfs_qgroup_limit_item {
 } __attribute__ ((__packed__));
 
 struct btrfs_space_info {
-	u64 flags;
+	spinlock_t lock;
 
 	u64 total_bytes;	/* total bytes in the space,
 				   this doesn't take mirrors into account */
@@ -1069,22 +1069,9 @@ struct btrfs_space_info {
 				   transaction finishes */
 	u64 bytes_reserved;	/* total bytes the allocator has reserved for
 				   current allocations */
-	u64 bytes_readonly;	/* total bytes that are read only */
-
 	u64 bytes_may_use;	/* number of bytes that may be used for
 				   delalloc/allocations */
-	u64 disk_used;		/* total bytes used on disk */
-	u64 disk_total;		/* total bytes on disk, takes mirrors into
-				   account */
-
-	/*
-	 * we bump reservation progress every time we decrement
-	 * bytes_reserved.  This way people waiting for reservations
-	 * know something good has happened and they can check
-	 * for progress.  The number here isn't to be trusted, it
-	 * just shows reclaim activity
-	 */
-	unsigned long reservation_progress;
+	u64 bytes_readonly;	/* total bytes that are read only */
 
 	unsigned int full:1;	/* indicates that we cannot allocate any more
 				   chunks for this space */
@@ -1095,12 +1082,26 @@ struct btrfs_space_info {
 	unsigned int force_alloc;	/* set if we need to force a chunk
 					   alloc for this space */
 
+	u64 disk_used;		/* total bytes used on disk */
+	u64 disk_total;		/* total bytes on disk, takes mirrors into
+				   account */
+
+	u64 flags;
+
+	/*
+	 * we bump reservation progress every time we decrement
+	 * bytes_reserved.  This way people waiting for reservations
+	 * know something good has happened and they can check
+	 * for progress.  The number here isn't to be trusted, it
+	 * just shows reclaim activity
+	 */
+	unsigned long reservation_progress;
+
 	struct list_head list;
 
+	struct rw_semaphore groups_sem;
 	/* for block groups in our same type */
 	struct list_head block_groups[BTRFS_NR_RAID_TYPES];
-	spinlock_t lock;
-	struct rw_semaphore groups_sem;
 	wait_queue_head_t wait;
 };
 
