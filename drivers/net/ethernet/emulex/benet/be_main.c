@@ -3211,6 +3211,7 @@ static int be_get_resources(struct be_adapter *adapter)
 /* Routine to query per function resource limits */
 static int be_get_config(struct be_adapter *adapter)
 {
+	u16 profile_id;
 	int status;
 
 	status = be_cmd_query_fw_cfg(adapter, &adapter->port_num,
@@ -3219,6 +3220,13 @@ static int be_get_config(struct be_adapter *adapter)
 				     &adapter->asic_rev);
 	if (status)
 		return status;
+
+	 if (be_physfn(adapter)) {
+		status = be_cmd_get_active_profile(adapter, &profile_id);
+		if (!status)
+			dev_info(&adapter->pdev->dev,
+				 "Using profile 0x%x\n", profile_id);
+	}
 
 	status = be_get_resources(adapter);
 	if (status)
