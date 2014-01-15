@@ -3686,6 +3686,28 @@ static int ext4_get_block_write(struct inode *inode, sector_t iblock,
 			       EXT4_GET_BLOCKS_IO_CREATE_EXT);
 }
 
+/*
+ * Convert the unwritten extents immediately.  This function is a combination
+ * of ext4_put_io_end and ext4_clear_io_unwritten_flag from upstream.
+ */
+static int ext4_end_io_dio_unwritten(ext4_io_end_t *io_end)
+{
+	struct inode *inode = io_end->inode;
+	int err = 0;
+
+	err = ext4_convert_unwritten_extents(io_end->inode,
+					     io_end->offset,
+					     io_end->size);
+	io_end->flag &= ~EXT4_IO_END_UNWRITTEN;
+
+	/* Wake up anyone waiting on unwritten extent conversion */
+	if (atomic_dec_and_test(&EXT4_I(inode)->i_aiodio_unwritten))
+		wake_up_all(ext4_ioend_wq(inode));
+
+	ext4_free_io_end(io_end);
+	return err;
+}
+
 static void ext4_end_io_dio(struct kiocb *iocb, loff_t offset,
 			    ssize_t size, void *private, int ret,
 			    bool is_async)
@@ -3718,17 +3740,8 @@ out:
 		io_end->iocb = iocb;
 		io_end->result = ret;
 	}
-	wq = EXT4_SB(io_end->inode->i_sb)->dio_unwritten_wq;
 
-	/* Add the io_end to per-inode completed aio dio list*/
-	ei = EXT4_I(io_end->inode);
-	spin_lock_irqsave(&ei->i_completed_io_lock, flags);
-	list_add_tail(&io_end->list, &ei->i_completed_io_list);
-	spin_unlock_irqrestore(&ei->i_completed_io_lock, flags);
-
-	/* queue the work to convert unwritten extents to written */
-	queue_work(wq, &io_end->work);
-	iocb->private = NULL;
+	ext4_end_io_dio_unwritten(io_end);
 }
 
 static void ext4_end_io_buffer_write(struct buffer_head *bh, int uptodate)
