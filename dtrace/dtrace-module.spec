@@ -30,7 +30,7 @@
 
 	if rpm.vercmp(kver, "3.8.13-22") >= 0 then
 		rpm.define("srcver 0.4.2")
-		rpm.define("bldrel 1")
+		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_2}"))
 	elseif rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
 		rpm.define("srcver 0.4.1")
@@ -80,7 +80,7 @@ dtrace, profile, syscall, sdt (io, proc,sched), and fasttrap (USDT).
 Maintainers:
 ------------
 Nick Alcock <nick.alcock@oracle.com>
-Kris van Hees <kris.van.hees@oracle.com>
+Kris Van Hees <kris.van.hees@oracle.com>
 
 %package -n dtrace-modules-headers
 Summary:	Header files for communication with the DTrace kernel module.
@@ -88,11 +88,10 @@ Summary:	Header files for communication with the DTrace kernel module.
 This package contains header files describing the protocol used by userspace to
 communicate with the DTrace kernel module.
 
-%package provider-headers
+%package -n dtrace-modules-provider-headers
 Summary:	Header files for implementation of DTrace providers.
 Requires:	dtrace-modules-headers
-Provides:	dtrace-modules-provider-headers
-%description provider-headers
+%description -n dtrace-modules-provider-headers
 This package contains header files defining the API used to implement DTrace
 providers.
 
@@ -121,7 +120,7 @@ dtrace, profile, syscall, sdt (io, proc,sched), and fasttrap (USDT).
 Maintainers:
 ------------
 Nick Alcock <nick.alcock@oracle.com>
-Kris van Hees <kris.van.hees@oracle.com>
+Kris Van Hees <kris.van.hees@oracle.com>
 
 %package headers
 Summary:	Header files for communication with the DTrace kernel module.
@@ -180,6 +179,11 @@ rm -rf %{buildroot}
 %exclude /usr/include/linux/dtrace/provider*.h
 %exclude /usr/include/linux/dtrace/types.h
 
+%files -n dtrace-modules-provider-headers
+%defattr(-,root,root,-)
+/usr/include/linux/dtrace/provider*.h
+/usr/include/linux/dtrace/types.h
+
 %else
 
 %files headers
@@ -188,15 +192,18 @@ rm -rf %{buildroot}
 %exclude /usr/include/linux/dtrace/provider*.h
 %exclude /usr/include/linux/dtrace/types.h
 
-%endif
-
 %files provider-headers
 %defattr(-,root,root,-)
 /usr/include/linux/dtrace/provider*.h
 /usr/include/linux/dtrace/types.h
 
+%endif
+
 %changelog
 %if %{dt_vcode} >= %{dt_0_4_2}
+* Mon Jan 27 2014 Nick Alcock <nick.alcock@oracle.com> - 0.4.2-2
+- Change name of provider headers package, to avoid conflicts on yum update
+  [Orabug: 18061595]
 * Fri Dec 20 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.2-1
 - Fix 'vtimestamp' implementation.
   [Orabug: 17741477]
