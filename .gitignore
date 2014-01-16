@@ -107,3 +107,9 @@ all.config
 
 # Kdevelop4
 *.kdev4
+
+#
+# Generated DTrace SDT files
+#
+*.sdtinfo.c
+*.sdtstub.S
