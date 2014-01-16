@@ -193,7 +193,7 @@ static int uvesafb_exec(struct uvesafb_ktask *task)
 	uvfb_tasks[seq] = task;
 	mutex_unlock(&uvfb_lock);
 
-	err = cn_netlink_send(m, 0, GFP_KERNEL);
+	err = cn_netlink_send(m, 0, 0, GFP_KERNEL);
 	if (err == -ESRCH) {
 		/*
 		 * Try to start the userspace helper if sending
@@ -207,7 +207,7 @@ static int uvesafb_exec(struct uvesafb_ktask *task)
 					"helper is installed and executable\n");
 		} else {
 			v86d_started = 1;
-			err = cn_netlink_send(m, 0, gfp_any());
+			err = cn_netlink_send(m, 0, 0, gfp_any());
 			if (err == -ENOBUFS)
 				err = 0;
 		}
