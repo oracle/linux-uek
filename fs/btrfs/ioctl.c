@@ -187,6 +187,9 @@ static int btrfs_ioctl_setflags(struct file *file, void __user *arg)
 	unsigned int i_oldflags;
 	umode_t mode;
 
+	if (!inode_owner_or_capable(inode))
+		return -EPERM;
+
 	if (btrfs_root_readonly(root))
 		return -EROFS;
 
@@ -196,9 +199,6 @@ static int btrfs_ioctl_setflags(struct file *file, void __user *arg)
 	ret = check_flags(flags);
 	if (ret)
 		return ret;
-
-	if (!inode_owner_or_capable(inode))
-		return -EACCES;
 
 	ret = mnt_want_write_file(file);
 	if (ret)
@@ -1623,6 +1623,9 @@ static noinline int btrfs_ioctl_subvol_setflags(struct file *file,
 	u64 flags;
 	int ret = 0;
 
+	if (!inode_owner_or_capable(inode))
+		return -EPERM;
+
 	ret = mnt_want_write_file(file);
 	if (ret)
 		goto out;
@@ -1644,11 +1647,6 @@ static noinline int btrfs_ioctl_subvol_setflags(struct file *file,
 
 	if (flags & ~BTRFS_SUBVOL_RDONLY) {
 		ret = -EOPNOTSUPP;
-		goto out_drop_write;
-	}
-
-	if (!inode_owner_or_capable(inode)) {
-		ret = -EACCES;
 		goto out_drop_write;
 	}
 
@@ -3863,6 +3861,9 @@ static long btrfs_ioctl_set_received_subvol(struct file *file,
 	struct timespec ct = CURRENT_TIME;
 	int ret = 0;
 
+	if (!inode_owner_or_capable(inode))
+		return -EPERM;
+
 	ret = mnt_want_write_file(file);
 	if (ret < 0)
 		return ret;
@@ -3876,11 +3877,6 @@ static long btrfs_ioctl_set_received_subvol(struct file *file,
 
 	if (btrfs_root_readonly(root)) {
 		ret = -EROFS;
-		goto out;
-	}
-
-	if (!inode_owner_or_capable(inode)) {
-		ret = -EACCES;
 		goto out;
 	}
 
