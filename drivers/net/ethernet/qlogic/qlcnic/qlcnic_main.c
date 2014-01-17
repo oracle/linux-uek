@@ -750,9 +750,8 @@ static int qlcnic_82xx_calculate_msix_vector(struct qlcnic_adapter *adapter)
 	return num_msix;
 }
 
-static int qlcnic_enable_msi_legacy(struct qlcnic_adapter *adapter)
+static void qlcnic_enable_msi_legacy(struct qlcnic_adapter *adapter)
 {
-	int err = 0;
 	u32 offset, mask_reg;
 	const struct qlcnic_legacy_intr_set *legacy_intrp;
 	struct qlcnic_hardware_context *ahw = adapter->ahw;
@@ -765,11 +764,8 @@ static int qlcnic_enable_msi_legacy(struct qlcnic_adapter *adapter)
 							    offset);
 		dev_info(&pdev->dev, "using msi interrupts\n");
 		adapter->msix_entries[0].vector = pdev->irq;
-		return err;
+		return;
 	}
-
-	if (qlcnic_use_msi || qlcnic_use_msi_x)
-		return -EOPNOTSUPP;
 
 	legacy_intrp = &legacy_intr[adapter->ahw->pci_func];
 	adapter->ahw->int_vec_bit = legacy_intrp->int_vec_bit;
@@ -781,7 +777,7 @@ static int qlcnic_enable_msi_legacy(struct qlcnic_adapter *adapter)
 	adapter->crb_int_state_reg = qlcnic_get_ioaddr(ahw, ISR_INT_STATE_REG);
 	dev_info(&pdev->dev, "using legacy interrupts\n");
 	adapter->msix_entries[0].vector = pdev->irq;
-	return err;
+	return;
 }
 
 static int qlcnic_82xx_setup_intr(struct qlcnic_adapter *adapter)
@@ -802,10 +798,7 @@ static int qlcnic_82xx_setup_intr(struct qlcnic_adapter *adapter)
 
 		if (!(adapter->flags & QLCNIC_MSIX_ENABLED)) {
 			qlcnic_disable_multi_tx(adapter);
-
-			err = qlcnic_enable_msi_legacy(adapter);
-			if (!err)
-				return err;
+			qlcnic_enable_msi_legacy(adapter);
 		}
 	}
 
