@@ -1976,7 +1976,7 @@ void rtmsg_ifinfo(int type, struct net_device *dev, unsigned int change)
 	int err = -ENOBUFS;
 	size_t if_info_size;
 
-	skb = nlmsg_new((if_info_size = if_nlmsg_size(dev, 0)), GFP_KERNEL);
+	skb = nlmsg_new((if_info_size = if_nlmsg_size(dev, 0)), GFP_NOWAIT);
 	if (skb == NULL)
 		goto errout;
 
