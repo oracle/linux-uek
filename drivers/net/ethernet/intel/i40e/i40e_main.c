@@ -2144,7 +2144,7 @@ static int i40e_configure_tx_ring(struct i40e_ring *ring)
 	u32 qtx_ctl = 0;
 
 	/* some ATR related tx ring init */
-	if (vsi->back->flags & I40E_FLAG_FDIR_ATR_ENABLED) {
+	if (vsi->back->flags & I40E_FLAG_FD_ATR_ENABLED) {
 		ring->atr_sample_rate = vsi->back->atr_sample_rate;
 		ring->atr_count = 0;
 	} else {
@@ -2164,8 +2164,8 @@ static int i40e_configure_tx_ring(struct i40e_ring *ring)
 	tx_ctx.new_context = 1;
 	tx_ctx.base = (ring->dma / 128);
 	tx_ctx.qlen = ring->count;
-	tx_ctx.fd_ena = !!(vsi->back->flags & (I40E_FLAG_FDIR_ENABLED |
-					       I40E_FLAG_FDIR_ATR_ENABLED));
+	tx_ctx.fd_ena = !!(vsi->back->flags & (I40E_FLAG_FD_SB_ENABLED |
+					       I40E_FLAG_FD_ATR_ENABLED));
 	tx_ctx.timesync_ena = !!(vsi->back->flags & I40E_FLAG_PTP);
 
 	/* As part of VSI creation/update, FW allocates certain
@@ -4736,8 +4736,8 @@ static void i40e_fdir_setup(struct i40e_pf *pf)
 	bool new_vsi = false;
 	int err, i;
 
-	if (!(pf->flags & (I40E_FLAG_FDIR_ENABLED |
-			   I40E_FLAG_FDIR_ATR_ENABLED)))
+	if (!(pf->flags & (I40E_FLAG_FD_SB_ENABLED |
+			   I40E_FLAG_FD_ATR_ENABLED)))
 		return;
 
 	pf->atr_sample_rate = I40E_DEFAULT_ATR_SAMPLE_RATE;
@@ -4751,7 +4751,7 @@ static void i40e_fdir_setup(struct i40e_pf *pf)
 		vsi = i40e_vsi_setup(pf, I40E_VSI_FDIR, pf->mac_seid, 0);
 		if (!vsi) {
 			dev_info(&pf->pdev->dev, "Couldn't create FDir VSI\n");
-			pf->flags &= ~I40E_FLAG_FDIR_ENABLED;
+			pf->flags &= ~I40E_FLAG_FD_SB_ENABLED;
 			return;
 		}
 		new_vsi = true;
@@ -5490,7 +5490,7 @@ static int i40e_init_msix(struct i40e_pf *pf)
 	pf->num_vmdq_msix = pf->num_vmdq_qps;
 	v_budget = 1 + pf->num_lan_msix;
 	v_budget += (pf->num_vmdq_vsis * pf->num_vmdq_msix);
-	if (pf->flags & I40E_FLAG_FDIR_ENABLED)
+	if (pf->flags & I40E_FLAG_FD_SB_ENABLED)
 		v_budget++;
 
 	/* Scale down if necessary, and the rings will share vectors */
@@ -5626,13 +5626,13 @@ static void i40e_init_interrupt_scheme(struct i40e_pf *pf)
 	if (pf->flags & I40E_FLAG_MSIX_ENABLED) {
 		err = i40e_init_msix(pf);
 		if (err) {
-			pf->flags &= ~(I40E_FLAG_MSIX_ENABLED	   |
-					I40E_FLAG_RSS_ENABLED	   |
-					I40E_FLAG_DCB_ENABLED	   |
-					I40E_FLAG_SRIOV_ENABLED	   |
-					I40E_FLAG_FDIR_ENABLED	   |
-					I40E_FLAG_FDIR_ATR_ENABLED |
-					I40E_FLAG_VMDQ_ENABLED);
+			pf->flags &= ~(I40E_FLAG_MSIX_ENABLED	|
+				       I40E_FLAG_RSS_ENABLED	|
+				       I40E_FLAG_DCB_ENABLED	|
+				       I40E_FLAG_SRIOV_ENABLED	|
+				       I40E_FLAG_FD_SB_ENABLED	|
+				       I40E_FLAG_FD_ATR_ENABLED	|
+				       I40E_FLAG_VMDQ_ENABLED);
 
 			/* rework the queue expectations without MSIX */
 			i40e_determine_queue_usage(pf);
@@ -5831,10 +5831,10 @@ static int i40e_sw_init(struct i40e_pf *pf)
 		/* FW/NVM is not yet fixed in this regard */
 		if ((pf->hw.func_caps.fd_filters_guaranteed > 0) ||
 		    (pf->hw.func_caps.fd_filters_best_effort > 0)) {
-			pf->flags |= I40E_FLAG_FDIR_ATR_ENABLED;
+			pf->flags |= I40E_FLAG_FD_ATR_ENABLED;
 			dev_info(&pf->pdev->dev,
 				 "Flow Director ATR mode Enabled\n");
-			pf->flags |= I40E_FLAG_FDIR_ENABLED;
+			pf->flags |= I40E_FLAG_FD_SB_ENABLED;
 			dev_info(&pf->pdev->dev,
 				 "Flow Director Side Band mode Enabled\n");
 			pf->fdir_pf_filter_count =
@@ -7228,7 +7228,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 
 	if   (!(pf->flags & I40E_FLAG_MSIX_ENABLED) ||
 		!(pf->flags & (I40E_FLAG_RSS_ENABLED |
-		I40E_FLAG_FDIR_ENABLED | I40E_FLAG_DCB_ENABLED)) ||
+		I40E_FLAG_FD_SB_ENABLED | I40E_FLAG_DCB_ENABLED)) ||
 		(queues_left == 1)) {
 
 		/* one qp for PF, no queues for anything else */
@@ -7236,15 +7236,9 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 		pf->rss_size = pf->num_lan_qps = 1;
 
 		/* make sure all the fancies are disabled */
-		pf->flags &= ~(I40E_FLAG_RSS_ENABLED       |
-				I40E_FLAG_FDIR_ENABLED	   |
-				I40E_FLAG_FDIR_ATR_ENABLED |
-				I40E_FLAG_DCB_ENABLED	   |
-				I40E_FLAG_SRIOV_ENABLED	   |
-				I40E_FLAG_VMDQ_ENABLED);
 
 	} else if (pf->flags & I40E_FLAG_RSS_ENABLED	  &&
-		   !(pf->flags & I40E_FLAG_FDIR_ENABLED)  &&
+		   !(pf->flags & I40E_FLAG_FD_SB_ENABLED)  &&
 		   !(pf->flags & I40E_FLAG_DCB_ENABLED)) {
 
 		pf->rss_size = i40e_set_rss_size(pf, queues_left);
@@ -7253,7 +7247,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 		pf->num_lan_qps = pf->rss_size_max;
 
 	} else if (pf->flags & I40E_FLAG_RSS_ENABLED	  &&
-		   !(pf->flags & I40E_FLAG_FDIR_ENABLED)  &&
+		   !(pf->flags & I40E_FLAG_FD_SB_ENABLED)  &&
 		   (pf->flags & I40E_FLAG_DCB_ENABLED)) {
 
 		/* save num_tc_qps queues for TCs 1 thru 7 and the rest
@@ -7272,7 +7266,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 		pf->num_lan_qps = pf->rss_size_max + accum_tc_size;
 
 	} else if (pf->flags & I40E_FLAG_RSS_ENABLED   &&
-		  (pf->flags & I40E_FLAG_FDIR_ENABLED) &&
+		  (pf->flags & I40E_FLAG_FD_SB_ENABLED) &&
 		  !(pf->flags & I40E_FLAG_DCB_ENABLED)) {
 
 		queues_left -= 1; /* save 1 queue for FD */
@@ -7288,7 +7282,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 		pf->num_lan_qps = pf->rss_size_max;
 
 	} else if (pf->flags & I40E_FLAG_RSS_ENABLED   &&
-		  (pf->flags & I40E_FLAG_FDIR_ENABLED) &&
+		  (pf->flags & I40E_FLAG_FD_SB_ENABLED) &&
 		  (pf->flags & I40E_FLAG_DCB_ENABLED)) {
 
 		/* save 1 queue for TCs 1 thru 7,
@@ -7307,6 +7301,12 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
 
 		pf->num_lan_qps = pf->rss_size_max + accum_tc_size;
 
+		pf->flags &= ~(I40E_FLAG_RSS_ENABLED	|
+			       I40E_FLAG_FD_SB_ENABLED	|
+			       I40E_FLAG_FD_ATR_ENABLED	|
+			       I40E_FLAG_DCB_ENABLED	|
+			       I40E_FLAG_SRIOV_ENABLED	|
+			       I40E_FLAG_VMDQ_ENABLED);
 	} else {
 		dev_info(&pf->pdev->dev,
 			 "Invalid configuration, flags=0x%08llx\n", pf->flags);
@@ -7349,7 +7349,7 @@ static int i40e_setup_pf_filter_control(struct i40e_pf *pf)
 	settings->hash_lut_size = I40E_HASH_LUT_SIZE_128;
 
 	/* Flow Director is enabled */
-	if (pf->flags & (I40E_FLAG_FDIR_ENABLED | I40E_FLAG_FDIR_ATR_ENABLED))
+	if (pf->flags & (I40E_FLAG_FD_SB_ENABLED | I40E_FLAG_FD_ATR_ENABLED))
 		settings->enable_fdir = true;
 
 	/* Ethtype and MACVLAN filters enabled for PF */
