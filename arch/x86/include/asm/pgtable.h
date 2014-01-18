@@ -809,6 +809,9 @@ static inline unsigned long page_level_mask(enum pg_level level)
 }
 
 #include <asm-generic/pgtable.h>
+
+void kernel_unmap_pages_in_pgd(pgd_t *root, unsigned long address,
+			       unsigned numpages);
 #endif	/* __ASSEMBLY__ */
 
 #endif /* _ASM_X86_PGTABLE_H */

@@ -772,6 +772,28 @@ static void unmap_pud_range(pgd_t *pgd, unsigned long start, unsigned long end)
 	 * populate_pgd's error path
 	 */
 }
+static bool try_to_free_pud_page(pud_t *pud);
+static void unmap_pgd_range(pgd_t *root, unsigned long addr, unsigned long end)
+{
+	pgd_t *pgd_entry = root + pgd_index(addr);
+
+	unmap_pud_range(pgd_entry, addr, end);
+
+	if (try_to_free_pud_page((pud_t *)pgd_page_vaddr(*pgd_entry)))
+		pgd_clear(pgd_entry);
+}
+
+static bool try_to_free_pud_page(pud_t *pud)
+{
+	int i;
+
+	for (i = 0; i < PTRS_PER_PUD; i++)
+		if (!pud_none(pud[i]))
+			return false;
+
+	free_page((unsigned long)pud);
+	return true;
+}
 
 static int alloc_pte_page(pmd_t *pmd)
 {
@@ -1813,6 +1835,12 @@ int kernel_map_pages_in_pgd(pgd_t *pgd, u64 pfn, unsigned long address,
 
 out:
 	return retval;
+}
+void unmap_pgd_range(pgd_t *root, unsigned long addr, unsigned long end);
+void kernel_unmap_pages_in_pgd(pgd_t *root, unsigned long address,
+			       unsigned numpages)
+{
+	unmap_pgd_range(root, address, address + (numpages << PAGE_SHIFT));
 }
 
 /*
