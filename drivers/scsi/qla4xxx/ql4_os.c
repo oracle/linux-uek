@@ -8946,18 +8946,21 @@ static void qla4xxx_destroy_ddb(struct scsi_qla_host *ha,
 						 NULL, NULL, &ddb_state, NULL,
 						 NULL, NULL);
 		if (status == QLA_ERROR)
-			goto clear_ddb;
+			goto free_ddb;
 
 		if ((ddb_state == DDB_DS_NO_CONNECTION_ACTIVE) ||
 		    (ddb_state == DDB_DS_SESSION_FAILED))
-			goto clear_ddb;
+			goto free_ddb;
 
 		schedule_timeout_uninterruptible(HZ);
 	} while ((time_after(wtime, jiffies)));
 
+free_ddb:
+	dma_free_coherent(&ha->pdev->dev, sizeof(*fw_ddb_entry),
+			  fw_ddb_entry, fw_ddb_entry_dma);
+
 clear_ddb:
 	qla4xxx_clear_ddb_entry(ha, ddb_entry->fw_ddb_index);
-	return;
 }
 
 static void qla4xxx_destroy_fw_ddb_session(struct scsi_qla_host *ha)
