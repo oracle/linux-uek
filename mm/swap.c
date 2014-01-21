@@ -261,7 +261,7 @@ bool __get_page_tail(struct page *page)
 	struct page *page_head = compound_trans_head(page);
 
 	/* Ref to put_compound_page() comment. */
-	if (PageSlab(page_head) || PageHeadHuge(page_head)) {
+	if (!__compound_tail_refcounted(page_head)) {
 		smp_rmb();
 		if (likely(PageTail(page))) {
 			/*
