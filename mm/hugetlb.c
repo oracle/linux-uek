@@ -697,7 +697,6 @@ int PageHeadHuge(struct page *page_head)
 
 	return get_compound_page_dtor(page_head) == free_huge_page;
 }
-EXPORT_SYMBOL_GPL(PageHeadHuge);
 
 static struct page *alloc_fresh_huge_page_node(struct hstate *h, int nid)
 {
