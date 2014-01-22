@@ -893,6 +893,8 @@ static void igb_set_sriov_capability(struct igb_adapter *adapter)
 	int old_vfs = 0;
 	int i;
 
+	if (pdev)
+		pci_sriov_set_totalvfs(pdev, 7);
 	old_vfs = pci_num_vf(pdev);
 	if (old_vfs) {
 		dev_info(pci_dev_to_dev(pdev),
