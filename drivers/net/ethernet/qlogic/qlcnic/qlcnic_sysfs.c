@@ -357,8 +357,7 @@ int qlcnic_is_valid_nic_func(struct qlcnic_adapter *adapter, u8 pci_func)
 		if (adapter->npars[i].pci_func == pci_func)
 			return i;
 	}
-
-	return -1;
+	return -EINVAL;
 }
 
 static int validate_pm_config(struct qlcnic_adapter *adapter,
@@ -444,10 +443,10 @@ static u32 qlcnic_total_pci_func_size(struct qlcnic_adapter *adapter)
 	if (!(adapter->flags & QLCNIC_ESWITCH_ENABLED))
 		return ahw->total_nic_func;
 
-	if (ahw->total_pci_func <= QLC_DEFAULT_VNIC_COUNT)
-		size = QLC_DEFAULT_VNIC_COUNT;
-	else
+	if (qlcnic_84xx_check(adapter))
 		size = ahw->max_vnic_func;
+	else if (ahw->total_pci_func <= QLC_DEFAULT_VNIC_COUNT)
+		size = QLC_DEFAULT_VNIC_COUNT;
 
 	return size;
 }
@@ -460,20 +459,15 @@ static ssize_t qlcnic_sysfs_read_pm_config(struct file *filp,
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-	u32 pci_func_size = qlcnic_total_pci_func_size(adapter);
-	struct qlcnic_hardware_context *ahw = adapter->ahw;
 	struct qlcnic_pm_func_cfg *pm_cfg;
-	int i, pm_cfg_size;
 	u8 pci_func;
+	u32 count;
+	int i;
 
-	pm_cfg_size = pci_func_size * sizeof(*pm_cfg);
-	if (size != pm_cfg_size)
-		return QL_STATUS_INVALID_PARAM;
-
-	memset(buf, 0, pm_cfg_size);
+	memset(buf, 0, size);
 	pm_cfg = (struct qlcnic_pm_func_cfg *)buf;
-
-	for (i = 0; i < ahw->total_nic_func; i++) {
+	count = size / sizeof(struct qlcnic_pm_func_cfg);
+	for (i = 0; i < count; i++) {
 		pci_func = adapter->npars[i].pci_func;
 		if (!adapter->npars[i].active)
 			continue;
@@ -639,20 +633,16 @@ static ssize_t qlcnic_sysfs_read_esw_config(struct file *file,
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-	u32 pci_func_size = qlcnic_total_pci_func_size(adapter);
-	struct qlcnic_hardware_context *ahw = adapter->ahw;
 	struct qlcnic_esw_func_cfg *esw_cfg;
-	size_t esw_cfg_size;
-	u8 i, pci_func;
+	u8 pci_func;
+	u32 count;
+	int i;
 
-	esw_cfg_size = pci_func_size * sizeof(*esw_cfg);
-	if (size != esw_cfg_size)
-		return QL_STATUS_INVALID_PARAM;
 
-	memset(buf, 0, esw_cfg_size);
+	memset(buf, 0, size);
 	esw_cfg = (struct qlcnic_esw_func_cfg *)buf;
-
-	for (i = 0; i < ahw->total_nic_func; i++) {
+	count = size / sizeof(struct qlcnic_esw_func_cfg);
+	for (i = 0; i < count; i++) {
 		pci_func = adapter->npars[i].pci_func;
 		if (!adapter->npars[i].active)
 			continue;
@@ -737,21 +727,17 @@ static ssize_t qlcnic_sysfs_read_npar_config(struct file *file,
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-	u32 pci_func_size = qlcnic_total_pci_func_size(adapter);
 	struct qlcnic_npar_func_cfg *np_cfg;
 	struct qlcnic_info nic_info;
-	size_t np_cfg_size;
 	int i, ret;
-
-	np_cfg_size = pci_func_size * sizeof(*np_cfg);
-	if (size != np_cfg_size)
-		return QL_STATUS_INVALID_PARAM;
+	u32 count;
 
 	memset(&nic_info, 0, sizeof(struct qlcnic_info));
-	memset(buf, 0, np_cfg_size);
+	memset(buf, 0, size);
 	np_cfg = (struct qlcnic_npar_func_cfg *)buf;
 
-	for (i = 0; i < pci_func_size; i++) {
+	count = size / sizeof(struct qlcnic_npar_func_cfg);
+	for (i = 0; i < count; i++) {
 		if (qlcnic_is_valid_nic_func(adapter, i) < 0)
 			continue;
 		ret = qlcnic_get_nic_info(adapter, &nic_info, i);
@@ -910,17 +896,12 @@ static ssize_t qlcnic_sysfs_read_pci_config(struct file *file,
 {
 	struct device *dev = container_of(kobj, struct device, kobj);
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-	u32 pci_func_size = qlcnic_total_pci_func_size(adapter);
 	struct qlcnic_pci_func_cfg *pci_cfg;
 	struct qlcnic_pci_info *pci_info;
-	size_t pci_cfg_sz;
 	int i, ret;
+	u32 count;
 
-	pci_cfg_sz = pci_func_size * sizeof(*pci_cfg);
-	if (size != pci_cfg_sz)
-		return QL_STATUS_INVALID_PARAM;
-
-	pci_info = kcalloc(pci_func_size, sizeof(*pci_info), GFP_KERNEL);
+	pci_info = kcalloc(size, sizeof(*pci_info), GFP_KERNEL);
 	if (!pci_info)
 		return -ENOMEM;
 
@@ -931,7 +912,8 @@ static ssize_t qlcnic_sysfs_read_pci_config(struct file *file,
 	}
 
 	pci_cfg = (struct qlcnic_pci_func_cfg *)buf;
-	for (i = 0; i < pci_func_size; i++) {
+	count = size / sizeof(struct qlcnic_pci_func_cfg);
+	for (i = 0; i < count; i++) {
 		pci_cfg[i].pci_func = pci_info[i].id;
 		pci_cfg[i].func_type = pci_info[i].type;
 		pci_cfg[i].func_state = 0;
