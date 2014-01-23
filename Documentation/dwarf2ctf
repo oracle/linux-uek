@@ -546,21 +546,29 @@ has only two users, both in modules, and the kernel is rebuilt to not build one
 of those modules anymore: this should not require rebuilding of any out-of-tree
 modules).
 
-If we mark a type as seen, we must mark aggregate types that appear directly
-within that type's DIE as seen as well.  This is done by the recursive function
-mark_seen_contained().  You might wonder what the point of it is: such types
-surely cannot appear anywhere else, and any duplication will precisely match the
-duplication of the containing type.  The answer is that they can still be
-referenced as the type of structure members of their containing structure,
-e.g. in
+If we mark a structure or union type as seen, we must mark aggregate types that
+appear directly within that type's DIE as seen as well.  This is done by the
+recursive function mark_seen_contained().  You might wonder what the point of it
+is: such types surely cannot appear anywhere else, and any duplication will
+precisely match the duplication of the containing type.  The answer is that they
+can still be referenced as the type of structure members of their containing
+structure, e.g. in
 
 struct foo {
 	struct bar {
 	} *baz;
+	struct bar wombat[16];
 };
 
 Here, a reference to 'struct bar' appears in 'struct foo', and CTF is
-constructed for it, even though it is not a top-level DIE.
+constructed for it, even though it is not a top-level DIE.  In GCC 4.8+, a
+reference to the 16-element array-of-struct-bar can also appear in 'struct foo':
+in fact almost anything can appear in there if used nowhere else in the
+translation unit, even base types.  So we look for the appearance of anything
+which we can assemble into CTF (anything in the assembly_tab) other than
+members, since members cannot be used as the type of anything else, and mark
+them all as seen in this module.  (Nearly everything in a structure or union is
+a member, so this ends up skipping almost but not quite everything.)
 
 
 If we find that a type has appeared more than once in different kernel modules
