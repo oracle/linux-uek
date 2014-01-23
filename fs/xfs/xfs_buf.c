@@ -348,12 +348,16 @@ xfs_buf_allocate_memory(
 	xfs_off_t		start, end;
 	int			error;
 
+	size = BBTOB(bp->b_length);
+#if 0
 	/*
+	 * This section removed for UEK. kmem_alloc() can return buffers
+	 * that are not properly aligned for i/o through the loop driver.
+	 *
 	 * for buffers that are contained within a single page, just allocate
 	 * the memory from the heap - there's no need for the complexity of
 	 * page arrays to keep allocation down to order 0.
 	 */
-	size = BBTOB(bp->b_length);
 	if (size < PAGE_SIZE) {
 		bp->b_addr = kmem_alloc(size, KM_NOFS);
 		if (!bp->b_addr) {
@@ -377,6 +381,7 @@ xfs_buf_allocate_memory(
 	}
 
 use_alloc_page:
+#endif
 	start = BBTOB(bp->b_maps[0].bm_bn) >> PAGE_SHIFT;
 	end = (BBTOB(bp->b_maps[0].bm_bn + bp->b_length) + PAGE_SIZE - 1)
 								>> PAGE_SHIFT;
