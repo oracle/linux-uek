@@ -499,9 +499,13 @@ typedef int (*ctf_assembly_filter_fun)(Dwarf_Die *die,
 
 /*
  * A CTF assembly filter function which excludes all types not at the global
- * scope (i.e. whose immediate parent is not a CU DIE).
+ * scope (i.e. whose immediate parent is not a CU DIE) and which does not have a
+ * structure or union as its ultimate dependent type.  (All structures and
+ * unions and everything dependent on them must be recorded, even inside
+ * functions, because GCC may emit references to the opaque variants of those
+ * types from file scope.)
  */
-static int filter_ctf_file_scope(Dwarf_Die *die __unused__,
+static int filter_ctf_file_scope(Dwarf_Die *die,
 				 Dwarf_Die *parent_die);
 
 /*
@@ -2581,11 +2585,40 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 
 /*
  * A CTF assembly filter function which excludes all types not at the global
- * scope (i.e. whose immediate parent is not a CU DIE).
+ * scope (i.e. whose immediate parent is not a CU DIE) and which does not have a
+ * structure or union as its ultimate dependent type.  (All structures and
+ * unions and everything dependent on them must be recorded, even inside
+ * functions, because GCC may emit references to the opaque variants of those
+ * types from file scope.)
  */
-static int filter_ctf_file_scope(Dwarf_Die *die __unused__, Dwarf_Die *parent_die)
+static int filter_ctf_file_scope(Dwarf_Die *die, Dwarf_Die *parent_die)
 {
-	return (dwarf_tag(parent_die) == DW_TAG_compile_unit);
+	/*
+	 * Find the ultimate parent of this DIE.
+	 */
+
+	Dwarf_Die dependent_die;
+	Dwarf_Die *dependent_diep = private_dwarf_type(die, &dependent_die);
+
+	if (dependent_diep != NULL) {
+		Dwarf_Die *possible_depp = dependent_diep;
+		do {
+			Dwarf_Die possible_dep;
+			possible_depp = private_dwarf_type(possible_depp,
+							   &possible_dep);
+
+			if (possible_depp != NULL)
+				dependent_die = possible_dep;
+		} while (possible_depp != NULL);
+	}
+
+	if (dependent_diep)
+		return (dwarf_tag(dependent_diep) == DW_TAG_structure_type ||
+			dwarf_tag(dependent_diep) == DW_TAG_union_type ||
+			dwarf_tag(dependent_diep) == DW_TAG_enumeration_type ||
+			dwarf_tag(parent_die) == DW_TAG_compile_unit);
+	else
+		return (dwarf_tag(parent_die) == DW_TAG_compile_unit);
 }
 
 /*
