@@ -654,10 +654,11 @@ out:
 		wake_up_interruptible_sync_poll(&pipe->wait, POLLIN | POLLRDNORM);
 		kill_fasync(&pipe->fasync_readers, SIGIO, POLL_IN);
 	}
-	if (ret > 0) {
+	if (ret > 0 && sb_start_write_trylock(inode->i_sb)) {
 		int err = file_update_time(filp);
 		if (err)
 			ret = err;
+		sb_end_write(inode->i_sb);
 	}
 	return ret;
 }
