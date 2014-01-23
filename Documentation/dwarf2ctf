@@ -359,10 +359,10 @@ tag doesn't appear in the assembly table at all: there's no point doing
 duplicate detection or anything else for a DWARF DIE we won't be generating CTF
 from.  There are currently two filters defined: filter_ctf_file_scope(), which
 is called for every DWARF DIE whose tag is one we never expect to see a
-reference to if it is inside a function, and filter_ctf_uninteresting(), which
-is called for variables to see if they are worthy of recording (top-level named
-variables with external linkage not part of the internal workings of macros
-only).
+reference to if it is inside a function (except if they relate to a structure or
+union, as above), and filter_ctf_uninteresting(), which is called for variables
+to see if they are worthy of recording (top-level named variables with external
+linkage not part of the internal workings of macros only).
 
 
 Type IDs
