@@ -543,6 +543,7 @@ Source26: Module.kabi_x86_64
 Source201: kabi_whitelist_x86_64
 
 Source300: debuginfo-g1.diff
+Source301: debuginfo-g1-minusr-old-elfutils.diff
 
 # Here should be only the patches up to the upstream canonical Linus tree.
 
@@ -941,9 +942,13 @@ ApplyPatch %{stable_patch_01}
 
 # Copy the RPM find-debuginfo.sh into the buildroot and patch it
 # to support -g1.  (This is a patch of *RPM*, not of the kernel,
-# so it is not governed by nopatches.)
+# so it is not governed by nopatches).  We need to try several patches
+# in succession until one works.
+
 cp %{_rpmconfigdir}/find-debuginfo.sh %{_builddir}
-patch %{_builddir}/find-debuginfo.sh %{SOURCE300}
+patch %{_builddir}/find-debuginfo.sh %{SOURCE301} || \
+      { mv -f %{_builddir}/find-debuginfo.sh.orig %{_builddir}/find-debuginfo.sh && \
+        patch %{_builddir}/find-debuginfo.sh %{SOURCE300}; }
 chmod +x %{_builddir}/find-debuginfo.sh
 
 # only deal with configs if we are going to build for the arch
