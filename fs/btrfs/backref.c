@@ -281,6 +281,7 @@ static int __resolve_indirect_ref(struct btrfs_fs_info *fs_info,
 	int ret = 0;
 	int root_level;
 	int level = ref->level;
+	int index;
 
 	path = btrfs_alloc_path();
 	if (!path)
@@ -290,19 +291,29 @@ static int __resolve_indirect_ref(struct btrfs_fs_info *fs_info,
 	root_key.objectid = ref->root_id;
 	root_key.type = BTRFS_ROOT_ITEM_KEY;
 	root_key.offset = (u64)-1;
+
+	index = srcu_read_lock(&fs_info->subvol_srcu);
+
 	root = btrfs_read_fs_root_no_name(fs_info, &root_key);
 	if (IS_ERR(root)) {
+		srcu_read_unlock(&fs_info->subvol_srcu, index);
 		ret = PTR_ERR(root);
 		goto out;
 	}
 
 	root_level = btrfs_old_root_level(root, time_seq);
 
-	if (root_level + 1 == level)
+	if (root_level + 1 == level) {
+		srcu_read_unlock(&fs_info->subvol_srcu, index);
 		goto out;
+	}
 
 	path->lowest_level = level;
 	ret = btrfs_search_old_slot(root, &ref->key_for_search, path, time_seq);
+
+	/* root node has been locked, we can release @subvol_srcu safely here */
+	srcu_read_unlock(&fs_info->subvol_srcu, index);
+
 	pr_debug("search slot in root %llu (level %d, ref count %d) returned "
 		 "%d for key (%llu %u %llu)\n",
 		 (unsigned long long)ref->root_id, level, ref->count, ret,
