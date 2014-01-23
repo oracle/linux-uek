@@ -9,6 +9,7 @@
 #include "qla_gbl.h"
 #include <linux/delay.h>
 #include <linux/vmalloc.h>
+#include <linux/delay.h>
 
 #define TIMEOUT_100_MS 100
 
