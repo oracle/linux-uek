@@ -3105,6 +3105,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		dwarf_attr(die, DW_AT_data_member_location, &location_attr);
 
 		switch (dwarf_whatform(&location_attr)) {
+		case DW_FORM_data1:
 		case DW_FORM_data2:
 		case DW_FORM_data4:
 		case DW_FORM_data8:
