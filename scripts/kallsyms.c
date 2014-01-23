@@ -35,6 +35,8 @@
 #include <elfutils/libdw.h>
 #include <glib.h>
 
+#include <eu_simple.h>
+
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
 #endif
@@ -813,68 +815,13 @@ static void record_relative_base(void)
 /* Built-in module list computation. */
 
 /*
- * Stub libdwfl callback, use only the ELF handle passed in.
- */
-static int no_debuginfo(Dwfl_Module *mod,
-			void **userdata,
-			const char *modname,
-			Dwarf_Addr base,
-			const char *file_name,
-			const char *debuglink_file,
-			GElf_Word debuglink_crc,
-			char **debuginfo_file_name)
-{
-	return -1;
-}
-
-/*
- * Wrap up dwfl_new() complexities.
- */
-static Dwfl *private_dwfl_new(const char *file_name)
-{
-	const char *err;
-	static Dwfl_Callbacks cb = { .find_debuginfo = no_debuginfo,
-				     .section_address = dwfl_offline_section_address };
-	Dwfl *dwfl = dwfl_begin(&cb);
-
-	if (dwfl == NULL) {
-		err = "initialize libdwfl";
-		goto fail;
-	}
-
-	if (dwfl_report_elf(dwfl, "", file_name, -1, 0) == NULL) {
-		err = "open object file with libdwfl";
-		goto fail;
-	}
-
-	if (dwfl_report_end(dwfl, NULL, NULL) != 0) {
-		err = "finish opening object file with libdwfl";
-		goto fail;
-	}
-
-	return dwfl;
- fail:
-	fprintf(stderr, "Cannot %s for %s: %s\n", err, file_name,
-		dwfl_errmsg(dwfl_errno()));
-	exit(1);
-}
-
-/*
- * The converse of private_dwfl_new().
- */
-static void private_dwfl_free(Dwfl *dwfl)
-{
-	dwfl_report_end(dwfl, NULL, NULL);
-}
-
-/*
  * Populate the symbol_to_module mapping for one built-in module.
  */
 static void read_module_symbols(unsigned int module_name,
 				const char *module_path,
 				GHashTable *module_symbol_seen)
 {
-	Dwfl *dwfl = private_dwfl_new(module_path);
+	Dwfl *dwfl = simple_dwfl_new(module_path);
 	Dwarf_Die *tu = NULL;
 	Dwarf_Addr junk;
 	unsigned int *module_idx = NULL;
@@ -959,7 +906,7 @@ static void read_module_symbols(unsigned int module_name,
 				module_path, dwarf_errmsg(dwarf_errno()));
 		}
 	}
-	private_dwfl_free(dwfl);
+	simple_dwfl_free(dwfl);
 
 	/*
 	 * Work over all the symbols seen in this module and note that in future

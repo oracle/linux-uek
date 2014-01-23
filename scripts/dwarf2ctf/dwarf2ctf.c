@@ -2,7 +2,7 @@
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
  * files, and generate CTF in correspondingly-named files.
  *
- * (C) 2011, 2012 Oracle, Inc.  All rights reserved.
+ * (C) 2011, 2012, 2013, 2014 Oracle, Inc.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -24,8 +24,11 @@
 #include <dwarf.h>
 #include <elfutils/libdwfl.h>
 #include <elfutils/libdw.h>
+#include <elfutils/version.h>
 #include <sys/ctf_api.h>
 #include <glib.h>
+
+#include <eu_simple.h>
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024
@@ -593,16 +596,6 @@ static int count_ctf_members_internal(const char *name, ctf_id_t member,
 				      ulong_t offset, void *count);
 
 /*
- * Wrap up dwfl_new() complexities.
- */
-static Dwfl *private_dwfl_new(const char *file_name);
-
-/*
- * The converse of private_dwfl_new().
- */
-static void private_dwfl_free(Dwfl *dwfl);
-
-/*
  * Given a DIE that may contain a type attribute, look up the target of that
  * attribute and return it, or NULL if none.
  */
@@ -643,18 +636,6 @@ static char *fn_to_module(const char *file_name);
  * Determine, and cache, absolute filenames.
  */
 static const char *abs_file_name(const char *file_name);
-
-/*
- * Stub libdwfl callback, use only the ELF handle passed in.
- */
-static int no_debuginfo(Dwfl_Module *mod __unused__,
-			void **userdata __unused__,
-			const char *modname __unused__,
-			Dwarf_Addr base __unused__,
-			const char *file_name __unused__,
-			const char *debuglink_file __unused__,
-			GElf_Word debuglink_crc __unused__,
-			char **debuginfo_file_name __unused__);
 
 /*
  * Trivial wrapper, avoid an incompatible pointer type warning.
@@ -1247,7 +1228,7 @@ static void init_tu_to_modules(void)
 		 * construct mappings from each TU to "vmlinux".
 		 */
 
-		Dwfl *dwfl = private_dwfl_new(builtin_objects[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_objects[i]);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1260,7 +1241,7 @@ static void init_tu_to_modules(void)
 						     xstrdup(tu_name),
 						     xstrdup("vmlinux"));
 		}
-		private_dwfl_free(dwfl);
+		simple_dwfl_free(dwfl);
 	}
 
 	/*
@@ -1275,7 +1256,7 @@ static void init_tu_to_modules(void)
 		 * mappings from each TU to the module name.
 		 */
 
-		Dwfl *dwfl = private_dwfl_new(builtin_modules[i]);
+		Dwfl *dwfl = simple_dwfl_new(builtin_modules[i]);
 		Dwarf_Die *tu = NULL;
 		Dwarf_Addr junk;
 
@@ -1288,7 +1269,7 @@ static void init_tu_to_modules(void)
 						     xstrdup(tu_name),
 						     xstrdup(module_name));
 		}
-		private_dwfl_free(dwfl);
+		simple_dwfl_free(dwfl);
 		free(module_name);
 	}
 }
@@ -1526,7 +1507,7 @@ static void process_file(const char *file_name,
 	char *fn_module_name = fn_to_module(file_name);
 	const char *module_name = fn_module_name;
 
-	Dwfl *dwfl = private_dwfl_new(file_name);
+	Dwfl *dwfl = simple_dwfl_new(file_name);
 	GHashTable *seen_before = g_hash_table_new_full(g_str_hash, g_str_equal,
 							free, free);
 	Dwarf_Die *tu_die = NULL;
@@ -1603,7 +1584,7 @@ static void process_file(const char *file_name,
 	}
 
 	free(fn_module_name);
-	private_dwfl_free(dwfl);
+	simple_dwfl_free(dwfl);
 	g_hash_table_destroy(seen_before);
 
 	return;
@@ -3436,47 +3417,6 @@ static void write_types(char *output_dir)
 /* Utilities.  */
 
 /*
- * Wrap up dwfl_new() complexities.
- */
-static Dwfl *private_dwfl_new(const char *file_name)
-{
-	const char *err;
-	static Dwfl_Callbacks cb = { .find_debuginfo = no_debuginfo,
-				     .section_address = dwfl_offline_section_address };
-	Dwfl *dwfl = dwfl_begin(&cb);
-
-	if (dwfl == NULL) {
-		err = "initialize libdwfl";
-		goto fail;
-	}
-
-	if (dwfl_report_elf(dwfl, "", file_name, -1, 0) == NULL) {
-		err = "open object file with libdwfl";
-		goto fail;
-	}
-
-	if (dwfl_report_end(dwfl, NULL, NULL) != 0) {
-		err = "finish opening object file with libdwfl";
-		goto fail;
-	}
-
-	return dwfl;
- fail:
-	fprintf(stderr, "Cannot %s for %s: %s\n", err, file_name,
-		dwfl_errmsg(dwfl_errno()));
-	exit(1);
-}
-
-/*
- * The converse of private_dwfl_new().
- */
-static void private_dwfl_free(Dwfl *dwfl)
-{
-	dwfl_report_end(dwfl, NULL, NULL);
-	dwfl_end(dwfl);
-}
-
-/*
  * Given a DIE that may contain a type attribute, look up the target of that
  * attribute and return it, or NULL if none.
  */
@@ -3755,21 +3695,6 @@ static int count_ctf_members_internal(const char *name, ctf_id_t member,
 
 	(*count)++;
 	return 0;
-}
-
-/*
- * Stub libdwfl callback, use only the ELF handle passed in.
- */
-static int no_debuginfo(Dwfl_Module *mod __unused__,
-			void **userdata __unused__,
-			const char *modname __unused__,
-			Dwarf_Addr base __unused__,
-			const char *file_name __unused__,
-			const char *debuglink_file __unused__,
-			GElf_Word debuglink_crc __unused__,
-			char **debuginfo_file_name __unused__)
-{
-	return -1;
 }
 
 /*
