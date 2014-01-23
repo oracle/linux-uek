@@ -1832,10 +1832,10 @@ static void detect_duplicates(const char *module_name,
 }
 
 /*
- * Mark any aggregates contained within a particular type DIE as seen.  This is
- * needed since even nameless aggregates contained within other aggregates can
- * be used as the type of members of the outer aggregate (though they cannot
- * possibly be found in a module different from that of their containing
+ * Mark any types contained within a particular type DIE as seen.  This is
+ * needed since even nameless types contained within other aggregates can be
+ * used as the type of members in any of their enclosing aggregates (though they
+ * cannot possibly be found in a module different from that of their containing
  * aggregate, any more than a structure member can).
  */
 static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
@@ -1858,9 +1858,17 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 	}
 
 	/*
-	 * We are only interested in children of type DW_TAG_structure_type,
-	 * DW_TAG_union_type, or DW_TAG_enumeration_type (and only the former
-	 * two require further recursion, since only they can have members).
+	 * We iterate over all immediate children and recursively call ourselves
+	 * for all those of type DW_TAG_structure_type and DW_TAG_union_type.
+	 *
+	 * Further, everything other than members (which has an entry in
+	 * assembly_tab) needs marking, since these may be declared at structure
+	 * scope rather than being confined to global scope.  Members are
+	 * skipped because they cannot be used as the type of another field.
+	 * These types cannot be duplicates if their containing type is not a
+	 * duplicate, and typedefs cannot occur at this level so they cannot be
+	 * aliased; thus we can mark them directly without going back into the
+	 * top of detect_duplicates().
 	 */
 	int sib_ret;
 
@@ -1870,14 +1878,18 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name)
 		case DW_TAG_union_type:
 			mark_seen_contained(&child, module_name);
 			/* fall through */
-		case DW_TAG_enumeration_type: {
-			char *id = type_id(&child, NULL, NULL);
+		default:
+			if (dwarf_tag(&child) != DW_TAG_member &&
+			    dwarf_tag(&child) <= assembly_len &&
+			    assembly_tab[dwarf_tag(&child)] != NULL) {
 
-			dw_ctf_trace("Marking %s as seen in %s\n", id,
-				     module_name);
-			g_hash_table_replace(id_to_module, id,
-					     xstrdup(module_name));
-		}
+				char *id = type_id(&child, NULL, NULL);
+
+				dw_ctf_trace("Marking %s as seen in %s\n", id,
+					     module_name);
+				g_hash_table_replace(id_to_module, id,
+						     xstrdup(module_name));
+			}
 		}
 	while ((sib_ret = dwarf_siblingof(&child, &child)) == 0);
 
