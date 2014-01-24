@@ -1095,7 +1095,7 @@ static struct page *xen_netbk_alloc_page(struct xen_netbk *netbk,
 					 unsigned long pending_idx)
 {
 	struct page *page;
-	page = alloc_page(GFP_KERNEL|__GFP_COLD);
+	page = alloc_page(GFP_ATOMIC|__GFP_COLD);
 	if (!page)
 		return NULL;
 	set_page_ext(page, netbk, pending_idx);
