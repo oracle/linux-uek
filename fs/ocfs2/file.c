@@ -2358,9 +2358,17 @@ relock:
 				inode->i_sb->s_id, current->comm);
 		/*
 		 * Wait on previous unaligned aio to complete before
-		 * proceeding.
+		 * proceeding. We have to drop the i_mutex because an O_SYNC
+		 * DIO completion (i.e. the ocfs2_sync_file) will take it
+		 * to do the flush
 		 */
+aiodio_wait_again:
+		mutex_unlock(&inode->i_mutex);
 		ocfs2_aiodio_wait(inode);
+		mutex_lock(&inode->i_mutex);
+
+		if (atomic_read(&OCFS2_I(inode)->ip_unaligned_aio))
+			goto aiodio_wait_again;
 
 		/* Mark the iocb as needing a decrement in ocfs2_dio_end_io */
 		atomic_inc(&OCFS2_I(inode)->ip_unaligned_aio);
