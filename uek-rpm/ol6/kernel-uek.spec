@@ -1523,11 +1523,7 @@ fi\
 #
 %define kernel_variant_posttrans() \
 %{expand:%%posttrans %{?1}}\
-(/sbin/grubby --info=`/sbin/grubby --default-kernel`) 2>/dev/null | grep -q "crashkernel=auto"\
-if [ $? -eq 0 ];then\
-  removeArgs="--remove-args=\"crashkernel=auto\""\
-fi\
-/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod ${removeArgs} --update %{KVERREL}%{?1:.%{1}} || exit $?\
+/sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --mkinitrd --dracut --depmod --update %{KVERREL}%{?1:.%{1}} || exit $?\
 /sbin/new-kernel-pkg --package kernel%{?1:-%{1}} --rpmposttrans %{KVERREL}%{?1:.%{1}} || exit $?\
 if [ -x /sbin/weak-modules ]\
 then\
