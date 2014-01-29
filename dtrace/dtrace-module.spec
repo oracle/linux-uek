@@ -91,6 +91,15 @@ communicate with the DTrace kernel module.
 %package -n dtrace-modules-provider-headers
 Summary:	Header files for implementation of DTrace providers.
 Requires:	dtrace-modules-headers
+%{lua:
+	local obsoleted = {"16.1.1", "16.2.1", "16.2.2", "16.2.3", "16.3.1",
+                           "16.3.2", "16.3.3", "16"}
+
+        for ignore, vers in ipairs(obsoleted) do
+                print("Obsoletes: dtrace-modules-3.8.13-" .. vers ..
+                      ".el6uek-provider-headers\n")
+        end
+}
 %description -n dtrace-modules-provider-headers
 This package contains header files defining the API used to implement DTrace
 providers.
