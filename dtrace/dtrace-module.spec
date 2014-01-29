@@ -30,7 +30,7 @@
 
 	if rpm.vercmp(kver, "3.8.13-22") >= 0 then
 		rpm.define("srcver 0.4.2")
-		rpm.define("bldrel 2")
+		rpm.define("bldrel 3")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_2}"))
 	elseif rpm.vercmp(kver, "3.8.13-16.2.1") >= 0 then
 		rpm.define("srcver 0.4.1")
@@ -210,8 +210,10 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_4_2}
+* Wed Jan 29 2014 Nick Alcock <nick.alcock@oracle.com> - 0.4.2-3
+- Obsolete the old provider headers package. [Orabug: 18061595]
 * Mon Jan 27 2014 Nick Alcock <nick.alcock@oracle.com> - 0.4.2-2
-- Change name of provider headers package, to avoid conflicts on yum update
+- Change name of provider headers package, to avoid conflicts on yum update.
   [Orabug: 18061595]
 * Fri Dec 20 2013 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.2-1
 - Fix 'vtimestamp' implementation.
