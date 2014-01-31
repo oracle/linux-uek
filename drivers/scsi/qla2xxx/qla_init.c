@@ -1846,15 +1846,6 @@ enable_82xx_npiv:
 		spin_unlock_irqrestore(&ha->hardware_lock, flags);
 	}
 
-	// if SR-SRIOV enabled firmware
-	if (IS_QLA83XX(ha) && (ha->fw_attributes_h & BIT_1)) {
-		rval = qla83xx_configure_vfs(vha);
-		if (rval != QLA_SUCCESS) {
-			ql_dbg(ql_dbg_vport, vha, 0xa008,
-			    "ISP Firmware failed to configure VFs.\n");
-		}
-	}
-
 	if (rval == QLA_SUCCESS && IS_FAC_REQUIRED(ha)) {
 		uint32_t size;
 

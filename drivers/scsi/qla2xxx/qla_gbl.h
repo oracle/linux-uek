@@ -729,7 +729,6 @@ extern int qla2x00_get_idma_speed(scsi_qla_host_t *, uint16_t,
 
 /* 83xx related functions */
 extern void qla83xx_fw_dump(scsi_qla_host_t *, int);
-extern int qla83xx_configure_vfs(scsi_qla_host_t *);
 
 /* Minidump related functions */
 extern int qla82xx_md_get_template_size(scsi_qla_host_t *);
