@@ -797,6 +797,7 @@ static int qlcnic_82xx_setup_intr(struct qlcnic_adapter *adapter)
 			return err;
 
 		if (!(adapter->flags & QLCNIC_MSIX_ENABLED)) {
+			adapter->drv_sds_rings = QLCNIC_SINGLE_RING;
 			qlcnic_disable_multi_tx(adapter);
 			qlcnic_enable_msi_legacy(adapter);
 		}
