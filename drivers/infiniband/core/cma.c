@@ -675,7 +675,7 @@ static int cma_modify_qp_rtr(struct rdma_id_private *id_priv,
 	    rdma_port_get_link_layer(id_priv->id.device, id_priv->id.port_num)
 	    == IB_LINK_LAYER_ETHERNET) {
 		ret = rdma_addr_find_smac_by_sgid(&sgid, qp_attr.smac, NULL);
-
+		qp_attr_mask |= IB_QP_SMAC;
 		if (ret)
 			goto out;
 	}
