@@ -1423,7 +1423,7 @@ static int _ext4_get_block(struct inode *inode, sector_t iblock,
 
 	ret = ext4_map_blocks(handle, inode, &map, flags);
 	if (ret > 0) {
-		ext4_io_end_t *io_end = inode->i_private;
+		ext4_io_end_t *io_end = EXT4_I(inode)->cur_aio_dio;
 		map_bh(bh, inode->i_sb, map.m_pblk);
 		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
 		if (io_end && io_end->flag & EXT4_IO_END_UNWRITTEN)
@@ -3713,9 +3713,6 @@ static void ext4_end_io_dio(struct kiocb *iocb, loff_t offset,
 			    bool is_async)
 {
         ext4_io_end_t *io_end = iocb->private;
-	struct workqueue_struct *wq;
-	unsigned long flags;
-	struct ext4_inode_info *ei;
 
 	/* if not async direct IO or dio with 0 bytes write, just return */
 	if (!io_end || !size)
