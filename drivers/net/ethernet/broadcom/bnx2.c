@@ -127,7 +127,7 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 static int disable_msi = 0;
 
 #if (LINUX_VERSION_CODE >= 0x20600)
-module_param(disable_msi, int, 0);
+module_param(disable_msi, int, S_IRUGO);
 MODULE_PARM_DESC(disable_msi, "Disable Message Signaled Interrupt (MSI)");
 #endif
 
