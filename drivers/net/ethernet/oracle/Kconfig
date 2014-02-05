@@ -5,7 +5,7 @@
 config NET_VENDOR_ORACLE
 	bool "Oracle devices"
 	default y
-	depends on PCI || PCI_MSI
+	depends on X86 && (PCI || PCI_MSI)
 	---help---
 	  If you have a network (Ethernet) card belonging to this class, say Y
 	  and read the Ethernet-HOWTO, available from
