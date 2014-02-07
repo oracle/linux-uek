@@ -2291,6 +2291,19 @@ void qlcnic_set_drv_version(struct qlcnic_adapter *adapter)
 		qlcnic_fw_cmd_set_drv_version(adapter, fw_cmd);
 }
 
+/* Ensure API lock is available during load time */
+static void qlcnic_reset_api_lock(struct qlcnic_adapter *adapter)
+{
+	/* Check API lock availability */
+	if (qlcnic_api_lock(adapter)) {
+		/* Lock is not avaialble at load time, reset the lock */
+		qlcnic_api_unlock(adapter);
+	} else {
+		/* Lock is available, release the lock */
+		qlcnic_api_unlock(adapter);
+	}
+}
+
 static int
 qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -2394,6 +2407,7 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (qlcnic_82xx_check(adapter)) {
 		qlcnic_check_vf(adapter, ent);
 		adapter->portnum = adapter->ahw->pci_func;
+		qlcnic_reset_api_lock(adapter);
 		err = qlcnic_start_firmware(adapter);
 		if (err) {
 			dev_err(&pdev->dev, "Loading fw failed.Please Reboot\n"
