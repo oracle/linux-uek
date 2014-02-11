@@ -36,4 +36,29 @@ bool xen_running_on_version_or_later(unsigned int major, unsigned int minor);
 int xen_remap_domain_kernel_mfn_range(unsigned long addr,
 			       xen_pfn_t mfn, int nr,
 			       pgprot_t prot, unsigned domid);
+#ifdef CONFIG_PREEMPT
+
+static inline void xen_preemptible_hcall_begin(void)
+{
+}
+
+static inline void xen_preemptible_hcall_end(void)
+{
+}
+
+#else
+
+DECLARE_PER_CPU(bool, xen_in_preemptible_hcall);
+
+static inline void xen_preemptible_hcall_begin(void)
+{
+	__this_cpu_write(xen_in_preemptible_hcall, true);
+}
+
+static inline void xen_preemptible_hcall_end(void)
+{
+	__this_cpu_write(xen_in_preemptible_hcall, false);
+}
+
+#endif /* CONFIG_PREEMPT */
 #endif /* INCLUDE_XEN_OPS_H */
