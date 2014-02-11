@@ -1391,7 +1391,25 @@ ENTRY(xen_do_hypervisor_callback)   # do_hypervisor_callback(struct *pt_regs)
 	popq %rsp
 	CFI_DEF_CFA_REGISTER rsp
 	decl PER_CPU_VAR(irq_count)
+#ifdef CONFIG_PREEMPT
 	jmp  error_exit
+#else
+	movl %ebx, %eax
+	RESTORE_REST
+	DISABLE_INTERRUPTS(CLBR_NONE)
+	TRACE_IRQS_OFF
+	GET_THREAD_INFO(%rcx)
+	testl %eax, %eax
+	je error_exit_user
+	cmpl $0,TI_preempt_count(%rcx)
+	jnz retint_kernel
+	cmpb $0,PER_CPU_VAR(xen_in_preemptible_hcall)
+	jz retint_kernel
+	movb $0,PER_CPU_VAR(xen_in_preemptible_hcall)
+	call preempt_schedule_irq
+	movb $1,PER_CPU_VAR(xen_in_preemptible_hcall)
+	jmp retint_kernel
+#endif
 	CFI_ENDPROC
 END(xen_do_hypervisor_callback)
 
@@ -1616,6 +1634,7 @@ ENTRY(error_exit)
 	GET_THREAD_INFO(%rcx)
 	testl %eax,%eax
 	jne retint_kernel
+error_exit_user:
 	LOCKDEP_SYS_EXIT_IRQ
 	movl TI_flags(%rcx),%edx
 	movl $_TIF_WORK_MASK,%edi

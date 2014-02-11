@@ -1063,7 +1063,30 @@ ENTRY(xen_hypervisor_callback)
 ENTRY(xen_do_upcall)
 1:	mov %esp, %eax
 	call xen_evtchn_do_upcall
+#ifdef CONFIG_PREEMPT
 	jmp  ret_from_intr
+#else
+	GET_THREAD_INFO(%ebp)
+#ifdef CONFIG_VM86
+	movl PT_EFLAGS(%esp), %eax	# mix EFLAGS and CS
+	movb PT_CS(%esp), %al
+	andl $(X86_EFLAGS_VM | SEGMENT_RPL_MASK), %eax
+#else
+	movl PT_CS(%esp), %eax
+	andl $SEGMENT_RPL_MASK, %eax
+#endif
+	cmpl $USER_RPL, %eax
+	jae resume_userspace		# returning to v8086 or userspace
+	DISABLE_INTERRUPTS(CLBR_ANY)
+	cmpl $0,TI_preempt_count(%ebp)	# non-zero preempt_count ?
+	jnz resume_kernel
+	cmpb $0,PER_CPU_VAR(xen_in_preemptible_hcall)
+	jz resume_kernel
+	movb $0,PER_CPU_VAR(xen_in_preemptible_hcall)
+	call preempt_schedule_irq
+	movb $1,PER_CPU_VAR(xen_in_preemptible_hcall)
+	jmp resume_kernel
+#endif /* CONFIG_PREEMPT */
 	CFI_ENDPROC
 ENDPROC(xen_hypervisor_callback)
 
