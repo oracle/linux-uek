@@ -754,12 +754,15 @@ static void rds_exit(void)
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_deregister_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+
 }
 module_exit(rds_exit);
 
 static int rds_init(void)
 {
 	int ret;
+
+	rds_bind_lock_init();
 
 	ret = rds_conn_init();
 	if (ret)
