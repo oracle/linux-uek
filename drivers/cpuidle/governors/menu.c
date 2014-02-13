@@ -201,29 +201,45 @@ static void detect_repeating_patterns(struct menu_device *data)
 	int i;
 	uint64_t avg = 0;
 	uint64_t stddev = 0; /* contains the square of the std deviation */
+	uint64_t max = 0;
 
 	/* first calculate average and standard deviation of the past */
-	for (i = 0; i < INTERVALS; i++)
+	/* HACK - discard the highest sample as it may be garbage */
+	for (i = 0; i < INTERVALS; i++) {
+		if (data->intervals[i] > max)
+			max = data->intervals[i];
 		avg += data->intervals[i];
-	avg = avg / INTERVALS;
+	}
+	avg -= max;
+	do_div(avg, INTERVALS - 1);
 
+/* dont rely on standard deviation */
+#if 0
 	/* if the avg is beyond the known next tick, it's worthless */
 	if (avg > data->expected_us)
 		return;
 
 	for (i = 0; i < INTERVALS; i++)
 		stddev += (data->intervals[i] - avg) *
-			  (data->intervals[i] - avg);
+			(data->intervals[i] - avg);
 
 	stddev = stddev / INTERVALS;
-
+#endif
 	/*
 	 * now.. if stddev is small.. then assume we have a
 	 * repeating pattern and predict we keep doing this.
 	 */
 
+	/* all we want to do is replace predicted_us if
+	 * our average is better than what the other code predicted.
+	 */
+	if (avg < data->predicted_us)
+		data->predicted_us = avg;
+
+#if 0
 	if (avg && stddev < STDDEV_THRESH)
 		data->predicted_us = avg;
+#endif
 }
 
 /**
@@ -253,9 +269,14 @@ static int menu_select(struct cpuidle_device *dev)
 
 	/* determine the expected residency time, round up */
 	t = ktime_to_timespec(tick_nohz_get_sleep_length());
-	data->expected_us =
-		t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
-
+	/* HACK - sometimes the sleep length shows very large values
+	 * clip it to 1 second
+	 */
+	if (t.tv_sec) {
+		t.tv_sec = 1;
+		t.tv_nsec = 0;
+	}
+	data->expected_us = t.tv_sec * USEC_PER_SEC + t.tv_nsec / NSEC_PER_USEC;
 
 	data->bucket = which_bucket(data->expected_us);
 
