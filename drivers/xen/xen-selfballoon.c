@@ -176,6 +176,7 @@ static void frontswap_selfshrink(void)
 		tgt_frontswap_pages = cur_frontswap_pages -
 			(cur_frontswap_pages / frontswap_hysteresis);
 	frontswap_shrink(tgt_frontswap_pages);
+	frontswap_inertia_counter = frontswap_inertia;
 }
 
 static int __init xen_nofrontswap_selfshrink_setup(char *s)
