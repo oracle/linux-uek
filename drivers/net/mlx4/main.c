@@ -174,12 +174,18 @@ module_param_named(log_num_mtt, mod_param_profile.num_mtt, int, 0444);
 MODULE_PARM_DESC(log_num_mtt,
 		 "log maximum number of memory translation table segments per HCA");
 
-static int log_mtts_per_seg = ilog2(MLX4_MTT_ENTRY_PER_SEG);
+static int log_mtts_per_seg;
 module_param_named(log_mtts_per_seg, log_mtts_per_seg, int, 0444);
 MODULE_PARM_DESC(log_mtts_per_seg, "Log2 number of MTT entries per segment (1-7)");
 
 static void __mlx4_init_parallel_one(struct work_struct *);
 static void __mlx4_init_one_common(struct pci_dev *, const struct pci_device_id *);
+
+static int mlx4_enable_dynamic_mtt;
+module_param_named(enable_dynamic_mtt, mlx4_enable_dynamic_mtt, int, 0644);
+MODULE_PARM_DESC(enable_dynamic_mtt, "Dynamically adjust log_num_mtt based on system memory");
+
+#define MLX4_LOG_NUM_MTT   37
 
 static void process_mod_param_profile(void)
 {
@@ -201,9 +207,7 @@ static void process_mod_param_profile(void)
 	default_profile.num_mpt = (mod_param_profile.num_mpt ?
 				  1 << mod_param_profile.num_mpt :
 				  default_profile.num_mpt);
-	default_profile.num_mtt = (mod_param_profile.num_mtt ?
-				  1 << mod_param_profile.num_mtt :
-				  default_profile.num_mtt);
+
 }
 
 struct mlx4_port_config
@@ -2436,6 +2440,36 @@ static int __init mlx4_verify_params(void)
 	if ((log_num_mac < 0) || (log_num_mac > 7)) {
 		printk(KERN_WARNING "mlx4_core: bad num_mac: %d\n", log_num_mac);
 		return -1;
+	}
+
+	/* Dynamically adjust num_mtt only if log_num_mtt is not set by user */
+	if (mlx4_enable_dynamic_mtt &&  ! mod_param_profile.num_mtt) {
+		int log_mtt;
+
+		/*
+		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
+		 * if dynamic MTT is enabled, have 4 MTT pages per segment (if not set by user).
+		 * MTT memory = 2 * total memory
+		 */
+		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : 2;
+
+		/*
+		 * Set the boundary for dynamic MTT.
+		 */
+		log_mtt = max(mod_param_profile.num_mtt,
+				min(MLX4_LOG_NUM_MTT, ilog2((totalram_pages << 1) >> log_mtts_per_seg)));
+		default_profile.num_mtt = 1 << log_mtt;
+
+		printk(KERN_INFO "Dynamic MTT is enabled. log_num_mtt is set to %d.\n", log_mtt);
+	} else {
+		if (mlx4_enable_dynamic_mtt && mod_param_profile.num_mtt)
+			printk(KERN_WARNING "Both enable_dynamic_mtt and log_num_mtt are set. Ignore enable_dynamic_mtt.\n");
+
+		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : ilog2(MLX4_MTT_ENTRY_PER_SEG);
+
+		default_profile.num_mtt = (mod_param_profile.num_mtt ?
+			1 << mod_param_profile.num_mtt :
+			default_profile.num_mtt);
 	}
 
 	if ((log_mtts_per_seg < 1) || (log_mtts_per_seg > 7)) {
