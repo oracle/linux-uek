@@ -15,7 +15,6 @@
 
 #define QLC_DCB_GET_MAP(V)		(1 << V)
 
-#define QLC_DCB_AEN_BIT			0x2
 #define QLC_DCB_FW_VER			0x2
 #define QLC_DCB_MAX_TC			0x8
 #define QLC_DCB_MAX_APP			0x8
@@ -330,8 +329,6 @@ static int __qlcnic_dcb_attach(struct qlcnic_dcb *dcb)
 		err = -ENOMEM;
 		goto out_free_cfg;
 	}
-
-	qlcnic_dcb_get_info(dcb);
 
 	return 0;
 out_free_cfg:
