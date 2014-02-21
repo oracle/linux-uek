@@ -1449,7 +1449,7 @@ unsigned long long __init arch_default_crash_size(unsigned long long total_size)
 		/*
 		 * Filtering logic in kdump initrd requires 2bits per 4K page.
 		 * Hence reserve 2bits per 4K of RAM (or 1byte per 16K of RAM)
-		 * on top of base of 128M (KEXEC_AUTO_RESERVED_SIZE).
+		 * on top of base of 256M (KEXEC_AUTO_RESERVED_SIZE).
 		 */
 		return KEXEC_AUTO_RESERVED_SIZE +
 			roundup((total_size - KEXEC_AUTO_RESERVED_SIZE)

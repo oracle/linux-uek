@@ -177,7 +177,7 @@ extern crash_vmclear_fn __rcu *crash_vmclear_loaded_vmcss;
 #ifdef CONFIG_KEXEC_AUTO_RESERVE
 
 #ifndef KEXEC_AUTO_RESERVED_SIZE
-#define KEXEC_AUTO_RESERVED_SIZE (1ULL<<27) /* 128M */
+#define KEXEC_AUTO_RESERVED_SIZE (1ULL<<28) /* 256M */
 #endif
 #ifndef KEXEC_AUTO_THRESHOLD
 #define KEXEC_AUTO_THRESHOLD (1ULL<<31) /* 2G */
