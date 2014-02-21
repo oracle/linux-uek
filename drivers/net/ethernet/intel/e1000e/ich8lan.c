@@ -1,30 +1,28 @@
-/*******************************************************************************
-
-  Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+/*
+ * Intel PRO/1000 Linux driver
+ * Copyright(c) 1999 - 2014 Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * The full GNU General Public License is included in this distribution in
+ * the file called "COPYING".
+ *
+ * Contact Information:
+ * Linux NICS <linux.nics@intel.com>
+ * e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ */
 
 /* 82562G 10/100 Network Connection
  * 82562G-2 10/100 Network Connection
@@ -137,6 +135,7 @@ static void e1000_rar_set_pch2lan(struct e1000_hw *hw, u8 *addr, u32 index);
 static void e1000_rar_set_pch_lpt(struct e1000_hw *hw, u8 *addr, u32 index);
 static s32 e1000_k1_workaround_lv(struct e1000_hw *hw);
 static void e1000_gate_hw_phy_config_ich8lan(struct e1000_hw *hw, bool gate);
+static s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force);
 static s32 e1000_setup_copper_link_pch_lpt(struct e1000_hw *hw);
 static s32 e1000_oem_bits_config_ich8lan(struct e1000_hw *hw, bool d0_state);
 
@@ -371,7 +370,6 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 
 	hw->phy.ops.release(hw);
 	if (!ret_val) {
-		int i = 0;
 
 		/* Check to see if able to reset PHY.  Print error if not */
 		if (hw->phy.ops.check_reset_block(hw)) {
@@ -394,10 +392,7 @@ static s32 e1000_init_phy_workarounds_pchlan(struct e1000_hw *hw)
 		 * return E1000E_BLK_PHY_RESET, as this is the condition that
 		 *  the PHY is in.
 		 */
-		while ((ret_val = hw->phy.ops.check_reset_block(hw)) &&
-		       (i++ < 10))
-			usleep_range(10000, 20000);
-
+		ret_val = hw->phy.ops.check_reset_block(hw);
 		if (ret_val)
 			e_err("ME blocked access to PHY after reset\n");
 	}
@@ -1025,6 +1020,14 @@ static s32 e1000_platform_pm_pch_lpt(struct e1000_hw *hw, bool link)
 
 		if (lat_enc > max_ltr_enc)
 			lat_enc = max_ltr_enc;
+#ifdef DYNAMIC_LTR_SUPPORT
+		hw->dev_spec.ich8lan.lat_enc = lat_enc;
+		hw->dev_spec.ich8lan.max_ltr_enc = max_ltr_enc;
+		if ((hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_LM3) ||
+		    (hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_V3))
+			lat_enc = max_ltr_enc;
+
+#endif /* DYNAMIC_LTR_SUPPORT */
 	}
 
 	/* Set Snoop and No-Snoop latencies the same */
@@ -1034,6 +1037,39 @@ static s32 e1000_platform_pm_pch_lpt(struct e1000_hw *hw, bool link)
 	return 0;
 }
 
+#ifdef DYNAMIC_LTR_SUPPORT
+/**
+ * e1000_demote_ltr - Demote/Promote the LTR value
+ * @hw: pointer to the HW structure
+ * @demote: boolean value to control whether we are demoting or promoting
+ *    the LTR value (promoting allows deeper C-States).
+ * @link: boolean value stating whether we currently have link
+ *
+ * Configure the LTRV register with the proper LTR value
+ **/
+void e1000_demote_ltr(struct e1000_hw *hw, bool demote, bool link)
+{
+	u32 reg = link << (E1000_LTRV_REQ_SHIFT + E1000_LTRV_NOSNOOP_SHIFT) |
+	    link << E1000_LTRV_REQ_SHIFT | E1000_LTRV_SEND;
+
+	if ((hw->adapter->pdev->device != E1000_DEV_ID_PCH_I218_LM3) &&
+	    (hw->adapter->pdev->device != E1000_DEV_ID_PCH_I218_V3))
+		return;
+
+	if (demote) {
+		reg |= hw->dev_spec.ich8lan.lat_enc |
+		    (hw->dev_spec.ich8lan.lat_enc << E1000_LTRV_NOSNOOP_SHIFT);
+	} else {
+		reg |= hw->dev_spec.ich8lan.max_ltr_enc |
+		    (hw->dev_spec.ich8lan.max_ltr_enc <<
+		     E1000_LTRV_NOSNOOP_SHIFT);
+	}
+
+	ew32(LTRV, reg);
+	return;
+}
+
+#endif /* DYNAMIC_LTR_SUPPORT */
 /**
  *  e1000_enable_ulp_lpt_lp - configure Ultra Low Power mode for LynxPoint-LP
  *  @hw: pointer to the HW structure
@@ -1154,7 +1190,7 @@ out:
  *  the driver or during Sx->S0 transitions, this is called with force=true
  *  to forcibly disable ULP.
  */
-s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
+static s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
 {
 	s32 ret_val = 0;
 	u32 mac_reg;
@@ -1203,13 +1239,13 @@ s32 e1000_disable_ulp_lpt_lp(struct e1000_hw *hw, bool force)
 		goto out;
 	}
 
-	if (force)
-		/* Toggle LANPHYPC Value bit */
-		e1000_toggle_lanphypc_pch_lpt(hw);
-
 	ret_val = hw->phy.ops.acquire(hw);
 	if (ret_val)
 		goto out;
+
+	if (force)
+		/* Toggle LANPHYPC Value bit */
+		e1000_toggle_lanphypc_pch_lpt(hw);
 
 	/* Unforce SMBus mode in PHY */
 	ret_val = e1000_read_phy_reg_hv_locked(hw, CV_SMB_CTRL, &phy_reg);
@@ -1318,14 +1354,17 @@ static s32 e1000_check_for_copper_link_ich8lan(struct e1000_hw *hw)
 			return ret_val;
 	}
 
-	/* When connected at 10Mbps half-duplex, 82579 parts are excessively
+	/* When connected at 10Mbps half-duplex, some parts are excessively
 	 * aggressive resulting in many collisions. To avoid this, increase
 	 * the IPG and reduce Rx latency in the PHY.
 	 */
-	if ((hw->mac.type == e1000_pch2lan) && link) {
+	if (((hw->mac.type == e1000_pch2lan) ||
+	     (hw->mac.type == e1000_pch_lpt)) && link) {
 		u32 reg;
 		reg = er32(STATUS);
 		if (!(reg & (E1000_STATUS_FD | E1000_STATUS_SPEED_MASK))) {
+			u16 emi_addr;
+
 			reg = er32(TIPG);
 			reg &= ~E1000_TIPG_IPGT_MASK;
 			reg |= 0xFF;
@@ -1336,8 +1375,11 @@ static s32 e1000_check_for_copper_link_ich8lan(struct e1000_hw *hw)
 			if (ret_val)
 				return ret_val;
 
-			ret_val =
-			    e1000_write_emi_reg_locked(hw, I82579_RX_CONFIG, 0);
+			if (hw->mac.type == e1000_pch2lan)
+				emi_addr = I82579_RX_CONFIG;
+			else
+				emi_addr = I217_RX_CONFIG;
+			ret_val = e1000_write_emi_reg_locked(hw, emi_addr, 0);
 
 			hw->phy.ops.release(hw);
 
@@ -1617,9 +1659,9 @@ static bool e1000_check_mng_mode_ich8lan(struct e1000_hw *hw)
 	u32 fwsm;
 
 	fwsm = er32(FWSM);
-	return ((fwsm & E1000_ICH_FWSM_FW_VALID) &&
-		((fwsm & E1000_FWSM_MODE_MASK) ==
-		 (E1000_ICH_MNG_IAMT_MODE << E1000_FWSM_MODE_SHIFT)));
+	return (fwsm & E1000_ICH_FWSM_FW_VALID) &&
+	    ((fwsm & E1000_FWSM_MODE_MASK) ==
+	     (E1000_ICH_MNG_IAMT_MODE << E1000_FWSM_MODE_SHIFT));
 }
 
 /**
@@ -1788,10 +1830,13 @@ out:
  **/
 static s32 e1000_check_reset_block_ich8lan(struct e1000_hw *hw)
 {
-	u32 fwsm;
+	bool blocked = false;
+	int i = 0;
 
-	fwsm = er32(FWSM);
-	return (fwsm & E1000_ICH_FWSM_RSPCIPHY) ? 0 : E1000_BLK_PHY_RESET;
+	while ((blocked = !(er32(FWSM) & E1000_ICH_FWSM_RSPCIPHY)) &&
+	       (i++ < 10))
+		usleep_range(10000, 20000);
+	return blocked ? E1000_BLK_PHY_RESET : 0;
 }
 
 /**

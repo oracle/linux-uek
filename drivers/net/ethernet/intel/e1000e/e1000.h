@@ -1,30 +1,28 @@
-/*******************************************************************************
-
-  Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+/*
+ * Intel PRO/1000 Linux driver
+ * Copyright(c) 1999 - 2014 Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * The full GNU General Public License is included in this distribution in
+ * the file called "COPYING".
+ *
+ * Contact Information:
+ * Linux NICS <linux.nics@intel.com>
+ * e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ */
 
 /* Linux PRO/1000 Ethernet Driver main header file */
 
@@ -312,6 +310,12 @@ struct e1000_adapter {
 #ifdef HAVE_HW_TIME_STAMP
 	u32 rx_hwtstamp_cleared;
 #endif
+#ifdef DYNAMIC_LTR_SUPPORT
+	u64 c10_mpc_count;	/* frequently updated MPC count */
+	u64 c10_rx_bytes;	/* frequently updated RX bytes count */
+	u32 c10_pba_bytes;	/* current PBA RXA converted to bytes*/
+	bool c10_demote_ltr;	/* is/should LTR be demoted */
+#endif /* DYNAMIC_LTR_SUPPORT */
 
 	unsigned int rx_ps_pages;
 	u16 rx_ps_bsize0;
@@ -446,6 +450,8 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca);
  * 25MHz	46-bit	2^46 / 10^9 / 3600 = 19.55 hours
  */
 #define E1000_SYSTIM_OVERFLOW_PERIOD	(HZ * 60 * 60 * 4)
+#define E1000_MAX_82574_SYSTIM_REREADS 50
+#define E1000_82574_SYSTIM_EPSILON (1ULL << 35ULL)
 #endif /* HAVE_HW_TIME_STAMP */
 
 /* hardware capability, feature, and workaround flags */
@@ -511,7 +517,6 @@ s32 e1000e_get_base_timinca(struct e1000_adapter *adapter, u32 *timinca);
 
 enum e1000_state_t {
 	__E1000_OBFF_DISABLED,
-	__E1000_SHUTDOWN,
 	__E1000_TESTING,
 	__E1000_RESETTING,
 	__E1000_ACCESS_SHARED_RESOURCE,

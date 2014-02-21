@@ -1,30 +1,28 @@
-/*******************************************************************************
-
-  Intel PRO/1000 Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
-
-  This program is free software; you can redistribute it and/or modify it
-  under the terms and conditions of the GNU General Public License,
-  version 2, as published by the Free Software Foundation.
-
-  This program is distributed in the hope it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
-
-  The full GNU General Public License is included in this distribution in
-  the file called "COPYING".
-
-  Contact Information:
-  Linux NICS <linux.nics@intel.com>
-  e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
-  Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
-
-*******************************************************************************/
+/*
+ * Intel PRO/1000 Linux driver
+ * Copyright(c) 1999 - 2014 Intel Corporation.
+ *
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ *
+ * The full GNU General Public License is included in this distribution in
+ * the file called "COPYING".
+ *
+ * Contact Information:
+ * Linux NICS <linux.nics@intel.com>
+ * e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
+ * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
+ */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -60,7 +58,7 @@
 #define DRV_EXTRAVERSION ""
 #endif
 
-#define DRV_VERSION "2.5.4" DRV_EXTRAVERSION
+#define DRV_VERSION "3.0.4" DRV_EXTRAVERSION
 char e1000e_driver_name[] = "e1000e";
 const char e1000e_driver_version[] = DRV_VERSION;
 
@@ -748,6 +746,30 @@ map_skb:
 	rx_ring->next_to_use = i;
 }
 
+#ifdef DYNAMIC_LTR_SUPPORT
+
+static void e1000e_check_ltr_demote(struct e1000_adapter *adapter,
+				    unsigned int current_rx_bytes)
+{
+	struct e1000_hw *hw = &adapter->hw;
+	u32 mpc;
+
+	mpc = er32(MPC);
+	adapter->c10_mpc_count += mpc;
+	adapter->c10_rx_bytes += current_rx_bytes;
+
+	/* If not already demoted and either a missed packet or
+	 * have received bytes enough to have filled the RX_PBA
+	 * then demote LTR
+	 */
+	if (!adapter->c10_demote_ltr &&
+	    (mpc || (current_rx_bytes > adapter->c10_pba_bytes))) {
+		adapter->c10_demote_ltr = true;
+		e1000_demote_ltr(hw, adapter->c10_demote_ltr, true);
+	}
+}
+#endif /* DYNAMIC_LTR_SUPPORT */
+
 /**
  * e1000_alloc_rx_buffers_ps - Replace used receive buffers; packet split
  * @rx_ring: Rx descriptor ring
@@ -1105,6 +1127,9 @@ next_desc:
 	if (cleaned_count)
 		adapter->alloc_rx_buf(rx_ring, cleaned_count, GFP_ATOMIC);
 
+#ifdef DYNAMIC_LTR_SUPPORT
+	e1000e_check_ltr_demote(adapter, total_rx_bytes);
+#endif /* DYNAMIC_LTR_SUPPORT */
 	adapter->total_rx_bytes += total_rx_bytes;
 	adapter->total_rx_packets += total_rx_packets;
 #ifdef HAVE_NDO_GET_STATS64
@@ -1554,6 +1579,9 @@ next_desc:
 	if (cleaned_count)
 		adapter->alloc_rx_buf(rx_ring, cleaned_count, GFP_ATOMIC);
 
+#ifdef DYNAMIC_LTR_SUPPORT
+	e1000e_check_ltr_demote(adapter, total_rx_bytes);
+#endif /* DYNAMIC_LTR_SUPPORT */
 	adapter->total_rx_bytes += total_rx_bytes;
 	adapter->total_rx_packets += total_rx_packets;
 #ifdef HAVE_NDO_GET_STATS64
@@ -1747,6 +1775,9 @@ next_desc:
 	if (cleaned_count)
 		adapter->alloc_rx_buf(rx_ring, cleaned_count, GFP_ATOMIC);
 
+#ifdef DYNAMIC_LTR_SUPPORT
+	e1000e_check_ltr_demote(adapter, total_rx_bytes);
+#endif /* DYNAMIC_LTR_SUPPORT */
 	adapter->total_rx_bytes += total_rx_bytes;
 	adapter->total_rx_packets += total_rx_packets;
 #ifdef HAVE_NDO_GET_STATS64
@@ -1834,7 +1865,7 @@ static void e1000_clean_rx_ring(struct e1000_ring *rx_ring)
 	adapter->flags2 &= ~FLAG2_IS_DISCARDING;
 
 	writel(0, rx_ring->head);
-	if (rx_ring->adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+	if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
 		e1000e_update_rdt_wa(rx_ring, 0);
 	else
 		writel(0, rx_ring->tail);
@@ -2590,9 +2621,7 @@ err:
  **/
 static void e1000_clean_tx_ring(struct e1000_ring *tx_ring)
 {
-#ifdef CONFIG_BQL
 	struct e1000_adapter *adapter = tx_ring->adapter;
-#endif
 	struct e1000_buffer *buffer_info;
 	unsigned long size;
 	unsigned int i;
@@ -2612,7 +2641,7 @@ static void e1000_clean_tx_ring(struct e1000_ring *tx_ring)
 	tx_ring->next_to_clean = 0;
 
 	writel(0, tx_ring->head);
-	if (tx_ring->adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
+	if (adapter->flags2 & FLAG2_PCIM2PCI_ARBITER_WA)
 		e1000e_update_tdt_wa(tx_ring, 0);
 	else
 		writel(0, tx_ring->tail);
@@ -4331,6 +4360,11 @@ void e1000e_reset(struct e1000_adapter *adapter)
 	 */
 	if (adapter->flags & FLAG_HAS_AMT)
 		e1000e_get_hw_control(adapter);
+#ifdef DYNAMIC_LTR_SUPPORT
+
+	adapter->c10_pba_bytes = er32(PBA) & 0x1F;
+	adapter->c10_pba_bytes <<= 10;
+#endif /* DYNAMIC_LTR_SUPPORT */
 
 	ew32(WUC, 0);
 
@@ -4376,9 +4410,10 @@ void e1000e_reset(struct e1000_adapter *adapter)
 			return;
 		}
 
-		e1000_write_emi_reg_locked(hw, adv_addr,
-					   hw->dev_spec.ich8lan.eee_disable ?
-					   0 : adapter->eee_advert);
+		/* Set EEE advertising to either default or
+		 * whatever the user has defined using ethtool
+		 */
+		e1000_write_emi_reg_locked(hw, adv_addr, adapter->eee_advert);
 
 		hw->phy.ops.release(hw);
 	}
@@ -4470,6 +4505,11 @@ void e1000e_down(struct e1000_adapter *adapter, bool reset)
 	 */
 	set_bit(__E1000_DOWN, &adapter->state);
 
+#ifdef DYNAMIC_LTR_SUPPORT
+	adapter->c10_demote_ltr = false;
+	e1000_demote_ltr(hw, false, false);
+#endif /* DYNAMIC_LTR_SUPPORT */
+
 	/* disable receives in the hardware */
 	rctl = er32(RCTL);
 	if (!(adapter->flags2 & FLAG2_NO_DISABLE_RX))
@@ -4545,12 +4585,36 @@ static cycle_t e1000e_cyclecounter_read(const struct cyclecounter *cc)
 	struct e1000_adapter *adapter = container_of(cc, struct e1000_adapter,
 						     cc);
 	struct e1000_hw *hw = &adapter->hw;
-	cycle_t systim;
-
+	cycle_t systim, systim_next;
 	/* latch SYSTIMH on read of SYSTIML */
 	systim = (cycle_t)er32(SYSTIML);
 	systim |= (cycle_t)er32(SYSTIMH) << 32;
 
+	if ((hw->mac.type == e1000_82574) || (hw->mac.type == e1000_82583)) {
+		u64 incvalue, time_delta, rem, temp;
+		int i;
+
+		/* errata for 82574/82583 possible bad bits read from SYSTIMH/L
+		 * check to see that the time is incrementing at a reasonable
+		 * rate and is a multiple of incvalue
+		 */
+		incvalue = er32(TIMINCA) & E1000_TIMINCA_INCVALUE_MASK;
+		for (i = 0; i < E1000_MAX_82574_SYSTIM_REREADS; i++) {
+			/* latch SYSTIMH on read of SYSTIML */
+			systim_next = (cycle_t)er32(SYSTIML);
+			systim_next |= (cycle_t)er32(SYSTIMH) << 32;
+
+			time_delta = systim_next - systim;
+			temp = time_delta;
+			rem = do_div(temp, incvalue);
+
+			systim = systim_next;
+
+			if ((time_delta < E1000_82574_SYSTIM_EPSILON) &&
+			    (rem == 0))
+				break;
+		}
+	}
 	return systim;
 }
 #endif /* HAVE_HW_TIME_STAMP */
@@ -4997,7 +5061,7 @@ static void e1000e_update_phy_task(struct work_struct *work)
 	e1000_get_phy_info(hw);
 
 	/* Enable EEE on 82579 after link up */
-	if (hw->phy.type == e1000_phy_82579)
+	if (hw->phy.type >= e1000_phy_82579)
 		e1000_set_eee_pchlan(hw);
 }
 
@@ -5127,11 +5191,23 @@ void e1000e_update_stats(struct e1000_adapter *adapter)
 	adapter->stats.gprc += er32(GPRC);
 	adapter->stats.gorc += er32(GORCL);
 	er32(GORCH);		/* Clear gorc */
+#ifdef DYNAMIC_LTR_SUPPORT
+	adapter->c10_rx_bytes = adapter->stats.gorc;
+#endif /* DYNAMIC_LTR_SUPPORT */
 	adapter->stats.bprc += er32(BPRC);
 	adapter->stats.mprc += er32(MPRC);
 	adapter->stats.roc += er32(ROC);
 
+#ifdef DYNAMIC_LTR_SUPPORT
+	/* adapter->c10_mpc_count is being updated in IRQ context in the
+	 * clean_rx functions.  This is only when DYNAMIC_LTR_SUPPORT is
+	 * defined, otherwise fall back to updating stats.mpc directly from
+	 * the MPC register
+	 */
+	adapter->stats.mpc = adapter->c10_mpc_count;
+#else
 	adapter->stats.mpc += er32(MPC);
+#endif /* DYNAMIC_LTR_SUPPORT */
 
 	/* Half-duplex statistics */
 	if (adapter->link_duplex == HALF_DUPLEX) {
@@ -5400,9 +5476,18 @@ static void e1000_watchdog_task(struct work_struct *work)
 	struct e1000_ring *tx_ring = adapter->tx_ring;
 	struct e1000_hw *hw = &adapter->hw;
 	u32 link, tctl;
-
+#ifdef DYNAMIC_LTR_SUPPORT
+	if (test_bit(__E1000_DOWN, &adapter->state)) {
+		if (adapter->c10_demote_ltr) {
+			adapter->c10_demote_ltr = false;
+			e1000_demote_ltr(hw, adapter->c10_demote_ltr, false);
+		}
+		return;
+	}
+#else
 	if (test_bit(__E1000_DOWN, &adapter->state))
 		return;
+#endif /* DYNAMIC_LTR_SUPPORT */
 
 	link = e1000e_has_link(adapter);
 	if ((netif_carrier_ok(netdev)) && link) {
@@ -5547,6 +5632,19 @@ static void e1000_watchdog_task(struct work_struct *work)
 	}
 
 link_up:
+#ifdef DYNAMIC_LTR_SUPPORT
+	if (((hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_LM3) ||
+	     (hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_V3)) &&
+	    adapter->c10_demote_ltr &&
+	    (adapter->stats.mpc <= adapter->c10_mpc_count) &&
+	    ((adapter->c10_rx_bytes - adapter->stats.gorc) <
+	     adapter->c10_pba_bytes)) {
+		adapter->c10_demote_ltr = false;
+		e1000_demote_ltr(hw, adapter->c10_demote_ltr, link);
+	}
+	adapter->c10_rx_bytes = adapter->total_rx_bytes;
+
+#endif /* DYNAMIC_LTR_SUPPORT */
 #ifdef HAVE_NDO_GET_STATS64
 	spin_lock(&adapter->stats64_lock);
 #endif
@@ -6342,6 +6440,9 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
 	adapter->max_frame_size = max_frame;
 	e_info("changing MTU from %d to %d\n", netdev->mtu, new_mtu);
 	netdev->mtu = new_mtu;
+
+	pm_runtime_get_sync((netdev_to_dev(netdev))->parent);
+
 	if (netif_running(netdev))
 		e1000e_down(adapter, true);
 
@@ -6377,6 +6478,8 @@ static int e1000_change_mtu(struct net_device *netdev, int new_mtu)
 		e1000e_up(adapter);
 	else
 		e1000e_reset(adapter);
+
+	pm_runtime_put_sync((netdev_to_dev(netdev))->parent);
 
 	clear_bit(__E1000_RESETTING, &adapter->state);
 
@@ -6610,6 +6713,30 @@ release:
 	return retval;
 }
 
+static void e1000e_flush_lpic(struct pci_dev *pdev)
+{
+	struct net_device *netdev = pci_get_drvdata(pdev);
+	struct e1000_adapter *adapter = netdev_priv(netdev);
+	struct e1000_hw *hw = &adapter->hw;
+	u32 ret_val;
+
+	pm_runtime_get_sync((netdev_to_dev(netdev))->parent);
+
+	ret_val = hw->phy.ops.acquire(hw);
+	if (ret_val)
+		goto fl_out;
+
+	pr_info("EEE TX LPI TIMER: %08X\n",
+		er32(LPIC) >> E1000_LPIC_LPIET_SHIFT);
+
+	hw->phy.ops.release(hw);
+
+fl_out:
+	pm_runtime_put_sync(netdev->dev.parent);
+
+	return;
+}
+
 static int e1000e_pm_freeze(struct device *dev)
 {
 	struct net_device *netdev = pci_get_drvdata(to_pci_dev(dev));
@@ -6709,11 +6836,7 @@ static int __e1000_shutdown(struct pci_dev *pdev, bool runtime)
 	if (adapter->hw.phy.type == e1000_phy_igp_3) {
 		e1000e_igp3_phy_powerdown_workaround_ich8lan(&adapter->hw);
 	} else if (hw->mac.type == e1000_pch_lpt) {
-		/* Disable ULP in S5; enable in other Sx and RPM */
-		if (test_bit(__E1000_SHUTDOWN, &adapter->state))
-			retval = e1000_disable_ulp_lpt_lp(hw, true);
-		else if (!(wufc & (E1000_WUFC_EX | E1000_WUFC_MC |
-				   E1000_WUFC_BC)))
+		if (!(wufc & (E1000_WUFC_EX | E1000_WUFC_MC | E1000_WUFC_BC)))
 			/* ULP does not support wake from unicast, multicast
 			 * or broadcast.
 			 */
@@ -6721,6 +6844,33 @@ static int __e1000_shutdown(struct pci_dev *pdev, bool runtime)
 
 		if (retval)
 			return retval;
+	}
+
+	/* Ensure that the appropriate bits are set in LPI_CTRL
+	 * for EEE in Sx
+	 */
+	if ((hw->phy.type >= e1000_phy_i217) &&
+	    adapter->eee_advert && hw->dev_spec.ich8lan.eee_lp_ability) {
+		u16 lpi_ctrl = 0;
+		retval = hw->phy.ops.acquire(hw);
+		if (!retval) {
+			retval = e1e_rphy_locked(hw, I82579_LPI_CTRL,
+						 &lpi_ctrl);
+			if (!retval) {
+				if (adapter->eee_advert &
+				    hw->dev_spec.ich8lan.eee_lp_ability &
+				    I82579_EEE_100_SUPPORTED)
+					lpi_ctrl |= I82579_LPI_CTRL_100_ENABLE;
+				if (adapter->eee_advert &
+				    hw->dev_spec.ich8lan.eee_lp_ability &
+				    I82579_EEE_1000_SUPPORTED)
+					lpi_ctrl |= I82579_LPI_CTRL_1000_ENABLE;
+
+				retval = e1e_wphy_locked(hw, I82579_LPI_CTRL,
+							 lpi_ctrl);
+			}
+		}
+		hw->phy.ops.release(hw);
 	}
 
 	/* Release control of h/w to f/w.  If f/w is AMT enabled, this
@@ -6907,7 +7057,7 @@ static int e1000e_pm_thaw(struct device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
+#ifdef CONFIG_PM
 #ifndef USE_LEGACY_PM_SUPPORT
 static int e1000e_pm_suspend(struct device *dev)
 #else
@@ -6917,8 +7067,12 @@ static int e1000e_pm_suspend(struct pci_dev *pdev, pm_message_t state)
 #ifndef USE_LEGACY_PM_SUPPORT
 	struct pci_dev *pdev = to_pci_dev(dev);
 
+	e1000e_flush_lpic(pdev);
+
 	e1000e_pm_freeze(dev);
 #else
+	e1000e_flush_lpic(pdev);
+
 	e1000e_pm_freeze(pci_dev_to_dev(pdev));
 #endif
 
@@ -6946,7 +7100,7 @@ static int e1000e_pm_resume(struct pci_dev *pdev)
 	return e1000e_pm_thaw(pci_dev_to_dev(pdev));
 #endif
 }
-#endif /* CONFIG_PM_SLEEP */
+#endif /* CONFIG_PM */
 
 #ifndef USE_LEGACY_PM_SUPPORT
 #ifdef CONFIG_PM_RUNTIME
@@ -7011,10 +7165,6 @@ static int e1000e_pm_runtime_suspend(struct device *dev)
 #ifndef USE_REBOOT_NOTIFIER
 static void e1000_shutdown(struct pci_dev *pdev)
 {
-	struct e1000_adapter *adapter = netdev_priv(pci_get_drvdata(pdev));
-
-	set_bit(__E1000_SHUTDOWN, &adapter->state);
-
 	e1000e_pm_freeze(&pdev->dev);
 
 	__e1000_shutdown(pdev, false);
@@ -7712,6 +7862,20 @@ static int e1000_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	/* initialize the wol settings based on the eeprom settings */
 	adapter->wol = adapter->eeprom_wol;
+#ifdef DYNAMIC_LTR_SUPPORT
+
+	/* initialize the DYNAMIC_LTR_SUPPORT variables */
+	adapter->c10_mpc_count = 0;
+	adapter->c10_rx_bytes = 0;
+	/* bottom 5 bits of PBA holds RXA in KBytes */
+	adapter->c10_pba_bytes = er32(PBA) & 0x1F;
+	adapter->c10_pba_bytes <<= 10;
+	if ((hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_LM3) ||
+	    (hw->adapter->pdev->device == E1000_DEV_ID_PCH_I218_V3))
+		adapter->c10_demote_ltr = false;
+	else
+		adapter->c10_demote_ltr = true;
+#endif /* DYNAMIC_LTR_SUPPORT */
 
 	/* make sure adapter isn't asleep if manageability is enabled */
 	if (adapter->wol || (adapter->flags & FLAG_MNG_PT_ENABLED) ||
@@ -8003,7 +8167,7 @@ static int __init e1000_init_module(void)
 	int ret;
 	pr_info("Intel(R) PRO/1000 Network Driver - %s\n",
 		e1000e_driver_version);
-	pr_info("Copyright(c) 1999 - 2013 Intel Corporation.\n");
+	pr_info("Copyright(c) 1999 - 2014 Intel Corporation.\n");
 	ret = pci_register_driver(&e1000_driver);
 #ifdef USE_REBOOT_NOTIFIER
 	if (ret >= 0)
