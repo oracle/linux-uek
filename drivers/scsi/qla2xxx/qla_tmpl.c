@@ -678,7 +678,8 @@ qla27xx_fwdt_entry_t274(struct scsi_qla_host *vha,
 			if (req || !buf) {
 				qla27xx_insert16(i, buf, len);
 				qla27xx_insert16(1, buf, len);
-				qla27xx_insert32(0, buf, len);
+				qla27xx_insert32(req && req->out_ptr ?
+				    *req->out_ptr : 0, buf, len);
 				count++;
 			}
 		}
@@ -688,7 +689,8 @@ qla27xx_fwdt_entry_t274(struct scsi_qla_host *vha,
 			if (rsp || !buf) {
 				qla27xx_insert16(i, buf, len);
 				qla27xx_insert16(1, buf, len);
-				qla27xx_insert32(0, buf, len);
+				qla27xx_insert32(rsp && rsp->in_ptr ?
+				    *rsp->in_ptr : 0, buf, len);
 				count++;
 			}
 		}
