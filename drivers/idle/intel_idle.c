@@ -90,6 +90,7 @@ static struct cpuidle_state *cpuidle_state_table;
  * Indicate which enable bits to clear here.
  */
 static unsigned long long auto_demotion_disable_flags;
+static bool disable_promotion_to_c1e;
 
 /*
  * Set this flag for states where the HW flushes the TLB for us
@@ -113,6 +114,14 @@ static struct cpuidle_state nehalem_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.flags = CPUIDLE_FLAG_TIME_VALID,
 		.exit_latency = 3,
 		.target_residency = 6,
+		.enter = &intel_idle },
+	{ /* MWAIT C1E */
+		.name = "C1E-NHM",
+		.desc = "MWAIT 0x01",
+		.driver_data = (void *) 0x01,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 10,
+		.target_residency = 20,
 		.enter = &intel_idle },
 	{ /* MWAIT C2 */
 		.name = "C3-NHM",
@@ -139,8 +148,16 @@ static struct cpuidle_state snb_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.desc = "MWAIT 0x00",
 		.driver_data = (void *) 0x00,
 		.flags = CPUIDLE_FLAG_TIME_VALID,
-		.exit_latency = 1,
-		.target_residency = 1,
+		.exit_latency = 2,
+		.target_residency = 2,
+		.enter = &intel_idle },
+	{ /* MWAIT C1E */
+		.name = "C1E-SNB",
+		.desc = "MWAIT 0x01",
+		.driver_data = (void *) 0x01,
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 10,
+		.target_residency = 20,
 		.enter = &intel_idle },
 	{ /* MWAIT C2 */
 		.name = "C3-SNB",
@@ -177,26 +194,33 @@ static struct cpuidle_state ivb_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.exit_latency = 1,
 		.target_residency = 1,
 		.enter = &intel_idle },
+	{ /* MWAIT C1E */
+		.name = "C1E-IVB",
+		.desc = "MWAIT 0x01",
+		.flags = CPUIDLE_FLAG_TIME_VALID,
+		.exit_latency = 10,
+		.target_residency = 5000,
+		.enter = &intel_idle },
 	{ /* MWAIT C2 */
 		.name = "C3-IVB",
 		.desc = "MWAIT 0x10",
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 59,
-		.target_residency = 156,
+		.target_residency = 6000,
 		.enter = &intel_idle },
 	{ /* MWAIT C3 */
 		.name = "C6-IVB",
 		.desc = "MWAIT 0x20",
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 80,
-		.target_residency = 300,
+		.target_residency = 8000,
 		.enter = &intel_idle },
 	{ /* MWAIT C4 */
 		.name = "C7-IVB",
 		.desc = "MWAIT 0x30",
 		.flags = CPUIDLE_FLAG_TIME_VALID | CPUIDLE_FLAG_TLB_FLUSHED,
 		.exit_latency = 87,
-		.target_residency = 300,
+		.target_residency = 9000,
 		.enter = &intel_idle },
 };
 
@@ -329,12 +353,23 @@ static void auto_demotion_disable(void *dummy)
 	wrmsrl(MSR_NHM_SNB_PKG_CST_CFG_CTL, msr_bits);
 }
 
+static void c1e_promotion_disable(void *dummy)
+{
+	unsigned long long msr_bits;
+
+	rdmsrl(MSR_IA32_POWER_CTL, msr_bits);
+	msr_bits &= ~0x2;
+	wrmsrl(MSR_IA32_POWER_CTL, msr_bits);
+}
+
 /*
  * intel_idle_probe()
  */
 static int intel_idle_probe(void)
 {
 	unsigned int eax, ebx, ecx;
+
+	disable_promotion_to_c1e = false;
 
 	if (max_cstate == 0) {
 		pr_debug(PREFIX "disabled\n");
@@ -375,6 +410,7 @@ static int intel_idle_probe(void)
 		cpuidle_state_table = nehalem_cstates;
 		auto_demotion_disable_flags =
 			(NHM_C1_AUTO_DEMOTE | NHM_C3_AUTO_DEMOTE);
+		disable_promotion_to_c1e = true;
 		break;
 
 	case 0x1C:	/* 28 - Atom Processor */
@@ -389,10 +425,12 @@ static int intel_idle_probe(void)
 	case 0x2A:	/* SNB */
 	case 0x2D:	/* SNB Xeon */
 		cpuidle_state_table = snb_cstates;
+		disable_promotion_to_c1e = true;
 		break;
 	case 0x3A: 	/* IVB Xeon */	
 	case 0x3E: 	/* IVB Xeon */	
 		cpuidle_state_table = ivb_cstates;
+		disable_promotion_to_c1e = true;
 		break;
 
 	default:
@@ -497,6 +535,9 @@ static int intel_idle_cpuidle_devices_init(void)
 	}
 	if (auto_demotion_disable_flags)
 		on_each_cpu(auto_demotion_disable, NULL, 1);
+
+	if (disable_promotion_to_c1e)
+		on_each_cpu(c1e_promotion_disable, NULL, 1);
 
 	return 0;
 }
