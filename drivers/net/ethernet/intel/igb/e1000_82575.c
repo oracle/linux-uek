@@ -223,6 +223,7 @@ static s32 e1000_init_phy_params_82575(struct e1000_hw *hw)
 	/* Verify phy id and set remaining function pointers */
 	switch (phy->id) {
 	case M88E1543_E_PHY_ID:
+	case M88E1512_E_PHY_ID:
 	case I347AT4_E_PHY_ID:
 	case M88E1112_E_PHY_ID:
 	case M88E1340M_E_PHY_ID:
@@ -235,7 +236,8 @@ static s32 e1000_init_phy_params_82575(struct e1000_hw *hw)
 		    phy->id == M88E1340M_E_PHY_ID)
 			phy->ops.get_cable_length =
 					 e1000_get_cable_length_m88_gen2;
-		else if (phy->id == M88E1543_E_PHY_ID)
+		else if (phy->id == M88E1543_E_PHY_ID ||
+			 phy->id == M88E1512_E_PHY_ID)
 			phy->ops.get_cable_length =
 					 e1000_get_cable_length_m88_gen2;
 		else
@@ -263,6 +265,11 @@ static s32 e1000_init_phy_params_82575(struct e1000_hw *hw)
 			    data == E1000_M88E1112_AUTO_COPPER_BASEX)
 				hw->mac.ops.check_for_link =
 						e1000_check_for_link_media_swap;
+		}
+		if (phy->id == M88E1512_E_PHY_ID) {
+			ret_val = e1000_initialize_M88E1512_phy(hw);
+			if (ret_val)
+				goto out;
 		}
 		break;
 	case IGP03E1000_E_PHY_ID:
@@ -651,10 +658,9 @@ static s32 e1000_get_phy_id_82575(struct e1000_hw *hw)
 
 	DEBUGFUNC("e1000_get_phy_id_82575");
 
-	/* i354 devices can have a PHY that needs an extra read for id */
+	/* some i354 devices need an extra read for phy id */
 	if (hw->mac.type == e1000_i354)
 		e1000_get_phy_id(hw);
-
 
 	/*
 	 * For SGMII PHYs, we try the list of possible addresses until
@@ -747,6 +753,7 @@ out:
 static s32 e1000_phy_hw_reset_sgmii_82575(struct e1000_hw *hw)
 {
 	s32 ret_val = E1000_SUCCESS;
+	struct e1000_phy_info *phy = &hw->phy;
 
 	DEBUGFUNC("e1000_phy_hw_reset_sgmii_82575");
 
@@ -769,7 +776,11 @@ static s32 e1000_phy_hw_reset_sgmii_82575(struct e1000_hw *hw)
 		goto out;
 
 	ret_val = hw->phy.ops.commit(hw);
+	if (ret_val)
+		goto out;
 
+	if (phy->id == M88E1512_E_PHY_ID)
+		ret_val = e1000_initialize_M88E1512_phy(hw);
 out:
 	return ret_val;
 }
@@ -1243,6 +1254,11 @@ static s32 e1000_check_for_link_media_swap(struct e1000_hw *hw)
 	if (ret_val)
 		return ret_val;
 
+	/* reset page to 0 */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1112_PAGE_ADDR, 0);
+	if (ret_val)
+		return ret_val;
+
 	if (data & E1000_M88E1112_STATUS_LINK)
 		port = E1000_MEDIA_PORT_OTHER;
 
@@ -1564,6 +1580,7 @@ static s32 e1000_setup_copper_link_82575(struct e1000_hw *hw)
 		case M88E1112_E_PHY_ID:
 		case M88E1340M_E_PHY_ID:
 		case M88E1543_E_PHY_ID:
+		case M88E1512_E_PHY_ID:
 		case I210_I_PHY_ID:
 			ret_val = e1000_copper_link_setup_m88_gen2(hw);
 			break;
@@ -2778,6 +2795,95 @@ s32 e1000_read_emi_reg(struct e1000_hw *hw, u16 addr, u16 *data)
 }
 
 /**
+ *  e1000_initialize_M88E1512_phy - Initialize M88E1512 PHY
+ *  @hw: pointer to the HW structure
+ *
+ *  Initialize Marverl 1512 to work correctly with Avoton.
+ **/
+s32 e1000_initialize_M88E1512_phy(struct e1000_hw *hw)
+{
+	struct e1000_phy_info *phy = &hw->phy;
+	s32 ret_val = E1000_SUCCESS;
+
+	DEBUGFUNC("e1000_initialize_M88E1512_phy");
+
+	/* Check if this is correct PHY. */
+	if (phy->id != M88E1512_E_PHY_ID)
+		goto out;
+
+	/* Switch to PHY page 0xFF. */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1543_PAGE_ADDR, 0x00FF);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_2, 0x214B);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_1, 0x2144);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_2, 0x0C28);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_1, 0x2146);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_2, 0xB233);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_1, 0x214D);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_2, 0xCC0C);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_1, 0x2159);
+	if (ret_val)
+		goto out;
+
+	/* Switch to PHY page 0xFB. */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1543_PAGE_ADDR, 0x00FB);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_CFG_REG_3, 0x000D);
+	if (ret_val)
+		goto out;
+
+	/* Switch to PHY page 0x12. */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1543_PAGE_ADDR, 0x12);
+	if (ret_val)
+		goto out;
+
+	/* Change mode to SGMII-to-Copper */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1512_MODE, 0x8001);
+	if (ret_val)
+		goto out;
+
+	/* Return the PHY to page 0. */
+	ret_val = phy->ops.write_reg(hw, E1000_M88E1543_PAGE_ADDR, 0);
+	if (ret_val)
+		goto out;
+
+	ret_val = phy->ops.commit(hw);
+	if (ret_val) {
+		DEBUGOUT("Error committing the PHY changes\n");
+		return ret_val;
+	}
+
+	msec_delay(1000);
+out:
+	return ret_val;
+}
+
+/**
  *  e1000_set_eee_i350 - Enable/disable EEE support
  *  @hw: pointer to the HW structure
  *
@@ -2838,7 +2944,8 @@ s32 e1000_set_eee_i354(struct e1000_hw *hw)
 	DEBUGFUNC("e1000_set_eee_i354");
 
 	if ((hw->phy.media_type != e1000_media_type_copper) ||
-	    ((phy->id != M88E1543_E_PHY_ID)))
+	    ((phy->id != M88E1543_E_PHY_ID) &&
+	    (phy->id != M88E1512_E_PHY_ID)))
 		goto out;
 
 	if (!hw->dev_spec._82575.eee_disable) {
@@ -2912,7 +3019,8 @@ s32 e1000_get_eee_status_i354(struct e1000_hw *hw, bool *status)
 
 	/* Check if EEE is supported on this device. */
 	if ((hw->phy.media_type != e1000_media_type_copper) ||
-	    ((phy->id != M88E1543_E_PHY_ID)))
+	    ((phy->id != M88E1543_E_PHY_ID) &&
+	    (phy->id != M88E1512_E_PHY_ID)))
 		goto out;
 
 	ret_val = e1000_read_xmdio_reg(hw, E1000_PCS_STATUS_ADDR_I354,

@@ -810,6 +810,7 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
 {
 	s32 ret_val;
 	u16 nvm_data;
+	u16 nvm_offset = 0;
 
 	DEBUGFUNC("e1000_set_default_fc_generic");
 
@@ -821,7 +822,18 @@ static s32 e1000_set_default_fc_generic(struct e1000_hw *hw)
 	 * control setting, then the variable hw->fc will
 	 * be initialized based on a value in the EEPROM.
 	 */
-	ret_val = hw->nvm.ops.read(hw, NVM_INIT_CONTROL2_REG, 1, &nvm_data);
+	if (hw->mac.type == e1000_i350) {
+		nvm_offset = NVM_82580_LAN_FUNC_OFFSET(hw->bus.func);
+		ret_val = hw->nvm.ops.read(hw,
+					   NVM_INIT_CONTROL2_REG +
+					   nvm_offset,
+					   1, &nvm_data);
+	} else {
+		ret_val = hw->nvm.ops.read(hw,
+					   NVM_INIT_CONTROL2_REG,
+					   1, &nvm_data);
+	}
+
 
 	if (ret_val) {
 		DEBUGOUT("NVM Read Error\n");

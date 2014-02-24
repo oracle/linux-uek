@@ -1775,6 +1775,7 @@ s32 e1000_phy_force_speed_duplex_m88(struct e1000_hw *hw)
 			case M88E1340M_E_PHY_ID:
 			case M88E1112_E_PHY_ID:
 			case M88E1543_E_PHY_ID:
+			case M88E1512_E_PHY_ID:
 			case I210_I_PHY_ID:
 				reset_dsp = false;
 				break;
@@ -1817,7 +1818,8 @@ s32 e1000_phy_force_speed_duplex_m88(struct e1000_hw *hw)
 		return E1000_SUCCESS;
 	if (hw->phy.id == I210_I_PHY_ID)
 		return E1000_SUCCESS;
-	if ((hw->phy.id == M88E1543_E_PHY_ID))
+	if ((hw->phy.id == M88E1543_E_PHY_ID) ||
+	    (hw->phy.id == M88E1512_E_PHY_ID))
 		return E1000_SUCCESS;
 	ret_val = phy->ops.read_reg(hw, M88E1000_EXT_PHY_SPEC_CTRL, &phy_data);
 	if (ret_val)
@@ -2270,19 +2272,23 @@ s32 e1000_phy_has_link_generic(struct e1000_hw *hw, u32 iterations,
 		 * it across the board.
 		 */
 		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS, &phy_status);
-		if (ret_val)
+		if (ret_val) {
 			/* If the first read fails, another entity may have
 			 * ownership of the resources, wait and try again to
 			 * see if they have relinquished the resources yet.
 			 */
-			usec_delay(usec_interval);
+			if (usec_interval >= 1000)
+				msec_delay(usec_interval/1000);
+			else
+				usec_delay(usec_interval);
+		}
 		ret_val = hw->phy.ops.read_reg(hw, PHY_STATUS, &phy_status);
 		if (ret_val)
 			break;
 		if (phy_status & MII_SR_LINK_STATUS)
 			break;
 		if (usec_interval >= 1000)
-			msec_delay_irq(usec_interval/1000);
+			msec_delay(usec_interval/1000);
 		else
 			usec_delay(usec_interval);
 	}
@@ -2365,6 +2371,7 @@ s32 e1000_get_cable_length_m88_gen2(struct e1000_hw *hw)
 		phy->cable_length = phy_data / (is_cm ? 100 : 1);
 		break;
 	case M88E1543_E_PHY_ID:
+	case M88E1512_E_PHY_ID:
 	case M88E1340M_E_PHY_ID:
 	case I347AT4_E_PHY_ID:
 		/* Remember the original page select and set it to 7 */
@@ -2899,6 +2906,7 @@ enum e1000_phy_type e1000_get_phy_type_from_id(u32 phy_id)
 	case M88E1111_I_PHY_ID:
 	case M88E1011_I_PHY_ID:
 	case M88E1543_E_PHY_ID:
+	case M88E1512_E_PHY_ID:
 	case I347AT4_E_PHY_ID:
 	case M88E1112_E_PHY_ID:
 	case M88E1340M_E_PHY_ID:

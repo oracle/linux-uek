@@ -134,7 +134,7 @@ IGB_PARAM(LLISize, "Low Latency Interrupt on Packet Size (0-1500), default 0=off
  *
  * Default Value:  0
  */
-IGB_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues (0-8), default 0, 0=uses the lesser value, cpus number or 8");
+IGB_PARAM(RSS, "Number of Receive-Side Scaling Descriptor Queues (0-8), default 0, 0=uses the lesser value,cpus number or 8");
 
 #define DEFAULT_RSS       0
 #define MAX_RSS           8

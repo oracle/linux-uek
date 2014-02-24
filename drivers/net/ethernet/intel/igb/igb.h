@@ -112,6 +112,8 @@ struct igb_adapter;
 
 /* Transmit and receive queues */
 #define IGB_MAX_RX_QUEUES                 16
+#define IGB_MAX_RX_QUEUES_82575            4
+#define IGB_MAX_RX_QUEUES_I211             2
 #define IGB_MAX_TX_QUEUES                 16
 
 #define IGB_MAX_VF_MC_ENTRIES             30
@@ -325,6 +327,9 @@ struct igb_rx_queue_stats {
 	u64 drops;
 	u64 csum_err;
 	u64 alloc_failed;
+};
+
+struct igb_rx_packet_stats {
 	u64 ipv4_packets;      /* IPv4 headers processed */
 	u64 ipv4e_packets;     /* IPv4E headers with extensions processed */
 	u64 ipv6_packets;      /* IPv6 headers processed */
@@ -333,6 +338,7 @@ struct igb_rx_queue_stats {
 	u64 udp_packets;       /* UDP headers processed */
 	u64 sctp_packets;      /* SCTP headers processed */
 	u64 nfs_packets;       /* NFS headers processe */
+	u64 other_packets;
 };
 
 struct igb_ring_container {
@@ -378,6 +384,7 @@ struct igb_ring {
 		/* RX */
 		struct {
 			struct igb_rx_queue_stats rx_stats;
+			struct igb_rx_packet_stats pkt_stats;
 #ifdef CONFIG_IGB_DISABLE_PACKET_SPLIT
 			u16 rx_buffer_len;
 #else
@@ -406,6 +413,7 @@ struct igb_q_vector {
 #ifndef IGB_NO_LRO
 	struct igb_lro_list lrolist;   /* LRO list for queue vector*/
 #endif
+	struct rcu_head rcu;	/* to avoid race with update stats on free */
 	char name[IFNAMSIZ + 9];
 #ifndef HAVE_NETDEV_NAPI_LIST
 	struct net_device poll_dev;
@@ -506,6 +514,9 @@ struct hwmon_buff {
 	unsigned int n_hwmon;
 	};
 #endif /* IGB_HWMON */
+#ifdef ETHTOOL_GRXFHINDIR
+#define IGB_RETA_SIZE	128
+#endif /* ETHTOOL_GRXFHINDIR */
 
 /* board specific private data structure */
 struct igb_adapter {
@@ -603,6 +614,7 @@ struct igb_adapter {
 	bool mdd;
 	int int_mode;
 	u32 rss_queues;
+	u32 tss_queues;
 	u32 vmdq_pools;
 	char fw_version[32];
 	u32 wvbr;
@@ -656,6 +668,10 @@ struct igb_adapter {
 
 	int copper_tries;
 	u16 eee_advert;
+#ifdef ETHTOOL_GRXFHINDIR
+	u32 rss_indir_tbl_init;
+	u8 rss_indir_tbl[IGB_RETA_SIZE];
+#endif
 };
 
 #ifdef CONFIG_IGB_VMDQ_NETDEV
@@ -768,6 +784,9 @@ extern int igb_up(struct igb_adapter *);
 extern void igb_down(struct igb_adapter *);
 extern void igb_reinit_locked(struct igb_adapter *);
 extern void igb_reset(struct igb_adapter *);
+#ifdef ETHTOOL_SRXFHINDIR
+extern void igb_write_rss_indir_tbl(struct igb_adapter *);
+#endif
 extern int igb_set_spd_dplx(struct igb_adapter *, u16);
 extern int igb_setup_tx_resources(struct igb_ring *);
 extern int igb_setup_rx_resources(struct igb_ring *);
@@ -782,6 +801,7 @@ extern void igb_unmap_and_free_tx_resource(struct igb_ring *,
                                            struct igb_tx_buffer *);
 extern void igb_alloc_rx_buffers(struct igb_ring *, u16);
 extern void igb_clean_rx_ring(struct igb_ring *);
+extern int igb_setup_queues(struct igb_adapter *adapter);
 extern void igb_update_stats(struct igb_adapter *);
 extern bool igb_has_link(struct igb_adapter *adapter);
 extern void igb_set_ethtool_ops(struct net_device *);
