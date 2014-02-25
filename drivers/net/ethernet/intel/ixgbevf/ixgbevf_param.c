@@ -73,10 +73,10 @@
  *
  * Valid Range: 956-488281 (0=off, 1=dynamic)
  *
- * Default Value: 8000
+ * Default Value: 1
  */
-#define DEFAULT_ITR                 8000
-IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281), default 8000, use 1 for dynamic");
+#define DEFAULT_ITR                 1
+IXGBE_PARAM(InterruptThrottleRate, "Maximum interrupts per second, per vector, (956-488281, 0=off, 1=dynamic), default 1");
 #define MAX_ITR       IXGBE_MAX_INT_RATE
 #define MIN_ITR       IXGBE_MIN_INT_RATE
 

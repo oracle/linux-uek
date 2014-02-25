@@ -58,43 +58,33 @@
 #define hw_dbg(hw, S, A...)      do {} while (0)
 #endif
 
-#ifdef DBG
-#define IXGBE_WRITE_REG(a, reg, value) do {\
-	switch (reg) { \
-	case IXGBE_EIMS: \
-	case IXGBE_EIMC: \
-	case IXGBE_EIAM: \
-	case IXGBE_EIAC: \
-	case IXGBE_EICR: \
-	case IXGBE_EICS: \
-		printk("%s: Reg - 0x%05X, value - 0x%08X\n", __FUNCTION__, \
-		       reg, (u32)(value)); \
-	default: \
-		break; \
-	} \
-	writel((value), ((a)->hw_addr + (reg))); \
-} while (0)
+#ifndef NO_SURPRISE_REMOVE_SUPPORT
+#define IXGBE_REMOVED(a) unlikely(!(a))
 #else
-#define IXGBE_WRITE_REG(a, reg, value) writel((value), ((a)->hw_addr + (reg)))
-#endif
+#define IXGBE_REMOVED(a) (0)
+#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 
-#define IXGBE_READ_REG(a, reg) readl((a)->hw_addr + (reg))
+#define IXGBE_FAILED_READ_REG 0xffffffffU
 
-#define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) ( \
-    writel((value), ((a)->hw_addr + (reg) + ((offset) << 2))))
+#define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) \
+    IXGBE_WRITE_REG((a), (reg) + ((offset) << 2), (value))
 
-#define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
-    readl((a)->hw_addr + (reg) + ((offset) << 2)))
+#define IXGBE_READ_REG_ARRAY(a, reg, offset) \
+    IXGBE_READ_REG((a), (reg) + ((offset) << 2))
 
 #ifndef writeq
 #define writeq(val, addr) writel((u32) (val), addr); \
 	writel((u32) (val >> 32), (addr + 4));
 #endif
 
-#define IXGBE_WRITE_REG64(a, reg, value) writeq((value), ((a)->hw_addr + (reg)))
-
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_VFSTATUS)
+
 struct ixgbe_hw;
+
+#ifndef NO_SURPRISE_REMOVE_SUPPORT
+void ixgbevf_check_remove(struct ixgbe_hw *hw, u32 reg);
+
+#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define IXGBE_READ_PCIE_WORD ixgbe_read_pci_cfg_word
@@ -107,4 +97,4 @@ extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 #define ERROR_REPORT1(...) do {} while (0)
 #define ERROR_REPORT2(...) do {} while (0)
 
-#endif /* _IXGBE_OSDEP_H_ */
+#endif /* _IXGBEVF_OSDEP_H_ */
