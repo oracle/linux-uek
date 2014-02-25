@@ -76,8 +76,6 @@
 /* Split and Replication Rx Control - RW */
 #define E1000_RDTR	0x02820  /* Rx Delay Timer - RW */
 #define E1000_RADV	0x0282C  /* Rx Interrupt Absolute Delay Timer - RW */
-#define E1000_EMIADD	0x10     /* Extended Memory Indirect Address */
-#define E1000_EMIDATA	0x11     /* Extended Memory Indirect Data */
 /* Convenience macros
  *
  * Note: "_n" is the queue number of the register to be written to.
@@ -223,8 +221,6 @@
 #define E1000_WUPM	0x05A00  /* Wakeup Packet Memory - RO A */
 #define E1000_FFLT	0x05F00  /* Flexible Filter Length Table - RW Array */
 #define E1000_HOST_IF	0x08800  /* Host Interface */
-#define E1000_FFMT	0x09000  /* Flexible Filter Mask Table - RW Array */
-#define E1000_FFVT	0x09800  /* Flexible Filter Value Table - RW Array */
 
 #define E1000_KMRNCTRLSTA	0x00034 /* MAC-PHY interface - RW */
 #define E1000_MANC2H		0x05860 /* Management Control To Host - RW */

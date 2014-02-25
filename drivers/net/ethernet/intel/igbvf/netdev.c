@@ -50,7 +50,7 @@
 
 #define DRV_DEBUG ""
 
-#define DRV_VERSION "2.3.2" DRV_DEBUG
+#define DRV_VERSION "2.3.3" DRV_DEBUG
 char igbvf_driver_name[] = "igbvf";
 const char igbvf_driver_version[] = DRV_VERSION;
 
@@ -139,7 +139,7 @@ static void igbvf_receive_skb(struct igbvf_adapter *adapter,
 		vid = 0;
 
 #ifndef HAVE_VLAN_RX_REGISTER
-	__vlan_hwaccel_put_tag(skb, vid);
+	__vlan_hwaccel_put_tag(skb,0,vid);
 #else
 	if (vid)
 		vlan_gro_receive(&adapter->rx_ring->napi, adapter->vlgrp,

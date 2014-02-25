@@ -757,8 +757,12 @@ int _kc_pci_save_state(struct pci_dev *pdev)
 
 void _kc_pci_restore_state(struct pci_dev *pdev)
 {
+#if defined(DRIVER_IXGBE) || defined(DRIVER_I40E) || defined(DRIVER_IXGBEVF)
+	struct adapter_struct *adapter = pci_get_drvdata(pdev);
+#else
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct adapter_struct *adapter = netdev_priv(netdev);
+#endif
 	int size = PCI_CONFIG_SPACE_LEN, i;
 	u16 pcie_cap_offset;
 	u16 pcie_link_status;
@@ -813,6 +817,14 @@ void *_kc_kmemdup(const void *src, size_t len, unsigned gfp)
 	return p;
 }
 #endif /* <= 2.6.19 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,21) )
+struct pci_dev *_kc_netdev_to_pdev(struct net_device *netdev)
+{
+	return ((struct adapter_struct *)netdev_priv(netdev))->pdev;
+}
+#endif /* < 2.6.21 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,22) )
@@ -934,13 +946,29 @@ void _kc_print_hex_dump(const char *level,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
 #ifdef NAPI
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
+	defined(DRIVER_IXGBEVF)
+struct net_device *napi_to_poll_dev(const struct napi_struct *napi)
+{
+	struct adapter_q_vector *q_vector = container_of(napi,
+	                                                struct adapter_q_vector,
+	                                                napi);
+	return &q_vector->poll_dev;
+}
+#endif
 
 int __kc_adapter_clean(struct net_device *netdev, int *budget)
 {
 	int work_done;
 	int work_to_do = min(*budget, netdev->quota);
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
+	defined(E1000E_MQ) || defined(DRIVER_IXGBEVF)
+	/* kcompat.h netif_napi_add puts napi struct in "fake netdev->priv" */
+	struct napi_struct *napi = netdev->priv;
+#else
 	struct adapter_struct *adapter = netdev_priv(netdev);
 	struct napi_struct *napi = &adapter->rx_ring[0].napi;
+#endif
 	work_done = napi->poll(napi, work_to_do);
 	*budget -= work_done;
 	netdev->quota -= work_done;
@@ -1057,6 +1085,33 @@ out:
 }
 #endif /* < 2.6.28 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,29) )
+static void __kc_pci_set_master(struct pci_dev *pdev, bool enable)
+{
+	u16 old_cmd, cmd;
+
+	pci_read_config_word(pdev, PCI_COMMAND, &old_cmd);
+	if (enable)
+		cmd = old_cmd | PCI_COMMAND_MASTER;
+	else
+		cmd = old_cmd & ~PCI_COMMAND_MASTER;
+	if (cmd != old_cmd) {
+		dev_dbg(pci_dev_to_dev(pdev), "%s bus mastering\n",
+			enable ? "enabling" : "disabling");
+		pci_write_config_word(pdev, PCI_COMMAND, cmd);
+	}
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,7) )
+	pdev->is_busmaster = enable;
+#endif
+}
+
+void _kc_pci_clear_master(struct pci_dev *dev)
+{
+	__kc_pci_set_master(dev, false);
+}
+#endif /* < 2.6.29 */
+
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,34) )
 #if (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(6,0))
 int _kc_pci_num_vf(struct pci_dev *dev)
@@ -1068,6 +1123,58 @@ int _kc_pci_num_vf(struct pci_dev *dev)
 #endif /* < 2.6.34 */
 
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
+	defined(DRIVER_IXGBEVF)
+#ifdef HAVE_TX_MQ
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
+#ifndef CONFIG_NETDEVICES_MULTIQUEUE
+void _kc_netif_set_real_num_tx_queues(struct net_device *dev, unsigned int txq)
+{
+	unsigned int real_num = dev->real_num_tx_queues;
+	struct Qdisc *qdisc;
+	int i;
+
+	if (unlikely(txq > dev->num_tx_queues))
+		;
+	else if (txq > real_num)
+		dev->real_num_tx_queues = txq;
+	else if ( txq < real_num) {
+		dev->real_num_tx_queues = txq;
+		for (i = txq; i < dev->num_tx_queues; i++) {
+			qdisc = netdev_get_tx_queue(dev, i)->qdisc;
+			if (qdisc) {
+				spin_lock_bh(qdisc_lock(qdisc));
+				qdisc_reset(qdisc);
+				spin_unlock_bh(qdisc_lock(qdisc));
+			}
+		}
+	}
+}
+#endif /* CONFIG_NETDEVICES_MULTIQUEUE */
+#endif /* !(RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)) */
+#endif /* HAVE_TX_MQ */
+
+ssize_t _kc_simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
+				   const void __user *from, size_t count)
+{
+        loff_t pos = *ppos;
+        size_t res;
+
+        if (pos < 0)
+                return -EINVAL;
+        if (pos >= available || !count)
+                return 0;
+        if (count > available - pos)
+                count = available - pos;
+        res = copy_from_user(to + pos, from, count);
+        if (res == count)
+                return -EFAULT;
+        count -= res;
+        *ppos = pos + count;
+        return count;
+}
+
+#endif /* defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) */
 #endif /* < 2.6.35 */
 
 /*****************************************************************************/
@@ -1115,7 +1222,6 @@ void _kc_skb_add_rx_frag(struct sk_buff *skb, int i, struct page *page,
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,7,0) )
-#if !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
 static inline int __kc_pcie_cap_version(struct pci_dev *dev)
 {
 	int pos;
@@ -1270,9 +1376,18 @@ int __kc_pcie_capability_clear_and_set_word(struct pci_dev *dev, int pos,
 
 	return ret;
 }
-#endif /* !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0)) */
+
+int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
+					     u16 clear)
+{
+	return __kc_pcie_capability_clear_and_set_word(dev, pos, clear, 0);
+}
 #endif /* < 3.7.0 */
 
 /******************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,9,0) )
 #endif /* 3.9.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#endif /* 3.10.0 */

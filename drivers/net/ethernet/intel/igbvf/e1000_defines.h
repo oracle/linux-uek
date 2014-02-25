@@ -37,6 +37,8 @@
 /* Wake Up Control */
 #define E1000_WUC_APME		0x00000001 /* APM Enable */
 #define E1000_WUC_PME_EN	0x00000002 /* PME Enable */
+#define E1000_WUC_PME_STATUS	0x00000004 /* PME Status */
+#define E1000_WUC_APMPME	0x00000008 /* Assert PME on APM Wakeup */
 #define E1000_WUC_PHY_WAKE	0x00000100 /* if PHY supports wakeup */
 
 /* Wake Up Filter Control */
@@ -437,9 +439,6 @@
 /* If this bit asserted, the driver should claim the interrupt */
 #define E1000_ICR_INT_ASSERTED	0x80000000
 
-
-#define E1000_ITR_MASK		0x000FFFFF /* ITR value bitfield */
-#define E1000_ITR_MULT		256 /* ITR mulitplier in nsec */
 
 
 /* This defines the bits that are set in the Interrupt Mask
@@ -929,4 +928,7 @@
 #ifndef E1000_UNUSEDARG
 #define E1000_UNUSEDARG
 #endif /* E1000_UNUSEDARG */
+#ifndef ERROR_REPORT
+#define ERROR_REPORT(fmt)	do { } while (0)
+#endif /* ERROR_REPORT */
 #endif /* _E1000_DEFINES_H_ */
