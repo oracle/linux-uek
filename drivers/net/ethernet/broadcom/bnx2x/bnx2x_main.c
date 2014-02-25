@@ -13044,6 +13044,8 @@ static int __devinit bnx2x_init_bp(struct bnx2x *bp)
 #endif
 	bp->disable_tpa = disable_tpa;
 	bp->disable_tpa |= IS_MF_STORAGE_ONLY(bp);
+	/* Reduce memory usage in kdump environment by disabling TPA */
+	bp->disable_tpa |= reset_devices;
 
 	/* Set TPA flags */
 	if (bp->disable_tpa) {
