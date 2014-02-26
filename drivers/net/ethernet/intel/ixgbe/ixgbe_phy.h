@@ -64,6 +64,7 @@
 #define IXGBE_SFF_1GBASET_CAPABLE	0x8
 #define IXGBE_SFF_10GBASESR_CAPABLE	0x10
 #define IXGBE_SFF_10GBASELR_CAPABLE	0x20
+#define IXGBE_SFF_ADDRESSING_MODE	0x4
 #define IXGBE_SFF_QSFP_DA_ACTIVE_CABLE	0x1
 #define IXGBE_SFF_QSFP_DA_PASSIVE_CABLE	0x8
 #define IXGBE_SFF_QSFP_CONNECTOR_NOT_SEPARABLE	0x23
@@ -107,11 +108,6 @@
 
 /* SFP+ SFF-8472 Compliance */
 #define IXGBE_SFF_SFF_8472_UNSUP	0x00
-#define IXGBE_SFF_SFF_8472_REV_9_3	0x01
-#define IXGBE_SFF_SFF_8472_REV_9_5	0x02
-#define IXGBE_SFF_SFF_8472_REV_10_2	0x03
-#define IXGBE_SFF_SFF_8472_REV_10_4	0x04
-#define IXGBE_SFF_SFF_8472_REV_11_0	0x05
 
 s32 ixgbe_init_phy_ops_generic(struct ixgbe_hw *hw);
 bool ixgbe_validate_phy_addr(struct ixgbe_hw *hw, u32 phy_addr);

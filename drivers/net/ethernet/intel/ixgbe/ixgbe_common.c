@@ -97,6 +97,8 @@ s32 ixgbe_init_ops_generic(struct ixgbe_hw *hw)
 	mac->ops.set_lan_id = &ixgbe_set_lan_id_multi_port_pcie;
 	mac->ops.acquire_swfw_sync = &ixgbe_acquire_swfw_sync;
 	mac->ops.release_swfw_sync = &ixgbe_release_swfw_sync;
+	mac->ops.prot_autoc_read = &prot_autoc_read_generic;
+	mac->ops.prot_autoc_write = &prot_autoc_write_generic;
 
 	/* LEDs */
 	mac->ops.led_on = &ixgbe_led_on_generic;
@@ -150,6 +152,7 @@ bool ixgbe_device_supports_autoneg_fc(struct ixgbe_hw *hw)
 	bool link_up;
 
 	switch (hw->phy.media_type) {
+	case ixgbe_media_type_fiber_qsfp:
 	case ixgbe_media_type_fiber:
 		hw->mac.ops.check_link(hw, &speed, &link_up, false);
 		/* if link is down, assume supported */
@@ -194,7 +197,7 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 	s32 ret_val = 0;
 	u32 reg = 0, reg_bp = 0;
 	u16 reg_cu = 0;
-	bool got_lock = false;
+	bool locked = false;
 
 	/*
 	 * Validate the requested mode.  Strict IEEE mode does not allow
@@ -220,10 +223,17 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 	 * we link at 10G, the 1G advertisement is harmless and vice versa.
 	 */
 	switch (hw->phy.media_type) {
-	case ixgbe_media_type_fiber:
 	case ixgbe_media_type_backplane:
+		/* some MAC's need RMW protection on AUTOC */
+		ret_val = hw->mac.ops.prot_autoc_read(hw, &locked, &reg_bp);
+		if (ret_val != 0)
+			goto out;
+
+		/* only backplane uses autoc so fall though */
+	case ixgbe_media_type_fiber_qsfp:
+	case ixgbe_media_type_fiber:
 		reg = IXGBE_READ_REG(hw, IXGBE_PCS1GANA);
-		reg_bp = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+
 		break;
 	case ixgbe_media_type_copper:
 		hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_ADVT,
@@ -318,35 +328,16 @@ static s32 ixgbe_setup_fc(struct ixgbe_hw *hw)
 	 */
 	if (hw->phy.media_type == ixgbe_media_type_backplane) {
 		reg_bp |= IXGBE_AUTOC_AN_RESTART;
-		/* Need the SW/FW semaphore around AUTOC writes if 82599 and
-		 * LESM is on, likewise reset_pipeline requries the lock as
-		 * it also writes AUTOC.
-		 */
-		if ((hw->mac.type == ixgbe_mac_82599EB) &&
-		    ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-			ret_val = hw->mac.ops.acquire_swfw_sync(hw,
-							IXGBE_GSSR_MAC_CSR_SM);
-			if (ret_val != 0) {
-				ret_val = IXGBE_ERR_SWFW_SYNC;
-				goto out;
-			}
-			got_lock = true;
-		}
-
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, reg_bp);
-		if (hw->mac.type == ixgbe_mac_82599EB)
-			ixgbe_reset_pipeline_82599(hw);
-
-		if (got_lock)
-			hw->mac.ops.release_swfw_sync(hw,
-						      IXGBE_GSSR_MAC_CSR_SM);
+		ret_val = hw->mac.ops.prot_autoc_write(hw, reg_bp, locked);
+		if (ret_val)
+			goto out;
 	} else if ((hw->phy.media_type == ixgbe_media_type_copper) &&
 		    (ixgbe_device_supports_autoneg_fc(hw))) {
 		hw->phy.ops.write_reg(hw, IXGBE_MDIO_AUTO_NEG_ADVT,
 				      IXGBE_MDIO_AUTO_NEG_DEV_TYPE, reg_cu);
 	}
 
-	hw_dbg(hw, "Set up FC; IXGBE_AUTOC = 0x%08X\n", reg);
+	hw_dbg(hw, "Set up FC; PCS1GLCTL = 0x%08X\n", reg);
 out:
 	return ret_val;
 }
@@ -2677,6 +2668,7 @@ void ixgbe_fc_autoneg(struct ixgbe_hw *hw)
 
 	switch (hw->phy.media_type) {
 	/* Autoneg flow control on fiber adapters */
+	case ixgbe_media_type_fiber_qsfp:
 	case ixgbe_media_type_fiber:
 		if (speed == IXGBE_LINK_SPEED_1GB_FULL)
 			ret_val = ixgbe_fc_autoneg_fiber(hw);
@@ -2914,6 +2906,36 @@ s32 ixgbe_disable_sec_rx_path_generic(struct ixgbe_hw *hw)
 }
 
 /**
+ *  prot_autoc_read_generic - Hides MAC differences needed for AUTOC read
+ *  @hw: pointer to hardware structure
+ *  @reg_val: Value we read from AUTOC
+ *
+ *  The default case requires no protection so just to the register read.
+ */
+s32 prot_autoc_read_generic(struct ixgbe_hw *hw, bool *locked, u32 *reg_val)
+{
+	*locked = false;
+	*reg_val = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	return 0;
+}
+
+/**
+ * prot_autoc_write_generic - Hides MAC differences needed for AUTOC write
+ * @hw: pointer to hardware structure
+ * @reg_val: value to write to AUTOC
+ * @locked: bool to indicate whether the SW/FW lock was already taken by
+ *           previous read.
+ *
+ * The default case requires no protection so just to the register write.
+ */
+s32 prot_autoc_write_generic(struct ixgbe_hw *hw, u32 reg_val, bool locked)
+{
+
+	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, reg_val);
+	return 0;
+}
+
+/**
  *  ixgbe_enable_sec_rx_path_generic - Enables the receive data path
  *  @hw: pointer to hardware structure
  *
@@ -2954,9 +2976,10 @@ s32 ixgbe_blink_led_start_generic(struct ixgbe_hw *hw, u32 index)
 {
 	ixgbe_link_speed speed = 0;
 	bool link_up = 0;
-	u32 autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	u32 autoc_reg = 0;
 	u32 led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 	s32 ret_val = 0;
+	bool locked = false;
 
 	/*
 	 * Link must be up to auto-blink the LEDs;
@@ -2965,29 +2988,18 @@ s32 ixgbe_blink_led_start_generic(struct ixgbe_hw *hw, u32 index)
 	hw->mac.ops.check_link(hw, &speed, &link_up, false);
 
 	if (!link_up) {
-		/* Need the SW/FW semaphore around AUTOC writes if 82599 and
-		 * LESM is on.
-		 */
-		bool got_lock = false;
-		if ((hw->mac.type == ixgbe_mac_82599EB) &&
-		    ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-			ret_val = hw->mac.ops.acquire_swfw_sync(hw,
-							IXGBE_GSSR_MAC_CSR_SM);
-			if (ret_val != 0) {
-				ret_val = IXGBE_ERR_SWFW_SYNC;
-				goto out;
-			}
-			got_lock = true;
-		}
+		ret_val = hw->mac.ops.prot_autoc_read(hw, &locked, &autoc_reg);
+		if (ret_val != 0)
+			goto out;
 
 		autoc_reg |= IXGBE_AUTOC_AN_RESTART;
 		autoc_reg |= IXGBE_AUTOC_FLU;
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
-		IXGBE_WRITE_FLUSH(hw);
 
-		if (got_lock)
-			hw->mac.ops.release_swfw_sync(hw,
-						      IXGBE_GSSR_MAC_CSR_SM);
+		ret_val = hw->mac.ops.prot_autoc_write(hw, autoc_reg, locked);
+		if (ret_val != 0)
+			goto out;
+
+		IXGBE_WRITE_FLUSH(hw);
 		msleep(10);
 	}
 
@@ -3007,35 +3019,21 @@ out:
  **/
 s32 ixgbe_blink_led_stop_generic(struct ixgbe_hw *hw, u32 index)
 {
-	u32 autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	u32 autoc_reg = 0;
 	u32 led_reg = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
 	s32 ret_val = 0;
-	bool got_lock = false;
+	bool locked = false;
 
-	/* Need the SW/FW semaphore around AUTOC writes if 82599 and
-	 * LESM is on.
-	 */
-	if ((hw->mac.type == ixgbe_mac_82599EB) &&
-	    ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-		ret_val = hw->mac.ops.acquire_swfw_sync(hw,
-						IXGBE_GSSR_MAC_CSR_SM);
-		if (ret_val != 0) {
-			ret_val = IXGBE_ERR_SWFW_SYNC;
-			goto out;
-		}
-		got_lock = true;
-	}
-
+	ret_val = hw->mac.ops.prot_autoc_read(hw, &locked, &autoc_reg);
+	if (ret_val != 0)
+		goto out;
 
 	autoc_reg &= ~IXGBE_AUTOC_FLU;
 	autoc_reg |= IXGBE_AUTOC_AN_RESTART;
-	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg);
 
-	if (hw->mac.type == ixgbe_mac_82599EB)
-		ixgbe_reset_pipeline_82599(hw);
-
-	if (got_lock)
-		hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_MAC_CSR_SM);
+	ret_val = hw->mac.ops.prot_autoc_write(hw, autoc_reg, locked);
+	if (ret_val != 0)
+		goto out;
 
 	led_reg &= ~IXGBE_LED_MODE_MASK(index);
 	led_reg &= ~IXGBE_LED_BLINK(index);

@@ -347,6 +347,8 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
 					   struct ixgbe_option *opt)
 {
 	if (*value == OPTION_UNSET) {
+		printk(KERN_INFO "ixgbe: Invalid %s specified (%d),  %s\n",
+			opt->name, *value, opt->err);
 		*value = opt->def;
 		return 0;
 	}

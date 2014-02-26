@@ -98,6 +98,7 @@
 #define IXGBE_SUBDEV_ID_82599_ECNA_DP		0x0470
 #define IXGBE_SUBDEV_ID_82599_SP_560FLR		0x211B
 #define IXGBE_SUBDEV_ID_82599_LOM_SFP		0x8976
+#define IXGBE_SUBDEV_ID_82599_LOM_SNAP6		0x2159
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
@@ -779,11 +780,6 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_BXOFFRXC		0x041E0
 #define IXGBE_BXONTXC		0x041E4
 #define IXGBE_BXOFFTXC		0x041E8
-#define IXGBE_PCRC8ECL		0x0E810
-#define IXGBE_PCRC8ECH		0x0E811
-#define IXGBE_PCRC8ECH_MASK	0x1F
-#define IXGBE_LDPCECL		0x0E820
-#define IXGBE_LDPCECH		0x0E821
 
 /* Management */
 #define IXGBE_MAVTV(_i)		(0x05010 + ((_i) * 4)) /* 8 of these (0-7) */
@@ -1227,6 +1223,12 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_MDIO_PMA_PMD_SDA_SCL_ADDR	0xC30A /* PHY_XS SDA/SCL Addr Reg */
 #define IXGBE_MDIO_PMA_PMD_SDA_SCL_DATA	0xC30B /* PHY_XS SDA/SCL Data Reg */
 #define IXGBE_MDIO_PMA_PMD_SDA_SCL_STAT	0xC30C /* PHY_XS SDA/SCL Status Reg */
+
+#define IXGBE_PCRC8ECL		0x0E810 /* PCR CRC-8 Error Count Lo */
+#define IXGBE_PCRC8ECH		0x0E811 /* PCR CRC-8 Error Count Hi */
+#define IXGBE_PCRC8ECH_MASK	0x1F
+#define IXGBE_LDPCECL		0x0E820 /* PCR Uncorrected Error Count Lo */
+#define IXGBE_LDPCECH		0x0E821 /* PCR Uncorrected Error Count Hi */
 
 /* MII clause 22/28 definitions */
 #define IXGBE_MDIO_PHY_LOW_POWER_MODE	0x0800
@@ -2489,15 +2491,6 @@ enum ixgbe_fdir_pballoc_type {
 
 #define IXGBE_FDIR_DROP_QUEUE			127
 
-#define IXGBE_STATUS_OVERHEATING_BIT		20 /* STATUS overtemp bit num */
-/* iTS sensor related defines*/
-#define IXGBE_TEMP_STATUS_ADDR_X540		0xC830
-#define IXGBE_TEMP_VALUE_ADDR_X540		0xC820
-#define IXGBE_TEMP_PROV_2_ADDR_X540		0xC421
-#define IXGBE_TEMP_PROV_4_ADDR_X540		0xC423
-#define IXGBE_TEMP_STATUS_PAGE_X540		0x1E
-#define IXGBE_TEMP_HIGH_FAILURE_BIT_X540	0xE
-#define IXGBE_TEMP_HIGH_WARNING_BIT_X540	0xC
 
 /* Manageablility Host Interface defines */
 #define IXGBE_HI_MAX_BLOCK_BYTE_LENGTH	1792 /* Num of bytes in range */
@@ -3141,6 +3134,8 @@ struct ixgbe_mac_operations {
 	s32 (*enable_sec_rx_path)(struct ixgbe_hw *);
 	s32 (*acquire_swfw_sync)(struct ixgbe_hw *, u16);
 	void (*release_swfw_sync)(struct ixgbe_hw *, u16);
+	s32 (*prot_autoc_read)(struct ixgbe_hw *, bool *, u32 *);
+	s32 (*prot_autoc_write)(struct ixgbe_hw *, u32, bool);
 
 	/* Link */
 	void (*disable_tx_laser)(struct ixgbe_hw *);
@@ -3248,7 +3243,6 @@ struct ixgbe_mac_info {
 	u32 max_tx_queues;
 	u32 max_rx_queues;
 	u32 orig_autoc;
-	u32 cached_autoc;
 	u8  san_mac_rar_index;
 	bool get_link_status;
 	u32 orig_autoc2;
@@ -3377,4 +3371,7 @@ struct ixgbe_hw {
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 
 #define UNREFERENCED_XPARAMETER
+
+#include "ixgbe_osdep2.h"
+
 #endif /* _IXGBE_TYPE_H_ */

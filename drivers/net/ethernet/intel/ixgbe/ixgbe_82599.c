@@ -169,7 +169,6 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 {
 	s32 ret_val = 0;
 	u16 list_offset, data_offset, data_value;
-	bool got_lock = false;
 
 	if (hw->phy.sfp_type != ixgbe_sfp_type_unknown) {
 		ixgbe_init_mac_link_ops_82599(hw);
@@ -200,35 +199,15 @@ s32 ixgbe_setup_sfp_modules_82599(struct ixgbe_hw *hw)
 
 		/* Release the semaphore */
 		hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_MAC_CSR_SM);
-		/* Delay obtaining semaphore again to allow FW access */
+		/* Delay obtaining semaphore again to allow FW access
+		 * prot_autoc_write uses the semaphore too.
+		 */
 		msleep(hw->eeprom.semaphore_delay);
 
-		/* Need SW/FW semaphore around AUTOC writes if LESM on,
-		 * likewise reset_pipeline requires lock as it also writes
-		 * AUTOC.
-		 */
-		if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-			ret_val = hw->mac.ops.acquire_swfw_sync(hw,
-							IXGBE_GSSR_MAC_CSR_SM);
-			if (ret_val != 0) {
-				ret_val = IXGBE_ERR_SWFW_SYNC;
-				goto setup_sfp_out;
-			}
-
-			got_lock = true;
-		}
-
 		/* Restart DSP and set SFI mode */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, ((hw->mac.orig_autoc) |
-				IXGBE_AUTOC_LMS_10G_SERIAL));
-		hw->mac.cached_autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
-		ret_val = ixgbe_reset_pipeline_82599(hw);
-
-		if (got_lock) {
-			hw->mac.ops.release_swfw_sync(hw,
-						      IXGBE_GSSR_MAC_CSR_SM);
-			got_lock = false;
-		}
+		ret_val = hw->mac.ops.prot_autoc_write(hw,
+			hw->mac.orig_autoc | IXGBE_AUTOC_LMS_10G_SERIAL,
+			false);
 
 		if (ret_val) {
 			hw_dbg(hw, "sfp module setup not complete\n");
@@ -249,6 +228,74 @@ setup_sfp_err:
 	ERROR_REPORT2(IXGBE_ERROR_INVALID_STATE,
 		      "eeprom read at offset %d failed", data_offset);
 	return IXGBE_ERR_PHY;
+}
+
+/**
+ *  prot_autoc_read_82599 - Hides MAC differences needed for AUTOC read
+ *  @hw: pointer to hardware structure
+ *  @locked: Return the if we locked for this read.
+ *  @reg_val: Value we read from AUTOC
+ *
+ *  For this part (82599) we need to wrap read-modify-writes with a possible
+ *  FW/SW lock.  It is assumed this lock will be freed with the next
+ *  prot_autoc_write_82599().
+ */
+s32 prot_autoc_read_82599(struct ixgbe_hw *hw, bool *locked, u32 *reg_val)
+{
+	s32 ret_val;
+
+	*locked = false;
+	 /* If LESM is on then we need to hold the SW/FW semaphore. */
+	if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+		ret_val = hw->mac.ops.acquire_swfw_sync(hw,
+					IXGBE_GSSR_MAC_CSR_SM);
+		if (ret_val != 0)
+			return IXGBE_ERR_SWFW_SYNC;
+
+		*locked = true;
+	}
+
+	*reg_val = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	return 0;
+}
+
+/**
+ * prot_autoc_write_82599 - Hides MAC differences needed for AUTOC write
+ * @hw: pointer to hardware structure
+ * @reg_val: value to write to AUTOC
+ * @locked: bool to indicate whether the SW/FW lock was already taken by
+ *           previous proc_autoc_read_82599.
+ *
+ * This part (82599) may need to hold a the SW/FW lock around all writes to
+ * AUTOC. Likewise after a write we need to do a pipeline reset.
+ */
+s32 prot_autoc_write_82599(struct ixgbe_hw *hw, u32 autoc, bool locked)
+{
+	s32 ret_val = 0;
+
+	/* We only need to get the like if:
+	 *  - We didn't do it already (in the read part of a read-modify-write)
+	 *  - LESM is enabled.
+	 */
+	if (!locked && ixgbe_verify_lesm_fw_enabled_82599(hw)) {
+		ret_val = hw->mac.ops.acquire_swfw_sync(hw,
+					IXGBE_GSSR_MAC_CSR_SM);
+		if (ret_val != 0)
+			return IXGBE_ERR_SWFW_SYNC;
+
+		locked = true;
+	}
+
+	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc);
+	ret_val = ixgbe_reset_pipeline_82599(hw);
+
+	/* Free the SW/FW semaphore as we either grabbed it here or
+	 * already had it when this function was called.
+	 */
+	if (locked)
+		hw->mac.ops.release_swfw_sync(hw, IXGBE_GSSR_MAC_CSR_SM);
+
+	return ret_val;
 }
 
 /**
@@ -289,6 +336,8 @@ s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw)
 	mac->ops.get_device_caps = &ixgbe_get_device_caps_generic;
 	mac->ops.get_wwn_prefix = &ixgbe_get_wwn_prefix_generic;
 	mac->ops.get_fcoe_boot_status = &ixgbe_get_fcoe_boot_status_generic;
+	mac->ops.prot_autoc_read = &prot_autoc_read_82599;
+	mac->ops.prot_autoc_write = &prot_autoc_write_82599;
 
 	/* RAR, Multicast, VLAN */
 	mac->ops.set_vmdq = &ixgbe_set_vmdq_generic;
@@ -944,14 +993,13 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 {
 	bool autoneg = false;
 	s32 status = 0;
-	u32 autoc, pma_pmd_1g, link_mode, start_autoc;
+	u32 autoc, start_autoc, pma_pmd_1g, link_mode;
 	u32 autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
 	u32 orig_autoc = 0;
 	u32 pma_pmd_10g_serial = autoc2 & IXGBE_AUTOC2_10G_SERIAL_PMA_PMD_MASK;
 	u32 links_reg;
 	u32 i;
 	ixgbe_link_speed link_capabilities = IXGBE_LINK_SPEED_UNKNOWN;
-	bool got_lock = false;
 
 	/* Check to see if speed passed in is supported. */
 	status = ixgbe_get_link_capabilities(hw, &link_capabilities, &autoneg);
@@ -972,7 +1020,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 		autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 
 	orig_autoc = autoc;
-	start_autoc = hw->mac.cached_autoc;
+	start_autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	link_mode = autoc & IXGBE_AUTOC_LMS_MASK;
 	pma_pmd_1g = autoc & IXGBE_AUTOC_1G_PMA_PMD_MASK;
 
@@ -1013,31 +1061,10 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 	}
 
 	if (autoc != start_autoc) {
-		/* Need SW/FW semaphore around AUTOC writes if LESM is on,
-		 * likewise reset_pipeline requires us to hold this lock as
-		 * it also writes to AUTOC.
-		 */
-		if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-			status = hw->mac.ops.acquire_swfw_sync(hw,
-							IXGBE_GSSR_MAC_CSR_SM);
-			if (status != 0) {
-				status = IXGBE_ERR_SWFW_SYNC;
-				goto out;
-			}
-
-			got_lock = true;
-		}
-
 		/* Restart link */
-		IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc);
-		hw->mac.cached_autoc = autoc;
-		ixgbe_reset_pipeline_82599(hw);
-
-		if (got_lock) {
-			hw->mac.ops.release_swfw_sync(hw,
-						      IXGBE_GSSR_MAC_CSR_SM);
-			got_lock = false;
-		}
+		status = hw->mac.ops.prot_autoc_write(hw, autoc, false);
+		if (status != 0)
+			goto out;
 
 		/* Only poll for autoneg to complete if specified to do so */
 		if (autoneg_wait_to_complete) {
@@ -1103,7 +1130,7 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 {
 	ixgbe_link_speed link_speed;
 	s32 status;
-	u32 ctrl, i, autoc2;
+	u32 ctrl, i, autoc, autoc2;
 	u32 curr_lms;
 	bool link_up = false;
 
@@ -1137,11 +1164,7 @@ s32 ixgbe_reset_hw_82599(struct ixgbe_hw *hw)
 		hw->phy.ops.reset(hw);
 
 	/* remember AUTOC from before we reset */
-	if (hw->mac.cached_autoc)
-		curr_lms = hw->mac.cached_autoc & IXGBE_AUTOC_LMS_MASK;
-	else
-		curr_lms = IXGBE_READ_REG(hw, IXGBE_AUTOC) &
-					  IXGBE_AUTOC_LMS_MASK;
+	curr_lms = IXGBE_READ_REG(hw, IXGBE_AUTOC) & IXGBE_AUTOC_LMS_MASK;
 
 mac_reset_top:
 	/*
@@ -1191,7 +1214,7 @@ mac_reset_top:
 	 * stored off yet.  Otherwise restore the stored original
 	 * values since the reset operation sets back to defaults.
 	 */
-	hw->mac.cached_autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
+	autoc = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	autoc2 = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
 
 	/* Enable link if disabled in NVM */
@@ -1202,7 +1225,7 @@ mac_reset_top:
 	}
 
 	if (hw->mac.orig_link_settings_stored == false) {
-		hw->mac.orig_autoc = hw->mac.cached_autoc;
+		hw->mac.orig_autoc = autoc;
 		hw->mac.orig_autoc2 = autoc2;
 		hw->mac.orig_link_settings_stored = true;
 	} else {
@@ -1219,30 +1242,12 @@ mac_reset_top:
 				(hw->mac.orig_autoc & ~IXGBE_AUTOC_LMS_MASK) |
 				curr_lms;
 
-		if (hw->mac.cached_autoc != hw->mac.orig_autoc) {
-			/* Need SW/FW semaphore around AUTOC writes if LESM is
-			 * on, likewise reset_pipeline requires us to hold
-			 * this lock as it also writes to AUTOC.
-			 */
-			bool got_lock = false;
-			if (ixgbe_verify_lesm_fw_enabled_82599(hw)) {
-				status = hw->mac.ops.acquire_swfw_sync(hw,
-							IXGBE_GSSR_MAC_CSR_SM);
-				if (status != 0) {
-					status = IXGBE_ERR_SWFW_SYNC;
-					goto reset_hw_out;
-				}
-
-				got_lock = true;
-			}
-
-			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, hw->mac.orig_autoc);
-			hw->mac.cached_autoc = hw->mac.orig_autoc;
-			ixgbe_reset_pipeline_82599(hw);
-
-			if (got_lock)
-				hw->mac.ops.release_swfw_sync(hw,
-						      IXGBE_GSSR_MAC_CSR_SM);
+		if (autoc != hw->mac.orig_autoc) {
+			status = hw->mac.ops.prot_autoc_write(hw,
+							hw->mac.orig_autoc,
+							false);
+			if (status != 0)
+				goto reset_hw_out;
 		}
 
 		if ((autoc2 & IXGBE_AUTOC2_UPPER_MASK) !=
@@ -2419,7 +2424,7 @@ static s32 ixgbe_read_eeprom_82599(struct ixgbe_hw *hw,
  *  @hw: pointer to hardware structure
  *
  * Reset pipeline by asserting Restart_AN together with LMS change to ensure
- * full pipeline reset
+ * full pipeline reset.  This function assumes the SW/FW lock is held.
  **/
 s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 {
@@ -2435,10 +2440,11 @@ s32 ixgbe_reset_pipeline_82599(struct ixgbe_hw *hw)
 		IXGBE_WRITE_FLUSH(hw);
 	}
 
-	autoc_reg = hw->mac.cached_autoc;
+	autoc_reg = IXGBE_READ_REG(hw, IXGBE_AUTOC);
 	autoc_reg |= IXGBE_AUTOC_AN_RESTART;
 	/* Write AUTOC register with toggled LMS[2] bit and Restart_AN */
-	IXGBE_WRITE_REG(hw, IXGBE_AUTOC, autoc_reg ^ IXGBE_AUTOC_LMS_1G_AN);
+	IXGBE_WRITE_REG(hw, IXGBE_AUTOC,
+			autoc_reg ^ IXGBE_AUTOC_LMS_10G_SERIAL);
 	/* Wait for AN to leave state 0 */
 	for (i = 0; i < 10; i++) {
 		msleep(4);

@@ -105,9 +105,6 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.setup_rxpba = &ixgbe_set_rxpba_generic;
 	mac->ops.check_link = &ixgbe_check_mac_link_generic;
 
-	mac->ops.get_thermal_sensor_data = &ixgbe_get_thermal_sensor_data_X540;
-	mac->ops.init_thermal_sensor_thresh =
-		&ixgbe_init_thermal_sensor_thresh_X540;
 
 	mac->mcft_size		= 128;
 	mac->vft_size		= 128;
@@ -956,85 +953,4 @@ s32 ixgbe_blink_led_stop_X540(struct ixgbe_hw *hw, u32 index)
 	return 0;
 }
 
-/**
- *  ixgbe_get_thermal_sensor_data - Gathers thermal sensor data for X540
- *  @hw: pointer to hardware structure
- *
- *  Returns the X540 thermal sensor data structure
- **/
-s32 ixgbe_get_thermal_sensor_data_X540(struct ixgbe_hw *hw)
-{
-	s32 status = 0;
-	u16 phy_val = 0;
-	struct ixgbe_thermal_sensor_data *data = &hw->mac.thermal_sensor_data;
-
-	/* Only support thermal sensors on physical port 0 */
-	if (hw->mac.type != ixgbe_mac_X540 ||
-	    IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1) {
-		status = IXGBE_NOT_IMPLEMENTED;
-		goto out;
-	}
-
-	/* Check if thermal sensor is not disabled in NVM */
-	if (!hw->mac.thermal_sensor_enabled) {
-		status = IXGBE_ERR_FEATURE_NOT_SUPPORTED;
-		goto out;
-	}
-
-	/* Get the X540 internal thermal sensor reading */
-	status = hw->phy.ops.read_reg(hw, IXGBE_TEMP_VALUE_ADDR_X540,
-		IXGBE_TEMP_STATUS_PAGE_X540, &phy_val);
-
-	if (0 == status)
-		data->sensor[0].temp = (u8)(phy_val >> 8);
-
-out:
-	return status;
-}
-
-/**
- *  ixgbe_init_thermal_sensor_thresh_X540
- *  @hw: pointer to hardware structure
- *
- *  Init the X540 threshold and location values into mac.thermal_sensor_data
- **/
-s32 ixgbe_init_thermal_sensor_thresh_X540(struct ixgbe_hw *hw)
-{
-	s32 status = 0;
-	u16 fail_thresh = 0, warn_thresh = 0;
-	struct ixgbe_thermal_sensor_data *data = &hw->mac.thermal_sensor_data;
-
-	memset(data, 0, sizeof(struct ixgbe_thermal_sensor_data));
-
-	/* Only support thermal sensors on physical port 0 */
-	if (hw->mac.type != ixgbe_mac_X540 ||
-	    IXGBE_READ_REG(hw, IXGBE_STATUS) & IXGBE_STATUS_LAN_ID_1) {
-		status = IXGBE_NOT_IMPLEMENTED;
-		goto out;
-	}
-
-	if (!hw->mac.thermal_sensor_enabled) {
-		status = IXGBE_ERR_FEATURE_NOT_SUPPORTED;
-		goto out;
-	}
-
-	status = hw->phy.ops.read_reg(hw, IXGBE_TEMP_PROV_2_ADDR_X540,
-		IXGBE_TEMP_STATUS_PAGE_X540, &fail_thresh);
-
-	if (0 != status)
-		goto out;
-
-	status = hw->phy.ops.read_reg(hw, IXGBE_TEMP_PROV_4_ADDR_X540,
-		IXGBE_TEMP_STATUS_PAGE_X540, &warn_thresh);
-
-	if (0 != status)
-		goto out;
-
-	data->sensor[0].location = 0x1;
-	data->sensor[0].caution_thresh = (u8)(fail_thresh >> 8);
-	data->sensor[0].max_op_thresh = (u8)(warn_thresh >> 8);
-
-out:
-	return status;
-}
 

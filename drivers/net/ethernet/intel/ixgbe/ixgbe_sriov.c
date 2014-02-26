@@ -601,13 +601,13 @@ int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask)
 
 static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 {
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct ixgbe_hw *hw = &adapter->hw;
 	unsigned char *vf_mac = adapter->vfinfo[vf].vf_mac_addresses;
 	u32 reg, reg_offset, vf_shift;
 	u32 msgbuf[4] = {0, 0, 0, 0};
 	u8 *addr = (u8 *)(&msgbuf[1]);
-        /* q_per_pool assumes that DCB is not enabled, hence in 64 pool mode */
-        u32 q_per_pool = 2;
+        u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
         int i;
 
 	e_info(probe, "VF Reset msg received from vf %d\n", vf);

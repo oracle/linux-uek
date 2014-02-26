@@ -479,7 +479,11 @@ static bool ixgbe_set_dcb_queues(struct ixgbe_adapter *adapter)
 		return false;
 
 	/* determine the upper limit for our current DCB mode */
+#ifndef HAVE_NETDEV_SELECT_QUEUE
+	rss_i = adapter->indices;
+#else
 	rss_i = dev->num_tx_queues / tcs;
+#endif
 	if (adapter->hw.mac.type == ixgbe_mac_82598EB) {
 		/* 8 TC w/ 4 queues per TC */
 		rss_i = min_t(u16, rss_i, 4);
@@ -856,6 +860,7 @@ static int ixgbe_alloc_q_vector(struct ixgbe_adapter *adapter,
 #endif
 	int ring_count, size;
 
+	/* note this will allocate space for the ring structure as well! */
 	ring_count = txr_count + rxr_count;
 	size = sizeof(struct ixgbe_q_vector) +
 	       (sizeof(struct ixgbe_ring) * ring_count);
@@ -1031,7 +1036,7 @@ static void ixgbe_free_q_vector(struct ixgbe_adapter *adapter, int v_idx)
 #ifndef IXGBE_NO_LRO
 	__skb_queue_purge(&q_vector->lrolist.active);
 #endif
-	kfree(q_vector);
+	kfree_rcu(q_vector, rcu);
 }
 
 /**
