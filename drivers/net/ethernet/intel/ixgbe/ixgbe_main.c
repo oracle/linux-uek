@@ -9218,6 +9218,7 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	}
 
 #ifdef CONFIG_PCI_IOV
+	pci_sriov_set_totalvfs(pdev, IXGBE_MAX_VFS_DRV_LIMIT);
 	ixgbe_enable_sriov(adapter);
 
 #endif /* CONFIG_PCI_IOV */

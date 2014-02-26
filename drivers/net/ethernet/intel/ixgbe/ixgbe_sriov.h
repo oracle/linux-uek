@@ -29,6 +29,11 @@
 #ifndef _IXGBE_SRIOV_H_
 #define _IXGBE_SRIOV_H_
 
+/*  ixgbe driver limit the max number of VFs could be enabled to
+ *   *  63 (IXGBE_MAX_VF_FUNCTIONS - 1)
+ *    */
+#define IXGBE_MAX_VFS_DRV_LIMIT  (IXGBE_MAX_VF_FUNCTIONS - 1)
+
 void ixgbe_restore_vf_multicasts(struct ixgbe_adapter *adapter);
 int ixgbe_set_vf_vlan(struct ixgbe_adapter *adapter, int add, int vid, u32 vf);
 void ixgbe_set_vmolr(struct ixgbe_hw *hw, u32 vf, bool aupe);
