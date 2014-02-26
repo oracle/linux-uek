@@ -27,12 +27,12 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/types.h>
-#include <linux/syscore_ops.h>
 #include <acpi/acpi_bus.h>
 #include <acpi/acpi_drivers.h>
 #include <acpi/processor.h>
 
 #include <xen/xen.h>
+#include <xen/xen-ops.h>
 #include <xen/interface/platform.h>
 #include <asm/xen/hypercall.h>
 
@@ -497,14 +497,15 @@ static int xen_upload_processor_pm_data(void)
 	return rc;
 }
 
-static void xen_acpi_processor_resume(void)
+static int xen_acpi_processor_resume(struct notifier_block *nb,
+				     unsigned long action, void *data)
 {
 	bitmap_zero(acpi_ids_done, nr_acpi_bits);
-	xen_upload_processor_pm_data();
+	return xen_upload_processor_pm_data();
 }
 
-static struct syscore_ops xap_syscore_ops = {
-	.resume	= xen_acpi_processor_resume,
+struct notifier_block xen_acpi_processor_resume_nb = {
+	.notifier_call = xen_acpi_processor_resume,
 };
 
 static int __init xen_acpi_processor_init(void)
@@ -557,7 +558,7 @@ static int __init xen_acpi_processor_init(void)
 	if (rc)
 		goto err_unregister;
 
-	register_syscore_ops(&xap_syscore_ops);
+	xen_resume_notifier_register(&xen_acpi_processor_resume_nb);
 
 	return 0;
 err_unregister:
@@ -576,7 +577,7 @@ static void __exit xen_acpi_processor_exit(void)
 {
 	int i;
 
-	unregister_syscore_ops(&xap_syscore_ops);
+	xen_resume_notifier_unregister(&xen_acpi_processor_resume_nb);
 	kfree(acpi_ids_done);
 	kfree(acpi_id_present);
 	kfree(acpi_id_cst_present);
