@@ -457,7 +457,7 @@ static unsigned long dtrace_stacktrace_walk_stack(
 static const struct stacktrace_ops	dtrace_stacktrace_ops = {
 	.stack		= dtrace_stacktrace_stack,
 	.address	= dtrace_stacktrace_address,
-	.walk_stack	= print_context_stack
+	.walk_stack	= print_context_stack_bp
 };
 
 static const struct stacktrace_ops	dtrace_fpstacktrace_ops = {
@@ -468,7 +468,28 @@ static const struct stacktrace_ops	dtrace_fpstacktrace_ops = {
 
 void dtrace_stacktrace(stacktrace_state_t *st)
 {
-	dump_trace(NULL, NULL, NULL, 0,
+	unsigned long	bp;
+	unsigned long	stack;
+
+	bp = stack_frame(current, NULL);
+
+	/*
+	 * Generate a stacktrace in the buffer embedded in st, identical to the
+	 * stacktrace that would be printed to the console if dump_stack() were
+	 * called here.
+	 *
+	 * dump_stack()
+	 * -> show_trace(NULL, NULL, &stack, bp)
+	 *  	where unsigned long bp = stack_frame(current, NULL);
+	 *  	      unsigned long stack;
+	 * -> show_trace_log_lvl(NULL, NULL, &stack, bp, "")
+	 *  	where unsigned long bp = stack_frame(current, NULL);
+	 *  	      unsigned long stack;
+	 * -> dump_trace(NULL, NULL, &stack, bp, &print_trace_ops, "");
+	 *  	where unsigned long bp = stack_frame(current, NULL);
+	 *  	      unsigned long stack;
+	 */
+	dump_trace(NULL, NULL, &stack, bp,
 		   st->fps != NULL ? &dtrace_fpstacktrace_ops
 				   : &dtrace_stacktrace_ops, st);
 }
