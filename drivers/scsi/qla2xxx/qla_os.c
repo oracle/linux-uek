@@ -4967,6 +4967,21 @@ qla2x00_do_dpc(void *data)
 				    &base_vha->hw->mr.fcport,
 				    FXDISC_REG_HOST_INFO);
 			}
+
+			if (test_and_clear_bit(FX00_FW_INFO_UPDATE,
+				&base_vha->dpc_flags)) {
+				ql_dbg(ql_dbg_dpc, base_vha, 0x4026,
+				    "ISPFx00 Firmware Info Updating\n");
+				if (qlafx00_fx_disc(base_vha,
+				    &base_vha->hw->mr.fcport,
+				    FXDISC_GET_CONFIG_INFO) !=
+				    QLA_SUCCESS) {
+					set_bit(FX00_FW_INFO_UPDATE,
+					    &base_vha->dpc_flags);
+					ql_dbg(ql_dbg_dpc, base_vha, 0x4027,
+					    "ISPFx00 FW Info Update Failed\n");
+				}
+			}
 		}
 
 		if (test_and_clear_bit(ISP_ABORT_NEEDED,

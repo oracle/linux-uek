@@ -1053,6 +1053,7 @@ qlafx00_timer_routine(scsi_qla_host_t *vha)
 		} else if (aenmbx0 == MBA_FW_RESTART_CMPLT) {
 			/* Wake up DPC to rescan the targets */
 			set_bit(FX00_TARGET_SCAN, &vha->dpc_flags);
+			set_bit(FX00_FW_INFO_UPDATE, &vha->dpc_flags);
 			clear_bit(FX00_RESET_RECOVERY, &vha->dpc_flags);
 			qla2xxx_wake_dpc(vha);
 			ha->mr.fw_reset_timer_tick = QLAFX00_RESET_INTERVAL;
