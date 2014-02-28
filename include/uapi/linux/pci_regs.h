@@ -519,6 +519,11 @@
 #define  PCI_EXP_SLTCTL_PCC	0x0400	/* Power Controller Control */
 #define  PCI_EXP_SLTCTL_EIC	0x0800	/* Electromechanical Interlock Control */
 #define  PCI_EXP_SLTCTL_DLLSCE	0x1000	/* Data Link Layer State Changed Enable */
+/* only need to wait command complete for hpc related */
+#define  PCI_EXP_SLTCTL_WAIT_MASK (PCI_EXP_SLTCTL_EIC | \
+				   PCI_EXP_SLTCTL_PCC | \
+				   PCI_EXP_SLTCTL_PIC | \
+				   PCI_EXP_SLTCTL_AIC)
 #define PCI_EXP_SLTSTA		26	/* Slot Status */
 #define  PCI_EXP_SLTSTA_ABP	0x0001	/* Attention Button Pressed */
 #define  PCI_EXP_SLTSTA_PFD	0x0002	/* Power Fault Detected */

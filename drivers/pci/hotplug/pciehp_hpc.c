@@ -172,8 +172,8 @@ static void pcie_wait_cmd(struct controller *ctrl, int poll)
 static int pcie_write_cmd(struct controller *ctrl, u16 cmd, u16 mask)
 {
 	int retval = 0;
+	u16 slot_ctrl, old_slot_ctrl;
 	u16 slot_status;
-	u16 slot_ctrl;
 
 	mutex_lock(&ctrl->ctrl_lock);
 
@@ -207,14 +207,12 @@ static int pcie_write_cmd(struct controller *ctrl, u16 cmd, u16 mask)
 		}
 	}
 
-	retval = pciehp_readw(ctrl, PCI_EXP_SLTCTL, &slot_ctrl);
+	retval = pciehp_readw(ctrl, PCI_EXP_SLTCTL, &old_slot_ctrl);
 	if (retval) {
 		ctrl_err(ctrl, "%s: Cannot read SLOTCTRL register\n", __func__);
 		goto out;
 	}
-
-	slot_ctrl &= ~mask;
-	slot_ctrl |= (cmd & mask);
+	slot_ctrl = (old_slot_ctrl & ~mask) | (cmd & mask);
 	ctrl->cmd_busy = 1;
 	smp_mb();
 	retval = pciehp_writew(ctrl, PCI_EXP_SLTCTL, slot_ctrl);
@@ -224,7 +222,9 @@ static int pcie_write_cmd(struct controller *ctrl, u16 cmd, u16 mask)
 	/*
 	 * Wait for command completion.
 	 */
-	if (!retval && !ctrl->no_cmd_complete) {
+	if (!retval && !ctrl->no_cmd_complete &&
+	    ((PCI_EXP_SLTCTL_WAIT_MASK & old_slot_ctrl) !=
+	     (PCI_EXP_SLTCTL_WAIT_MASK & slot_ctrl))) {
 		int poll = 0;
 		/*
 		 * if hotplug interrupt is not enabled or command
