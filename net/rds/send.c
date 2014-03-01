@@ -1310,6 +1310,11 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		goto out;
 	}
 
+	if (conn->c_rdsinfo_pending) {
+		ret = -EAGAIN;
+		goto out;
+	}
+
 	while (!rds_send_queue_rm(rs, conn, rm, rs->rs_bound_port,
 				  dport, &queued)) {
 		rds_stats_inc(s_send_queue_full);
