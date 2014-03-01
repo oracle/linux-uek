@@ -28,6 +28,8 @@
 
 #define RDS_IB_DEFAULT_NUM_ARPS		100
 
+#define RDS_IB_RX_LIMIT			10000
+
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
 #define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
@@ -146,6 +148,11 @@ struct rds_ib_migrate_work {
 	struct rds_ib_connection        *ic;
 };
 
+struct rds_ib_rx_work {
+	struct delayed_work             dlywork;
+	struct rds_ib_connection        *ic;
+};
+
 struct rds_ib_connection {
 
 	struct list_head	ib_node;
@@ -231,6 +238,11 @@ struct rds_ib_connection {
 
 	int			i_scq_vector;
 	int			i_rcq_vector;
+
+	spinlock_t		i_rx_lock;
+	struct rds_ib_rx_work	i_rx_w;
+	unsigned int		i_rx_wait_for_handler;
+	unsigned int            i_rx_poll_cq;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
