@@ -165,6 +165,8 @@ struct rds_connection {
 	struct rds_connection	*c_base_conn;
 
 	unsigned int            c_route_to_base;
+
+	unsigned int		c_rdsinfo_pending;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
