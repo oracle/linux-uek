@@ -523,6 +523,7 @@ struct qlcnic_hardware_context {
 	struct qlcnic_mailbox *mailbox;
 	u8 extend_lb_time;
 	u8 lb_mode;
+	struct device *hwmon_dev;
 };
 
 struct qlcnic_adapter_stats {
@@ -2313,4 +2314,18 @@ static inline u32 qlcnic_get_vnic_func_count(struct qlcnic_adapter *adapter)
 	else
 		return QLC_DEFAULT_VNIC_COUNT;
 }
+
+#ifdef CONFIG_QLCNIC_HWMON
+void qlcnic_register_hwmon_dev(struct qlcnic_adapter *);
+void qlcnic_unregister_hwmon_dev(struct qlcnic_adapter *);
+#else
+static inline void qlcnic_register_hwmon_dev(struct qlcnic_adapter *adapter)
+{
+	return;
+}
+static inline void qlcnic_unregister_hwmon_dev(struct qlcnic_adapter *adapter)
+{
+	return;
+}
+#endif
 #endif				/* __QLCNIC_H_ */
