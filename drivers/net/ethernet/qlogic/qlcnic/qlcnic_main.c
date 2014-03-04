@@ -551,6 +551,7 @@ static struct qlcnic_hardware_ops qlcnic_hw_ops = {
 	.cache_tmpl_hdr_values		= qlcnic_82xx_cache_tmpl_hdr_values,
 	.get_cap_size			= qlcnic_82xx_get_cap_size,
 	.set_sys_info			= qlcnic_82xx_set_sys_info,
+	.store_cap_mask			= qlcnic_82xx_store_cap_mask,
 };
 
 static int qlcnic_check_multi_tx_capability(struct qlcnic_adapter *adapter)
