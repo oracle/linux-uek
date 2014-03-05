@@ -1322,6 +1322,7 @@ static int xenvif_tx_submit(struct xenvif *vif)
 
 		skb->dev      = vif->dev;
 		skb->protocol = eth_type_trans(skb, skb->dev);
+		skb_reset_network_header(skb);
 
 		if (checksum_setup(vif, skb)) {
 			netdev_dbg(vif->dev,
