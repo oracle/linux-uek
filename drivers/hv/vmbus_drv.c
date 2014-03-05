@@ -449,7 +449,7 @@ static void vmbus_on_msg_dpc(unsigned long data)
 	}
 }
 
-static irqreturn_t vmbus_isr(int irq, void *dev_id)
+static void vmbus_isr(void)
 {
 	int cpu = smp_processor_id();
 	void *page_addr;
@@ -459,7 +459,7 @@ static irqreturn_t vmbus_isr(int irq, void *dev_id)
 
 	page_addr = hv_context.synic_event_page[cpu];
 	if (page_addr == NULL)
-		return IRQ_NONE;
+		return;
 
 	event = (union hv_synic_event_flags *)page_addr +
 					 VMBUS_MESSAGE_SINT;
@@ -495,15 +495,8 @@ static irqreturn_t vmbus_isr(int irq, void *dev_id)
 	msg = (struct hv_message *)page_addr + VMBUS_MESSAGE_SINT;
 
 	/* Check if there are actual msgs to be processed */
-	if (msg->header.message_type != HVMSG_NONE) {
-		handled = true;
+	if (msg->header.message_type != HVMSG_NONE)
 		tasklet_schedule(&msg_dpc);
-	}
-
-	if (handled)
-		return IRQ_HANDLED;
-	else
-		return IRQ_NONE;
 }
 
 /*
@@ -532,12 +525,7 @@ static int vmbus_bus_init(int irq)
 	if (ret)
 		goto err_cleanup;
 
-	ret = hv_setup_vmbus_irq(irq, vmbus_isr, hv_acpi_dev);
-
-	if (ret != 0) {
-		pr_err("Unable to request IRQ %d\n", irq);
-		goto err_unregister;
-	}
+	hv_setup_vmbus_irq(vmbus_isr);
 
 	ret = hv_synic_alloc();
 	if (ret)
@@ -557,9 +545,8 @@ static int vmbus_bus_init(int irq)
 
 err_alloc:
 	hv_synic_free();
-	hv_remove_vmbus_irq(irq, hv_acpi_dev);
+	hv_remove_vmbus_irq();
 
-err_unregister:
 	bus_unregister(&hv_bus);
 
 err_cleanup:
@@ -770,7 +757,6 @@ static int __init hv_acpi_init(void)
 	/*
 	 * Get irq resources first.
 	 */
-
 	ret = acpi_bus_register_driver(&vmbus_acpi_driver);
 
 	if (ret)
@@ -801,7 +787,7 @@ cleanup:
 
 static void __exit vmbus_exit(void)
 {
-	hv_remove_vmbus_irq(irq, hv_acpi_dev);
+	hv_remove_vmbus_irq();
 	vmbus_free_channels();
 	bus_unregister(&hv_bus);
 	hv_cleanup();
