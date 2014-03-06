@@ -187,6 +187,7 @@ struct xenvif {
 	unsigned long tx_zerocopy_sent;
 	unsigned long tx_zerocopy_success;
 	unsigned long tx_zerocopy_fail;
+	unsigned long tx_frag_overflow;
 
 	/* Miscellaneous private stuff. */
 	struct net_device *dev;
