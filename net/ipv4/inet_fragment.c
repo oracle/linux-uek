@@ -170,7 +170,7 @@ int inet_frag_evictor(struct netns_frags *nf, struct inet_frags *f, bool force)
 	}
 
 	work = atomic_read(&nf->mem) - nf->low_thresh;
-	while (work > 0) {
+	while (work > 0 || force) {
 		read_lock(&f->lock);
 		if (list_empty(&nf->lru_list)) {
 			read_unlock(&f->lock);
