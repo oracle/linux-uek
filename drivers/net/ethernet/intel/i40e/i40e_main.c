@@ -6046,7 +6046,7 @@ static int i40e_sw_init(struct i40e_pf *pf)
 				 "Flow Director Side Band mode Enabled\n");
 		} else {
 			dev_info(&pf->pdev->dev,
-				 "Flow Director Side Band mode Disabled in MFP mode\n");
+				 "Flow Director Sideband mode Disabled in MFP mode\n");
 		}
 		pf->fdir_pf_filter_count =
 				 pf->hw.func_caps.fd_filters_guaranteed;
