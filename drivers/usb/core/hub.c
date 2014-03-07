@@ -1144,6 +1144,11 @@ static void hub_activate(struct usb_hub *hub, enum hub_activation_type type)
 			clear_port_feature(hub->hdev, port1,
 					USB_PORT_FEAT_C_ENABLE);
 		}
+		if (portchange & USB_PORT_STAT_C_RESET) {
+			need_debounce_delay = true;
+			clear_port_feature(hub->hdev, port1,
+					USB_PORT_FEAT_C_RESET);
+		}
 		if ((portchange & USB_PORT_STAT_C_BH_RESET) &&
 				hub_is_superspeed(hub->hdev)) {
 			need_debounce_delay = true;
@@ -1600,15 +1605,22 @@ static int hub_configure(struct usb_hub *hub,
 	if (hub->has_indicators && blinkenlights)
 		hub->indicator [0] = INDICATOR_CYCLE;
 
-	for (i = 0; i < hdev->maxchild; i++)
-		if (usb_hub_create_port_device(hub, i + 1) < 0)
+	for (i = 0; i < hdev->maxchild; i++) {
+		ret = usb_hub_create_port_device(hub, i + 1);
+		if (ret < 0) {
 			dev_err(hub->intfdev,
 				"couldn't create port%d device.\n", i + 1);
+			hdev->maxchild = i;
+			goto fail_keep_maxchild;
+		}
+	}
 
 	hub_activate(hub, HUB_INIT);
 	return 0;
 
 fail:
+	hdev->maxchild = 0;
+fail_keep_maxchild:
 	dev_err (hub_dev, "config failed, %s (err %d)\n",
 			message, ret);
 	/* hub_disconnect() frees urb and descriptor */
@@ -1629,7 +1641,7 @@ static void hub_disconnect(struct usb_interface *intf)
 {
 	struct usb_hub *hub = usb_get_intfdata(intf);
 	struct usb_device *hdev = interface_to_usbdev(intf);
-	int i;
+	int port1;
 
 	/* Take the hub off the event list and don't let it be added again */
 	spin_lock_irq(&hub_event_lock);
@@ -1644,11 +1656,15 @@ static void hub_disconnect(struct usb_interface *intf)
 	hub->error = 0;
 	hub_quiesce(hub, HUB_DISCONNECT);
 
-	usb_set_intfdata (intf, NULL);
+	/* Avoid races with recursively_mark_NOTATTACHED() */
+	spin_lock_irq(&device_state_lock);
+	port1 = hdev->maxchild;
+	hdev->maxchild = 0;
+	usb_set_intfdata(intf, NULL);
+	spin_unlock_irq(&device_state_lock);
 
-	for (i = 0; i < hdev->maxchild; i++)
-		usb_hub_remove_port_device(hub, i + 1);
-	hub->hdev->maxchild = 0;
+	for (; port1 > 0; --port1)
+		usb_hub_remove_port_device(hub, port1);
 
 	if (hub->hdev->speed == USB_SPEED_HIGH)
 		highspeed_hubs--;

@@ -385,6 +385,9 @@ static struct ceph_mds_session *register_session(struct ceph_mds_client *mdsc,
 {
 	struct ceph_mds_session *s;
 
+	if (mds >= mdsc->mdsmap->m_max_mds)
+		return ERR_PTR(-EINVAL);
+
 	s = kzalloc(sizeof(*s), GFP_NOFS);
 	if (!s)
 		return ERR_PTR(-ENOMEM);
@@ -3000,8 +3003,10 @@ int ceph_mdsc_init(struct ceph_fs_client *fsc)
 	fsc->mdsc = mdsc;
 	mutex_init(&mdsc->mutex);
 	mdsc->mdsmap = kzalloc(sizeof(*mdsc->mdsmap), GFP_NOFS);
-	if (mdsc->mdsmap == NULL)
+	if (mdsc->mdsmap == NULL) {
+		kfree(mdsc);
 		return -ENOMEM;
+	}
 
 	init_completion(&mdsc->safe_umount_waiters);
 	init_waitqueue_head(&mdsc->session_close_wq);

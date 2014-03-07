@@ -1593,9 +1593,21 @@ static int setattr_chown(struct inode *inode, struct iattr *attr)
 	if (!(attr->ia_valid & ATTR_GID) || ogid == ngid)
 		ogid = ngid = NO_QUOTA_CHANGE;
 
-	error = gfs2_quota_lock(ip, nuid, ngid);
+	error = get_write_access(inode);
 	if (error)
 		return error;
+
+	error = gfs2_rs_alloc(ip);
+	if (error)
+		goto out;
+
+	error = gfs2_rindex_update(sdp);
+	if (error)
+		goto out;
+
+	error = gfs2_quota_lock(ip, nuid, ngid);
+	if (error)
+		goto out;
 
 	if (ouid != NO_QUOTA_CHANGE || ogid != NO_QUOTA_CHANGE) {
 		error = gfs2_quota_check(ip, nuid, ngid);
@@ -1621,6 +1633,8 @@ out_end_trans:
 	gfs2_trans_end(sdp);
 out_gunlock_q:
 	gfs2_quota_unlock(ip);
+out:
+	put_write_access(inode);
 	return error;
 }
 
