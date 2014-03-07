@@ -602,7 +602,6 @@
 	match_int
 	match_strdup
 	match_token
-	mcount
 	mdio45_probe
 	mdio_mii_ioctl
 	mdiobus_read

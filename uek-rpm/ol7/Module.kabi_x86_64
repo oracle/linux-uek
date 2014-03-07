@@ -601,7 +601,6 @@
 0x4e3567f7	match_int	vmlinux	EXPORT_SYMBOL
 0xacf4d843	match_strdup	vmlinux	EXPORT_SYMBOL
 0x44e9a829	match_token	vmlinux	EXPORT_SYMBOL
-0xb4390f9a	mcount	vmlinux	EXPORT_SYMBOL
 0xa1a29548	mdio45_probe	drivers/net/mdio	EXPORT_SYMBOL
 0x22bce513	mdio_mii_ioctl	drivers/net/mdio	EXPORT_SYMBOL
 0xf338778b	mdiobus_read	vmlinux	EXPORT_SYMBOL
