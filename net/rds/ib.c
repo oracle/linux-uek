@@ -486,7 +486,7 @@ static int rds_ib_set_ip(struct net_device	*out_dev,
 			(unsigned long) ir);
 	if (ret) {
 		printk(KERN_ERR
-			"RDS/IB: inet_ioctl(SIOCSIFBRDADDR) on %s failed (%d)\n",
+			"RDS/IB: inet_ioctl(SIOCSIFNETMASK) on %s failed (%d)\n",
 			if_name, ret);
 		goto out;
 	}
@@ -602,13 +602,20 @@ static int rds_ib_move_ip(char			*from_dev,
 		ret = inet_ioctl(rds_ib_inet_socket, SIOCGIFADDR,
 					(unsigned long) ir);
 		if (ret == -EADDRNOTAVAIL) {
-			sin->sin_addr.s_addr = ip_config[to_port].ip_addr;
-			ret = inet_ioctl(rds_ib_inet_socket, SIOCSIFADDR,
-						(unsigned long) ir);
+			/* Set the IP on new port */
+			ret = rds_ib_set_ip(ip_config[arp_port].dev,
+				ip_config[to_port].dev->dev_addr,
+				ip_config[to_port].dev->name,
+				ip_config[to_port].ip_addr,
+				ip_config[to_port].ip_bcast,
+				ip_config[to_port].ip_mask);
+
 			if (ret) {
 				printk(KERN_ERR
-					"RDS/IB: inet_ioctl(SIOCSIFADDR) "
-					"failed (%d)\n", ret);
+					"RDS/IP: failed to set IP %pI4 "
+					"on %s failed (%d)\n",
+					&ip_config[to_port].ip_addr,
+					ip_config[to_port].dev->name, ret);
 				goto out;
 			}
 		} else if (ret) {
