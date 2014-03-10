@@ -1059,13 +1059,17 @@ palinfo_init(void)
 	printk(KERN_INFO "PAL Information Facility v%s\n", PALINFO_VERSION);
 	palinfo_dir = proc_mkdir("pal", NULL);
 
+	cpu_notifier_register_begin();
+
 	/* Create palinfo dirs in /proc for all online cpus */
 	for_each_online_cpu(i) {
 		create_palinfo_proc_entries(i);
 	}
 
 	/* Register for future delivery via notify registration */
-	register_hotcpu_notifier(&palinfo_cpu_notifier);
+	__register_hotcpu_notifier(&palinfo_cpu_notifier);
+
+	cpu_notifier_register_done();
 
 	return 0;
 }
