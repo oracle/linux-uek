@@ -362,7 +362,6 @@ int qlcnic_is_valid_nic_func(struct qlcnic_adapter *adapter, u8 pci_func)
 			return i;
 	}
 
-	dev_err(&adapter->pdev->dev, "%s: Invalid nic function\n", __func__);
 	return -EINVAL;
 }
 
@@ -433,6 +432,8 @@ static ssize_t qlcnic_sysfs_write_pm_config(struct file *filp,
 	for (i = 0; i < count; i++) {
 		pci_func = pm_cfg[i].pci_func;
 		index = qlcnic_is_valid_nic_func(adapter, pci_func);
+		if (index < 0)
+			return QL_STATUS_INVALID_PARAM;
 		id = adapter->npars[index].phy_port;
 		adapter->npars[index].enable_pm = !!pm_cfg[i].action;
 		adapter->npars[index].dest_npar = id;
@@ -641,7 +642,6 @@ static ssize_t qlcnic_sysfs_read_esw_config(struct file *file,
 	u32 count;
 	int i;
 
-
 	memset(buf, 0, size);
 	esw_cfg = (struct qlcnic_esw_func_cfg *)buf;
 	count = qlcnic_get_func_count(adapter, size,
@@ -713,6 +713,8 @@ static ssize_t qlcnic_sysfs_write_npar_config(struct file *file,
 		if (ret)
 			return ret;
 		index = qlcnic_is_valid_nic_func(adapter, pci_func);
+		if (index < 0)
+			return QL_STATUS_INVALID_PARAM;
 		adapter->npars[index].min_bw = nic_info.min_tx_bw;
 		adapter->npars[index].max_bw = nic_info.max_tx_bw;
 	}
@@ -730,6 +732,7 @@ static ssize_t qlcnic_sysfs_read_npar_config(struct file *file,
 	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
 	struct qlcnic_npar_func_cfg *np_cfg;
 	struct qlcnic_info nic_info;
+	u8 pci_func;
 	int i, ret;
 	u32 count;
 
@@ -739,22 +742,23 @@ static ssize_t qlcnic_sysfs_read_npar_config(struct file *file,
 
 	count = qlcnic_get_func_count(adapter, size,
 				      sizeof(struct qlcnic_npar_func_cfg));
-	for (i = 0; i < count; i++) {
-		if (qlcnic_is_valid_nic_func(adapter, i) < 0)
-			continue;
-		ret = qlcnic_get_nic_info(adapter, &nic_info, i);
-		if (ret)
-			return ret;
+	for (i = 0; i < adapter->ahw->total_nic_func; i++) {
 		if (!adapter->npars[i].eswitch_status)
 			continue;
-		np_cfg[i].pci_func = i;
-		np_cfg[i].op_mode = (u8)nic_info.op_mode;
-		np_cfg[i].port_num = nic_info.phys_port;
-		np_cfg[i].fw_capab = nic_info.capabilities;
-		np_cfg[i].min_bw = nic_info.min_tx_bw;
-		np_cfg[i].max_bw = nic_info.max_tx_bw;
-		np_cfg[i].max_tx_queues = nic_info.max_tx_ques;
-		np_cfg[i].max_rx_queues = nic_info.max_rx_ques;
+		pci_func = adapter->npars[i].pci_func;
+		if (qlcnic_is_valid_nic_func(adapter, pci_func) < 0)
+			continue;
+		ret = qlcnic_get_nic_info(adapter, &nic_info, pci_func);
+		if (ret)
+			return ret;
+		np_cfg[pci_func].pci_func = pci_func;
+		np_cfg[pci_func].op_mode = (u8)nic_info.op_mode;
+		np_cfg[pci_func].port_num = nic_info.phys_port;
+		np_cfg[pci_func].fw_capab = nic_info.capabilities;
+		np_cfg[pci_func].min_bw = nic_info.min_tx_bw;
+		np_cfg[pci_func].max_bw = nic_info.max_tx_bw;
+		np_cfg[pci_func].max_tx_queues = nic_info.max_tx_ques;
+		np_cfg[pci_func].max_rx_queues = nic_info.max_rx_ques;
 	}
 	return size;
 }
