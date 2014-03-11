@@ -163,7 +163,7 @@
 
 #define	TXC_DMA_MAX(CHAN_BASE)		(TXDMA_BASE + CHAN_BASE + 0x0200)
 #define	TDC_PRSR_ENABLE			0x0000000080000000ULL
-#define TDC_HPRSR_CSPARTIAL		0x0000000040000000ULL
+#define	TDC_HPRSR_CSPARTIAL		0x0000000040000000ULL
 
 /* rx dma */
 #define	RDC_PAGE_HDL(CHAN_BASE)		(RXDMA_BASE + CHAN_BASE + 0x0000)
@@ -646,11 +646,14 @@ struct sxge_vmac_stats {
 };
 
 #define MBOX_LOOKUP_TABLE_SIZE	15
+#define	MBOX_LOOKUP_FLAG_SET	1
+#define	MBOX_LOOKUP_FLAG_UNSET	0
+
 struct mailbox_lookup_t {
 	u8	mac[ETH_ALEN];
 	u8	history_mac[ETH_ALEN];
 	u64	last_used;
-	u32	flag;
+	u8	flag;
 };
 
 struct sxge {

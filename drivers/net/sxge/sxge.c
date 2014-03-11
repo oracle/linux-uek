@@ -2,7 +2,7 @@
  *
  * Copyright (C) 2011 Oracle Corp.
  */
-/* #pragma ident   "@(#)sxge.c 1.63     13/11/22 SMI" */
+/* #pragma ident   "@(#)sxge.c 1.65     14/01/08 SMI" */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
@@ -89,8 +89,8 @@ static int debug = -1;
 module_param(debug, int, 0);
 MODULE_PARM_DESC(debug, "SXGE debug level");
 
-ulong sxge_live_migrate = 0;
-module_param_named(sxge_enable_live_migrate, sxge_live_migrate, ulong, S_IRUGO | S_IWUSR);
+bool sxge_live_migrate = 0;
+module_param_named(sxge_enable_live_migrate, sxge_live_migrate, bool, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(sxge_enable_live_migrate, "Enable Live Migrate for VMs in the sxge driver");
 
 static void sxge_ldg_rearm(struct sxge *sxgep, struct sxge_ldg *lp, int on)
@@ -2775,7 +2775,7 @@ static void sxge_set_rx_mode(struct net_device *dev)
 				slot++;
 			}
 		} else
-			netdev_warn(dev, "VM Live Migrate Enabled, "
+			netdev_info(dev, "VM Live Migrate Enabled, "
 				"Can't Support Alternate MAC address\n");
 	}
 
@@ -2991,27 +2991,14 @@ static u64 sxge_compute_tx_flags(struct sk_buff *skb, struct ethhdr *ehdr,
 	return ret;
 }
 
-static u64 read_rdtsc(void)
-{
-	u32	low;
-	u32	high;
-	u64	retval;
-	asm volatile ("rdtsc\n" : "=a" (low), "=d" (high));
-
-	retval = high;
-	retval <<= 32;
-	retval = retval | low;
-
-	return retval;
-}
-
 void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *sxgep)
 {
 	u32	lru_index = 0;
-	u32	i = 0, j = 0, k = 0, found = 0, index = 0;
-	u32	done = 0, err = 0;
+	u32	i = 0, j = 0, index = 0;
+	u32	err = 0;
 	u8	empty_mac[ETH_ALEN] = {0};
 	unsigned long flags;
+	bool	found = 0, done = 0;
 
 	for (i = 0 ; i < MBOX_LOOKUP_TABLE_SIZE; i++) {
 		/*
@@ -3021,14 +3008,13 @@ void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *s
 		 * 3. Based on LRU find time and rewite the TCAM entry IF
 		 *    lookup table full
 		 */
-		if (0 == memcmp(empty_mac, sxgep->mb_lookup_p[i].mac,
-			ETH_ALEN)) {
+		if (!memcmp(empty_mac, sxgep->mb_lookup_p[i].mac, ETH_ALEN)) {
 			/*
 			 * To find packets came from already saved MAC addesss
 			 * in History
 			 */
 			for (j = 0; j < MBOX_LOOKUP_TABLE_SIZE; j++) {
-				if (0 == memcmp(input_mac,
+				if (!memcmp(input_mac,
 					sxgep->mb_lookup_p[j].history_mac,
 					ETH_ALEN)) {
 						index = j;
@@ -3040,19 +3026,19 @@ void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *s
 			/* To Add new MAC address*/
 			if (!found) {
 				index = 0;
-				for (k = 0; k < MBOX_LOOKUP_TABLE_SIZE; k++) {
+				for (j = 0; j < MBOX_LOOKUP_TABLE_SIZE; j++) {
 				/* To find packets came from New MAC addesss */
-					if (0 == memcmp(empty_mac,
-					    sxgep->mb_lookup_p[k].history_mac,
+					if (!memcmp(empty_mac,
+					    sxgep->mb_lookup_p[j].history_mac,
 					    ETH_ALEN)) {
-						index = k;
+						index = j;
 						break;
 					}
 
 					/*To find the index for LRU */
-					if (sxgep->mb_lookup_p[k].last_used <
+					if (sxgep->mb_lookup_p[j].last_used <
 					    sxgep->mb_lookup_p[index].last_used)
-						index = k;
+						index = j;
 				}
 			}
 
@@ -3062,15 +3048,16 @@ void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *s
 				ETH_ALEN);
 
 			sxgep->mb_lookup_p[i].last_used = input_time;
-			sxgep->mb_lookup_p[i].flag = 1;
+			sxgep->mb_lookup_p[i].flag = MBOX_LOOKUP_FLAG_SET;
 
 			spin_lock_irqsave(&sxgep->lock, flags);
 			err = sxge_eps_mbx_l2_add(sxgep,
 				sxgep->mb_lookup_p[i].history_mac, (u64)(i + 1));
 			spin_unlock_irqrestore(&sxgep->lock, flags);
 
-			if (err){
-				sxgep->mb_lookup_p[i].flag = 0;
+			if (err) {
+				sxgep->mb_lookup_p[i].flag =
+						MBOX_LOOKUP_FLAG_UNSET;
 				return;
 			}
 
@@ -3078,8 +3065,7 @@ void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *s
 			break;
 		}
 
-		if (0 == memcmp(input_mac, sxgep->mb_lookup_p[i].mac,
-			ETH_ALEN)) {
+		if (!memcmp(input_mac, sxgep->mb_lookup_p[i].mac, ETH_ALEN)) {
 			sxgep->mb_lookup_p[i].last_used = input_time;
 			done = 1;
 			break;
@@ -3101,10 +3087,10 @@ void sxge_mailbox_mac_lookup_table(u8 *input_mac, u64 input_time, struct sxge *s
 			(u64) (lru_index + 1));
 		spin_unlock_irqrestore(&sxgep->lock, flags);
 		if (err)
-			return;
+			netdev_warn(sxgep->dev,
+				"Error %d adding MAC to the TCAM\n", err);
 	}
 }
-
 
 void remove_lookup_table_entry_by_seconds(struct sxge *sxgep, u64 cputic)
 {
@@ -3115,12 +3101,11 @@ void remove_lookup_table_entry_by_seconds(struct sxge *sxgep, u64 cputic)
 	high = (u32)(cputic >> 32);
 
 	for(i = 0; i < MBOX_LOOKUP_TABLE_SIZE; i++) {
-		if (sxgep->mb_lookup_p[i].last_used == 0)
+		if (!sxgep->mb_lookup_p[i].last_used)
 			continue;
 
-		tbl_entry_time_high = (u32)(sxgep->mb_lookup_p[i].last_used >>
-			32);
-		/* more than 10 seconds */
+		tbl_entry_time_high = (u32)(sxgep->mb_lookup_p[i].last_used >> 32);
+		/* more than 5 seconds */
 		if ((high - tbl_entry_time_high) > 0x5) {
 			sxgep->mb_lookup_p[i].flag = 0;
 			memcpy(sxgep->mb_lookup_p[i].mac, empty_mac, ETH_ALEN);
@@ -3145,8 +3130,13 @@ static int sxge_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	if (sxge_live_migrate) {
 		u64 cputic;
 
-		cputic = read_rdtsc();
+		rdtscll(cputic);
 		remove_lookup_table_entry_by_seconds(sxgep, cputic);
+	}
+
+	if (!sxgep->vmac_stats.rxvmac_link_state) { /* Link is down */
+		dev_kfree_skb_any(skb);
+		return NETDEV_TX_OK;
 	}
 
 	i = skb_get_queue_mapping(skb);
@@ -3177,8 +3167,8 @@ static int sxge_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 		if ((memcmp(dev->perm_addr, l2_addr, ETH_ALEN) != 0) &&
 			(memcmp(dev->dev_addr, l2_addr, ETH_ALEN) != 0)){
-			last_used = read_rdtsc();
-			sxge_mailbox_mac_lookup_table( l2_addr, last_used, sxgep);
+			rdtscll(last_used);
+			sxge_mailbox_mac_lookup_table(l2_addr, last_used, sxgep);
 		}
 	}
 
