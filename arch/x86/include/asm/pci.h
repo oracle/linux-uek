@@ -112,9 +112,9 @@ static inline void x86_teardown_msi_irq(unsigned int irq)
 {
 	x86_msi.teardown_msi_irq(irq);
 }
-static inline void x86_restore_msi_irqs(struct pci_dev *dev, int irq)
+static inline void x86_restore_msi_irqs(struct pci_dev *dev)
 {
-	x86_msi.restore_msi_irqs(dev, irq);
+	x86_msi.restore_msi_irqs(dev);
 }
 #define arch_setup_msi_irqs x86_setup_msi_irqs
 #define arch_teardown_msi_irqs x86_teardown_msi_irqs
@@ -123,12 +123,12 @@ static inline void x86_restore_msi_irqs(struct pci_dev *dev, int irq)
 /* implemented in arch/x86/kernel/apic/io_apic. */
 int native_setup_msi_irqs(struct pci_dev *dev, int nvec, int type);
 void native_teardown_msi_irq(unsigned int irq);
-void native_restore_msi_irqs(struct pci_dev *dev, int irq);
+void native_restore_msi_irqs(struct pci_dev *dev);
 /* default to the implementation in drivers/lib/msi.c */
 #define HAVE_DEFAULT_MSI_TEARDOWN_IRQS
 #define HAVE_DEFAULT_MSI_RESTORE_IRQS
 void default_teardown_msi_irqs(struct pci_dev *dev);
-void default_restore_msi_irqs(struct pci_dev *dev, int irq);
+void default_restore_msi_irqs(struct pci_dev *dev);
 #else
 #define native_setup_msi_irqs		NULL
 #define native_teardown_msi_irq		NULL

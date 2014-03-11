@@ -92,7 +92,7 @@ void default_teardown_msi_irqs(struct pci_dev *dev)
 #endif
 
 #ifdef HAVE_DEFAULT_MSI_RESTORE_IRQS
-void default_restore_msi_irqs(struct pci_dev *dev, int irq)
+static void default_restore_msi_irq(struct pci_dev *dev, int irq)
 {
 	struct msi_desc *entry;
 
@@ -108,6 +108,15 @@ void default_restore_msi_irqs(struct pci_dev *dev, int irq)
 
 	if (entry)
 		write_msi_msg(irq, &entry->msg);
+}
+
+void default_restore_msi_irqs(struct pci_dev *dev)
+{
+	struct msi_desc *entry;
+
+	list_for_each_entry(entry, &dev->msi_list, list) {
+		default_restore_msi_irq(dev, entry->irq);
+	}
 }
 #endif
 
@@ -413,7 +422,7 @@ static void __pci_restore_msi_state(struct pci_dev *dev)
 
 	pci_intx_for_msi(dev, 0);
 	msi_set_enable(dev, pos, 0);
-	arch_restore_msi_irqs(dev, dev->irq);
+	arch_restore_msi_irqs(dev);
 
 	pci_read_config_word(dev, pos + PCI_MSI_FLAGS, &control);
 	msi_mask_irq(entry, msi_capable_mask(control), entry->masked);
@@ -440,8 +449,8 @@ static void __pci_restore_msix_state(struct pci_dev *dev)
 	control |= PCI_MSIX_FLAGS_ENABLE | PCI_MSIX_FLAGS_MASKALL;
 	pci_write_config_word(dev, pos + PCI_MSIX_FLAGS, control);
 
+	arch_restore_msi_irqs(dev);
 	list_for_each_entry(entry, &dev->msi_list, list) {
-		arch_restore_msi_irqs(dev, entry->irq);
 		msix_mask_irq(entry, entry->masked);
 	}
 
