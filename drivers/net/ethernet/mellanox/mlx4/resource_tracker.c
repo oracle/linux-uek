@@ -293,6 +293,7 @@ static const char *resource_str(enum mlx4_resource rt)
 }
 
 static void rem_slave_vlans(struct mlx4_dev *dev, int slave);
+static void rem_slave_qps(struct mlx4_dev *dev, int slave);
 static inline int mlx4_grant_resource(struct mlx4_dev *dev, int slave,
 				      enum mlx4_resource res_type, int count,
 				      int port)
@@ -632,6 +633,15 @@ void mlx4_free_resource_tracker(struct mlx4_dev *dev,
 			mlx4_reset_roce_gids(dev, i);
 			mutex_lock(&priv->mfunc.master.res_tracker.slave_list[i].mutex);
 			rem_slave_vlans(dev, i);
+			/* Free master's qps in case of 'Reset Flow'.
+			 * When the device is non-responsive the master is
+			 * unable to read steering rules mailboxes and
+			 * therefore can't delete those rules and the qp they are
+			 * attached to from the resource tracker.
+			 * Calling rem_slave_qp removes those resources
+			 * unconditionally.
+			 */
+			rem_slave_qps(dev, i);
 			mutex_unlock(&priv->mfunc.master.res_tracker.slave_list[i].mutex);
 		}
 
