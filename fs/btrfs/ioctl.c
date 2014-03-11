@@ -1719,7 +1719,9 @@ static noinline int may_destroy_subvol(struct btrfs_root *root)
 	if (di && !IS_ERR(di)) {
 		btrfs_dir_item_key_to_cpu(path->nodes[0], di, &key);
 		if (key.objectid == root->root_key.objectid) {
-			ret = -ENOTEMPTY;
+			ret = -EPERM;
+			printk(KERN_ERR "deleting default subvolume "
+			       "%llu is not allowed\n", key.objectid);
 			goto out;
 		}
 		btrfs_release_path(path);
