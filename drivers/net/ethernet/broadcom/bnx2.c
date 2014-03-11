@@ -3308,7 +3308,7 @@ bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 
 		sw_cons = BNX2_NEXT_TX_BD(sw_cons);
 
-		dev_kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 #if defined(BNX2_ENABLE_NETQUEUE)
 		bnapi->stats.tx_packets++;
 		bnapi->stats.tx_bytes += skb->len;
@@ -7792,7 +7792,7 @@ abort_tso:
 	mapping = pci_map_single(bp->pdev, skb->data, len, PCI_DMA_TODEVICE);
 	if (pci_dma_mapping_error(mapping)) {
 #endif
-		dev_kfree_skb(skb);
+		dev_kfree_skb_any(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -7911,7 +7911,7 @@ dma_error:
 			       PCI_DMA_TODEVICE);
 	}
 
-	dev_kfree_skb(skb);
+	dev_kfree_skb_any(skb);
 	return NETDEV_TX_OK;
 }
 
