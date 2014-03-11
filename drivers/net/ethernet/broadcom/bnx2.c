@@ -3588,6 +3588,9 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 	int index = (bnapi - bp->bnx2_napi);
 #endif
 
+	if (budget <= 0)
+		return rx_pkt;
+
 	hw_cons = bnx2_get_hw_rx_cons(bnapi);
 	sw_cons = rxr->rx_cons;
 	sw_prod = rxr->rx_prod;
