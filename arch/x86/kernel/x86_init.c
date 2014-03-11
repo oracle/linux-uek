@@ -19,6 +19,7 @@
 #include <asm/time.h>
 #include <asm/irq.h>
 #include <asm/io_apic.h>
+#include <asm/hpet.h>
 #include <asm/pat.h>
 #include <asm/tsc.h>
 #include <asm/iommu.h>
@@ -115,6 +116,8 @@ struct x86_msi_ops x86_msi = {
 	.teardown_msi_irq = native_teardown_msi_irq,
 	.teardown_msi_irqs = default_teardown_msi_irqs,
 	.restore_msi_irqs = default_restore_msi_irqs,
+	.msi_mask_irq = default_msi_mask_irq,
+	.msix_mask_irq = default_msix_mask_irq,
 };
 
 struct x86_io_apic_ops x86_io_apic_ops = {
@@ -123,3 +126,14 @@ struct x86_io_apic_ops x86_io_apic_ops = {
 	.write	= native_io_apic_write,
 	.modify	= native_io_apic_modify,
 };
+
+u32 arch_msi_mask_irq(struct msi_desc *desc, u32 mask, u32 flag)
+{
+	return x86_msi.msi_mask_irq(desc, mask, flag);
+}
+u32 arch_msix_mask_irq(struct msi_desc *desc, u32 flag)
+{
+	return x86_msi.msix_mask_irq(desc, flag);
+}
+
+

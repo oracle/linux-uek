@@ -57,6 +57,8 @@ void arch_teardown_msi_irq(unsigned int irq);
 extern int arch_setup_msi_irqs(struct pci_dev *dev, int nvec, int type);
 extern void arch_teardown_msi_irqs(struct pci_dev *dev);
 extern int arch_msi_check_device(struct pci_dev* dev, int nvec, int type);
+u32 default_msi_mask_irq(struct msi_desc *desc, u32 mask, u32 flag);
+u32 default_msix_mask_irq(struct msi_desc *desc, u32 flag);
 
 
 #endif /* LINUX_MSI_H */
