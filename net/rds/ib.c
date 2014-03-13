@@ -789,38 +789,6 @@ out:
 	return ret;
 }
 
-static void rds_ib_check_up_port(void)
-{
-	struct net_device *dev;
-	int     downs;
-	int     retries = 0;
-
-retry:
-	downs = 0;
-	read_lock(&dev_base_lock);
-	for_each_netdev(&init_net, dev) {
-		if ((dev->type == ARPHRD_INFINIBAND) &&
-				(dev->flags & IFF_UP) &&
-				!(dev->flags & IFF_SLAVE) &&
-				!(dev->flags & IFF_MASTER)) {
-			if (dev->operstate != IF_OPER_UP)
-				downs++;
-		}
-	}
-	read_unlock(&dev_base_lock);
-
-	if (downs) {
-		if (retries++ <= 30) {
-			msleep(1000);
-			goto retry;
-		} else {
-			printk(KERN_ERR "RDS/IB: Some port(s) may not be "
-					"operational\n");
-		}
-	}
-}
-
-
 static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 				struct net_device	*net_dev,
 				u8			port_num,
@@ -1187,9 +1155,8 @@ static void rds_ib_dump_ip_config(void)
 	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
 		return;
 
-	printk(KERN_ERR "RDS/IB: IP configuration ...\n");
 	for (i = 1; i <= ip_port_cnt; i++) {
-		printk(KERN_ERR "RDS/IB: %s/port_%d/%s: "
+		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: "
 			"IP %pI4/%pI4/%pI4 "
 			"state %s\n",
 			((ip_config[i].rds_ibdev) ?
@@ -1206,7 +1173,7 @@ static void rds_ib_dump_ip_config(void)
 				RDS_IB_PORT_UP ? "UP" : "DOWN"));
 
 		for (j = 0; j < ip_config[i].alias_cnt; j++) {
-			printk(KERN_ERR "Alias %s "
+			printk(KERN_INFO "Alias %s "
 				"IP %pI4/%pI4/%pI4\n",
 				ip_config[i].aliases[j].if_name,
 				&ip_config[i].aliases[j].ip_addr,
@@ -1230,8 +1197,6 @@ static int rds_ib_ip_config_init(void)
 
 	if (!rds_ib_active_bonding_enabled)
 		return 0;
-
-	rds_ib_check_up_port();
 
 	rcu_read_unlock();
 
@@ -1286,6 +1251,7 @@ static int rds_ib_ip_config_init(void)
 			in_dev_put(in_dev);
 	}
 
+	printk(KERN_INFO "RDS/IB: IP configuration..\n");
 	rds_ib_dump_ip_config();
 	read_unlock(&dev_base_lock);
 	return ret;
@@ -1597,6 +1563,69 @@ static void rds_ib_update_ip_config(void)
 	read_unlock(&dev_base_lock);
 }
 
+static void rds_ib_joining_ip(struct work_struct *_work)
+{
+	struct rds_ib_port_ud_work      *work =
+		container_of(_work, struct rds_ib_port_ud_work, work.work);
+	struct net_device *ndev = work->dev;
+	struct in_ifaddr        *ifa;
+	struct in_ifaddr        **ifap;
+	struct in_device        *in_dev;
+	union ib_gid            gid;
+	struct rds_ib_device    *rds_ibdev;
+	int                     ret = 0;
+	u8                      port_num;
+	u8                      port;
+
+	read_lock(&dev_base_lock);
+	in_dev = in_dev_get(ndev);
+	if (in_dev && !in_dev->ifa_list && work->timeout > 0) {
+		INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
+		work->timeout -= msecs_to_jiffies(100);
+		queue_delayed_work(rds_wq, &work->work, msecs_to_jiffies(100));
+	} else if (in_dev && in_dev->ifa_list) {
+		memcpy(&gid, ndev->dev_addr + 4, sizeof gid);
+		list_for_each_entry_rcu(rds_ibdev,
+				&rds_ib_devices, list) {
+			ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
+						 IB_GID_TYPE_IB, NULL,
+						 &port_num, NULL);
+			if (!ret)
+				break;
+		}
+		if (ret) {
+			printk(KERN_ERR "RDS/IB: GID "RDS_IB_GID_FMT
+					" has no associated port\n",
+					RDS_IB_GID_ARG(gid));
+		} else {
+			port = rds_ib_init_port(rds_ibdev, ndev,
+					port_num, gid);
+			if (port > 0) {
+				for (ifap = &in_dev->ifa_list;
+						(ifa = *ifap);
+						ifap = &ifa->ifa_next) {
+					rds_ib_set_port(rds_ibdev, ndev,
+							ifa->ifa_label,
+							port,
+							ifa->ifa_address,
+							ifa->ifa_broadcast,
+							ifa->ifa_mask);
+				}
+			}
+		}
+		printk(KERN_INFO "RDS/IB: Updated IP configuration..\n");
+		rds_ib_ip_failover_groups_init();
+		rds_ib_dump_ip_config();
+		kfree(work);
+	} else if (!work->timeout)
+		kfree(work);
+
+	if (in_dev)
+		in_dev_put(in_dev);
+	read_unlock(&dev_base_lock);
+}
+
+
 static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long event, void *ctx)
 {
 	struct net_device *ndev = netdev_notifier_info_to_dev(ctx);
@@ -1604,7 +1633,7 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	u8 i;
 	struct rds_ib_port_ud_work *work = NULL;
 
-	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled)
 		return NOTIFY_DONE;
 
 	if (event != NETDEV_UP && event != NETDEV_DOWN)
@@ -1618,6 +1647,25 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			port = i;
 			break;
 		}
+	}
+
+	/* check for newly joined IB interface */
+	if (!port && event == NETDEV_UP) {
+		if ((ndev->type == ARPHRD_INFINIBAND) &&
+				(ndev->flags & IFF_UP) &&
+				!(ndev->flags & IFF_SLAVE) &&
+				!(ndev->flags & IFF_MASTER)) {
+			work = kzalloc(sizeof *work, GFP_ATOMIC);
+			if (work) {
+				work->dev = ndev;
+				work->timeout = msecs_to_jiffies(10000);
+				INIT_DELAYED_WORK(&work->work, rds_ib_joining_ip);
+				queue_delayed_work(rds_wq, &work->work,
+						msecs_to_jiffies(100));
+			}
+		}
+
+		return NOTIFY_DONE;
 	}
 
 	if (!port)
