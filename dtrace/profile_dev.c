@@ -32,12 +32,12 @@
 #include <asm/irq_regs.h>
 #include <asm/ptrace.h>
 
+#include <linux/hardirq.h>
+#include <linux/profile.h>
+
 #include "dtrace.h"
 #include "dtrace_dev.h"
 #include "profile.h"
-
-/* #define OMNI_CYCLICS */
-/* #define PROBE_PCS */
 
 #define PROF_NAMELEN		15
 #define PROF_PROFILE		0
@@ -62,14 +62,12 @@ typedef struct profile_probe_percpu {
 static ktime_t	profile_interval_min = KTIME_INIT(0, NANOSEC / 5000);
 static int	profile_aframes = 0;
 
-#ifdef OMNI_CYCLICS
 static int	profile_rates[] = {
 				    97, 199, 499, 997, 1999,
 				    4001, 4999, 0, 0, 0,
 				    0, 0, 0, 0, 0,
 				    0, 0, 0, 0, 0,
 				  };
-#endif
 static int	profile_ticks[] = {
 				    1, 10, 100, 500, 1000,
 				    5000, 0, 0, 0, 0,
@@ -89,24 +87,34 @@ static int	profile_ticks[] = {
 static int	profile_max;		/* maximum number of profile probes */
 static atomic_t	profile_total;		/* current number of profile probes */
 
-static void profile_tick(uintptr_t arg)
+static void profile_tick_fn(uintptr_t arg)
 {
 	profile_probe_t	*prof = (profile_probe_t *)arg;
 	unsigned long	pc = 0, upc = 0;
-#ifdef PROBE_PCS
 	struct pt_regs	*regs = get_irq_regs();
 
-	if (user_mode(regs))
+	/*
+	 * If regs == NULL, then we were called from from softirq context which
+	 * also means that we didn't actually interrupt any processing (kernel
+	 * or user space).
+	 * If regs != NULL, then we did actually get called from hardirq
+	 * because the timer interrupt did really interrupt something that was
+	 * going on on the CPU (could be user mode or kernel mode).
+	 */
+	if (regs == NULL) {
+		uint64_t	stack[8];
+
+		dtrace_getpcstack(stack, 8, 0, NULL);
+		pc = stack[7];
+	} else if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
-#endif
 
 	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
 }
 
-#ifdef OMNI_CYCLICS
-static void profile_prof(uintptr_t arg)
+static void profile_prof_fn(uintptr_t arg)
 {
 	profile_probe_percpu_t	*pcpu = (profile_probe_percpu_t *)arg;
 	profile_probe_t		*prof = pcpu->profc_probe;
@@ -118,12 +126,23 @@ static void profile_prof(uintptr_t arg)
 	pcpu->profc_expected = ktime_add(pcpu->profc_expected,
 					 pcpu->profc_interval);
 
-#ifdef PROBE_PCS
-	if (user_mode(regs))
+	/*
+	 * If regs == NULL, then we were called from from softirq context which
+	 * also means that we didn't actually interrupt any processing (kernel
+	 * or user space).
+	 * If regs != NULL, then we did actually get called from hardirq
+	 * because the timer interrupt did really interrupt something that was
+	 * going on on the CPU (could be user mode or kernel mode).
+	 */
+	if (regs == NULL) {
+		uint64_t	stack[8];
+
+		dtrace_getpcstack(stack, 8, 0, NULL);
+		pc = stack[7];
+	} else if (user_mode(regs))
 		upc = GET_IP(regs);
 	else
 		pc = GET_IP(regs);
-#endif
 
 	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
 }
@@ -137,8 +156,8 @@ static void profile_online(void *arg, processorid_t cpu, cyc_handler_t *hdlr,
 	pcpu = kzalloc(sizeof(profile_probe_percpu_t), GFP_KERNEL);
 	pcpu->profc_probe = prof;
 
-	hdlr->cyh_func = profile_prof;
-	hdlr->cyh_arg = pcpu;
+	hdlr->cyh_func = profile_prof_fn;
+	hdlr->cyh_arg = (uintptr_t)pcpu;
 	hdlr->cyh_level = CY_HIGH_LEVEL;
 
 	when->cyt_interval = prof->prof_interval;
@@ -152,11 +171,16 @@ static void profile_offline(void *arg, processorid_t cpu, void *oarg)
 {
 	profile_probe_percpu_t	*pcpu = oarg;
 
-	ASSERT(pcpu->profc_probe == arg);
+	if (pcpu->profc_probe == arg) {
+		kfree(pcpu);
+		return;
+	}
 
-	kfree(pcpu);
+	WARN_ONCE(1, "%s: called with mismatched probe info (%p vs %p)"
+		  " - leaking %lu bytes\n", __func__, pcpu->profc_probe, arg,
+		  sizeof(profile_probe_percpu_t));
+
 }
-#endif
 
 static void profile_create(ktime_t interval, const char *name, int kind)
 {
@@ -203,9 +227,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 			char	*prefix;
 			int	kind;
 	} types[] = {
-#ifdef OMNI_CYCLIC
 			{ PROF_PREFIX_PROFILE, PROF_PROFILE },
-#endif
 			{ PROF_PREFIX_TICK, PROF_TICK },
 			{ NULL, 0 },
 		    };
@@ -239,7 +261,6 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 		/*
 		 * If no description was provided, provide all of our probes.
 		 */
-#ifdef OMNI_CYCLICS
 		for (i = 0; i < sizeof(profile_rates) / sizeof(int); i++) {
 			if ((rate = profile_rates[i]) == 0)
 				continue;
@@ -249,7 +270,6 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 			profile_create(ktime_set(0, NANOSEC / rate),
 				       n, PROF_PROFILE);
 		}
-#endif
 
 		for (i = 0; i < sizeof(profile_ticks) / sizeof(int); i++) {
 			if ((rate = profile_ticks[i]) == 0)
@@ -290,7 +310,10 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 		suffix = &name[j];
 	}
 
-	ASSERT(suffix != NULL);
+	if (suffix == NULL) {
+		WARN_ONCE(1, "%s: missing time suffix in %s\n", __func__, name);
+		return;
+	}
 
 	/*
 	 * Now determine the numerical value present in the probe name.
@@ -322,7 +345,7 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 
 	if (mult_s == 0 && mult_ns == 0) {
 		/*
-		 * The default is frequency-per-second.
+		 * The default is frequency (per-second).
 		 */
 		interval = ns_to_ktime((int64_t)NANOSEC / val);
 	} else {
@@ -342,17 +365,22 @@ void profile_provide(void *arg, const dtrace_probedesc_t *desc)
 int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t		*prof = parg;
-#ifdef OMNI_CYCLICS
-	cyc_omni_handler_t	omni;
-#endif
-	cyc_handler_t		hdlr;
 	cyc_time_t		when;
 
-	ASSERT(ktime_nz(prof->prof_interval));
-	ASSERT(MUTEX_HELD(&cpu_lock));
+	if (!ktime_nz(prof->prof_interval)) {
+		WARN_ONCE(1, "%s: trying to enable 0-interval probe %s\n",
+			  __func__, prof->prof_name);
+		return 1;
+	}
+	if (!MUTEX_HELD(&cpu_lock)) {
+		WARN_ONCE(1, "%s: not holding cpu_lock\n", __func__);
+		return 1;
+	}
 
 	if (prof->prof_kind == PROF_TICK) {
-		hdlr.cyh_func = profile_tick;
+		cyc_handler_t		hdlr;
+
+		hdlr.cyh_func = profile_tick_fn;
 		hdlr.cyh_arg = (uintptr_t)prof;
 		hdlr.cyh_level = CY_HIGH_LEVEL;
 
@@ -360,17 +388,17 @@ int _profile_enable(void *arg, dtrace_id_t id, void *parg)
 		when.cyt_when = ktime_set(0, 0);
 
 		prof->prof_cyclic = cyclic_add(&hdlr, &when);
-#ifdef OMNI_CYCLICS
-	} else {
-		ASSERT(prof->prof_kind == PROF_PROFILE);	
+	} else if (prof->prof_kind == PROF_PROFILE) {
+		cyc_omni_handler_t	omni;
 
 		omni.cyo_online = profile_online;
 		omni.cyo_offline = profile_offline;
-		omni.cyo_arg = (uintptr_t)prof;
+		omni.cyo_arg = prof;
 
 		prof->prof_cyclic = cyclic_add_omni(&omni);
-#endif
-	}
+	} else
+		pr_warn_once("%s: Invalid profile type %d\n",
+			      __func__, prof->prof_kind);
 
 	return 0;
 }
@@ -379,8 +407,15 @@ void _profile_disable(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t	*prof = parg;
 
-	ASSERT(prof->prof_cyclic != CYCLIC_NONE);
-	ASSERT(MUTEX_HELD(&cpu_lock));
+	if (prof->prof_cyclic == CYCLIC_NONE) {
+		WARN_ONCE(1, "%s: trying to disable probe %s without cyclic\n",
+			  __func__, prof->prof_name);
+		return;
+	}
+	if (!MUTEX_HELD(&cpu_lock)) {
+		WARN_ONCE(1, "%s: not holding cpu_lock\n", __func__);
+		return;
+	}
 
 	cyclic_remove(prof->prof_cyclic);
 	prof->prof_cyclic = CYCLIC_NONE;
@@ -395,11 +430,19 @@ void profile_destroy(void *arg, dtrace_id_t id, void *parg)
 {
 	profile_probe_t	*prof = parg;
 
-	ASSERT(prof->prof_cyclic == CYCLIC_NONE);
-	kfree(prof);
+	if (prof->prof_cyclic == CYCLIC_NONE) {
+		kfree(prof);
 
-	ASSERT(atomic_read(&profile_total) >= 1);
-	atomic_dec(&profile_total);
+		if (atomic_read(&profile_total) >= 1) {
+			atomic_dec(&profile_total);
+			return;
+		}
+
+		WARN_ONCE(1, "%s: profile_total refcount is 0!\n", __func__);
+	}
+
+	WARN_ONCE(1, "%s: %s still assigned to cyclic\n",
+		  __func__, prof->prof_name);
 }
 
 static int profile_open(struct inode *inode, struct file *file)
