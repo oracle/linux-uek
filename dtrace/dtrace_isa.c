@@ -257,6 +257,7 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 	while (st.depth < st.limit)
 		pcstack[st.depth++] = 0;
 }
+EXPORT_SYMBOL(dtrace_getpcstack);
 
 static int is_code_addr(unsigned long addr) {
 	struct vm_area_struct   *vma, *first;
