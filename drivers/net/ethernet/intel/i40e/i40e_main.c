@@ -2306,8 +2306,6 @@ static int i40e_configure_rx_ring(struct i40e_ring *ring)
 	rx_ctx.crcstrip = 1;
 	rx_ctx.l2tsel = 1;
 	rx_ctx.showiv = 1;
-	/* set the prefena field to 1 because the manual says to */
-	rx_ctx.prefena = 1;
 
 	/* clear the context in the HMC */
 	err = i40e_clear_lan_rx_queue_context(hw, pf_q);
