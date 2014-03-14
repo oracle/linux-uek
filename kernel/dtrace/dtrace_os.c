@@ -260,7 +260,10 @@ dtrace_vtime_state_t	dtrace_vtime_active = 0;
  */
 ktime_t dtrace_gethrtime(void)
 {
-	return ktime_get();
+	struct timespec ts;
+
+	getrawmonotonic(&ts);
+	return timespec_to_ktime(ts);
 }
 EXPORT_SYMBOL(dtrace_gethrtime);
 
@@ -269,10 +272,10 @@ EXPORT_SYMBOL(dtrace_gethrtime);
  */
 ktime_t dtrace_getwalltime(void)
 {
-	struct timespec tv;
+	struct timespec ts;
 
-	getnstimeofday(&tv);
-	return timespec_to_ktime(tv);
+	getnstimeofday(&ts);
+	return timespec_to_ktime(ts);
 }
 EXPORT_SYMBOL(dtrace_getwalltime);
 
