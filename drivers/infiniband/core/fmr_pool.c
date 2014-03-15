@@ -84,7 +84,6 @@ enum {
 
 struct ib_fmr_pool {
 	spinlock_t                pool_lock;
-	spinlock_t                used_pool_lock;
 
 	int                       pool_size;
 	int                       max_pages;
@@ -187,9 +186,9 @@ static void ib_fmr_batch_release(struct ib_fmr_pool *pool, int unmap_usedonce)
 		int count = 0;
 		LIST_HEAD(temp_list);
 
-		spin_lock_irq(&pool->used_pool_lock);
+		spin_lock_irq(&pool->pool_lock);
 		list_splice_init(&pool->used_list, &temp_list);
-		spin_unlock_irq(&pool->used_pool_lock);
+		spin_unlock_irq(&pool->pool_lock);
 		list_for_each_entry(fmr, &temp_list, list) {
 			/* find first fmr that is not mapped yet */
 			if (fmr->remap_count ==  0 ||
@@ -197,13 +196,15 @@ static void ib_fmr_batch_release(struct ib_fmr_pool *pool, int unmap_usedonce)
 				/* split the list 2 two */
 				list_cut_position(&unmap_list, &temp_list,
 								 &fmr->list);
-				spin_lock_irq(&pool->used_pool_lock);
+				spin_lock_irq(&pool->pool_lock);
 				list_splice(&temp_list, &pool->used_list);
-				spin_unlock_irq(&pool->used_pool_lock);
+				spin_unlock_irq(&pool->pool_lock);
 				already_split = 1;
 				break;
 			} else {
+				spin_lock_irq(&pool->pool_lock);
 				hlist_del_init(&fmr->cache_node);
+				spin_unlock_irq(&pool->pool_lock);
 				fmr->remap_count = 0;
 				list_add_tail(&fmr->fmr->list, &fmr_list);
 				count++;
@@ -406,7 +407,6 @@ struct ib_fmr_pool *ib_create_fmr_pool(struct ib_pd             *pd,
 	pool->dirty_watermark = params->dirty_watermark;
 	pool->dirty_len       = 0;
 	spin_lock_init(&pool->pool_lock);
-	spin_lock_init(&pool->used_pool_lock);
 	atomic_set(&pool->req_ser,   0);
 	atomic_set(&pool->flush_ser, 0);
 	init_waitqueue_head(&pool->force_wait);
@@ -543,9 +543,9 @@ int ib_flush_fmr_pool(struct ib_fmr_pool *pool)
 	 * Put them on the dirty list now so that the cleanup
 	 * thread will reap them too.
 	 */
-	spin_lock_irq(&pool->used_pool_lock);
+	spin_lock_irq(&pool->pool_lock);
 	list_splice_init(&pool->used_list, &pool->dirty_list);
-	spin_unlock_irq(&pool->used_pool_lock);
+	spin_unlock_irq(&pool->pool_lock);
 
 	serial = atomic_inc_return(&pool->req_ser);
 	wake_up_process(pool->thread);
@@ -604,31 +604,29 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 	}
 
 	if (list_empty(&pool->free_list)) {
-		spin_unlock_irqrestore(&pool->pool_lock, flags);
-		spin_lock_irqsave(&pool->used_pool_lock, flags);
 		if (list_empty(&pool->used_list)) {
-			spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+			spin_unlock_irqrestore(&pool->pool_lock, flags);
 			return ERR_PTR(-EAGAIN);
 		}
 		fmr = list_entry(pool->used_list.next, struct ib_pool_fmr,
 				 list);
 		list_del(&fmr->list);
 		hlist_del_init(&fmr->cache_node);
-		spin_unlock_irqrestore(&pool->used_pool_lock, flags);
 	} else {
 		fmr = list_entry(pool->free_list.next, struct ib_pool_fmr,
 				 list);
 		list_del(&fmr->list);
 		hlist_del_init(&fmr->cache_node);
-		spin_unlock_irqrestore(&pool->pool_lock, flags);
 	}
+
+	spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 	if (pool->relaxed && fmr->pd != rargs->pd) {
 		result = ib_set_fmr_pd(fmr->fmr, rargs->pd);
 		if (result) {
-			spin_lock_irqsave(&pool->used_pool_lock, flags);
+			spin_lock_irqsave(&pool->pool_lock, flags);
 			list_add(&fmr->list, &pool->used_list);
-			spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+			spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 			printk(KERN_WARNING PFX "set_fmr_pd returns %d\n", result);
 
@@ -640,9 +638,9 @@ struct ib_pool_fmr *ib_fmr_pool_map_phys(struct ib_fmr_pool *pool_handle,
 				 io_virtual_address);
 
 	if (result) {
-		spin_lock_irqsave(&pool->used_pool_lock, flags);
+		spin_lock_irqsave(&pool->pool_lock, flags);
 		list_add(&fmr->list, &pool->used_list);
-		spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+		spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 		printk(KERN_WARNING PFX "fmr_map returns %d\n", result);
 
@@ -691,7 +689,7 @@ int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr)
 
 	pool = fmr->pool;
 
-	spin_lock_irqsave(&pool->used_pool_lock, flags);
+	spin_lock_irqsave(&pool->pool_lock, flags);
 
 	--fmr->ref_count;
 	if (!fmr->ref_count) {
@@ -712,7 +710,7 @@ int ib_fmr_pool_unmap(struct ib_pool_fmr *fmr)
 		       fmr, fmr->ref_count);
 #endif
 
-	spin_unlock_irqrestore(&pool->used_pool_lock, flags);
+	spin_unlock_irqrestore(&pool->pool_lock, flags);
 
 	return 0;
 }
