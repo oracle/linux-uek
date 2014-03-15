@@ -773,7 +773,8 @@ struct e1000_fw_drv_info {
 enum e1000_state_t {
 	__IGB_TESTING,
 	__IGB_RESETTING,
-	__IGB_DOWN
+	__IGB_DOWN,
+	__IGB_PTP_TX_IN_PROGRESS,
 };
 
 extern char igb_driver_name[];
