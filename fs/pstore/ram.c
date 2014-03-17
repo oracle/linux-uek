@@ -117,6 +117,8 @@ ramoops_get_next_prz(struct persistent_ram_zone *przs[], uint *c, uint max,
 		return NULL;
 
 	prz = przs[i];
+	if (!prz)
+		return NULL;
 
 	if (update) {
 		/* Update old/shadowed buffer. */
