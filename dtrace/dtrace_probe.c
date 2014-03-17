@@ -459,7 +459,7 @@ static void dtrace_action_ustack(dtrace_mstate_t *mstate,
 {
 	int		nframes = DTRACE_USTACK_NFRAMES(arg);
 	int		strsize = DTRACE_USTACK_STRSIZE(arg);
-	uint64_t	*pcs = &buf[1], *fps;
+	uint64_t	*pcs = &buf[2], *fps;
 	char		*str = (char *)&pcs[nframes];
 	int		size, offs = 0, i, j;
 	uintptr_t	old = mstate->dtms_scratch_ptr, saved;
@@ -495,7 +495,7 @@ static void dtrace_action_ustack(dtrace_mstate_t *mstate,
 	 * Now get a stack with both program counters and frame pointers.
 	 */
 	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	dtrace_getufpstack(buf, fps, nframes + 1);
+	dtrace_getufpstack(buf, fps, nframes + 2);
 	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	/*
@@ -909,7 +909,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				if (DTRACE_ANCHORED(mstate.dtms_probe) &&
 				    in_interrupt()) {
 					int	depth = DTRACE_USTACK_NFRAMES(
-							    rec->dtrd_arg) + 1;
+							    rec->dtrd_arg) + 2;
 
 					dtrace_bzero((void *)(tomax + valoffs),
 						     DTRACE_USTACK_STRSIZE(
@@ -939,7 +939,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				dtrace_getupcstack(
 					(uint64_t *)(tomax + valoffs),
 					DTRACE_USTACK_NFRAMES(rec->dtrd_arg) +
-					1);
+					2);
 				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 				continue;
 
@@ -1047,6 +1047,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			case DTRACEACT_UMOD:
 			case DTRACEACT_UADDR: {
 				pid_t	pid = current->pid;
+				pid_t	tgid = current->tgid;
 
 				if (!dtrace_priv_proc(state))
 					continue;
@@ -1060,11 +1061,21 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					   (uint64_t)pid,
 					   __FUNCTION__, __LINE__);
 				DTRACE_STORE(uint64_t, tomax,
-					     valoffs + sizeof(uint64_t), val);
+					     valoffs + sizeof(uint64_t),
+					     (uint64_t)tgid);
 				dt_dbg_buf("    Store: %p[%ld .. %ld] <- %lld "
-					   "(from %s::%d)\n",
+					   "[TGID] (from %s::%d)\n",
 					   buf, valoffs + sizeof(uint64_t),
 					   valoffs + 2 * sizeof(uint64_t) - 1,
+					   (uint64_t)tgid,
+					   __FUNCTION__, __LINE__);
+				DTRACE_STORE(uint64_t, tomax,
+					     valoffs + 2 * sizeof(uint64_t),
+					     val);
+				dt_dbg_buf("    Store: %p[%ld .. %ld] <- %lld "
+					   "(from %s::%d)\n",
+					   buf, valoffs + 2 * sizeof(uint64_t),
+					   valoffs + 3 * sizeof(uint64_t) - 1,
 					   val, __FUNCTION__, __LINE__);
 
 				continue;

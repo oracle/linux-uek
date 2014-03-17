@@ -2189,20 +2189,20 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_UCALLER)) {
-			uint64_t	ustack[3];
+			uint64_t	ustack[4];
 
 			/*
-			 * dtrace_getupcstack() fills in the first uint64_t
-			 * with the current PID.  The second uint64_t will
-			 * be the program counter at user-level.  The third
-			 * uint64_t will contain the caller, which is what
-			 * we're after.
+			 * dtrace_getupcstack() fills in the first uint64_t with
+			 * the current PID, and the second uint64_t with the
+			 * current TGID.  The third uint64_t will be the
+			 * program counter at user-level.  The fourth uint64_t
+			 * will contain the caller, which is what we're after.
 			 */
-			ustack[2] = 0;
+			ustack[3] = 0;
 			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-			dtrace_getupcstack(ustack, 3);
+			dtrace_getupcstack(ustack, 4);
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-			mstate->dtms_ucaller = ustack[2];
+			mstate->dtms_ucaller = ustack[3];
 			mstate->dtms_present |= DTRACE_MSTATE_UCALLER;
 		}
 
