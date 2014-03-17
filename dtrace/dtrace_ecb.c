@@ -281,7 +281,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 				arg = DTRACE_USTACK_ARG(nframes, strsize);
 			}
 
-			size = (nframes + 1) * sizeof(uint64_t);
+			size = (nframes + 2) * sizeof(uint64_t);
 			size += DTRACE_USTACK_STRSIZE(arg);
 			size = P2ROUNDUP(size, (uint32_t)(sizeof(uintptr_t)));
 
@@ -304,7 +304,7 @@ static int dtrace_ecb_action_add(dtrace_ecb_t *ecb, dtrace_actdesc_t *desc)
 			    (dp->dtdo_rtype.dtdt_flags & DIF_TF_BYREF))
 				return -EINVAL;
 
-			size = 2 * sizeof(uint64_t);
+			size = 3 * sizeof(uint64_t);
 
 			break;
 

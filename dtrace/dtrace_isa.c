@@ -289,7 +289,8 @@ void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 	unsigned long		*sp;
 
 	*pcstack++ = (uint64_t)p->pid;
-	pcstack_limit--;
+	*pcstack++ = (uint64_t)p->tgid;
+	pcstack_limit-=2;
 
 	if (p->mm == NULL || (p->flags & PF_KTHREAD))
 	    goto out;
