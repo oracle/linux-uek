@@ -2243,7 +2243,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		 * It is always safe to dereference current, it always points
 		 * to a valid task_struct.
 		 */
-		return (uint64_t)current->pid;
+		return (uint64_t)current->tgid;
 
 	case DIF_VAR_PPID:
 		if (!dtrace_priv_proc(state))
@@ -2256,7 +2256,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		 * Additionally, it is safe to dereference one's parent, since
 		 * it is never NULL after process birth.
 		 */
-		return (uint64_t)current->real_parent->pid;
+		return (uint64_t)current->real_parent->tgid;
 
 	case DIF_VAR_TID:
 		return (uint64_t)current->pid;
