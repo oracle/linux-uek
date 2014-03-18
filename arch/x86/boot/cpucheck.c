@@ -27,6 +27,7 @@
 #include <asm/processor-flags.h>
 #include <asm/required-features.h>
 #include <asm/msr-index.h>
+#include "string.h"
 
 struct cpu_features cpu;
 static u32 cpu_vendor[3];
