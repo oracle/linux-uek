@@ -581,6 +581,32 @@ void rds_conn_exit(void)
 }
 
 /*
+ * Drop connections when the idled QoS connection not getting
+ * disconnect event when the remote peer reboots.  This is causing
+ * delayed reconnect, hence application brownout when the peer comes online.
+ * The fix was to proactively drop and reconnect them when the base lane is
+ * going through the reconnect to the reboot peer, in effect forcing all
+ * the lanes to go through the reconnect at the same time.
+ */
+static void rds_conn_shutdown_lanes(struct rds_connection *conn)
+{
+	struct hlist_head *head =
+		rds_conn_bucket(conn->c_laddr, conn->c_faddr);
+	struct rds_connection *tmp;
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(tmp, head, c_hash_node) {
+		if (tmp->c_faddr == conn->c_faddr &&
+			tmp->c_laddr == conn->c_laddr &&
+			tmp->c_tos != 0 &&
+			tmp->c_trans == conn->c_trans) {
+				rds_conn_drop(tmp);
+		}
+	}
+	rcu_read_unlock();
+}
+
+/*
  * Force a disconnect
  */
 void rds_conn_drop(struct rds_connection *conn)
@@ -608,6 +634,10 @@ void rds_conn_drop(struct rds_connection *conn)
 			conn->c_reconnect_drops,
 			conn->c_reconnect_err);
 		conn->c_reconnect_warn = 0;
+
+		/* see comment for rds_conn_shutdown_lanes() */
+		if (conn->c_tos == 0)
+			rds_conn_shutdown_lanes(conn);
 	}
 	conn->c_reconnect_drops++;
 
