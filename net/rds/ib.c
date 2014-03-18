@@ -774,10 +774,10 @@ static int rds_ib_move_ip(char			*from_dev,
 							goto out;
 					}
 
-			work->conn = (struct rds_ib_connection *)ic->conn;
-			INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
-					queue_delayed_work(rds_wq, &work->work,
-		msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
+					work->conn = (struct rds_ib_connection *)ic->conn;
+					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
+					queue_delayed_work(rds_aux_wq, &work->work,
+						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
 				} else
 					rds_conn_drop(ic->conn);
 			}
