@@ -88,7 +88,7 @@ SDP_MODPARAM_INT(sdp_data_debug_level, 0,
 		"Enable data path debug tracing if > 0.");
 #endif
 
-SDP_MODPARAM_INT(sdp_apm_enable, 1, "Enable APM.");
+SDP_MODPARAM_INT(sdp_apm_enable, 0, "Enable APM.");
 SDP_MODPARAM_SINT(sdp_fmr_pool_size, 20, "Number of FMRs to allocate for pool");
 SDP_MODPARAM_SINT(sdp_fmr_dirty_wm, 5, "Watermark to flush fmr pool");
 
