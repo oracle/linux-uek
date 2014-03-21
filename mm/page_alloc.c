@@ -3832,14 +3832,29 @@ static int __meminit next_active_region_index_in_nid(int index, int nid)
  */
 int __meminit __early_pfn_to_nid(unsigned long pfn)
 {
-	int i;
+	unsigned long start_pfn, end_pfn;
+	int i, nid;
+	/*
+	 * NOTE: The following SMP-unsafe globals are only used early in boot
+	 * when the kernel is running single-threaded.
+	 */
+	static unsigned long __meminitdata last_start_pfn, last_end_pfn;
+	static int __meminitdata last_nid;
 
-	for (i = 0; i < nr_nodemap_entries; i++) {
-		unsigned long start_pfn = early_node_map[i].start_pfn;
-		unsigned long end_pfn = early_node_map[i].end_pfn;
+	if (last_start_pfn <= pfn && pfn < last_end_pfn)
+		return last_nid;
 
-		if (start_pfn <= pfn && pfn < end_pfn)
-			return early_node_map[i].nid;
+        for (i = 0; i < nr_nodemap_entries; i++) {
+                unsigned long start_pfn = early_node_map[i].start_pfn;
+                unsigned long end_pfn = early_node_map[i].end_pfn;
+		nid = early_node_map[i].nid;
+
+                if (start_pfn <= pfn && pfn < end_pfn) {
+                        last_start_pfn = start_pfn;
+                        last_end_pfn = end_pfn;
+                        last_nid = nid;
+                        return nid;
+		}
 	}
 	/* This is a memory hole */
 	return -1;
