@@ -69,6 +69,7 @@
 #include <linux/parser.h>
 #include <linux/backing-dev.h>
 #include <linux/compat.h>
+#include <linux/log2.h>
 
 #include <asm/uaccess.h>
 #include <linux/spinlock.h>
@@ -2343,6 +2344,7 @@ static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size)
 	struct oracleasm_query_disk_v2 *qd_info;
 	struct file *filp;
 	struct block_device *bdev;
+	unsigned int lsecsz;
 	int ret;
 
 	mlog_entry("(0x%p, 0x%p, %u)\n", file, buf, (unsigned int)size);
@@ -2377,14 +2379,16 @@ static ssize_t asmfs_svc_query_disk(struct file *file, char *buf, size_t size)
 
 	bdev = I_BDEV(filp->f_mapping->host);
 
+	lsecsz = ilog2(bdev_logical_block_size(bdev));
 	qd_info->qd_max_sectors = compute_max_sectors(bdev);
 	qd_info->qd_hardsect_size = asm_block_size(bdev);
 	qd_info->qd_feature = asm_integrity_format(bdev) &
 		ASM_INTEGRITY_QDF_MASK;
+	qd_info->qd_feature |=  lsecsz << ASM_LSECSZ_SHIFT & ASM_LSECSZ_MASK;
 	mlog(ML_ABI|ML_DISK,
 	     "Querydisk returning qd_max_sectors = %u and "
-	     "qd_hardsect_size = %u, qd_integrity = %u\n",
-	     qd_info->qd_max_sectors, qd_info->qd_hardsect_size,
+	     "qd_hardsect_size = %u, lsecsz = %u, qd_integrity = %u\n",
+	     qd_info->qd_max_sectors, lsecsz, qd_info->qd_hardsect_size,
 	     asm_integrity_format(bdev));
 
 	ret = 0;
