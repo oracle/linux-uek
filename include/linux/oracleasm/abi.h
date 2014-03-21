@@ -185,6 +185,11 @@ enum oracleasm_feature_integrity {
 	ASM_INTEGRITY_QDF_MASK		= 0xff, /* Querydisk feature mask */
 };
 
+enum oracleasm_feature_blk_size {
+	ASM_LSECSZ_SHIFT		= 24,
+	ASM_LSECSZ_MASK			= 0xff << ASM_LSECSZ_SHIFT,
+};
+
 struct oracleasm_open_disk_v2
 {
 /*00*/	struct oracleasm_abi_info	od_abi;
