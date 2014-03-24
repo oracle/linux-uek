@@ -2134,12 +2134,9 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			if (DTRACE_ANCHORED(mstate->dtms_probe) &&
 			    in_interrupt())
 				mstate->dtms_ustackdepth = 0;
-			else {
-				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
+			else
 				mstate->dtms_ustackdepth =
-						dtrace_getustackdepth();
-				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-			}
+					dtrace_getustackdepth();
 
 			mstate->dtms_present |= DTRACE_MSTATE_USTACKDEPTH;
 		}
@@ -2199,9 +2196,8 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			 * will contain the caller, which is what we're after.
 			 */
 			ustack[3] = 0;
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 			dtrace_getupcstack(ustack, 4);
-			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+
 			mstate->dtms_ucaller = ustack[3];
 			mstate->dtms_present |= DTRACE_MSTATE_UCALLER;
 		}

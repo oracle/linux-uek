@@ -494,9 +494,7 @@ static void dtrace_action_ustack(dtrace_mstate_t *mstate,
 	/*
 	 * Now get a stack with both program counters and frame pointers.
 	 */
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 	dtrace_getufpstack(buf, fps, nframes + 2);
-	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 	/*
 	 * If that faulted, we're cooked.
@@ -935,12 +933,10 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					continue;
 				}
 
-				DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 				dtrace_getupcstack(
 					(uint64_t *)(tomax + valoffs),
 					DTRACE_USTACK_NFRAMES(rec->dtrd_arg) +
 					2);
-				DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 				continue;
 
 			default:
