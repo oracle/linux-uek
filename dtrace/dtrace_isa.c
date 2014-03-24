@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2010, 2011, 2012, 2013, 2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -259,70 +259,158 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 }
 EXPORT_SYMBOL(dtrace_getpcstack);
 
-static int is_code_addr(unsigned long addr) {
-	struct vm_area_struct   *vma, *first;
+static struct vm_area_struct *find_user_vma(struct task_struct *tsk,
+					    struct mm_struct *mm,
+					    struct page **page,
+					    unsigned long addr,
+					    int need_incore)
+{
+	struct vm_area_struct *vma = NULL;
+	int nonblocking = 1;
+	int flags = FOLL_NOFAULT;
+	int ret;
 
-	first = NULL;
-	for (vma = current->mm->mmap;
-	     vma != NULL && vma != first;
-	     vma = vma->vm_next) {
-		if (!first)
-			first = vma;
+	if (page)
+		flags |= FOLL_GET;
 
-		if (!(vma->vm_flags & VM_EXEC))
-			continue;
+	ret = __get_user_pages(tsk, mm, addr, 1, flags, page, &vma,
+			       &nonblocking);
 
-		if (addr < vma->vm_start)
-			return 0;
-		if (addr <= vma->vm_end)
-			return 1;
+	if ((nonblocking == 0) && need_incore) {
+		if ((ret > 0) && page) {
+			size_t i;
+			for (i = 0; i < ret; i++)
+				put_page(page[i]);
+		}
+		return NULL;
 	}
-
-	return 0;
+	else if (ret <= 0)
+		return NULL;
+	else
+		return vma;
 }
 
-void dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
-			int pcstack_limit)
+/*
+ * Get user stack entries up to the pcstack_limit; return the number of entries
+ * acquired.  If pcstack is NULL, return the number of entries potentially
+ * acquirable.
+ */
+unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
+				 int pcstack_limit)
 {
 	struct task_struct	*p = current;
-	unsigned long		bos, tos;
+	struct mm_struct	*mm = p->mm;
+	unsigned long		tos, bos;
 	unsigned long		*sp;
+	unsigned long		depth = 0;
+	struct vm_area_struct	*stack_vma;
+	struct page		*stack_page = NULL;
 
-	*pcstack++ = (uint64_t)p->pid;
-	*pcstack++ = (uint64_t)p->tgid;
-	pcstack_limit-=2;
+	if (pcstack) {
+                if (unlikely(pcstack_limit < 2)) {
+                        DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
+                        return 0;
+                }
+                *pcstack++ = (uint64_t)p->pid;
+		*pcstack++ = (uint64_t)p->tgid;
+		pcstack_limit-=2;
+	}
 
-	if (p->mm == NULL || (p->flags & PF_KTHREAD))
-	    goto out;
+	/*
+	 * We cannot ustack() if this task has no mm, if this task is a kernel
+	 * thread, or when someone else has the mmap_sem or the page_table_lock
+	 * (because find_user_vma() ultimately does a __get_user_pages() and
+	 * thence a follow_page(), which can take that lock).
+	 */
+	if (mm == NULL || (p->flags & PF_KTHREAD) ||
+	    spin_is_locked(&mm->page_table_lock))
+		goto out;
 
-	tos = this_cpu_read(old_rsp);
-	bos = p->mm->start_stack;
+	if (!down_read_trylock(&mm->mmap_sem))
+		goto out;
+	atomic_inc(&mm->mm_users);
 
+	tos = current_user_stack_pointer();
+	stack_vma = find_user_vma(p, mm, NULL, (unsigned long) tos, 0);
+	if (!stack_vma ||
+	    stack_vma->vm_start > (unsigned long) tos)
+		goto unlock_out;
+
+#ifdef CONFIG_STACK_GROWSUP
+#error This code does not yet work on STACK_GROWSUP platforms.
+#endif
+	bos = stack_vma->vm_end;
+	if (stack_guard_page_end(stack_vma, bos))
+                bos -= PAGE_SIZE;
+
+	/*
+	 * If we have a pcstack, loop as long as we are within the stack limit.
+	 * Otherwise, loop until we run out of stack.
+	 */
 	for (sp = (unsigned long *)tos;
-	     sp <= (unsigned long *)bos && pcstack_limit; sp++) {
-		unsigned long	addr;
+	     sp <= (unsigned long *)bos &&
+		     ((pcstack && pcstack_limit > 0) ||
+		      !pcstack);
+	     sp++) {
+		struct vm_area_struct	*code_vma;
+		unsigned long		addr;
 
+		/*
+		 * Recheck for faultedness and pin at page boundaries.
+		 */
+		if (!stack_page || (((unsigned long)sp & PAGE_MASK) == 0)) {
+			if (stack_page) {
+				put_page(stack_page);
+				stack_page = NULL;
+			}
+
+			if (!find_user_vma(p, mm, &stack_page,
+					   (unsigned long) sp, 1))
+				break;
+		}
+
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOPF);
 		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
 		get_user(addr, sp);
 		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
+		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOPF);
 
-		if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT))
+		if (DTRACE_CPUFLAG_ISSET(CPU_DTRACE_FAULT)) {
+			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_BADADDR);
+			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_PF_TRAPPED);
 			break;
-
-		if (addr >= tos && addr <= bos) {
-			/* stack address - may need it for the fpstack. */
-		} else if (is_code_addr(addr)) {
-			*pcstack++ = addr;
-			pcstack_limit--;
 		}
 
-		sp++;
+		code_vma = find_user_vma(p, mm, NULL, addr, 0);
+
+		if (!code_vma || code_vma->vm_start > addr)
+			continue;
+
+		if ((addr >= tos && addr <= bos) ||
+		    (code_vma->vm_flags & VM_GROWSDOWN)) {
+			/* stack address - may need it for the fpstack. */
+		} else if (code_vma->vm_flags & VM_EXEC) {
+			if (pcstack) {
+				*pcstack++ = addr;
+				pcstack_limit--;
+			}
+			depth++;
+		}
 	}
+	if (stack_page != NULL)
+		put_page(stack_page);
+
+unlock_out:
+	atomic_dec(&mm->mm_users);
+	up_read(&mm->mmap_sem);
 
 out:
-	while (pcstack_limit--)
-		*pcstack++ = 0;
-} 
+	if (pcstack)
+		while (pcstack_limit--)
+			*pcstack++ = 0;
+
+	return depth;
+}
 
 void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 {
@@ -349,17 +437,5 @@ int dtrace_getstackdepth(int aframes)
 
 int dtrace_getustackdepth(void)
 {
-	int			depth = 0;
-	struct task_struct	*p = current;
-	unsigned long		*sp = (unsigned long *)p->thread.usersp;
-	unsigned long		*bos = (unsigned long *)p->mm->start_stack;
-
-	while (sp <= bos) {
-		if (is_code_addr(*sp))
-			depth++;
-
-		sp++;
-	}
-
-	return depth;
+	return dtrace_getufpstack(NULL, NULL, 0);
 }

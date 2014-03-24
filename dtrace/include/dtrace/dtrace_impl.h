@@ -885,7 +885,7 @@ extern void dtrace_probe_error(dtrace_state_t *, dtrace_epid_t, int, int, int,
 
 extern void dtrace_getpcstack(uint64_t *, int, int, uint32_t *);
 extern void dtrace_getupcstack(uint64_t *, int);
-extern void dtrace_getufpstack(uint64_t *, uint64_t *, int);
+extern unsigned long dtrace_getufpstack(uint64_t *, uint64_t *, int);
 extern uintptr_t dtrace_getfp(void);
 extern uint64_t dtrace_getarg(int, int);
 extern int dtrace_getstackdepth(int);
