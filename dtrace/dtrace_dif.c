@@ -2645,8 +2645,6 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		struct task_struct	*p;
 		int			rval = 0;
 
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-
 		for (p = current; p != NULL; p = p->real_parent) {
 			if (p->pid == pid) {
 				rval = 1;
@@ -2656,8 +2654,6 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 			if (p == p->real_parent)
 				break;
 		}
-
-		DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
 
 		regs[rd] = rval;
 		break;
