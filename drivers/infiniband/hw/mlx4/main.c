@@ -648,8 +648,22 @@ mlx4_ib_port_link_layer(struct ib_device *device, u32 port_num)
 {
 	struct mlx4_dev *dev = to_mdev(device)->dev;
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	return dev->caps.port_mask[port_num] == MLX4_PORT_TYPE_IB ?
 		IB_LINK_LAYER_INFINIBAND : IB_LINK_LAYER_ETHERNET;
+#else
+	if (port_num > MLX4_MAX_PORTS || port_num == 0)
+		return IB_LINK_LAYER_UNSPECIFIED;
+
+	switch (dev->caps.port_mask[port_num]) {
+	case MLX4_PORT_TYPE_IB:
+		return IB_LINK_LAYER_INFINIBAND;
+	case MLX4_PORT_TYPE_ETH:
+		return IB_LINK_LAYER_ETHERNET;
+	}
+
+	return IB_LINK_LAYER_UNSPECIFIED;
+#endif /* WITHOUT_ORACLE_EXTENSIONS */
 }
 
 static int ib_link_query_port(struct ib_device *ibdev, u32 port,
