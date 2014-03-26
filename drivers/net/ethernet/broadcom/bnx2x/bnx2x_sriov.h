@@ -602,7 +602,7 @@ static inline void bnx2x_iov_task(struct work_struct *work) {}
 #else
 static inline void bnx2x_iov_task(void *data) {}
 #endif
-void bnx2x_schedule_iov_task(struct bnx2x *bp, enum bnx2x_iov_flag flag) {}
+static inline void bnx2x_schedule_iov_task(struct bnx2x *bp, enum bnx2x_iov_flag flag) {}
 
 #endif /* CONFIG_BNX2X_SRIOV */
 #endif /* bnx2x_sriov.h */
