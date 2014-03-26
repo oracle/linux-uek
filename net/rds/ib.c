@@ -1033,14 +1033,8 @@ static void rds_ib_failback(struct work_struct *_work)
 	u8				i, ip_active_port, port = work->port;
 
 	if (ip_config[port].port_state == RDS_IB_PORT_INIT) {
-		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is ERROR\n",
-			ip_config[port].rds_ibdev->dev->name,
-			ip_config[port].port_num,
-			ip_config[port].if_name);
-
-		rds_ib_do_failover(port, 0, 0, work->event_type);
-		if (ip_config[port].ip_active_port != port)
-			ip_config[port].port_state = RDS_IB_PORT_DOWN;
+		ip_config[port].port_state = RDS_IB_PORT_UP;
+		ip_config[port].ip_active_port = port;
 		goto out;
 	}
 
@@ -1196,7 +1190,9 @@ static void rds_ib_dump_ip_config(void)
 			&ip_config[i].ip_bcast,
 			&ip_config[i].ip_mask,
 			(ip_config[i].port_state ==
-				RDS_IB_PORT_UP ? "UP" : "DOWN"));
+			 RDS_IB_PORT_UP ? "UP" :
+			 (ip_config[i].port_state ==
+			  RDS_IB_PORT_DOWN ? "DOWN" : "INIT")));
 
 		for (j = 0; j < ip_config[i].alias_cnt; j++) {
 			printk(KERN_INFO "Alias %s "
