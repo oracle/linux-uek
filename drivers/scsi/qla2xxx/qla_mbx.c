@@ -1467,6 +1467,8 @@ qla2x00_get_firmware_state(scsi_qla_host_t *vha, uint16_t *states)
 		mcp->in_mb = MBX_5|MBX_4|MBX_3|MBX_2|MBX_1|MBX_0;
 	else
 		mcp->in_mb = MBX_1|MBX_0;
+	if (IS_DPORT_CAPABLE(vha->hw))
+		mcp->in_mb |= MBX_6;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
 	rval = qla2x00_mailbox_command(vha, mcp);
@@ -1479,6 +1481,8 @@ qla2x00_get_firmware_state(scsi_qla_host_t *vha, uint16_t *states)
 		states[3] = mcp->mb[4];
 		states[4] = mcp->mb[5];
 	}
+	if (IS_DPORT_CAPABLE(vha->hw))
+		states[5] = mcp->mb[6];
 
 	if (rval != QLA_SUCCESS) {
 		/*EMPTY*/
