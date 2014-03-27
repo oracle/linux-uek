@@ -824,7 +824,7 @@ static void i40e_receive_skb(struct i40e_ring *rx_ring,
 	u64 flags = vsi->back->flags;
 
 	if (vlan_tag & VLAN_VID_MASK)
-		__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vlan_tag);
+		__vlan_hwaccel_put_tag(skb, vlan_tag);
 
 	if (flags & I40E_FLAG_IN_NETPOLL)
 		netif_rx(skb);

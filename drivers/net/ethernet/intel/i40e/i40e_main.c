@@ -27,6 +27,7 @@
 
 /* Local includes */
 #include "i40e.h"
+#include "kcompat.h"
 
 const char i40e_driver_name[] = "i40e";
 static const char i40e_driver_string[] =
@@ -1437,7 +1438,7 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 			/* vlan0 as wild card to allow packets from all vlans */
 			if (f->vlan == I40E_VLAN_ANY ||
 			    (vsi->netdev && !(vsi->netdev->features &
-					      NETIF_F_HW_VLAN_CTAG_FILTER)))
+					      NETIF_F_HW_VLAN_FILTER)))
 				cmd_flags |= I40E_AQC_MACVLAN_DEL_IGNORE_VLAN;
 			cmd_flags |= I40E_AQC_MACVLAN_DEL_PERFECT_MATCH;
 			del_list[num_del].flags = cmd_flags;
@@ -1508,7 +1509,7 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 			/* vlan0 as wild card to allow packets from all vlans */
 			if (f->vlan == I40E_VLAN_ANY || (vsi->netdev &&
 			    !(vsi->netdev->features &
-						 NETIF_F_HW_VLAN_CTAG_FILTER)))
+						 NETIF_F_HW_VLAN_FILTER)))
 				cmd_flags |= I40E_AQC_MACVLAN_ADD_IGNORE_VLAN;
 			add_list[num_add].flags = cpu_to_le16(cmd_flags);
 			num_add++;
@@ -1696,7 +1697,7 @@ static void i40e_vlan_rx_register(struct net_device *netdev, u32 features)
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
 
-	if (features & NETIF_F_HW_VLAN_CTAG_RX)
+	if (features & NETIF_F_HW_VLAN_RX)
 		i40e_vlan_stripping_enable(vsi);
 	else
 		i40e_vlan_stripping_disable(vsi);
@@ -1864,8 +1865,7 @@ int i40e_vsi_kill_vlan(struct i40e_vsi *vsi, s16 vid)
  * @netdev: network interface to be adjusted
  * @vid: vlan id to be added
  **/
-static int i40e_vlan_rx_add_vid(struct net_device *netdev,
-				__always_unused __be16 proto, u16 vid)
+static int i40e_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
@@ -1895,8 +1895,7 @@ static int i40e_vlan_rx_add_vid(struct net_device *netdev,
  * @netdev: network interface to be adjusted
  * @vid: vlan id to be removed
  **/
-static int i40e_vlan_rx_kill_vid(struct net_device *netdev,
-				 __always_unused __be16 proto, u16 vid)
+static int i40e_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
@@ -1927,8 +1926,7 @@ static void i40e_restore_vlan(struct i40e_vsi *vsi)
 	i40e_vlan_rx_register(vsi->netdev, vsi->netdev->features);
 
 	for_each_set_bit(vid, vsi->active_vlans, VLAN_N_VID)
-		i40e_vlan_rx_add_vid(vsi->netdev, htons(ETH_P_8021Q),
-				     vid);
+		i40e_vlan_rx_add_vid(vsi->netdev, vid);
 }
 
 /**
@@ -5547,7 +5545,7 @@ static int i40e_set_features(struct net_device *netdev,
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
 
-	if (features & NETIF_F_HW_VLAN_CTAG_RX)
+	if (features & NETIF_F_HW_VLAN_RX)
 		i40e_vlan_stripping_enable(vsi);
 	else
 		i40e_vlan_stripping_disable(vsi);
@@ -5612,9 +5610,9 @@ static int i40e_config_netdev(struct i40e_vsi *vsi)
 			   NETIF_F_SCTP_CSUM	       |
 			   NETIF_F_HIGHDMA	       |
 			   NETIF_F_GSO_UDP_TUNNEL      |
-			   NETIF_F_HW_VLAN_CTAG_TX     |
-			   NETIF_F_HW_VLAN_CTAG_RX     |
-			   NETIF_F_HW_VLAN_CTAG_FILTER |
+			   NETIF_F_HW_VLAN_TX     |
+			   NETIF_F_HW_VLAN_RX     |
+			   NETIF_F_HW_VLAN_FILTER |
 			   NETIF_F_IPV6_CSUM	       |
 			   NETIF_F_TSO		       |
 			   NETIF_F_TSO6		       |
@@ -5641,9 +5639,9 @@ static int i40e_config_netdev(struct i40e_vsi *vsi)
 	/* vlan gets same features (except vlan offload)
 	 * after any tweaks for specific VSI types
 	 */
-	netdev->vlan_features = netdev->features & ~(NETIF_F_HW_VLAN_CTAG_TX |
-						     NETIF_F_HW_VLAN_CTAG_RX |
-						   NETIF_F_HW_VLAN_CTAG_FILTER);
+	netdev->vlan_features = netdev->features & ~(NETIF_F_HW_VLAN_TX |
+						     NETIF_F_HW_VLAN_RX |
+						   NETIF_F_HW_VLAN_FILTER);
 	netdev->priv_flags |= IFF_UNICAST_FLT;
 	netdev->priv_flags |= IFF_SUPP_NOFCS;
 	/* Setup netdev TC information */

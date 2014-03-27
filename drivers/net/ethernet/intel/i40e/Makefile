@@ -41,4 +41,6 @@ i40e-objs := i40e_main.o \
 	i40e_debugfs.o	\
 	i40e_diag.o	\
 	i40e_txrx.o	\
-	i40e_virtchnl_pf.o
+	i40e_virtchnl_pf.o \
+	kcompat.o
+
