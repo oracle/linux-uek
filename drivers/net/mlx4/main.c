@@ -39,6 +39,7 @@
 #include <linux/pci.h>
 #include <linux/dma-mapping.h>
 #include <linux/slab.h>
+#include <linux/cpu.h>
 #include <linux/delay.h>
 #include <asm/kmap_types.h>
 #include <linux/io-mapping.h>
@@ -133,6 +134,12 @@ static struct mlx4_profile default_profile = {
 	.num_mtt	= 1 << 21
 };
 
+struct mlx4_drv_load_work {
+	struct work_struct work;
+	struct pci_dev *pdev;
+	const struct pci_device_id *id;
+};
+
 static int log_num_mac = 7;
 module_param_named(log_num_mac, log_num_mac, int, 0444);
 MODULE_PARM_DESC(log_num_mac, "Log2 max number of MACs per ETH port (1-7)");
@@ -170,6 +177,9 @@ MODULE_PARM_DESC(log_num_mtt,
 static int log_mtts_per_seg = ilog2(MLX4_MTT_ENTRY_PER_SEG);
 module_param_named(log_mtts_per_seg, log_mtts_per_seg, int, 0444);
 MODULE_PARM_DESC(log_mtts_per_seg, "Log2 number of MTT entries per segment (1-7)");
+
+static void __mlx4_init_parallel_one(struct work_struct *);
+static void __mlx4_init_one_common(struct pci_dev *, const struct pci_device_id *);
 
 static void process_mod_param_profile(void)
 {
@@ -2236,7 +2246,50 @@ static int __devinit mlx4_init_one(struct pci_dev *pdev,
 		++mlx4_version_printed;
 	}
 
-	return __mlx4_init_one(pdev, id);
+	__mlx4_init_one_common(pdev, id);
+
+	return 0;
+}
+
+static void __mlx4_init_one_common(struct pci_dev *pdev,
+	const struct pci_device_id *id)
+{
+	int node, cpu;
+	struct mlx4_drv_load_work *work;
+
+	work = kmalloc(sizeof *work, GFP_KERNEL);
+	if (!work) {
+		printk(KERN_ERR "mlx4_restart_one: failed to allocate parallel load work.\n");
+		return -ENOMEM;
+	}
+	work->pdev = pdev;
+	work->id = id;
+
+	node = dev_to_node(&pdev->dev);
+	if (node >= 0) {
+		/* See comment in mlx4_init_one for cpu selection */
+		cpu = cpumask_next_and(get_cpu(), cpumask_of_node(node), cpu_online_mask);
+		if (cpu_to_node(cpu) != node)
+			cpu = cpumask_any_and(cpumask_of_node(node), cpu_online_mask);
+		if (cpu < nr_cpu_ids) {
+			INIT_WORK(&work->work, __mlx4_init_parallel_one);
+			schedule_work_on(cpu, &work->work);
+		} else
+			__mlx4_init_parallel_one(&work->work);
+	} else
+		__mlx4_init_parallel_one(&work->work);
+
+	return;
+}
+
+static void __mlx4_init_parallel_one(struct work_struct *_work)
+{
+	struct mlx4_drv_load_work *work =
+		container_of(_work, struct mlx4_drv_load_work, work);
+
+	__mlx4_init_one(work->pdev, work->id);
+
+	kfree(work);
 }
 
 static void mlx4_remove_one(struct pci_dev *pdev)
@@ -2311,9 +2364,14 @@ static void mlx4_remove_one(struct pci_dev *pdev)
 
 int mlx4_restart_one(struct pci_dev *pdev)
 {
+
 	mlx4_remove_one(pdev);
-	return __mlx4_init_one(pdev, NULL);
+
+	__mlx4_init_one_common(pdev, NULL);
+
+	return 0;
 }
+
 
 int mlx4_gid_idx_to_slave(struct mlx4_dev *dev, int gid_index)
 {
