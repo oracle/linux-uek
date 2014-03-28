@@ -33,8 +33,13 @@ enum nf_ct_ext_id {
 /* Extensions: optional stuff which isn't permanently in struct. */
 struct nf_ct_ext {
 	struct rcu_head rcu;
+#ifndef __GENKSYMS__
+	u16 offset[NF_CT_EXT_NUM];
+	u16 len;
+#else
 	u8 offset[NF_CT_EXT_NUM];
 	u8 len;
+#endif
 	char data[0];
 };
 
