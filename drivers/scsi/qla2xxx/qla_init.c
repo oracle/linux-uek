@@ -5904,7 +5904,7 @@ qla81xx_nvram_config(scsi_qla_host_t *vha)
 	}
 
 	if (IS_T10_PI_CAPABLE(ha))
-		nv->frame_payload_size &= ~7;
+		nv->frame_payload_size &= __constant_cpu_to_le16(~7);
 
 	/* Reset Initialization control block */
 	memset(icb, 0, ha->init_cb_size);
