@@ -486,6 +486,13 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 	/* mlock all present pages, but do not fault in new pages */
 	if ((*flags & (FOLL_POPULATE | FOLL_MLOCK)) == FOLL_MLOCK)
 		return -ENOENT;
+
+	if (unlikely(*flags & FOLL_NOFAULT)) {
+		if (nonblocking)
+			*nonblocking = 0;
+		return -EBUSY;
+	}
+
 	if (*flags & FOLL_WRITE)
 		fault_flags |= FAULT_FLAG_WRITE;
 	if (*flags & FOLL_REMOTE)
@@ -620,11 +627,16 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
  * appropriate) must be called after the page is finished with, and
  * before put_page is called.
  *
- * If @nonblocking != NULL, __get_user_pages will not wait for disk IO
- * or mmap_sem contention, and if waiting is needed to pin all pages,
- * *@nonblocking will be set to 0.  Further, if @gup_flags does not
- * include FOLL_NOWAIT, the mmap_sem will be released via up_read() in
- * this case.
+ * If FOLL_NOFAULT is set, pinning of pages will cease as soon as a page is
+ * encountered that needs to be faulted in.  (No attempt is made to see if
+ * further pages could be pinned without faulting: the caller must do that, if
+ * desired.)
+ *
+ * If @nonblocking != NULL, __get_user_pages will not wait for disk IO or
+ * mmap_sem contention, and if waiting is needed to pin all pages, or
+ * FOLL_NOFAULT is set and a fault is needed, *@nonblocking will be set to 0.
+ * Further, if @gup_flags does not include FOLL_NOWAIT, the mmap_sem will be
+ * released via up_read() in this case.
  *
  * A caller using such a combination of @nonblocking and @gup_flags
  * must therefore hold the mmap_sem for reading only, and recognize
