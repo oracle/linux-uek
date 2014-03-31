@@ -372,6 +372,10 @@ void rds_ib_tasklet_fn_send(unsigned long data)
 	memset(&ack_state, 0, sizeof(ack_state));
 	rds_ib_stats_inc(s_ib_tasklet_call);
 
+	/* if send cq has been destroyed, ignore incoming cq event */
+	if (!ic->i_scq)
+		return;
+
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state, 0);
 	ib_req_notify_cq(ic->i_scq, IB_CQ_NEXT_COMP);
 	poll_cq(ic, ic->i_scq, ic->i_send_wc, &ack_state, 0);
