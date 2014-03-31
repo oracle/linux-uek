@@ -7,8 +7,11 @@ typedef uint32_t dtrace_id_t;
 
 #ifndef HEADERS_CHECK
 
+#ifdef CONFIG_DTRACE
+
 #include <linux/uprobes.h>
 #include <asm/asm-offsets.h>
+#include <linux/dtrace_cpu.h>
 
 #define DTRACE_IDNONE 0
 
@@ -88,6 +91,18 @@ typedef struct stacktrace_state {
 } stacktrace_state_t;
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
+extern int dtrace_handle_no_pf(struct pt_regs *);
+
+/*
+ * This is only safe to call if we know this is a userspace fault
+ * or that the call happens after early boot.
+ */
+static inline int dtrace_no_pf(struct pt_regs *regs)
+{
+	if (unlikely(DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOPF)))
+		return dtrace_handle_no_pf(regs);
+	return 0;
+}
 
 extern struct task_struct *register_pid_provider(pid_t);
 extern void unregister_pid_provider(pid_t);
@@ -111,6 +126,16 @@ extern int (*dtrace_tracepoint_hit)(fasttrap_machtp_t *, struct pt_regs *);
 extern int dtrace_tracepoint_enable(pid_t, uintptr_t, fasttrap_machtp_t *);
 extern int dtrace_tracepoint_disable(pid_t, fasttrap_machtp_t *);
 
-#endif
+#else
+
+/*
+ * See arch/x86/mm/fault.c.
+ */
+
+#define dtrace_no_pf(ignore) 0
+
+#endif /* CONFIG_DTRACE */
+
+#endif /* !HEADERS_CHECK */
 
 #endif /* _LINUX_DTRACE_OS_H_ */

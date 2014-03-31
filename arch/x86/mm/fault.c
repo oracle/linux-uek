@@ -13,6 +13,7 @@
 #include <linux/hugetlb.h>		/* hstate_index_to_shift	*/
 #include <linux/prefetch.h>		/* prefetchw			*/
 #include <linux/context_tracking.h>	/* exception_enter(), ...	*/
+#include <linux/dtrace_os.h>		/* dtrace_no_pf			*/
 
 #include <asm/traps.h>			/* dotraplinkage, ...		*/
 #include <asm/pgalloc.h>		/* pgd_*(), ...			*/
@@ -1117,6 +1118,10 @@ __do_page_fault(struct pt_regs *regs, unsigned long error_code,
 		return;
 	}
 
+	/*
+	 * From here on, we know this must be a fault in userspace.
+	 */
+
 	/* kprobes don't want to hook the spurious faults: */
 	if (unlikely(kprobes_fault(regs)))
 		return;
@@ -1128,6 +1133,12 @@ __do_page_fault(struct pt_regs *regs, unsigned long error_code,
 		bad_area_nosemaphore(regs, error_code, address);
 		return;
 	}
+
+	/*
+	 * DTrace doesn't want to either.
+	 */
+	if (unlikely(dtrace_no_pf(regs)))
+		return;
 
 	/*
 	 * If we're in an interrupt, have no user context or are running
