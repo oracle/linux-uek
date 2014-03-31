@@ -496,7 +496,7 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 EXPORT_SYMBOL(dtrace_stacktrace);
 
 /*---------------------------------------------------------------------------*\
-(* INVALID OPCODE HANDLING                                                   *)
+(* INVALID OPCODE AND PAGE FAULT HANDLING                                    *)
 \*---------------------------------------------------------------------------*/
 typedef struct dtrace_invop_hdlr {
 	uint8_t				(*dtih_func)(struct pt_regs *);
@@ -609,6 +609,25 @@ void dtrace_disable(void)
 	dtrace_enabled = 0;
 }
 EXPORT_SYMBOL(dtrace_disable);
+
+/*
+ * The dtrace-is-active body of dtrace_no_pf(), split into a separate function
+ * to keep icache pressure down while incurring function call overhead only in
+ * the rare dtrace-active, pf-disabled case.
+ */
+int dtrace_handle_no_pf(struct pt_regs *regs)
+{
+	struct insn insn;
+
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_PF_TRAPPED);
+
+	kernel_insn_init(&insn, (void *)regs->ip);
+	insn_get_length(&insn);
+
+	regs->ip += insn.length;
+
+	return 1;
+}
 
 int dtrace_invop_add(uint8_t (*func)(struct pt_regs *))
 {

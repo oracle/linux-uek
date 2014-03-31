@@ -13,6 +13,7 @@
 #include <linux/perf_event.h>		/* perf_sw_event		*/
 #include <linux/hugetlb.h>		/* hstate_index_to_shift	*/
 #include <linux/prefetch.h>		/* prefetchw			*/
+#include <linux/dtrace_os.h>		/* dtrace_no_pf			*/
 
 #include <asm/traps.h>			/* dotraplinkage, ...		*/
 #include <asm/pgalloc.h>		/* pgd_*(), ...			*/
@@ -1081,9 +1082,20 @@ __do_page_fault(struct pt_regs *regs, unsigned long error_code)
 		return;
 	}
 
+	/*
+	 * From here on, we know this must be a fault in userspace.
+	 */
+
 	/* kprobes don't want to hook the spurious faults: */
 	if (unlikely(notify_page_fault(regs)))
 		return;
+
+	/*
+	 * DTrace doesn't want to either.
+	 */
+	if (unlikely(dtrace_no_pf(regs)))
+		return;
+
 	/*
 	 * It's safe to allow irq's after cr2 has been saved and the
 	 * vmalloc fault has been handled.
