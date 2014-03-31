@@ -1666,9 +1666,15 @@ static inline int stack_guard_page(struct vm_area_struct *vma, unsigned long add
  * appropriate) must be called after the page is finished with, and
  * before put_page is called.
  *
+ * If FOLL_NOFAULT is set, pinning of pages will cease as soon as a page is
+ * encountered that needs to be fauled in.  (No attempt is made to see if
+ * further pages could be pinned without faulting: the caller must do that, if
+ * desired.)
+ *
  * If @nonblocking != NULL, __get_user_pages will not wait for disk IO
  * or mmap_sem contention, and if waiting is needed to pin all pages,
- * *@nonblocking will be set to 0.
+ * or FOLL_NOFAULT is set and a fault is needed, *@nonblocking will be set to
+ * 0.
  *
  * In most cases, get_user_pages or get_user_pages_fast should be used
  * instead of __get_user_pages. __get_user_pages should be used only if
@@ -1787,6 +1793,12 @@ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 			while (!(page = follow_page(vma, start, foll_flags))) {
 				int ret;
 				unsigned int fault_flags = 0;
+
+				if (unlikely(foll_flags & FOLL_NOFAULT)) {
+					if (nonblocking)
+						*nonblocking = 0;
+					return i;
+				}
 
 				/* For mlock, just skip the stack guard page. */
 				if (foll_flags & FOLL_MLOCK) {
