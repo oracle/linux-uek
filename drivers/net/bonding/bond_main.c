@@ -3493,7 +3493,7 @@ static int bond_open(struct net_device *bond_dev)
 	if (bond->slave_cnt > 0) {
 		read_lock(&bond->curr_slave_lock);
 		bond_for_each_slave(bond, slave, i) {
-			if ((bond->params.mode == BOND_MODE_ACTIVEBACKUP)
+			if (USES_PRIMARY(bond->params.mode)
 				&& (slave != bond->curr_active_slave)) {
 				bond_set_slave_inactive_flags(slave);
 			} else {
