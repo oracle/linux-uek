@@ -224,7 +224,7 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 void free_task(struct task_struct *tsk)
 {
 #ifdef CONFIG_DTRACE
-	dtrace_psinfo_free(tsk->dtrace_psinfo);
+	put_psinfo(tsk);
 #endif
 
 	account_kernel_stack(tsk->stack, -1);
@@ -384,7 +384,9 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	account_kernel_stack(ti, 1);
 
 #ifdef CONFIG_DTRACE
-	tsk->dtrace_psinfo = NULL;
+	if (likely(tsk->dtrace_psinfo))
+		get_psinfo(tsk);
+
 	dtrace_task_init(tsk);
 #endif
 

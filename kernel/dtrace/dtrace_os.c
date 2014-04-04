@@ -76,16 +76,21 @@ EXPORT_SYMBOL(dtrace_os_exit);
 /*
  * Allocate a new dtrace_psinfo_t structure.
  */
-dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
+void dtrace_psinfo_alloc(struct task_struct *tsk)
 {
 	dtrace_psinfo_t		*psinfo;
 	struct mm_struct	*mm;
+
+	if (likely(tsk->dtrace_psinfo)) {
+		put_psinfo(tsk);
+		tsk->dtrace_psinfo = NULL;	/* while we build one */
+	}
 
 	psinfo = kmem_cache_alloc(psinfo_cachep, GFP_KERNEL);
 	if (psinfo == NULL)
 		goto fail;
 
-	mm = get_task_mm(task);
+	mm = get_task_mm(tsk);
 	if (mm) {
 		size_t	len = mm->arg_end - mm->arg_start;
 		int	i, envc = 0;
@@ -97,12 +102,10 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		if (len >= PR_PSARGS_SZ)
 			len = PR_PSARGS_SZ - 1;
 
-		i = access_process_vm(task, mm->arg_start, psinfo->psargs,
+		i = access_process_vm(tsk, mm->arg_start, psinfo->psargs,
 					len, 0);
 		while (i < PR_PSARGS_SZ)
 			psinfo->psargs[i++] = 0;
-
-		mmput(mm);
 
 		for (i = 0; i < len; i++) {
 			if (psinfo->psargs[i] == '\0')
@@ -129,7 +132,8 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		if ((len = psinfo->argc) >= PR_ARGV_SZ)
 			len = PR_ARGV_SZ - 1;
 
-		psinfo->argv = kmalloc((len + 1) * sizeof(char *), GFP_KERNEL);
+		psinfo->argv = kmalloc((len + 1) * sizeof(char *),
+					 GFP_KERNEL);
 		if (psinfo->argv == NULL)
 			goto fail;
 
@@ -161,7 +165,8 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 		if ((len = envc) >= PR_ENVP_SZ)
 			len = PR_ENVP_SZ - 1;
 
-		psinfo->envp = kmalloc((len + 1) * sizeof(char *), GFP_KERNEL);
+		psinfo->envp = kmalloc((len + 1) * sizeof(char *),
+					 GFP_KERNEL);
 		if (psinfo->envp == NULL)
 			goto fail;
 
@@ -173,12 +178,39 @@ dtrace_psinfo_t *dtrace_psinfo_alloc(struct task_struct *task)
 			p += strnlen(p, MAX_ARG_STRLEN) + 1;
 		}
 		psinfo->envp[len] = NULL;
+
+		mmput(mm);
+	} else {
+		size_t	len = min(TASK_COMM_LEN, PR_PSARGS_SZ);
+		int	i;
+
+		/*
+		 * We end up here for tasks that do not have managed memory at
+		 * all, which generally means that this is a kernel thread.
+		 * If it is not, this is still safe because we know that tasks
+		 * always have the comm member populated with something (even
+		 * if it would be an empty string).
+		 */
+		memcpy(psinfo->psargs, tsk->comm, len);
+		for (i = len; i < PR_PSARGS_SZ; i++)
+			psinfo->psargs[i] = 0;
+
+		psinfo->argc = 0;
+		psinfo->argv = kmalloc(sizeof(char *), GFP_KERNEL);
+		psinfo->argv[0] = NULL;
+		psinfo->envp = kmalloc(sizeof(char *), GFP_KERNEL);
+		psinfo->envp[0] = NULL;
 	}
 
-	return psinfo;
+	atomic_set(&psinfo->usage, 1);
+	tsk->dtrace_psinfo = psinfo;		/* new one */
+
+	return;
 
 fail:
-	pr_warning("%s: cannot allocate DTrace psinfo structure\n", __func__);
+	if (mm)
+		mmput(mm);
+
 	if (psinfo) {
 		if (psinfo->argv)
 			kfree(psinfo->argv);
@@ -187,8 +219,6 @@ fail:
 
 		kmem_cache_free(psinfo_cachep, psinfo);
 	}
-
-	return NULL;
 }
 
 static DEFINE_SPINLOCK(psinfo_lock);
@@ -232,15 +262,18 @@ static DECLARE_WORK(psinfo_cleanup, psinfo_cleaner);
 /*
  * Schedule a psinfo structure for free'ing.
  */
-void dtrace_psinfo_free(dtrace_psinfo_t *psinfo)
+void dtrace_psinfo_free(struct task_struct *tsk)
 {
 	unsigned long	flags;
+	dtrace_psinfo_t	*psinfo = tsk->dtrace_psinfo;
 
 	/*
-	 * For most tasks, we never populate any DTrace psinfo.
+	 * There are (very few) tasks without psinfo...
 	 */
-	if (!psinfo)
+	if (unlikely(psinfo == NULL))
 		return;
+
+	tsk->dtrace_psinfo = NULL;
 
 	spin_lock_irqsave(&psinfo_lock, flags);
 	psinfo->next = psinfo_free_list;
