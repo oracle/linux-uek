@@ -370,7 +370,7 @@ void put_task_stack(struct task_struct *tsk)
 void free_task(struct task_struct *tsk)
 {
 #ifdef CONFIG_DTRACE
-	dtrace_psinfo_free(tsk->dtrace_psinfo);
+	put_psinfo(tsk);
 #endif
 #ifndef CONFIG_THREAD_INFO_IN_TASK
 	/*
@@ -578,10 +578,6 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 #ifdef CONFIG_BLK_DEV_IO_TRACE
 	tsk->btrace_seq = 0;
 #endif
-#ifdef CONFIG_DTRACE
-	tsk->dtrace_psinfo = NULL;
-	dtrace_task_init(tsk);
-#endif
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
 	tsk->wake_q.next = NULL;
@@ -594,6 +590,12 @@ static struct task_struct *dup_task_struct(struct task_struct *orig, int node)
 	tsk->fail_nth = 0;
 #endif
 
+#ifdef CONFIG_DTRACE
+	if (likely(tsk->dtrace_psinfo))
+		get_psinfo(tsk);
+
+	dtrace_task_init(tsk);
+#endif
 	return tsk;
 
 free_stack:
