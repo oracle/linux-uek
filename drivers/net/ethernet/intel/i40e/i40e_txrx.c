@@ -24,6 +24,7 @@
  *
  ******************************************************************************/
 
+#include <linux/prefetch.h>
 #include "i40e.h"
 
 static inline __le64 build_ctob(u32 td_cmd, u32 td_offset, unsigned int size,
