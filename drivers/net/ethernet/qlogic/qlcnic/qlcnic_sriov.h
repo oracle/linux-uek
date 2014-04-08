@@ -200,8 +200,6 @@ int qlcnic_sriov_get_vf_vport_info(struct qlcnic_adapter *,
 int qlcnic_sriov_cfg_vf_guest_vlan(struct qlcnic_adapter *, u16, u8);
 int qlcnic_sriov_vf_shutdown(struct pci_dev *);
 int qlcnic_sriov_vf_resume(struct qlcnic_adapter *);
-int qlcnic_sriov_validate_num_vlans(struct qlcnic_sriov *,
-				    struct qlcnic_vf_info *);
 void qlcnic_sriov_free_vlans(struct qlcnic_adapter *);
 void qlcnic_sriov_alloc_vlans(struct qlcnic_adapter *);
 bool qlcnic_sriov_check_any_vlan(struct qlcnic_vf_info *);
@@ -209,10 +207,6 @@ void qlcnic_sriov_del_vlan_id(struct qlcnic_sriov *,
 			      struct qlcnic_vf_info *, u16);
 void qlcnic_sriov_add_vlan_id(struct qlcnic_sriov *,
 			      struct qlcnic_vf_info *, u16);
-int qlcnic_sriov_check_vlan_id(struct qlcnic_sriov *,
-			       struct qlcnic_vf_info *, u16);
-void qlcnic_sriov_vlan_operation(struct qlcnic_vf_info *, u16,
-				 enum qlcnic_vlan_operations);
 static inline bool qlcnic_sriov_enable_check(struct qlcnic_adapter *adapter)
 {
 	return test_bit(__QLCNIC_SRIOV_ENABLE, &adapter->state) ? true : false;

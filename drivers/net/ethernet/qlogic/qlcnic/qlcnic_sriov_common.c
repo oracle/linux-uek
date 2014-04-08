@@ -1456,7 +1456,7 @@ out:
 	return ret;
 }
 
-void qlcnic_vf_add_mc_list(struct net_device *netdev)
+static void qlcnic_vf_add_mc_list(struct net_device *netdev)
 {
 	struct qlcnic_adapter *adapter = netdev_priv(netdev);
 	struct qlcnic_sriov *sriov = adapter->ahw->sriov;
@@ -1880,6 +1880,40 @@ static void qlcnic_sriov_vf_cancel_fw_work(struct qlcnic_adapter *adapter)
 	cancel_delayed_work_sync(&adapter->fw_work);
 }
 
+static int qlcnic_sriov_check_vlan_id(struct qlcnic_sriov *sriov,
+				      struct qlcnic_vf_info *vf, u16 vlan_id)
+{
+	int i, err = -EINVAL;
+
+	if (!vf->sriov_vlans)
+		return err;
+
+	mutex_lock(&vf->vlan_list_lock);
+
+	for (i = 0; i < sriov->num_allowed_vlans; i++) {
+		if (vf->sriov_vlans[i] == vlan_id) {
+			err = 0;
+			break;
+		}
+	}
+
+	mutex_unlock(&vf->vlan_list_lock);
+	return err;
+}
+
+static int qlcnic_sriov_validate_num_vlans(struct qlcnic_sriov *sriov,
+					   struct qlcnic_vf_info *vf)
+{
+	int err = 0;
+
+	mutex_lock(&vf->vlan_list_lock);
+
+	if (vf->num_vlan >= sriov->num_allowed_vlans)
+		err = -EINVAL;
+
+	mutex_unlock(&vf->vlan_list_lock);
+	return err;
+}
 static int qlcnic_sriov_validate_vlan_cfg(struct qlcnic_adapter *adapter,
 					  u16 vid, u8 enable)
 {
@@ -1916,6 +1950,34 @@ static int qlcnic_sriov_validate_vlan_cfg(struct qlcnic_adapter *adapter,
 	}
 
 	return 0;
+}
+
+static void qlcnic_sriov_vlan_operation(struct qlcnic_vf_info *vf, u16 vlan_id,
+					enum qlcnic_vlan_operations opcode)
+{
+	struct qlcnic_adapter *adapter = vf->adapter;
+	struct qlcnic_sriov *sriov;
+
+	sriov = adapter->ahw->sriov;
+
+	if (!vf->sriov_vlans)
+		return;
+
+	mutex_lock(&vf->vlan_list_lock);
+
+	switch (opcode) {
+	case QLC_VLAN_ADD:
+		qlcnic_sriov_add_vlan_id(sriov, vf, vlan_id);
+		break;
+	case QLC_VLAN_DELETE:
+		qlcnic_sriov_del_vlan_id(sriov, vf, vlan_id);
+		break;
+	default:
+		netdev_err(adapter->netdev, "Invalid VLAN operation\n");
+	}
+
+	mutex_unlock(&vf->vlan_list_lock);
+	return;
 }
 
 int qlcnic_sriov_cfg_vf_guest_vlan(struct qlcnic_adapter *adapter,
@@ -2081,27 +2143,6 @@ void qlcnic_sriov_del_vlan_id(struct qlcnic_sriov *sriov,
 	}
 }
 
-int qlcnic_sriov_check_vlan_id(struct qlcnic_sriov *sriov,
-			       struct qlcnic_vf_info *vf, u16 vlan_id)
-{
-	int i, err = -EINVAL;
-
-	if (!vf->sriov_vlans)
-		return err;
-
-	mutex_lock(&vf->vlan_list_lock);
-
-	for (i = 0; i < sriov->num_allowed_vlans; i++) {
-		if (vf->sriov_vlans[i] == vlan_id) {
-			err = 0;
-			break;
-		}
-	}
-
-	mutex_unlock(&vf->vlan_list_lock);
-	return err;
-}
-
 bool qlcnic_sriov_check_any_vlan(struct qlcnic_vf_info *vf)
 {
 	bool err = false;
@@ -2113,46 +2154,4 @@ bool qlcnic_sriov_check_any_vlan(struct qlcnic_vf_info *vf)
 
 	mutex_unlock(&vf->vlan_list_lock);
 	return err;
-}
-
-int qlcnic_sriov_validate_num_vlans(struct qlcnic_sriov *sriov,
-				    struct qlcnic_vf_info *vf)
-{
-	int err = 0;
-
-	mutex_lock(&vf->vlan_list_lock);
-
-	if (vf->num_vlan >= sriov->num_allowed_vlans)
-		err = -EINVAL;
-
-	mutex_unlock(&vf->vlan_list_lock);
-	return err;
-}
-
-void qlcnic_sriov_vlan_operation(struct qlcnic_vf_info *vf, u16 vlan_id,
-				 enum qlcnic_vlan_operations opcode)
-{
-	struct qlcnic_adapter *adapter = vf->adapter;
-	struct qlcnic_sriov *sriov;
-
-	sriov = adapter->ahw->sriov;
-
-	if (!vf->sriov_vlans)
-		return;
-
-	mutex_lock(&vf->vlan_list_lock);
-
-	switch (opcode) {
-	case QLC_VLAN_ADD:
-		qlcnic_sriov_add_vlan_id(sriov, vf, vlan_id);
-		break;
-	case QLC_VLAN_DELETE:
-		qlcnic_sriov_del_vlan_id(sriov, vf, vlan_id);
-		break;
-	default:
-		netdev_err(adapter->netdev, "Invalid VLAN operation\n");
-	}
-
-	mutex_unlock(&vf->vlan_list_lock);
-	return;
 }

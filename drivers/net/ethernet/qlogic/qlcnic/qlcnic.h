@@ -2139,7 +2139,7 @@ static inline bool qlcnic_83xx_vf_check(struct qlcnic_adapter *adapter)
 {
 	unsigned short device = adapter->pdev->device;
 
-	return ((device == PCI_DEVICE_ID_QLOGIC_VF_QLE834X)) ? true : false;
+	return (device == PCI_DEVICE_ID_QLOGIC_VF_QLE834X) ? true : false;
 }
 
 #define QLC_DEFAULT_VNIC_COUNT	8

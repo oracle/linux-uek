@@ -488,7 +488,7 @@ int qlcnic_nic_add_mac(struct qlcnic_adapter *adapter, const u8 *addr, u16 vlan)
 			return 0;
 	}
 
-	cur = kzalloc(sizeof(struct qlcnic_mac_vlan_list), GFP_ATOMIC);
+	cur = kzalloc(sizeof(*cur), GFP_ATOMIC);
 	if (cur == NULL)
 		return -ENOMEM;
 

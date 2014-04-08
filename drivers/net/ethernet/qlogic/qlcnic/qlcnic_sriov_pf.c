@@ -84,12 +84,12 @@ static int qlcnic_sriov_pf_cal_res_limit(struct qlcnic_adapter *adapter,
 	if (adapter->ahw->pci_func == func) {
 		info->min_tx_bw = 0;
 		info->max_tx_bw = MAX_BW;
-		temp = res->num_rx_ucast_mac_filters - (num_macs * num_vfs);
+		temp = res->num_rx_ucast_mac_filters - num_macs * num_vfs;
 		info->max_rx_ucast_mac_filters = temp;
-		temp = res->num_tx_mac_filters - (num_macs * num_vfs);
+		temp = res->num_tx_mac_filters - num_macs * num_vfs;
 		info->max_tx_mac_filters = temp;
-		temp = res->num_rx_mcast_mac_filters -
-			(num_macs * num_vfs * QLCNIC_SRIOV_VF_MAX_MAC);
+		temp = num_macs * num_vfs * QLCNIC_SRIOV_VF_MAX_MAC;
+		temp = res->num_rx_mcast_mac_filters - temp;
 		info->max_rx_mcast_mac_filters = temp;
 
 	} else {
@@ -101,8 +101,8 @@ static int qlcnic_sriov_pf_cal_res_limit(struct qlcnic_adapter *adapter,
 		info->max_tx_bw = vp->max_tx_bw;
 		info->max_rx_ucast_mac_filters = num_macs;
 		info->max_tx_mac_filters = num_macs;
-		info->max_rx_mcast_mac_filters =
-					num_macs * QLCNIC_SRIOV_VF_MAX_MAC;
+		temp = num_macs * QLCNIC_SRIOV_VF_MAX_MAC;
+		info->max_rx_mcast_mac_filters = temp;
 	}
 
 	info->max_rx_ip_addr = res->num_destip / max;
@@ -140,8 +140,8 @@ static void qlcnic_sriov_pf_set_ff_max_res(struct qlcnic_adapter *adapter,
 	ff_max->max_local_ipv6_addrs = info->max_local_ipv6_addrs;
 }
 
-void qlcnic_sriov_set_vf_max_vlan(struct qlcnic_adapter *adapter,
-				  struct qlcnic_info *npar_info)
+static void qlcnic_sriov_set_vf_max_vlan(struct qlcnic_adapter *adapter,
+					 struct qlcnic_info *npar_info)
 {
 	struct qlcnic_sriov *sriov = adapter->ahw->sriov;
 	int temp, total_fn;
@@ -778,8 +778,9 @@ static int qlcnic_sriov_validate_create_rx_ctx(struct qlcnic_cmd_args *cmd)
 	return 0;
 }
 
-void qlcnic_83xx_cfg_default_mac_vlan(struct qlcnic_adapter *adapter,
-				      struct qlcnic_vf_info *vf, int opcode)
+static void qlcnic_83xx_cfg_default_mac_vlan(struct qlcnic_adapter *adapter,
+					     struct qlcnic_vf_info *vf,
+					     int opcode)
 {
 	struct qlcnic_sriov *sriov;
 	u16 vlan;
