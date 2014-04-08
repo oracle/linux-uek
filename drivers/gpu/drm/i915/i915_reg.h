@@ -123,6 +123,12 @@
 #define   ECOCHK_SNB_BIT		(1<<10)
 #define   ECOCHK_PPGTT_CACHE64B		(0x3<<3)
 #define   ECOCHK_PPGTT_CACHE4B		(0x0<<3)
+#define   ECOCHK_PPGTT_GFDT_IVB		(0x1<<4)
+#define   ECOCHK_PPGTT_LLC_IVB		(0x1<<3)
+#define   ECOCHK_PPGTT_UC_HSW		(0x1<<3)
+#define   ECOCHK_PPGTT_WT_HSW		(0x2<<3)
+#define   ECOCHK_PPGTT_WB_HSW		(0x3<<3)
+ 
 
 #define GAC_ECO_BITS			0x14090
 #define   ECOBITS_PPGTT_CACHE64B	(3<<8)

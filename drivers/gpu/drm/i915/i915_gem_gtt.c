@@ -324,8 +324,17 @@ void i915_gem_init_ppgtt(struct drm_device *dev)
 				       ECOCHK_PPGTT_CACHE64B);
 		I915_WRITE(GFX_MODE, _MASKED_BIT_ENABLE(GFX_PPGTT_ENABLE));
 	} else if (INTEL_INFO(dev)->gen >= 7) {
-		I915_WRITE(GAM_ECOCHK, ECOCHK_PPGTT_CACHE64B);
-		/* GFX_MODE is per-ring on gen7+ */
+		uint32_t ecochk;
+
+		ecochk = I915_READ(GAM_ECOCHK);
+		if (IS_HASWELL(dev)) {
+			ecochk |= ECOCHK_PPGTT_WB_HSW;
+		} else {
+			ecochk |= ECOCHK_PPGTT_LLC_IVB;
+			ecochk &= ~ECOCHK_PPGTT_GFDT_IVB;
+		}
+	I915_WRITE(GAM_ECOCHK, ecochk);	
+	/* GFX_MODE is per-ring on gen7+ */
 	}
 
 	for_each_ring(ring, dev_priv, i) {
