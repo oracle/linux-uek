@@ -15,6 +15,7 @@
 
 #define RSS_HASHTYPE_IP_TCP		0x3
 #define QLC_83XX_FW_MBX_CMD		0
+#define QLC_SKIP_INACTIVE_PCI_REGS	7
 
 static const struct qlcnic_mailbox_metadata qlcnic_83xx_mbx_tbl[] = {
 	{QLCNIC_CMD_CONFIGURE_IP_ADDR, 6, 1},
@@ -2270,6 +2271,31 @@ out:
 	return err;
 }
 
+int qlcnic_get_pci_func_type(struct qlcnic_adapter *adapter, u16 type,
+			     u16 *nic, u16 *fcoe, u16 *iscsi)
+{
+	struct device *dev = &adapter->pdev->dev;
+	int err = 0;
+
+	switch (type) {
+	case QLCNIC_TYPE_NIC:
+		(*nic)++;
+		break;
+	case QLCNIC_TYPE_FCOE:
+		(*fcoe)++;
+		break;
+	case QLCNIC_TYPE_ISCSI:
+		(*iscsi)++;
+		break;
+	default:
+		dev_err(dev, "%s: Unknown PCI type[%x]\n",
+			__func__, type);
+		err = -EIO;
+	}
+
+	return err;
+}
+
 int qlcnic_83xx_get_pci_info(struct qlcnic_adapter *adapter,
 			     struct qlcnic_pci_info *pci_info)
 {
@@ -2293,21 +2319,13 @@ int qlcnic_83xx_get_pci_info(struct qlcnic_adapter *adapter,
 			pci_info->id = cmd.rsp.arg[i] & 0xFFFF;
 			pci_info->active = (cmd.rsp.arg[i] & 0xFFFF0000) >> 16;
 			i++;
-			pci_info->type = cmd.rsp.arg[i] & 0xFFFF;
-			switch (pci_info->type) {
-			case QLCNIC_TYPE_NIC:
-				nic++;
-				break;
-			case QLCNIC_TYPE_FCOE:
-				fcoe++;
-				break;
-			case QLCNIC_TYPE_ISCSI:
-				iscsi++;
-				break;
-			default:
-				dev_err(dev, "%s: Unknown PCI type[%x]\n",
-					__func__, pci_info->type);
+			if (!pci_info->active) {
+				i += QLC_SKIP_INACTIVE_PCI_REGS;
+				continue;
 			}
+			pci_info->type = cmd.rsp.arg[i] & 0xFFFF;
+			err = qlcnic_get_pci_func_type(adapter, pci_info->type,
+						       &nic, &fcoe, &iscsi);
 			temp = (cmd.rsp.arg[i] & 0xFFFF0000) >> 16;
 			pci_info->default_port = temp;
 			i++;
@@ -2327,6 +2345,11 @@ int qlcnic_83xx_get_pci_info(struct qlcnic_adapter *adapter,
 
 	ahw->total_nic_func = nic;
 	ahw->total_pci_func = nic + fcoe + iscsi;
+	if (ahw->total_nic_func == 0 || ahw->total_pci_func == 0) {
+		dev_err(dev, "%s: Invalid function count: total nic func[%x], total pci func[%x]\n",
+			__func__, ahw->total_nic_func, ahw->total_pci_func);
+		err = -EIO;
+	}
 	qlcnic_free_mbx_args(&cmd);
 
 	return err;

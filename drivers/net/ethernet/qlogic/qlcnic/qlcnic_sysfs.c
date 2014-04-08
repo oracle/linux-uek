@@ -360,7 +360,7 @@ static ssize_t qlcnic_sysfs_write_mem(struct file *filp, struct kobject *kobj,
 	return size;
 }
 
-static int qlcnic_is_valid_nic_func(struct qlcnic_adapter *adapter, u8 pci_func)
+int qlcnic_is_valid_nic_func(struct qlcnic_adapter *adapter, u8 pci_func)
 {
 	int i;
 	for (i = 0; i < adapter->ahw->total_nic_func; i++) {
@@ -382,7 +382,6 @@ static int validate_pm_config(struct qlcnic_adapter *adapter,
 		src_pci_func = pm_cfg[i].pci_func;
 		dest_pci_func = pm_cfg[i].dest_npar;
 		src_index = qlcnic_is_valid_nic_func(adapter, src_pci_func);
-
 		if (src_index < 0)
 			return QL_STATUS_INVALID_PARAM;
 
@@ -619,6 +618,8 @@ static ssize_t qlcnic_sysfs_write_esw_config(struct file *file,
 	for (i = 0; i < count; i++) {
 		pci_func = esw_cfg[i].pci_func;
 		index = qlcnic_is_valid_nic_func(adapter, pci_func);
+		if (index < 0)
+			return QL_STATUS_INVALID_PARAM;
 		npar = &adapter->npars[index];
 		switch (esw_cfg[i].op_mode) {
 		case QLCNIC_PORT_DEFAULTS:

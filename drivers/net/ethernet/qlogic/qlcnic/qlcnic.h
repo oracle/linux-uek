@@ -115,6 +115,10 @@ enum qlcnic_queue_type {
 #define QLCNIC_VNIC_MODE	0xFF
 #define QLCNIC_DEFAULT_MODE	0x0
 
+/* Virtual NIC function count */
+#define QLC_DEFAULT_VNIC_COUNT	8
+#define QLC_84XX_VNIC_COUNT	16
+
 /*
  * Following are the states of the Phantom. Phantom will set them and
  * Host will read to check if the fields are correct.
@@ -1636,6 +1640,9 @@ int qlcnic_setup_netdev(struct qlcnic_adapter *, struct net_device *, int);
 void qlcnic_set_netdev_features(struct qlcnic_adapter *,
 				struct qlcnic_esw_func_cfg *);
 void qlcnic_sriov_vf_schedule_multi(struct net_device *);
+int qlcnic_is_valid_nic_func(struct qlcnic_adapter *, u8);
+int qlcnic_get_pci_func_type(struct qlcnic_adapter *, u16, u16 *, u16 *,
+			     u16 *);
 
 /*
  * QLOGIC Board information
@@ -2142,9 +2149,7 @@ static inline bool qlcnic_83xx_vf_check(struct qlcnic_adapter *adapter)
 	return (device == PCI_DEVICE_ID_QLOGIC_VF_QLE834X) ? true : false;
 }
 
-#define QLC_DEFAULT_VNIC_COUNT	8
-#define QLC_84XX_VNIC_COUNT	16
-static inline u32 qlcnic_get_vnic_functions(struct qlcnic_adapter *adapter)
+static inline u32 qlcnic_get_vnic_func_count(struct qlcnic_adapter *adapter)
 {
 	if (qlcnic_84xx_check(adapter))
 		return QLC_84XX_VNIC_COUNT;

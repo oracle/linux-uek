@@ -2293,7 +2293,7 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	adapter->dev_rst_time = jiffies;
 	ahw->revision_id = pdev->revision;
-	ahw->max_vnic_func = qlcnic_get_vnic_functions(adapter);
+	ahw->max_vnic_func = qlcnic_get_vnic_func_count(adapter);
 
 	if (qlcnic_mac_learn == FDB_MAC_LEARN)
 		adapter->fdb_mac_learn = true;

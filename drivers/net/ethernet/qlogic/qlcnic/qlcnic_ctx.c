@@ -91,18 +91,6 @@ void qlcnic_free_mbx_args(struct qlcnic_cmd_args *cmd)
 	cmd->rsp.arg = NULL;
 }
 
-static int qlcnic_is_valid_nic_func(struct qlcnic_adapter *adapter, u8 pci_func)
-{
-	int i;
-
-	for (i = 0; i < adapter->ahw->total_nic_func; i++) {
-		if (adapter->npars[i].pci_func == pci_func)
-			return i;
-	}
-
-	return -1;
-}
-
 static u32
 qlcnic_poll_rsp(struct qlcnic_adapter *adapter)
 {
@@ -995,22 +983,11 @@ int qlcnic_82xx_get_pci_info(struct qlcnic_adapter *adapter,
 		for (i = 0; i < ahw->max_vnic_func; i++, npar++, pci_info++) {
 			pci_info->id = le16_to_cpu(npar->id);
 			pci_info->active = le16_to_cpu(npar->active);
+			if (!pci_info->active)
+				continue;
 			pci_info->type = le16_to_cpu(npar->type);
-			switch (pci_info->type) {
-			case QLCNIC_TYPE_NIC:
-				nic++;
-				break;
-			case QLCNIC_TYPE_FCOE:
-				fcoe++;
-				break;
-			case QLCNIC_TYPE_ISCSI:
-				iscsi++;
-				break;
-			default:
-				dev_err(&adapter->pdev->dev,
-					"%s: Unknown PCI type[%x]\n",
-					__func__, pci_info->type);
-			}
+			err = qlcnic_get_pci_func_type(adapter, pci_info->type,
+						       &nic, &fcoe, &iscsi);
 			pci_info->default_port =
 				le16_to_cpu(npar->default_port);
 			pci_info->tx_min_bw =
@@ -1027,6 +1004,12 @@ int qlcnic_82xx_get_pci_info(struct qlcnic_adapter *adapter,
 
 	ahw->total_nic_func = nic;
 	ahw->total_pci_func = nic + fcoe + iscsi;
+	if (ahw->total_nic_func == 0 || ahw->total_pci_func == 0) {
+		dev_err(&adapter->pdev->dev,
+			"%s: Invalid function count: total nic func[%x], total pci func[%x]\n",
+			__func__, ahw->total_nic_func, ahw->total_pci_func);
+		err = -EIO;
+	}
 	qlcnic_free_mbx_args(&cmd);
 out_free_dma:
 	dma_free_coherent(&adapter->pdev->dev, pci_size, pci_info_addr,
