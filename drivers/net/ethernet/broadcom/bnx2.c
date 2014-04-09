@@ -1,6 +1,6 @@
 /* bnx2.c: Broadcom NX2 network driver.
  *
- * Copyright (c) 2004-2013 Broadcom Corporation
+ * Copyright (c) 2004-2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -83,9 +83,9 @@
 #endif
 
 #if (LINUX_VERSION_CODE >= 0x020610)
+#define BCM_CNIC 1
 
-
-
+#include "cnic_if.h"
 #endif
 #include "bnx2_compat0.h"
 #include "bnx2_compat.h"
@@ -94,8 +94,8 @@
 #include "bnx2_fw2.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION	"2.2.4g"
-#define DRV_MODULE_RELDATE	"Nov 07, 2013"
+#define DRV_MODULE_VERSION	"2.2.5f"
+#define DRV_MODULE_RELDATE	"Feb 20, 2014"
 
 #define RUN_AT(x) (jiffies + (x))
 
@@ -1572,6 +1572,8 @@ bnx2_copper_linkup(struct bnx2 *bp)
 {
 	u32 bmcr;
 
+	bp->phy_flags &= ~BNX2_PHY_FLAG_MDIX;
+
 	bnx2_read_phy(bp, bp->mii_bmcr, &bmcr);
 	if (bmcr & BMCR_ANENABLE) {
 		u32 local_adv, remote_adv, common;
@@ -1628,6 +1630,14 @@ bnx2_copper_linkup(struct bnx2 *bp)
 		else {
 			bp->duplex = DUPLEX_HALF;
 		}
+	}
+
+	if (bp->link_up) {
+		u32 ext_status;
+
+		bnx2_read_phy(bp, MII_BNX2_EXT_STATUS, &ext_status);
+		if (ext_status & EXT_STATUS_MDIX)
+			bp->phy_flags |= BNX2_PHY_FLAG_MDIX;
 	}
 
 	return 0;
@@ -2428,26 +2438,25 @@ bnx2_setup_copper_phy(struct bnx2 *bp)
 __releases(&bp->phy_lock)
 __acquires(&bp->phy_lock)
 {
-	u32 bmcr;
+	u32 bmcr, adv_reg, new_adv = 0;
 	u32 new_bmcr;
 
 	bnx2_read_phy(bp, bp->mii_bmcr, &bmcr);
 
+	bnx2_read_phy(bp, bp->mii_adv, &adv_reg);
+	adv_reg &= (PHY_ALL_10_100_SPEED | ADVERTISE_PAUSE_CAP |
+		    ADVERTISE_PAUSE_ASYM);
+
+	new_adv = ADVERTISE_CSMA | ethtool_adv_to_mii_adv_t(bp->advertising);
+
 	if (bp->autoneg & AUTONEG_SPEED) {
-		u32 adv_reg, adv1000_reg;
-		u32 new_adv = 0;
+		u32 adv1000_reg;
 		u32 new_adv1000 = 0;
 
-		bnx2_read_phy(bp, bp->mii_adv, &adv_reg);
-		adv_reg &= (PHY_ALL_10_100_SPEED | ADVERTISE_PAUSE_CAP |
-			ADVERTISE_PAUSE_ASYM);
+		new_adv |= bnx2_phy_get_pause_adv(bp);
 
 		bnx2_read_phy(bp, MII_CTRL1000, &adv1000_reg);
 		adv1000_reg &= PHY_ALL_1000_SPEED;
-
-		new_adv = ethtool_adv_to_mii_adv_t(bp->advertising);
-		new_adv |= ADVERTISE_CSMA;
-		new_adv |= bnx2_phy_get_pause_adv(bp);
 
 		new_adv1000 |= ethtool_adv_to_mii_ctrl1000_t(bp->advertising);
 		if ((adv1000_reg != new_adv1000) ||
@@ -2468,6 +2477,10 @@ __acquires(&bp->phy_lock)
 		}
 		return 0;
 	}
+
+	/* advertise nothing when forcing speed */
+	if (adv_reg != new_adv)
+		bnx2_write_phy(bp, bp->mii_adv, new_adv);
 
 	new_bmcr = 0;
 	if (bp->req_line_speed == SPEED_100) {
@@ -2723,15 +2736,15 @@ bnx2_init_copper_phy(struct bnx2 *bp, int reset_phy)
 	}
 
 	/* ethernet@wirespeed */
-	bnx2_write_phy(bp, 0x18, 0x7007);
-	bnx2_read_phy(bp, 0x18, &val);
-	val |= (1 << 15) | (1 << 4);
+	bnx2_write_phy(bp, MII_BNX2_AUX_CTL, AUX_CTL_MISC_CTL);
+	bnx2_read_phy(bp, MII_BNX2_AUX_CTL, &val);
+	val |= AUX_CTL_MISC_CTL_WR | AUX_CTL_MISC_CTL_WIRESPEED;
 
 	/* auto-mdix */
 	if (BNX2_CHIP(bp) == BNX2_CHIP_5709)
-		val |= (1 << 9);
+		val |= AUX_CTL_MISC_CTL_AUTOMDIX;
 
-	bnx2_write_phy(bp, 0x18, val);
+	bnx2_write_phy(bp, MII_BNX2_AUX_CTL, val);
 	return 0;
 }
 
@@ -2878,6 +2891,7 @@ bnx2_fw_sync(struct bnx2 *bp, u32 msg_data, int ack, int silent)
 
 	bp->fw_wr_seq++;
 	msg_data |= bp->fw_wr_seq;
+	bp->fw_last_msg = msg_data;
 
 	bnx2_shmem_wr(bp, BNX2_DRV_MB, msg_data);
 
@@ -4791,8 +4805,23 @@ bnx2_setup_wol(struct bnx2 *bp)
 			wol_msg = BNX2_DRV_MSG_CODE_SUSPEND_NO_WOL;
 	}
 
-	if (!(bp->flags & BNX2_FLAG_NO_WOL))
-		bnx2_fw_sync(bp, BNX2_DRV_MSG_DATA_WAIT3 | wol_msg, 1, 0);
+	if (!(bp->flags & BNX2_FLAG_NO_WOL)) {
+		u32 val;
+
+		wol_msg |= BNX2_DRV_MSG_DATA_WAIT3;
+		if (bp->fw_last_msg || BNX2_CHIP(bp) != BNX2_CHIP_5709) {
+			bnx2_fw_sync(bp, wol_msg, 1, 0);
+			return;
+		}
+		/* Tell firmware not to power down the PHY yet, otherwise
+		 * the chip will take a long time to respond to MMIO reads.
+		 */
+		val = bnx2_shmem_rd(bp, BNX2_PORT_FEATURE);
+		bnx2_shmem_wr(bp, BNX2_PORT_FEATURE,
+			      val | BNX2_PORT_FEATURE_ASF_ENABLED);
+		bnx2_fw_sync(bp, wol_msg, 1, 0);
+		bnx2_shmem_wr(bp, BNX2_PORT_FEATURE, val);
+	}
 
 }
 
@@ -4824,9 +4853,22 @@ bnx2_set_power_state(struct bnx2 *bp, pci_power_t state)
 
 			if (bp->wol)
 				pci_set_power_state(bp->pdev, PCI_D3hot);
-		} else {
-			pci_set_power_state(bp->pdev, PCI_D3hot);
+			break;
+
 		}
+		if (!bp->fw_last_msg && BNX2_CHIP(bp) == BNX2_CHIP_5709) {
+			u32 val;
+
+			/* Tell firmware not to power down the PHY yet,
+			 * otherwise the other port may not respond to
+			 * MMIO reads.
+			 */
+			val = bnx2_shmem_rd(bp, BNX2_BC_STATE_CONDITION);
+			val &= ~BNX2_CONDITION_PM_STATE_MASK;
+			val |= BNX2_CONDITION_PM_STATE_UNPREP;
+			bnx2_shmem_wr(bp, BNX2_BC_STATE_CONDITION, val);
+		}
+		pci_set_power_state(bp->pdev, PCI_D3hot);
 
 		/* No more memory access after this point until
 		 * device is brought back to D0.
@@ -6621,8 +6663,8 @@ bnx2_run_loopback(struct bnx2 *bp, int loopback_mode)
 	if (!skb)
 		return -ENOMEM;
 	packet = skb_put(skb, pkt_size);
-	memcpy(packet, bp->dev->dev_addr, 6);
-	memset(packet + 6, 0x0, 8);
+	memcpy(packet, bp->dev->dev_addr, ETH_ALEN);
+	memset(packet + ETH_ALEN, 0x0, 8);
 	for (i = 14; i < pkt_size; i++)
 		packet[i] = (unsigned char) (i & 0xff);
 
@@ -8076,6 +8118,14 @@ bnx2_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	if (netif_carrier_ok(dev)) {
 		ethtool_cmd_speed_set(cmd, bp->line_speed);
 		cmd->duplex = bp->duplex;
+#ifdef HAVE_MDIX_STATUS
+		if (!(bp->phy_flags & BNX2_PHY_FLAG_SERDES)) {
+			if (bp->phy_flags & BNX2_PHY_FLAG_MDIX)
+				cmd->eth_tp_mdix = ETH_TP_MDI_X;
+			else
+				cmd->eth_tp_mdix = ETH_TP_MDI;
+		}
+#endif
 	}
 	else {
 		ethtool_cmd_speed_set(cmd, -1);
@@ -9341,6 +9391,7 @@ bnx2_ioctl_cim(struct net_device *dev, struct ifreq *ifr)
 		rc = bnx2_close(bp->dev);
 		break;
 	case BNX2_VMWARE_CIM_CMD_REG_READ: {
+		struct bnx2_ioctl_reg_read_req *rd_req;
 		u32 mem_len;
 
 #if defined(__VMKLNX__) && defined(__VMKNETDDI_QUEUEOPS__)
@@ -9348,25 +9399,73 @@ bnx2_ioctl_cim(struct net_device *dev, struct ifreq *ifr)
 #else
 		mem_len = MB_GET_CID_ADDR(TX_TSS_CID + TX_MAX_TSS_RINGS + 1);
 #endif
-		if(mem_len < req.cmd_req.reg_read.reg_offset) {
-			netdev_info(bp->dev, "bnx2_ioctl() reg read: "
-					     "out of range: max reg: 0x%x "
-					     "req reg: 0x%x\n",
-				mem_len, req.cmd_req.reg_read.reg_offset);
+		rd_req = &req.cmd_req.reg_read;
+
+		switch (rd_req->reg_access_type) {
+		case BRCM_VMWARE_REG_ACCESS_DIRECT:
+			if (mem_len < rd_req->reg_offset) {
+				netdev_err(bp->dev,
+					   "bnx2_ioctl() reg read: "
+					   "out of range: "
+					   "max reg: 0x%x  req reg: 0x%x\n",
+					   mem_len, rd_req->reg_offset);
+				rc = -EINVAL;
+				break;
+			}
+
+			val = BNX2_RD(bp, req.cmd_req.reg_read.reg_offset);
+
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() reg read: "
+				    "reg: 0x%x value:0x%x",
+				     rd_req->reg_offset, rd_req->reg_value);
+			rd_req->reg_value = val;
+			break;
+
+		case BRCM_VMWARE_REG_ACCESS_PCI_CFG:
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() PCI config reg read: "
+				    "reg: 0x%x value:0x%x",
+				    rd_req->reg_offset, rd_req->reg_value);
+
+			pci_read_config_dword(bp->pdev,
+					      rd_req->reg_offset, &val);
+			rd_req->reg_value = val;
+
+			break;
+		case BRCM_VMWARE_REG_ACCESS_INDIRECT:
+			mem_len = 0x240800;
+
+			if (mem_len < rd_req->reg_offset) {
+				netdev_err(bp->dev,
+					   "bnx2_ioctl()  indirect reg read: "
+					    "out of range: "
+					    "max reg: 0x%x req reg: 0x%x\n",
+					    mem_len, rd_req->reg_offset);
+				rc = -EINVAL;
+				break;
+			}
+
+			val = bnx2_reg_rd_ind(bp, rd_req->reg_offset);
+
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() indirect reg read: "
+				    "reg: 0x%x value:0x%x",
+				    rd_req->reg_offset,
+				    rd_req->reg_value);
+			rd_req->reg_value = val;
+			break;
+		default:
+			netdev_err(bp->dev,
+				   "invalid reg read access method: "
+				   "access type: 0x%x req reg: 0x%x\n",
+				   rd_req->reg_access_type, rd_req->reg_offset);
 			rc = -EINVAL;
 			break;
 		}
 
-		val = BNX2_RD(bp, req.cmd_req.reg_read.reg_offset);
-
-		netdev_err(bp->dev, "bnx2_ioctl() reg read: "
-				     "reg: 0x%x value:0x%x",
-				     req.cmd_req.reg_read.reg_offset,
-				     req.cmd_req.reg_read.reg_value);
-		req.cmd_req.reg_read.reg_value = val;
-
-		break;
 	} case BNX2_VMWARE_CIM_CMD_REG_WRITE: {
+		struct bnx2_ioctl_reg_write_req *wr_req;
 		u32 mem_len;
 
 #if defined(__VMKLNX__) && defined(__VMKNETDDI_QUEUEOPS__)
@@ -9374,24 +9473,70 @@ bnx2_ioctl_cim(struct net_device *dev, struct ifreq *ifr)
 #else
 		mem_len = MB_GET_CID_ADDR(TX_TSS_CID + TX_MAX_TSS_RINGS + 1);
 #endif
-		if(mem_len < req.cmd_req.reg_write.reg_offset) {
-			netdev_err(bp->dev, "bnx2_ioctl() reg write: "
-					    "out of range: max reg: 0x%x "
-					    "req reg: 0x%x\n",
+		wr_req = &req.cmd_req.reg_write;
+
+		switch (wr_req->reg_access_type) {
+		case BRCM_VMWARE_REG_ACCESS_DIRECT:
+			if (mem_len < req.cmd_req.reg_write.reg_offset) {
+				netdev_err(bp->dev,
+					   "bnx2_ioctl() reg write: "
+					   "out of range: max reg: 0x%x "
+					   "req reg: 0x%x\n",
 				mem_len, req.cmd_req.reg_write.reg_offset);
+				rc = -EINVAL;
+				break;
+			}
+
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() reg write: "
+				    "reg: 0x%x value:0x%x",
+				    wr_req->reg_offset, wr_req->reg_value);
+
+			BNX2_WR(bp, wr_req->reg_offset, wr_req->reg_value);
+
+			break;
+		case BRCM_VMWARE_REG_ACCESS_PCI_CFG:
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() PCI config reg write: "
+				    "reg: 0x%x value:0x%x",
+				    wr_req->reg_offset, wr_req->reg_value);
+
+			pci_write_config_dword(bp->pdev, wr_req->reg_offset,
+					       wr_req->reg_value);
+
+			break;
+		case BRCM_VMWARE_REG_ACCESS_INDIRECT:
+			mem_len = 0x240800;
+
+			if (mem_len < wr_req->reg_offset) {
+				netdev_err(bp->dev,
+					   "bnx2_ioctl()  indirect reg write: "
+					    "out of range: "
+					    "max reg: 0x%x req reg: 0x%x\n",
+					    mem_len, wr_req->reg_offset);
+				rc = -EINVAL;
+				break;
+			}
+
+			bnx2_reg_wr_ind(bp, wr_req->reg_offset,
+					wr_req->reg_value);
+
+			netdev_info(bp->dev,
+				    "bnx2_ioctl() indirect reg write: "
+				    "reg: 0x%x value:0x%x",
+				    wr_req->reg_offset, wr_req->reg_value);
+			wr_req->reg_value = val;
+			break;
+		default:
+			netdev_err(bp->dev,
+				   "invalid reg write access method: "
+				   "access type: 0x%x reg: 0x%x\n",
+				   wr_req->reg_access_type,
+				   wr_req->reg_offset);
 			rc = -EINVAL;
 			break;
 		}
 
-		netdev_info(bp->dev, "bnx2_ioctl() reg write: "
-				     "reg: 0x%x value:0x%x",
-				     req.cmd_req.reg_write.reg_offset,
-				     req.cmd_req.reg_write.reg_value);
-
-		BNX2_WR(bp, req.cmd_req.reg_write.reg_offset,
-			req.cmd_req.reg_write.reg_value);
-
-		break;
 	} case BNX2_VMWARE_CIM_CMD_GET_NIC_PARAM:
 		netdev_info(bp->dev, "bnx2_ioctl() get NIC param\n");
 
@@ -9814,7 +9959,11 @@ bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 
 	pci_set_master(pdev);
 
+#if (LINUX_VERSION_CODE >= 0x030400)
+	bp->pm_cap = pdev->pm_cap;
+#else
 	bp->pm_cap = pci_find_capability(pdev, PCI_CAP_ID_PM);
+#endif
 	if (bp->pm_cap == 0) {
 		dev_err(&pdev->dev,
 			"Cannot find power management capability, aborting\n");
@@ -9896,13 +10045,21 @@ bnx2_init_board(struct pci_dev *pdev, struct net_device *dev)
 
 #ifdef CONFIG_PCI_MSI
 	if (BNX2_CHIP(bp) == BNX2_CHIP_5709 && BNX2_CHIP_REV(bp) != BNX2_CHIP_REV_Ax) {
+#if (LINUX_VERSION_CODE >= 0x030c00)
+		if (pdev->msix_cap)
+#else
 		if (pci_find_capability(pdev, PCI_CAP_ID_MSIX))
+#endif
 			bp->flags |= BNX2_FLAG_MSIX_CAP;
 	}
 #endif
 
 	if (BNX2_CHIP_ID(bp) != BNX2_CHIP_ID_5706_A0 && BNX2_CHIP_ID(bp) != BNX2_CHIP_ID_5706_A1) {
+#if (LINUX_VERSION_CODE >= 0x030c00)
+		if (pdev->msi_cap)
+#else
 		if (pci_find_capability(pdev, PCI_CAP_ID_MSI))
+#endif
 			bp->flags |= BNX2_FLAG_MSI_CAP;
 	}
 
@@ -10199,7 +10356,9 @@ err_out_release:
 
 err_out_disable:
 	pci_disable_device(pdev);
+#if (LINUX_VERSION_CODE < 0x30c00)
 	pci_set_drvdata(pdev, NULL);
+#endif
 
 err_out:
 	return rc;
@@ -10397,9 +10556,9 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 
 	pci_set_drvdata(pdev, dev);
 
-	memcpy(dev->dev_addr, bp->mac_addr, 6);
+	memcpy(dev->dev_addr, bp->mac_addr, ETH_ALEN);
 #ifdef ETHTOOL_GPERMADDR
-	memcpy(dev->perm_addr, bp->mac_addr, 6);
+	memcpy(dev->perm_addr, bp->mac_addr, ETH_ALEN);
 #endif
 
 #ifdef NETIF_F_IPV6_CSUM
@@ -10488,7 +10647,9 @@ error:
 	pci_iounmap(pdev, bp->regview);
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
+#if (LINUX_VERSION_CODE < 0x30c00)
 	pci_set_drvdata(pdev, NULL);
+#endif
 err_free:
 #if (LINUX_VERSION_CODE >= 0x20418)
 	free_netdev(dev);
@@ -10538,7 +10699,9 @@ bnx2_remove_one(struct pci_dev *pdev)
 
 	pci_release_regions(pdev);
 	pci_disable_device(pdev);
+#if (LINUX_VERSION_CODE < 0x30c00)
 	pci_set_drvdata(pdev, NULL);
+#endif
 }
 
 static int
@@ -12670,9 +12833,15 @@ static VMK_ReturnStatus bnx2_fwdmp_callback(void *cookie, vmk_Bool liveDump)
 	struct bnx2_chip_core_dmp *dmp;
 	struct bnx2 *bp;
 
+#ifdef VX86_DEBUG
 	printk(KERN_INFO "FW dump for Broadcom Nx2 Gigabit Ethernet Driver "
-		DRV_MODULE_NAME " v" DRV_MODULE_VERSION " ("
+		DRV_MODULE_NAME " v" DRV_MODULE_VERSION "-BETA ("
 		DRV_MODULE_RELDATE ")\n");
+#else
+	printk(KERN_INFO "FW dump for Broadcom Nx2 Gigabit Ethernet Driver "
+		DRV_MODULE_NAME " v" DRV_MODULE_VERSION "-release ("
+		DRV_MODULE_RELDATE ")\n");
+#endif
 	for (idx = 0; idx < BNX2_MAX_NIC; idx++) {
 		if (fwdmp_va_ptr && fwdmp_bp_ptr[idx]) {
 			/* dump chip information to buffer */

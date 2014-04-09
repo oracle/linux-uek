@@ -1,6 +1,6 @@
 /* bnx2.h: Broadcom NX2 network driver.
  *
- * Copyright (c) 2004-2013 Broadcom Corporation
+ * Copyright (c) 2004-2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -7039,6 +7039,15 @@ struct l2_fhdr {
 
 #define BCM5708S_TX_ACTL3			0x17
 
+#define MII_BNX2_EXT_STATUS			0x11
+#define EXT_STATUS_MDIX				 (1 << 13)
+
+#define MII_BNX2_AUX_CTL			0x18
+#define AUX_CTL_MISC_CTL			 0x7007
+#define AUX_CTL_MISC_CTL_WIRESPEED		  (1 << 4)
+#define AUX_CTL_MISC_CTL_AUTOMDIX		  (1 << 9)
+#define AUX_CTL_MISC_CTL_WR			  (1 << 15)
+
 #define MII_BNX2_DSP_RW_PORT			0x15
 #define MII_BNX2_DSP_ADDRESS			0x17
 #define MII_BNX2_DSP_EXPAND_REG			 0x0f00
@@ -7377,7 +7386,7 @@ struct netq_ctx {
 
 struct bnx2 {
 	u32		version;
-#define BNX2_DEV_VER 0xb2b20000 /* Change this when the structure changes */
+#define BNX2_DEV_VER 0xb2b20002 /* Change this when the structure changes */
 
 	/* Fields used in the tx and intr/napi performance paths are grouped */
 	/* together in the beginning of the structure. */
@@ -7405,8 +7414,6 @@ struct bnx2 {
 #define BNX2_FLAG_CAN_KEEP_VLAN		0x00001000
 #define BNX2_FLAG_BROKEN_STATS		0x00002000
 #define BNX2_FLAG_AER_ENABLED		0x00004000
-
-	struct bnx2_napi	bnx2_napi[BNX2_MAX_MSIX_VEC];
 
 #if defined(BCM_VLAN) && !defined(NEW_VLAN)
 	struct			vlan_group *vlgrp;
@@ -7458,6 +7465,7 @@ struct bnx2 {
 #define BNX2_PHY_FLAG_REMOTE_PHY_CAP		0x00000800
 #define BNX2_PHY_FLAG_FORCED_DOWN		0x00001000
 #define BNX2_PHY_FLAG_NO_PARALLEL		0x00002000
+#define BNX2_PHY_FLAG_MDIX			0x00004000
 
 	u32			mii_bmcr;
 	u32			mii_bmsr;
@@ -7504,6 +7512,7 @@ struct bnx2 {
 
 	u16			fw_wr_seq;
 	u16			fw_drv_pulse_wr_seq;
+	u32			fw_last_msg;
 
 	int			rx_max_ring;
 	int			rx_ring_size;
@@ -7611,6 +7620,17 @@ struct bnx2 {
 	struct cnic_eth_dev	*(*cnic_probe)(struct net_device *);
 #endif
 
+#if (defined(RHEL_RELEASE_CODE) && (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,5))) || (LINUX_VERSION_CODE >= 0x030800)
+	/* Hack to prevent upstream cnic from detecting cnic_probe */
+	struct dummy {
+		struct napi_struct	dummy_napi	____cacheline_aligned;
+		long			dummy_long[48];
+		u32			dummy_u32[15];
+		dma_addr_t		dummy_dma[41];
+	} dummy_arr[BNX2_MAX_MSIX_VEC];
+#endif
+	struct bnx2_napi	bnx2_napi[BNX2_MAX_MSIX_VEC];
+
 #if defined(BNX2_ENABLE_NETQUEUE)
 	u16			n_rx_queues_allocated;
 	u16			n_tx_queues_allocated;
@@ -7649,7 +7669,9 @@ struct bnx2 {
 
 	wait_queue_head_t	netq_wait;
 #endif
+#if defined(__VMKLNX__)
 	u8			reset_failed;
+#endif
 };
 
 #define BNX2_RD(bp, offset)					\
@@ -8062,6 +8084,10 @@ struct fw_info {
 #define BNX2_CONDITION_MFW_RUN_NCSI		 0x00006000
 #define BNX2_CONDITION_MFW_RUN_NONE		 0x0000e000
 #define BNX2_CONDITION_MFW_RUN_MASK		 0x0000e000
+#define BNX2_CONDITION_PM_STATE_MASK		 0x00030000
+#define BNX2_CONDITION_PM_STATE_FULL		 0x00030000
+#define BNX2_CONDITION_PM_STATE_PREP		 0x00020000
+#define BNX2_CONDITION_PM_STATE_UNPREP		 0x00010000
 
 #define BNX2_BC_STATE_DEBUG_CMD			0x1dc
 #define BNX2_BC_STATE_BC_DBG_CMD_SIGNATURE	 0x42440000
@@ -8121,16 +8147,24 @@ struct fw_info {
 #define BNX2_VMWARE_CIM_CMD_GET_NIC_PARAM	0x0005
 #define BNX2_VMWARE_CIM_CMD_GET_NIC_STATUS	0x0006
 
+/* Access type for Register Read/Write Ioctl */
+#define BRCM_VMWARE_REG_ACCESS_DIRECT		0x0000
+#define BRCM_VMWARE_REG_ACCESS_PCI_CFG		0x0001
+#define BRCM_VMWARE_REG_ACCESS_APE_REG		0x0002
+#define BRCM_VMWARE_REG_ACCESS_INDIRECT		0x0003
+
 struct bnx2_ioctl_reg_read_req
 {
 	u32 reg_offset;
 	u32 reg_value;
+	u32 reg_access_type;
 } __attribute__((packed));
 
 struct bnx2_ioctl_reg_write_req
 {
 	u32 reg_offset;
 	u32 reg_value;
+	u32 reg_access_type;
 } __attribute__((packed));
 
 struct bnx2_ioctl_get_nic_param_req

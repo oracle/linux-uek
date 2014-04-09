@@ -249,6 +249,11 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 #define __releases(x)
 #endif
 
+#ifndef HAVE_LE32
+typedef u32 __le32;
+typedef u32 __be32;
+#endif
+
 #ifndef USEC_PER_SEC
 #define USEC_PER_SEC	1000000L
 #endif
@@ -275,6 +280,10 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 
 #ifndef uninitialized_var
 #define uninitialized_var(x) x
+#endif
+
+#ifndef RHEL_RELEASE_VERSION
+#define RHEL_RELEASE_VERSION(a, b) 0
 #endif
 
 #if (LINUX_VERSION_CODE < 0x2060b)
