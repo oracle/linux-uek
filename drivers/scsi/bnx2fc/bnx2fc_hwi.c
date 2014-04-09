@@ -2,7 +2,7 @@
  * This file contains the code that low level functions that interact
  * with 57712 FCoE firmware.
  *
- * Copyright (c) 2008 - 2011 Broadcom Corporation
+ * Copyright (c) 2008 - 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -127,8 +127,8 @@ int bnx2fc_send_fw_fcoe_init_msg(struct bnx2fc_hba *hba)
 	fcoe_init3.error_bit_map_hi = 0xffffffff;
 
 	/*
-	 * set per_config to 3 to enable cached connection and cached tasks
-	 * 0 = none, 1 = cached connection, 2 = cached tasks
+	 * enable cached connection and cached tasks
+	 * 0 = none, 1 = cached connection, 2 = cached tasks, 3 = both
 	 */
 	fcoe_init3.perf_config = 3;
 
@@ -303,7 +303,7 @@ int bnx2fc_send_session_ofld_req(struct fcoe_port *port,
 	ofld_req3.flags |= (interface->vlan_enabled <<
 			    FCOE_KWQE_CONN_OFFLOAD3_B_VLAN_FLAG_SHIFT);
 
-	/* C2_VALID and ACK flags are not set as they are not suppported */
+	/* C2_VALID and ACK flags are not set as they are not supported */
 
 
 	/* Initialize offload request 4 structure */
@@ -395,19 +395,19 @@ int bnx2fc_send_session_enable_req(struct fcoe_port *port,
 	memcpy(tgt->src_addr, port->data_src_addr, ETH_ALEN);
 
 #ifdef _DEFINE_FCOE_SYSFS_
-	enbl_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
-	enbl_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
-	enbl_req.dst_mac_addr_mid[0] =  ctlr->dest_addr[3];
-	enbl_req.dst_mac_addr_mid[1] =  ctlr->dest_addr[2];
-	enbl_req.dst_mac_addr_hi[0] =  ctlr->dest_addr[1];
-	enbl_req.dst_mac_addr_hi[1] =  ctlr->dest_addr[0];
+	enbl_req.dst_mac_addr_lo[0] = ctlr->dest_addr[5];
+	enbl_req.dst_mac_addr_lo[1] = ctlr->dest_addr[4];
+	enbl_req.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
+	enbl_req.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
+	enbl_req.dst_mac_addr_hi[0] = ctlr->dest_addr[1];
+	enbl_req.dst_mac_addr_hi[1] = ctlr->dest_addr[0];
 #else
-	enbl_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
-	enbl_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
-	enbl_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
-	enbl_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
-	enbl_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
-	enbl_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
+	enbl_req.dst_mac_addr_lo[0] = interface->dest_addr[5];
+	enbl_req.dst_mac_addr_lo[1] = interface->dest_addr[4];
+	enbl_req.dst_mac_addr_mid[0] = interface->dest_addr[3];
+	enbl_req.dst_mac_addr_mid[1] = interface->dest_addr[2];
+	enbl_req.dst_mac_addr_hi[0] = interface->dest_addr[1];
+	enbl_req.dst_mac_addr_hi[1] = interface->dest_addr[0];
 #endif
 
 	port_id = fc_host_port_id(lport->host);
@@ -494,18 +494,18 @@ int bnx2fc_send_session_disable_req(struct fcoe_port *port,
 #ifdef _DEFINE_FCOE_SYSFS_
 	disable_req.dst_mac_addr_lo[0] =  ctlr->dest_addr[5];
 	disable_req.dst_mac_addr_lo[1] =  ctlr->dest_addr[4];
-	disable_req.dst_mac_addr_mid[0] =  ctlr->dest_addr[3];
+	disable_req.dst_mac_addr_mid[0] = ctlr->dest_addr[3];
 	disable_req.dst_mac_addr_mid[1] = ctlr->dest_addr[2];
 	disable_req.dst_mac_addr_hi[0] =  ctlr->dest_addr[1];
 	disable_req.dst_mac_addr_hi[1] =  ctlr->dest_addr[0];
 
 #else
-	disable_req.dst_mac_addr_lo[0] =  interface->dest_addr[5];
-	disable_req.dst_mac_addr_lo[1] =  interface->dest_addr[4];
-	disable_req.dst_mac_addr_mid[0] =  interface->dest_addr[3];
-	disable_req.dst_mac_addr_mid[1] =  interface->dest_addr[2];
-	disable_req.dst_mac_addr_hi[0] =  interface->dest_addr[1];
-	disable_req.dst_mac_addr_hi[1] =  interface->dest_addr[0];
+	disable_req.dst_mac_addr_lo[0] = interface->dest_addr[5];
+	disable_req.dst_mac_addr_lo[1] = interface->dest_addr[4];
+	disable_req.dst_mac_addr_mid[0] = interface->dest_addr[3];
+	disable_req.dst_mac_addr_mid[1] = interface->dest_addr[2];
+	disable_req.dst_mac_addr_hi[0] = interface->dest_addr[1];
+	disable_req.dst_mac_addr_hi[1] = interface->dest_addr[0];
 #endif
 
 	port_id = tgt->sid;
@@ -1196,7 +1196,7 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 	context_id = ofld_kcqe->fcoe_conn_context_id;
 	tgt = hba->tgt_ofld_list[conn_id];
 	if (!tgt) {
-		printk(KERN_ERR PFX "ERROR:ofld_cmpl: No pending ofld req\n");
+		printk(KERN_ALERT PFX "ERROR:ofld_cmpl: No pending ofld req\n");
 		return;
 	}
 	BNX2FC_TGT_DBG(tgt, "Entered ofld compl - context_id = 0x%x\n",
@@ -1226,7 +1226,6 @@ static void bnx2fc_process_ofld_cmpl(struct bnx2fc_hba *hba,
 		/* FW offload request successfully completed */
 		set_bit(BNX2FC_FLAG_OFFLOADED, &tgt->flags);
 	}
-
 ofld_cmpl_err:
 	set_bit(BNX2FC_FLAG_OFLD_REQ_CMPL, &tgt->flags);
 	wake_up_interruptible(&tgt->ofld_wait);
@@ -1292,8 +1291,7 @@ static void bnx2fc_process_conn_disable_cmpl(struct bnx2fc_hba *hba,
 	conn_id = disable_kcqe->fcoe_conn_id;
 	tgt = hba->tgt_ofld_list[conn_id];
 	if (!tgt) {
-		printk(KERN_ERR PFX "ERROR:disable_cmpl:conn_id %d not found\n",
-		       conn_id);
+		printk(KERN_ERR PFX "ERROR: disable_cmpl: No disable req\n");
 		return;
 	}
 
@@ -1382,7 +1380,7 @@ static void bnx2fc_init_failure(struct bnx2fc_hba *hba, u32 err_code)
 void bnx2fc_indicate_kcqe(void *context, struct kcqe *kcq[],
 					u32 num_cqe)
 {
-	struct bnx2fc_hba *hba = context;
+	struct bnx2fc_hba *hba = (struct bnx2fc_hba *)context;
 	int i = 0;
 	struct fcoe_kcqe *kcqe = NULL;
 

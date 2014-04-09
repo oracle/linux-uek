@@ -1,7 +1,7 @@
 /* bnx2fc_io.c: Broadcom NetXtreme II Linux FCoE offload driver.
  * IO manager and SCSI IO processing.
  *
- * Copyright (c) 2008 - 2013 Broadcom Corporation
+ * Copyright (c) 2008 - 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -729,7 +729,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 	}
 	rp = rport->dd_data;
 
-#ifdef __BNX2FC_SLES11SP1__
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ < 0x1102))
         rc = fc_remote_port_chkready(rport);
         if (rc) {
                 printk (KERN_ALERT PFX "device_reset rport not ready\n");
@@ -738,13 +738,13 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
         }
 #else
 	rc = fc_block_scsi_eh(sc_cmd);
-#ifdef __BNX2FC_SLES11SP2__
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101))
 	if (rc != SUCCESS)
 #else
 	if (rc)
-#endif /*__BNX2FC_SLES11SP2__ */
+#endif /*__BNX2FC_SLES__ > 0x1101 */
 		return rc;
-#endif /*__BNX2FC_SLES11SP1__ */
+#endif /*__BNX2FC_SLES__ < 0x1102 */
 
 
 	if (lport->state != LPORT_ST_READY || !(lport->link_up)) {
@@ -1158,7 +1158,7 @@ int bnx2fc_expl_logo(struct fc_lport *lport, struct bnx2fc_cmd *io_req)
 	io_req->wait_for_comp = 0;
 	/*
 	 * release the reference taken in eh_abort to allow the
-	 * target to relogin after flushing IOs
+	 * target to re-login after flushing IOs
 	 */
 	kref_put(&io_req->refcount, bnx2fc_cmd_release);
 
@@ -1197,7 +1197,7 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 
 
 
-#ifdef __BNX2FC_SLES11SP1__
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ < 0x1102))
 	if (fc_remote_port_chkready(rport)) {
 		printk(KERN_ALERT PFX "bnx2fc_eh_abort: rport not ready\n");
 		return rc;
@@ -1205,13 +1205,13 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 #else
 
 	rc = fc_block_scsi_eh(sc_cmd);
-#ifdef __BNX2FC_SLES11SP2__
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101))
 	if (rc != SUCCESS)
 #else
 	if (rc)
-#endif /* __BNX2FC_SLES11SP2__ */
+#endif /*__BNX2FC_SLES__ > 0x1101 */
 		return rc;
-#endif /* __BNX2FC_SLES11SP1__ */
+#endif /*__BNX2FC_SLES__ < 0x1102 */
 
 	lport = shost_priv(sc_cmd->device->host);
 	if ((lport->state != LPORT_ST_READY) || !(lport->link_up)) {
@@ -1290,10 +1290,11 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 			kref_put(&io_req->refcount,
 				 bnx2fc_cmd_release); /* drop timer hold */
 		rc = bnx2fc_expl_logo(lport, io_req);
-		/* This only occurs when an task abort was requested while ABTS is
-		   in progress.  Setting the IO_CLEANUP flag will skip the RRQ process
-		   in the case when the fw generated SCSI_CMD cmpl was a result from the
-		   ABTS request rather than the CLEANUP request */
+		/* This only occurs when an task abort was requested while ABTS
+		   is in progress.  Setting the IO_CLEANUP flag will skip the
+		   RRQ process in the case when the fw generated SCSI_CMD cmpl
+		   was a result from the ABTS request rather than the CLEANUP
+		   request */
 		set_bit(BNX2FC_FLAG_IO_CLEANUP,	&io_req->req_flags);
 		/* reference is released, unlock and exit */
 		goto out;
@@ -1321,8 +1322,7 @@ int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd)
 	spin_lock_bh(&tgt->tgt_lock);
 	io_req->wait_for_comp = 0;
 	if (test_bit(BNX2FC_FLAG_IO_COMPL, &io_req->req_flags)) {
-		printk(KERN_ERR PFX "IO completed from diff context - xid = 0x%x\n",
-		       io_req->xid);
+		BNX2FC_IO_DBG(io_req, "IO completed in a different context\n");
 		rc = SUCCESS;
 	} else if (!(test_and_set_bit(BNX2FC_FLAG_ABTS_DONE,
 				    &io_req->req_flags))) {
@@ -1887,7 +1887,8 @@ static void bnx2fc_parse_fcp_rsp(struct bnx2fc_cmd *io_req,
 
 /**
  * bnx2fc_queuecommand - Queuecommand function of the scsi template
- * @host:	The Scsi_Host the comand was issued to
+ *
+ * @host:	The Scsi_Host the command was issued to
  * @sc_cmd:	struct scsi_cmnd to be executed
  * @done:	Callback function to be called when sc_cmd is complted
  *
@@ -1914,7 +1915,7 @@ int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
 
 	lport = shost_priv(host);
 #if (LINUX_VERSION_CODE < 0x20626)
-#ifndef __BNX2FC_RHEL62__
+#if (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ < 0x0602)) || defined(__BNX2FC_SLES__)
 	spin_unlock_irq(host->host_lock);
 #endif
 
@@ -1942,7 +1943,7 @@ int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
 	tgt = (struct bnx2fc_rport *)&rp[1];
 
 	/*
-	 * ASSUMPTION: scsi_transport_fc module is initializing the
+	 * ASSUMPTION: scsi_transport_fc module is initializing the 
 	 * driver private structure to 0 after allocating it. (kzalloc)
 	 * So, we can rely on checking the bnx2fc_rport flag.
 	 */
@@ -1955,7 +1956,15 @@ int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
 		rc = SCSI_MLQUEUE_TARGET_BUSY;
 		goto exit_qcmd;
 	}
-
+	if (tgt->retry_delay_timestamp) {
+		if (time_after(jiffies, tgt->retry_delay_timestamp)) {
+			tgt->retry_delay_timestamp = 0;
+		} else {
+			/* If retry_delay timer is active, flow off the ML */
+			rc = SCSI_MLQUEUE_TARGET_BUSY;
+			goto exit_qcmd;
+		}
+	}
 	io_req = bnx2fc_cmd_alloc(tgt);
 	if (!io_req) {
 		rc = SCSI_MLQUEUE_HOST_BUSY;
@@ -1971,7 +1980,7 @@ int bnx2fc_queuecommand(struct scsi_cmnd *sc_cmd,
 
 exit_qcmd:
 #if (LINUX_VERSION_CODE < 0x20626)
-#ifndef __BNX2FC_RHEL62__
+#if (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ < 0x0602)) || defined(__BNX2FC_SLES__)
 	spin_lock_irq(host->host_lock);
 #endif
 #endif
@@ -2051,6 +2060,15 @@ void bnx2fc_process_scsi_cmd_compl(struct bnx2fc_cmd *io_req,
 				 " fcp_resid = 0x%x\n",
 				io_req->cdb_status, io_req->fcp_resid);
 			sc_cmd->result = (DID_OK << 16) | io_req->cdb_status;
+
+			if (io_req->cdb_status == SAM_STAT_TASK_SET_FULL ||
+			    io_req->cdb_status == SAM_STAT_BUSY) {
+				/* Set the jiffies + retry_delay_timer*100ms
+				   for the rport/tgt */
+				tgt->retry_delay_timestamp = jiffies +
+					fcp_rsp->retry_delay_timer * HZ / 10;
+			}
+
 		}
 		if (io_req->fcp_resid)
 			scsi_set_resid(sc_cmd, io_req->fcp_resid);

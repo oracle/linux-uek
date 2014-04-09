@@ -2,7 +2,7 @@
  * Handles operations such as session offload/upload etc, and manages
  * session resources such as connection id and qp resources.
  *
- * Copyright (c) 2008 - 2013 Broadcom Corporation
+ * Copyright (c) 2008 - 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -72,7 +72,6 @@ static void bnx2fc_ofld_wait(struct bnx2fc_rport *tgt)
 				  &tgt->flags)));
 	if (signal_pending(current))
 		flush_signals(current);
-
 	del_timer_sync(&tgt->ofld_timer);
 }
 
@@ -311,7 +310,6 @@ static void bnx2fc_upload_session(struct fcoe_port *port,
 	 * wait for upload to complete. 3 Secs
 	 * should be sufficient time for this process to complete.
 	 */
-
 	BNX2FC_TGT_DBG(tgt, "waiting for disable compl\n");
 	bnx2fc_upld_wait(tgt);
 
@@ -340,7 +338,7 @@ static void bnx2fc_upload_session(struct fcoe_port *port,
 
 	} else if (test_bit(BNX2FC_FLAG_DISABLE_FAILED, &tgt->flags)) {
 		printk(KERN_ERR PFX "ERROR!! DISABLE req failed, destroy"
-				" not set to FW\n");
+				" not sent to FW\n");
 	} else {
 		printk(KERN_ERR PFX "ERROR!! DISABLE req timed out, destroy"
 				" not sent to FW\n");
@@ -393,6 +391,7 @@ static int bnx2fc_init_tgt(struct bnx2fc_rport *tgt,
 	tgt->rq_prod_idx = 0x8000;
 	tgt->rq_cons_idx = 0;
 	atomic_set(&tgt->num_active_ios, 0);
+	tgt->retry_delay_timestamp = 0;
 
 	if (rdata->flags & FC_RP_FLAGS_RETRY &&
 	    rdata->ids.roles & FC_RPORT_ROLE_FCP_TARGET &&
@@ -511,7 +510,7 @@ void bnx2fc_rport_event_handler(struct fc_lport *lport,
 			hba->num_ofld_sess);
 
 		if (test_bit(BNX2FC_FLAG_ENABLED, &tgt->flags)) {
-			/* Session is offloaded and enabled. */
+			/* Session is offloaded and enabled.  */
 			BNX2FC_TGT_DBG(tgt, "sess offloaded\n");
 			/* This counter is protected with hba mutex */
 			hba->num_ofld_sess++;
@@ -680,7 +679,7 @@ static int bnx2fc_alloc_session_resc(struct bnx2fc_hba *hba,
 	u32 *pbl;
 
 	/* Allocate and map SQ */
-	tgt->sq_mem_size = tgt->max_sqes * BNX2FC_SQ_WQE_SIZE;
+	tgt->sq_mem_size = (tgt->max_sqes + 8) * BNX2FC_SQ_WQE_SIZE;
 	tgt->sq_mem_size = (tgt->sq_mem_size + (PAGE_SIZE - 1)) & PAGE_MASK;
 
 	tgt->sq = dma_alloc_coherent(&hba->pcidev->dev, tgt->sq_mem_size,
@@ -693,7 +692,7 @@ static int bnx2fc_alloc_session_resc(struct bnx2fc_hba *hba,
 	memset(tgt->sq, 0, tgt->sq_mem_size);
 
 	/* Allocate and map CQ */
-	tgt->cq_mem_size = tgt->max_cqes * BNX2FC_CQ_WQE_SIZE;
+	tgt->cq_mem_size = (tgt->max_cqes + 8) * BNX2FC_CQ_WQE_SIZE;
 	tgt->cq_mem_size = (tgt->cq_mem_size + (PAGE_SIZE - 1)) & PAGE_MASK;
 
 	tgt->cq = dma_alloc_coherent(&hba->pcidev->dev, tgt->cq_mem_size,
@@ -743,7 +742,7 @@ static int bnx2fc_alloc_session_resc(struct bnx2fc_hba *hba,
 	}
 
 	/* Allocate and map XFERQ */
-	tgt->xferq_mem_size = tgt->max_sqes * BNX2FC_XFERQ_WQE_SIZE;
+	tgt->xferq_mem_size = (tgt->max_sqes + 8) * BNX2FC_XFERQ_WQE_SIZE;
 	tgt->xferq_mem_size = (tgt->xferq_mem_size + (PAGE_SIZE - 1)) &
 			       PAGE_MASK;
 
@@ -757,7 +756,7 @@ static int bnx2fc_alloc_session_resc(struct bnx2fc_hba *hba,
 	memset(tgt->xferq, 0, tgt->xferq_mem_size);
 
 	/* Allocate and map CONFQ & CONFQ PBL */
-	tgt->confq_mem_size = tgt->max_sqes * BNX2FC_CONFQ_WQE_SIZE;
+	tgt->confq_mem_size = (tgt->max_sqes + 8) * BNX2FC_CONFQ_WQE_SIZE;
 	tgt->confq_mem_size = (tgt->confq_mem_size + (PAGE_SIZE - 1)) &
 			       PAGE_MASK;
 
@@ -812,7 +811,7 @@ static int bnx2fc_alloc_session_resc(struct bnx2fc_hba *hba,
 
 
 	/* Allocate and map LCQ */
-	tgt->lcq_mem_size = (tgt->max_sqes + 8) * BNX2FC_SQ_WQE_SIZE;
+	tgt->lcq_mem_size = (tgt->max_sqes + 8) * BNX2FC_LCQ_WQE_SIZE;
 	tgt->lcq_mem_size = (tgt->lcq_mem_size + (PAGE_SIZE - 1)) &
 			     PAGE_MASK;
 

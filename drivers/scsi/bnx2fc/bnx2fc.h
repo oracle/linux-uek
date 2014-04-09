@@ -2,7 +2,7 @@
 #define _BNX2FC_H_
 /* bnx2fc.h: Broadcom NetXtreme II Linux FCoE offload driver.
  *
- * Copyright (c) 2008 - 2013 Broadcom Corporation
+ * Copyright (c) 2008 - 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -49,7 +49,23 @@
 
 #include <linux/version.h>
 
-#ifdef __BNX2FC_SLES11SP1__
+#ifdef __devinitdata
+#define DEVINITDATA __devinitdata
+#else
+#define DEVINITDATA
+#endif
+
+#if (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ < 0x0606))
+#define kthread_create_on_node(threadfn, data, node, namefmt, ...)  \
+	kthread_create(threadfn, data, namefmt, ## __VA_ARGS__)
+#endif
+
+#ifndef alloc_workqueue
+#define alloc_workqueue(str, flags, max) \
+	create_workqueue(str)
+#endif
+
+#if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ < 0x1102))
 
 #include <scsi/libfc2.h>
 #include <scsi/libfcoe2.h>
@@ -124,7 +140,8 @@
 #include "bnx2fc_constants.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"2.4.1e"
+#define BNX2FC_VERSION		"2.4.2e"
+#define BNX2FC_RELDATE		"Feb 05, 2014"
 
 #define PFX			"bnx2fc: "
 
@@ -199,7 +216,7 @@
 #define BNX2FC_NUM_MAX_SESS	1024
 #define BNX2FC_NUM_MAX_SESS_LOG	(ilog2(BNX2FC_NUM_MAX_SESS))
 
-#define BNX2FC_MAX_NPIV		256
+#define BNX2FC_MAX_NPIV		64
 
 #define BNX2FC_MIN_PAYLOAD		256
 #define BNX2FC_MAX_PAYLOAD		2048
@@ -214,6 +231,7 @@
 #define BNX2FC_SQ_WQE_SIZE		(sizeof(struct fcoe_sqe))
 #define BNX2FC_CQ_WQE_SIZE		(sizeof(struct fcoe_cqe))
 #define BNX2FC_RQ_WQE_SIZE		(BNX2FC_RQ_BUF_SZ)
+#define BNX2FC_LCQ_WQE_SIZE		(sizeof(struct fcoe_lcqe))
 #define BNX2FC_XFERQ_WQE_SIZE		(sizeof(struct fcoe_xfrqe))
 #define BNX2FC_CONFQ_WQE_SIZE		(sizeof(struct fcoe_confqe))
 #define BNX2X_DB_SHIFT			3
@@ -255,10 +273,6 @@
 #define SRR_RETRY_COUNT			5
 #define REC_RETRY_COUNT			1
 #define BNX2FC_NUM_ERR_BITS		63
-
-#ifndef USHORT_MAX
-#define USHORT_MAX USHRT_MAX
-#endif
 
 #define BNX2FC_RELOGIN_WAIT_TIME	200
 #define BNX2FC_RELOGIN_WAIT_CNT		10
@@ -525,6 +539,7 @@ struct bnx2fc_rport {
 	atomic_t num_active_ios;
 	u32 flush_in_prog;
 	unsigned long timestamp;
+	unsigned long retry_delay_timestamp;
 	struct list_head free_task_list;
 	struct bnx2fc_cmd *pending_queue[BNX2FC_SQ_WQES_MAX+1];
 	struct list_head active_cmd_queue;
@@ -702,7 +717,6 @@ void bnx2fc_init_task(struct bnx2fc_cmd *io_req,
 void bnx2fc_add_2_sq(struct bnx2fc_rport *tgt, u16 xid);
 void bnx2fc_ring_doorbell(struct bnx2fc_rport *tgt);
 int bnx2fc_eh_abort(struct scsi_cmnd *sc_cmd);
-int bnx2fc_eh_host_reset(struct scsi_cmnd *sc_cmd);
 int bnx2fc_eh_target_reset(struct scsi_cmnd *sc_cmd);
 int bnx2fc_eh_device_reset(struct scsi_cmnd *sc_cmd);
 void bnx2fc_rport_event_handler(struct fc_lport *lport,
