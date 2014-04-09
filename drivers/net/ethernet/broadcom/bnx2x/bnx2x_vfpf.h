@@ -1,6 +1,6 @@
 /* bnx2x_vfpf.h: Broadcom Everest network driver.
  *
- * Copyright (c) 2011-2013 Broadcom Corporation
+ * Copyright (c) 2011-2014 Broadcom Corporation
  *
  * Unless you and Broadcom execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
@@ -16,7 +16,7 @@
  * not derived from this software.  The special exception does not apply to any
  * modifications of the software.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  *
  */
 
@@ -179,6 +179,19 @@ struct pfvf_acquire_resp_tlv {
 		#define PFVF_CAP_RSS        0x00000001
 		#define PFVF_CAP_DHC        0x00000002
 		#define PFVF_CAP_TPA        0x00000004
+		#define PFVF_CAP_TPA_UPDATE 0x00000008
+
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+		/* bit set only by ESX hypervisor. This means that a VF *may* be
+		 * able to configure its own mac even if the hypervisor has
+		 * already set one for it. In linux this is never allowed, but
+		 * in ESX it may be allowed. Capabilities such as this which
+		 * don't exist in linux will consume bits from the bitmap from
+		 * starting from msb
+		 */
+		#define PFVF_CAP_ALLOW_MAC  0x80000000
+#endif
+
 		char fw_ver[32];
 		u16 db_size;
 		u8  indices_per_sb;
@@ -325,6 +338,24 @@ struct vfpf_set_q_filters_tlv {
 	u32 rx_mask;	/* see mask constants at the top of the file */
 };
 
+struct vfpf_tpa_tlv {
+	struct vfpf_first_tlv	first_tlv;
+
+	struct vf_pf_tpa_client_info {
+		aligned_u64 sge_addr[PFVF_MAX_QUEUES_PER_VF];
+		u8 update_ipv4;
+		u8 update_ipv6;
+		u8 max_tpa_queues;
+		u8 max_sges_for_packet;
+		u8 complete_on_both_clients;
+		u8 dont_verify_thr;
+		u8 tpa_mode;
+		u16 sge_buff_size;
+		u16 max_agg_size;
+		u16 sge_pause_thr_low;
+		u16 sge_pause_thr_high;
+	} tpa_client_info;
+};
 
 /* close VF (disable VF) */
 struct vfpf_close_tlv {
@@ -354,6 +385,7 @@ union vfpf_tlvs {
 	struct vfpf_set_q_filters_tlv	set_q_filters;
 	struct vfpf_release_tlv		release;
 	struct vfpf_rss_tlv		update_rss;
+	struct vfpf_tpa_tlv		update_tpa;
 	struct channel_list_end_tlv     list_end;
 	struct tlv_buffer_size		tlv_buf_size;
 };
@@ -430,6 +462,7 @@ print_enum (channel_tlvs,
 	CHANNEL_TLV_PF_SET_VLAN,
 	CHANNEL_TLV_UPDATE_RSS,
 	CHANNEL_TLV_PHYS_PORT_ID,
+	CHANNEL_TLV_UPDATE_TPA,
 	CHANNEL_TLV_MAX
 #ifndef print_enum /* BNX2X_UPSTREAM */
 };

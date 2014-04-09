@@ -12,7 +12,7 @@
  * license other than the GPL, without Broadcom's express prior written
  * consent.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Shmulik Ravid <shmulikr@broadcom.com>
  *	       Ariel Elior <ariele@broadcom.com>
  */
@@ -29,6 +29,8 @@ enum sample_bulletin_result {
 };
 
 #ifdef CONFIG_BNX2X_SRIOV
+
+extern struct workqueue_struct *bnx2x_iov_wq;
 
 /* The bnx2x device structure holds vfdb structure described below.
  * The VF array is indexed by the relative vfid.
@@ -83,6 +85,7 @@ struct bnx2x_vf_queue {
 	u16 index;
 	u16 sb_idx;
 	bool is_leading;
+	bool sp_initialized;
 };
 
 /* struct bnx2x_vfop_qctor_params - prepare queue construction parameters:
@@ -100,6 +103,7 @@ union bnx2x_vfop_params {
 	struct bnx2x_mcast_ramrod_params	mcast;
 	struct bnx2x_config_rss_params		rss;
 	struct bnx2x_vfop_qctor_params		qctor;
+	struct bnx2x_queue_state_params		qstate;
 };
 
 /* forward */
@@ -166,6 +170,11 @@ struct bnx2x_vfop_args_filters {
 	atomic_t *credit;	/* non NULL means 'don't consume credit' */
 };
 
+struct bnx2x_vfop_args_tpa {
+	int	   qid;
+	dma_addr_t sge_map[PFVF_MAX_QUEUES_PER_VF];
+};
+
 union bnx2x_vfop_args {
 	struct bnx2x_vfop_args_mcast	mc_list;
 	struct bnx2x_vfop_args_qctor	qctor;
@@ -173,6 +182,7 @@ union bnx2x_vfop_args {
 	struct bnx2x_vfop_args_defvlan	defvlan;
 	struct bnx2x_vfop_args_qx	qx;
 	struct bnx2x_vfop_args_filters	filters;
+	struct bnx2x_vfop_args_tpa	tpa;
 };
 
 struct bnx2x_vfop {
@@ -341,11 +351,6 @@ struct bnx2x_vf_mbx {
 	u32 vf_addr_hi;
 
 	struct vfpf_first_tlv first_tlv;	/* saved VF request header */
-
-	u8 flags;
-#define VF_MSG_INPROCESS	0x1	/* failsafe - the FW should prevent
-					 * more then one pending msg
-					 */
 };
 
 struct bnx2x_vf_sp {
@@ -422,6 +427,10 @@ struct bnx2x_vfdb {
 	/* the number of msix vectors belonging to this PF designated for VFs */
 	u16 vf_sbs_pool;
 	u16 first_vf_igu_entry;
+
+	/* sp_rtnl synchronization */
+	struct mutex			event_mutex;
+	u64				event_occur;
 };
 
 /* queue access */
@@ -471,13 +480,14 @@ void bnx2x_iov_init_dq(struct bnx2x *bp);
 void bnx2x_iov_init_dmae(struct bnx2x *bp);
 void bnx2x_iov_set_queue_sp_obj(struct bnx2x *bp, int vf_cid,
 				struct bnx2x_queue_sp_obj **q_obj);
-void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid, bool queue_work);
+void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid);
 int bnx2x_iov_eq_sp_event(struct bnx2x *bp, union event_ring_elem *elem);
 void bnx2x_iov_adjust_stats_req(struct bnx2x *bp);
 void bnx2x_iov_storm_stats_update(struct bnx2x *bp);
-void bnx2x_iov_sp_task(struct bnx2x *bp);
 /* global vf mailbox routines */
-void bnx2x_vf_mbx(struct bnx2x *bp, struct vf_pf_event_data *vfpf_event);
+void bnx2x_vf_mbx(struct bnx2x *bp);
+void bnx2x_vf_mbx_schedule(struct bnx2x *bp,
+			   struct vf_pf_event_data *vfpf_event);
 void bnx2x_vf_enable_mbx(struct bnx2x *bp, u8 abs_vfid);
 
 /* CORE VF API */
@@ -515,7 +525,8 @@ enum {
 		else {							\
 			DP(BNX2X_MSG_IOV, "no ramrod. Scheduling\n");	\
 			atomic_set(&vf->op_in_progress, 1);		\
-			queue_delayed_work(bnx2x_wq, &bp->sp_task, 0);  \
+			bnx2x_schedule_iov_task(bp,			\
+						BNX2X_IOV_CONT_VFOP);	\
 			return;						\
 		}							\
 	} while (0)
@@ -668,11 +679,6 @@ int bnx2x_vfop_mac_list_cmd(struct bnx2x *bp,
 			    struct bnx2x_vfop_filters *macs,
 			    int qid, bool drv_only);
 
-int bnx2x_vfop_vlan_set_cmd(struct bnx2x *bp,
-			    struct bnx2x_virtf *vf,
-			    struct bnx2x_vfop_cmd *cmd,
-			    int qid, u16 vid, bool add);
-
 int bnx2x_vfop_vlan_list_cmd(struct bnx2x *bp,
 			     struct bnx2x_virtf *vf,
 			     struct bnx2x_vfop_cmd *cmd,
@@ -712,6 +718,11 @@ int bnx2x_vfop_rss_cmd(struct bnx2x *bp,
 		       struct bnx2x_virtf *vf,
 		       struct bnx2x_vfop_cmd *cmd);
 
+int bnx2x_vfop_tpa_cmd(struct bnx2x *bp,
+		       struct bnx2x_virtf *vf,
+		       struct bnx2x_vfop_cmd *cmd,
+		       struct vfpf_tpa_tlv *tpa_tlv);
+
 /* VF release ~ VF close + VF release-resources
  *
  * Release is the ultimate SW shutdown and is called whenever an
@@ -730,13 +741,6 @@ void bnx2x_vf_enable_access(struct bnx2x *bp, u8 abs_vfid);
 /* Handles an FLR (or VF_DISABLE) notification form the MCP */
 void bnx2x_vf_handle_flr_event(struct bnx2x *bp);
 
-void bnx2x_add_tlv(struct bnx2x *bp, void *tlvs_list, u16 offset, u16 type,
-		   u16 length);
-void bnx2x_vfpf_prep(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv,
-		     u16 type, u16 length);
-void bnx2x_vfpf_finalize(struct bnx2x *bp, struct vfpf_first_tlv *first_tlv);
-void bnx2x_dp_tlv_list(struct bnx2x *bp, void *tlvs_list);
-
 bool bnx2x_tlv_supported(u16 tlvtype);
 
 u32 bnx2x_crc_vf_bulletin(struct bnx2x *bp,
@@ -753,7 +757,9 @@ int bnx2x_vfpf_init(struct bnx2x *bp);
 void bnx2x_vfpf_close_vf(struct bnx2x *bp);
 int bnx2x_vfpf_setup_q(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 		       bool is_leading);
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 int bnx2x_vfpf_teardown_queue(struct bnx2x *bp, int qidx);
+#endif
 int bnx2x_vfpf_config_mac(struct bnx2x *bp, u8 *addr, u8 vf_qid, bool set);
 int bnx2x_vfpf_config_rss(struct bnx2x *bp,
 			  struct bnx2x_config_rss_params *params);
@@ -800,18 +806,25 @@ int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 #endif /* 3.8.0 */
 void bnx2x_iov_channel_down(struct bnx2x *bp);
 
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_DEFERRABLE_WORK) || defined(INIT_WORK_NAR) || (defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 40000)) /* BNX2X_UPSTREAM */
+void bnx2x_iov_task(struct work_struct *work);
+#else
+void bnx2x_iov_task(void *data);
+#endif
+
+void bnx2x_schedule_iov_task(struct bnx2x *bp, enum bnx2x_iov_flag flag);
+
 #else /* CONFIG_BNX2X_SRIOV */
 
 static inline void bnx2x_iov_set_queue_sp_obj(struct bnx2x *bp, int vf_cid,
 				struct bnx2x_queue_sp_obj **q_obj) {}
-static inline void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid,
-				      bool queue_work) {}
+static inline void bnx2x_iov_sp_event(struct bnx2x *bp, int vf_cid) {}
 static inline void bnx2x_vf_handle_flr_event(struct bnx2x *bp) {}
 static inline int bnx2x_iov_eq_sp_event(struct bnx2x *bp,
 					union event_ring_elem *elem) {return 1; }
-static inline void bnx2x_iov_sp_task(struct bnx2x *bp) {}
-static inline void bnx2x_vf_mbx(struct bnx2x *bp,
-				struct vf_pf_event_data *vfpf_event) {}
+static inline void bnx2x_vf_mbx(struct bnx2x *bp) {}
+static inline void bnx2x_vf_mbx_schedule(struct bnx2x *bp,
+					 struct vf_pf_event_data *vfpf_event) {}
 static inline int bnx2x_iov_init_ilt(struct bnx2x *bp, u16 line) {return line; }
 static inline void bnx2x_iov_init_dq(struct bnx2x *bp) {}
 static inline int bnx2x_iov_alloc_mem(struct bnx2x *bp) {return 0; }
@@ -829,7 +842,9 @@ static inline int bnx2x_vfpf_release(struct bnx2x *bp) {return 0; }
 static inline int bnx2x_vfpf_init(struct bnx2x *bp) {return 0; }
 static inline void bnx2x_vfpf_close_vf(struct bnx2x *bp) {}
 static inline int bnx2x_vfpf_setup_q(struct bnx2x *bp, struct bnx2x_fastpath *fp, bool is_leading) {return 0; }
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 static inline int bnx2x_vfpf_teardown_queue(struct bnx2x *bp, int qidx) {return 0; }
+#endif
 static inline int bnx2x_vfpf_config_mac(struct bnx2x *bp, u8 *addr,
 					u8 vf_qid, bool set) {return 0; }
 static inline int bnx2x_vfpf_set_mcast(struct net_device *dev) {return 0; }
@@ -857,6 +872,13 @@ static inline int bnx2x_vf_pci_alloc(struct bnx2x *bp) {return 0; }
 static inline void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp) {}
 static inline int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs) {return 0; }
 static inline void bnx2x_iov_channel_down(struct bnx2x *bp) {}
+
+#if defined(INIT_DELAYED_WORK_DEFERRABLE) || defined(INIT_DEFERRABLE_WORK) || defined(INIT_WORK_NAR) || (defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 40000)) /* BNX2X_UPSTREAM */
+static inline void bnx2x_iov_task(struct work_struct *work) {}
+#else
+static inline void bnx2x_iov_task(void *data) {}
+#endif
+void bnx2x_schedule_iov_task(struct bnx2x *bp, enum bnx2x_iov_flag flag) {}
 
 #endif /* CONFIG_BNX2X_SRIOV */
 #endif /* bnx2x_sriov.h */

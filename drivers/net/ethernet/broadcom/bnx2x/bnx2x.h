@@ -13,7 +13,7 @@
 
 #ifndef BNX2X_H
 #define BNX2X_H
-#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+#if !defined(BNX2X_UPSTREAM) && !defined(BYPASS_APP)/* ! BNX2X_UPSTREAM */
 #include "bnx2x_compat.h"
 #endif
 
@@ -29,6 +29,12 @@
 #include <linux/pci_regs.h>
 #endif
 
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+#include <linux/ptp_clock_kernel.h>
+#include <linux/net_tstamp.h>
+#include <linux/clocksource.h>
+#endif
+
 /* compilation time flags */
 
 /* define this to make the driver freeze on error to allow getting debug info
@@ -38,8 +44,8 @@
 #define BNX2X_MOD_VER ""
 #endif
 #define DRV_MODULE_NAME         "bnx2x"
-#define DRV_MODULE_VERSION      "1.78.80" BNX2X_MOD_VER
-#define DRV_MODULE_RELDATE      "$DateTime: 2013/12/12 11:11:30 $"
+#define DRV_MODULE_VERSION	"1.710.10" BNX2X_MOD_VER
+#define DRV_MODULE_RELDATE	"$DateTime: 2014/03/04 07:22:25 $"
 #define BNX2X_BC_VER            0x040200
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
@@ -110,10 +116,12 @@
 		populate_lookup17(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16), lookup_entry(v17)
 #define populate_lookup19(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18) \
 		populate_lookup18(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17), lookup_entry(v18)
+#define populate_lookup20(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19) \
+		populate_lookup19(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18), lookup_entry(v19)
 
 #define VA_NUM_ARGS(...) \
-		VA_NUM_ARGS_IMPL(__VA_ARGS__, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define VA_NUM_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, N, ...) N
+		VA_NUM_ARGS_IMPL(__VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define VA_NUM_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, N, ...) N
 
 #define macro_dispatcher__(func, nargs) \
 		func##nargs
@@ -166,6 +174,7 @@ enum bnx2x_int_mode {
 #define BNX2X_MSG_NETQ			0x0400000
 #endif
 #define BNX2X_MSG_IOV			0x0800000
+#define BNX2X_MSG_PTP			0x1000000
 #define BNX2X_MSG_IDLE			0x2000000 /* used for idle check*/
 #define BNX2X_MSG_ETHTOOL		0x4000000
 #define BNX2X_MSG_DCB			0x8000000
@@ -960,6 +969,7 @@ enum {
 		writel((u32)(val), bp->doorbells + (bp->db_size * (cid))); \
 	} while (0)
 
+#ifndef BYPASS_APP /* BNX2X_UPSTREAM */
 /* TX CSUM helpers */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 22)) && !defined(__VMKLNX__) /* BNX2X_UPSTREAM */
 #define SKB_CS_OFF(skb)		(offsetof(struct tcphdr, check) - \
@@ -969,6 +979,7 @@ enum {
 #else
 #define SKB_CS_OFF(skb)		(offsetof(struct tcphdr, check) - skb->csum)
 #define SKB_CS(skb)		(*(u16 *)(skb->h.raw + skb->csum))
+#endif
 #endif
 
 #define pbd_tcp_flags(tcp_hdr)	(ntohl(tcp_flag_word(tcp_hdr))>>16 & 0xff)
@@ -1225,10 +1236,6 @@ struct bnx2x_port {
 			(offsetof(struct bnx2x_eth_stats, stat_name) / 4)
 
 /* slow path */
-
-/* slow path work-queue */
-extern struct workqueue_struct *bnx2x_wq;
-
 #define BNX2X_MAX_NUM_OF_VFS	64
 #define BNX2X_VF_CID_WND	4 /* log num of queues per VF. HW config. */
 #define BNX2X_CIDS_PER_VF	(1 << BNX2X_VF_CID_WND)
@@ -1347,6 +1354,7 @@ struct bnx2x_slowpath {
 	union {
 		struct client_init_ramrod_data  init_data;
 		struct client_update_ramrod_data update_data;
+		struct tpa_update_ramrod_data tpa_data;
 	} q_rdata;
 
 	union {
@@ -1360,7 +1368,10 @@ struct bnx2x_slowpath {
 	 * Therefore, if they would have been defined in the same union,
 	 * data can get corrupted.
 	 */
-	struct afex_vif_list_ramrod_data func_afex_rdata;
+	union {
+		struct afex_vif_list_ramrod_data	viflist_data;
+		struct function_update_data		func_update;
+	} func_afex_rdata;
 
 #ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
 	/*
@@ -1498,7 +1509,7 @@ struct bnx2x_fw_stats_data {
 };
 
 /* Public slow path states */
-enum {
+enum sp_rtnl_flag {
 	BNX2X_SP_RTNL_SETUP_TC,
 	BNX2X_SP_RTNL_TX_TIMEOUT,
 	BNX2X_SP_RTNL_FAN_FAILURE,
@@ -1512,6 +1523,13 @@ enum {
 	BNX2X_SP_RTNL_VFPF_STORM_BYPASS_RX_MODE,
 #endif
 	BNX2X_SP_RTNL_TX_STOP,
+	BNX2X_SP_RTNL_GET_DRV_VERSION,
+};
+
+enum bnx2x_iov_flag {
+	BNX2X_IOV_HANDLE_VF_MSG,
+	BNX2X_IOV_CONT_VFOP,
+	BNX2X_IOV_HANDLE_FLR,
 };
 
 #ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
@@ -1555,7 +1573,7 @@ struct bnx2x_fp_stats {
 struct bnx2x {
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 	u32			version;
-#define BNX2X_DEV_VER 0xb3b30002 /* Change this when the structure changes */
+#define BNX2X_DEV_VER 0xb3b30003 /* Change this when the structure changes */
 #endif
 
 	/* Fields used in the tx and intr/napi performance paths
@@ -1632,8 +1650,10 @@ struct bnx2x {
 /* TCP with Timestamp Option (32) + IPv6 (40) */
 #define ETH_MAX_TPA_HEADER_SIZE		72
 
-	/* Max supported alignment is 256 (8 shift) */
-#define BNX2X_RX_ALIGN_SHIFT		min(8, L1_CACHE_SHIFT)
+	/* Max supported alignment is 256 (8 shift)
+	 * minimal alignment shift 6 is optimal for 57xxx HW performance
+	 */
+#define BNX2X_RX_ALIGN_SHIFT		max(6, min(8, L1_CACHE_SHIFT))
 
 	/* FW uses 2 Cache lines Alignment for start packet and size
 	 *
@@ -1699,7 +1719,6 @@ struct bnx2x {
 #define PCI_32BIT_FLAG			(1 << 1)
 #define ONE_PORT_FLAG			(1 << 2)
 #define NO_WOL_FLAG			(1 << 3)
-#define USING_DAC_FLAG			(1 << 4)
 #define USING_MSIX_FLAG			(1 << 5)
 #define USING_MSI_FLAG			(1 << 6)
 #define DISABLE_MSI_FLAG		(1 << 7)
@@ -1724,6 +1743,9 @@ struct bnx2x {
 #define IS_VF_FLAG			(1 << 22)
 #define BC_SUPPORTS_RMMOD_CMD		(1 << 23)
 #define HAS_PHYS_PORT_ID		(1 << 24)
+#define AER_ENABLED			(1 << 25)
+#define PTP_SUPPORTED			(1 << 26)
+#define TX_TIMESTAMPING_EN		(1 << 27)
 
 #define BP_NOMCP(bp)			((bp)->flags & NO_MCP_FLAG)
 
@@ -1759,8 +1781,11 @@ struct bnx2x {
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20)) || (defined(__VMKLNX__) && defined(__COMPAT_LAYER_2_6_18_PLUS__)) /* BNX2X_UPSTREAM */
 	struct delayed_work	sp_task;
+	struct delayed_work	iov_task;
+
 #else
 	struct work_struct	sp_task;
+	struct work_struct	iov_task;
 #endif
 	atomic_t		interrupt_occurred;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20)) || (defined(__VMKLNX__) && defined(__COMPAT_LAYER_2_6_18_PLUS__)) /* BNX2X_UPSTREAM */
@@ -1802,6 +1827,10 @@ struct bnx2x {
 #define IS_MF_SI(bp)		(bp->mf_mode == MULTI_FUNCTION_SI)
 #define IS_MF_SD(bp)		(bp->mf_mode == MULTI_FUNCTION_SD)
 #define IS_MF_AFEX(bp)		(bp->mf_mode == MULTI_FUNCTION_AFEX)
+	u8			mf_sub_mode;
+#define SUB_MF_MODE_UFP		0x1
+#define IS_MF_UFP(bp)		(IS_MF_SD(bp) && \
+				 bp->mf_sub_mode == SUB_MF_MODE_UFP)
 
 	u8			wol;
 
@@ -1858,6 +1887,10 @@ struct bnx2x {
 
 	struct bnx2x_slowpath	*slowpath;
 	dma_addr_t		slowpath_mapping;
+
+	/* Mechanism protecting the drv_info_to_mcp */
+	struct mutex		drv_info_mutex;
+	bool			drv_info_mng_owner;
 
 	/* Total number of FW statistics requests */
 	u8			fw_stats_num;
@@ -2071,6 +2104,9 @@ struct bnx2x {
 	/* operation indication for the sp_rtnl task */
 	unsigned long				sp_rtnl_state;
 
+	/* Indication of the IOV tasks */
+	unsigned long				iov_task_state;
+
 	/* DCBX Negotiation results */
 	struct dcbx_features			dcbx_local_feat;
 	u32					dcbx_error;
@@ -2103,11 +2139,12 @@ struct bnx2x {
 	enum bnx2x_bypass_state			bypass_state;
 #endif
 
-	int fp_array_size;
-	u32 dump_preset_idx;
+	int			fp_array_size;
+	u32			dump_preset_idx;
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
-	u8 gre_tunnel_mode;
-	u8 gre_tunnel_rss;
+	u8			tunnel_mode;
+	u8			gre_tunnel_type;
+	u16			vxlan_dst_port;
 	atomic_t		dump_done;
 	u32			*dump_buff;
 #endif
@@ -2118,7 +2155,23 @@ struct bnx2x {
 	struct semaphore	stats_sema;
 
 	u8			phys_port_id[ETH_ALEN];
-};
+
+	/* PTP related context */
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+	struct ptp_clock *ptp_clock;
+	struct ptp_clock_info ptp_clock_info;
+	struct work_struct ptp_task;
+	struct cyclecounter cyclecounter;
+	struct timecounter timecounter;
+	bool timecounter_init_done;
+	struct sk_buff *ptp_tx_skb;
+	unsigned long ptp_tx_start;
+	bool hwtstamp_ioctl_called;
+	u16 tx_type;
+	u16 rx_filter;
+#endif
+
+}; /* End of struct bnx2x */
 
 /* Tx queues may be less or equal to Rx queues */
 extern _UP_UINT2INT num_queues;
@@ -2401,7 +2454,6 @@ int bnx2x_del_all_macs(struct bnx2x *bp,
 void bnx2x_func_init(struct bnx2x *bp, struct bnx2x_func_init_params *p);
 void bnx2x_init_sb(struct bnx2x *bp, dma_addr_t mapping, int vfid,
 		    u8 vf_valid, int fw_sb_id, int igu_sb_id);
-u32 bnx2x_get_pretend_reg(struct bnx2x *bp);
 int bnx2x_get_gpio(struct bnx2x *bp, int gpio_num, u8 port);
 int bnx2x_set_gpio(struct bnx2x *bp, int gpio_num, u32 mode, u8 port);
 int bnx2x_set_mult_gpio(struct bnx2x *bp, u8 pins, u32 mode);
@@ -2674,7 +2726,7 @@ void bnx2x_init_tx_ring_one(struct bnx2x_fp_txdata *txdata);
 #define ATTN_HARD_WIRED_MASK		0xff00
 #define ATTENTION_ID			4
 
-#define IS_MF_STORAGE_ONLY(bp) (IS_MF_STORAGE_SD(bp) || \
+#define IS_MF_STORAGE_ONLY(bp) (IS_MF_STORAGE_PERSONALITY_ONLY(bp) || \
 				IS_MF_FCOE_AFEX(bp))
 
 /* stuff added to make the code fit 80Col */
@@ -2874,7 +2926,8 @@ void bnx2x_notify_link_changed(struct bnx2x *bp);
 
 #define IS_MF_FCOE_AFEX(bp) (IS_MF_AFEX(bp) && BNX2X_MF_EXT_PROTOCOL_FCOE(bp))
 
-#define IS_MF_STORAGE_SD(bp) (IS_MF_SD(bp) && \
+#define IS_MF_STORAGE_PERSONALITY_ONLY(bp) \
+				(IS_MF_SD(bp) && \
 				(BNX2X_IS_MF_SD_PROTOCOL_ISCSI(bp) || \
 				 BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)))
 
@@ -2904,7 +2957,20 @@ int bnx2x_get_regs_len(struct net_device *dev);
 
 void bnx2x_set_local_cmng(struct bnx2x *bp);
 
+void bnx2x_update_mng_version(struct bnx2x *bp);
+
 #define MCPR_SCRATCH_BASE(bp) \
 	(CHIP_IS_E1x(bp) ? MCP_REG_MCPR_SCRATCH : MCP_A_REG_MCPR_SCRATCH)
+
+#define E1H_MAX_MF_SB_COUNT (HC_SB_MAX_SB_E1X/(E1HVN_MAX * PORT_MAX))
+
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+void bnx2x_init_ptp(struct bnx2x *bp);
+int bnx2x_configure_ptp_filters(struct bnx2x *bp);
+void bnx2x_set_rx_ts(struct bnx2x *bp, struct sk_buff *skb);
+
+#define BNX2X_MAX_PHC_DRIFT 31000000
+#define BNX2X_PTP_TX_TIMEOUT
+#endif
 
 #endif /* bnx2x.h */

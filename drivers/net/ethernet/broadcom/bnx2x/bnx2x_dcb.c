@@ -12,7 +12,7 @@
  * license other than the GPL, without Broadcom's express prior written
  * consent.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Dmitry Kravkov
  *
  */
@@ -357,7 +357,9 @@ static void bnx2x_get_dcbx_drv_param(struct bnx2x *bp,
 
 	bnx2x_dcbx_get_pfc_feature(bp, &features->pfc, error);
 
-	bnx2x_dcbx_get_ets_feature(bp, &features->ets, error);
+	/* In UFP mode, don't allow ETS configuration */
+	if (!IS_MF_UFP(bp))
+		bnx2x_dcbx_get_ets_feature(bp, &features->ets, error);
 
 	bnx2x_dcbx_map_nw(bp);
 }
@@ -720,8 +722,7 @@ static inline void bnx2x_dcbx_update_tc_mapping(struct bnx2x *bp)
 	 * as we are handling an attention on a work queue which must be
 	 * flushed at some rtnl-locked contexts (e.g. if down)
 	 */
-	if (!test_and_set_bit(BNX2X_SP_RTNL_SETUP_TC, &bp->sp_rtnl_state))
-		schedule_delayed_work(&bp->sp_rtnl_task, 0);
+	bnx2x_schedule_sp_rtnl(bp, BNX2X_SP_RTNL_SETUP_TC, 0);
 }
 
 void bnx2x_dcbx_set_params(struct bnx2x *bp, u32 state)
@@ -770,10 +771,7 @@ void bnx2x_dcbx_set_params(struct bnx2x *bp, u32 state)
 			if (IS_MF(bp))
 				bnx2x_link_sync_notify(bp);
 
-			set_bit(BNX2X_SP_RTNL_TX_STOP, &bp->sp_rtnl_state);
-
-			schedule_delayed_work(&bp->sp_rtnl_task, 0);
-
+			bnx2x_schedule_sp_rtnl(bp, BNX2X_SP_RTNL_TX_STOP, 0);
 			return;
 		}
 	case BNX2X_DCBX_STATE_TX_PAUSED:
@@ -2098,20 +2096,23 @@ int bnx2x_dcb_get_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr)
 	if (copy_from_user(dcbx_params, uaddr,
 			   sizeof(struct bnx2x_dcbx_params_get))) {
 		DP(BNX2X_MSG_DCB, "Copy user ioctl params failed\n");
-		return -EFAULT;
+		rc = -EFAULT;
+		goto out;
 	}
 
 	if (dcbx_params->ver_num != DCBX_PARAMS_VER_NUM) {
 		DP(BNX2X_MSG_DCB, "Wrong ioctl parameters version: expected 0x%x got %x\n",
 		   DCBX_PARAMS_VER_NUM, dcbx_params->ver_num);
-		return -EINVAL; /* incorrect version */
+		rc = -EINVAL; /* incorrect version */
+		goto out;
 	}
 
 	/* chip or MCP does not support dcbx */
 	if(CHIP_IS_E1x(bp) || !SHMEM2_HAS(bp, dcbx_lldp_params_offset)
 			   || !SHMEM2_HAS(bp, dcbx_lldp_dcbx_stat_offset)) {
 		DP(BNX2X_MSG_DCB, "DCB not supported\n");
-		return -EINVAL; /* unsupported feature */
+		rc = -EINVAL; /* unsupported feature */
+		goto out;
 	}
 
 	stat_offset = SHMEM2_RD(bp, dcbx_lldp_dcbx_stat_offset);
@@ -2120,7 +2121,8 @@ int bnx2x_dcb_get_dcbx_params_ioctl(struct bnx2x *bp, void __user *uaddr)
 	if (offset == SHMEM_LLDP_DCBX_PARAMS_NONE ||
 	    stat_offset == SHMEM_LLDP_DCBX_STAT_NONE){
 		DP(BNX2X_MSG_DCB, "DCBX not supported by BC\n");
-		return -EINVAL;
+		rc = -EINVAL;
+		goto out;
 	}
 
 	memset(dcbx_params, 0, sizeof(struct bnx2x_dcbx_params_get));
@@ -2619,7 +2621,6 @@ static void bnx2x_dcbnl_get_pfc_cfg(struct net_device *netdev, int prio,
 static u8 bnx2x_dcbnl_set_all(struct net_device *netdev)
 {
 	struct bnx2x *bp = netdev_priv(netdev);
-	int rc = 0;
 
 	DP(BNX2X_MSG_DCB, "SET-ALL\n");
 
@@ -2637,9 +2638,7 @@ static u8 bnx2x_dcbnl_set_all(struct net_device *netdev)
 				       1);
 		bnx2x_dcbx_init(bp, true);
 	}
-	DP(BNX2X_MSG_DCB, "set_dcbx_params done (%d)\n", rc);
-	if (rc)
-		return 1;
+	DP(BNX2X_MSG_DCB, "set_dcbx_params done\n");
 
 	return 0;
 }

@@ -7,7 +7,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Eliezer Tamir
  * Modified by: Vladislav Zolotarov <vladz@broadcom.com>
  */
@@ -376,6 +376,21 @@ static inline void bnx2x_init_max(const struct cmng_init_input *input_data,
 			(u32)vdata->vnic_max_rate[vnic].vn_counter.rate / 8;
 	}
 
+}
+
+static inline void bnx2x_init_max_per_vn(u16 vnic_max_rate,
+				  struct rate_shaping_vars_per_vn *ram_data)
+{
+	/* global vnic counter */
+	ram_data->vn_counter.rate = vnic_max_rate;
+
+	/*
+	* maximal Mbps for this vnic
+	* the quota in each timer period - number of bytes
+	* transmitted in this period
+	*/
+	ram_data->vn_counter.quota =
+		RS_PERIODIC_TIMEOUT_USEC * (u32)vnic_max_rate / 8;
 }
 
 static inline void bnx2x_init_min(const struct cmng_init_input *input_data,

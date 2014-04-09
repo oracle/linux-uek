@@ -6,7 +6,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Eliezer Tamir
  * Based on code from Michael Chan's bnx2 driver
  * UDP CSUM errata workaround by Arik Gendelman
@@ -1371,9 +1371,12 @@ static void bnx2x_port_stats_stop(struct bnx2x *bp)
 	}
 }
 
-static void __bnx2x_stats_stop(struct bnx2x *bp)
+static void bnx2x_stats_stop(struct bnx2x *bp)
 {
 	bool update = false;
+
+	if (down_timeout(&bp->stats_sema, HZ/10))
+		BNX2X_ERR("Unable to acquire stats lock\n");
 
 	bp->stats_started = false;
 
@@ -1393,14 +1396,7 @@ static void __bnx2x_stats_stop(struct bnx2x *bp)
 		bnx2x_hw_stats_post(bp);
 		bnx2x_stats_comp(bp);
 	}
-}
 
-static void bnx2x_stats_stop(struct bnx2x *bp)
-{
-	if (down_timeout(&bp->stats_sema, HZ/10))
-		BNX2X_ERR("Unable to acquire stats lock\n");
-
-	__bnx2x_stats_stop(bp);
 	up(&bp->stats_sema);
 }
 
@@ -2034,36 +2030,13 @@ void bnx2x_afex_collect_stats(struct bnx2x *bp, void *void_afex_stats,
 	}
 }
 
-/* run an external piece of code with no stats interfering.
- * What happens if the stats state changes (e.g. as a result of link up)
- * during the critical section? no worries - the flow which changed the state
- * is supposed to start/stop the stats and must take the stats_sema semaphore
- * to do so, so it will be blocked until we are done here and will then change
- * state accordingly.
- */
 void bnx2x_stats_safe_exec(struct bnx2x *bp,
 			   void (func_to_exec)(void *cookie),
 			   void *cookie){
-	bool stats_started;
-
-	/* block any flow which may change the stats state*/
 	if (down_timeout(&bp->stats_sema, HZ/10))
 		BNX2X_ERR("Unable to acquire stats lock\n");
-
-	/* store state of stats machine */
-	stats_started = bp->stats_started;
-
-	/* stop stats machine */
-	if (stats_started)
-		__bnx2x_stats_stop(bp);
-
-	/* execute cookie */
+	bnx2x_stats_comp(bp);
 	func_to_exec(cookie);
-
-	/* in case stats were active, restart the statrs machine*/
-	if (stats_started)
-		__bnx2x_stats_start(bp);
-
-	/* allow other flows waiting for the stats lock to run */
+	__bnx2x_stats_start(bp);
 	up(&bp->stats_sema);
 }

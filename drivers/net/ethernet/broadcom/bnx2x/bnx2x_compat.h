@@ -2183,9 +2183,6 @@ static inline void *vzalloc(size_t size)
 #define BNX2X_COMPAT_NETDEV_PICK_TX
 #endif
 
-#if (defined(CONFIG_PCI_IOV) && ((LINUX_STARTING_AT_VERSION(3, 2, 0))  || \
-				 RHEL_STARTING_AT_VERSION(6, 3) || \
-				 SLES_STARTING_AT_VERSION(SLES11_SP3)))
 int bnx2x_get_vf_pci_id(struct pci_dev *dev);
 
 static inline int pci_vfs_assigned(struct pci_dev *dev)
@@ -2211,17 +2208,6 @@ static inline int pci_vfs_assigned(struct pci_dev *dev)
 
 	return vfs_assigned;
 }
-#elif defined(__VMKLNX__)
-static inline int pci_vfs_assigned(struct pci_dev *dev)
-{
-	return 0; /*  vmkernel will prevent unload if VF is in use */
-}
-#else /* PCI_DEV_FLAGS_ASSIGNED */
-static inline int pci_vfs_assigned(struct pci_dev *dev)
-{
-	return 1; /* try to avoid system crash */
-}
-#endif /* PCI_DEV_FLAGS_ASSIGNED */
 
 #if (LINUX_PRE_VERSION(2, 6, 26))
 #include <linux/sched.h>
@@ -2406,6 +2392,24 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 
 #if (LINUX_STARTING_AT_VERSION(2, 6, 29) || RHEL_STARTING_AT_VERSION(5, 5))
 #define SUPPORT_PCIE_ARI_CHECK
+#endif
+
+#if ((defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
+#define BCM_ETHTOOL_TS_INFO_OPS
+#define BCM_ETHTOOL_TS_INFO
+#define BCM_PTP
+#endif
+
+#ifdef _DEFINE_EPROBE_DEFER
+#define EPROBE_DEFER EBUSY
+#else /* BNX2X_UPSTREAM */
+#define SUPPORT_EPROBE_DEFER
+#endif
+
+#ifdef _DEFINE_AER
+static inline int pci_disable_pcie_error_reporting(struct pci_dev *pdev) { return -EINVAL; }
+static inline int pci_enable_pcie_error_reporting(struct pci_dev *pdev) { return -EINVAL; }
+static inline int pci_cleanup_aer_uncorrect_error_status(struct pci_dev *pdev) { return -EINVAL; }
 #endif
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */

@@ -5,7 +5,7 @@
 * you under the terms of the GNU General Public License version 2,
 * available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
 */
-static const struct iro e2_iro_arr[379] = {
+static const struct iro e2_iro_arr[381] = {
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_SIZE
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_DATA_SIZE
 	{     0x28,      0x0,      0x0,      0x0,      0x0},	// COMMON_SP_SB_SIZE
@@ -210,7 +210,9 @@ static const struct iro e2_iro_arr[379] = {
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_FUNCTION_COMMON_CONFIG_OFFSET(pfId)
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_MAC_FILTER_CONFIG_OFFSET(pfId)
 	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_APPROXIMATE_MATCH_MULTICAST_FILTERING_OFFSET(pfId)
-	{   0x3128,      0x0,      0x0,      0x0,      0x8},	// TSTORM_ACCEPT_CLASSIFY_FAILED_OFFSET
+	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_ACCEPT_CLASSIFY_FAILED_OFFSET
+	{   0x3128,      0x8,      0x0,      0x0,      0x1},	// TSTORM_ACCEPT_CLASSIFY_FAIL_E2_ENABLE_OFFSET(portId)
+	{   0x3129,      0x8,      0x0,      0x0,      0x1},	// TSTORM_ACCEPT_CLASSIFY_FAIL_E2_VNIC_OFFSET(portId)
 	{  0x62a20,   0x2600,     0x40,      0x0,      0x8},	// USTORM_CQE_PAGE_NEXT_OFFSET(portId,clientId)
 	{   0xa000,      0x0,      0x0,      0x0,   0x2000},	// USTORM_AGG_DATA_OFFSET
 	{   0x40c1,      0x0,      0x0,      0x0,      0x1},	// USTORM_TPA_BTR_OFFSET

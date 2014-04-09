@@ -6,7 +6,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
- * Maintained by: Eilon Greenstein <eilong@broadcom.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Eliezer Tamir
  * Based on code from Michael Chan's bnx2 driver
  * UDP CSUM errata workaround by Arik Gendelman
@@ -44,6 +44,93 @@
 #if defined(__VMKLNX__) /* ! BNX2X_UPSTREAM */
 #include "bnx2x_esx.h"
 #endif
+
+static void bnx2x_free_fp_mem_cnic(struct bnx2x *bp);
+static int bnx2x_alloc_fp_mem_cnic(struct bnx2x *bp);
+static int bnx2x_alloc_fp_mem(struct bnx2x *bp);
+#if defined(BNX2X_NEW_NAPI) /* BNX2X_UPSTREAM */
+_STAEU int bnx2x_poll(struct napi_struct *napi, int budget);
+#else
+int bnx2x_poll(struct net_device *dev, int *budget);
+#endif
+
+_UP_STATIC void bnx2x_add_all_napi_cnic(struct bnx2x *bp)
+{
+	int i;
+
+	/* Add NAPI objects */
+	for_each_rx_queue_cnic(bp, i)
+#ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+#if (VMWARE_ESX_DDK_VERSION >= 50000)
+		if (!bnx2x_fp(bp, i, napi).net_poll)
+#else
+		if (!bnx2x_fp(bp, i, napi).worldlet)
+#endif
+#ifdef BNX2X_ESX_CNA
+		if (!IS_FCOE_IDX(i))
+#endif
+#endif /* __VMKLNX__ */
+		netif_napi_add(bp->dev, &bnx2x_fp(bp, i, napi),
+			       bnx2x_poll, NAPI_POLL_WEIGHT);
+#else /* non BNX2X_UPSTREAM */
+	{
+		/* initialize net_device for each rx queue */
+		struct net_device *dummy_netdev = &bnx2x_fp(bp, i, dummy_netdev);
+#if defined(USE_NAPI_GRO)
+		struct napi_struct *napi = &bnx2x_fp(bp, i, napi);
+		napi->dev = bp->dev;
+#endif
+		dummy_netdev->priv = &bp->fp[i];
+		dummy_netdev->poll = bnx2x_poll;
+		dummy_netdev->weight = NAPI_POLL_WEIGHT;
+		set_bit(__LINK_STATE_START, &dummy_netdev->state);
+	}
+#endif
+}
+
+_UP_STATIC void bnx2x_add_all_napi(struct bnx2x *bp)
+{
+	int i;
+
+	/* Add NAPI objects */
+	for_each_eth_queue(bp, i)
+#ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+#if (VMWARE_ESX_DDK_VERSION >= 50000)
+		if (!bnx2x_fp(bp, i, napi).net_poll)
+#else
+		if (!bnx2x_fp(bp, i, napi).worldlet)
+#endif
+#ifdef BNX2X_ESX_CNA
+		if (!IS_FCOE_IDX(i))
+#endif
+#endif /* __VMKLNX__ */
+		netif_napi_add(bp->dev, &bnx2x_fp(bp, i, napi),
+			       bnx2x_poll, NAPI_POLL_WEIGHT);
+#else /* non BNX2X_UPSTREAM */
+	{
+		/* initialize net_device for each rx queue */
+		struct net_device *dummy_netdev = &bnx2x_fp(bp, i, dummy_netdev);
+#if defined(USE_NAPI_GRO)
+		struct napi_struct *napi = &bnx2x_fp(bp, i, napi);
+		napi->dev = bp->dev;
+#endif
+		dummy_netdev->priv = &bp->fp[i];
+		dummy_netdev->poll = bnx2x_poll;
+		dummy_netdev->weight = NAPI_POLL_WEIGHT;
+		set_bit(__LINK_STATE_START, &dummy_netdev->state);
+	}
+#endif
+}
+
+static _UP_UINT2INT bnx2x_calc_num_queues(struct bnx2x *bp)
+{
+	return bnx2x_num_queues ?
+		min_t(_UP_UINT2INT, bnx2x_num_queues, BNX2X_MAX_QUEUES(bp)) :
+		min_t(_UP_UINT2INT, netif_get_num_default_rss_queues(),
+		      BNX2X_MAX_QUEUES(bp));
+}
 
 /**
  * bnx2x_move_fp - move content of the fastpath structure.
@@ -177,7 +264,7 @@ static void bnx2x_shrink_eth_fp(struct bnx2x *bp, int delta)
 	}
 }
 
-int load_count[2][3] = { {0} }; /* per-path: 0-common, 1-port0, 2-port1 */
+int bnx2x_load_count[2][3] = { {0} }; /* per-path: 0-common, 1-port0, 2-port1 */
 
 /* free skb in the packet ring at pos idx
  * return idx of last bd freed
@@ -191,6 +278,7 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	struct eth_tx_bd *tx_data_bd;
 	struct sk_buff *skb = tx_buf->skb;
 	u16 bd_idx = TX_BD(tx_buf->first_bd), new_cons;
+	u16 split_bd_len = 0;
 	int nbd;
 
 	/* prefetch skb end pointer to speedup dev_kfree_skb() */
@@ -199,15 +287,7 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	DP(NETIF_MSG_TX_DONE, "fp[%d]: pkt_idx %d  buff @(%p)->skb %p\n",
 	   txdata->txq_index, idx, tx_buf, skb);
 
-	/* unmap first bd */
 	tx_start_bd = &txdata->tx_desc_ring[bd_idx].start_bd;
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
-	dma_unmap_single(&bp->pdev->dev, BD_UNMAP_ADDR(tx_start_bd),
-			 BD_UNMAP_LEN(tx_start_bd), DMA_TO_DEVICE);
-#else
-	pci_unmap_single(bp->pdev, BD_UNMAP_ADDR(tx_start_bd),
-			 BD_UNMAP_LEN(tx_start_bd), PCI_DMA_TODEVICE);
-#endif
 
 	nbd = le16_to_cpu(tx_start_bd->nbd) - 1;
 #ifdef BNX2X_STOP_ON_ERROR
@@ -225,11 +305,24 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	--nbd;
 	bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
 
-	/* ...and the TSO split header bd since they have no mapping */
+	/* TSO header+data bds share a common mapping. see bnx2x_tx_split() */
 	if (tx_buf->flags & BNX2X_TSO_SPLIT_BD) {
+		tx_data_bd = &txdata->tx_desc_ring[bd_idx].reg_bd;
+		split_bd_len = BD_UNMAP_LEN(tx_data_bd);
 		--nbd;
 		bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
 	}
+
+	/* unmap first bd */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
+	dma_unmap_single(&bp->pdev->dev, BD_UNMAP_ADDR(tx_start_bd),
+			 BD_UNMAP_LEN(tx_start_bd) + split_bd_len,
+			 DMA_TO_DEVICE);
+#else
+	pci_unmap_single(bp->pdev, BD_UNMAP_ADDR(tx_start_bd),
+			 BD_UNMAP_LEN(tx_start_bd) + split_bd_len,
+			 PCI_DMA_TODEVICE);
+#endif
 
 	/* now free frags */
 	while (nbd > 0) {
@@ -755,21 +848,6 @@ static void bnx2x_frag_free(const struct bnx2x_fastpath *fp, void *data)
 #endif
 		kfree(data);
 }
-
-static void *bnx2x_frag_alloc(const struct bnx2x_fastpath *fp, gfp_t gfp_mask)
-{
-#ifdef BCM_HAS_BUILD_SKB_V2 /* BNX2X_UPSTREAM */
-	if (fp->rx_frag_size) {
-		/* GFP_KERNEL allocations are used only during initialization */
-		if (unlikely(gfp_mask & __GFP_WAIT))
-			return (void *)__get_free_page(gfp_mask);
-
-		return netdev_alloc_frag(fp->rx_frag_size);
-	}
-#endif
-
-	return kmalloc(fp->rx_buf_size + NET_SKB_PAD, gfp_mask);
-}
 #endif
 
 #ifndef NO_GRO_SUPPORT /* BNX2X_UPSTREAM */
@@ -811,6 +889,28 @@ static void bnx2x_gro_csum(struct bnx2x *bp, struct sk_buff *skb,
 	tcp_gro_complete(skb);
 }
 #endif
+#endif
+
+#ifdef BCM_VLAN /* ! BNX2X_UPSTREAM */
+static void bnx2x_vlan_gro_receive(struct bnx2x *bp, struct bnx2x_fastpath *fp,
+				   u16 vlan_tag, struct sk_buff *skb)
+{
+#ifndef NO_GRO_SUPPORT /* BNX2X_UPSTREAM */
+#ifdef CONFIG_INET
+	if (skb_shinfo(skb)->gso_size) {
+		switch (be16_to_cpu(skb->protocol)) {
+		case ETH_P_IP:
+			bnx2x_gro_csum(bp, skb, bnx2x_gro_ip_csum);
+			break;
+		case ETH_P_IPV6:
+			bnx2x_gro_csum(bp, skb, bnx2x_gro_ipv6_csum);
+			break;
+		}
+	}
+#endif
+#endif
+	vlan_gro_receive(&fp->napi, bp->vlgrp, vlan_tag, skb);
+}
 #endif
 
 static void bnx2x_gro_receive(struct bnx2x *bp, struct bnx2x_fastpath *fp,
@@ -921,8 +1021,8 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 			if ((bp->vlgrp != NULL) &&
 				(tpa_info->parsing_flags
 							& PARSING_FLAGS_VLAN))
-				vlan_gro_receive(&fp->napi, bp->vlgrp,
-						 tpa_info->vlan_tag, skb);
+				bnx2x_vlan_gro_receive(bp, fp,
+						       tpa_info->vlan_tag, skb);
 			else
 #elif !defined(OLD_VLAN) /* BNX2X_UPSTREAM */
 			if (tpa_info->parsing_flags & PARSING_FLAGS_VLAN)
@@ -1045,7 +1145,7 @@ void bnx2x_csum_validate(struct sk_buff *skb, union eth_rx_cqe *cqe,
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 }
 
-int bnx2x_rx_int(struct bnx2x_fastpath *fp, int budget)
+_UP_STATIC int bnx2x_rx_int(struct bnx2x_fastpath *fp, int budget)
 {
 	struct bnx2x *bp = fp->bp;
 	u16 bd_cons, bd_prod, bd_prod_fw, comp_ring_cons;
@@ -1296,7 +1396,9 @@ reuse_rx:
 		skb->l4_rxhash = l4_rxhash;
 #endif
 #endif
-
+#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+		BNX2X_ESX_PUT_RSS_INFO(fp, cqe_fp, skb);
+#endif
 		skb_checksum_none_assert(skb);
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* non BNX2X_UPSTREAM */
@@ -1308,6 +1410,13 @@ reuse_rx:
 					    bnx2x_fp_qstats(bp, fp));
 
 		skb_record_rx_queue(skb, fp->rx_queue);
+
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+		/* Check if this packet was timestamped */
+		if (unlikely(le16_to_cpu(cqe->fast_path_cqe.type_error_flags) &
+			     (1 << ETH_FAST_PATH_RX_CQE_PTP_PKT_SHIFT)))
+			bnx2x_set_rx_ts(bp, skb);
+#endif
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
 #if defined(BNX2X_ESX_CNA)
@@ -1818,10 +1927,8 @@ static void bnx2x_free_tx_skbs_cnic(struct bnx2x *bp)
 static void bnx2x_free_tx_skbs(struct bnx2x *bp)
 {
 	int i;
-#if defined(__VMKLNX__) && (DYNAMIC_NETQ_ALLOC) /* ! BNX2X_UPSTREAM */
-	int esx_netq_index = 0;
-#endif  /* BNX2X_UPSTREAM */
-	for_each_eth_queue_(bp, i) {
+
+	for_each_eth_queue(bp, i) {
 		bnx2x_free_tx_skbs_queue(&bp->fp[i]);
 	}
 }
@@ -1900,7 +2007,7 @@ void bnx2x_esx_free_rx_skbs_queue(struct bnx2x *bp, int esx_netq_index)
 	}
 }
 
-void bnx2x_free_skbs_cnic(struct bnx2x *bp)
+static void bnx2x_free_skbs_cnic(struct bnx2x *bp)
 {
 	bnx2x_free_tx_skbs_cnic(bp);
 	bnx2x_free_rx_skbs_cnic(bp);
@@ -1951,11 +2058,7 @@ static void bnx2x_free_msix_irqs_cnic(struct bnx2x *bp)
  * @bp:		driver handle
  * @nvecs:	number of vectors to be released
  */
-#if (!defined(__VMKLNX__) || !DYNAMIC_NETQ_ALLOC) /* BNX2X_UPSTREAM */
 static void bnx2x_free_msix_irqs(struct bnx2x *bp, int nvecs)
-#else
-void bnx2x_esx_free_msix_irq(struct bnx2x *bp, int nvecs, int esx_netq_index)
-#endif
 {
 	int i, offset = 0;
 
@@ -1976,7 +2079,7 @@ void bnx2x_esx_free_msix_irq(struct bnx2x *bp, int nvecs, int esx_netq_index)
 		offset++;
 	}
 
-	for_each_eth_queue_(bp, i) {
+	for_each_eth_queue(bp, i) {
 		if (nvecs == offset)
 			return;
 		DP(NETIF_MSG_IFDOWN, "about to release fp #%d->%d irq\n",
@@ -2132,11 +2235,7 @@ static int bnx2x_req_msix_irqs_cnic(struct bnx2x *bp)
 }
 #endif
 
-#if (!defined(__VMKLNX__) || !DYNAMIC_NETQ_ALLOC) /* BNX2X_UPSTREAM */
 static int bnx2x_req_msix_irqs(struct bnx2x *bp)
-#else
-int bnx2x_esx_req_msix_irq(struct bnx2x *bp, int esx_netq_index)
-#endif
 {
 	int i, rc, offset = 0;
 
@@ -2154,7 +2253,7 @@ int bnx2x_esx_req_msix_irq(struct bnx2x *bp, int esx_netq_index)
 	if (CNIC_SUPPORT(bp))
 		offset++;
 
-	for_each_eth_queue_(bp, i) {
+	for_each_eth_queue(bp, i) {
 		struct bnx2x_fastpath *fp = &bp->fp[i];
 		snprintf(fp->name, sizeof(fp->name), "%s-fp-%d",
 			 bp->dev->name, i);
@@ -2262,15 +2361,11 @@ static void bnx2x_napi_enable_cnic(struct bnx2x *bp)
 #endif
 }
 
-#if ((!defined(__VMKLNX__)) || !DYNAMIC_NETQ_ALLOC) /* BNX2X_UPSTREAM */
 static void bnx2x_napi_enable(struct bnx2x *bp)
-#else
-void bnx2x_esx_napi_enable_queue(struct bnx2x *bp, int esx_netq_index)
-#endif
 {
 	int i;
 
-	for_each_eth_queue_(bp, i)
+	for_each_eth_queue(bp, i)
 #ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
 		napi_enable(&bnx2x_fp(bp, i, napi));
 #else
@@ -2290,15 +2385,11 @@ static void bnx2x_napi_disable_cnic(struct bnx2x *bp)
 #endif
 }
 
-#if (!defined(__VMKLNX__) || !DYNAMIC_NETQ_ALLOC) /* BNX2X_UPSTREAM */
 static void bnx2x_napi_disable(struct bnx2x *bp)
-#else
-void bnx2x_esx_napi_disable_queue(struct bnx2x *bp, int esx_netq_index)
-#endif
 {
 	int i;
 
-	for_each_eth_queue_(bp, i)
+	for_each_eth_queue(bp, i)
 #ifdef BNX2X_NEW_NAPI /* BNX2X_UPSTREAM */
 		napi_disable(&bnx2x_fp(bp, i, napi));
 #else
@@ -2342,7 +2433,12 @@ void bnx2x_netif_stop(struct bnx2x *bp, int disable_hw)
 }
 
 #ifdef BNX2X_MULTI_QUEUE /* BNX2X_UPSTREAM */
+#if (LINUX_STARTING_AT_VERSION(3, 13, 0)) /* BNX2X_UPSTREAM */
+u16 bnx2x_select_queue(struct net_device *dev, struct sk_buff *skb,
+			void *accel_priv)
+#else
 u16 bnx2x_select_queue(struct net_device *dev, struct sk_buff *skb)
+#endif
 {
 	struct bnx2x *bp = netdev_priv(dev);
 
@@ -2378,7 +2474,7 @@ void bnx2x_set_num_queues(struct bnx2x *bp)
 	bp->num_ethernet_queues = bnx2x_calc_num_queues(bp);
 
 	/* override in STORAGE SD modes */
-	if (IS_MF_STORAGE_SD(bp) || IS_MF_FCOE_AFEX(bp))
+	if (IS_MF_STORAGE_ONLY(bp))
 		bp->num_ethernet_queues = 1;
 
 	/* Add special queues */
@@ -2537,6 +2633,15 @@ int bnx2x_rss(struct bnx2x *bp, struct bnx2x_rss_config_obj *rss_obj,
 			__set_bit(BNX2X_RSS_IPV4_UDP, &params.rss_flags);
 		if (rss_obj->udp_rss_v6)
 			__set_bit(BNX2X_RSS_IPV6_UDP, &params.rss_flags);
+
+		if (!CHIP_IS_E1x(bp)) {
+			/* valid only for TUNN_MODE_VXLAN tunnel mode */
+			__set_bit(BNX2X_RSS_IPV4_VXLAN, &params.rss_flags);
+			__set_bit(BNX2X_RSS_IPV6_VXLAN, &params.rss_flags);
+
+			/* valid only for TUNN_MODE_GRE tunnel mode */
+			__set_bit(BNX2X_RSS_GRE_INNER_HDRS, &params.rss_flags);
+		}
 	} else {
 		__set_bit(BNX2X_RSS_MODE_DISABLED, &params.rss_flags);
 	}
@@ -2829,22 +2934,22 @@ int bnx2x_nic_load_analyze_req(struct bnx2x *bp, u32 load_code, bool print_err)
 	return 0;
 }
 
-/* returns the "mcp load_code" according to global load_count array */
+/* returns the "mcp load_code" according to global bnx2x_load_count array */
 static int bnx2x_nic_load_no_mcp(struct bnx2x *bp, int port)
 {
 	int path = BP_PATH(bp);
 
 	DP(NETIF_MSG_IFUP, "NO MCP - load counts[%d]      %d, %d, %d\n",
-	   path, load_count[path][0], load_count[path][1],
-	   load_count[path][2]);
-	load_count[path][0]++;
-	load_count[path][1 + port]++;
+	   path, bnx2x_load_count[path][0], bnx2x_load_count[path][1],
+	   bnx2x_load_count[path][2]);
+	bnx2x_load_count[path][0]++;
+	bnx2x_load_count[path][1 + port]++;
 	DP(NETIF_MSG_IFUP, "NO MCP - new load counts[%d]  %d, %d, %d\n",
-	   path, load_count[path][0], load_count[path][1],
-	   load_count[path][2]);
-	if (load_count[path][0] == 1)
+	   path, bnx2x_load_count[path][0], bnx2x_load_count[path][1],
+	   bnx2x_load_count[path][2]);
+	if (bnx2x_load_count[path][0] == 1)
 		return FW_MSG_CODE_DRV_LOAD_COMMON;
-	else if (load_count[path][1 + port] == 1)
+	else if (bnx2x_load_count[path][1 + port] == 1)
 		return FW_MSG_CODE_DRV_LOAD_PORT;
 	else
 		return FW_MSG_CODE_DRV_LOAD_FUNCTION;
@@ -3306,7 +3411,7 @@ int bnx2x_nic_load(struct bnx2x *bp, int load_mode)
 	}
 
 	/* set up the rest of the queues */
-	for_each_nondefault_eth_queue_(bp, i) {
+	for_each_nondefault_eth_queue(bp, i) {
 		if (IS_PF(bp))
 			rc = bnx2x_setup_queue(bp, &bp->fp[i], false);
 		else /* VF */
@@ -3365,7 +3470,13 @@ int bnx2x_nic_load(struct bnx2x *bp, int load_mode)
 	/* Initialize Rx filter. */
 	bnx2x_set_rx_mode_inner(bp);
 
-	/* Start the Tx */
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+	if (bp->flags & PTP_SUPPORTED) {
+		bnx2x_init_ptp(bp);
+		bnx2x_configure_ptp_filters(bp);
+	}
+#endif
+	/* Start Tx */
 	switch (load_mode) {
 	case LOAD_NORMAL:
 		/* Tx queue should be only re-enabled */
@@ -3397,18 +3508,22 @@ int bnx2x_nic_load(struct bnx2x *bp, int load_mode)
 	vmknetddi_queueops_invalidate_state(bp->dev);
 #if (DYNAMIC_NETQ_ALLOC)
 	/* setup netqs for esx for dynamic netq allocation */
-	if (bnx2x_esx_init_netqs(bp))
-		LOAD_ERROR_EXIT(bp, load_error3);
+	bnx2x_esx_init_netqs(bp);
 #endif
 #endif
 
 	if (CNIC_ENABLED(bp))
 		bnx2x_load_cnic(bp);
 
+	if (IS_PF(bp))
+		bnx2x_schedule_sp_rtnl(bp, BNX2X_SP_RTNL_GET_DRV_VERSION, 0);
+
 	if (IS_PF(bp) && SHMEM2_HAS(bp, drv_capabilities_flag)) {
 		/* mark driver is loaded in shmem2 */
 		u32 val;
 		val = SHMEM2_RD(bp, drv_capabilities_flag[BP_FW_MB_IDX(bp)]);
+		val &= ~DRV_FLAGS_MTU_MASK;
+		val |= (bp->dev->mtu << DRV_FLAGS_MTU_SHIFT);
 		SHMEM2_WR(bp, drv_capabilities_flag[BP_FW_MB_IDX(bp)],
 			  val | DRV_FLAGS_CAPABILITIES_LOADED_SUPPORTED |
 			  DRV_FLAGS_CAPABILITIES_LOADED_L2);
@@ -3444,10 +3559,7 @@ load_error3:
 
 	/* Free SKBs, SGEs, TPA pool and driver internals */
 	bnx2x_free_skbs(bp);
-#if defined(__VMKLNX__) && (DYNAMIC_NETQ_ALLOC) /* ! BNX2X_UPSTREAM */
-	int esx_netq_index = 0;
-#endif  /* BNX2X_UPSTREAM */
-	for_each_rx_queue_(bp, i)
+	for_each_rx_queue(bp, i)
 		bnx2x_free_rx_sge_range(bp, bp->fp + i, NUM_RX_SGE);
 
 	/* Release IRQs */
@@ -3475,11 +3587,7 @@ load_error0:
 #endif /* ! BNX2X_STOP_ON_ERROR */
 }
 
-#if (!defined(__VMKLNX__) || !DYNAMIC_NETQ_ALLOC) /* BNX2X_UPSTREAM */
 int bnx2x_drain_tx_queues(struct bnx2x *bp)
-#else
-int bnx2x_esx_drain_tx_queue(struct bnx2x *bp, int esx_netq_index)
-#endif
 {
 	u8 cos, i;
 #ifdef BNX2X_STOP_ON_ERROR
@@ -3487,7 +3595,7 @@ int bnx2x_esx_drain_tx_queue(struct bnx2x *bp, int esx_netq_index)
 #endif
 
 	/* Wait until tx fastpath tasks complete */
-	for_each_tx_queue_(bp, i) {
+	for_each_tx_queue(bp, i) {
 		struct bnx2x_fastpath *fp = &bp->fp[i];
 
 		for_each_cos_in_tx_queue(fp, cos)
@@ -3514,9 +3622,6 @@ int bnx2x_nic_unload(struct bnx2x *bp, int unload_mode, bool keep_link)
 	bool global = false;
 
 	DP(NETIF_MSG_IFUP, "Starting NIC unload\n");
-
-	/* indicate to VFs that the PF is going down */
-	bnx2x_iov_channel_down(bp);
 
 	/* mark driver is unloaded in shmem2 */
 	if (IS_PF(bp) && SHMEM2_HAS(bp, drv_capabilities_flag)) {
@@ -3677,10 +3782,7 @@ int bnx2x_nic_unload(struct bnx2x *bp, int unload_mode, bool keep_link)
 	bnx2x_free_skbs(bp);
 	if (CNIC_LOADED(bp))
 		bnx2x_free_skbs_cnic(bp);
-#if defined(__VMKLNX__) && (DYNAMIC_NETQ_ALLOC) /* ! BNX2X_UPSTREAM */
-	int esx_netq_index = 0;
-#endif  /* BNX2X_UPSTREAM */
-	for_each_rx_queue_(bp, i)
+	for_each_rx_queue(bp, i)
 		bnx2x_free_rx_sge_range(bp, bp->fp + i, NUM_RX_SGE);
 
 	bnx2x_free_fp_mem(bp);
@@ -3698,6 +3800,10 @@ int bnx2x_nic_unload(struct bnx2x *bp, int unload_mode, bool keep_link)
 
 	bp->state = BNX2X_STATE_CLOSED;
 	bp->cnic_loaded = false;
+
+	/* Clear driver version indication in shmem */
+	if (IS_PF(bp))
+		bnx2x_update_mng_version(bp);
 
 	/* Check if there are pending parity attentions. If there are - set
 	 * RECOVERY_IN_PROGRESS.
@@ -3782,7 +3888,7 @@ int bnx2x_set_power_state(struct bnx2x *bp, pci_power_t state)
  * net_device service functions
  */
 #if defined(BNX2X_NEW_NAPI) /* BNX2X_UPSTREAM */
-int bnx2x_poll(struct napi_struct *napi, int budget)
+_STAEU int bnx2x_poll(struct napi_struct *napi, int budget)
 #else
 int bnx2x_poll(struct net_device *dev, int *budget)
 #endif
@@ -4426,19 +4532,6 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	txq_index = skb->queue_mapping;
 	txq = netdev_get_tx_queue(dev, txq_index);
 
-	/* drop the packet if the queue is not allocated yet
-	 * possible for dynamic netq allocation (no need to do it for CNIC)
-	 */
-	if (DYNAMIC_NETQ_ALLOC) {
-		struct bnx2x_fastpath *fp = &bp->fp[txq_index];
-
-		if (txq_index < BNX2X_NUM_ETH_QUEUES(bp) &&
-		    unlikely(!BNX2X_IS_NETQ_TX_QUEUE_ALLOCATED(fp))) {
-			dev_kfree_skb_any(skb);
-			return NETDEV_TX_OK;
-		}
-	}
-
 #elif defined(BNX2X_MULTI_QUEUE) /* BNX2X_UPSTREAM */
 	txq_index = skb_get_queue_mapping(skb);
 	txq = netdev_get_tx_queue(dev, txq_index);
@@ -4582,6 +4675,22 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	tx_start_bd->bd_flags.as_bitfield = ETH_TX_BD_FLAGS_START_BD;
 
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
+	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
+		if (!(bp->flags & TX_TIMESTAMPING_EN)) {
+			BNX2X_ERR("Tx timestamping was not enabled, this packet will not be timestamped\n");
+		} else if (bp->ptp_tx_skb) {
+			BNX2X_ERR("The device supports only a single outstanding packet to timestamp, this packet will not be timestamped\n");
+		} else {
+			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+			/* schedule check for Tx timestamp */
+			bp->ptp_tx_skb = skb_get(skb);
+			bp->ptp_tx_start = jiffies;
+			schedule_work(&bp->ptp_task);
+		}
+	}
+#endif
+
 	/* header nbd: indirectly zero other flags! */
 	tx_start_bd->general_data = 1 << ETH_TX_START_BD_HDR_NBDS_SHIFT;
 
@@ -4681,6 +4790,12 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			/* set encapsulation flag in start BD */
 			SET_FLAG(tx_start_bd->general_data,
 				 ETH_TX_START_BD_TUNNEL_EXIST, 1);
+
+			/* we omit setting type 0 - this is done implicitly
+			 * during zeroing whole bd
+			 * pbd2->bd_type = ETH_2ND_PARSE_BD_TYPE_LSO_TUNNEL;
+			 */
+
 			nbd++;
 		} else if (xmit_type & XMIT_CSUM) {
 			/* Set PBD in checksum offload case w/o encapsulation */
@@ -5020,8 +5135,7 @@ int bnx2x_change_mac_addr(struct net_device *dev, void *p)
 		return -EINVAL;
 	}
 
-	if ((IS_MF_STORAGE_SD(bp) || IS_MF_FCOE_AFEX(bp)) &&
-	    !is_zero_ether_addr(addr->sa_data)) {
+	if (IS_MF_STORAGE_ONLY(bp) && !is_zero_ether_addr(addr->sa_data)) {
 		BNX2X_ERR("Can't configure non-zero address on iSCSI or FCoE functions in MF-SD mode\n");
 		return -EINVAL;
 	}
@@ -5117,7 +5231,7 @@ static void bnx2x_free_fp_mem_at(struct bnx2x *bp, int fp_index)
 	/* end of fastpath */
 }
 
-void bnx2x_free_fp_mem_cnic(struct bnx2x *bp)
+static void bnx2x_free_fp_mem_cnic(struct bnx2x *bp)
 {
 	int i;
 	for_each_cnic_queue(bp, i)
@@ -5217,8 +5331,7 @@ int bnx2x_esx_alloc_fp_mem_at(struct bnx2x *bp, int index, int alloc_skb)
 	u8 cos;
 	int rx_ring_size = 0;
 
-	if (!bp->rx_ring_size &&
-	    (IS_MF_STORAGE_SD(bp) || IS_MF_FCOE_AFEX(bp))) {
+	if (!bp->rx_ring_size && IS_MF_STORAGE_ONLY(bp)) {
 		rx_ring_size = MIN_RX_SIZE_NONTPA;
 		bp->rx_ring_size = rx_ring_size;
 	} else if (!bp->rx_ring_size) {
@@ -5384,7 +5497,7 @@ alloc_mem_err:
 	return 0;
 }
 
-int bnx2x_alloc_fp_mem_cnic(struct bnx2x *bp)
+static int bnx2x_alloc_fp_mem_cnic(struct bnx2x *bp)
 {
 	if (!NO_FCOE(bp))
 		/* FCoE */
@@ -5408,7 +5521,7 @@ int bnx2x_alloc_fp_mem_cnic(struct bnx2x *bp)
 	return 0;
 }
 
-int bnx2x_alloc_fp_mem(struct bnx2x *bp)
+static int bnx2x_alloc_fp_mem(struct bnx2x *bp)
 {
 	int i;
 
@@ -5785,12 +5898,8 @@ void bnx2x_tx_timeout(struct net_device *dev)
 		bnx2x_panic();
 #endif
 
-	smp_mb__before_clear_bit();
-	set_bit(BNX2X_SP_RTNL_TX_TIMEOUT, &bp->sp_rtnl_state);
-	smp_mb__after_clear_bit();
-
 	/* This allows the netif to be shutdown gracefully before resetting */
-	schedule_delayed_work(&bp->sp_rtnl_task, 0);
+	bnx2x_schedule_sp_rtnl(bp, BNX2X_SP_RTNL_TX_TIMEOUT, 0);
 }
 
 int bnx2x_suspend(struct pci_dev *pdev, pm_message_t state)
@@ -6030,3 +6139,15 @@ void bnx2x_update_coalesce_sb_index(struct bnx2x *bp, u8 fw_sb_id,
 	disable = disable ? 1 : (usec ? 0 : 1);
 	storm_memset_hc_disable(bp, port, fw_sb_id, sb_index, disable);
 }
+
+void bnx2x_schedule_sp_rtnl(struct bnx2x *bp, enum sp_rtnl_flag flag,
+			    u32 verbose)
+{
+	smp_mb__before_clear_bit();
+	set_bit(flag, &bp->sp_rtnl_state);
+	smp_mb__after_clear_bit();
+	DP((BNX2X_MSG_SP | verbose), "Scheduling sp_rtnl task [Flag: %d]\n",
+	   flag);
+	schedule_delayed_work(&bp->sp_rtnl_task, 0);
+}
+EXPORT_SYMBOL(bnx2x_schedule_sp_rtnl);
