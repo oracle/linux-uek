@@ -580,11 +580,6 @@ xprt_rdma_free(void *buffer)
 			&req->rl_segments[i], r_xprt, NULL);
 	}
 
-	if (rep && wait_event_interruptible(rep->rr_unbind, !rep->rr_func)) {
-		rep->rr_func = NULL;	/* abandon the callback */
-		req->rl_reply = NULL;
-	}
-
 	if (req->rl_iov.length == 0) {	/* see allocate above */
 		struct rpcrdma_req *oreq = (struct rpcrdma_req *)req->rl_buffer;
 		oreq->rl_reply = req->rl_reply;

@@ -197,8 +197,6 @@ void rpcrdma_event_process(struct ib_wc *wc)
 			}
 			atomic_set(&rep->rr_buffer->rb_credits, credits);
 		}
-		/* fall through */
-	case IB_WC_BIND_MW:
 		rpcrdma_schedule_tasklet(rep);
 		break;
 	default:
@@ -494,16 +492,6 @@ rpcrdma_ia_open(struct rpcrdma_xprt *xprt, struct sockaddr *addr, int memreg)
 	}
 
 	switch (memreg) {
-	case RPCRDMA_MEMWINDOWS:
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-		if (!(devattr.device_cap_flags & IB_DEVICE_MEM_WINDOW)) {
-			dprintk("RPC:       %s: MEMWINDOWS registration "
-				"specified but not supported by adapter, "
-				"using slower RPCRDMA_REGISTER\n",
-				__func__);
-			memreg = RPCRDMA_REGISTER;
-		}
-		break;
 	case RPCRDMA_MTHCAFMR:
 		if (!ia->ri_id->device->alloc_fmr) {
 			dprintk("RPC:       %s: MTHCAFMR registration "
@@ -546,16 +534,13 @@ rpcrdma_ia_open(struct rpcrdma_xprt *xprt, struct sockaddr *addr, int memreg)
 				IB_ACCESS_REMOTE_READ;
 		goto register_setup;
 #endif
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		mem_priv = IB_ACCESS_LOCAL_WRITE |
-				IB_ACCESS_MW_BIND;
-		goto register_setup;
 	case RPCRDMA_MTHCAFMR:
 		if (ia->ri_have_dma_lkey)
 			break;
 		mem_priv = IB_ACCESS_LOCAL_WRITE;
+#ifdef CONFIG_SUNRPC_XPRT_RDMA_ALLPHYSICAL
 	register_setup:
+#endif
 		ia->ri_bind_mem = ib_get_dma_mr(ia->ri_pd, mem_priv);
 		if (IS_ERR(ia->ri_bind_mem)) {
 			printk(KERN_ALERT "%s: ib_get_dma_mr for "
@@ -660,14 +645,6 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 			ep->rep_attr.cap.max_send_wr = cdata->max_requests * 7;
 		}
 		break;
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		/* Add room for mw_binds+unbinds - overkill! */
-		ep->rep_attr.cap.max_send_wr++;
-		ep->rep_attr.cap.max_send_wr *= (2 * RPCRDMA_MAX_SEGS);
-		if (ep->rep_attr.cap.max_send_wr > devattr.max_qp_wr)
-			return -EINVAL;
-		break;
 	default:
 		break;
 	}
@@ -689,14 +666,6 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 
 	/* set trigger for requesting send completion */
 	ep->rep_cqinit = ep->rep_attr.cap.max_send_wr/2 /*  - 1*/;
-	switch (ia->ri_memreg_strategy) {
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		ep->rep_cqinit -= RPCRDMA_MAX_SEGS;
-		break;
-	default:
-		break;
-	}
 	if (ep->rep_cqinit <= 2)
 		ep->rep_cqinit = 0;
 	INIT_CQCOUNT(ep);
@@ -981,11 +950,6 @@ rpcrdma_buffer_create(struct rpcrdma_buffer *buf, struct rpcrdma_ep *ep,
 		len += (buf->rb_max_requests + 1) * RPCRDMA_MAX_SEGS *
 				sizeof(struct rpcrdma_mw);
 		break;
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		len += (buf->rb_max_requests + 1) * RPCRDMA_MAX_SEGS *
-				sizeof(struct rpcrdma_mw);
-		break;
 	default:
 		break;
 	}
@@ -1066,21 +1030,6 @@ rpcrdma_buffer_create(struct rpcrdma_buffer *buf, struct rpcrdma_ep *ep,
 			++r;
 		}
 		break;
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		/* Allocate one extra request's worth, for full cycling */
-		for (i = (buf->rb_max_requests+1) * RPCRDMA_MAX_SEGS; i; i--) {
-			r->r.mw = ib_alloc_mw(ia->ri_pd);
-			if (IS_ERR(r->r.mw)) {
-				rc = PTR_ERR(r->r.mw);
-				dprintk("RPC:       %s: ib_alloc_mw"
-					" failed %i\n", __func__, rc);
-				goto out;
-			}
-			list_add(&r->mw_list, &buf->rb_mws);
-			++r;
-		}
-		break;
 	default:
 		break;
 	}
@@ -1129,7 +1078,6 @@ rpcrdma_buffer_create(struct rpcrdma_buffer *buf, struct rpcrdma_ep *ep,
 		memset(rep, 0, sizeof(struct rpcrdma_rep));
 		buf->rb_recv_bufs[i] = rep;
 		buf->rb_recv_bufs[i]->rr_buffer = buf;
-		init_waitqueue_head(&rep->rr_unbind);
 
 		rc = rpcrdma_register_internal(ia, rep->rr_base,
 				len - offsetof(struct rpcrdma_rep, rr_base),
@@ -1197,15 +1145,6 @@ rpcrdma_buffer_destroy(struct rpcrdma_buffer *buf)
 					if (rc)
 						dprintk("RPC:       %s:"
 							" ib_dealloc_fmr"
-							" failed %i\n",
-							__func__, rc);
-					break;
-				case RPCRDMA_MEMWINDOWS_ASYNC:
-				case RPCRDMA_MEMWINDOWS:
-					rc = ib_dealloc_mw(r->r.mw);
-					if (rc)
-						dprintk("RPC:       %s:"
-							" ib_dealloc_mw"
 							" failed %i\n",
 							__func__, rc);
 					break;
@@ -1289,15 +1228,12 @@ rpcrdma_buffer_put(struct rpcrdma_req *req)
 	req->rl_niovs = 0;
 	if (req->rl_reply) {
 		buffers->rb_recv_bufs[--buffers->rb_recv_index] = req->rl_reply;
-		init_waitqueue_head(&req->rl_reply->rr_unbind);
 		req->rl_reply->rr_func = NULL;
 		req->rl_reply = NULL;
 	}
 	switch (ia->ri_memreg_strategy) {
 	case RPCRDMA_FRMR:
 	case RPCRDMA_MTHCAFMR:
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
 		/*
 		 * Cycle mw's back in reverse order, and "spin" them.
 		 * This delays and scrambles reuse as much as possible.
@@ -1646,74 +1582,6 @@ rpcrdma_deregister_fmr_external(struct rpcrdma_mr_seg *seg,
 }
 
 static int
-rpcrdma_register_memwin_external(struct rpcrdma_mr_seg *seg,
-			int *nsegs, int writing, struct rpcrdma_ia *ia,
-			struct rpcrdma_xprt *r_xprt)
-{
-	int mem_priv = (writing ? IB_ACCESS_REMOTE_WRITE :
-				  IB_ACCESS_REMOTE_READ);
-	struct ib_mw_bind param;
-	int rc;
-
-	*nsegs = 1;
-	rpcrdma_map_one(ia, seg, writing);
-	param.mr = ia->ri_bind_mem;
-	param.wr_id = 0ULL;	/* no send cookie */
-	param.addr = seg->mr_dma;
-	param.length = seg->mr_len;
-	param.send_flags = 0;
-	param.mw_access_flags = mem_priv;
-
-	DECR_CQCOUNT(&r_xprt->rx_ep);
-	rc = ib_bind_mw(ia->ri_id->qp, seg->mr_chunk.rl_mw->r.mw, &param);
-	if (rc) {
-		dprintk("RPC:       %s: failed ib_bind_mw "
-			"%u@0x%llx status %i\n",
-			__func__, seg->mr_len,
-			(unsigned long long)seg->mr_dma, rc);
-		rpcrdma_unmap_one(ia, seg);
-	} else {
-		seg->mr_rkey = seg->mr_chunk.rl_mw->r.mw->rkey;
-		seg->mr_base = param.addr;
-		seg->mr_nsegs = 1;
-	}
-	return rc;
-}
-
-static int
-rpcrdma_deregister_memwin_external(struct rpcrdma_mr_seg *seg,
-			struct rpcrdma_ia *ia,
-			struct rpcrdma_xprt *r_xprt, void **r)
-{
-	struct ib_mw_bind param;
-	LIST_HEAD(l);
-	int rc;
-
-	BUG_ON(seg->mr_nsegs != 1);
-	param.mr = ia->ri_bind_mem;
-	param.addr = 0ULL;	/* unbind */
-	param.length = 0;
-	param.mw_access_flags = 0;
-	if (*r) {
-		param.wr_id = (u64) (unsigned long) *r;
-		param.send_flags = IB_SEND_SIGNALED;
-		INIT_CQCOUNT(&r_xprt->rx_ep);
-	} else {
-		param.wr_id = 0ULL;
-		param.send_flags = 0;
-		DECR_CQCOUNT(&r_xprt->rx_ep);
-	}
-	rc = ib_bind_mw(ia->ri_id->qp, seg->mr_chunk.rl_mw->r.mw, &param);
-	rpcrdma_unmap_one(ia, seg);
-	if (rc)
-		dprintk("RPC:       %s: failed ib_(un)bind_mw,"
-			" status %i\n", __func__, rc);
-	else
-		*r = NULL;	/* will upcall on completion */
-	return rc;
-}
-
-static int
 rpcrdma_register_default_external(struct rpcrdma_mr_seg *seg,
 			int *nsegs, int writing, struct rpcrdma_ia *ia)
 {
@@ -1803,12 +1671,6 @@ rpcrdma_register_external(struct rpcrdma_mr_seg *seg,
 		rc = rpcrdma_register_fmr_external(seg, &nsegs, writing, ia);
 		break;
 
-	/* Registration using memory windows */
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		rc = rpcrdma_register_memwin_external(seg, &nsegs, writing, ia, r_xprt);
-		break;
-
 	/* Default registration each time */
 	default:
 		rc = rpcrdma_register_default_external(seg, &nsegs, writing, ia);
@@ -1843,11 +1705,6 @@ rpcrdma_deregister_external(struct rpcrdma_mr_seg *seg,
 
 	case RPCRDMA_MTHCAFMR:
 		rc = rpcrdma_deregister_fmr_external(seg, ia);
-		break;
-
-	case RPCRDMA_MEMWINDOWS_ASYNC:
-	case RPCRDMA_MEMWINDOWS:
-		rc = rpcrdma_deregister_memwin_external(seg, ia, r_xprt, &r);
 		break;
 
 	default:
