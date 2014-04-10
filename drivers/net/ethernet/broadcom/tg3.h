@@ -4,7 +4,7 @@
  * Copyright (C) 2001, 2002, 2003, 2004 David S. Miller (davem@redhat.com)
  * Copyright (C) 2001 Jeff Garzik (jgarzik@pobox.com)
  * Copyright (C) 2004 Sun Microsystems Inc.
- * Copyright (C) 2007-2013 Broadcom Corporation.
+ * Copyright (C) 2007-2014 Broadcom Corporation.
  */
 
 #ifndef _T3_H
@@ -1171,6 +1171,7 @@
 #define  TG3_CPMU_STATUS_FMSK_5717	 0x20000000
 #define  TG3_CPMU_STATUS_FMSK_5719	 0xc0000000
 #define  TG3_CPMU_STATUS_FSHFT_5719	 30
+#define  TG3_CPMU_STATUS_LINK_MASK	 0x180000
 
 #define TG3_CPMU_CLCK_STAT		0x00003630
 #define  CPMU_CLCK_STAT_MAC_CLCK_MASK	 0x001f0000
@@ -2473,7 +2474,7 @@
 #define  APE_OTP_CTRL_CMD_RD		 0x000000
 #define  APE_OTP_CTRL_START		 0x000001
 #define TG3_APE_OTP_STATUS		0x00ec
-#define  APE_OTP_STATUS_CMD_DONE	 0x000001
+#define  APE_OTP_STATUS_CMD_DONE	 0x000001	
 #define TG3_APE_OTP_ADDR		0x00f0
 #define  APE_OTP_ADDR_CPU_ENABLE	 0x80000000
 #define TG3_APE_OTP_RD_DATA		0x00f8
@@ -2669,7 +2670,11 @@ struct tg3_rx_buffer_desc {
 #define RXD_ERR_TOO_SMALL		0x00400000
 #define RXD_ERR_NO_RESOURCES		0x00800000
 #define RXD_ERR_HUGE_FRAME		0x01000000
-#define RXD_ERR_MASK			0xffff0000
+
+#define RXD_ERR_MASK	(RXD_ERR_BAD_CRC | RXD_ERR_COLLISION |		\
+			 RXD_ERR_LINK_LOST | RXD_ERR_PHY_DECODE |	\
+			 RXD_ERR_MAC_ABRT | RXD_ERR_TOO_SMALL |		\
+			 RXD_ERR_NO_RESOURCES | RXD_ERR_HUGE_FRAME)
 
 	u32				reserved;
 	u32				opaque;
@@ -2903,7 +2908,11 @@ struct tg3_ocir {
  * But the cache behavior is better how we are doing it now.
  */
 struct ring_info {
+#ifdef BCM_HAS_BUILD_SKB
+	u8				*data;
+#else
 	struct sk_buff			*data;
+#endif
 	DEFINE_DMA_UNMAP_ADDR(mapping);
 };
 
@@ -3025,6 +3034,7 @@ struct tg3_ethtool_stats {
 	u64		nic_tx_threshold_hit;
 
 	u64		mbuf_lwm_thresh_hit;
+	u64		dma_4g_cross;
 };
 
 #if defined(__VMKLNX__)
@@ -3113,6 +3123,7 @@ enum TG3_FLAGS {
 	TG3_FLAG_ENABLE_ASF,
 	TG3_FLAG_ASPM_WORKAROUND,
 	TG3_FLAG_POLL_SERDES,
+	TG3_FLAG_POLL_CPMU_LINK,
 	TG3_FLAG_MBOX_WRITE_REORDER,
 	TG3_FLAG_PCIX_TARGET_HWBUG,
 	TG3_FLAG_WOL_SPEED_100MB,
@@ -3132,6 +3143,7 @@ enum TG3_FLAGS {
 	TG3_FLAG_PAUSE_AUTONEG,
 	TG3_FLAG_CPMU_PRESENT,
 	TG3_FLAG_40BIT_DMA_BUG,
+	TG3_FLAG_31BIT_DMA_COHERENT,
 	TG3_FLAG_BROKEN_CHECKSUMS,
 	TG3_FLAG_JUMBO_CAPABLE,
 	TG3_FLAG_CHIP_RESETTING,
@@ -3540,6 +3552,7 @@ struct tg3 {
 #if defined(__VMKLNX__) && VMWARE_ESX_DDK_VERSION >= 55000
 	int				nic_idx;
 #endif
+	unsigned long			dma_4g_cross;
 };
 
 /* Accessor macros for chip and asic attributes

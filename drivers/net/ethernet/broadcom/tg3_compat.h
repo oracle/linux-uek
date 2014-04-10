@@ -2103,6 +2103,13 @@ static inline int pci_is_enabled(struct pci_dev *pdev)
 }
 #endif
 
+#ifndef BCM_HAS_PCI_DEV_IS_PRESENT
+static inline int pci_device_is_present(struct pci_dev *pdev)
+{
+	return 1;
+}
+#endif
+
 #ifndef BCM_HAS_DMA_ZALLOC_COHERENT
 static inline void *dma_zalloc_coherent(struct device *dev, size_t size,
 					dma_addr_t *dma_handle, gfp_t flag)
@@ -2122,4 +2129,8 @@ int netif_get_num_default_rss_queues(void)
 {
 	return min_t(int, DEFAULT_MAX_NUM_RSS_QUEUES, num_online_cpus());
 }
+#endif
+
+#ifndef SIOCGHWTSTAMP
+#define SIOCGHWTSTAMP 0x89b1
 #endif
