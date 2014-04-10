@@ -1684,7 +1684,7 @@ rpcrdma_register_external(struct rpcrdma_mr_seg *seg,
 
 int
 rpcrdma_deregister_external(struct rpcrdma_mr_seg *seg,
-		struct rpcrdma_xprt *r_xprt, void *r)
+		struct rpcrdma_xprt *r_xprt)
 {
 	struct rpcrdma_ia *ia = &r_xprt->rx_ia;
 	int nsegs = seg->mr_nsegs, rc;
@@ -1710,12 +1710,6 @@ rpcrdma_deregister_external(struct rpcrdma_mr_seg *seg,
 	default:
 		rc = rpcrdma_deregister_default_external(seg, ia);
 		break;
-	}
-	if (r) {
-		struct rpcrdma_rep *rep = r;
-		void (*func)(struct rpcrdma_rep *) = rep->rr_func;
-		rep->rr_func = NULL;
-		func(rep);	/* dereg done, callback now */
 	}
 	return nsegs;
 }
