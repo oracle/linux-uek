@@ -1065,8 +1065,7 @@ static void encode_attrs(struct xdr_stream *xdr, const struct iattr *iap, const 
 	if (iap->ia_valid & ATTR_ATIME_SET) {
 		bmval1 |= FATTR4_WORD1_TIME_ACCESS_SET;
 		*p++ = cpu_to_be32(NFS4_SET_TO_CLIENT_TIME);
-		*p++ = cpu_to_be32(0);
-		*p++ = cpu_to_be32(iap->ia_atime.tv_sec);
+		p = xdr_encode_hyper(p, iap->ia_atime.tv_sec);
 		*p++ = cpu_to_be32(iap->ia_atime.tv_nsec);
 	}
 	else if (iap->ia_valid & ATTR_ATIME) {
@@ -1076,8 +1075,7 @@ static void encode_attrs(struct xdr_stream *xdr, const struct iattr *iap, const 
 	if (iap->ia_valid & ATTR_MTIME_SET) {
 		bmval1 |= FATTR4_WORD1_TIME_MODIFY_SET;
 		*p++ = cpu_to_be32(NFS4_SET_TO_CLIENT_TIME);
-		*p++ = cpu_to_be32(0);
-		*p++ = cpu_to_be32(iap->ia_mtime.tv_sec);
+		p = xdr_encode_hyper(p, iap->ia_mtime.tv_sec);
 		*p++ = cpu_to_be32(iap->ia_mtime.tv_nsec);
 	}
 	else if (iap->ia_valid & ATTR_MTIME) {
