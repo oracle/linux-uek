@@ -230,12 +230,23 @@ static void xen_vcpu_setup(int cpu)
 void xen_vcpu_restore(void)
 {
 	int cpu;
+	bool vcpuops = true;
+	const struct cpumask *mask;
 
-	for_each_possible_cpu(cpu) {
+	mask = xen_pv_domain() ? cpu_possible_mask : cpu_online_mask;
+
+	/* Not all hypervisors support this. */
+	if (HYPERVISOR_vcpu_op(VCPUOP_is_up, smp_processor_id(), NULL) == -ENOSYS)
+		vcpuops = false;
+
+	for_each_cpu(cpu, mask) {
 		bool other_cpu = (cpu != smp_processor_id());
-		bool is_up = HYPERVISOR_vcpu_op(VCPUOP_is_up, cpu, NULL);
+		bool is_up = false;
 
-		if (other_cpu && is_up &&
+		if (vcpuops)
+			is_up = HYPERVISOR_vcpu_op(VCPUOP_is_up, cpu, NULL);
+
+		if (vcpuops && other_cpu && is_up &&
 		    HYPERVISOR_vcpu_op(VCPUOP_down, cpu, NULL))
 			BUG();
 
@@ -244,7 +255,7 @@ void xen_vcpu_restore(void)
 		if (have_vcpu_info_placement)
 			xen_vcpu_setup(cpu);
 
-		if (other_cpu && is_up &&
+		if (vcpuops && other_cpu && is_up &&
 		    HYPERVISOR_vcpu_op(VCPUOP_up, cpu, NULL))
 			BUG();
 	}
@@ -1641,7 +1652,7 @@ void __ref xen_hvm_init_shared_info(void)
 	for_each_online_cpu(cpu) {
 		/* Leave it to be NULL. */
 		if (cpu >= MAX_VIRT_CPUS)
-			continue;
+			per_cpu(xen_vcpu, cpu) = NULL; /* Triggers xen_vcpu_setup.*/
 		per_cpu(xen_vcpu, cpu) = &HYPERVISOR_shared_info->vcpu_info[cpu];
 	}
 }
