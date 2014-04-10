@@ -347,6 +347,7 @@ rpcrdma_inline_pullup(struct rpc_rqst *rqst, int pad)
 		page_base = 0;
 	}
 	/* header now contains entire send message */
+	rqst->rq_snd_buf.page_len = 0;
 	return pad;
 }
 
@@ -433,9 +434,10 @@ rpcrdma_marshal_req(struct rpc_rqst *rqst)
 	 */
 	if (rqst->rq_snd_buf.len <= RPCRDMA_INLINE_WRITE_THRESHOLD(rqst))
 		rtype = rpcrdma_noch;
-	else if (rqst->rq_snd_buf.page_len == 0)
+	else if (rqst->rq_snd_buf.page_len == 0 || rqst->rq_snd_buf.flags & XDRBUF_AREADCH) {
 		rtype = rpcrdma_areadch;
-	else
+		headerp->rm_type = htonl(RDMA_NOMSG);
+	} else
 		rtype = rpcrdma_readch;
 
 	/* The following simplification is not true forever */
@@ -451,7 +453,7 @@ rpcrdma_marshal_req(struct rpc_rqst *rqst)
 	 * When padding is in use and applies to the transfer, insert
 	 * it and change the message type.
 	 */
-	if (rtype == rpcrdma_noch) {
+	if (rtype == rpcrdma_noch || rtype == rpcrdma_areadch) {
 
 		padlen = rpcrdma_inline_pullup(rqst,
 						RPCRDMA_INLINE_PAD_VALUE(rqst));
@@ -528,6 +530,8 @@ rpcrdma_marshal_req(struct rpc_rqst *rqst)
 	req->rl_send_iov[1].lkey = req->rl_iov.lkey;
 
 	req->rl_niovs = 2;
+	if (rtype == rpcrdma_areadch)
+		req->rl_niovs = 1;
 
 	if (padlen) {
 		struct rpcrdma_ep *ep = &r_xprt->rx_ep;
