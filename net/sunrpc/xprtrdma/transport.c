@@ -228,7 +228,6 @@ static void
 xprt_rdma_destroy(struct rpc_xprt *xprt)
 {
 	struct rpcrdma_xprt *r_xprt = rpcx_to_rdmax(xprt);
-	int rc;
 
 	dprintk("RPC:       %s: called\n", __func__);
 
@@ -237,10 +236,7 @@ xprt_rdma_destroy(struct rpc_xprt *xprt)
 	xprt_clear_connected(xprt);
 
 	rpcrdma_buffer_destroy(&r_xprt->rx_buf);
-	rc = rpcrdma_ep_destroy(&r_xprt->rx_ep, &r_xprt->rx_ia);
-	if (rc)
-		dprintk("RPC:       %s: rpcrdma_ep_destroy returned %i\n",
-			__func__, rc);
+	rpcrdma_ep_destroy(&r_xprt->rx_ep, &r_xprt->rx_ia);
 	rpcrdma_ia_close(&r_xprt->rx_ia);
 
 	xprt_rdma_free_addresses(xprt);
@@ -390,7 +386,7 @@ out4:
 	xprt_rdma_free_addresses(xprt);
 	rc = -EINVAL;
 out3:
-	(void) rpcrdma_ep_destroy(new_ep, &new_xprt->rx_ia);
+	rpcrdma_ep_destroy(new_ep, &new_xprt->rx_ia);
 out2:
 	rpcrdma_ia_close(&new_xprt->rx_ia);
 out1:
