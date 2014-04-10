@@ -1754,6 +1754,7 @@ int fnic_abort_cmd(struct scsi_cmnd *sc)
 	struct fnic_stats *fnic_stats;
 	struct abort_stats *abts_stats;
 	struct terminate_stats *term_stats;
+	enum fnic_ioreq_state old_ioreq_state;
 	int tag;
 	DECLARE_COMPLETION_ONSTACK(tm_done);
 
@@ -1818,6 +1819,7 @@ int fnic_abort_cmd(struct scsi_cmnd *sc)
 	 * the completion wont be done till mid-layer, since abort
 	 * has already started.
 	 */
+	old_ioreq_state = CMD_STATE(sc);
 	CMD_STATE(sc) = FNIC_IOREQ_ABTS_PENDING;
 	CMD_ABTS_STATUS(sc) = FCPIO_INVALID_CODE;
 
@@ -1841,6 +1843,8 @@ int fnic_abort_cmd(struct scsi_cmnd *sc)
 	if (fnic_queue_abort_io_req(fnic, sc->request->tag, task_req,
 				    fc_lun.scsi_lun, io_req)) {
 		spin_lock_irqsave(io_lock, flags);
+		if (CMD_STATE(sc) == FNIC_IOREQ_ABTS_PENDING)
+			CMD_STATE(sc) = old_ioreq_state;
 		io_req = (struct fnic_io_req *)CMD_SP(sc);
 		if (io_req)
 			io_req->abts_done = NULL;
