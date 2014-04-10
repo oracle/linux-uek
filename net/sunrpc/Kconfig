@@ -58,6 +58,21 @@ config SUNRPC_XPRT_RDMA_CLIENT
 
 	  If unsure, say N.
 
+config SUNRPC_XPRT_RDMA_CLIENT_ALLPHYSICAL
+	bool "Enable ALLPHYSICAL memory registration mode"
+	depends on SUNRPC_XPRT_RDMA_CLIENT
+	default N
+	help
+	  This option enables support for the ALLPHYSICAL memory
+	  registration mode in the NFS client.
+
+	  This mode is very fast but not safe because it registers
+	  and exposes all of local memory. This could allow an
+	  NFS server bug to corrupt client memory.
+
+	  N is almost always the correct choice unless you are
+	  sure what you are doing.
+
 config SUNRPC_XPRT_RDMA_SERVER
 	tristate "RPC over RDMA Server Support"
 	depends on SUNRPC && INFINIBAND && INFINIBAND_ADDR_TRANS
