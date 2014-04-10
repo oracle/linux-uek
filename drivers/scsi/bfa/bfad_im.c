@@ -206,7 +206,7 @@ bfad_im_abort_handler(struct scsi_cmnd *cmnd)
 	spin_lock_irqsave(&bfad->bfad_lock, flags);
 	hal_io = (struct bfa_ioim_s *) cmnd->host_scribble;
 	if (!hal_io) {
-		/* IO has been completed, retrun success */
+		/* IO has been completed, return success */
 		rc = SUCCESS;
 		goto out;
 	}
@@ -528,15 +528,12 @@ bfad_im_scsi_host_alloc(struct bfad_s *bfad, struct bfad_im_port_s *im_port,
 		printk(KERN_WARNING "idr_pre_get failure\n");
 		goto out;
 	}
-
-	error = idr_get_new(&bfad_im_port_index, im_port,
-					 &im_port->idr_id);
+	error = idr_get_new(&bfad_im_port_index, im_port, &im_port->idr_id);
 	if (error) {
 		mutex_unlock(&bfad_mutex);
 		printk(KERN_WARNING "idr_get_new failure\n");
 		goto out;
 	}
-
 	mutex_unlock(&bfad_mutex);
 
 	im_port->shost = bfad_scsi_host_alloc(im_port, bfad);
@@ -951,12 +948,14 @@ static int
 bfad_im_slave_alloc(struct scsi_device *sdev)
 {
 	struct fc_rport *rport = starget_to_rport(scsi_target(sdev));
-	struct bfad_itnim_data_s *itnim_data =
-				(struct bfad_itnim_data_s *) rport->dd_data;
-	struct bfa_s *bfa = itnim_data->itnim->bfa_itnim->bfa;
+	struct bfad_itnim_data_s *itnim_data;
+	struct bfa_s *bfa;
 
 	if (!rport || fc_remote_port_chkready(rport))
 		return -ENXIO;
+
+	itnim_data = (struct bfad_itnim_data_s *) rport->dd_data;
+	bfa = itnim_data->itnim->bfa_itnim->bfa;
 
 	if (bfa_get_lun_mask_status(bfa) == BFA_LUNMASK_ENABLED) {
 		/*
@@ -1042,7 +1041,7 @@ bfad_fc_host_init(struct bfad_im_port_s *im_port)
 	/* For fibre channel services type 0x20 */
 	fc_host_supported_fc4s(host)[7] = 1;
 
-	strncpy(symname, bfad->bfa_fcs.fabric.bport.port_cfg.sym_name.symname,
+	strlcpy(symname, bfad->bfa_fcs.fabric.bport.port_cfg.sym_name.symname,
 		BFA_SYMNAME_MAXLEN);
 	sprintf(fc_host_symbolic_name(host), "%s", symname);
 
