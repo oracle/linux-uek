@@ -816,6 +816,7 @@ static int nfs3_read_done(struct rpc_task *task, struct nfs_read_data *data)
 		return -EAGAIN;
 
 	nfs_invalidate_atime(inode);
+	data->fattr.valid &= ~NFS_ATTR_FATTR_SIZE;
 	nfs_refresh_inode(inode, &data->fattr);
 	return 0;
 }

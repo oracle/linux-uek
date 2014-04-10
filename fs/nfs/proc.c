@@ -607,6 +607,7 @@ static int nfs_read_done(struct rpc_task *task, struct nfs_read_data *data)
 
 	nfs_invalidate_atime(inode);
 	if (task->tk_status >= 0) {
+		data->res.fattr->valid &= ~NFS_ATTR_FATTR_SIZE;
 		nfs_refresh_inode(inode, data->res.fattr);
 		/* Emulate the eof flag, which isn't normally needed in NFSv2
 		 * as it is guaranteed to always return the file attributes
