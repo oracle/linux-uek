@@ -244,7 +244,8 @@ static int nfs4_stat_to_errno(int);
 #define encode_symlink_maxsz	(op_encode_hdr_maxsz + \
 				1 + nfs4_name_maxsz + \
 				1 + \
-				nfs4_fattr_maxsz)
+				nfs4_fattr_maxsz + \
+				nfs4_path_maxsz)
 #define decode_symlink_maxsz	(op_decode_hdr_maxsz + 8)
 #define encode_create_maxsz	(op_encode_hdr_maxsz + \
 				1 + 2 + nfs4_name_maxsz + \
@@ -2173,6 +2174,7 @@ static void nfs4_xdr_enc_symlink(struct rpc_rqst *req, struct xdr_stream *xdr,
 				 const struct nfs4_create_arg *args)
 {
 	nfs4_xdr_enc_create(req, xdr, args);
+	xdr->buf->flags |= XDRBUF_AREADCH;
 }
 
 /*

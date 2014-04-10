@@ -49,7 +49,7 @@
 #define NFS_createargs_sz	(NFS_diropargs_sz+NFS_sattr_sz)
 #define NFS_renameargs_sz	(NFS_diropargs_sz+NFS_diropargs_sz)
 #define NFS_linkargs_sz		(NFS_fhandle_sz+NFS_diropargs_sz)
-#define NFS_symlinkargs_sz	(NFS_diropargs_sz+1+NFS_sattr_sz)
+#define NFS_symlinkargs_sz	(NFS_diropargs_sz+1+NFS_sattr_sz+NFS_path_sz)
 #define NFS_readdirargs_sz	(NFS_fhandle_sz+2)
 
 #define NFS_attrstat_sz		(1+NFS_fattr_sz)
@@ -738,6 +738,7 @@ static void nfs2_xdr_enc_symlinkargs(struct rpc_rqst *req,
 	encode_diropargs(xdr, args->fromfh, args->fromname, args->fromlen);
 	encode_path(xdr, args->pages, args->pathlen);
 	encode_sattr(xdr, args->sattr);
+	xdr->buf->flags |= XDRBUF_AREADCH;
 }
 
 /*

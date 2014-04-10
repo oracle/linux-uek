@@ -53,7 +53,7 @@
 #define NFS3_writeargs_sz	(NFS3_fh_sz+5)
 #define NFS3_createargs_sz	(NFS3_diropargs_sz+NFS3_sattr_sz)
 #define NFS3_mkdirargs_sz	(NFS3_diropargs_sz+NFS3_sattr_sz)
-#define NFS3_symlinkargs_sz	(NFS3_diropargs_sz+1+NFS3_sattr_sz)
+#define NFS3_symlinkargs_sz	(NFS3_diropargs_sz+1+NFS3_sattr_sz+NFS3_path_sz)
 #define NFS3_mknodargs_sz	(NFS3_diropargs_sz+2+NFS3_sattr_sz)
 #define NFS3_removeargs_sz	(NFS3_fh_sz+NFS3_filename_sz)
 #define NFS3_renameargs_sz	(NFS3_diropargs_sz+NFS3_diropargs_sz)
@@ -1093,6 +1093,7 @@ static void nfs3_xdr_enc_symlink3args(struct rpc_rqst *req,
 {
 	encode_diropargs3(xdr, args->fromfh, args->fromname, args->fromlen);
 	encode_symlinkdata3(xdr, args);
+	xdr->buf->flags |= XDRBUF_AREADCH;
 }
 
 /*
