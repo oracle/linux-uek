@@ -1222,6 +1222,10 @@ void mlx4_fmr_unmap(struct mlx4_dev *dev, struct mlx4_fmr *fmr,
 
 	fmr->maps = 0;
 
+	*(u8 *)fmr->mpt = MLX4_MPT_STATUS_SW;
+	/* Make sure MPT status is visible */
+	wmb();
+
 	fmr->mr.enabled = MLX4_MR_EN_SW;
 }
 EXPORT_SYMBOL_GPL(mlx4_fmr_unmap);
@@ -1230,6 +1234,10 @@ int mlx4_fmr_free(struct mlx4_dev *dev, struct mlx4_fmr *fmr)
 {
 	if (fmr->maps)
 		return -EBUSY;
+
+	*(u8 *)fmr->mpt = MLX4_MPT_STATUS_HW;
+	/* Make sure MPT status is visible */
+	wmb();
 
 	mlx4_mr_free(dev, &fmr->mr);
 	fmr->mr.enabled = MLX4_MR_DISABLED;
