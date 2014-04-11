@@ -45,6 +45,17 @@ config QLCNIC_SRIOV
           This allows for virtual function acceleration in virtualized
           environments.
 
+config QLCNIC_HWMON
+	bool "QLOGIC QLCNIC 82XX and 83XX family HWMON-SYSFS support"
+	depends on QLCNIC && HWMON
+	default y
+	---help---
+	  This configuration parameter can be used to read
+	  the board temperature in QLE83XX, QLE84XX and QLE82XX
+	  Converged Ethernet devices.
+
+	  This option is supported via the hwmon-sysfs interface.
+
 config QLGE
 	tristate "QLogic QLGE 10Gb Ethernet Driver Support"
 	depends on PCI
