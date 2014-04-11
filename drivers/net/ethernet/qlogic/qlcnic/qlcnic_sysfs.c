@@ -1195,62 +1195,6 @@ static ssize_t qlcnic_83xx_sysfs_flash_write_handler(struct file *filp,
 	return size;
 }
 
-static int qlcnic_sysfs_validate_bar(struct qlcnic_adapter *adapter,
-				     loff_t offset, size_t size)
-{
-	size_t bar = 4;
-
-	if (!(adapter->flags & QLCNIC_DIAG_ENABLED))
-		return -EIO;
-
-	if (offset >= QLCNIC_83XX_BAR0_LENGTH || (offset & (bar - 1)) ||
-	    (size != bar))
-		return -EINVAL;
-	return 0;
-}
-
-static ssize_t qlcnic_sysfs_read_bar(struct file *filp, struct kobject *kobj,
-				     struct bin_attribute *attr, char *buf,
-				     loff_t offset, size_t size)
-{
-	u32 data;
-	int ret;
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-
-	ret = qlcnic_sysfs_validate_bar(adapter, offset, size);
-	if (ret != 0)
-		return ret;
-
-	mutex_lock(&adapter->ahw->mem_lock);
-	data = readl(adapter->ahw->pci_base0 + offset);
-	mutex_unlock(&adapter->ahw->mem_lock);
-
-	memcpy(buf, &data, size);
-	return size;
-}
-
-static ssize_t qlcnic_sysfs_write_bar(struct file *filp, struct kobject *kobj,
-				      struct bin_attribute *attr, char *buf,
-				      loff_t offset, size_t size)
-{
-	u32 data;
-	int ret;
-	struct device *dev = container_of(kobj, struct device, kobj);
-	struct qlcnic_adapter *adapter = dev_get_drvdata(dev);
-
-	ret = qlcnic_sysfs_validate_bar(adapter, offset, size);
-	if (ret != 0)
-		return ret;
-
-	memcpy(&data, buf, size);
-	mutex_lock(&adapter->ahw->mem_lock);
-	writel(data, adapter->ahw->pci_base0 + offset);
-	mutex_unlock(&adapter->ahw->mem_lock);
-
-	return size;
-}
-
 static struct device_attribute dev_attr_bridged_mode = {
        .attr = {.name = "bridged_mode", .mode = (S_IRUGO | S_IWUSR)},
        .show = qlcnic_show_bridged_mode,
@@ -1330,13 +1274,6 @@ static struct bin_attribute bin_attr_flash = {
 	.size = 0,
 	.read = qlcnic_83xx_sysfs_flash_read_handler,
 	.write = qlcnic_83xx_sysfs_flash_write_handler,
-};
-
-static struct bin_attribute bin_attr_bar = {
-	.attr = {.name = "membar", .mode = (S_IRUGO | S_IWUSR)},
-	.size = 0,
-	.read = qlcnic_sysfs_read_bar,
-	.write = qlcnic_sysfs_write_bar,
 };
 
 void qlcnic_create_sysfs_entries(struct qlcnic_adapter *adapter)
@@ -1439,9 +1376,6 @@ void qlcnic_83xx_add_sysfs(struct qlcnic_adapter *adapter)
 
 	qlcnic_create_diag_entries(adapter);
 
-	if (sysfs_create_bin_file(&dev->kobj, &bin_attr_bar))
-		dev_info(dev, "failed to create mem bar sysfs entry\n");
-
 	if (sysfs_create_bin_file(&dev->kobj, &bin_attr_flash))
 		dev_info(dev, "failed to create flash sysfs entry\n");
 }
@@ -1451,6 +1385,5 @@ void qlcnic_83xx_remove_sysfs(struct qlcnic_adapter *adapter)
 	struct device *dev = &adapter->pdev->dev;
 
 	qlcnic_remove_diag_entries(adapter);
-	sysfs_remove_bin_file(&dev->kobj, &bin_attr_bar);
 	sysfs_remove_bin_file(&dev->kobj, &bin_attr_flash);
 }
