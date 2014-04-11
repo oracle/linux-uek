@@ -856,6 +856,7 @@ enum cpu_idle_type {
 #define SD_ASYM_PACKING		0x0800  /* Place busy groups earlier in the domain */
 #define SD_PREFER_SIBLING	0x1000	/* Prefer to place tasks in a sibling domain */
 #define SD_OVERLAP		0x2000	/* sched_domains of this level overlap */
+#define SD_NUMA			0x4000	/* cross-node balancing */
 
 extern int __weak arch_sd_sibiling_asym_packing(void);
 
@@ -914,6 +915,26 @@ static inline unsigned int group_first_cpu(struct sched_group *group)
 {
 	return cpumask_first(sched_group_cpus(group));
 }
+#ifdef CONFIG_SCHED_SMT
+static inline const int cpu_smt_flags(void)
+{
+	return SD_SHARE_CPUPOWER | SD_SHARE_PKG_RESOURCES;
+}
+#endif
+
+#ifdef CONFIG_SCHED_MC
+static inline const int cpu_core_flags(void)
+{
+	return SD_SHARE_PKG_RESOURCES;
+}
+#endif
+
+#ifdef CONFIG_NUMA
+static inline const int cpu_numa_flags(void)
+{
+	return SD_NUMA;
+}
+#endif
 
 struct sched_domain_attr {
 	int relax_domain_level;
@@ -1028,6 +1049,38 @@ unsigned long default_scale_freq_power(struct sched_domain *sd, int cpu);
 unsigned long default_scale_smt_power(struct sched_domain *sd, int cpu);
 
 bool cpus_share_cache(int this_cpu, int that_cpu);
+
+typedef const struct cpumask *(*sched_domain_mask_f)(int cpu);
+typedef const int (*sched_domain_flags_f)(void);
+
+#define SDTL_OVERLAP	0x01
+
+struct sd_data {
+	struct sched_domain **__percpu sd;
+	struct sched_group **__percpu sg;
+	struct sched_group_power **__percpu sgp;
+};
+
+struct sched_domain_topology_level {
+	sched_domain_mask_f mask;
+	sched_domain_flags_f sd_flags;
+	int		    flags;
+	int		    numa_level;
+	struct sd_data      data;
+#ifdef CONFIG_SCHED_DEBUG
+	char                *name;
+#endif
+};
+
+extern struct sched_domain_topology_level *sched_domain_topology;
+
+extern void set_sched_topology(struct sched_domain_topology_level *tl);
+
+#ifdef CONFIG_SCHED_DEBUG
+# define SD_INIT_NAME(type)		.name = #type
+#else
+# define SD_INIT_NAME(type)
+#endif
 
 #else /* CONFIG_SMP */
 
