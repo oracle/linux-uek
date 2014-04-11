@@ -1436,7 +1436,8 @@ static int nvme_wait_ready(struct nvme_dev *dev, u64 cap, bool enabled)
 			return -EINTR;
 		if (time_after(jiffies, timeout)) {
 			dev_err(&dev->pci_dev->dev,
-				"Device not ready; aborting initialisation\n");
+				"Device not ready; aborting %s\n", enabled ?
+						"initialisation" : "reset");
 			return -ENODEV;
 		}
 	}
@@ -2143,8 +2144,13 @@ static int set_queue_count(struct nvme_dev *dev, int count)
 
 	status = nvme_set_features(dev, NVME_FEAT_NUM_QUEUES, q_count, 0,
 								&result);
-	if (status)
-		return status < 0 ? -EIO : -EBUSY;
+	if (status < 0)
+		return status;
+	if (status > 0) {
+		dev_err(&dev->pci_dev->dev, "Could not set queue count (%d)\n",
+									status);
+		return -EBUSY;
+	}
 	return min(result & 0xffff, result >> 16) + 1;
 }
 
@@ -2280,6 +2286,7 @@ static int nvme_dev_add(struct nvme_dev *dev)
 
 	res = nvme_identify(dev, 0, 1, dma_addr);
 	if (res) {
+		dev_err(&pdev->dev, "Identify Controller failed (%d)\n", res);
 		res = -EIO;
 		goto out;
 	}
