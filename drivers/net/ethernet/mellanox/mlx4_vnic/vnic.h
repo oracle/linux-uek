@@ -155,6 +155,7 @@ extern struct ib_sa_client vnic_sa_client;
 #define VNIC_SYSFS_FLEN		(VNIC_NAME_LEN * 2) /* SYSFS file name len, allow pre/suffix (32)*/
 #define VNIC_SYSFS_LLEN		64
 #define VNIC_VENDOR_LEN		8
+#define DISCOVER_NAME_LEN	(VNIC_DESC_LEN + 5) /* VNIC_DESC_LEN + pkey len */
 #define GID_LEN			16
 #define GUID_LEN		8
 #define IPV4_LEN		4
@@ -934,7 +935,7 @@ struct pkt_rcv_list {
 };
 
 struct fip_discover {
-	char name[VNIC_NAME_LEN];
+	char name[DISCOVER_NAME_LEN];
 	struct vnic_port *port;
 	struct list_head discover_list;
 	spinlock_t lock;
