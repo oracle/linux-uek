@@ -18,6 +18,10 @@
 #define QLC_SRIOV_ALLOW_VLAN0	BIT_19
 #define QLC_INTR_COAL_TYPE_MASK	0x7
 
+#ifndef pci_vfs_assigned
+static int pci_vfs_assigned(struct pci_dev *);
+#endif
+
 static int qlcnic_sriov_pf_get_vport_handle(struct qlcnic_adapter *, u8);
 
 struct qlcnic_sriov_cmd_handler {
@@ -442,11 +446,27 @@ void qlcnic_sriov_pf_cleanup(struct qlcnic_adapter *adapter)
 
 void qlcnic_sriov_pf_disable(struct qlcnic_adapter *adapter)
 {
+	struct qlcnic_vf_info *vf;
+	int i = 0;
+
 	if (!qlcnic_sriov_pf_check(adapter))
 		return;
 
 	if (!qlcnic_sriov_enable_check(adapter))
 		return;
+
+	while (pci_vfs_assigned(adapter->pdev)) {
+		for (i = 0; i < adapter->ahw->sriov->num_vfs; i++) {
+			vf = &adapter->ahw->sriov->vf_info[i];
+			if (vf->pdev->dev_flags & PCI_DEV_FLAGS_ASSIGNED) {
+				if (printk_ratelimit())
+					dev_info(&adapter->pdev->dev,
+						 "Please remove assigned VF device %s from VM\n",
+						 dev_name(&vf->pdev->dev));
+			}
+		}
+		msleep(1000);
+	}
 
 	pci_disable_sriov(adapter->pdev);
 	netdev_info(adapter->netdev,
@@ -604,14 +624,33 @@ disable_vlan_filtering:
 
 static int qlcnic_sriov_pf_enable(struct qlcnic_adapter *adapter, int num_vfs)
 {
-	int err;
+	struct pci_dev *dev = adapter->pdev;
+	struct qlcnic_vf_info *vf;
+	unsigned short vf_dev_id;
+	struct pci_dev *vfdev;
+	int err, i = 0, pos;
 
 	if (!qlcnic_sriov_enable_check(adapter))
 		return 0;
 
 	err = pci_enable_sriov(adapter->pdev, num_vfs);
-	if (err)
+	if (err)  {
 		qlcnic_sriov_pf_cleanup(adapter);
+		return err;
+	}
+
+	pos = pci_find_ext_capability(dev, PCI_EXT_CAP_ID_SRIOV);
+	pci_read_config_word(dev, pos + PCI_SRIOV_VF_DID, &vf_dev_id);
+	vfdev = pci_get_device(dev->vendor, vf_dev_id, NULL);
+	while (vfdev) {
+		if (vfdev->is_virtfn && (vfdev->physfn == dev)) {
+			vf = &adapter->ahw->sriov->vf_info[i];
+			vf->pdev = vfdev;
+			i++;
+		}
+
+		vfdev = pci_get_device(dev->vendor, vf_dev_id, vfdev);
+	}
 
 	return err;
 }

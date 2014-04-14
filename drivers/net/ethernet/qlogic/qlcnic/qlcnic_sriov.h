@@ -153,6 +153,7 @@ struct qlcnic_vf_info {
 	struct qlcnic_adapter		*adapter;
 	struct qlcnic_vport		*vp;
 	spinlock_t			vlan_list_lock;	/* Lock for VLAN list */
+	struct pci_dev			*pdev;
 };
 
 struct qlcnic_async_work_list {
