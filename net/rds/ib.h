@@ -239,9 +239,6 @@ struct rds_ib_connection {
 	int			i_scq_vector;
 	int			i_rcq_vector;
 
-	spinlock_t		i_rx_lock;
-	struct rds_ib_rx_work	i_rx_w;
-	unsigned int		i_rx_wait_for_handler;
 	unsigned int            i_rx_poll_cq;
 };
 
