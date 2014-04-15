@@ -1,6 +1,16 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.4.3 (Apr 15th, 2014)
+------------------------------
+Kernel release: 3.8.13-32.el6uek
+
+New features:
+
+ - Timer based profile-* probes (profile provider).  These probes use the
+   omni-present cyclic support in the UEK3 kernel (3.8.13-32 and later) to
+   fire probes at a speciic frequency/interval on every active CPU.
+
 Release 0.4.2 (Dec 20th, 2013)
 ------------------------------
 Kernel release: 3.8.13-22.el6uek
