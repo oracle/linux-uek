@@ -61,6 +61,7 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
  */
 
 unsigned int rds_ib_sysctl_flow_control = 0;
+unsigned int rds_ib_sysctl_active_bonding = 1;
 
 static struct ctl_table rds_ib_sysctl_table[] = {
 	{
@@ -103,6 +104,13 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 		.maxlen		= sizeof(rds_ib_sysctl_flow_control),
 		.mode		= 0644,
 		.proc_handler	= proc_dointvec,
+	},
+	{
+		.procname       = "active_bonding",
+		.data           = &rds_ib_sysctl_active_bonding,
+		.maxlen         = sizeof(rds_ib_sysctl_active_bonding),
+		.mode           = 0644,
+		.proc_handler   = &proc_dointvec,
 	},
 	{ }
 };
