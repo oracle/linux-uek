@@ -214,6 +214,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&conn->c_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&conn->c_hb_w, rds_hb_worker);
+	INIT_DELAYED_WORK(&conn->c_reconn_w, rds_reconnect_timeout);
 	INIT_DELAYED_WORK(&conn->c_reject_w, rds_reject_worker);
 	INIT_WORK(&conn->c_down_w, rds_shutdown_worker);
 	mutex_init(&conn->c_cm_lock);
@@ -580,15 +581,7 @@ void rds_conn_exit(void)
 				 rds_conn_message_info_retrans);
 }
 
-/*
- * Drop connections when the idled QoS connection not getting
- * disconnect event when the remote peer reboots.  This is causing
- * delayed reconnect, hence application brownout when the peer comes online.
- * The fix was to proactively drop and reconnect them when the base lane is
- * going through the reconnect to the reboot peer, in effect forcing all
- * the lanes to go through the reconnect at the same time.
- */
-static void rds_conn_shutdown_lanes(struct rds_connection *conn)
+static void rds_conn_probe_lanes(struct rds_connection *conn)
 {
 	struct hlist_head *head =
 		rds_conn_bucket(conn->c_laddr, conn->c_faddr);
@@ -600,7 +593,8 @@ static void rds_conn_shutdown_lanes(struct rds_connection *conn)
 			tmp->c_laddr == conn->c_laddr &&
 			tmp->c_tos != 0 &&
 			tmp->c_trans == conn->c_trans) {
-				rds_conn_drop(tmp);
+			if (rds_conn_up(tmp))
+				rds_send_hb(tmp, 0);
 		}
 	}
 	rcu_read_unlock();
@@ -618,11 +612,16 @@ void rds_conn_drop(struct rds_connection *conn)
 		conn->c_reconnect_warn = 1;
 		conn->c_reconnect_drops = 0;
 		conn->c_reconnect_err = 0;
+		conn->c_reconnect_racing = 0;
 		printk(KERN_INFO "RDS/IB: connection "
 			"<%pI4,%pI4,%d> dropped\n",
 			&conn->c_laddr,
 			&conn->c_faddr,
 			conn->c_tos);
+
+		if (conn->c_tos == 0)
+			rds_conn_probe_lanes(conn);
+
 	} else if ((conn->c_reconnect_warn) &&
 		   (now - conn->c_reconnect_start > 60)) {
 		printk(KERN_INFO "RDS/IB: re-connect "
@@ -635,9 +634,8 @@ void rds_conn_drop(struct rds_connection *conn)
 			conn->c_reconnect_err);
 		conn->c_reconnect_warn = 0;
 
-		/* see comment for rds_conn_shutdown_lanes() */
 		if (conn->c_tos == 0)
-			rds_conn_shutdown_lanes(conn);
+			rds_conn_probe_lanes(conn);
 	}
 	conn->c_reconnect_drops++;
 
