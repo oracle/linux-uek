@@ -31,6 +31,7 @@
  *
  */
 #include <rdma/rdma_cm.h>
+#include <rdma/rdma_cm_ib.h>
 
 #include "rdma_transport.h"
 #include "ib.h"
@@ -91,6 +92,40 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		if (rds_ib_apm_enabled)
 			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
 #endif
+
+		if (conn->c_tos && conn->c_reconnect) {
+			struct rds_ib_connection *base_ic =
+				conn->c_base_conn->c_transport_data;
+
+			mutex_lock(&conn->c_base_conn->c_cm_lock);
+			if (rds_conn_transition(conn->c_base_conn, RDS_CONN_UP,
+						RDS_CONN_UP)) {
+				ret = rdma_set_ib_paths(cm_id,
+					base_ic->i_cm_id->route.path_rec,
+					base_ic->i_cm_id->route.num_paths);
+				if (!ret) {
+					struct rds_ib_connection *ic =
+						conn->c_transport_data;
+
+					cm_id->route.path_rec[0].sl =
+						ic->i_sl;
+					cm_id->route.path_rec[0].qos_class =
+						conn->c_tos;
+					ret = trans->cm_initiate_connect(cm_id);
+				}
+			} else {
+				ret = 1;
+			}
+			mutex_unlock(&conn->c_base_conn->c_cm_lock);
+
+			if (ret) {
+				rds_conn_drop(conn);
+				ret = 0;
+			}
+
+			break;
+		}
+
 
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
@@ -172,6 +207,10 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
+		if (conn)
+			rds_conn_drop(conn);
+		break;
+
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
@@ -181,8 +220,14 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	case RDMA_CM_EVENT_REJECTED:
 		err = (int *)event->param.conn.private_data;
+
+		if (conn && event->status == RDS_REJ_CONSUMER_DEFINED &&
+		    *err <= 1)
+			conn->c_reconnect_racing++;
+
 		if (conn) {
-			if (event->status == RDS_REJ_CONSUMER_DEFINED && (*err) == 0) {
+			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
+			    (*err) == 0) {
 				/* Rejection from RDSV3.1 */
 				if (!conn->c_tos) {
 					conn->c_proposed_version =
