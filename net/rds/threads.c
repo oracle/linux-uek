@@ -264,11 +264,35 @@ void rds_hb_worker(struct work_struct *work)
 	}
 }
 
+void rds_reconnect_timeout(struct work_struct *work)
+{
+	struct rds_connection *conn =
+		container_of(work, struct rds_connection, c_reconn_w.work);
+
+	/* if the higher IP has not reconnected, reset back to two-sided
+	 * reconnect.
+	 */
+	if (!rds_conn_up(conn)) {
+		rds_conn_drop(conn);
+		conn->c_reconnect_racing = 0;
+	}
+}
+
 void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
 
-	rds_conn_shutdown(conn, 1);
+
+	/* if racing is detected, lower IP backs off and let the higher IP
+	 * drives the reconnect (one-sided reconnect)
+	 */
+	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
+		rds_conn_shutdown(conn, 0);
+		queue_delayed_work(rds_wq, &conn->c_reconn_w,
+				msecs_to_jiffies(5000));
+	} else
+		rds_conn_shutdown(conn, 1);
+
 }
 
 void rds_threads_exit(void)

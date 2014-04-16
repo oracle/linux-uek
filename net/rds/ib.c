@@ -427,7 +427,7 @@ static void rds_ib_send_gratuitous_arp(struct net_device	*out_dev,
 
 	/* Send multiple ARPs to improve reliability */
 	for (i = 0; i < rds_ib_active_bonding_arps; i++) {
-		arp_send(ARPOP_REQUEST, ETH_P_ARP,
+		arp_send(ARPOP_REPLY, ETH_P_ARP,
 			ip_addr, out_dev,
 			ip_addr, NULL,
 			dev_addr, NULL);
@@ -1732,8 +1732,14 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 
 		break;
 	case NETDEV_DOWN:
-		INIT_DELAYED_WORK(&work->work, rds_ib_failover);
-		queue_delayed_work(rds_wq, &work->work, 0);
+		if (rds_ib_sysctl_active_bonding) {
+			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
+			queue_delayed_work(rds_wq, &work->work, 0);
+		} else {
+			ip_config[port].port_state = RDS_IB_PORT_INIT;
+			ip_config[port].ip_active_port = port;
+			kfree(work);
+		}
 		break;
 	}
 
