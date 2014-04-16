@@ -93,6 +93,7 @@ enum {
 #define RDS_RECV_REFILL		3
 
 #define RDS_RDMA_RESOLVE_TO_MAX_INDEX   5
+#define RDS_ADDR_RES_TM_INDEX_MAX 5
 
 struct rds_connection {
 	struct hlist_node	c_hash_node;
@@ -131,6 +132,7 @@ struct rds_connection {
 	struct delayed_work	c_conn_w;
 	struct delayed_work     c_reject_w;
 	struct delayed_work     c_hb_w;
+	struct delayed_work	c_reconn_w;
 	struct work_struct	c_down_w;
 	struct mutex		c_cm_lock;	/* protect conn state & cm */
 	wait_queue_head_t	c_waitq;
@@ -167,6 +169,8 @@ struct rds_connection {
 	unsigned int            c_route_to_base;
 
 	unsigned int		c_rdsinfo_pending;
+
+	unsigned int		c_reconnect_racing;
 };
 
 #define RDS_FLAG_CONG_BITMAP	0x01
@@ -870,6 +874,7 @@ void rds_send_worker(struct work_struct *);
 void rds_reject_worker(struct work_struct *);
 void rds_recv_worker(struct work_struct *);
 void rds_hb_worker(struct work_struct *);
+void rds_reconnect_timeout(struct work_struct *);
 void rds_connect_complete(struct rds_connection *conn);
 
 /* transport.c */
