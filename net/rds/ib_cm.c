@@ -426,7 +426,7 @@ static void rds_ib_rx(struct rds_ib_connection *ic)
 	if (ic->i_rx_poll_cq >= RDS_IB_RX_LIMIT) {
 		ic->i_rx_w.ic = ic;
 		/* Delay 10 msecs until the RX worker starts reaping again */
-		queue_delayed_work(rds_aux_wq, &ic->i_rx_w,
+		queue_delayed_work(rds_aux_wq, &ic->i_rx_w.work,
 					msecs_to_jiffies(10));
 		ic->i_rx_wait_for_handler = 1;
 	}
@@ -822,6 +822,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
 			unsigned long now = get_seconds();
+
+			conn->c_reconnect_racing++;
 
 			/*
 			 * after 15 seconds, give up on existing connection
