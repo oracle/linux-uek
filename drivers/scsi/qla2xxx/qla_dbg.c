@@ -19,8 +19,8 @@
  * |                              |                    | 0x10ca         |
  * |                              |                    | 0x1115-0x1116  |
  * |                              |                    | 0x111a-0x111b  |
- * | Device Discovery             |       0x2098       | 0x2020-0x2022, |
- * |                              |                    | 0x2016         |
+ * | Device Discovery             |       0x2016       | 0x2020-0x2022  |
+ * |                              |                    | 0x2099-0x20a4  |
  * | Queue Command and IO tracing |       0x3052       | 0x3006-0x300b  |
  * |				  |		       | 0x3027-0x3028  |
  * |                              |                    | 0x304b-0x304c  |
