@@ -44,7 +44,7 @@ static void __init find_early_table_space(struct map_range *mr, int nr_range)
 {
 	int i;
 	unsigned long puds = 0, pmds = 0, ptes = 0, tables;
-	unsigned long start = 0, good_end;
+	unsigned long start = 0, good_end = mr[nr_range - 1].end;
 	unsigned long pgd_extra = 0;
 	phys_addr_t base;
 
@@ -83,8 +83,9 @@ static void __init find_early_table_space(struct map_range *mr, int nr_range)
 #ifdef CONFIG_X86_32
 	/* for fixmap */
 	tables += roundup(__end_of_fixed_addresses * sizeof(pte_t), PAGE_SIZE);
-#endif
+
 	good_end = max_pfn_mapped << PAGE_SHIFT;
+#endif
 
 	base = memblock_find_in_range(start, good_end, tables, PAGE_SIZE);
 	if (!base)
