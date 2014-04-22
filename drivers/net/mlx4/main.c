@@ -273,6 +273,8 @@ void mlx4_set_port_mask(struct mlx4_dev *dev, struct mlx4_caps *caps, int functi
 		caps->port_mask[i] = caps->port_type[i];
 		if (dev->caps.pf_num > 1 && i != active)
 			caps->port_mask[i] = 0;
+		else
+			caps->port_mask[i] = caps->port_type[i];
 	}
 }
 
@@ -617,6 +619,7 @@ int mlx4_change_port_types(struct mlx4_dev *dev,
 		mlx4_unregister_device(dev);
 		for (port = 1; port <= dev->caps.num_ports; port++) {
 			mlx4_CLOSE_PORT(dev, port);
+			dev->caps.port_type[port] = port_types[port - 1];
 			err = mlx4_SET_PORT(dev, port, -1);
 			if (err) {
 				mlx4_err(dev, "Failed to set port %d, "

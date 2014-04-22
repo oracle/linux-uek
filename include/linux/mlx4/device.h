@@ -239,8 +239,8 @@ enum mlx4_special_vlan_idx {
 #define MLX4_LEAST_ATTACHED_VECTOR	0xffffffff
 
 enum mlx4_steer_type {
-	MLX4_UC_STEER = 0,
-	MLX4_MC_STEER,
+	MLX4_MC_STEER = 0,
+	MLX4_UC_STEER,
 	MLX4_NUM_STEERS
 };
 

@@ -64,10 +64,11 @@ enum {
 };
 
 enum {
-	MLX4_MGM_ENTRY_SIZE	=  0x200,
-	MLX4_QP_PER_MGM		= 4 * (MLX4_MGM_ENTRY_SIZE / 16 - 2),
-	MLX4_MTT_ENTRY_PER_SEG	= 8,
-	MLX4_MAX_MGM_ENTRY_SIZE = 0x1000,
+	MLX4_DEF_MGM_ENTRY_SIZE	= 0x200,
+	MLX4_MIN_MGM_ENTRY_SIZE = 0x80,
+	MLX4_MAX_MGM_ENTRY_SIZE	= 0x1000,
+	MLX4_MAX_QP_PER_MGM	= 4 * (MLX4_MAX_MGM_ENTRY_SIZE / 16 - 2),
+	MLX4_MTT_ENTRY_PER_SEG	= 8
 };
 
 enum {
@@ -744,6 +745,14 @@ struct mlx4_mfunc {
 	dma_addr_t			vhcr_dma;
 
 	struct mlx4_mfunc_master_ctx	master;
+};
+
+struct mlx4_mgm {
+	__be32			next_gid_index;
+	__be32			members_count;
+	u32			reserved[2];
+	u8			gid[16];
+	__be32			qp[MLX4_MAX_QP_PER_MGM];
 };
 
 struct mlx4_cmd {

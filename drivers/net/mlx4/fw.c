@@ -534,12 +534,11 @@ int mlx4_QUERY_DEV_CAP(struct mlx4_dev *dev, struct mlx4_dev_cap *dev_cap)
 	dev_cap->stat_rate_support = stat_rate;
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_UDP_RSS_OFFSET);
 	dev_cap->udp_rss = field & 0x1;
+	dev_cap->vep_uc_steering = field & 0x2;
+	dev_cap->vep_mc_steering = field & 0x4;
 	MLX4_GET(field, outbox, QUERY_DEV_CAP_ETH_UC_LOOPBACK_OFFSET);
 	dev_cap->loopback_support = field & 0x1;
-	dev_cap->vep_uc_steering = field & 0x4;
-	//dev_cap->vep_mc_steering = field & 0x8;
-	dev_cap->vep_mc_steering = 0; /* TODO : EN won't work wit SRIOV mode */
-	dev_cap->wol = field & 0x40;
+	dev_cap->wol = field & 0x60;
 	MLX4_GET(tmp1, outbox, QUERY_DEV_CAP_EXT_FLAGS_OFFSET);
 	MLX4_GET(tmp2, outbox, QUERY_DEV_CAP_FLAGS_OFFSET);
 	dev_cap->flags = tmp2 | (u64)tmp1 << 32;
@@ -1139,8 +1138,9 @@ int mlx4_INIT_HCA(struct mlx4_dev *dev, struct mlx4_init_hca_param *param)
 	MLX4_PUT(inbox, param->mc_base,		INIT_HCA_MC_BASE_OFFSET);
 	MLX4_PUT(inbox, param->log_mc_entry_sz, INIT_HCA_LOG_MC_ENTRY_SZ_OFFSET);
 	MLX4_PUT(inbox, param->log_mc_hash_sz,  INIT_HCA_LOG_MC_HASH_SZ_OFFSET);
-	if (dev->caps.vep_mc_steering)
+	if (dev->caps.vep_uc_steering)
 		MLX4_PUT(inbox, (u8) (1 << 3),	INIT_HCA_UC_STEERING_OFFSET);
+
 	MLX4_PUT(inbox, param->log_mc_table_sz, INIT_HCA_LOG_MC_TABLE_SZ_OFFSET);
 
 	/* TPT attributes */

@@ -143,6 +143,7 @@ void mlx4_start_sense(struct mlx4_dev *dev)
 void mlx4_stop_sense(struct mlx4_dev *dev)
 {
 	mlx4_priv(dev)->sense.resched = 0;
+	cancel_delayed_work(&mlx4_priv(dev)->sense.sense_poll);
 }
 
 int mlx4_sense_init(struct mlx4_dev *dev)
