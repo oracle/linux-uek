@@ -1338,18 +1338,18 @@ int vnic_ib_post_send(struct ib_qp *ibqp,
 		      u8 tcp_off, u8 udp_off)
 {
 	struct mlx4_ib_qp *qp = to_mqp(ibqp);
-	void *wqe;
-	struct mlx4_wqe_ctrl_seg *ctrl;
-	struct mlx4_wqe_data_seg *dseg;
+	void *wqe = NULL;
+	struct mlx4_wqe_ctrl_seg *ctrl = NULL;
+	struct mlx4_wqe_data_seg *dseg = NULL;
 	__be32 owner_opcode = 0;
-	int nreq;
+	int nreq = 0;
 	int err = 0;
 	unsigned ind;
 	int uninitialized_var(stamp);
 	int uninitialized_var(size);
 	unsigned uninitialized_var(seglen);
 	__be32 dummy;
-	__be32 *lso_wqe;
+	__be32 *lso_wqe = NULL;
 	__be32 uninitialized_var(lso_hdr_sz);
 	int i;
 	int blh = 0;
@@ -1357,8 +1357,6 @@ int vnic_ib_post_send(struct ib_qp *ibqp,
 	int inl = 0;
 
 	ind = qp->sq_next_wqe;
-
-	nreq = 0;
 	lso_wqe = &dummy;
 
 	if (mlx4_wq_overflow(&qp->sq, nreq, qp->ibqp.send_cq)) {
