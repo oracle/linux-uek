@@ -520,7 +520,7 @@ static int dn_fib_rtm_delroute(struct sk_buff *skb, struct nlmsghdr *nlh, void *
 	struct rtattr **rta = arg;
 	struct rtmsg *r = NLMSG_DATA(nlh);
 
-	if (!capable(CAP_NET_ADMIN))
+	if (!netlink_capable(skb, CAP_NET_ADMIN))
 		return -EPERM;
 
 	if (!net_eq(net, &init_net))
@@ -543,7 +543,7 @@ static int dn_fib_rtm_newroute(struct sk_buff *skb, struct nlmsghdr *nlh, void *
 	struct rtattr **rta = arg;
 	struct rtmsg *r = NLMSG_DATA(nlh);
 
-	if (!capable(CAP_NET_ADMIN))
+	if (!netlink_capable(skb, CAP_NET_ADMIN))
 		return -EPERM;
 
 	if (!net_eq(net, &init_net))
