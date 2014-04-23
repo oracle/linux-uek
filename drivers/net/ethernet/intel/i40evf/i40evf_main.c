@@ -1964,7 +1964,7 @@ static void i40evf_init_task(struct work_struct *work)
 		}
 		err = i40evf_check_reset_complete(hw);
 		if (err) {
-			dev_err(&pdev->dev, "Device is still in reset (%d)\n",
+			dev_info(&pdev->dev, "Device is still in reset (%d), retrying\n",
 				err);
 			goto err;
 		}
@@ -1997,7 +1997,7 @@ static void i40evf_init_task(struct work_struct *work)
 		/* aq msg sent, awaiting reply */
 		err = i40evf_verify_api_ver(adapter);
 		if (err) {
-			dev_err(&pdev->dev, "Unable to verify API version (%d)\n",
+			dev_info(&pdev->dev, "Unable to verify API version (%d), retrying\n",
 				err);
 			goto err;
 		}
