@@ -1,7 +1,7 @@
 DTrace Kernel Modules News
 ==========================
 
-Release 0.4.3 (Apr 15th, 2014)
+Release 0.4.3 (Apr 24th, 2014)
 ------------------------------
 Kernel release: 3.8.13-32.el6uek
 
@@ -10,6 +10,21 @@ New features:
  - Timer based profile-* probes (profile provider).  These probes use the
    omni-present cyclic support in the UEK3 kernel (3.8.13-32 and later) to
    fire probes at a speciic frequency/interval on every active CPU.
+
+Changes:
+
+ - The pid and ppid variables were being reported based on the kernel task
+   PID, which is not the same as the userspace concept of a PID (for threaded
+   applications).  We now pass (more correctly) the thread group id (tgid).
+ - Since userspace doesn't know about thread kernel level) pids, we are now
+   also passing the tgid in the result of ustack, usym, etc...  We pass the
+   tgid in the first slot, and the (kernel) pid in the second slot.
+
+Bugfixes:
+
+ - Major reworking of the dtracce_getufpstack() implementation to handle
+   locking, stack detection, and potential page fault while accessing the
+   stack of a task.
 
 Release 0.4.2 (Dec 20th, 2013)
 ------------------------------
