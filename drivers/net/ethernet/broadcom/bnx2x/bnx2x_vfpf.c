@@ -1178,7 +1178,7 @@ static void bnx2x_vf_mbx_acquire_resp(struct bnx2x *bp, struct bnx2x_virtf *vf,
 			bnx2x_vf_max_queue_cnt(bp, vf);
 		resc->num_sbs = vf_sb_count(vf);
 		resc->num_mac_filters = vf_mac_rules_cnt(vf);
-		resc->num_vlan_filters = vf_vlan_rules_cnt(vf);
+		resc->num_vlan_filters = vf_vlan_rules_visible_cnt(vf);
 		resc->num_mc_filters = 0;
 		resc->pf_link_speed = bp->link_vars.line_speed;
 		resc->pf_link_supported = bp->port.supported[0];
