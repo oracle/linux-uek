@@ -226,6 +226,11 @@ MODULE_PARM_DESC(ql2xmdenable,
 		"0 - MiniDump disabled. "
 		"1 (Default) - MiniDump enabled.");
 
+ushort ql2xsg_tablesize = QLA_SG_ALL;
+module_param(ql2xsg_tablesize, ushort, S_IRUGO);
+MODULE_PARM_DESC(ql2xsg_tablesize,
+		"Number of entries in scatter/gather table.");
+
 /*
  * SCSI host template entry points
  */
@@ -2649,7 +2654,7 @@ qla2x00_probe_one(struct pci_dev *pdev, const struct pci_device_id *id)
 			host->sg_tablesize = 32;
 	} else {
 		if (!IS_QLA82XX(ha))
-			host->sg_tablesize = QLA_SG_ALL;
+			host->sg_tablesize = ql2xsg_tablesize;
 	}
 	host->max_id = ha->max_fibre_devices;
 	host->cmd_per_lun = 3;
