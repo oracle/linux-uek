@@ -26,6 +26,15 @@ Bugfixes:
    locking, stack detection, and potential page fault while accessing the
    stack of a task.
 
+Known problems:
+
+ - As a result of earlier code changes to ensure that all memory allocation
+   requests are checked for failures, the test for auto-resize behaviour of
+   the principal buffer allocations results in the dtrace utility aborted
+   processing rather than continuing operation with the reduced buffer size.
+   This is overall a non-harmful regression that will be addressed in a future
+   release.
+
 Release 0.4.2 (Dec 20th, 2013)
 ------------------------------
 Kernel release: 3.8.13-22.el6uek

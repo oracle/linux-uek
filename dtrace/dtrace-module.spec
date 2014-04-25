@@ -31,7 +31,7 @@
 
 	if rpm.vercmp(kver, "3.8.13-32") >= 0 then
 		rpm.define("srcver 0.4.3")
-		rpm.define("bldrel 2")
+		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_3}"))
 	elseif rpm.vercmp(kver, "3.8.13-22") >= 0 then
 		rpm.define("srcver 0.4.2")
@@ -215,8 +215,12 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_4_3}
+* Fri Apr 24 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-4
+- Updated NEWS file: test stress/buffering/tst.resize1.d is XFAIL for now.
+* Fri Apr 24 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-3
+- Rebuild with cleaned up source tree.
 * Thu Apr 24 2014 Nick Alcock <nick.alcock@oracle.com> - 0.4.3-2
-  Various fixes to handle multi-threaded processes.
+- Various fixes to handle multi-threaded processes.
   [Orabug: 18412802]
 * Tue Apr 15 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-1
 - Implmentation of profile-* probes in the profile provider.
