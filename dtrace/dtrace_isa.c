@@ -267,7 +267,7 @@ static struct vm_area_struct *find_user_vma(struct task_struct *tsk,
 {
 	struct vm_area_struct *vma = NULL;
 	int nonblocking = 1;
-	int flags = FOLL_NOFAULT;
+	int flags = FOLL_IMMED;
 	int ret;
 
 	if (page)
