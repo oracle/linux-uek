@@ -127,7 +127,11 @@ int ext4_sync_file(struct file *file, loff_t start, loff_t end, int datasync)
 	ret = filemap_write_and_wait_range(inode->i_mapping, start, end);
 	if (ret)
 		return ret;
-	mutex_lock(&inode->i_mutex);
+	if (!mutex_trylock(&inode->i_mutex)) {
+		ret = blkdev_issue_flush(inode->i_sb->s_bdev, GFP_KERNEL, NULL);
+		trace_ext4_sync_file_exit(inode, ret);
+		return ret;
+	}
 
 	if (inode->i_sb->s_flags & MS_RDONLY)
 		goto out;
