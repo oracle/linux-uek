@@ -558,8 +558,10 @@ void ipoib_send(struct net_device *dev, struct sk_buff *skb,
 	if (skb_is_gso(skb)) {
 		hlen = skb_transport_offset(skb) + tcp_hdrlen(skb);
 		phead = skb->data;
-		if (unlikely(!skb_pull(skb, hlen))) {
-			ipoib_warn(priv, "linear data too small\n");
+		if (unlikely(!skb_pull(skb, hlen) ||
+			     (skb_shinfo(skb)->gso_size > priv->max_ib_mtu))) {
+			ipoib_warn(priv, "linear data too small: hlen: %d Or skb_shinfo(skb)->gso_size: %d is bigger than port-mtu: %d\n",
+				   hlen, skb_shinfo(skb)->gso_size, priv->max_ib_mtu);
 			++dev->stats.tx_dropped;
 			++dev->stats.tx_errors;
 			dev_kfree_skb_any(skb);
