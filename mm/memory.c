@@ -1466,9 +1466,10 @@ EXPORT_SYMBOL_GPL(zap_vma_ptes);
  *
  * @flags can have FOLL_ flags set, defined in <linux/mm.h>
  *
- * Returns the mapped (struct page *), %NULL if no mapping exists, or
- * an error pointer if there is a mapping to something not represented
- * by a page descriptor (see also vm_normal_page()).
+ * Returns the mapped (struct page *), %NULL if no mapping exists or if
+ * FOLL_IMMED is set and the PTE is locked, or an error pointer if there is a
+ * mapping to something not represented by a page descriptor (see also
+ * vm_normal_page()).
  */
 struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 			unsigned int flags)
@@ -1535,6 +1536,9 @@ struct page *follow_page(struct vm_area_struct *vma, unsigned long address,
 	}
 split_fallthrough:
 	if (unlikely(pmd_bad(*pmd)))
+		goto no_page_table;
+
+	if ((flags & FOLL_IMMED) && pte_is_locked(mm, pmd))
 		goto no_page_table;
 
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
@@ -1666,14 +1670,14 @@ static inline int stack_guard_page(struct vm_area_struct *vma, unsigned long add
  * appropriate) must be called after the page is finished with, and
  * before put_page is called.
  *
- * If FOLL_NOFAULT is set, pinning of pages will cease as soon as a page is
+ * If FOLL_IMMED is set, pinning of pages will cease as soon as a page is
  * encountered that needs to be fauled in.  (No attempt is made to see if
  * further pages could be pinned without faulting: the caller must do that, if
  * desired.)
  *
  * If @nonblocking != NULL, __get_user_pages will not wait for disk IO
  * or mmap_sem contention, and if waiting is needed to pin all pages,
- * or FOLL_NOFAULT is set and a fault is needed, *@nonblocking will be set to
+ * or FOLL_IMMED is set and a fault is needed, *@nonblocking will be set to
  * 0.
  *
  * In most cases, get_user_pages or get_user_pages_fast should be used
@@ -1794,7 +1798,7 @@ int __get_user_pages(struct task_struct *tsk, struct mm_struct *mm,
 				int ret;
 				unsigned int fault_flags = 0;
 
-				if (unlikely(foll_flags & FOLL_NOFAULT)) {
+				if (unlikely(foll_flags & FOLL_IMMED)) {
 					if (nonblocking)
 						*nonblocking = 0;
 					return i;
