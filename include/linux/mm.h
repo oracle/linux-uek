@@ -1782,6 +1782,12 @@ static inline void pgtable_page_dtor(struct page *page)
 	__pte;						\
 })
 
+#define pte_is_locked(mm, pmd)				\
+({							\
+	spinlock_t *__ptl = pte_lockptr(mm, pmd);	\
+	spin_is_locked(__ptl);				\
+})
+
 #define pte_unmap_unlock(pte, ptl)	do {		\
 	spin_unlock(ptl);				\
 	pte_unmap(pte);					\
@@ -2369,7 +2375,7 @@ static inline struct page *follow_page(struct vm_area_struct *vma,
 #define FOLL_MLOCK	0x1000	/* lock present pages */
 #define FOLL_REMOTE	0x2000	/* we are working on non-current tsk/mm */
 #define FOLL_COW	0x4000	/* internal GUP flag */
-#define FOLL_NOFAULT	0x8000	/* fail rather than fault pages in */
+#define FOLL_IMMED	0x08000000	/* fail if locking, or faulting pages in */
 
 static inline int vm_fault_to_errno(int vm_fault, int foll_flags)
 {
