@@ -2394,11 +2394,13 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 #define SUPPORT_PCIE_ARI_CHECK
 #endif
 
-#if ((defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
-#define BCM_ETHTOOL_TS_INFO_OPS
-#define BCM_ETHTOOL_TS_INFO
-#define BCM_PTP
-#endif
+/*
+ * #if ((defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
+ * #define BCM_ETHTOOL_TS_INFO_OPS
+ * #define BCM_ETHTOOL_TS_INFO
+ * #define BCM_PTP
+ * #endif
+ */
 
 #ifdef _DEFINE_EPROBE_DEFER
 #define EPROBE_DEFER EBUSY
