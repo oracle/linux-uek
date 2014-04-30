@@ -83,6 +83,9 @@ retry:
 	if (unlikely(pmd_bad(*pmd)))
 		return no_page_table(vma, flags);
 
+	if ((flags & FOLL_IMMED) && pte_is_locked(mm, pmd))
+                return no_page_table(vma, flags);
+
 	ptep = pte_offset_map_lock(mm, pmd, address, &ptl);
 	pte = *ptep;
 	if (!pte_present(pte)) {
@@ -374,9 +377,10 @@ static struct page *follow_p4d_mask(struct vm_area_struct *vma,
  *
  * @flags can have FOLL_ flags set, defined in <linux/mm.h>
  *
- * Returns the mapped (struct page *), %NULL if no mapping exists, or
- * an error pointer if there is a mapping to something not represented
- * by a page descriptor (see also vm_normal_page()).
+ * Returns the mapped (struct page *), %NULL if no mapping exists or if
+ * FOLL_IMMED is set and the PTE is locked, or an error pointer if there is a
+ * mapping to something not represented by a page descriptor (see also
+ * vm_normal_page()).
  */
 struct page *follow_page_mask(struct vm_area_struct *vma,
 			      unsigned long address, unsigned int flags,
@@ -487,7 +491,7 @@ static int faultin_page(struct task_struct *tsk, struct vm_area_struct *vma,
 	if ((*flags & (FOLL_POPULATE | FOLL_MLOCK)) == FOLL_MLOCK)
 		return -ENOENT;
 
-	if (unlikely(*flags & FOLL_NOFAULT)) {
+	if (unlikely(*flags & FOLL_IMMED)) {
 		if (nonblocking)
 			*nonblocking = 0;
 		return -EBUSY;
@@ -627,14 +631,14 @@ static int check_vma_flags(struct vm_area_struct *vma, unsigned long gup_flags)
  * appropriate) must be called after the page is finished with, and
  * before put_page is called.
  *
- * If FOLL_NOFAULT is set, pinning of pages will cease as soon as a page is
+ * If FOLL_IMMED is set, pinning of pages will cease as soon as a page is
  * encountered that needs to be faulted in.  (No attempt is made to see if
  * further pages could be pinned without faulting: the caller must do that, if
  * desired.)
  *
  * If @nonblocking != NULL, __get_user_pages will not wait for disk IO or
  * mmap_sem contention, and if waiting is needed to pin all pages, or
- * FOLL_NOFAULT is set and a fault is needed, *@nonblocking will be set to 0.
+ * FOLL_IMMED is set and a fault is needed, *@nonblocking will be set to 0.
  * Further, if @gup_flags does not include FOLL_NOWAIT, the mmap_sem will be
  * released via up_read() in this case.
  *
