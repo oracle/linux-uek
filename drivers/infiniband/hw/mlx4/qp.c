@@ -2566,7 +2566,7 @@ static void build_tunnel_header(struct ib_send_wr *wr, void *wqe, unsigned *mlx_
 	if (sizeof (hdr) <= spc) {
 		memcpy(inl + 1, &hdr, sizeof (hdr));
 		wmb();
-		inl->byte_count = cpu_to_be32(1 << 31 | sizeof (hdr));
+		inl->byte_count = cpu_to_be32(1 << 31 | (u32)sizeof (hdr));
 		i = 1;
 	} else {
 		memcpy(inl + 1, &hdr, spc);
