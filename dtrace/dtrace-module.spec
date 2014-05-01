@@ -10,7 +10,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-32.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-33.el6uek}
 
 # Select the correct source code version based on the kernel version.
 # Failing to pick the correct version can have disasterous effects!
@@ -29,7 +29,7 @@
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
-	if rpm.vercmp(kver, "3.8.13-32") >= 0 then
+	if rpm.vercmp(kver, "3.8.13-33") >= 0 then
 		rpm.define("srcver 0.4.3")
 		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_3}"))
@@ -217,6 +217,8 @@ rm -rf %{buildroot}
 %if %{dt_vcode} >= %{dt_0_4_3}
 * Fri Apr 24 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-4
 - Updated NEWS file: test stress/buffering/tst.resize1.d is XFAIL for now.
+- Align with kernel header file change: FOLL_NOFAULT -> FOLL_IMMED.
+  [Orabug: 18653713]
 * Fri Apr 24 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-3
 - Rebuild with cleaned up source tree.
 * Thu Apr 24 2014 Nick Alcock <nick.alcock@oracle.com> - 0.4.3-2
