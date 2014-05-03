@@ -110,7 +110,7 @@ void fnic_handle_link(struct work_struct *work)
 				fnic_fc_trace_set_data(
 					fnic->lport->host->host_no, FNIC_FC_LE,
 					"Link Status: UP_UP",
-                                        strlen("Link Status: UP_UP"));
+					strlen("Link Status: UP_UP"));
 			}
 		}
 	} else if (fnic->link_status) {

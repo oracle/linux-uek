@@ -730,10 +730,11 @@ void copy_and_format_trace_data(fc_trace_hdr_t *tdata,
 {
         struct tm tm;
         int j, i = 1, len;
-        char * fc_trace;
+        char * fc_trace, *fmt;
 	int ethhdr_len = sizeof (struct ethhdr) - 1;
 	int fcoehdr_len = sizeof (struct fcoe_hdr);
 	int fchdr_len = sizeof (struct fc_frame_header);
+	int max_size = fnic_fc_trace_max_pages * PAGE_SIZE * 3;
 
 	tdata->frame_type = tdata->frame_type & 0x7F;
 
@@ -741,14 +742,14 @@ void copy_and_format_trace_data(fc_trace_hdr_t *tdata,
 
 	time_to_tm(tdata->time_stamp.tv_sec, 0, &tm);
 
-        len += snprintf(fnic_dbgfs_prt->buffer + len,
-                       (fnic_fc_trace_max_pages * PAGE_SIZE *3) -len,
-                        "%02d:%02d:%04ld %02d:%02d:%02d.%09lu ns"
-                        "%8x       %c%8x\t",
-                        tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900,
-                        tm.tm_hour, tm.tm_min, tm.tm_sec,
-                        tdata->time_stamp.tv_nsec, tdata->host_no,
-                        tdata->frame_type, tdata->frame_len);
+	fmt = "%02d:%02d:%04ld %02d:%02d:%02d.%09lu ns%8x       %c%8x\t";
+	len += snprintf(fnic_dbgfs_prt->buffer + len,
+		max_size - len,
+		fmt,
+		tm.tm_mon + 1, tm.tm_mday, tm.tm_year + 1900,
+		tm.tm_hour, tm.tm_min, tm.tm_sec,
+		tdata->time_stamp.tv_nsec, tdata->host_no,
+		tdata->frame_type, tdata->frame_len);
 
         fc_trace = (char *)FC_TRACE_ADDRESS(tdata);
 
@@ -770,9 +771,8 @@ void copy_and_format_trace_data(fc_trace_hdr_t *tdata,
                             j == ethhdr_len + fcoehdr_len + fchdr_len ||
                             (i > 3 && j%fchdr_len == 0)) {
 				len += snprintf(fnic_dbgfs_prt->buffer
-					+ len, (fnic_fc_trace_max_pages
-                                        * PAGE_SIZE * 3) -len,
-                                        "\n\t\t\t\t\t\t\t\t");
+					+ len, max_size - len,
+					"\n\t\t\t\t\t\t\t\t");
 				i++;
 			}
 		} // end of else
