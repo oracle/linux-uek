@@ -113,6 +113,7 @@ ext4_file_dio_write(struct kiocb *iocb, struct iov_iter *iter,
 
 	BUG_ON(iocb->ki_pos != pos);
 
+	sb_start_write(inode->i_sb);
 	mutex_lock(&inode->i_mutex);
 	blk_start_plug(&plug);
 
@@ -155,6 +156,7 @@ ext4_file_dio_write(struct kiocb *iocb, struct iov_iter *iter,
 			ret = err;
 	}
 	blk_finish_plug(&plug);
+	sb_end_write(inode->i_sb);
 
 	if (unaligned_aio)
 		mutex_unlock(ext4_aio_mutex(inode));
