@@ -328,6 +328,9 @@ struct quotactl_ops {
 	int (*set_dqblk)(struct super_block *, struct kqid, struct fs_disk_quota *);
 	int (*get_xstate)(struct super_block *, struct fs_quota_stat *);
 	int (*set_xstate)(struct super_block *, unsigned int, int);
+#ifndef __GENKSYMS__
+	int (*rm_xquota)(struct super_block *, unsigned int);
+#endif
 };
 
 struct quota_format_type {
