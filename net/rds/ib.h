@@ -149,7 +149,7 @@ struct rds_ib_migrate_work {
 };
 
 struct rds_ib_rx_work {
-	struct delayed_work             dlywork;
+	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
 };
 
@@ -240,6 +240,10 @@ struct rds_ib_connection {
 	int			i_rcq_vector;
 
 	unsigned int            i_rx_poll_cq;
+	struct rds_ib_rx_work   i_rx_w;
+	spinlock_t              i_rx_lock;
+	unsigned int            i_rx_wait_for_handler;
+	atomic_t                i_worker_has_rx;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
