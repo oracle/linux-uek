@@ -10947,8 +10947,8 @@ static void bnx2x_prev_unload_close_mac(struct bnx2x *bp,
 #define BCM_5710_UNDI_FW_MF_MAJOR	(0x07)
 #define BCM_5710_UNDI_FW_MF_MINOR	(0x08)
 #define BCM_5710_UNDI_FW_MF_VERS	(0x05)
-#define BNX2X_PREV_UNDI_MF_PORT(p)	(0x1a150c + ((p) << 4))
-#define BNX2X_PREV_UNDI_MF_FUNC(f)	(0x1a184c + ((f) << 4))
+#define BNX2X_PREV_UNDI_MF_PORT(p) (BAR_TSTRORM_INTMEM + 0x150c + ((p) << 4))
+#define BNX2X_PREV_UNDI_MF_FUNC(f) (BAR_TSTRORM_INTMEM + 0x184c + ((f) << 4))
 static bool bnx2x_prev_unload_undi_fw_supports_mf(struct bnx2x *bp)
 {
 	u8 major, minor, version;
@@ -11247,6 +11247,7 @@ static int bnx2x_prev_unload_common(struct bnx2x *bp)
 	/* Reset should be performed after BRB is emptied */
 	if (reset_reg & MISC_REGISTERS_RESET_REG_1_RST_BRB1) {
 		u32 timer_count = 1000;
+		bool need_write = true;
 
 		/* Close the MAC Rx to prevent BRB from filling up */
 		bnx2x_prev_unload_close_mac(bp, &mac_vals);
@@ -11293,7 +11294,10 @@ static int bnx2x_prev_unload_common(struct bnx2x *bp)
 			 * cleaning methods - might be redundant but unharmful.
 			 */
 			if (bnx2x_prev_unload_undi_fw_supports_mf(bp)) {
-				bnx2x_prev_unload_undi_mf(bp);
+				if (need_write) {
+					bnx2x_prev_unload_undi_mf(bp);
+					need_write = false;
+				}
 			} else if (prev_undi) {
 				/* If UNDI resides in memory,
 				 * manually increment it
