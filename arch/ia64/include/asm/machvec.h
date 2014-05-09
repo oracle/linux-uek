@@ -287,7 +287,7 @@ extern const struct dma_map_ops *dma_get_ops(struct device *);
 # define platform_dma_get_ops		dma_get_ops
 #endif
 #ifndef platform_dma_get_required_mask
-# define  platform_dma_get_required_mask	ia64_dma_get_required_mask
+# define platform_dma_get_required_mask	dma_get_required_mask_from_max_pfn
 #endif
 #ifndef platform_irq_to_vector
 # define platform_irq_to_vector		__ia64_irq_to_vector

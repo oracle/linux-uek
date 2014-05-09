@@ -637,6 +637,7 @@ static inline int dma_coerce_mask_and_coherent(struct device *dev, u64 mask)
 	return dma_set_mask_and_coherent(dev, mask);
 }
 
+extern u64 dma_get_required_mask_from_max_pfn(struct device *dev);
 extern u64 dma_get_required_mask(struct device *dev);
 
 #ifndef arch_setup_dma_ops

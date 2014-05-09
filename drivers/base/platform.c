@@ -1162,8 +1162,7 @@ int __init platform_bus_init(void)
 	return error;
 }
 
-#ifndef ARCH_HAS_DMA_GET_REQUIRED_MASK
-u64 dma_get_required_mask(struct device *dev)
+u64 dma_get_required_mask_from_max_pfn(struct device *dev)
 {
 	u32 low_totalram = ((max_pfn - 1) << PAGE_SHIFT);
 	u32 high_totalram = ((max_pfn - 1) >> (32 - PAGE_SHIFT));
@@ -1180,6 +1179,13 @@ u64 dma_get_required_mask(struct device *dev)
 		mask = (((u64)high_totalram) << 32) + 0xffffffff;
 	}
 	return mask;
+}
+EXPORT_SYMBOL_GPL(dma_get_required_mask_from_max_pfn);
+
+#ifndef ARCH_HAS_DMA_GET_REQUIRED_MASK
+u64 dma_get_required_mask(struct device *dev)
+{
+	return dma_get_required_mask_from_max_pfn(dev);
 }
 EXPORT_SYMBOL_GPL(dma_get_required_mask);
 #endif
