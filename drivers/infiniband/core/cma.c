@@ -4436,7 +4436,12 @@ static struct notifier_block cma_nb = {
 
 static void cma_port_ud_handler(struct work_struct *work)
 {
-
+	/*
+	 * FIXME: Workaround for Bug 18355863. This function is called by async
+	 * event handler primarily for APM. Since APM is disabled for RDS and
+	 * SDP, we just #ifdef out the code below until have a fix for 18355863.
+	 */
+#if 0
 	struct cma_port_ud_work *w = container_of(work, struct cma_port_ud_work, work);
 	struct cma_device *cma_dev = w->cma_dev;
 
@@ -4539,6 +4544,7 @@ static void cma_port_ud_handler(struct work_struct *work)
 		}
 		mutex_unlock(&id_priv->handler_mutex);
 	}
+#endif
 	kfree(work);
 }
 
