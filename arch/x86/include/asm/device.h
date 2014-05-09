@@ -21,4 +21,6 @@ void del_dma_domain(struct dma_domain *domain);
 struct pdev_archdata {
 };
 
+#define ARCH_HAS_DMA_GET_REQUIRED_MASK
+
 #endif /* _ASM_X86_DEVICE_H */

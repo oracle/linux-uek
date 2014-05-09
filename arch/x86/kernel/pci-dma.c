@@ -149,6 +149,14 @@ bool arch_dma_alloc_attrs(struct device **dev, gfp_t *gfp)
 }
 EXPORT_SYMBOL(arch_dma_alloc_attrs);
 
+u64 dma_get_required_mask(struct device *dev)
+{
+	if (dma_ops->get_required_mask)
+		return dma_ops->get_required_mask(dev);
+	return dma_get_required_mask_from_max_pfn(dev);
+}
+EXPORT_SYMBOL(dma_get_required_mask);
+
 /*
  * See <Documentation/x86/x86_64/boot-options.txt> for the iommu kernel
  * parameter documentation.
