@@ -239,8 +239,6 @@ static void sdp_reset_keepalive_timer(struct sock *sk, unsigned long len)
 {
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_dbg(sk, "%s\n", __func__);
-
 	ssk->keepalive_tx_head = ring_head(ssk->tx_ring);
 	ssk->keepalive_rx_head = ring_head(ssk->rx_ring);
 
@@ -264,7 +262,6 @@ static void sdp_keepalive_timer(unsigned long data)
 	struct sock *sk = (struct sock *)data;
 	struct sdp_sock *ssk = sdp_sk(sk);
 
-	sdp_dbg(sk, "%s\n", __func__);
 	SDPSTATS_COUNTER_INC(keepalive_timer);
 
 	/* Only process if the socket is not in use */
@@ -291,8 +288,6 @@ out:
 
 static void sdp_set_keepalive(struct sock *sk, int val)
 {
-	sdp_dbg(sk, "%s %d\n", __func__, val);
-
 	if ((1 << sk->sk_state) & (TCPF_CLOSE | TCPF_LISTEN))
 		return;
 

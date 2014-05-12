@@ -31,6 +31,7 @@
  */
 #include <linux/interrupt.h>
 #include <linux/dma-mapping.h>
+#include <linux/ratelimit.h>
 #include <rdma/ib_verbs.h>
 #include <rdma/rdma_cm.h>
 #include "sdp.h"
@@ -427,8 +428,9 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 {
 	int rc;
 	struct ib_send_wr wr, *bad_wr;
-
-	sdp_dbg(sk_ssk(ssk), "%s\n", __func__);
+	static DEFINE_RATELIMIT_STATE(_rs,
+		DEFAULT_RATELIMIT_INTERVAL,
+		DEFAULT_RATELIMIT_BURST);
 
 	memset(&wr, 0, sizeof(wr));
 
@@ -437,15 +439,19 @@ void sdp_post_keepalive(struct sdp_sock *ssk)
 	wr.sg_list = NULL;
 	wr.num_sge = 0;
 	wr.opcode  = IB_WR_RDMA_WRITE;
+	wr.send_flags = IB_SEND_SIGNALED;
 
 	rc = ib_post_send(ssk->qp, &wr, &bad_wr);
 	if (rc) {
-		sdp_dbg(sk_ssk(ssk),
-			"ib_post_keepalive failed with status %d.\n", rc);
-		sdp_set_error(sk_ssk(ssk), -ECONNRESET);
+		if (__ratelimit(&_rs))
+			sdp_warn(sk_ssk(ssk),
+				"ib_post_keepalive "
+				"failed with status %d.\n", rc);
+	} else {
+		sdp_cnt(sdp_keepalive_probes_sent);
 	}
 
-	sdp_cnt(sdp_keepalive_probes_sent);
+	sdp_xmit_poll(ssk, 1);
 }
 
 static void sdp_tx_cq_event_handler(struct ib_event *event, void *data)
