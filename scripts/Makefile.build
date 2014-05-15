@@ -554,7 +554,7 @@ ifdef CONFIG_DTRACE
 # We need secondary expansion for the %.sdtstub.S creation rule
 .SECONDEXPANSION:
 
-sdtgen = scripts/dtrace_sdt.sh
+sdtgen = $(srctree)/scripts/dtrace_sdt.sh
 
 quiet_cmd_sdtstub = SDTSTB  $@
       cmd_sdtstub = $(sdtgen) sdtstub $@ \

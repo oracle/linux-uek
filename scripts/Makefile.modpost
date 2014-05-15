@@ -117,7 +117,7 @@ quiet_cmd_cc_o_c = CC      $@
 
 ifdef CONFIG_DTRACE
 
-sdtgen = scripts/dtrace_sdt.sh
+sdtgen = $(srctree)/scripts/dtrace_sdt.sh
 
 quiet_cmd_sdtinfo = SDTINF  $@
       cmd_sdtinfo = $(sdtgen) sdtinfo $@ $< kmod
