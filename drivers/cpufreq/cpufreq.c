@@ -1575,8 +1575,10 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 			policy->governor_enabled = false;
 		mutex_unlock(&cpufreq_governor_lock);
 	}
-	if (!policy->governor->initialized && (event == CPUFREQ_GOV_START))
-		policy->governor->initialized = 1;
+	if (event == CPUFREQ_GOV_START)
+		policy->governor->initialized++;
+	else if (event == CPUFREQ_GOV_STOP)
+		policy->governor->initialized--;
 
 	/* we keep one module reference alive for
 			each CPU governed by this CPU */
