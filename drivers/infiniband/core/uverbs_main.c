@@ -608,10 +608,12 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 	struct ib_uverbs_cmd_hdr hdr;
 	__u32 flags;
 
-	if (count < sizeof hdr)
+	if (count < sizeof(hdr)) {
+		pr_debug("ib_uverbs_write: header too short\n");
 		return -EINVAL;
+	}
 
-	if (copy_from_user(&hdr, buf, sizeof hdr))
+	if (copy_from_user(&hdr, buf, sizeof(hdr)))
 		return -EFAULT;
 
 	flags = (hdr.command &
@@ -627,18 +629,26 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		command = hdr.command & IB_USER_VERBS_CMD_COMMAND_MASK;
 
 		if (command >= ARRAY_SIZE(uverbs_cmd_table) ||
-		    !uverbs_cmd_table[command])
+		    !uverbs_cmd_table[command]) {
+			pr_debug("ib_uverbs_write: unexpected command\n");
 			return -EINVAL;
+		}
 
 		if (!file->ucontext &&
-		    command != IB_USER_VERBS_CMD_GET_CONTEXT)
+		    command != IB_USER_VERBS_CMD_GET_CONTEXT) {
+			pr_debug("ib_uverbs_write: invalid context\n");
 			return -EINVAL;
+		}
 
-		if (!(file->device->ib_dev->uverbs_cmd_mask & (1ull << command)))
+		if (!(file->device->ib_dev->uverbs_cmd_mask & (1ull << command))) {
+			pr_debug("ib_uverbs_write: command not support by the device\n");
 			return -ENOSYS;
+		}
 
-		if (hdr.in_words * 4 != count)
+		if (hdr.in_words * 4 != count) {
+			pr_debug("ib_uverbs_write: header input length doesn't match written length\n");
 			return -EINVAL;
+		}
 
 		return uverbs_cmd_table[command](file,
 						 buf + sizeof(hdr),
@@ -655,23 +665,33 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		size_t written_count = count;
 
 		if (hdr.command & ~(__u32)(IB_USER_VERBS_CMD_FLAGS_MASK |
-					   IB_USER_VERBS_CMD_COMMAND_MASK))
+					   IB_USER_VERBS_CMD_COMMAND_MASK)) {
+			pr_debug("ib_uverbs_write: extended command invalid opcode\n");
 			return -EINVAL;
+		}
 
 		command = hdr.command & IB_USER_VERBS_CMD_COMMAND_MASK;
 
 		if (command >= ARRAY_SIZE(uverbs_ex_cmd_table) ||
-		    !uverbs_ex_cmd_table[command])
+		    !uverbs_ex_cmd_table[command]) {
+			pr_debug("ib_uverbs_write: invalid extended command\n");
 			return -ENOSYS;
+		}
 
-		if (!file->ucontext)
+		if (!file->ucontext) {
+			pr_debug("ib_uverbs_write: invalid context in extended command\n");
 			return -EINVAL;
+		}
 
-		if (!(file->device->ib_dev->uverbs_ex_cmd_mask & (1ull << command)))
+		if (!(file->device->ib_dev->uverbs_ex_cmd_mask & (1ull << command))) {
+			pr_debug("ib_uverbs_write: extended command not supported by driver\n");
 			return -ENOSYS;
+		}
 
-		if (count < (sizeof(hdr) + sizeof(ex_hdr)))
+		if (count < (sizeof(hdr) + sizeof(ex_hdr))) {
+			pr_debug("ib_uverbs_write: ex header input length doesn't match written length\n");
 			return -EINVAL;
+		}
 
 		if (copy_from_user(&ex_hdr, buf + sizeof(hdr), sizeof(ex_hdr)))
 			return -EFAULT;
@@ -679,23 +699,29 @@ static ssize_t ib_uverbs_write(struct file *filp, const char __user *buf,
 		count -= sizeof(hdr) + sizeof(ex_hdr);
 		buf += sizeof(hdr) + sizeof(ex_hdr);
 
-		if ((hdr.in_words + ex_hdr.provider_in_words) * 8 != count)
+		if ((hdr.in_words + ex_hdr.provider_in_words) * 8 != count) {
+			pr_debug("ib_uverbs_write: extended command doesn't match written length\n");
 			return -EINVAL;
+		}
 
 		if (ex_hdr.cmd_hdr_reserved)
 			return -EINVAL;
 
 		if (ex_hdr.response) {
-			if (!hdr.out_words && !ex_hdr.provider_out_words)
+			if (!hdr.out_words && !ex_hdr.provider_out_words) {
+				pr_debug("ib_uverbs_write: got response pointer to a zero length buffer\n");
 				return -EINVAL;
+			}
 
 			if (!access_ok(VERIFY_WRITE,
 				       (void __user *) (unsigned long) ex_hdr.response,
 				       (hdr.out_words + ex_hdr.provider_out_words) * 8))
 				return -EFAULT;
 		} else {
-			if (hdr.out_words || ex_hdr.provider_out_words)
+			if (hdr.out_words || ex_hdr.provider_out_words) {
+				pr_debug("ib_uverbs_write: got NULL response pointer but non-zero output length\n");
 				return -EINVAL;
+			}
 		}
 
 		INIT_UDATA_BUF_OR_NULL(&ucore, buf, (unsigned long) ex_hdr.response,
