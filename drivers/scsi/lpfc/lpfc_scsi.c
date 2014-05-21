@@ -73,7 +73,7 @@ lpfc_rport_data_from_scsi_device(struct scsi_device *sdev)
 {
 	struct lpfc_vport *vport = (struct lpfc_vport *)sdev->host->hostdata;
 
-	if (vport->phba->cfg_EnableXLane)
+	if (vport->phba->cfg_fof)
 		return ((struct lpfc_device_data *)sdev->hostdata)->rport_data;
 	else
 		return (struct lpfc_rport_data *)sdev->hostdata;
@@ -3463,7 +3463,7 @@ lpfc_scsi_prep_dma_buf_s4(struct lpfc_hba *phba, struct lpfc_scsi_buf *lpfc_cmd)
 	 * If the OAS driver feature is enabled and the lun is enabled for
 	 * OAS, set the oas iocb related flags.
 	 */
-	if ((phba->cfg_EnableXLane) && ((struct lpfc_device_data *)
+	if ((phba->cfg_fof) && ((struct lpfc_device_data *)
 		scsi_cmnd->device->hostdata)->oas_enabled)
 		lpfc_cmd->cur_iocbq.iocb_flag |= LPFC_IO_OAS;
 	return 0;
@@ -5505,7 +5505,7 @@ lpfc_slave_alloc(struct scsi_device *sdev)
 	if (!rport || fc_remote_port_chkready(rport))
 		return -ENXIO;
 
-	if (phba->cfg_EnableXLane) {
+	if (phba->cfg_fof) {
 
 		/*
 		 * Check to see if the device data structure for the lun
@@ -5630,7 +5630,7 @@ lpfc_slave_destroy(struct scsi_device *sdev)
 	struct lpfc_device_data *device_data = sdev->hostdata;
 
 	atomic_dec(&phba->sdev_cnt);
-	if ((phba->cfg_EnableXLane) && (device_data)) {
+	if ((phba->cfg_fof) && (device_data)) {
 		spin_lock_irqsave(&phba->devicelock, flags);
 		device_data->available = false;
 		if (!device_data->oas_enabled)
@@ -5669,7 +5669,7 @@ lpfc_create_device_data(struct lpfc_hba *phba, struct lpfc_name *vport_wwpn,
 	int memory_flags;
 
 	if (unlikely(!phba) || !vport_wwpn || !target_wwpn  ||
-	    !(phba->cfg_EnableXLane))
+	    !(phba->cfg_fof))
 		return NULL;
 
 	/* Attempt to create the device data to contain lun info */
@@ -5707,7 +5707,7 @@ lpfc_delete_device_data(struct lpfc_hba *phba,
 {
 
 	if (unlikely(!phba) || !lun_info  ||
-	    !(phba->cfg_EnableXLane))
+	    !(phba->cfg_fof))
 		return;
 
 	if (!list_empty(&lun_info->listentry))
@@ -5741,7 +5741,7 @@ __lpfc_get_device_data(struct lpfc_hba *phba, struct list_head *list,
 	struct lpfc_device_data *lun_info;
 
 	if (unlikely(!phba) || !list || !vport_wwpn || !target_wwpn ||
-	    !phba->cfg_EnableXLane)
+	    !phba->cfg_fof)
 		return NULL;
 
 	/* Check to see if the lun is already enabled for OAS. */
@@ -5803,7 +5803,7 @@ lpfc_find_next_oas_lun(struct lpfc_hba *phba, struct lpfc_name *vport_wwpn,
 	    !starting_lun || !found_vport_wwpn ||
 	    !found_target_wwpn || !found_lun || !found_lun_status ||
 	    (*starting_lun == NO_MORE_OAS_LUN) ||
-	    !phba->cfg_EnableXLane)
+	    !phba->cfg_fof)
 		return false;
 
 	lun = *starting_lun;
@@ -5887,7 +5887,7 @@ lpfc_enable_oas_lun(struct lpfc_hba *phba, struct lpfc_name *vport_wwpn,
 	unsigned long flags;
 
 	if (unlikely(!phba) || !vport_wwpn || !target_wwpn ||
-	    !phba->cfg_EnableXLane)
+	    !phba->cfg_fof)
 		return false;
 
 	spin_lock_irqsave(&phba->devicelock, flags);
@@ -5944,7 +5944,7 @@ lpfc_disable_oas_lun(struct lpfc_hba *phba, struct lpfc_name *vport_wwpn,
 	unsigned long flags;
 
 	if (unlikely(!phba) || !vport_wwpn || !target_wwpn ||
-	    !phba->cfg_EnableXLane)
+	    !phba->cfg_fof)
 		return false;
 
 	spin_lock_irqsave(&phba->devicelock, flags);
