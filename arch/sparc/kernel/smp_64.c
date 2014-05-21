@@ -355,7 +355,9 @@ static int smp_boot_one_cpu(unsigned int cpu, struct task_struct *idle)
 
 	if (tlb_type == hypervisor) {
 #if defined(CONFIG_SUN_LDOMS) && defined(CONFIG_HOTPLUG_CPU)
-		if (ldom_domaining_enabled)
+		unsigned long hverror = sun4v_cpu_state(cpu);
+
+		if (ldom_domaining_enabled || (hverror == HV_CPU_STATE_STOPPED))
 			ldom_startcpu_cpuid(cpu,
 					    (unsigned long) cpu_new_thread,
 					    &descr);
