@@ -745,6 +745,21 @@ static int pci_sun4v_msi_teardown(struct pci_pbm_info *pbm, unsigned long msi)
 	return 0;
 }
 
+static void pci_sun4v_msiq_tear_down(struct pci_pbm_info *pbm, int msiqid)
+{
+	unsigned long err, ret1, ret2;
+
+	err = pci_sun4v_msiq_info(pbm->devhandle, msiqid, &ret1, &ret2);
+	if (err || !ret2)
+		goto out;
+
+	err = pci_sun4v_msiq_setvalid(pbm->devhandle, msiqid, HV_MSIQ_INVALID);
+	if (err)
+		pr_err("%s: failed to set INVALID queue %lu\n", __func__, err);
+out:
+	return;
+}
+
 static int pci_sun4v_msiq_alloc(struct pci_pbm_info *pbm)
 {
 	unsigned long q_size, alloc_size, pages, order;
@@ -765,6 +780,8 @@ static int pci_sun4v_msiq_alloc(struct pci_pbm_info *pbm)
 	for (i = 0; i < pbm->msiq_num; i++) {
 		unsigned long err, base = __pa(pages + (i * q_size));
 		unsigned long ret1, ret2;
+
+		pci_sun4v_msiq_tear_down(pbm, pbm->msiq_first + i);
 
 		err = pci_sun4v_msiq_conf(pbm->devhandle,
 					  pbm->msiq_first + i,
