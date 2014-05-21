@@ -424,9 +424,16 @@ static int ipoib_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_rep_param rep = {};
+	u16 caps = 0;
+
+	caps |= IPOIB_CM_PROTO_VER;
+	if (cm_ibcrc_as_csum)
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	rep.private_data = &data;
 	rep.private_data_len = sizeof data;
@@ -445,6 +452,7 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ipoib_cm_rx *p;
 	unsigned psn;
 	int ret;
+	struct ipoib_cm_data *cm_data;
 
 	ipoib_dbg(priv, "REQ arrived\n");
 	p = kzalloc(sizeof *p, GFP_KERNEL);
@@ -462,6 +470,13 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 		ret = PTR_ERR(p->qp);
 		goto err_qp;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	psn = random32() & 0xffffff;
 	ret = ipoib_cm_modify_rx_qp(dev, cm_id, p->qp, psn);
@@ -672,6 +687,10 @@ copied:
 	skb->dev = dev;
 	/* XXX get correct PACKET_ type here */
 	skb->pkt_type = PACKET_HOST;
+
+	if (cm_ibcrc_as_csum)
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+
 	netif_receive_skb(skb);
 
 repost:
@@ -707,12 +726,40 @@ static inline int post_send(struct ipoib_dev_priv *priv,
 	return ib_post_send(tx->qp, &priv->tx_wr, &bad_wr);
 }
 
+static inline int post_send_sg(struct ipoib_dev_priv *priv,
+			       struct ipoib_cm_tx *tx,
+			       unsigned int wr_id,
+			       struct sk_buff *skb,
+			       u64 mapping[MAX_SKB_FRAGS + 1])
+{
+	struct ib_send_wr *bad_wr;
+	int i, off;
+	skb_frag_t *frags = skb_shinfo(skb)->frags;
+	int nr_frags = skb_shinfo(skb)->nr_frags;
+	if (skb_headlen(skb)) {
+		priv->tx_sge[0].addr         = mapping[0];
+		priv->tx_sge[0].length       = skb_headlen(skb);
+		off = 1;
+	} else
+		off = 0;
+
+	for (i = 0; i < nr_frags; ++i) {
+		priv->tx_sge[i + off].addr = mapping[i + off];
+		priv->tx_sge[i + off].length = frags[i].size;
+	}
+	priv->tx_wr.num_sge	     = nr_frags + off;
+	priv->tx_wr.wr_id            = wr_id | IPOIB_OP_CM;
+
+	return ib_post_send(tx->qp, &priv->tx_wr, &bad_wr);
+}
+
 void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_tx *tx)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_tx_buf *tx_req;
-	u64 addr;
+	u64 addr = 0;
 	int rc;
+	struct ipoib_tx_buf sg_tx_req;
 
 	if (unlikely(skb->len > tx->mtu)) {
 		ipoib_warn(priv, "%s: packet len %d (> %d) too long to send, dropping\n",
@@ -737,17 +784,35 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	 */
 	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_sendq_size - 1)];
 	tx_req->skb = skb;
-	addr = ib_dma_map_single(priv->ca, skb->data, skb->len, DMA_TO_DEVICE);
-	if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
-		++dev->stats.tx_errors;
-		dev_kfree_skb_any(skb);
-		return;
+	if ((skb->ip_summed != CHECKSUM_NONE) && cm_ibcrc_as_csum &&
+	    !(tx->caps & IPOIB_CM_CAPS_IBCRC_AS_CSUM))
+		skb_checksum_help(skb);
+
+	if (skb_shinfo(skb)->nr_frags) {
+		sg_tx_req.skb = skb;
+		if (unlikely(ipoib_dma_map_tx(priv->ca, &sg_tx_req))) {
+			++dev->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return;
+		}
+		rc = post_send_sg(priv, tx, tx->tx_head &
+				  (ipoib_sendq_size - 1),
+				  skb, sg_tx_req.mapping);
+	} else {
+		addr = ib_dma_map_single(priv->ca, skb->data, skb->len,
+					 DMA_TO_DEVICE);
+		if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
+			++dev->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return;
+		}
+		tx_req->mapping = addr;
+
+		rc = post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
+			       addr, skb->len);
 	}
 
-	tx_req->mapping = addr;
-
-	if (unlikely(post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
-			       addr, skb->len))) {
+	if (unlikely(rc)) {
 		ipoib_warn(priv, "post_send failed\n");
 		++dev->stats.tx_errors;
 		ib_dma_unmap_single(priv->ca, addr, skb->len, DMA_TO_DEVICE);
@@ -965,6 +1030,7 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
 	struct sk_buff *skb;
+	struct ipoib_cm_data *cm_data;
 
 	p->mtu = be32_to_cpu(data->mtu);
 
@@ -973,6 +1039,13 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 			   p->mtu, IPOIB_ENCAP_LEN);
 		return -EINVAL;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	qp_attr.qp_state = IB_QPS_RTR;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
@@ -1039,6 +1112,9 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 		.qp_context		= tx
 	};
 
+	if (dev->features & NETIF_F_SG)
+		attr.cap.max_send_sge = MAX_SKB_FRAGS + 1;
+
 	return ib_create_qp(priv->pd, &attr);
 }
 
@@ -1050,9 +1126,16 @@ static int ipoib_cm_send_req(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_req_param req = {};
+	u16 caps = 0;
+
+	caps |= IPOIB_CM_PROTO_VER;
+	if (cm_ibcrc_as_csum)
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	req.primary_path		= pathrec;
 	req.alternate_path		= NULL;
@@ -1498,7 +1581,6 @@ static void ipoib_cm_stale_task(struct work_struct *work)
 	spin_unlock_irq(&priv->lock);
 }
 
-
 static ssize_t show_mode(struct device *d, struct device_attribute *attr,
 			 char *buf)
 {
@@ -1523,8 +1605,17 @@ static ssize_t set_mode(struct device *d, struct device_attribute *attr,
 			   "will cause multicast packet drops\n");
 
 		rtnl_lock();
-		dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_SG | NETIF_F_TSO);
-		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+		if (cm_ibcrc_as_csum && (test_bit(IPOIB_FLAG_CSUM,
+						  &priv->flags))) {
+			dev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
+			if (priv->hca_caps & IB_DEVICE_UD_TSO)
+				dev->features |= NETIF_F_TSO;
+			priv->tx_wr.send_flags |= IB_SEND_IP_CSUM;
+		} else {
+			dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_SG |
+					   NETIF_F_TSO);
+			priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+		}
 
 		if (ipoib_cm_max_mtu(dev) > priv->mcast_mtu)
 			ipoib_warn(priv, "mtu > %d will cause multicast packet drops.\n",

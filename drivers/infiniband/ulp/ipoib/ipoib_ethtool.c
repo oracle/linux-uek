@@ -46,7 +46,8 @@ static u32 ipoib_get_rx_csum(struct net_device *dev)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	return test_bit(IPOIB_FLAG_CSUM, &priv->flags) &&
-		!test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags);
+	       (!test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags) ||
+	       (cm_ibcrc_as_csum));
 }
 
 static int ipoib_set_tso(struct net_device *dev, u32 data)

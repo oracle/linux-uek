@@ -84,6 +84,12 @@ int ipoib_mc_sendonly_timeout;
 module_param_named(mc_sendonly_timeout, ipoib_mc_sendonly_timeout, int, 0644);
 MODULE_PARM_DESC(mc_sendonly_timeout, "Multicast sendonly GC timeout (default: 0)");
 
+int cm_ibcrc_as_csum = 0;
+
+module_param_named(cm_ibcrc_as_csum, cm_ibcrc_as_csum, int, 0444);
+MODULE_PARM_DESC(cm_ibcrc_as_csum, "Indicates whether to utilize IB-CRC as "
+		 "CSUM in connected mode,(default: 0)");
+
 struct ipoib_path_iter {
 	struct net_device *dev;
 	struct ipoib_path  path;

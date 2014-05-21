@@ -182,9 +182,28 @@ struct ipoib_pmtu_update {
 
 struct ib_cm_id;
 
+#define IPOIB_CM_PROTO_SIG		0x2211
+#define IPOIB_CM_PROTO_VER		(1UL << 12)
+
+static inline int ipoib_cm_check_proto_sig(u16 proto_sig)
+{
+	return proto_sig & IPOIB_CM_PROTO_SIG;
+};
+
+static inline int ipoib_cm_check_proto_ver(u16 caps)
+{
+	return caps & IPOIB_CM_PROTO_VER;
+};
+
+enum ipoib_cm_data_caps {
+	IPOIB_CM_CAPS_IBCRC_AS_CSUM	= 1UL << 0,
+};
+
 struct ipoib_cm_data {
 	__be32 qpn; /* High byte MUST be ignored on receive */
 	__be32 mtu;
+	__be16 sig; /* must be IPOIB_CM_PROTO_SIG */
+	__be16 caps; /* 4 bits proto ver and 12 bits capabilities */
 };
 
 /*
@@ -229,6 +248,7 @@ struct ipoib_cm_rx {
 	unsigned long		jiffies;
 	enum ipoib_cm_state	state;
 	int			recv_count;
+	u16			caps;
 };
 
 struct ipoib_cm_tx {
@@ -243,6 +263,7 @@ struct ipoib_cm_tx {
 	unsigned	     tx_tail;
 	unsigned long	     flags;
 	u32		     mtu;
+	u16		     caps;
 };
 
 struct ipoib_cm_rx_buf {
@@ -521,6 +542,8 @@ extern struct workqueue_struct *ipoib_auto_moder_workqueue;
 
 extern int ipoib_mc_sendonly_timeout;
 
+extern int cm_ibcrc_as_csum;
+
 /* functions */
 
 void ipoib_get_tcp_ring(struct net_device *dev, u8 *poll_ring, u32 saddr, u32 daddr, u16 sport, u16 dport);
@@ -577,6 +600,7 @@ int ipoib_mcast_stop_thread(struct net_device *dev, int flush);
 
 void ipoib_mcast_dev_down(struct net_device *dev);
 void ipoib_mcast_dev_flush(struct net_device *dev);
+int ipoib_dma_map_tx(struct ib_device *ca, struct ipoib_tx_buf *tx_req);
 
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 struct ipoib_mcast_iter *ipoib_mcast_iter_init(struct net_device *dev);
