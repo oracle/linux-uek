@@ -777,3 +777,13 @@ unsigned long get_wchan(struct task_struct *task)
 out:
 	return ret;
 }
+
+void sparc64_elf_core_copy_regs(elf_gregset_t dst, struct pt_regs *regs)
+{
+	memcpy(&dst[0], regs->u_regs, 8 * sizeof(unsigned long));
+	memcpy(&dst[24],  &regs->u_regs[8], 8 * sizeof(unsigned long));
+	dst[32] = regs->tstate;
+	dst[33] = regs->tpc;
+	dst[34] = regs->tnpc;
+	dst[35] = regs->y;
+}
