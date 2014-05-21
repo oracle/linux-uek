@@ -160,6 +160,18 @@ ENTRY(sun4v_mmu_map_perm_addr)
 	retl
 	 nop
 ENDPROC(sun4v_mmu_map_perm_addr)
+	/* %o0: virtual address
+	 * %o1: must be zero
+	 * %o2: HV_MMU_* flags
+	 *
+	 * returns %o0: status
+	 */
+ENTRY(sun4v_mmu_unmap_perm_addr)
+	mov	HV_FAST_MMU_UNMAP_PERM_ADDR, %o5
+	ta	HV_FAST_TRAP
+	retl
+	 nop
+ENDPROC(sun4v_mmu_unmap_perm_addr)
 
 	/* %o0: number of TSB descriptions
 	 * %o1: TSB descriptions real address
