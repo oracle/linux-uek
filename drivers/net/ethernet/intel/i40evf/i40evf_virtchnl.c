@@ -26,6 +26,7 @@
 
 #include "i40evf.h"
 #include "i40e_prototype.h"
+#include "kcompat.h"
 
 /* busy wait delay in msec */
 #define I40EVF_BUSY_WAIT_DELAY 10

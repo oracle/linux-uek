@@ -60,3 +60,20 @@ extern int __kc_netif_set_xps_queue(struct net_device *, struct cpumask *, u16);
 	     pos && ({ n = pos->member.next; 1; });			    \
 	     pos = hlist_entry_safe(n, typeof(*pos), member))
 
+#ifndef ether_addr_copy
+#define ether_addr_copy __kc_ether_addr_copy
+static inline void __kc_ether_addr_copy(u8 *dst, const u8 *src)
+{
+#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
+	*(u32 *)dst = *(const u32 *)src;
+	*(u16 *)(dst + 4) = *(const u16 *)(src + 4);
+#else
+	u16 *a = (u16 *)dst;
+	const u16 *b = (const u16 *)src;
+
+	a[0] = b[0];
+	a[1] = b[1];
+	a[2] = b[2];
+#endif
+}
+#endif /* ether_addr_copy */

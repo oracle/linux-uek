@@ -26,6 +26,8 @@
 
 #include "i40evf.h"
 #include "i40e_prototype.h"
+#include "kcompat.h"
+
 static int i40evf_setup_all_tx_resources(struct i40evf_adapter *adapter);
 static int i40evf_setup_all_rx_resources(struct i40evf_adapter *adapter);
 static void i40evf_free_all_tx_resources(struct i40evf_adapter *adapter);
