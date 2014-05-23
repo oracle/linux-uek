@@ -27,6 +27,7 @@
 #include <linux/memblock.h>
 #include <linux/mmzone.h>
 #include <linux/gfp.h>
+#include <linux/kexec.h>
 
 #include <asm/head.h>
 #include <asm/page.h>
@@ -789,6 +790,51 @@ static void __init find_ramdisk(unsigned long phys_base)
 		initrd_start += PAGE_OFFSET;
 		initrd_end += PAGE_OFFSET;
 	}
+#endif
+}
+
+static void __init reserve_crashkernel(void)
+{
+#ifdef CONFIG_KEXEC
+	unsigned long total_mem;
+	unsigned long long crash_size, crash_base;
+	unsigned long long alignment = REAL_HPAGE_SIZE;
+	int ret;
+
+	total_mem = memblock_phys_mem_size();
+
+	ret = parse_crashkernel(boot_command_line, total_mem,
+		&crash_size, &crash_base);
+
+	if (ret)
+		return;
+
+	if (crash_base <= 0)
+		crash_base = memblock_find_in_range(alignment, ULLONG_MAX,
+			crash_size, alignment);
+	else {
+		unsigned long start;
+
+		start = memblock_find_in_range(crash_base,
+			crash_base + crash_size, crash_size, alignment);
+		crash_base = start;
+	}
+
+	if (!crash_base) {
+		pr_err("crashkernel reservation failed.\n");
+		return;
+	}
+
+	memblock_reserve(crash_base, crash_size);
+
+	pr_info("Reserving %ldMB of memory at %ldMB for crashkernel (System RAM: %ldMB)\n",
+		(unsigned long) (crash_size >> 20),
+		(unsigned long) (crash_base >> 20),
+		(unsigned long) (total_mem >> 20));
+
+	crashk_res.start = crash_base;
+	crashk_res.end = crash_base + crash_size - 1;
+	insert_resource(&iomem_resource, &crashk_res);
 #endif
 }
 
@@ -2179,6 +2225,8 @@ void __init paging_init(void)
 	memblock_reserve(kern_base, kern_size);
 
 	find_ramdisk(phys_base);
+
+	reserve_crashkernel();
 
 	if (cmdline_memory_size)
 		reduce_memory(cmdline_memory_size);
