@@ -2907,6 +2907,31 @@ void hugetlb_setup(struct pt_regs *regs)
 }
 #endif
 
+#ifdef CONFIG_KEXEC
+static int __init kexec_grab_obp_tranlations(void)
+{
+	unsigned int count;
+	struct sparc64_kexec_shim *shimp = kexec_shim();
+
+	/* The last entry is the NULL terminator */
+	if (prom_trans_ents >= (KEXEC_OBP_TRANSLATION - 1)) {
+		pr_err("kexec_grab_obp_tranlations: EXCEEDS kexec limit\n");
+		goto out;
+	}
+
+	for (count = 0; count < prom_trans_ents; count++) {
+		shimp->obp_translations[count].va = prom_trans[count].virt;
+		shimp->obp_translations[count].size = prom_trans[count].size;
+		shimp->obp_translations[count].tte = prom_trans[count].data;
+	}
+
+	shimp->obp_translations[count].va = 0UL;
+out:
+	return 0;
+}
+device_initcall(kexec_grab_obp_tranlations);
+#endif /* CONFIG_KEXEC */
+
 static struct resource code_resource = {
 	.name	= "Kernel code",
 	.flags	= IORESOURCE_BUSY | IORESOURCE_MEM

@@ -10,6 +10,7 @@
 #include <linux/string.h>
 #include <linux/spinlock.h>
 #include <linux/irqflags.h>
+#include <linux/kexec.h>
 
 #include <asm/openprom.h>
 #include <asm/oplib.h>
@@ -54,3 +55,15 @@ void prom_cif_init(void *cif_handler, void *cif_stack)
 	p1275buf.prom_cif_handler = (void (*)(long *))cif_handler;
 	p1275buf.prom_cif_stack = (unsigned long)cif_stack;
 }
+
+#ifdef CONFIG_KEXEC
+static int __init kexec_grab_obp_cif_stack(void)
+{
+	struct sparc64_kexec_shim *shimp = kexec_shim();
+
+	shimp->obp_cif = (unsigned long) p1275buf.prom_cif_handler;
+	shimp->obp_sp = (unsigned long) p1275buf.prom_cif_stack;
+	return 0;
+}
+device_initcall(kexec_grab_obp_cif_stack);
+#endif /* CONFIG_KEXEC */
