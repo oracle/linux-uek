@@ -117,3 +117,6 @@ pc--$(CONFIG_PERF_EVENTS) := perf_event.o
 obj-$(CONFIG_SPARC64)	+= $(pc--y)
 
 obj-$(CONFIG_SPARC64)	+= jump_label.o
+
+obj-$(CONFIG_SPARC64)	+= kexec_shim.o
+obj-$(CONFIG_KEXEC)	+= machine_kexec.o
