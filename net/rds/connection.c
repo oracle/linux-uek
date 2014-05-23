@@ -640,7 +640,12 @@ void rds_conn_drop(struct rds_connection *conn)
 	conn->c_reconnect_drops++;
 
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
-	queue_work(rds_wq, &conn->c_down_w);
+
+	if (conn->c_loopback)
+		queue_work(rds_local_wq, &conn->c_down_w);
+	else
+		queue_work(rds_wq, &conn->c_down_w);
+
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
