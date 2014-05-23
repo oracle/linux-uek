@@ -255,6 +255,12 @@ sun4v_chip_type:
 	call	%l7
 	 add	%sp, (2047 + 128), %o0		! argument array
 
+						! kexec avoidance
+	mov	(1b - sparc_kexec), %l1
+	sub	%l0, %l1, %l1
+	lduw	[%l1], %l1
+	brnz,pn	%l1, 89f
+
 	mov	(1b - prom_callmethod_name), %l1
 	mov	(1b - prom_translate_name), %l2
 	sub	%l0, %l1, %l1
@@ -321,6 +327,7 @@ sun4v_chip_type:
 	call	%l7
 	 add	%sp, (2047 + 128), %o0		! argument array
 
+89:
 	add	%sp, (192 + 128), %sp
 
 	sethi	%hi(prom_root_compatible), %g1
@@ -758,7 +765,7 @@ setup_trap_table:
 	/* Make the firmware call to jump over to the Linux trap table.  */
 	sethi	%hi(is_sun4v), %o0
 	lduw	[%o0 + %lo(is_sun4v)], %o0
-	brz,pt	%o0, 1f
+	brz,pt	%o0, 2f
 	 nop
 
 	TRAP_LOAD_TRAP_BLOCK(%g2, %g3)
@@ -776,6 +783,10 @@ setup_trap_table:
 	add	%g2, %g3, %o1
 	sethi	%hi(sparc64_ttable_tl0), %o0
 
+	sethi	%hi(sparc_kexec), %g2
+	lduw	[%g2 + %lo(sparc_kexec)], %g2
+	brnz	%g2, 1f
+
 	set	prom_set_trap_table_name, %g2
 	stx	%g2, [%sp + 2047 + 128 + 0x00]
 	mov	2, %g2
@@ -790,10 +801,17 @@ setup_trap_table:
 	call	%o1
 	 add	%sp, (2047 + 128), %o0
 
-	ba,pt	%xcc, 2f
+	ba,pt	%xcc, 3f
 	 nop
 
-1:	sethi	%hi(sparc64_ttable_tl0), %o0
+1:	wrpr	%o0, %tba
+	or	%o1, %o1, %o0
+	or	%g0, %lo(HV_FAST_MMU_FAULT_AREA_CONF), %o5
+	ta	HV_FAST_TRAP
+	ba,pt	%xcc, 3f
+	nop
+
+2:	sethi	%hi(sparc64_ttable_tl0), %o0
 	set	prom_set_trap_table_name, %g2
 	stx	%g2, [%sp + 2047 + 128 + 0x00]
 	mov	1, %g2
@@ -808,7 +826,7 @@ setup_trap_table:
 	 add	%sp, (2047 + 128), %o0
 
 	/* Start using proper page size encodings in ctx register.  */
-2:	sethi	%hi(sparc64_kern_pri_context), %g3
+3:	sethi	%hi(sparc64_kern_pri_context), %g3
 	ldx	[%g3 + %lo(sparc64_kern_pri_context)], %g2
 
 	mov		PRIMARY_CONTEXT, %g1
