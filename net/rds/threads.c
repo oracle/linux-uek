@@ -74,6 +74,8 @@ MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
  */
 struct workqueue_struct *rds_wq;
 EXPORT_SYMBOL_GPL(rds_wq);
+struct workqueue_struct *rds_local_wq;
+EXPORT_SYMBOL_GPL(rds_local_wq);
 
 void rds_connect_complete(struct rds_connection *conn)
 {
@@ -141,11 +143,19 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	rdsdebug("%lu delay %lu ceil conn %p for %pI4 -> %pI4\n",
 		 rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		 conn, &conn->c_laddr, &conn->c_faddr);
-	if (conn->c_laddr >= conn->c_faddr)
-		queue_delayed_work(rds_wq, &conn->c_conn_w,
+
+	if (conn->c_loopback) {
+		if (conn->c_laddr >= conn->c_faddr)
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
+				rand % conn->c_reconnect_jiffies);
+		else
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
+				msecs_to_jiffies(100));
+	} else if (conn->c_laddr >= conn->c_faddr)
+			queue_delayed_work(rds_wq, &conn->c_conn_w,
 			   rand % conn->c_reconnect_jiffies);
 	else
-		queue_delayed_work(rds_wq, &conn->c_conn_w,
+			queue_delayed_work(rds_wq, &conn->c_conn_w,
 					msecs_to_jiffies(100));
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
@@ -298,12 +308,17 @@ void rds_shutdown_worker(struct work_struct *work)
 void rds_threads_exit(void)
 {
 	destroy_workqueue(rds_wq);
+	destroy_workqueue(rds_local_wq);
 }
 
 int rds_threads_init(void)
 {
 	rds_wq = create_singlethread_workqueue("krdsd");
 	if (!rds_wq)
+		return -ENOMEM;
+
+	rds_local_wq = create_singlethread_workqueue("krdsd_local");
+	if (!rds_local_wq)
 		return -ENOMEM;
 
 	return 0;
