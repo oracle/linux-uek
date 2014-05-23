@@ -222,6 +222,12 @@ extern asmlinkage long sys_kexec_load(unsigned long entry,
 					struct kexec_segment __user *segments,
 					unsigned long flags);
 extern int kernel_kexec(void);
+extern int kimage_arch_load_normal_segment(struct kimage *image,
+				struct kexec_segment *segment,
+				int *arch_status,
+				int (*add_phys_addr)(struct kimage *image,
+						     unsigned long page));
+
 extern int kexec_add_buffer(struct kimage *image, char *buffer,
 			    unsigned long bufsz, unsigned long memsz,
 			    unsigned long buf_align, unsigned long buf_min,
