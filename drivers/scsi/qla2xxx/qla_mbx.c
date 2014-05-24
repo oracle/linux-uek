@@ -3247,28 +3247,19 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 		    rptid_entry->port_id[0]);
 
 		/* FA-WWN is only for physical port */
-		if (IS_FAWWN_CAPABLE(vha->hw) && vp_idx == 0) {
-			switch (MSB(stat)) {
-			case 0:
+		if (IS_FAWWN_CAPABLE(vha->hw) && !vp_idx) {
+			void *wwpn = ha->init_cb->port_name;
+			if (!MSB(stat)) {
 				if (rptid_entry->vp_idx_map[1] & BIT_6) {
-					memcpy(vha->port_name,
-					    rptid_entry->reserved_4 + 8,
-					    sizeof(vha->port_name));
-					fc_host_port_name(vha->host) =
-					    wwn_to_u64(vha->port_name);
-					ql_dbg(ql_dbg_mbx, vha, 0x1018,
-					    "FA-WWN acquired %llx\n",
-					    wwn_to_u64(vha->port_name));
-				} else {
-					ql_dbg(ql_dbg_mbx, vha, 0x1019,
-					    "FA-WWN not acquired\n");
+					wwpn = rptid_entry->reserved_4 + 8;
 				}
-				break;
-			default:
-				ql_dbg(ql_dbg_mbx, vha, 0x111b,
-				    "FA-WWN other status %x.\n", MSB(stat));
-				break;
 			}
+			memcpy(vha->port_name, wwpn, WWN_SIZE);
+			fc_host_port_name(vha->host) =
+			    wwn_to_u64(vha->port_name);
+			ql_dbg(ql_dbg_mbx, vha, 0x1018,
+			    "FA-WWN portname %016llx (%x)\n",
+			    fc_host_port_name(vha->host), MSB(stat));
 		}
 
 		vp = vha;
