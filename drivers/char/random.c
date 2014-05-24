@@ -459,6 +459,21 @@ static __u32 const twist_table[8] = {
 	0xedb88320, 0xd6d6a3e8, 0x9b64c2b0, 0xa00ae278 };
 
 /*
+ * Add a kernel boot time parameter, enable_fast_entropy, that removes
+ * the restriction to feed the entropy pool once/second in function
+ * add_interrupt_randomness.
+*/
+
+static int enable_fast_entropy;
+static __init int setup_enable_fast_entropy(char *s)
+{
+	enable_fast_entropy = 1;
+	printk(KERN_INFO "random: Fast interrupt entropy enabled\n");
+	return 0;
+}
+__setup("enable_fast_entropy", setup_enable_fast_entropy);
+
+/*
  * This function adds bytes into the entropy "pool".  It does not
  * update the entropy estimate.  The caller should call
  * credit_entropy_bits if this is appropriate.
@@ -757,11 +772,12 @@ void add_interrupt_randomness(int irq, int irq_flags)
 
 	fast_mix(fast_pool, input, sizeof(input));
 
-	if ((fast_pool->count & 1023) &&
-	    !time_after(now, fast_pool->last + HZ))
-		return;
-
-	fast_pool->last = now;
+	if (!enable_fast_entropy) {
+		if ((fast_pool->count & 1023) &&
+		     !time_after(now, fast_pool->last + HZ))
+			return;
+		fast_pool->last = now;
+	}
 
 	r = nonblocking_pool.initialized ? &input_pool : &nonblocking_pool;
 	__mix_pool_bytes(r, &fast_pool->pool, sizeof(fast_pool->pool), NULL);
