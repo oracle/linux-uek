@@ -51,6 +51,7 @@
 #include <asm/cpudata.h>
 #include <asm/setup.h>
 #include <asm/irq.h>
+#include <asm/kexec.h>
 
 #include "init_64.h"
 
@@ -188,6 +189,101 @@ unsigned long sparc64_kern_pri_nuc_bits __read_mostly;
 unsigned long sparc64_kern_sec_context __read_mostly;
 
 int num_kernel_image_mappings;
+
+#ifdef CONFIG_KEXEC
+/*
+ * Here we capture the shim information and do any required transformations.
+ */
+static void __init load_shim_kernel_info(void)
+{
+	struct sparc64_kexec_shim *shimp = kexec_launched_shim();
+	pte_t pte;
+
+	if (!sparc64_kexec_kernel())
+		return;
+
+	pte_val(pte) = shimp->kernel.tte[0];
+	prom_boot_mapping_phys_low = pte_pfn(pte) << PAGE_SHIFT;
+	num_kernel_image_mappings = shimp->kernel.nr_tte;
+}
+
+/* The initrd is normally physically contigous when loaded by the boot loader.
+ * For the kexec case --load this would be difficult to achieve but yes
+ * possible. Instead we make the transformation to phsyically contigous when
+ * required with memblock.
+ */
+static struct kexec_region initrd_region __initdata;
+
+static int __init load_shim_initrd_info(void)
+{
+	struct sparc64_kexec_shim *shimp = kexec_launched_shim();
+	unsigned long order_size = (1UL << 22UL);
+	unsigned long nr;
+
+	/* If not kexec kernel or kexec with --load-panic then do nothing. */
+	if (!sparc64_kexec_kernel() || !shimp->initrd.nr_tte)
+		return 0;
+
+	for (nr = 0UL; nr != shimp->initrd.nr_tte; nr++) {
+		memblock_reserve(shimp->initrd.tte[nr], order_size);
+		initrd_region.tte[nr] = shimp->initrd.tte[nr];
+	}
+
+	initrd_region.nr_tte = nr;
+	return 1;
+}
+
+static void __init move_shim_initrd(void)
+{
+	unsigned long size = PAGE_ALIGN(sparc_ramdisk_size);
+	unsigned long max_size = (1UL << 22UL);
+	unsigned long paddr, nr;
+	void *addr;
+
+	if (!initrd_region.nr_tte)
+		return;
+
+	paddr = memblock_alloc(size, max_size);
+	if (!paddr) {
+		prom_printf("move_shim_initrd: memblock alloc failed\n");
+		prom_halt();
+	}
+	addr = __va(paddr);
+
+	for (nr = 0UL; nr != initrd_region.nr_tte; nr++, addr += max_size) {
+		unsigned long csize = min_t(unsigned long, size, max_size);
+
+		memcpy(addr, __va(initrd_region.tte[nr]), csize);
+		memblock_free(initrd_region.tte[nr], max_size);
+		size = size - csize;
+	}
+
+	initrd_start = (unsigned long) __va(paddr);
+	initrd_end = initrd_start + sparc_ramdisk_size;
+}
+
+static void __init kexec_unmap_shim(void)
+{
+	unsigned long hverror;
+
+	if (!sparc64_kexec_kernel())
+		goto out;
+
+	hverror = sun4v_mmu_unmap_perm_addr(KEXEC_BASE, 0UL, HV_MMU_DMMU) |
+		sun4v_mmu_unmap_perm_addr(KEXEC_BASE, 0UL, HV_MMU_IMMU);
+	if (hverror)
+		pr_err("kexec_unmap_shim: MMU op failed for %ld\n", hverror);
+	/* We should be finished and hopefully without issues. */
+	sparc64_kexec_finished();
+out:
+	return;
+}
+#else /* CONFIG_KEXEC */
+static void __init load_shim_kernel_info(void) {}
+static int __init load_shim_initrd_info(void) { return 0; }
+static void __init move_shim_initrd(void) {}
+static void kexec_unmap_shim(void) {}
+#endif /* CONFIG_KEXEC */
 
 #ifdef CONFIG_DEBUG_DCFLUSH
 atomic_t dcpage_flushes = ATOMIC_INIT(0);
@@ -599,6 +695,10 @@ static void __init remap_kernel(void)
 
 	kern_locked_tte_data = tte_data;
 
+	/* For a kexec kernel we are already pinned. */
+	if (sparc64_kexec_kernel())
+		return;
+
 	/* Now lock us into the TLBs via Hypervisor or OBP. */
 	if (tlb_type == hypervisor) {
 		for (i = 0; i < num_kernel_image_mappings; i++) {
@@ -778,6 +878,8 @@ static void __init find_ramdisk(unsigned long phys_base)
 		 */
 		ramdisk_image -= KERNBASE;
 		ramdisk_image += phys_base;
+		if (load_shim_initrd_info())
+			return;
 
 		numadbg("Found ramdisk at physical address 0x%lx, size %u\n",
 			ramdisk_image, sparc_ramdisk_size);
@@ -2161,6 +2263,7 @@ void __init paging_init(void)
 
 	BUILD_BUG_ON(NR_CPUS > 4096);
 
+	load_shim_kernel_info();
 	kern_base = (prom_boot_mapping_phys_low >> ILOG2_4MB) << ILOG2_4MB;
 	kern_size = (unsigned long)&_end - (unsigned long)KERNBASE;
 
@@ -2255,7 +2358,11 @@ void __init paging_init(void)
 	/* Ok, we can use our TLB miss and window trap handlers safely.  */
 	setup_tba();
 
+	kexec_unmap_shim();
+
 	__flush_tlb_all();
+
+	move_shim_initrd();
 
 	prom_build_devicetree();
 	of_populate_present_mask();
