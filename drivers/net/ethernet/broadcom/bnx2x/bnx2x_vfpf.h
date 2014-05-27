@@ -16,8 +16,8 @@
  * not derived from this software.  The special exception does not apply to any
  * modifications of the software.
  *
- * Maintained by: Ariel Elior <ariele@broadcom.com>
- *
+ * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
+ * Written by: Ariel Elior <ariel.elior@qlogic.com>
  */
 
 #ifndef VF_PF_IF_H
