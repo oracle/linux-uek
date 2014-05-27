@@ -85,7 +85,10 @@ void rds_connect_complete(struct rds_connection *conn)
 				__func__,
 				atomic_read(&conn->c_state));
 		atomic_set(&conn->c_state, RDS_CONN_ERROR);
-		queue_work(rds_wq, &conn->c_down_w);
+		if (conn->c_loopback)
+			queue_work(rds_local_wq, &conn->c_down_w);
+		else
+			queue_work(rds_wq, &conn->c_down_w);
 		return;
 	}
 
