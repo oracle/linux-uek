@@ -1567,7 +1567,11 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 		goto put_pages;
 	}
 
+	err = -ENOMEM;
 	iod = nvme_alloc_iod(count, length, GFP_KERNEL);
+	if (!iod)
+		goto put_pages;
+
 	sg = iod->sg;
 	sg_init_table(sg, count);
 	for (i = 0; i < count; i++) {
@@ -1580,7 +1584,6 @@ struct nvme_iod *nvme_map_user_pages(struct nvme_dev *dev, int write,
 	sg_mark_end(&sg[i - 1]);
 	iod->nents = count;
 
-	err = -ENOMEM;
 	nents = dma_map_sg(&dev->pci_dev->dev, sg, count,
 				write ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
 	if (!nents)
