@@ -300,6 +300,7 @@ struct rds_ib_port {
 	__be32			ip_bcast;
 	__be32			ip_mask;
 	unsigned int            ip_active_port;
+	uint16_t		pkey;
 	unsigned int            alias_cnt;
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
