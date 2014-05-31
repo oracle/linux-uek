@@ -396,24 +396,30 @@ static int rds_ib_laddr_check(__be32 addr)
 	return ret;
 }
 
+/*
+ * Get a failover port for port argument ('port')
+ * based on failover group and pkey match.
+ */
 static u8 rds_ib_get_failover_port(u8 port)
 {
 	u8	i;
 
 	for (i = 1; i <= ip_port_cnt; i++) {
-		if (i != port &&
-			ip_config[i].failover_group ==
-				ip_config[port].failover_group &&
-			ip_config[i].port_state == RDS_IB_PORT_UP) {
+		if ((i != port) &&
+		    (ip_config[i].failover_group ==
+		     ip_config[port].failover_group) &&
+		    (ip_config[i].pkey == ip_config[port].pkey) &&
+		    (ip_config[i].port_state == RDS_IB_PORT_UP)) {
 			return i;
 		}
 	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
-		if (i != port &&
-			ip_config[i].port_state == RDS_IB_PORT_UP) {
-				return i;
-			}
+		if ((i != port) &&
+		    (ip_config[i].pkey == ip_config[port].pkey) &&
+		    (ip_config[i].port_state == RDS_IB_PORT_UP)) {
+			return i;
+		}
 	}
 
 	return 0;
@@ -825,9 +831,10 @@ out:
 }
 
 static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
-				struct net_device	*net_dev,
-				u8			port_num,
-				union ib_gid		gid)
+			   struct net_device	*net_dev,
+			   u8			port_num,
+			   union ib_gid		gid,
+			   uint16_t		pkey)
 {
 	const char *digits = "0123456789";
 
@@ -849,6 +856,7 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	ip_config[ip_port_cnt].ip_active_port = 0;
 	strcpy(ip_config[ip_port_cnt].if_name, net_dev->name);
 	memcpy(&ip_config[ip_port_cnt].gid, &gid, sizeof(union ib_gid));
+	ip_config[ip_port_cnt].pkey = pkey;
 
 	if (net_dev->operstate == IF_OPER_UP)
 		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
@@ -1008,10 +1016,21 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 		if (!to_port) {
 			/* we tried, but did not get a failover port! */
 			rdsdebug("RDS/IP: IP %pI4 failed to "
-				"migrate from %s: no destination port "
-				"available!\n",
+				 "migrate from %s: no matching "
+				 "destination port available!\n",
 				 &ip_config[from_port].ip_addr,
 				 ip_config[from_port].if_name);
+			return;
+		}
+	} else {
+		/*
+		 * to_port != 0 => caller explicitly specified failover port
+		 * validate pkey and flag error if we were passed incorrect
+		 * pkey match port. And ignore the request !
+		 */
+		if (ip_config[from_port].pkey != ip_config[to_port].pkey) {
+			printk(KERN_ERR "RDS/IP: port failover request to "
+			       "ports with mismatched pkeys - ignoring request!");
 			return;
 		}
 	}
@@ -1193,29 +1212,33 @@ static void rds_ib_failback(struct work_struct *_work)
 		if (ip_config[i].ip_active_port == i) {
 			rds_ib_do_failover(i, 0, ip_active_port,
 						work->event_type);
-		} else if (ip_config[i].ip_active_port == port) {
+		} else if ((ip_config[i].ip_active_port == port) &&
+			   (ip_config[i].pkey == ip_config[port].pkey)) {
 			rds_ib_do_failover(i, port, ip_active_port,
-						work->event_type);
+					   work->event_type);
 		} else if (ip_config[ip_config[i].ip_active_port].port_state ==
-				RDS_IB_PORT_DOWN) {
+			   RDS_IB_PORT_DOWN) {
 			rds_ib_do_failover(i, 0, ip_active_port,
-						work->event_type);
-		} else if (ip_config[port].failover_group ==
-				ip_config[i].failover_group) {
+					   work->event_type);
+		} else if ((ip_config[port].failover_group ==
+				ip_config[i].failover_group) &&
+			   (ip_config[i].pkey == ip_config[port].pkey)) {
 			rds_ib_do_failover(i, port, ip_active_port,
-						work->event_type);
+					   work->event_type);
 		}
 	}
 
 	if (ip_active_port != ip_config[port].ip_active_port) {
 		for (i = 1; i <= ip_port_cnt; i++) {
 			if (ip_config[i].port_state == RDS_IB_PORT_DOWN &&
-				i != ip_active_port && ip_config[i].ip_addr &&
-				ip_config[i].ip_active_port == ip_active_port) {
+			    i != ip_active_port && ip_config[i].ip_addr &&
+			    ip_config[i].ip_active_port == ip_active_port &&
+			    ip_config[i].pkey ==
+			    ip_config[ip_active_port].pkey) {
 
 				rds_ib_do_failover(i, ip_active_port,
-							ip_active_port,
-							work->event_type);
+						   ip_active_port,
+						   work->event_type);
 			}
 		}
 	}
@@ -1345,6 +1368,22 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
+/*
+ * Parse device name to extract pkey
+ */
+static uint16_t
+get_netdev_pkey(struct net_device *dev)
+{
+	uint16_t pkey = 0;
+	int ibdevnum = -1;
+
+	if (sscanf(dev->name, "ib%d.%04hx", &ibdevnum, &pkey) == 2)
+		return pkey;
+	else
+		return 0xffff;	/* default pkey value! */
+}
+
+
 static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
@@ -1377,6 +1416,8 @@ static int rds_ib_ip_config_init(void)
 			!(dev->flags & IFF_SLAVE) &&
 			!(dev->flags & IFF_MASTER) &&
 			in_dev) {
+			uint16_t pkey = get_netdev_pkey(dev);
+
 			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
 
 			list_for_each_entry_rcu(rds_ibdev,
@@ -1394,7 +1435,7 @@ static int rds_ib_ip_config_init(void)
 					RDS_IB_GID_ARG(gid));
 			} else {
 				port = rds_ib_init_port(rds_ibdev, dev,
-					port_num, gid);
+							port_num, gid, pkey);
 				if (port > 0) {
 					for (ifap = &in_dev->ifa_list;
 						(ifa = *ifap);
@@ -1747,6 +1788,8 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 		work->timeout -= msecs_to_jiffies(100);
 		queue_delayed_work(rds_wq, &work->work, msecs_to_jiffies(100));
 	} else if (in_dev && in_dev->ifa_list) {
+		uint16_t pkey = get_netdev_pkey(ndev);
+
 		memcpy(&gid, ndev->dev_addr + 4, sizeof gid);
 		list_for_each_entry_rcu(rds_ibdev,
 				&rds_ib_devices, list) {
@@ -1762,7 +1805,7 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 					RDS_IB_GID_ARG(gid));
 		} else {
 			port = rds_ib_init_port(rds_ibdev, ndev,
-					port_num, gid);
+						port_num, gid, pkey);
 			if (port > 0) {
 				for (ifap = &in_dev->ifa_list;
 						(ifa = *ifap);
