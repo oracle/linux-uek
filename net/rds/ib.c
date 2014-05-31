@@ -706,9 +706,18 @@ static int rds_ib_move_ip(char			*from_dev,
 		       "from %s to %s\n",
 		       &addr, from_dev2, to_dev2);
 	} else {
-		printk(KERN_NOTICE
-		       "RDS/IB: IP %pI4 migrated from %s to %s\n",
-		       &addr, from_dev2, to_dev2);
+		if (strcmp(from_dev2, to_dev2) == 0) {
+			/* from_dev2, to_dev2 are identical */
+			printk(KERN_NOTICE
+			       "RDS/IB: IP %pI4 resurrected on migrated "
+			       "interface %s\n",
+			       &addr, to_dev2);
+		} else {
+			/* from_dev2, to_dev2 are different! */
+			printk(KERN_NOTICE
+			       "RDS/IB: IP %pI4 migrated from %s to %s\n",
+			       &addr, from_dev2, to_dev2);
+		}
 
 		rds_ibdev = ip_config[from_port].rds_ibdev;
 		if (!rds_ibdev)
@@ -886,23 +895,133 @@ static void rds_ib_set_port(struct rds_ib_device	*rds_ibdev,
 	}
 }
 
+static int rds_ib_testset_ip(u8 port)
+{
+	struct ifreq		*ir;
+	struct sockaddr_in	*sin;
+	struct page		*page;
+	int			ret = 0;
+	int                     ii;
+
+	if (!ip_config[port].ip_addr) {
+		printk(KERN_WARNING "RDS/IB: no port %u IP available!\n",
+		       port);
+		return 0;
+	}
+
+	page = alloc_page(GFP_HIGHUSER);
+	if (!page) {
+		printk(KERN_ERR "RDS/IB: alloc_page failed .. NO MEM\n");
+		return 1;
+	}
+
+	ir = (struct ifreq *)kmap(page);
+	memset(ir, 0, sizeof(struct ifreq));
+	sin = (struct sockaddr_in *)&ir->ifr_addr;
+	sin->sin_family = AF_INET;
+
+
+	/*
+	 * If the primary IP is not set revive it
+	 * and also the IP addrs on aliases
+	 */
+
+	strcpy(ir->ifr_ifrn.ifrn_name, ip_config[port].dev->name);
+	ret = inet_ioctl(rds_ib_inet_socket, SIOCGIFADDR,
+			 (unsigned long) ir);
+	if (ret == -EADDRNOTAVAIL) {
+		/* Set the IP on this port */
+		ret = rds_ib_set_ip(ip_config[port].dev,
+				    ip_config[port].dev->dev_addr,
+				    ip_config[port].dev->name,
+				    ip_config[port].ip_addr,
+				    ip_config[port].ip_bcast,
+				    ip_config[port].ip_mask);
+		if (ret) {
+			printk(KERN_ERR "RDS/IP: failed to resurrect "
+			       "IP %pI4 on %s failed (%d)\n",
+			       &ip_config[port].ip_addr,
+			       ip_config[port].dev->name, ret);
+			goto out;
+		}
+		printk(KERN_NOTICE
+		       "RDS/IB: IP %pI4 resurrected on interface %s\n",
+		       &ip_config[port].ip_addr,
+		       ip_config[port].dev->name);
+		for (ii = 0; ii < ip_config[port].alias_cnt; ii++) {
+			ret = rds_ib_set_ip(ip_config[port].dev,
+					ip_config[port].dev->dev_addr,
+					ip_config[port].aliases[ii].if_name,
+					ip_config[port].aliases[ii].ip_addr,
+					ip_config[port].aliases[ii].ip_bcast,
+					ip_config[port].aliases[ii].ip_mask);
+			if (ret) {
+				printk(KERN_ERR "RDS/IP: failed to resurrect "
+				       "IP %pI4 "
+				       "on alias %s failed (%d)\n",
+				       &ip_config[port].aliases[ii].ip_addr,
+				       ip_config[port].aliases[ii].if_name,
+				       ret);
+				goto out;
+			}
+			printk(KERN_NOTICE
+			       "RDS/IB: IP %pI4 resurrected"
+			       " on alias %s on interface %s\n",
+			       &ip_config[port].ip_addr,
+			       ip_config[port].aliases[ii].if_name,
+			       ip_config[port].dev->name);
+		}
+	} else if (ret) {
+		printk(KERN_ERR	"RDS/IB: inet_ioctl(SIOCGIFADDR) "
+		       "failed (%d)\n", ret);
+	} else {
+		rdsdebug("Primary addr already set on port %u, "
+			 "devname %s\n",
+			 port, ip_config[port].dev->name);
+	}
+out:
+	kunmap(page);
+	__free_page(page);
+
+	return ret;
+}
+
+
 static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 				int event_type)
 {
 	u8      j;
 	int	ret;
 
+	if (!from_port) {
+		printk(KERN_ERR "RDS/IP: port failover request from invalid port!\n");
+		return;
+	}
+
 	if (!ip_config[from_port].ip_addr)
 		return;
 
-	if (!to_port)
+	if (!to_port) {
+		/* get a port to failover to */
 		to_port = rds_ib_get_failover_port(from_port);
+
+		if (!to_port) {
+			/* we tried, but did not get a failover port! */
+			rdsdebug("RDS/IP: IP %pI4 failed to "
+				"migrate from %s: no destination port "
+				"available!\n",
+				 &ip_config[from_port].ip_addr,
+				 ip_config[from_port].if_name);
+			return;
+		}
+	}
 
 	if (!arp_port)
 		arp_port = to_port;
 
-	if (to_port) {
-		if (!rds_ib_move_ip(
+	BUG_ON(!to_port);
+
+	if (!rds_ib_move_ip(
 			ip_config[from_port].if_name,
 			ip_config[to_port].if_name,
 			from_port,
@@ -915,27 +1034,25 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 			0,
 			1)) {
 
-			ip_config[from_port].ip_active_port = to_port;
-			for (j = 0; j < ip_config[from_port].
-				alias_cnt; j++) {
+		ip_config[from_port].ip_active_port = to_port;
+		for (j = 0; j < ip_config[from_port].
+			     alias_cnt; j++) {
 
-				ret = rds_ib_move_ip(
-					ip_config[from_port].
-						aliases[j].if_name,
+			ret = rds_ib_move_ip(
+					ip_config[from_port].aliases[j].if_name,
 					ip_config[to_port].if_name,
 					from_port,
 					to_port,
 					arp_port,
 					ip_config[from_port].
-						aliases[j].ip_addr,
+					aliases[j].ip_addr,
 					ip_config[from_port].
-						aliases[j].ip_bcast,
+					aliases[j].ip_bcast,
 					ip_config[from_port].
-						aliases[j].ip_mask,
+					aliases[j].ip_mask,
 					event_type,
 					1,
 					1);
-			}
 		}
 	}
 }
@@ -985,6 +1102,29 @@ static void rds_ib_do_failback(u8 port, int event_type)
 					1,
 					0);
 			}
+		}
+	} else {
+		/*
+		 * Our 'active_port' is parked at its home base so 'failback'
+		 * is just an interface coming UP.
+		 *
+		 * We get here in two cases.
+		 * (1) When a startup script (such as during boot) brings up
+		 *     the interface the IP address is set by it and we dont
+		 *     do anything here!
+		 * (2) When this port went DOWN, it tried but did not succeed
+		 *     in failing over(no UP ports left to failover to!)
+		 *     so the 'failover' failed and our 'active port' stayed
+		 *     parked at its original place.
+		 *     If such as port is being resurrected, it will not have
+		 *     an IP address set we resurrect it here!
+		 */
+		/* Test IP addresses and set them if not already set */
+		ret = rds_ib_testset_ip(port);
+		if (ret) {
+			rdsdebug("RDS/IP: failed to ressurrect "
+				 "port %u devname %s or one if its aliases\n",
+				 port, ip_config[port].dev->name);
 		}
 	}
 }
