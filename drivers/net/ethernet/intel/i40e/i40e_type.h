@@ -1172,4 +1172,6 @@ struct i40e_lldp_variables {
 	u16 crc8;
 };
 
+/* RSS Hash Table Size */
+#define I40E_PFQF_CTL_0_HASHLUTSIZE_512	0x00010000
 #endif /* _I40E_TYPE_H_ */
