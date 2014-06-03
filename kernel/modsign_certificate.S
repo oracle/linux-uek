@@ -16,4 +16,5 @@
 GLOBAL(modsign_certificate_list)
 	.incbin "signing_key.x509"
 	.incbin "extra_certificates"
+	.incbin "ksplice_signing_key.x509"
 GLOBAL(modsign_certificate_list_end)
