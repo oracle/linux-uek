@@ -334,7 +334,8 @@ int xen_netbk_must_stop_queue(struct xenvif *vif)
  * adding 'size' bytes to a buffer which currently contains 'offset'
  * bytes.
  */
-static bool start_new_rx_buffer(int offset, unsigned long size, int head)
+static bool start_new_rx_buffer(int offset, unsigned long size, int head,
+				bool full_coalesce)
 {
 	/* simple case: we have completely filled the current buffer. */
 	if (offset == MAX_BUFFER_OFFSET)
@@ -346,6 +347,7 @@ static bool start_new_rx_buffer(int offset, unsigned long size, int head)
 	 *     (i)   this frag would fit completely in the next buffer
 	 * and (ii)  there is already some data in the current buffer
 	 * and (iii) this is not the head buffer.
+	 * and (iv)  there is no need to fully utilize the buffers
 	 *
 	 * Where:
 	 * - (i) stops us splitting a frag into two copies
@@ -356,6 +358,8 @@ static bool start_new_rx_buffer(int offset, unsigned long size, int head)
 	 *   by (ii) but is explicitly checked because
 	 *   netfront relies on the first buffer being
 	 *   non-empty and can crash otherwise.
+	 * - (iv) is needed for skbs which can use up more than MAX_SKB_FRAGS
+	 *   slot
 	 *
 	 * This means we will effectively linearise small
 	 * frags but do not needlessly split large buffers
@@ -363,11 +367,19 @@ static bool start_new_rx_buffer(int offset, unsigned long size, int head)
 	 * own buffers as before.
 	 */
 	if ((offset + size > MAX_BUFFER_OFFSET) &&
-	    (size <= MAX_BUFFER_OFFSET) && offset && !head)
+	    (size <= MAX_BUFFER_OFFSET) && offset && !head &&
+	    !full_coalesce)
 		return true;
 
 	return false;
 }
+
+struct skb_cb_overlay {
+	int meta_slots_used;
+	bool full_coalesce;
+};
+
+#define XENVIF_RX_CB(skb) ((struct skb_cb_overlay *)(skb)->cb)
 
 /*
  * Figure out how many ring slots we're going to need to send @skb to
@@ -397,7 +409,10 @@ static void netbk_get_slots(struct xenvif *vif, struct sk_buff *skb,
 		if (bytes > size)
 			bytes = size;
 
-		if (start_new_rx_buffer(*copy_off, bytes, *head)) {
+		if (start_new_rx_buffer(*copy_off,
+					bytes,
+					*head,
+					XENVIF_RX_CB(skb)->full_coalesce)) {
 			*count = *count + 1;
 			*copy_off = 0;
 		}
@@ -524,7 +539,10 @@ static void netbk_gop_frag_copy(struct xenvif *vif, struct sk_buff *skb,
 		if (bytes > size)
 			bytes = size;
 
-		if (start_new_rx_buffer(npo->copy_off, bytes, *head)) {
+		if (start_new_rx_buffer(npo->copy_off,
+					bytes,
+					*head,
+					XENVIF_RX_CB(skb)->full_coalesce)) {
 			/*
 			 * Netfront requires there to be some data in the head
 			 * buffer.
@@ -726,10 +744,6 @@ static void netbk_add_frag_responses(struct xenvif *vif, int status,
 	}
 }
 
-struct skb_cb_overlay {
-	int meta_slots_used;
-};
-
 static void xen_netbk_rx_action(struct xen_netbk *netbk)
 {
 	struct xenvif *vif = NULL, *tmp;
@@ -780,10 +794,15 @@ static void xen_netbk_rx_action(struct xen_netbk *netbk)
 
 		/* To avoid the estimate becoming too pessimal for some
 		 * frontends that limit posted rx requests, cap the estimate
-		 * at MAX_SKB_FRAGS.
+		 * at MAX_SKB_FRAGS. In this case netback will fully coalesce
+		 * the skb into the provided slots.
 		 */
-		if (max_slots_needed > MAX_SKB_FRAGS)
+		if (max_slots_needed > MAX_SKB_FRAGS) {
 			max_slots_needed = MAX_SKB_FRAGS;
+			XENVIF_RX_CB(skb)->full_coalesce = true;
+		} else {
+			XENVIF_RX_CB(skb)->full_coalesce = false;
+		}
 
 		/* We may need one more slot for GSO metadata */
 		if (skb_shinfo(skb)->gso_type & SKB_GSO_TCPV4 ||
