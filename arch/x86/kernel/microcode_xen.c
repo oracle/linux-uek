@@ -56,7 +56,7 @@ static int xen_microcode_update(int cpu)
 	return err;
 }
 
-static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device)
+static enum ucode_state xen_request_microcode_fw(int cpu, struct device *device, bool refresh_fw)
 {
 	char name[36];
 	struct cpuinfo_x86 *c = &cpu_data(cpu);
