@@ -728,8 +728,8 @@ static int __init balloon_init(void)
 	balloon_npages = 1 << balloon_order;
 
 	balloon_stats.current_pages = (xen_pv_domain()
-		? min(xen_start_info->nr_pages - xen_released_pages, max_pfn)
-		: (max_pfn - absent_pages_in_range(0, max_pfn))) >> balloon_order;
+		? min(xen_start_info->nr_pages - xen_released_pages, max_pfn) >> balloon_order
+		: (max_pfn - absent_pages_in_range(0, max_pfn)));
 	balloon_stats.target_pages  = balloon_stats.current_pages;
 	balloon_stats.balloon_low   = 0;
 	balloon_stats.balloon_high  = 0;
@@ -774,7 +774,8 @@ early_initcall(balloon_clear);
 
 static int __init balloon_parse_huge(char *s)
 {
-	balloon_order = 9;
+	if (xen_pv_domain())
+		balloon_order = 9;
 	return 1;
 }
 
