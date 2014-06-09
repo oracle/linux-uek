@@ -1781,6 +1781,10 @@ int is_snb(unsigned int family, unsigned int model)
 	case 0x2D:
 	case 0x3A:	/* IVB */
 	case 0x3E:	/* IVB Xeon */
+	case 0x3C:	/* HSW */
+	case 0x3F:	/* HSW */
+	case 0x45:	/* HSW */
+	case 0x46:	/* HSW */
 		return 1;
 	}
 	return 0;
