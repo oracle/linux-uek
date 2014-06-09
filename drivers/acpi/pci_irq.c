@@ -470,6 +470,8 @@ int acpi_pci_irq_enable(struct pci_dev *dev)
 			dev_warn(&dev->dev, "PCI INT %c: no GSI\n",
 				 pin_name(pin));
 		}
+
+		kfree(entry);
 		return 0;
 	}
 
