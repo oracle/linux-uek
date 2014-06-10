@@ -3944,8 +3944,6 @@ int iscsit_close_connection(
 	iscsit_stop_timers_for_cmds(conn);
 	iscsit_stop_nopin_response_timer(conn);
 	iscsit_stop_nopin_timer(conn);
-	iscsit_free_queue_reqs_for_conn(conn);
-
 	/*
 	 * During Connection recovery drop unacknowledged out of order
 	 * commands for this connection, and prepare the other commands
@@ -3962,6 +3960,7 @@ int iscsit_close_connection(
 		iscsit_clear_ooo_cmdsns_for_conn(conn);
 		iscsit_release_commands_from_conn(conn);
 	}
+	iscsit_free_queue_reqs_for_conn(conn);
 
 	/*
 	 * Handle decrementing session or connection usage count if
