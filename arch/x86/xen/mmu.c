@@ -2001,6 +2001,8 @@ static void __init xen_write_cr3_init(unsigned long cr3)
 			  PFN_DOWN(__pa(initial_page_table)));
 	set_page_prot(initial_page_table, PAGE_KERNEL);
 	set_page_prot(initial_kernel_pmd, PAGE_KERNEL);
+
+	pv_mmu_ops.write_cr3 = &xen_write_cr3;
 }
 
 void __init xen_setup_kernel_pagetable(pgd_t *pgd, unsigned long max_pfn)
@@ -2132,7 +2134,6 @@ static void __init xen_post_allocator_init(void)
 #endif
 
 #ifdef CONFIG_X86_64
-	pv_mmu_ops.write_cr3 = &xen_write_cr3;
 	SetPagePinned(virt_to_page(level3_user_vsyscall));
 #endif
 	xen_mark_init_mm_pinned();
