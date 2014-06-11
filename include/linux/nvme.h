@@ -89,7 +89,7 @@ struct nvme_dev {
 	struct kref kref;
 	struct miscdevice miscdev;
 	struct work_struct reset_work;
-	struct notifier_block nb;
+	struct work_struct cpu_work;
 	char name[12];
 	char serial[20];
 	char model[40];
