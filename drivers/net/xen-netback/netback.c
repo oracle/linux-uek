@@ -1137,7 +1137,7 @@ static struct gnttab_copy *xen_netbk_get_requests(struct xen_netbk *netbk,
 		struct pending_tx_info *pending_tx_info =
 			netbk->pending_tx_info;
 
-		page = alloc_page(GFP_KERNEL|__GFP_COLD);
+		page = alloc_page(GFP_ATOMIC|__GFP_COLD);
 		if (!page)
 			goto err;
 
