@@ -114,6 +114,7 @@ extern int ql2xenablehba_err_chk;
 extern int ql2xtargetreset;
 extern int ql2xdontresethba;
 extern unsigned int ql2xmaxlun;
+extern int ql2xasynclogin;
 extern int ql2xmdcapmask;
 extern int ql2xmdenable;
 

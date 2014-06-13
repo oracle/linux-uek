@@ -3793,7 +3793,7 @@ qla2x00_fabric_dev_login(scsi_qla_host_t *vha, fc_port_t *fcport,
 	rval = QLA_SUCCESS;
 	retry = 0;
 
-	if (IS_ALOGIO_CAPABLE(ha)) {
+	if (ql2xasynclogin && IS_ALOGIO_CAPABLE(ha)) {
 		if (fcport->flags & FCF_ASYNC_SENT)
 			return rval;
 		fcport->flags |= FCF_ASYNC_SENT;

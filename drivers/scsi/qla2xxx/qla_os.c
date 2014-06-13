@@ -188,6 +188,12 @@ MODULE_PARM_DESC(ql2xgffidenable,
 		"Enables GFF_ID checks of port type. "
 		"Default is 0 - Do not use GFF_ID information.");
 
+int ql2xasynclogin = 1;
+module_param(ql2xasynclogin, int, S_IRUGO);
+MODULE_PARM_DESC(ql2xasynclogin,
+		"Enables asynchronous login to remote ports "
+		"Default is 1 - Use asynchronous login if possible.");
+
 int ql2xasynctmfenable;
 module_param(ql2xasynctmfenable, int, S_IRUGO);
 MODULE_PARM_DESC(ql2xasynctmfenable,
@@ -4023,7 +4029,7 @@ void qla2x00_relogin(struct scsi_qla_host *vha)
 					}
 				}
 
-				if (IS_ALOGIO_CAPABLE(ha)) {
+				if (ql2xasynclogin && IS_ALOGIO_CAPABLE(ha)) {
 					fcport->flags |= FCF_ASYNC_SENT;
 					data[0] = 0;
 					data[1] = QLA_LOGIO_LOGIN_RETRIED;
