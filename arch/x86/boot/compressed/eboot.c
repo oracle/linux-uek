@@ -448,6 +448,7 @@ struct boot_params *make_boot_params(void *handle, efi_system_table_t *_table)
 	int i;
 	unsigned long ramdisk_addr;
 	unsigned long ramdisk_size;
+	unsigned long initrd_addr_max;
 
 	sys_table = _table;
 
@@ -534,14 +535,21 @@ struct boot_params *make_boot_params(void *handle, efi_system_table_t *_table)
 
 	memset(sdt, 0, sizeof(*sdt));
 
+	if (hdr->xloadflags & XLF_CAN_BE_LOADED_ABOVE_4G)
+		initrd_addr_max = -1UL;
+	else
+		initrd_addr_max = hdr->initrd_addr_max;
+
 	status = handle_cmdline_files(sys_table, image,
 				      (char *)(unsigned long)hdr->cmd_line_ptr,
-				      "initrd=", hdr->initrd_addr_max,
+				      "initrd=", initrd_addr_max,
 				      &ramdisk_addr, &ramdisk_size);
 	if (status != EFI_SUCCESS)
 		goto fail2;
-	hdr->ramdisk_image = ramdisk_addr;
-	hdr->ramdisk_size = ramdisk_size;
+	hdr->ramdisk_image = ramdisk_addr & 0xffffffff;
+	hdr->ramdisk_size  = ramdisk_size & 0xffffffff;
+	boot_params->ext_ramdisk_image = (u64)ramdisk_addr >> 32;
+	boot_params->ext_ramdisk_size  = (u64)ramdisk_size >> 32;
 
 	return boot_params;
 fail2:
