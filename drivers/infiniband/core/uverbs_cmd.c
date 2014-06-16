@@ -944,8 +944,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	struct ib_mr                *mr;
 	int                          ret;
 
-	if (out_len < sizeof resp)
+	if (out_len < sizeof(resp)) {
+		pr_debug("ib_uverbs_reg_mr: command output length too short\n");
 		return -ENOSPC;
+	}
 
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
@@ -954,8 +956,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 		   (unsigned long) cmd.response + sizeof resp,
 		   in_len - sizeof cmd, out_len - sizeof resp);
 
-	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK)) {
+		pr_debug("ib_uverbs_reg_mr: HCA virtual address doesn't match host address\n");
 		return -EINVAL;
+	}
 
 	ret = ib_check_mr_access(cmd.access_flags);
 	if (ret)
@@ -970,6 +974,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 
 	pd = idr_read_pd(cmd.pd_handle, file->ucontext);
 	if (!pd) {
+		pr_debug("ib_uverbs_reg_mr: invalid PD\n");
 		ret = -EINVAL;
 		goto err_free;
 	}
