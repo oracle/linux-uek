@@ -469,9 +469,6 @@ static void xen_evtchn_close(unsigned int port)
 	close.port = port;
 	if (HYPERVISOR_event_channel_op(EVTCHNOP_close, &close) != 0)
 		BUG();
-
-	/* Closed ports are implicitly re-bound to VCPU0. */
-	bind_evtchn_to_cpu(port, 0);
 }
 
 static void pirq_query_unmask(int irq)
@@ -1344,26 +1341,6 @@ static int set_affinity_irq(struct irq_data *data, const struct cpumask *dest,
 	return rebind_irq_to_cpu(data->irq, tcpu);
 }
 
-static int retrigger_evtchn(int evtchn)
-{
-	int masked;
-
-	if (!VALID_EVTCHN(evtchn))
-		return 0;
-
-	masked = test_and_set_mask(evtchn);
-	set_evtchn(evtchn);
-	if (!masked)
-		unmask_evtchn(evtchn);
-
-	return 1;
-}
-
-int resend_irq_on_evtchn(unsigned int irq)
-{
-	return retrigger_evtchn(evtchn_from_irq(irq));
-}
-
 static void enable_dynirq(struct irq_data *data)
 {
 	int evtchn = evtchn_from_irq(data->irq);
@@ -1398,7 +1375,18 @@ static void mask_ack_dynirq(struct irq_data *data)
 
 static int retrigger_dynirq(struct irq_data *data)
 {
-	return retrigger_evtchn(evtchn_from_irq(data->irq));
+	unsigned int evtchn = evtchn_from_irq(data->irq);
+	int masked;
+
+	if (!VALID_EVTCHN(evtchn))
+		return 0;
+
+	masked = test_and_set_mask(evtchn);
+	set_evtchn(evtchn);
+	if (!masked)
+		unmask_evtchn(evtchn);
+
+	return 1;
 }
 
 static void restore_pirqs(void)
