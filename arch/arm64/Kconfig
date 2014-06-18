@@ -173,6 +173,7 @@ config HW_PERF_EVENTS
 
 source "mm/Kconfig"
 
+	select SWIOTLB_XEN
 endmenu
 
 menu "Boot options"
