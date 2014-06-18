@@ -561,7 +561,7 @@ quiet_cmd_sdtstub = SDTSTB  $@
 			      $(filter $(addprefix $(obj)/, \
 				$($(subst $(obj)/,,$(@:.sdtstub.S=-objs))) \
 				$($(subst $(obj)/,,$(@:.sdtstub.S=-y)))), \
-				$(multi-objs-m))
+				$(subst |,,$(multi-objs-m)))
 
 $(multi-used-m:.o=.sdtstub.S) : %.sdtstub.S: $(multi-objs-m)
 	$(call if_changed,sdtstub)
