@@ -120,6 +120,10 @@ struct snd_card {
 	int user_ctl_count;		/* count of all user controls */
 	struct list_head controls;	/* all controls for this card */
 	struct list_head ctl_files;	/* active control files */
+#ifndef __GENKSYMS__
+	struct mutex user_ctl_lock;	/* protects user controls against
+					   concurrent access */
+#endif
 
 	struct snd_info_entry *proc_root;	/* root for soundcard specific files */
 	struct snd_info_entry *proc_id;	/* the card id */
