@@ -118,6 +118,7 @@ static inline bool set_phys_to_machine(unsigned long pfn, unsigned long mfn)
 	return __set_phys_to_machine(pfn, mfn);
 }
 
-#define xen_remap(cookie, size) __arm_ioremap((cookie), (size), MT_MEMORY);
+#define xen_remap(cookie, size) __arm_ioremap((cookie), (size), MT_MEMORY)
+#define xen_unmap(cookie) iounmap((cookie))
 
 #endif /* _ASM_ARM_XEN_PAGE_H */

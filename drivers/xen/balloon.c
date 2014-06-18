@@ -208,13 +208,6 @@ static struct page *balloon_retrieve(bool prefer_highmem)
 	return page;
 }
 
-static struct page *balloon_first_page(void)
-{
-	if (list_empty(&ballooned_pages))
-		return NULL;
-	return list_entry(ballooned_pages.next, struct page, lru);
-}
-
 static struct page *balloon_next_page(struct page *page)
 {
 	struct list_head *next = page->lru.next;
@@ -378,7 +371,7 @@ static enum bp_state increase_reservation(unsigned long nr_pages)
 	if (nr_pages > ARRAY_SIZE(frame_list))
 		nr_pages = ARRAY_SIZE(frame_list);
 
-	page = balloon_first_page();
+	page = list_first_entry_or_null(&ballooned_pages, struct page, lru);
 	for (i = 0; i < nr_pages; i++) {
 		if (!page) {
 			nr_pages = i;
@@ -463,21 +456,26 @@ static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
 			state = BP_EAGAIN;
 			break;
 		}
-
-		pfn = page_to_pfn(page);
-		frame_list[i] = pfn_to_mfn(pfn);
-
 		scrub_page(page);
+
+		frame_list[i] = page_to_pfn(page);
 	}
 
-	/* Ensure that ballooned highmem pages don't have kmaps. */
+	/*
+	 * Ensure that ballooned highmem pages don't have kmaps.
+	 *
+	 * Do this before changing the p2m as kmap_flush_unused()
+	 * reads PTEs to obtain pages (and hence needs the original
+	 * p2m entry).
+	 */
 	kmap_flush_unused();
-	flush_tlb_all();
 
-	/* No more mappings: invalidate P2M and add to balloon. */
+	/* Update direct mapping, invalidate P2M, and add to balloon. */
 	discontig = 0;
 	for (i = 0; i < nr_pages; i++) {
-		mfn = frame_list[i];
+		pfn = frame_list[i];
+		frame_list[i] = mfn = pfn_to_mfn(pfn);
+		page = pfn_to_page(pfn);
 		lpfn = pfn = mfn_to_pfn(mfn);
 		discontig_free = 0;
 #ifdef CONFIG_XEN_HAVE_PVMMU
@@ -516,10 +514,11 @@ static enum bp_state decrease_reservation(unsigned long nr_pages, gfp_t gfp)
 			discontig = 1;
 		}
 #endif
-		balloon_append(pfn_to_page(pfn));
+		balloon_append(page);
 	}
 	balloon_stats.current_pages -= nr_pages;
 
+	flush_tlb_all();
 	if (discontig)
 		nr_pages = shrink_frame(nr_pages);
 

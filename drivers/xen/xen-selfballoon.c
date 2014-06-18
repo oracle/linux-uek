@@ -210,6 +210,7 @@ __setup("selfballooning", xen_selfballooning_setup);
 #endif /* CONFIG_FRONTSWAP */
 
 #define MB2PAGES(mb)	((mb) << (20 - PAGE_SHIFT))
+#define PAGES2MB(pages) ((pages) >> (20 - PAGE_SHIFT))
 
 /*
  * Use current balloon size, the goal (vm_committed_as), and hysteresis
@@ -560,6 +561,7 @@ EXPORT_SYMBOL(register_xen_selfballooning);
 static int __init xen_selfballoon_init(void)
 {
 	bool enable = false;
+	unsigned long reserve_pages;
 
 	if (!xen_domain())
 		return -ENODEV;
@@ -584,6 +586,26 @@ static int __init xen_selfballoon_init(void)
 	if (!enable)
 		return -ENODEV;
 
+	/*
+	 * Give selfballoon_reserved_mb a default value(10% of total ram pages)
+	 * to make selfballoon not so aggressive.
+	 *
+	 * There are mainly two reasons:
+	 * 1) The original goal_page didn't consider some pages used by kernel
+	 *    space, like slab pages and memory used by device drivers.
+	 *
+	 * 2) The balloon driver may not give back memory to guest OS fast
+	 *    enough when the workload suddenly aquries a lot of physical memory.
+	 *
+	 * In both cases, the guest OS will suffer from memory pressure and
+	 * OOM killer may be triggered.
+	 * By reserving extra 10% of total ram pages, we can keep the system
+	 * much more reliably and response faster in some cases.
+	 */
+	if (!selfballoon_reserved_mb) {
+		reserve_pages = totalram_pages / 10;
+		selfballoon_reserved_mb = PAGES2MB(reserve_pages);
+	}
 	schedule_delayed_work(&selfballoon_worker, selfballoon_interval * HZ);
 
 	return 0;

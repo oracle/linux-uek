@@ -847,7 +847,7 @@ static int xen_blkbk_parse_indirect(struct blkif_request *req,
 	struct grant_page **pages = pending_req->indirect_pages;
 	struct xen_blkif *blkif = pending_req->blkif;
 	int indirect_grefs, rc, n, nseg, i;
-	struct blkif_request_segment_aligned *segments = NULL;
+	struct blkif_request_segment *segments = NULL;
 
 	nseg = pending_req->nr_pages;
 	indirect_grefs = INDIRECT_PAGES(nseg);
@@ -943,9 +943,7 @@ static void xen_blk_drain_io(struct xen_blkif *blkif)
 {
 	atomic_set(&blkif->drain, 1);
 	do {
-		/* The initial value is one, and one refcnt taken at the
-		 * start of the xen_blkif_schedule thread. */
-		if (atomic_read(&blkif->refcnt) <= 2)
+		if (atomic_read(&blkif->inflight) == 0)
 			break;
 		wait_for_completion_interruptible_timeout(
 				&blkif->drain_complete, HZ);
@@ -1005,11 +1003,10 @@ static void __end_block_io_op(struct pending_req *pending_req, int error)
 		 * pending_free_wq if there's a drain going on, but it has
 		 * to be taken into account if the current model is changed.
 		 */
-		xen_blkif_put(blkif);
-		if (atomic_read(&blkif->refcnt) <= 2) {
-			if (atomic_read(&blkif->drain))
-				complete(&blkif->drain_complete);
+		if (atomic_dec_and_test(&blkif->inflight) && atomic_read(&blkif->drain)) {
+			complete(&blkif->drain_complete);
 		}
+		xen_blkif_put(blkif);
 	}
 }
 
@@ -1263,6 +1260,7 @@ static int dispatch_rw_block_io(struct xen_blkif *blkif,
 	 * below (in "!bio") if we are handling a BLKIF_OP_DISCARD.
 	 */
 	xen_blkif_get(blkif);
+	atomic_inc(&blkif->inflight);
 
 	for (i = 0; i < nseg; i++) {
 		while ((bio == NULL) ||
