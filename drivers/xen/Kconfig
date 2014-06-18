@@ -146,7 +146,7 @@ config SWIOTLB_XEN
 
 config XEN_TMEM
 	bool
-	depends on !ARM
+	depends on !ARM && !ARM64
 	default y if (CLEANCACHE || FRONTSWAP)
 	help
 	  Shim to interface in-kernel Transcendent Memory hooks
