@@ -2796,6 +2796,16 @@ static void nvme_reset_failed_dev(struct work_struct *ws)
 	nvme_dev_reset(dev);
 }
 
+static void nvme_reset_notify(struct pci_dev *pdev, bool prepare)
+{
+       struct nvme_dev *dev = pci_get_drvdata(pdev);
+
+       if (prepare)
+               nvme_dev_shutdown(dev);
+       else
+               nvme_dev_resume(dev);
+}
+
 static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	int result = -ENOMEM;
@@ -2839,6 +2849,8 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	result = nvme_dev_add(dev);
 	if (result)
 		goto shutdown;
+
+	pci_set_reset_notify(pdev, &nvme_reset_notify);
 
  create_cdev:
 	scnprintf(dev->name, sizeof(dev->name), "nvme%d", dev->instance);
