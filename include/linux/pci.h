@@ -270,11 +270,16 @@ struct pci_dev {
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 	unsigned int	d3cold_delay;	/* D3cold->D0 transition time in ms */
 
+	u32		reset_notify_lo;/* Low bytes of pci_reset_notify cb */
+
 #ifdef CONFIG_PCIEASPM
 	struct pcie_link_state	*link_state;	/* ASPM link state. */
 #endif
 
 	pci_channel_state_t error_state;	/* current connectivity state */
+
+	u32		reset_notify_hi;/* High bytes of pci_reset_notify cb */
+
 	struct	device	dev;		/* Generic device interface */
 
 	int		cfg_size;	/* Size of configuration space */
@@ -336,6 +341,30 @@ struct pci_dev {
 	phys_addr_t rom; /* Physical address of ROM if it's not from the BAR */
 	size_t romlen; /* Length of ROM if it's not from the BAR */
 };
+
+typedef void (pci_reset_notify_fn) (struct pci_dev *dev, bool prepare);
+
+static inline void pci_set_reset_notify(struct pci_dev *dev,
+					pci_reset_notify_fn *fn)
+{
+	if (!dev)
+		return;
+
+	dev->reset_notify_lo = lower_32_bits((u64)fn);
+	dev->reset_notify_hi = upper_32_bits((u64)fn);
+}
+
+static inline pci_reset_notify_fn *pci_get_reset_notify(struct pci_dev *dev)
+{
+	u64 fn;
+
+	if (!dev)
+		return NULL;
+
+	fn = ((u64)dev->reset_notify_hi << 32) | dev->reset_notify_lo;
+
+	return (pci_reset_notify_fn *)fn;
+}
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
 {
