@@ -8477,7 +8477,7 @@ static int tg3_tso_bug(struct tg3 *tp, struct sk_buff *skb)
 		netif_wake_queue(tp->dev);
 	}
 
-	segs = skb_gso_segment(skb, tp->dev->features & ~NETIF_F_TSO);
+	segs = skb_gso_segment(skb, tp->dev->features & ~(NETIF_F_TSO | NETIF_F_TSO6));
 	/* VMWare always returns NULL.  Linux will only return NULL
 	 * when no segments are required.
 	 */
