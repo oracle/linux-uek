@@ -1,6 +1,6 @@
 /*
  * Definitions for the NVM Express interface
- * Copyright (c) 2011-2013, Intel Corporation.
+ * Copyright (c) 2011-2014, Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -10,10 +10,6 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #ifndef _LINUX_NVME_H
@@ -279,6 +275,10 @@ enum {
 	NVME_FEAT_WRITE_ATOMIC	= 0x0a,
 	NVME_FEAT_ASYNC_EVENT	= 0x0b,
 	NVME_FEAT_SW_PROGRESS	= 0x0c,
+	NVME_LOG_ERROR		= 0x01,
+	NVME_LOG_SMART		= 0x02,
+	NVME_LOG_FW_SLOT	= 0x03,
+	NVME_LOG_RESERVATION	= 0x80,
 	NVME_FWACT_REPL		= (0 << 3),
 	NVME_FWACT_REPL_ACTV	= (1 << 3),
 	NVME_FWACT_ACTV		= (2 << 3),
@@ -525,8 +525,8 @@ enum {
 
 #define NVME_VS(major, minor)	(major << 16 | minor)
 
-extern unsigned char io_timeout;
-#define NVME_IO_TIMEOUT	(io_timeout * HZ)
+extern unsigned char nvme_io_timeout;
+#define NVME_IO_TIMEOUT	(nvme_io_timeout * HZ)
 
 /*
  * Represents an NVM Express device.  Each nvme_dev is a PCI function.
@@ -552,7 +552,7 @@ struct nvme_dev {
 	struct kref kref;
 	struct miscdevice miscdev;
 	struct work_struct reset_work;
-	struct notifier_block nb;
+	struct work_struct cpu_work;
 	char name[12];
 	char serial[20];
 	char model[40];
