@@ -1028,11 +1028,8 @@ int qlcnic_config_port_mirroring(struct qlcnic_adapter *adapter, u8 id,
 	u32 arg1;
 
 	if (adapter->ahw->op_mode != QLCNIC_MGMT_FUNC ||
-	    !(adapter->eswitch[id].flags & QLCNIC_SWITCH_ENABLE)) {
-		dev_info(&adapter->pdev->dev, "%s: Not a management function\n",
-			 __func__);
+	    !(adapter->eswitch[id].flags & QLCNIC_SWITCH_ENABLE))
 		return err;
-	}
 
 	arg1 = id | (enable_mirroring ? BIT_4 : 0);
 	arg1 |= pci_func << 8;
@@ -1322,12 +1319,8 @@ int qlcnic_config_switch_port(struct qlcnic_adapter *adapter,
 	u32 arg1, arg2 = 0;
 	u8 pci_func;
 
-	if (adapter->ahw->op_mode != QLCNIC_MGMT_FUNC) {
-		dev_info(&adapter->pdev->dev, "%s: Not a management function\n",
-			 __func__);
+	if (adapter->ahw->op_mode != QLCNIC_MGMT_FUNC)
 		return err;
-	}
-
 	pci_func = esw_cfg->pci_func;
 	index = qlcnic_is_valid_nic_func(adapter, pci_func);
 	if (index < 0)
@@ -1362,7 +1355,6 @@ int qlcnic_config_switch_port(struct qlcnic_adapter *adapter,
 			arg2 &= ~BIT_3;
 		break;
 	case QLCNIC_ADD_VLAN:
-			arg1 &= ~(0x0ffff << 16);
 			arg1 |= (BIT_2 | BIT_5);
 			arg1 |= (esw_cfg->vlan_id << 16);
 			break;
@@ -1371,8 +1363,6 @@ int qlcnic_config_switch_port(struct qlcnic_adapter *adapter,
 			arg1 &= ~(0x0ffff << 16);
 			break;
 	default:
-		dev_err(&adapter->pdev->dev, "%s: Invalid opmode 0x%x\n",
-			__func__, esw_cfg->op_mode);
 		return err;
 	}
 

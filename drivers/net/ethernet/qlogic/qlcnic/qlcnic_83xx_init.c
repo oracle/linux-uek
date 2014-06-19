@@ -2093,8 +2093,6 @@ int qlcnic_83xx_configure_opmode(struct qlcnic_adapter *adapter)
 		adapter->max_sds_rings = QLCNIC_MAX_SDS_RINGS;
 		adapter->max_tx_rings = QLCNIC_MAX_TX_RINGS;
 	} else {
-		dev_err(&adapter->pdev->dev, "%s: Invalid opmode %d\n",
-			__func__, ret);
 		return -EIO;
 	}
 
@@ -2261,16 +2259,15 @@ int qlcnic_83xx_init(struct qlcnic_adapter *adapter, int pci_using_dac)
 		goto disable_intr;
 	}
 
-	INIT_DELAYED_WORK(&adapter->idc_aen_work, qlcnic_83xx_idc_aen_work);
-
 	err = qlcnic_83xx_setup_mbx_intr(adapter);
 	if (err)
 		goto disable_mbx_intr;
 
 	qlcnic_83xx_clear_function_resources(adapter);
-	qlcnic_dcb_enable(adapter->dcb);
+
+	INIT_DELAYED_WORK(&adapter->idc_aen_work, qlcnic_83xx_idc_aen_work);
+
 	qlcnic_83xx_initialize_nic(adapter, 1);
-	qlcnic_dcb_get_info(adapter->dcb);
 
 	/* Configure default, SR-IOV or Virtual NIC mode of operation */
 	err = qlcnic_83xx_configure_opmode(adapter);

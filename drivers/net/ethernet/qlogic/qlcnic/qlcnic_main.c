@@ -90,6 +90,7 @@ static void qlcnic_82xx_io_resume(struct pci_dev *);
 static void qlcnic_82xx_set_mac_filter_count(struct qlcnic_adapter *);
 static pci_ers_result_t qlcnic_82xx_io_error_detected(struct pci_dev *,
 						      pci_channel_state_t);
+
 static u32 qlcnic_vlan_tx_check(struct qlcnic_adapter *adapter)
 {
 	struct qlcnic_hardware_context *ahw = adapter->ahw;
@@ -546,12 +547,6 @@ static struct qlcnic_hardware_ops qlcnic_hw_ops = {
 	.disable_sds_intr		= qlcnic_82xx_disable_sds_intr,
 	.enable_tx_intr			= qlcnic_82xx_enable_tx_intr,
 	.disable_tx_intr		= qlcnic_82xx_disable_tx_intr,
-	.get_saved_state		= qlcnic_82xx_get_saved_state,
-	.set_saved_state		= qlcnic_82xx_set_saved_state,
-	.cache_tmpl_hdr_values		= qlcnic_82xx_cache_tmpl_hdr_values,
-	.get_cap_size			= qlcnic_82xx_get_cap_size,
-	.set_sys_info			= qlcnic_82xx_set_sys_info,
-	.store_cap_mask			= qlcnic_82xx_store_cap_mask,
 };
 
 static int qlcnic_check_multi_tx_capability(struct qlcnic_adapter *adapter)
@@ -773,7 +768,7 @@ static int qlcnic_enable_msi_legacy(struct qlcnic_adapter *adapter)
 		return err;
 	}
 
-	if (qlcnic_use_msi_x || qlcnic_use_msi)
+	if (qlcnic_use_msi || qlcnic_use_msi_x)
 		return -EOPNOTSUPP;
 
 	legacy_intrp = &legacy_intr[adapter->ahw->pci_func];
@@ -806,11 +801,10 @@ static int qlcnic_82xx_setup_intr(struct qlcnic_adapter *adapter)
 			return err;
 
 		if (!(adapter->flags & QLCNIC_MSIX_ENABLED)) {
-			adapter->drv_sds_rings = QLCNIC_SINGLE_RING;
 			qlcnic_disable_multi_tx(adapter);
 
 			err = qlcnic_enable_msi_legacy(adapter);
-			if (err)
+			if (!err)
 				return err;
 		}
 	}
@@ -954,8 +948,6 @@ int qlcnic_init_pci_info(struct qlcnic_adapter *adapter)
 
 		if (pfn >= ahw->max_vnic_func) {
 			ret = QL_STATUS_INVALID_PARAM;
-			dev_err(&adapter->pdev->dev, "%s: Invalid function 0x%x, max 0x%x\n",
-				__func__, pfn, ahw->max_vnic_func);
 			goto err_eswitch;
 		}
 
@@ -1989,7 +1981,6 @@ out:
 
 static int qlcnic_alloc_adapter_resources(struct qlcnic_adapter *adapter)
 {
-	struct qlcnic_hardware_context *ahw = adapter->ahw;
 	int err = 0;
 
 	adapter->recv_ctx = kzalloc(sizeof(struct qlcnic_recv_context),
@@ -1997,18 +1988,6 @@ static int qlcnic_alloc_adapter_resources(struct qlcnic_adapter *adapter)
 	if (!adapter->recv_ctx) {
 		err = -ENOMEM;
 		goto err_out;
-	}
-
-	if (qlcnic_83xx_check(adapter)) {
-		ahw->coal.type = QLCNIC_INTR_COAL_TYPE_RX_TX;
-		ahw->coal.tx_time_us = QLCNIC_DEF_INTR_COALESCE_TX_TIME_US;
-		ahw->coal.tx_packets = QLCNIC_DEF_INTR_COALESCE_TX_PACKETS;
-		ahw->coal.rx_time_us = QLCNIC_DEF_INTR_COALESCE_RX_TIME_US;
-		ahw->coal.rx_packets = QLCNIC_DEF_INTR_COALESCE_RX_PACKETS;
-	} else {
-		ahw->coal.type = QLCNIC_INTR_COAL_TYPE_RX;
-		ahw->coal.rx_time_us = QLCNIC_DEF_INTR_COALESCE_RX_TIME_US;
-		ahw->coal.rx_packets = QLCNIC_DEF_INTR_COALESCE_RX_PACKETS;
 	}
 
 	/* clear stats */
@@ -2311,19 +2290,6 @@ void qlcnic_set_drv_version(struct qlcnic_adapter *adapter)
 		qlcnic_fw_cmd_set_drv_version(adapter, fw_cmd);
 }
 
-/* Ensure API lock is available during load time */
-static void qlcnic_reset_api_lock(struct qlcnic_adapter *adapter)
-{
-	/* Check API lock availability */
-	if (qlcnic_api_lock(adapter)) {
-		/* Lock is not avaialble at load time, reset the lock */
-		qlcnic_api_unlock(adapter);
-	} else {
-		/* Lock is available, release the lock */
-		qlcnic_api_unlock(adapter);
-	}
-}
-
 static int
 qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 {
@@ -2427,7 +2393,6 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	if (qlcnic_82xx_check(adapter)) {
 		qlcnic_check_vf(adapter, ent);
 		adapter->portnum = adapter->ahw->pci_func;
-		qlcnic_reset_api_lock(adapter);
 		err = qlcnic_start_firmware(adapter);
 		if (err) {
 			dev_err(&pdev->dev, "Loading fw failed.Please Reboot\n"
@@ -2463,17 +2428,15 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		if (err) {
 			switch (err) {
 			case -ENOTRECOVERABLE:
-				dev_err(&pdev->dev, "Adapter initialization failed due to a faulty hardware\n");
-				dev_err(&pdev->dev, "Please replace the adapter with new one and return the faulty adapter for repair\n");
+				dev_err(&pdev->dev, "Adapter initialization failed due to a faulty hardware. Please reboot\n");
+				dev_err(&pdev->dev, "If reboot doesn't help, please replace the adapter with new one and return the faulty adapter for repair\n");
 				goto err_out_free_hw;
 			case -ENOMEM:
 				dev_err(&pdev->dev, "Adapter initialization failed. Please reboot\n");
 				goto err_out_free_hw;
-			case -EOPNOTSUPP:
-				dev_err(&pdev->dev, "Adapter initialization failed\n");
-				goto err_out_free_hw;
 			default:
-				dev_err(&pdev->dev, "Adapter initialization failed. Driver will load in maintenance mode to recover the adapter using the application\n");
+				dev_err(&pdev->dev, "Adapter initialization failed. A reboot may be required to recover from this failure\n");
+				dev_err(&pdev->dev, "If reboot does not help to recover from this failure, try a flash update of the adapter\n");
 				goto err_out_maintenance_mode;
 			}
 		}
@@ -2485,6 +2448,8 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			"%s: failed. Please Reboot\n", __func__);
 		goto err_out_free_hw;
 	}
+
+	qlcnic_dcb_enable(adapter->dcb);
 
 	if (qlcnic_read_mac_addr(adapter))
 		dev_warn(&pdev->dev, "failed to read mac addr\n");
@@ -2503,9 +2468,6 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 			 "Device does not support MSI interrupts\n");
 
 	if (qlcnic_82xx_check(adapter)) {
-		qlcnic_dcb_enable(adapter->dcb);
-		qlcnic_dcb_get_info(adapter->dcb);
-
 		err = qlcnic_setup_intr(adapter);
 		if (err) {
 			dev_err(&pdev->dev, "Failed to setup interrupt\n");
@@ -2545,7 +2507,7 @@ qlcnic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		qlcnic_alloc_lb_filters_mem(adapter);
 
 	qlcnic_add_sysfs(adapter);
-	qlcnic_register_hwmon_dev(adapter);
+
 	return 0;
 
 err_out_disable_mbx_intr:
@@ -2651,8 +2613,6 @@ static void qlcnic_remove(struct pci_dev *pdev)
 	qlcnic_teardown_intr(adapter);
 
 	qlcnic_remove_sysfs(adapter);
-
-	qlcnic_unregister_hwmon_dev(adapter);
 
 	qlcnic_cleanup_pci_map(adapter->ahw);
 
@@ -3886,6 +3846,16 @@ int qlcnic_validate_rings(struct qlcnic_adapter *adapter, __u32 ring_cnt,
 		max_hw_rings = adapter->max_tx_rings;
 		cur_rings = adapter->drv_tx_rings;
 		strcpy(buf, "Tx");
+	}
+
+	if (!qlcnic_use_msi_x && !qlcnic_use_msi) {
+		netdev_err(netdev, "No RSS/TSS support in INT-x mode\n");
+		return -EINVAL;
+	}
+
+	if (adapter->flags & QLCNIC_MSI_ENABLED) {
+		netdev_err(netdev, "No RSS/TSS support in MSI mode\n");
+		return -EINVAL;
 	}
 
 	if (!is_power_of_2(ring_cnt)) {
