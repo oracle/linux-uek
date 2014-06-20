@@ -282,7 +282,9 @@ struct pci_dev {
 	unsigned int	wakeup_prepared:1;
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 
+#ifndef __GENKSYMS__
 	u32		reset_notify_lo;/* Low bytes of pci_reset_notify cb */
+#endif
 
 #ifdef CONFIG_PCIEASPM
 	struct pcie_link_state	*link_state;	/* ASPM link state. */
@@ -290,7 +292,9 @@ struct pci_dev {
 
 	pci_channel_state_t error_state;	/* current connectivity state */
 
+#ifndef __GENKSYMS__
 	u32		reset_notify_hi;/* High bytes of pci_reset_notify cb */
+#endif
 
 	struct	device	dev;		/* Generic device interface */
 
