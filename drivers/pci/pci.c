@@ -3372,6 +3372,23 @@ int pci_probe_reset_function(struct pci_dev *dev)
 }
 
 /**
+ * pci_reset_notify - notify device driver of reset
+ * @dev: device to be notified of reset
+ * @prepare: 'true' if device is about to be reset; 'false' if reset attempt
+ *           completed
+ *
+ * Must be called prior to device access being disabled and after device
+ * access is restored.
+ */
+static void pci_reset_notify(struct pci_dev *dev, bool prepare)
+{
+	pci_reset_notify_fn *fn = pci_get_reset_notify(dev);
+
+	if (fn)
+		fn(dev, prepare);
+}
+
+/**
  * pci_reset_function - quiesce and reset a PCI device function
  * @dev: PCI device to reset
  *
@@ -3395,6 +3412,7 @@ int pci_reset_function(struct pci_dev *dev)
 	if (rc)
 		return rc;
 
+	pci_reset_notify(dev, true);
 	pci_save_state(dev);
 
 	/*
@@ -3406,6 +3424,7 @@ int pci_reset_function(struct pci_dev *dev)
 	rc = pci_dev_reset(dev, 0);
 
 	pci_restore_state(dev);
+	pci_reset_notify(dev, false);
 
 	return rc;
 }
