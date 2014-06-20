@@ -52,7 +52,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>	/* for mdelay */
 #include <linux/pci.h>
-#include <linux/kthread.h>
+
 
 #include <scsi/scsi.h>
 #include <scsi/scsi_cmnd.h>
@@ -101,10 +101,6 @@ module_param(mpt_pt_clear, int, 0);
 MODULE_PARM_DESC(mpt_pt_clear,
 		" Clear persistency table: enable=1  "
 		"(default=MPTSCSIH_PT_CLEAR=0)");
-
-static int mptsas_multiprobe = 1;
-module_param(mptsas_multiprobe, int, 0);
-MODULE_PARM_DESC(mptsas_multiprobe, "Multiprobe the devices,default enabled!");
 
 static int mpt_cmd_retry_count = 300;
 module_param(mpt_cmd_retry_count, int, 0);
@@ -5975,36 +5971,18 @@ static void mptsas_volume_delete(MPT_ADAPTER *ioc, u8 id)
 	scsi_device_put(sdev);
 }
 
-struct mptsas_thread_structure {
-	struct pci_dev			*pdev;
-	const struct pci_device_id	*id;
-};
-
-static void mptsas_free_probe_data(void *data)
-{
-	if (data)
-		kfree(data);
-	data = NULL;
-}
-
-static void mptsas_module_get(void)
-{
-	__module_get(THIS_MODULE);
-}
-
-static void mptsas_module_put(void)
-{
-	module_put(THIS_MODULE);
-}
+/**
+ *	mptsas_probe -
+ *	@pdev:
+ *	@id:
+ *
+ **/
 static int
-__mptsas_probe(void *void_data)
+mptsas_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
-	struct mptsas_thread_structure *data = void_data;
-	struct pci_dev			*pdev = data->pdev;
-	const struct pci_device_id	*id = data->id;
 	struct Scsi_Host	*sh;
 	MPT_SCSI_HOST		*hd;
-	MPT_ADAPTER 		*ioc = NULL;
+	MPT_ADAPTER 		*ioc;
 	unsigned long		 flags;
 	int			 ii;
 	int			 numSGE = 0;
@@ -6013,11 +5991,9 @@ __mptsas_probe(void *void_data)
 	int			error=0;
 	int			r;
 
-	mptsas_module_get();
-
 	r = mpt_attach(pdev,id);
 	if (r)
-		goto done;
+		return r;
 
 	ioc = pci_get_drvdata(pdev);
 	mptsas_fw_event_off(ioc);
@@ -6058,8 +6034,7 @@ __mptsas_probe(void *void_data)
 		printk(MYIOC_s_WARN_FMT
 			"Skipping ioc=%p because SCSI Initiator mode "
 			"is NOT enabled!\n", ioc->name, ioc);
-		r = 0;
-		goto done;
+		return 0;
 	}
 
 	sh = scsi_host_alloc(&mptsas_driver_template, sizeof(MPT_SCSI_HOST));
@@ -6189,50 +6164,12 @@ __mptsas_probe(void *void_data)
 		ioc->old_sas_discovery_protocal = 1;
 	mptsas_scan_sas_topology(ioc);
 	mptsas_fw_event_on(ioc);
-	r = 0;
- done:
-	mptsas_free_probe_data(void_data);
-	mptsas_module_put();
-	return r;
+	return 0;
 
  out_mptsas_probe:
-	mptsas_free_probe_data(void_data);
+
 	mptscsih_remove(pdev);
-	mptsas_module_put();
 	return error;
-}
-
-/**
- *	mptsas_probe -
- *	@pdev:
- *	@id:
- *
- **/
-static int
-mptsas_probe(struct pci_dev *pdev, const struct pci_device_id *id)
-{
-	struct mptsas_thread_structure *data;
-	struct task_struct *probe_task;
-	int ret = 0;
-
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data)
-		return -ENOMEM;
-
-	data->pdev = pdev;
-	data->id = id;
-
-	if (mptsas_multiprobe) {
-		probe_task = kthread_run(__mptsas_probe, data,
-					 "mptsas_probe-%s", pci_name(pdev));
-		if (IS_ERR(probe_task))
-			ret = __mptsas_probe(data);
-		else
-			printk(KERN_INFO "Started mptsas_probe-%s\n", pci_name(pdev));
-	} else
-		ret = __mptsas_probe(data);
-
-	return ret;
 }
 
 void
