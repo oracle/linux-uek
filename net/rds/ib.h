@@ -327,7 +327,7 @@ struct rds_ib_port_ud_work {
 
 struct rds_ib_conn_drop_work {
 	struct delayed_work             work;
-	struct rds_ib_connection        *conn;
+	struct rds_connection          *conn;
 };
 
 struct rds_ib_addr_change_work {
