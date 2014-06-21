@@ -803,7 +803,7 @@ static int rds_ib_move_ip(char			*from_dev,
 							goto out;
 					}
 
-					work->conn = (struct rds_ib_connection *)ic->conn;
+					work->conn = ic->conn;
 					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
 					queue_delayed_work(rds_aux_wq, &work->work,
 						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
@@ -1398,8 +1398,6 @@ static int rds_ib_ip_config_init(void)
 
 	if (!rds_ib_active_bonding_enabled)
 		return 0;
-
-	rcu_read_unlock();
 
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
 				(ip_port_max + 1), GFP_KERNEL);
