@@ -1369,8 +1369,6 @@ static int rds_ib_ip_config_init(void)
 	if (!rds_ib_active_bonding_enabled)
 		return 0;
 
-	rcu_read_unlock();
-
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
 				(ip_port_max + 1), GFP_KERNEL);
 	if (!ip_config) {
@@ -1452,7 +1450,7 @@ static int rds_ib_excl_ip(char *str)
 			goto err;
 		} else if (prefix > 32) {
 			printk(KERN_WARNING "RDS/IP: Warning: IP prefix "
-				"%d out of range\n", prefix);
+				"%lu out of range\n", prefix);
 			goto err;
 		} else {
 			tok = str;
@@ -1472,7 +1470,7 @@ static int rds_ib_excl_ip(char *str)
 					goto err;
 				} else if (octet > 255) {
 					printk(KERN_WARNING "RDS/IP: Warning: "
-						"IP octet %d out of range\n",
+						"IP octet %lu out of range\n",
 						octet);
 					goto err;
 				} else {
@@ -1508,9 +1506,8 @@ err:
 
 void rds_ib_ip_excl_ips_init(void)
 {
-	char *tok, *nxt_tok, *end;
+	char *tok, *nxt_tok;
 	char str[1024];
-	int     i;
 
 	if (rds_ib_active_bonding_excl_ips == NULL)
 		return;
