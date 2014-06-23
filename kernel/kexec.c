@@ -1531,6 +1531,9 @@ static int __init crash_save_vmcoreinfo_init(void)
 	VMCOREINFO_NUMBER(PG_lru);
 	VMCOREINFO_NUMBER(PG_private);
 	VMCOREINFO_NUMBER(PG_swapcache);
+#ifdef CONFIG_PAGEFLAGS_EXTENDED
+	VMCOREINFO_NUMBER(PG_head_mask);
+#endif
 
 	arch_crash_save_vmcoreinfo();
 
