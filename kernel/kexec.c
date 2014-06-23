@@ -1650,6 +1650,7 @@ static int __init crash_save_vmcoreinfo_init(void)
 	VMCOREINFO_NUMBER(PG_lru);
 	VMCOREINFO_NUMBER(PG_private);
 	VMCOREINFO_NUMBER(PG_swapcache);
+	VMCOREINFO_NUMBER(PG_head_mask);
 
 	arch_crash_save_vmcoreinfo();
 	update_vmcoreinfo_note();
