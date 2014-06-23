@@ -2910,12 +2910,12 @@ static void nvme_reset_failed_dev(struct work_struct *ws)
 
 static void nvme_reset_notify(struct pci_dev *pdev, bool prepare)
 {
-       struct nvme_dev *dev = pci_get_drvdata(pdev);
+	struct nvme_dev *dev = pci_get_drvdata(pdev);
 
-       if (prepare)
-               nvme_dev_shutdown(dev);
-       else
-               nvme_dev_resume(dev);
+	if (prepare)
+		nvme_dev_shutdown(dev);
+	else
+		nvme_dev_resume(dev);
 }
 
 static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
