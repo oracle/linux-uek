@@ -654,6 +654,7 @@ mpt2sas_transport_port_add(struct MPT2SAS_ADAPTER *ioc, u16 handle,
 	unsigned long flags;
 	struct _sas_node *sas_node;
 	struct sas_rphy *rphy;
+	struct _sas_device *sas_device = NULL;
 	int i;
 	struct sas_port *port;
 
@@ -736,10 +737,22 @@ mpt2sas_transport_port_add(struct MPT2SAS_ADAPTER *ioc, u16 handle,
 		    mpt2sas_port->remote_identify.device_type);
 
 	rphy->identify = mpt2sas_port->remote_identify;
+	if (mpt2sas_port->remote_identify.device_type == SAS_END_DEVICE) {
+		sas_device = mpt2sas_scsih_sas_device_find_by_sas_address(ioc,
+		    mpt2sas_port->remote_identify.sas_address);
+		if (!sas_device) {
+			printk(MPT2SAS_ERR_FMT "failure at %s:%d/%s()!\n",
+			    ioc->name, __FILE__, __LINE__, __func__);
+			goto out_fail;
+		}
+		sas_device->pend_sas_rphy_add = 1;
+	}
 	if ((sas_rphy_add(rphy))) {
 		printk(MPT2SAS_ERR_FMT "failure at %s:%d/%s()!\n",
 		    ioc->name, __FILE__, __LINE__, __func__);
 	}
+	if (mpt2sas_port->remote_identify.device_type == SAS_END_DEVICE)
+		sas_device->pend_sas_rphy_add = 0;
 	if ((ioc->logging_level & MPT_DEBUG_TRANSPORT))
 		dev_printk(KERN_INFO, &rphy->dev, "add: handle(0x%04x), "
 		    "sas_addr(0x%016llx)\n", handle,

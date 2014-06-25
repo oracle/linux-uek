@@ -105,6 +105,11 @@ static int missing_delay[2] = {-1, -1};
 module_param_array(missing_delay, int, NULL, 0);
 MODULE_PARM_DESC(missing_delay, " device missing delay , io missing delay");
 
+static int unblock_io;
+module_param(unblock_io, int, 0);
+MODULE_PARM_DESC(unblock_io,
+"unblocks I/O if set to 1 when device is undergoing addition (default=0)");
+
 /* scsi-mid layer global parmeter is max_report_luns, which is 511 */
 #define MPT2SAS_MAX_LUN (16895)
 static int max_lun = MPT2SAS_MAX_LUN;
@@ -2964,6 +2969,34 @@ _scsih_ublock_io_device(struct MPT2SAS_ADAPTER *ioc, u64 sas_address)
 }
 
 /**
+ * _scsih_ublock_io_device_to_running - set the device state to SDEV_RUNNING
+ * @ioc: per adapter object
+ * @sas_addr: sas address
+ *
+ * unblock the device to receive IO during device addition. Device
+ * responsiveness is not checked before unblocking
+ */
+static void
+_scsih_ublock_io_device_to_running(struct MPT2SAS_ADAPTER *ioc, u64 sas_address)
+{
+	struct MPT2SAS_DEVICE *sas_device_priv_data;
+	struct scsi_device *sdev;
+
+	shost_for_each_device(sdev, ioc->shost) {
+		sas_device_priv_data = sdev->hostdata;
+		if (!sas_device_priv_data)
+			continue;
+		if (sas_device_priv_data->sas_target->sas_address
+		    != sas_address)
+			continue;
+		if (sas_device_priv_data->block) {
+			sas_device_priv_data->block = 0;
+			scsi_internal_device_unblock(sdev, SDEV_RUNNING);
+		}
+	}
+}
+
+/**
  * _scsih_block_io_all_device - set the device state to SDEV_BLOCK
  * @ioc: per adapter object
  * @handle: device handle
@@ -3073,21 +3106,23 @@ _scsih_block_io_to_children_attached_to_ex(struct MPT2SAS_ADAPTER *ioc,
 }
 
 /**
- * _scsih_block_io_to_children_attached_directly
+ * _scsih_handle_io_to_children_attached_directly
  * @ioc: per adapter object
  * @event_data: topology change event data
  *
- * This routine set sdev state to SDEV_BLOCK for all devices
- * direct attached during device pull.
+ * This routine set sdev state to SDEV_BLOCK or SDEV_RUNNING for all devices
+ * direct attached during device pull/reconnect.
  */
 static void
-_scsih_block_io_to_children_attached_directly(struct MPT2SAS_ADAPTER *ioc,
-    Mpi2EventDataSasTopologyChangeList_t *event_data)
+_scsih_handle_io_to_children_attached_directly(struct MPT2SAS_ADAPTER *ioc,
+	Mpi2EventDataSasTopologyChangeList_t *event_data)
 {
 	int i;
 	u16 handle;
 	u16 reason_code;
 	u8 phy_number;
+	struct _sas_device *sas_device;
+	u8 link_rate, prev_link_rate;
 
 	for (i = 0; i < event_data->NumEntries; i++) {
 		handle = le16_to_cpu(event_data->PHY[i].AttachedDevHandle);
@@ -3098,6 +3133,24 @@ _scsih_block_io_to_children_attached_directly(struct MPT2SAS_ADAPTER *ioc,
 		    MPI2_EVENT_SAS_TOPO_RC_MASK;
 		if (reason_code == MPI2_EVENT_SAS_TOPO_RC_DELAY_NOT_RESPONDING)
 			_scsih_block_io_device(ioc, handle);
+		else if ((reason_code == MPI2_EVENT_SAS_TOPO_RC_PHY_CHANGED) &&
+		    (unblock_io == 1)) {
+			/* unblock only if device is in the process of addition
+			 * within the SCSI Mid Layer (sas_rphy_add) to prevent
+			 * deadlock. Unblocking in other cases can lead to data
+			 * corruption */
+
+			link_rate = event_data->PHY[i].LinkRate >> 4;
+			prev_link_rate = event_data->PHY[i].LinkRate & 0xF;
+			sas_device = _scsih_sas_device_find_by_handle(ioc,
+					handle);
+			if (!sas_device)
+				continue;
+			if ((link_rate > prev_link_rate) &&
+			    (sas_device->pend_sas_rphy_add == 1))
+				_scsih_ublock_io_device_to_running(ioc,
+				    sas_device->sas_address);
+		}
 	}
 }
 
@@ -3489,7 +3542,7 @@ _scsih_check_topo_delete_events(struct MPT2SAS_ADAPTER *ioc,
 
 	expander_handle = le16_to_cpu(event_data->ExpanderDevHandle);
 	if (expander_handle < ioc->sas_hba.num_phys) {
-		_scsih_block_io_to_children_attached_directly(ioc, event_data);
+		_scsih_handle_io_to_children_attached_directly(ioc, event_data);
 		return;
 	}
 	if (event_data->ExpStatus ==
@@ -3507,7 +3560,7 @@ _scsih_check_topo_delete_events(struct MPT2SAS_ADAPTER *ioc,
 				_scsih_block_io_device(ioc, handle);
 		} while (test_and_clear_bit(handle, ioc->blocking_handles));
 	} else if (event_data->ExpStatus == MPI2_EVENT_SAS_TOPO_ES_RESPONDING)
-		_scsih_block_io_to_children_attached_directly(ioc, event_data);
+		_scsih_handle_io_to_children_attached_directly(ioc, event_data);
 
 	if (event_data->ExpStatus != MPI2_EVENT_SAS_TOPO_ES_NOT_RESPONDING)
 		return;
