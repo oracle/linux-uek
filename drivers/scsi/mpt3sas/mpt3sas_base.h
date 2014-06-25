@@ -569,6 +569,12 @@ struct mpt3sas_port_facts {
 	u16			MaxPostedCmdBuffers;
 };
 
+struct reply_post_struct {
+	Mpi2ReplyDescriptorsUnion_t     *reply_post_free;
+	dma_addr_t                      reply_post_free_dma;
+};
+
+
 /**
  * enum mutex_type - task management mutex type
  * @TM_MUTEX_OFF: mutex is not required becuase calling function is acquiring it
@@ -712,8 +718,11 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @reply_free_dma_pool:
  * @reply_free_host_index: tail index in pool to insert free replys
  * @reply_post_queue_depth: reply post queue depth
- * @reply_post_free: pool for reply post (64bit descriptor)
- * @reply_post_free_dma:
+ * @reply_post_struct: struct for reply_post_free physical & virt address
+ * @rdpq_array_capable: FW supports multiple reply queue addresses in ioc_init
+ * @rdpq_array_enable: rdpq_array support is enabled in the driver
+ * @rdpq_array_enable_assigned:this ensures that rdpq_array_enable flag
+ *				is assigned only ones
  * @reply_queue_count: number of reply queue's
  * @reply_queue_list: link list contaning the reply queue info
  * @reply_post_host_index: head index in the pool where FW completes IO
@@ -914,11 +923,13 @@ struct MPT3SAS_ADAPTER {
 
 	/* reply post queue */
 	u16		reply_post_queue_depth;
-	Mpi2ReplyDescriptorsUnion_t *reply_post_free;
-	dma_addr_t	reply_post_free_dma;
+	struct reply_post_struct *reply_post;
 	struct dma_pool *reply_post_free_dma_pool;
 	u8		reply_queue_count;
 	struct list_head reply_queue_list;
+	u8              rdpq_array_capable;
+	u8              rdpq_array_enable;
+	u8              rdpq_array_enable_assigned;
 
 	struct list_head delayed_tr_list;
 	struct list_head delayed_tr_volume_list;
