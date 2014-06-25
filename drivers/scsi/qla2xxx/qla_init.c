@@ -2185,9 +2185,6 @@ qla2x00_init_rings(scsi_qla_host_t *vha)
 	if (IS_DPORT_CAPABLE(ha))
 		mid_init_cb->init_cb.firmware_options_1 |=
 		    __constant_cpu_to_le16(BIT_7);
-	if (IS_FAWWN_CAPABLE(ha))
-		mid_init_cb->init_cb.firmware_options_1 |=
-		    __constant_cpu_to_le16(BIT_6);
 
 	rval = qla2x00_init_firmware(vha, ha->init_cb_size);
 next_check:

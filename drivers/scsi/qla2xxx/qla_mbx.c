@@ -1082,7 +1082,7 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 	mcp->in_mb = MBX_9|MBX_7|MBX_6|MBX_3|MBX_2|MBX_1|MBX_0;
 	if (IS_CNA_CAPABLE(vha->hw))
 		mcp->in_mb |= MBX_13|MBX_12|MBX_11|MBX_10;
-	if (IS_FAWWN_CAPABLE(vha->hw))
+	if (IS_FWI2_CAPABLE(vha->hw))
 		mcp->in_mb |= MBX_19|MBX_18|MBX_17|MBX_16;
 	mcp->tov = MBX_TOV_SECONDS;
 	mcp->flags = 0;
@@ -1117,22 +1117,21 @@ qla2x00_get_adapter_id(scsi_qla_host_t *vha, uint16_t *id, uint8_t *al_pa,
 			vha->fcoe_vn_port_mac[1] = mcp->mb[13] >> 8;
 			vha->fcoe_vn_port_mac[0] = mcp->mb[13] & 0xff;
 		}
-		if (IS_FAWWN_CAPABLE(vha->hw)) {
-			if (mcp->mb[7] & BIT_14) {
-				vha->port_name[0] = MSB(mcp->mb[16]);
-				vha->port_name[1] = LSB(mcp->mb[16]);
-				vha->port_name[2] = MSB(mcp->mb[17]);
-				vha->port_name[3] = LSB(mcp->mb[17]);
-				vha->port_name[4] = MSB(mcp->mb[18]);
-				vha->port_name[5] = LSB(mcp->mb[18]);
-				vha->port_name[6] = MSB(mcp->mb[19]);
-				vha->port_name[7] = LSB(mcp->mb[19]);
-				fc_host_port_name(vha->host) =
-				    wwn_to_u64(vha->port_name);
-				ql_dbg(ql_dbg_mbx, vha, 0x10ca,
-				    "FA-WWN acquired %016llx\n",
-				    wwn_to_u64(vha->port_name));
-			}
+		/* If FA-WWN supported */
+		if (mcp->mb[7] & BIT_14) {
+			vha->port_name[0] = MSB(mcp->mb[16]);
+			vha->port_name[1] = LSB(mcp->mb[16]);
+			vha->port_name[2] = MSB(mcp->mb[17]);
+			vha->port_name[3] = LSB(mcp->mb[17]);
+			vha->port_name[4] = MSB(mcp->mb[18]);
+			vha->port_name[5] = LSB(mcp->mb[18]);
+			vha->port_name[6] = MSB(mcp->mb[19]);
+			vha->port_name[7] = LSB(mcp->mb[19]);
+			fc_host_port_name(vha->host) =
+			    wwn_to_u64(vha->port_name);
+			ql_dbg(ql_dbg_mbx, vha, 0x10ca,
+			    "FA-WWN acquired %016llx\n",
+			    wwn_to_u64(vha->port_name));
 		}
 	}
 
@@ -3247,7 +3246,7 @@ qla24xx_report_id_acquisition(scsi_qla_host_t *vha,
 		    rptid_entry->port_id[0]);
 
 		/* FA-WWN is only for physical port */
-		if (IS_FAWWN_CAPABLE(vha->hw) && !vp_idx) {
+		if (!vp_idx) {
 			void *wwpn = ha->init_cb->port_name;
 			if (!MSB(stat)) {
 				if (rptid_entry->vp_idx_map[1] & BIT_6) {
