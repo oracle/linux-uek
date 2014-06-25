@@ -14435,7 +14435,7 @@ static int bnx2x_get_num_non_def_sbs(struct pci_dev *pdev, int cnic_cnt)
 	 * exactly what we want to return from this function: number of all SBs
 	 * without the default SB.
 	 */
-	pci_read_config_word(pdev, BNX2X_PDEV_MSIX_CAP(pdev, pos) + PCI_MSI_FLAGS, &control);
+	pci_read_config_word(pdev, BNX2X_PDEV_MSIX_CAP(pdev, pos) + PCI_MSIX_FLAGS, &control);
 
 	index = control & PCI_MSIX_FLAGS_QSIZE;
 
