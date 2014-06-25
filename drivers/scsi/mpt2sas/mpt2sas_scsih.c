@@ -3857,7 +3857,8 @@ _scsih_setup_direct_io(struct MPT2SAS_ADAPTER *ioc, struct scsi_cmnd *scmd,
 	struct _raid_device *raid_device, Mpi2SCSIIORequest_t *mpi_request,
 	u16 smid)
 {
-	u32 v_lba, p_lba, stripe_off, stripe_unit, column, io_size;
+	u32 p_lba, stripe_off, stripe_unit, column, io_size;
+	u64 v_lba;
 	u32 stripe_sz, stripe_exp;
 	u8 num_pds, *cdb_ptr, i;
 	u8 cdb0 = scmd->cmnd[0];
@@ -3874,12 +3875,17 @@ _scsih_setup_direct_io(struct MPT2SAS_ADAPTER *ioc, struct scsi_cmnd *scmd,
 			| cdb_ptr[5])) {
 			io_size = scsi_bufflen(scmd) >>
 			    raid_device->block_exponent;
-			i = (cdb0 < READ_16) ? 2 : 6;
+
 			/* get virtual lba */
-			v_lba = be32_to_cpu(*(__be32 *)(&cdb_ptr[i]));
+			if (cdb0 < READ_16)
+				v_lba = be32_to_cpu(*(__be32 *)(&cdb_ptr[2]));
+			else
+				v_lba = be64_to_cpu(*(__be64 *)(&cdb_ptr[2]));
+
+			i = (cdb0 < READ_16) ? 2 : 6;
 
 			if (((u64)v_lba + (u64)io_size - 1) <=
-			    (u32)raid_device->max_lba) {
+				raid_device->max_lba) {
 				stripe_sz = raid_device->stripe_sz;
 				stripe_exp = raid_device->stripe_exponent;
 				stripe_off = v_lba & (stripe_sz - 1);
