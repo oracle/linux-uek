@@ -3058,7 +3058,6 @@ struct qla_hw_data {
 #define IS_PI_SPLIT_DET_CAPABLE(ha)	(IS_PI_SPLIT_DET_CAPABLE_HBA(ha) && \
     (((ha)->fw_attributes_h << 16 | (ha)->fw_attributes) & BIT_22))
 #define IS_SHADOW_REG_CAPABLE(ha)	(IS_QLA27XX(ha))
-#define IS_DPORT_CAPABLE(ha)		(IS_QLA83XX(ha) || IS_QLA27XX(ha))
 
 	/* HBA serial number */
 	uint8_t		serial0;
