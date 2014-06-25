@@ -2,7 +2,7 @@
  * Logging Support for MPT (Message Passing Technology) based controllers
  *
  * This code is based on drivers/scsi/mpt2sas/mpt2_debug.c
- * Copyright (C) 2007-2013  LSI Corporation
+ * Copyright (C) 2007-2012  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -66,7 +66,6 @@
 #define MPT_DEBUG_TASK_SET_FULL		0x00080000
 
 #define MPT_DEBUG_TARGET_MODE		0x00100000
-#define MPT_DEBUG_TRIGGER_DIAG		0x00200000
 
 
 /*
@@ -153,9 +152,6 @@
 
 #define dTMprintk(IOC, CMD)			\
 	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_TARGET_MODE)
-
-#define dTriggerDiagPrintk(IOC, CMD)			\
-	MPT_CHECK_LOGGING(IOC, CMD, MPT_DEBUG_TRIGGER_DIAG)
 
 /* inline functions for dumping debug data*/
 #ifdef CONFIG_SCSI_MPT2SAS_LOGGING

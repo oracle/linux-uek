@@ -6,12 +6,7 @@
  *          Title:  MPI SCSI initiator mode messages and structures
  *  Creation Date:  June 23, 2006
  *
- *  mpi2_init.h Version:  02.00.14
- *
- *  NOTE: Names (typedefs, defines, etc.) beginning with an MPI25 or Mpi25
- *        prefix are for use only on MPI v2.5 products, and must not be used
- *        with MPI v2.0 products. Unless otherwise noted, names beginning with
- *        MPI2 or Mpi2 are for use with both MPI v2.0 and MPI v2.5 products.
+ *    mpi2_init.h Version:  02.00.13
  *
  *  Version History
  *  ---------------
@@ -26,7 +21,7 @@
  *  05-21-08  02.00.05  Fixed typo in name of Mpi2SepRequest_t.
  *  10-02-08  02.00.06  Removed Untagged and No Disconnect values from SCSI IO
  *                      Control field Task Attribute flags.
- *                      Moved LUN field defines to mpi2.h becasue they are
+ *                      Moved LUN field defines to mpi2.h because they are
  *                      common to many structures.
  *  05-06-09  02.00.07  Changed task management type of Query Unit Attention to
  *                      Query Asynchronous Event.
@@ -39,11 +34,8 @@
  *  02-10-10  02.00.09  Removed unused structure that had "#if 0" around it.
  *  05-12-10  02.00.10  Added optional vendor-unique region to SCSI IO Request.
  *  11-10-10  02.00.11  Added MPI2_SCSIIO_NUM_SGLOFFSETS define.
- *  11-18-11  02.00.12  Incorporating additions for MPI v2.5.
  *  02-06-12  02.00.13  Added alternate defines for Task Priority / Command
  *                      Priority to match SAM-4.
- *                      Added EEDPErrorOffset to MPI2_SCSI_IO_REPLY.
- *  07-10-12  02.00.14  Added MPI2_SCSIIO_CONTROL_SHIFT_DATADIRECTION.
  *  --------------------------------------------------------------------------
  */
 
@@ -60,7 +52,7 @@
 *  SCSI IO messages and associated structures
 ****************************************************************************/
 
-typedef struct _MPI2_SCSI_IO_CDB_EEDP32
+typedef struct
 {
     U8                      CDB[20];                    /* 0x00 */
     U32                     PrimaryReferenceTag;        /* 0x14 */
@@ -70,8 +62,7 @@ typedef struct _MPI2_SCSI_IO_CDB_EEDP32
 } MPI2_SCSI_IO_CDB_EEDP32, MPI2_POINTER PTR_MPI2_SCSI_IO_CDB_EEDP32,
   Mpi2ScsiIoCdbEedp32_t, MPI2_POINTER pMpi2ScsiIoCdbEedp32_t;
 
-/* MPI v2.0 CDB field */
-typedef union _MPI2_SCSI_IO_CDB_UNION
+typedef union
 {
     U8                      CDB32[32];
     MPI2_SCSI_IO_CDB_EEDP32 EEDP32;
@@ -79,7 +70,7 @@ typedef union _MPI2_SCSI_IO_CDB_UNION
 } MPI2_SCSI_IO_CDB_UNION, MPI2_POINTER PTR_MPI2_SCSI_IO_CDB_UNION,
   Mpi2ScsiIoCdb_t, MPI2_POINTER pMpi2ScsiIoCdb_t;
 
-/* MPI v2.0 SCSI IO Request Message */
+/* SCSI IO Request Message */
 typedef struct _MPI2_SCSI_IO_REQUEST
 {
     U16                     DevHandle;                      /* 0x00 */
@@ -113,7 +104,7 @@ typedef struct _MPI2_SCSI_IO_REQUEST
     MPI2_SCSI_IO_CDB_UNION  CDB;                            /* 0x40 */
 
 #ifdef MPI2_SCSI_IO_VENDOR_UNIQUE_REGION /* typically this is left undefined */
-    MPI2_SCSI_IO_VENDOR_UNIQUE VendorRegion;
+	MPI2_SCSI_IO_VENDOR_UNIQUE VendorRegion;
 #endif
 
     MPI2_SGE_IO_UNION       SGL;                            /* 0x60 */
@@ -198,7 +189,6 @@ typedef struct _MPI2_SCSI_IO_REQUEST
 #define MPI2_SCSIIO_CONTROL_ADDCDBLEN_SHIFT     (26)
 
 #define MPI2_SCSIIO_CONTROL_DATADIRECTION_MASK  (0x03000000)
-#define MPI2_SCSIIO_CONTROL_SHIFT_DATADIRECTION (24)
 #define MPI2_SCSIIO_CONTROL_NODATATRANSFER      (0x00000000)
 #define MPI2_SCSIIO_CONTROL_WRITE               (0x01000000)
 #define MPI2_SCSIIO_CONTROL_READ                (0x02000000)
@@ -222,119 +212,6 @@ typedef struct _MPI2_SCSI_IO_REQUEST
 #define MPI2_SCSIIO_CONTROL_TLR_OFF             (0x00000080)
 
 
-/* MPI v2.5 CDB field */
-typedef union _MPI25_SCSI_IO_CDB_UNION
-{
-    U8                      CDB32[32];
-    MPI2_SCSI_IO_CDB_EEDP32 EEDP32;
-    MPI2_IEEE_SGE_SIMPLE64  SGE;
-} MPI25_SCSI_IO_CDB_UNION, MPI2_POINTER PTR_MPI25_SCSI_IO_CDB_UNION,
-  Mpi25ScsiIoCdb_t, MPI2_POINTER pMpi25ScsiIoCdb_t;
-
-/* MPI v2.5 SCSI IO Request Message */
-typedef struct _MPI25_SCSI_IO_REQUEST
-{
-    U16                     DevHandle;                      /* 0x00 */
-    U8                      ChainOffset;                    /* 0x02 */
-    U8                      Function;                       /* 0x03 */
-    U16                     Reserved1;                      /* 0x04 */
-    U8                      Reserved2;                      /* 0x06 */
-    U8                      MsgFlags;                       /* 0x07 */
-    U8                      VP_ID;                          /* 0x08 */
-    U8                      VF_ID;                          /* 0x09 */
-    U16                     Reserved3;                      /* 0x0A */
-    U32                     SenseBufferLowAddress;          /* 0x0C */
-    U8                      DMAFlags;                       /* 0x10 */
-    U8                      Reserved5;                      /* 0x11 */
-    U8                      SenseBufferLength;              /* 0x12 */
-    U8                      Reserved4;                      /* 0x13 */
-    U8                      SGLOffset0;                     /* 0x14 */
-    U8                      SGLOffset1;                     /* 0x15 */
-    U8                      SGLOffset2;                     /* 0x16 */
-    U8                      SGLOffset3;                     /* 0x17 */
-    U32                     SkipCount;                      /* 0x18 */
-    U32                     DataLength;                     /* 0x1C */
-    U32                     BidirectionalDataLength;        /* 0x20 */
-    U16                     IoFlags;                        /* 0x24 */
-    U16                     EEDPFlags;                      /* 0x26 */
-    U16                     EEDPBlockSize;                  /* 0x28 */
-    U16                     Reserved6;                      /* 0x2A */
-    U32                     SecondaryReferenceTag;          /* 0x2C */
-    U16                     SecondaryApplicationTag;        /* 0x30 */
-    U16                     ApplicationTagTranslationMask;  /* 0x32 */
-    U8                      LUN[8];                         /* 0x34 */
-    U32                     Control;                        /* 0x3C */
-    MPI25_SCSI_IO_CDB_UNION CDB;                            /* 0x40 */
-
-#ifdef MPI25_SCSI_IO_VENDOR_UNIQUE_REGION /* typically this is left undefined */
-    MPI25_SCSI_IO_VENDOR_UNIQUE VendorRegion;
-#endif
-
-    MPI25_SGE_IO_UNION      SGL;                            /* 0x60 */
-
-} MPI25_SCSI_IO_REQUEST, MPI2_POINTER PTR_MPI25_SCSI_IO_REQUEST,
-  Mpi25SCSIIORequest_t, MPI2_POINTER pMpi25SCSIIORequest_t;
-
-/* use MPI2_SCSIIO_MSGFLAGS_ defines for the MsgFlags field */
-
-/* Defines for the DMAFlags field
- *  Each setting affects 4 SGLS, from SGL0 to SGL3.
- *      D = Data
- *      C = Cache DIF
- *      I = Interleaved
- *      H = Host DIF
- */
-#define MPI25_SCSIIO_DMAFLAGS_OP_MASK               (0x0F)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_D_D            (0x00)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_D_C            (0x01)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_D_I            (0x02)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_C_C            (0x03)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_C_I            (0x04)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_D_I_I            (0x05)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_C_C_C            (0x06)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_C_C_I            (0x07)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_C_I_I            (0x08)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_I_I_I            (0x09)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_D_D            (0x0A)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_D_C            (0x0B)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_D_I            (0x0C)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_C_C            (0x0D)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_C_I            (0x0E)
-#define MPI25_SCSIIO_DMAFLAGS_OP_D_H_I_I            (0x0F)
-
-/* number of SGLOffset fields */
-#define MPI25_SCSIIO_NUM_SGLOFFSETS                 (4)
-
-/* defines for the IoFlags field */
-#define MPI25_SCSIIO_IOFLAGS_IO_PATH_MASK           (0xC000)
-#define MPI25_SCSIIO_IOFLAGS_NORMAL_PATH            (0x0000)
-#define MPI25_SCSIIO_IOFLAGS_FAST_PATH              (0x4000)
-
-#define MPI25_SCSIIO_IOFLAGS_LARGE_CDB                  (0x1000)
-#define MPI25_SCSIIO_IOFLAGS_BIDIRECTIONAL              (0x0800)
-#define MPI25_SCSIIO_IOFLAGS_CDBLENGTH_MASK             (0x01FF)
-
-/* MPI v2.5 defines for the EEDPFlags bits */
-/* use MPI2_SCSIIO_EEDPFLAGS_ defines for the other EEDPFlags bits */
-#define MPI25_SCSIIO_EEDPFLAGS_ESCAPE_MODE_MASK             (0x00C0)
-#define MPI25_SCSIIO_EEDPFLAGS_COMPATIBLE_MODE              (0x0000)
-#define MPI25_SCSIIO_EEDPFLAGS_DO_NOT_DISABLE_MODE          (0x0040)
-#define MPI25_SCSIIO_EEDPFLAGS_APPTAG_DISABLE_MODE          (0x0080)
-#define MPI25_SCSIIO_EEDPFLAGS_APPTAG_REFTAG_DISABLE_MODE   (0x00C0)
-
-#define MPI25_SCSIIO_EEDPFLAGS_HOST_GUARD_METHOD_MASK       (0x0030)
-#define MPI25_SCSIIO_EEDPFLAGS_T10_CRC_HOST_GUARD           (0x0000)
-#define MPI25_SCSIIO_EEDPFLAGS_IP_CHKSUM_HOST_GUARD         (0x0010)
-
-/* use MPI2_LUN_ defines from mpi2.h for the LUN field */
-
-/* use MPI2_SCSIIO_CONTROL_ defines for the Control field */
-
-
-/* NOTE: The SCSI IO Reply is nearly the same for MPI 2.0 and MPI 2.5, so
- *       MPI2_SCSI_IO_REPLY is used for both.
- */
-
 /* SCSI IO Error Reply Message */
 typedef struct _MPI2_SCSI_IO_REPLY
 {
@@ -357,7 +234,7 @@ typedef struct _MPI2_SCSI_IO_REPLY
     U16                     TaskTag;                        /* 0x20 */
     U16                     Reserved4;                      /* 0x22 */
     U32                     BidirectionalTransferCount;     /* 0x24 */
-    U32                     EEDPErrorOffset;                /* 0x28 */ /* MPI 2.5 only; Reserved in MPI 2.0 */
+    U32                     Reserved5;                      /* 0x28 */
     U32                     Reserved6;                      /* 0x2C */
 } MPI2_SCSI_IO_REPLY, MPI2_POINTER PTR_MPI2_SCSI_IO_REPLY,
   Mpi2SCSIIOReply_t, MPI2_POINTER pMpi2SCSIIOReply_t;
@@ -431,7 +308,8 @@ typedef struct _MPI2_SCSI_TASK_MANAGE_REQUEST
 #define MPI2_SCSITASKMGMT_TASKTYPE_QRY_ASYNC_EVENT      (0x0A)
 
 /* obsolete TaskType name */
-#define MPI2_SCSITASKMGMT_TASKTYPE_QRY_UNIT_ATTENTION   (MPI2_SCSITASKMGMT_TASKTYPE_QRY_ASYNC_EVENT)
+#define MPI2_SCSITASKMGMT_TASKTYPE_QRY_UNIT_ATTENTION	\
+	(MPI2_SCSITASKMGMT_TASKTYPE_QRY_ASYNC_EVENT)
 
 /* MsgFlags bits */
 

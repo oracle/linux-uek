@@ -2,7 +2,7 @@
  * This module provides common API for accessing firmware configuration pages
  *
  * This code is based on drivers/scsi/mpt2sas/mpt2_base.c
- * Copyright (C) 2007-2013  LSI Corporation
+ * Copyright (C) 2007-2012  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -41,7 +41,6 @@
  * USA.
  */
 
-#include <linux/version.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -51,6 +50,7 @@
 #include <linux/workqueue.h>
 #include <linux/delay.h>
 #include <linux/pci.h>
+#include <linux/slab.h>
 
 #include "mpt2sas_base.h"
 
@@ -61,14 +61,14 @@
 
 /* Common sgl flags for READING a config page. */
 #define MPT2_CONFIG_COMMON_SGLFLAGS ((MPI2_SGE_FLAGS_SIMPLE_ELEMENT | \
-	MPI2_SGE_FLAGS_LAST_ELEMENT | MPI2_SGE_FLAGS_END_OF_BUFFER \
-	| MPI2_SGE_FLAGS_END_OF_LIST) << MPI2_SGE_FLAGS_SHIFT)
+    MPI2_SGE_FLAGS_LAST_ELEMENT | MPI2_SGE_FLAGS_END_OF_BUFFER \
+    | MPI2_SGE_FLAGS_END_OF_LIST) << MPI2_SGE_FLAGS_SHIFT)
 
 /* Common sgl flags for WRITING a config page. */
 #define MPT2_CONFIG_COMMON_WRITE_SGLFLAGS ((MPI2_SGE_FLAGS_SIMPLE_ELEMENT | \
-	MPI2_SGE_FLAGS_LAST_ELEMENT | MPI2_SGE_FLAGS_END_OF_BUFFER \
-	| MPI2_SGE_FLAGS_END_OF_LIST | MPI2_SGE_FLAGS_HOST_TO_IOC) \
-	<< MPI2_SGE_FLAGS_SHIFT)
+    MPI2_SGE_FLAGS_LAST_ELEMENT | MPI2_SGE_FLAGS_END_OF_BUFFER \
+    | MPI2_SGE_FLAGS_END_OF_LIST | MPI2_SGE_FLAGS_HOST_TO_IOC) \
+    << MPI2_SGE_FLAGS_SHIFT)
 
 /**
  * struct config_request - obtain dma memory via routine
@@ -77,7 +77,7 @@
  * @page_dma: phys pointer
  *
  */
-struct config_request {
+struct config_request{
 	u16			sz;
 	void			*page;
 	dma_addr_t		page_dma;
@@ -92,12 +92,12 @@ struct config_request {
  * @mpi_reply: reply message frame
  * Context: none.
  *
- * Function for displaying debug info helpfull when debugging issues
+ * Function for displaying debug info helpful when debugging issues
  * in this module.
  */
 static void
 _config_display_some_debug(struct MPT2SAS_ADAPTER *ioc, u16 smid,
-	char *calling_function_name, MPI2DefaultReply_t *mpi_reply)
+    char *calling_function_name, MPI2DefaultReply_t *mpi_reply)
 {
 	Mpi2ConfigRequest_t *mpi_request;
 	char *desc = NULL;
@@ -149,7 +149,7 @@ _config_display_some_debug(struct MPT2SAS_ADAPTER *ioc, u16 smid,
 			desc = "raid_config";
 			break;
 		case MPI2_CONFIG_EXTPAGETYPE_DRIVER_MAPPING:
-			desc = "driver_mappping";
+			desc = "driver_mapping";
 			break;
 		}
 		break;
@@ -185,7 +185,7 @@ _config_display_some_debug(struct MPT2SAS_ADAPTER *ioc, u16 smid,
  */
 static int
 _config_alloc_config_dma_memory(struct MPT2SAS_ADAPTER *ioc,
-	struct config_request *mem)
+    struct config_request *mem)
 {
 	int r = 0;
 
@@ -216,7 +216,7 @@ _config_alloc_config_dma_memory(struct MPT2SAS_ADAPTER *ioc,
  */
 static void
 _config_free_config_dma_memory(struct MPT2SAS_ADAPTER *ioc,
-	struct config_request *mem)
+    struct config_request *mem)
 {
 	if (mem->sz > ioc->config_page_sz)
 		dma_free_coherent(&ioc->pdev->dev, mem->sz, mem->page,
@@ -238,7 +238,7 @@ _config_free_config_dma_memory(struct MPT2SAS_ADAPTER *ioc,
  */
 u8
 mpt2sas_config_done(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
-	u32 reply)
+    u32 reply)
 {
 	MPI2DefaultReply_t *mpi_reply;
 
@@ -257,7 +257,7 @@ mpt2sas_config_done(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 #ifdef CONFIG_SCSI_MPT2SAS_LOGGING
 	_config_display_some_debug(ioc, smid, "config_done", mpi_reply);
 #endif
-	ioc->config_cmds.smid = USHORT_MAX;
+	ioc->config_cmds.smid = USHRT_MAX;
 	complete(&ioc->config_cmds.done);
 	return 1;
 }
@@ -283,8 +283,8 @@ mpt2sas_config_done(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
  */
 static int
 _config_request(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
-	*mpi_request, Mpi2ConfigReply_t *mpi_reply, int timeout,
-	void *config_page, u16 config_page_sz)
+    *mpi_request, Mpi2ConfigReply_t *mpi_reply, int timeout,
+    void *config_page, u16 config_page_sz)
 {
 	u16 smid;
 	u32 ioc_state;
@@ -441,7 +441,7 @@ _config_request(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigRequest_t
  */
 int
 mpt2sas_config_get_manufacturing_pg0(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage0_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage0_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -467,44 +467,6 @@ mpt2sas_config_get_manufacturing_pg0(struct MPT2SAS_ADAPTER *ioc,
 }
 
 /**
- * mpt2sas_config_get_manufacturing_pg7 - obtain manufacturing page 7
- * @ioc: per adapter object
- * @mpi_reply: reply mf payload returned from firmware
- * @config_page: contents of the config page
- * @sz: size of buffer passed in config_page
- * Context: sleep.
- *
- * Returns 0 for success, non-zero for failure.
- */
-int
-mpt2sas_config_get_manufacturing_pg7(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage7_t *config_page,
-	u16 sz)
-{
-	Mpi2ConfigRequest_t mpi_request;
-	int r;
-
-	memset(&mpi_request, 0, sizeof(Mpi2ConfigRequest_t));
-	mpi_request.Function = MPI2_FUNCTION_CONFIG;
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_HEADER;
-	mpi_request.Header.PageType = MPI2_CONFIG_PAGETYPE_MANUFACTURING;
-	mpi_request.Header.PageNumber = 7;
-	mpi_request.Header.PageVersion = MPI2_MANUFACTURING7_PAGEVERSION;
-	mpt2sas_base_build_zero_len_sge(ioc, &mpi_request.PageBufferSGE);
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, NULL, 0);
-	if (r)
-		goto out;
-
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_READ_CURRENT;
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, config_page,
-	    sz);
- out:
-	return r;
-}
-
-/**
  * mpt2sas_config_get_manufacturing_pg10 - obtain manufacturing page 10
  * @ioc: per adapter object
  * @mpi_reply: reply mf payload returned from firmware
@@ -515,8 +477,7 @@ mpt2sas_config_get_manufacturing_pg7(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_manufacturing_pg10(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply,
-	struct Mpi2ManufacturingPage10_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2ManufacturingPage10_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -541,86 +502,6 @@ mpt2sas_config_get_manufacturing_pg10(struct MPT2SAS_ADAPTER *ioc,
 	return r;
 }
 
-#if defined(EEDP_SUPPORT)
-/**
- * mpt2sas_config_get_manufacturing_pg11 - obtain manufacturing page 11
- * @ioc: per adapter object
- * @mpi_reply: reply mf payload returned from firmware
- * @config_page: contents of the config page
- * Context: sleep.
- *
- * Returns 0 for success, non-zero for failure.
- */
-int
-mpt2sas_config_get_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply,
-	struct Mpi2ManufacturingPage11_t *config_page)
-{
-	Mpi2ConfigRequest_t mpi_request;
-	int r;
-
-	memset(&mpi_request, 0, sizeof(Mpi2ConfigRequest_t));
-	mpi_request.Function = MPI2_FUNCTION_CONFIG;
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_HEADER;
-	mpi_request.Header.PageType = MPI2_CONFIG_PAGETYPE_MANUFACTURING;
-	mpi_request.Header.PageNumber = 11;
-	mpi_request.Header.PageVersion = MPI2_MANUFACTURING0_PAGEVERSION;
-	mpt2sas_base_build_zero_len_sge(ioc, &mpi_request.PageBufferSGE);
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, NULL, 0);
-	if (r)
-		goto out;
-
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_READ_CURRENT;
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, config_page,
-	    sizeof(*config_page));
- out:
-	return r;
-}
-
-/**
- * mpt2sas_config_set_manufacturing_pg11 - set manufacturing page 11
- * @ioc: per adapter object
- * @mpi_reply: reply mf payload returned from firmware
- * @config_page: contents of the config page
- * Context: sleep.
- *
- * Returns 0 for success, non-zero for failure.
- */
-int
-mpt2sas_config_set_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply,
-	struct Mpi2ManufacturingPage11_t *config_page)
-{
-	Mpi2ConfigRequest_t mpi_request;
-	int r;
-
-	memset(&mpi_request, 0, sizeof(Mpi2ConfigRequest_t));
-	mpi_request.Function = MPI2_FUNCTION_CONFIG;
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_HEADER;
-	mpi_request.Header.PageType = MPI2_CONFIG_PAGETYPE_MANUFACTURING;
-	mpi_request.Header.PageNumber = 11;
-	mpi_request.Header.PageVersion = MPI2_MANUFACTURING0_PAGEVERSION;
-	mpt2sas_base_build_zero_len_sge(ioc, &mpi_request.PageBufferSGE);
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, NULL, 0);
-	if (r)
-		goto out;
-
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_WRITE_CURRENT;
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, config_page,
-	    sizeof(*config_page));
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_WRITE_NVRAM;
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, config_page,
-	    sizeof(*config_page));
- out:
-	return r;
-}
-#endif
-
 /**
  * mpt2sas_config_get_bios_pg2 - obtain bios page 2
  * @ioc: per adapter object
@@ -632,7 +513,7 @@ mpt2sas_config_set_manufacturing_pg11(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_bios_pg2(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2BiosPage2_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2BiosPage2_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -668,7 +549,7 @@ mpt2sas_config_get_bios_pg2(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_bios_pg3(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2BiosPage3_t *config_page)
+    *mpi_reply, Mpi2BiosPage3_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -704,7 +585,7 @@ mpt2sas_config_get_bios_pg3(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_iounit_pg0(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage0_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage0_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -740,7 +621,7 @@ mpt2sas_config_get_iounit_pg0(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_iounit_pg1(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage1_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage1_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -776,7 +657,7 @@ mpt2sas_config_get_iounit_pg1(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_set_iounit_pg1(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage1_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage1_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -848,7 +729,7 @@ mpt2sas_config_get_iounit_pg3(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_ioc_pg8(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2IOCPage8_t *config_page)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2IOCPage8_t *config_page)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -886,7 +767,7 @@ mpt2sas_config_get_ioc_pg8(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_sas_device_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasDevicePage0_t *config_page, u32 form, u32 handle)
+    *mpi_reply, Mpi2SasDevicePage0_t *config_page, u32 form, u32 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -926,7 +807,7 @@ mpt2sas_config_get_sas_device_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_sas_device_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasDevicePage1_t *config_page, u32 form, u32 handle)
+    *mpi_reply, Mpi2SasDevicePage1_t *config_page, u32 form, u32 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1013,7 +894,7 @@ mpt2sas_config_get_number_hba_phys(struct MPT2SAS_ADAPTER *ioc, u8 *num_phys)
  */
 int
 mpt2sas_config_get_sas_iounit_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasIOUnitPage0_t *config_page, u16 sz)
+    *mpi_reply, Mpi2SasIOUnitPage0_t *config_page, u16 sz)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1053,7 +934,7 @@ mpt2sas_config_get_sas_iounit_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_sas_iounit_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasIOUnitPage1_t *config_page, u16 sz)
+    *mpi_reply, Mpi2SasIOUnitPage1_t *config_page, u16 sz)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1093,7 +974,7 @@ mpt2sas_config_get_sas_iounit_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_set_sas_iounit_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasIOUnitPage1_t *config_page, u16 sz)
+    *mpi_reply, Mpi2SasIOUnitPage1_t *config_page, u16 sz)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1134,7 +1015,7 @@ mpt2sas_config_set_sas_iounit_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_expander_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2ExpanderPage0_t *config_page, u32 form, u32 handle)
+    *mpi_reply, Mpi2ExpanderPage0_t *config_page, u32 form, u32 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1174,8 +1055,8 @@ mpt2sas_config_get_expander_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_expander_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2ExpanderPage1_t *config_page, u32 phy_number,
-	u16 handle)
+    *mpi_reply, Mpi2ExpanderPage1_t *config_page, u32 phy_number,
+    u16 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1217,7 +1098,7 @@ mpt2sas_config_get_expander_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_enclosure_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasEnclosurePage0_t *config_page, u32 form, u32 handle)
+    *mpi_reply, Mpi2SasEnclosurePage0_t *config_page, u32 form, u32 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1256,7 +1137,7 @@ mpt2sas_config_get_enclosure_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_phy_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasPhyPage0_t *config_page, u32 phy_number)
+    *mpi_reply, Mpi2SasPhyPage0_t *config_page, u32 phy_number)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1296,7 +1177,7 @@ mpt2sas_config_get_phy_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_phy_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2SasPhyPage1_t *config_page, u32 phy_number)
+    *mpi_reply, Mpi2SasPhyPage1_t *config_page, u32 phy_number)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1337,8 +1218,8 @@ mpt2sas_config_get_phy_pg1(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_raid_volume_pg1(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2RaidVolPage1_t *config_page, u32 form,
-	u32 handle)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2RaidVolPage1_t *config_page, u32 form,
+    u32 handle)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1375,7 +1256,7 @@ mpt2sas_config_get_raid_volume_pg1(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_number_pds(struct MPT2SAS_ADAPTER *ioc, u16 handle,
-	u8 *num_pds)
+    u8 *num_pds)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	Mpi2RaidVolPage0_t config_page;
@@ -1427,8 +1308,8 @@ mpt2sas_config_get_number_pds(struct MPT2SAS_ADAPTER *ioc, u16 handle,
  */
 int
 mpt2sas_config_get_raid_volume_pg0(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2RaidVolPage0_t *config_page, u32 form,
-	u32 handle, u16 sz)
+    Mpi2ConfigReply_t *mpi_reply, Mpi2RaidVolPage0_t *config_page, u32 form,
+    u32 handle, u16 sz)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1466,8 +1347,8 @@ mpt2sas_config_get_raid_volume_pg0(struct MPT2SAS_ADAPTER *ioc,
  */
 int
 mpt2sas_config_get_phys_disk_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
-	*mpi_reply, Mpi2RaidPhysDiskPage0_t *config_page, u32 form,
-	u32 form_specific)
+    *mpi_reply, Mpi2RaidPhysDiskPage0_t *config_page, u32 form,
+    u32 form_specific)
 {
 	Mpi2ConfigRequest_t mpi_request;
 	int r;
@@ -1504,7 +1385,7 @@ mpt2sas_config_get_phys_disk_pg0(struct MPT2SAS_ADAPTER *ioc, Mpi2ConfigReply_t
  */
 int
 mpt2sas_config_get_volume_handle(struct MPT2SAS_ADAPTER *ioc, u16 pd_handle,
-	u16 *volume_handle)
+    u16 *volume_handle)
 {
 	Mpi2RaidConfigurationPage0_t *config_page = NULL;
 	Mpi2ConfigRequest_t mpi_request;
@@ -1536,7 +1417,6 @@ mpt2sas_config_get_volume_handle(struct MPT2SAS_ADAPTER *ioc, u16 pd_handle,
 		r = -1;
 		goto out;
 	}
-
 	config_num = 0xff;
 	while (1) {
 		mpi_request.PageAddress = cpu_to_le32(config_num +
@@ -1594,7 +1474,7 @@ mpt2sas_config_get_volume_handle(struct MPT2SAS_ADAPTER *ioc, u16 pd_handle,
  */
 int
 mpt2sas_config_get_volume_wwid(struct MPT2SAS_ADAPTER *ioc, u16 volume_handle,
-	u64 *wwid)
+    u64 *wwid)
 {
 	Mpi2ConfigReply_t mpi_reply;
 	Mpi2RaidVolPage1_t raid_vol_pg1;
@@ -1608,41 +1488,3 @@ mpt2sas_config_get_volume_wwid(struct MPT2SAS_ADAPTER *ioc, u16 volume_handle,
 	} else
 		return -1;
 }
-
-#if defined(CPQ_CIM)
-/**
- * mpt2sas_config_get_ioc_pg1 - obtain ioc page 8
- * @ioc: per adapter object
- * @mpi_reply: reply mf payload returned from firmware
- * @config_page: contents of the config page
- * Context: sleep.
- *
- * Returns 0 for success, non-zero for failure.
- */
-int
-mpt2sas_config_get_ioc_pg1(struct MPT2SAS_ADAPTER *ioc,
-	Mpi2ConfigReply_t *mpi_reply, Mpi2IOCPage1_t *config_page)
-{
-	Mpi2ConfigRequest_t mpi_request;
-	int r;
-
-	memset(&mpi_request, 0, sizeof(Mpi2ConfigRequest_t));
-	mpi_request.Function = MPI2_FUNCTION_CONFIG;
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_HEADER;
-	mpi_request.Header.PageType = MPI2_CONFIG_PAGETYPE_IOC;
-	mpi_request.Header.PageNumber = 1;
-	mpi_request.Header.PageVersion = MPI2_IOCPAGE1_PAGEVERSION;
-	mpt2sas_base_build_zero_len_sge(ioc, &mpi_request.PageBufferSGE);
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, NULL, 0);
-	if (r)
-		goto out;
-
-	mpi_request.Action = MPI2_CONFIG_ACTION_PAGE_READ_CURRENT;
-	r = _config_request(ioc, &mpi_request, mpi_reply,
-	    MPT2_CONFIG_PAGE_DEFAULT_TIMEOUT, config_page,
-	    sizeof(*config_page));
- out:
-	return r;
-}
-#endif

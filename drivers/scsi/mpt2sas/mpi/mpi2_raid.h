@@ -6,7 +6,7 @@
  *          Title:  MPI Integrated RAID messages and structures
  *  Creation Date:  April 26, 2007
  *
- *    mpi2_raid.h Version:  02.00.09
+ *    mpi2_raid.h Version:  02.00.08
  *
  *  Version History
  *  ---------------
@@ -26,10 +26,7 @@
  *  08-24-10  02.00.06  Added MPI2_RAID_ACTION_COMPATIBILITY_CHECK along with
  *                      related structures and defines.
  *                      Added product-specific range to RAID Action values.
- *  11-18-11  02.00.07  Incorporating additions for MPI v2.5.
  *  02-06-12  02.00.08  Added MPI2_RAID_ACTION_PHYSDISK_HIDDEN.
- *  07-26-12  02.00.09  Added ElapsedSeconds field to MPI2_RAID_VOL_INDICATOR.
- *                      Added MPI2_RAID_VOL_FLAGS_ELAPSED_SECONDS_VALID define.
  *  --------------------------------------------------------------------------
  */
 
@@ -188,7 +185,6 @@ typedef struct _MPI2_RAID_ACTION_REQUEST
 #define MPI2_RAID_ACTION_MIN_PRODUCT_SPECIFIC       (0x80)
 #define MPI2_RAID_ACTION_MAX_PRODUCT_SPECIFIC       (0xFF)
 
-
 /* RAID Volume Creation Structure */
 
 /*
@@ -232,7 +228,7 @@ typedef struct _MPI2_RAID_VOLUME_CREATION_STRUCT
 
 /* defines for the VolumeCreationFlags field */
 #define MPI2_RAID_VOL_CREATION_DEFAULT_SETTINGS     (0x80000000)
-#define MPI2_RAID_VOL_CREATION_BACKGROUND_INIT      (0x00000004) /* MPI 2.0 only */
+#define MPI2_RAID_VOL_CREATION_BACKGROUND_INIT      (0x00000004)
 #define MPI2_RAID_VOL_CREATION_LOW_LEVEL_INIT       (0x00000002)
 #define MPI2_RAID_VOL_CREATION_MIGRATE_DATA         (0x00000001)
 /* The following is an obsolete define.
@@ -255,20 +251,18 @@ typedef struct _MPI2_RAID_ONLINE_CAPACITY_EXPANSION
   Mpi2RaidOnlineCapacityExpansion_t,
   MPI2_POINTER pMpi2RaidOnlineCapacityExpansion_t;
 
-
 /* RAID Compatibility Input Structure */
 
-typedef struct _MPI2_RAID_COMPATIBILITY_INPUT_STRUCT
-{
-    U16                     SourceDevHandle;                /* 0x00 */
-    U16                     CandidateDevHandle;             /* 0x02 */
-    U32                     Flags;                          /* 0x04 */
-    U32                     Reserved1;                      /* 0x08 */
-    U32                     Reserved2;                      /* 0x0C */
+typedef struct _MPI2_RAID_COMPATIBILITY_INPUT_STRUCT {
+	U16                     SourceDevHandle;               /* 0x00 */
+	U16                     CandidateDevHandle;             /* 0x02 */
+	U32                     Flags;                          /* 0x04 */
+	U32                     Reserved1;                      /* 0x08 */
+	U32                     Reserved2;                      /* 0x0C */
 } MPI2_RAID_COMPATIBILITY_INPUT_STRUCT,
-  MPI2_POINTER PTR_MPI2_RAID_COMPATIBILITY_INPUT_STRUCT,
-  Mpi2RaidCompatibilityInputStruct_t,
-  MPI2_POINTER pMpi2RaidCompatibilityInputStruct_t;
+MPI2_POINTER PTR_MPI2_RAID_COMPATIBILITY_INPUT_STRUCT,
+Mpi2RaidCompatibilityInputStruct_t,
+MPI2_POINTER pMpi2RaidCompatibilityInputStruct_t;
 
 /* defines for RAID Compatibility Structure Flags field */
 #define MPI2_RAID_COMPAT_SOURCE_IS_VOLUME_FLAG      (0x00000002)
@@ -282,13 +276,10 @@ typedef struct _MPI2_RAID_VOL_INDICATOR
     U64                     TotalBlocks;                    /* 0x00 */
     U64                     BlocksRemaining;                /* 0x08 */
     U32                     Flags;                          /* 0x10 */
-    U32                     ElapsedSeconds;                 /* 0x14 */
 } MPI2_RAID_VOL_INDICATOR, MPI2_POINTER PTR_MPI2_RAID_VOL_INDICATOR,
   Mpi2RaidVolIndicator_t, MPI2_POINTER pMpi2RaidVolIndicator_t;
 
 /* defines for RAID Volume Indicator Flags field */
-#define MPI2_RAID_VOL_FLAGS_ELAPSED_SECONDS_VALID   (0x80000000)
-
 #define MPI2_RAID_VOL_FLAGS_OP_MASK                 (0x0000000F)
 #define MPI2_RAID_VOL_FLAGS_OP_BACKGROUND_INIT      (0x00000000)
 #define MPI2_RAID_VOL_FLAGS_OP_ONLINE_CAP_EXPANSION (0x00000001)
@@ -296,22 +287,20 @@ typedef struct _MPI2_RAID_VOL_INDICATOR
 #define MPI2_RAID_VOL_FLAGS_OP_RESYNC               (0x00000003)
 #define MPI2_RAID_VOL_FLAGS_OP_MDC                  (0x00000004)
 
-
 /* RAID Compatibility Result Structure */
 
-typedef struct _MPI2_RAID_COMPATIBILITY_RESULT_STRUCT
-{
-    U8                      State;                          /* 0x00 */
-    U8                      Reserved1;                      /* 0x01 */
-    U16                     Reserved2;                      /* 0x02 */
-    U32                     GenericAttributes;              /* 0x04 */
-    U32                     OEMSpecificAttributes;          /* 0x08 */
-    U32                     Reserved3;                      /* 0x0C */
-    U32                     Reserved4;                      /* 0x10 */
+typedef struct _MPI2_RAID_COMPATIBILITY_RESULT_STRUCT {
+	U8                      State;                          /* 0x00 */
+	U8                      Reserved1;                      /* 0x01 */
+	U16                     Reserved2;                      /* 0x02 */
+	U32                     GenericAttributes;              /* 0x04 */
+	U32                     OEMSpecificAttributes;          /* 0x08 */
+	U32                     Reserved3;                      /* 0x0C */
+	U32                     Reserved4;                      /* 0x10 */
 } MPI2_RAID_COMPATIBILITY_RESULT_STRUCT,
-  MPI2_POINTER PTR_MPI2_RAID_COMPATIBILITY_RESULT_STRUCT,
-  Mpi2RaidCompatibilityResultStruct_t,
-  MPI2_POINTER pMpi2RaidCompatibilityResultStruct_t;
+MPI2_POINTER PTR_MPI2_RAID_COMPATIBILITY_RESULT_STRUCT,
+Mpi2RaidCompatibilityResultStruct_t,
+MPI2_POINTER pMpi2RaidCompatibilityResultStruct_t;
 
 /* defines for RAID Compatibility Result Structure State field */
 #define MPI2_RAID_COMPAT_STATE_COMPATIBLE           (0x00)
@@ -328,16 +317,15 @@ typedef struct _MPI2_RAID_COMPATIBILITY_RESULT_STRUCT
 #define MPI2_RAID_COMPAT_GENATTRIB_SAS_PROTOCOL         (0x00000002)
 #define MPI2_RAID_COMPAT_GENATTRIB_SATA_PROTOCOL        (0x00000001)
 
-
 /* RAID Action Reply ActionData union */
 typedef union _MPI2_RAID_ACTION_REPLY_DATA
 {
-    U32                                     Word[6];
-    MPI2_RAID_VOL_INDICATOR                 RaidVolumeIndicator;
-    U16                                     VolDevHandle;
-    U8                                      VolumeState;
-    U8                                      PhysDiskNum;
-    MPI2_RAID_COMPATIBILITY_RESULT_STRUCT   RaidCompatibilityResult;
+	U32                                     Word[5];
+	MPI2_RAID_VOL_INDICATOR                 RaidVolumeIndicator;
+	U16                                     VolDevHandle;
+	U8                                      VolumeState;
+	U8                                      PhysDiskNum;
+	MPI2_RAID_COMPATIBILITY_RESULT_STRUCT   RaidCompatibilityResult;
 } MPI2_RAID_ACTION_REPLY_DATA, MPI2_POINTER PTR_MPI2_RAID_ACTION_REPLY_DATA,
   Mpi2RaidActionReplyData_t, MPI2_POINTER pMpi2RaidActionReplyData_t;
 

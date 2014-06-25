@@ -3,7 +3,7 @@
  * controllers
  *
  * This code is based on drivers/scsi/mpt2sas/mpt2_ctl.h
- * Copyright (C) 2007-2013  LSI Corporation
+ * Copyright (C) 2007-2012  LSI Corporation
  *  (mailto:DL-MPTFusionLinux@lsi.com)
  *
  * This program is free software; you can redistribute it and/or
@@ -49,18 +49,6 @@
 #include <linux/miscdevice.h>
 #endif
 
-/**
- * NOTE
- * FWDOWNLOAD - PR is let me know if we need to implement this
- * DIAGBUFFER - PR said hold off
- */
-
-/**
- * HACK - changeme (MPT_MINOR = 220 )
- */
-#ifndef MPT2SAS_MINOR
-#define MPT2SAS_MINOR		(MPT_MINOR + 1)
-#endif
 #define MPT2SAS_DEV_NAME	"mpt2ctl"
 #define MPT2_MAGIC_NUMBER	'L'
 #define MPT2_IOCTL_DEFAULT_TIMEOUT (10) /* in seconds */
@@ -236,7 +224,7 @@ struct mpt2_ioctl_eventreport {
 };
 
 /**
- * struct mpt2_ioctl_command - generic mpt firmware passthru ioctl
+ * struct mpt2_ioctl_command - generic mpt firmware passthru ioclt
  * @hdr - generic header
  * @timeout - command timeout in seconds. (if zero then use driver default
  *  value).
@@ -306,6 +294,12 @@ struct mpt2_ioctl_btdh_mapping {
 	uint16_t rsvd;
 };
 
+
+/* status bits for ioc->diag_buffer_status */
+#define MPT2_DIAG_BUFFER_IS_REGISTERED	(0x01)
+#define MPT2_DIAG_BUFFER_IS_RELEASED	(0x02)
+#define MPT2_DIAG_BUFFER_IS_DIAG_RESET	(0x04)
+
 /* application flags for mpt2_diag_register, mpt2_diag_query */
 #define MPT2_APP_FLAGS_APP_OWNED	(0x0001)
 #define MPT2_APP_FLAGS_BUFFER_VALID	(0x0002)
@@ -314,7 +308,7 @@ struct mpt2_ioctl_btdh_mapping {
 /* flags for mpt2_diag_read_buffer */
 #define MPT2_FLAGS_REREGISTER		(0x0001)
 
-#define MPT2_PRODUCT_SPECIFIC_DWORDS		23
+#define MPT2_PRODUCT_SPECIFIC_DWORDS 		23
 
 /**
  * struct mpt2_diag_register - application register with driver
@@ -421,6 +415,4 @@ struct mpt2_diag_read_buffer {
 	uint32_t diagnostic_data[1];
 };
 
-/* Chunk size to use when doing a FW Download */
-#define FW_DL_CHUNK_SIZE 0x4000
 #endif /* MPT2SAS_CTL_H_INCLUDED */

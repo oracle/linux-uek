@@ -6,12 +6,7 @@
  *          Title:  MPI IOC, Port, Event, FW Download, and FW Upload messages
  *  Creation Date:  October 11, 2006
  *
- *  mpi2_ioc.h Version:  02.00.22
- *
- *  NOTE: Names (typedefs, defines, etc.) beginning with an MPI25 or Mpi25
- *        prefix are for use only on MPI v2.5 products, and must not be used
- *        with MPI v2.0 products. Unless otherwise noted, names beginning with
- *        MPI2 or Mpi2 are for use with both MPI v2.0 and MPI v2.5 products.
+ *  mpi2_ioc.h Version:  02.00.21
  *
  *  Version History
  *  ---------------
@@ -122,11 +117,7 @@
  *  08-24-11  02.00.19  Added PhysicalPort field to
  *                      MPI2_EVENT_DATA_SAS_DEVICE_STATUS_CHANGE structure.
  *                      Marked MPI2_PM_CONTROL_FEATURE_PCIE_LINK as obsolete.
- *  11-18-11  02.00.20  Incorporating additions for MPI v2.5.
  *  03-29-12  02.00.21  Added a product specific range to event values.
- *  07-26-12  02.00.22  Added MPI2_IOCFACTS_EXCEPT_PARTIAL_MEMORY_FAILURE.
- *                      Added ElapsedSeconds field to
- *                      MPI2_EVENT_DATA_IR_OPERATION_STATUS.
  *  --------------------------------------------------------------------------
  */
 
@@ -263,7 +254,7 @@ typedef struct _MPI2_IOC_FACTS_REPLY
     U32                     IOCCapabilities;                /* 0x1C */
     MPI2_VERSION_UNION      FWVersion;                      /* 0x20 */
     U16                     IOCRequestFrameSize;            /* 0x24 */
-    U16                     IOCMaxChainSegmentSize;         /* 0x26 */ /* MPI 2.5 only; Reserved in MPI 2.0 */
+    U16                     Reserved3;                      /* 0x26 */
     U16                     MaxInitiators;                  /* 0x28 */
     U16                     MaxTargets;                     /* 0x2A */
     U16                     MaxSasExpanders;                /* 0x2C */
@@ -293,7 +284,6 @@ typedef struct _MPI2_IOC_FACTS_REPLY
 #define MPI2_IOCFACTS_HDRVERSION_DEV_SHIFT              (0)
 
 /* IOCExceptions */
-#define MPI2_IOCFACTS_EXCEPT_PARTIAL_MEMORY_FAILURE     (0x0200)
 #define MPI2_IOCFACTS_EXCEPT_IR_FOREIGN_CONFIG_MAX      (0x0100)
 
 #define MPI2_IOCFACTS_EXCEPT_BOOTSTAT_MASK              (0x00E0)
@@ -313,7 +303,6 @@ typedef struct _MPI2_IOC_FACTS_REPLY
 /* ProductID field uses MPI2_FW_HEADER_PID_ */
 
 /* IOCCapabilities */
-#define MPI25_IOCFACTS_CAPABILITY_FAST_PATH_CAPABLE     (0x00020000)
 #define MPI2_IOCFACTS_CAPABILITY_HOST_BASED_DISCOVERY   (0x00010000)
 #define MPI2_IOCFACTS_CAPABILITY_MSI_X_INDEX            (0x00008000)
 #define MPI2_IOCFACTS_CAPABILITY_RAID_ACCELERATOR       (0x00004000)
@@ -446,7 +435,7 @@ typedef struct _MPI2_EVENT_NOTIFICATION_REQUEST
     U32                     Reserved6;                      /* 0x10 */
     U32                     EventMasks[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];/* 0x14 */
     U16                     SASBroadcastPrimitiveMasks;     /* 0x24 */
-    U16                     SASNotifyPrimitiveMasks;        /* 0x26 */
+	 U16                     SASNotifyPrimitiveMasks;        /* 0x26 */
     U32                     Reserved8;                      /* 0x28 */
 } MPI2_EVENT_NOTIFICATION_REQUEST,
   MPI2_POINTER PTR_MPI2_EVENT_NOTIFICATION_REQUEST,
@@ -504,10 +493,8 @@ typedef struct _MPI2_EVENT_NOTIFICATION_REPLY
 #define MPI2_EVENT_SAS_NOTIFY_PRIMITIVE             (0x0026)
 #define MPI2_EVENT_TEMP_THRESHOLD                   (0x0027)
 #define MPI2_EVENT_HOST_MESSAGE                     (0x0028)
-#define MPI2_EVENT_POWER_PERFORMANCE_CHANGE         (0x0029)
 #define MPI2_EVENT_MIN_PRODUCT_SPECIFIC             (0x006E)
 #define MPI2_EVENT_MAX_PRODUCT_SPECIFIC             (0x007F)
-
 
 /* Log Entry Added Event data */
 
@@ -528,11 +515,9 @@ typedef struct _MPI2_EVENT_DATA_LOG_ENTRY_ADDED
   MPI2_POINTER PTR_MPI2_EVENT_DATA_LOG_ENTRY_ADDED,
   Mpi2EventDataLogEntryAdded_t, MPI2_POINTER pMpi2EventDataLogEntryAdded_t;
 
-
 /* GPIO Interrupt Event data */
 
-typedef struct _MPI2_EVENT_DATA_GPIO_INTERRUPT
-{
+typedef struct _MPI2_EVENT_DATA_GPIO_INTERRUPT {
     U8          GPIONum;                            /* 0x00 */
     U8          Reserved1;                          /* 0x01 */
     U16         Reserved2;                          /* 0x02 */
@@ -540,21 +525,19 @@ typedef struct _MPI2_EVENT_DATA_GPIO_INTERRUPT
   MPI2_POINTER PTR_MPI2_EVENT_DATA_GPIO_INTERRUPT,
   Mpi2EventDataGpioInterrupt_t, MPI2_POINTER pMpi2EventDataGpioInterrupt_t;
 
-
 /* Temperature Threshold Event data */
 
-typedef struct _MPI2_EVENT_DATA_TEMPERATURE
-{
-    U16         Status;                             /* 0x00 */
-    U8          SensorNum;                          /* 0x02 */
-    U8          Reserved1;                          /* 0x03 */
-    U16         CurrentTemperature;                 /* 0x04 */
-    U16         Reserved2;                          /* 0x06 */
-    U32         Reserved3;                          /* 0x08 */
-    U32         Reserved4;                          /* 0x0C */
+typedef struct _MPI2_EVENT_DATA_TEMPERATURE {
+	U16         Status;                             /* 0x00 */
+	U8          SensorNum;                          /* 0x02 */
+	U8          Reserved1;                          /* 0x03 */
+	U16         CurrentTemperature;                 /* 0x04 */
+	U16         Reserved2;                          /* 0x06 */
+	U32         Reserved3;                          /* 0x08 */
+	U32         Reserved4;                          /* 0x0C */
 } MPI2_EVENT_DATA_TEMPERATURE,
-  MPI2_POINTER PTR_MPI2_EVENT_DATA_TEMPERATURE,
-  Mpi2EventDataTemperature_t, MPI2_POINTER pMpi2EventDataTemperature_t;
+MPI2_POINTER PTR_MPI2_EVENT_DATA_TEMPERATURE,
+Mpi2EventDataTemperature_t, MPI2_POINTER pMpi2EventDataTemperature_t;
 
 /* Temperature Threshold Event data Status bits */
 #define MPI2_EVENT_TEMPERATURE3_EXCEEDED            (0x0008)
@@ -565,41 +548,14 @@ typedef struct _MPI2_EVENT_DATA_TEMPERATURE
 
 /* Host Message Event data */
 
-typedef struct _MPI2_EVENT_DATA_HOST_MESSAGE
-{
-    U8          SourceVF_ID;                        /* 0x00 */
-    U8          Reserved1;                          /* 0x01 */
-    U16         Reserved2;                          /* 0x02 */
-    U32         Reserved3;                          /* 0x04 */
-    U32         HostData[1];                        /* 0x08 */
+typedef struct _MPI2_EVENT_DATA_HOST_MESSAGE {
+	U8          SourceVF_ID;                        /* 0x00 */
+	U8          Reserved1;                          /* 0x01 */
+	U16         Reserved2;                          /* 0x02 */
+	U32         Reserved3;                          /* 0x04 */
+	U32         HostData[1];                        /* 0x08 */
 } MPI2_EVENT_DATA_HOST_MESSAGE, MPI2_POINTER PTR_MPI2_EVENT_DATA_HOST_MESSAGE,
-  Mpi2EventDataHostMessage_t, MPI2_POINTER pMpi2EventDataHostMessage_t;
-
-
-/* Power Performance Change Event */
-
-typedef struct _MPI2_EVENT_DATA_POWER_PERF_CHANGE
-{
-    U8          CurrentPowerMode;                   /* 0x00 */
-    U8          PreviousPowerMode;                  /* 0x01 */
-    U16         Reserved1;                          /* 0x02 */
-} MPI2_EVENT_DATA_POWER_PERF_CHANGE,
-  MPI2_POINTER PTR_MPI2_EVENT_DATA_POWER_PERF_CHANGE,
-  Mpi2EventDataPowerPerfChange_t, MPI2_POINTER pMpi2EventDataPowerPerfChange_t;
-
-/* defines for CurrentPowerMode and PreviousPowerMode fields */
-#define MPI2_EVENT_PM_INIT_MASK              (0xC0)
-#define MPI2_EVENT_PM_INIT_UNAVAILABLE       (0x00)
-#define MPI2_EVENT_PM_INIT_HOST              (0x40)
-#define MPI2_EVENT_PM_INIT_IO_UNIT           (0x80)
-#define MPI2_EVENT_PM_INIT_PCIE_DPA          (0xC0)
-
-#define MPI2_EVENT_PM_MODE_MASK              (0x07)
-#define MPI2_EVENT_PM_MODE_UNAVAILABLE       (0x00)
-#define MPI2_EVENT_PM_MODE_UNKNOWN           (0x01)
-#define MPI2_EVENT_PM_MODE_FULL_POWER        (0x04)
-#define MPI2_EVENT_PM_MODE_REDUCED_POWER     (0x05)
-#define MPI2_EVENT_PM_MODE_STANDBY           (0x06)
+Mpi2EventDataHostMessage_t, MPI2_POINTER pMpi2EventDataHostMessage_t;
 
 
 /* Hard Reset Received Event data */
@@ -613,7 +569,6 @@ typedef struct _MPI2_EVENT_DATA_HARD_RESET_RECEIVED
   MPI2_POINTER PTR_MPI2_EVENT_DATA_HARD_RESET_RECEIVED,
   Mpi2EventDataHardResetReceived_t,
   MPI2_POINTER pMpi2EventDataHardResetReceived_t;
-
 
 /* Task Set Full Event data */
 /*   this event is obsolete */
@@ -632,7 +587,7 @@ typedef struct _MPI2_EVENT_DATA_SAS_DEVICE_STATUS_CHANGE
 {
     U16                     TaskTag;                        /* 0x00 */
     U8                      ReasonCode;                     /* 0x02 */
-    U8                      PhysicalPort;                   /* 0x03 */
+	U8                      PhysicalPort;                   /* 0x03 */
     U8                      ASC;                            /* 0x04 */
     U8                      ASCQ;                           /* 0x05 */
     U16                     DevHandle;                      /* 0x06 */
@@ -669,7 +624,7 @@ typedef struct _MPI2_EVENT_DATA_IR_OPERATION_STATUS
     U8                      RAIDOperation;              /* 0x04 */
     U8                      PercentComplete;            /* 0x05 */
     U16                     Reserved2;                  /* 0x06 */
-    U32                     ElapsedSeconds;             /* 0x08 */
+    U32                     Resereved3;                 /* 0x08 */
 } MPI2_EVENT_DATA_IR_OPERATION_STATUS,
   MPI2_POINTER PTR_MPI2_EVENT_DATA_IR_OPERATION_STATUS,
   Mpi2EventDataIrOperationStatus_t,
@@ -845,19 +800,17 @@ typedef struct _MPI2_EVENT_DATA_SAS_BROADCAST_PRIMITIVE
 #define MPI2_EVENT_PRIMITIVE_CHANGE0_RESERVED               (0x07)
 #define MPI2_EVENT_PRIMITIVE_CHANGE1_RESERVED               (0x08)
 
-
 /* SAS Notify Primitive Event data */
 
-typedef struct _MPI2_EVENT_DATA_SAS_NOTIFY_PRIMITIVE
-{
-    U8                      PhyNum;                     /* 0x00 */
-    U8                      Port;                       /* 0x01 */
-    U8                      Reserved1;                  /* 0x02 */
-    U8                      Primitive;                  /* 0x03 */
+typedef struct _MPI2_EVENT_DATA_SAS_NOTIFY_PRIMITIVE {
+	U8                      PhyNum;                     /* 0x00 */
+	U8                      Port;                       /* 0x01 */
+	U8                      Reserved1;                  /* 0x02 */
+	U8                      Primitive;                  /* 0x03 */
 } MPI2_EVENT_DATA_SAS_NOTIFY_PRIMITIVE,
-  MPI2_POINTER PTR_MPI2_EVENT_DATA_SAS_NOTIFY_PRIMITIVE,
-  Mpi2EventDataSasNotifyPrimitive_t,
-  MPI2_POINTER pMpi2EventDataSasNotifyPrimitive_t;
+MPI2_POINTER PTR_MPI2_EVENT_DATA_SAS_NOTIFY_PRIMITIVE,
+Mpi2EventDataSasNotifyPrimitive_t,
+MPI2_POINTER pMpi2EventDataSasNotifyPrimitive_t;
 
 /* defines for the Primitive field */
 #define MPI2_EVENT_NOTIFY_ENABLE_SPINUP                     (0x01)
@@ -955,7 +908,6 @@ typedef struct _MPI2_EVENT_DATA_SAS_TOPOLOGY_CHANGE_LIST
 #define MPI2_EVENT_SAS_TOPO_LR_RATE_1_5                     (0x08)
 #define MPI2_EVENT_SAS_TOPO_LR_RATE_3_0                     (0x09)
 #define MPI2_EVENT_SAS_TOPO_LR_RATE_6_0                     (0x0A)
-#define MPI25_EVENT_SAS_TOPO_LR_RATE_12_0                   (0x0B)
 
 /* values for the PhyStatus field */
 #define MPI2_EVENT_SAS_TOPO_PHYSTATUS_VACANT                (0x80)
@@ -992,8 +944,7 @@ typedef struct _MPI2_EVENT_DATA_SAS_ENCL_DEV_STATUS_CHANGE
 
 /* SAS PHY Counter Event data */
 
-typedef struct _MPI2_EVENT_DATA_SAS_PHY_COUNTER
-{
+typedef struct _MPI2_EVENT_DATA_SAS_PHY_COUNTER {
     U64         TimeStamp;          /* 0x00 */
     U32         Reserved1;          /* 0x08 */
     U8          PhyEventCode;       /* 0x0C */
@@ -1011,19 +962,20 @@ typedef struct _MPI2_EVENT_DATA_SAS_PHY_COUNTER
   MPI2_POINTER PTR_MPI2_EVENT_DATA_SAS_PHY_COUNTER,
   Mpi2EventDataSasPhyCounter_t, MPI2_POINTER pMpi2EventDataSasPhyCounter_t;
 
-/* use MPI2_SASPHY3_EVENT_CODE_ values from mpi2_cnfg.h for the PhyEventCode field */
-
-/* use MPI2_SASPHY3_COUNTER_TYPE_ values from mpi2_cnfg.h for the CounterType field */
-
-/* use MPI2_SASPHY3_TIME_UNITS_ values from mpi2_cnfg.h for the TimeUnits field */
-
-/* use MPI2_SASPHY3_TFLAGS_ values from mpi2_cnfg.h for the ThresholdFlags field */
+/* use MPI2_SASPHY3_EVENT_CODE_ values from mpi2_cnfg.h for the
+ * PhyEventCode field
+ * use MPI2_SASPHY3_COUNTER_TYPE_ values from mpi2_cnfg.h for the
+ * CounterType field
+ * use MPI2_SASPHY3_TIME_UNITS_ values from mpi2_cnfg.h for the
+ * TimeUnits field
+ * use MPI2_SASPHY3_TFLAGS_ values from mpi2_cnfg.h for the
+ * ThresholdFlags field
+ * */
 
 
 /* SAS Quiesce Event data */
 
-typedef struct _MPI2_EVENT_DATA_SAS_QUIESCE
-{
+typedef struct _MPI2_EVENT_DATA_SAS_QUIESCE {
     U8                      ReasonCode;                 /* 0x00 */
     U8                      Reserved1;                  /* 0x01 */
     U16                     Reserved2;                  /* 0x02 */
@@ -1039,8 +991,7 @@ typedef struct _MPI2_EVENT_DATA_SAS_QUIESCE
 
 /* Host Based Discovery Phy Event data */
 
-typedef struct _MPI2_EVENT_HBD_PHY_SAS
-{
+typedef struct _MPI2_EVENT_HBD_PHY_SAS {
     U8          Flags;                      /* 0x00 */
     U8          NegotiatedLinkRate;         /* 0x01 */
     U8          PhyNum;                     /* 0x02 */
@@ -1054,16 +1005,15 @@ typedef struct _MPI2_EVENT_HBD_PHY_SAS
 #define MPI2_EVENT_HBD_SAS_FLAGS_FRAME_VALID        (0x02)
 #define MPI2_EVENT_HBD_SAS_FLAGS_SATA_FRAME         (0x01)
 
-/* use MPI2_SAS_NEG_LINK_RATE_ defines from mpi2_cnfg.h for the NegotiatedLinkRate field */
+/* use MPI2_SAS_NEG_LINK_RATE_ defines from mpi2_cnfg.h for
+ * the NegotiatedLinkRate field */
 
-typedef union _MPI2_EVENT_HBD_DESCRIPTOR
-{
+typedef union _MPI2_EVENT_HBD_DESCRIPTOR {
     MPI2_EVENT_HBD_PHY_SAS      Sas;
 } MPI2_EVENT_HBD_DESCRIPTOR, MPI2_POINTER PTR_MPI2_EVENT_HBD_DESCRIPTOR,
   Mpi2EventHbdDescriptor_t, MPI2_POINTER pMpi2EventHbdDescriptor_t;
 
-typedef struct _MPI2_EVENT_DATA_HBD_PHY
-{
+typedef struct _MPI2_EVENT_DATA_HBD_PHY {
     U8                          DescriptorType;     /* 0x00 */
     U8                          Reserved1;          /* 0x01 */
     U16                         Reserved2;          /* 0x02 */
@@ -1124,55 +1074,53 @@ typedef struct _MPI2_EVENT_ACK_REPLY
 ****************************************************************************/
 
 /* SendHostMessage Request message */
-typedef struct _MPI2_SEND_HOST_MESSAGE_REQUEST
-{
-    U16                     HostDataLength;                 /* 0x00 */
-    U8                      ChainOffset;                    /* 0x02 */
-    U8                      Function;                       /* 0x03 */
-    U16                     Reserved1;                      /* 0x04 */
-    U8                      Reserved2;                      /* 0x06 */
-    U8                      MsgFlags;                       /* 0x07 */
-    U8                      VP_ID;                          /* 0x08 */
-    U8                      VF_ID;                          /* 0x09 */
-    U16                     Reserved3;                      /* 0x0A */
-    U8                      Reserved4;                      /* 0x0C */
-    U8                      DestVF_ID;                      /* 0x0D */
-    U16                     Reserved5;                      /* 0x0E */
-    U32                     Reserved6;                      /* 0x10 */
-    U32                     Reserved7;                      /* 0x14 */
-    U32                     Reserved8;                      /* 0x18 */
-    U32                     Reserved9;                      /* 0x1C */
-    U32                     Reserved10;                     /* 0x20 */
-    U32                     HostData[1];                    /* 0x24 */
+typedef struct _MPI2_SEND_HOST_MESSAGE_REQUEST {
+	U16                     HostDataLength;                 /* 0x00 */
+	U8                      ChainOffset;                    /* 0x02 */
+	U8                      Function;                       /* 0x03 */
+	U16                     Reserved1;                      /* 0x04 */
+	U8                      Reserved2;                      /* 0x06 */
+	U8                      MsgFlags;                       /* 0x07 */
+	U8                      VP_ID;                          /* 0x08 */
+	U8                      VF_ID;                          /* 0x09 */
+	U16                     Reserved3;                      /* 0x0A */
+	U8                      Reserved4;                      /* 0x0C */
+	U8                      DestVF_ID;                      /* 0x0D */
+	U16                     Reserved5;                      /* 0x0E */
+	U32                     Reserved6;                      /* 0x10 */
+	U32                     Reserved7;                      /* 0x14 */
+	U32                     Reserved8;                      /* 0x18 */
+	U32                     Reserved9;                      /* 0x1C */
+	U32                     Reserved10;                     /* 0x20 */
+	U32                     HostData[1];                    /* 0x24 */
 } MPI2_SEND_HOST_MESSAGE_REQUEST,
-  MPI2_POINTER PTR_MPI2_SEND_HOST_MESSAGE_REQUEST,
-  Mpi2SendHostMessageRequest_t, MPI2_POINTER pMpi2SendHostMessageRequest_t;
+MPI2_POINTER PTR_MPI2_SEND_HOST_MESSAGE_REQUEST,
+Mpi2SendHostMessageRequest_t, MPI2_POINTER pMpi2SendHostMessageRequest_t;
 
 
 /* SendHostMessage Reply message */
-typedef struct _MPI2_SEND_HOST_MESSAGE_REPLY
-{
-    U16                     HostDataLength;                 /* 0x00 */
-    U8                      MsgLength;                      /* 0x02 */
-    U8                      Function;                       /* 0x03 */
-    U16                     Reserved1;                      /* 0x04 */
-    U8                      Reserved2;                      /* 0x06 */
-    U8                      MsgFlags;                       /* 0x07 */
-    U8                      VP_ID;                          /* 0x08 */
-    U8                      VF_ID;                          /* 0x09 */
-    U16                     Reserved3;                      /* 0x0A */
-    U16                     Reserved4;                      /* 0x0C */
-    U16                     IOCStatus;                      /* 0x0E */
-    U32                     IOCLogInfo;                     /* 0x10 */
+typedef struct _MPI2_SEND_HOST_MESSAGE_REPLY {
+	U16                     HostDataLength;                 /* 0x00 */
+	U8                      MsgLength;                      /* 0x02 */
+	U8                      Function;                       /* 0x03 */
+	U16                     Reserved1;                      /* 0x04 */
+	U8                      Reserved2;                      /* 0x06 */
+	U8                      MsgFlags;                       /* 0x07 */
+	U8                      VP_ID;                          /* 0x08 */
+	U8                      VF_ID;                          /* 0x09 */
+	U16                     Reserved3;                      /* 0x0A */
+	U16                     Reserved4;                      /* 0x0C */
+	U16                     IOCStatus;                      /* 0x0E */
+	U32                     IOCLogInfo;                     /* 0x10 */
 } MPI2_SEND_HOST_MESSAGE_REPLY, MPI2_POINTER PTR_MPI2_SEND_HOST_MESSAGE_REPLY,
-  Mpi2SendHostMessageReply_t, MPI2_POINTER pMpi2SendHostMessageReply_t;
+Mpi2SendHostMessageReply_t, MPI2_POINTER pMpi2SendHostMessageReply_t;
 
 
 /****************************************************************************
 *  FWDownload message
 ****************************************************************************/
 
-/* MPI v2.0 FWDownload Request message */
+/* FWDownload Request message */
 typedef struct _MPI2_FW_DOWNLOAD_REQUEST
 {
     U8                      ImageType;                  /* 0x00 */
@@ -1203,7 +1151,7 @@ typedef struct _MPI2_FW_DOWNLOAD_REQUEST
 #define MPI2_FW_DOWNLOAD_ITYPE_COMMON_BOOT_BLOCK    (0x0B)
 #define MPI2_FW_DOWNLOAD_ITYPE_MIN_PRODUCT_SPECIFIC (0xF0)
 
-/* MPI v2.0 FWDownload TransactionContext Element */
+/* FWDownload TransactionContext Element */
 typedef struct _MPI2_FW_DOWNLOAD_TCSGE
 {
     U8                      Reserved1;                  /* 0x00 */
@@ -1215,30 +1163,6 @@ typedef struct _MPI2_FW_DOWNLOAD_TCSGE
     U32                     ImageSize;                  /* 0x0C */
 } MPI2_FW_DOWNLOAD_TCSGE, MPI2_POINTER PTR_MPI2_FW_DOWNLOAD_TCSGE,
   Mpi2FWDownloadTCSGE_t, MPI2_POINTER pMpi2FWDownloadTCSGE_t;
-
-
-/* MPI v2.5 FWDownload Request message */
-typedef struct _MPI25_FW_DOWNLOAD_REQUEST
-{
-    U8                      ImageType;                  /* 0x00 */
-    U8                      Reserved1;                  /* 0x01 */
-    U8                      ChainOffset;                /* 0x02 */
-    U8                      Function;                   /* 0x03 */
-    U16                     Reserved2;                  /* 0x04 */
-    U8                      Reserved3;                  /* 0x06 */
-    U8                      MsgFlags;                   /* 0x07 */
-    U8                      VP_ID;                      /* 0x08 */
-    U8                      VF_ID;                      /* 0x09 */
-    U16                     Reserved4;                  /* 0x0A */
-    U32                     TotalImageSize;             /* 0x0C */
-    U32                     Reserved5;                  /* 0x10 */
-    U32                     Reserved6;                  /* 0x14 */
-    U32                     ImageOffset;                /* 0x18 */
-    U32                     ImageSize;                  /* 0x1C */
-    MPI25_SGE_IO_UNION      SGL;                        /* 0x20 */
-} MPI25_FW_DOWNLOAD_REQUEST, MPI2_POINTER PTR_MPI25_FW_DOWNLOAD_REQUEST,
-  Mpi25FWDownloadRequest, MPI2_POINTER pMpi25FWDownloadRequest;
-
 
 /* FWDownload Reply message */
 typedef struct _MPI2_FW_DOWNLOAD_REPLY
@@ -1264,7 +1188,7 @@ typedef struct _MPI2_FW_DOWNLOAD_REPLY
 *  FWUpload message
 ****************************************************************************/
 
-/* MPI v2.0 FWUpload Request message */
+/* FWUpload Request message */
 typedef struct _MPI2_FW_UPLOAD_REQUEST
 {
     U8                      ImageType;                  /* 0x00 */
@@ -1294,7 +1218,6 @@ typedef struct _MPI2_FW_UPLOAD_REQUEST
 #define MPI2_FW_UPLOAD_ITYPE_COMPLETE           (0x0A)
 #define MPI2_FW_UPLOAD_ITYPE_COMMON_BOOT_BLOCK  (0x0B)
 
-/* MPI v2.0 FWUpload TransactionContext Element */
 typedef struct _MPI2_FW_UPLOAD_TCSGE
 {
     U8                      Reserved1;                  /* 0x00 */
@@ -1306,30 +1229,6 @@ typedef struct _MPI2_FW_UPLOAD_TCSGE
     U32                     ImageSize;                  /* 0x0C */
 } MPI2_FW_UPLOAD_TCSGE, MPI2_POINTER PTR_MPI2_FW_UPLOAD_TCSGE,
   Mpi2FWUploadTCSGE_t, MPI2_POINTER pMpi2FWUploadTCSGE_t;
-
-
-/* MPI v2.5 FWUpload Request message */
-typedef struct _MPI25_FW_UPLOAD_REQUEST
-{
-    U8                      ImageType;                  /* 0x00 */
-    U8                      Reserved1;                  /* 0x01 */
-    U8                      ChainOffset;                /* 0x02 */
-    U8                      Function;                   /* 0x03 */
-    U16                     Reserved2;                  /* 0x04 */
-    U8                      Reserved3;                  /* 0x06 */
-    U8                      MsgFlags;                   /* 0x07 */
-    U8                      VP_ID;                      /* 0x08 */
-    U8                      VF_ID;                      /* 0x09 */
-    U16                     Reserved4;                  /* 0x0A */
-    U32                     Reserved5;                  /* 0x0C */
-    U32                     Reserved6;                  /* 0x10 */
-    U32                     Reserved7;                  /* 0x14 */
-    U32                     ImageOffset;                /* 0x18 */
-    U32                     ImageSize;                  /* 0x1C */
-    MPI25_SGE_IO_UNION      SGL;                        /* 0x20 */
-} MPI25_FW_UPLOAD_REQUEST, MPI2_POINTER PTR_MPI25_FW_UPLOAD_REQUEST,
-  Mpi25FWUploadRequest_t, MPI2_POINTER pMpi25FWUploadRequest_t;
-
 
 /* FWUpload Reply message */
 typedef struct _MPI2_FW_UPLOAD_REPLY
@@ -1432,10 +1331,9 @@ typedef struct _MPI2_FW_IMAGE_HEADER
 
 
 #define MPI2_FW_HEADER_PID_FAMILY_MASK          (0x00FF)
-/* SAS ProductID Family bits */
+/* SAS */
 #define MPI2_FW_HEADER_PID_FAMILY_2108_SAS      (0x0013)
 #define MPI2_FW_HEADER_PID_FAMILY_2208_SAS      (0x0014)
-#define MPI25_FW_HEADER_PID_FAMILY_3108_SAS     (0x0021)
 
 /* use MPI2_IOCFACTS_PROTOCOL_ defines for ProtocolFlags field */
 
@@ -1477,18 +1375,18 @@ typedef struct _MPI2_EXT_IMAGE_HEADER
 #define MPI2_EXT_IMAGE_HEADER_SIZE              (0x40)
 
 /* defines for the ImageType field */
-#define MPI2_EXT_IMAGE_TYPE_UNSPECIFIED             (0x00)
-#define MPI2_EXT_IMAGE_TYPE_FW                      (0x01)
-#define MPI2_EXT_IMAGE_TYPE_NVDATA                  (0x03)
-#define MPI2_EXT_IMAGE_TYPE_BOOTLOADER              (0x04)
-#define MPI2_EXT_IMAGE_TYPE_INITIALIZATION          (0x05)
-#define MPI2_EXT_IMAGE_TYPE_FLASH_LAYOUT            (0x06)
-#define MPI2_EXT_IMAGE_TYPE_SUPPORTED_DEVICES       (0x07)
-#define MPI2_EXT_IMAGE_TYPE_MEGARAID                (0x08)
+#define MPI2_EXT_IMAGE_TYPE_UNSPECIFIED				(0x00)
+#define MPI2_EXT_IMAGE_TYPE_FW						(0x01)
+#define MPI2_EXT_IMAGE_TYPE_NVDATA					(0x03)
+#define MPI2_EXT_IMAGE_TYPE_BOOTLOADER				(0x04)
+#define MPI2_EXT_IMAGE_TYPE_INITIALIZATION			(0x05)
+#define MPI2_EXT_IMAGE_TYPE_FLASH_LAYOUT			(0x06)
+#define MPI2_EXT_IMAGE_TYPE_SUPPORTED_DEVICES		(0x07)
+#define MPI2_EXT_IMAGE_TYPE_MEGARAID				(0x08)
 #define MPI2_EXT_IMAGE_TYPE_MIN_PRODUCT_SPECIFIC    (0x80)
 #define MPI2_EXT_IMAGE_TYPE_MAX_PRODUCT_SPECIFIC    (0xFF)
-
-#define MPI2_EXT_IMAGE_TYPE_MAX (MPI2_EXT_IMAGE_TYPE_MAX_PRODUCT_SPECIFIC)  /* deprecated */
+#define MPI2_EXT_IMAGE_TYPE_MAX                   \
+	(MPI2_EXT_IMAGE_TYPE_MAX_PRODUCT_SPECIFIC)	/* deprecated */
 
 
 
@@ -1658,8 +1556,7 @@ typedef struct _MPI2_INIT_IMAGE_FOOTER
 ****************************************************************************/
 
 /* PowerManagementControl Request message */
-typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST
-{
+typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST {
     U8                      Feature;                    /* 0x00 */
     U8                      Reserved1;                  /* 0x01 */
     U8                      ChainOffset;                /* 0x02 */
@@ -1684,7 +1581,6 @@ typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST
 #define MPI2_PM_CONTROL_FEATURE_PORT_WIDTH_MODULATION   (0x02)
 #define MPI2_PM_CONTROL_FEATURE_PCIE_LINK               (0x03) /* obsolete */
 #define MPI2_PM_CONTROL_FEATURE_IOC_SPEED               (0x04)
-#define MPI2_PM_CONTROL_FEATURE_GLOBAL_PWR_MGMT_MODE    (0x05) /* reserved in MPI 2.0 */
 #define MPI2_PM_CONTROL_FEATURE_MIN_PRODUCT_SPECIFIC    (0x80)
 #define MPI2_PM_CONTROL_FEATURE_MAX_PRODUCT_SPECIFIC    (0xFF)
 
@@ -1696,7 +1592,8 @@ typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST
 #define MPI2_PM_CONTROL_PARAM2_EXIT_PWR_MGMT            (0x03)
 /* Parameter3 and Parameter4 are reserved */
 
-/* parameter usage for the MPI2_PM_CONTROL_FEATURE_PORT_WIDTH_MODULATION Feature */
+/* parameter usage for the MPI2_PM_CONTROL_FEATURE_PORT_WIDTH_MODULATION
+ *  Feature */
 /* Parameter1 contains SAS port width modulation group number */
 /* Parameter2 indicates IOC action using these defines */
 #define MPI2_PM_CONTROL_PARAM2_REQUEST_OWNERSHIP        (0x01)
@@ -1709,7 +1606,6 @@ typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST
 #define MPI2_PM_CONTROL_PARAM3_100_PERCENT              (0x03)
 /* Parameter4 is reserved */
 
-/* this next set (_PCIE_LINK) is obsolete */
 /* parameter usage for the MPI2_PM_CONTROL_FEATURE_PCIE_LINK Feature */
 /* Parameter1 indicates desired PCIe link speed using these defines */
 #define MPI2_PM_CONTROL_PARAM1_PCIE_2_5_GBPS            (0x00) /* obsolete */
@@ -1730,21 +1626,9 @@ typedef struct _MPI2_PWR_MGMT_CONTROL_REQUEST
 #define MPI2_PM_CONTROL_PARAM1_EIGHTH_IOC_SPEED         (0x08)
 /* Parameter2, Parameter3, and Parameter4 are reserved */
 
-/* parameter usage for the MPI2_PM_CONTROL_FEATURE_GLOBAL_PWR_MGMT_MODE Feature */
-/* Parameter1 indicates host action regarding global power management mode */
-#define MPI2_PM_CONTROL_PARAM1_TAKE_CONTROL             (0x01)
-#define MPI2_PM_CONTROL_PARAM1_CHANGE_GLOBAL_MODE       (0x02)
-#define MPI2_PM_CONTROL_PARAM1_RELEASE_CONTROL          (0x03)
-/* Parameter2 indicates the requested global power management mode */
-#define MPI2_PM_CONTROL_PARAM2_FULL_PWR_PERF            (0x01)
-#define MPI2_PM_CONTROL_PARAM2_REDUCED_PWR_PERF         (0x08)
-#define MPI2_PM_CONTROL_PARAM2_STANDBY                  (0x40)
-/* Parameter3 and Parameter4 are reserved */
-
 
 /* PowerManagementControl Reply message */
-typedef struct _MPI2_PWR_MGMT_CONTROL_REPLY
-{
+typedef struct _MPI2_PWR_MGMT_CONTROL_REPLY {
     U8                      Feature;                    /* 0x00 */
     U8                      Reserved1;                  /* 0x01 */
     U8                      MsgLength;                  /* 0x02 */
