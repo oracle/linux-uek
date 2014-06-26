@@ -194,9 +194,38 @@ static struct microcode_ops microcode_xen_ops = {
 	.microcode_fini_cpu               = xen_microcode_fini_cpu,
 };
 
+static int dummy_xen_microcode_update(int cpu)
+{
+	return 0;
+}
+
+static enum ucode_state dummy_xen_request_microcode_fw(int cpu, struct device *device)
+{
+	return UCODE_OK;
+}
+
+static enum ucode_state dummy_xen_request_microcode_user(int cpu,
+						   const void __user *buf, size_t size)
+{
+	return UCODE_OK;
+}
+
+static void dummy_xen_microcode_fini_cpu(int cpu)
+{
+}
+
+static struct microcode_ops microcode_dummy_xen_ops = {
+	.request_microcode_user		  = dummy_xen_request_microcode_user,
+	.request_microcode_fw             = dummy_xen_request_microcode_fw,
+	.collect_cpu_info                 = xen_collect_cpu_info,
+	.apply_microcode                  = dummy_xen_microcode_update,
+	.microcode_fini_cpu               = dummy_xen_microcode_fini_cpu,
+};
+
 struct microcode_ops * __init init_xen_microcode(void)
 {
-	if (!xen_initial_domain())
-		return NULL;
-	return &microcode_xen_ops;
+	if (xen_initial_domain())
+		return &microcode_xen_ops;
+	else
+		return &microcode_dummy_xen_ops;
 }
