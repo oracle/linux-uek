@@ -1049,7 +1049,8 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 		return;
 	}
 #ifdef BCM_HAS_BUILD_SKB /* BNX2X_UPSTREAM */
-	bnx2x_frag_free(fp, new_data);
+	if (new_data)
+		bnx2x_frag_free(fp, new_data);
 #endif
 drop:
 	/* drop the packet and keep the buffer in the bin */
