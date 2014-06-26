@@ -133,6 +133,12 @@ struct vfpf_acquire_tlv {
 		/* the following fields are for debug purposes */
 		u8 vf_id;      	/* ME register value */
 		u8 vf_os;      	/* e.g. Linux, W2K8 */
+#define VF_OS_SUBVERSION_MASK	(0x1f)
+#define VF_OS_MASK		(0xe0)
+#define VF_OS_SHIFT		(5)
+#define VF_OS_UNDEFINED		(0 << VF_OS_SHIFT)
+#define VF_OS_WINDOWS		(1 << VF_OS_SHIFT)
+
 		u8 fp_hsi_ver;
 		u8 padding;
 	} vfdev_info;
