@@ -508,7 +508,7 @@ BuildRequires: sparse >= 0.4.1
 %endif
 %if %{signmodules}
 BuildRequires: openssl
-#BuildRequires: pesign >= 0.10-4
+BuildRequires: pesign >= 0.10-4
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -533,6 +533,8 @@ Source17: kabitool
 Source18: check-kabi
 Source19: extrakeys.pub
 Source20: x86_energy_perf_policy
+Source21: securebootca.cer
+Source22: secureboot.cer
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
@@ -1057,26 +1059,11 @@ BuildKernel() {
       cp arch/$Arch/boot/zImage.stub $RPM_BUILD_ROOT/%{image_install_path}/zImage.stub-$KernelVer || :
     fi
     %if %{signmodules}
+    %ifarch x86_64
     	# Sign the image if we're using EFI
-    	#% pesign -s -i $KernelImage -o vmlinuz.signed
-	#    if [ -x /usr/bin/pesign -a "x86_64" == "x86_64" ]; then 
-	#	    if [ -e /var/run/pesign/socket ]; then 
-	#		    /usr/bin/pesign-client -t "OpenSC Card (Fedora Signer)" \
-	#			    -c "/CN=Fedora Secure Boot Signer" \
-	#		 	   -i $KernelImage -o vmlinuz.signed  -s  
-	#	    else 
-	#		    /usr/bin/pesign  -c "Oracle" \
-	#			    -i $KernelImage -o vmlinuz.signed  -s  
-	#			    fi 
-	#    else 
-	#	    if [ -n "$KernelImage" -a -n "vmlinuz.signed" ]; then 
-	#		    mv $KernelImage vmlinuz.signed 
-	#			    elif [ -n "$KernelImage" -a -n "" ]; then 
-	#			    touch  
-	#			    fi 
-	#			    fi ;  
-	#
-    	#mv vmlinuz.signed $KernelImage
+	%pesign -s -i $KernelImage -o $KernelImage.signed -a %{SOURCE21} -c %{SOURCE22} -n oraclesecureboot301
+	mv $KernelImage.signed $KernelImage
+    %endif
     %endif
     $CopyKernel $KernelImage \
     		$RPM_BUILD_ROOT/%{image_install_path}/$InstallName-$KernelVer
