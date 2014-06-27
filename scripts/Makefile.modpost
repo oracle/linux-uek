@@ -252,6 +252,7 @@ else		# !CONFIG_CTF
 module-ctfs-modular-prereq =
 module-ctfs-builtin =
 module-ctf-flags =
+ctf-dir = ///.nonexistent
 cmd-touch-ctf = @:
 
 endif
