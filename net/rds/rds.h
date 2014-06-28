@@ -174,12 +174,13 @@ struct rds_connection {
 	unsigned int		c_route_resolved;
 };
 
-#define RDS_FLAG_CONG_BITMAP	0x01
-#define RDS_FLAG_ACK_REQUIRED	0x02
-#define RDS_FLAG_RETRANSMITTED	0x04
-#define RDS_FLAG_HB_PING        0x08
-#define RDS_FLAG_HB_PONG        0x10
-#define RDS_MAX_ADV_CREDIT	127
+#define RDS_FLAG_CONG_BITMAP		0x01
+#define RDS_FLAG_ACK_REQUIRED		0x02
+#define RDS_FLAG_RETRANSMITTED		0x04
+#define RDS_FLAG_HB_PING		0x08
+#define RDS_FLAG_HB_PONG		0x10
+#define RDS_FLAG_EXTHDR_EXTENSION	0x20
+#define RDS_MAX_ADV_CREDIT		127
 
 /*
  * Maximum space available for extension headers.
@@ -238,6 +239,19 @@ struct rds_ext_header_rdma {
 struct rds_ext_header_rdma_dest {
 	__be32			h_rdma_rkey;
 	__be32			h_rdma_offset;
+};
+
+/*
+ * This extension header tells the peer about delivered RDMA byte count.
+ */
+#define RDS_EXTHDR_RDMA_BYTES	4
+
+#define RDS_FLAG_RDMA_WR_BYTES	0x01
+#define RDS_FLAG_RDMA_RD_BYTES	0x02
+
+struct rds_ext_header_rdma_bytes {
+	__be32		h_rdma_bytes;	/* byte count */
+	u8		h_rflags;	/* direction of RDMA, write or read */
 };
 
 #define __RDS_EXTHDR_MAX	16 /* for now */
