@@ -133,6 +133,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	struct ib_qp_attr qp_attr;
 	int err;
 
+	if (conn->c_route_resolved == 0)
+		conn->c_route_resolved = 1;
 	if (event->param.conn.private_data_len >= sizeof(*dp)) {
 		dp = event->param.conn.private_data;
 
@@ -173,6 +175,13 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
+		rds_conn_drop(conn);
+		return;
+	}
+
+	/* Drop connection if connection state is not CONNECTING.
+	   Potentially connection drop from some other place like rds_conn_probe_lanes() */
+	if (!rds_conn_connecting(conn)) {
 		rds_conn_drop(conn);
 		return;
 	}
@@ -1072,6 +1081,7 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	struct sockaddr_in src, dest;
 	int ret;
 
+	conn->c_route_resolved = 0;
 	/* XXX I wonder what affect the port space has */
 	/* delegate cm event handler to rdma_transport */
 	ic->i_cm_id = rdma_create_id(&init_net,
