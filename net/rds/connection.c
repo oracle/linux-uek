@@ -209,6 +209,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	conn->c_reconnect_drops = 0;
 	conn->c_reconnect_err = 0;
 	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+	conn->c_route_resolved = 1;
 
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
@@ -595,6 +596,16 @@ static void rds_conn_probe_lanes(struct rds_connection *conn)
 			tmp->c_trans == conn->c_trans) {
 			if (rds_conn_up(tmp))
 				rds_send_hb(tmp, 0);
+			else if (rds_conn_connecting(tmp) && (tmp->c_route_resolved == 0)) {
+				printk(KERN_INFO "RDS/IB: connection "
+				       "<%pI4,%pI4,%d> "
+				       "connecting, force reset ",
+				       &tmp->c_laddr,
+				       &tmp->c_faddr,
+				       tmp->c_tos);
+
+				rds_conn_drop(tmp);
+			}
 		}
 	}
 	rcu_read_unlock();
