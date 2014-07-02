@@ -6761,7 +6761,7 @@ static void controller_lockup_detected(struct ctlr_info *h)
 	spin_unlock_irqrestore(&h->lock, flags);
 }
 
-static int detect_controller_lockup(struct ctlr_info *h)
+static void detect_controller_lockup(struct ctlr_info *h)
 {
 	u64 now;
 	u32 heartbeat;
@@ -6771,7 +6771,7 @@ static int detect_controller_lockup(struct ctlr_info *h)
 	/* If we've received an interrupt recently, we're ok. */
 	if (time_after64(h->last_intr_timestamp +
 				(h->heartbeat_sample_interval), now))
-		return 0;
+		return;
 
 	/*
 	 * If we've already checked the heartbeat recently, we're ok.
@@ -6780,7 +6780,7 @@ static int detect_controller_lockup(struct ctlr_info *h)
 	 */
 	if (time_after64(h->last_heartbeat_timestamp +
 				(h->heartbeat_sample_interval), now))
-		return 0;
+		return;
 
 	/* If heartbeat has not changed since we last looked, we're not ok. */
 	spin_lock_irqsave(&h->lock, flags);
@@ -6788,13 +6788,13 @@ static int detect_controller_lockup(struct ctlr_info *h)
 	spin_unlock_irqrestore(&h->lock, flags);
 	if (h->last_heartbeat == heartbeat) {
 		controller_lockup_detected(h);
-		return 1;
+		return;
 	}
 
 	/* We're ok. */
 	h->last_heartbeat = heartbeat;
 	h->last_heartbeat_timestamp = now;
-	return 0;
+	return;
 }
 
 static void hpsa_ack_ctlr_events(struct ctlr_info *h)
