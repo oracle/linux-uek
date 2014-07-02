@@ -3055,6 +3055,7 @@ int pci_probe_reset_function(struct pci_dev *dev)
 	return pci_dev_reset(dev, 1);
 }
 
+#ifdef CONFIG_64BIT
 /**
  * pci_reset_notify - notify device driver of reset
  * @dev: device to be notified of reset
@@ -3071,6 +3072,7 @@ static void pci_reset_notify(struct pci_dev *dev, bool prepare)
 	if (fn)
 		fn(dev, prepare);
 }
+#endif
 
 /**
  * pci_reset_function - quiesce and reset a PCI device function
@@ -3096,7 +3098,9 @@ int pci_reset_function(struct pci_dev *dev)
 	if (rc)
 		return rc;
 
+#ifdef CONFIG_64BIT
 	pci_reset_notify(dev, true);
+#endif
 	pci_save_state(dev);
 
 	/*
@@ -3108,7 +3112,9 @@ int pci_reset_function(struct pci_dev *dev)
 	rc = pci_dev_reset(dev, 0);
 
 	pci_restore_state(dev);
+#ifdef CONFIG_64BIT
 	pci_reset_notify(dev, false);
+#endif
 
 	return rc;
 }

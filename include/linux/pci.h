@@ -282,8 +282,10 @@ struct pci_dev {
 	unsigned int	wakeup_prepared:1;
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 
+#ifdef CONFIG_64BIT
 #ifndef __GENKSYMS__
 	u32		reset_notify_lo;/* Low bytes of pci_reset_notify cb */
+#endif
 #endif
 
 #ifdef CONFIG_PCIEASPM
@@ -292,8 +294,10 @@ struct pci_dev {
 
 	pci_channel_state_t error_state;	/* current connectivity state */
 
+#ifdef CONFIG_64BIT
 #ifndef __GENKSYMS__
 	u32		reset_notify_hi;/* High bytes of pci_reset_notify cb */
+#endif
 #endif
 
 	struct	device	dev;		/* Generic device interface */
@@ -354,6 +358,7 @@ struct pci_dev {
 #endif
 };
 
+#ifdef CONFIG_64BIT
 typedef void (pci_reset_notify_fn) (struct pci_dev *dev, bool prepare);
 
 static inline void pci_set_reset_notify(struct pci_dev *dev,
@@ -377,6 +382,7 @@ static inline pci_reset_notify_fn *pci_get_reset_notify(struct pci_dev *dev)
 
 	return (pci_reset_notify_fn *)fn;
 }
+#endif
 
 static inline struct pci_dev *pci_physfn(struct pci_dev *dev)
 {

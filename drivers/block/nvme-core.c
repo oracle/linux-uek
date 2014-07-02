@@ -2892,7 +2892,9 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (result)
 		goto shutdown;
 
+#ifdef CONFIG_64BIT
 	pci_set_reset_notify(pdev, &nvme_reset_notify);
+#endif
 
  create_cdev:
 	scnprintf(dev->name, sizeof(dev->name), "nvme%d", dev->instance);
