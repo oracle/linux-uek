@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -460,12 +456,13 @@ static int ixgbe_macadmn(char *page, char **start, off_t off,
 static int ixgbe_maclla1(char *page, char **start, off_t off,
 			 int count, int *eof, void *data)
 {
-	struct ixgbe_hw *hw;
-	u16 eeprom_buff[6];
-	int first_word = 0x37;
-	int word_count = 6;
-	int rc;
 	struct ixgbe_adapter *adapter = (struct ixgbe_adapter *)data;
+	struct ixgbe_hw *hw;
+	int rc;
+	u16 eeprom_buff[6];
+	u16 first_word = 0x37;
+	const u16 word_count = ARRAY_SIZE(eeprom_buff);
+
 	if (adapter == NULL)
 		return snprintf(page, count, "error: no adapter\n");
 
@@ -473,10 +470,18 @@ static int ixgbe_maclla1(char *page, char **start, off_t off,
 	if (hw == NULL)
 		return snprintf(page, count, "error: no hw data\n");
 
-	rc = hw->eeprom.ops.read_buffer(hw, first_word, word_count,
-					   eeprom_buff);
+	rc = hw->eeprom.ops.read_buffer(hw, first_word, 1, &first_word);
 	if (rc != 0)
-		return snprintf(page, count, "error: reading buffer\n");
+		return snprintf(page, count, "error: reading pointer to the EEPROM\n");
+
+	if (first_word != 0x0000 && first_word != 0xFFFF) {
+		rc = hw->eeprom.ops.read_buffer(hw, first_word, word_count,
+					eeprom_buff);
+		if (rc != 0)
+			return snprintf(page, count, "error: reading buffer\n");
+	} else {
+		memset(eeprom_buff, 0, sizeof(eeprom_buff));
+	}
 
 	switch (hw->bus.func) {
 	case 0:

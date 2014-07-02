@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -364,9 +360,9 @@ struct ixgbe_ring {
 		struct ixgbe_rx_buffer *rx_buffer_info;
 	};
 	unsigned long state;
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
+#ifndef NO_LER_WRITE_CHECKS
 	u8 __iomem **adapter_present;	/* Points to field in ixgbe_hw */
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
+#endif /* NO_LER_WRITE_CHECKS */
 	u8 __iomem *tail;
 	dma_addr_t dma;			/* phys. address of descriptor ring */
 	unsigned int size;		/* length in bytes */
@@ -411,10 +407,10 @@ struct ixgbe_ring {
 
 static inline void ixgbe_write_tail(struct ixgbe_ring *ring, u32 value)
 {
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
+#ifndef NO_LER_WRITE_CHECKS
 	if (unlikely(!*ring->adapter_present))
 		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
+#endif /* NO_LER_WRITE_CHECKS */
 	writel(value, ring->tail);
 }
 
@@ -525,6 +521,7 @@ struct ixgbe_q_vector {
 	int numa_node;
 	struct rcu_head rcu;	/* to avoid race with update stats on free */
 	char name[IFNAMSIZ + 9];
+	bool netpoll_rx;
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	unsigned int state;
@@ -714,6 +711,8 @@ struct ixgbe_mac_addr {
 	u16 queue;
 	u16 state; /* bitmask */
 };
+
+
 #define IXGBE_MAC_STATE_DEFAULT		0x1
 #define IXGBE_MAC_STATE_MODIFIED	0x2
 #define IXGBE_MAC_STATE_IN_USE		0x4
@@ -766,7 +765,7 @@ struct ixgbe_adapter {
 #ifndef IXGBE_NO_LLI
 #define IXGBE_FLAG_LLI_PUSH			(u32)(1 << 4)
 #endif
-#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 5)
+
 #if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
 #define IXGBE_FLAG_DCA_ENABLED			(u32)(1 << 6)
 #define IXGBE_FLAG_DCA_CAPABLE			(u32)(1 << 7)
@@ -823,6 +822,7 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG2_RSS_FIELD_IPV4_UDP		(u32)(1 << 9)
 #define IXGBE_FLAG2_RSS_FIELD_IPV6_UDP		(u32)(1 << 10)
 #define IXGBE_FLAG2_PTP_PPS_ENABLED		(u32)(1 << 11)
+	bool cloud_mode;
 
 	/* Tx fast path data */
 	int num_tx_queues;
@@ -938,6 +938,7 @@ struct ixgbe_adapter {
 	struct ptp_clock_info ptp_caps;
 	struct work_struct ptp_tx_work;
 	struct sk_buff *ptp_tx_skb;
+	struct hwtstamp_config tstamp_config;
 	unsigned long ptp_tx_start;
 	unsigned long last_overflow_check;
 	unsigned long last_rx_ptp_check;
@@ -1011,7 +1012,10 @@ enum ixgbe_state_t {
 	__IXGBE_TESTING,
 	__IXGBE_RESETTING,
 	__IXGBE_DOWN,
+	__IXGBE_DISABLED,
+	__IXGBE_REMOVE,
 	__IXGBE_SERVICE_SCHED,
+	__IXGBE_SERVICE_INITED,
 	__IXGBE_IN_SFP_INIT,
 #ifdef HAVE_PTP_1588_CLOCK
 	__IXGBE_PTP_RUNNING,
@@ -1166,8 +1170,7 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 void ixgbe_clean_rx_ring(struct ixgbe_ring *rx_ring);
 int ixgbe_get_settings(struct net_device *netdev,
 			      struct ethtool_cmd *ecmd);
-int ixgbe_write_uc_addr_list(struct ixgbe_adapter *adapter,
-				    struct net_device *netdev, int vfn);
+int ixgbe_write_uc_addr_list(struct net_device *netdev, int vfn);
 void ixgbe_full_sync_mac_table(struct ixgbe_adapter *adapter);
 int ixgbe_add_mac_filter(struct ixgbe_adapter *adapter,
 				u8 *addr, u16 queue);
@@ -1201,12 +1204,15 @@ static inline void ixgbe_ptp_rx_hwtstamp(struct ixgbe_ring *rx_ring,
 	rx_ring->last_rx_timestamp = jiffies;
 }
 
-int ixgbe_ptp_hwtstamp_ioctl(struct ixgbe_adapter *adapter,
-				    struct ifreq *ifr, int cmd);
+int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
+int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
 #endif /* HAVE_PTP_1588_CLOCK */
+#ifdef CONFIG_PCI_IOV
+void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter);
+#endif
 
 void ixgbe_set_rx_drop_en(struct ixgbe_adapter *adapter);
 #endif /* _IXGBE_H_ */

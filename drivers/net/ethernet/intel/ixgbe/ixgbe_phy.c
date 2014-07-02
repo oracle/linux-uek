@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -131,6 +127,33 @@ s32 ixgbe_identify_phy_generic(struct ixgbe_hw *hw)
 }
 
 /**
+ * ixgbe_check_reset_blocked - check status of MNG FW veto bit
+ * @hw: pointer to the hardware structure
+ *
+ * This function checks the MMNGC.MNG_VETO bit to see if there are
+ * any constraints on link from manageability.  For MAC's that don't
+ * have this bit just return faluse since the link can not be blocked
+ * via this method.
+ **/
+s32 ixgbe_check_reset_blocked(struct ixgbe_hw *hw)
+{
+	u32 mmngc;
+
+	/* If we don't have this bit, it can't be blocking */
+	if (hw->mac.type == ixgbe_mac_82598EB)
+		return false;
+
+	mmngc = IXGBE_READ_REG(hw, IXGBE_MMNGC);
+	if (mmngc & IXGBE_MMNGC_MNG_VETO) {
+		ERROR_REPORT1(IXGBE_ERROR_SOFTWARE,
+			      "MNG_VETO bit detected.\n");
+		return true;
+	}
+
+	return false;
+}
+
+/**
  *  ixgbe_validate_phy_addr - Determines phy address is valid
  *  @hw: pointer to hardware structure
  *
@@ -226,6 +249,10 @@ s32 ixgbe_reset_phy_generic(struct ixgbe_hw *hw)
 	/* Don't reset PHY if it's shut down due to overtemp. */
 	if (!hw->phy.reset_if_overtemp &&
 	    (IXGBE_ERR_OVERTEMP == hw->phy.ops.check_overtemp(hw)))
+		goto out;
+
+	/* Blocked by MNG FW so bail */
+	if (ixgbe_check_reset_blocked(hw))
 		goto out;
 
 	/*
@@ -538,6 +565,10 @@ s32 ixgbe_setup_phy_link_generic(struct ixgbe_hw *hw)
 				      autoneg_reg);
 	}
 
+	/* Blocked by MNG FW so don't reset PHY */
+	if (ixgbe_check_reset_blocked(hw))
+		return status;
+
 	/* Restart PHY autonegotiation and wait for completion */
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
@@ -612,7 +643,7 @@ s32 ixgbe_get_copper_link_capabilities_generic(struct ixgbe_hw *hw,
 					       ixgbe_link_speed *speed,
 					       bool *autoneg)
 {
-	s32 status = IXGBE_ERR_LINK_SETUP;
+	s32 status;
 	u16 speed_ability;
 
 	*speed = 0;
@@ -743,6 +774,10 @@ s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
 				      autoneg_reg);
 	}
 
+	/* Blocked by MNG FW so don't reset PHY */
+	if (ixgbe_check_reset_blocked(hw))
+		return status;
+
 	/* Restart PHY autonegotiation and wait for completion */
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_AUTO_NEG_CONTROL,
 			     IXGBE_MDIO_AUTO_NEG_DEV_TYPE, &autoneg_reg);
@@ -781,7 +816,7 @@ s32 ixgbe_setup_phy_link_tnx(struct ixgbe_hw *hw)
 s32 ixgbe_get_phy_firmware_version_tnx(struct ixgbe_hw *hw,
 				       u16 *firmware_version)
 {
-	s32 status = 0;
+	s32 status;
 
 	status = hw->phy.ops.read_reg(hw, TNX_FW_REV,
 				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
@@ -798,7 +833,7 @@ s32 ixgbe_get_phy_firmware_version_tnx(struct ixgbe_hw *hw,
 s32 ixgbe_get_phy_firmware_version_generic(struct ixgbe_hw *hw,
 					   u16 *firmware_version)
 {
-	s32 status = 0;
+	s32 status;
 
 	status = hw->phy.ops.read_reg(hw, AQ_FW_REV,
 				      IXGBE_MDIO_VENDOR_SPECIFIC_1_DEV_TYPE,
@@ -819,6 +854,10 @@ s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw)
 	u16 phy_data = 0;
 	s32 ret_val = 0;
 	u32 i;
+
+	/* Blocked by MNG FW so bail */
+	if (ixgbe_check_reset_blocked(hw))
+		goto out;
 
 	hw->phy.ops.read_reg(hw, IXGBE_MDIO_PHY_XS_CONTROL,
 			     IXGBE_MDIO_PHY_XS_DEV_TYPE, &phy_data);
@@ -1818,7 +1857,7 @@ static s32 ixgbe_clock_out_i2c_byte(struct ixgbe_hw *hw, u8 data)
 	s32 status = 0;
 	s32 i;
 	u32 i2cctl;
-	bool bit = 0;
+	bool bit;
 
 	for (i = 7; i >= 0; i--) {
 		bit = (data >> i) & 0x1;

@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -1297,6 +1293,11 @@ static int ixgbe_link_test(struct ixgbe_adapter *adapter, u64 *data)
 	struct ixgbe_hw *hw = &adapter->hw;
 	bool link_up;
 	u32 link_speed = 0;
+
+	if (IXGBE_REMOVED(hw->hw_addr)) {
+		*data = 1;
+		return 1;
+	}
 	*data = 0;
        hw->mac.ops.check_link(hw, &link_speed, &link_up, true);
 	if (link_up)
@@ -1572,6 +1573,10 @@ static int ixgbe_intr_test(struct ixgbe_adapter *adapter, u64 *data)
 	u32 mask, i = 0, shared_int = true;
 	u32 irq = adapter->pdev->irq;
 
+	if (IXGBE_REMOVED(adapter->hw.hw_addr)) {
+		*data = 1;
+		return -1;
+	}
 	*data = 0;
 
 	/* Hook up test interrupt handler just for this test */
@@ -1689,9 +1694,7 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 	/* shut down the DMA engines now so they can be reinitialized later */
 
 	/* first Rx */
-	reg_ctl = IXGBE_READ_REG(hw, IXGBE_RXCTRL);
-	reg_ctl &= ~IXGBE_RXCTRL_RXEN;
-	IXGBE_WRITE_REG(hw, IXGBE_RXCTRL, reg_ctl);
+	ixgbe_disable_rx(hw);
 	ixgbe_disable_rx_queue(adapter, rx_ring);
 
 	/* now Tx */
@@ -1762,13 +1765,14 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 		goto err_nomem;
 	}
 
-	rctl = IXGBE_READ_REG(&adapter->hw, IXGBE_RXCTRL);
-	IXGBE_WRITE_REG(&adapter->hw, IXGBE_RXCTRL, rctl & ~IXGBE_RXCTRL_RXEN);
+	ixgbe_disable_rx(&adapter->hw);
 
 	ixgbe_configure_rx_ring(adapter, rx_ring);
 
-	rctl |= IXGBE_RXCTRL_RXEN | IXGBE_RXCTRL_DMBYPS;
+	rctl = IXGBE_READ_REG(&adapter->hw, IXGBE_RXCTRL); 
+	rctl |= IXGBE_RXCTRL_DMBYPS;
 	IXGBE_WRITE_REG(&adapter->hw, IXGBE_RXCTRL, rctl);
+	ixgbe_enable_rx(&adapter->hw);
 
 	return 0;
 
@@ -1793,11 +1797,13 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 	IXGBE_WRITE_REG(hw, IXGBE_FCTRL, reg_data);
 
 	/* X540 needs to set the MACC.FLU bit to force link up */
-	if (adapter->hw.mac.type == ixgbe_mac_X540) {
+	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X540:
 		reg_data = IXGBE_READ_REG(hw, IXGBE_MACC);
 		reg_data |= IXGBE_MACC_FLU;
 		IXGBE_WRITE_REG(hw, IXGBE_MACC, reg_data);
-	} else {
+		break;
+	default:
 		if (hw->mac.orig_autoc) {
 			reg_data = hw->mac.orig_autoc | IXGBE_AUTOC_FLU;
 			IXGBE_WRITE_REG(hw, IXGBE_AUTOC, reg_data);
@@ -2040,17 +2046,16 @@ static void ixgbe_diag_test(struct net_device *netdev,
 	bool if_running = netif_running(netdev);
 	struct ixgbe_hw *hw = &adapter->hw;
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	if (IXGBE_REMOVED(hw->hw_addr)) {
 		e_err(hw, "Adapter removed - test blocked\n");
 		data[0] = 1;
 		data[1] = 1;
 		data[2] = 1;
 		data[3] = 1;
+		data[4] = 1;
 		eth_test->flags |= ETH_TEST_FL_FAILED;
 		return;
 	}
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	set_bit(__IXGBE_TESTING, &adapter->state);
 	if (eth_test->flags == ETH_TEST_FL_OFFLINE) {
 		if (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED) {
@@ -2065,6 +2070,7 @@ static void ixgbe_diag_test(struct net_device *netdev,
 					data[1] = 1;
 					data[2] = 1;
 					data[3] = 1;
+					data[4] = 1;
 					eth_test->flags |= ETH_TEST_FL_FAILED;
 					clear_bit(__IXGBE_TESTING,
 						  &adapter->state);
@@ -2988,7 +2994,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	if (hlist_empty(&adapter->fdir_filter_list)) {
 		/* save mask and program input mask into HW */
 		memcpy(&adapter->fdir_mask, &mask, sizeof(mask));
-		err = ixgbe_fdir_set_input_mask_82599(hw, &mask);
+		err = ixgbe_fdir_set_input_mask_82599(hw, &mask, adapter->cloud_mode);
 		if (err) {
 			e_err(drv, "Error writing mask\n");
 			goto err_out_w_lock;
@@ -3006,7 +3012,7 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 				&input->filter, input->sw_idx,
 				(input->action == IXGBE_FDIR_DROP_QUEUE) ?
 				IXGBE_FDIR_DROP_QUEUE :
-				adapter->rx_ring[input->action]->reg_idx);
+				adapter->rx_ring[input->action]->reg_idx, adapter->cloud_mode);
 	if (err)
 		goto err_out_w_lock;
 

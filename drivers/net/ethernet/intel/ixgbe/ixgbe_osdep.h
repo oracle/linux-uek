@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -86,14 +82,10 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 	netif_crit(adapter, msglvl, adapter->netdev, format, ## arg)
 
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
-#define IXGBE_REMOVED(h) unlikely(!(h))
-#else
-#define IXGBE_REMOVED(a) (0)
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
-
 #define IXGBE_FAILED_READ_REG 0xffffffffU
-
+#define IXGBE_FAILED_READ_CFG_DWORD 0xffffffffU
+#define IXGBE_FAILED_READ_CFG_WORD 0xffffU
+#define IXGBE_FAILED_READ_CFG_BYTE 0xffU
 #define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) \
 	IXGBE_WRITE_REG((a), (reg) + ((offset) << 2), (value))
 
@@ -108,9 +100,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 void ixgbe_check_remove(struct ixgbe_hw *hw, u32 reg);
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);

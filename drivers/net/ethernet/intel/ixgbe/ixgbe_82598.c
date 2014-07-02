@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -30,6 +26,13 @@
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
+
+#define IXGBE_82598_MAX_TX_QUEUES 32
+#define IXGBE_82598_MAX_RX_QUEUES 64
+#define IXGBE_82598_RAR_ENTRIES   16
+#define IXGBE_82598_MC_TBL_SIZE  128
+#define IXGBE_82598_VFT_TBL_SIZE 128
+#define IXGBE_82598_RX_PB_SIZE   512
 
 static s32 ixgbe_get_link_capabilities_82598(struct ixgbe_hw *hw,
 					     ixgbe_link_speed *speed,
@@ -123,6 +126,7 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	mac->ops.read_analog_reg8 = &ixgbe_read_analog_reg8_82598;
 	mac->ops.write_analog_reg8 = &ixgbe_write_analog_reg8_82598;
 	mac->ops.set_lan_id = &ixgbe_set_lan_id_multi_port_pcie_82598;
+	mac->ops.enable_rx_dma = &ixgbe_enable_rx_dma_82598;
 
 	/* RAR, Multicast, VLAN */
 	mac->ops.set_vmdq = &ixgbe_set_vmdq_82598;
@@ -134,12 +138,12 @@ s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw)
 	/* Flow Control */
 	mac->ops.fc_enable = &ixgbe_fc_enable_82598;
 
-	mac->mcft_size		= 128;
-	mac->vft_size		= 128;
-	mac->num_rar_entries	= 16;
-	mac->rx_pb_size		= 512;
-	mac->max_tx_queues	= 32;
-	mac->max_rx_queues	= 64;
+	mac->mcft_size		= IXGBE_82598_MC_TBL_SIZE;
+	mac->vft_size		= IXGBE_82598_VFT_TBL_SIZE;
+	mac->num_rar_entries	= IXGBE_82598_RAR_ENTRIES;
+	mac->rx_pb_size		= IXGBE_82598_RX_PB_SIZE;
+	mac->max_rx_queues	= IXGBE_82598_MAX_RX_QUEUES;
+	mac->max_tx_queues	= IXGBE_82598_MAX_TX_QUEUES;
 	mac->max_msix_vectors	= ixgbe_get_pcie_msix_count_generic(hw);
 
 	/* SFP+ Module */
@@ -1333,4 +1337,18 @@ static void ixgbe_set_rxpba_82598(struct ixgbe_hw *hw, int num_pb,
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), IXGBE_TXPBSIZE_40KB);
 
 	return;
+}
+
+/**
+ *  ixgbe_enable_rx_dma_82598 - Enable the Rx DMA unit
+ *  @hw: pointer to hardware structure
+ *  @regval: register value to write to RXCTRL
+ *
+ *  Enables the Rx DMA unit
+ **/
+s32 ixgbe_enable_rx_dma_82598(struct ixgbe_hw *hw, u32 regval)
+{
+	IXGBE_WRITE_REG(hw, IXGBE_RXCTRL, regval);
+
+	return 0;
 }

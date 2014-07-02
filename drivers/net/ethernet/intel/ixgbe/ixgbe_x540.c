@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 10 Gigabit PCI Express Linux driver
-  Copyright(c) 1999 - 2013 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -30,6 +26,13 @@
 #include "ixgbe_api.h"
 #include "ixgbe_common.h"
 #include "ixgbe_phy.h"
+
+#define IXGBE_X540_MAX_TX_QUEUES	128
+#define IXGBE_X540_MAX_RX_QUEUES	128
+#define IXGBE_X540_RAR_ENTRIES		128
+#define IXGBE_X540_MC_TBL_SIZE		128
+#define IXGBE_X540_VFT_TBL_SIZE		128
+#define IXGBE_X540_RX_PB_SIZE		384
 
 static s32 ixgbe_poll_flash_update_done_X540(struct ixgbe_hw *hw);
 static s32 ixgbe_get_swfw_sync_semaphore(struct ixgbe_hw *hw);
@@ -106,12 +109,12 @@ s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw)
 	mac->ops.check_link = &ixgbe_check_mac_link_generic;
 
 
-	mac->mcft_size		= 128;
-	mac->vft_size		= 128;
-	mac->num_rar_entries	= 128;
-	mac->rx_pb_size		= 384;
-	mac->max_tx_queues	= 128;
-	mac->max_rx_queues	= 128;
+	mac->mcft_size		= IXGBE_X540_MC_TBL_SIZE;
+	mac->vft_size		= IXGBE_X540_VFT_TBL_SIZE;
+	mac->num_rar_entries	= IXGBE_X540_RAR_ENTRIES;
+	mac->rx_pb_size		= IXGBE_X540_RX_PB_SIZE;
+	mac->max_rx_queues	= IXGBE_X540_MAX_RX_QUEUES;
+	mac->max_tx_queues	= IXGBE_X540_MAX_TX_QUEUES;
 	mac->max_msix_vectors	= ixgbe_get_pcie_msix_count_generic(hw);
 
 	/*
@@ -448,12 +451,13 @@ s32 ixgbe_write_eewr_buffer_X540(struct ixgbe_hw *hw,
  **/
 u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 {
-	u16 i;
-	u16 j;
+	u16 i, j;
 	u16 checksum = 0;
 	u16 length = 0;
 	u16 pointer = 0;
 	u16 word = 0;
+	u16 checksum_last_word = IXGBE_EEPROM_CHECKSUM;
+	u16 ptr_start = IXGBE_PCIE_ANALOG_PTR;
 
 	/*
 	 * Do not use hw->eeprom.ops.read because we do not want to take
@@ -462,19 +466,20 @@ u16 ixgbe_calc_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	 */
 
 	/* Include 0x0-0x3F in the checksum */
-	for (i = 0; i < IXGBE_EEPROM_CHECKSUM; i++) {
+	for (i = 0; i <= checksum_last_word; i++) {
 		if (ixgbe_read_eerd_generic(hw, i, &word) != 0) {
 			hw_dbg(hw, "EEPROM read failed\n");
 			break;
 		}
-		checksum += word;
+		if (i != IXGBE_EEPROM_CHECKSUM)
+			checksum += word;
 	}
 
 	/*
 	 * Include all data from pointers 0x3, 0x6-0xE.  This excludes the
 	 * FW, PHY module, and PCIe Expansion/Option ROM pointers.
 	 */
-	for (i = IXGBE_PCIE_ANALOG_PTR; i < IXGBE_FW_PTR; i++) {
+	for (i = ptr_start; i < IXGBE_FW_PTR; i++) {
 		if (i == IXGBE_PHY_PTR || i == IXGBE_OPTION_ROM_PTR)
 			continue;
 
@@ -594,8 +599,10 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 	 */
 	status = hw->eeprom.ops.read(hw, 0, &checksum);
 
-	if (status != 0)
+	if (status != 0) {
 		hw_dbg(hw, "EEPROM read failed\n");
+		return status;
+	}
 
 	if (hw->mac.ops.acquire_swfw_sync(hw, IXGBE_GSSR_EEP_SM) ==
 	    0) {
@@ -604,7 +611,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 		/*
 		 * Do not use hw->eeprom.ops.write because we do not want to
 		 * take the synchronization semaphores twice here.
-		*/
+		 */
 		status = ixgbe_write_eewr_generic(hw, IXGBE_EEPROM_CHECKSUM,
 						  checksum);
 
@@ -628,7 +635,7 @@ s32 ixgbe_update_eeprom_checksum_X540(struct ixgbe_hw *hw)
 s32 ixgbe_update_flash_X540(struct ixgbe_hw *hw)
 {
 	u32 flup;
-	s32 status = IXGBE_ERR_EEPROM;
+	s32 status;
 
 	status = ixgbe_poll_flash_update_done_X540(hw);
 	if (status == IXGBE_ERR_EEPROM) {
