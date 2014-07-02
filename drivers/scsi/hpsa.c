@@ -2952,7 +2952,7 @@ static int hpsa_gather_lun_info(struct ctlr_info *h,
 u8 *figure_lunaddrbytes(struct ctlr_info *h, int raid_ctlr_position, int i,
 	int nphysicals, int nlogicals,
 	struct ReportExtendedLUNdata *physdev_list,
-	struct ReportLUNdata *logdev_list, int physical_mode)
+	struct ReportLUNdata *logdev_list)
 {
 	/* Helper function, figure out where the LUN ID info is coming from
 	 * given index i, lists of physical and logical devices, where in
@@ -2965,15 +2965,9 @@ u8 *figure_lunaddrbytes(struct ctlr_info *h, int raid_ctlr_position, int i,
 	if (i == raid_ctlr_position)
 		return RAID_CTLR_LUNID;
 
-	if (i < logicals_start) {
-		if (physical_mode)
-			return &((struct ReportExtendedLUNdata *)
-				physdev_list)->LUN[i -
-					(raid_ctlr_position == 0)][0];
-		else
-			return &physdev_list->LUN[i -
-				(raid_ctlr_position == 0)][0];
-	}
+	if (i < logicals_start)
+		return &physdev_list->LUN[i - (raid_ctlr_position == 0)][0];
+
 	if (i < last_device)
 		return &logdev_list->LUN[i - nphysicals -
 			(raid_ctlr_position == 0)][0];
@@ -3086,8 +3080,7 @@ static void hpsa_update_scsi_devices(struct ctlr_info *h, int hostno)
 
 		/* Figure out where the LUN ID info is coming from */
 		lunaddrbytes = figure_lunaddrbytes(h, raid_ctlr_position,
-			i, nphysicals, nlogicals, physdev_list, logdev_list,
-			physical_mode);
+			i, nphysicals, nlogicals, physdev_list, logdev_list);
 		/* skip masked physical devices. */
 		if (lunaddrbytes[3] & 0xC0 &&
 			i < nphysicals + (raid_ctlr_position == 0))
