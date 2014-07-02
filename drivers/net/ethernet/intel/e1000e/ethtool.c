@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -150,6 +146,7 @@ static const struct e1000_stats e1000_gstrings_stats[] = {
 	E1000_STAT("tx_dma_failed", tx_dma_failed),
 #ifdef HAVE_HW_TIME_STAMP
 	E1000_STAT("rx_hwtstamp_cleared", rx_hwtstamp_cleared),
+	E1000_STAT("tx_hwtstamp_timeouts", tx_hwtstamp_timeouts),
 #endif
 	E1000_STAT("uncorr_ecc_errors", uncorr_errors),
 	E1000_STAT("corr_ecc_errors", corr_errors),
@@ -958,10 +955,10 @@ static bool reg_pattern_test(struct e1000_adapter *adapter, u64 *data,
 			      reg + (offset << 2), val,
 			      (test[pat] & write & mask));
 			*data = reg;
-			return 1;
+			return true;
 		}
 	}
-	return 0;
+	return false;
 }
 
 static bool reg_set_and_check(struct e1000_adapter *adapter, u64 *data,
@@ -974,9 +971,9 @@ static bool reg_set_and_check(struct e1000_adapter *adapter, u64 *data,
 		e_err("set/check test failed (reg 0x%05X): got 0x%08X expected 0x%08X\n",
 		      reg, (val & mask), (write & mask));
 		*data = reg;
-		return 1;
+		return true;
 	}
-	return 0;
+	return false;
 }
 
 #define REG_PATTERN_TEST_ARRAY(reg, offset, mask, write)                       \
@@ -1093,15 +1090,21 @@ static int e1000_reg_test(struct e1000_adapter *adapter, u64 *data)
 		}
 		if (mac->type == e1000_pch2lan) {
 			/* SHRAH[0,1,2] different than previous */
-			if (i == 7)
+			if (i == 1)
 				mask &= 0xFFF4FFFF;
 			/* SHRAH[3] different than SHRAH[0,1,2] */
-			if (i == 10)
+			if (i == 4)
 				mask |= (1 << 30);
+			/* RAR[1-6] owned by management engine - skipping */
+			if (i > 0)
+				i += 6;
 		}
 
 		REG_PATTERN_TEST_ARRAY(E1000_RA, ((i << 1) + 1), mask,
 				       0xFFFFFFFF);
+		/* reset index to actual value */
+		if ((mac->type == e1000_pch2lan) && (i > 6))
+			i -= 6;
 	}
 
 	for (i = 0; i < mac->mta_reg_count; i++)
@@ -2643,7 +2646,7 @@ static const struct ethtool_ops_ext e1000e_ethtool_ops_ext = {
 void e1000e_set_ethtool_ops(struct net_device *netdev)
 {
 	/* have to "undeclare" const on this struct to remove warnings */
-	SET_ETHTOOL_OPS(netdev, (struct ethtool_ops *)&e1000_ethtool_ops);
+	netdev->ethtool_ops = (struct ethtool_ops *)&e1000_ethtool_ops;
 #ifdef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
 	set_ethtool_ops_ext(netdev, &e1000e_ethtool_ops_ext);
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */

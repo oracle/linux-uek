@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -66,7 +62,8 @@ void e1000e_update_adaptive(struct e1000_hw *hw);
 void e1000_write_vfta_generic(struct e1000_hw *hw, u32 offset, u32 value);
 
 void e1000_set_lan_id_multi_port_pcie(struct e1000_hw *hw);
-void e1000e_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index);
+int e1000e_rar_set_generic(struct e1000_hw *hw, u8 *addr, u32 index);
+u32 e1000e_rar_get_count_generic(struct e1000_hw *hw);
 void e1000e_config_collision_dist_generic(struct e1000_hw *hw);
 
 #endif

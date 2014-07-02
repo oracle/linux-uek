@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -336,6 +332,9 @@ s32 e1000e_read_nvm_eerd(struct e1000_hw *hw, u16 offset, u16 words, u16 *data)
 
 		data[i] = (er32(EERD) >> E1000_NVM_RW_REG_DATA);
 	}
+
+	if (ret_val)
+		e_dbg("NVM read error: %d\n", ret_val);
 
 	return ret_val;
 }

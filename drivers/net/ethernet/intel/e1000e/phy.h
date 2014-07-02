@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -169,6 +165,7 @@ s32 e1000_get_cable_length_82577(struct e1000_hw *hw);
 #define HV_M_STATUS_AUTONEG_COMPLETE	0x1000
 #define HV_M_STATUS_SPEED_MASK		0x0300
 #define HV_M_STATUS_SPEED_1000		0x0200
+#define HV_M_STATUS_SPEED_100		0x0100
 #define HV_M_STATUS_LINK_UP		0x0040
 
 #define IGP01E1000_PHY_PCS_INIT_REG	0x00B4

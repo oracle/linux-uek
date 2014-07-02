@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -1344,8 +1340,12 @@ static void e1000_clear_vfta_82571(struct e1000_hw *hw)
 static bool e1000_check_mng_mode_82574(struct e1000_hw *hw)
 {
 	u16 data;
+	s32 ret_val;
 
-	e1000_read_nvm(hw, NVM_INIT_CONTROL2_REG, 1, &data);
+	ret_val = e1000_read_nvm(hw, NVM_INIT_CONTROL2_REG, 1, &data);
+	if (ret_val)
+		return false;
+
 	return (data & E1000_NVM_INIT_CTRL2_MNGM) != 0;
 }
 
@@ -1901,6 +1901,7 @@ static const struct e1000_mac_operations e82571_mac_ops = {
 	.config_collision_dist	= e1000e_config_collision_dist_generic,
 	.read_mac_addr		= e1000_read_mac_addr_82571,
 	.rar_set		= e1000e_rar_set_generic,
+	.rar_get_count		= e1000e_rar_get_count_generic,
 	.validate_mdi_setting	= e1000e_validate_mdi_setting_generic,
 };
 

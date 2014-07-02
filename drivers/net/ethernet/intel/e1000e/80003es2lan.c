@@ -11,10 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
- *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
  *
@@ -720,11 +716,15 @@ static s32 e1000_reset_hw_80003es2lan(struct e1000_hw *hw)
 	ret_val = e1000_read_kmrn_reg_80003es2lan(hw,
 						  E1000_KMRNCTRLSTA_INBAND_PARAM,
 						  &kum_reg_data);
-	if (ret_val)
-		return ret_val;
-	kum_reg_data |= E1000_KMRNCTRLSTA_IBIST_DISABLE;
-	e1000_write_kmrn_reg_80003es2lan(hw, E1000_KMRNCTRLSTA_INBAND_PARAM,
-					 kum_reg_data);
+	if (!ret_val) {
+		kum_reg_data |= E1000_KMRNCTRLSTA_IBIST_DISABLE;
+		ret_val = e1000_write_kmrn_reg_80003es2lan(hw,
+							   E1000_KMRNCTRLSTA_INBAND_PARAM,
+							   kum_reg_data);
+		if (ret_val)
+			e_dbg("Error disabling far-end loopback\n");
+	} else
+		e_dbg("Error disabling far-end loopback\n");
 
 	ret_val = e1000e_get_auto_rd_done(hw);
 	if (ret_val)
@@ -778,11 +778,18 @@ static s32 e1000_init_hw_80003es2lan(struct e1000_hw *hw)
 		return ret_val;
 
 	/* Disable IBIST slave mode (far-end loopback) */
-	e1000_read_kmrn_reg_80003es2lan(hw, E1000_KMRNCTRLSTA_INBAND_PARAM,
-					&kum_reg_data);
-	kum_reg_data |= E1000_KMRNCTRLSTA_IBIST_DISABLE;
-	e1000_write_kmrn_reg_80003es2lan(hw, E1000_KMRNCTRLSTA_INBAND_PARAM,
-					 kum_reg_data);
+	ret_val =
+	    e1000_read_kmrn_reg_80003es2lan(hw, E1000_KMRNCTRLSTA_INBAND_PARAM,
+					    &kum_reg_data);
+	if (!ret_val) {
+		kum_reg_data |= E1000_KMRNCTRLSTA_IBIST_DISABLE;
+		ret_val = e1000_write_kmrn_reg_80003es2lan(hw,
+							   E1000_KMRNCTRLSTA_INBAND_PARAM,
+							   kum_reg_data);
+		if (ret_val)
+			e_dbg("Error disabling far-end loopback\n");
+	} else
+		e_dbg("Error disabling far-end loopback\n");
 
 	/* Set the transmit descriptor write-back policy */
 	reg_data = er32(TXDCTL(0));
@@ -1371,6 +1378,7 @@ static const struct e1000_mac_operations es2_mac_ops = {
 	.setup_led		= e1000e_setup_led_generic,
 	.config_collision_dist	= e1000e_config_collision_dist_generic,
 	.rar_set		= e1000e_rar_set_generic,
+	.rar_get_count		= e1000e_rar_get_count_generic,
 	.validate_mdi_setting	= e1000e_validate_mdi_setting_generic,
 };
 
