@@ -31,14 +31,22 @@
 #include "netxen_nic.h"
 #include "netxen_nic_hw.h"
 
+enum {NETDEV_STATS, NETXEN_STATS};
+
 struct netxen_nic_stats {
 	char stat_string[ETH_GSTRING_LEN];
+	int type;
 	int sizeof_stat;
 	int stat_offset;
 };
 
-#define NETXEN_NIC_STAT(m) sizeof(((struct netxen_adapter *)0)->m), \
+#define NETXEN_NIC_STAT(m)	NETXEN_STATS, \
+			sizeof(((struct netxen_adapter *)0)->m), \
 			offsetof(struct netxen_adapter, m)
+
+#define NETXEN_NETDEV_STAT(m)	NETDEV_STATS, \
+			sizeof(((struct rtnl_link_stats64 *)0)->m), \
+			offsetof(struct rtnl_link_stats64, m)
 
 #define NETXEN_NIC_PORT_WINDOW 0x10000
 #define NETXEN_NIC_INVALID_DATA 0xDEADBEEF
@@ -46,7 +54,7 @@ struct netxen_nic_stats {
 static const struct netxen_nic_stats netxen_nic_gstrings_stats[] = {
 	{"xmit_called", NETXEN_NIC_STAT(stats.xmitcalled)},
 	{"xmit_finished", NETXEN_NIC_STAT(stats.xmitfinished)},
-	{"rx_dropped", NETXEN_NIC_STAT(stats.rxdropped)},
+	{"rx_dropped", NETXEN_NETDEV_STAT(rx_dropped)},
 	{"tx_dropped", NETXEN_NIC_STAT(stats.txdropped)},
 	{"csummed", NETXEN_NIC_STAT(stats.csummed)},
 	{"rx_pkts", NETXEN_NIC_STAT(stats.rx_pkts)},
@@ -677,11 +685,27 @@ netxen_nic_get_ethtool_stats(struct net_device *dev,
 {
 	struct netxen_adapter *adapter = netdev_priv(dev);
 	int index;
+	struct rtnl_link_stats64 temp;
+	const struct rtnl_link_stats64 *net_stats;
+	char *p = NULL;
 
+	net_stats = dev_get_stats(dev, &temp);
 	for (index = 0; index < NETXEN_NIC_STATS_LEN; index++) {
-		char *p =
-		    (char *)adapter +
-		    netxen_nic_gstrings_stats[index].stat_offset;
+
+		switch (netxen_nic_gstrings_stats[index].type) {
+		case NETDEV_STATS:
+			p = (char *)net_stats +
+				netxen_nic_gstrings_stats[index].stat_offset;
+			break;
+		case NETXEN_STATS:
+			p = (char *)adapter +
+				netxen_nic_gstrings_stats[index].stat_offset;
+			break;
+		default:
+			data[index] = 0;
+			continue;
+		}
+
 		data[index] =
 		    (netxen_nic_gstrings_stats[index].sizeof_stat ==
 		     sizeof(u64)) ? *(u64 *) p : *(u32 *) p;
