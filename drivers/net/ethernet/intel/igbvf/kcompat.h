@@ -708,6 +708,9 @@ struct _kc_ethtool_pauseparam {
 #elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,76)))
 /* SLES11 SP3 is 3.0.76 based */
 #define SLE_VERSION_CODE SLE_VERSION(11,3,0)
+#elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,12,15)))
+/* SLES12 GA is 3.12.15 based */
+#define SLE_VERSION_CODE SLE_VERSION(12,0,0)
 #endif /* LINUX_VERSION_CODE == KERNEL_VERSION(x,y,z) */
 #endif /* CONFIG_SUSE_KERNEL */
 #ifndef SLE_VERSION_CODE
@@ -2833,6 +2836,7 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) && \
      (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
 #define HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #define HAVE_ETHTOOL_SET_PHYS_ID
 #define HAVE_ETHTOOL_GET_TS_INFO
 #endif /* RHEL >= 6.4 && RHEL < 7.0 */
@@ -3251,6 +3255,9 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,39) )
+#ifndef TC_BITMASK
+#define TC_BITMASK 15
+#endif
 #ifndef NETIF_F_RXCSUM
 #define NETIF_F_RXCSUM		(1 << 29)
 #endif
@@ -3260,6 +3267,20 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 		     skb != (struct sk_buff *)(queue);				\
 		     skb = tmp, tmp = skb->prev)
 #endif
+
+#ifndef udp_csum
+#define udp_csum __kc_udp_csum
+static inline __wsum __kc_udp_csum(struct sk_buff *skb)
+{
+	__wsum csum = csum_partial(skb_transport_header(skb),
+				   sizeof(struct udphdr), skb->csum);
+
+	for (skb = skb_shinfo(skb)->frag_list; skb; skb = skb->next) {
+		csum = csum_add(csum, skb->csum);
+	}
+	return csum;
+}
+#endif /* udp_csum */
 #else /* < 2.6.39 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
@@ -3361,6 +3382,10 @@ static inline int _kc_kstrtol_from_user(const char __user *s, size_t count,
 #define CTL1000_AS_MASTER	0x0800
 #define CTL1000_ENABLE_MASTER	0x1000
 
+/* kernels less than 3.0.0 don't have this */
+#ifndef ETH_P_8021AD
+#define ETH_P_8021AD	0x88A8
+#endif
 #else /* < 3.1.0 */
 #ifndef HAVE_DCBNL_IEEE_DELAPP
 #define HAVE_DCBNL_IEEE_DELAPP
@@ -3446,7 +3471,8 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #ifndef DUPLEX_UNKNOWN
 #define DUPLEX_UNKNOWN	0xff
 #endif
-#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3))
+#if ((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3)) ||\
+     (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0)))
 #ifndef HAVE_PCI_DEV_FLAGS_ASSIGNED
 #define HAVE_PCI_DEV_FLAGS_ASSIGNED
 #endif
@@ -3480,7 +3506,11 @@ typedef u32 netdev_features_t;
 #define netdev_tx_reset_queue(_q) do {} while (0)
 #define netdev_reset_queue(_n) do {} while (0)
 #endif
+#if (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
+#endif /* SLE_VERSION(11,3,0) */
 #else /* ! < 3.3.0 */
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
 #undef ETHTOOL_SRXNTUPLE
@@ -3522,7 +3552,7 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *,
 #endif /* >= 3.4.0 */
 
 /*****************************************************************************/
-#if defined(E1000E_PTP) || defined(IGB_PTP) || defined(IXGBE_PTP) || defined(I40E_PTP)
+#if defined(E1000E_PTP) || defined(IGB_PTP) || defined(IXGBE_PTP) || defined(I40E_PTP) || defined(DRIVER_FM10K)
 #if ( ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) ) || \
      ( RHEL_RELEASE_CODE && ( RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,4) ) ) ) && \
     IS_ENABLED(CONFIG_PTP_1588_CLOCK)
@@ -3530,7 +3560,7 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *,
 #else
 #error Cannot enable PTP Hardware Clock support due to a pre-3.0 kernel version or CONFIG_PTP_1588_CLOCK not enabled in the kernel
 #endif /* > 3.0.0 && IS_ENABLED(CONFIG_PTP_1588_CLOCK) */
-#endif /* E1000E_PTP || IGB_PTP || IXGBE_PTP || I40E_PTP */
+#endif /* E1000E_PTP || IGB_PTP || IXGBE_PTP || I40E_PTP || DRIVER_FM10K */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
@@ -3753,6 +3783,13 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0) )
+#ifndef pci_sriov_set_totalvfs
+static inline int __kc_pci_sriov_set_totalvfs(struct pci_dev *dev, u16 numvfs)
+{
+	return 0;
+}
+#define pci_sriov_set_totalvfs(a, b) __kc_pci_sriov_set_totalvfs((a), (b))
+#endif
 #ifndef PCI_EXP_LNKCTL_ASPM_L0S
 #define  PCI_EXP_LNKCTL_ASPM_L0S  0x01	/* L0s Enable */
 #endif
@@ -3850,6 +3887,9 @@ extern u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb);
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#ifndef NAPI_POLL_WEIGHT
+#define NAPI_POLL_WEIGHT 64
+#endif
 static inline int __kc_pci_vfs_assigned(struct pci_dev *dev)
 {
 	return 0;
@@ -3880,21 +3920,22 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 #endif /* >= 3.10.0 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) )
+#else /* >= 3.11.0 */
+#define HAVE_NDO_SET_VF_LINK_STATE
+#endif /* >= 3.11.0 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
 #else /* >= 3.12.0 */
 #define HAVE_VXLAN_RX_OFFLOAD
 #define HAVE_NDO_GET_PHYS_PORT_ID
 #endif /* >= 3.12.0 */
 
-#if (SLE_VERSION_CODE && SLE_VERSION_CODE == SLE_VERSION(11,2,0))
-#undef ETHTOOL_GRXFHINDIR
-#undef ETHTOOL_SRXFHINDIR
-#endif /* SLES (11,2,0) */
-
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) )
-
+#define dma_set_mask_and_coherent(_p, _m) __kc_dma_set_mask_and_coherent(_p, _m)
+extern int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 #else /* >= 3.13.0 */
 #define HAVE_VXLAN_CHECKS
 #define HAVE_NDO_SELECT_QUEUE_ACCEL
@@ -3903,6 +3944,8 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) )
 
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)) && \
+     !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(12,0,0)))
 /* it isn't expected that this would be a #define unless we made it so */
 #ifndef skb_set_hash
 enum pkt_hash_types {
@@ -3921,14 +3964,29 @@ static inline void __kc_skb_set_hash(struct sk_buff *skb, u32 hash, int type)
 	skb->rxhash = hash;
 #endif
 }
+#endif /* !skb_set_hash */
+#endif /* !(RHEL_RELEASE_CODE&&RHEL_RELEASE_CODE>=RHEL_RELEASE_VERSION(7,0)) */
+
+#ifndef pci_enable_msix_range
+extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
+				      struct msix_entry *entries,
+				      int minvec, int maxvec);
+#define pci_enable_msix_range __kc_pci_enable_msix_range
 #endif
 
-#else
+#else /* >= 3.14.0 */
 
 /* for ndo_dfwd_ ops add_station, del_station and _start_xmit */
 #ifndef HAVE_NDO_DFWD_OPS
 #define HAVE_NDO_DFWD_OPS
 #endif
-#endif
+#define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
+#endif /* 3.14.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0) )
+#define u64_stats_fetch_begin_irq u64_stats_fetch_begin_bh
+#define u64_stats_fetch_retry_irq u64_stats_fetch_retry_bh
+#endif /* 3.15.0 */
 
 #endif /* _KCOMPAT_H_ */

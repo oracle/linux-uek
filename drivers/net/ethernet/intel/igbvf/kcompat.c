@@ -1257,7 +1257,7 @@ static inline bool __kc_pcie_cap_has_sltctl(struct pci_dev *dev)
 
 	pos = pci_find_capability(dev, PCI_CAP_ID_EXP);
 	if (!pos)
-		return 0;
+		return false;
 	pci_read_config_word(dev, pos + PCI_EXP_FLAGS, &pcie_flags_reg);
 
 	return __kc_pcie_cap_version(dev) > 1 ||
@@ -1391,3 +1391,42 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
 #endif /* 3.10.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) )
+int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask)
+{
+	int err = dma_set_mask(dev, mask);
+
+	if (!err)
+		/* coherent mask for the same size will always succeed if
+		 * dma_set_mask does
+		 */
+		dma_set_coherent_mask(dev, mask);
+	return err;
+}
+#endif /* 3.13.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) )
+int __kc_pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
+			       int minvec, int maxvec)
+{
+        int nvec = maxvec;
+        int rc;
+
+        if (maxvec < minvec)
+                return -ERANGE;
+
+        do {
+                rc = pci_enable_msix(dev, entries, nvec);
+                if (rc < 0) {
+                        return rc;
+                } else if (rc > 0) {
+                        if (rc < minvec)
+                                return -ENOSPC;
+                        nvec = rc;
+                }
+        } while (rc);
+
+        return nvec;
+}
+#endif /* 3.14.0 */

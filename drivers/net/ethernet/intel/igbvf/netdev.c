@@ -50,7 +50,7 @@
 
 #define DRV_DEBUG ""
 
-#define DRV_VERSION "2.3.3" DRV_DEBUG
+#define DRV_VERSION "2.3.5" DRV_DEBUG
 char igbvf_driver_name[] = "igbvf";
 const char igbvf_driver_version[] = DRV_VERSION;
 
@@ -139,7 +139,7 @@ static void igbvf_receive_skb(struct igbvf_adapter *adapter,
 		vid = 0;
 
 #ifndef HAVE_VLAN_RX_REGISTER
-	__vlan_hwaccel_put_tag(skb,0,vid);
+	__vlan_hwaccel_put_tag(skb, htons(ETH_P_8021Q), vid);
 #else
 	if (vid)
 		vlan_gro_receive(&adapter->rx_ring->napi, adapter->vlgrp,
@@ -1307,7 +1307,12 @@ static int igbvf_poll(struct napi_struct *napi, int budget)
 	return work_done;
 }
 #ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+static int igbvf_vlan_rx_add_vid(struct net_device *netdev,
+			       __always_unused __be16 proto, u16 vid)
+#else
 static int igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
+#endif
 #else
 static void igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 #endif
@@ -1336,7 +1341,12 @@ static void igbvf_vlan_rx_add_vid(struct net_device *netdev, u16 vid)
 }
 
 #ifdef HAVE_INT_NDO_VLAN_RX_ADD_VID
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+static int igbvf_vlan_rx_kill_vid(struct net_device *netdev,
+			        __always_unused __be16 proto, u16 vid)
+#else
 static int igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
+#endif
 #else
 static void igbvf_vlan_rx_kill_vid(struct net_device *netdev, u16 vid)
 #endif
@@ -1388,7 +1398,12 @@ static void igbvf_restore_vlan(struct igbvf_adapter *adapter)
 		if (!test_bit(vid, adapter->active_vlans))
 			continue;
 #endif
+#ifdef NETIF_F_HW_VLAN_CTAG_RX
+		igbvf_vlan_rx_add_vid(adapter->netdev,
+				      htons(ETH_P_8021Q), vid);
+#else
 		igbvf_vlan_rx_add_vid(adapter->netdev, vid);
+#endif
 	}
 }
 
@@ -2926,9 +2941,15 @@ static int __devinit igbvf_probe(struct pci_dev *pdev,
 #ifdef HAVE_NDO_SET_FEATURES
 			    NETIF_F_RXCSUM |
 #endif
+#ifndef NETIF_F_HW_VLAN_CTAG_RX
 			    NETIF_F_HW_VLAN_RX |
 			    NETIF_F_HW_VLAN_TX |
 			    NETIF_F_HW_VLAN_FILTER;
+#else
+			    NETIF_F_HW_VLAN_CTAG_RX |
+			    NETIF_F_HW_VLAN_CTAG_TX |
+			    NETIF_F_HW_VLAN_CTAG_FILTER;
+#endif
 
 #ifdef HAVE_NDO_SET_FEATURES
 	/* copy netdev features into list of user selectable features */
@@ -3105,7 +3126,7 @@ static int __init igbvf_init_module(void)
 	int ret;
 	printk(KERN_INFO "%s: Intel(R) Gigabit Virtual Function Driver - %s\n",
 	       igbvf_driver_name, igbvf_driver_version);
-	printk(KERN_INFO "%s: Copyright (c) 1999-2012 Intel Corporation.\n",
+	printk(KERN_INFO "%s: Copyright (c) 1999-2014 Intel Corporation.\n",
 	       igbvf_driver_name);
 	ret = pci_register_driver(&igbvf_driver);
 #ifdef USE_REBOOT_NOTIFIER
