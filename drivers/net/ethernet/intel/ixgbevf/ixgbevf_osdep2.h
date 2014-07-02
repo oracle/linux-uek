@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 82599 Virtual Function driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -32,7 +28,7 @@ static inline void IXGBE_WRITE_REG(struct ixgbe_hw *hw, u32 reg, u32 value)
 {
 	u8 __iomem *reg_addr;
 
-	reg_addr = hw->hw_addr;
+	reg_addr = ACCESS_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return;
 #ifdef DBG
@@ -58,7 +54,7 @@ static inline u32 IXGBE_READ_REG(struct ixgbe_hw *hw, u32 reg)
 	u32 value;
 	u8 __iomem *reg_addr;
 
-	reg_addr = hw->hw_addr;
+	reg_addr = ACCESS_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return IXGBE_FAILED_READ_REG;
 	value = readl(reg_addr + reg);
@@ -75,7 +71,7 @@ static inline void IXGBE_WRITE_REG64(struct ixgbe_hw *hw, u32 reg, u64 value)
 #ifndef NO_SURPRISE_REMOVE_SUPPORT
 	u8 __iomem *reg_addr;
 
-	reg_addr = hw->hw_addr;
+	reg_addr = ACCESS_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return;
 #endif /* NO_SURPRISE_REMOVE_SUPPORT */

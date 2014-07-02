@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 82599 Virtual Function driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -86,12 +82,15 @@
 #define IXGBE_DEV_ID_82599_CX4			0x10F9
 #define IXGBE_DEV_ID_82599_SFP			0x10FB
 #define IXGBE_SUBDEV_ID_82599_SFP		0x11A9
+#define IXGBE_SUBDEV_ID_82599_SFP_WOL0		0x1071
 #define IXGBE_SUBDEV_ID_82599_RNDC		0x1F72
 #define IXGBE_SUBDEV_ID_82599_560FLR		0x17D0
 #define IXGBE_SUBDEV_ID_82599_ECNA_DP		0x0470
 #define IXGBE_SUBDEV_ID_82599_SP_560FLR		0x211B
 #define IXGBE_SUBDEV_ID_82599_LOM_SFP		0x8976
 #define IXGBE_SUBDEV_ID_82599_LOM_SNAP6		0x2159
+#define IXGBE_SUBDEV_ID_82599_SFP_1OCP		0x000D
+#define IXGBE_SUBDEV_ID_82599_SFP_2OCP		0x0008
 #define IXGBE_DEV_ID_82599_BACKPLANE_FCOE	0x152A
 #define IXGBE_DEV_ID_82599_SFP_FCOE		0x1529
 #define IXGBE_DEV_ID_82599_SFP_EM		0x1507
@@ -320,6 +319,7 @@
 #define IXGBE_FDIRSIP4M	0x0EE40
 #define IXGBE_FDIRTCPM	0x0EE44
 #define IXGBE_FDIRUDPM	0x0EE48
+#define IXGBE_FDIRSCTPM	0x0EE78
 #define IXGBE_FDIRIP6M	0x0EE74
 #define IXGBE_FDIRM	0x0EE70
 
@@ -1178,6 +1178,10 @@
 #define IXGBE_MDIO_AUTO_NEG_STATUS	0x1 /* AUTO_NEG Status Reg */
 #define IXGBE_MDIO_AUTO_NEG_ADVT	0x10 /* AUTO_NEG Advt Reg */
 #define IXGBE_MDIO_AUTO_NEG_LP		0x13 /* AUTO_NEG LP Status Reg */
+#define IXGBE_MDIO_AUTO_NEG_EEE_ADVT	0x3C /* AUTO_NEG EEE Advt Reg */
+#define IXGBE_AUTO_NEG_10GBASE_EEE_ADVT	0x8  /* AUTO NEG EEE 10GBaseT Advt */
+#define IXGBE_AUTO_NEG_1000BASE_EEE_ADVT 0x4  /* AUTO NEG EEE 1000BaseT Advt */
+#define IXGBE_AUTO_NEG_100BASE_EEE_ADVT	0x2  /* AUTO NEG EEE 100BaseT Advt */
 #define IXGBE_MDIO_PHY_XS_CONTROL	0x0 /* PHY_XS Control Reg */
 #define IXGBE_MDIO_PHY_XS_RESET		0x8000 /* PHY_XS Reset */
 #define IXGBE_MDIO_PHY_ID_HIGH		0x2 /* PHY ID High Reg*/
@@ -1580,11 +1584,13 @@ enum {
  *	FCoE (0x8906):	 Filter 2
  *	1588 (0x88f7):	 Filter 3
  *	FIP  (0x8914):	 Filter 4
+ *	LLDP (0x88CC):	 Filter 5
  */
 #define IXGBE_ETQF_FILTER_EAPOL		0
 #define IXGBE_ETQF_FILTER_FCOE		2
 #define IXGBE_ETQF_FILTER_1588		3
 #define IXGBE_ETQF_FILTER_FIP		4
+#define IXGBE_ETQF_FILTER_LLDP		5
 /* VLAN Control Bit Masks */
 #define IXGBE_VLNCTRL_VET		0x0000FFFF  /* bits 0-15 */
 #define IXGBE_VLNCTRL_CFI		0x10000000  /* bit 28 */
@@ -1707,6 +1713,9 @@ enum {
 #define IXGBE_MACC_FSV_10G	0x00030000
 #define IXGBE_MACC_FS		0x00040000
 #define IXGBE_MAC_RX2TX_LPBK	0x00000002
+
+/* Veto Bit definiton */
+#define IXGBE_MMNGC_MNG_VETO	0x00000001
 
 /* LINKS Bit Masks */
 #define IXGBE_LINKS_KX_AN_COMP	0x80000000
@@ -2329,6 +2338,7 @@ enum ixgbe_fdir_pballoc_type {
 #define IXGBE_FDIRCTRL_DROP_Q_SHIFT		8
 #define IXGBE_FDIRCTRL_FLEX_SHIFT		16
 #define IXGBE_FDIRCTRL_SEARCHLIM		0x00800000
+#define IXGBE_FDIRCTRL_FILTERMODE_MASK		0x00E00000
 #define IXGBE_FDIRCTRL_MAX_LENGTH_SHIFT		24
 #define IXGBE_FDIRCTRL_FULL_THRESH_MASK		0xF0000000
 #define IXGBE_FDIRCTRL_FULL_THRESH_SHIFT	28
@@ -2383,10 +2393,11 @@ enum ixgbe_fdir_pballoc_type {
 #define IXGBE_FDIRCMD_QUEUE_EN			0x00008000
 #define IXGBE_FDIRCMD_FLOW_TYPE_SHIFT		5
 #define IXGBE_FDIRCMD_RX_QUEUE_SHIFT		16
+#define IXGBE_FDIRCMD_TUNNEL_FILTER_SHIFT	23
 #define IXGBE_FDIRCMD_VT_POOL_SHIFT		24
 #define IXGBE_FDIR_INIT_DONE_POLL		10
 #define IXGBE_FDIRCMD_CMD_POLL			10
-
+#define IXGBE_FDIRCMD_TUNNEL_FILTER		0x00800000
 #define IXGBE_FDIR_DROP_QUEUE			127
 
 
@@ -2674,6 +2685,7 @@ typedef u32 ixgbe_physical_layer;
 #define IXGBE_ATR_L4TYPE_TCP		0x2
 #define IXGBE_ATR_L4TYPE_SCTP		0x3
 #define IXGBE_ATR_L4TYPE_IPV6_MASK	0x4
+#define IXGBE_ATR_L4TYPE_TUNNEL_MASK	0x10
 enum ixgbe_atr_flow_type {
 	IXGBE_ATR_FLOW_TYPE_IPV4	= 0x0,
 	IXGBE_ATR_FLOW_TYPE_UDPV4	= 0x1,
@@ -2683,6 +2695,14 @@ enum ixgbe_atr_flow_type {
 	IXGBE_ATR_FLOW_TYPE_UDPV6	= 0x5,
 	IXGBE_ATR_FLOW_TYPE_TCPV6	= 0x6,
 	IXGBE_ATR_FLOW_TYPE_SCTPV6	= 0x7,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_IPV4	= 0x10,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_UDPV4	= 0x11,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_TCPV4	= 0x12,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_SCTPV4	= 0x13,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_IPV6	= 0x14,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_UDPV6	= 0x15,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_TCPV6	= 0x16,
+	IXGBE_ATR_FLOW_TYPE_TUNNELED_SCTPV6	= 0x17,
 };
 
 /* Flow Director ATR input struct. */
@@ -2694,6 +2714,9 @@ union ixgbe_atr_input {
 	 * flow_type	- 1 byte
 	 * vlan_id	- 2 bytes
 	 * src_ip	- 16 bytes
+	 * inner_mac	- 6 bytes
+	 * cloud_mode	- 2 bytes
+	 * tni_vni	- 4 bytes
 	 * dst_ip	- 16 bytes
 	 * src_port	- 2 bytes
 	 * dst_port	- 2 bytes
@@ -2706,12 +2729,15 @@ union ixgbe_atr_input {
 		__be16 vlan_id;
 		__be32 dst_ip[4];
 		__be32 src_ip[4];
+		u8 inner_mac[6];
+		__be16 tunnel_type;
+		__be32 tni_vni;
 		__be16 src_port;
 		__be16 dst_port;
 		__be16 flex_bytes;
 		__be16 bkt_hash;
 	} formatted;
-	__be32 dword_stream[11];
+	__be32 dword_stream[14];
 };
 
 /* Flow Director compressed ATR hash input struct */

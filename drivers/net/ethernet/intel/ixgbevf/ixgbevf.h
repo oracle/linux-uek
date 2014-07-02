@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel 82599 Virtual Function driver
-  Copyright(c) 1999 - 2012 Intel Corporation.
+  Copyright (c) 1999 - 2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -11,10 +11,6 @@
   ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
   FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
   more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -57,6 +53,13 @@
 	((void)((NETIF_MSG_##nlevel & adapter->msg_enable) && \
 	printk(KERN_##klevel PFX "%s: %s: " fmt, adapter->netdev->name, \
 		__FUNCTION__ , ## args)))
+
+#define IXGBE_MAX_TXD_PWR	14
+#define IXGBE_MAX_DATA_PER_TXD	(1 << IXGBE_MAX_TXD_PWR)
+
+/* Tx Descriptors needed, worst case */
+#define TXD_USE_COUNT(S) DIV_ROUND_UP((S), IXGBE_MAX_DATA_PER_TXD)
+#define DESC_NEEDED (MAX_SKB_FRAGS + 4)
 
 /* wrapper around a pointer to a socket buffer,
  * so a DMA handle can be stored along with the buffer */
@@ -101,33 +104,49 @@ struct ixgbevf_rx_queue_stats {
 	u64 csum_err;
 };
 
+enum ixgbevf_ring_state_t {
+	__IXGBEVF_TX_DETECT_HANG,
+	__IXGBEVF_HANG_CHECK_ARMED,
+	__IXGBEVF_RX_CSUM_UDP_ZERO_ERR,
+};
+
+#define check_for_tx_hang(ring) \
+	test_bit(__IXGBEVF_TX_DETECT_HANG, &(ring)->state)
+#define set_check_for_tx_hang(ring) \
+	set_bit(__IXGBEVF_TX_DETECT_HANG, &(ring)->state)
+#define clear_check_for_tx_hang(ring) \
+	clear_bit(__IXGBEVF_TX_DETECT_HANG, &(ring)->state)
+
 struct ixgbevf_ring {
 	struct ixgbevf_ring *next;
-	struct net_device *netdev;
-	struct device *dev;
-	struct ixgbevf_adapter *adapter;  /* backlink */
+	struct ixgbevf_q_vector *q_vector; /* backpointer to host q_vector */
+	struct net_device *netdev;	/* netdev ring belongs to */
+	struct device *dev;		/* device for DMA mapping */
 	void *desc;			/* descriptor ring memory */
-	dma_addr_t dma;			/* phys. address of descriptor ring */
-	unsigned int size;		/* length in bytes */
-	u16 count;			/* amount of descriptors */
-	u16 next_to_use;
-	u16 next_to_clean;
-	u16 next_to_alloc;
-
-	int queue_index; /* needed for multiqueue queue management */
 	union {
 		struct ixgbevf_tx_buffer *tx_buffer_info;
 		struct ixgbevf_rx_buffer *rx_buffer_info;
 	};
+	unsigned long state;
 #ifndef NO_SURPRISE_REMOVE_SUPPORT
 	u8 __iomem **adapter_present;
 #endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	u8 __iomem *tail;
-	struct sk_buff *skb;
+	dma_addr_t dma;			/* phys. address of descriptor ring */
+	unsigned int size;		/* length in bytes */
 
-	u16 reg_idx; /* holds the special value that gets the hardware register
-	              * offset associated with this ring, which is different
-	              * for DCB and RSS modes */
+	u16 count;			/* amount of descriptors */
+
+	u8 queue_index;		/* needed for multiqueue queue management */
+	u8 reg_idx;		/* holds the special value that gets
+				 * the hardware register offset
+				 * associated with this ring, which is
+				 * different for DCB and RSS modes
+				 */
+	struct sk_buff *skb;
+	u16 next_to_use;
+	u16 next_to_clean;
+	u16 next_to_alloc;
 
 	struct ixgbevf_stats stats;
 #ifdef HAVE_NDO_GET_STATS64
@@ -137,7 +156,7 @@ struct ixgbevf_ring {
 		struct ixgbevf_tx_queue_stats tx_stats;
 		struct ixgbevf_rx_queue_stats rx_stats;
 	};
-};
+} ____cacheline_internodealigned_in_smp;
 
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBEVF_RX_BUFFER_WRITE	16	/* Must be power of 2 */
@@ -181,7 +200,7 @@ struct ixgbevf_ring_container {
 #define ixgbevf_for_each_ring(pos, head) \
 	for (pos = (head).ring; pos != NULL; pos = pos->next)
 
-/* MAX_MSIX_Q_VECTORS of these are allocated,
+/* MAX_Q_VECTORS of these are allocated,
  * but we only use one per queue-specific vector.
  */
 struct ixgbevf_q_vector {
@@ -195,7 +214,10 @@ struct ixgbevf_q_vector {
 	struct net_device poll_dev;
 #endif
 	struct ixgbevf_ring_container rx, tx;
+	struct rcu_head rcu;    /* to avoid race with update stats on free */
 	char name[IFNAMSIZ + 9];
+	bool netpoll_rx;
+
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	unsigned int state;
 #define IXGBEVF_QV_STATE_IDLE		0
@@ -210,6 +232,9 @@ struct ixgbevf_q_vector {
 #define IXGBEVF_QV_USER_PEND (IXGBEVF_QV_STATE_POLL | IXGBEVF_QV_STATE_POLL_YIELD)
 	spinlock_t lock;
 #endif /* CONFIG_NET_RX_BUSY_POLL */
+
+	/* for dynamic allocation of rings associated with this q_vector */
+	struct ixgbevf_ring ring[0] ____cacheline_internodealigned_in_smp;
 };
 #ifdef CONFIG_NET_RX_BUSY_POLL
 static inline void ixgbevf_qv_init_lock(struct ixgbevf_q_vector *q_vector)
@@ -320,14 +345,6 @@ static inline bool ixgbevf_qv_disable(struct ixgbevf_q_vector *q_vector)
 #define IXGBE_10K_ITR		400
 #define IXGBE_8K_ITR		500
 
-/* Helper macros to switch between ints/sec and what the register uses.
- * And yes, it's the same math going both ways.  The lowest value
- * supported by all of the ixgbe hardware is 8.
- */
-#define EITR_INTS_PER_SEC_TO_REG(_eitr) \
-	((_eitr) ? (1000000000 / ((_eitr) * 256)) : 8)
-#define EITR_REG_TO_INTS_PER_SEC EITR_INTS_PER_SEC_TO_REG
-
 /* ixgbevf_test_staterr - tests bits in Rx descriptor status and error fields */
 static inline __le32 ixgbevf_test_staterr(union ixgbe_adv_rx_desc *rx_desc,
 					  const u32 stat_err_bits)
@@ -355,7 +372,7 @@ static inline u16 ixgbevf_desc_unused(struct ixgbevf_ring *ring)
 #define OTHER_VECTOR 1
 #define NON_Q_VECTORS (OTHER_VECTOR)
 
-#define MAX_MSIX_Q_VECTORS 2
+#define MAX_Q_VECTORS 2
 
 #define MIN_MSIX_Q_VECTORS 1
 #define MIN_MSIX_COUNT (MIN_MSIX_Q_VECTORS + NON_Q_VECTORS)
@@ -364,7 +381,6 @@ static inline u16 ixgbevf_desc_unused(struct ixgbevf_ring *ring)
 struct ixgbevf_adapter {
 #if defined(NETIF_F_HW_VLAN_TX) || defined(NETIF_F_HW_VLAN_CTAG_TX)
 #ifdef HAVE_VLAN_RX_REGISTER
-	/* this field must be first, see ixgbevf_receive_skb */
 	struct vlan_group *vlgrp;
 #else
 	/* this field must be first, see ixgbevf_process_skb_fields */
@@ -372,62 +388,63 @@ struct ixgbevf_adapter {
 #endif
 #endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX */
 
-	struct timer_list watchdog_timer;
-	u16 bd_number;
-	struct work_struct reset_task;
-	struct ixgbevf_q_vector *q_vector[MAX_MSIX_Q_VECTORS];
+	struct net_device *netdev;
+	struct pci_dev *pdev;
 
-	/* Interrupt Throttle Rate */
-	u16 rx_itr_setting;
+	unsigned long state;
+
+	u32 flags;
+#define IXGBE_FLAG_RX_CSUM_ENABLED		(u32)(1)
+#define IXGBEVF_FLAG_RESET_REQUESTED		(u32)(1 << 1)
+
+#define IXGBEVF_FLAG_QUEUE_RESET_REQUESTED	(u32)(1 << 3)
+
+	/* Tx hotpath */
+	u16 tx_ring_count;
+	u16 num_tx_queues;
 	u16 tx_itr_setting;
+
+	/* Rx hotpath */
+	u16 rx_ring_count;
+	u16 num_rx_queues;
+	u16 rx_itr_setting;
+
+	/* Rings, Tx first since it is accessed in hotpath */
+	struct ixgbevf_ring *tx_ring[MAX_TX_QUEUES]; /* One per active queue */
+	struct ixgbevf_ring *rx_ring[MAX_RX_QUEUES]; /* One per active queue */
+
+	/* interrupt vector accounting */
+	struct ixgbevf_q_vector *q_vector[MAX_Q_VECTORS];
+	int num_q_vectors;
+	struct msix_entry *msix_entries;
 
 	/* interrupt masks */
 	u32 eims_enable_mask;
 	u32 eims_other;
 
-	/* TX */
-	struct ixgbevf_ring *tx_ring[MAX_TX_QUEUES]; /* One per active queue */
-	int num_tx_queues;
+	/* stats */
+	u64 tx_busy;
 	u64 restart_queue;
-	u32 tx_timeout_count;
-
-	/* RX */
-	struct ixgbevf_ring *rx_ring[MAX_RX_QUEUES]; /* One per active queue */
-	int num_rx_queues;
-	u64 hw_csum_rx_error;
-	u64 hw_rx_no_dma_resources;
 	u64 non_eop_descs;
-	int num_msix_vectors;
-	struct msix_entry *msix_entries;
-
+	u64 hw_rx_no_dma_resources;
+	u64 hw_csum_rx_error;
 	u32 alloc_rx_page_failed;
 	u32 alloc_rx_buff_failed;
 
-	/* Some features need tri-state capability,
-	 * thus the additional *_CAPABLE flags.
-	 */
-	u32 flags;
-#define IXGBE_FLAG_RX_CSUM_ENABLED              (u32)(1)
-#define IXGBE_FLAG_IN_WATCHDOG_TASK             (u32)(1 << 1)
-#define IXGBE_FLAG_IN_NETPOLL                   (u32)(1 << 2)
-#define IXGBEVF_FLAG_QUEUE_RESET_REQUESTED      (u32)(1 << 3)
-
-	/* OS defined structs */
-	struct net_device *netdev;
-	struct pci_dev *pdev;
+#ifndef HAVE_NETDEV_STATS_IN_NETDEV
 	struct net_device_stats net_stats;
+#endif
+
+	u32 tx_timeout_count;
 
 	/* structs defined in ixgbe_vf.h */
 	struct ixgbe_hw hw;
-	u16 msg_enable;
 	struct ixgbevf_hw_stats stats;
 
-	unsigned long state;
-
 	u32 *config_space;
-	u64 tx_busy;
-	unsigned int tx_ring_count;
-	unsigned int rx_ring_count;
+
+	u16 bd_number;
+	u16 msg_enable;
 
 #ifdef BP_EXTENDED_STATS
 	u64 bp_rx_yields;
@@ -442,11 +459,13 @@ struct ixgbevf_adapter {
 	u8 __iomem *io_addr;
 	u32 link_speed;
 	bool link_up;
-
-	struct work_struct watchdog_task;
 	bool dev_closed;
 
+	struct timer_list service_timer;
+	struct work_struct service_task;
+
 	spinlock_t mbx_lock;
+	unsigned long last_reset;
 };
 
 struct ixgbevf_info {
@@ -457,7 +476,11 @@ struct ixgbevf_info {
 enum ixbgevf_state_t {
 	__IXGBEVF_TESTING,
 	__IXGBEVF_RESETTING,
-	__IXGBEVF_DOWN
+	__IXGBEVF_DOWN,
+	__IXGBEVF_DISABLED,
+	__IXGBEVF_REMOVE,
+	__IXGBEVF_SERVICE_SCHED,
+	__IXGBEVF_SERVICE_INITED,
 };
 
 #ifdef HAVE_VLAN_RX_REGISTER
