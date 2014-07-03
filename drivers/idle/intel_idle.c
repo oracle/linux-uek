@@ -185,16 +185,6 @@ static struct cpuidle_state snb_cstates[MWAIT_MAX_NUM_CSTATES] = {
 		.enter = &intel_idle },
 };
 
-
-/*
- * Allow tuning of exit latency values for c1, c1e, c3, c6, and c7 states
- * the last 2 values (c6 and c7 states) are not used in real life on EX systems
- */
-static unsigned int ivb_exit[] = {1, 10, 59, 80, 87};
-static unsigned int ivb_target[] = {1, 5000, 6000, 8000, 9000};
-module_param_array(ivb_exit, uint, NULL, 0444);
-module_param_array(ivb_target, uint, NULL, 0444);
-
 static struct cpuidle_state ivb_cstates[MWAIT_MAX_NUM_CSTATES] = {
 	{ /* MWAIT C0 */ },
 	{ /* MWAIT C1 */
@@ -561,13 +551,6 @@ static int intel_idle_cpuidle_devices_init(void)
 static int __init intel_idle_init(void)
 {
 	int retval;
-	int x;
-
-	/* skip c0, so index x+1 */
-	for (x = 0; x < sizeof(ivb_target) / sizeof(unsigned int); ++x) {
-		ivb_cstates[x+1].exit_latency = ivb_exit[x];
-		ivb_cstates[x+1].target_residency = ivb_target[x];
-	}
 
 	/* Do not load intel_idle at all for now if idle= is passed */
 	if (boot_option_idle_override != IDLE_NO_OVERRIDE)
