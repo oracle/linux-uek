@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -66,6 +65,7 @@
 #define E1000_CTRL_EXT_EE_RST	0x00002000 /* Reinitialize from EEPROM */
 /* Physical Func Reset Done Indication */
 #define E1000_CTRL_EXT_PFRSTD	0x00004000
+#define E1000_CTRL_EXT_SDLPE	0X00040000  /* SerDes Low Power Enable */
 #define E1000_CTRL_EXT_SPD_BYPS	0x00008000 /* Speed Select Bypass */
 #define E1000_CTRL_EXT_RO_DIS	0x00020000 /* Relaxed Ordering disable */
 #define E1000_CTRL_EXT_DMA_DYN_CLK_EN	0x00080000 /* DMA Dynamic Clk Gating */
@@ -81,6 +81,7 @@
 #define E1000_CTRL_EXT_DRV_LOAD		0x10000000 /* Drv loaded bit for FW */
 #define E1000_CTRL_EXT_IAME		0x08000000 /* Int ACK Auto-mask */
 #define E1000_CTRL_EXT_PBA_CLR		0x80000000 /* PBA Clear */
+#define E1000_CTRL_EXT_PHYPDEN		0x00100000
 #define E1000_I2CCMD_REG_ADDR_SHIFT	16
 #define E1000_I2CCMD_PHY_ADDR_SHIFT	24
 #define E1000_I2CCMD_OPCODE_READ	0x08000000
@@ -1120,10 +1121,20 @@
 #define IGP_LED3_MODE		0x07000000
 
 /* PCI/PCI-X/PCI-EX Config space */
+#define PCIX_COMMAND_REGISTER		0xE6
+#define PCIX_STATUS_REGISTER_LO		0xE8
+#define PCIX_STATUS_REGISTER_HI		0xEA
 #define PCI_HEADER_TYPE_REGISTER	0x0E
 #define PCIE_LINK_STATUS		0x12
 #define PCIE_DEVICE_CONTROL2		0x28
 
+#define PCIX_COMMAND_MMRBC_MASK		0x000C
+#define PCIX_COMMAND_MMRBC_SHIFT	0x2
+#define PCIX_STATUS_HI_MMRBC_MASK	0x0060
+#define PCIX_STATUS_HI_MMRBC_SHIFT	0x5
+#define PCIX_STATUS_HI_MMRBC_4K		0x3
+#define PCIX_STATUS_HI_MMRBC_2K		0x2
+#define PCIX_STATUS_LO_FUNC_MASK	0x7
 #define PCI_HEADER_TYPE_MULTIFUNC	0x80
 #define PCIE_LINK_WIDTH_MASK		0x3F0
 #define PCIE_LINK_WIDTH_SHIFT		4

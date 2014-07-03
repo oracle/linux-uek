@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -1800,10 +1799,6 @@ static inline unsigned _kc_compare_ether_addr(const u8 *addr1, const u8 *addr2)
 }
 #undef compare_ether_addr
 #define compare_ether_addr(addr1, addr2) _kc_compare_ether_addr(addr1, addr2)
-#else /* 2.6.15 and above */
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37) )
-/* CMW fix device_can_wakeup here */
-#endif /* 2.6.15 and above, but < 2.6.37 */
 #endif /* < 2.6.15 */
 
 /*****************************************************************************/
@@ -1824,6 +1819,12 @@ static inline unsigned _kc_compare_ether_addr(const u8 *addr1, const u8 *addr2)
 #else /* 2.6.16 and above */
 #undef HAVE_PCI_ERS
 #define HAVE_PCI_ERS
+#if ( SLE_VERSION_CODE && SLE_VERSION_CODE == SLE_VERSION(10,4,0) )
+#ifdef device_can_wakeup
+#undef device_can_wakeup
+#endif /* device_can_wakeup */
+#define device_can_wakeup(dev) 1
+#endif /* SLE_VERSION(10,4,0) */
 #endif /* < 2.6.16 */
 
 /*****************************************************************************/
@@ -2119,6 +2120,15 @@ static inline struct device *netdev_to_dev(struct net_device *netdev)
 #define skb_network_header_len(skb) (skb->h.raw - skb->nh.raw)
 #define pci_register_driver pci_module_init
 #define skb_mac_header(skb) skb->mac.raw
+#define skb_reset_transport_header(skb) \
+	do { \
+		skb->h.raw = skb->data - skb->head; \
+	} while (0)
+#define skb_set_transport_header(skb, offset) \
+	do { \
+		skb_reset_transport_header(skb); \
+		skb->h.raw += offset; \
+	} while (0)
 
 #ifdef NETIF_F_MULTI_QUEUE
 #ifndef alloc_etherdev_mq
@@ -2215,6 +2225,10 @@ _kc_i2c_new_device(struct i2c_adapter *adap, struct i2c_board_info const *info);
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
 #ifndef ETH_FLAG_LRO
 #define ETH_FLAG_LRO NETIF_F_LRO
+#endif
+
+#ifndef ACCESS_ONCE
+#define ACCESS_ONCE(x) (*(volatile typeof(x) *)&(x))
 #endif
 
 /* if GRO is supported then the napi struct must already exist */
@@ -2864,6 +2878,7 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4)) && \
      (RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION(7,0)))
 #define HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #define HAVE_ETHTOOL_SET_PHYS_ID
 #define HAVE_ETHTOOL_GET_TS_INFO
 #endif /* RHEL >= 6.4 && RHEL < 7.0 */
@@ -3314,6 +3329,20 @@ static inline int _kc_skb_checksum_start_offset(const struct sk_buff *skb)
 		     skb != (struct sk_buff *)(queue);				\
 		     skb = tmp, tmp = skb->prev)
 #endif
+
+#ifndef udp_csum
+#define udp_csum __kc_udp_csum
+static inline __wsum __kc_udp_csum(struct sk_buff *skb)
+{
+	__wsum csum = csum_partial(skb_transport_header(skb),
+				   sizeof(struct udphdr), skb->csum);
+
+	for (skb = skb_shinfo(skb)->frag_list; skb; skb = skb->next) {
+		csum = csum_add(csum, skb->csum);
+	}
+	return csum;
+}
+#endif /* udp_csum */
 #else /* < 2.6.39 */
 #if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
 #ifndef HAVE_NETDEV_OPS_FCOE_DDP_TARGET
@@ -3515,6 +3544,9 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #define HAVE_PCI_DEV_FLAGS_ASSIGNED
 #define HAVE_VF_SPOOFCHK_CONFIGURE
 #endif
+#ifndef HAVE_SKB_L4_RXHASH
+#define HAVE_SKB_L4_RXHASH
+#endif
 #endif /* < 3.2.0 */
 
 #if (RHEL_RELEASE_CODE && RHEL_RELEASE_CODE == RHEL_RELEASE_VERSION(6,2))
@@ -3536,7 +3568,11 @@ typedef u32 netdev_features_t;
 #define netdev_tx_reset_queue(_q) do {} while (0)
 #define netdev_reset_queue(_n) do {} while (0)
 #endif
+#if (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0))
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
+#endif /* SLE_VERSION(11,3,0) */
 #else /* ! < 3.3.0 */
+#define HAVE_ETHTOOL_GRXFHINDIR_SIZE
 #define HAVE_INT_NDO_VLAN_RX_ADD_VID
 #ifdef ETHTOOL_SRXNTUPLE
 #undef ETHTOOL_SRXNTUPLE
@@ -3809,6 +3845,13 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0) )
+#ifndef pci_sriov_set_totalvfs
+static inline int __kc_pci_sriov_set_totalvfs(struct pci_dev *dev, u16 numvfs)
+{
+	return 0;
+}
+#define pci_sriov_set_totalvfs(a, b) __kc_pci_sriov_set_totalvfs((a), (b))
+#endif
 #ifndef PCI_EXP_LNKCTL_ASPM_L0S
 #define  PCI_EXP_LNKCTL_ASPM_L0S  0x01	/* L0s Enable */
 #endif
@@ -3834,7 +3877,6 @@ static inline bool __kc_is_link_local_ether_addr(const u8 *addr)
 #else /* >= 3.8.0 */
 #ifndef __devinit
 #define __devinit
-#define HAVE_ENCAP_CSUM_OFFLOAD
 #endif
 
 #ifndef __devinitdata
@@ -3847,6 +3889,10 @@ static inline bool __kc_is_link_local_ether_addr(const u8 *addr)
 
 #ifndef __devexit_p
 #define __devexit_p
+#endif
+
+#ifndef HAVE_ENCAP_CSUM_OFFLOAD
+#define HAVE_ENCAP_CSUM_OFFLOAD
 #endif
 
 #ifndef HAVE_SRIOV_CONFIGURE
@@ -3937,22 +3983,68 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 #endif /* >= 3.10.0 */
 
 /*****************************************************************************/
-#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,11,0) )
+#else /* >= 3.11.0 */
+#define HAVE_NDO_SET_VF_LINK_STATE
+#endif /* >= 3.11.0 */
 
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
 #else /* >= 3.12.0 */
 #define HAVE_VXLAN_RX_OFFLOAD
+#define HAVE_NDO_GET_PHYS_PORT_ID
 #endif /* >= 3.12.0 */
-
-#if (SLE_VERSION_CODE && SLE_VERSION_CODE == SLE_VERSION(11,2,0))
-#undef ETHTOOL_GRXFHINDIR
-#undef ETHTOOL_SRXFHINDIR
-#endif /* SLES (11,2,0) */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) )
-
+#define dma_set_mask_and_coherent(_p, _m) __kc_dma_set_mask_and_coherent(_p, _m)
+extern int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 #else /* >= 3.13.0 */
 #define HAVE_VXLAN_CHECKS
+#if ( LINUX_VERSION_CODE == KERNEL_VERSION(3,13,0) )
+#define HAVE_NDO_SELECT_QUEUE_ACCEL
+#endif /* = 3.13.0 */
 #endif
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) )
+
+#if ( !(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)) )
+/* it isn't expected that this would be a #define unless we made it so */
+#ifndef skb_set_hash
+enum pkt_hash_types {
+	PKT_HASH_TYPE_NONE,
+	PKT_HASH_TYPE_L2,
+	PKT_HASH_TYPE_L3,
+	PKT_HASH_TYPE_L4,
+};
+#define skb_set_hash __kc_skb_set_hash
+static inline void __kc_skb_set_hash(struct sk_buff *skb, u32 hash, int type)
+{
+#ifdef HAVE_SKB_L4_RXHASH
+	skb->l4_rxhash = (type == PKT_HASH_TYPE_L4);
+#endif
+#ifdef NETIF_F_RXHASH
+	skb->rxhash = hash;
+#endif
+}
+#endif /* !skb_set_hash */
+#endif /* !(RHEL_RELEASE_CODE&&RHEL_RELEASE_CODE>=RHEL_RELEASE_VERSION(7,0)) */
+
+#ifndef pci_enable_msix_range
+extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
+				      struct msix_entry *entries,
+				      int minvec, int maxvec);
+#define pci_enable_msix_range __kc_pci_enable_msix_range
+#endif
+
+#else /* >= 3.14.0 */
+
+/* for ndo_dfwd_ ops add_station, del_station and _start_xmit */
+#ifndef HAVE_NDO_DFWD_OPS
+#define HAVE_NDO_DFWD_OPS
+#endif
+#define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
+#endif /* 3.14.0 */
 
 #endif /* _KCOMPAT_H_ */

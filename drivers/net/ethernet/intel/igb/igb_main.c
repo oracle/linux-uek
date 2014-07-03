@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -63,8 +62,8 @@
 #define VERSION_SUFFIX
 
 #define MAJ 5
-#define MIN 1
-#define BUILD 2
+#define MIN 2
+#define BUILD 5
 #define DRV_VERSION __stringify(MAJ) "." __stringify(MIN) "." __stringify(BUILD) VERSION_SUFFIX DRV_DEBUG DRV_HW_PERF
 
 char igb_driver_name[] = "igb";
@@ -72,7 +71,7 @@ char igb_driver_version[] = DRV_VERSION;
 static const char igb_driver_string[] =
                                 "Intel(R) Gigabit Ethernet Network Driver";
 static const char igb_copyright[] =
-				"Copyright (c) 2007-2013 Intel Corporation.";
+				"Copyright (c) 2007-2014 Intel Corporation.";
 
 static DEFINE_PCI_DEVICE_TABLE(igb_pci_tbl) = {
 	{ PCI_VDEVICE(INTEL, E1000_DEV_ID_I354_BACKPLANE_1GBPS) },
@@ -281,6 +280,8 @@ static struct pci_driver igb_driver = {
 #endif
 };
 
+u32 e1000_read_reg(struct e1000_hw *hw, u32 reg);
+
 MODULE_AUTHOR("Intel Corporation, <e1000-devel@lists.sourceforge.net>");
 MODULE_DESCRIPTION("Intel(R) Gigabit Ethernet Network Driver");
 MODULE_LICENSE("GPL");
@@ -419,6 +420,28 @@ static void igb_cache_ring_register(struct igb_adapter *adapter)
 			adapter->tx_ring[j]->reg_idx = rbase_offset + j;
 		break;
 	}
+}
+
+u32 e1000_read_reg(struct e1000_hw *hw, u32 reg)
+{
+	struct igb_adapter *igb = container_of(hw, struct igb_adapter, hw);
+	u8 __iomem *hw_addr = ACCESS_ONCE(hw->hw_addr);
+	u32 value = 0;
+
+	if (E1000_REMOVED(hw_addr))
+		return ~value;
+
+	value = readl(&hw_addr[reg]);
+
+	/* reads should not return all F's */
+	if (!(~value) && (!reg || !(~readl(hw_addr)))) {
+		struct net_device *netdev = igb->netdev;
+		hw->hw_addr = NULL;
+		netif_device_detach(netdev);
+		netdev_err(netdev, "PCIe link lost, device now detached\n");
+	}
+
+	return value;
 }
 
 static void igb_configure_lli(struct igb_adapter *adapter)
@@ -8582,6 +8605,20 @@ static int igb_ioctl(struct net_device *netdev, struct ifreq *ifr, int cmd)
 	default:
 		return -EOPNOTSUPP;
 	}
+}
+
+void e1000_read_pci_cfg(struct e1000_hw *hw, u32 reg, u16 *value)
+{
+	struct igb_adapter *adapter = hw->back;
+
+	pci_read_config_word(adapter->pdev, reg, value);
+}
+
+void e1000_write_pci_cfg(struct e1000_hw *hw, u32 reg, u16 *value)
+{
+	struct igb_adapter *adapter = hw->back;
+
+	pci_write_config_word(adapter->pdev, reg, *value);
 }
 
 s32 e1000_read_pcie_cap_reg(struct e1000_hw *hw, u32 reg, u16 *value)

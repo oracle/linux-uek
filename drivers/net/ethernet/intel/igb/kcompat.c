@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -1498,3 +1497,42 @@ int __kc_pci_vfs_assigned(struct pci_dev *dev)
 
 #endif /* CONFIG_PCI_IOV */
 #endif /* 3.10.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,13,0) )
+int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask)
+{
+	int err = dma_set_mask(dev, mask);
+
+	if (!err)
+		/* coherent mask for the same size will always succeed if
+		 * dma_set_mask does
+		 */
+		dma_set_coherent_mask(dev, mask);
+	return err;
+}
+#endif /* 3.13.0 */
+
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) )
+int __kc_pci_enable_msix_range(struct pci_dev *dev, struct msix_entry *entries,
+			       int minvec, int maxvec)
+{
+        int nvec = maxvec;
+        int rc;
+
+        if (maxvec < minvec)
+                return -ERANGE;
+
+        do {
+                rc = pci_enable_msix(dev, entries, nvec);
+                if (rc < 0) {
+                        return rc;
+                } else if (rc > 0) {
+                        if (rc < minvec)
+                                return -ENOSPC;
+                        nvec = rc;
+                }
+        } while (rc);
+
+        return nvec;
+}
+#endif /* 3.14.0 */

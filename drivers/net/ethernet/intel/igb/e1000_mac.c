@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -509,6 +508,43 @@ void e1000_update_mc_addr_list_generic(struct e1000_hw *hw,
 	for (i = hw->mac.mta_reg_count - 1; i >= 0; i--)
 		E1000_WRITE_REG_ARRAY(hw, E1000_MTA, i, hw->mac.mta_shadow[i]);
 	E1000_WRITE_FLUSH(hw);
+}
+
+/**
+ *  e1000_pcix_mmrbc_workaround_generic - Fix incorrect MMRBC value
+ *  @hw: pointer to the HW structure
+ *
+ *  In certain situations, a system BIOS may report that the PCIx maximum
+ *  memory read byte count (MMRBC) value is higher than than the actual
+ *  value. We check the PCIx command register with the current PCIx status
+ *  register.
+ **/
+void e1000_pcix_mmrbc_workaround_generic(struct e1000_hw *hw)
+{
+	u16 cmd_mmrbc;
+	u16 pcix_cmd;
+	u16 pcix_stat_hi_word;
+	u16 stat_mmrbc;
+
+	DEBUGFUNC("e1000_pcix_mmrbc_workaround_generic");
+
+	/* Workaround for PCI-X issue when BIOS sets MMRBC incorrectly */
+	if (hw->bus.type != e1000_bus_type_pcix)
+		return;
+
+	e1000_read_pci_cfg(hw, PCIX_COMMAND_REGISTER, &pcix_cmd);
+	e1000_read_pci_cfg(hw, PCIX_STATUS_REGISTER_HI, &pcix_stat_hi_word);
+	cmd_mmrbc = (pcix_cmd & PCIX_COMMAND_MMRBC_MASK) >>
+		     PCIX_COMMAND_MMRBC_SHIFT;
+	stat_mmrbc = (pcix_stat_hi_word & PCIX_STATUS_HI_MMRBC_MASK) >>
+		      PCIX_STATUS_HI_MMRBC_SHIFT;
+	if (stat_mmrbc == PCIX_STATUS_HI_MMRBC_4K)
+		stat_mmrbc = PCIX_STATUS_HI_MMRBC_2K;
+	if (cmd_mmrbc > stat_mmrbc) {
+		pcix_cmd &= ~PCIX_COMMAND_MMRBC_MASK;
+		pcix_cmd |= stat_mmrbc << PCIX_COMMAND_MMRBC_SHIFT;
+		e1000_write_pci_cfg(hw, PCIX_COMMAND_REGISTER, &pcix_cmd);
+	}
 }
 
 /**
@@ -1922,6 +1958,9 @@ void e1000_set_pcie_no_snoop_generic(struct e1000_hw *hw, u32 no_snoop)
 
 	DEBUGFUNC("e1000_set_pcie_no_snoop_generic");
 
+	if (hw->bus.type != e1000_bus_type_pci_express)
+		return;
+
 	if (no_snoop) {
 		gcr = E1000_READ_REG(hw, E1000_GCR);
 		gcr &= ~(PCIE_NO_SNOOP_ALL);
@@ -1948,13 +1987,17 @@ s32 e1000_disable_pcie_master_generic(struct e1000_hw *hw)
 
 	DEBUGFUNC("e1000_disable_pcie_master_generic");
 
+	if (hw->bus.type != e1000_bus_type_pci_express)
+		return E1000_SUCCESS;
+
 	ctrl = E1000_READ_REG(hw, E1000_CTRL);
 	ctrl |= E1000_CTRL_GIO_MASTER_DISABLE;
 	E1000_WRITE_REG(hw, E1000_CTRL, ctrl);
 
 	while (timeout) {
 		if (!(E1000_READ_REG(hw, E1000_STATUS) &
-		      E1000_STATUS_GIO_MASTER_ENABLE))
+		      E1000_STATUS_GIO_MASTER_ENABLE) ||
+				E1000_REMOVED(hw->hw_addr))
 			break;
 		usec_delay(100);
 		timeout--;

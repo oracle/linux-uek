@@ -1,7 +1,7 @@
 /*******************************************************************************
 
   Intel(R) Gigabit Ethernet Linux driver
-  Copyright(c) 2007-2013 Intel Corporation.
+  Copyright(c) 2007-2014 Intel Corporation.
 
   This program is free software; you can redistribute it and/or modify it
   under the terms and conditions of the GNU General Public License,
@@ -13,8 +13,7 @@
   more details.
 
   You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc.,
-  51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
+  this program; if not, see <htt;://www.gnu.org/licenses/>.
 
   The full GNU General Public License is included in this distribution in
   the file called "COPYING".
@@ -2743,6 +2742,7 @@ static int igb_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *cmd)
 
 #endif /* ETHTOOL_GRXFH */
 #ifdef ETHTOOL_GRXFHINDIR
+#ifdef HAVE_ETHTOOL_GRXFHINDIR_SIZE
 static u32 igb_get_rxfh_indir_size(struct net_device *netdev)
 {
 	return IGB_RETA_SIZE;
@@ -2759,6 +2759,20 @@ static int igb_get_rxfh_indir(struct net_device *netdev, u32 *indir)
 	return 0;
 }
 
+#else
+static int igb_get_rxfh_indir(struct net_device *netdev,
+			      struct ethtool_rxfh_indir *indir)
+{
+	struct igb_adapter *adapter = netdev_priv(netdev);
+	size_t copy_size =
+		min_t(size_t, indir->size, ARRAY_SIZE(adapter->rss_indir_tbl));
+
+	indir->size = ARRAY_SIZE(adapter->rss_indir_tbl);
+	memcpy(indir->ring_index, adapter->rss_indir_tbl,
+		copy_size * sizeof(indir->ring_index[0]));
+	return 0;
+}
+#endif /* HAVE_ETHTOOL_GRXFHINDIR_SIZE */
 #endif /* ETHTOOL_GRXFHINDIR */
 #ifdef ETHTOOL_SRXFHINDIR
 void igb_write_rss_indir_tbl(struct igb_adapter *adapter)
@@ -2796,6 +2810,7 @@ void igb_write_rss_indir_tbl(struct igb_adapter *adapter)
 	}
 }
 
+#ifdef HAVE_ETHTOOL_GRXFHINDIR_SIZE
 static int igb_set_rxfh_indir(struct net_device *netdev, const u32 *indir)
 {
 	struct igb_adapter *adapter = netdev_priv(netdev);
@@ -2817,7 +2832,7 @@ static int igb_set_rxfh_indir(struct net_device *netdev, const u32 *indir)
 
 	/* Verify user input. */
 	for (i = 0; i < IGB_RETA_SIZE; i++)
-		if (indir[i] > num_queues)
+		if (indir[i] >= num_queues)
 			return -EINVAL;
 
 
@@ -2828,6 +2843,25 @@ static int igb_set_rxfh_indir(struct net_device *netdev, const u32 *indir)
 
 	return 0;
 }
+#else
+static int igb_set_rxfh_indir(struct net_device *netdev,
+			      const struct ethtool_rxfh_indir *indir)
+{
+	struct igb_adapter *adapter = netdev_priv(netdev);
+	size_t i;
+
+	if (indir->size != ARRAY_SIZE(adapter->rss_indir_tbl))
+		return -EINVAL;
+	for (i = 0; i < ARRAY_SIZE(adapter->rss_indir_tbl); i++)
+		if(indir->ring_index[i] >= adapter->rss_queues)
+			return -EINVAL;
+
+	memcpy(adapter->rss_indir_tbl, indir->ring_index,
+		sizeof(adapter->rss_indir_tbl));
+	igb_write_rss_indir_tbl(adapter);
+	return 0;
+}
+#endif /* HAVE_ETHTOOL_GRXFHINDIR_SIZE */
 #endif /* ETHTOOL_SRXFHINDIR */
 #ifdef ETHTOOL_GCHANNELS
 
@@ -3057,7 +3091,9 @@ static const struct ethtool_ops igb_ethtool_ops = {
 	.set_eee		= igb_set_eee,
 #endif
 #ifdef ETHTOOL_GRXFHINDIR
+#ifdef HAVE_ETHTOOL_GRXFHINDIR_SIZE
 	.get_rxfh_indir_size	= igb_get_rxfh_indir_size,
+#endif /* HAVE_ETHTOOL_GRSFHINDIR_SIZE */
 	.get_rxfh_indir		= igb_get_rxfh_indir,
 #endif /* ETHTOOL_GRXFHINDIR */
 #ifdef ETHTOOL_SRXFHINDIR
@@ -3083,7 +3119,9 @@ static const struct ethtool_ops_ext igb_ethtool_ops_ext = {
 	.set_phys_id		= igb_set_phys_id,
 	.get_eee		= igb_get_eee,
 	.set_eee		= igb_set_eee,
+#ifdef HAVE_ETHTOOL_GRXFHINDIR_SIZE
 	.get_rxfh_indir_size	= igb_get_rxfh_indir_size,
+#endif /* HAVE_ETHTOOL_GRSFHINDIR_SIZE */
 	.get_rxfh_indir		= igb_get_rxfh_indir,
 	.set_rxfh_indir		= igb_set_rxfh_indir,
 	.get_channels           = igb_get_channels,
