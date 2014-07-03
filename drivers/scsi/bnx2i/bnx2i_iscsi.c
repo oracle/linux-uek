@@ -1,16 +1,18 @@
 /*
- * bnx2i_iscsi.c: Broadcom NetXtreme II iSCSI driver.
+ * bnx2i_iscsi.c: QLogic NetXtreme II iSCSI driver.
  *
  * Copyright (c) 2006 - 2012 Broadcom Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
+ * Copyright (c) 2014, QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
  * Written by: Anil Veerabhadrappa (anilgv@broadcom.com)
- * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
+ * Previously Maintained by: Eddie Wai (eddie.wai@broadcom.com)
+ * Maintained by: QLogic-Storage-Upstream@qlogic.com
  */
 
 #include "bnx2i.h"
@@ -2673,7 +2675,7 @@ static void bnx2i_withdraw_conn_recovery(struct bnx2i_hba *hba,
  */
 static struct scsi_host_template bnx2i_host_template = {
 	.module			= THIS_MODULE,
-	.name			= "Broadcom Offload iSCSI Initiator",
+	.name			= "QLogic Offload iSCSI Initiator",
 	.proc_name		= "bnx2i",
 	.queuecommand		= iscsi_queuecommand,
 	.eh_abort_handler	= iscsi_eh_abort,
