@@ -120,3 +120,4 @@ obj-$(CONFIG_SPARC64)	+= jump_label.o
 
 obj-$(CONFIG_SPARC64)	+= kexec_shim.o
 obj-$(CONFIG_KEXEC)	+= machine_kexec.o
+obj-$(CONFIG_CRASH_DUMP)	+= crash_dump.o
