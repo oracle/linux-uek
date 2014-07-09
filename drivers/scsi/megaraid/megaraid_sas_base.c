@@ -4991,6 +4991,10 @@ retry_irq_register:
 		goto fail_start_aen;
 	}
 
+	/* Get current SR-IOV LD/VF affiliation */
+	if (instance->requestorId)
+		megasas_get_ld_vf_affiliation(instance, 1);
+
 	return 0;
 
       fail_start_aen:
