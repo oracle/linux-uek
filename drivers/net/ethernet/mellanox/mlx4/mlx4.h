@@ -612,6 +612,7 @@ struct mlx4_cmd {
 	struct mutex		slave_cmd_mutex;
 	struct semaphore	poll_sem;
 	struct semaphore	event_sem;
+	rwlock_t		switch_lock;
 	int			max_cmds;
 	spinlock_t		context_lock;
 	int			free_head;
