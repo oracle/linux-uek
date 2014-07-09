@@ -46,15 +46,15 @@ config QLCNIC_SRIOV
           environments.
 
 config QLCNIC_HWMON
-	bool "QLOGIC QLCNIC 82XX and 83XX family HWMON-SYSFS support"
-	depends on QLCNIC && HWMON
+	bool "QLOGIC QLCNIC 82XX and 83XX family HWMON support"
+	depends on QLCNIC && HWMON && !(QLCNIC=y && HWMON=m)
 	default y
 	---help---
-	  This configuration parameter can be used to read
-	  the board temperature in QLE83XX, QLE84XX and QLE82XX
-	  Converged Ethernet devices.
+	  This configuration parameter can be used to read the
+	  board temperature in Converged Ethernet devices
+	  supported by qlcnic.
 
-	  This option is supported via the hwmon-sysfs interface.
+	  This data is available via the hwmon sysfs interface.
 
 config QLGE
 	tristate "QLogic QLGE 10Gb Ethernet Driver Support"
