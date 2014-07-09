@@ -81,12 +81,18 @@ struct inet_bind_bucket {
 	struct net		*ib_net;
 #endif
 	unsigned short		port;
+#ifndef __GENKSYMS__
 	signed char		fastreuse;
 	signed char		fastreuseport;
-	kuid_t			fastuid;
+#else
+	signed short		fastreuse;
+#endif
 	int			num_owners;
 	struct hlist_node	node;
 	struct hlist_head	owners;
+#ifndef __GENKSYMS__
+	kuid_t			fastuid;
+#endif
 };
 
 static inline struct net *ib_net(struct inet_bind_bucket *ib)

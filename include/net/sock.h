@@ -180,8 +180,12 @@ struct sock_common {
 
 	unsigned short		skc_family;
 	volatile unsigned char	skc_state;
+#ifndef __GENKSYMS__
 	unsigned char		skc_reuse:4;
 	unsigned char		skc_reuseport:4;
+#else
+	unsigned char		skc_reuse;
+#endif
 	int			skc_bound_dev_if;
 	union {
 		struct hlist_node	skc_bind_node;
