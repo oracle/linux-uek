@@ -224,13 +224,13 @@ static int i40e_add_del_fdir_udpv4(struct i40e_vsi *vsi,
 	ret = i40e_program_fdir_filter(fd_data, raw_packet, pf, add);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "Filter command send failed for PCTYPE %d (ret = %d)\n",
-			 fd_data->pctype, ret);
+			 "PCTYPE:%d, Filter command send failed for fd_id:%d (ret = %d)\n",
+			 fd_data->pctype, fd_data->fd_id, ret);
 		err = true;
 	} else {
 		dev_info(&pf->pdev->dev,
-			 "Filter OK for PCTYPE %d (ret = %d)\n",
-			 fd_data->pctype, ret);
+			 "PCTYPE:%d, Filter send OK for fd_id:%d\n",
+			 fd_data->pctype, fd_data->fd_id);
 	}
 	return err ? -EOPNOTSUPP : 0;
 }
