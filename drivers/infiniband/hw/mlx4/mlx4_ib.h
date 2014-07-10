@@ -279,7 +279,7 @@ struct mlx4_ib_qp {
 	struct mlx4_db		db;
 	struct mlx4_ib_wq	rq;
 
-	u32			doorbell_qpn;
+	__be32			doorbell_qpn;
 	__be32			sq_signal_bits;
 	unsigned		sq_next_wqe;
 	int			sq_max_wqes_per_wr;

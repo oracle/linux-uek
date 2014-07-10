@@ -861,7 +861,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 	 * shifting) for send doorbell.  Precompute this value to save
 	 * a little bit when posting sends.
 	 */
-	qp->doorbell_qpn = swab32(qp->mqp.qpn << 8);
+	qp->doorbell_qpn = cpu_to_be32((u32)qp->mqp.qpn << 8);
 
 	qp->mqp.event = mlx4_ib_qp_event;
 	if (!*caller_qp)
@@ -3053,7 +3053,7 @@ out:
 		/* We set above doorbell_qpn bits to 0 as part of vlan
 		  * tag initialization, so |= should be correct.
 		*/
-		*(u32 *) (&ctrl->vlan_tag) |= qp->doorbell_qpn;
+		*(__be32 *)(&ctrl->vlan_tag) |= qp->doorbell_qpn;
 		/*
 		 * Make sure that descriptor is written to memory
 		 * before writing to BlueFlame page.
@@ -3077,7 +3077,8 @@ out:
 		 */
 		wmb();
 
-		writel(qp->doorbell_qpn, qp->bf.uar->map + MLX4_SEND_DOORBELL);
+		__raw_writel((__force u32)qp->doorbell_qpn,
+			     qp->bf.uar->map + MLX4_SEND_DOORBELL);
 
 		/*
 		 * Make sure doorbells don't leak out of SQ spinlock
