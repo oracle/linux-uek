@@ -2330,7 +2330,7 @@ error_param:
  *
  * Enable or disable VF spoof checking
  **/
-int i40e_ndo_set_vf_spoofck(struct net_device *netdev, int vf_id, bool enable)
+int i40e_ndo_set_vf_spoofchk(struct net_device *netdev, int vf_id, bool enable)
 {
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
