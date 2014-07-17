@@ -4059,7 +4059,7 @@ int be_load_fw(struct be_adapter *adapter, u8 *fw_file)
 	if (!netif_running(adapter->netdev)) {
 		dev_err(&adapter->pdev->dev,
 			"Firmware load not allowed (interface is down)\n");
-		return -1;
+		return -ENETDOWN;
 	}
 
 	status = request_firmware(&fw, fw_file, &adapter->pdev->dev);
