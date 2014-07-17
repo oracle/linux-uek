@@ -2822,7 +2822,7 @@ static int be_setup_wol(struct be_adapter *adapter, bool enable)
 	cmd.va = dma_zalloc_coherent(&adapter->pdev->dev, cmd.size, &cmd.dma,
 				     GFP_KERNEL);
 	if (cmd.va == NULL)
-		return -1;
+		return -ENOMEM;
 
 	if (enable) {
 		status = pci_write_config_dword(adapter->pdev,
@@ -4349,7 +4349,7 @@ static int be_stats_init(struct be_adapter *adapter)
 	cmd->va = dma_zalloc_coherent(&adapter->pdev->dev, cmd->size, &cmd->dma,
 				      GFP_KERNEL);
 	if (cmd->va == NULL)
-		return -1;
+		return -ENOMEM;
 	return 0;
 }
 
