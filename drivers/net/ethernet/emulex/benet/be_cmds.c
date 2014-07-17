@@ -2223,7 +2223,7 @@ int lancer_cmd_write_object(struct be_adapter *adapter, struct be_dma_mem *cmd,
 
 	if (!wait_for_completion_timeout(&adapter->et_cmd_compl,
 					 msecs_to_jiffies(60000)))
-		status = -1;
+		status = -ETIMEDOUT;
 	else
 		status = adapter->flash_status;
 
@@ -2319,7 +2319,7 @@ int be_cmd_write_flashrom(struct be_adapter *adapter, struct be_dma_mem *cmd,
 
 	if (!wait_for_completion_timeout(&adapter->et_cmd_compl,
 					 msecs_to_jiffies(40000)))
-		status = -1;
+		status = -ETIMEDOUT;
 	else
 		status = adapter->flash_status;
 
