@@ -921,7 +921,6 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	unsigned long flags;
 	struct ipoib_send_ring *send_ring;
 	u16 queue_index;
-	int i, off;
 	struct sk_buff *skb;
 
 	ipoib_dbg_data(priv, "cm send completion: id %d, status: %d\n",
@@ -1363,7 +1362,6 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 	u16 queue_index;
 	struct ipoib_tx_buf *tx_req;
 	struct sk_buff *skb;
-	int off, i;
 
 	ipoib_dbg(priv, "Destroy active connection 0x%x head 0x%x tail 0x%x\n",
 		  p->qp ? p->qp->qp_num : 0, p->tx_head, p->tx_tail);
