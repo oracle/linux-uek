@@ -632,6 +632,9 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey,
 						unsigned char clone_index);
 int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey,
 						unsigned char clone_index);
+int ipoib_named_vlan_add(struct net_device *pdev, unsigned short pkey,
+			 char *child_name_buf);
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf);
 
 void ipoib_pkey_poll(struct work_struct *work);
 int ipoib_pkey_dev_delay_open(struct net_device *dev);
