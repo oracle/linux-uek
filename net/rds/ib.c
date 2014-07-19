@@ -42,6 +42,7 @@
 #include <net/sock.h>
 #include <net/route.h>
 #include <net/inet_common.h>
+#include <net/ipoib/if_ipoib.h>
 #include <linux/rtnetlink.h>
 
 #include "rds.h"
@@ -1722,21 +1723,6 @@ static void rds_ib_dump_ip_config(void)
 	}
 }
 
-/*
- * Parse device name to extract pkey
- */
-static uint16_t
-get_netdev_pkey(struct net_device *dev)
-{
-	uint16_t pkey = 0;
-	int ibdevnum = -1;
-
-	if (sscanf(dev->name, "ib%d.%04hx", &ibdevnum, &pkey) == 2)
-		return pkey;
-	else
-		return 0xffff;	/* default pkey value! */
-}
-
 
 /*
  * Scheduling initial failovers. The ASCII art below documents the startup
@@ -1886,7 +1872,12 @@ static int rds_ib_ip_config_init(void)
 			!(dev->flags & IFF_SLAVE) &&
 			!(dev->flags & IFF_MASTER) &&
 			in_dev) {
-			uint16_t pkey = get_netdev_pkey(dev);
+			u16 pkey = 0;
+
+			if (ipoib_get_netdev_pkey(dev, &pkey) != 0) {
+				printk(KERN_ERR "RDS/IB: failed to get pkey "
+				       "for devname %s\n", dev->name);
+			}
 
 			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
 
@@ -2260,7 +2251,12 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 		work->timeout -= msecs_to_jiffies(100);
 		queue_delayed_work(rds_wq, &work->work, msecs_to_jiffies(100));
 	} else if (in_dev && in_dev->ifa_list) {
-		uint16_t pkey = get_netdev_pkey(ndev);
+		u16 pkey = 0;
+
+		if (ipoib_get_netdev_pkey(ndev, &pkey) != 0) {
+			printk(KERN_ERR "RDS/IB: failed to get pkey "
+			       "for devname %s\n", ndev->name);
+		}
 
 		memcpy(&gid, ndev->dev_addr + 4, sizeof gid);
 		list_for_each_entry_rcu(rds_ibdev,
