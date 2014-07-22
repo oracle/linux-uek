@@ -754,7 +754,10 @@ void vio_port_up(struct vio_driver_state *vio)
 	}
 
 	if (!err) {
-		err = ldc_connect(vio->lp);
+		if (ldc_mode(vio->lp) == LDC_MODE_RAW)
+			ldc_set_state(vio->lp, LDC_STATE_CONNECTED);
+		else
+			err = ldc_connect(vio->lp);
 		if (err)
 			printk(KERN_WARNING "%s: Port %lu connect failed, "
 			       "err=%d\n",
@@ -783,20 +786,28 @@ int vio_driver_init(struct vio_driver_state *vio, struct vio_dev *vdev,
 		    int ver_table_size, struct vio_driver_ops *ops,
 		    char *name)
 {
+	int raw = 0;
+
 	switch (dev_class) {
 	case VDEV_NETWORK:
 	case VDEV_NETWORK_SWITCH:
 	case VDEV_DISK:
 	case VDEV_DISK_SERVER:
 		break;
-
+	case VDEV_CONSOLE_CON:
+		raw = 1;
+		break;
 	default:
 		return -EINVAL;
 	}
 
-	if (!ops->send_attr ||
-	    !ops->handle_attr ||
-	    !ops->handshake_complete)
+	/*
+	 * We cannot use ldc_mode() here since the LDC has not been
+	 * allocated yet.  Instead we have to determine raw mode
+	 * based on device class above.
+	 */
+	if (!raw && (!ops->send_attr || !ops->handle_attr ||
+	     !ops->handshake_complete))
 		return -EINVAL;
 
 	if (!ver_table || ver_table_size < 0)

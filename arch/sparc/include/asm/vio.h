@@ -52,6 +52,7 @@ struct vio_ver_info {
 #define VDEV_NETWORK_SWITCH	0x02
 #define VDEV_DISK		0x03
 #define VDEV_DISK_SERVER	0x04
+#define VDEV_CONSOLE_CON	0x05
 
 	u8			resv1[3];
 	u64			resv2[5];
@@ -248,6 +249,14 @@ struct vio_dring_state {
 	struct ldc_trans_cookie	cookies[VIO_MAX_RING_COOKIES];
 };
 
+#define	VIO_TAG_SIZE		(sizeof(struct vio_msg_tag))
+#define	VIO_VCC_MTU_SIZE	(LDC_PACKET_SIZE - 8)
+
+struct vio_vcc {
+	struct vio_msg_tag	tag;
+	char			data[VIO_VCC_MTU_SIZE];
+};
+
 static inline void *vio_dring_cur(struct vio_dring_state *dr)
 {
 	return dr->base + (dr->entry_size * dr->prod);
@@ -279,6 +288,7 @@ struct vio_dev {
 
 	u64			dev_no;
 
+	unsigned long		port_id;
 	unsigned long		channel_id;
 
 	unsigned int		tx_irq;

@@ -4,7 +4,7 @@
  */
 
 #include <linux/kernel.h>
-#include <linux/export.h>
+#include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/delay.h>
@@ -29,7 +29,6 @@
 
 static char version[] =
 	DRV_MODULE_NAME ".c:v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
-#define LDC_PACKET_SIZE		64
 
 /* Packet header layout for unreliable and reliable mode frames.
  * When in RAW mode, packets are simply straight 64-byte payloads
@@ -189,15 +188,6 @@ static const char *state_to_str(u8 state)
 	default:
 		return "<UNKNOWN>";
 	}
-}
-
-static void ldc_set_state(struct ldc_channel *lp, u8 state)
-{
-	ldcdbg(STATE, "STATE (%s) --> (%s)\n",
-	       state_to_str(lp->state),
-	       state_to_str(state));
-
-	lp->state = state;
 }
 
 static unsigned long __advance(unsigned long off, unsigned long num_entries)
@@ -815,16 +805,21 @@ static irqreturn_t ldc_rx(int irq, void *dev_id)
 		lp->hs_state = LDC_HS_COMPLETE;
 		ldc_set_state(lp, LDC_STATE_CONNECTED);
 
-		event_mask |= LDC_EVENT_UP;
-
-		orig_state = lp->chan_state;
+		/*
+		 * Generate an LDC_EVENT_UP event if the channel
+		 * was not already up.
+		 */
+		if (orig_state != LDC_CHANNEL_UP) {
+			event_mask |= LDC_EVENT_UP;
+			orig_state = lp->chan_state;
+		}
 	}
 
 	/* If we are in reset state, flush the RX queue and ignore
 	 * everything.
 	 */
 	if (lp->flags & LDC_FLAG_RESET) {
-		(void) __set_rx_head(lp, lp->rx_tail);
+		(void) ldc_rx_reset(lp);
 		goto out;
 	}
 
@@ -931,7 +926,14 @@ static irqreturn_t ldc_tx(int irq, void *dev_id)
 		lp->hs_state = LDC_HS_COMPLETE;
 		ldc_set_state(lp, LDC_STATE_CONNECTED);
 
-		event_mask |= LDC_EVENT_UP;
+		/*
+		 * Generate an LDC_EVENT_UP event if the channel
+		 * was not already up.
+		 */
+		if (orig_state != LDC_CHANNEL_UP) {
+			event_mask |= LDC_EVENT_UP;
+			orig_state = lp->chan_state;
+		}
 	}
 
 	spin_unlock_irqrestore(&lp->lock, flags);
@@ -1205,11 +1207,12 @@ out_err:
 }
 EXPORT_SYMBOL(ldc_alloc);
 
-void ldc_free(struct ldc_channel *lp)
+void ldc_unbind(struct ldc_channel *lp)
 {
 	if (lp->flags & LDC_FLAG_REGISTERED_IRQS) {
 		free_irq(lp->cfg.rx_irq, lp);
 		free_irq(lp->cfg.tx_irq, lp);
+		lp->flags &= ~LDC_FLAG_REGISTERED_IRQS;
 	}
 
 	if (lp->flags & LDC_FLAG_REGISTERED_QUEUES) {
@@ -1223,12 +1226,17 @@ void ldc_free(struct ldc_channel *lp)
 		lp->flags &= ~LDC_FLAG_ALLOCED_QUEUES;
 	}
 
+	ldc_set_state(lp, LDC_STATE_INIT);
+}
+EXPORT_SYMBOL(ldc_unbind);
+
+void ldc_free(struct ldc_channel *lp)
+{
+	ldc_unbind(lp);
+
 	hlist_del(&lp->list);
-
 	kfree(lp->mssbuf);
-
 	ldc_iommu_release(lp);
-
 	kfree(lp);
 }
 EXPORT_SYMBOL(ldc_free);
@@ -1301,6 +1309,14 @@ int ldc_bind(struct ldc_channel *lp, const char *name)
 
 	lp->hs_state = LDC_HS_OPEN;
 	ldc_set_state(lp, LDC_STATE_BOUND);
+
+	if (lp->cfg.mode == LDC_MODE_RAW) {
+		/*
+		 * There is no handshake in RAW mode, so handshake
+		 * is completed.
+		 */
+		lp->hs_state = LDC_HS_COMPLETE;
+	}
 
 	spin_unlock_irqrestore(&lp->lock, flags);
 
@@ -1406,6 +1422,42 @@ int ldc_state(struct ldc_channel *lp)
 	return lp->state;
 }
 EXPORT_SYMBOL(ldc_state);
+
+void ldc_set_state(struct ldc_channel *lp, u8 state)
+{
+	ldcdbg(STATE, "STATE (%s) --> (%s)\n",
+	       state_to_str(lp->state),
+	       state_to_str(state));
+
+	lp->state = state;
+}
+EXPORT_SYMBOL(ldc_set_state);
+
+int ldc_mode(struct ldc_channel *lp)
+{
+	return lp->cfg.mode;
+}
+EXPORT_SYMBOL(ldc_mode);
+
+int ldc_rx_reset(struct ldc_channel *lp)
+{
+	return __set_rx_head(lp, lp->rx_tail);
+}
+EXPORT_SYMBOL(ldc_rx_reset);
+
+void ldc_print(struct ldc_channel *lp)
+{
+	pr_info("%s: id=0x%lx flags=0x%x state=%s cstate=0x%lx hsstate=0x%x\n"
+		"\trx_h=0x%lx rx_t=0x%lx rx_n=%ld\n"
+		"\ttx_h=0x%lx tx_t=0x%lx tx_n=%ld\n"
+		"\trcv_nxt=%u snd_nxt=%u\n",
+	__func__, lp->id, lp->flags, state_to_str(lp->state),
+	lp->chan_state, lp->hs_state,
+	lp->rx_head, lp->rx_tail, lp->rx_num_entries,
+	lp->tx_head, lp->tx_tail, lp->tx_num_entries,
+	lp->rcv_nxt, lp->snd_nxt);
+}
+EXPORT_SYMBOL(ldc_print);
 
 static int write_raw(struct ldc_channel *lp, const void *buf, unsigned int size)
 {
@@ -1552,7 +1604,7 @@ static int rx_bad_seq(struct ldc_channel *lp, struct ldc_packet *p,
 	if (err)
 		return err;
 
-	err = __set_rx_head(lp, lp->rx_tail);
+	err = ldc_rx_reset(lp);
 	if (err < 0)
 		return ldc_abort(lp);
 
@@ -1678,25 +1730,26 @@ static int read_nonraw(struct ldc_channel *lp, void *buf, unsigned int size)
 		       p->u.r.ackid,
 		       lp->rcv_nxt);
 
+		/*
+		 * Both endpoints can initiate the handshake. In that case,
+		 * if there is a double handshake, then we can receive CTRL
+		 * packet from the second handshake when the first handshake
+		 * is completed.
+		 */
+		if (!(p->type & LDC_DATA)) {
+			ldcdbg(RX, "RX non-data pkt, ignoring");
+			new = rx_advance(lp, new);
+			goto no_data;
+		}
+
 		if (unlikely(!rx_seq_ok(lp, p->seqid))) {
 			err = rx_bad_seq(lp, p, first_frag);
 			copied = 0;
 			break;
 		}
 
-		if (p->type & LDC_CTRL) {
-			err = process_control_frame(lp, p);
-			if (err < 0)
-				break;
-			err = 0;
-		}
-
 		lp->rcv_nxt = p->seqid;
 
-		if (!(p->type & LDC_DATA)) {
-			new = rx_advance(lp, new);
-			goto no_data;
-		}
 		if (p->stype & (LDC_ACK | LDC_NACK)) {
 			err = data_ack_nack(lp, p);
 			if (err)

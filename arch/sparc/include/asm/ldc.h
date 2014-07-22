@@ -48,6 +48,8 @@ struct ldc_channel_config {
 #define LDC_STATE_READY		0x03
 #define LDC_STATE_CONNECTED	0x04
 
+#define LDC_PACKET_SIZE		64
+
 struct ldc_channel;
 
 /* Allocate state for a channel.  */
@@ -60,6 +62,7 @@ extern void ldc_free(struct ldc_channel *lp);
 
 /* Register TX and RX queues of the link with the hypervisor.  */
 extern int ldc_bind(struct ldc_channel *lp, const char *name);
+extern void ldc_unbind(struct ldc_channel *lp);
 
 /* For non-RAW protocols we need to complete a handshake before
  * communication can proceed.  ldc_connect() does that, if the
@@ -70,6 +73,10 @@ extern int ldc_connect(struct ldc_channel *lp);
 extern int ldc_disconnect(struct ldc_channel *lp);
 
 extern int ldc_state(struct ldc_channel *lp);
+extern void ldc_set_state(struct ldc_channel *lp, u8 state);
+extern int ldc_mode(struct ldc_channel *lp);
+extern void ldc_print(struct ldc_channel *lp);
+extern int ldc_rx_reset(struct ldc_channel *lp);
 
 /* Read and write operations.  Only valid when the link is up.  */
 extern int ldc_write(struct ldc_channel *lp, const void *buf,

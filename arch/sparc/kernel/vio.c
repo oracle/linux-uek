@@ -265,6 +265,7 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 	vdev->compat_len = clen;
 
 	vdev->channel_id = ~0UL;
+	vdev->port_id = ~0UL;
 	vdev->tx_irq = ~0;
 	vdev->rx_irq = ~0;
 
@@ -280,6 +281,7 @@ static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,
 		dev_set_name(&vdev->dev, "%s-%llu-%llu", bus_id_name,
 			     *cfg_handle, *id);
 		vdev->dev_no = *cfg_handle;
+		vdev->port_id = *id;
 	}
 
 	vdev->dev.parent = parent;
