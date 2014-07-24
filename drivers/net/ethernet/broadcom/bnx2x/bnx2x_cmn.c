@@ -305,7 +305,13 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	--nbd;
 	bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
 
-	/* TSO header+data bds share a common mapping. see bnx2x_tx_split() */
+	if (tx_buf->flags & BNX2X_HAS_SECOND_PBD) {
+		/* Skip second parse bd... */
+		--nbd;
+		bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
+	}
+
+	/* TSO headers+data bds share a common mapping. See bnx2x_tx_split() */
 	if (tx_buf->flags & BNX2X_TSO_SPLIT_BD) {
 		tx_data_bd = &txdata->tx_desc_ring[bd_idx].reg_bd;
 		split_bd_len = BD_UNMAP_LEN(tx_data_bd);
@@ -4791,6 +4797,8 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			/* set encapsulation flag in start BD */
 			SET_FLAG(tx_start_bd->general_data,
 				 ETH_TX_START_BD_TUNNEL_EXIST, 1);
+
+			tx_buf->flags |= BNX2X_HAS_SECOND_PBD;
 
 			/* we omit setting type 0 - this is done implicitly
 			 * during zeroing whole bd
