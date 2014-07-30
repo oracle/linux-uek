@@ -34,6 +34,7 @@
 #include <linux/swap.h>
 #include <linux/kmsg_dump.h>
 #include <linux/syscore_ops.h>
+#include <linux/hugetlb.h>
 
 #include <asm/page.h>
 #include <asm/uaccess.h>
@@ -1534,6 +1535,7 @@ static int __init crash_save_vmcoreinfo_init(void)
 #ifdef CONFIG_PAGEFLAGS_EXTENDED
 	VMCOREINFO_NUMBER(PG_head_mask);
 #endif
+	VMCOREINFO_SYMBOL(free_huge_page);
 
 	arch_crash_save_vmcoreinfo();
 
