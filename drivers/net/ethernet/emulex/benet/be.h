@@ -361,6 +361,7 @@ enum vf_state {
 
 /* Ethtool set_dump flags */
 #define LANCER_INITIATE_FW_DUMP			0x1
+#define LANCER_DELETE_FW_DUMP			0x2
 
 struct phy_info {
 	u8 transceiver;
