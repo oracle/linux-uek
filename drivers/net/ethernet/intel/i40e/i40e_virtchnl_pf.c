@@ -1006,7 +1006,7 @@ static int i40e_vc_send_msg_to_vf(struct i40e_vf *vf, u32 v_opcode,
 {
 	struct i40e_pf *pf = vf->pf;
 	struct i40e_hw *hw = &pf->hw;
-	int true_vf_id = vf->vf_id + hw->func_caps.vf_base_id;
+	int abs_vf_id = vf->vf_id + hw->func_caps.vf_base_id;
 	i40e_status aq_ret;
 
 	/* single place to detect unsuccessful return values */
@@ -1026,7 +1026,7 @@ static int i40e_vc_send_msg_to_vf(struct i40e_vf *vf, u32 v_opcode,
 		vf->num_valid_msgs++;
 	}
 
-	aq_ret = i40e_aq_send_msg_to_vf(hw, true_vf_id,	v_opcode, v_retval,
+	aq_ret = i40e_aq_send_msg_to_vf(hw, abs_vf_id,	v_opcode, v_retval,
 					msg, msglen, NULL);
 	if (aq_ret) {
 		dev_err(&pf->pdev->dev,
@@ -1936,15 +1936,17 @@ static void i40e_vc_vf_broadcast(struct i40e_pf *pf,
 {
 	struct i40e_hw *hw = &pf->hw;
 	struct i40e_vf *vf = pf->vf;
+	int abs_vf_id = vf->vf_id + hw->func_caps.vf_base_id;
 	int i;
 
 	for (i = 0; i < pf->num_alloc_vfs; i++) {
 		/* Ignore return value on purpose - a given VF may fail, but
 		 * we need to keep going and send to all of them
 		 */
-		i40e_aq_send_msg_to_vf(hw, vf->vf_id, v_opcode, v_retval,
+		i40e_aq_send_msg_to_vf(hw, abs_vf_id, v_opcode, v_retval,
 				       msg, msglen, NULL);
 		vf++;
+		abs_vf_id = vf->vf_id + hw->func_caps.vf_base_id;
 	}
 }
 
@@ -1993,10 +1995,11 @@ void i40e_vc_notify_reset(struct i40e_pf *pf)
 void i40e_vc_notify_vf_reset(struct i40e_vf *vf)
 {
 	struct i40e_virtchnl_pf_event pfe;
+	int abs_vf_id = vf->vf_id + vf->pf->hw.func_caps.vf_base_id;
 
 	pfe.event = I40E_VIRTCHNL_EVENT_RESET_IMPENDING;
 	pfe.severity = I40E_PF_EVENT_SEVERITY_CERTAIN_DOOM;
-	i40e_aq_send_msg_to_vf(&vf->pf->hw, vf->vf_id, I40E_VIRTCHNL_OP_EVENT,
+	i40e_aq_send_msg_to_vf(&vf->pf->hw, abs_vf_id, I40E_VIRTCHNL_OP_EVENT,
 			       I40E_SUCCESS, (u8 *)&pfe,
 			       sizeof(struct i40e_virtchnl_pf_event), NULL);
 }
