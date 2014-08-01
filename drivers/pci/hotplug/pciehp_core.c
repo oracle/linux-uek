@@ -42,6 +42,7 @@ int pciehp_debug;
 int pciehp_poll_mode;
 int pciehp_poll_time;
 int pciehp_force;
+bool pciehp_surprise;
 struct workqueue_struct *pciehp_wq;
 struct workqueue_struct *pciehp_ordered_wq;
 
@@ -57,10 +58,12 @@ module_param(pciehp_debug, bool, 0644);
 module_param(pciehp_poll_mode, bool, 0644);
 module_param(pciehp_poll_time, int, 0644);
 module_param(pciehp_force, bool, 0644);
+module_param(pciehp_surprise, bool, 0644);
 MODULE_PARM_DESC(pciehp_debug, "Debugging mode enabled or not");
 MODULE_PARM_DESC(pciehp_poll_mode, "Using polling mechanism for hot-plug events or not");
 MODULE_PARM_DESC(pciehp_poll_time, "Polling mechanism frequency, in seconds");
 MODULE_PARM_DESC(pciehp_force, "Force pciehp, even if OSHP is missing");
+MODULE_PARM_DESC(pciehp_surprise, "Force to set hotplug-surprise capability");
 
 #define PCIE_MODULE_NAME "pciehp"
 
