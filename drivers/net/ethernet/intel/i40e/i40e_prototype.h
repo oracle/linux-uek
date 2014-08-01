@@ -223,6 +223,9 @@ i40e_status i40e_get_mac_addr(struct i40e_hw *hw,
 i40e_status i40e_read_lldp_cfg(struct i40e_hw *hw,
 					struct i40e_lldp_variables *lldp_cfg);
 void i40e_pre_tx_queue_cfg(struct i40e_hw *hw, u32 queue, bool enable);
+#ifdef I40E_FCOE
+i40e_status i40e_get_san_mac_addr(struct i40e_hw *hw, u8 *mac_addr);
+#endif
 /* prototype for functions used for NVM access */
 i40e_status i40e_init_nvm(struct i40e_hw *hw);
 i40e_status i40e_acquire_nvm(struct i40e_hw *hw,

@@ -36,6 +36,7 @@
 
 #include "i40e.h"
 #include "i40e_fcoe.h"
+#include "kcompat.h"
 
 /**
  * i40e_rx_is_fip - returns true if the rx packet type is FIP
@@ -1363,8 +1364,6 @@ static netdev_tx_t i40e_fcoe_xmit_frame(struct sk_buff *skb,
 	struct i40e_vsi *vsi = np->vsi;
 	struct i40e_ring *tx_ring = vsi->tx_rings[skb->queue_mapping];
 	struct i40e_tx_buffer *first;
-	__be16 protocol = skb->protocol;
-
 	u32 tx_flags = 0;
 	u8 hdr_len = 0;
 	u8 sof = 0;
@@ -1384,13 +1383,8 @@ static netdev_tx_t i40e_fcoe_xmit_frame(struct sk_buff *skb,
 	/* record the location of the first descriptor for this packet */
 	first = &tx_ring->tx_bi[tx_ring->next_to_use];
 
-	if (protocol == htons(ETH_P_8021Q)) {
-		struct vlan_ethhdr *veth = (struct vlan_ethhdr *)eth_hdr(skb);
-
-		protocol = veth->h_vlan_encapsulated_proto;
-	}
 	/* FIP is a regular L2 traffic w/o offload */
-	if (protocol == htons(ETH_P_FIP))
+	if (skb->protocol == htons(ETH_P_FIP))
 		goto out_send;
 
 	/* check sof and eof, only supports FC Class 2 or 3 */
@@ -1449,7 +1443,7 @@ static int i40e_fcoe_set_features(struct net_device *netdev,
 	struct i40e_netdev_priv *np = netdev_priv(netdev);
 	struct i40e_vsi *vsi = np->vsi;
 
-	if (features & NETIF_F_HW_VLAN_CTAG_RX)
+	if (features & NETIF_F_HW_VLAN_RX)
 		i40e_vlan_stripping_enable(vsi);
 	else
 		i40e_vlan_stripping_disable(vsi);
@@ -1499,14 +1493,14 @@ void i40e_fcoe_config_netdev(struct net_device *netdev, struct i40e_vsi *vsi)
 	if (vsi->type != I40E_VSI_FCOE)
 		return;
 
-	netdev->features = (NETIF_F_HW_VLAN_CTAG_TX |
-			    NETIF_F_HW_VLAN_CTAG_RX |
-			    NETIF_F_HW_VLAN_CTAG_FILTER);
+	netdev->features = (NETIF_F_HW_VLAN_TX |
+			    NETIF_F_HW_VLAN_RX |
+			    NETIF_F_HW_VLAN_FILTER);
 
 	netdev->vlan_features = netdev->features;
-	netdev->vlan_features &= ~(NETIF_F_HW_VLAN_CTAG_TX |
-				   NETIF_F_HW_VLAN_CTAG_RX |
-				   NETIF_F_HW_VLAN_CTAG_FILTER);
+	netdev->vlan_features &= ~(NETIF_F_HW_VLAN_TX |
+				   NETIF_F_HW_VLAN_RX |
+				   NETIF_F_HW_VLAN_FILTER);
 	netdev->fcoe_ddp_xid = I40E_FCOE_DDP_MAX - 1;
 	netdev->features |= NETIF_F_ALL_FCOE;
 	netdev->vlan_features |= NETIF_F_ALL_FCOE;
