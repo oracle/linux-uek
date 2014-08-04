@@ -911,6 +911,12 @@ xfs_qm_dqiter_bufs(
 			break;
 
 		/*
+		 * A corrupt buffer might not have a verifier attached, so
+		 * make sure we have the correct one attached before writeback
+		 * occurs.
+		 */
+		bp->b_ops = &xfs_dquot_buf_ops;
+		/*
 		 * XXX(hch): need to figure out if it makes sense to validate
 		 *	     the CRC here.
 		 */
@@ -998,7 +1004,7 @@ xfs_qm_dqiterate(
 					xfs_buf_readahead(mp->m_ddev_targp,
 					       XFS_FSB_TO_DADDR(mp, rablkno),
 					       mp->m_quotainfo->qi_dqchunklen,
-					       NULL);
+					       &xfs_dquot_buf_ops);
 					rablkno++;
 				}
 			}
