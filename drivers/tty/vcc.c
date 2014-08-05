@@ -5,6 +5,7 @@
  */
 
 #include <linux/module.h>
+#include <linux/sysfs.h>
 #include <linux/tty.h>
 #include <linux/tty_flip.h>
 #include <asm/vio.h>
@@ -23,6 +24,7 @@ MODULE_VERSION(DRV_MODULE_VERSION);
 struct vcc {
 	struct tty_port port;	/* must be first element */
 	spinlock_t lock;
+	char *domain;
 
 	/*
 	 * This buffer is required to support the tty write_room interface
@@ -323,6 +325,70 @@ static struct vio_version vcc_versions[] = {
 
 static struct tty_port_operations vcc_port_ops = { 0 };
 
+static ssize_t vcc_sysfs_domain_show(struct device *device,
+	struct device_attribute *attr, char *buf)
+{
+	int rv;
+	unsigned long flags;
+	struct vcc *vcc = dev_get_drvdata(device);
+
+	spin_lock_irqsave(&vcc->lock, flags);
+	rv = scnprintf(buf, PAGE_SIZE, "%s\n", vcc->domain);
+	spin_unlock_irqrestore(&vcc->lock, flags);
+
+	return rv;
+}
+
+static int vcc_send_ctl(struct vcc *vcc, int ctl)
+{
+	int rv;
+	struct vio_vcc pkt;
+
+	pkt.tag.type = VIO_TYPE_CTRL;
+	pkt.tag.sid = ctl;	/* ctrl_msg */
+	pkt.tag.stype = 0;	/* size */
+
+	rv = ldc_write(vcc->vio.lp, &pkt, sizeof(pkt.tag));
+	BUG_ON(!rv);
+	vccdbg("%s: ldc_write(%ld)=%d\n", __func__, sizeof(pkt.tag), rv);
+
+	return rv;
+}
+
+static ssize_t vcc_sysfs_break_store(struct device *device,
+	struct device_attribute *attr, const char *buf, size_t count)
+{
+	int rv = count;
+	int brk;
+	unsigned long flags;
+	struct vcc *vcc = dev_get_drvdata(device);
+
+	spin_lock_irqsave(&vcc->lock, flags);
+
+	if (sscanf(buf, "%ud", &brk) != 1 || brk != 1)
+		rv = -EINVAL;
+	else if (vcc_send_ctl(vcc, VCC_CTL_HUP) < 0)
+		vcc_kick_tx(vcc);
+
+	spin_unlock_irqrestore(&vcc->lock, flags);
+
+	return count;
+}
+
+static DEVICE_ATTR(domain, S_IRUSR, vcc_sysfs_domain_show, NULL);
+static DEVICE_ATTR(break, S_IWUSR, NULL, vcc_sysfs_break_store);
+
+static struct attribute *vcc_sysfs_entries[] = {
+	&dev_attr_domain.attr,
+	&dev_attr_break.attr,
+	NULL
+};
+
+static struct attribute_group vcc_attribute_group = {
+	.name = NULL, 	/* put in device directory */
+	.attrs = vcc_sysfs_entries,
+};
+
 static void print_version(void)
 {
 	printk_once(KERN_INFO "%s", version);
@@ -333,8 +399,10 @@ static int vcc_probe(struct vio_dev *vdev,
 {
 	int rv;
 	char *name;
+	const char *domain;
 	struct vcc *vcc;
 	struct device *dev;
+	struct mdesc_handle *hp;
 
 	print_version();
 
@@ -377,6 +445,22 @@ static int vcc_probe(struct vio_dev *vdev,
 		goto free_ldc;
 	}
 
+	hp = mdesc_grab();
+
+	domain = mdesc_get_property(hp, vdev->mp, "vcc-domain-name", NULL);
+	if (!domain) {
+		rv  = -ENXIO;
+		mdesc_release(hp);
+		goto unreg_tty;
+	}
+	vcc->domain = kstrdup(domain, GFP_KERNEL);
+
+	mdesc_release(hp);
+
+	rv = sysfs_create_group(&vdev->dev.kobj, &vcc_attribute_group);
+	if (rv)
+		goto remove_sysfs;
+
 	init_timer(&vcc->rx_timer);
 	vcc->rx_timer.function = vcc_rx_timer;
 	vcc->rx_timer.data = (unsigned long)vcc;
@@ -390,10 +474,18 @@ static int vcc_probe(struct vio_dev *vdev,
 
 	return 0;
 
+remove_sysfs:
+	sysfs_remove_group(&vdev->dev.kobj, &vcc_attribute_group);
+	kfree(vcc->domain);
+
+unreg_tty:
+	tty_unregister_device(vcc_tty_driver, vdev->port_id);
+
 free_ldc:
 	vio_ldc_free(&vcc->vio);
 
 free_port:
+	kfree(name);
 	kfree(vcc);
 
 	return rv;
@@ -417,12 +509,18 @@ static int vcc_remove(struct vio_dev *vdev)
 	tty = vcc->port.tty;
 	spin_unlock_irqrestore(&vcc->lock, flags);
 
+	if (tty)
+		tty_hangup(tty);
+
 	tty_unregister_device(vcc_tty_driver, vdev->port_id);
 
 	del_timer_sync(&vcc->vio.timer);
 	vio_ldc_free(&vcc->vio);
+	sysfs_remove_group(&vdev->dev.kobj, &vcc_attribute_group);
 	dev_set_drvdata(&vdev->dev, NULL);
 
+	kfree(vcc->vio.name);
+	kfree(vcc->domain);
 	kfree(vcc);
 
 	return 0;
@@ -446,6 +544,7 @@ static struct vio_driver vcc_driver = {
 static int vcc_open(struct tty_struct *tty, struct file *filp)
 {
 	struct vcc *vcc = container_of(tty->port, struct vcc, port);
+	int rv, count;
 
 	vccdbg("%s\n", __func__);
 	if (!tty) {
@@ -465,7 +564,20 @@ static int vcc_open(struct tty_struct *tty, struct file *filp)
 		return -ENXIO;
 	}
 	vccdbgl(vcc->vio.lp);
-	return tty_port_open(tty->port, tty, filp);
+
+	/*
+	 * vcc_close is called even if vcc_open fails so call
+	 * tty_port_open() regardless in case of -EBUSY.
+	 */
+	count = tty->port->count;
+	if (count)
+		pr_err("%s: tty port busy\n", __func__);
+	rv = tty_port_open(tty->port, tty, filp);
+	if (rv == 0 && count != 0)
+		rv = -EBUSY;
+
+	return rv;
+
 }
 
 static void vcc_close(struct tty_struct *tty, struct file *filp)
@@ -479,24 +591,7 @@ static void vcc_close(struct tty_struct *tty, struct file *filp)
 		pr_err("%s: NULL tty port\n", __func__);
 		return;
 	}
-	tty_hangup(tty);
 	tty_port_close(tty->port, tty, filp);
-}
-
-static int vcc_send_ctl(struct vcc *vcc, int ctl)
-{
-	int rv;
-	struct vio_vcc pkt;
-
-	pkt.tag.type = VIO_TYPE_CTRL;
-	pkt.tag.sid = ctl;	/* ctrl_msg */
-	pkt.tag.stype = 0;	/* size */
-
-	rv = ldc_write(vcc->vio.lp, &pkt, sizeof(pkt.tag));
-	BUG_ON(!rv);
-	vccdbg("%s: ldc_write(%ld)=%d\n", __func__, sizeof(pkt.tag), rv);
-
-	return rv;
 }
 
 static void vcc_ldc_hup(struct vcc *vcc)
