@@ -391,15 +391,25 @@ struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 	int shift;
 	int err;
 	int n;
+	struct vm_area_struct *vma;
+	int umem_flags = access_flags;
 
 	mr = kmalloc(sizeof *mr, GFP_KERNEL);
 	if (!mr)
 		return ERR_PTR(-ENOMEM);
 
-	/* Force registering the memory as writable. */
+	/* If actual memory is writable, force registering the memory as writable. */
 	/* Used for memory re-registeration. HCA protects the access */
+	if (!(umem_flags & IB_ACCESS_LOCAL_WRITE)) {
+		down_read(&current->mm->mmap_sem);
+		vma = find_vma(current->mm, start);
+		if (vma && (vma->vm_end >= start + length) &&
+		    (vma->vm_start <= start) && (vma->vm_flags & VM_WRITE))
+			umem_flags |= IB_ACCESS_LOCAL_WRITE;
+		up_read(&current->mm->mmap_sem);
+	}
 	mr->umem = ib_umem_get(pd->uobject->context, start, length,
-			       access_flags | IB_ACCESS_LOCAL_WRITE, 0);
+				  umem_flags, 0);
 	if (IS_ERR(mr->umem)) {
 		err = PTR_ERR(mr->umem);
 		goto err_free;
