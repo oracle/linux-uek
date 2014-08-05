@@ -462,7 +462,7 @@ static void interrupt_event_handler(struct work_struct *work)
 			pciehp_green_led_off(p_slot);
 		break;
 	case INT_PRESENCE_ON:
-		if (!HP_SUPR_RM(ctrl))
+		if (!(pciehp_surprise || HP_SUPR_RM(ctrl)))
 			break;
 		ctrl_dbg(ctrl, "Surprise Insertion\n");
 		handle_surprise_event(p_slot);
