@@ -1135,6 +1135,13 @@ asmlinkage long compat_sys_kexec_load(unsigned long entry,
 }
 #endif
 
+SYSCALL_DEFINE5(kexec_file_load, int, kernel_fd, int, initrd_fd,
+		unsigned long, cmdline_len, const char __user *, cmdline_ptr,
+		unsigned long, flags)
+{
+	return -ENOSYS;
+}
+
 void crash_kexec(struct pt_regs *regs)
 {
 	/* Take the kexec_mutex here to prevent sys_kexec_load

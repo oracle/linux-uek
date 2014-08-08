@@ -320,6 +320,7 @@
 311	64	process_vm_writev	sys_process_vm_writev
 312	common	kcmp			sys_kcmp
 313	common	finit_module		sys_finit_module
+320	common	kexec_file_load		sys_kexec_file_load
 # This one is a temporary number, designed for no clashes.
 # Nothing but DTrace should use it.
 473	common	waitfd			sys_waitfd
