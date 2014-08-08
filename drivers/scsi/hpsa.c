@@ -5295,9 +5295,10 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 		switch (cmd) {
 		case HPSA_INQUIRY:
 			/* are we trying to read a vital product page */
-			if (page_code & VPD_PAGE)
+			if (page_code & VPD_PAGE) {
 				c->Request.CDB[1] = 0x01;
-			c->Request.CDB[2] = (page_code & 0xff);
+				c->Request.CDB[2] = (page_code & 0xff);
+			}
 			c->Request.CDBLen = 6;
 			c->Request.Type.Attribute = ATTR_SIMPLE;
 			c->Request.Type.Direction = XFER_READ;
