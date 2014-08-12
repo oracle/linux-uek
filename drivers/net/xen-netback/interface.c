@@ -522,9 +522,6 @@ int xenvif_init_queue(struct xenvif_queue *queue)
 
 	init_timer(&queue->rx_stalled);
 
-	netif_napi_add(queue->vif->dev, &queue->napi, xenvif_poll,
-			XENVIF_NAPI_WEIGHT);
-
 	return 0;
 }
 
@@ -612,6 +609,9 @@ int xenvif_connect(struct xenvif_queue *queue, unsigned long tx_ring_ref,
 	wake_up_process(queue->task);
 	wake_up_process(queue->dealloc_task);
 
+	netif_napi_add(queue->vif->dev, &queue->napi, xenvif_poll,
+			XENVIF_NAPI_WEIGHT);
+
 	return 0;
 
 err_rx_unbind:
@@ -670,6 +670,8 @@ void xenvif_disconnect(struct xenvif *vif)
 	for (queue_index = 0; queue_index < num_queues; ++queue_index) {
 		queue = &vif->queues[queue_index];
 
+		netif_napi_del(&queue->napi);
+
 		if (queue->task) {
 			del_timer_sync(&queue->rx_stalled);
 			kthread_stop(queue->task);
@@ -702,7 +704,6 @@ void xenvif_disconnect(struct xenvif *vif)
 void xenvif_deinit_queue(struct xenvif_queue *queue)
 {
 	gnttab_free_pages(MAX_PENDING_REQS, queue->mmap_pages);
-	netif_napi_del(&queue->napi);
 }
 
 void xenvif_free(struct xenvif *vif)
