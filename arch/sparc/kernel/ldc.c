@@ -767,6 +767,39 @@ static int process_data_ack(struct ldc_channel *lp,
 	return 0;
 }
 
+void ldc_enable_hv_intr(struct ldc_channel *lp)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&lp->lock, flags);
+
+	ldcdbg(RX, "ldc_enable_hv_intr: dh=%llu, ino=%llu\n",
+	       lp->cfg.dev_handle, lp->cfg.rx_ino);
+	sun4v_vintr_set_valid(lp->cfg.dev_handle, lp->cfg.rx_ino,
+			      HV_INTR_ENABLED);
+
+	spin_unlock_irqrestore(&lp->lock, flags);
+
+}
+EXPORT_SYMBOL(ldc_enable_hv_intr);
+
+
+void ldc_disable_hv_intr(struct ldc_channel *lp)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&lp->lock, flags);
+
+	ldcdbg(RX, "ldc_disable_hv_intr: dh=%llu, ino=%llu\n",
+	       lp->cfg.dev_handle, lp->cfg.rx_ino);
+	sun4v_vintr_set_valid(lp->cfg.dev_handle, lp->cfg.rx_ino,
+			      HV_INTR_DISABLED);
+
+	spin_unlock_irqrestore(&lp->lock, flags);
+
+}
+EXPORT_SYMBOL(ldc_disable_hv_intr);
+
 static void send_events(struct ldc_channel *lp, unsigned int event_mask)
 {
 	if (event_mask & LDC_EVENT_RESET)
@@ -1884,6 +1917,25 @@ static const struct ldc_mode_ops stream_ops = {
 	.read		=	read_stream,
 };
 
+int ldc_tx_space_available(struct ldc_channel *lp, unsigned long size)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&lp->lock, flags);
+
+	/* tx_has_space_for() works for all modes */
+	if (!tx_has_space_for(lp, size)) {
+		spin_unlock_irqrestore(&lp->lock, flags);
+		return 0;
+	}
+
+	spin_unlock_irqrestore(&lp->lock, flags);
+
+	return 1;
+
+}
+EXPORT_SYMBOL(ldc_tx_space_available);
+
 int ldc_write(struct ldc_channel *lp, const void *buf, unsigned int size)
 {
 	unsigned long flags;
@@ -1908,10 +1960,31 @@ int ldc_write(struct ldc_channel *lp, const void *buf, unsigned int size)
 }
 EXPORT_SYMBOL(ldc_write);
 
+
+int ldc_rx_data_available(struct ldc_channel *lp)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&lp->lock, flags);
+
+	if (lp->rx_head == lp->rx_tail) {
+		spin_unlock_irqrestore(&lp->lock, flags);
+		return 0;
+	}
+
+	spin_unlock_irqrestore(&lp->lock, flags);
+
+	return 1;
+
+}
+EXPORT_SYMBOL(ldc_rx_data_available);
+
 int ldc_read(struct ldc_channel *lp, void *buf, unsigned int size)
 {
 	unsigned long flags;
 	int err;
+
+	ldcdbg(RX, "ldc_read: entered size=%d\n", size);
 
 	if (!buf)
 		return -EINVAL;
@@ -1927,6 +2000,9 @@ int ldc_read(struct ldc_channel *lp, void *buf, unsigned int size)
 		err = lp->mops->read(lp, buf, size);
 
 	spin_unlock_irqrestore(&lp->lock, flags);
+
+	ldcdbg(RX, "ldc_read:mode=%d, head=%lu, tail=%lu rv=%d\n",
+	       lp->cfg.mode, lp->rx_head, lp->rx_tail, err);
 
 	return err;
 }

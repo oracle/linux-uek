@@ -53,6 +53,7 @@ struct vio_ver_info {
 #define VDEV_DISK		0x03
 #define VDEV_DISK_SERVER	0x04
 #define VDEV_CONSOLE_CON	0x05
+#define VDEV_VLDC		0x06
 
 	u8			resv1[3];
 	u64			resv2[5];
@@ -293,6 +294,10 @@ struct vio_dev {
 
 	unsigned int		tx_irq;
 	unsigned int		rx_irq;
+
+	u64			dev_handle;
+	u64			tx_ino;
+	u64			rx_ino;
 
 	struct device		dev;
 };

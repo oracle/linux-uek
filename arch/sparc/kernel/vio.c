@@ -176,17 +176,23 @@ static void vio_fill_channel_info(struct mdesc_handle *hp, u64 mp,
 		target = mdesc_arc_target(hp, a);
 
 		irq = mdesc_get_property(hp, target, "tx-ino", NULL);
-		if (irq)
+		if (irq) {
 			vdev->tx_irq = sun4v_build_virq(cdev_cfg_handle, *irq);
+			vdev->tx_ino = *irq;
+		}
 
 		irq = mdesc_get_property(hp, target, "rx-ino", NULL);
-		if (irq)
+		if (irq) {
 			vdev->rx_irq = sun4v_build_virq(cdev_cfg_handle, *irq);
+			vdev->rx_ino = *irq;
+		}
 
 		chan_id = mdesc_get_property(hp, target, "id", NULL);
 		if (chan_id)
 			vdev->channel_id = *chan_id;
 	}
+
+	vdev->dev_handle = cdev_cfg_handle;
 }
 
 static struct vio_dev *vio_create_one(struct mdesc_handle *hp, u64 mp,

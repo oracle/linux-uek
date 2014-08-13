@@ -24,6 +24,9 @@ struct ldc_channel_config {
 	u32			mtu;
 	unsigned int		rx_irq;
 	unsigned int		tx_irq;
+	u64			rx_ino;
+	u64			tx_ino;
+	u64			dev_handle;
 	u8			mode;
 #define LDC_MODE_RAW		0x00
 #define LDC_MODE_UNRELIABLE	0x01
@@ -141,5 +144,13 @@ extern void *ldc_alloc_exp_dring(struct ldc_channel *lp, unsigned int len,
 extern void ldc_free_exp_dring(struct ldc_channel *lp, void *buf,
 			       unsigned int len,
 			       struct ldc_trans_cookie *cookies, int ncookies);
+
+extern int ldc_tx_space_available(struct ldc_channel *lp, unsigned long size);
+
+extern int ldc_rx_data_available(struct ldc_channel *lp);
+
+extern void ldc_enable_hv_intr(struct ldc_channel *lp);
+
+extern void ldc_disable_hv_intr(struct ldc_channel *lp);
 
 #endif /* _SPARC64_LDC_H */

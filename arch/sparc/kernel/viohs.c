@@ -222,7 +222,10 @@ static int send_rdx(struct vio_driver_state *vio)
 
 static int send_attr(struct vio_driver_state *vio)
 {
-	return vio->ops->send_attr(vio);
+	if (vio->ops && vio->ops->send_attr)
+		return vio->ops->send_attr(vio);
+
+	return -EINVAL;
 }
 
 static struct vio_version *find_by_major(struct vio_driver_state *vio,
@@ -373,20 +376,23 @@ static int process_attr(struct vio_driver_state *vio, void *pkt)
 	if (!(vio->hs_state & VIO_HS_GOTVERS))
 		return handshake_failure(vio);
 
-	err = vio->ops->handle_attr(vio, pkt);
-	if (err < 0) {
-		return handshake_failure(vio);
-	} else {
-		vio->hs_state |= VIO_HS_GOT_ATTR;
+	if (vio->ops && vio->ops->handle_attr) {
+		err = vio->ops->handle_attr(vio, pkt);
+		if (err < 0) {
+			return handshake_failure(vio);
+		} else {
+			vio->hs_state |= VIO_HS_GOT_ATTR;
 
-		if ((vio->dr_state & VIO_DR_STATE_TXREQ) &&
-		    !(vio->hs_state & VIO_HS_SENT_DREG)) {
-			if (send_dreg(vio) < 0)
-				return handshake_failure(vio);
+			if ((vio->dr_state & VIO_DR_STATE_TXREQ) &&
+			    !(vio->hs_state & VIO_HS_SENT_DREG)) {
+				if (send_dreg(vio) < 0)
+					return handshake_failure(vio);
 
-			vio->hs_state |= VIO_HS_SENT_DREG;
+				vio->hs_state |= VIO_HS_SENT_DREG;
+			}
 		}
 	}
+
 	return 0;
 }
 
@@ -638,8 +644,11 @@ int vio_control_pkt_engine(struct vio_driver_state *vio, void *pkt)
 	}
 	if (!err &&
 	    vio->hs_state != prev_state &&
-	    (vio->hs_state & VIO_HS_COMPLETE))
-		vio->ops->handshake_complete(vio);
+	    (vio->hs_state & VIO_HS_COMPLETE)) {
+
+		if (vio->ops && vio->ops->handshake_complete)
+			vio->ops->handshake_complete(vio);
+	}
 
 	return err;
 }
@@ -714,6 +723,10 @@ int vio_ldc_alloc(struct vio_driver_state *vio,
 	cfg.tx_irq = vio->vdev->tx_irq;
 	cfg.rx_irq = vio->vdev->rx_irq;
 
+	cfg.rx_ino = vio->vdev->rx_ino;
+	cfg.tx_ino = vio->vdev->tx_ino;
+	cfg.dev_handle = vio->vdev->dev_handle;
+
 	lp = ldc_alloc(vio->vdev->channel_id, &cfg, event_arg);
 	if (IS_ERR(lp))
 		return PTR_ERR(lp);
@@ -786,29 +799,26 @@ int vio_driver_init(struct vio_driver_state *vio, struct vio_dev *vdev,
 		    int ver_table_size, struct vio_driver_ops *ops,
 		    char *name)
 {
-	int raw = 0;
-
 	switch (dev_class) {
 	case VDEV_NETWORK:
 	case VDEV_NETWORK_SWITCH:
 	case VDEV_DISK:
 	case VDEV_DISK_SERVER:
-		break;
 	case VDEV_CONSOLE_CON:
-		raw = 1;
+	case VDEV_VLDC:
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	/*
-	 * We cannot use ldc_mode() here since the LDC has not been
-	 * allocated yet.  Instead we have to determine raw mode
-	 * based on device class above.
-	 */
-	if (!raw && (!ops->send_attr || !ops->handle_attr ||
-	     !ops->handshake_complete))
-		return -EINVAL;
+	if (dev_class == VDEV_NETWORK ||
+	    dev_class == VDEV_NETWORK_SWITCH ||
+	    dev_class == VDEV_DISK ||
+	    dev_class == VDEV_DISK_SERVER) {
+		if (!ops || !ops->send_attr || !ops->handle_attr ||
+		    !ops->handshake_complete)
+			return -EINVAL;
+	}
 
 	if (!ver_table || ver_table_size < 0)
 		return -EINVAL;

@@ -604,5 +604,11 @@ config TILE_SROM
 	  device appear much like a simple EEPROM, and knows
 	  how to partition a single ROM for multiple purposes.
 
+config VLDC
+	tristate "Logical Domains Virtual Channel"
+	depends on SUN_LDOMS
+	default m
+	help
+	   Support for virtual channel under Logical Domains.
 endmenu
 
