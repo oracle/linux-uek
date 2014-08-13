@@ -449,6 +449,14 @@ static u8 rds_ib_get_failover_port(u8 port)
 		}
 	}
 
+	/*
+	 * Note: Failover across HCAs/Failover groups
+	 * is experimental code that causes instabilities
+	 * in some applications and disabled by
+	 * default.
+	 */
+#define RDS_EXPERIMENTAL_FAILOVER_ACROSS_HCAS_FAILOVER_GROUPS 0
+#if RDS_EXPERIMENTAL_FAILOVER_ACROSS_HCAS_FAILOVER_GROUPS
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if ((i != port) &&
 		    (ip_config[i].pkey == ip_config[port].pkey) &&
@@ -456,7 +464,7 @@ static u8 rds_ib_get_failover_port(u8 port)
 			return i;
 		}
 	}
-
+#endif
 	return 0;
 }
 
