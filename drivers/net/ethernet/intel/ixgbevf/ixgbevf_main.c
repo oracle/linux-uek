@@ -105,6 +105,7 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
 #define DEFAULT_DEBUG_LEVEL_SHIFT 3
+static int cards_found;
 
 static void ixgbevf_service_event_schedule(struct ixgbevf_adapter *adapter)
 {
@@ -4378,7 +4379,6 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 	struct net_device *netdev;
 	struct ixgbevf_adapter *adapter = NULL;
 	struct ixgbe_hw *hw = NULL;
-	static int cards_found;
 	int i, err, pci_using_dac;
 	const struct ixgbevf_info *ei = ixgbevf_info_tbl[ent->driver_data];
 
@@ -4629,6 +4629,8 @@ static void __devexit ixgbevf_remove(struct pci_dev *pdev)
 
 	if (!test_and_set_bit(__IXGBEVF_DISABLED, &adapter->state))
 		pci_disable_device(pdev);
+	cards_found--;
+        adapter->bd_number = cards_found;
 }
 
 /**
