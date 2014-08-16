@@ -333,7 +333,7 @@ static void asmdisk_evict_inode(struct inode *inode)
 		mlog(ML_DISK,
 		     "Releasing disk 0x%p (bdev 0x%p, dev %X)\n",
 		     d, d->d_bdev, d->d_bdev->bd_dev);
-		blkdev_put(d->d_bdev, FMODE_WRITE | FMODE_READ);
+		blkdev_put(d->d_bdev, FMODE_WRITE | FMODE_READ | FMODE_EXCL);
 		d->d_bdev = NULL;
 	}
 
@@ -720,7 +720,7 @@ static int asm_open_disk(struct file *file, struct block_device *bdev)
 
 	mlog_entry("(0x%p, 0x%p)\n", file, bdev);
 
-	ret = blkdev_get(bdev, FMODE_WRITE | FMODE_READ, inode->i_sb);
+	ret = blkdev_get(bdev, FMODE_WRITE | FMODE_READ | FMODE_EXCL, inode->i_sb);
 	if (ret)
 		goto out;
 
@@ -772,7 +772,7 @@ static int asm_open_disk(struct file *file, struct block_device *bdev)
 		mlog(ML_DISK,
 		     "Open of disk 0x%p (bdev 0x%p, dev %X)\n",
 		     d, d->d_bdev, d->d_bdev->bd_dev);
-		blkdev_put(bdev, FMODE_WRITE | FMODE_READ);
+		blkdev_put(bdev, FMODE_WRITE | FMODE_READ | FMODE_EXCL);
 	}
 
 	h->h_disk = d;
@@ -793,7 +793,7 @@ out_head:
 	kfree(h);
 
 out_get:
-	blkdev_put(bdev, FMODE_WRITE | FMODE_READ);
+	blkdev_put(bdev, FMODE_WRITE | FMODE_READ | FMODE_EXCL);
 
 out:
 	mlog_exit(ret);
