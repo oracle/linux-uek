@@ -325,15 +325,16 @@ void tick_nohz_stop_sched_tick(int inidle)
 		time_delta = timekeeping_max_deferment();
 	} while (read_seqretry(&xtime_lock, seq));
 
-	if (rcu_needs_cpu(cpu) || printk_needs_cpu(cpu) ||
-	    arch_needs_cpu(cpu)) {
+	/* Get the next timer wheel timer */
+	next_jiffies = get_next_timer_interrupt(last_jiffies);
+	delta_jiffies = next_jiffies - last_jiffies;
+	/* See if we need to wake up earlier to do other work */
+	if ((rcu_needs_cpu(cpu) || printk_needs_cpu(cpu) || arch_needs_cpu(cpu)) &&
+	    rcu_delay < delta_jiffies) {
 		next_jiffies = last_jiffies + rcu_delay;
 		delta_jiffies = rcu_delay;
-	} else {
-		/* Get the next timer wheel timer */
-		next_jiffies = get_next_timer_interrupt(last_jiffies);
-		delta_jiffies = next_jiffies - last_jiffies;
 	}
+
 	/*
 	 * Do not stop the tick, if we are only one off
 	 * or if the cpu is required for rcu
@@ -394,8 +395,12 @@ void tick_nohz_stop_sched_tick(int inidle)
 		if (delta_jiffies > 1)
 			cpumask_set_cpu(cpu, nohz_cpu_mask);
 
-		/* Skip reprogram of event if its not changed */
-		if (ts->tick_stopped && ktime_equal(expires, dev->next_event))
+		/* Skip reprogram of event if its not changed or it is already
+		 * set to an earlier time (this way we prevent re-arming the
+		 * original event repeatedly into the future).
+		 */
+		if (ts->tick_stopped && now.tv64 <= dev->next_event.tv64 &&
+		    dev->next_event.tv64 <= expires.tv64)
 			goto out;
 
 		/*
