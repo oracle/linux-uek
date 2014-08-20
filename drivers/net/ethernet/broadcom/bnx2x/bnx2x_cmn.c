@@ -615,11 +615,7 @@ static void bnx2x_tpa_start(struct bnx2x_fastpath *fp, u16 queue,
 #ifdef BNX2X_STOP_ON_ERROR
 	fp->tpa_queue_used |= (1 << queue);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)) /* BNX2X_UPSTREAM */
-#ifdef _ASM_GENERIC_INT_L64_H
-	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%lx\n",
-#else
 	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%llx\n",
-#endif
 #else
 #if defined(__powerpc64__) || defined(_ASM_IA64_TYPES_H)
 	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%lx\n",
