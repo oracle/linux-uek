@@ -1938,7 +1938,7 @@ qla2x00_fdmiv2_rhba(scsi_qla_host_t *vha)
 	eiter->len = __constant_cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20b1,
+	ql_dbg(ql_dbg_disc, vha, 0x2022,
 	    "Vendor Id = %x.\n", eiter->a.vendor_id);
 
 	/* Num Ports */
@@ -2350,7 +2350,7 @@ qla2x00_fdmiv2_rpa(scsi_qla_host_t *vha)
 	eiter->len = cpu_to_be16(4 + 4);
 	size += 4 + 4;
 
-	ql_dbg(ql_dbg_disc, vha, 0x20c8,
+	ql_dbg(ql_dbg_disc, vha, 0x2021,
 	    "Number of ports = %x.\n", eiter->a.num_ports);
 
 	/* Port Id */
