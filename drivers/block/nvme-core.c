@@ -2690,6 +2690,7 @@ static void nvme_free_dev(struct kref *kref)
 {
 	struct nvme_dev *dev = container_of(kref, struct nvme_dev, kref);
 
+	pci_dev_put(dev->pci_dev);
 	nvme_free_namespaces(dev);
 	free_percpu(dev->io_queue);
 	kfree(dev->queues);
@@ -2870,11 +2871,11 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	INIT_LIST_HEAD(&dev->namespaces);
 	INIT_WORK(&dev->reset_work, nvme_reset_failed_dev);
 	INIT_WORK(&dev->cpu_work, nvme_cpu_workfn);
-	dev->pci_dev = pdev;
+	dev->pci_dev = pci_dev_get(pdev);
 	pci_set_drvdata(pdev, dev);
 	result = nvme_set_instance(dev);
 	if (result)
-		goto free;
+		goto put_pci;
 
 	result = nvme_setup_prp_pools(dev);
 	if (result)
@@ -2919,6 +2920,8 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	nvme_release_prp_pools(dev);
  release:
 	nvme_release_instance(dev);
+ put_pci:
+	pci_dev_put(dev->pci_dev);
  free:
 	free_percpu(dev->io_queue);
 	kfree(dev->queues);
