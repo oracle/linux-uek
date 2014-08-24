@@ -2058,8 +2058,8 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	attr->path_mtu 		  = cmd.path_mtu;
 	attr->path_mig_state 	  = cmd.path_mig_state;
 	attr->qkey 		  = cmd.qkey;
-	attr->rq_psn 		  = cmd.rq_psn;
-	attr->sq_psn 		  = cmd.sq_psn;
+	attr->rq_psn              = cmd.rq_psn & 0xffffff;
+	attr->sq_psn              = cmd.sq_psn & 0xffffff;
 	attr->dest_qp_num 	  = cmd.dest_qp_num;
 	attr->qp_access_flags 	  = cmd.qp_access_flags;
 	attr->pkey_index 	  = cmd.pkey_index;
