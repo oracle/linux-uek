@@ -182,17 +182,33 @@ static void __mlx4_init_parallel_one(struct work_struct *);
 static int __mlx4_init_one_common(struct pci_dev *,
 				  const struct pci_device_id *);
 
-static int mlx4_enable_dynamic_mtt;
-module_param_named(enable_dynamic_mtt, mlx4_enable_dynamic_mtt, int, 0644);
-MODULE_PARM_DESC(enable_dynamic_mtt, "Dynamically adjust log_num_mtt based on system memory");
+static int mlx4_scale_profile;
+module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
+MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
+		 "parameters based on system resources");
 
 #define MLX4_LOG_NUM_MTT   37
 
+#define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
+
 static void process_mod_param_profile(void)
 {
-	default_profile.num_qp = (mod_param_profile.num_qp ?
-				  1 << mod_param_profile.num_qp :
-				  default_profile.num_qp);
+	if (mlx4_scale_profile && !mod_param_profile.num_qp) {
+
+		default_profile.num_qp = 1 << MLX4_SCALE_LOG_NUM_QP;
+
+		printk(KERN_INFO "mlx4_core: Scalable default profile "
+		       "parameters are enabled. Effective log_num_qp is "
+		       "now set to %d.\n", MLX4_SCALE_LOG_NUM_QP);
+	} else {
+		if (mlx4_scale_profile && mod_param_profile.num_qp)
+			printk(KERN_WARNING
+			       "mlx4_core: Both scale_profile and log_num_qp "
+			       "are set. Ignore scale_profile.\n");
+		default_profile.num_qp = (mod_param_profile.num_qp ?
+					  1 << mod_param_profile.num_qp :
+					  default_profile.num_qp);
+	}
 	default_profile.num_srq = (mod_param_profile.num_srq ?
 				  1 << mod_param_profile.num_srq :
 				  default_profile.num_srq);
@@ -208,6 +224,12 @@ static void process_mod_param_profile(void)
 	default_profile.num_mpt = (mod_param_profile.num_mpt ?
 				  1 << mod_param_profile.num_mpt :
 				  default_profile.num_mpt);
+
+	/*
+	 * Note: default_profile.num_mtt is modified/scaled
+	 * in mlx4_verify_params() along with log_mtts_per_seg
+	 * which is verified with limits checking there.
+	 */
 
 }
 
@@ -2440,30 +2462,39 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	/* Dynamically adjust num_mtt only if log_num_mtt is not set by user */
-	if (mlx4_enable_dynamic_mtt &&  ! mod_param_profile.num_mtt) {
+	/* Dynamically scale num_mtt only if log_num_mtt is not set by user */
+	if (mlx4_scale_profile &&  !mod_param_profile.num_mtt) {
 		int log_mtt;
 
 		/*
 		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
-		 * if dynamic MTT is enabled, have 4 MTT pages per segment (if not set by user).
+		 * if dynamic scaling of parameters is enabled, use 4 MTT pages
+		 * per segment (if not set by user).
+		 *
 		 * MTT memory = 2 * total memory
 		 */
 		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : 2;
 
 		/*
-		 * Set the boundary for dynamic MTT.
+		 * Set the boundary for scalable MTT.
 		 */
 		log_mtt = max(mod_param_profile.num_mtt,
-				min(MLX4_LOG_NUM_MTT, ilog2((totalram_pages << 1) >> log_mtts_per_seg)));
+			      min(MLX4_LOG_NUM_MTT,
+				  ilog2((totalram_pages << 1)
+					>> log_mtts_per_seg)));
 		default_profile.num_mtt = 1 << log_mtt;
 
-		printk(KERN_INFO "Dynamic MTT is enabled. log_num_mtt is set to %d.\n", log_mtt);
+		printk(KERN_INFO "mlx4_core: Scalable default profile "
+		       "parameters are enabled. Effective log_num_mtt "
+		       "is now set to %d.\n", log_mtt);
 	} else {
-		if (mlx4_enable_dynamic_mtt && mod_param_profile.num_mtt)
-			printk(KERN_WARNING "Both enable_dynamic_mtt and log_num_mtt are set. Ignore enable_dynamic_mtt.\n");
+		if (mlx4_scale_profile && mod_param_profile.num_mtt)
+			printk(KERN_WARNING
+			       "Both scale_profile and log_num_mtt "
+			       "are set. Ignore scale_profile.\n");
 
-		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : ilog2(MLX4_MTT_ENTRY_PER_SEG);
+		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg :
+			ilog2(MLX4_MTT_ENTRY_PER_SEG);
 
 		default_profile.num_mtt = (mod_param_profile.num_mtt ?
 			1 << mod_param_profile.num_mtt :
@@ -2471,7 +2502,8 @@ static int __init mlx4_verify_params(void)
 	}
 
 	if ((log_mtts_per_seg < 1) || (log_mtts_per_seg > 7)) {
-		printk(KERN_WARNING "mlx4_core: bad log_mtts_per_seg: %d\n", log_mtts_per_seg);
+		printk(KERN_WARNING "mlx4_core: bad log_mtts_per_seg: %d\n",
+		       log_mtts_per_seg);
 		return -1;
 	}
 
