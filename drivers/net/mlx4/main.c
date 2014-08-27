@@ -179,7 +179,8 @@ module_param_named(log_mtts_per_seg, log_mtts_per_seg, int, 0444);
 MODULE_PARM_DESC(log_mtts_per_seg, "Log2 number of MTT entries per segment (1-7)");
 
 static void __mlx4_init_parallel_one(struct work_struct *);
-static void __mlx4_init_one_common(struct pci_dev *, const struct pci_device_id *);
+static int __mlx4_init_one_common(struct pci_dev *,
+				  const struct pci_device_id *);
 
 static int mlx4_enable_dynamic_mtt;
 module_param_named(enable_dynamic_mtt, mlx4_enable_dynamic_mtt, int, 0644);
@@ -2250,12 +2251,10 @@ static int __devinit mlx4_init_one(struct pci_dev *pdev,
 		++mlx4_version_printed;
 	}
 
-	__mlx4_init_one_common(pdev, id);
-
-	return 0;
+	return __mlx4_init_one_common(pdev, id);
 }
 
-static void __mlx4_init_one_common(struct pci_dev *pdev,
+static int __mlx4_init_one_common(struct pci_dev *pdev,
 	const struct pci_device_id *id)
 {
 	int node, cpu;
@@ -2263,7 +2262,8 @@ static void __mlx4_init_one_common(struct pci_dev *pdev,
 
 	work = kmalloc(sizeof *work, GFP_KERNEL);
 	if (!work) {
-		printk(KERN_ERR "mlx4_restart_one: failed to allocate parallel load work.\n");
+		printk(KERN_ERR "mlx4_init_one_common: failed to allocate "
+		       "parallel load work.\n");
 		return -ENOMEM;
 	}
 	work->pdev = pdev;
@@ -2283,7 +2283,7 @@ static void __mlx4_init_one_common(struct pci_dev *pdev,
 	} else
 		__mlx4_init_parallel_one(&work->work);
 
-	return;
+	return 0;
 }
 
 static void __mlx4_init_parallel_one(struct work_struct *_work)
@@ -2371,9 +2371,7 @@ int mlx4_restart_one(struct pci_dev *pdev)
 
 	mlx4_remove_one(pdev);
 
-	__mlx4_init_one_common(pdev, NULL);
-
-	return 0;
+	return __mlx4_init_one_common(pdev, NULL);
 }
 
 
