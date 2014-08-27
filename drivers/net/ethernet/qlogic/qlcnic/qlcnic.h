@@ -527,6 +527,8 @@ struct qlcnic_hardware_context {
 	u8 extend_lb_time;
 	u8 lb_mode;
 	struct device *hwmon_dev;
+	u32 post_mode;
+	bool run_post;
 };
 
 struct qlcnic_adapter_stats {
