@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -519,7 +520,11 @@ static void ixgbe_dcbnl_setpfcstate(struct net_device *netdev, u8 state)
  * otherwise returns 0 as the invalid user priority bitmap to indicate an
  * error.
  */
+#ifdef HAVE_DCBNL_OPS_SETAPP_RETURN_INT
+static int ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
+#else
 static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
+#endif
 {
 	u8 rval = 0;
 #ifdef HAVE_DCBNL_IEEE
@@ -556,7 +561,11 @@ static u8 ixgbe_dcbnl_getapp(struct net_device *netdev, u8 idtype, u16 id)
  *
  * Returns : 0 on success or 1 on error
  */
+#ifdef HAVE_DCBNL_OPS_SETAPP_RETURN_INT
+static int ixgbe_dcbnl_setapp(struct net_device *netdev,
+#else
 static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
+#endif
 			     u8 idtype, u16 id, u8 up)
 {
 	int err = 0;
@@ -575,7 +584,7 @@ static u8 ixgbe_dcbnl_setapp(struct net_device *netdev,
 		if (id == ETH_P_FCOE) {
 			struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-			adapter->fcoe.up = ffs(up) - 1;
+			adapter->fcoe.up = up ? ffs(up) - 1 : IXGBE_FCOE_DEFUP;
 		}
 #endif
 		break;
@@ -786,8 +795,8 @@ static u8 ixgbe_dcbnl_getdcbx(struct net_device *dev)
 static u8 ixgbe_dcbnl_setdcbx(struct net_device *dev, u8 mode)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(dev);
-	struct ieee_ets ets = {0};
-	struct ieee_pfc pfc = {0};
+	struct ieee_ets ets = { .ets_cap = 0 };
+	struct ieee_pfc pfc = { .pfc_en = 0 };
 
 	/* no support for LLD_MANAGED modes or CEE+IEEE */
 	if ((mode & DCB_CAP_DCBX_LLD_MANAGED) ||

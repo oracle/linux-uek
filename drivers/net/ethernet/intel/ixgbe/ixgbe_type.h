@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -118,7 +119,8 @@
 #define IXGBE_CTRL_EXT		0x00018
 #define IXGBE_ESDP		0x00020
 #define IXGBE_EODSDP		0x00028
-#define IXGBE_I2CCTL		0x00028
+#define IXGBE_I2CCTL_82599	0x00028
+#define IXGBE_I2CCTL_BY_MAC(_hw)(0x00028)
 #define IXGBE_PHY_GPIO		0x00028
 #define IXGBE_MAC_GPIO		0x00030
 #define IXGBE_PHYINT_STATUS0	0x00100
@@ -153,10 +155,10 @@
 #define IXGBE_VPDDIAG1	0x10208
 
 /* I2CCTL Bit Masks */
-#define IXGBE_I2C_CLK_IN	0x00000001
-#define IXGBE_I2C_CLK_OUT	0x00000002
-#define IXGBE_I2C_DATA_IN	0x00000004
-#define IXGBE_I2C_DATA_OUT	0x00000008
+#define IXGBE_I2C_CLK_IN_BY_MAC(_hw)(0x00000001)
+#define IXGBE_I2C_CLK_OUT_BY_MAC(_hw)(0x00000002)
+#define IXGBE_I2C_DATA_IN_BY_MAC(_hw)(0x00000004)
+#define IXGBE_I2C_DATA_OUT_BY_MAC(_hw)(0x00000008)
 #define IXGBE_I2C_CLOCK_STRETCHING_TIMEOUT	500
 
 #define IXGBE_I2C_THERMAL_SENSOR_ADDR	0xF8
@@ -420,9 +422,9 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_WUPL	0x05900
 #define IXGBE_WUPM	0x05A00 /* wake up pkt memory 0x5A00-0x5A7C */
 
-#define IXGBE_FHFT(_n)	(0x09000 + (_n * 0x100)) /* Flex host filter table */
+#define IXGBE_FHFT(_n)	(0x09000 + ((_n) * 0x100)) /* Flex host filter table */
 /* Ext Flexible Host Filter Table */
-#define IXGBE_FHFT_EXT(_n)	(0x09800 + (_n * 0x100))
+#define IXGBE_FHFT_EXT(_n)	(0x09800 + ((_n) * 0x100))
 
 /* Four Flexible Filters are supported */
 #define IXGBE_FLEXIBLE_FILTER_COUNT_MAX		4
@@ -863,6 +865,8 @@ struct ixgbe_thermal_sensor_data {
 #define IXGBE_PBACLR_82599	0x11068
 #define IXGBE_CIAA_82599	0x11088
 #define IXGBE_CIAD_82599	0x1108C
+#define IXGBE_CIAA_BY_MAC(_hw)	(IXGBE_CIAA_82599)
+#define IXGBE_CIAD_BY_MAC(_hw)	(IXGBE_CIAD_82599)
 #define IXGBE_PICAUSE		0x110B0
 #define IXGBE_PIENA		0x110B8
 #define IXGBE_CDQ_MBR_82599	0x110B4
@@ -1612,12 +1616,14 @@ enum {
  *	1588 (0x88f7):	 Filter 3
  *	FIP  (0x8914):	 Filter 4
  *	LLDP (0x88CC):	 Filter 5
+ *	LACP (0x8809):	 Filter 6
  */
 #define IXGBE_ETQF_FILTER_EAPOL		0
 #define IXGBE_ETQF_FILTER_FCOE		2
 #define IXGBE_ETQF_FILTER_1588		3
 #define IXGBE_ETQF_FILTER_FIP		4
 #define IXGBE_ETQF_FILTER_LLDP		5
+#define IXGBE_ETQF_FILTER_LACP		6
 /* VLAN Control Bit Masks */
 #define IXGBE_VLNCTRL_VET		0x0000FFFF  /* bits 0-15 */
 #define IXGBE_VLNCTRL_CFI		0x10000000  /* bit 28 */
@@ -1810,6 +1816,7 @@ enum {
 #define IXGBE_GSSR_MAC_CSR_SM	0x0008
 #define IXGBE_GSSR_FLASH_SM	0x0010
 #define IXGBE_GSSR_SW_MNG_SM	0x0400
+#define IXGBE_GSSR_NVM_PHY_MASK	0xF
 
 /* FW Status register bitmask */
 #define IXGBE_FWSTS_FWRI	0x00000200 /* Firmware Reset Indication */
@@ -2249,6 +2256,10 @@ enum {
 
 /* SRRCTL bit definitions */
 #define IXGBE_SRRCTL_BSIZEPKT_SHIFT	10 /* so many KBs */
+#define IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT	2 /* 64byte resolution (>> 6)
+					   * + at bit 8 offset (<< 8)
+					   *  = (<< 2)
+					   */
 #define IXGBE_SRRCTL_RDMTS_SHIFT	22
 #define IXGBE_SRRCTL_RDMTS_MASK		0x01C00000
 #define IXGBE_SRRCTL_DROP_EN		0x10000000
@@ -2403,6 +2414,11 @@ enum {
 		(IXGBE_PVFTDWBAL((q_per_pool)*(vf_number) + (vf_q_index)))
 #define IXGBE_PVFTDWBAHn(q_per_pool, vf_number, vf_q_index) \
 		(IXGBE_PVFTDWBAH((q_per_pool)*(vf_number) + (vf_q_index)))
+
+#define IXGBE_PVFTDHn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDH((q_per_pool)*(vf_number) + (vf_q_index)))
+#define IXGBE_PVFTDTn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDT((q_per_pool)*(vf_number) + (vf_q_index)))
 
 /* Little Endian defines */
 #ifndef __le16
@@ -3158,8 +3174,8 @@ struct ixgbe_mac_operations {
 	s32 (*enable_rx_dma)(struct ixgbe_hw *, u32);
 	s32 (*disable_sec_rx_path)(struct ixgbe_hw *);
 	s32 (*enable_sec_rx_path)(struct ixgbe_hw *);
-	s32 (*acquire_swfw_sync)(struct ixgbe_hw *, u16);
-	void (*release_swfw_sync)(struct ixgbe_hw *, u16);
+	s32 (*acquire_swfw_sync)(struct ixgbe_hw *, u32);
+	void (*release_swfw_sync)(struct ixgbe_hw *, u32);
 	s32 (*prot_autoc_read)(struct ixgbe_hw *, bool *, u32 *);
 	s32 (*prot_autoc_write)(struct ixgbe_hw *, u32, bool);
 
@@ -3214,9 +3230,10 @@ struct ixgbe_mac_operations {
 	s32 (*dmac_update_tcs)(struct ixgbe_hw *hw);
 	s32 (*dmac_config_tcs)(struct ixgbe_hw *hw);
 	void (*get_rtrup2tc)(struct ixgbe_hw *hw, u8 *map);
-	s32 (*set_eee)(struct ixgbe_hw *hw, bool enable_eee);
-	s32 (*eee_linkup)(struct ixgbe_hw *hw, bool eee_enabled);
+	s32 (*setup_eee)(struct ixgbe_hw *hw, bool enable_eee);
 	void (*set_ethertype_anti_spoofing)(struct ixgbe_hw *, bool, int);
+	void (*set_source_address_pruning)(struct ixgbe_hw *, bool,
+					   unsigned int);
 	void (*disable_rx)(struct ixgbe_hw *hw);
 	void (*enable_rx)(struct ixgbe_hw *hw);
 };
@@ -3296,6 +3313,8 @@ struct ixgbe_phy_info {
 	bool sfp_setup_needed;
 	u32 revision;
 	enum ixgbe_media_type media_type;
+	u32 phy_semaphore_mask;
+	u8 lan_id;
 	bool reset_disable;
 	ixgbe_autoneg_advertised autoneg_advertised;
 	enum ixgbe_smart_speed smart_speed;
@@ -3398,10 +3417,10 @@ struct ixgbe_hw {
 #define IXGBE_ERR_OUT_OF_MEM			-34
 #define IXGBE_ERR_FEATURE_NOT_SUPPORTED		-36
 #define IXGBE_ERR_EEPROM_PROTECTED_REGION	-37
+#define IXGBE_ERR_FDIR_CMD_INCOMPLETE		-38
 
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 
-#define UNREFERENCED_XPARAMETER
 
 #include "ixgbe_osdep2.h"
 

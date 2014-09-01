@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -41,7 +42,7 @@
 
 #ifdef IXGBE_HWMON
 /* hwmon callback functions */
-static ssize_t ixgbe_hwmon_show_location(struct device *dev,
+static ssize_t ixgbe_hwmon_show_location(struct device __always_unused *dev,
 					 struct device_attribute *attr,
 					 char *buf)
 {
@@ -51,7 +52,7 @@ static ssize_t ixgbe_hwmon_show_location(struct device *dev,
 		       ixgbe_attr->sensor->location);
 }
 
-static ssize_t ixgbe_hwmon_show_temp(struct device *dev,
+static ssize_t ixgbe_hwmon_show_temp(struct device __always_unused *dev,
 				     struct device_attribute *attr,
 				     char *buf)
 {
@@ -70,7 +71,7 @@ static ssize_t ixgbe_hwmon_show_temp(struct device *dev,
 	return sprintf(buf, "%u\n", value);
 }
 
-static ssize_t ixgbe_hwmon_show_cautionthresh(struct device *dev,
+static ssize_t ixgbe_hwmon_show_cautionthresh(struct device __always_unused *dev,
 				     struct device_attribute *attr,
 				     char *buf)
 {
@@ -84,7 +85,7 @@ static ssize_t ixgbe_hwmon_show_cautionthresh(struct device *dev,
 	return sprintf(buf, "%u\n", value);
 }
 
-static ssize_t ixgbe_hwmon_show_maxopthresh(struct device *dev,
+static ssize_t ixgbe_hwmon_show_maxopthresh(struct device __always_unused *dev,
 				     struct device_attribute *attr,
 				     char *buf)
 {
@@ -161,7 +162,7 @@ static int ixgbe_add_hwmon_attr(struct ixgbe_adapter *adapter,
 }
 #endif /* IXGBE_HWMON */
 
-static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter *adapter)
+static void ixgbe_sysfs_del_adapter(struct ixgbe_adapter __maybe_unused *adapter)
 {
 #ifdef IXGBE_HWMON
 	int i;

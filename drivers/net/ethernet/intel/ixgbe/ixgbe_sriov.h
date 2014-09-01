@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -42,7 +43,12 @@ void ixgbe_ping_all_vfs(struct ixgbe_adapter *adapter);
 int ixgbe_ndo_set_vf_mac(struct net_device *netdev, int queue, u8 *mac);
 int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int queue, u16 vlan,
 			  u8 qos);
+#ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
+int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int min_tx_rate,
+			int max_tx_rate);
+#else
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate);
+#endif /* HAVE_NDO_SET_VF_MIN_MAX_TX_RATE */
 #ifdef HAVE_VF_SPOOFCHK_CONFIGURE
 int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting);
 #endif

@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -936,6 +937,7 @@ static s32 ixgbe_clear_vmdq_82598(struct ixgbe_hw *hw, u32 rar, u32 vmdq)
 	u32 rar_high;
 	u32 rar_entries = hw->mac.num_rar_entries;
 
+	UNREFERENCED_1PARAMETER(vmdq);
 
 	/* Make sure we are using a valid rar index range */
 	if (rar >= rar_entries) {
@@ -1310,6 +1312,7 @@ static void ixgbe_set_rxpba_82598(struct ixgbe_hw *hw, int num_pb,
 {
 	u32 rxpktsize = IXGBE_RXPBSIZE_64KB;
 	u8 i = 0;
+	UNREFERENCED_1PARAMETER(headroom);
 
 	if (!num_pb)
 		return;
@@ -1335,8 +1338,6 @@ static void ixgbe_set_rxpba_82598(struct ixgbe_hw *hw, int num_pb,
 	/* Setup Tx packet buffer sizes */
 	for (i = 0; i < IXGBE_MAX_PACKET_BUFFERS; i++)
 		IXGBE_WRITE_REG(hw, IXGBE_TXPBSIZE(i), IXGBE_TXPBSIZE_40KB);
-
-	return;
 }
 
 /**

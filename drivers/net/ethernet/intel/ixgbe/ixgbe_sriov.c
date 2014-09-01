@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -79,44 +80,45 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	adapter->vfinfo =
 		kcalloc(adapter->num_vfs,
 			sizeof(struct vf_data_storage), GFP_KERNEL);
-	if (adapter->vfinfo) {
-		/* enable L2 switch and replication */
-		adapter->flags |= IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE |
-				  IXGBE_FLAG_SRIOV_REPLICATION_ENABLE;
 
-		/* limit traffic classes based on VFs enabled */
-		if ((adapter->hw.mac.type == ixgbe_mac_82599EB) &&
-		    (adapter->num_vfs < 16)) {
-			adapter->dcb_cfg.num_tcs.pg_tcs =
-				IXGBE_DCB_MAX_TRAFFIC_CLASS;
-			adapter->dcb_cfg.num_tcs.pfc_tcs =
-				IXGBE_DCB_MAX_TRAFFIC_CLASS;
-		} else if (adapter->num_vfs < 32) {
-			adapter->dcb_cfg.num_tcs.pg_tcs = 4;
-			adapter->dcb_cfg.num_tcs.pfc_tcs = 4;
-		} else {
-			adapter->dcb_cfg.num_tcs.pg_tcs = 1;
-			adapter->dcb_cfg.num_tcs.pfc_tcs = 1;
-		}
-		adapter->dcb_cfg.vt_mode = true;
+	if (!adapter->vfinfo)
+		return -ENOMEM;
+
+	/* enable L2 switch and replication */
+	adapter->flags |= IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE |
+				IXGBE_FLAG_SRIOV_REPLICATION_ENABLE;
+
+	/* limit traffic classes based on VFs enabled */
+	if ((adapter->hw.mac.type == ixgbe_mac_82599EB) &&
+		(adapter->num_vfs < 16)) {
+		adapter->dcb_cfg.num_tcs.pg_tcs =
+			IXGBE_DCB_MAX_TRAFFIC_CLASS;
+		adapter->dcb_cfg.num_tcs.pfc_tcs =
+			IXGBE_DCB_MAX_TRAFFIC_CLASS;
+	} else if (adapter->num_vfs < 32) {
+		adapter->dcb_cfg.num_tcs.pg_tcs = 4;
+		adapter->dcb_cfg.num_tcs.pfc_tcs = 4;
+	} else {
+		adapter->dcb_cfg.num_tcs.pg_tcs = 1;
+		adapter->dcb_cfg.num_tcs.pfc_tcs = 1;
+	}
+	adapter->dcb_cfg.vt_mode = true;
 
 #ifdef IXGBE_DISABLE_VF_MQ
-		/* We do not support RSS w/ SR-IOV */
-		adapter->ring_feature[RING_F_RSS].limit = 1;
+	/* We do not support RSS w/ SR-IOV */
+	adapter->ring_feature[RING_F_RSS].limit = 1;
 #endif
 
-		/* Disable RSC when in SR-IOV mode */
-		adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
-				     IXGBE_FLAG2_RSC_ENABLED);
+	/* Disable RSC when in SR-IOV mode */
+	adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
+				IXGBE_FLAG2_RSC_ENABLED);
 
 
-		/* enable spoof checking for all VFs */
-		for (i = 0; i < adapter->num_vfs; i++)
-			adapter->vfinfo[i].spoofchk_enabled = true;
-		return 0;
-	}
+	/* enable spoof checking for all VFs */
+	for (i = 0; i < adapter->num_vfs; i++)
+		adapter->vfinfo[i].spoofchk_enabled = true;
 
-	return -ENOMEM;
+	return 0;
 }
 
 /* Note this function is called when the user wants to enable SR-IOV
@@ -191,6 +193,7 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	if (!(adapter->flags & IXGBE_FLAG_SRIOV_ENABLED))
 		return 0;
 
+
 #ifdef CONFIG_PCI_IOV
 	/*
 	 * If our VFs are assigned we cannot shut down SR-IOV
@@ -230,7 +233,7 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	return 0;
 }
 
-static int ixgbe_pci_sriov_enable(struct pci_dev *dev, int num_vfs)
+static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __maybe_unused num_vfs)
 {
 #ifdef CONFIG_PCI_IOV
 	struct ixgbe_adapter *adapter = pci_get_drvdata(dev);
@@ -1036,10 +1039,12 @@ static void ixgbe_rcv_ack_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 		ixgbe_write_mbx(hw, &msg, 1, vf);
 }
 
+#define Q_BITMAP_DEPTH 2
 void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 vf;
+
 
 	for (vf = 0; vf < adapter->num_vfs; vf++) {
 		/* process any reset requests */
@@ -1269,7 +1274,12 @@ void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
 	}
 }
 
-int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate)
+#ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
+int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int min_tx_rate,
+			int max_tx_rate)
+#else
+int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int max_tx_rate)
+#endif /* HAVE_NDO_SET_VF_MIN_MAX_TX_RATE */
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	int link_speed;
@@ -1288,12 +1298,12 @@ int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int tx_rate)
 		return -EINVAL;
 
 	/* rate limit cannot be less than 10Mbs or greater than link speed */
-	if (tx_rate && ((tx_rate <= 10) || (tx_rate > link_speed)))
+	if (max_tx_rate && ((max_tx_rate <= 10) || (max_tx_rate > link_speed)))
 		return -EINVAL;
 
 	/* store values */
 	adapter->vf_rate_link_speed = link_speed;
-	adapter->vfinfo[vf].tx_rate = tx_rate;
+	adapter->vfinfo[vf].tx_rate = max_tx_rate;
 
 	/* update hardware configuration */
 	ixgbe_set_vf_rate_limit(adapter, vf);
@@ -1336,12 +1346,20 @@ int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 		return -EINVAL;
 	ivi->vf = vf;
 	memcpy(&ivi->mac, adapter->vfinfo[vf].vf_mac_addresses, ETH_ALEN);
+
+#ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
+	ivi->max_tx_rate = adapter->vfinfo[vf].tx_rate;
+	ivi->min_tx_rate = 0;
+#else
 	ivi->tx_rate = adapter->vfinfo[vf].tx_rate;
+#endif /* HAVE_NDO_SET_VF_MIN_MAX_TX_RATE */
+
 	ivi->vlan = adapter->vfinfo[vf].pf_vlan;
 	ivi->qos = adapter->vfinfo[vf].pf_qos;
 #ifdef HAVE_VF_SPOOFCHK_CONFIGURE
 	ivi->spoofchk = adapter->vfinfo[vf].spoofchk_enabled;
 #endif
+
 	return 0;
 }
 #endif /* IFLA_VF_MAX */

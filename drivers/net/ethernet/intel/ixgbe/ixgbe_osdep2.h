@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -52,20 +53,6 @@ static inline void IXGBE_WRITE_REG(struct ixgbe_hw *hw, u32 reg, u32 value)
 	}
 #endif /* DBG */
 	writel(value, reg_addr + reg);
-}
-
-static inline u32 IXGBE_READ_REG(struct ixgbe_hw *hw, u32 reg)
-{
-	u32 value;
-	u8 __iomem *reg_addr;
-
-	reg_addr = ACCESS_ONCE(hw->hw_addr);
-	if (IXGBE_REMOVED(reg_addr))
-		return IXGBE_FAILED_READ_REG;
-	value = readl(reg_addr + reg);
-	if (unlikely(value == IXGBE_FAILED_READ_REG))
-		ixgbe_check_remove(hw, reg);
-	return value;
 }
 
 static inline void IXGBE_WRITE_REG64(struct ixgbe_hw *hw, u32 reg, u64 value)

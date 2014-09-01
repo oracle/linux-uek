@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -46,25 +47,6 @@ static s32 ixgbe_read_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 					u8 dev_addr, u8 *data);
 static s32 ixgbe_write_i2c_byte_82599(struct ixgbe_hw *hw, u8 byte_offset,
 					u8 dev_addr, u8 data);
-
-bool ixgbe_mng_enabled(struct ixgbe_hw *hw)
-{
-	u32 fwsm, manc, factps;
-
-	fwsm = IXGBE_READ_REG(hw, IXGBE_FWSM);
-	if ((fwsm & IXGBE_FWSM_MODE_MASK) != IXGBE_FWSM_FW_MODE_PT)
-		return false;
-
-	manc = IXGBE_READ_REG(hw, IXGBE_MANC);
-	if (!(manc & IXGBE_MANC_RCV_TCO_EN))
-		return false;
-
-	factps = IXGBE_READ_REG(hw, IXGBE_FACTPS);
-	if (factps & IXGBE_FACTPS_MNGCG)
-		return false;
-
-	return true;
-}
 
 void ixgbe_init_mac_link_ops_82599(struct ixgbe_hw *hw)
 {
@@ -493,7 +475,9 @@ s32 ixgbe_get_link_capabilities_82599(struct ixgbe_hw *hw,
 		*speed |= IXGBE_LINK_SPEED_10GB_FULL |
 			  IXGBE_LINK_SPEED_1GB_FULL;
 
-		/* QSFP must not enable auto-negotiation */
+		/* QSFP must not enable full auto-negotiation
+		 * Limited autoneg is enabled at 1G
+		 */
 		if (hw->phy.media_type == ixgbe_media_type_fiber_qsfp)
 			*autoneg = false;
 		else
@@ -1070,7 +1054,7 @@ s32 ixgbe_setup_mac_link_82599(struct ixgbe_hw *hw,
 		if ((speed == IXGBE_LINK_SPEED_1GB_FULL) &&
 		    (pma_pmd_1g == IXGBE_AUTOC_1G_SFI)) {
 			autoc &= ~IXGBE_AUTOC_LMS_MASK;
-			if (autoneg)
+			if (autoneg || hw->phy.type == ixgbe_phy_qsfp_intel)
 				autoc |= IXGBE_AUTOC_LMS_1G_AN;
 			else
 				autoc |= IXGBE_AUTOC_LMS_1G_LINK_NO_AN;
@@ -1312,11 +1296,30 @@ reset_hw_out:
 }
 
 /**
+ * ixgbe_fdir_check_cmd_complete - poll to check whether FDIRCMD is complete
+ * @hw: pointer to hardware structure
+ */
+static s32 ixgbe_fdir_check_cmd_complete(struct ixgbe_hw *hw)
+{
+	int i;
+
+	for (i = 0; i < IXGBE_FDIRCMD_CMD_POLL; i++) {
+		if (!(IXGBE_READ_REG(hw, IXGBE_FDIRCMD) &
+		      IXGBE_FDIRCMD_CMD_MASK))
+			return 0;
+		udelay(10);
+	}
+
+	return IXGBE_ERR_FDIR_CMD_INCOMPLETE;
+}
+
+/**
  *  ixgbe_reinit_fdir_tables_82599 - Reinitialize Flow Director tables.
  *  @hw: pointer to hardware structure
  **/
 s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 {
+	s32 err;
 	int i;
 	u32 fdirctrl = IXGBE_READ_REG(hw, IXGBE_FDIRCTRL);
 	fdirctrl &= ~IXGBE_FDIRCTRL_INIT_DONE;
@@ -1325,16 +1328,10 @@ s32 ixgbe_reinit_fdir_tables_82599(struct ixgbe_hw *hw)
 	 * Before starting reinitialization process,
 	 * FDIRCMD.CMD must be zero.
 	 */
-	for (i = 0; i < IXGBE_FDIRCMD_CMD_POLL; i++) {
-		if (!(IXGBE_READ_REG(hw, IXGBE_FDIRCMD) &
-		      IXGBE_FDIRCMD_CMD_MASK))
-			break;
-		udelay(10);
-	}
-	if (i >= IXGBE_FDIRCMD_CMD_POLL) {
-		hw_dbg(hw, "Flow Director previous command isn't complete, "
-			 "aborting table re-initialization.\n");
-		return IXGBE_ERR_FDIR_REINIT_FAILED;
+	err = ixgbe_fdir_check_cmd_complete(hw);
+	if (err) {
+		hw_dbg(hw, "Flow Director previous command did not complete, aborting table re-initialization.\n");
+		return err;
 	}
 
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRFREE, 0);
@@ -1459,6 +1456,7 @@ s32 ixgbe_init_fdir_signature_82599(struct ixgbe_hw *hw, u32 fdirctrl)
 s32 ixgbe_init_fdir_perfect_82599(struct ixgbe_hw *hw, u32 fdirctrl,
 			bool cloud_mode)
 {
+	UNREFERENCED_1PARAMETER(cloud_mode);
 	/*
 	 * Continue setup of fdirctrl register bits:
 	 *  Turn perfect match filtering on
@@ -1504,7 +1502,7 @@ do { \
 		bucket_hash ^= hi_hash_dword >> n; \
 	else if (IXGBE_ATR_SIGNATURE_HASH_KEY & (0x01 << (n + 16))) \
 		sig_hash ^= hi_hash_dword << (16 - n); \
-} while (0);
+} while (0)
 
 /**
  *  ixgbe_atr_compute_sig_hash_82599 - Compute the signature hash
@@ -1584,8 +1582,9 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 					  union ixgbe_atr_hash_dword common,
 					  u8 queue)
 {
-	u64  fdirhashcmd;
-	u32  fdircmd;
+	u64 fdirhashcmd;
+	u32 fdircmd;
+	s32 err;
 
 	/*
 	 * Get the flow_type in order to program FDIRCMD properly
@@ -1619,6 +1618,12 @@ s32 ixgbe_fdir_add_signature_filter_82599(struct ixgbe_hw *hw,
 	fdirhashcmd |= ixgbe_atr_compute_sig_hash_82599(input, common);
 	IXGBE_WRITE_REG64(hw, IXGBE_FDIRHASH, fdirhashcmd);
 
+	err = ixgbe_fdir_check_cmd_complete(hw);
+	if (err) {
+		hw_dbg(hw, "Flow Director command did not complete!\n");
+		return err;
+	}
+
 	hw_dbg(hw, "Tx Queue=%x hash=%x\n", queue, (u32)fdirhashcmd);
 
 	return 0;
@@ -1631,7 +1636,7 @@ do { \
 		bucket_hash ^= lo_hash_dword >> n; \
 	if (IXGBE_ATR_BUCKET_HASH_KEY & (0x01 << (n + 16))) \
 		bucket_hash ^= hi_hash_dword >> n; \
-} while (0);
+} while (0)
 
 /**
  *  ixgbe_atr_compute_perfect_hash_82599 - Compute the perfect filter hash
@@ -1735,6 +1740,7 @@ s32 ixgbe_fdir_set_input_mask_82599(struct ixgbe_hw *hw,
 	/* mask IPv6 since it is currently not supported */
 	u32 fdirm = IXGBE_FDIRM_DIPv6;
 	u32 fdirtcpm;
+	UNREFERENCED_1PARAMETER(cloud_mode);
 	/*
 	 * Program the relevant mask registers.  If src/dst_port or src/dst_addr
 	 * are zero, then assume a full mask for that field.  Also assume that
@@ -1830,6 +1836,8 @@ s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
 					  u16 soft_id, u8 queue, bool cloud_mode)
 {
 	u32 fdirport, fdirvlan, fdirhash, fdircmd;
+	s32 err;
+	UNREFERENCED_1PARAMETER(cloud_mode);
 
 	/* currently IPv6 is not supported, must be programmed with 0 */
 	IXGBE_WRITE_REG_BE32(hw, IXGBE_FDIRSIPv6(0),
@@ -1881,6 +1889,11 @@ s32 ixgbe_fdir_write_perfect_filter_82599(struct ixgbe_hw *hw,
 	fdircmd |= (u32)input->formatted.vm_pool << IXGBE_FDIRCMD_VT_POOL_SHIFT;
 
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD, fdircmd);
+	err = ixgbe_fdir_check_cmd_complete(hw);
+	if (err) {
+		hw_dbg(hw, "Flow Director command did not complete!\n");
+		return err;
+	}
 
 	return 0;
 }
@@ -1891,8 +1904,7 @@ s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
 {
 	u32 fdirhash;
 	u32 fdircmd = 0;
-	u32 retry_count;
-	s32 err = 0;
+	s32 err;
 
 	/* configure FDIRHASH register */
 	fdirhash = input->formatted.bkt_hash;
@@ -1905,17 +1917,11 @@ s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
 	/* Query if filter is present */
 	IXGBE_WRITE_REG(hw, IXGBE_FDIRCMD, IXGBE_FDIRCMD_CMD_QUERY_REM_FILT);
 
-	for (retry_count = 10; retry_count; retry_count--) {
-		/* allow 10us for query to process */
-		udelay(10);
-		/* verify query completed successfully */
-		fdircmd = IXGBE_READ_REG(hw, IXGBE_FDIRCMD);
-		if (!(fdircmd & IXGBE_FDIRCMD_CMD_MASK))
-			break;
+	err = ixgbe_fdir_check_cmd_complete(hw);
+	if (err) {
+		hw_dbg(hw, "Flow Director command did not complete!\n");
+		return err;
 	}
-
-	if (!retry_count)
-		err = IXGBE_ERR_FDIR_REINIT_FAILED;
 
 	/* if filter exists in hardware then remove it */
 	if (fdircmd & IXGBE_FDIRCMD_FILTER_VALID) {
@@ -1925,7 +1931,7 @@ s32 ixgbe_fdir_erase_perfect_filter_82599(struct ixgbe_hw *hw,
 				IXGBE_FDIRCMD_CMD_REMOVE_FLOW);
 	}
 
-	return err;
+	return 0;
 }
 
 /**
@@ -1945,6 +1951,7 @@ s32 ixgbe_fdir_add_perfect_filter_82599(struct ixgbe_hw *hw,
 					u16 soft_id, u8 queue, bool cloud_mode)
 {
 	s32 err = IXGBE_ERR_CONFIG;
+	UNREFERENCED_1PARAMETER(cloud_mode);
 
 	/*
 	 * Check flow_type formatting, and bail out before we touch the hardware
@@ -2078,7 +2085,7 @@ s32 ixgbe_identify_phy_82599(struct ixgbe_hw *hw)
 	if (status != 0) {
 		/* 82599 10GBASE-T requires an external PHY */
 		if (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_copper)
-			goto out;
+			return status;
 		else
 			status = ixgbe_identify_module_generic(hw);
 	}
@@ -2086,14 +2093,13 @@ s32 ixgbe_identify_phy_82599(struct ixgbe_hw *hw)
 	/* Set PHY type none if no PHY detected */
 	if (hw->phy.type == ixgbe_phy_unknown) {
 		hw->phy.type = ixgbe_phy_none;
-		status = 0;
+		return 0;
 	}
 
 	/* Return error if SFP module has been detected but is not supported */
 	if (hw->phy.type == ixgbe_phy_sfp_unsupported)
-		status = IXGBE_ERR_SFP_NOT_SUPPORTED;
+		return IXGBE_ERR_SFP_NOT_SUPPORTED;
 
-out:
 	return status;
 }
 

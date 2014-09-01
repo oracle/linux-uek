@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -93,6 +94,8 @@
 #define IXGBE_MAX_RXD			4096
 #define IXGBE_MIN_RXD			64
 
+#define IXGBE_ETH_P_LLDP		0x88CC
+
 
 /* flow control */
 #define IXGBE_MIN_FCRTL			0x40
@@ -131,6 +134,13 @@
 /* How many Rx Buffers do we bundle into one write to the hardware ? */
 #define IXGBE_RX_BUFFER_WRITE	16	/* Must be power of 2 */
 
+/* assume the kernel supports 8021p to avoid stripping vlan tags */
+#ifdef IXGBE_DISABLE_8021P_SUPPORT
+#ifndef HAVE_8021P_SUPPORT
+#define HAVE_8021P_SUPPORT
+#endif
+#endif /* IXGBE_DISABLE_8021P_SUPPORT */
+
 enum ixgbe_tx_flags {
 	/* cmd_type flags */
 	IXGBE_TX_FLAGS_HW_VLAN	= 0x01,
@@ -163,6 +173,7 @@ enum ixgbe_tx_flags {
 #define IXGBE_82599_VF_DEVICE_ID	0x10ED
 #define IXGBE_X540_VF_DEVICE_ID		0x1515
 
+/* must account for pools assigned to VFs. */
 #ifdef CONFIG_PCI_IOV
 #define VMDQ_P(p)	((p) + adapter->ring_feature[RING_F_VMDQ].offset)
 #else
@@ -360,9 +371,6 @@ struct ixgbe_ring {
 		struct ixgbe_rx_buffer *rx_buffer_info;
 	};
 	unsigned long state;
-#ifndef NO_LER_WRITE_CHECKS
-	u8 __iomem **adapter_present;	/* Points to field in ixgbe_hw */
-#endif /* NO_LER_WRITE_CHECKS */
 	u8 __iomem *tail;
 	dma_addr_t dma;			/* phys. address of descriptor ring */
 	unsigned int size;		/* length in bytes */
@@ -407,10 +415,6 @@ struct ixgbe_ring {
 
 static inline void ixgbe_write_tail(struct ixgbe_ring *ring, u32 value)
 {
-#ifndef NO_LER_WRITE_CHECKS
-	if (unlikely(!*ring->adapter_present))
-		return;
-#endif /* NO_LER_WRITE_CHECKS */
 	writel(value, ring->tail);
 }
 
@@ -454,7 +458,7 @@ struct ixgbe_ring_feature {
  * this is twice the size of a half page we need to double the page order
  * for FCoE enabled Rx queues.
  */
-static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring *ring)
+static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring __maybe_unused *ring)
 {
 #if MAX_SKB_FRAGS < 8
 	return ALIGN(IXGBE_MAX_RXBUFFER / MAX_SKB_FRAGS, 1024);
@@ -468,7 +472,7 @@ static inline unsigned int ixgbe_rx_bufsz(struct ixgbe_ring *ring)
 #endif
 }
 
-static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring *ring)
+static inline unsigned int ixgbe_rx_pg_order(struct ixgbe_ring __maybe_unused *ring)
 {
 #ifdef IXGBE_FCOE
 	if (test_bit(__IXGBE_RX_FCOE, &ring->state))
@@ -524,119 +528,89 @@ struct ixgbe_q_vector {
 	bool netpoll_rx;
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
-	unsigned int state;
-#define IXGBE_QV_STATE_IDLE        0
-#define IXGBE_QV_STATE_NAPI	   1    /* NAPI owns this QV */
-#define IXGBE_QV_STATE_POLL	   2    /* poll owns this QV */
-#define IXGBE_QV_STATE_DISABLED	   4    /* QV is disabled */
-#define IXGBE_QV_OWNED (IXGBE_QV_STATE_NAPI | IXGBE_QV_STATE_POLL)
-#define IXGBE_QV_LOCKED (IXGBE_QV_OWNED | IXGBE_QV_STATE_DISABLED)
-#define IXGBE_QV_STATE_NAPI_YIELD  8    /* NAPI yielded this QV */
-#define IXGBE_QV_STATE_POLL_YIELD  16   /* poll yielded this QV */
-#define IXGBE_QV_YIELD (IXGBE_QV_STATE_NAPI_YIELD | IXGBE_QV_STATE_POLL_YIELD)
-#define IXGBE_QV_USER_PEND (IXGBE_QV_STATE_POLL | IXGBE_QV_STATE_POLL_YIELD)
-	spinlock_t lock;
+	atomic_t state;
 #endif  /* CONFIG_NET_RX_BUSY_POLL */
 
 	/* for dynamic allocation of rings associated with this q_vector */
 	struct ixgbe_ring ring[0] ____cacheline_internodealigned_in_smp;
 };
+
 #ifdef CONFIG_NET_RX_BUSY_POLL
+enum ixgbe_qv_state_t {
+	IXGBE_QV_STATE_IDLE = 0,
+	IXGBE_QV_STATE_NAPI,
+	IXGBE_QV_STATE_POLL,
+	IXGBE_QV_STATE_DISABLE
+};
+
 static inline void ixgbe_qv_init_lock(struct ixgbe_q_vector *q_vector)
 {
-
-	spin_lock_init(&q_vector->lock);
-	q_vector->state = IXGBE_QV_STATE_IDLE;
+	/* reset state to idle */
+	atomic_set(&q_vector->state, IXGBE_QV_STATE_IDLE);
 }
 
 /* called from the device poll routine to get ownership of a q_vector */
 static inline bool ixgbe_qv_lock_napi(struct ixgbe_q_vector *q_vector)
 {
-	int rc = true;
-	spin_lock_bh(&q_vector->lock);
-	if (q_vector->state & IXGBE_QV_LOCKED) {
-		WARN_ON(q_vector->state & IXGBE_QV_STATE_NAPI);
-		q_vector->state |= IXGBE_QV_STATE_NAPI_YIELD;
-		rc = false;
+	int rc = atomic_cmpxchg(&q_vector->state, IXGBE_QV_STATE_IDLE,
+				IXGBE_QV_STATE_NAPI);
 #ifdef BP_EXTENDED_STATS
+	if (rc != IXGBE_QV_STATE_IDLE)
 		q_vector->tx.ring->stats.yields++;
 #endif
-	} else {
-		/* we don't care if someone yielded */
-		q_vector->state = IXGBE_QV_STATE_NAPI;
-	}
-	spin_unlock_bh(&q_vector->lock);
-	return rc;
+
+	return rc == IXGBE_QV_STATE_IDLE;
 }
 
 /* returns true is someone tried to get the qv while napi had it */
-static inline bool ixgbe_qv_unlock_napi(struct ixgbe_q_vector *q_vector)
+static inline void ixgbe_qv_unlock_napi(struct ixgbe_q_vector *q_vector)
 {
-	int rc = false;
-	spin_lock_bh(&q_vector->lock);
-	WARN_ON(q_vector->state & (IXGBE_QV_STATE_POLL |
-			       IXGBE_QV_STATE_NAPI_YIELD));
+	WARN_ON(atomic_read(&q_vector->state) != IXGBE_QV_STATE_NAPI);
 
-	if (q_vector->state & IXGBE_QV_STATE_POLL_YIELD)
-		rc = true;
-	/* reset state to idle, unless QV is disabled */
-	q_vector->state &= IXGBE_QV_STATE_DISABLED;
-	spin_unlock_bh(&q_vector->lock);
-	return rc;
+	/* flush any outstanding Rx frames */
+	if (q_vector->napi.gro_list)
+		napi_gro_flush(&q_vector->napi, false);
+
+	/* reset state to idle */
+	atomic_set(&q_vector->state, IXGBE_QV_STATE_IDLE);
 }
 
 /* called from ixgbe_low_latency_poll() */
 static inline bool ixgbe_qv_lock_poll(struct ixgbe_q_vector *q_vector)
 {
-	int rc = true;
-	spin_lock_bh(&q_vector->lock);
-	if ((q_vector->state & IXGBE_QV_LOCKED)) {
-		q_vector->state |= IXGBE_QV_STATE_POLL_YIELD;
-		rc = false;
+	int rc = atomic_cmpxchg(&q_vector->state, IXGBE_QV_STATE_IDLE,
+				IXGBE_QV_STATE_POLL);
 #ifdef BP_EXTENDED_STATS
-		q_vector->rx.ring->stats.yields++;
+	if (rc != IXGBE_QV_STATE_IDLE)
+		q_vector->tx.ring->stats.yields++;
 #endif
-	} else {
-		/* preserve yield marks */
-		q_vector->state |= IXGBE_QV_STATE_POLL;
-	}
-	spin_unlock_bh(&q_vector->lock);
-	return rc;
+	return rc == IXGBE_QV_STATE_IDLE;
 }
 
 /* returns true if someone tried to get the qv while it was locked */
-static inline bool ixgbe_qv_unlock_poll(struct ixgbe_q_vector *q_vector)
+static inline void ixgbe_qv_unlock_poll(struct ixgbe_q_vector *q_vector)
 {
-	int rc = false;
-	spin_lock_bh(&q_vector->lock);
-	WARN_ON(q_vector->state & (IXGBE_QV_STATE_NAPI));
+	WARN_ON(atomic_read(&q_vector->state) != IXGBE_QV_STATE_POLL);
 
-	if (q_vector->state & IXGBE_QV_STATE_POLL_YIELD)
-		rc = true;
-	/* reset state to idle, unless QV is disabled */
-	q_vector->state &= IXGBE_QV_STATE_DISABLED;
-	spin_unlock_bh(&q_vector->lock);
-	return rc;
+	/* reset state to idle */
+	atomic_set(&q_vector->state, IXGBE_QV_STATE_IDLE);
 }
 
 /* true if a socket is polling, even if it did not get the lock */
 static inline bool ixgbe_qv_busy_polling(struct ixgbe_q_vector *q_vector)
 {
-	WARN_ON(!(q_vector->state & IXGBE_QV_LOCKED));
-	return q_vector->state & IXGBE_QV_USER_PEND;
+	return atomic_read(&q_vector->state) == IXGBE_QV_STATE_POLL;
 }
 
 /* false if QV is currently owned */
 static inline bool ixgbe_qv_disable(struct ixgbe_q_vector *q_vector)
 {
-	int rc = true;
-	spin_lock_bh(&q_vector->lock);
-	if (q_vector->state & IXGBE_QV_OWNED)
-		rc = false;
-	q_vector->state |= IXGBE_QV_STATE_DISABLED;
-	spin_unlock_bh(&q_vector->lock);
-	return rc;
+	int rc = atomic_cmpxchg(&q_vector->state, IXGBE_QV_STATE_IDLE,
+				IXGBE_QV_STATE_DISABLE);
+
+	return rc == IXGBE_QV_STATE_IDLE;
 }
+
 #endif /* CONFIG_NET_RX_BUSY_POLL */
 #ifdef IXGBE_HWMON
 
@@ -791,8 +765,9 @@ struct ixgbe_adapter {
 #define IXGBE_FLAG_SRIOV_ENABLED		(u32)(1 << 20)
 #define IXGBE_FLAG_SRIOV_REPLICATION_ENABLE	(u32)(1 << 21)
 #define IXGBE_FLAG_SRIOV_L2SWITCH_ENABLE	(u32)(1 << 22)
-#define IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE	(u32)(1 << 23)
+#define IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE	(u32)(1 << 23)
 #define IXGBE_FLAG_RX_HWTSTAMP_ENABLED          (u32)(1 << 24)
+#define IXGBE_FLAG_RX_HWTSTAMP_IN_REGISTER	(u32)(1 << 27)
 
 /* preset defaults */
 #define IXGBE_FLAGS_82598_INIT		(IXGBE_FLAG_MSI_CAPABLE |	\
@@ -843,8 +818,8 @@ struct ixgbe_adapter {
 
 	/* RX */
 	struct ixgbe_ring *rx_ring[MAX_RX_QUEUES];
-	int num_rx_pools;		/* == num_rx_queues in 82598 */
-	int num_rx_queues_per_pool;	/* 1 if 82598, can be many if 82599 */
+	int num_rx_pools; /* does not include pools assigned to VFs */
+	int num_rx_queues_per_pool;
 	u64 hw_csum_rx_error;
 	u64 hw_rx_no_dma_resources;
 	u64 rsc_total_count;
@@ -924,6 +899,10 @@ struct ixgbe_adapter {
 	u32 wol;
 
 	u16 bd_number;
+
+#ifdef HAVE_BRIDGE_ATTRIBS
+	u16 bridge_mode;
+#endif
 
 	char eeprom_id[32];
 	u16 eeprom_cap;
@@ -1184,6 +1163,7 @@ void ixgbe_vlan_mode(struct net_device *, u32);
 #ifdef HAVE_PTP_1588_CLOCK
 void ixgbe_ptp_init(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_stop(struct ixgbe_adapter *adapter);
+void ixgbe_ptp_suspend(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_rx_hang(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
@@ -1208,7 +1188,7 @@ int ixgbe_ptp_get_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr);
 void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter);
 void ixgbe_ptp_reset(struct ixgbe_adapter *adapter);
-void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter, u32 eicr);
+void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter);
 #endif /* HAVE_PTP_1588_CLOCK */
 #ifdef CONFIG_PCI_IOV
 void ixgbe_sriov_reinit(struct ixgbe_adapter *adapter);

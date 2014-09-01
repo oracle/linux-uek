@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -117,6 +118,12 @@ struct msix_entry {
 #define _Bool char
 #endif
 
+#undef __always_unused
+#define __always_unused __attribute__((__unused__))
+
+#undef __maybe_unused
+#define __maybe_unused __attribute__((__unused__))
+
 /* kernels less than 2.4.14 don't have this */
 #ifndef ETH_P_8021Q
 #define ETH_P_8021Q 0x8100
@@ -136,6 +143,10 @@ struct msix_entry {
 
 #ifndef PCI_CAP_ID_EXP
 #define PCI_CAP_ID_EXP 0x10
+#endif
+
+#ifndef uninitialized_var
+#define uninitialized_var(x) x = x
 #endif
 
 #ifndef PCIE_LINK_STATE_L0S
@@ -704,6 +715,13 @@ struct _kc_ethtool_pauseparam {
 #elif ((LINUX_VERSION_CODE == KERNEL_VERSION(3,0,76)))
 /* SLES11 SP3 is 3.0.76 based */
 #define SLE_VERSION_CODE SLE_VERSION(11,3,0)
+/* new SLES kernels must be added here with >= based on kernel
+ * the idea is to order from newest to oldest and just catch all
+ * of them using the >=
+ */
+#elif ((LINUX_VERSION_CODE >= KERNEL_VERSION(3,12,0)))
+/* SLES12 GA is 3.12.y based */
+#define SLE_VERSION_CODE SLE_VERSION(12,0,0)
 #endif /* LINUX_VERSION_CODE == KERNEL_VERSION(x,y,z) */
 #endif /* CONFIG_SUSE_KERNEL */
 #ifndef SLE_VERSION_CODE
@@ -1762,6 +1780,10 @@ typedef unsigned gfp_t;
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,15) )
+#ifndef kfree_rcu
+/* this is placed here due to a lack of rcu_barrier in previous kernels */
+#define kfree_rcu(_ptr, _offset) kfree(_ptr)
+#endif /* kfree_rcu */
 #ifndef vmalloc_node
 #define vmalloc_node(a,b) vmalloc(a)
 #endif /* vmalloc_node*/
@@ -1972,7 +1994,7 @@ extern void _kc_pci_restore_state(struct pci_dev *);
 extern void _kc_free_netdev(struct net_device *);
 #define free_netdev(netdev) _kc_free_netdev(netdev)
 #endif
-static inline int pci_enable_pcie_error_reporting(struct pci_dev *dev)
+static inline int pci_enable_pcie_error_reporting(struct pci_dev __always_unused *dev)
 {
 	return 0;
 }
@@ -2109,15 +2131,6 @@ static inline struct device *netdev_to_dev(struct net_device *netdev)
 #define skb_network_header_len(skb) (skb->h.raw - skb->nh.raw)
 #define pci_register_driver pci_module_init
 #define skb_mac_header(skb) skb->mac.raw
-#define skb_reset_transport_header(skb) \
-	do { \
-		skb->h.raw = skb->data - skb->head; \
-	} while (0)
-#define skb_set_transport_header(skb, offset) \
-	do { \
-		skb_reset_transport_header(skb); \
-		skb->h.raw += offset; \
-	} while (0)
 
 #ifdef NETIF_F_MULTI_QUEUE
 #ifndef alloc_etherdev_mq
@@ -2415,36 +2428,13 @@ static inline int _kc_strict_strtol(const char *buf, unsigned int base, long *re
 	__val = __val < __min ? __min : __val;	\
 	__val > __max ? __max : __val; })
 #endif /* clamp_t */
-#ifdef NETIF_F_TSO
-#ifdef NETIF_F_TSO6
-#define netif_set_gso_max_size(_netdev, size) \
-	do { \
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) { \
-			_netdev->features &= ~NETIF_F_TSO; \
-			_netdev->features &= ~NETIF_F_TSO6; \
-		} else { \
-			_netdev->features |= NETIF_F_TSO; \
-			_netdev->features |= NETIF_F_TSO6; \
-		} \
-	} while (0)
-#else /* NETIF_F_TSO6 */
-#define netif_set_gso_max_size(_netdev, size) \
-	do { \
-		if (adapter->flags & IXGBE_FLAG_DCB_ENABLED) \
-			_netdev->features &= ~NETIF_F_TSO; \
-		else \
-			_netdev->features |= NETIF_F_TSO; \
-	} while (0)
-#endif /* NETIF_F_TSO6 */
-#else
-#define netif_set_gso_max_size(_netdev, size) do {} while (0)
-#endif /* NETIF_F_TSO */
 #undef kzalloc_node
 #define kzalloc_node(_size, _flags, _node) kzalloc(_size, _flags)
 
 extern void _kc_pci_disable_link_state(struct pci_dev *dev, int state);
 #define pci_disable_link_state(p, s) _kc_pci_disable_link_state(p, s)
 #else /* < 2.6.26 */
+#define NETDEV_CAN_SET_GSO_MAX_SIZE
 #include <linux/pci-aspm.h>
 #define HAVE_NETDEV_VLAN_FEATURES
 #ifndef PCI_EXP_LNKCAP_ASPMS
@@ -2746,7 +2736,7 @@ static inline int _kc_pm_runtime_get_sync()
 }
 #define pm_runtime_get_sync(dev)	_kc_pm_runtime_get_sync()
 #else /* 2.6.0 => 2.6.32 */
-static inline int _kc_pm_runtime_get_sync(struct device *dev)
+static inline int _kc_pm_runtime_get_sync(struct device __always_unused *dev)
 {
 	return 1;
 }
@@ -2859,13 +2849,6 @@ static inline bool pci_is_pcie(struct pci_dev *dev)
 	return !!pci_pcie_cap(dev);
 }
 #endif /* RHEL_RELEASE_CODE */
-
-#ifndef __always_unused
-#define __always_unused __attribute__((__unused__))
-#endif
-#ifndef __maybe_unused
-#define __maybe_unused __attribute__((__unused__))
-#endif
 
 #if (!(RHEL_RELEASE_CODE && \
       (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,2))))
@@ -3076,7 +3059,7 @@ static inline bool _kc_pm_runtime_suspended()
 }
 #define pm_runtime_suspended(dev)	_kc_pm_runtime_suspended()
 #else /* 2.6.0 => 2.6.34 */
-static inline bool _kc_pm_runtime_suspended(struct device *dev)
+static inline bool _kc_pm_runtime_suspended(struct device __always_unused *dev)
 {
 	return false;
 }
@@ -3095,13 +3078,15 @@ static inline bool _kc_pm_runtime_suspended(struct device *dev)
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
-
 ssize_t _kc_simple_write_to_buffer(void *to, size_t available, loff_t *ppos,
 				   const void __user *from, size_t count);
 #define simple_write_to_buffer _kc_simple_write_to_buffer
 
 #ifndef numa_node_id
 #define numa_node_id() 0
+#endif
+#ifndef numa_mem_id
+#define numa_mem_id numa_node_id
 #endif
 #ifdef HAVE_TX_MQ
 #include <net/sch_generic.h>
@@ -3210,8 +3195,8 @@ do {								\
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,37) )
 #ifndef netif_set_real_num_rx_queues
-static inline int __kc_netif_set_real_num_rx_queues(struct net_device *dev,
-						    unsigned int rxq)
+static inline int __kc_netif_set_real_num_rx_queues(struct net_device __always_unused *dev,
+						    unsigned int __always_unused rxq)
 {
 	return 0;
 }
@@ -3456,7 +3441,7 @@ struct _kc_ethtool_rx_flow_spec {
 #define USE_LEGACY_PM_SUPPORT
 #ifndef kfree_rcu
 #define kfree_rcu(_ptr, _rcu_head) kfree(_ptr)
-#endif
+#endif /* kfree_rcu */
 #ifndef kstrtol_from_user
 #define kstrtol_from_user(s, c, b, r) _kc_kstrtol_from_user(s, c, b, r)
 static inline int _kc_kstrtol_from_user(const char __user *s, size_t count, 
@@ -3472,6 +3457,12 @@ static inline int _kc_kstrtol_from_user(const char __user *s, size_t count,
 	return strict_strtol(buf, base, res);
 }
 #endif
+
+/* 20000base_blah_full Supported and Advertised Registers */
+#define SUPPORTED_20000baseMLD2_Full	(1 << 21)
+#define SUPPORTED_20000baseKR2_Full	(1 << 22)
+#define ADVERTISED_20000baseMLD2_Full	(1 << 21)
+#define ADVERTISED_20000baseKR2_Full	(1 << 22)
 #endif /* < 3.0.0 */
 
 /*****************************************************************************/
@@ -3576,7 +3567,8 @@ static inline void __kc_skb_frag_unref(skb_frag_t *frag)
 #ifndef DUPLEX_UNKNOWN
 #define DUPLEX_UNKNOWN	0xff
 #endif
-#if (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3))
+#if ((RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,3)) ||\
+     (SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(11,3,0)))
 #ifndef HAVE_PCI_DEV_FLAGS_ASSIGNED
 #define HAVE_PCI_DEV_FLAGS_ASSIGNED
 #endif
@@ -3656,15 +3648,12 @@ extern void _kc_skb_add_rx_frag(struct sk_buff *, int, struct page *,
 #endif /* >= 3.4.0 */
 
 /*****************************************************************************/
-#if defined(E1000E_PTP) || defined(IGB_PTP) || defined(IXGBE_PTP) || defined(I40E_PTP)
-#if ( ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) ) || \
-     ( RHEL_RELEASE_CODE && ( RHEL_RELEASE_CODE > RHEL_RELEASE_VERSION(6,4) ) ) ) && \
-    IS_ENABLED(CONFIG_PTP_1588_CLOCK)
+#if ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) ) || \
+    ( RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4) )
+#if !defined(NO_PTP_SUPPORT) && IS_ENABLED(CONFIG_PTP_1588_CLOCK)
 #define HAVE_PTP_1588_CLOCK
-#else
-#error Cannot enable PTP Hardware Clock support due to a pre-3.0 kernel version or CONFIG_PTP_1588_CLOCK not enabled in the kernel
-#endif /* > 3.0.0 && IS_ENABLED(CONFIG_PTP_1588_CLOCK) */
-#endif /* E1000E_PTP || IGB_PTP || IXGBE_PTP || I40E_PTP */
+#endif /* !NO_PTP_SUPPORT && IS_ENABLED(CONFIG_PTP_1588_CLOCK) */
+#endif /* >= 3.0.0 || RHEL_RELEASE > 6.4 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,5,0) )
@@ -3846,7 +3835,11 @@ static inline u8 pci_pcie_type(struct pci_dev *pdev)
 #endif /* < 2.6.24 */
 #endif /* pci_pcie_type */
 
+#if ( ! ( RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,4) ) ) && \
+    ( ! ( SLE_VERSION_CODE >= SLE_VERSION(11,3,0) ) ) && \
+    ( LINUX_VERSION_CODE >= KERNEL_VERSION(3,0,0) )
 #define ptp_clock_register(caps, args...) ptp_clock_register(caps)
+#endif
 
 #ifndef pcie_capability_read_word
 int __kc_pcie_capability_read_word(struct pci_dev *dev, int pos, u16 *val);
@@ -3888,7 +3881,7 @@ int __kc_pcie_capability_clear_word(struct pci_dev *dev, int pos,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,8,0) )
 #ifndef pci_sriov_set_totalvfs
-static inline int __kc_pci_sriov_set_totalvfs(struct pci_dev *dev, u16 numvfs)
+static inline int __kc_pci_sriov_set_totalvfs(struct pci_dev __always_unused *dev, u16 __always_unused numvfs)
 {
 	return 0;
 }
@@ -3923,6 +3916,10 @@ static inline bool __kc_is_link_local_ether_addr(const u8 *addr)
 
 #ifndef __devinitdata
 #define __devinitdata
+#endif
+
+#ifndef __devinitconst
+#define __devinitconst
 #endif
 
 #ifndef __devexit
@@ -3986,15 +3983,18 @@ extern u16 __kc_netdev_pick_tx(struct net_device *dev, struct sk_buff *skb);
 #endif /* HAVE_NETDEV_SELECT_QUEUE */
 #else
 #define HAVE_BRIDGE_FILTER
-#define USE_DEFAULT_FDB_DEL_DUMP
+#define HAVE_FDB_DEL_NLATTR
 #endif /* < 3.9.0 */
 
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,10,0) )
+#ifndef NAPI_POLL_WEIGHT
+#define NAPI_POLL_WEIGHT 64
+#endif
 #ifdef CONFIG_PCI_IOV
 extern int __kc_pci_vfs_assigned(struct pci_dev *dev);
 #else
-static inline int __kc_pci_vfs_assigned(struct pci_dev *dev)
+static inline int __kc_pci_vfs_assigned(struct pci_dev __always_unused *dev)
 {
 	return 0;
 }
@@ -4020,8 +4020,35 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 	__kc__vlan_hwaccel_put_tag(skb, vlan_tci)
 #endif
 
+#ifdef HAVE_FDB_OPS
+#ifdef USE_CONST_DEV_UC_CHAR
+extern int __kc_ndo_dflt_fdb_add(struct ndmsg *ndm, struct nlattr *tb[],
+				 struct net_device *dev,
+				 const unsigned char *addr, u16 flags);
+#ifdef HAVE_FDB_DEL_NLATTR
+extern int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct nlattr *tb[],
+				 struct net_device *dev,
+				 const unsigned char *addr);
+#else
+extern int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
+				 const unsigned char *addr);
+#endif
+#else
+extern int __kc_ndo_dflt_fdb_add(struct ndmsg *ndm, struct net_device *dev,
+				 unsigned char *addr, u16 flags);
+extern int __kc_ndo_dflt_fdb_del(struct ndmsg *ndm, struct net_device *dev,
+				 unsigned char *addr);
+#endif
+#define ndo_dflt_fdb_add __kc_ndo_dflt_fdb_add
+#define ndo_dflt_fdb_del __kc_ndo_dflt_fdb_del
+#endif /* HAVE_FDB_OPS */
+
+#ifndef PCI_DEVID
+#define PCI_DEVID(bus, devfn)  ((((u16)(bus)) << 8) | (devfn))
+#endif
 #else /* >= 3.10.0 */
 #define HAVE_ENCAP_TSO_OFFLOAD
+#define USE_DEFAULT_FDB_DEL_DUMP
 #endif /* >= 3.10.0 */
 
 /*****************************************************************************/
@@ -4033,6 +4060,9 @@ static inline struct sk_buff *__kc__vlan_hwaccel_put_tag(struct sk_buff *skb,
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,12,0) )
 #else /* >= 3.12.0 */
+#if ( SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(12,0,0))
+#define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
+#endif
 #define HAVE_VXLAN_RX_OFFLOAD
 #define HAVE_NDO_GET_PHYS_PORT_ID
 #endif /* >= 3.12.0 */
@@ -4049,17 +4079,20 @@ extern int __kc_dma_set_mask_and_coherent(struct device *dev, u64 mask);
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,14,0) )
 
-#if ( !(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)) )
+#if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7,0)) && \
+     !(SLE_VERSION_CODE && SLE_VERSION_CODE >= SLE_VERSION(12,0,0)))
 /* it isn't expected that this would be a #define unless we made it so */
 #ifndef skb_set_hash
-enum pkt_hash_types {
-	PKT_HASH_TYPE_NONE,
-	PKT_HASH_TYPE_L2,
-	PKT_HASH_TYPE_L3,
-	PKT_HASH_TYPE_L4,
-};
+
+#define PKT_HASH_TYPE_NONE	0
+#define PKT_HASH_TYPE_L2	1
+#define PKT_HASH_TYPE_L3	2
+#define PKT_HASH_TYPE_L4	3
+
 #define skb_set_hash __kc_skb_set_hash
-static inline void __kc_skb_set_hash(struct sk_buff *skb, u32 hash, int type)
+static inline void __kc_skb_set_hash(struct sk_buff __maybe_unused *skb,
+				     u32 __maybe_unused hash,
+				     int __maybe_unused type)
 {
 #ifdef HAVE_SKB_L4_RXHASH
 	skb->l4_rxhash = (type == PKT_HASH_TYPE_L4);
@@ -4078,6 +4111,24 @@ extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
 #define pci_enable_msix_range __kc_pci_enable_msix_range
 #endif
 
+#ifndef ether_addr_copy
+#define ether_addr_copy __kc_ether_addr_copy
+static inline void __kc_ether_addr_copy(u8 *dst, const u8 *src)
+{
+#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
+	*(u32 *)dst = *(const u32 *)src;
+	*(u16 *)(dst + 4) = *(const u16 *)(src + 4);
+#else
+	u16 *a = (u16 *)dst;
+	const u16 *b = (const u16 *)src;
+
+	a[0] = b[0];
+	a[1] = b[1];
+	a[2] = b[2];
+#endif
+}
+#endif /* ether_addr_copy */
+
 #else /* >= 3.14.0 */
 
 /* for ndo_dfwd_ ops add_station, del_station and _start_xmit */
@@ -4086,5 +4137,97 @@ extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
 #endif
 #define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
 #endif /* 3.14.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,15,0) )
+#define u64_stats_fetch_begin_irq u64_stats_fetch_begin_bh
+#define u64_stats_fetch_retry_irq u64_stats_fetch_retry_bh
+#endif /* 3.15.0 */
+
+/*****************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,16,0) )
+#ifndef __dev_uc_sync
+#ifdef HAVE_SET_RX_MODE
+#ifdef NETDEV_HW_ADDR_T_UNICAST
+int __kc_hw_addr_sync_dev(struct netdev_hw_addr_list *list,
+		struct net_device *dev,
+		int (*sync)(struct net_device *, const unsigned char *),
+		int (*unsync)(struct net_device *, const unsigned char *));
+void __kc_hw_addr_unsync_dev(struct netdev_hw_addr_list *list,
+		struct net_device *dev,
+		int (*unsync)(struct net_device *, const unsigned char *));
+#endif
+#ifndef NETDEV_HW_ADDR_T_MULTICAST
+int __kc_dev_addr_sync_dev(struct dev_addr_list **list, int *count,
+		struct net_device *dev,
+		int (*sync)(struct net_device *, const unsigned char *),
+		int (*unsync)(struct net_device *, const unsigned char *));
+void __kc_dev_addr_unsync_dev(struct dev_addr_list **list, int *count,
+		struct net_device *dev,
+		int (*unsync)(struct net_device *, const unsigned char *));
+#endif
+#endif /* HAVE_SET_RX_MODE */
+
+static inline int __kc_dev_uc_sync(struct net_device __maybe_unused *dev,
+				   int __maybe_unused (*sync)(struct net_device *, const unsigned char *),
+				   int __maybe_unused (*unsync)(struct net_device *, const unsigned char *))
+{
+#ifdef NETDEV_HW_ADDR_T_UNICAST
+	return __kc_hw_addr_sync_dev(&dev->uc, dev, sync, unsync);
+#elif defined(HAVE_SET_RX_MODE)
+	return __kc_dev_addr_sync_dev(&dev->uc_list, &dev->uc_count,
+				      dev, sync, unsync);
+#else
+	return 0;
+#endif
+}
+#define __dev_uc_sync __kc_dev_uc_sync
+
+static inline void __kc_dev_uc_unsync(struct net_device __maybe_unused *dev,
+				      int __maybe_unused (*unsync)(struct net_device *, const unsigned char *))
+{
+#ifdef HAVE_SET_RX_MODE
+#ifdef NETDEV_HW_ADDR_T_UNICAST
+	__kc_hw_addr_unsync_dev(&dev->uc, dev, unsync);
+#else /* NETDEV_HW_ADDR_T_MULTICAST */
+	__kc_dev_addr_unsync_dev(&dev->uc_list, &dev->uc_count, dev, unsync);
+#endif /* NETDEV_HW_ADDR_T_UNICAST */
+#endif /* HAVE_SET_RX_MODE */
+}
+#define __dev_uc_unsync __kc_dev_uc_unsync
+
+static inline int __kc_dev_mc_sync(struct net_device __maybe_unused *dev,
+				   int __maybe_unused (*sync)(struct net_device *, const unsigned char *),
+				   int __maybe_unused (*unsync)(struct net_device *, const unsigned char *))
+{
+#ifdef NETDEV_HW_ADDR_T_MULTICAST
+	return __kc_hw_addr_sync_dev(&dev->mc, dev, sync, unsync);
+#elif defined(HAVE_SET_RX_MODE)
+	return __kc_dev_addr_sync_dev(&dev->mc_list, &dev->mc_count,
+				      dev, sync, unsync);
+#else
+	return 0;
+#endif
+	
+}
+#define __dev_mc_sync __kc_dev_mc_sync
+
+static inline void __kc_dev_mc_unsync(struct net_device __maybe_unused *dev,
+				      int __maybe_unused (*unsync)(struct net_device *, const unsigned char *))
+{
+#ifdef HAVE_SET_RX_MODE
+#ifdef NETDEV_HW_ADDR_T_MULTICAST
+	__kc_hw_addr_unsync_dev(&dev->mc, dev, unsync);
+#else /* NETDEV_HW_ADDR_T_MULTICAST */
+	__kc_dev_addr_unsync_dev(&dev->mc_list, &dev->mc_count, dev, unsync);
+#endif /* NETDEV_HW_ADDR_T_MULTICAST */
+#endif /* HAVE_SET_RX_MODE */
+}
+#define __dev_mc_unsync __kc_dev_mc_unsync
+#endif /* __dev_uc_sync */
+#else
+#define HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
+#define HAVE_DCBNL_OPS_SETAPP_RETURN_INT
+#endif /* 3.16.0 */
 
 #endif /* _KCOMPAT_H_ */

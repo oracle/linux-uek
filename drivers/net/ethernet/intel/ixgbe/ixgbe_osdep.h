@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -89,6 +90,8 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 #define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) \
 	IXGBE_WRITE_REG((a), (reg) + ((offset) << 2), (value))
 
+#define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r)
+
 #define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
 	IXGBE_READ_REG((a), (reg) + ((offset) << 2)))
 
@@ -100,7 +103,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
 
-void ixgbe_check_remove(struct ixgbe_hw *hw, u32 reg);
+u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg);
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);
@@ -124,26 +127,47 @@ enum {
 	IXGBE_ERROR_CAUTION,
 };
 
-#define ERROR_REPORT(level, format, arg...) do {			\
-	switch (level) {						\
-	case IXGBE_ERROR_SOFTWARE:					\
-	case IXGBE_ERROR_CAUTION:					\
-	case IXGBE_ERROR_POLLING:					\
-		netif_dbg(ixgbe_hw_to_msg(hw), drv, ixgbe_hw_to_netdev(hw), \
-			  format, ## arg);				\
-		break;							\
-	case IXGBE_ERROR_INVALID_STATE:					\
-	case IXGBE_ERROR_UNSUPPORTED:					\
-	case IXGBE_ERROR_ARGUMENT:					\
-		netif_err(ixgbe_hw_to_msg(hw), hw, ixgbe_hw_to_netdev(hw), \
-			  format, ## arg);				\
-		break;							\
-	default:							\
-		break;							\
-	}								\
+#define ERROR_REPORT(level, format, arg...) do {				\
+	switch (level) {							\
+	case IXGBE_ERROR_SOFTWARE:						\
+	case IXGBE_ERROR_CAUTION:						\
+	case IXGBE_ERROR_POLLING:						\
+		netif_warn(ixgbe_hw_to_msg(hw), drv, ixgbe_hw_to_netdev(hw),	\
+			   format, ## arg);					\
+		break;								\
+	case IXGBE_ERROR_INVALID_STATE:						\
+	case IXGBE_ERROR_UNSUPPORTED:						\
+	case IXGBE_ERROR_ARGUMENT:						\
+		netif_err(ixgbe_hw_to_msg(hw), hw, ixgbe_hw_to_netdev(hw),	\
+			  format, ## arg);					\
+		break;								\
+	default:								\
+		break;								\
+	}									\
 } while (0)
 
 #define ERROR_REPORT1 ERROR_REPORT
 #define ERROR_REPORT2 ERROR_REPORT
 #define ERROR_REPORT3 ERROR_REPORT
+
+#define UNREFERENCED_XPARAMETER
+#define UNREFERENCED_1PARAMETER(_p) do {		\
+	uninitialized_var(_p);				\
+} while (0)
+#define UNREFERENCED_2PARAMETER(_p, _q) do {		\
+	uninitialized_var(_p);				\
+	uninitialized_var(_q);				\
+} while (0)
+#define UNREFERENCED_3PARAMETER(_p, _q, _r) do {	\
+	uninitialized_var(_p);				\
+	uninitialized_var(_q);				\
+	uninitialized_var(_r);				\
+} while (0)
+#define UNREFERENCED_4PARAMETER(_p, _q, _r, _s) do {	\
+	uninitialized_var(_p);				\
+	uninitialized_var(_q);				\
+	uninitialized_var(_r);				\
+	uninitialized_var(_s);				\
+} while (0)
+
 #endif /* _IXGBE_OSDEP_H_ */

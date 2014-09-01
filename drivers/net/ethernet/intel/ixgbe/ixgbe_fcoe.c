@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -69,6 +70,7 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 	int len = 0;
 	struct ixgbe_fcoe *fcoe;
 	struct ixgbe_adapter *adapter;
+	struct ixgbe_hw *hw;
 	struct ixgbe_fcoe_ddp *ddp;
 	u32 fcbuff;
 
@@ -79,6 +81,7 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 		goto out_ddp_put;
 
 	adapter = netdev_priv(netdev);
+	hw = &adapter->hw;
 	fcoe = &adapter->fcoe;
 	ddp = &fcoe->ddp[xid];
 	if (!ddp->udl)
@@ -87,18 +90,27 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 	len = ddp->len;
 	/* if there an error, force to invalidate ddp context */
 	if (ddp->err) {
-		spin_lock_bh(&fcoe->lock);
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCFLT, 0);
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCFLTRW,
-				(xid | IXGBE_FCFLTRW_WE));
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCBUFF, 0);
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
-				(xid | IXGBE_FCDMARW_WE));
+		switch (hw->mac.type) {
+		default:
+			/* other hardware requires DDP FCoE lock */
+			spin_lock_bh(&fcoe->lock);
 
-		IXGBE_WRITE_REG(&adapter->hw, IXGBE_FCDMARW,
-				(xid | IXGBE_FCDMARW_RE));
-		fcbuff = IXGBE_READ_REG(&adapter->hw, IXGBE_FCBUFF);
-		spin_unlock_bh(&fcoe->lock);
+			IXGBE_WRITE_REG(hw, IXGBE_FCFLT, 0);
+			IXGBE_WRITE_REG(hw, IXGBE_FCFLTRW,
+					(xid | IXGBE_FCFLTRW_WE));
+			IXGBE_WRITE_REG(hw, IXGBE_FCBUFF, 0);
+			IXGBE_WRITE_REG(hw, IXGBE_FCDMARW,
+					(xid | IXGBE_FCDMARW_WE));
+
+			/* read FCBUFF to check context invalidated */
+			IXGBE_WRITE_REG(hw, IXGBE_FCDMARW,
+					(xid | IXGBE_FCDMARW_RE));
+			fcbuff = IXGBE_READ_REG(hw, IXGBE_FCBUFF);
+
+			spin_unlock_bh(&fcoe->lock);
+			break;
+		}
+
 		/* guaranteed to be invalidated after 100us */
 		if (fcbuff & IXGBE_FCBUFF_VALID)
 			udelay(100);
@@ -273,7 +285,6 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 
 	/* program DMA context */
 	hw = &adapter->hw;
-	spin_lock_bh(&fcoe->lock);
 
 	/* turn on last frame indication for target mode as FCP_RSPtarget is
 	 * supposed to send FCP_RSP when it is done. */
@@ -284,16 +295,23 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 		IXGBE_WRITE_REG(hw, IXGBE_FCRXCTRL, fcrxctl);
 	}
 
-	IXGBE_WRITE_REG(hw, IXGBE_FCPTRL, ddp->udp & DMA_BIT_MASK(32));
-	IXGBE_WRITE_REG(hw, IXGBE_FCPTRH, (u64)ddp->udp >> 32);
-	IXGBE_WRITE_REG(hw, IXGBE_FCBUFF, fcbuff);
-	IXGBE_WRITE_REG(hw, IXGBE_FCDMARW, fcdmarw);
-	/* program filter context */
-	IXGBE_WRITE_REG(hw, IXGBE_FCPARAM, 0);
-	IXGBE_WRITE_REG(hw, IXGBE_FCFLT, IXGBE_FCFLT_VALID);
-	IXGBE_WRITE_REG(hw, IXGBE_FCFLTRW, fcfltrw);
+	switch (hw->mac.type) {
+	default:
+		/* other devices require DDP lock with direct DDP context access */
+		spin_lock_bh(&fcoe->lock);
 
-	spin_unlock_bh(&fcoe->lock);
+		IXGBE_WRITE_REG(hw, IXGBE_FCPTRL, ddp->udp & DMA_BIT_MASK(32));
+		IXGBE_WRITE_REG(hw, IXGBE_FCPTRH, (u64)ddp->udp >> 32);
+		IXGBE_WRITE_REG(hw, IXGBE_FCBUFF, fcbuff);
+		IXGBE_WRITE_REG(hw, IXGBE_FCDMARW, fcdmarw);
+		/* program filter context */
+		IXGBE_WRITE_REG(hw, IXGBE_FCPARAM, 0);
+		IXGBE_WRITE_REG(hw, IXGBE_FCFLT, IXGBE_FCFLT_VALID);
+		IXGBE_WRITE_REG(hw, IXGBE_FCFLTRW, fcfltrw);
+
+		spin_unlock_bh(&fcoe->lock);
+		break;
+	}
 
 	return 1;
 

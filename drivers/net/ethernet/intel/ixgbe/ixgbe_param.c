@@ -16,6 +16,7 @@
   the file called "COPYING".
 
   Contact Information:
+  Linux NICS <linux.nics@intel.com>
   e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
   Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
 
@@ -167,22 +168,21 @@ IXGBE_PARAM(max_vfs, "Number of Virtual Functions: 0 = disable (default), "
 	    "1-" XSTRINGIFY(MAX_SRIOV_VFS) " = enable "
 	    "this many VFs");
 
-/* L2LBen - L2 Loopback enable
+/* VEPA - Set internal bridge to VEPA mode
  *
  * Valid Range: 0-1
- *  - 0 Disables L2 loopback
- *  - 1 Enables L2 loopback
+ *  - 0 Set bridge to VEB mode
+ *  - 1 Set bridge to VEPA mode
  *
- * Default Value: 1
+ * Default Value: 0
  */
 /*
  *Note:
  *=====
- * This is a temporary solution to enable SR-IOV features testing with
- * external switches. As soon as an integrated VEB management interface
- * becomes available this feature will be removed.
+ * This provides ability to ensure VEPA mode on the internal bridge even if
+ * the kernel does not support the netdev bridge setting operations.
 */
-IXGBE_PARAM(L2LBen, "L2 Loopback Enable: 0 = disable, 1 = enable (default)");
+IXGBE_PARAM(VEPA, "VEPA Bridge Mode: 0 = VEB (default), 1 = VEPA");
 #endif
 
 /* Interrupt Throttle Rate (interrupts/sec)
@@ -712,29 +712,29 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			} 
 		}
 	}
-	{ /* L2 Loopback Enable in SR-IOV mode */
+	{ /* VEPA Bridge Mode enable for SR-IOV mode */
 		static struct ixgbe_option opt = {
 			.type = range_option,
-			.name = "L2 Loopback Enable",
-			.err  = "defaulting to Enable",
-			.def  = OPTION_ENABLED,
+			.name = "VEPA Bridge Mode Enable",
+			.err  = "defaulting to disabled",
+			.def  = OPTION_DISABLED,
 			.arg  = { .r = { .min = OPTION_DISABLED,
 					 .max = OPTION_ENABLED} }
 		};
 
 #ifdef module_param_array
-		if (num_L2LBen > bd) {
+		if (num_VEPA > bd) {
 #endif
-			unsigned int l2LBen = L2LBen[bd];
-			ixgbe_validate_option(&l2LBen, &opt);
-			if (l2LBen)
+			unsigned int vepa = VEPA[bd];
+			ixgbe_validate_option(&vepa, &opt);
+			if (vepa)
 				adapter->flags |=
-					IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE;
+					IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE;
 #ifdef module_param_array
 		} else {
 			if (opt.def == OPTION_ENABLED)
 				adapter->flags |=
-					IXGBE_FLAG_SRIOV_L2LOOPBACK_ENABLE;
+					IXGBE_FLAG_SRIOV_VEPA_BRIDGE_MODE;
 		}
 #endif
 	}
