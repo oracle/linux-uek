@@ -56,7 +56,9 @@ char ixgbevf_driver_name[] = "ixgbevf";
 static const char ixgbevf_driver_string[] =
 	"Intel(R) 10 Gigabit PCI Express Virtual Function Network Driver";
 
-#define DRV_VERSION "2.14.2"
+#define RELEASE_TAG
+
+#define DRV_VERSION __stringify(2.15.3) RELEASE_TAG
 const char ixgbevf_driver_version[] = DRV_VERSION;
 static char ixgbevf_copyright[] = "Copyright (c) 2009-2014 Intel Corporation.";
 
@@ -93,12 +95,12 @@ static struct pci_device_id ixgbevf_pci_tbl[] = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_VF), board_82599_vf },
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X540_VF), board_X540_vf },
 	/* required last entry */
-	{0, }
+	{ .device = 0 }
 };
 MODULE_DEVICE_TABLE(pci, ixgbevf_pci_tbl);
 
 MODULE_AUTHOR("Intel Corporation, <linux.nics@intel.com>");
-MODULE_DESCRIPTION("Intel(R) 82599 Virtual Function Driver");
+MODULE_DESCRIPTION("Intel(R) 10 Gigabit Virtual Function Network Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
@@ -126,7 +128,6 @@ static void ixgbevf_queue_reset_subtask(struct ixgbevf_adapter *adapter);
 static void ixgbevf_set_itr(struct ixgbevf_q_vector *q_vector);
 static void ixgbevf_free_all_rx_resources(struct ixgbevf_adapter *adapter);
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 static void ixgbevf_remove_adapter(struct ixgbe_hw *hw)
 {
 	struct ixgbevf_adapter *adapter = hw->back;
@@ -157,7 +158,6 @@ void ixgbevf_check_remove(struct ixgbe_hw *hw, u32 reg)
        if (value == IXGBE_FAILED_READ_REG)
                ixgbevf_remove_adapter(hw);
 }
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 
 static inline void ixgbevf_release_rx_desc(struct ixgbevf_ring *rx_ring,
 					   u32 val)
@@ -811,7 +811,7 @@ static unsigned int ixgbevf_get_headlen(unsigned char *data,
  * As a result we can do things like drop a frag and maintain an accurate
  * truesize for the skb.
  */
-static void ixgbevf_pull_tail(struct ixgbevf_ring *rx_ring,
+static void ixgbevf_pull_tail(struct ixgbevf_ring __always_unused *rx_ring,
 			      struct sk_buff *skb)
 {
 	struct skb_frag_struct *frag = &skb_shinfo(skb)->frags[0];
@@ -932,7 +932,7 @@ static void ixgbevf_reuse_rx_page(struct ixgbevf_ring *rx_ring,
  * The function will then update the page offset if necessary and return
  * true if the buffer can be reused by the adapter.
  */
-static bool ixgbevf_add_rx_frag(struct ixgbevf_ring *rx_ring,
+static bool ixgbevf_add_rx_frag(struct ixgbevf_ring __always_unused *rx_ring,
 				struct ixgbevf_rx_buffer *rx_buffer,
 				union ixgbe_adv_rx_desc *rx_desc,
 				struct sk_buff *skb)
@@ -969,22 +969,16 @@ static bool ixgbevf_add_rx_frag(struct ixgbevf_ring *rx_ring,
 	/* flip page offset to other buffer */
 	rx_buffer->page_offset ^= IXGBEVF_RX_BUFSZ;
 
-	/*
-	 * since we are the only owner of the page and we need to
-	 * increment it, just set the value to 2 in order to avoid
-	 * an unecessary locked operation
-	 */
-	atomic_set(&page->_count, 2);
 #else
 	/* move offset up to the next cache line */
 	rx_buffer->page_offset += IXGBEVF_RX_BUFSZ;
 
 	if (rx_buffer->page_offset > (PAGE_SIZE - IXGBEVF_RX_BUFSZ))
 		return false;
+#endif
 
 	/* bump ref count on page before it is given to the stack */
 	get_page(page);
-#endif
 
 	return true;
 }
@@ -1108,12 +1102,12 @@ static int ixgbevf_clean_rx_irq(struct ixgbevf_q_vector *q_vector,
 
 		/* probably a little skewed due to removing CRC */
 		total_rx_bytes += skb->len;
-		total_rx_packets++;
 
 		/* Workarouid hardware that can't do proper VEPA multicast
 		 * source pruning.
 		 */
-		if ((skb->pkt_type & (PACKET_BROADCAST | PACKET_MULTICAST)) &&
+		if ((skb->pkt_type == PACKET_BROADCAST ||
+		    skb->pkt_type == PACKET_MULTICAST) &&
 		    ether_addr_equal(rx_ring->netdev->dev_addr,
 				     eth_hdr(skb)->h_source)) {
 			dev_kfree_skb_irq(skb);
@@ -1129,8 +1123,8 @@ static int ixgbevf_clean_rx_irq(struct ixgbevf_q_vector *q_vector,
 		skb = NULL;
 
 		/* update budget accounting */
-		budget--;
-	} while (likely(budget));
+		total_rx_packets++;
+	} while (likely(total_rx_packets < budget));
 
 	/* place incomplete frames back on ring for completion */
 	rx_ring->skb = skb;
@@ -1461,7 +1455,7 @@ static void ixgbevf_set_itr(struct ixgbevf_q_vector *q_vector)
 	}
 }
 
-static irqreturn_t ixgbevf_msix_other(int irq, void *data)
+static irqreturn_t ixgbevf_msix_other(int __always_unused irq, void *data)
 {
 	struct ixgbevf_adapter *adapter = data;
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -1480,7 +1474,7 @@ static irqreturn_t ixgbevf_msix_other(int irq, void *data)
  * @irq: unused
  * @data: pointer to our q_vector struct for this interrupt vector
  **/
-static irqreturn_t ixgbevf_msix_clean_rings(int irq, void *data)
+static irqreturn_t ixgbevf_msix_clean_rings(int __always_unused irq, void *data)
 {
 	struct ixgbevf_q_vector *q_vector = data;
 
@@ -1663,9 +1657,6 @@ static void ixgbevf_configure_tx_ring(struct ixgbevf_adapter *adapter,
 	/* reset head and tail pointers */
 	IXGBE_WRITE_REG(hw, IXGBE_VFTDH(reg_idx), 0);
 	IXGBE_WRITE_REG(hw, IXGBE_VFTDT(reg_idx), 0);
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
-	ring->adapter_present = &hw->hw_addr;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	ring->tail = adapter->io_addr + IXGBE_VFTDT(reg_idx);
 
 	/* reset ntu and ntc to place SW in sync with hardwdare */
@@ -1716,8 +1707,6 @@ static void ixgbevf_configure_tx(struct ixgbevf_adapter *adapter)
 		ixgbevf_configure_tx_ring(adapter, adapter->tx_ring[i]);
 }
 
-#define IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT	2
-
 static void ixgbevf_configure_srrctl(struct ixgbevf_adapter *adapter, int index)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
@@ -1756,10 +1745,8 @@ static void ixgbevf_disable_rx_queue(struct ixgbevf_adapter *adapter,
 	u32 rxdctl;
 	u8 reg_idx = ring->reg_idx;
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	if (IXGBE_REMOVED(hw->hw_addr))
 		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	rxdctl = IXGBE_READ_REG(hw, IXGBE_VFRXDCTL(reg_idx));
 	rxdctl &= ~IXGBE_RXDCTL_ENABLE;
 
@@ -1786,10 +1773,8 @@ static void ixgbevf_rx_desc_queue_enable(struct ixgbevf_adapter *adapter,
 	u32 rxdctl;
 	u8 reg_idx = ring->reg_idx;
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	if (IXGBE_REMOVED(hw->hw_addr))
 		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	do {
 		usleep_range(1000, 2000);
 		rxdctl = IXGBE_READ_REG(hw, IXGBE_VFRXDCTL(reg_idx));
@@ -1800,6 +1785,7 @@ static void ixgbevf_rx_desc_queue_enable(struct ixgbevf_adapter *adapter,
 			"RXDCTL.ENABLE queue %d not set while polling\n",
                         reg_idx);
 }
+
 
 static void ixgbevf_configure_rx_ring(struct ixgbevf_adapter *adapter,
 				      struct ixgbevf_ring *ring)
@@ -1825,9 +1811,6 @@ static void ixgbevf_configure_rx_ring(struct ixgbevf_adapter *adapter,
 	/* reset head and tail pointers */
 	IXGBE_WRITE_REG(hw, IXGBE_VFRDH(reg_idx), 0);
 	IXGBE_WRITE_REG(hw, IXGBE_VFRDT(reg_idx), 0);
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
-	ring->adapter_present = &hw->hw_addr;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	ring->tail = adapter->io_addr + IXGBE_VFRDT(reg_idx);
 
 	/* reset ntu and ntc to place SW in sync with hardwdare */
@@ -2019,7 +2002,7 @@ static void ixgbevf_restore_vlan(struct ixgbevf_adapter *adapter)
 }
 #endif /* NETIF_F_HW_VLAN_TX || NETIF_F_HW_VLAN_CTAG_TX*/
 
-static u8 *ixgbevf_addr_list_itr(struct ixgbe_hw *hw, u8 **mc_addr_ptr,
+static u8 *ixgbevf_addr_list_itr(struct ixgbe_hw __maybe_unused *hw, u8 **mc_addr_ptr,
 				 u32 *vmdq)
 {
 #ifdef NETDEV_HW_ADDR_T_MULTICAST
@@ -2456,10 +2439,8 @@ void ixgbevf_reset(struct ixgbevf_adapter *adapter)
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct net_device *netdev = adapter->netdev;
 
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	if (IXGBE_REMOVED(hw->hw_addr))
 		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	if (hw->mac.ops.reset_hw(hw)) {
 		DPRINTK(PROBE, ERR, "PF still resetting\n");
 	} else {
@@ -3184,36 +3165,6 @@ static void ixgbevf_watchdog_link_is_down(struct ixgbevf_adapter *adapter)
 	netif_carrier_off(netdev);
 }
 
-/**
- * ixgbevf_watchdog_flush_tx - flush queues on link down
- * @adapter - pointer to the device adapter structure
- **/
-static void ixgbevf_watchdog_flush_tx(struct ixgbevf_adapter *adapter)
-{
-	int some_tx_pending = 0;
-	int i;
-
-	/* nothing to do if carrier is up */
-	if (netif_carrier_ok(adapter->netdev))
-		return;
-
-	for (i = 0; i < adapter->num_tx_queues; i++) {
-		struct ixgbevf_ring *tx_ring = adapter->tx_ring[i];
-		if (tx_ring->next_to_use != tx_ring->next_to_clean) {
-			some_tx_pending = 1;
-			break;
-		}
-	}
-
-	/*
-	 * We've lost link, so the controller stops DMA, but we've got
-	 * queued Tx work that's never going to get done, so reset
-	 * controller to flush Tx.
-	 */
-	if (some_tx_pending)
-		adapter->flags |= IXGBEVF_FLAG_RESET_REQUESTED;
-}
-
 /*
  * ixgbevf_watchdog_subtask - worker thread to bring link up
  * @work: pointer to work_struct containing our data
@@ -3234,7 +3185,6 @@ static void ixgbevf_watchdog_subtask(struct ixgbevf_adapter *adapter)
 		ixgbevf_watchdog_link_is_down(adapter);
 
 	ixgbevf_update_stats(adapter);
-	ixgbevf_watchdog_flush_tx(adapter);
 }
 
 /**
@@ -3246,9 +3196,7 @@ static void ixgbevf_service_task(struct work_struct *work)
 	struct ixgbevf_adapter *adapter = container_of(work,
 						       struct ixgbevf_adapter,
 						       service_task);
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	struct ixgbe_hw *hw = &adapter->hw;
-
 
 	if (IXGBE_REMOVED(hw->hw_addr)) {
 		if (!test_bit(__IXGBEVF_DOWN, &adapter->state)) {
@@ -3258,7 +3206,6 @@ static void ixgbevf_service_task(struct work_struct *work)
 		}
 		return;
 	}
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 
 	ixgbevf_queue_reset_subtask(adapter);
 	ixgbevf_reset_subtask(adapter);
@@ -3976,9 +3923,7 @@ static int ixgbevf_xmit_frame_ring(struct sk_buff *skb,
 	int tso;
 	u32 tx_flags = 0;
 	u16 count = TXD_USE_COUNT(skb_headlen(skb));
-#if PAGE_SIZE > IXGBE_MAX_DATA_PER_TXD
 	unsigned short f;
-#endif
 	__be16 protocol = skb->protocol;
 	u8 hdr_len = 0;
 	/*
@@ -3998,16 +3943,16 @@ static int ixgbevf_xmit_frame_ring(struct sk_buff *skb,
 	 *       + 1 desc for context descriptor,
 	 * otherwise try next time
 	 */
-#if PAGE_SIZE > IXGBE_MAX_DATA_PER_TXD
 	for (f = 0; f < skb_shinfo(skb)->nr_frags; f++)
 		count += TXD_USE_COUNT(skb_shinfo(skb)->frags[f].size);
-#else
-	count += skb_shinfo(skb)->nr_frags;
-#endif
+
 	if (ixgbevf_maybe_stop_tx(tx_ring, count + 3)) {
 		tx_ring->tx_stats.tx_busy++;
 		return NETDEV_TX_BUSY;
 	}
+
+	/* software timestamp */
+	skb_tx_timestamp(skb);
 
 	/* record the location of the first descriptor for this packet */
 	first = &tx_ring->tx_buffer_info[tx_ring->next_to_use];
@@ -4045,6 +3990,10 @@ static int ixgbevf_xmit_frame_ring(struct sk_buff *skb,
 
 	ixgbevf_tx_map(tx_ring, first, hdr_len);
 
+#ifndef HAVE_TRANS_START_IN_QUEUE
+	tx_ring->netdev->trans_start = jiffies;
+
+#endif
 	ixgbevf_maybe_stop_tx(tx_ring, DESC_NEEDED);
 
 	return NETDEV_TX_OK;
@@ -4183,7 +4132,7 @@ static void ixgbevf_netpoll(struct net_device *netdev)
 
 
 #ifndef USE_REBOOT_NOTIFIER
-static int ixgbevf_suspend(struct pci_dev *pdev, pm_message_t state)
+static int ixgbevf_suspend(struct pci_dev *pdev, pm_message_t __maybe_unused state)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
 	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
@@ -4272,18 +4221,16 @@ static struct rtnl_link_stats64 *ixgbevf_get_stats64(struct net_device *netdev,
 	const struct ixgbevf_ring *ring;
 	int i;
 
-	ixgbevf_update_stats(adapter);
-
 	stats->multicast = adapter->stats.vfmprc - adapter->stats.base_vfmprc;
 
 	rcu_read_lock();
 	for (i = 0; i < adapter->num_rx_queues; i++) {
 		ring = adapter->rx_ring[i];
 		do {
-			start = u64_stats_fetch_begin_bh(&ring->syncp);
+			start = u64_stats_fetch_begin_irq(&ring->syncp);
 			bytes = ring->stats.bytes;
 			packets = ring->stats.packets;
-		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		stats->rx_bytes += bytes;
 		stats->rx_packets += packets;
 	}
@@ -4291,10 +4238,10 @@ static struct rtnl_link_stats64 *ixgbevf_get_stats64(struct net_device *netdev,
 	for (i = 0; i < adapter->num_tx_queues; i++) {
 		ring = adapter->tx_ring[i];
 		do {
-			start = u64_stats_fetch_begin_bh(&ring->syncp);
+			start = u64_stats_fetch_begin_irq(&ring->syncp);
 			bytes = ring->stats.bytes;
 			packets = ring->stats.packets;
-		} while (u64_stats_fetch_retry_bh(&ring->syncp, start));
+		} while (u64_stats_fetch_retry_irq(&ring->syncp, start));
 		stats->tx_bytes += bytes;
 		stats->tx_packets += packets;
 	}
@@ -4765,6 +4712,18 @@ static void ixgbevf_io_resume(struct pci_dev *pdev)
 		ixgbevf_up(adapter);
 
 	netif_device_attach(netdev);
+}
+
+struct net_device *ixgbevf_hw_to_netdev(const struct ixgbe_hw *hw)
+{
+	return ((struct ixgbevf_adapter *)hw->back)->netdev;
+}
+
+struct ixgbevf_msg *ixgbevf_hw_to_msg(const struct ixgbe_hw *hw)
+{
+	struct ixgbevf_adapter *adapter =
+		container_of(hw, struct ixgbevf_adapter, hw);
+	return (struct ixgbevf_msg *)&adapter->msg_enable;
 }
 
 /* PCI Error Recovery (ERS) */

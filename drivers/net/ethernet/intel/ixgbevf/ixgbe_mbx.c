@@ -205,6 +205,7 @@ static s32 ixgbe_check_for_msg_vf(struct ixgbe_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = IXGBE_ERR_MBX;
 
+	UNREFERENCED_1PARAMETER(mbx_id);
 	if (!ixgbe_check_for_bit_vf(hw, IXGBE_VFMAILBOX_PFSTS)) {
 		ret_val = 0;
 		hw->mbx.stats.reqs++;
@@ -224,6 +225,7 @@ static s32 ixgbe_check_for_ack_vf(struct ixgbe_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = IXGBE_ERR_MBX;
 
+	UNREFERENCED_1PARAMETER(mbx_id);
 	if (!ixgbe_check_for_bit_vf(hw, IXGBE_VFMAILBOX_PFACK)) {
 		ret_val = 0;
 		hw->mbx.stats.acks++;
@@ -243,6 +245,7 @@ static s32 ixgbe_check_for_rst_vf(struct ixgbe_hw *hw, u16 mbx_id)
 {
 	s32 ret_val = IXGBE_ERR_MBX;
 
+	UNREFERENCED_1PARAMETER(mbx_id);
 	if (!ixgbe_check_for_bit_vf(hw, (IXGBE_VFMAILBOX_RSTD |
 	    IXGBE_VFMAILBOX_RSTI))) {
 		ret_val = 0;
@@ -287,6 +290,7 @@ static s32 ixgbe_write_mbx_vf(struct ixgbe_hw *hw, u32 *msg, u16 size,
 	s32 ret_val;
 	u16 i;
 
+	UNREFERENCED_1PARAMETER(mbx_id);
 
 	/* lock the mailbox to prevent pf/vf race condition */
 	ret_val = ixgbe_obtain_mbx_lock_vf(hw);
@@ -326,6 +330,7 @@ static s32 ixgbe_read_mbx_vf(struct ixgbe_hw *hw, u32 *msg, u16 size,
 	s32 ret_val = 0;
 	u16 i;
 
+	UNREFERENCED_1PARAMETER(mbx_id);
 	/* lock the mailbox to prevent pf/vf race condition */
 	ret_val = ixgbe_obtain_mbx_lock_vf(hw);
 	if (ret_val)

@@ -76,6 +76,49 @@ s32 ixgbe_init_ops_vf(struct ixgbe_hw *hw)
 	return 0;
 }
 
+/* ixgbe_virt_clr_reg - Set register to default (power on) state.
+ *  @hw: pointer to hardware structure
+ */
+static void ixgbe_virt_clr_reg(struct ixgbe_hw *hw)
+{
+	int i;
+	u32 vfsrrctl;
+	u32 vfdca_rxctrl;
+	u32 vfdca_txctrl;
+
+	/* VRSRRCTL default values (BSIZEPACKET = 2048, BSIZEHEADER = 256) */
+	vfsrrctl = 0x100 << IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT;
+	vfsrrctl |= 0x800 >> IXGBE_SRRCTL_BSIZEPKT_SHIFT;
+
+	/* DCA_RXCTRL default value */
+	vfdca_rxctrl = IXGBE_DCA_RXCTRL_DESC_RRO_EN |
+		       IXGBE_DCA_RXCTRL_DATA_WRO_EN |
+		       IXGBE_DCA_RXCTRL_HEAD_WRO_EN;
+
+	/* DCA_TXCTRL default value */
+	vfdca_txctrl = IXGBE_DCA_TXCTRL_DESC_RRO_EN |
+		       IXGBE_DCA_TXCTRL_DESC_WRO_EN |
+		       IXGBE_DCA_TXCTRL_DATA_RRO_EN;
+
+	IXGBE_WRITE_REG(hw, IXGBE_VFPSRTYPE, 0);
+
+	for (i = 0; i < 7; i++) {
+		IXGBE_WRITE_REG(hw, IXGBE_VFRDH(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFRDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFRXDCTL(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFSRRCTL(i), vfsrrctl);
+		IXGBE_WRITE_REG(hw, IXGBE_VFTDH(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFTDT(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFTXDCTL(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFTDWBAH(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFTDWBAL(i), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_VFDCA_RXCTRL(i), vfdca_rxctrl);
+		IXGBE_WRITE_REG(hw, IXGBE_VFDCA_TXCTRL(i), vfdca_txctrl);
+	}
+
+	IXGBE_WRITE_FLUSH(hw);
+}
+
 /**
  *  ixgbe_start_hw_vf - Prepare hardware for Tx/Rx
  *  @hw: pointer to hardware structure
@@ -145,6 +188,9 @@ s32 ixgbe_reset_hw_vf(struct ixgbe_hw *hw)
 
 	if (!timeout)
 		return IXGBE_ERR_RESET_FAILED;
+
+	/* Reset VF registers to initial values */
+	ixgbe_virt_clr_reg(hw);
 
 	/* mailbox timeout can now become active */
 	mbx->timeout = IXGBE_VF_MBX_INIT_TIMEOUT;
@@ -285,6 +331,7 @@ s32 ixgbe_set_rar_vf(struct ixgbe_hw *hw, u32 index, u8 *addr, u32 vmdq,
 	u32 msgbuf[3];
 	u8 *msg_addr = (u8 *)(&msgbuf[1]);
 	s32 ret_val;
+	UNREFERENCED_3PARAMETER(vmdq, enable_addr, index);
 
 	memset(msgbuf, 0, 12);
 	msgbuf[0] = IXGBE_VF_SET_MAC_ADDR;
@@ -324,6 +371,7 @@ s32 ixgbe_update_mc_addr_list_vf(struct ixgbe_hw *hw, u8 *mc_addr_list,
 	u32 cnt, i;
 	u32 vmdq;
 
+	UNREFERENCED_1PARAMETER(clear);
 
 	/* Each entry in the list uses 1 16 bit word.  We have 30
 	 * 16 bit words available in our HW msg buffer (minus 1 for the
@@ -361,6 +409,7 @@ s32 ixgbe_set_vfta_vf(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on)
 	struct ixgbe_mbx_info *mbx = &hw->mbx;
 	u32 msgbuf[2];
 	s32 ret_val;
+	UNREFERENCED_1PARAMETER(vind);
 
 	msgbuf[0] = IXGBE_VF_SET_VLAN;
 	msgbuf[1] = vlan;
@@ -385,6 +434,7 @@ s32 ixgbe_set_vfta_vf(struct ixgbe_hw *hw, u32 vlan, u32 vind, bool vlan_on)
  **/
 u32 ixgbe_get_num_of_tx_queues_vf(struct ixgbe_hw *hw)
 {
+	UNREFERENCED_1PARAMETER(hw);
 	return IXGBE_VF_MAX_TX_QUEUES;
 }
 
@@ -396,6 +446,7 @@ u32 ixgbe_get_num_of_tx_queues_vf(struct ixgbe_hw *hw)
  **/
 u32 ixgbe_get_num_of_rx_queues_vf(struct ixgbe_hw *hw)
 {
+	UNREFERENCED_1PARAMETER(hw);
 	return IXGBE_VF_MAX_RX_QUEUES;
 }
 
@@ -457,6 +508,7 @@ s32 ixgbevf_set_uc_addr_vf(struct ixgbe_hw *hw, u32 index, u8 *addr)
 s32 ixgbe_setup_mac_link_vf(struct ixgbe_hw *hw, ixgbe_link_speed speed,
 			    bool autoneg_wait_to_complete)
 {
+	UNREFERENCED_3PARAMETER(hw, speed, autoneg_wait_to_complete);
 	return 0;
 }
 
@@ -477,6 +529,7 @@ s32 ixgbe_check_mac_link_vf(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 	s32 ret_val = 0;
 	u32 links_reg;
 	u32 in_msg = 0;
+	UNREFERENCED_1PARAMETER(autoneg_wait_to_complete);
 
 	/* If we were hit with a reset drop the link */
 	if (!mbx->ops.check_for_rst(hw, 0) || !mbx->timeout)
@@ -489,6 +542,21 @@ s32 ixgbe_check_mac_link_vf(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 	links_reg = IXGBE_READ_REG(hw, IXGBE_VFLINKS);
 	if (!(links_reg & IXGBE_LINKS_UP))
 		goto out;
+
+	/* for SFP+ modules and DA cables on 82599 it can take up to 500usecs
+	 * before the link status is correct
+	 */
+	if (mac->type == ixgbe_mac_82599_vf) {
+		int i;
+
+		for (i = 0; i < 5; i++) {
+			udelay(100);
+			links_reg = IXGBE_READ_REG(hw, IXGBE_VFLINKS);
+
+			if (!(links_reg & IXGBE_LINKS_UP))
+				goto out;
+		}
+	}
 
 	switch (links_reg & IXGBE_LINKS_SPEED_82599) {
 	case IXGBE_LINKS_SPEED_10G_82599:

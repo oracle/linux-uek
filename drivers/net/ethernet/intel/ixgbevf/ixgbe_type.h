@@ -111,7 +111,8 @@
 #define IXGBE_CTRL_EXT		0x00018
 #define IXGBE_ESDP		0x00020
 #define IXGBE_EODSDP		0x00028
-#define IXGBE_I2CCTL		0x00028
+#define IXGBE_I2CCTL_82599	0x00028
+#define IXGBE_I2CCTL_BY_MAC(_hw)(0x00028)
 #define IXGBE_PHY_GPIO		0x00028
 #define IXGBE_MAC_GPIO		0x00030
 #define IXGBE_PHYINT_STATUS0	0x00100
@@ -146,10 +147,10 @@
 #define IXGBE_VPDDIAG1	0x10208
 
 /* I2CCTL Bit Masks */
-#define IXGBE_I2C_CLK_IN	0x00000001
-#define IXGBE_I2C_CLK_OUT	0x00000002
-#define IXGBE_I2C_DATA_IN	0x00000004
-#define IXGBE_I2C_DATA_OUT	0x00000008
+#define IXGBE_I2C_CLK_IN_BY_MAC(_hw)(0x00000001)
+#define IXGBE_I2C_CLK_OUT_BY_MAC(_hw)(0x00000002)
+#define IXGBE_I2C_DATA_IN_BY_MAC(_hw)(0x00000004)
+#define IXGBE_I2C_DATA_OUT_BY_MAC(_hw)(0x00000008)
 #define IXGBE_I2C_CLOCK_STRETCHING_TIMEOUT	500
 
 
@@ -393,9 +394,9 @@
 #define IXGBE_WUPL	0x05900
 #define IXGBE_WUPM	0x05A00 /* wake up pkt memory 0x5A00-0x5A7C */
 
-#define IXGBE_FHFT(_n)	(0x09000 + (_n * 0x100)) /* Flex host filter table */
+#define IXGBE_FHFT(_n)	(0x09000 + ((_n) * 0x100)) /* Flex host filter table */
 /* Ext Flexible Host Filter Table */
-#define IXGBE_FHFT_EXT(_n)	(0x09800 + (_n * 0x100))
+#define IXGBE_FHFT_EXT(_n)	(0x09800 + ((_n) * 0x100))
 
 /* Four Flexible Filters are supported */
 #define IXGBE_FLEXIBLE_FILTER_COUNT_MAX		4
@@ -836,6 +837,8 @@
 #define IXGBE_PBACLR_82599	0x11068
 #define IXGBE_CIAA_82599	0x11088
 #define IXGBE_CIAD_82599	0x1108C
+#define IXGBE_CIAA_BY_MAC(_hw)	(IXGBE_CIAA_82599)
+#define IXGBE_CIAD_BY_MAC(_hw)	(IXGBE_CIAD_82599)
 #define IXGBE_PICAUSE		0x110B0
 #define IXGBE_PIENA		0x110B8
 #define IXGBE_CDQ_MBR_82599	0x110B4
@@ -1585,12 +1588,14 @@ enum {
  *	1588 (0x88f7):	 Filter 3
  *	FIP  (0x8914):	 Filter 4
  *	LLDP (0x88CC):	 Filter 5
+ *	LACP (0x8809):	 Filter 6
  */
 #define IXGBE_ETQF_FILTER_EAPOL		0
 #define IXGBE_ETQF_FILTER_FCOE		2
 #define IXGBE_ETQF_FILTER_1588		3
 #define IXGBE_ETQF_FILTER_FIP		4
 #define IXGBE_ETQF_FILTER_LLDP		5
+#define IXGBE_ETQF_FILTER_LACP		6
 /* VLAN Control Bit Masks */
 #define IXGBE_VLNCTRL_VET		0x0000FFFF  /* bits 0-15 */
 #define IXGBE_VLNCTRL_CFI		0x10000000  /* bit 28 */
@@ -1783,6 +1788,7 @@ enum {
 #define IXGBE_GSSR_MAC_CSR_SM	0x0008
 #define IXGBE_GSSR_FLASH_SM	0x0010
 #define IXGBE_GSSR_SW_MNG_SM	0x0400
+#define IXGBE_GSSR_NVM_PHY_MASK	0xF
 
 /* FW Status register bitmask */
 #define IXGBE_FWSTS_FWRI	0x00000200 /* Firmware Reset Indication */
@@ -2204,6 +2210,10 @@ enum {
 
 /* SRRCTL bit definitions */
 #define IXGBE_SRRCTL_BSIZEPKT_SHIFT	10 /* so many KBs */
+#define IXGBE_SRRCTL_BSIZEHDRSIZE_SHIFT	2 /* 64byte resolution (>> 6)
+					   * + at bit 8 offset (<< 8)
+					   *  = (<< 2)
+					   */
 #define IXGBE_SRRCTL_RDMTS_SHIFT	22
 #define IXGBE_SRRCTL_RDMTS_MASK		0x01C00000
 #define IXGBE_SRRCTL_DROP_EN		0x10000000
@@ -2301,6 +2311,68 @@ enum {
 #define IXGBE_MBVFICR(_i)		(0x00710 + ((_i) * 4))
 #define IXGBE_VFLRE(_i)			(((_i & 1) ? 0x001C0 : 0x00600))
 #define IXGBE_VFLREC(_i)		 (0x00700 + ((_i) * 4))
+/* Translated register #defines */
+#define IXGBE_PVFCTRL(P)	(0x00300 + (4 * (P)))
+#define IXGBE_PVFSTATUS(P)	(0x00008 + (0 * (P)))
+#define IXGBE_PVFLINKS(P)	(0x042A4 + (0 * (P)))
+#define IXGBE_PVFRTIMER(P)	(0x00048 + (0 * (P)))
+#define IXGBE_PVFMAILBOX(P)	(0x04C00 + (4 * (P)))
+#define IXGBE_PVFRXMEMWRAP(P)	(0x03190 + (0 * (P)))
+#define IXGBE_PVTEICR(P)	(0x00B00 + (4 * (P)))
+#define IXGBE_PVTEICS(P)	(0x00C00 + (4 * (P)))
+#define IXGBE_PVTEIMS(P)	(0x00D00 + (4 * (P)))
+#define IXGBE_PVTEIMC(P)	(0x00E00 + (4 * (P)))
+#define IXGBE_PVTEIAC(P)	(0x00F00 + (4 * (P)))
+#define IXGBE_PVTEIAM(P)	(0x04D00 + (4 * (P)))
+#define IXGBE_PVTEITR(P)	(((P) < 24) ? (0x00820 + ((P) * 4)) : \
+				 (0x012300 + (((P) - 24) * 4)))
+#define IXGBE_PVTIVAR(P)	(0x12500 + (4 * (P)))
+#define IXGBE_PVTIVAR_MISC(P)	(0x04E00 + (4 * (P)))
+#define IXGBE_PVTRSCINT(P)	(0x12000 + (4 * (P)))
+#define IXGBE_VFPBACL(P)	(0x110C8 + (4 * (P)))
+#define IXGBE_PVFRDBAL(P)	((P < 64) ? (0x01000 + (0x40 * (P))) \
+				 : (0x0D000 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDBAH(P)	((P < 64) ? (0x01004 + (0x40 * (P))) \
+				 : (0x0D004 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDLEN(P)	((P < 64) ? (0x01008 + (0x40 * (P))) \
+				 : (0x0D008 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDH(P)		((P < 64) ? (0x01010 + (0x40 * (P))) \
+				 : (0x0D010 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRDT(P)		((P < 64) ? (0x01018 + (0x40 * (P))) \
+				 : (0x0D018 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFRXDCTL(P)	((P < 64) ? (0x01028 + (0x40 * (P))) \
+				 : (0x0D028 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFSRRCTL(P)	((P < 64) ? (0x01014 + (0x40 * (P))) \
+				 : (0x0D014 + (0x40 * ((P) - 64))))
+#define IXGBE_PVFPSRTYPE(P)	(0x0EA00 + (4 * (P)))
+#define IXGBE_PVFTDBAL(P)	(0x06000 + (0x40 * (P)))
+#define IXGBE_PVFTDBAH(P)	(0x06004 + (0x40 * (P)))
+#define IXGBE_PVFTTDLEN(P)	(0x06008 + (0x40 * (P)))
+#define IXGBE_PVFTDH(P)		(0x06010 + (0x40 * (P)))
+#define IXGBE_PVFTDT(P)		(0x06018 + (0x40 * (P)))
+#define IXGBE_PVFTXDCTL(P)	(0x06028 + (0x40 * (P)))
+#define IXGBE_PVFTDWBAL(P)	(0x06038 + (0x40 * (P)))
+#define IXGBE_PVFTDWBAH(P)	(0x0603C + (0x40 * (P)))
+#define IXGBE_PVFDCA_RXCTRL(P)	(((P) < 64) ? (0x0100C + (0x40 * (P))) \
+				 : (0x0D00C + (0x40 * ((P) - 64))))
+#define IXGBE_PVFDCA_TXCTRL(P)	(0x0600C + (0x40 * (P)))
+#define IXGBE_PVFGPRC(x)	(0x0101C + (0x40 * (x)))
+#define IXGBE_PVFGPTC(x)	(0x08300 + (0x04 * (x)))
+#define IXGBE_PVFGORC_LSB(x)	(0x01020 + (0x40 * (x)))
+#define IXGBE_PVFGORC_MSB(x)	(0x0D020 + (0x40 * (x)))
+#define IXGBE_PVFGOTC_LSB(x)	(0x08400 + (0x08 * (x)))
+#define IXGBE_PVFGOTC_MSB(x)	(0x08404 + (0x08 * (x)))
+#define IXGBE_PVFMPRC(x)	(0x0D01C + (0x40 * (x)))
+
+#define IXGBE_PVFTDWBALn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDWBAL((q_per_pool)*(vf_number) + (vf_q_index)))
+#define IXGBE_PVFTDWBAHn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDWBAH((q_per_pool)*(vf_number) + (vf_q_index)))
+
+#define IXGBE_PVFTDHn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDH((q_per_pool)*(vf_number) + (vf_q_index)))
+#define IXGBE_PVFTDTn(q_per_pool, vf_number, vf_q_index) \
+		(IXGBE_PVFTDT((q_per_pool)*(vf_number) + (vf_q_index)))
 
 /* Little Endian defines */
 #ifndef __le16
@@ -3065,9 +3137,9 @@ struct ixgbe_eeprom_operations {
 #define IXGBE_ERR_OUT_OF_MEM			-34
 #define IXGBE_ERR_FEATURE_NOT_SUPPORTED		-36
 #define IXGBE_ERR_EEPROM_PROTECTED_REGION	-37
+#define IXGBE_ERR_FDIR_CMD_INCOMPLETE		-38
 
 #define IXGBE_NOT_IMPLEMENTED			0x7FFFFFFF
 
-#define UNREFERENCED_XPARAMETER
 
 #endif /* _IXGBE_TYPE_H_ */

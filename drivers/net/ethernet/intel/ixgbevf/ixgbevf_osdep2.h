@@ -50,7 +50,6 @@ static inline void IXGBE_WRITE_REG(struct ixgbe_hw *hw, u32 reg, u32 value)
 
 static inline u32 IXGBE_READ_REG(struct ixgbe_hw *hw, u32 reg)
 {
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	u32 value;
 	u8 __iomem *reg_addr;
 
@@ -61,20 +60,15 @@ static inline u32 IXGBE_READ_REG(struct ixgbe_hw *hw, u32 reg)
 	if (unlikely(value == IXGBE_FAILED_READ_REG))
 		ixgbevf_check_remove(hw, reg);
 	return value;
-#else
-	return readl(hw->hw_addr + reg);
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 }
 
 static inline void IXGBE_WRITE_REG64(struct ixgbe_hw *hw, u32 reg, u64 value)
 {
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
 	u8 __iomem *reg_addr;
 
 	reg_addr = ACCESS_ONCE(hw->hw_addr);
 	if (IXGBE_REMOVED(reg_addr))
 		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	writeq(value, reg_addr + reg);
 }
 

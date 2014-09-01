@@ -128,9 +128,6 @@ struct ixgbevf_ring {
 		struct ixgbevf_rx_buffer *rx_buffer_info;
 	};
 	unsigned long state;
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
-	u8 __iomem **adapter_present;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	u8 __iomem *tail;
 	dma_addr_t dma;			/* phys. address of descriptor ring */
 	unsigned int size;		/* length in bytes */
@@ -446,16 +443,6 @@ struct ixgbevf_adapter {
 	u16 bd_number;
 	u16 msg_enable;
 
-#ifdef BP_EXTENDED_STATS
-	u64 bp_rx_yields;
-	u64 bp_rx_cleaned;
-	u64 bp_rx_missed;
-
-	u64 bp_tx_yields;
-	u64 bp_tx_cleaned;
-	u64 bp_tx_missed;
-#endif
-
 	u8 __iomem *io_addr;
 	u32 link_speed;
 	bool link_up;
@@ -534,10 +521,6 @@ static inline void __ew32(struct ixgbe_hw *hw, unsigned long reg, u32 val)
 
 static inline void ixgbevf_write_tail(struct ixgbevf_ring *ring, u32 value)
 {
-#ifndef NO_SURPRISE_REMOVE_SUPPORT
-	if (unlikely(!*ring->adapter_present))
-		return;
-#endif /* NO_SURPRISE_REMOVE_SUPPORT */
 	writel(value, ring->tail);
 }
 
