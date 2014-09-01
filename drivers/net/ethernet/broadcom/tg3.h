@@ -3553,6 +3553,7 @@ struct tg3 {
 	int				nic_idx;
 #endif
 	unsigned long			dma_4g_cross;
+	bool				pcierr_recovery;
 };
 
 /* Accessor macros for chip and asic attributes
