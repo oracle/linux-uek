@@ -3268,15 +3268,15 @@ static int be_get_resources(struct be_adapter *adapter)
 			adapter->res.max_vfs = res.max_vfs;
 			adapter->res.vf_if_cap_flags = res.vf_if_cap_flags;
 		}
-
-		dev_info(dev, "Max: txqs %d, rxqs %d, rss %d, eqs %d, vfs %d\n",
-			 be_max_txqs(adapter), be_max_rxqs(adapter),
-			 be_max_rss(adapter), be_max_eqs(adapter),
-			 be_max_vfs(adapter));
-		dev_info(dev, "Max: uc-macs %d, mc-macs %d, vlans %d\n",
-			 be_max_uc(adapter), be_max_mc(adapter),
-			 be_max_vlans(adapter));
 	}
+
+	dev_info(dev, "Max: txqs %d, rxqs %d, rss %d, eqs %d, vfs %d\n",
+		 be_max_txqs(adapter), be_max_rxqs(adapter),
+		 be_max_rss(adapter), be_max_eqs(adapter),
+		 be_max_vfs(adapter));
+	dev_info(dev, "Max: uc-macs %d, mc-macs %d, vlans %d\n",
+		 be_max_uc(adapter), be_max_mc(adapter),
+		 be_max_vlans(adapter));
 
 	return 0;
 }
@@ -3457,6 +3457,7 @@ static int be_setup(struct be_adapter *adapter)
 		goto err;
 
 	be_cmd_get_fw_ver(adapter);
+	dev_info(dev, "FW version is %s\n", adapter->fw_ver);
 
 	if (BE2_chip(adapter) && fw_major_num(adapter->fw_ver) < 4) {
 		dev_err(dev, "Firmware on card is old(%s), IRQs may not work.",
@@ -4255,6 +4256,7 @@ static int be_map_pci_bars(struct be_adapter *adapter)
 	return 0;
 
 pci_map_err:
+	dev_err(&adapter->pdev->dev, "Error in mapping PCI BARs\n");
 	be_unmap_pci_bars(adapter);
 	return -ENOMEM;
 }
@@ -4568,6 +4570,8 @@ static int be_probe(struct pci_dev *pdev, const struct pci_device_id *pdev_id)
 	struct be_adapter *adapter;
 	struct net_device *netdev;
 	char port_name;
+
+	dev_info(&pdev->dev, "%s version is %s\n", DRV_NAME, DRV_VER);
 
 	status = pci_enable_device(pdev);
 	if (status)
