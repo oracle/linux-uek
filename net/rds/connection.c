@@ -380,6 +380,13 @@ void rds_conn_destroy(struct rds_connection *conn)
 	rds_conn_drop(conn);
 	flush_work(&conn->c_down_w);
 
+	/* now that conn down worker is flushed; there cannot be any
+	 * more posting of reconn timeout work. But cancel any already
+	 * posted reconn timeout worker as there is a race between rds
+	 * module unload and a pending reconn delay work.
+	 */
+	cancel_delayed_work_sync(&conn->c_reconn_w);
+
 	/* make sure lingering queued work won't try to ref the conn */
 	cancel_delayed_work_sync(&conn->c_send_w);
 	cancel_delayed_work_sync(&conn->c_recv_w);
