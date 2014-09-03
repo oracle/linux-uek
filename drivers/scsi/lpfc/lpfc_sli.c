@@ -8112,7 +8112,7 @@ lpfc_sli4_bpl2sgl(struct lpfc_hba *phba, struct lpfc_iocbq *piocbq,
  *
  * Return: index into SLI4 fast-path FCP queue index.
  **/
-static inline uint32_t
+static inline int
 lpfc_sli4_scmd_to_wqidx_distr(struct lpfc_hba *phba)
 {
 	struct lpfc_vector_map_info *cpup;
@@ -12849,7 +12849,7 @@ lpfc_dual_chute_pci_bar_map(struct lpfc_hba *phba, uint16_t pci_barset)
  * memory this function will return -ENOMEM. If the queue create mailbox command
  * fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_modify_fcp_eq_delay(struct lpfc_hba *phba, uint16_t startq)
 {
 	struct lpfc_mbx_modify_eq_delay *eq_delay;
@@ -12935,7 +12935,7 @@ lpfc_modify_fcp_eq_delay(struct lpfc_hba *phba, uint16_t startq)
  * memory this function will return -ENOMEM. If the queue create mailbox command
  * fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_eq_create(struct lpfc_hba *phba, struct lpfc_queue *eq, uint32_t imax)
 {
 	struct lpfc_mbx_eq_create *eq_create;
@@ -13057,7 +13057,7 @@ lpfc_eq_create(struct lpfc_hba *phba, struct lpfc_queue *eq, uint32_t imax)
  * memory this function will return -ENOMEM. If the queue create mailbox command
  * fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_cq_create(struct lpfc_hba *phba, struct lpfc_queue *cq,
 	       struct lpfc_queue *eq, uint32_t type, uint32_t subtype)
 {
@@ -13398,7 +13398,7 @@ out:
  * memory this function will return -ENOMEM. If the queue create mailbox command
  * fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_wq_create(struct lpfc_hba *phba, struct lpfc_queue *wq,
 	       struct lpfc_queue *cq, uint32_t subtype)
 {
@@ -13634,7 +13634,7 @@ lpfc_rq_adjust_repost(struct lpfc_hba *phba, struct lpfc_queue *rq, int qno)
  * memory this function will return -ENOMEM. If the queue create mailbox command
  * fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_rq_create(struct lpfc_hba *phba, struct lpfc_queue *hrq,
 	       struct lpfc_queue *drq, struct lpfc_queue *cq, uint32_t subtype)
 {
@@ -13899,7 +13899,7 @@ out:
  * On success this function will return a zero. If the queue destroy mailbox
  * command fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_eq_destroy(struct lpfc_hba *phba, struct lpfc_queue *eq)
 {
 	LPFC_MBOXQ_t *mbox;
@@ -13955,7 +13955,7 @@ lpfc_eq_destroy(struct lpfc_hba *phba, struct lpfc_queue *eq)
  * On success this function will return a zero. If the queue destroy mailbox
  * command fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_cq_destroy(struct lpfc_hba *phba, struct lpfc_queue *cq)
 {
 	LPFC_MBOXQ_t *mbox;
@@ -14009,7 +14009,7 @@ lpfc_cq_destroy(struct lpfc_hba *phba, struct lpfc_queue *cq)
  * On success this function will return a zero. If the queue destroy mailbox
  * command fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_mq_destroy(struct lpfc_hba *phba, struct lpfc_queue *mq)
 {
 	LPFC_MBOXQ_t *mbox;
@@ -14063,7 +14063,7 @@ lpfc_mq_destroy(struct lpfc_hba *phba, struct lpfc_queue *mq)
  * On success this function will return a zero. If the queue destroy mailbox
  * command fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_wq_destroy(struct lpfc_hba *phba, struct lpfc_queue *wq)
 {
 	LPFC_MBOXQ_t *mbox;
@@ -14116,7 +14116,7 @@ lpfc_wq_destroy(struct lpfc_hba *phba, struct lpfc_queue *wq)
  * On success this function will return a zero. If the queue destroy mailbox
  * command fails this function will return -ENXIO.
  **/
-uint32_t
+int
 lpfc_rq_destroy(struct lpfc_hba *phba, struct lpfc_queue *hrq,
 		struct lpfc_queue *drq)
 {
@@ -15023,7 +15023,7 @@ uint16_t
 lpfc_sli4_xri_inrange(struct lpfc_hba *phba,
 		      uint16_t xri)
 {
-	int i;
+	uint16_t i;
 
 	for (i = 0; i < phba->sli4_hba.max_cfg_param.max_xri; i++) {
 		if (xri == phba->sli4_hba.xri_ids[i])
@@ -16960,7 +16960,7 @@ lpfc_drain_txq(struct lpfc_hba *phba)
 	char *fail_msg = NULL;
 	struct lpfc_sglq *sglq;
 	union lpfc_wqe wqe;
-	int txq_cnt = 0;
+	uint32_t txq_cnt = 0;
 
 	spin_lock_irqsave(&pring->ring_lock, iflags);
 	list_for_each_entry(piocbq, &pring->txq, list) {
