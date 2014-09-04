@@ -285,6 +285,72 @@ enum {
 	RDS_IB_PORT_DOWN,
 };
 
+/*
+ * Bit flags to keep track of layers of RDS
+ * ports that are UP/DOWN separately stored
+ * in field "port_layerflags" of "struct rds_ib_port"
+ * data structure declared below.
+ *
+ * The structure also uses field "port_state" as
+ * a composite UP/DOWN state derived from the
+ * setting of the "port_layerflags" field bits.
+ *
+ * Layer 1: HWPORTUP - HCA port UP
+ * Layer 2: LINKUP - Link UP
+ * Layer 3: NETDEVUP - netdev layer UP
+ *
+ *  +-----------------------------------------------------------------+
+ *  | ALL THREE Flags need to be UP(set) for a port_state to be UP for|
+ *  | failback.                                                       |
+ *  | ANY ONE  Flag being DOWN (clear) triggers failover.             |
+ *  +-----------------------------------------------------------------+
+ */
+#define RDSIBP_STATUS_HWPORTUP	          0x0001U /* HCA port UP */
+#define RDSIBP_STATUS_LINKUP              0x0002U /* Link layer UP */
+#define RDSIBP_STATUS_NETDEVUP            0x0004U /* NETDEV layer UP */
+#define RDSIBP_STATUS_ALLUP               (RDSIBP_STATUS_HWPORTUP \
+					   | RDSIBP_STATUS_LINKUP \
+					   | RDSIBP_STATUS_NETDEVUP)
+
+/*
+ *
+ * Design notes for failover/failback processing:
+ *
+ * Opportunity for checking and setting status of above
+ * "port_layerflags: bits done at:
+ *
+ *  (1) module load time:
+ *         rds_ib_ip_config_init()
+ *  (2)  HW port status changes:
+ *         rds_ib_event_handler()
+ *  (3) link layer status changes: NETDEV_CHANGE handling in
+ *         rds_ib_netdev_callback()
+ *  (4) netdevice layer status changes: NETDEV_UP/NETDEV_DOWN handling in
+ *         rds_ib_netdev_callback()
+ *
+ * Caveats:
+ *    (a) A link-layer LINKUP detection can be used to mark HW port HWPORTUP
+ *        also. Used because VM guests rebooting do not get the HW port UP
+ *        events during boot (presumably) because the VM server has the
+ *        HW ports up and no real transitions are happening.[module init
+ *        code will show link layer up on VM reboots but not for bare metal,
+ *        also on module load (after an unload)]
+ *
+ *    (b) The HW port down/up usually causes the link layer NETDEV_CHANGE
+ *        trigger but NOT always! If due to any hardware issues if HW ports
+ *        momentarily bounce, but such "port-bounces" do not generate
+ *        corresponding link layer NETDEV_CHANGE events!
+ *
+ *    (c) Event processing in (2)-(4) above triggers failover/failback
+ *        processing but initialization in (1) does detection but not
+ *        processing as RDS module load processing happens before devices
+ *        have come up.
+ *
+ *        For initial/boot time failover processing, a separate delayed
+ *        processing is launched to run after link layer and netdev is UP!
+ *
+ */
+
 #define RDS_IB_MAX_ALIASES	50
 #define RDS_IB_MAX_PORTS	50
 struct rds_ib_port {
@@ -292,6 +358,7 @@ struct rds_ib_port {
 	unsigned int		failover_group;
 	struct net_device	*dev;
 	unsigned int            port_state;
+	u32                     port_layerflags;
 	u8			port_num;
 	union ib_gid            gid;
 	char			port_label[4];
@@ -305,6 +372,12 @@ struct rds_ib_port {
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
 };
 
+enum {
+	RDSIBP_TRANSITION_NOOP,
+	RDSIBP_TRANSITION_UP,
+	RDSIBP_TRANSITION_DOWN
+};
+
 #define RDS_IB_MAX_EXCL_IPS     20
 struct rds_ib_excl_ips {
 	__be32                  ip;
@@ -313,6 +386,7 @@ struct rds_ib_excl_ips {
 };
 
 enum {
+	RDS_IB_PORT_EVENT_INITIAL_FAILOVERS,
 	RDS_IB_PORT_EVENT_IB,
 	RDS_IB_PORT_EVENT_NET,
 };
@@ -323,6 +397,11 @@ struct rds_ib_port_ud_work {
 	unsigned int                    port;
 	int				timeout;
 	int				event_type;
+};
+
+struct rds_ib_initial_failovers_work {
+	struct delayed_work            dlywork;
+	int                            timeout;
 };
 
 struct rds_ib_conn_drop_work {
@@ -606,5 +685,6 @@ extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
 extern unsigned int rds_ib_sysctl_active_bonding;
+extern unsigned int rds_ib_sysctl_trigger_active_bonding;
 
 #endif
