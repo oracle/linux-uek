@@ -59,6 +59,7 @@ unsigned int rds_ib_apm_fallback = 1;
 unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_active_bonding_reconnect_delay = 1;
+unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
 #if RDMA_RDS_APM_SUPPORTED
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 #endif
@@ -99,6 +100,9 @@ MODULE_PARM_DESC(rds_ib_active_bonding_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
 module_param(rds_ib_active_bonding_reconnect_delay, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_reconnect_delay, " Active Bonding reconnect delay");
+module_param(rds_ib_active_bonding_trigger_delay_max_msecs, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_max_msecs,
+		" Active Bonding Max delay before active bonding is triggered(msecs)");
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
@@ -131,6 +135,37 @@ static u8	ip_port_max = RDS_IB_MAX_PORTS;
 
 static struct rds_ib_excl_ips excl_ips_tbl[RDS_IB_MAX_EXCL_IPS];
 static u8       excl_ips_cnt = 0;
+
+static int ip_config_init_phase_flag; /* = 0 */
+
+static int initial_failovers_iterations; /* = 0 */
+
+/*
+ * rds_detected_linklayer_up
+ *
+ * Test for link layer UP derived from how the
+ * LOWER_UP flag is set for 'ip' CLI command
+ * (which talks to kernel via netlink sockets).
+ *
+ * Note: IPv6 addrconf uses  an alternative test
+ * "!qdisc_tx_is_noop(dev)" to signal an UP
+ * link layer. Any pros/cons of the two
+ * different tests for an UP link layer?
+ */
+static inline int
+rds_detected_link_layer_up(const struct net_device *dev)
+{
+	return (netif_running(dev)) && (netif_carrier_ok(dev));
+}
+
+static inline int
+rds_ibp_all_layers_up(struct rds_ib_port *rds_ibp)
+{
+	if ((rds_ibp->port_layerflags & RDSIBP_STATUS_ALLUP) ==
+	    RDSIBP_STATUS_ALLUP)
+		return 1;
+	return 0;
+}
 
 void rds_ib_nodev_connect(void)
 {
@@ -610,7 +645,7 @@ static int rds_ib_move_ip(char			*from_dev,
 
 	page = alloc_page(GFP_HIGHUSER);
 	if (!page) {
-		printk(KERN_ERR "RDS/IB: alloc_page failed .. NO MEM\n");
+		printk(KERN_ERR "RDS/IP: alloc_page failed .. NO MEM\n");
 		return 1;
 	}
 
@@ -643,7 +678,7 @@ static int rds_ib_move_ip(char			*from_dev,
 			}
 		} else if (ret) {
 			printk(KERN_ERR
-				"RDS/IB: inet_ioctl(SIOCGIFADDR) "
+				"RDS/IP: inet_ioctl(SIOCGIFADDR) "
 				"failed (%d)\n", ret);
 			goto out;
 		}
@@ -715,13 +750,13 @@ static int rds_ib_move_ip(char			*from_dev,
 		if (strcmp(from_dev2, to_dev2) == 0) {
 			/* from_dev2, to_dev2 are identical */
 			printk(KERN_NOTICE
-			       "RDS/IB: IP %pI4 resurrected on migrated "
+			       "RDS/IP: IP %pI4 resurrected on migrated "
 			       "interface %s\n",
 			       &addr, to_dev2);
 		} else {
 			/* from_dev2, to_dev2 are different! */
 			printk(KERN_NOTICE
-			       "RDS/IB: IP %pI4 migrated from %s to %s\n",
+			       "RDS/IP: IP %pI4 migrated from %s to %s\n",
 			       &addr, from_dev2, to_dev2);
 		}
 
@@ -793,12 +828,17 @@ static int rds_ib_move_ip(char			*from_dev,
 					}
 				}
 
+				/*
+				 * For failover from HW PORT event, do
+				 * delayed connection drop, else call
+				 * inline
+				 */
 				if (event_type == RDS_IB_PORT_EVENT_IB &&
 					failover) {
 					work = kzalloc(sizeof *work, GFP_ATOMIC);
 					if (!work) {
 						printk(KERN_ERR
-							"RDS/IB: failed to allocate connection drop work\n");
+							"RDS/IP: failed to allocate connection drop work\n");
 							spin_unlock_bh(&rds_ibdev->spinlock);
 							goto out;
 					}
@@ -815,7 +855,7 @@ static int rds_ib_move_ip(char			*from_dev,
 
 		work_addrchange = kzalloc(sizeof *work, GFP_ATOMIC);
 		if (!work_addrchange) {
-			printk(KERN_WARNING "RDS/IB: failed to allocate work\n");
+			printk(KERN_WARNING "RDS/IP: failed to allocate work\n");
 			goto out;
 		}
 		work_addrchange->addr = addr;
@@ -857,12 +897,31 @@ static u8 rds_ib_init_port(struct rds_ib_device	*rds_ibdev,
 	strcpy(ip_config[ip_port_cnt].if_name, net_dev->name);
 	memcpy(&ip_config[ip_port_cnt].gid, &gid, sizeof(union ib_gid));
 	ip_config[ip_port_cnt].pkey = pkey;
+	ip_config[ip_port_cnt].port_state = RDS_IB_PORT_INIT;
+	ip_config[ip_port_cnt].port_layerflags = 0x0; /* all clear to begin */
 
-	if (net_dev->operstate == IF_OPER_UP)
-		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_UP;
-	else
-		ip_config[ip_port_cnt].port_state = RDS_IB_PORT_INIT;
+	/*
+	 * We check for the link UP state and use it to set
+	 * both LINK and HW status to UP.
+	 * (Note: Reverse is not true: Link DOWN does NOT necessarily
+	 *        imply HW port is down!)
+	 *
+	 * On a VM reboot or module load (after unload), there
+	 * will be no separate HW UP/DOWN event, so its UP
+	 * status is derived from the link layer status!
+	 *
+	 */
+	if (rds_detected_link_layer_up(net_dev)) {
+		ip_config[ip_port_cnt].port_layerflags =
+			(RDSIBP_STATUS_LINKUP | RDSIBP_STATUS_HWPORTUP);
+	}
 
+	/*
+	 * Note: Only HW and LINK status determined in this routine during
+	 * module initialization path. Status of netdev layer will be
+	 * determined by subsequent  NETDEV_UP (or lack of NETDEV_UP)
+	 * events - which are generated  on loading of rds_rdma module!
+	 */
 	return ip_port_cnt;
 }
 
@@ -912,7 +971,7 @@ static int rds_ib_testset_ip(u8 port)
 	int                     ii;
 
 	if (!ip_config[port].ip_addr) {
-		printk(KERN_WARNING "RDS/IB: no port %u IP available!\n",
+		printk(KERN_WARNING "RDS/IB: no port index %u IP available!\n",
 		       port);
 		return 0;
 	}
@@ -946,7 +1005,7 @@ static int rds_ib_testset_ip(u8 port)
 				    ip_config[port].ip_bcast,
 				    ip_config[port].ip_mask);
 		if (ret) {
-			printk(KERN_ERR "RDS/IP: failed to resurrect "
+			printk(KERN_ERR "RDS/IB: failed to resurrect "
 			       "IP %pI4 on %s failed (%d)\n",
 			       &ip_config[port].ip_addr,
 			       ip_config[port].dev->name, ret);
@@ -964,7 +1023,7 @@ static int rds_ib_testset_ip(u8 port)
 					ip_config[port].aliases[ii].ip_bcast,
 					ip_config[port].aliases[ii].ip_mask);
 			if (ret) {
-				printk(KERN_ERR "RDS/IP: failed to resurrect "
+				printk(KERN_ERR "RDS/IB: failed to resurrect "
 				       "IP %pI4 "
 				       "on alias %s failed (%d)\n",
 				       &ip_config[port].aliases[ii].ip_addr,
@@ -983,7 +1042,7 @@ static int rds_ib_testset_ip(u8 port)
 		printk(KERN_ERR	"RDS/IB: inet_ioctl(SIOCGIFADDR) "
 		       "failed (%d)\n", ret);
 	} else {
-		rdsdebug("Primary addr already set on port %u, "
+		rdsdebug("Primary addr already set on port index %u, "
 			 "devname %s\n",
 			 port, ip_config[port].dev->name);
 	}
@@ -1002,7 +1061,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 	int	ret;
 
 	if (!from_port) {
-		printk(KERN_ERR "RDS/IP: port failover request from invalid port!\n");
+		printk(KERN_ERR "RDS/IB: port failover request from invalid port!\n");
 		return;
 	}
 
@@ -1015,7 +1074,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 
 		if (!to_port) {
 			/* we tried, but did not get a failover port! */
-			rdsdebug("RDS/IP: IP %pI4 failed to "
+			rdsdebug("RDS/IB: IP %pI4 failed to "
 				 "migrate from %s: no matching "
 				 "destination port available!\n",
 				 &ip_config[from_port].ip_addr,
@@ -1029,7 +1088,7 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 		 * pkey match port. And ignore the request !
 		 */
 		if (ip_config[from_port].pkey != ip_config[to_port].pkey) {
-			printk(KERN_ERR "RDS/IP: port failover request to "
+			printk(KERN_ERR "RDS/IB: port failover request to "
 			       "ports with mismatched pkeys - ignoring request!");
 			return;
 		}
@@ -1132,17 +1191,17 @@ static void rds_ib_do_failback(u8 port, int event_type)
 		 *     the interface the IP address is set by it and we dont
 		 *     do anything here!
 		 * (2) When this port went DOWN, it tried but did not succeed
-		 *     in failing over(no UP ports left to failover to!)
-		 *     so the 'failover' failed and our 'active port' stayed
-		 *     parked at its original place.
+		 *     in failing over(no UP ports or compatible pkey ports
+		 *     left to failover to!) so the 'failover' failed and
+		 *     our 'active port' stayed parked at its original place.
 		 *     If such as port is being resurrected, it will not have
 		 *     an IP address set we resurrect it here!
 		 */
 		/* Test IP addresses and set them if not already set */
 		ret = rds_ib_testset_ip(port);
 		if (ret) {
-			rdsdebug("RDS/IP: failed to ressurrect "
-				 "port %u devname %s or one if its aliases\n",
+			rdsdebug("RDS/IB: failed to ressurrect "
+				 "port index %u devname %s or one if its aliases\n",
 				 port, ip_config[port].dev->name);
 		}
 	}
@@ -1156,7 +1215,12 @@ static void rds_ib_failover(struct work_struct *_work)
 	u8				i;
 	char				if_name[IFNAMSIZ];
 
-	ip_config[work->port].port_state = RDS_IB_PORT_DOWN;
+	if (ip_config[work->port].port_state == RDS_IB_PORT_INIT) {
+		printk(KERN_ERR "RDS/IB: devname %s failover request "
+		       "with port_state in INIT state!",
+		       ip_config[work->port].dev->name);
+		goto out;
+	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (i != work->port &&
@@ -1182,6 +1246,7 @@ static void rds_ib_failover(struct work_struct *_work)
 				0, 0, 0);
 	}
 
+ out:
 	kfree(work);
 }
 
@@ -1192,12 +1257,11 @@ static void rds_ib_failback(struct work_struct *_work)
 	u8				i, ip_active_port, port = work->port;
 
 	if (ip_config[port].port_state == RDS_IB_PORT_INIT) {
-		ip_config[port].port_state = RDS_IB_PORT_UP;
-		ip_config[port].ip_active_port = port;
+		printk(KERN_ERR "RDS/IB: devname %s failback request "
+		       "with port_state in INIT state!",
+		       ip_config[port].dev->name);
 		goto out;
 	}
-
-	ip_config[port].port_state = RDS_IB_PORT_UP;
 
 	ip_active_port = ip_config[port].ip_active_port;
 
@@ -1296,17 +1360,176 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		event->event != IB_EVENT_PORT_ERR)
 		return;
 
+	/*
+	 * For the affected endpoints the failover/failback
+	 * is queued to happen in delayed worker threads.
+	 * HOWEVER, the state maintenance of status of
+	 * port layers and port_status is done right here
+	 * in this handler (and NOT as delayed work!)
+	 */
 	for (port = 1; port <= ip_port_cnt; port++) {
+		int this_port_transition = RDSIBP_TRANSITION_NOOP;
+
 		if (ip_config[port].port_num != event->element.port_num ||
 			ip_config[port].rds_ibdev != rds_ibdev)
 			continue;
 
-		printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-			rds_ibdev->dev->name,
-			event->element.port_num,
-			ip_config[port].if_name,
-			(event->event == IB_EVENT_PORT_ACTIVE) ?
-				"ACTIVE" : "ERROR");
+		rdsdebug("RDS/IB: PORT %s/port_%d/%s "
+			 "received PORT-EVENT %s%s\n",
+			 rds_ibdev->dev->name,
+			 event->element.port_num,
+			 ip_config[port].if_name,
+			 (event->event == IB_EVENT_PORT_ACTIVE ?
+			  "ACTIVE" : "ERROR"),
+			 (ip_config_init_phase_flag ?
+			  " during initialization phase!" : ""));
+		/*
+		 * Do layerflag state maintenance and
+		 * update port_state status if needed!
+		 */
+
+		/* First: HW layer state update! */
+		if (event->event == IB_EVENT_PORT_ACTIVE) {
+			ip_config[port].port_layerflags |=
+			  RDSIBP_STATUS_HWPORTUP;
+		} else {
+			/* event->event == IB_EVENT_PORT_ERROR */
+			ip_config[port].port_layerflags &=
+			  ~RDSIBP_STATUS_HWPORTUP;
+		}
+
+		/* Second: check and update link layer status */
+		if (rds_detected_link_layer_up(ip_config[port].dev))
+			ip_config[port].port_layerflags |= RDSIBP_STATUS_LINKUP;
+		else
+			ip_config[port].port_layerflags &=
+				~RDSIBP_STATUS_LINKUP;
+
+		/* Third: check the netdev layer */
+		if (ip_config[port].dev->flags & IFF_UP)
+			ip_config[port].port_layerflags |=
+				RDSIBP_STATUS_NETDEVUP;
+		else
+			ip_config[port].port_layerflags &=
+				~RDSIBP_STATUS_NETDEVUP;
+
+		/*
+		 * Do state transitions now!
+		 */
+		switch (ip_config[port].port_state) {
+		case RDS_IB_PORT_INIT:
+			if (ip_config_init_phase_flag) {
+				/*
+				 * For INIT port_state during module
+				 * initialization, deferred state transition
+				 * processing* happens after all NETDEV and
+				 * IB ports come up and event handlers have
+				 * run and task doing initial failovers
+				 * after module loading has run - which
+				 * ends the "init_phase and clears the flag.
+				 */
+
+				this_port_transition = RDSIBP_TRANSITION_NOOP;
+				break;
+			}
+
+			/*
+			 * We are in INIT state but not during module
+			 * initialization. This can happens when
+			 * a new port is detected and initialized
+			 * in rds_ib_joining_ip().
+			 *
+			 * It can also happen via init script
+			 * 'stop' invocation -which (temporarily?)
+			 * disables active bonding by unsetting
+			 * rds_ib_sysctl_active_bonding)
+			 * and returns ports to INIT state.
+			 *
+			 * And then we received this PORT ACTIVE/ERROR
+			 * event.
+			 *
+			 * If rds_ib_sysctl_active_bonding is set,
+			 * we transition port_state to UP/DOWN, else
+			 * we do not do any transitions here.
+			 */
+			if (rds_ib_sysctl_active_bonding) {
+				if (rds_ibp_all_layers_up(&ip_config[port])) {
+					ip_config[port].port_state =
+						RDS_IB_PORT_UP;
+					this_port_transition =
+						RDSIBP_TRANSITION_UP;
+				} else {
+					ip_config[port].port_state =
+						RDS_IB_PORT_DOWN;
+					this_port_transition =
+						RDSIBP_TRANSITION_DOWN;
+				}
+			} else {
+				this_port_transition = RDSIBP_TRANSITION_NOOP;
+				printk(KERN_WARNING
+				       "RDS/IB: PORT %s/port_%d/%s "
+				       "received PORT-EVENT %s ignored: "
+				       "active bonding transitions "
+				       "disabled using sysctl\n",
+				       rds_ibdev->dev->name,
+				       event->element.port_num,
+				       ip_config[port].if_name,
+				       (event->event == IB_EVENT_PORT_ACTIVE ?
+					"ACTIVE" : "ERROR"));
+			}
+			break;
+
+		case RDS_IB_PORT_DOWN:
+			if (rds_ibp_all_layers_up(&ip_config[port])) {
+				ip_config[port].port_state = RDS_IB_PORT_UP;
+				this_port_transition = RDSIBP_TRANSITION_UP;
+			}
+			break;
+
+		case RDS_IB_PORT_UP:
+			if (!rds_ibp_all_layers_up(&ip_config[port])) {
+				ip_config[port].port_state = RDS_IB_PORT_DOWN;
+				this_port_transition = RDSIBP_TRANSITION_DOWN;
+			}
+			break;
+
+		default:
+			printk(KERN_ERR "RDS/IB: INVALID port_state %d, "
+			       "port index %u, devname %s\n",
+			       ip_config[port].port_state,
+			       port,
+			       ip_config[port].dev->name);
+			return;
+		}
+
+		/*
+		 * Log the event details and its disposition
+		 */
+		printk(KERN_NOTICE "RDS/IB: PORT-EVENT: %s%s, PORT: "
+		       "%s/port_%d/%s : %s%s (portlayers 0x%x)\n",
+		       (event->event == IB_EVENT_PORT_ACTIVE ? "ACTIVE" :
+			"ERROR"),
+		       (ip_config_init_phase_flag ? "(init phase)" : ""),
+		       rds_ibdev->dev->name,
+		       event->element.port_num,
+		       ip_config[port].if_name,
+		       (this_port_transition == RDSIBP_TRANSITION_UP ?
+		       "port state transition to " :
+			(this_port_transition == RDSIBP_TRANSITION_DOWN ?
+			 "port state transition to " :
+			 "port state transition NONE - "
+			 "port retained in state ")),
+		       (ip_config[port].port_state == RDS_IB_PORT_UP ? "UP" :
+			(ip_config[port].port_state == RDS_IB_PORT_DOWN ?
+			 "DOWN" : "INIT")),
+		       ip_config[port].port_layerflags);
+
+		if (this_port_transition == RDSIBP_TRANSITION_NOOP) {
+			/*
+			 * This event causes no transition do nothing!
+			 */
+			continue;
+		}
 
 		work = kzalloc(sizeof *work, GFP_ATOMIC);
 		if (!work) {
@@ -1318,17 +1541,140 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 		work->port = port;
 		work->event_type = RDS_IB_PORT_EVENT_IB;
 
-		if (event->event == IB_EVENT_PORT_ACTIVE) {
+		if (this_port_transition == RDSIBP_TRANSITION_UP) {
 			if (rds_ib_active_bonding_fallback) {
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 				queue_delayed_work(rds_wq, &work->work, 0);
 			} else
 				kfree(work);
 		} else {
+			/* this_port_transition == RDSIBP_TRANSITION_DOWN */
 			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 			queue_delayed_work(rds_wq, &work->work, 0);
 		}
 	}
+}
+
+static void
+rds_ib_do_initial_failovers(struct work_struct *workarg)
+{
+	struct rds_ib_initial_failovers_work *riif_work =
+		container_of(workarg, struct rds_ib_initial_failovers_work,
+			     dlywork.work);
+	unsigned int ii;
+	int ret = 0;
+
+	/*
+	 * Scan all ports and mark them UP/DOWN based on
+	 * detections of port_layerflags!
+	 */
+	for (ii = 1; ii <= ip_port_cnt; ii++) {
+		/*
+		 * Assert - all ports should be in INIT state!
+		 */
+		if (ip_config[ii].port_state != RDS_IB_PORT_INIT) {
+			printk(KERN_ERR "RDS/IB: port index %u interface %s not "
+			       "in INIT state!\n",
+			       ii, ip_config[ii].dev->name);
+		}
+
+		if (rds_ibp_all_layers_up(&ip_config[ii])) {
+			ip_config[ii].port_state = RDS_IB_PORT_UP;
+			printk(KERN_NOTICE "RDS/IB port index %u interface %s "
+			       "transitioned from INIT to UP state(portlayers 0x%x)\n",
+			       ii, ip_config[ii].dev->name,
+			       ip_config[ii].port_layerflags);
+		} else {
+			ip_config[ii].port_state = RDS_IB_PORT_DOWN;
+			printk(KERN_NOTICE "RDS/IB: port index %u interface %s "
+			       "transitioned from INIT to DOWN state(portlayers 0x%x).\n",
+			       ii, ip_config[ii].dev->name,
+			       ip_config[ii].port_layerflags);
+		}
+		ip_config[ii].ip_active_port = ii; /* starting at home base! */
+	}
+
+	/*
+	 * Now do failover for ports that are down!
+	 */
+	for (ii = 1; ii <= ip_port_cnt; ii++) {
+		/* Failover the port */
+		if ((ip_config[ii].port_state == RDS_IB_PORT_DOWN) &&
+		    (ip_config[ii].ip_addr)) {
+
+			rds_ib_do_failover(ii, 0, 0,
+					   RDS_IB_PORT_EVENT_INITIAL_FAILOVERS);
+
+			/*
+			 * reset IP addr of DOWN port to 0 if the
+			 * failover did not suceed !
+			 * Note: rds_ib_do_failover() logs successful migrations
+			 * but not unsuccesful ones. We log unsuccessfull
+			 * attempts for this instance here and deactivate the
+			 * port by its IP address!
+			 */
+			if (ip_config[ii].ip_active_port == ii) {
+				printk(KERN_NOTICE "RDS/IB: IP %pI4 "
+				       "deactivated on interface %s "
+				       "(no suitable failover target available)\n",
+				       &ip_config[ii].ip_addr,
+				       ip_config[ii].dev->name);
+
+				ret = rds_ib_set_ip(NULL, NULL,
+						    ip_config[ii].if_name,
+						    0, 0, 0);
+
+			}
+		}
+
+	}
+	ip_config_init_phase_flag = 0; /* done with initial phase! */
+	kfree(riif_work);
+}
+
+static void
+rds_ib_initial_failovers(struct work_struct *workarg)
+{
+	struct rds_ib_initial_failovers_work *riif_work =
+		container_of(workarg, struct rds_ib_initial_failovers_work,
+			     dlywork.work);
+
+	if (rds_ib_sysctl_trigger_active_bonding == 0) {
+		/*
+		 * Normally trigger set by network init
+		 * script as signal that network devices
+		 * config/setup scripts have been run and
+		 * we can proceed with active bonding failovers
+		 * etc now!
+		 * If trigger not set, defer, unless we have
+		 * reached a max timeout!
+		 */
+		if (riif_work->timeout > 0) {
+			INIT_DELAYED_WORK(&riif_work->dlywork,
+					  rds_ib_initial_failovers);
+			riif_work->timeout -= msecs_to_jiffies(100);
+			queue_delayed_work(rds_wq,
+					   &riif_work->dlywork,
+					   msecs_to_jiffies(100));
+			initial_failovers_iterations++;
+			return;
+		}
+		/*
+		 * timeout exceeed, we set the trigger to a
+		 * distinctive value to indicated that
+		 * we did it due to timeout exceeded (network
+		 * init script normally sets it to 1)
+		 */
+		rds_ib_sysctl_trigger_active_bonding = 999;
+		printk(KERN_NOTICE "RDS/IB: Triggering active bonding "
+		       "failovers after max interval(itercount %d)\n",
+		       initial_failovers_iterations);
+	} else {
+		printk(KERN_NOTICE "RDS/IB: Triggering active bonding "
+		       "failovers(itercount %d)\n",
+		       initial_failovers_iterations);
+	}
+	rds_ib_do_initial_failovers(workarg);
 }
 
 static void rds_ib_dump_ip_config(void)
@@ -1384,6 +1730,107 @@ get_netdev_pkey(struct net_device *dev)
 }
 
 
+/*
+ * Scheduling initial failovers. The ASCII art below documents the startup
+ * timeline of events of significance related to activation of active
+ * bonding initial failovers after reboot.
+ *               ---
+ *                V
+ *                |
+ *             t0 | <reboot>
+ *                |
+ *             t1 |<-- (1) openibd(OL5) or rdma (OL6+) init script
+ *                |    (run as S05openibd or S05rdma) inits IB
+ *                |    interfaces. Scripts
+ *                |    /etc/sysconfig/network-scripts/ifcfg-*
+ *                |    are run to bring interfaces UP.
+ *             t2 |<-- (2) rds_rdma module init code runs on module
+ *                |    load which initializes ip_config[] array based
+ *                |    on IB device based on kernel global &init_net
+ *                |    list; "initialization phase" is started  and
+ *                |    rds_ib_initial_failovers() scheduled to run
+ *                |    first time!
+ *             t3 |<-- (3) network init script (S10network) runs which
+ *                |    also inits all networking devices (including IB).
+ *                |    Scripts /etc/sysconfig/network-scripts/ifcfg-*
+ *                |    are run AGAIN!
+ *             t4 |<-- (4) sysctl rds_ib_sysctl_trigger_active_bonding
+ *                |    is run in network init script(S10network) *after*
+ *                |    attempting bringing up regular IB and VLAN
+ *                |    devices as part of step(3) above.
+ *             t5 |<-- As scheduled in step(2)
+ *                |    rds_ib_initial_failovers() runs at t5. If t5 < t4
+ *                |    (rds_ib_sysctl_trigger_active_bonding is NOT set)
+ *                |    it reschedules itself after short duration
+ *                |    (100 jiffies) until t5 > t4 (i.e.
+ *                |    rds_ib_sysctl_trigger_active_bonding IS set).
+ *                |    Then it calls rds_ib_do_initial_failovers() to
+ *                |    actually do the failovers and ends the
+ *                |    "initialization phase". [ Note: to take care of
+ *                |    cases where older init scripts are run with
+ *                |    newer kernels (not recommended!)
+ *                |    rds_ib_do_initial_failovers() runs anyway after
+ *                |    a conservative max timeout interval expires. ]
+ *                .
+ *                .
+ *                .
+ *                V
+ */
+static void
+sched_initial_failovers(unsigned int tot_devs,
+			unsigned int tot_ibdevs)
+{
+	struct rds_ib_initial_failovers_work *riif_work;
+	unsigned int trigger_delay_max_jiffies;
+	unsigned int trigger_delay_min_jiffies;
+
+	if (rds_ib_active_bonding_trigger_delay_max_msecs == 0) {
+		/*
+		 * Derive guestimate of max time before we trigger the
+		 * initial failovers for devices.
+		 *
+		 * This is upper bound on time between when
+		 * rds_rdma module is loaded (and its init script
+		 * run including this code!) in rdma (openibd in OL5)
+		 * script and the network init script *after* all
+		 * the interfaces are initialized with their setup
+		 * scripts (ifcfg-ibN etc).
+		 *
+		 * This is a max time which should normally not be
+		 * hit. Normally the network startup script
+		 * will set rds_ib_sysctl_trigger_active_bonding
+		 * (initialized to 0) and we will not hit the
+		 * max time.
+		 *
+		 * Based on some empirical experiments, we put
+		 * upper bound to be 30sec(30000msecs) and up.
+		 * And we put min to be 10sec (10000msecs).
+		 */
+		rds_ib_active_bonding_trigger_delay_max_msecs = 30000+
+			tot_ibdevs*1200+(tot_devs-tot_ibdevs)*1000;
+	}
+
+	trigger_delay_max_jiffies =
+		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_max_msecs);
+	trigger_delay_min_jiffies = msecs_to_jiffies(10000); /* 10 sec */
+
+	riif_work = kzalloc(sizeof(struct rds_ib_initial_failovers_work),
+			    GFP_KERNEL);
+	if (riif_work == NULL) {
+		printk(KERN_ERR
+		       "RDS/IB: failed to allocate initial failovers work");
+		ip_config_init_phase_flag = 0;
+		return;
+	}
+
+	riif_work->timeout = trigger_delay_max_jiffies;
+
+	INIT_DELAYED_WORK(&riif_work->dlywork, rds_ib_initial_failovers);
+	queue_delayed_work(rds_wq,
+			   &riif_work->dlywork,
+			   trigger_delay_min_jiffies);
+}
+
 static int rds_ib_ip_config_init(void)
 {
 	struct net_device	*dev;
@@ -1395,6 +1842,8 @@ static int rds_ib_ip_config_init(void)
 	int                     ret = 0;
 	u8                      port_num;
 	u8                      port;
+	unsigned int            tot_devs = 0;
+	unsigned int            tot_ibdevs = 0;
 
 	if (!rds_ib_active_bonding_enabled)
 		return 0;
@@ -1406,9 +1855,24 @@ static int rds_ib_ip_config_init(void)
 		return 1;
 	}
 
+	/*
+	 * This flag is set here to mark start of active
+	 * bonding IP failover/failback config.
+	 * It ends when we are done doing the initial
+	 * failovers after the init.
+	 */
+	ip_config_init_phase_flag = 1;
+
 	read_lock(&dev_base_lock);
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
+		tot_devs++;
+		/*
+		 * Note: Enumerate all Infiniband devices
+		 *       that are:
+		 *                - UP
+		 *                - not part of a bond(master or slave)
+		 */
 		if ((dev->type == ARPHRD_INFINIBAND) &&
 			(dev->flags & IFF_UP) &&
 			!(dev->flags & IFF_SLAVE) &&
@@ -1418,6 +1882,7 @@ static int rds_ib_ip_config_init(void)
 
 			memcpy(&gid, dev->dev_addr + 4, sizeof gid);
 
+			tot_ibdevs++;
 			list_for_each_entry_rcu(rds_ibdev,
 					&rds_ib_devices, list) {
 				ret = ib_find_cached_gid(rds_ibdev->dev, &gid,
@@ -1455,6 +1920,7 @@ static int rds_ib_ip_config_init(void)
 	printk(KERN_INFO "RDS/IB: IP configuration..\n");
 	rds_ib_dump_ip_config();
 	read_unlock(&dev_base_lock);
+	sched_initial_failovers(tot_devs, tot_ibdevs);
 	return ret;
 }
 
@@ -1747,7 +2213,7 @@ static void rds_ib_update_ip_config(void)
 	for_each_netdev(&init_net, dev) {
 		in_dev = in_dev_get(dev);
 		if (in_dev) {
-			for (i = 0; i <= ip_port_cnt; i++) {
+			for (i = 1; i <= ip_port_cnt; i++) {
 				if (!strcmp(dev->name, ip_config[i].if_name)) {
 					if (ip_config[i].dev != dev) {
 						ip_config[i].dev = dev;
@@ -1836,13 +2302,22 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	u8 port = 0;
 	u8 i;
 	struct rds_ib_port_ud_work *work = NULL;
+	int port_transition = RDSIBP_TRANSITION_NOOP;
+	int port_state_was_init = 0;
+	int all_ports_were_down = 0;
 
 	if (!rds_ib_active_bonding_enabled)
 		return NOTIFY_DONE;
 
-	if (event != NETDEV_UP && event != NETDEV_DOWN)
+	if (event != NETDEV_UP &&
+	    event != NETDEV_DOWN &&
+	    event != NETDEV_CHANGE)
 		return NOTIFY_DONE;
 
+	/*
+	 * Find the port by netdev->name
+	 * (Update config if name exists but ndev has changed)
+	 */
 	for (i = 1; i <= ip_port_cnt; i++) {
 		if (!strcmp(ndev->name, ip_config[i].if_name) &&
 			ip_config[i].rds_ibdev) {
@@ -1853,7 +2328,16 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		}
 	}
 
-	/* check for newly joined IB interface */
+	/*
+	 * If no port by netdev->name found, then
+	 * see if we have a newly instantiated
+	 * IB device.
+	 * Note: For this UP event, nothing will
+	 * 'failback' to this interface since its new,
+	 * (since no 'failovers' of it have happened),
+	 * We just initiate its state in our data
+	 * structures.
+	 */
 	if (!port && event == NETDEV_UP) {
 		if ((ndev->type == ARPHRD_INFINIBAND) &&
 				(ndev->flags & IFF_UP) &&
@@ -1868,15 +2352,198 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 						msecs_to_jiffies(100));
 			}
 		}
-
 		return NOTIFY_DONE;
 	}
 
+	/*
+	 * No matching port found by netdev->name and
+	 * no newly instantiated device found nothing
+	 * matching found. This probably is a callback
+	 * from a non-infiniband or active-active
+	 * supported (e.g. bond) device - so we have
+	 * nothing more to do!
+	 */
 	if (!port)
 		return NOTIFY_DONE;
 
+	/*
+	 * If we are racing with device teardown
+	 * we are done!
+	 */
 	if (ip_config[port].rds_ibdev == NULL)
 		return NOTIFY_DONE;
+
+	rdsdebug("RDS/IB: PORT %s/port_%d/%s received NET-EVENT %s%s\n",
+	       ip_config[port].rds_ibdev->dev->name,
+	       ip_config[port].port_num, ndev->name,
+	       (event == NETDEV_UP ? "NETDEV_UP" :
+		(event == NETDEV_DOWN ? "NETDEV_DOWN" : "NETDEV_CHANGE")),
+	       (ip_config_init_phase_flag ?
+		" during initialization phase!" : ""));
+
+	/*
+	 * Do layer state maintenance and update
+	 * port status if needed!
+	 */
+
+	/*
+	 * Check link layer: if its UP, we also
+	 * mark HW layer UP! (Since on VM reboots etc
+	 * we may not get a separate event for HW ports!)
+	 */
+	if (rds_detected_link_layer_up(ip_config[port].dev)) {
+		ip_config[port].port_layerflags |= RDSIBP_STATUS_LINKUP;
+		ip_config[port].port_layerflags |= RDSIBP_STATUS_HWPORTUP;
+	} else {
+		ip_config[port].port_layerflags &= ~RDSIBP_STATUS_LINKUP;
+	}
+
+	/*
+	 * Mark NETDEV layer state based on event (verify IFF_UP flag and
+	 * warn!)
+	 */
+	if (event == NETDEV_UP) {
+		ip_config[port].port_layerflags |= RDSIBP_STATUS_NETDEVUP;
+		if (!(ip_config[port].dev->flags & IFF_UP)) {
+			printk(KERN_WARNING "RDS/IB: Device %s flag NOT "
+			       "marked UP in NETDEV_UP processing!\n",
+			       ip_config[port].dev->name);
+		}
+	} else if (event == NETDEV_DOWN) {
+		ip_config[port].port_layerflags &= ~RDSIBP_STATUS_NETDEVUP;
+		if (ip_config[port].dev->flags & IFF_UP) {
+			printk(KERN_WARNING "RDS/IB: Device %s flag marked "
+			       "UP in NETDEV_DOWN processing!\n",
+			       ip_config[port].dev->name);
+		}
+	} else { /* event == NETDEV_CHANGE */
+		/*
+		 * Link layer changes - that trigger NETDEV_CHANGE
+		 * already handled above - just print kernel notice
+		 */
+		rdsdebug("RDS/IB:(NETDEV_CHANGE) port layer "
+		       "detections: devname: %s, HW_PORT: %s, LINK: %s, "
+		       "NETDEV: %s\n", ip_config[port].dev->name,
+		       ((ip_config[port].port_layerflags &
+			 RDSIBP_STATUS_HWPORTUP) ? "UP" : "DOWN"),
+		       ((ip_config[port].port_layerflags &
+			 RDSIBP_STATUS_LINKUP) ? "UP" : "DOWN"),
+		       ((ip_config[port].port_layerflags &
+			 RDSIBP_STATUS_NETDEVUP) ? "UP" : "DOWN"));
+	}
+
+	/* save for special case before we change port_state */
+	all_ports_were_down = rds_ib_ip_config_down();
+
+	/*
+	 * Do state transitions now
+	 */
+	switch (ip_config[port].port_state) {
+	case RDS_IB_PORT_INIT:
+		port_state_was_init = 1; /* tracking for special case! */
+
+		if (ip_config_init_phase_flag) {
+			/*
+			 * For INIT port_state during module initialization,
+			 * deferred state transition processing* happens after
+			 * all NETDEV and IB ports come up and event
+			 * handlers have run and task doing initial failovers
+			 * after module loading has run - which ends the
+			 * "init_phase and clears the flag.
+			 */
+			port_transition = RDSIBP_TRANSITION_NOOP;
+			break;
+		}
+
+		/*
+		 * We are in INIT state but not during module
+		 * initialization. This can happens when
+		 * a new port is detected and initialized
+		 * in rds_ib_joining_ip().
+		 *
+		 * It can also happen via init script
+		 * 'stop' invocation -which (temporarily?)
+		 * disables active bonding by unsetting
+		 * rds_ib_sysctl_active_bonding)
+		 * and returns ports to INIT state.
+		 *
+		 * And then we received this NETDEV
+		 * UP/DOWN/CHANGE event.
+		 *
+		 * If rds_ib_sysctl_active_bonding is set,
+		 * we transition port_state to UP/DOWN, else
+		 * we do not do any transitions here.
+		 */
+		if (rds_ib_sysctl_active_bonding) {
+			if (rds_ibp_all_layers_up(&ip_config[port])) {
+				ip_config[port].port_state = RDS_IB_PORT_UP;
+				port_transition = RDSIBP_TRANSITION_UP;
+			} else {
+				ip_config[port].port_state = RDS_IB_PORT_DOWN;
+				port_transition = RDSIBP_TRANSITION_DOWN;
+			}
+		} else {
+			port_transition = RDSIBP_TRANSITION_NOOP;
+			printk(KERN_WARNING "RDS/IB: PORT %s/port_%d/%s "
+			       "received PORT-EVENT %s ignored: "
+			       "active bonding transitions "
+			       "disabled using sysctl\n",
+			       ip_config[port].rds_ibdev->dev->name,
+			       ip_config[port].port_num, ndev->name,
+			       (event == NETDEV_UP ? "NETDEV_UP" :
+				(event == NETDEV_DOWN ? "NETDEV_DOWN" :
+				 "NETDEV_CHANGE")));
+		}
+
+		break;
+	case RDS_IB_PORT_DOWN:
+		if (rds_ibp_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDS_IB_PORT_UP;
+			port_transition = RDSIBP_TRANSITION_UP;
+		}
+		break;
+	case RDS_IB_PORT_UP:
+		if (!rds_ibp_all_layers_up(&ip_config[port])) {
+			ip_config[port].port_state = RDS_IB_PORT_DOWN;
+			port_transition = RDSIBP_TRANSITION_DOWN;
+		}
+		break;
+	default:
+		printk(KERN_ERR "RDS/IB: INVALID port_state %d, "
+		       "port index %u, devname %s\n",
+		       ip_config[port].port_state,
+		       port,
+		       ip_config[port].dev->name);
+		return NOTIFY_DONE;
+	}
+
+
+	/*
+	 * Log the event details and its disposition
+	 */
+	printk(KERN_NOTICE "RDS/IB: NET-EVENT: %s%s, PORT %s/port_%d/%s : "
+	       "%s%s (portlayers 0x%x)\n",
+	       (event == NETDEV_UP ? "NETDEV-UP" :
+		(event == NETDEV_DOWN ? "NETDEV-DOWN" : "NETDEV-CHANGE")),
+	       (ip_config_init_phase_flag ? "(init phase)" : ""),
+	       ip_config[port].rds_ibdev->dev->name,
+	       ip_config[port].port_num, ndev->name,
+	       (port_transition == RDSIBP_TRANSITION_UP ?
+		"port state transition to " :
+		(port_transition == RDSIBP_TRANSITION_DOWN ?
+		 "port state transition to " :
+		 "port state transition NONE - port retained in state ")),
+	       (ip_config[port].port_state == RDS_IB_PORT_UP ? "UP" :
+		(ip_config[port].port_state == RDS_IB_PORT_DOWN ?
+		 "DOWN" : "INIT")),
+	       ip_config[port].port_layerflags);
+
+	if (port_transition == RDSIBP_TRANSITION_NOOP) {
+		/*
+		 * This event causes no transition do nothing!
+		 */
+		return NOTIFY_DONE;
+	}
 
 	work = kzalloc(sizeof *work, GFP_ATOMIC);
 	if (!work) {
@@ -1884,21 +2551,20 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		return NOTIFY_DONE;
 	}
 
-	printk(KERN_NOTICE "RDS/IB: %s/port_%d/%s is %s\n",
-		ip_config[port].rds_ibdev->dev->name,
-		ip_config[port].port_num, ndev->name,
-		(event == NETDEV_UP) ? "UP" : "DOWN");
-
 	work->dev = ndev;
 	work->port = port;
 	work->event_type = RDS_IB_PORT_EVENT_NET;
 
-	switch (event) {
-	case NETDEV_UP:
+	switch (port_transition) {
+	case RDSIBP_TRANSITION_UP:
 		if (rds_ib_active_bonding_fallback) {
-			if (rds_ib_ip_config_down() ||
-				ip_config[port].port_state ==
-					RDS_IB_PORT_INIT) {
+			/*
+			 * Special case:
+			 * If all interfaces were down OR
+			 * transitioning port_state was in INIT
+			 * use a larger timeout.
+			 */
+			if (all_ports_were_down || port_state_was_init) {
 				INIT_DELAYED_WORK(&work->work,
 					rds_ib_net_failback);
 				work->timeout = msecs_to_jiffies(10000);
@@ -1913,11 +2579,20 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			kfree(work);
 
 		break;
-	case NETDEV_DOWN:
+	case RDSIBP_TRANSITION_DOWN:
 		if (rds_ib_sysctl_active_bonding) {
 			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
 			queue_delayed_work(rds_wq, &work->work, 0);
 		} else {
+			/*
+			 * Note: Active bonding disabled by override
+			 * setting rds_ib_sysctl_active_bonding
+			 * to zero (normally done in
+			 * init script 'stop' invocation).
+			 * We do not want to bother with failover
+			 * when we are bring devices down one-by-one
+			 * during 'stop' of init script.
+			 */
 			ip_config[port].port_state = RDS_IB_PORT_INIT;
 			ip_config[port].ip_active_port = port;
 			kfree(work);
