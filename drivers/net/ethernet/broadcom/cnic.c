@@ -36,7 +36,7 @@
 #include <linux/if_vlan.h>
 #include <linux/prefetch.h>
 #include <linux/random.h>
-#if defined(CONFIG_VLAN_8021Q) || defined(CONFIG_VLAN_8021Q_MODULE)
+#if IS_ENABLED(CONFIG_VLAN_8021Q)
 #define BCM_VLAN 1
 #endif
 #include <net/ip.h>
@@ -4200,8 +4200,7 @@ static int cnic_ipv6_addr_type(const struct in6_addr *addr)
 static int cnic_get_v6_route(struct sockaddr_in6 *dst_addr,
 			     struct dst_entry **dst)
 {
-#if defined(CONFIG_IPV6) || (defined(CONFIG_IPV6_MODULE) && defined(MODULE))
-#if (LINUX_VERSION_CODE >= 0x030000)
+#if IS_ENABLED(CONFIG_IPV6)
 	struct flowi6 fl6;
 
 	memset(&fl6, 0, sizeof(fl6));
@@ -4218,18 +4217,6 @@ static int cnic_get_v6_route(struct sockaddr_in6 *dst_addr,
 		return -ENETUNREACH;
 	} else
 		return 0;
-#else
-	struct flowi fl;
-
-	memset(&fl, 0, sizeof(fl));
-	ipv6_addr_copy(&fl.fl6_dst, &dst_addr->sin6_addr);
-	if (cnic_ipv6_addr_type(&fl.fl6_dst) & IPV6_ADDR_LINKLOCAL)
-		fl.oif = dst_addr->sin6_scope_id;
-
-	*dst = cnic_ip6_rte_output(NULL, &fl);
-	if (*dst)
-		return 0;
-#endif
 #endif
 
 	return -ENETUNREACH;
