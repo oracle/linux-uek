@@ -635,22 +635,18 @@ static int connect_rings(struct backend_info *be)
 	return 0;
 }
 
-
-/* ** Driver Registration ** */
-
-
 static const struct xenbus_device_id netback_ids[] = {
 	{ "vif" },
 	{ "" }
 };
 
-
-static DEFINE_XENBUS_DRIVER(netback, ,
+static struct xenbus_driver netback_driver = {
+	.ids = netback_ids,
 	.probe = netback_probe,
 	.remove = netback_remove,
 	.uevent = netback_uevent,
 	.otherend_changed = frontend_changed,
-);
+};
 
 int xenvif_xenbus_init(void)
 {
