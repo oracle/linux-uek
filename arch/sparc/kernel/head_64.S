@@ -52,18 +52,20 @@ stext:
  */
         .global root_flags, ram_flags, root_dev
         .global sparc_ramdisk_image, sparc_ramdisk_size
-	.global sparc_ramdisk_image64
+	.global sparc_ramdisk_image64, sparc_kexec
+	.global sparc_crash_base, sparc_crash_size
 
         .ascii  "HdrS"
         .word   LINUX_VERSION_CODE
 
 	/* History:
 	 *
+	 * 0x0302 : Supports kexec and crash kernel
 	 * 0x0300 : Supports being located at other than 0x4000
 	 * 0x0202 : Supports kernel params string
 	 * 0x0201 : Supports reboot_command
 	 */
-	.half   0x0301          /* HdrS version */
+	.half   0x0302          /* HdrS version */
 
 root_flags:
         .half   1
@@ -79,6 +81,12 @@ sparc_ramdisk_size:
 	.xword	bootstr_info
 sparc_ramdisk_image64:
 	.xword	0
+sparc_crash_base:
+	.xword	0
+sparc_crash_size:
+	.xword	0
+sparc_kexec:
+	.word	0
 	.word	_end
 
 	/* PROM cif handler code address is in %o4.  */
