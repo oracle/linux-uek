@@ -1563,7 +1563,8 @@ static unsigned long __init bootmem_init(unsigned long phys_base)
 	unsigned long end_pfn;
 
 	end_pfn = memblock_end_of_DRAM() >> PAGE_SHIFT;
-	max_pfn = max_low_pfn = end_pfn;
+	end_pfn = max(end_pfn, max_pfn);
+	max_low_pfn = end_pfn;
 	min_low_pfn = (phys_base >> PAGE_SHIFT);
 
 	if (bootmem_init_numa() < 0)
@@ -2232,7 +2233,7 @@ static void __init reduce_memory(phys_addr_t limit_ram)
 
 void __init paging_init(void)
 {
-	unsigned long end_pfn, shift, phys_base;
+	unsigned long end_pfn, shift, phys_base, phys_end;
 	unsigned long real_end, i;
 	int node;
 
@@ -2319,11 +2320,28 @@ void __init paging_init(void)
 	read_obp_memory("available", &pavail[0], &pavail_ents);
 	read_obp_memory("available", &pavail[0], &pavail_ents);
 
+#ifdef CONFIG_KEXEC
+	/* Sanity check */
+	if (sparc_crash_base && !sparc_crash_size) {
+		printk(KERN_WARNING
+		       "sparc_crash_base defined, but not sparc_crash_size\n");
+		sparc_crash_base = 0;
+	}
+#endif
+
 	phys_base = 0xffffffffffffffffUL;
+	phys_end = 0;
 	for (i = 0; i < pavail_ents; i++) {
 		phys_base = min(phys_base, pavail[i].phys_addr);
-		memblock_add(pavail[i].phys_addr, pavail[i].reg_size);
+		phys_end = max(phys_end,
+			       pavail[i].phys_addr + pavail[i].reg_size);
+		if (!sparc_crash_base)
+			memblock_add(pavail[i].phys_addr, pavail[i].reg_size);
 	}
+	max_pfn = phys_end >> PAGE_SHIFT;
+
+	if (sparc_crash_base)
+		memblock_add(sparc_crash_base, sparc_crash_size);
 
 	memblock_reserve(kern_base, kern_size);
 
