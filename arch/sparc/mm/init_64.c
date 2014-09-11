@@ -28,6 +28,7 @@
 #include <linux/mmzone.h>
 #include <linux/gfp.h>
 #include <linux/kexec.h>
+#include <linux/crash_dump.h>
 
 #include <asm/head.h>
 #include <asm/page.h>
@@ -284,6 +285,21 @@ static int __init load_shim_initrd_info(void) { return 0; }
 static void __init move_shim_initrd(void) {}
 static void kexec_unmap_shim(void) {}
 #endif /* CONFIG_KEXEC */
+
+#ifdef CONFIG_CRASH_DUMP
+static void __init sparc64_reserve_elfcorehdr(void)
+{
+	unsigned long elfcorehdr_size;
+
+	if (is_kdump_kernel()) {
+		elfcorehdr_size = sparc_crash_base + sparc_crash_size -
+				  elfcorehdr_addr;
+		memblock_reserve(elfcorehdr_addr, elfcorehdr_size);
+	}
+}
+#else
+static void __init sparc64_reserve_elfcorehdr(void) {}
+#endif /* CONFIG_CRASH_DUMP */
 
 #ifdef CONFIG_DEBUG_DCFLUSH
 atomic_t dcpage_flushes = ATOMIC_INIT(0);
@@ -2344,6 +2360,7 @@ void __init paging_init(void)
 		memblock_add(sparc_crash_base, sparc_crash_size);
 
 	memblock_reserve(kern_base, kern_size);
+	sparc64_reserve_elfcorehdr();
 
 	find_ramdisk(phys_base);
 
