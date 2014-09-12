@@ -759,6 +759,11 @@ skip_rio:
 			if (ha->flags.fawwpn_enabled) {
 				void *wwpn = ha->init_cb->port_name;
 				memcpy(vha->port_name, wwpn, WWN_SIZE);
+				fc_host_port_name(vha->host) =
+				    wwn_to_u64(vha->port_name);
+				ql_dbg(ql_dbg_init + ql_dbg_verbose, vha, 0x0144,
+				    "LOOP DOWN detected, restore WWPN %016llx\n",
+				    wwn_to_u64(vha->port_name));
 			}
 
 			vha->device_flags |= DFLG_NO_CABLE;
