@@ -228,6 +228,9 @@ static int ipoib_vlan_delete_common(struct net_device *pdev,
 {
 	struct ipoib_dev_priv *ppriv, *priv, *tpriv;
 	struct net_device *dev = NULL;
+	char gen_intf_name[IFNAMSIZ];
+
+	gen_intf_name[0] = '\0'; /* initialize - paranoia! */
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
@@ -244,16 +247,50 @@ static int ipoib_vlan_delete_common(struct net_device *pdev,
 	}
 
 	mutex_lock(&ppriv->vlan_mutex);
+	if (child_name_buf == NULL) {
+		/*
+		 * If child name is not provided, we generate the
+		 * expected one using name of parent, pkey and child index
+		 * and use it in addition to pkey value and child index
+		 * (other children with same pkey may exist which have been
+		 * created by create_named_child()).
+		 *
+		 * Note: see comment in ipoib_vlan_add_common() about
+		 * the notation ibN.pkey.index etc.
+		 */
+		if (ppriv->pkey != pkey && child_index == 0) /* legacy child */
+			snprintf(gen_intf_name, sizeof gen_intf_name,
+				 "%s.%04x", ppriv->dev->name, pkey);
+		else if (ppriv->pkey != pkey && child_index != 0)
+			/* non-legacy child */
+			snprintf(gen_intf_name,
+				 sizeof gen_intf_name, "%s.%04x.%d",
+				 ppriv->dev->name, pkey, child_index);
+		else if (ppriv->pkey == pkey && child_index != 0)
+			/* same pkey child */
+			snprintf(gen_intf_name,
+				 sizeof gen_intf_name, "%s.%d",
+				 ppriv->dev->name, child_index);
+		else  {
+			ipoib_warn(ppriv, "wrong pkey/child_index "
+				   "pairing %04x %d\n", pkey, child_index);
+			mutex_unlock(&ppriv->vlan_mutex);
+			rtnl_unlock();
+			return -EINVAL;
+		}
+	}
+
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
 		/* user named child (match by name) OR */
 		if ((child_name_buf && priv->dev &&
 		     !strcmp(child_name_buf, priv->dev->name)) ||
 		    /*
 		     * OR classic (dev.hexpkey generated name) child
-		     * (match by pkey and child-index)
+		     * (match by pkey and child-index and expected name)
 		     */
 		    (!child_name_buf &&
-		     priv->pkey == pkey && priv->child_index == child_index)) {
+		     priv->pkey == pkey && priv->child_index == child_index &&
+		     priv->dev && !strcmp(gen_intf_name, priv->dev->name))) {
 			/* found child to delete */
 			unregister_netdevice(priv->dev);
 			list_del(&priv->list);
