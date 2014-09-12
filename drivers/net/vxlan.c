@@ -458,8 +458,9 @@ static void vxlan_snoop(struct net_device *dev,
 			return;
 
 		if (net_ratelimit())
-			netdev_info(dev,
-				    "%pM migrated from %pI4 to %pI4\n",
+			printk(KERN_INFO
+				    "%s: %pM migrated from %pI4 to %pI4\n",
+				    netdev_name(dev),
 				    src_mac, &f->remote_ip, &src_ip);
 
 		f->remote_ip = src_ip;
