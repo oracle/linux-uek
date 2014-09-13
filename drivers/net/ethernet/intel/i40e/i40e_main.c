@@ -5702,6 +5702,15 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 	if (ret)
 		goto end_core_reset;
 
+	/* driver is only interested in link up/down and module qualification
+	 * reports from firmware
+	 */
+	ret = i40e_aq_set_phy_int_mask(&pf->hw,
+				       I40E_AQ_EVENT_LINK_UPDOWN |
+				       I40E_AQ_EVENT_MODULE_QUAL_FAIL, NULL);
+	if (ret)
+		dev_info(&pf->pdev->dev, "set phy mask fail, aq_err %d\n", ret);
+
 	/* Rebuild the VSIs and VEBs that existed before reset.
 	 * They are still in our local switch element arrays, so only
 	 * need to rebuild the switch model in the HW.
@@ -8512,6 +8521,15 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 		dev_info(&pdev->dev, "setup_pf_switch failed: %d\n", err);
 		goto err_vsis;
 	}
+
+	/* driver is only interested in link up/down and module qualification
+	 * reports from firmware
+	 */
+	err = i40e_aq_set_phy_int_mask(&pf->hw,
+				       I40E_AQ_EVENT_LINK_UPDOWN |
+				       I40E_AQ_EVENT_MODULE_QUAL_FAIL, NULL);
+	if (err)
+		dev_info(&pf->pdev->dev, "set phy mask fail, aq_err %d\n", err);
 
 	/* The main driver is (mostly) up and happy. We need to set this state
 	 * before setting up the misc vector or we get a race and the vector
