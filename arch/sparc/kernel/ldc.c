@@ -1967,6 +1967,11 @@ int ldc_rx_data_available(struct ldc_channel *lp)
 
 	spin_lock_irqsave(&lp->lock, flags);
 
+	if (lp->cfg.mode == LDC_MODE_STREAM && lp->mssbuf_len > 0) {
+		spin_unlock_irqrestore(&lp->lock, flags);
+		return 1;
+	}
+
 	if (lp->rx_head == lp->rx_tail) {
 		spin_unlock_irqrestore(&lp->lock, flags);
 		return 0;

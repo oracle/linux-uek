@@ -58,6 +58,8 @@ if (vldcdbg)\
 /* Time (in ms) to sleep waiting for write space to become available */
 #define VLDC_WRITE_BLOCK_SLEEP_DELAY 1
 
+/* Timeout (in ms) to sleep waiting for LDC connection to complete */
+#define VLDC_CONNECTION_TIMEOUT 10000;
 
 static char driver_version[] = DRV_NAME ".c:v" DRV_VERSION "\n";
 
@@ -89,7 +91,8 @@ struct vldc_dev {
 	dev_t			devt;
 	char			*name;
 	struct device		*device;
-	struct vio_driver_state	vio;
+	struct vio_dev		*vdev;
+	struct ldc_channel	*lp;
 	atomic_t		mtu;
 	atomic_t		mode;
 
@@ -111,22 +114,34 @@ struct vldc_dev {
 
 static bool vldc_will_write_block(struct vldc_dev *vldc, size_t count)
 {
-	struct vio_driver_state *vio = &vldc->vio;
-
 	if (atomic_read(&vldc->is_released) ||
 	    atomic_read(&vldc->is_reset_asserted)) {
 		/* device was released or reset, exit */
 		return false;
 	}
 
-	return !ldc_tx_space_available(vio->lp, count);
+	return !ldc_tx_space_available(vldc->lp, count);
+}
+
+static int vldc_ldc_send(struct vldc_dev *vldc, void *data, int len)
+{
+	int err, limit = 1000;
+
+	err = -EINVAL;
+	while (limit-- > 0) {
+		err = ldc_write(vldc->lp, data, len);
+		if (!err || (err != -EAGAIN))
+			break;
+		udelay(1);
+	}
+
+	return err;
 }
 
 static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 			       size_t count, loff_t *off)
 {
 	struct vldc_dev *vldc;
-	struct vio_driver_state *vio;
 	int rv;
 	char *ubufp;
 	int nbytes_written;
@@ -135,10 +150,13 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 
 	dprintk("entered.\n");
 
+	/* validate args */
+	if (filp == NULL || ubuf == NULL)
+		return -EINVAL;
+
 	nbytes_written = 0; /* number of bytes written */
 
 	vldc = filp->private_data;
-	vio = &vldc->vio;
 	rv = 0;
 
 	/*
@@ -194,7 +212,7 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 
 	while (nbytes_left > 0) {
 
-		/* XXX RAW mode can only write max size of LDC_PACKET_SIZE */
+		/* NOTE: RAW mode can only write max size of LDC_PACKET_SIZE */
 		if (atomic_read(&vldc->mode) == LDC_MODE_RAW)
 			size = min_t(int, LDC_PACKET_SIZE, nbytes_left);
 		else
@@ -205,12 +223,12 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 			goto done;
 		}
 
-		rv = vio_ldc_send(vio, vldc->tx_buf, size);
+		rv = vldc_ldc_send(vldc, vldc->tx_buf, size);
 
 		dprintk("(%s) ldc_write() returns %d\n", vldc->name, rv);
 
 		if (unlikely(rv < 0))
-			goto done;
+			break;
 
 		if (unlikely(rv == 0))
 			break;
@@ -220,19 +238,20 @@ static ssize_t vldc_fops_write(struct file *filp, const char __user *ubuf,
 		nbytes_left -= rv;
 	}
 
-	rv = nbytes_written;
+	/* Return any data written (even if we got a subsequent error) */
+	if (nbytes_written > 0)
+		rv = nbytes_written;
 
 done:
 
 	dprintk("(%s) num bytes written=%d, return value=%d\n",
 		vldc->name, nbytes_written, rv);
 
-	return rv;
+	return (ssize_t)rv;
 }
 
 static bool vldc_will_read_block(struct vldc_dev *vldc)
 {
-	struct vio_driver_state *vio = &vldc->vio;
 
 	if (atomic_read(&vldc->is_released) ||
 	    atomic_read(&vldc->is_reset_asserted)) {
@@ -240,15 +259,14 @@ static bool vldc_will_read_block(struct vldc_dev *vldc)
 		return false;
 	}
 
-	return !ldc_rx_data_available(vio->lp);
+	return !ldc_rx_data_available(vldc->lp);
 }
 
 static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 			      size_t count, loff_t *offp)
 {
 	struct vldc_dev *vldc;
-	struct vio_driver_state *vio;
-	size_t rv;
+	int rv;
 	char *ubufp;
 	int nbytes_read;
 	int nbytes_left;
@@ -256,10 +274,13 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 
 	dprintk("entered.\n");
 
+	/* validate args */
+	if (filp == NULL || ubuf == NULL)
+		return -EINVAL;
+
 	nbytes_read = 0; /* number of bytes read */
 
 	vldc = filp->private_data;
-	vio = &vldc->vio;
 	rv = 0;
 
 	/*  Per spec if reading 0 bytes, just return 0. */
@@ -317,18 +338,18 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 	/* read count bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
 
-		/* XXX RAW mode can only read min size of LDC_PACKET_SIZE */
+		/* NOTE: RAW mode can only read min size of LDC_PACKET_SIZE */
 		if (atomic_read(&vldc->mode) == LDC_MODE_RAW)
 			size = max_t(int, LDC_PACKET_SIZE, nbytes_left);
 		else
 			size = min_t(int, atomic_read(&vldc->mtu), nbytes_left);
 
-		rv = ldc_read(vio->lp, vldc->rx_buf, size);
+		rv = ldc_read(vldc->lp, vldc->rx_buf, size);
 
-		dprintk("(%s) ldc_read() returns %d\n", vldc->name, (int)rv);
+		dprintk("(%s) ldc_read() returns %d\n", vldc->name, rv);
 
 		if (unlikely(rv < 0))
-			goto done;
+			break;
 
 		if (unlikely(rv == 0))
 			break;
@@ -343,17 +364,19 @@ static ssize_t vldc_fops_read(struct file *filp, char __user *ubuf,
 		nbytes_left -= rv;
 	}
 
-	rv = nbytes_read;
+	/* Return any data read (even if we got a subsequent error) */
+	if (nbytes_read > 0)
+		rv = nbytes_read;
 
 done:
 
 	dprintk("(%s) num bytes read=%d, return value=%d\n",
-		vldc->name, nbytes_read, (int)rv);
+		vldc->name, nbytes_read, rv);
 
 	/* re-enable interrupts */
-	ldc_enable_hv_intr(vio->lp);
+	ldc_enable_hv_intr(vldc->lp);
 
-	return rv;
+	return (ssize_t)rv;
 
 }
 
@@ -401,28 +424,27 @@ static unsigned int vldc_fops_poll(struct file *filp, poll_table *wait)
 	return mask;
 }
 
-static long vldc_read_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
-			     u32 len)
+static long vldc_read_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
+			     u64 len)
 {
-	struct vio_driver_state *vio;
 	struct ldc_trans_cookie cookie;
 	int rv;
 	char *ubufp;
-	int nbytes_read;
-	int nbytes_left;
+	u32 nbytes_read;
+	u32 nbytes_left;
 
 	dprintk("entered.\n");
 
 	nbytes_read = 0; /* number of bytes read */
 
 	/* validate args */
-	if (vldc == NULL || ubuf == 0 || hv_ra == 0) {
+	if (vldc == NULL || src_addr == 0 || dst_addr == 0) {
 		rv = -EINVAL;
 		goto done;
 	}
 
-	dprintk("(%s) ubuf=0x%llx hv_ra=0x%llx len=0x%x\n",
-		vldc->name, ubuf, hv_ra, len);
+	dprintk("(%s) src_addr=0x%llx dst_addr=0x%llx len=0x%llx\n",
+		vldc->name, src_addr, dst_addr, len);
 
 	if (atomic_read(&vldc->is_released)) {
 		rv = -ENODEV;
@@ -444,21 +466,20 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 		goto done;
 	}
 
-	vio = &vldc->vio;
 	rv = 0;
-	nbytes_left = len; /* number of bytes left to read */
-	ubufp = (char *)ubuf;
+	nbytes_left = (u32)len; /* number of bytes left to read */
+	ubufp = (char *)src_addr;
 
 	/* copy in len bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
 
-		cookie.cookie_addr = hv_ra;
+		cookie.cookie_addr = dst_addr;
 		cookie.cookie_size = nbytes_left;
 
-		rv = ldc_copy(vio->lp, LDC_COPY_IN, vldc->cookie_read_buf,
+		rv = ldc_copy(vldc->lp, LDC_COPY_IN, vldc->cookie_read_buf,
 			      nbytes_left, 0, &cookie, 1);
 
-		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, (int)rv);
+		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, rv);
 
 		if (unlikely(rv < 0))
 			goto done;
@@ -472,7 +493,7 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 		}
 
 		ubufp += rv;
-		hv_ra += rv;
+		dst_addr += rv;
 		nbytes_read += rv;
 		nbytes_left -= rv;
 	}
@@ -482,34 +503,33 @@ static long vldc_read_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 done:
 
 	dprintk("(%s) num bytes read=%d, return value=%d\n",
-		vldc->name, nbytes_read, (int)rv);
+		vldc->name, nbytes_read, rv);
 
 	return rv;
 
 }
 
-static long vldc_write_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
-			      u32 len)
+static long vldc_write_cookie(struct vldc_dev *vldc, u64 src_addr, u64 dst_addr,
+			      u64 len)
 {
-	struct vio_driver_state *vio;
 	struct ldc_trans_cookie cookie;
 	int rv;
 	char *ubufp;
-	int nbytes_written;
-	int nbytes_left;
+	u32 nbytes_written;
+	u32 nbytes_left;
 
 	dprintk("entered.\n");
 
 	nbytes_written = 0; /* number of bytes written */
 
 	/* validate args */
-	if (vldc == NULL || ubuf == 0 || hv_ra == 0) {
+	if (vldc == NULL || src_addr == 0 || dst_addr == 0) {
 		rv = -EINVAL;
 		goto done;
 	}
 
-	dprintk("(%s) ubuf=0x%llx hv_ra=0x%llx len=0x%x\n",
-		vldc->name, ubuf, hv_ra, len);
+	dprintk("(%s) src_addr=0x%llx dst_addr=0x%llx len=0x%llx\n",
+		vldc->name, src_addr, dst_addr, len);
 
 	if (atomic_read(&vldc->is_released)) {
 		rv = -ENODEV;
@@ -531,10 +551,9 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 		goto done;
 	}
 
-	vio = &vldc->vio;
 	rv = 0;
-	nbytes_left = len; /* number of bytes left to write */
-	ubufp = (char *)ubuf;
+	nbytes_left = (u32)len; /* number of bytes left to write */
+	ubufp = (char *)src_addr;
 
 	/* copy in len bytes or until LDC has no more read data (or error) */
 	while (nbytes_left > 0) {
@@ -545,13 +564,13 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 			goto done;
 		}
 
-		cookie.cookie_addr = hv_ra;
+		cookie.cookie_addr = dst_addr;
 		cookie.cookie_size = nbytes_left;
 
-		rv = ldc_copy(vio->lp, LDC_COPY_OUT, vldc->cookie_write_buf,
+		rv = ldc_copy(vldc->lp, LDC_COPY_OUT, vldc->cookie_write_buf,
 			      nbytes_left, 0, &cookie, 1);
 
-		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, (int)rv);
+		dprintk("(%s) ldc_copy() returns %d\n", vldc->name, rv);
 
 		if (unlikely(rv < 0))
 			goto done;
@@ -560,7 +579,7 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 			break;
 
 		ubufp += rv;
-		hv_ra += rv;
+		dst_addr += rv;
 		nbytes_written += rv;
 		nbytes_left -= rv;
 	}
@@ -570,7 +589,7 @@ static long vldc_write_cookie(struct vldc_dev *vldc, u64 ubuf, u64 hv_ra,
 done:
 
 	dprintk("(%s) num bytes written=%d, return value=%d\n",
-		vldc->name, nbytes_written, (int)rv);
+		vldc->name, nbytes_written, rv);
 
 	return rv;
 
@@ -581,27 +600,27 @@ static long vldc_fops_ioctl(struct file *filp, unsigned int cmd,
 {
 
 	struct vldc_dev *vldc;
-	struct vldc_ioctl_cookierw_arg __user *uarg;
-	u64 ubuf;
-	u64 hv_ra;
-	u32 len;
+	struct vldc_data_t __user *uarg;
+	u64 src_addr;
+	u64 dst_addr;
+	u64 len;
 	int rv;
 
 	dprintk("entered.\n");
 
 	rv = 0;
-	ubuf = 0;
-	hv_ra = 0;
+	src_addr = 0;
+	dst_addr = 0;
 	len = 0;
 
 	vldc = filp->private_data;
 
 	/* get the arg for the read/write cookie ioctls */
 	if (cmd == VLDC_IOCTL_READ_COOKIE || cmd == VLDC_IOCTL_WRITE_COOKIE) {
-		uarg = (struct vldc_ioctl_cookierw_arg __user *)arg;
-		if (get_user(ubuf, &uarg->ubuf) != 0 ||
-		    get_user(hv_ra, &uarg->hv_ra) != 0 ||
-		    get_user(len, &uarg->len) != 0) {
+		uarg = (struct vldc_data_t __user *)arg;
+		if (get_user(src_addr, &uarg->src_addr) != 0 ||
+		    get_user(dst_addr, &uarg->dst_addr) != 0 ||
+		    get_user(len, &uarg->length) != 0) {
 			rv = -EFAULT;
 			goto done;
 		}
@@ -610,13 +629,13 @@ static long vldc_fops_ioctl(struct file *filp, unsigned int cmd,
 	switch (cmd) {
 	case VLDC_IOCTL_READ_COOKIE:
 
-		rv = vldc_read_cookie(vldc, ubuf, hv_ra, len);
+		rv = vldc_read_cookie(vldc, src_addr, dst_addr, len);
 
 		break;
 
 	case VLDC_IOCTL_WRITE_COOKIE:
 
-		rv = vldc_write_cookie(vldc, ubuf, hv_ra, len);
+		rv = vldc_write_cookie(vldc, src_addr, dst_addr, len);
 
 		break;
 
@@ -642,20 +661,17 @@ done:
 static void vldc_event(void *arg, int event)
 {
 	struct vldc_dev *vldc = arg;
-	struct vio_driver_state *vio = &vldc->vio;
 
 	dprintk("entered.\n");
 
 	dprintk("%s: LDC event %d\n", vldc->name, event);
 
 	if (event == LDC_EVENT_RESET) {
-		vio_link_state_change(vio, event);
 		atomic_set(&vldc->is_reset_asserted, 1);
 		return;
 	}
 
 	if (event == LDC_EVENT_UP) {
-		vio_link_state_change(vio, event);
 		return;
 	}
 
@@ -673,11 +689,44 @@ static void vldc_event(void *arg, int event)
 	 *  at that level - via an HV call - to first ensure the LDC is UP).
 	 */
 
-	ldc_disable_hv_intr(vio->lp);
+	ldc_disable_hv_intr(vldc->lp);
 
 	/* walkup any read or poll waiters */
 	wake_up_interruptible(&vldc->waitqueue);
 
+}
+
+
+static int vldc_connect(struct ldc_channel *lp)
+{
+	int timeout;
+	int state;
+
+	/* no connection required in RAW mode */
+	if (ldc_mode(lp) == LDC_MODE_RAW)
+		return 0;
+
+	/*
+	 * Issue a ldc_connect to make sure the handshake is initiated.
+	 * NOTE: ldc_connect can fail if the LDC connection handshake
+	 * completed since we called bind(). So, ignore
+	 * ldc_connect() failures.
+	 */
+	(void) ldc_connect(lp);
+
+	/* wait for the connection to complete */
+	timeout = VLDC_CONNECTION_TIMEOUT;
+	do {
+		state = ldc_state(lp);
+		if (state == LDC_STATE_CONNECTED)
+			break;
+		msleep_interruptible(1);
+	} while (timeout-- > 0);
+
+	if (state == LDC_STATE_CONNECTED)
+		return 0;
+	else
+		return -ETIMEDOUT;
 }
 
 /*
@@ -692,11 +741,16 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 	char *crbuffer;
 	char *cwbuffer;
 	struct ldc_channel_config ldc_cfg;
+	struct ldc_channel *lp;
 	u32 mtu;
 	int rv;
+	int err;
+	bool ldc_bound;
 
 	dprintk("entered.\n");
 
+	rv = 0;
+	ldc_bound = false;
 	tbuffer = NULL;
 	rbuffer = NULL;
 	crbuffer = NULL;
@@ -770,16 +824,34 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 	ldc_cfg.mtu = mtu;
 	ldc_cfg.mode = atomic_read(&vldc->mode);
 	ldc_cfg.debug = 0;
+	ldc_cfg.tx_irq = vldc->vdev->tx_irq;
+	ldc_cfg.rx_irq = vldc->vdev->rx_irq;
+	ldc_cfg.rx_ino = vldc->vdev->rx_ino;
+	ldc_cfg.tx_ino = vldc->vdev->tx_ino;
+	ldc_cfg.dev_handle = vldc->vdev->dev_handle;
 
 	/* Alloc and init the associated LDC */
-	rv = vio_ldc_alloc(&vldc->vio, &ldc_cfg, vldc);
-	if (rv) {
-		dprintk("vio_ldc_alloc() failed.\n");
+	lp = ldc_alloc(vldc->vdev->channel_id, &ldc_cfg, vldc);
+	if (IS_ERR(lp)) {
+		err = PTR_ERR(lp);
+		dprintk("ldc_alloc() failed. err=%d\n", err);
+		rv = err;
 		goto error;
 	}
+	vldc->lp = lp;
 
-	/* XXX this routine should probably return an error code... */
-	vio_port_up(&vldc->vio);
+	rv = ldc_bind(vldc->lp, vldc->name);
+	if (rv != 0) {
+		dprintk("ldc_bind() failed, err=%d.\n", rv);
+		goto error;
+	}
+	ldc_bound = true;
+
+	rv = vldc_connect(vldc->lp);
+	if (rv != 0) {
+		dprintk("vldc_connect() failed, err=%d.\n", rv);
+		goto error;
+	}
 
 	/* tuck away the vldc device for subsequent fops */
 	filp->private_data = vldc;
@@ -789,6 +861,13 @@ static int vldc_fops_open(struct inode *inode, struct file *filp)
 	return 0;
 
 error:
+
+	if (ldc_bound)
+		ldc_unbind(vldc->lp);
+
+	if (vldc->lp != NULL)
+		ldc_free(vldc->lp);
+
 	if (cwbuffer != NULL)
 		kfree(cwbuffer);
 
@@ -815,13 +894,9 @@ static int vldc_fops_release(struct inode *inode, struct file *filp)
 
 	vldc = filp->private_data;
 
-	/*
-	 * XXX There probbaly should be an viohs layer
-	 * "port_down" call to do this for us.
-	 */
-	ldc_unbind(vldc->vio.lp);
+	ldc_unbind(vldc->lp);
 
-	vio_ldc_free(&vldc->vio);
+	ldc_free(vldc->lp);
 
 	kfree(vldc->cookie_write_buf);
 
@@ -857,11 +932,6 @@ static const struct file_operations vldc_fops = {
 	.read		= vldc_fops_read,
 	.write		= vldc_fops_write,
 	.unlocked_ioctl	= vldc_fops_ioctl,
-};
-
-/* Ordered from largest major to lowest */
-static struct vio_version vldc_versions[] = {
-	{ .major = 1, .minor = 0 },
 };
 
 static int vldc_get_next_avail_minor(void)
@@ -1099,14 +1169,6 @@ static int vldc_probe(struct vio_dev *vdev, const struct vio_device_id *vio_did)
 	dprintk("%s: cfg_handle=%llu, id=%llu\n", vldc->name,
 		vdev->dev_no, *id);
 
-	rv = vio_driver_init(&vldc->vio, vdev, VDEV_VLDC,
-			      vldc_versions, ARRAY_SIZE(vldc_versions),
-			      NULL, vldc->name);
-	if (rv) {
-		dprintk("vio_driver_init() failed.\n");
-		goto error;
-	}
-
 	init_waitqueue_head(&vldc->waitqueue);
 
 	/* mark the device as initially released (e.g. closed) */
@@ -1157,6 +1219,8 @@ static int vldc_probe(struct vio_dev *vdev, const struct vio_device_id *vio_did)
 		goto error;
 	}
 	vldc->device = device;
+
+	vldc->vdev = vdev;
 
 	created_sysfs_group = false;
 	rv = sysfs_create_group(&device->kobj, &vldc_attribute_group);
@@ -1255,6 +1319,9 @@ static struct vio_driver vldc_driver = {
 
 static char *vldc_devnode(struct device *dev, umode_t *mode)
 {
+	if (mode != NULL)
+		*mode = 0600;
+
 	return kasprintf(GFP_KERNEL, "vldc/%s", dev_name(dev));
 }
 
