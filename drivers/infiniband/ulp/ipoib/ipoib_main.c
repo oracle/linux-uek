@@ -79,6 +79,8 @@ int cm_ibcrc_as_csum = 1;
 module_param_named(cm_ibcrc_as_csum, cm_ibcrc_as_csum, int, 0444);
 MODULE_PARM_DESC(cm_ibcrc_as_csum, "Indicates whether to utilize IB-CRC as CSUM in connected mode,(default: 1)");
 
+int    ipoib_cm_rx_sg;
+
 struct ipoib_path_iter {
 	struct net_device *dev;
 	struct ipoib_path  path;
@@ -2285,6 +2287,10 @@ static ssize_t create_child(struct device *dev,
 {
 	int pkey, child_index;
 	int ret;
+	int ipoib_cm_sg_len;
+
+	ipoib_cm_sg_len = IPOIB_CM_BUF_SIZE - IPOIB_CM_HEAD_SIZE;
+	ipoib_cm_rx_sg = ALIGN(ipoib_cm_sg_len, PAGE_SIZE)/PAGE_SIZE + 1;
 
 	if (parse_child(dev, buf, &pkey, &child_index))
 		return -EINVAL;

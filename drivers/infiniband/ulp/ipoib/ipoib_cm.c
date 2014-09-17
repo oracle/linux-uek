@@ -157,7 +157,7 @@ static int ipoib_cm_post_receive_nonsrq(struct net_device *dev,
 
 	wr->wr_id = id | IPOIB_OP_CM | IPOIB_OP_RECV;
 
-	for (i = 0; i < IPOIB_CM_RX_SG; ++i)
+	for (i = 0; i < ipoib_cm_rx_sg; ++i)
 		sge[i].addr = rx->rx_ring[id].mapping[i];
 
 	ret = ib_post_recv(rx->qp, wr, &bad_wr);
@@ -301,7 +301,7 @@ static struct ib_qp *ipoib_cm_create_rx_qp(struct net_device *dev,
 
 	if (!ipoib_cm_has_srq(dev)) {
 		attr.cap.max_recv_wr  = ipoib_recvq_size;
-		attr.cap.max_recv_sge = IPOIB_CM_RX_SG;
+		attr.cap.max_recv_sge = ipoib_cm_rx_sg;
 	}
 
 	index = priv->cm.rx_cq_ind;
@@ -1827,16 +1827,19 @@ int ipoib_cm_dev_init(struct net_device *dev)
 
 	ipoib_dbg(priv, "max_srq_sge=%d\n", attr.max_srq_sge);
 
-	attr.max_srq_sge = min_t(int, IPOIB_CM_RX_SG, attr.max_srq_sge);
+	attr.max_srq_sge = min_t(int, ipoib_cm_rx_sg, attr.max_srq_sge);
 	ipoib_cm_create_srq(dev, attr.max_srq_sge);
 	if (ipoib_cm_has_srq(dev)) {
-		priv->cm.max_cm_mtu = attr.max_srq_sge * PAGE_SIZE - 0x10;
+		int no_skb_frags = attr.max_srq_sge - 1;
+		u32 maxmtu;
+		maxmtu = no_skb_frags * PAGE_SIZE + IPOIB_CM_HEAD_SIZE - 0x10;
+		priv->cm.max_cm_mtu = min_t(int, maxmtu, IPOIB_CM_MTU);
 		priv->cm.num_frags  = attr.max_srq_sge;
 		ipoib_dbg(priv, "max_cm_mtu = 0x%x, num_frags=%d\n",
 			  priv->cm.max_cm_mtu, priv->cm.num_frags);
 	} else {
 		priv->cm.max_cm_mtu = IPOIB_CM_MTU;
-		priv->cm.num_frags  = IPOIB_CM_RX_SG;
+		priv->cm.num_frags  = ipoib_cm_rx_sg;
 	}
 
 	ipoib_cm_init_rx_wr(dev);

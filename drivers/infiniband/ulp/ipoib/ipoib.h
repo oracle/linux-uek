@@ -63,6 +63,11 @@ enum ipoib_flush_level {
 	IPOIB_FLUSH_HEAVY
 };
 
+/* 12 bytes added to align the IP header to a multiple of 16 bytes
+ * after IPoIB adds 4 byte header.
+ */
+#define        IPOIB_CM_HEAD_SIZE SKB_MAX_HEAD(NET_SKB_PAD + 12)
+
 enum {
 	IPOIB_ENCAP_LEN		  = 4,
 
@@ -72,8 +77,8 @@ enum {
 
 	IPOIB_CM_MTU		  = 0x10000 - 0x10, /* padding to align header to 16 */
 	IPOIB_CM_BUF_SIZE	  = IPOIB_CM_MTU  + IPOIB_ENCAP_LEN,
-	IPOIB_CM_HEAD_SIZE	  = IPOIB_CM_BUF_SIZE % PAGE_SIZE,
-	IPOIB_CM_RX_SG		  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE) / PAGE_SIZE,
+	/* +1 to accommodate residual data in the last SG element */
+	IPOIB_CM_RX_SG		  = ALIGN(IPOIB_CM_BUF_SIZE, PAGE_SIZE)/PAGE_SIZE+1,
 	IPOIB_RX_RING_SIZE	  = 2048,	/* per Orabug 19606645 */
 	IPOIB_TX_RING_SIZE	  = 512,
 	IPOIB_MAX_QUEUE_SIZE	  = 8192,
@@ -689,6 +694,8 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca);
 /* We don't support UC connections at the moment */
 #define IPOIB_CM_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_RC))
 #define IPOIB_TSS_SUPPORTED(ha)   (ha[0] & (IPOIB_FLAGS_TSS))
+
+extern int ipoib_cm_rx_sg;
 
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 
