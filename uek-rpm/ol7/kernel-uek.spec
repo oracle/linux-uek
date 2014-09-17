@@ -506,9 +506,11 @@ BuildRequires: xmlto
 %if %{with_sparse}
 BuildRequires: sparse >= 0.4.1
 %endif
+%ifnarch noarch
 %if %{signmodules}
 BuildRequires: openssl
 BuildRequires: pesign >= 0.10-4
+%endif
 %endif
 %if %{with_fips}
 BuildRequires: hmaccalc
@@ -601,8 +603,6 @@ input and output, etc.
 %package doc
 Summary: Various documentation bits found in the kernel source
 Group: Documentation
-Obsoletes: kernel-doc
-Provides: kernel-doc
 %description doc
 This package contains documentation files from the kernel
 source. Various bits of information about the Linux kernel and the
@@ -1426,6 +1426,7 @@ tar -f - --exclude=man --exclude='.*' -c Documentation | tar xf - -C $docdir
 mkdir -p $man9dir
 find Documentation/DocBook/man -name '*.9.gz' -print0 |
 xargs -0 --no-run-if-empty %{__install} -m 444 -t $man9dir $m
+for f in $man9dir/*.9.gz; do mv "$f" "${f%.9.gz}.9uek.gz"; done
 ls $man9dir | grep -q '' || > $man9dir/BROKEN
 %endif
 
