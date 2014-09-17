@@ -173,6 +173,13 @@ config HW_PERF_EVENTS
 
 source "mm/Kconfig"
 
+config XEN_DOM0
+	def_bool y
+	depends on XEN
+
+config XEN
+	bool "Xen guest support on ARM64"
+	depends on ARM64 && OF
 	select SWIOTLB_XEN
 endmenu
 
