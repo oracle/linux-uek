@@ -91,6 +91,8 @@ module_param_named(cm_ibcrc_as_csum, cm_ibcrc_as_csum, int, 0444);
 MODULE_PARM_DESC(cm_ibcrc_as_csum, "Indicates whether to utilize IB-CRC as "
 		 "CSUM in connected mode,(default: 0)");
 
+int    ipoib_cm_rx_sg;
+
 struct ipoib_path_iter {
 	struct net_device *dev;
 	struct ipoib_path  path;
@@ -2226,6 +2228,10 @@ EXPORT_SYMBOL(ipoib_get_netdev_pkey);
 static int __init ipoib_init_module(void)
 {
 	int ret;
+	int ipoib_cm_sg_len;
+
+	ipoib_cm_sg_len = IPOIB_CM_BUF_SIZE - IPOIB_CM_HEAD_SIZE;
+	ipoib_cm_rx_sg = ALIGN(ipoib_cm_sg_len, PAGE_SIZE)/PAGE_SIZE + 1;
 
 	ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
 	ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
