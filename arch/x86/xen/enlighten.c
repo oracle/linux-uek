@@ -1539,6 +1539,7 @@ static void __init xen_pvh_early_guest_init(void)
 asmlinkage void __init xen_start_kernel(void)
 {
 	struct physdev_set_iopl set_iopl;
+	unsigned long initrd_start = 0;
 	int rc;
 
 	if (!xen_start_info)
@@ -1680,10 +1681,16 @@ asmlinkage void __init xen_start_kernel(void)
 	new_cpu_data.x86_capability[0] = cpuid_edx(1);
 #endif
 
+	if (xen_start_info->mod_start) {
+	    if (xen_start_info->flags & SIF_MOD_START_PFN)
+		initrd_start = PFN_PHYS(xen_start_info->mod_start);
+	    else
+		initrd_start = __pa(xen_start_info->mod_start);
+	}
+
 	/* Poke various useful things into boot_params */
 	boot_params.hdr.type_of_loader = (9 << 4) | 0;
-	boot_params.hdr.ramdisk_image = xen_start_info->mod_start
-		? __pa(xen_start_info->mod_start) : 0;
+	boot_params.hdr.ramdisk_image = initrd_start;
 	boot_params.hdr.ramdisk_size = xen_start_info->mod_len;
 	boot_params.hdr.cmd_line_ptr = __pa(xen_start_info->cmd_line);
 
