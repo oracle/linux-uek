@@ -277,7 +277,7 @@ static int lancer_cmd_read_file(struct be_adapter *adapter, u8 *file_name,
 
 	while ((total_read_len < buf_len) && !eof) {
 		chunk_size = min_t(u32, (buf_len - total_read_len),
-				LANCER_READ_FILE_CHUNK);
+				   LANCER_READ_FILE_CHUNK);
 		chunk_size = ALIGN(chunk_size, 4);
 		status = lancer_cmd_read_object(adapter, &read_cmd, chunk_size,
 						total_read_len, file_name,
