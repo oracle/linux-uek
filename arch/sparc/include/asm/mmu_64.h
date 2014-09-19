@@ -96,6 +96,7 @@ typedef struct {
 	struct page		*pgtable_page;
 	struct tsb_config	tsb_block[MM_NUM_TSBS];
 	struct hv_tsb_descr	tsb_descr[MM_NUM_TSBS];
+	unsigned char		adi:1;
 } mm_context_t;
 
 #endif /* !__ASSEMBLY__ */

@@ -86,6 +86,18 @@
 #ifndef SET_TSC_CTL
 # define SET_TSC_CTL(a)		(-EINVAL)
 #endif
+#ifndef GET_SPARC_ADICAPS
+# define GET_SPARC_ADICAPS(a)		(-EINVAL)
+#endif
+#ifndef SET_SPARC_MCDE
+# define SET_SPARC_MCDE(a)		(-EINVAL)
+#endif
+#ifndef ENABLE_SPARC_ADI
+# define ENABLE_SPARC_ADI(a, b)		(-EINVAL)
+#endif
+#ifndef DISABLE_SPARC_ADI
+# define DISABLE_SPARC_ADI(a, b)	(-EINVAL)
+#endif
 
 /*
  * this is where the system-wide overflow UID and GID are defined, for
@@ -122,6 +134,7 @@ EXPORT_SYMBOL(cad_pid);
  */
 
 void (*pm_power_off_prepare)(void);
+
 
 /*
  * Returns true if current's euid is same as p's uid or euid,
@@ -2187,6 +2200,18 @@ SYSCALL_DEFINE5(prctl, int, option, unsigned long, arg2, unsigned long, arg3,
 			if (arg2 || arg3 || arg4 || arg5)
 				return -EINVAL;
 			return current->no_new_privs ? 1 : 0;
+		case PR_GET_SPARC_ADICAPS:
+			error = GET_SPARC_ADICAPS(arg2);
+			break;
+		case PR_SET_SPARC_ADI:
+			error = SET_SPARC_MCDE(arg2);
+			break;
+		case PR_ENABLE_SPARC_ADI:
+			error = ENABLE_SPARC_ADI(arg2, arg3);
+			break;
+		case PR_DISABLE_SPARC_ADI:
+			error = DISABLE_SPARC_ADI(arg2, arg3);
+			break;
 		default:
 			error = -EINVAL;
 			break;

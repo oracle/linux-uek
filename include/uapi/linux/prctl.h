@@ -149,4 +149,10 @@
 
 #define PR_GET_TID_ADDRESS	40
 
+/* SPARC ADI operations, see Documentation/prctl/sparc_adi.txt for details */
+#define PR_GET_SPARC_ADICAPS	41
+#define PR_SET_SPARC_ADI	42
+#define PR_ENABLE_SPARC_ADI	43
+#define PR_DISABLE_SPARC_ADI	44
+
 #endif /* _LINUX_PRCTL_H */

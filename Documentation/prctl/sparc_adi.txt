@@ -1,0 +1,65 @@
+========
+Overview
+========
+
+SPARC M7 processor includes the feature Application Data Integrity
+(ADI). ADI allows a tag to be associated with a memory address range
+and a process must access that memory range with the correct tag. ADI
+tag is embedded in bits 63-60 of virtual address. Once ADI is enabled
+on a range of memory addresses, the process can set a tag for blocks
+in this memory range n the cache using ASI_MCD_PRIMARY or
+ASI_MCD_ST_BLKINIT_PRIMARY. This tag is set for ADI block sized blocks
+which is provided to the kernel by machine description table.
+
+
+Linux kernel supports an application enabling and setting the ADI tag
+for a subset of its data pages. Enabling ADI is supported for
+hugetlbfs pages only. Other types of pages may be supported at a later
+time and will require handling saving and restoring ADI tags as those
+pages are swapped out and back in.
+
+
+New prctl options for ADI
+-------------------------
+
+Following new options to prctl() have been added to support ADI.
+
+	PR_GET_SPARC_ADICAPS - Get ADI capabilities for the processor.
+		These capabilities are used to set up ADI correctly
+		from userspace. Machine description table provides all
+		of the ADI capabilities information. arg2 to prctl() is
+		a pointer to struct adi_caps:
+			struct adi_caps {
+				u64 blksz;
+				u64 nbits;
+				u64 ue_on_adi;
+			};
+
+
+	PR_SET_SPARC_MCDE - Set the state of ADI in a user thread by
+		setting PSTATE.mcde bit in the user mode PSTATE register
+		of the calling thread based on the value passed in arg2:
+			1 == enable, 0 == disable, other == no change
+		Return the previous state of the PSTATE.mcde bit:
+			0 == was disabled, 1 == was enabled.
+		Set errno to EINVAL and return -1 if ADI is not available.
+
+
+	PR_ENABLE_ADI - Enable ADI checking in all pages in the address range
+		specified. The pages in the range must be already
+		locked. This operation basically enables the TTE.mcd
+		bit for the pages specified. arg2 is the starting address
+		for address range and must be page aligned. arg3 is the
+		length of memory address range and must be a multiple
+		of page size.
+
+
+	PR_DISABLE_ADI - Disable ADI checking in all the pages in the address
+		range specified. This operation basically disables
+		the TTE.mcd bit for the pages specified. arg2 is the
+		starting address for address range and must be page
+		aligned. arg3 is the length of memory address range and
+		must be a multiple of page size.
+
+All addresses passed to kernel must be non-ADI tagged addresses.
+Kernel does not enable ADI for kernel code.

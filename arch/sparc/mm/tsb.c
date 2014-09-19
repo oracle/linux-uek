@@ -462,6 +462,7 @@ int init_new_context(struct task_struct *tsk, struct mm_struct *mm)
 	spin_lock_init(&mm->context.lock);
 
 	mm->context.sparc64_ctx_val = 0UL;
+	mm->context.adi = 0;
 
 #if defined(CONFIG_HUGETLB_PAGE) || defined(CONFIG_TRANSPARENT_HUGEPAGE)
 	/* We reset it to zero because the fork() page copying

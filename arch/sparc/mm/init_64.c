@@ -1826,6 +1826,8 @@ void __init paging_init(void)
 	if (tlb_type == hypervisor)
 		sun4v_patch_tlb_handlers();
 
+	sun4v_patch_mcd_handlers();
+
 	/* Find available physical memory...
 	 *
 	 * Read it twice in order to work around a bug in openfirmware.

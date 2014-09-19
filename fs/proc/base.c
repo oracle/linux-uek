@@ -1265,6 +1265,38 @@ static const struct file_operations proc_pid_sched_operations = {
 
 #endif
 
+#ifdef CONFIG_SPARC_ADI
+static int
+sparc_adi_show(struct seq_file *m, void *v)
+{
+	struct inode *inode = m->private;
+	struct task_struct *task = get_proc_task(inode);
+
+	if (!task)
+		return -ENOENT;
+
+	/* anonymous processes can not use ADI */
+	if (task->mm != NULL)
+		seq_printf(m, "%d\n", task->mm->context.adi);
+	else
+		seq_printf(m, "-1\n");
+	put_task_struct(task);
+	return 0;
+}
+
+static int
+sparc_adi_open(struct inode *inode, struct file *filp)
+{
+	return single_open(filp, sparc_adi_show, inode);
+}
+
+static const struct file_operations proc_sparc_adi_operations = {
+	.open		= sparc_adi_open,
+	.read		= seq_read,
+	.release	= single_release,
+};
+#endif /* CONFIG_SPARC_ADI */
+
 #ifdef CONFIG_SCHED_AUTOGROUP
 /*
  * Print out autogroup related information:
@@ -2581,6 +2613,9 @@ static const struct pid_entry tgid_base_stuff[] = {
 	REG("uid_map",    S_IRUGO|S_IWUSR, proc_uid_map_operations),
 	REG("gid_map",    S_IRUGO|S_IWUSR, proc_gid_map_operations),
 	REG("projid_map", S_IRUGO|S_IWUSR, proc_projid_map_operations),
+#endif
+#ifdef CONFIG_SPARC_ADI
+	REG("sparc_adi",	S_IRUGO, proc_sparc_adi_operations),
 #endif
 };
 

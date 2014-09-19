@@ -199,7 +199,9 @@ typedef struct siginfo {
  */
 #define SEGV_MAPERR	(__SI_FAULT|1)	/* address not mapped to object */
 #define SEGV_ACCERR	(__SI_FAULT|2)	/* invalid permissions for mapped object */
-#define NSIGSEGV	2
+#define SEGV_ADIDERR	(__SI_FAULT|3)	/* Disrupting MCD error */
+#define SEGV_ADIPERR	(__SI_FAULT|4)	/* Precise MCD exception */
+#define NSIGSEGV	4
 
 /*
  * SIGBUS si_codes
@@ -211,7 +213,8 @@ typedef struct siginfo {
 #define BUS_MCEERR_AR	(__SI_FAULT|4)
 /* hardware memory error detected in process but not consumed: action optional*/
 #define BUS_MCEERR_AO	(__SI_FAULT|5)
-#define NSIGBUS		5
+#define BUS_ADIDAE	(__SI_FAULT|6)	/* MCD disabled (sparc) */
+#define NSIGBUS		6
 
 /*
  * SIGTRAP si_codes

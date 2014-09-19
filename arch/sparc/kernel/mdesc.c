@@ -513,6 +513,13 @@ EXPORT_SYMBOL(mdesc_node_name);
 
 static u64 max_cpus = 64;
 
+static struct {
+	unsigned char enabled;
+	u64 blksz;
+	u64 nbits;
+	u64 ue_on_adi;
+} adi_caps;
+
 static void __init report_platform_properties(void)
 {
 	struct mdesc_handle *hp = mdesc_grab();
@@ -944,6 +951,92 @@ void __cpuinit mdesc_fill_in_cpu_data(cpumask_t *mask)
 	smp_fill_in_sib_core_maps();
 }
 
+int adi_capable(void)
+{
+	return adi_caps.enabled;
+}
+
+int adi_blksz(void)
+{
+	return adi_caps.blksz;
+}
+
+int adi_nbits(void)
+{
+	return adi_caps.nbits;
+}
+
+int adi_ue_on_adi(void)
+{
+	return adi_caps.ue_on_adi;
+}
+
+void __init
+init_adi(void)
+{
+	struct mdesc_handle *hp = mdesc_grab();
+	const char *prop;
+	u64 pn, *val;
+	int len;
+
+	adi_caps.enabled = 0;
+
+	if (!hp)
+		return;
+
+	pn = mdesc_node_by_name(hp, MDESC_NODE_NULL, "cpu");
+	if (pn == MDESC_NODE_NULL)
+		goto out;
+
+	prop = mdesc_get_property(hp, pn, "hwcap-list", &len);
+	if (!prop)
+		goto out;
+
+	/*
+	 * Look for "adp" keyword in hwcap-list which would indicate
+	 * ADI support
+	 */
+	while (len) {
+		int plen;
+
+		if (!strcmp(prop, "adp")) {
+			adi_caps.enabled = 1;
+			break;
+		}
+
+		plen = strlen(prop) + 1;
+		prop += plen;
+		len -= plen;
+	}
+
+	if (!adi_caps.enabled)
+		goto out;
+
+	pn = mdesc_node_by_name(hp, MDESC_NODE_NULL, "platform");
+	if (pn == MDESC_NODE_NULL)
+		goto out;
+
+	adi_caps.blksz = adi_caps.nbits = adi_caps.ue_on_adi = 0;
+	val = (u64 *) mdesc_get_property(hp, pn, "adp-blksz", &len);
+	if (!val)
+		goto out;
+	adi_caps.blksz = *val;
+
+	val = (u64 *) mdesc_get_property(hp, pn, "adp-nbits", &len);
+	if (!val)
+		goto out;
+	adi_caps.nbits = *val;
+
+	val = (u64 *) mdesc_get_property(hp, pn, "ue-on-adp", &len);
+	if (!val)
+		goto out;
+	adi_caps.ue_on_adi = *val;
+
+out:
+	mdesc_release(hp);
+	return;
+}
+
 static ssize_t mdesc_read(struct file *file, char __user *buf,
 			  size_t len, loff_t *offp)
 {
@@ -1010,5 +1103,6 @@ void __init sun4v_mdesc_init(void)
 	hp->mops = NULL;
 	cur_mdesc = hp;
 
+	init_adi();
 	report_platform_properties();
 }

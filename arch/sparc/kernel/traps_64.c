@@ -342,12 +342,23 @@ void sun4v_data_access_exception(struct pt_regs *regs, unsigned long addr, unsig
 		regs->tpc &= 0xffffffff;
 		regs->tnpc &= 0xffffffff;
 	}
-	info.si_signo = SIGSEGV;
+
+	/* MCD (Memory Corruption Detection) disabled trap (TT=0x19) in HV
+	 * is vectored thorugh data access exception trap with fault type
+	 * set to HV_FAULT_TYPE_INV_ASI. Check for MCD disabled trap
+	 */
 	info.si_errno = 0;
-	info.si_code = SEGV_MAPERR;
 	info.si_addr = (void __user *) addr;
 	info.si_trapno = 0;
-	force_sig_info(SIGSEGV, &info, current);
+	if (type == HV_FAULT_TYPE_INV_ASI) {
+		info.si_signo = SIGBUS;
+		info.si_code = BUS_ADIDAE;
+		force_sig_info(SIGBUS, &info, current);
+	} else {
+		info.si_signo = SIGSEGV;
+		info.si_code = SEGV_MAPERR;
+		force_sig_info(SIGSEGV, &info, current);
+	}
 }
 
 void sun4v_data_access_exception_tl1(struct pt_regs *regs, unsigned long addr, unsigned long type_ctx)
@@ -1792,6 +1803,7 @@ struct sun4v_error_entry {
 #define SUN4V_ERR_ATTRS_ASI		0x00000080
 #define SUN4V_ERR_ATTRS_PRIV_REG	0x00000100
 #define SUN4V_ERR_ATTRS_SPSTATE_MSK	0x00000600
+#define SUN4V_ERR_ATTRS_MCD		0x00000800
 #define SUN4V_ERR_ATTRS_SPSTATE_SHFT	9
 #define SUN4V_ERR_ATTRS_MODE_MSK	0x03000000
 #define SUN4V_ERR_ATTRS_MODE_SHFT	24
@@ -1989,6 +2001,37 @@ static void sun4v_log_error(struct pt_regs *regs, struct sun4v_error_entry *ent,
 	}
 }
 
+/* Handle memory corruption detected error which is vectored in
+ * through resumable error trap.
+ */
+void do_mcd_err(struct pt_regs *regs)
+{
+	siginfo_t info;
+
+	if (notify_die(DIE_TRAP, "MCD error", regs,
+		       0, 0x34, SIGSEGV) == NOTIFY_STOP)
+		return;
+
+	if (regs->tstate & TSTATE_PRIV) {
+		/* KHALID - kernel does not run with PSTATE.mcd=1, so
+		 * do not need an MCD error handler in kernel mode.
+		 * Nevertheless wouldn't hurt to add one.
+		 */
+		/*kernel_mcderror_trap(regs, *((unsigned int *)regs->tpc)); */
+		die_if_kernel("MCD error in kernel mode.\n", regs);
+		return;
+	}
+
+	/* Send SIGSEGV to the userspace process with the right code
+	 */
+	info.si_signo = SIGSEGV;
+	info.si_errno = 0;
+	info.si_code = SEGV_ADIDERR;
+	info.si_addr = (void __user *)NULL;
+	info.si_trapno = 0;
+	force_sig_info(SIGSEGV, &info, current);
+}
+
 /* We run with %pil set to PIL_NORMAL_MAX and PSTATE_IE enabled in %pstate.
  * Log the event and clear the first word of the entry.
  */
@@ -2022,6 +2065,14 @@ void sun4v_resum_error(struct pt_regs *regs, unsigned long offset)
 		pr_info("Shutdown request, %u seconds...\n",
 			local_copy.err_secs);
 		orderly_poweroff(true);
+		return;
+	}
+
+	/* If this is a memory corruption detected error, call the
+	 * handler
+	 */
+	if (local_copy.err_attrs & SUN4V_ERR_ATTRS_MCD) {
+		do_mcd_err(regs);
 		return;
 	}
 
@@ -2509,6 +2560,33 @@ void sun4v_do_mna(struct pt_regs *regs, unsigned long addr, unsigned long type_c
 	info.si_addr = (void __user *) addr;
 	info.si_trapno = 0;
 	force_sig_info(SIGBUS, &info, current);
+}
+
+void sun4v_mem_corrupt_detect_precise(struct pt_regs *regs, unsigned long addr,
+				      unsigned long context)
+{
+	siginfo_t info;
+
+	if (notify_die(DIE_TRAP, "memory corruption precise exception", regs,
+		       0, 0x8, SIGSEGV) == NOTIFY_STOP)
+		return;
+
+	if (regs->tstate & TSTATE_PRIV) {
+		pr_emerg("sun4v_mem_corrupt_detect_precise: ADDR[%016lx] "
+			"CTX[%lx], going.\n", addr, context);
+		die_if_kernel("MCD precise", regs);
+	}
+
+	if (test_thread_flag(TIF_32BIT)) {
+		regs->tpc &= 0xffffffff;
+		regs->tnpc &= 0xffffffff;
+	}
+	info.si_signo = SIGSEGV;
+	info.si_code = SEGV_ADIPERR;
+	info.si_errno = 0;
+	info.si_addr = (void __user *) addr;
+	info.si_trapno = 0;
+	force_sig_info(SIGSEGV, &info, current);
 }
 
 void do_privop(struct pt_regs *regs)

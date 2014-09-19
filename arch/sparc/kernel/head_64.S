@@ -898,6 +898,7 @@ sparc64_boot_end:
 #include "helpers.S"
 #include "hvcalls.S"
 #include "sun4v_tlb_miss.S"
+#include "sun4v_mcd.S"
 #include "sun4v_ivec.S"
 #include "ktlb.S"
 #include "tsb.S"

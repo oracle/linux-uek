@@ -126,6 +126,9 @@
 #define _PAGE_E_4V	  _AC(0x0000000000000800,UL) /* side-Effect          */
 #define _PAGE_CP_4V	  _AC(0x0000000000000400,UL) /* Cacheable in P-Cache */
 #define _PAGE_CV_4V	  _AC(0x0000000000000200,UL) /* Cacheable in V-Cache */
+/* Bit 9 is used to enable MCD corruption detection instead on M7
+ */
+#define _PAGE_MCD_4V	  _AC(0x0000000000000200,UL) /* Memory Corruption    */
 #define _PAGE_P_4V	  _AC(0x0000000000000100,UL) /* Privileged Page      */
 #define _PAGE_EXEC_4V	  _AC(0x0000000000000080,UL) /* Executable Page      */
 #define _PAGE_W_4V	  _AC(0x0000000000000040,UL) /* Writable             */
@@ -476,6 +479,12 @@ static inline pte_t pte_mkyoung(pte_t pte)
 static inline pte_t pte_mkspecial(pte_t pte)
 {
 	pte_val(pte) |= _PAGE_SPECIAL;
+	return pte;
+}
+
+static inline pte_t pte_mkmcd(pte_t pte)
+{
+	pte_val(pte) |= _PAGE_MCD_4V;
 	return pte;
 }
 
@@ -834,6 +843,7 @@ extern void sun4v_register_fault_status(void);
 extern void sun4v_ktsb_register(void);
 extern void __init cheetah_ecache_flush_init(void);
 extern void sun4v_patch_tlb_handlers(void);
+extern void sun4v_patch_mcd_handlers(void);
 
 extern unsigned long cmdline_memory_size;
 

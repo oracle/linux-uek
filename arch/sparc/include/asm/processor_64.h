@@ -101,6 +101,11 @@ struct thread_struct {
 struct task_struct;
 extern unsigned long thread_saved_pc(struct task_struct *);
 
+extern int adi_capable(void);
+extern int adi_blksz(void);
+extern int adi_nbits(void);
+extern int adi_ue_on_adi(void);
+
 /* On Uniprocessor, even in RMO processes see TSO semantics */
 #ifdef CONFIG_SMP
 #define TSTATE_INITIAL_MM	TSTATE_TSO
@@ -260,6 +265,15 @@ static inline void prefetchw(const void *x)
 extern unsigned long sparc64_task_size_max;
 extern unsigned long sparc64_task_unmmaped_base;
 
+extern long get_sparc_adicaps(unsigned long);
+extern long set_sparc_pstate_mcde(unsigned long);
+extern long enable_sparc_adi(unsigned long, unsigned long);
+extern long disable_sparc_adi(unsigned long, unsigned long);
+
+#define GET_SPARC_ADICAPS(a)	get_sparc_adicaps(a)
+#define SET_SPARC_MCDE(a)	set_sparc_pstate_mcde(a)
+#define ENABLE_SPARC_ADI(a, b)	enable_sparc_adi(a, b)
+#define DISABLE_SPARC_ADI(a, b)	disable_sparc_adi(a, b)
 #endif /* !(__ASSEMBLY__) */
 
 #endif /* !(__ASM_SPARC64_PROCESSOR_H) */
