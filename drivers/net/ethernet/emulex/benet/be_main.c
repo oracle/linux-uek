@@ -120,7 +120,6 @@ static const char * const ue_status_hi_desc[] = {
 	"Unknown"
 };
 
-
 static void be_queue_free(struct be_adapter *adapter, struct be_queue_info *q)
 {
 	struct be_dma_mem *mem = &q->dma_mem;
