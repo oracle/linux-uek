@@ -84,6 +84,7 @@ static const char * const ue_status_low_desc[] = {
 	"JTAG ",
 	"MPU_INTPEND "
 };
+
 /* UE Status High CSR */
 static const char * const ue_status_hi_desc[] = {
 	"LPCMEMHOST",
