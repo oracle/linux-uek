@@ -1053,6 +1053,15 @@ static struct ctl_table kern_table[] = {
 		.proc_handler	= proc_dointvec,
 	},
 #endif
+#if defined(CONFIG_SPARC64)
+	{
+		.procname	= "mcd_on_by_default",
+		.data		= &mcd_on_by_default,
+		.maxlen		= sizeof(int),
+		.mode		= 0644,
+		.proc_handler	= proc_dointvec,
+	},
+#endif
 	{ }
 };
 

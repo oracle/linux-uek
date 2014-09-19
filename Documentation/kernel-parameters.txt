@@ -1487,6 +1487,10 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 
 	mce=option	[X86-64] See Documentation/x86/x86_64/boot-options.txt
 
+	mcd_on_by_default
+			[SPARC64] Enable memory corruption detection by
+			by default for all new tasks.
+
 	md=		[HW] RAID subsystems devices and level
 			See Documentation/md.txt.
 

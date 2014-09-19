@@ -106,6 +106,9 @@ extern int adi_blksz(void);
 extern int adi_nbits(void);
 extern int adi_ue_on_adi(void);
 
+extern int mcd_on_by_default;
+extern int adi_capable(void);
+
 /* On Uniprocessor, even in RMO processes see TSO semantics */
 #ifdef CONFIG_SMP
 #define TSTATE_INITIAL_MM	TSTATE_TSO
@@ -117,7 +120,14 @@ extern int adi_ue_on_adi(void);
 #define start_thread(regs, pc, sp) \
 do { \
 	unsigned long __asi = ASI_PNF; \
-	regs->tstate = (regs->tstate & (TSTATE_CWP)) | (TSTATE_INITIAL_MM|TSTATE_IE) | (__asi << 24UL); \
+	if (adi_capable() && mcd_on_by_default) \
+		regs->tstate = (regs->tstate & (TSTATE_CWP)) | \
+				(TSTATE_INITIAL_MM|TSTATE_IE|TSTATE_MCDE) | \
+				(__asi << 24UL); \
+	else \
+		regs->tstate = (regs->tstate & (TSTATE_CWP)) | \
+				(TSTATE_INITIAL_MM|TSTATE_IE) | \
+				(__asi << 24UL); \
 	regs->tpc = ((pc & (~3)) - 4); \
 	regs->tnpc = regs->tpc + 4; \
 	regs->y = 0; \

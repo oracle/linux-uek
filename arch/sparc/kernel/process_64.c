@@ -949,3 +949,12 @@ long disable_sparc_adi(unsigned long addr, unsigned long len)
 
 	return error;
 }
+
+int mcd_on_by_default;
+
+static int __init setup_mcd_default(char *str)
+{
+	mcd_on_by_default = 1;
+	return 1;
+}
+__setup("mcd_on_by_default", setup_mcd_default);
