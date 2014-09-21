@@ -1484,18 +1484,8 @@ int rds_send_internal(struct rds_connection *conn, struct rds_sock *rs,
 	 */
 	rds_stats_inc(s_send_queued);
 
-/* Set this to 1 for normal testing but 0 when building the TCP version
- * of the code.  The TCP version has hang issues otherwise. */
-#if 1
-	/* for the time being it looks like the send_xmit code may lead to a
-	 * deadlock/hang, so we are not going to use it yet */
-	ret = rds_send_xmit(conn);
-	if (ret == -ENOMEM || ret == -EAGAIN)
-		queue_delayed_work(rds_wq, &conn->c_send_w, 1);
-#else
 	/* always hand the send off to the worker thread */
 	queue_delayed_work(rds_wq, &conn->c_send_w, 0);
-#endif
 
 	rdsdebug("message sent for rs %p, conn %p, len %d, %pI4 : %u -> %pI4 : %u\n",
 		 rs, conn, skb->len, &dst->saddr, dst->sport, &dst->daddr, dst->dport);
