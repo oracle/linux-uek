@@ -517,14 +517,26 @@ rds_recv_local(struct rds_connection *conn, __be32 saddr, __be32 daddr,
 	/* serialize with rds_release -> sock_orphan */
 	write_lock_irqsave(&rs->rs_recv_lock, flags);
 	if (!sock_flag(sk, SOCK_DEAD)) {
-		rdsdebug("adding inc %p to rs %p's recv queue\n", inc, rs);
-		rds_stats_inc(s_recv_queued);
-		rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
+		/* only queue the incoming once. when rds netfilter hook
+		 * is  enabled, the follow code path can cause us to send
+		 * rds_incoming twice to rds_recv_local: rds_recv_incoming
+		 * call NF_HOOK, hook decide to send rds incoming to both,
+		 * local & remote, rds_recv_local queue the inc msg,
+		 * rds_recv_forward fail to send the inc to remote & call
+		 * rds_recv_local again with the same rds inc. calling list
+		 * on alredy added list item w/o calling list_del_init in
+		 * between cause list corruption */
+		if (list_empty(&inc->i_item)) {
+			rdsdebug("adding inc %p to rs %p's recv queue\n",
+				inc, rs);
+			rds_stats_inc(s_recv_queued);
+			rds_recv_rcvbuf_delta(rs, sk, inc->i_conn->c_lcong,
 				      be32_to_cpu(inc->i_hdr.h_len),
 				      inc->i_hdr.h_dport);
-		rds_inc_addref(inc);
-		list_add_tail(&inc->i_item, &rs->rs_recv_queue);
-		__rds_wake_sk_sleep(sk);
+			rds_inc_addref(inc);
+			list_add_tail(&inc->i_item, &rs->rs_recv_queue);
+			__rds_wake_sk_sleep(sk);
+		}
 	} else {
 		rds_stats_inc(s_recv_drop_dead_sock);
 	}
