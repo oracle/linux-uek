@@ -975,7 +975,8 @@ static long ovmapi_ioctl(struct file *file, unsigned int cmd,
 			return -EINVAL;
 		if (copy_from_user(&message, argp, sizeof(message)))
 			return -EFAULT;
-		if (message.value_size > OVMM_MAX_VALUE_LEN)
+		if (message.value_size > OVMM_MAX_VALUE_LEN ||
+		    message.value_size == 0)
 			return -EMSGSIZE;
 		name  = kmem_cache_alloc(name_cache,  GFP_KERNEL);
 		if (!name)
