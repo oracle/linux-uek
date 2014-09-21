@@ -283,8 +283,10 @@ static int ovmapi_read_name_value(const char *pathname, char *value,
 	for (n = 0; n < dir_n; n++) {
 		snprintf(num, sizeof(num), "%d", n);
 		name_value = xenbus_read(XBT_NIL, pathname, num, &name_len);
-		if (IS_ERR(name_value))
+		if (IS_ERR(name_value)) {
+			kfree(dir);
 			return PTR_ERR(name_value);
+		}
 		if (*value_len < (total_len + name_len)) {
 			OVMLOG(DGBLVL_ERROR, "OVMAPI: value buffer is too "
 			       "short: value_len=%ld, needs=%d\n",
