@@ -213,8 +213,7 @@ static bool netvsc_set_hash(u32 *hash, struct sk_buff *skb)
 	return ret;
 }
 
-static u16 netvsc_select_queue(struct net_device *ndev, struct sk_buff *skb,
-			void *accel_priv, select_queue_fallback_t fallback)
+static u16 netvsc_select_queue(struct net_device *ndev, struct sk_buff *skb)
 {
 	struct net_device_context *net_device_ctx = netdev_priv(ndev);
 	struct hv_device *hdev =  net_device_ctx->device_ctx;
