@@ -1178,5 +1178,28 @@ struct rndis_message {
 #define TRANSPORT_INFO_IPV6_TCP ((INFO_IPV6 << 16) | INFO_TCP)
 #define TRANSPORT_INFO_IPV6_UDP ((INFO_IPV6 << 16) | INFO_UDP)
 
+#ifndef skb_set_hash
+
+#define PKT_HASH_TYPE_NONE	0
+#define PKT_HASH_TYPE_L2	1
+#define PKT_HASH_TYPE_L3	2
+#define PKT_HASH_TYPE_L4	3
+
+#define skb_set_hash __kc_skb_set_hash
+static inline void __kc_skb_set_hash(struct sk_buff *skb, u32 hash,
+				     int __maybe_unused type)
+{
+	skb->l4_rxhash = (type == PKT_HASH_TYPE_L4);
+	skb->rxhash = hash;
+}
+
+#ifndef skb_get_hash_raw
+static inline __u32 skb_get_hash_raw(const struct sk_buff *skb)
+{
+       return skb->rxhash;
+}
+#endif /* !skb_get_hash_raw */
+
+#endif /* !skb_set_hash */
 
 #endif /* _HYPERV_NET_H */
