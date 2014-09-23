@@ -520,8 +520,6 @@ void rds_ib_fmr_exit(void);
 /* ib_recv.c */
 int rds_ib_recv_init(void);
 void rds_ib_recv_exit(void);
-int rds_ib_srqs_init(void);
-void rds_ib_srqs_exit(void);
 int rds_ib_recv(struct rds_connection *conn);
 int rds_ib_recv_alloc_caches(struct rds_ib_connection *ic);
 void rds_ib_recv_free_caches(struct rds_ib_connection *ic);
