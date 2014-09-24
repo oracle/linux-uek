@@ -3,6 +3,8 @@
  * Copyright (C) 2007, 2008 David S. Miller <davem@davemloft.net>
  */
 
+#include <linux/ds.h>
+#include <linux/ioctl.h>
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/types.h>
@@ -14,6 +16,7 @@
 #include <linux/kthread.h>
 #include <linux/reboot.h>
 #include <linux/cpu.h>
+#include <linux/miscdevice.h>
 
 #include <asm/hypervisor.h>
 #include <asm/ldc.h>
@@ -161,6 +164,9 @@ static void ds_pri_data(struct ds_info *dp,
 static void ds_var_data(struct ds_info *dp,
 			struct ds_cap_state *cp,
 			void *buf, int len);
+static void sp_token_data(struct ds_info *dp,
+			struct ds_cap_state *cp,
+			void *buf, int len);
 
 static struct ds_cap_state ds_states_template[] = {
 	{
@@ -193,6 +199,10 @@ static struct ds_cap_state ds_states_template[] = {
 		.service_id	= "var-config-backup",
 		.data		= ds_var_data,
 	},
+	{
+		.service_id	= "sp-token",
+		.data		= sp_token_data
+	}
 };
 
 static DEFINE_SPINLOCK(ds_lock);
@@ -826,6 +836,144 @@ void ldom_set_var(const char *var, const char *value)
 	}
 }
 
+struct ds_sp_token_msg {
+	__u64				req_num;
+	__u64				type;
+	__u8				service[];
+#define DS_SPTOK_REQUEST		0x01
+};
+
+struct ds_sp_token_resp {
+	__u64				req_num;
+	__u32				result;
+	__u32				ip_addr;
+	__u32				portid;
+	__u8				token[DS_SPTOK_TOKEN_LEN];
+#define DS_SP_TOKEN_RES_OK		0x00
+#define DS_SP_TOKEN_RES_SVC_UNKNOWN	0x01
+#define DS_SP_TOKEN_RES_SVC_UNAVAIL	0x02
+#define DS_SP_TOKEN_RES_DOWN		0x03
+};
+
+static DEFINE_MUTEX(ds_sp_token_mutex);
+static int		ds_sp_token_doorbell;
+static __u32		ds_sp_token_response;
+static __u64		ds_sp_token_seq_num = 0;
+static ds_sptok_t	ds_sp_token_result;
+
+static void sp_token_data(struct ds_info *dp,
+			struct ds_cap_state *cp,
+			void *buf, int len)
+{
+	struct ds_data *dpkt = buf;
+	struct ds_sp_token_resp *rp;
+
+	rp = (struct ds_sp_token_resp *) (dpkt + 1);
+
+	pr_debug("ds-%llu: SP TOKEN REQ [%llx:%x], len=%d ip_addr=%x (%d.%d)"
+	    "portid=%d\n", dp->id, rp->req_num, rp->result, len, rp->ip_addr,
+	    (rp->ip_addr & 0xFF00) >> 8, rp->ip_addr & 0xFF, rp->portid);
+
+	pr_debug("%s: [%x:%x...0x%x...:%x].\n", __func__, (__u8)rp->token[0],
+	    (__u8)rp->token[1], (__u8)rp->token[11], (__u8)rp->token[19]);
+
+	(void) memcpy(&ds_sp_token_result, &(rp->ip_addr), sizeof (ds_sptok_t));
+	wmb();
+	ds_sp_token_doorbell = 1;
+	ds_sp_token_response = rp->result;
+
+}
+
+void ldom_req_sp_token(const char *service_name)
+{
+	struct ds_info *dp;
+	struct ds_cap_state	*cp;
+	unsigned long		flags;
+
+	pr_debug("%s entered\n", __func__);
+
+	spin_lock_irqsave(&ds_lock, flags);
+	cp = NULL;
+	for (dp = ds_info_list; dp; dp = dp->next) {
+		struct ds_cap_state *tmp;
+
+		tmp = find_cap_by_string(dp, "sp-token");
+		if (tmp && tmp->state == CAP_STATE_REGISTERED) {
+			cp = tmp;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&ds_lock, flags);
+
+	if (cp) {
+		struct ds_data		*hdr;
+		struct ds_sp_token_msg	*payload;
+		int	loops;
+		int	msg_len;
+		int	svc_len;	/* length of service_name string */
+		int	payload_len;	/* length of ds_sp_token_msg payload */
+
+		svc_len = (service_name == NULL || *service_name == '\0') ? 0 :
+		    strlen(service_name) + 1;
+		if (svc_len > DS_MAX_SVC_NAME_LEN) {
+			pr_err("ds-%llu: service name '%s' too long.\n",
+			    dp->id, service_name);
+			return;
+		}
+		payload_len = sizeof(struct ds_sp_token_msg) + svc_len;
+		msg_len = sizeof(struct ds_data) + payload_len;
+		hdr = kmalloc(msg_len, GFP_KERNEL);
+
+		memset(hdr, 0, msg_len);
+		hdr->tag.type = DS_DATA;
+		hdr->tag.len = msg_len - sizeof(struct ds_msg_tag);
+		hdr->handle = cp->handle;
+		payload = (struct ds_sp_token_msg *) (hdr + 1);
+		payload->type = DS_SPTOK_REQUEST;
+		(void) memcpy(payload->service, service_name, svc_len);
+
+		mutex_lock(&ds_sp_token_mutex);
+		payload->req_num = ds_sp_token_seq_num;
+
+		pr_debug("%s: sizeof ds_sp_token_msg=%lu svclen=%d.\n",
+		    __func__, sizeof (struct ds_sp_token_msg), svc_len);
+		pr_debug("%s: hdr(%p): len[%d/%d] hdl[0x%llx] req_num %llu "
+		    "payload(%p): type[0x%llx] svc[%s].\n", __func__,
+		    hdr, hdr->tag.len, msg_len, hdr->handle, payload->req_num,
+		    payload, payload->type, payload->service);
+
+		spin_lock_irqsave(&ds_lock, flags);
+		ds_sp_token_doorbell = 0;
+		ds_sp_token_response = -1;
+
+		__ds_send(dp->lp, hdr, msg_len);
+		spin_unlock_irqrestore(&ds_lock, flags);
+
+		loops = 1000;
+		while (ds_sp_token_doorbell == 0) {
+			if (loops-- < 0)
+				break;
+			barrier();
+			udelay(100);
+		}
+
+		if (ds_sp_token_doorbell == 0 ||
+		    ds_sp_token_response != DS_SP_TOKEN_RES_OK ||
+		    ds_sp_token_seq_num != payload->req_num) {
+			pr_err("ds-%llu: set-token failed [%d].\n",
+			    dp->id, ds_sp_token_response);
+		}
+
+		/* increment sequence number for next caller */
+		++ds_sp_token_seq_num;
+
+		mutex_unlock(&ds_sp_token_mutex);
+
+	} else {
+		pr_err(PFX "sp-token not registered.\n");
+	}
+}
+
 static char full_boot_str[256] __aligned(32);
 static int reboot_data_supported;
 
@@ -960,7 +1108,6 @@ static void ds_setup_retry_timer(struct ds_info *dp)
 
 static int ds_handshake(struct ds_info *dp, struct ds_msg_tag *pkt)
 {
-
 	if (dp->hs_state == DS_HS_START) {
 		if (pkt->type != DS_INIT_ACK)
 			goto conn_reset;
@@ -1192,6 +1339,49 @@ static void ds_event(void *arg, int event)
 	spin_unlock_irqrestore(&ds_lock, flags);
 }
 
+static long ds_fops_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
+{
+	struct ds_data_t __user *uarg;
+	__u32			major_version;
+	__u32			minor_version;
+	char			service_name[DS_MAX_SVC_NAME_LEN];
+
+	pr_debug("%s entered.\n", __func__);
+
+	switch (cmd) {
+	case DS_SPTOK_GET:
+		pr_debug("%s Getting sp-token\n", __func__);
+		uarg = (struct ds_data_t __user *)arg;
+		if (get_user(major_version, &uarg->major_version) != 0 ||
+		    get_user(minor_version, &uarg->minor_version) != 0 ||
+		    copy_from_user(service_name, &uarg->service_name,
+			    DS_MAX_SVC_NAME_LEN)) {
+			return -EFAULT;
+		}
+		if ((major_version > DS_MAJOR_VERSION) ||
+		    (major_version == DS_MAJOR_VERSION &&
+		     minor_version > DS_MINOR_VERSION)) {
+			pr_debug("%s Invalid version number %u.%u\n",
+			    __func__, major_version, minor_version);
+			return -EINVAL;
+		}
+		ldom_req_sp_token(service_name);
+		if (ds_sp_token_response == DS_SP_TOKEN_RES_OK) {
+			pr_debug("%s Copying sp token to userland\n", __func__);
+			if (copy_to_user(&uarg->sp_tok,
+			    (void *)&ds_sp_token_result, sizeof (struct ds_sptok))) {
+				return -EFAULT;
+			}
+		}
+		break;
+	default:
+		pr_debug("%s Invalid cmd (%d)\n", __func__, cmd);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 {
 	static int ds_version_printed;
@@ -1255,6 +1445,8 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	ds_info_list = dp;
 	spin_unlock_irq(&ds_lock);
 
+	pr_info("%s: probe successful.\n", __func__);
+
 	return err;
 
 out_free_ldc:
@@ -1289,12 +1481,29 @@ static struct vio_driver ds_driver = {
 	.id_table	= ds_match,
 	.probe		= ds_probe,
 	.remove		= ds_remove,
-	.name		= "ds",
+	.name		= DRV_MODULE_NAME,
+};
+
+static struct file_operations ds_fops = {
+	.owner			= THIS_MODULE,
+	.unlocked_ioctl		= ds_fops_ioctl,
+};
+
+static struct miscdevice ds_miscdev = {
+	.minor = MISC_DYNAMIC_MINOR,
+	.name = DRV_MODULE_NAME,
+	.fops = &ds_fops
 };
 
 static int __init ds_init(void)
 {
 	unsigned long hv_ret, major, minor;
+	int		err;
+
+	err = misc_register(&ds_miscdev);
+	if (err)
+		return err;
+	pr_debug("%s: minor is %d.\n", __func__, ds_miscdev.minor);
 
 	if (tlb_type == hypervisor) {
 		hv_ret = sun4v_get_version(HV_GRP_REBOOT_DATA, &major, &minor);
