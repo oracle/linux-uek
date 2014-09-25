@@ -1675,6 +1675,7 @@ again:
 			features |= RTAX_FEATURE_ALLFRAG;
 			dst_metric_set(&rt->dst, RTAX_FEATURES, features);
 		}
+		rt6_mtu_change(rt->dst.dev, pmtu);
 		rt6_update_expires(rt, net->ipv6.sysctl.ip6_rt_mtu_expires);
 		rt->rt6i_flags |= RTF_MODIFIED;
 		goto out;
