@@ -535,9 +535,18 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_drop_work, work.work);
 	struct rds_connection   *conn = (struct rds_connection *)work->conn;
 
-	rds_conn_drop(conn);
-
-	kfree(work);
+	if (!rds_conn_up(conn)) {
+		printk(KERN_INFO "connection <%u.%u.%u.%u,%u.%u.%u.%u,%d> is not UP, "
+				"state %d\n",
+				NIPQUAD(conn->c_laddr),
+				NIPQUAD(conn->c_faddr),
+				conn->c_tos, rds_conn_state(conn));
+		if (rds_conn_connecting(conn))
+			rds_conn_drop(conn);
+		queue_delayed_work(rds_aux_wq, &work->work,
+				msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
+	} else
+		kfree(work);
 }
 
 static void rds_ib_notify_addr_change(struct work_struct *_work)
@@ -749,24 +758,21 @@ static int rds_ib_move_ip(char			*from_dev,
 						}
 					}
 				}
-
-				if (event_type == RDS_IB_PORT_EVENT_IB &&
-					failover) {
-					work =
-					kzalloc(sizeof *work, GFP_ATOMIC);
-					if (!work) {
-						printk(KERN_ERR
-							"RDS/IB: failed to allocate connection drop work\n");
+				/*
+				 * We let first connection drop through RDMA_CM_EVENT_ADDR_CHANGE event.
+				 * Following is recovery mechanism for ARP or path record related issues, if required.
+				 */
+				work = kzalloc(sizeof *work, GFP_ATOMIC);
+				if (!work) {
+					printk(KERN_ERR
+						"RDS/IP: failed to allocate connection drop work\n");
 					spin_unlock_bh(&rds_ibdev->spinlock);
-							goto out;
-					}
-
-			work->conn = (struct rds_ib_connection *)ic->conn;
-			INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
-					queue_delayed_work(rds_wq, &work->work,
-		msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
-				} else
-					rds_conn_drop(ic->conn);
+					goto out;
+				}
+				work->conn = ic->conn;
+				INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
+				queue_delayed_work(rds_aux_wq, &work->work,
+					msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
 			}
 		}
 		spin_unlock_bh(&rds_ibdev->spinlock);
@@ -778,7 +784,7 @@ static int rds_ib_move_ip(char			*from_dev,
 		}
 		work_addrchange->addr = addr;
 		INIT_DELAYED_WORK(&work_addrchange->work, rds_ib_notify_addr_change);
-		queue_delayed_work(rds_wq, &work_addrchange->work, 10);
+		queue_delayed_work(rds_wq, &work_addrchange->work, 0);
 	}
 
 out:
