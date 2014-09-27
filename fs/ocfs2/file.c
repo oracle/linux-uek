@@ -830,13 +830,15 @@ static int ocfs2_write_zero_page(struct inode *inode, u64 abs_from,
 	di->i_mtime = di->i_ctime = cpu_to_le64(inode->i_mtime.tv_sec);
 	di->i_ctime_nsec = cpu_to_le32(inode->i_mtime.tv_nsec);
 	di->i_mtime_nsec = di->i_ctime_nsec;
-	ocfs2_journal_dirty(handle, di_bh);
+	if (handle)
+		ocfs2_journal_dirty(handle, di_bh);
 
 out_unlock:
 	unlock_page(page);
 	page_cache_release(page);
 out_commit_trans:
-	ocfs2_commit_trans(OCFS2_SB(inode->i_sb), handle);
+	if (handle)
+		ocfs2_commit_trans(OCFS2_SB(inode->i_sb), handle);
 out:
 	return ret;
 }
