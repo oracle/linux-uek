@@ -391,8 +391,8 @@ static int __init init_asmdiskcache(void)
 
 static void destroy_asmdiskcache(void)
 {
+	kern_unmount(asmdisk_mnt);
 	unregister_filesystem(&asmdisk_type);
-	mntput(asmdisk_mnt);
 	kmem_cache_destroy(asmdisk_cachep);
 }
 
