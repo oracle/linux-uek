@@ -77,7 +77,7 @@ config SPARC64
 	select ARCH_HAVE_NMI_SAFE_CMPXCHG
 	select HAVE_C_RECORDMCOUNT
 	select NO_BOOTMEM
-	select SPARC_ADI
+	select SPARC_ADI if HUGETLBFS
 
 config ARCH_DEFCONFIG
 	string
@@ -148,12 +148,6 @@ config GENERIC_GPIO
 
 config ARCH_NO_VIRT_TO_BUS
 	def_bool y
-
-config SPARC_ADI
-	bool
-	default y if SPARC64
-	help
-	  Support for Application Data Integrity
 
 config ARCH_SUPPORTS_DEBUG_PAGEALLOC
 	def_bool y if SPARC64
@@ -350,6 +344,18 @@ config ARCH_SPARSEMEM_DEFAULT
 	def_bool y if SPARC64
 
 source "mm/Kconfig"
+
+config SPARC_ADI
+	bool "Application Data Integrity support"
+	depends on HUGETLBFS
+	def_bool y if SPARC64 && HUGETLBFS
+	help
+	  Support for Application Data Integrity (ADI). ADI feature allows
+	  a process to tag memory blocks with version tags. Once ADI is
+	  enabled and version tag is set on a memory block, any access to
+	  it is allowed only if the correct version tag is presented by
+	  a process. This feature is meant to help catch rogue accesses
+	  to memory.
 
 config SCHED_SMT
 	bool "SMT (Hyperthreading) scheduler support"
