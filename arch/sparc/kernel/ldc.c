@@ -1484,7 +1484,6 @@ void ldc_clr_reset(struct ldc_channel *lp)
 }
 EXPORT_SYMBOL(ldc_clr_reset);
 
-
 void ldc_print(struct ldc_channel *lp)
 {
 	pr_info("%s: id=0x%lx flags=0x%x state=%s cstate=0x%lx hsstate=0x%x\n"
@@ -1770,26 +1769,25 @@ static int read_nonraw(struct ldc_channel *lp, void *buf, unsigned int size)
 		       p->u.r.ackid,
 		       lp->rcv_nxt);
 
-		/*
-		 * Both endpoints can initiate the handshake. In that case,
-		 * if there is a double handshake, then we can receive CTRL
-		 * packet from the second handshake when the first handshake
-		 * is completed.
-		 */
-		if (!(p->type & LDC_DATA)) {
-			ldcdbg(RX, "RX non-data pkt, ignoring");
-			new = rx_advance(lp, new);
-			goto no_data;
-		}
-
 		if (unlikely(!rx_seq_ok(lp, p->seqid))) {
 			err = rx_bad_seq(lp, p, first_frag);
 			copied = 0;
 			break;
 		}
 
+		if (p->type & LDC_CTRL) {
+			err = process_control_frame(lp, p);
+			if (err < 0)
+				break;
+			err = 0;
+		}
+
 		lp->rcv_nxt = p->seqid;
 
+		if (!(p->type & LDC_DATA)) {
+			new = rx_advance(lp, new);
+			goto no_data;
+		}
 		if (p->stype & (LDC_ACK | LDC_NACK)) {
 			err = data_ack_nack(lp, p);
 			if (err)

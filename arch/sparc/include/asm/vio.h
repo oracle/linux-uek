@@ -99,6 +99,17 @@ struct vio_dring_data {
 	u64			__par4[2];
 };
 
+/*
+ * VIO Common header for inband descriptor messages.
+ *
+ * Clients will then combine this header with a device specific payload.
+ */
+struct vio_desc_data {
+	struct vio_msg_tag	tag;
+	u64			seq;
+	u64			desc_handle;
+};
+
 struct vio_dring_hdr {
 	u8			state;
 #define VIO_DESC_FREE		0x01
@@ -159,6 +170,30 @@ struct vio_disk_desc {
 	u32			ncookies;
 	u32			resv2;
 	struct ldc_trans_cookie	cookies[0];
+};
+
+struct vio_disk_dring_payload {
+	u64			req_id;
+	u8			operation;
+	u8			slice;
+	u16			resv1;
+	u32			status;
+	u64			offset;
+	u64			size;
+	u32			ncookies;
+	u32			resv2;
+	struct ldc_trans_cookie	cookies[0];
+};
+
+/*
+ * VIO disk inband descriptor message.
+ *
+ * For clients that do not use descriptor rings, the descriptor contents
+ * are sent as part of an inband message.
+ */
+struct vio_disk_desc_inband {
+	struct vio_desc_data		hdr;
+	struct vio_disk_dring_payload	payload;
 };
 
 #define VIO_DISK_VNAME_LEN	8

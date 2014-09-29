@@ -544,6 +544,12 @@ config BLK_DEV_RBD
 
 	  If unsure, say N.
 
+config VDS
+	tristate "Sun virtual disk server (VDS)"
+	depends on SUN_LDOMS
+	help
+		Support for Sun logical domain disks.
+
 source "drivers/block/oracleasm/Kconfig"
 
 endif # BLK_DEV
