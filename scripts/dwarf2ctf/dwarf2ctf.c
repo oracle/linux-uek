@@ -18,6 +18,7 @@
 #include <stddef.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <fcntl.h>
 #include <limits.h>
 
 #include <libelf.h>
@@ -32,6 +33,14 @@
 
 #ifndef PATH_MAX
 #define PATH_MAX 1024
+#endif
+
+/*
+ * Work with older glibc: stub out O_PATH if not available.  (We can work
+ * without it.)
+ */
+#ifndef O_PATH
+# define O_PATH     0
 #endif
 
 #ifndef __GNUC__
@@ -174,7 +183,8 @@ static GHashTable *member_blacklist;
 /*
  * Populate the member blacklist from the member_blacklist file.
  */
-static void init_member_blacklist(const char *member_blacklist_file);
+static void init_member_blacklist(const char *member_blacklist_file,
+				  const char *srcdir);
 
 /*
  * Return 1 if a given DWARF DIE, which must be a DW_TAG_member, appears in the
@@ -642,6 +652,12 @@ static char *fn_to_module(const char *file_name);
 static const char *abs_file_name(const char *file_name);
 
 /*
+ * Determine absolute filenames relative to some other directory: do not cache
+ * them.  It is the caller's responsibility to free them.
+ */
+static char *rel_abs_file_name(const char *file_name, const char *relative_to);
+
+/*
  * Trivial wrapper, avoid an incompatible pointer type warning.
  */
 static void private_ctf_free(void *ctf_file);
@@ -654,11 +670,12 @@ int main(int argc, char *argv[])
 
 	trace = getenv("DWARF2CTF_TRACE");
 
-	if ((argc != 4 && argc != 7) ||
+	if ((argc != 4 && argc != 8) ||
 	    (argc == 4 && strcmp(argv[2], "-e") != 0)) {
-		fprintf(stderr, "Syntax: dwarf2ctf outputdir objects.builtin modules.builtin dedup.blacklist\n");
+		fprintf(stderr, "Syntax: dwarf2ctf outputdir srcdir "
+			"objects.builtin modules.builtin dedup.blacklist\n");
 		fprintf(stderr, "                  member.blacklist filelist\n");
-		fprintf(stderr, "    or dwarf2ctf outputdir -e filelist"
+		fprintf(stderr, "    or dwarf2ctf outputdir -e filelist\n"
 			"for external module use\n");
 		exit(1);
 	}
@@ -681,20 +698,22 @@ int main(int argc, char *argv[])
 	 * independently invoked with every argument.
 	 */
 	if (strcmp(argv[2], "-e") != 0) {
+		const char *srcdir;
 		char *builtin_objects_file;
 		char *builtin_module_file;
 		char *dedup_blacklist_file;
 		char *member_blacklist_file;
 
-		builtin_objects_file = argv[2];
-		builtin_module_file = argv[3];
-		dedup_blacklist_file = argv[4];
-		member_blacklist_file = argv[5];
+                srcdir = argv[2];
+		builtin_objects_file = argv[3];
+		builtin_module_file = argv[4];
+		dedup_blacklist_file = argv[5];
+		member_blacklist_file = argv[6];
 
 		init_builtin(builtin_objects_file, builtin_module_file);
 		init_dedup_blacklist(dedup_blacklist_file);
-		init_member_blacklist(member_blacklist_file);
-		init_object_names(argv[6]);
+		init_member_blacklist(member_blacklist_file, srcdir);
+		init_object_names(argv[7]);
 
 		run(output_dir);
 	} else {
@@ -1018,7 +1037,8 @@ static void init_dedup_blacklist(const char *dedup_blacklist_file)
 /*
  * Populate the member blacklist from the member_blacklist file.
  */
-static void init_member_blacklist(const char *member_blacklist_file)
+static void init_member_blacklist(const char *member_blacklist_file,
+				  const char *srcdir)
 {
 	FILE *f;
 	char *line = NULL;
@@ -1058,7 +1078,7 @@ static void init_member_blacklist(const char *member_blacklist_file)
 
 		*last_colon = '\0';
 		last_colon++;
-		absolutized = xstrdup(abs_file_name(line));
+		absolutized = rel_abs_file_name(line, srcdir);
 		absolutized = str_appendn(absolutized, ":", last_colon, NULL);
 
 		g_hash_table_insert(member_blacklist, absolutized, NULL);
@@ -3661,6 +3681,50 @@ static const char *abs_file_name(const char *file_name)
 	}
 
 	return abs_name;
+}
+
+/*
+ * Determine absolute filenames relative to some other directory.  This does not
+ * need to be fast.  The returned name is dynamically allocated, and must be
+ * freed by the caller.
+ */
+static char *rel_abs_file_name(const char *file_name, const char *relative_to)
+{
+	int dir = -1;
+	static int warned = 0;
+	char *abspath;
+	/*
+	 * If we can't get this name relatively, we might as well *try* to do it
+	 * absolutely: but print a warning.
+	 */
+	if ((dir = open(".", O_RDONLY | O_DIRECTORY | O_PATH)) < 0) {
+		if (!warned) {
+			fprintf(stderr, "Cannot open current directory: %s\n",
+				strerror(errno));
+			warned = 1;
+		}
+	} else {
+		if (chdir(relative_to) < 0)
+			if (!warned) {
+				fprintf(stderr, "Cannot change "
+					"directory to %s: %s\n",
+					relative_to, strerror(errno));
+				warned = 1;
+			}
+	}
+
+	abspath = realpath(file_name, NULL);
+	if (abspath == NULL)
+		abspath = strdup(file_name);
+
+	if ((dir > -1) && (fchdir(dir) < 0)) {
+		fprintf(stderr, "Cannot return to original directory "
+			"after relative realpath(): %s\n",
+			strerror(errno));
+		exit(1);
+	}
+
+	return abspath;
 }
 
 /*
