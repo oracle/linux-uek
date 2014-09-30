@@ -1,0 +1,12 @@
+#!/bin/sh
+
+# In pathological situations, this will print some error about uname.
+kverrel="`uname -r`" || exit
+
+exec "/usr/libexec/turbostat.$kverrel" ${1+"$@"}
+rc=$?
+
+# We're still here, so the exec failed.
+echo >&2 "Sorry, your kernel ($kverrel) doesn't support turbostat."
+
+exit $rc
