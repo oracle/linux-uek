@@ -64,7 +64,8 @@
 static unsigned int max_sectors;
 module_param_named(max_sectors, max_sectors, int, 0);
 MODULE_PARM_DESC(max_sectors,
-	"Maximum number of sectors per IO command");
+	"Maximum number of sectors per IO command."
+	"Used only for deployments where R5/R6 Volumes are not used.");
 
 static int msix_disable;
 module_param(msix_disable, int, S_IRUGO);
@@ -5073,17 +5074,31 @@ static int megasas_io_attach(struct megasas_instance *instance)
 	if (max_sectors && max_sectors < instance->max_sectors_per_req)
 		instance->max_sectors_per_req = max_sectors;
 	else {
+		/* The max_sectors module parameter permits increasing
+		 * max sectors to 2048.  Users should only use this
+		 * parameter in configurations where R5/R6 Volumes are
+		 * not being used.  NOTE: This module parameter will
+		 * enable driver to send 1M I/Os for R5/R6 volumes which
+		 * may result in unexpected behavior.
+		 */
 		if (max_sectors) {
 			if (((instance->pdev->device ==
 				PCI_DEVICE_ID_LSI_SAS1078GEN2) ||
 				(instance->pdev->device ==
-				PCI_DEVICE_ID_LSI_SAS0079GEN2)) &&
+				PCI_DEVICE_ID_LSI_SAS0079GEN2) ||
+				(instance->pdev->device ==
+				PCI_DEVICE_ID_LSI_INVADER) ||
+				(instance->pdev->device ==
+				PCI_DEVICE_ID_LSI_FURY)) &&
 				(max_sectors <= MEGASAS_MAX_SECTORS)) {
 				instance->max_sectors_per_req = max_sectors;
+				dev_info(&instance->pdev->dev,
+					"max_sectors per request is set to %d\n",
+					instance->max_sectors_per_req);
 			} else {
-			printk(KERN_INFO "megasas: max_sectors should be > 0"
-				"and <= %d (or < 1MB for GEN2 controller)\n",
-				instance->max_sectors_per_req);
+				dev_warn(&instance->pdev->dev, " max_sectors should be > 0 and"
+					"<= %d (or < 1MB for supported controllers)\n",
+					instance->max_sectors_per_req);
 			}
 		}
 	}
