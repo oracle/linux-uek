@@ -89,6 +89,30 @@ static void ipoib_cm_dma_unmap_rx(struct ipoib_dev_priv *priv, int frags,
 		ib_dma_unmap_page(priv->ca, mapping[i + 1], PAGE_SIZE, DMA_FROM_DEVICE);
 }
 
+static void ipoib_cm_dma_unmap_tx(struct ipoib_dev_priv *priv,
+				  struct ipoib_tx_buf *tx_req)
+{
+	struct sk_buff *skb;
+	int i, offs;
+
+	skb = tx_req->skb;
+	if (skb_shinfo(skb)->nr_frags) {
+		offs = 0;
+		if (skb_headlen(skb)) {
+			ib_dma_unmap_single(priv->ca, tx_req->mapping[0],
+					    skb_headlen(skb), DMA_TO_DEVICE);
+			offs = 1;
+		}
+		for (i = 0; i < skb_shinfo(skb)->nr_frags; ++i) {
+			const skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
+			ib_dma_unmap_single(priv->ca, tx_req->mapping[i + offs],
+					    skb_frag_size(frag), DMA_TO_DEVICE);
+		}
+	} else
+		ib_dma_unmap_single(priv->ca, tx_req->mapping[0], skb->len,
+				    DMA_TO_DEVICE);
+}
+
 static int ipoib_cm_post_receive_srq(struct net_device *dev,
 				     struct ipoib_recv_ring *recv_ring, int id)
 {
@@ -436,9 +460,16 @@ static int ipoib_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_rep_param rep = {};
+	u16 caps = 0;
+
+	caps |= IPOIB_CM_PROTO_VER;
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	rep.private_data = &data;
 	rep.private_data_len = sizeof data;
@@ -458,6 +489,7 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ipoib_cm_data *data = event->private_data;
 	unsigned psn;
 	int ret;
+	struct ipoib_cm_data *cm_data;
 
 	ipoib_dbg(priv, "REQ arrived\n");
 	p = kzalloc(sizeof *p, GFP_KERNEL);
@@ -479,6 +511,13 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 		ret = PTR_ERR(p->qp);
 		goto err_qp;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	psn = random32() & 0xffffff;
 	ret = ipoib_cm_modify_rx_qp(dev, cm_id, p->qp, psn);
@@ -696,6 +735,9 @@ copied:
         if (skb->dev->priv_flags & IFF_EIPOIB_VIF)
 		set_skb_oob_cb_data(skb, wc, NULL);
 
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		skb->ip_summed = CHECKSUM_PARTIAL;
+
 	netif_receive_skb(skb);
 
 repost:
@@ -732,11 +774,39 @@ static inline int post_send(struct ipoib_dev_priv *priv,
 	return ib_post_send(tx->qp, &send_ring->tx_wr, &bad_wr);
 }
 
+static inline int post_send_sg(struct ipoib_dev_priv *priv,
+			       struct ipoib_cm_tx *tx,
+			       unsigned int wr_id,
+			       struct sk_buff *skb,
+			       u64 mapping[MAX_SKB_FRAGS + 1],
+			       struct ipoib_send_ring *send_ring)
+{
+	struct ib_send_wr *bad_wr;
+	int i, off;
+	skb_frag_t *frags = skb_shinfo(skb)->frags;
+	int nr_frags = skb_shinfo(skb)->nr_frags;
+	if (skb_headlen(skb)) {
+		send_ring->tx_sge[0].addr = mapping[0];
+		send_ring->tx_sge[0].length = skb_headlen(skb);
+		off = 1;
+	} else
+		off = 0;
+
+	for (i = 0; i < nr_frags; ++i) {
+		send_ring->tx_sge[i + off].addr = mapping[i + off];
+		send_ring->tx_sge[i + off].length = frags[i].size;
+	}
+	send_ring->tx_wr.num_sge = nr_frags + off;
+	send_ring->tx_wr.wr_id = wr_id | IPOIB_OP_CM;
+
+	return ib_post_send(tx->qp, &send_ring->tx_wr, &bad_wr);
+}
+
 void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_tx *tx)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
-	struct ipoib_cm_tx_buf *tx_req;
-	u64 addr;
+	struct ipoib_tx_buf *tx_req;
+	u64 addr = 0;
 	int rc;
 	struct ipoib_send_ring *send_ring;
 	u16 queue_index;
@@ -768,33 +838,64 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_sendq_size - 1)];
 	tx_req->skb = skb;
 
-	if (skb->len < ipoib_inline_thold && !skb_shinfo(skb)->nr_frags) {
-		addr = (u64) skb->data;
-		send_ring->tx_wr.send_flags |= IB_SEND_INLINE;
-		tx_req->is_inline = 1;
-	} else {
-		addr = ib_dma_map_single(priv->ca, skb->data,
-			skb->len, DMA_TO_DEVICE);
-		if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
-			++send_ring->stats.tx_errors;
+	/* Calculate checksum if we support ibcrc_as_csum but peer does not */
+	if ((skb->ip_summed == CHECKSUM_PARTIAL) && cm_ibcrc_as_csum &&
+	    test_bit(IPOIB_FLAG_CSUM, &priv->flags) &&
+	    !(tx->caps & IPOIB_CM_CAPS_IBCRC_AS_CSUM)) {
+		if (skb_shinfo(skb)->nr_frags)
+			if (__skb_linearize(skb)) {
+				ipoib_warn(priv, "Fail to linearize skb\n");
+				++dev->stats.tx_errors;
+				dev_kfree_skb_any(skb);
+				return;
+			}
+		skb_checksum_help(skb);
+	}
+
+	if (skb_shinfo(skb)->nr_frags) {
+		if (unlikely(ipoib_dma_map_tx(priv->ca, tx_req))) {
+			++dev->stats.tx_errors;
 			dev_kfree_skb_any(skb);
 			return;
 		}
-
-		tx_req->mapping = addr;
 		tx_req->is_inline = 0;
 		send_ring->tx_wr.send_flags &= ~IB_SEND_INLINE;
-	}
+		if (skb->ip_summed == CHECKSUM_PARTIAL)
+			send_ring->tx_wr.send_flags |= IB_SEND_IP_CSUM;
+		else
+			send_ring->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
+		rc = post_send_sg(priv, tx, tx->tx_head &
+				  (ipoib_sendq_size - 1),
+				  skb, tx_req->mapping, send_ring);
+	} else {
+		if (skb->len < ipoib_inline_thold &&
+		    !skb_shinfo(skb)->nr_frags) {
+			addr = (u64) skb->data;
+			send_ring->tx_wr.send_flags |= IB_SEND_INLINE;
+			tx_req->is_inline = 1;
+		} else {
+			addr = ib_dma_map_single(priv->ca, skb->data,
+				skb->len, DMA_TO_DEVICE);
+			if (unlikely(ib_dma_mapping_error(priv->ca, addr))) {
+				++send_ring->stats.tx_errors;
+				dev_kfree_skb_any(skb);
+				return;
+			}
 
-	rc = post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
-		       addr, skb->len, send_ring);
+			tx_req->mapping[0] = addr;
+			tx_req->is_inline = 0;
+			send_ring->tx_wr.send_flags &= ~IB_SEND_INLINE;
+		}
+
+		rc = post_send(priv, tx, tx->tx_head & (ipoib_sendq_size - 1),
+			       addr, skb->len, send_ring);
+	}
 	if (unlikely(rc)) {
 		ipoib_warn(priv, "%s: post_send failed, error %d queue_index: %d skb->len: %d\n",
 			   __func__, rc, queue_index, skb->len);
 		++send_ring->stats.tx_errors;
 		if (!tx_req->is_inline)
-			ib_dma_unmap_single(priv->ca, addr, skb->len,
-					DMA_TO_DEVICE);
+			ipoib_cm_dma_unmap_tx(priv, tx_req);
 		dev_kfree_skb_any(skb);
 	} else {
 		netdev_get_tx_queue(dev, queue_index)->trans_start = jiffies;
@@ -816,10 +917,12 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_tx *tx = wc->qp->qp_context;
 	unsigned int wr_id = wc->wr_id & ~IPOIB_OP_CM;
-	struct ipoib_cm_tx_buf *tx_req;
+	struct ipoib_tx_buf *tx_req;
 	unsigned long flags;
 	struct ipoib_send_ring *send_ring;
 	u16 queue_index;
+	int i, off;
+	struct sk_buff *skb;
 
 	ipoib_dbg_data(priv, "cm send completion: id %d, status: %d\n",
 		       wr_id, wc->status);
@@ -831,12 +934,12 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	}
 
 	tx_req = &tx->tx_ring[wr_id];
-	queue_index = skb_get_queue_mapping(tx_req->skb);
+	skb = tx_req->skb;
+	queue_index = skb_get_queue_mapping(skb);
 	send_ring = priv->send_ring + queue_index;
 	/* Checking whether inline send was used - nothing to unmap */
 	if (!tx_req->is_inline)
-		ib_dma_unmap_single(priv->ca, tx_req->mapping,
-			tx_req->skb->len, DMA_TO_DEVICE);
+		ipoib_cm_dma_unmap_tx(priv, tx_req);
 
 	/* FIXME: is this right? Shouldn't we only increment on success? */
 	++send_ring->stats.tx_packets;
@@ -1012,6 +1115,7 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
 	struct sk_buff *skb;
+	struct ipoib_cm_data *cm_data;
 
 	p->mtu = be32_to_cpu(data->mtu);
 
@@ -1020,6 +1124,13 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 			   p->mtu, IPOIB_ENCAP_LEN);
 		return -EINVAL;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	qp_attr.qp_state = IB_QPS_RTR;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
@@ -1105,6 +1216,9 @@ static struct ib_qp *ipoib_cm_create_tx_qp(struct net_device *dev, struct ipoib_
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 
+	if (dev->features & NETIF_F_SG)
+		attr.cap.max_send_sge = MAX_SKB_FRAGS + 1;
+
 	return ib_create_qp(priv->pd, &attr);
 }
 
@@ -1116,9 +1230,16 @@ static int ipoib_cm_send_req(struct net_device *dev,
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_req_param req = {};
+	u16 caps = 0;
+
+	caps |= IPOIB_CM_PROTO_VER;
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	req.primary_path		= pathrec;
 	req.alternate_path		= NULL;
@@ -1240,7 +1361,9 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 	int num_tries = 0;
 	struct ipoib_send_ring *send_ring;
 	u16 queue_index;
-	struct ipoib_cm_tx_buf *tx_req;
+	struct ipoib_tx_buf *tx_req;
+	struct sk_buff *skb;
+	int off, i;
 
 	ipoib_dbg(priv, "Destroy active connection 0x%x head 0x%x tail 0x%x\n",
 		  p->qp ? p->qp->qp_num : 0, p->tx_head, p->tx_tail);
@@ -1293,9 +1416,9 @@ static void ipoib_cm_tx_destroy(struct ipoib_cm_tx *p)
 timeout:
 	while ((int) p->tx_tail - (int) p->tx_head < 0) {
 		tx_req = &p->tx_ring[p->tx_tail & (ipoib_sendq_size - 1)];
+		skb = tx_req->skb;
 		if (!tx_req->is_inline)
-			ib_dma_unmap_single(priv->ca, tx_req->mapping,
-					    tx_req->skb->len, DMA_TO_DEVICE);
+			ipoib_cm_dma_unmap_tx(priv, tx_req);
 
 		queue_index = skb_get_queue_mapping(tx_req->skb);
 		send_ring = priv->send_ring + queue_index;
@@ -1593,7 +1716,6 @@ static void ipoib_cm_stale_task(struct work_struct *work)
 				   &priv->cm.stale_task, IPOIB_CM_RX_DELAY);
 	spin_unlock_irq(&priv->lock);
 }
-
 
 static ssize_t show_mode(struct device *d, struct device_attribute *attr,
 			 char *buf)

@@ -349,8 +349,7 @@ repost:
 			   "for buf %d\n", wr_id);
 }
 
-static int ipoib_dma_map_tx(struct ib_device *ca,
-			    struct ipoib_tx_buf *tx_req)
+int ipoib_dma_map_tx(struct ib_device *ca, struct ipoib_tx_buf *tx_req)
 {
 	struct sk_buff *skb = tx_req->skb;
 	u64 *mapping = tx_req->mapping;
