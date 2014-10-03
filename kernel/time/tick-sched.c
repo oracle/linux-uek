@@ -395,12 +395,8 @@ void tick_nohz_stop_sched_tick(int inidle)
 		if (delta_jiffies > 1)
 			cpumask_set_cpu(cpu, nohz_cpu_mask);
 
-		/* Skip reprogram of event if its not changed or it is already
-		 * set to an earlier time (this way we prevent re-arming the
-		 * original event repeatedly into the future).
-		 */
-		if (ts->tick_stopped && now.tv64 <= dev->next_event.tv64 &&
-		    dev->next_event.tv64 <= expires.tv64)
+		/* Skip reprogram of event if its not changed */
+		if (ts->tick_stopped && ktime_equal(expires, dev->next_event))
 			goto out;
 
 		/*
