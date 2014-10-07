@@ -880,8 +880,8 @@ static int vnic_get_frag_header(struct skb_frag_struct *frags, void **mac_hdr,
 	struct iphdr *iph;
 
 	*mac_hdr = page_address(frags->page) + frags->page_offset;
-	*ip_hdr = iph = (struct iphdr *)(*mac_hdr + ETH_HLEN);
-	*tcpudp_hdr = (struct tcphdr *)(iph + (iph->ihl << 2));
+	*ip_hdr = iph = (struct iphdr *)((u8 *)(*mac_hdr) + ETH_HLEN);
+	*tcpudp_hdr = (struct tcphdr *)((u8 *)(iph) + (iph->ihl << 2));
 	*hdr_flags = LRO_IPV4 | LRO_TCP;
 
 	return 0;
