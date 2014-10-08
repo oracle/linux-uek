@@ -301,8 +301,12 @@ void rds_shutdown_worker(struct work_struct *work)
 	 */
 	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
 		rds_conn_shutdown(conn, 0);
-		queue_delayed_work(rds_wq, &conn->c_reconn_w,
-				msecs_to_jiffies(5000));
+		if (conn->c_loopback)
+			queue_delayed_work(rds_local_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(5000));
+		else
+			queue_delayed_work(rds_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(5000));
 	} else
 		rds_conn_shutdown(conn, 1);
 
