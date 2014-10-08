@@ -238,10 +238,15 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					conn->c_proposed_version =
 						RDS_PROTOCOL_COMPAT_VERSION;
 					rds_conn_drop(conn);
-				} else {
-					queue_delayed_work(rds_wq,
-						&conn->c_reject_w,
-						msecs_to_jiffies(10));
+				} else  {
+					if (conn->c_loopback)
+						queue_delayed_work(rds_local_wq,
+							&conn->c_reject_w,
+							msecs_to_jiffies(10));
+					else
+						queue_delayed_work(rds_wq,
+							&conn->c_reject_w,
+							msecs_to_jiffies(10));
 				}
 			} else
 				rds_conn_drop(conn);
