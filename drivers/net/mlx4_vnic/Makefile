@@ -11,4 +11,4 @@ mlx4_vnic-y :=  vnic_data_main.o    vnic_data_ib.o    vnic_data_netdev.o    vnic
 
 EXTRA_CFLAGS += -D_BP_NO_ATT_OWNER
 EXTRA_CFLAGS += -D_BP_NO_MC_LIST
-
+EXTRA_CFLAGS += -D_BP_NO_GRO
