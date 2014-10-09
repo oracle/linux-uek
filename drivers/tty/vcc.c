@@ -54,7 +54,13 @@ static const char vcc_driver_name[] = "vcc";
 static const char vcc_device_node[] = "vcc";
 static struct tty_driver *vcc_tty_driver;
 
-static int vcc_dbg;
+int vcc_dbg;
+int vcc_dbg_ldc;
+int vcc_dbg_vio;
+
+module_param(vcc_dbg, uint, 0664);
+module_param(vcc_dbg_ldc, uint, 0664);
+module_param(vcc_dbg_vio, uint, 0664);
 
 #define	VCC_DBG_DRV	0x1
 #define	VCC_DBG_LDC	0x2
@@ -97,23 +103,34 @@ static struct ktermios vcc_tty_termios = {
 
 static void vcc_kick_rx(struct vcc *vcc)
 {
+	struct vio_driver_state *vio = &vcc->vio;
+
+	vccdbg("%s\n", __func__);
+
 	assert_spin_locked(&vcc->lock);
 
 	if (TIMER_ACTIVE(vcc, rx))
 		return;
 
-	TIMER_SET(vcc, rx, jiffies + HZ);
+	/*
+	 * Disable interrupts until we can read the data again.
+	 */
+	ldc_disable_hv_intr(vio->lp);
+
+	TIMER_SET(vcc, rx, jiffies + 1);
 	add_timer(&vcc->rx_timer);
 }
 
 static void vcc_kick_tx(struct vcc *vcc)
 {
+	vccdbg("%s\n", __func__);
+
 	assert_spin_locked(&vcc->lock);
 
 	if (TIMER_ACTIVE(vcc, tx))
 		return;
 
-	TIMER_SET(vcc, tx, jiffies + HZ);
+	TIMER_SET(vcc, tx, jiffies + 1);
 	add_timer(&vcc->tx_timer);
 }
 
@@ -214,11 +231,18 @@ done:
 static void vcc_rx_timer(unsigned long arg)
 {
 	struct vcc *vcc = (struct vcc *)arg;
+	struct vio_driver_state *vio = &vcc->vio;
 	unsigned long flags;
 	int rv;
 
+	vccdbg("%s\n", __func__);
 	spin_lock_irqsave(&vcc->lock, flags);
 	TIMER_CLEAR(vcc, rx);
+
+	/*
+	 * Re-enable interrupts.
+	 */
+	ldc_enable_hv_intr(vio->lp);
 
 	rv = vcc_ldc_read(vcc);
 	if (rv < 0) {
@@ -228,6 +252,7 @@ static void vcc_rx_timer(unsigned long arg)
 			vio_conn_reset(vio);	/* xxx noop */
 	}
 	spin_unlock_irqrestore(&vcc->lock, flags);
+	vccdbg("%s done\n", __func__);
 }
 
 static void vcc_tx_timer(unsigned long arg)
@@ -238,6 +263,7 @@ static void vcc_tx_timer(unsigned long arg)
 	int tosend = 0;
 	int rv;
 
+	vccdbg("%s\n", __func__);
 	if (!vcc) {
 		pr_err("%s: vcc not found\n", __func__);
 		return;
@@ -260,6 +286,7 @@ static void vcc_tx_timer(unsigned long arg)
 	BUG_ON(!rv);
 
 	if (rv < 0) {
+		vccdbg("%s: ldc_write()=%d\n", __func__, rv);
 		vcc_kick_tx(vcc);
 	} else {
 		struct tty_struct *tty = vcc->port.tty;
@@ -277,6 +304,7 @@ static void vcc_tx_timer(unsigned long arg)
 	}
 done:
 	spin_unlock_irqrestore(&vcc->lock, flags);
+	vccdbg("%s done\n", __func__);
 }
 
 static void vcc_event(void *arg, int event)
@@ -287,18 +315,17 @@ static void vcc_event(void *arg, int event)
 	int rv;
 
 	vccdbg("%s(%d)\n", __func__, event);
-	spin_lock_irqsave(&vio->lock, flags);
 	spin_lock_irqsave(&vcc->lock, flags);
 
 	if (event == LDC_EVENT_RESET || event == LDC_EVENT_UP) {
 		vio_link_state_change(vio, event);
-		spin_unlock_irqrestore(&vio->lock, flags);
+		spin_unlock_irqrestore(&vcc->lock, flags);
 		return;
 	}
 
 	if (event != LDC_EVENT_DATA_READY) {
 		pr_err("%s: unexpected LDC event %d\n", __func__, event);
-		spin_unlock_irqrestore(&vio->lock, flags);
+		spin_unlock_irqrestore(&vcc->lock, flags);
 		return;
 	}
 
@@ -308,7 +335,6 @@ static void vcc_event(void *arg, int event)
 			vio_conn_reset(vio);	/* xxx noop */
 	}
 	spin_unlock_irqrestore(&vcc->lock, flags);
-	spin_unlock_irqrestore(&vio->lock, flags);
 }
 
 static struct ldc_channel_config vcc_ldc_cfg = {
@@ -430,6 +456,9 @@ static int vcc_probe(struct vio_dev *vdev,
 	if (rv)
 		goto free_port;
 
+	vcc->vio.debug = vcc_dbg_vio;
+	vcc_ldc_cfg.debug = vcc_dbg_ldc;
+
 	rv = vio_ldc_alloc(&vcc->vio, &vcc_ldc_cfg, vcc);
 	if (rv)
 		goto free_port;
@@ -470,7 +499,20 @@ static int vcc_probe(struct vio_dev *vdev,
 	vcc->tx_timer.data = (unsigned long)vcc;
 
 	dev_set_drvdata(&vdev->dev, vcc);
+
+	/*
+	 * Disable interrupts before the port is up.
+	 *
+	 * We can get an interrupt during vio_port_up() -> ldc_bind().
+	 * vio_port_up() grabs the vio->lock beforehand so we cannot
+	 * grab it in vcc_event().
+	 *
+	 * Once the port is up and the lock released, we can field
+	 * interrupts.
+	 */
+	ldc_disable_hv_intr(vcc->vio.lp);
 	vio_port_up(&vcc->vio);
+	ldc_enable_hv_intr(vcc->vio.lp);
 
 	return 0;
 
