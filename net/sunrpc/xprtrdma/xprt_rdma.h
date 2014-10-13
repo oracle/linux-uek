@@ -67,6 +67,7 @@ struct rpcrdma_ia {
 	struct completion	ri_done;
 	int			ri_async_rc;
 	enum rpcrdma_memreg	ri_memreg_strategy;
+	unsigned int		ri_max_frmr_depth;
 };
 
 /*
