@@ -143,7 +143,7 @@ rpcrdma_cq_async_error_upcall(struct ib_event *event, void *context)
 }
 
 static void
-rpcrdma_send_event_process(struct ib_wc *wc)
+rpcrdma_sendcq_process_wc(struct ib_wc *wc)
 {
 	struct rpcrdma_mw *frmr = (struct rpcrdma_mw *)(unsigned long)wc->wr_id;
 
@@ -168,7 +168,7 @@ rpcrdma_sendcq_poll(struct ib_cq *cq)
 	int rc;
 
 	while ((rc = ib_poll_cq(cq, 1, &wc)) == 1)
-		rpcrdma_send_event_process(&wc);
+		rpcrdma_sendcq_process_wc(&wc);
 	return rc;
 }
 
@@ -181,7 +181,7 @@ rpcrdma_sendcq_poll(struct ib_cq *cq)
  * losing a completion.
  */
 static void
-rpcrdma_send_completion_upcall(struct ib_cq *cq, void *cq_context)
+rpcrdma_sendcq_upcall(struct ib_cq *cq, void *cq_context)
 {
 	int rc;
 
@@ -191,17 +191,19 @@ rpcrdma_send_completion_upcall(struct ib_cq *cq, void *cq_context)
 			__func__, rc);
 		return;
 	}
+
 	rc = ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
 	if (rc) {
 		dprintk("RPC:       %s: ib_req_notify_cq failed: %i\n",
 			__func__, rc);
 		return;
 	}
+
 	rpcrdma_sendcq_poll(cq);
 }
 
 static void
-rpcrdma_recv_event_process(struct ib_wc *wc)
+rpcrdma_recvcq_process_wc(struct ib_wc *wc)
 {
 	struct rpcrdma_rep *rep =
 			(struct rpcrdma_rep *)(unsigned long)wc->wr_id;
@@ -242,7 +244,7 @@ rpcrdma_recvcq_poll(struct ib_cq *cq)
 	int rc;
 
 	while ((rc = ib_poll_cq(cq, 1, &wc)) == 1)
-		rpcrdma_recv_event_process(&wc);
+		rpcrdma_recvcq_process_wc(&wc);
 	return rc;
 }
 
@@ -259,7 +261,7 @@ rpcrdma_recvcq_poll(struct ib_cq *cq)
  * all memory has been reclaimed.
  */
 static void
-rpcrdma_recv_completion_upcall(struct ib_cq *cq, void *cq_context)
+rpcrdma_recvcq_upcall(struct ib_cq *cq, void *cq_context)
 {
 	int rc;
 
@@ -269,12 +271,14 @@ rpcrdma_recv_completion_upcall(struct ib_cq *cq, void *cq_context)
 			__func__, rc);
 		return;
 	}
+
 	rc = ib_req_notify_cq(cq, IB_CQ_NEXT_COMP);
 	if (rc) {
 		dprintk("RPC:       %s: ib_req_notify_cq failed: %i\n",
 			__func__, rc);
 		return;
 	}
+
 	rpcrdma_recvcq_poll(cq);
 }
 
@@ -706,7 +710,7 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 	init_waitqueue_head(&ep->rep_connect_wait);
 	INIT_DELAYED_WORK(&ep->rep_connect_worker, rpcrdma_connect_worker);
 
-	sendcq = ib_create_cq(ia->ri_id->device, rpcrdma_send_completion_upcall,
+	sendcq = ib_create_cq(ia->ri_id->device, rpcrdma_sendcq_upcall,
 				  rpcrdma_cq_async_error_upcall, NULL,
 				  ep->rep_attr.cap.max_send_wr + 1, 0);
 	if (IS_ERR(sendcq)) {
@@ -723,7 +727,7 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 		goto out2;
 	}
 
-	recvcq = ib_create_cq(ia->ri_id->device, rpcrdma_recv_completion_upcall,
+	recvcq = ib_create_cq(ia->ri_id->device, rpcrdma_recvcq_upcall,
 				  rpcrdma_cq_async_error_upcall, NULL,
 				  ep->rep_attr.cap.max_recv_wr + 1, 0);
 	if (IS_ERR(recvcq)) {
