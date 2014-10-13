@@ -77,9 +77,6 @@ static const char transfertypes[][12] = {
  * Prepare the passed-in xdr_buf into representation as RPC/RDMA chunk
  * elements. Segments are then coalesced when registered, if possible
  * within the selected memreg mode.
- *
- * Note, this routine is never called if the connection's memory
- * registration strategy is 0 (bounce buffers).
  */
 
 static int
