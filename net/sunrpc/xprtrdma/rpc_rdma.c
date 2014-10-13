@@ -775,6 +775,7 @@ repost:
 
 	/* from here on, the reply is no longer an orphan */
 	req->rl_reply = rep;
+	xprt->reestablish_timeout = 0;
 
 	/* check for expected message types */
 	/* The order of some of these tests is important. */
