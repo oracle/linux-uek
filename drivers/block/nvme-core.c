@@ -1303,7 +1303,7 @@ static void nvme_free_queues(struct nvme_dev *dev, int lowest)
 
 	for (i = dev->queue_count - 1; i >= lowest; i--) {
 		struct nvme_queue *nvmeq = raw_nvmeq(dev, i);
-		rcu_assign_pointer(dev->queues[i], NULL);
+		RCU_INIT_POINTER(dev->queues[i], NULL);
 		call_rcu(&nvmeq->r_head, nvme_free_queue);
 		dev->queue_count--;
 	}
