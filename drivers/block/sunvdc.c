@@ -70,7 +70,6 @@ struct vdc_port {
 
 	char			disk_name[32];
 
-	struct vio_disk_geom	geom;
 	struct vio_disk_vtoc	label;
 };
 
@@ -82,7 +81,14 @@ static inline struct vdc_port *to_vdc_port(struct vio_driver_state *vio)
 /* Ordered from largest major to lowest */
 static struct vio_version vdc_versions[] = {
 	{ .major = 1, .minor = 1 },
+	{ .major = 1, .minor = 0 },
 };
+
+static inline int vdc_version_supported(struct vdc_port *port,
+					u16 major, u16 minor)
+{
+	return port->vio.ver.major == major && port->vio.ver.minor >= minor;
+}
 
 #define VDCBLK_NAME	"vdisk"
 static int vdc_major;
@@ -106,8 +112,45 @@ static int vdc_getgeo(struct block_device *bdev, struct hd_geometry *geo)
 	if ((sector_t)(geo->cylinders + 1) * geo->heads * geo->sectors < nsect)
 		geo->cylinders = 0xffff;
 
-	return 0	;
+	return 0;
 }
+
+/* Add ioctl/CDROM_GET_CAPABILITY to support cdrom_id in udev
+ * when vdisk_mtype is VD_MEDIA_TYPE_CD or VD_MEDIA_TYPE_DVD.
+ * Needed to be able to install inside an ldom from an iso image.
+ */
+static int vdc_ioctl(struct block_device *bdev, fmode_t mode,
+		     unsigned command, unsigned long argument)
+{
+	int i;
+	struct gendisk *disk;
+
+	switch (command) {
+	case CDROMMULTISESSION:
+		pr_debug(PFX "Multisession CDs not supported\n");
+		for (i = 0; i < sizeof(struct cdrom_multisession); i++)
+			if (put_user(0, (char __user *)(argument + i)))
+				return -EFAULT;
+		return 0;
+
+	case CDROM_GET_CAPABILITY:
+		disk = bdev->bd_disk;
+
+		if (bdev->bd_disk && (disk->flags & GENHD_FL_CD))
+			return 0;
+		return -EINVAL;
+
+	default:
+		pr_debug(PFX "ioctl %08x not supported\n", command);
+		return -EINVAL;
+	}
+}
+
+static const struct block_device_operations vdc_fops = {
+	.owner		= THIS_MODULE,
+	.getgeo		= vdc_getgeo,
+	.ioctl		= vdc_ioctl,
+};
 
 static void vdc_finish(struct vio_driver_state *vio, int err, int waiting_for)
 {
@@ -166,9 +209,9 @@ static int vdc_handle_attr(struct vio_driver_state *vio, void *arg)
 	struct vio_disk_attr_info *pkt = arg;
 
 	viodbg(HS, "GOT ATTR stype[0x%x] ops[%llx] disk_size[%llu] disk_type[%x] "
-	       "xfer_mode[0x%x] blksz[%u] max_xfer[%llu]\n",
+	       "mtype[0x%x] xfer_mode[0x%x] blksz[%u] max_xfer[%llu]\n",
 	       pkt->tag.stype, pkt->operations,
-	       pkt->vdisk_size, pkt->vdisk_type,
+	       pkt->vdisk_size, pkt->vdisk_type, pkt->vdisk_mtype,
 	       pkt->xfer_mode, pkt->vdisk_block_size,
 	       pkt->max_xfer_size);
 
@@ -193,9 +236,11 @@ static int vdc_handle_attr(struct vio_driver_state *vio, void *arg)
 		}
 
 		port->operations = pkt->operations;
-		port->vdisk_size = pkt->vdisk_size;
 		port->vdisk_type = pkt->vdisk_type;
-		port->vdisk_mtype = pkt->vdisk_mtype;
+		if (vdc_version_supported(port, 1, 1)) {
+			port->vdisk_size = pkt->vdisk_size;
+			port->vdisk_mtype = pkt->vdisk_mtype;
+		}
 		if (pkt->max_xfer_size < port->max_xfer_size)
 			port->max_xfer_size = pkt->max_xfer_size;
 		port->vdisk_block_size = pkt->vdisk_block_size;
@@ -453,35 +498,145 @@ static void do_vdc_request(struct request_queue *q)
 	}
 }
 
-/* add ioctl/CDROM_GET_CAPABILITY to support cdrom_id in udev
- * when vdisk_mtype is VD_MEDIA_TYPE_CD or VD_MEDIA_TYPE_DVD
- * needed to be able to install inside an ldom from an iso image
- */
-static int vdc_ioctl(struct block_device *bdev, fmode_t mode,
-			 unsigned command, unsigned long argument)
+static int generic_request(struct vdc_port *port, u8 op, void *buf, int len)
 {
-	int i;
+	struct vio_dring_state *dr;
+	struct vio_completion comp;
+	struct vio_disk_desc *desc;
+	unsigned int map_perm;
+	unsigned long flags;
+	int op_len, err;
+	void *req_buf;
 
-	switch (command) {
-		case CDROMMULTISESSION:
-			for (i = 0; i < sizeof(struct cdrom_multisession); i++)
-				if (put_user(0, (char __user *)(argument + i)))
-					return -EFAULT;
-				return 0;
+	if (!(((u64)1 << (u64)op) & port->operations))
+		return -EOPNOTSUPP;
 
-		case CDROM_GET_CAPABILITY: {
-			struct gendisk *disk = bdev->bd_disk;
-			if (bdev->bd_disk && (disk->flags & GENHD_FL_CD))
-				return 0;
-			return -EINVAL;
-			}
+	switch (op) {
+	case VD_OP_BREAD:
+	case VD_OP_BWRITE:
+	default:
+		return -EINVAL;
 
-		default:
-			/* ioctl not supported by vdc driver */
-			return -EINVAL;
+	case VD_OP_FLUSH:
+		op_len = 0;
+		map_perm = 0;
+		break;
+
+	case VD_OP_GET_WCE:
+		op_len = sizeof(u32);
+		map_perm = LDC_MAP_W;
+		break;
+
+	case VD_OP_SET_WCE:
+		op_len = sizeof(u32);
+		map_perm = LDC_MAP_R;
+		break;
+
+	case VD_OP_GET_VTOC:
+		op_len = sizeof(struct vio_disk_vtoc);
+		map_perm = LDC_MAP_W;
+		break;
+
+	case VD_OP_SET_VTOC:
+		op_len = sizeof(struct vio_disk_vtoc);
+		map_perm = LDC_MAP_R;
+		break;
+
+	case VD_OP_GET_DISKGEOM:
+		op_len = sizeof(struct vio_disk_geom);
+		map_perm = LDC_MAP_W;
+		break;
+
+	case VD_OP_SET_DISKGEOM:
+		op_len = sizeof(struct vio_disk_geom);
+		map_perm = LDC_MAP_R;
+		break;
+
+	case VD_OP_SCSICMD:
+		op_len = 16;
+		map_perm = LDC_MAP_RW;
+		break;
+
+	case VD_OP_GET_DEVID:
+		op_len = sizeof(struct vio_disk_devid);
+		map_perm = LDC_MAP_W;
+		break;
+
+	case VD_OP_GET_EFI:
+	case VD_OP_SET_EFI:
+		return -EOPNOTSUPP;
+		break;
+	};
+
+	map_perm |= LDC_MAP_SHADOW | LDC_MAP_DIRECT | LDC_MAP_IO;
+
+	op_len = (op_len + 7) & ~7;
+	req_buf = kzalloc(op_len, GFP_KERNEL);
+	if (!req_buf)
+		return -ENOMEM;
+
+	if (len > op_len)
+		len = op_len;
+
+	if (map_perm & LDC_MAP_R)
+		memcpy(req_buf, buf, len);
+
+	spin_lock_irqsave(&port->vio.lock, flags);
+
+	dr = &port->vio.drings[VIO_DRIVER_TX_RING];
+
+	/* XXX If we want to use this code generically we have to
+	 * XXX handle TX ring exhaustion etc.
+	 */
+	desc = vio_dring_cur(dr);
+
+	err = ldc_map_single(port->vio.lp, req_buf, op_len,
+			     desc->cookies, port->ring_cookies,
+			     map_perm);
+	if (err < 0) {
+		spin_unlock_irqrestore(&port->vio.lock, flags);
+		kfree(req_buf);
+		return err;
 	}
 
-	return 0;
+	init_completion(&comp.com);
+	comp.waiting_for = WAITING_FOR_GEN_CMD;
+	port->vio.cmp = &comp;
+
+	desc->hdr.ack = VIO_ACK_ENABLE;
+	desc->req_id = port->req_id;
+	desc->operation = op;
+	desc->slice = 0;
+	desc->status = ~0;
+	desc->offset = 0;
+	desc->size = op_len;
+	desc->ncookies = err;
+
+	/* This has to be a non-SMP write barrier because we are writing
+	 * to memory which is shared with the peer LDOM.
+	 */
+	wmb();
+	desc->hdr.state = VIO_DESC_READY;
+
+	err = __vdc_tx_trigger(port);
+	if (err >= 0) {
+		port->req_id++;
+		dr->prod = (dr->prod + 1) & (VDC_TX_RING_SIZE - 1);
+		spin_unlock_irqrestore(&port->vio.lock, flags);
+
+		wait_for_completion(&comp.com);
+		err = comp.err;
+	} else {
+		port->vio.cmp = NULL;
+		spin_unlock_irqrestore(&port->vio.lock, flags);
+	}
+
+	if (map_perm & LDC_MAP_W)
+		memcpy(buf, req_buf, len);
+
+	kfree(req_buf);
+
+	return err;
 }
 
 static int vdc_alloc_tx_ring(struct vdc_port *port)
@@ -530,17 +685,12 @@ static void vdc_free_tx_ring(struct vdc_port *port)
 	}
 }
 
-static const struct block_device_operations vdc_fops = {
-	.owner 		= THIS_MODULE,
-	.getgeo		= vdc_getgeo,
-	.ioctl		= vdc_ioctl,
-};
-
 static int probe_disk(struct vdc_port *port)
 {
 	struct vio_completion comp;
 	struct request_queue *q;
 	struct gendisk *g;
+	int err;
 
 	init_completion(&comp.com);
 	comp.err = 0;
@@ -552,6 +702,34 @@ static int probe_disk(struct vdc_port *port)
 	wait_for_completion(&comp.com);
 	if (comp.err)
 		return comp.err;
+
+	err = generic_request(port, VD_OP_GET_VTOC,
+			      &port->label, sizeof(port->label));
+	if (err < 0) {
+		printk(KERN_ERR PFX "VD_OP_GET_VTOC returns error %d\n", err);
+		return err;
+	}
+
+	if (vdc_version_supported(port, 1, 1)) {
+		/* vdisk_size should be set during the handshake, if it wasn't
+		 * then the underlying disk is reserved by another system
+		 */
+		if (port->vdisk_size == -1)
+			return -ENODEV;
+	} else {
+		struct vio_disk_geom geom;
+
+		err = generic_request(port, VD_OP_GET_DISKGEOM,
+				      &geom, sizeof(geom));
+		if (err < 0) {
+			printk(KERN_ERR PFX "VD_OP_GET_DISKGEOM returns "
+			       "error %d\n", err);
+			return err;
+		}
+		port->vdisk_size = ((u64)geom.num_cyl *
+				    (u64)geom.num_hd *
+				    (u64)geom.num_sec);
+	}
 
 	q = blk_init_queue(do_vdc_request, &port->vio.lock);
 	if (!q) {
@@ -582,36 +760,32 @@ static int probe_disk(struct vdc_port *port)
 
 	set_capacity(g, port->vdisk_size);
 
-	/* if this is a CD/DVD,  tag it
-	 * this is basically doing the same as the xen blockfront driver
-	 */
-
-	switch (port->vdisk_mtype) {
+	if (vdc_version_supported(port, 1, 1)) {
+		switch (port->vdisk_mtype) {
 		case VD_MEDIA_TYPE_CD:
-			printk(KERN_INFO "Virtual CDROM device %s\n",
-				port->disk_name);
+			pr_info(PFX "Virtual CDROM %s\n", port->disk_name);
 			g->flags |= GENHD_FL_CD;
 			g->flags |= GENHD_FL_REMOVABLE;
-			set_disk_ro(g,1);
+			set_disk_ro(g, 1);
 			break;
 
 		case VD_MEDIA_TYPE_DVD:
-			printk(KERN_INFO "Virtual DVD device %s\n",
-				port->disk_name);
+			pr_info(PFX "Virtual DVD %s\n", port->disk_name);
 			g->flags |= GENHD_FL_CD;
 			g->flags |= GENHD_FL_REMOVABLE;
-			set_disk_ro(g,1);
+			set_disk_ro(g, 1);
 			break;
 
 		case VD_MEDIA_TYPE_FIXED:
-			printk(KERN_INFO "Virtual Disk device %s\n",
-				port->disk_name);
+			pr_info(PFX "Virtual Hard disk %s\n", port->disk_name);
 			break;
+		}
 	}
 
-	printk(KERN_INFO PFX "%s: %u sectors (%u MB)\n",
+	pr_info(PFX "%s: %u sectors (%u MB) protocol %d.%d\n",
 	       g->disk_name,
-	       port->vdisk_size, (port->vdisk_size >> (20 - 9)));
+	       port->vdisk_size, (port->vdisk_size >> (20 - 9)),
+	       port->vio.ver.major, port->vio.ver.minor);
 
 	add_disk(g);
 
@@ -670,6 +844,7 @@ static int vdc_port_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	else
 		snprintf(port->disk_name, sizeof(port->disk_name),
 			 VDCBLK_NAME "%c", 'a' + ((int)vdev->dev_no % 26));
+	port->vdisk_size = -1;
 
 	err = vio_driver_init(&port->vio, vdev, VDEV_DISK,
 			      vdc_versions, ARRAY_SIZE(vdc_versions),
