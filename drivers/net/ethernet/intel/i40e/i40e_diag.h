@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,8 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
@@ -30,10 +31,10 @@
 #include "i40e_type.h"
 
 enum i40e_lb_mode {
-	I40E_LB_MODE_NONE       = 0x0,
-	I40E_LB_MODE_PHY_LOCAL  = I40E_AQ_LB_PHY_LOCAL,
-	I40E_LB_MODE_PHY_REMOTE = I40E_AQ_LB_PHY_REMOTE,
-	I40E_LB_MODE_MAC_LOCAL  = I40E_AQ_LB_MAC_LOCAL,
+	I40E_LB_MODE_NONE = 0,
+	I40E_LB_MODE_PHY_LOCAL,
+	I40E_LB_MODE_PHY_REMOTE,
+	I40E_LB_MODE_MAC_LOCAL,
 };
 
 struct i40e_diag_reg_test_info {
@@ -45,9 +46,6 @@ struct i40e_diag_reg_test_info {
 
 extern struct i40e_diag_reg_test_info i40e_reg_list[];
 
-i40e_status i40e_diag_set_loopback(struct i40e_hw *hw,
-					     enum i40e_lb_mode mode);
-i40e_status i40e_diag_fw_alive_test(struct i40e_hw *hw);
 i40e_status i40e_diag_reg_test(struct i40e_hw *hw);
 i40e_status i40e_diag_eeprom_test(struct i40e_hw *hw);
 

@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,8 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
@@ -26,24 +27,6 @@
 
 #include "i40e_diag.h"
 #include "i40e_prototype.h"
-
-/**
- * i40e_diag_set_loopback
- * @hw: pointer to the hw struct
- * @mode: loopback mode
- *
- * Set chosen loopback mode
- **/
-i40e_status i40e_diag_set_loopback(struct i40e_hw *hw,
-					     enum i40e_lb_mode mode)
-{
-	i40e_status ret_code = I40E_SUCCESS;
-
-	if (i40e_aq_set_lb_modes(hw, mode, NULL))
-		ret_code = I40E_ERR_DIAG_TEST_FAILED;
-
-	return ret_code;
-}
 
 /**
  * i40e_diag_reg_pattern_test
@@ -64,11 +47,9 @@ static i40e_status i40e_diag_reg_pattern_test(struct i40e_hw *hw,
 		wr32(hw, reg, (pat & mask));
 		val = rd32(hw, reg);
 		if ((val & mask) != (pat & mask)) {
-#ifdef ETHTOOL_TEST
 			i40e_debug(hw, I40E_DEBUG_DIAG,
 				   "%s: reg pattern test failed - reg 0x%08x pat 0x%08x val 0x%08x\n",
 				   __func__, reg, pat, val);
-#endif
 			return I40E_ERR_DIAG_TEST_FAILED;
 		}
 	}
@@ -76,30 +57,28 @@ static i40e_status i40e_diag_reg_pattern_test(struct i40e_hw *hw,
 	wr32(hw, reg, orig_val);
 	val = rd32(hw, reg);
 	if (val != orig_val) {
-#ifdef ETHTOOL_TEST
 		i40e_debug(hw, I40E_DEBUG_DIAG,
 			   "%s: reg restore test failed - reg 0x%08x orig_val 0x%08x val 0x%08x\n",
 			   __func__, reg, orig_val, val);
-#endif
 		return I40E_ERR_DIAG_TEST_FAILED;
 	}
 
-	return I40E_SUCCESS;
+	return 0;
 }
 
 struct i40e_diag_reg_test_info i40e_reg_list[] = {
 	/* offset               mask         elements   stride */
-	{I40E_QTX_CTL(0),       0x0000FFBF, 1, I40E_QTX_CTL(1) - I40E_QTX_CTL(0)},
-	{I40E_PFINT_ITR0(0),    0x00000FFF, 3, I40E_PFINT_ITR0(1) - I40E_PFINT_ITR0(0)},
-	{I40E_PFINT_ITRN(0, 0), 0x00000FFF, 1, I40E_PFINT_ITRN(0, 1) - I40E_PFINT_ITRN(0, 0)},
-	{I40E_PFINT_ITRN(1, 0), 0x00000FFF, 1, I40E_PFINT_ITRN(1, 1) - I40E_PFINT_ITRN(1, 0)},
-	{I40E_PFINT_ITRN(2, 0), 0x00000FFF, 1, I40E_PFINT_ITRN(2, 1) - I40E_PFINT_ITRN(2, 0)},
-	{I40E_PFINT_STAT_CTL0,  0x0000000C, 1, 0},
-	{I40E_PFINT_LNKLST0,    0x00001FFF, 1, 0},
-	{I40E_PFINT_LNKLSTN(0), 0x000007FF, 1, I40E_PFINT_LNKLSTN(1) - I40E_PFINT_LNKLSTN(0)},
-	{I40E_QINT_TQCTL(0),    0x000000FF, 1, I40E_QINT_TQCTL(1) - I40E_QINT_TQCTL(0)},
-	{I40E_QINT_RQCTL(0),    0x000000FF, 1, I40E_QINT_RQCTL(1) - I40E_QINT_RQCTL(0)},
-	{I40E_PFINT_ICR0_ENA,   0xF7F20000, 1, 0},
+	{I40E_QTX_CTL(0),       0x0000FFBF,  64, I40E_QTX_CTL(1) - I40E_QTX_CTL(0)},
+	{I40E_PFINT_ITR0(0),    0x00000FFF,   3, I40E_PFINT_ITR0(1) - I40E_PFINT_ITR0(0)},
+	{I40E_PFINT_ITRN(0, 0), 0x00000FFF,  64, I40E_PFINT_ITRN(0, 1) - I40E_PFINT_ITRN(0, 0)},
+	{I40E_PFINT_ITRN(1, 0), 0x00000FFF,  64, I40E_PFINT_ITRN(1, 1) - I40E_PFINT_ITRN(1, 0)},
+	{I40E_PFINT_ITRN(2, 0), 0x00000FFF,  64, I40E_PFINT_ITRN(2, 1) - I40E_PFINT_ITRN(2, 0)},
+	{I40E_PFINT_STAT_CTL0,  0x0000000C,   1, 0},
+	{I40E_PFINT_LNKLST0,    0x00001FFF,   1, 0},
+	{I40E_PFINT_LNKLSTN(0), 0x000007FF, 511, I40E_PFINT_LNKLSTN(1) - I40E_PFINT_LNKLSTN(0)},
+	{I40E_QINT_TQCTL(0),    0x000000FF, I40E_QINT_TQCTL_MAX_INDEX + 1, I40E_QINT_TQCTL(1) - I40E_QINT_TQCTL(0)},
+	{I40E_QINT_RQCTL(0),    0x000000FF, I40E_QINT_RQCTL_MAX_INDEX + 1, I40E_QINT_RQCTL(1) - I40E_QINT_RQCTL(0)},
+	{I40E_PFINT_ICR0_ENA,   0xF7F20000,   1, 0},
 	{ 0 }
 };
 
@@ -111,32 +90,15 @@ struct i40e_diag_reg_test_info i40e_reg_list[] = {
  **/
 i40e_status i40e_diag_reg_test(struct i40e_hw *hw)
 {
-	i40e_status ret_code = I40E_SUCCESS;
+	i40e_status ret_code = 0;
 	u32 reg, mask;
 	u32 i, j;
 
-	for (i = 0; i40e_reg_list[i].offset != 0 &&
-					     ret_code == I40E_SUCCESS; i++) {
-
-		/* set actual reg range for dynamically allocated resources */
-		if (i40e_reg_list[i].offset == I40E_QTX_CTL(0) &&
-		    hw->func_caps.num_tx_qp != 0)
-			i40e_reg_list[i].elements = hw->func_caps.num_tx_qp;
-		if ((i40e_reg_list[i].offset == I40E_PFINT_ITRN(0, 0) ||
-		     i40e_reg_list[i].offset == I40E_PFINT_ITRN(1, 0) ||
-		     i40e_reg_list[i].offset == I40E_PFINT_ITRN(2, 0) ||
-		     i40e_reg_list[i].offset == I40E_QINT_TQCTL(0) ||
-		     i40e_reg_list[i].offset == I40E_QINT_RQCTL(0)) &&
-		    hw->func_caps.num_msix_vectors != 0)
-			i40e_reg_list[i].elements =
-				hw->func_caps.num_msix_vectors - 1;
-
-		/* test register access */
+	for (i = 0; (i40e_reg_list[i].offset != 0) && !ret_code; i++) {
 		mask = i40e_reg_list[i].mask;
-		for (j = 0; j < i40e_reg_list[i].elements &&
-			    ret_code == I40E_SUCCESS; j++) {
-			reg = i40e_reg_list[i].offset
-				+ (j * i40e_reg_list[i].stride);
+		for (j = 0; (j < i40e_reg_list[i].elements) && !ret_code; j++) {
+			reg = i40e_reg_list[i].offset +
+			      (j * i40e_reg_list[i].stride);
 			ret_code = i40e_diag_reg_pattern_test(hw, reg, mask);
 		}
 	}
@@ -157,7 +119,7 @@ i40e_status i40e_diag_eeprom_test(struct i40e_hw *hw)
 
 	/* read NVM control word and if NVM valid, validate EEPROM checksum*/
 	ret_code = i40e_read_nvm_word(hw, I40E_SR_NVM_CONTROL_WORD, &reg_val);
-	if ((ret_code == I40E_SUCCESS) &&
+	if ((!ret_code) &&
 	    ((reg_val & I40E_SR_CONTROL_WORD_1_MASK) ==
 	     (0x01 << I40E_SR_CONTROL_WORD_1_SHIFT))) {
 		ret_code = i40e_validate_nvm_checksum(hw, NULL);
@@ -166,15 +128,4 @@ i40e_status i40e_diag_eeprom_test(struct i40e_hw *hw)
 	}
 
 	return ret_code;
-}
-
-/**
- * i40e_diag_fw_alive_test
- * @hw: pointer to the hw struct
- *
- * Perform FW alive diagnostic test
- **/
-i40e_status i40e_diag_fw_alive_test(struct i40e_hw *hw)
-{
-	return I40E_SUCCESS;
 }

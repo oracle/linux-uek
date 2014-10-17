@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,8 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
@@ -32,22 +33,16 @@ struct i40e_hw;
 
 /* HMC element context information */
 
-/* Rx queue context data
- *
- * The sizes of the variables may be larger than needed due to crossing byte
- * boundaries. If we do not have the width of the variable set to the correct
- * size then we could end up shifting bits off the top of the variable when the
- * variable is at the top of a byte and crosses over into the next byte.
- */
+/* Rx queue context data */
 struct i40e_hmc_obj_rxq {
 	u16 head;
-	u16 cpuid; /* bigger than needed, see above for reason */
+	u8  cpuid;
 	u64 base;
 	u16 qlen;
 #define I40E_RXQ_CTX_DBUFF_SHIFT 7
-	u16 dbuff; /* bigger than needed, see above for reason */
+	u8  dbuff;
 #define I40E_RXQ_CTX_HBUFF_SHIFT 6
-	u16 hbuff; /* bigger than needed, see above for reason */
+	u8  hbuff;
 	u8  dtype;
 	u8  dsize;
 	u8  crcstrip;
@@ -56,22 +51,15 @@ struct i40e_hmc_obj_rxq {
 	u8  hsplit_0;
 	u8  hsplit_1;
 	u8  showiv;
-	u32 rxmax; /* bigger than needed, see above for reason */
+	u16 rxmax;
 	u8  tphrdesc_ena;
 	u8  tphwdesc_ena;
 	u8  tphdata_ena;
 	u8  tphhead_ena;
-	u16 lrxqthresh; /* bigger than needed, see above for reason */
-	u8  prefena;	/* NOTE: normally must be set to 1 at init */
+	u8  lrxqthresh;
 };
 
-/* Tx queue context data
-*
-* The sizes of the variables may be larger than needed due to crossing byte
-* boundaries. If we do not have the width of the variable set to the correct
-* size then we could end up shifting bits off the top of the variable when the
-* variable is at the top of a byte and crosses over into the next byte.
-*/
+/* Tx queue context data */
 struct i40e_hmc_obj_txq {
 	u16 head;
 	u8  new_context;
@@ -81,7 +69,7 @@ struct i40e_hmc_obj_txq {
 	u8  fd_ena;
 	u8  alt_vlan_ena;
 	u16 thead_wb;
-	u8  cpuid;
+	u16 cpuid;
 	u8  head_wb_ena;
 	u16 qlen;
 	u8  tphrdesc_ena;
@@ -125,8 +113,8 @@ enum i40e_hmc_lan_object_size {
 #define I40E_HMC_L2OBJ_BASE_ALIGNMENT 512
 #define I40E_HMC_OBJ_SIZE_TXQ         128
 #define I40E_HMC_OBJ_SIZE_RXQ         32
-#define I40E_HMC_OBJ_SIZE_FCOE_CNTX   64
-#define I40E_HMC_OBJ_SIZE_FCOE_FILT   64
+#define I40E_HMC_OBJ_SIZE_FCOE_CNTX   128
+#define I40E_HMC_OBJ_SIZE_FCOE_FILT   32
 
 enum i40e_hmc_lan_rsrc_type {
 	I40E_HMC_LAN_FULL  = 0,
@@ -167,27 +155,15 @@ i40e_status i40e_configure_lan_hmc(struct i40e_hw *hw,
 					     enum i40e_hmc_model model);
 i40e_status i40e_shutdown_lan_hmc(struct i40e_hw *hw);
 
-u64 i40e_calculate_l2fpm_size(u32 txq_num, u32 rxq_num,
-			      u32 fcoe_cntx_num, u32 fcoe_filt_num);
-i40e_status i40e_get_lan_tx_queue_context(struct i40e_hw *hw,
-						    u16 queue,
-						    struct i40e_hmc_obj_txq *s);
 i40e_status i40e_clear_lan_tx_queue_context(struct i40e_hw *hw,
 						      u16 queue);
 i40e_status i40e_set_lan_tx_queue_context(struct i40e_hw *hw,
 						    u16 queue,
 						    struct i40e_hmc_obj_txq *s);
-i40e_status i40e_get_lan_rx_queue_context(struct i40e_hw *hw,
-						    u16 queue,
-						    struct i40e_hmc_obj_rxq *s);
 i40e_status i40e_clear_lan_rx_queue_context(struct i40e_hw *hw,
 						      u16 queue);
 i40e_status i40e_set_lan_rx_queue_context(struct i40e_hw *hw,
 						    u16 queue,
 						    struct i40e_hmc_obj_rxq *s);
-i40e_status i40e_create_lan_hmc_object(struct i40e_hw *hw,
-				struct i40e_hmc_lan_create_obj_info *info);
-i40e_status i40e_delete_lan_hmc_object(struct i40e_hw *hw,
-				struct i40e_hmc_lan_delete_obj_info *info);
 
 #endif /* _I40E_LAN_HMC_H_ */

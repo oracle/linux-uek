@@ -1,7 +1,7 @@
 /*******************************************************************************
  *
  * Intel Ethernet Controller XL710 Family Linux Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
+ * Copyright(c) 2013 Intel Corporation.
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -12,8 +12,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * The full GNU General Public License is included in this distribution in
  * the file called "COPYING".
@@ -141,11 +142,10 @@ struct i40e_virtchnl_vsi_resource {
 	u16 num_queue_pairs;
 	enum i40e_vsi_type vsi_type;
 	u16 qset_handle;
-	u8 default_mac_addr[ETH_ALEN];
+	u8 default_mac_addr[I40E_ETH_LENGTH_OF_ADDRESS];
 };
 /* VF offload flags */
 #define I40E_VIRTCHNL_VF_OFFLOAD_L2	0x00000001
-#define I40E_VIRTCHNL_VF_OFFLOAD_IWARP	0x00000002
 #define I40E_VIRTCHNL_VF_OFFLOAD_FCOE	0x00000004
 #define I40E_VIRTCHNL_VF_OFFLOAD_VLAN	0x00010000
 
@@ -265,7 +265,7 @@ struct i40e_virtchnl_queue_select {
  */
 
 struct i40e_virtchnl_ether_addr {
-	u8 addr[ETH_ALEN];
+	u8 addr[I40E_ETH_LENGTH_OF_ADDRESS];
 	u8 pad[2];
 };
 
@@ -328,8 +328,6 @@ enum i40e_virtchnl_event_codes {
 	I40E_VIRTCHNL_EVENT_PF_DRIVER_CLOSE,
 };
 #define I40E_PF_EVENT_SEVERITY_INFO		0
-#define I40E_PF_EVENT_SEVERITY_ATTENTION	1
-#define I40E_PF_EVENT_SEVERITY_ACTION_REQUIRED	2
 #define I40E_PF_EVENT_SEVERITY_CERTAIN_DOOM	255
 
 struct i40e_virtchnl_pf_event {
@@ -343,6 +341,10 @@ struct i40e_virtchnl_pf_event {
 
 	int severity;
 };
+
+/* The following are TBD, not necessary for LAN functionality.
+ * I40E_VIRTCHNL_OP_FCOE
+ */
 
 /* VF reset states - these are written into the RSTAT register:
  * I40E_VFGEN_RSTAT1 on the PF
