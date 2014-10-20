@@ -88,6 +88,29 @@ int efi_enabled(int facility)
 }
 EXPORT_SYMBOL(efi_enabled);
 
+static void efi_init_generic(void);
+static void efi_late_init_generic(void);
+
+static void efi_enter_virtual_mode_generic(void);
+static u32 efi_mem_type_generic(unsigned long phys_addr);
+static u64 efi_mem_attributes_generic(unsigned long phys_addr);
+static void efi_reserve_boot_services_generic(void);
+static void efi_free_boot_services_generic(void);
+static int efi_memblock_x86_reserve_range_generic(void);
+
+static const struct efi_init_funcs __initconst efi_generic_funcs = {
+	.init                  = efi_init_generic,
+	.late_init             = efi_late_init_generic,
+	.reserve_boot_services = efi_reserve_boot_services_generic,
+	.free_boot_services    = efi_free_boot_services_generic,
+	.enter_virtual_mode    = efi_enter_virtual_mode_generic,
+	.mem_type              = efi_mem_type_generic,
+	.mem_attributes        = efi_mem_attributes_generic,
+	.x86_reserve_range     = efi_memblock_x86_reserve_range_generic
+};
+
+const struct efi_init_funcs *efi_override_funcs =  &efi_generic_funcs;
+
 static bool disable_runtime = false;
 static int __init setup_noefi(char *arg)
 {
@@ -374,7 +397,7 @@ static void __init do_add_efi_memmap(void)
 	sanitize_e820_map(e820.map, ARRAY_SIZE(e820.map), &e820.nr_map);
 }
 
-int __init efi_memblock_x86_reserve_range(void)
+int __init efi_memblock_x86_reserve_range_generic(void)
 {
 	unsigned long pmap;
 
@@ -406,6 +429,8 @@ static void __init print_efi_memmap(void)
 	void *p;
 	int i;
 
+	if (memmap.map == NULL) return;
+
 	for (p = memmap.map, i = 0;
 	     p < memmap.map_end;
 	     p += memmap.desc_size, i++) {
@@ -419,7 +444,7 @@ static void __init print_efi_memmap(void)
 }
 #endif  /*  EFI_DEBUG  */
 
-void __init efi_reserve_boot_services(void)
+static void efi_reserve_boot_services_generic(void)
 {
 	void *p;
 
@@ -460,7 +485,7 @@ void __init efi_unmap_memmap(void)
 	}
 }
 
-void __init efi_free_boot_services(void)
+void __init efi_free_boot_services_generic(void)
 {
 	void *p;
 
@@ -575,7 +600,7 @@ static int __init efi_systab_init(void *phys)
 	return 0;
 }
 
-static int __init efi_config_init(u64 tables, int nr_tables)
+int __init efi_config_init(u64 tables, int nr_tables, struct efi *efi_t)
 {
 	void *config_tables, *tablep;
 	int i, sz;
@@ -596,7 +621,7 @@ static int __init efi_config_init(u64 tables, int nr_tables)
 
 	tablep = config_tables;
 	pr_info("");
-	for (i = 0; i < efi.systab->nr_tables; i++) {
+	for (i = 0; i < nr_tables; i++) {
 		efi_guid_t guid;
 		unsigned long table;
 
@@ -610,7 +635,7 @@ static int __init efi_config_init(u64 tables, int nr_tables)
 				pr_cont("\n");
 				pr_err("Table located above 4GB, disabling EFI.\n");
 				early_iounmap(config_tables,
-					      efi.systab->nr_tables * sz);
+					      nr_tables * sz);
 				return -EINVAL;
 			}
 #endif
@@ -619,33 +644,33 @@ static int __init efi_config_init(u64 tables, int nr_tables)
 			table = ((efi_config_table_32_t *)tablep)->table;
 		}
 		if (!efi_guidcmp(guid, MPS_TABLE_GUID)) {
-			efi.mps = table;
+			efi_t->mps = table;
 			pr_cont(" MPS=0x%lx ", table);
 		} else if (!efi_guidcmp(guid, ACPI_20_TABLE_GUID)) {
-			efi.acpi20 = table;
+			efi_t->acpi20 = table;
 			pr_cont(" ACPI 2.0=0x%lx ", table);
 		} else if (!efi_guidcmp(guid, ACPI_TABLE_GUID)) {
-			efi.acpi = table;
+			efi_t->acpi = table;
 			pr_cont(" ACPI=0x%lx ", table);
 		} else if (!efi_guidcmp(guid, SMBIOS_TABLE_GUID)) {
-			efi.smbios = table;
+			efi_t->smbios = table;
 			pr_cont(" SMBIOS=0x%lx ", table);
 #ifdef CONFIG_X86_UV
 		} else if (!efi_guidcmp(guid, UV_SYSTEM_TABLE_GUID)) {
-			efi.uv_systab = table;
+			efi_t->uv_systab = table;
 			pr_cont(" UVsystab=0x%lx ", table);
 #endif
 		} else if (!efi_guidcmp(guid, HCDP_TABLE_GUID)) {
-			efi.hcdp = table;
+			efi_t->hcdp = table;
 			pr_cont(" HCDP=0x%lx ", table);
 		} else if (!efi_guidcmp(guid, UGA_IO_PROTOCOL_GUID)) {
-			efi.uga = table;
+			efi_t->uga = table;
 			pr_cont(" UGA=0x%lx ", table);
 		}
 		tablep += sz;
 	}
 	pr_cont("\n");
-	early_iounmap(config_tables, efi.systab->nr_tables * sz);
+	early_iounmap(config_tables, nr_tables * sz);
 	return 0;
 }
 
@@ -701,7 +726,7 @@ static int __init efi_memmap_init(void)
 	return 0;
 }
 
-void __init efi_init(void)
+static void efi_init_generic(void)
 {
 	efi_char16_t *c16;
 	char vendor[100] = "unknown";
@@ -742,7 +767,7 @@ void __init efi_init(void)
 		efi.systab->hdr.revision >> 16,
 		efi.systab->hdr.revision & 0xffff, vendor);
 
-	if (efi_config_init(efi.systab->tables, efi.systab->nr_tables))
+	if (efi_config_init(efi.systab->tables, efi.systab->nr_tables, &efi))
 		return;
 
 	set_bit(EFI_CONFIG_TABLES, &x86_efi_facility);
@@ -777,9 +802,11 @@ void __init efi_init(void)
 #endif
 }
 
-void __init efi_late_init(void)
+void __init efi_late_init_generic(void)
 {
+#ifdef CONFIG_ACPI_BGRT
 	efi_bgrt_init();
+#endif
 }
 
 void __init efi_set_executable(efi_memory_desc_t *md, bool executable)
@@ -859,7 +886,7 @@ void efi_memory_uc(u64 addr, unsigned long size)
  * This enables the runtime services to be called without having to
  * thunk back into physical mode for every invocation.
  */
-void __init efi_enter_virtual_mode(void)
+static void efi_enter_virtual_mode_generic(void)
 {
 	efi_memory_desc_t *md, *prev_md = NULL;
 	efi_status_t status;
@@ -1000,7 +1027,7 @@ void __init efi_enter_virtual_mode(void)
 /*
  * Convenience functions to obtain memory types and attributes
  */
-u32 efi_mem_type(unsigned long phys_addr)
+static u32 efi_mem_type_generic(unsigned long phys_addr)
 {
 	efi_memory_desc_t *md;
 	void *p;
@@ -1018,7 +1045,7 @@ u32 efi_mem_type(unsigned long phys_addr)
 	return 0;
 }
 
-u64 efi_mem_attributes(unsigned long phys_addr)
+static u64 efi_mem_attributes_generic(unsigned long phys_addr)
 {
 	efi_memory_desc_t *md;
 	void *p;
@@ -1031,6 +1058,68 @@ u64 efi_mem_attributes(unsigned long phys_addr)
 			return md->attribute;
 	}
 	return 0;
+}
+
+void efi_init_function_register(const struct efi_init_funcs *funcs)
+{
+	efi_override_funcs = funcs;
+}
+
+void __init efi_init(void)
+{
+	if (efi_override_funcs->init)
+	{
+		efi_override_funcs->init();
+	}
+	else
+	{
+		memmap.map = NULL;  /* Xen case */
+	}
+}
+
+void __init efi_late_init(void)
+{
+	if (efi_override_funcs->late_init)
+		efi_override_funcs->late_init();
+}
+
+void __init efi_reserve_boot_services(void)
+{
+	if (efi_override_funcs->reserve_boot_services)
+		efi_override_funcs->reserve_boot_services();
+}
+
+void __init efi_free_boot_services(void)
+{
+	if (efi_override_funcs->free_boot_services)
+		efi_override_funcs->free_boot_services();
+}
+
+void __init efi_enter_virtual_mode(void)
+{
+	if (efi_override_funcs->enter_virtual_mode)
+		efi_override_funcs->enter_virtual_mode();
+}
+
+int __init efi_memblock_x86_reserve_range(void)
+{
+	if (efi_override_funcs->x86_reserve_range)
+		return efi_override_funcs->x86_reserve_range();
+	return 0;
+}
+
+u32 efi_mem_type(unsigned long phys_addr)
+{
+	if (efi_override_funcs->mem_type)
+		return efi_override_funcs->mem_type(phys_addr);
+	return EFI_INVALID_TYPE;
+}
+
+u64 efi_mem_attributes(unsigned long phys_addr)
+{
+	if (efi_override_funcs->mem_attributes)
+		return efi_override_funcs->mem_attributes(phys_addr);
+	return EFI_INVALID_ATTRIBUTE;
 }
 
 /*

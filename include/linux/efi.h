@@ -84,7 +84,10 @@ typedef	struct {
 #define EFI_PAL_CODE			13
 #define EFI_MAX_MEMORY_TYPE		14
 
+#define EFI_INVALID_TYPE		0xffffffff
+
 /* Attribute values: */
+#define EFI_INVALID_ATTRIBUTE	((u64)0x0000000000000000ULL)	/* invalid attribute*/
 #define EFI_MEMORY_UC		((u64)0x0000000000000001ULL)	/* uncached */
 #define EFI_MEMORY_WC		((u64)0x0000000000000002ULL)	/* write-coalescing */
 #define EFI_MEMORY_WT		((u64)0x0000000000000004ULL)	/* write-through */
@@ -554,6 +557,17 @@ extern struct efi {
 	efi_set_virtual_address_map_t *set_virtual_address_map;
 } efi;
 
+struct efi_init_funcs {
+	void (*init)(void);
+	void (*late_init)(void);
+	void (*reserve_boot_services)(void);
+	void (*free_boot_services)(void);
+	void (*enter_virtual_mode)(void);
+	u32 (*mem_type)(unsigned long phys_addr);
+	u64 (*mem_attributes)(unsigned long phys_addr);
+	int (*x86_reserve_range)(void);
+};
+
 static inline int
 efi_guidcmp (efi_guid_t left, efi_guid_t right)
 {
@@ -591,13 +605,16 @@ extern u64 efi_get_iobase (void);
 extern u32 efi_mem_type (unsigned long phys_addr);
 extern u64 efi_mem_attributes (unsigned long phys_addr);
 extern u64 efi_mem_attribute (unsigned long phys_addr, unsigned long size);
-extern int __init efi_uart_console_only (void);
+extern int efi_uart_console_only (void);
 extern void efi_initialize_iomem_resources(struct resource *code_resource,
 		struct resource *data_resource, struct resource *bss_resource);
 extern void efi_get_time(struct timespec *now);
 extern int efi_set_rtc_mmss(const struct timespec *now);
 extern void efi_reserve_boot_services(void);
 extern struct efi_memory_map memmap;
+extern void efi_init_function_register(const struct efi_init_funcs *funcs);
+extern int efi_config_init(u64 tables, int nr_tables, struct efi *efi_t);
+extern void xen_efi_probe(void);
 
 /**
  * efi_range_is_wc - check the WC bit on an address range
@@ -621,7 +638,7 @@ static inline int efi_range_is_wc(unsigned long start, unsigned long len)
 }
 
 #ifdef CONFIG_EFI_PCDP
-extern int __init efi_setup_pcdp_console(char *);
+extern int efi_setup_pcdp_console(char *);
 #endif
 
 /*
