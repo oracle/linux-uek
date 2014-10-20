@@ -1456,6 +1456,7 @@ static int i40e_del_fdir_entry(struct i40e_vsi *vsi,
 {
 	struct ethtool_rx_flow_spec *fsp =
 		(struct ethtool_rx_flow_spec *)&cmd->fs;
+	struct i40e_pf *pf = vsi->back;
 	int ret = 0;
 
 	ret = i40e_update_ethtool_fdir_entry(vsi, NULL, fsp->location, cmd);
