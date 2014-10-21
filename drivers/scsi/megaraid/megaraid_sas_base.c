@@ -1836,7 +1836,7 @@ static int megasas_get_ld_vf_affiliation(struct megasas_instance *instance,
 	struct MR_LD_VF_MAP *newmap = NULL, *savedmap = NULL;
 	dma_addr_t new_affiliation_h;
 	dma_addr_t new_affiliation_111_h;
-	int ld, i, j, retval = 0, found = 0, doscan = 0;
+	int ld, retval = 0;
 	u8 thisVf;
 
 	cmd = megasas_get_cmd(instance);
@@ -1944,6 +1944,14 @@ static int megasas_get_ld_vf_affiliation(struct megasas_instance *instance,
 
 	if (!initial) {
 		if (instance->PlasmaFW111) {
+			if (!new_affiliation_111->vdCount) {
+				printk(KERN_WARNING "megasas: SR-IOV: Got new "
+				       "LD/VF affiliation for passive path "
+				       "for scsi%d.\n",
+					instance->host->host_no);
+				retval = 1;
+				goto out;
+			}
 			thisVf = new_affiliation_111->thisVf;
 			for (ld = 0 ; ld < new_affiliation_111->vdCount; ld++)
 				if (instance->vf_affiliation_111->map[ld].policy[thisVf] != new_affiliation_111->map[ld].policy[thisVf]) {
@@ -1969,75 +1977,29 @@ static int megasas_get_ld_vf_affiliation(struct megasas_instance *instance,
 			newmap = new_affiliation->map;
 			savedmap = instance->vf_affiliation->map;
 			thisVf = new_affiliation->thisVf;
-			for (i = 0 ; i < new_affiliation->ldCount; i++) {
-				found = 0;
-				for (j = 0;
-				     j < instance->vf_affiliation->ldCount;
-				     j++) {
-					if (newmap->ref.targetId ==
-					    savedmap->ref.targetId) {
-						found = 1;
-						if (newmap->policy[thisVf] !=
-						    savedmap->policy[thisVf]) {
-							doscan = 1;
-							goto out;
-						}
-					}
-					savedmap =
-					  (struct MR_LD_VF_MAP *)
-					  ((unsigned char *)savedmap +
-					   savedmap->size);
-				}
-				if (!found && newmap->policy[thisVf] !=
-				    MR_LD_ACCESS_HIDDEN) {
-					doscan = 1;
-					goto out;
-				}
-				newmap = (struct MR_LD_VF_MAP *)
-				  ((unsigned char *)newmap + newmap->size);
-			}
-
-			newmap = new_affiliation->map;
-			savedmap = instance->vf_affiliation->map;
-
-			for (i = 0 ; i < instance->vf_affiliation->ldCount;
-			     i++) {
-				found = 0;
-				for (j = 0 ; j < new_affiliation->ldCount;
-				     j++) {
-					if (savedmap->ref.targetId ==
-					    newmap->ref.targetId) {
-						found = 1;
-						if (savedmap->policy[thisVf] !=
-						    newmap->policy[thisVf]) {
-							doscan = 1;
-							goto out;
-						}
-					}
-					newmap = (struct MR_LD_VF_MAP *)
-					  ((unsigned char *)newmap +
-					   newmap->size);
-				}
-				if (!found && savedmap->policy[thisVf] !=
-				    MR_LD_ACCESS_HIDDEN) {
-					doscan = 1;
+			for (ld = 0 ; ld < new_affiliation->ldCount; ld++) {
+				if (savedmap->policy[thisVf] !=
+				    newmap->policy[thisVf]) {
+					printk(KERN_WARNING "megasas: SR-IOV: "
+					       "Got new LD/VF affiliation "
+					       "for scsi%d.\n",
+						instance->host->host_no);
+					memcpy(instance->vf_affiliation,
+					       new_affiliation,
+					       new_affiliation->size);
+					retval = 1;
 					goto out;
 				}
 				savedmap = (struct MR_LD_VF_MAP *)
-				  ((unsigned char *)savedmap +
-				   savedmap->size);
+					((unsigned char *)savedmap +
+					 savedmap->size);
+				newmap = (struct MR_LD_VF_MAP *)
+					((unsigned char *)newmap +
+					 newmap->size);
 			}
 		}
 	}
 out:
-	if (doscan) {
-		printk(KERN_WARNING "megasas: SR-IOV: Got new LD/VF "
-		       "affiliation for scsi%d.\n", instance->host->host_no);
-		memcpy(instance->vf_affiliation, new_affiliation,
-		       new_affiliation->size);
-		retval = 1;
-	}
-
 	if (new_affiliation) {
 		if (instance->PlasmaFW111)
 			pci_free_consistent(instance->pdev,
