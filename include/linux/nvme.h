@@ -70,6 +70,7 @@ enum {
 	NVME_CTRL_ONCS_COMPARE			= 1 << 0,
 	NVME_CTRL_ONCS_WRITE_UNCORRECTABLE	= 1 << 1,
 	NVME_CTRL_ONCS_DSM			= 1 << 2,
+	NVME_CTRL_VWC_PRESENT			= 1 << 0,
 };
 
 struct nvme_lbaf {
@@ -606,6 +607,7 @@ struct nvme_dev {
 	u16 oncs;
 	u16 abort_limit;
 	u8 event_limit;
+	u8 vwc;
 	u8 initialized;
 };
 
