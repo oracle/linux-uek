@@ -160,18 +160,62 @@ rpcrdma_cq_async_error_upcall(struct ib_event *event, void *context)
 	}
 }
 
+#ifdef RPC_DEBUG
+static const char * const wc_status[] = {
+	"success",
+	"local length error",
+	"local QP operation error",
+	"local EE context operation error",
+	"local protection error",
+	"WR flushed",
+	"memory management operation error",
+	"bad response error",
+	"local access error",
+	"remote invalid request error",
+	"remote access error",
+	"remote operation error",
+	"transport retry counter exceeded",
+	"RNR retrycounter exceeded",
+	"local RDD violation error",
+	"remove invalid RD request",
+	"operation aborted",
+	"invalid EE context number",
+	"invalid EE context state",
+	"fatal error",
+	"response timeout error",
+	"general error",
+};
+#define COMPLETION_MSG(status)					\
+	((status) < ARRAY_SIZE(wc_status) ?			\
+		wc_status[(status)] : "unexpected completion error")
+static const char * const frmr_state[] = {
+	"invalid",
+	"valid",
+	"stale",
+};
+#define FRMR_STATE(state)					\
+	((state) < ARRAY_SIZE(frmr_state) ?			\
+		frmr_state[(state)] : "unexpected FRMR state")
+#endif	/* RPC_DEBUG */
+
 static void
 rpcrdma_sendcq_process_wc(struct ib_wc *wc)
 {
 	struct rpcrdma_mw *frmr = (struct rpcrdma_mw *)(unsigned long)wc->wr_id;
 
-	dprintk("RPC:       %s: frmr %p status %X opcode %d\n",
-		__func__, frmr, wc->status, wc->opcode);
-
-	if (wc->wr_id == 0ULL)
+	if (wc->wr_id == 0ULL) {
+		dprintk("RPC:       %s: opcode 'send': %s\n",
+			__func__, COMPLETION_MSG(wc->status));
 		return;
-	if (wc->status != IB_WC_SUCCESS)
-		frmr->r.frmr.fr_state = FRMR_IS_STALE;
+	}
+
+	if (wc->status == IB_WC_SUCCESS)
+		return;
+
+	frmr->r.frmr.fr_state = FRMR_IS_STALE;
+	pr_err("RPC:       %s: frmr %p (%s), opcode %d: %s\n",
+		__func__, frmr, FRMR_STATE(frmr->r.frmr.fr_state),
+		wc->opcode, COMPLETION_MSG(wc->status));
 }
 
 static int
@@ -235,15 +279,17 @@ rpcrdma_recvcq_process_wc(struct ib_wc *wc, struct list_head *sched_list)
 	struct rpcrdma_rep *rep =
 			(struct rpcrdma_rep *)(unsigned long)wc->wr_id;
 
-	dprintk("RPC:       %s: rep %p status %X opcode %X length %u\n",
-		__func__, rep, wc->status, wc->opcode, wc->byte_len);
-
 	if (wc->status != IB_WC_SUCCESS) {
+		pr_err("RPC:       %s: rep %p: %s\n",
+			__func__, rep, COMPLETION_MSG(wc->status));
 		rep->rr_len = ~0U;
 		goto out_schedule;
 	}
 	if (wc->opcode != IB_WC_RECV)
 		return;
+
+	dprintk("RPC:       %s: rep %p opcode 'recv', length %u: success\n",
+		__func__, rep, wc->byte_len);
 
 	rep->rr_len = wc->byte_len;
 	ib_dma_sync_single_for_cpu(rdmab_to_ia(rep->rr_buffer)->ri_id->device,
