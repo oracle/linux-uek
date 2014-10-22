@@ -505,7 +505,7 @@ xprt_rdma_allocate(struct rpc_task *task, size_t size)
 			goto outfail;
 		}
 		rpcx_to_rdmax(xprt)->rx_stats.hardway_register_count += size;
-		nreq->rl_size = size;
+		nreq->rl_size = req->rl_size;
 		nreq->rl_niovs = 0;
 		nreq->rl_nchunks = 0;
 		nreq->rl_buffer = (struct rpcrdma_buffer *)req;

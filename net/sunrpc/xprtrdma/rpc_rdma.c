@@ -180,6 +180,13 @@ rpcrdma_create_chunks(struct rpc_rqst *rqst, struct xdr_buf *target,
 	struct rpcrdma_write_chunk *cur_wchunk = NULL;
 	__be32 *iptr = headerp->rm_body.rm_chunks;
 
+	if (type == rpcrdma_areadch &&
+	    target->head[0].iov_len > req->rl_size) {
+		dprintk("RPC:       %s: %zu byte long request squelched\n",
+			__func__, target->head[0].iov_len);
+		return -EIO;
+	}
+
 	if (type == rpcrdma_readch || type == rpcrdma_areadch) {
 		/* a read chunk - server will RDMA Read our memory */
 		cur_rchunk = (struct rpcrdma_read_chunk *) iptr;
