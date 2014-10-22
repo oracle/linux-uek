@@ -71,7 +71,7 @@ static unsigned int xprt_rdma_slot_table_entries = RPCRDMA_DEF_SLOT_TABLE;
 static unsigned int xprt_rdma_max_inline_read = RPCRDMA_DEF_INLINE;
 static unsigned int xprt_rdma_max_inline_write = RPCRDMA_DEF_INLINE;
 static unsigned int xprt_rdma_inline_write_padding;
-static unsigned int xprt_rdma_memreg_strategy = RPCRDMA_FRMR;
+static unsigned int xprt_rdma_memreg_strategy = RPCRDMA_MTHCAFMR;
                 int xprt_rdma_pad_optimize = 1;
 
 #ifdef RPC_DEBUG
