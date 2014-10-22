@@ -386,8 +386,9 @@ int dlm_proxy_ast_handler(struct o2net_msg *msg, u32 len, void *data,
 		head = &res->granted;
 
 	list_for_each(iter, head) {
+		/* if lock is found but unlock is pending ignore the bast */
 		lock = list_entry (iter, struct dlm_lock, list);
-		if (lock->ml.cookie == cookie)
+		if ((lock->ml.cookie == cookie) && (!lock->unlock_pending))
 			goto do_ast;
 	}
 
