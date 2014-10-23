@@ -186,7 +186,7 @@ static void __mlx4_init_parallel_one(struct work_struct *);
 static int __mlx4_init_one_common(struct pci_dev *,
 				  const struct pci_device_id *);
 
-static int mlx4_scale_profile;
+static int mlx4_scale_profile = 1;
 module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
 MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 		 "parameters based on system resources");
