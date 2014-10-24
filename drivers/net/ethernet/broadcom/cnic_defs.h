@@ -1,4 +1,3 @@
-
 /* cnic.c: QLogic CNIC core network driver.
  *
  * Copyright (c) 2006-2014 Broadcom Corporation
@@ -7,7 +6,6 @@
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
- *
  */
 
 #ifndef CNIC_DEFS_H
@@ -2654,8 +2652,8 @@ struct fcoe_kwqe_init1 {
 #define FCOE_KWQE_INIT1_LOG_PAGE_SIZE_SHIFT 0
 #define FCOE_KWQE_INIT1_LOG_CACHED_PBES_PER_FUNC (0x7<<4)
 #define FCOE_KWQE_INIT1_LOG_CACHED_PBES_PER_FUNC_SHIFT 4
-#define FCOE_KWQE_INIT1_RESERVED1 (0x1<<7)
-#define FCOE_KWQE_INIT1_RESERVED1_SHIFT 7
+#define FCOE_KWQE_INIT1_CLASSIFY_FAILED_ALLOWED (0x1<<7)
+#define FCOE_KWQE_INIT1_CLASSIFY_FAILED_ALLOWED_SHIFT 7
 };
 
 /*

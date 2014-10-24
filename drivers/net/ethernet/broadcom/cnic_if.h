@@ -1,12 +1,11 @@
 /* cnic_if.h: QLogic CNIC core network driver.
  *
- * Copyright (c) 2006-2014 Broadcom Corporation
+ * Copyright (c) 2006 - 2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
- *
  */
 
 
@@ -15,8 +14,8 @@
 
 #include "bnx2x/bnx2x_mfw_req.h"
 
-#define CNIC_MODULE_VERSION	"2.5.18d"
-#define CNIC_MODULE_RELDATE	"Feb 05, 2014"
+#define CNIC_MODULE_VERSION	"2.5.20b"
+#define CNIC_MODULE_RELDATE	"July 22, 2014"
 
 #define CNIC_ULP_RDMA		0
 #define CNIC_ULP_ISCSI		1
@@ -24,6 +23,16 @@
 #define CNIC_ULP_L4		3
 #define MAX_CNIC_ULP_TYPE_EXT	3
 #define MAX_CNIC_ULP_TYPE	4
+
+/* Use CPU native page size up to 16K for cnic ring sizes. */
+#if (PAGE_SHIFT > 14)
+#define CNIC_PAGE_BITS 14
+#else
+#define CNIC_PAGE_BITS PAGE_SHIFT
+#endif
+#define CNIC_PAGE_SIZE (1 << (CNIC_PAGE_BITS))
+#define CNIC_PAGE_ALIGN(addr) ALIGN(addr, CNIC_PAGE_SIZE)
+#define CNIC_PAGE_MASK (~((CNIC_PAGE_SIZE) - 1))
 
 #ifndef VLAN_TAG_PRESENT
 #define VLAN_TAG_PRESENT	0x1000
@@ -450,8 +459,16 @@ struct cnic_ulp_ops {
 	atomic_t ref_count;
 };
 
-extern int cnic_register_driver2(int ulp_type, struct cnic_ulp_ops *ulp_ops);
+int cnic_register_driver2(int ulp_type, struct cnic_ulp_ops *ulp_ops);
 
-extern int cnic_unregister_driver2(int ulp_type);
+int cnic_unregister_driver2(int ulp_type);
+
+#if (((defined(RHEL_RELEASE_CODE)) && \
+	(((RHEL_MAJOR < 6) && (RHEL_MINOR > 4)) || \
+	((RHEL_MAJOR == 6) && (RHEL_MINOR < 4)))) || \
+	(defined(XENSERVER_DISTRO) && XENSERVER_DISTRO) || \
+	(defined(SLES_DISTRO) && (SLES_DISTRO == 0x1101)))
+	#define rcu_access_pointer(p)   (*(volatile typeof(p) *)&(p))
+#endif
 
 #endif
