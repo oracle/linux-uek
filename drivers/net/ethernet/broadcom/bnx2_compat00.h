@@ -1,5 +1,9 @@
+#ifndef _BNX2X_COMPAT00_H_
+#define _BNX2X_COMPAT00_H_
+
 #define NEW_SKB
 #define HAVE_IP_HDR
+#define HAVE_LE32
 #define HAVE_GFP
 #define HAVE_BOOL
 #define HAVE_AER
@@ -10,6 +14,7 @@
 #define HAVE_FIX_FEATURES
 #define HAVE_NETDEV_FEATURES
 #define NEW_ETHTOOL
+#define HAVE_MDIX_STATUS
 #define HAVE_SKB_FRAG
 #define HAVE_SKB_FRAG_PAGE
 #define HAVE_ETHTOOL_TO_MII
@@ -17,4 +22,8 @@
 #define HAVE_DEVICE_SET_WAKEUP_CAP
 #define HAVE_PCI_PME_CAPABLE
 #define HAVE_PCI_WAKE_FROM_D3
-#define HAVE_LE32
+#define HAVE_MDIX_CTRL
+#define _DEFINE_PCI_VFS_ASSIGNED_
+#define _DEFINE_SKB_SET_HASH
+
+#endif /* _BNX2X_COMPAT00_H_ */

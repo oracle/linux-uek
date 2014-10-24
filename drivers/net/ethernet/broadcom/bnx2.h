@@ -7,6 +7,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
+ * Maintained by: Dept-HSG Linux NIC Dev (Dept-HSGLinuxNICDev@qlogic.com)
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 

@@ -1,6 +1,6 @@
 /* bnx2_fw.h: QLogic NX2 network driver.
  *
- * Copyright (c) 2004-2010 Broadcom Corporation
+ * Copyright (c) 2004-2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
@@ -8,8 +8,9 @@
  * the Free Software Foundation, except as noted below.
  *
  * This file contains firmware data derived from proprietary unpublished
- * source code, Copyright (c) 2004-2010
- * Broadcom Corporation.
+ * source code,
+ * Copyright (c) 2004-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation.
  *
  * Permission is hereby granted for the distribution of this firmware data
  * in hexadecimal or equivalent format, provided this copyright notice is

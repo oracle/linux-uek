@@ -1,11 +1,13 @@
-/* bnx2_compat.h: Broadcom NX2 network driver.
+/* bnx2_compat.h: QLogic NX2 network driver.
  *
- * Copyright (c) 2012 Broadcom Corporation
+ * Copyright (c) 2012 - 2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
+ * Maintained by: Dept-HSG Linux NIC Dev (Dept-HSGLinuxNICDev@qlogic.com)
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 
@@ -799,6 +801,26 @@ static inline unsigned long bnx2_msleep_interruptible(unsigned int msecs)
 	return msleep_interruptible(msecs);
 #endif
 }
+
+#ifdef _DEFINE_SKB_SET_HASH
+enum pkt_hash_types {
+	PKT_HASH_TYPE_NONE,	/* Undefined type */
+	PKT_HASH_TYPE_L2,	/* Input: src_MAC, dest_MAC */
+	PKT_HASH_TYPE_L3,	/* Input: src_IP, dst_IP */
+	PKT_HASH_TYPE_L4,	/* Input: src_IP, dst_IP, src_port, dst_port */
+};
+
+static inline void
+skb_set_hash(struct sk_buff *skb, __u32 hash, enum pkt_hash_types type)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
+	skb->l4_rxhash = (type == PKT_HASH_TYPE_L4);
+#endif
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 34))
+	skb->rxhash = hash;
+#endif
+}
+#endif
 
 #ifndef rcu_dereference_protected
 

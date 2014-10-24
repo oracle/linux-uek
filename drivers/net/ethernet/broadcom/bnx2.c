@@ -7,6 +7,7 @@
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
+ * Maintained by: Dept-HSG Linux NIC Dev (Dept-HSGLinuxNICDev@qlogic.com)
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 
@@ -95,8 +96,8 @@
 #include "bnx2_fw2.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION	"2.2.5f"
-#define DRV_MODULE_RELDATE	"Feb 20, 2014"
+#define DRV_MODULE_VERSION	"2.2.5i"
+#define DRV_MODULE_RELDATE	"July 22, 2014"
 
 #define RUN_AT(x) (jiffies + (x))
 
@@ -118,17 +119,17 @@ static int bnx2_registered_cnic_adapter;
 #endif /* defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 50000)*/
 
 static char version[] __devinitdata =
-	"QLogic NetXtreme II Gigabit Ethernet Driver " DRV_MODULE_NAME " v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
+	"Broadcom NetXtreme II Gigabit Ethernet Driver " DRV_MODULE_NAME " v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
 MODULE_AUTHOR("Michael Chan <mchan@broadcom.com>");
-MODULE_DESCRIPTION("QLogic NetXtreme II BCM5706/5708/5709/5716 Driver");
+MODULE_DESCRIPTION("Broadcom NetXtreme II BCM5706/5708/5709/5716 Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
 
 static int disable_msi = 0;
 
 #if (LINUX_VERSION_CODE >= 0x20600)
-module_param(disable_msi, int, S_IRUGO);
+module_param(disable_msi, int, 0);
 MODULE_PARM_DESC(disable_msi, "Disable Message Signaled Interrupt (MSI)");
 #endif
 
@@ -4389,7 +4390,7 @@ bnx2_gunzip(struct bnx2 *bp, const u8 *zbuf,
 {
 	int rc;
 
-	bp->strm->next_in = zbuf;
+	bp->strm->next_in = (u8 *)zbuf;
 	bp->strm->avail_in = len;
 	bp->strm->next_out = bp->gunzip_buf;
 	bp->strm->avail_out = FW_BUF_SIZE;
@@ -8137,6 +8138,11 @@ bnx2_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	}
 	spin_unlock_bh(&bp->phy_lock);
 
+#ifdef HAVE_MDIX_CTRL
+	if (!(bp->phy_flags & BNX2_PHY_FLAG_SERDES))
+		cmd->eth_tp_mdix_ctrl = ETH_TP_MDI_AUTO;
+#endif
+
 	cmd->transceiver = XCVR_INTERNAL;
 	cmd->phy_address = bp->phy_addr;
 
@@ -8152,6 +8158,15 @@ bnx2_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	u16 req_line_speed = bp->req_line_speed;
 	u32 advertising = bp->advertising;
 	int err = -EINVAL;
+
+#ifdef HAVE_MDIX_CTRL
+	if (cmd->eth_tp_mdix_ctrl) {
+		/* Only support auto for copper devices */
+		if ((bp->phy_flags & BNX2_PHY_FLAG_SERDES) ||
+		    cmd->eth_tp_mdix_ctrl != ETH_TP_MDI_AUTO)
+			return -EOPNOTSUPP;
+	}
+#endif
 
 	spin_lock_bh(&bp->phy_lock);
 
@@ -8503,9 +8518,56 @@ bnx2_set_coalesce(struct net_device *dev, struct ethtool_coalesce *coal)
 	bp->stats_ticks &= BNX2_HC_STATS_TICKS_HC_STAT_TICKS;
 
 	if (netif_running(bp->dev)) {
+#if (defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000))
+
+		BNX2_WR(bp, BNX2_HC_TX_QUICK_CONS_TRIP,
+				(bp->tx_quick_cons_trip_int << 16) | bp->tx_quick_cons_trip);
+
+		BNX2_WR(bp, BNX2_HC_RX_QUICK_CONS_TRIP,
+				(bp->rx_quick_cons_trip_int << 16) | bp->rx_quick_cons_trip);
+
+		BNX2_WR(bp, BNX2_HC_TX_TICKS, (bp->tx_ticks_int << 16) | bp->tx_ticks);
+
+		BNX2_WR(bp, BNX2_HC_RX_TICKS, (bp->rx_ticks_int << 16) | bp->rx_ticks);
+
+		if (bp->flags & BNX2_FLAG_BROKEN_STATS)
+			BNX2_WR(bp, BNX2_HC_STATS_TICKS, 0);
+		else
+			BNX2_WR(bp, BNX2_HC_STATS_TICKS, bp->stats_ticks);
+
+		if (bp->rx_ticks < 25)
+			bnx2_reg_wr_ind(bp, BNX2_FW_RX_LOW_LATENCY, 1);
+		else
+			bnx2_reg_wr_ind(bp, BNX2_FW_RX_LOW_LATENCY, 0);
+
+		for (i = 1; i < bp->irq_nvecs; i++) {
+			u32 base = ((i - 1) * BNX2_HC_SB_CONFIG_SIZE) +
+				BNX2_HC_SB_CONFIG_1;
+
+			BNX2_WR(bp, base,
+					BNX2_HC_SB_CONFIG_1_TX_TMR_MODE |
+					BNX2_HC_SB_CONFIG_1_RX_TMR_MODE |
+					BNX2_HC_SB_CONFIG_1_ONE_SHOT);
+
+			BNX2_WR(bp, base + BNX2_HC_TX_QUICK_CONS_TRIP_OFF,
+					(bp->tx_quick_cons_trip_int << 16) |
+					bp->tx_quick_cons_trip);
+
+			BNX2_WR(bp, base + BNX2_HC_TX_TICKS_OFF,
+					(bp->tx_ticks_int << 16) | bp->tx_ticks);
+
+			BNX2_WR(bp, base + BNX2_HC_RX_QUICK_CONS_TRIP_OFF,
+					(bp->rx_quick_cons_trip_int << 16) |
+					bp->rx_quick_cons_trip);
+
+			BNX2_WR(bp, base + BNX2_HC_RX_TICKS_OFF,
+					(bp->rx_ticks_int << 16) | bp->rx_ticks);
+		}
+#else
 		bnx2_netif_stop(bp, true);
 		bnx2_init_nic(bp, 0);
 		bnx2_netif_start(bp, true);
+#endif /* defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000) */
 	}
 
 	return 0;
