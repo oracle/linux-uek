@@ -269,7 +269,7 @@ __setup("nosmep", setup_disable_smep);
 static __always_inline void setup_smep(struct cpuinfo_x86 *c)
 {
 	if (cpu_has(c, X86_FEATURE_SMEP))
-		set_in_cr4(X86_CR4_SMEP);
+		cr4_set_bits(X86_CR4_SMEP);
 }
 
 static __init int setup_disable_smap(char *arg)
@@ -288,7 +288,7 @@ static __always_inline void setup_smap(struct cpuinfo_x86 *c)
 	BUG_ON(eflags & X86_EFLAGS_AC);
 
 	if (cpu_has(c, X86_FEATURE_SMAP))
-		set_in_cr4(X86_CR4_SMAP);
+		cr4_set_bits(X86_CR4_SMAP);
 }
 
 /*
@@ -1240,7 +1240,7 @@ void __cpuinit cpu_init(void)
 
 	pr_debug("Initializing CPU#%d\n", cpu);
 
-	clear_in_cr4(X86_CR4_VME|X86_CR4_PVI|X86_CR4_TSD|X86_CR4_DE);
+	cr4_clear_bits(X86_CR4_VME|X86_CR4_PVI|X86_CR4_TSD|X86_CR4_DE);
 
 	/*
 	 * Initialize the per-CPU GDT with the boot GDT,
@@ -1323,7 +1323,7 @@ void __cpuinit cpu_init(void)
 	printk(KERN_INFO "Initializing CPU#%d\n", cpu);
 
 	if (cpu_has_vme || cpu_has_tsc || cpu_has_de)
-		clear_in_cr4(X86_CR4_VME|X86_CR4_PVI|X86_CR4_TSD|X86_CR4_DE);
+		cr4_clear_bits(X86_CR4_VME|X86_CR4_PVI|X86_CR4_TSD|X86_CR4_DE);
 
 	load_idt(&idt_descr);
 	switch_to_new_gdt(cpu);
