@@ -211,7 +211,7 @@ void i40evf_configure_queues(struct i40evf_adapter *adapter)
 {
 	struct i40e_virtchnl_vsi_queue_config_info *vqci;
 	struct i40e_virtchnl_queue_pair_info *vqpi;
-	int pairs = adapter->vsi_res->num_queue_pairs;
+	int pairs = adapter->num_active_queues;
 	int i, len;
 
 	if (adapter->current_op != I40E_VIRTCHNL_OP_UNKNOWN) {
@@ -277,7 +277,7 @@ void i40evf_enable_queues(struct i40evf_adapter *adapter)
 	}
 	adapter->current_op = I40E_VIRTCHNL_OP_ENABLE_QUEUES;
 	vqs.vsi_id = adapter->vsi_res->vsi_id;
-	vqs.tx_queues = (1 << adapter->vsi_res->num_queue_pairs) - 1;
+	vqs.tx_queues = (1 << adapter->num_active_queues) - 1;
 	vqs.rx_queues = vqs.tx_queues;
 	adapter->aq_pending |= I40EVF_FLAG_AQ_ENABLE_QUEUES;
 	adapter->aq_required &= ~I40EVF_FLAG_AQ_ENABLE_QUEUES;
@@ -303,7 +303,7 @@ void i40evf_disable_queues(struct i40evf_adapter *adapter)
 	}
 	adapter->current_op = I40E_VIRTCHNL_OP_DISABLE_QUEUES;
 	vqs.vsi_id = adapter->vsi_res->vsi_id;
-	vqs.tx_queues = (1 << adapter->vsi_res->num_queue_pairs) - 1;
+	vqs.tx_queues = (1 << adapter->num_active_queues) - 1;
 	vqs.rx_queues = vqs.tx_queues;
 	adapter->aq_pending |= I40EVF_FLAG_AQ_DISABLE_QUEUES;
 	adapter->aq_required &= ~I40EVF_FLAG_AQ_DISABLE_QUEUES;
