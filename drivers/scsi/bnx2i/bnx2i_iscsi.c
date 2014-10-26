@@ -1,18 +1,16 @@
 /*
- * bnx2i_iscsi.c: QLogic NetXtreme II iSCSI driver.
+ * bnx2i_iscsi.c: Broadcom NetXtreme II iSCSI driver.
  *
- * Copyright (c) 2006 - 2012 Broadcom Corporation
+ * Copyright (c) 2006 - 2014 Broadcom Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
- * Copyright (c) 2014, QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
  * Written by: Anil Veerabhadrappa (anilgv@broadcom.com)
- * Previously Maintained by: Eddie Wai (eddie.wai@broadcom.com)
- * Maintained by: QLogic-Storage-Upstream@qlogic.com
+ * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
  */
 
 #include "bnx2i.h"
@@ -23,7 +21,6 @@
 #include <linux/version.h>
 
 struct scsi_transport_template *bnx2i_scsi_xport_template;
-struct iscsi_transport bnx2i_iscsi_transport;
 static struct scsi_host_template bnx2i_host_template;
 
 static void conn_err_recovery_task(struct work_struct *work, void *data);
@@ -1276,11 +1273,18 @@ static void bnx2i_cleanup_task(struct iscsi_task *task)
 	 */
 	if (task->state == ISCSI_TASK_ABRT_TMF) {
 		bnx2i_send_cmd_cleanup_req(hba, task->dd_data);
-
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_unlock_bh(&conn->session->back_lock);
+#else
 		spin_unlock_bh(&conn->session->lock);
+#endif
 		wait_for_completion_timeout(&bnx2i_conn->cmd_cleanup_cmpl,
 				msecs_to_jiffies(ISCSI_CMD_CLEANUP_TIMEOUT));
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_lock_bh(&conn->session->back_lock);
+#else
 		spin_lock_bh(&conn->session->lock);
+#endif
 	}
 	bnx2i_iscsi_unmap_sg_list(task->dd_data);
 }
@@ -1333,7 +1337,7 @@ static int bnx2i_task_xmit(struct iscsi_task *task)
 	struct bnx2i_conn *bnx2i_conn = conn->dd_data;
 	struct scsi_cmnd *sc = task->sc;
 	struct bnx2i_cmd *cmd = task->dd_data;
-	struct iscsi_scsi_req *hdr = (struct iscsi_scsi_req *) task->hdr;
+	struct iscsi_cmd *hdr = (struct iscsi_cmd *) task->hdr;
 	u32 cpu;
 
 	/* If the number of outstanding cmds exceeds max_sqes, bail */
@@ -1973,11 +1977,12 @@ static void bnx2i_conn_get_stats(struct iscsi_cls_conn *cls_conn,
 	stats->r2t_pdus = conn->r2t_pdus_cnt;
 	stats->tmfcmd_pdus = conn->tmfcmd_pdus_cnt;
 	stats->tmfrsp_pdus = conn->tmfrsp_pdus_cnt;
+	stats->custom_length = 3;
+	strcpy(stats->custom[2].desc, "eh_abort_cnt");
+	stats->custom[2].value = conn->eh_abort_cnt;
 	stats->digest_err = 0;
 	stats->timeout_err = 0;
-	strcpy(stats->custom[0].desc, "eh_abort_cnt");
-	stats->custom[0].value = conn->eh_abort_cnt;
-	stats->custom_length = 1;
+	stats->custom_length = 0;
 }
 
 
@@ -2397,7 +2402,11 @@ int bnx2i_hw_ep_disconnect(struct bnx2i_endpoint *bnx2i_ep)
 		goto out;
 
 	if (session) {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_lock_bh(&session->frwd_lock);
+#else
 		spin_lock_bh(&session->lock);
+#endif
 		if (bnx2i_ep->state != EP_STATE_TCP_FIN_RCVD) {
 			if (session->state == ISCSI_STATE_LOGGING_OUT) {
 				if (bnx2i_ep->state == EP_STATE_LOGOUT_SENT) {
@@ -2413,7 +2422,11 @@ int bnx2i_hw_ep_disconnect(struct bnx2i_endpoint *bnx2i_ep)
 		} else
 			close = 1;
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_unlock_bh(&session->frwd_lock);
+#else
 		spin_unlock_bh(&session->lock);
+#endif
 	}
 
 	bnx2i_ep->state = EP_STATE_DISCONN_START;
@@ -2528,6 +2541,7 @@ static int bnx2i_nl_set_path(struct Scsi_Host *shost, struct iscsi_path *params)
 }
 
 
+#ifdef _DEFINE_ATTR_IS_VISIBLE_
 static _UMODE_ bnx2i_attr_is_visible(int param_type, int param)
 {
 	switch (param_type) {
@@ -2573,6 +2587,11 @@ static _UMODE_ bnx2i_attr_is_visible(int param_type, int param)
 		case ISCSI_PARAM_TGT_RESET_TMO:
 		case ISCSI_PARAM_IFACE_NAME:
 		case ISCSI_PARAM_INITIATOR_NAME:
+#if (defined(__RHEL_DISTRO__) && (__RHEL_DISTRO__ > 0x0604))
+		case ISCSI_PARAM_BOOT_ROOT:
+		case ISCSI_PARAM_BOOT_NIC:
+		case ISCSI_PARAM_BOOT_TARGET:
+#endif
 			return S_IRUGO;
 		default:
 			return 0;
@@ -2602,6 +2621,8 @@ static _UMODE_ bnx2i_attr_is_visible(int param_type, int param)
 
 	return 0;
 }
+#endif
+
 
 /**
  * conn_err_recovery_task - does recovery on all queued sessions
@@ -2635,12 +2656,25 @@ conn_err_recovery_task(struct work_struct *work, void *data)
 		if (conn)
 			sess = conn->session;
 		if (sess) {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+			spin_lock_bh(&sess->back_lock);
+#else
 			spin_lock_bh(&sess->lock);
+#endif
 			if (sess->state != ISCSI_STATE_LOGGING_OUT) {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_unlock_bh(&sess->back_lock);
+#else
 				spin_unlock_bh(&sess->lock);
+#endif
 				iscsi_conn_failure(conn, ISCSI_ERR_CONN_FAILED);
-			} else
+			} else {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_unlock_bh(&sess->back_lock);
+#else
 				spin_unlock_bh(&sess->lock);
+#endif
+			}
 		}
 		spin_lock_irqsave(&hba->lock, flags);
 	}
@@ -2675,7 +2709,7 @@ static void bnx2i_withdraw_conn_recovery(struct bnx2i_hba *hba,
  */
 static struct scsi_host_template bnx2i_host_template = {
 	.module			= THIS_MODULE,
-	.name			= "QLogic Offload iSCSI Initiator",
+	.name			= "Broadcom Offload iSCSI Initiator",
 	.proc_name		= "bnx2i",
 	.queuecommand		= iscsi_queuecommand,
 	.eh_abort_handler	= iscsi_eh_abort,
@@ -2693,7 +2727,7 @@ static struct scsi_host_template bnx2i_host_template = {
 	.this_id		= -1,
 	.use_clustering		= ENABLE_CLUSTERING,
 	.sg_tablesize		= ISCSI_MAX_BDS_PER_CMD,
-#if (defined(__RHEL_DISTRO_5__))
+#if (defined(__RHEL_DISTRO__) && (__RHEL_DISTRO__ < 0x0600))
 	.sdev_attrs		= bnx2i_dev_attributes,
 #else
 	.shost_attrs		= bnx2i_dev_attributes,
@@ -2713,7 +2747,36 @@ struct iscsi_transport bnx2i_iscsi_transport = {
 	.bind_conn		= bnx2i_conn_bind,
 	.destroy_conn		= bnx2i_conn_destroy,
 	.set_param		= iscsi_set_param,
+#ifndef _DEFINE_ATTR_IS_VISIBLE_
+	.param_mask		= ISCSI_MAX_RECV_DLENGTH |
+				  ISCSI_MAX_XMIT_DLENGTH |
+				  ISCSI_HDRDGST_EN |
+				  ISCSI_DATADGST_EN |
+				  ISCSI_INITIAL_R2T_EN |
+				  ISCSI_MAX_R2T |
+				  ISCSI_IMM_DATA_EN |
+				  ISCSI_FIRST_BURST |
+				  ISCSI_MAX_BURST |
+				  ISCSI_PDU_INORDER_EN |
+				  ISCSI_DATASEQ_INORDER_EN |
+				  ISCSI_ERL |
+				  ISCSI_CONN_PORT |
+				  ISCSI_CONN_ADDRESS |
+				  ISCSI_EXP_STATSN |
+				  ISCSI_PERSISTENT_PORT |
+				  ISCSI_PERSISTENT_ADDRESS |
+				  ISCSI_TARGET_NAME | ISCSI_TPGT |
+				  ISCSI_USERNAME | ISCSI_PASSWORD |
+				  ISCSI_USERNAME_IN | ISCSI_PASSWORD_IN |
+				  ISCSI_FAST_ABORT | ISCSI_ABORT_TMO |
+				  ISCSI_LU_RESET_TMO |
+				  ISCSI_PING_TMO | ISCSI_RECV_TMO |
+				  ISCSI_IFACE_NAME | ISCSI_INITIATOR_NAME,
+	.host_param_mask	= ISCSI_HOST_HWADDRESS | ISCSI_HOST_IPADDRESS |
+				  ISCSI_HOST_NETDEV_NAME,
+#else
 	.attr_is_visible	= bnx2i_attr_is_visible,
+#endif
 #ifndef _DEFINE_GET_EP_PARAM_
 	.get_conn_param		= bnx2i_conn_get_param,
 #else

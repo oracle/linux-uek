@@ -1,15 +1,13 @@
-/* bnx2i_sysfs.c: QLogic NetXtreme II iSCSI driver.
+/* bnx2i_sysfs.c: Broadcom NetXtreme II iSCSI driver.
  *
- * Copyright (c) 2004 - 2013 Broadcom Corporation
- * Copyright (c) 2014, QLogic Corporation
+ * Copyright (c) 2004 - 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
  * Written by: Anil Veerabhadrappa (anilgv@broadcom.com)
- * Previously Maintained by: Eddie Wai (eddie.wai@broadcom.com)
- * Maintained by: QLogic-Storage-Upstream@qlogic.com
+ * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
  */
 
 #include "bnx2i.h"
@@ -22,7 +20,7 @@
  */
 static inline struct bnx2i_hba *bnx2i_dev_to_hba(struct device *dev)
 {
-#if (defined(__RHEL_DISTRO_5__))
+#if (defined(__RHEL_DISTRO__) && (__RHEL_DISTRO__ < 0x0600))
 	/* TODO: is the shost_gendev what we want here?  or
 		 do we want the actual class_dev */
 	struct Scsi_Host *shost = dev_to_shost(dev);

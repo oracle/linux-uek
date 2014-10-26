@@ -1,6 +1,6 @@
 /* bnx2i_compat.h: Broadcom NetXtreme II iSCSI compatible header.
  *
- * Copyright (c) 2012 Broadcom Corporation
+ * Copyright (c) 2014 Broadcom Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -12,10 +12,9 @@
 #ifndef _BNX2I_COMPAT_H_
 #define _BNX2I_COMPAT_H_
 
-/* Common */
-#define __RHEL_DISTRO__	\
-	(defined(__RHEL_DISTRO_5__) || defined(__RHEL_DISTRO_6__))
+#include "bnx2i_compat_uek3.h"
 
+/* Common */
 #define __DISTRO__		\
 	(defined(__SLES_DISTRO__) || defined(__RHEL_DISTRO__))
 
@@ -70,7 +69,7 @@
 #define __devinitdata
 #endif
 
-#if (defined(__RHEL_DISTRO_5__))
+#if (defined(__RHEL_DISTRO__) && (__RHEL_DISTRO__ < 0x0600))
 /********************************* RHEL 5.X ***********************************/
 /* Common for RHEL5 */
 #include <scsi/iscsi_if2.h>
@@ -86,7 +85,7 @@
 #define iscsi_host_for_each_session(a,b) iscsi2_host_for_each_session(a,b)
 #define iscsi_host_remove(a) iscsi2_host_remove(a)
 #define iscsi_host_free(a) iscsi2_host_free(a)
-#if (__RHEL_DISTRO_5__ > 0x0504)
+#if (__RHEL_DISTRO__ > 0x0504)
 #define iscsi_session_setup(a,b,c,d,e,f,g) iscsi2_session_setup(a,b,c,d,e,f,g)
 #else
 #define iscsi_session_setup(a,b,c,d,e,f,g) iscsi2_session_setup(a,b,c,e,f,g)
@@ -155,11 +154,11 @@ static inline ssize_t sysfs_format_mac(char *buf, const unsigned char *addr,
 #define scsi_for_each_sg(cmd, sg, nseg, __i)                    \
         for (__i = 0, sg = scsi_sglist(cmd); __i < (nseg); __i++, (sg)++)
 
-/* End of __RHEL_DISTRO_5__ */
+/* End of __RHEL_DISTRO__ 5.X */
 
 #else
 
-/************************ RHEL6.X, SLES11SP1+, Upstream ***********************/
+/********************** RHEL6.X/7.X, SLES11SP1+, Upstream *********************/
 
 #include <scsi/iscsi_if.h>
 #include <scsi/iscsi_proto.h>

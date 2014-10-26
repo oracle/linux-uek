@@ -1,17 +1,15 @@
-/* bnx2i_hwi.c: QLogic NetXtreme II iSCSI driver.
+/* bnx2i_hwi.c: Broadcom NetXtreme II iSCSI driver.
  *
- * Copyright (c) 2006 - 2012 Broadcom Corporation
+ * Copyright (c) 2006 - 2014 Broadcom Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
- * Copyright (c) 2014, QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
  * Written by: Anil Veerabhadrappa (anilgv@broadcom.com)
- * Previously Maintained by: Eddie Wai (eddie.wai@broadcom.com)
- * Maintained by: QLogic-Storage-Upstream@qlogic.com
+ * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
  */
 
 #include <linux/gfp.h>
@@ -333,7 +331,7 @@ int bnx2i_send_iscsi_login(struct bnx2i_conn *bnx2i_conn,
 {
 	struct bnx2i_cmd *bnx2i_cmd;
 	struct bnx2i_login_request *login_wqe;
-	struct iscsi_login_req *login_hdr;
+	struct iscsi_login *login_hdr;
 	u32 dword;
 
 	bnx2i_cmd = (struct bnx2i_cmd *)task->dd_data;
@@ -1363,11 +1361,15 @@ int bnx2i_process_scsi_cmd_resp(struct iscsi_session *session,
 	struct bnx2i_cmd_response *resp_cqe;
 	struct bnx2i_cmd *bnx2i_cmd;
 	struct iscsi_task *task;
-	struct iscsi_scsi_rsp *hdr;
+	struct iscsi_cmd_rsp *hdr;
 	u32 datalen = 0;
 
 	resp_cqe = (struct bnx2i_cmd_response *)cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock_bh(&session->back_lock);
+#else
 	spin_lock_bh(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 				 resp_cqe->itt & ISCSI_CMD_RESPONSE_INDEX);
 	if (!task)
@@ -1438,7 +1440,11 @@ done:
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr,
 			     conn->data, datalen);
 fail:
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock_bh(&session->back_lock);
+#else
 	spin_unlock_bh(&session->lock);
+#endif
 	return 0;
 }
 
@@ -1448,29 +1454,25 @@ static void bnx2i_login_stats(struct bnx2i_hba *hba, u8 status_class,
 {
 	switch (status_class) {
 	case ISCSI_STATUS_CLS_SUCCESS:
-		hba->login_stats.successful_logins++;
+		hba->login_stats.login_successes++;
 		break;
 	case ISCSI_STATUS_CLS_REDIRECT:
-		switch (status_detail) {
-		case ISCSI_LOGIN_STATUS_TGT_MOVED_TEMP:
-		case ISCSI_LOGIN_STATUS_TGT_MOVED_PERM:
-			hba->login_stats.login_redirect_responses++;
-			break;
-		default:
-			hba->login_stats.login_failures++;
-			break;
-		}
+		hba->login_stats.login_redirect_responses++;
 		break;
 	case ISCSI_STATUS_CLS_INITIATOR_ERR:
-		hba->login_stats.login_failures++;
 		switch (status_detail) {
+		case ISCSI_LOGIN_STATUS_INIT_ERR:
+			hba->login_stats.login_failures++;
+			break;
 		case ISCSI_LOGIN_STATUS_AUTH_FAILED:
-		case ISCSI_LOGIN_STATUS_TGT_FORBIDDEN:
 			hba->login_stats.login_authentication_failures++;
 			break;
+		case ISCSI_LOGIN_STATUS_TGT_FORBIDDEN:
+			hba->login_stats.login_authorization_failures++;
+			break;
 		default:
-			/* Not sure, but treating all other class2 errors as
-			   login negotiation failure */
+			/* All other class2 errors are login negotiation
+			   failures */
 			hba->login_stats.login_negotiation_failures++;
 			break;
 		}
@@ -1479,6 +1481,15 @@ static void bnx2i_login_stats(struct bnx2i_hba *hba, u8 status_class,
 		hba->login_stats.login_failures++;
 		break;
 	}
+}
+
+
+static void bnx2i_logout_stats(struct bnx2i_hba *hba, u8 reason)
+{
+	if (reason)
+		hba->login_stats.logout_others++;
+	else
+		hba->login_stats.logout_normals++;
 }
 
 
@@ -1502,7 +1513,11 @@ static int bnx2i_process_login_resp(struct iscsi_session *session,
 	int pad_len;
 
 	login = (struct bnx2i_login_response *) cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 				 login->itt & ISCSI_LOGIN_RESPONSE_INDEX);
 	if (!task)
@@ -1549,7 +1564,11 @@ static int bnx2i_process_login_resp(struct iscsi_session *session,
 		bnx2i_conn->gen_pdu.resp_buf,
 		bnx2i_conn->gen_pdu.resp_wr_ptr - bnx2i_conn->gen_pdu.resp_buf);
 done:
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 	return 0;
 }
 
@@ -1574,7 +1593,11 @@ static int bnx2i_process_text_resp(struct iscsi_session *session,
 	int pad_len;
 
 	text = (struct bnx2i_text_response *) cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn, text->itt & ISCSI_LOGIN_RESPONSE_INDEX);
 	if (!task)
 		goto done;
@@ -1610,7 +1633,11 @@ static int bnx2i_process_text_resp(struct iscsi_session *session,
 			     bnx2i_conn->gen_pdu.resp_wr_ptr -
 			     bnx2i_conn->gen_pdu.resp_buf);
 done:
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 	return 0;
 }
 
@@ -1633,7 +1660,11 @@ static int bnx2i_process_tmf_resp(struct iscsi_session *session,
 	struct iscsi_tm_rsp *resp_hdr;
 
 	tmf_cqe = (struct bnx2i_tmf_response *)cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 				 tmf_cqe->itt & ISCSI_TMF_RESPONSE_INDEX);
 	if (!task)
@@ -1649,7 +1680,11 @@ static int bnx2i_process_tmf_resp(struct iscsi_session *session,
 
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr, NULL, 0);
 done:
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 	return 0;
 }
 
@@ -1672,7 +1707,11 @@ static int bnx2i_process_logout_resp(struct iscsi_session *session,
 	struct iscsi_logout_rsp *resp_hdr;
 
 	logout = (struct bnx2i_logout_response *) cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 				 logout->itt & ISCSI_LOGOUT_RESPONSE_INDEX);
 	if (!task)
@@ -1694,8 +1733,15 @@ static int bnx2i_process_logout_resp(struct iscsi_session *session,
 
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)resp_hdr, NULL, 0);
 	bnx2i_conn->ep->state = EP_STATE_LOGOUT_RESP_RCVD;
+
+	bnx2i_logout_stats(bnx2i_conn->hba, resp_hdr->flags &
+			   ISCSI_FLAG_LOGOUT_REASON_MASK);
 done:
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 	return 0;
 }
 
@@ -1716,15 +1762,31 @@ static void bnx2i_process_nopin_local_cmpl(struct iscsi_session *session,
 	struct iscsi_task *task;
 
 	nop_in = (struct bnx2i_nop_in_msg *)cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 				 nop_in->itt & ISCSI_NOP_IN_MSG_INDEX);
 	if (task) {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_unlock(&session->back_lock);
+#else
 		spin_unlock(&session->lock);
+#endif
 		iscsi_put_task(task);
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_lock(&session->back_lock);
+#else
 		spin_lock(&session->lock);
+#endif
 	}
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 }
 
 /**
@@ -1763,7 +1825,11 @@ static int bnx2i_process_nopin_mesg(struct iscsi_session *session,
 
 	nop_in = (struct bnx2i_nop_in_msg *)cqe;
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	hdr = (struct iscsi_nopin *)&bnx2i_conn->gen_pdu.resp_hdr;
 	memset(hdr, 0, sizeof(struct iscsi_hdr));
 	hdr->opcode = nop_in->op_code;
@@ -1789,7 +1855,11 @@ static int bnx2i_process_nopin_mesg(struct iscsi_session *session,
 	}
 done:
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr, NULL, 0);
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 
 	return tgt_async_nop;
 }
@@ -1822,7 +1892,11 @@ static void bnx2i_process_async_mesg(struct iscsi_session *session,
 		return;
 	}
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	resp_hdr = (struct iscsi_async *) &bnx2i_conn->gen_pdu.resp_hdr;
 	memset(resp_hdr, 0, sizeof(struct iscsi_hdr));
 	resp_hdr->opcode = async_cqe->op_code;
@@ -1841,7 +1915,11 @@ static void bnx2i_process_async_mesg(struct iscsi_session *session,
 
 	__iscsi_complete_pdu(bnx2i_conn->cls_conn->dd_data,
 			     (struct iscsi_hdr *)resp_hdr, NULL, 0);
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 }
 
 
@@ -1868,7 +1946,11 @@ static void bnx2i_process_reject_mesg(struct iscsi_session *session,
 	} else
 		bnx2i_unsol_pdu_adjust_rq(bnx2i_conn);
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	hdr = (struct iscsi_reject *) &bnx2i_conn->gen_pdu.resp_hdr;
 	memset(hdr, 0, sizeof(struct iscsi_hdr));
 	hdr->opcode = reject->op_code;
@@ -1879,7 +1961,11 @@ static void bnx2i_process_reject_mesg(struct iscsi_session *session,
 	hdr->ffffffff = cpu_to_be32(RESERVED_ITT);
 	__iscsi_complete_pdu(conn, (struct iscsi_hdr *)hdr, conn->data,
 			     reject->data_length);
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 }
 
 /**
@@ -1899,13 +1985,21 @@ static void bnx2i_process_cmd_cleanup_resp(struct iscsi_session *session,
 	struct iscsi_task *task;
 
 	cmd_clean_rsp = (struct bnx2i_cleanup_response *)cqe;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(conn,
 			cmd_clean_rsp->itt & ISCSI_CLEANUP_RESPONSE_INDEX);
 	if (!task)
 		printk(KERN_ALERT "bnx2i: cmd clean ITT %x not active\n",
 			cmd_clean_rsp->itt & ISCSI_CLEANUP_RESPONSE_INDEX);
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 	complete(&bnx2i_conn->cmd_cleanup_cmpl);
 }
 
@@ -1974,11 +2068,19 @@ static int bnx2i_queue_scsi_cmd_resp(struct iscsi_session *session,
 	int cpu;
 	int rc = 0;
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_lock(&session->back_lock);
+#else
 	spin_lock(&session->lock);
+#endif
 	task = iscsi_itt_to_task(bnx2i_conn->cls_conn->dd_data,
 				 cqe->itt & ISCSI_CMD_RESPONSE_INDEX);
 	if (!task || !task->sc) {
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+		spin_unlock(&session->back_lock);
+#else
 		spin_unlock(&session->lock);
+#endif
 		return -EINVAL;
 	}
 	bnx2i_cmd = task->dd_data;
@@ -1992,7 +2094,11 @@ static int bnx2i_queue_scsi_cmd_resp(struct iscsi_session *session,
 		cpu = sc->request->cpu;
 	*/
 
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+	spin_unlock(&session->back_lock);
+#else
 	spin_unlock(&session->lock);
+#endif
 
 	p = &per_cpu(bnx2i_percpu, cpu);
 	spin_lock(&p->p_work_lock);
@@ -2337,108 +2443,140 @@ static void bnx2i_process_iscsi_error(struct bnx2i_hba *hba,
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_OPCODE:
 		strcpy(additional_notice, "wrong opcode rcvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_AHS_LEN:
 		strcpy(additional_notice, "AHS len > 0 rcvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_ITT:
 		strcpy(additional_notice, "invalid ITT rcvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_STATSN:
 		strcpy(additional_notice, "wrong StatSN rcvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_EXP_DATASN:
 		strcpy(additional_notice, "wrong DataSN rcvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_PEND_R2T:
 		strcpy(additional_notice, "pend R2T violation");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_0:
 		strcpy(additional_notice, "ERL0, UO");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_1:
 		strcpy(additional_notice, "ERL0, U1");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_2:
 		strcpy(additional_notice, "ERL0, U2");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_3:
 		strcpy(additional_notice, "ERL0, U3");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_4:
 		strcpy(additional_notice, "ERL0, U4");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_5:
 		strcpy(additional_notice, "ERL0, U5");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_O_U_6:
 		strcpy(additional_notice, "ERL0, U6");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_REMAIN_RCV_LEN:
 		strcpy(additional_notice, "invalid resi len");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_MAX_RCV_PDU_LEN:
 		strcpy(additional_notice, "MRDSL violation");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_F_BIT_ZERO:
 		strcpy(additional_notice, "F-bit not set");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_TTT_NOT_RSRV:
 		strcpy(additional_notice, "invalid TTT");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_DATASN:
 		strcpy(additional_notice, "invalid DataSN");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_REMAIN_BURST_LEN:
 		strcpy(additional_notice, "burst len violation");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_BUFFER_OFF:
 		strcpy(additional_notice, "buf offset violation");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_LUN:
 		strcpy(additional_notice, "invalid LUN field");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_R2TSN:
 		strcpy(additional_notice, "invalid R2TSN field");
+		hba->login_stats.format_errors++;
 		break;
 #define BNX2I_ERR_DESIRED_DATA_TRNS_LEN_0 	\
 	ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_DESIRED_DATA_TRNS_LEN_0
 	case BNX2I_ERR_DESIRED_DATA_TRNS_LEN_0:
 		strcpy(additional_notice, "invalid cmd len1");
+		hba->login_stats.format_errors++;
 		break;
 #define BNX2I_ERR_DESIRED_DATA_TRNS_LEN_1 	\
 	ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_DESIRED_DATA_TRNS_LEN_1
 	case BNX2I_ERR_DESIRED_DATA_TRNS_LEN_1:
 		strcpy(additional_notice, "invalid cmd len2");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_PEND_R2T_EXCEED:
 		strcpy(additional_notice,
 		       "pend r2t exceeds MaxOutstandingR2T value");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_TTT_IS_RSRV:
 		strcpy(additional_notice, "TTT is rsvd");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_MAX_BURST_LEN:
 		strcpy(additional_notice, "MBL violation");
+		hba->login_stats.format_errors++;
 		break;
 #define BNX2I_ERR_DATA_SEG_LEN_NOT_ZERO 	\
 	ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_DATA_SEG_LEN_NOT_ZERO
 	case BNX2I_ERR_DATA_SEG_LEN_NOT_ZERO:
 		strcpy(additional_notice, "data seg len != 0");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_REJECT_PDU_LEN:
 		strcpy(additional_notice, "reject pdu len error");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_ASYNC_PDU_LEN:
 		strcpy(additional_notice, "async pdu len error");
+		hba->login_stats.format_errors++;
 		break;
 	case ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_NOPIN_PDU_LEN:
 		strcpy(additional_notice, "nopin pdu len error");
+		hba->login_stats.format_errors++;
 		break;
 #define BNX2_ERR_PEND_R2T_IN_CLEANUP			\
 	ISCSI_KCQE_COMPLETION_STATUS_PROTOCOL_ERR_PEND_R2T_IN_CLEANUP
 	case BNX2_ERR_PEND_R2T_IN_CLEANUP:
 		strcpy(additional_notice, "pend r2t in cleanup");
+		hba->login_stats.format_errors++;
 		break;
 
 	case ISCI_KCQE_COMPLETION_STATUS_TCP_ERROR_IP_FRAGMENT:
@@ -2652,11 +2790,19 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 			if (bnx2i_conn) {
 				conn = bnx2i_conn->cls_conn->dd_data;
 				session = conn->session;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_lock_irqsave(&session->back_lock, flags);
+#else
 				spin_lock_irqsave(&session->lock, flags);
+#endif
 				if (session->state == ISCSI_STATE_FAILED)
 					session->state =
 						bnx2i_conn->prev_sess_state;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_unlock_irqrestore(&session->back_lock, flags);
+#else
 				spin_unlock_irqrestore(&session->lock, flags);
+#endif
 			}
 		}
 		iscsi_host_for_each_session(hba->shost,
@@ -2689,11 +2835,19 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 			if (bnx2i_conn) {
 				conn = bnx2i_conn->cls_conn->dd_data;
 				session = conn->session;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_lock_irqsave(&session->back_lock, flags);
+#else
 				spin_lock_irqsave(&session->lock, flags);
+#endif
 				bnx2i_conn->prev_sess_state = session->state;
 				if (conn->stop_stage == 0)
 					session->state = ISCSI_STATE_FAILED;
+#ifdef _DEFINE_REDUCE_LOCK_CONTENTION_
+				spin_unlock_irqrestore(&session->back_lock, flags);
+#else
 				spin_unlock_irqrestore(&session->lock, flags);
+#endif
 				iscsi_suspend_queue(conn);
 				set_bit(ISCSI_SUSPEND_BIT, &conn->suspend_rx);
 				iscsi_conn_error_event(bnx2i_conn->cls_conn,

@@ -1,17 +1,15 @@
-/* bnx2i.h: QLogic NetXtreme II iSCSI driver.
+/* bnx2i.h: Broadcom NetXtreme II iSCSI driver.
  *
- * Copyright (c) 2006 - 2012 Broadcom Corporation
+ * Copyright (c) 2006 - 2014 Broadcom Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
- * Copyright (c) 2014, QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation.
  *
  * Written by: Anil Veerabhadrappa (anilgv@broadcom.com)
- * Previously Maintained by: Eddie Wai (eddie.wai@broadcom.com)
- * Maintained by: QLogic-Storage-Upstream@qlogic.com
+ * Maintained by: Eddie Wai (eddie.wai@broadcom.com)
  */
 
 #ifndef _BNX2I_H_
@@ -347,14 +345,18 @@ struct bnx2i_stats_info {
 };
 
 struct iscsi_login_stats_info {
-	u32 successful_logins;			/* Total login successes */
+	u32 login_successes;			/* Total login successes */
 	u32 login_failures;			/* Total login failures */
 	u32 login_negotiation_failures;		/* Text negotiation failed */
-	u32 login_authentication_failures;	/* login Authentication failed */
+	u32 login_authentication_failures;	/* Login Authentication failed */
+	u32 login_authorization_failures;	/* Login Authorization failed */
 	u32 login_redirect_responses;		/* Target redirects to another portal */
+	u32 logout_normals;			/* Logout normally */
+	u32 logout_others;			/* Logout others */
 	u32 connection_timeouts;		/* TCP connection timeouts */
 	u32 session_failures;			/* Errors resulting in sess recovery */
 	u32 digest_errors;			/* Errors resulting in digest errors */
+	u32 format_errors;			/* Errors resulting in iSCSI protocol errors */
 };
 
 struct bnx2i_iface {
@@ -420,9 +422,10 @@ struct bnx2i_iface {
  * @ctx_ccell_tasks:       captures number of ccells and tasks supported by
  *                         currently offloaded connection, used to decode
  *                         context memory
- * @stat_lock:             statistic lock to maintain coherency
+ * @stat_lock:             PDU byte lock to maintain coherency
+ * @bnx2i_stats:           PDU byte count
  * @stats:                 iSCSI statistic structure memory
- * @login_stats:           iSCSI login statistic structure memory
+ * @login_stats:           iSCSI statistic for the HBA
  * @iface_ipv4_list:       bnx2i_iface struct list for IPv4
  * @iface_ipv6_list:       bnx2i_iface struct list for IPv6
  *
