@@ -295,8 +295,6 @@ struct bnx2fc_cmd_mgr *bnx2fc_cmd_mgr_alloc(struct bnx2fc_hba *hba)
 				       arr_sz, GFP_KERNEL);
 	if (!cmgr->free_list_lock) {
 		printk(KERN_ERR PFX "failed to alloc free_list_lock\n");
-		kfree(cmgr->free_list);
-		cmgr->free_list = NULL;
 		goto mem_err;
 	}
 
@@ -634,9 +632,13 @@ int bnx2fc_init_mp_req(struct bnx2fc_cmd *io_req)
 
 	mp_req = (struct bnx2fc_mp_req *)&(io_req->mp_req);
 	memset(mp_req, 0, sizeof(struct bnx2fc_mp_req));
+	if (io_req->cmd_type != BNX2FC_ELS) {
+		mp_req->req_len = sizeof(struct fcp_cmnd);
+		io_req->data_xfer_len = mp_req->req_len;
+	}
+	else
+		mp_req->req_len = io_req->data_xfer_len;
 
-	mp_req->req_len = sizeof(struct fcp_cmnd);
-	io_req->data_xfer_len = mp_req->req_len;
 	mp_req->req_buf = dma_alloc_coherent(&hba->pcidev->dev, PAGE_SIZE,
 					     &mp_req->req_buf_dma,
 					     GFP_ATOMIC);
@@ -839,7 +841,7 @@ retry_tmf:
 	spin_unlock_bh(&tgt->tgt_lock);
 
 	rc = wait_for_completion_timeout(&io_req->tm_done,
-					 BNX2FC_TM_TIMEOUT * HZ);
+					 BNX2FC_TM_TIMEOUT);
 	spin_lock_bh(&tgt->tgt_lock);
 
 	io_req->wait_for_comp = 0;

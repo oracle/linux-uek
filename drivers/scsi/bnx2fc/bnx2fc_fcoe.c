@@ -140,7 +140,9 @@ static void bnx2fc_get_lesb(struct fc_lport *lport,
 #endif
 	struct fcoe_fc_els_lesb *lesb;
 	struct net_device *netdev = bnx2fc_netdev(lport);
+#ifdef _DEFINE_DEV_GET_STATS_
 	struct rtnl_link_stats64 temp;
+#endif
 
 	lfc = 0;
 	vlfc = 0;
@@ -160,8 +162,12 @@ static void bnx2fc_get_lesb(struct fc_lport *lport,
 	lesb->lesb_link_fail = htonl(lfc);
 	lesb->lesb_vlink_fail = htonl(vlfc);
 	lesb->lesb_miss_fka = htonl(mdac);
+#ifdef _DEFINE_DEV_GET_STATS_
 	lesb->lesb_fcs_error = htonl(dev_get_stats(netdev,
 				     &temp)->rx_crc_errors);
+#else
+	lesb->lesb_fcs_error = htonl(dev_get_stats(netdev)->rx_crc_errors);
+#endif
 }
 
 #ifdef _DEFINE_FCOE_SYSFS_
@@ -424,7 +430,12 @@ static int bnx2fc_xmit(struct fc_lport *lport, struct fc_frame *fp)
 			return -ENOMEM;
 		}
 		frag = &skb_shinfo(skb)->frags[skb_shinfo(skb)->nr_frags - 1];
+#ifdef _DEFINE_KMAP_ATOMIC_
 		cp = kmap_atomic(skb_frag_page(frag)) + frag->page_offset;
+#else
+		cp = kmap_atomic(frag->page, KM_SKB_DATA_SOFTIRQ)
+				+ frag->page_offset;
+#endif
 	} else {
 		cp = (struct fcoe_crc_eof *)skb_put(skb, tlen);
 	}
@@ -433,7 +444,11 @@ static int bnx2fc_xmit(struct fc_lport *lport, struct fc_frame *fp)
 	cp->fcoe_eof = eof;
 	cp->fcoe_crc32 = cpu_to_le32(~crc);
 	if (skb_is_nonlinear(skb)) {
+#ifdef _DEFINE_KMAP_ATOMIC_
 		kunmap_atomic(cp);
+#else
+		kunmap_atomic(cp, KM_SKB_DATA_SOFTIRQ);
+#endif
 		cp = NULL;
 	}
 
@@ -644,30 +659,43 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	skb_pull(skb, sizeof(struct fcoe_hdr));
 	fr_len = skb->len - sizeof(struct fcoe_crc_eof);
 
+#ifdef _DEFINE_FCOE_DEV_STATS_
+	stats = per_cpu_ptr(lport->dev_stats, get_cpu());
+#else
+	stats = per_cpu_ptr(lport->stats, get_cpu());
+#endif
+	stats->RxFrames++;
+	stats->RxWords += fr_len / FCOE_WORD_TO_BYTE;
+
 	fp = (struct fc_frame *)skb;
 	fc_frame_init(fp);
 	fr_dev(fp) = lport;
 	fr_sof(fp) = hp->fcoe_sof;
 	if (skb_copy_bits(skb, fr_len, &crc_eof, sizeof(crc_eof))) {
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
 	fr_eof(fp) = crc_eof.fcoe_eof;
 	fr_crc(fp) = crc_eof.fcoe_crc32;
 	if (pskb_trim(skb, fr_len)) {
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
 
 	fh = fc_frame_header_get(fp);
 
+	put_cpu();
 	vn_port = fc_vport_id_lookup(lport, ntoh24(fh->fh_d_id));
+	get_cpu();
 
 	if (vn_port) {
 		port = lport_priv(vn_port);
 		if (compare_ether_addr(port->data_src_addr, dest_mac)
 		    != 0) {
 			BNX2FC_HBA_DBG(lport, "fpma mismatch\n");
+			put_cpu();
 			kfree_skb(skb);
 			return;
 		}
@@ -675,6 +703,7 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	if (fh->fh_r_ctl == FC_RCTL_DD_SOL_DATA &&
 	    fh->fh_type == FC_TYPE_FCP) {
 		/* Drop FCP data. We dont this in L2 path */
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
@@ -684,6 +713,7 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 		case ELS_LOGO:
 			if (ntoh24(fh->fh_s_id) == FC_FID_FLOGI) {
 				/* drop non-FIP LOGO */
+				put_cpu();
 				kfree_skb(skb);
 				return;
 			}
@@ -692,6 +722,7 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	}
 	if (fh->fh_r_ctl == FC_RCTL_BA_ABTS) {
 		/* Drop incoming ABTS */
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
@@ -701,17 +732,10 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	if ((fh->fh_type == FC_TYPE_BLS) && (f_ctl & FC_FC_SEQ_CTX) &&
 	    (f_ctl & FC_FC_EX_CTX)) {
 		/* Drop incoming ABTS response that has both SEQ/EX CTX set */
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
-
-#ifdef _DEFINE_FCOE_DEV_STATS_
-	stats = per_cpu_ptr(lport->dev_stats, smp_processor_id());
-#else
-	stats = per_cpu_ptr(lport->stats, smp_processor_id());
-#endif
-	stats->RxFrames++;
-	stats->RxWords += fr_len / FCOE_WORD_TO_BYTE;
 
 	if (le32_to_cpu(fr_crc(fp)) !=
 			~crc32(~0, skb->data, fr_len)) {
@@ -719,9 +743,11 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 			printk(KERN_WARNING PFX "dropping frame with "
 			       "CRC error\n");
 		stats->InvalidCRCCount++;
+		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
+	put_cpu();
 	fc_exch_recv(lport, fp);
 }
 
@@ -857,7 +883,11 @@ static void bnx2fc_link_speed_update(struct fc_lport *lport)
 	struct net_device *netdev = interface->netdev;
 	struct ethtool_cmd ecmd;
 
+#ifdef _DEFINE_ETHTOOL_GET_
 	if (!__ethtool_get_settings(netdev, &ecmd)) {
+#else
+	if (!dev_ethtool_get_settings(netdev, &ecmd)) {
+#endif
 		lport->link_supported_speeds &=
 			~(FC_PORTSPEED_1GBIT | FC_PORTSPEED_10GBIT);
 		if (ecmd.supported & (SUPPORTED_1000baseT_Half |
@@ -3516,6 +3546,9 @@ static struct scsi_host_template bnx2fc_shost_template = {
 	.max_sectors		= 1024,
 #ifdef _DEFINE_SHOST_LOCKLESS_
 	.lockless		= 1,
+#endif
+#if ((defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ >= 0x0700)))
+	.no_async_abort		= 1,
 #endif
 };
 
