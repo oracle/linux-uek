@@ -44,7 +44,6 @@
 #include <linux/delay.h>
 #include <asm/byteorder.h>
 #include <linux/time.h>
-#include <linux/ethtool.h>
 #include <linux/if.h>
 #include <linux/if_vlan.h>
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) /* BNX2X_UPSTREAM */
@@ -81,6 +80,11 @@
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 extern uint tx_switching;
 #endif
+
+static int bnx2x_vf_op_prep(struct bnx2x *bp, int vfidx,
+			    struct bnx2x_virtf **vf,
+			    struct pf_vf_bulletin_content **bulletin,
+			    bool test_queue);
 
 /* General service functions */
 static void storm_memset_vf_to_pf(struct bnx2x *bp, u16 abs_fid,
@@ -546,7 +550,7 @@ int bnx2x_vf_mac_vlan_config_list(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		}
 	}
 
-	/* It's our responsibility to free the filters */
+	/* It's out responsibility to free the filters */
 	kfree(filters);
 
 	return rc;
@@ -679,9 +683,10 @@ int bnx2x_vf_mcast(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	return rc;
 }
 
-void bnx2x_vf_prep_rx_mode(struct bnx2x *bp, u8 qid,
-			   struct bnx2x_rx_mode_ramrod_params *ramrod,
-			   struct bnx2x_virtf *vf, unsigned long accept_flags)
+static void bnx2x_vf_prep_rx_mode(struct bnx2x *bp, u8 qid,
+				  struct bnx2x_rx_mode_ramrod_params *ramrod,
+				  struct bnx2x_virtf *vf,
+				  unsigned long accept_flags)
 {
 	struct bnx2x_vf_queue *vfq = vfq_get(vf, qid);
 
@@ -1207,7 +1212,7 @@ static int bnx2x_ari_enabled(struct pci_dev *dev)
 #endif
 }
 
-static void
+static int
 bnx2x_get_vf_igu_cam_info(struct bnx2x *bp)
 {
 	int sb_id;
@@ -1231,7 +1236,9 @@ bnx2x_get_vf_igu_cam_info(struct bnx2x *bp)
 		   (fid & IGU_FID_VF_NUM_MASK)), sb_id,
 		   GET_FIELD((val), IGU_REG_MAPPING_MEMORY_VECTOR));
 	}
-	DP(BNX2X_MSG_IOV, "vf_sbs_pool is %d", BP_VFDB(bp)->vf_sbs_pool);
+	DP(BNX2X_MSG_IOV, "vf_sbs_pool is %d\n", BP_VFDB(bp)->vf_sbs_pool);
+
+	return BP_VFDB(bp)->vf_sbs_pool;
 }
 
 static void __bnx2x_iov_free_vfdb(struct bnx2x *bp)
@@ -1397,7 +1404,11 @@ int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 	}
 
 	/* re-read the IGU CAM for VFs - index and abs_vfid must be set */
-	bnx2x_get_vf_igu_cam_info(bp);
+	if (!bnx2x_get_vf_igu_cam_info(bp)) {
+		BNX2X_ERR("No entries in IGU CAM for vfs\n");
+		err = -EINVAL;
+		goto failed;
+	}
 
 	/* allocate the queue arrays for all VFs */
 	bp->vfdb->vfqs = kzalloc(
@@ -1412,6 +1423,8 @@ int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 
 	/* Prepare the VFs event synchronization mechanism */
 	mutex_init(&bp->vfdb->event_mutex);
+
+	mutex_init(&bp->vfdb->bulletin_mutex);
 
 	return 0;
 failed:
@@ -1432,7 +1445,10 @@ void bnx2x_iov_remove_one(struct bnx2x *bp)
 
 	/* disable access to all VFs */
 	for (vf_idx = 0; vf_idx < bp->vfdb->sriov.total; vf_idx++) {
-		bnx2x_pretend_func(bp, HW_VF_HANDLE(bp, bp->vfdb->sriov.first_vf_in_pf + vf_idx));
+		bnx2x_pretend_func(bp,
+				   HW_VF_HANDLE(bp,
+						bp->vfdb->sriov.first_vf_in_pf +
+						vf_idx));
 		DP(BNX2X_MSG_IOV, "disabling internal access for vf %d\n",
 		   bp->vfdb->sriov.first_vf_in_pf + vf_idx);
 		bnx2x_vf_enable_internal(bp, 0);
@@ -1486,7 +1502,9 @@ int bnx2x_iov_alloc_mem(struct bnx2x *bp)
 		cxt->size = min_t(size_t, tot_size, CDU_ILT_PAGE_SZ);
 
 		if (cxt->size) {
-			BNX2X_PCI_ALLOC(cxt->addr, &cxt->mapping, cxt->size);
+			cxt->addr = BNX2X_PCI_ALLOC(&cxt->mapping, cxt->size);
+			if (!cxt->addr)
+				goto alloc_mem_err;
 		} else {
 			cxt->addr = NULL;
 			cxt->mapping = 0;
@@ -1496,20 +1514,28 @@ int bnx2x_iov_alloc_mem(struct bnx2x *bp)
 
 	/* allocate vfs ramrods dma memory - client_init and set_mac */
 	tot_size = BNX2X_NR_VIRTFN(bp) * sizeof(struct bnx2x_vf_sp);
-	BNX2X_PCI_ALLOC(BP_VFDB(bp)->sp_dma.addr, &BP_VFDB(bp)->sp_dma.mapping,
-			tot_size);
+	BP_VFDB(bp)->sp_dma.addr = BNX2X_PCI_ALLOC(&BP_VFDB(bp)->sp_dma.mapping,
+						   tot_size);
+	if (!BP_VFDB(bp)->sp_dma.addr)
+		goto alloc_mem_err;
 	BP_VFDB(bp)->sp_dma.size = tot_size;
 
 	/* allocate mailboxes */
 	tot_size = BNX2X_NR_VIRTFN(bp) * MBX_MSG_ALIGNED_SIZE;
-	BNX2X_PCI_ALLOC(BP_VF_MBX_DMA(bp)->addr, &BP_VF_MBX_DMA(bp)->mapping,
-			tot_size);
+	BP_VF_MBX_DMA(bp)->addr = BNX2X_PCI_ALLOC(&BP_VF_MBX_DMA(bp)->mapping,
+						  tot_size);
+	if (!BP_VF_MBX_DMA(bp)->addr)
+		goto alloc_mem_err;
+
 	BP_VF_MBX_DMA(bp)->size = tot_size;
 
 	/* allocate local bulletin boards */
 	tot_size = BNX2X_NR_VIRTFN(bp) * BULLETIN_CONTENT_SIZE;
-	BNX2X_PCI_ALLOC(BP_VF_BULLETIN_DMA(bp)->addr,
-			&BP_VF_BULLETIN_DMA(bp)->mapping, tot_size);
+	BP_VF_BULLETIN_DMA(bp)->addr = BNX2X_PCI_ALLOC(&BP_VF_BULLETIN_DMA(bp)->mapping,
+						       tot_size);
+	if (!BP_VF_BULLETIN_DMA(bp)->addr)
+		goto alloc_mem_err;
+
 	BP_VF_BULLETIN_DMA(bp)->size = tot_size;
 
 	return 0;
@@ -1541,6 +1567,109 @@ static void bnx2x_vfq_init(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	DP(BNX2X_MSG_IOV,
 	   "initialized vf %d's queue object. func id set to %d. cid set to 0x%x\n",
 	   vf->abs_vfid, q->sp_obj.func_id, q->cid);
+}
+
+static int bnx2x_max_speed_cap(struct bnx2x *bp)
+{
+	u32 supported = bp->port.supported[bnx2x_get_link_cfg_idx(bp)];
+
+	if (supported &
+	    (SUPPORTED_20000baseMLD2_Full | SUPPORTED_20000baseKR2_Full))
+		return 20000;
+
+	return 10000; /* assume lowest supported speed is 10G */
+}
+
+int bnx2x_iov_link_update_vf(struct bnx2x *bp, int idx)
+{
+	struct bnx2x_link_report_data *state = &bp->last_reported_link;
+	struct pf_vf_bulletin_content *bulletin;
+	struct bnx2x_virtf *vf;
+	bool update = true;
+	int rc = 0;
+
+	/* sanity and init */
+	rc = bnx2x_vf_op_prep(bp, idx, &vf, &bulletin, false);
+	if (rc)
+		return rc;
+
+	mutex_lock(&bp->vfdb->bulletin_mutex);
+
+	if (vf->link_cfg == IFLA_VF_LINK_STATE_AUTO) {
+		bulletin->valid_bitmap |= 1 << LINK_VALID;
+
+		bulletin->link_speed = state->line_speed;
+		bulletin->link_flags = 0;
+		if (test_bit(BNX2X_LINK_REPORT_LINK_DOWN,
+			     &state->link_report_flags))
+			bulletin->link_flags |= VFPF_LINK_REPORT_LINK_DOWN;
+		if (test_bit(BNX2X_LINK_REPORT_FD,
+			     &state->link_report_flags))
+			bulletin->link_flags |= VFPF_LINK_REPORT_FULL_DUPLEX;
+		if (test_bit(BNX2X_LINK_REPORT_RX_FC_ON,
+			     &state->link_report_flags))
+			bulletin->link_flags |= VFPF_LINK_REPORT_RX_FC_ON;
+		if (test_bit(BNX2X_LINK_REPORT_TX_FC_ON,
+			     &state->link_report_flags))
+			bulletin->link_flags |= VFPF_LINK_REPORT_TX_FC_ON;
+	} else if (vf->link_cfg == IFLA_VF_LINK_STATE_DISABLE &&
+		   !(bulletin->link_flags & VFPF_LINK_REPORT_LINK_DOWN)) {
+		bulletin->valid_bitmap |= 1 << LINK_VALID;
+		bulletin->link_flags |= VFPF_LINK_REPORT_LINK_DOWN;
+	} else if (vf->link_cfg == IFLA_VF_LINK_STATE_ENABLE &&
+		   (bulletin->link_flags & VFPF_LINK_REPORT_LINK_DOWN)) {
+		bulletin->valid_bitmap |= 1 << LINK_VALID;
+		bulletin->link_speed = bnx2x_max_speed_cap(bp);
+		bulletin->link_flags &= ~VFPF_LINK_REPORT_LINK_DOWN;
+	} else {
+		update = false;
+	}
+
+	if (update) {
+		DP(NETIF_MSG_LINK | BNX2X_MSG_IOV,
+		   "vf %d mode %u speed %d flags %x\n", idx,
+		   vf->link_cfg, bulletin->link_speed, bulletin->link_flags);
+
+		/* Post update on VF's bulletin board */
+		rc = bnx2x_post_vf_bulletin(bp, idx);
+		if (rc) {
+			BNX2X_ERR("failed to update VF[%d] bulletin\n", idx);
+			goto out;
+		}
+	}
+
+out:
+	mutex_unlock(&bp->vfdb->bulletin_mutex);
+	return rc;
+}
+
+#ifdef _HAS_SET_VF_LINK_STATE /* BNX2X_UPSTREAM */
+int bnx2x_set_vf_link_state(struct net_device *dev, int idx, int link_state)
+{
+	struct bnx2x *bp = netdev_priv(dev);
+	struct bnx2x_virtf *vf = BP_VF(bp, idx);
+
+	if (!vf)
+		return -EINVAL;
+
+	if (vf->link_cfg == link_state)
+		return 0; /* nothing todo */
+
+	vf->link_cfg = link_state;
+
+	return bnx2x_iov_link_update_vf(bp, idx);
+}
+#endif
+
+void bnx2x_iov_link_update(struct bnx2x *bp)
+{
+	int vfid;
+
+	if (!IS_SRIOV(bp))
+		return;
+
+	for_each_vf(bp, vfid)
+		bnx2x_iov_link_update_vf(bp, vfid);
 }
 
 /* called by bnx2x_nic_load */
@@ -1727,9 +1856,9 @@ static
 void bnx2x_vf_handle_filters_eqe(struct bnx2x *bp,
 				 struct bnx2x_virtf *vf)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(BNX2X_FILTER_RX_MODE_PENDING, &vf->filter_state);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 static void bnx2x_vf_handle_rss_update_eqe(struct bnx2x *bp,
@@ -1775,7 +1904,8 @@ int bnx2x_iov_eq_sp_event(struct bnx2x *bp, union event_ring_elem *elem)
 	case EVENT_RING_OPCODE_MALICIOUS_VF:
 		abs_vfid = elem->message.data.malicious_vf_event.vf_id;
 		BNX2X_ERR("Got VF MALICIOUS notification abs_vfid=%d err_id=0x%x\n",
-			  abs_vfid, elem->message.data.malicious_vf_event.err_id);
+			  abs_vfid,
+			  elem->message.data.malicious_vf_event.err_id);
 		goto get_vf;
 	default:
 		return 1;
@@ -1957,7 +2087,6 @@ void bnx2x_iov_adjust_stats_req(struct bnx2x *bp)
 	bp->fw_stats_req->hdr.cmd_num = bp->fw_stats_num + stats_count;
 }
 
-/* VF API helpers */
 static void bnx2x_vf_qtbl_set_q(struct bnx2x *bp, u8 abs_vfid, u8 qid,
 				u8 enable)
 {
@@ -2438,6 +2567,11 @@ int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs_param)
 {
 	struct bnx2x *bp = netdev_priv(pci_get_drvdata(dev));
 
+	if (!IS_SRIOV(bp)) {
+		BNX2X_ERR("failed to configure SR-IOV since vfdb was not allocated. Check dmesg for errors in probe stage\n");
+		return -EINVAL;
+	}
+
 	DP(BNX2X_MSG_IOV, "bnx2x_sriov_configure called with %d, BNX2X_NR_VIRTFN(bp) was %d\n",
 	   num_vfs_param, BNX2X_NR_VIRTFN(bp));
 
@@ -2459,9 +2593,9 @@ int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs_param)
 		bnx2x_set_pf_tx_switching(bp, false);
 		bnx2x_disable_sriov(bp);
 		return 0;
+	} else {
+		return bnx2x_enable_sriov(bp);
 	}
-
-	return bnx2x_enable_sriov(bp);
 }
 
 #define IGU_ENTRY_SIZE 4
@@ -2576,22 +2710,23 @@ void bnx2x_disable_sriov(struct bnx2x *bp)
 	pci_disable_sriov(bp->pdev);
 }
 
-static int bnx2x_vf_ndo_prep(struct bnx2x *bp, int vfidx,
-			     struct bnx2x_virtf **vf,
-			     struct pf_vf_bulletin_content **bulletin)
+static int bnx2x_vf_op_prep(struct bnx2x *bp, int vfidx,
+			    struct bnx2x_virtf **vf,
+			    struct pf_vf_bulletin_content **bulletin,
+			    bool test_queue)
 {
 	if (bp->state != BNX2X_STATE_OPEN) {
-		BNX2X_ERR("vf ndo called though PF is down\n");
+		BNX2X_ERR("PF is down - can't utilize iov-related functionality\n");
 		return -EINVAL;
 	}
 
 	if (!IS_SRIOV(bp)) {
-		BNX2X_ERR("vf ndo called though sriov is disabled\n");
+		BNX2X_ERR("sriov is disabled - can't utilize iov-related functionality\n");
 		return -EINVAL;
 	}
 
 	if (vfidx >= BNX2X_NR_VIRTFN(bp)) {
-		BNX2X_ERR("vf ndo called for uninitialized VF. vfidx was %d BNX2X_NR_VIRTFN was %d\n",
+		BNX2X_ERR("VF is uninitialized - can't utilize iov-related functionality. vfidx was %d BNX2X_NR_VIRTFN was %d\n",
 			  vfidx, BNX2X_NR_VIRTFN(bp));
 		return -EINVAL;
 	}
@@ -2601,19 +2736,18 @@ static int bnx2x_vf_ndo_prep(struct bnx2x *bp, int vfidx,
 	*bulletin = BP_VF_BULLETIN(bp, vfidx);
 
 	if (!*vf) {
-		BNX2X_ERR("vf ndo called but vf struct is null. vfidx was %d\n",
-			  vfidx);
+		BNX2X_ERR("Unable to get VF structure for vfidx %d\n", vfidx);
 		return -EINVAL;
 	}
 
-	if (!(*vf)->vfqs) {
-		BNX2X_ERR("vf ndo called but vfqs struct is null. Was ndo invoked before dynamically enabling SR-IOV? vfidx was %d\n",
+	if (test_queue && !(*vf)->vfqs) {
+		BNX2X_ERR("vfqs struct is null. Was this invoked before dynamically enabling SR-IOV? vfidx was %d\n",
 			  vfidx);
 		return -EINVAL;
 	}
 
 	if (!*bulletin) {
-		BNX2X_ERR("vf ndo called but Bulletin Board struct is null. vfidx was %d\n",
+		BNX2X_ERR("Bulletin Board struct is null for vfidx %d\n",
 			  vfidx);
 		return -EINVAL;
 	}
@@ -2632,9 +2766,10 @@ int bnx2x_get_vf_config(struct net_device *dev, int vfidx,
 	int rc;
 
 	/* sanity and init */
-	rc = bnx2x_vf_ndo_prep(bp, vfidx, &vf, &bulletin);
+	rc = bnx2x_vf_op_prep(bp, vfidx, &vf, &bulletin, true);
 	if (rc)
 		return rc;
+
 	mac_obj = &bnx2x_leading_vfq(vf, mac_obj);
 	vlan_obj = &bnx2x_leading_vfq(vf, vlan_obj);
 	if (!mac_obj || !vlan_obj) {
@@ -2644,7 +2779,12 @@ int bnx2x_get_vf_config(struct net_device *dev, int vfidx,
 
 	ivi->vf = vfidx;
 	ivi->qos = 0;
+#if defined(_DEFINE_IFLA_VF_RATE) /* ! BNX2X_UPSTREAM */
 	ivi->tx_rate = bp->link_vars.line_speed;
+#else
+	ivi->max_tx_rate = bp->link_vars.line_speed;
+	ivi->min_tx_rate = 0;
+#endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)) /* BNX2X_UPSTREAM */
 	ivi->spoofchk = 1; /*always enabled */
 #endif
@@ -2658,6 +2798,7 @@ int bnx2x_get_vf_config(struct net_device *dev, int vfidx,
 						 VLAN_HLEN);
 		}
 	} else {
+		mutex_lock(&bp->vfdb->bulletin_mutex);
 		/* mac */
 		if (bulletin->valid_bitmap & (1 << MAC_ADDR_VALID))
 			/* mac configured by ndo so its in bulletin board */
@@ -2673,6 +2814,8 @@ int bnx2x_get_vf_config(struct net_device *dev, int vfidx,
 		else
 			/* funtion has not been loaded yet. Show vlans as 0s */
 			memset(&ivi->vlan, 0, VLAN_HLEN);
+
+		mutex_unlock(&bp->vfdb->bulletin_mutex);
 	}
 
 	return 0;
@@ -2702,14 +2845,17 @@ int bnx2x_set_vf_mac(struct net_device *dev, int vfidx, u8 *mac)
 	struct bnx2x_virtf *vf = NULL;
 	struct pf_vf_bulletin_content *bulletin = NULL;
 
-	/* sanity and init */
-	rc = bnx2x_vf_ndo_prep(bp, vfidx, &vf, &bulletin);
-	if (rc)
-		return rc;
 	if (!is_valid_ether_addr(mac)) {
 		BNX2X_ERR("mac address invalid\n");
 		return -EINVAL;
 	}
+
+	/* sanity and init */
+	rc = bnx2x_vf_op_prep(bp, vfidx, &vf, &bulletin, true);
+	if (rc)
+		return rc;
+
+	mutex_lock(&bp->vfdb->bulletin_mutex);
 
 	/* update PF's copy of the VF's bulletin. Will no longer accept mac
 	 * configuration requests from vf unless match this mac
@@ -2719,6 +2865,10 @@ int bnx2x_set_vf_mac(struct net_device *dev, int vfidx, u8 *mac)
 
 	/* Post update on VF's bulletin board */
 	rc = bnx2x_post_vf_bulletin(bp, vfidx);
+
+	/* release lock before checking return code */
+	mutex_unlock(&bp->vfdb->bulletin_mutex);
+
 	if (rc) {
 		BNX2X_ERR("failed to update VF[%d] bulletin\n", vfidx);
 		return rc;
@@ -2783,11 +2933,6 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	unsigned long accept_flags;
 	int rc;
 
-	/* sanity and init */
-	rc = bnx2x_vf_ndo_prep(bp, vfidx, &vf, &bulletin);
-	if (rc)
-		return rc;
-
 	if (vlan > 4095) {
 		BNX2X_ERR("illegal vlan value %d\n", vlan);
 		return -EINVAL;
@@ -2796,20 +2941,29 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	DP(BNX2X_MSG_IOV, "configuring VF %d with VLAN %d qos %d\n",
 	   vfidx, vlan, 0);
 
+	/* sanity and init */
+	rc = bnx2x_vf_op_prep(bp, vfidx, &vf, &bulletin, true);
+	if (rc)
+		return rc;
+
 	/* update PF's copy of the VF's bulletin. No point in posting the vlan
 	 * to the VF since it doesn't have anything to do with it. But it useful
 	 * to store it here in case the VF is not up yet and we can only
 	 * configure the vlan later when it does. Treat vlan id 0 as remove the
 	 * Host tag.
 	 */
+	mutex_lock(&bp->vfdb->bulletin_mutex);
+
 	if (vlan > 0)
 		bulletin->valid_bitmap |= 1 << VLAN_VALID;
 	else
 		bulletin->valid_bitmap &= ~(1 << VLAN_VALID);
 	bulletin->vlan = vlan;
 
+	mutex_unlock(&bp->vfdb->bulletin_mutex);
+
 	/* is vf initialized and queue set up? */
-		;
+
 	if (vf->state != VF_ENABLED ||
 	    bnx2x_get_q_logical_state(bp, &bnx2x_leading_vfq(vf, sp_obj)) !=
 	    BNX2X_Q_LOGICAL_STATE_ACTIVE)
@@ -2980,10 +3134,9 @@ int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
  * entire bulletin board excluding the crc field itself. Use the length field
  * as the Bulletin Board was posted by a PF with possibly a different version
  * from the vf which will sample it. Therefore, the length is computed by the
- * PF and the used blindly by the VF.
+ * PF and then used blindly by the VF.
  */
-u32 bnx2x_crc_vf_bulletin(struct bnx2x *bp,
-			  struct pf_vf_bulletin_content *bulletin)
+u32 bnx2x_crc_vf_bulletin(struct pf_vf_bulletin_content *bulletin)
 {
 	return crc32(BULLETIN_CRC_SEED,
 		 ((u8 *)bulletin) + sizeof(bulletin->crc),
@@ -2993,47 +3146,74 @@ u32 bnx2x_crc_vf_bulletin(struct bnx2x *bp,
 /* Check for new posts on the bulletin board */
 enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp)
 {
-	struct pf_vf_bulletin_content bulletin = bp->pf2vf_bulletin->content;
+	struct pf_vf_bulletin_content *bulletin;
 	int attempts;
 
+	/* sampling structure in mid post may result with corrupted data
+	 * validate crc to ensure coherency.
+	 */
+	for (attempts = 0; attempts < BULLETIN_ATTEMPTS; attempts++) {
+		u32 crc;
+
+		/* sample the bulletin board */
+		memcpy(&bp->shadow_bulletin, bp->pf2vf_bulletin,
+		       sizeof(union pf_vf_bulletin));
+
+		crc = bnx2x_crc_vf_bulletin(&bp->shadow_bulletin.content);
+
+		if (bp->shadow_bulletin.content.crc == crc)
+			break;
+
+		BNX2X_ERR("bad crc on bulletin board. Contained %x computed %x\n",
+			  bp->shadow_bulletin.content.crc, crc);
+	}
+
+	if (attempts >= BULLETIN_ATTEMPTS) {
+		BNX2X_ERR("pf to vf bulletin board crc was wrong %d consecutive times. Aborting\n",
+			  attempts);
+		return PFVF_BULLETIN_CRC_ERR;
+	}
+	bulletin = &bp->shadow_bulletin.content;
+
 	/* bulletin board hasn't changed since last sample */
-	if (bp->old_bulletin.version == bulletin.version)
+	if (bp->old_bulletin.version == bulletin->version)
 		return PFVF_BULLETIN_UNCHANGED;
 
-	/* validate crc of new bulletin board */
-	if (bp->old_bulletin.version != bp->pf2vf_bulletin->content.version) {
-		/* sampling structure in mid post may result with corrupted data
-		 * validate crc to ensure coherency.
-		 */
-		for (attempts = 0; attempts < BULLETIN_ATTEMPTS; attempts++) {
-			bulletin = bp->pf2vf_bulletin->content;
-			if (bulletin.crc == bnx2x_crc_vf_bulletin(bp,
-								  &bulletin))
-				break;
-			BNX2X_ERR("bad crc on bulletin board. Contained %x computed %x\n",
-				  bulletin.crc,
-				  bnx2x_crc_vf_bulletin(bp, &bulletin));
-		}
-		if (attempts >= BULLETIN_ATTEMPTS) {
-			BNX2X_ERR("pf to vf bulletin board crc was wrong %d consecutive times. Aborting\n",
-				  attempts);
-			return PFVF_BULLETIN_CRC_ERR;
-		}
-	}
-
 	/* the mac address in bulletin board is valid and is new */
-	if (bulletin.valid_bitmap & 1 << MAC_ADDR_VALID &&
-	    memcmp(bulletin.mac, bp->old_bulletin.mac, ETH_ALEN)) {
+	if (bulletin->valid_bitmap & 1 << MAC_ADDR_VALID &&
+	    !ether_addr_equal(bulletin->mac, bp->old_bulletin.mac)) {
 		/* update new mac to net device */
-		memcpy(bp->dev->dev_addr, bulletin.mac, ETH_ALEN);
+		memcpy(bp->dev->dev_addr, bulletin->mac, ETH_ALEN);
 	}
 
-	/* the vlan in bulletin board is valid and is new */
-	if (bulletin.valid_bitmap & 1 << VLAN_VALID)
-		memcpy(&bulletin.vlan, &bp->old_bulletin.vlan, VLAN_HLEN);
+	if (bulletin->valid_bitmap & (1 << LINK_VALID)) {
+		DP(BNX2X_MSG_IOV, "link update speed %d flags %x\n",
+		   bulletin->link_speed, bulletin->link_flags);
+
+		bp->vf_link_vars.line_speed = bulletin->link_speed;
+		bp->vf_link_vars.link_report_flags = 0;
+		/* Link is down */
+		if (bulletin->link_flags & VFPF_LINK_REPORT_LINK_DOWN)
+			__set_bit(BNX2X_LINK_REPORT_LINK_DOWN,
+				  &bp->vf_link_vars.link_report_flags);
+		/* Full DUPLEX */
+		if (bulletin->link_flags & VFPF_LINK_REPORT_FULL_DUPLEX)
+			__set_bit(BNX2X_LINK_REPORT_FD,
+				  &bp->vf_link_vars.link_report_flags);
+		/* Rx Flow Control is ON */
+		if (bulletin->link_flags & VFPF_LINK_REPORT_RX_FC_ON)
+			__set_bit(BNX2X_LINK_REPORT_RX_FC_ON,
+				  &bp->vf_link_vars.link_report_flags);
+		/* Tx Flow Control is ON */
+		if (bulletin->link_flags & VFPF_LINK_REPORT_TX_FC_ON)
+			__set_bit(BNX2X_LINK_REPORT_TX_FC_ON,
+				  &bp->vf_link_vars.link_report_flags);
+		__bnx2x_link_report(bp);
+	}
 
 	/* copy new bulletin board to bp */
-	bp->old_bulletin = bulletin;
+	memcpy(&bp->old_bulletin, bulletin,
+	       sizeof(struct pf_vf_bulletin_content));
 
 	return PFVF_BULLETIN_UPDATED;
 }
@@ -3067,12 +3247,18 @@ int bnx2x_vf_pci_alloc(struct bnx2x *bp)
 	mutex_init(&bp->vf2pf_mutex);
 
 	/* allocate vf2pf mailbox for vf to pf channel */
-	BNX2X_PCI_ALLOC(bp->vf2pf_mbox, &bp->vf2pf_mbox_mapping,
-			sizeof(struct bnx2x_vf_mbx_msg));
+	bp->vf2pf_mbox = BNX2X_PCI_ALLOC(&bp->vf2pf_mbox_mapping,
+					 sizeof(struct bnx2x_vf_mbx_msg));
+	if (!bp->vf2pf_mbox)
+		goto alloc_mem_err;
 
 	/* allocate pf 2 vf bulletin board */
-	BNX2X_PCI_ALLOC(bp->pf2vf_bulletin, &bp->pf2vf_bulletin_mapping,
-			sizeof(union pf_vf_bulletin));
+	bp->pf2vf_bulletin = BNX2X_PCI_ALLOC(&bp->pf2vf_bulletin_mapping,
+					     sizeof(union pf_vf_bulletin));
+	if (!bp->pf2vf_bulletin)
+		goto alloc_mem_err;
+
+	bnx2x_vf_bulletin_finalize(&bp->pf2vf_bulletin->content, true);
 
 	return 0;
 
@@ -3129,9 +3315,9 @@ void bnx2x_iov_task(void *data)
 
 void bnx2x_schedule_iov_task(struct bnx2x *bp, enum bnx2x_iov_flag flag)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	set_bit(flag, &bp->iov_task_state);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 	DP(BNX2X_MSG_IOV, "Scheduling iov task [Flag: %d]\n", flag);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 20)) || (defined(__VMKLNX__) && defined(__COMPAT_LAYER_2_6_18_PLUS__)) /* BNX2X_UPSTREAM */
 	queue_delayed_work(bnx2x_iov_wq, &bp->iov_task, 0);

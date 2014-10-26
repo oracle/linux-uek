@@ -12,7 +12,7 @@
  * license other than the GPL, without Broadcom's express prior written
  * consent.
  *
- * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
+ * Maintained by: Ariel Elior <ariele@broadcom.com>
  * Written by: Vladislav Zolotarov
  *
  */
@@ -1223,6 +1223,9 @@ struct bnx2x_func_start_params {
 
 	/* Replace vlan's ethertype */
 	u16 sd_vlan_eth_type;
+
+	/* Prevent inner vlans from being added by FW */
+	u8 no_added_tags;
 };
 
 struct bnx2x_func_switch_update_params {

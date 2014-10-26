@@ -38,6 +38,10 @@
 #include "bnx2x_dump.h"
 #include "bnx2x_init.h"
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+extern int native_eee;
+#endif
+
 /* Note: in the format strings below %s is replaced by the queue-name which is
  * either its index or 'fcoe' for the fcoe queue. Make sure the format string
  * length does not exceed ETH_GSTRING_LEN - MAX_QUEUE_NAME_LEN + 2
@@ -227,6 +231,43 @@ static int bnx2x_get_port_type(struct bnx2x *bp)
 	return port_type;
 }
 
+static int bnx2x_get_vf_settings(struct net_device *dev,
+				 struct ethtool_cmd *cmd)
+{
+	struct bnx2x *bp = netdev_priv(dev);
+
+	if (bp->state == BNX2X_STATE_OPEN) {
+		if (test_bit(BNX2X_LINK_REPORT_FD,
+			     &bp->vf_link_vars.link_report_flags))
+			cmd->duplex = DUPLEX_FULL;
+		else
+			cmd->duplex = DUPLEX_HALF;
+
+		ethtool_cmd_speed_set(cmd, bp->vf_link_vars.line_speed);
+	} else {
+		cmd->duplex = DUPLEX_UNKNOWN;
+		ethtool_cmd_speed_set(cmd, SPEED_UNKNOWN);
+	}
+
+	cmd->port		= PORT_OTHER;
+	cmd->phy_address	= 0;
+	cmd->transceiver	= XCVR_INTERNAL;
+	cmd->autoneg		= AUTONEG_DISABLE;
+	cmd->maxtxpkt		= 0;
+	cmd->maxrxpkt		= 0;
+
+	DP(BNX2X_MSG_ETHTOOL, "ethtool_cmd: cmd %d\n"
+	   "  supported 0x%x  advertising 0x%x  speed %u\n"
+	   "  duplex %d  port %d  phy_address %d  transceiver %d\n"
+	   "  autoneg %d  maxtxpkt %d  maxrxpkt %d\n",
+	   cmd->cmd, cmd->supported, cmd->advertising,
+	   ethtool_cmd_speed(cmd),
+	   cmd->duplex, cmd->port, cmd->phy_address, cmd->transceiver,
+	   cmd->autoneg, cmd->maxtxpkt, cmd->maxrxpkt);
+
+	return 0;
+}
+
 static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 {
 #ifdef BNX2X_ESX_CNA /* non BNX2X_UPSTREAM */
@@ -401,7 +442,6 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 			break;
 		case PORT_FIBRE:
 		case PORT_DA:
-		case PORT_NONE:
 			if (!(bp->port.supported[0] & SUPPORTED_FIBRE ||
 			      bp->port.supported[1] & SUPPORTED_FIBRE)) {
 				DP(BNX2X_MSG_ETHTOOL,
@@ -1168,6 +1208,10 @@ static u32 bnx2x_get_link(struct net_device *dev)
 	if (bp->flags & MF_FUNC_DIS || (bp->state != BNX2X_STATE_OPEN))
 		return 0;
 
+	if (IS_VF(bp))
+		return !test_bit(BNX2X_LINK_REPORT_LINK_DOWN,
+				 &bp->vf_link_vars.link_report_flags);
+
 	return bp->link_vars.link_up;
 }
 
@@ -1881,7 +1925,7 @@ static int bnx2x_set_ringparam(struct net_device *dev,
 	if ((ering->rx_pending > MAX_RX_AVAIL) ||
 	    (ering->rx_pending < (bp->disable_tpa ? MIN_RX_SIZE_NONTPA :
 						    MIN_RX_SIZE_TPA)) ||
-	    (ering->tx_pending > (IS_MF_FCOE_AFEX(bp) ? 0 : MAX_TX_AVAIL)) ||
+	    (ering->tx_pending > (IS_MF_STORAGE_ONLY(bp) ? 0 : MAX_TX_AVAIL)) ||
 	    (ering->tx_pending <= MAX_SKB_FRAGS + 4)) {
 		DP(BNX2X_MSG_ETHTOOL, "Command parameters not supported\n");
 		return -EINVAL;
@@ -2189,6 +2233,13 @@ static int bnx2x_set_eee(struct net_device *dev, struct ethtool_eee *edata)
 
 	if (IS_MF(bp))
 		return 0;
+
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
+	if (native_eee == -1) {
+		DP(BNX2X_MSG_ETHTOOL, "Changing EEE setting not supported\n");
+		return -EOPNOTSUPP;
+	}
+#endif
 
 	if (!SHMEM2_HAS(bp, eee_status[BP_PORT(bp)])) {
 		DP(BNX2X_MSG_ETHTOOL, "BC Version does not support EEE\n");
@@ -3108,6 +3159,13 @@ static void bnx2x_self_test(struct net_device *dev,
 		etest->flags |= ETH_TEST_FL_FAILED;
 	}
 
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+	if (bp->state == BNX2X_STATE_ERROR) {
+		BNX2X_ERR("Cannot perform self tests in current HW state: 0x%x. Try again later.\n",
+			  bp->state);
+		return;
+	}
+#endif
 	if (!netif_running(dev)) {
 		DP(BNX2X_MSG_ETHTOOL, "Interface is down\n");
 		return;
@@ -3282,7 +3340,7 @@ static int bnx2x_get_stats_count(struct net_device *dev)
 	else
 		num_stats = 0;
 
-	if (IS_MF_MODE_STAT(bp)) {
+	if (HIDE_PORT_STAT(bp)) {
 		for (i = 0; i < BNX2X_NUM_STATS; i++)
 			if (IS_FUNC_STAT(i))
 				num_stats++;
@@ -3638,7 +3696,9 @@ static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 	return T_ETH_INDIRECTION_TABLE_SIZE;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+static int bnx2x_get_rxfh(struct net_device *dev, u32 *indir, u8 *key)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)
 static int bnx2x_get_rxfh_indir(struct net_device *dev, u32 *indir)
 #else
 static int bnx2x_get_rxfh_indir(struct net_device *dev,
@@ -3678,7 +3738,10 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 	return 0;
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+static int bnx2x_set_rxfh(struct net_device *dev, const u32 *indir,
+			  const u8 *key)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)
 static int bnx2x_set_rxfh_indir(struct net_device *dev, const u32 *indir)
 #else
 static int bnx2x_set_rxfh_indir(struct net_device *dev,
@@ -3706,7 +3769,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 		}
 #endif
 		/*
-		 * The same as in bnx2x_get_rxfh_indir: we can't use a memcpy()
+		 * The same as in bnx2x_get_rxfh: we can't use a memcpy()
 		 * as an internal storage of an indirection table is a u8 array
 		 * while indir->ring_index points to an array of u32.
 		 *
@@ -3814,6 +3877,7 @@ static int bnx2x_set_channels(struct net_device *dev,
 static int bnx2x_get_ts_info(struct net_device *dev,
 			      struct ethtool_ts_info *info)
 {
+#ifdef BCM_PTP /* BNX2X_UPSTREAM */
 	struct bnx2x *bp = netdev_priv(dev);
 
 	if (bp->flags & PTP_SUPPORTED) {
@@ -3846,9 +3910,9 @@ static int bnx2x_get_ts_info(struct net_device *dev,
 		info->tx_types = (1 << HWTSTAMP_TX_OFF)|(1 << HWTSTAMP_TX_ON);
 
 		return 0;
-	} else {
-		return ethtool_op_get_ts_info(dev, info);
 	}
+#endif
+	return ethtool_op_get_ts_info(dev, info);
 }
 #endif
 
@@ -3925,8 +3989,13 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+	.get_rxfh		= bnx2x_get_rxfh,
+	.set_rxfh		= bnx2x_set_rxfh,
+#else
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
 	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+#endif
 #endif
 #ifdef ETHTOOL_GPERMADDR /* ! BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 23))
@@ -3962,8 +4031,7 @@ static const struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #else
 static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #endif
-	.get_settings		= bnx2x_get_settings,
-	.set_settings		= bnx2x_set_settings,
+	.get_settings		= bnx2x_get_vf_settings,
 	.get_drvinfo		= bnx2x_get_drvinfo,
 	.get_msglevel		= bnx2x_get_msglevel,
 	.set_msglevel		= bnx2x_set_msglevel,
@@ -4004,8 +4072,13 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
 	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
 #endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+	.get_rxfh		= bnx2x_get_rxfh,
+	.set_rxfh		= bnx2x_set_rxfh,
+#else
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
 	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+#endif
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
 	.get_channels		= bnx2x_get_channels,
@@ -4015,10 +4088,15 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 
 void bnx2x_set_ethtool_ops(struct bnx2x *bp, struct net_device *netdev)
 {
+#if defined(_DEFINE_SET_ETHTOOL_OPS) /* BNX2X_UPSTREAM */
+	netdev->ethtool_ops = (IS_PF(bp)) ?
+		&bnx2x_ethtool_ops : &bnx2x_vf_ethtool_ops;
+#else
 	if (IS_PF(bp))
 		SET_ETHTOOL_OPS(netdev, &bnx2x_ethtool_ops);
 	else /* vf */
 		SET_ETHTOOL_OPS(netdev, &bnx2x_vf_ethtool_ops);
+#endif
 
 #if (defined(BCM_ETHTOOL_TS_INFO_OPS_EXT)) /* ! BNX2X_UPSTREAM */
 	if (IS_PF(bp))

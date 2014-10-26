@@ -17,7 +17,7 @@
  * modifications of the software.
  *
  * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
- * Written by: Ariel Elior <ariel.elior@qlogic.com>
+ *
  */
 
 #ifndef VF_PF_IF_H
@@ -81,6 +81,7 @@ struct hw_sb_info {
 /* TODO: #define VFPF_RX_MASK_ACCEPT_ANY_VLAN	0x00000020 */
 
 #define BULLETIN_CONTENT_SIZE		(sizeof(struct pf_vf_bulletin_content))
+#define BULLETIN_CONTENT_LEGACY_SIZE	(32)
 #define BULLETIN_ATTEMPTS	5 /* crc failures before throwing towel */
 #define BULLETIN_CRC_SEED	0
 
@@ -140,7 +141,8 @@ struct vfpf_acquire_tlv {
 #define VF_OS_WINDOWS		(1 << VF_OS_SHIFT)
 
 		u8 fp_hsi_ver;
-		u8 padding;
+		u8 caps;
+#define VF_CAP_SUPPORT_EXT_BULLETIN	(1 << 0)
 	} vfdev_info;
 
 	struct vf_pf_resc_request resc_request;
@@ -433,11 +435,23 @@ struct pf_vf_bulletin_content {
 					 * to attempt to send messages on the
 					 * channel after this bit is set
 					 */
+#define LINK_VALID		3	/* alert the VF thet a new link status
+					 * update is available for it
+					 */
 	u8 mac[ETH_ALEN];
 	u8 mac_padding[2];
 
 	u16 vlan;
 	u8 vlan_padding[6];
+
+	u16 link_speed;			 /* Effective line speed */
+	u8 link_speed_padding[6];
+	u32 link_flags;			 /* VFPF_LINK_REPORT_XXX flags */
+#define VFPF_LINK_REPORT_LINK_DOWN	 (1 << 0)
+#define VFPF_LINK_REPORT_FULL_DUPLEX	 (1 << 1)
+#define VFPF_LINK_REPORT_RX_FC_ON	 (1 << 2)
+#define VFPF_LINK_REPORT_TX_FC_ON	 (1 << 3)
+	u8 link_flags_padding[4];
 };
 
 union pf_vf_bulletin {

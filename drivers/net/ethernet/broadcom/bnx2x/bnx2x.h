@@ -44,8 +44,8 @@
 #define BNX2X_MOD_VER ""
 #endif
 #define DRV_MODULE_NAME         "bnx2x"
-#define DRV_MODULE_VERSION	"1.710.10" BNX2X_MOD_VER
-#define DRV_MODULE_RELDATE	"$DateTime: 2014/03/04 07:22:25 $"
+#define DRV_MODULE_VERSION	"1.710.51" BNX2X_MOD_VER
+#define DRV_MODULE_RELDATE	"$DateTime: 2014/07/17 05:53:54 $"
 #define BNX2X_BC_VER            0x040200
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
@@ -181,12 +181,10 @@ enum bnx2x_int_mode {
 
 /* regular debug print */
 #define DP_INNER(fmt, ...)					\
-do {								\
 	pr_notice("[%s:%d(%s)]" fmt,				\
 		  __func__, __LINE__,				\
 		  bp->dev ? (bp->dev->name) : "?",		\
-		  ##__VA_ARGS__);				\
-} while (0)
+		  ##__VA_ARGS__);
 
 #define DP(__mask, fmt, ...)					\
 do {								\
@@ -502,7 +500,6 @@ struct sw_tx_bd {
 	u8		flags;
 /* Set on the first BD descriptor when there is a split BD */
 #define BNX2X_TSO_SPLIT_BD		(1<<0)
-#define BNX2X_HAS_SECOND_PBD		(1<<1)
 };
 
 struct sw_rx_page {
@@ -644,7 +641,7 @@ struct bnx2x_agg_info {
 	u16			vlan_tag;
 	u16			len_on_bd;
 	u32			rxhash;
-	bool			l4_rxhash;
+	enum pkt_hash_types	rxhash_type;
 	u16			gro_size;
 	u16			full_page;
 };
@@ -673,7 +670,7 @@ struct bnx2x_fp_txdata {
 	__le16			*tx_cons_sb;
 
 	int			txq_index;
-	struct bnx2x_fastpath	*parent_fp;
+    struct bnx2x_fastpath	*parent_fp;
 	int			tx_ring_size;
 };
 
@@ -691,6 +688,23 @@ struct bnx2x_fastpath {
 #if !defined(BNX2X_NEW_NAPI)  /* ! BNX2X_UPSTREAM */
 	struct net_device	dummy_netdev;
 #endif
+
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	unsigned int state;
+#define BNX2X_FP_STATE_IDLE		      0
+#define BNX2X_FP_STATE_NAPI		(1 << 0)    /* NAPI owns this FP */
+#define BNX2X_FP_STATE_POLL		(1 << 1)    /* poll owns this FP */
+#define BNX2X_FP_STATE_DISABLED		(1 << 2)
+#define BNX2X_FP_STATE_NAPI_YIELD	(1 << 3)    /* NAPI yielded this FP */
+#define BNX2X_FP_STATE_POLL_YIELD	(1 << 4)    /* poll yielded this FP */
+#define BNX2X_FP_OWNED	(BNX2X_FP_STATE_NAPI | BNX2X_FP_STATE_POLL)
+#define BNX2X_FP_YIELD	(BNX2X_FP_STATE_NAPI_YIELD | BNX2X_FP_STATE_POLL_YIELD)
+#define BNX2X_FP_LOCKED	(BNX2X_FP_OWNED | BNX2X_FP_STATE_DISABLED)
+#define BNX2X_FP_USER_PEND (BNX2X_FP_STATE_POLL | BNX2X_FP_STATE_POLL_YIELD)
+	/* protect state */
+	spinlock_t lock;
+#endif /* CONFIG_NET_RX_BUSY_POLL */
+
 	union host_hc_status_block	status_blk;
 	/* chip independent shortcuts into sb structure */
 	__le16			*sb_index_values;
@@ -771,6 +785,139 @@ struct bnx2x_fastpath {
 #define bnx2x_sp_obj(bp, fp)	((bp)->sp_objs[(fp)->index])
 #define bnx2x_fp_stats(bp, fp)	(&((bp)->fp_stats[(fp)->index]))
 #define bnx2x_fp_qstats(bp, fp)	(&((bp)->fp_stats[(fp)->index].eth_q_stats))
+
+#ifdef CONFIG_NET_RX_BUSY_POLL
+static inline void bnx2x_fp_init_lock(struct bnx2x_fastpath *fp)
+{
+	spin_lock_init(&fp->lock);
+	fp->state = BNX2X_FP_STATE_IDLE;
+}
+
+/* called from the device poll routine to get ownership of a FP */
+static inline bool bnx2x_fp_lock_napi(struct bnx2x_fastpath *fp)
+{
+	bool rc = true;
+
+	spin_lock_bh(&fp->lock);
+	if (fp->state & BNX2X_FP_LOCKED) {
+		WARN_ON(fp->state & BNX2X_FP_STATE_NAPI);
+		fp->state |= BNX2X_FP_STATE_NAPI_YIELD;
+		rc = false;
+	} else {
+		/* we don't care if someone yielded */
+		fp->state = BNX2X_FP_STATE_NAPI;
+	}
+	spin_unlock_bh(&fp->lock);
+	return rc;
+}
+
+/* returns true is someone tried to get the FP while napi had it */
+static inline bool bnx2x_fp_unlock_napi(struct bnx2x_fastpath *fp)
+{
+	bool rc = false;
+
+	spin_lock_bh(&fp->lock);
+	WARN_ON(fp->state &
+		(BNX2X_FP_STATE_POLL | BNX2X_FP_STATE_NAPI_YIELD));
+
+	if (fp->state & BNX2X_FP_STATE_POLL_YIELD)
+		rc = true;
+
+	/* state ==> idle, unless currently disabled */
+	fp->state &= BNX2X_FP_STATE_DISABLED;
+	spin_unlock_bh(&fp->lock);
+	return rc;
+}
+
+/* called from bnx2x_low_latency_poll() */
+static inline bool bnx2x_fp_lock_poll(struct bnx2x_fastpath *fp)
+{
+	bool rc = true;
+
+	spin_lock_bh(&fp->lock);
+	if ((fp->state & BNX2X_FP_LOCKED)) {
+		fp->state |= BNX2X_FP_STATE_POLL_YIELD;
+		rc = false;
+	} else {
+		/* preserve yield marks */
+		fp->state |= BNX2X_FP_STATE_POLL;
+	}
+	spin_unlock_bh(&fp->lock);
+	return rc;
+}
+
+/* returns true if someone tried to get the FP while it was locked */
+static inline bool bnx2x_fp_unlock_poll(struct bnx2x_fastpath *fp)
+{
+	bool rc = false;
+
+	spin_lock_bh(&fp->lock);
+	WARN_ON(fp->state & BNX2X_FP_STATE_NAPI);
+
+	if (fp->state & BNX2X_FP_STATE_POLL_YIELD)
+		rc = true;
+
+	/* state ==> idle, unless currently disabled */
+	fp->state &= BNX2X_FP_STATE_DISABLED;
+	spin_unlock_bh(&fp->lock);
+	return rc;
+}
+
+/* true if a socket is polling, even if it did not get the lock */
+static inline bool bnx2x_fp_ll_polling(struct bnx2x_fastpath *fp)
+{
+	WARN_ON(!(fp->state & BNX2X_FP_OWNED));
+	return fp->state & BNX2X_FP_USER_PEND;
+}
+
+/* false if fp is currently owned */
+static inline bool bnx2x_fp_ll_disable(struct bnx2x_fastpath *fp)
+{
+	int rc = true;
+
+	spin_lock_bh(&fp->lock);
+	if (fp->state & BNX2X_FP_OWNED)
+		rc = false;
+	fp->state |= BNX2X_FP_STATE_DISABLED;
+	spin_unlock_bh(&fp->lock);
+
+	return rc;
+}
+#else
+static inline void bnx2x_fp_init_lock(struct bnx2x_fastpath *fp)
+{
+}
+
+static inline bool bnx2x_fp_lock_napi(struct bnx2x_fastpath *fp)
+{
+	return true;
+}
+
+static inline bool bnx2x_fp_unlock_napi(struct bnx2x_fastpath *fp)
+{
+	return false;
+}
+
+static inline bool bnx2x_fp_lock_poll(struct bnx2x_fastpath *fp)
+{
+	return false;
+}
+
+static inline bool bnx2x_fp_unlock_poll(struct bnx2x_fastpath *fp)
+{
+	return false;
+}
+
+static inline bool bnx2x_fp_ll_polling(struct bnx2x_fastpath *fp)
+{
+	return false;
+}
+
+static inline bool bnx2x_fp_ll_disable(struct bnx2x_fastpath *fp)
+{
+	return true;
+}
+#endif /* CONFIG_NET_RX_BUSY_POLL */
 
 /* Use 2500 as a mini-jumbo MTU for FCoE */
 #define BNX2X_FCOE_MINI_JUMBO_MTU	2500
@@ -1308,7 +1455,9 @@ union cdu_context {
 /* TM (timers) host DB constants */
 #define TM_ILT_PAGE_SZ_HW	0
 #define TM_ILT_PAGE_SZ		(4096 << TM_ILT_PAGE_SZ_HW) /* 4K */
-#define TM_CONN_NUM		(BNX2X_FIRST_VF_CID + BNX2X_VF_CIDS + CNIC_ISCSI_CID_MAX)
+#define TM_CONN_NUM		(BNX2X_FIRST_VF_CID + \
+				 BNX2X_VF_CIDS + \
+				 CNIC_ISCSI_CID_MAX)
 #define TM_ILT_SZ		(8 * TM_CONN_NUM)
 #define TM_ILT_LINES		DIV_ROUND_UP(TM_ILT_SZ, TM_ILT_PAGE_SZ)
 
@@ -1570,6 +1719,15 @@ struct bnx2x_fp_stats {
 	struct bnx2x_eth_q_stats_old eth_q_stats_old;
 };
 
+/* SUB MF modes is needed, since some MF modes require no HW/FW
+ * configuration changes, but driver behavior is slightly different
+ */
+enum {
+	SUB_MF_MODE_UNKNOWN = 0,
+	SUB_MF_MODE_UFP,
+	SUB_MF_MODE_NPAR1_DOT_5,
+};
+
 struct bnx2x {
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 	u32			version;
@@ -1615,6 +1773,7 @@ struct bnx2x {
 	union pf_vf_bulletin   *pf2vf_bulletin;
 	dma_addr_t		pf2vf_bulletin_mapping;
 
+	union pf_vf_bulletin		shadow_bulletin;
 	struct pf_vf_bulletin_content	old_bulletin;
 
 	u16 requested_nr_virtfn;
@@ -1828,9 +1987,10 @@ struct bnx2x {
 #define IS_MF_SD(bp)		(bp->mf_mode == MULTI_FUNCTION_SD)
 #define IS_MF_AFEX(bp)		(bp->mf_mode == MULTI_FUNCTION_AFEX)
 	u8			mf_sub_mode;
-#define SUB_MF_MODE_UFP		0x1
 #define IS_MF_UFP(bp)		(IS_MF_SD(bp) && \
 				 bp->mf_sub_mode == SUB_MF_MODE_UFP)
+#define IS_MF_NPAR1_DOT_5(bp)	(IS_MF_SI(bp) && \
+				 bp->mf_sub_mode == SUB_MF_MODE_NPAR1_DOT_5)
 
 	u8			wol;
 
@@ -2124,7 +2284,7 @@ struct bnx2x {
 	u8					max_cos;
 
 	/* priority to cos mapping */
-	u8				prio_to_cos[BNX2X_MAX_PRIORITY];
+	u8				prio_to_cos[8];
 #ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
 	struct cdev				cdev;
 	dev_t					cdev_devnum;
@@ -2170,7 +2330,7 @@ struct bnx2x {
 	u16 tx_type;
 	u16 rx_filter;
 #endif
-
+	struct bnx2x_link_report_data	vf_link_vars;
 }; /* End of struct bnx2x */
 
 /* Tx queues may be less or equal to Rx queues */
@@ -2472,7 +2632,8 @@ u32 bnx2x_dmae_opcode(struct bnx2x *bp, u8 src_type, u8 dst_type,
 
 void bnx2x_prep_dmae_with_comp(struct bnx2x *bp, struct dmae_command *dmae,
 			       u8 src_type, u8 dst_type);
-int bnx2x_issue_dmae_with_comp(struct bnx2x *bp, struct dmae_command *dmae, u32 *comp);
+int bnx2x_issue_dmae_with_comp(struct bnx2x *bp, struct dmae_command *dmae,
+			       u32 *comp);
 
 /* FLR related routines */
 u32 bnx2x_flr_clnup_poll_count(struct bnx2x *bp);
@@ -2920,16 +3081,43 @@ void bnx2x_notify_link_changed(struct bnx2x *bp);
 
 #define IS_MF_ISCSI_SD(bp) (IS_MF_SD(bp) && BNX2X_IS_MF_SD_PROTOCOL_ISCSI(bp))
 #define IS_MF_FCOE_SD(bp) (IS_MF_SD(bp) && BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp))
+#define IS_MF_ISCSI_SI(bp) (IS_MF_SI(bp) && BNX2X_IS_MF_EXT_PROTOCOL_ISCSI(bp))
 
-#define BNX2X_MF_EXT_PROTOCOL_FCOE(bp)  ((bp)->mf_ext_config & \
-					 MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD)
+#define IS_MF_ISCSI_ONLY(bp)    (IS_MF_ISCSI_SD(bp) ||  IS_MF_ISCSI_SI(bp))
 
-#define IS_MF_FCOE_AFEX(bp) (IS_MF_AFEX(bp) && BNX2X_MF_EXT_PROTOCOL_FCOE(bp))
+#define BNX2X_MF_EXT_PROTOCOL_MASK					\
+				(MACP_FUNC_CFG_FLAGS_ETHERNET |		\
+				 MACP_FUNC_CFG_FLAGS_ISCSI_OFFLOAD |	\
+				 MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD)
 
-#define IS_MF_STORAGE_PERSONALITY_ONLY(bp) \
-				(IS_MF_SD(bp) && \
-				(BNX2X_IS_MF_SD_PROTOCOL_ISCSI(bp) || \
-				 BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)))
+#define BNX2X_MF_EXT_PROT(bp)	((bp)->mf_ext_config &			\
+				 BNX2X_MF_EXT_PROTOCOL_MASK)
+
+#define BNX2X_HAS_MF_EXT_PROTOCOL_FCOE(bp)				\
+		(BNX2X_MF_EXT_PROT(bp) & MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD)
+
+#define BNX2X_IS_MF_EXT_PROTOCOL_FCOE(bp)				\
+		(BNX2X_MF_EXT_PROT(bp) == MACP_FUNC_CFG_FLAGS_FCOE_OFFLOAD)
+
+#define BNX2X_IS_MF_EXT_PROTOCOL_ISCSI(bp)				\
+		(BNX2X_MF_EXT_PROT(bp) == MACP_FUNC_CFG_FLAGS_ISCSI_OFFLOAD)
+
+#define IS_MF_FCOE_AFEX(bp)						\
+		(IS_MF_AFEX(bp) && BNX2X_IS_MF_EXT_PROTOCOL_FCOE(bp))
+
+#define IS_MF_SD_STORAGE_PERSONALITY_ONLY(bp)				\
+				(IS_MF_SD(bp) &&			\
+				 (BNX2X_IS_MF_SD_PROTOCOL_ISCSI(bp) ||	\
+				  BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)))
+
+#define IS_MF_SI_STORAGE_PERSONALITY_ONLY(bp)				\
+				(IS_MF_SI(bp) &&			\
+				 (BNX2X_IS_MF_EXT_PROTOCOL_ISCSI(bp) ||	\
+				  BNX2X_IS_MF_EXT_PROTOCOL_FCOE(bp)))
+
+#define IS_MF_STORAGE_PERSONALITY_ONLY(bp)				\
+			(IS_MF_SD_STORAGE_PERSONALITY_ONLY(bp) ||	\
+			 IS_MF_SI_STORAGE_PERSONALITY_ONLY(bp))
 
 #endif /* BYPASS_APP */
 

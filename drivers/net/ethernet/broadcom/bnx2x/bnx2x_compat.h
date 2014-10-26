@@ -16,6 +16,9 @@
 #ifndef __BNX2X_COMPAT_H__
 #define __BNX2X_COMPAT_H__
 
+/* compat for UEK */
+#include "bnx2x_compat_uek3.h"
+
 #ifndef __VMKLNX__
 #define VMWARE_ESX_DDK_VERSION		0
 #elif (VMWARE_ESX_DDK_VERSION >= 50000)
@@ -1766,12 +1769,45 @@ static inline void skb_tx_timestamp(struct sk_buff *skb)
 #define skb_frag_size(frag) ((frag)->size)
 #endif
 
-#if (LINUX_PRE_VERSION(3, 6, 0) && (NOT_RHEL_OR_PRE_VERSION(6, 4))) &&\
-	NOT_SLES_OR_PRE_VERSION(SLES11_SP3)
+#if defined(_DEFINE_PCI_ENABLE_MSIX_RANGE)
+static inline int pci_enable_msix_range(struct pci_dev *dev,
+					struct msix_entry *entries,
+					int minvec, int maxvec)
+{
+	int rc;
+
+	rc = pci_enable_msix(dev, entries, maxvec);
+	if (!rc)
+		return maxvec;
+
+	/* Try with less - but still in range */
+	if (rc >= minvec) {
+		int try = rc;
+
+		rc = pci_enable_msix(dev, entries, try);
+		if (!rc)
+			return try;
+	}
+
+	/* If can't supply in range but can supply something */
+	if (rc > 0)
+		return -ENOSPC;
+
+	/* Return error */
+	return rc;
+}
+#endif
+
+#if defined(_DEFINE_NETIF_GET_NUM_DEFAULT_RSS_QUEUES)
 static inline int netif_get_num_default_rss_queues(void)
 {
 	return min_t(int, 8, num_online_cpus());
 }
+#endif
+
+#if defined(_DEFINE_SMP_MB_BEFORE_ATOMIC)
+#define smp_mb__before_atomic()	smp_mb__before_clear_bit()
+#define smp_mb__after_atomic()	smp_mb__after_clear_bit()
 #endif
 
 #if (LINUX_PRE_VERSION(2, 6, 12))
@@ -2183,6 +2219,10 @@ static inline void *vzalloc(size_t size)
 #define BNX2X_COMPAT_NETDEV_PICK_TX
 #endif
 
+#if defined(_DEFINE_PCI_VFS_ASSIGNED_)
+#if (defined(CONFIG_PCI_IOV) && ((LINUX_STARTING_AT_VERSION(3, 2, 0))  || \
+				 RHEL_STARTING_AT_VERSION(6, 3) || \
+				 SLES_STARTING_AT_VERSION(SLES11_SP3)))
 int bnx2x_get_vf_pci_id(struct pci_dev *dev);
 
 static inline int pci_vfs_assigned(struct pci_dev *dev)
@@ -2208,6 +2248,18 @@ static inline int pci_vfs_assigned(struct pci_dev *dev)
 
 	return vfs_assigned;
 }
+#elif defined(__VMKLNX__)
+static inline int pci_vfs_assigned(struct pci_dev *dev)
+{
+	return 0; /* vmkernel will prevent unload if VF is in use */
+}
+#else /* PCI_DEV_FLAGS_ASSIGNED */
+static inline int pci_vfs_assigned(struct pci_dev *dev)
+{
+	return 1; /* try to avoid system crash */
+}
+#endif /* PCI_DEV_FLAGS_ASSIGNED */
+#endif /* KERNEL_VERSION(3, 10, 0)) */
 
 #if (LINUX_PRE_VERSION(2, 6, 26))
 #include <linux/sched.h>
@@ -2218,7 +2270,7 @@ static inline int down_timeout(struct semaphore *sem, unsigned long wait)
 	unsigned long target = jiffies + wait;
 	int result = down_trylock(sem);
 
-	while (time_after(jiffies, target) && result != 0) {
+	while (!time_after(jiffies, target) && result != 0) {
 #if (LINUX_PRE_VERSION(2, 6, 14))
 		set_current_state(TASK_INTERRUPTIBLE);
 		schedule_timeout(1);
@@ -2287,6 +2339,7 @@ enum pci_bus_speed {
 #define PCICFG_LINK_SPEED		0xf0000
 #define PCICFG_LINK_SPEED_SHIFT		16
 
+#if defined(_DEFINE_PCIE_GET_MIN_LINK_)
 static inline int __devinit pcie_get_minimum_link(struct pci_dev *pdev,
 						  enum pci_bus_speed *speed,
 						  enum pcie_link_width *width)
@@ -2313,6 +2366,7 @@ static inline int __devinit pcie_get_minimum_link(struct pci_dev *pdev,
 
 	return 0;
 }
+#endif
 #endif
 
 #if LINUX_PRE_VERSION(2, 6, 14) && !defined(RHEL_RELEASE_CODE)
@@ -2390,17 +2444,26 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 #define PRINT_ENUM_STRING				"%s"
 #endif
 
+#ifndef _DEFINE_PHYS_PORT_ID /* BNX2X_UPSTREAM */
+#define SUPPORT_PHYS_PORT_ID
+#endif
+
 #if (LINUX_STARTING_AT_VERSION(2, 6, 29) || RHEL_STARTING_AT_VERSION(5, 5))
 #define SUPPORT_PCIE_ARI_CHECK
 #endif
 
-/*
- * #if ((defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
- * #define BCM_ETHTOOL_TS_INFO_OPS
- * #define BCM_ETHTOOL_TS_INFO
- * #define BCM_PTP
- * #endif
- */
+#if (defined(_HAS_ETHTOOL_TS_INFO))
+#if (defined(_HAS_ETHTOOL_OPS_EXT))
+#define BCM_ETHTOOL_TS_INFO_OPS_EXT
+#else
+#define BCM_ETHTOOL_TS_INFO_OPS
+#endif
+#define BCM_ETHTOOL_TS_INFO
+#endif
+
+#if (defined(_HAS_HW_TSTAMP) && (defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
+#define BCM_PTP
+#endif
 
 #ifdef _DEFINE_EPROBE_DEFER
 #define EPROBE_DEFER EBUSY
@@ -2431,6 +2494,64 @@ static inline int pci_cleanup_aer_uncorrect_error_status(struct pci_dev *pdev) {
 #else
 #define ESX_CHK_VF_COUNT(bp, msg)
 #define ESX_CHK_VF_COUNT_RTNL(bp, msg)
+#endif
+
+#ifndef _HAS_SET_VF_LINK_STATE
+enum {
+	IFLA_VF_LINK_STATE_AUTO,
+	IFLA_VF_LINK_STATE_DISABLE,
+	IFLA_VF_LINK_STATE_ENABLE
+};
+#endif /* _HAS_SET_VF_LINK_STATE */
+
+#ifndef _HAS_CLAMP
+#define clamp(val, min, max) ({			\
+	typeof(val) __val = (val);		\
+	typeof(min) __min = (min);		\
+	typeof(max) __max = (max);		\
+	(void) (&__val == &__min);		\
+	(void) (&__val == &__max);		\
+	__val = __val < __min ? __min: __val;	\
+	__val > __max ? __max: __val; })
+#endif /* _HAS_CLAMP */
+
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+#define BNX2X_EEE_DEFAULT_VAL	-1
+#else
+#define BNX2X_EEE_DEFAULT_VAL	0
+#endif
+
+#ifdef _DEFINE_ETHER_ADDR_EQUAL
+static inline bool ether_addr_equal(const u8 *addr1, const u8 *addr2)
+{
+	return memcmp(addr1, addr2, ETH_ALEN) == 0;
+}
+#endif
+
+#ifdef _DEFINE_SKB_SET_HASH
+enum pkt_hash_types {
+	PKT_HASH_TYPE_NONE,	/* Undefined type */
+	PKT_HASH_TYPE_L2,	/* Input: src_MAC, dest_MAC */
+	PKT_HASH_TYPE_L3,	/* Input: src_IP, dst_IP */
+	PKT_HASH_TYPE_L4,	/* Input: src_IP, dst_IP, src_port, dst_port */
+};
+
+static inline void
+skb_set_hash(struct sk_buff *skb, __u32 hash, enum pkt_hash_types type)
+{
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0))
+	skb->l4_rxhash = (type == PKT_HASH_TYPE_L4);
+#endif
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 34))
+	skb->rxhash = hash;
+#endif
+}
+#endif
+
+#ifdef _DEFINE_LL_RX_POLL
+#define skb_mark_napi_id(skb, napi)  do { } while (0)
+#define napi_hash_add(napi)	do { } while (0)
+#define napi_hash_del(napi)	do { } while (0)
 #endif
 
 #endif /* __BNX2X_COMPAT_H__ */

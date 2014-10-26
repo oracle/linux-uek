@@ -1296,6 +1296,18 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_OVR_REV_ID_DISABLED      0x00000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_OVR_REV_ID_ENABLED       0x00000400
 
+	/*  Bypass slicer offset tuning */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_BYPASS_SLICER_MASK       0x00000800
+	#define EXTENDED_DEV_INFO_SHARED_CFG_BYPASS_SLICER_SHIFT      11
+	#define EXTENDED_DEV_INFO_SHARED_CFG_BYPASS_SLICER_DISABLED   0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_BYPASS_SLICER_ENABLED    0x00000800
+	/*  Control Revision ID */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_MASK         0x00003000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_SHIFT        12
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_PRESERVE     0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_ACTUAL       0x00001000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_FORCE_B0     0x00002000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_REV_ID_CTRL_FORCE_B1     0x00003000
 	/*  Threshold in celcius for max continuous operation */
 	u32 temperature_report;                             /* 0x4014 */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_MCOT_MASK           0x0000007F
@@ -2160,6 +2172,14 @@ struct dcbx_app_priority_entry {
 	#define DCBX_APP_ENTRY_SF_SHIFT      4
 	#define DCBX_APP_SF_ETH_TYPE         0x10
 	#define DCBX_APP_SF_PORT             0x20
+	#define DCBX_APP_PRI_0               0x01
+	#define DCBX_APP_PRI_1               0x02
+	#define DCBX_APP_PRI_2               0x04
+	#define DCBX_APP_PRI_3               0x08
+	#define DCBX_APP_PRI_4               0x10
+	#define DCBX_APP_PRI_5               0x20
+	#define DCBX_APP_PRI_6               0x40
+	#define DCBX_APP_PRI_7               0x80
 #elif defined(__LITTLE_ENDIAN)
 	u8 appBitfield;
 	#define DCBX_APP_ENTRY_VALID         0x01
@@ -3282,7 +3302,7 @@ struct port_info {
 
 #define BCM_5710_FW_MAJOR_VERSION			7
 #define BCM_5710_FW_MINOR_VERSION			10
-#define BCM_5710_FW_REVISION_VERSION		7
+#define BCM_5710_FW_REVISION_VERSION		51
 #define BCM_5710_FW_ENGINEERING_VERSION		0
 #define BCM_5710_FW_COMPILE_FLAGS			1
 
@@ -4280,7 +4300,8 @@ struct eth_fast_path_rx_cqe {
 	__le16 len_on_bd;
 	struct parsing_flags pars_flags;
 	union eth_sgl_or_raw_data sgl_or_raw_data;
-	__le32 reserved1[8];
+	__le32 reserved1[7];
+	u32 marker;
 };
 
 
@@ -5675,7 +5696,7 @@ struct function_start_data {
 	u8 sd_vlan_force_pri_flg;
 	u8 sd_vlan_force_pri_val;
 	u8 sd_accept_mf_clss_fail_match_ethtype;
-	u8 reserved2;
+	u8 no_added_tags;
 };
 
 
@@ -6250,6 +6271,55 @@ enum tunnel_mode {
 	TUNN_MODE_VXLAN,
 	TUNN_MODE_GRE,
 	MAX_TUNNEL_MODE
+};
+
+/*
+ * Input for measuring Pci Latency
+ */
+struct t_measure_pci_latency_ctrl {
+	struct regpair read_addr;
+#if defined(__BIG_ENDIAN)
+	u8 sleep;
+	u8 enable;
+	u8 func_id;
+	u8 read_size;
+#elif defined(__LITTLE_ENDIAN)
+	u8 read_size;
+	u8 func_id;
+	u8 enable;
+	u8 sleep;
+#endif
+#if defined(__BIG_ENDIAN)
+	u16 num_meas;
+	u8 reserved;
+	u8 period_10us;
+#elif defined(__LITTLE_ENDIAN)
+	u8 period_10us;
+	u8 reserved;
+	u16 num_meas;
+#endif
+};
+
+
+/*
+ * Input for measuring Pci Latency
+ */
+struct t_measure_pci_latency_data {
+#if defined(__BIG_ENDIAN)
+	u16 max_time_ns;
+	u16 min_time_ns;
+#elif defined(__LITTLE_ENDIAN)
+	u16 min_time_ns;
+	u16 max_time_ns;
+#endif
+#if defined(__BIG_ENDIAN)
+	u16 reserved;
+	u16 num_reads;
+#elif defined(__LITTLE_ENDIAN)
+	u16 num_reads;
+	u16 reserved;
+#endif
+	struct regpair sum_time_ns;
 };
 
 

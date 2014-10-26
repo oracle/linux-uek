@@ -268,16 +268,16 @@ static bool bnx2x_raw_check_pending(struct bnx2x_raw_obj *o)
 
 static void bnx2x_raw_clear_pending(struct bnx2x_raw_obj *o)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(o->state, o->pstate);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 static void bnx2x_raw_set_pending(struct bnx2x_raw_obj *o)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	set_bit(o->state, o->pstate);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 /**
@@ -679,7 +679,7 @@ static int bnx2x_check_mac_add(struct bnx2x *bp,
 {
 	struct bnx2x_vlan_mac_registry_elem *pos;
 
-	DP(BNX2X_MSG_SP, "Checking MAC %pM for ADD command\n", data->mac.mac);
+	DP(BNX2X_MSG_SP, "Checking MAC " BNX2X_MAC_FMT " for ADD command\n", BNX2X_MAC_PRN_LIST(data->mac.mac));
 
 	if (!is_valid_ether_addr(data->mac.mac))
 		return -EINVAL;
@@ -714,8 +714,8 @@ static int bnx2x_check_vlan_mac_add(struct bnx2x *bp,
 {
 	struct bnx2x_vlan_mac_registry_elem *pos;
 
-	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (%pM, %d) for ADD command\n",
-		  data->vlan_mac.mac, data->vlan_mac.vlan);
+	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (" BNX2X_MAC_FMT ", %d) for ADD command\n",
+		  BNX2X_MAC_PRN_LIST(data->vlan_mac.mac), data->vlan_mac.vlan);
 
 	list_for_each_entry(pos, &o->head, link)
 		if ((data->vlan_mac.vlan == pos->u.vlan_mac.vlan) &&
@@ -736,7 +736,7 @@ static struct bnx2x_vlan_mac_registry_elem *
 {
 	struct bnx2x_vlan_mac_registry_elem *pos;
 
-	DP(BNX2X_MSG_SP, "Checking MAC %pM for DEL command\n", data->mac.mac);
+	DP(BNX2X_MSG_SP, "Checking MAC " BNX2X_MAC_FMT " for DEL command\n", BNX2X_MAC_PRN_LIST(data->mac.mac));
 
 	list_for_each_entry(pos, &o->head, link)
 		if ((!memcmp(data->mac.mac, pos->u.mac.mac, ETH_ALEN)) &&
@@ -769,8 +769,8 @@ static struct bnx2x_vlan_mac_registry_elem *
 {
 	struct bnx2x_vlan_mac_registry_elem *pos;
 
-	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (%pM, %d) for DEL command\n",
-		  data->vlan_mac.mac, data->vlan_mac.vlan);
+	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (" BNX2X_MAC_FMT ", %d) for DEL command\n",
+		  BNX2X_MAC_PRN_LIST(data->vlan_mac.mac), data->vlan_mac.vlan);
 
 	list_for_each_entry(pos, &o->head, link)
 		if ((data->vlan_mac.vlan == pos->u.vlan_mac.vlan) &&
@@ -963,8 +963,8 @@ static void bnx2x_set_one_mac_e2(struct bnx2x *bp,
 	bnx2x_vlan_mac_set_cmd_hdr_e2(bp, o, add, CLASSIFY_RULE_OPCODE_MAC,
 				      &rule_entry->mac.header);
 
-	DP(BNX2X_MSG_SP, "About to %s MAC %pM for Queue %d\n",
-		  (add ? "add" : "delete"), mac, raw->cl_id);
+	DP(BNX2X_MSG_SP, "About to %s MAC " BNX2X_MAC_FMT " for Queue %d\n",
+		  (add ? "add" : "delete"), BNX2X_MAC_PRN_LIST(mac), raw->cl_id);
 
 	/* Set a MAC itself */
 	bnx2x_set_fw_mac_addr(&rule_entry->mac.mac_msb,
@@ -1061,9 +1061,9 @@ static inline void bnx2x_vlan_mac_set_rdata_e1x(struct bnx2x *bp,
 	bnx2x_vlan_mac_set_cfg_entry_e1x(bp, o, add, opcode, mac, vlan_id,
 					 cfg_entry);
 
-	DP(BNX2X_MSG_SP, "%s MAC %pM CLID %d CAM offset %d\n",
+	DP(BNX2X_MSG_SP, "%s MAC " BNX2X_MAC_FMT " CLID %d CAM offset %d\n",
 		  (add ? "setting" : "clearing"),
-		  mac, raw->cl_id, cam_offset);
+		  BNX2X_MAC_PRN_LIST(mac), raw->cl_id, cam_offset);
 }
 
 /**
@@ -2415,7 +2415,7 @@ static int bnx2x_set_rx_mode_e1x(struct bnx2x *bp,
 
 	/* The operation is completed */
 	clear_bit(p->state, p->pstate);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	return 0;
 }
@@ -2903,8 +2903,8 @@ static inline void bnx2x_mcast_hdl_pending_add_e2(struct bnx2x *bp,
 
 		cnt++;
 
-		DP(BNX2X_MSG_SP, "About to configure %pM mcast MAC\n",
-			  pmac_pos->mac);
+		DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC\n",
+			  BNX2X_MAC_PRN_LIST(pmac_pos->mac));
 
 		list_del(&pmac_pos->link);
 
@@ -3025,8 +3025,8 @@ static inline void bnx2x_mcast_hdl_add(struct bnx2x *bp,
 
 		cnt++;
 
-		DP(BNX2X_MSG_SP, "About to configure %pM mcast MAC\n",
-			  mlist_pos->mac);
+		DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC\n",
+			  BNX2X_MAC_PRN_LIST(mlist_pos->mac));
 	}
 
 	*line_idx = cnt;
@@ -3319,8 +3319,8 @@ static inline void bnx2x_mcast_hdl_add_e1h(struct bnx2x *bp,
 		bit = bnx2x_mcast_bin_from_mac(mlist_pos->mac);
 		BNX2X_57711_SET_MC_FILTER(mc_filter, bit);
 
-		DP(BNX2X_MSG_SP, "About to configure %pM mcast MAC, bin %d\n",
-			  mlist_pos->mac, bit);
+		DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC, bin %d\n",
+			  BNX2X_MAC_PRN_LIST(mlist_pos->mac), bit);
 
 		/* bookkeeping... */
 		BIT_VEC64_SET_BIT(o->registry.aprox_match.vec,
@@ -3553,8 +3553,8 @@ static inline int bnx2x_mcast_handle_restore_cmd_e1(
 
 		i++;
 
-		DP(BNX2X_MSG_SP, "About to configure %pM mcast MAC\n",
-			  cfg_data.mac);
+		DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC\n",
+			  BNX2X_MAC_PRN_LIST(cfg_data.mac));
 	}
 
 	*rdata_idx = i;
@@ -3587,8 +3587,8 @@ static inline int bnx2x_mcast_handle_pending_cmds_e1(
 
 			cnt++;
 
-			DP(BNX2X_MSG_SP, "About to configure %pM mcast MAC\n",
-				  pmac_pos->mac);
+			DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC\n",
+				  BNX2X_MAC_PRN_LIST(pmac_pos->mac));
 		}
 		break;
 
@@ -3673,8 +3673,8 @@ static inline int bnx2x_mcast_refresh_registry_e1(struct bnx2x *bp,
 				&data->config_table[i].middle_mac_addr,
 				&data->config_table[i].lsb_mac_addr,
 				elem->mac);
-			DP(BNX2X_MSG_SP, "Adding registry entry for [%pM]\n",
-				  elem->mac);
+			DP(BNX2X_MSG_SP, "Adding registry entry for [" BNX2X_MAC_FMT "]\n",
+				  BNX2X_MAC_PRN_LIST(elem->mac));
 			list_add_tail(&elem->link,
 				      &o->registry.exact_match.macs);
 		}
@@ -3858,16 +3858,16 @@ error_exit1:
 
 static void bnx2x_mcast_clear_sched(struct bnx2x_mcast_obj *o)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(o->sched_state, o->raw.pstate);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 static void bnx2x_mcast_set_sched(struct bnx2x_mcast_obj *o)
 {
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	set_bit(o->sched_state, o->raw.pstate);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 }
 
 static bool bnx2x_mcast_check_sched(struct bnx2x_mcast_obj *o)
@@ -4509,7 +4509,7 @@ int bnx2x_queue_state_change(struct bnx2x *bp,
 		if (rc) {
 			o->next_state = BNX2X_Q_STATE_MAX;
 			clear_bit(pending_bit, pending);
-			smp_mb__after_clear_bit();
+			smp_mb__after_atomic();
 			return rc;
 		}
 
@@ -4597,7 +4597,7 @@ static int bnx2x_queue_comp_cmd(struct bnx2x *bp,
 	wmb();
 
 	clear_bit(cmd, &o->pending);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	return 0;
 }
@@ -5679,7 +5679,7 @@ static inline int bnx2x_func_state_change_comp(struct bnx2x *bp,
 	wmb();
 
 	clear_bit(cmd, &o->pending);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	return 0;
 }
@@ -6085,6 +6085,8 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 		rdata->sd_vlan_eth_type =
 			cpu_to_le16((u16) 0x8100);
 
+	rdata->no_added_tags = start_params->no_added_tags;
+
 	/* No need for an explicit memory barrier here as long as we
 	 * ensure the ordering of writing to the SPQ element
 	 * and updating of the SPQ producer which involves a memory
@@ -6310,8 +6312,10 @@ static inline int bnx2x_func_send_set_timesync(struct bnx2x *bp,
 		set_timesync_params->add_sub_drift_adjust_value;
 	rdata->drift_adjust_value = set_timesync_params->drift_adjust_value;
 	rdata->drift_adjust_period = set_timesync_params->drift_adjust_period;
-	rdata->offset_delta.lo = U64_LO(set_timesync_params->offset_delta);
-	rdata->offset_delta.hi = U64_HI(set_timesync_params->offset_delta);
+	rdata->offset_delta.lo =
+		cpu_to_le32(U64_LO(set_timesync_params->offset_delta));
+	rdata->offset_delta.hi =
+		cpu_to_le32(U64_HI(set_timesync_params->offset_delta));
 
 	DP(BNX2X_MSG_SP, "Set timesync command params: drift_cmd = %d, offset_cmd = %d, add_sub_drift = %d, drift_val = %d, drift_period = %d, offset_lo = %d, offset_hi = %d\n",
 	   rdata->drift_adjust_cmd, rdata->offset_cmd,
@@ -6434,7 +6438,7 @@ int bnx2x_func_state_change(struct bnx2x *bp,
 		if (rc) {
 			o->next_state = BNX2X_F_STATE_MAX;
 			clear_bit(cmd, pending);
-			smp_mb__after_clear_bit();
+			smp_mb__after_atomic();
 			return rc;
 		}
 

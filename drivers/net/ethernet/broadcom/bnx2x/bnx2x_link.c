@@ -1412,6 +1412,7 @@ static void bnx2x_update_pfc_xmac(struct link_params *params,
 	udelay(30);
 }
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 static void bnx2x_emac_get_pfc_stat(struct link_params *params,
 				    u32 pfc_frames_sent[2],
 				    u32 pfc_frames_received[2])
@@ -1462,6 +1463,7 @@ void bnx2x_pfc_statistic(struct link_params *params, struct link_vars *vars,
 					pfc_frames_received);
 	}
 }
+#endif
 /******************************************************************/
 /*			MAC/PBF section				  */
 /******************************************************************/
@@ -2306,7 +2308,6 @@ int bnx2x_update_pfc(struct link_params *params,
 	 */
 	u32 val;
 	struct bnx2x *bp = params->bp;
-	int bnx2x_status = 0;
 	u8 bmac_loopback = (params->loopback_mode == LOOPBACK_BMAC);
 
 	if (params->feature_config_flags & FEATURE_CONFIG_PFC_ENABLED)
@@ -2320,7 +2321,7 @@ int bnx2x_update_pfc(struct link_params *params,
 	bnx2x_update_pfc_nig(params, vars, pfc_params);
 
 	if (!vars->link_up)
-		return bnx2x_status;
+		return 0;
 
 	DP(NETIF_MSG_LINK, "About to update PFC in BMAC\n");
 
@@ -2334,7 +2335,7 @@ int bnx2x_update_pfc(struct link_params *params,
 		    == 0) {
 			DP(NETIF_MSG_LINK, "About to update PFC in EMAC\n");
 			bnx2x_emac_enable(params, vars, 0);
-			return bnx2x_status;
+			return 0;
 		}
 		if (CHIP_IS_E2(bp))
 			bnx2x_update_pfc_bmac2(params, vars, bmac_loopback);
@@ -2348,7 +2349,7 @@ int bnx2x_update_pfc(struct link_params *params,
 			val = 1;
 		REG_WR(bp, NIG_REG_BMAC0_PAUSE_OUT_EN + params->port*4, val);
 	}
-	return bnx2x_status;
+	return 0;
 }
 
 static int bnx2x_bmac1_enable(struct link_params *params,
@@ -6611,7 +6612,6 @@ int bnx2x_test_link(struct link_params *params, struct link_vars *vars,
 static int bnx2x_link_initialize(struct link_params *params,
 				 struct link_vars *vars)
 {
-	int rc = 0;
 	u8 phy_index, non_ext_phy;
 	struct bnx2x *bp = params->bp;
 	/* In case of external phy existence, the line speed would be the
@@ -6684,7 +6684,7 @@ static int bnx2x_link_initialize(struct link_params *params,
 			NIG_STATUS_XGXS0_LINK_STATUS |
 			NIG_STATUS_SERDES0_LINK_STATUS |
 			NIG_MASK_MI_INT));
-	return rc;
+	return 0;
 }
 
 static void bnx2x_int_link_reset(struct bnx2x_phy *phy,
@@ -10416,7 +10416,7 @@ static u8 bnx2x_848xx_read_status(struct bnx2x_phy *phy,
 		link_up = 1;
 		bnx2x_ext_phy_10G_an_resolve(bp, phy, vars);
 	} else { /* Check Legacy speed link */
-		u16 legacy_status, legacy_speed, mii_ctrl;
+		u16 legacy_status, legacy_speed;
 
 		/* Enable expansion register 0x42 (Operation mode status) */
 		bnx2x_cl45_write(bp, phy,
@@ -10444,8 +10444,11 @@ static u8 bnx2x_848xx_read_status(struct bnx2x_phy *phy,
 			link_up = 0;
 		}
 
+#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 		if (params->feature_config_flags &
 			FEATURE_CONFIG_IEEE_PHY_TEST) {
+			u16 mii_ctrl;
+
 			bnx2x_cl45_read(bp, phy,
 					MDIO_AN_DEVAD,
 					MDIO_AN_REG_8481_LEGACY_MII_CTRL,
@@ -10453,6 +10456,7 @@ static u8 bnx2x_848xx_read_status(struct bnx2x_phy *phy,
 			/* For IEEE testing, check for a fake link. */
 			link_up |= ((mii_ctrl & 0x3040) == 0x40);
 		}
+#endif
 
 		if (link_up) {
 			if (legacy_status & (1<<8))
@@ -14105,3 +14109,4 @@ void bnx2x_init_mod_abs_int(struct bnx2x *bp, struct link_vars *vars,
 	val |= 1 << (gpio_num + (gpio_port << 2));
 	REG_WR(bp, MISC_REG_GPIO_EVENT_EN, val);
 }
+

@@ -61,50 +61,50 @@ extern _UP_UINT2INT bnx2x_num_queues;
 	} while (0)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 34)) /* BNX2X_UPSTREAM */
-#define BNX2X_PCI_ALLOC(x, y, size) \
-	do { \
-		x = dma_zalloc_coherent(&bp->pdev->dev, size, y, GFP_KERNEL); \
-		if (x == NULL) \
-			goto alloc_mem_err; \
-		DP(NETIF_MSG_HW, "BNX2X_PCI_ALLOC: Physical %Lx Virtual %p\n", \
-		   (unsigned long long)(*y), x); \
-	} while (0)
-#ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
-#define BNX2X_PCI_FALLOC(x, y, size) \
-	do { \
-		x = dma_alloc_coherent(&bp->pdev->dev, size, y, GFP_KERNEL); \
-		if (x == NULL) \
-			goto alloc_mem_err; \
-		memset((void *)x, 0xFFFFFFFF, size); \
-	} while (0)
-#endif /* CHAR_DEV */
+#define BNX2X_PCI_ALLOC(y, size)					\
+({									\
+	void *x = dma_zalloc_coherent(&bp->pdev->dev, size, y, GFP_KERNEL); \
+	if (x)								\
+		DP(NETIF_MSG_HW,					\
+		   "BNX2X_PCI_ALLOC: Physical %Lx Virtual %p\n",	\
+		   (unsigned long long)(*y), x);			\
+	x;								\
+})
+#define BNX2X_PCI_FALLOC(y, size)					\
+({									\
+	void *x = dma_alloc_coherent(&bp->pdev->dev, size, y, GFP_KERNEL); \
+	if (x) {							\
+		memset(x, 0xff, size);					\
+		DP(NETIF_MSG_HW,					\
+		   "BNX2X_PCI_FALLOC: Physical %Lx Virtual %p\n",	\
+		   (unsigned long long)(*y), x);			\
+	}								\
+	x;								\
+})
 #else
-#define BNX2X_PCI_ALLOC(x, y, size) \
-	do { \
-		x = pci_alloc_consistent(bp->pdev, size, y); \
-		if (x == NULL) \
-			goto alloc_mem_err; \
-		memset((void *)x, 0, size); \
-		DP(NETIF_MSG_HW, "BNX2X_PCI_ALLOC: Physical %Lx Virtual %p\n", \
-		   (unsigned long long)(*y), x); \
-	} while (0)
-#ifdef BNX2X_CHAR_DEV /* ! BNX2X_UPSTREAM */
-#define BNX2X_PCI_FALLOC(x, y, size) \
-	do { \
-		x = pci_alloc_consistent(bp->pdev, size, y); \
-		if (x == NULL) \
-			goto alloc_mem_err; \
-		memset((void *)x, 0xFFFFFFFF, size); \
-	} while (0)
-#endif /* CHAR_DEV */
+#define BNX2X_PCI_ALLOC(y, size)					\
+({									\
+	void *x = pci_alloc_consistent(bp->pdev, size, y);	\
+	if (x) {							\
+		memset(x, 0, size);					\
+		DP(NETIF_MSG_HW,					\
+		   "BNX2X_PCI_ALLOC: Physical %Lx Virtual %p\n",	\
+		   (unsigned long long)(*y), x);			\
+	}								\
+	x;								\
+})
+#define BNX2X_PCI_FALLOC(y, size)					\
+({									\
+	void *x = pci_alloc_consistent(bp->pdev, size, y);		\
+	if (x) {							\
+		memset(x, 0xff, size);					\
+		DP(NETIF_MSG_HW,					\
+		   "BNX2X_PCI_FALLOC: Physical %Lx Virtual %p\n",	\
+		   (unsigned long long)(*y), x);			\
+	}								\
+	x;								\
+})
 #endif
-
-#define BNX2X_ALLOC(x, size) \
-	do { \
-		x = kzalloc(size, GFP_KERNEL); \
-		if (x == NULL) \
-			goto alloc_mem_err; \
-	} while (0)
 
 /*********************** Interfaces ****************************
  *  Functions that need to be implemented by each driver version
@@ -591,7 +591,10 @@ int bnx2x_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos);
 
 #ifdef BNX2X_MULTI_QUEUE /* BNX2X_UPSTREAM */
 /* select_queue callback */
-#if (LINUX_STARTING_AT_VERSION(3, 13, 0)) /* BNX2X_UPSTREAM */
+#ifdef BNX2X_SELECTQUEUE_HAS_FALLBACK_PARAM /* BNX2X_UPSTREAM */
+u16 bnx2x_select_queue(struct net_device *dev, struct sk_buff *skb,
+			void *accel_priv, select_queue_fallback_t fallback);
+#elif defined(BNX2X_SELECTQUEUE_HAS_ACCEL_PARAM)
 u16 bnx2x_select_queue(struct net_device *dev, struct sk_buff *skb,
 			void *accel_priv);
 #else
@@ -672,6 +675,15 @@ int bnx2x_enable_msix(struct bnx2x *bp);
  * @bp:		driver handle
  */
 int bnx2x_enable_msi(struct bnx2x *bp);
+
+#ifdef CONFIG_NET_RX_BUSY_POLL
+ /**
+ * bnx2x_low_latency_recv - LL callback
+ *
+ * @napi:	napi structure
+ */
+int bnx2x_low_latency_recv(struct napi_struct *napi);
+#endif
 
 /**
  * bnx2x_alloc_mem_bp - allocate memories outsize main driver structure
@@ -882,16 +894,18 @@ static inline bool bnx2x_has_tx_work(struct bnx2x_fastpath *fp)
 	return false;
 }
 
+#define BNX2X_IS_CQE_COMPLETED(cqe_fp) (cqe_fp->marker == 0x0)
+#define BNX2X_SEED_CQE(cqe_fp) (cqe_fp->marker = 0xFFFFFFFF)
 static inline int bnx2x_has_rx_work(struct bnx2x_fastpath *fp)
 {
-	u16 rx_cons_sb;
+	u16 cons;
+	union eth_rx_cqe *cqe;
+	struct eth_fast_path_rx_cqe *cqe_fp;
 
-	/* Tell compiler that status block fields can change */
-	barrier();
-	rx_cons_sb = le16_to_cpu(*fp->rx_cons_sb);
-	if ((rx_cons_sb & MAX_RCQ_DESC_CNT) == MAX_RCQ_DESC_CNT)
-		rx_cons_sb++;
-	return (fp->rx_comp_cons != rx_cons_sb);
+	cons = RCQ_BD(fp->rx_comp_cons);
+	cqe = &fp->rx_comp_ring[cons];
+	cqe_fp = &cqe->fast_path_cqe;
+	return BNX2X_IS_CQE_COMPLETED(cqe_fp);
 }
 
 /**
@@ -943,8 +957,10 @@ static inline void bnx2x_del_all_napi_cnic(struct bnx2x *bp)
 	 defined(__VMKLNX__)) /* BNX2X_UPSTREAM */
 	int i;
 
-	for_each_rx_queue_cnic(bp, i)
+	for_each_rx_queue_cnic(bp, i) {
+		napi_hash_del(&bnx2x_fp(bp, i, napi));
 		netif_napi_del(&bnx2x_fp(bp, i, napi));
+	}
 #endif
 }
 
@@ -955,8 +971,10 @@ static inline void bnx2x_del_all_napi(struct bnx2x *bp)
 	 defined(__VMKLNX__)) /* BNX2X_UPSTREAM */
 	int i;
 
-	for_each_eth_queue(bp, i)
+	for_each_eth_queue(bp, i) {
+		napi_hash_del(&bnx2x_fp(bp, i, napi));
 		netif_napi_del(&bnx2x_fp(bp, i, napi));
+	}
 #endif
 }
 
@@ -1077,6 +1095,12 @@ static inline int bnx2x_func_start(struct bnx2x *bp)
 	start_params->vxlan_dst_port	= bp->vxlan_dst_port;
 #endif
 	start_params->inner_gre_rss_en = 1;
+
+	if (IS_MF_UFP(bp) && BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)) {
+		start_params->class_fail_ethtype = 0x8914;
+		start_params->class_fail = 1;
+		start_params->no_added_tags = 1;
+	}
 
 	return bnx2x_func_state_change(bp, &func_params);
 }
@@ -1629,20 +1653,14 @@ static inline void bnx2x_update_drv_flags(struct bnx2x *bp, u32 flags, u32 set)
 	}
 }
 
-static inline bool bnx2x_is_valid_ether_addr(struct bnx2x *bp, u8 *addr)
-{
-	if (is_valid_ether_addr(addr) ||
-	    (is_zero_ether_addr(addr) &&
-	     IS_MF_STORAGE_ONLY(bp)))
-		return true;
-
-	return false;
-}
-
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 void bnx2x_csum_validate(struct sk_buff *skb, union eth_rx_cqe *cqe,
 				 struct bnx2x_fastpath *fp,
 				 struct bnx2x_eth_q_stats *qstats);
+#endif
+
+#if defined(BCM_OOO) && defined(BCM_HAS_BUILD_SKB) /* ! BNX2X_UPSTREAM */
+void *bnx2x_frag_alloc(const struct bnx2x_fastpath *fp, gfp_t gfp_mask);
 #endif
 
 /**
@@ -1657,23 +1675,6 @@ void bnx2x_fill_fw_str(struct bnx2x *bp, char *buf, size_t buf_len);
 
 int bnx2x_drain_tx_queues(struct bnx2x *bp);
 void bnx2x_squeeze_objects(struct bnx2x *bp);
-#ifdef BCM_HAS_BUILD_SKB /* BNX2X_UPSTREAM */
-static inline
-void *bnx2x_frag_alloc(const struct bnx2x_fastpath *fp, gfp_t gfp_mask)
-{
-#ifdef BCM_HAS_BUILD_SKB_V2 /* BNX2X_UPSTREAM */
-	if (fp->rx_frag_size) {
-		/* GFP_KERNEL allocations are used only during initialization */
-		if (unlikely(gfp_mask & __GFP_WAIT))
-			return (void *)__get_free_page(gfp_mask);
-
-		return netdev_alloc_frag(fp->rx_frag_size);
-	}
-#endif
-
-	return kmalloc(fp->rx_buf_size + NET_SKB_PAD, gfp_mask);
-}
-#endif
 
 void bnx2x_schedule_sp_rtnl(struct bnx2x*, enum sp_rtnl_flag,
 			    u32 verbose);

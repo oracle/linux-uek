@@ -3240,3 +3240,4 @@ int bnx2x_idle_chk(struct bnx2x *bp)
 	}
 	return idle_chk_errors;
 }
+

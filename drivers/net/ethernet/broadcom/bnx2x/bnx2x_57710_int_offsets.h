@@ -5,7 +5,7 @@
 * you under the terms of the GNU General Public License version 2,
 * available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
 */
-static const struct iro e1_iro_arr[381] = {
+static const struct iro e1_iro_arr[385] = {
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_SIZE
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_DATA_SIZE
 	{     0x28,      0x0,      0x0,      0x0,      0x0},	// COMMON_SP_SB_SIZE
@@ -109,6 +109,10 @@ static const struct iro e1_iro_arr[381] = {
 	{   0x19c8,      0x0,      0x0,      0x0,      0x8},	// TSTORM_COMMON_RTC_PARAMS_OFFSET
 	{   0x2008,     0x10,      0x0,      0x0,     0x10},	// TSTORM_ASSERT_LIST_OFFSET(assertListEntry)
 	{   0x2000,      0x0,      0x0,      0x0,      0x8},	// TSTORM_ASSERT_LIST_INDEX_OFFSET
+	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_MEASURE_PCI_LATENCY_CTRL_OFFSET
+	{UNDEF_IRO,      0x0,      0x0,      0x0,      0x0},	// TSTORM_MEASURE_PCI_LATENCY_DATA_OFFSET
+	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_AGG_MEASURE_PCI_LATENCY_INDEX
+	{      0x0,      0x0,      0x0,      0x0,      0x0},	// TSTORM_AGG_MEASURE_PCI_LATENCY_COMP_TYPE
 	{   0x4870,      0x8,      0x0,      0x0,      0x1},	// TSTORM_FUNC_EN_OFFSET(funcId)
 	{   0x4871,      0x8,      0x0,      0x0,      0x1},	// TSTORM_VF_TO_PF_OFFSET(funcId)
 	{   0x4872,      0x8,      0x0,      0x0,      0x1},	// TSTORM_RECORD_SLOW_PATH_OFFSET(funcId)

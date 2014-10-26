@@ -358,7 +358,10 @@ static void bnx2x_get_dcbx_drv_param(struct bnx2x *bp,
 	bnx2x_dcbx_get_pfc_feature(bp, &features->pfc, error);
 
 	/* In UFP mode, don't allow ETS configuration */
-	if (!IS_MF_UFP(bp))
+	/* Tempopary allow ETS to be fixed with complex fix overriding
+	 * ETS bandwith with fairness parameters
+	 */
+	/* if (!IS_MF_UFP(bp)) */
 		bnx2x_dcbx_get_ets_feature(bp, &features->ets, error);
 
 	bnx2x_dcbx_map_nw(bp);
@@ -2687,7 +2690,7 @@ static u8 bnx2x_dcbnl_get_cap(struct net_device *netdev, int capid, u8 *cap)
 	DP(BNX2X_MSG_DCB, "capid %d:%x\n", capid, *cap);
 	return rval;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0) || SLES_STARTING_AT_VERSION(SLES11_SP3)) /* BNX2X_UPSTREAM */
+#if defined(_GETNUMTCS_RETURNS_INT) /* BNX2X_UPSTREAM */
 static int bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
 #else
 static u8 bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
@@ -2720,7 +2723,7 @@ static u8 bnx2x_dcbnl_get_numtcs(struct net_device *netdev, int tcid, u8 *num)
 
 	return rval;
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0) || SLES_STARTING_AT_VERSION(SLES11_SP3)) /* BNX2X_UPSTREAM */
+#if defined(_GETNUMTCS_RETURNS_INT) /* BNX2X_UPSTREAM */
 static int bnx2x_dcbnl_set_numtcs(struct net_device *netdev, int tcid, u8 num)
 #else
 static u8 bnx2x_dcbnl_set_numtcs(struct net_device *netdev, int tcid, u8 num)

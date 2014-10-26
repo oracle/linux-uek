@@ -73,7 +73,6 @@ static void *bnx2x_search_tlv_list(struct bnx2x *bp, void *tlvs_list,
 		if (tlv->type == req_tlv)
 			return tlv;
 
-
 		if (!tlv->length) {
 			BNX2X_ERR("Found TLV with length 0\n");
 			return NULL;
@@ -83,8 +82,7 @@ static void *bnx2x_search_tlv_list(struct bnx2x *bp, void *tlvs_list,
 		tlv = (struct channel_tlv *)tlvs_list;
 	} while (tlv->type != CHANNEL_TLV_LIST_END);
 
-	DP(BNX2X_MSG_IOV, "TLV list does not contain " PRINT_ENUM_STRING " TLV\n",
-	   PRINT_ENUM_ACCESS(channel_tlvs_string, req_tlv));
+	DP(BNX2X_MSG_IOV, "TLV list does not contain " PRINT_ENUM_STRING " TLV\n", PRINT_ENUM_ACCESS(channel_tlvs_string, req_tlv));
 
 	return NULL;
 }
@@ -97,12 +95,14 @@ static void bnx2x_dp_tlv_list(struct bnx2x *bp, void *tlvs_list)
 
 	while (tlv->type != CHANNEL_TLV_LIST_END) {
 		/* output tlv */
+#ifndef BNX2X_UPSTREAM /* !BNX2X_UPSTREAM */
 		if (bnx2x_tlv_supported(tlv->type))
-			DP(BNX2X_MSG_IOV, "TLV number %d: type " PRINT_ENUM_STRING ", length %d\n",
-			   i, PRINT_ENUM_ACCESS(channel_tlvs_string, tlv->type), tlv->length);
+			DP(BNX2X_MSG_IOV, "TLV number %d: type " PRINT_ENUM_STRING ", length %d\n", i,
+			   PRINT_ENUM_ACCESS(channel_tlvs_string, tlv->type), tlv->length);
 		else
-			DP(BNX2X_MSG_IOV, "TLV number %d: type %d, length %d\n",
-			   i, tlv->type, tlv->length);
+#endif
+			DP(BNX2X_MSG_IOV, "TLV number %d: type %d, length %d\n", i,
+			   tlv->type, tlv->length);
 
 		/* advance to next tlv */
 		tlvs_list += tlv->length;
@@ -217,7 +217,7 @@ static int bnx2x_get_vf_id(struct bnx2x *bp, u32 *vf_id)
 		return -EINVAL;
 	}
 
-	BNX2X_ERR("valid ME register value: 0x%08x\n", me_reg);
+	DP(BNX2X_MSG_IOV, "valid ME register value: 0x%08x\n", me_reg);
 
 	*vf_id = (me_reg & ME_REG_VF_NUM_MASK) >> ME_REG_VF_NUM_SHIFT;
 
@@ -256,6 +256,9 @@ int bnx2x_vfpf_acquire(struct bnx2x *bp, u8 tx_count, u8 rx_count)
 	/* Request physical port identifier */
 	bnx2x_add_tlv(bp, req, req->first_tlv.tl.length,
 		      CHANNEL_TLV_PHYS_PORT_ID, sizeof(struct channel_tlv));
+
+	/* Bulletin support for bulletin board with length > legacy length */
+	req->vfdev_info.caps |= VF_CAP_SUPPORT_EXT_BULLETIN;
 
 	/* add list termination tlv */
 	bnx2x_add_tlv(bp, req,
@@ -330,7 +333,7 @@ int bnx2x_vfpf_acquire(struct bnx2x *bp, u8 tx_count, u8 rx_count)
 	/* Retrieve physical port id (if possible) */
 	phys_port_resp = (struct vfpf_port_phys_id_resp_tlv *)
 			 bnx2x_search_tlv_list(bp, resp,
-					       CHANNEL_TLV_PHYS_PORT_ID);
+			 		       CHANNEL_TLV_PHYS_PORT_ID);
 	if (phys_port_resp) {
 		memcpy(bp->phys_port_id, phys_port_resp->id, ETH_ALEN);
 		bp->flags |= HAS_PHYS_PORT_ID;
@@ -861,8 +864,8 @@ int bnx2x_vfpf_set_mcast(struct net_device *dev)
 	DP(NETIF_MSG_IFUP, "dev->flags = %x\n", dev->flags);
 
 	netdev_for_each_mc_addr(ha, dev) {
-		DP(NETIF_MSG_IFUP, "Adding mcast MAC: %pM\n",
-		   bnx2x_mc_addr(ha));
+		DP(NETIF_MSG_IFUP, "Adding mcast MAC: " BNX2X_MAC_FMT "\n",
+		   BNX2X_MAC_PRN_LIST(bnx2x_mc_addr(ha)));
 		memcpy(req->multicast[i], bnx2x_mc_addr(ha), ETH_ALEN);
 		i++;
 	}
@@ -904,8 +907,15 @@ out:
 	return 0;
 }
 
+
+#ifndef BNX2X_CHAR_DEV /* BNX2X_UPSTREAM */
+int bnx2x_vfpf_storm_rx_mode(struct bnx2x *bp)
+{
+	int mode = bp->rx_mode;
+#else
 int bnx2x_vfpf_storm_rx_mode(struct bnx2x *bp, int mode)
 {
+#endif
 	struct vfpf_set_q_filters_tlv *req = &bp->vf2pf_mbox->req.set_q_filters;
 	struct pfvf_general_resp_tlv *resp = &bp->vf2pf_mbox->resp.general_resp;
 	int rc;
@@ -1316,6 +1326,13 @@ static void bnx2x_vf_mbx_acquire(struct bnx2x *bp, struct bnx2x_virtf *vf,
 
 	/* store address of vf's bulletin board */
 	vf->bulletin_map = acquire->bulletin_addr;
+	if (acquire->vfdev_info.caps & VF_CAP_SUPPORT_EXT_BULLETIN) {
+		DP(BNX2X_MSG_IOV, "VF[%d] supports long bulletin boards\n",
+		   vf->abs_vfid);
+		vf->cfg_flags |= VF_CFG_EXT_BULLETIN;
+	} else {
+		vf->cfg_flags &= ~VF_CFG_EXT_BULLETIN;
+	}
 
 out:
 	/* response */
@@ -1337,6 +1354,10 @@ static void bnx2x_vf_mbx_init_vf(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	/* set VF multiqueue statistics collection mode */
 	if (init->flags & VFPF_INIT_FLG_STATS_COALESCE)
 		vf->cfg_flags |= VF_CFG_STATS_COALESCE;
+
+	/* Update VF's view of link state */
+	if (vf->cfg_flags & VF_CFG_EXT_BULLETIN)
+		bnx2x_iov_link_update_vf(bp, vf->index);
 
 	/* response */
 	bnx2x_vf_mbx_resp(bp, vf, rc);
@@ -1384,9 +1405,6 @@ static void bnx2x_vf_mbx_setup_q(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		rc = -EINVAL;
 		goto response;
 	}
-
-	BNX2X_ERR("vf %d, qid %d, setup_q->param_valid %d\n",
-		  vf->index, setup_q->vf_qid, setup_q->param_valid);
 
 	/* tx queues must be setup alongside rx queues thus if the rx queue
 	 * is not marked as valid there's nothing to do.
@@ -1439,9 +1457,6 @@ static void bnx2x_vf_mbx_setup_q(struct bnx2x *bp, struct bnx2x_virtf *vf,
 
 			bnx2x_vfop_qctor_dump_tx(bp, vf, init_p, setup_p,
 						 q->index, q->sb_idx);
-
-			BNX2X_ERR("q ptr %p, q->cid %d, q->cxt %p, q->index %d, q->mac_obj %p\n",
-				  q, q->cid, q->cxt, q->index, &q->mac_obj);
 		}
 
 		if (setup_q->param_valid & VFPF_RXQ_VALID) {
@@ -1497,8 +1512,8 @@ static void bnx2x_vf_mbx_setup_q(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		bnx2x_vfop_qctor_prep(bp, vf, q, &qctor, q_type);
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-		vf->op_rc = bnx2x_esx_set_mtu_passthru_config(bp, vf);
-		if (vf->op_rc)
+		rc = bnx2x_esx_set_mtu_passthru_config(bp, vf, &qctor);
+		if (rc)
 			goto response;
 #endif
 		rc = bnx2x_vf_queue_setup(bp, vf, q->index, &qctor);
@@ -1511,19 +1526,10 @@ static void bnx2x_vf_mbx_setup_q(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	}
 response:
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-	BNX2X_ESX_SET_PASSTHRU_RC_STATE(bp, vf->index, vf->op_rc, 0);
+	BNX2X_ESX_SET_PASSTHRU_RC_STATE(bp, vf->index, rc, 0);
 #endif
 	bnx2x_vf_mbx_resp(bp, vf, rc);
 }
-
-#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-print_enum(bnx2x_vfop_filters_state,
-	   BNX2X_VFOP_MBX_Q_FILTERS_MACS,
-	   BNX2X_VFOP_MBX_Q_FILTERS_VLANS,
-	   BNX2X_VFOP_MBX_Q_FILTERS_RXMODE,
-	   BNX2X_VFOP_MBX_Q_FILTERS_MCAST,
-	   BNX2X_VFOP_MBX_Q_FILTERS_DONE);
-#endif
 
 static int bnx2x_vf_mbx_macvlan_list(struct bnx2x *bp,
 				     struct bnx2x_virtf *vf,
@@ -1575,7 +1581,7 @@ static void bnx2x_vf_mbx_dp_q_filter(struct bnx2x *bp, int msglvl, int idx,
 	if (filter->flags & VFPF_Q_FILTER_VLAN_TAG_VALID)
 		DP_CONT(msglvl, ", vlan=%d", filter->vlan_tag);
 	if (filter->flags & VFPF_Q_FILTER_DEST_MAC_VALID)
-		DP_CONT(msglvl, ", MAC=%pM", filter->mac);
+		DP_CONT(msglvl, ", MAC=" BNX2X_MAC_FMT "", BNX2X_MAC_PRN_LIST(filter->mac));
 	DP_CONT(msglvl, "\n");
 }
 
@@ -1594,7 +1600,7 @@ static void bnx2x_vf_mbx_dp_q_filters(struct bnx2x *bp, int msglvl,
 
 	if (filters->flags & VFPF_SET_Q_FILTERS_MULTICAST_CHANGED)
 		for (i = 0; i < filters->n_multicast; i++)
-			DP(msglvl, "MULTICAST=%pM\n", filters->multicast[i]);
+			DP(msglvl, "MULTICAST=" BNX2X_MAC_FMT "\n", BNX2X_MAC_PRN_LIST(filters->multicast[i]));
 }
 
 #define VFPF_MAC_FILTER		VFPF_Q_FILTER_DEST_MAC_VALID
@@ -1607,6 +1613,7 @@ static int bnx2x_vf_mbx_qfilters(struct bnx2x *bp, struct bnx2x_virtf *vf)
 	struct vfpf_set_q_filters_tlv *msg =
 		&BP_VF_MBX(bp, vf->index)->msg->req.set_q_filters;
 
+
 	/* check for any mac/vlan changes */
 	if (msg->flags & VFPF_SET_Q_FILTERS_MAC_VLAN_CHANGED) {
 		/* build mac list */
@@ -1618,6 +1625,11 @@ static int bnx2x_vf_mbx_qfilters(struct bnx2x *bp, struct bnx2x_virtf *vf)
 			goto op_err;
 
 		if (fl) {
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+			rc = bnx2x_esx_set_mac_passthru_config(bp, vf, fl);
+			if (rc)
+				goto op_err;
+#endif
 
 			/* set mac list */
 			rc = bnx2x_vf_mac_vlan_config_list(bp, vf, fl,
@@ -1626,6 +1638,10 @@ static int bnx2x_vf_mbx_qfilters(struct bnx2x *bp, struct bnx2x_virtf *vf)
 			if (rc)
 				goto op_err;
 		}
+
+		/* TODO - do we need to kfree the filter memory here,
+		 * or is it used by the sp?
+		 */
 
 		/* build vlan list */
 		fl = NULL;
@@ -1677,6 +1693,10 @@ static int bnx2x_vf_mbx_qfilters(struct bnx2x *bp, struct bnx2x_virtf *vf)
 		if (rc)
 			goto op_err;
 	}
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+	bnx2x_esx_passthru_config_setup_filters_finalize(bp, vf->index,
+							 rc, 0);
+#endif
 op_err:
 	if (rc)
 		BNX2X_ERR("QFILTERS[%d:%d] error: rc %d\n",
@@ -1708,9 +1728,15 @@ static int bnx2x_filters_validate_mac(struct bnx2x *bp,
 
 		/* ...and only the mac set by the ndo */
 		if (filters->n_mac_vlan_filters == 1 &&
-		    memcmp(filters->filters->mac, bulletin->mac, ETH_ALEN)) {
+		    !ether_addr_equal(filters->filters->mac, bulletin->mac)) {
 			BNX2X_ERR("VF[%d] requested the addition of a mac address not matching the one configured by set_vf_mac ndo\n",
 				  vf->abs_vfid);
+
+			BNX2X_ERR("ndo mac " BNX2X_MAC_FMT "\n",
+				  BNX2X_MAC_PRN_LIST(bulletin->mac));
+
+			BNX2X_ERR("req mac " BNX2X_MAC_FMT "\n",
+				  BNX2X_MAC_PRN_LIST(filters->filters->mac));
 
 			rc = -EPERM;
 			goto response;
@@ -2106,6 +2132,17 @@ void bnx2x_vf_mbx(struct bnx2x *bp)
 	}
 }
 
+void bnx2x_vf_bulletin_finalize(struct pf_vf_bulletin_content *bulletin,
+				bool support_long)
+{
+	/* Older VFs contain a bug where they can't check CRC for bulletin
+	 * boards of length greater than legacy size.
+	 */
+	bulletin->length = support_long ? BULLETIN_CONTENT_SIZE :
+					  BULLETIN_CONTENT_LEGACY_SIZE;
+	bulletin->crc = bnx2x_crc_vf_bulletin(bulletin);
+}
+
 /* propagate local bulletin board to vf */
 int bnx2x_post_vf_bulletin(struct bnx2x *bp, int vf)
 {
@@ -2122,8 +2159,9 @@ int bnx2x_post_vf_bulletin(struct bnx2x *bp, int vf)
 
 	/* increment bulletin board version and compute crc */
 	bulletin->version++;
-	bulletin->length = BULLETIN_CONTENT_SIZE;
-	bulletin->crc = bnx2x_crc_vf_bulletin(bp, bulletin);
+	bnx2x_vf_bulletin_finalize(bulletin,
+				   (bnx2x_vf(bp, vf, cfg_flags) &
+				    VF_CFG_EXT_BULLETIN) ? true : false);
 
 	DP(BNX2X_MSG_IOV,
 	   "sending bulletin board: version %d valid bit map 0x%llx mac\n"
@@ -2136,3 +2174,4 @@ int bnx2x_post_vf_bulletin(struct bnx2x *bp, int vf)
 				  U64_LO(vf_addr), bulletin->length / 4);
 	return rc;
 }
+
