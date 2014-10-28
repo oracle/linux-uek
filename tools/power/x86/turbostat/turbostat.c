@@ -2419,7 +2419,6 @@ int main(int argc, char **argv)
 	cmdline(argc, argv);
 
 	if (verbose)
-		fprintf(stderr, "turbostat v3.0 November 23, 2012"
 		fprintf(stderr, "turbostat v3.5 April 26, 2013"
 			" - Len Brown <lenb@kernel.org>\n");
 
