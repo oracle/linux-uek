@@ -1427,7 +1427,7 @@ qla2x00_thermal_temp_show(struct device *dev,
 		goto done;
 	}
 
-	if (!vha->hw->flags.eeh_busy) {
+	if (vha->hw->flags.eeh_busy) {
 		ql_log(ql_log_warn, vha, 0x70dd, "PCI EEH busy.\n");
 		goto done;
 	}
