@@ -60,6 +60,10 @@ MODULE_VERSION(DRV_VERSION);
 
 int ipoib_sendq_size __read_mostly = IPOIB_TX_RING_SIZE;
 int ipoib_recvq_size __read_mostly = IPOIB_RX_RING_SIZE;
+int unload_allowed __read_mostly = 1;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
 
 module_param_named(send_queue_size, ipoib_sendq_size, int, 0444);
 MODULE_PARM_DESC(send_queue_size, "Number of descriptors in send queue");
@@ -1748,6 +1752,8 @@ static void ipoib_remove_one(struct ib_device *device)
 	kfree(dev_list);
 }
 
+#define MODULE_NAME "ib_ipoib"
+
 static int __init ipoib_init_module(void)
 {
 	int ret;
@@ -1798,6 +1804,12 @@ static int __init ipoib_init_module(void)
 	ret = ipoib_netlink_init();
 	if (ret)
 		goto err_client;
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+				MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 
 	return 0;
 
