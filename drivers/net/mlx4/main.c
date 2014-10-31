@@ -78,6 +78,10 @@ module_param(enable_qinq, bool, 0444);
 MODULE_PARM_DESC(enable_qinq, "Set the device skips the first q-tag(vlan) in the packet and treat the secound vlan as the vlan tag."
 			"(0/1 default: 0)");
 
+int unload_allowed __read_mostly;
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
+
 #ifdef CONFIG_PCI_MSI
 
 static int msi_x = 1;
@@ -2509,6 +2513,9 @@ static int __init mlx4_verify_params(void)
 
 	return 0;
 }
+
+#define MODULE_NAME "mlx4_core"
+
 static int __init mlx4_init(void)
 {
 	int ret;
@@ -2527,6 +2534,11 @@ static int __init mlx4_init(void)
 		return -ENOMEM;
 
 	ret = pci_register_driver(&mlx4_driver);
+	if (!ret && !unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 	return ret < 0 ? ret : 0;
 }
 
