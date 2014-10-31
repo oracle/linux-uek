@@ -46,6 +46,11 @@
 
 static struct rdma_cm_id *rds_listen_id;
 
+int unload_allowed __read_mostly;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
+
 int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
@@ -333,6 +338,8 @@ static void rds_rdma_listen_stop(void)
 	}
 }
 
+#define MODULE_NAME "rds_rdma"
+
 int rds_rdma_init(void)
 {
 	int ret;
@@ -344,6 +351,12 @@ int rds_rdma_init(void)
 	ret = rds_ib_init();
 	if (ret)
 		goto err_ib_init;
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 
 	goto out;
 
