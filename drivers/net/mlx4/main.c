@@ -191,8 +191,6 @@ module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
 MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
 		 "parameters based on system resources");
 
-#define MLX4_LOG_NUM_MTT   37
-
 #define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
 
 static void process_mod_param_profile(void)
@@ -2471,21 +2469,33 @@ static int __init mlx4_verify_params(void)
 		int log_mtt;
 
 		/*
-		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
-		 * if dynamic scaling of parameters is enabled, use 4 MTT pages
-		 * per segment (if not set by user).
-		 *
-		 * MTT memory = 2 * total memory
+		 * Note: We make sure log_mtts_per_seg we set here
+		 * is no lower than hardwired value set before scaling
+		 * was introduced so as not to have any unintended side effects
+		 * i.e. ilog2(MLX4_MTT_ENTRY_PER_SEG) which is 3!
 		 */
-		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : 2;
+		log_mtts_per_seg = log_mtts_per_seg ? log_mtts_per_seg : 3;
 
 		/*
 		 * Set the boundary for scalable MTT.
+		 *
+		 * Note:
+		 * Per Mellanox PRM v 1.2, CX supports max 2^37 MTT entries
+		 *
+		 * However, we cap log_num_mtt at 31 (not 37) because
+		 * this driver uses only 32 bit wide variables are to store
+		 * in profiles here.
+		 *
+		 * Recommended Total size of MTT = 2 * physical memory size
+		 *
+		 * We make sure here also the value we set for log_mtt here
+		 * is no less than the hardwired values used before scaling
+		 * which is initialized statically in default_profile
+		 * global declaration!
 		 */
-		log_mtt = max(mod_param_profile.num_mtt,
-			      min(MLX4_LOG_NUM_MTT,
-				  ilog2((totalram_pages << 1)
-					>> log_mtts_per_seg)));
+		log_mtt = max(ilog2(default_profile.num_mtt),
+			      min(31, ilog2((totalram_pages << 1) >>
+					log_mtts_per_seg)));
 		default_profile.num_mtt = 1 << log_mtt;
 
 		printk(KERN_INFO "mlx4_core: Scalable default profile "
