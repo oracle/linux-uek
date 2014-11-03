@@ -820,10 +820,6 @@ int mlx4_fmr_alloc(struct mlx4_dev *dev, u32 pd, u32 access, int max_pages,
 	if (page_shift < (ffs(dev->caps.page_size_cap) - 1) || page_shift >= 32)
 		return -EINVAL;
 
-	/* All MTTs must fit in the same page */
-	if (max_pages * sizeof *fmr->mtts > PAGE_SIZE)
-		return -EINVAL;
-
 	fmr->page_shift = page_shift;
 	fmr->max_pages  = max_pages;
 	fmr->max_maps   = max_maps;

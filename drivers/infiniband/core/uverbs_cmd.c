@@ -1434,8 +1434,8 @@ ssize_t ib_uverbs_reg_mr_relaxed(struct ib_uverbs_file *file,
 	    !(cmd.access_flags & IB_ACCESS_LOCAL_WRITE))
 		return -EINVAL;
 
-	/* FMRs are limited to less than 1M for now */
-	if (cmd.length >= (1*1024*1024 + PAGE_SIZE - 1))
+	/* FMRs are limited to less than ufmr_pool2_blocksize */
+	if (cmd.length >= (ufmr_pool2_blocksize + PAGE_SIZE - 1))
 		return -EINVAL;
 
 	uobj = kmalloc(sizeof *uobj, GFP_KERNEL);
