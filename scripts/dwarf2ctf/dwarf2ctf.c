@@ -3724,6 +3724,8 @@ static char *rel_abs_file_name(const char *file_name, const char *relative_to)
 		exit(1);
 	}
 
+	close(dir);
+
 	return abspath;
 }
 
