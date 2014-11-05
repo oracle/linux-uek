@@ -35,14 +35,6 @@
 #define PATH_MAX 1024
 #endif
 
-/*
- * Work with older glibc: stub out O_PATH if not available.  (We can work
- * without it.)
- */
-#ifndef O_PATH
-# define O_PATH     0
-#endif
-
 #ifndef __GNUC__
 #define __attribute__((foo))
 #endif
@@ -3697,7 +3689,7 @@ static char *rel_abs_file_name(const char *file_name, const char *relative_to)
 	 * If we can't get this name relatively, we might as well *try* to do it
 	 * absolutely: but print a warning.
 	 */
-	if ((dir = open(".", O_RDONLY | O_DIRECTORY | O_PATH)) < 0) {
+	if ((dir = open(".", O_RDONLY | O_DIRECTORY)) < 0) {
 		if (!warned) {
 			fprintf(stderr, "Cannot open current directory: %s\n",
 				strerror(errno));
