@@ -1969,7 +1969,7 @@ static int nvme_revalidate_disk(struct gendisk *disk)
 	blk_queue_logical_block_size(ns->queue, 1 << ns->lba_shift);
 	set_capacity(disk, le64_to_cpup(&id->nsze) << (ns->lba_shift - 9));
  free:
-	dma_free_coherent(&dev->pci_dev->dev, 4091, id, dma_addr);
+	dma_free_coherent(&dev->pci_dev->dev, 4096, id, dma_addr);
 	return 0;
 }
 
