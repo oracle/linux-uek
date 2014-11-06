@@ -80,6 +80,7 @@ extern void ldc_set_state(struct ldc_channel *lp, u8 state);
 extern int ldc_mode(struct ldc_channel *lp);
 extern void ldc_print(struct ldc_channel *lp);
 extern int ldc_rx_reset(struct ldc_channel *lp);
+extern void ldc_clr_reset(struct ldc_channel *lp);
 
 /* Read and write operations.  Only valid when the link is up.  */
 extern int ldc_write(struct ldc_channel *lp, const void *buf,

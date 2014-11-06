@@ -1478,6 +1478,13 @@ int ldc_rx_reset(struct ldc_channel *lp)
 }
 EXPORT_SYMBOL(ldc_rx_reset);
 
+void ldc_clr_reset(struct ldc_channel *lp)
+{
+	lp->flags &= ~LDC_FLAG_RESET;
+}
+EXPORT_SYMBOL(ldc_clr_reset);
+
+
 void ldc_print(struct ldc_channel *lp)
 {
 	pr_info("%s: id=0x%lx flags=0x%x state=%s cstate=0x%lx hsstate=0x%x\n"

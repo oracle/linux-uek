@@ -1273,6 +1273,13 @@ static void ds_reset(struct ds_info *dp)
 
 		cp->state = CAP_STATE_UNKNOWN;
 	}
+
+	/* Disconnect the LDC */
+	ldc_disconnect(dp->lp);
+
+	/* clear the LDC RESET flag so that the LDC can reconnect */
+	ldc_clr_reset(dp->lp);
+
 }
 
 static void ds_event(void *arg, int event)
