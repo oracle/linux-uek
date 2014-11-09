@@ -380,8 +380,8 @@ struct btrfs_dir_item *btrfs_lookup_xattr(struct btrfs_trans_handle *trans,
  * for a specific name.
  */
 struct btrfs_dir_item *btrfs_match_dir_item_name(struct btrfs_root *root,
-			      struct btrfs_path *path,
-			      const char *name, int name_len)
+						 struct btrfs_path *path,
+						 const char *name, int name_len)
 {
 	struct btrfs_dir_item *dir_item;
 	unsigned long name_ptr;
