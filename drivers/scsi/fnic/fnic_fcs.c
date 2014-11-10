@@ -135,9 +135,15 @@ void fnic_handle_link(struct work_struct *work)
 		fnic->lport->host_stats.link_failure_count++;
 		spin_unlock_irqrestore(&fnic->fnic_lock, flags);
 		FNIC_FCS_DBG(KERN_DEBUG, fnic->lport->host, "link down\n");
-		fnic_fc_trace_set_data(fnic->lport->host->host_no, FNIC_FC_LE,
-					"Link Status: UP_DOWN",
-					strlen("Link Status: UP_DOWN"));
+		fnic_fc_trace_set_data(
+			fnic->lport->host->host_no, FNIC_FC_LE,
+			"Link Status: UP_DOWN",
+			strlen("Link Status: UP_DOWN"));
+		if (fnic->config.flags & VFCF_FIP_CAPABLE) {
+			FNIC_FCS_DBG(KERN_DEBUG, fnic->lport->host,
+				"deleting fip-timer during link-down\n");
+			del_timer_sync(&fnic->fip_timer);
+		}
 		fcoe_ctlr_link_down(&fnic->ctlr);
 	}
 
