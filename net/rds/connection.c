@@ -305,13 +305,8 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 		mutex_lock(&conn->c_cm_lock);
 		if (!rds_conn_transition(conn, RDS_CONN_UP, RDS_CONN_DISCONNECTING)
 		 && !rds_conn_transition(conn, RDS_CONN_ERROR, RDS_CONN_DISCONNECTING)) {
-			rds_conn_error(conn,
-				"shutdown called in state %d "
-				"connection <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
-				atomic_read(&conn->c_state),
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
-				conn->c_tos);
+			rds_conn_error(conn, "shutdown called in state %d\n",
+					atomic_read(&conn->c_state));
 			mutex_unlock(&conn->c_cm_lock);
 			return;
 		}
@@ -333,13 +328,9 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 			 */
 			rds_conn_error(conn,
 				"%s: failed to transition to state DOWN, "
-				"current state %d, "
-				"connection <%u.%u.%u.%u,%u.%u.%u.%u,%d>\n",
+				"current state is %d\n",
 				__func__,
-				atomic_read(&conn->c_state),
-				NIPQUAD(conn->c_laddr),
-				NIPQUAD(conn->c_faddr),
-				conn->c_tos);
+				atomic_read(&conn->c_state));
 			return;
 		}
 	}
