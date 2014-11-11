@@ -46,6 +46,11 @@ MODULE_AUTHOR("Roland Dreier");
 MODULE_DESCRIPTION("core kernel InfiniBand API");
 MODULE_LICENSE("Dual BSD/GPL");
 
+int unload_allowed __read_mostly = 1;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 1 for YES)");
+
 struct ib_client_data {
 	struct list_head  list;
 	struct ib_client *client;
@@ -740,6 +745,8 @@ int ib_find_pkey(struct ib_device *device,
 }
 EXPORT_SYMBOL(ib_find_pkey);
 
+#define MODULE_NAME "ib_core"
+
 static int __init ib_core_init(void)
 {
 	int ret;
@@ -764,6 +771,12 @@ static int __init ib_core_init(void)
 	if (ret) {
 		printk(KERN_WARNING "Couldn't set up InfiniBand P_Key/GID cache\n");
 		goto err_nl;
+	}
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
 	}
 
 	return 0;

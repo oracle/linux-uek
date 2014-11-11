@@ -65,6 +65,10 @@ MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
 
 #endif /* CONFIG_MLX4_DEBUG */
 
+int unload_allowed __read_mostly;
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
+
 #ifdef CONFIG_PCI_MSI
 
 static int msi_x = 1;
@@ -2568,6 +2572,7 @@ static void mlx4_free_ownership(struct mlx4_dev *dev)
 	iounmap(owner);
 }
 
+#define MODULE_NAME "mlx4_core"
 static int __mlx4_init_one(struct pci_dev *pdev, int pci_dev_data)
 {
 	struct mlx4_priv *priv;
@@ -2828,6 +2833,12 @@ slave_start:
 
 	priv->pci_dev_data = pci_dev_data;
 	pci_set_drvdata(pdev, dev);
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 
 	return 0;
 
