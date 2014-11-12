@@ -1355,9 +1355,10 @@ static int enic_poll_msix_wq(struct napi_struct *napi, int budget)
 	if (!wq_work_done) {
 		napi_complete(napi);
 		vnic_intr_unmask(&enic->intr[intr]);
+		return 0;
 	}
 
-	return 0;
+	return budget;
 }
 
 static int enic_poll_msix_rq(struct napi_struct *napi, int budget)
