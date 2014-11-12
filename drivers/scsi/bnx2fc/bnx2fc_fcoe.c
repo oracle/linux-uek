@@ -2931,12 +2931,7 @@ static int _bnx2fc_create(struct net_device *netdev,
 		goto ifput_err;
 	}
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)) || \
-    (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ > 0x0604))
-	lport = bnx2fc_if_create(interface, &cdev->dev, 0);
-#else
 	lport = bnx2fc_if_create(interface, &interface->hba->pcidev->dev, 0);
-#endif
 	if (!lport) {
 		printk(KERN_ERR PFX "Failed to create interface (%s)\n",
 			netdev->name);
@@ -3546,9 +3541,6 @@ static struct scsi_host_template bnx2fc_shost_template = {
 	.max_sectors		= 1024,
 #ifdef _DEFINE_SHOST_LOCKLESS_
 	.lockless		= 1,
-#endif
-#if ((defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ >= 0x0700)))
-	.no_async_abort		= 1,
 #endif
 };
 
