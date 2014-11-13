@@ -156,6 +156,7 @@ int fsnotify_add_vfsmount_mark(struct fsnotify_mark *mark,
 	struct fsnotify_mark *lmark;
 	struct hlist_node *node, *last = NULL;
 	int ret = 0;
+	int cmp;
 
 	mark->flags |= FSNOTIFY_MARK_FLAG_VFSMOUNT;
 
@@ -181,11 +182,8 @@ int fsnotify_add_vfsmount_mark(struct fsnotify_mark *mark,
 			goto out;
 		}
 
-		if (mark->group->priority < lmark->group->priority)
-			continue;
-
-		if ((mark->group->priority == lmark->group->priority) &&
-		    (mark->group < lmark->group))
+		cmp = fsnotify_compare_groups(lmark->group, mark->group);
+		if (cmp < 0)
 			continue;
 
 		hlist_add_before_rcu(&mark->m.m_list, &lmark->m.m_list);
