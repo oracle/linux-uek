@@ -70,8 +70,6 @@ static struct ib_client cm_client = {
 	.remove = cm_remove_one
 };
 
-static struct workqueue_struct *cm_free_wq;
-
 static struct ib_cm {
 	spinlock_t lock;
 	struct list_head device_list;
@@ -218,7 +216,6 @@ struct cm_id_private {
 	spinlock_t lock;	/* Do not acquire inside cm.lock */
 	struct completion comp;
 	atomic_t refcount;
-	struct work_struct	work;  /* garbage coll */
 
 	struct ib_mad_send_buf *msg;
 	struct ib_mad_send_buf *lap_msg;
@@ -843,24 +840,10 @@ static void cm_reset_to_idle(struct cm_id_private *cm_id_priv)
 	}
 }
 
-static void __cm_free(struct work_struct *work)
-{
-	struct cm_id_private *cm_id_priv;
-	struct cm_work *dequeue_work;
-
-	cm_id_priv = container_of(work, struct cm_id_private, work);
-
-	wait_for_completion(&cm_id_priv->comp);
-	while ((dequeue_work = cm_dequeue_work(cm_id_priv)) != NULL)
-		cm_free_work(dequeue_work);
-	kfree(cm_id_priv->compare_data);
-	kfree(cm_id_priv->private_data);
-	kfree(cm_id_priv);
-}
-
 static void cm_destroy_id(struct ib_cm_id *cm_id, int err)
 {
 	struct cm_id_private *cm_id_priv;
+	struct cm_work *work;
 
 	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
 retest:
@@ -958,8 +941,12 @@ retest:
 
 	cm_free_id(cm_id->local_id);
 	cm_deref_id(cm_id_priv);
-	INIT_WORK(&cm_id_priv->work, __cm_free);
-	queue_work(cm_free_wq, &cm_id_priv->work);
+	wait_for_completion(&cm_id_priv->comp);
+	while ((work = cm_dequeue_work(cm_id_priv)) != NULL)
+		cm_free_work(work);
+	kfree(cm_id_priv->compare_data);
+	kfree(cm_id_priv->private_data);
+	kfree(cm_id_priv);
 }
 
 void ib_destroy_cm_id(struct ib_cm_id *cm_id)
@@ -4199,19 +4186,11 @@ static int __init ib_cm_init(void)
 		goto error2;
 	}
 
-	cm_free_wq = create_singlethread_workqueue("ib_cm_fr");
-	if (!cm_free_wq) {
-		ret = -ENOMEM;
-		goto error3;
-	}
-
 	ret = ib_register_client(&cm_client);
 	if (ret)
-		goto error4;
+		goto error3;
 
 	return 0;
-error4:
-	destroy_workqueue(cm_free_wq);
 error3:
 	destroy_workqueue(cm.wq);
 error2:
