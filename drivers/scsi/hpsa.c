@@ -4023,17 +4023,18 @@ static int hpsa_scsi_queue_command_lck(struct scsi_cmnd *cmd,
 	BUG_ON(cmd->cmd_len > sizeof(c->Request.CDB));
 	c->Request.CDBLen = cmd->cmd_len;
 	memcpy(c->Request.CDB, cmd->cmnd, cmd->cmd_len);
-	c->Request.Type.Type = TYPE_CMD;
-	c->Request.Type.Attribute = ATTR_SIMPLE;
 	switch (cmd->sc_data_direction) {
 	case DMA_TO_DEVICE:
-		c->Request.Type.Direction = XFER_WRITE;
+		c->Request.type_attr_dir =
+			TYPE_ATTR_DIR(TYPE_CMD, ATTR_SIMPLE, XFER_WRITE);
 		break;
 	case DMA_FROM_DEVICE:
-		c->Request.Type.Direction = XFER_READ;
+		c->Request.type_attr_dir =
+			TYPE_ATTR_DIR(TYPE_CMD, ATTR_SIMPLE, XFER_READ);
 		break;
 	case DMA_NONE:
-		c->Request.Type.Direction = XFER_NONE;
+		c->Request.type_attr_dir =
+			TYPE_ATTR_DIR(TYPE_CMD, ATTR_SIMPLE, XFER_NONE);
 		break;
 	case DMA_BIDIRECTIONAL:
 		/* This can happen if a buggy application does a scsi passthru
@@ -4041,7 +4042,8 @@ static int hpsa_scsi_queue_command_lck(struct scsi_cmnd *cmd,
 		 * ../scsi/scsi_ioctl.c:scsi_ioctl_send_command() )
 		 */
 
-		c->Request.Type.Direction = XFER_RSVD;
+		c->Request.type_attr_dir =
+			TYPE_ATTR_DIR(TYPE_CMD, ATTR_SIMPLE, XFER_RSVD);
 		/* This is technically wrong, and hpsa controllers should
 		 * reject it with CMD_INVALID, which is the most correct
 		 * response, but non-fibre backends appear to let it
@@ -5267,7 +5269,6 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 	c->Header.tag = c->busaddr;
 	memcpy(c->Header.LUN.LunAddrBytes, scsi3addr, 8);
 
-	c->Request.Type.Type = cmd_type;
 	if (cmd_type == TYPE_CMD) {
 		switch (cmd) {
 		case HPSA_INQUIRY:
@@ -5277,8 +5278,8 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 				c->Request.CDB[2] = (page_code & 0xff);
 			}
 			c->Request.CDBLen = 6;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_READ;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_READ);
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = HPSA_INQUIRY;
 			c->Request.CDB[4] = size & 0xFF;
@@ -5289,8 +5290,8 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 			   mode = 00 target = 0.  Nothing to write.
 			 */
 			c->Request.CDBLen = 12;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_READ;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_READ);
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = cmd;
 			c->Request.CDB[6] = (size >> 24) & 0xFF; /* MSB */
@@ -5300,8 +5301,9 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 			break;
 		case HPSA_CACHE_FLUSH:
 			c->Request.CDBLen = 12;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_WRITE;
+			c->Request.type_attr_dir =
+					TYPE_ATTR_DIR(cmd_type,
+						ATTR_SIMPLE, XFER_WRITE);
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = BMIC_WRITE;
 			c->Request.CDB[6] = BMIC_CACHE_FLUSH;
@@ -5310,14 +5312,14 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 			break;
 		case TEST_UNIT_READY:
 			c->Request.CDBLen = 6;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_NONE;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_NONE);
 			c->Request.Timeout = 0;
 			break;
 		case HPSA_GET_RAID_MAP:
 			c->Request.CDBLen = 12;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_READ;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_READ);
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = HPSA_CISS_READ;
 			c->Request.CDB[1] = cmd;
@@ -5328,8 +5330,8 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 			break;
 		case BMIC_SENSE_CONTROLLER_PARAMETERS:
 			c->Request.CDBLen = 10;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_READ;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_READ);
 			c->Request.Timeout = 0;
 			c->Request.CDB[0] = BMIC_READ;
 			c->Request.CDB[6] = BMIC_SENSE_CONTROLLER_PARAMETERS;
@@ -5346,9 +5348,8 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 
 		case  HPSA_DEVICE_RESET_MSG:
 			c->Request.CDBLen = 16;
-			c->Request.Type.Type =  1; /* It is a MSG not a CMD */
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_NONE;
+			c->Request.type_attr_dir =
+				TYPE_ATTR_DIR(cmd_type, ATTR_SIMPLE, XFER_NONE);
 			c->Request.Timeout = 0; /* Don't time out */
 			memset(&c->Request.CDB[0], 0, sizeof(c->Request.CDB));
 			c->Request.CDB[0] =  cmd;
@@ -5367,9 +5368,9 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 			tlower = (u32) (a->Header.tag >> 32);
 			tupper = (u32) (a->Header.tag & 0x0ffffffffULL);
 			c->Request.CDBLen = 16;
-			c->Request.Type.Type = TYPE_MSG;
-			c->Request.Type.Attribute = ATTR_SIMPLE;
-			c->Request.Type.Direction = XFER_WRITE;
+			c->Request.type_attr_dir =
+					TYPE_ATTR_DIR(cmd_type,
+						ATTR_SIMPLE, XFER_WRITE);
 			c->Request.Timeout = 0; /* Don't time out */
 			c->Request.CDB[0] = HPSA_TASK_MANAGEMENT;
 			c->Request.CDB[1] = HPSA_TMF_ABORT_TASK;
@@ -5399,7 +5400,7 @@ static int fill_cmd(struct CommandList *c, u8 cmd, struct ctlr_info *h,
 		BUG();
 	}
 
-	switch (c->Request.Type.Direction) {
+	switch (GET_DIR(c->Request.type_attr_dir)) {
 	case XFER_READ:
 		pci_dir = PCI_DMA_FROMDEVICE;
 		break;
@@ -5757,9 +5758,8 @@ static int hpsa_message(struct pci_dev *pdev, unsigned char opcode,
 	memset(&cmd->CommandHeader.LUN.LunAddrBytes, 0, 8);
 
 	cmd->Request.CDBLen = 16;
-	cmd->Request.Type.Type = TYPE_MSG;
-	cmd->Request.Type.Attribute = ATTR_HEADOFQUEUE;
-	cmd->Request.Type.Direction = XFER_NONE;
+	cmd->Request.type_attr_dir =
+			TYPE_ATTR_DIR(TYPE_MSG, ATTR_HEADOFQUEUE, XFER_NONE);
 	cmd->Request.Timeout = 0; /* Don't time out */
 	cmd->Request.CDB[0] = opcode;
 	cmd->Request.CDB[1] = type;
