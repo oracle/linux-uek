@@ -44,10 +44,20 @@
 #endif
 #endif
 #ifdef SIOCETHTOOL
+#include <linux/etherdevice.h>
 #include <linux/ethtool.h>
 #endif
 
 #include <linux/if_bridge.h>
+#ifdef CONFIG_OF
+#include <linux/of_net.h>
+#endif
+
+#ifdef CONFIG_SPARC
+#include <asm/idprom.h>
+#include <asm/prom.h>
+#endif
+
 #include "ixgbe.h"
 #ifdef HAVE_VXLAN_CHECKS
 #include <net/vxlan.h>
@@ -9703,6 +9713,29 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 }
 
 /**
+ * ixgbe_get_platform_mac_addr - Look up MAC address in Open Firmware / IDPROM
+ * @adapter: Pointer to adapter struct
+ */
+static void ixgbe_get_platform_mac_addr(struct ixgbe_adapter *adapter)
+{
+#ifdef CONFIG_OF
+	struct device_node *dp = pci_device_to_OF_node(adapter->pdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	const unsigned char *addr;
+
+	addr = of_get_mac_address(dp);
+	if (addr) {
+		ether_addr_copy(hw->mac.perm_addr, addr);
+		return;
+	}
+#endif /* CONFIG_OF */
+
+#ifdef CONFIG_SPARC
+	ether_addr_copy(hw->mac.perm_addr, idprom->id_ethaddr);
+#endif /* CONFIG_SPARC */
+}
+
+/**
  * ixgbe_probe - Device Initialization Routine
  * @pdev: PCI device information struct
  * @ent: entry in ixgbe_pci_tbl
@@ -10084,6 +10117,8 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		err = -EIO;
 		goto err_sw_init;
 	}
+
+	ixgbe_get_platform_mac_addr(adapter);
 
 	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
 #ifdef ETHTOOL_GPERMADDR
