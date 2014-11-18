@@ -72,11 +72,11 @@
 #define MPT2SAS_DRIVER_NAME		"mpt2sas"
 #define MPT2SAS_AUTHOR	"LSI Corporation <DL-MPTFusionLinux@lsi.com>"
 #define MPT2SAS_DESCRIPTION	"LSI MPT Fusion SAS 2.0 Device Driver"
-#define MPT2SAS_DRIVER_VERSION		"17.00.01.00"
+#define MPT2SAS_DRIVER_VERSION		"17.00.01.01"
 #define MPT2SAS_MAJOR_VERSION		17
 #define MPT2SAS_MINOR_VERSION		0
 #define MPT2SAS_BUILD_VERSION		1
-#define MPT2SAS_RELEASE_VERSION		0
+#define MPT2SAS_RELEASE_VERSION		1
 
 /*
  * Set MPT2SAS_SG_DEPTH value based on user input.
@@ -897,6 +897,12 @@ typedef void (*MPT2SAS_FLUSH_RUNNING_CMDS)(struct MPT2SAS_ADAPTER *ioc);
  * @delayed_tr_list: target reset link list
  * @delayed_tr_volume_list: volume target reset link list
  * @delayed_internal_tm_list: internal tmf link list
+ * @pci_access_mutex: Mutex to synchronize ioctl,sysfs show path and
+ * pci resource handling. PCI resource freeing will lead to free
+ * vital hardware/memory resource, which might be in use by cli/sysfs
+ * path functions resulting in Null pointer reference followed by kernel
+ * crash. To avoid the above race condition we use mutex syncrhonization
+ * which ensures the syncrhonization between cli/sysfs_show path
  */
 struct MPT2SAS_ADAPTER {
 	struct list_head list;
@@ -1010,7 +1016,7 @@ struct MPT2SAS_ADAPTER {
 
 	struct list_head scsih_q_intenal_cmds;
 	spinlock_t	scsih_q_internal_lock;
-	
+
 	MPT_ADD_SGE	base_add_sg_single;
 
 	/* event log */
@@ -1018,7 +1024,7 @@ struct MPT2SAS_ADAPTER {
 	u32		event_context;
 	void		*event_log;
 	u32		event_masks[MPI2_EVENT_NOTIFY_EVENTMASK_WORDS];
-	
+
 	u8      disable_eedp_support;
 
 	/* static config pages */
@@ -1183,6 +1189,7 @@ struct MPT2SAS_ADAPTER {
 	struct SL_WH_EVENT_TRIGGERS_T diag_trigger_event;
 	struct SL_WH_SCSI_TRIGGERS_T diag_trigger_scsi;
 	struct SL_WH_MPI_TRIGGERS_T diag_trigger_mpi;
+	struct mutex pci_access_mutex;
 };
 
 typedef u8 (*MPT_CALLBACK)(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
@@ -1190,7 +1197,16 @@ typedef u8 (*MPT_CALLBACK)(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 
 /* base shared API */
 extern struct list_head mpt2sas_ioc_list;
-/* spinlock on list operations over IOCs */
+/* spinlock on list operations over IOCs
+ * Case: when multiple warpdrive cards(IOCs) are in use
+ * Each IOC will added to the ioc list stucture on initialization.
+ * Watchdog threads run at regular intervals to check IOC for any
+ * fault conditions which will trigger the dead_ioc thread to
+ * deallocate pci resource, resulting deleting the IOC netry from list,
+ * this deletion need to protected by spinlock to enusre that
+ * ioc removal is syncrhoized, if not synchronized it might lead to
+ * list_del corruption as the ioc list is traversed in cli path
+ */
 extern spinlock_t gioc_lock;
 void mpt2sas_base_start_watchdog(struct MPT2SAS_ADAPTER *ioc);
 void mpt2sas_base_stop_watchdog(struct MPT2SAS_ADAPTER *ioc);
@@ -1282,6 +1298,7 @@ struct _sas_device *mpt2sas_scsih_sas_device_find_by_sas_address(
 	struct MPT2SAS_ADAPTER *ioc, u64 sas_address);
 
 void mpt2sas_port_enable_complete(struct MPT2SAS_ADAPTER *ioc);
+void mpt2sas_initialize_gioc_lock(void);
 
 /* config shared API */
 u8 mpt2sas_config_done(struct MPT2SAS_ADAPTER *ioc, u16 smid, u8 msix_index,

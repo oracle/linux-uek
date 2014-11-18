@@ -91,7 +91,6 @@ _scsih_inquiry_vpd_sn(struct MPT2SAS_ADAPTER *ioc, u16 handle,
 static enum device_responsive_state
 _scsih_inquiry_vpd_supported_pages(struct MPT2SAS_ADAPTER *ioc, u16 handle,
 	u32 lun, void *data, u32 data_length);
-
 static enum device_responsive_state
 _scsih_wait_for_target_to_become_ready(struct MPT2SAS_ADAPTER *ioc, u16 handle,
 	u8 retry_count, u8 is_pd);
@@ -420,6 +419,20 @@ static struct pci_device_id scsih_pci_table[] = {
 MODULE_DEVICE_TABLE(pci, scsih_pci_table);
 
 /**
+ * mpt2sas_initialize_gioc_lock - initialize the gobal ioc lock
+ */
+void
+mpt2sas_initialize_gioc_lock(void)
+{
+	static int gioc_lock_initialize;
+
+	if (!gioc_lock_initialize) {
+		spin_lock_init(&gioc_lock);
+		gioc_lock_initialize = 1;
+	}
+}
+
+/**
  * _scsih_set_debug_level - global setting of ioc->logging_level.
  *
  * Note: The logging levels are defined in mpt2sas_debug.h.
@@ -434,6 +447,7 @@ _scsih_set_debug_level(const char *val, struct kernel_param *kp)
 	if (ret)
 		return ret;
 
+	mpt2sas_initialize_gioc_lock();
 	printk(KERN_INFO "setting logging_level(0x%08x)\n", logging_level);
 	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list)
@@ -3199,6 +3213,10 @@ _scsih_dev_reset(struct scsi_cmnd *scmd)
 	u16	handle;
 	int r;
 
+	if (ioc->is_warpdrive) {
+		r = FAILED;
+		goto out;
+	}
 	sdev_printk(KERN_INFO, scmd->device, "attempting device reset! "
 	    "scmd(%p)\n", scmd);
 	_scsih_tm_display_info(ioc, scmd);
@@ -11254,6 +11272,9 @@ _scsih_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	ioc->schedule_dead_ioc_flush_running_cmds = &_scsih_flush_running_cmds;
 	/* misc semaphores and spin locks */
 	mutex_init(&ioc->reset_in_progress_mutex);
+	/* initializing pci_access_mutex lock */
+	if (ioc->is_warpdrive)
+		mutex_init(&ioc->pci_access_mutex);
 	spin_lock_init(&ioc->ioc_reset_in_progress_lock);
 	spin_lock_init(&ioc->scsi_lookup_lock);
 	spin_lock_init(&ioc->sas_device_lock);
@@ -11552,6 +11573,9 @@ _scsih_pci_slot_reset(struct pci_dev *pdev)
 	if (rc) {
 		mutex_unlock(&pci_mutex);
 		return PCI_ERS_RESULT_DISCONNECT;
+	} else {
+		if (ioc->is_warpdrive)
+			ioc->pci_error_recovery = 0;
 	}
 
 	rc = mpt2sas_base_hard_reset_handler(ioc, CAN_SLEEP,
@@ -11686,8 +11710,7 @@ _scsih_init(void)
 		return -ENODEV;
 	}
 #endif
-	spin_lock_init(&gioc_lock);
-
+	mpt2sas_initialize_gioc_lock();
 	mpt2sas_base_initialize_callback_handler();
 
 	 /* queuecommand callback hander */

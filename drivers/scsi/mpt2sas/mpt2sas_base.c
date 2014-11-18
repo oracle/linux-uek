@@ -124,6 +124,9 @@ _scsih_set_fwfault_debug(const char *val, struct kernel_param *kp)
 	if (ret)
 		return ret;
 
+	/* global ioc spinlock to protect controller list on list operations */
+	mpt2sas_initialize_gioc_lock();
+
 	printk(KERN_INFO "setting fwfault_debug(%d)\n", mpt2sas_fwfault_debug);
 	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list)
@@ -136,7 +139,7 @@ module_param_call(mpt2sas_fwfault_debug, _scsih_set_fwfault_debug,
 
 /**
  *  mpt2sas_remove_dead_ioc_func - kthread context to remove dead ioc
- * @arg: input argument, used to derive PCI device struct 
+ * @arg: input argument, used to derive PCI device struct
  *
  * Return 0.
  */
@@ -1604,6 +1607,36 @@ _base_enable_msix(struct MPT2SAS_ADAPTER *ioc)
 }
 
 /**
+ * mpt2sas_base_unmap_resources - free controller resources
+ * @ioc: per adapter object
+ */
+void
+mpt2sas_base_unmap_resources(struct MPT2SAS_ADAPTER *ioc)
+{
+	struct pci_dev *pdev = ioc->pdev;
+
+	printk(MPT2SAS_INFO_FMT "%s\n",
+		ioc->name, __func__);
+
+	_base_free_irq(ioc);
+	_base_disable_msix(ioc);
+
+	if (ioc->chip_phys)
+		iounmap(ioc->chip);
+	ioc->chip_phys = 0;
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25))
+	pci_release_regions(pdev);
+#else
+	pci_release_selected_regions(ioc->pdev, ioc->bars);
+#endif
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19))
+	pci_disable_pcie_error_reporting(pdev);
+#endif
+	pci_disable_device(pdev);
+	return;
+}
+
+/**
  * mpt2sas_base_map_resources - map in controller resources (io/irq/memap)
  * @ioc: per adapter object
  *
@@ -1728,18 +1761,7 @@ mpt2sas_base_map_resources(struct MPT2SAS_ADAPTER *ioc)
 	return 0;
 
  out_fail:
-	if (ioc->chip_phys)
-		iounmap(ioc->chip);
-	ioc->chip_phys = 0;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25))
-	pci_release_regions(pdev);
-#else
-	pci_release_selected_regions(ioc->pdev, ioc->bars);
-#endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19))
-	pci_disable_pcie_error_reporting(pdev);
-#endif
-	pci_disable_device(pdev);
+	mpt2sas_base_unmap_resources(ioc);
 	return r;
 }
 
@@ -4462,29 +4484,25 @@ _base_make_ioc_operational(struct MPT2SAS_ADAPTER *ioc, int sleep_flag)
 void
 mpt2sas_base_free_resources(struct MPT2SAS_ADAPTER *ioc)
 {
-	struct pci_dev *pdev = ioc->pdev;
-
 	dexitprintk(ioc, printk(MPT2SAS_INFO_FMT "%s\n", ioc->name,
 	    __func__));
 
+	if (!ioc->chip_phys) {
+		printk(MPT2SAS_INFO_FMT
+		"Controller resources are already freed\n", ioc->name);
+		return;
+	}
+
+	/* synchronizing freeing resource through pci_access_mutex lock */
+	if (ioc->is_warpdrive)
+		mutex_lock(&ioc->pci_access_mutex);
 	_base_mask_interrupts(ioc);
 	ioc->shost_recovery = 1;
 	_base_make_ioc_ready(ioc, CAN_SLEEP, SOFT_RESET);
 	ioc->shost_recovery = 0;
-	_base_free_irq(ioc);
-	_base_disable_msix(ioc);
-	if (ioc->chip_phys)
-		iounmap(ioc->chip);
-	ioc->chip_phys = 0;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2,6,25))
-	pci_release_regions(pdev);
-#else
-	pci_release_selected_regions(ioc->pdev, ioc->bars);
-#endif
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,19))
-	pci_disable_pcie_error_reporting(pdev);
-#endif
-	pci_disable_device(pdev);
+	mpt2sas_base_unmap_resources(ioc);
+	if (ioc->is_warpdrive)
+		mutex_unlock(&ioc->pci_access_mutex);
 	return;
 }
 
@@ -4833,7 +4851,7 @@ _base_reset_handler(struct MPT2SAS_ADAPTER *ioc, int reset_phase)
 			mpt2sas_base_free_smid(ioc, scsih_qcmd->smid);
 		}
 		spin_unlock_irqrestore(&ioc->scsih_q_internal_lock, flags);
-		
+
 		break;
 	case MPT2_IOC_DONE_RESET:
 		dtmprintk(ioc, printk(MPT2SAS_INFO_FMT "%s: "

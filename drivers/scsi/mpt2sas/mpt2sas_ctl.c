@@ -473,6 +473,7 @@ _ctl_verify_adapter(int ioc_number, struct MPT2SAS_ADAPTER **iocpp)
 {
 	struct MPT2SAS_ADAPTER *ioc;
 	unsigned long flags;
+	/* global ioc lock to protect controller on list operations */
 	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list) {
 		if (ioc->id != ioc_number)
@@ -589,6 +590,7 @@ _ctl_poll(struct file *filep, poll_table *wait)
 
 	poll_wait(filep, &ctl_poll_wait, wait);
 
+	/* global ioc lock to protect controller on list operations */
 	spin_lock_irqsave(&gioc_lock, flags);
 	list_for_each_entry(ioc, &mpt2sas_ioc_list, list) {
 		if (ioc->aen_event_read_flag) {
@@ -2461,16 +2463,33 @@ _ctl_ioctl_main(struct file *file, unsigned int cmd, void __user *arg,
 	if (_ctl_verify_adapter(ioctl_header.ioc_number, &ioc) == -1 || !ioc)
 		return -ENODEV;
 
-	if (ioc->shost_recovery || ioc->pci_error_recovery ||
-	    ioc->is_driver_loading)
-		return -EAGAIN;
+	if (!ioc->is_warpdrive) {
+		if (ioc->shost_recovery || ioc->pci_error_recovery ||
+			ioc->is_driver_loading)
+			return -EAGAIN;
+	} else {
+		/* pci_access_mutex lock acquired by ioctl path */
+		mutex_lock(&ioc->pci_access_mutex);
+		if (ioc->shost_recovery || ioc->pci_error_recovery ||
+			ioc->is_driver_loading || ioc->remove_host) {
+			mutex_unlock(&ioc->pci_access_mutex);
+			return -EAGAIN;
+		}
+	}
 
 	state = (file->f_flags & O_NONBLOCK) ? NON_BLOCKING : BLOCKING;
 	if (state == NON_BLOCKING) {
-		if (!mutex_trylock(&ioc->ctl_cmds.mutex))
+		if (!mutex_trylock(&ioc->ctl_cmds.mutex)) {
+		/* pci_access_mutex lock acquired by ioctl path */
+			if (ioc->is_warpdrive)
+				mutex_unlock(&ioc->pci_access_mutex);
 			return -EAGAIN;
-	} else if (mutex_lock_interruptible(&ioc->ctl_cmds.mutex))
+		}
+	} else if (mutex_lock_interruptible(&ioc->ctl_cmds.mutex)) {
+		if (ioc->is_warpdrive)
+			mutex_unlock(&ioc->pci_access_mutex);
 		return -ERESTARTSYS;
+	}
 
 #if defined(CPQ_CIM)
 	if ((cmd > 0xCC770000) && (cmd < 0xCC77003D)) {
@@ -2558,6 +2577,8 @@ _ctl_ioctl_main(struct file *file, unsigned int cmd, void __user *arg,
 
  out:
 	mutex_unlock(&ioc->ctl_cmds.mutex);
+	if (ioc->is_warpdrive)
+		mutex_unlock(&ioc->pci_access_mutex);
 	return ret;
 }
 
@@ -3723,6 +3744,13 @@ _ctl_BRM_status_show(struct class_device *cdev, char *buf)
 		printk(MPT2SAS_ERR_FMT "%s: BRM attribute is only for "
 		    "warpdrive\n", ioc->name, __func__);
 		goto out;
+	} else {
+		/* pci_access_mutex lock acquired by sysfs show path */
+		mutex_lock(&ioc->pci_access_mutex);
+		if (ioc->pci_error_recovery || ioc->remove_host) {
+			mutex_unlock(&ioc->pci_access_mutex);
+			return 0;
+		}
 	}
 
 	/* allocate upto GPIOVal 36 entries */
@@ -3762,6 +3790,8 @@ _ctl_BRM_status_show(struct class_device *cdev, char *buf)
 
  out:
 	kfree(io_unit_pg3);
+	if (ioc->is_warpdrive)
+		mutex_unlock(&ioc->pci_access_mutex);
 	return rc;
 }
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2,6,25))
