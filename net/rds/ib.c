@@ -61,6 +61,7 @@ unsigned int rds_ib_active_bonding_enabled = 0;
 unsigned int rds_ib_active_bonding_fallback = 1;
 unsigned int rds_ib_active_bonding_reconnect_delay = 1;
 unsigned int rds_ib_active_bonding_trigger_delay_max_msecs; /* = 0; */
+unsigned int rds_ib_active_bonding_trigger_delay_min_msecs; /* = 0; */
 #if RDMA_RDS_APM_SUPPORTED
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 #endif
@@ -104,6 +105,10 @@ MODULE_PARM_DESC(rds_ib_active_bonding_reconnect_delay, " Active Bonding reconne
 module_param(rds_ib_active_bonding_trigger_delay_max_msecs, int, 0444);
 MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_max_msecs,
 		" Active Bonding Max delay before active bonding is triggered(msecs)");
+module_param(rds_ib_active_bonding_trigger_delay_min_msecs, int, 0444);
+MODULE_PARM_DESC(rds_ib_active_bonding_trigger_delay_min_msecs,
+		 " Active Bonding Min delay before active "
+		 "bonding is triggered(msecs)");
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
@@ -138,7 +143,7 @@ static struct rds_ib_excl_ips excl_ips_tbl[RDS_IB_MAX_EXCL_IPS];
 static u8       excl_ips_cnt = 0;
 
 static int ip_config_init_phase_flag; /* = 0 */
-
+static int initial_failovers_all_ports_deactivated_flag; /* = 0 */
 static int initial_failovers_iterations; /* = 0 */
 
 /*
@@ -1571,6 +1576,7 @@ rds_ib_do_initial_failovers(struct work_struct *workarg)
 		container_of(workarg, struct rds_ib_initial_failovers_work,
 			     dlywork.work);
 	unsigned int ii;
+	unsigned int ports_deactivated = 0;
 	int ret = 0;
 
 	/*
@@ -1632,11 +1638,15 @@ rds_ib_do_initial_failovers(struct work_struct *workarg)
 				ret = rds_ib_set_ip(NULL, NULL,
 						    ip_config[ii].if_name,
 						    0, 0, 0);
+				ports_deactivated++;
 
 			}
 		}
-
 	}
+
+	if (ports_deactivated == ip_port_cnt)
+		initial_failovers_all_ports_deactivated_flag = 1;
+
 	ip_config_init_phase_flag = 0; /* done with initial phase! */
 	kfree(riif_work);
 }
@@ -1797,16 +1807,44 @@ sched_initial_failovers(unsigned int tot_devs,
 		 * max time.
 		 *
 		 * Based on some empirical experiments, we put
-		 * upper bound to be 30sec(30000msecs) and up.
-		 * And we put min to be 10sec (10000msecs).
+		 * upper bound to be 60sec(60000msecs) and up.
+		 * And we put min to be 20sec (20000msecs).
 		 */
-		rds_ib_active_bonding_trigger_delay_max_msecs = 30000+
+		rds_ib_active_bonding_trigger_delay_max_msecs = 60000+
 			tot_ibdevs*1200+(tot_devs-tot_ibdevs)*1000;
 	}
 
-	trigger_delay_max_jiffies =
-		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_max_msecs);
-	trigger_delay_min_jiffies = msecs_to_jiffies(10000); /* 10 sec */
+	if (rds_ib_active_bonding_trigger_delay_min_msecs == 0) {
+		/*
+		 * Derive guestimate of minimum time before we trigger the
+		 * initial failovers for devices.
+		 */
+		rds_ib_active_bonding_trigger_delay_min_msecs =
+			msecs_to_jiffies(20000); /* 20 sec */
+	}
+
+	if (rds_ib_active_bonding_trigger_delay_min_msecs >=
+	    rds_ib_active_bonding_trigger_delay_max_msecs) {
+		/*
+		 * If these parameters are set inconsistently using
+		 * module parameters, try to recover from it by deriving
+		 * reasonable values such that max > min and log
+		 * warning.
+		 */
+		printk(KERN_WARNING
+		       "RDS/IB: rds active bonding trigger max delay(%u msecs)"
+		       " is set less than min the minimum delay(%u msecs).\n",
+		       rds_ib_active_bonding_trigger_delay_max_msecs,
+		       rds_ib_active_bonding_trigger_delay_min_msecs);
+
+		/* set max slightly higher than min! */
+		rds_ib_active_bonding_trigger_delay_max_msecs =
+			rds_ib_active_bonding_trigger_delay_min_msecs + 10;
+
+		printk(KERN_WARNING "RDS/IB: rds active bonding trigger max "
+		       "delay adjusted to %u msecs.\n",
+		       rds_ib_active_bonding_trigger_delay_max_msecs);
+	}
 
 	riif_work = kzalloc(sizeof(struct rds_ib_initial_failovers_work),
 			    GFP_KERNEL);
@@ -1817,9 +1855,17 @@ sched_initial_failovers(unsigned int tot_devs,
 		return;
 	}
 
+	trigger_delay_max_jiffies =
+		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_max_msecs);
 	riif_work->timeout = trigger_delay_max_jiffies;
 
+	trigger_delay_min_jiffies =
+		msecs_to_jiffies(rds_ib_active_bonding_trigger_delay_min_msecs);
+
 	INIT_DELAYED_WORK(&riif_work->dlywork, rds_ib_initial_failovers);
+
+	riif_work->timeout = trigger_delay_max_jiffies;
+
 	queue_delayed_work(rds_wq,
 			   &riif_work->dlywork,
 			   trigger_delay_min_jiffies);
@@ -2580,11 +2626,14 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		if (rds_ib_active_bonding_fallback) {
 			/*
 			 * Special case:
-			 * If all interfaces were down OR
+			 * If all interfaces were down
+			 * (but NOT deactivated during initial failovers) OR
 			 * transitioning port_state was in INIT
 			 * use a larger timeout.
 			 */
-			if (all_ports_were_down || port_state_was_init) {
+			if ((all_ports_were_down &&
+			     !initial_failovers_all_ports_deactivated_flag)
+			    || port_state_was_init) {
 				INIT_DELAYED_WORK(&work->work,
 					rds_ib_net_failback);
 				work->timeout = msecs_to_jiffies(10000);
@@ -2598,7 +2647,16 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 		} else
 			kfree(work);
 
+		/*
+		 * clear this state - onetime use only to
+		 * exclude the deactivation of ports
+		 * during initial failovers from the
+		 * 'special case' logic above!
+		 */
+		initial_failovers_all_ports_deactivated_flag = 0;
+
 		break;
+
 	case RDSIBP_TRANSITION_DOWN:
 		if (rds_ib_sysctl_active_bonding) {
 			INIT_DELAYED_WORK(&work->work, rds_ib_failover);
