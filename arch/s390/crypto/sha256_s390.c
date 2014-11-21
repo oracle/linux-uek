@@ -100,6 +100,6 @@ static void __exit sha256_s390_fini(void)
 module_init(sha256_s390_init);
 module_exit(sha256_s390_fini);
 
-MODULE_ALIAS("sha256");
+MODULE_ALIAS_CRYPTO("sha256");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("SHA256 Secure Hash Algorithm");
