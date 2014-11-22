@@ -352,7 +352,6 @@ static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
 	struct mlx4_ib_sriov *sriov = &to_mdev(ibdev)->sriov;
 	unsigned long flags;
 
-	spin_lock_irqsave(&sriov->going_down_lock, flags);
 	spin_lock(&sriov->id_map_lock);
 	/*make sure that there is no schedule inside the scheduled work.*/
 	if (!sriov->is_going_down) {
@@ -360,7 +359,6 @@ static void schedule_delayed(struct ib_device *ibdev, struct id_map_entry *id)
 		schedule_delayed_work(&id->timeout, CM_CLEANUP_CACHE_TIMEOUT);
 	}
 	spin_unlock(&sriov->id_map_lock);
-	spin_unlock_irqrestore(&sriov->going_down_lock, flags);
 }
 
 int mlx4_ib_multiplex_cm_handler(struct ib_device *ibdev, int port, int slave_id,
