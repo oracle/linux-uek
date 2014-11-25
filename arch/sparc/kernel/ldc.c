@@ -1501,8 +1501,16 @@ EXPORT_SYMBOL(ldc_print);
 static int write_raw(struct ldc_channel *lp, const void *buf, unsigned int size)
 {
 	struct ldc_packet *p;
-	unsigned long new_tail;
+	unsigned long new_tail, hv_err;
 	int err;
+
+	hv_err = sun4v_ldc_tx_get_state(lp->id, &lp->tx_head, &lp->tx_tail,
+					&lp->chan_state);
+	if (unlikely(hv_err))
+		return -EBUSY;
+
+	if (unlikely(lp->chan_state != LDC_CHANNEL_UP))
+		return ldc_abort(lp);
 
 	if (size > LDC_PACKET_SIZE)
 		return -EMSGSIZE;
