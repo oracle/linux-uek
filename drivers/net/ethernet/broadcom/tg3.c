@@ -9205,7 +9205,8 @@ static int tg3_init_rings(struct tg3 *tp)
 #ifdef TG3_VMWARE_NETQ_ENABLE
 		if (!i || (i && tg3_flag(tp, ENABLE_RSS)))
 #endif
-		if (tg3_rx_prodring_alloc(tp, &tnapi->prodring)) {
+		if (tnapi->prodring.rx_std &&
+		    tg3_rx_prodring_alloc(tp, &tnapi->prodring)) {
 			tg3_free_rings(tp);
 			return -ENOMEM;
 		}
