@@ -266,6 +266,10 @@ void rds_ib_remove_one(struct ib_device *device)
 	 */
 	synchronize_rcu();
 	rds_ib_dev_put(rds_ibdev);
+
+	if (rds_ibdev->srq)
+		cancel_delayed_work_sync(&rds_ibdev->srq->s_refill_w);
+
 	/* free up lower layer resource since it may be the last change */
 	rds_ib_dev_free_dev(rds_ibdev);
 	rds_ib_dev_put(rds_ibdev);
