@@ -529,7 +529,9 @@ struct key *request_key_and_link(struct key_type *type,
 		.cred			= current_cred(),
 		.match			= type->match,
 		.match_data		= description,
-		.flags			= KEYRING_SEARCH_LOOKUP_DIRECT,
+		.flags			= (KEYRING_SEARCH_LOOKUP_DIRECT |
+					   KEYRING_SEARCH_DO_STATE_CHECK |
+					   KEYRING_SEARCH_SKIP_EXPIRED),
 	};
 	struct key *key;
 	key_ref_t key_ref;
