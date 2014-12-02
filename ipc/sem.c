@@ -407,14 +407,6 @@ static int newary(struct ipc_namespace *ns, struct ipc_params *params)
 		return retval;
 	}
 
-	id = ipc_addid(&sem_ids(ns), &sma->sem_perm, ns->sc_semmni);
-	if (id < 0) {
-		security_sem_free(sma);
-		ipc_rcu_putref(sma);
-		return id;
-	}
-	ns->used_sems += nsems;
-
 	sma->sem_base = (struct sem *) &sma[1];
 
 	for (i = 0; i < nsems; i++) {
@@ -427,6 +419,15 @@ static int newary(struct ipc_namespace *ns, struct ipc_params *params)
 	INIT_LIST_HEAD(&sma->list_id);
 	sma->sem_nsems = nsems;
 	sma->sem_ctime = get_seconds();
+
+	id = ipc_addid(&sem_ids(ns), &sma->sem_perm, ns->sc_semmni);
+	if (id < 0) {
+		security_sem_free(sma);
+		ipc_rcu_putref(sma);
+		return id;
+	}
+	ns->used_sems += nsems;
+
 	sem_unlock(sma, -1);
 	rcu_read_unlock();
 
