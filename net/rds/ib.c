@@ -2285,6 +2285,22 @@ static void rds_ib_joining_ip(struct work_struct *_work)
 							ifa->ifa_broadcast,
 							ifa->ifa_mask);
 				}
+				/*
+				 * Processing triggered by a NETDEV_UP event
+				 * mark the NETDEV layer UP.
+				 * (No failback/failover processing done for
+				 * this initial NETDEV_UP event for a new
+				 * device!)
+				 */
+				ip_config[port].port_layerflags |=
+					RDSIBP_STATUS_NETDEVUP;
+				if (!(ip_config[port].dev->flags & IFF_UP)) {
+					printk(KERN_WARNING "RDS/IB: Device %s "
+					       "flag NOT marked UP in "
+					       "NETDEV_UP(joining ip) "
+					       "processing!\n",
+					       ip_config[port].dev->name);
+				}
 			}
 		}
 		printk(KERN_INFO "RDS/IB: Updated IP configuration..\n");
