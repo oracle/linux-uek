@@ -427,9 +427,9 @@ static void intel_pstate_set_pstate(struct cpudata *cpu, int pstate)
 
 	if (pstate == cpu->pstate.current_pstate)
 		return;
-#if 0
+
 	trace_cpu_frequency(pstate * 100000, cpu->cpu);
-#endif
+
 	cpu->pstate.current_pstate = pstate;
 
 	pstate_funcs.set(pstate);
@@ -542,14 +542,14 @@ static void intel_pstate_timer_func(unsigned long __data)
 	sample = &cpu->sample;
 
 	intel_pstate_adjust_busy_pstate(cpu);
-#if 0
+
 	trace_pstate_sample(fp_toint(sample->core_pct_busy),
 			fp_toint(intel_pstate_get_scaled_busy(cpu)),
 			cpu->pstate.current_pstate,
 			sample->mperf,
 			sample->aperf,
 			sample->freq);
-#endif
+
 	intel_pstate_set_sample_time(cpu);
 }
 
@@ -872,10 +872,6 @@ out:
 }
 device_initcall(intel_pstate_init);
 
-#if 0 /* OL 6 -- intel_pstate is not built-in, so kernel param to
-       *           disable it is not applicable and won't build as is.
-       *                  */
-
 static int __init intel_pstate_setup(char *str)
 {
 	if (!str)
@@ -886,7 +882,6 @@ static int __init intel_pstate_setup(char *str)
 	return 0;
 }
 early_param("intel_pstate", intel_pstate_setup);
-#endif
 
 MODULE_AUTHOR("Dirk Brandewie <dirk.j.brandewie@intel.com>");
 MODULE_DESCRIPTION("'intel_pstate' - P state driver Intel Core processors");
