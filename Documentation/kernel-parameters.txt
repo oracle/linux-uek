@@ -1135,6 +1135,11 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 		       disable
 		         Do not enable intel_pstate as the default
 		         scaling driver for the supported processors
+		       ora_force
+			 Force loading intel_pstate on Oracle Sun Servers(X86).
+			 only for those who be aware of the risk of no power capping
+			 capability working and try to get better performance with this
+			 driver.
 
 	intremap=	[X86-64, Intel-IOMMU]
 			on	enable Interrupt Remapping (default)

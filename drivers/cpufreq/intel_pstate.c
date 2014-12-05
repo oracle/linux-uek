@@ -706,6 +706,7 @@ static struct cpufreq_driver intel_pstate_driver = {
 };
 
 static int __initdata no_load;
+static unsigned int  ora_force;
 
 static int intel_pstate_msrs_not_valid(void)
 {
@@ -848,7 +849,8 @@ static bool intel_pstate_platform_pwr_mgmt_exists(void)
 			case PSS:
 				return intel_pstate_no_acpi_pss();
 			case PPC:
-				return intel_pstate_has_acpi_ppc();
+				return intel_pstate_has_acpi_ppc() &&
+					(!ora_force);
 			}
 	}
 
@@ -923,6 +925,8 @@ static int __init intel_pstate_setup(char *str)
 
 	if (!strcmp(str, "disable"))
 		no_load = 1;
+	if (!strcmp(str, "force"))
+		ora_force = 1;
 	return 0;
 }
 early_param("intel_pstate", intel_pstate_setup);
