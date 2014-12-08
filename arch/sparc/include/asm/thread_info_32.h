@@ -65,9 +65,11 @@ struct thread_info {
 #define init_thread_info	(init_thread_union.thread_info)
 #define init_stack		(init_thread_union.stack)
 
+#ifndef BUILD_VDSO
 /* how to get the thread information struct from C */
 register struct thread_info *current_thread_info_reg asm("g6");
 #define current_thread_info()   (current_thread_info_reg)
+#endif
 
 /*
  * thread information allocation
