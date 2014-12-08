@@ -7,7 +7,7 @@ KBUILD_CFLAGS += $(DISABLE_LTO)
 VDSO64-$(CONFIG_SPARC64)	:= y
 
 # files to link into the vdso
-vobjs-y := vdso-note.o
+vobjs-y := vdso-note.o vclock_gettime.o
 
 # files to link into kernel
 obj-y				+= vma.o
@@ -68,6 +68,7 @@ $(vobjs): KBUILD_CFLAGS += $(CFL)
 # vDSO code runs in userspace and -pg doesn't help with profiling anyway.
 #
 CFLAGS_REMOVE_vdso-note.o = -pg
+CFLAGS_REMOVE_vclock_gettime.o = -pg
 
 $(obj)/%.so: OBJCOPYFLAGS := -S
 $(obj)/%.so: $(obj)/%.so.dbg

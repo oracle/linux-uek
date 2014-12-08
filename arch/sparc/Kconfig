@@ -80,6 +80,7 @@ config SPARC64
 	select NO_BOOTMEM
 	select HAVE_ARCH_AUDITSYSCALL
 	select ARCH_SUPPORTS_ATOMIC_RMW
+	select ARCH_CLOCKSOURCE_DATA
 
 config ARCH_DEFCONFIG
 	string
@@ -203,6 +204,10 @@ config GENERIC_HWEIGHT
 config GENERIC_CALIBRATE_DELAY
 	bool
 	default y
+
+config GENERIC_TIME_VSYSCALL
+	bool
+	default y if SPARC64
 
 config ARCH_MAY_HAVE_PC_FDC
 	bool
