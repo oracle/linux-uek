@@ -141,7 +141,6 @@ struct blkfront_info
 	unsigned int persistent_gnts_c;
 	unsigned long shadow_free;
 	unsigned int feature_flush;
-	unsigned int flush_op;
 	unsigned int feature_discard:1;
 	unsigned int feature_secdiscard:1;
 	unsigned int discard_granularity;
@@ -493,7 +492,19 @@ static int blkif_queue_request(struct request *req)
 				 * way.  (It's also a FLUSH+FUA, since it is
 				 * guaranteed ordered WRT previous writes.)
 				 */
-				ring_req->operation = info->flush_op;
+				switch (info->feature_flush &
+					((REQ_FLUSH|REQ_FUA))) {
+				case REQ_FLUSH|REQ_FUA:
+					ring_req->operation =
+						BLKIF_OP_WRITE_BARRIER;
+					break;
+				case REQ_FLUSH:
+					ring_req->operation =
+						BLKIF_OP_FLUSH_DISKCACHE;
+					break;
+				default:
+					ring_req->operation = 0;
+				}
 			}
 			ring_req->u.rw.nr_segments = nseg;
 		}
@@ -699,20 +710,26 @@ static int xlvbd_init_blk_queue(struct gendisk *gd, u16 sector_size,
 	return 0;
 }
 
+static const char *flush_info(unsigned int feature_flush)
+{
+	switch (feature_flush & ((REQ_FLUSH | REQ_FUA))) {
+	case REQ_FLUSH|REQ_FUA:
+		return "barrier: enabled;";
+	case REQ_FLUSH:
+		return "flush diskcache: enabled;";
+	default:
+		return "barrier or flush: disabled;";
+	}
+}
 
 static void xlvbd_flush(struct blkfront_info *info)
 {
 	blk_queue_flush(info->rq, info->feature_flush);
-	printk(KERN_INFO "blkfront: %s: %s: %s %s %s %s %s\n",
-	       info->gd->disk_name,
-	       info->flush_op == BLKIF_OP_WRITE_BARRIER ?
-		"barrier" : (info->flush_op == BLKIF_OP_FLUSH_DISKCACHE ?
-		"flush diskcache" : "barrier or flush"),
-	       info->feature_flush ? "enabled;" : "disabled;",
-	       "persistent grants:",
-	       info->feature_persistent ? "enabled;" : "disabled;",
-	       "indirect descriptors:",
-	       info->max_indirect_segments ? "enabled;" : "disabled;");
+	pr_info("blkfront: %s: %s %s %s %s %s\n",
+		info->gd->disk_name, flush_info(info->feature_flush),
+		"persistent grants:", info->feature_persistent ?
+		"enabled;" : "disabled;", "indirect descriptors:",
+		info->max_indirect_segments ? "enabled;" : "disabled;");
 }
 
 static int xen_translate_vdev(int vdevice, int *minor, unsigned int *offset)
@@ -1209,7 +1226,6 @@ static irqreturn_t blkif_interrupt(int irq, void *dev_id)
 				if (error == -EOPNOTSUPP)
 					error = 0;
 				info->feature_flush = 0;
-				info->flush_op = 0;
 				xlvbd_flush(info);
 			}
 			/* fall through */
