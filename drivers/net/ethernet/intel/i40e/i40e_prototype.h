@@ -228,6 +228,8 @@ i40e_status i40e_get_mac_addr(struct i40e_hw *hw,
 						u8 *mac_addr);
 i40e_status i40e_read_lldp_cfg(struct i40e_hw *hw,
 					struct i40e_lldp_variables *lldp_cfg);
+i40e_status i40e_read_pba_string(struct i40e_hw *hw, u8 *pba_num,
+				 u32 pba_num_size);
 void i40e_pre_tx_queue_cfg(struct i40e_hw *hw, u32 queue, bool enable);
 #ifdef I40E_FCOE
 i40e_status i40e_get_san_mac_addr(struct i40e_hw *hw, u8 *mac_addr);
