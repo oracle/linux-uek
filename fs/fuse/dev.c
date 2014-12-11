@@ -147,10 +147,6 @@ struct fuse_req *fuse_get_req(struct fuse_conn *fc)
 	int intr;
 	int err;
 
-	err = -EAGAIN;
-	if (!fc->conn_init)
-		return ERR_PTR(err);
-
 	nn = fuse_get_numa_node(fc);
 	atomic_inc(&nn->num_waiting);
 	block_sigs(&oldset);
