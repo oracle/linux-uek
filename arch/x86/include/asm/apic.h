@@ -560,6 +560,9 @@ static inline unsigned int read_apic_id(void)
 
 static inline int default_apic_id_valid(int apicid)
 {
+	if (xen_initial_domain())
+            return (1); 
+
 	return (apicid < 255);
 }
 
