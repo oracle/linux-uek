@@ -218,15 +218,21 @@ long dtrace_sys_execve(const char __user *name,
 	return rc;
 }
 
-long dtrace_sys_iopl(unsigned int level, struct pt_regs *regs)
+long dtrace_sys_iopl(unsigned int level)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
+	struct pt_regs		*regs = current_pt_regs();
 	unsigned int		old = (regs->flags >> 12) & 3;
 	struct thread_struct	*t = &current->thread;
 
 	sc = &systrace_info.sysent[__NR_iopl];
+
+	/*
+	 * regs is an argument de facto since it is plucked straight out of the
+	 * stack frame by current_pt_regs().
+	 */
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)level, (uintptr_t)regs,
@@ -261,13 +267,19 @@ out:
 	return rc;
 }
 
-long dtrace_sys_rt_sigreturn(struct pt_regs *regs)
+long dtrace_sys_rt_sigreturn(void)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
+	struct pt_regs		*regs = current_pt_regs();
 
 	sc = &systrace_info.sysent[__NR_rt_sigreturn];
+
+	/*
+	 * regs is an argument de facto since it is plucked straight out of the
+	 * stack frame by current_pt_regs().
+	 */
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)regs, 0, 0, 0, 0, 0);
@@ -276,7 +288,7 @@ long dtrace_sys_rt_sigreturn(struct pt_regs *regs)
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	rc = sys_rt_sigreturn(regs);
+	rc = sys_rt_sigreturn();
 
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
