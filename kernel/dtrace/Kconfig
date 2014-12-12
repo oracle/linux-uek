@@ -11,8 +11,6 @@ menuconfig DTRACE
 	select KALLSYMS
 	select WAITFD
 	select CTF if (!DT_DISABLE_CTF)
-	select STRIP_ASM_SYMS if (!DT_DISABLE_CTF)
-	select DEBUG_INFO if (!DT_DISABLE_CTF)
 	help
 	  To be written.
 
