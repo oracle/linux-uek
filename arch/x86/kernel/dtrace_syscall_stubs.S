@@ -141,23 +141,6 @@
 	CFI_REL_OFFSET r15, R15+\offset
 	.endm
 
-/*
- * Certain special system calls that need to save a complete full stack frame.
- */
-	.macro PTREGSCALL label,func,arg
-ENTRY(\label)
-	PARTIAL_FRAME 1 8		/* offset 8: return address */
-	subq $REST_SKIP, %rsp
-	CFI_ADJUST_CFA_OFFSET REST_SKIP
-	call save_rest
-	DEFAULT_FRAME 0 8		/* offset 8: return address */
-	leaq 8(%rsp), \arg	/* pt_regs pointer */
-	call \func
-	jmp ptregscall_common
-	CFI_ENDPROC
-END(\label)
-	.endm
-
 	.macro FORK_LIKE func
 ENTRY(dtrace_stub_\func)
 	CFI_STARTPROC
@@ -174,10 +157,22 @@ ENTRY(dtrace_stub_\func)
 END(dtrace_stub_\func)
 	.endm
 
+	.macro FIXED_FRAME label,func
+ENTRY(\label)
+	CFI_STARTPROC
+	PARTIAL_FRAME 0 8		/* offset 8: return address */
+	FIXUP_TOP_OF_STACK %r11, 8-ARGOFFSET
+	call \func
+	RESTORE_TOP_OF_STACK %r11, 8-ARGOFFSET
+	ret
+	CFI_ENDPROC
+END(\label)
+	.endm
+
         FORK_LIKE  clone
         FORK_LIKE  fork
         FORK_LIKE  vfork
-	PTREGSCALL dtrace_stub_iopl, dtrace_sys_iopl, %rsi
+	FIXED_FRAME dtrace_stub_iopl, dtrace_sys_iopl
 
 ENTRY(dtrace_stub_execve)
 	CFI_STARTPROC
@@ -186,7 +181,6 @@ ENTRY(dtrace_stub_execve)
 	SAVE_REST
 	FIXUP_TOP_OF_STACK %r11
 	call dtrace_sys_execve
-	RESTORE_TOP_OF_STACK %r11
 	movq %rax,RAX(%rsp)
 	RESTORE_REST
 	jmp int_ret_from_sys_call
@@ -202,7 +196,6 @@ ENTRY(dtrace_stub_rt_sigreturn)
 	addq $8, %rsp
 	PARTIAL_FRAME 0
 	SAVE_REST
-	movq %rsp,%rdi
 	FIXUP_TOP_OF_STACK %r11
 	call dtrace_sys_rt_sigreturn
 	movq %rax,RAX(%rsp) # fixme, this could be done at the higher layer
