@@ -458,6 +458,8 @@ struct i40e_aqc_arp_proxy_data {
 	u8     mac_addr[6];
 };
 
+I40E_CHECK_STRUCT_LEN(0x14, i40e_aqc_arp_proxy_data);
+
 /* Set NS Proxy Table Entry Command (indirect 0x0105) */
 struct i40e_aqc_ns_proxy_data {
 	__le16 table_idx_mac_addr_0;
@@ -483,6 +485,8 @@ struct i40e_aqc_ns_proxy_data {
 	u8     ipv6_addr_1[16];
 };
 
+I40E_CHECK_STRUCT_LEN(0x3c, i40e_aqc_ns_proxy_data);
+
 /* Manage LAA Command (0x0106) - obsolete */
 struct i40e_aqc_mng_laa {
 	__le16	command_flags;
@@ -492,6 +496,8 @@ struct i40e_aqc_mng_laa {
 	__le16 sah;
 	u8     reserved2[6];
 };
+
+I40E_CHECK_CMD_LENGTH(i40e_aqc_mng_laa);
 
 /* Manage MAC Address Read Command (indirect 0x0107) */
 struct i40e_aqc_mac_address_read {
@@ -564,6 +570,8 @@ struct i40e_aqc_get_switch_config_header_resp {
 	u8     reserved[12];
 };
 
+I40E_CHECK_CMD_LENGTH(i40e_aqc_get_switch_config_header_resp);
+
 struct i40e_aqc_switch_config_element_resp {
 	u8     element_type;
 #define I40E_AQ_SW_ELEM_TYPE_MAC        1
@@ -589,6 +597,8 @@ struct i40e_aqc_switch_config_element_resp {
 	__le16 element_info;
 };
 
+I40E_CHECK_STRUCT_LEN(0x10, i40e_aqc_switch_config_element_resp);
+
 /* Get Switch Configuration (indirect 0x0200)
  *    an array of elements are returned in the response buffer
  *    the first in the array is the header, remainder are elements
@@ -597,6 +607,8 @@ struct i40e_aqc_get_switch_config_resp {
 	struct i40e_aqc_get_switch_config_header_resp header;
 	struct i40e_aqc_switch_config_element_resp    element[1];
 };
+
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_get_switch_config_resp);
 
 /* Add Statistics (direct 0x0201)
  * Remove Statistics (direct 0x0202)
@@ -662,6 +674,8 @@ struct i40e_aqc_switch_resource_alloc_element_resp {
 	__le16 total_unalloced;
 	u8     reserved2[6];
 };
+
+I40E_CHECK_STRUCT_LEN(0x10, i40e_aqc_switch_resource_alloc_element_resp);
 
 /* Add VSI (indirect 0x0210)
  *    this indirect command uses struct i40e_aqc_vsi_properties_data
@@ -1095,6 +1109,8 @@ struct i40e_aqc_remove_tag {
 	u8     reserved[12];
 };
 
+I40E_CHECK_CMD_LENGTH(i40e_aqc_remove_tag);
+
 /* Add multicast E-Tag (direct 0x0257)
  * del multicast E-Tag (direct 0x0258) only uses pv_seid and etag fields
  * and no external data
@@ -1386,6 +1402,8 @@ struct i40e_aqc_configure_vsi_ets_sla_bw_data {
 	u8     reserved1[28];
 };
 
+I40E_CHECK_STRUCT_LEN(0x40, i40e_aqc_configure_vsi_ets_sla_bw_data);
+
 /* Configure VSI Bandwidth Allocation per Traffic Type (indirect 0x0407)
  *    responds with i40e_aqc_qs_handles_resp
  */
@@ -1396,6 +1414,8 @@ struct i40e_aqc_configure_vsi_tc_bw_data {
 	u8     reserved1[4];
 	__le16 qs_handles[8];
 };
+
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_configure_vsi_tc_bw_data);
 
 /* Query vsi bw configuration (indirect 0x0408) */
 struct i40e_aqc_query_vsi_bw_config_resp {
@@ -1410,6 +1430,8 @@ struct i40e_aqc_query_vsi_bw_config_resp {
 	u8     reserved3[23];
 };
 
+I40E_CHECK_STRUCT_LEN(0x40, i40e_aqc_query_vsi_bw_config_resp);
+
 /* Query VSI Bandwidth Allocation per Traffic Type (indirect 0x040A) */
 struct i40e_aqc_query_vsi_ets_sla_config_resp {
 	u8     tc_valid_bits;
@@ -1420,6 +1442,8 @@ struct i40e_aqc_query_vsi_ets_sla_config_resp {
 	/* 4 bits per tc 0-7, 4th bit is reserved, limit = 2^max */
 	__le16 tc_bw_max[2];
 };
+
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_query_vsi_ets_sla_config_resp);
 
 /* Configure Switching Component Bandwidth Limit (direct 0x0410) */
 struct i40e_aqc_configure_switching_comp_bw_limit {
@@ -1448,6 +1472,8 @@ struct i40e_aqc_configure_switching_comp_ets_data {
 	u8     reserved2[96];
 };
 
+I40E_CHECK_STRUCT_LEN(0x80, i40e_aqc_configure_switching_comp_ets_data);
+
 /* Configure Switching Component Bandwidth Limits per Tc (indirect 0x0416) */
 struct i40e_aqc_configure_switching_comp_ets_bw_limit_data {
 	u8     tc_valid_bits;
@@ -1458,6 +1484,9 @@ struct i40e_aqc_configure_switching_comp_ets_bw_limit_data {
 	__le16 tc_bw_max[2];
 	u8     reserved1[28];
 };
+
+I40E_CHECK_STRUCT_LEN(0x40,
+		      i40e_aqc_configure_switching_comp_ets_bw_limit_data);
 
 /* Configure Switching Component Bandwidth Allocation per Tc
  * (indirect 0x0417)
@@ -1470,6 +1499,8 @@ struct i40e_aqc_configure_switching_comp_bw_config_data {
 	u8     reserved1[20];
 };
 
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_configure_switching_comp_bw_config_data);
+
 /* Query Switching Component Configuration (indirect 0x0418) */
 struct i40e_aqc_query_switching_comp_ets_config_resp {
 	u8     tc_valid_bits;
@@ -1479,6 +1510,8 @@ struct i40e_aqc_query_switching_comp_ets_config_resp {
 	u8     tc_bw_max; /* 0-3, limit = 2^max */
 	u8     reserved2[23];
 };
+
+I40E_CHECK_STRUCT_LEN(0x40, i40e_aqc_query_switching_comp_ets_config_resp);
 
 /* Query PhysicalPort ETS Configuration (indirect 0x0419) */
 struct i40e_aqc_query_port_ets_config_resp {
@@ -1495,6 +1528,8 @@ struct i40e_aqc_query_port_ets_config_resp {
 	u8     reserved3[32];
 };
 
+I40E_CHECK_STRUCT_LEN(0x44, i40e_aqc_query_port_ets_config_resp);
+
 /* Query Switching Component Bandwidth Allocation per Traffic Type
  * (indirect 0x041A)
  */
@@ -1508,6 +1543,8 @@ struct i40e_aqc_query_switching_comp_bw_config_resp {
 	/* 4 bits per tc 0-7, 4th bit is reserved, limit = 2^max */
 	__le16 tc_bw_max[2];
 };
+
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_query_switching_comp_bw_config_resp);
 
 /* Suspend/resume port TX traffic
  * (direct 0x041B and 0x041C) uses the generic SEID struct
@@ -1595,6 +1632,8 @@ struct i40e_aqc_module_desc {
 	u8 reserved2[8];
 };
 
+I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_module_desc);
+
 struct i40e_aq_get_phy_abilities_resp {
 	__le32 phy_type;       /* bitmap using the above enum for offsets */
 	u8     link_speed;     /* bitmap using the above enum bit patterns */
@@ -1625,6 +1664,8 @@ struct i40e_aq_get_phy_abilities_resp {
 #define I40E_AQ_PHY_MAX_QMS          16
 	struct i40e_aqc_module_desc  qualified_module[I40E_AQ_PHY_MAX_QMS];
 };
+
+I40E_CHECK_STRUCT_LEN(0x218, i40e_aq_get_phy_abilities_resp);
 
 /* Set PHY Config (direct 0x0601) */
 struct i40e_aq_set_phy_config { /* same bits as above in all */
