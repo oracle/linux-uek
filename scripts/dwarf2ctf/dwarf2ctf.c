@@ -283,6 +283,14 @@ static void detect_duplicates(const char *module_name, const char *file_name,
 			      void *data);
 
 /*
+ * Detect duplicates and mark seen types for a given type, via a type_id()
+ * callback: used to detect dependent types (particularly those at child-DIE
+ * level) as duplicates.
+ */
+static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
+				     void *data);
+
+/*
  * Mark any aggregates contained within a particular type DIE as seen.  This is
  * needed since even nameless aggregates contained within other aggregates can
  * be used as the type of members of the outer aggregate (though they cannot
@@ -1792,7 +1800,7 @@ static void detect_duplicates(const char *module_name,
 		    (dwarf_whatform(&type_attr) == DW_FORM_ref_sig8)) {
 			fprintf(stderr, "sorry, not yet implemented: %s "
 				"contains DWARF-4 debugging information.\n",
-				file_name);
+				module_name);
 			exit(1);
 		}
 	}
@@ -1835,12 +1843,27 @@ static void detect_duplicates(const char *module_name,
 	}
 
 	/*
-	 * Record that we have seen this type in this module.
+	 * Record that we have seen this type, and all its dependent types, in
+	 * this module (or in the shared module if need be).
 	 */
 
 	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
 	g_hash_table_replace(id_to_module, id, xstrdup(module_name));
 	mark_seen_contained(die, module_name);
+	free(type_id(die, detect_duplicates_typeid, data));
+}
+
+/*
+ * Detect duplicates and mark seen types for a given type, via a type_id()
+ * callback: used to detect dependent types (particularly those at child-DIE
+ * level) as duplicates.
+ */
+static void detect_duplicates_typeid(Dwarf_Die *die, const char *id,
+				     void *data)
+{
+	struct detect_duplicates_state *state = data;
+
+	detect_duplicates(state->module_name, NULL, die, NULL, data);
 }
 
 /*
