@@ -825,10 +825,11 @@ static struct hw_vendor_info vendor_info[] = {
 	{1, "ORACLE", "X3-2    ", PPC},
 	{1, "ORACLE", "X3-2L   ", PPC},
 	{1, "ORACLE", "X3-2B   ", PPC},
-	{1, "ORACLE", "X4470M2 ", PPC},
-	{1, "ORACLE", "X4270M3 ", PPC},
-	{1, "ORACLE", "X4270M2 ", PPC},
-	{1, "ORACLE", "X4170M2 ", PPC},
+	{1, "ORACLE", "X4470 M2", PPC},
+	{1, "ORACLE", "X4270 M3", PPC},
+	{1, "ORACLE", "X4270 M2", PPC},
+	{1, "ORACLE", "X4170 M2", PPC},
+	{1, "ORACLE", "X4170 M3", PPC},
 	{0, "", ""},
 };
 

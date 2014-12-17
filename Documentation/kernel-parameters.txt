@@ -1135,11 +1135,15 @@ bytes respectively. Such letter suffixes can also be entirely omitted.
 		       disable
 		         Do not enable intel_pstate as the default
 		         scaling driver for the supported processors
-		       ora_force
-			 Force loading intel_pstate on Oracle Sun Servers(X86).
-			 only for those who be aware of the risk of no power capping
-			 capability working and try to get better performance with this
-			 driver.
+                       force
+                         Enable intel_pstate on systems that prohibit it by default
+                         in favor of acpi-cpufreq. Forcing the intel_pstate driver
+                         instead of acpi-cpufreq may disable platform features, such
+                         as thermal controls and power capping, that rely on ACPI
+                         P-States information being indicated to OSPM and therefore
+                         should be used with caution. This option does not work with
+                         processors that aren't supported by the intel_pstate driver
+                         or on platforms that use pcc-cpufreq instead of acpi-cpufreq.
 
 	intremap=	[X86-64, Intel-IOMMU]
 			on	enable Interrupt Remapping (default)
