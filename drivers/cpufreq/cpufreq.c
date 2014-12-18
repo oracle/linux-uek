@@ -1510,6 +1510,12 @@ static int __cpufreq_governor(struct cpufreq_policy *policy,
 #else
 	struct cpufreq_governor *gov = NULL;
 #endif
+	/*
+	 * Governor might not be initiated here if _PPC changed notification
+	 * happened, check it.
+	*/
+       if (!policy->governor)
+               return -EINVAL;
 
 	if (policy->governor->max_transition_latency &&
 	    policy->cpuinfo.transition_latency >
