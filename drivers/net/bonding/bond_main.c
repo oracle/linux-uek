@@ -1412,7 +1412,7 @@ static u32 bond_fix_features(struct net_device *dev, u32 features)
 		goto out;
 	}
 
-	mask = features;
+	mask = features | NETIF_F_HW_CSUM;
 	features &= ~NETIF_F_ONE_FOR_ALL;
 	features |= NETIF_F_ALL_FOR_ALL;
 
