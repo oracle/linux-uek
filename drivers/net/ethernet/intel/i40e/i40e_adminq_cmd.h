@@ -1603,6 +1603,7 @@ struct i40e_aq_get_phy_abilities_resp {
 #define I40E_AQ_PHY_FLAG_AN_OFF           0x00 /* link forced on */
 #define I40E_AQ_PHY_FLAG_AN_OFF_LINK_DOWN 0x01
 #define I40E_AQ_PHY_FLAG_AN_ON            0x02
+#define I40E_AQ_PHY_AN_ENABLED			  0x10
 #define I40E_AQ_PHY_FLAG_MODULE_QUAL      0x20
 	__le16 eee_capability;
 #define I40E_AQ_EEE_100BASE_TX       0x0002
