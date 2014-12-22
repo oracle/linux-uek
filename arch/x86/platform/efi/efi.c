@@ -109,7 +109,7 @@ static const struct efi_init_funcs __initconst efi_generic_funcs = {
 	.x86_reserve_range     = efi_memblock_x86_reserve_range_generic
 };
 
-const struct efi_init_funcs *efi_override_funcs =  &efi_generic_funcs;
+const struct efi_init_funcs __refdata *efi_override_funcs =  &efi_generic_funcs;
 
 static bool disable_runtime = false;
 static int __init setup_noefi(char *arg)
@@ -444,7 +444,7 @@ static void __init print_efi_memmap(void)
 }
 #endif  /*  EFI_DEBUG  */
 
-static void efi_reserve_boot_services_generic(void)
+static void __init efi_reserve_boot_services_generic(void)
 {
 	void *p;
 
@@ -726,7 +726,7 @@ static int __init efi_memmap_init(void)
 	return 0;
 }
 
-static void efi_init_generic(void)
+static void __init efi_init_generic(void)
 {
 	efi_char16_t *c16;
 	char vendor[100] = "unknown";
@@ -886,7 +886,7 @@ void efi_memory_uc(u64 addr, unsigned long size)
  * This enables the runtime services to be called without having to
  * thunk back into physical mode for every invocation.
  */
-static void efi_enter_virtual_mode_generic(void)
+static void __init efi_enter_virtual_mode_generic(void)
 {
 	efi_memory_desc_t *md, *prev_md = NULL;
 	efi_status_t status;

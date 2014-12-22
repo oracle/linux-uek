@@ -294,7 +294,7 @@ static const struct efi __initconst efi_xen = {
 	.query_capsule_caps       = xen_efi_query_capsule_caps,
 };
 
-void xen_efi_probe(void)
+void __init xen_efi_probe(void)
 {
 	static struct xen_platform_op __initdata op = {
 		.cmd = XENPF_firmware_info,
