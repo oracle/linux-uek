@@ -1,8 +1,8 @@
 /*
  * FILE:        dtrace_stubs_x86_64.S
- * DESCRIPTION: Dynamic Tracing: x86_64 specific stubs (based on entry_64.S)
+ * DESCRIPTION: Dynamic Tracing: Syscall tracing stubs (arch-specific)
  *
- * Copyright (C) 2010, 2011 Oracle Corporation
+ * Copyright (C) 2010-2014 Oracle Corporation
  */
 
 #include <linux/linkage.h>
@@ -167,7 +167,7 @@ ENTRY(dtrace_stub_\func)
 	pushq	%r11			/* put it back on stack */
 	FIXUP_TOP_OF_STACK %r11, 8
 	DEFAULT_FRAME 0 8		/* offset 8: return address */
-	call dtrace_\func
+	call dtrace_sys_\func
 	RESTORE_TOP_OF_STACK %r11, 8
 	ret $REST_SKIP			/* pop extended registers */
 	CFI_ENDPROC
@@ -177,7 +177,7 @@ END(dtrace_stub_\func)
         FORK_LIKE  clone
         FORK_LIKE  fork
         FORK_LIKE  vfork
-	PTREGSCALL dtrace_stub_iopl, dtrace_iopl, %rsi
+	PTREGSCALL dtrace_stub_iopl, dtrace_sys_iopl, %rsi
 
 ENTRY(dtrace_stub_execve)
 	CFI_STARTPROC
@@ -185,7 +185,7 @@ ENTRY(dtrace_stub_execve)
 	PARTIAL_FRAME 0
 	SAVE_REST
 	FIXUP_TOP_OF_STACK %r11
-	call dtrace_execve
+	call dtrace_sys_execve
 	RESTORE_TOP_OF_STACK %r11
 	movq %rax,RAX(%rsp)
 	RESTORE_REST
@@ -204,7 +204,7 @@ ENTRY(dtrace_stub_rt_sigreturn)
 	SAVE_REST
 	movq %rsp,%rdi
 	FIXUP_TOP_OF_STACK %r11
-	call dtrace_rt_sigreturn
+	call dtrace_sys_rt_sigreturn
 	movq %rax,RAX(%rsp) # fixme, this could be done at the higher layer
 	RESTORE_REST
 	jmp int_ret_from_sys_call

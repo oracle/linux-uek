@@ -1,4 +1,4 @@
-/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+/* Copyright (C) 2011-2014 Oracle, Inc. */
 
 #ifndef _LINUX_DTRACE_CPU_H_
 #define _LINUX_DTRACE_CPU_H_
@@ -7,6 +7,7 @@
 #include <linux/mutex.h>
 #include <linux/rwlock.h>
 #include <linux/dtrace_cpu_defines.h>
+#include <asm/dtrace_cpuinfo.h>
 
 typedef struct cpu_core {
 	uint16_t cpuc_dtrace_flags;
@@ -29,7 +30,7 @@ typedef struct cpuinfo {
 	psetid_t cpu_pset;
 	chipid_t cpu_chip;
 	lgrp_id_t cpu_lgrp;
-	struct cpuinfo_x86 *cpu_info;
+	cpuinfo_arch_t *cpu_info;
 } cpuinfo_t;
 
 DECLARE_PER_CPU_SHARED_ALIGNED(cpuinfo_t, dtrace_cpu_info);
