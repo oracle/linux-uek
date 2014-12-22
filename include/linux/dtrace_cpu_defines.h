@@ -1,7 +1,9 @@
-/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+/* Copyright (C) 2011-2014 Oracle, Inc. */
 
 #ifndef _LINUX_DTRACE_CPU_DEFINES_H_
 #define _LINUX_DTRACE_CPU_DEFINES_H_
+
+#include <linux/percpu.h>
 
 #define CPUC_SIZE	(sizeof (uint16_t) + sizeof(uint8_t) + \
 			 sizeof(uintptr_t) + sizeof(struct mutex))
