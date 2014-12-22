@@ -25,6 +25,7 @@
 #include <linux/percpu.h>
 #include <linux/context_tracking.h>
 #include <linux/uaccess.h>
+#include <linux/dtrace_os.h>
 
 #include <asm/page.h>
 #include <asm/pgtable.h>
@@ -263,7 +264,9 @@ static void __kprobes do_kernel_fault(struct pt_regs *regs, int si_code,
 	}
 
 cannot_handle:
-	unhandled_fault (address, current, regs);
+	if (notify_die(DIE_PAGE_FAULT, "page fault", regs, fault_code, 14,
+		       SIGKILL) != NOTIFY_STOP)
+		unhandled_fault (address, current, regs);
 }
 
 static void noinline __kprobes bogus_32bit_fault_tpc(struct pt_regs *regs)
@@ -324,6 +327,12 @@ asmlinkage void __kprobes do_sparc64_fault(struct pt_regs *regs)
 		}
 	} else
 		flags |= FAULT_FLAG_USER;
+
+	/*
+	 * DTrace may want the page fault ignored...
+	 */
+	if (unlikely(dtrace_no_pf(regs)))
+		return;
 
 	/*
 	 * If we're in an interrupt or have no user
