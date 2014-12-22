@@ -2169,7 +2169,7 @@ static void add_header(struct buffer *b, struct module *mod)
 	buf_printf(b, "\t.arch = MODULE_ARCH_INIT,\n");
 	buf_printf(b, "#ifdef CONFIG_DTRACE\n");
 	buf_printf(b, "\t.sdt_probes = _sdt_probes,\n");
-	buf_printf(b, "\t.num_dtrace_probes = _sdt_probec,\n");
+	buf_printf(b, "\t.sdt_probec = _sdt_probec,\n");
 	buf_printf(b, "#endif\n");
 	buf_printf(b, "};\n");
 }
