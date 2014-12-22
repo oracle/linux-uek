@@ -460,13 +460,10 @@ struct module {
 	struct klp_modinfo *klp_info;
 #endif
 
-#if defined(CONFIG_DTRACE) || defined(CONFIG_DTRACE_MODULE)
-	size_t fbt_nprobes;
-
+#ifdef CONFIG_DTRACE
 	sdt_probedesc_t *sdt_probes;
-	unsigned int num_dtrace_probes;	/* from kernel build */
-	size_t sdt_nprobes;		/* managed at probe load time */
-	int mod_nenabled;	/* # of enabled dtrace probes in module */
+	unsigned int sdt_probec;
+	void *pdata;
 #endif
 
 #ifdef CONFIG_MODULE_UNLOAD
