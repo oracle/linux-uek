@@ -63,7 +63,7 @@ void dtrace_sdt_register(struct module *mp)
 	 * Just in case we run into failures further on...
 	 */
 	mp->sdt_probes = NULL;
-	mp->num_dtrace_probes = 0;
+	mp->sdt_probec = 0;
 
 	if (dtrace_sdt_nprobes == 0)
 		return;
@@ -109,7 +109,7 @@ void dtrace_sdt_register(struct module *mp)
 	}
 
 	mp->sdt_probes = sdps;
-	mp->num_dtrace_probes = cnt;
+	mp->sdt_probec = cnt;
 
 	dtrace_sdt_nop_multi(addrs, cnt);
 
@@ -142,14 +142,14 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 		return NOTIFY_DONE;
 	if (!mp)
 		return NOTIFY_DONE;
-	if (mp->num_dtrace_probes == 0 || mp->sdt_probes == NULL)
+	if (mp->sdt_probec == 0 || mp->sdt_probes == NULL)
 		return NOTIFY_DONE;
 
 	/*
 	 * Create a list of addresses (SDT probe locations) that need to be
 	 * patched with a NOP instruction (or instruction sequence).
 	 */
-	addrs = (sdt_instr_t **)vmalloc(mp->num_dtrace_probes *
+	addrs = (sdt_instr_t **)vmalloc(mp->sdt_probec *
 					sizeof(sdt_instr_t *));
 	if (addrs == NULL) {
 		pr_warning("%s: cannot allocate SDT probe address list (%s)\n",
@@ -157,7 +157,7 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 		return NOTIFY_DONE;
 	}
 
-	for (i = cnt = 0, sdp = mp->sdt_probes; i < mp->num_dtrace_probes;
+	for (i = cnt = 0, sdp = mp->sdt_probes; i < mp->sdt_probec;
 	     i++, sdp++) {
 		/*
 		 * Fix-up the offset to reflect the relocated address of the
