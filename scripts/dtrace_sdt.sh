@@ -27,18 +27,24 @@ fi
 if [ "$opr" = "sdtstub" ]; then
     ${NM} -u $* | \
 	grep __dtrace_probe_ | sort | uniq | \
-	${AWK} '{
-		    printf("\t.globl %s\n\t.type %s,@function\n%s:\n",
-			   $2, $2, $2);
-		    count++;
-		}
+	${AWK} -v arch=${ARCH} \
+		'{
+		     printf("\t.globl %s\n\t.type %s,@function\n%s:\n",
+			    $2, $2, $2);
+		     count++;
+		 }
 
-		END {
-		    if (count)
-			print "\tret";
-		    else
-			exit(1);
-		}' > $tfn
+		 END {
+		     if (count) {
+			 if (arch == "x86_64") {
+			     print "\tret";
+			 } else if (arch == "sparc64") {
+			     print "\tretl";
+			     print "\tnop";
+			 }
+		     } else
+			 exit(1);
+		 }' > $tfn
     exit 0
 fi
 
@@ -63,6 +69,8 @@ fi
 
 		     getline;
 		 }
+
+		 sect = 0;
 		 next;
 	     }
 
@@ -82,7 +90,7 @@ fi
 		 next;
 	     }
 
-	     /__dtrace_probe_/ && sect !~ /debug/ {
+	     /__dtrace_probe_/ && sect && sect !~ /debug/ {
 		 $3 = substr($3, 16);
 		 sub(/-.*$/, "", $3);
 		 printf "%16s %s R %s %s\n", sect, $1, $3, sectbase[sect];
@@ -91,10 +99,12 @@ fi
 	sort
     [ "x${lfn}" != "x" -a "x${lfn}" != "xkmod" ] && nm ${lfn}
 ) | \
+  tee /tmp/DEBUG | \
     awk -v lfn="${lfn}" \
+	-v arch=${ARCH} \
 	'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
 	     tmp = $0;
-	     if (length(v0) > 8) {
+	     if (length(v0) > 8 || length(v1) > 8) {
 		 d = length(v0);
 		 v0h = strtonum("0x"substr(v0, 1, d - 8));
 		 v0l = strtonum("0x"substr(v0, d - 8 + 1));
@@ -191,18 +201,22 @@ fi
 		     pn = fun":"prb;
 		     ad = addl(baseaddr, poffst[pn]);
 
+		     if (arch == "x86_64")
+			 ad = subl(ad, 1);
+
 		     if (lfn != "kmod") {
-			 print "\tPTR\t0x" ad;
-			 print "\tPTR\t" length(prb);
-			 print "\tPTR\t" length(fun);
-			 print "\t.asciz\t\042" prb "\042";
-			 print "\t.asciz\t\042" fun "\042";
+			 printf "\tPTR\t0x%s\n", ad;
+			 printf "\tPTR\t%d\n", length(prb);
+			 printf "\tPTR\t%d\n", length(fun);
+			 printf "\t.asciz\t\042%s\042\n", prb;
+			 printf "\t.asciz\t\042%s\042\n", fun;
 			 print "\tALGN";
 		     } else {
 			 if (probec == 0)
 			     print "static sdt_probedesc_t\t_sdt_probes[] = {";
 
-			 print "  {\042" prb "\042, \042"fun"\042, 0x" ad " },";
+			 printf "  {\042%s\042, \042%s\042, 0x%s },\n", \
+				prb, fun, ad;
 		     }
 
 		     probec++;
@@ -237,7 +251,7 @@ fi
 		 print ".globl dtrace_sdt_nprobes";
 		 print "\tALGN";
 		 print "dtrace_sdt_nprobes:";
-		 print "\tPTR\t" probec;
+		 printf "\tPTR\t%d\n", probec;
 	     } else {
 		 if (probec > 0)
 		     print "};";

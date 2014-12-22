@@ -13,6 +13,7 @@
 #include <linux/interrupt.h>
 #include <linux/kdebug.h>
 #include <linux/module.h>
+#include <linux/moduleloader.h>
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/stacktrace.h>
@@ -30,6 +31,8 @@
 /*---------------------------------------------------------------------------*\
 (* OS SPECIFIC DTRACE SETUP                                                  *)
 \*---------------------------------------------------------------------------*/
+#define DTRACE_PDATA_MAXSIZE	2048
+
 struct module		*dtrace_kmod = NULL;
 EXPORT_SYMBOL(dtrace_kmod);
 
@@ -40,19 +43,38 @@ struct kmem_cache	*psinfo_cachep;
 void dtrace_os_init(void)
 {
 	if (dtrace_kmod != NULL) {
-		pr_warning("%s: cannot be called twice\n", __func__);
+		pr_warn_once("%s: cannot be called twice\n", __func__);
 		return;
 	}
 
-	dtrace_kmod = kzalloc(sizeof(struct module), GFP_KERNEL);
+	/*
+	 * A little bit of magic...
+	 * We create a dummy module to represent the core Linux kernel.  The
+	 * only data we're interested in is the name, the SDT probe points data
+	 * (to be filled in by dtrace_sdt_register()), and the probe data.
+	 * DTrace uses an architecture-specific structure (hidden from us here)
+	 * to hold some data, and since we do not know the layout or the size,
+	 * we ensure that we allocate enough memory to accomodate the largest
+	 * of those structures.
+	 * So, the memory we allocate will hold:
+	 *	- the dtrace_kmod module structure
+	 *	- a block of memory (aligned at a structure boundary) to be
+	 *	  used for pdata and other related data
+	 * The memory is allocated from the modules space.
+	 */
+	dtrace_kmod = module_alloc(ALIGN(sizeof(struct module), 8) +
+				   DTRACE_PDATA_MAXSIZE);
 	if (dtrace_kmod == NULL) {
 		pr_warning("%s: cannot allocate kernel pseudo-module\n",
 			   __func__);
 		return;
 	}
 
-	dtrace_kmod->state = MODULE_STATE_LIVE;
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
+	dtrace_kmod->state = MODULE_STATE_LIVE;
+	dtrace_kmod->pdata = (char *)dtrace_kmod +
+				ALIGN(sizeof(struct module), 8);
+	dtrace_kmod->core_size = DTRACE_PDATA_MAXSIZE;
 
 	psinfo_cachep = kmem_cache_create("psinfo_cache",
 				sizeof(dtrace_psinfo_t), 0,
@@ -80,7 +102,7 @@ EXPORT_SYMBOL(dtrace_os_exit);
 void dtrace_psinfo_alloc(struct task_struct *tsk)
 {
 	dtrace_psinfo_t		*psinfo;
-	struct mm_struct	*mm;
+	struct mm_struct	*mm = NULL;
 
 	if (likely(tsk->dtrace_psinfo)) {
 		put_psinfo(tsk);
@@ -119,7 +141,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		psinfo->argc = 0;
 		for (p = (char *)mm->arg_start; p < (char *)mm->arg_end;
 		     psinfo->argc++) {
-			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
 
 			if (!l)
 				break;
@@ -143,7 +165,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (i = 0, p = (char *)mm->arg_start; i < len; i++) {
 			psinfo->argv[i] = p;
-			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
 		}
 		psinfo->argv[len] = NULL;
 
@@ -152,7 +174,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (p = (char *)mm->env_start; p < (char *)mm->env_end;
 		     envc++) {
-			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
 
 			if (!l)
 				break;
@@ -176,7 +198,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (i = 0, p = (char *)mm->env_start; i < len; i++) {
 			psinfo->envp[i] = p;
-			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
 		}
 		psinfo->envp[len] = NULL;
 
