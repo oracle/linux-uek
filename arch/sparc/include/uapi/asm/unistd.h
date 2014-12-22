@@ -416,6 +416,7 @@
 #define __NR_memfd_create	348
 #define __NR_bpf		349
 #define __NR_execveat		350
+#define __NR_waitfd		351
 
 #define NR_syscalls		351
 
