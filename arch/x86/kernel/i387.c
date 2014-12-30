@@ -5,6 +5,7 @@
  *  General FPU state handling cleanups
  *	Gareth Hughes <gareth@valinux.com>, May 2000
  */
+#include <linux/bootmem.h>
 #include <linux/module.h>
 #include <linux/regset.h>
 #include <linux/sched.h>
@@ -181,6 +182,16 @@ void __cpuinit fpu_init(void)
 
 	mxcsr_feature_mask_init();
 	xsave_init();
+
+	/*
+	 * Now we know the final size of the xsave data, allocate the
+	 * FPU state area for the first task. All other tasks have
+	 * this allocated in arch_dup_task_struct().
+	 */
+	if (!current->thread.fpu.state)
+		current->thread.fpu.state = alloc_bootmem_align(xstate_size,
+			__alignof__(struct xsave_struct));
+
 	eager_fpu_init();
 }
 
@@ -212,20 +223,11 @@ EXPORT_SYMBOL_GPL(fpu_finit);
  */
 int init_fpu(struct task_struct *tsk)
 {
-	int ret;
-
 	if (tsk_used_math(tsk)) {
 		if (HAVE_HWFP && tsk == current)
 			unlazy_fpu(tsk);
 		return 0;
 	}
-
-	/*
-	 * Memory allocation at the first usage of the FPU and other state.
-	 */
-	ret = fpu_alloc(&tsk->thread.fpu);
-	if (ret)
-		return ret;
 
 	fpu_finit(&tsk->thread.fpu);
 
