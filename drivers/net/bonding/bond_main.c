@@ -1980,8 +1980,8 @@ int bond_release(struct net_device *bond_dev, struct net_device *slave_dev)
 	/* slave is not a slave or master is not master of this slave */
 	if (!(slave_dev->flags & IFF_SLAVE) ||
 	    (slave_dev->master != bond_dev)) {
-		pr_err("%s: Error: cannot release %s.\n",
-		       bond_dev->name, slave_dev->name);
+		pr_debug("%s: Error: cannot release %s.\n",
+			 bond_dev->name, slave_dev->name);
 		return -EINVAL;
 	}
 
