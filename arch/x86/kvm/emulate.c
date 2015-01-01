@@ -2028,23 +2028,13 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt, struct x86_emulate_ops *ops)
 	setup_syscalls_segments(ctxt, ops, &cs, &ss);
 
 	ops->get_msr(ctxt, MSR_IA32_SYSENTER_CS, &msr_data);
-	switch (ctxt->mode) {
-	case X86EMUL_MODE_PROT32:
-		if ((msr_data & 0xfffc) == 0x0)
-			return emulate_gp(ctxt, 0);
-		break;
-	case X86EMUL_MODE_PROT64:
-		if (msr_data == 0x0)
-			return emulate_gp(ctxt, 0);
-		break;
-	}
+	if ((msr_data & 0xfffc) == 0x0)
+		return emulate_gp(ctxt, 0);
 
 	ctxt->eflags &= ~(EFLG_VM | EFLG_IF | EFLG_RF);
-	cs_sel = (u16)msr_data;
-	cs_sel &= ~SELECTOR_RPL_MASK;
+	cs_sel = (u16)msr_data & ~SELECTOR_RPL_MASK;
 	ss_sel = cs_sel + 8;
-	ss_sel &= ~SELECTOR_RPL_MASK;
-	if (ctxt->mode == X86EMUL_MODE_PROT64 || (efer & EFER_LMA)) {
+	if (efer & EFER_LMA) {
 		cs.d = 0;
 		cs.l = 1;
 	}
@@ -2053,10 +2043,11 @@ emulate_sysenter(struct x86_emulate_ctxt *ctxt, struct x86_emulate_ops *ops)
 	ops->set_segment(ctxt, ss_sel, &ss, 0, VCPU_SREG_SS);
 
 	ops->get_msr(ctxt, MSR_IA32_SYSENTER_EIP, &msr_data);
-	c->eip = msr_data;
+	c->eip = (efer & EFER_LMA) ? msr_data : (u32)msr_data;
 
 	ops->get_msr(ctxt, MSR_IA32_SYSENTER_ESP, &msr_data);
-	c->regs[VCPU_REGS_RSP] = msr_data;
+	c->regs[VCPU_REGS_RSP] = (efer & EFER_LMA) ? msr_data :
+						     (u32)msr_data;
 
 	return X86EMUL_CONTINUE;
 }
