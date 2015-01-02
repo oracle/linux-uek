@@ -893,7 +893,8 @@ static unsigned long long register_services(struct ds_info *dp)
 
 		nreg |= (1 << i);
 
-		new_count = sched_clock() & 0xffffffff;
+		/* solaris service domains think 0x80000000 indicates clients */
+		new_count = sched_clock() & 0x7fffffff;
 		cp->handle = ((u64) i << 32) | new_count;
 
 		msg_len = (sizeof(struct ds_reg_req) +
