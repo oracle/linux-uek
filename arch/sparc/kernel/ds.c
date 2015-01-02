@@ -289,7 +289,7 @@ static void md_update_data(struct ds_info *dp,
 
 	rp = (struct ds_md_update_req *) (dpkt + 1);
 
-	printk(KERN_INFO "ds-%llu: Machine description update.\n", dp->id);
+	pr_info("ds-%llu: Machine description update.\n", dp->id);
 
 	mdesc_update();
 
@@ -328,8 +328,8 @@ static void domain_shutdown_data(struct ds_info *dp,
 
 	rp = (struct ds_shutdown_req *) (dpkt + 1);
 
-	printk(KERN_ALERT "ds-%llu: Shutdown request from "
-	       "LDOM manager received.\n", dp->id);
+	pr_info("ds-%llu: Shutdown request from LDOM manager received.\n",
+		dp->id);
 
 	memset(&pkt, 0, sizeof(pkt));
 	pkt.data.tag.type = DS_DATA;
@@ -368,8 +368,8 @@ static void domain_panic_data(struct ds_info *dp,
 
 	rp = (struct ds_panic_req *) (dpkt + 1);
 
-	printk(KERN_ALERT "ds-%llu: Panic request from "
-	       "LDOM manager received.\n", dp->id);
+	pr_info("ds-%llu: Panic request from LDOM manager received.\n",
+		dp->id);
 
 	memset(&pkt, 0, sizeof(pkt));
 	pkt.data.tag.type = DS_DATA;
@@ -476,9 +476,9 @@ static void purge_dups(u32 *list, u32 num_ents)
 
 static int dr_cpu_size_response(int ncpus)
 {
-	return (sizeof(struct ds_data) +
+	return sizeof(struct ds_data) +
 		sizeof(struct dr_cpu_tag) +
-		(sizeof(struct dr_cpu_resp_entry) * ncpus));
+		(sizeof(struct dr_cpu_resp_entry) * ncpus);
 }
 
 static void dr_cpu_init_response(struct ds_data *resp, u64 req_num,
@@ -551,8 +551,7 @@ static int dr_cpu_configure(struct ds_info *dp, struct ds_cap_state *cp,
 	for_each_cpu(cpu, mask) {
 		int err;
 
-		printk(KERN_INFO "ds-%llu: Starting cpu %d...\n",
-		       dp->id, cpu);
+		pr_info("ds-%llu: Starting cpu %d...\n", dp->id, cpu);
 		err = cpu_up(cpu);
 		if (err) {
 			__u32 res = DR_CPU_RES_FAILURE;
@@ -567,8 +566,7 @@ static int dr_cpu_configure(struct ds_info *dp, struct ds_cap_state *cp,
 				res = DR_CPU_RES_CPU_NOT_RESPONDING;
 			}
 
-			printk(KERN_INFO "ds-%llu: CPU startup failed err=%d\n",
-			       dp->id, err);
+			pr_info("ds-%llu: CPU startup failed err=%d\n", dp->id, err);
 			dr_cpu_mark(resp, cpu, ncpus, res, stat);
 		}
 	}
@@ -607,8 +605,7 @@ static int dr_cpu_unconfigure(struct ds_info *dp,
 	for_each_cpu(cpu, mask) {
 		int err;
 
-		printk(KERN_INFO "ds-%llu: Shutting down cpu %d...\n",
-		       dp->id, cpu);
+		pr_info("ds-%llu: Shutting down cpu %d...\n", dp->id, cpu);
 		err = cpu_down(cpu);
 		if (err)
 			dr_cpu_mark(resp, cpu, ncpus,
@@ -685,8 +682,8 @@ static void ds_pri_data(struct ds_info *dp,
 
 	rp = (struct ds_pri_msg *) (dpkt + 1);
 
-	printk(KERN_INFO "ds-%llu: PRI REQ [%llx:%llx], len=%d\n",
-	       dp->id, rp->req_num, rp->type, len);
+	pr_info("ds-%llu: PRI REQ [%llx:%llx], len=%d\n", dp->id, rp->req_num,
+		rp->type, len);
 }
 
 struct ds_var_hdr {
@@ -827,18 +824,15 @@ void ldom_set_var(const char *var, const char *value)
 
 		if (ds_var_doorbell == 0 ||
 		    ds_var_response != DS_VAR_SUCCESS)
-			printk(KERN_ERR "ds-%llu: var-config [%s:%s] "
-			       "failed, response(%d).\n",
-			       dp->id, var, value,
-			       ds_var_response);
+			pr_info("ds-%llu: var-config [%s:%s] failed, response(%d).\n",
+			       dp->id, var, value, ds_var_response);
 	} else {
-		printk(KERN_ERR PFX "var-config not registered so "
-		       "could not set (%s) variable to (%s).\n",
+		pr_info("var-config not registered so could not set (%s) variable to (%s).\n",
 		       var, value);
 	}
 }
 
-static char full_boot_str[256] __attribute__((aligned(32)));
+static char full_boot_str[256] __aligned(32);
 static int reboot_data_supported;
 
 void ldom_reboot(const char *boot_command)
@@ -859,8 +853,8 @@ void ldom_reboot(const char *boot_command)
 
 			hv_ret = sun4v_reboot_data_set(ra, len);
 			if (hv_ret != HV_EOK)
-				pr_err("SUN4V: Unable to set reboot data "
-				       "hv_ret=%lu\n", hv_ret);
+				pr_err("SUN4V: Unable to set reboot data hv_ret=%lu\n",
+					hv_ret);
 		} else {
 			ldom_set_var("reboot-command", full_boot_str);
 		}
@@ -875,14 +869,15 @@ void ldom_power_off(void)
 
 static void ds_conn_reset(struct ds_info *dp)
 {
-	printk(KERN_ERR "ds-%llu: ds_conn_reset() from %pf\n",
-	       dp->id, __builtin_return_address(0));
+	pr_err("ds-%llu: ds_conn_reset() from %pf\n", dp->id,
+		__builtin_return_address(0));
 }
 
-static int register_services(struct ds_info *dp)
+static unsigned long long register_services(struct ds_info *dp)
 {
 	struct ldc_channel *lp = dp->lp;
 	int i;
+	unsigned long long nreg = 0;
 
 	for (i = 0; i < dp->num_ds_states; i++) {
 		struct {
@@ -895,6 +890,8 @@ static int register_services(struct ds_info *dp)
 
 		if (cp->state == CAP_STATE_REGISTERED)
 			continue;
+
+		nreg |= (1 << i);
 
 		new_count = sched_clock() & 0xffffffff;
 		cp->handle = ((u64) i << 32) | new_count;
@@ -914,7 +911,56 @@ static int register_services(struct ds_info *dp)
 		if (err > 0)
 			cp->state = CAP_STATE_REG_SENT;
 	}
-	return 0;
+	return nreg;
+}
+
+static struct timer_list ds_reg_tmr;
+static int reg_cnt;
+
+static void ds_run_timer(unsigned long data)
+{
+	unsigned long flags;
+	unsigned long long ret;
+	struct ds_info *dp = (struct ds_info *)data;
+
+	spin_lock_irqsave(&ds_lock, flags);
+	ret = register_services(dp);
+	++reg_cnt;
+	spin_unlock_irqrestore(&ds_lock, flags);
+
+	if (!ret)
+		return;
+
+	if (reg_cnt > 5) {
+		int i;
+		for (i = 0; i < dp->num_ds_states; i++)
+			if (ret & (1 << i)) {
+				struct ds_cap_state *cp = &dp->ds_states[i];
+				pr_err("ds-%llu: registration of \"%s\" failed\n",
+					dp->id, cp->service_id);
+			}
+	} else {
+		ret = mod_timer(&ds_reg_tmr, jiffies + msecs_to_jiffies(3000));
+		if (ret)
+			pr_err("ds-%llu: Error setting timer callback\n",
+				dp->id);
+	}
+}
+
+static void ds_setup_retry_timer(struct ds_info *dp)
+{
+	int ret;
+
+	/*
+	 * "reliable" ldc communication will not catch if ack/nack's are
+	 * not received for service registering attempts. retry via timer.
+	 */
+	setup_timer(&ds_reg_tmr, ds_run_timer, (unsigned long)dp);
+
+	ret = mod_timer(&ds_reg_tmr, jiffies + msecs_to_jiffies(2000));;
+	if (ret)
+		pr_err("ds-%llu: Error setting ds registration retry timer\n",
+			dp->id);
 }
 
 static int ds_handshake(struct ds_info *dp, struct ds_msg_tag *pkt)
@@ -925,7 +971,7 @@ static int ds_handshake(struct ds_info *dp, struct ds_msg_tag *pkt)
 			goto conn_reset;
 
 		dp->hs_state = DS_HS_DONE;
-
+		ds_setup_retry_timer(dp);
 		return register_services(dp);
 	}
 
@@ -937,20 +983,19 @@ static int ds_handshake(struct ds_info *dp, struct ds_msg_tag *pkt)
 		struct ds_cap_state *cp = find_cap(dp, ap->handle);
 
 		if (!cp) {
-			printk(KERN_ERR "ds-%llu: REG ACK for unknown "
-			       "handle %llx\n", dp->id, ap->handle);
+			pr_err("ds-%llu: REG ACK for unknown handle %llx\n",
+				dp->id, ap->handle);
 			return 0;
 		}
-		printk(KERN_INFO "ds-%llu: Registered %s service.\n",
-		       dp->id, cp->service_id);
+		pr_info("ds-%llu: Registered %s service.\n", dp->id,
+			cp->service_id);
 		cp->state = CAP_STATE_REGISTERED;
 	} else if (pkt->type == DS_REG_NACK) {
 		struct ds_reg_nack *np = (struct ds_reg_nack *) pkt;
 		struct ds_cap_state *cp = find_cap(dp, np->handle);
 
 		if (!cp) {
-			printk(KERN_ERR "ds-%llu: REG NACK for "
-			       "unknown handle %llx\n",
+			pr_err("ds-%llu: REG NACK for unknown handle %llx\n",
 			       dp->id, np->handle);
 			return 0;
 		}
@@ -1007,8 +1052,7 @@ static void process_ds_work(void)
 		int req_len = qp->req_len;
 
 		if (!cp) {
-			printk(KERN_ERR "ds-%llu: Data for unknown "
-			       "handle %llu\n",
+			pr_err("ds-%llu: Data for unknown handle %llu\n",
 			       dp->id, dpkt->handle);
 
 			spin_lock_irqsave(&ds_lock, flags);
@@ -1110,8 +1154,7 @@ static void ds_event(void *arg, int event)
 	}
 
 	if (event != LDC_EVENT_DATA_READY) {
-		printk(KERN_WARNING "ds-%llu: Unexpected LDC event %d\n",
-		       dp->id, event);
+		pr_warn("ds-%llu: Unexpected LDC event %d\n", dp->id, event);
 		spin_unlock_irqrestore(&ds_lock, flags);
 		return;
 	}
@@ -1168,7 +1211,7 @@ static int ds_probe(struct vio_dev *vdev, const struct vio_device_id *id)
 	int err, i;
 
 	if (ds_version_printed++ == 0)
-		printk(KERN_INFO "%s", version);
+		pr_info("%s", version);
 
 	dp = kzalloc(sizeof(*dp), GFP_KERNEL);
 	err = -ENOMEM;
