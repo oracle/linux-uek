@@ -178,7 +178,8 @@ static struct mdesc_handle *mdesc_alloc(unsigned int mdesc_size,
 
 static void mdesc_free(struct mdesc_handle *hp)
 {
-	hp->mops->free(hp);
+	if (hp->mops)
+		hp->mops->free(hp);
 }
 
 static struct mdesc_handle *cur_mdesc;
@@ -207,7 +208,7 @@ void mdesc_release(struct mdesc_handle *hp)
 	spin_lock_irqsave(&mdesc_lock, flags);
 	if (atomic_dec_and_test(&hp->refcnt)) {
 		list_del_init(&hp->list);
-		hp->mops->free(hp);
+		mdesc_free(hp);
 	}
 	spin_unlock_irqrestore(&mdesc_lock, flags);
 }
@@ -1108,6 +1109,8 @@ void __init sun4v_mdesc_init(void)
 		prom_halt();
 	}
 
+	/* current 'mops' pointers are dangerous if not __init code */
+	hp->mops = NULL;
 	cur_mdesc = hp;
 
 	report_platform_properties();
