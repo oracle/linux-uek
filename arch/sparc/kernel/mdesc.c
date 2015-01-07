@@ -757,6 +757,30 @@ static void set_sock_ids(struct mdesc_handle *hp)
 		set_sock_ids_by_cache(hp, 2);
 }
 
+static void __cpuinit set_sock_ids(struct mdesc_handle *hp)
+{
+	int idx;
+	u64 mp;
+
+	idx = 1;
+
+	/*
+	 * identify unique sockets by looking for cpus backpointed to by
+	 * level 3 caches
+	 */
+	mdesc_for_each_node_by_name(hp, mp, "cache") {
+		const u64 *level;
+
+		level = mdesc_get_property(hp, mp, "level", NULL);
+		if (*level != 3)
+			continue;
+
+		mark_sock_ids(hp, mp, idx);
+
+		idx++;
+	}
+}
+
 static void mark_proc_ids(struct mdesc_handle *hp, u64 mp, int proc_id)
 {
 	u64 a;
