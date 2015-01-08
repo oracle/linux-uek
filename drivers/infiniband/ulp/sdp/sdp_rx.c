@@ -816,16 +816,30 @@ void sdp_do_posts(struct sdp_sock *ssk)
 
 }
 
-static inline int should_wake_up(struct sock *sk)
+/*
+ * Should be called with rcu_read_lock() held for the reference to wq.
+ * Returns:
+ * 	1: there is probably a waiter
+ * 	0: no waiter
+ */
+static inline int should_wake_up(struct sock *sk, struct socket_wq *wq)
 {
-	return sdp_sk_sleep(sk) && waitqueue_active(sdp_sk_sleep(sk)) &&
-		(posts_handler(sdp_sk(sk)) || somebody_is_waiting(sk));
+	int rc;
+
+	if (unlikely(wq))
+		rc = waitqueue_active(&wq->wait) &&
+		     (posts_handler(sdp_sk(sk)) || somebody_is_waiting(sk));
+	else
+		rc = 0;
+
+	return rc;
 }
 
 static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 {
 	struct sock *sk = cq_context;
 	struct sdp_sock *ssk = sdp_sk(sk);
+	struct socket_wq *wq;
 
 	if (unlikely(cq != ssk->rx_ring.cq)) {
 		sdp_warn(sk, "cq = %p, ssk->cq = %p\n", cq, ssk->rx_ring.cq);
@@ -836,8 +850,10 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 
 	sdp_prf(sk, NULL, "rx irq");
 
-	if (should_wake_up(sk)) {
-		wake_up_interruptible(sdp_sk_sleep(sk));
+	rcu_read_lock();
+	wq = rcu_dereference(sk->sk_wq);
+	if (should_wake_up(sk, wq)) {
+		wake_up_interruptible(&wq->wait);
 		SDPSTATS_COUNTER_INC(rx_int_wake_up);
 	} else {
 		if (queue_work_on(ssk->cpu, rx_comp_wq, &ssk->rx_comp_work))
@@ -845,6 +861,7 @@ static void sdp_rx_irq(struct ib_cq *cq, void *cq_context)
 		else
 			SDPSTATS_COUNTER_INC(rx_int_no_op);
 	}
+	rcu_read_unlock();
 }
 
 static void sdp_rx_ring_purge(struct sdp_sock *ssk)
