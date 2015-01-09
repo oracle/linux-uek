@@ -2,7 +2,7 @@
  * dwarf2ctf.c: Read in DWARF[23] debugging information from some set of ELF
  * files, and generate CTF in correspondingly-named files.
  *
- * (C) 2011, 2012, 2013, 2014 Oracle, Inc.  All rights reserved.
+ * (C) 2011 -- 2015 Oracle, Inc.  All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -98,14 +98,29 @@ static GHashTable *id_to_type;
 static GHashTable *id_to_module;
 
 /*
- * A mapping from module name to ctf_file_t *.  The CTF named 'vmlinux' is the
- * CTF corresponding to the types in always-built-in translation units; the CTF
- * named 'shared_ctf' (not appearing in this mapping) is the CTF corresponding
- * to types shared between more than one module (even between two currently-
- * built-in modules: we do not distinguish at this level between built-in
- * modules and non-built-in modules.)
+ * Module-specific state.  The module named 'vmlinux' is that corresponding to
+ * the types in always-built-in translation units; the module named 'shared_ctf'
+ * (not appearing in this mapping) is that corresponding to types shared between
+ * more than one module (even between two currently-built-in modules: we do not
+ * distinguish at this level between built-in modules and non-built-in modules.)
  */
-static GHashTable *module_to_ctf_file;
+static GHashTable *per_module;
+
+/*
+ * The data structure that per_module maps module names to.
+ */
+typedef struct per_module {
+	/*
+	 * The CTF file containing the types in this module.
+	 */
+	ctf_file_t *ctf_file;
+
+} per_module_t;
+
+/*
+ * Get a ctf_file out of the per_module hash for a given module.
+ */
+static ctf_file_t *lookup_ctf_file(const char *module_name);
 
 /*
  * The names of the object files to run over.  Except in -e mode, this comes
@@ -378,8 +393,8 @@ static void construct_ctf(const char *module_name, const char *file_name,
 			  void *unused __unused__);
 
 /*
- * Write out the CTF files from the module_to_ctf_file hashtable into files in
- * the output_dir.
+ * Write out the CTF files from the per_module->ctf_file into files in the
+ * output_dir.
  */
 static void write_types(char *output_dir);
 
@@ -658,9 +673,9 @@ static const char *abs_file_name(const char *file_name);
 static char *rel_abs_file_name(const char *file_name, const char *relative_to);
 
 /*
- * Trivial wrapper, avoid an incompatible pointer type warning.
+ * Free a per_module's contents.
  */
-static void private_ctf_free(void *ctf_file);
+static void private_per_module_free(void *per_module);
 
 /* Initialization.  */
 
@@ -766,8 +781,8 @@ static void run(char *output_dir)
 					     free, free);
 	tu_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
 					     free, free);
-	module_to_ctf_file = g_hash_table_new_full(g_str_hash, g_str_equal,
-						   free, private_ctf_free);
+	per_module = g_hash_table_new_full(g_str_hash, g_str_equal, free,
+					   private_per_module_free);
 
 	dw_ctf_trace("Initializing...\n");
 	init_tu_to_modules();
@@ -794,7 +809,7 @@ static void run(char *output_dir)
 	g_hash_table_destroy(id_to_type);
 	g_hash_table_destroy(id_to_module);
 	g_hash_table_destroy(tu_to_module);
-	g_hash_table_destroy(module_to_ctf_file);
+	g_hash_table_destroy(per_module);
 }
 
 
@@ -1166,6 +1181,7 @@ static int member_blacklisted(Dwarf_Die *die, Dwarf_Die *parent_die)
 static ctf_file_t *init_ctf_table(const char *module_name)
 {
 	ctf_file_t *ctf_file;
+	per_module_t *new_per_mod;
 	int ctf_err;
 
 	if ((ctf_file = ctf_create(&ctf_err)) == NULL) {
@@ -1173,8 +1189,15 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 			strerror(ctf_err));
 		exit(1);
 	}
-	g_hash_table_replace(module_to_ctf_file, xstrdup(module_name),
-			     ctf_file);
+	new_per_mod = malloc(sizeof(struct per_module));
+	if (new_per_mod == NULL) {
+		fprintf(stderr, "Out of memory allocating per-module CTF "
+			"info\n");
+		exit(1);
+	}
+
+	new_per_mod->ctf_file = ctf_file;
+	g_hash_table_replace(per_module, xstrdup(module_name), new_per_mod);
 
 	dw_ctf_trace("Initializing module: %s\n", module_name);
 	if ((strcmp(module_name, "shared_ctf") == 0) ||
@@ -1216,9 +1239,7 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 		 * parent at the global CTF file, which must exist by this
 		 * point.
 		 */
-		if (ctf_import(ctf_file,
-			       g_hash_table_lookup(module_to_ctf_file,
-						   "shared_ctf")) < 0) {
+		if (ctf_import(ctf_file, lookup_ctf_file("shared_ctf")) < 0) {
 			fprintf(stderr, "Cannot set parent of CTF file for "
 				"module %s: %s\n", module_name,
 				ctf_errmsg(ctf_errno(ctf_file)));
@@ -2253,7 +2274,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 		exit(1);
 	}
 
-	ctf = g_hash_table_lookup(module_to_ctf_file, ctf_module);
+	ctf = lookup_ctf_file(ctf_module);
 
 	if (ctf == NULL) {
 		ctf = init_ctf_table(ctf_module);
@@ -2588,8 +2609,7 @@ static ctf_id_t lookup_ctf_type(const char *module_name, const char *file_name,
 	}
 
 	if ((type_ref->ctf_file != ctf) &&
-	    type_ref->ctf_file != g_hash_table_lookup(module_to_ctf_file,
-						      "shared_ctf")) {
+	    type_ref->ctf_file != lookup_ctf_file("shared_ctf")) {
 #ifdef DEBUG
 		fprintf(stderr, "%s: Internal error: lookup of %s found in "
 			"different file: %s/%s versus %s/%s.\n", locerrstr,
@@ -3324,8 +3344,7 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	}
 
 	if ((new_type->ctf_file != ctf) &&
-	    (new_type->ctf_file != g_hash_table_lookup(module_to_ctf_file,
-						       "shared_ctf"))) {
+	    (new_type->ctf_file != lookup_ctf_file("shared_ctf"))) {
 		fprintf(stderr, "%s:%s: internal error: referenced type lookup "
 			"for member %s yields a different CTF file: %p versus "
 			"%p\n", locerrstr, dwarf_diename(&cu_die),
@@ -3428,7 +3447,7 @@ static void write_types(char *output_dir)
 {
 	GHashTableIter module_iter;
 	char *module;
-	ctf_file_t *ctf_file;
+	per_module_t *per_mod;
 
 	/*
 	 * Work over all the modules and write their compressed CTF data out
@@ -3443,9 +3462,9 @@ static void write_types(char *output_dir)
 		exit(1);
 	}
 
-	g_hash_table_iter_init(&module_iter, module_to_ctf_file);
+	g_hash_table_iter_init(&module_iter, per_module);
 	while (g_hash_table_iter_next(&module_iter, (void **) &module,
-				      (void **)&ctf_file)) {
+				      (void **)&per_mod)) {
 		char *path = NULL;
 		gzFile fd;
 		int builtin_module = 0;
@@ -3480,9 +3499,10 @@ static void write_types(char *output_dir)
 				"%s\n", path, strerror(errno));
 			exit(1);
 		}
-		if (ctf_gzwrite(ctf_file, fd) < 0) {
+		if (ctf_gzwrite(per_mod->ctf_file, fd) < 0) {
 			fprintf(stderr, "Cannot write to CTF file %s: "
-				"%s\n", path, ctf_errmsg(ctf_errno(ctf_file)));
+				"%s\n", path,
+				ctf_errmsg(ctf_errno(per_mod->ctf_file)));
 			exit(1);
 		}
 
@@ -3825,9 +3845,24 @@ static int count_ctf_members_internal(const char *name, ctf_id_t member,
 }
 
 /*
- * Trivial wrapper, avoid an incompatible pointer type warning.
+ * Free a per_module's contents.
  */
-static void private_ctf_free(void *ctf_file)
+static void private_per_module_free(void *per_module)
 {
-	ctf_close((ctf_file_t *)ctf_file);
+	per_module_t *per_mod = per_module;
+
+	ctf_close(per_mod->ctf_file);
+}
+
+/*
+ * Get a ctf_file out of the per_module hash for a given module.
+ */
+static ctf_file_t *lookup_ctf_file(const char *module_name)
+{
+	per_module_t *per_mod;
+
+	per_mod = g_hash_table_lookup(per_module, module_name);
+	if (per_mod == NULL)
+		return NULL;
+	return per_mod->ctf_file;
 }
