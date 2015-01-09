@@ -115,7 +115,21 @@ typedef struct per_module {
 	 */
 	ctf_file_t *ctf_file;
 
+	/*
+	 * A hash from a "CTF-form" structure name (in the form 's/u NAME') to
+	 * a ctf_memb_count_t (see below).
+	 */
+	GHashTable *member_counts;
 } per_module_t;
+
+/*
+ * A count associating a type ID relating to a structure or union with a count
+ * of members in that structure.
+ */
+typedef struct ctf_memb_count {
+	ctf_id_t ctf_id;
+	size_t count;
+} ctf_memb_count_t;
 
 /*
  * Get a ctf_file out of the per_module hash for a given module.
@@ -612,17 +626,6 @@ static int find_ctf_encoding(struct type_encoding_tab *type_tab, size_t size);
  * Count the number of members of a DWARF aggregate.
  */
 static long count_dwarf_members(Dwarf_Die *die);
-
-/*
- * Count the number of members of a CTF aggregate.
- */
-static long count_ctf_members(ctf_file_t *fp, ctf_id_t souid);
-
-/*
- * Increment said count.
- */
-static int count_ctf_members_internal(const char *name, ctf_id_t member,
-				      ulong_t offset, void *count);
 
 /*
  * Given a DIE that may contain a type attribute, look up the target of that
@@ -1197,6 +1200,9 @@ static ctf_file_t *init_ctf_table(const char *module_name)
 	}
 
 	new_per_mod->ctf_file = ctf_file;
+	new_per_mod->member_counts = g_hash_table_new_full(g_str_hash,
+							   g_str_equal,
+							   free, free);
 	g_hash_table_replace(per_module, xstrdup(module_name), new_per_mod);
 
 	dw_ctf_trace("Initializing module: %s\n", module_name);
@@ -2220,7 +2226,8 @@ static void detect_duplicates_alias_fixup_internal(Dwarf_Die *die,
  * Indirectly recursively called for types depending on other types, and for
  * the types of variables (which for the sake of argument we call 'types' here
  * too, since we treat them exactly like types, and dealing with types is our
- * most important function.)
+ * most important function).  In such calls, the module_name may be 'shared_ctf'
+ * if this type is in the shared CTF repository.
  */
 static ctf_full_id_t *construct_ctf_id(const char *module_name,
 				       const char *file_name,
@@ -2230,6 +2237,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	char *id = type_id(die, NULL, NULL);
 	char *ctf_module;
 	ctf_file_t *ctf;
+	ctf_snapshot_id_t snapshot;
 
 	dw_ctf_trace("    %p: %s: looking up %s: %s\n", &id, module_name,
 		     dwarf_diename(die), id);
@@ -2279,7 +2287,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	if (ctf == NULL) {
 		ctf = init_ctf_table(ctf_module);
 		dw_ctf_trace("%p: %s: initialized CTF file %p\n", &id,
-			     module_name, ctf);
+			     ctf_module, ctf);
 	}
 
 	/*
@@ -2293,9 +2301,11 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	 * representation implicitly assumes that they cannot.)
 	 */
 
+	snapshot = ctf_snapshot(ctf);
+
 	enum skip_type skip = SKIP_CONTINUE;
 	dw_ctf_trace("%p: into die_to_ctf() for %s\n", &id, id);
-	ctf_id_t this_ctf_id = die_to_ctf(module_name, file_name, die,
+	ctf_id_t this_ctf_id = die_to_ctf(ctf_module, file_name, die,
 					  parent_die, ctf, -1, 0, 1, &skip,
 					  NULL, id);
 	dw_ctf_trace("%p: out of die_to_ctf()\n", &id);
@@ -2307,16 +2317,10 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 	}
 
 	if (skip != SKIP_ABORT) {
-		if (ctf_update(ctf) < 0) {
-			fprintf(stderr, "Cannot update CTF file: %s\n",
-				ctf_errmsg(ctf_errno(ctf)));
-			exit(1);
-		}
-
 		ctf_id->ctf_file = ctf;
 		ctf_id->ctf_id = this_ctf_id;
 #ifdef DEBUG
-		strcpy(ctf_id->module_name, module_name);
+		strcpy(ctf_id->module_name, ctf_module);
 		strcpy(ctf_id->file_name, file_name);
 #endif
 		g_hash_table_replace(id_to_type, id, ctf_id);
@@ -2328,14 +2332,16 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 		/*
 		 * Failure.  Remove the type from the id_to_type mapping, if it
 		 * is there, and discard any added types from the CTF.
+		 *
+		 * If we have had to ctf_update() due to a new type getting
+		 * used, the rollback will fail: discard instead. It might leave
+		 * some spurious types hanging around but it will clean up as
+		 * much as we can at this point.
 		 */
 
-		if (ctf_discard(ctf) < 0) {
-			fprintf(stderr, "Cannot discard from CTF file on "
-				"conversion failure or skip: %s\n",
-				ctf_errmsg(ctf_errno(ctf)));
-			exit(1);
-		}
+		if (ctf_rollback(ctf, snapshot) < 0)
+			if (ctf_errno(ctf) == ECTF_OVERROLLBACK)
+				ctf_discard(ctf);
 
 		free(ctf_id);
 		ctf_id = NULL;
@@ -2492,19 +2498,6 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 			*ctf_id = full_ctf_id;
 
 			g_hash_table_replace(id_to_type, xstrdup(id), ctf_id);
-
-			/*
-			 * This prevents a clean rollback on error from deeply
-			 * nested types: some unreachable types may persist.
-			 * Probably unfixable wihtout a radical rewrite of
-			 * libctf (a good idea anyway, ctf_update() is terribly
-			 * slow).
-			 */
-			if (ctf_update(ctf) < 0) {
-				fprintf(stderr, "Cannot update CTF file: %s\n",
-					ctf_errmsg(ctf_errno(ctf)));
-				exit(1);
-			}
 		}
 
 		/*
@@ -3088,6 +3081,8 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 
 	const char *name = dwarf_diename(die);
 	int is_union = (dwarf_tag(die) == DW_TAG_union_type);
+	ctf_memb_count_t *member_count = NULL;
+	ctf_id_t id;
 
 	/*
 	 * FIXME: these both need handling for DWARF4 support.
@@ -3100,32 +3095,52 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 	 * of one with the same name and at least as many members.  If we
 	 * already know of one and it is shorter, we want to use its ID rather
 	 * than creating a new one.
+	 *
+	 * Note; by this point, the deduplicator has long run: thus we know for
+	 * sure what module a potentially-shared type will end up in, and
+	 * there's no need to double-check the shared CTF repository for types.
+	 * We also know that the module must exist in the per_module hash.
 	 */
 
 	if (name != NULL) {
-		ctf_id_t existing;
 		char *structized_name = NULL;
+		per_module_t *ctf_pm;
 
 		structized_name = str_appendn(structized_name,
-					      is_union ? "union " : "struct ",
+					      is_union ? "u " : "s ",
 					      name, NULL);
 
-		existing = ctf_lookup_by_name(ctf, structized_name);
-		free(structized_name);
+		ctf_pm = g_hash_table_lookup(per_module, module_name);
+		member_count = g_hash_table_lookup(ctf_pm->member_counts,
+						   structized_name);
 
-		if (existing >= 0) {
+		if (member_count) {
+			free(structized_name);
 			dw_ctf_trace("%s: already exists (with ID %li) with "
-				     "%li members versus current %li members\n",
-				     locerrstr, existing, count_ctf_members(ctf, existing),
+				     "%zi members versus current %li members\n",
+				     locerrstr, member_count->ctf_id,
+				     member_count->count,
 				     count_dwarf_members(die));
 
-			if (count_ctf_members(ctf, existing) <
-			    count_dwarf_members(die))
-				return existing;
+			if (member_count->count < count_dwarf_members(die))
+				return member_count->ctf_id;
 
 			*skip = SKIP_SKIP;
-			return existing;
+			return member_count->ctf_id;
 		}
+
+		/*
+		 * Not in existence yet.  Create it.
+		 */
+		member_count = malloc(sizeof(struct ctf_memb_count));
+		if (member_count == NULL) {
+			fprintf(stderr, "Out of memory allocating "
+				"structure/union member count\n");
+			exit(1);
+		}
+		member_count->count = 0;
+		g_hash_table_insert(ctf_pm->member_counts,
+				    structized_name, member_count);
 	}
 
 	dw_ctf_trace("%s: adding structure %s\n", locerrstr, name);
@@ -3134,8 +3149,13 @@ static ctf_id_t assemble_ctf_struct_union(const char *module_name,
 	else
 		ctf_add_sou = ctf_add_struct;
 
-	return ctf_add_sou(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
-			   name);
+	id = ctf_add_sou(ctf, top_level_type ? CTF_ADD_ROOT : CTF_ADD_NONROOT,
+			 name);
+
+	if (member_count != NULL)
+		member_count->ctf_id = id;
+
+	return id;
 }
 
 /*
@@ -3161,8 +3181,31 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 	Dwarf_Attribute type_attr;
 	Dwarf_Die type_die;
 	Dwarf_Die cu_die;
+	ctf_memb_count_t *member_count;
+	const char *struct_name = dwarf_diename(parent_die);
 
 	CTF_DW_ENFORCE(type);
+
+	/*
+	 * Increment the member count of named structures.  This is the number
+	 * of members in the DWARF, not in the CTF: blacklisted members are
+	 * counted too.
+	 */
+	if (struct_name != NULL) {
+		int is_union = (dwarf_tag(parent_die) == DW_TAG_union_type);
+		char *structized_name = NULL;
+		per_module_t *ctf_pm;
+
+		structized_name = str_appendn(structized_name,
+					      is_union ? "u " : "s ",
+					      struct_name, NULL);
+
+		ctf_pm = g_hash_table_lookup(per_module, module_name);
+		member_count = g_hash_table_lookup(ctf_pm->member_counts,
+						   structized_name);
+		member_count->count++;
+		free(structized_name);
+	}
 
 	/*
 	 * If this member is blacklisted, just skip it.
@@ -3364,18 +3407,61 @@ static ctf_id_t assemble_ctf_su_member(const char *module_name,
 		if (ctf_errno(ctf) == ECTF_DUPLICATE)
 			return parent_ctf_id;
 
-		if (ctf_errno(ctf) == ECTF_BADID) {
+		/*
+		 * CTF doesn't know of of either this member's type or the
+		 * enclosing structure.  Try a ctf_update() in case this is
+		 * recently added.
+		 */
+
+		if (ctf_errno(ctf) == ECTF_BADID ||
+		    ctf_errno(ctf) == ECTF_NOTSOU) {
+
+			ctf_file_t *shared_ctf;
+
+			/*
+			 * Try an update of the current CTF file first, to bring
+			 * the type ID table up to date: if that doesn't work,
+			 * try an update of the shared table.  (If none is
+			 * needed, this is cheap.)
+			 */
+
+			if (ctf_update(new_type->ctf_file) < 0) {
+				fprintf(stderr, "Cannot update CTF file: %s\n",
+					ctf_errmsg(ctf_errno(ctf)));
+				exit(1);
+			}
+
+			if (ctf_add_member_offset(ctf, parent_ctf_id,
+						  dwarf_diename(die),
+						  new_type->ctf_id,
+						  offset) == 0)
+				return parent_ctf_id;
+
+			shared_ctf = lookup_ctf_file("shared_ctf");
+			if (ctf_update(shared_ctf) < 0) {
+				fprintf(stderr, "Cannot update shared CTF: %s\n",
+					ctf_errmsg(ctf_errno(shared_ctf)));
+				exit(1);
+			}
+
+			if (ctf_add_member_offset(ctf, parent_ctf_id,
+						  dwarf_diename(die),
+						  new_type->ctf_id,
+						  offset) == 0)
+				return parent_ctf_id;
 #ifdef DEBUG
-			fprintf(stderr, "%s: Internal error: bad ID %s:%s:%p:%i "
+			fprintf(stderr, "%s: Internal error: %s %s:%s:%p:%i "
 				"on member addition to ctf_file %p.\n",
-				locerrstr, new_type->module_name,
+				locerrstr, ctf_errmsg(ctf_errno(ctf)),
+				new_type->module_name,
 				new_type->file_name, new_type->ctf_file,
 				(int) new_type->ctf_id, ctf);
 #else
-			fprintf(stderr, "%s: Internal error: bad ID %p:%i on "
+			fprintf(stderr, "%s: Internal error: %s %p:%i on "
 				"member addition to ctf_file %p.\n",
-				locerrstr, new_type->ctf_file,
-				(int) new_type->ctf_id, ctf);
+				locerrstr, ctf_errmsg(ctf_errno(ctf)),
+				new_type->ctf_file, (int) new_type->ctf_id,
+				ctf);
 #endif
 			return CTF_ERROR_REPORTED;
 		}
@@ -3493,6 +3579,12 @@ static void write_types(char *output_dir)
 				   ".ctf.new", NULL);
 
 		dw_ctf_trace("Writeout path: %s\n", path);
+
+		if (ctf_update(per_mod->ctf_file) < 0) {
+			fprintf(stderr, "Cannot serialize CTF file %s: %s\n",
+				path, ctf_errmsg(ctf_errno(per_mod->ctf_file)));
+			exit(1);
+		}
 
 		if ((fd = gzopen(path, "wb")) == NULL) {
 			fprintf(stderr, "Cannot open CTF file %s for writing: "
@@ -3820,30 +3912,6 @@ static long count_dwarf_members(Dwarf_Die *d)
 	exit(1);
 }
 
- /*
- * Count the number of members of a CTF aggregate.
- */
-static long count_ctf_members(ctf_file_t *fp, ctf_id_t souid)
-{
-	long count = 0;
-
-	ctf_member_iter(fp, souid, count_ctf_members_internal, &count);
-
-	return count;
-}
-
-/*
- * Increment said count.
- */
-static int count_ctf_members_internal(const char *name, ctf_id_t member,
-				      ulong_t offset, void *data)
-{
-	long *count = (long *) data;
-
-	(*count)++;
-	return 0;
-}
-
 /*
  * Free a per_module's contents.
  */
@@ -3852,6 +3920,7 @@ static void private_per_module_free(void *per_module)
 	per_module_t *per_mod = per_module;
 
 	ctf_close(per_mod->ctf_file);
+	g_hash_table_destroy(per_mod->member_counts);
 }
 
 /*
