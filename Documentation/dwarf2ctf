@@ -224,7 +224,8 @@ main()
  /* See 'Initialization' */
  init_assembly_tab()
  init_builtin()
- init_blacklist()
+ init_dedup_blacklist()
+ init_member_blacklist()
  run()
    init_tu_to_modules()
    init_ctf_table()
@@ -287,7 +288,7 @@ Initialization
 
  init_assembly_tab()
  init_builtin()
- init_blacklist()
+ init_dedup_blacklist()
  run()
    init_tu_to_modules()
    init_ctf_table()
@@ -296,8 +297,8 @@ This happens at the top of main() and run(), and in various functions named
 init_*().  Of these, init_assembly_tab() and init_builtin() serve only to turn
 various static arrays and files mentioned on the command line into more useful
 internal representations (e.g. the assembly filter array of structures is turned
-into a pair of arrays indexed by DWARF tag), and init_blacklist() is described
-in the section on duplicate type detection below.
+into a pair of arrays indexed by DWARF tag), and the blacklisting functions are
+described in the section on duplicate type detection below.
 
 init_ctf_table(), called both at initialization time and later during CTF
 assembly when new CTF files are found to be needed, creates a new CTF file in
@@ -475,7 +476,11 @@ Duplicate detection
 [ 1]       mark_shared()
 [R]          type_id()                    /* Type IDs */
 [C1]           mark_shared()
+[ 4]       type_id()
+[ 4]         detect_duplicates_typeid()
+[ 4]           detect_duplicates()
 [R]        mark_seen_contained()
+           member_blacklisted()
 [C]    detect_duplicates_done()
 
      process_file()
@@ -512,6 +517,11 @@ is true:
  - the type is a non-opaque type with an opaque variant ('struct foo'), or
    vice versa, and either of these variants is shared: these two types will
    get different type IDs, so explicit checking is necessary
+
+Note that we do *not* consider a type to belong in the shared module merely if
+*it* has a base type which is shared: indeed, this is the common case for
+unshared types (even unshared structures tend to have fields of shared types
+like int).
 
 It should be fairly easy to see that sharedness is a contagious property:
 e.g. if you mark a structure as shared, and one of its members is an
@@ -669,19 +679,27 @@ whose members vary depending on whether CHIP1371 is defined.  Obviously, it is
 impossible to share any such types between kernel modules even though their
 names are the same and they are defined in the same place in the same source
 file in both cases.  But this sort of trickery is very rare, so we simply
-implement a blacklist of modules which will not introduce new types into the
-shared CTF repository, and who do not participate in alias fixup detection
-either.  Detecting these cases in order to blacklist them is harder: no
-automated system has yet been implemented, although instances where #defines of
-this nature introduce new types that are then used by later members will cause
-assertion failures inside dwarf2ctf which might be a clue.  So it is possible
-that some examples have been missed.  (The blacklist only applies to cases where
-structure members change within a single kernel build, so cases where structures
-have members whose presence depends on CONFIG_* values are quite all right, as
-are cases where #defines are introduced by one translation that #includes
-another that then goes on to define whole new structures: it is only cases where
-modules #define something that changes the definition of individual
-possibly-shared types that will need blacklisting.)
+implement a 'deduplication blacklist' of modules which will not introduce new
+types into the shared CTF repository, and who do not participate in alias fixup
+detection either.  Detecting these cases in order to blacklist them is harder:
+no automated system has yet been implemented, although instances where #defines
+of this nature introduce new types that are then used by later members will
+cause assertion failures inside dwarf2ctf which might be a clue.  So it is
+possible that some examples have been missed.  (The blacklist only applies to
+cases where structure members change within a single kernel build, so cases
+where structures have members whose presence depends on CONFIG_* values are
+quite all right, as are cases where #defines are introduced by one translation
+that #includes another that then goes on to define whole new structures: it is
+only cases where modules #define something that changes the definition of
+individual possibly-shared types that will need blacklisting.)
+
+
+There are a few even worse cases where a single structure is defined with
+different members in different translation units within a single module.  In
+this case we can do nothing at all, since our output representation describes
+only a single type per module: we implement a 'member blacklist' which bans
+emission of affected members entirely, leaving a description of a structure with
+an undescribed hole in it.
 
 
 CTF construction
@@ -707,8 +725,10 @@ CTF construction
               -> assemble_ctf_enumerator()
               -> assemble_ctf_struct_union()
               -> assemble_ctf_su_member()
+                   member_blacklisted()
 [ 3]               die_to_ctf()
 [ 2]               construct_ctf_id()
+[C]    cleanup_sou_member_count()
 
 The next stage after the detection of duplicate and cross-module shared types is
 to generate CTF.  We generate all CTF at once before emitting it: this is
@@ -723,11 +743,12 @@ never shared because no type or variable can depend upon them, so they always go
 directly into the appropriate module and never into the shared type repository.)
 
 At this stage, the 'CTF files' are not actually files but rather ctf_file_t
-structures maintained by libdtrace-ctf and tracked in the module_to_ctf_file
-hash.  We track every single individual type in the CTF file in the id_to_type
-hash, which maps type IDs to pairs of (CTF file ID, ctf type ID): this lets us
-use the type IDs described above when considering cross-references within CTF
-files (e.g. from one CTF type to a type it depends upon).
+structures maintained by libdtrace-ctf and tracked in the per_module hash, along
+with other information which varies by module name.  We track every single
+individual type in the CTF file in the id_to_type hash, which maps type IDs to
+pairs of (CTF file ID, ctf type ID): this lets us use the type IDs described
+above when considering cross-references within CTF files (e.g. from one CTF type
+to a type it depends upon).
 
 The most important functions in this phase are:
 
@@ -784,38 +805,52 @@ perhaps because DWARF was emitted that we don't know how to understand (this is
 particularly likely in structure assembly, where we are highly dependent on the
 form of the DWARF that GCC happens to emit for DW_AT_member_location).  We pass
 an 'enum skip_type' around, which has three possible values, one of which is
-SKIP_ABORT.  After every type is assembled, we call the notably inefficient
-function ctf_update() on the CTF file we're working over.  This takes the
-in-memory structures and serializes them (all of them, every time), following
-which they can be referred to by other CTF types.  If a SKIP_ABORT propagates up
-to construct_ctf_id(), we call ctf_discard() instead, which throws away every
-type constructed since the last ctf_update() -- i.e., the specific erroneous
-type we've just been working on.  (We might have emitted some parts of it and
-then failed, so we should try to clean up.)
+SKIP_ABORT.  Before each type is assembled, we call ctf_snapshot() to take a
+snapshot of the variable-plus-type set in the CTF file we're working over.  If a
+SKIP_ABORT propagates up to construct_ctf_id(), we call ctf_rollback(), which
+throws away every type constructed since the last ctf_snapshot() -- i.e., the
+specific erroneous type we've just been working on.  (We might have emitted some
+parts of it and then failed, so we should try to clean up).
 
 A SKIP_ABORT is not fatal unless DEBUG is defined: its only effect is to omit
 one single type from the resulting CTF, which is probably still usable.
+
+libdtrace-ctf causes additional problems here.  It can only see the types we
+added once the notably expensive function ctf_update() is called.  This takes
+the in-memory structures and serializes them (all of them, every time).  This
+only affects libctf when structure and union members are added: libctf needs to
+know the sizes and alignments of the types of those members, which might quite
+possibly just have been added, e.g. if this structure contains a pointer to its
+own structure tag.  So, when we insert a member in assemble_ctf_su_member(), we
+note a bad type-ID error and do a ctf_update() on the file we're working over
+and try again: even then that can fail if the type was added to the shared
+repository, so we do a ctf_update() on *that* and try again, and only if that
+fails do we declare a SKIP_ABORT error.  (We check the shared repository last
+because it is very large, so takes longer to serialize than other CTF files do).
+
+The need to keep the number of calls to ctf_update() down means we must avoid
+all access to the CTF types we are assembling if we can possibly get at the same
+data another way.  Hence the member_counts hash, a member of the per_module
+state, which tracks the number of members in structures with a given C-style
+name and their CTF IDs.  This structure allows us to handle the (valid) C idiom
+of redeclaring the same structure with a different number of members, merging
+the definitions across translation units and discarding them (iff the structure
+was unshared) when we transition into a new module, without ever having to
+consult the CTF to see how many members we put into it.  (We have to use the
+C-style name here, because by definition the type IDs of such redeclared
+structures will be different, since a type ID contains a line number and
+translation unit name.)
+
 
 There's more error-handling complexity inside die_to_ctf(), where errors from
 libdtrace-ctf are actually reported (there may be multiple of them for a single
 type, e.g. if we are assembling a structure and several members somehow refer to
 a type we do not know about).
 
-
 die_to_ctf() itself has the sort of parameter list that can make people swear
 off C for life.  It is largely explained in the description of ctf_assembly_fun.
 Most parts of it are hardly used in the function itself, just passed down to CTF
-assembly functions.  The only part of die_to_ctf() that is worth noting is that
-it goes to extra effort to call ctf_update() early when new structure and union
-DIEs are created, before any of their members are assembled.  This allows self-
-references like
-
-struct foo {
-	struct foo *next;
-};
-
-to work (since you can't refer to a type in CTF if you haven't called
-ctf_update() since adding that type).
+assembly functions.
 
 Finally, we must note the override flag.  Both die_to_ctf() and
 construct_ctf_id() return a CTF ID.  This is thrown away by the DWARF walking
