@@ -85,8 +85,13 @@ typedef struct ctf_full_id {
 } ctf_full_id_t;
 
 /*
+ * A hash mapping 'atoms' (almost entirely type IDs) to nothing.
+ */
+static GHashTable *atoms;
+
+/*
  * A mapping from the type ID of a DIE (see type_id()) to ctf_full_id_t's
- * describing the type with that ID.
+ * describing the type with that ID.  The type ID is an atom.
  *
  * This is used to look up types regardless of which CTF file they may reside
  * in.  Not the same as a DWARF4 type signature because we must encode scope
@@ -98,9 +103,9 @@ typedef struct ctf_full_id {
 static GHashTable *id_to_type;
 
 /*
- * A mapping from the type ID of a DIE to the name of the module (and thus CTF
- * table) incorporating that type.  (Modules in this context, and throughout
- * dwarf2ctf, are DTrace modules: a name without suffix or path.)
+ * A mapping from the type ID of a DIE (an atom) to the name of the module (and
+ * thus CTF table) incorporating that type.  (Modules in this context, and
+ * throughout dwarf2ctf, are DTrace modules: a name without suffix or path.)
  *
  * This is used to merge types identical across modules (e.g. those in global
  * header files).
@@ -821,6 +826,13 @@ static GList *list_filter(GList *list, filter_pred_fun fun, GDestroyNotify free_
 			  void *data);
 
 /*
+ * Intern an atom in the atoms table and return it, or free it and return the
+ * existing atom if one is already interned.    (Despite the type signature, this
+ * return value is constant and should not be freed.)
+ */
+static void *intern(char *atom);
+
+/*
  * Figure out the (pathless, suffixless) module name for a given module file (.o
  * or .ko), and return it in a new dynamically allocated string.
  *
@@ -956,10 +968,11 @@ static void run(char *output, int standalone)
 	 * builtin modules, and create the shared CTF file if deduplicating.
 	 */
 
+	atoms = g_hash_table_new_full(g_str_hash, g_str_equal, free, NULL);
 	id_to_type = g_hash_table_new_full(g_str_hash, g_str_equal,
-					   free, free);
+					   NULL, free);
 	id_to_module = g_hash_table_new_full(g_str_hash, g_str_equal,
-					     free, free);
+					     NULL, free);
 	per_module = g_hash_table_new_full(g_str_hash, g_str_equal, free,
 					   private_per_module_free);
 	variable_blacklist = g_hash_table_new_full(g_str_hash, g_str_equal,
@@ -993,8 +1006,8 @@ static void run(char *output, int standalone)
 	g_hash_table_destroy(per_module);
 	g_hash_table_destroy(variable_blacklist);
 	g_hash_table_destroy(fn_to_die_to_parent);
+	g_hash_table_destroy(atoms);
 }
-
 
 /*
  * Populate the object_names list from the module filelist.
@@ -2063,8 +2076,7 @@ static void detect_duplicates_tu_init(const char *module_name,
 		dw_ctf_trace("%s: initialized CTF file.\n", module_name);
 	}
 
-	state->structs_seen = g_hash_table_new_full(g_str_hash, g_str_equal,
-						    free, NULL);
+	state->structs_seen = g_hash_table_new(g_str_hash, g_str_equal);
 	g_hash_table_remove_all(state->vars_seen);
 	state->module_name = module_name;
 }
@@ -2175,7 +2187,8 @@ static void detect_duplicates(const char *module_name,
  * top-level DIEs.)
  *
  * This function may be called multiple times for overridden DIEs that are
- * dependent types of bitfields.
+ * dependent types of bitfields.  (On multiple calls for normal types, the
+ * second call will enter the NS_NO_MARKING case block and terminate recursion.)
  */
 static void detect_duplicates_mark_inner_die(const char *module_name, Dwarf_Die *die,
 					     const char *id, die_override_t *overrides,
@@ -2216,7 +2229,8 @@ static void detect_duplicates_mark_inner_die(const char *module_name, Dwarf_Die 
 	 */
 
 	dw_ctf_trace("Marking %s as seen in %s\n", id, module_name);
-	g_hash_table_replace(id_to_module, xstrdup(id), xstrdup(module_name));
+	g_hash_table_replace(id_to_module, intern(xstrdup(id)),
+			     xstrdup(module_name));
 	mark_seen_contained(die, module_name, overrides, data);
 	free(type_id(die, overrides, detect_duplicates_typeid, data));
 }
@@ -2245,8 +2259,8 @@ static void detect_duplicates_will_rescan(Dwarf_Die *die, const char *id,
 		fprintf(stderr, "Out of memory allocating id_file\n");
 		exit (1);
 	}
-	id_file->file_name = xstrdup(state->file_name);
-	id_file->id = xstrdup(id);
+	id_file->file_name = intern(xstrdup(state->file_name));
+	id_file->id = intern(xstrdup(id));
 	id_file->dieoff = dwarf_dieoffset(die);
 	state->named_structs = g_list_prepend(state->named_structs, id_file);
 }
@@ -2297,8 +2311,6 @@ static void detect_duplicates_blacklist_var_dups(Dwarf_Die *die,
 static void free_duplicates_id_file(void *data)
 {
 	struct detect_duplicates_id_file *id_file = data;
-	free(id_file->file_name);
-	free(id_file->id);
 	free(id_file);
 }
 
@@ -2416,7 +2428,7 @@ static void mark_seen_contained(Dwarf_Die *die, const char *module_name,
 
 				dw_ctf_trace("Marking member %s as seen in %s\n", id,
 					     module_name);
-				g_hash_table_replace(id_to_module, id,
+				g_hash_table_replace(id_to_module, intern(id),
 						     xstrdup(module_name));
 			}
 		}
@@ -2462,7 +2474,7 @@ static void mark_shared(Dwarf_Die *die, const char *id,
 	    (strcmp(existing_module, "shared_ctf") != 0)) {
 
 		dw_ctf_trace("Marking %s as duplicate\n", id);
-		g_hash_table_replace(id_to_module, xstrdup(id),
+		g_hash_table_replace(id_to_module, intern(xstrdup(id)),
 				     xstrdup("shared_ctf"));
 
 		/*
@@ -2495,7 +2507,8 @@ static void mark_shared(Dwarf_Die *die, const char *id,
 		if (g_hash_table_lookup_extended(state->structs_seen, id,
 						 NULL, NULL))
 			return;
-		g_hash_table_replace(state->structs_seen, xstrdup(id), NULL);
+		g_hash_table_replace(state->structs_seen, intern(xstrdup(id)),
+				     NULL);
 
 		switch (dwarf_child(die, &child)) {
 		case -1:
@@ -2653,9 +2666,8 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 			state->dwfl_file_name = xstrdup(id_file->file_name);
 			if (state->structs_seen)
 				g_hash_table_destroy(state->structs_seen);
-			state->structs_seen = g_hash_table_new_full(g_str_hash,
-								    g_str_equal,
-								    free, NULL);
+			state->structs_seen = g_hash_table_new(g_str_hash,
+							       g_str_equal);
 		}
 		if (!dwarf_offdie(state->dwarf, id_file->dieoff,
 				  &die)) {
@@ -2666,7 +2678,7 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 			exit(1);
 		}
 		mark_shared(&die, NULL, NULL, state);
- 		made_shared = 1;
+		made_shared = 1;
 	}
 
 	/*
@@ -2682,7 +2694,7 @@ static int detect_duplicates_alias_fixup(void *id_file_data, void *data)
 	 */
 	if (transparent_shared && !opaque_shared) {
 		dw_ctf_trace("Marking %s as duplicate\n", opaque_id);
-		g_hash_table_replace(id_to_module, xstrdup(opaque_id),
+		g_hash_table_replace(id_to_module, intern(xstrdup(opaque_id)),
 				     xstrdup("shared_ctf"));
 		made_shared = 1;
 	}
@@ -2715,8 +2727,8 @@ static void mark_shared_by_name(ctf_file_t *ctf, ctf_id_t ctf_id,
 	strcpy(full_ctf_id->module_name, "shared_ctf");
 	strcpy(full_ctf_id->file_name, "<built-in type>");
 #endif
-	g_hash_table_replace(id_to_module, id, xstrdup("shared_ctf"));
-	g_hash_table_replace(id_to_type, xstrdup(id), full_ctf_id);
+	g_hash_table_replace(id_to_module, intern(xstrdup(id)), xstrdup("shared_ctf"));
+	g_hash_table_replace(id_to_type, intern(id), full_ctf_id);
 }
 
 /*
@@ -2826,7 +2838,7 @@ static ctf_full_id_t *construct_ctf_id(const char *module_name,
 		strcpy(ctf_id->module_name, ctf_module);
 		strcpy(ctf_id->file_name, file_name);
 #endif
-		g_hash_table_replace(id_to_type, id, ctf_id);
+		g_hash_table_replace(id_to_type, intern(id), ctf_id);
 
 		dw_ctf_trace("    %lx: %s: new type added, CTF ID %p:%i\n",
 			     (unsigned long) dwarf_dieoffset(die), id,
@@ -3034,7 +3046,8 @@ static ctf_id_t die_to_ctf(const char *module_name, const char *file_name,
 				     module_name, file_name);
 			*ctf_id = full_ctf_id;
 
-			g_hash_table_replace(id_to_type, xstrdup(id), ctf_id);
+			g_hash_table_replace(id_to_type, intern(xstrdup(id)),
+					     ctf_id);
 		}
 
 		/*
@@ -4551,6 +4564,24 @@ static Dwarf_Word private_subrange_dimensions(Dwarf_Die *die)
 		nelems++;
 
 	return nelems;
+}
+
+/*
+ * Intern an atom in the atoms table and return it, or free it and return the
+ * existing atom if one is already interned.  (Despite the type signature, this
+ * return value is constant and should not be freed.)
+ */
+static void *intern(char *atom)
+{
+	void *foo;
+
+	if (!g_hash_table_lookup_extended(atoms, atom, &foo, NULL)) {
+		g_hash_table_insert(atoms, atom, NULL);
+		foo = atom;
+	} else
+		free(atom);
+
+	return foo;
 }
 
 /*
