@@ -143,7 +143,6 @@ static struct rds_ib_excl_ips excl_ips_tbl[RDS_IB_MAX_EXCL_IPS];
 static u8       excl_ips_cnt = 0;
 
 static int ip_config_init_phase_flag; /* = 0 */
-static int initial_failovers_all_ports_deactivated_flag; /* = 0 */
 static int initial_failovers_iterations; /* = 0 */
 
 /*
@@ -1325,39 +1324,6 @@ out:
 	kfree(work);
 }
 
-static int rds_ib_ip_config_down(void)
-{
-	u8	i;
-
-	for (i = 1; i <= ip_port_cnt; i++) {
-		if (ip_config[i].port_state == RDS_IB_PORT_UP)
-			return 0;
-	}
-
-	return 1;
-}
-
-static void rds_ib_net_failback(struct work_struct *_work)
-{
-	struct rds_ib_port_ud_work	*work =
-		container_of(_work, struct rds_ib_port_ud_work, work.work);
-	struct in_device		*in_dev;
-
-	in_dev = in_dev_get(ip_config[work->port].dev);
-	if (in_dev && !in_dev->ifa_list &&
-		ip_config[work->port].ip_addr &&
-		work->timeout > 0) {
-		INIT_DELAYED_WORK(&work->work, rds_ib_net_failback);
-		work->timeout -= msecs_to_jiffies(100);
-		queue_delayed_work(rds_wq, &work->work,
-			msecs_to_jiffies(100));
-	} else {
-		rds_ib_failback((struct work_struct *)&work->work);
-	}
-
-	if (in_dev)
-		in_dev_put(in_dev);
-}
 
 static void rds_ib_event_handler(struct ib_event_handler *handler,
 				struct ib_event *event)
@@ -1643,9 +1609,6 @@ rds_ib_do_initial_failovers(struct work_struct *workarg)
 			}
 		}
 	}
-
-	if (ports_deactivated == ip_port_cnt)
-		initial_failovers_all_ports_deactivated_flag = 1;
 
 	ip_config_init_phase_flag = 0; /* done with initial phase! */
 	kfree(riif_work);
@@ -2369,8 +2332,6 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	u8 i;
 	struct rds_ib_port_ud_work *work = NULL;
 	int port_transition = RDSIBP_TRANSITION_NOOP;
-	int port_state_was_init = 0;
-	int all_ports_were_down = 0;
 
 	if (!rds_ib_active_bonding_enabled)
 		return NOTIFY_DONE;
@@ -2498,15 +2459,11 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 			 RDSIBP_STATUS_NETDEVUP) ? "UP" : "DOWN"));
 	}
 
-	/* save for special case before we change port_state */
-	all_ports_were_down = rds_ib_ip_config_down();
-
 	/*
 	 * Do state transitions now
 	 */
 	switch (ip_config[port].port_state) {
 	case RDS_IB_PORT_INIT:
-		port_state_was_init = 1; /* tracking for special case! */
 
 		if (ip_config_init_phase_flag) {
 			/*
@@ -2624,37 +2581,10 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	switch (port_transition) {
 	case RDSIBP_TRANSITION_UP:
 		if (rds_ib_active_bonding_fallback) {
-			/*
-			 * Special case:
-			 * If all interfaces were down
-			 * (but NOT deactivated during initial failovers) OR
-			 * transitioning port_state was in INIT
-			 * use a larger timeout.
-			 */
-			if ((all_ports_were_down &&
-			     !initial_failovers_all_ports_deactivated_flag)
-			    || port_state_was_init) {
-				INIT_DELAYED_WORK(&work->work,
-					rds_ib_net_failback);
-				work->timeout = msecs_to_jiffies(10000);
-			} else {
-				INIT_DELAYED_WORK(&work->work,
-					rds_ib_net_failback);
-				work->timeout = msecs_to_jiffies(1000);
-			}
-			queue_delayed_work(rds_wq, &work->work,
-					msecs_to_jiffies(100));
+			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
+			queue_delayed_work(rds_wq, &work->work, 0);
 		} else
 			kfree(work);
-
-		/*
-		 * clear this state - onetime use only to
-		 * exclude the deactivation of ports
-		 * during initial failovers from the
-		 * 'special case' logic above!
-		 */
-		initial_failovers_all_ports_deactivated_flag = 0;
-
 		break;
 
 	case RDSIBP_TRANSITION_DOWN:
