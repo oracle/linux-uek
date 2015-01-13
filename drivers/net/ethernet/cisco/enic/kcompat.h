@@ -31,6 +31,9 @@ static inline void *pci_zalloc_consistent(struct pci_dev *hwdev, size_t size,
 
 	return data;
 }
+
+#define skb_vlan_tag_present(skb) vlan_tx_tag_present(skb)
+#define skb_vlan_tag_get(skb) vlan_tx_tag_get(skb)
 #endif /* kernel < 3.18 */
 
 #endif /* _KCOMPAT_H_ */
