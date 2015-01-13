@@ -42,6 +42,7 @@
 #include <xen/interface/physdev.h>
 #include <xen/interface/vcpu.h>
 #include <xen/interface/memory.h>
+#include <xen/interface/nmi.h>
 #include <xen/interface/xen-mca.h>
 #include <xen/features.h>
 #include <xen/page.h>
@@ -68,6 +69,7 @@
 #include <asm/reboot.h>
 #include <asm/stackprotector.h>
 #include <asm/hypervisor.h>
+#include <asm/mach_traps.h>
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
 #include <asm/xen/kexec.h>
@@ -1364,6 +1366,21 @@ static const struct machine_ops xen_machine_ops __initconst = {
 	.emergency_restart = xen_emergency_restart,
 };
 
+static unsigned char xen_get_nmi_reason(void)
+{
+	unsigned char reason = 0;
+
+	/* Construct a value which looks like it came from port 0x61. */
+	if (test_bit(_XEN_NMIREASON_io_error,
+		     &HYPERVISOR_shared_info->arch.nmi_reason))
+		reason |= NMI_REASON_IOCHK;
+	if (test_bit(_XEN_NMIREASON_pci_serr,
+		     &HYPERVISOR_shared_info->arch.nmi_reason))
+		reason |= NMI_REASON_SERR;
+
+	return reason;
+}
+
 static void __init xen_boot_params_init_edd(void)
 {
 #ifdef CONFIG_EDD
@@ -1450,6 +1467,7 @@ asmlinkage void __init xen_start_kernel(void)
 	pv_apic_ops = xen_apic_ops;
 
 	x86_init.resources.memory_setup = xen_memory_setup;
+	x86_platform.get_nmi_reason = xen_get_nmi_reason;
 	x86_init.oem.arch_setup = xen_arch_setup;
 	x86_init.oem.banner = xen_banner;
 
