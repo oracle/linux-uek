@@ -617,7 +617,7 @@ static ssize_t chip_ngpio_show(struct device *dev,
 }
 static DEVICE_ATTR(ngpio, 0444, chip_ngpio_show, NULL);
 
-static const struct attribute *gpiochip_attrs[] = {
+static struct attribute *gpiochip_attrs[] = {
 	&dev_attr_base.attr,
 	&dev_attr_label.attr,
 	&dev_attr_ngpio.attr,
@@ -625,7 +625,7 @@ static const struct attribute *gpiochip_attrs[] = {
 };
 
 static const struct attribute_group gpiochip_attr_group = {
-	.attrs = (struct attribute **) gpiochip_attrs,
+	.attrs = gpiochip_attrs,
 };
 
 /*
@@ -995,6 +995,7 @@ static void gpiochip_unexport(struct gpio_chip *chip)
 	mutex_lock(&sysfs_lock);
 	dev = class_find_device(&gpio_class, NULL, chip, match_export);
 	if (dev) {
+		sysfs_remove_group(&dev->kobj, &gpiochip_attr_group);
 		put_device(dev);
 		device_unregister(dev);
 		chip->exported = 0;
