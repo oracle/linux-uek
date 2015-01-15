@@ -36,9 +36,9 @@ if [ "$opr" = "sdtstub" ]; then
 
 		 END {
 		     if (count) {
-			 if (arch == "x86_64") {
+			 if (arch == "x86" || arch == "x86_64") {
 			     print "\tret";
-			 } else if (arch == "sparc64") {
+			 } else if (arch == "sparc" || arch == "sparc64") {
 			     print "\tretl";
 			     print "\tnop";
 			 }
@@ -99,7 +99,6 @@ fi
 	sort
     [ "x${lfn}" != "x" -a "x${lfn}" != "xkmod" ] && nm ${lfn}
 ) | \
-  tee /tmp/DEBUG | \
     awk -v lfn="${lfn}" \
 	-v arch=${ARCH} \
 	'function addl(v0, v1, v0h, v0l, v1h, v1l, d, tmp) {
@@ -201,7 +200,7 @@ fi
 		     pn = fun":"prb;
 		     ad = addl(baseaddr, poffst[pn]);
 
-		     if (arch == "x86_64")
+		     if (arch == "x86" || arch == "x86_64")
 			 ad = subl(ad, 1);
 
 		     if (lfn != "kmod") {
