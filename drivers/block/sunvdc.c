@@ -946,6 +946,8 @@ err_out_free_tx_ring:
 	vdc_free_tx_ring(port);
 
 err_out_free_ldc:
+	flush_work(&port->ldc_reset_work);
+	del_timer_sync(&port->ldc_reset_timer);
 	vio_ldc_free(&port->vio);
 
 err_out_free_port:
@@ -1025,6 +1027,9 @@ static void vdc_ldc_reset_timer(unsigned long _arg)
 	struct vio_driver_state *vio = &port->vio;
 	unsigned long flags;
 
+	if (!port->disk)
+		return;
+
 	spin_lock_irqsave(&vio->lock, flags);
 	if (!(port->vio.hs_state & VIO_HS_COMPLETE)) {
 		pr_warn(PFX "%s ldc down %llu seconds, draining queue\n",
@@ -1056,6 +1061,9 @@ static void vdc_ldc_reset(struct vdc_port *port)
 	assert_spin_locked(&port->vio.lock);
 
 	pr_warn(PFX "%s ldc link reset\n", port->disk_name);
+	if (!port->disk)
+		return;
+
 	blk_stop_queue(port->disk->queue);
 	vdc_requeue_inflight(port);
 	vdc_port_down(port);
