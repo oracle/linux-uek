@@ -1030,10 +1030,19 @@ __releases(nn->lock)
 	struct fuse_conn *fc = nn->fc;
 	unsigned reqsize = sizeof(ih) + sizeof(arg);
 	int err;
+	u64 unique,req_orig_id;
 
 	list_del_init(&req->intr_entry);
+	req_orig_id = req->in.h.unique;
 	spin_unlock(&nn->lock);
-	req->intr_unique = fuse_get_unique(fc);
+	unique = fuse_get_unique(fc);
+	spin_lock(&nn->lock);
+	if (req_orig_id != req->in.h.unique) {
+		spin_unlock(&nn->lock);
+		return -ENOENT;
+	}
+	req->intr_unique = unique;
+	spin_unlock(&nn->lock);
 	memset(&ih, 0, sizeof(ih));
 	memset(&arg, 0, sizeof(arg));
 	ih.len = reqsize;
@@ -1202,7 +1211,10 @@ static ssize_t fuse_dev_do_read(struct fuse_numa_node *nn, struct file *file,
 	if (!list_empty(&nn->interrupts)) {
 		req = list_entry(nn->interrupts.next, struct fuse_req,
 				 intr_entry);
-		return fuse_read_interrupt(nn, cs, nbytes, req);
+		err = fuse_read_interrupt(nn, cs, nbytes, req);
+		if (err == -ENOENT)
+		       goto restart;
+		return err;
 	}
 
 	if (forget_pending(nn)) {
