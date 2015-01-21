@@ -392,7 +392,11 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	struct sdp_hah hah;
 	struct sdp_hh hh;
 
-	int rc = 0, rc2;
+	int rc = 0;
+/* APM support has been removed from rdma_cm */
+#if RDMA_SDP_APM_SUPPORTED
+	int rc2 = 0;
+#endif
 
 	sk = id->context;
 	if (!sk) {
@@ -477,16 +481,17 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 		conn_param.initiator_depth = 4 /* TODO */;
 		conn_param.retry_count = sdp_retry_count;
 		SDP_DUMP_PACKET(sk, "TX", NULL, &hh.bsdh);
-
+#if RDMA_SDP_APM_SUPPORTED
 		if (sdp_apm_enable) {
 			rc = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
 			if (rc)
 				sdp_warn(sk, "APM couldn't be enabled for active side: %d\n", rc);
 		}
-
+#endif
 		rc = rdma_connect(id, &conn_param);
 		break;
 
+#if RDMA_SDP_APM_SUPPORTED
 	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
 		sdp_dbg(sk, "alt route was resolved slid=%d, dlid=%d\n",
 				id->route.path_rec[1].slid, id->route.path_rec[1].dlid);
@@ -499,6 +504,7 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
 		sdp_warn(sk, "alt route resolve error\n");
 		break;
+#endif
 
 	case RDMA_CM_EVENT_ROUTE_ERROR:
 		rc = -ETIMEDOUT;
@@ -535,11 +541,14 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			id->qp = NULL;
 			id->context = NULL;
 			parent = sdp_sk(child)->parent; /* TODO: hold ? */
-		} else if (sdp_apm_enable) {
+		}
+#if RDMA_SDP_APM_SUPPORTED
+		else if (sdp_apm_enable) {
 				rc2 = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
 				if (rc2)
 					sdp_warn(sk, "APM couldn't be enabled for passive side: %d\n", rc2);
 		}
+#endif
 		break;
 	case RDMA_CM_EVENT_CONNECT_RESPONSE:
 		rc = sdp_response_handler(sk, id, event);
@@ -548,11 +557,15 @@ int sdp_cma_handler(struct rdma_cm_id *id, struct rdma_cm_event *event)
 			rdma_reject(id, NULL, 0);
 		} else {
 			rc = rdma_accept(id, NULL);
+#if RDMA_SDP_APM_SUPPORTED
 			if (!rc && sdp_apm_enable) {
 				rc2 = rdma_enable_apm(id, RDMA_ALT_PATH_BEST);
 				if (rc2)
-					sdp_warn(sk, "APM couldn't be enabled for passive side:%d \n", rc2);
+					sdp_warn(sk,
+						 "APM couldn't be enabled for passive side:%d\n",
+						 rc2);
 			}
+#endif
 		}
 		break;
 	case RDMA_CM_EVENT_CONNECT_ERROR:

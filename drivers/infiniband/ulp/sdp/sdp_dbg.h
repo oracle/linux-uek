@@ -1,6 +1,8 @@
 #ifndef _SDP_DBG_H_
 #define _SDP_DBG_H_
 
+#define RDMA_SDP_APM_SUPPORTED 0
+
 #define SDPSTATS_ON
 
 #ifdef CONFIG_INFINIBAND_SDP_DEBUG
@@ -278,8 +280,10 @@ static inline const char* rdma_cm_event_str(int event)
 		ENUM2STR(RDMA_CM_EVENT_MULTICAST_ERROR),
 		ENUM2STR(RDMA_CM_EVENT_ADDR_CHANGE),
 		ENUM2STR(RDMA_CM_EVENT_TIMEWAIT_EXIT),
+#if RDMA_SDP_APM_SUPPORTED
 		ENUM2STR(RDMA_CM_EVENT_ALT_ROUTE_RESOLVED),
 		ENUM2STR(RDMA_CM_EVENT_ALT_ROUTE_ERROR)
+#endif
 	};
 
 	if (event < 0 || event >= ARRAY_SIZE(state2str)) {
