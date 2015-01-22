@@ -164,7 +164,13 @@ out_early:
 	return result;
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+#else
+int ipoib_vlan_add_common(struct net_device *pdev,
+			  unsigned short pkey,
+			  char *child_name_buf)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	struct ipoib_dev_priv *ppriv, *priv;
 	char intf_name[IFNAMSIZ];
@@ -174,6 +180,30 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	ppriv = ipoib_priv(pdev);
+
+	if (child_name_buf == NULL) {
+		/* If you increase IFNAMSIZ, update snprintf below
+		 * to allow longer names.
+		 */
+		BUILD_BUG_ON(IFNAMSIZ != 16);
+		/*
+		 * If child name is not provided, we generated
+		 * one using name of parent and pkey.
+		 */
+		snprintf(intf_name, sizeof(intf_name), "%.10s.%04x",
+			 ppriv->dev->name, pkey);
+	} else {
+		/*
+		 * Note: Duplicate intf_name will be detected later in the code
+		 * by register_netdevice() (inside __ipoib_vlan_add() call
+		 * below) returning EEXIST!
+		 */
+		strncpy(intf_name, child_name_buf, IFNAMSIZ);
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	if (!rtnl_trylock())
 		return restart_syscall();
 
@@ -182,6 +212,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 		return -EPERM;
 	}
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 	ppriv = ipoib_priv(pdev);
 
 	/* If you increase IFNAMSIZ, update snprintf below
@@ -190,6 +221,7 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 	BUILD_BUG_ON(IFNAMSIZ != 16);
 	snprintf(intf_name, sizeof(intf_name), "%.10s.%04x", ppriv->dev->name,
 		 pkey);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	ndev = ipoib_intf_alloc(ppriv->ca, ppriv->port, intf_name);
 	if (IS_ERR(ndev)) {
@@ -248,10 +280,33 @@ static void ipoib_vlan_delete_task(struct work_struct *work)
 	kfree(pwork);
 }
 
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+#else
+int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+{
+	return ipoib_vlan_add_common(pdev, pkey, NULL);
+}
+
+int ipoib_named_vlan_add(struct net_device *pdev,
+			 unsigned short pkey,
+			 char *child_name_buf)
+{
+	return ipoib_vlan_add_common(pdev, pkey, child_name_buf);
+}
+
+int ipoib_vlan_delete_common(struct net_device *pdev,
+			     unsigned short pkey,
+			     char *child_name_buf)
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 {
 	struct ipoib_dev_priv *ppriv, *priv, *tpriv;
 	int rc;
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	char gen_intf_name[IFNAMSIZ];
+
+	gen_intf_name[0] = '\0'; /* initialize - paranoia! */
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
@@ -266,10 +321,43 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 
 	ppriv = ipoib_priv(pdev);
 
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+	if (child_name_buf == NULL && ppriv->dev) {
+		/* If you increase IFNAMSIZ, update snprintf below
+		 * to allow longer names.
+		 */
+		BUILD_BUG_ON(IFNAMSIZ != 16);
+		/*
+		 * If child name is not provided, we generate the
+		 * expected one using name of parent and pkey
+		 * and use it in addition to pkey value
+		 * (other children with same pkey may exist that have
+		 * created by create_named_child() - we do not allow
+		 * delete_child() to delete them - delete_named_child()
+		 * has to be used!)
+		 */
+		snprintf(gen_intf_name, sizeof(gen_intf_name),
+			 "%.10s.%04x", ppriv->dev->name, pkey);
+	}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
+
 	rc = -ENODEV;
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
+#ifdef WITHOUT_ORACLE_EXTENSIONS
 		if (priv->pkey == pkey &&
 		    priv->child_type == IPOIB_LEGACY_CHILD) {
+#else
+		if ((priv->child_type == IPOIB_LEGACY_CHILD) &&
+		    /* user named child (match by name) OR */
+		    ((child_name_buf && priv->dev &&
+		      !strcmp(child_name_buf, priv->dev->name)) ||
+		      /*
+		       * OR classic (devname.hexpkey generated name) child
+		       * (match by pkey and generated name)
+		       */
+		      (!child_name_buf && priv->pkey == pkey &&
+		       priv->dev && !strcmp(gen_intf_name, priv->dev->name)))) {
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 			struct ipoib_vlan_delete_work *work;
 
 			work = kmalloc(sizeof(*work), GFP_KERNEL);
@@ -295,3 +383,16 @@ out:
 
 	return rc;
 }
+
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+{
+
+	return ipoib_vlan_delete_common(pdev, pkey, NULL);
+}
+
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf)
+{
+	return ipoib_vlan_delete_common(pdev, 0, child_name_buf);
+}
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
