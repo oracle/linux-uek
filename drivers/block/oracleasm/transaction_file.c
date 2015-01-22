@@ -39,7 +39,8 @@ struct argresp {
  */
 static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t *pos)
 {
-	struct transaction_context *tctxt = TRANSACTION_CONTEXT(file->f_dentry->d_inode);
+	struct transaction_context *tctxt =
+		TRANSACTION_CONTEXT(file->f_path.dentry->d_inode);
 	struct argresp *ar;
 	ssize_t rv = 0;
 
@@ -54,12 +55,12 @@ static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t 
 	if (!ar)
 		return -ENOMEM;
 	ar->size = 0;
-	mutex_lock(&file->f_dentry->d_inode->i_mutex);
+	mutex_lock(&file->f_path.dentry->d_inode->i_mutex);
 	if (file->private_data)
 		rv = -EINVAL;
 	else
 		file->private_data = ar;
-	mutex_unlock(&file->f_dentry->d_inode->i_mutex);
+	mutex_unlock(&file->f_path.dentry->d_inode->i_mutex);
 	if (rv) {
 		kfree(ar);
 		return rv;

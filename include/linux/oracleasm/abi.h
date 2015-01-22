@@ -128,7 +128,7 @@ struct oracleasm_abi_info
 	__u16				ai_type;	/* Type of operation */
 	__u32				ai_size;	/* Size of passed struct */
 	__u32				ai_status;	/* Did it succeed */
-/*10*/	
+/*10*/
 };
 
 /*
@@ -162,6 +162,8 @@ struct oracleasm_integrity_v2
 enum oracleasm_integrity_handling_flags {
 	ASM_IFLAG_REMAPPED		= 1,	/* PI has been remapped */
 	ASM_IFLAG_IP_CHECKSUM		= 2,	/* IP checksum instead of CRC */
+	ASM_IFLAG_CTRL_NOCHECK          = 4,    /* Disable HBA PI checks */
+	ASM_IFLAG_DISK_NOCHECK          = 8,    /* Disable disk PI checks */
 };
 
 struct oracleasm_query_disk_v2
@@ -182,6 +184,8 @@ enum oracleasm_feature_integrity {
 	ASM_IMODE_MASK			= 3,	/* Interleaving mode mask */
 	ASM_IFMT_IP_CHECKSUM		= 4,	/* 0: T10 CRC, 1: IP checksum */
 	ASM_INTEGRITY_HANDLE_MASK	= 7,	/* Integrity handle mask */
+	ASM_IFMT_DISK                   = 8,    /* Supports DIF */
+	ASM_IFMT_ATO                    = 16,   /* Supports app tag */
 	ASM_INTEGRITY_QDF_MASK		= 0xff, /* Querydisk feature mask */
 };
 
@@ -196,7 +200,7 @@ struct oracleasm_open_disk_v2
 /*10*/	__u32				od_fd;
 	__u32				od_pad1;
 	__u64				od_handle;
-/*20*/	
+/*20*/
 };
 
 struct oracleasm_close_disk_v2

@@ -200,7 +200,7 @@ static inline struct asmfs_inode_info *ASMFS_I(struct inode *inode)
 
 static inline struct inode *ASMFS_F2I(struct file *file)
 {
-	return file->f_dentry->d_inode;
+	return file->f_path.dentry->d_inode;
 }
 
 /*
@@ -1144,7 +1144,7 @@ static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
 	mlog(ML_REQUEST|ML_BIO,
 	     "Ending request 0x%p, bio 0x%p, len = %u\n",
 	     r, r->r_bio,
-	     bytes_done + (r->r_bio ? r->r_bio->bi_size : 0));
+	     bytes_done + (r->r_bio ? r->r_bio->bi_iter.bi_size : 0));
 
 	switch (error) {
 		default:
@@ -1170,7 +1170,7 @@ static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
 			break;
 
 		case -EILSEQ:
-			r->r_error = asm_integrity_error(r);
+			r->r_error = ASM_ERR_INTEGRITY;
 			break;
 
 		case -ENOLINK:
@@ -1203,7 +1203,7 @@ static void asm_end_bio_io(struct bio *bio, int error)
 
 	mlog_entry("(0x%p, %d)\n", bio, error);
 
-	mlog(ML_BIO, "bio 0x%p, bi_size is %u\n", bio, bio->bi_size);
+	mlog(ML_BIO, "bio 0x%p, bi_size is %u\n", bio, bio->bi_iter.bi_size);
 
 	r = bio->bi_private;
 
@@ -1211,7 +1211,7 @@ static void asm_end_bio_io(struct bio *bio, int error)
 	     "Completed bio 0x%p for request 0x%p\n", bio, r);
 	if (atomic_dec_and_test(&r->r_bio_count)) {
 		asm_end_ioc(r, r->r_count - (r->r_bio ?
-					     r->r_bio->bi_size : 0),
+					     r->r_bio->bi_iter.bi_size : 0),
 			    error);
 	}
 
@@ -1392,7 +1392,7 @@ static int asm_submit_io(struct file *file,
 		goto out_error;
 	}
 
-	if (r->r_bio->bi_size != r->r_count) {
+	if (r->r_bio->bi_iter.bi_size != r->r_count) {
 		mlog(ML_ERROR|ML_BIO, "Only mapped partial ioc buffer\n");
 		bio_unmap_user(r->r_bio);
 		r->r_bio = NULL;
@@ -1405,7 +1405,8 @@ static int asm_submit_io(struct file *file,
 	/* Block layer always uses 512-byte sector addressing,
 	 * regardless of logical and physical block size.
 	 */
-	r->r_bio->bi_sector = ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
+	r->r_bio->bi_iter.bi_sector =
+		ioc->first_asm_ioc * (asm_block_size(bdev) >> 9);
 
 	if (it) {
 		ret = asm_integrity_map(it, r, rw == READ);
