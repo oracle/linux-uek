@@ -24,6 +24,17 @@ Partitions and P_Keys
 
     echo 0x8001 > /sys/class/net/ib0/delete_child
 
+  Interfaces with a user chosen name can be created in a similar
+  manner with a different name and P_Key, by writing them into the
+  main interface's /sys/class/net/<intf name>/create_named_child
+  For example:
+        echo "epart2  0x8002" > /sys/class/net/ib1/create_named_child
+
+  This will create an interfaces named epart2 with P_Key 0x8002 and
+  parent ib1. To remove a named subinterface, use the "delete_named_child"
+  file:
+        echo epart2  > /sys/class/net/ib1/delete_named_child
+
   The P_Key for any interface is given by the "pkey" file, and the
   main interface for a subinterface is in "parent."
 
