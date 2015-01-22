@@ -64,6 +64,12 @@ u32 asm_integrity_format(struct block_device *bdev)
 	else
 		return 0;
 
+	if (bi->flags & BLK_INTEGRITY_DEVICE_CAPABLE)
+		format |= ASM_IFMT_DISK;
+
+	if (bi->tag_size)
+		format |= ASM_IFMT_DISK | ASM_IFMT_ATO;
+
 	if (!strcmp(bi->name, "T10-DIF-TYPE1-CRC"))
 		return format;
 
@@ -138,13 +144,21 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 		return -ENOMEM;
 	}
 
-	bip->bip_size = len;
-	bip->bip_sector = bio->bi_sector;
-	bio->bi_flags |= (1 << BIO_FS_INTEGRITY);
+	bip->bip_iter.bi_size = len;
+	bip->bip_iter.bi_sector = bio->bi_iter.bi_sector;
 
 	/* This is a retry. Prevent reference tag from being remapped again */
 	if (it->it_flags & ASM_IFLAG_REMAPPED)
-		bio->bi_flags |= 1 << BIO_MAPPED_INTEGRITY;
+		bip->bip_flags |= 1 << BIP_MAPPED_INTEGRITY;
+
+	if (it->it_flags & ASM_IFLAG_IP_CHECKSUM)
+		bip->bip_flags |= BIP_IP_CHECKSUM;
+
+	if (it->it_flags & ASM_IFLAG_CTRL_NOCHECK)
+		bip->bip_flags |= BIP_CTRL_NOCHECK;
+
+	if (it->it_flags & ASM_IFLAG_DISK_NOCHECK)
+		bip->bip_flags |= BIP_DISK_NOCHECK;
 
 	pages = kcalloc(nr_pages, sizeof(struct page *), GFP_KERNEL);
 	if (!pages) {
@@ -190,7 +204,7 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 	kfree(pages);
 
-	if (bio->bi_integrity->bip_vcnt == 0)
+	if (bip->bip_vcnt == 0)
 		ret = -EINVAL;
 
 	return ret;
@@ -199,22 +213,17 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 void asm_integrity_unmap(struct bio *bio)
 {
-	struct bio_vec *iv;
-	unsigned int i;
+	struct bio_vec iv;
+	struct bvec_iter iter;
+	struct bio_integrity_payload *bip = bio_integrity(bio);
 
-	if (!bio_flagged(bio, BIO_FS_INTEGRITY))
+	if (!bip)
 		return;
 
-	bip_for_each_vec(iv, bio->bi_integrity, i) {
+	bip_for_each_vec(iv, bio_integrity(bio), iter) {
 		if (bio_data_dir(bio) == READ)
-			set_page_dirty_lock(iv->bv_page);
+			set_page_dirty_lock(iv.bv_page);
 
-		page_cache_release(iv->bv_page);
+		page_cache_release(iv.bv_page);
 	}
 } /* asm_integrity_unmap */
-
-
-unsigned int asm_integrity_error(struct asm_request *r)
-{
-	return ASM_ERR_INTEGRITY;
-}
