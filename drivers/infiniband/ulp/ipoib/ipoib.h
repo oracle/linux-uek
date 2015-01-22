@@ -589,6 +589,9 @@ void ipoib_event(struct ib_event_handler *handler,
 
 int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey);
 int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey);
+int ipoib_named_vlan_add(struct net_device *pdev, unsigned short pkey,
+			 char *child_name_buf);
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf);
 
 int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		     u16 pkey, int child_type);
