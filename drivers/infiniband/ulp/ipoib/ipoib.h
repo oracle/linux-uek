@@ -595,6 +595,16 @@ void ipoib_event(struct ib_event_handler *handler,
 
 int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey);
 int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey);
+#ifndef WITHOUT_ORACLE_EXTENSIONS
+int ipoib_named_vlan_add(struct net_device *pdev, unsigned short pkey,
+			 char *child_name_buf);
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf);
+int ipoib_get_netdev_pkey(struct net_device *dev, u16 *pkey);
+int ipoib_vlan_add_common(struct net_device *pdev, unsigned short pkey,
+			  char *child_name_buf);
+int ipoib_vlan_delete_common(struct net_device *pdev, unsigned short pkey,
+			     char *child_name_buf);
+#endif /* !WITHOUT_ORACLE_EXTENSIONS */
 
 int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		     u16 pkey, int child_type);
