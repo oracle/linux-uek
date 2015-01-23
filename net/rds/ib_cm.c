@@ -1205,7 +1205,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 
 	ic->i_recvs = NULL;
 
-	init_completion(&ic->i_last_wqe_complete);
+	reinit_completion(&ic->i_last_wqe_complete);
 
 	ic->i_active_side = 0;
 }
