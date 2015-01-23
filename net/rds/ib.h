@@ -435,7 +435,9 @@ extern unsigned int rds_ib_haip_enabled;
 extern unsigned int rds_ib_haip_fallback;
 extern unsigned int rds_ib_haip_failover_enabled;
 extern unsigned int rds_ib_apm_timeout;
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 extern unsigned int rds_ib_cq_balance_enabled;
+#endif
 
 extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;

@@ -57,7 +57,9 @@ unsigned int rds_ib_haip_enabled = 0;
 unsigned int rds_ib_haip_fallback = 1;
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 unsigned int rds_ib_cq_balance_enabled = 1;
+#endif
 static char *rds_ib_haip_failover_groups = NULL;
 
 module_param(rds_ib_fmr_1m_pool_size, int, 0444);
@@ -81,8 +83,10 @@ MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
 module_param(rds_ib_haip_failover_groups, charp, 0444);
 MODULE_PARM_DESC(rds_ib_haip_failover_groups,
 	"<ifname>[,<ifname>]*[;<ifname>[,<ifname>]*]*");
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 module_param(rds_ib_cq_balance_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_cq_balance_enabled, " CQ load balance Enabled");
+#endif
 
 /*
  * we have a clumsy combination of RCU and a rwsem protecting this list
