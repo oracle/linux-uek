@@ -450,7 +450,7 @@ void rds_rdma_free_op(struct rm_rdma_op *ro)
 		 * is the case for a RDMA_READ which copies from remote
 		 * to local memory */
 		if (!ro->op_write) {
-			WARN_ON_ONCE(page_mapping(page) && irqs_disabled());
+			WARN_ON_ONCE(!page->mapping && irqs_disabled());
 			set_page_dirty(page);
 		}
 		put_page(page);

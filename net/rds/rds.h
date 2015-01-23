@@ -7,7 +7,9 @@
 #include <linux/highmem.h>
 #include <rdma/rdma_cm.h>
 #include <linux/mutex.h>
-#include <linux/rds.h>
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <uapi/linux/rds.h>
 
 #include "info.h"
 
