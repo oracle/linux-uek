@@ -62,7 +62,7 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.data		= &rds_sysctl_reconnect_min_jiffies,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = &proc_doulongvec_ms_jiffies_minmax,
+		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
 		.extra1		= &rds_sysctl_reconnect_min,
 		.extra2		= &rds_sysctl_reconnect_max_jiffies,
 	},
@@ -71,7 +71,7 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.data		= &rds_sysctl_reconnect_max_jiffies,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = &proc_doulongvec_ms_jiffies_minmax,
+		.proc_handler   = proc_doulongvec_ms_jiffies_minmax,
 		.extra1		= &rds_sysctl_reconnect_min_jiffies,
 		.extra2		= &rds_sysctl_reconnect_max,
 	},
@@ -80,50 +80,42 @@ static struct ctl_table rds_sysctl_rds_table[] = {
 		.data		= &rds_sysctl_pf_rds,
 		.maxlen         = sizeof(int),
 		.mode           = 0444,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname       = "sol_rds",
 		.data		= &rds_sysctl_sol_rds,
 		.maxlen         = sizeof(int),
 		.mode           = 0444,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname	= "max_unacked_packets",
 		.data		= &rds_sysctl_max_unacked_packets,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname	= "max_unacked_bytes",
 		.data		= &rds_sysctl_max_unacked_bytes,
 		.maxlen         = sizeof(unsigned long),
 		.mode           = 0644,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = proc_dointvec,
 	},
 	{
 		.procname	= "ping_enable",
 		.data		= &rds_sysctl_ping_enable,
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
-		.proc_handler   = &proc_dointvec,
+		.proc_handler   = proc_dointvec,
 	},
 	{ }
 };
 
-static struct ctl_path rds_sysctl_path[] = {
-	{ .procname = "net", },
-	{ .procname = "rds", },
-	{ }
-};
-
-
 void rds_sysctl_exit(void)
 {
-	if (rds_sysctl_reg_table)
-		unregister_sysctl_table(rds_sysctl_reg_table);
+	unregister_net_sysctl_table(rds_sysctl_reg_table);
 }
 
 int rds_sysctl_init(void)
@@ -131,7 +123,7 @@ int rds_sysctl_init(void)
 	rds_sysctl_reconnect_min = msecs_to_jiffies(1);
 	rds_sysctl_reconnect_min_jiffies = rds_sysctl_reconnect_min;
 
-	rds_sysctl_reg_table = register_sysctl_paths(rds_sysctl_path, rds_sysctl_rds_table);
+	rds_sysctl_reg_table = register_net_sysctl(&init_net, "net/rds", rds_sysctl_rds_table);
 	if (!rds_sysctl_reg_table)
 		return -ENOMEM;
 	return 0;
