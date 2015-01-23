@@ -4,7 +4,6 @@
 #include <linux/stddef.h>
 #include <linux/poison.h>
 #include <linux/prefetch.h>
-#include <asm/system.h>
 
 struct xlist_head {
 	struct xlist_head *next;

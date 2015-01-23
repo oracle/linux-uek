@@ -718,10 +718,10 @@ static void rds_qos_threshold_init(void)
 			qos = simple_strtol(qos_str, &end, 0);
 			if (*end) {
 				printk(KERN_WARNING "RDS: Warning: QoS "
-					"%s is improperly formatted\n", qos);
+					"%s is improperly formatted\n", qos_str);
 			} else if (qos > 255) {
 				printk(KERN_WARNING "RDS: Warning: QoS "
-					"%s out of range\n", qos);
+					"%s out of range\n", qos_str);
 			}
 			threshold = parse_ul(threshold_str, (u32)~0);
 			rds_qos_threshold_tbl[qos] = threshold;

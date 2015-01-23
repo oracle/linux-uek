@@ -6,7 +6,9 @@
 #include <linux/highmem.h>
 #include <rdma/rdma_cm.h>
 #include <linux/mutex.h>
-#include <linux/rds.h>
+#include <linux/module.h>
+#include <linux/moduleparam.h>
+#include <uapi/linux/rds.h>
 
 #include "info.h"
 
@@ -744,7 +746,7 @@ void rds_inc_init(struct rds_incoming *inc, struct rds_connection *conn,
 void rds_inc_addref(struct rds_incoming *inc);
 void rds_inc_put(struct rds_incoming *inc);
 void rds_recv_incoming(struct rds_connection *conn, __be32 saddr, __be32 daddr,
-		       struct rds_incoming *inc, gfp_t gfp, enum km_type km);
+		       struct rds_incoming *inc, gfp_t gfp);
 int rds_recvmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 		size_t size, int msg_flags);
 void rds_clear_recv_queue(struct rds_sock *rs);

@@ -311,7 +311,7 @@ static int rds_ib_laddr_check(__be32 addr)
 	/* Create a CMA ID and try to bind it. This catches both
 	 * IB and iWARP capable NICs.
 	 */
-	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP);
+	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id))
 		return -EADDRNOTAVAIL;
 
@@ -996,7 +996,7 @@ out:
 
 void rds_ib_ip_failover_groups_init(void)
 {
-	char *tok, *grp, *nxt_tok, *nxt_grp, *end;
+	char *tok, *grp, *nxt_tok, *nxt_grp;
 	char str[1024];
 	unsigned int	grp_id = 1;
 	int i;

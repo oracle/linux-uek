@@ -155,7 +155,7 @@ static int acquire_in_xmit(struct rds_connection *conn)
 static void release_in_xmit(struct rds_connection *conn)
 {
 	clear_bit(RDS_IN_XMIT, &conn->c_flags);
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 	/*
 	 * We don't use wait_on_bit()/wake_up_bit() because our waking is in a
 	 * hot path and finding waiters is very rare.  We don't want to walk
@@ -851,7 +851,7 @@ void rds_send_drop_acked(struct rds_connection *conn, u64 ack,
 
 	/* order flag updates with spin locks */
 	if (!list_empty(&list))
-		smp_mb__after_clear_bit();
+		smp_mb__after_atomic();
 
 	spin_unlock_irqrestore(&conn->c_lock, flags);
 
@@ -881,7 +881,7 @@ void rds_send_drop_to(struct rds_sock *rs, struct sockaddr_in *dest)
 	}
 
 	/* order flag updates with the rs lock */
-	smp_mb__after_clear_bit();
+	smp_mb__after_atomic();
 
 	spin_unlock_irqrestore(&rs->rs_lock, flags);
 
@@ -1232,8 +1232,6 @@ int rds_sendmsg(struct kiocb *iocb, struct socket *sock, struct msghdr *msg,
 
 	/* Attach data to the rm */
 	if (payload_len) {
-		struct user_hdr *uhdr = msg->msg_iov->iov_base;
-
 		rm->data.op_sg = rds_message_alloc_sgs(rm, ceil(payload_len, PAGE_SIZE));
 		ret = rds_message_copy_from_user(rm, msg->msg_iov, payload_len);
 		if (ret)

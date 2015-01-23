@@ -378,7 +378,6 @@ extern unsigned long rds_iw_sysctl_max_unsig_wrs;
 extern unsigned long rds_iw_sysctl_max_unsig_bytes;
 extern unsigned long rds_iw_sysctl_max_recv_allocation;
 extern unsigned int rds_iw_sysctl_flow_control;
-extern ctl_table rds_iw_sysctl_table[];
 
 /*
  * Helper functions for getting/setting the header and data SGEs in
