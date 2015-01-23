@@ -4047,4 +4047,13 @@ extern int __kc_pci_enable_msix_range(struct pci_dev *dev,
 #define HAVE_NDO_SELECT_QUEUE_ACCEL_FALLBACK
 #endif /* 3.14.0 */
 
+#ifndef pci_bus_read_dev_vendor_id
+bool pci_bus_read_dev_vendor_id(struct pci_bus *bus, int devfn, u32 *pl,
+                                int crs_timeout);
+#endif
+
+#ifndef pci_device_is_present
+bool pci_device_is_present(struct pci_dev *pdev);
+#endif
+
 #endif /* _KCOMPAT_H_ */

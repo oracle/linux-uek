@@ -52,6 +52,7 @@
 #include <linux/if_bridge.h>
 #include "igb.h"
 #include "igb_vmdq.h"
+#include "kcompat.h"
 
 #if defined(DEBUG) || defined (DEBUG_DUMP) || defined (DEBUG_ICR) || defined(DEBUG_ITR)
 #define DRV_DEBUG "_debug"
@@ -745,8 +746,8 @@ static void igb_free_q_vector(struct igb_adapter *adapter, int v_idx)
 #ifndef IGB_NO_LRO
 	__skb_queue_purge(&q_vector->lrolist.active);
 #endif
-
-	kfree_rcu(q_vector, rcu);
+	if (q_vector)
+		kfree_rcu(q_vector, rcu);
 }
 
 /**
@@ -1807,7 +1808,9 @@ void igb_down(struct igb_adapter *adapter)
 	usleep_range(10000, 20000);
 
 	for (i = 0; i < adapter->num_q_vectors; i++)
-		napi_disable(&(adapter->q_vector[i]->napi));
+		if (adapter->q_vector[i]) {
+			napi_disable(&(adapter->q_vector[i]->napi));
+		}
 
 	igb_irq_disable(adapter);
 
@@ -4004,7 +4007,9 @@ static void igb_free_all_tx_resources(struct igb_adapter *adapter)
 	int i;
 
 	for (i = 0; i < adapter->num_tx_queues; i++)
-		igb_free_tx_resources(adapter->tx_ring[i]);
+		if (adapter->tx_ring[i]) {
+			igb_free_tx_resources(adapter->tx_ring[i]);
+		}
 }
 
 void igb_unmap_and_free_tx_resource(struct igb_ring *ring,
@@ -4106,7 +4111,9 @@ static void igb_free_all_rx_resources(struct igb_adapter *adapter)
 	int i;
 
 	for (i = 0; i < adapter->num_rx_queues; i++)
-		igb_free_rx_resources(adapter->rx_ring[i]);
+		if (adapter->rx_ring[i]) {
+			igb_free_rx_resources(adapter->rx_ring[i]);
+		}
 }
 
 /**
@@ -4177,7 +4184,9 @@ static void igb_clean_all_rx_rings(struct igb_adapter *adapter)
 	int i;
 
 	for (i = 0; i < adapter->num_rx_queues; i++)
-		igb_clean_rx_ring(adapter->rx_ring[i]);
+		if (adapter->rx_ring[i]) {
+			igb_clean_rx_ring(adapter->rx_ring[i]);
+		}
 }
 
 /**
@@ -9052,6 +9061,8 @@ static int igb_resume(struct pci_dev *pdev)
 	pci_restore_state(pdev);
 	pci_save_state(pdev);
 
+	if (!pci_device_is_present(pdev))
+		return -ENODEV;
 	err = pci_enable_device_mem(pdev);
 	if (err) {
 		dev_err(pci_dev_to_dev(pdev),
