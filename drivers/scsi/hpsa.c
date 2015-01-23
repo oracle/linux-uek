@@ -6500,11 +6500,11 @@ static void hpsa_free_cmd_pool(struct ctlr_info *h)
 
 static void hpsa_irq_affinity_hints(struct ctlr_info *h)
 {
-	int i, cpu, rc;
+	int i, cpu;
 
 	cpu = cpumask_first(cpu_online_mask);
 	for (i = 0; i < h->msix_vector; i++) {
-		rc = irq_set_affinity_hint(h->intr[i], get_cpu_mask(cpu));
+		irq_set_affinity_hint(h->intr[i], get_cpu_mask(cpu));
 		cpu = cpumask_next(cpu, cpu_online_mask);
 	}
 }
