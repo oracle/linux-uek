@@ -465,13 +465,10 @@ static int rds_ib_find_least_loaded_vector(struct rds_ib_device *rds_ibdev)
 	int index = rds_ibdev->dev->num_comp_vectors - 1;
 	int min = rds_ibdev->vector_load[rds_ibdev->dev->num_comp_vectors - 1];
 
-	if (!rds_ib_cq_balance_enabled) {
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+#if IB_RDS_CQ_VECTOR_SUPPORTED
+	if (!rds_ib_cq_balance_enabled)
 		return IB_CQ_VECTOR_LEAST_ATTACHED;
-#else
-		return 0;
 #endif
-	}
 
 	for (i = rds_ibdev->dev->num_comp_vectors - 1; i >= 0; i--) {
 		if (rds_ibdev->vector_load[i] < min) {
@@ -528,7 +525,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		ret = PTR_ERR(ic->i_scq);
 		ic->i_scq = NULL;
 		rdsdebug("ib_create_cq send failed: %d\n", ret);
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
 			rds_ibdev->vector_load[ic->i_scq_vector]--;
 #endif
@@ -554,7 +551,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 		ret = PTR_ERR(ic->i_rcq);
 		ic->i_rcq = NULL;
 		rdsdebug("ib_create_cq recv failed: %d\n", ret);
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 		if (ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
 			rds_ibdev->vector_load[ic->i_rcq_vector]--;
 #endif
@@ -1096,7 +1093,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 			rdma_destroy_qp(ic->i_cm_id);
 
 		if (ic->i_rcq) {
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 			if (ic->rds_ibdev &&
 				ic->i_rcq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
 				ic->rds_ibdev->vector_load[ic->i_rcq_vector]--;
@@ -1105,7 +1102,7 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 		}
 
 		if (ic->i_scq) {
-#ifdef IB_CQ_VECTOR_LEAST_ATTACHED
+#if IB_RDS_CQ_VECTOR_SUPPORTED
 			if (ic->rds_ibdev &&
 				ic->i_scq_vector != IB_CQ_VECTOR_LEAST_ATTACHED)
 				ic->rds_ibdev->vector_load[ic->i_scq_vector]--;
