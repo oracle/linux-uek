@@ -391,9 +391,10 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 	trace.entries = (typeof(trace.entries))st->pcs;
 	trace.skip = st->depth;
 
-	if (st->pcs == NULL)
-		trace.entries = vmalloc(trace.max_entries *
-					sizeof(trace.entries[0]));
+	if (st->pcs == NULL) {
+		st->depth = 0;
+		return;
+	}
 
 	save_stack_trace(&trace);
 
@@ -409,9 +410,6 @@ void dtrace_stacktrace(stacktrace_state_t *st)
 #else
 	st->depth = trace.nr_entries;
 #endif
-
-	if (st->pcs == NULL)
-		vfree(trace.entries);
 
 	if (st->fps != NULL) {
 		for (i = 0; i < st->limit; i++)
