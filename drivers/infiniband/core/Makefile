@@ -21,7 +21,7 @@ ib_cm-y :=			cm.o
 
 iw_cm-y :=			iwcm.o iwpm_util.o iwpm_msg.o
 
-rdma_cm-y :=			cma.o
+rdma_cm-y :=			cma.o cma_sdp.o
 
 rdma_ucm-y :=			ucma.o
 
