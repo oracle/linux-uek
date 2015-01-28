@@ -3213,7 +3213,7 @@ int do_sigaction(int sig, struct k_sigaction *act, struct k_sigaction *oact)
 	return 0;
 }
 
-static int
+int
 do_sigaltstack (const stack_t *ss, stack_t *oss, unsigned long sp)
 {
 	struct task_struct *t = current;
