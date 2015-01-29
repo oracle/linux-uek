@@ -960,6 +960,7 @@ void i40evf_down(struct i40evf_adapter *adapter)
 		usleep_range(500, 1000);
 
 	i40evf_irq_disable(adapter);
+	i40evf_napi_disable_all(adapter);
 
 	/* remove all MAC filters */
 	list_for_each_entry(f, &adapter->mac_filter_list, list) {
@@ -985,8 +986,6 @@ void i40evf_down(struct i40evf_adapter *adapter)
 	netif_tx_disable(netdev);
 
 	netif_tx_stop_all_queues(netdev);
-
-	i40evf_napi_disable_all(adapter);
 
 	msleep(20);
 
