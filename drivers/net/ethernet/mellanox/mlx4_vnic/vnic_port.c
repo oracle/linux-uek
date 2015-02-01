@@ -62,8 +62,9 @@ static void vnic_port_event(struct ib_event_handler *handler,
 		/* calls vnic_port_event_task() */
 		queue_delayed_work(fip_wq, &port->event_task, msecs_to_jiffies(VNIC_SM_HEADSTART));
 		break;
-	case IB_EVENT_PKEY_CHANGE:
 	case IB_EVENT_LID_CHANGE:
+		port->discover_restart_task_data = DISCOVER_RESTART_FORCE;
+	case IB_EVENT_PKEY_CHANGE:
 		/* calls port_fip_discover_restart() */
 		if (no_bxm)
 			queue_delayed_work(fip_wq, &port->event_task, 0);
@@ -227,6 +228,8 @@ struct vnic_port *vnic_port_alloc(struct vnic_ib_dev *vnic_dev, u8 num)
 	INIT_DELAYED_WORK(&port->event_task, vnic_port_event_task);
 	INIT_DELAYED_WORK(&port->event_task_light, vnic_port_event_task_light);
 	INIT_DELAYED_WORK(&port->discover_restart_task, port_fip_discover_restart);
+	/* Set to default behavior */
+	port->discover_restart_task_data = DISCOVER_RESTART_TEST;
 	INIT_IB_EVENT_HANDLER(&port->event_handler, vnic_dev->ca,
 			      vnic_port_event);
 	mutex_init(&port->mlock);
