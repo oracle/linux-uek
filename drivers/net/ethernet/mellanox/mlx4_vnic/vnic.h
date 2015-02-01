@@ -458,6 +458,12 @@ enum {
 	MCAST_ATTACH_RUNNING,
 };
 
+/* Flags to pass to port_fip_discover_restart */
+enum {
+	DISCOVER_RESTART_TEST	= 0, /* If needed - restart */
+	DISCOVER_RESTART_FORCE	= 1  /* Force restart */
+};
+
 struct vnic_port_mcast {
 	struct rb_node rb_node;
 	struct list_head list;
@@ -990,6 +996,7 @@ struct vnic_port {
 	struct delayed_work event_task;
 	struct delayed_work event_task_light;
 	struct delayed_work discover_restart_task;
+	long discover_restart_task_data;
 	struct ib_event_handler event_handler;
 	struct ib_port_attr attr;
 	union ib_gid gid;
