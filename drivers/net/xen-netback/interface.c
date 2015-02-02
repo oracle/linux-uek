@@ -576,6 +576,7 @@ int xenvif_connect(struct xenvif_queue *queue, unsigned long tx_ring_ref,
 		goto err_rx_unbind;
 	}
 	queue->task = task;
+	get_task_struct(task);
 
 	task = kthread_create(xenvif_dealloc_kthread,
 			      (void *)queue, "%s-dealloc", queue->name);
@@ -632,6 +633,7 @@ void xenvif_disconnect(struct xenvif *vif)
 
 		if (queue->task) {
 			kthread_stop(queue->task);
+			put_task_struct(queue->task);
 			queue->task = NULL;
 		}
 
