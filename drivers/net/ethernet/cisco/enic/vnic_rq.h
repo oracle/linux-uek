@@ -317,6 +317,12 @@ static inline bool enic_poll_ll_polling(struct vnic_rq *rq)
 {
 	return false;
 }
+
+static inline bool enic_poll_busy_polling(struct vnic_rq *rq)
+{
+	return false;
+}
+
 #endif /* CONFIG_NET_RX_BUSY_POLL */
 
 void vnic_rq_free(struct vnic_rq *rq);
