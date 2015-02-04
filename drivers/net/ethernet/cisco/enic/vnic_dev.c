@@ -28,6 +28,7 @@
 #include "vnic_devcmd.h"
 #include "vnic_dev.h"
 #include "vnic_stats.h"
+#include "kcompat.h"
 
 enum vnic_proxy_type {
 	PROXY_NONE,
