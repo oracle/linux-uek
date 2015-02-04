@@ -29,6 +29,8 @@
 #include "vnic_stats.h"
 #include "vnic_nic.h"
 #include "vnic_rss.h"
+#include "kcompat.h"
+
 #include <linux/irq.h>
 #include <net/flow_keys.h>
 
