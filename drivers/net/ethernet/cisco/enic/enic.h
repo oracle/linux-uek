@@ -192,6 +192,7 @@ struct enic {
 	unsigned int cq_count;
 	struct enic_rfs_flw_tbl rfs_h;
 	u32 rx_copybreak;
+	struct vnic_gen_stats gen_stats;
 };
 
 static inline struct device *enic_get_dev(struct enic *enic)
@@ -251,6 +252,7 @@ static inline int enic_dma_map_check(struct enic *enic, dma_addr_t dma_addr)
 	if (unlikely(pci_dma_mapping_error(enic->pdev, dma_addr))) {
 		net_warn_ratelimited("%s: PCI dma mapping failed!\n",
 				     enic->netdev->name);
+		enic->gen_stats.dma_map_error++;
 
 		return -ENOMEM;
 	}
