@@ -59,26 +59,6 @@
 #define OC_SUBSYS_DEVICE_ID3	0xE612
 #define OC_SUBSYS_DEVICE_ID4	0xE652
 
-static inline char *nic_name(struct pci_dev *pdev)
-{
-	switch (pdev->device) {
-	case OC_DEVICE_ID1:
-		return OC_NAME;
-	case OC_DEVICE_ID2:
-		return OC_NAME_BE;
-	case OC_DEVICE_ID3:
-	case OC_DEVICE_ID4:
-		return OC_NAME_LANCER;
-	case BE_DEVICE_ID2:
-		return BE3_NAME;
-	case OC_DEVICE_ID5:
-	case OC_DEVICE_ID6:
-		return OC_NAME_SH;
-	default:
-		return BE_NAME;
-	}
-}
-
 /* Number of bytes of an RX frame that are copied to skb->data */
 #define BE_HDR_LEN		((u16) 64)
 /* allocate extra space to allow tunneling decapsulation without head reallocation */
@@ -680,19 +660,6 @@ static inline bool is_ipv4_pkt(struct sk_buff *skb)
 	return skb->protocol == htons(ETH_P_IP) && ip_hdr(skb)->version == 4;
 }
 
-static inline void be_vf_eth_addr_generate(struct be_adapter *adapter, u8 *mac)
-{
-	u32 addr;
-
-	addr = jhash(adapter->netdev->dev_addr, ETH_ALEN, 0);
-
-	mac[5] = (u8)(addr & 0xFF);
-	mac[4] = (u8)((addr >> 8) & 0xFF);
-	mac[3] = (u8)((addr >> 16) & 0xFF);
-	/* Use the OUI from the current MAC address */
-	memcpy(mac, adapter->netdev->dev_addr, 3);
-}
-
 static inline bool be_multi_rxq(const struct be_adapter *adapter)
 {
 	return adapter->num_rx_qs > 1;
@@ -713,38 +680,6 @@ static inline void  be_clear_all_error(struct be_adapter *adapter)
 	adapter->eeh_error = false;
 	adapter->hw_error = false;
 	adapter->fw_timeout = false;
-}
-
-static inline bool be_is_wol_excluded(struct be_adapter *adapter)
-{
-	struct pci_dev *pdev = adapter->pdev;
-
-	if (!be_physfn(adapter))
-		return true;
-
-	switch (pdev->subsystem_device) {
-	case OC_SUBSYS_DEVICE_ID1:
-	case OC_SUBSYS_DEVICE_ID2:
-	case OC_SUBSYS_DEVICE_ID3:
-	case OC_SUBSYS_DEVICE_ID4:
-		return true;
-	default:
-		return false;
-	}
-}
-
-static inline int qnq_async_evt_rcvd(struct be_adapter *adapter)
-{
-	return adapter->flags & BE_FLAGS_QNQ_ASYNC_EVT_RCVD;
-}
-
-static inline int fw_major_num(const char *fw_ver)
-{
-	int fw_major = 0;
-
-	sscanf(fw_ver, "%d.", &fw_major);
-
-	return fw_major;
 }
 
 void be_cq_notify(struct be_adapter *adapter, u16 qid, bool arm,
