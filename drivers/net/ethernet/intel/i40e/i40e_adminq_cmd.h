@@ -208,6 +208,7 @@ enum i40e_admin_queue_opc {
 	i40e_aqc_opc_query_switching_comp_bw_config        = 0x041A,
 	i40e_aqc_opc_suspend_port_tx                       = 0x041B,
 	i40e_aqc_opc_resume_port_tx                        = 0x041C,
+	i40e_aqc_opc_configure_partition_bw			= 0x041D,
 
 	/* hmc */
 	i40e_aqc_opc_query_hmc_resource_profile = 0x0500,
@@ -1550,6 +1551,17 @@ I40E_CHECK_STRUCT_LEN(0x20, i40e_aqc_query_switching_comp_bw_config_resp);
 /* Suspend/resume port TX traffic
  * (direct 0x041B and 0x041C) uses the generic SEID struct
  */
+
+/* Configure partition BW
+ * (indirect 0x041D)
+ */
+struct i40e_aqc_configure_partition_bw_data {
+	__le16	pf_valid_bits;
+	u8	min_bw[16];      /* guaranteed bandwidth */
+	u8	max_bw[16];      /* bandwidth limit */
+};
+
+I40E_CHECK_STRUCT_LEN(0x22, i40e_aqc_configure_partition_bw_data);
 
 /* Get and set the active HMC resource profile and status.
  * (direct 0x0500) and (direct 0x0501)
