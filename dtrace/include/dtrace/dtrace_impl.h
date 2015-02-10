@@ -28,7 +28,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2009 -- 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2009-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -854,8 +854,8 @@ extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 
 extern void ctf_forceload(void);
 
-#define dtrace_membar_producer()	wmb()
-#define dtrace_membar_consumer()	rmb()
+#define dtrace_membar_producer()	smp_wmb()
+#define dtrace_membar_consumer()	smp_rmb()
 
 typedef unsigned long	dtrace_icookie_t;
 
@@ -875,6 +875,7 @@ typedef void 		(*dtrace_xcall_t)(void *);
 
 extern void dtrace_xcall(processorid_t, dtrace_xcall_t, void *);
 
+extern uintptr_t dtrace_fulword(void *);
 extern uint8_t dtrace_fuword8(void *);
 extern uint16_t dtrace_fuword16(void *);
 extern uint32_t dtrace_fuword32(void *);
@@ -888,7 +889,7 @@ extern void dtrace_getupcstack(uint64_t *, int);
 extern unsigned long dtrace_getufpstack(uint64_t *, uint64_t *, int);
 extern uintptr_t dtrace_getfp(void);
 extern uint64_t dtrace_getarg(int, int);
-extern int dtrace_getstackdepth(int);
+extern int dtrace_getstackdepth(dtrace_mstate_t *, int);
 extern int dtrace_getustackdepth(void);
 extern ulong_t dtrace_getreg(struct task_struct *, uint_t);
 extern void dtrace_copyin(uintptr_t, uintptr_t, size_t, volatile uint16_t *);

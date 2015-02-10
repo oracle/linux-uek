@@ -28,7 +28,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2009 -- 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2009-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -36,7 +36,7 @@
 #include <linux/preempt.h>
 #include <asm/ptrace.h>
 
-typedef typeof(((struct pt_regs *)0)->ip)	pc_t;
+typedef typeof(instruction_pointer((struct pt_regs *)0))	pc_t;
 
 typedef enum dtrace_activity {
 	DTRACE_ACTIVITY_INACTIVE = 0,
@@ -154,36 +154,6 @@ typedef enum dtrace_speculation_state {
 	} while (0)
 
 #define KERNELBASE	(uintptr_t)_text
-
-/*
- * regset.h information
- */
-#define REG_TRAPNO	25
-#define REG_GS		24
-#define REG_FS		23
-#define REG_ES		22
-#define REG_DS		21
-#define REG_SS		20
-#define REG_RSP		19
-#define REG_RFL		18
-#define REG_CS		17
-#define REG_RIP		16
-#define REG_ERR		15
-#define REG_RDI		14
-#define REG_RSI		13
-#define REG_RDX		12
-#define REG_RCX		11
-#define REG_RAX		10
-#define REG_R8		9
-#define REG_R9		8
-#define REG_R10		7
-#define REG_R11		6
-#define REG_RBX		5
-#define REG_RBP		4
-#define REG_R12		3
-#define REG_R13		2
-#define REG_R14		1
-#define REG_R15		0
 
 #if defined(__i386__) || defined(__x86_64__)
 # define DTRACE_INVOP_PUSHL_EBP	1

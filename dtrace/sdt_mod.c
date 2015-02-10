@@ -22,7 +22,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -119,7 +119,11 @@ static dtrace_pops_t sdt_pops = {
 	NULL,
 	NULL,
 	sdt_getargdesc,
+#ifdef CONFIG_X86_64
 	sdt_getarg,
+#else
+	NULL,
+#endif
 	NULL,
 	sdt_destroy,
 };

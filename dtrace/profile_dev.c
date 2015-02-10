@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -107,9 +107,9 @@ static void profile_tick_fn(uintptr_t arg)
 		dtrace_getpcstack(stack, 8, 0, NULL);
 		pc = stack[7];
 	} else if (user_mode(regs))
-		upc = GET_IP(regs);
+		upc = instruction_pointer(regs);
 	else
-		pc = GET_IP(regs);
+		pc = instruction_pointer(regs);
 
 	dtrace_probe(prof->prof_id, pc, upc, 0, 0, 0);
 }
@@ -140,9 +140,9 @@ static void profile_prof_fn(uintptr_t arg)
 		dtrace_getpcstack(stack, 8, 0, NULL);
 		pc = stack[7];
 	} else if (user_mode(regs))
-		upc = GET_IP(regs);
+		upc = instruction_pointer(regs);
 	else
-		pc = GET_IP(regs);
+		pc = instruction_pointer(regs);
 
 	dtrace_probe(prof->prof_id, pc, upc, ktime_to_ns(late), 0, 0);
 }
