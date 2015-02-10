@@ -852,6 +852,9 @@ extern int dtrace_badattr(const dtrace_attribute_t *);
 extern int dtrace_badname(const char *);
 extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
 
+typedef void for_each_module_fn(void *, struct module *);
+extern void dtrace_for_each_module(for_each_module_fn *fn, void *arg);
+
 extern void ctf_forceload(void);
 
 #define dtrace_membar_producer()	smp_wmb()

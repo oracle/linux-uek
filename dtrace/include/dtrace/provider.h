@@ -707,6 +707,7 @@
 typedef struct dtrace_pops {
 	void (*dtps_provide)(void *, const struct dtrace_probedesc *);
 	void (*dtps_provide_module)(void *, struct module *);
+	void (*dtps_cleanup_module)(void *, struct module *);
 	int (*dtps_enable)(void *, dtrace_id_t, void *);
 	void (*dtps_disable)(void *, dtrace_id_t, void *);
 	void (*dtps_suspend)(void *, dtrace_id_t, void *);
