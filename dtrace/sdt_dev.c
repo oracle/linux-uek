@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -30,18 +30,17 @@
 #include <linux/sdt.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 
 #include "dtrace.h"
 #include "dtrace_dev.h"
 #include "sdt_impl.h"
 
-#define SDT_PATCHVAL		0xf0
-#define SDT_ADDR2NDX(addr)	((((uintptr_t)(addr)) >> 4) & sdt_probetab_mask)
 #define SDT_PROBETAB_SIZE	0x1000		/* 4k entries -- 16K total */
 
-static sdt_probe_t	**sdt_probetab;
-static int		sdt_probetab_size;
-static int		sdt_probetab_mask;
+sdt_probe_t		**sdt_probetab;
+int			sdt_probetab_size;
+int			sdt_probetab_mask;
 
 static sdt_argdesc_t	sdt_args[] = {
 	/*
@@ -103,26 +102,6 @@ static sdt_argdesc_t	sdt_args[] = {
 	{ NULL, }
 };
 
-static uint8_t sdt_invop(struct pt_regs *regs)
-{
-	sdt_probe_t	*sdt = sdt_probetab[SDT_ADDR2NDX(regs->ip)];
-
-	for (; sdt != NULL; sdt = sdt->sdp_hashnext) {
-		if ((uintptr_t)sdt->sdp_patchpoint == regs->ip) {
-			this_cpu_core->cpu_dtrace_regs = regs;
-
-			dtrace_probe(sdt->sdp_id, regs->di, regs->si,
-				     regs->dx, regs->cx, regs->r8);
-
-			this_cpu_core->cpu_dtrace_regs = NULL;
-
-			return DTRACE_INVOP_NOP;
-		}
-	}
-
-	return 0;
-}
-
 void sdt_provide_module(void *arg, struct module *mp)
 {
 	char			*modname = mp->name;
@@ -151,6 +130,9 @@ void sdt_provide_module(void *arg, struct module *mp)
 		if (prov->dtmp_id == DTRACE_PROVNONE)
 			return;
 	}
+
+	if (!sdt_provide_module_arch(arg, mp))
+		return;
 
 	for (idx = 0, sdpd = mp->sdt_probes; idx < mp->num_dtrace_probes;
 	     idx++, sdpd++) {
@@ -212,7 +194,8 @@ void sdt_provide_module(void *arg, struct module *mp)
 			sdp->sdp_id = dtrace_probe_create(prov->dtmp_id,
 							  modname,
 							  sdpd->sdpd_func,
-							  nname, 3, sdp);
+							  nname, SDT_AFRAMES,
+							  sdp);
 			mp->sdt_nprobes++;
 		}
 
@@ -220,9 +203,9 @@ void sdt_provide_module(void *arg, struct module *mp)
 					SDT_ADDR2NDX(sdpd->sdpd_offset)];
 		sdt_probetab[SDT_ADDR2NDX(sdpd->sdpd_offset)] = sdp;
 
-		sdp->sdp_patchval = SDT_PATCHVAL;
-		sdp->sdp_patchpoint = (uint8_t *)sdpd->sdpd_offset;
-		sdp->sdp_savedval = *sdp->sdp_patchpoint;
+		sdp->sdp_patchpoint = (sdt_instr_t *)sdpd->sdpd_offset;
+
+		sdt_provide_probe_arch(sdp, mp, idx);
 	}
 }
 
@@ -246,7 +229,7 @@ int _sdt_enable(void *arg, dtrace_id_t id, void *parg)
 		module_put(sdp->sdp_module);
 
 	while (sdp != NULL) {
-		dtrace_invop_enable(sdp->sdp_patchpoint);
+		sdt_enable_arch(sdp, id, arg);
 		sdp = sdp->sdp_next;
 	}
 
@@ -268,7 +251,7 @@ void _sdt_disable(void *arg, dtrace_id_t id, void *parg)
 		module_put(sdp->sdp_module);
 
 	while (sdp != NULL) {
-		dtrace_invop_disable(sdp->sdp_patchpoint, sdp->sdp_savedval);
+		sdt_disable_arch(sdp, id, arg);
 		sdp = sdp->sdp_next;
 	}
 }
@@ -307,42 +290,6 @@ void sdt_getargdesc(void *arg, dtrace_id_t id, void *parg,
 	}
 
 	desc->dtargd_ndx = DTRACE_ARGNONE;
-}
-
-uint64_t sdt_getarg(void *arg, dtrace_id_t id, void *parg, int argno,
-		    int aframes)
-{
-	struct pt_regs  *regs = this_cpu_core->cpu_dtrace_regs;
-	uint64_t	*st;
-	uint64_t	val;
-
-	if (regs == NULL)
-		return 0;
-
-	switch (argno) {
-	case 0:
-		return regs->di;
-	case 1:
-		return regs->si;
-	case 2:
-		return regs->dx;
-	case 3:
-		return regs->cx;
-	case 4:
-		return regs->r8;
-	case 5:
-		return regs->r9;
-	}
-
-	ASSERT(argno > 5);
-
-	st = (uint64_t *)regs->sp;
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	__copy_from_user_inatomic_nocache(&val, (void *)&st[argno - 6],
-					  sizeof(st[0]));
-	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-	return val;
 }
 
 void sdt_destroy(void *arg, dtrace_id_t id, void *parg)
@@ -425,14 +372,15 @@ int sdt_dev_init(void)
 	if (sdt_probetab == NULL)
 		return -ENOMEM;
 
-	ret = dtrace_invop_add(sdt_invop);
+	sdt_dev_init_arch();
 
 	return ret;
 }
 
 void sdt_dev_exit(void)
 {
-	dtrace_invop_remove(sdt_invop);
+	sdt_dev_exit_arch();
+
 	vfree(sdt_probetab);
 
 	misc_deregister(&sdt_dev);

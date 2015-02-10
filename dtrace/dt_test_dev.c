@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2011, 2012 Oracle, Inc.  All rights reserved.
+ * Copyright 2011-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -43,7 +43,7 @@ void dt_test_provide(void *arg, const dtrace_probedesc_t *desc)
 		return;
 
 	pid = dtrace_probe_create(dt_test_id,
-				  "dt_test", NULL, "test", 0, NULL);
+				  "dt_test", NULL, "test", 1, NULL);
 }
 
 int _dt_test_enable(void *arg, dtrace_id_t id, void *parg)
@@ -62,22 +62,33 @@ void dt_test_destroy(void *arg, dtrace_id_t id, void *parg)
 {
 }
 
-static long dt_test_ioctl(struct file *file,
-			 unsigned int cmd, unsigned long arg)
+/*
+ * Direct calling into dtrace_probe() when passing more than 5 parameters to
+ * the probe requires a stub function.  Otherwise we may not be able to get
+ * to the value of all arguments correctly.
+ */
+void dt_test_probe(uintptr_t arg0, uintptr_t arg1, uintptr_t arg2,
+		   uintptr_t arg3, uintptr_t arg4, uintptr_t arg5,
+		   uintptr_t arg6, uintptr_t arg7, uintptr_t arg8,
+		   uintptr_t arg9)
 {
 	/*
 	 * Yes, this is not nice.
-	 * Not at all.
+	 * Not at all...
 	 * But we're doing it anyway...
 	 */
-	void (*dt_test_probe)(dtrace_id_t, uintptr_t, uintptr_t, uintptr_t,
-			      uintptr_t, uintptr_t, uintptr_t, uintptr_t,
-			      uintptr_t, uintptr_t, uintptr_t);
+	void (*probe_fn)() = (void *)&dtrace_probe;
 
+	probe_fn(pid, arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8,
+		 arg9);
+}
+
+static long dt_test_ioctl(struct file *file,
+			 unsigned int cmd, unsigned long arg)
+{
 	if (enabled) {
-		dt_test_probe = (void *)&dtrace_probe;
-		dt_test_probe(pid, cmd, arg, 2ULL, 3ULL, 4ULL, 5ULL,
-					     6ULL, 7ULL, 8ULL, 9ULL);
+		dt_test_probe(cmd, arg, 2ULL, 3ULL, 4ULL, 5ULL, 6ULL, 7ULL,
+					8ULL, 9ULL);
 
 		return 0;
 	}

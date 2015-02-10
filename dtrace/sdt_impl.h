@@ -2,6 +2,8 @@
 #define _SDT_IMPL_H_
 
 #include <linux/sdt.h>
+#include <asm/dtrace_sdt.h>
+#include <dtrace/sdt_arch.h>
 
 extern struct module		*dtrace_kmod;
 
@@ -29,7 +31,18 @@ typedef struct sdt_argdesc  {
 	char			*sda_xlate;
 } sdt_argdesc_t;
 
-extern dtrace_mprovider_t sdt_providers[];
+extern dtrace_mprovider_t	sdt_providers[];
+extern sdt_probe_t		**sdt_probetab;
+extern int			sdt_probetab_size;
+extern int			sdt_probetab_mask;
+
+#define SDT_ADDR2NDX(addr)	((((uintptr_t)(addr)) >> 4) & \
+					sdt_probetab_mask)
+
+extern void sdt_provide_probe_arch(sdt_probe_t *, struct module *, int);
+extern int sdt_provide_module_arch(void *, struct module *);
+extern void sdt_enable_arch(sdt_probe_t *, dtrace_id_t, void *);
+extern void sdt_disable_arch(sdt_probe_t *, dtrace_id_t, void *);
 
 extern void sdt_provide_module(void *, struct module *);
 extern int _sdt_enable(void *, dtrace_id_t, void *);
@@ -40,5 +53,8 @@ extern void sdt_destroy(void *, dtrace_id_t, void *);
 
 extern int sdt_dev_init(void);
 extern void sdt_dev_exit(void);
+
+extern int sdt_dev_init_arch(void);
+extern void sdt_dev_exit_arch(void);
 
 #endif /* _SDT_IMPL_H_ */

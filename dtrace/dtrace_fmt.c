@@ -21,11 +21,12 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 
 #include "dtrace.h"
 

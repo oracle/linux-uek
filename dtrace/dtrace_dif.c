@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -32,7 +32,9 @@
 #include <linux/kdev_t.h>
 #include <linux/slab.h>
 #include <linux/socket.h>
+#include <linux/vmalloc.h>
 #include <net/ipv6.h>
+#include <asm/byteorder.h>
 
 #include <linux/mount.h>
 
@@ -1506,7 +1508,8 @@ static dtrace_dynvar_t *dtrace_dynvar(dtrace_dstate_t *dstate, uint_t nkeys,
 	dtrace_dstate_percpu_t	*dcpu = &dstate->dtds_percpu[me];
 	size_t			bucket, ksize;
 	size_t			chunksize = dstate->dtds_chunksize;
-	uintptr_t		kdata, lock, nstate;
+	uintptr_t		kdata, lock;
+	dtrace_dstate_state_t	nstate;
 	uint_t			i;
 
         ASSERT(nkeys != 0);
@@ -1816,8 +1819,8 @@ retry:
 				 */
 				switch (dstate->dtds_state) {
 				case DTRACE_DSTATE_CLEAN: {
-					uintptr_t	*sp =
-							(uintptr_t *)
+					dtrace_dstate_state_t	*sp =
+						(dtrace_dstate_state_t *)
 							&dstate->dtds_state;
 
 					if (++cpu >= NR_CPUS)
@@ -2030,7 +2033,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		if (ndx >=
 		    sizeof(mstate->dtms_arg) / sizeof(mstate->dtms_arg[0])) {
 			int			aframes =
-					mstate->dtms_probe->dtpr_aframes + 3;
+					mstate->dtms_probe->dtpr_aframes + 2;
 			dtrace_provider_t	*pv;
 			uint64_t		val;
 
@@ -2115,9 +2118,10 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		if (!dtrace_priv_kernel(state))
 			return 0;
 		if (!(mstate->dtms_present & DTRACE_MSTATE_STACKDEPTH)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 2;
 
-			mstate->dtms_stackdepth = dtrace_getstackdepth(aframes);
+			mstate->dtms_stackdepth = dtrace_getstackdepth(
+							mstate, aframes);
 			mstate->dtms_present |= DTRACE_MSTATE_STACKDEPTH;
 		}
 
@@ -2148,7 +2152,7 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 			return 0;
 
 		if (!(mstate->dtms_present & DTRACE_MSTATE_CALLER)) {
-			int	aframes = mstate->dtms_probe->dtpr_aframes + 3;
+			int	aframes = mstate->dtms_probe->dtpr_aframes + 2;
 
 			if (!DTRACE_ANCHORED(mstate->dtms_probe)) {
 				/*
@@ -2902,7 +2906,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		uintptr_t	tokaddr = tupregs[1].dttk_value;
 		uint64_t	size = state->dts_options[DTRACEOPT_STRSIZE];
 		uintptr_t	limit, toklimit = tokaddr + size;
-		uint8_t		c, tokmap[32];	/* 256 / 8 */
+		uint8_t		c = 0, tokmap[32];	/* 256 / 8 */
 		char		*dest = (char *)mstate->dtms_scratch_ptr;
 		int		i;
 
@@ -3352,7 +3356,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONS:
 	case DIF_SUBR_NTOHS:
-#ifndef __LITTLE_ENDIAN
+#ifdef __BIG_ENDIAN
 		regs[rd] = (uint16_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_16((uint16_t)tupregs[0].dttk_value);
@@ -3362,7 +3366,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONL:
 	case DIF_SUBR_NTOHL:
-#ifndef __LITTLE_ENDIAN
+#ifdef __BIG_ENDIAN
 		regs[rd] = (uint32_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_32((uint32_t)tupregs[0].dttk_value);
@@ -3372,7 +3376,7 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 
 	case DIF_SUBR_HTONLL:
 	case DIF_SUBR_NTOHLL:
-#ifndef __LITTLE_ENDIAN
+#ifdef __BIG_ENDIAN
 		regs[rd] = (uint64_t)tupregs[0].dttk_value;
 #else
 		regs[rd] = DT_BSWAP_64((uint64_t)tupregs[0].dttk_value);
