@@ -42,14 +42,14 @@ static int		dtrace_helpers;
 
 static uint32_t		dtrace_helptrace_next = 0;
 static uint32_t		dtrace_helptrace_nlocals;
-static char		*dtrace_helptrace_buffer;
-static int		dtrace_helptrace_bufsize = 512 * 1024;
 
 #ifdef CONFIG_DT_DEBUG
-static int		dtrace_helptrace_enabled = 1;
+int			dtrace_helptrace_enabled = 1;
 #else
-static int		dtrace_helptrace_enabled = 0;
+int			dtrace_helptrace_enabled = 0;
 #endif
+int			dtrace_helptrace_bufsize = 512 * 1024;
+char			*dtrace_helptrace_buffer;
 
 void dtrace_dof_error(dof_hdr_t *dof, const char *str)
 {
