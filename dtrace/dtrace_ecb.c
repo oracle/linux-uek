@@ -42,7 +42,6 @@ static dtrace_action_t *dtrace_ecb_aggregation_create(dtrace_ecb_t *ecb,
 	dtrace_recdesc_t	*frec;
 	dtrace_aggid_t		aggid;
 	dtrace_state_t		*state = ecb->dte_state;
-	int			err;
 
 	agg = kzalloc(sizeof(dtrace_aggregation_t), GFP_KERNEL);
 	if (agg == NULL)
@@ -141,14 +140,14 @@ success:
 	 * Get an ID for the aggregation (add it to the idr).
 	 */
 	mutex_unlock(&dtrace_lock);
-again:
-	idr_pre_get(&state->dts_agg_idr, __GFP_NOFAIL);
+
+	idr_preload(GFP_KERNEL);
 	mutex_lock(&dtrace_lock);
 
-	err = idr_get_new(&state->dts_agg_idr, agg, &aggid);
-	if (err == -EAGAIN) {
-		mutex_unlock(&dtrace_lock);
-		goto again;
+	aggid = idr_alloc_cyclic(&state->dts_agg_idr, agg, 0, 0, GFP_NOWAIT);
+	idr_preload_end();
+	if (aggid < 0) {
+		/* FIXME: need to handle this */
 	}
 
 	state->dts_naggs++;

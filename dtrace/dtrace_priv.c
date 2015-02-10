@@ -45,12 +45,12 @@ int dtrace_priv_proc_common_user(dtrace_state_t *state)
 	ASSERT(s_cr != NULL);
 
 	if ((cr = current_cred()) != NULL &&
-	    s_cr->euid == cr->euid &&
-	    s_cr->euid == cr->uid &&
-	    s_cr->euid == cr->suid &&
-	    s_cr->egid == cr->egid &&
-	    s_cr->egid == cr->gid &&
-	    s_cr->egid == cr->sgid)
+	    uid_eq(s_cr->euid, cr->euid) &&
+	    uid_eq(s_cr->euid, cr->uid) &&
+	    uid_eq(s_cr->euid, cr->suid) &&
+	    gid_eq(s_cr->egid, cr->egid) &&
+	    gid_eq(s_cr->egid, cr->gid) &&
+	    gid_eq(s_cr->egid, cr->sgid))
 		return 1;
 
 	return 0;

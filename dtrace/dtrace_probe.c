@@ -59,12 +59,11 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 	dtrace_probe_t		*probe;
 	dtrace_provider_t	*provider = (dtrace_provider_t *)prov;
 	dtrace_id_t		id;
-	int			err;
 
 	probe = kmem_cache_alloc(dtrace_probe_cachep, __GFP_NOFAIL);
 
 	/*
-	 * The idr_pre_get() function should be called without holding locks.
+	 * The ir_preload() function should be called without holding locks.
 	 * When the provider is the DTrace core itself, dtrace_lock will be
 	 * held when we enter this function.
 	 */
@@ -73,14 +72,13 @@ dtrace_id_t dtrace_probe_create(dtrace_provider_id_t prov, const char *mod,
 		mutex_unlock(&dtrace_lock);
 	}
 
-again:
-	idr_pre_get(&dtrace_probe_idr, __GFP_NOFAIL);
+	idr_preload(GFP_KERNEL);
 
 	mutex_lock(&dtrace_lock);
-	err = idr_get_new(&dtrace_probe_idr, probe, &id);
-	if (err == -EAGAIN) {
-		mutex_unlock(&dtrace_lock);
-		goto again;
+	id = idr_alloc_cyclic(&dtrace_probe_idr, probe, 0, 0, GFP_NOWAIT);
+	idr_preload_end();
+	if (id < 0) {
+		/* FIXME: Need to handle failure */
 	}
 
 	probe->dtpr_id = id;
@@ -113,7 +111,7 @@ int dtrace_probe_enable(const dtrace_probedesc_t *desc, dtrace_enabling_t *enab)
 {
 	dtrace_probekey_t	pkey;
 	uint32_t		priv;
-	uid_t			uid;
+	kuid_t			uid;
 
 	dtrace_ecb_create_cache = NULL;
 
@@ -729,12 +727,12 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 				ASSERT(s_cr != NULL);
 
 				if ((cr = current_cred()) == NULL ||
-				    s_cr->euid != cr->euid ||
-				    s_cr->euid != cr->uid ||
-				    s_cr->euid != cr->suid ||
-				    s_cr->egid != cr->egid ||
-				    s_cr->egid != cr->gid ||
-				    s_cr->egid != cr->sgid)
+				    !uid_eq(s_cr->euid, cr->euid) ||
+				    !uid_eq(s_cr->euid, cr->uid) ||
+				    !uid_eq(s_cr->euid, cr->suid) ||
+				    !gid_eq(s_cr->egid, cr->egid) ||
+				    !gid_eq(s_cr->egid, cr->gid) ||
+				    !gid_eq(s_cr->egid, cr->sgid))
 					continue;
 			}
 		}
@@ -1282,7 +1280,6 @@ EXPORT_SYMBOL(dtrace_probe);
 int dtrace_probe_init(void)
 {
 	dtrace_id_t	id;
-	int		err;
 
 	dtrace_probe_cachep = KMEM_CACHE(dtrace_probe, SLAB_HWCACHE_ALIGN);
 	if (dtrace_probe_cachep == NULL)
@@ -1295,30 +1292,27 @@ int dtrace_probe_init(void)
 	 * being the very first entry.  This is used in functionality that runs
 	 * through the list of probes.
 	 *
-	 * We need to drop our locks when calling idr_pre_get(), so we try to
+	 * We need to drop our locks when calling idr_preload(), so we try to
 	 * get them back right after.
 	 */
-again:
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&cpu_lock);
 
-	idr_pre_get(&dtrace_probe_idr, __GFP_NOFAIL);
+	idr_preload(GFP_KERNEL);
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
 
-	err = idr_get_new(&dtrace_probe_idr, NULL, &id);
-	if (err == -EAGAIN)
-		goto again;
+	id = idr_alloc_cyclic(&dtrace_probe_idr, NULL, 0, 0, GFP_NOWAIT);
+	idr_preload_end();
 
 	return id == 0 ? 0 : -EAGAIN;
 }
 
 void dtrace_probe_exit(void)
 {
-	idr_remove_all(&dtrace_probe_idr);
 	idr_destroy(&dtrace_probe_idr);
 	kmem_cache_destroy(dtrace_probe_cachep);
 }
@@ -1358,7 +1352,7 @@ dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t prid, const char *mod,
 	pkey.dtpk_id = DTRACE_IDNONE;
 
 	mutex_lock(&dtrace_lock);
-	match = dtrace_match(&pkey, DTRACE_PRIV_ALL, 0,
+	match = dtrace_match(&pkey, DTRACE_PRIV_ALL, make_kuid(NULL, 0),
 			     dtrace_probe_lookup_match, &id);
 	mutex_unlock(&dtrace_lock);
 
