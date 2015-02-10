@@ -130,7 +130,7 @@ int dtrace_badname(const char *s)
 	return 0;
 }
 
-void dtrace_cred2priv(const cred_t *cr, uint32_t *privp, uid_t *uidp)
+void dtrace_cred2priv(const cred_t *cr, uint32_t *privp, kuid_t *uidp)
 {
 #ifdef FIXME
 /*

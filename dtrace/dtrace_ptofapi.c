@@ -203,7 +203,8 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 	provider->dtpv_priv.dtpp_flags = priv;
 
 	if (cr != NULL) {
-		provider->dtpv_priv.dtpp_uid = get_cred(cr)->uid;
+		provider->dtpv_priv.dtpp_uid =
+			make_kuid(NULL, from_kuid(NULL, get_cred(cr)->uid));
 		put_cred(cr);
 	}
 

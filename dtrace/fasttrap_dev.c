@@ -1671,7 +1671,7 @@ void fasttrap_dev_exit(void)
 
 		if (tmp != CLEANUP_NONE) {
 			mutex_unlock(&fasttrap_cleanup_mtx);
-			flush_delayed_work_sync(&fasttrap_cleanup);
+			flush_delayed_work(&fasttrap_cleanup);
 			mutex_lock(&fasttrap_cleanup_mtx);
 		}
 	}
