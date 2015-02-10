@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -33,6 +33,7 @@
 #include <linux/kernel.h>
 #include <linux/miscdevice.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
 #include <asm/uaccess.h>
 
 #include "ctf_api.h"
@@ -84,9 +85,6 @@ static dtrace_pattr_t		dtrace_provider_attr = {
 };
 
 DEFINE_MUTEX(dtrace_lock);
-
-void (*dtrace_modload)(struct module *);
-void (*dtrace_modunload)(struct module *);
 
 void dtrace_nullop(void)
 {
@@ -1387,12 +1385,10 @@ int dtrace_dev_init(void)
 
 	register_module_notifier(&dtrace_modmgmt);
 
-#ifdef FIXME
-	dtrace_modload = dtrace_module_loaded;
-	dtrace_modunload = dtrace_module_unloaded;
-#endif
+#if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 	dtrace_helpers_fork = dtrace_helpers_duplicate;
+#endif
 #ifdef FIXME
 	dtrace_cpu_init = dtrace_cpu_setup_initial;
 	dtrace_cpustart_init = dtrace_suspend;
@@ -1464,7 +1460,7 @@ int dtrace_dev_init(void)
 				NULL, "END", 0, NULL);
 	dtrace_probeid_error = dtrace_probe_create(
 				(dtrace_provider_id_t)dtrace_provider, NULL,
-				NULL, "ERROR", 0, NULL);
+				NULL, "ERROR", 1, NULL);
 
 	dtrace_anon_property();
 
@@ -1515,12 +1511,10 @@ void dtrace_dev_exit(void)
 
 	unregister_module_notifier(&dtrace_modmgmt);
 
-#ifdef FIXME
-	dtrace_modload = NULL;
-	dtrace_modunload = NULL;
-#endif
+#if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 	dtrace_helpers_cleanup = NULL;
 	dtrace_helpers_fork = NULL;
+#endif
 #ifdef FIXME
 	dtrace_cpu_init = NULL;
 	dtrace_cpustart_init = NULL;

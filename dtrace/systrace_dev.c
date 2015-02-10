@@ -21,10 +21,11 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
+#include <linux/dtrace_syscall.h>
 #include <linux/fs.h>
 #include <linux/miscdevice.h>
 #include <asm/unistd.h>
@@ -33,7 +34,7 @@
 #include "dtrace_dev.h"
 #include "systrace.h"
 
-#define SYSTRACE_ARTIFICIAL_FRAMES	0
+#define SYSTRACE_ARTIFICIAL_FRAMES	1
 
 #define SYSTRACE_SHIFT			16
 #define SYSTRACE_ENTRY(id)		((1 << SYSTRACE_SHIFT) | (id))
@@ -93,64 +94,55 @@ static dt_sys_call_t get_intercept(int sysnum)
 	switch (sysnum) {
 	default:
 		return systrace_info->syscall;
-	case __NR_clone:
-		return systrace_info->stubs[SCE_CLONE];
-	case __NR_fork:
-		return systrace_info->stubs[SCE_FORK];
-	case __NR_vfork:
-		return systrace_info->stubs[SCE_VFORK];
-	case __NR_iopl:
-		return systrace_info->stubs[SCE_IOPL];
-	case __NR_execve:
-		return systrace_info->stubs[SCE_EXECVE];
-	case __NR_rt_sigreturn:
-		return systrace_info->stubs[SCE_RT_SIGRETURN];
+#define DTRACE_SYSCALL_STUB(t, n) \
+	case __NR_##n: \
+		return systrace_info->stubs[SCE_##t];
+#include <asm/dtrace_syscall.h>
+#undef DTRACE_SYSCALL_STUB
 	}
 }
 
 int _systrace_enable(void *arg, dtrace_id_t id, void *parg)
 {
-	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
-	int		enabled =
-		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
-		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
-	dt_sys_call_t	intercept = get_intercept(sysnum);
+	int			sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
+	dtrace_syscalls_t	*sc = &systrace_info->sysent[sysnum];
+	int			enabled = sc->stsy_entry != DTRACE_IDNONE ||
+					  sc->stsy_return != DTRACE_IDNONE;
+	dt_sys_call_t		intercept = get_intercept(sysnum);
 
 	if (!enabled) {
-		if (cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
-			    systrace_info->sysent[sysnum].stsy_underlying,
-			    intercept) !=
-		    systrace_info->sysent[sysnum].stsy_underlying)
-			return 0;
+		if (cmpxchg((uint32_t *)sc->stsy_tblent,
+			    (uint32_t)sc->stsy_underlying,
+			    (uint32_t)intercept) !=
+		    (uint32_t)sc->stsy_underlying)
+			return 1;
 	} else
-		ASSERT((void *)*(systrace_info->sysent[sysnum].stsy_tblent) ==
-		       (void *)intercept);
+		ASSERT(*(uint32_t *)sc->stsy_tblent == (uint32_t)intercept);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))
-		systrace_info->sysent[sysnum].stsy_entry = id;
+		sc->stsy_entry = id;
 	else
-		systrace_info->sysent[sysnum].stsy_return = id;
+		sc->stsy_return = id;
 
 	return 0;
 }
 
 void _systrace_disable(void *arg, dtrace_id_t id, void *parg)
 {
-	int		sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
-	int		enabled =
-		systrace_info->sysent[sysnum].stsy_entry != DTRACE_IDNONE ||
-		systrace_info->sysent[sysnum].stsy_return != DTRACE_IDNONE;
-	dt_sys_call_t	intercept = get_intercept(sysnum);
+	int			sysnum = SYSTRACE_SYSNUM((uintptr_t)parg);
+	dtrace_syscalls_t	*sc = &systrace_info->sysent[sysnum];
+	int			enabled = sc->stsy_entry != DTRACE_IDNONE ||
+					  sc->stsy_return != DTRACE_IDNONE;
+	dt_sys_call_t		intercept = get_intercept(sysnum);
 
 	if (enabled)
-		(void)cmpxchg(systrace_info->sysent[sysnum].stsy_tblent,
-			      intercept,
-			      systrace_info->sysent[sysnum].stsy_underlying);
+		(void)cmpxchg((uint32_t *)sc->stsy_tblent, (uint32_t)intercept,
+			      (uint32_t)sc->stsy_underlying);
 
 	if (SYSTRACE_ISENTRY((uintptr_t)parg))
-		systrace_info->sysent[sysnum].stsy_entry = DTRACE_IDNONE;
+		sc->stsy_entry = DTRACE_IDNONE;
 	else
-		systrace_info->sysent[sysnum].stsy_return = DTRACE_IDNONE;
+		sc->stsy_return = DTRACE_IDNONE;
 }
 
 void systrace_destroy(void *arg, dtrace_id_t id, void *parg)

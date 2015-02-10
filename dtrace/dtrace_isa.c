@@ -30,197 +30,23 @@
 #include <linux/mm.h>
 #include <linux/smp.h>
 #include <linux/uaccess.h>
+#include <asm/cacheflush.h>
 #include <asm/stacktrace.h>
 
 #include "dtrace.h"
-
-/* FIXME */
-uintptr_t _userlimit = 0x00007fffffffffffLL;
-uintptr_t kernelbase = 0xffff880000000000LL;
 
 EXPORT_SYMBOL(dtrace_getfp);
 
 DEFINE_MUTEX(cpu_lock);
 EXPORT_SYMBOL(cpu_lock);
 
-extern void	dtrace_copy(uintptr_t, uintptr_t, size_t);
-extern void	dtrace_copystr(uintptr_t, uintptr_t, size_t,
-			       volatile uint16_t *);
-
-static int dtrace_copycheck(uintptr_t uaddr, uintptr_t kaddr, size_t size)
-{
-#ifdef FIXME
-	ASSERT(kaddr >= kernelbase && kaddr + size >= kaddr);
-#else
-	if (kaddr < kernelbase || kaddr + size < kaddr) {
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-		this_cpu_core->cpuc_dtrace_illval = kaddr;
-		return 0;
-	}
-#endif
-
-	if (uaddr + size >= kernelbase || uaddr + size < uaddr) {
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-		this_cpu_core->cpuc_dtrace_illval = uaddr;
-		return 0;
-	}
-
-	return 1;
-}
-
-void dtrace_copyin(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		   volatile uint16_t *flags)
-{
-	if (dtrace_copycheck(uaddr, kaddr, size))
-		dtrace_copy(uaddr, kaddr, size);
-}
-
-void dtrace_copyout(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		    volatile uint16_t *flags)
-{
-	if (dtrace_copycheck(uaddr, kaddr, size))
-		dtrace_copy(kaddr, uaddr, size);
-}
-
-void dtrace_copyinstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		      volatile uint16_t *flags)
-{
-	if (dtrace_copycheck(uaddr, kaddr, size))
-		dtrace_copystr(uaddr, kaddr, size, flags);
-}
-
-void dtrace_copyoutstr(uintptr_t uaddr, uintptr_t kaddr, size_t size,
-		       volatile uint16_t *flags)
-{
-	if (dtrace_copycheck(uaddr, kaddr, size))
-		dtrace_copystr(kaddr, uaddr, size, flags);
-}
-
-#define DTRACE_FUWORD(bits) \
-	uint##bits##_t dtrace_fuword##bits(void *uaddr)			      \
-	{								      \
-		extern uint##bits##_t	dtrace_fuword##bits##_nocheck(void *);\
-									      \
-		if ((uintptr_t)uaddr > _userlimit) {			      \
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);		      \
-			this_cpu_core->cpuc_dtrace_illval = (uintptr_t)uaddr; \
-			return 0;					      \
-		}							      \
-									      \
-		return dtrace_fuword##bits##_nocheck(uaddr);		      \
-	}
-
-DTRACE_FUWORD(8)
-DTRACE_FUWORD(16)
-DTRACE_FUWORD(32)
-DTRACE_FUWORD(64)
-
-uint64_t dtrace_getarg(int argno, int aframes)
-{
-	unsigned long	bp;
-	uint64_t	*st;
-	uint64_t	val;
-	int		i;
-
-	asm volatile("movq %%rbp,%0" : "=m"(bp));
-
-	for (i = 0; i < aframes; i++)
-		bp = *((unsigned long *)bp);
-
-	ASSERT(argno >= 5);
-
-	/*
-	 * The first 5 arguments (arg0 through arg4) are passed in registers
-	 * to dtrace_probe().  The remaining arguments (arg5 through arg9) are
-	 * passed on the stack.
-	 *
-	 * Stack layout:
-	 * bp[0] = pushed bp from caller
-	 * bp[1] = return address
-	 * bp[2] = 6th argument (arg5 -> argno = 5)
-	 * bp[3] = 7th argument (arg6 -> argno = 6)
-	 * ...
-	 */
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_NOFAULT);
-	st = (uint64_t *)bp;
-	val = st[2 + (argno - 5)];
-	DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_NOFAULT);
-
-	return val;
-}
-
 int dtrace_getipl(void)
 {
 	return in_interrupt();
 }
 
-ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
-{
-	struct pt_regs	*rp = task_pt_regs(task);
-
-	int	regmap[] = {
-				REG_RBX,	/*  0 -> EBX */
-				REG_RCX,	/*  1 -> ECX */
-				REG_RDX,	/*  2 -> EDX */
-				REG_RSI,	/*  3 -> ESI */
-				REG_RDI,	/*  4 -> EDI */
-				REG_RBP,	/*  5 -> EBP */
-				REG_RAX,	/*  6 -> EAX */
-				REG_DS,		/*  7 -> DS */
-				REG_ES,		/*  8 -> ES */
-				REG_FS,		/*  9 -> FS */
-				REG_GS,		/* 10 -> GS */
-				REG_TRAPNO,	/* 11 -> TRAPNO */
-				REG_RIP,	/* 12 -> EIP */
-				REG_CS,		/* 13 -> CS */
-				REG_RFL,	/* 14 -> EFL */
-				REG_RSP,	/* 15 -> UESP */
-				REG_SS,		/* 16 -> SS */
-			   };
-	if (reg > REG_TRAPNO) {
-		/*
-		 * Convert register alias index into register mapping index.
-		 */
-		reg -= REG_TRAPNO + 1;
-
-		if (reg >= sizeof(regmap) / sizeof(int)) {
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-			return 0;
-		}
-
-		reg = regmap[reg];
-	}
-
-	/*
-	 * Most common case: direct index into pt_regs structure.
-	 */
-	if (reg <= REG_SS)
-		return (&rp->r15)[reg];
-
-	switch (reg) {
-	case REG_DS:
-		return task->thread.ds;
-	case REG_ES:
-		return task->thread.es;
-	case REG_FS:
-		return task->thread.fs;
-	case REG_GS:
-		return task->thread.gs;
-	case REG_TRAPNO:
-		return task->thread.trap_nr;
-	default:
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-		return 0;
-	}
-}
-
 static void dtrace_sync_func(void)
 {
-}
-
-void dtrace_sync(void)
-{
-	dtrace_xcall(DTRACE_CPUALL, (dtrace_xcall_t)dtrace_sync_func, NULL);
 }
 
 void dtrace_xcall(processorid_t cpu, dtrace_xcall_t func, void *arg)
@@ -229,6 +55,11 @@ void dtrace_xcall(processorid_t cpu, dtrace_xcall_t func, void *arg)
 		smp_call_function(func, arg, 1);
 	} else
 		smp_call_function_single(cpu, func, arg, 1);
+}
+
+void dtrace_sync(void)
+{
+	dtrace_xcall(DTRACE_CPUALL, (dtrace_xcall_t)dtrace_sync_func, NULL);
 }
 
 void dtrace_toxic_ranges(void (*func)(uintptr_t, uintptr_t))
@@ -248,7 +79,7 @@ void dtrace_getpcstack(uint64_t *pcstack, int pcstack_limit, int aframes,
 					pcstack,
 					NULL,
 					pcstack_limit,
-					0,
+					aframes,
 					STACKTRACE_KERNEL
 				     };
 
@@ -330,7 +161,11 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 		goto out;
 	atomic_inc(&mm->mm_users);
 
+#ifdef CONFIG_X86_64
 	tos = current_user_stack_pointer();
+#else
+	tos = user_stack_pointer(current_pt_regs());
+#endif
 	stack_vma = find_user_vma(p, mm, NULL, (unsigned long) tos, 0);
 	if (!stack_vma ||
 	    stack_vma->vm_start > (unsigned long) tos)
@@ -417,22 +252,32 @@ void dtrace_getupcstack(uint64_t *pcstack, int pcstack_limit)
 	dtrace_getufpstack(pcstack, NULL, pcstack_limit);
 }
 
-int dtrace_getstackdepth(int aframes)
+int dtrace_getstackdepth(dtrace_mstate_t *mstate, int aframes)
 {
+	uintptr_t		old = mstate->dtms_scratch_ptr;
+	size_t			size;
 	struct stacktrace_state	st = {
 					NULL,
 					NULL,
 					0,
-					0,
+					aframes,
 					STACKTRACE_KERNEL
 				     };
 
+	st.pcs = (uint64_t *)P2ROUNDUP(mstate->dtms_scratch_ptr, 8);
+	size = (uintptr_t)st.pcs - mstate->dtms_scratch_ptr +
+			  aframes * sizeof(uint64_t);
+	if (mstate->dtms_scratch_ptr + size >
+	    mstate->dtms_scratch_base + mstate->dtms_scratch_size) {
+		DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
+		return 0;
+	}
+
 	dtrace_stacktrace(&st);
 
-	if (st.depth <= aframes)
-		return 0;
+	mstate->dtms_scratch_ptr = old;
 
-	return st.depth - aframes;
+	return st.depth;
 }
 
 int dtrace_getustackdepth(void)

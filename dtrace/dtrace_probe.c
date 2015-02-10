@@ -21,7 +21,7 @@
  *
  * CDDL HEADER END
  *
- * Copyright 2010, 2011, 2012, 2013 Oracle, Inc.  All rights reserved.
+ * Copyright 2010-2014 Oracle, Inc.  All rights reserved.
  * Use is subject to license terms.
  */
 
@@ -30,10 +30,11 @@
 #include <linux/idr.h>
 #include <linux/module.h>
 #include <linux/slab.h>
+#include <linux/vmalloc.h>
+#include <asm/pgtable.h>
 #include <asm/cmpxchg.h>
 
 #include "dtrace.h"
-#include "sdt_impl.h"
 
 ktime_t				dtrace_chill_interval =
 					KTIME_INIT(1, 0);
@@ -384,14 +385,8 @@ static void dtrace_action_raise(uint64_t sig)
 	 * raise() has a queue depth of 1 -- we ignore all subsequent
 	 * invocations of the raise() action.
 	 */
-#if 0
-
-	sigaddset(&current->pending.signal, sig);
-	set_thread_flag(TIF_SIGPENDING);
-#else
 	if (current->dtrace_sig == 0)
 		current->dtrace_sig = (uint8_t)sig;
-#endif
 }
 
 static void dtrace_action_stop(void)
@@ -1260,7 +1255,7 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			dtrace_probe_error(
 				state, ecb->dte_epid, ndx,
 				(mstate.dtms_present & DTRACE_MSTATE_FLTOFFS)
-					?  mstate.dtms_fltoffs
+					? mstate.dtms_fltoffs
 					: -1,
 				DTRACE_FLAGS2FLT(*flags),
 				this_cpu_core->cpuc_dtrace_illval);
