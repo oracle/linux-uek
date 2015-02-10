@@ -101,7 +101,7 @@ static int dtrace_open(struct inode *inode, struct file *file)
 {
 	dtrace_state_t	*state;
 	uint32_t	priv;
-	uid_t		uid;
+	kuid_t		uid;
 
 	dtrace_cred2priv(file->f_cred, &priv, &uid);
 	if (priv == DTRACE_PRIV_NONE)
@@ -495,7 +495,7 @@ static long dtrace_ioctl(struct file *file,
 		dtrace_probedesc_t	desc;
 		dtrace_probekey_t	pkey;
 		uint32_t		priv;
-		uid_t			uid;
+		kuid_t			uid;
 
 		dt_dbg_ioctl("IOCTL %s (cmd %#x), argp %p\n",
 			     cmd == DTRACEIOC_PROBES ? "PROBES"

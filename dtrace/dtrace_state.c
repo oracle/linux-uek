@@ -339,7 +339,6 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 #ifdef FIXME
 	const cred_t	*cr = file->f_cred;
 #endif
-	int		err;
 	dtrace_aggid_t	aggid;
 
 	ASSERT(MUTEX_HELD(&cpu_lock));
@@ -373,18 +372,16 @@ dtrace_state_t *dtrace_state_create(struct file *file)
 	 * Create a first entry in the aggregation IDR, so that ID 0 is used as
 	 * that gets used as meaning 'none'.
 	 */
-again:
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&cpu_lock);
 
-	idr_pre_get(&state->dts_agg_idr, __GFP_NOFAIL);
+	idr_preload(GFP_KERNEL);
 
 	mutex_lock(&cpu_lock);
 	mutex_lock(&dtrace_lock);
 
-	err = idr_get_new(&state->dts_agg_idr, NULL, &aggid);
-	if (err == -EAGAIN)
-		goto again;
+	aggid = idr_alloc_cyclic(&state->dts_agg_idr, NULL, 0, 0, GFP_NOWAIT);
+	idr_preload_end();
 
 	ASSERT(aggid == 0);
 
@@ -1075,7 +1072,6 @@ void dtrace_state_destroy(dtrace_state_t *state)
 	 * If there were aggregations allocated, they should have been cleaned
 	 * up by now, so we can get rid of the idr.
 	 */
-	idr_remove_all(&state->dts_agg_idr);
 	idr_destroy(&state->dts_agg_idr);
 
 	vfree(state->dts_buffer);

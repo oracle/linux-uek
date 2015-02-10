@@ -483,14 +483,14 @@ extern dtrace_hash_t		*dtrace_bymod;
 extern dtrace_hash_t		*dtrace_byfunc;
 extern dtrace_hash_t		*dtrace_byname;
 
-extern int dtrace_match_priv(const dtrace_probe_t *, uint32_t, uid_t);
+extern int dtrace_match_priv(const dtrace_probe_t *, uint32_t, kuid_t);
 extern int dtrace_match_probe(const dtrace_probe_t *,
-			      const dtrace_probekey_t *, uint32_t, uid_t);
+			      const dtrace_probekey_t *, uint32_t, kuid_t);
 extern int dtrace_match_glob(const char *, const char *, int);
 extern int dtrace_match_string(const char *, const char *, int);
 extern int dtrace_match_nul(const char *, const char *, int);
 extern int dtrace_match_nonzero(const char *, const char *, int);
-extern int dtrace_match(const dtrace_probekey_t *, uint32_t, uid_t,
+extern int dtrace_match(const dtrace_probekey_t *, uint32_t, kuid_t,
 			int (*matched)(dtrace_probe_t *, void *), void *);
 extern void dtrace_probekey(const dtrace_probedesc_t *, dtrace_probekey_t *);
 
@@ -850,7 +850,7 @@ extern int dtrace_strncmp(char *, char *, size_t);
 extern size_t dtrace_strlen(const char *, size_t);
 extern int dtrace_badattr(const dtrace_attribute_t *);
 extern int dtrace_badname(const char *);
-extern void dtrace_cred2priv(const cred_t *, uint32_t *, uid_t *);
+extern void dtrace_cred2priv(const cred_t *, uint32_t *, kuid_t *);
 
 typedef void for_each_module_fn(void *, struct module *);
 extern void dtrace_for_each_module(for_each_module_fn *fn, void *arg);

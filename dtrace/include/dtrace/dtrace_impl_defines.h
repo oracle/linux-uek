@@ -192,13 +192,13 @@ typedef enum dtrace_speculation_state {
 #define MUTEX_HELD(lock)	mutex_owned(lock)
 
 #ifdef CONFIG_PREEMPT_VOLUNTARY
-# define dtrace_is_preemptive()	(!(preempt_count() & PREEMPT_ACTIVE))
+# define dtrace_is_preemptive()	(preempt_count() > 0)
 # define dtrace_preempt_off()	do {					      \
-					add_preempt_count(PREEMPT_ACTIVE);    \
+					preempt_count_inc();		      \
 					barrier();			      \
 				} while (0)
 # define dtrace_preempt_on()	do {					      \
-					sub_preempt_count(PREEMPT_ACTIVE);    \
+					preempt_count_dec();		      \
 					barrier();			      \
 				} while (0)
 #endif

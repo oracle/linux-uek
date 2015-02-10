@@ -31,7 +31,7 @@ dtrace_hash_t	*dtrace_bymod;
 dtrace_hash_t	*dtrace_byfunc;
 dtrace_hash_t	*dtrace_byname;
 
-int dtrace_match_priv(const dtrace_probe_t *prp, uint32_t priv, uid_t uid)
+int dtrace_match_priv(const dtrace_probe_t *prp, uint32_t priv, kuid_t uid)
 {
 	if (priv != DTRACE_PRIV_ALL) {
 		uint32_t	ppriv =
@@ -46,7 +46,7 @@ int dtrace_match_priv(const dtrace_probe_t *prp, uint32_t priv, uid_t uid)
 			return 0;
 
 		if (((ppriv & ~match) & DTRACE_PRIV_OWNER) != 0 &&
-		    uid != prp->dtpr_provider->dtpv_priv.dtpp_uid)
+		    !uid_eq(uid, prp->dtpr_provider->dtpv_priv.dtpp_uid))
 			return 0;
 	}
 
@@ -54,7 +54,7 @@ int dtrace_match_priv(const dtrace_probe_t *prp, uint32_t priv, uid_t uid)
 }
 
 int dtrace_match_probe(const dtrace_probe_t *prp, const dtrace_probekey_t *pkp,
-		       uint32_t priv, uid_t uid)
+		       uint32_t priv, kuid_t uid)
 {
 	dtrace_provider_t	*pvp = prp->dtpr_provider;
 	int			rv;
@@ -204,7 +204,7 @@ int dtrace_match_nonzero(const char *s, const char *p, int depth)
 struct probe_match {
 	const dtrace_probekey_t *pkp;
 	uint32_t		priv;
-	uid_t			uid;
+	kuid_t			uid;
 	int			(*matched)(dtrace_probe_t *, void *);
 	void			*arg;
 	int			nmatched;
@@ -229,7 +229,7 @@ static int dtrace_match_one(int id, void *p, void *data)
 	return 0;
 }
 
-int dtrace_match(const dtrace_probekey_t *pkp, uint32_t priv, uid_t uid,
+int dtrace_match(const dtrace_probekey_t *pkp, uint32_t priv, kuid_t uid,
 		 int (*matched)(dtrace_probe_t *, void *), void *arg)
 {
 	dtrace_probe_t	template, *probe;
