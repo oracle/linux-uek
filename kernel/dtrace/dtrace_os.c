@@ -86,13 +86,6 @@ void dtrace_os_init(void)
 }
 EXPORT_SYMBOL(dtrace_os_init);
 
-void dtrace_os_exit(void)
-{
-	pr_warn_once("%s is being deprecated - please do not use.\n",
-		     __func__);
-}
-EXPORT_SYMBOL(dtrace_os_exit);
-
 /*---------------------------------------------------------------------------*\
 (* TASK PSINFO SUPPORT                                                       *)
 \*---------------------------------------------------------------------------*/
