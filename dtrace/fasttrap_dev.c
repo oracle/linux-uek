@@ -790,6 +790,7 @@ static dtrace_pops_t pid_pops = {
 #ifdef FIXME
 	fasttrap_pid_provide,
 	NULL,
+	NULL,
 	fasttrap_pid_enable,
 	fasttrap_pid_disable,
 	NULL,
@@ -803,6 +804,7 @@ static dtrace_pops_t pid_pops = {
 
 static dtrace_pops_t usdt_pops = {
 	fasttrap_pid_provide,
+	NULL,
 	NULL,
 	fasttrap_pid_enable,
 	fasttrap_pid_disable,

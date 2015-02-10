@@ -49,6 +49,7 @@ DT_PROVIDER_POPS(dt_perf)
 static dtrace_pops_t dt_perf_pops = {
 	dt_perf_provide,
 	NULL,
+	NULL,
 	dt_perf_enable,
 	dt_perf_disable,
 	NULL,
