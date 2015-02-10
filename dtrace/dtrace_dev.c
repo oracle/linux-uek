@@ -58,6 +58,7 @@ int				dtrace_err_verbose;
 dtrace_pops_t			dtrace_provider_ops = {
 	(void (*)(void *, const dtrace_probedesc_t *))dtrace_nullop,
 	(void (*)(void *, struct module *))dtrace_nullop,
+	(void (*)(void *, struct module *))dtrace_nullop,
 	(int (*)(void *, dtrace_id_t, void *))dtrace_enable_nullop,
 	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop,
 	(void (*)(void *, dtrace_id_t, void *))dtrace_nullop,
@@ -75,6 +76,7 @@ int				dtrace_toxranges;
 static int			dtrace_toxranges_max;
 
 struct kmem_cache		*dtrace_state_cachep;
+struct kmem_cache		*dtrace_pdata_cachep;
 
 static dtrace_pattr_t		dtrace_provider_attr = {
 { DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
@@ -1123,7 +1125,33 @@ static struct miscdevice helper_dev = {
 	.fops = &helper_fops,
 };
 
-static void dtrace_module_loaded(struct module *mod)
+static void module_add_pdata(void *dmy, struct module *mp)
+{
+	if (mp->pdata) {
+		pr_warn_once("%s: pdata already assigned for %s\n",
+			     __func__, mp->name);
+		return;
+	}
+
+	mp->pdata = kmem_cache_alloc(dtrace_pdata_cachep,
+				     GFP_KERNEL | __GFP_ZERO);
+}
+
+static void module_del_pdata(void *dmy, struct module *mp)
+{
+	if (!mp->pdata)
+		return;
+
+	kmem_cache_free(dtrace_pdata_cachep, mp->pdata);
+	mp->pdata = NULL;
+}
+
+static void dtrace_module_loading(struct module *mp)
+{
+	module_add_pdata(NULL, mp);
+}
+
+static void dtrace_module_loaded(struct module *mp)
 {
 	dtrace_provider_t *prv;
 
@@ -1133,7 +1161,7 @@ static void dtrace_module_loaded(struct module *mod)
 	 * Give all providers a chance to register probes for this module.
 	 */
 	for (prv = dtrace_provider; prv != NULL; prv = prv->dtpv_next)
-		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mod);
+		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mp);
 
 	mutex_unlock(&dtrace_provider_lock);
 
@@ -1151,12 +1179,12 @@ static void dtrace_module_loaded(struct module *mod)
 	dtrace_enabling_matchall();
 }
 
-static void dtrace_module_unloaded(struct module *mod)
+static void dtrace_module_unloaded(struct module *mp)
 {
 	dtrace_probe_t template, *probe, *first, *next;
-	dtrace_provider_t *prov;
+	dtrace_provider_t *prv;
 
-	template.dtpr_mod = mod->name;
+	template.dtpr_mod = mp->name;
 
 	mutex_lock(&dtrace_provider_lock);
 	mutex_lock(&dtrace_lock);
@@ -1189,7 +1217,7 @@ static void dtrace_module_unloaded(struct module *mod)
 			 */
 			if (dtrace_err_verbose) {
 				pr_warning("unloaded module '%s' had "
-				    "enabled probes", mod->name);
+				    "enabled probes", mp->name);
 			}
 
 			return;
@@ -1224,8 +1252,8 @@ static void dtrace_module_unloaded(struct module *mod)
 
 	for (probe = first; probe != NULL; probe = first) {
 		first = probe->dtpr_nextmod;
-		prov = probe->dtpr_provider;
-		prov->dtpv_pops.dtps_destroy(prov->dtpv_arg, probe->dtpr_id,
+		prv = probe->dtpr_provider;
+		prv->dtpv_pops.dtps_destroy(prv->dtpv_arg, probe->dtpr_id,
 		    probe->dtpr_arg);
 		kfree(probe->dtpr_mod);
 		kfree(probe->dtpr_func);
@@ -1233,8 +1261,19 @@ static void dtrace_module_unloaded(struct module *mod)
 		kfree(probe);
 	}
 
+
+	/*
+	 * Give all providers a chance to do cleanup for this module.
+	 */
+	for (prv = dtrace_provider; prv != NULL; prv = prv->dtpv_next) {
+		if (prv->dtpv_pops.dtps_cleanup_module)
+			prv->dtpv_pops.dtps_cleanup_module(prv->dtpv_arg, mp);
+	}
+
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
+
+	module_del_pdata(NULL, mp);
 }
 
 /*
@@ -1312,18 +1351,22 @@ int dtrace_istoxic(uintptr_t kaddr, size_t size)
 static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 			       void *args)
 {
-	struct module	*mod = args;
+	struct module	*mp = args;
 
-	if (!mod)
+	if (!mp)
 		return NOTIFY_DONE;
 
 	switch (val) {
+	case MODULE_STATE_COMING:
+		dtrace_module_loading(mp);
+		break;
+
 	case MODULE_STATE_LIVE:
-		dtrace_module_loaded(mod);
+		dtrace_module_loaded(mp);
 		break;
 
 	case MODULE_STATE_GOING:
-		dtrace_module_unloaded(mod);
+		dtrace_module_unloaded(mp);
 		break;
 	}
 
@@ -1383,8 +1426,6 @@ int dtrace_dev_init(void)
 		return rc;
 	}
 
-	register_module_notifier(&dtrace_modmgmt);
-
 #if defined(CONFIG_DT_FASTTRAP) || defined(CONFIG_DT_FASTTRAP_MODULE)
 	dtrace_helpers_cleanup = dtrace_helpers_destroy;
 	dtrace_helpers_fork = dtrace_helpers_duplicate;
@@ -1408,6 +1449,22 @@ int dtrace_dev_init(void)
 				sizeof(dtrace_dstate_percpu_t) * NR_CPUS, 0,
 				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
 				NULL);
+	dtrace_pdata_cachep = kmem_cache_create("dtrace_pdata_cache",
+				sizeof(dtrace_module_t), 0,
+				SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_NOTRACK,
+				NULL);
+
+	/*
+	 * Yes, this is scary...  But we know that DTrace is the consumer for
+	 * the pdata object, and all other DTrace modules (and tracing) cannot
+	 * have started yet.  Therefore, there isn't any code yet that would
+	 * use the pdata object...
+	 *
+	 * We loop through the list of all loaded modules to populate each with
+	 * a pdata object.  Modules loaded after this one will get their pdata
+	 * object assigned using the module notifier hook.
+	 */
+	dtrace_for_each_module(module_add_pdata, NULL);
 
 	/*
 	 * Create the probe hashtables.
@@ -1491,6 +1548,9 @@ int dtrace_dev_init(void)
 	 * the first provider causing the core to be loaded.
 	 */
 #endif
+
+	register_module_notifier(&dtrace_modmgmt);
+
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);
 	mutex_unlock(&cpu_lock);
@@ -1534,7 +1594,21 @@ void dtrace_dev_exit(void)
 	dtrace_byfunc = NULL;
 	dtrace_byname = NULL;
 
+	/*
+	 * Yes, this is scary...  But we know that DTrace is the consumer for
+	 * the pdata object, and all other DTrace modules (and tracing) must
+	 * be gone by now.  Therefore, there isn't any code left that would
+	 * use the pdata object...
+	 *
+	 * We loop through the list of all loaded modules to remove the pdata
+	 * object from each one.  Modules that were unloaded prior to this
+	 * point had their pdata object cleaned up using the module notifier
+	 * hook.
+	 */
+	dtrace_for_each_module(module_del_pdata, NULL);
+
 	kmem_cache_destroy(dtrace_state_cachep);
+	kmem_cache_destroy(dtrace_pdata_cachep);
 
 	mutex_unlock(&dtrace_lock);
 	mutex_unlock(&dtrace_provider_lock);

@@ -196,11 +196,7 @@ void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 		 */
 		prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, THIS_MODULE);
 
-#ifdef FIXME
-		mutex_lock(&module_mutex);
-#else
 		rcu_read_lock();
-#endif
 
 		list_for_each_entry(mod, &(THIS_MODULE->list), list) {
 			/*
@@ -224,11 +220,7 @@ void dtrace_probe_provide(dtrace_probedesc_t *desc, dtrace_provider_t *prv)
 			prv->dtpv_pops.dtps_provide_module(prv->dtpv_arg, mod);
 		}
 
-#ifdef FIXME
-		mutex_unlock(&module_mutex);
-#else
 		rcu_read_unlock();
-#endif
 	} while (all && (prv = prv->dtpv_next) != NULL);
 }
 

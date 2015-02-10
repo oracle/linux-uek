@@ -36,6 +36,8 @@
 #include <linux/preempt.h>
 #include <asm/ptrace.h>
 
+#include <dtrace/mod_arch.h>
+
 typedef typeof(instruction_pointer((struct pt_regs *)0))	pc_t;
 
 typedef enum dtrace_activity {
@@ -206,5 +208,7 @@ typedef enum dtrace_speculation_state {
 # define dtrace_preempt_off()	preempt_disable()
 # define dtrace_preempt_on()	preempt_enable_no_resched()
 #endif
+
+#define PDATA(mp)		((dtrace_module_t *)mp->pdata)
 
 #endif /* _LINUX_DTRACE_IMPL_DEFINES_H */

@@ -26,6 +26,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/module.h>
 #include <linux/vmalloc.h>
 #include <asm/pgtable.h>
 
@@ -175,3 +176,43 @@ void dtrace_cred2priv(const cred_t *cr, uint32_t *privp, uid_t *uidp)
 	}
 #endif
 }
+
+void dtrace_for_each_module(for_each_module_fn *fn, void *arg)
+{
+	struct module	*mp;
+
+	/*
+	 * The Linux kernel does not export the modules list explicitly, nor
+	 * is there an API to do so.  However, when operating on a module
+	 * that is in the modules list, we can traverse the entire list anyway.
+	 * That's what we're doing here.
+	 *
+	 * The current module is the anchor and sentinel for the loop, so we
+	 * need to call the worker function explicitly for that module.  We
+	 * must also identify and skip the list header because that is not a
+	 * valid module at all.
+	 */
+	fn(arg, THIS_MODULE);
+
+	rcu_read_lock();
+
+	list_for_each_entry_rcu(mp, &(THIS_MODULE->list), list) {
+#ifdef MODULES_VADDR
+		if ((uintptr_t)mp < MODULES_VADDR ||
+		    (uintptr_t)mp >= MODULES_END)
+			continue;
+#else
+		if ((uintptr_t)mp < VMALLOC_START ||
+		    (uintptr_t)mp >= VMALLOC_END)
+			continue;
+#endif
+
+		if (mp->state != MODULE_STATE_LIVE)
+			continue;
+
+		fn(arg, mp);
+	}
+
+	rcu_read_unlock();
+}
+EXPORT_SYMBOL(dtrace_for_each_module);

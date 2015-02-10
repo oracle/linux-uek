@@ -114,6 +114,11 @@ DT_PROVIDER_POPS(sdt)
 static dtrace_pops_t sdt_pops = {
 	NULL,
 	sdt_provide_module,
+#ifdef CONFIG_SPARC64
+	sdt_cleanup_module,
+#else
+	NULL,
+#endif
 	sdt_enable,
 	sdt_disable,
 	NULL,
