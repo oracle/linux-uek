@@ -41,16 +41,9 @@
 #include "dtrace_dev.h"
 #include <linux/dtrace/ioctl_debug.h>
 
-uint32_t			dtrace_helptrace_next = 0;
-uint32_t			dtrace_helptrace_nlocals;
-char				*dtrace_helptrace_buffer;
-int				dtrace_helptrace_bufsize = 512 * 1024;
-
-#ifdef CONFIG_DT_DEBUG
-int				dtrace_helptrace_enabled = 1;
-#else
-int				dtrace_helptrace_enabled = 0;
-#endif
+extern char			*dtrace_helptrace_buffer;
+extern int			dtrace_helptrace_bufsize;
+extern int			dtrace_helptrace_enabled;
 
 int				dtrace_opens;
 int				dtrace_err_verbose;
@@ -1529,7 +1522,6 @@ int dtrace_dev_init(void)
 		ASSERT(dtrace_helptrace_buffer == NULL);
 
 		dtrace_helptrace_buffer = vzalloc(dtrace_helptrace_bufsize);
-		dtrace_helptrace_next = 0;
 
 		if (dtrace_helptrace_buffer == NULL) {
 			pr_warn("Cannot allocate helptrace buffer; "
@@ -1606,6 +1598,13 @@ void dtrace_dev_exit(void)
 	 * hook.
 	 */
 	dtrace_for_each_module(module_del_pdata, NULL);
+
+	/*
+	 * If DTrace helper tracing is enabled, we need to free the trace
+	 * buffer.
+	 */
+	if (dtrace_helptrace_enabled || dtrace_helptrace_buffer)
+		vfree(dtrace_helptrace_buffer);
 
 	kmem_cache_destroy(dtrace_state_cachep);
 	kmem_cache_destroy(dtrace_pdata_cachep);
