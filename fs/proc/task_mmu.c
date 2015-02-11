@@ -567,6 +567,8 @@ static ssize_t clear_refs_write(struct file *file, const char __user *buf,
 			clear_refs_walk.private = vma;
 			if (is_vm_hugetlb_page(vma))
 				continue;
+			if (vma->vm_flags & VM_PFNMAP)
+				continue;
 			/*
 			 * Writing 1 to /proc/pid/clear_refs affects all pages.
 			 *
