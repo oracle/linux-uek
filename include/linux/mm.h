@@ -941,8 +941,16 @@ unsigned long unmap_vmas(struct mmu_gather *tlb,
  * @pte_entry: if set, called for each non-empty PTE (4th-level) entry
  * @pte_hole: if set, called for each hole at all levels
  * @hugetlb_entry: if set, called for each hugetlb entry
+ * @test_walk: caller specific callback function to determine whether
+ *             we walk over the current vma or not. A positive returned
+ *             value means "do page table walk over the current vma,"
+ *             and a negative one means "abort current page table walk
+ *             right now." 0 means "skip the current vma."
+ * @mm:        mm_struct representing the target process of page table walk
+ * @vma:       vma currently walked (NULL if walking outside vmas)
+ * @private:   private data for callbacks' usage
  *
- * (see walk_page_range for more details)
+ * (see the comment on walk_page_range() for more details)
  */
 struct mm_walk {
 	int (*pmd_entry)(pmd_t *, unsigned long, unsigned long, struct mm_walk *);
@@ -950,7 +958,9 @@ struct mm_walk {
 	int (*pte_hole)(unsigned long, unsigned long, struct mm_walk *);
 	int (*hugetlb_entry)(pte_t *, unsigned long,
 			     unsigned long, unsigned long, struct mm_walk *);
+	int (*test_walk)(unsigned long, unsigned long, struct mm_walk *);
 	struct mm_struct *mm;
+	struct vm_area_struct *vma;
 	void *private;
 };
 
