@@ -1,6 +1,8 @@
-/* bnx2x_hsi.h: Broadcom Everest network driver.
+/* bnx2x_hsi.h: Qlogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -337,6 +339,7 @@ struct shared_hw_cfg {			 /* NVRAM Offset */
 		#define SHARED_HW_CFG_E3_PORT_LAYOUT_4P_1032         0x03000000
 		#define SHARED_HW_CFG_E3_PORT_LAYOUT_4P_2301         0x04000000
 		#define SHARED_HW_CFG_E3_PORT_LAYOUT_4P_3210         0x05000000
+		#define SHARED_HW_CFG_E3_PORT_LAYOUT_2P_01_SIG       0x06000000
 };
 
 
@@ -504,6 +507,17 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 	 */
 	#define PORT_HW_CFG_TX_DRV_BROADCAST_MASK                     0x000F0000
 	#define PORT_HW_CFG_TX_DRV_BROADCAST_SHIFT                    16
+	/*  Set non-default values for TXFIR in SFP mode. */
+	#define PORT_HW_CFG_TX_DRV_IFIR_MASK                          0x00F00000
+	#define PORT_HW_CFG_TX_DRV_IFIR_SHIFT                         20
+
+	/*  Set non-default values for IPREDRIVER in SFP mode. */
+	#define PORT_HW_CFG_TX_DRV_IPREDRIVER_MASK                    0x0F000000
+	#define PORT_HW_CFG_TX_DRV_IPREDRIVER_SHIFT                   24
+
+	/*  Set non-default values for POST2 in SFP mode. */
+	#define PORT_HW_CFG_TX_DRV_POST2_MASK                         0xF0000000
+	#define PORT_HW_CFG_TX_DRV_POST2_SHIFT                        28
 
 	u32 reserved0[5];				    /* 0x17c */
 
@@ -1128,7 +1142,7 @@ struct port_feat_cfg {		    /* port 0: 0x454  port 1: 0x4c8 */
 	#define PORT_FEAT_CFG_EEE_POWER_MODE_LOW_LATENCY              0x00000003
 
 
-	u32 Reserved2[16];                                  /* 0x488 */
+	u32 Reserved2[16];                                  /* 0x48C */
 };
 
 /****************************************************************************
@@ -1252,6 +1266,18 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_EN_LAST_DRV_SHIFT    8
 	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_EN_LAST_DRV_DISABLED 0x00000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_EN_LAST_DRV_ENABLED  0x00000100
+
+	/*  Prevent OCBB feature */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_PREVENT_MASK        0x00000200
+	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_PREVENT_SHIFT       9
+	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_PREVENT_DISABLED    0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_OCBB_PREVENT_ENABLED     0x00000200
+
+	/*  Enable DCi support */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_MASK         0x00000400
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_SHIFT        10
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_DISABLED     0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_ENABLED      0x00000400
 
 	/*  Hide DCBX feature in CCM/BACS menus */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_HIDE_DCBX_FEAT_MASK      0x00010000
@@ -1451,6 +1477,18 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_MEZZ_VPD_UPDATE_SHIFT    16
 	#define EXTENDED_DEV_INFO_SHARED_CFG_VPD_CACHE_COMP_MASK      0xFF000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_VPD_CACHE_COMP_SHIFT     24
+
+	/*  Manufacture kit version */
+	u32 manufacture_ver;                                /* 0x403C */
+
+	/*  Manufacture timestamp */
+	u32 manufacture_data;                               /* 0x4040 */
+
+	/*  Number of ISCSI/FCOE cfg images */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_MASK 0x00040000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_SHIFT18
+	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_2    0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_4    0x00040000
 };
 
 
@@ -1597,6 +1635,7 @@ struct drv_func_mb {
 	#define DRV_MSG_CODE_OEM_FAILURE		0x00020000
 	#define DRV_MSG_CODE_OEM_UPDATE_SVID_OK		0x00030000
 	#define DRV_MSG_CODE_OEM_UPDATE_SVID_FAILURE	0x00040000
+
 	/*
 	 * The optic module verification command requires bootcode
 	 * v5.0.6 or later, te specific optic module verification command
@@ -1654,6 +1693,8 @@ struct drv_func_mb {
 
 	#define DRV_MSG_SEQ_NUMBER_MASK                 0x0000ffff
 
+	#define DRV_MSG_CODE_CONFIG_CHANGE              0xC1000000
+
 	u32 drv_mb_param;
 	#define DRV_MSG_CODE_SET_MF_BW_MIN_MASK         0x00ff0000
 	#define DRV_MSG_CODE_SET_MF_BW_MAX_MASK         0xff000000
@@ -1667,6 +1708,12 @@ struct drv_func_mb {
 	#define DRV_MSG_CODE_USR_BLK_IMAGE_REQ          0x00000001
 	#define DRV_MSG_CODE_ISCSI_PERS_IMAGE_REQ       0x00000002
 	#define DRV_MSG_CODE_VPD_IMAGE_REQ              0x00000003
+
+	#define DRV_MSG_CODE_CONFIG_CHANGE_MTU_SIZE     0x00000001
+	#define DRV_MSG_CODE_CONFIG_CHANGE_MAC_ADD      0x00000002
+	#define DRV_MSG_CODE_CONFIG_CHANGE_WOL_ENA      0x00000003
+	#define DRV_MSG_CODE_CONFIG_CHANGE_ISCI_BOOT    0x00000004
+	#define DRV_MSG_CODE_CONFIG_CHANGE_FCOE_BOOT    0x00000005
 
 	u32 fw_mb_header;
 	#define FW_MSG_CODE_MASK                        0xffff0000
@@ -1735,6 +1782,8 @@ struct drv_func_mb {
 
 	#define FW_MSG_CODE_OEM_ACK			0x00010000
 	#define DRV_MSG_CODE_OEM_UPDATE_SVID_ACK	0x00020000
+
+	#define FW_MSG_CODE_CONFIG_CHANGE_DONE          0xC2000000
 
 	#define FW_MSG_SEQ_NUMBER_MASK                  0x0000ffff
 
@@ -2401,6 +2450,31 @@ struct os_drv_ver{
 	u32  versions[MAX_DRV_PERS];
 };
 
+#define OEM_I2C_UUID_STR_ADDR 0x9f
+#define OEM_I2C_CARD_SKU_STR_ADDR 0x48
+#define OEM_I2C_CARD_NAME_STR_ADDR 0x10e
+
+#define OEM_I2C_UUID_STR_LEN 16
+#define OEM_I2C_CARD_SKU_STR_LEN 12
+#define OEM_I2C_CARD_NAME_STR_LEN 96
+
+struct oem_i2c_data_t {
+	u32 size;
+	u8 uuid[OEM_I2C_UUID_STR_LEN];
+	u8 card_sku[OEM_I2C_CARD_SKU_STR_LEN];
+	u8 card_name[OEM_I2C_CARD_NAME_STR_LEN];
+};
+
+enum curr_cfg_method_e {
+	CURR_CFG_MET_NONE = 0,  /* default config */
+	CURR_CFG_MET_OS = 1,
+	CURR_CFG_MET_VENDOR_SPEC = 2,/* e.g. Option ROM, NPAR, O/S Cfg Utils */
+	CURR_CFG_MET_HP_OTHER = 3,
+	CURR_CFG_MET_VC_CLP = 4,  /* C-Class SM-CLP */
+	CURR_CFG_MET_HP_CNU = 5,  /*  Converged Network Utility */
+	CURR_CFG_MET_HP_DCI = 6,  /* DCi (BD) changes */
+};
+
 struct shmem2_region {
 
 	u32 size;					/* 0x0000 */
@@ -2624,6 +2698,46 @@ struct shmem2_region {
 
 	/* We use inidcation for each PF (0..3) */
 	#define MFW_DRV_IND_READ_DONE_OFFSET(_pf_)  (1 << _pf_)
+
+	union { /* For various OEMs */
+		u8 storage_boot_prog[E2_FUNC_MAX];
+	#define STORAGE_BOOT_PROG_MASK				0x000000FF
+	#define STORAGE_BOOT_PROG_NONE				0x00000001
+	#define STORAGE_BOOT_PROG_ISCSI_IP_ACQUIRED		0x00000002
+	#define STORAGE_BOOT_PROG_FCOE_FABRIC_LOGIN_SUCCESS	0x00000002
+	#define STORAGE_BOOT_PROG_TRARGET_FOUND			0x00000004
+	#define STORAGE_BOOT_PROG_ISCSI_CHAP_SUCCESS		0x00000008
+	#define STORAGE_BOOT_PROG_FCOE_LUN_FOUND		0x00000008
+	#define STORAGE_BOOT_PROG_LOGGED_INTO_TGT		0x00000010
+	#define STORAGE_BOOT_PROG_IMG_DOWNLOADED		0x00000020
+	#define STORAGE_BOOT_PROG_OS_HANDOFF			0x00000040
+	#define STORAGE_BOOT_PROG_COMPLETED			0x00000000
+
+		u32 oem_i2c_data_addr;
+	};
+
+	u8  c2s_pcp_map[E2_FUNC_MAX][9];
+
+	u16 mtu_size[E2_FUNC_MAX];
+
+	/* Shows last method that changed configuration of this device */
+	enum curr_cfg_method_e curr_cfg;
+
+	/* Storm FW version, shold be kept in the format 0xMMmmbbdd:
+	 * MM - Major, mm - Minor, bb - Build ,dd - Drop
+	 */
+	u32 netproc_fw_ver;
+
+	/* Option ROM SMASH CLP version */
+	u32 clp_ver;
+
+	u32 pcie_bus_num;
+
+	u32 sriov_switch_mode;
+	#define SRIOV_SWITCH_MODE_NONE		0x0
+	#define SRIOV_SWITCH_MODE_VEB		0x1
+	#define SRIOV_SWITCH_MODE_VEPA		0x2
+
 };
 
 
@@ -4409,29 +4523,10 @@ struct eth_mac_addresses {
  * tunneling related data.
  */
 struct eth_tunnel_data {
-#if defined(__BIG_ENDIAN)
-	__le16 dst_mid;
-	__le16 dst_lo;
-#elif defined(__LITTLE_ENDIAN)
 	__le16 dst_lo;
 	__le16 dst_mid;
-#endif
-#if defined(__BIG_ENDIAN)
-	__le16 fw_ip_hdr_csum;
-	__le16 dst_hi;
-#elif defined(__LITTLE_ENDIAN)
 	__le16 dst_hi;
 	__le16 fw_ip_hdr_csum;
-#endif
-#if defined(__BIG_ENDIAN)
-	u8 flags;
-#define ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER (0x1<<0)
-#define ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER_SHIFT 0
-#define ETH_TUNNEL_DATA_RESERVED (0x7F<<1)
-#define ETH_TUNNEL_DATA_RESERVED_SHIFT 1
-	u8 ip_hdr_start_inner_w;
-	__le16 pseudo_csum;
-#elif defined(__LITTLE_ENDIAN)
 	__le16 pseudo_csum;
 	u8 ip_hdr_start_inner_w;
 	u8 flags;
@@ -4439,7 +4534,6 @@ struct eth_tunnel_data {
 #define ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER_SHIFT 0
 #define ETH_TUNNEL_DATA_RESERVED (0x7F<<1)
 #define ETH_TUNNEL_DATA_RESERVED_SHIFT 1
-#endif
 };
 
 /*

@@ -1,6 +1,8 @@
-/* bnx2x_cmn.c: Broadcom Everest network driver.
+/* bnx2x_cmn.c: QLogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,6 +28,7 @@
 #include <linux/ip.h>
 #include <net/tcp.h>
 #if !defined(__VMKLNX__) /* BNX2X_UPSTREAM */
+#include <linux/crash_dump.h>
 #include <net/ipv6.h>
 #else
 #include <linux/ipv6.h>
@@ -37,9 +40,7 @@
 #include <net/busy_poll.h>
 #endif
 #include <linux/prefetch.h>
-#ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 #include <linux/pkt_sched.h>
-#endif
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 0)) /* ! BNX2X_UPSTREAM */
 #define __NO_TPA__		1
 #endif
@@ -134,7 +135,7 @@ static _UP_UINT2INT bnx2x_calc_num_queues(struct bnx2x *bp)
 	_UP_UINT2INT nq = bnx2x_num_queues ? : netif_get_num_default_rss_queues();
 
 	/* Reduce memory usage in kdump environment by using only one queue */
-	if (reset_devices)
+	if (is_kdump_kernel())
 		nq = 1;
 
 	nq = clamp(nq, (_UP_UINT2INT)1, (_UP_UINT2INT)BNX2X_MAX_QUEUES(bp));
@@ -313,6 +314,12 @@ static u16 bnx2x_free_tx_pkt(struct bnx2x *bp, struct bnx2x_fp_txdata *txdata,
 	/* Skip a parse bd... */
 	--nbd;
 	bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
+
+	if (tx_buf->flags & BNX2X_HAS_SECOND_PBD) {
+		/* Skip second parse bd... */
+		--nbd;
+		bd_idx = TX_BD(NEXT_TX_IDX(bd_idx));
+	}
 
 	/* TSO header+data bds share a common mapping. see bnx2x_tx_split() */
 	if (tx_buf->flags & BNX2X_TSO_SPLIT_BD) {
@@ -619,10 +626,10 @@ static void bnx2x_tpa_start(struct bnx2x_fastpath *fp, u16 queue,
 #ifdef BNX2X_STOP_ON_ERROR
 	fp->tpa_queue_used |= (1 << queue);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26)) /* BNX2X_UPSTREAM */
-#ifdef _ASM_GENERIC_INT_L64_H
-	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%lx\n",
-#else
+#ifndef _ASM_GENERIC_INT_L64_H /* BNX2X_UPSTREAM */
 	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%llx\n",
+#else
+	DP(NETIF_MSG_RX_STATUS, "fp->tpa_queue_used = 0x%lx\n",
 #endif
 #else
 #if defined(__powerpc64__) || defined(_ASM_IA64_TYPES_H)
@@ -1072,9 +1079,9 @@ static void bnx2x_tpa_stop(struct bnx2x *bp, struct bnx2x_fastpath *fp,
 			}
 #endif /* !defined(OLD_VLAN) */
 			bnx2x_gro_receive(bp, fp, skb);
-#ifdef BCM_VLAN
+#ifdef BCM_VLAN /* ! BNX2X_UPSTREAM */
 			}
-#endif /* BCM_VLAN */
+#endif
 		} else {
 			DP(NETIF_MSG_RX_STATUS,
 			   "Failed to allocate new pages - dropping packet!\n");
@@ -1456,7 +1463,7 @@ reuse_rx:
 
 #ifdef BCM_PTP /* BNX2X_UPSTREAM */
 		/* Check if this packet was timestamped */
-		if (unlikely(le16_to_cpu(cqe->fast_path_cqe.type_error_flags) &
+		if (unlikely(cqe->fast_path_cqe.type_error_flags &
 			     (1 << ETH_FAST_PATH_RX_CQE_PTP_PKT_SHIFT)))
 			bnx2x_set_rx_ts(bp, skb);
 #endif
@@ -1496,9 +1503,9 @@ reuse_rx:
 			netif_receive_skb(skb);
 		else
 			napi_gro_receive(&fp->napi, skb);
-#ifdef BCM_VLAN
+#ifdef BCM_VLAN /* ! BNX2X_UPSTREAM */
 		}
-#endif /* BCM_VLAN */
+#endif
 
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 27)) /* ! BNX2X_UPSTREAM */
 		bp->dev->last_rx = jiffies;
@@ -1725,6 +1732,10 @@ void __bnx2x_link_report(struct bnx2x *bp)
 		if (bp->flags & CNA_ENABLED)
 			netif_carrier_off(bp->cnadev);
 #endif
+
+#ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
+		bp->dev->full_duplex = 0;
+#endif
 		netdev_err(bp->dev, "NIC Link is Down\n");
 		return;
 	} else {
@@ -1761,6 +1772,10 @@ void __bnx2x_link_report(struct bnx2x *bp)
 		} else {
 			flow = "none";
 		}
+
+#ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
+		bp->dev->full_duplex = 1;
+#endif
 		netdev_info(bp->dev, "NIC Link is Up, %d Mbps %s duplex, Flow control: %s\n",
 			    cur_data.line_speed, duplex, flow);
 	}
@@ -4539,7 +4554,7 @@ static void bnx2x_update_pbds_gso_enc(struct sk_buff *skb,
 		pbd2->fw_ip_hdr_to_payload_w =
 			hlen_w - ((sizeof(struct ipv6hdr)) >> 1);
 		pbd_e2->data.tunnel_data.flags |=
-			1 /*IPv6*/ << ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER;
+			ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER;
 	}
 
 	pbd2->tcp_send_seq = bswab32(inner_tcp_hdr(skb)->seq);
@@ -4914,6 +4929,8 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			 * pbd2->bd_type = ETH_2ND_PARSE_BD_TYPE_LSO_TUNNEL;
 			 */
 
+			tx_buf->flags |= BNX2X_HAS_SECOND_PBD;
+
 			nbd++;
 		} else if (xmit_type & XMIT_CSUM) {
 			/* Set PBD in checksum offload case w/o encapsulation */
@@ -5090,6 +5107,8 @@ netdev_tx_t bnx2x_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	 */
 	if (total_pkt_bd != NULL)
 		total_pkt_bd->total_pkt_bytes = pkt_size;
+
+	bnx2x_esx_update_vxlan_stats(bp, skb, xmit_type, pkt_size);
 
 	if (pbd_e1x)
 		DP(NETIF_MSG_TX_QUEUED,
@@ -5951,18 +5970,22 @@ int bnx2x_change_mtu(struct net_device *dev, int new_mtu)
 	return bnx2x_reload_if_running(dev);
 #endif
 }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
 
+#ifdef HAS_NDO_FIX_FEATURES /* BNX2X_UPSTREAM */
 netdev_features_t bnx2x_fix_features(struct net_device *dev,
 				     netdev_features_t features)
 {
 	struct bnx2x *bp = netdev_priv(dev);
 
 	/* TPA requires Rx CSUM offloading */
-	if (!(features & NETIF_F_RXCSUM) || bp->disable_tpa) {
+	if (!(features & NETIF_F_RXCSUM)) {
 		features &= ~NETIF_F_LRO;
 		features &= ~NETIF_F_GRO;
 	}
+
+	/* Note: do not disable SW GRO in kernel when HW GRO is off */
+	if (bp->disable_tpa)
+		features &= ~NETIF_F_LRO;
 
 	return features;
 }
@@ -6002,6 +6025,10 @@ int bnx2x_set_features(struct net_device *dev, netdev_features_t features)
 	if ((changes & GRO_ENABLE_FLAG) && (flags & TPA_ENABLE_FLAG))
 		changes &= ~GRO_ENABLE_FLAG;
 
+	/* if GRO is changed while HW TPA is off, don't force a reload */
+	if ((changes & GRO_ENABLE_FLAG) && bp->disable_tpa)
+		changes &= ~GRO_ENABLE_FLAG;
+
 	if (changes)
 		bnx2x_reload = true;
 
@@ -6015,7 +6042,7 @@ int bnx2x_set_features(struct net_device *dev, netdev_features_t features)
 
 	return 0;
 }
-#endif /*0x020627*/
+#endif /* ndo_[fix|set]_features */
 
 void bnx2x_tx_timeout(struct net_device *dev)
 {

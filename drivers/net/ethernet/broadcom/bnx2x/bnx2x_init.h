@@ -1,7 +1,9 @@
-/* bnx2x_init.h: Broadcom Everest network driver.
+/* bnx2x_init.h: Qlogic Everest network driver.
  *               Structures and macroes needed during the initialization.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,11 +18,11 @@
 #define BNX2X_INIT_H
 
 /*
-* ©2011 Broadcom Corporation
-* Unless you and Broadcom execute a separate written software license
+* ©2011 QLogic Corporation
+* Unless you and QLogic execute a separate written software license
 * agreement governing use of this software, this software is licensed to
 * you under the terms of the GNU General Public License version 2,
-* available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
+* available at http://www.gnu.org/licenses/gpl-2.0.html (the "GPL").
 */
 
 /* Init operation types and structures */
@@ -179,7 +181,7 @@ enum {
 	NUM_OF_INIT_BLOCKS
 };
 
-#ifdef __KERNEL__
+#ifdef __KERNEL__ 
 #include "bnx2x.h"
 
 /* Vnics per mode */
@@ -380,16 +382,16 @@ static inline void bnx2x_init_max(const struct cmng_init_input *input_data,
 
 static inline void bnx2x_init_max_per_vn(u16 vnic_max_rate,
 				  struct rate_shaping_vars_per_vn *ram_data)
-{
+{	
 	/* global vnic counter */
 	ram_data->vn_counter.rate = vnic_max_rate;
-
+	
 	/*
 	* maximal Mbps for this vnic
 	* the quota in each timer period - number of bytes
 	* transmitted in this period
 	*/
-	ram_data->vn_counter.quota =
+	ram_data->vn_counter.quota = 
 		RS_PERIODIC_TIMEOUT_USEC * (u32)vnic_max_rate / 8;
 }
 
@@ -812,6 +814,6 @@ static inline void bnx2x_enable_blocks_parity(struct bnx2x *bp)
 }
 
 
-#endif // __KERNEL__
+#endif // __KERNEL__ 
 #endif /* BNX2X_INIT_H */
 

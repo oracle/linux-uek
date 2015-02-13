@@ -1,11 +1,13 @@
-/* bnx2x_vfpf.h: Broadcom Everest network driver.
+/* bnx2x_vfpf.h: Qlogic Everest network driver.
  *
  * Copyright (c) 2011-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and Qlogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2 (the “GPL”),
- * available at http://www.broadcom.com/licenses/GPLv2.php, with the following
+ * available at http://www.gnu.org/licenses/gpl-2.0.html, with the following
  * added to such license:
  *
  * As a special exception, the copyright holders of this software give you
@@ -231,6 +233,12 @@ struct vfpf_port_phys_id_resp_tlv {
 	struct channel_tlv tl;
 	u8 id[ETH_ALEN];
 	u8 padding[2];
+};
+
+struct vfpf_fp_hsi_resp_tlv {
+	struct channel_tlv tl;
+	u8 is_supported;
+	u8 padding[3];
 };
 
 #define VFPF_INIT_FLG_STATS_COALESCE	(1 << 0) /* when set the VFs queues
@@ -483,6 +491,7 @@ print_enum (channel_tlvs,
 	CHANNEL_TLV_UPDATE_RSS,
 	CHANNEL_TLV_PHYS_PORT_ID,
 	CHANNEL_TLV_UPDATE_TPA,
+	CHANNEL_TLV_FP_HSI_SUPPORT,
 	CHANNEL_TLV_MAX
 #ifndef print_enum /* BNX2X_UPSTREAM */
 };

@@ -1,6 +1,8 @@
-/* bnx2x.h: Broadcom Everest network driver.
+/* bnx2x.h: QLogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -44,8 +46,8 @@
 #define BNX2X_MOD_VER ""
 #endif
 #define DRV_MODULE_NAME         "bnx2x"
-#define DRV_MODULE_VERSION	"1.710.51" BNX2X_MOD_VER
-#define DRV_MODULE_RELDATE	"$DateTime: 2014/07/17 05:53:54 $"
+#define DRV_MODULE_VERSION	"1.712.10" BNX2X_MOD_VER
+#define DRV_MODULE_RELDATE	"$DateTime: 2015/02/04 09:35:25 $"
 #define BNX2X_BC_VER            0x040200
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
@@ -59,11 +61,7 @@
 
 #include "bnx2x_hsi.h"
 
-#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
 #include "../cnic_if.h"
-#else
-#include "../cnic_if.h"
-#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 16)) /* ! BNX2X_UPSTREAM */
 #define BCM_OOO 1
@@ -118,10 +116,13 @@
 		populate_lookup18(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17), lookup_entry(v18)
 #define populate_lookup20(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19) \
 		populate_lookup19(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18), lookup_entry(v19)
+#define populate_lookup21(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19, v20) \
+		populate_lookup20(v0, v1, v2, v3, v4, v5, v6, v7, v8, v9, v10, v11, v12, v13, v14, v15, v16, v17, v18, v19), lookup_entry(v20)
+
 
 #define VA_NUM_ARGS(...) \
-		VA_NUM_ARGS_IMPL(__VA_ARGS__, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
-#define VA_NUM_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, N, ...) N
+		VA_NUM_ARGS_IMPL(__VA_ARGS__, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1)
+#define VA_NUM_ARGS_IMPL(_1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20, _21, N, ...) N
 
 #define macro_dispatcher__(func, nargs) \
 		func##nargs
@@ -500,6 +501,7 @@ struct sw_tx_bd {
 	u8		flags;
 /* Set on the first BD descriptor when there is a split BD */
 #define BNX2X_TSO_SPLIT_BD		(1<<0)
+#define BNX2X_HAS_SECOND_PBD		(1<<1)
 };
 
 struct sw_rx_page {
@@ -1708,6 +1710,12 @@ struct bnx2x_sp_objs {
 #ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
 	/* VLANs object */
 	struct bnx2x_vlan_mac_obj vlan_obj;
+
+#if  (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+	/* VXLAN filter object */
+	struct bnx2x_vlan_mac_obj vxlan_fltr_obj;
+#endif
+
 #endif
 };
 
@@ -2592,6 +2600,14 @@ int bnx2x_idle_chk(struct bnx2x *bp);
 int bnx2x_set_mac_one(struct bnx2x *bp, u8 *mac,
 		      struct bnx2x_vlan_mac_obj *obj, bool set,
 		      int mac_type, unsigned long *ramrod_flags);
+
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+int bnx2x_set_vxlan_fltr_one(struct bnx2x *bp, u8 *outer_mac,
+			     struct bnx2x_vlan_mac_obj *obj, bool set,
+			     int mac_type, unsigned long *ramrod_flags,
+			     u8 *inner_mac, u32 vxlan_id);
+#endif
+
 /**
  * bnx2x_del_all_macs - delete all MACs configured for the specific MAC object
  *

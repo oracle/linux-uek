@@ -1,6 +1,8 @@
-/* bnx2x_ethtool.c: Broadcom Everest network driver.
+/* bnx2x_ethtool.c: QLogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -303,6 +305,9 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 			ethtool_cmd_speed_set(cmd, bp->link_vars.line_speed);
 	} else {
 		cmd->duplex = DUPLEX_UNKNOWN;
+#ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
+		cmd->duplex = DUPLEX_HALF;
+#endif
 		ethtool_cmd_speed_set(cmd, SPEED_UNKNOWN);
 	}
 
@@ -442,6 +447,7 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 			break;
 		case PORT_FIBRE:
 		case PORT_DA:
+		case PORT_NONE:
 			if (!(bp->port.supported[0] & SUPPORTED_FIBRE ||
 			      bp->port.supported[1] & SUPPORTED_FIBRE)) {
 				DP(BNX2X_MSG_ETHTOOL,
@@ -1003,7 +1009,7 @@ static void bnx2x_get_regs(struct net_device *dev,
 	bnx2x_get_regs_buff(bp, p);
 }
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_DUMP_FLAG)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_preset_regs_len(struct net_device *dev, u32 preset)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -1014,18 +1020,6 @@ static int bnx2x_get_preset_regs_len(struct net_device *dev, u32 preset)
 	regdump_len += sizeof(struct dump_header);
 
 	return regdump_len;
-}
-
-static int bnx2x_set_dump(struct net_device *dev, struct ethtool_dump *val)
-{
-	struct bnx2x *bp = netdev_priv(dev);
-
-	/* Use the ethtool_dump "flag" field as the dump preset index */
-	if (val->flag < 1 || val->flag > DUMP_MAX_PRESETS)
-		return -EINVAL;
-
-	bp->dump_preset_idx = val->flag;
-	return 0;
 }
 
 static int bnx2x_get_dump_flag(struct net_device *dev,
@@ -1041,7 +1035,23 @@ static int bnx2x_get_dump_flag(struct net_device *dev,
 	   bp->dump_preset_idx, dump->len);
 	return 0;
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_DUMP)) /* BNX2X_UPSTREAM */
+static int bnx2x_set_dump(struct net_device *dev, struct ethtool_dump *val)
+{
+	struct bnx2x *bp = netdev_priv(dev);
+
+	/* Use the ethtool_dump "flag" field as the dump preset index */
+	if (val->flag < 1 || val->flag > DUMP_MAX_PRESETS)
+		return -EINVAL;
+
+	bp->dump_preset_idx = val->flag;
+	return 0;
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_DUMP_DATA)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_dump_data(struct net_device *dev,
 			       struct ethtool_dump *dump,
 			       void *buffer)
@@ -1091,7 +1101,7 @@ static int bnx2x_get_dump_data(struct net_device *dev,
 
 	return 0;
 }
-#endif /* LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)*/
+#endif
 
 static void bnx2x_get_drvinfo(struct net_device *dev,
 			      struct ethtool_drvinfo *info)
@@ -1492,12 +1502,21 @@ static int bnx2x_get_eeprom(struct net_device *dev,
 	   eeprom->cmd, eeprom->magic, eeprom->offset, eeprom->offset,
 	   eeprom->len, eeprom->len);
 
+#ifdef __VMKLNX__
+	do {
+		int  rc = bnx2x_esx_ethtool_handler(bp, eeprom, eebuf);
+
+		if (rc != BNX2X_ESX_ETHTOOL_ABORT)
+			return rc;
+	} while (0);
+#endif
+
 	/* parameters already validated in ethtool_get_eeprom */
 
 	return bnx2x_nvram_read(bp, eeprom->offset, eebuf, eeprom->len);
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_MODULE_EEPROM)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_module_eeprom(struct net_device *dev,
 				   struct ethtool_eeprom *ee,
 				   u8 *data)
@@ -1562,7 +1581,9 @@ static int bnx2x_get_module_eeprom(struct net_device *dev,
 	}
 	return rc;
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_MODULE_INFO)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_module_info(struct net_device *dev,
 				 struct ethtool_modinfo *modinfo)
 {
@@ -2017,6 +2038,7 @@ static int bnx2x_set_pauseparam(struct net_device *dev,
 	return 0;
 }
 
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
 static int bnx2x_set_flags(struct net_device *dev, u32 data)
@@ -2128,6 +2150,7 @@ static int bnx2x_set_tso(struct net_device *dev, u32 data)
 }
 #endif
 #endif /* < 0x020627*/
+#endif /* !(RHEL6.6 && RHEL < 7.0) */
 
 #ifdef BNX2X_UPSTREAM  /* BNX2X_UPSTREAM */
 static const char bnx2x_tests_str_arr[BNX2X_NUM_TESTS_SF][ETH_GSTRING_LEN] = {
@@ -2164,7 +2187,7 @@ static const char bnx2x_private_arr[BNX2X_PRI_FLAG_LEN][ETH_GSTRING_LEN] = {
 	"Storage only interface"
 };
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_EEE)) /* BNX2X_UPSTREAM */
 static u32 bnx2x_eee_to_adv(u32 eee_adv)
 {
 	u32 modes = 0;
@@ -2177,19 +2200,6 @@ static u32 bnx2x_eee_to_adv(u32 eee_adv)
 		modes |= ADVERTISED_10000baseT_Full;
 
 	return modes;
-}
-
-static u32 bnx2x_adv_to_eee(u32 modes, u32 shift)
-{
-	u32 eee_adv = 0;
-	if (modes & ADVERTISED_100baseT_Full)
-		eee_adv |= SHMEM_EEE_100M_ADV;
-	if (modes & ADVERTISED_1000baseT_Full)
-		eee_adv |= SHMEM_EEE_1G_ADV;
-	if (modes & ADVERTISED_10000baseT_Full)
-		eee_adv |= SHMEM_EEE_10G_ADV;
-
-	return eee_adv << shift;
 }
 
 static int bnx2x_get_eee(struct net_device *dev, struct ethtool_eee *edata)
@@ -2223,6 +2233,22 @@ static int bnx2x_get_eee(struct net_device *dev, struct ethtool_eee *edata)
 	edata->tx_lpi_enabled = (eee_cfg & SHMEM_EEE_LPI_REQUESTED_BIT) ? 1 : 0;
 
 	return 0;
+}
+#endif
+
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_EEE)) /* BNX2X_UPSTREAM */
+static u32 bnx2x_adv_to_eee(u32 modes, u32 shift)
+{
+	u32 eee_adv = 0;
+
+	if (modes & ADVERTISED_100baseT_Full)
+		eee_adv |= SHMEM_EEE_100M_ADV;
+	if (modes & ADVERTISED_1000baseT_Full)
+		eee_adv |= SHMEM_EEE_1G_ADV;
+	if (modes & ADVERTISED_10000baseT_Full)
+		eee_adv |= SHMEM_EEE_10G_ADV;
+
+	return eee_adv << shift;
 }
 
 static int bnx2x_set_eee(struct net_device *dev, struct ethtool_eee *edata)
@@ -3348,6 +3374,8 @@ static int bnx2x_get_stats_count(struct net_device *dev)
 		num_stats += BNX2X_NUM_STATS;
 	}
 
+	num_stats += bnx2x_esx_stats_count(bp);
+
 	return num_stats;
 }
 #endif
@@ -3391,6 +3419,7 @@ static void bnx2x_get_strings(struct net_device *dev, u32 stringset, u8 *buf)
 			j++;
 		}
 
+		bnx2x_esx_get_strings(buf + (k + j) * ETH_GSTRING_LEN);
 		break;
 
 	case ETH_SS_TEST:
@@ -3463,9 +3492,11 @@ static void bnx2x_get_ethtool_stats(struct net_device *dev,
 		buf[k + j] = HILO_U64(*offset, *(offset + 1));
 		j++;
 	}
+
+	bnx2x_esx_get_ethtool_stats(bp, buf+k+j);
 }
 
-#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) || (defined(_HAS_ETHTOOL_EXT_SET_PHYS_ID)) /* BNX2X_UPSTREAM */
 static int bnx2x_set_phys_id(struct net_device *dev,
 			     enum ethtool_phys_id_state state)
 {
@@ -3539,7 +3570,7 @@ static int bnx2x_phys_id(struct net_device *dev, u32 data)
 }
 #endif /* 0x020627 */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
+#if (RHEL_STARTING_AT_VERSION(6, 4)) || (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_rss_flags(struct bnx2x *bp, struct ethtool_rxnfc *info)
 {
 	switch (info->flow_type) {
@@ -3691,14 +3722,17 @@ static int bnx2x_set_rxnfc(struct net_device *dev, struct ethtool_rxnfc *info)
 	}
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR_SIZE)) /* BNX2X_UPSTREAM */
 static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 {
 	return T_ETH_INDIRECTION_TABLE_SIZE;
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_rxfh(struct net_device *dev, u32 *indir, u8 *key)
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)  || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR))
 static int bnx2x_get_rxfh_indir(struct net_device *dev, u32 *indir)
 #else
 static int bnx2x_get_rxfh_indir(struct net_device *dev,
@@ -3706,7 +3740,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 #endif
 {
 	struct bnx2x *bp = netdev_priv(dev);
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) && !(defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
 	size_t copy_size = bnx2x_get_rxfh_indir_size(dev);
 #endif
 	u8 ind_table[T_ETH_INDIRECTION_TABLE_SIZE] = {0};
@@ -3724,7 +3758,7 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 	 * align the returned table to the Client ID of the leading RSS
 	 * queue.
 	 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* BNX2X_UPSTREAM */
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++)
 		indir[i] = ind_table[i] - bp->fp->cl_id;
 #else
@@ -3732,16 +3766,18 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 		indir->ring_index[i] = ind_table[i] - bp->fp->cl_id;
 #endif
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) && !(defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
 	indir->size = T_ETH_INDIRECTION_TABLE_SIZE;
 #endif
 	return 0;
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
 static int bnx2x_set_rxfh(struct net_device *dev, const u32 *indir,
 			  const u8 *key)
-#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR))
 static int bnx2x_set_rxfh_indir(struct net_device *dev, const u32 *indir)
 #else
 static int bnx2x_set_rxfh_indir(struct net_device *dev,
@@ -3750,7 +3786,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 {
 	struct bnx2x *bp = netdev_priv(dev);
 	size_t i;
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) && !(defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
 	u32 num_eth_queues = BNX2X_NUM_ETH_QUEUES(bp);
 
 	/* validate the size */
@@ -3761,7 +3797,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 #endif
 
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++) {
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) /* ! BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE < KERNEL_VERSION(3, 3, 0)) && NOT_SLES_OR_PRE_VERSION(SLES11_SP3) && !(defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
 		/* validate the indices */
 		if (indir->ring_index[i] >= num_eth_queues) {
 			DP(BNX2X_MSG_ETHTOOL, "Ring index > num of queues\n");
@@ -3777,7 +3813,7 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 		 * align the received table to the Client ID of the leading RSS
 		 * queue
 		 */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR))  /* BNX2X_UPSTREAM */
 		bp->rss_conf_obj.ind_table[i] = indir[i] + bp->fp->cl_id;
 #else
 		bp->rss_conf_obj.ind_table[i] =
@@ -3788,8 +3824,9 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 	return bnx2x_config_rss_eth(bp, false);
 }
 #endif
+#endif /* RHEL_AT_6.4 || 2.6.36 */
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_GET_CHANNELS)) /* BNX2X_UPSTREAM */
 /**
  * bnx2x_get_channels - gets the number of RSS queues.
  *
@@ -3804,7 +3841,9 @@ static void bnx2x_get_channels(struct net_device *dev,
 	channels->max_combined = BNX2X_MAX_RSS_COUNT(bp);
 	channels->combined_count = BNX2X_NUM_ETH_QUEUES(bp);
 }
+#endif
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_CHANNELS)) /* BNX2X_UPSTREAM */
 /**
  * bnx2x_change_num_queues - change the number of RSS queues.
  *
@@ -3873,7 +3912,7 @@ static int bnx2x_set_channels(struct net_device *dev,
 }
 #endif
 
-#if defined(BCM_ETHTOOL_TS_INFO) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) || (defined(_HAS_ETHTOOL_EXT_TS_INFO)) /* BNX2X_UPSTREAM */
 static int bnx2x_get_ts_info(struct net_device *dev,
 			      struct ethtool_ts_info *info)
 {
@@ -3948,6 +3987,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.set_ringparam		= bnx2x_set_ringparam,
 	.get_pauseparam		= bnx2x_get_pauseparam,
 	.set_pauseparam		= bnx2x_set_pauseparam,
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
 	.get_rx_csum		= bnx2x_get_rx_csum,
 	.set_rx_csum		= bnx2x_set_rx_csum,
@@ -3968,6 +4008,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.set_tso		= bnx2x_set_tso,
 #endif
 #endif /* 0x020627 */
+#endif /* !(RHEL6.6 && RHEL < 7.0) */
 	.self_test		= bnx2x_self_test,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
 	.get_sset_count		= bnx2x_get_sset_count,
@@ -3979,11 +4020,11 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.get_strings		= bnx2x_get_strings,
 #if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
 	.set_phys_id		= bnx2x_set_phys_id,
-#else
+#elif !(defined(_HAS_ETHTOOL_EXT_SET_PHYS_ID))
 	.phys_id		= bnx2x_phys_id,
 #endif
 	.get_ethtool_stats	= bnx2x_get_ethtool_stats,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
+#if (RHEL_STARTING_AT_VERSION(6, 4)) || (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
 	.get_rxnfc		= bnx2x_get_rxnfc,
 	.set_rxnfc		= bnx2x_set_rxnfc,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) /* BNX2X_UPSTREAM */
@@ -3992,7 +4033,7 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
 	.get_rxfh		= bnx2x_get_rxfh,
 	.set_rxfh		= bnx2x_set_rxfh,
-#else
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36))
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
 	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
 #endif
@@ -4014,15 +4055,77 @@ static struct ethtool_ops bnx2x_ethtool_ops = {
 	.get_eee		= bnx2x_get_eee,
 	.set_eee		= bnx2x_set_eee,
 #endif
-#if (defined(BCM_ETHTOOL_TS_INFO_OPS)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 5, 0)) /* BNX2X_UPSTREAM */
 	.get_ts_info		= bnx2x_get_ts_info,
 #endif
 };
 
-#if (defined(BCM_ETHTOOL_TS_INFO_OPS_EXT)) /* ! BNX2X_UPSTREAM */
+#if (defined(_HAS_ETHTOOL_OPS_EXT)) /* ! BNX2X_UPSTREAM */
 static const struct ethtool_ops_ext bnx2x_ethtool_ops_ext = {
 	.size			= sizeof(struct ethtool_ops_ext),
+
+#if (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR_SIZE)) /* ! BNX2X_UPSTREAM */
+	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
+	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
+	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_CHANNELS)) /* ! BNX2X_UPSTREAM */
+	.get_channels		= bnx2x_get_channels,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_CHANNELS)) /* ! BNX2X_UPSTREAM */
+	.set_channels		= bnx2x_set_channels,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_DUMP_FLAG)) /* ! BNX2X_UPSTREAM */
+	.get_dump_flag		= bnx2x_get_dump_flag,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_DUMP_DATA)) /* ! BNX2X_UPSTREAM */
+	.get_dump_data		= bnx2x_get_dump_data,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_DUMP)) /* ! BNX2X_UPSTREAM */
+	.set_dump		= bnx2x_set_dump,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_MODULE_INFO)) /* ! BNX2X_UPSTREAM */
+	.get_module_info	= bnx2x_get_module_info,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_MODULE_EEPROM)) /* ! BNX2X_UPSTREAM */
+	.get_module_eeprom	= bnx2x_get_module_eeprom,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_PHYS_ID)) /* ! BNX2X_UPSTREAM */
+	.set_phys_id		= bnx2x_set_phys_id,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_EEE)) /* ! BNX2X_UPSTREAM */
+	.get_eee		= bnx2x_get_eee,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_EEE)) /* ! BNX2X_UPSTREAM */
+	.set_eee		= bnx2x_set_eee,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_TS_INFO)) /* BNX2X_UPSTREAM */
 	.get_ts_info		= bnx2x_get_ts_info,
+#endif
+};
+
+static const struct ethtool_ops_ext bnx2x_vf_ethtool_ops_ext = {
+	.size			= sizeof(struct ethtool_ops_ext),
+
+#if (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR_SIZE)) /* ! BNX2X_UPSTREAM */
+	.get_rxfh_indir_size	= bnx2x_get_rxfh_indir_size,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
+	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* ! BNX2X_UPSTREAM */
+	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_GET_CHANNELS)) /* ! BNX2X_UPSTREAM */
+	.get_channels		= bnx2x_get_channels,
+#endif
+#if (defined(_HAS_ETHTOOL_EXT_SET_CHANNELS)) /* ! BNX2X_UPSTREAM */
+	.set_channels		= bnx2x_set_channels,
+#endif
 };
 #endif
 
@@ -4039,6 +4142,7 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 	.get_coalesce		= bnx2x_get_coalesce,
 	.get_ringparam		= bnx2x_get_ringparam,
 	.set_ringparam		= bnx2x_set_ringparam,
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
 	.get_rx_csum		= bnx2x_get_rx_csum,
 	.set_rx_csum		= bnx2x_set_rx_csum,
@@ -4059,6 +4163,7 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 	.set_tso		= bnx2x_set_tso,
 #endif
 #endif /* 0x020627 */
+#endif /* !(RHEL6.6 && RHEL < 7.0) */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 24)) /* BNX2X_UPSTREAM */
 	.get_sset_count		= bnx2x_get_sset_count,
 #else
@@ -4066,7 +4171,7 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #endif
 	.get_strings		= bnx2x_get_strings,
 	.get_ethtool_stats	= bnx2x_get_ethtool_stats,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
+#if (RHEL_STARTING_AT_VERSION(6, 4)) || (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) /* BNX2X_UPSTREAM */
 	.get_rxnfc		= bnx2x_get_rxnfc,
 	.set_rxnfc		= bnx2x_set_rxnfc,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) /* BNX2X_UPSTREAM */
@@ -4075,7 +4180,7 @@ static struct ethtool_ops bnx2x_vf_ethtool_ops = {
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
 	.get_rxfh		= bnx2x_get_rxfh,
 	.set_rxfh		= bnx2x_set_rxfh,
-#else
+#elif (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36))
 	.get_rxfh_indir		= bnx2x_get_rxfh_indir,
 	.set_rxfh_indir		= bnx2x_set_rxfh_indir,
 #endif
@@ -4098,9 +4203,11 @@ void bnx2x_set_ethtool_ops(struct bnx2x *bp, struct net_device *netdev)
 		SET_ETHTOOL_OPS(netdev, &bnx2x_vf_ethtool_ops);
 #endif
 
-#if (defined(BCM_ETHTOOL_TS_INFO_OPS_EXT)) /* ! BNX2X_UPSTREAM */
+#if (defined(_HAS_ETHTOOL_OPS_EXT)) /* ! BNX2X_UPSTREAM */
 	if (IS_PF(bp))
 		set_ethtool_ops_ext(netdev, &bnx2x_ethtool_ops_ext);
+	else
+		set_ethtool_ops_ext(netdev, &bnx2x_vf_ethtool_ops_ext);
 #endif
 }
 

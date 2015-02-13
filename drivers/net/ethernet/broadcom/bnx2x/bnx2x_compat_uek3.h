@@ -12,6 +12,7 @@
 #define _HAS_ETHTOOL_TS_INFO
 #define _HAS_CLAMP
 #define _GETNUMTCS_RETURNS_INT
+#define HAS_NDO_FIX_FEATURES
 #define _DEFINE_EPROBE_DEFER
 
 #endif /* _BNX2X_COMPAT_UEK3_H_ */

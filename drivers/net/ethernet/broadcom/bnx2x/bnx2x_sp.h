@@ -1,18 +1,20 @@
-/* bnx2x_sp.h: Broadcom Everest network driver.
+/* bnx2x_sp.h: Qlogic Everest network driver.
  *
  * Copyright 2011-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and Qlogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
- * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
+ * at http://www.gnu.org/licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other Qlogic software provided under a
+ * license other than the GPL, without Qlogic's express prior written
  * consent.
  *
- * Maintained by: Ariel Elior <ariele@broadcom.com>
+ * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
  * Written by: Vladislav Zolotarov
  *
  */
@@ -74,7 +76,8 @@ enum {
 	BNX2X_FILTER_MCAST_SCHED,
 	BNX2X_FILTER_RSS_CONF_PENDING,
 	BNX2X_AFEX_FCOE_Q_UPDATE_PENDING,
-	BNX2X_AFEX_PENDING_VIFSET_MCP_ACK
+	BNX2X_AFEX_PENDING_VIFSET_MCP_ACK,
+	BNX2X_FILTER_VXLAN_PENDING
 };
 
 struct bnx2x_raw_obj {
@@ -118,10 +121,16 @@ struct bnx2x_vlan_mac_ramrod_data {
 	u16 vlan;
 };
 
+struct bnx2x_vxlan_fltr_ramrod_data {
+	u8 innermac[ETH_ALEN];
+	u32 vni;
+};
+
 union bnx2x_classification_ramrod_data {
 	struct bnx2x_mac_ramrod_data mac;
 	struct bnx2x_vlan_ramrod_data vlan;
 	struct bnx2x_vlan_mac_ramrod_data vlan_mac;
+	struct bnx2x_vxlan_fltr_ramrod_data vxlan_fltr;
 };
 
 /* VLAN_MAC commands */
@@ -962,6 +971,8 @@ struct bnx2x_general_setup_params {
 	u8		spcl_id;
 	u16		mtu;
 	u8		cos;
+
+	u8		fp_hsi;
 };
 
 struct bnx2x_rxq_setup_params {
@@ -1428,6 +1439,14 @@ void bnx2x_init_vlan_mac_obj(struct bnx2x *bp,
 			     unsigned long *pstate, bnx2x_obj_type type,
 			     struct bnx2x_credit_pool_obj *macs_pool,
 			     struct bnx2x_credit_pool_obj *vlans_pool);
+
+void bnx2x_init_vxlan_fltr_obj(struct bnx2x *bp,
+			       struct bnx2x_vlan_mac_obj *vlan_mac_obj,
+			       u8 cl_id, u32 cid, u8 func_id, void *rdata,
+			       dma_addr_t rdata_mapping, int state,
+			       unsigned long *pstate, bnx2x_obj_type type,
+			       struct bnx2x_credit_pool_obj *macs_pool,
+			       struct bnx2x_credit_pool_obj *vlans_pool);
 
 int bnx2x_vlan_mac_h_read_lock(struct bnx2x *bp,
 					struct bnx2x_vlan_mac_obj *o);

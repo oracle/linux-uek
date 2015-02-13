@@ -1,15 +1,17 @@
-/* bnx2x_sriov.c: Broadcom Everest network driver.
+/* bnx2x_sriov.c: QLogic Everest network driver.
  *
  * Copyright 2009-2013 Broadcom Corporation
+ * Copyright 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and QLogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
  * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other QLogic software provided under a
+ * license other than the GPL, without QLogic's express prior written
  * consent.
  *
  * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
@@ -250,6 +252,7 @@ void bnx2x_vfop_qctor_prep(struct bnx2x *bp,
 	/* Setup-op general parameters */
 	setup_p->gen_params.spcl_id = vf->sp_cl_id;
 	setup_p->gen_params.stat_id = vfq_stat_id(vf, q);
+	setup_p->gen_params.fp_hsi = vf->fp_hsi;
 
 	/* Setup-op pause params:
 	 * Nothing to do, the pause thresholds are set by default to 0 which
@@ -621,6 +624,11 @@ static int bnx2x_vf_queue_flr(struct bnx2x *bp, struct bnx2x_virtf *vf,
 		if (rc)
 			goto op_err;
 	}
+
+#ifdef __VMKLNX__  /* ! BNX2X_UPSTREAM */
+	bnx2x_esx_vf_remove_all_gvlans(bp, vf);
+	bnx2x_esx_vf_reset_all_vmk_gvlans(bp, vf);
+#endif
 
 	return 0;
 op_err:
@@ -2779,11 +2787,11 @@ int bnx2x_get_vf_config(struct net_device *dev, int vfidx,
 
 	ivi->vf = vfidx;
 	ivi->qos = 0;
-#if defined(_DEFINE_IFLA_VF_RATE) /* ! BNX2X_UPSTREAM */
-	ivi->tx_rate = bp->link_vars.line_speed;
-#else
+#if !defined(_DEFINE_IFLA_VF_RATE) /* BNX2X_UPSTREAM */
 	ivi->max_tx_rate = bp->link_vars.line_speed;
 	ivi->min_tx_rate = 0;
+#else
+	ivi->tx_rate = bp->link_vars.line_speed;
 #endif
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 2, 0)) /* BNX2X_UPSTREAM */
 	ivi->spoofchk = 1; /*always enabled */
@@ -2931,7 +2939,7 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	unsigned long ramrod_flags = 0;
 	struct bnx2x_virtf *vf = NULL;
 	unsigned long accept_flags;
-	int rc;
+	int rc, i;
 
 	if (vlan > 4095) {
 		BNX2X_ERR("illegal vlan value %d\n", vlan);
@@ -2962,12 +2970,16 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 
 	mutex_unlock(&bp->vfdb->bulletin_mutex);
 
-	/* is vf initialized and queue set up? */
-
-	if (vf->state != VF_ENABLED ||
-	    bnx2x_get_q_logical_state(bp, &bnx2x_leading_vfq(vf, sp_obj)) !=
-	    BNX2X_Q_LOGICAL_STATE_ACTIVE)
+	/* is vf initialized and queues are all set up? */
+	if (vf->state != VF_ENABLED)
 		return rc;
+	for_each_vfq(vf, i)
+		if (bnx2x_get_q_logical_state(bp, &bnx2x_vfq(vf, i, sp_obj)) !=
+		    BNX2X_Q_LOGICAL_STATE_ACTIVE) {
+			BNX2X_ERR("Can't configure pvid; Queue %d is still inactive\n",
+				  i);
+			return rc;
+		}
 
 	/* User should be able to see error in system logs */
 	if (!bnx2x_validate_vf_sp_objs(bp, vf, true))
@@ -2979,8 +2991,14 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	/* remove existing vlans */
 	__set_bit(RAMROD_COMP_WAIT, &ramrod_flags);
 	vlan_obj = &bnx2x_leading_vfq(vf, vlan_obj);
+#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
 	rc = vlan_obj->delete_all(bp, vlan_obj, &vlan_mac_flags,
-				  &ramrod_flags);
+			&ramrod_flags);
+#else
+	if (!bnx2x_esx_vf_gvlans_allowed(bp, vf->index))
+		rc = vlan_obj->delete_all(bp, vlan_obj, &vlan_mac_flags,
+				&ramrod_flags);
+#endif
 	if (rc) {
 		BNX2X_ERR("failed to delete vlans\n");
 		rc = -EINVAL;
@@ -3005,10 +3023,15 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	ramrod_param.vlan_mac_obj = vlan_obj;
 	ramrod_param.ramrod_flags = ramrod_flags;
 	set_bit(BNX2X_DONT_CONSUME_CAM_CREDIT,
-		&ramrod_param.user_req.vlan_mac_flags);
+			&ramrod_param.user_req.vlan_mac_flags);
 	ramrod_param.user_req.u.vlan.vlan = vlan;
 	ramrod_param.user_req.cmd = BNX2X_VLAN_MAC_ADD;
+#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
 	rc = bnx2x_config_vlan_mac(bp, &ramrod_param);
+#else
+	if (!bnx2x_esx_vf_gvlans_allowed(bp, vf->index))
+		rc = bnx2x_config_vlan_mac(bp, &ramrod_param);
+#endif
 	if (rc) {
 		BNX2X_ERR("failed to configure vlan\n");
 		rc =  -EINVAL;
@@ -3020,19 +3043,23 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	 */
 	__set_bit(RAMROD_COMP_WAIT, &q_params.ramrod_flags);
 	q_params.cmd = BNX2X_Q_CMD_UPDATE;
-	q_params.q_obj = &bnx2x_leading_vfq(vf, sp_obj);
 	update_params = &q_params.params.update;
 	__set_bit(BNX2X_Q_UPDATE_DEF_VLAN_EN_CHNG,
 		  &update_params->update_flags);
 	__set_bit(BNX2X_Q_UPDATE_SILENT_VLAN_REM_CHNG,
 		  &update_params->update_flags);
 	if (vlan == 0) {
+#ifndef __VMKLNX__ /* BNX2X_UPSTREAM */
 		/* if vlan is 0 then we want to leave the VF traffic
 		 * untagged, and leave the incoming traffic untouched
 		 * (i.e. do not remove any vlan tags).
 		 */
 		__clear_bit(BNX2X_Q_UPDATE_DEF_VLAN_EN,
 			    &update_params->update_flags);
+#else
+		__set_bit(BNX2X_Q_UPDATE_DEF_VLAN_EN,
+			  &update_params->update_flags);
+#endif
 		__clear_bit(BNX2X_Q_UPDATE_SILENT_VLAN_REM,
 			    &update_params->update_flags);
 	} else {
@@ -3050,10 +3077,13 @@ int bnx2x_set_vf_vlan(struct net_device *dev, int vfidx, u16 vlan, u8 qos)
 	}
 
 	/* Update the Queue state */
-	rc = bnx2x_queue_state_change(bp, &q_params);
-	if (rc) {
-		BNX2X_ERR("Failed to configure default VLAN\n");
-		goto out;
+	for_each_vfq(vf, i) {
+		q_params.q_obj = &bnx2x_vfq(vf, i, sp_obj);
+		rc = bnx2x_queue_state_change(bp, &q_params);
+		if (rc) {
+			BNX2X_ERR("Failed to configure default VLAN\n");
+			goto out;
+		}
 	}
 
 	/* clear the flag indicating that this VF needs its vlan
@@ -3068,6 +3098,13 @@ out:
 }
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) /* BNX2X_UPSTREAM */
+
+#if 0
+/* This setter is deadcode; VEPA is not supported by HW, and VEB is
+ * automatically the default once IOV is enabled. Since you can't use
+ * this API to disable it, there's no reason to actively support it.
+ * Regardles, it's here for future reference
+ */
 int bnx2x_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -3100,6 +3137,7 @@ int bnx2x_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh)
 
 	return 0;
 }
+#endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)) /* BNX2X_UPSTREAM */
 int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,

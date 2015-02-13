@@ -1,15 +1,17 @@
-/* bnx2x_sriov.h: Broadcom Everest network driver.
+/* bnx2x_sriov.h: QLogic Everest network driver.
  *
  * Copyright 2009-2013 Broadcom Corporation
+ * Copyright 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and QLogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
  * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other QLogic software provided under a
+ * license other than the GPL, without QLogic's express prior written
  * consent.
  *
  * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
@@ -205,6 +207,8 @@ struct bnx2x_virtf {
 	/* slow-path operations */
 	struct mutex			op_mutex; /* one vfop at a time mutex */
 	enum channel_tlvs		op_current;
+
+	u8 fp_hsi;
 };
 
 #define BNX2X_NR_VIRTFN(bp)	((bp)->vfdb->sriov.nr_virtfn)
@@ -488,7 +492,6 @@ enum sample_bulletin_result bnx2x_sample_bulletin(struct bnx2x *bp);
 /* VF side vfpf channel functions */
 int bnx2x_vfpf_acquire(struct bnx2x *bp, u8 tx_count, u8 rx_count);
 int bnx2x_vfpf_release(struct bnx2x *bp);
-int bnx2x_vfpf_release(struct bnx2x *bp);
 int bnx2x_vfpf_init(struct bnx2x *bp);
 void bnx2x_vfpf_close_vf(struct bnx2x *bp);
 int bnx2x_vfpf_setup_q(struct bnx2x *bp, struct bnx2x_fastpath *fp,
@@ -535,7 +538,6 @@ void bnx2x_pf_set_vfs_vlan(struct bnx2x *bp);
 int bnx2x_sriov_configure(struct pci_dev *dev, int num_vfs);
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) /* BNX2X_UPSTREAM */
-int bnx2x_bridge_setlink(struct net_device *dev, struct nlmsghdr *nlh);
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 9, 0)) /* BNX2X_UPSTREAM */
 int bnx2x_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 			 struct net_device *dev,
@@ -592,6 +594,8 @@ static inline int bnx2x_vfpf_teardown_queue(struct bnx2x *bp, int qidx) {return 
 #endif
 static inline int bnx2x_vfpf_config_mac(struct bnx2x *bp, u8 *addr,
 					u8 vf_qid, bool set) {return 0; }
+static inline int bnx2x_vfpf_config_rss(struct bnx2x *bp,
+					struct bnx2x_config_rss_params *params) {return 0; }
 static inline int bnx2x_vfpf_set_mcast(struct net_device *dev) {return 0; }
 #ifndef BNX2X_CHAR_DEV /* BNX2X_UPSTREAM */
 static inline int bnx2x_vfpf_storm_rx_mode(struct bnx2x *bp) {return 0; }

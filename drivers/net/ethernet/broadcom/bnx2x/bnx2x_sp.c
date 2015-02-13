@@ -1,15 +1,17 @@
-/* bnx2x_sp.c: Broadcom Everest network driver.
+/* bnx2x_sp.c: Qlogic Everest network driver.
  *
  * Copyright 2011-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and Qlogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
- * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
+ * at http://www.gnu.org/licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other Qlogic software provided under a
+ * license other than the GPL, without Qlogic's express prior written
  * consent.
  *
  * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
@@ -728,6 +730,25 @@ static int bnx2x_check_vlan_mac_add(struct bnx2x *bp,
 	return 0;
 }
 
+static int bnx2x_check_vxlan_fltr_add(struct bnx2x *bp,
+				struct bnx2x_vlan_mac_obj *o,
+				union bnx2x_classification_ramrod_data *data)
+{
+	struct bnx2x_vlan_mac_registry_elem *pos;
+
+	DP(BNX2X_MSG_SP, "Checking VXLAN_FLTR (Inner:%pM, %d) for ADD command\n",
+		  data->vxlan_fltr.innermac, data->vxlan_fltr.vni);
+
+	list_for_each_entry(pos, &o->head, link)
+		if ((!memcmp(data->vxlan_fltr.innermac,
+			       pos->u.vxlan_fltr.innermac,
+			       ETH_ALEN)) &&
+			     (data->vxlan_fltr.vni == pos->u.vxlan_fltr.vni))
+			return -EEXIST;
+
+	return 0;
+}
+
 /* check_del() callbacks */
 static struct bnx2x_vlan_mac_registry_elem *
 	bnx2x_check_mac_del(struct bnx2x *bp,
@@ -764,8 +785,8 @@ static struct bnx2x_vlan_mac_registry_elem *
 
 static struct bnx2x_vlan_mac_registry_elem *
 	bnx2x_check_vlan_mac_del(struct bnx2x *bp,
-				 struct bnx2x_vlan_mac_obj *o,
-				 union bnx2x_classification_ramrod_data *data)
+				struct bnx2x_vlan_mac_obj *o,
+				union bnx2x_classification_ramrod_data *data)
 {
 	struct bnx2x_vlan_mac_registry_elem *pos;
 
@@ -778,6 +799,27 @@ static struct bnx2x_vlan_mac_registry_elem *
 			     ETH_ALEN)) &&
 		    (data->vlan_mac.is_inner_mac ==
 		     pos->u.vlan_mac.is_inner_mac))
+			return pos;
+
+	return NULL;
+}
+
+static struct bnx2x_vlan_mac_registry_elem *
+	bnx2x_check_vxlan_fltr_del
+			(struct bnx2x *bp,
+			struct bnx2x_vlan_mac_obj *o,
+			union bnx2x_classification_ramrod_data *data)
+{
+	struct bnx2x_vlan_mac_registry_elem *pos;
+
+	DP(BNX2X_MSG_SP, "Checking VXLAN_FLTR (Inner:%pM, %d) for DEL command\n",
+		  data->vxlan_fltr.innermac, data->vxlan_fltr.vni);
+
+	list_for_each_entry(pos, &o->head, link)
+		if ((!memcmp(data->vxlan_fltr.innermac,
+			       pos->u.vxlan_fltr.innermac,
+			       ETH_ALEN)) &&
+			       (data->vxlan_fltr.vni == pos->u.vxlan_fltr.vni))
 			return pos;
 
 	return NULL;
@@ -971,7 +1013,7 @@ static void bnx2x_set_one_mac_e2(struct bnx2x *bp,
 			      &rule_entry->mac.mac_mid,
 			      &rule_entry->mac.mac_lsb, mac);
 	rule_entry->mac.inner_mac =
-		elem->cmd_data.vlan_mac.u.mac.is_inner_mac;
+		cpu_to_le16(elem->cmd_data.vlan_mac.u.mac.is_inner_mac);
 
 	/* MOVE: Add a rule that will add this MAC to the target Queue */
 	if (cmd == BNX2X_VLAN_MAC_MOVE) {
@@ -989,7 +1031,8 @@ static void bnx2x_set_one_mac_e2(struct bnx2x *bp,
 				      &rule_entry->mac.mac_mid,
 				      &rule_entry->mac.mac_lsb, mac);
 		rule_entry->mac.inner_mac =
-			elem->cmd_data.vlan_mac.u.mac.is_inner_mac;
+			cpu_to_le16(elem->cmd_data.vlan_mac.
+				       u.mac.is_inner_mac);
 	}
 
 	/* Set the ramrod data header */
@@ -1205,6 +1248,61 @@ static void bnx2x_set_one_vlan_mac_e2(struct bnx2x *bp,
 					rule_cnt);
 }
 
+static void bnx2x_set_one_vxlan_fltr_e2(struct bnx2x *bp,
+						struct bnx2x_vlan_mac_obj *o,
+						struct bnx2x_exeq_elem *elem,
+						int rule_idx, int cam_offset)
+{
+	struct bnx2x_raw_obj *raw = &o->raw;
+	struct eth_classify_rules_ramrod_data *data =
+		(struct eth_classify_rules_ramrod_data *)(raw->rdata);
+	int rule_cnt = rule_idx + 1;
+	union eth_classify_rule_cmd *rule_entry = &data->rules[rule_idx];
+	enum bnx2x_vlan_mac_cmd cmd = elem->cmd_data.vlan_mac.cmd;
+	bool add = (cmd == BNX2X_VLAN_MAC_ADD) ? true : false;
+	u32 vni = elem->cmd_data.vlan_mac.u.vxlan_fltr.vni;
+	u8 *mac = elem->cmd_data.vlan_mac.u.vxlan_fltr.innermac;
+
+	/* Reset the ramrod data buffer for the first rule */
+	if (rule_idx == 0)
+		memset(data, 0, sizeof(*data));
+
+	/* Set a rule header */
+	bnx2x_vlan_mac_set_cmd_hdr_e2(bp, o, add, CLASSIFY_RULE_OPCODE_VXLAN,
+				      &rule_entry->vxlan.header);
+
+	/* Set VLAN and MAC themselves */
+	rule_entry->vxlan.vni = vni;
+	bnx2x_set_fw_mac_addr(&rule_entry->vxlan.inner_mac_msb,
+			      &rule_entry->vxlan.inner_mac_mid,
+			      &rule_entry->vxlan.inner_mac_lsb, mac);
+
+	/* MOVE: Add a rule that will add this MAC to the target Queue */
+	if (cmd == BNX2X_VLAN_MAC_MOVE) {
+		rule_entry++;
+		rule_cnt++;
+
+		/* Setup ramrod data */
+		bnx2x_vlan_mac_set_cmd_hdr_e2(bp,
+					      elem->cmd_data.vlan_mac.target_obj,
+					      true, CLASSIFY_RULE_OPCODE_VXLAN,
+					      &rule_entry->vxlan.header);
+
+		/* Set a VLAN itself */
+		rule_entry->vxlan.vni = vni;
+		bnx2x_set_fw_mac_addr(&rule_entry->vxlan.inner_mac_msb,
+				      &rule_entry->vxlan.inner_mac_mid,
+				      &rule_entry->vxlan.inner_mac_lsb, mac);
+	}
+
+	/* Set the ramrod data header */
+	/* TODO: take this to the higher level in order to prevent multiple
+	   * writing
+	*/
+	bnx2x_vlan_mac_set_rdata_hdr_e2(raw->cid, raw->state,
+					&data->header, rule_cnt);
+}
+
 /**
  * bnx2x_set_one_vlan_mac_e1h -
  *
@@ -1353,6 +1451,25 @@ static struct bnx2x_exeq_elem *bnx2x_exeq_get_vlan_mac(
 		if (!memcmp(&pos->cmd_data.vlan_mac.u.vlan_mac, data,
 			      sizeof(*data)) &&
 		    (pos->cmd_data.vlan_mac.cmd == elem->cmd_data.vlan_mac.cmd))
+			return pos;
+
+	return NULL;
+}
+
+static struct bnx2x_exeq_elem *bnx2x_exeq_get_vxlan_fltr
+			(struct bnx2x_exe_queue_obj *o,
+			struct bnx2x_exeq_elem *elem)
+{
+	struct bnx2x_exeq_elem *pos;
+	struct bnx2x_vxlan_fltr_ramrod_data *data =
+		&elem->cmd_data.vlan_mac.u.vxlan_fltr;
+
+	/* Check pending for execution commands */
+	list_for_each_entry(pos, &o->exe_queue, link)
+		if (!memcmp(&pos->cmd_data.vlan_mac.u.vxlan_fltr, data,
+			      sizeof(*data)) &&
+			      (pos->cmd_data.vlan_mac.cmd ==
+			      elem->cmd_data.vlan_mac.cmd))
 			return pos;
 
 	return NULL;
@@ -2323,6 +2440,54 @@ void bnx2x_init_vlan_mac_obj(struct bnx2x *bp,
 				     bnx2x_optimize_vlan_mac,
 				     bnx2x_execute_vlan_mac,
 				     bnx2x_exeq_get_vlan_mac);
+	}
+}
+
+void bnx2x_init_vxlan_fltr_obj(struct bnx2x *bp,
+				struct bnx2x_vlan_mac_obj *vlan_mac_obj,
+				u8 cl_id, u32 cid, u8 func_id, void *rdata,
+				dma_addr_t rdata_mapping, int state,
+				unsigned long *pstate, bnx2x_obj_type type,
+				struct bnx2x_credit_pool_obj *macs_pool,
+				struct bnx2x_credit_pool_obj *vlans_pool)
+{
+	union bnx2x_qable_obj *qable_obj =
+		(union bnx2x_qable_obj *)vlan_mac_obj;
+
+	bnx2x_init_vlan_mac_common(vlan_mac_obj, cl_id, cid, func_id,
+				   rdata, rdata_mapping, state, pstate,
+				   type, macs_pool, vlans_pool);
+
+	/* CAM pool handling */
+	vlan_mac_obj->get_credit = bnx2x_get_credit_vlan_mac;
+	vlan_mac_obj->put_credit = bnx2x_put_credit_vlan_mac;
+	/* CAM offset is relevant for 57710 and 57711 chips only which have a
+	 * single CAM for both MACs and VLAN-MAC pairs. So the offset
+	 * will be taken from MACs' pool object only.
+	 */
+	vlan_mac_obj->get_cam_offset = bnx2x_get_cam_offset_mac;
+	vlan_mac_obj->put_cam_offset = bnx2x_put_cam_offset_mac;
+
+	if (CHIP_IS_E1x(bp)) {
+		BNX2X_ERR("Do not support chips others than E2/E3\n");
+		BUG();
+	} else {
+		vlan_mac_obj->set_one_rule      = bnx2x_set_one_vxlan_fltr_e2;
+		vlan_mac_obj->check_del         = bnx2x_check_vxlan_fltr_del;
+		vlan_mac_obj->check_add         = bnx2x_check_vxlan_fltr_add;
+		vlan_mac_obj->check_move        = bnx2x_check_move;
+		vlan_mac_obj->ramrod_cmd        =
+			RAMROD_CMD_ID_ETH_CLASSIFICATION_RULES;
+
+		/* Exe Queue */
+		bnx2x_exe_queue_init(bp,
+				     &vlan_mac_obj->exe_queue,
+				     CLASSIFY_RULES_COUNT,
+				     qable_obj, bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
+				     bnx2x_optimize_vlan_mac,
+				     bnx2x_execute_vlan_mac,
+				     bnx2x_exeq_get_vxlan_fltr);
 	}
 }
 
@@ -4372,6 +4537,13 @@ static int bnx2x_setup_rss(struct bnx2x *bp,
 	if (test_bit(BNX2X_RSS_GRE_INNER_HDRS, &p->rss_flags))
 		caps |= ETH_RSS_UPDATE_RAMROD_DATA_GRE_INNER_HDRS_CAPABILITY;
 
+	/* RSS keys */
+	if (test_bit(BNX2X_RSS_SET_SRCH, &p->rss_flags)) {
+		memcpy(&data->rss_key[0], &p->rss_key[0],
+		       sizeof(data->rss_key));
+		caps |= ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY;
+	}
+
 	data->capabilities = cpu_to_le16(caps);
 
 	/* Hashing mask */
@@ -4392,13 +4564,6 @@ static int bnx2x_setup_rss(struct bnx2x *bp,
 	/* Print the indirection table */
 	if (netif_msg_ifup(bp))
 		bnx2x_debug_print_ind_table(bp, p);
-
-	/* RSS keys */
-	if (test_bit(BNX2X_RSS_SET_SRCH, &p->rss_flags)) {
-		memcpy(&data->rss_key[0], &p->rss_key[0],
-		       sizeof(data->rss_key));
-		data->capabilities |= ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY;
-	}
 
 	/* No need for an explicit memory barrier here as long as we
 	 * ensure the ordering of writing to the SPQ element
@@ -4645,7 +4810,7 @@ static void bnx2x_q_fill_init_general_data(struct bnx2x *bp,
 		test_bit(BNX2X_Q_FLG_FCOE, flags) ?
 		LLFC_TRAFFIC_TYPE_FCOE : LLFC_TRAFFIC_TYPE_NW;
 
-	gen_data->fp_hsi_ver = ETH_FP_HSI_VERSION;
+	gen_data->fp_hsi_ver = params->fp_hsi;
 
 	DP(BNX2X_MSG_SP, "flags: active %d, cos %d, stats en %d\n",
 		  gen_data->activate_flg, gen_data->cos, gen_data->statistics_en_flg);
@@ -6064,6 +6229,7 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 	rdata->gre_tunnel_type	= start_params->gre_tunnel_type;
 	rdata->inner_gre_rss_en = start_params->inner_gre_rss_en;
 	rdata->vxlan_dst_port	= start_params->vxlan_dst_port;
+	rdata->tunn_clss_en = start_params->tunn_clss_en;
 	rdata->sd_accept_mf_clss_fail = start_params->class_fail;
 	if (start_params->class_fail_ethtype) {
 		rdata->sd_accept_mf_clss_fail_match_ethtype = 1;

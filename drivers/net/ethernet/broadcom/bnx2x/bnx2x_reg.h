@@ -1,6 +1,8 @@
-/* bnx2x_reg.h: Broadcom Everest network driver.
+/* bnx2x_reg.h: Qlogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -2586,8 +2588,6 @@
 #define PXP2_REG_RD_DISABLE_INPUTS				 0x120374
 /* [R 1] PSWRD internal memories initialization is done */
 #define PXP2_REG_RD_INIT_DONE					 0x120370
-/* [RW 2] PBF byte swapping mode configuration for master read requests */
-#define PXP2_REG_RD_PBF_SWAP_MODE				 0x1203f4
 /* [R 1] Debug only: Indication if delivery ports are idle */
 #define PXP2_REG_RD_PORT_IS_IDLE_0				 0x12041c
 #define PXP2_REG_RD_PORT_IS_IDLE_1				 0x120420
@@ -3747,7 +3747,6 @@
 #define MISC_REGISTERS_RESET_REG_1_RST_PXP			 (0x1<<26)
 #define MISC_REGISTERS_RESET_REG_1_RST_PXPV			 (0x1<<27)
 #define MISC_REGISTERS_RESET_REG_1_RST_QM			 (0x1<<17)
-#define MISC_REGISTERS_RESET_REG_1_RST_XSEM			 (0x1<<22)
 #define MISC_REGISTERS_RESET_REG_1_SET				 0x584
 #define MISC_REGISTERS_RESET_REG_2_CLEAR			 0x598
 #define MISC_REGISTERS_RESET_REG_2_MSTAT0			 (0x1<<24)
@@ -5138,6 +5137,8 @@ Theotherbitsarereservedandshouldbezero*/
 #define MDIO_WC_REG_TX2_ANA_CTRL0			0x8081
 #define MDIO_WC_REG_TX3_ANA_CTRL0			0x8091
 #define MDIO_WC_REG_TX0_TX_DRIVER			0x8067
+#define MDIO_WC_REG_TX0_TX_DRIVER_IFIR_OFFSET			0x01
+#define MDIO_WC_REG_TX0_TX_DRIVER_IFIR_MASK				0x000e
 #define MDIO_WC_REG_TX0_TX_DRIVER_IPRE_DRIVER_OFFSET		0x04
 #define MDIO_WC_REG_TX0_TX_DRIVER_IPRE_DRIVER_MASK			0x00f0
 #define MDIO_WC_REG_TX0_TX_DRIVER_IDRIVER_OFFSET		0x08

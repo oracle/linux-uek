@@ -1,6 +1,8 @@
-/* bnx2x_main.c: Broadcom Everest network driver.
+/* bnx2x_main.c: QLogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -57,6 +59,7 @@
 #include <linux/if_vlan.h>
 #include <net/ip.h>
 #if !defined(__VMKLNX__) /* BNX2X_UPSTREAM */
+#include <linux/crash_dump.h>
 #include <net/ipv6.h>
 #else
 #include <linux/ipv6.h>
@@ -137,11 +140,11 @@
 #endif
 
 static char version[] __devinitdata =
-	"Broadcom NetXtreme II 5771x/578xx 10/20-Gigabit Ethernet Driver "
+	"QLogic 5771x/578xx 10/20-Gigabit Ethernet Driver "
 	DRV_MODULE_NAME " " DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
 MODULE_AUTHOR("Eliezer Tamir");
-MODULE_DESCRIPTION("Broadcom NetXtreme II "
+MODULE_DESCRIPTION("QLogic "
 		   "BCM57710/57711/57711E/"
 		   "57712/57712_MF/57800/57800_MF/57810/57810_MF/"
 		   "57840/57840_MF Driver");
@@ -255,11 +258,18 @@ MODULE_PARM_DESC(tx_switching, " Enable tx-switching");
 static int num_rss_pools = 1;
 module_param(num_rss_pools, int, 0);
 MODULE_PARM_DESC(num_rss_pools, "Control the existance of an RSS pool. When 0,"
-				 "RSS pool is disabled. When 1, there will be"
+				 "RSS pool is disabled. When 1, there will be "
 				 "an RSS pool (given that RSS>0).");
 int RSS = ESX_DFLT_NUM_RSS_Q;
 module_param(RSS, int, 0);
-MODULE_PARM_DESC(RSS, "Controls the number of queues in an RSS pool. Max 4.");
+MODULE_PARM_DESC(RSS, "Controls the number of queues in an RSS pool. Supported Values 2-4.");
+
+#if  (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+int disable_vxlan_filter = 1;
+module_param(disable_vxlan_filter, int, 0);
+MODULE_PARM_DESC(disable_vxlan_filter, "Enable/disable vxlan filtering "
+			"feature. Default:1, Enable:0, Disable:1");
+#endif
 
 uint tunnel_mode;
 uint vxlan_dst_port;
@@ -322,27 +332,27 @@ enum bnx2x_board_type {
 static struct {
 	char *name;
 } board_info[] __devinitdata = {
-	[BCM57710]	= { "Broadcom NetXtreme II BCM57710 10 Gigabit PCIe [Everest]" },
-	[BCM57711]	= { "Broadcom NetXtreme II BCM57711 10 Gigabit PCIe" },
-	[BCM57711E]	= { "Broadcom NetXtreme II BCM57711E 10 Gigabit PCIe" },
-	[BCM57712]	= { "Broadcom NetXtreme II BCM57712 10 Gigabit Ethernet" },
-	[BCM57712_MF]	= { "Broadcom NetXtreme II BCM57712 10 Gigabit Ethernet Multi Function" },
-	[BCM57712_VF]	= { "Broadcom NetXtreme II BCM57712 10 Gigabit Ethernet Virtual Function" },
-	[BCM57800]	= { "Broadcom NetXtreme II BCM57800 10 Gigabit Ethernet" },
-	[BCM57800_MF]	= { "Broadcom NetXtreme II BCM57800 10 Gigabit Ethernet Multi Function" },
-	[BCM57800_VF]	= { "Broadcom NetXtreme II BCM57800 10 Gigabit Ethernet Virtual Function" },
-	[BCM57810]	= { "Broadcom NetXtreme II BCM57810 10 Gigabit Ethernet" },
-	[BCM57810_MF]	= { "Broadcom NetXtreme II BCM57810 10 Gigabit Ethernet Multi Function" },
-	[BCM57810_VF]	= { "Broadcom NetXtreme II BCM57810 10 Gigabit Ethernet Virtual Function" },
-	[BCM57840_4_10]	= { "Broadcom NetXtreme II BCM57840 10 Gigabit Ethernet" },
-	[BCM57840_2_20]	= { "Broadcom NetXtreme II BCM57840 20 Gigabit Ethernet" },
-	[BCM57840_MF]	= { "Broadcom NetXtreme II BCM57840 10/20 Gigabit Ethernet Multi Function" },
-	[BCM57840_VF]	= { "Broadcom NetXtreme II BCM57840 10/20 Gigabit Ethernet Virtual Function" },
-	[BCM57811]	= { "Broadcom NetXtreme II BCM57811 10 Gigabit Ethernet" },
-	[BCM57811_MF]	= { "Broadcom NetXtreme II BCM57811 10 Gigabit Ethernet Multi Function" },
-	[BCM57840_O]	= { "Broadcom NetXtreme II BCM57840 10/20 Gigabit Ethernet" },
-	[BCM57840_MFO]	= { "Broadcom NetXtreme II BCM57840 10/20 Gigabit Ethernet Multi Function" },
-	[BCM57811_VF]	= { "Broadcom NetXtreme II BCM57840 10/20 Gigabit Ethernet Virtual Function" }
+	[BCM57710]	= { "QLogic BCM57710 10 Gigabit PCIe [Everest]" },
+	[BCM57711]	= { "QLogic BCM57711 10 Gigabit PCIe" },
+	[BCM57711E]	= { "QLogic BCM57711E 10 Gigabit PCIe" },
+	[BCM57712]	= { "QLogic BCM57712 10 Gigabit Ethernet" },
+	[BCM57712_MF]	= { "QLogic BCM57712 10 Gigabit Ethernet Multi Function" },
+	[BCM57712_VF]	= { "QLogic BCM57712 10 Gigabit Ethernet Virtual Function" },
+	[BCM57800]	= { "QLogic BCM57800 10 Gigabit Ethernet" },
+	[BCM57800_MF]	= { "QLogic BCM57800 10 Gigabit Ethernet Multi Function" },
+	[BCM57800_VF]	= { "QLogic BCM57800 10 Gigabit Ethernet Virtual Function" },
+	[BCM57810]	= { "QLogic BCM57810 10 Gigabit Ethernet" },
+	[BCM57810_MF]	= { "QLogic BCM57810 10 Gigabit Ethernet Multi Function" },
+	[BCM57810_VF]	= { "QLogic BCM57810 10 Gigabit Ethernet Virtual Function" },
+	[BCM57840_4_10]	= { "QLogic BCM57840 10 Gigabit Ethernet" },
+	[BCM57840_2_20]	= { "QLogic BCM57840 20 Gigabit Ethernet" },
+	[BCM57840_MF]	= { "QLogic BCM57840 10/20 Gigabit Ethernet Multi Function" },
+	[BCM57840_VF]	= { "QLogic BCM57840 10/20 Gigabit Ethernet Virtual Function" },
+	[BCM57811]	= { "QLogic BCM57811 10 Gigabit Ethernet" },
+	[BCM57811_MF]	= { "QLogic BCM57811 10 Gigabit Ethernet Multi Function" },
+	[BCM57840_O]	= { "QLogic BCM57840 10/20 Gigabit Ethernet" },
+	[BCM57840_MFO]	= { "QLogic BCM57840 10/20 Gigabit Ethernet Multi Function" },
+	[BCM57811_VF]	= { "QLogic BCM57840 10/20 Gigabit Ethernet Virtual Function" }
 };
 
 #ifndef PCI_DEVICE_ID_NX2_57710
@@ -1203,7 +1213,7 @@ void bnx2x_panic_dump(struct bnx2x *bp, bool disable_int)
 		/* Tx */
 		for_each_cos_in_tx_queue(fp, cos)
 		{
-			if (!fp->txdata_ptr)
+			if (!fp->txdata_ptr[cos])
 				break;
 
 			txdata = *fp->txdata_ptr[cos];
@@ -1358,10 +1368,10 @@ void bnx2x_panic_dump(struct bnx2x *bp, bool disable_int)
 		for_each_cos_in_tx_queue(fp, cos) {
 			struct bnx2x_fp_txdata *txdata = fp->txdata_ptr[cos];
 
-			if (!fp->txdata_ptr)
+			if (!fp->txdata_ptr[cos])
 				break;
 
-			if (!txdata.tx_cons_sb)
+			if (!txdata->tx_cons_sb)
 				continue;
 
 			start = TX_BD(le16_to_cpu(*txdata->tx_cons_sb) - 10);
@@ -3583,6 +3593,7 @@ static void bnx2x_pf_q_prep_general(struct bnx2x *bp,
 
 	gen_init->cos = cos;
 
+	gen_init->fp_hsi = ETH_FP_HSI_VERSION;
 	/* TODO: Add default_vlan configuration here
 	 * when VIF supoort is added.
 	 */
@@ -5579,6 +5590,8 @@ static void bnx2x_attn_int_deasserted(struct bnx2x *bp, u32 deasserted)
 	if (bnx2x_chk_parity_attn(bp, &global, true)) {
 #ifndef BNX2X_STOP_ON_ERROR
 		bp->recovery_state = BNX2X_RECOVERY_INIT;
+
+		bnx2x_esx_trigger_grcdump(bp);
 		schedule_delayed_work(&bp->sp_rtnl_task, 0);
 		/* Disable HW interrupts */
 		bnx2x_int_disable(bp);
@@ -5789,6 +5802,12 @@ static void bnx2x_handle_classification_eqe(struct bnx2x *bp,
 		 */
 		bnx2x_handle_mcast_eqe(bp);
 		return;
+#if (defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000)) /* ! BNX2X_UPSTREAM */
+	case BNX2X_FILTER_VXLAN_PENDING:
+		DP(BNX2X_MSG_SP, "Got SETUP_VXLAN filter completions for cid %d\n", cid);
+		vlan_mac_obj = &bp->sp_objs[cid].vxlan_fltr_obj;
+		break;
+#endif
 	default:
 		BNX2X_ERR("Unsupported classification command: %d\n",
 			  elem->message.data.eth_event.echo);
@@ -6115,6 +6134,8 @@ static void bnx2x_eq_int(struct bnx2x *bp)
 		      BNX2X_STATE_OPEN):
 		case (EVENT_RING_OPCODE_RSS_UPDATE_RULES |
 		      BNX2X_STATE_OPENING_WAIT4_PORT):
+		case (EVENT_RING_OPCODE_RSS_UPDATE_RULES |
+		      BNX2X_STATE_CLOSING_WAIT4_HALT):
 			cid = elem->message.data.eth_event.echo &
 				BNX2X_SWCID_MASK;
 			DP(BNX2X_MSG_SP, "got RSS_UPDATE ramrod. CID %d\n",
@@ -7594,6 +7615,37 @@ static void bnx2x__common_init_phy(struct bnx2x *bp)
 	bnx2x_release_phy_lock(bp);
 }
 
+static void bnx2x_config_endianity(struct bnx2x *bp, u32 val)
+{
+	REG_WR(bp, PXP2_REG_RQ_QM_ENDIAN_M, val);
+	REG_WR(bp, PXP2_REG_RQ_TM_ENDIAN_M, val);
+	REG_WR(bp, PXP2_REG_RQ_SRC_ENDIAN_M, val);
+	REG_WR(bp, PXP2_REG_RQ_CDU_ENDIAN_M, val);
+	REG_WR(bp, PXP2_REG_RQ_DBG_ENDIAN_M, val);
+
+	/* make sure this value is 0 */
+	REG_WR(bp, PXP2_REG_RQ_HC_ENDIAN_M, 0);
+
+	REG_WR(bp, PXP2_REG_RD_QM_SWAP_MODE, val);
+	REG_WR(bp, PXP2_REG_RD_TM_SWAP_MODE, val);
+	REG_WR(bp, PXP2_REG_RD_SRC_SWAP_MODE, val);
+	REG_WR(bp, PXP2_REG_RD_CDURD_SWAP_MODE, val);
+}
+
+static void bnx2x_set_endianity(struct bnx2x *bp)
+{
+#ifdef __BIG_ENDIAN
+	bnx2x_config_endianity(bp, 1);
+#else
+	bnx2x_config_endianity(bp, 0);
+#endif
+}
+
+static void bnx2x_reset_endianity(struct bnx2x *bp)
+{
+	bnx2x_config_endianity(bp, 0);
+}
+
 /**
  * bnx2x_init_hw_common - initialize the HW at the COMMON phase.
  *
@@ -7660,23 +7712,7 @@ static int bnx2x_init_hw_common(struct bnx2x *bp)
 
 	bnx2x_init_block(bp, BLOCK_PXP2, PHASE_COMMON);
 	bnx2x_init_pxp(bp);
-
-#ifdef __BIG_ENDIAN
-	REG_WR(bp, PXP2_REG_RQ_QM_ENDIAN_M, 1);
-	REG_WR(bp, PXP2_REG_RQ_TM_ENDIAN_M, 1);
-	REG_WR(bp, PXP2_REG_RQ_SRC_ENDIAN_M, 1);
-	REG_WR(bp, PXP2_REG_RQ_CDU_ENDIAN_M, 1);
-	REG_WR(bp, PXP2_REG_RQ_DBG_ENDIAN_M, 1);
-	/* make sure this value is 0 */
-	REG_WR(bp, PXP2_REG_RQ_HC_ENDIAN_M, 0);
-
-/*	REG_WR(bp, PXP2_REG_RD_PBF_SWAP_MODE, 1); */
-	REG_WR(bp, PXP2_REG_RD_QM_SWAP_MODE, 1);
-	REG_WR(bp, PXP2_REG_RD_TM_SWAP_MODE, 1);
-	REG_WR(bp, PXP2_REG_RD_SRC_SWAP_MODE, 1);
-	REG_WR(bp, PXP2_REG_RD_CDURD_SWAP_MODE, 1);
-#endif
-
+	bnx2x_set_endianity(bp);
 	bnx2x_ilt_init_page_size(bp, INITOP_SET);
 
 	if (CHIP_REV_IS_FPGA(bp) && CHIP_IS_E1H(bp))
@@ -9088,7 +9124,6 @@ int bnx2x_set_mac_one(struct bnx2x *bp, u8 *mac,
 	/* Fill a user request section if needed */
 	if (!test_bit(RAMROD_CONT, ramrod_flags)) {
 		memcpy(ramrod_param.user_req.u.mac.mac, mac, ETH_ALEN);
-
 		__set_bit(mac_type, &ramrod_param.user_req.vlan_mac_flags);
 
 		/* Set the command: ADD or DEL */
@@ -9109,6 +9144,61 @@ int bnx2x_set_mac_one(struct bnx2x *bp, u8 *mac,
 
 	return rc;
 }
+
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
+int bnx2x_set_vxlan_fltr_one(struct bnx2x *bp, u8 *outer_mac,
+				struct bnx2x_vlan_mac_obj *obj, bool set,
+				int mac_type, unsigned long *ramrod_flags,
+				u8 *inner_mac, u32 vxlan_id)
+{
+	int rc;
+	struct bnx2x_vlan_mac_ramrod_params ramrod_param;
+
+	if (!inner_mac) {
+		DP(BNX2X_MSG_SP, "NULL inner_mac pointer passed.\n");
+		return -EINVAL;
+	}
+
+	if (!is_valid_ether_addr(inner_mac)) {
+		DP(BNX2X_MSG_SP, "Returning since NULL inner mac being programmed.\n");
+		/* Do not treat as error. */
+		return 0;
+	}
+
+	memset(&ramrod_param, 0, sizeof(ramrod_param));
+
+	/* Fill general parameters */
+	ramrod_param.vlan_mac_obj = obj;
+	ramrod_param.ramrod_flags = *ramrod_flags;
+
+	/* Fill a user request section if needed */
+	if (!test_bit(RAMROD_CONT, ramrod_flags)) {
+		struct bnx2x_vxlan_fltr_ramrod_data *ramrod_data;
+
+		ramrod_data = &ramrod_param.user_req.u.vxlan_fltr;
+		memcpy(ramrod_data->innermac, inner_mac, ETH_ALEN);
+		ramrod_data->vni = vxlan_id;
+
+		/* Set the command: ADD or DEL */
+		if (set)
+			ramrod_param.user_req.cmd = BNX2X_VLAN_MAC_ADD;
+		else
+			ramrod_param.user_req.cmd = BNX2X_VLAN_MAC_DEL;
+	}
+
+	rc = bnx2x_config_vlan_mac(bp, &ramrod_param);
+
+	if (rc == -EEXIST) {
+		DP(BNX2X_MSG_SP, "Failed to schedule ADD operations: %d\n", rc);
+		/* do not treat adding same MAC as error */
+		rc = 0;
+	} else if (rc < 0) {
+		BNX2X_ERR("%s MAC failed\n", (set ? "Set" : "Del"));
+	}
+
+	return rc;
+}
+#endif
 
 int bnx2x_del_all_macs(struct bnx2x *bp,
 		       struct bnx2x_vlan_mac_obj *mac_obj,
@@ -10748,6 +10838,8 @@ static void bnx2x_sp_rtnl_task(void *data)
 		return;
 	}
 
+	bnx2x_esx_collect_grcdump(bp);
+
 	if (unlikely(bp->recovery_state != BNX2X_RECOVERY_DONE)) {
 #ifdef BNX2X_STOP_ON_ERROR
 		BNX2X_ERR("recovery flow called but STOP_ON_ERROR defined so reset not done to allow debug dump,\n"
@@ -11005,6 +11097,8 @@ static void bnx2x_prev_unload_close_mac(struct bnx2x *bp,
 }
 
 #define BNX2X_PREV_UNDI_PROD_ADDR(p) (BAR_TSTRORM_INTMEM + 0x1508 + ((p) << 4))
+#define BNX2X_PREV_UNDI_PROD_ADDR_H(f) (BAR_TSTRORM_INTMEM + \
+					0x1848 + ((f) << 4))
 #define BNX2X_PREV_UNDI_RCQ(val)	((val) & 0xffff)
 #define BNX2X_PREV_UNDI_BD(val)		((val) >> 16 & 0xffff)
 #define BNX2X_PREV_UNDI_PROD(rcq, bd)	((bd) << 16 | (rcq))
@@ -11012,8 +11106,6 @@ static void bnx2x_prev_unload_close_mac(struct bnx2x *bp,
 #define BCM_5710_UNDI_FW_MF_MAJOR	(0x07)
 #define BCM_5710_UNDI_FW_MF_MINOR	(0x08)
 #define BCM_5710_UNDI_FW_MF_VERS	(0x05)
-#define BNX2X_PREV_UNDI_MF_PORT(p)	(BAR_TSTRORM_INTMEM + 0x150c + ((p) << 4))
-#define BNX2X_PREV_UNDI_MF_FUNC(f)	(BAR_TSTRORM_INTMEM + 0x184c + ((f) << 4))
 
 static bool bnx2x_prev_is_after_undi(struct bnx2x *bp)
 {
@@ -11032,67 +11124,26 @@ static bool bnx2x_prev_is_after_undi(struct bnx2x *bp)
 	return false;
 }
 
-static bool bnx2x_prev_unload_undi_fw_supports_mf(struct bnx2x *bp)
-{
-	u8 major, minor, version;
-	u32 fw;
-
-	/* Must check that FW is loaded */
-	if (!(REG_RD(bp, MISC_REG_RESET_REG_1) &
-	     MISC_REGISTERS_RESET_REG_1_RST_XSEM)) {
-		BNX2X_DEV_INFO("XSEM is reset - UNDI MF FW is not loaded\n");
-		return false;
-	}
-
-	/* Read Currently loaded FW version */
-	fw = REG_RD(bp, XSEM_REG_PRAM);
-	major = fw & 0xff;
-	minor = (fw >> 0x8) & 0xff;
-	version = (fw >> 0x10) & 0xff;
-	BNX2X_DEV_INFO("Loaded FW: 0x%08x: Major 0x%02x Minor 0x%02x Version 0x%02x\n",
-		       fw, major, minor, version);
-
-	if (major > BCM_5710_UNDI_FW_MF_MAJOR)
-		return true;
-
-	if ((major == BCM_5710_UNDI_FW_MF_MAJOR) &&
-	    (minor > BCM_5710_UNDI_FW_MF_MINOR))
-		return true;
-
-	if ((major == BCM_5710_UNDI_FW_MF_MAJOR) &&
-	    (minor == BCM_5710_UNDI_FW_MF_MINOR) &&
-	    (version >= BCM_5710_UNDI_FW_MF_VERS))
-		return true;
-
-	return false;
-}
-
-static void bnx2x_prev_unload_undi_mf(struct bnx2x *bp)
-{
-	int i;
-
-	for (i = 0; i < 2; i++)
-		REG_WR(bp, BNX2X_PREV_UNDI_MF_PORT(i), 1);
-
-	for (i = 2; i < 8; i++)
-		REG_WR(bp, BNX2X_PREV_UNDI_MF_FUNC(i - 2), 1);
-
-	BNX2X_DEV_INFO("UNDI FW (MF) set to discard\n");
-}
-
-static void bnx2x_prev_unload_undi_inc(struct bnx2x *bp, u8 port, u8 inc)
+static void bnx2x_prev_unload_undi_inc(struct bnx2x *bp, u8 inc)
 {
 	u16 rcq, bd;
-	u32 tmp_reg = REG_RD(bp, BNX2X_PREV_UNDI_PROD_ADDR(port));
+	u32 addr, tmp_reg;
+
+	if (BP_FUNC(bp) < 2)
+		addr = BNX2X_PREV_UNDI_PROD_ADDR(BP_PORT(bp));
+	else
+		addr = BNX2X_PREV_UNDI_PROD_ADDR_H(BP_FUNC(bp) - 2);
+
+	tmp_reg = REG_RD(bp, addr);
 
 	rcq = BNX2X_PREV_UNDI_RCQ(tmp_reg) + inc;
 	bd = BNX2X_PREV_UNDI_BD(tmp_reg) + inc;
 
 	tmp_reg = BNX2X_PREV_UNDI_PROD(rcq, bd);
-	REG_WR(bp, BNX2X_PREV_UNDI_PROD_ADDR(port), tmp_reg);
+	REG_WR(bp, addr, tmp_reg);
 
-	BNX2X_DEV_INFO("UNDI producer [%d] rings bd -> 0x%04x, rcq -> 0x%04x\n",
-		       port, bd, rcq);
+	BNX2X_DEV_INFO("UNDI producer [%d/%d][%08x] rings bd -> 0x%04x, rcq -> 0x%04x\n",
+		       BP_PORT(bp), BP_FUNC(bp), addr, bd, rcq);
 }
 
 static int bnx2x_prev_mcp_done(struct bnx2x *bp)
@@ -11335,7 +11386,6 @@ static int bnx2x_prev_unload_common(struct bnx2x *bp)
 	/* Reset should be performed after BRB is emptied */
 	if (reset_reg & MISC_REGISTERS_RESET_REG_1_RST_BRB1) {
 		u32 timer_count = 1000;
-		bool need_write = true;
 
 		/* Close the MAC Rx to prevent BRB from filling up */
 		bnx2x_prev_unload_close_mac(bp, &mac_vals);
@@ -11372,20 +11422,10 @@ static int bnx2x_prev_unload_common(struct bnx2x *bp)
 			else
 				timer_count--;
 
-			/* New UNDI FW supports MF and contains better
-			 * cleaning methods - might be redundant but unharmful.
-			 */
-			if (bnx2x_prev_unload_undi_fw_supports_mf(bp)) {
-				if (need_write) {
-					bnx2x_prev_unload_undi_mf(bp);
-					need_write = false;
-				}
-			} else if (prev_undi) {
-				/* If UNDI resides in memory,
-				 * manually increment it
-				 */
-				bnx2x_prev_unload_undi_inc(bp, BP_PORT(bp), 1);
-			}
+			/* If UNDI resides in memory, manually increment it */
+			if (prev_undi)
+				bnx2x_prev_unload_undi_inc(bp, 1);
+
 			udelay(10);
 		}
 
@@ -12549,6 +12589,13 @@ static int __devinit bnx2x_get_hwinfo(struct bnx2x *bp)
 	u32 val2 = 0;
 	int rc = 0;
 
+	/* Validate that chip access is feasible */
+	if (REG_RD(bp, MISC_REG_CHIP_NUM) == 0xffffffff) {
+		dev_err(&bp->pdev->dev,
+			"Chip read returns all Fs. Preventing probe from continuing\n");
+		return -EINVAL;
+	}
+
 	bnx2x_get_common_hwinfo(bp);
 
 	/*
@@ -13130,7 +13177,7 @@ static int __devinit bnx2x_init_bp(struct bnx2x *bp)
 	bp->disable_tpa = disable_tpa;
 	bp->disable_tpa |= !!IS_MF_STORAGE_ONLY(bp);
 	/* Reduce memory usage in kdump environment by disabling TPA */
-	bp->disable_tpa |= reset_devices;
+	bp->disable_tpa |= is_kdump_kernel();
 
 	/* Set TPA flags */
 	if (bp->disable_tpa) {
@@ -13828,10 +13875,6 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 	.ndo_validate_addr	= bnx2x_validate_addr,
 	.ndo_do_ioctl		= bnx2x_ioctl,
 	.ndo_change_mtu		= bnx2x_change_mtu,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
-	.ndo_fix_features	= bnx2x_fix_features,
-	.ndo_set_features	= bnx2x_set_features,
-#endif
 	.ndo_tx_timeout		= bnx2x_tx_timeout,
 #ifdef BCM_VLAN /* ! BNX2X_UPSTREAM */
 	.ndo_vlan_rx_register	= bnx2x_vlan_rx_register,
@@ -13848,13 +13891,17 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 	.ndo_set_vf_vlan	= bnx2x_set_vf_vlan,
 	.ndo_get_vf_config	= bnx2x_get_vf_config,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 8, 0)) /* BNX2X_UPSTREAM */
-	.ndo_bridge_setlink     = bnx2x_bridge_setlink,
 	.ndo_bridge_getlink     = bnx2x_bridge_getlink,
 #endif
 #endif
 #endif
 #ifdef NETDEV_FCOE_WWNN
 	.ndo_fcoe_get_wwn	= bnx2x_fcoe_get_wwn,
+#endif
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
+	.ndo_fix_features	= bnx2x_fix_features,
+	.ndo_set_features	= bnx2x_set_features,
 #endif
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	.ndo_busy_poll		= bnx2x_low_latency_recv,
@@ -13865,6 +13912,15 @@ static const struct net_device_ops bnx2x_netdev_ops = {
 #ifdef _HAS_SET_VF_LINK_STATE /* BNX2X_UPSTREAM */
 	.ndo_set_vf_link_state	= bnx2x_set_vf_link_state,
 #endif
+#endif /* RH6.X; x > 5 */
+};
+#endif
+#if (RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* ! BNX2X_UPSTREAM */
+static const struct net_device_ops_ext bnx2x_netdev_ops_ext = {
+	.size = sizeof(struct net_device_ops_ext),
+	.ndo_fix_features       = bnx2x_fix_features,
+	.ndo_set_features       = bnx2x_set_features,
+	.ndo_get_phys_port_id   = bnx2x_get_phys_port_id,
 };
 #endif
 
@@ -13905,11 +13961,22 @@ static inline int bnx2x_set_coherency_mask(struct bnx2x *bp)
 }
 #endif
 
+static void bnx2x_disable_pcie_error_reporting(struct bnx2x *bp)
+{
+	if (bp->flags & AER_ENABLED) {
+		pci_disable_pcie_error_reporting(bp->pdev);
+		bp->flags &= ~AER_ENABLED;
+	}
+}
+
 static int __devinit bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 			     struct net_device *dev, unsigned long board_type)
 {
 	int rc;
 	u32 pci_cfg_dword;
+#ifdef HAS_NDO_FIX_FEATURES /* BNX2X_UPSTREAM */
+	netdev_features_t hw_features;
+#endif
 	bool chip_is_e1x = (board_type == BCM57710 ||
 			    board_type == BCM57711 ||
 			    board_type == BCM57711E);
@@ -14111,6 +14178,13 @@ static int __devinit bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 	dev->validate_addr = bnx2x_validate_addr;
 #endif
 #endif
+
+#if (RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* ! BNX2X_UPSTREAM */ 
+#ifdef CONFIG_NET_RX_BUSY_POLL
+        netdev_extended(dev)->ndo_busy_poll = bnx2x_low_latency_recv;
+#endif
+        set_netdev_ops_ext(dev, &bnx2x_netdev_ops_ext);
+#endif /* RH6.X; X > 5 */
 	bnx2x_set_ethtool_ops(bp, dev);
 
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
@@ -14123,7 +14197,7 @@ static int __devinit bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 	/* dev->features |= NETIF_F_RDONLYINETHDRS; */
 #endif  /* NETIF_F_RDONLYINETHDRS */
 #endif
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* non BNX2X_UPSTREAM */
+#ifndef HAS_NDO_FIX_FEATURES /* non BNX2X_UPSTREAM */
 	dev->features |= NETIF_F_SG;
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 23))
 	dev->features |= NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM;
@@ -14156,17 +14230,19 @@ static int __devinit bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 #else /* BNX2X_UPSTREAM */
 	dev->priv_flags |= IFF_UNICAST_FLT;
 
-	dev->hw_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
+	hw_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 |
 		NETIF_F_RXCSUM | NETIF_F_LRO | NETIF_F_GRO |
 		NETIF_F_RXHASH | NETIF_F_HW_VLAN_CTAG_TX;
 
 #ifdef ENC_SUPPORTED /* BNX2X_UPSTREAM */
 	if (!CHIP_IS_E1x(bp)) {
-		dev->hw_features |= NETIF_F_GSO_GRE | NETIF_F_GSO_UDP_TUNNEL;
+		hw_features |= NETIF_F_GSO_GRE | NETIF_F_GSO_UDP_TUNNEL |
+				    NETIF_F_GSO_IPIP | NETIF_F_GSO_SIT;
 		dev->hw_enc_features =
 			NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM | NETIF_F_SG |
 			NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 |
+			NETIF_F_GSO_IPIP | NETIF_F_GSO_SIT |
 			NETIF_F_GSO_GRE | NETIF_F_GSO_UDP_TUNNEL;
 	}
 #endif /* ENC_SUPPORTED */
@@ -14174,12 +14250,18 @@ static int __devinit bnx2x_init_dev(struct bnx2x *bp, struct pci_dev *pdev,
 	dev->vlan_features = NETIF_F_SG | NETIF_F_IP_CSUM | NETIF_F_IPV6_CSUM |
 		NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_TSO6 | NETIF_F_HIGHDMA;
 
-	dev->features |= dev->hw_features | NETIF_F_HW_VLAN_CTAG_RX;
+	dev->features |= hw_features | NETIF_F_HW_VLAN_CTAG_RX;
 	dev->features |= NETIF_F_HIGHDMA;
 
 	/* Add Loopback capability to the device */
-	dev->hw_features |= NETIF_F_LOOPBACK;
-#endif /* 2, 6, 39 */
+	hw_features |= NETIF_F_LOOPBACK;
+
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
+	dev->hw_features = hw_features;
+#else
+	set_netdev_hw_features(dev, hw_features);
+#endif /* RHEL6.X; X > 5 */
+#endif /* HAS_NDO_FIX_FEATURES */
 
 #ifdef BCM_DCBNL
 	dev->dcbnl_ops = &bnx2x_dcbnl_ops;
@@ -14534,7 +14616,7 @@ static int bnx2x_get_num_non_def_sbs(struct pci_dev *pdev, int cnic_cnt)
 	 * exactly what we want to return from this function: number of all SBs
 	 * without the default SB.
 	 */
-	pci_read_config_word(pdev, BNX2X_PDEV_MSIX_CAP(pdev, pos) + PCI_MSI_FLAGS, &control);
+	pci_read_config_word(pdev, BNX2X_PDEV_MSIX_CAP(pdev, pos) + PCI_MSIX_FLAGS, &control);
 
 	index = control & PCI_MSIX_FLAGS_QSIZE;
 
@@ -14901,7 +14983,6 @@ static int __devinit bnx2x_init_one(struct pci_dev *pdev,
 	 */
 	if (IS_VF(bp)) {
 		bp->doorbells = bnx2x_vf_doorbells(bp);
-		mutex_init(&bp->vf2pf_mutex);
 		rc = bnx2x_vf_pci_alloc(bp);
 		if (rc)
 			goto init_one_exit;
@@ -15051,10 +15132,10 @@ static int __devinit bnx2x_init_one(struct pci_dev *pdev,
 	/* Check for RSS pools configuration */
 	if (num_rss_pools && RSS) {
 		if (RSS < 2 || RSS > 4) {
-			printk(KERN_ERR "%s: 'RSS' currently supports values 2-4\n",
+			printk(KERN_ERR "%s: Invalid input for 'RSS'. Currently supports values 2-4. Set 0 to disable.\n",
 			       dev->name);
-		} else if (num_rss_pools > 1) {
-			printk(KERN_ERR "%s: 'num_rss_pools currently supports max of 1\n",
+		} else if (num_rss_pools < 0 || num_rss_pools > 1) {
+			printk(KERN_ERR "%s: Invalid input for 'num_rss_pools'. Currently supports max of 1. Set 0 to disable.\n",
 			       dev->name);
 		} else if (CHIP_IS_E1x(bp)) {
 			printk(KERN_ERR "%s: Board revision does not support RSS\n",
@@ -15089,10 +15170,7 @@ static int __devinit bnx2x_init_one(struct pci_dev *pdev,
 	return 0;
 
 init_one_exit:
-	if (bp->flags & AER_ENABLED) {
-		pci_disable_pcie_error_reporting(pdev);
-		bp->flags &= ~AER_ENABLED;
-	}
+	bnx2x_disable_pcie_error_reporting(bp);
 
 	if (bp->regview)
 		iounmap(bp->regview);
@@ -15171,14 +15249,17 @@ static void __bnx2x_remove(struct pci_dev *pdev,
 	 */
 	bp->num_bypass_queues = 0;
 #endif
-#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
-	/* Delete all NAPI objects */
-	bnx2x_del_all_napi(bp);
-	bnx2x_del_all_napi_cnic(bp);
-#endif
+	bnx2x_esx_remove(bp);
+
 	/* Power on: we can't let PCI layer write to us while we are in D3 */
-	if (IS_PF(bp))
+	if (IS_PF(bp)) {
 		bnx2x_set_power_state(bp, PCI_D0);
+
+		/* Set endianity registers to reset values in case next driver
+		 * boots in different endianty environment.
+		 */
+		bnx2x_reset_endianity(bp);
+	}
 
 	/* Disable MSI/MSI-X */
 	bnx2x_disable_msi(bp);
@@ -15205,10 +15286,7 @@ static void __bnx2x_remove(struct pci_dev *pdev,
 		pci_set_power_state(pdev, PCI_D3hot);
 	}
 
-	if (bp->flags & AER_ENABLED) {
-		pci_disable_pcie_error_reporting(pdev);
-		bp->flags &= ~AER_ENABLED;
-	}
+	bnx2x_disable_pcie_error_reporting(bp);
 
 	if (remove_netdev) {
 		if (bp->regview)
@@ -16415,7 +16493,8 @@ static int bnx2x_cnic_get_ooo_cqe(struct net_device *dev,
 				}
 #ifdef BCM_HAS_BUILD_SKB /* BNX2X_UPSTREAM */
 #ifdef BCM_HAS_BUILD_SKB_V2 /* BNX2X_UPSTREAM */
-				skb = build_skb(rx_buf->data, 0);
+				skb = build_skb(rx_buf->data,
+						fp->rx_frag_size);
 #else
 				skb = build_skb(rx_buf->data);
 #endif

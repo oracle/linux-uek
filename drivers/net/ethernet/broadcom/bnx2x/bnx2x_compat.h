@@ -1,15 +1,17 @@
-/* bnx2x_compat.h: Broadcom Everest network driver.
+/* bnx2x_compat.h: QLogic Everest network driver.
  *
  * Copyright 2007-2013 Broadcom Corporation
+ * Copyright 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and QLogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
  * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other QLogic software provided under a
+ * license other than the GPL, without QLogic's express prior written
  * consent.
  *
  */
@@ -21,6 +23,13 @@
 
 #ifndef __VMKLNX__
 #define VMWARE_ESX_DDK_VERSION		0
+#define bnx2x_esx_remove(bp)
+#define bnx2x_esx_trigger_grcdump(bp)
+#define bnx2x_esx_collect_grcdump(bp)
+#define bnx2x_esx_stats_count(bp) 0
+#define bnx2x_esx_get_strings(buf)
+#define bnx2x_esx_get_ethtool_stats(bp, buf)
+#define bnx2x_esx_update_vxlan_stats(bp, skb, xmit_type, bytes)
 #elif (VMWARE_ESX_DDK_VERSION >= 50000)
 #define __COMPAT_LAYER_2_6_18_PLUS__	1
 #define __USE_COMPAT_LAYER_2_6_18_PLUS__ 1
@@ -1033,7 +1042,7 @@ int bnx2x_ilog2(int x)
 #endif
 
 #if (LINUX_PRE_VERSION(2, 6, 36))
-#ifndef netdev_printk
+#if defined(_DEFINE_NETDEV_NAME) || defined(__VMKLNX__)
 static inline const char *netdev_name(const struct net_device *dev)
 {
 	if (dev->reg_state != NETREG_REGISTERED)
@@ -1396,6 +1405,10 @@ static inline int __devinit pci_vpd_find_info_keyword(u8 *rodata,
 #define DEBIAN_MERGED_PCI_CODE
 #endif
 #endif
+
+#ifndef PCI_MSIX_FLAGS
+#define PCI_MSIX_FLAGS		2
+#endif
 #ifndef PCI_MSIX_FLAGS_QSIZE
 #define PCI_MSIX_FLAGS_QSIZE	0x7FF
 #endif
@@ -1675,12 +1688,14 @@ static inline u32 ethtool_rxfh_indir_default(u32 index, u32 n_rx_rings)
 	return index % n_rx_rings;
 }
 #endif
+#endif
+#endif
+#if defined(_DEFINE_NETDEV_TX_COMPLETED_QUEUE) || defined(__VMKLNX__)
 static inline void netdev_tx_completed_queue(struct netdev_queue *q,
 					    unsigned int a, unsigned int b) { }
 static inline void netdev_tx_reset_queue(struct netdev_queue *q) { }
 static inline void netdev_tx_sent_queue(struct netdev_queue *q,
 					unsigned int len) { }
-#endif
 #endif
 
 #ifndef eth_hw_addr_random
@@ -2452,15 +2467,6 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 #define SUPPORT_PCIE_ARI_CHECK
 #endif
 
-#if (defined(_HAS_ETHTOOL_TS_INFO))
-#if (defined(_HAS_ETHTOOL_OPS_EXT))
-#define BCM_ETHTOOL_TS_INFO_OPS_EXT
-#else
-#define BCM_ETHTOOL_TS_INFO_OPS
-#endif
-#define BCM_ETHTOOL_TS_INFO
-#endif
-
 #if (defined(_HAS_HW_TSTAMP) && (defined(CONFIG_PTP_1588_CLOCK) || defined(CONFIG_PTP_1588_CLOCK_MODULE)))
 #define BCM_PTP
 #endif
@@ -2515,6 +2521,12 @@ enum {
 	__val > __max ? __max: __val; })
 #endif /* _HAS_CLAMP */
 
+#if LINUX_PRE_VERSION(3, 17, 0)
+/* This cannot be decided by checking header symbols from kernel includes,
+ * since the change making this possible is an exported symbol in a .c file.
+ */
+#define is_kdump_kernel()	(reset_devices)
+#endif
 #ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
 #define BNX2X_EEE_DEFAULT_VAL	-1
 #else
@@ -2554,4 +2566,15 @@ skb_set_hash(struct sk_buff *skb, __u32 hash, enum pkt_hash_types type)
 #define napi_hash_del(napi)	do { } while (0)
 #endif
 
+#ifndef NETIF_F_GSO_IPIP
+#define NETIF_F_GSO_IPIP (0)
+#endif
+
+#ifndef NETIF_F_GSO_SIT
+#define NETIF_F_GSO_SIT	(0)
+#endif
+
+#ifdef _DEFINE_NETDEV_FEATURES_T
+#define netdev_features_t u32
+#endif
 #endif /* __BNX2X_COMPAT_H__ */

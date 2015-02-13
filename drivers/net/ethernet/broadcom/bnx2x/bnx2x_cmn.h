@@ -1,6 +1,8 @@
-/* bnx2x_cmn.h: Broadcom Everest network driver.
+/* bnx2x_cmn.h: QLogic Everest network driver.
  *
  * Copyright (c) 2007-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -720,7 +722,7 @@ int bnx2x_change_mtu(struct net_device *dev, int new_mtu);
 int bnx2x_fcoe_get_wwn(struct net_device *dev, u64 *wwn, int type);
 #endif
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39)) /* BNX2X_UPSTREAM */
+#ifdef HAS_NDO_FIX_FEATURES /* BNX2X_UPSTREAM */
 netdev_features_t bnx2x_fix_features(struct net_device *dev,
 				     netdev_features_t features);
 int bnx2x_set_features(struct net_device *dev, netdev_features_t features);
@@ -1054,6 +1056,10 @@ static inline int bnx2x_config_rss_eth(struct bnx2x *bp, bool config_hash)
 	return bnx2x_rss(bp, &bp->rss_conf_obj, config_hash, true);
 }
 
+#if (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+extern int disable_vxlan_filter;
+#endif
+
 /**
  * bnx2x_func_start - init function
  *
@@ -1094,6 +1100,12 @@ static inline int bnx2x_func_start(struct bnx2x *bp)
 	start_params->gre_tunnel_type	= bp->gre_tunnel_type;
 	start_params->vxlan_dst_port	= bp->vxlan_dst_port;
 #endif
+
+#if (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+	if (!disable_vxlan_filter && !CHIP_IS_E1x(bp))
+		start_params->tunn_clss_en = 1;
+#endif
+
 	start_params->inner_gre_rss_en = 1;
 
 	if (IS_MF_UFP(bp) && BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)) {
@@ -1181,6 +1193,20 @@ static inline void bnx2x_init_vlan_mac_fp_objs(struct bnx2x_fastpath *fp,
 			   BNX2X_FILTER_MAC_PENDING,
 			   &bp->sp_state, obj_type,
 			   &bp->macs_pool);
+
+#if  (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+	/* Configure VXLAN classification DBs */
+	if (!disable_vxlan_filter && !CHIP_IS_E1x(bp)) {
+		bnx2x_init_vxlan_fltr_obj
+			(bp, &bnx2x_sp_obj(bp, fp).vxlan_fltr_obj,
+			fp->cl_id,
+			fp->cid, BP_FUNC(bp), bnx2x_sp(bp, mac_rdata),
+			bnx2x_sp_mapping(bp, mac_rdata),
+			BNX2X_FILTER_VXLAN_PENDING,
+			&bp->sp_state, BNX2X_OBJ_TYPE_RX,
+			&bp->macs_pool, &bp->vlans_pool);
+	}
+#endif
 }
 
 /**

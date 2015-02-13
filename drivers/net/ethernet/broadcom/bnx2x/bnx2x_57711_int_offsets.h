@@ -1,9 +1,9 @@
 /*
-* ©2011 Broadcom Corporation
-* Unless you and Broadcom execute a separate written software license
+* ©2011 QLogic Corporation
+* Unless you and QLogic execute a separate written software license
 * agreement governing use of this software, this software is licensed to
 * you under the terms of the GNU General Public License version 2,
-* available at http://www.broadcom.com/licenses/GPLv2.php (the "GPL").
+* available at http://www.gnu.org/licenses/gpl-2.0.html (the "GPL").
 */
 static const struct iro e1h_iro_arr[385] = {
 	{     0x40,      0x0,      0x0,      0x0,      0x0},	// COMMON_SB_SIZE
