@@ -1,7 +1,7 @@
-/* bnx2.c: QLogic NX2 network driver.
+/* bnx2.c: QLogic bnx2 network driver.
  *
  * Copyright (c) 2004-2014 Broadcom Corporation
- * Copyright (c) 2014 QLogic Corporation
+ * Copyright (c) 2014-2015 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -11,8 +11,9 @@
  * Written by: Michael Chan  (mchan@broadcom.com)
  */
 
-#include <linux/version.h>
 #include "bnx2_compat00.h"
+
+#include <linux/version.h>
 
 #if (LINUX_VERSION_CODE < 0x020612)
 #include <linux/config.h>
@@ -96,8 +97,8 @@
 #include "bnx2_fw2.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION	"2.2.5i"
-#define DRV_MODULE_RELDATE	"July 22, 2014"
+#define DRV_MODULE_VERSION	"2.2.5m"
+#define DRV_MODULE_RELDATE	"January 20, 2015"
 
 #define RUN_AT(x) (jiffies + (x))
 
@@ -106,7 +107,7 @@
 /* On VMware ESX there is a possibility that that netdev watchdog thread
  * runs before the reset task if the machine is loaded.  If this occurs
  * too many times, these premature watchdog triggers will cause a PSOD
- * on a VMware ESX beta build */
+ * on a VMware ESX beta build */ 
 #define TX_TIMEOUT  (20*HZ)
 #else
 #define TX_TIMEOUT  (5*HZ)
@@ -119,10 +120,10 @@ static int bnx2_registered_cnic_adapter;
 #endif /* defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 50000)*/
 
 static char version[] __devinitdata =
-	"Broadcom NetXtreme II Gigabit Ethernet Driver " DRV_MODULE_NAME " v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
+	"QLogic " DRV_MODULE_NAME " Gigabit Ethernet Driver v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
 MODULE_AUTHOR("Michael Chan <mchan@broadcom.com>");
-MODULE_DESCRIPTION("Broadcom NetXtreme II BCM5706/5708/5709/5716 Driver");
+MODULE_DESCRIPTION("QLogic BCM5706/5708/5709/5716 Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
 
@@ -229,7 +230,7 @@ static struct {
 	{ "Broadcom NetXtreme II BCM5716 1000Base-SX" },
 	};
 
-static const struct pci_device_id bnx2_pci_tbl[] = {
+static DEFINE_PCI_DEVICE_TABLE(bnx2_pci_tbl) = {
 	{ PCI_VENDOR_ID_BROADCOM, PCI_DEVICE_ID_NX2_5706,
 	  PCI_VENDOR_ID_HP, 0x3101, 0, 0, NC370T },
 	{ PCI_VENDOR_ID_BROADCOM, PCI_DEVICE_ID_NX2_5706,
@@ -365,7 +366,7 @@ static void __devexit bnx2_del_napi(struct bnx2 *bp);
 
 static void bnx2_set_rx_ring_size(struct bnx2 *bp, u32 size);
 
-#if defined(__VMKLNX__)
+#if defined(__VMKLNX__) 
 static int
 bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget,
 	    int check_queue);
@@ -876,7 +877,7 @@ static void
 bnx2_netqueue_tx_flush_queue(struct bnx2_napi *bnapi,
 			     struct bnx2_tx_ring_info *txr)
 {
-	struct bnx2 *bp = bnapi->bp;
+	struct bnx2 *bp = bnapi->bp;	
 
 	rmb();
 	if ((bnx2_get_hw_tx_cons(bnapi) != txr->hw_tx_cons) ||
@@ -924,7 +925,7 @@ bnx2_netif_stop(struct bnx2 *bp, bool stop_cnic)
 #endif
 		bnx2_cnic_stop(bp);
 	}
-
+	
 	if (netif_running(bp->dev)) {
 		bnx2_disable_int_sync(bp);
 		netif_carrier_off(bp->dev);	/* prevent tx timeout */
@@ -945,7 +946,7 @@ bnx2_netif_stop(struct bnx2 *bp, bool stop_cnic)
 		bnx2_netqueue_tx_flush(bp);
 	if (stop_cnic) {
 		/* if for whatever the reason, netqueue failed to stop in case
-                   of chip getting stuck, we should force the netqueue to stop
+                   of chip getting stuck, we should force the netqueue to stop 
                    since chip will go thru full reset afterward. */
 		if (bnx2_netqueue_is_avail(bp))
 			bnx2_force_stop_netqueue(bp);
@@ -3234,7 +3235,7 @@ static int
 #if defined(__VMKLNX__)
 bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget,
 	    int check_queue)
-#else
+#else	    
 bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 #endif
 {
@@ -3266,7 +3267,7 @@ bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 		/* prefetch skb_end_pointer() to speedup skb_shinfo(skb) */
 		prefetch(&skb->end);
 
-#ifdef BCM_TSO
+#ifdef BCM_TSO 
 		/* partial BD completions possible with TSO packets */
 		if (tx_buf->is_gso) {
 			u16 last_idx, last_ring_idx;
@@ -3310,7 +3311,7 @@ bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 
 		sw_cons = BNX2_NEXT_TX_BD(sw_cons);
 
-		dev_kfree_skb_any(skb);
+		dev_kfree_skb(skb);
 #if defined(BNX2_ENABLE_NETQUEUE)
 		bnapi->stats.tx_packets++;
 		bnapi->stats.tx_bytes += skb->len;
@@ -3338,7 +3339,7 @@ bnx2_tx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 #if defined(BNX2_ENABLE_NETQUEUE)
 	if ((!check_queue) || (bp->netq_state & BNX2_NETQ_SUSPENDED))
 		return tx_pkt;
-#endif
+#endif		
 
 #ifndef BCM_HAVE_MULTI_QUEUE
 	if (unlikely(netif_queue_stopped(bp->dev)) &&
@@ -3435,8 +3436,8 @@ bnx2_reuse_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr,
 #else
 	pci_dma_sync_single_for_device(bp->pdev,
 #endif
-		dma_unmap_addr(cons_rx_buf, mapping),
-		BNX2_RX_OFFSET + BNX2_RX_COPY_THRESH, PCI_DMA_FROMDEVICE);
+ 		dma_unmap_addr(cons_rx_buf, mapping),
+ 		BNX2_RX_OFFSET + BNX2_RX_COPY_THRESH, PCI_DMA_FROMDEVICE);
 
 	rxr->rx_prod_bseq += bp->rx_buf_use_size;
 
@@ -3545,7 +3546,7 @@ bnx2_rx_skb(struct bnx2 *bp, struct bnx2_rx_ring_info *rxr, struct sk_buff *skb,
 
 #if (LINUX_VERSION_CODE >= 0x02061b)
 			dma_unmap_page(&bp->pdev->dev, mapping_old,
-				       PAGE_SIZE, PCI_DMA_FROMDEVICE);
+ 				       PAGE_SIZE, PCI_DMA_FROMDEVICE);
 #else
 			pci_unmap_page(bp->pdev, mapping_old,
 				       PAGE_SIZE, PCI_DMA_FROMDEVICE);
@@ -3589,9 +3590,6 @@ bnx2_rx_int(struct bnx2 *bp, struct bnx2_napi *bnapi, int budget)
 #if defined(BNX2_ENABLE_NETQUEUE)
 	int index = (bnapi - bp->bnx2_napi);
 #endif
-
-	if (budget <= 0)
-		return rx_pkt;
 
 	hw_cons = bnx2_get_hw_rx_cons(bnapi);
 	sw_cons = rxr->rx_cons;
@@ -4350,7 +4348,7 @@ bnx2_gunzip_init(struct bnx2 *bp)
 	if ((bp->strm = kmalloc(sizeof(*bp->strm), GFP_KERNEL)) == NULL)
 		goto gunzip_nomem2;
 
-	bp->strm->workspace = kmalloc(zlib_inflate_workspacesize(), GFP_KERNEL);
+	bp->strm->workspace = vmalloc(zlib_inflate_workspacesize());
 	if (bp->strm->workspace == NULL)
 		goto gunzip_nomem3;
 
@@ -4373,7 +4371,7 @@ gunzip_nomem1:
 static void
 bnx2_gunzip_end(struct bnx2 *bp)
 {
-	kfree(bp->strm->workspace);
+	vfree(bp->strm->workspace);
 
 	kfree(bp->strm);
 	bp->strm = NULL;
@@ -4868,10 +4866,10 @@ bnx2_set_power_state(struct bnx2 *bp, pci_power_t state)
 			 * otherwise the other port may not respond to
 			 * MMIO reads.
 			 */
-			val = bnx2_shmem_rd(bp, BNX2_BC_STATE_CONDITION);
+			val = bnx2_shmem_rd(bp, BNX2_BC_STATE_CONDITION);	
 			val &= ~BNX2_CONDITION_PM_STATE_MASK;
 			val |= BNX2_CONDITION_PM_STATE_UNPREP;
-			bnx2_shmem_wr(bp, BNX2_BC_STATE_CONDITION, val);
+			bnx2_shmem_wr(bp, BNX2_BC_STATE_CONDITION, val);	
 		}
 		pci_set_power_state(bp->pdev, PCI_D3hot);
 
@@ -5815,8 +5813,6 @@ bnx2_init_chip(struct bnx2 *bp)
 		bp->bnx2_napi[i].last_status_idx = 0;
 
 	bp->idle_chk_status_idx = 0xffff;
-
-	bp->rx_mode = BNX2_EMAC_RX_MODE_SORT_MODE;
 
 	/* Set up how to generate a link change interrupt. */
 	BNX2_WR(bp, BNX2_EMAC_ATTENTION_ENA, BNX2_EMAC_ATTENTION_ENA_LINK);
@@ -7198,8 +7194,8 @@ bnx2_enable_msix(struct bnx2 *bp, int msix_vecs)
 	bp->irq_nvecs = msix_vecs;
 	bp->flags |= BNX2_FLAG_USING_MSIX | BNX2_FLAG_ONE_SHOT_MSI;
 #if defined(__VMKLNX__)
-	if (disable_msi_1shot)
-		bp->flags &= ~BNX2_FLAG_ONE_SHOT_MSI;
+	if (disable_msi_1shot) 
+		bp->flags &= ~BNX2_FLAG_ONE_SHOT_MSI; 
 #endif
 	for (i = 0; i < total_vecs; i++) {
 		bp->irq_tbl[i].vector = msix_ent[i].vector;
@@ -7459,9 +7455,9 @@ bnx2_reset_task(void *data)
 		rtnl_unlock();
 		return;
 	}
-
-	atomic_set(&bp->intr_sem, 1);
-	bnx2_netif_start(bp, true);
+ 
+ 	atomic_set(&bp->intr_sem, 1);
+ 	bnx2_netif_start(bp, true);
 
 	rtnl_unlock();
 }
@@ -7527,7 +7523,7 @@ bnx2_dump_ftq(struct bnx2 *bp)
 			BNX2_TBDC_CAM_OPCODE_OPCODE_CAM_READ);
 		BNX2_WR(bp, BNX2_TBDC_COMMAND, BNX2_TBDC_COMMAND_CMD_REG_ARB);
 		while ((BNX2_RD(bp, BNX2_TBDC_COMMAND) &
-			BNX2_TBDC_COMMAND_CMD_REG_ARB) && j < 100)
+		       	BNX2_TBDC_COMMAND_CMD_REG_ARB) && j < 100)
 			j++;
 
 		cid = BNX2_RD(bp, BNX2_TBDC_CID);
@@ -7568,7 +7564,7 @@ bnx2_dump_state(struct bnx2 *bp)
 		val1 = BNX2_PCI_GRC_WINDOW2_BASE;
 		for (i = 0; i < bp->irq_nvecs; i++) {
 			netdev_err(dev, "DEBUG: [%d]: %08x %08x %08x %08x\n",
-				   i, BNX2_RD(bp, val1),
+				   i, BNX2_RD(bp, val1), 
 				   BNX2_RD(bp, val1 + 4), BNX2_RD(bp, val1 + 8),
 				   BNX2_RD(bp, val1 + 12));
 			val1 += 16;
@@ -7743,7 +7739,7 @@ bnx2_start_xmit(struct sk_buff *skb, struct net_device *dev)
 			(TX_BD_FLAGS_VLAN_TAG | (vlan_tx_tag_get(skb) << 16));
 	}
 #endif
-#ifdef BCM_TSO
+#ifdef BCM_TSO 
 	if ((mss = skb_shinfo(skb)->gso_size)) {
 		u32 tcp_opt_len;
 		struct iphdr *iph;
@@ -7797,7 +7793,7 @@ abort_tso:
 	mapping = pci_map_single(bp->pdev, skb->data, len, PCI_DMA_TODEVICE);
 	if (pci_dma_mapping_error(mapping)) {
 #endif
-		dev_kfree_skb_any(skb);
+		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
 
@@ -7916,7 +7912,7 @@ dma_error:
 			       PCI_DMA_TODEVICE);
 	}
 
-	dev_kfree_skb_any(skb);
+	dev_kfree_skb(skb);
 	return NETDEV_TX_OK;
 }
 
@@ -8642,7 +8638,7 @@ bnx2_change_ring_size(struct bnx2 *bp, u32 rx, u32 tx, bool reset_irq)
 			bnx2_init_napi(bp);
 		}
 
-		if (!rc)
+		if (!rc) 
 			rc = bnx2_alloc_mem(bp);
 #if defined(BNX2_ENABLE_NETQUEUE)
 		if (rc) {
@@ -9279,6 +9275,12 @@ bnx2_fix_features(struct net_device *dev, netdev_features_t features)
 	if (!(bp->flags & BNX2_FLAG_CAN_KEEP_VLAN))
 		features |= NETIF_F_HW_VLAN_CTAG_RX;
 
+#ifdef NETIF_F_RXCSUM
+	if (!(features & NETIF_F_RXCSUM))
+		bp->rx_csum = 0;
+	else
+		bp->rx_csum = 1;
+#endif
 	return features;
 }
 
@@ -9289,7 +9291,11 @@ bnx2_set_features(struct net_device *dev, netdev_features_t features)
 
 	/* TSO with VLAN tag won't work with current firmware */
 	if (features & NETIF_F_HW_VLAN_CTAG_TX)
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))
 		dev->vlan_features |= (dev->hw_features & NETIF_F_ALL_TSO);
+#else
+		dev->vlan_features |= (get_netdev_hw_features(dev) & NETIF_F_ALL_TSO);
+#endif
 	else
 		dev->vlan_features &= ~NETIF_F_ALL_TSO;
 
@@ -10517,8 +10523,12 @@ static const struct net_device_ops bnx2_netdev_ops = {
 	.ndo_change_mtu		= bnx2_change_mtu,
 #endif
 #ifdef HAVE_FIX_FEATURES
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 39))
 	.ndo_fix_features	= bnx2_fix_features,
 	.ndo_set_features	= bnx2_set_features,
+#endif
+#endif
 #endif
 	.ndo_tx_timeout		= bnx2_tx_timeout,
 #if defined(BCM_VLAN) && !defined(NEW_VLAN)
@@ -10528,6 +10538,16 @@ static const struct net_device_ops bnx2_netdev_ops = {
 	.ndo_poll_controller	= poll_bnx2,
 #endif
 };
+#endif
+
+#ifdef HAVE_FIX_FEATURES
+#if (RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))
+static const struct net_device_ops_ext bnx2_netdev_ops_ext = {
+	.size 			= sizeof(struct net_device_ops_ext),
+	.ndo_fix_features       = bnx2_fix_features,
+	.ndo_set_features       = bnx2_set_features,
+};
+#endif
 #endif
 
 static inline void vlan_features_add(struct net_device *dev, unsigned long flags)
@@ -10551,6 +10571,9 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 #if (defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000)) || \
     (defined(BNX2_ENABLE_NETQUEUE))
 	static int index = 0;
+#endif
+#ifdef BCM_HAS_HW_FEATURES 
+	netdev_features_t hw_features = 0;
 #endif
 
 	if (version_printed++ == 0)
@@ -10607,6 +10630,18 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 #endif
 #else
 	dev->netdev_ops = &bnx2_netdev_ops;
+#if (RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))
+#ifdef HAVE_FIX_FEATURES
+#ifdef NEW_ETHTOOL
+	/* Note: There is a check in the kernel that expects
+ 	 * ndo_fix_features/ndo_set_features not to be mixed with
+ 	 * ethtool_ops. So an additional compile-time check
+ 	 * NEW_ETHTOOL is added to prevent that.
+ 	 */
+	set_netdev_ops_ext(dev, &bnx2_netdev_ops_ext);
+#endif /* NEW_ETHTOOL */
+#endif /* HAVE_FIX_FEATURES */
+#endif /* RHEL 6.x ; x > 5 */
 #endif
 	dev->watchdog_timeo = TX_TIMEOUT;
 	dev->ethtool_ops = &bnx2_ethtool_ops;
@@ -10627,6 +10662,7 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 	memcpy(dev->perm_addr, bp->mac_addr, ETH_ALEN);
 #endif
 
+#ifndef BCM_HAS_HW_FEATURES
 #ifdef NETIF_F_IPV6_CSUM
 	dev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
 #if defined(NETIF_F_GRO) && defined(BNX2_NEW_NAPI)
@@ -10658,6 +10694,21 @@ bnx2_init_one(struct pci_dev *pdev, const struct pci_device_id *ent)
 		vlan_features_add(dev, NETIF_F_TSO6);
 	}
 #endif
+#else
+	if (BNX2_CHIP(bp) == BNX2_CHIP_5709)
+		hw_features = NETIF_F_IPV6_CSUM | NETIF_F_TSO6;
+	hw_features |= NETIF_F_TSO | NETIF_F_TSO_ECN | NETIF_F_IP_CSUM | NETIF_F_SG;
+	dev->vlan_features = hw_features;
+	hw_features |= NETIF_F_GRO | NETIF_F_RXHASH |
+		       NETIF_F_HW_VLAN_CTAG_RX | NETIF_F_HW_VLAN_CTAG_TX |
+		       NETIF_F_RXCSUM;
+	dev->features |= hw_features;
+#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))	
+	dev->hw_features = hw_features;
+#else
+	set_netdev_hw_features(dev, hw_features);
+#endif
+#endif /* BCM_HAS_HW_FEATURES */
 
 #if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 50000)
         if (BNX2_CHIP(bp) == BNX2_CHIP_5706 ||
@@ -10917,7 +10968,7 @@ static pci_ers_result_t bnx2_io_slot_reset(struct pci_dev *pdev)
 		if (!err)
 			result = PCI_ERS_RESULT_RECOVERED;
 	}
-
+	
 	if (result != PCI_ERS_RESULT_RECOVERED && netif_running(dev)) {
 		bnx2_napi_enable(bp);
 		dev_close(bp->dev);
@@ -11566,10 +11617,10 @@ static void
 bnx2_force_stop_netqueue(struct bnx2 * bp)
 {
 	int index;
-
+	
 	for_each_nondefault_rx_queue(bp, index) {
 		struct bnx2_napi *bnapi = &bp->bnx2_napi[index];
-
+		
 		if(bnapi->netq_state & BNX2_NETQ_RX_FILTER_APPLIED) {
 			bnapi->rx_queue_active = FALSE;
 			bnapi->netq_state &= ~BNX2_NETQ_RX_FILTER_APPLIED;
@@ -11580,11 +11631,11 @@ bnx2_force_stop_netqueue(struct bnx2 * bp)
 			bp->n_rx_queues_allocated--;
 			netdev_info(bp->dev, "Force free NetQ RX Queue %d\n", index);
 		}
-	}
-
+	}	
+	
 	for_each_nondefault_tx_queue(bp, index) {
 		struct bnx2_napi *bnapi = &bp->bnx2_napi[index];
-
+		
 		if(bnapi->tx_queue_allocated == TRUE) {
 			bnapi->tx_queue_allocated = FALSE;
 			bp->n_tx_queues_allocated--;
@@ -11885,7 +11936,7 @@ bnx2_netq_alloc_rx_queue_vmk(struct net_device *netdev,
 				*napi_p = &bnapi->napi;
 
 				return VMKNETDDI_QUEUEOPS_OK;
-			} else
+			} else 
 				return VMKNETDDI_QUEUEOPS_ERR;
 		}
 	}
@@ -12900,11 +12951,11 @@ static VMK_ReturnStatus bnx2_fwdmp_callback(void *cookie, vmk_Bool liveDump)
 	struct bnx2 *bp;
 
 #ifdef VX86_DEBUG
-	printk(KERN_INFO "FW dump for Broadcom Nx2 Gigabit Ethernet Driver "
+	printk(KERN_INFO "FW dump for QLogic bnx2 Gigabit Ethernet Driver "
 		DRV_MODULE_NAME " v" DRV_MODULE_VERSION "-BETA ("
 		DRV_MODULE_RELDATE ")\n");
 #else
-	printk(KERN_INFO "FW dump for Broadcom Nx2 Gigabit Ethernet Driver "
+	printk(KERN_INFO "FW dump for QLogic bnx2 Gigabit Ethernet Driver "
 		DRV_MODULE_NAME " v" DRV_MODULE_VERSION "-release ("
 		DRV_MODULE_RELDATE ")\n");
 #endif

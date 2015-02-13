@@ -1,4 +1,4 @@
-/* bnx2_compat.h: QLogic NX2 network driver.
+/* bnx2_compat.h: QLogic bnx2 network driver.
  *
  * Copyright (c) 2012 - 2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation
@@ -144,8 +144,8 @@ typedef void irqreturn_t;
 typedef int netdev_tx_t;
 #endif
 
-#ifndef HAVE_NETDEV_FEATURES
-typedef u32 netdev_features_t;
+#ifdef HAVE_NETDEV_FEATURES
+#define netdev_features_t u32
 #endif
 
 #if (LINUX_VERSION_CODE < 0x020547)
@@ -286,6 +286,18 @@ typedef u32 __be32;
 
 #ifndef RHEL_RELEASE_VERSION
 #define RHEL_RELEASE_VERSION(a, b) 0
+#endif
+
+#define RHEL_PRE_VERSION(a, b) \
+	(defined(RHEL_RELEASE_CODE) && \
+	RHEL_RELEASE_CODE < RHEL_RELEASE_VERSION((a), (b)))
+
+#define RHEL_STARTING_AT_VERSION(a, b) \
+	(defined(RHEL_RELEASE_CODE) && \
+	RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION((a), (b)))
+
+#if (LINUX_VERSION_CODE > KERNEL_VERSION(2, 6, 39))
+#define BCM_HAS_HW_FEATURES
 #endif
 
 #if (LINUX_VERSION_CODE < 0x2060b)
@@ -526,7 +538,7 @@ static inline void netif_tx_start_all_queues(struct net_device *dev)
 #define BCM_HAVE_MULTI_QUEUE
 #endif
 
-
+ 
 #ifndef NET_SKB_PAD
 #define NET_SKB_PAD	16
 #endif
@@ -604,13 +616,14 @@ static inline void skb_record_rx_queue(struct sk_buff *skb, u16 rx_queue)
                netdev_name(netdev), ##args)
 #endif
 
+#if defined(_DEFINE_NETDEV_NAME)
 static inline const char *netdev_name(const struct net_device *dev)
 {
 	if (dev->reg_state != NETREG_REGISTERED)
 		return "(unregistered net_device)";
 	return dev->name;
 }
-
+#endif /* _DEFINE_NETDEV_NAME */
 #endif
 
 #ifndef KERN_CONT

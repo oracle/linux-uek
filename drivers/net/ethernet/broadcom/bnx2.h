@@ -1,4 +1,4 @@
-/* bnx2.h: QLogic NX2 network driver.
+/* bnx2.h: QLogic bnx2 network driver.
  *
  * Copyright (c) 2004-2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation
@@ -8158,7 +8158,7 @@ struct fw_info {
 struct bnx2_ioctl_reg_read_req
 {
 	u32 reg_offset;
-	u32 reg_value;
+   	u32 reg_value;
 	u32 reg_access_type;
 } __attribute__((packed));
 
@@ -8181,7 +8181,7 @@ struct bnx2_ioctl_get_nic_status_req
 	u32 nic_status; // 1: Up, 0: Down
 } __attribute__((packed));
 
-struct bnx2_ioctl_req
+struct bnx2_ioctl_req 
 {
 	u32 cmd;
 	union {

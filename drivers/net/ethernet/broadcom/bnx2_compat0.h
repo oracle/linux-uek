@@ -1,4 +1,4 @@
-/* bnx2_compat0.h: QLogic NX2 network driver.
+/* bnx2_compat0.h: QLogic bnx2 network driver.
  *
  * Copyright (c) 2013 - 2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation

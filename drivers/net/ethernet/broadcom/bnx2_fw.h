@@ -1,4 +1,4 @@
-/* bnx2_fw.h: QLogic NX2 network driver.
+/* bnx2_fw.h: QLogic bnx2 network driver.
  *
  * Copyright (c) 2004-2014 Broadcom Corporation
  * Copyright (c) 2014 QLogic Corporation
@@ -4484,3 +4484,4 @@ static const struct cpu_reg cpu_reg_txp = {
 	.spad_base = BNX2_TXP_SCRATCH,
 	.mips_view_base = 0x8000000,
 };
+
