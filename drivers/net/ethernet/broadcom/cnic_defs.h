@@ -39,8 +39,8 @@
 #define FCOE_RAMROD_CMD_ID_STAT_FUNC		(FCOE_KCQE_OPCODE_STAT_FUNC)
 #define FCOE_RAMROD_CMD_ID_OFFLOAD_CONN		(FCOE_KCQE_OPCODE_OFFLOAD_CONN)
 #define FCOE_RAMROD_CMD_ID_ENABLE_CONN		(FCOE_KCQE_OPCODE_ENABLE_CONN)
-#define FCOE_RAMROD_CMD_ID_DISABLE_CONN		(FCOE_KCQE_OPCODE_DISABLE_CONN)
-#define FCOE_RAMROD_CMD_ID_DESTROY_CONN		(FCOE_KCQE_OPCODE_DESTROY_CONN)
+#define FCOE_RAMROD_CMD_ID_DISABLE_CONN		(FCOE_KCQE_OPCODE_DISABLE_CONN) 
+#define FCOE_RAMROD_CMD_ID_DESTROY_CONN		(FCOE_KCQE_OPCODE_DESTROY_CONN) 
 #define FCOE_RAMROD_CMD_ID_TERMINATE_CONN	(0x81)
 
 /* KCQ (kernel completion queue) response op codes */
@@ -3660,7 +3660,7 @@ struct xstorm_fcoe_st_context {
 };
 
 /*
- * Fcoe connection context
+ * Fcoe connection context 
  */
 struct fcoe_context {
 	struct ustorm_fcoe_st_context ustorm_st_context;
@@ -4631,7 +4631,7 @@ struct xstorm_iscsi_st_context {
 };
 
 /*
- * Iscsi connection context
+ * Iscsi connection context 
  */
 struct iscsi_context {
 	struct ustorm_iscsi_st_context ustorm_st_context;

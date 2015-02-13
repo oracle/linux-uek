@@ -590,7 +590,7 @@ struct bnx2x_bd_chain_next {
 #define CDU_REGION_NUMBER_UCM_AG 4
 
 #if (NEW_BNX2X_HSI == 48)
-static u8 calc_crc8( u32 data, u8 crc)
+static u8 calc_crc8( u32 data, u8 crc) 
 {
     u8 D[32];
     u8 NewCRC[8];
@@ -609,7 +609,7 @@ static u8 calc_crc8( u32 data, u8 crc)
         C[i] = crc & 1;
         crc = crc >> 1;
     }
-
+    
     NewCRC[0] = D[31] ^ D[30] ^ D[28] ^ D[23] ^ D[21] ^ D[19] ^ D[18] ^ D[16] ^ D[14] ^ D[12] ^ D[8] ^ D[7] ^ D[6] ^ D[0] ^ C[4] ^ C[6] ^ C[7];
     NewCRC[1] = D[30] ^ D[29] ^ D[28] ^ D[24] ^ D[23] ^ D[22] ^ D[21] ^ D[20] ^ D[18] ^ D[17] ^ D[16] ^ D[15] ^ D[14] ^ D[13] ^ D[12] ^ D[9] ^ D[6] ^ D[1] ^ D[0] ^ C[0] ^ C[4] ^ C[5] ^ C[6];
     NewCRC[2] = D[29] ^ D[28] ^ D[25] ^ D[24] ^ D[22] ^ D[17] ^ D[15] ^ D[13] ^ D[12] ^ D[10] ^ D[8] ^ D[6] ^ D[2] ^ D[1] ^ D[0] ^ C[0] ^ C[1] ^ C[4] ^ C[5];
@@ -623,7 +623,7 @@ static u8 calc_crc8( u32 data, u8 crc)
     for (i = 0; i < 8; i++) {
         crc_res |= (NewCRC[i] << i);
     }
-
+    
     return crc_res;
 }
 #endif

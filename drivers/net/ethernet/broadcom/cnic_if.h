@@ -1,7 +1,7 @@
 /* cnic_if.h: QLogic CNIC core network driver.
  *
  * Copyright (c) 2006 - 2014 Broadcom Corporation
- * Copyright (c) 2014 QLogic Corporation
+ * Copyright (c) 2014 - 2015 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -14,8 +14,8 @@
 
 #include "bnx2x/bnx2x_mfw_req.h"
 
-#define CNIC_MODULE_VERSION	"2.5.20b"
-#define CNIC_MODULE_RELDATE	"July 22, 2014"
+#define CNIC_MODULE_VERSION	"2.5.20e"
+#define CNIC_MODULE_RELDATE	"January 20, 2015"
 
 #define CNIC_ULP_RDMA		0
 #define CNIC_ULP_ISCSI		1
@@ -463,12 +463,8 @@ int cnic_register_driver2(int ulp_type, struct cnic_ulp_ops *ulp_ops);
 
 int cnic_unregister_driver2(int ulp_type);
 
-#if (((defined(RHEL_RELEASE_CODE)) && \
-	(((RHEL_MAJOR < 6) && (RHEL_MINOR > 4)) || \
-	((RHEL_MAJOR == 6) && (RHEL_MINOR < 4)))) || \
-	(defined(XENSERVER_DISTRO) && XENSERVER_DISTRO) || \
-	(defined(SLES_DISTRO) && (SLES_DISTRO == 0x1101)))
-	#define rcu_access_pointer(p)   (*(volatile typeof(p) *)&(p))
+#ifndef rcu_access_pointer
+#define rcu_access_pointer(p)   (*(volatile typeof(p) *)&(p))
 #endif
 
 #endif

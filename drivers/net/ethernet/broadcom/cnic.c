@@ -75,11 +75,11 @@
 #define PFX CNIC_MODULE_NAME	": "
 
 static char version[] __devinitdata =
-	"Broadcom NetXtreme II CNIC Driver " CNIC_MODULE_NAME " v" CNIC_MODULE_VERSION " (" CNIC_MODULE_RELDATE ")\n";
+	"QLogic " CNIC_MODULE_NAME " Driver v" CNIC_MODULE_VERSION " (" CNIC_MODULE_RELDATE ")\n";
 
 MODULE_AUTHOR("Michael Chan <mchan@broadcom.com> and John(Zongxi) "
 	      "Chen (zongxi@broadcom.com");
-MODULE_DESCRIPTION("Broadcom NetXtreme II CNIC Driver");
+MODULE_DESCRIPTION("QLogic cnic Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(CNIC_MODULE_VERSION);
 
@@ -6755,7 +6755,7 @@ static void ooo_init_rings(struct iooo_mgmt *im)
 					   im->pkt_buf_size, 0);
 		cnic_set_bnx2_rxbd(&rxr->rx_desc_ring[i][j],
 				   CNIC_PAGE_SIZE,
-				   rxr->rx_desc_mapping[next]);
+				   rxr->rx_desc_mapping[next]); 
 	}
 	for (i = 0; i < txr->tx_max_ring; i++) {
 		next = i + 1;
@@ -7356,7 +7356,7 @@ static void cnic_start_bnx2_ooo_hw(struct cnic_dev *dev)
 	txr->tx_cons = 0;
 
 	cnic_init_bnx2_tx_ring_start(dev, TX_CATCHUP_CID,
-				     txr->tx_desc_mapping[0]);
+				     txr->tx_desc_mapping[0]); 
 
 	ooo_init_rings(&cp->iooo_mgmr);
 
