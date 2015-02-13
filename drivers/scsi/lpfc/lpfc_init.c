@@ -154,8 +154,6 @@ lpfc_config_port_prep(struct lpfc_hba *phba)
 		       sizeof(phba->wwpn));
 	}
 
-	phba->sli3_options = 0x0;
-
 	/* Setup and issue mailbox READ REV command */
 	lpfc_read_rev(phba, pmb);
 	rc = lpfc_sli_issue_mbox(phba, pmb, MBX_POLL);
@@ -2523,6 +2521,7 @@ lpfc_cleanup(struct lpfc_vport *vport)
 {
 	struct lpfc_hba   *phba = vport->phba;
 	struct lpfc_nodelist *ndlp, *next_ndlp;
+	struct lpfc_external_dif_support *dp, *next_dp;
 	int i = 0;
 
 	if (phba->link_state > LPFC_LINK_DOWN)
@@ -2600,6 +2599,15 @@ lpfc_cleanup(struct lpfc_vport *vport)
 		msleep(10);
 	}
 	lpfc_cleanup_vports_rrqs(vport, NULL);
+
+	/* Cleanup any discovered External DIF devices for this vport */
+	list_for_each_entry_safe(dp, next_dp, &vport->external_dif_list,
+				 listentry) {
+		spin_lock_irq(&vport->external_dif_lock);
+		list_del(&dp->listentry);
+		spin_unlock_irq(&vport->external_dif_lock);
+		kfree(dp);
+	}
 }
 
 /**
@@ -3347,6 +3355,10 @@ lpfc_create_port(struct lpfc_hba *phba, int instance, struct device *dev)
 	error = scsi_add_host_with_dma(shost, dev, &phba->pcidev->dev);
 	if (error)
 		goto out_put_shost;
+
+	/* Initalize objects used to discover External DIF devices */
+	INIT_LIST_HEAD(&vport->external_dif_list);
+	spin_lock_init(&vport->external_dif_lock);
 
 	spin_lock_irq(&phba->hbalock);
 	list_add_tail(&vport->listentry, &phba->port_list);
@@ -4998,7 +5010,7 @@ lpfc_sli_driver_resource_setup(struct lpfc_hba *phba)
 	lpfc_template.sg_tablesize = phba->cfg_sg_seg_cnt;
 
 	/* There are going to be 2 reserved BDEs: 1 FCP cmnd + 1 FCP rsp */
-	if (phba->cfg_enable_bg) {
+	if (phba->sli3_options & LPFC_SLI3_BG_ENABLED) {
 		/*
 		 * The scsi_buf for a T10-DIF I/O will hold the FCP cmnd,
 		 * the FCP rsp, and a BDE for each. Sice we have no control
@@ -5191,7 +5203,7 @@ lpfc_sli4_driver_resource_setup(struct lpfc_hba *phba)
 	 * used to create the sg_dma_buf_pool must be dynamically calculated.
 	 */
 
-	if (phba->cfg_enable_bg) {
+	if (phba->sli3_options & LPFC_SLI3_BG_ENABLED) {
 		/*
 		 * The scsi_buf for a T10-DIF I/O will hold the FCP cmnd,
 		 * the FCP rsp, and a SGE for each. Sice we have no control
@@ -6294,7 +6306,9 @@ lpfc_post_init_setup(struct lpfc_hba *phba)
 	 */
 	shost = pci_get_drvdata(phba->pcidev);
 	shost->can_queue = phba->cfg_hba_queue_depth - 10;
-	if (phba->sli3_options & LPFC_SLI3_BG_ENABLED)
+
+	/* Setup T10-DIF interface with SCSI Layer API */
+	if (phba->cfg_enable_bg)
 		lpfc_setup_bg(phba, shost);
 
 	lpfc_host_attrib_init(shost);

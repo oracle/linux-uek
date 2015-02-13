@@ -143,6 +143,9 @@ lpfc_dev_loss_tmo_callbk(struct fc_rport *rport)
 		return;
 	}
 
+	/* Cleanup all External DIF devices that match this rports WWPN */
+	lpfc_external_dif_cleanup(vport, &ndlp->nlp_portname);
+
 	if (ndlp->nlp_state == NLP_STE_MAPPED_NODE)
 		return;
 

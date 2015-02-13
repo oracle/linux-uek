@@ -1280,7 +1280,7 @@ lpfc_config_port(struct lpfc_hba *phba, LPFC_MBOXQ_t *pmb)
 	/* If HBA supports SLI=3 ask for it */
 
 	if (phba->sli_rev == LPFC_SLI_REV3 && phba->vpd.sli3Feat.cerbm) {
-		if (phba->cfg_enable_bg)
+		if (phba->sli3_options & LPFC_SLI3_BG_ENABLED)
 			mb->un.varCfgPort.cbg = 1; /* configure BlockGuard */
 		if (phba->cfg_enable_dss)
 			mb->un.varCfgPort.cdss = 1; /* Configure Security */
@@ -2071,7 +2071,7 @@ lpfc_request_features(struct lpfc_hba *phba, struct lpfcMboxq *mboxq)
 	bf_set(lpfc_mbx_rq_ftr_rq_perfh, &mboxq->u.mqe.un.req_ftrs, 1);
 
 	/* Enable DIF (block guard) only if configured to do so. */
-	if (phba->cfg_enable_bg)
+	if (phba->sli3_options & LPFC_SLI3_BG_ENABLED)
 		bf_set(lpfc_mbx_rq_ftr_rq_dif, &mboxq->u.mqe.un.req_ftrs, 1);
 
 	/* Enable NPIV only if configured to do so. */

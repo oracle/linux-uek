@@ -135,16 +135,29 @@ lpfc_bg_info_show(struct device *dev, struct device_attribute *attr,
 	struct Scsi_Host *shost = class_to_shost(dev);
 	struct lpfc_vport *vport = (struct lpfc_vport *) shost->hostdata;
 	struct lpfc_hba   *phba = vport->phba;
+	int len = 0;
 
-	if (phba->cfg_enable_bg)
+	if (phba->cfg_enable_bg) {
 		if (phba->sli3_options & LPFC_SLI3_BG_ENABLED)
-			return snprintf(buf, PAGE_SIZE, "BlockGuard Enabled\n");
+			len +=  snprintf(buf, PAGE_SIZE,
+					 "BlockGuard Enabled\n");
 		else
-			return snprintf(buf, PAGE_SIZE,
+			len +=  snprintf(buf, PAGE_SIZE,
 					"BlockGuard Not Supported\n");
-	else
-			return snprintf(buf, PAGE_SIZE,
+	} else {
+			len +=  snprintf(buf, PAGE_SIZE,
 					"BlockGuard Disabled\n");
+	}
+
+	if (phba->cfg_external_dif) {
+		if (phba->sli3_options & LPFC_SLI3_BG_ENABLED)
+			len += snprintf(buf + len, PAGE_SIZE,
+					"External DIF Enabled\n");
+		else
+			len += snprintf(buf + len, PAGE_SIZE,
+					"External DIF Not Supported\n");
+	}
+	return len;
 }
 
 static ssize_t
@@ -4673,6 +4686,30 @@ LPFC_ATTR_R(EnableXLane, 0, 0, 1, "Enable Express Lane Feature.");
 */
 LPFC_ATTR_RW(XLanePriority, 0, 0x0, 0x7f, "CS_CTL for Express Lane Feature.");
 
+
+/*
+ * For T10 DIF / protection data support, the driver supports 4 modes
+ * of operation.
+ *
+ * Mode 1: (lpfc_enable_bg=1 lpfc_external_dif=1)
+ * All normal T10 DIF devices are supported.
+ * External DIF devices are supported.
+ *
+ * Mode 2: (lpfc_enable_bg=0 lpfc_external_dif=1)
+ * If you don't want to have the extra overhead of the upper SCSI Layer
+ * supporting T10-DIF, but you still want to support External DIF devices.
+ * Normal T10 DIF devices are NOT supported.
+ * External DIF devices are supported.
+ *
+ * Mode 3: (lpfc_enable_bg=1 lpfc_external_dif=0)
+ * All normal T10 DIF devices are supported.
+ * External DIF devices are NOT supported.
+ *
+ * Mode 4: (lpfc_enable_bg=0 lpfc_external_dif=1)
+ * No normal T10-DIF and no external DIF devices supported,
+ * This would be the driver default values for these module parameters.
+ */
+
 /*
 # lpfc_enable_bg: Enable BlockGuard (Emulex's Implementation of T10-DIF)
 #       0  = BlockGuard disabled
@@ -4680,6 +4717,15 @@ LPFC_ATTR_RW(XLanePriority, 0, 0x0, 0x7f, "CS_CTL for Express Lane Feature.");
 # Value range is [0,1]. Default value is 1.
 */
 LPFC_ATTR_R(enable_bg, 1, 0, 1, "Enable BlockGuard Support");
+
+/*
+# lpfc_external_dif: Enable External DIF support on select devices
+#       0  = External DIF disabled (default)
+#       1  = External DIF enabled
+# Value range is [0,1]. Default value is 0.
+*/
+LPFC_ATTR_R(external_dif, 0, 0, 1,
+	    "External T10-DIF Support, on select devices");
 
 /*
 # lpfc_fcp_look_ahead: Look ahead for completions in FCP start routine
@@ -4695,7 +4741,7 @@ unsigned int lpfc_fcp_look_ahead = LPFC_LOOK_AHEAD_OFF;
 # lpfc_prot_mask: i
 #	- Bit mask of host protection capabilities used to register with the
 #	  SCSI mid-layer
-# 	- Only meaningful if BG is turned on (lpfc_enable_bg=1).
+#	- Only meaningful if BG is turned on, lpfc_enable_bg = 1
 #	- Allows you to ultimately specify which profiles to use
 #	- Default will result in registering capabilities for all profiles.
 #	- SHOST_DIF_TYPE1_PROTECTION	1
@@ -4718,6 +4764,7 @@ MODULE_PARM_DESC(lpfc_prot_mask, "host protection mask");
 #	- Bit mask of protection guard types to register with the SCSI mid-layer
 #	- Guard types are currently either 1) T10-DIF CRC 2) IP checksum
 #	- Allows you to ultimately specify which profiles to use
+#	- Only meaningful if BG is turned on, lpfc_enable_bg = 1
 #	- Default will result in registering capabilities for all guard types
 #
 */
@@ -4829,6 +4876,7 @@ struct device_attribute *lpfc_hba_attrs[] = {
 	&dev_attr_lpfc_fcp_cpu_map,
 	&dev_attr_lpfc_fcp_io_channel,
 	&dev_attr_lpfc_enable_bg,
+	&dev_attr_lpfc_external_dif,
 	&dev_attr_lpfc_soft_wwnn,
 	&dev_attr_lpfc_soft_wwpn,
 	&dev_attr_lpfc_soft_wwn_enable,
@@ -5831,6 +5879,11 @@ lpfc_get_cfgparam(struct lpfc_hba *phba)
 	phba->cfg_oas_lun_status = 0;
 	phba->cfg_oas_flags = 0;
 	lpfc_enable_bg_init(phba, lpfc_enable_bg);
+	lpfc_external_dif_init(phba, lpfc_external_dif);
+
+	if (phba->cfg_enable_bg || phba->cfg_external_dif)
+		phba->sli3_options |= LPFC_SLI3_BG_ENABLED;
+
 	if (phba->sli_rev == LPFC_SLI_REV4)
 		phba->cfg_poll = 0;
 	else

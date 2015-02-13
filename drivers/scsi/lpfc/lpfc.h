@@ -295,6 +295,42 @@ enum hba_state {
 	LPFC_HBA_ERROR       =  -1
 };
 
+/* Structure used to identify all devices controlled
+ * by the External DIF logic.
+ */
+struct lpfc_external_dif_support {
+	struct list_head listentry;
+	struct lpfc_name portName;
+	uint64_t lun;
+	uint16_t sid;
+	uint8_t dif_info;
+	uint8_t reserved1;
+};
+
+/* Struct used to identify External DIF vendor specific info */
+struct lpfc_vendor_dif {
+	uint8_t length;
+	uint8_t version;
+	uint8_t dif_info;
+#define LPFC_FDIF_ATO		0x01
+#define LPFC_FDIF_REFCHK	0x02
+#define LPFC_FDIF_APPCHK	0x04
+#define LPFC_FDIF_GRDCHK	0x08
+#define LPFC_FDIF_SPTMASK	0x70
+#define LPFC_FDIF_PROTECT	0x80
+	uint8_t reserved1;
+};
+
+/* Defines used to identify a External DIF device */
+#define LPFC_INQ_VID_OFFSET	8
+#define LPFC_INQ_VDIF_OFFSET	168
+#define LPFC_INQ_FDIF_SZ	(LPFC_INQ_VDIF_OFFSET + 4)
+#define LPFC_INQ_FDIF_VENDOR	"3PARdata"	/* Vendor Identification */
+#define LPFC_INQ_FDIF_VERSION	1
+#define LPFC_INQ_FDIF_SIZE	2
+#define LPFC_FDIF_CDB_PROTECT	0x20		/* Set RD/WR PROTECT = 001 */
+
+
 struct lpfc_vport {
 	struct lpfc_hba *phba;
 	struct list_head listentry;
@@ -441,6 +477,10 @@ struct lpfc_vport {
 	unsigned long rcv_buffer_time_stamp;
 	uint32_t vport_flag;
 #define STATIC_VPORT	1
+
+	/* Used to discover External DIF devices */
+	struct list_head external_dif_list;
+	spinlock_t external_dif_lock;	/* lock for external_dif_list */
 };
 
 struct hbq_s {
@@ -739,6 +779,7 @@ struct lpfc_hba {
 #define OAS_LUN_VALID	0x04
 	uint32_t cfg_XLanePriority;
 	uint32_t cfg_enable_bg;
+	uint32_t cfg_external_dif;
 	uint32_t cfg_hostmem_hgp;
 	uint32_t cfg_log_verbose;
 	uint32_t cfg_aer_support;

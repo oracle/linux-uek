@@ -134,7 +134,12 @@ struct lpfc_scsi_buf {
 
 	uint32_t timeout;
 
-	uint16_t exch_busy;     /* SLI4 hba reported XB on complete WCQE */
+	uint16_t flags;
+#define LPFC_SBUF_XBUSY		0x1	/* SLI4 hba reported XB on WCQE cmpl */
+					/* External DIF device IO conversions */
+#define LPFC_SBUF_NORMAL_DIF	0x2	/* normal mode to insert/strip */
+#define LPFC_SBUF_PASS_DIF	0x4	/* insert/strip mode to passthru */
+
 	uint16_t status;	/* From IOCB Word 7- ulpStatus */
 	uint32_t result;	/* From IOCB Word 4. */
 

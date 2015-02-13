@@ -366,7 +366,8 @@ extern int lpfc_delay_discovery;
 int  lpfc_vport_symbolic_node_name(struct lpfc_vport *, char *, size_t);
 int  lpfc_vport_symbolic_port_name(struct lpfc_vport *, char *,	size_t);
 void lpfc_terminate_rport_io(struct fc_rport *);
-void lpfc_dev_loss_tmo_callbk(struct fc_rport *rport);
+void lpfc_dev_loss_tmo_callbk(struct fc_rport *);
+void lpfc_external_dif_cleanup(struct lpfc_vport *, struct lpfc_name *);
 
 struct lpfc_vport *lpfc_create_port(struct lpfc_hba *, int, struct device *);
 int  lpfc_vport_disable(struct fc_vport *fc_vport, bool disable);
