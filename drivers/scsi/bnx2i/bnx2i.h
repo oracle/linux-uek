@@ -1,6 +1,7 @@
-/* bnx2i.h: Broadcom NetXtreme II iSCSI driver.
+/* bnx2i.h: QLogic iSCSI driver.
  *
- * Copyright (c) 2006 - 2014 Broadcom Corporation
+ * Copyright (c) 2006-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
  *
@@ -50,7 +51,7 @@
 #ifndef PCI_DEVICE_ID_NX2_5709
 #define PCI_DEVICE_ID_NX2_5709		0x1639
 #endif
-
+ 
 #ifndef PCI_DEVICE_ID_NX2_5709S
 #define PCI_DEVICE_ID_NX2_5709S		0x163a
 #endif

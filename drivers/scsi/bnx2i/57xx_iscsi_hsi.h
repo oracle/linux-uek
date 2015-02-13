@@ -1,6 +1,7 @@
-/* 57xx_iscsi_hsi.h: Broadcom NetXtreme II iSCSI HSI.
+/* 57xx_iscsi_hsi.h: QLogic iSCSI HSI.
  *
- * Copyright (c) 2006 - 2014 Broadcom Corporation
+ * Copyright (c) 2006-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

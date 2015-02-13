@@ -1,6 +1,7 @@
-/* bnx2i_hwi.c: Broadcom NetXtreme II iSCSI driver.
+/* bnx2i_hwi.c: QLogic iSCSI driver.
  *
- * Copyright (c) 2006 - 2014 Broadcom Corporation
+ * Copyright (c) 2006-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
  *
@@ -60,7 +61,7 @@ static void bnx2i_adjust_qp_size(struct bnx2i_hba *hba)
 	 * yield integral num of page buffers
 	 */
 	/* adjust SQ */
-	num_elements_per_pg = PAGE_SIZE / BNX2I_SQ_WQE_SIZE;
+	num_elements_per_pg = CNIC_PAGE_SIZE / BNX2I_SQ_WQE_SIZE;
 	if (hba->max_sqes < num_elements_per_pg)
 		hba->max_sqes = num_elements_per_pg;
 	else if (hba->max_sqes % num_elements_per_pg)
@@ -68,7 +69,7 @@ static void bnx2i_adjust_qp_size(struct bnx2i_hba *hba)
 				 ~(num_elements_per_pg - 1);
 
 	/* adjust CQ */
-	num_elements_per_pg = PAGE_SIZE / BNX2I_CQE_SIZE;
+	num_elements_per_pg = CNIC_PAGE_SIZE / BNX2I_CQE_SIZE;
 	if (hba->max_cqes < num_elements_per_pg)
 		hba->max_cqes = num_elements_per_pg;
 	else if (hba->max_cqes % num_elements_per_pg)
@@ -76,7 +77,7 @@ static void bnx2i_adjust_qp_size(struct bnx2i_hba *hba)
 				 ~(num_elements_per_pg - 1);
 
 	/* adjust RQ */
-	num_elements_per_pg = PAGE_SIZE / BNX2I_RQ_WQE_SIZE;
+	num_elements_per_pg = CNIC_PAGE_SIZE / BNX2I_RQ_WQE_SIZE;
 	if (hba->max_rqes < num_elements_per_pg)
 		hba->max_rqes = num_elements_per_pg;
 	else if (hba->max_rqes % num_elements_per_pg)
@@ -961,7 +962,7 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 
 	/* SQ page table */
 	memset(ep->qp.sq_pgtbl_virt, 0, ep->qp.sq_pgtbl_size);
-	num_pages = ep->qp.sq_mem_size / PAGE_SIZE;
+	num_pages = ep->qp.sq_mem_size / CNIC_PAGE_SIZE;
 	page = ep->qp.sq_phys;
 
 	if (cnic_dev_10g)
@@ -975,7 +976,7 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) ((u64) page >> 32);
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		} else {
 			/* PTE is written in big endian format for
 			 * 5706/5708/5709 devices */
@@ -983,13 +984,13 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) page;
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		}
 	}
 
 	/* RQ page table */
 	memset(ep->qp.rq_pgtbl_virt, 0, ep->qp.rq_pgtbl_size);
-	num_pages = ep->qp.rq_mem_size / PAGE_SIZE;
+	num_pages = ep->qp.rq_mem_size / CNIC_PAGE_SIZE;
 	page = ep->qp.rq_phys;
 
 	if (cnic_dev_10g)
@@ -1003,7 +1004,7 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) ((u64) page >> 32);
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		} else {
 			/* PTE is written in big endian format for
 			 * 5706/5708/5709 devices */
@@ -1011,13 +1012,13 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) page;
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		}
 	}
 
 	/* CQ page table */
 	memset(ep->qp.cq_pgtbl_virt, 0, ep->qp.cq_pgtbl_size);
-	num_pages = ep->qp.cq_mem_size / PAGE_SIZE;
+	num_pages = ep->qp.cq_mem_size / CNIC_PAGE_SIZE;
 	page = ep->qp.cq_phys;
 
 	if (cnic_dev_10g)
@@ -1031,7 +1032,7 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) ((u64) page >> 32);
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		} else {
 			/* PTE is written in big endian format for
 			 * 5706/5708/5709 devices */
@@ -1039,7 +1040,7 @@ static void setup_qp_page_tables(struct bnx2i_endpoint *ep)
 			ptbl++;
 			*ptbl = (u32) page;
 			ptbl++;
-			page += PAGE_SIZE;
+			page += CNIC_PAGE_SIZE;
 		}
 	}
 }
@@ -1066,11 +1067,11 @@ int bnx2i_alloc_qp_resc(struct bnx2i_hba *hba, struct bnx2i_endpoint *ep)
 	/* Allocate page table memory for SQ which is page aligned */
 	ep->qp.sq_mem_size = hba->max_sqes * BNX2I_SQ_WQE_SIZE;
 	ep->qp.sq_mem_size =
-		(ep->qp.sq_mem_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.sq_mem_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 	ep->qp.sq_pgtbl_size =
 		(ep->qp.sq_mem_size / PAGE_SIZE) * sizeof(void *);
 	ep->qp.sq_pgtbl_size =
-		(ep->qp.sq_pgtbl_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.sq_pgtbl_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 
 	ep->qp.sq_pgtbl_virt =
 		dma_alloc_coherent(&hba->pcidev->dev, ep->qp.sq_pgtbl_size,
@@ -1103,11 +1104,11 @@ int bnx2i_alloc_qp_resc(struct bnx2i_hba *hba, struct bnx2i_endpoint *ep)
 	/* Allocate page table memory for CQ which is page aligned */
 	ep->qp.cq_mem_size = hba->max_cqes * BNX2I_CQE_SIZE;
 	ep->qp.cq_mem_size =
-		(ep->qp.cq_mem_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.cq_mem_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 	ep->qp.cq_pgtbl_size =
-		(ep->qp.cq_mem_size / PAGE_SIZE) * sizeof(void *);
+		(ep->qp.cq_mem_size / CNIC_PAGE_SIZE) * sizeof(void *);
 	ep->qp.cq_pgtbl_size =
-		(ep->qp.cq_pgtbl_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.cq_pgtbl_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 
 	ep->qp.cq_pgtbl_virt =
 		dma_alloc_coherent(&hba->pcidev->dev, ep->qp.cq_pgtbl_size,
@@ -1146,11 +1147,11 @@ int bnx2i_alloc_qp_resc(struct bnx2i_hba *hba, struct bnx2i_endpoint *ep)
 	/* Allocate page table memory for RQ which is page aligned */
 	ep->qp.rq_mem_size = hba->max_rqes * BNX2I_RQ_WQE_SIZE;
 	ep->qp.rq_mem_size =
-		(ep->qp.rq_mem_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.rq_mem_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 	ep->qp.rq_pgtbl_size =
-		(ep->qp.rq_mem_size / PAGE_SIZE) * sizeof(void *);
+		(ep->qp.rq_mem_size / CNIC_PAGE_SIZE) * sizeof(void *);
 	ep->qp.rq_pgtbl_size =
-		(ep->qp.rq_pgtbl_size + (PAGE_SIZE - 1)) & PAGE_MASK;
+		(ep->qp.rq_pgtbl_size + (CNIC_PAGE_SIZE - 1)) & CNIC_PAGE_MASK;
 
 	ep->qp.rq_pgtbl_virt =
 		dma_alloc_coherent(&hba->pcidev->dev, ep->qp.rq_pgtbl_size,
@@ -1272,7 +1273,7 @@ int bnx2i_send_fw_iscsi_init_msg(struct bnx2i_hba *hba)
 	bnx2i_adjust_qp_size(hba);
 
 	iscsi_init.flags =
-		ISCSI_PAGE_SIZE_4K << ISCSI_KWQE_INIT1_PAGE_SIZE_SHIFT;
+		(CNIC_PAGE_BITS - 8) << ISCSI_KWQE_INIT1_PAGE_SIZE_SHIFT;
 	if (en_tcp_dack)
 		iscsi_init.flags |= ISCSI_KWQE_INIT1_DELAYED_ACK_ENABLE;
 	if (test_bit(BNX2I_NX2_DEV_57710, &hba->cnic_dev_type) && time_stamps)
@@ -1292,15 +1293,15 @@ int bnx2i_send_fw_iscsi_init_msg(struct bnx2i_hba *hba)
 			((hba->num_ccell & 0xFFFF) | (hba->max_sqes << 16));
 	iscsi_init.num_ccells_per_conn = hba->num_ccell;
 	iscsi_init.num_tasks_per_conn = hba->max_sqes;
-	iscsi_init.sq_wqes_per_page = PAGE_SIZE / BNX2I_SQ_WQE_SIZE;
+	iscsi_init.sq_wqes_per_page = CNIC_PAGE_SIZE / BNX2I_SQ_WQE_SIZE;
 	iscsi_init.sq_num_wqes = hba->max_sqes;
 	iscsi_init.cq_log_wqes_per_page =
-		(u8) bnx2i_power_of2(PAGE_SIZE / BNX2I_CQE_SIZE);
+		(u8) bnx2i_power_of2(CNIC_PAGE_SIZE / BNX2I_CQE_SIZE);
 	iscsi_init.cq_num_wqes = hba->max_cqes;
 	iscsi_init.cq_num_pages = (hba->max_cqes * BNX2I_CQE_SIZE +
-				   (PAGE_SIZE - 1)) / PAGE_SIZE;
+				   (CNIC_PAGE_SIZE - 1)) / CNIC_PAGE_SIZE;
 	iscsi_init.sq_num_pages = (hba->max_sqes * BNX2I_SQ_WQE_SIZE +
-				   (PAGE_SIZE - 1)) / PAGE_SIZE;
+				   (CNIC_PAGE_SIZE - 1)) / CNIC_PAGE_SIZE;
 	iscsi_init.rq_buffer_size = BNX2I_RQ_WQE_SIZE;
 	iscsi_init.rq_num_wqes = hba->max_rqes;
 
@@ -1456,7 +1457,7 @@ static void bnx2i_login_stats(struct bnx2i_hba *hba, u8 status_class,
 	case ISCSI_STATUS_CLS_SUCCESS:
 		hba->login_stats.login_successes++;
 		break;
-	case ISCSI_STATUS_CLS_REDIRECT:
+	case ISCSI_STATUS_CLS_REDIRECT: 
 		hba->login_stats.login_redirect_responses++;
 		break;
 	case ISCSI_STATUS_CLS_INITIATOR_ERR:
@@ -2785,7 +2786,7 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 	case NETDEV_UP:
 		break;
 	case NETDEV_DOWN:
-		for (i = 0; i < hba->max_active_conns; i++) {
+		for (i = 0; i < hba->max_active_conns; i++) { 
 			bnx2i_conn = bnx2i_get_conn_from_id(hba, i);
 			if (bnx2i_conn) {
 				conn = bnx2i_conn->cls_conn->dd_data;
@@ -2817,8 +2818,8 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 				break;
 		}
 		/* This flag should be cleared last so that ep_disconnect()
-		 * gracefully cleans up connection context
-		 */
+	 	 * gracefully cleans up connection context
+	 	 */
 		clear_bit(ADAPTER_STATE_GOING_DOWN, &hba->adapter_state);
 		clear_bit(ADAPTER_STATE_UP, &hba->adapter_state);
 		if (hba->ofld_conns_active)
@@ -2830,7 +2831,7 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 	case NETDEV_GOING_DOWN:
 		set_bit(ADAPTER_STATE_GOING_DOWN, &hba->adapter_state);
 		/* Suspend all data transmissions */
-		for (i = 0; i < hba->max_active_conns; i++) {
+		for (i = 0; i < hba->max_active_conns; i++) { 
 			bnx2i_conn = bnx2i_get_conn_from_id(hba, i);
 			if (bnx2i_conn) {
 				conn = bnx2i_conn->cls_conn->dd_data;
@@ -2849,7 +2850,7 @@ static void bnx2i_indicate_netevent(void *context, unsigned long event,
 				spin_unlock_irqrestore(&session->lock, flags);
 #endif
 				iscsi_suspend_queue(conn);
-				set_bit(ISCSI_SUSPEND_BIT, &conn->suspend_rx);
+        			set_bit(ISCSI_SUSPEND_BIT, &conn->suspend_rx);
 				iscsi_conn_error_event(bnx2i_conn->cls_conn,
 						       ISCSI_ERR_CONN_FAILED);
 			}

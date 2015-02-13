@@ -1,6 +1,7 @@
-/* bnx2i.c: Broadcom NetXtreme II iSCSI driver.
+/* bnx2i.c: QLogic iSCSI driver.
  *
- * Copyright (c) 2006 - 2014 Broadcom Corporation
+ * Copyright (c) 2006-2014 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
  * Copyright (c) 2007, 2008 Red Hat, Inc.  All rights reserved.
  * Copyright (c) 2007, 2008 Mike Christie
  *
@@ -18,16 +19,16 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION	"2.7.10.31d1"
-#define DRV_MODULE_RELDATE	"August 6, 2014"
+#define DRV_MODULE_VERSION	"2.11.0.0"
+#define DRV_MODULE_RELDATE	"December 16, 2014"
 
 static char version[] __devinitdata =
-		"Broadcom NetXtreme II iSCSI Driver " DRV_MODULE_NAME \
+		"QLogic iSCSI Driver " DRV_MODULE_NAME \
 		" v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
 MODULE_AUTHOR("Anil Veerabhadrappa <anilgv@broadcom.com> and "
 	      "Eddie Wai <eddie.wai@broadcom.com>");
-MODULE_DESCRIPTION("Broadcom NetXtreme II BCM5706/5708/5709/57710/57711/57712"
+MODULE_DESCRIPTION("QLogic BCM5706/5708/5709/57710/57711/57712"
 		   "/57800/57810/57840 iSCSI Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
@@ -69,7 +70,7 @@ MODULE_PARM_DESC(rq_size, "Configure RQ size");
 unsigned int tcp_buf_size = 64;
 module_param(tcp_buf_size, int, 0664);
 MODULE_PARM_DESC(tcp_buf_size, "TCP send/receive buffer size");
-
+ 
 unsigned int last_active_tcp_port = 0x00;
 module_param(last_active_tcp_port, int, 0664);
 MODULE_PARM_DESC(last_active_tcp_port, "Display last tcp src port info");
@@ -87,7 +88,7 @@ static struct notifier_block bnx2i_cpu_notifier = {
 
 
 /**
- * bnx2i_identify_device - identifies NetXtreme II device type
+ * bnx2i_identify_device - identifies QLogic device type
  * @hba: 		Adapter structure pointer
  * @cnic:		Corresponding cnic device
  *
