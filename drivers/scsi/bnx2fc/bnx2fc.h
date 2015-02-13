@@ -1,8 +1,10 @@
 #ifndef _BNX2FC_H_
 #define _BNX2FC_H_
-/* bnx2fc.h: Broadcom NetXtreme II Linux FCoE offload driver.
+/* bnx2fc.h: QLogic Linux FCoE offload driver.
  *
- * Copyright (c) 2008 - 2014 Broadcom Corporation
+ * Copyright (c) 2008-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -53,12 +55,6 @@
 #define DEVINITDATA __devinitdata
 #else
 #define DEVINITDATA
-#endif
-
-#if ((defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ < 0x0700)) ||    \
-     (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ < 0x1102)))
-#define kthread_create_on_node(threadfn, data, node, namefmt, ...)  \
-	kthread_create(threadfn, data, namefmt, ## __VA_ARGS__)
 #endif
 
 #ifndef alloc_workqueue
@@ -142,8 +138,8 @@
 #include "bnx2fc_compat_uek3.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"2.5.5.1"
-#define BNX2FC_RELDATE		"August 5, 2014"
+#define BNX2FC_VERSION		"2.8.2"
+#define BNX2FC_RELDATE		"December 12, 2014"
 
 #define PFX			"bnx2fc: "
 
@@ -258,7 +254,7 @@
 #define BNX2FC_MAX_FCP_TGT		256
 #define BNX2FC_MAX_CMD_LEN		16
 
-#define BNX2FC_TM_TIMEOUT		60	/* secs */
+#define BNX2FC_TM_TIMEOUT		(60 * HZ) /* 60 seconds */
 #define BNX2FC_IO_TIMEOUT		20000UL	/* msecs */
 
 #define BNX2FC_WAIT_CNT			1200
@@ -476,7 +472,6 @@ struct bnx2fc_rport {
 #define BNX2FC_FLAG_OFLD_REQ_CMPL	0x5
 #define BNX2FC_FLAG_CTX_ALLOC_FAILURE	0x6
 #define BNX2FC_FLAG_UPLD_REQ_COMPL	0x7
-#define BNX2FC_FLAG_EXPL_LOGO		0x8
 #define BNX2FC_FLAG_DISABLE_FAILED	0x9
 #define BNX2FC_FLAG_ENABLED		0xa
 

@@ -1,9 +1,11 @@
-/* bnx2fc_fcoe.c: Broadcom NetXtreme II Linux FCoE offload driver.
+/* bnx2fc_fcoe.c: QLogic Linux FCoE offload driver.
  * This file contains the code that interacts with libfc, libfcoe,
  * cnic modules to create FCoE instances, send/receive non-offloaded
  * FIP/FCoE packets, listen to link events etc.
  *
- * Copyright (c) 2008 - 2014 Broadcom Corporation
+ * Copyright (c) 2008-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -26,13 +28,13 @@ DEFINE_PER_CPU(struct bnx2fc_percpu_s, bnx2fc_percpu);
 
 
 static char version[] DEVINITDATA =
-		"Broadcom NetXtreme II FCoE Driver " DRV_MODULE_NAME \
+		"QLogic FCoE Driver " DRV_MODULE_NAME \
 		" v" DRV_MODULE_VERSION " (" DRV_MODULE_RELDATE ")\n";
 
 
 MODULE_AUTHOR("Bhanu Prakash Gollapudi <bprakash@broadcom.com>");
 MODULE_AUTHOR("Eddie Wai <eddie.wai@broadcom.com>");
-MODULE_DESCRIPTION("Broadcom NetXtreme II FCoE Driver");
+MODULE_DESCRIPTION("QLogic FCoE Driver");
 MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_MODULE_VERSION);
 
@@ -432,7 +434,7 @@ static int bnx2fc_xmit(struct fc_lport *lport, struct fc_frame *fp)
 		frag = &skb_shinfo(skb)->frags[skb_shinfo(skb)->nr_frags - 1];
 #ifdef _DEFINE_KMAP_ATOMIC_
 		cp = kmap_atomic(skb_frag_page(frag)) + frag->page_offset;
-#else
+#else 
 		cp = kmap_atomic(frag->page, KM_SKB_DATA_SOFTIRQ)
 				+ frag->page_offset;
 #endif
@@ -557,7 +559,6 @@ static int bnx2fc_rcv(struct sk_buff *skb, struct net_device *dev,
 		printk(KERN_ERR PFX "bnx2fc_rcv: lport is NULL\n");
 		goto err;
 	}
-
 	tmp_skb = skb_share_check(skb, GFP_ATOMIC);
 	if (!tmp_skb)
 		goto err;
@@ -666,43 +667,30 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	skb_pull(skb, sizeof(struct fcoe_hdr));
 	fr_len = skb->len - sizeof(struct fcoe_crc_eof);
 
-#ifdef _DEFINE_FCOE_DEV_STATS_
-	stats = per_cpu_ptr(lport->dev_stats, get_cpu());
-#else
-	stats = per_cpu_ptr(lport->stats, get_cpu());
-#endif
-	stats->RxFrames++;
-	stats->RxWords += fr_len / FCOE_WORD_TO_BYTE;
-
 	fp = (struct fc_frame *)skb;
 	fc_frame_init(fp);
 	fr_dev(fp) = lport;
 	fr_sof(fp) = hp->fcoe_sof;
 	if (skb_copy_bits(skb, fr_len, &crc_eof, sizeof(crc_eof))) {
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
 	fr_eof(fp) = crc_eof.fcoe_eof;
 	fr_crc(fp) = crc_eof.fcoe_crc32;
 	if (pskb_trim(skb, fr_len)) {
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
 
 	fh = fc_frame_header_get(fp);
 
-	put_cpu();
 	vn_port = fc_vport_id_lookup(lport, ntoh24(fh->fh_d_id));
-	get_cpu();
 
 	if (vn_port) {
 		port = lport_priv(vn_port);
 		if (compare_ether_addr(port->data_src_addr, dest_mac)
 		    != 0) {
 			BNX2FC_HBA_DBG(lport, "fpma mismatch\n");
-			put_cpu();
 			kfree_skb(skb);
 			return;
 		}
@@ -710,7 +698,6 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	if (fh->fh_r_ctl == FC_RCTL_DD_SOL_DATA &&
 	    fh->fh_type == FC_TYPE_FCP) {
 		/* Drop FCP data. We dont this in L2 path */
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
@@ -720,7 +707,6 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 		case ELS_LOGO:
 			if (ntoh24(fh->fh_s_id) == FC_FID_FLOGI) {
 				/* drop non-FIP LOGO */
-				put_cpu();
 				kfree_skb(skb);
 				return;
 			}
@@ -729,7 +715,6 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	}
 	if (fh->fh_r_ctl == FC_RCTL_BA_ABTS) {
 		/* Drop incoming ABTS */
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
@@ -739,10 +724,17 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 	if ((fh->fh_type == FC_TYPE_BLS) && (f_ctl & FC_FC_SEQ_CTX) &&
 	    (f_ctl & FC_FC_EX_CTX)) {
 		/* Drop incoming ABTS response that has both SEQ/EX CTX set */
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
+
+#ifdef _DEFINE_FCOE_DEV_STATS_
+	stats = per_cpu_ptr(lport->dev_stats, smp_processor_id());
+#else
+	stats = per_cpu_ptr(lport->stats, smp_processor_id());
+#endif
+	stats->RxFrames++;
+	stats->RxWords += fr_len / FCOE_WORD_TO_BYTE;
 
 	if (le32_to_cpu(fr_crc(fp)) !=
 			~crc32(~0, skb->data, fr_len)) {
@@ -750,11 +742,9 @@ static void bnx2fc_recv_frame(struct sk_buff *skb)
 			printk(KERN_WARNING PFX "dropping frame with "
 			       "CRC error\n");
 		stats->InvalidCRCCount++;
-		put_cpu();
 		kfree_skb(skb);
 		return;
 	}
-	put_cpu();
 	fc_exch_recv(lport, fp);
 }
 
@@ -876,7 +866,7 @@ static int bnx2fc_shost_config(struct fc_lport *lport, struct device *dev)
 	if (!lport->vport)
 		fc_host_max_npiv_vports(lport->host) = BNX2FC_MAX_NPIV;
 	snprintf(fc_host_symbolic_name(lport->host), 256,
-		 "%s (Broadcom %s) v%s over %s",
+		 "%s (QLogic %s) v%s over %s",
 		BNX2FC_NAME, hba->chip_num, BNX2FC_VERSION,
 		interface->v_netdev->name);
 
@@ -1022,6 +1012,50 @@ static void bnx2fc_destroy_timer(unsigned long data)
 	wake_up_interruptible(&hba->destroy_wait);
 }
 
+static void bnx2fc_flush_devloss(struct Scsi_Host *shost)
+{
+	if (!fc_host_devloss_work_q(shost)) {
+		printk(KERN_ERR
+			"ERROR: FC host '%s' attempted to flush work, "
+			"when no workqueue created.\n", shost->hostt->name);
+		dump_stack();
+		return;
+	}
+
+	flush_workqueue(fc_host_devloss_work_q(shost));
+}
+
+/*
+ * Presumes shost->host_lock is held.
+ */
+static void bnx2fc_stop_dev_loss_tmo(struct Scsi_Host *shost,
+	struct fc_rport *rport)
+{
+	if (!cancel_delayed_work(&rport->fail_io_work))
+		bnx2fc_flush_devloss(shost);
+	if (!cancel_delayed_work(&rport->dev_loss_work))
+		bnx2fc_flush_devloss(shost);
+
+	rport->flags &= ~(FC_RPORT_FAST_FAIL_TIMEDOUT |
+			  FC_RPORT_DEVLOSS_PENDING |
+			  FC_RPORT_DEVLOSS_CALLBK_DONE);
+}
+
+static void bnx2fc_stop_dev_loss_on_rports(struct fc_lport *lport)
+{
+	struct Scsi_Host *shost;
+	struct fc_host_attrs *fc_host;
+	struct fc_rport *rport;
+	unsigned long flags;
+
+	shost = lport->host;
+	fc_host = shost_to_fc_host(shost);
+	spin_lock_irqsave(shost->host_lock, flags);
+		list_for_each_entry(rport, &fc_host->rports, peers)
+			bnx2fc_stop_dev_loss_tmo(shost, rport);
+	spin_unlock_irqrestore(shost->host_lock, flags);
+}
+
 /**
  * bnx2fc_indicate_netevent - Generic netdev event handler
  *
@@ -1120,6 +1154,12 @@ static void bnx2fc_indicate_netevent(void *context, unsigned long event,
 		cdev = fcoe_ctlr_to_ctlr_dev(ctlr);
 
 		if (link_possible && !bnx2fc_link_ok(lport)) {
+			if (event == NETDEV_CHANGE) {
+				pr_info("Flush dev_loss_tmo to avoid race condition "
+					"between discovery and rport destroy in case "
+					"of link toggle\n");
+				bnx2fc_stop_dev_loss_on_rports(lport);
+			}
 			switch (cdev->enabled) {
 			case FCOE_CTLR_DISABLED:
 				pr_info("Link up while interface is disabled.\n");
@@ -1170,6 +1210,12 @@ static void bnx2fc_indicate_netevent(void *context, unsigned long event,
 			 * ctlr link up will only be handled
 			 * during enable.
 			 */
+			if (event == NETDEV_CHANGE) {
+				pr_info("Flush dev_loss_tmo to avoid race condition "
+					"between discovery and rport destroy in case "
+					"of link toggle\n");
+				bnx2fc_stop_dev_loss_on_rports(lport);
+			}
 			/* Reset max recv frame size to default */
 			fc_set_mfs(lport, BNX2FC_MFS);
 			if (interface->enabled)
@@ -1527,7 +1573,7 @@ static int bnx2fc_vport_create(struct fc_vport *vport, bool disabled)
 	mutex_unlock(&bnx2fc_dev_lock);
 	rtnl_unlock();
 
-	if (IS_ERR(vn_port)) {
+	if (!vn_port) {
 		printk(KERN_ERR PFX "bnx2fc_vport_create (%s) failed\n",
 			netdev->name);
 		return -EIO;
@@ -1614,7 +1660,8 @@ static void bnx2fc_set_vport_symbolic_name(struct fc_vport *vport)
 	struct fc_frame *fp;
 	size_t len;
 
-	snprintf(fc_host_symbolic_name(lport->host), 256, "%s (Broadcom %s) v%s over %s : %s",
+	snprintf(fc_host_symbolic_name(lport->host), 256,
+		 "%s (QLogic %s) v%s over %s : %s",
 		 BNX2FC_NAME, hba->chip_num, BNX2FC_VERSION,
 		 interface->netdev->name, vport->symbolic_name);
 
@@ -2911,6 +2958,7 @@ static int _bnx2fc_create(struct net_device *netdev,
 	interface = bnx2fc_interface_create(hba, netdev, fip_mode);
 	if (!interface) {
 		printk(KERN_ERR PFX "bnx2fc_interface_create failed\n");
+		rc = -ENOMEM;
 		goto ifput_err;
 	}
 
@@ -2938,7 +2986,12 @@ static int _bnx2fc_create(struct net_device *netdev,
 		goto ifput_err;
 	}
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)) || \
+    (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ > 0x0604))
+	lport = bnx2fc_if_create(interface, &cdev->dev, 0);
+#else
 	lport = bnx2fc_if_create(interface, &interface->hba->pcidev->dev, 0);
+#endif
 	if (!lport) {
 		printk(KERN_ERR PFX "Failed to create interface (%s)\n",
 			netdev->name);
@@ -3143,6 +3196,25 @@ static void bnx2fc_ulp_exit(struct cnic_dev *dev)
 	if (test_and_clear_bit(BNX2FC_CNIC_REGISTERED, &hba->reg_with_cnic))
 		hba->cnic->unregister_device(hba->cnic, CNIC_ULP_FCOE);
 	bnx2fc_hba_destroy(hba);
+}
+
+/**
+ * bnx2fc_rport_terminate_io - calls fc_terminate_rport_io based on
+ * rport state
+ *
+ * @rport: remote port to terminate IO
+ */
+static void bnx2fc_rport_terminate_io(struct fc_rport *rport)
+{
+	struct fc_rport_libfc_priv *rpriv = rport->dd_data;
+
+	if (rpriv->rp_state != RPORT_ST_DELETE &&
+		rpriv->rp_state != RPORT_ST_READY) {
+		printk(KERN_WARNING PFX "%s: rport is in discovery state 0x%x\n",
+			__func__, rpriv->rp_state);
+		return;
+	} else
+		fc_rport_terminate_io(rport);
 }
 
 /**
@@ -3481,7 +3553,7 @@ static struct fc_function_template bnx2fc_transport_function = {
 
 	.issue_fc_host_lip = bnx2fc_fcoe_reset,
 
-	.terminate_rport_io = fc_rport_terminate_io,
+	.terminate_rport_io = bnx2fc_rport_terminate_io,
 
 	.vport_create = bnx2fc_vport_create,
 	.vport_delete = bnx2fc_vport_destroy,
@@ -3520,7 +3592,7 @@ static struct fc_function_template bnx2fc_vport_xport_function = {
 	.show_rport_dev_loss_tmo = 1,
 	.get_fc_host_stats = fc_get_host_stats,
 	.issue_fc_host_lip = bnx2fc_fcoe_reset,
-	.terminate_rport_io = fc_rport_terminate_io,
+	.terminate_rport_io = bnx2fc_rport_terminate_io,
 	.bsg_request = fc_lport_bsg_request,
 };
 
@@ -3529,7 +3601,7 @@ static struct fc_function_template bnx2fc_vport_xport_function = {
  */
 static struct scsi_host_template bnx2fc_shost_template = {
 	.module			= THIS_MODULE,
-	.name			= "Broadcom Offload FCoE Initiator",
+	.name			= "QLogic Offload FCoE Initiator",
 #if (defined(__BNX2FC_SLES__) && (__BNX2FC_SLES__ > 0x1101))
 	.proc_name		= KBUILD_MODNAME,
 #endif
@@ -3548,6 +3620,9 @@ static struct scsi_host_template bnx2fc_shost_template = {
 	.max_sectors		= 1024,
 #ifdef _DEFINE_SHOST_LOCKLESS_
 	.lockless		= 1,
+#endif
+#if ((defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ >= 0x0700)))
+	.no_async_abort		= 1,
 #endif
 };
 

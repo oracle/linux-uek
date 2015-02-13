@@ -1,7 +1,9 @@
-/* bnx2fc_fcoe.c: Broadcom NetXtreme II Linux FCoE offload driver.
+/* bnx2fc_fcoe.c: QLogic Linux FCoE offload driver.
  *
  * This file contains the debugfs code to display debug info
- * Copyright (c) 2008 - 2014 Broadcom Corporation
+ * Copyright (c) 2008-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved.
  *
  * Author: Nithin Nayak Sujir <nsujir@broadcom.com>
  *
