@@ -282,12 +282,6 @@ struct pci_dev {
 	unsigned int	wakeup_prepared:1;
 	unsigned int	d3_delay;	/* D3->D0 transition time in ms */
 
-#ifdef CONFIG_64BIT
-#ifndef __GENKSYMS__
-	u32		reset_notify_lo;/* Low bytes of pci_reset_notify cb */
-#endif
-#endif
-
 #ifdef CONFIG_PCIEASPM
 	struct pcie_link_state	*link_state;	/* ASPM link state. */
 #endif
@@ -340,6 +334,12 @@ struct pci_dev {
 	atomic_t	enable_cnt;	/* pci_enable_device has been called */
 
 	u32		saved_config_space[16]; /* config space saved at suspend time */
+
+#ifdef CONFIG_64BIT
+#ifndef __GENKSYMS__
+	u32		reset_notify_lo;/* Low bytes of pci_reset_notify cb */
+#endif
+#endif
 	struct hlist_head saved_cap_space;
 	struct bin_attribute *rom_attr; /* attribute descriptor for sysfs ROM entry */
 	int rom_attr_enabled;		/* has display of the rom attribute been enabled? */
