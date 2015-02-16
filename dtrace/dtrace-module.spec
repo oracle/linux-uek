@@ -26,10 +26,15 @@
 %define dt_0_4_1	1025
 %define dt_0_4_2	1026
 %define dt_0_4_3	1027
+%define dt_0_4_4	1028
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
-	if rpm.vercmp(kver, "3.8.13-33") >= 0 then
+	if rpm.vercmp(kver, "3.8.13-69") >= 0 then
+		rpm.define("srcver 0.4.4")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_4}"))
+	elseif rpm.vercmp(kver, "3.8.13-33") >= 0 then
 		rpm.define("srcver 0.4.3")
 		rpm.define("bldrel 4")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_3}"))
@@ -62,6 +67,12 @@
 #
 %if %{dt_vcode} >= %{dt_0_4_2}
 
+%if %{dt_vcode} >= %{dt_0_4_4}
+%define header_pkg dtrace-modules-shared-headers
+%else
+%define header_pkg dtrace-modules-headers
+%endif
+
 Name: dtrace-modules-%{kver}
 Summary: dtrace module
 Version: %{srcver}
@@ -87,15 +98,19 @@ Maintainers:
 Nick Alcock <nick.alcock@oracle.com>
 Kris Van Hees <kris.van.hees@oracle.com>
 
-%package -n dtrace-modules-headers
+%package -n %{header_pkg}
 Summary:	Header files for communication with the DTrace kernel module.
-%description -n dtrace-modules-headers
+%if %{dt_vcode} >= %{dt_0_4_4}
+Obsoletes:      dtrace-modules-headers
+Provides:       dtrace-modules-headers 1:1
+%endif
+%description -n %{header_pkg}
 This package contains header files describing the protocol used by userspace to
 communicate with the DTrace kernel module.
 
 %package -n dtrace-modules-provider-headers
 Summary:	Header files for implementation of DTrace providers.
-Requires:	dtrace-modules-headers
+Requires:	%{header_pkg}
 %{lua:
 	local obsoleted = {"16.1.1", "16.2.1", "16.2.2", "16.2.3", "16.3.1",
                            "16.3.2", "16.3.3", "16"}
@@ -187,7 +202,7 @@ rm -rf %{buildroot}
 
 %if %{dt_vcode} >= %{dt_0_4_2}
 
-%files -n dtrace-modules-headers
+%files -n %{header_pkg}
 %defattr(-,root,root,-)
 /usr/include/linux/dtrace
 %exclude /usr/include/linux/dtrace/provider*.h
@@ -214,6 +229,11 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_4_4}
+* Thu Mar  9 2015 Nick Alcock <nick.alcock@oracle.com> - 0.4.4-1
+- Rename dtrace-modules-headers to dtrace-modules-shared-headers.
+  [Orabug: 20508087]
+%endif
 %if %{dt_vcode} >= %{dt_0_4_3}
 * Fri Apr 24 2014 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.3-4
 - Updated NEWS file: test stress/buffering/tst.resize1.d is XFAIL for now.
