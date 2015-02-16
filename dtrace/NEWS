@@ -1,6 +1,16 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.4.4 (Mar 12th, 2015)
+-----------------------------
+Kernel release: 3.8.13-69.el6uek
+
+Bugfixes:
+
+ - Renamed the dtrace-modules-headers package to dtrace-modules-shared-headers
+   to work around problems in Yum where a symbol has had both versioned and
+   unversioned provides over time.
+
 Release 0.4.3 (May 1st, 2014)
 -----------------------------
 Kernel release: 3.8.13-33.el6uek
