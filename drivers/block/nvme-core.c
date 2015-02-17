@@ -1273,8 +1273,9 @@ static void nvme_cancel_ios(struct nvme_queue *nvmeq, bool timeout)
 			continue;
 		if (timeout && info[cmdid].ctx == CMD_CTX_ASYNC)
 			continue;
-		if (timeout && nvmeq->dev->initialized) {
-			nvme_abort_cmd(cmdid, nvmeq);
+		if (timeout) {
+			if (nvmeq->dev->initialized)
+				nvme_abort_cmd(cmdid, nvmeq);
 			continue;
 		}
 		dev_warn(nvmeq->q_dmadev, "Cancelling I/O %d QID %d\n", cmdid,
@@ -1355,7 +1356,6 @@ static int nvme_suspend_queue(struct nvme_queue *nvmeq)
 static void nvme_clear_queue(struct nvme_queue *nvmeq)
 {
 	spin_lock_irq(&nvmeq->q_lock);
-	nvme_process_cq(nvmeq);
 	nvme_cancel_ios(nvmeq, false);
 	spin_unlock_irq(&nvmeq->q_lock);
 }
@@ -1375,7 +1375,9 @@ static void nvme_disable_queue(struct nvme_dev *dev, int qid)
 		adapter_delete_sq(dev, qid);
 		adapter_delete_cq(dev, qid);
 	}
-	nvme_clear_queue(nvmeq);
+	spin_lock_irq(&nvmeq->q_lock);
+	nvme_process_cq(nvmeq);
+	spin_unlock_irq(&nvmeq->q_lock);
 }
 
 static struct nvme_queue *nvme_alloc_queue(struct nvme_dev *dev, int qid,
@@ -2584,6 +2586,7 @@ static void nvme_wait_dq(struct nvme_delq_ctx *dq, struct nvme_dev *dev)
 
 			nvme_disable_ctrl(dev, readq(&dev->bar->cap));
 			nvme_disable_queue(dev, 0);
+			nvme_clear_queue(raw_nvmeq(dev, 0));
 
 			send_sig(SIGKILL, dq->worker->task, 1);
 			flush_kthread_worker(dq->worker);
@@ -2610,7 +2613,10 @@ static void nvme_del_queue_end(struct nvme_queue *nvmeq)
 {
 	struct nvme_delq_ctx *dq = nvmeq->cmdinfo.ctx;
 
-	nvme_clear_queue(nvmeq);
+	spin_lock_irq(&nvmeq->q_lock);
+	nvme_process_cq(nvmeq);
+	spin_unlock_irq(&nvmeq->q_lock);
+
 	nvme_put_dq(dq);
 }
 
@@ -2734,7 +2740,6 @@ static void nvme_dev_shutdown(struct nvme_dev *dev)
 		for (i = dev->queue_count - 1; i >= 0; i--) {
 			struct nvme_queue *nvmeq = raw_nvmeq(dev, i);
 			nvme_suspend_queue(nvmeq);
-			nvme_clear_queue(nvmeq);
 		}
 	} else {
 		nvme_disable_io_queues(dev);
@@ -2742,6 +2747,15 @@ static void nvme_dev_shutdown(struct nvme_dev *dev)
 		nvme_disable_queue(dev, 0);
 	}
 	nvme_dev_unmap(dev);
+
+	/*
+	 * The device is disabled from being able to DMA at this point. We can
+	 * safely cancel all IO's, releasing the PRP DMA mappings for them.
+	 */
+	for (i = dev->queue_count - 1; i >= 0; i--) {
+		struct nvme_queue *nvmeq = raw_nvmeq(dev, i);
+		nvme_clear_queue(nvmeq);
+	}
 }
 
 static void nvme_dev_remove(struct nvme_dev *dev)
