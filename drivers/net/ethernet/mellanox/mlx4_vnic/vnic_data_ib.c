@@ -516,6 +516,9 @@ static void vnic_ib_handle_rx_wc(struct vnic_login *login,
 
 		/* processed for LRO */
 #if defined(CONFIG_COMPAT_LRO_ENABLED)
+		/* need complete LRO support code from either mlxn ofed or
+		 * stock linux kernel
+		 */
 		lro_receive_frags(&rx_res->lro, frags, packet_length,
 				  packet_length, NULL, 0);
 #endif
