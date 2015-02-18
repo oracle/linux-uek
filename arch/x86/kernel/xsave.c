@@ -507,7 +507,7 @@ static void __init setup_init_fpu_buf(void)
 	xsave_state(init_xstate_buf, -1);
 }
 
-static enum { AUTO, ENABLE, DISABLE } eagerfpu = AUTO;
+static enum { AUTO, ENABLE, DISABLE } eagerfpu = DISABLE;
 static int __init eager_fpu_setup(char *s)
 {
 	if (!strcmp(s, "on"))
@@ -557,10 +557,6 @@ static void __init xstate_enable_boot_cpu(void)
 	update_regset_xstate_info(xstate_size, pcntxt_mask);
 	prepare_fx_sw_frame();
 	setup_init_fpu_buf();
-
-	/* Auto enable eagerfpu for xsaveopt */
-	if (cpu_has_xsaveopt && eagerfpu != DISABLE)
-		eagerfpu = ENABLE;
 
 	printk(KERN_INFO "xsave/xrstor: enabled xstate_bv 0x%llx, "
 	       "cntxt size 0x%x\n",
