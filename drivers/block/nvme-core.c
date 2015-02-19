@@ -1280,8 +1280,7 @@ static void nvme_cancel_ios(struct nvme_queue *nvmeq, bool timeout)
 		if (timeout && info[cmdid].ctx == CMD_CTX_ASYNC)
 			continue;
 		if (timeout) {
-			if (nvmeq->dev->initialized)
-				nvme_abort_cmd(cmdid, nvmeq);
+			nvme_abort_cmd(cmdid, nvmeq);
 			continue;
 		}
 		dev_warn(nvmeq->q_dmadev, "Cancelling I/O %d QID %d\n", cmdid,
@@ -2056,8 +2055,7 @@ static int nvme_kthread(void *data)
 		spin_lock(&dev_list_lock);
 		list_for_each_entry_safe(dev, next, &dev_list, node) {
 			int i;
-			if (readl(&dev->bar->csts) & NVME_CSTS_CFS &&
-							dev->initialized) {
+			if (readl(&dev->bar->csts) & NVME_CSTS_CFS) {
 				if (work_busy(&dev->reset_work))
 					continue;
 				list_del_init(&dev->node);
@@ -2329,8 +2327,7 @@ static size_t db_bar_size(struct nvme_dev *dev, unsigned nr_io_queues)
 static void nvme_cpu_workfn(struct work_struct *work)
 {
 	struct nvme_dev *dev = container_of(work, struct nvme_dev, cpu_work);
-	if (dev->initialized)
-		nvme_assign_io_queues(dev);
+	nvme_assign_io_queues(dev);
 }
 
 static int nvme_cpu_notify(struct notifier_block *self,
@@ -2616,11 +2613,6 @@ static struct nvme_delq_ctx *nvme_get_dq(struct nvme_delq_ctx *dq)
 static void nvme_del_queue_end(struct nvme_queue *nvmeq)
 {
 	struct nvme_delq_ctx *dq = nvmeq->cmdinfo.ctx;
-
-	spin_lock_irq(&nvmeq->q_lock);
-	nvme_process_cq(nvmeq);
-	spin_unlock_irq(&nvmeq->q_lock);
-
 	nvme_put_dq(dq);
 }
 
@@ -3107,8 +3099,10 @@ static void nvme_async_probe(struct work_struct *work)
 	dev->initialized = 1;
 	return;
  reset:
-	PREPARE_WORK(&dev->reset_work, nvme_reset_failed_dev);
-	queue_work(nvme_workq, &dev->reset_work);
+	if (!work_busy(&dev->reset_work)) {
+		PREPARE_WORK(&dev->reset_work, nvme_reset_failed_dev);
+		queue_work(nvme_workq, &dev->reset_work);
+	}
 }
 
 static void nvme_shutdown(struct pci_dev *pdev)
