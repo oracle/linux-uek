@@ -985,13 +985,6 @@ static irqreturn_t nvme_irq_check(int irq, void *data)
 	return IRQ_WAKE_THREAD;
 }
 
-static void nvme_abort_command(struct nvme_queue *nvmeq, int cmdid)
-{
-	spin_lock_irq(&nvmeq->q_lock);
-	cancel_cmdid(nvmeq, cmdid, NULL);
-	spin_unlock_irq(&nvmeq->q_lock);
-}
-
 struct sync_cmd_info {
 	struct task_struct *task;
 	u32 result;
@@ -1015,7 +1008,7 @@ static int nvme_submit_sync_cmd(struct nvme_dev *dev, int q_idx,
 						struct nvme_command *cmd,
 						u32 *result, unsigned timeout)
 {
-	int cmdid, ret;
+	int cmdid;
 	struct sync_cmd_info cmdinfo;
 	struct nvme_queue *nvmeq;
 
@@ -1033,29 +1026,13 @@ static int nvme_submit_sync_cmd(struct nvme_dev *dev, int q_idx,
 	}
 	cmd->common.command_id = cmdid;
 
-	set_current_state(TASK_KILLABLE);
-	ret = nvme_submit_cmd(nvmeq, cmd);
-	if (ret) {
-		free_cmdid(nvmeq, cmdid, NULL);
-		unlock_nvmeq(nvmeq);
-		set_current_state(TASK_RUNNING);
-		return ret;
-	}
+	set_current_state(TASK_UNINTERRUPTIBLE);
+	nvme_submit_cmd(nvmeq, cmd);
 	unlock_nvmeq(nvmeq);
-	schedule_timeout(timeout);
-
-	if (cmdinfo.status == -EINTR) {
-		nvmeq = lock_nvmeq(dev, q_idx);
-		if (nvmeq) {
-			nvme_abort_command(nvmeq, cmdid);
-			unlock_nvmeq(nvmeq);
-		}
-		return -EINTR;
-	}
+	schedule();
 
 	if (result)
 		*result = cmdinfo.result;
-
 	return cmdinfo.status;
 }
 
