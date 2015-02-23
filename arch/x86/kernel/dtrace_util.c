@@ -20,7 +20,7 @@
 void dtrace_skip_instruction(struct pt_regs *regs) {
 	struct insn		insn;
 
-	kernel_insn_init(&insn, (void *)regs->ip);
+	kernel_insn_init(&insn, (void *)regs->ip, MAX_INSN_SIZE);
 	insn_get_length(&insn);
 
 	regs->ip += insn.length;
@@ -60,7 +60,7 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 	case DIE_GPF: {
 		struct insn	insn;
 
-		kernel_insn_init(&insn, (void *)dargs->regs->ip);
+		kernel_insn_init(&insn, (void *)dargs->regs->ip, MAX_INSN_SIZE);
 		insn_get_length(&insn);
 
 		/*
