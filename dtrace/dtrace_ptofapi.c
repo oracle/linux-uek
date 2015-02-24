@@ -83,7 +83,7 @@ void dtrace_pmod_register(dtrace_pmod_t *pmod)
 	mutex_lock(&dtrace_lock);
 	if (dtrace_opens) {
 		preempt_disable();
-		__this_cpu_add(pmod->mod->refptr->incs, dtrace_opens);
+		atomic_add(dtrace_opens, &pmod->mod->refcnt);
 		preempt_enable();
 	}
 	mutex_unlock(&dtrace_lock);
