@@ -42,6 +42,8 @@ struct kmem_cache	*psinfo_cachep;
 
 void dtrace_os_init(void)
 {
+	size_t module_size;
+
 	if (dtrace_kmod != NULL) {
 		pr_warn_once("%s: cannot be called twice\n", __func__);
 		return;
@@ -62,14 +64,15 @@ void dtrace_os_init(void)
 	 *	  used for pdata and other related data
 	 * The memory is allocated from the modules space.
 	 */
-	dtrace_kmod = module_alloc(ALIGN(sizeof(struct module), 8) +
-				   DTRACE_PDATA_MAXSIZE);
+	module_size = ALIGN(sizeof(struct module), 8) + DTRACE_PDATA_MAXSIZE;
+	dtrace_kmod = module_alloc(module_size);
 	if (dtrace_kmod == NULL) {
 		pr_warning("%s: cannot allocate kernel pseudo-module\n",
 			   __func__);
 		return;
 	}
 
+	memset(dtrace_kmod, 0, module_size);
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
 	dtrace_kmod->state = MODULE_STATE_LIVE;
 	dtrace_kmod->pdata = (char *)dtrace_kmod +
