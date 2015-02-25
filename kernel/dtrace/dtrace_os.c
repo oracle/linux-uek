@@ -75,6 +75,7 @@ void dtrace_os_init(void)
 	memset(dtrace_kmod, 0, module_size);
 	strlcpy(dtrace_kmod->name, "vmlinux", MODULE_NAME_LEN);
 	dtrace_kmod->state = MODULE_STATE_LIVE;
+	atomic_inc(&dtrace_kmod->refcnt);
 	dtrace_kmod->pdata = (char *)dtrace_kmod +
 				ALIGN(sizeof(struct module), 8);
 	dtrace_kmod->core_size = DTRACE_PDATA_MAXSIZE;
