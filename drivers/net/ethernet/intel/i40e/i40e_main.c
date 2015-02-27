@@ -447,7 +447,7 @@ void i40e_vsi_reset_stats(struct i40e_vsi *vsi)
 }
 
 /**
- * i40e_pf_reset_stats - Reset all of the stats for the given pf
+ * i40e_pf_reset_stats - Reset all of the stats for the given PF
  * @pf: the PF to be reset
  **/
 void i40e_pf_reset_stats(struct i40e_pf *pf)
@@ -893,7 +893,7 @@ static void i40e_update_vsi_stats(struct i40e_vsi *vsi)
 }
 
 /**
- * i40e_update_pf_stats - Update the pf statistics counters.
+ * i40e_update_pf_stats - Update the PF statistics counters.
  * @pf: the PF to be updated
  **/
 static void i40e_update_pf_stats(struct i40e_pf *pf)
@@ -1125,7 +1125,7 @@ void i40e_update_stats(struct i40e_vsi *vsi)
  * @vsi: the VSI to be searched
  * @macaddr: the MAC address
  * @vlan: the vlan
- * @is_vf: make sure its a vf filter, else doesn't matter
+ * @is_vf: make sure its a VF filter, else doesn't matter
  * @is_netdev: make sure its a netdev filter, else doesn't matter
  *
  * Returns ptr to the filter object or NULL
@@ -1153,7 +1153,7 @@ static struct i40e_mac_filter *i40e_find_filter(struct i40e_vsi *vsi,
  * i40e_find_mac - Find a mac addr in the macvlan filters list
  * @vsi: the VSI to be searched
  * @macaddr: the MAC address we are searching for
- * @is_vf: make sure its a vf filter, else doesn't matter
+ * @is_vf: make sure its a VF filter, else doesn't matter
  * @is_netdev: make sure its a netdev filter, else doesn't matter
  *
  * Returns the first filter with the provided MAC address or NULL if
@@ -1201,7 +1201,7 @@ bool i40e_is_vsi_in_vlan(struct i40e_vsi *vsi)
  * i40e_put_mac_in_vlan - Make macvlan filters from macaddrs and vlans
  * @vsi: the VSI to be searched
  * @macaddr: the mac address to be filtered
- * @is_vf: true if it is a vf
+ * @is_vf: true if it is a VF
  * @is_netdev: true if it is a netdev
  *
  * Goes through all the macvlan filters and adds a
@@ -1262,7 +1262,7 @@ static int i40e_rm_default_mac_filter(struct i40e_vsi *vsi, u8 *macaddr)
  * @vsi: the VSI to be searched
  * @macaddr: the MAC address
  * @vlan: the vlan
- * @is_vf: make sure its a vf filter, else doesn't matter
+ * @is_vf: make sure its a VF filter, else doesn't matter
  * @is_netdev: make sure its a netdev filter, else doesn't matter
  *
  * Returns ptr to the filter object or NULL when no memory available.
@@ -1322,7 +1322,7 @@ add_filter_out:
  * @vsi: the VSI to be searched
  * @macaddr: the MAC address
  * @vlan: the vlan
- * @is_vf: make sure it's a vf filter, else doesn't matter
+ * @is_vf: make sure it's a VF filter, else doesn't matter
  * @is_netdev: make sure it's a netdev filter, else doesn't matter
  **/
 void i40e_del_filter(struct i40e_vsi *vsi,
@@ -1349,7 +1349,7 @@ void i40e_del_filter(struct i40e_vsi *vsi,
 			f->counter--;
 		}
 	} else {
-		/* make sure we don't remove a filter in use by vf or netdev */
+		/* make sure we don't remove a filter in use by VF or netdev */
 		int min_f = 0;
 		min_f += (f->is_vf ? 1 : 0);
 		min_f += (f->is_netdev ? 1 : 0);
@@ -4072,7 +4072,7 @@ static int i40e_vsi_get_bw_info(struct i40e_vsi *vsi)
 	aq_ret = i40e_aq_query_vsi_bw_config(hw, vsi->seid, &bw_config, NULL);
 	if (aq_ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't get pf vsi bw config, err %d, aq_err %d\n",
+			 "couldn't get PF vsi bw config, err %d, aq_err %d\n",
 			 aq_ret, pf->hw.aq.asq_last_status);
 		return -EINVAL;
 	}
@@ -4082,7 +4082,7 @@ static int i40e_vsi_get_bw_info(struct i40e_vsi *vsi)
 						  NULL);
 	if (aq_ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't get pf vsi ets bw config, err %d, aq_err %d\n",
+			 "couldn't get PF vsi ets bw config, err %d, aq_err %d\n",
 			 aq_ret, pf->hw.aq.asq_last_status);
 		return -EINVAL;
 	}
@@ -4617,7 +4617,7 @@ err_setup_tx:
 
 /**
  * i40e_fdir_filter_exit - Cleans up the Flow Director accounting
- * @pf: Pointer to pf
+ * @pf: Pointer to PF
  *
  * This function destroys the hlist where all the Flow Director
  * filters were saved.
@@ -5395,7 +5395,7 @@ static void i40e_verify_eeprom(struct i40e_pf *pf)
 
 /**
  * i40e_enable_pf_switch_lb
- * @pf: pointer to the pf structure
+ * @pf: pointer to the PF structure
  *
  * enable switch loop back or die - no point in a return value
  **/
@@ -5411,7 +5411,7 @@ static void i40e_enable_pf_switch_lb(struct i40e_pf *pf)
 	aq_ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
 	if (aq_ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s couldn't get pf vsi config, err %d, aq_err %d\n",
+			 "%s couldn't get PF vsi config, err %d, aq_err %d\n",
 			 __func__, aq_ret, pf->hw.aq.asq_last_status);
 		return;
 	}
@@ -5429,7 +5429,7 @@ static void i40e_enable_pf_switch_lb(struct i40e_pf *pf)
 
 /**
  * i40e_disable_pf_switch_lb
- * @pf: pointer to the pf structure
+ * @pf: pointer to the PF structure
  *
  * disable switch loop back or die - no point in a return value
  **/
@@ -5445,7 +5445,7 @@ static void i40e_disable_pf_switch_lb(struct i40e_pf *pf)
 	aq_ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
 	if (aq_ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s couldn't get pf vsi config, err %d, aq_err %d\n",
+			 "%s couldn't get PF vsi config, err %d, aq_err %d\n",
 			 __func__, aq_ret, pf->hw.aq.asq_last_status);
 		return;
 	}
@@ -5735,7 +5735,7 @@ static void i40e_fdir_teardown(struct i40e_pf *pf)
  * i40e_prep_for_reset - prep for the core to reset
  * @pf: board private structure
  *
- * Close up the VFs and other things in prep for pf Reset.
+ * Close up the VFs and other things in prep for PF Reset.
   **/
 static void i40e_prep_for_reset(struct i40e_pf *pf)
 {
@@ -5947,7 +5947,7 @@ clear_recovery:
 }
 
 /**
- * i40e_handle_reset_warning - prep for the pf to reset, reset and rebuild
+ * i40e_handle_reset_warning - prep for the PF to reset, reset and rebuild
  * @pf: board private structure
  *
  * Close up the VFs and other things in prep for a Core Reset,
@@ -5961,7 +5961,7 @@ static void i40e_handle_reset_warning(struct i40e_pf *pf)
 
 /**
  * i40e_handle_mdd_event
- * @pf: pointer to the pf structure
+ * @pf: pointer to the PF structure
  *
  * Called from the MDD irq handler to identify possibly malicious vfs
  **/
@@ -5990,7 +5990,7 @@ static void i40e_handle_mdd_event(struct i40e_pf *pf)
 				I40E_GL_MDET_TX_QUEUE_SHIFT) -
 				pf->hw.func_caps.base_queue;
 		if (netif_msg_tx_err(pf))
-			dev_info(&pf->pdev->dev, "Malicious Driver Detection event 0x%02x on TX queue %d pf number 0x%02x vf number 0x%02x\n",
+			dev_info(&pf->pdev->dev, "Malicious Driver Detection event 0x%02x on TX queue %d PF number 0x%02x VF number 0x%02x\n",
 				 event, queue, pf_num, vf_num);
 		wr32(hw, I40E_GL_MDET_TX, 0xffffffff);
 		mdd_detected = true;
@@ -6346,7 +6346,7 @@ static int i40e_vsi_clear(struct i40e_vsi *vsi)
 		goto unlock_vsi;
 	}
 
-	/* updates the pf for this cleared vsi */
+	/* updates the PF for this cleared vsi */
 	i40e_put_lump(pf->qp_pile, vsi->base_queue, vsi->idx);
 	i40e_put_lump(pf->irq_pile, vsi->base_vector, vsi->idx);
 
@@ -6924,7 +6924,7 @@ i40e_status i40e_set_npar_bw_setting(struct i40e_pf *pf)
 	struct i40e_aqc_configure_partition_bw_data bw_data;
 	i40e_status status;
 
-	/* Set the valid bit for this pf */
+	/* Set the valid bit for this PF */
 	bw_data.pf_valid_bits = cpu_to_le16(1 << pf->hw.pf_id);
 	bw_data.max_bw[pf->hw.pf_id] = pf->npar_max_bw & I40E_ALT_BW_VALUE_MASK;
 	bw_data.min_bw[pf->hw.pf_id] = pf->npar_min_bw & I40E_ALT_BW_VALUE_MASK;
@@ -7087,11 +7087,11 @@ static int i40e_sw_init(struct i40e_pf *pf)
 	    (pf->hw.func_caps.fd_filters_best_effort > 0)) {
 		pf->flags |= I40E_FLAG_FD_ATR_ENABLED;
 		pf->atr_sample_rate = I40E_DEFAULT_ATR_SAMPLE_RATE;
-		/* Setup a counter for fd_atr per pf */
+		/* Setup a counter for fd_atr per PF */
 		pf->fd_atr_cnt_idx = I40E_FD_ATR_STAT_IDX(pf->hw.pf_id);
 		if (!(pf->flags & I40E_FLAG_MFP_ENABLED)) {
 			pf->flags |= I40E_FLAG_FD_SB_ENABLED;
-			/* Setup a counter for fd_sb per pf */
+			/* Setup a counter for fd_sb per PF */
 			pf->fd_sb_cnt_idx = I40E_FD_SB_STAT_IDX(pf->hw.pf_id);
 		} else {
 			dev_info(&pf->pdev->dev,
@@ -7418,7 +7418,7 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 		ctxt.flags = I40E_AQ_VSI_TYPE_PF;
 		if (ret) {
 			dev_info(&pf->pdev->dev,
-				 "couldn't get pf vsi config, err %d, aq_err %d\n",
+				 "couldn't get PF vsi config, err %d, aq_err %d\n",
 				 ret, pf->hw.aq.asq_last_status);
 			return -ENOENT;
 		}
@@ -8318,7 +8318,7 @@ err_alloc:
 }
 
 /**
- * i40e_setup_pf_switch_element - set pf vars based on switch type
+ * i40e_setup_pf_switch_element - set PF vars based on switch type
  * @pf: board private structure
  * @ele: element we are building info from
  * @num_reported: total number of elements
@@ -8655,7 +8655,7 @@ static void i40e_determine_queue_usage(struct i40e_pf *pf)
  * i40e_setup_pf_filter_control - Setup PF static filter control
  * @pf: PF to be setup
  *
- * i40e_setup_pf_filter_control sets up a pf's initial filter control
+ * i40e_setup_pf_filter_control sets up a PF's initial filter control
  * settings. If PE/FCoE are enabled then it will also set the per PF
  * based filter sizes required for them. It also enables Flow director,
  * ethertype and macvlan type filter settings for the pf.
@@ -8687,8 +8687,8 @@ static int i40e_setup_pf_filter_control(struct i40e_pf *pf)
  * @pdev: PCI device information struct
  * @ent: entry in i40e_pci_tbl
  *
- * i40e_probe initializes a pf identified by a pci_dev structure.
- * The OS initialization, configuring of the pf private structure,
+ * i40e_probe initializes a PF identified by a pci_dev structure.
+ * The OS initialization, configuring of the PF private structure,
  * and a hardware reset occur.
  *
  * Returns 0 on success, negative on failure
