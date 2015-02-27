@@ -7091,7 +7091,7 @@ static int i40e_set_features(struct net_device *netdev,
 	return 0;
 }
 
-const struct net_device_ops i40e_netdev_ops = {
+static const struct net_device_ops i40e_netdev_ops = {
 	.ndo_open		= i40e_open,
 	.ndo_stop		= i40e_close,
 	.ndo_start_xmit		= i40e_lan_xmit_frame,
@@ -8579,7 +8579,6 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	struct i40e_pf *pf;
 	struct i40e_hw *hw;
 	static u16 pfs_found;
-	u16 link_status;
 	int err = 0;
 	u32 len;
 
