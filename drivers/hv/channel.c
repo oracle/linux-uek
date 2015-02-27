@@ -133,9 +133,10 @@ int vmbus_open(struct vmbus_channel *newchannel, u32 send_ringbuffer_size,
 	out = (void *)__get_free_pages(GFP_KERNEL|__GFP_ZERO,
 		get_order(send_ringbuffer_size + recv_ringbuffer_size));
 
-	if (!out)
-		return -ENOMEM;
-
+	if (!out) {
+		err = -ENOMEM;
+		goto error0;
+	}
 
 	in = (void *)((unsigned long)out + send_ringbuffer_size);
 
@@ -243,6 +244,7 @@ error0:
 	free_pages((unsigned long)out,
 		get_order(send_ringbuffer_size + recv_ringbuffer_size));
 	kfree(open_info);
+	newchannel->state = CHANNEL_OPEN_STATE;
 	return err;
 }
 EXPORT_SYMBOL_GPL(vmbus_open);
