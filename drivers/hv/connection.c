@@ -320,10 +320,8 @@ static void process_chn_event(u32 relid)
 	 */
 	channel = pcpu_relid2channel(relid);
 
-	if (!channel) {
-		pr_err("channel not found for relid - %u\n", relid);
+	if (!channel)
 		return;
-	}
 
 	/*
 	 * A channel once created is persistent even when there
@@ -358,10 +356,7 @@ static void process_chn_event(u32 relid)
 			else
 				bytes_to_read = 0;
 		} while (read_state && (bytes_to_read != 0));
-	} else {
-		pr_err("no channel callback for relid - %u\n", relid);
 	}
-
 }
 
 /*
