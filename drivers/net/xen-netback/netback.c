@@ -1354,7 +1354,7 @@ static int xenvif_handle_frag_list(struct xenvif_queue *queue, struct sk_buff *s
 {
 	unsigned int offset = skb_headlen(skb);
 	skb_frag_t frags[MAX_SKB_FRAGS];
-	int i;
+	int i, f;
 	struct ubuf_info *uarg;
 	struct sk_buff *nskb = skb_shinfo(skb)->frag_list;
 
@@ -1394,6 +1394,11 @@ static int xenvif_handle_frag_list(struct xenvif_queue *queue, struct sk_buff *s
 		frags[i].page_offset = 0;
 		skb_frag_size_set(&frags[i], len);
 	}
+
+	/* Release all the original (foreign) frags. */
+	for (f = 0; f < skb_shinfo(skb)->nr_frags; f++)
+		skb_frag_unref(skb, f);
+
 	/* swap out with old one */
 	memcpy(skb_shinfo(skb)->frags,
 	       frags,
