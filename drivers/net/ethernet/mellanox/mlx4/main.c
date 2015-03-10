@@ -42,6 +42,7 @@
 #include <linux/io-mapping.h>
 #include <linux/delay.h>
 #include <linux/netdevice.h>
+#include <linux/kmod.h>
 
 #include <linux/mlx4/device.h>
 #include <linux/mlx4/doorbell.h>
@@ -1079,6 +1080,36 @@ err_mem:
 	return err;
 }
 
+static void mlx4_request_modules(struct mlx4_dev *dev)
+{
+	int port;
+	int has_ib_port = false;
+	int has_eth_port = false;
+	int err;
+#define EN_DRV_NAME "mlx4_en"
+#define IB_DRV_NAME "mlx4_ib"
+
+	for (port = 1; port <= dev->caps.num_ports; port++) {
+		if (dev->caps.port_type[port] == MLX4_PORT_TYPE_IB)
+			has_ib_port = true;
+		else if (dev->caps.port_type[port] == MLX4_PORT_TYPE_ETH)
+			has_eth_port = true;
+	}
+
+	if (has_eth_port) {
+		mlx4_dbg(dev, "Loading driver %s\n", EN_DRV_NAME);
+		err = request_module_nowait(EN_DRV_NAME);
+		if (err)
+			mlx4_warn(dev, "Fail to load %s\n", EN_DRV_NAME);
+	}
+	if (has_ib_port || (dev->caps.flags & MLX4_DEV_CAP_FLAG_IBOE)) {
+		mlx4_dbg(dev, "Loading driver %s\n", IB_DRV_NAME);
+		err = request_module_nowait(IB_DRV_NAME);
+		if (err)
+			mlx4_warn(dev, "Fail to load %s\n", IB_DRV_NAME);
+	}
+}
+
 /*
  * Change the port configuration of the device.
  * Every user of this function must hold the port mutex.
@@ -1110,6 +1141,11 @@ int mlx4_change_port_types(struct mlx4_dev *dev,
 		}
 		mlx4_set_port_mask(dev);
 		err = mlx4_register_device(dev);
+		if (err) {
+			mlx4_err(dev, "Failed to register device\n");
+			goto out;
+		}
+		mlx4_request_modules(dev);
 	}
 
 out:
@@ -2825,8 +2861,12 @@ slave_start:
 	}
 
 	err = mlx4_register_device(dev);
-	if (err)
+	if (err) {
+		mlx4_err(dev, "Failed to register device\n");
 		goto err_port;
+	}
+
+	mlx4_request_modules(dev);
 
 	mlx4_sense_init(dev);
 	mlx4_start_sense(dev);
