@@ -786,7 +786,8 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 	*/
 	reserved_from_bot = mlx4_num_reserved_sqps(dev);
 	if (reserved_from_bot + reserved_from_top > dev->caps.num_qps) {
-		mlx4_err(dev, "Number of reserved QPs is higher than number of QPs\n");
+		mlx4_err(dev, "Number of reserved QPs is higher than number "
+			 "of QPs, increase the value of log_num_qp\n");
 		return -EINVAL;
 	}
 

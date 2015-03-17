@@ -136,6 +136,17 @@ MODULE_PARM_DESC(log_num_vlan, "Log2 max number of VLANs per ETH port (0-7)");
 #define MLX4_MIN_LOG_NUM_VLANS 0
 #define MLX4_MIN_LOG_NUM_MAC 1
 
+/*
+ * mlx4_scale_profile: single tuning knob to use for tuning
+ * parameters based on resources to simplify configuration
+ * where dynamic scaling of resources makes sense.
+ */
+static int mlx4_scale_profile = 1;
+module_param_named(scale_profile, mlx4_scale_profile, int, 0644);
+MODULE_PARM_DESC(scale_profile, "Dynamically adjust default profile"
+		 "parameters based on system resources");
+#define MLX4_SCALE_LOG_NUM_QP 20 /* 1 Meg */
+
 static bool use_prio;
 module_param_named(use_prio, use_prio, bool, 0444);
 MODULE_PARM_DESC(use_prio, "Enable steering by VLAN priority on ETH ports (deprecated)");
@@ -211,7 +222,26 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 {
 	struct sysinfo si;
 
-	profile->num_qp        = 1 << mod_param_profile.num_qp;
+	if (mod_param_profile.num_qp) {
+		if (mlx4_scale_profile)
+			pr_warn("mlx4_core: Both scale_profile and log_num_qp "
+				"are set. Ignore scale_profile.\n");
+		profile->num_qp        = 1 << mod_param_profile.num_qp;
+	} else {
+		/*
+		 * Note: This could be set dynamically based on system/HCA
+		 * resources in future. A constant for now.
+		 */
+		profile->num_qp        = 1 << MLX4_SCALE_LOG_NUM_QP;
+		if (mlx4_scale_profile)
+			pr_info("mlx4_core: Scalable default profile "
+				"parameters are enabled. Effective log_num_qp"
+				" is now set to %d.\n", MLX4_SCALE_LOG_NUM_QP);
+		else
+			pr_info("mlx4_core: log_num_qp not set and scaled"
+				"dynamically. Effective log_num_qp"
+				" is now set to %d.\n", MLX4_SCALE_LOG_NUM_QP);
+	}
 	profile->num_srq       = 1 << mod_param_profile.num_srq;
 	profile->rdmarc_per_qp = 1 << mod_param_profile.rdmarc_per_qp;
 	profile->num_cq	       = 1 << mod_param_profile.num_cq;
@@ -230,9 +260,12 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * That limits us to 4TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
-	if (mod_param_profile.num_mtt_segs)
+	if (mod_param_profile.num_mtt_segs) {
+		if (mlx4_scale_profile)
+			pr_warn("mlx4_core: Both scale_profile and log_num_mtt "
+				"are set. Ignore scale_profile.\n");
 		profile->num_mtt_segs = 1 << mod_param_profile.num_mtt_segs;
-	else {
+	} else {
 		si_meminfo(&si);
 		profile->num_mtt_segs =
 			roundup_pow_of_two(max_t(unsigned,
@@ -246,6 +279,16 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 		/* set the actual value, so it will be reflected to the user
 		   using the sysfs */
 		mod_param_profile.num_mtt_segs = ilog2(profile->num_mtt_segs);
+		if (mlx4_scale_profile)
+			pr_info("mlx4_core: Scalable default profile "
+				"parameters are enabled. Effective log_num_mtt"
+				" is now set to %d.\n",
+				mod_param_profile.num_mtt_segs);
+		else
+			pr_info("mlx4_core: log_num_mtt not set and scaled "
+				"dynamically. Effective log_num_mtt"
+				" is now set to %d.\n",
+				mod_param_profile.num_mtt_segs);
 	}
 }
 
