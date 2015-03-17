@@ -3805,7 +3805,7 @@ static int memcg_event_wake(wait_queue_entry_t *wait, unsigned mode,
 }
 
 static void memcg_event_ptable_queue_proc(struct file *file,
-		wait_queue_head_t *wqh, poll_table *pt)
+		wait_queue_head_t *wqh, poll_table *pt, unsigned long unused)
 {
 	struct mem_cgroup_event *event =
 		container_of(pt, struct mem_cgroup_event, pt);
