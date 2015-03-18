@@ -88,6 +88,7 @@ struct nvme_dev {
 	struct device *device;
 	struct work_struct reset_work;
 	struct work_struct cpu_work;
+	struct work_struct probe_work;
 	char name[12];
 	char serial[20];
 	char model[40];
