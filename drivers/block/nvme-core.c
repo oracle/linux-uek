@@ -44,6 +44,7 @@
 
 #include <trace/events/block.h>
 
+#define NVME_MINORS		(1U << MINORBITS)
 #define NVME_Q_DEPTH		1024
 #define SQ_SIZE(depth)		(depth * sizeof(struct nvme_command))
 #define CQ_SIZE(depth)		(depth * sizeof(struct nvme_completion))
@@ -70,6 +71,9 @@ MODULE_PARM_DESC(shutdown_timeout, "timeout in seconds for controller shutdown")
 static int nvme_major;
 module_param(nvme_major, int, 0);
 
+static int nvme_char_major;
+module_param(nvme_char_major, int, 0);
+
 static int use_threaded_interrupts;
 module_param(use_threaded_interrupts, int, 0);
 
@@ -79,6 +83,8 @@ static struct task_struct *nvme_thread;
 static struct workqueue_struct *nvme_workq;
 static wait_queue_head_t nvme_kthread_wait;
 static struct notifier_block nvme_nb;
+
+static struct class *nvme_class;
 
 static void nvme_reset_failed_dev(struct work_struct *ws);
 
@@ -2143,7 +2149,7 @@ static struct nvme_ns *nvme_alloc_ns(struct nvme_dev *dev, unsigned nsid,
 	disk->fops = &nvme_fops;
 	disk->private_data = ns;
 	disk->queue = ns->queue;
-	disk->driverfs_dev = &dev->pci_dev->dev;
+	disk->driverfs_dev = dev->device;
 	disk->flags = GENHD_FL_EXT_DEVT;
 	sprintf(disk->disk_name, "nvme%dn%d", dev->instance, nsid);
 	set_capacity(disk, le64_to_cpup(&id->nsze) << (ns->lba_shift - 9));
@@ -2842,6 +2848,8 @@ static void nvme_free_dev(struct kref *kref)
 	struct nvme_dev *dev = container_of(kref, struct nvme_dev, kref);
 
 	pci_dev_put(dev->pci_dev);
+	put_device(dev->device);
+	nvme_release_instance(dev);
 	nvme_free_namespaces(dev);
 	free_percpu(dev->io_queue);
 	kfree(dev->queues);
@@ -2851,11 +2859,23 @@ static void nvme_free_dev(struct kref *kref)
 
 static int nvme_dev_open(struct inode *inode, struct file *f)
 {
-	struct nvme_dev *dev = container_of(f->private_data, struct nvme_dev,
-								miscdev);
-	kref_get(&dev->kref);
-	f->private_data = dev;
-	return 0;
+	struct nvme_dev *dev;
+	int instance = iminor(inode);
+	int ret = -ENODEV;
+
+	spin_lock(&dev_list_lock);
+	list_for_each_entry(dev, &dev_list, node) {
+		if (dev->instance == instance) {
+			if (!kref_get_unless_zero(&dev->kref))
+				break;
+			f->private_data = dev;
+			ret = 0;
+			break;
+		}
+	}
+	spin_unlock(&dev_list_lock);
+
+	return ret;
 }
 
 static int nvme_dev_release(struct inode *inode, struct file *f)
@@ -3038,28 +3058,27 @@ static int nvme_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	if (result)
 		goto release_pools;
 
+	dev->device = device_create(nvme_class, &pdev->dev,
+				MKDEV(nvme_char_major, dev->instance),
+				dev, "nvme%d", dev->instance);
+	if (IS_ERR(dev->device)) {
+		result = PTR_ERR(dev->device);
+		goto shutdown;
+	}
+	get_device(dev->device);
+
 	if (dev->online_queues > 1)
 		result = nvme_dev_add(dev);
 	if (result)
-		goto shutdown;
+		goto device_del;
 
 	pci_set_reset_notify(pdev, &nvme_reset_notify);
-
-	scnprintf(dev->name, sizeof(dev->name), "nvme%d", dev->instance);
-	dev->miscdev.minor = MISC_DYNAMIC_MINOR;
-	dev->miscdev.parent = &pdev->dev;
-	dev->miscdev.name = dev->name;
-	dev->miscdev.fops = &nvme_dev_fops;
-	result = misc_register(&dev->miscdev);
-	if (result)
-		goto remove;
 
 	dev->initialized = 1;
 	return 0;
 
- remove:
-	nvme_dev_remove(dev);
-	nvme_free_namespaces(dev);
+ device_del:
+	device_destroy(nvme_class, MKDEV(nvme_char_major, dev->instance));
  shutdown:
 	nvme_dev_shutdown(dev);
  release_pools:
@@ -3094,12 +3113,11 @@ static void nvme_remove(struct pci_dev *pdev)
 	pci_set_drvdata(pdev, NULL);
 	flush_work(&dev->reset_work);
 	flush_work(&dev->cpu_work);
-	misc_deregister(&dev->miscdev);
 	nvme_dev_shutdown(dev);
 	nvme_free_queues(dev, 0);
 	rcu_barrier();
 	nvme_dev_remove(dev);
-	nvme_release_instance(dev);
+	device_destroy(nvme_class, MKDEV(nvme_char_major, dev->instance));
 	nvme_release_prp_pools(dev);
 	kref_put(&dev->kref, nvme_free_dev);
 }
@@ -3186,11 +3204,28 @@ static int __init nvme_init(void)
 	if (result)
 		goto unregister_blkdev;
 
+	result = __register_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme",
+							&nvme_dev_fops);
+	if (result < 0)
+		goto unregister_hotcpu;
+	else if (result > 0)
+		nvme_char_major = result;
+
+	nvme_class = class_create(THIS_MODULE, "nvme");
+	if (IS_ERR(nvme_class)) {
+		result = PTR_ERR(nvme_class);
+		goto unregister_chrdev;
+	}
+
 	result = pci_register_driver(&nvme_driver);
 	if (result)
-		goto unregister_hotcpu;
+		goto destroy_class;
 	return 0;
 
+ destroy_class:
+	class_destroy(nvme_class);
+ unregister_chrdev:
+	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
  unregister_hotcpu:
 	unregister_hotcpu_notifier(&nvme_nb);
  unregister_blkdev:
@@ -3206,6 +3241,8 @@ static void __exit nvme_exit(void)
 	unregister_hotcpu_notifier(&nvme_nb);
 	unregister_blkdev(nvme_major, "nvme");
 	destroy_workqueue(nvme_workq);
+	class_destroy(nvme_class);
+	__unregister_chrdev(nvme_char_major, 0, NVME_MINORS, "nvme");
 	BUG_ON(nvme_thread && !IS_ERR(nvme_thread));
 	_nvme_check_size();
 }
