@@ -331,6 +331,7 @@ struct be_vf_cfg {
 	int pmac_id;
 	u16 vlan_tag;
 	u32 tx_rate;
+	u32 privileges;
 };
 
 enum vf_state {
