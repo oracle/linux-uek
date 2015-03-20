@@ -687,6 +687,7 @@ tlb_fixup_done:
 	sethi	%hi(init_thread_union), %g6
 	or	%g6, %lo(init_thread_union), %g6
 	ldx	[%g6 + TI_TASK], %g4
+	mov	%sp, %l6
 
 	wr	%g0, ASI_P, %asi
 	mov	1, %g1
@@ -719,6 +720,7 @@ tlb_fixup_done:
 	 nop
 #endif
 
+	mov	%l6, %o1
 	call	prom_init
 	 mov	%l7, %o0			! OpenPROM cif handler
 
