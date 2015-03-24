@@ -45,8 +45,29 @@
 			} else { \
 				msleep(x); \
 			} } while (0)
-
 #endif
+
+#ifdef DBG
+#define ASSERT(_x)		BUG_ON(!(_x))
+#define DEBUGOUT(S)		printk(KERN_DEBUG S)
+#define DEBUGOUT1(S, A...)	printk(KERN_DEBUG S, ## A)
+#define DEBUGOUT2(S, A...)	printk(KERN_DEBUG S, ## A)
+#define DEBUGOUT3(S, A...)	printk(KERN_DEBUG S, ## A)
+#define DEBUGOUT4(S, A...)	printk(KERN_DEBUG S, ## A)
+#define DEBUGOUT5(S, A...)	printk(KERN_DEBUG S, ## A)
+#define DEBUGOUT6(S, A...)	printk(KERN_DEBUG S, ## A)
+#else
+#define ASSERT(_x)		do {} while (0)
+#define DEBUGOUT(S)		do {} while (0)
+#define DEBUGOUT1(S, A...)	do {} while (0)
+#define DEBUGOUT2(S, A...)	do {} while (0)
+#define DEBUGOUT3(S, A...)	do {} while (0)
+#define DEBUGOUT4(S, A...)	do {} while (0)
+#define DEBUGOUT5(S, A...)	do {} while (0)
+#define DEBUGOUT6(S, A...)	do {} while (0)
+#endif
+
+#define DEBUGFUNC(S)		do {} while (0)
 
 #undef ASSERT
 
