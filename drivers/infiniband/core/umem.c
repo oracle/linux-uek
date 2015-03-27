@@ -455,6 +455,13 @@ struct ib_umem *ib_umem_get(struct ib_ucontext *context, unsigned long addr,
 	else if (allow_weak_ordering)
 		dma_set_attr(DMA_ATTR_WEAK_ORDERING, &attrs);
 
+	/*
+	 * If the combination of the addr and size requested for this memory
+	 * region causes an integer overflow, return error.
+	 */
+	if ((PAGE_ALIGN(addr + size) <= size) ||
+			(PAGE_ALIGN(addr + size) <= addr))
+		return ERR_PTR(-EINVAL);
 
 	if (!can_do_mlock())
 		return ERR_PTR(-EPERM);
