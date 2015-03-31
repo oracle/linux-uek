@@ -50,6 +50,7 @@
 		 __func__, __LINE__, ##args)
 
 
+extern unsigned int xen_blkif_max_ring_order;
 /*
  * This is the maximum number of segments that would be allowed in indirect
  * requests. This value will also be passed to the frontend.
@@ -317,6 +318,7 @@ struct xen_blkif {
 	struct work_struct	free_work;
 	/* Thread shutdown wait queue. */
 	wait_queue_head_t	shutdown_wq;
+	unsigned int nr_ring_pages;
 };
 
 struct seg_buf {
