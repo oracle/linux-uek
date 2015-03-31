@@ -1970,7 +1970,7 @@ void i40e_vlan_stripping_enable(struct i40e_vsi *vsi)
 				    I40E_AQ_VSI_PVLAN_EMOD_STR_BOTH;
 
 	ctxt.seid = vsi->seid;
-	memcpy(&ctxt.info, &vsi->info, sizeof(vsi->info));
+	ctxt.info = vsi->info;
 	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
@@ -1999,7 +1999,7 @@ void i40e_vlan_stripping_disable(struct i40e_vsi *vsi)
 				    I40E_AQ_VSI_PVLAN_EMOD_NOTHING;
 
 	ctxt.seid = vsi->seid;
-	memcpy(&ctxt.info, &vsi->info, sizeof(vsi->info));
+	ctxt.info = vsi->info;
 	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
@@ -2279,7 +2279,7 @@ int i40e_vsi_add_pvid(struct i40e_vsi *vsi, u16 vid)
 				    I40E_AQ_VSI_PVLAN_EMOD_STR;
 
 	ctxt.seid = vsi->seid;
-	memcpy(&ctxt.info, &vsi->info, sizeof(vsi->info));
+	ctxt.info = vsi->info;
 	aq_ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (aq_ret) {
 		dev_info(&vsi->back->pdev->dev,
@@ -4263,7 +4263,7 @@ static int i40e_vsi_config_tc(struct i40e_vsi *vsi, u8 enabled_tc)
 	ctxt.pf_num = vsi->back->hw.pf_id;
 	ctxt.vf_num = 0;
 	ctxt.uplink_seid = vsi->uplink_seid;
-	memcpy(&ctxt.info, &vsi->info, sizeof(vsi->info));
+	ctxt.info = vsi->info;
 	i40e_vsi_setup_queue_map(vsi, &ctxt, enabled_tc, false);
 
 	/* Update the VSI after updating the VSI queue-mapping information */
@@ -5244,11 +5244,9 @@ static void i40e_handle_link_event(struct i40e_pf *pf,
 	struct i40e_hw *hw = &pf->hw;
 	struct i40e_aqc_get_link_status *status =
 		(struct i40e_aqc_get_link_status *)&e->desc.params.raw;
-	struct i40e_link_status *hw_link_info = &hw->phy.link_info;
 
 	/* save off old link status information */
-	memcpy(&pf->hw.phy.link_info_old, hw_link_info,
-	       sizeof(pf->hw.phy.link_info_old));
+	hw->phy.link_info_old = hw->phy.link_info;
 
 	/* Do a new status request to re-enable LSE reporting
 	 * and load new status information into the hw struct
@@ -7433,7 +7431,7 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 				 ret, pf->hw.aq.asq_last_status);
 			return -ENOENT;
 		}
-		memcpy(&vsi->info, &ctxt.info, sizeof(ctxt.info));
+		vsi->info = ctxt.info;
 		vsi->info.valid_sections = 0;
 
 		vsi->seid = ctxt.seid;
@@ -7566,7 +7564,7 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 			ret = -ENOENT;
 			goto err;
 		}
-		memcpy(&vsi->info, &ctxt.info, sizeof(ctxt.info));
+		vsi->info = ctxt.info;
 		vsi->info.valid_sections = 0;
 		vsi->seid = ctxt.seid;
 		vsi->id = ctxt.vsi_number;
