@@ -798,13 +798,13 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 		return;
 	}
 
-	if (ipv4_tunnel &&
-	    !(rx_status & (1 << I40E_RX_DESC_STATUS_UDP_0_SHIFT))) {
-		/* If VXLAN traffic has an outer UDPv4 checksum we need to check
-		 * it in the driver, hardware does not do it for us.
-		 * Since L3L4P bit was set we assume a valid IHL value (>=5)
-		 * so the total length of IPv4 header is IHL*4 bytes
-		 */
+	/* If VXLAN traffic has an outer UDPv4 checksum we need to check
+	 * it in the driver, hardware does not do it for us.
+	 * Since L3L4P bit was set we assume a valid IHL value (>=5)
+	 * so the total length of IPv4 header is IHL*4 bytes
+	 * The UDP_0 bit *may* bet set if the *inner* header is UDP
+	 */
+	if (ipv4_tunnel) {
 		skb->transport_header = skb->mac_header +
 					sizeof(struct ethhdr) +
 					(ip_hdr(skb)->ihl * 4);
@@ -814,20 +814,26 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 					  skb->protocol == htons(ETH_P_8021AD))
 					  ? VLAN_HLEN : 0;
 
-		rx_udp_csum = udp_csum(skb);
-		iph = ip_hdr(skb);
-		csum = csum_tcpudp_magic(
-				iph->saddr, iph->daddr,
-				(skb->len - skb_transport_offset(skb)),
-				IPPROTO_UDP, rx_udp_csum);
+		if ((ip_hdr(skb)->protocol == IPPROTO_UDP) &&
+		    (udp_hdr(skb)->check != 0)) {
+			rx_udp_csum = udp_csum(skb);
+			iph = ip_hdr(skb);
+			csum = csum_tcpudp_magic(iph->saddr, iph->daddr,
+						 (skb->len -
+						  skb_transport_offset(skb)),
+						 IPPROTO_UDP, rx_udp_csum);
 
-		if (udp_hdr(skb)->check != csum) {
-			vsi->back->hw_csum_rx_error++;
-			return;
-		}
+			if (udp_hdr(skb)->check != csum)
+				goto checksum_fail;
+
+		} /* else its GRE and so no outer UDP header */
 	}
 
 	skb->ip_summed = CHECKSUM_UNNECESSARY;
+
+checksum_fail:
+        vsi->back->hw_csum_rx_error++;
+
 }
 
 /**
