@@ -216,6 +216,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	if (dp && dp->dp_ack_seq)
 		rds_send_drop_acked(conn, be64_to_cpu(dp->dp_ack_seq), NULL);
 
+#if RDMA_RDS_APM_SUPPORTED
 	if (rds_ib_apm_enabled && !ic->conn->c_reconnect) {
 		memcpy(&ic->i_pri_path.p_sgid,
 			&ic->i_cm_id->route.path_rec[0].sgid,
@@ -242,6 +243,7 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 			RDS_IB_GID_ARG(ic->i_pri_path.p_sgid),
 			RDS_IB_GID_ARG(ic->i_pri_path.p_dgid));
 	}
+#endif
 
 	rds_connect_complete(conn);
 }
@@ -806,18 +808,21 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		event->param.conn.responder_resources,
 		event->param.conn.initiator_depth);
 
+#if RDMA_RDS_APM_SUPPORTED
 	if (rds_ib_apm_enabled)
 		rdma_set_timeout(cm_id, rds_ib_apm_timeout);
-
+#endif
 	/* rdma_accept() calls rdma_reject() internally if it fails */
 	err = rdma_accept(cm_id, &conn_param);
 	if (err)
 		rds_ib_conn_error(conn, "rdma_accept failed (%d)\n", err);
+#if RDMA_RDS_APM_SUPPORTED
 	else if (rds_ib_apm_enabled && !conn->c_loopback) {
 		err = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
 		if (err)
 			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for passive side: %d\n", err);
 	}
+#endif
 
 out:
 	if (conn)
@@ -836,11 +841,13 @@ int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id)
 	struct rds_ib_connect_private dp;
 	int ret;
 
+#if RDMA_RDS_APM_SUPPORTED
 	if (rds_ib_apm_enabled && !conn->c_loopback) {
 		ret = rdma_enable_apm(cm_id, RDMA_ALT_PATH_BEST);
 		if (ret)
 			printk(KERN_WARNING "RDS/IB: APM couldn't be enabled for active side: %d\n", ret);
 	}
+#endif
 
 	/* If the peer doesn't do protocol negotiation, we must
 	 * default to RDSv3.0 */
@@ -883,8 +890,10 @@ static void rds_ib_migrate(struct work_struct *_work)
 	struct rdma_cm_id *cm_id = ic->i_cm_id;
 	int ret = 0;
 
+#if RDMA_RDS_APM_SUPPORTED
 	if (!rds_ib_apm_fallback)
 		return;
+#endif
 
 	if (!ic->i_active_side) {
 		ret = ib_query_qp(cm_id->qp, &qp_attr, IB_QP_PATH_MIG_STATE,
@@ -913,6 +922,7 @@ static void rds_ib_migrate(struct work_struct *_work)
 	}
 }
 
+#if RDMA_RDS_APM_SUPPORTED
 void rds_ib_check_migration(struct rds_connection *conn,
 			struct rdma_cm_event *event)
 {
@@ -967,6 +977,7 @@ void rds_ib_check_migration(struct rds_connection *conn,
 		}
 	}
 }
+#endif
 
 static void rds_ib_destroy_id(struct work_struct *_work)
 {
