@@ -429,12 +429,16 @@ extern unsigned int rds_ib_fmr_1m_pool_size;
 extern unsigned int rds_ib_fmr_8k_pool_size;
 extern unsigned int rds_ib_retry_count;
 extern unsigned int rds_ib_rnr_retry_count;
+#if RDMA_RDS_APM_SUPPORTED
 extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
+#endif
 extern unsigned int rds_ib_haip_enabled;
 extern unsigned int rds_ib_haip_fallback;
 extern unsigned int rds_ib_haip_failover_enabled;
+#if RDMA_RDS_APM_SUPPORTED
 extern unsigned int rds_ib_apm_timeout;
+#endif
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 extern unsigned int rds_ib_cq_balance_enabled;
 #endif
@@ -458,9 +462,10 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 int rds_ib_cm_initiate_connect(struct rdma_cm_id *cm_id);
 void rds_ib_cm_connect_complete(struct rds_connection *conn,
 				struct rdma_cm_event *event);
+#if RDMA_RDS_APM_SUPPORTED
 void rds_ib_check_migration(struct rds_connection *conn,
 				struct rdma_cm_event *event);
-
+#endif
 
 #define rds_ib_conn_error(conn, fmt...) \
 	__rds_ib_conn_error(conn, KERN_WARNING "RDS/IB: " fmt)
