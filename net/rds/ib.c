@@ -51,11 +51,15 @@
 unsigned int rds_ib_fmr_1m_pool_size = RDS_FMR_1M_POOL_SIZE;
 unsigned int rds_ib_fmr_8k_pool_size = RDS_FMR_8K_POOL_SIZE;
 unsigned int rds_ib_retry_count = RDS_IB_DEFAULT_RETRY_COUNT;
+#if RDMA_RDS_APM_SUPPORTED
 unsigned int rds_ib_apm_enabled = 0;
 unsigned int rds_ib_apm_fallback = 1;
+#endif
 unsigned int rds_ib_haip_enabled = 0;
 unsigned int rds_ib_haip_fallback = 1;
+#if RDMA_RDS_APM_SUPPORTED
 unsigned int rds_ib_apm_timeout = RDS_IB_DEFAULT_TIMEOUT;
+#endif
 unsigned int rds_ib_rnr_retry_count = RDS_IB_DEFAULT_RNR_RETRY_COUNT;
 #if IB_RDS_CQ_VECTOR_SUPPORTED
 unsigned int rds_ib_cq_balance_enabled = 1;
@@ -68,16 +72,22 @@ module_param(rds_ib_fmr_8k_pool_size, int, 0444);
 MODULE_PARM_DESC(rds_ib_fmr_8k_pool_size, " Max number of 8k fmr per HCA");
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, " Number of hw retries before reporting an error");
+#if RDMA_RDS_APM_SUPPORTED
 module_param(rds_ib_apm_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_enabled, " APM Enabled");
+#endif
 module_param(rds_ib_haip_enabled, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_enabled, " High Availability IP enabled");
+#if RDMA_RDS_APM_SUPPORTED
 module_param(rds_ib_apm_timeout, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_timeout, " APM timeout");
+#endif
 module_param(rds_ib_rnr_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_rnr_retry_count, " QP rnr retry count");
+#if RDMA_RDS_APM_SUPPORTED
 module_param(rds_ib_apm_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_apm_fallback, " APM failback enabled");
+#endif
 module_param(rds_ib_haip_fallback, int, 0444);
 MODULE_PARM_DESC(rds_ib_haip_fallback, " HAIP failback Enabled");
 module_param(rds_ib_haip_failover_groups, charp, 0444);
@@ -1347,7 +1357,9 @@ struct rds_transport rds_ib_transport = {
 	.sync_mr		= rds_ib_sync_mr,
 	.free_mr		= rds_ib_free_mr,
 	.flush_mrs		= rds_ib_flush_mrs,
+#if RDMA_RDS_APM_SUPPORTED
 	.check_migration        = rds_ib_check_migration,
+#endif
 	.t_owner		= THIS_MODULE,
 	.t_name			= "infiniband",
 	.t_type			= RDS_TRANS_IB
