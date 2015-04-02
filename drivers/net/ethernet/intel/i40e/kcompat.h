@@ -41,6 +41,8 @@ extern int __kc_netif_set_xps_queue(struct net_device *, struct cpumask *, u16);
 /* hardware time stamping: parameters in linux/net_tstamp.h */
 #define SIOCGHWTSTAMP	0x89b1		/* get config */
 
+#define SPEED_20000		20000
+
 #undef hlist_entry
 #define hlist_entry(ptr, type, member) container_of(ptr,type,member)
 
