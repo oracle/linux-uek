@@ -23,6 +23,7 @@
 #define RDS_PROTOCOL(maj, min)	(((maj) << 8) | min)
 
 #define IB_RDS_CQ_VECTOR_SUPPORTED 0
+#define RDMA_RDS_APM_SUPPORTED 0
 
 /*
  * XXX randomly chosen, but at least seems to be unused:
