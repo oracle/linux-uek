@@ -98,7 +98,7 @@ static struct elevator_type elevator_noop = {
 		.elevator_add_req_fn		= noop_add_request,
 		.elevator_former_req_fn		= noop_former_request,
 		.elevator_latter_req_fn		= noop_latter_request,
-		.elevator_init_fn		= noop_init_queue,
+		.elevator_init_fn		= (elevator_init_fn *)noop_init_queue,
 		.elevator_exit_fn		= noop_exit_queue,
 	},
 	.elevator_name = "noop",

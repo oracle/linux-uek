@@ -4177,7 +4177,7 @@ static struct elevator_type iosched_cfq = {
 		.elevator_set_req_fn =		cfq_set_request,
 		.elevator_put_req_fn =		cfq_put_request,
 		.elevator_may_queue_fn =	cfq_may_queue,
-		.elevator_init_fn =		cfq_init_queue,
+		.elevator_init_fn =		(elevator_init_fn *)cfq_init_queue,
 		.elevator_exit_fn =		cfq_exit_queue,
 	},
 	.icq_size	=	sizeof(struct cfq_io_cq),

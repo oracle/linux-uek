@@ -182,6 +182,7 @@ int elevator_init(struct request_queue *q, char *name)
 {
 	struct elevator_type *e = NULL;
 	int err;
+	elevator_new_init_fn *init_fn;
 
 	/*
 	 * q->sysfs_lock must be held to provide mutual exclusion between
@@ -220,7 +221,8 @@ int elevator_init(struct request_queue *q, char *name)
 		}
 	}
 
-	err = e->ops.elevator_init_fn(q, e);
+	init_fn = (elevator_new_init_fn *)e->ops.elevator_init_fn;
+	err = init_fn(q, e);
 	return 0;
 }
 EXPORT_SYMBOL(elevator_init);
@@ -882,6 +884,7 @@ static int elevator_switch(struct request_queue *q, struct elevator_type *new_e)
 	struct elevator_queue *old = q->elevator;
 	bool registered = old->registered;
 	int err;
+	elevator_new_init_fn *init_fn;
 
 	/*
 	 * Turn on BYPASS and drain all requests w/ elevator private data.
@@ -901,7 +904,8 @@ static int elevator_switch(struct request_queue *q, struct elevator_type *new_e)
 	spin_unlock_irq(q->queue_lock);
 
 	/* allocate, init and register new elevator */
-	err = new_e->ops.elevator_init_fn(q, new_e);
+	init_fn = (elevator_new_init_fn *)new_e->ops.elevator_init_fn;
+	err = init_fn(q, new_e);
 	if (err)
 		goto fail_init;
 

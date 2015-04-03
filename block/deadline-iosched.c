@@ -449,7 +449,7 @@ static struct elevator_type iosched_deadline = {
 		.elevator_add_req_fn =		deadline_add_request,
 		.elevator_former_req_fn =	elv_rb_former_request,
 		.elevator_latter_req_fn =	elv_rb_latter_request,
-		.elevator_init_fn =		deadline_init_queue,
+		.elevator_init_fn =		(elevator_init_fn *)deadline_init_queue,
 		.elevator_exit_fn =		deadline_exit_queue,
 	},
 
