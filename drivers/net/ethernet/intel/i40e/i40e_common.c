@@ -2150,6 +2150,9 @@ static void i40e_parse_discover_capabilities(struct i40e_hw *hw, void *buff,
 		}
 	}
 
+	if (p->fcoe)
+		i40e_debug(hw, I40E_DEBUG_ALL, "device is FCoE capable\n");
+
 	/* count the enabled ports (aka the "not disabled" ports) */
 	hw->num_ports = 0;
 	for (i = 0; i < 4; i++) {
