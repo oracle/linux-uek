@@ -269,4 +269,9 @@ i40e_status i40e_aq_send_msg_to_pf(struct i40e_hw *hw,
 				struct i40e_asq_cmd_details *cmd_details);
 i40e_status i40e_set_filter_control(struct i40e_hw *hw,
 				struct i40e_filter_control_settings *settings);
+i40e_status i40e_aq_debug_dump(struct i40e_hw *hw, u8 cluster_id,
+			       u8 table_id, u32 start_index, u16 buff_size,
+			       void *buff, u16 *ret_buff_size,
+			       u8 *ret_next_table, u32 *ret_next_index,
+			       struct i40e_asq_cmd_details *cmd_details);
 #endif /* _I40E_PROTOTYPE_H_ */
