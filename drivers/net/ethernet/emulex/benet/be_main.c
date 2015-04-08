@@ -1964,7 +1964,7 @@ static void be_post_rx_frags(struct be_rx_obj *rxo, gfp_t gfp, u32 frags_needed)
 	if (posted) {
 		atomic_add(posted, &rxq->used);
 		do {
-			notify = min(256u, posted);
+			notify = min(MAX_NUM_POST_ERX_DB, posted);
 			be_rxq_notify(adapter, rxq->id, notify);
 			posted -= notify;
 		} while (posted);
