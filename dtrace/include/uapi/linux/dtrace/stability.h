@@ -32,7 +32,6 @@
  * Use is subject to license terms.
  */
 
-#include <linux/uidgid.h>
 #include <linux/dtrace/universal.h>
 #include <linux/dtrace/stability_defines.h>
 
@@ -45,7 +44,7 @@
 
 typedef struct dtrace_ppriv {
 	uint32_t dtpp_flags;			/* privilege flags */
-	kuid_t dtpp_uid;			/* user ID */
+	uid_t dtpp_uid;				/* user ID */
 } dtrace_ppriv_t;
 
 typedef struct dtrace_attribute {

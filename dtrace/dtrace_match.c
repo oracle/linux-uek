@@ -46,7 +46,7 @@ int dtrace_match_priv(const dtrace_probe_t *prp, uint32_t priv, kuid_t uid)
 			return 0;
 
 		if (((ppriv & ~match) & DTRACE_PRIV_OWNER) != 0 &&
-		    !uid_eq(uid, prp->dtpr_provider->dtpv_priv.dtpp_uid))
+		    !uid_eq(uid, make_kuid(NULL, prp->dtpr_provider->dtpv_priv.dtpp_uid)))
 			return 0;
 	}
 
