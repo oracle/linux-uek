@@ -696,8 +696,8 @@ Provides: kernel-devel = %{version}-%{release}%{?1:.%{1}}\
 %endif\
 AutoReqProv: no\
 Requires(pre): /usr/bin/find\
-Requires: elfutils-libelf\
-Requires: elfutils-libs\
+Requires: elfutils-libelf >= 0.160\
+Requires: elfutils-libs >= 0.160\
 %if %{with_dtrace}\
 Requires: libdtrace-ctf\
 %endif\
