@@ -806,6 +806,7 @@ static int ocfs2_local_alloc_find_clear_bits(struct ocfs2_super *osb,
 
 	if (!alloc->id1.bitmap1.i_total) {
 		bitoff = -1;
+		numfound = -1;
 		goto bail;
 	}
 
