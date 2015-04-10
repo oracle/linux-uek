@@ -309,7 +309,7 @@ out_fail:
 	if (wc->status != IB_WC_WR_FLUSH_ERR)
 		pr_err("RPC:       %s: rep %p: %s\n",
 		       __func__, rep, COMPLETION_MSG(wc->status));
-	rep->rr_len = ~0U;
+	rep->rr_len = RPCRDMA_BAD_LEN;
 	goto out_schedule;
 
 out_last:
