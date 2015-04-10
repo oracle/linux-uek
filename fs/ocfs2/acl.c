@@ -466,6 +466,7 @@ static int ocfs2_xattr_set_acl(struct dentry *dentry, const char *name,
 	struct ocfs2_super *osb = OCFS2_SB(inode->i_sb);
 	struct posix_acl *acl;
 	int ret = 0;
+	struct buffer_head *bh = NULL;
 
 	if (strcmp(name, "") != 0)
 		return -EINVAL;
@@ -475,11 +476,18 @@ static int ocfs2_xattr_set_acl(struct dentry *dentry, const char *name,
 	if (!inode_owner_or_capable(inode))
 		return -EPERM;
 
+	ret = ocfs2_inode_lock(inode, &bh, 1);
+	if (ret < 0) {
+		if (ret != -ENOENT)
+			mlog_errno(ret);
+		return ret;
+	}
 	if (value) {
 		acl = posix_acl_from_xattr(&init_user_ns, value, size);
-		if (IS_ERR(acl))
-			return PTR_ERR(acl);
-		else if (acl) {
+		if (IS_ERR(acl)) {
+			ret = (int) PTR_ERR(acl);
+			goto out;
+		} else if (acl) {
 			ret = posix_acl_valid(acl);
 			if (ret)
 				goto cleanup;
@@ -487,10 +495,13 @@ static int ocfs2_xattr_set_acl(struct dentry *dentry, const char *name,
 	} else
 		acl = NULL;
 
-	ret = ocfs2_set_acl(NULL, inode, NULL, type, acl, NULL, NULL);
+	ret = ocfs2_set_acl(NULL, inode, bh, type, acl, NULL, NULL);
 
 cleanup:
 	posix_acl_release(acl);
+out:
+	ocfs2_inode_unlock(inode, 1);
+	brelse(bh);
 	return ret;
 }
 
