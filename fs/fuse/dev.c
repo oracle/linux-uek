@@ -337,12 +337,20 @@ static unsigned len_args(unsigned numargs, struct fuse_arg *args)
 
 static u64 fuse_get_unique(struct fuse_conn *fc)
 {
+	u64 ctr;
+
+	/** Using a separate seq_lock will reduce contention for fc->lock
+	 * and make the code cleaner.
+	 */
+	spin_lock(&fc->seq_lock);
 	fc->reqctr++;
 	/* zero is special */
 	if (fc->reqctr == 0)
 		fc->reqctr = 1;
+	ctr = fc->reqctr;
+	spin_unlock(&fc->seq_lock);
 
-	return fc->reqctr;
+	return ctr;
 }
 
 static void queue_request(struct fuse_node *fn, struct fuse_req *req)

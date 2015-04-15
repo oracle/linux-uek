@@ -574,6 +574,7 @@ int fuse_conn_init(struct fuse_conn *fc)
 
 	memset(fc, 0, sizeof(*fc));
 	spin_lock_init(&fc->lock);
+	spin_lock_init(&fc->seq_lock);
 	init_rwsem(&fc->killsb);
 	atomic_set(&fc->count, 1);
 	init_waitqueue_head(&fc->reserved_req_waitq);

@@ -498,6 +498,9 @@ struct fuse_conn {
 	/** The next unique request id */
 	u64 reqctr;
 
+	/** Lock for protecting access to the reqctr */
+	spinlock_t seq_lock;
+
 	/** Connection failed (version mismatch).  Cannot race with
 	    setting other bitfields since it is only set once in INIT
 	    reply, before any other request, and never cleared */
