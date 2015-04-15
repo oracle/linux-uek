@@ -567,9 +567,29 @@ static int fuse_show_options(struct seq_file *m, struct dentry *root)
 	return 0;
 }
 
+void fuse_node_init(struct fuse_conn *fc, struct fuse_node *fn, int i)
+{
+	fn->fc = fc;
+	fn->node_id = i;
+	fn->blocked = 0;
+	spin_lock_init(&fn->lock);
+	init_waitqueue_head(&fn->waitq);
+	init_waitqueue_head(&fn->blocked_waitq);
+	INIT_LIST_HEAD(&fn->bg_queue);
+	INIT_LIST_HEAD(&fn->interrupts);
+	INIT_LIST_HEAD(&fn->pending);
+	INIT_LIST_HEAD(&fn->processing);
+	INIT_LIST_HEAD(&fn->io);
+	fn->forget_list_tail = &fn->forget_list_head;
+	atomic_set(&fn->num_waiting, 0);
+	fn->max_background = FUSE_DEFAULT_MAX_BACKGROUND;
+	fn->congestion_threshold = FUSE_DEFAULT_CONGESTION_THRESHOLD;
+	fn->connected = 1;
+}
+
 int fuse_conn_init(struct fuse_conn *fc)
 {
-	int sz, ret;
+	int sz, ret, i;
 	struct fuse_node *fn;
 
 	memset(fc, 0, sizeof(*fc));
@@ -589,29 +609,26 @@ int fuse_conn_init(struct fuse_conn *fc)
 	fc->nr_nodes = 1;
 
 	ret = -ENOMEM;
+	sz = sizeof(struct fuse_node *) * fc->nr_nodes;
+	fc->fn = kmalloc(sz, GFP_KERNEL);
+	if (!fc->fn)
+		return ret;
+	memset(fc->fn, 0, sz);
 	sz = sizeof(struct fuse_node);
-	fn = kmalloc_node(sz, GFP_KERNEL, 0);
-	if (!fn)
-		goto out;
-	memset(fn, 0, sz);
-	fc->fn = fn;
-	fn->fc = fc;
-	fn->node_id = 0;
-	fn->blocked = 0;
-	init_waitqueue_head(&fn->waitq);
-	init_waitqueue_head(&fn->blocked_waitq);
-	INIT_LIST_HEAD(&fn->bg_queue);
-	INIT_LIST_HEAD(&fn->interrupts);
-	INIT_LIST_HEAD(&fn->pending);
-	INIT_LIST_HEAD(&fn->processing);
-	INIT_LIST_HEAD(&fn->io);
-	fn->forget_list_tail = &fn->forget_list_head;
-	atomic_set(&fn->num_waiting, 0);
-	fn->max_background = FUSE_DEFAULT_MAX_BACKGROUND;
-	fn->congestion_threshold = FUSE_DEFAULT_CONGESTION_THRESHOLD;
-	fn->connected = 1;
+	for (i = 0; i < fc->nr_nodes; i++) {
+		fn = kmalloc_node(sz, GFP_KERNEL, i);
+		if (!fn)
+			goto out;
+		memset(fn, 0, sz);
+		fc->fn[i] = fn;
+		fuse_node_init(fc, fn, i);
+	}
 	return 0;
- out:
+out:
+	while (i > 0) {
+		kfree(fc->fn[i - 1]);
+		i--;
+	}
 	kfree(fc->fn);
 	return ret;
 }
@@ -835,8 +852,8 @@ static int set_global_limit(const char *val, struct kernel_param *kp)
 static void process_init_limits(struct fuse_conn *fc, struct fuse_init_out *arg)
 {
 	int cap_sys_admin = capable(CAP_SYS_ADMIN);
-	struct fuse_node *fn = fc->fn;
-	int val;
+	struct fuse_node *fn;
+	int i, val;
 
 	if (arg->minor < 13)
 		return;
@@ -849,7 +866,11 @@ static void process_init_limits(struct fuse_conn *fc, struct fuse_init_out *arg)
 		if (!cap_sys_admin && (val > max_user_bgreq))
 			val = max_user_bgreq;
 
-		fn->max_background = val;
+		val = (val + fc->nr_nodes - 1) / fc->nr_nodes;
+		for (i = 0; i < fc->nr_nodes; i++) {
+			fn = fc->fn[i];
+			fn->max_background = val;
+		}
 	}
 
 	if (arg->congestion_threshold) {
@@ -857,15 +878,19 @@ static void process_init_limits(struct fuse_conn *fc, struct fuse_init_out *arg)
 		if (!cap_sys_admin && val > max_user_congthresh)
 			val = max_user_congthresh;
 
-		fn->congestion_threshold = val;
-
+		val = (val + fc->nr_nodes - 1) / fc->nr_nodes;
+		for (i = 0; i < fc->nr_nodes; i++) {
+			fn = fc->fn[i];
+			fn->congestion_threshold = val;
+		}
 	}
 }
 
 static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 {
+	int i;
 	struct fuse_init_out *arg = &req->misc.init_out;
-	struct fuse_node *fn = fc->fn;
+	struct fuse_node *fn;
 
 	if (req->out.h.error || arg->major != FUSE_KERNEL_VERSION)
 		fc->conn_error = 1;
@@ -924,7 +949,10 @@ static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 		fc->conn_init = 1;
 	}
 	fuse_set_initialized(fc);
-	wake_up_all(&fn->blocked_waitq);
+	for (i = 0; i < fc->nr_nodes; i++) {
+		fn = fc->fn[i];
+		wake_up_all(&fn->blocked_waitq);
+	}
 }
 
 static void fuse_send_init(struct fuse_conn *fc, struct fuse_req *req)
@@ -957,7 +985,10 @@ static void fuse_send_init(struct fuse_conn *fc, struct fuse_req *req)
 
 static void fuse_free_conn(struct fuse_conn *fc)
 {
-	kfree(fc->fn);
+	int i;
+
+	for (i = 0; i < fc->nr_nodes; i++)
+		kfree(fc->fn[i]);
 	kfree_rcu(fc, rcu);
 }
 

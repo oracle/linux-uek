@@ -49,12 +49,15 @@ static ssize_t fuse_conn_waiting_read(struct file *file, char __user *buf,
 	struct fuse_node *fn;
 
 	if (!*ppos) {
-		long value;
+		long i, value;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (!fc)
 			return 0;
-		fn = fc->fn;
-		value = atomic_read(&fn->num_waiting);
+
+		for (i = 0, value = 0; i < fc->nr_nodes; i++) {
+			fn = fc->fn[i];
+			value += atomic_read(&fn->num_waiting);
+		}
 		file->private_data = (void *)value;
 		fuse_conn_put(fc);
 	}
@@ -103,13 +106,16 @@ static ssize_t fuse_conn_max_background_read(struct file *file,
 {
 	struct fuse_conn *fc;
 	struct fuse_node *fn;
-	unsigned val;
+	unsigned i, val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
-	fn = fc->fn;
-	val = fn->max_background;
+
+	for (i = 0, val = 0; i < fc->nr_nodes; i++) {
+		fn = fc->fn[i];
+		val += fn->max_background;
+	}
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -126,10 +132,14 @@ static ssize_t fuse_conn_max_background_write(struct file *file,
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
 				    max_user_bgreq);
 	if (ret > 0) {
+		int i;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fn = fc->fn;
-			fn->max_background = val;
+			val = (val  + fc->nr_nodes - 1) / fc->nr_nodes;
+			for (i = 0; i < fc->nr_nodes; i++) {
+				fn = fc->fn[i];
+				fn->max_background = val;
+			}
 			fuse_conn_put(fc);
 		}
 	}
@@ -143,13 +153,16 @@ static ssize_t fuse_conn_congestion_threshold_read(struct file *file,
 {
 	struct fuse_conn *fc;
 	struct fuse_node *fn;
-	unsigned val;
+	unsigned i, val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
-	fn = fc->fn;
-	val = fn->congestion_threshold;
+
+	for (i = 0, val = 0; i < fc->nr_nodes; i++) {
+		fn = fc->fn[i];
+		val += fn->congestion_threshold;
+	}
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -166,10 +179,14 @@ static ssize_t fuse_conn_congestion_threshold_write(struct file *file,
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
 				    max_user_congthresh);
 	if (ret > 0) {
+		int i;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fn = fc->fn;
-			fn->congestion_threshold = val;
+			val = (val  + fc->nr_nodes - 1) / fc->nr_nodes;
+			for (i = 0; i < fc->nr_nodes; i++) {
+				fn = fc->fn[i];
+				fn->congestion_threshold = val;
+			}
 			fuse_conn_put(fc);
 		}
 	}

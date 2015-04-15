@@ -560,14 +560,18 @@ static ssize_t cuse_class_waiting_show(struct device *dev,
 				       struct device_attribute *attr, char *buf)
 {
 	struct cuse_conn *cc = dev_get_drvdata(dev);
-	int val;
-	struct fuse_node *fn = cc->fc.fn;
+	int i, val;
+	struct fuse_node *fn;
 
-	val = atomic_read(&fn->num_waiting);
+	for (i = 0, val = 0; i < cc->fc.nr_nodes; i++) {
+		fn = cc->fc.fn[i];
+		val += atomic_read(&fn->num_waiting);
+	}
 
 	return sprintf(buf, "%d\n", val);
 }
 static DEVICE_ATTR(waiting, 0400, cuse_class_waiting_show, NULL);
+
 
 static ssize_t cuse_class_abort_store(struct device *dev,
 				      struct device_attribute *attr,

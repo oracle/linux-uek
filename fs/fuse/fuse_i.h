@@ -388,6 +388,9 @@ struct fuse_node {
 	/* node id */
 	int node_id;
 
+	/* Lock protecting accessess to members of this structure */
+	spinlock_t lock;
+
 	/* pointer to main fuse_connection */
 	struct fuse_conn *fc;
 
@@ -453,7 +456,7 @@ struct fuse_node {
  * unmounted.
  */
 struct fuse_conn {
-	/** Lock protecting accessess to  members of this structure */
+	/* Lock protecting accessess to members of this structure */
 	spinlock_t lock;
 
 	/* Number of fuse_nodes */
@@ -637,7 +640,7 @@ struct fuse_conn {
 	/** Read/write semaphore to hold when accessing sb. */
 	struct rw_semaphore killsb;
 
-	struct fuse_node *fn;
+	struct fuse_node **fn;
 };
 
 static inline struct fuse_conn *get_fuse_conn_super(struct super_block *sb)

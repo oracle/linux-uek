@@ -1460,7 +1460,7 @@ __acquires(fc->lock)
 {
 	struct fuse_inode *fi = get_fuse_inode(req->inode);
 	struct fuse_write_in *inarg = &req->misc.write.in;
-	struct fuse_node *fn = fc->fn;
+	struct fuse_node *fn = fc->fn[0];
 	__u64 data_size = req->num_pages * PAGE_CACHE_SIZE;
 
 	if (!fn->connected)
