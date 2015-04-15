@@ -265,11 +265,16 @@ static struct rds_ib_incoming *rds_ib_refill_one_inc(struct rds_ib_connection *i
 	cache_item = rds_ib_recv_cache_get(&ic->i_cache_incs);
 	if (cache_item) {
 		ibinc = container_of(cache_item, struct rds_ib_incoming, ii_cache_entry);
-	} else {
+	} else if (rds_ib_incoming_slab) {
 		ibinc = kmem_cache_alloc(rds_ib_incoming_slab, slab_mask);
 		if (!ibinc)
 			return NULL;
 		rds_ib_stats_inc(s_ib_rx_total_incs);
+	} else {
+		printk(KERN_ERR "rds_ib_recv_init() hasn't been called. "
+		       "Please check your network configuration.\n");
+		WARN_ON(!rds_ib_incoming_slab);
+		return NULL;
 	}
 	INIT_LIST_HEAD(&ibinc->ii_frags);
 	rds_inc_init(&ibinc->ii_inc, ic->conn, ic->conn->c_faddr);
