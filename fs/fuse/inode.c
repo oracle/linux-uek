@@ -567,32 +567,52 @@ static int fuse_show_options(struct seq_file *m, struct dentry *root)
 	return 0;
 }
 
-void fuse_conn_init(struct fuse_conn *fc)
+int fuse_conn_init(struct fuse_conn *fc)
 {
+	int sz, ret;
+	struct fuse_node *fn;
+
 	memset(fc, 0, sizeof(*fc));
 	spin_lock_init(&fc->lock);
 	init_rwsem(&fc->killsb);
 	atomic_set(&fc->count, 1);
-	init_waitqueue_head(&fc->waitq);
-	init_waitqueue_head(&fc->blocked_waitq);
 	init_waitqueue_head(&fc->reserved_req_waitq);
-	INIT_LIST_HEAD(&fc->pending);
-	INIT_LIST_HEAD(&fc->processing);
-	INIT_LIST_HEAD(&fc->io);
-	INIT_LIST_HEAD(&fc->interrupts);
-	INIT_LIST_HEAD(&fc->bg_queue);
+	init_waitqueue_head(&fc->poll_waitq);
 	INIT_LIST_HEAD(&fc->entry);
-	fc->forget_list_tail = &fc->forget_list_head;
-	atomic_set(&fc->num_waiting, 0);
-	fc->max_background = FUSE_DEFAULT_MAX_BACKGROUND;
-	fc->congestion_threshold = FUSE_DEFAULT_CONGESTION_THRESHOLD;
 	fc->khctr = 0;
 	fc->polled_files = RB_ROOT;
 	fc->reqctr = 0;
-	fc->blocked = 0;
 	fc->initialized = 0;
 	fc->attr_version = 1;
 	get_random_bytes(&fc->scramble_key, sizeof(fc->scramble_key));
+	fc->nr_nodes = 1;
+
+	ret = -ENOMEM;
+	sz = sizeof(struct fuse_node);
+	fn = kmalloc_node(sz, GFP_KERNEL, 0);
+	if (!fn)
+		goto out;
+	memset(fn, 0, sz);
+	fc->fn = fn;
+	fn->fc = fc;
+	fn->node_id = 0;
+	fn->blocked = 0;
+	init_waitqueue_head(&fn->waitq);
+	init_waitqueue_head(&fn->blocked_waitq);
+	INIT_LIST_HEAD(&fn->bg_queue);
+	INIT_LIST_HEAD(&fn->interrupts);
+	INIT_LIST_HEAD(&fn->pending);
+	INIT_LIST_HEAD(&fn->processing);
+	INIT_LIST_HEAD(&fn->io);
+	fn->forget_list_tail = &fn->forget_list_head;
+	atomic_set(&fn->num_waiting, 0);
+	fn->max_background = FUSE_DEFAULT_MAX_BACKGROUND;
+	fn->congestion_threshold = FUSE_DEFAULT_CONGESTION_THRESHOLD;
+	fn->connected = 1;
+	return 0;
+ out:
+	kfree(fc->fn);
+	return ret;
 }
 EXPORT_SYMBOL_GPL(fuse_conn_init);
 
@@ -814,6 +834,8 @@ static int set_global_limit(const char *val, struct kernel_param *kp)
 static void process_init_limits(struct fuse_conn *fc, struct fuse_init_out *arg)
 {
 	int cap_sys_admin = capable(CAP_SYS_ADMIN);
+	struct fuse_node *fn = fc->fn;
+	int val;
 
 	if (arg->minor < 13)
 		return;
@@ -822,23 +844,27 @@ static void process_init_limits(struct fuse_conn *fc, struct fuse_init_out *arg)
 	sanitize_global_limit(&max_user_congthresh);
 
 	if (arg->max_background) {
-		fc->max_background = arg->max_background;
+		val = arg->max_background;
+		if (!cap_sys_admin && (val > max_user_bgreq))
+			val = max_user_bgreq;
 
-		if (!cap_sys_admin && fc->max_background > max_user_bgreq)
-			fc->max_background = max_user_bgreq;
+		fn->max_background = val;
 	}
-	if (arg->congestion_threshold) {
-		fc->congestion_threshold = arg->congestion_threshold;
 
-		if (!cap_sys_admin &&
-		    fc->congestion_threshold > max_user_congthresh)
-			fc->congestion_threshold = max_user_congthresh;
+	if (arg->congestion_threshold) {
+		val = arg->congestion_threshold;
+		if (!cap_sys_admin && val > max_user_congthresh)
+			val = max_user_congthresh;
+
+		fn->congestion_threshold = val;
+
 	}
 }
 
 static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 {
 	struct fuse_init_out *arg = &req->misc.init_out;
+	struct fuse_node *fn = fc->fn;
 
 	if (req->out.h.error || arg->major != FUSE_KERNEL_VERSION)
 		fc->conn_error = 1;
@@ -897,7 +923,7 @@ static void process_init_reply(struct fuse_conn *fc, struct fuse_req *req)
 		fc->conn_init = 1;
 	}
 	fuse_set_initialized(fc);
-	wake_up_all(&fc->blocked_waitq);
+	wake_up_all(&fn->blocked_waitq);
 }
 
 static void fuse_send_init(struct fuse_conn *fc, struct fuse_req *req)
@@ -930,6 +956,7 @@ static void fuse_send_init(struct fuse_conn *fc, struct fuse_req *req)
 
 static void fuse_free_conn(struct fuse_conn *fc)
 {
+	kfree(fc->fn);
 	kfree_rcu(fc, rcu);
 }
 
@@ -1057,13 +1084,13 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 	/* only now - we want root dentry with NULL ->d_op */
 	sb->s_d_op = &fuse_dentry_operations;
 
-	init_req = fuse_request_alloc(0);
+	init_req = fuse_request_alloc(fc, 0);
 	if (!init_req)
 		goto err_put_root;
 	init_req->background = 1;
 
 	if (is_bdev) {
-		fc->destroy_req = fuse_request_alloc(0);
+		fc->destroy_req = fuse_request_alloc(fc, 0);
 		if (!fc->destroy_req)
 			goto err_free_init_req;
 	}
@@ -1079,7 +1106,6 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 
 	list_add_tail(&fc->entry, &fuse_conn_list);
 	sb->s_root = root_dentry;
-	fc->connected = 1;
 	file->private_data = fuse_conn_get(fc);
 	mutex_unlock(&fuse_mutex);
 	/*

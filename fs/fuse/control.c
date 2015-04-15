@@ -46,14 +46,15 @@ static ssize_t fuse_conn_waiting_read(struct file *file, char __user *buf,
 {
 	char tmp[32];
 	size_t size;
+	struct fuse_node *fn;
 
 	if (!*ppos) {
 		long value;
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (!fc)
 			return 0;
-
-		value = atomic_read(&fc->num_waiting);
+		fn = fc->fn;
+		value = atomic_read(&fn->num_waiting);
 		file->private_data = (void *)value;
 		fuse_conn_put(fc);
 	}
@@ -101,13 +102,14 @@ static ssize_t fuse_conn_max_background_read(struct file *file,
 					     loff_t *ppos)
 {
 	struct fuse_conn *fc;
+	struct fuse_node *fn;
 	unsigned val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
-
-	val = fc->max_background;
+	fn = fc->fn;
+	val = fn->max_background;
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -118,6 +120,7 @@ static ssize_t fuse_conn_max_background_write(struct file *file,
 					      size_t count, loff_t *ppos)
 {
 	unsigned uninitialized_var(val);
+	struct fuse_node *fn;
 	ssize_t ret;
 
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
@@ -125,7 +128,8 @@ static ssize_t fuse_conn_max_background_write(struct file *file,
 	if (ret > 0) {
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fc->max_background = val;
+			fn = fc->fn;
+			fn->max_background = val;
 			fuse_conn_put(fc);
 		}
 	}
@@ -138,13 +142,14 @@ static ssize_t fuse_conn_congestion_threshold_read(struct file *file,
 						   loff_t *ppos)
 {
 	struct fuse_conn *fc;
+	struct fuse_node *fn;
 	unsigned val;
 
 	fc = fuse_ctl_file_conn_get(file);
 	if (!fc)
 		return 0;
-
-	val = fc->congestion_threshold;
+	fn = fc->fn;
+	val = fn->congestion_threshold;
 	fuse_conn_put(fc);
 
 	return fuse_conn_limit_read(file, buf, len, ppos, val);
@@ -155,6 +160,7 @@ static ssize_t fuse_conn_congestion_threshold_write(struct file *file,
 						    size_t count, loff_t *ppos)
 {
 	unsigned uninitialized_var(val);
+	struct fuse_node *fn;
 	ssize_t ret;
 
 	ret = fuse_conn_limit_write(file, buf, count, ppos, &val,
@@ -162,7 +168,8 @@ static ssize_t fuse_conn_congestion_threshold_write(struct file *file,
 	if (ret > 0) {
 		struct fuse_conn *fc = fuse_ctl_file_conn_get(file);
 		if (fc) {
-			fc->congestion_threshold = val;
+			fn = fc->fn;
+			fn->congestion_threshold = val;
 			fuse_conn_put(fc);
 		}
 	}

@@ -51,7 +51,7 @@ struct fuse_file *fuse_file_alloc(struct fuse_conn *fc)
 		return NULL;
 
 	ff->fc = fc;
-	ff->reserved_req = fuse_request_alloc(0);
+	ff->reserved_req = fuse_request_alloc(fc, 0);
 	if (unlikely(!ff->reserved_req)) {
 		kfree(ff);
 		return NULL;
@@ -1460,9 +1460,10 @@ __acquires(fc->lock)
 {
 	struct fuse_inode *fi = get_fuse_inode(req->inode);
 	struct fuse_write_in *inarg = &req->misc.write.in;
+	struct fuse_node *fn = fc->fn;
 	__u64 data_size = req->num_pages * PAGE_CACHE_SIZE;
 
-	if (!fc->connected)
+	if (!fn->connected)
 		goto out_free;
 
 	if (inarg->offset + data_size <= size) {
@@ -1607,7 +1608,7 @@ static int fuse_writepage_locked(struct page *page)
 
 	set_page_writeback(page);
 
-	req = fuse_request_alloc_nofs(1);
+	req = fuse_request_alloc_nofs(fc, 1);
 	if (!req)
 		goto err;
 
@@ -1820,7 +1821,7 @@ static int fuse_writepages_fill(struct page *page,
 		struct fuse_inode *fi = get_fuse_inode(inode);
 
 		err = -ENOMEM;
-		req = fuse_request_alloc_nofs(FUSE_MAX_PAGES_PER_REQ);
+		req = fuse_request_alloc_nofs(fc, FUSE_MAX_PAGES_PER_REQ);
 		if (!req) {
 			__free_page(tmp_page);
 			goto out_unlock;
