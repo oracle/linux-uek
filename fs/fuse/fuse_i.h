@@ -121,6 +121,9 @@ enum {
 	FUSE_I_SIZE_UNSTABLE,
 };
 
+/** Per cpu pointer for cpu affinity */
+extern struct fuse_node __percpu *fuse_cpu;
+
 struct fuse_conn;
 
 /** FUSE specific file data */
@@ -448,6 +451,12 @@ struct fuse_node {
 
 };
 
+enum affinity {
+	FUSE_NONE,
+	FUSE_CPU,
+	FUSE_NUMA,
+};
+
 /**
  * A Fuse connection.
  *
@@ -458,6 +467,9 @@ struct fuse_node {
 struct fuse_conn {
 	/* Lock protecting accessess to members of this structure */
 	spinlock_t lock;
+
+	/** tracks if numa/cpu affinity is enabled/diabled */
+	int affinity;
 
 	/* Number of fuse_nodes */
 	int nr_nodes;
@@ -847,7 +859,7 @@ struct fuse_conn *fuse_conn_get(struct fuse_conn *fc);
 /**
  * Initialize fuse_conn
  */
-int fuse_conn_init(struct fuse_conn *fc);
+int fuse_conn_init(struct fuse_conn *fc, int affinity);
 
 /**
  * Release reference to fuse_conn

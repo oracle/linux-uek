@@ -27,7 +27,16 @@ static struct kmem_cache *fuse_req_cachep;
 
 static inline struct fuse_node *fuse_get_node(struct fuse_conn *fc)
 {
-	return fc->fn[0];
+	struct fuse_node *fn;
+
+	if (fc->affinity == FUSE_CPU) {
+		fn = get_cpu_ptr(fuse_cpu);
+		put_cpu_ptr(fuse_cpu);
+		return fn;
+	} else if (fc->affinity == FUSE_NUMA)
+		return fc->fn[numa_node_id()];
+	else
+		return fc->fn[0];
 }
 
 static struct fuse_conn *fuse_get_conn(struct file *file)
@@ -65,7 +74,12 @@ static struct fuse_req *__fuse_request_alloc(struct fuse_conn *fc,
 
 	fn = fuse_get_node(fc);
 
-	req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL, fn->node_id);
+	if (fc->affinity == FUSE_CPU)
+		req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL,
+					    cpu_to_node(fn->node_id));
+	else
+		req = kmem_cache_alloc_node(fuse_req_cachep, GFP_KERNEL,
+					    fn->node_id);
 	if (req) {
 		struct page **pages;
 		struct fuse_page_desc *page_descs;
@@ -1911,6 +1925,24 @@ static struct fuse_req *request_find(struct fuse_node *fn, u64 unique)
 	return NULL;
 }
 
+static struct fuse_req *request_find_allnodes(struct fuse_conn *fc,
+					      u64 unique)
+{
+	struct fuse_node *fn;
+	struct fuse_req *req;
+	int i;
+
+	for (i = 0; i < fc->nr_nodes; i++) {
+		fn = fc->fn[i];
+		spin_lock(&fn->lock);
+		req = request_find(fn, unique);
+		if (req)
+			return req;
+		 spin_unlock(&fn->lock);
+	}
+	return NULL;
+}
+
 static int copy_out_args(struct fuse_copy_state *cs, struct fuse_out *out,
 			 unsigned nbytes)
 {
@@ -1979,8 +2011,19 @@ static ssize_t fuse_dev_do_write(struct fuse_node *fn,
 		goto err_unlock;
 
 	req = request_find(fn, oh.unique);
-	if (!req)
-		goto err_unlock;
+	if (!req) {
+		/*
+		 * responding process could be different from reaped one, so
+		 * the responding process could be on a different node.
+		 * Hence search all node queues for the request.
+		 * This is a rare scenario.
+		 */
+		spin_unlock(&fn->lock);
+		req = request_find_allnodes(fc, oh.unique);
+		if (!req)
+			goto err_finish;
+		fn = req->fn;
+	}
 	if (req->aborted) {
 		spin_unlock(&fn->lock);
 		fuse_copy_finish(cs);

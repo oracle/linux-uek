@@ -26,6 +26,7 @@ MODULE_DESCRIPTION("Filesystem in Userspace");
 MODULE_LICENSE("GPL");
 
 static struct kmem_cache *fuse_inode_cachep;
+struct fuse_node __percpu *fuse_cpu;
 struct list_head fuse_conn_list;
 DEFINE_MUTEX(fuse_mutex);
 
@@ -69,6 +70,7 @@ struct fuse_mount_data {
 	unsigned flags;
 	unsigned max_read;
 	unsigned blksize;
+	unsigned affinity;
 };
 
 struct fuse_forget_link *fuse_alloc_forget(void)
@@ -440,6 +442,7 @@ enum {
 	OPT_ALLOW_OTHER,
 	OPT_MAX_READ,
 	OPT_BLKSIZE,
+	OPT_NUMA_ON,
 	OPT_ERR
 };
 
@@ -452,6 +455,7 @@ static const match_table_t tokens = {
 	{OPT_ALLOW_OTHER,		"allow_other"},
 	{OPT_MAX_READ,			"max_read=%u"},
 	{OPT_BLKSIZE,			"blksize=%u"},
+	{OPT_NUMA_ON,			"numa"},
 	{OPT_ERR,			NULL}
 };
 
@@ -536,6 +540,9 @@ static int parse_fuse_opt(char *opt, struct fuse_mount_data *d, int is_bdev)
 				return 0;
 			d->blksize = value;
 			break;
+		case OPT_NUMA_ON:
+			 d->affinity = FUSE_NUMA;
+			 break;
 
 		default:
 			return 0;
@@ -564,6 +571,8 @@ static int fuse_show_options(struct seq_file *m, struct dentry *root)
 		seq_printf(m, ",max_read=%u", fc->max_read);
 	if (sb->s_bdev && sb->s_blocksize != FUSE_DEFAULT_BLKSIZE)
 		seq_printf(m, ",blksize=%lu", sb->s_blocksize);
+	if (fc->affinity == FUSE_NUMA)
+		seq_puts(m, "numa");
 	return 0;
 }
 
@@ -587,7 +596,7 @@ void fuse_node_init(struct fuse_conn *fc, struct fuse_node *fn, int i)
 	fn->connected = 1;
 }
 
-int fuse_conn_init(struct fuse_conn *fc)
+int fuse_conn_init(struct fuse_conn *fc, int affinity)
 {
 	int sz, ret, i;
 	struct fuse_node *fn;
@@ -606,7 +615,17 @@ int fuse_conn_init(struct fuse_conn *fc)
 	fc->initialized = 0;
 	fc->attr_version = 1;
 	get_random_bytes(&fc->scramble_key, sizeof(fc->scramble_key));
-	fc->nr_nodes = 1;
+
+	if (affinity == FUSE_CPU) {
+		fc->affinity = FUSE_CPU;
+		fc->nr_nodes = num_possible_cpus();
+	} else if (affinity == FUSE_NUMA) {
+		fc->affinity = FUSE_NUMA;
+		fc->nr_nodes = nr_node_ids;
+	} else {
+		fc->affinity = FUSE_NONE;
+		fc->nr_nodes = 1;
+	}
 
 	ret = -ENOMEM;
 	sz = sizeof(struct fuse_node *) * fc->nr_nodes;
@@ -614,14 +633,28 @@ int fuse_conn_init(struct fuse_conn *fc)
 	if (!fc->fn)
 		return ret;
 	memset(fc->fn, 0, sz);
-	sz = sizeof(struct fuse_node);
-	for (i = 0; i < fc->nr_nodes; i++) {
-		fn = kmalloc_node(sz, GFP_KERNEL, i);
-		if (!fn)
-			goto out;
-		memset(fn, 0, sz);
-		fc->fn[i] = fn;
-		fuse_node_init(fc, fn, i);
+
+	if (affinity == FUSE_CPU) {
+		fuse_cpu = alloc_percpu(struct fuse_node);
+		if (fuse_cpu == NULL) {
+			kfree(fc->fn);
+			return ret;
+		}
+		for_each_possible_cpu(i) {
+			fn = per_cpu_ptr(fuse_cpu, i);
+			fc->fn[i] = fn;
+			fuse_node_init(fc, fn, i);
+		}
+	} else {
+		sz = sizeof(struct fuse_node);
+		for (i = 0; i < fc->nr_nodes; i++) {
+			fn = kmalloc_node(sz, GFP_KERNEL, i);
+			if (!fn)
+				goto out;
+			memset(fn, 0, sz);
+			fc->fn[i] = fn;
+			fuse_node_init(fc, fn, i);
+		}
 	}
 	return 0;
 out:
@@ -987,8 +1020,12 @@ static void fuse_free_conn(struct fuse_conn *fc)
 {
 	int i;
 
-	for (i = 0; i < fc->nr_nodes; i++)
-		kfree(fc->fn[i]);
+	if (fc->affinity == FUSE_CPU) {
+		free_percpu(fuse_cpu);
+	} else {
+		for (i = 0; i < fc->nr_nodes; i++)
+			kfree(fc->fn[i]);
+	}
 	kfree_rcu(fc, rcu);
 }
 
@@ -1084,7 +1121,7 @@ static int fuse_fill_super(struct super_block *sb, void *data, int silent)
 	if (!fc)
 		goto err_fput;
 
-	fuse_conn_init(fc);
+	fuse_conn_init(fc, d.affinity);
 
 	fc->dev = sb->s_dev;
 	fc->sb = sb;
