@@ -366,6 +366,16 @@ int rds_free_mr(struct rds_sock *rs, char __user *optval, int optlen)
 			   sizeof(struct rds_free_mr_args)))
 		return -EFAULT;
 
+	/*
+	 * 20366776 workaround.
+	 * Let process spawn quickly by avoiding call to flush_mrs()
+	 */
+	if (args.cookie == 0 && args.flags == 0) {
+		if (!rs->rs_transport || !rs->rs_transport->flush_mrs)
+			return -EINVAL;
+		return 0;
+	}
+
 	/* Special case - a null cookie means flush all unused MRs */
 	if (args.cookie == 0) {
 		if (!rs->rs_transport || !rs->rs_transport->flush_mrs)
