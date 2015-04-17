@@ -1744,13 +1744,13 @@ static void i40e_atr(struct i40e_ring *tx_ring, struct sk_buff *skb,
  * otherwise  returns 0 to indicate the flags has been set properly.
  **/
 #ifdef I40E_FCOE
-int i40e_tx_prepare_vlan_flags(struct sk_buff *skb,
-			       struct i40e_ring *tx_ring,
-			       u32 *flags)
-#else
-static int i40e_tx_prepare_vlan_flags(struct sk_buff *skb,
+inline int i40e_tx_prepare_vlan_flags(struct sk_buff *skb,
 				      struct i40e_ring *tx_ring,
 				      u32 *flags)
+#else
+static inline int i40e_tx_prepare_vlan_flags(struct sk_buff *skb,
+					     struct i40e_ring *tx_ring,
+					     u32 *flags)
 #endif
 {
 	__be16 protocol = skb->protocol;
@@ -2129,13 +2129,13 @@ linearize_chk_done:
  * @td_offset: offset for checksum or crc
  **/
 #ifdef I40E_FCOE
-void i40e_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
-		 struct i40e_tx_buffer *first, u32 tx_flags,
-		 const u8 hdr_len, u32 td_cmd, u32 td_offset)
-#else
-static void i40e_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
+inline void i40e_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
 			struct i40e_tx_buffer *first, u32 tx_flags,
 			const u8 hdr_len, u32 td_cmd, u32 td_offset)
+#else
+static inline void i40e_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
+			       struct i40e_tx_buffer *first, u32 tx_flags,
+			       const u8 hdr_len, u32 td_cmd, u32 td_offset)
 #endif
 {
 	unsigned int data_len = skb->data_len;
@@ -2333,11 +2333,11 @@ static int i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
  * one descriptor.
  **/
 #ifdef I40E_FCOE
-int i40e_xmit_descriptor_count(struct sk_buff *skb,
-			       struct i40e_ring *tx_ring)
-#else
-static int i40e_xmit_descriptor_count(struct sk_buff *skb,
+inline int i40e_xmit_descriptor_count(struct sk_buff *skb,
 				      struct i40e_ring *tx_ring)
+#else
+static inline int i40e_xmit_descriptor_count(struct sk_buff *skb,
+					     struct i40e_ring *tx_ring)
 #endif
 {
 	unsigned int f;

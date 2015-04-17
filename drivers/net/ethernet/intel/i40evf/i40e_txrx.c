@@ -1091,7 +1091,7 @@ int i40evf_napi_poll(struct napi_struct *napi, int budget)
 }
 
 /**
- * i40e_tx_prepare_vlan_flags - prepare generic TX VLAN tagging flags for HW
+ * i40evf_tx_prepare_vlan_flags - prepare generic TX VLAN tagging flags for HW
  * @skb:     send buffer
  * @tx_ring: ring to send buffer on
  * @flags:   the tx flags to be set
@@ -1102,9 +1102,9 @@ int i40evf_napi_poll(struct napi_struct *napi, int budget)
  * Returns error code indicate the frame should be dropped upon error and the
  * otherwise  returns 0 to indicate the flags has been set properly.
  **/
-static int i40e_tx_prepare_vlan_flags(struct sk_buff *skb,
-				      struct i40e_ring *tx_ring,
-				      u32 *flags)
+static inline int i40evf_tx_prepare_vlan_flags(struct sk_buff *skb,
+					       struct i40e_ring *tx_ring,
+					       u32 *flags)
 {
 	__be16 protocol = skb->protocol;
 	u32  tx_flags = 0;
@@ -1409,7 +1409,44 @@ linearize_chk_done:
 }
 
 /**
- * i40e_tx_map - Build the Tx descriptor
+ * __i40evf_maybe_stop_tx - 2nd level check for tx stop conditions
+ * @tx_ring: the ring to be checked
+ * @size:    the size buffer we want to assure is available
+ *
+ * Returns -EBUSY if a stop is needed, else 0
+ **/
+static inline int __i40evf_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
+{
+	netif_stop_subqueue(tx_ring->netdev, tx_ring->queue_index);
+	/* Memory barrier before checking head and tail */
+	smp_mb();
+
+	/* Check again in a case another CPU has just made room available. */
+	if (likely(I40E_DESC_UNUSED(tx_ring) < size))
+		return -EBUSY;
+
+	/* A reprieve! - use start_queue because it doesn't call schedule */
+	netif_start_subqueue(tx_ring->netdev, tx_ring->queue_index);
+	++tx_ring->tx_stats.restart_queue;
+	return 0;
+}
+
+/**
+ * i40evf_maybe_stop_tx - 1st level check for tx stop conditions
+ * @tx_ring: the ring to be checked
+ * @size:    the size buffer we want to assure is available
+ *
+ * Returns 0 if stop is not needed
+ **/
+static inline int i40evf_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
+{
+	if (likely(I40E_DESC_UNUSED(tx_ring) >= size))
+		return 0;
+	return __i40evf_maybe_stop_tx(tx_ring, size);
+}
+
+/**
+ * i40evf_tx_map - Build the Tx descriptor
  * @tx_ring:  ring to send buffer on
  * @skb:      send buffer
  * @first:    first buffer info buffer to use
@@ -1418,9 +1455,9 @@ linearize_chk_done:
  * @td_cmd:   the command field in the descriptor
  * @td_offset: offset for checksum or crc
  **/
-static void i40e_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
-			struct i40e_tx_buffer *first, u32 tx_flags,
-			const u8 hdr_len, u32 td_cmd, u32 td_offset)
+static inline void i40evf_tx_map(struct i40e_ring *tx_ring, struct sk_buff *skb,
+				 struct i40e_tx_buffer *first, u32 tx_flags,
+				 const u8 hdr_len, u32 td_cmd, u32 td_offset)
 {
 	unsigned int data_len = skb->data_len;
 	unsigned int size = skb_headlen(skb);
@@ -1568,6 +1605,7 @@ dma_error:
 }
 
 /**
+<<<<<<< HEAD
  * __i40e_maybe_stop_tx - 2nd level check for tx stop conditions
  * @tx_ring: the ring to be checked
  * @size:    the size buffer we want to assure is available
@@ -1613,8 +1651,8 @@ static int i40e_maybe_stop_tx(struct i40e_ring *tx_ring, int size)
  * there is not enough descriptors available in this ring since we need at least
  * one descriptor.
  **/
-static int i40e_xmit_descriptor_count(struct sk_buff *skb,
-				      struct i40e_ring *tx_ring)
+static inline int i40evf_xmit_descriptor_count(struct sk_buff *skb,
+					       struct i40e_ring *tx_ring)
 {
 	unsigned int f;
 	int count = 0;
@@ -1655,11 +1693,11 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	u32 td_cmd = 0;
 	u8 hdr_len = 0;
 	int tso;
-	if (0 == i40e_xmit_descriptor_count(skb, tx_ring))
+	if (0 == i40evf_xmit_descriptor_count(skb, tx_ring))
 		return NETDEV_TX_BUSY;
 
 	/* prepare the xmit flags */
-	if (i40e_tx_prepare_vlan_flags(skb, tx_ring, &tx_flags))
+	if (i40evf_tx_prepare_vlan_flags(skb, tx_ring, &tx_flags))
 		goto out_drop;
 
 	/* obtain protocol of skb */
@@ -1702,8 +1740,8 @@ static netdev_tx_t i40e_xmit_frame_ring(struct sk_buff *skb,
 	i40e_create_tx_ctx(tx_ring, cd_type_cmd_tso_mss,
 			   cd_tunneling, cd_l2tag2);
 
-	i40e_tx_map(tx_ring, skb, first, tx_flags, hdr_len,
-		    td_cmd, td_offset);
+	i40evf_tx_map(tx_ring, skb, first, tx_flags, hdr_len,
+		      td_cmd, td_offset);
 
 	i40e_maybe_stop_tx(tx_ring, DESC_NEEDED);
 
