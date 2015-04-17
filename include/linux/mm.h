@@ -50,6 +50,12 @@ extern int sysctl_legacy_va_layout;
 #define PAGE_ALIGN(addr) ALIGN(addr, PAGE_SIZE)
 
 /*
+ * Conflict with HPAGE_RESV_UNMAPPED of hugetlb, but it's safe because if a
+ * vma belongs to gntdev then it won't be an hugetlb vma and vice versa.
+ * Fixme if I was wrong.
+ */
+#define XEN_GNTDEV_FLAG    (1UL << 1)
+/*
  * Linux kernel virtual memory manager primitives.
  * The idea being to have a "virtual" mm in the same way
  * we have a virtual fs - giving a cleaner interface to the
@@ -234,6 +240,7 @@ struct vm_operations_struct {
 	int (*remap_pages)(struct vm_area_struct *vma, unsigned long addr,
 			   unsigned long size, pgoff_t pgoff);
 
+#ifndef __GENKSYMS__
 	/*
 	 * Called by vm_normal_page() for special PTEs to find the
 	 * page for @addr.  This is useful if the default behavior
@@ -241,6 +248,7 @@ struct vm_operations_struct {
 	 */
 	struct page *(*find_special_page)(struct vm_area_struct *vma,
 					  unsigned long addr);
+#endif
 };
 
 struct mmu_gather;

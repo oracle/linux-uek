@@ -415,10 +415,14 @@ static int unmap_grant_pages(struct grant_map *map, int offset, int pages)
 }
 
 /* ------------------------------------------------------------------ */
+static unsigned long get_vma_private_data(struct vm_area_struct *vma)
+{
+	return (unsigned long)vma->vm_private_data & (~XEN_GNTDEV_FLAG);
+}
 
 static void gntdev_vma_open(struct vm_area_struct *vma)
 {
-	struct grant_map *map = vma->vm_private_data;
+	struct grant_map *map = (struct grant_map *)get_vma_private_data(vma);
 
 	pr_debug("gntdev_vma_open %p\n", vma);
 	atomic_inc(&map->users);
@@ -426,7 +430,7 @@ static void gntdev_vma_open(struct vm_area_struct *vma)
 
 static void gntdev_vma_close(struct vm_area_struct *vma)
 {
-	struct grant_map *map = vma->vm_private_data;
+	struct grant_map *map = (struct grant_map *)get_vma_private_data(vma);
 	struct file *file = vma->vm_file;
 	struct gntdev_priv *priv = file->private_data;
 
@@ -450,7 +454,7 @@ static void gntdev_vma_close(struct vm_area_struct *vma)
 static struct page *gntdev_vma_find_special_page(struct vm_area_struct *vma,
 						 unsigned long addr)
 {
-	struct grant_map *map = vma->vm_private_data;
+	struct grant_map *map = (struct grant_map *)get_vma_private_data(vma);
 
 	return map->pages[(addr - map->pages_vm_start) >> PAGE_SHIFT];
 }
@@ -686,7 +690,7 @@ static long gntdev_ioctl_get_offset_for_vaddr(struct gntdev_priv *priv,
 	if (!vma || vma->vm_ops != &gntdev_vmops)
 		goto out_unlock;
 
-	map = vma->vm_private_data;
+	map = (struct grant_map *)get_vma_private_data(vma);
 	if (!map)
 		goto out_unlock;
 
@@ -829,7 +833,7 @@ static int gntdev_mmap(struct file *flip, struct vm_area_struct *vma)
 	if (use_ptemod)
 		vma->vm_flags |= VM_DONTCOPY;
 
-	vma->vm_private_data = map;
+	vma->vm_private_data = (void *)((unsigned long)map | XEN_GNTDEV_FLAG);
 
 	if (use_ptemod)
 		map->vma = vma;
