@@ -719,17 +719,16 @@ int rds_ib_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 					  struct rds_page_frag, f_item);
 			frag_off = 0;
 		}
-		to_copy = min(iov_iter_count(to), RDS_FRAG_SIZE - frag_off);
+		to_copy = min_t(unsigned long, iov_iter_count(to),
+				RDS_FRAG_SIZE - frag_off);
 		to_copy = min_t(unsigned long, to_copy, len - copied);
 
-		rdsdebug("%lu bytes from frag [%p, %u] + %lu\n",
-			 to_copy,
-			 sg_page(&frag->f_sg), frag->f_sg.offset, frag_off);
-
 		/* XXX needs + offset for multiple recvs per page */
+		rds_stats_add(s_copy_to_user, to_copy);
 		ret = copy_page_to_iter(sg_page(&frag->f_sg),
 					frag->f_sg.offset + frag_off,
-					to_copy, to);
+					to_copy,
+					to);
 		if (ret != to_copy)
 			return -EFAULT;
 
