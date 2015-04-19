@@ -296,23 +296,19 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 			ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
 						       GFP_HIGHUSER);
 			if (ret)
-				goto out;
+				return ret;
 			rm->data.op_nents++;
 			sg_off = 0;
 		}
 
-		to_copy = min(iov_iter_count(from), sg->length - sg_off);
+		to_copy = min_t(unsigned long, iov_iter_count(from),
+				sg->length - sg_off);
 
-		rdsdebug("copying %lu bytes to sg [%p, %u, %u] + %lu\n",
-			 to_copy,
-			 (void *)sg_page(sg), sg->offset, sg->length, sg_off);
-
+		rds_stats_add(s_copy_from_user, to_copy);
 		nbytes = copy_page_from_iter(sg_page(sg), sg->offset + sg_off,
 					     to_copy, from);
-		if (nbytes != to_copy) {
-			ret = -EFAULT;
-			goto out;
-		}
+		if (nbytes != to_copy)
+			return -EFAULT;
 
 		sg_off += to_copy;
 
@@ -320,7 +316,6 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 			sg++;
 	}
 
-out:
 	return ret;
 }
 
@@ -346,10 +341,7 @@ int rds_message_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 				sg->length - vec_off);
 		to_copy = min_t(unsigned long, to_copy, len - copied);
 
-		rdsdebug("copying %lu bytes to to sg [%p, %u, %u] + %lu\n",
-			 to_copy,
-			 sg_page(sg), sg->offset, sg->length, vec_off);
-
+		rds_stats_add(s_copy_to_user, to_copy);
 		ret = copy_page_to_iter(sg_page(sg), sg->offset + vec_off,
 					to_copy, to);
 		if (ret != to_copy)
