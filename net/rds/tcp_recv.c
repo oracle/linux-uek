@@ -76,18 +76,10 @@ int rds_tcp_inc_copy_to_user(struct rds_incoming *inc, struct iov_iter *to)
 			to_copy = iov_iter_count(to);
 			to_copy = min(to_copy, skb->len - skb_off);
 
-			rdsdebug("ret %d skb %p skb_off %lu "
-				 "skblen %d cpy %lu\n",
-				 ret, skb, skb_off, skb->len,
-				 to_copy);
+			if (skb_copy_datagram_iter(skb, skb_off, to, to_copy))
+				return -EFAULT;
 
-			/* modifies tmp as it copies */
-			if (skb_copy_datagram_iter(skb, skb_off,
-						   to, to_copy)) {
-				ret = -EFAULT;
-				goto out;
-			}
-
+			rds_stats_add(s_copy_to_user, to_copy);
 			ret += to_copy;
 			skb_off += to_copy;
 
