@@ -1022,7 +1022,22 @@ retry:
 		}
 		rc = ep->rep_connected;
 	} else {
+		struct rpcrdma_xprt *r_xprt;
+		unsigned int extras;
+
 		dprintk("RPC:       %s: connected\n", __func__);
+
+		r_xprt = container_of(ia, struct rpcrdma_xprt, rx_ia);
+		extras = r_xprt->rx_buf.rb_bc_max_requests;
+
+		if (extras) {
+			rc = rpcrdma_ep_post_extra_recv(r_xprt, extras);
+			if (rc)
+				pr_err("%s: could not post "
+				       "extra receive buffers: %i\n",
+				       __func__, rc);
+				rc = 0;
+		}
 	}
 
 out:
@@ -1059,20 +1074,25 @@ rpcrdma_ep_disconnect(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia)
 	}
 }
 
-static struct rpcrdma_req *
+struct rpcrdma_req *
 rpcrdma_create_req(struct rpcrdma_xprt *r_xprt)
 {
+	struct rpcrdma_buffer *buffer = &r_xprt->rx_buf;
 	struct rpcrdma_req *req;
 
 	req = kzalloc(sizeof(*req), GFP_KERNEL);
 	if (req == NULL)
 		return ERR_PTR(-ENOMEM);
 
+	INIT_LIST_HEAD(&req->rl_free);
+	spin_lock(&buffer->rb_reqslock);
+	list_add(&req->rl_all, &buffer->rb_allreqs);
+	spin_unlock(&buffer->rb_reqslock);
 	req->rl_buffer = &r_xprt->rx_buf;
 	return req;
 }
 
-static struct rpcrdma_rep *
+struct rpcrdma_rep *
 rpcrdma_create_rep(struct rpcrdma_xprt *r_xprt)
 {
 	struct rpcrdma_create_data_internal *cdata = &r_xprt->rx_data;
@@ -1110,6 +1130,7 @@ rpcrdma_buffer_create(struct rpcrdma_xprt *r_xprt)
 	int i, rc;
 
 	buf->rb_max_requests = r_xprt->rx_data.max_requests;
+	buf->rb_bc_max_requests = 0;
 	spin_lock_init(&buf->rb_lock);
 
 	rc = ia->ri_ops->ro_init(r_xprt);
@@ -1117,6 +1138,8 @@ rpcrdma_buffer_create(struct rpcrdma_xprt *r_xprt)
 		goto out;
 
 	INIT_LIST_HEAD(&buf->rb_send_bufs);
+	INIT_LIST_HEAD(&buf->rb_allreqs);
+	spin_lock_init(&buf->rb_reqslock);
 	for (i = 0; i < buf->rb_max_requests; i++) {
 		struct rpcrdma_req *req;
 
@@ -1127,6 +1150,7 @@ rpcrdma_buffer_create(struct rpcrdma_xprt *r_xprt)
 			rc = PTR_ERR(req);
 			goto out;
 		}
+		req->rl_backchannel = false;
 		list_add(&req->rl_free, &buf->rb_send_bufs);
 	}
 
@@ -1153,19 +1177,13 @@ out:
 static void
 rpcrdma_destroy_rep(struct rpcrdma_ia *ia, struct rpcrdma_rep *rep)
 {
-	if (!rep)
-		return;
-
 	rpcrdma_free_regbuf(ia, rep->rr_rdmabuf);
 	kfree(rep);
 }
 
-static void
+void
 rpcrdma_destroy_req(struct rpcrdma_ia *ia, struct rpcrdma_req *req)
 {
-	if (!req)
-		return;
-
 	rpcrdma_free_regbuf(ia, req->rl_sendbuf);
 	rpcrdma_free_regbuf(ia, req->rl_rdmabuf);
 	kfree(req);
@@ -1185,14 +1203,20 @@ rpcrdma_buffer_destroy(struct rpcrdma_buffer *buf)
 		rpcrdma_destroy_rep(ia, rep);
 	}
 
-	while (!list_empty(&buf->rb_send_bufs)) {
-		struct rpcrdma_req *req = list_entry(buf->rb_send_bufs.next,
+	spin_lock(&buf->rb_reqslock);
+	while (!list_empty(&buf->rb_allreqs)) {
+		struct rpcrdma_req *req = list_entry(buf->rb_allreqs.next,
 						     struct rpcrdma_req,
-						     rl_free);
+						     rl_all);
 
-		list_del(&req->rl_free);
+		list_del(&req->rl_all);
+		spin_unlock(&buf->rb_reqslock);
+
 		rpcrdma_destroy_req(ia, req);
+
+		spin_lock(&buf->rb_reqslock);
 	}
+	spin_unlock(&buf->rb_reqslock);
 
 	ia->ri_ops->ro_destroy(buf);
 }
@@ -1239,7 +1263,7 @@ rpcrdma_buffer_get_locked(struct rpcrdma_buffer *buf)
 
 	rep = list_first_entry(&buf->rb_recv_bufs,
 			       struct rpcrdma_rep, rr_list);
-	list_del(&rep->rr_list);
+	list_del_init(&rep->rr_list);
 
 	return rep;
 }
@@ -1480,6 +1504,46 @@ rpcrdma_ep_post_recv(struct rpcrdma_ia *ia,
 		dprintk("RPC:       %s: ib_post_recv returned %i\n", __func__,
 			rc);
 	return rc;
+}
+
+/**
+ * rpcrdma_bc_post_recv - Post buffers to catch incoming backchannel requests
+ * @r_xprt: transport associated with these backchannel resources
+ * @min_reqs: minimum number of incoming requests expected
+ *
+ * Returns zero if all requested buffers were posted, or a negative errno.
+ */
+int
+rpcrdma_ep_post_extra_recv(struct rpcrdma_xprt *r_xprt, unsigned int count)
+{
+	struct rpcrdma_ia *ia = &r_xprt->rx_ia;
+	struct rpcrdma_ep *ep = &r_xprt->rx_ep;
+	struct rpcrdma_buffer *buffers = &r_xprt->rx_buf;
+	struct rpcrdma_rep *rep;
+	unsigned long flags;
+	int rc;
+
+	while (count--) {
+		rep = NULL;
+		spin_lock_irqsave(&buffers->rb_lock, flags);
+		if (!list_empty(&buffers->rb_recv_bufs))
+			rep = rpcrdma_buffer_get_locked(buffers);
+		spin_unlock_irqrestore(&buffers->rb_lock, flags);
+		if (!rep) {
+			pr_err("%s: no extra receive buffers\n", __func__);
+			return -ENOMEM;
+		}
+
+		rc = rpcrdma_ep_post_recv(ia, ep, rep);
+		if (rc) {
+			spin_lock_irqsave(&buffers->rb_lock, flags);
+			rpcrdma_buffer_put_locked(rep, buffers);
+			spin_unlock_irqrestore(&buffers->rb_lock, flags);
+			return rc;
+		}
+	}
+
+	return 0;
 }
 
 /* How many chunk list items fit within our inline buffers?
