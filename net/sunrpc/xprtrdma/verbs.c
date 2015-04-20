@@ -769,19 +769,21 @@ rpcrdma_ep_create(struct rpcrdma_ep *ep, struct rpcrdma_ia *ia,
 		return -ENOMEM;
 	}
 
-	max_qp_wr = devattr->max_qp_wr - 1;
+	max_qp_wr = devattr->max_qp_wr - RPCRDMA_BACKWARD_WRS - 1;
 	/* check provider's send/recv wr limits */
-	if (cdata->max_requests > devattr->max_qp_wr)
+	if (cdata->max_requests > max_qp_wr)
 		cdata->max_requests = devattr->max_qp_wr;
 
 	ep->rep_attr.event_handler = rpcrdma_qp_async_error_upcall;
 	ep->rep_attr.qp_context = ep;
 	ep->rep_attr.srq = NULL;
-	ep->rep_attr.cap.max_send_wr = cdata->max_requests + 1;
+	ep->rep_attr.cap.max_send_wr = cdata->max_requests +
+					RPCRDMA_BACKWARD_WRS + 1;
 	rc = ia->ri_ops->ro_open(ia, ep, cdata);
 	if (rc)
 		return rc;
-	ep->rep_attr.cap.max_recv_wr = cdata->max_requests + 1;
+	ep->rep_attr.cap.max_recv_wr = cdata->max_requests +
+					RPCRDMA_BACKWARD_WRS + 1;
 	ep->rep_attr.cap.max_send_sge = RPCRDMA_MAX_IOVS;
 	ep->rep_attr.cap.max_recv_sge = 1;
 	ep->rep_attr.cap.max_inline_data = 0;
