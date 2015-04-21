@@ -164,7 +164,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	printk(KERN_NOTICE
-		"RDS/IB: connected <%u.%u.%u.%u,%u.%u.%u.%u,%d> version %u.%u%s\n",
+		"RDS/IB: conn %p i_cm_id %p connected <%u.%u.%u.%u,%u.%u.%u.%u,%d> version %u.%u%s\n",
+		conn, ic->i_cm_id,
 		NIPQUAD(conn->c_laddr),
 		NIPQUAD(conn->c_faddr),
 		conn->c_tos,
