@@ -168,6 +168,7 @@ struct rpc_xprt {
 	struct sockaddr_storage	addr;		/* server address */
 	size_t			addrlen;	/* size of server address */
 	int			prot;		/* IP protocol */
+	char			*bc_name;	/* backchannel transport */
 
 	unsigned long		cong;		/* current congestion */
 	unsigned long		cwnd;		/* congestion window */
