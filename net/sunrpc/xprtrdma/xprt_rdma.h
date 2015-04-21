@@ -86,6 +86,8 @@ struct rpcrdma_ep {
 	wait_queue_head_t 	rep_connect_wait;
 	struct rdma_conn_param	rep_remote_cma;
 	struct sockaddr_storage	rep_remote_addr;
+	atomic_t		rep_count;
+	struct completion	rep_done;
 	struct delayed_work	rep_connect_worker;
 };
 
@@ -101,6 +103,10 @@ struct rpcrdma_ep {
 /* Force completion handler to ignore the signal
  */
 #define RPCRDMA_IGNORE_COMPLETION	(0ULL)
+
+/* Receive completion sentinel
+ */
+#define RPCRDMA_LAST_COMPLETION		(1ULL)
 
 /* Registered buffer -- registered kmalloc'd memory for RDMA SEND/RECV
  *
@@ -391,7 +397,7 @@ extern int xprt_rdma_pad_optimize;
  * Interface Adapter calls - xprtrdma/verbs.c
  */
 int rpcrdma_ia_open(struct rpcrdma_xprt *, struct sockaddr *, int);
-void rpcrdma_ia_close(struct rpcrdma_ia *);
+void rpcrdma_ia_close(struct rpcrdma_ep *, struct rpcrdma_ia *);
 
 /*
  * Endpoint calls - xprtrdma/verbs.c

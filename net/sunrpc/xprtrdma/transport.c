@@ -270,9 +270,9 @@ xprt_rdma_destroy(struct rpc_xprt *xprt)
 
 	xprt_clear_connected(xprt);
 
-	rpcrdma_buffer_destroy(&r_xprt->rx_buf);
 	rpcrdma_ep_destroy(&r_xprt->rx_ep, &r_xprt->rx_ia);
-	rpcrdma_ia_close(&r_xprt->rx_ia);
+	rpcrdma_buffer_destroy(&r_xprt->rx_buf);
+	rpcrdma_ia_close(&r_xprt->rx_ep, &r_xprt->rx_ia);
 
 	xprt_rdma_free_addresses(xprt);
 
@@ -422,7 +422,7 @@ out4:
 out3:
 	rpcrdma_ep_destroy(new_ep, &new_xprt->rx_ia);
 out2:
-	rpcrdma_ia_close(&new_xprt->rx_ia);
+	rpcrdma_ia_close(new_ep, &new_xprt->rx_ia);
 out1:
 	xprt_free(xprt);
 	return ERR_PTR(rc);
