@@ -1722,7 +1722,7 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 	INIT_LIST_HEAD(&obj->mcast_list);
 
 	if (cmd.qp_type == IB_QPT_XRC_TGT)
-		qp = ib_create_qp(pd, &attr);
+		qp = ib_create_qp_ex(pd, &attr, &udata);
 	else
 		qp = device->create_qp(pd, &attr, &udata);
 

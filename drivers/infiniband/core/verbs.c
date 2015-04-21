@@ -439,14 +439,15 @@ struct ib_qp *ib_open_qp(struct ib_xrcd *xrcd,
 }
 EXPORT_SYMBOL(ib_open_qp);
 
-struct ib_qp *ib_create_qp(struct ib_pd *pd,
-			   struct ib_qp_init_attr *qp_init_attr)
+struct ib_qp *ib_create_qp_ex(struct ib_pd *pd,
+			struct ib_qp_init_attr *qp_init_attr,
+			struct ib_udata *udata)
 {
 	struct ib_qp *qp, *real_qp;
 	struct ib_device *device;
 
 	device = pd ? pd->device : qp_init_attr->xrcd->device;
-	qp = device->create_qp(pd, qp_init_attr, NULL);
+	qp = device->create_qp(pd, qp_init_attr, udata);
 
 	if (!IS_ERR(qp)) {
 		qp->device     = device;
@@ -496,6 +497,14 @@ struct ib_qp *ib_create_qp(struct ib_pd *pd,
 	}
 
 	return qp;
+}
+EXPORT_SYMBOL(ib_create_qp_ex);
+
+
+struct ib_qp *ib_create_qp(struct ib_pd *pd,
+			   struct ib_qp_init_attr *qp_init_attr)
+{
+	return ib_create_qp_ex(pd, qp_init_attr,NULL);
 }
 EXPORT_SYMBOL(ib_create_qp);
 
