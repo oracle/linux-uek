@@ -2246,6 +2246,8 @@ ssize_t ib_uverbs_post_send(struct ib_uverbs_file *file,
 				next->ex.imm_data =
 					(__be32 __force) user_wr->ex.imm_data;
 		} else {
+			if (qp->qp_type == IB_QPT_XRC_INI)
+				next->xrc_remote_srq_num = user_wr->xrc_remote_srq_num;
 			switch (next->opcode) {
 			case IB_WR_RDMA_WRITE_WITH_IMM:
 				next->ex.imm_data =
