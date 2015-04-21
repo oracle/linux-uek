@@ -762,6 +762,9 @@ static int handle_outgoing_dr_smp(struct ib_mad_agent_private *mad_agent_priv,
 		goto out;
 	}
 
+	if (!device->process_mad)
+		goto out;
+
 	/* Check to post send on QP or process locally */
 	if (smi_check_local_smp(smp, device) == IB_SMI_DISCARD &&
 	    smi_check_local_returning_smp(smp, device) == IB_SMI_DISCARD)
