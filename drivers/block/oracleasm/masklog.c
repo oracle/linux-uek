@@ -130,20 +130,20 @@ static ssize_t mlog_fop_write(struct file *filp, const char __user *buf,
 		namelen = strlen(name);
 
 		if (namelen != masklen
-		    || strnicmp(mask, name, namelen))
+		    || strncasecmp(mask, name, namelen))
 			continue;
 		break;
 	}
 	if (i == ARRAY_SIZE(mlog_bit_names))
 		return -EINVAL;
 
-	if (!strnicmp(val, "allow", 5)) {
+	if (!strncasecmp(val, "allow", 5)) {
 		__mlog_set_u64((u64)1 << i, mlog_and_bits);
 		__mlog_clear_u64((u64)1 << i, mlog_not_bits);
-	} else if (!strnicmp(val, "deny", 4)) {
+	} else if (!strncasecmp(val, "deny", 4)) {
 		__mlog_set_u64((u64)1 << i, mlog_not_bits);
 		__mlog_clear_u64((u64)1 << i, mlog_and_bits);
-	} else if (!strnicmp(val, "off", 3)) {
+	} else if (!strncasecmp(val, "off", 3)) {
 		__mlog_clear_u64((u64)1 << i, mlog_not_bits);
 		__mlog_clear_u64((u64)1 << i, mlog_and_bits);
 	} else
