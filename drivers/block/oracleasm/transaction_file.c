@@ -19,11 +19,10 @@
 #include <asm/uaccess.h>
 
 #include "transaction_file.h"
-#include "compat.h"
 
 #define TRANSACTION_CONTEXT(i) ((i)->i_private)
 
-/* an argresp is stored in an allocated page and holds the 
+/* an argresp is stored in an allocated page and holds the
  * size of the argument or response, along with its content
  */
 struct argresp {
@@ -34,7 +33,7 @@ struct argresp {
 /*
  * transaction based IO methods.
  * The file expects a single write which triggers the transaction, and then
- * possibly a read which collects the result - which is stored in a 
+ * possibly a read which collects the result - which is stored in a
  * file-local buffer.
  */
 static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t *pos)
@@ -46,7 +45,7 @@ static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t 
 
 	if (!tctxt || !tctxt->write_op)
 		return -EINVAL;
-	if (file->private_data) 
+	if (file->private_data)
 		return -EINVAL; /* only one write allowed per open */
 	if (size > PAGE_SIZE - sizeof(struct argresp))
 		return -EFBIG;
@@ -67,7 +66,7 @@ static ssize_t TA_write(struct file *file, const char *buf, size_t size, loff_t 
 	}
 	if (copy_from_user(ar->data, buf, size))
 		return -EFAULT;
-	
+
 	rv =  tctxt->write_op(file, ar->data, size);
 	if (rv>0) {
 		ar->size = rv;
@@ -81,7 +80,7 @@ static ssize_t TA_read(struct file *file, char *buf, size_t size, loff_t *pos)
 {
 	struct argresp *ar;
 	ssize_t rv = 0;
-	
+
 	if (file->private_data == NULL)
 		rv = TA_write(file, buf, 0, pos);
 	if (rv < 0)
@@ -153,7 +152,6 @@ struct inode *new_transaction_inode(struct super_block *sb, int mode, struct tra
 	inode->i_mode = S_IFREG | mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	set_i_blksize(inode, PAGE_CACHE_SIZE);
 	inode->i_blocks = 0;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_fop = &transaction_ops;

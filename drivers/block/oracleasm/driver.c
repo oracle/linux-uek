@@ -83,9 +83,7 @@
 
 #include "linux/oracleasm/module_version.h"
 
-#include "compat.h"
 #include "masklog.h"
-#include "proc.h"
 #include "transaction_file.h"
 #include "request.h"
 #include "integrity.h"
@@ -127,6 +125,7 @@ static struct inode_operations asmfs_iid_dir_inode_operations;
 static struct kmem_cache	*asm_request_cachep;
 static struct kmem_cache	*asmfs_inode_cachep;
 static struct kmem_cache	*asmdisk_cachep;
+static struct proc_dir_entry	*asm_proc;
 
 static bool use_logical_block_size = false;
 module_param(use_logical_block_size, bool, 0644);
@@ -516,7 +515,6 @@ static int asmfs_mknod(struct inode *dir, struct dentry *dentry, umode_t mode, d
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	set_i_blksize(inode, PAGE_CACHE_SIZE);
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -550,7 +548,6 @@ static int asmfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, 
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	set_i_blksize(inode, PAGE_CACHE_SIZE);
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -656,11 +653,9 @@ static int asmfs_remount(struct super_block * sb, int * flags, char * data)
 
 	reset_limits(asb, &params);
 
-	printk(KERN_DEBUG
-	       "ASM: oracleasmfs remounted with options: %s\n",
-	       data ? (char *)data : "<defaults>" );
-	printk(KERN_DEBUG "ASM:	maxinstances=%ld\n",
-	       asb->max_inodes);
+	pr_debug("ASM: oracleasmfs remounted with options: %s\n",
+		 data ? (char *)data : "<defaults>" );
+	pr_debug("ASM:	maxinstances=%ld\n", asb->max_inodes);
 
 	return 0;
 }
@@ -2746,7 +2741,6 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_mode = S_IFDIR | 0755;
 	inode->i_uid = GLOBAL_ROOT_UID;
 	inode->i_gid = GLOBAL_ROOT_GID;
-	set_i_blksize(inode, PAGE_CACHE_SIZE);
 	inode->i_blocks = 0;
 	inode->i_rdev = 0;
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
@@ -2849,9 +2843,9 @@ static int asmfs_fill_super(struct super_block *sb,
 	sb->s_root = root;
 
 
-	printk(KERN_DEBUG "ASM: oracleasmfs mounted with options: %s\n",
-	       data ? (char *)data : "<defaults>" );
-	printk(KERN_DEBUG "ASM:	maxinstances=%ld\n", asb->max_inodes);
+	pr_debug("ASM: oracleasmfs mounted with options: %s\n",
+		 data ? (char *)data : "<defaults>" );
+	pr_debug("ASM: maxinstances=%ld\n", asb->max_inodes);
 	return 0;
 
 out_genocide:
@@ -2899,39 +2893,48 @@ static int __init init_asmfs_fs(void)
 
 	ret = init_inodecache();
 	if (ret) {
-		printk("oracleasmfs: Unable to create asmfs_inode_cache\n");
+		pr_err("oracleasmfs: Unable to create asmfs_inode_cache\n");
 		goto out_inodecache;
 	}
 
 	ret = init_requestcache();
 	if (ret) {
-		printk("oracleasmfs: Unable to create asm_request cache\n");
+		pr_err("oracleasmfs: Unable to create asm_request cache\n");
 		goto out_requestcache;
 	}
 
 	ret = init_asmdiskcache();
 	if (ret) {
-		printk("oracleasmfs: Unable to initialize the disk cache\n");
+		pr_err("oracleasmfs: Unable to initialize the disk cache\n");
 		goto out_diskcache;
 	}
 
-	ret = init_oracleasm_proc();
-	if (ret) {
-		printk("oracleasmfs: Unable to register proc entries\n");
+	asm_proc = proc_mkdir(ASM_PROC_PATH, NULL);
+	if (asm_proc == NULL) {
+		pr_err("oracleasmfs: Unable to register proc directory\n");
 		goto out_proc;
+	}
+
+	ret = mlog_init_proc(asm_proc);
+	if (ret) {
+		pr_err("oracleasmfs: Unable to register proc mlog\n");
+		goto out_mlog;
 	}
 
 	init_asmfs_dir_operations();
 	ret = register_filesystem(&asmfs_fs_type);
 	if (ret) {
-		printk("oracleasmfs: Unable to register filesystem\n");
+		pr_err("oracleasmfs: Unable to register filesystem\n");
 		goto out_register;
 	}
 
 	return 0;
 
 out_register:
-	exit_oracleasm_proc();
+	mlog_remove_proc(asm_proc);
+
+out_mlog:
+	remove_proc_entry(ASM_PROC_PATH, NULL);
 
 out_proc:
 	destroy_asmdiskcache();
@@ -2949,7 +2952,8 @@ out_inodecache:
 static void __exit exit_asmfs_fs(void)
 {
 	unregister_filesystem(&asmfs_fs_type);
-	exit_oracleasm_proc();
+	mlog_remove_proc(asm_proc);
+	remove_proc_entry(ASM_PROC_PATH, NULL);
 	destroy_asmdiskcache();
 	destroy_requestcache();
 	destroy_inodecache();
