@@ -42,7 +42,6 @@
 #include "linux/oracleasm/error.h"
 
 #include "request.h"
-#include "masklog.h"
 #include "integrity.h"
 
 u32 asm_integrity_format(struct block_device *bdev)
@@ -90,27 +89,24 @@ int asm_integrity_check(struct oracleasm_integrity_v2 *it, struct block_device *
 	if (!dev_format)
 		return 0;
 
-	if (it->it_magic != ASM_INTEGRITY_MAGIC) {
-		mlog(ML_ERROR|ML_IOC, "IOC integrity: Bad magic...\n");
+	if (unlikely(it->it_magic != ASM_INTEGRITY_MAGIC)) {
+		pr_err("%s: Bad integrity magic %x!\n", __func__, it->it_magic);
 		return -EINVAL;
 	}
 
-	if (it->it_format != dev_format) {
-		mlog(ML_ERROR|ML_IOC,
-		     "IOC integrity: incorrect format for %s (%u != %u)\n",
-		     bdev->bd_disk->disk_name, it->it_format, dev_format);
+	if (unlikely(it->it_format != dev_format)) {
+		pr_err("%s: incorrect format for %s (%u != %u)\n", __func__,
+		       bdev->bd_disk->disk_name, it->it_format, dev_format);
 		return -EINVAL;
 	}
 
-	if (it->it_bytes == 0) {
-		mlog(ML_ERROR|ML_IOC,
-		     "IOC integrity: zero integrity buffer length\n");
+	if (unlikely(it->it_bytes == 0)) {
+		pr_err("%s: zero length integrity buffer\n", __func__);
 		return -EINVAL;
 	}
 
-	if (it->it_buf == 0) {
-		mlog(ML_ERROR|ML_IOC,
-		     "IOC integrity: NULL integrity buffer\n");
+	if (unlikely(it->it_buf == 0)) {
+		pr_err("%s: NULL integrity buffer\n", __func__);
 		return -EINVAL;
 	}
 
@@ -133,14 +129,14 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 	ret = 0;
 
-	if (nr_pages < 1) {
-		mlog(ML_ERROR, "%s: nr_pages < 1\n", __func__);
+	if (unlikely(nr_pages < 1)) {
+		pr_err("%s: nr_pages < 1\n", __func__);
 		return -EINVAL;
 	}
 
 	bip = bio_integrity_alloc(bio, GFP_NOIO, nr_pages);
-	if (!bip) {
-		mlog(ML_ERROR, "%s: could not allocate bip\n", __func__);
+	if (unlikely(!bip)) {
+		pr_err("%s: could not allocate bip\n", __func__);
 		return -ENOMEM;
 	}
 
@@ -161,14 +157,14 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 		bip->bip_flags |= BIP_DISK_NOCHECK;
 
 	pages = kcalloc(nr_pages, sizeof(struct page *), GFP_KERNEL);
-	if (!pages) {
-		mlog(ML_ERROR, "%s: could not allocate page array\n", __func__);
+	if (unlikely(!pages)) {
+		pr_err("%s: could not allocate page array\n", __func__);
 		return -ENOMEM;
 	}
 
 	ret = get_user_pages_fast(uaddr, nr_pages, write_to_vm, &pages[0]);
-	if (ret < nr_pages) {
-		mlog(ML_ERROR, "%s: could not get user pages\n", __func__);
+	if (unlikely(ret < nr_pages)) {
+		pr_err("%s: could not get user pages\n", __func__);
 		kfree(pages);
 		return -EFAULT;
 	}
@@ -188,10 +184,10 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 
 		added = bio_integrity_add_page(bio, pages[i], bytes, offset);
 
-		if (added < bytes) {
+		if (unlikely(added < bytes)) {
 			ret = -1;
-			mlog(ML_ERROR, "%s: bio %p added %u bytes, wanted %u\n",
-			     __func__, bio, added, bytes);
+			pr_err("%s: bio %p added %u bytes, wanted %u\n",
+			       __func__, bio, added, bytes);
 			break;
 		}
 
