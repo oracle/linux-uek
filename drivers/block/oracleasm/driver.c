@@ -269,12 +269,6 @@ static struct transaction_context trans_contexts[] = {
 #endif
 };
 
-static struct backing_dev_info memory_backing_dev_info = {
-	.ra_pages	= 0,	/* No readahead */
-	.capabilities   = BDI_CAP_NO_ACCT_DIRTY | BDI_CAP_NO_WRITEBACK,
-};
-
-
 static struct inode *asmdisk_alloc_inode(struct super_block *sb)
 {
 	struct asm_disk_info *d = kmem_cache_alloc(asmdisk_cachep, GFP_KERNEL);
@@ -562,7 +556,6 @@ static int asmfs_create(struct inode *dir, struct dentry *dentry, umode_t mode, 
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &asmfs_file_inode_operations;
 	inode->i_fop = &asmfs_file_operations;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 
 	d_instantiate(dentry, inode);
 
@@ -747,6 +740,11 @@ static int asm_open_disk(struct file *file, struct block_device *bdev)
 	d = ASMDISK_I(disk_inode);
 
 	if (disk_inode->i_state & I_NEW) {
+		struct backing_dev_info *bdi = inode_to_bdi(inode);
+
+		bdi->ra_pages = 0;	/* No readahead */
+		bdi->capabilities = BDI_CAP_NO_ACCT_DIRTY | BDI_CAP_NO_WRITEBACK;
+
 		mlog_bug_on_msg(atomic_read(&d->d_ios) != 0,
 				"Supposedly new disk 0x%p (dev %X) has outstanding I/O\n",
 				d, bdev->bd_dev);
@@ -758,8 +756,6 @@ static int asm_open_disk(struct file *file, struct block_device *bdev)
 				"New disk 0x%p has set bdev 0x%p but we were opening 0x%p\n",
 				d, d->d_bdev, bdev);
 
-		disk_inode->i_mapping->backing_dev_info =
-			&memory_backing_dev_info;
 		d->d_max_sectors = compute_max_sectors(bdev);
 		d->d_live = 1;
 
@@ -1230,6 +1226,8 @@ static int asm_submit_io(struct file *file,
 	struct inode *disk_inode;
 	struct block_device *bdev;
 	struct oracleasm_integrity_v2 *it;
+	struct iov_iter iter;
+	struct iovec iov;
 
 	mlog_entry("(0x%p, 0x%p, 0x%p)\n", file, user_iocp, ioc);
 
@@ -1383,14 +1381,19 @@ static int asm_submit_io(struct file *file,
 		goto out_error;
 
 	ret = -ENOMEM;
-	r->r_bio = bio_map_user(bdev_get_queue(bdev), bdev,
-				(unsigned long)ioc->buffer_asm_ioc,
-				r->r_count, rw == READ, GFP_KERNEL);
+
+	iov.iov_base = (void __user *)ioc->buffer_asm_ioc;
+	iov.iov_len = r->r_count;
+	iov_iter_init(&iter, rw, &iov, 1, r->r_count);
+	r->r_bio = bio_map_user_iov(bdev_get_queue(bdev), &iter, GFP_KERNEL);
+
 	if (IS_ERR(r->r_bio)) {
 		ret = PTR_ERR(r->r_bio);
 		r->r_bio = NULL;
 		goto out_error;
 	}
+
+	r->r_bio->bi_bdev = bdev;
 
 	if (r->r_bio->bi_iter.bi_size != r->r_count) {
 		mlog(ML_ERROR|ML_BIO, "Only mapped partial ioc buffer\n");
@@ -2749,7 +2752,6 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	/* directory inodes start off with i_nlink == 2 (for "." entry) */
 	set_nlink(inode, inode->i_nlink + 1);
 	parent = inode;
@@ -2775,7 +2777,6 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &asmfs_disk_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	name.name = ASM_MANAGER_INSTANCES;
@@ -2795,7 +2796,6 @@ static int asmfs_fill_super(struct super_block *sb,
 	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
 	inode->i_op = &asmfs_iid_dir_inode_operations;
 	inode->i_fop = &asmfs_dir_operations;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	name.name = asm_operation_files[ASMOP_QUERY_VERSION];
@@ -2808,7 +2808,6 @@ static int asmfs_fill_super(struct super_block *sb,
 				      &trans_contexts[ASMOP_QUERY_VERSION]);
 	if (!inode)
 		goto out_genocide;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	name.name = asm_operation_files[ASMOP_GET_IID];
@@ -2821,7 +2820,6 @@ static int asmfs_fill_super(struct super_block *sb,
 				      &trans_contexts[ASMOP_GET_IID]);
 	if (!inode)
 		goto out_genocide;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	name.name = asm_operation_files[ASMOP_CHECK_IID];
@@ -2834,7 +2832,6 @@ static int asmfs_fill_super(struct super_block *sb,
 				      &trans_contexts[ASMOP_CHECK_IID]);
 	if (!inode)
 		goto out_genocide;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	name.name = asm_operation_files[ASMOP_QUERY_DISK];
@@ -2847,7 +2844,6 @@ static int asmfs_fill_super(struct super_block *sb,
 				      &trans_contexts[ASMOP_QUERY_DISK]);
 	if (!inode)
 		goto out_genocide;
-	inode->i_mapping->backing_dev_info = &memory_backing_dev_info;
 	d_add(dentry, inode);
 
 	sb->s_root = root;

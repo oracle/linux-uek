@@ -1395,6 +1395,7 @@ struct bio *bio_map_user_iov(struct request_queue *q,
 	bio_put(bio);
 	return ERR_PTR(ret);
 }
+EXPORT_SYMBOL(bio_map_user_iov);
 
 static void __bio_unmap_user(struct bio *bio)
 {
