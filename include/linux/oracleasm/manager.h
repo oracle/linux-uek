@@ -77,6 +77,7 @@
  * oracleasmfs is mounted.  Default is ASM_MANAGER_DEFAULT
  */
 #define ASM_MANAGER_DEFAULT		"/dev/oracleasm"
+#define ASM_PROC_PATH			"fs/oracleasm"
 
 /* Subdirectories of the manager device */
 #define ASM_MANAGER_DISKS		"disks"
