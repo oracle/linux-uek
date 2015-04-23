@@ -1096,6 +1096,7 @@ static void __exit vmbus_exit(void)
 
 	vmbus_connection.conn_state = DISCONNECTED;
 	hv_synic_clockevents_cleanup();
+	vmbus_disconnect();
 	hv_remove_vmbus_irq();
 	vmbus_free_channels();
 	bus_unregister(&hv_bus);
@@ -1104,7 +1105,6 @@ static void __exit vmbus_exit(void)
 		smp_call_function_single(cpu, hv_synic_cleanup, NULL, 1);
 	acpi_bus_unregister_driver(&vmbus_acpi_driver);
 	hv_cpu_hotplug_quirk(false);
-	vmbus_disconnect();
 }
 
 
