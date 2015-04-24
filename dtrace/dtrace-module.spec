@@ -4,6 +4,9 @@
 %ifarch x86_64
 %define karch x86_64
 %endif
+%ifarch sparc64
+%define karch sparc64
+%endif
 
 # Redefine 'build_variant' at build time to create a kernel package named
 # something like 'kernel-uek-dtrace'.
@@ -29,6 +32,12 @@
 %define dt_0_4_4	1028
 %{lua:
 	local kver = rpm.expand("%{kver}")
+
+	if rpm.vercmp(kver, "4.0.0-1") >= 0 then
+		rpm.define("arches x86_64 sparc64")
+	else
+		rpm.define("arches x86_64")
+	end
 
 	if rpm.vercmp(kver, "3.8.13-69") >= 0 then
 		rpm.define("srcver 0.4.4")
@@ -85,7 +94,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: x86_64
+ExclusiveArch: %{arches}
 
 %description
 DTrace kernel modules.
@@ -138,7 +147,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: x86_64
+ExclusiveArch: %{arches}
 
 %description
 DTrace kernel modules.
