@@ -93,7 +93,7 @@ int cm_ibcrc_as_csum = 1;
 
 module_param_named(cm_ibcrc_as_csum, cm_ibcrc_as_csum, int, 0444);
 MODULE_PARM_DESC(cm_ibcrc_as_csum, "Indicates whether to utilize IB-CRC as "
-		 "CSUM in connected mode,(default: 0)");
+		 "CSUM in connected mode,(default: 1)");
 
 int    ipoib_cm_rx_sg;
 
