@@ -1608,14 +1608,12 @@ static ssize_t set_mode(struct device *d, struct device_attribute *attr,
 		if (cm_ibcrc_as_csum && (test_bit(IPOIB_FLAG_CSUM,
 						  &priv->flags))) {
 			dev->features |= NETIF_F_IP_CSUM | NETIF_F_SG;
-			if (priv->hca_caps & IB_DEVICE_UD_TSO)
-				dev->features |= NETIF_F_TSO;
 			priv->tx_wr.send_flags |= IB_SEND_IP_CSUM;
 		} else {
-			dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_SG |
-					   NETIF_F_TSO);
+			dev->features &= ~(NETIF_F_IP_CSUM | NETIF_F_SG);
 			priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
 		}
+		dev->features &= ~NETIF_F_TSO;
 
 		if (ipoib_cm_max_mtu(dev) > priv->mcast_mtu)
 			ipoib_warn(priv, "mtu > %d will cause multicast packet drops.\n",
