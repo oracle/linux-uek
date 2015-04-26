@@ -215,8 +215,7 @@ static netdev_features_t ipoib_fix_features(struct net_device *dev, netdev_featu
 
 	if (test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags) &&
 	    !(cm_ibcrc_as_csum && (test_bit(IPOIB_FLAG_CSUM, &priv->flags))))
-			features &= ~(NETIF_F_SG | NETIF_F_IP_CSUM |
-				      NETIF_F_TSO);
+			features &= ~(NETIF_F_SG | NETIF_F_IP_CSUM);
 
 	return features;
 }
@@ -2581,9 +2580,6 @@ int ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
 		set_bit(IPOIB_FLAG_CSUM, &priv->flags);
 		priv->dev->hw_features = NETIF_F_SG |
 			NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
-
-		if (priv->hca_caps & IB_DEVICE_UD_TSO)
-			priv->dev->hw_features |= NETIF_F_TSO;
 
 		priv->dev->features |= priv->dev->hw_features;
 	}
