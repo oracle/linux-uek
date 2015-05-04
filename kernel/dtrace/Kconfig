@@ -6,7 +6,8 @@
 menuconfig DTRACE
 	bool "DTrace (Dynamic Tracing) Support"
 	default y
-	depends on X86_64 && !DEBUG_LOCK_ALLOC
+	depends on ARCH_SUPPORTS_DTRACE
+	depends on !DEBUG_LOCK_ALLOC
 	select KALLSYMS
 	select WAITFD
 	select CTF if (!DT_DISABLE_CTF)

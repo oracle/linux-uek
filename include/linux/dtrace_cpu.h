@@ -1,4 +1,4 @@
-/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+/* Copyright (C) 2011-2014 Oracle, Inc. */
 
 #ifndef _LINUX_DTRACE_CPU_H_
 #define _LINUX_DTRACE_CPU_H_
@@ -7,6 +7,7 @@
 #include <linux/mutex.h>
 #include <linux/rwlock.h>
 #include <linux/dtrace_cpu_defines.h>
+#include <asm/dtrace_cpuinfo.h>
 
 typedef struct cpu_core {
 	uint16_t cpuc_dtrace_flags;

@@ -1,15 +1,15 @@
-/* Copyright (C) 2011, 2012, 2013 Oracle, Inc. */
+/* Copyright (C) 2011-2014 Oracle, Inc. */
 
-#ifndef _SDT_H_
-#define	_SDT_H_
+#ifndef _LINUX_SDT_H_
+#define	_LINUX_SDT_H_
 
-#ifdef	__cplusplus
-extern "C" {
-#endif
-
-#if defined(CONFIG_DTRACE) || defined(CONFIG_DTRACE_MODULE)
+#ifdef CONFIG_DTRACE
 
 #ifndef __KERNEL__
+
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 #define	DTRACE_PROBE(provider, name) {					\
 	extern void __dtrace_##provider##___##name(void);		\
@@ -50,6 +50,10 @@ extern "C" {
 	    (unsigned long)arg2, (unsigned long)arg3,			\
 	    (unsigned long)arg4, (unsigned long)arg5);			\
 }
+
+#ifdef	__cplusplus
+}
+#endif
 
 #else /* __KERNEL__ */
 
@@ -118,35 +122,22 @@ extern "C" {
 	    (uintptr_t)(arg6), (uintptr_t)(arg7), (uintptr_t)(arg8));	\
 }
 
-/*
- * vmlinux dtrace_probe__ caller reloc info;
- * comes from vmlinux_info.S
- */
-typedef uint8_t	sdt_instr_t;
-
-extern unsigned long dtrace_sdt_nprobes __attribute__((weak));
-extern void *dtrace_sdt_probes __attribute__((weak));
-
-typedef struct dtrace_sdt_probeinfo {
-	unsigned long addr;
-	unsigned long name_len;
-	unsigned long func_len;
-	char name[0];
-} __aligned(sizeof(unsigned long)) dtrace_sdt_probeinfo_t;
-
-void dtrace_sdt_init(void);
-void dtrace_sdt_register(struct module *);
-void dtrace_sdt_exit(void);
+typedef struct sdt_probedesc {
+	char			*sdpd_name;	/* probe name */
+	char			*sdpd_func;	/* probe function */
+	unsigned long		sdpd_offset;	/* offset of call in text */
+	struct sdt_probedesc	*sdpd_next;	/* next static probe */
+} sdt_probedesc_t;
 
 #endif /* __KERNEL__ */
 
-#else /* DTRACE not enabled: */
+#else /* ! CONFIG_DTRACE */
 
-#define	DTRACE_PROBE(name)	do { } while (0)
+#define	DTRACE_PROBE(name)				do { } while (0)
 #define	DTRACE_PROBE1(name, type1, arg1)		DTRACE_PROBE(name)
 #define	DTRACE_PROBE2(name, type1, arg1, type2, arg2)	DTRACE_PROBE(name)
 #define	DTRACE_PROBE3(name, type1, arg1, type2, arg2, type3, arg3)	\
-			DTRACE_PROBE(name)
+							DTRACE_PROBE(name)
 #define	DTRACE_PROBE4(name, type1, arg1, type2, arg2, type3, arg3,	\
 			type4, arg4)			DTRACE_PROBE(name)
 #define	DTRACE_PROBE5(name, type1, arg1, type2, arg2, type3, arg3,	\
@@ -154,13 +145,13 @@ void dtrace_sdt_exit(void);
 #define	DTRACE_PROBE6(name, type1, arg1, type2, arg2, type3, arg3,	\
 	type4, arg4, type5, arg5, type6, arg6)		DTRACE_PROBE(name)
 #define	DTRACE_PROBE7(name, type1, arg1, type2, arg2, type3, arg3,	\
-	type4, arg4, type5, arg5, type6, arg6, type7, arg7) DTRACE_PROBE(name)
+	type4, arg4, type5, arg5, type6, arg6, type7, arg7)		\
+							DTRACE_PROBE(name)
 #define	DTRACE_PROBE8(name, type1, arg1, type2, arg2, type3, arg3,	\
 	type4, arg4, type5, arg5, type6, arg6, type7, arg7, type8, arg8) \
-			DTRACE_PROBE(name)
+							DTRACE_PROBE(name)
 
 #endif /* CONFIG_DTRACE */
-
 
 #define	DTRACE_SCHED(name)						\
 	DTRACE_PROBE(__sched_##name);
@@ -427,19 +418,4 @@ void dtrace_sdt_exit(void);
 	    type3, arg3, type4, arg4, type5, arg5, type6, arg6,		\
 	    type7, arg7, type8, arg8);
 
-extern const char *sdt_prefix;
-
-typedef struct sdt_probedesc {
-	char			*sdpd_name;	/* probe name */
-	char			*sdpd_func;	/* probe function */
-	unsigned long		sdpd_offset;	/* offset of call in text */
-	struct sdt_probedesc	*sdpd_next;	/* next static probe */
-} sdt_probedesc_t;
-
-/* extern void dtrace_register_builtins(void); */
-
-#ifdef	__cplusplus
-}
-#endif
-
-#endif	/* _SDT_H_ */
+#endif	/* _LINUX_SDT_H_ */
