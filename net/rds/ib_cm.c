@@ -831,6 +831,20 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	}
 
 	/*
+	 * Make sure to have zero lane connection up on both sides,
+	 * to avoid establishing connection on non-ideal path records.
+	 */
+	if (dp->dp_tos && rds_conn_state(conn->c_base_conn) != RDS_CONN_UP) {
+		printk(KERN_INFO "RDS/IB: connection "
+				"<%pI4,%pI4,%d> "
+				"incoming REQ with base connection down, retry\n",
+				&conn->c_laddr,
+				&conn->c_faddr,
+				conn->c_tos);
+		rds_conn_drop(conn);
+	}
+
+	/*
 	 * The connection request may occur while the
 	 * previous connection exist, e.g. in case of failover.
 	 * But as connections may be initiated simultaneously
