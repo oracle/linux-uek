@@ -36,6 +36,7 @@
 #include <linux/compat.h>
 
 #include "linux/oracleasm/compat32.h"
+
 #include "linux/oracleasm/kernel.h"
 #include "linux/oracleasm/abi.h"
 #include "linux/oracleasm/disk.h"
@@ -43,6 +44,7 @@
 
 #include "request.h"
 #include "integrity.h"
+#include "trace.h"
 
 u32 asm_integrity_format(struct block_device *bdev)
 {
@@ -194,6 +196,8 @@ int asm_integrity_map(struct oracleasm_integrity_v2 *it, struct asm_request *r, 
 		len -= bytes;
 		offset = 0;
 	}
+
+	trace_integrity(it, r, i);
 
 	while (i < nr_pages)
 		page_cache_release(pages[i++]);

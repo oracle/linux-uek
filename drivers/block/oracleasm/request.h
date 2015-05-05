@@ -1,6 +1,19 @@
 #ifndef ASM_REQUEST_H
 #define ASM_REQUEST_H
 
+/*
+ * ASM Disk info
+ */
+struct asm_disk_info {
+	struct asmfs_inode_info *d_inode;
+	struct block_device *d_bdev;	/* Block device we I/O to */
+	int d_max_sectors;		/* Maximum sectors per I/O */
+	int d_live;			/* Is the disk alive? */
+	atomic_t d_ios;			/* Count of in-flight I/Os */
+	struct list_head d_open;	/* List of assocated asm_disk_heads */
+	struct inode vfs_inode;
+};
+
 /* ASM I/O requests */
 struct asm_request {
 	struct list_head r_list;
