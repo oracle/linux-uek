@@ -10,7 +10,7 @@
 #define CPUC_PADSIZE	(192 - CPUC_SIZE)
 
 #define per_cpu_core(cpu)	(&per_cpu(dtrace_cpu_core, (cpu)))
-#define this_cpu_core		(&__get_cpu_var(dtrace_cpu_core))
+#define this_cpu_core		(this_cpu_ptr(&dtrace_cpu_core))
 
 #define DTRACE_CPUFLAG_ISSET(flag) \
 	(this_cpu_core->cpuc_dtrace_flags & (flag))
@@ -52,6 +52,6 @@ struct cpu_core;
 struct cpuinfo;
 
 #define per_cpu_info(cpu)	(&per_cpu(dtrace_cpu_info, (cpu)))
-#define this_cpu_info		(&__get_cpu_var(dtrace_cpu_info))
+#define this_cpu_info		(this_cpu_ptr(&dtrace_cpu_info))
 
 #endif /* _LINUX_DTRACE_CPU_DEFINES_H_ */
