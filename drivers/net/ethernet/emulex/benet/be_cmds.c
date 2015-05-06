@@ -3156,7 +3156,7 @@ int be_cmd_set_mac(struct be_adapter *adapter, u8 *mac, int if_id, u32 dom)
 }
 
 int be_cmd_set_hsw_config(struct be_adapter *adapter, u16 pvid,
-			  u32 domain, u16 intf_id, u16 hsw_mode)
+			  u32 domain, u16 intf_id, u16 hsw_mode, u8 spoofchk)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_set_hsw_config *req;
@@ -3192,6 +3192,14 @@ int be_cmd_set_hsw_config(struct be_adapter *adapter, u16 pvid,
 			      ctxt, hsw_mode);
 	}
 
+	/* Enable/disable both mac and vlan spoof checking */
+	if (!BEx_chip(adapter) && spoofchk) {
+		AMAP_SET_BITS(struct amap_set_hsw_context, mac_spoofchk,
+			      ctxt, spoofchk);
+		AMAP_SET_BITS(struct amap_set_hsw_context, vlan_spoofchk,
+			      ctxt, spoofchk);
+	}
+
 	be_dws_cpu_to_le(req->context, sizeof(req->context));
 	status = be_mcc_notify_wait(adapter);
 
@@ -3202,7 +3210,7 @@ err:
 
 /* Get Hyper switch config */
 int be_cmd_get_hsw_config(struct be_adapter *adapter, u16 *pvid,
-			  u32 domain, u16 intf_id, u8 *mode)
+			  u32 domain, u16 intf_id, u8 *mode, bool *spoofchk)
 {
 	struct be_mcc_wrb *wrb;
 	struct be_cmd_req_get_hsw_config *req;
@@ -3250,6 +3258,10 @@ int be_cmd_get_hsw_config(struct be_adapter *adapter, u16 *pvid,
 		if (mode)
 			*mode = AMAP_GET_BITS(struct amap_get_hsw_resp_context,
 					      port_fwd_type, &resp->context);
+		if (spoofchk)
+			*spoofchk =
+				AMAP_GET_BITS(struct amap_get_hsw_resp_context,
+					      spoofchk, &resp->context);
 	}
 
 err:
