@@ -2915,9 +2915,12 @@ static int be_rx_qs_create(struct be_adapter *adapter)
 		return rc;
 	}
 
-	/* First time posting */
+	/* Post 1 less than RXQ-len to avoid head being equal to tail,
+ 	 *  which is a queue empty condition
+ 	 */
 	for_all_rx_queues(adapter, rxo, i)
-		be_post_rx_frags(rxo, GFP_KERNEL, MAX_RX_POST);
+		 be_post_rx_frags(rxo, GFP_KERNEL, RX_Q_LEN - 1);
+
 	return 0;
 }
 
