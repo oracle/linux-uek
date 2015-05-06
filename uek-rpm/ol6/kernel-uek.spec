@@ -539,8 +539,8 @@ Source21: turbostat
 
 Source1000: config-x86_64
 Source1001: config-x86_64-debug
-#Source1004: config-sparc
-#Source1005: config-sparc-debug
+Source1004: config-sparc
+Source1005: config-sparc-debug
 
 #Source26: Module.kabi_x86_64
 
