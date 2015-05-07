@@ -2286,7 +2286,8 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		 * Additionally, it is safe to dereference one's own process
 		 * credential, since this is never NULL after process birth.
 		 */
-		return (uint64_t)from_kuid(NULL, current_real_cred()->uid);
+		return (uint64_t)from_kuid(current_user_ns(),
+					   current_real_cred()->uid);
 
 	case DIF_VAR_GID:
 		if (!dtrace_priv_proc(state))
@@ -2299,7 +2300,8 @@ static uint64_t dtrace_dif_variable(dtrace_mstate_t *mstate,
 		 * Additionally, it is safe to dereference one's own process
 		 * credential, since this is never NULL after process birth.
 		 */
-		return (uint64_t)from_kgid(NULL, current_real_cred()->gid);
+		return (uint64_t)from_kgid(current_user_ns(),
+					   current_real_cred()->gid);
 
 	case DIF_VAR_ERRNO: {
 		int64_t	arg0;
