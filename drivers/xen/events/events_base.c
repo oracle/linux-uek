@@ -553,8 +553,8 @@ static unsigned int __startup_pirq(unsigned int irq)
 		xen_evtchn_close(evtchn);
 		return 0;
 	}
-	bind_evtchn_to_cpu(evtchn, 0);
 	info->evtchn = evtchn;
+	bind_evtchn_to_cpu(evtchn, 0);
 
 out:
 	unmask_evtchn(evtchn);
