@@ -204,7 +204,7 @@ int dtrace_register(const char *name, const dtrace_pattr_t *pap, uint32_t priv,
 
 	if (cr != NULL) {
 		provider->dtpv_priv.dtpp_uid =
-			from_kuid(NULL, get_cred(cr)->uid);
+			from_kuid(init_user_namespace, get_cred(cr)->uid);
 		put_cred(cr);
 	}
 

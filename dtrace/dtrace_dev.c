@@ -71,6 +71,8 @@ static int			dtrace_toxranges_max;
 struct kmem_cache		*dtrace_state_cachep;
 struct kmem_cache		*dtrace_pdata_cachep;
 
+struct user_namespace		*init_user_namespace;
+
 static dtrace_pattr_t		dtrace_provider_attr = {
 { DTRACE_STABILITY_STABLE, DTRACE_STABILITY_STABLE, DTRACE_CLASS_COMMON },
 { DTRACE_STABILITY_PRIVATE, DTRACE_STABILITY_PRIVATE, DTRACE_CLASS_UNKNOWN },
@@ -1379,6 +1381,7 @@ int dtrace_dev_init(void)
 {
 	dtrace_provider_id_t	id;
 	int			rc = 0;
+	struct cred		*cred;
 
 	/*
 	 * Register the device for the DTrace core.
@@ -1474,6 +1477,17 @@ int dtrace_dev_init(void)
 				offsetof(dtrace_probe_t, dtpr_name),
 				offsetof(dtrace_probe_t, dtpr_nextname),
 				offsetof(dtrace_probe_t, dtpr_prevname));
+
+	/*
+	 * FIXME, this is a very nonstandard pattern for OOM-checking but
+	 * unavoidable given the absence of OOM-checking elsewhere in this
+	 * function.
+	 */
+	cred = prepare_kernel_cred(NULL);
+	if (cred) {
+		init_user_namespace = cred->user_ns;
+		put_cred(cred);
+	}
 
 	/*
 	 * Ensure that the X configuration parameter has a legal value.

@@ -1352,7 +1352,8 @@ dtrace_id_t dtrace_probe_lookup(dtrace_provider_id_t prid, const char *mod,
 	pkey.dtpk_id = DTRACE_IDNONE;
 
 	mutex_lock(&dtrace_lock);
-	match = dtrace_match(&pkey, DTRACE_PRIV_ALL, make_kuid(NULL, 0),
+	match = dtrace_match(&pkey, DTRACE_PRIV_ALL,
+			     make_kuid(init_user_namespace, 0),
 			     dtrace_probe_lookup_match, &id);
 	mutex_unlock(&dtrace_lock);
 

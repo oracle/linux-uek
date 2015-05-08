@@ -830,6 +830,8 @@ extern dtrace_id_t		dtrace_probeid_error;
 
 extern dtrace_dynvar_t		dtrace_dynhash_sink;
 
+extern struct user_namespace	*init_user_namespace;
+
 extern int dtrace_dstate_init(dtrace_dstate_t *, size_t);
 extern void dtrace_dstate_fini(dtrace_dstate_t *);
 extern void dtrace_vstate_fini(dtrace_vstate_t *);
