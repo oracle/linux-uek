@@ -253,13 +253,22 @@ new_conn:
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		found = rds_conn_lookup(head, laddr, faddr, trans, tos);
+		if (!is_outgoing && otrans->t_type == RDS_TRANS_TCP)
+			found = NULL;
+		else
+			found = rds_conn_lookup(head, laddr, faddr, trans, tos);
 		if (found) {
 			trans->conn_free(conn->c_transport_data);
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = found;
 		} else {
-			hlist_add_head_rcu(&conn->c_hash_node, head);
+			if ((is_outgoing && otrans->t_type == RDS_TRANS_TCP) ||
+			    (otrans->t_type != RDS_TRANS_TCP)) {
+				/* Only the active side should be added to
+				 * reconnect list for RDS-TCP.
+				 */
+				hlist_add_head_rcu(&conn->c_hash_node, head);
+			}
 			rds_cong_add_conn(conn);
 			rds_conn_count++;
 		}
