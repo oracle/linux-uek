@@ -266,7 +266,7 @@ BuildRequires: rpm-build >= 4.4.2.1-4
 %endif
 
 # Only x86_64 does dtrace
-%ifarch x86_64
+%ifarch x86_64 sparc64
 %define with_dtrace 1
 %endif
 
