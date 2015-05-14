@@ -41,8 +41,11 @@ s32 ixgbe_dcb_get_tc_stats_82599(struct ixgbe_hw *hw,
 {
 	int tc;
 
+	DEBUGFUNC("dcb_get_tc_stats");
+
 	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return IXGBE_ERR_PARAM;
+
 	/* Statistics pertaining to each traffic class */
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Transmitted Packets */
@@ -62,7 +65,7 @@ s32 ixgbe_dcb_get_tc_stats_82599(struct ixgbe_hw *hw,
 		stats->qprdc[tc] += IXGBE_READ_REG(hw, IXGBE_QPRDC(tc));
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -79,8 +82,11 @@ s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
 {
 	int tc;
 
+	DEBUGFUNC("dcb_get_pfc_stats");
+
 	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return IXGBE_ERR_PARAM;
+
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Priority XOFF Transmitted */
 		stats->pxofftxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(tc));
@@ -88,7 +94,7 @@ s32 ixgbe_dcb_get_pfc_stats_82599(struct ixgbe_hw *hw,
 		stats->pxoffrxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFRXCNT(tc));
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -147,7 +153,7 @@ s32 ixgbe_dcb_config_rx_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
 	reg = IXGBE_RTRPCS_RRM | IXGBE_RTRPCS_RAC;
 	IXGBE_WRITE_REG(hw, IXGBE_RTRPCS, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -192,7 +198,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
 	reg = IXGBE_RTTDCS_TDPAC | IXGBE_RTTDCS_TDRM;
 	IXGBE_WRITE_REG(hw, IXGBE_RTTDCS, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -253,7 +259,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82599(struct ixgbe_hw *hw, u16 *refill,
 	      (IXGBE_RTTPCS_ARBD_DCB << IXGBE_RTTPCS_ARBD_SHIFT);
 	IXGBE_WRITE_REG(hw, IXGBE_RTTPCS, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -283,7 +289,7 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 	 */
 	reg &= ~(IXGBE_MFLCN_RPFCE_MASK | IXGBE_MFLCN_RFCE);
 
-	if (hw->mac.type == ixgbe_mac_X540)
+	if (hw->mac.type >= ixgbe_mac_X540)
 		reg |= pfc_en << IXGBE_MFLCN_RPFCE_SHIFT;
 
 	if (pfc_en)
@@ -340,7 +346,7 @@ s32 ixgbe_dcb_config_pfc_82599(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 	/* Configure flow control refresh threshold value */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -466,7 +472,7 @@ s32 ixgbe_dcb_config_tc_stats_82599(struct ixgbe_hw *hw,
 			IXGBE_WRITE_REG(hw, IXGBE_TQSM(i), 0x03020100);
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -508,6 +514,7 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 			 * Unsupported value, assume stale data,
 			 * overwrite no RSS
 			 */
+			ASSERT(0);
 			reg = (reg & ~IXGBE_MRQC_MRQE_MASK) |
 			      IXGBE_MRQC_RT8TCEN;
 		}
@@ -549,7 +556,7 @@ s32 ixgbe_dcb_config_82599(struct ixgbe_hw *hw,
 	reg |= IXGBE_SECTX_DCB;
 	IXGBE_WRITE_REG(hw, IXGBE_SECTXMINIFG, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -572,6 +579,6 @@ s32 ixgbe_dcb_hw_config_82599(struct ixgbe_hw *hw, int link_speed,
 	ixgbe_dcb_config_tx_data_arbiter_82599(hw, refill, max, bwg_id,
 					       tsa, map);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 

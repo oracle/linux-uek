@@ -88,7 +88,6 @@
 /* SECTXMINIFG DCB */
 #define IXGBE_SECTX_DCB		0x00001F00 /* DCB TX Buffer SEC IFG */
 
-
 /* DCB driver APIs */
 
 /* DCB PFC */

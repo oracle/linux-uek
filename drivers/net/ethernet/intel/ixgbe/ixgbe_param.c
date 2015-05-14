@@ -98,7 +98,7 @@ IXGBE_PARAM(IntMode, "Change Interrupt Mode (0=Legacy, 1=MSI, 2=MSI-X), "
 
 IXGBE_PARAM(MQ, "Disable or enable Multiple Queues, default 1");
 
-#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#if IS_ENABLED(CONFIG_DCA)
 /* DCA - Direct Cache Access (DCA) Control
  *
  * This option allows the device to hint to DCA enabled processors
@@ -125,7 +125,8 @@ IXGBE_PARAM(MQ, "Disable or enable Multiple Queues, default 1");
 
 IXGBE_PARAM(DCA, "Disable or enable Direct Cache Access, 0=disabled, "
 	    "1=descriptor only, 2=descriptor and data");
-#endif
+#endif /* CONFIG_DCA */
+
 /* RSS - Receive-Side Scaling (RSS) Descriptor Queues
  *
  * Valid Range: 0-16
@@ -288,9 +289,9 @@ IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
 #define IXGBE_MIN_ATR_SAMPLE_RATE	1
 #define IXGBE_ATR_SAMPLE_RATE_OFF	0
 #define IXGBE_DEFAULT_ATR_SAMPLE_RATE	20
-
 #endif /* HAVE_TX_MQ */
-#ifdef IXGBE_FCOE
+
+#if IS_ENABLED(CONFIG_FCOE)
 /* FCoE - Fibre Channel over Ethernet Offload  Enable/Disable
  *
  * Valid Range: 0, 1
@@ -300,8 +301,8 @@ IXGBE_PARAM(AtrSampleRate, "Software ATR Tx packet sample rate");
  * Default Value: 1
  */
 IXGBE_PARAM(FCoE, "Disable or enable FCoE Offload, default 1");
+#endif /* CONFIG_FCOE */
 
-#endif /* IXGBE_FCOE */
 /* Enable/disable Large Receive Offload
  *
  * Valid Values: 0(off), 1(on)
@@ -319,10 +320,29 @@ IXGBE_PARAM(LRO, "Large Receive Offload (0,1), default 1 = on");
 IXGBE_PARAM(allow_unsupported_sfp, "Allow unsupported and untested "
 	    "SFP+ modules on 82599 based adapters, default 0 = Disable");
 
+/* Enable/disable support for DMA coalescing
+ *
+ * Valid Values: 0(off), 41 - 10000(on)
+ *
+ * Default Value: 0
+ */
+IXGBE_PARAM(dmac_watchdog,
+	    "DMA coalescing watchdog in microseconds (0,41-10000), default 0 = off");
+
+/* Enable/disable support for VXLAN rx checksum offload
+ *
+ * Valid Values: 0(Disable), 1(Enable)
+ *
+ * Default Value: 1 on hardware that supports it
+ */
+IXGBE_PARAM(vxlan_rx,
+	    "VXLAN receive checksum offload (0,1), default 1 = Enable");
+
 struct ixgbe_option {
 	enum { enable_option, range_option, list_option } type;
 	const char *name;
 	const char *err;
+	const char *msg;
 	int def;
 	union {
 		struct { /* range_option info */
@@ -361,9 +381,14 @@ static int __devinit ixgbe_validate_option(unsigned int *value,
 		}
 		break;
 	case range_option:
-		if (*value >= opt->arg.r.min && *value <= opt->arg.r.max) {
-			printk(KERN_INFO "ixgbe: %s set to %d\n", opt->name,
-			       *value);
+		if ((*value >= opt->arg.r.min && *value <= opt->arg.r.max) ||
+		    *value == opt->def) {
+			if (opt->msg)
+				printk(KERN_INFO "ixgbe: %s set to %d, %s\n",
+				       opt->name, *value, opt->msg);
+			else
+				printk(KERN_INFO "ixgbe: %s set to %d\n",
+				       opt->name, *value);
 			return 0;
 		}
 		break;
@@ -511,7 +536,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			*aflags &= ~IXGBE_FLAG_MQ_CAPABLE;
 		}
 	}
-#if defined(CONFIG_DCA) || defined(CONFIG_DCA_MODULE)
+#if IS_ENABLED(CONFIG_DCA)
 	{ /* Direct Cache Access (DCA) */
 		static struct ixgbe_option opt = {
 			.type = range_option,
@@ -553,7 +578,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		if (dca == IXGBE_MAX_DCA)
 			adapter->flags |= IXGBE_FLAG_DCA_ENABLED_DATA;
 	}
-#endif /* CONFIG_DCA or CONFIG_DCA_MODULE */
+#endif /* CONFIG_DCA */
 	{ /* Receive-Side Scaling (RSS) */
 		static struct ixgbe_option opt = {
 			.type = range_option,
@@ -988,12 +1013,13 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 	}
 #endif /* HAVE_TX_MQ */
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	{
 		*aflags &= ~IXGBE_FLAG_FCOE_CAPABLE;
 
 		switch (adapter->hw.mac.type) {
 		case ixgbe_mac_X540:
+		case ixgbe_mac_X550:
 		case ixgbe_mac_82599EB: {
 			struct ixgbe_option opt = {
 				.type = enable_option,
@@ -1024,7 +1050,7 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 			break;
 		}
 	}
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */
 	{ /* LRO - Enable Large Receive Offload */
 		struct ixgbe_option opt = {
 			.type = enable_option,
@@ -1094,4 +1120,78 @@ void __devinit ixgbe_check_options(struct ixgbe_adapter *adapter)
 		}
 #endif
 	}
+	{ /* DMA Coalescing */
+		struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "dmac_watchdog",
+			.err  = "defaulting to 0 (disabled)",
+			.def  = 0,
+			.arg  = { .r = { .min = 41, .max = 10000 } },
+		};
+		const char *cmsg = "DMA coalescing not supported on this hardware";
+
+		switch (adapter->hw.mac.type) {
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+			if (adapter->rx_itr_setting || adapter->tx_itr_setting)
+				break;
+			opt.err = "interrupt throttling disabled also disables DMA coalescing";
+			opt.arg.r.min = 0;
+			opt.arg.r.max = 0;
+			break;
+		default:
+			opt.err = cmsg;
+			opt.msg = cmsg;
+			opt.arg.r.min = 0;
+			opt.arg.r.max = 0;
+		}
+#ifdef module_param_array
+		if (num_dmac_watchdog > bd) {
+#endif
+			unsigned int dmac_wd = dmac_watchdog[bd];
+
+			ixgbe_validate_option(&dmac_wd, &opt);
+			adapter->hw.mac.dmac_config.watchdog_timer = dmac_wd;
+#ifdef module_param_array
+		} else {
+			adapter->hw.mac.dmac_config.watchdog_timer = opt.def;
+		}
+#endif
+	}
+	{ /* VXLAN rx offload */
+		struct ixgbe_option opt = {
+			.type = range_option,
+			.name = "vxlan_rx",
+			.err  = "defaulting to 1 (enabled)",
+			.def  = 1,
+			.arg  = { .r = { .min = 0, .max = 1 } },
+		};
+		const char *cmsg = "VXLAN rx offload not supported on this hardware";
+		const u32 flag = IXGBE_FLAG_VXLAN_OFFLOAD_ENABLE;
+
+		if (!(adapter->flags & IXGBE_FLAG_VXLAN_OFFLOAD_CAPABLE)) {
+			opt.err = cmsg;
+			opt.msg = cmsg;
+			opt.def = 0;
+			opt.arg.r.max = 0;
+		}
+#ifdef module_param_array
+		if (num_vxlan_rx > bd) {
+#endif
+			unsigned int enable_vxlan_rx = vxlan_rx[bd];
+
+			ixgbe_validate_option(&enable_vxlan_rx, &opt);
+			if (enable_vxlan_rx)
+				adapter->flags |= flag;
+			else
+				adapter->flags &= ~flag;
+#ifdef module_param_array
+		} else if (opt.def) {
+			adapter->flags |= flag;
+		} else {
+			adapter->flags &= ~flag;
+		}
+#endif
+	}
+
 }

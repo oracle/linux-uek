@@ -39,7 +39,6 @@
 #include <linux/hwmon.h>
 #endif
 
-
 #ifdef IXGBE_HWMON
 /* hwmon callback functions */
 static ssize_t ixgbe_hwmon_show_location(struct device __always_unused *dev,
@@ -200,7 +199,6 @@ int ixgbe_sysfs_init(struct ixgbe_adapter *adapter)
 #endif /* IXGBE_HWMON */
 	if (adapter == NULL)
 		goto err;
-
 
 #ifdef IXGBE_HWMON
 	/* If this method isn't defined we don't support thermals */

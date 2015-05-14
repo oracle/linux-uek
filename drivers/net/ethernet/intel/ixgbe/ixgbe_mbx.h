@@ -55,7 +55,6 @@
 #define IXGBE_MBVFICR_VFACK_MASK	0xFFFF0000 /* bits for VF acks */
 #define IXGBE_MBVFICR_VFACK_VF1		0x00010000 /* bit for VF 1 ack */
 
-
 /* If it's a IXGBE_VF_* msg then it originates in the VF and is sent to the
  * PF.  The reverse is true if it is IXGBE_PF_*.
  * Message ACK's are the value or'd with 0xF0000000

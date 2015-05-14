@@ -82,7 +82,7 @@ s32 ixgbe_dcb_calculate_tc_credits_cee(struct ixgbe_hw *hw,
 	struct ixgbe_dcb_tc_path *p;
 	u32 min_multiplier	= 0;
 	u16 min_percent		= 100;
-	s32 ret_val =		0;
+	s32 ret_val =		IXGBE_SUCCESS;
 	/* Initialization values default for Tx settings */
 	u32 min_credit		= 0;
 	u32 credit_refill	= 0;
@@ -288,7 +288,7 @@ void ixgbe_dcb_unpack_map_cee(struct ixgbe_dcb_config *cfg, int direction,
 s32 ixgbe_dcb_check_config_cee(struct ixgbe_dcb_config *dcb_config)
 {
 	struct ixgbe_dcb_tc_path *p;
-	s32 ret_val = 0;
+	s32 ret_val = IXGBE_SUCCESS;
 	u8 i, j, bw = 0, bw_id;
 	u8 bw_sum[2][IXGBE_DCB_MAX_BW_GROUP];
 	bool link_strict[2][IXGBE_DCB_MAX_BW_GROUP];
@@ -360,7 +360,7 @@ s32 ixgbe_dcb_check_config_cee(struct ixgbe_dcb_config *dcb_config)
 	}
 
 err_config:
-	hw_dbg(hw, "DCB error code %d while checking %s settings.\n",
+	DEBUGOUT2("DCB error code %d while checking %s settings.\n",
 		  ret_val, (i == IXGBE_DCB_TX_CONFIG) ? "Tx" : "Rx");
 
 	return ret_val;
@@ -384,6 +384,8 @@ s32 ixgbe_dcb_get_tc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_get_tc_stats_82599(hw, stats, tc_count);
 		break;
 	default:
@@ -410,6 +412,8 @@ s32 ixgbe_dcb_get_pfc_stats(struct ixgbe_hw *hw, struct ixgbe_hw_stats *stats,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_get_pfc_stats_82599(hw, stats, tc_count);
 		break;
 	default:
@@ -447,6 +451,8 @@ s32 ixgbe_dcb_config_rx_arbiter_cee(struct ixgbe_hw *hw,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_rx_arbiter_82599(hw, refill, max, bwgid,
 							tsa, map);
 		break;
@@ -484,6 +490,8 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_cee(struct ixgbe_hw *hw,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_tx_desc_arbiter_82599(hw, refill, max,
 							     bwgid, tsa);
 		break;
@@ -523,6 +531,8 @@ s32 ixgbe_dcb_config_tx_data_arbiter_cee(struct ixgbe_hw *hw,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_tx_data_arbiter_82599(hw, refill, max,
 							     bwgid, tsa,
 							     map);
@@ -556,6 +566,8 @@ s32 ixgbe_dcb_config_pfc_cee(struct ixgbe_hw *hw,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_pfc_82599(hw, pfc_en, map);
 		break;
 	default:
@@ -580,6 +592,8 @@ s32 ixgbe_dcb_config_tc_stats(struct ixgbe_hw *hw)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_tc_stats_82599(hw, NULL);
 		break;
 	default:
@@ -620,6 +634,8 @@ s32 ixgbe_dcb_hw_config_cee(struct ixgbe_hw *hw,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ixgbe_dcb_config_82599(hw, dcb_config);
 		ret = ixgbe_dcb_hw_config_82599(hw, dcb_config->link_speed,
 						refill, max, bwgid,
@@ -650,6 +666,8 @@ s32 ixgbe_dcb_config_pfc(struct ixgbe_hw *hw, u8 pfc_en, u8 *map)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ret = ixgbe_dcb_config_pfc_82599(hw, pfc_en, map);
 		break;
 	default:
@@ -671,6 +689,8 @@ s32 ixgbe_dcb_hw_config(struct ixgbe_hw *hw, u16 *refill, u16 *max,
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		ixgbe_dcb_config_rx_arbiter_82599(hw, refill, max, bwg_id,
 						  tsa, map);
 		ixgbe_dcb_config_tx_desc_arbiter_82599(hw, refill, max, bwg_id,

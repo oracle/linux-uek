@@ -42,6 +42,8 @@
 #define IXGBE_SFF_CABLE_SPEC_COMP	0x3C
 #define IXGBE_SFF_SFF_8472_SWAP		0x5C
 #define IXGBE_SFF_SFF_8472_COMP		0x5E
+#define IXGBE_SFF_SFF_8472_OSCB		0x6E
+#define IXGBE_SFF_SFF_8472_ESCB		0x76
 #define IXGBE_SFF_IDENTIFIER_QSFP_PLUS	0xD
 #define IXGBE_SFF_QSFP_VENDOR_OUI_BYTE0	0xA5
 #define IXGBE_SFF_QSFP_VENDOR_OUI_BYTE1	0xA6
@@ -61,6 +63,9 @@
 #define IXGBE_SFF_1GBASET_CAPABLE	0x8
 #define IXGBE_SFF_10GBASESR_CAPABLE	0x10
 #define IXGBE_SFF_10GBASELR_CAPABLE	0x20
+#define IXGBE_SFF_SOFT_RS_SELECT_MASK	0x8
+#define IXGBE_SFF_SOFT_RS_SELECT_10G	0x8
+#define IXGBE_SFF_SOFT_RS_SELECT_1G	0x0
 #define IXGBE_SFF_ADDRESSING_MODE	0x4
 #define IXGBE_SFF_QSFP_DA_ACTIVE_CABLE	0x1
 #define IXGBE_SFF_QSFP_DA_PASSIVE_CABLE	0x8
@@ -72,6 +77,26 @@
 #define IXGBE_I2C_EEPROM_STATUS_PASS	0x1
 #define IXGBE_I2C_EEPROM_STATUS_FAIL	0x2
 #define IXGBE_I2C_EEPROM_STATUS_IN_PROGRESS	0x3
+
+#define IXGBE_CS4227			0xBE	/* CS4227 address */
+#define IXGBE_CS4227_GLOBAL_ID_LSB	0
+#define IXGBE_CS4227_SCRATCH		2
+#define IXGBE_CS4227_GLOBAL_ID_VALUE	0x03E5
+#define IXGBE_CS4227_SCRATCH_VALUE	0x5aa5
+#define IXGBE_CS4227_RETRIES		5
+#define IXGBE_CS4227_LINE_SPARE22_MSB	0x12AD	/* Reg to program speed */
+#define IXGBE_CS4227_LINE_SPARE24_LSB	0x12B0	/* Reg to program EDC */
+#define IXGBE_CS4227_HOST_SPARE22_MSB	0x1AAD	/* Reg to program speed */
+#define IXGBE_CS4227_HOST_SPARE24_LSB	0x1AB0	/* Reg to program EDC */
+#define IXGBE_CS4227_EDC_MODE_CX1	0x0002
+#define IXGBE_CS4227_EDC_MODE_SR	0x0004
+#define IXGBE_CS4227_RESET_HOLD		500	/* microseconds */
+#define IXGBE_CS4227_RESET_DELAY	500	/* milliseconds */
+#define IXGBE_CS4227_CHECK_DELAY	30	/* milliseconds */
+#define IXGBE_PE			0xE0	/* Port expander address */
+#define IXGBE_PE_OUTPUT			1	/* Output register offset */
+#define IXGBE_PE_CONFIG			3	/* Config register offset */
+#define IXGBE_PE_BIT1			(1 << 1)
 
 /* Flow control defines */
 #define IXGBE_TAF_SYM_PAUSE		0x400
@@ -100,6 +125,10 @@
 #define IXGBE_I2C_T_SU_STO	4
 #define IXGBE_I2C_T_BUF		5
 
+#ifndef IXGBE_SFP_DETECT_RETRIES
+#define IXGBE_SFP_DETECT_RETRIES	10
+
+#endif /* IXGBE_SFP_DETECT_RETRIES */
 #define IXGBE_TN_LASI_STATUS_REG	0x9005
 #define IXGBE_TN_LASI_STATUS_TEMP_ALARM	0x0008
 
@@ -140,8 +169,10 @@ s32 ixgbe_get_phy_firmware_version_generic(struct ixgbe_hw *hw,
 					   u16 *firmware_version);
 
 s32 ixgbe_reset_phy_nl(struct ixgbe_hw *hw);
+s32 ixgbe_set_copper_phy_power(struct ixgbe_hw *hw, bool on);
 s32 ixgbe_identify_module_generic(struct ixgbe_hw *hw);
 s32 ixgbe_identify_sfp_module_generic(struct ixgbe_hw *hw);
+s32 ixgbe_get_supported_phy_sfp_layer_generic(struct ixgbe_hw *hw);
 s32 ixgbe_identify_qsfp_module_generic(struct ixgbe_hw *hw);
 s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 					u16 *list_offset,
@@ -149,8 +180,12 @@ s32 ixgbe_get_sfp_init_sequence_offsets(struct ixgbe_hw *hw,
 s32 ixgbe_tn_check_overtemp(struct ixgbe_hw *hw);
 s32 ixgbe_read_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				u8 dev_addr, u8 *data);
+s32 ixgbe_read_i2c_byte_generic_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+					 u8 dev_addr, u8 *data);
 s32 ixgbe_write_i2c_byte_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				 u8 dev_addr, u8 data);
+s32 ixgbe_write_i2c_byte_generic_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+					  u8 dev_addr, u8 data);
 s32 ixgbe_read_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,
 				  u8 *eeprom_data);
 s32 ixgbe_write_i2c_eeprom_generic(struct ixgbe_hw *hw, u8 byte_offset,

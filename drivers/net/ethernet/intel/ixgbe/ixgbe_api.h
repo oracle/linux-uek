@@ -34,6 +34,8 @@ s32 ixgbe_init_shared_code(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_82598(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_82599(struct ixgbe_hw *hw);
 extern s32 ixgbe_init_ops_X540(struct ixgbe_hw *hw);
+extern s32 ixgbe_init_ops_X550(struct ixgbe_hw *hw);
+extern s32 ixgbe_init_ops_X550EM(struct ixgbe_hw *hw);
 
 s32 ixgbe_set_mac_type(struct ixgbe_hw *hw);
 s32 ixgbe_init_hw(struct ixgbe_hw *hw);
@@ -56,17 +58,21 @@ s32 ixgbe_write_phy_reg(struct ixgbe_hw *hw, u32 reg_addr, u32 device_type,
 			u16 phy_data);
 
 s32 ixgbe_setup_phy_link(struct ixgbe_hw *hw);
+s32 ixgbe_setup_internal_phy(struct ixgbe_hw *hw);
 s32 ixgbe_check_phy_link(struct ixgbe_hw *hw,
 			 ixgbe_link_speed *speed,
 			 bool *link_up);
 s32 ixgbe_setup_phy_link_speed(struct ixgbe_hw *hw,
 			       ixgbe_link_speed speed,
 			       bool autoneg_wait_to_complete);
+s32 ixgbe_set_phy_power(struct ixgbe_hw *, bool on);
 void ixgbe_disable_tx_laser(struct ixgbe_hw *hw);
 void ixgbe_enable_tx_laser(struct ixgbe_hw *hw);
 void ixgbe_flap_tx_laser(struct ixgbe_hw *hw);
 s32 ixgbe_setup_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
 		     bool autoneg_wait_to_complete);
+s32 ixgbe_setup_mac_link(struct ixgbe_hw *hw, ixgbe_link_speed speed,
+			 bool autoneg_wait_to_complete);
 s32 ixgbe_check_link(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
 		     bool *link_up, bool link_up_wait_to_complete);
 s32 ixgbe_get_link_capabilities(struct ixgbe_hw *hw, ixgbe_link_speed *speed,
@@ -110,6 +116,7 @@ s32 ixgbe_set_vfta(struct ixgbe_hw *hw, u32 vlan,
 s32 ixgbe_set_vlvf(struct ixgbe_hw *hw, u32 vlan, u32 vind,
 		   bool vlan_on, bool *vfta_changed);
 s32 ixgbe_fc_enable(struct ixgbe_hw *hw);
+s32 ixgbe_setup_fc(struct ixgbe_hw *hw);
 s32 ixgbe_set_fw_drv_ver(struct ixgbe_hw *hw, u8 maj, u8 min, u8 build,
 			 u8 ver);
 s32 ixgbe_get_thermal_sensor_data(struct ixgbe_hw *hw);
@@ -155,8 +162,18 @@ u32 ixgbe_atr_compute_sig_hash_82599(union ixgbe_atr_hash_dword input,
 bool ixgbe_verify_lesm_fw_enabled_82599(struct ixgbe_hw *hw);
 s32 ixgbe_read_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 			u8 *data);
+s32 ixgbe_read_i2c_byte_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+				 u8 dev_addr, u8 *data);
+s32 ixgbe_read_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 *val);
+s32 ixgbe_read_i2c_combined_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg,
+				     u16 *val);
 s32 ixgbe_write_i2c_byte(struct ixgbe_hw *hw, u8 byte_offset, u8 dev_addr,
 			 u8 data);
+s32 ixgbe_write_i2c_byte_unlocked(struct ixgbe_hw *hw, u8 byte_offset,
+				  u8 dev_addr, u8 data);
+s32 ixgbe_write_i2c_combined(struct ixgbe_hw *hw, u8 addr, u16 reg, u16 val);
+s32 ixgbe_write_i2c_combined_unlocked(struct ixgbe_hw *hw, u8 addr, u16 reg,
+				      u16 val);
 s32 ixgbe_write_i2c_eeprom(struct ixgbe_hw *hw, u8 byte_offset, u8 eeprom_data);
 s32 ixgbe_get_san_mac_addr(struct ixgbe_hw *hw, u8 *san_mac_addr);
 s32 ixgbe_set_san_mac_addr(struct ixgbe_hw *hw, u8 *san_mac_addr);
@@ -166,6 +183,25 @@ void ixgbe_release_swfw_semaphore(struct ixgbe_hw *hw, u32 mask);
 s32 ixgbe_get_wwn_prefix(struct ixgbe_hw *hw, u16 *wwnn_prefix,
 			 u16 *wwpn_prefix);
 s32 ixgbe_get_fcoe_boot_status(struct ixgbe_hw *hw, u16 *bs);
+s32 ixgbe_dmac_config(struct ixgbe_hw *hw);
+s32 ixgbe_dmac_update_tcs(struct ixgbe_hw *hw);
+s32 ixgbe_dmac_config_tcs(struct ixgbe_hw *hw);
+s32 ixgbe_setup_eee(struct ixgbe_hw *hw, bool enable_eee);
+void ixgbe_set_source_address_pruning(struct ixgbe_hw *hw, bool enable,
+				      unsigned int vf);
+void ixgbe_set_ethertype_anti_spoofing(struct ixgbe_hw *hw, bool enable,
+				       int vf);
+s32 ixgbe_read_iosf_sb_reg(struct ixgbe_hw *hw, u32 reg_addr,
+			u32 device_type, u32 *phy_data);
+s32 ixgbe_write_iosf_sb_reg(struct ixgbe_hw *hw, u32 reg_addr,
+			u32 device_type, u32 phy_data);
+void ixgbe_disable_mdd(struct ixgbe_hw *hw);
+void ixgbe_enable_mdd(struct ixgbe_hw *hw);
+void ixgbe_mdd_event(struct ixgbe_hw *hw, u32 *vf_bitmap);
+void ixgbe_restore_mdd_vf(struct ixgbe_hw *hw, u32 vf);
+s32 ixgbe_enter_lplu(struct ixgbe_hw *hw);
+s32 ixgbe_handle_lasi(struct ixgbe_hw *hw);
+void ixgbe_set_rate_select_speed(struct ixgbe_hw *hw, ixgbe_link_speed speed);
 void ixgbe_disable_rx(struct ixgbe_hw *hw);
 void ixgbe_enable_rx(struct ixgbe_hw *hw);
 

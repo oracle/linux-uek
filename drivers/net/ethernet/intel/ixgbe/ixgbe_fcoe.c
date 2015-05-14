@@ -24,9 +24,8 @@
 
 #include "ixgbe.h"
 
-
-#ifdef IXGBE_FCOE
-#ifdef CONFIG_DCB
+#if IS_ENABLED(CONFIG_FCOE)
+#if IS_ENABLED(CONFIG_DCB)
 #include "ixgbe_dcb_82599.h"
 #endif /* CONFIG_DCB */
 #include <linux/if_ether.h>
@@ -91,6 +90,26 @@ int ixgbe_fcoe_ddp_put(struct net_device *netdev, u16 xid)
 	/* if there an error, force to invalidate ddp context */
 	if (ddp->err) {
 		switch (hw->mac.type) {
+		case ixgbe_mac_X550:
+			/* X550 does not require DDP FCoE lock */
+
+			IXGBE_WRITE_REG(hw, IXGBE_FCDFC(0, xid), 0);
+			IXGBE_WRITE_REG(hw, IXGBE_FCDFC(3, xid),
+					(xid | IXGBE_FCFLTRW_WE));
+
+			/* program FCBUFF */
+			IXGBE_WRITE_REG(hw, IXGBE_FCDDC(2, xid), 0);
+
+			/* program FCDMARW */
+			IXGBE_WRITE_REG(hw, IXGBE_FCDDC(3, xid),
+					(xid | IXGBE_FCDMARW_WE));
+
+			/* read FCBUFF to check context invalidated */
+			IXGBE_WRITE_REG(hw, IXGBE_FCDDC(3, xid),
+					(xid | IXGBE_FCDMARW_RE));
+			fcbuff = IXGBE_READ_REG(hw,
+						 IXGBE_FCDDC(2, xid));
+			break;
 		default:
 			/* other hardware requires DDP FCoE lock */
 			spin_lock_bh(&fcoe->lock);
@@ -296,6 +315,24 @@ static int ixgbe_fcoe_ddp_setup(struct net_device *netdev, u16 xid,
 	}
 
 	switch (hw->mac.type) {
+	case ixgbe_mac_X550:
+		/* X550 does not require DDP lock */
+
+		IXGBE_WRITE_REG(hw, IXGBE_FCDDC(0, xid),
+				ddp->udp & DMA_BIT_MASK(32));
+		IXGBE_WRITE_REG(hw, IXGBE_FCDDC(1, xid), (u64)ddp->udp >> 32);
+		IXGBE_WRITE_REG(hw, IXGBE_FCDDC(2, xid), fcbuff);
+		IXGBE_WRITE_REG(hw, IXGBE_FCDDC(3, xid), fcdmarw);
+		/* program filter context */
+		IXGBE_WRITE_REG(hw, IXGBE_FCDFC(0, xid), IXGBE_FCFLT_VALID);
+		IXGBE_WRITE_REG(hw, IXGBE_FCDFC(1, xid), 0);
+		IXGBE_WRITE_REG(hw, IXGBE_FCDFC(3, xid), fcfltrw);
+		/*
+		 * TBD: SMAC and FCID info not available with current
+		 * netdev APIs, add code to pull that from skb later
+		 * and then program that here before enabling DDP context.
+		 */
+		break;
 	default:
 		/* other devices require DDP lock with direct DDP context access */
 		spin_lock_bh(&fcoe->lock);
@@ -414,6 +451,9 @@ int ixgbe_fcoe_ddp(struct ixgbe_adapter *adapter,
 		xid =  ntohs(fh->fh_rx_id);
 
 	ddp_max = IXGBE_FCOE_DDP_MAX;
+	/* X550 has different DDP Max limit */
+	if (adapter->hw.mac.type == ixgbe_mac_X550)
+		ddp_max = IXGBE_FCOE_DDP_MAX_X550;
 
 	if (xid >= ddp_max)
 		goto ddp_out;
@@ -661,8 +701,17 @@ void ixgbe_configure_fcoe(struct ixgbe_adapter *adapter)
 
 	/* Use one or more Rx queues for FCoE by redirection table */
 	fcreta_size = IXGBE_FCRETA_SIZE;
+	if (adapter->hw.mac.type == ixgbe_mac_X550)
+		fcreta_size = IXGBE_FCRETA_SIZE_X550;
 
 	for (i = 0; i < fcreta_size; i++) {
+		if (adapter->hw.mac.type == ixgbe_mac_X550) {
+			int fcoe_i_h = fcoe->offset + ((i + fcreta_size) %
+							fcoe->indices);
+			fcoe_q_h = adapter->rx_ring[fcoe_i_h]->reg_idx;
+			fcoe_q_h = (fcoe_q_h << IXGBE_FCRETA_ENTRY_HIGH_SHIFT) &
+				   IXGBE_FCRETA_ENTRY_HIGH_MASK;
+		}
 		fcoe_i = fcoe->offset + (i % fcoe->indices);
 		fcoe_i &= IXGBE_FCRETA_ENTRY_MASK;
 		fcoe_q = adapter->rx_ring[fcoe_i]->reg_idx;
@@ -709,6 +758,9 @@ void ixgbe_free_fcoe_ddp_resources(struct ixgbe_adapter *adapter)
 		return;
 
 	ddp_max = IXGBE_FCOE_DDP_MAX;
+	/* X550 has different DDP Max limit */
+	if (adapter->hw.mac.type == ixgbe_mac_X550)
+		ddp_max = IXGBE_FCOE_DDP_MAX_X550;
 
 	for (i = 0; i < ddp_max; i++)
 		ixgbe_fcoe_ddp_put(adapter->netdev, i);
@@ -797,6 +849,9 @@ static int ixgbe_fcoe_ddp_enable(struct ixgbe_adapter *adapter)
 
 	adapter->netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX - 1;
 
+	/* X550 has different DDP Max limit */
+	if (adapter->hw.mac.type == ixgbe_mac_X550)
+		adapter->netdev->fcoe_ddp_xid = IXGBE_FCOE_DDP_MAX_X550 - 1;
 
 	return 0;
 }
@@ -908,7 +963,7 @@ int ixgbe_fcoe_disable(struct net_device *netdev)
 }
 #endif /* HAVE_NETDEV_OPS_FCOE_ENABLE */
 
-#ifdef CONFIG_DCB
+#if IS_ENABLED(CONFIG_DCB)
 #ifdef HAVE_DCBNL_OPS_GETAPP
 /**
  * ixgbe_fcoe_getapp - retrieves current user priority bitmap for FCoE
@@ -925,7 +980,6 @@ u8 ixgbe_fcoe_getapp(struct net_device *netdev)
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 	return 1 << adapter->fcoe.up;
 }
-
 #endif /* HAVE_DCBNL_OPS_GETAPP */
 #endif /* CONFIG_DCB */
 #ifdef HAVE_NETDEV_OPS_FCOE_GETWWN
@@ -984,4 +1038,4 @@ u8 ixgbe_fcoe_get_tc(struct ixgbe_adapter *adapter)
 {
 	return netdev_get_prio_tc_map(adapter->netdev, adapter->fcoe.up);
 }
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */

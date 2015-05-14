@@ -126,7 +126,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("fdir_miss", stats.fdirmiss),
 	IXGBE_STAT("fdir_overflow", fdir_overflow),
 #endif /* HAVE_TX_MQ */
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	IXGBE_STAT("fcoe_bad_fccrc", stats.fccrc),
 	IXGBE_STAT("fcoe_last_errors", stats.fclast),
 	IXGBE_STAT("rx_fcoe_dropped", stats.fcoerpdc),
@@ -136,7 +136,7 @@ static struct ixgbe_stats ixgbe_gstrings_stats[] = {
 	IXGBE_STAT("fcoe_noddp_ext_buff", stats.fcoe_noddp_ext_buff),
 	IXGBE_STAT("tx_fcoe_packets", stats.fcoeptc),
 	IXGBE_STAT("tx_fcoe_dwords", stats.fcoedwtc),
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */
 	IXGBE_STAT("os2bmc_rx_by_bmc", stats.o2bgptc),
 	IXGBE_STAT("os2bmc_tx_by_bmc", stats.b2ospc),
 	IXGBE_STAT("os2bmc_tx_by_host", stats.o2bspc),
@@ -252,6 +252,7 @@ int ixgbe_get_settings(struct net_device *netdev,
 	switch (adapter->hw.phy.type) {
 	case ixgbe_phy_tn:
 	case ixgbe_phy_aq:
+	case ixgbe_phy_x550em_ext_t:
 	case ixgbe_phy_cu_unknown:
 		ecmd->supported |= SUPPORTED_TP;
 		ecmd->advertising |= ADVERTISED_TP;
@@ -269,6 +270,10 @@ int ixgbe_get_settings(struct net_device *netdev,
 	case ixgbe_phy_sfp_avago:
 	case ixgbe_phy_sfp_intel:
 	case ixgbe_phy_sfp_unknown:
+	case ixgbe_phy_qsfp_passive_unknown:
+	case ixgbe_phy_qsfp_active_unknown:
+	case ixgbe_phy_qsfp_intel:
+	case ixgbe_phy_qsfp_unknown:
 		switch (adapter->hw.phy.sfp_type) {
 			/* SFP+ devices, further checking needed */
 		case ixgbe_sfp_type_da_cu:
@@ -413,12 +418,16 @@ static int ixgbe_set_settings(struct net_device *netdev,
 		if (old == advertised)
 			return err;
 		/* this sets the link speed and restarts auto-neg */
+		while (test_and_set_bit(__IXGBE_IN_SFP_INIT, &adapter->state))
+			usleep_range(1000, 2000);
+
 		hw->mac.autotry_restart = true;
 		err = hw->mac.ops.setup_link(hw, advertised, true);
 		if (err) {
 			e_info(probe, "setup link failed with code %d\n", err);
 			hw->mac.ops.setup_link(hw, old, true);
 		}
+		clear_bit(__IXGBE_IN_SFP_INIT, &adapter->state);
 	} else {
 		/* in this case we currently only support 10Gb/FULL */
 		u32 speed = ethtool_cmd_speed(ecmd);
@@ -514,7 +523,6 @@ static int ixgbe_get_regs_len(struct net_device __always_unused *netdev)
 
 #define IXGBE_GET_STAT(_A_, _R_)	(_A_->stats._R_)
 
-
 static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			   void *p)
 {
@@ -529,164 +537,166 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 			hw->device_id;
 
 	/* General Registers */
-	regs_buff[0] = IXGBE_READ_REG(hw, IXGBE_CTRL);
-	regs_buff[1] = IXGBE_READ_REG(hw, IXGBE_STATUS);
-	regs_buff[2] = IXGBE_READ_REG(hw, IXGBE_CTRL_EXT);
-	regs_buff[3] = IXGBE_READ_REG(hw, IXGBE_ESDP);
-	regs_buff[4] = IXGBE_READ_REG(hw, IXGBE_EODSDP);
-	regs_buff[5] = IXGBE_READ_REG(hw, IXGBE_LEDCTL);
-	regs_buff[6] = IXGBE_READ_REG(hw, IXGBE_FRTIMER);
-	regs_buff[7] = IXGBE_READ_REG(hw, IXGBE_TCPTIMER);
+	regs_buff[0] = IXGBE_R32_Q(hw, IXGBE_CTRL);
+	regs_buff[1] = IXGBE_R32_Q(hw, IXGBE_STATUS);
+	regs_buff[2] = IXGBE_R32_Q(hw, IXGBE_CTRL_EXT);
+	regs_buff[3] = IXGBE_R32_Q(hw, IXGBE_ESDP);
+	regs_buff[4] = IXGBE_R32_Q(hw, IXGBE_EODSDP);
+	regs_buff[5] = IXGBE_R32_Q(hw, IXGBE_LEDCTL);
+	regs_buff[6] = IXGBE_R32_Q(hw, IXGBE_FRTIMER);
+	regs_buff[7] = IXGBE_R32_Q(hw, IXGBE_TCPTIMER);
 
 	/* NVM Register */
-	regs_buff[8] = IXGBE_READ_REG(hw, IXGBE_EEC);
-	regs_buff[9] = IXGBE_READ_REG(hw, IXGBE_EERD);
-	regs_buff[10] = IXGBE_READ_REG(hw, IXGBE_FLA);
-	regs_buff[11] = IXGBE_READ_REG(hw, IXGBE_EEMNGCTL);
-	regs_buff[12] = IXGBE_READ_REG(hw, IXGBE_EEMNGDATA);
-	regs_buff[13] = IXGBE_READ_REG(hw, IXGBE_FLMNGCTL);
-	regs_buff[14] = IXGBE_READ_REG(hw, IXGBE_FLMNGDATA);
-	regs_buff[15] = IXGBE_READ_REG(hw, IXGBE_FLMNGCNT);
-	regs_buff[16] = IXGBE_READ_REG(hw, IXGBE_FLOP);
-	regs_buff[17] = IXGBE_READ_REG(hw, IXGBE_GRC);
+	regs_buff[8] = IXGBE_R32_Q(hw, IXGBE_EEC);
+	regs_buff[9] = IXGBE_R32_Q(hw, IXGBE_EERD);
+	regs_buff[10] = IXGBE_R32_Q(hw, IXGBE_FLA);
+	regs_buff[11] = IXGBE_R32_Q(hw, IXGBE_EEMNGCTL);
+	regs_buff[12] = IXGBE_R32_Q(hw, IXGBE_EEMNGDATA);
+	regs_buff[13] = IXGBE_R32_Q(hw, IXGBE_FLMNGCTL);
+	regs_buff[14] = IXGBE_R32_Q(hw, IXGBE_FLMNGDATA);
+	regs_buff[15] = IXGBE_R32_Q(hw, IXGBE_FLMNGCNT);
+	regs_buff[16] = IXGBE_R32_Q(hw, IXGBE_FLOP);
+	regs_buff[17] = IXGBE_R32_Q(hw, IXGBE_GRC);
 
 	/* Interrupt */
 	/* don't read EICR because it can clear interrupt causes, instead
 	 * read EICS which is a shadow but doesn't clear EICR */
-	regs_buff[18] = IXGBE_READ_REG(hw, IXGBE_EICS);
-	regs_buff[19] = IXGBE_READ_REG(hw, IXGBE_EICS);
-	regs_buff[20] = IXGBE_READ_REG(hw, IXGBE_EIMS);
-	regs_buff[21] = IXGBE_READ_REG(hw, IXGBE_EIMC);
-	regs_buff[22] = IXGBE_READ_REG(hw, IXGBE_EIAC);
-	regs_buff[23] = IXGBE_READ_REG(hw, IXGBE_EIAM);
-	regs_buff[24] = IXGBE_READ_REG(hw, IXGBE_EITR(0));
-	regs_buff[25] = IXGBE_READ_REG(hw, IXGBE_IVAR(0));
-	regs_buff[26] = IXGBE_READ_REG(hw, IXGBE_MSIXT);
-	regs_buff[27] = IXGBE_READ_REG(hw, IXGBE_MSIXPBA);
-	regs_buff[28] = IXGBE_READ_REG(hw, IXGBE_PBACL(0));
-	regs_buff[29] = IXGBE_READ_REG(hw, IXGBE_GPIE);
+	regs_buff[18] = IXGBE_R32_Q(hw, IXGBE_EICS);
+	regs_buff[19] = IXGBE_R32_Q(hw, IXGBE_EICS);
+	regs_buff[20] = IXGBE_R32_Q(hw, IXGBE_EIMS);
+	regs_buff[21] = IXGBE_R32_Q(hw, IXGBE_EIMC);
+	regs_buff[22] = IXGBE_R32_Q(hw, IXGBE_EIAC);
+	regs_buff[23] = IXGBE_R32_Q(hw, IXGBE_EIAM);
+	regs_buff[24] = IXGBE_R32_Q(hw, IXGBE_EITR(0));
+	regs_buff[25] = IXGBE_R32_Q(hw, IXGBE_IVAR(0));
+	regs_buff[26] = IXGBE_R32_Q(hw, IXGBE_MSIXT);
+	regs_buff[27] = IXGBE_R32_Q(hw, IXGBE_MSIXPBA);
+	regs_buff[28] = IXGBE_R32_Q(hw, IXGBE_PBACL(0));
+	regs_buff[29] = IXGBE_R32_Q(hw, IXGBE_GPIE);
 
 	/* Flow Control */
-	regs_buff[30] = IXGBE_READ_REG(hw, IXGBE_PFCTOP);
-	regs_buff[31] = IXGBE_READ_REG(hw, IXGBE_FCTTV(0));
-	regs_buff[32] = IXGBE_READ_REG(hw, IXGBE_FCTTV(1));
-	regs_buff[33] = IXGBE_READ_REG(hw, IXGBE_FCTTV(2));
-	regs_buff[34] = IXGBE_READ_REG(hw, IXGBE_FCTTV(3));
+	regs_buff[30] = IXGBE_R32_Q(hw, IXGBE_PFCTOP);
+	regs_buff[31] = IXGBE_R32_Q(hw, IXGBE_FCTTV(0));
+	regs_buff[32] = IXGBE_R32_Q(hw, IXGBE_FCTTV(1));
+	regs_buff[33] = IXGBE_R32_Q(hw, IXGBE_FCTTV(2));
+	regs_buff[34] = IXGBE_R32_Q(hw, IXGBE_FCTTV(3));
 	for (i = 0; i < 8; i++) {
 		switch (hw->mac.type) {
 		case ixgbe_mac_82598EB:
-			regs_buff[35 + i] = IXGBE_READ_REG(hw, IXGBE_FCRTL(i));
-			regs_buff[43 + i] = IXGBE_READ_REG(hw, IXGBE_FCRTH(i));
+			regs_buff[35 + i] = IXGBE_R32_Q(hw, IXGBE_FCRTL(i));
+			regs_buff[43 + i] = IXGBE_R32_Q(hw, IXGBE_FCRTH(i));
 			break;
 		case ixgbe_mac_82599EB:
 		case ixgbe_mac_X540:
-			regs_buff[35 + i] = IXGBE_READ_REG(hw,
-							  IXGBE_FCRTL_82599(i));
-			regs_buff[43 + i] = IXGBE_READ_REG(hw,
-							  IXGBE_FCRTH_82599(i));
+		case ixgbe_mac_X550:
+		case ixgbe_mac_X550EM_x:
+			regs_buff[35 + i] = IXGBE_R32_Q(hw,
+							IXGBE_FCRTL_82599(i));
+			regs_buff[43 + i] = IXGBE_R32_Q(hw,
+							IXGBE_FCRTH_82599(i));
 			break;
 		default:
 			break;
 		}
 	}
-	regs_buff[51] = IXGBE_READ_REG(hw, IXGBE_FCRTV);
-	regs_buff[52] = IXGBE_READ_REG(hw, IXGBE_TFCS);
+	regs_buff[51] = IXGBE_R32_Q(hw, IXGBE_FCRTV);
+	regs_buff[52] = IXGBE_R32_Q(hw, IXGBE_TFCS);
 
 	/* Receive DMA */
 	for (i = 0; i < 64; i++)
-		regs_buff[53 + i] = IXGBE_READ_REG(hw, IXGBE_RDBAL(i));
+		regs_buff[53 + i] = IXGBE_R32_Q(hw, IXGBE_RDBAL(i));
 	for (i = 0; i < 64; i++)
-		regs_buff[117 + i] = IXGBE_READ_REG(hw, IXGBE_RDBAH(i));
+		regs_buff[117 + i] = IXGBE_R32_Q(hw, IXGBE_RDBAH(i));
 	for (i = 0; i < 64; i++)
-		regs_buff[181 + i] = IXGBE_READ_REG(hw, IXGBE_RDLEN(i));
+		regs_buff[181 + i] = IXGBE_R32_Q(hw, IXGBE_RDLEN(i));
 	for (i = 0; i < 64; i++)
-		regs_buff[245 + i] = IXGBE_READ_REG(hw, IXGBE_RDH(i));
+		regs_buff[245 + i] = IXGBE_R32_Q(hw, IXGBE_RDH(i));
 	for (i = 0; i < 64; i++)
-		regs_buff[309 + i] = IXGBE_READ_REG(hw, IXGBE_RDT(i));
+		regs_buff[309 + i] = IXGBE_R32_Q(hw, IXGBE_RDT(i));
 	for (i = 0; i < 64; i++)
-		regs_buff[373 + i] = IXGBE_READ_REG(hw, IXGBE_RXDCTL(i));
+		regs_buff[373 + i] = IXGBE_R32_Q(hw, IXGBE_RXDCTL(i));
 	for (i = 0; i < 16; i++)
-		regs_buff[437 + i] = IXGBE_READ_REG(hw, IXGBE_SRRCTL(i));
+		regs_buff[437 + i] = IXGBE_R32_Q(hw, IXGBE_SRRCTL(i));
 	for (i = 0; i < 16; i++)
-		regs_buff[453 + i] = IXGBE_READ_REG(hw, IXGBE_DCA_RXCTRL(i));
-	regs_buff[469] = IXGBE_READ_REG(hw, IXGBE_RDRXCTL);
+		regs_buff[453 + i] = IXGBE_R32_Q(hw, IXGBE_DCA_RXCTRL(i));
+	regs_buff[469] = IXGBE_R32_Q(hw, IXGBE_RDRXCTL);
 	for (i = 0; i < 8; i++)
-		regs_buff[470 + i] = IXGBE_READ_REG(hw, IXGBE_RXPBSIZE(i));
-	regs_buff[478] = IXGBE_READ_REG(hw, IXGBE_RXCTRL);
-	regs_buff[479] = IXGBE_READ_REG(hw, IXGBE_DROPEN);
+		regs_buff[470 + i] = IXGBE_R32_Q(hw, IXGBE_RXPBSIZE(i));
+	regs_buff[478] = IXGBE_R32_Q(hw, IXGBE_RXCTRL);
+	regs_buff[479] = IXGBE_R32_Q(hw, IXGBE_DROPEN);
 
 	/* Receive */
-	regs_buff[480] = IXGBE_READ_REG(hw, IXGBE_RXCSUM);
-	regs_buff[481] = IXGBE_READ_REG(hw, IXGBE_RFCTL);
+	regs_buff[480] = IXGBE_R32_Q(hw, IXGBE_RXCSUM);
+	regs_buff[481] = IXGBE_R32_Q(hw, IXGBE_RFCTL);
 	for (i = 0; i < 16; i++)
-		regs_buff[482 + i] = IXGBE_READ_REG(hw, IXGBE_RAL(i));
+		regs_buff[482 + i] = IXGBE_R32_Q(hw, IXGBE_RAL(i));
 	for (i = 0; i < 16; i++)
-		regs_buff[498 + i] = IXGBE_READ_REG(hw, IXGBE_RAH(i));
-	regs_buff[514] = IXGBE_READ_REG(hw, IXGBE_PSRTYPE(0));
-	regs_buff[515] = IXGBE_READ_REG(hw, IXGBE_FCTRL);
-	regs_buff[516] = IXGBE_READ_REG(hw, IXGBE_VLNCTRL);
-	regs_buff[517] = IXGBE_READ_REG(hw, IXGBE_MCSTCTRL);
-	regs_buff[518] = IXGBE_READ_REG(hw, IXGBE_MRQC);
-	regs_buff[519] = IXGBE_READ_REG(hw, IXGBE_VMD_CTL);
+		regs_buff[498 + i] = IXGBE_R32_Q(hw, IXGBE_RAH(i));
+	regs_buff[514] = IXGBE_R32_Q(hw, IXGBE_PSRTYPE(0));
+	regs_buff[515] = IXGBE_R32_Q(hw, IXGBE_FCTRL);
+	regs_buff[516] = IXGBE_R32_Q(hw, IXGBE_VLNCTRL);
+	regs_buff[517] = IXGBE_R32_Q(hw, IXGBE_MCSTCTRL);
+	regs_buff[518] = IXGBE_R32_Q(hw, IXGBE_MRQC);
+	regs_buff[519] = IXGBE_R32_Q(hw, IXGBE_VMD_CTL);
 	for (i = 0; i < 8; i++)
-		regs_buff[520 + i] = IXGBE_READ_REG(hw, IXGBE_IMIR(i));
+		regs_buff[520 + i] = IXGBE_R32_Q(hw, IXGBE_IMIR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[528 + i] = IXGBE_READ_REG(hw, IXGBE_IMIREXT(i));
-	regs_buff[536] = IXGBE_READ_REG(hw, IXGBE_IMIRVP);
+		regs_buff[528 + i] = IXGBE_R32_Q(hw, IXGBE_IMIREXT(i));
+	regs_buff[536] = IXGBE_R32_Q(hw, IXGBE_IMIRVP);
 
 	/* Transmit */
 	for (i = 0; i < 32; i++)
-		regs_buff[537 + i] = IXGBE_READ_REG(hw, IXGBE_TDBAL(i));
+		regs_buff[537 + i] = IXGBE_R32_Q(hw, IXGBE_TDBAL(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[569 + i] = IXGBE_READ_REG(hw, IXGBE_TDBAH(i));
+		regs_buff[569 + i] = IXGBE_R32_Q(hw, IXGBE_TDBAH(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[601 + i] = IXGBE_READ_REG(hw, IXGBE_TDLEN(i));
+		regs_buff[601 + i] = IXGBE_R32_Q(hw, IXGBE_TDLEN(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[633 + i] = IXGBE_READ_REG(hw, IXGBE_TDH(i));
+		regs_buff[633 + i] = IXGBE_R32_Q(hw, IXGBE_TDH(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[665 + i] = IXGBE_READ_REG(hw, IXGBE_TDT(i));
+		regs_buff[665 + i] = IXGBE_R32_Q(hw, IXGBE_TDT(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[697 + i] = IXGBE_READ_REG(hw, IXGBE_TXDCTL(i));
+		regs_buff[697 + i] = IXGBE_R32_Q(hw, IXGBE_TXDCTL(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[729 + i] = IXGBE_READ_REG(hw, IXGBE_TDWBAL(i));
+		regs_buff[729 + i] = IXGBE_R32_Q(hw, IXGBE_TDWBAL(i));
 	for (i = 0; i < 32; i++)
-		regs_buff[761 + i] = IXGBE_READ_REG(hw, IXGBE_TDWBAH(i));
-	regs_buff[793] = IXGBE_READ_REG(hw, IXGBE_DTXCTL);
+		regs_buff[761 + i] = IXGBE_R32_Q(hw, IXGBE_TDWBAH(i));
+	regs_buff[793] = IXGBE_R32_Q(hw, IXGBE_DTXCTL);
 	for (i = 0; i < 16; i++)
-		regs_buff[794 + i] = IXGBE_READ_REG(hw, IXGBE_DCA_TXCTRL(i));
-	regs_buff[810] = IXGBE_READ_REG(hw, IXGBE_TIPG);
+		regs_buff[794 + i] = IXGBE_R32_Q(hw, IXGBE_DCA_TXCTRL(i));
+	regs_buff[810] = IXGBE_R32_Q(hw, IXGBE_TIPG);
 	for (i = 0; i < 8; i++)
-		regs_buff[811 + i] = IXGBE_READ_REG(hw, IXGBE_TXPBSIZE(i));
-	regs_buff[819] = IXGBE_READ_REG(hw, IXGBE_MNGTXMAP);
+		regs_buff[811 + i] = IXGBE_R32_Q(hw, IXGBE_TXPBSIZE(i));
+	regs_buff[819] = IXGBE_R32_Q(hw, IXGBE_MNGTXMAP);
 
 	/* Wake Up */
-	regs_buff[820] = IXGBE_READ_REG(hw, IXGBE_WUC);
-	regs_buff[821] = IXGBE_READ_REG(hw, IXGBE_WUFC);
-	regs_buff[822] = IXGBE_READ_REG(hw, IXGBE_WUS);
-	regs_buff[823] = IXGBE_READ_REG(hw, IXGBE_IPAV);
-	regs_buff[824] = IXGBE_READ_REG(hw, IXGBE_IP4AT);
-	regs_buff[825] = IXGBE_READ_REG(hw, IXGBE_IP6AT);
-	regs_buff[826] = IXGBE_READ_REG(hw, IXGBE_WUPL);
-	regs_buff[827] = IXGBE_READ_REG(hw, IXGBE_WUPM);
-	regs_buff[828] = IXGBE_READ_REG(hw, IXGBE_FHFT(0));
+	regs_buff[820] = IXGBE_R32_Q(hw, IXGBE_WUC);
+	regs_buff[821] = IXGBE_R32_Q(hw, IXGBE_WUFC);
+	regs_buff[822] = IXGBE_R32_Q(hw, IXGBE_WUS);
+	regs_buff[823] = IXGBE_R32_Q(hw, IXGBE_IPAV);
+	regs_buff[824] = IXGBE_R32_Q(hw, IXGBE_IP4AT);
+	regs_buff[825] = IXGBE_R32_Q(hw, IXGBE_IP6AT);
+	regs_buff[826] = IXGBE_R32_Q(hw, IXGBE_WUPL);
+	regs_buff[827] = IXGBE_R32_Q(hw, IXGBE_WUPM);
+	regs_buff[828] = IXGBE_R32_Q(hw, IXGBE_FHFT(0));
 
 	/* DCB */
-	regs_buff[829] = IXGBE_READ_REG(hw, IXGBE_RMCS);
-	regs_buff[830] = IXGBE_READ_REG(hw, IXGBE_DPMCS);
-	regs_buff[831] = IXGBE_READ_REG(hw, IXGBE_PDPMCS);
-	regs_buff[832] = IXGBE_READ_REG(hw, IXGBE_RUPPBMR);
+	regs_buff[829] = IXGBE_R32_Q(hw, IXGBE_RMCS);
+	regs_buff[830] = IXGBE_R32_Q(hw, IXGBE_DPMCS);
+	regs_buff[831] = IXGBE_R32_Q(hw, IXGBE_PDPMCS);
+	regs_buff[832] = IXGBE_R32_Q(hw, IXGBE_RUPPBMR);
 	for (i = 0; i < 8; i++)
-		regs_buff[833 + i] = IXGBE_READ_REG(hw, IXGBE_RT2CR(i));
+		regs_buff[833 + i] = IXGBE_R32_Q(hw, IXGBE_RT2CR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[841 + i] = IXGBE_READ_REG(hw, IXGBE_RT2SR(i));
+		regs_buff[841 + i] = IXGBE_R32_Q(hw, IXGBE_RT2SR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[849 + i] = IXGBE_READ_REG(hw, IXGBE_TDTQ2TCCR(i));
+		regs_buff[849 + i] = IXGBE_R32_Q(hw, IXGBE_TDTQ2TCCR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[857 + i] = IXGBE_READ_REG(hw, IXGBE_TDTQ2TCSR(i));
+		regs_buff[857 + i] = IXGBE_R32_Q(hw, IXGBE_TDTQ2TCSR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[865 + i] = IXGBE_READ_REG(hw, IXGBE_TDPT2TCCR(i));
+		regs_buff[865 + i] = IXGBE_R32_Q(hw, IXGBE_TDPT2TCCR(i));
 	for (i = 0; i < 8; i++)
-		regs_buff[873 + i] = IXGBE_READ_REG(hw, IXGBE_TDPT2TCSR(i));
+		regs_buff[873 + i] = IXGBE_R32_Q(hw, IXGBE_TDPT2TCSR(i));
 
 	/* Statistics */
 	regs_buff[881] = IXGBE_GET_STAT(adapter, crcerrs);
@@ -753,76 +763,77 @@ static void ixgbe_get_regs(struct net_device *netdev, struct ethtool_regs *regs,
 		regs_buff[1022 + i] = IXGBE_GET_STAT(adapter, qbtc[i]);
 
 	/* MAC */
-	regs_buff[1038] = IXGBE_READ_REG(hw, IXGBE_PCS1GCFIG);
-	regs_buff[1039] = IXGBE_READ_REG(hw, IXGBE_PCS1GLCTL);
-	regs_buff[1040] = IXGBE_READ_REG(hw, IXGBE_PCS1GLSTA);
-	regs_buff[1041] = IXGBE_READ_REG(hw, IXGBE_PCS1GDBG0);
-	regs_buff[1042] = IXGBE_READ_REG(hw, IXGBE_PCS1GDBG1);
-	regs_buff[1043] = IXGBE_READ_REG(hw, IXGBE_PCS1GANA);
-	regs_buff[1044] = IXGBE_READ_REG(hw, IXGBE_PCS1GANLP);
-	regs_buff[1045] = IXGBE_READ_REG(hw, IXGBE_PCS1GANNP);
-	regs_buff[1046] = IXGBE_READ_REG(hw, IXGBE_PCS1GANLPNP);
-	regs_buff[1047] = IXGBE_READ_REG(hw, IXGBE_HLREG0);
-	regs_buff[1048] = IXGBE_READ_REG(hw, IXGBE_HLREG1);
-	regs_buff[1049] = IXGBE_READ_REG(hw, IXGBE_PAP);
-	regs_buff[1050] = IXGBE_READ_REG(hw, IXGBE_MACA);
-	regs_buff[1051] = IXGBE_READ_REG(hw, IXGBE_APAE);
-	regs_buff[1052] = IXGBE_READ_REG(hw, IXGBE_ARD);
-	regs_buff[1053] = IXGBE_READ_REG(hw, IXGBE_AIS);
-	regs_buff[1054] = IXGBE_READ_REG(hw, IXGBE_MSCA);
-	regs_buff[1055] = IXGBE_READ_REG(hw, IXGBE_MSRWD);
-	regs_buff[1056] = IXGBE_READ_REG(hw, IXGBE_MLADD);
-	regs_buff[1057] = IXGBE_READ_REG(hw, IXGBE_MHADD);
-	regs_buff[1058] = IXGBE_READ_REG(hw, IXGBE_TREG);
-	regs_buff[1059] = IXGBE_READ_REG(hw, IXGBE_PCSS1);
-	regs_buff[1060] = IXGBE_READ_REG(hw, IXGBE_PCSS2);
-	regs_buff[1061] = IXGBE_READ_REG(hw, IXGBE_XPCSS);
-	regs_buff[1062] = IXGBE_READ_REG(hw, IXGBE_SERDESC);
-	regs_buff[1063] = IXGBE_READ_REG(hw, IXGBE_MACS);
-	regs_buff[1064] = IXGBE_READ_REG(hw, IXGBE_AUTOC);
-	regs_buff[1065] = IXGBE_READ_REG(hw, IXGBE_LINKS);
-	regs_buff[1066] = IXGBE_READ_REG(hw, IXGBE_AUTOC2);
-	regs_buff[1067] = IXGBE_READ_REG(hw, IXGBE_AUTOC3);
-	regs_buff[1068] = IXGBE_READ_REG(hw, IXGBE_ANLP1);
-	regs_buff[1069] = IXGBE_READ_REG(hw, IXGBE_ANLP2);
-	regs_buff[1070] = IXGBE_READ_REG(hw, IXGBE_ATLASCTL);
+	regs_buff[1038] = IXGBE_R32_Q(hw, IXGBE_PCS1GCFIG);
+	regs_buff[1039] = IXGBE_R32_Q(hw, IXGBE_PCS1GLCTL);
+	regs_buff[1040] = IXGBE_R32_Q(hw, IXGBE_PCS1GLSTA);
+	regs_buff[1041] = IXGBE_R32_Q(hw, IXGBE_PCS1GDBG0);
+	regs_buff[1042] = IXGBE_R32_Q(hw, IXGBE_PCS1GDBG1);
+	regs_buff[1043] = IXGBE_R32_Q(hw, IXGBE_PCS1GANA);
+	regs_buff[1044] = IXGBE_R32_Q(hw, IXGBE_PCS1GANLP);
+	regs_buff[1045] = IXGBE_R32_Q(hw, IXGBE_PCS1GANNP);
+	regs_buff[1046] = IXGBE_R32_Q(hw, IXGBE_PCS1GANLPNP);
+	regs_buff[1047] = IXGBE_R32_Q(hw, IXGBE_HLREG0);
+	regs_buff[1048] = IXGBE_R32_Q(hw, IXGBE_HLREG1);
+	regs_buff[1049] = IXGBE_R32_Q(hw, IXGBE_PAP);
+	regs_buff[1050] = IXGBE_R32_Q(hw, IXGBE_MACA);
+	regs_buff[1051] = IXGBE_R32_Q(hw, IXGBE_APAE);
+	regs_buff[1052] = IXGBE_R32_Q(hw, IXGBE_ARD);
+	regs_buff[1053] = IXGBE_R32_Q(hw, IXGBE_AIS);
+	regs_buff[1054] = IXGBE_R32_Q(hw, IXGBE_MSCA);
+	regs_buff[1055] = IXGBE_R32_Q(hw, IXGBE_MSRWD);
+	regs_buff[1056] = IXGBE_R32_Q(hw, IXGBE_MLADD);
+	regs_buff[1057] = IXGBE_R32_Q(hw, IXGBE_MHADD);
+	regs_buff[1058] = IXGBE_R32_Q(hw, IXGBE_TREG);
+	regs_buff[1059] = IXGBE_R32_Q(hw, IXGBE_PCSS1);
+	regs_buff[1060] = IXGBE_R32_Q(hw, IXGBE_PCSS2);
+	regs_buff[1061] = IXGBE_R32_Q(hw, IXGBE_XPCSS);
+	regs_buff[1062] = IXGBE_R32_Q(hw, IXGBE_SERDESC);
+	regs_buff[1063] = IXGBE_R32_Q(hw, IXGBE_MACS);
+	regs_buff[1064] = IXGBE_R32_Q(hw, IXGBE_AUTOC);
+	regs_buff[1065] = IXGBE_R32_Q(hw, IXGBE_LINKS);
+	regs_buff[1066] = IXGBE_R32_Q(hw, IXGBE_AUTOC2);
+	regs_buff[1067] = IXGBE_R32_Q(hw, IXGBE_AUTOC3);
+	regs_buff[1068] = IXGBE_R32_Q(hw, IXGBE_ANLP1);
+	regs_buff[1069] = IXGBE_R32_Q(hw, IXGBE_ANLP2);
+	regs_buff[1070] = IXGBE_R32_Q(hw, IXGBE_ATLASCTL);
 
 	/* Diagnostic */
-	regs_buff[1071] = IXGBE_READ_REG(hw, IXGBE_RDSTATCTL);
+	regs_buff[1071] = IXGBE_R32_Q(hw, IXGBE_RDSTATCTL);
 	for (i = 0; i < 8; i++)
-		regs_buff[1072 + i] = IXGBE_READ_REG(hw, IXGBE_RDSTAT(i));
-	regs_buff[1080] = IXGBE_READ_REG(hw, IXGBE_RDHMPN);
+		regs_buff[1072 + i] = IXGBE_R32_Q(hw, IXGBE_RDSTAT(i));
+	regs_buff[1080] = IXGBE_R32_Q(hw, IXGBE_RDHMPN);
 	for (i = 0; i < 4; i++)
-		regs_buff[1081 + i] = IXGBE_READ_REG(hw, IXGBE_RIC_DW(i));
-	regs_buff[1085] = IXGBE_READ_REG(hw, IXGBE_RDPROBE);
-	regs_buff[1095] = IXGBE_READ_REG(hw, IXGBE_TDHMPN);
+		regs_buff[1081 + i] = IXGBE_R32_Q(hw, IXGBE_RIC_DW(i));
+	regs_buff[1085] = IXGBE_R32_Q(hw, IXGBE_RDPROBE);
+	regs_buff[1095] = IXGBE_R32_Q(hw, IXGBE_TDHMPN);
 	for (i = 0; i < 4; i++)
-		regs_buff[1096 + i] = IXGBE_READ_REG(hw, IXGBE_TIC_DW(i));
-	regs_buff[1100] = IXGBE_READ_REG(hw, IXGBE_TDPROBE);
-	regs_buff[1101] = IXGBE_READ_REG(hw, IXGBE_TXBUFCTRL);
-	regs_buff[1102] = IXGBE_READ_REG(hw, IXGBE_TXBUFDATA0);
-	regs_buff[1103] = IXGBE_READ_REG(hw, IXGBE_TXBUFDATA1);
-	regs_buff[1104] = IXGBE_READ_REG(hw, IXGBE_TXBUFDATA2);
-	regs_buff[1105] = IXGBE_READ_REG(hw, IXGBE_TXBUFDATA3);
-	regs_buff[1106] = IXGBE_READ_REG(hw, IXGBE_RXBUFCTRL);
-	regs_buff[1107] = IXGBE_READ_REG(hw, IXGBE_RXBUFDATA0);
-	regs_buff[1108] = IXGBE_READ_REG(hw, IXGBE_RXBUFDATA1);
-	regs_buff[1109] = IXGBE_READ_REG(hw, IXGBE_RXBUFDATA2);
-	regs_buff[1110] = IXGBE_READ_REG(hw, IXGBE_RXBUFDATA3);
+		regs_buff[1096 + i] = IXGBE_R32_Q(hw, IXGBE_TIC_DW(i));
+	regs_buff[1100] = IXGBE_R32_Q(hw, IXGBE_TDPROBE);
+	regs_buff[1101] = IXGBE_R32_Q(hw, IXGBE_TXBUFCTRL);
+	regs_buff[1102] = IXGBE_R32_Q(hw, IXGBE_TXBUFDATA0);
+	regs_buff[1103] = IXGBE_R32_Q(hw, IXGBE_TXBUFDATA1);
+	regs_buff[1104] = IXGBE_R32_Q(hw, IXGBE_TXBUFDATA2);
+	regs_buff[1105] = IXGBE_R32_Q(hw, IXGBE_TXBUFDATA3);
+	regs_buff[1106] = IXGBE_R32_Q(hw, IXGBE_RXBUFCTRL);
+	regs_buff[1107] = IXGBE_R32_Q(hw, IXGBE_RXBUFDATA0);
+	regs_buff[1108] = IXGBE_R32_Q(hw, IXGBE_RXBUFDATA1);
+	regs_buff[1109] = IXGBE_R32_Q(hw, IXGBE_RXBUFDATA2);
+	regs_buff[1110] = IXGBE_R32_Q(hw, IXGBE_RXBUFDATA3);
 	for (i = 0; i < 8; i++)
-		regs_buff[1111 + i] = IXGBE_READ_REG(hw, IXGBE_PCIE_DIAG(i));
-	regs_buff[1119] = IXGBE_READ_REG(hw, IXGBE_RFVAL);
-	regs_buff[1120] = IXGBE_READ_REG(hw, IXGBE_MDFTC1);
-	regs_buff[1121] = IXGBE_READ_REG(hw, IXGBE_MDFTC2);
-	regs_buff[1122] = IXGBE_READ_REG(hw, IXGBE_MDFTFIFO1);
-	regs_buff[1123] = IXGBE_READ_REG(hw, IXGBE_MDFTFIFO2);
-	regs_buff[1124] = IXGBE_READ_REG(hw, IXGBE_MDFTS);
-	regs_buff[1125] = IXGBE_READ_REG(hw, IXGBE_PCIEECCCTL);
-	regs_buff[1126] = IXGBE_READ_REG(hw, IXGBE_PBTXECC);
-	regs_buff[1127] = IXGBE_READ_REG(hw, IXGBE_PBRXECC);
+		regs_buff[1111 + i] = IXGBE_R32_Q(hw, IXGBE_PCIE_DIAG(i));
+	regs_buff[1119] = IXGBE_R32_Q(hw, IXGBE_RFVAL);
+	regs_buff[1120] = IXGBE_R32_Q(hw, IXGBE_MDFTC1);
+	regs_buff[1121] = IXGBE_R32_Q(hw, IXGBE_MDFTC2);
+	regs_buff[1122] = IXGBE_R32_Q(hw, IXGBE_MDFTFIFO1);
+	regs_buff[1123] = IXGBE_R32_Q(hw, IXGBE_MDFTFIFO2);
+	regs_buff[1124] = IXGBE_R32_Q(hw, IXGBE_MDFTS);
+	regs_buff[1125] = IXGBE_R32_Q(hw, IXGBE_PCIEECCCTL);
+	regs_buff[1126] = IXGBE_R32_Q(hw, IXGBE_PBTXECC);
+	regs_buff[1127] = IXGBE_R32_Q(hw, IXGBE_PBRXECC);
 
 	/* 82599 X540 specific registers  */
-	regs_buff[1128] = IXGBE_READ_REG(hw, IXGBE_MFLCN);
+	regs_buff[1128] = IXGBE_R32_Q(hw, IXGBE_MFLCN);
+
 }
 
 static int ixgbe_get_eeprom_len(struct net_device *netdev)
@@ -1474,6 +1485,8 @@ static bool ixgbe_reg_test(struct ixgbe_adapter *adapter, u64 *data)
 		break;
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		toggle = 0x7FFFF30F;
 		test = reg_test_82599;
 		break;
@@ -1715,6 +1728,8 @@ static void ixgbe_free_desc_rings(struct ixgbe_adapter *adapter)
 	switch (hw->mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		reg_ctl = IXGBE_READ_REG(hw, IXGBE_DMATXCTL);
 		reg_ctl &= ~IXGBE_DMATXCTL_TE;
 		IXGBE_WRITE_REG(hw, IXGBE_DMATXCTL, reg_ctl);
@@ -1751,6 +1766,8 @@ static int ixgbe_setup_desc_rings(struct ixgbe_adapter *adapter)
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		reg_data = IXGBE_READ_REG(&adapter->hw, IXGBE_DMATXCTL);
 		reg_data |= IXGBE_DMATXCTL_TE;
 		IXGBE_WRITE_REG(&adapter->hw, IXGBE_DMATXCTL, reg_data);
@@ -1810,6 +1827,8 @@ static int ixgbe_setup_loopback_test(struct ixgbe_adapter *adapter)
 
 	/* X540 needs to set the MACC.FLU bit to force link up */
 	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X540:
 		reg_data = IXGBE_READ_REG(hw, IXGBE_MACC);
 		reg_data |= IXGBE_MACC_FLU;
@@ -2289,7 +2308,7 @@ static int ixgbe_phys_id(struct net_device *netdev, u32 data)
 	/* Restore LED settings */
 	IXGBE_WRITE_REG(hw, IXGBE_LEDCTL, led_reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 #endif /* HAVE_ETHTOOL_SET_PHYS_ID */
 
@@ -2361,22 +2380,17 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	struct ixgbe_q_vector *q_vector;
 	int i;
 	u16 tx_itr_param, rx_itr_param;
-#if IS_ENABLED(CONFIG_BQL)
 	u16  tx_itr_prev;
-#endif
 	bool need_reset = false;
 
 	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count) {
 		/* reject Tx specific changes in case of mixed RxTx vectors */
 		if (ec->tx_coalesce_usecs)
 			return -EINVAL;
-#if IS_ENABLED(CONFIG_BQL)
 		tx_itr_prev = adapter->rx_itr_setting;
 	} else {
 		tx_itr_prev = adapter->tx_itr_setting;
-#endif /* BQL */
 	}
-
 
 	if (ec->tx_max_coalesced_frames_irq)
 		adapter->tx_work_limit = ec->tx_max_coalesced_frames_irq;
@@ -2409,7 +2423,6 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 	if (adapter->q_vector[0]->tx.count && adapter->q_vector[0]->rx.count)
 		adapter->tx_itr_setting = adapter->rx_itr_setting;
 
-#if IS_ENABLED(CONFIG_BQL)
 	/* detect ITR changes that require update of TXDCTL.WTHRESH */
 	if ((adapter->tx_itr_setting != 1) &&
 	    (adapter->tx_itr_setting < IXGBE_100K_ITR)) {
@@ -2421,9 +2434,17 @@ static int ixgbe_set_coalesce(struct net_device *netdev,
 		    (tx_itr_prev < IXGBE_100K_ITR))
 			need_reset = true;
 	}
-#endif
+
 	/* check the old value and enable RSC if necessary */
 	need_reset |= ixgbe_update_rsc(adapter);
+
+	if (adapter->hw.mac.dmac_config.watchdog_timer &&
+	    (!adapter->rx_itr_setting && !adapter->tx_itr_setting)) {
+		e_info(probe,
+		       "Disabling DMA coalescing because interrupt throttling is disabled\n");
+		adapter->hw.mac.dmac_config.watchdog_timer = 0;
+		ixgbe_dmac_config(&adapter->hw);
+	}
 
 	for (i = 0; i < adapter->num_q_vectors; i++) {
 		q_vector = adapter->q_vector[i];
@@ -2488,6 +2509,8 @@ static int ixgbe_set_tx_csum(struct net_device *netdev, u32 data)
 	switch (adapter->hw.mac.type) {
 	case ixgbe_mac_82599EB:
 	case ixgbe_mac_X540:
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		feature_list |= NETIF_F_SCTP_CSUM;
 		break;
 	default:
@@ -2565,6 +2588,8 @@ static int ixgbe_set_flags(struct net_device *netdev, u32 data)
 
 #ifdef ETHTOOL_GRXRINGS
 	switch (adapter->hw.mac.type) {
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 	case ixgbe_mac_X540:
 	case ixgbe_mac_82599EB:
 		supported_flags |= ETH_FLAG_NTUPLE;
@@ -2719,6 +2744,24 @@ static int ixgbe_get_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	fsp->m_ext.data[1] = htonl(mask->formatted.vm_pool);
 	fsp->flow_type |= FLOW_EXT;
 
+#ifdef HAVE_VXLAN_CHECKS
+	if (rule->filter.formatted.tunnel_type) {
+		__be16 *vpp;
+
+		memcpy(&fsp->h_ext.h_dest[2],
+		       &rule->filter.formatted.tni_vni,
+		       sizeof(rule->filter.formatted.tni_vni));
+		memcpy(&fsp->m_ext.h_dest[2],
+		       &mask->formatted.tni_vni,
+		       sizeof(mask->formatted.tni_vni));
+		vpp = (__be16 *)&fsp->h_ext.h_dest[0];
+		*vpp = htons(adapter->vxlan_port);
+		vpp = (__be16 *)&fsp->m_ext.h_dest[0];
+		*vpp = htons(0xFFFF);
+		fsp->flow_type |= FLOW_VXLAN_EXT;
+	}
+
+#endif /* HAVE_VXLAN_CHECKS */
 	/* record action */
 	if (rule->action == IXGBE_FDIR_DROP_QUEUE)
 		fsp->ring_cookie = RX_CLS_FLOW_DISC;
@@ -2881,7 +2924,7 @@ static int ixgbe_update_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 
 	/* add filter to the list */
 	if (parent)
-		hlist_add_after(parent, &input->fdir_node);
+		hlist_add_behind(&input->fdir_node, parent);
 	else
 		hlist_add_head(&input->fdir_node,
 			       &adapter->fdir_filter_list);
@@ -2945,6 +2988,9 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	if (!(adapter->flags & IXGBE_FLAG_FDIR_PERFECT_CAPABLE))
 		return -EOPNOTSUPP;
 
+	if ((fsp->flow_type & FLOW_VXLAN_EXT) && !adapter->cloud_mode)
+		return -EOPNOTSUPP;
+
 	/*
 	 * Don't allow programming if the action is a queue greater than
 	 * the number of online Rx queues.
@@ -2991,6 +3037,25 @@ static int ixgbe_add_ethtool_fdir_entry(struct ixgbe_adapter *adapter,
 	input->filter.formatted.dst_port = fsp->h_u.tcp_ip4_spec.pdst;
 	mask.formatted.dst_port = fsp->m_u.tcp_ip4_spec.pdst;
 
+#ifdef HAVE_VXLAN_CHECKS
+	if (fsp->flow_type & FLOW_VXLAN_EXT) {
+		u16 vxlan_port = ntohs(*(__be16 *)&fsp->h_ext.h_dest[0]);
+
+		if (vxlan_port != adapter->vxlan_port) {
+			e_err(drv,
+			      "Cannot filter on vxlan port %u when current vxlan port is %u\n",
+			      vxlan_port, adapter->vxlan_port);
+			goto err_out;
+		}
+		memcpy(&input->filter.formatted.tni_vni, &fsp->h_ext.h_dest[2],
+		       sizeof(input->filter.formatted.tni_vni));
+		memcpy(&mask.formatted.tni_vni, &fsp->m_ext.h_dest[2],
+		       sizeof(mask.formatted.tni_vni));
+		input->filter.formatted.tunnel_type = 1;
+		mask.formatted.tunnel_type = 0xFFFF;
+	}
+
+#endif /* HAVE_VXLAN_CHECKS */
 	if (fsp->flow_type & FLOW_EXT) {
 		input->filter.formatted.vm_pool =
 				(unsigned char)ntohl(fsp->h_ext.data[1]);
@@ -3157,6 +3222,12 @@ static int ixgbe_set_rss_hash_opt(struct ixgbe_adapter *adapter,
 	if (flags2 != adapter->flags2) {
 		struct ixgbe_hw *hw = &adapter->hw;
 		u32 mrqc;
+		unsigned int pf_pool = adapter->num_vfs;
+
+		if ((hw->mac.type >= ixgbe_mac_X550) &&
+		    (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED))
+			mrqc = IXGBE_READ_REG(hw, IXGBE_PFVFMRQC(pf_pool));
+		else
 			mrqc = IXGBE_READ_REG(hw, IXGBE_MRQC);
 
 		if ((flags2 & UDP_RSS_FLAGS) &&
@@ -3181,6 +3252,10 @@ static int ixgbe_set_rss_hash_opt(struct ixgbe_adapter *adapter,
 		if (flags2 & IXGBE_FLAG2_RSS_FIELD_IPV6_UDP)
 			mrqc |= IXGBE_MRQC_RSS_FIELD_IPV6_UDP;
 
+		if ((hw->mac.type >= ixgbe_mac_X550) &&
+		    (adapter->flags & IXGBE_FLAG_SRIOV_ENABLED))
+			IXGBE_WRITE_REG(hw, IXGBE_PFVFMRQC(pf_pool), mrqc);
+		else
 			IXGBE_WRITE_REG(hw, IXGBE_MRQC, mrqc);
 	}
 
@@ -3220,6 +3295,10 @@ static int ixgbe_get_ts_info(struct net_device *dev,
 
 	switch (adapter->hw.mac.type) {
 #ifdef HAVE_PTP_1588_CLOCK
+	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
+		info->rx_filters |= 1 << HWTSTAMP_FILTER_ALL;
+		/* fallthrough */
 	case ixgbe_mac_X540:
 	case ixgbe_mac_82599EB:
 		info->so_timestamping =
@@ -3361,13 +3440,13 @@ static int ixgbe_set_channels(struct net_device *dev,
 		count = max_rss_indices;
 	adapter->ring_feature[RING_F_RSS].limit = count;
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 	/* cap FCoE limit at 8 */
 	if (count > IXGBE_FCRETA_SIZE)
 		count = IXGBE_FCRETA_SIZE;
 	adapter->ring_feature[RING_F_FCOE].limit = count;
+#endif /* CONFIG_FCOE */
 
-#endif
 	/* use setup TC to update any traffic class queue mapping */
 	return ixgbe_setup_tc(dev, netdev_get_num_tc(dev));
 }
@@ -3448,6 +3527,100 @@ static int ixgbe_get_module_eeprom(struct net_device *dev,
 }
 #endif /* ETHTOOL_GMODULEINFO */
 
+#ifdef ETHTOOL_GEEE
+static int ixgbe_get_eee(struct net_device *netdev, struct ethtool_eee *edata)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	u32 eee_stat, eeer;
+
+	if (!hw->mac.ops.setup_eee)
+		return -EOPNOTSUPP;
+
+	edata->supported = (SUPPORTED_10000baseT_Full |
+			    SUPPORTED_1000baseT_Full);
+
+	if (hw->mac.ops.get_media_type(hw) == ixgbe_media_type_copper)
+		edata->supported |= SUPPORTED_100baseT_Full;
+
+	eee_stat = IXGBE_READ_REG(hw, IXGBE_EEE_STAT);
+
+	/* EEE status of the negotiated link */
+	if (eee_stat & IXGBE_EEE_STAT_NEG)
+		edata->eee_active = true;
+
+	if (eee_stat & IXGBE_EEE_TX_LPI_STATUS)
+		edata->tx_lpi_enabled = true;
+
+	eeer = IXGBE_READ_REG(hw, IXGBE_EEER);
+	edata->eee_enabled = (eeer &
+			      (IXGBE_EEER_TX_LPI_EN | IXGBE_EEER_RX_LPI_EN));
+
+	/* EEE modes are advertised only when EEE is enabled */
+	if (edata->eee_enabled) {
+		u32 eee_su = IXGBE_READ_REG(hw, IXGBE_EEE_SU);
+
+		edata->advertised = edata->supported;
+		edata->tx_lpi_timer = eee_su >> 26;
+	}
+
+	return 0;
+}
+#endif /* ETHTOOL_GEEE */
+
+#ifdef ETHTOOL_SEEE
+static int ixgbe_set_eee(struct net_device *netdev, struct ethtool_eee *edata)
+{
+	struct ixgbe_adapter *adapter = netdev_priv(netdev);
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ethtool_eee eee_data;
+	s32 ret_val;
+
+	if (!hw->mac.ops.setup_eee)
+		return -EOPNOTSUPP;
+
+	memset(&eee_data, 0, sizeof(struct ethtool_eee));
+
+	ret_val = ixgbe_get_eee(netdev, &eee_data);
+	if (ret_val)
+		return ret_val;
+
+	if (eee_data.eee_enabled && !edata->eee_enabled) {
+		if (eee_data.tx_lpi_enabled != edata->tx_lpi_enabled) {
+			e_dev_err("Setting EEE tx-lpi is not supported\n");
+			return -EINVAL;
+		}
+
+		if (eee_data.tx_lpi_timer != edata->tx_lpi_timer) {
+			e_dev_err("Setting EEE Tx LPI timer is not supported\n");
+			return -EINVAL;
+		}
+
+		if (eee_data.advertised != edata->advertised) {
+			e_dev_err("Setting EEE advertised speeds is not supported\n");
+			return -EINVAL;
+		}
+
+	}
+
+	if (eee_data.eee_enabled != edata->eee_enabled) {
+
+		if (edata->eee_enabled)
+			adapter->flags2 |= IXGBE_FLAG2_EEE_ENABLED;
+		else
+			adapter->flags2 &= ~IXGBE_FLAG2_EEE_ENABLED;
+
+		/* reset link */
+		if (netif_running(netdev))
+			ixgbe_reinit_locked(adapter);
+		else
+			ixgbe_reset(adapter);
+	}
+
+	return 0;
+}
+#endif /* ETHTOOL_SEEE */
+
 static struct ethtool_ops ixgbe_ethtool_ops = {
 	.get_settings		= ixgbe_get_settings,
 	.set_settings		= ixgbe_set_settings,
@@ -3514,6 +3687,12 @@ static struct ethtool_ops ixgbe_ethtool_ops = {
 #endif
 #endif /* ETHTOOL_GRXRINGS */
 #ifndef HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT
+#ifdef ETHTOOL_GEEE
+	.get_eee		= ixgbe_get_eee,
+#endif /* ETHTOOL_GEEE */
+#ifdef ETHTOOL_SEEE
+	.set_eee		= ixgbe_set_eee,
+#endif /* ETHTOOL_SEEE */
 #ifdef ETHTOOL_SCHANNELS
 	.get_channels		= ixgbe_get_channels,
 	.set_channels		= ixgbe_set_channels,
@@ -3539,6 +3718,12 @@ static const struct ethtool_ops_ext ixgbe_ethtool_ops_ext = {
 	.get_module_info	= ixgbe_get_module_info,
 	.get_module_eeprom	= ixgbe_get_module_eeprom,
 #endif
+#ifdef ETHTOOL_GEEE
+	.get_eee		= ixgbe_get_eee,
+#endif /* ETHTOOL_GEEE */
+#ifdef ETHTOOL_SEEE
+	.set_eee		= ixgbe_set_eee,
+#endif /* ETHTOOL_SEEE */
 };
 
 #endif /* HAVE_RHEL6_ETHTOOL_OPS_EXT_STRUCT */

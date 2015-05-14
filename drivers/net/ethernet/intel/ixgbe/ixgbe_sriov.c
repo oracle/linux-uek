@@ -46,7 +46,7 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	struct vf_macvlans *mv_list;
 
 	adapter->flags |= IXGBE_FLAG_SRIOV_ENABLED;
-	e_info(probe, "SR-IOV enabled with %d VFs\n", adapter->num_vfs);
+	e_dev_info("SR-IOV enabled with %d VFs\n", adapter->num_vfs);
 
 	/* Enable VMDq flag so device will be set in VM mode */
 	adapter->flags |= IXGBE_FLAG_VMDQ_ENABLED;
@@ -112,7 +112,6 @@ static int __ixgbe_enable_sriov(struct ixgbe_adapter *adapter)
 	/* Disable RSC when in SR-IOV mode */
 	adapter->flags2 &= ~(IXGBE_FLAG2_RSC_CAPABLE |
 				IXGBE_FLAG2_RSC_ENABLED);
-
 
 	/* enable spoof checking for all VFs */
 	for (i = 0; i < adapter->num_vfs; i++)
@@ -193,6 +192,9 @@ int ixgbe_disable_sriov(struct ixgbe_adapter *adapter)
 	if (!(adapter->flags & IXGBE_FLAG_SRIOV_ENABLED))
 		return 0;
 
+	/* Turn off malicious driver detection */
+	if (hw->mac.ops.disable_mdd)
+		hw->mac.ops.disable_mdd(hw);
 
 #ifdef CONFIG_PCI_IOV
 	/*
@@ -240,6 +242,11 @@ static int ixgbe_pci_sriov_enable(struct pci_dev __maybe_unused *dev, int __mayb
 	int err = 0;
 	int i;
 	int pre_existing_vfs = pci_num_vf(dev);
+
+	if (!(adapter->flags & IXGBE_FLAG_SRIOV_CAPABLE)) {
+		e_dev_warn("SRIOV not supported on this device\n");
+		return -EOPNOTSUPP;
+	}
 
 	if (pre_existing_vfs && pre_existing_vfs != num_vfs)
 		err = ixgbe_disable_sriov(adapter);
@@ -413,12 +420,12 @@ static int ixgbe_set_vf_lpe(struct ixgbe_adapter *adapter, u32 max_frame, u32 vf
 		u32 reg_offset, vf_shift, vfre;
 		s32 err = 0;
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 		if (dev->features & NETIF_F_FCOE_MTU)
 			pf_max_frame = max_t(int, pf_max_frame,
 					     IXGBE_FCOE_JUMBO_FRAME_SIZE);
+#endif /* CONFIG_FCOE */
 
-#endif /* IXGBE_FCOE */
 		switch (adapter->vfinfo[vf].vf_api) {
 		case ixgbe_mbox_api_11:
 			/*
@@ -685,10 +692,31 @@ int ixgbe_vf_configuration(struct pci_dev *pdev, unsigned int event_mask)
 }
 #endif /* CONFIG_PCI_IOV */
 
+static inline void ixgbe_write_qde(struct ixgbe_adapter *adapter, u32 vf,
+				   u32 qde)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
+	u32 q_per_pool = __ALIGN_MASK(1, ~vmdq->mask);
+	u32 reg;
+	int i;
+
+	for (i = vf * q_per_pool; i < ((vf + 1) * q_per_pool); i++) {
+		/* flush previous write */
+		IXGBE_WRITE_FLUSH(hw);
+
+		/* drop enable should always be set in SRIOV mode*/
+		reg = IXGBE_QDE_WRITE | qde;
+		reg |= i <<  IXGBE_QDE_IDX_SHIFT;
+		IXGBE_WRITE_REG(hw, IXGBE_QDE, reg);
+	}
+
+}
+
 static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 {
-	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	struct ixgbe_hw *hw = &adapter->hw;
+	struct ixgbe_ring_feature *vmdq = &adapter->ring_feature[RING_F_VMDQ];
 	unsigned char *vf_mac = adapter->vfinfo[vf].vf_mac_addresses;
 	u32 reg, reg_offset, vf_shift;
 	u32 msgbuf[4] = {0, 0, 0, 0};
@@ -714,15 +742,7 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 	IXGBE_WRITE_REG(hw, IXGBE_VFTE(reg_offset), reg);
 
 	/* force drop enable for all VF Rx queues */
-	for (i = vf * q_per_pool; i < ((vf + 1) * q_per_pool); i++) {
-		/* flush previous write */
-		IXGBE_WRITE_FLUSH(hw);
-
-		/* indicate to hardware that we want to set drop enable */
-		reg = IXGBE_QDE_WRITE | IXGBE_QDE_ENABLE;
-		reg |= i <<  IXGBE_QDE_IDX_SHIFT;
-		IXGBE_WRITE_REG(hw, IXGBE_QDE, reg);
-	}
+	ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
 
 	/* enable receive for vf */
 	reg = IXGBE_READ_REG(hw, IXGBE_VFRE(reg_offset));
@@ -735,12 +755,12 @@ static int ixgbe_vf_reset_msg(struct ixgbe_adapter *adapter, u32 vf)
 		struct net_device *dev = adapter->netdev;
 		int pf_max_frame = dev->mtu + ETH_HLEN;
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 		if (dev->features & NETIF_F_FCOE_MTU)
 			pf_max_frame = max_t(int, pf_max_frame,
 					     IXGBE_FCOE_JUMBO_FRAME_SIZE);
+#endif /* CONFIG_FCOE */
 
-#endif /* IXGBE_FCOE */
 		if (pf_max_frame > ETH_FRAME_LEN)
 			reg &= ~(1 << vf_shift);
 	}
@@ -1043,8 +1063,43 @@ static void ixgbe_rcv_ack_from_vf(struct ixgbe_adapter *adapter, u32 vf)
 void ixgbe_msg_task(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
+	u32 vf_bitmap[Q_BITMAP_DEPTH] = { 0 };
+	u32 j, i;
+	u32 ping;
 	u32 vf;
 
+	/* Did we have a malicious event */
+	if (hw->mac.ops.mdd_event)
+		hw->mac.ops.mdd_event(hw, vf_bitmap);
+
+	/* Log any blocked queues and release lock */
+	for (i = 0; i < Q_BITMAP_DEPTH; i++) {
+		for (j = 0; j < 32 && vf_bitmap[i]; j++) {
+
+			if (!(vf_bitmap[i] & (1 << j)))
+				continue;
+
+			/* The VF that malicious event occurred on */
+			vf = j + (i * 32);
+
+			dev_warn(pci_dev_to_dev(adapter->pdev),
+				"Malicious event on VF %d tx:%x rx:%x\n", vf,
+				IXGBE_READ_REG(hw, IXGBE_LVMMC_TX),
+				IXGBE_READ_REG(hw, IXGBE_LVMMC_RX));
+
+			/* restart the vf */
+			if (hw->mac.ops.restore_mdd_vf) {
+				hw->mac.ops.restore_mdd_vf(hw, vf);
+
+				/* get the VF to rebuild its queues */
+				adapter->vfinfo[vf].clear_to_send = 0;
+				ping = IXGBE_PF_CONTROL_MSG |
+				       IXGBE_VT_MSGTYPE_CTS;
+				ixgbe_write_mbx(hw, &ping, 1, vf);
+			}
+
+		}
+	}
 
 	for (vf = 0; vf < adapter->num_vfs; vf++) {
 		/* process any reset requests */
@@ -1124,6 +1179,10 @@ static int ixgbe_enable_port_vlan(struct ixgbe_adapter *adapter,
 	if (adapter->vfinfo[vf].spoofchk_enabled)
 		hw->mac.ops.set_vlan_anti_spoofing(hw, true, vf);
 	adapter->vfinfo[vf].vlan_count++;
+	/* enable hide vlan on X550 */
+	if (hw->mac.type >= ixgbe_mac_X550)
+		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE |
+				IXGBE_QDE_HIDE_VLAN);
 	adapter->vfinfo[vf].pf_vlan = vlan;
 	adapter->vfinfo[vf].pf_qos = qos;
 	dev_info(pci_dev_to_dev(adapter->pdev),
@@ -1149,6 +1208,9 @@ static int ixgbe_disable_port_vlan(struct ixgbe_adapter *adapter, int vf)
 	hw->mac.ops.set_vlan_anti_spoofing(hw, false, vf);
 	if (adapter->vfinfo[vf].vlan_count)
 		adapter->vfinfo[vf].vlan_count--;
+	/* disable hide vlan on X550 */
+	if (hw->mac.type >= ixgbe_mac_X550)
+		ixgbe_write_qde(adapter, vf, IXGBE_QDE_ENABLE);
 	adapter->vfinfo[vf].pf_vlan = 0;
 	adapter->vfinfo[vf].pf_qos = 0;
 
@@ -1184,7 +1246,6 @@ int ixgbe_ndo_set_vf_vlan(struct net_device *netdev, int vf, u16 vlan, u8 qos)
 out:
 	return err;
 }
-
 
 static int ixgbe_link_mbps(struct ixgbe_adapter *adapter)
 {
@@ -1275,7 +1336,9 @@ void ixgbe_check_vf_rate_limit(struct ixgbe_adapter *adapter)
 }
 
 #ifdef HAVE_NDO_SET_VF_MIN_MAX_TX_RATE
-int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int min_tx_rate,
+int ixgbe_ndo_set_vf_bw(struct net_device *netdev,
+			int vf,
+			int __always_unused min_tx_rate,
 			int max_tx_rate)
 #else
 int ixgbe_ndo_set_vf_bw(struct net_device *netdev, int vf, int max_tx_rate)
@@ -1320,6 +1383,9 @@ int ixgbe_ndo_set_vf_spoofchk(struct net_device *netdev, int vf, bool setting)
 	struct ixgbe_hw *hw = &adapter->hw;
 	u32 regval;
 
+	if (vf >= adapter->num_vfs)
+		return -EINVAL;
+
 	adapter->vfinfo[vf].spoofchk_enabled = setting;
 
 	regval = IXGBE_READ_REG(hw, IXGBE_PFVFSPOOF(vf_target_reg));
@@ -1363,3 +1429,4 @@ int ixgbe_ndo_get_vf_config(struct net_device *netdev,
 	return 0;
 }
 #endif /* IFLA_VF_MAX */
+

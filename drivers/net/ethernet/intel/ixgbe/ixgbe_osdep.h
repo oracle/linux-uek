@@ -37,15 +37,18 @@
 #include <linux/sched.h>
 #include "kcompat.h"
 
+#define IXGBE_CPU_TO_BE16(_x) cpu_to_be16(_x)
+#define IXGBE_BE16_TO_CPU(_x) be16_to_cpu(_x)
+#define IXGBE_CPU_TO_BE32(_x) cpu_to_be32(_x)
+#define IXGBE_BE32_TO_CPU(_x) be32_to_cpu(_x)
 
-#ifndef msleep
-#define msleep(x)	do { if (in_interrupt()) { \
-				/* Don't mdelay in interrupt context! */ \
-				BUG(); \
-			} else { \
-				msleep(x); \
-			} } while (0)
-#endif
+#define msec_delay(_x) msleep(_x)
+
+#define usec_delay(_x) udelay(_x)
+
+#define STATIC static
+
+#define IOMEM __iomem
 
 #ifdef DBG
 #define ASSERT(_x)		BUG_ON(!(_x))
@@ -69,13 +72,7 @@
 
 #define DEBUGFUNC(S)		do {} while (0)
 
-#undef ASSERT
-
-#ifdef DBG
-#define hw_dbg(hw, S, A...)	printk(KERN_DEBUG S, ## A)
-#else
-#define hw_dbg(hw, S, A...)	do {} while (0)
-#endif
+#define IXGBE_SFP_DETECT_RETRIES	2
 
 struct ixgbe_hw;
 struct ixgbe_msg {
@@ -84,6 +81,10 @@ struct ixgbe_msg {
 struct net_device *ixgbe_hw_to_netdev(const struct ixgbe_hw *hw);
 struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
+#define hw_dbg(hw, format, arg...) \
+	netdev_dbg(ixgbe_hw_to_netdev(hw), format, ## arg)
+#define hw_err(hw, format, arg...) \
+	netdev_err(ixgbe_hw_to_netdev(hw), format, ## arg)
 #define e_dev_info(format, arg...) \
 	dev_info(pci_dev_to_dev(adapter->pdev), format, ## arg)
 #define e_dev_warn(format, arg...) \
@@ -103,15 +104,18 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 #define e_crit(msglvl, format, arg...) \
 	netif_crit(adapter, msglvl, adapter->netdev, format, ## arg)
 
-
+#define IXGBE_DEAD_READ_RETRIES 10
+#define IXGBE_DEAD_READ_REG 0xdeadbeefU
 #define IXGBE_FAILED_READ_REG 0xffffffffU
 #define IXGBE_FAILED_READ_CFG_DWORD 0xffffffffU
 #define IXGBE_FAILED_READ_CFG_WORD 0xffffU
 #define IXGBE_FAILED_READ_CFG_BYTE 0xffU
+
 #define IXGBE_WRITE_REG_ARRAY(a, reg, offset, value) \
 	IXGBE_WRITE_REG((a), (reg) + ((offset) << 2), (value))
 
-#define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r)
+#define IXGBE_READ_REG(h, r) ixgbe_read_reg(h, r, false)
+#define IXGBE_R32_Q(h, r) ixgbe_read_reg(h, r, true)
 
 #define IXGBE_READ_REG_ARRAY(a, reg, offset) ( \
 	IXGBE_READ_REG((a), (reg) + ((offset) << 2)))
@@ -124,7 +128,7 @@ struct ixgbe_msg *ixgbe_hw_to_msg(const struct ixgbe_hw *hw);
 
 #define IXGBE_WRITE_FLUSH(a) IXGBE_READ_REG(a, IXGBE_STATUS)
 
-u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg);
+u32 ixgbe_read_reg(struct ixgbe_hw *, u32 reg, bool quiet);
 extern u16 ixgbe_read_pci_cfg_word(struct ixgbe_hw *hw, u32 reg);
 extern void ixgbe_write_pci_cfg_word(struct ixgbe_hw *hw, u32 reg, u16 value);
 extern void ewarn(struct ixgbe_hw *hw, const char *str, u32 status);

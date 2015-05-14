@@ -41,8 +41,11 @@ s32 ixgbe_dcb_get_tc_stats_82598(struct ixgbe_hw *hw,
 {
 	int tc;
 
+	DEBUGFUNC("dcb_get_tc_stats");
+
 	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return IXGBE_ERR_PARAM;
+
 	/* Statistics pertaining to each traffic class */
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Transmitted Packets */
@@ -63,7 +66,7 @@ s32 ixgbe_dcb_get_tc_stats_82598(struct ixgbe_hw *hw,
 #endif
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -80,8 +83,11 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 {
 	int tc;
 
+	DEBUGFUNC("dcb_get_pfc_stats");
+
 	if (tc_count > IXGBE_DCB_MAX_TRAFFIC_CLASS)
 		return IXGBE_ERR_PARAM;
+
 	for (tc = 0; tc < tc_count; tc++) {
 		/* Priority XOFF Transmitted */
 		stats->pxofftxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFTXC(tc));
@@ -89,7 +95,7 @@ s32 ixgbe_dcb_get_pfc_stats_82598(struct ixgbe_hw *hw,
 		stats->pxoffrxc[tc] += IXGBE_READ_REG(hw, IXGBE_PXOFFRXC(tc));
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -144,7 +150,7 @@ s32 ixgbe_dcb_config_rx_arbiter_82598(struct ixgbe_hw *hw, u16 *refill,
 	reg &= ~IXGBE_RXCTRL_DMBYPS;
 	IXGBE_WRITE_REG(hw, IXGBE_RXCTRL, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -188,7 +194,7 @@ s32 ixgbe_dcb_config_tx_desc_arbiter_82598(struct ixgbe_hw *hw,
 		IXGBE_WRITE_REG(hw, IXGBE_TDTQ2TCCR(i), reg);
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -233,7 +239,7 @@ s32 ixgbe_dcb_config_tx_data_arbiter_82598(struct ixgbe_hw *hw,
 	reg |= IXGBE_DTXCTL_ENDBUBD;
 	IXGBE_WRITE_REG(hw, IXGBE_DTXCTL, reg);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -285,7 +291,7 @@ s32 ixgbe_dcb_config_pfc_82598(struct ixgbe_hw *hw, u8 pfc_en)
 	/* Configure flow control refresh threshold value */
 	IXGBE_WRITE_REG(hw, IXGBE_FCRTV, hw->fc.pause_time / 2);
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -317,7 +323,7 @@ s32 ixgbe_dcb_config_tc_stats_82598(struct ixgbe_hw *hw)
 		IXGBE_WRITE_REG(hw, IXGBE_TQSMR(i), reg);
 	}
 
-	return 0;
+	return IXGBE_SUCCESS;
 }
 
 /**
@@ -340,6 +346,5 @@ s32 ixgbe_dcb_hw_config_82598(struct ixgbe_hw *hw, int link_speed,
 					       tsa);
 	ixgbe_dcb_config_tc_stats_82598(hw);
 
-
-	return 0;
+	return IXGBE_SUCCESS;
 }

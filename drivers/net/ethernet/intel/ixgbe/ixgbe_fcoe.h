@@ -22,10 +22,10 @@
 
 *******************************************************************************/
 
-#ifndef _IXGBE_FCOE_H
-#define _IXGBE_FCOE_H
+#ifndef _IXGBE_FCOE_H_
+#define _IXGBE_FCOE_H_
 
-#ifdef IXGBE_FCOE
+#if IS_ENABLED(CONFIG_FCOE)
 
 #include <scsi/fc/fc_fs.h>
 #include <scsi/fc/fc_fcoe.h>
@@ -44,6 +44,7 @@
 #define IXGBE_FCBUFF_MAX	65536	/* 64KB max */
 #define IXGBE_FCBUFF_MIN	4096	/* 4KB min */
 #define IXGBE_FCOE_DDP_MAX	512	/* 9 bits xid */
+#define IXGBE_FCOE_DDP_MAX_X550	2048	/* 11 bits xid */
 
 /* Default user priority to use for FCoE */
 #define IXGBE_FCOE_DEFUP	3
@@ -80,13 +81,13 @@ struct ixgbe_fcoe {
 	struct ixgbe_fcoe_ddp_pool __percpu *ddp_pool;
 	atomic_t refcnt;
 	spinlock_t lock;
-	struct ixgbe_fcoe_ddp ddp[IXGBE_FCOE_DDP_MAX];
+	struct ixgbe_fcoe_ddp ddp[IXGBE_FCOE_DDP_MAX_X550];
 	void *extra_ddp_buffer;
 	dma_addr_t extra_ddp_buffer_dma;
 	unsigned long mode;
 	u8 up;
 	u8 up_set;
 };
-#endif /* IXGBE_FCOE */
+#endif /* CONFIG_FCOE */
 
 #endif /* _IXGBE_FCOE_H */

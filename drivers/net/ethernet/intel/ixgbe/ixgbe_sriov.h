@@ -72,5 +72,6 @@ void ixgbe_dump_registers(struct ixgbe_adapter *adapter);
  */
 #define IXGBE_DEV_ID_82599_VF			0x10ED
 #define IXGBE_DEV_ID_X540_VF			0x1515
+#define IXGBE_DEV_ID_X550_VF			0x1565
 #endif /* _IXGBE_SRIOV_H_ */
 

@@ -62,7 +62,7 @@ bool ixgbe_thermal_present(struct ixgbe_adapter *adapter)
 	if (adapter == NULL)
 		return false;
 	status = ixgbe_init_thermal_sensor_thresh_generic(&(adapter->hw));
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		return false;
 
 	return true;
@@ -745,7 +745,7 @@ static int ixgbe_therm_temp(char *page, char __always_unused **start,
 		return snprintf(page, count, "error: no therm_data\n");
 
 	status = ixgbe_get_thermal_sensor_data_generic(therm_data->hw);
-	if (status != 0)
+	if (status != IXGBE_SUCCESS)
 		snprintf(page, count, "error: status %d returned\n", status);
 
 	return snprintf(page, count, "%d\n", therm_data->sensor_data->temp);

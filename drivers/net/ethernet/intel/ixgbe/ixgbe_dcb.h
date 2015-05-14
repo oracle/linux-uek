@@ -25,7 +25,6 @@
 #ifndef _IXGBE_DCB_H_
 #define _IXGBE_DCB_H_
 
-
 #include "ixgbe_type.h"
 
 /* DCB defines */
