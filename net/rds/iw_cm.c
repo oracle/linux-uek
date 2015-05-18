@@ -121,7 +121,7 @@ static void rds_iw_cm_fill_conn_param(struct rds_connection *conn,
 		dp->dp_protocol_major = RDS_PROTOCOL_MAJOR(protocol_version);
 		dp->dp_protocol_minor = RDS_PROTOCOL_MINOR(protocol_version);
 		dp->dp_protocol_minor_mask = cpu_to_be16(RDS_IW_SUPPORTED_PROTOCOLS);
-		dp->dp_ack_seq = rds_iw_piggyb_ack(ic);
+		dp->dp_ack_seq = cpu_to_be64(rds_iw_piggyb_ack(ic));
 
 		/* Advertise flow control */
 		if (ic->i_flowctl) {
