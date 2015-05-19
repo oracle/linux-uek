@@ -79,7 +79,7 @@ EXPORT_SYMBOL(dtrace_os_exit);
 void dtrace_psinfo_alloc(struct task_struct *tsk)
 {
 	dtrace_psinfo_t		*psinfo;
-	struct mm_struct	*mm;
+	struct mm_struct	*mm = NULL;
 
 	if (likely(tsk->dtrace_psinfo)) {
 		put_psinfo(tsk);
@@ -118,7 +118,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		psinfo->argc = 0;
 		for (p = (char *)mm->arg_start; p < (char *)mm->arg_end;
 		     psinfo->argc++) {
-			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
 
 			if (!l)
 				break;
@@ -142,7 +142,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (i = 0, p = (char *)mm->arg_start; i < len; i++) {
 			psinfo->argv[i] = p;
-			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
 		}
 		psinfo->argv[len] = NULL;
 
@@ -151,7 +151,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (p = (char *)mm->env_start; p < (char *)mm->env_end;
 		     envc++) {
-			size_t	l = strnlen(p, MAX_ARG_STRLEN);
+			size_t	l = strnlen_user(p, MAX_ARG_STRLEN);
 
 			if (!l)
 				break;
@@ -175,7 +175,7 @@ void dtrace_psinfo_alloc(struct task_struct *tsk)
 		 */
 		for (i = 0, p = (char *)mm->env_start; i < len; i++) {
 			psinfo->envp[i] = p;
-			p += strnlen(p, MAX_ARG_STRLEN) + 1;
+			p += strnlen_user(p, MAX_ARG_STRLEN) + 1;
 		}
 		psinfo->envp[len] = NULL;
 
