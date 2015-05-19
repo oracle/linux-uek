@@ -3228,7 +3228,9 @@ find_idlest_group(struct sched_domain *sd, struct task_struct *p,
 		}
 
 		/* Adjust by relative CPU power of the group */
-		avg_load = (avg_load * SCHED_POWER_SCALE) / group->sgp->power;
+		avg_load = (avg_load * SCHED_POWER_SCALE);
+		if (group->sgp->power)
+			avg_load /= group->sgp->power;
 
 		if (local_group) {
 			this_load = avg_load;
@@ -4500,7 +4502,9 @@ static inline void update_sg_lb_stats(struct lb_env *env,
 	}
 
 	/* Adjust by relative CPU power of the group */
-	sgs->avg_load = (sgs->group_load*SCHED_POWER_SCALE) / group->sgp->power;
+	sgs->avg_load = (sgs->group_load * SCHED_POWER_SCALE);
+	if (group->sgp->power)
+		sgs->avg_load /= group->sgp->power;
 
 	/*
 	 * Consider the group unbalanced when the imbalance is larger
@@ -4706,7 +4710,8 @@ void fix_small_imbalance(struct lb_env *env, struct sd_lb_stats *sds)
 
 	scaled_busy_load_per_task = sds->busiest_load_per_task
 					 * SCHED_POWER_SCALE;
-	scaled_busy_load_per_task /= sds->busiest->sgp->power;
+	if (sds->busiest->sgp->power)
+		scaled_busy_load_per_task /= sds->busiest->sgp->power;
 
 	if (sds->max_load - sds->this_load + scaled_busy_load_per_task >=
 			(scaled_busy_load_per_task * imbn)) {
@@ -4785,7 +4790,8 @@ static inline void calculate_imbalance(struct lb_env *env, struct sd_lb_stats *s
 
 		load_above_capacity *= (SCHED_LOAD_SCALE * SCHED_POWER_SCALE);
 
-		load_above_capacity /= sds->busiest->sgp->power;
+		if (sds->busiest->sgp->power)
+			load_above_capacity /= sds->busiest->sgp->power;
 	}
 
 	/*
@@ -4865,7 +4871,9 @@ find_busiest_group(struct lb_env *env, int *balance)
 	if (!sds.busiest || sds.busiest_nr_running == 0)
 		goto out_balanced;
 
-	sds.avg_load = (SCHED_POWER_SCALE * sds.total_load) / sds.total_pwr;
+	sds.avg_load = (SCHED_POWER_SCALE * sds.total_load);
+	if (sds.total_pwr)
+		sds.avg_load /= sds.total_pwr;
 
 	/*
 	 * If the busiest group is imbalanced the below checks don't
