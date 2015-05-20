@@ -75,12 +75,12 @@ void port_fip_discover_restart(struct work_struct *work)
 	vnic_dbg_mark();
 	mutex_lock(&port->start_stop_lock);
 	vnic_dbg_mark();
+	mutex_lock(&port->mlock);
 
 	/* If force restart - skip test */
 	if (port->discover_restart_task_data == DISCOVER_RESTART_FORCE)
 		goto flush;
 
-	mutex_lock(&port->mlock);
 	if (vnic_port_query(port))
 		vnic_warn(port->name, "vnic_port_query failed\n");
 
@@ -102,10 +102,12 @@ void port_fip_discover_restart(struct work_struct *work)
 		login->pkey_index = new_index;
 	}
 
-	vnic_dbg(port->name, "Flush %sneeded\n", flush_needed ? "" : "is not ");
+	vnic_info("Flush %sneeded\n", flush_needed ? "" : "is not ");
 
-	if (!flush_needed)
+	if (!flush_needed) {
+		mutex_unlock(&port->mlock);
 		goto out;
+	}
 
 flush:
 	vnic_dbg(port->name, "Flushing\n");
