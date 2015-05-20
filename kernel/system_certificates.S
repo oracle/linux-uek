@@ -16,5 +16,4 @@
 
 GLOBAL(system_certificate_list)
 	.incbin "kernel/x509_certificate_list"
-	.incbin "ksplice_signing_key.x509"
 GLOBAL(system_certificate_list_end)
