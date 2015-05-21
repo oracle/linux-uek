@@ -602,6 +602,7 @@ struct lpfc_sli4_hba {
 	struct lpfc_iov iov;
 	spinlock_t abts_scsi_buf_list_lock; /* list of aborted SCSI IOs */
 	spinlock_t abts_sgl_list_lock; /* list of aborted els IOs */
+	uint32_t physical_port;
 
 	/* CPU to vector mapping information */
 	struct lpfc_vector_map_info *cpu_map;

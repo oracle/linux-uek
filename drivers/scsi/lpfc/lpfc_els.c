@@ -4589,16 +4589,16 @@ lpfc_els_disc_plogi(struct lpfc_vport *vport)
 		if (!NLP_CHK_NODE_ACT(ndlp))
 			continue;
 		if (ndlp->nlp_state == NLP_STE_NPR_NODE &&
-		    (ndlp->nlp_flag & NLP_NPR_2B_DISC) != 0 &&
-		    (ndlp->nlp_flag & NLP_DELAY_TMO) == 0 &&
-		    (ndlp->nlp_flag & NLP_NPR_ADISC) == 0) {
+				(ndlp->nlp_flag & NLP_NPR_2B_DISC) != 0 &&
+				(ndlp->nlp_flag & NLP_DELAY_TMO) == 0 &&
+				(ndlp->nlp_flag & NLP_NPR_ADISC) == 0) {
 			ndlp->nlp_prev_state = ndlp->nlp_state;
 			lpfc_nlp_set_state(vport, ndlp, NLP_STE_PLOGI_ISSUE);
 			lpfc_issue_els_plogi(vport, ndlp->nlp_DID, 0);
 			sentplogi++;
 			vport->num_disc_nodes++;
 			if (vport->num_disc_nodes >=
-			    vport->cfg_discovery_threads) {
+					vport->cfg_discovery_threads) {
 				spin_lock_irq(shost->host_lock);
 				vport->fc_flag |= FC_NLP_MORE;
 				spin_unlock_irq(shost->host_lock);

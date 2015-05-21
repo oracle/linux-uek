@@ -559,6 +559,7 @@ struct fc_vft_header {
 #define ELS_CMD_SCR       0x62000000
 #define ELS_CMD_RNID      0x78000000
 #define ELS_CMD_LIRR      0x7A000000
+#define ELS_CMD_LCB	  0x81000000
 #else	/*  __LITTLE_ENDIAN_BITFIELD */
 #define ELS_CMD_MASK      0xffff
 #define ELS_RSP_MASK      0xff
@@ -597,6 +598,7 @@ struct fc_vft_header {
 #define ELS_CMD_SCR       0x62
 #define ELS_CMD_RNID      0x78
 #define ELS_CMD_LIRR      0x7A
+#define ELS_CMD_LCB	  0x81
 #endif
 
 /*
