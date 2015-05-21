@@ -1176,7 +1176,6 @@ static void asm_end_ioc(struct asm_request *r, unsigned int bytes_done,
 		case -EBADE:
 		case -ENODEV:
 			r->r_error = ASM_ERR_NODEV;
-			r->r_status |= ASM_LOCAL_ERROR;
 			break;
 
 		case -ENOMEM:
