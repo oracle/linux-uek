@@ -32,7 +32,7 @@ __init bool sysfb_parse_mode(const struct screen_info *si,
 	unsigned int i;
 
 	type = si->orig_video_isVGA;
-	if (type != VIDEO_TYPE_VLFB && type != VIDEO_TYPE_EFI)
+	if (type != VIDEO_TYPE_VLFB)
 		return false;
 
 	/*
