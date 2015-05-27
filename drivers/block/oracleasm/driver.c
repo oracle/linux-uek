@@ -1357,7 +1357,8 @@ static int asm_maybe_wait_io(struct file *file,
 		remove_wait_queue(&afi->f_wait, &wait);
 		remove_wait_queue(&to->wait, &to_wait);
 
-		return ret;
+		if (ret)
+			return ret;
 	}
 
 	ret = 0;
