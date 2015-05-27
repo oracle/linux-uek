@@ -949,17 +949,18 @@ static int wait_noreap_copyout(struct wait_opts *wo, struct task_struct *p,
 	put_task_struct(p);
 	infop = wo->wo_info;
 	if (infop) {
-		int put_user_retval;
-
-		put_user_retval = put_user(SIGCHLD, &infop->si_signo);
-		put_user_retval |= put_user(0, &infop->si_errno);
-		put_user_retval |= put_user((short)why, &infop->si_code);
-		put_user_retval |= put_user(pid, &infop->si_pid);
-		put_user_retval |= put_user(uid, &infop->si_uid);
-		put_user_retval |= put_user(status, &infop->si_status);
-
-		if (put_user_retval != 0)
-			retval = put_user_retval;
+		if (!retval)
+			retval = put_user(SIGCHLD, &infop->si_signo);
+		if (!retval)
+			retval = put_user(0, &infop->si_errno);
+		if (!retval)
+			retval = put_user((short)why, &infop->si_code);
+		if (!retval)
+			retval = put_user(pid, &infop->si_pid);
+		if (!retval)
+			retval = put_user(uid, &infop->si_uid);
+		if (!retval)
+			retval = put_user(status, &infop->si_status);
 	}
 	if (!retval)
 		retval = pid;
@@ -1521,11 +1522,9 @@ end:
 	return retval;
 }
 
-long do_waitid(int which, pid_t upid,
-	       struct siginfo __user *infop, int options,
-	       struct rusage __user *ru)
+SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
+		infop, int, options, struct rusage __user *, ru)
 {
-
 	struct wait_opts wo;
 	struct pid *pid = NULL;
 	enum pid_type type;
@@ -1564,54 +1563,45 @@ long do_waitid(int which, pid_t upid,
 	wo.wo_stat	= NULL;
 	wo.wo_rusage	= ru;
 	ret = do_wait(&wo);
-	put_pid(pid);
-
-	return ret;
-}
-
-SYSCALL_DEFINE5(waitid, int, which, pid_t, upid, struct siginfo __user *,
-		infop, int, options, struct rusage __user *, ru)
-{
-	long ret;
-
-	if (infop && !access_ok (VERIFY_WRITE, infop, sizeof(siginfo_t)))
-		return -EFAULT;
-
-	ret = do_waitid(which, upid, infop, options, ru);
 
 	if (ret > 0) {
 		ret = 0;
 	} else if (infop) {
-		int put_user_ret;
-
 		/*
 		 * For a WNOHANG return, clear out all the fields
 		 * we would set so the user can easily tell the
 		 * difference.
 		 */
-		put_user_ret = __put_user(0, &infop->si_signo);
-		put_user_ret |= __put_user(0, &infop->si_errno);
-		put_user_ret |= __put_user(0, &infop->si_code);
-		put_user_ret |= __put_user(0, &infop->si_pid);
-		put_user_ret |= __put_user(0, &infop->si_uid);
-		put_user_ret |= __put_user(0, &infop->si_status);
-
-		if (put_user_ret != 0)
-			ret = put_user_ret;
+		if (!ret)
+			ret = put_user(0, &infop->si_signo);
+		if (!ret)
+			ret = put_user(0, &infop->si_errno);
+		if (!ret)
+			ret = put_user(0, &infop->si_code);
+		if (!ret)
+			ret = put_user(0, &infop->si_pid);
+		if (!ret)
+			ret = put_user(0, &infop->si_uid);
+		if (!ret)
+			ret = put_user(0, &infop->si_status);
 	}
 
+	put_pid(pid);
 	return ret;
 }
 
-SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
-		int, options, struct rusage __user *, ru)
+long do_wait4(pid_t upid, int __user *stat_addr,
+	      int options, struct rusage __user *ru)
 {
 	struct wait_opts wo;
 	struct pid *pid = NULL;
 	enum pid_type type;
 	long ret;
 
-	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+	/*
+	 * As for wait4(), except that waitfd() additionally needs WNOWAIT.
+	 */
+	if (options & ~(WNOHANG|WNOWAIT|WUNTRACED|WCONTINUED|
 			__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
 
@@ -1636,6 +1626,20 @@ SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
 	wo.wo_rusage	= ru;
 	ret = do_wait(&wo);
 	put_pid(pid);
+
+	return ret;
+}
+
+SYSCALL_DEFINE4(wait4, pid_t, upid, int __user *, stat_addr,
+		int, options, struct rusage __user *, ru)
+{
+	long ret;
+
+	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+			__WNOTHREAD|__WCLONE|__WALL))
+		return -EINVAL;
+
+	ret = do_wait4(upid, stat_addr, options, ru);
 
 	return ret;
 }
