@@ -6,6 +6,7 @@
 #include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -28,7 +29,7 @@ int main (void)
 {
         pid_t die_pid, ptrace_pid;
         int die_fd, ptrace_fd;
-        siginfo_t info;
+        int status;
 	struct pollfd pfd[2];
         int procs_left = 2;
 
@@ -36,7 +37,8 @@ int main (void)
 
         /*
          * Fork off two children, one of which waits for a ptrace().
-         * Both just sleep after that.
+         * Both just sleep after that.  Make sure we can use __WNOTHREAD,
+         * __WALL, and WUNTRACED without getting an -EINVAL.
          */
 
         die_pid = fork();
@@ -50,8 +52,8 @@ int main (void)
                 sleeper();
         }
 
-        die_fd = waitfd(P_PID, die_pid, WEXITED | WSTOPPED, 0);
-        ptrace_fd = waitfd(P_PID, ptrace_pid, WEXITED | WSTOPPED, 0);
+        die_fd = waitfd(P_PID, die_pid, 0, 0);
+        ptrace_fd = waitfd(P_PID, ptrace_pid, __WNOTHREAD | __WALL | WUNTRACED, 0);
 
         if (die_fd < 0 || ptrace_fd < 0) {
                 perror("Cannot waitfd()");
@@ -75,25 +77,30 @@ int main (void)
                         perror ("poll() failed");
 
                 if (pfd[0].revents != 0) {
-                        if ((bytes = read(die_fd, &info, sizeof (siginfo_t))) < sizeof (siginfo_t)) {
+                        if ((bytes = read(die_fd, &status, sizeof (int))) < sizeof (int)) {
                                 fprintf(stderr, "Only read %zi bytes\n", bytes);
                                 exit(1);
                         }
 
-                        printf("die_fd returned code %i, status %i via waitfd read: revents are %x\n", info.si_code, info.si_status, pfd[0].revents);
+                        printf("die_fd returned %i via waitfd read: revents are %x\n", status, pfd[0].revents);
                         pfd[0].fd *= -1;
                         procs_left--;
                 }
 
                 if (pfd[1].revents != 0) {
-                        memset(&info, 0, sizeof (siginfo_t));
-                        waitid(P_PID, ptrace_pid, &info, WEXITED | WSTOPPED | WNOHANG);
-                        if (info.si_pid != ptrace_pid) {
-                                fprintf(stderr, "waitfd said PID %i was ready, but waitid() says it isn't: %i\n",
-                                    ptrace_pid, info.si_pid);
+                        pid_t check_pid;
+                        status = 0;
+                        check_pid = waitpid(ptrace_pid, &status, __WNOTHREAD | __WALL | WUNTRACED | WNOHANG);
+                        if (check_pid < 0) {
+                                fprintf(stderr, "waitpid() failed: %s\n", strerror(errno));
                                 exit(1);
                         }
-                        printf("ptrace_fd returned code %i, status %i via waitid; revents are %x\n", info.si_code, info.si_status, pfd[1].revents);
+                        if (check_pid != ptrace_pid) {
+                                fprintf(stderr, "waitfd() said PID %i was ready, but waitpid() says it isn't: %i\n",
+                                    ptrace_pid, check_pid);
+                                exit(1);
+                        }
+                        printf("ptrace_fd returned status %i via waitpid; revents are %x\n", status, pfd[1].revents);
                         pfd[1].fd *= -1;
                         procs_left--;
                 }
