@@ -18,13 +18,11 @@
 #include <linux/anon_inodes.h>
 #include <linux/syscalls.h>
 
-long do_waitid(int which, pid_t upid,
-	       struct siginfo __user *infop, int options,
-	       struct rusage __user *ru);
+long do_wait4(pid_t upid, int __user *stat_addr,
+	      int options, struct rusage __user *ru);
 
 struct waitfd_ctx {
 	int	options;
-	int	which;
 	pid_t	upid;
 };
 
@@ -42,8 +40,8 @@ static unsigned int waitfd_poll(struct file *file, poll_table *wait)
 	poll_wait_fixed(file, &current->signal->wait_chldexit, wait,
 		POLLIN);
 
-	value = do_waitid(ctx->which, ctx->upid, NULL,
-			   ctx->options | WNOHANG | WNOWAIT, NULL);
+	value = do_wait4(ctx->upid, NULL, ctx->options | WNOHANG | WNOWAIT,
+			 NULL);
 	if (value > 0 || value == -ECHILD)
 		return POLLIN | POLLRDNORM;
 
@@ -51,18 +49,18 @@ static unsigned int waitfd_poll(struct file *file, poll_table *wait)
 }
 
 /*
- * Returns a multiple of the size of a struct siginfo, or a negative
- * error code. The "count" parameter must be at least sizeof(struct siginfo)
+ * Returns a multiple of the size of a stat_addr, or a negative error code. The
+ * "count" parameter must be at least sizeof(int).
  */
 static ssize_t waitfd_read(struct file *file, char __user *buf, size_t count,
 			     loff_t *ppos)
 {
 	struct waitfd_ctx *ctx = file->private_data;
-	struct siginfo __user *info_addr = (struct siginfo *)buf;
+	int __user *stat_addr = (int *)buf;
 	int flags = ctx->options;
 	ssize_t ret, total = 0;
 
-	count /= sizeof(struct siginfo);
+	count /= sizeof(int);
 	if (!count)
 		return -EINVAL;
 
@@ -70,7 +68,7 @@ static ssize_t waitfd_read(struct file *file, char __user *buf, size_t count,
 		flags |= WNOHANG;
 
 	do {
-		ret = do_waitid(ctx->which, ctx->upid, info_addr, flags, NULL);
+		ret = do_wait4(ctx->upid, stat_addr, flags, NULL);
 		if (ret == 0)
 			ret = -EAGAIN;
 		if (ret == -ECHILD)
@@ -78,8 +76,8 @@ static ssize_t waitfd_read(struct file *file, char __user *buf, size_t count,
 		if (ret <= 0)
 			break;
 
-		info_addr++;
-		total += sizeof(struct siginfo);
+		stat_addr++;
+		total += sizeof(int);
 	} while (--count);
 
 	return total ? total : ret;
@@ -92,17 +90,20 @@ static const struct file_operations waitfd_fops = {
 	.llseek		= noop_llseek,
 };
  
-SYSCALL_DEFINE4(waitfd, int, which, pid_t, upid, int, options, int, flags)
+SYSCALL_DEFINE4(waitfd, int __maybe_unused, which, pid_t, upid, int, options,
+		int __maybe_unused, flags)
 {
 	int ufd;
 	struct waitfd_ctx *ctx;
 
 	/*
-	 * Options validation from do_waitid()
+	 * Options validation from do_wait4(), minus WNOWAIT, which is only used
+	 * by our polling implementation.  If WEXITED or WSTOPPED are provided,
+	 * silently remove them (for backward compatibility with older callers).
 	 */
-	if (options & ~(WNOHANG|WNOWAIT|WEXITED|WSTOPPED|WCONTINUED))
-		return -EINVAL;
-	if (!(options & (WEXITED|WSTOPPED|WCONTINUED)))
+	options &= ~(WEXITED | WSTOPPED);
+	if (options & ~(WNOHANG|WUNTRACED|WCONTINUED|
+			__WNOTHREAD|__WCLONE|__WALL))
 		return -EINVAL;
 
 	ctx = kmalloc(sizeof(*ctx), GFP_KERNEL);
@@ -111,7 +112,6 @@ SYSCALL_DEFINE4(waitfd, int, which, pid_t, upid, int, options, int, flags)
 
 	ctx->options = options;
 	ctx->upid = upid;
-	ctx->which = which;
 
 	ufd = anon_inode_getfd("[waitfd]", &waitfd_fops, ctx,
 			       O_RDWR | flags | ((options & WNOHANG) ?
