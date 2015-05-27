@@ -152,8 +152,8 @@ TRACE_EVENT(ioc,
 		__entry->count		= ioc->rcount_asm_ioc;
 		__entry->status		= ioc->status_asm_ioc;
 		__entry->error		= ioc->error_asm_ioc;
-		__entry->warn		= ioc->warn_asm_ioc ? true : false;
-		__entry->integrity	= ioc->check_asm_ioc;
+		__entry->warn		= ioc->warn_asm_ioc;
+		__entry->integrity	= ioc->check_asm_ioc  ? true : false;
 		__entry->ret		= ret;
 	),
 
