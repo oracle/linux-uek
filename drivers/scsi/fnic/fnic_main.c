@@ -35,6 +35,7 @@
 #include <scsi/scsi_transport.h>
 #include <scsi/scsi_transport_fc.h>
 #include <scsi/scsi_tcq.h>
+#include <scsi/scsi_driver.h>
 #include <scsi/libfc.h>
 #include <scsi/fc_frame.h>
 
@@ -108,6 +109,25 @@ static int fnic_slave_alloc(struct scsi_device *sdev)
 	return 0;
 }
 
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)
+static enum blk_eh_timer_return
+fnic_scsi_timed_out(struct scsi_cmnd *sc)
+{
+	struct scsi_driver *sdrv = NULL;
+	struct scsi_device *sdev = sc->device;
+
+	if (!sdev->sdev_gendev.driver)
+		return BLK_EH_NOT_HANDLED;
+
+	/* set scsi_driver.eh_actio to NULL */
+	sdrv = to_scsi_driver(sdev->sdev_gendev.driver);
+	if (sdrv && sdrv->eh_action)
+		sdrv->eh_action = NULL;
+
+	return BLK_EH_NOT_HANDLED;
+}
+#endif
+
 static struct scsi_host_template fnic_host_template = {
 	.module = THIS_MODULE,
 	.name = DRV_NAME,
@@ -118,6 +138,9 @@ static struct scsi_host_template fnic_host_template = {
 	.slave_alloc = fnic_slave_alloc,
 	.change_queue_depth = fc_change_queue_depth,
 	.change_queue_type = fc_change_queue_type,
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(3, 4, 0)
+	.eh_timed_out = fnic_scsi_timed_out,
+#endif
 	.this_id = -1,
 	.cmd_per_lun = 3,
 	.can_queue = FNIC_DFLT_IO_REQ,
