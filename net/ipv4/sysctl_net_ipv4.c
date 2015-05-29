@@ -876,9 +876,21 @@ static __net_init int ipv4_sysctl_init_net(struct net *net)
 
 	table = ipv4_net_table;
 	if (!net_eq(net, &init_net)) {
-		table = kmemdup(table, sizeof(ipv4_net_table), GFP_KERNEL);
+		int cur;
+		struct ctl_table *tmp;
+
+		table = kmalloc(sizeof(ipv4_net_table) + sizeof(ipv4_table) - 1,
+							GFP_KERNEL);
 		if (table == NULL)
 			goto err_alloc;
+
+		memcpy(table, ipv4_net_table, sizeof(ipv4_net_table));
+		cur = ARRAY_SIZE(ipv4_net_table) - 1;
+		memcpy(table + cur, ipv4_table, sizeof(ipv4_table));
+		for (tmp = ipv4_table; tmp->procname; tmp++) {
+			table[cur].mode = 0444; /* set read-only */
+			cur++;
+		}
 
 		table[0].data =
 			&net->ipv4.sysctl_icmp_echo_ignore_all;
