@@ -1350,27 +1350,29 @@ chmod -R a=rX Documentation
 find Documentation -type d | xargs chmod u+w
 %endif
 
+%define dgst $((grep '^CONFIG_MODULE_SIG_SHA512=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha512\"$' .config >/dev/null && echo sha512) || (grep '^CONFIG_MODULE_SIG_SHA256=y$' .config >/dev/null && grep '^CONFIG_MODULE_SIG_HASH=\"sha256\"$' .config >/dev/null && echo sha256))
+
 %define __modsign_install_post \
   if [ "%{signmodules}" == "1" ]; then \
     if [ "%{with_pae}" != "0" ]; then \
       mv signing_key.priv.sign.PAE signing_key.priv \
       mv signing_key.x509.sign.PAE signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ \
+      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAE/ %{dgst} \
     fi \
     if [ "%{with_debug}" != "0" ]; then \
       mv signing_key.priv.sign.debug signing_key.priv \
       mv signing_key.x509.sign.debug signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ \
+      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.debug/ %{dgst} \
     fi \
     if [ "%{with_pae_debug}" != "0" ]; then \
       mv signing_key.priv.sign.PAEdebug signing_key.priv \
       mv signing_key.x509.sign.PAEdebug signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ \
+      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}.PAEdebug/ %{dgst} \
     fi \
     if [ "%{with_up}" != "0" ]; then \
       mv signing_key.priv.sign signing_key.priv \
       mv signing_key.x509.sign signing_key.x509 \
-      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ \
+      %{modsign_cmd} $RPM_BUILD_ROOT/lib/modules/%{KVERREL}/ %{dgst} \
     fi \
   fi \
 %{nil}

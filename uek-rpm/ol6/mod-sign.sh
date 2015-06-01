@@ -10,6 +10,7 @@
 # same commands for those modules.
 
 moddir=$1
+dgst=$2
 
 modules=`find $moddir -name *.ko`
 
@@ -21,7 +22,7 @@ do
     dir=`dirname $mod`
     file=`basename $mod`
 
-    ./scripts/sign-file sha256 ${MODSECKEY} ${MODPUBKEY} ${dir}/${file} \
+    ./scripts/sign-file ${dgst} ${MODSECKEY} ${MODPUBKEY} ${dir}/${file} \
        ${dir}/${file}.signed
     mv ${dir}/${file}.signed ${dir}/${file}
     rm -f ${dir}/${file}.{sig,dig}
