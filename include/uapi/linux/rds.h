@@ -35,7 +35,13 @@
 #define _LINUX_RDS_H
 
 #include <linux/types.h>
+/* XXX <net/sock.h> was included as part of NETFILTER support (commit f13bbf62)
+ * but <net/sock.h> is not exported to uapi, although <linux/rds.h> is
+ * (in theory). Is <net/sock.h> needed for user-apps that use netfilter?
+ */
+#ifdef __KERNEL__
 #include <net/sock.h>
+#endif
 
 /* These sparse annotated types shouldn't be in any user
  * visible header file. We should clean this up rather
@@ -48,6 +54,7 @@
 
 #define RDS_IB_ABI_VERSION		0x301
 
+#define	SOL_RDS				276
 /*
  * setsockopt/getsockopt for SOL_RDS
  */
@@ -59,6 +66,14 @@
 #define RDS_CONG_MONITOR		6
 #define RDS_GET_MR_FOR_DEST		7
 #define RDS_CONN_RESET                  8
+#define SO_RDS_TRANSPORT		9
+
+/* supported values for SO_RDS_TRANSPORT */
+#define	RDS_TRANS_IB	0
+#define	RDS_TRANS_IWARP	1
+#define	RDS_TRANS_TCP	2
+#define	RDS_TRANS_COUNT	3
+#define	RDS_TRANS_NONE	(~0)
 
 /*
  * ioctl commands for SOL_RDS
