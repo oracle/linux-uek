@@ -20,7 +20,7 @@
 const char		*sdt_prefix = "__dtrace_probe_";
 
 static int sdt_probe_set(sdt_probedesc_t *sdp, char *name, char *func,
-			 uintptr_t addr, sdt_instr_t **paddr)
+			 uintptr_t addr, asm_instr_t **paddr)
 {
 	if ((sdp->sdpd_name = kstrdup(name, GFP_KERNEL)) == NULL) {
 		kfree(sdp);
@@ -35,7 +35,7 @@ static int sdt_probe_set(sdt_probedesc_t *sdp, char *name, char *func,
 
 	sdp->sdpd_offset = addr;
 
-	*paddr = (sdt_instr_t *)addr;
+	*paddr = (asm_instr_t *)addr;
 
 	return 0;
 }
@@ -51,7 +51,7 @@ void dtrace_sdt_register(struct module *mp)
 				(dtrace_sdt_probeinfo_t *)&dtrace_sdt_probes;
 	void			*nextpi;
 	sdt_probedesc_t		*sdps;
-	sdt_instr_t		**addrs;
+	asm_instr_t		**addrs;
 
 	if (mp == NULL) {
 		pr_warning("%s: no module provided - nothing registered\n",
@@ -83,8 +83,8 @@ void dtrace_sdt_register(struct module *mp)
 	 * Create a list of addresses (SDT probe locations) that need to be
 	 * patched with a NOP instruction (or instruction sequence).
 	 */
-	addrs = (sdt_instr_t **)vmalloc(dtrace_sdt_nprobes *
-					sizeof(sdt_instr_t *));
+	addrs = (asm_instr_t **)vmalloc(dtrace_sdt_nprobes *
+					sizeof(asm_instr_t *));
 	if (addrs == NULL) {
 		pr_warning("%s: cannot allocate SDT probe address list\n",
 			   __func__);
@@ -131,7 +131,7 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 	struct module		*mp = args;
 	int			i, cnt;
 	sdt_probedesc_t		*sdp;
-	sdt_instr_t		**addrs;
+	asm_instr_t		**addrs;
 
 	/*
 	 * We only need to capture modules in the COMING state, we need a valid
@@ -149,8 +149,8 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 	 * Create a list of addresses (SDT probe locations) that need to be
 	 * patched with a NOP instruction (or instruction sequence).
 	 */
-	addrs = (sdt_instr_t **)vmalloc(mp->sdt_probec *
-					sizeof(sdt_instr_t *));
+	addrs = (asm_instr_t **)vmalloc(mp->sdt_probec *
+					sizeof(asm_instr_t *));
 	if (addrs == NULL) {
 		pr_warning("%s: cannot allocate SDT probe address list (%s)\n",
 			   __func__, mp->name);
@@ -172,7 +172,7 @@ static int dtrace_mod_notifier(struct notifier_block *nb, unsigned long val,
 			continue;
 		}
 
-		addrs[cnt++] = (sdt_instr_t *)sdp->sdpd_offset;
+		addrs[cnt++] = (asm_instr_t *)sdp->sdpd_offset;
 	}
 
 	dtrace_sdt_nop_multi(addrs, cnt);
