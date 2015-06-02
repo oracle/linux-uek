@@ -14,7 +14,7 @@
 #include <linux/vmalloc.h>
 #include <asm/nmi.h>
 #include <asm/nops.h>
-#include <asm/dtrace_sdt.h>
+#include <asm/dtrace_arch.h>
 
 #define	SDT_NOP_SIZE	5
 
@@ -24,10 +24,10 @@ uint8_t			nops[SDT_NOP_SIZE];
  * run before SMP is initialized in order to avoid SMP problems with patching
  * code that might be accessed on another CPU.
  */
-void __init_or_module dtrace_sdt_nop_multi(sdt_instr_t **addrs, int cnt)
+void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs, int cnt)
 {
 	int			i;
-	sdt_instr_t		*addr;
+	asm_instr_t		*addr;
 	unsigned long		flags;
 
 	stop_nmi();

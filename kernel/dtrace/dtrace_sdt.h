@@ -3,7 +3,7 @@
 #ifndef _DTRACE_SDT_H_
 #define	_DTRACE_SDT_H_
 
-#include <asm/dtrace_sdt.h>
+#include <asm/dtrace_arch.h>
 
 /*
  * SDT probe called relocation information for the core kernel, provided by
@@ -26,7 +26,7 @@ extern void dtrace_sdt_exit(void);
 /*
  * Functions to be defined in arch/<arch>/kernel/dtrace_sdt.c
  */
-extern void __init_or_module dtrace_sdt_nop_multi(sdt_instr_t **, int);
+extern void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **, int);
 extern void dtrace_sdt_init_arch(void);
 
 #endif	/* _DTRACE_SDT_H_ */

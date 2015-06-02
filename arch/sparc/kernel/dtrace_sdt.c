@@ -13,12 +13,12 @@
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
 #include <asm/cacheflush.h>
-#include <asm/dtrace_sdt.h>
+#include <asm/dtrace_arch.h>
 
-void __init_or_module dtrace_sdt_nop_multi(sdt_instr_t **addrs, int cnt)
+void __init_or_module dtrace_sdt_nop_multi(asm_instr_t **addrs, int cnt)
 {
 	int		i;
-	sdt_instr_t	*addr;
+	asm_instr_t	*addr;
 
 	for (i = 0; i < cnt; i++) {
 		addr = addrs[i];
