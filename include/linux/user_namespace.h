@@ -32,6 +32,14 @@ struct user_namespace {
 	unsigned int		proc_inum;
 	bool			may_mount_sysfs;
 	bool			may_mount_proc;
+
+	/* Register of per-UID persistent keyrings for this namespace */
+#ifdef CONFIG_PERSISTENT_KEYRINGS
+#ifndef __GENKSYMS__
+	struct key		*persistent_keyring_register;
+	struct rw_semaphore	persistent_keyring_register_sem;
+#endif
+#endif
 };
 
 extern struct user_namespace init_user_ns;
