@@ -15,6 +15,7 @@
 #include <linux/ctype.h>
 #include <linux/mm.h>
 
+#include <asm/dtrace_arch.h>
 #include <asm/processor.h>
 #include <asm/spitfire.h>
 #include <asm/cacheflush.h>
@@ -225,7 +226,7 @@ int module_finalize(const Elf_Ehdr *hdr,
 
 #ifdef CONFIG_DTRACE
 	me->pdata = module_alloc(me->sdt_probec * SDT_TRAMP_SIZE *
-				 sizeof(sdt_instr_t));
+				 sizeof(asm_instr_t));
 #endif
 
 	return 0;
@@ -234,7 +235,7 @@ int module_finalize(const Elf_Ehdr *hdr,
 #ifdef CONFIG_DTRACE
 void module_arch_cleanup(struct module *me)
 {
-	module_free(me->pdata);
+	module_memfree(me->pdata);
 }
 #endif
 #endif /* CONFIG_SPARC64 */
