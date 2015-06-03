@@ -720,7 +720,7 @@ static int _ext4_get_block(struct inode *inode, sector_t iblock,
 		ext4_io_end_t *io_end = ext4_inode_aio(inode);
 
 		map_bh(bh, inode->i_sb, map.m_pblk);
-		ext4_update_bh_state(bh, map.m_flags);
+		bh->b_state = (bh->b_state & ~EXT4_MAP_FLAGS) | map.m_flags;
 		if (IS_DAX(inode) && buffer_unwritten(bh)) {
 			/*
 			 * dgc: I suspect unwritten conversion on ext4+DAX is
