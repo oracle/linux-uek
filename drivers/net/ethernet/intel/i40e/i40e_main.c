@@ -1273,7 +1273,7 @@ static int i40e_rm_default_mac_filter(struct i40e_vsi *vsi, u8 *macaddr)
 {
 	struct i40e_aqc_remove_macvlan_element_data element;
 	struct i40e_pf *pf = vsi->back;
-	i40e_status aq_ret;
+	i40e_status ret;
 
 	/* Only appropriate for the PF main VSI */
 	if (vsi->type != I40E_VSI_MAIN)
@@ -1284,8 +1284,8 @@ static int i40e_rm_default_mac_filter(struct i40e_vsi *vsi, u8 *macaddr)
 	element.vlan_tag = 0;
 	element.flags = I40E_AQC_MACVLAN_DEL_PERFECT_MATCH |
 			I40E_AQC_MACVLAN_DEL_IGNORE_VLAN;
-	aq_ret = i40e_aq_remove_macvlan(&pf->hw, vsi->seid, &element, 1, NULL);
-	if (aq_ret)
+	ret = i40e_aq_remove_macvlan(&pf->hw, vsi->seid, &element, 1, NULL);
+	if (ret)
 		return -ENOENT;
 
 	return 0;
@@ -1729,10 +1729,11 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 	bool add_happened = false;
 	int filter_list_len = 0;
 	u32 changed_flags = 0;
-	i40e_status aq_ret = 0;
+	i40e_status ret = 0;
 	struct i40e_pf *pf;
 	int num_add = 0;
 	int num_del = 0;
+	int aq_err = 0;
 	u16 cmd_flags;
 
 	/* empty array typed pointers, kcalloc later */
@@ -1784,31 +1785,31 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 
 			/* flush a full buffer */
 			if (num_del == filter_list_len) {
-				aq_ret = i40e_aq_remove_macvlan(&pf->hw,
-					    vsi->seid, del_list, num_del,
-					    NULL);
+				ret = i40e_aq_remove_macvlan(&pf->hw,
+						  vsi->seid, del_list, num_del,
+						  NULL);
+				aq_err = pf->hw.aq.asq_last_status;
 				num_del = 0;
 				memset(del_list, 0, sizeof(*del_list));
 
-				if (aq_ret &&
-				    pf->hw.aq.asq_last_status !=
-							      I40E_AQ_RC_ENOENT)
+				if (ret && aq_err != I40E_AQ_RC_ENOENT)
 					dev_info(&pf->pdev->dev,
-						 "ignoring delete macvlan error, err %d, aq_err %d while flushing a full buffer\n",
-						 aq_ret,
-						 pf->hw.aq.asq_last_status);
+						 "ignoring delete macvlan error, err %s, aq_err %s while flushing a full buffer\n",
+						 i40e_stat_str(&pf->hw, ret),
+						 i40e_aq_str(&pf->hw, aq_err));
 			}
 		}
 		if (num_del) {
-			aq_ret = i40e_aq_remove_macvlan(&pf->hw, vsi->seid,
+			ret = i40e_aq_remove_macvlan(&pf->hw, vsi->seid,
 						     del_list, num_del, NULL);
+			aq_err = pf->hw.aq.asq_last_status;
 			num_del = 0;
 
-			if (aq_ret &&
-			    pf->hw.aq.asq_last_status != I40E_AQ_RC_ENOENT)
+			if (ret && aq_err != I40E_AQ_RC_ENOENT)
 				dev_info(&pf->pdev->dev,
-					 "ignoring delete macvlan error, err %d, aq_err %d\n",
-					 aq_ret, pf->hw.aq.asq_last_status);
+					 "ignoring delete macvlan error, err %s aq_err %s\n",
+					 i40e_stat_str(&pf->hw, ret),
+					 i40e_aq_str(&pf->hw, aq_err));
 		}
 
 		kfree(del_list);
@@ -1846,29 +1847,31 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 
 			/* flush a full buffer */
 			if (num_add == filter_list_len) {
-				aq_ret = i40e_aq_add_macvlan(&pf->hw, vsi->seid,
-							     add_list, num_add,
-							     NULL);
+				ret = i40e_aq_add_macvlan(&pf->hw, vsi->seid,
+							  add_list, num_add,
+							  NULL);
+				aq_err = pf->hw.aq.asq_last_status;
 				num_add = 0;
 
-				if (aq_ret)
+				if (ret)
 					break;
 				memset(add_list, 0, sizeof(*add_list));
 			}
 		}
 		if (num_add) {
-			aq_ret = i40e_aq_add_macvlan(&pf->hw, vsi->seid,
-						     add_list, num_add, NULL);
+			ret = i40e_aq_add_macvlan(&pf->hw, vsi->seid,
+						  add_list, num_add, NULL);
+			aq_err = pf->hw.aq.asq_last_status;
 			num_add = 0;
 		}
 		kfree(add_list);
 		add_list = NULL;
 
-		if (add_happened && aq_ret &&
-		    pf->hw.aq.asq_last_status != I40E_AQ_RC_EINVAL) {
+		if (add_happened && ret && aq_err != I40E_AQ_RC_EINVAL) {
 			dev_info(&pf->pdev->dev,
-				 "add filter failed, err %d, aq_err %d\n",
-				 aq_ret, pf->hw.aq.asq_last_status);
+				 "add filter failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw, aq_err));
 			if ((pf->hw.aq.asq_last_status == I40E_AQ_RC_ENOSPC) &&
 			    !test_bit(__I40E_FILTER_OVERFLOW_PROMISC,
 				      &vsi->state)) {
@@ -1884,34 +1887,40 @@ int i40e_sync_vsi_filters(struct i40e_vsi *vsi)
 	if (changed_flags & IFF_ALLMULTI) {
 		bool cur_multipromisc;
 		cur_multipromisc = !!(vsi->current_netdev_flags & IFF_ALLMULTI);
-		aq_ret = i40e_aq_set_vsi_multicast_promiscuous(&vsi->back->hw,
-							       vsi->seid,
-							       cur_multipromisc,
-							       NULL);
-		if (aq_ret)
+		ret = i40e_aq_set_vsi_multicast_promiscuous(&vsi->back->hw,
+							    vsi->seid,
+							    cur_multipromisc,
+							    NULL);
+		if (ret)
 			dev_info(&pf->pdev->dev,
-				 "set multi promisc failed, err %d, aq_err %d\n",
-				 aq_ret, pf->hw.aq.asq_last_status);
+				 "set multi promisc failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 	}
 	if ((changed_flags & IFF_PROMISC) || promisc_forced_on) {
 		bool cur_promisc;
 		cur_promisc = (!!(vsi->current_netdev_flags & IFF_PROMISC) ||
 			       test_bit(__I40E_FILTER_OVERFLOW_PROMISC,
 					&vsi->state));
-		aq_ret = i40e_aq_set_vsi_unicast_promiscuous(&vsi->back->hw,
-							     vsi->seid,
-							     cur_promisc, NULL);
-		if (aq_ret)
+		ret = i40e_aq_set_vsi_unicast_promiscuous(&vsi->back->hw,
+							  vsi->seid,
+							  cur_promisc, NULL);
+		if (ret)
 			dev_info(&pf->pdev->dev,
-				 "set uni promisc failed, err %d, aq_err %d\n",
-				 aq_ret, pf->hw.aq.asq_last_status);
-		aq_ret = i40e_aq_set_vsi_broadcast(&vsi->back->hw,
-						   vsi->seid,
-						   cur_promisc, NULL);
-		if (aq_ret)
+				 "set uni promisc failed, err %s, aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
+		ret = i40e_aq_set_vsi_broadcast(&vsi->back->hw,
+						vsi->seid,
+						cur_promisc, NULL);
+		if (ret)
 			dev_info(&pf->pdev->dev,
-				 "set brdcast promisc failed, err %d, aq_err %d\n",
-				 aq_ret, pf->hw.aq.asq_last_status);
+				 "set brdcast promisc failed, err %s, aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 	}
 
 	clear_bit(__I40E_CONFIG_BUSY, &vsi->state);
@@ -2007,8 +2016,10 @@ void i40e_vlan_stripping_enable(struct i40e_vsi *vsi)
 	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
-			 "%s: update vsi failed, aq_err=%d\n",
-			 __func__, vsi->back->hw.aq.asq_last_status);
+			 "update vlan stripping failed, err %s aq_err %s\n",
+			 i40e_stat_str(&vsi->back->hw, ret),
+			 i40e_aq_str(&vsi->back->hw,
+				     vsi->back->hw.aq.asq_last_status));
 	}
 }
 
@@ -2036,8 +2047,10 @@ void i40e_vlan_stripping_disable(struct i40e_vsi *vsi)
 	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
-			 "%s: update vsi failed, aq_err=%d\n",
-			 __func__, vsi->back->hw.aq.asq_last_status);
+			 "update vlan stripping failed, err %s aq_err %s\n",
+			 i40e_stat_str(&vsi->back->hw, ret),
+			 i40e_aq_str(&vsi->back->hw,
+				     vsi->back->hw.aq.asq_last_status));
 	}
 }
 
@@ -2303,7 +2316,7 @@ static void i40e_restore_vlan(struct i40e_vsi *vsi)
 int i40e_vsi_add_pvid(struct i40e_vsi *vsi, u16 vid)
 {
 	struct i40e_vsi_context ctxt;
-	i40e_status aq_ret;
+	i40e_status ret;
 
 	vsi->info.valid_sections = cpu_to_le16(I40E_AQ_VSI_PROP_VLAN_VALID);
 	vsi->info.pvid = cpu_to_le16(vid);
@@ -2313,11 +2326,13 @@ int i40e_vsi_add_pvid(struct i40e_vsi *vsi, u16 vid)
 
 	ctxt.seid = vsi->seid;
 	ctxt.info = vsi->info;
-	aq_ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
+	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
-			 "%s: update vsi failed, aq_err=%d\n",
-			 __func__, vsi->back->hw.aq.asq_last_status);
+			 "add pvid failed, err %s aq_err %s\n",
+			 i40e_stat_str(&vsi->back->hw, ret),
+			 i40e_aq_str(&vsi->back->hw,
+				     vsi->back->hw.aq.asq_last_status));
 		return -ENOENT;
 	}
 
@@ -4101,26 +4116,28 @@ static int i40e_vsi_get_bw_info(struct i40e_vsi *vsi)
 	struct i40e_aqc_query_vsi_bw_config_resp bw_config = {0};
 	struct i40e_pf *pf = vsi->back;
 	struct i40e_hw *hw = &pf->hw;
-	i40e_status aq_ret;
+	i40e_status ret;
 	u32 tc_bw_max;
 	int i;
 
 	/* Get the VSI level BW configuration */
-	aq_ret = i40e_aq_query_vsi_bw_config(hw, vsi->seid, &bw_config, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_query_vsi_bw_config(hw, vsi->seid, &bw_config, NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't get PF vsi bw config, err %d, aq_err %d\n",
-			 aq_ret, pf->hw.aq.asq_last_status);
+			 "couldn't get PF vsi bw config, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return -EINVAL;
 	}
 
 	/* Get the VSI level BW configuration per TC */
-	aq_ret = i40e_aq_query_vsi_ets_sla_config(hw, vsi->seid, &bw_ets_config,
-						  NULL);
-	if (aq_ret) {
+	ret = i40e_aq_query_vsi_ets_sla_config(hw, vsi->seid, &bw_ets_config,
+					       NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't get PF vsi ets bw config, err %d, aq_err %d\n",
-			 aq_ret, pf->hw.aq.asq_last_status);
+			 "couldn't get PF vsi ets bw config, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return -EINVAL;
 	}
 
@@ -4159,16 +4176,16 @@ static int i40e_vsi_configure_bw_alloc(struct i40e_vsi *vsi, u8 enabled_tc,
 				       u8 *bw_share)
 {
 	struct i40e_aqc_configure_vsi_tc_bw_data bw_data;
-	i40e_status aq_ret;
+	i40e_status ret;
 	int i;
 
 	bw_data.tc_valid_bits = enabled_tc;
 	for (i = 0; i < I40E_MAX_TRAFFIC_CLASS; i++)
 		bw_data.tc_bw_credits[i] = bw_share[i];
 
-	aq_ret = i40e_aq_config_vsi_tc_bw(&vsi->back->hw, vsi->seid, &bw_data,
-					  NULL);
-	if (aq_ret) {
+	ret = i40e_aq_config_vsi_tc_bw(&vsi->back->hw, vsi->seid, &bw_data,
+				       NULL);
+	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
 			 "%s: AQ command Config VSI BW allocation per TC failed = %d\n",
 			 __func__, vsi->back->hw.aq.asq_last_status);
@@ -4303,8 +4320,10 @@ static int i40e_vsi_config_tc(struct i40e_vsi *vsi, u8 enabled_tc)
 	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
-			 "update vsi failed, aq_err=%d\n",
-			 vsi->back->hw.aq.asq_last_status);
+			 "Update vsi tc config failed, err %s aq_err %s\n",
+			 i40e_stat_str(&vsi->back->hw, ret),
+			 i40e_aq_str(&vsi->back->hw,
+				     vsi->back->hw.aq.asq_last_status));
 		goto out;
 	}
 	/* update the local VSI info with updated queue map */
@@ -4315,8 +4334,10 @@ static int i40e_vsi_config_tc(struct i40e_vsi *vsi, u8 enabled_tc)
 	ret = i40e_vsi_get_bw_info(vsi);
 	if (ret) {
 		dev_info(&vsi->back->pdev->dev,
-			 "Failed updating vsi bw info, aq_err=%d\n",
-			 vsi->back->hw.aq.asq_last_status);
+			 "Failed updating vsi bw info, err %s aq_err %s\n",
+			 i40e_stat_str(&vsi->back->hw, ret),
+			 i40e_aq_str(&vsi->back->hw,
+				     vsi->back->hw.aq.asq_last_status));
 		goto out;
 	}
 
@@ -5450,27 +5471,29 @@ static void i40e_enable_pf_switch_lb(struct i40e_pf *pf)
 {
 	struct i40e_vsi *vsi = pf->vsi[pf->lan_vsi];
 	struct i40e_vsi_context ctxt;
-	int aq_ret;
+	int ret;
 
 	ctxt.seid = pf->main_vsi_seid;
 	ctxt.pf_num = pf->hw.pf_id;
 	ctxt.vf_num = 0;
-	aq_ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s couldn't get PF vsi config, err %d, aq_err %d\n",
-			 __func__, aq_ret, pf->hw.aq.asq_last_status);
+			 "couldn't get PF vsi config, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return;
 	}
 	ctxt.flags = I40E_AQ_VSI_TYPE_PF;
 	ctxt.info.valid_sections = cpu_to_le16(I40E_AQ_VSI_PROP_SWITCH_VALID);
 	ctxt.info.switch_id |= cpu_to_le16(I40E_AQ_VSI_SW_ID_FLAG_ALLOW_LB);
 
-	aq_ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s: update vsi switch failed, aq_err=%d\n",
-			 __func__, vsi->back->hw.aq.asq_last_status);
+			 "update vsi switch failed, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 	}
 }
 
@@ -5484,27 +5507,29 @@ static void i40e_disable_pf_switch_lb(struct i40e_pf *pf)
 {
 	struct i40e_vsi *vsi = pf->vsi[pf->lan_vsi];
 	struct i40e_vsi_context ctxt;
-	int aq_ret;
+	int ret;
 
 	ctxt.seid = pf->main_vsi_seid;
 	ctxt.pf_num = pf->hw.pf_id;
 	ctxt.vf_num = 0;
-	aq_ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_get_vsi_params(&pf->hw, &ctxt, NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s couldn't get PF vsi config, err %d, aq_err %d\n",
-			 __func__, aq_ret, pf->hw.aq.asq_last_status);
+			 "couldn't get PF vsi config, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return;
 	}
 	ctxt.flags = I40E_AQ_VSI_TYPE_PF;
 	ctxt.info.valid_sections = cpu_to_le16(I40E_AQ_VSI_PROP_SWITCH_VALID);
 	ctxt.info.switch_id &= ~cpu_to_le16(I40E_AQ_VSI_SW_ID_FLAG_ALLOW_LB);
 
-	aq_ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
-	if (aq_ret) {
+	ret = i40e_aq_update_vsi_params(&vsi->back->hw, &ctxt, NULL);
+	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "%s: update vsi switch failed, aq_err=%d\n",
-			 __func__, vsi->back->hw.aq.asq_last_status);
+			 "update vsi switch failed, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 	}
 }
 
@@ -5545,7 +5570,8 @@ static int i40e_reconstitute_veb(struct i40e_veb *veb)
 	ret = i40e_add_vsi(ctl_vsi);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "rebuild of owner VSI failed: %d\n", ret);
+			 "rebuild of veb_idx %d owner VSI failed: %d\n",
+			 veb->idx, ret);
 		goto end_reconstitute;
 	}
 	i40e_vsi_reset_stats(ctl_vsi);
@@ -5618,8 +5644,10 @@ static int i40e_get_capabilities(struct i40e_pf *pf)
 			buf_len = data_size;
 		} else if (pf->hw.aq.asq_last_status != I40E_AQ_RC_OK) {
 			dev_info(&pf->pdev->dev,
-				 "capability discovery failed: aq=%d\n",
-				 pf->hw.aq.asq_last_status);
+				 "capability discovery failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, err),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 			return -ENODEV;
 		}
 	} while (err);
@@ -5841,7 +5869,9 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 	/* rebuild the basics for the AdminQ, HMC, and initial HW switch */
 	ret = i40e_init_adminq(&pf->hw);
 	if (ret) {
-		dev_info(&pf->pdev->dev, "Rebuild AdminQ failed, %d\n", ret);
+		dev_info(&pf->pdev->dev, "Rebuild AdminQ failed, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		goto clear_recovery;
 	}
 
@@ -5851,11 +5881,8 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 
 	i40e_clear_pxe_mode(hw);
 	ret = i40e_get_capabilities(pf);
-	if (ret) {
-		dev_info(&pf->pdev->dev, "i40e_get_capabilities failed, %d\n",
-			 ret);
+	if (ret)
 		goto end_core_reset;
-	}
 
 	ret = i40e_init_lan_hmc(hw, hw->func_caps.num_tx_qp,
 				hw->func_caps.num_rx_qp,
@@ -5882,12 +5909,16 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 				       I40E_AQ_EVENT_LINK_UPDOWN |
 				       I40E_AQ_EVENT_MODULE_QUAL_FAIL, NULL);
 	if (ret)
-		dev_info(&pf->pdev->dev, "set phy mask fail, aq_err %d\n", ret);
+		dev_info(&pf->pdev->dev, "set phy mask fail, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 
 	/* make sure our flow control settings are restored */
 	ret = i40e_set_fc(&pf->hw, &set_fc_aq_fail, true);
 	if (ret)
-		dev_info(&pf->pdev->dev, "set fc fail, aq_err %d\n", ret);
+		dev_info(&pf->pdev->dev, "set fc fail, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 
 	/* Rebuild the VSIs and VEBs that existed before reset.
 	 * They are still in our local switch element arrays, so only
@@ -5946,8 +5977,10 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 	msleep(75);
 	ret = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
 	if (ret) {
-		dev_info(&pf->pdev->dev, "link restart failed, aq_err=%d\n",
-			 pf->hw.aq.asq_last_status);
+	dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));	
 	}
 
 	/* reinit the misc interrupt */
@@ -6990,8 +7023,9 @@ i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf)
 	last_aq_status = pf->hw.aq.asq_last_status;
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "Cannot acquire NVM for read access, err %d: aq_err %d\n",
-			 ret, last_aq_status);
+			 "Cannot acquire NVM for read access, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, last_aq_status));
 		goto bw_commit_out;
 	}
 
@@ -7006,8 +7040,9 @@ i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf)
 	last_aq_status = pf->hw.aq.asq_last_status;
 	i40e_release_nvm(&pf->hw);
 	if (ret) {
-		dev_info(&pf->pdev->dev, "NVM read error, err %d aq_err %d\n",
-			 ret, last_aq_status);
+		dev_info(&pf->pdev->dev, "NVM read error, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, last_aq_status));
 		goto bw_commit_out;
 	}
 
@@ -7019,8 +7054,9 @@ i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf)
 	last_aq_status = pf->hw.aq.asq_last_status;
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "Cannot acquire NVM for write access, err %d: aq_err %d\n",
-			 ret, last_aq_status);
+			 "Cannot acquire NVM for write access, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, last_aq_status));
 		goto bw_commit_out;
 	}
 	/* Write it back out unchanged to initiate update NVM,
@@ -7038,8 +7074,9 @@ i40e_status i40e_commit_npar_bw_setting(struct i40e_pf *pf)
 	i40e_release_nvm(&pf->hw);
 	if (ret)
 		dev_info(&pf->pdev->dev,
-			 "BW settings NOT SAVED, err %d aq_err %d\n",
-			 ret, last_aq_status);
+			 "BW settings NOT SAVED, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, last_aq_status));
 bw_commit_out:
 
 	return ret;
@@ -7418,8 +7455,10 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 		ctxt.flags = I40E_AQ_VSI_TYPE_PF;
 		if (ret) {
 			dev_info(&pf->pdev->dev,
-				 "couldn't get PF vsi config, err %d, aq_err %d\n",
-				 ret, pf->hw.aq.asq_last_status);
+				 "couldn't get PF vsi config, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 			return -ENOENT;
 		}
 		vsi->info = ctxt.info;
@@ -7440,8 +7479,10 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 			ret = i40e_aq_update_vsi_params(hw, &ctxt, NULL);
 			if (ret) {
 				dev_info(&pf->pdev->dev,
-					 "update vsi failed, aq_err=%d\n",
-					 pf->hw.aq.asq_last_status);
+					 "update vsi failed, err %s aq_err %s\n",
+					 i40e_stat_str(&pf->hw, ret),
+					 i40e_aq_str(&pf->hw,
+						    pf->hw.aq.asq_last_status));
 				ret = -ENOENT;
 				goto err;
 			}
@@ -7456,9 +7497,11 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 			ret = i40e_vsi_config_tc(vsi, enabled_tc);
 			if (ret) {
 				dev_info(&pf->pdev->dev,
-					 "failed to configure TCs for main VSI tc_map 0x%08x, err %d, aq_err %d\n",
-					 enabled_tc, ret,
-					 pf->hw.aq.asq_last_status);
+					 "failed to configure TCs for main VSI tc_map 0x%08x, err %s aq_err %s\n",
+					 enabled_tc,
+					 i40e_stat_str(&pf->hw, ret),
+					 i40e_aq_str(&pf->hw,
+						    pf->hw.aq.asq_last_status));
 				ret = -ENOENT;
 			}
 		}
@@ -7537,8 +7580,10 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 		ret = i40e_aq_add_vsi(hw, &ctxt, NULL);
 		if (ret) {
 			dev_info(&vsi->back->pdev->dev,
-				 "add vsi failed, aq_err=%d\n",
-				 vsi->back->hw.aq.asq_last_status);
+				 "add vsi failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 			ret = -ENOENT;
 			goto err;
 		}
@@ -7583,8 +7628,9 @@ static int i40e_add_vsi(struct i40e_vsi *vsi)
 	ret = i40e_vsi_get_bw_info(vsi);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't get vsi bw info, err %d, aq_err %d\n",
-			 ret, pf->hw.aq.asq_last_status);
+			 "couldn't get vsi bw info, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		/* VSI is already added so not tearing that up */
 		ret = 0;
 	}
@@ -7757,7 +7803,7 @@ static struct i40e_vsi *i40e_vsi_reinit_setup(struct i40e_vsi *vsi)
 	ret = i40e_get_lump(pf, pf->qp_pile, vsi->alloc_queue_pairs, vsi->idx);
 	if (ret < 0) {
 		dev_info(&pf->pdev->dev,
-			 "failed to get tracking for %d queues for VSI %d err=%d\n",
+			 "failed to get tracking for %d queues for VSI %d err %d\n",
 			 vsi->alloc_queue_pairs, vsi->seid, ret);
 		goto err_vsi;
 	}
@@ -7975,8 +8021,9 @@ static int i40e_veb_get_bw_info(struct i40e_veb *veb)
 						  &bw_data, NULL);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "query veb bw config failed, aq_err=%d\n",
-			 hw->aq.asq_last_status);
+			 "query veb bw config failed, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, hw->aq.asq_last_status));
 		goto out;
 	}
 
@@ -7984,8 +8031,9 @@ static int i40e_veb_get_bw_info(struct i40e_veb *veb)
 						   &ets_data, NULL);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "query veb bw ets config failed, aq_err=%d\n",
-			 hw->aq.asq_last_status);
+			 "query veb bw ets config failed, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, hw->aq.asq_last_status));
 		goto out;
 	}
 
@@ -8171,36 +8219,40 @@ void i40e_veb_release(struct i40e_veb *veb)
  **/
 static int i40e_add_veb(struct i40e_veb *veb, struct i40e_vsi *vsi)
 {
+	struct i40e_pf *pf = veb->pf;
 	bool is_default = false;
 	bool is_cloud = false;
 	int ret;
 
 	/* get a VEB from the hardware */
-	ret = i40e_aq_add_veb(&veb->pf->hw, veb->uplink_seid, vsi->seid,
+	ret = i40e_aq_add_veb(&pf->hw, veb->uplink_seid, vsi->seid,
 			      veb->enabled_tc, is_default,
 			      is_cloud, &veb->seid, NULL);
 	if (ret) {
-		dev_info(&veb->pf->pdev->dev,
-			 "couldn't add VEB, err %d, aq_err %d\n",
-			 ret, veb->pf->hw.aq.asq_last_status);
+		dev_info(&pf->pdev->dev,
+			 "couldn't add VEB, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return -EPERM;
 	}
 
 	/* get statistics counter */
-	ret = i40e_aq_get_veb_parameters(&veb->pf->hw, veb->seid, NULL, NULL,
+	ret = i40e_aq_get_veb_parameters(&pf->hw, veb->seid, NULL, NULL,
 					 &veb->stats_idx, NULL, NULL, NULL);
 	if (ret) {
-		dev_info(&veb->pf->pdev->dev,
-			 "couldn't get VEB statistics idx, err %d, aq_err %d\n",
-			 ret, veb->pf->hw.aq.asq_last_status);
+		dev_info(&pf->pdev->dev,
+			 "couldn't get VEB statistics idx, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return -EPERM;
 	}
 	ret = i40e_veb_get_bw_info(veb);
 	if (ret) {
-		dev_info(&veb->pf->pdev->dev,
-			 "couldn't get VEB bw info, err %d, aq_err %d\n",
-			 ret, veb->pf->hw.aq.asq_last_status);
-		i40e_aq_delete_element(&veb->pf->hw, veb->seid, NULL);
+		dev_info(&pf->pdev->dev,
+			 "couldn't get VEB bw info, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
+		i40e_aq_delete_element(&pf->hw, veb->seid, NULL);
 		return -ENOENT;
 	}
 
@@ -8406,8 +8458,10 @@ int i40e_fetch_switch_configuration(struct i40e_pf *pf, bool printconfig)
 						&next_seid, NULL);
 		if (ret) {
 			dev_info(&pf->pdev->dev,
-				 "get switch config failed %d aq_err=%x\n",
-				 ret, pf->hw.aq.asq_last_status);
+				 "get switch config failed err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, ret),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 			kfree(aq_buf);
 			return -ENOENT;
 		}
@@ -8448,8 +8502,9 @@ static int i40e_setup_pf_switch(struct i40e_pf *pf, bool reinit)
 	ret = i40e_fetch_switch_configuration(pf, false);
 	if (ret) {
 		dev_info(&pf->pdev->dev,
-			 "couldn't fetch switch config, err %d, aq_err %d\n",
-			 ret, pf->hw.aq.asq_last_status);
+			 "couldn't fetch switch config, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, ret),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 		return ret;
 	}
 	i40e_pf_reset_stats(pf);
@@ -8931,13 +8986,17 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 				       I40E_AQ_EVENT_LINK_UPDOWN |
 				       I40E_AQ_EVENT_MODULE_QUAL_FAIL, NULL);
 	if (err)
-		dev_info(&pf->pdev->dev, "set phy mask fail, aq_err %d\n", err);
+		dev_info(&pf->pdev->dev, "set phy mask fail, err %s aq_err %s\n",
+			 i40e_stat_str(&pf->hw, err),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 
 	msleep(75);
 	err = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
 	if (err) {
-		dev_info(&pf->pdev->dev, "link restart failed, aq_err=%d\n",
-			 pf->hw.aq.asq_last_status);
+		dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
+				 i40e_stat_str(&pf->hw, err),
+				 i40e_aq_str(&pf->hw,
+					     pf->hw.aq.asq_last_status));
 	}
 
 	/* The main driver is (mostly) up and happy. We need to set this state
@@ -9004,8 +9063,10 @@ static int i40e_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	/* get the requested speeds from the fw */
 	err = i40e_aq_get_phy_capabilities(hw, false, false, &abilities, NULL);
 	if (err)
-		dev_info(&pf->pdev->dev, "get phy abilities failed, aq_err %d, advertised speed settings may not be correct\n",
-			 err);
+		dev_info(&pf->pdev->dev,
+			 "get phy capabilities failed, err %s aq_err %s, advertised speed settings may not be correct\n",
+			 i40e_stat_str(&pf->hw, err),
+			 i40e_aq_str(&pf->hw, pf->hw.aq.asq_last_status));
 	pf->hw.phy.link_info.requested_speeds = abilities.link_speed;
 	
 	return 0;

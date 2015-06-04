@@ -149,6 +149,7 @@ enum i40e_state_t {
 	__I40E_BAD_EEPROM,
 	__I40E_FD_FLUSH_REQUESTED,
 	__I40E_RESET_FAILED,
+	__I40E_PORT_TX_SUSPENDED,
 	__I40E_VF_DISABLE,
 };
 
@@ -307,6 +308,7 @@ struct i40e_pf {
 #ifdef CONFIG_I40E_VXLAN
 #define I40E_FLAG_VXLAN_FILTER_SYNC            (u64)(1 << 27)
 #endif
+#define I40E_FLAG_DCB_CAPABLE			BIT_ULL(29)
 
 	/* tracks features that get auto disabled by errors */
 	u64 auto_disable_flags;
