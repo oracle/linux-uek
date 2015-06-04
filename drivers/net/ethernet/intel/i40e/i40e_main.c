@@ -5977,10 +5977,10 @@ static void i40e_reset_and_rebuild(struct i40e_pf *pf, bool reinit)
 	msleep(75);
 	ret = i40e_aq_set_link_restart_an(&pf->hw, true, NULL);
 	if (ret) {
-	dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
+		dev_info(&pf->pdev->dev, "link restart failed, err %s aq_err %s\n",
 				 i40e_stat_str(&pf->hw, ret),
 				 i40e_aq_str(&pf->hw,
-					     pf->hw.aq.asq_last_status));	
+					     pf->hw.aq.asq_last_status));
 	}
 
 	/* reinit the misc interrupt */
