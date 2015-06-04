@@ -223,6 +223,18 @@ int module_finalize(const Elf_Ehdr *hdr,
 		__asm__ __volatile__("flush %g6");
 	}
 
+#ifdef CONFIG_DTRACE
+	me->pdata = module_alloc(me->sdt_probec * SDT_TRAMP_SIZE *
+				 sizeof(sdt_instr_t));
+#endif
+
 	return 0;
 }
+
+#ifdef CONFIG_DTRACE
+void module_arch_cleanup(struct module *me)
+{
+	module_free(me->pdata);
+}
+#endif
 #endif /* CONFIG_SPARC64 */
