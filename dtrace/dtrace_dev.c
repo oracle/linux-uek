@@ -951,7 +951,7 @@ static long dtrace_ioctl(struct file *file,
 	}
 
 	default:
-		dt_dbg_ioctl("IOCTL *UNKNOWN* (cmd %#x), argp %p\n",
+		dt_dbg_ioctl("IOCTL ??? (cmd %#x), argp %p\n",
 			     cmd, argp);
 		break;
 	}
@@ -1081,6 +1081,8 @@ static long dtrace_helper_ioctl(struct file *file,
 
 		return rval;
 	default:
+		dt_dbg_ioctl("Helper IOCTL ??? (cmd %#x), argp %p\n",
+			     cmd, argp);
 		break;
 	}
 
@@ -1102,6 +1104,7 @@ static const struct file_operations dtrace_fops = {
 static const struct file_operations helper_fops = {
 	.owner  = THIS_MODULE,
         .unlocked_ioctl = dtrace_helper_ioctl,
+        .compat_ioctl = dtrace_helper_ioctl,
         .open   = dtrace_helper_open,
         .release = dtrace_helper_close,
 };
