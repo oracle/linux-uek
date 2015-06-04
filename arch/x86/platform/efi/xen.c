@@ -201,6 +201,8 @@ static efi_status_t xen_efi_query_variable_info(u32 attr,
 	if (efi.runtime_version < EFI_2_00_SYSTEM_TABLE_REVISION)
 		return EFI_UNSUPPORTED;
 
+	call.u.query_variable_info.attr = attr;
+
 	err = HYPERVISOR_dom0_op(&op);
 	if (err)
 		return EFI_UNSUPPORTED;
