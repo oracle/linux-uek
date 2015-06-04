@@ -30,6 +30,7 @@
 #include "i40e_alloc.h"
 #include "i40e_hmc.h"
 #include "i40e_type.h"
+#include "kcompat.h"
 
 /**
  * i40e_add_sd_table_entry - Adds a segment descriptor to the table

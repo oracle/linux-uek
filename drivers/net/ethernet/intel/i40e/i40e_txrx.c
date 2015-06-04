@@ -26,6 +26,7 @@
 
 #include <linux/prefetch.h>
 #include "i40e.h"
+#include "kcompat.h"
 
 static inline __le64 build_ctob(u32 td_cmd, u32 td_offset, unsigned int size,
 				u32 td_tag)
@@ -463,7 +464,7 @@ static void i40e_fd_handle_status(struct i40e_ring *rx_ring,
 	error = (qw & I40E_RX_PROG_STATUS_DESC_QW1_ERROR_MASK) >>
 		I40E_RX_PROG_STATUS_DESC_QW1_ERROR_SHIFT;
 
-	if (error == (0x1 << I40E_RX_PROG_STATUS_DESC_FD_TBL_FULL_SHIFT)) {
+	if (error == BIT(I40E_RX_PROG_STATUS_DESC_FD_TBL_FULL_SHIFT)) {
 		if ((rx_desc->wb.qword0.hi_dword.fd_id != 0) ||
 		    (I40E_DEBUG_FD & pf->hw.debug_mask))
 			dev_warn(&pdev->dev, "ntuple filter loc = %d, could not be added\n",
@@ -508,8 +509,7 @@ static void i40e_fd_handle_status(struct i40e_ring *rx_ring,
 			dev_info(&pdev->dev,
 				"FD filter programming failed due to incorrect filter parameters\n");
 		}
-	} else if (error ==
-			  (0x1 << I40E_RX_PROG_STATUS_DESC_NO_FD_ENTRY_SHIFT)) {
+	} else if (error == BIT(I40E_RX_PROG_STATUS_DESC_NO_FD_ENTRY_SHIFT)) {
 		if (I40E_DEBUG_FD & pf->hw.debug_mask)
 			dev_info(&pdev->dev, "ntuple filter fd_id = %d, could not be removed\n",
 				 rx_desc->wb.qword0.hi_dword.fd_id);
@@ -1271,7 +1271,7 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 		return;
 
 	/* IP or L4 or outmost IP checksum error */
-	if (rx_error & ((1 << I40E_RX_DESC_ERROR_IPE_SHIFT) |
+	if (rx_error & ((BIT(I40E_RX_DESC_ERROR_IPE_SHIFT)) |
 			(1 << I40E_RX_DESC_ERROR_L4E_SHIFT))) {
 		vsi->back->hw_csum_rx_error++;
 		return;
@@ -1349,8 +1349,8 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 
 		rx_error = (qword & I40E_RXD_QW1_ERROR_MASK) >>
 			   I40E_RXD_QW1_ERROR_SHIFT;
-		rx_hbo = rx_error & (1 << I40E_RX_DESC_ERROR_HBO_SHIFT);
-		rx_error &= ~(1 << I40E_RX_DESC_ERROR_HBO_SHIFT);
+		rx_hbo = rx_error & BIT(I40E_RX_DESC_ERROR_HBO_SHIFT);
+		rx_error &= ~BIT(I40E_RX_DESC_ERROR_HBO_SHIFT);
 
 		rx_bi->skb = NULL;
 
@@ -1410,7 +1410,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		I40E_RX_NEXT_DESC_PREFETCH(rx_ring, i, next_rxd);
 
 		if (unlikely(
-		    !(rx_status & (1 << I40E_RX_DESC_STATUS_EOF_SHIFT)))) {
+		    !(rx_status & BIT(I40E_RX_DESC_STATUS_EOF_SHIFT)))) {
 			struct i40e_rx_buffer *next_buffer;
 
 			next_buffer = &rx_ring->rx_bi[i];
@@ -1426,7 +1426,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		}
 
 		/* ERR_MASK will only have valid bits if EOP set */
-		if (unlikely(rx_error & (1 << I40E_RX_DESC_ERROR_RXE_SHIFT))) {
+		if (unlikely(rx_error & BIT(I40E_RX_DESC_ERROR_RXE_SHIFT))) {
 			dev_kfree_skb_any(skb);
 			goto next_desc;
 		}
@@ -1445,7 +1445,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		total_rx_packets++;
 
 		skb->protocol = eth_type_trans(skb, rx_ring->netdev);
-		vlan_tag = rx_status & (1 << I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)
+		vlan_tag = rx_status & (BIT(I40E_RX_DESC_STATUS_L2TAG1P_SHIFT))
 			 ? le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1)
 			 : 0;
 #ifdef I40E_FCOE

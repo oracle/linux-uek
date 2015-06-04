@@ -25,6 +25,7 @@
  ******************************************************************************/
 
 #include "i40e.h"
+#include "kcompat.h"
 #include <linux/ptp_classify.h>
 
 /* The XL710 timesync is very much like Intel's 82599 design when it comes to
@@ -43,9 +44,8 @@
 #define I40E_PTP_10GB_INCVAL 0x0333333333ULL
 #define I40E_PTP_1GB_INCVAL  0x2000000000ULL
 
-#define I40E_PRTTSYN_CTL1_TSYNTYPE_V1  (0x1 << \
-					I40E_PRTTSYN_CTL1_TSYNTYPE_SHIFT)
-#define I40E_PRTTSYN_CTL1_TSYNTYPE_V2  (0x2 << \
+#define I40E_PRTTSYN_CTL1_TSYNTYPE_V1  BIT(I40E_PRTTSYN_CTL1_TSYNTYPE_SHIFT)
+#define I40E_PRTTSYN_CTL1_TSYNTYPE_V2  (2 << \
 					I40E_PRTTSYN_CTL1_TSYNTYPE_SHIFT)
 
 /**
@@ -357,7 +357,7 @@ void i40e_ptp_rx_hwtstamp(struct i40e_pf *pf, struct sk_buff *skb, u8 index)
 
 	prttsyn_stat = rd32(hw, I40E_PRTTSYN_STAT_1);
 
-	if (!(prttsyn_stat & (1 << index)))
+	if (!(prttsyn_stat & BIT(index)))
 		return;
 
 	lo = rd32(hw, I40E_PRTTSYN_RXTIME_L(index));

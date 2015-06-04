@@ -72,4 +72,6 @@ static inline void __kc_ether_addr_copy(u8 *dst, const u8 *src)
 }
 #endif /* ether_addr_copy */
 
+#define BIT_ULL(nr)		(1ULL << (nr))
+
 #endif

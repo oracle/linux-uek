@@ -25,6 +25,7 @@
  ******************************************************************************/
 
 #include "i40evf.h"
+#include "kcompat.h"
 
 static inline __le64 build_ctob(u32 td_cmd, u32 td_offset, unsigned int size,
 				u32 td_tag)
@@ -768,7 +769,7 @@ static inline void i40e_rx_checksum(struct i40e_vsi *vsi,
 		return;
 
 	/* IP or L4 or outmost IP checksum error */
-	if (rx_error & ((1 << I40E_RX_DESC_ERROR_IPE_SHIFT) |
+	if (rx_error & (BIT(I40E_RX_DESC_ERROR_IPE_SHIFT) |
 			(1 << I40E_RX_DESC_ERROR_L4E_SHIFT) |
 			(1 << I40E_RX_DESC_ERROR_EIPE_SHIFT))) {
 		vsi->back->hw_csum_rx_error++;
@@ -875,8 +876,8 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 
 		rx_error = (qword & I40E_RXD_QW1_ERROR_MASK) >>
 			   I40E_RXD_QW1_ERROR_SHIFT;
-		rx_hbo = rx_error & (1 << I40E_RX_DESC_ERROR_HBO_SHIFT);
-		rx_error &= ~(1 << I40E_RX_DESC_ERROR_HBO_SHIFT);
+		rx_hbo = rx_error & BIT(I40E_RX_DESC_ERROR_HBO_SHIFT);
+		rx_error &= ~BIT(I40E_RX_DESC_ERROR_HBO_SHIFT);
 
 		rx_ptype = (qword & I40E_RXD_QW1_PTYPE_MASK) >>
 			   I40E_RXD_QW1_PTYPE_SHIFT;
@@ -938,7 +939,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		I40E_RX_NEXT_DESC_PREFETCH(rx_ring, i, next_rxd);
 
 		if (unlikely(
-		    !(rx_status & (1 << I40E_RX_DESC_STATUS_EOF_SHIFT)))) {
+		    !(rx_status & BIT(I40E_RX_DESC_STATUS_EOF_SHIFT)))) {
 			struct i40e_rx_buffer *next_buffer;
 
 			next_buffer = &rx_ring->rx_bi[i];
@@ -954,7 +955,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 		}
 
 		/* ERR_MASK will only have valid bits if EOP set */
-		if (unlikely(rx_error & (1 << I40E_RX_DESC_ERROR_RXE_SHIFT))) {
+		if (unlikely(rx_error & BIT(I40E_RX_DESC_ERROR_RXE_SHIFT))) {
 			dev_kfree_skb_any(skb);
 			goto next_desc;
 		}
@@ -968,7 +969,7 @@ static int i40e_clean_rx_irq(struct i40e_ring *rx_ring, int budget)
 
 		i40e_rx_checksum(vsi, skb, rx_status, rx_error, rx_ptype);
 
-		vlan_tag = rx_status & (1 << I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)
+		vlan_tag = rx_status & BIT(I40E_RX_DESC_STATUS_L2TAG1P_SHIFT)
 			 ? le16_to_cpu(rx_desc->wb.qword0.lo_dword.l2tag1)
 			 : 0;
 		i40e_receive_skb(rx_ring, skb, vlan_tag);
@@ -1065,8 +1066,7 @@ static inline void i40e_update_enable_itr(struct i40e_vsi *vsi,
 		if (!test_bit(__I40E_DOWN, &vsi->state))
 			wr32(hw, I40E_VFINT_DYN_CTLN1(vector - 1), val);
 	} else {
-		i40evf_irq_enable_queues(vsi->back,
-					 1 << q_vector->v_idx);
+		i40evf_irq_enable_queues(vsi->back, BIT(q_vector->v_idx));
 	}
 }
 

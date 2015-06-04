@@ -31,6 +31,8 @@
 
 #endif
 
+#define BIT_ULL(nr)		(1ULL << (nr))
+
 #ifdef CONFIG_XPS
 extern int __kc_netif_set_xps_queue(struct net_device *, struct cpumask *, u16);
 #define netif_set_xps_queue(_dev, _mask, _idx) __kc_netif_set_xps_queue((_dev), (_mask), (_idx))
