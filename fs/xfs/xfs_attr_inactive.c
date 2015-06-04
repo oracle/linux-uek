@@ -453,7 +453,7 @@ xfs_attr_inactive(
 	/* Reset the attribute fork - this also destroys the in-core fork */
 	xfs_attr_fork_remove(dp, trans);
 
-	error = xfs_trans_commit(trans, XFS_TRANS_RELEASE_LOG_RES);
+	error = xfs_trans_commit(trans);
 	xfs_iunlock(dp, lock_mode);
 	return error;
 
