@@ -381,9 +381,9 @@ static int svnic_dev_init_devcmd2(struct vnic_dev *vdev)
 	vnic_wq_init_start(&dc2c->wq, 0, fetch_idx, fetch_idx, 0, 0);
 	svnic_wq_enable(&dc2c->wq);
 	ret = svnic_dev_alloc_desc_ring(vdev,
-					&dc2c->results_ring,
-					DEVCMD2_RING_SIZE,
-					DEVCMD2_DESC_SIZE);
+				        &dc2c->results_ring,
+				        DEVCMD2_RING_SIZE,
+				        DEVCMD2_DESC_SIZE);
 	if (ret)
 		goto err_free_wq;
 
@@ -471,8 +471,8 @@ int svnic_dev_fw_info(struct vnic_dev *vdev,
 	return err;
 }
 
-int svnic_dev_spec(struct vnic_dev *vdev, unsigned int offset,
-	unsigned int size, void *value)
+int svnic_dev_spec(struct vnic_dev *vdev, unsigned int offset, unsigned int size,
+	void *value)
 {
 	u64 a0, a1;
 	int wait = VNIC_DVCMD_TMO;

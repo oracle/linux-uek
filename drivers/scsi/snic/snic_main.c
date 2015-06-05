@@ -152,14 +152,14 @@ snic_scsi_timed_out(struct scsi_cmnd *sc)
 	struct scsi_device *sdev = sc->device;
 
 	if (!sdev->sdev_gendev.driver)
-		return BLK_EH_NOT_HANDLED;
-
+		return BLK_EH_NOT_HANDLED;	
+		
 	/* set scsi_driver.eh_actio to NULL */
 	sdrv = to_scsi_driver(sdev->sdev_gendev.driver);
 	if (sdrv && sdrv->eh_action)
 		sdrv->eh_action = NULL;
 
-	return BLK_EH_NOT_HANDLED;
+	return BLK_EH_NOT_HANDLED;	
 }
 
 static struct scsi_host_template snic_host_template = {

@@ -99,8 +99,8 @@ static inline unsigned int svnic_cq_service(struct vnic_cq *cq,
 }
 
 void svnic_cq_free(struct vnic_cq *cq);
-int svnic_cq_alloc(struct vnic_dev *vdev, struct vnic_cq *cq,
-	unsigned int index, unsigned int desc_count, unsigned int desc_size);
+int svnic_cq_alloc(struct vnic_dev *vdev, struct vnic_cq *cq, unsigned int index,
+	unsigned int desc_count, unsigned int desc_size);
 void svnic_cq_init(struct vnic_cq *cq, unsigned int flow_control_enable,
 	unsigned int color_enable, unsigned int cq_head, unsigned int cq_tail,
 	unsigned int cq_tail_color, unsigned int interrupt_enable,

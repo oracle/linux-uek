@@ -150,8 +150,8 @@ static inline void svnic_wq_service(struct vnic_wq *wq,
 }
 
 void svnic_wq_free(struct vnic_wq *wq);
-int svnic_wq_alloc(struct vnic_dev *vdev, struct vnic_wq *wq,
-	unsigned int index, unsigned int desc_count, unsigned int desc_size);
+int svnic_wq_alloc(struct vnic_dev *vdev, struct vnic_wq *wq, unsigned int index,
+	unsigned int desc_count, unsigned int desc_size);
 int vnic_wq_devcmd2_alloc(struct vnic_dev *vdev, struct vnic_wq *wq,
 		unsigned int desc_count, unsigned int desc_size);
 void vnic_wq_init_start(struct vnic_wq *wq, unsigned int cq_index,
