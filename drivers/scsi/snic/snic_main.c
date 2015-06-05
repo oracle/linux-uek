@@ -437,7 +437,7 @@ snic_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	snic = shost_priv(shost);
 	snic->shost = shost;
 
-	snprintf(snic->name, sizeof(snic->name) - 1, "%s%d", SNIC_DRV_NAME,
+	snprintf(snic->name, sizeof(snic->name), "%s%d", SNIC_DRV_NAME,
 		 shost->host_no);
 
 	SNIC_HOST_INFO(shost,
