@@ -5,6 +5,7 @@
 
 # undef DT_DBG_AGG
 # undef DT_DBG_BUF
+# undef DT_DBG_DIF
 # undef DT_DBG_DOF
 # undef DT_DBG_ENABLE
 # undef DT_DBG_IOCTL
@@ -15,6 +16,7 @@
 
 # undef DT_DBG_AGG
 # undef DT_DBG_BUF
+# undef DT_DBG_DIF
 # undef DT_DBG_DOF
 # undef DT_DBG_ENABLE
 # undef DT_DBG_IOCTL
@@ -36,6 +38,12 @@
 # define dt_dbg_buf(fmt, ...)		pr_info(fmt, ## __VA_ARGS__)
 #else
 # define dt_dbg_buf(fmt, ...)
+#endif
+
+#ifdef DT_DBG_DIF
+# define dt_dbg_dif(fmt, ...)		pr_info(fmt, ## __VA_ARGS__)
+#else
+# define dt_dbg_dif(fmt, ...)
 #endif
 
 #ifdef DT_DBG_DOF

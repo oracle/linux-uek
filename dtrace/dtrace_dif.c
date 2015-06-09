@@ -2378,6 +2378,8 @@ static void dtrace_dif_subr(uint_t subr, uint_t rd, uint64_t *regs,
 		uintptr_t rw;
 	} r;
 
+	dt_dbg_dif("        Subroutine %d\n", subr);
+
 	switch (subr) {
 	case DIF_SUBR_RAND:
 		regs[rd] = ktime_to_ns(dtrace_gethrtime()) * 2416 + 374441;
@@ -3927,6 +3929,9 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 	dif_instr_t		instr;
 	uint_t			r1, r2, rd;
 
+	dt_dbg_dif("    DIF %p emulation (text %p, %d instructions)...\n",
+		   difo, text, textlen);
+
 	/*
 	 * We stash the current DIF object into the machine state: we need it
 	 * for subsequent access checking.
@@ -3942,6 +3947,9 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 		r1 = DIF_INSTR_R1(instr);
 		r2 = DIF_INSTR_R2(instr);
 		rd = DIF_INSTR_RD(instr);
+
+		dt_dbg_dif("      Executing opcode %d (%d, %d, %d)\n",
+			   DIF_INSTR_OP(instr), r1, r2, rd);
 
 		switch (DIF_INSTR_OP(instr)) {
 		case DIF_OP_OR:
@@ -4749,8 +4757,14 @@ uint64_t dtrace_dif_emulate(dtrace_difo_t *difo, dtrace_mstate_t *mstate,
 		}
 	}
 
-	if (!(*flags & CPU_DTRACE_FAULT))
+
+	if (!(*flags & CPU_DTRACE_FAULT)) {
+		dt_dbg_dif("    DIF %p completed, rval = %llx (flags %x)\n",
+			   difo, rval, *flags);
 		return rval;
+	}
+
+	dt_dbg_dif("    DIF %p emulation failed (flags %x)\n",  difo, *flags);
 
 	mstate->dtms_fltoffs = opc * sizeof(dif_instr_t);
 	mstate->dtms_present |= DTRACE_MSTATE_FLTOFFS;
