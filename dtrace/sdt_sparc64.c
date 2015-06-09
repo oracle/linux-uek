@@ -157,18 +157,6 @@ int sdt_provide_module_arch(void *arg, struct module *mp)
 		return 1;
 	}
 
-	if (PDATA(mp)->sdt_tab == NULL) {
-		PDATA(mp)->sdt_tab = __vmalloc(mp->sdt_probec *
-					SDT_TRAMP_SIZE * sizeof(sdt_instr_t),
-					GFP_DMA32, PAGE_KERNEL);
-
-		if (PDATA(mp)->sdt_tab == NULL) {
-			pr_info("%s(): cannot allocate trampolines for %s\n",
-				__func__, mp->name);
-			return 0;
-		}
-	}
-
 	return 1;
 }
 
