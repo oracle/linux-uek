@@ -58,7 +58,7 @@ static const char ixgbevf_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION __stringify(2.15.3) RELEASE_TAG
+#define DRV_VERSION __stringify(2.16.1) RELEASE_TAG
 const char ixgbevf_driver_version[] = DRV_VERSION;
 static char ixgbevf_copyright[] = "Copyright (c) 2009-2014 Intel Corporation.";
 
@@ -105,7 +105,6 @@ MODULE_LICENSE("GPL");
 MODULE_VERSION(DRV_VERSION);
 
 #define DEFAULT_DEBUG_LEVEL_SHIFT 3
-static int cards_found;
 
 static void ixgbevf_service_event_schedule(struct ixgbevf_adapter *adapter)
 {
@@ -120,7 +119,7 @@ static void ixgbevf_service_event_complete(struct ixgbevf_adapter *adapter)
 	BUG_ON(!test_bit(__IXGBEVF_SERVICE_SCHED, &adapter->state));
 
 	/* flush memory to make sure state is correct before next watchdog */
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(__IXGBEVF_SERVICE_SCHED, &adapter->state);
 }
 
@@ -158,25 +157,6 @@ void ixgbevf_check_remove(struct ixgbe_hw *hw, u32 reg)
        value = IXGBE_READ_REG(hw, IXGBE_VFSTATUS);
        if (value == IXGBE_FAILED_READ_REG)
                ixgbevf_remove_adapter(hw);
-}
-
-static inline void ixgbevf_release_rx_desc(struct ixgbevf_ring *rx_ring,
-					   u32 val)
-{
-	/* record the next descriptor to use */
-	rx_ring->next_to_use = val;
-
-	/* update next to alloc since we have filled the ring */
-	rx_ring->next_to_alloc = val;
-
-	/*
-	 * Force memory writes to complete before letting h/w
-	 * know there are new descriptors to fetch.  (Only
-	 * applicable for weak-ordered memory model archs,
-	 * such as IA-64).
-	 */
-	wmb();
-	ixgbevf_write_tail(rx_ring, val);
 }
 
 static void ixgbevf_unmap_and_free_tx_resource(struct ixgbevf_ring *tx_ring,
@@ -600,8 +580,6 @@ static bool ixgbevf_is_non_eop(struct ixgbevf_ring *rx_ring,
 	if (likely(ixgbevf_test_staterr(rx_desc, IXGBE_RXD_STAT_EOP)))
 		return false;
 
-	rx_ring->rx_stats.non_eop_descs++;
-
 	return true;
 }
 
@@ -612,17 +590,14 @@ static bool ixgbevf_alloc_mapped_page(struct ixgbevf_ring *rx_ring,
 	dma_addr_t dma = bi->dma;
 
 	/* since we are recycling buffers we should seldom need to alloc */
-	if (likely(dma))
+	if (likely(page))
 		return true;
 
 	/* alloc new page for storage */
-	if (likely(!page)) {
-		page = alloc_page(GFP_ATOMIC | __GFP_COLD);
-		if (unlikely(!page)) {
-			rx_ring->rx_stats.alloc_rx_page_failed++;
-			return false;
-		}
-		bi->page = page;
+	page = alloc_page(GFP_ATOMIC | __GFP_COLD);
+	if (unlikely(!page)) {
+		rx_ring->rx_stats.alloc_rx_page_failed++;
+		return false;
 	}
 
 	/* map page for use */
@@ -635,12 +610,12 @@ static bool ixgbevf_alloc_mapped_page(struct ixgbevf_ring *rx_ring,
 	 */
 	if (dma_mapping_error(rx_ring->dev, dma)) {
 		__free_page(page);
-		bi->page = NULL;
 
 		rx_ring->rx_stats.alloc_rx_page_failed++;
 		return false;
 	}
 
+	bi->page = page;
 	bi->dma = dma;
 	bi->page_offset ^= PAGE_SIZE / 2;
 
@@ -693,8 +668,21 @@ static void ixgbevf_alloc_rx_buffers(struct ixgbevf_ring *rx_ring,
 
 	i += rx_ring->count;
 
-	if (rx_ring->next_to_use != i)
-		ixgbevf_release_rx_desc(rx_ring, i);
+	if (rx_ring->next_to_use != i) {
+		/* record the next descriptor to use */
+		rx_ring->next_to_use = i;
+
+		/* update next to alloc since we have filled the ring */
+		rx_ring->next_to_alloc = i;
+
+		/* Force memory writes to complete before letting h/w
+		 * know there are new descriptors to fetch.  (Only
+		 * applicable for weak-ordered memory model archs,
+		 * such as IA-64).
+		 */
+		wmb();
+		ixgbevf_write_tail(rx_ring, i);
+	}
 }
 
 /* ixgbevf_get_headlen - determine size of header for RSC/LRO/GRO/FCOE
@@ -1978,7 +1966,6 @@ static void ixgbevf_restore_vlan(struct ixgbevf_adapter *adapter)
 
 	if (adapter->vlgrp) {
 		for (vid = 0; vid < VLAN_N_VID; vid++) {
-#ifndef HAVE_NETDEV_VLAN_FEATURES
 			if (!vlan_group_get_device(adapter->vlgrp, vid))
 				continue;
 #ifdef NETIF_F_HW_VLAN_CTAG_RX
@@ -1988,7 +1975,6 @@ static void ixgbevf_restore_vlan(struct ixgbevf_adapter *adapter)
 #else
 			ixgbevf_vlan_rx_add_vid(adapter->netdev, vid);
 #endif /* NETIF_F_HW_VLAN_CTAG_RX */
-#endif /* HAVE_NETDEV_VLAN_FEATURES */
 		}
 	}
 #else /* !HAVE_VLAN_RX_REGISTER */
@@ -2265,7 +2251,7 @@ static void ixgbevf_up_complete(struct ixgbevf_adapter *adapter)
 
 	spin_unlock_bh(&adapter->mbx_lock);
 
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(__IXGBEVF_DOWN, &adapter->state);
 	ixgbevf_napi_enable_all(adapter);
 
@@ -2560,11 +2546,9 @@ static void ixgbevf_set_num_queues(struct ixgbevf_adapter *adapter)
  */
 static int ixgbevf_set_interrupt_capability(struct ixgbevf_adapter *adapter)
 {
-	int err = 0;
 	int vector, v_budget;
 
-	/*
-	 * It's easy to be greedy for MSI-X vectors, but it really
+	/* It's easy to be greedy for MSI-X vectors, but it really
 	 * doesn't do us much good if we have a lot more vectors
 	 * than CPU's.  So let's be conservative and only ask for
 	 * (roughly) the same number of vectors as there are CPU's.
@@ -2574,23 +2558,20 @@ static int ixgbevf_set_interrupt_capability(struct ixgbevf_adapter *adapter)
 	v_budget = min_t(int, v_budget, num_online_cpus());
 	v_budget += NON_Q_VECTORS;
 
-	/* A failure in MSI-X entry allocation isn't fatal, but it does
-	 * mean we disable MSI-X capabilities of the adapter.
-	 */
 	adapter->msix_entries = kcalloc(v_budget,
 					sizeof(struct msix_entry), GFP_KERNEL);
 	if (!adapter->msix_entries) {
-		err = -ENOMEM;
-		goto out;
+		return -ENOMEM;
 	}
 
 	for (vector = 0; vector < v_budget; vector++)
 		adapter->msix_entries[vector].entry = vector;
 
-	ixgbevf_acquire_msix_vectors(adapter, v_budget);
-
-out:
-	return err;
+	/* A failure in MSI-X entry allocation isn't fatal, but the VF driver
+	 * does not support any other modes, so we will simply fail here. Note
+	 * that we clean up the msix_entries pointer else-where.
+	 */
+	return ixgbevf_acquire_msix_vectors(adapter, v_budget);
 }
 
 static void ixgbevf_add_ring(struct ixgbevf_ring *ring,
@@ -2984,7 +2965,7 @@ void ixgbevf_update_stats(struct ixgbevf_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	struct ixgbevf_ring *ring;
-	u64 non_eop_descs = 0, restart_queue = 0, tx_busy = 0;
+	u64 restart_queue = 0, tx_busy = 0;
 	u64 hw_csum_rx_error = 0;
 	u32 page_failed = 0, buff_failed = 0;
 	u32 i;
@@ -2995,12 +2976,10 @@ void ixgbevf_update_stats(struct ixgbevf_adapter *adapter)
 
 	for (i = 0; i < adapter->num_rx_queues; i++) {
 		ring = adapter->rx_ring[i];
-		non_eop_descs += ring->rx_stats.non_eop_descs;
 		hw_csum_rx_error += ring->rx_stats.csum_err;
 		page_failed += ring->rx_stats.alloc_rx_page_failed;
 		buff_failed += ring->rx_stats.alloc_rx_buff_failed;
 	}
-	adapter->non_eop_descs = non_eop_descs;
 	adapter->hw_csum_rx_error = hw_csum_rx_error;
 	adapter->alloc_rx_page_failed = page_failed;
 	adapter->alloc_rx_buff_failed = buff_failed;
@@ -4186,7 +4165,7 @@ static int ixgbevf_resume(struct pci_dev *pdev)
 		dev_err(&pdev->dev, "Cannot enable PCI device from suspend\n");
 		return err;
 	}
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(__IXGBEVF_DISABLED, &adapter->state);
 	pci_set_master(pdev);
 
@@ -4320,9 +4299,11 @@ static const struct net_device_ops ixgbevf_netdev_ops = {
 	.ndo_vlan_rx_add_vid	= ixgbevf_vlan_rx_add_vid,
 	.ndo_vlan_rx_kill_vid	= ixgbevf_vlan_rx_kill_vid,
 #endif
+#ifndef HAVE_RHEL6_NET_DEVICE_EXTENDED
 #ifdef CONFIG_NET_RX_BUSY_POLL
 	.ndo_busy_poll		= ixgbevf_busy_poll_recv,
-#endif
+#endif /* CONFIG_NET_RX_BUSY_POLL */
+#endif /* !HAVE_RHEL6_NET_DEVICE_EXTENDED */
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= ixgbevf_netpoll,
 #endif
@@ -4355,9 +4336,16 @@ static void ixgbevf_assign_netdev_ops(struct net_device *dev)
 	dev->vlan_rx_kill_vid = ixgbevf_vlan_rx_kill_vid;
 #endif
 #ifdef CONFIG_NET_POLL_CONTROLLER
-	dev->poll_controller = ixgbevf_netpoll,
+	dev->poll_controller = ixgbevf_netpoll;
 #endif
 #endif /* HAVE_NET_DEVICE_OPS */
+
+#ifdef HAVE_RHEL6_NET_DEVICE_EXTENDED
+#ifdef CONFIG_NET_RX_BUSY_POLL
+	netdev_extended(dev)->ndo_busy_poll = ixgbevf_busy_poll_recv;
+#endif /* CONFIG_NET_RX_BUSY_POLL */
+#endif /* HAVE_RHEL6_NET_DEVICE_EXTENDED */
+
 	ixgbevf_set_ethtool_ops(dev);
 	dev->watchdog_timeo = 5 * HZ;
 }
@@ -4379,8 +4367,10 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 	struct net_device *netdev;
 	struct ixgbevf_adapter *adapter = NULL;
 	struct ixgbe_hw *hw = NULL;
+	static int cards_found;
 	int i, err, pci_using_dac;
 	const struct ixgbevf_info *ei = ixgbevf_info_tbl[ent->driver_data];
+	bool disable_dev = false;
 
 	err = pci_enable_device(pdev);
 	if (err)
@@ -4426,7 +4416,6 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 
 	SET_NETDEV_DEV(netdev, &pdev->dev);
 
-	pci_set_drvdata(pdev, netdev);
 	adapter = netdev_priv(netdev);
 
 	adapter->netdev = netdev;
@@ -4460,6 +4449,8 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 
 	/* setup the private structure */
 	err = ixgbevf_sw_init(adapter);
+	if (err)
+		goto err_sw_init;
 
 	/* check_options must be called before setup_link_speed to set up
 	 * hw->fc completely
@@ -4551,6 +4542,7 @@ static int __devinit ixgbevf_probe(struct pci_dev *pdev,
 	if (err)
 		goto err_register;
 
+	pci_set_drvdata(pdev, netdev);
 	netif_carrier_off(netdev);
 
 	netif_tx_stop_all_queues(netdev);
@@ -4585,12 +4577,13 @@ err_sw_init:
 	ixgbevf_reset_interrupt_capability(adapter);
 	iounmap(adapter->io_addr);
 err_ioremap:
+	disable_dev = !test_and_set_bit(__IXGBEVF_DISABLED, &adapter->state);
 	free_netdev(netdev);
 err_alloc_etherdev:
 	pci_release_regions(pdev);
 err_pci_reg:
 err_dma:
-	if (!test_and_set_bit(__IXGBEVF_DISABLED, &adapter->state))
+	if (!adapter || disable_dev)
 		pci_disable_device(pdev);
 	return err;
 }
@@ -4607,7 +4600,13 @@ err_dma:
 static void __devexit ixgbevf_remove(struct pci_dev *pdev)
 {
 	struct net_device *netdev = pci_get_drvdata(pdev);
-	struct ixgbevf_adapter *adapter = netdev_priv(netdev);
+	struct ixgbevf_adapter *adapter;
+	bool disable_dev;
+
+	if (!netdev)
+		return;
+
+	adapter = netdev_priv(netdev);
 
 	set_bit(__IXGBEVF_REMOVE, &adapter->state);
 	cancel_work_sync(&adapter->service_task);
@@ -4616,21 +4615,19 @@ static void __devexit ixgbevf_remove(struct pci_dev *pdev)
 		unregister_netdev(netdev);
 
 	ixgbevf_clear_interrupt_scheme(adapter);
-	ixgbevf_reset_interrupt_capability(adapter);
 
 	iounmap(adapter->io_addr);
 	pci_release_regions(pdev);
 
 	DPRINTK(PROBE, INFO, "Remove complete\n");
 
+	disable_dev = !test_and_set_bit(__IXGBEVF_DISABLED, &adapter->state);
 	free_netdev(netdev);
 
 	pci_disable_pcie_error_reporting(pdev);
 
-	if (!test_and_set_bit(__IXGBEVF_DISABLED, &adapter->state))
+	if (disable_dev)
 		pci_disable_device(pdev);
-	cards_found--;
-        adapter->bd_number = cards_found;
 }
 
 /**
@@ -4688,7 +4685,7 @@ static pci_ers_result_t ixgbevf_io_slot_reset(struct pci_dev *pdev)
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
-	smp_mb__before_clear_bit();
+	smp_mb__before_atomic();
 	clear_bit(__IXGBEVF_DISABLED, &adapter->state);
 	pci_set_master(pdev);
 

@@ -98,7 +98,6 @@ struct ixgbevf_tx_queue_stats {
 };
 
 struct ixgbevf_rx_queue_stats {
-	u64 non_eop_descs;
 	u64 alloc_rx_page_failed;
 	u64 alloc_rx_buff_failed;
 	u64 csum_err;
@@ -422,7 +421,6 @@ struct ixgbevf_adapter {
 	/* stats */
 	u64 tx_busy;
 	u64 restart_queue;
-	u64 non_eop_descs;
 	u64 hw_rx_no_dma_resources;
 	u64 hw_csum_rx_error;
 	u32 alloc_rx_page_failed;

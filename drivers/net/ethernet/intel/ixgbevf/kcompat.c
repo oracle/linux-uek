@@ -1138,8 +1138,7 @@ int _kc_pci_num_vf(struct pci_dev __maybe_unused *dev)
 
 #ifndef ESX40
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,35) )
-#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
-	defined(DRIVER_IXGBEVF) || defined(DRIVER_FM10K)
+#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || defined(DRIVER_IXGBEVF) || defined(DRIVER_FM10K)
 #ifdef HAVE_TX_MQ
 #if (!(RHEL_RELEASE_CODE && RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(6,0)))
 #ifndef CONFIG_NETDEVICES_MULTIQUEUE
@@ -1711,4 +1710,171 @@ void __kc_dev_addr_unsync_dev(struct dev_addr_list **list, int *count,
 #endif /* NETDEV_HW_ADDR_T_MULTICAST  */
 #endif /* HAVE_SET_RX_MODE */
 #endif /* 3.16.0 */
+
+/******************************************************************************/
+#if ( LINUX_VERSION_CODE < KERNEL_VERSION(3,18,0) )
+#ifndef NO_PTP_SUPPORT
+static void __kc_sock_efree(struct sk_buff *skb)
+{
+	sock_put(skb->sk);
+}
+
+struct sk_buff *__kc_skb_clone_sk(struct sk_buff *skb)
+{
+	struct sock *sk = skb->sk;
+	struct sk_buff *clone;
+
+	if (!sk || !atomic_inc_not_zero(&sk->sk_refcnt))
+		return NULL;
+
+	clone = skb_clone(skb, GFP_ATOMIC);
+	if (!clone) {
+		sock_put(sk);
+		return NULL;
+	}
+
+	clone->sk = sk;
+	clone->destructor = __kc_sock_efree;
+
+	return clone;
+}
+
+void __kc_skb_complete_tx_timestamp(struct sk_buff *skb,
+				    struct skb_shared_hwtstamps *hwtstamps)
+{
+	struct sock_exterr_skb *serr;
+	struct sock *sk = skb->sk;
+	int err;
+
+	sock_hold(sk);
+
+	*skb_hwtstamps(skb) = *hwtstamps;
+
+	serr = SKB_EXT_ERR(skb);
+	memset(serr, 0, sizeof(*serr));
+	serr->ee.ee_errno = ENOMSG;
+	serr->ee.ee_origin = SO_EE_ORIGIN_TIMESTAMPING;
+
+	err = sock_queue_err_skb(sk, skb);
+	if (err)
+		kfree_skb(skb);
+
+	sock_put(sk);
+}
+#endif
+
+/* include headers needed for get_headlen function */
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+#include <scsi/fc/fc_fcoe.h>
+#endif
+#ifdef HAVE_SCTP
+#include <linux/sctp.h>
+#endif
+
+unsigned int __kc_eth_get_headlen(unsigned char *data, unsigned int max_len)
+{
+	union {
+		unsigned char *network;
+		/* l2 headers */
+		struct ethhdr *eth;
+		struct vlan_hdr *vlan;
+		/* l3 headers */
+		struct iphdr *ipv4;
+		struct ipv6hdr *ipv6;
+	} hdr;
+	__be16 proto;
+	u8 nexthdr = 0;	/* default to not TCP */
+	u8 hlen;
+
+	/* this should never happen, but better safe than sorry */
+	if (max_len < ETH_HLEN)
+		return max_len;
+
+	/* initialize network frame pointer */
+	hdr.network = data;
+
+	/* set first protocol and move network header forward */
+	proto = hdr.eth->h_proto;
+	hdr.network += ETH_HLEN;
+
+again:
+	switch (proto) {
+	/* handle any vlan tag if present */
+	case __constant_htons(ETH_P_8021AD):
+	case __constant_htons(ETH_P_8021Q):
+		if ((hdr.network - data) > (max_len - VLAN_HLEN))
+			return max_len;
+
+		proto = hdr.vlan->h_vlan_encapsulated_proto;
+		hdr.network += VLAN_HLEN;
+		goto again;
+	/* handle L3 protocols */
+	case __constant_htons(ETH_P_IP):
+		if ((hdr.network - data) > (max_len - sizeof(struct iphdr)))
+			return max_len;
+
+		/* access ihl as a u8 to avoid unaligned access on ia64 */
+		hlen = (hdr.network[0] & 0x0F) << 2;
+
+		/* verify hlen meets minimum size requirements */
+		if (hlen < sizeof(struct iphdr))
+			return hdr.network - data;
+
+		/* record next protocol if header is present */
+		if (!(hdr.ipv4->frag_off & htons(IP_OFFSET)))
+			nexthdr = hdr.ipv4->protocol;
+
+		hdr.network += hlen;
+		break;
+#ifdef NETIF_F_TSO6
+	case __constant_htons(ETH_P_IPV6):
+		if ((hdr.network - data) > (max_len - sizeof(struct ipv6hdr)))
+			return max_len;
+
+		/* record next protocol */
+		nexthdr = hdr.ipv6->nexthdr;
+		hdr.network += sizeof(struct ipv6hdr);
+		break;
+#endif /* NETIF_F_TSO6 */
+#if defined(CONFIG_FCOE) || defined(CONFIG_FCOE_MODULE)
+	case __constant_htons(ETH_P_FCOE):
+		hdr.network += FCOE_HEADER_LEN;
+		break;
+#endif
+	default:
+		return hdr.network - data;
+	}
+
+	/* finally sort out L4 */
+	switch (nexthdr) {
+	case IPPROTO_TCP:
+		if ((hdr.network - data) > (max_len - sizeof(struct tcphdr)))
+			return max_len;
+
+		/* access doff as a u8 to avoid unaligned access on ia64 */
+		hdr.network += max_t(u8, sizeof(struct tcphdr),
+				     (hdr.network[12] & 0xF0) >> 2);
+
+		break;
+	case IPPROTO_UDP:
+	case IPPROTO_UDPLITE:
+		hdr.network += sizeof(struct udphdr);
+		break;
+#ifdef HAVE_SCTP
+	case IPPROTO_SCTP:
+		hdr.network += sizeof(struct sctphdr);
+		break;
+#endif
+	}
+
+	/*
+	 * If everything has gone correctly hdr.network should be the
+	 * data section of the packet and will be the end of the header.
+	 * If not then it probably represents the end of the last recognized
+	 * header.
+	 */
+	return min_t(unsigned int, hdr.network - data, max_len);
+}
+
+#endif /* < 3.18.0 */
 
