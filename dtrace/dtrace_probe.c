@@ -791,6 +791,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			dtrace_difo_t	*dp = pred->dtp_difo;
 			int		rval;
 
+			dt_dbg_probe("  Evaluating predicate...\n");
+
 			rval = dtrace_dif_emulate(dp, &mstate, vstate, state);
 
 			if (!(*flags & CPU_DTRACE_ERROR) && !rval) {
@@ -805,11 +807,12 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 					current->predcache = cid;
 				}
 
-				dt_dbg_probe("Probe (ID %d EPID %d) "
-					     "Predicate not satisfied (%d)\n",
-					     id, ecb->dte_epid, rval);
+				dt_dbg_probe("  Predicate not met (%d)\n",
+					     rval);
 				continue;
 			}
+
+			dt_dbg_probe("  Predicate met (%d)\n", rval);
 		}
 
 		for (act = ecb->dte_action;
@@ -819,8 +822,8 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			dtrace_difo_t		*dp;
 			dtrace_recdesc_t	*rec = &act->dta_rec;
 
-			dt_dbg_probe("Probe (ID %d EPID %d) Action %d...\n",
-				    id, ecb->dte_epid, act->dta_kind);
+			dt_dbg_probe("  Evaluating action %p (kind %d)...\n",
+				    act, act->dta_kind);
 
 			size = rec->dtrd_size;
 			valoffs = offs + rec->dtrd_offset;
@@ -1199,14 +1202,15 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 		}
 
 		if (*flags & CPU_DTRACE_DROP) {
-			dt_dbg_probe("Probe (ID %d EPID %d) Dropped\n",
-				     id, ecb->dte_epid);
+			dt_dbg_probe("  -> Dropped\n");
 			continue;
 		}
 
 		if (*flags & CPU_DTRACE_FAULT) {
 			int		ndx;
 			dtrace_action_t	*err;
+
+			dt_dbg_probe("  -> Failed (%x)\n", *flags);
 
 			buf->dtb_errors++;
 
@@ -1258,6 +1262,9 @@ void dtrace_probe(dtrace_id_t id, uintptr_t arg0, uintptr_t arg1,
 			dt_dbg_buf("  Consume: %p[%ld .. %lld]\n",
 				   buf, offs, buf->dtb_offset);
 		}
+
+		dt_dbg_probe("Probe (ID %d EPID %d) Done\n",
+			     id, ecb->dte_epid);
 	}
 
 	if (vtime)

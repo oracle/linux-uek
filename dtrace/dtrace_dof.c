@@ -338,7 +338,7 @@ static dtrace_probedesc_t *dtrace_dof_probedesc(dof_hdr_t *dof, dof_sec_t *sec,
 	strncpy(desc->dtpd_name, (char *)(str + probe->dofp_name),
 		min((size_t)DTRACE_NAMELEN - 1, size - probe->dofp_name));
 
-	dt_dbg_dof("    ECB Probe %s:%s:%s:%s\n",
+	dt_dbg_dof("      ECB Probe %s:%s:%s:%s\n",
 		   desc->dtpd_provider, desc->dtpd_mod, desc->dtpd_func,
 		   desc->dtpd_name);
 
@@ -1053,8 +1053,10 @@ int dtrace_dof_slurp(dof_hdr_t *dof, dtrace_vstate_t *vstate, const cred_t *cr,
 	if ((enab = *enabp) == NULL)
 		enab = *enabp = dtrace_enabling_create(vstate);
 
-	if (enab == NULL)
+	if (enab == NULL) {
+		dt_dbg_dof("  DOF 0x%p Done slurping - no enablings\n", dof);
 		return -1;
+	}
 
 	for (i = 0; i < dof->dofh_secnum; i++) {
 		dof_sec_t	*sec =
@@ -1066,6 +1068,8 @@ int dtrace_dof_slurp(dof_hdr_t *dof, dtrace_vstate_t *vstate, const cred_t *cr,
 			continue;
 
 		if ((ep = dtrace_dof_ecbdesc(dof, sec, vstate, cr)) == NULL) {
+			dt_dbg_dof("  DOF 0x%p Done slurping - ECB problem\n",
+				   dof);
 			dtrace_enabling_destroy(enab);
 			*enabp = NULL;
 			return -1;
@@ -1073,6 +1077,9 @@ int dtrace_dof_slurp(dof_hdr_t *dof, dtrace_vstate_t *vstate, const cred_t *cr,
 
 		dtrace_enabling_add(enab, ep);
 	}
+
+	dt_dbg_dof("    DOF 0x%p Enablings processed\n", dof);
+	dt_dbg_dof("  DOF 0x%p Done slurping\n", dof);
 
 	return 0;
 }
