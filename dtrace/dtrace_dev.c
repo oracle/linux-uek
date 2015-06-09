@@ -1125,14 +1125,12 @@ static struct miscdevice helper_dev = {
 
 static void module_add_pdata(void *dmy, struct module *mp)
 {
-	if (mp->pdata) {
-		pr_warn_once("%s: pdata already assigned for %s\n",
-			     __func__, mp->name);
-		return;
-	}
-
+	dmy = mp->pdata;
 	mp->pdata = kmem_cache_alloc(dtrace_pdata_cachep,
 				     GFP_KERNEL | __GFP_ZERO);
+
+	if (dmy)
+		PDATA(mp)->sdt_tab = dmy;
 }
 
 static void module_del_pdata(void *dmy, struct module *mp)
@@ -1140,8 +1138,9 @@ static void module_del_pdata(void *dmy, struct module *mp)
 	if (!mp->pdata)
 		return;
 
+	dmy = PDATA(mp)->sdt_tab;
 	kmem_cache_free(dtrace_pdata_cachep, mp->pdata);
-	mp->pdata = NULL;
+	mp->pdata = dmy;
 }
 
 static void dtrace_module_loading(struct module *mp)
