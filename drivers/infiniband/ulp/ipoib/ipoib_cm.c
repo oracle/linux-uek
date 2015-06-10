@@ -784,7 +784,7 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 	 */
 	tx_req = &tx->tx_ring[tx->tx_head & (ipoib_sendq_size - 1)];
 	tx_req->skb = skb;
-	if ((skb->ip_summed != CHECKSUM_NONE) && cm_ibcrc_as_csum &&
+	if ((skb->ip_summed == CHECKSUM_PARTIAL) && cm_ibcrc_as_csum &&
 	    !(tx->caps & IPOIB_CM_CAPS_IBCRC_AS_CSUM))
 		skb_checksum_help(skb);
 
