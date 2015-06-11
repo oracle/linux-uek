@@ -399,11 +399,6 @@ struct rds_ib_port_ud_work {
 	int				event_type;
 };
 
-struct rds_ib_initial_failovers_work {
-	struct delayed_work            dlywork;
-	int                            timeout;
-};
-
 struct rds_ib_conn_drop_work {
 	struct delayed_work             work;
 	struct rds_connection          *conn;
@@ -569,6 +564,8 @@ extern spinlock_t ib_nodev_conns_lock;
 extern struct list_head ib_nodev_conns;
 
 extern struct socket *rds_ib_inet_socket;
+
+extern struct delayed_work riif_dlywork;
 
 /* ib_cm.c */
 int rds_ib_conn_alloc(struct rds_connection *conn, gfp_t gfp);
