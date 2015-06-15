@@ -857,7 +857,7 @@ static void read_module_symbols(unsigned int module_name,
 		do {
 			if (((dwarf_tag(&toplevel) == DW_TAG_subprogram) ||
                              (dwarf_tag(&toplevel) == DW_TAG_variable)) &&
-                            !dwarf_hasattr(&toplevel, DW_AT_external)) {
+                            !dwarf_hasattr(&toplevel, DW_AT_declaration)) {
 				if (module_idx == NULL) {
 					module_idx = malloc(sizeof(unsigned int));
 					if (module_idx == NULL) {
