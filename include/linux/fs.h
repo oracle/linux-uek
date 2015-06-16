@@ -1531,6 +1531,9 @@ struct super_block {
 	 */
 	int cleancache_poolid;
 
+#ifndef __GENKSYMS__
+	unsigned long		s_iflags;	/* internal SB_I_* flags */
+#endif
 };
 
 /* Tack your extra super_block fields on through here. */
