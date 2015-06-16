@@ -92,6 +92,7 @@ enum {
 	IPOIB_FLAG_UMCAST	  = 10,
 	IPOIB_STOP_NEIGH_GC	  = 11,
 	IPOIB_NEIGH_TBL_FLUSH	  = 12,
+	IPOIB_FLAG_CSUM		  = 15,
 
 	IPOIB_MAX_BACKOFF_SECONDS = 16,
 
@@ -185,9 +186,20 @@ struct ipoib_pmtu_update {
 
 struct ib_cm_id;
 
+/* Signature so driver can make sure ipoib_cm_data.caps is valid */
+#define IPOIB_CM_PROTO_SIG	0x2211
+/* Current driver ipoib_cm_data version */
+#define IPOIB_CM_PROTO_VER	(1UL << 12)
+
+enum ipoib_cm_data_caps {
+	IPOIB_CM_CAPS_IBCRC_AS_CSUM	= 1UL << 0,
+};
+
 struct ipoib_cm_data {
 	__be32 qpn; /* High byte MUST be ignored on receive */
 	__be32 mtu;
+	__be16 sig; /* must be IPOIB_CM_PROTO_SIG */
+	__be16 caps; /* 4 bits proto ver and 12 bits capabilities */
 };
 
 /*
@@ -232,6 +244,7 @@ struct ipoib_cm_rx {
 	unsigned long		jiffies;
 	enum ipoib_cm_state	state;
 	int			recv_count;
+	u16			caps;
 };
 
 struct ipoib_cm_tx {
@@ -246,6 +259,7 @@ struct ipoib_cm_tx {
 	unsigned	     tx_tail;
 	unsigned long	     flags;
 	u32		     mtu;
+	u16		     caps;
 };
 
 struct ipoib_cm_rx_buf {
@@ -454,7 +468,19 @@ void ipoib_del_neighs_by_gid(struct net_device *dev, u8 *gid);
 
 extern struct workqueue_struct *ipoib_workqueue;
 
+extern int cm_ibcrc_as_csum;
+
 /* functions */
+
+static inline int ipoib_cm_check_proto_sig(u16 proto_sig)
+{
+	return (proto_sig == IPOIB_CM_PROTO_SIG);
+}
+
+static inline int ipoib_cm_check_proto_ver(u16 caps)
+{
+	return ((caps & 0xF000) == IPOIB_CM_PROTO_VER);
+}
 
 int ipoib_poll(struct napi_struct *napi, int budget);
 void ipoib_ib_completion(struct ib_cq *cq, void *dev_ptr);
