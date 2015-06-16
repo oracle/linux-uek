@@ -426,9 +426,15 @@ static int ipoib_cm_send_rep(struct net_device *dev, struct ib_cm_id *cm_id,
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_rep_param rep = {};
+	u16 caps = IPOIB_CM_PROTO_VER;
+
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	rep.private_data = &data;
 	rep.private_data_len = sizeof data;
@@ -447,6 +453,7 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ipoib_cm_rx *p;
 	unsigned psn;
 	int ret;
+	struct ipoib_cm_data *cm_data;
 
 	ipoib_dbg(priv, "REQ arrived\n");
 	p = kzalloc(sizeof *p, GFP_KERNEL);
@@ -464,6 +471,13 @@ static int ipoib_cm_req_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 		ret = PTR_ERR(p->qp);
 		goto err_qp;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	psn = prandom_u32() & 0xffffff;
 	ret = ipoib_cm_modify_rx_qp(dev, cm_id, p->qp, psn);
@@ -673,6 +687,10 @@ copied:
 	skb->dev = dev;
 	/* XXX get correct PACKET_ type here */
 	skb->pkt_type = PACKET_HOST;
+
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		skb->ip_summed = CHECKSUM_UNNECESSARY;
+
 	netif_receive_skb(skb);
 
 repost:
@@ -755,6 +773,18 @@ void ipoib_cm_send(struct net_device *dev, struct sk_buff *skb, struct ipoib_cm_
 		++dev->stats.tx_errors;
 		dev_kfree_skb_any(skb);
 		return;
+	}
+
+	/* Calculate checksum if we support ibcrc_as_csum but peer is not */
+	if ((skb->ip_summed == CHECKSUM_PARTIAL) && cm_ibcrc_as_csum &&
+	    test_bit(IPOIB_FLAG_CSUM, &priv->flags) &&
+	    !(tx->caps & IPOIB_CM_CAPS_IBCRC_AS_CSUM)) {
+		if (skb_checksum_help(skb)) {
+			ipoib_warn(priv, "Fail to csum skb\n");
+			++dev->stats.tx_errors;
+			dev_kfree_skb_any(skb);
+			return;
+		}
 	}
 
 	skb_orphan(skb);
@@ -981,6 +1011,7 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	struct ib_qp_attr qp_attr;
 	int qp_attr_mask, ret;
 	struct sk_buff *skb;
+	struct ipoib_cm_data *cm_data;
 
 	p->mtu = be32_to_cpu(data->mtu);
 
@@ -989,6 +1020,13 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 			   p->mtu, IPOIB_ENCAP_LEN);
 		return -EINVAL;
 	}
+
+	cm_data = (struct ipoib_cm_data *)event->private_data;
+	ipoib_dbg(priv, "Otherend sig=0x%x\n", be16_to_cpu(cm_data->sig));
+	if (ipoib_cm_check_proto_sig(be16_to_cpu(cm_data->sig)) &&
+	    ipoib_cm_check_proto_ver(be16_to_cpu(cm_data->caps)))
+		p->caps = be16_to_cpu(cm_data->caps);
+	ipoib_dbg(priv, "Otherend caps=0x%x\n", p->caps);
 
 	qp_attr.qp_state = IB_QPS_RTR;
 	ret = ib_cm_init_qp_attr(cm_id, &qp_attr, &qp_attr_mask);
@@ -1074,9 +1112,15 @@ static int ipoib_cm_send_req(struct net_device *dev,
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 	struct ipoib_cm_data data = {};
 	struct ib_cm_req_param req = {};
+	u16 caps = IPOIB_CM_PROTO_VER;
+
+	if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+		caps |= IPOIB_CM_CAPS_IBCRC_AS_CSUM;
 
 	data.qpn = cpu_to_be32(priv->qp->qp_num);
 	data.mtu = cpu_to_be32(IPOIB_CM_BUF_SIZE);
+	data.sig = cpu_to_be16(IPOIB_CM_PROTO_SIG);
+	data.caps = cpu_to_be16(caps);
 
 	req.primary_path		= pathrec;
 	req.alternate_path		= NULL;

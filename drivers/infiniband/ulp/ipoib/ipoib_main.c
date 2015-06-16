@@ -77,6 +77,11 @@ module_param_named(debug_level, ipoib_debug_level, int, 0644);
 MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
 #endif
 
+int cm_ibcrc_as_csum = 1;
+module_param_named(cm_ibcrc_as_csum, cm_ibcrc_as_csum, int, 0444);
+MODULE_PARM_DESC(cm_ibcrc_as_csum,
+		 "Indicates whether to utilize IB-CRC as CSUM in connected mode, (default: 1)");
+
 struct ipoib_path_iter {
 	struct net_device *dev;
 	struct ipoib_path  path;
@@ -233,8 +238,12 @@ static netdev_features_t ipoib_fix_features(struct net_device *dev, netdev_featu
 {
 	struct ipoib_dev_priv *priv = ipoib_priv(dev);
 
-	if (test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags))
-		features &= ~(NETIF_F_IP_CSUM | NETIF_F_TSO);
+	if (test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags)) {
+		features &= ~NETIF_F_TSO;
+		if (!(cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM,
+					           &priv->flags)))
+			features &= ~NETIF_F_IP_CSUM;
+	}
 
 	return features;
 }
@@ -547,7 +556,10 @@ int ipoib_set_mode(struct net_device *dev, const char *buf)
 		netdev_update_features(dev);
 		dev_set_mtu(dev, ipoib_cm_max_mtu(dev));
 		rtnl_unlock();
-		priv->tx_wr.wr.send_flags &= ~IB_SEND_IP_CSUM;
+		if (cm_ibcrc_as_csum && test_bit(IPOIB_FLAG_CSUM, &priv->flags))
+			priv->tx_wr.wr.send_flags |= IB_SEND_IP_CSUM;
+		else
+			priv->tx_wr.wr.send_flags &= ~IB_SEND_IP_CSUM;
 
 		ipoib_flush_paths(dev);
 		return (!rtnl_trylock()) ? -EBUSY : 0;
@@ -2332,6 +2344,8 @@ void ipoib_set_dev_features(struct ipoib_dev_priv *priv, struct ib_device *hca)
 	priv->hca_caps = hca->attrs.device_cap_flags;
 
 	if (priv->hca_caps & IB_DEVICE_UD_IP_CSUM) {
+		set_bit(IPOIB_FLAG_CSUM, &priv->flags);
+
 		priv->dev->hw_features |= NETIF_F_IP_CSUM | NETIF_F_RXCSUM;
 
 		if (priv->hca_caps & IB_DEVICE_UD_TSO)
