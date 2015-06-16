@@ -97,8 +97,9 @@
 #include "bnx2_fw2.h"
 
 #define DRV_MODULE_NAME		"bnx2"
-#define DRV_MODULE_VERSION	"2.2.5m"
-#define DRV_MODULE_RELDATE	"January 20, 2015"
+#define DRV_MODULE_VERSION     "2.2.5o"
+#define DRV_MODULE_RELDATE     "May 1, 2015"
+
 
 #define RUN_AT(x) (jiffies + (x))
 
