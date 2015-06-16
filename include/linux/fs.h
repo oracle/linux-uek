@@ -1413,6 +1413,9 @@ struct super_block {
 
 	/* Being remounted read-only */
 	int s_readonly_remount;
+#ifndef __GENKSYMS__
+	unsigned long		s_iflags;	/* internal SB_I_* flags */
+#endif
 };
 
 /* Tack your extra super_block fields on through here. */
