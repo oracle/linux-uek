@@ -1372,6 +1372,9 @@ struct super_block {
 	 * Indicates how deep in a filesystem stack this SB is
 	 */
 	int s_stack_depth;
+#ifndef __GENKSYMS__
+	unsigned long		s_iflags;	/* internal SB_I_* flags */
+#endif
 };
 
 extern struct timespec current_fs_time(struct super_block *sb);
