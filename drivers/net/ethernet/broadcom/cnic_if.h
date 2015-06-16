@@ -14,8 +14,9 @@
 
 #include "bnx2x/bnx2x_mfw_req.h"
 
-#define CNIC_MODULE_VERSION	"2.5.20e"
-#define CNIC_MODULE_RELDATE	"January 20, 2015"
+
+#define CNIC_MODULE_VERSION	"2.5.20h"
+#define CNIC_MODULE_RELDATE	"May 11, 2015"
 
 #define CNIC_ULP_RDMA		0
 #define CNIC_ULP_ISCSI		1
@@ -206,6 +207,11 @@ struct drv_ctl_register_data {
 
 struct drv_ctl_info {
 	int	cmd;
+	int     drv_state;
+#define DRV_NOP		0
+#define DRV_ACTIVE	1
+#define DRV_INACTIVE	2
+#define DRV_UNLOADED	3
 	union {
 		struct drv_ctl_spq_credit credit;
 		struct drv_ctl_io io;
