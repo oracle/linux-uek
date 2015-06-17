@@ -13,7 +13,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-33.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-87.el6uek}
 
 # Select the correct source code version based on the kernel version.
 # Failing to pick the correct version can have disasterous effects!
@@ -30,6 +30,7 @@
 %define dt_0_4_2	1026
 %define dt_0_4_3	1027
 %define dt_0_4_4	1028
+%define dt_0_4_5	1029
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
@@ -39,7 +40,11 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "3.8.13-69") >= 0 then
+	if rpm.vercmp(kver, "3.8.13-87") >= 0 then
+		rpm.define("srcver 0.4.5")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_5}"))
+	elseif rpm.vercmp(kver, "3.8.13-69") >= 0 then
 		rpm.define("srcver 0.4.4")
 		rpm.define("bldrel 1")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_4}"))
@@ -238,6 +243,19 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_4_5}
+* Wed Jun 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-1
+- Support USDT for 32-bit applications on 64-bit hosts.
+  [Orabug: 21219315]
+- Convert from sdt_instr_t to asm_instr_t.
+  [Orabug: 21219374]
+- Restructuring to support DTrace on multiple architectures.
+  [Orabug: 21273259]
+- Fix dtrace_helptrace_buffer memory leak.
+  [Orabug: 20514336]
+- Add .gitignore file.
+  [Orabug: 20266608]
+%endif
 %if %{dt_vcode} >= %{dt_0_4_4}
 * Thu Mar  9 2015 Nick Alcock <nick.alcock@oracle.com> - 0.4.4-1
 - Rename dtrace-modules-headers to dtrace-modules-shared-headers.
