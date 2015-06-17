@@ -1,8 +1,42 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.4.5 (Jun 17th, 2015)
+------------------------------
+Kernel release: 3.8.13-87.el6uek
+
+New features:
+
+ - It is now possible to use USDT probes in 32-bit applications on 64-bit
+   hosts.
+
+Changes:
+
+ - The code has been restructured to facilitate supporting architectures
+   other than x86_64 in future releases.
+
+Bugfixes:
+
+ - Fixed a (minor) memory leak problem with the help tracing facility in
+   DTrace.  Upon loading the dtrace.ko module, a buffer (by default 64K)
+   was being allocated, and it was never released.
+
+ - Stack backtraces are more accurate as a result of various fixes to
+   adjust the number of frames to skip for specific probes.
+
+ - Datatypes have been adjusted to be more carefully specified after a
+   detailed audit in preparation for supporting architectures other than
+   x86_64.
+
+ - The stack depth was being determined by requesting a backtrace to be
+   written into a temporary buffer that was being allocated (vmalloc),
+   which posed significant problems when probes were executing in a
+   context that does not support memory allocations.  The buffer is now
+   obtained from the scratch area of memory that DTrace provides for
+   probe processing.
+
 Release 0.4.4 (Mar 12th, 2015)
------------------------------
+------------------------------
 Kernel release: 3.8.13-69.el6uek
 
 Bugfixes:
