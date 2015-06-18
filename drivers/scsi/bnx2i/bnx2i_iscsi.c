@@ -1654,6 +1654,7 @@ static int bnx2i_conn_get_param(struct iscsi_cls_conn *cls_conn,
 {
 	struct iscsi_conn *conn = cls_conn->dd_data;
 	struct bnx2i_conn *bnx2i_conn = conn->dd_data;
+	struct bnx2i_endpoint *bnx2i_ep;
 	struct bnx2i_hba *hba;
 	int len = 0;
 
@@ -1669,12 +1670,13 @@ static int bnx2i_conn_get_param(struct iscsi_cls_conn *cls_conn,
 		if (!(bnx2i_conn->ep && bnx2i_conn->ep->cm_sk))
 			goto out;
 
+		bnx2i_ep = bnx2i_conn->ep;
 		if (param == ISCSI_PARAM_CONN_PORT)
 			len = sprintf(buf, "%hu\n",
-				      bnx2i_conn->ep->cm_sk->dst_port);
+				      be16_to_cpu(bnx2i_ep->cm_sk->dst_port));
 		else
 			len = sprintf(buf, "%pI4\n",
-				      &bnx2i_conn->ep->cm_sk->dst_ip);
+				      &bnx2i_ep->cm_sk->dst_ip);
 out:
 		mutex_unlock(&hba->net_dev_lock);
 		break;
@@ -1708,7 +1710,8 @@ static int bnx2i_ep_get_param(struct iscsi_endpoint *ep,
 	case ISCSI_PARAM_CONN_PORT:
 		mutex_lock(&hba->net_dev_lock);
 		if (bnx2i_ep->cm_sk)
-			len = sprintf(buf, "%hu\n", bnx2i_ep->cm_sk->dst_port);
+			len = sprintf(buf, "%hu\n",
+				      be16_to_cpu(bnx2i_ep->cm_sk->dst_port));
 		mutex_unlock(&hba->net_dev_lock);
 		break;
 	case ISCSI_PARAM_CONN_ADDRESS:

@@ -19,8 +19,8 @@ static struct list_head adapter_list = LIST_HEAD_INIT(adapter_list);
 static u32 adapter_count;
 
 #define DRV_MODULE_NAME		"bnx2i"
-#define DRV_MODULE_VERSION	"2.11.0.0"
-#define DRV_MODULE_RELDATE	"December 16, 2014"
+#define DRV_MODULE_VERSION     "2.11.2.0"
+#define DRV_MODULE_RELDATE     "April 30, 2015"
 
 static char version[] __devinitdata =
 		"QLogic iSCSI Driver " DRV_MODULE_NAME \
