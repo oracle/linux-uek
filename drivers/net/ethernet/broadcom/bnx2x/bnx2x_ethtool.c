@@ -283,14 +283,15 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	struct bnx2x *bp = netdev_priv(dev);
 #endif
 	int cfg_idx = bnx2x_get_link_cfg_idx(bp);
+	u32 media_type;
 
 	/* Dual Media boards present all available port types */
 	cmd->supported = bp->port.supported[cfg_idx] |
 		(bp->port.supported[cfg_idx ^ 1] &
 		 (SUPPORTED_TP | SUPPORTED_FIBRE));
 	cmd->advertising = bp->port.advertising[cfg_idx];
-	if (bp->link_params.phy[bnx2x_get_cur_phy_idx(bp)].media_type ==
-	    ETH_PHY_SFP_1G_FIBER) {
+	media_type = bp->link_params.phy[bnx2x_get_cur_phy_idx(bp)].media_type;
+	if (media_type == ETH_PHY_SFP_1G_FIBER) {
 		cmd->supported &= ~(SUPPORTED_10000baseT_Full);
 		cmd->advertising &= ~(ADVERTISED_10000baseT_Full);
 	}
@@ -342,12 +343,26 @@ static int bnx2x_get_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 			cmd->lp_advertising |= ADVERTISED_100baseT_Full;
 		if (status & LINK_STATUS_LINK_PARTNER_1000THD_CAPABLE)
 			cmd->lp_advertising |= ADVERTISED_1000baseT_Half;
-		if (status & LINK_STATUS_LINK_PARTNER_1000TFD_CAPABLE)
-			cmd->lp_advertising |= ADVERTISED_1000baseT_Full;
+		if (status & LINK_STATUS_LINK_PARTNER_1000TFD_CAPABLE) {
+			if (media_type == ETH_PHY_KR) {
+				cmd->lp_advertising |=
+					ADVERTISED_1000baseKX_Full;
+			} else {
+				cmd->lp_advertising |=
+					ADVERTISED_1000baseT_Full;
+			}
+		}
 		if (status & LINK_STATUS_LINK_PARTNER_2500XFD_CAPABLE)
 			cmd->lp_advertising |= ADVERTISED_2500baseX_Full;
-		if (status & LINK_STATUS_LINK_PARTNER_10GXFD_CAPABLE)
-			cmd->lp_advertising |= ADVERTISED_10000baseT_Full;
+		if (status & LINK_STATUS_LINK_PARTNER_10GXFD_CAPABLE) {
+			if (media_type == ETH_PHY_KR) {
+				cmd->lp_advertising |=
+					ADVERTISED_10000baseKR_Full;
+			} else {
+				cmd->lp_advertising |=
+					ADVERTISED_10000baseT_Full;
+			}
+		}
 		if (status & LINK_STATUS_LINK_PARTNER_20GXFD_CAPABLE)
 			cmd->lp_advertising |= ADVERTISED_20000baseKR2_Full;
 	}
@@ -595,15 +610,20 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 				return -EINVAL;
 			}
 
-			if (!(bp->port.supported[cfg_idx] &
-			      SUPPORTED_1000baseT_Full)) {
+			if (bp->port.supported[cfg_idx] &
+			     SUPPORTED_1000baseT_Full) {
+				advertising = (ADVERTISED_1000baseT_Full |
+					       ADVERTISED_TP);
+
+			} else if (bp->port.supported[cfg_idx] &
+				   SUPPORTED_1000baseKX_Full) {
+				advertising = ADVERTISED_1000baseKX_Full;
+			} else {
 				DP(BNX2X_MSG_ETHTOOL,
 				   "1G full not supported\n");
 				return -EINVAL;
 			}
 
-			advertising = (ADVERTISED_1000baseT_Full |
-				       ADVERTISED_TP);
 			break;
 
 		case SPEED_2500:
@@ -631,17 +651,22 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 				return -EINVAL;
 			}
 			phy_idx = bnx2x_get_cur_phy_idx(bp);
-			if (!(bp->port.supported[cfg_idx]
-			      & SUPPORTED_10000baseT_Full) ||
-			    (bp->link_params.phy[phy_idx].media_type ==
+			if ((bp->port.supported[cfg_idx] &
+			     SUPPORTED_10000baseT_Full) &&
+			    (bp->link_params.phy[phy_idx].media_type !=
 			     ETH_PHY_SFP_1G_FIBER)) {
+				advertising = (ADVERTISED_10000baseT_Full |
+					       ADVERTISED_FIBRE);
+			} else if (bp->port.supported[cfg_idx] &
+			       SUPPORTED_10000baseKR_Full) {
+				advertising = (ADVERTISED_10000baseKR_Full |
+					       ADVERTISED_FIBRE);
+			} else {
 				DP(BNX2X_MSG_ETHTOOL,
 				   "10G full not supported\n");
 				return -EINVAL;
 			}
 
-			advertising = (ADVERTISED_10000baseT_Full |
-				       ADVERTISED_FIBRE);
 			break;
 
 		default:
@@ -664,6 +689,7 @@ static int bnx2x_set_settings(struct net_device *dev, struct ethtool_cmd *cmd)
 	bp->link_params.multi_phy_config = new_multi_phy_config;
 	if (netif_running(dev)) {
 		bnx2x_stats_handle(bp, STATS_EVENT_STOP);
+		bnx2x_force_link_reset(bp);
 		bnx2x_link_set(bp);
 	}
 
@@ -1022,6 +1048,20 @@ static int bnx2x_get_preset_regs_len(struct net_device *dev, u32 preset)
 	return regdump_len;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_DUMP)) /* BNX2X_UPSTREAM */
+static int bnx2x_set_dump(struct net_device *dev, struct ethtool_dump *val)
+{
+	struct bnx2x *bp = netdev_priv(dev);
+
+	/* Use the ethtool_dump "flag" field as the dump preset index */
+	if (val->flag < 1 || val->flag > DUMP_MAX_PRESETS)
+		return -EINVAL;
+
+	bp->dump_preset_idx = val->flag;
+	return 0;
+}
+#endif
+
 static int bnx2x_get_dump_flag(struct net_device *dev,
 			       struct ethtool_dump *dump)
 {
@@ -1033,20 +1073,6 @@ static int bnx2x_get_dump_flag(struct net_device *dev,
 	dump->len = bnx2x_get_preset_regs_len(dev, bp->dump_preset_idx);
 	DP(BNX2X_MSG_ETHTOOL, "Get dump preset %d length=%d\n",
 	   bp->dump_preset_idx, dump->len);
-	return 0;
-}
-#endif
-
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 0, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_DUMP)) /* BNX2X_UPSTREAM */
-static int bnx2x_set_dump(struct net_device *dev, struct ethtool_dump *val)
-{
-	struct bnx2x *bp = netdev_priv(dev);
-
-	/* Use the ethtool_dump "flag" field as the dump preset index */
-	if (val->flag < 1 || val->flag > DUMP_MAX_PRESETS)
-		return -EINVAL;
-
-	bp->dump_preset_idx = val->flag;
 	return 0;
 }
 #endif
@@ -1163,6 +1189,9 @@ static int bnx2x_set_wol(struct net_device *dev, struct ethtool_wolinfo *wol)
 		bp->wol = 1;
 	} else
 		bp->wol = 0;
+
+	if (SHMEM2_HAS(bp, curr_cfg))
+		SHMEM2_WR(bp, curr_cfg, CURR_CFG_MET_OS);
 
 	return 0;
 }
@@ -1281,6 +1310,7 @@ static int bnx2x_acquire_nvram_lock(struct bnx2x *bp)
 	if (!(val & (MCPR_NVM_SW_ARB_ARB_ARB1 << port))) {
 		DP(BNX2X_MSG_ETHTOOL | BNX2X_MSG_NVM,
 		   "cannot get access to nvram interface\n");
+		bnx2x_release_hw_lock(bp, HW_LOCK_RESOURCE_NVRAM);
 		return -EBUSY;
 	}
 
@@ -1397,8 +1427,8 @@ static int bnx2x_nvram_read_dword(struct bnx2x *bp, u32 offset, __be32 *ret_val,
 	return rc;
 }
 
-static int bnx2x_nvram_read(struct bnx2x *bp, u32 offset, u8 *ret_buf,
-			    int buf_size)
+int bnx2x_nvram_read(struct bnx2x *bp, u32 offset, u8 *ret_buf,
+		     int buf_size)
 {
 	int rc;
 	u32 cmd_flags;
@@ -1502,7 +1532,7 @@ static int bnx2x_get_eeprom(struct net_device *dev,
 	   eeprom->cmd, eeprom->magic, eeprom->offset, eeprom->offset,
 	   eeprom->len, eeprom->len);
 
-#ifdef __VMKLNX__
+#ifdef __VMKLNX__ /* ! BNX2X_UPSTREAM */
 	do {
 		int  rc = bnx2x_esx_ethtool_handler(bp, eeprom, eebuf);
 
@@ -1937,6 +1967,12 @@ static int bnx2x_set_ringparam(struct net_device *dev,
 	   "set ring params command parameters: rx_pending = %d, tx_pending = %d\n",
 	   ering->rx_pending, ering->tx_pending);
 
+	if (pci_num_vf(bp->pdev)) {
+		DP(BNX2X_MSG_IOV,
+		   "VFs are enabled, can not change ring parameters\n");
+		return -EPERM;
+	}
+
 	if (bp->recovery_state != BNX2X_RECOVERY_DONE) {
 		DP(BNX2X_MSG_ETHTOOL,
 		   "Handling parity error recovery. Try again later\n");
@@ -2032,19 +2068,30 @@ static int bnx2x_set_pauseparam(struct net_device *dev,
 
 	if (netif_running(dev)) {
 		bnx2x_stats_handle(bp, STATS_EVENT_STOP);
+		bnx2x_force_link_reset(bp);
 		bnx2x_link_set(bp);
 	}
 
 	return 0;
 }
 
-#if !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0)) /* BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 39)) /* ! BNX2X_UPSTREAM */
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
+#ifdef BNX2X_LEGACY_RX_CSUM /* ! BNX2X_UPSTREAM */
+#if LINUX_STARTING_AT_VERSION(2, 6, 26)
 static int bnx2x_set_flags(struct net_device *dev, u32 data)
 {
 	struct bnx2x *bp = netdev_priv(dev);
+	u32 changed;
 	int rc = 0;
+
+	changed = dev->features ^ data;
+
+	/* Bridging disables LRO if it is enabled on the device
+	 * Which should be allowed to change, can't be avoided.
+	 */
+	if (pci_num_vf(bp->pdev) && !(changed & ETH_FLAG_LRO)) {
+		DP(BNX2X_MSG_IOV, "VFs are enabled, can not change features\n");
+		return -EPERM;
+	}
 
 	if (bp->recovery_state != BNX2X_RECOVERY_DONE) {
 		DP(BNX2X_MSG_ETHTOOL,
@@ -2077,10 +2124,10 @@ static int bnx2x_set_flags(struct net_device *dev, u32 data)
 
 	/* TPA requires Rx CSUM offloading */
 	if ((data & ETH_FLAG_LRO) && bp->rx_csum)
-		bp->flags |= TPA_ENABLE_FLAG;
+		bp->flags &= ~LEGACY_DISABLE_TPA_FLAG;
 	else {
 		dev->features &= ~NETIF_F_LRO;
-		bp->flags &= ~TPA_ENABLE_FLAG;
+		bp->flags |= LEGACY_DISABLE_TPA_FLAG;
 	}
 
 	return bnx2x_reload_if_running(dev);
@@ -2099,6 +2146,11 @@ static int bnx2x_set_rx_csum(struct net_device *dev, u32 data)
 	struct bnx2x *bp = netdev_priv(dev);
 	int rc = 0;
 
+	if (pci_num_vf(bp->pdev)) {
+		DP(BNX2X_MSG_IOV, "VFs are enabled, can not change rx csum\n");
+		return -EPERM;
+	}
+
 	if (bp->recovery_state != BNX2X_RECOVERY_DONE) {
 		DP(BNX2X_MSG_ETHTOOL,
 		   "Handling parity error recovery. Try again later\n");
@@ -2114,17 +2166,15 @@ static int bnx2x_set_rx_csum(struct net_device *dev, u32 data)
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 26))
 		u32 flags = ethtool_op_get_flags(dev);
 
-		bp->flags &= ~GRO_ENABLE_FLAG;
-
+		bp->flags |= LEGACY_DISABLE_TPA_FLAG;
 		rc = bnx2x_set_flags(dev, (flags & ~ETH_FLAG_LRO));
 #else
-		bp->flags &= ~TPA_ENABLE_FLAG;
-		bp->flags &= ~GRO_ENABLE_FLAG;
-
+		bp->flags |= LEGACY_DISABLE_TPA_FLAG;
 		rc = bnx2x_reload_if_running(dev);
 #endif
 	} else {
-		bp->flags |= GRO_ENABLE_FLAG;
+		bp->flags &= ~LEGACY_DISABLE_TPA_FLAG;
+
 		rc = bnx2x_reload_if_running(dev);
 	}
 
@@ -2149,8 +2199,7 @@ static int bnx2x_set_tso(struct net_device *dev, u32 data)
 	return 0;
 }
 #endif
-#endif /* < 0x020627*/
-#endif /* !(RHEL6.6 && RHEL < 7.0) */
+#endif /* BNX2X_LEGACY_RX_CSUM */
 
 #ifdef BNX2X_UPSTREAM  /* BNX2X_UPSTREAM */
 static const char bnx2x_tests_str_arr[BNX2X_NUM_TESTS_SF][ETH_GSTRING_LEN] = {
@@ -2202,6 +2251,22 @@ static u32 bnx2x_eee_to_adv(u32 eee_adv)
 	return modes;
 }
 
+#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_EEE)) /* BNX2X_UPSTREAM */
+static u32 bnx2x_adv_to_eee(u32 modes, u32 shift)
+{
+	u32 eee_adv = 0;
+
+	if (modes & ADVERTISED_100baseT_Full)
+		eee_adv |= SHMEM_EEE_100M_ADV;
+	if (modes & ADVERTISED_1000baseT_Full)
+		eee_adv |= SHMEM_EEE_1G_ADV;
+	if (modes & ADVERTISED_10000baseT_Full)
+		eee_adv |= SHMEM_EEE_10G_ADV;
+
+	return eee_adv << shift;
+}
+#endif
+
 static int bnx2x_get_eee(struct net_device *dev, struct ethtool_eee *edata)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -2237,20 +2302,6 @@ static int bnx2x_get_eee(struct net_device *dev, struct ethtool_eee *edata)
 #endif
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 6, 0)) || (defined(_HAS_ETHTOOL_EXT_SET_EEE)) /* BNX2X_UPSTREAM */
-static u32 bnx2x_adv_to_eee(u32 modes, u32 shift)
-{
-	u32 eee_adv = 0;
-
-	if (modes & ADVERTISED_100baseT_Full)
-		eee_adv |= SHMEM_EEE_100M_ADV;
-	if (modes & ADVERTISED_1000baseT_Full)
-		eee_adv |= SHMEM_EEE_1G_ADV;
-	if (modes & ADVERTISED_10000baseT_Full)
-		eee_adv |= SHMEM_EEE_10G_ADV;
-
-	return eee_adv << shift;
-}
-
 static int bnx2x_set_eee(struct net_device *dev, struct ethtool_eee *edata)
 {
 	struct bnx2x *bp = netdev_priv(dev);
@@ -2678,7 +2729,7 @@ static int bnx2x_run_loopback(struct bnx2x *bp, int loopback_mode)
 	}
 	packet = skb_put(skb, pkt_size);
 	memcpy(packet, bp->dev->dev_addr, ETH_ALEN);
-	memset(packet + ETH_ALEN, 0, ETH_ALEN);
+	eth_zero_addr(packet + ETH_ALEN);
 	memset(packet + 2*ETH_ALEN, 0x77, (ETH_HLEN - 2*ETH_ALEN));
 	for (i = ETH_HLEN; i < pkt_size; i++)
 		packet[i] = (unsigned char) (i & 0xff);
@@ -3162,6 +3213,12 @@ static void bnx2x_self_test(struct net_device *dev,
 	struct bnx2x *bp = netdev_priv(dev);
 	u8 is_serdes, link_up;
 	int rc, cnt = 0;
+
+	if (pci_num_vf(bp->pdev)) {
+		DP(BNX2X_MSG_IOV,
+		   "VFs are enabled, can not perform self test\n");
+		return;
+	}
 
 	if (bp->recovery_state != BNX2X_RECOVERY_DONE) {
 		netdev_err(bp->dev,
@@ -3731,7 +3788,12 @@ static u32 bnx2x_get_rxfh_indir_size(struct net_device *dev)
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
+static int bnx2x_get_rxfh(struct net_device *dev, u32 *indir, u8 *key,
+			  u8 *hfunc)
+#else
 static int bnx2x_get_rxfh(struct net_device *dev, u32 *indir, u8 *key)
+#endif
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3)  || (defined(_HAS_ETHTOOL_EXT_GET_RXF_INDIR))
 static int bnx2x_get_rxfh_indir(struct net_device *dev, u32 *indir)
 #else
@@ -3745,6 +3807,13 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 #endif
 	u8 ind_table[T_ETH_INDIRECTION_TABLE_SIZE] = {0};
 	size_t i;
+
+#ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
+	if (hfunc)
+		*hfunc = ETH_RSS_HASH_TOP;
+	if (!indir)
+		return 0;
+#endif
 
 	/* Get the current configuration of the RSS indirection table */
 	bnx2x_get_rss_ind_table(&bp->rss_conf_obj, ind_table);
@@ -3775,8 +3844,13 @@ static int bnx2x_get_rxfh_indir(struct net_device *dev,
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(2, 6, 36)) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR)) /* BNX2X_UPSTREAM */
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0)) /* BNX2X_UPSTREAM */
+#ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
+static int bnx2x_set_rxfh(struct net_device *dev, const u32 *indir,
+			  const u8 *key, const u8 hfunc)
+#else
 static int bnx2x_set_rxfh(struct net_device *dev, const u32 *indir,
 			  const u8 *key)
+#endif
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 3, 0)) || SLES_STARTING_AT_VERSION(SLES11_SP3) || (defined(_HAS_ETHTOOL_EXT_SET_RXF_INDIR))
 static int bnx2x_set_rxfh_indir(struct net_device *dev, const u32 *indir)
 #else
@@ -3794,6 +3868,18 @@ static int bnx2x_set_rxfh_indir(struct net_device *dev,
 		DP(BNX2X_MSG_ETHTOOL, "Wrong indirection table size\n");
 		return -EINVAL;
 	}
+#endif
+
+#ifdef _HAS_RSS_HASH_FUNCS /* BNX2X_UPSTREAM */
+	/* We require at least one supported parameter to be changed and no
+	 * change in any of the unsupported parameters
+	 */
+	if (key ||
+	    (hfunc != ETH_RSS_HASH_NO_CHANGE && hfunc != ETH_RSS_HASH_TOP))
+		return -EOPNOTSUPP;
+
+	if (!indir)
+		return 0;
 #endif
 
 	for (i = 0; i < T_ETH_INDIRECTION_TABLE_SIZE; i++) {
@@ -3881,6 +3967,11 @@ static int bnx2x_set_channels(struct net_device *dev,
 	   "set-channels command parameters: rx = %d, tx = %d, other = %d, combined = %d\n",
 	   channels->rx_count, channels->tx_count, channels->other_count,
 	   channels->combined_count);
+
+	if (pci_num_vf(bp->pdev)) {
+		DP(BNX2X_MSG_IOV, "VFs are enabled, can not set channels\n");
+		return -EPERM;
+	}
 
 	/* We don't support separate rx / tx channels.
 	 * We don't allow setting 'other' channels.

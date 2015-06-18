@@ -32,6 +32,14 @@
 
 #define BNX2X_MAX_EMUL_MULTI		16
 
+
+#if defined(_NTDDK_)
+#pragma warning (push)
+#pragma warning(disable:26110) // Not able to avoid "warning C26110: Caller failing to hold lock '& (& o->lock)->lock' before calling function 'mm_release_lock'."
+#endif // _NTDDK_
+
+
+
 /**** Exe Queue interfaces ****/
 
 /**
@@ -141,7 +149,7 @@ static inline int bnx2x_exe_queue_add(struct bnx2x *bp,
 free_and_exit:
 	bnx2x_exe_queue_free_elem(bp, elem);
 
-	spin_unlock_bh(&o->lock);
+		spin_unlock_bh(&o->lock);
 
 	return rc;
 }
@@ -2050,6 +2058,10 @@ error_exit:
 	return rc;
 }
 
+#if defined(_NTDDK_)
+#pragma warning (push)
+#pragma warning(disable:28167) // Not able to avoid "warning C28167: The function 'bnx2x_vlan_mac_push_new_cmd' changes the IRQL and does not restore the IRQL before it exits. It should be annotated to reflect the change or the IRQL should be restored. IRQL was last set to 2 at line xx"
+#endif // _NTDDK_
 static inline int bnx2x_vlan_mac_push_new_cmd(
 	struct bnx2x *bp,
 	struct bnx2x_vlan_mac_ramrod_params *p)
@@ -2078,6 +2090,9 @@ static inline int bnx2x_vlan_mac_push_new_cmd(
 	/* Try to add a new command to the pending list */
 	return bnx2x_exe_queue_add(bp, &o->exe_queue, elem, restore);
 }
+#if defined(_NTDDK_)
+#pragma warning (pop) // 28167
+#endif // _NTDDK_
 
 /**
  * bnx2x_config_vlan_mac - configure VLAN/MAC/VLAN_MAC filtering rules.
@@ -3071,6 +3086,9 @@ static inline void bnx2x_mcast_hdl_pending_add_e2(struct bnx2x *bp,
 		DP(BNX2X_MSG_SP, "About to configure " BNX2X_MAC_FMT " mcast MAC\n",
 			  BNX2X_MAC_PRN_LIST(pmac_pos->mac));
 
+#if defined(_NTDDK_)
+#pragma warning (suppress:28182) //prefast warns of NULL ptr
+#endif
 		list_del(&pmac_pos->link);
 
 		/* Break if we reached the maximum number
@@ -4301,8 +4319,8 @@ static bool bnx2x_credit_pool_get_entry_always_true(
  * If credit is negative pool operations will always succeed (unlimited pool).
  *
  */
-static inline void bnx2x_init_credit_pool(struct bnx2x_credit_pool_obj *p,
-					  int base, int credit)
+void bnx2x_init_credit_pool(struct bnx2x_credit_pool_obj *p,
+			    int base, int credit)
 {
 	/* Zero the object first */
 	memset(p, 0, sizeof(*p));
@@ -4375,29 +4393,14 @@ void bnx2x_init_mac_credit_pool(struct bnx2x *bp,
 			/* this should never happen! Block MAC operations. */
 			bnx2x_init_credit_pool(p, 0, 0);
 		}
-
 	} else {
-
 		/*
 		 * CAM credit is equaly divided between all active functions
 		 * on the PATH.
 		 */
-		if ((func_num > 1)) {
+		if (func_num > 0) {
 			if (!CHIP_REV_IS_SLOW(bp))
-				cam_sz = (MAX_MAC_CREDIT_E2
-				- GET_NUM_VFS_PER_PATH(bp))
-				/ func_num
-				+ GET_NUM_VFS_PER_PF(bp);
-			else
-				cam_sz = BNX2X_CAM_SIZE_EMUL;
-
-			/* No need for CAM entries handling for 57712 and
-			 * newer.
-			 */
-			bnx2x_init_credit_pool(p, -1, cam_sz);
-		} else if (func_num == 1) {
-			if (!CHIP_REV_IS_SLOW(bp))
-				cam_sz = MAX_MAC_CREDIT_E2;
+				cam_sz = PF_MAC_CREDIT_E2(bp, func_num);
 			else
 				cam_sz = BNX2X_CAM_SIZE_EMUL;
 
@@ -4427,8 +4430,9 @@ void bnx2x_init_vlan_credit_pool(struct bnx2x *bp,
 		 * on the PATH.
 		 */
 		if (func_num > 0) {
-			int credit = MAX_VLAN_CREDIT_E2 / func_num;
-			bnx2x_init_credit_pool(p, func_id * credit, credit);
+			int credit = PF_VLAN_CREDIT_E2(bp, func_num);
+
+			bnx2x_init_credit_pool(p, -1/*unused for E2*/, credit);
 		} else
 			/* this should never happen! Block VLAN operations. */
 			bnx2x_init_credit_pool(p, 0, 0);
@@ -4531,11 +4535,8 @@ static int bnx2x_setup_rss(struct bnx2x *bp,
 	if (test_bit(BNX2X_RSS_IPV6_VXLAN, &p->rss_flags))
 		caps |= ETH_RSS_UPDATE_RAMROD_DATA_IPV6_VXLAN_CAPABILITY;
 
-	if (test_bit(BNX2X_RSS_NVGRE_KEY_ENTROPY, &p->rss_flags))
-		caps |= ETH_RSS_UPDATE_RAMROD_DATA_NVGRE_KEY_ENTROPY_CAPABILITY;
-
-	if (test_bit(BNX2X_RSS_GRE_INNER_HDRS, &p->rss_flags))
-		caps |= ETH_RSS_UPDATE_RAMROD_DATA_GRE_INNER_HDRS_CAPABILITY;
+	if (test_bit(BNX2X_RSS_TUNN_INNER_HDRS, &p->rss_flags))
+		caps |= ETH_RSS_UPDATE_RAMROD_DATA_TUNN_INNER_HDRS_CAPABILITY;
 
 	/* RSS keys */
 	if (test_bit(BNX2X_RSS_SET_SRCH, &p->rss_flags)) {
@@ -4631,6 +4632,10 @@ void bnx2x_init_rss_config_obj(struct bnx2x *bp,
 	rss_obj->engine_id  = engine_id;
 	rss_obj->config_rss = bnx2x_setup_rss;
 }
+
+#if defined(_NTDDK_)
+#pragma warning (pop)
+#endif // (_NTDDK_) // 26110
 
 /********************** Queue state object ***********************************/
 
@@ -6222,14 +6227,20 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 
 	/* Fill the ramrod data with provided parameters */
 	rdata->function_mode	= (u8)start_params->mf_mode;
+#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+	rdata->allow_npar_tx_switching = (u8)start_params->allow_npar_tx_switching;
+#endif
 	rdata->sd_vlan_tag	= cpu_to_le16(start_params->sd_vlan_tag);
 	rdata->path_id		= BP_PATH(bp);
 	rdata->network_cos_mode	= start_params->network_cos_mode;
-	rdata->tunnel_mode	= start_params->tunnel_mode;
-	rdata->gre_tunnel_type	= start_params->gre_tunnel_type;
-	rdata->inner_gre_rss_en = start_params->inner_gre_rss_en;
+
 	rdata->vxlan_dst_port	= start_params->vxlan_dst_port;
-	rdata->tunn_clss_en = start_params->tunn_clss_en;
+	rdata->geneve_dst_port	= start_params->geneve_dst_port;
+	rdata->inner_clss_l2gre	= start_params->inner_clss_l2gre;
+	rdata->inner_clss_l2geneve = start_params->inner_clss_l2geneve;
+	rdata->inner_clss_vxlan	= start_params->inner_clss_vxlan;
+	rdata->inner_rss	= start_params->inner_rss;
+
 	rdata->sd_accept_mf_clss_fail = start_params->class_fail;
 	if (start_params->class_fail_ethtype) {
 		rdata->sd_accept_mf_clss_fail_match_ethtype = 1;
@@ -6252,6 +6263,14 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 			cpu_to_le16((u16) 0x8100);
 
 	rdata->no_added_tags = start_params->no_added_tags;
+
+	rdata->c2s_pri_tt_valid = start_params->c2s_pri_valid;
+	if (rdata->c2s_pri_tt_valid) {
+		memcpy(rdata->c2s_pri_trans_table.val,
+		       start_params->c2s_pri,
+		       MAX_VLAN_PRIORITIES);
+		rdata->c2s_pri_default = start_params->c2s_pri_default;
+	}
 
 	/* No need for an explicit memory barrier here as long as we
 	 * ensure the ordering of writing to the SPQ element
@@ -6312,16 +6331,23 @@ static inline int bnx2x_func_send_switch_update(struct bnx2x *bp,
 	if (test_bit(BNX2X_F_UPDATE_TUNNEL_CFG_CHNG,
 		     &switch_update_params->changes)) {
 		rdata->update_tunn_cfg_flg = 1;
-		if (test_bit(BNX2X_F_UPDATE_TUNNEL_CLSS_EN,
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_L2GRE,
 			     &switch_update_params->changes))
-			rdata->tunn_clss_en = 1;
-		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_GRE_RSS_EN,
+			rdata->inner_clss_l2gre = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_VXLAN,
 			     &switch_update_params->changes))
-			rdata->inner_gre_rss_en = 1;
-		rdata->tunnel_mode = switch_update_params->tunnel_mode;
-		rdata->gre_tunnel_type = switch_update_params->gre_tunnel_type;
+			rdata->inner_clss_vxlan = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_L2GENEVE,
+			     &switch_update_params->changes))
+			rdata->inner_clss_l2geneve = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_RSS,
+			     &switch_update_params->changes))
+			rdata->inner_rss = 1;
+
 		rdata->vxlan_dst_port =
 			cpu_to_le16(switch_update_params->vxlan_dst_port);
+		rdata->geneve_dst_port =
+			cpu_to_le16(switch_update_params->geneve_dst_port);
 	}
 
 	rdata->echo = SWITCH_UPDATE;
@@ -6447,6 +6473,9 @@ static inline int bnx2x_func_send_tx_start(struct bnx2x *bp,
 	for (i = 0; i < ARRAY_SIZE(rdata->traffic_type_to_priority_cos); i++)
 		rdata->traffic_type_to_priority_cos[i] =
 			tx_start_params->traffic_type_to_priority_cos[i];
+
+	for (i = 0; i < MAX_TRAFFIC_TYPES; i++)
+		rdata->dcb_outer_pri[i] = tx_start_params->dcb_outer_pri[i];
 
 	/* No need for an explicit memory barrier here as long as we
 	 * ensure the ordering of writing to the SPQ element

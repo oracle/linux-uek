@@ -80,7 +80,7 @@ struct hw_sb_info {
 #define VFPF_RX_MASK_ACCEPT_ALL_UNICAST		0x00000004
 #define VFPF_RX_MASK_ACCEPT_ALL_MULTICAST	0x00000008
 #define VFPF_RX_MASK_ACCEPT_BROADCAST		0x00000010
-/* TODO: #define VFPF_RX_MASK_ACCEPT_ANY_VLAN	0x00000020 */
+#define VFPF_RX_MASK_ACCEPT_ANY_VLAN		0x00000020
 
 #define BULLETIN_CONTENT_SIZE		(sizeof(struct pf_vf_bulletin_content))
 #define BULLETIN_CONTENT_LEGACY_SIZE	(32)
@@ -145,6 +145,7 @@ struct vfpf_acquire_tlv {
 		u8 fp_hsi_ver;
 		u8 caps;
 #define VF_CAP_SUPPORT_EXT_BULLETIN	(1 << 0)
+#define VF_CAP_SUPPORT_VLAN_FILTER	(1 << 1)
 	} vfdev_info;
 
 	struct vf_pf_resc_request resc_request;
@@ -186,10 +187,11 @@ struct pfvf_acquire_resp_tlv {
 	struct pf_vf_pfdev_info {
 		u32 chip_num;
 		u32 pf_cap;
-		#define PFVF_CAP_RSS        0x00000001
-		#define PFVF_CAP_DHC        0x00000002
-		#define PFVF_CAP_TPA        0x00000004
-		#define PFVF_CAP_TPA_UPDATE 0x00000008
+		#define PFVF_CAP_RSS          0x00000001
+		#define PFVF_CAP_DHC          0x00000002
+		#define PFVF_CAP_TPA          0x00000004
+		#define PFVF_CAP_TPA_UPDATE   0x00000008
+		#define PFVF_CAP_VLAN_FILTER  0x00000010
 
 #ifndef BNX2X_UPSTREAM /* ! BNX2X_UPSTREAM */
 		/* bit set only by ESX hypervisor. This means that a VF *may* be
@@ -319,7 +321,7 @@ struct vfpf_q_mac_vlan_filter {
 	u32 flags;
 	#define VFPF_Q_FILTER_DEST_MAC_VALID	0x01
 	#define VFPF_Q_FILTER_VLAN_TAG_VALID	0x02
-	#define VFPF_Q_FILTER_SET_MAC		0x100	/* set/clear */
+	#define VFPF_Q_FILTER_SET		0x100	/* set/clear */
 	u8  mac[ETH_ALEN];
 	u16 vlan_tag;
 };

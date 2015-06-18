@@ -296,6 +296,7 @@ struct link_params {
 #define FEATURE_CONFIG_IEEE_PHY_TEST			(1<<12)
 #define FEATURE_CONFIG_MT_SUPPORT			(1<<13)
 #define FEATURE_CONFIG_BOOT_FROM_SAN			(1<<14)
+#define FEATURE_CONFIG_DISABLE_PD				(1<<15)
 
 	/* Will be populated during common init */
 	struct bnx2x_phy phy[MAX_PHYS];

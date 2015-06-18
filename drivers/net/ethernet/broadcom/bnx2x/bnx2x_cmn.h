@@ -679,7 +679,7 @@ int bnx2x_enable_msix(struct bnx2x *bp);
 int bnx2x_enable_msi(struct bnx2x *bp);
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
- /**
+/**
  * bnx2x_low_latency_recv - LL callback
  *
  * @napi:	napi structure
@@ -739,10 +739,15 @@ void bnx2x_tx_timeout(struct net_device *dev);
 void bnx2x_vlan_rx_register(struct net_device *dev,
 				   struct vlan_group *vlgrp);
 
-#if (LINUX_VERSION_CODE < KERNEL_VERSION(2, 6, 22))
-void bnx2x_vlan_rx_kill_vid(struct net_device *dev, u16 vid);
 #endif
-#endif
+
+/** bnx2x_get_c2s_mapping - read inner-to-outer vlan configuration
+ * c2s_map should have BNX2X_MAX_PRIORITY entries.
+ * @bp:			driver handle
+ * @c2s_map:		should have BNX2X_MAX_PRIORITY entries for mapping
+ * @c2s_default:	entry for non-tagged configuration
+ */
+void bnx2x_get_c2s_mapping(struct bnx2x *bp, u8 *c2s_map, u8 *c2s_default);
 
 /*********************** Inlines **********************************/
 /*********************** Fast path ********************************/
@@ -1083,6 +1088,36 @@ static inline int bnx2x_func_start(struct bnx2x *bp)
 	start_params->mf_mode = bp->mf_mode;
 	start_params->sd_vlan_tag = bp->mf_ov;
 
+#if defined(__VMKLNX__) && (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
+	if (IS_MF_SI(bp) && !(enable_default_queue_filters == 0)) {
+		DP(BNX2X_MSG_SP, "Adapter in MULTI_FUNCTION_SI Mode hence enabling NPAR tx switching \n");
+		start_params->allow_npar_tx_switching = 1;
+	} else {
+		start_params->allow_npar_tx_switching = 0;
+	}
+#endif
+
+	/* Configure Ethertype for BD mode */
+	if (IS_MF_BD(bp)) {
+		DP(NETIF_MSG_IFUP, "Configuring ethertype 0x88a8 for BD\n");
+		start_params->sd_vlan_eth_type = 0x88a8;
+		REG_WR(bp, PRS_REG_VLAN_TYPE_0, 0x88a8);
+		REG_WR(bp, PBF_REG_VLAN_TYPE_0, 0x88a8);
+		REG_WR(bp, NIG_REG_LLH_E1HOV_TYPE_1, 0x88a8);
+
+		bnx2x_get_c2s_mapping(bp, start_params->c2s_pri,
+				      &start_params->c2s_pri_default);
+		start_params->c2s_pri_valid = 1;
+
+		DP(NETIF_MSG_IFUP,
+		   "Inner-to-Outer priority: %02x %02x %02x %02x %02x %02x %02x %02x [Default %02x]\n",
+		   start_params->c2s_pri[0], start_params->c2s_pri[1],
+		   start_params->c2s_pri[2], start_params->c2s_pri[3],
+		   start_params->c2s_pri[4], start_params->c2s_pri[5],
+		   start_params->c2s_pri[6], start_params->c2s_pri[7],
+		   start_params->c2s_pri_default);
+	}
+
 #ifdef BCM_MULTI_COS /* BNX2X_UPSTREAM */
 	if (CHIP_IS_E2(bp) || CHIP_IS_E3(bp))
 		start_params->network_cos_mode = STATIC_COS;
@@ -1092,24 +1127,19 @@ static inline int bnx2x_func_start(struct bnx2x *bp)
 		start_params->network_cos_mode = OVERRIDE_COS;
 #endif
 
-#ifdef BNX2X_UPSTREAM /* BNX2X_UPSTREAM */
-	start_params->tunnel_mode	= TUNN_MODE_GRE;
-	start_params->gre_tunnel_type	= IPGRE_TUNNEL;
-#else
-	start_params->tunnel_mode	= bp->tunnel_mode;
-	start_params->gre_tunnel_type	= bp->gre_tunnel_type;
-	start_params->vxlan_dst_port	= bp->vxlan_dst_port;
-#endif
+	start_params->vxlan_dst_port	= cpu_to_le16(bp->vxlan_dst_port);
 
 #if (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
 	if (!disable_vxlan_filter && !CHIP_IS_E1x(bp))
-		start_params->tunn_clss_en = 1;
+		start_params->inner_clss_vxlan = 1;
 #endif
 
-	start_params->inner_gre_rss_en = 1;
+#if !defined(__VMKLNX__)   /* BNX2X_UPSTREAM */
+	start_params->inner_rss = 1;
+#endif
 
 	if (IS_MF_UFP(bp) && BNX2X_IS_MF_SD_PROTOCOL_FCOE(bp)) {
-		start_params->class_fail_ethtype = 0x8914;
+		start_params->class_fail_ethtype = ETH_P_FIP;
 		start_params->class_fail = 1;
 		start_params->no_added_tags = 1;
 	}
@@ -1141,7 +1171,7 @@ static inline void bnx2x_free_rx_sge_range(struct bnx2x *bp,
 {
 	int i;
 
-	if (fp->disable_tpa)
+	if (fp->mode == TPA_MODE_DISABLED)
 		return;
 
 	for (i = 0; i < last; i++)
@@ -1193,6 +1223,16 @@ static inline void bnx2x_init_vlan_mac_fp_objs(struct bnx2x_fastpath *fp,
 			   BNX2X_FILTER_MAC_PENDING,
 			   &bp->sp_state, obj_type,
 			   &bp->macs_pool);
+
+	/* Configure classification DBs */
+	if (!CHIP_IS_E1x(bp))
+		bnx2x_init_vlan_obj(bp, &bnx2x_sp_obj(bp, fp).vlan_obj,
+				    fp->cl_id, fp->cid, BP_FUNC(bp),
+				    bnx2x_sp(bp, vlan_rdata),
+				    bnx2x_sp_mapping(bp, vlan_rdata),
+				    BNX2X_FILTER_VLAN_PENDING,
+				    &bp->sp_state, obj_type,
+				    &bp->vlans_pool);
 
 #if  (VMWARE_ESX_DDK_VERSION >= 55000) /* ! BNX2X_UPSTREAM */
 	/* Configure VXLAN classification DBs */
@@ -1266,7 +1306,7 @@ static inline void bnx2x_init_bp_objs(struct bnx2x *bp)
 	bnx2x_init_mac_credit_pool(bp, &bp->macs_pool, BP_FUNC(bp),
 				   bnx2x_get_path_func_num(bp));
 
-	bnx2x_init_vlan_credit_pool(bp, &bp->vlans_pool, BP_ABS_FUNC(bp)>>1,
+	bnx2x_init_vlan_credit_pool(bp, &bp->vlans_pool, BP_FUNC(bp),
 				    bnx2x_get_path_func_num(bp));
 
 	/* RSS configuration object */
@@ -1276,6 +1316,8 @@ static inline void bnx2x_init_bp_objs(struct bnx2x *bp)
 				  bnx2x_sp_mapping(bp, rss_rdata),
 				  BNX2X_FILTER_RSS_CONF_PENDING, &bp->sp_state,
 				  BNX2X_OBJ_TYPE_RX);
+
+	bp->vlan_credit = PF_VLAN_CREDIT_E2(bp, bnx2x_get_path_func_num(bp));
 }
 
 static inline u8 bnx2x_fp_qzone_id(struct bnx2x_fastpath *fp)
@@ -1704,5 +1746,24 @@ void bnx2x_squeeze_objects(struct bnx2x *bp);
 
 void bnx2x_schedule_sp_rtnl(struct bnx2x*, enum sp_rtnl_flag,
 			    u32 verbose);
+
+/**
+ * bnx2x_set_os_driver_state - write driver state for management FW usage
+ *
+ * @bp:		driver handle
+ * @state:	OS_DRIVER_STATE_* value reflecting current driver state
+ */
+void bnx2x_set_os_driver_state(struct bnx2x *bp, u32 state);
+
+/**
+ * bnx2x_nvram_read - reads data from nvram [might sleep]
+ *
+ * @bp:		driver handle
+ * @offset:	byte offset in nvram
+ * @ret_buf:	pointer to buffer where data is to be stored
+ * @buf_size:   Length of 'ret_buf' in bytes
+ */
+int bnx2x_nvram_read(struct bnx2x *bp, u32 offset, u8 *ret_buf,
+		     int buf_size);
 
 #endif /* BNX2X_CMN_H */

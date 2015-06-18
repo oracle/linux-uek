@@ -745,6 +745,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM8722       0x00000f00
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM54616      0x00001000
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM84834      0x00001100
+		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_BCM84858      0x00001200
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_FAILURE       0x0000fd00
 		#define PORT_HW_CFG_XGXS_EXT_PHY2_TYPE_NOT_CONN      0x0000ff00
 
@@ -802,6 +803,7 @@ struct port_hw_cfg {		    /* port 0: 0x12c  port 1: 0x2bc */
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM8722        0x00000f00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM54616       0x00001000
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM84834       0x00001100
+		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_BCM84858       0x00001200
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_DIRECT_WC      0x0000fc00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_FAILURE        0x0000fd00
 		#define PORT_HW_CFG_XGXS_EXT_PHY_TYPE_NOT_CONN       0x0000ff00
@@ -1253,6 +1255,15 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_PERIOD_MASK         0x0000FFFF
 	#define EXTENDED_DEV_INFO_SHARED_CFG_TEMP_PERIOD_SHIFT        0
 
+	/*  Sensor interface - Disabled / BSC / In the future - SMBUS */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_INTERFACE_MASK    0x00030000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_INTERFACE_SHIFT   16
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_INTERFACE_DISABLED 0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_INTERFACE_BSC     0x00010000
+
+	/*  On Board Sensor Address */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_ADDR_MASK         0x03FC0000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_SENSOR_ADDR_SHIFT        18
 
 	/*  MFW flavor to be used */
 	u32 mfw_cfg;                                        /* 0x4008 */
@@ -1278,6 +1289,12 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_SHIFT        10
 	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_DISABLED     0x00000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_DCI_SUPPORT_ENABLED      0x00000400
+
+	/*  Handover LLDP to BMC */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_HANDOVER_LLDP_MASK       0x00000800
+	#define EXTENDED_DEV_INFO_SHARED_CFG_HANDOVER_LLDP_SHIFT      11
+	#define EXTENDED_DEV_INFO_SHARED_CFG_HANDOVER_LLDP_DISABLED   0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_HANDOVER_LLDP_ENABLED    0x00000800
 
 	/*  Hide DCBX feature in CCM/BACS menus */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_HIDE_DCBX_FEAT_MASK      0x00010000
@@ -1489,6 +1506,20 @@ struct extended_dev_info_shared_cfg {             /* NVRAM OFFSET */
 	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_SHIFT18
 	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_2    0x00000000
 	#define EXTENDED_DEV_INFO_SHARED_CFG_NUM_ISCSI_FCOE_CFGS_4    0x00040000
+
+	/*  MCP crash dump trigger */
+	u32 mcp_crash_dump;                                 /* 0x4044 */
+	#define EXTENDED_DEV_INFO_SHARED_CFG_CRASH_DUMP_MASK          0x7FFFFFFF
+	#define EXTENDED_DEV_INFO_SHARED_CFG_CRASH_DUMP_SHIFT         0
+	#define EXTENDED_DEV_INFO_SHARED_CFG_CRASH_DUMP_DISABLED      0x00000000
+	#define EXTENDED_DEV_INFO_SHARED_CFG_CRASH_DUMP_ENABLED       0x00000001
+
+
+	/*  MBI version */
+	u32 mbi_version;                                    /* 0x4048 */
+
+	/*  MBI date */
+	u32 mbi_date;                                       /* 0x404C */
 };
 
 
@@ -1825,6 +1856,7 @@ struct drv_func_mb {
 	#define DRV_STATUS_OEM_EVENT_MASK               0x00000070
 	#define DRV_STATUS_OEM_DISABLE_ENABLE_PF        0x00000010
 	#define DRV_STATUS_OEM_BANDWIDTH_ALLOCATION     0x00000020
+	#define DRV_STATUS_OEM_FC_NPIV_UPDATE           0x00000040
 
 	#define DRV_STATUS_OEM_UPDATE_SVID              0x00000080
 
@@ -2451,18 +2483,23 @@ struct os_drv_ver{
 };
 
 #define OEM_I2C_UUID_STR_ADDR 0x9f
-#define OEM_I2C_CARD_SKU_STR_ADDR 0x48
+#define OEM_I2C_CARD_SKU_STR_ADDR 0x3c
+#define OEM_I2C_CARD_FN_STR_ADDR 0x48
 #define OEM_I2C_CARD_NAME_STR_ADDR 0x10e
 
 #define OEM_I2C_UUID_STR_LEN 16
 #define OEM_I2C_CARD_SKU_STR_LEN 12
-#define OEM_I2C_CARD_NAME_STR_LEN 96
+#define OEM_I2C_CARD_FN_STR_LEN 12
+#define OEM_I2C_CARD_NAME_STR_LEN 128
+#define OEM_I2C_CARD_VERSION_STR_LEN 36
 
 struct oem_i2c_data_t {
 	u32 size;
 	u8 uuid[OEM_I2C_UUID_STR_LEN];
 	u8 card_sku[OEM_I2C_CARD_SKU_STR_LEN];
 	u8 card_name[OEM_I2C_CARD_NAME_STR_LEN];
+	u8 card_ver[OEM_I2C_CARD_VERSION_STR_LEN];
+	u8 card_fn[OEM_I2C_CARD_FN_STR_LEN];
 };
 
 enum curr_cfg_method_e {
@@ -2473,6 +2510,39 @@ enum curr_cfg_method_e {
 	CURR_CFG_MET_VC_CLP = 4,  /* C-Class SM-CLP */
 	CURR_CFG_MET_HP_CNU = 5,  /*  Converged Network Utility */
 	CURR_CFG_MET_HP_DCI = 6,  /* DCi (BD) changes */
+};
+
+#define FC_NPIV_WWPN_SIZE 8
+#define FC_NPIV_WWNN_SIZE 8
+struct bdn_npiv_settings {
+	u8 npiv_wwpn[FC_NPIV_WWPN_SIZE];
+	u8 npiv_wwnn[FC_NPIV_WWNN_SIZE];
+};
+
+struct bdn_fc_npiv_cfg {
+	/* hdr used internally by the MFW */
+	u32 hdr;
+	u32 num_of_npiv;
+};
+
+#define MAX_NUMBER_NPIV 64
+struct bdn_fc_npiv_tbl {
+	struct bdn_fc_npiv_cfg fc_npiv_cfg;
+	struct bdn_npiv_settings settings[MAX_NUMBER_NPIV];
+};
+
+struct mdump_driver_info {
+	u32 epoc;
+	u32 drv_ver;
+	u32 fw_ver;
+
+	u32 valid_dump;
+	#define FIRST_DUMP_VALID        (1 << 0)
+	#define SECOND_DUMP_VALID       (1 << 1)
+
+	u32 flags;
+	#define ENABLE_ALL_TRIGGERS     (0x7fffffff)
+	#define TRIGGER_MDUMP_ONCE      (1 << 31)
 };
 
 struct shmem2_region {
@@ -2558,18 +2628,18 @@ struct shmem2_region {
 	u32 afex_param1_to_driver[E2_FUNC_MAX];		/* 0x0088 */
 	u32 afex_param2_to_driver[E2_FUNC_MAX];		/* 0x0098 */
 
-	u32 swim_base_addr;				/* 0x0108 */
-	u32 swim_funcs;
-	u32 swim_main_cb;
+	u32 swim_base_addr;				/* 0x00a8 */
+	u32 swim_funcs;					/* 0x00ac */
+	u32 swim_main_cb;				/* 0x00b0 */
 
 	/*
 	 * bitmap notifying which VIF profiles stored in nvram are enabled by
 	 * switch
 	 */
-	u32 afex_profiles_enabled[2];
+	u32 afex_profiles_enabled[2];			/* 0x00b4 */
 
 	/* generic flags controlled by the driver */
-	u32 drv_flags;
+	u32 drv_flags;					/* 0x00bc */
 	#define DRV_FLAGS_DCB_CONFIGURED		0x0
 	#define DRV_FLAGS_DCB_CONFIGURATION_ABORTED	0x1
 	#define DRV_FLAGS_DCB_MFW_CONFIGURED	0x2
@@ -2591,19 +2661,19 @@ struct shmem2_region {
 	(_field_bit) + DRV_FLAGS_GET_PORT_OFFSET(_port)))
 
 	/* pointer to extended dev_info shared data copied from nvm image */
-	u32 extended_dev_info_shared_addr;
-	u32 ncsi_oem_data_addr;
+	u32 extended_dev_info_shared_addr;		/* 0x00c0 */
+	u32 ncsi_oem_data_addr;				/* 0x00c4 */
 
-	u32 sensor_data_addr;
-	u32 buffer_block_addr;
-	u32 sensor_data_req_update_interval;
-	u32 temperature_in_half_celsius;
-	u32 glob_struct_in_host;
+	u32 sensor_data_addr;				/* 0x00c8 */
+	u32 buffer_block_addr;				/* 0x00cc */
+	u32 sensor_data_req_update_interval;		/* 0x00d0 */
+	u32 temperature_in_half_celsius;		/* 0x00d4 */
+	u32 glob_struct_in_host;			/* 0x00d8 */
 
-	u32 dcbx_neg_res_ext_offset;
+	u32 dcbx_neg_res_ext_offset;			/* 0x00dc */
 	#define SHMEM_DCBX_NEG_RES_EXT_NONE			0x00000000
 
-	u32 drv_capabilities_flag[E2_FUNC_MAX];
+	u32 drv_capabilities_flag[E2_FUNC_MAX];		/* 0x00e0 */
 	#define DRV_FLAGS_CAPABILITIES_LOADED_SUPPORTED 0x00000001
 	#define DRV_FLAGS_CAPABILITIES_LOADED_L2        0x00000002
 	#define DRV_FLAGS_CAPABILITIES_LOADED_FCOE      0x00000004
@@ -2611,27 +2681,27 @@ struct shmem2_region {
 	#define DRV_FLAGS_MTU_MASK			0xffff0000
 	#define DRV_FLAGS_MTU_SHIFT				16
 
-	u32 extended_dev_info_shared_cfg_size;
+	u32 extended_dev_info_shared_cfg_size;		/* 0x00f0 */
 
-	u32 dcbx_en[PORT_MAX];
+	u32 dcbx_en[PORT_MAX];				/* 0x00f4 */
 
 	/* The offset points to the multi threaded meta structure */
-	u32 multi_thread_data_offset;
+	u32 multi_thread_data_offset;			/* 0x00fc */
 
 	/* address of DMAable host address holding values from the drivers */
-	u32 drv_info_host_addr_lo;
-	u32 drv_info_host_addr_hi;
+	u32 drv_info_host_addr_lo;			/* 0x0100 */
+	u32 drv_info_host_addr_hi;			/* 0x0104 */
 
 	/* general values written by the MFW (such as current version) */
-	u32 drv_info_control;
+	u32 drv_info_control;				/* 0x0108 */
 	#define DRV_INFO_CONTROL_VER_MASK          0x000000ff
 	#define DRV_INFO_CONTROL_VER_SHIFT         0
 	#define DRV_INFO_CONTROL_OP_CODE_MASK      0x0000ff00
 	#define DRV_INFO_CONTROL_OP_CODE_SHIFT     8
-	u32 ibft_host_addr; /* initialized by option ROM */
+	u32 ibft_host_addr; /* initialized by option ROM */     /* 0x010c */
 
-	struct eee_remote_vals eee_remote_vals[PORT_MAX];
-	u32 pf_allocation[E2_FUNC_MAX];
+	struct eee_remote_vals eee_remote_vals[PORT_MAX];	/* 0x0110 */
+	u32 pf_allocation[E2_FUNC_MAX];				/* 0x0120 */
 	#define PF_ALLOACTION_MSIX_VECTORS_MASK    0x000000ff /* real value, as PCI config space can show only maximum of 64 vectors */
 	#define PF_ALLOACTION_MSIX_VECTORS_SHIFT   0
 
@@ -2649,7 +2719,7 @@ struct shmem2_region {
 	 * bit 31 when 1'b0 bits 15:0 contain a PORT_FEAT_CFG_EEE_ define as
 	 * value. When 1'b1 those bits contains a value times 16 microseconds.
 	 */
-	u32 eee_status[PORT_MAX];
+	u32 eee_status[PORT_MAX];				/* 0x0130 */
 	#define SHMEM_EEE_TIMER_MASK		   0x0000ffff
 	#define SHMEM_EEE_SUPPORTED_MASK	   0x000f0000
 	#define SHMEM_EEE_SUPPORTED_SHIFT	   16
@@ -2665,21 +2735,24 @@ struct shmem2_region {
 	#define SHMEM_EEE_ACTIVE_BIT		   0x40000000
 	#define SHMEM_EEE_TIME_OUTPUT_BIT	   0x80000000
 
-	u32 sizeof_port_stats;
+	u32 sizeof_port_stats;					/* 0x0138 */
 
 	/* Link Flap Avoidance */
-	u32 lfa_host_addr[PORT_MAX];
+	u32 lfa_host_addr[PORT_MAX];				/* 0x013c */
 
     /* External PHY temperature in deg C. */
-	u32 extphy_temps_in_celsius;
+	u32 extphy_temps_in_celsius;				/* 0x0144 */
 	#define EXTPHY1_TEMP_MASK                  0x0000ffff
 	#define EXTPHY1_TEMP_SHIFT                 0
+	#define ON_BOARD_TEMP_MASK                 0xffff0000
+	#define ON_BOARD_TEMP_SHIFT                16
 
 	u32 ocdata_info_addr;			/* Offset 0x148 */
 	u32 drv_func_info_addr;			/* Offset 0x14C */
 	u32 drv_func_info_size;			/* Offset 0x150 */
 	u32 link_attr_sync[PORT_MAX];		/* Offset 0x154 */
 	#define LINK_ATTR_SYNC_KR2_ENABLE	0x00000001
+	#define LINK_ATTR_84858			0x00000002
 	#define LINK_SFP_EEPROM_COMP_CODE_MASK	0x0000ff00
 	#define LINK_SFP_EEPROM_COMP_CODE_SHIFT		 8
 	#define LINK_SFP_EEPROM_COMP_CODE_SR	0x00001000
@@ -2694,50 +2767,81 @@ struct shmem2_region {
         struct os_drv_ver func_os_drv_ver[E2_FUNC_MAX]; /* Offset 0x16c */
 
 	/* Flag to the driver that PF's drv_info_host_addr buffer was read  */
-	u32 mfw_drv_indication;
+	u32 mfw_drv_indication;				/* Offset 0x19c */
 
 	/* We use inidcation for each PF (0..3) */
 	#define MFW_DRV_IND_READ_DONE_OFFSET(_pf_)  (1 << _pf_)
 
-	union { /* For various OEMs */
+	union { /* For various OEMs */			/* Offset 0x1a0 */
 		u8 storage_boot_prog[E2_FUNC_MAX];
 	#define STORAGE_BOOT_PROG_MASK				0x000000FF
-	#define STORAGE_BOOT_PROG_NONE				0x00000001
+	#define STORAGE_BOOT_PROG_NONE				0x00000000
 	#define STORAGE_BOOT_PROG_ISCSI_IP_ACQUIRED		0x00000002
 	#define STORAGE_BOOT_PROG_FCOE_FABRIC_LOGIN_SUCCESS	0x00000002
-	#define STORAGE_BOOT_PROG_TRARGET_FOUND			0x00000004
+	#define STORAGE_BOOT_PROG_TARGET_FOUND			0x00000004
 	#define STORAGE_BOOT_PROG_ISCSI_CHAP_SUCCESS		0x00000008
 	#define STORAGE_BOOT_PROG_FCOE_LUN_FOUND		0x00000008
 	#define STORAGE_BOOT_PROG_LOGGED_INTO_TGT		0x00000010
 	#define STORAGE_BOOT_PROG_IMG_DOWNLOADED		0x00000020
 	#define STORAGE_BOOT_PROG_OS_HANDOFF			0x00000040
-	#define STORAGE_BOOT_PROG_COMPLETED			0x00000000
+	#define STORAGE_BOOT_PROG_COMPLETED			0x00000080
 
 		u32 oem_i2c_data_addr;
 	};
 
-	u8  c2s_pcp_map[E2_FUNC_MAX][9];
+	/* 9 entires for the C2S PCP map for each inner VLAN PCP + 1 default */
+	/* For PCP values 0-3 use the map lower */
+	/* 0xFF000000 - PCP 0, 0x00FF0000 - PCP 1,
+	 * 0x0000FF00 - PCP 2, 0x000000FF PCP 3
+	 */
+	u32 c2s_pcp_map_lower[E2_FUNC_MAX];			/* 0x1a4 */
 
-	u16 mtu_size[E2_FUNC_MAX];
+	/* For PCP values 4-7 use the map upper */
+	/* 0xFF000000 - PCP 4, 0x00FF0000 - PCP 5,
+	 * 0x0000FF00 - PCP 6, 0x000000FF PCP 7
+	 */
+	u32 c2s_pcp_map_upper[E2_FUNC_MAX];			/* 0x1b4 */
+
+	/* For PCP default value get the MSB byte of the map default */
+	u32 c2s_pcp_map_default[E2_FUNC_MAX];			/* 0x1c4 */
+
+	/* FC_NPIV table offset in NVRAM */
+	u32 fc_npiv_nvram_tbl_addr[PORT_MAX];			/* 0x1d4 */
 
 	/* Shows last method that changed configuration of this device */
-	enum curr_cfg_method_e curr_cfg;
+	enum curr_cfg_method_e curr_cfg;			/* 0x1dc */
 
 	/* Storm FW version, shold be kept in the format 0xMMmmbbdd:
 	 * MM - Major, mm - Minor, bb - Build ,dd - Drop
 	 */
-	u32 netproc_fw_ver;
+	u32 netproc_fw_ver;					/* 0x1e0 */
 
 	/* Option ROM SMASH CLP version */
-	u32 clp_ver;
+	u32 clp_ver;						/* 0x1e4 */
 
-	u32 pcie_bus_num;
+	u32 pcie_bus_num;					/* 0x1e8 */
 
-	u32 sriov_switch_mode;
+	u32 sriov_switch_mode;					/* 0x1ec */
 	#define SRIOV_SWITCH_MODE_NONE		0x0
 	#define SRIOV_SWITCH_MODE_VEB		0x1
 	#define SRIOV_SWITCH_MODE_VEPA		0x2
 
+	u8  rsrv2[E2_FUNC_MAX];					/* 0x1f0 */
+
+	u32 img_inv_table_addr;	/* Address to INV_TABLE_P */	/* 0x1f4 */
+
+	u32 mtu_size[E2_FUNC_MAX];				/* 0x1f8 */
+
+	u32 os_driver_state[E2_FUNC_MAX];			/* 0x208 */
+	#define OS_DRIVER_STATE_NOT_LOADED	0 /* not installed */
+	#define OS_DRIVER_STATE_LOADING		1 /* transition state */
+	#define OS_DRIVER_STATE_DISABLED	2 /* installed but disabled */
+	#define OS_DRIVER_STATE_ACTIVE		3 /* installed and active */
+
+	/* mini dump driver info */
+	struct mdump_driver_info drv_info;			/* 0x218 */
+
+								/* 0x22c */
 };
 
 
@@ -3415,8 +3519,8 @@ struct port_info {
 
 
 #define BCM_5710_FW_MAJOR_VERSION			7
-#define BCM_5710_FW_MINOR_VERSION			10
-#define BCM_5710_FW_REVISION_VERSION		51
+#define BCM_5710_FW_MINOR_VERSION			12
+#define BCM_5710_FW_REVISION_VERSION		30
 #define BCM_5710_FW_ENGINEERING_VERSION		0
 #define BCM_5710_FW_COMPILE_FLAGS			1
 
@@ -3981,8 +4085,7 @@ enum classify_rule {
 	CLASSIFY_RULE_OPCODE_VLAN,
 	CLASSIFY_RULE_OPCODE_PAIR,
 	CLASSIFY_RULE_OPCODE_VXLAN,
-	MAX_CLASSIFY_RULE
-};
+	MAX_CLASSIFY_RULE};
 
 
 /*
@@ -4179,8 +4282,8 @@ struct double_regpair {
  */
 enum eth_2nd_parse_bd_type {
 	ETH_2ND_PARSE_BD_TYPE_LSO_TUNNEL,
-	MAX_ETH_2ND_PARSE_BD_TYPE
-};
+	MAX_ETH_2ND_PARSE_BD_TYPE};
+
 
 /*
  * Ethernet address typesm used in ethernet tx BDs
@@ -4194,7 +4297,7 @@ enum eth_addr_type {
 
 
 /*
- *
+ * 
  */
 struct eth_classify_cmd_header {
 	u8 cmd_general_data;
@@ -4326,7 +4429,7 @@ struct xstorm_eth_st_context {
 };
 
 /*
- * Ethernet connection context
+ * Ethernet connection context 
  */
 struct eth_context {
 	struct ustorm_eth_st_context ustorm_st_context;
@@ -4370,7 +4473,7 @@ struct eth_end_agg_rx_cqe {
 	u8 reserved3;
 	__le16 reserved4;
 	union eth_sgl_or_raw_data sgl_or_raw_data;
-	__le32 reserved5[8];
+	__le32 padding[8];
 };
 
 
@@ -4414,8 +4517,12 @@ struct eth_fast_path_rx_cqe {
 	__le16 len_on_bd;
 	struct parsing_flags pars_flags;
 	union eth_sgl_or_raw_data sgl_or_raw_data;
-	__le32 reserved1[7];
-	u32 marker;
+	u8 tunn_type;
+	u8 tunn_inner_hdrs_offset;
+	__le16 reserved1;
+	__le32 tunn_tenant_id;
+	__le32 padding[5];
+	__le32 marker;
 };
 
 
@@ -4462,6 +4569,7 @@ struct eth_filter_rules_ramrod_data {
 	struct eth_classify_header header;
 	struct eth_filter_rules_cmd rules[FILTER_RULES_COUNT];
 };
+
 
 /*
  * Hsi version
@@ -4530,8 +4638,8 @@ struct eth_tunnel_data {
 	__le16 pseudo_csum;
 	u8 ip_hdr_start_inner_w;
 	u8 flags;
-#define ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER (0x1<<0)
-#define ETH_TUNNEL_DATA_IP_HDR_TYPE_OUTER_SHIFT 0
+#define ETH_TUNNEL_DATA_IPV6_OUTER (0x1<<0)
+#define ETH_TUNNEL_DATA_IPV6_OUTER_SHIFT 0
 #define ETH_TUNNEL_DATA_RESERVED (0x7F<<1)
 #define ETH_TUNNEL_DATA_RESERVED_SHIFT 1
 };
@@ -4612,10 +4720,10 @@ enum eth_rss_hash_type {
 enum eth_rss_mode {
 	ETH_RSS_MODE_DISABLED,
 	ETH_RSS_MODE_REGULAR,
+	ETH_RSS_MODE_ESX51,
 	ETH_RSS_MODE_VLAN_PRI,
 	ETH_RSS_MODE_E1HOV_PRI,
 	ETH_RSS_MODE_IP_DSCP,
-	ETH_RSS_MODE_ESX51,
 	MAX_ETH_RSS_MODE};
 
 
@@ -4642,16 +4750,12 @@ struct eth_rss_update_ramrod_data {
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_UDP_CAPABILITY_SHIFT 6
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_VXLAN_CAPABILITY (0x1<<7)
 #define ETH_RSS_UPDATE_RAMROD_DATA_IPV6_VXLAN_CAPABILITY_SHIFT 7
-#define ETH_RSS_UPDATE_RAMROD_DATA_EN_5_TUPLE_CAPABILITY (0x1<<8)
-#define ETH_RSS_UPDATE_RAMROD_DATA_EN_5_TUPLE_CAPABILITY_SHIFT 8
-#define ETH_RSS_UPDATE_RAMROD_DATA_NVGRE_KEY_ENTROPY_CAPABILITY (0x1<<9)
-#define ETH_RSS_UPDATE_RAMROD_DATA_NVGRE_KEY_ENTROPY_CAPABILITY_SHIFT 9
-#define ETH_RSS_UPDATE_RAMROD_DATA_GRE_INNER_HDRS_CAPABILITY (0x1<<10)
-#define ETH_RSS_UPDATE_RAMROD_DATA_GRE_INNER_HDRS_CAPABILITY_SHIFT 10
-#define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY (0x1<<11)
-#define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY_SHIFT 11
-#define ETH_RSS_UPDATE_RAMROD_DATA_RESERVED (0xF<<12)
-#define ETH_RSS_UPDATE_RAMROD_DATA_RESERVED_SHIFT 12
+#define ETH_RSS_UPDATE_RAMROD_DATA_TUNN_INNER_HDRS_CAPABILITY (0x1<<8)
+#define ETH_RSS_UPDATE_RAMROD_DATA_TUNN_INNER_HDRS_CAPABILITY_SHIFT 8
+#define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY (0x1<<9)
+#define ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY_SHIFT 9
+#define ETH_RSS_UPDATE_RAMROD_DATA_RESERVED (0x3F<<10)
+#define ETH_RSS_UPDATE_RAMROD_DATA_RESERVED_SHIFT 10
 	u8 rss_result_mask;
 	u8 reserved3;
 	__le16 reserved4;
@@ -4816,24 +4920,37 @@ enum eth_tpa_update_command {
 
 
 /*
- * In case of LSO over IPv4 tunnel, whether to increment
- * IP ID on external IP header or internal IP header
+ * In case of LSO over IPv4 tunnel, whether to increment IP ID on external IP header or internal IP header
  */
 enum eth_tunnel_lso_inc_ip_id {
 	EXT_HEADER,
 	INT_HEADER,
-	MAX_ETH_TUNNEL_LSO_INC_IP_ID
-};
+	MAX_ETH_TUNNEL_LSO_INC_IP_ID};
+
 
 /*
- * In case tunnel exist and L4 checksum offload,
- * the pseudo checksum location, on packet or on BD.
+ * In case tunnel exist and L4 checksum offload (or outer ip header checksum), the pseudo checksum location, on packet or on BD.
  */
 enum eth_tunnel_non_lso_csum_location {
 	CSUM_ON_PKT,
 	CSUM_ON_BD,
-	MAX_ETH_TUNNEL_NON_LSO_CSUM_LOCATION
-};
+	MAX_ETH_TUNNEL_NON_LSO_CSUM_LOCATION};
+
+
+/*
+ * Packet Tunneling Type
+ */
+enum eth_tunn_type {
+	TUNN_TYPE_NONE,
+	TUNN_TYPE_VXLAN,
+	TUNN_TYPE_L2_GRE,
+	TUNN_TYPE_IPV4_GRE,
+	TUNN_TYPE_IPV6_GRE,
+	TUNN_TYPE_L2_GENEVE,
+	TUNN_TYPE_IPV4_GENEVE,
+	TUNN_TYPE_IPV6_GENEVE,
+	MAX_ETH_TUNN_TYPE};
+
 
 /*
  * Tx regular BD structure
@@ -5028,6 +5145,7 @@ union eth_tx_bd_types {
 struct eth_tx_bds_array {
 	union eth_tx_bd_types bds[13];
 };
+
 
 /*
  * VLAN mode on TX BDs
@@ -5279,7 +5397,15 @@ struct afex_vif_list_ramrod_data {
 
 
 /*
- * cfc delete event data
+ * 
+ */
+struct c2s_pri_trans_table_entry {
+	u8 val[MAX_VLAN_PRIORITIES];
+};
+
+
+/*
+ * cfc delete event data 
  */
 struct cfc_del_event_data {
 	u32 cid;
@@ -5588,7 +5714,7 @@ struct e2_integ_data {
 
 
 /*
- * set mac event data
+ * set mac event data 
  */
 struct eth_event_data {
 	u32 echo;
@@ -5598,7 +5724,7 @@ struct eth_event_data {
 
 
 /*
- * pf-vf event data
+ * pf-vf event data 
  */
 struct vf_pf_event_data {
 	u8 vf_id;
@@ -5609,7 +5735,7 @@ struct vf_pf_event_data {
 };
 
 /*
- * VF FLR event data
+ * VF FLR event data 
  */
 struct vf_flr_event_data {
 	u8 vf_id;
@@ -5620,7 +5746,7 @@ struct vf_flr_event_data {
 };
 
 /*
- * malicious VF event data
+ * malicious VF event data 
  */
 struct malicious_vf_event_data {
 	u8 vf_id;
@@ -5631,7 +5757,7 @@ struct malicious_vf_event_data {
 };
 
 /*
- * vif list event data
+ * vif list event data 
  */
 struct vif_list_event_data {
 	u8 func_bit_map;
@@ -5642,7 +5768,7 @@ struct vif_list_event_data {
 };
 
 /*
- * function update event data
+ * function update event data 
  */
 struct function_update_event_data {
 	u8 echo;
@@ -5765,11 +5891,12 @@ struct flow_control_configuration {
 	u8 dont_add_pri_0_en;
 	u8 reserved1;
 	__le32 reserved2;
+	u8 dcb_outer_pri[MAX_TRAFFIC_TYPES];
 };
 
 
 /*
- *
+ * 
  */
 struct function_start_data {
 	u8 function_mode;
@@ -5779,23 +5906,30 @@ struct function_start_data {
 	u8 path_id;
 	u8 network_cos_mode;
 	u8 dmae_cmd_id;
-	u8 tunnel_mode;
-	u8 gre_tunnel_type;
-	u8 tunn_clss_en;
-	u8 inner_gre_rss_en;
-	u8 sd_accept_mf_clss_fail;
+	u8 no_added_tags;
+	__le16 reserved0;
+	__le32 reserved1;
+	u8 inner_clss_vxlan;
+	u8 inner_clss_l2gre;
+	u8 inner_clss_l2geneve;
+	u8 inner_rss;
 	__le16 vxlan_dst_port;
+	__le16 geneve_dst_port;
+	u8 sd_accept_mf_clss_fail;
+	u8 sd_accept_mf_clss_fail_match_ethtype;
 	__le16 sd_accept_mf_clss_fail_ethtype;
 	__le16 sd_vlan_eth_type;
 	u8 sd_vlan_force_pri_flg;
 	u8 sd_vlan_force_pri_val;
-	u8 sd_accept_mf_clss_fail_match_ethtype;
-	u8 no_added_tags;
+	u8 c2s_pri_tt_valid;
+	u8 c2s_pri_default;
+	u8 reserved2[6];
+	struct c2s_pri_trans_table_entry c2s_pri_trans_table;
 };
 
 
 /*
- *
+ * 
  */
 struct function_update_data {
 	u8 vif_id_change_flg;
@@ -5812,11 +5946,12 @@ struct function_update_data {
 	u8 tx_switch_suspend;
 	u8 echo;
 	u8 update_tunn_cfg_flg;
-	u8 tunnel_mode;
-	u8 gre_tunnel_type;
-	u8 tunn_clss_en;
-	u8 inner_gre_rss_en;
+	u8 inner_clss_vxlan;
+	u8 inner_clss_l2gre;
+	u8 inner_clss_l2geneve;
+	u8 inner_rss;
 	__le16 vxlan_dst_port;
+	__le16 geneve_dst_port;
 	u8 sd_vlan_force_pri_change_flg;
 	u8 sd_vlan_force_pri_flg;
 	u8 sd_vlan_force_pri_val;
@@ -5825,7 +5960,10 @@ struct function_update_data {
 	u8 reserved1;
 	__le16 sd_vlan_tag;
 	__le16 sd_vlan_eth_type;
+	__le16 reserved0;
+	__le32 reserved2;
 };
+
 
 /*
  * FW version stored in the Xstorm RAM
@@ -5855,17 +5993,7 @@ struct fw_version {
 
 
 /*
- * GRE Tunnel Mode
- */
-enum gre_tunnel_type {
-	NVGRE_TUNNEL,
-	L2GRE_TUNNEL,
-	IPGRE_TUNNEL,
-	MAX_GRE_TUNNEL_TYPE
-};
-
-/*
- * Dynamic Host-Coalescing - Driver(host) counters
+ * Dynamic Host-Coalescing - Driver(host) counters 
  */
 struct hc_dynamic_sb_drv_counters {
 	u32 dynamic_hc_drv_counter[HC_SB_MAX_DYNAMIC_INDICES];
@@ -6065,7 +6193,7 @@ struct tstorm_per_pf_stats {
 };
 
 /*
- *
+ * 
  */
 struct per_pf_stats {
 	struct tstorm_per_pf_stats tstorm_pf_statistics;
@@ -6085,7 +6213,7 @@ struct tstorm_per_port_stats {
 };
 
 /*
- *
+ * 
  */
 struct per_port_stats {
 	struct tstorm_per_port_stats tstorm_port_statistics;
@@ -6127,7 +6255,7 @@ struct ustorm_per_queue_stats {
 };
 
 /*
- * Protocol-common statistics collected by the Xstorm (per client)
+ * Protocol-common statistics collected by the Xstorm (per client) 
  */
 struct xstorm_per_queue_stats {
 	struct regpair ucast_bytes_sent;
@@ -6140,7 +6268,7 @@ struct xstorm_per_queue_stats {
 };
 
 /*
- *
+ * 
  */
 struct per_queue_stats {
 	struct tstorm_per_queue_stats tstorm_queue_statistics;
@@ -6189,6 +6317,7 @@ struct protocol_common_spe {
 	union protocol_common_specific_data data;
 };
 
+
 /*
  * The data for the Set Timesync Ramrod
  */
@@ -6231,7 +6360,7 @@ struct stats_counter {
 
 
 /*
- *
+ * 
  */
 struct stats_query_entry {
 	u8 kind;
@@ -6270,8 +6399,7 @@ enum stats_query_type {
 	STATS_TYPE_PF,
 	STATS_TYPE_TOE,
 	STATS_TYPE_FCOE,
-	MAX_STATS_QUERY_TYPE
-};
+	MAX_STATS_QUERY_TYPE};
 
 
 /*
@@ -6281,8 +6409,7 @@ enum status_block_state {
 	SB_DISABLED,
 	SB_ENABLED,
 	SB_CLEANED,
-	MAX_STATUS_BLOCK_STATE
-};
+	MAX_STATUS_BLOCK_STATE};
 
 
 /*
@@ -6294,8 +6421,7 @@ enum storm_id {
 	XSTORM_ID,
 	TSTORM_ID,
 	ATTENTION_ID,
-	MAX_STORM_ID
-};
+	MAX_STORM_ID};
 
 
 /*
@@ -6305,8 +6431,7 @@ enum traffic_type {
 	LLFC_TRAFFIC_TYPE_NW,
 	LLFC_TRAFFIC_TYPE_FCOE,
 	LLFC_TRAFFIC_TYPE_ISCSI,
-	MAX_TRAFFIC_TYPE
-};
+	MAX_TRAFFIC_TYPE};
 
 
 /*
@@ -6331,8 +6456,7 @@ struct tstorm_vf_zone_data {
 enum ts_add_sub_value {
 	TS_SUB_VALUE,
 	TS_ADD_VALUE,
-	MAX_TS_ADD_SUB_VALUE
-};
+	MAX_TS_ADD_SUB_VALUE};
 
 
 /*
@@ -6342,8 +6466,7 @@ enum ts_drift_adjust_cmd {
 	TS_DRIFT_ADJUST_KEEP,
 	TS_DRIFT_ADJUST_SET,
 	TS_DRIFT_ADJUST_RESET,
-	MAX_TS_DRIFT_ADJUST_CMD
-};
+	MAX_TS_DRIFT_ADJUST_CMD};
 
 
 /*
@@ -6353,19 +6476,8 @@ enum ts_offset_cmd {
 	TS_OFFSET_KEEP,
 	TS_OFFSET_INC,
 	TS_OFFSET_DEC,
-	MAX_TS_OFFSET_CMD
-};
+	MAX_TS_OFFSET_CMD};
 
-
-/*
- * Tunnel Mode
- */
-enum tunnel_mode {
-	TUNN_MODE_NONE,
-	TUNN_MODE_VXLAN,
-	TUNN_MODE_GRE,
-	MAX_TUNNEL_MODE
-};
 
 /*
  * Input for measuring Pci Latency
@@ -6457,8 +6569,7 @@ struct vf_pf_channel_data {
 enum vf_pf_channel_state {
 	VF_PF_CHANNEL_STATE_READY,
 	VF_PF_CHANNEL_STATE_WAITING_FOR_ACK,
-	MAX_VF_PF_CHANNEL_STATE
-};
+	MAX_VF_PF_CHANNEL_STATE};
 
 
 /*
@@ -6469,8 +6580,17 @@ enum vif_list_rule_kind {
 	VIF_LIST_RULE_GET,
 	VIF_LIST_RULE_CLEAR_ALL,
 	VIF_LIST_RULE_CLEAR_FUNC,
-	MAX_VIF_LIST_RULE_KIND
-};
+	MAX_VIF_LIST_RULE_KIND};
+
+
+/*
+ * VXLAN Classification Type
+ */
+enum vxlan_clss_type {
+	VXLAN_CLSS_DISABLED,
+	VXLAN_CLSS_USE_VNI,
+	VXLAN_CLSS_USE_VLAN,
+	MAX_VXLAN_CLSS_TYPE};
 
 
 /*

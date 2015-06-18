@@ -1,7 +1,7 @@
 /* bnx2x_compat.h: QLogic Everest network driver.
  *
  * Copyright 2007-2013 Broadcom Corporation
- * Copyright 2014 QLogic Corporation
+ * Copyright 2014-2015 QLogic Corporation
  * All rights reserved
  *
  * Unless you and QLogic execute a separate written software license
@@ -18,7 +18,6 @@
 #ifndef __BNX2X_COMPAT_H__
 #define __BNX2X_COMPAT_H__
 
-/* compat for UEK */
 #include "bnx2x_compat_uek3.h"
 
 #ifndef __VMKLNX__
@@ -100,6 +99,9 @@
 #endif
 #if (LINUX_STARTING_AT_VERSION(2, 6, 19) && LINUX_PRE_VERSION(3, 12, 0))
 #include <linux/pci_hotplug.h> /* for pci_bus_speed & width */
+#endif
+#if (LINUX_STARTING_AT_VERSION(3, 2, 0) && LINUX_PRE_VERSION(3, 10, 0))
+#include <linux/export.h> /* to export symbols */
 #endif
 
 #include <linux/in.h>
@@ -1553,6 +1555,14 @@ static inline __u32 ethtool_cmd_speed(struct ethtool_cmd *ep)
 #define NETIF_F_LOOPBACK	(1 << 31) /* Enable loopback */
 #endif
 
+#ifndef SUPPORTED_1000baseKX_Full
+#define SUPPORTED_1000baseKX_Full	(1 << 17)
+#endif
+
+#ifndef SUPPORTED_10000baseKR_Full
+#define SUPPORTED_10000baseKR_Full	(1 << 19)
+#endif
+
 #ifndef SUPPORTED_20000baseMLD2_Full
 #define SUPPORTED_20000baseMLD2_Full	(1 << 21)
 #endif
@@ -1820,7 +1830,7 @@ static inline int netif_get_num_default_rss_queues(void)
 }
 #endif
 
-#if defined(_DEFINE_SMP_MB_BEFORE_ATOMIC)
+#if defined(_DEFINE_SMP_MB_BEFORE_ATOMIC) && defined(_DEFINE_SMP_MB_BEFORE_ATOMIC_V2)
 #define smp_mb__before_atomic()	smp_mb__before_clear_bit()
 #define smp_mb__after_atomic()	smp_mb__after_clear_bit()
 #endif
@@ -1977,7 +1987,9 @@ static inline int pcie_capability_read_word(struct pci_dev *dev,
 #endif
 
 /* RHEL did not port ENCAPSULATION infrastucture */
-#if (defined(NETIF_F_GSO_GRE) && !defined(RHEL_RELEASE_CODE))
+#if ((defined(NETIF_F_GSO_GRE) && !defined(RHEL_RELEASE_CODE)) || \
+     (defined(NETIF_F_GSO_GRE) && defined(RHEL_RELEASE_CODE) && \
+      (RHEL_RELEASE_CODE >= RHEL_RELEASE_VERSION(7, 0))))
 #define ENC_SUPPORTED 1
 #elif ESX_STARTING_AT(55000)
 #include <net/encap_offload.h>
@@ -2029,22 +2041,26 @@ static inline struct iphdr *esx_inner_ip_hdr(const struct sk_buff *skb)
 #define skb_inner_transport_header skb_transport_header
 #define inner_tcp_hdrlen tcp_hdrlen
 
-#if LINUX_PRE_VERSION(3, 8, 0)
+#if defined(_DEFINE_INNER_IPV6_HDR) || defined(__VMKLNX__)
 static inline struct ipv6hdr *inner_ipv6_hdr(const struct sk_buff *skb)
 {
 	return (struct ipv6hdr *)skb_inner_network_header(skb);
 }
+#endif
 
+#if defined(_DEFINE_INNER_IP_HDR)  || defined(__VMKLNX__)
 static inline struct iphdr *inner_ip_hdr(const struct sk_buff *skb)
 {
 	return (struct iphdr *)skb_inner_network_header(skb);
 }
+#endif
 
+#if defined(_DEFINE_INNER_TCP_HDR) || defined(__VMKLNX__)
 static inline struct tcphdr *inner_tcp_hdr(const struct sk_buff *skb)
 {
 	return (struct tcphdr *)skb_transport_header(skb);
 }
-#endif /* LINUX_PRE_VERSION(3, 8, 0) */
+#endif /* _DEFINE_INNER_TCP_HDR */
 #endif /* NETIF_F_GSO_GRE */
 
 #ifndef NETIF_F_GSO_UDP_TUNNEL
@@ -2276,6 +2292,14 @@ static inline int pci_vfs_assigned(struct pci_dev *dev)
 #endif /* PCI_DEV_FLAGS_ASSIGNED */
 #endif /* KERNEL_VERSION(3, 10, 0)) */
 
+#if defined(_DEFINE_PCI_NUM_VF_) || defined(__VMKLNX__)
+/* Sles10sp3 and rhel5.8 doesn't have pci_num_vf() defined in kernel
+ * We don't claim SRIOV support for sles10sp3 and rhel5.8 also.
+ * So define pci_num_vf() and just return 0 to allow implicit PF unload.
+ */
+static inline int pci_num_vf(struct pci_dev *dev) { return 0; }
+#endif
+
 #if (LINUX_PRE_VERSION(2, 6, 26))
 #include <linux/sched.h>
 #include <linux/jiffies.h>
@@ -2388,7 +2412,7 @@ static inline int __devinit pcie_get_minimum_link(struct pci_dev *pdev,
 typedef unsigned __bitwise gfp_t;
 #endif
 
-#if LINUX_PRE_VERSION(3, 2, 0) && NOT_RHEL_OR_PRE_VERSION(6, 4)
+#ifdef _DEFINE_DMA_ZALLOC_COHERENT
 #define gfp_t unsigned
 static inline void *dma_zalloc_coherent(struct device *dev, size_t size,
 					dma_addr_t *dma_handle, gfp_t flag)
@@ -2412,6 +2436,7 @@ static inline void *dma_zalloc_coherent(struct device *dev, size_t size,
 
 /* Defines which should be removed by flavouring script */
 #define _UP_UINT2INT uint /* int on upstream flavour */
+#define _UP_UINT2NONE uint /* remove on upstream flavour */
 #define _UP_STATIC /* Static on upstream flavour */
 #define _UP_CONST /* const on upstream flavour */
 
@@ -2459,8 +2484,12 @@ static inline int pci_wait_for_pending_transaction(struct pci_dev *dev)
 #define PRINT_ENUM_STRING				"%s"
 #endif
 
-#ifndef _DEFINE_PHYS_PORT_ID /* BNX2X_UPSTREAM */
+#ifndef _DEFINE_PHYS_PORT_ID
 #define SUPPORT_PHYS_PORT_ID
+#endif
+#ifndef _DEFINE_PHYS_ITEM_ID /* BNX2X_UPSTREAM */
+#define SUPPORT_PHYS_PORT_ID
+#define SUPPORT_PHYS_ITEM_ID
 #endif
 
 #if (LINUX_STARTING_AT_VERSION(2, 6, 29) || RHEL_STARTING_AT_VERSION(5, 5))
@@ -2577,4 +2606,93 @@ skb_set_hash(struct sk_buff *skb, __u32 hash, enum pkt_hash_types type)
 #ifdef _DEFINE_NETDEV_FEATURES_T
 #define netdev_features_t u32
 #endif
+
+#ifdef _DEFINE_RSS_KEY_FILL
+#define netdev_rss_key_fill prandom_bytes
+#endif
+
+#ifdef _DEFINE_NAPI_SCHEDULE_IRQOFF
+#define napi_schedule_irqoff napi_schedule
+#endif
+
+#ifdef _DEFINE_CYCLECOUNTER_MASK
+#define CYCLECOUNTER_MASK CLOCKSOURCE_MASK
+#endif
+
+#ifndef _HAS_TIMESPEC64
+#define timespec64_to_ns(ts)  ((ts)->tv_sec * 10000000ULL + (ts)->tv_nsec)
+#endif
+
+#ifdef _DEFINE_SKB_VLAN_TAG
+#define skb_vlan_tag_present vlan_tx_tag_present
+#define skb_vlan_tag_get vlan_tx_tag_get
+#endif
+
+#ifndef NETIF_F_HW_VLAN_CTAG_FILTER
+#define NETIF_F_HW_VLAN_CTAG_FILTER NETIF_F_HW_VLAN_FILTER
+#endif
+
+#if defined(_DEFINE_READ_ONCE) || defined(_DEFINE_WRITE_ONCE)
+static __always_inline void data_access_exceeds_word_size(void)
+#ifdef __compiletime_warning
+__compiletime_warning("data access exceeds word size and won't be atomic")
+#endif
+;
+
+static __always_inline void data_access_exceeds_word_size(void)
+{
+}
+#endif
+
+#ifdef _DEFINE_READ_ONCE
+static __always_inline void __read_once_size(volatile void *p, void *res, int size)
+{
+	switch (size) {
+	case 1: *(__u8 *)res = *(volatile __u8 *)p; break;
+	case 2: *(__u16 *)res = *(volatile __u16 *)p; break;
+	case 4: *(__u32 *)res = *(volatile __u32 *)p; break;
+#ifdef CONFIG_64BIT
+	case 8: *(__u64 *)res = *(volatile __u64 *)p; break;
+#endif
+	default:
+		barrier();
+		memcpy((void *)res, (const void *)p, size);
+		data_access_exceeds_word_size();
+		barrier();
+	}
+}
+
+#define READ_ONCE(x) \
+	({ typeof(x) __val; __read_once_size(&x, &__val, sizeof(__val)); __val; })
+
+#endif
+
+#ifdef _DEFINE_WRITE_ONCE
+static __always_inline void __write_once_size(volatile void *p, void *res, int size)
+{
+	switch (size) {
+	case 1: *(volatile __u8 *)p = *(__u8 *)res; break;
+	case 2: *(volatile __u16 *)p = *(__u16 *)res; break;
+	case 4: *(volatile __u32 *)p = *(__u32 *)res; break;
+#ifdef CONFIG_64BIT
+	case 8: *(volatile __u64 *)p = *(__u64 *)res; break;
+#endif
+	default:
+		barrier();
+		memcpy((void *)p, (const void *)res, size);
+		data_access_exceeds_word_size();
+		barrier();
+	}
+}
+
+#define WRITE_ONCE(x, val) \
+	({ typeof(x) __val; __val = val; __write_once_size(&x, &__val, sizeof(__val)); __val; })
+
+#endif
+
+#if LINUX_PRE_VERSION(2, 6, 39) && \
+    !(RHEL_STARTING_AT_VERSION(6, 6) && RHEL_PRE_VERSION(7, 0))
+#define BNX2X_LEGACY_RX_CSUM
+#endif
+
 #endif /* __BNX2X_COMPAT_H__ */

@@ -2384,6 +2384,11 @@ static void bnx2x_dcbx_fw_struct(struct bnx2x *bp,
 			if (bp->dcbx_port_params.ets.cos_params[cos].
 						pri_bitmask & pri_bit)
 					tt2cos[pri].cos = cos;
+
+		/* TODO - this retains the current logic; But who exactly
+		 * requested anything different?
+		 */
+		pfc_fw_cfg->dcb_outer_pri[pri]  = ttp[pri];
 	}
 
 	/* we never want the FW to add a 0 vlan tag */
