@@ -792,7 +792,7 @@ static struct fc_host_statistics *bnx2fc_get_host_stats(struct Scsi_Host *shost)
 	struct bnx2fc_interface *interface = port->priv;
 	struct bnx2fc_hba *hba;
 	struct fcoe_statistics_params *fw_stats;
-	int rc = 0;
+	unsigned long time_left;
 
 	if (!interface) {
 		printk(KERN_ERR PFX "get_host_stats: interface is NULL\n");
@@ -812,8 +812,8 @@ static struct fc_host_statistics *bnx2fc_get_host_stats(struct Scsi_Host *shost)
 		printk(KERN_ERR PFX "send_stat_req failed\n");
 		return bnx2fc_stats;
 	}
-	rc = wait_for_completion_timeout(&hba->stat_req_done, (2 * HZ));
-	if (!rc) {
+	time_left = wait_for_completion_timeout(&hba->stat_req_done, (2 * HZ));
+	if (!time_left) {
 		BNX2FC_HBA_DBG(lport, "FW stat req timed out\n");
 		return bnx2fc_stats;
 	}
@@ -2987,7 +2987,7 @@ static int _bnx2fc_create(struct net_device *netdev,
 	}
 
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 11, 0)) || \
-    (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ > 0x0604))
+    (!defined(__BNX2FC_UEK__) && defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ > 0x0604))
 	lport = bnx2fc_if_create(interface, &cdev->dev, 0);
 #else
 	lport = bnx2fc_if_create(interface, &interface->hba->pcidev->dev, 0);
@@ -3629,7 +3629,7 @@ static struct scsi_host_template bnx2fc_shost_template = {
 #ifdef _DEFINE_SHOST_LOCKLESS_
 	.lockless		= 1,
 #endif
-#if ((defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ >= 0x0700)))
+#if (!defined(__BNX2FC_UEK__) && (defined(__BNX2FC_RHEL__) && (__BNX2FC_RHEL__ >= 0x0700)))
 	.no_async_abort		= 1,
 #endif
 };

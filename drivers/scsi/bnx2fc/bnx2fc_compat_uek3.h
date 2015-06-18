@@ -11,6 +11,9 @@
 #ifndef _BNX2FC_COMPAT_UEK3_H_
 #define _BNX2FC_COMPAT_UEK3_H_
 
+/* define this to modify less in .c files from vendor */
+#define __BNX2FC_UEK__
+
 /* include/scsi/libfcoe.h
  * fcoe_ctlr->cdev
  */

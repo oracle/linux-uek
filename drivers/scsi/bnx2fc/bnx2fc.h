@@ -57,6 +57,11 @@
 #define DEVINITDATA
 #endif
 
+#ifdef __BNX2FC_UEK__
+#define kthread_create(threadfn, data, namefmt, arg...) \
+	kthread_create_on_node(threadfn, data, -1, namefmt, ##arg)
+#endif
+
 #ifndef alloc_workqueue
 #define alloc_workqueue(str, flags, max) \
 	create_workqueue(str)
@@ -138,8 +143,8 @@
 #include "bnx2fc_compat_uek3.h"
 
 #define BNX2FC_NAME		"bnx2fc"
-#define BNX2FC_VERSION		"2.8.2"
-#define BNX2FC_RELDATE		"December 12, 2014"
+#define BNX2FC_VERSION		"2.9.3"
+#define BNX2FC_RELDATE		"April 30, 2015"
 
 #define PFX			"bnx2fc: "
 

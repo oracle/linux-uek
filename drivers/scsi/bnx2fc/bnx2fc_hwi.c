@@ -688,6 +688,7 @@ static void bnx2fc_process_unsol_compl(struct bnx2fc_rport *tgt, u16 wqe)
 	u16 xid;
 	u32 frame_len, len;
 	struct bnx2fc_cmd *io_req = NULL;
+	struct bnx2fc_cmd *new_io_req = NULL;
 	struct fcoe_task_ctx_entry *task, *task_page;
 	struct bnx2fc_interface *interface = tgt->port->priv;
 	struct bnx2fc_hba *hba = interface->hba;
@@ -812,6 +813,35 @@ static void bnx2fc_process_unsol_compl(struct bnx2fc_rport *tgt, u16 wqe)
 		if (tgt->dev_type != TYPE_TAPE)
 			goto skip_rec;
 		switch (err_warn) {
+		case FCOE_ERROR_CODE_FCP_RSP_OVERFLOW:
+			/* If we get a error code 0x800 like in the tape
+		 	 * scenario repost the command since this should have
+		 	 * been a command lost case like REC RJT. Note target
+		 	 * lock is held here.
+		 	 */
+			new_io_req = bnx2fc_cmd_alloc(tgt);
+			if (!new_io_req)
+				/* Just abort the original I/O if we can't
+				 * allocate a new command.
+				 */
+				goto skip_rec;
+			new_io_req->sc_cmd = io_req->sc_cmd;
+			/* cleanup orig_io_req that is with the FW */
+			set_bit(BNX2FC_FLAG_CMD_LOST,
+				&io_req->req_flags);
+			tgt->stats.num_cmd_lost++;
+			bnx2fc_initiate_cleanup(io_req);
+			/* Post a new IO req with the same sc_cmd */
+			BNX2FC_IO_DBG(io_req, "Post IO request again - new xid = 0x%x\n",
+				new_io_req->xid);
+			rc = bnx2fc_post_io_req(tgt, new_io_req);
+			if (rc)
+				/* Bad case, just release RQE and do nothing */
+				goto ret_err_rqe;
+			else
+				/* I/O posted, abort original */
+				goto skip_rec;
+			break;
 		case FCOE_ERROR_CODE_REC_TOV_TIMER_EXPIRATION:
 		case FCOE_ERROR_CODE_DATA_OOO_RO:
 		case FCOE_ERROR_CODE_COMMON_INCORRECT_SEQ_CNT:

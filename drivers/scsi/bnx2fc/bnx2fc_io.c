@@ -676,6 +676,7 @@ static int bnx2fc_initiate_tmf(struct scsi_cmnd *sc_cmd, u8 tm_flags)
 	struct fcp_cmnd *fcp_cmnd;
 	int task_idx, index;
 	int rc = SUCCESS;
+	unsigned long time_left;
 	u16 xid;
 	u32 sid, did;
 	unsigned long start = jiffies;
@@ -799,7 +800,7 @@ retry_tmf:
 	bnx2fc_ring_doorbell(tgt);
 	spin_unlock_bh(&tgt->tgt_lock);
 
-	rc = wait_for_completion_timeout(&io_req->tm_done,
+	time_left = wait_for_completion_timeout(&io_req->tm_done,
 					 BNX2FC_TM_TIMEOUT);
 	spin_lock_bh(&tgt->tgt_lock);
 
@@ -813,17 +814,17 @@ retry_tmf:
 		io_req->wait_for_comp = 1;
 		bnx2fc_initiate_cleanup(io_req);
 		spin_unlock_bh(&tgt->tgt_lock);
-		rc = wait_for_completion_timeout(&io_req->tm_done,
+		time_left = wait_for_completion_timeout(&io_req->tm_done,
 						 BNX2FC_FW_TIMEOUT);
 		spin_lock_bh(&tgt->tgt_lock);
 		io_req->wait_for_comp = 0;
-		if (!rc)
+		if (!time_left)
 			kref_put(&io_req->refcount, bnx2fc_cmd_release);
 	}
 
 	spin_unlock_bh(&tgt->tgt_lock);
 
-	if (!rc) {
+	if (!time_left) {
 		BNX2FC_TGT_DBG(tgt, "task mgmt command failed...\n");
 		rc = FAILED;
 	} else {
