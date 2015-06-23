@@ -26,6 +26,7 @@
  */
 
 #include <linux/dtrace_cpu.h>
+#include <linux/fdtable.h>
 #include <linux/hardirq.h>
 #include <linux/in6.h>
 #include <linux/inet.h>
@@ -3837,6 +3838,10 @@ inetout:
 		char		*dest = (char *)mstate->dtms_scratch_ptr;
 		char		*ptr;
 		uint64_t	size = state->dts_options[DTRACEOPT_STRSIZE];
+		unsigned int	fd;
+		struct files_struct
+				*files = current->files;
+		struct fdtable	*fdt;
 
 		if (!dtrace_canload((uintptr_t)path, sizeof(struct path),
 				    mstate, vstate)) {
@@ -3850,9 +3855,34 @@ inetout:
 			break;
 		}
 
+		if (spin_is_locked(&files->file_lock) ||
+		    !spin_trylock(&files->file_lock)) {
+			regs[rd] = 0;
+			break;
+		}
+
+		fdt = files->fdt;
+
+		/*
+		 * We (currently) limit the d_path() subroutine to paths that
+		 * relate to open files in the current task.
+		 */
+		for (fd = 0; fd < fdt->max_fds; fd++) {
+			if (fdt->fd[fd] && &fdt->fd[fd]->f_path == path)
+				break;
+		}
+
+		spin_unlock(&files->file_lock);
+
+		if (fd >= fdt->max_fds) {
+			*flags |= CPU_DTRACE_BADADDR;
+			*illval = (uintptr_t)path;
+			regs[rd] = 0;
+			break;
+		}
+
 		ptr = d_path(path, dest, size);
 		if (ptr < 0) {
-			DTRACE_CPUFLAG_SET(CPU_DTRACE_NOSCRATCH);
 			regs[rd] = 0;
 			break;
 		}
