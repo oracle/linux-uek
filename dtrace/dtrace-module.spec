@@ -42,7 +42,7 @@
 
 	if rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
-		rpm.define("bldrel 1")
+		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_5}"))
 	elseif rpm.vercmp(kver, "3.8.13-69") >= 0 then
 		rpm.define("srcver 0.4.4")
@@ -244,6 +244,9 @@ rm -rf %{buildroot}
 
 %changelog
 %if %{dt_vcode} >= %{dt_0_4_5}
+* Tue Jun 23 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-2
+- Validate d_path() argument pointer to avoid crash.
+  [Orabug: 21304207]
 * Wed Jun 17 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-1
 - Support USDT for 32-bit applications on 64-bit hosts.
   [Orabug: 21219315]
