@@ -1255,6 +1255,12 @@ static void hpsa_show_volume_status(struct ctlr_info *h,
 			h->scsi_host->host_no,
 			sd->bus, sd->target, sd->lun);
 		break;
+	case HPSA_LV_NOT_AVAILABLE:
+		dev_info(&h->pdev->dev,
+			"C%d:B%d:T%d:L%d Volume is waiting for transforming volume.\n",
+			h->scsi_host->host_no,
+			sd->bus, sd->target, sd->lun);
+		break;
 	case HPSA_LV_UNDERGOING_RPI:
 		dev_info(&h->pdev->dev,
 			"C%d:B%d:T%d:L%d Volume is undergoing rapid parity initialization process.\n",
@@ -2779,6 +2785,7 @@ static int hpsa_volume_offline(struct ctlr_info *h,
 	/* Keep volume offline in certain cases: */
 	switch (ldstat) {
 	case HPSA_LV_UNDERGOING_ERASE:
+	case HPSA_LV_NOT_AVAILABLE:
 	case HPSA_LV_UNDERGOING_RPI:
 	case HPSA_LV_PENDING_RPI:
 	case HPSA_LV_ENCRYPTED_NO_KEY:
