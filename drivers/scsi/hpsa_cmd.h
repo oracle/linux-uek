@@ -42,8 +42,17 @@
 #define CMD_UNSOLICITED_ABORT   0x000A
 #define CMD_TIMEOUT             0x000B
 #define CMD_UNABORTABLE		0x000C
+#define CMD_TMF_STATUS		0x000D
 #define CMD_IOACCEL_DISABLED	0x000E
 
+/* TMF function status values */
+#define CISS_TMF_COMPLETE	0x00
+#define CISS_TMF_INVALID_FRAME	0x02
+#define CISS_TMF_NOT_SUPPORTED	0x04
+#define CISS_TMF_FAILED		0x05
+#define CISS_TMF_SUCCESS	0x08
+#define CISS_TMF_WRONG_LUN	0x09
+#define CISS_TMF_OVERLAPPED_TAG 0x0a
 
 /* Unit Attentions ASC's as defined for the MSA2012sa */
 #define POWER_OR_RESET			0x29
