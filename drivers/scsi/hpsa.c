@@ -6367,15 +6367,15 @@ static int hpsa_pci_init(struct ctlr_info *h)
 		return err;
 	}
 
+	/* Enable bus mastering (pci_disable_device may disable this) */
+	pci_set_master(h->pdev);
+
 	err = pci_request_regions(h->pdev, HPSA);
 	if (err) {
 		dev_err(&h->pdev->dev,
 			"cannot obtain PCI resources, aborting\n");
 		return err;
 	}
-
-	pci_set_master(h->pdev);
-
 	hpsa_interrupt_mode(h);
 	err = hpsa_pci_find_memory_BAR(h->pdev, &h->paddr);
 	if (err)
