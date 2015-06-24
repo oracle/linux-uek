@@ -55,12 +55,9 @@ static systrace_info_t	systrace_info =
 			systrace_stub,
 			systrace_syscall,
 			{
-			    [SCE_CLONE] dtrace_stub_clone,
-			    [SCE_FORK] dtrace_stub_fork,
-			    [SCE_VFORK] dtrace_stub_vfork,
-			    [SCE_IOPL] dtrace_stub_iopl,
-			    [SCE_EXECVE] dtrace_stub_execve,
-			    [SCE_RT_SIGRETURN] dtrace_stub_rt_sigreturn,
+#define DTRACE_SYSCALL_STUB(id, name)	\
+			    [SCE_##id] dtrace_stub_##name,
+#include <asm/dtrace_syscall.h>
 			},
 			{
 #define __SYSCALL_64(nr, sym, compat)		[nr] { __stringify(sym), },
