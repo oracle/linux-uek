@@ -5850,6 +5850,10 @@ static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev)
 
 	/* Save the PCI command register */
 	pci_read_config_word(pdev, 4, &command_register);
+	/* Turn the board off.  This is so that later pci_restore_state()
+	 * won't turn the board on before the rest of config space is ready.
+	 */
+	pci_disable_device(pdev);
 	pci_save_state(pdev);
 
 	/* find the first memory BAR, so we can find the cfg table */
@@ -5897,6 +5901,11 @@ static int hpsa_kdump_hard_reset_controller(struct pci_dev *pdev)
 		goto unmap_cfgtable;
 
 	pci_restore_state(pdev);
+	rc = pci_enable_device(pdev);
+	if (rc) {
+		dev_warn(&pdev->dev, "failed to enable device.\n");
+		goto unmap_cfgtable;
+	}
 	pci_write_config_word(pdev, 4, command_register);
 
 	/* Some devices (notably the HP Smart Array 5i Controller)
