@@ -997,6 +997,7 @@ static int nvme_submit_sync_cmd(struct request *req, struct nvme_command *cmd,
 	struct sync_cmd_info cmdinfo;
 	struct nvme_cmd_info *cmd_rq = blk_mq_rq_to_pdu(req);
 	struct nvme_queue *nvmeq = cmd_rq->nvmeq;
+	int ret;
 
 	cmdinfo.task = current;
 	cmdinfo.status = -EINTR;
@@ -1006,7 +1007,10 @@ static int nvme_submit_sync_cmd(struct request *req, struct nvme_command *cmd,
 	nvme_set_info(cmd_rq, &cmdinfo, sync_completion);
 
 	set_current_state(TASK_UNINTERRUPTIBLE);
-	nvme_submit_cmd(nvmeq, cmd);
+	ret = nvme_submit_cmd(nvmeq, cmd);
+	if (ret)
+		return ret;
+
 	schedule();
 
 	if (result)
