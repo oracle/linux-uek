@@ -1453,6 +1453,9 @@ extern int send_sigurg(struct fown_struct *fown);
 extern struct list_head super_blocks;
 extern spinlock_t sb_lock;
 
+/* sb->s_iflags */
+#define SB_I_NOEXEC	0x00000002	/* Ignore executables on this fs */
+
 struct super_block {
 	struct list_head	s_list;		/* Keep this first */
 	dev_t			s_dev;		/* search index; _not_ kdev_t */
@@ -2745,6 +2748,8 @@ static inline void inode_has_no_xattr(struct inode *inode)
 	if (!is_sxid(inode->i_mode) && (inode->i_sb->s_flags & MS_NOSEC))
 		inode->i_flags |= S_NOSEC;
 }
+
+extern bool path_noexec(const struct path *path);
 
 #endif /* __KERNEL__ */
 #endif /* _LINUX_FS_H */
