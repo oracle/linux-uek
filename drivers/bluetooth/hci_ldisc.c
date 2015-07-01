@@ -803,6 +803,9 @@ static int __init hci_uart_init(void)
 #ifdef CONFIG_BT_HCIUART_3WIRE
 	h5_init();
 #endif
+#ifdef CONFIG_BT_HCIUART_INTEL
+	intel_init();
+#endif
 #ifdef CONFIG_BT_HCIUART_BCM
 	bcm_init();
 #endif
@@ -828,6 +831,9 @@ static void __exit hci_uart_exit(void)
 #endif
 #ifdef CONFIG_BT_HCIUART_3WIRE
 	h5_deinit();
+#endif
+#ifdef CONFIG_BT_HCIUART_INTEL
+	intel_deinit();
 #endif
 #ifdef CONFIG_BT_HCIUART_BCM
 	bcm_deinit();
