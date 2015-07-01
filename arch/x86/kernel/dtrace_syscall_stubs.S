@@ -57,29 +57,8 @@
 	movq \tmp,R11+\offset(%rsp)
 	.endm
 
-	.macro FAKE_STACK_FRAME child_rip
-	/* push in order ss, rsp, eflags, cs, rip */
-	xorl %eax, %eax
-	pushq_cfi $__KERNEL_DS /* ss */
-	/*CFI_REL_OFFSET	ss,0*/
-	pushq_cfi %rax /* rsp */
-	CFI_REL_OFFSET	rsp,0
-	pushq_cfi $X86_EFLAGS_IF /* eflags - interrupts on */
-	/*CFI_REL_OFFSET	rflags,0*/
-	pushq_cfi $__KERNEL_CS /* cs */
-	/*CFI_REL_OFFSET	cs,0*/
-	pushq_cfi \child_rip /* rip */
-	CFI_REL_OFFSET	rip,0
-	pushq_cfi %rax /* orig rax */
-	.endm
-
-	.macro UNFAKE_STACK_FRAME
-	addq $8*6, %rsp
-	CFI_ADJUST_CFA_OFFSET	-(6*8)
-	.endm
-
 /*
- * initial frame state for interrupts (and exceptions without error code)
+ * empty frame
  */
 	.macro EMPTY_FRAME start=1 offset=0
 	.if \start
@@ -95,12 +74,12 @@
  * initial frame state for interrupts (and exceptions without error code)
  */
 	.macro INTR_FRAME start=1 offset=0
-	EMPTY_FRAME \start, SS+8+\offset-RIP
-	/*CFI_REL_OFFSET ss, SS+\offset-RIP*/
-	CFI_REL_OFFSET rsp, RSP+\offset-RIP
-	/*CFI_REL_OFFSET rflags, EFLAGS+\offset-RIP*/
-	/*CFI_REL_OFFSET cs, CS+\offset-RIP*/
-	CFI_REL_OFFSET rip, RIP+\offset-RIP
+	EMPTY_FRAME \start, 5*8+\offset
+	/*CFI_REL_OFFSET ss, 4*8+\offset*/
+	CFI_REL_OFFSET rsp, 3*8+\offset
+	/*CFI_REL_OFFSET rflags, 2*8+\offset*/
+	/*CFI_REL_OFFSET cs, 1*8+\offset*/
+	CFI_REL_OFFSET rip, 0*8+\offset
 	.endm
 
 /*
@@ -108,31 +87,23 @@
  * with vector already pushed)
  */
 	.macro XCPT_FRAME start=1 offset=0
-	INTR_FRAME \start, RIP+\offset-ORIG_RAX
-	/*CFI_REL_OFFSET orig_rax, ORIG_RAX-ORIG_RAX*/
-	.endm
-
-/*
- * frame that enables calling into C.
- */
-	.macro PARTIAL_FRAME start=1 offset=0
-	XCPT_FRAME \start, ORIG_RAX+\offset-ARGOFFSET
-	CFI_REL_OFFSET rdi, RDI+\offset-ARGOFFSET
-	CFI_REL_OFFSET rsi, RSI+\offset-ARGOFFSET
-	CFI_REL_OFFSET rdx, RDX+\offset-ARGOFFSET
-	CFI_REL_OFFSET rcx, RCX+\offset-ARGOFFSET
-	CFI_REL_OFFSET rax, RAX+\offset-ARGOFFSET
-	CFI_REL_OFFSET r8, R8+\offset-ARGOFFSET
-	CFI_REL_OFFSET r9, R9+\offset-ARGOFFSET
-	CFI_REL_OFFSET r10, R10+\offset-ARGOFFSET
-	CFI_REL_OFFSET r11, R11+\offset-ARGOFFSET
+	INTR_FRAME \start, 1*8+\offset
 	.endm
 
 /*
  * frame that enables passing a complete pt_regs to a C function.
  */
 	.macro DEFAULT_FRAME start=1 offset=0
-	PARTIAL_FRAME \start, R11+\offset-R15
+	XCPT_FRAME \start, ORIG_RAX+\offset
+	CFI_REL_OFFSET rdi, RDI+\offset
+	CFI_REL_OFFSET rsi, RSI+\offset
+	CFI_REL_OFFSET rdx, RDX+\offset
+	CFI_REL_OFFSET rcx, RCX+\offset
+	CFI_REL_OFFSET rax, RAX+\offset
+	CFI_REL_OFFSET r8, R8+\offset
+	CFI_REL_OFFSET r9, R9+\offset
+	CFI_REL_OFFSET r10, R10+\offset
+	CFI_REL_OFFSET r11, R11+\offset
 	CFI_REL_OFFSET rbx, RBX+\offset
 	CFI_REL_OFFSET rbp, RBP+\offset
 	CFI_REL_OFFSET r12, R12+\offset
@@ -144,48 +115,43 @@
 	.macro FORK_LIKE func
 ENTRY(dtrace_stub_\func)
 	CFI_STARTPROC
-	popq	%r11			/* save return address */
-	PARTIAL_FRAME 0
-	SAVE_REST
-	pushq	%r11			/* put it back on stack */
-	FIXUP_TOP_OF_STACK %r11, 8
-	DEFAULT_FRAME 0 8		/* offset 8: return address */
-	call dtrace_sys_\func
-	RESTORE_TOP_OF_STACK %r11, 8
-	ret $REST_SKIP			/* pop extended registers */
+	DEFAULT_FRAME 0, 8
+	SAVE_EXTRA_REGS 8
+	jmp dtrace_sys_\func
 	CFI_ENDPROC
 END(dtrace_stub_\func)
-	.endm
-
-	.macro FIXED_FRAME label,func
-ENTRY(\label)
-	CFI_STARTPROC
-	PARTIAL_FRAME 0 8		/* offset 8: return address */
-	FIXUP_TOP_OF_STACK %r11, 8-ARGOFFSET
-	call \func
-	RESTORE_TOP_OF_STACK %r11, 8-ARGOFFSET
-	ret
-	CFI_ENDPROC
-END(\label)
 	.endm
 
         FORK_LIKE  clone
         FORK_LIKE  fork
         FORK_LIKE  vfork
-	FIXED_FRAME dtrace_stub_iopl, dtrace_sys_iopl
 
 ENTRY(dtrace_stub_execve)
 	CFI_STARTPROC
-	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
-	FIXUP_TOP_OF_STACK %r11
+	DEFAULT_FRAME 0, 8
 	call dtrace_sys_execve
-	movq %rax,RAX(%rsp)
-	RESTORE_REST
-	jmp int_ret_from_sys_call
+return_from_execve:
+        testl %eax, %eax
+        jz 1f
+        /* exec failed, can use fast SYSRET code path in this case */
+        ret
+1:
+        /* must use IRET code path (pt_regs->cs may have changed) */
+        addq $8, %rsp
+        CFI_ADJUST_CFA_OFFSET -8
+        ZERO_EXTRA_REGS
+        movq %rax,RAX(%rsp)
+        jmp int_ret_from_sys_call
 	CFI_ENDPROC
 END(dtrace_stub_execve)
+
+GLOBAL(dtrace_stub_execveat)
+	CFI_STARTPROC
+	DEFAULT_FRAME 0, 8
+	call dtrace_sys_execveat
+	jmp return_from_execve
+	CFI_ENDPROC
+END(dtrace_stub_execveat)
 
 /*
  * sigreturn is special because it needs to restore all registers on return.
@@ -193,13 +159,13 @@ END(dtrace_stub_execve)
  */
 ENTRY(dtrace_stub_rt_sigreturn)
 	CFI_STARTPROC
-	addq $8, %rsp
-	PARTIAL_FRAME 0
-	SAVE_REST
-	FIXUP_TOP_OF_STACK %r11
+	DEFAULT_FRAME 0, 8
+	SAVE_EXTRA_REGS 8
 	call dtrace_sys_rt_sigreturn
-	movq %rax,RAX(%rsp) # fixme, this could be done at the higher layer
-	RESTORE_REST
+	addq    $8, %rsp
+	CFI_ADJUST_CFA_OFFSET -8
+	RESTORE_EXTRA_REGS
+	movq %rax,RAX(%rsp)
 	jmp int_ret_from_sys_call
 	CFI_ENDPROC
 END(dtrace_stub_rt_sigreturn)

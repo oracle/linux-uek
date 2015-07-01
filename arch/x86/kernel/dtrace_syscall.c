@@ -10,6 +10,7 @@
 #include <linux/dtrace_syscall.h>
 #include <linux/fs.h>
 #include <linux/module.h>
+#include <linux/namei.h>
 #include <linux/sched.h>
 #include <asm/insn.h>
 #include <asm/stacktrace.h>
@@ -55,12 +56,9 @@ static systrace_info_t	systrace_info =
 			systrace_stub,
 			systrace_syscall,
 			{
-			    [SCE_CLONE] dtrace_stub_clone,
-			    [SCE_FORK] dtrace_stub_fork,
-			    [SCE_VFORK] dtrace_stub_vfork,
-			    [SCE_IOPL] dtrace_stub_iopl,
-			    [SCE_EXECVE] dtrace_stub_execve,
-			    [SCE_RT_SIGRETURN] dtrace_stub_rt_sigreturn,
+#define DTRACE_SYSCALL_STUB(id, name)	\
+			    [SCE_##id] dtrace_stub_##name,
+#include <asm/dtrace_syscall.h>
 			},
 			{
 #define __SYSCALL_64(nr, sym, compat)		[nr] { __stringify(sym), },
@@ -117,7 +115,7 @@ EXPORT_SYMBOL(dtrace_syscalls_init);
 
 long dtrace_sys_clone(unsigned long clone_flags, unsigned long newsp,
 		      int __user *parent_tidptr, int __user *child_tidptr,
-		  int tls_val)
+		      int tls_val)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
@@ -218,48 +216,30 @@ long dtrace_sys_execve(const char __user *name,
 	return rc;
 }
 
-long dtrace_sys_iopl(unsigned int level)
+long dtrace_sys_execveat(int fd, const char __user *name,
+			 const char __user *const __user *argv,
+			 const char __user *const __user *envp,
+			 int flags)
 {
 	long			rc = 0;
 	dtrace_id_t		id;
 	dtrace_syscalls_t	*sc;
-	struct pt_regs		*regs = current_pt_regs();
-	unsigned int		old = (regs->flags >> 12) & 3;
-	struct thread_struct	*t = &current->thread;
+	int			lookup_flags =
+				(flags & AT_EMPTY_PATH) ? LOOKUP_EMPTY : 0;
 
-	sc = &systrace_info.sysent[__NR_iopl];
-
-	/*
-	 * regs is an argument de facto since it is plucked straight out of the
-	 * stack frame by current_pt_regs().
-	 */
+	sc = &systrace_info.sysent[__NR_execveat];
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
-		(*systrace_probe)(id, (uintptr_t)level, (uintptr_t)regs,
-				  0, 0, 0, 0);
+		(*systrace_probe)(id, (uintptr_t)name, (uintptr_t)argv,
+				  (uintptr_t)envp, 0, 0, 0);
 
 	/*
 	 * FIXME: Add stop functionality for DTrace.
 	 */
 
-	if (level > 3) {
-		rc = -EINVAL;
-		goto out;
-	}
+	rc = do_execveat(fd, getname_flags(name, lookup_flags, NULL), argv,
+			 envp, flags);
 
-	/* Trying to gain more privileges? */
-	if (level > old) {
-		if (!capable(CAP_SYS_RAWIO)) {
-			rc = -EPERM;
-			goto out;
-		}
-	}
-
-	regs->flags = (regs->flags & ~X86_EFLAGS_IOPL) | (level << 12);
-	t->iopl = level << 12;
-	set_iopl_mask(t->iopl);
-
-out:
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
 				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
