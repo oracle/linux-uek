@@ -131,20 +131,36 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 {
 	struct task_struct	*p = current;
 	struct mm_struct	*mm = p->mm;
-	unsigned long		tos, bos;
+	unsigned long		tos, bos, fpc;
 	unsigned long		*sp;
 	unsigned long		depth = 0;
 	struct vm_area_struct	*stack_vma;
 	struct page		*stack_page = NULL;
+	struct pt_regs		*regs = current_pt_regs();
 
 	if (pcstack) {
-                if (unlikely(pcstack_limit < 2)) {
-                        DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
-                        return 0;
-                }
-                *pcstack++ = (uint64_t)p->pid;
+		if (unlikely(pcstack_limit < 2)) {
+			DTRACE_CPUFLAG_SET(CPU_DTRACE_ILLOP);
+			return 0;
+		}
+		*pcstack++ = (uint64_t)p->pid;
 		*pcstack++ = (uint64_t)p->tgid;
-		pcstack_limit-=2;
+		pcstack_limit -= 2;
+	}
+
+	if (!user_mode(regs))
+		goto out;
+
+	/*
+	 * There is always at least one address to report: the instruction
+	 * pointer itself (frame 0).
+	 */
+	depth++;
+
+	fpc = instruction_pointer(regs);
+	if (pcstack) {
+		*pcstack++ = (uint64_t)fpc;
+		pcstack_limit--;
 	}
 
 	/*
@@ -161,8 +177,13 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 		goto out;
 	atomic_inc(&mm->mm_users);
 
+	/*
+	 * The following construct can be replaced with:
+	 * 	tos = current_user_stack_pointer();
+	 * once support for 4.0 is no longer necessary.
+	 */
 #ifdef CONFIG_X86_64
-	tos = current_user_stack_pointer();
+	tos = current_pt_regs()->sp;
 #else
 	tos = user_stack_pointer(current_pt_regs());
 #endif
@@ -215,6 +236,9 @@ unsigned long dtrace_getufpstack(uint64_t *pcstack, uint64_t *fpstack,
 			DTRACE_CPUFLAG_CLEAR(CPU_DTRACE_PF_TRAPPED);
 			break;
 		}
+
+		if (addr == fpc)
+			continue;
 
 		code_vma = find_user_vma(p, mm, NULL, addr, 0);
 
