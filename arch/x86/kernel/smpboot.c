@@ -817,6 +817,13 @@ static int do_boot_cpu(int apicid, int cpu, struct task_struct *idle)
 	initial_code = (unsigned long)start_secondary;
 	stack_start  = idle->thread.sp;
 
+	/*
+	 * Enable the espfix hack for this CPU
+	*/
+#ifdef CONFIG_X86_ESPFIX64
+	init_espfix_ap(cpu);
+#endif
+
 	/* So we see what's up */
 	announce_cpu(cpu, apicid);
 
