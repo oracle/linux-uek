@@ -272,12 +272,6 @@ static void __setup_vector_irq(int cpu)
 	int irq, vector;
 	struct irq_cfg *cfg;
 
-	/*
-	 * vector_lock will make sure that we don't run into irq vector
-	 * assignments that might be happening on another cpu in parallel,
-	 * while we setup our initial vector to irq mappings.
-	 */
-	raw_spin_lock(&vector_lock);
 	/* Mark the inuse vectors */
 	for_each_active_irq(irq) {
 		cfg = irq_cfg(irq);
@@ -299,16 +293,16 @@ static void __setup_vector_irq(int cpu)
 		if (!cpumask_test_cpu(cpu, cfg->domain))
 			per_cpu(vector_irq, cpu)[vector] = VECTOR_UNDEFINED;
 	}
-	raw_spin_unlock(&vector_lock);
 }
 
 /*
- * Setup the vector to irq mappings.
+ * Setup the vector to irq mappings. Must be called with vector_lock held.
  */
 void setup_vector_irq(int cpu)
 {
 	int irq;
 
+	lockdep_assert_held(&vector_lock);
 	/*
 	 * On most of the platforms, legacy PIC delivers the interrupts on the
 	 * boot cpu. But there are certain platforms where PIC interrupts are
