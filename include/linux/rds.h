@@ -36,6 +36,15 @@
 
 #include <linux/types.h>
 
+/* These sparse annotated types shouldn't be in any user
+ * visible header file. We should clean this up rather
+ * than kludging around them. */
+#ifndef __KERNEL__
+#define __be16	u_int16_t
+#define __be32	u_int32_t
+#define __be64	u_int64_t
+#endif
+
 #define RDS_IB_ABI_VERSION		0x301
 
 /*
@@ -47,7 +56,6 @@
 /* deprecated: RDS_BARRIER 4 */
 #define RDS_RECVERR			5
 #define RDS_CONG_MONITOR		6
-#define RDS_GET_MR_FOR_DEST		7
 
 /*
  * Control message types for SOL_RDS.
@@ -73,10 +81,6 @@
 #define RDS_CMSG_RDMA_MAP		3
 #define RDS_CMSG_RDMA_STATUS		4
 #define RDS_CMSG_CONG_UPDATE		5
-#define RDS_CMSG_ATOMIC_FADD		6
-#define RDS_CMSG_ATOMIC_CSWP		7
-#define RDS_CMSG_MASKED_ATOMIC_FADD	8
-#define RDS_CMSG_MASKED_ATOMIC_CSWP	9
 
 #define RDS_INFO_FIRST			10000
 #define RDS_INFO_COUNTERS		10000
@@ -93,8 +97,8 @@
 #define RDS_INFO_LAST			10010
 
 struct rds_info_counter {
-	uint8_t	name[32];
-	uint64_t	value;
+	u_int8_t	name[32];
+	u_int64_t	value;
 } __attribute__((packed));
 
 #define RDS_INFO_CONNECTION_FLAG_SENDING	0x01
@@ -104,47 +108,43 @@ struct rds_info_counter {
 #define TRANSNAMSIZ	16
 
 struct rds_info_connection {
-	uint64_t	next_tx_seq;
-	uint64_t	next_rx_seq;
+	u_int64_t	next_tx_seq;
+	u_int64_t	next_rx_seq;
 	__be32		laddr;
 	__be32		faddr;
-	uint8_t	transport[TRANSNAMSIZ];		/* null term ascii */
-	uint8_t	flags;
+	u_int8_t	transport[TRANSNAMSIZ];		/* null term ascii */
+	u_int8_t	flags;
+} __attribute__((packed));
+
+struct rds_info_flow {
+	__be32		laddr;
+	__be32		faddr;
+	u_int32_t	bytes;
+	__be16		lport;
+	__be16		fport;
 } __attribute__((packed));
 
 #define RDS_INFO_MESSAGE_FLAG_ACK               0x01
 #define RDS_INFO_MESSAGE_FLAG_FAST_ACK          0x02
 
 struct rds_info_message {
-	uint64_t	seq;
-	uint32_t	len;
+	u_int64_t	seq;
+	u_int32_t	len;
 	__be32		laddr;
 	__be32		faddr;
 	__be16		lport;
 	__be16		fport;
-	uint8_t	flags;
+	u_int8_t	flags;
 } __attribute__((packed));
 
 struct rds_info_socket {
-	uint32_t	sndbuf;
+	u_int32_t	sndbuf;
 	__be32		bound_addr;
 	__be32		connected_addr;
 	__be16		bound_port;
 	__be16		connected_port;
-	uint32_t	rcvbuf;
-	uint64_t	inum;
-} __attribute__((packed));
-
-struct rds_info_tcp_socket {
-	__be32          local_addr;
-	__be16          local_port;
-	__be32          peer_addr;
-	__be16          peer_port;
-	uint64_t       hdr_rem;
-	uint64_t       data_rem;
-	uint32_t       last_sent_nxt;
-	uint32_t       last_expected_una;
-	uint32_t       last_seen_una;
+	u_int32_t	rcvbuf;
+	u_int64_t	inum;
 } __attribute__((packed));
 
 #define RDS_IB_GID_LEN	16
@@ -199,69 +199,35 @@ struct rds_info_rdma_connection {
  * (so that the application does not have to worry about
  * alignment).
  */
-typedef uint64_t	rds_rdma_cookie_t;
+typedef u_int64_t	rds_rdma_cookie_t;
 
 struct rds_iovec {
-	uint64_t	addr;
-	uint64_t	bytes;
+	u_int64_t	addr;
+	u_int64_t	bytes;
 };
 
 struct rds_get_mr_args {
 	struct rds_iovec vec;
-	uint64_t	cookie_addr;
+	u_int64_t	cookie_addr;
 	uint64_t	flags;
-};
-
-struct rds_get_mr_for_dest_args {
-	struct sockaddr_storage	dest_addr;
-	struct rds_iovec 	vec;
-	uint64_t		cookie_addr;
-	uint64_t		flags;
 };
 
 struct rds_free_mr_args {
 	rds_rdma_cookie_t cookie;
-	uint64_t	flags;
+	u_int64_t	flags;
 };
 
 struct rds_rdma_args {
 	rds_rdma_cookie_t cookie;
 	struct rds_iovec remote_vec;
-	uint64_t	local_vec_addr;
-	uint64_t	nr_local;
-	uint64_t	flags;
-	uint64_t	user_token;
-};
-
-struct rds_atomic_args {
-	rds_rdma_cookie_t cookie;
-	uint64_t 	local_addr;
-	uint64_t 	remote_addr;
-	union {
-		struct {
-			uint64_t	compare;
-			uint64_t	swap;
-		} cswp;
-		struct {
-			uint64_t	add;
-		} fadd;
-		struct {
-			uint64_t	compare;
-			uint64_t	swap;
-			uint64_t	compare_mask;
-			uint64_t	swap_mask;
-		} m_cswp;
-		struct {
-			uint64_t	add;
-			uint64_t	nocarry_mask;
-		} m_fadd;
-	};
-	uint64_t	flags;
-	uint64_t	user_token;
+	u_int64_t	local_vec_addr;
+	u_int64_t	nr_local;
+	u_int64_t	flags;
+	u_int64_t	user_token;
 };
 
 struct rds_rdma_notify {
-	uint64_t	user_token;
+	u_int64_t	user_token;
 	int32_t		status;
 };
 
@@ -280,6 +246,5 @@ struct rds_rdma_notify {
 #define RDS_RDMA_USE_ONCE	0x0008	/* free MR after use */
 #define RDS_RDMA_DONTWAIT	0x0010	/* Don't wait in SET_BARRIER */
 #define RDS_RDMA_NOTIFY_ME	0x0020	/* Notify when operation completes */
-#define RDS_RDMA_SILENT		0x0040	/* Do not interrupt remote */
 
 #endif /* IB_RDS_H */

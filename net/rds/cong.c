@@ -30,11 +30,10 @@
  * SOFTWARE.
  *
  */
-#include <linux/slab.h>
 #include <linux/types.h>
 #include <linux/rbtree.h>
-#include <linux/bitops.h>
-#include <linux/export.h>
+
+#include <asm-generic/bitops/le.h>
 
 #include "rds.h"
 
@@ -141,7 +140,7 @@ static struct rds_cong_map *rds_cong_from_addr(__be32 addr)
 	unsigned long flags;
 
 	map = kzalloc(sizeof(struct rds_cong_map), GFP_KERNEL);
-	if (!map)
+	if (map == NULL)
 		return NULL;
 
 	map->m_addr = addr;
@@ -159,7 +158,7 @@ static struct rds_cong_map *rds_cong_from_addr(__be32 addr)
 	ret = rds_cong_tree_walk(addr, map);
 	spin_unlock_irqrestore(&rds_cong_lock, flags);
 
-	if (!ret) {
+	if (ret == NULL) {
 		ret = map;
 		map = NULL;
 	}
@@ -205,7 +204,7 @@ int rds_cong_get_maps(struct rds_connection *conn)
 	conn->c_lcong = rds_cong_from_addr(conn->c_laddr);
 	conn->c_fcong = rds_cong_from_addr(conn->c_faddr);
 
-	if (!(conn->c_lcong && conn->c_fcong))
+	if (conn->c_lcong == NULL || conn->c_fcong == NULL)
 		return -ENOMEM;
 
 	return 0;
@@ -221,20 +220,6 @@ void rds_cong_queue_updates(struct rds_cong_map *map)
 	list_for_each_entry(conn, &map->m_conn_list, c_map_item) {
 		if (!test_and_set_bit(0, &conn->c_map_queued)) {
 			rds_stats_inc(s_cong_update_queued);
-			/* We cannot inline the call to rds_send_xmit() here
-			 * for two reasons (both pertaining to a TCP transport):
-			 * 1. When we get here from the receive path, we
-			 *    are already holding the sock_lock (held by
-			 *    tcp_v4_rcv()). So inlining calls to
-			 *    tcp_setsockopt and/or tcp_sendmsg will deadlock
-			 *    when it tries to get the sock_lock())
-			 * 2. Interrupts are masked so that we can mark the
-			 *    the port congested from both send and recv paths.
-			 *    (See comment around declaration of rdc_cong_lock).
-			 *    An attempt to get the sock_lock() here will
-			 *    therefore trigger warnings.
-			 * Defer the xmit to rds_send_worker() instead.
-			 */
 			queue_delayed_work(rds_wq, &conn->c_send_w, 0);
 		}
 	}
@@ -269,7 +254,6 @@ void rds_cong_map_updated(struct rds_cong_map *map, uint64_t portmask)
 		read_unlock_irqrestore(&rds_cong_monitor_lock, flags);
 	}
 }
-EXPORT_SYMBOL_GPL(rds_cong_map_updated);
 
 int rds_cong_updated_since(unsigned long *recent)
 {
@@ -299,7 +283,7 @@ void rds_cong_set_bit(struct rds_cong_map *map, __be16 port)
 	i = be16_to_cpu(port) / RDS_CONG_MAP_PAGE_BITS;
 	off = be16_to_cpu(port) % RDS_CONG_MAP_PAGE_BITS;
 
-	__set_bit_le(off, (void *)map->m_page_addrs[i]);
+	generic___set_le_bit(off, (void *)map->m_page_addrs[i]);
 }
 
 void rds_cong_clear_bit(struct rds_cong_map *map, __be16 port)
@@ -313,7 +297,7 @@ void rds_cong_clear_bit(struct rds_cong_map *map, __be16 port)
 	i = be16_to_cpu(port) / RDS_CONG_MAP_PAGE_BITS;
 	off = be16_to_cpu(port) % RDS_CONG_MAP_PAGE_BITS;
 
-	__clear_bit_le(off, (void *)map->m_page_addrs[i]);
+	generic___clear_le_bit(off, (void *)map->m_page_addrs[i]);
 }
 
 static int rds_cong_test_bit(struct rds_cong_map *map, __be16 port)
@@ -324,7 +308,7 @@ static int rds_cong_test_bit(struct rds_cong_map *map, __be16 port)
 	i = be16_to_cpu(port) / RDS_CONG_MAP_PAGE_BITS;
 	off = be16_to_cpu(port) % RDS_CONG_MAP_PAGE_BITS;
 
-	return test_bit_le(off, (void *)map->m_page_addrs[i]);
+	return generic_test_le_bit(off, (void *)map->m_page_addrs[i]);
 }
 
 void rds_cong_add_socket(struct rds_sock *rs)
