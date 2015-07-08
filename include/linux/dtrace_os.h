@@ -60,7 +60,7 @@ typedef struct stacktrace_state {
 } stacktrace_state_t;
 
 extern void dtrace_stacktrace(stacktrace_state_t *);
-extern int dtrace_handle_no_pf(struct pt_regs *);
+extern void dtrace_handle_badaddr(struct pt_regs *);
 
 /*
  * This is only safe to call if we know this is a userspace fault
@@ -68,8 +68,11 @@ extern int dtrace_handle_no_pf(struct pt_regs *);
  */
 static inline int dtrace_no_pf(struct pt_regs *regs)
 {
-	if (unlikely(DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOPF)))
-		return dtrace_handle_no_pf(regs);
+	if (unlikely(DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOFAULT))) {
+		dtrace_handle_badaddr(regs);
+		return 1;
+	}
+
 	return 0;
 }
 
