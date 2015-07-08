@@ -209,3 +209,14 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		return 0;
 	}
 }
+
+void pdata_init(dtrace_module_t *pdata, struct module *mp)
+{
+	if (mp->pdata)
+		pdata->sdt_tab = mp->pdata;
+}
+
+void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
+{
+	mp->pdata = pdata->sdt_tab;
+}

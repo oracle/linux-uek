@@ -1125,22 +1125,22 @@ static struct miscdevice helper_dev = {
 
 static void module_add_pdata(void *dmy, struct module *mp)
 {
-	dmy = mp->pdata;
-	mp->pdata = kmem_cache_alloc(dtrace_pdata_cachep,
-				     GFP_KERNEL | __GFP_ZERO);
+	dtrace_module_t	*pdata = kmem_cache_alloc(dtrace_pdata_cachep,
+						  GFP_KERNEL | __GFP_ZERO);
 
-	if (dmy)
-		PDATA(mp)->sdt_tab = dmy;
+	pdata_init(pdata, mp);
+	mp->pdata = pdata;
 }
 
 static void module_del_pdata(void *dmy, struct module *mp)
 {
-	if (!mp->pdata)
+	dtrace_module_t	*pdata = mp->pdata;
+
+	if (!pdata)
 		return;
 
-	dmy = PDATA(mp)->sdt_tab;
-	kmem_cache_free(dtrace_pdata_cachep, mp->pdata);
-	mp->pdata = dmy;
+	pdata_cleanup(pdata, mp);
+	kmem_cache_free(dtrace_pdata_cachep, pdata);
 }
 
 static void dtrace_module_loading(struct module *mp)
