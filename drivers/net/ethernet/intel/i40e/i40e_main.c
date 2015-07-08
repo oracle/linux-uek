@@ -10506,7 +10506,7 @@ static void i40e_pci_error_resume(struct pci_dev *pdev)
 
 	rtnl_lock();
 	i40e_handle_reset_warning(pf);
-	rtnl_lock();
+	rtnl_unlock();
 }
 
 /**
