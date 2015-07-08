@@ -1,6 +1,20 @@
 DTrace Kernel Modules News
 ==========================
 
+Release 0.5.0 (Jul 6th, 2015)
+-----------------------------
+Kernel release: 4.0.4-15.el6uek
+
+New features:
+
+ - DTrace is now supported on the sparc64 architecture for the following
+   providers: dtrace, profile, syscall, and SDT.
+
+ - The uid / gid handling has been updated to accomodate namespace support
+   at the kernel level (kuid and kgid).  All uid / gid values reported by
+   D subroutines (or obtained from structures) are evaluated based on the
+   initial user namespace.
+
 Release 0.4.5 (Jun 17th, 2015)
 ------------------------------
 Kernel release: 3.8.13-87.el6uek

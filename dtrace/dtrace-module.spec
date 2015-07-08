@@ -13,7 +13,7 @@
 %define variant %{?build_variant:%{build_variant}}%{!?build_variant:-uek}
 
 # Set this to the version of the kernel this module is compiled against.
-%define kver %{?build_kver:%{build_kver}}%{!?build_kver:3.8.13-87.el6uek}
+%define kver %{?build_kver:%{build_kver}}%{!?build_kver:4.0.4-15.el6uek}
 
 # Select the correct source code version based on the kernel version.
 # Failing to pick the correct version can have disasterous effects!
@@ -31,6 +31,7 @@
 %define dt_0_4_3	1027
 %define dt_0_4_4	1028
 %define dt_0_4_5	1029
+%define dt_0_5_0	1280
 %{lua:
 	local kver = rpm.expand("%{kver}")
 
@@ -40,7 +41,11 @@
 		rpm.define("arches x86_64")
 	end
 
-	if rpm.vercmp(kver, "3.8.13-87") >= 0 then
+	if rpm.vercmp(kver, "4.0.4-15") >= 0 then
+		rpm.define("srcver 0.5.0")
+		rpm.define("bldrel 1")
+		rpm.define("dt_vcode "..rpm.expand("%{dt_0_5_0}"))
+	elseif rpm.vercmp(kver, "3.8.13-87") >= 0 then
 		rpm.define("srcver 0.4.5")
 		rpm.define("bldrel 2")
 		rpm.define("dt_vcode "..rpm.expand("%{dt_0_4_5}"))
@@ -99,7 +104,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: %{arches}
+ExclusiveArch: x86_64
 
 %description
 DTrace kernel modules.
@@ -152,7 +157,7 @@ Source0: dtrace-module-%{srcver}.tar.bz2
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
 BuildRequires: kernel%{variant}-devel = %{kver}
 BuildRequires: libdtrace-ctf
-ExclusiveArch: %{arches}
+ExclusiveArch: x86_64
 
 %description
 DTrace kernel modules.
@@ -243,6 +248,13 @@ rm -rf %{buildroot}
 %endif
 
 %changelog
+%if %{dt_vcode} >= %{dt_0_5_0}
+* Tue Jul  6 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.5.0-1
+- Add support for sparc64.
+  [Orabug: 19005048]
+- Update uid / gid handling in view of namespaces in UEK4 kernels.
+  [Orabug: 20456825]
+$endif
 %if %{dt_vcode} >= %{dt_0_4_5}
 * Tue Jun 23 2015 Kris Van Hees <kris.van.hees@oracle.com> - 0.4.5-2
 - Validate d_path() argument pointer to avoid crash.
