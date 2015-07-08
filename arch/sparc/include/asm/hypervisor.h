@@ -2937,6 +2937,12 @@ unsigned long sun4v_reboot_data_set(unsigned long ra,
 				    unsigned long len);
 #endif
 
+#define HV_FAST_GUEST_SUSPEND		0x181
+
+#ifndef __ASSEMBLY__
+unsigned long sun4v_guest_suspend(void);
+#endif
+
 #define HV_FAST_VT_GET_PERFREG		0x184
 #define HV_FAST_VT_SET_PERFREG		0x185
 
