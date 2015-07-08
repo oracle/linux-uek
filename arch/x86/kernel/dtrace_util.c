@@ -26,6 +26,15 @@ void dtrace_skip_instruction(struct pt_regs *regs) {
 	regs->ip += insn.length;
 }
 
+void dtrace_handle_badaddr(struct pt_regs *regs) {
+	unsigned long	addr = read_cr2();
+
+	DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
+	this_cpu_core->cpuc_dtrace_illval = addr;
+
+	dtrace_skip_instruction(regs);
+}
+
 typedef struct dtrace_invop_hdlr {
 	uint8_t				(*dtih_func)(struct pt_regs *);
 	struct dtrace_invop_hdlr	*dtih_next;
@@ -45,15 +54,10 @@ int dtrace_die_notifier(struct notifier_block *nb, unsigned long val,
 
 	switch (val) {
 	case DIE_PAGE_FAULT: {
-		unsigned long	addr = read_cr2();
-
 		if (!DTRACE_CPUFLAG_ISSET(CPU_DTRACE_NOFAULT))
 			return NOTIFY_DONE;
 
-		DTRACE_CPUFLAG_SET(CPU_DTRACE_BADADDR);
-		this_cpu_core->cpuc_dtrace_illval = addr;
-
-		dtrace_skip_instruction(dargs->regs);
+		dtrace_handle_badaddr(dargs->regs);
 
 		return NOTIFY_OK | NOTIFY_STOP_MASK;
 	}
