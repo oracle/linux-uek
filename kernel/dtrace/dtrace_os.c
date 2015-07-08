@@ -443,20 +443,6 @@ void dtrace_disable(void)
 }
 EXPORT_SYMBOL(dtrace_disable);
 
-/*
- * The dtrace-is-active body of dtrace_no_pf(), split into a separate function
- * to keep icache pressure down while incurring function call overhead only in
- * the rare dtrace-active, pf-disabled case.
- */
-int dtrace_handle_no_pf(struct pt_regs *regs)
-{
-	DTRACE_CPUFLAG_SET(CPU_DTRACE_PF_TRAPPED);
-
-	dtrace_skip_instruction(regs);
-
-	return 1;
-}
-
 /*---------------------------------------------------------------------------*\
 (* USER SPACE TRACING (FASTTRAP) SUPPORT                                     *)
 \*---------------------------------------------------------------------------*/
