@@ -905,6 +905,9 @@ extern void dtrace_copyoutstr(uintptr_t, uintptr_t, size_t,
 			      volatile uint16_t *);
 extern uintptr_t dtrace_caller(int);
 
+extern void pdata_init(dtrace_module_t *, struct module *);
+extern void pdata_cleanup(dtrace_module_t *, struct module *);
+
 extern void debug_enter(char *);
 
 #endif /* _LINUX_DTRACE_IMPL_H */
