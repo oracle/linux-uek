@@ -226,3 +226,11 @@ ulong_t dtrace_getreg(struct task_struct *task, uint_t reg)
 		return 0;
 	}
 }
+
+void pdata_init(dtrace_module_t *pdata, struct module *mp)
+{
+}
+
+void pdata_cleanup(dtrace_module_t *pdata, struct module *mp)
+{
+}
