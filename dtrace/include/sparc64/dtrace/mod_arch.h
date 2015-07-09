@@ -25,7 +25,7 @@
  * Use is subject to license terms.
  */
 
-#include <asm/dtrace_sdt.h>
+#include <asm/dtrace_arch.h>
 
 /*
  * Structure to hold DTrace specific information about modules (including the
@@ -38,7 +38,7 @@
 typedef struct dtrace_module {
         size_t          sdt_probe_cnt;
         int             sdt_enabled;
-	sdt_instr_t	*sdt_tab;
+	asm_instr_t	*sdt_tab;
         size_t          fbt_probe_cnt;
 } dtrace_module_t;
 

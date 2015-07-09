@@ -118,9 +118,9 @@
 
 void sdt_provide_probe_arch(sdt_probe_t *sdp, struct module *mp, int idx)
 {
-	sdt_instr_t	*trampoline = &(PDATA(mp)->sdt_tab[idx *
+	asm_instr_t	*trampoline = &(PDATA(mp)->sdt_tab[idx *
 							   SDT_TRAMP_SIZE]);
-	sdt_instr_t	*instr = trampoline;
+	asm_instr_t	*instr = trampoline;
 
 	*instr++ = SDT_SAVE;
 
@@ -152,7 +152,7 @@ int sdt_provide_module_arch(void *arg, struct module *mp)
 	 * The vmlinux pseudo-module (core Linux kernel) is a special case...
 	 */
 	if (mp == dtrace_kmod && PDATA(mp)->sdt_tab == NULL) {
-		PDATA(mp)->sdt_tab = (sdt_instr_t *)ALIGN(
+		PDATA(mp)->sdt_tab = (asm_instr_t *)ALIGN(
 			(uintptr_t)PDATA(mp) + sizeof(dtrace_module_t), 8);
 		return 1;
 	}

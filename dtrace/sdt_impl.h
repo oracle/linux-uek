@@ -2,7 +2,7 @@
 #define _SDT_IMPL_H_
 
 #include <linux/sdt.h>
-#include <asm/dtrace_sdt.h>
+#include <asm/dtrace_arch.h>
 #include <dtrace/sdt_arch.h>
 
 extern struct module		*dtrace_kmod;
@@ -15,9 +15,9 @@ typedef struct sdt_probe {
 	struct module		*sdp_module;	/* modctl for module */
 	int			sdp_loadcnt;	/* load count for module */
 	int			sdp_primary;	/* non-zero if primary mod */
-	sdt_instr_t		*sdp_patchpoint;/* patch point */
-	sdt_instr_t		sdp_patchval;	/* instruction to patch */
-	sdt_instr_t		sdp_savedval;	/* saved instruction value */
+	asm_instr_t		*sdp_patchpoint;/* patch point */
+	asm_instr_t		sdp_patchval;	/* instruction to patch */
+	asm_instr_t		sdp_savedval;	/* saved instruction value */
 	struct sdt_probe	*sdp_next;	/* next probe */
 	struct sdt_probe	*sdp_hashnext;	/* next on hash */
 } sdt_probe_t;

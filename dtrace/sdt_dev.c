@@ -203,7 +203,7 @@ void sdt_provide_module(void *arg, struct module *mp)
 					SDT_ADDR2NDX(sdpd->sdpd_offset)];
 		sdt_probetab[SDT_ADDR2NDX(sdpd->sdpd_offset)] = sdp;
 
-		sdp->sdp_patchpoint = (sdt_instr_t *)sdpd->sdpd_offset;
+		sdp->sdp_patchpoint = (asm_instr_t *)sdpd->sdpd_offset;
 
 		sdt_provide_probe_arch(sdp, mp, idx);
 	}
