@@ -52,6 +52,7 @@
 
 #include "mlx4_ib.h"
 #include "user.h"
+#include "wc.h"
 
 #define DRV_NAME	MLX4_IB_DRV_NAME
 #define DRV_VERSION	"2.2-1"
@@ -643,13 +644,23 @@ static struct ib_ucontext *mlx4_ib_alloc_ucontext(struct ib_device *ibdev,
 
 	if (ibdev->uverbs_abi_ver == MLX4_IB_UVERBS_NO_DEV_CAPS_ABI_VERSION) {
 		resp_v3.qp_tab_size      = dev->dev->caps.num_qps;
-		resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp_v3.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp_v3.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp_v3.bf_reg_size      = 0;
+			resp_v3.bf_regs_per_page = 0;
+		}
 	} else {
 		resp.dev_caps	      = dev->dev->caps.userspace_caps;
 		resp.qp_tab_size      = dev->dev->caps.num_qps;
-		resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
-		resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		if (mlx4_wc_enabled()) {
+			resp.bf_reg_size      = dev->dev->caps.bf_reg_size;
+			resp.bf_regs_per_page = dev->dev->caps.bf_regs_per_page;
+		} else {
+			resp.bf_reg_size      = 0;
+			resp.bf_regs_per_page = 0;
+		}
 		resp.cqe_size	      = dev->dev->caps.cqe_size;
 	}
 
@@ -705,7 +716,7 @@ static int mlx4_ib_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 				       PAGE_SIZE, vma->vm_page_prot))
 			return -EAGAIN;
 	} else if (vma->vm_pgoff == 1 && dev->dev->caps.bf_reg_size != 0) {
-		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+		vma->vm_page_prot = pgprot_wc(vma->vm_page_prot);
 
 		if (io_remap_pfn_range(vma, vma->vm_start,
 				       to_mucontext(context)->uar.pfn +
@@ -2149,10 +2160,12 @@ static void *mlx4_ib_add(struct mlx4_dev *dev)
 	if (mlx4_uar_alloc(dev, &ibdev->priv_uar))
 		goto err_pd;
 
-	ibdev->uar_map = ioremap((phys_addr_t) ibdev->priv_uar.pfn << PAGE_SHIFT,
-				 PAGE_SIZE);
-	if (!ibdev->uar_map)
+	ibdev->priv_uar.map = ioremap(ibdev->priv_uar.pfn << PAGE_SHIFT,
+		PAGE_SIZE);
+
+	if (!ibdev->priv_uar.map)
 		goto err_uar;
+
 	MLX4_INIT_DOORBELL_LOCK(&ibdev->uar_lock);
 
 	ibdev->dev = dev;
@@ -2445,7 +2458,7 @@ err_counter:
 			mlx4_counter_free(ibdev->dev, ibdev->counters[i - 1]);
 
 err_map:
-	iounmap(ibdev->uar_map);
+	iounmap(ibdev->priv_uar.map);
 
 err_uar:
 	mlx4_uar_free(dev, &ibdev->priv_uar);
@@ -2558,7 +2571,7 @@ static void mlx4_ib_remove(struct mlx4_dev *dev, void *ibdev_ptr)
 	}
 #endif
 
-	iounmap(ibdev->uar_map);
+	iounmap(ibdev->priv_uar.map);
 	for (p = 0; p < ibdev->num_ports; ++p)
 		if (ibdev->counters[p] != -1)
 			mlx4_counter_free(ibdev->dev, ibdev->counters[p]);

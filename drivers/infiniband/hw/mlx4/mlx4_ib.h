@@ -303,6 +303,8 @@ struct mlx4_ib_qp {
 	struct mlx4_roce_smac_vlan_info pri;
 	struct mlx4_roce_smac_vlan_info alt;
 	u64			reg_id;
+	int                     max_inline_data;
+	struct mlx4_bf          bf;
 	struct list_head	qps_list;
 	struct list_head	cq_recv_list;
 	struct list_head	cq_send_list;
@@ -507,8 +509,6 @@ struct mlx4_ib_dev {
 	struct ib_device	ib_dev;
 	struct mlx4_dev	       *dev;
 	int			num_ports;
-	void __iomem	       *uar_map;
-
 	struct mlx4_uar		priv_uar;
 	u32			priv_pdn;
 	MLX4_DECLARE_DOORBELL_LOCK(uar_lock);
@@ -652,6 +652,9 @@ void mlx4_ib_db_unmap_user(struct mlx4_ib_ucontext *context, struct mlx4_db *db)
 struct ib_mr *mlx4_ib_get_dma_mr(struct ib_pd *pd, int acc);
 int mlx4_ib_umem_write_mtt(struct mlx4_ib_dev *dev, struct mlx4_mtt *mtt,
 			   struct ib_umem *umem);
+int mlx4_ib_umem_calc_optimal_mtt_size(struct ib_umem *umem,
+						u64 start_va,
+						int *num_of_mtts);
 struct ib_mr *mlx4_ib_reg_user_mr(struct ib_pd *pd, u64 start, u64 length,
 				  u64 virt_addr, int access_flags,
 				  struct ib_udata *udata);

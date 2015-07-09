@@ -1180,7 +1180,7 @@ int mlx4_init_eq_table(struct mlx4_dev *dev)
 			GFP_KERNEL);
 	if (!priv->eq_table.irq_names) {
 		err = -ENOMEM;
-		goto err_out_bitmap;
+		goto err_out_clr_int;
 	}
 
 	for (i = 0; i < dev->caps.num_comp_vectors; ++i) {
@@ -1280,9 +1280,11 @@ err_out_unmap:
 		mlx4_free_eq(dev, &priv->eq_table.eq[i]);
 		--i;
 	}
+	mlx4_free_irqs(dev);
+
+err_out_clr_int:
 	if (!mlx4_is_slave(dev))
 		mlx4_unmap_clr_int(dev);
-	mlx4_free_irqs(dev);
 
 err_out_bitmap:
 	mlx4_unmap_uar(dev);
