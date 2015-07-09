@@ -57,6 +57,9 @@
 #define mlx4_ib_warn(ibdev, format, arg...) \
 	dev_warn((ibdev)->dma_device, MLX4_IB_DRV_NAME ": " format, ## arg)
 
+#define mlx4_ib_info(ibdev, format, arg...) \
+	dev_info((ibdev)->dma_device, MLX4_IB_DRV_NAME ": " format, ## arg)
+
 enum {
 	MLX4_IB_SQ_MIN_WQE_SHIFT = 6,
 	MLX4_IB_MAX_HEADROOM	 = 2048
@@ -69,7 +72,7 @@ enum {
 extern int mlx4_ib_sm_guid_assign;
 
 #define MLX4_IB_UC_STEER_QPN_ALIGN 1
-#define MLX4_IB_UC_MAX_NUM_QPS     256
+#define MLX4_IB_UC_MAX_NUM_QPS     (256 * 1024)
 struct mlx4_ib_ucontext {
 	struct ib_ucontext	ibucontext;
 	struct mlx4_uar		uar;
@@ -276,7 +279,7 @@ struct mlx4_ib_qp {
 	struct mlx4_db		db;
 	struct mlx4_ib_wq	rq;
 
-	u32			doorbell_qpn;
+	__be32			doorbell_qpn;
 	__be32			sq_signal_bits;
 	unsigned		sq_next_wqe;
 	int			sq_max_wqes_per_wr;

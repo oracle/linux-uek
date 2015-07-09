@@ -361,12 +361,6 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 		goto err_fd;
 	}
 
-	if (copy_to_user((void __user *) (unsigned long) cmd.response,
-			 &resp, sizeof resp)) {
-		ret = -EFAULT;
-		goto err_file;
-	}
-
 	file->async_file = filp->private_data;
 
 	INIT_IB_EVENT_HANDLER(&file->event_handler, file->device->ib_dev,
@@ -375,6 +369,11 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 	if (ret)
 		goto err_file;
 
+	if (copy_to_user((void __user *) (unsigned long) cmd.response,
+			 &resp, sizeof resp)) {
+		ret = -EFAULT;
+		goto err_file;
+	}
 	kref_get(&file->async_file->ref);
 	kref_get(&file->ref);
 	file->ucontext = ucontext;
@@ -945,8 +944,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	struct ib_mr                *mr;
 	int                          ret;
 
-	if (out_len < sizeof resp)
+	if (out_len < sizeof(resp)) {
+		pr_debug("ib_uverbs_reg_mr: command output length too short\n");
 		return -ENOSPC;
+	}
 
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
@@ -955,8 +956,10 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 		   (unsigned long) cmd.response + sizeof resp,
 		   in_len - sizeof cmd, out_len - sizeof resp);
 
-	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK))
+	if ((cmd.start & ~PAGE_MASK) != (cmd.hca_va & ~PAGE_MASK)) {
+		pr_debug("ib_uverbs_reg_mr: HCA virtual address doesn't match host address\n");
 		return -EINVAL;
+	}
 
 	ret = ib_check_mr_access(cmd.access_flags);
 	if (ret)
@@ -971,6 +974,7 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 
 	pd = idr_read_pd(cmd.pd_handle, file->ucontext);
 	if (!pd) {
+		pr_debug("ib_uverbs_reg_mr: invalid PD\n");
 		ret = -EINVAL;
 		goto err_free;
 	}
@@ -2054,8 +2058,8 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 	attr->path_mtu 		  = cmd.path_mtu;
 	attr->path_mig_state 	  = cmd.path_mig_state;
 	attr->qkey 		  = cmd.qkey;
-	attr->rq_psn 		  = cmd.rq_psn;
-	attr->sq_psn 		  = cmd.sq_psn;
+	attr->rq_psn              = cmd.rq_psn & 0xffffff;
+	attr->sq_psn              = cmd.sq_psn & 0xffffff;
 	attr->dest_qp_num 	  = cmd.dest_qp_num;
 	attr->qp_access_flags 	  = cmd.qp_access_flags;
 	attr->pkey_index 	  = cmd.pkey_index;

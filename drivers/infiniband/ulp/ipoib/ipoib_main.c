@@ -218,6 +218,11 @@ static int ipoib_change_mtu(struct net_device *dev, int new_mtu)
 	priv->admin_mtu = new_mtu;
 
 	dev->mtu = min(priv->mcast_mtu, priv->admin_mtu);
+	if (dev->mtu < new_mtu) {
+		ipoib_warn(priv, "mtu must be smaller than mcast_mtu (%d)\n",
+			   priv->mcast_mtu);
+		return -EINVAL;
+	}
 
 	return 0;
 }
@@ -225,6 +230,14 @@ static int ipoib_change_mtu(struct net_device *dev, int new_mtu)
 int ipoib_set_mode(struct net_device *dev, const char *buf)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
+
+	if ((test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags) &&
+	     !strcmp(buf, "connected\n")) ||
+	    (!test_bit(IPOIB_FLAG_ADMIN_CM, &priv->flags) &&
+	     !strcmp(buf, "datagram\n"))) {
+		ipoib_dbg(priv, "already in that mode, goes out.\n");
+		return 0;
+	}
 
 	/* flush paths if we switch modes so that connections are restarted */
 	if (IPOIB_CM_SUPPORTED(dev->dev_addr) && !strcmp(buf, "connected\n")) {
@@ -236,7 +249,10 @@ int ipoib_set_mode(struct net_device *dev, const char *buf)
 		priv->tx_wr.send_flags &= ~IB_SEND_IP_CSUM;
 
 		ipoib_flush_paths(dev);
-		rtnl_lock();
+
+		if (!rtnl_trylock())
+			return -EBUSY;
+
 		return 0;
 	}
 
@@ -246,7 +262,10 @@ int ipoib_set_mode(struct net_device *dev, const char *buf)
 		dev_set_mtu(dev, min(priv->mcast_mtu, dev->mtu));
 		rtnl_unlock();
 		ipoib_flush_paths(dev);
-		rtnl_lock();
+
+		if (!rtnl_trylock())
+			return -EBUSY;
+
 		return 0;
 	}
 
@@ -443,6 +462,7 @@ static void path_rec_completion(int status,
 	struct sk_buff_head skqueue;
 	struct sk_buff *skb;
 	unsigned long flags;
+	int ret;
 
 	if (!status)
 		ipoib_dbg(priv, "PathRec LID 0x%04x for GID %pI6\n",
@@ -519,9 +539,10 @@ static void path_rec_completion(int status,
 
 	while ((skb = __skb_dequeue(&skqueue))) {
 		skb->dev = dev;
-		if (dev_queue_xmit(skb))
-			ipoib_warn(priv, "dev_queue_xmit failed "
-				   "to requeue packet\n");
+		ret = dev_queue_xmit(skb);
+		if (ret)
+			ipoib_warn(priv, "%s: dev_queue_xmit failed "
+				   "to requeue packet, ret:%d\n", __func__, ret);
 	}
 }
 
@@ -1269,7 +1290,7 @@ static void ipoib_neigh_hash_uninit(struct net_device *dev)
 	/* Stop GC if called at init fail need to cancel work */
 	stopped = test_and_set_bit(IPOIB_STOP_NEIGH_GC, &priv->flags);
 	if (!stopped)
-		cancel_delayed_work(&priv->neigh_reap_task);
+		cancel_delayed_work_sync(&priv->neigh_reap_task);
 
 	ipoib_flush_neighs(priv);
 
@@ -1598,8 +1619,12 @@ static struct net_device *ipoib_add_port(const char *format,
 		goto device_init_failed;
 	}
 
-	if (ipoib_set_dev_features(priv, hca))
+	result = ipoib_set_dev_features(priv, hca);
+	if (result) {
+		printk(KERN_WARNING "%s: couldn't set features for ipoib port %d; error %d\n",
+		       hca->name, port, result);
 		goto device_init_failed;
+	}
 
 	/*
 	 * Set the full membership bit, so that we join the right
@@ -1644,6 +1669,8 @@ static struct net_device *ipoib_add_port(const char *format,
 
 	ipoib_create_debug_files(priv->dev);
 
+	result = -ENOMEM;
+
 	if (ipoib_cm_add_mode_attr(priv->dev))
 		goto sysfs_failed;
 	if (ipoib_add_pkey_attr(priv->dev))
@@ -1685,6 +1712,7 @@ static void ipoib_add_one(struct ib_device *device)
 	struct net_device *dev;
 	struct ipoib_dev_priv *priv;
 	int s, e, p;
+	int is_error_init = 0;
 
 	if (rdma_node_get_transport(device->node_type) != RDMA_TRANSPORT_IB)
 		return;
@@ -1710,10 +1738,16 @@ static void ipoib_add_one(struct ib_device *device)
 		if (!IS_ERR(dev)) {
 			priv = netdev_priv(dev);
 			list_add_tail(&priv->list, dev_list);
-		}
+		} else
+			is_error_init = 1;
 	}
-
 	ib_set_client_data(device, &ipoib_client, dev_list);
+
+	if (is_error_init) {
+		printk(KERN_ERR "%s: Failed to init ib port, removing it\n",
+		       __func__);
+		ipoib_remove_one(device);
+	}
 }
 
 static void ipoib_remove_one(struct ib_device *device)
@@ -1752,13 +1786,31 @@ static int __init ipoib_init_module(void)
 {
 	int ret;
 
-	ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
-	ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
-	ipoib_recvq_size = max(ipoib_recvq_size, IPOIB_MIN_QUEUE_SIZE);
+	if (ipoib_recvq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_recvq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_recvq_size = roundup_pow_of_two(ipoib_recvq_size);
+		ipoib_recvq_size = min(ipoib_recvq_size, IPOIB_MAX_QUEUE_SIZE);
+		ipoib_recvq_size = max(ipoib_recvq_size, IPOIB_MIN_QUEUE_SIZE);
+	} else {
+		pr_err(KERN_ERR "ipoib_recvq_size is out of bounds [%d-%d], seting to default %d\n",
+		       IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
+		       IPOIB_RX_RING_SIZE);
+		ipoib_recvq_size  = IPOIB_RX_RING_SIZE;
+	}
 
-	ipoib_sendq_size = roundup_pow_of_two(ipoib_sendq_size);
-	ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
-	ipoib_sendq_size = max3(ipoib_sendq_size, 2 * MAX_SEND_CQE, IPOIB_MIN_QUEUE_SIZE);
+	if (ipoib_sendq_size <= IPOIB_MAX_QUEUE_SIZE &&
+	    ipoib_sendq_size >= IPOIB_MIN_QUEUE_SIZE) {
+		ipoib_sendq_size = roundup_pow_of_two(ipoib_sendq_size);
+		ipoib_sendq_size = min(ipoib_sendq_size, IPOIB_MAX_QUEUE_SIZE);
+		ipoib_sendq_size = max3(ipoib_sendq_size, 2 * MAX_SEND_CQE,
+					IPOIB_MIN_QUEUE_SIZE);
+	} else {
+		pr_err(KERN_ERR "ipoib_sendq_size is out of bounds [%d-%d], seting to default %d\n",
+		       IPOIB_MIN_QUEUE_SIZE, IPOIB_MAX_QUEUE_SIZE,
+		       IPOIB_TX_RING_SIZE);
+		ipoib_sendq_size  = IPOIB_TX_RING_SIZE;
+	}
+
 #ifdef CONFIG_INFINIBAND_IPOIB_CM
 	ipoib_max_conn_qp = min(ipoib_max_conn_qp, IPOIB_CM_MAX_CONN_QP);
 #endif

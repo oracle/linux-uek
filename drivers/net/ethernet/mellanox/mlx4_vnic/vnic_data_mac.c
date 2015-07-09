@@ -352,18 +352,19 @@ int vnic_parent_update(struct vnic_port *port, char *name, u16 vnic_id,
 		vnic_dbg_mac(name, "checking parent %s for child %s (expect %s)\n",
 			     login->dev->name, name, parent_name);
 		/* check if parent vnic has valid QPN and not being destroyed */
-		if (!strcmp(login->dev->name, parent_name) &&
+		if ((!strcmp(login->dev->name, parent_name) &&
 		    test_bit(VNIC_STATE_LOGIN_PRECREATE_2, &login->fip_vnic->login_state) &&
-		    !login->fip_vnic->flush) {
+		    !login->fip_vnic->flush) || (!strcmp(login->dev->name, parent_name) && remove)) {
 			/* sync qp_base_num with parent */
 			if (qp_base_num_ptr)
 				*qp_base_num_ptr = login->qp_base_num;
 
 			/* update mac_tree and mace vnic_id */
+			vnic_dbg_mac(name, "update child %s remove=%d\n", name, remove);
 			write_lock_bh(&login->mac_rwlock);
 			rc = vnic_mace_update(login, mac, vnic_id, remove);
+			vnic_child_update(login, mac, remove);
 			write_unlock_bh(&login->mac_rwlock);
-
 			break;
 		}
 	}

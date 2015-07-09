@@ -113,22 +113,24 @@ int ib_find_cached_gid(struct ib_device *device,
 		*index = -1;
 
 	read_lock_irqsave(&device->cache.lock, flags);
-
+	if (!device->cache.gid_cache)
+		goto out;
 	for (p = 0; p <= end_port(device) - start_port(device); ++p) {
 		cache = device->cache.gid_cache[p];
+		if (!cache)
+			continue;
 		for (i = 0; i < cache->table_len; ++i) {
 			if (!memcmp(gid, &cache->table[i], sizeof *gid)) {
 				*port_num = p + start_port(device);
 				if (index)
 					*index = i;
 				ret = 0;
-				goto found;
+				goto out;
 			}
 		}
 	}
-found:
+out:
 	read_unlock_irqrestore(&device->cache.lock, flags);
-
 	return ret;
 }
 EXPORT_SYMBOL(ib_find_cached_gid);
@@ -176,11 +178,16 @@ int ib_find_cached_pkey(struct ib_device *device,
 	if (port_num < start_port(device) || port_num > end_port(device))
 		return -EINVAL;
 
+	*index = -1;
+
 	read_lock_irqsave(&device->cache.lock, flags);
 
-	cache = device->cache.pkey_cache[port_num - start_port(device)];
+	if (!device->cache.pkey_cache)
+		goto out;
 
-	*index = -1;
+	cache = device->cache.pkey_cache[port_num - start_port(device)];
+	if (!cache)
+		goto out;
 
 	for (i = 0; i < cache->table_len; ++i)
 		if ((cache->table[i] & 0x7fff) == (pkey & 0x7fff)) {
@@ -196,9 +203,8 @@ int ib_find_cached_pkey(struct ib_device *device,
 		*index = partial_ix;
 		ret = 0;
 	}
-
+out:
 	read_unlock_irqrestore(&device->cache.lock, flags);
-
 	return ret;
 }
 EXPORT_SYMBOL(ib_find_cached_pkey);
@@ -216,11 +222,16 @@ int ib_find_exact_cached_pkey(struct ib_device *device,
 	if (port_num < start_port(device) || port_num > end_port(device))
 		return -EINVAL;
 
+	*index = -1;
+
 	read_lock_irqsave(&device->cache.lock, flags);
 
-	cache = device->cache.pkey_cache[port_num - start_port(device)];
+	if (!device->cache.pkey_cache)
+		goto out;
 
-	*index = -1;
+	cache = device->cache.pkey_cache[port_num - start_port(device)];
+	if (!cache)
+		goto out;
 
 	for (i = 0; i < cache->table_len; ++i)
 		if (cache->table[i] == pkey) {
@@ -228,9 +239,8 @@ int ib_find_exact_cached_pkey(struct ib_device *device,
 			ret = 0;
 			break;
 		}
-
+out:
 	read_unlock_irqrestore(&device->cache.lock, flags);
-
 	return ret;
 }
 EXPORT_SYMBOL(ib_find_exact_cached_pkey);
@@ -264,6 +274,10 @@ static void ib_cache_update(struct ib_device *device,
 	struct ib_gid_cache       *gid_cache = NULL, *old_gid_cache;
 	int                        i;
 	int                        ret;
+
+	if (!(device->cache.pkey_cache && device->cache.gid_cache &&
+	      device->cache.lmc_cache))
+		return;
 
 	tprops = kmalloc(sizeof *tprops, GFP_KERNEL);
 	if (!tprops)

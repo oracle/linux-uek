@@ -630,7 +630,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 	 * shifting) for send doorbell.  Precompute this value to save
 	 * a little bit when posting sends.
 	 */
-	qp->doorbell_qpn = swab32(qp->mqp.qpn << 8);
+	qp->doorbell_qpn = cpu_to_be32((u32)qp->mqp.qpn << 8);
 
 	qp->mqp.event = mlx4_ib_qp_event;
 
@@ -1338,18 +1338,18 @@ int vnic_ib_post_send(struct ib_qp *ibqp,
 		      u8 tcp_off, u8 udp_off)
 {
 	struct mlx4_ib_qp *qp = to_mqp(ibqp);
-	void *wqe;
-	struct mlx4_wqe_ctrl_seg *ctrl;
-	struct mlx4_wqe_data_seg *dseg;
+	void *wqe = NULL;
+	struct mlx4_wqe_ctrl_seg *ctrl = NULL;
+	struct mlx4_wqe_data_seg *dseg = NULL;
 	__be32 owner_opcode = 0;
-	int nreq;
+	int nreq = 0;
 	int err = 0;
 	unsigned ind;
 	int uninitialized_var(stamp);
 	int uninitialized_var(size);
 	unsigned uninitialized_var(seglen);
 	__be32 dummy;
-	__be32 *lso_wqe;
+	__be32 *lso_wqe = NULL;
 	__be32 uninitialized_var(lso_hdr_sz);
 	int i;
 	int blh = 0;
@@ -1357,8 +1357,6 @@ int vnic_ib_post_send(struct ib_qp *ibqp,
 	int inl = 0;
 
 	ind = qp->sq_next_wqe;
-
-	nreq = 0;
 	lso_wqe = &dummy;
 
 	if (mlx4_wq_overflow(&qp->sq, nreq, qp->ibqp.send_cq)) {
@@ -1491,7 +1489,7 @@ int vnic_ib_post_send(struct ib_qp *ibqp,
 out:
 	if (nreq == 1 && inl && size > 1 && size < qp->bf.buf_size / 16) {
 		ctrl->owner_opcode |= htonl((qp->sq_next_wqe & 0xffff) << 8);
-		*(u32 *) (&ctrl->vlan_tag) |= qp->doorbell_qpn;
+		*(__be32 *)(&ctrl->vlan_tag) |= qp->doorbell_qpn;
 		/*
 		 * Make sure that descriptor is written to memory
 		 * before writing to BlueFlame page.
@@ -1515,7 +1513,8 @@ out:
 		 */
 		wmb();
 
-		writel(qp->doorbell_qpn, qp->bf.uar->map + MLX4_SEND_DOORBELL);
+		__raw_writel((__force u32)qp->doorbell_qpn,
+			     qp->bf.uar->map + MLX4_SEND_DOORBELL);
 
 		/*
 		 * Make sure doorbells don't leak out of SQ spinlock

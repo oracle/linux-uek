@@ -69,7 +69,7 @@ MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
 
 static int msi_x = 1;
 module_param(msi_x, int, 0444);
-MODULE_PARM_DESC(msi_x, "attempt to use MSI-X if nonzero");
+MODULE_PARM_DESC(msi_x, "0 - don't use MSI-X, 1 - use MSI-X, >1 - limit number of MSI-X irqs to msi_x");
 
 #else /* CONFIG_PCI_MSI */
 
@@ -121,7 +121,7 @@ static struct mlx4_profile low_mem_profile = {
 	.num_cq		= 1 << 8,
 	.num_mcg	= 1 << 8,
 	.num_mpt	= 1 << 9,
-	.num_mtt	= 1 << 7,
+	.num_mtt_segs	= 1 << 7,
 };
 
 static int log_num_mac = 7;
@@ -160,22 +160,22 @@ struct mlx4_port_config {
 static atomic_t pf_loading = ATOMIC_INIT(0);
 
 #define MLX4_LOG_NUM_MTT 20
-/* When a higher value than 28 is used we get a failure via initializing
-     the event queue table.
+/* We limit to 30 as of a bit map issue which uses int and not uint.
+     see mlx4_buddy_init -> bitmap_zero which gets int.
 */
-#define MLX4_MAX_LOG_NUM_MTT 28
+#define MLX4_MAX_LOG_NUM_MTT 30
 static struct mlx4_profile mod_param_profile = {
-	.num_qp         = 18,
+	.num_qp         = 19,
 	.num_srq        = 16,
 	.rdmarc_per_qp  = 4,
 	.num_cq         = 16,
 	.num_mcg        = 13,
 	.num_mpt        = 19,
-	.num_mtt        = 0, /* max(20, 2*MTTs for host memory)) */
+	.num_mtt_segs   = 0, /* max(20, 2*MTTs for host memory)) */
 };
 
 module_param_named(log_num_qp, mod_param_profile.num_qp, int, 0444);
-MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 18)");
+MODULE_PARM_DESC(log_num_qp, "log maximum number of QPs per HCA (default: 19)");
 
 module_param_named(log_num_srq, mod_param_profile.num_srq, int, 0444);
 MODULE_PARM_DESC(log_num_srq, "log maximum number of SRQs per HCA "
@@ -198,11 +198,15 @@ MODULE_PARM_DESC(log_num_mpt,
 		 "log maximum number of memory protection table entries per "
 		 "HCA (default: 19)");
 
-module_param_named(log_num_mtt, mod_param_profile.num_mtt, int, 0444);
+module_param_named(log_num_mtt, mod_param_profile.num_mtt_segs, int, 0444);
 MODULE_PARM_DESC(log_num_mtt,
 		 "log maximum number of memory translation table segments per "
-		 "HCA (default: max(20, 2*MTTs for register all of the host memory))");
+		 "HCA (default: max(20, 2*MTTs for register all of the host memory limited to 30))");
 
+enum {
+	MLX4_IF_STATE_BASIC,
+	MLX4_IF_STATE_EXTENDED
+};
 static void process_mod_param_profile(struct mlx4_profile *profile)
 {
 	struct sysinfo si;
@@ -221,20 +225,27 @@ static void process_mod_param_profile(struct mlx4_profile *profile)
 	 * memory (with PAGE_SIZE entries).
 	 *
 	 * This number has to be a power of two and fit into 32 bits
-	 * due to device limitations, so cap this at 2^31 as well.
-	 * That limits us to 8TB of memory registration per HCA with
+	 * due to device limitations. We cap this at 2^30 as of bit map
+	 * limitation to work with int instead of uint (mlx4_buddy_init -> bitmap_zero)
+	 * That limits us to 4TB of memory registration per HCA with
 	 * 4KB pages, which is probably OK for the next few months.
 	 */
-	if (mod_param_profile.num_mtt)
-		profile->num_mtt = 1 << mod_param_profile.num_mtt;
+	if (mod_param_profile.num_mtt_segs)
+		profile->num_mtt_segs = 1 << mod_param_profile.num_mtt_segs;
 	else {
 		si_meminfo(&si);
-		profile->num_mtt =
+		profile->num_mtt_segs =
 			roundup_pow_of_two(max_t(unsigned,
-						1 << MLX4_LOG_NUM_MTT,
-						min(1UL << MLX4_MAX_LOG_NUM_MTT,
+						1 << (MLX4_LOG_NUM_MTT -
+						      log_mtts_per_seg),
+						min(1UL <<
+						(MLX4_MAX_LOG_NUM_MTT -
+						log_mtts_per_seg),
 						(si.totalram << 1)
 						>> log_mtts_per_seg)));
+		/* set the actual value, so it will be reflected to the user
+		   using the sysfs */
+		mod_param_profile.num_mtt_segs = ilog2(profile->num_mtt_segs);
 	}
 }
 
@@ -936,9 +947,10 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 		dev->caps.qp1_proxy[i - 1] = func_cap.qp1_proxy_qpn;
 		dev->caps.port_mask[i] = dev->caps.port_type[i];
 		dev->caps.phys_port_id[i] = func_cap.phys_port_id;
-		if (mlx4_get_slave_pkey_gid_tbl_len(dev, i,
-						    &dev->caps.gid_table_len[i],
-						    &dev->caps.pkey_table_len[i]))
+		err = mlx4_get_slave_pkey_gid_tbl_len(dev, i,
+						      &dev->caps.gid_table_len[i],
+						      &dev->caps.pkey_table_len[i]);
+		if (err)
 			goto err_mem;
 	}
 
@@ -950,6 +962,7 @@ static int mlx4_slave_cap(struct mlx4_dev *dev)
 			 dev->caps.uar_page_size * dev->caps.num_uars,
 			 (unsigned long long)
 			 pci_resource_len(dev->persist->pdev, 2));
+		err = -ENOMEM;
 		goto err_mem;
 	}
 
@@ -1119,6 +1132,13 @@ static ssize_t set_port_type(struct device *dev,
 		mlx4_err(mdev, "%s is not supported port type\n", buf);
 		err = -EINVAL;
 		goto err_out;
+	}
+
+	if ((info->tmp_type & mdev->caps.supported_type[info->port]) !=
+	    info->tmp_type) {
+		mlx4_err(mdev, "Requested port type for port %d is not supported on this HCA\n",
+			 info->port);
+		return -EINVAL;
 	}
 
 	mlx4_stop_sense(mdev);
@@ -2263,12 +2283,30 @@ static int mlx4_init_counters_table(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	int nent;
+	int res;
 
 	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS))
 		return -ENOENT;
 
 	nent = dev->caps.max_counters;
-	return mlx4_bitmap_init(&priv->counters_bitmap, nent, nent - 1, 0, 0);
+	res = mlx4_bitmap_init(&priv->counters_bitmap, nent, nent - 1, 0, 0);
+	if (res)
+		return res;
+
+	if (mlx4_is_slave(dev))
+		return 0;
+
+	if (!(dev->caps.flags & MLX4_DEV_CAP_FLAG_COUNTERS_EXT))
+		return 0;
+
+	res = mlx4_cmd(dev, MLX4_IF_STATE_EXTENDED, 0, 0,
+		MLX4_CMD_SET_IF_STAT, MLX4_CMD_TIME_CLASS_A, MLX4_CMD_NATIVE);
+
+	if (res)
+		mlx4_err(dev, "Failed to set extended counters (err=%d)\n",
+				res);
+	return res;
+
 }
 
 static void mlx4_cleanup_counters_table(struct mlx4_dev *dev)
@@ -2562,6 +2600,9 @@ static void mlx4_enable_msi_x(struct mlx4_dev *dev)
 		nreq = min_t(int, dev->caps.num_eqs - dev->caps.reserved_eqs,
 			     nreq);
 
+		if (msi_x > 1)
+			nreq = min_t(int, nreq, msi_x);
+
 		entries = kcalloc(nreq, sizeof *entries, GFP_KERNEL);
 		if (!entries)
 			goto no_msi;
@@ -2853,6 +2894,7 @@ static int mlx4_load_one(struct pci_dev *pdev, int pci_dev_data,
 
 	dev = &priv->dev;
 
+	INIT_LIST_HEAD(&priv->dev_list);
 	INIT_LIST_HEAD(&priv->ctx_list);
 	spin_lock_init(&priv->ctx_lock);
 
@@ -3751,6 +3793,11 @@ static struct pci_driver mlx4_driver = {
 
 static int __init mlx4_verify_params(void)
 {
+	if (msi_x < 0) {
+		pr_warn("mlx4_core: bad msi_x: %d\n", msi_x);
+		return -1;
+	}
+
 	if ((log_num_mac < 0) || (log_num_mac > 7)) {
 		pr_warn("mlx4_core: bad num_mac: %d\n", log_num_mac);
 		return -1;
@@ -3786,7 +3833,7 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	if (mod_param_profile.num_qp < 12 || mod_param_profile.num_qp > 23) {
+	if (mod_param_profile.num_qp < 18 || mod_param_profile.num_qp > 23) {
 		pr_warning("mlx4_core: bad log_num_qp: %d\n",
 			   mod_param_profile.num_qp);
 		return -1;
@@ -3810,15 +3857,16 @@ static int __init mlx4_verify_params(void)
 		return -1;
 	}
 
-	if (mod_param_profile.num_mtt && mod_param_profile.num_mtt < 15) {
+	if (mod_param_profile.num_mtt_segs &&
+	    mod_param_profile.num_mtt_segs < 15) {
 		pr_warning("mlx4_core: too low log_num_mtt: %d\n",
-			   mod_param_profile.num_mtt);
+			   mod_param_profile.num_mtt_segs);
 		return -1;
 	}
 
-	if (mod_param_profile.num_mtt > MLX4_MAX_LOG_NUM_MTT) {
+	if (mod_param_profile.num_mtt_segs > MLX4_MAX_LOG_NUM_MTT) {
 		pr_warning("mlx4_core: too high log_num_mtt: %d\n",
-			   mod_param_profile.num_mtt);
+			   mod_param_profile.num_mtt_segs);
 		return -1;
 	}
 	return 0;

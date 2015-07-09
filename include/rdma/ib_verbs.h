@@ -39,6 +39,11 @@
 #if !defined(IB_VERBS_H)
 #define IB_VERBS_H
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) fmt
+
 #include <linux/types.h>
 #include <linux/device.h>
 #include <linux/mm.h>
@@ -2647,8 +2652,11 @@ static inline int ib_check_mr_access(int flags)
 	 * remote atomic permission is also requested.
 	 */
 	if (flags & (IB_ACCESS_REMOTE_ATOMIC | IB_ACCESS_REMOTE_WRITE) &&
-	    !(flags & IB_ACCESS_LOCAL_WRITE))
+	    !(flags & IB_ACCESS_LOCAL_WRITE)) {
+		pr_debug("ib_check_mr_access: MR must have local write permission if remote write is allowed. flags=0x%x\n"
+			 , flags);
 		return -EINVAL;
+	}
 
 	return 0;
 }

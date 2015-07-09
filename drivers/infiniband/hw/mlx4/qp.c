@@ -725,7 +725,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		int shift;
 		int n;
 
-		if (ib_copy_from_udata(&ucmd, udata, sizeof ucmd)) {
+		if (!udata || ib_copy_from_udata(&ucmd, udata, sizeof(ucmd))) {
 			err = -EFAULT;
 			goto err;
 		}
@@ -792,8 +792,8 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 		if (qp->max_inline_data) {
 			err = mlx4_bf_alloc(dev->dev, &qp->bf, 0);
 			if (err) {
-				pr_err("failed to allocate blue flame"
-				       " register (%d)", err);
+				pr_debug("failed to allocate blue flame"
+					 " register (%d)", err);
 				qp->bf.uar = &dev->priv_uar;
 			}
 		} else
@@ -861,7 +861,7 @@ static int create_qp_common(struct mlx4_ib_dev *dev, struct ib_pd *pd,
 	 * shifting) for send doorbell.  Precompute this value to save
 	 * a little bit when posting sends.
 	 */
-	qp->doorbell_qpn = swab32(qp->mqp.qpn << 8);
+	qp->doorbell_qpn = cpu_to_be32((u32)qp->mqp.qpn << 8);
 
 	qp->mqp.event = mlx4_ib_qp_event;
 	if (!*caller_qp)
@@ -1173,8 +1173,10 @@ struct ib_qp *mlx4_ib_create_qp(struct ib_pd *pd,
 	{
 		err = create_qp_common(to_mdev(pd->device), pd, init_attr,
 				       udata, 0, &qp, gfp);
-		if (err)
+		if (err) {
+			kfree(qp);
 			return ERR_PTR(err);
+		}
 
 		qp->ibqp.qp_num = qp->mqp.qpn;
 		qp->xrcdn = xrcdn;
@@ -1655,7 +1657,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 	}
 
 	if (attr_mask & IB_QP_SQ_PSN)
-		context->next_send_psn = cpu_to_be32(attr->sq_psn);
+		context->next_send_psn = cpu_to_be32(attr->sq_psn & 0xffffff);
 
 	if (attr_mask & IB_QP_MAX_DEST_RD_ATOMIC) {
 		if (attr->max_dest_rd_atomic)
@@ -1677,7 +1679,7 @@ static int __mlx4_ib_modify_qp(struct ib_qp *ibqp,
 		optpar |= MLX4_QP_OPTPAR_RNR_TIMEOUT;
 	}
 	if (attr_mask & IB_QP_RQ_PSN)
-		context->rnr_nextrecvpsn |= cpu_to_be32(attr->rq_psn);
+		context->rnr_nextrecvpsn |= cpu_to_be32(attr->rq_psn & 0xffffff);
 
 	/* proxy and tunnel qp qkeys will be changed in modify-qp wrappers */
 	if (attr_mask & IB_QP_QKEY) {
@@ -2564,7 +2566,7 @@ static void build_tunnel_header(struct ib_send_wr *wr, void *wqe, unsigned *mlx_
 	if (sizeof (hdr) <= spc) {
 		memcpy(inl + 1, &hdr, sizeof (hdr));
 		wmb();
-		inl->byte_count = cpu_to_be32(1 << 31 | sizeof (hdr));
+		inl->byte_count = cpu_to_be32(1 << 31 | (u32)sizeof (hdr));
 		i = 1;
 	} else {
 		memcpy(inl + 1, &hdr, spc);
@@ -3051,7 +3053,7 @@ out:
 		/* We set above doorbell_qpn bits to 0 as part of vlan
 		  * tag initialization, so |= should be correct.
 		*/
-		*(u32 *) (&ctrl->vlan_tag) |= qp->doorbell_qpn;
+		*(__be32 *)(&ctrl->vlan_tag) |= qp->doorbell_qpn;
 		/*
 		 * Make sure that descriptor is written to memory
 		 * before writing to BlueFlame page.
@@ -3075,7 +3077,8 @@ out:
 		 */
 		wmb();
 
-		writel(qp->doorbell_qpn, qp->bf.uar->map + MLX4_SEND_DOORBELL);
+		__raw_writel((__force u32)qp->doorbell_qpn,
+			     qp->bf.uar->map + MLX4_SEND_DOORBELL);
 
 		/*
 		 * Make sure doorbells don't leak out of SQ spinlock

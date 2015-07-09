@@ -231,7 +231,8 @@ int fip_discover_init(struct vnic_port *port, struct fip_discover *discover,
 		discover->pkey = pkey;
 		INIT_LIST_HEAD(&discover->gw_list);
 		init_rwsem(&discover->l_rwsem);
-		sprintf(discover->name, "%s_P%x", port->name, discover->pkey);
+		snprintf(discover->name, DISCOVER_NAME_LEN,
+			 "%s_P%x", port->name, discover->pkey);
 	}
 	INIT_LIST_HEAD(&discover->hadmin_cache);
 	vnic_mcast_root_init(&discover->mcast_tree);
@@ -1621,8 +1622,8 @@ static void handle_login_packet(struct fip_discover *discover,
 		fip_print_syndrome(vnic, synd);
 
 		if (synd == FIP_SYNDROM_UNRECOGNISED_HOST) {
-			vnic_info("%s %s sending ucast sloicit to Gateway\n",
-					  discover->name, vnic_name);
+			vnic_info("%s %s sending ucast solicit to Gateway\n",
+				  discover->name, vnic_name);
 			if(fip_solicit_send(gw->discover,
                                     FIP_DISCOVER_UCAST,
                                     gw->info.gw_qpn,

@@ -811,9 +811,15 @@ void ipoib_cm_handle_tx_wc(struct net_device *dev, struct ib_wc *wc)
 	    wc->status != IB_WC_WR_FLUSH_ERR) {
 		struct ipoib_neigh *neigh;
 
-		ipoib_dbg(priv, "failed cm send event "
-			   "(status=%d, wrid=%d vend_err %x)\n",
-			   wc->status, wr_id, wc->vendor_err);
+		/*IB_WC_RNR_RETRY_EXC_ERR error is part of the life cycle, so don't make waves.*/
+		if (IB_WC_RNR_RETRY_EXC_ERR != wc->status)
+			ipoib_warn(priv, "%s: failed cm send event "
+				   "(status=%d, wrid=%d vend_err %x)\n",
+				   __func__, wc->status, wr_id, wc->vendor_err);
+		else
+			ipoib_dbg(priv, "%s: failed cm send event "
+				   "(status=%d, wrid=%d vend_err %x)\n",
+				   __func__, wc->status, wr_id, wc->vendor_err);
 
 		spin_lock_irqsave(&priv->lock, flags);
 		neigh = tx->neigh;
@@ -1002,14 +1008,18 @@ static int ipoib_cm_rep_handler(struct ib_cm_id *cm_id, struct ib_cm_event *even
 	if (p->neigh)
 		while ((skb = __skb_dequeue(&p->neigh->queue)))
 			__skb_queue_tail(&skqueue, skb);
-	spin_unlock_irq(&priv->lock);
 
 	while ((skb = __skb_dequeue(&skqueue))) {
+		spin_unlock_irq(&priv->lock);
 		skb->dev = p->dev;
-		if (dev_queue_xmit(skb))
-			ipoib_warn(priv, "dev_queue_xmit failed "
-				   "to requeue packet\n");
+		ret = dev_queue_xmit(skb);
+		if (ret)
+			ipoib_warn(priv, "%s:dev_queue_xmit failed to requeue"
+					 " packet, ret:%d\n", __func__, ret);
+		spin_lock_irq(&priv->lock);
 	}
+
+	spin_unlock_irq(&priv->lock);
 
 	ret = ib_send_cm_rtu(cm_id, NULL, 0);
 	if (ret) {
@@ -1406,14 +1416,47 @@ static void ipoib_cm_skb_reap(struct work_struct *work)
 	netif_tx_unlock_bh(dev);
 }
 
+static void ipoib_cm_update_pmtu_task(struct work_struct *work)
+{
+	struct ipoib_pmtu_update *pmtu_update =
+		container_of(work, struct ipoib_pmtu_update, work);
+	struct sk_buff *skb = pmtu_update->skb;
+
+	skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, pmtu_update->mtu);
+
+	atomic_dec(&skb->users);
+
+	kfree(pmtu_update);
+}
+
+
 void ipoib_cm_skb_too_long(struct net_device *dev, struct sk_buff *skb,
 			   unsigned int mtu)
 {
 	struct ipoib_dev_priv *priv = netdev_priv(dev);
 	int e = skb_queue_empty(&priv->cm.skb_queue);
 
-	if (skb_dst(skb))
-		skb_dst(skb)->ops->update_pmtu(skb_dst(skb), NULL, skb, mtu);
+	struct ipoib_pmtu_update *pmtu_update;
+
+	if (skb_dst(skb)) {
+		/* take the pmtu_update ouf ot spin-lock context */
+		pmtu_update = kzalloc(sizeof *pmtu_update, GFP_ATOMIC);
+		if (pmtu_update) {
+			pmtu_update->skb = skb;
+			pmtu_update->mtu = mtu;
+			/* in order to keep the skb available */
+			atomic_inc(&skb->users);
+			INIT_WORK(&pmtu_update->work, ipoib_cm_update_pmtu_task);
+			/*
+			* in order to have it serial, push that task to
+			* the same queue which the function  will push
+			* the priv->cm.skb_task work.
+			*/
+			queue_work(ipoib_workqueue, &pmtu_update->work);
+		} else
+			 ipoib_warn(priv, "Failed alloc pmtu_update and update_pmtu(skb->dst, mtu)\n");
+	}
+
 
 	skb_queue_tail(&priv->cm.skb_queue, skb);
 	if (e)
@@ -1478,9 +1521,14 @@ static ssize_t set_mode(struct device *d, struct device_attribute *attr,
 
 	ret = ipoib_set_mode(dev, buf);
 
-	rtnl_unlock();
+	/* the assumption is that the func ipoib_set_mode returned with the
+	 * rtnl held by it, if not the value -EBUSY returned,
+	 * so no need to rtnl_unlock
+	 */
+	if (ret != -EBUSY)
+		rtnl_unlock();
 
-	if (!ret)
+	if (!ret || ret == -EBUSY)
 		return count;
 
 	return ret;
