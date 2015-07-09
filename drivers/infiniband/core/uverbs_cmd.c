@@ -1722,7 +1722,7 @@ ssize_t ib_uverbs_create_qp(struct ib_uverbs_file *file,
 	INIT_LIST_HEAD(&obj->mcast_list);
 
 	if (cmd.qp_type == IB_QPT_XRC_TGT)
-		qp = ib_create_qp(pd, &attr);
+		qp = ib_create_qp_ex(pd, &attr, &udata);
 	else
 		qp = device->create_qp(pd, &attr, &udata);
 
@@ -2013,20 +2013,6 @@ out:
 	return ret ? ret : in_len;
 }
 
-/* Remove ignored fields set in the attribute mask */
-static int modify_qp_mask(enum ib_qp_type qp_type, int mask)
-{
-	switch (qp_type) {
-	case IB_QPT_XRC_INI:
-		return mask & ~(IB_QP_MAX_DEST_RD_ATOMIC | IB_QP_MIN_RNR_TIMER);
-	case IB_QPT_XRC_TGT:
-		return mask & ~(IB_QP_MAX_QP_RD_ATOMIC | IB_QP_RETRY_CNT |
-				IB_QP_RNR_RETRY);
-	default:
-		return mask;
-	}
-}
-
 ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 			    const char __user *buf, int in_len,
 			    int out_len)
@@ -2103,10 +2089,9 @@ ssize_t ib_uverbs_modify_qp(struct ib_uverbs_file *file,
 		ret = ib_resolve_eth_l2_attrs(qp, attr, &cmd.attr_mask);
 		if (ret)
 			goto release_qp;
-		ret = qp->device->modify_qp(qp, attr,
-			modify_qp_mask(qp->qp_type, cmd.attr_mask), &udata);
+		ret = qp->device->modify_qp(qp, attr, cmd.attr_mask, &udata);
 	} else {
-		ret = ib_modify_qp(qp, attr, modify_qp_mask(qp->qp_type, cmd.attr_mask));
+		ret = ib_modify_qp(qp, attr, cmd.attr_mask);
 	}
 
 	if (ret)
@@ -2261,6 +2246,8 @@ ssize_t ib_uverbs_post_send(struct ib_uverbs_file *file,
 				next->ex.imm_data =
 					(__be32 __force) user_wr->ex.imm_data;
 		} else {
+			if (qp->qp_type == IB_QPT_XRC_INI)
+				next->xrc_remote_srq_num = user_wr->xrc_remote_srq_num;
 			switch (next->opcode) {
 			case IB_WR_RDMA_WRITE_WITH_IMM:
 				next->ex.imm_data =
@@ -2533,6 +2520,7 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 	struct ib_pd			*pd;
 	struct ib_ah			*ah;
 	struct ib_ah_attr		attr;
+	struct ib_udata                 udata;
 	int ret;
 
 	if (out_len < sizeof resp)
@@ -2540,6 +2528,10 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 
 	if (copy_from_user(&cmd, buf, sizeof cmd))
 		return -EFAULT;
+
+	INIT_UDATA(&udata, buf + sizeof cmd,
+		(unsigned long) cmd.response + sizeof resp,
+		in_len - sizeof cmd, out_len - sizeof resp);
 
 	uobj = kmalloc(sizeof *uobj, GFP_KERNEL);
 	if (!uobj)
@@ -2568,14 +2560,17 @@ ssize_t ib_uverbs_create_ah(struct ib_uverbs_file *file,
 	memset(&attr.dmac, 0, sizeof(attr.dmac));
 	memcpy(attr.grh.dgid.raw, cmd.attr.grh.dgid, 16);
 
-	ah = ib_create_ah(pd, &attr);
+	ah = pd->device->create_ah(pd, &attr, &udata);
 	if (IS_ERR(ah)) {
 		ret = PTR_ERR(ah);
 		goto err_put;
 	}
 
+	ah->device  = pd->device;
+	ah->pd      = pd;
 	ah->uobject  = uobj;
 	uobj->object = ah;
+	atomic_inc(&pd->usecnt);
 
 	ret = idr_add_uobj(&ib_uverbs_ah_idr, uobj);
 	if (ret)

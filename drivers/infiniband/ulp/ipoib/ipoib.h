@@ -92,6 +92,7 @@ enum {
 	IPOIB_FLAG_UMCAST	  = 10,
 	IPOIB_STOP_NEIGH_GC	  = 11,
 	IPOIB_NEIGH_TBL_FLUSH	  = 12,
+	IPOIB_FLAG_CSUM		  = 15,
 
 	IPOIB_MAX_BACKOFF_SECONDS = 16,
 
@@ -176,11 +177,6 @@ struct ipoib_tx_buf {
 	u64		mapping[MAX_SKB_FRAGS + 1];
 };
 
-struct ipoib_cm_tx_buf {
-	struct sk_buff *skb;
-	u64		mapping;
-};
-
 /* in order to call dst->ops->update_pmtu out of spin-lock*/
 struct ipoib_pmtu_update {
 	struct work_struct work;
@@ -190,9 +186,20 @@ struct ipoib_pmtu_update {
 
 struct ib_cm_id;
 
+/* Signature so driver can make sure ipoib_cm_data.caps is valid */
+#define IPOIB_CM_PROTO_SIG	0x2211
+/* Current driver ipoib_cm_data version */
+#define IPOIB_CM_PROTO_VER	(1UL << 12)
+
+enum ipoib_cm_data_caps {
+	IPOIB_CM_CAPS_IBCRC_AS_CSUM	= 1UL << 0,
+};
+
 struct ipoib_cm_data {
 	__be32 qpn; /* High byte MUST be ignored on receive */
 	__be32 mtu;
+	__be16 sig; /* must be IPOIB_CM_PROTO_SIG */
+	__be16 caps; /* 4 bits proto ver and 12 bits capabilities */
 };
 
 /*
@@ -237,6 +244,7 @@ struct ipoib_cm_rx {
 	unsigned long		jiffies;
 	enum ipoib_cm_state	state;
 	int			recv_count;
+	u16			caps;
 };
 
 struct ipoib_cm_tx {
@@ -246,11 +254,12 @@ struct ipoib_cm_tx {
 	struct net_device   *dev;
 	struct ipoib_neigh  *neigh;
 	struct ipoib_path   *path;
-	struct ipoib_cm_tx_buf *tx_ring;
+	struct ipoib_tx_buf *tx_ring;
 	unsigned	     tx_head;
 	unsigned	     tx_tail;
 	unsigned long	     flags;
 	u32		     mtu;
+	u16		     caps;
 };
 
 struct ipoib_cm_rx_buf {
@@ -459,7 +468,19 @@ void ipoib_del_neighs_by_gid(struct net_device *dev, u8 *gid);
 
 extern struct workqueue_struct *ipoib_workqueue;
 
+extern int cm_ibcrc_as_csum;
+
 /* functions */
+
+static inline int ipoib_cm_check_proto_sig(u16 proto_sig)
+{
+	return (proto_sig == IPOIB_CM_PROTO_SIG);
+}
+
+static inline int ipoib_cm_check_proto_ver(u16 caps)
+{
+	return ((caps & 0xF000) == IPOIB_CM_PROTO_VER);
+}
 
 int ipoib_poll(struct napi_struct *napi, int budget);
 void ipoib_ib_completion(struct ib_cq *cq, void *dev_ptr);
@@ -511,6 +532,8 @@ int ipoib_mcast_stop_thread(struct net_device *dev);
 void ipoib_mcast_dev_down(struct net_device *dev);
 void ipoib_mcast_dev_flush(struct net_device *dev);
 
+int ipoib_dma_map_tx(struct ib_device *ca, struct ipoib_tx_buf *tx_req);
+
 #ifdef CONFIG_INFINIBAND_IPOIB_DEBUG
 struct ipoib_mcast_iter *ipoib_mcast_iter_init(struct net_device *dev);
 int ipoib_mcast_iter_next(struct ipoib_mcast_iter *iter);
@@ -539,6 +562,9 @@ void ipoib_event(struct ib_event_handler *handler,
 
 int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey);
 int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey);
+int ipoib_named_vlan_add(struct net_device *pdev, unsigned short pkey,
+			 char *child_name_buf);
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf);
 
 int __ipoib_vlan_add(struct ipoib_dev_priv *ppriv, struct ipoib_dev_priv *priv,
 		     u16 pkey, int child_type);

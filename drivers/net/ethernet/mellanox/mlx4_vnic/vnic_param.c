@@ -33,7 +33,7 @@
 #include "vnic.h"
 #include "vnic_fip.h"
 
-u32 vnic_lro_num = VNIC_MAX_LRO_DESCS;
+u32 vnic_lro_num;
 u32 vnic_net_admin = 1;
 u32 vnic_child_max = VNIC_CHILD_MAX;
 u32 vnic_tx_rings_num = 0;
@@ -119,7 +119,7 @@ MODULE_PARM_DESC(sa_query, "Query SA for each IB address and ignore gateway assi
 
 #if !(defined(NETIF_F_GRO) && !defined(_BP_NO_GRO))
 module_param_named(lro_num, vnic_lro_num, int, 0444);
-MODULE_PARM_DESC(lro_num, "Number of LRO sessions per ring, use 0 to disable [default 32, max 32]");
+MODULE_PARM_DESC(lro_num, "Number of LRO sessions per ring, use 0 to disable [default 0, max 32]");
 #endif
 
 #ifdef CONFIG_MLX4_VNIC_DEBUG

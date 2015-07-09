@@ -187,7 +187,8 @@ static int c2_dealloc_pd(struct ib_pd *pd)
 	return 0;
 }
 
-static struct ib_ah *c2_ah_create(struct ib_pd *pd, struct ib_ah_attr *ah_attr)
+static struct ib_ah *c2_ah_create(struct ib_pd *pd, struct ib_ah_attr *ah_attr,
+				  struct ib_udata *udata)
 {
 	pr_debug("%s:%u\n", __func__, __LINE__);
 	return ERR_PTR(-ENOSYS);
