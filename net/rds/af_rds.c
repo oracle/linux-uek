@@ -46,10 +46,6 @@ static unsigned int rds_ib_retry_count = 0xdead;
 module_param(rds_ib_retry_count, int, 0444);
 MODULE_PARM_DESC(rds_ib_retry_count, "UNUSED, set param in rds_rdma instead");
 
-static int rds_qos_enabled = 1;
-module_param(rds_qos_enabled, int, 0444);
-MODULE_PARM_DESC(rds_qos_enabled, "Set to enable QoS");
-
 static char *rds_qos_threshold = NULL;
 module_param(rds_qos_threshold, charp, 0444);
 MODULE_PARM_DESC(rds_qos_threshold, "<tos>:<max_msg_size>[,<tos>:<max_msg_size>]*");
@@ -80,7 +76,6 @@ static int rds_release(struct socket *sock)
 {
 	struct sock *sk = sock->sk;
 	struct rds_sock *rs;
-	unsigned long flags;
 
 	if (!sk)
 		goto out;
@@ -100,10 +95,10 @@ static int rds_release(struct socket *sock)
 	rds_rdma_drop_keys(rs);
 	rds_notify_queue_get(rs, NULL);
 
-	spin_lock_irqsave(&rds_sock_lock, flags);
+	spin_lock_bh(&rds_sock_lock);
 	list_del_init(&rs->rs_item);
 	rds_sock_count--;
-	spin_unlock_irqrestore(&rds_sock_lock, flags);
+	spin_unlock_bh(&rds_sock_lock);
 
 	rds_trans_put(rs->rs_transport);
 
@@ -218,23 +213,31 @@ static int rds_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	rds_tos_t tos;
-	unsigned long flags;
 
 	switch (cmd) {
 	case SIOCRDSSETTOS:
-		if (!rds_qos_enabled)
-			return -EOPNOTSUPP;
-
 		if (get_user(tos, (rds_tos_t __user *)arg))
 			return -EFAULT;
 
-		spin_lock_irqsave(&rds_sock_lock, flags);
+		spin_lock_bh(&rds_sock_lock);
 		if (rs->rs_tos || rs->rs_conn) {
-			spin_unlock_irqrestore(&rds_sock_lock, flags);
+			spin_unlock_bh(&rds_sock_lock);
 			return -EINVAL;
 		}
 		rs->rs_tos = tos;
-		spin_unlock_irqrestore(&rds_sock_lock, flags);
+		spin_unlock_bh(&rds_sock_lock);
+		break;
+        case SIOCRDSGETTOS:
+                spin_lock_bh(&rds_sock_lock);
+                tos = rs->rs_tos;
+                spin_unlock_bh(&rds_sock_lock);
+                if (put_user(tos, (rds_tos_t __user *)arg))
+                        return -EFAULT;
+                break;
+	case SIOCRDSENABLENETFILTER:
+		spin_lock_bh(&rds_sock_lock);
+		rs->rs_netfilter_enabled = 1;
+		spin_unlock_bh(&rds_sock_lock);
 		break;
 	default:
 		return -ENOIOCTLCMD;
@@ -327,6 +330,28 @@ static int rds_user_reset(struct rds_sock *rs, char __user *optval, int optlen)
 	return 0;
 }
 
+static int rds_set_transport(struct rds_sock *rs, char __user *optval,
+			     int optlen)
+{
+	int t_type;
+
+	if (rs->rs_transport)
+		return -EOPNOTSUPP; /* previously attached to transport */
+
+	if (optlen != sizeof(int))
+		return -EINVAL;
+
+	if (copy_from_user(&t_type, (int __user *)optval, sizeof(t_type)))
+		return -EFAULT;
+
+	if (t_type < 0 || t_type >= RDS_TRANS_COUNT)
+		return -EINVAL;
+
+	rs->rs_transport = rds_trans_get(t_type);
+
+	return rs->rs_transport ? 0 : -ENOPROTOOPT;
+}
+
 static int rds_setsockopt(struct socket *sock, int level, int optname,
 			  char __user *optval, unsigned int optlen)
 {
@@ -360,6 +385,11 @@ static int rds_setsockopt(struct socket *sock, int level, int optname,
 	case RDS_CONN_RESET:
 		ret = rds_user_reset(rs, optval, optlen);
 		break;
+	case SO_RDS_TRANSPORT:
+		lock_sock(sock->sk);
+		ret = rds_set_transport(rs, optval, optlen);
+		release_sock(sock->sk);
+		break;
 	default:
 		ret = -ENOPROTOOPT;
 	}
@@ -372,6 +402,7 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 {
 	struct rds_sock *rs = rds_sk_to_rs(sock->sk);
 	int ret = -ENOPROTOOPT, len;
+	int trans;
 
 	if (level != SOL_RDS)
 		goto out;
@@ -393,6 +424,19 @@ static int rds_getsockopt(struct socket *sock, int level, int optname,
 		else
 		if (put_user(rs->rs_recverr, (int __user *) optval)
 		 || put_user(sizeof(int), optlen))
+			ret = -EFAULT;
+		else
+			ret = 0;
+		break;
+	case SO_RDS_TRANSPORT:
+		if (len < sizeof(int)) {
+			ret = -EINVAL;
+			break;
+		}
+		trans = (rs->rs_transport ? rs->rs_transport->t_type :
+			 RDS_TRANS_NONE); /* unbound */
+		if (put_user(trans, (int __user *)optval) ||
+		    put_user(sizeof(int), optlen))
 			ret = -EFAULT;
 		else
 			ret = 0;
@@ -476,7 +520,6 @@ static void rds_sock_destruct(struct sock *sk)
 
 static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 {
-	unsigned long flags;
 	struct rds_sock *rs;
 
 	sock_init_data(sock, sk);
@@ -496,14 +539,15 @@ static int __rds_create(struct socket *sock, struct sock *sk, int protocol)
 	rs->poison = 0xABABABAB;
 	rs->rs_tos = 0;
 	rs->rs_conn = 0;
+	rs->rs_netfilter_enabled = 0;
 
 	if (rs->rs_bound_addr)
 		printk(KERN_CRIT "bound addr %x at create\n", rs->rs_bound_addr);
 
-	spin_lock_irqsave(&rds_sock_lock, flags);
+	spin_lock_bh(&rds_sock_lock);
 	list_add_tail(&rs->rs_item, &rds_sock_list);
 	rds_sock_count++;
-	spin_unlock_irqrestore(&rds_sock_lock, flags);
+	spin_unlock_bh(&rds_sock_lock);
 
 	return 0;
 }
@@ -512,7 +556,8 @@ static int rds_create(struct net *net, struct socket *sock, int protocol, int ke
 {
 	struct sock *sk;
 
-	if (sock->type != SOCK_SEQPACKET || protocol)
+	if (sock->type != SOCK_SEQPACKET ||
+	    (protocol && IPPROTO_OKA != protocol))
 		return -ESOCKTNOSUPPORT;
 
 	sk = sk_alloc(net, AF_RDS, GFP_KERNEL, &rds_proto);
@@ -555,6 +600,7 @@ void debug_sock_put(struct sock *sk)
 			WARN_ON(1);
 		}
 		rs->poison = 0xDEADBEEF;
+		rs->rs_netfilter_enabled = 0;
 		sk_free(sk);
 	}
 }
@@ -578,12 +624,11 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 	struct rds_sock *rs;
 	struct sock *sk;
 	struct rds_incoming *inc;
-	unsigned long flags;
 	unsigned int total = 0;
 
 	len /= sizeof(struct rds_info_message);
 
-	spin_lock_irqsave(&rds_sock_lock, flags);
+	spin_lock_bh(&rds_sock_lock);
 
 	list_for_each_entry(rs, &rds_sock_list, rs_item) {
 		sk = rds_rs_to_sk(rs);
@@ -600,7 +645,7 @@ static void rds_sock_inc_info(struct socket *sock, unsigned int len,
 		read_unlock(&rs->rs_recv_lock);
 	}
 
-	spin_unlock_irqrestore(&rds_sock_lock, flags);
+	spin_unlock_bh(&rds_sock_lock);
 
 	lens->nr = total;
 	lens->each = sizeof(struct rds_info_message);
@@ -612,11 +657,10 @@ static void rds_sock_info(struct socket *sock, unsigned int len,
 {
 	struct rds_info_socket sinfo;
 	struct rds_sock *rs;
-	unsigned long flags;
 
 	len /= sizeof(struct rds_info_socket);
 
-	spin_lock_irqsave(&rds_sock_lock, flags);
+	spin_lock_bh(&rds_sock_lock);
 
 	if (len < rds_sock_count)
 		goto out;
@@ -637,7 +681,7 @@ out:
 	lens->nr = rds_sock_count;
 	lens->each = sizeof(struct rds_info_socket);
 
-	spin_unlock_irqrestore(&rds_sock_lock, flags);
+	spin_unlock_bh(&rds_sock_lock);
 }
 
 static unsigned long parse_ul(char *ptr, unsigned long max)
@@ -751,12 +795,15 @@ static void rds_exit(void)
 	rds_page_exit();
 	rds_info_deregister_func(RDS_INFO_SOCKETS, rds_sock_info);
 	rds_info_deregister_func(RDS_INFO_RECV_MESSAGES, rds_sock_inc_info);
+
 }
 module_exit(rds_exit);
 
 static int rds_init(void)
 {
 	int ret;
+
+	rds_bind_lock_init();
 
 	ret = rds_conn_init();
 	if (ret)

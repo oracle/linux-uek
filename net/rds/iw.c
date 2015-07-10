@@ -271,6 +271,7 @@ struct rds_transport rds_iw_transport = {
 	.conn_shutdown		= rds_iw_conn_shutdown,
 	.inc_copy_to_user	= rds_iw_inc_copy_to_user,
 	.inc_free		= rds_iw_inc_free,
+	.skb_local              = rds_skb_local,
 	.cm_initiate_connect	= rds_iw_cm_initiate_connect,
 	.cm_handle_connect	= rds_iw_cm_handle_connect,
 	.cm_connect_complete	= rds_iw_cm_connect_complete,

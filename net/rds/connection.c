@@ -128,7 +128,10 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	struct rds_transport *loop_trans;
 	unsigned long flags;
 	int ret;
+	struct rds_transport *otrans = trans;
 
+	if (!is_outgoing && otrans->t_type == RDS_TRANS_TCP)
+		goto new_conn;
 	rcu_read_lock();
 	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
 	if (conn
@@ -147,6 +150,7 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	if (conn)
 		goto out;
 
+new_conn:
 	conn = kmem_cache_alloc(rds_conn_slab, gfp);
 	if (!conn) {
 		conn = ERR_PTR(-ENOMEM);
@@ -208,11 +212,15 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	conn->c_reconnect_warn = 1;
 	conn->c_reconnect_drops = 0;
 	conn->c_reconnect_err = 0;
+	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+	conn->c_route_resolved = 1;
 
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&conn->c_conn_w, rds_connect_worker);
 	INIT_DELAYED_WORK(&conn->c_hb_w, rds_hb_worker);
+	INIT_DELAYED_WORK(&conn->c_reconn_w, rds_reconnect_timeout);
+	INIT_DELAYED_WORK(&conn->c_reject_w, rds_reject_worker);
 	INIT_WORK(&conn->c_down_w, rds_shutdown_worker);
 	mutex_init(&conn->c_cm_lock);
 	conn->c_flags = 0;
@@ -245,13 +253,22 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		found = rds_conn_lookup(head, laddr, faddr, trans, tos);
+		if (!is_outgoing && otrans->t_type == RDS_TRANS_TCP)
+			found = NULL;
+		else
+			found = rds_conn_lookup(head, laddr, faddr, trans, tos);
 		if (found) {
 			trans->conn_free(conn->c_transport_data);
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = found;
 		} else {
-			hlist_add_head_rcu(&conn->c_hash_node, head);
+			if ((is_outgoing && otrans->t_type == RDS_TRANS_TCP) ||
+			    (otrans->t_type != RDS_TRANS_TCP)) {
+				/* Only the active side should be added to
+				 * reconnect list for RDS-TCP.
+				 */
+				hlist_add_head_rcu(&conn->c_hash_node, head);
+			}
 			rds_cong_add_conn(conn);
 			rds_conn_count++;
 		}
@@ -292,7 +309,7 @@ struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
 }
 EXPORT_SYMBOL_GPL(rds_conn_find);
 
-void rds_conn_shutdown(struct rds_connection *conn)
+void rds_conn_shutdown(struct rds_connection *conn, int restart)
 {
 	/* shut it down unless it's down already */
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
@@ -342,7 +359,7 @@ void rds_conn_shutdown(struct rds_connection *conn)
 	 * conn - the reconnect is always triggered by the active peer. */
 	cancel_delayed_work_sync(&conn->c_conn_w);
 	rcu_read_lock();
-	if (!hlist_unhashed(&conn->c_hash_node)) {
+	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
 		rds_queue_reconnect(conn);
 	} else {
@@ -375,6 +392,13 @@ void rds_conn_destroy(struct rds_connection *conn)
 	/* shut the connection down */
 	rds_conn_drop(conn);
 	flush_work(&conn->c_down_w);
+
+	/* now that conn down worker is flushed; there cannot be any
+	 * more posting of reconn timeout work. But cancel any already
+	 * posted reconn timeout worker as there is a race between rds
+	 * module unload and a pending reconn delay work.
+	 */
+	cancel_delayed_work_sync(&conn->c_reconn_w);
 
 	/* make sure lingering queued work won't try to ref the conn */
 	cancel_delayed_work_sync(&conn->c_send_w);
@@ -435,6 +459,7 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 				list = &conn->c_retrans;
 
 			spin_lock_irqsave(&conn->c_lock, flags);
+			conn->c_rdsinfo_pending = 1;
 
 			/* XXX too lazy to maintain counts.. */
 			list_for_each_entry(rm, list, m_conn_item) {
@@ -445,6 +470,7 @@ static void rds_conn_message_info(struct socket *sock, unsigned int len,
 							  conn->c_faddr, 0);
 			}
 
+			conn->c_rdsinfo_pending = 0;
 			spin_unlock_irqrestore(&conn->c_lock, flags);
 		}
 	}
@@ -576,6 +602,35 @@ void rds_conn_exit(void)
 				 rds_conn_message_info_retrans);
 }
 
+static void rds_conn_probe_lanes(struct rds_connection *conn)
+{
+	struct hlist_head *head =
+		rds_conn_bucket(conn->c_laddr, conn->c_faddr);
+	struct rds_connection *tmp;
+
+	rcu_read_lock();
+	hlist_for_each_entry_rcu(tmp, head, c_hash_node) {
+		if (tmp->c_faddr == conn->c_faddr &&
+			tmp->c_laddr == conn->c_laddr &&
+			tmp->c_tos != 0 &&
+			tmp->c_trans == conn->c_trans) {
+			if (rds_conn_up(tmp))
+				rds_send_hb(tmp, 0);
+			else if (rds_conn_connecting(tmp) && (tmp->c_route_resolved == 0)) {
+				printk(KERN_INFO "RDS/IB: connection "
+				       "<%u.%u.%u.%u,%u.%u.%u.%u,%d> "
+				       "connecting, force reset ",
+				       NIPQUAD(tmp->c_laddr),
+				       NIPQUAD(tmp->c_faddr),
+				       tmp->c_tos);
+
+				rds_conn_drop(tmp);
+			}
+		}
+	}
+	rcu_read_unlock();
+}
+
 /*
  * Force a disconnect
  */
@@ -588,18 +643,40 @@ void rds_conn_drop(struct rds_connection *conn)
 		conn->c_reconnect_warn = 1;
 		conn->c_reconnect_drops = 0;
 		conn->c_reconnect_err = 0;
+		conn->c_reconnect_racing = 0;
+		printk(KERN_INFO "RDS/IB: connection "
+			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> dropped\n",
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos);
+
+		if (conn->c_tos == 0)
+			rds_conn_probe_lanes(conn);
+
 	} else if ((conn->c_reconnect_warn) &&
 		   (now - conn->c_reconnect_start > 60)) {
-		printk(KERN_INFO "RDS/IB: re-connect to %u.%u.%u.%u is "
-			"stalling for more than 1 min...(drops=%u err=%d)\n",
-			NIPQUAD(conn->c_faddr), conn->c_reconnect_drops,
+		printk(KERN_INFO "RDS/IB: re-connect "
+			"<%u.%u.%u.%u,%u.%u.%u.%u,%d> stalling "
+			"for more than 1 min...(drops=%u err=%d)\n",
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos,
+			conn->c_reconnect_drops,
 			conn->c_reconnect_err);
 		conn->c_reconnect_warn = 0;
+
+		if (conn->c_tos == 0)
+			rds_conn_probe_lanes(conn);
 	}
 	conn->c_reconnect_drops++;
 
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
-	queue_work(rds_wq, &conn->c_down_w);
+
+	if (conn->c_loopback)
+		queue_work(rds_local_wq, &conn->c_down_w);
+	else
+		queue_work(rds_wq, &conn->c_down_w);
+
 }
 EXPORT_SYMBOL_GPL(rds_conn_drop);
 
@@ -610,8 +687,12 @@ EXPORT_SYMBOL_GPL(rds_conn_drop);
 void rds_conn_connect_if_down(struct rds_connection *conn)
 {
 	if (rds_conn_state(conn) == RDS_CONN_DOWN &&
-	    !test_and_set_bit(RDS_RECONNECT_PENDING, &conn->c_flags))
-		queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+	    !test_and_set_bit(RDS_RECONNECT_PENDING, &conn->c_flags)) {
+		if (conn->c_loopback)
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
+		else
+			queue_delayed_work(rds_wq, &conn->c_conn_w, 0);
+	}
 }
 EXPORT_SYMBOL_GPL(rds_conn_connect_if_down);
 

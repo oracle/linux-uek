@@ -8,10 +8,10 @@
 #include "rds.h"
 #include "rdma_transport.h"
 
-#define RDS_FMR_1M_POOL_SIZE		(8192 / 2)
+#define RDS_FMR_1M_POOL_SIZE		(8192 * 3 / 4)
 #define RDS_FMR_1M_MSG_SIZE		256  /* 1M */
 #define RDS_FMR_8K_MSG_SIZE             2
-#define RDS_FMR_8K_POOL_SIZE            ((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 2))
+#define RDS_FMR_8K_POOL_SIZE		((256 / (RDS_FMR_8K_MSG_SIZE + 1)) * (8192 / 4))
 
 #define RDS_IB_MAX_SGE			8
 #define RDS_IB_RECV_SGE			2
@@ -26,9 +26,13 @@
 
 #define RDS_IB_DEFAULT_RNR_RETRY_COUNT  7
 
+#define RDS_IB_DEFAULT_NUM_ARPS		100
+
+#define RDS_IB_RX_LIMIT			10000
+
 #define RDS_IB_DEFAULT_TIMEOUT          16 /* 4.096 * 2 ^ 16 = 260 msec */
 
-#define RDS_IB_SUPPORTED_PROTOCOLS	0x00000007	/* minor versions supported */
+#define RDS_IB_SUPPORTED_PROTOCOLS	0x00000003	/* minor versions supported */
 
 #define RDS_IB_RECYCLE_BATCH_COUNT	32
 
@@ -83,10 +87,11 @@ struct rds_ib_connect_private {
 	u8			dp_protocol_major;
 	u8			dp_protocol_minor;
 	__be16			dp_protocol_minor_mask; /* bitmask */
-	__be32			dp_reserved1;
+	u8			dp_tos;
+	u8			dp_reserved1;
+	__be16			dp_reserved2;
 	__be64			dp_ack_seq;
 	__be32			dp_credit;		/* non-zero enables flow ctl */
-	u8                      dp_tos;
 };
 
 struct rds_ib_send_work {
@@ -134,12 +139,12 @@ struct rds_ib_path {
 	union ib_gid    p_dgid;
 };
 
-struct rds_ib_destroy_id_work {
+struct rds_ib_migrate_work {
 	struct delayed_work             work;
-	struct rdma_cm_id               *cm_id;
+	struct rds_ib_connection        *ic;
 };
 
-struct rds_ib_migrate_work {
+struct rds_ib_rx_work {
 	struct delayed_work             work;
 	struct rds_ib_connection        *ic;
 };
@@ -225,9 +230,16 @@ struct rds_ib_connection {
 	struct rds_ib_path      i_cur_path;
 	unsigned int            i_alt_path_index;
 	unsigned int		i_active_side;
+	unsigned long		i_last_migration;
 
 	int			i_scq_vector;
 	int			i_rcq_vector;
+
+	unsigned int            i_rx_poll_cq;
+	struct rds_ib_rx_work   i_rx_w;
+	spinlock_t              i_rx_lock;
+	unsigned int            i_rx_wait_for_handler;
+	atomic_t                i_worker_has_rx;
 };
 
 /* This assumes that atomic_t is at least 32 bits */
@@ -264,25 +276,115 @@ struct rds_ib_alias {
 };
 
 enum {
-	RDS_IB_PORT_UNKNOWN = 0,
+	RDS_IB_PORT_INIT = 0,
 	RDS_IB_PORT_UP,
 	RDS_IB_PORT_DOWN,
 };
 
-#define RDS_IB_MAX_ALIASES	100
+/*
+ * Bit flags to keep track of layers of RDS
+ * ports that are UP/DOWN separately stored
+ * in field "port_layerflags" of "struct rds_ib_port"
+ * data structure declared below.
+ *
+ * The structure also uses field "port_state" as
+ * a composite UP/DOWN state derived from the
+ * setting of the "port_layerflags" field bits.
+ *
+ * Layer 1: HWPORTUP - HCA port UP
+ * Layer 2: LINKUP - Link UP
+ * Layer 3: NETDEVUP - netdev layer UP
+ *
+ *  +-----------------------------------------------------------------+
+ *  | ALL THREE Flags need to be UP(set) for a port_state to be UP for|
+ *  | failback.                                                       |
+ *  | ANY ONE  Flag being DOWN (clear) triggers failover.             |
+ *  +-----------------------------------------------------------------+
+ */
+#define RDSIBP_STATUS_HWPORTUP	          0x0001U /* HCA port UP */
+#define RDSIBP_STATUS_LINKUP              0x0002U /* Link layer UP */
+#define RDSIBP_STATUS_NETDEVUP            0x0004U /* NETDEV layer UP */
+#define RDSIBP_STATUS_ALLUP               (RDSIBP_STATUS_HWPORTUP \
+					   | RDSIBP_STATUS_LINKUP \
+					   | RDSIBP_STATUS_NETDEVUP)
+
+/*
+ *
+ * Design notes for failover/failback processing:
+ *
+ * Opportunity for checking and setting status of above
+ * "port_layerflags: bits done at:
+ *
+ *  (1) module load time:
+ *         rds_ib_ip_config_init()
+ *  (2)  HW port status changes:
+ *         rds_ib_event_handler()
+ *  (3) link layer status changes: NETDEV_CHANGE handling in
+ *         rds_ib_netdev_callback()
+ *  (4) netdevice layer status changes: NETDEV_UP/NETDEV_DOWN handling in
+ *         rds_ib_netdev_callback()
+ *
+ * Caveats:
+ *    (a) A link-layer LINKUP detection can be used to mark HW port HWPORTUP
+ *        also. Used because VM guests rebooting do not get the HW port UP
+ *        events during boot (presumably) because the VM server has the
+ *        HW ports up and no real transitions are happening.[module init
+ *        code will show link layer up on VM reboots but not for bare metal,
+ *        also on module load (after an unload)]
+ *
+ *    (b) The HW port down/up usually causes the link layer NETDEV_CHANGE
+ *        trigger but NOT always! If due to any hardware issues if HW ports
+ *        momentarily bounce, but such "port-bounces" do not generate
+ *        corresponding link layer NETDEV_CHANGE events!
+ *
+ *    (c) Event processing in (2)-(4) above triggers failover/failback
+ *        processing but initialization in (1) does detection but not
+ *        processing as RDS module load processing happens before devices
+ *        have come up.
+ *
+ *        For initial/boot time failover processing, a separate delayed
+ *        processing is launched to run after link layer and netdev is UP!
+ *
+ */
+
+#define RDS_IB_MAX_ALIASES	50
+#define RDS_IB_MAX_PORTS	50
 struct rds_ib_port {
 	struct rds_ib_device	*rds_ibdev;
 	unsigned int		failover_group;
 	struct net_device	*dev;
 	unsigned int            port_state;
+	u32                     port_layerflags;
 	u8			port_num;
+	union ib_gid            gid;
+	char			port_label[4];
 	char                    if_name[IFNAMSIZ];
 	__be32                  ip_addr;
 	__be32			ip_bcast;
 	__be32			ip_mask;
 	unsigned int            ip_active_port;
+	uint16_t		pkey;
 	unsigned int            alias_cnt;
 	struct rds_ib_alias	aliases[RDS_IB_MAX_ALIASES];
+};
+
+enum {
+	RDSIBP_TRANSITION_NOOP,
+	RDSIBP_TRANSITION_UP,
+	RDSIBP_TRANSITION_DOWN
+};
+
+#define RDS_IB_MAX_EXCL_IPS     20
+struct rds_ib_excl_ips {
+	__be32                  ip;
+	__be32                  prefix;
+	__be32                  mask;
+};
+
+enum {
+	RDS_IB_PORT_EVENT_INITIAL_FAILOVERS,
+	RDS_IB_PORT_EVENT_IB,
+	RDS_IB_PORT_EVENT_NET,
 };
 
 struct rds_ib_port_ud_work {
@@ -290,6 +392,22 @@ struct rds_ib_port_ud_work {
 	struct net_device		*dev;
 	unsigned int                    port;
 	int				timeout;
+	int				event_type;
+};
+
+struct rds_ib_initial_failovers_work {
+	struct delayed_work            dlywork;
+	int                            timeout;
+};
+
+struct rds_ib_conn_drop_work {
+	struct delayed_work             work;
+	struct rds_connection          *conn;
+};
+
+struct rds_ib_addr_change_work {
+	struct delayed_work             work;
+	__be32                          addr;
 };
 
 enum {
@@ -320,6 +438,8 @@ struct rds_ib_device {
 	struct rds_ib_port      *ports;
 	struct ib_event_handler event_handler;
 	int			*vector_load;
+	wait_queue_head_t       wait;
+	int                     done;
 };
 
 #define pcidev_to_node(pcidev) pcibus_to_node(pcidev->bus)
@@ -375,6 +495,9 @@ struct rds_ib_statistics {
 	uint64_t        s_ib_srq_lows;
 	uint64_t        s_ib_srq_refills;
 	uint64_t        s_ib_srq_empty_refills;
+	uint64_t	s_ib_failed_apm;
+	uint64_t	s_ib_recv_added_to_cache;
+	uint64_t	s_ib_recv_removed_from_cache;
 };
 
 extern struct workqueue_struct *rds_ib_wq;
@@ -429,9 +552,8 @@ extern unsigned int rds_ib_rnr_retry_count;
 extern unsigned int rds_ib_apm_enabled;
 extern unsigned int rds_ib_apm_fallback;
 #endif
-extern unsigned int rds_ib_haip_enabled;
-extern unsigned int rds_ib_haip_fallback;
-extern unsigned int rds_ib_haip_failover_enabled;
+extern unsigned int rds_ib_active_bonding_enabled;
+extern unsigned int rds_ib_active_bonding_fallback;
 #if RDMA_RDS_APM_SUPPORTED
 extern unsigned int rds_ib_apm_timeout;
 #endif
@@ -538,6 +660,8 @@ int rds_ib_xmit_atomic(struct rds_connection *conn, struct rm_atomic_op *op);
 /* ib_stats.c */
 DECLARE_PER_CPU(struct rds_ib_statistics, rds_ib_stats);
 #define rds_ib_stats_inc(member) rds_stats_inc_which(rds_ib_stats, member)
+#define rds_ib_stats_add(member, count) \
+		rds_stats_add_which(rds_ib_stats, member, count)
 unsigned int rds_ib_stats_info_copy(struct rds_info_iterator *iter,
 				    unsigned int avail);
 
@@ -556,5 +680,7 @@ extern unsigned long rds_ib_sysctl_max_unsig_wrs;
 extern unsigned long rds_ib_sysctl_max_unsig_bytes;
 extern unsigned long rds_ib_sysctl_max_recv_allocation;
 extern unsigned int rds_ib_sysctl_flow_control;
+extern unsigned int rds_ib_sysctl_active_bonding;
+extern unsigned int rds_ib_sysctl_trigger_active_bonding;
 
 #endif

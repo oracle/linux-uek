@@ -31,6 +31,7 @@
  *
  */
 #include <rdma/rdma_cm.h>
+#include <rdma/rdma_cm_ib.h>
 
 #include "rdma_transport.h"
 #include "ib.h"
@@ -40,7 +41,16 @@
 #include <net/sock.h>
 #include <net/inet_common.h>
 
+#define RDS_REJ_CONSUMER_DEFINED 28
+
 static struct rdma_cm_id *rds_iw_listen_id;
+
+int unload_allowed __read_mostly;
+
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
+
+int rds_rdma_resolve_to_ms[] = {1000, 1000, 2000, 4000, 5000};
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event)
@@ -52,6 +62,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	struct arpreq *r;
 	struct sockaddr_in *sin;
 	int ret = 0;
+	int *err;
 
 	rdsdebug("conn %p id %p handling event %u\n", conn, cm_id,
 		 event->event);
@@ -91,9 +102,43 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
 #endif
 
+		if (conn->c_tos && conn->c_reconnect) {
+			struct rds_ib_connection *base_ic =
+				conn->c_base_conn->c_transport_data;
+
+			mutex_lock(&conn->c_base_conn->c_cm_lock);
+			if (rds_conn_transition(conn->c_base_conn, RDS_CONN_UP,
+						RDS_CONN_UP)) {
+				ret = rdma_set_ib_paths(cm_id,
+					base_ic->i_cm_id->route.path_rec,
+					base_ic->i_cm_id->route.num_paths);
+				if (!ret) {
+					struct rds_ib_connection *ic =
+						conn->c_transport_data;
+
+					cm_id->route.path_rec[0].sl =
+						ic->i_sl;
+					cm_id->route.path_rec[0].qos_class =
+						conn->c_tos;
+					ret = trans->cm_initiate_connect(cm_id);
+				}
+			} else {
+				ret = 1;
+			}
+			mutex_unlock(&conn->c_base_conn->c_cm_lock);
+
+			if (ret) {
+				rds_conn_drop(conn);
+				ret = 0;
+			}
+
+			break;
+		}
+
+
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
-					 RDS_RDMA_RESOLVE_TIMEOUT_MS);
+				rds_rdma_resolve_to_ms[conn->c_to_index]);
 		if (ret) {
 			/*
 			 * The cm_id will get destroyed by addr_handler
@@ -109,12 +154,25 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 					ibic->i_cm_id = NULL;
 				rds_conn_drop(conn);
 			}
-		}
+		} else if (conn->c_to_index < (RDS_RDMA_RESOLVE_TO_MAX_INDEX-1))
+				conn->c_to_index++;
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
 		/* XXX worry about racing with listen acceptance */
-		ret = trans->cm_initiate_connect(cm_id);
+		conn->c_to_index = 0;
+
+		/* Connection could have been dropped so make sure the
+		 * cm_id is valid before proceeding */
+		if (conn) {
+			struct rds_ib_connection *ibic;
+
+			ibic = conn->c_transport_data;
+			if (ibic && ibic->i_cm_id == cm_id)
+				ret = trans->cm_initiate_connect(cm_id);
+			else
+				rds_conn_drop(conn);
+		}
 		break;
 
 #if RDMA_RDS_APM_SUPPORTED
@@ -158,15 +216,50 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
+		if (conn)
+			rds_conn_drop(conn);
+		break;
+
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
-	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
 		if (conn)
 			rds_conn_drop(conn);
 		break;
 
+	case RDMA_CM_EVENT_REJECTED:
+		err = (int *)event->param.conn.private_data;
+
+		if (conn && event->status == RDS_REJ_CONSUMER_DEFINED &&
+		    *err <= 1)
+			conn->c_reconnect_racing++;
+
+		if (conn) {
+			if (event->status == RDS_REJ_CONSUMER_DEFINED &&
+			    (*err) == 0) {
+				/* Rejection from RDSV3.1 */
+				if (!conn->c_tos) {
+					conn->c_proposed_version =
+						RDS_PROTOCOL_COMPAT_VERSION;
+					rds_conn_drop(conn);
+				} else  {
+					if (conn->c_loopback)
+						queue_delayed_work(rds_local_wq,
+							&conn->c_reject_w,
+							msecs_to_jiffies(10));
+					else
+						queue_delayed_work(rds_wq,
+							&conn->c_reject_w,
+							msecs_to_jiffies(10));
+				}
+			} else
+				rds_conn_drop(conn);
+		}
+		break;
+
 	case RDMA_CM_EVENT_ADDR_CHANGE:
+		rdsdebug("ADDR_CHANGE event <%u.%u.%u.%u,%u.%u.%u.%u>\n",
+			 NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
 #if RDMA_RDS_APM_SUPPORTED
 		if (conn && !rds_ib_apm_enabled)
 			rds_conn_drop(conn);
@@ -254,6 +347,8 @@ static void rds_rdma_listen_stop(void)
 	}
 }
 
+#define MODULE_NAME "rds_rdma"
+
 int rds_rdma_init(void)
 {
 	int ret;
@@ -269,6 +364,12 @@ int rds_rdma_init(void)
 	ret = rds_ib_init();
 	if (ret)
 		goto err_ib_init;
+
+	if (!unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+		       MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 
 	goto out;
 

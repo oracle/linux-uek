@@ -65,6 +65,10 @@ MODULE_PARM_DESC(debug_level, "Enable debug tracing if > 0");
 
 #endif /* CONFIG_MLX4_DEBUG */
 
+int unload_allowed __read_mostly;
+module_param_named(module_unload_allowed, unload_allowed, int, 0444);
+MODULE_PARM_DESC(module_unload_allowed, "Allow this module to be unloaded or not (default 0 for NO)");
+
 #ifdef CONFIG_PCI_MSI
 
 static int msi_x = 1;
@@ -3915,6 +3919,8 @@ static int __init mlx4_verify_params(void)
 	return 0;
 }
 
+#define MODULE_NAME "mlx4_core"
+
 static int __init mlx4_init(void)
 {
 	int ret;
@@ -3928,6 +3934,11 @@ static int __init mlx4_init(void)
 		return -ENOMEM;
 
 	ret = pci_register_driver(&mlx4_driver);
+	if (!ret && !unload_allowed) {
+		printk(KERN_NOTICE "Module %s locked in memory until next boot\n",
+				MODULE_NAME);
+		__module_get(THIS_MODULE);
+	}
 	if (ret < 0)
 		destroy_workqueue(mlx4_wq);
 	return ret < 0 ? ret : 0;

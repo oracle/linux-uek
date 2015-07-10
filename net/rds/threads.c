@@ -74,6 +74,8 @@ MODULE_PARM_DESC(rds_conn_hb_timeout, " Connection heartbeat timeout");
  */
 struct workqueue_struct *rds_wq;
 EXPORT_SYMBOL_GPL(rds_wq);
+struct workqueue_struct *rds_local_wq;
+EXPORT_SYMBOL_GPL(rds_local_wq);
 
 void rds_connect_complete(struct rds_connection *conn)
 {
@@ -83,7 +85,10 @@ void rds_connect_complete(struct rds_connection *conn)
 				__func__,
 				atomic_read(&conn->c_state));
 		atomic_set(&conn->c_state, RDS_CONN_ERROR);
-		queue_work(rds_wq, &conn->c_down_w);
+		if (conn->c_loopback)
+			queue_work(rds_local_wq, &conn->c_down_w);
+		else
+			queue_work(rds_wq, &conn->c_down_w);
 		return;
 	}
 
@@ -99,6 +104,8 @@ void rds_connect_complete(struct rds_connection *conn)
 
 	conn->c_connection_start = get_seconds();
 	conn->c_reconnect = 1;
+	conn->c_proposed_version = RDS_PROTOCOL_VERSION;
+	conn->c_route_to_base = 0;
 }
 EXPORT_SYMBOL_GPL(rds_connect_complete);
 
@@ -139,8 +146,20 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	rdsdebug("%lu delay %lu ceil conn %p for %pI4 -> %pI4\n",
 		 rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
 		 conn, &conn->c_laddr, &conn->c_faddr);
-	queue_delayed_work(rds_wq, &conn->c_conn_w,
+
+	if (conn->c_loopback) {
+		if (conn->c_laddr >= conn->c_faddr)
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
+				rand % conn->c_reconnect_jiffies);
+		else
+			queue_delayed_work(rds_local_wq, &conn->c_conn_w,
+				msecs_to_jiffies(100));
+	} else if (conn->c_laddr >= conn->c_faddr)
+			queue_delayed_work(rds_wq, &conn->c_conn_w,
 			   rand % conn->c_reconnect_jiffies);
+	else
+			queue_delayed_work(rds_wq, &conn->c_conn_w,
+					msecs_to_jiffies(100));
 
 	conn->c_reconnect_jiffies = min(conn->c_reconnect_jiffies * 2,
 					rds_sysctl_reconnect_max_jiffies);
@@ -165,14 +184,10 @@ void rds_connect_worker(struct work_struct *work)
 
 		if (ret) {
 			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN)) {
-				if (conn->c_reconnect && conn->c_active_side)
-					rds_queue_reconnect(conn);
+				rds_queue_reconnect(conn);
 			} else
 				rds_conn_error(conn, "RDS: connect failed\n");
 		}
-
-		if (!conn->c_reconnect)
-			conn->c_active_side = 1;
 	}
 }
 
@@ -222,6 +237,15 @@ void rds_recv_worker(struct work_struct *work)
 	}
 }
 
+void rds_reject_worker(struct work_struct *work)
+{
+	struct rds_connection *conn = container_of(work, struct rds_connection, c_reject_w.work);
+
+	atomic_set(&conn->c_state, RDS_CONN_ERROR);
+	rds_conn_shutdown(conn, 0);
+	rds_route_to_base(conn);
+}
+
 void rds_hb_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_hb_w.work);
@@ -253,25 +277,55 @@ void rds_hb_worker(struct work_struct *work)
 	}
 }
 
+void rds_reconnect_timeout(struct work_struct *work)
+{
+	struct rds_connection *conn =
+		container_of(work, struct rds_connection, c_reconn_w.work);
+
+	/* if the higher IP has not reconnected, reset back to two-sided
+	 * reconnect.
+	 */
+	if (!rds_conn_up(conn)) {
+		rds_conn_drop(conn);
+		conn->c_reconnect_racing = 0;
+	}
+}
+
 void rds_shutdown_worker(struct work_struct *work)
 {
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_down_w);
 
-	rds_conn_shutdown(conn);
 
-	if (!conn->c_reconnect)
-		conn->c_active_side = 0;
+	/* if racing is detected, lower IP backs off and let the higher IP
+	 * drives the reconnect (one-sided reconnect)
+	 */
+	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
+		rds_conn_shutdown(conn, 0);
+		if (conn->c_loopback)
+			queue_delayed_work(rds_local_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(5000));
+		else
+			queue_delayed_work(rds_wq, &conn->c_reconn_w,
+					   msecs_to_jiffies(5000));
+	} else
+		rds_conn_shutdown(conn, 1);
+
 }
 
 void rds_threads_exit(void)
 {
 	destroy_workqueue(rds_wq);
+	destroy_workqueue(rds_local_wq);
 }
 
 int rds_threads_init(void)
 {
 	rds_wq = create_singlethread_workqueue("krdsd");
 	if (!rds_wq)
+		return -ENOMEM;
+
+	rds_local_wq = create_singlethread_workqueue("krdsd_local");
+	if (!rds_local_wq)
 		return -ENOMEM;
 
 	return 0;

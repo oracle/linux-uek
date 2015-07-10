@@ -38,6 +38,7 @@
 #include "rds.h"
 #include "ib.h"
 #include "tcp.h"
+
 /*
  * Convert IB-specific error message to RDS error message and call core
  * completion handler.
@@ -306,10 +307,13 @@ void rds_ib_send_cqe_handler(struct rds_ib_connection *ic, struct ib_wc *wc)
 	/* We expect errors as the qp is drained during shutdown */
 	if (wc->status != IB_WC_SUCCESS && rds_conn_up(conn)) {
 		rds_ib_conn_error(conn,
-			"send completion on %pI4 "
+			"send completion <%u.%u.%u.%u,%u.%u.%u.%u,%d> "
 			"had status %u, disconnecting and reconnecting\n",
-			&conn->c_faddr, wc->status);
-	}
+			NIPQUAD(conn->c_laddr),
+			NIPQUAD(conn->c_faddr),
+			conn->c_tos, wc->status);
+	} else
+		ic->i_last_migration = 0;
 }
 
 /*
@@ -587,10 +591,27 @@ int rds_ib_xmit(struct rds_connection *conn, struct rds_message *rm,
 		 * used by the peer to release use-once RDMA MRs. */
 		if (rm->rdma.op_active) {
 			struct rds_ext_header_rdma ext_hdr;
+			struct rds_ext_header_rdma_bytes rdma_bytes_ext_hdr;
 
 			ext_hdr.h_rdma_rkey = cpu_to_be32(rm->rdma.op_rkey);
 			rds_message_add_extension(&rm->m_inc.i_hdr,
 					RDS_EXTHDR_RDMA, &ext_hdr, sizeof(ext_hdr));
+
+			/* prepare the rdma bytes ext header */
+			rdma_bytes_ext_hdr.h_rflags = rm->rdma.op_write ?
+				RDS_FLAG_RDMA_WR_BYTES : RDS_FLAG_RDMA_RD_BYTES;
+			rdma_bytes_ext_hdr.h_rdma_bytes =
+				cpu_to_be32(rm->rdma.op_bytes);
+
+			if (rds_message_add_extension(&rm->m_inc.i_hdr,
+				RDS_EXTHDR_RDMA_BYTES, &rdma_bytes_ext_hdr,
+				sizeof(rdma_bytes_ext_hdr))) {
+				/* rdma bytes ext header was added succesfully,
+				 * notify the remote side via flag in header
+				 */
+				rm->m_inc.i_hdr.h_flags |=
+					RDS_FLAG_EXTHDR_EXTENSION;
+			}
 		}
 		if (rm->m_rdma_cookie) {
 			rds_message_add_rdma_dest_extension(&rm->m_inc.i_hdr,
