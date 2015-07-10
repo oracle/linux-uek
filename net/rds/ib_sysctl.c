@@ -59,6 +59,7 @@ static unsigned long rds_ib_sysctl_max_unsig_wr_max = 64;
  * rings from ib_cm_connect_complete() back into ib_setup_qp()
  * will cause credits to be added before protocol negotiation.
  */
+
 unsigned int rds_ib_sysctl_flow_control = 0;
 
 static struct ctl_table rds_ib_sysctl_table[] = {
@@ -108,8 +109,7 @@ static struct ctl_table rds_ib_sysctl_table[] = {
 
 void rds_ib_sysctl_exit(void)
 {
-	if (rds_ib_sysctl_hdr)
-		unregister_net_sysctl_table(rds_ib_sysctl_hdr);
+	unregister_net_sysctl_table(rds_ib_sysctl_hdr);
 }
 
 int rds_ib_sysctl_init(void)

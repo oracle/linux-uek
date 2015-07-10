@@ -62,7 +62,6 @@ void rds_tcp_state_change(struct sock *sk)
 		case TCP_ESTABLISHED:
 			rds_connect_complete(conn);
 			break;
-		case TCP_CLOSE_WAIT:
 		case TCP_CLOSE:
 			rds_conn_drop(conn);
 		default:
@@ -91,8 +90,8 @@ int rds_tcp_conn_connect(struct rds_connection *conn)
 
 	ret = sock->ops->bind(sock, (struct sockaddr *)&src, sizeof(src));
 	if (ret) {
-		rdsdebug("bind failed with %d at address %pI4\n",
-			 ret, &conn->c_laddr);
+		rdsdebug("bind failed with %d at address %u.%u.%u.%u\n",
+		     ret, NIPQUAD(conn->c_laddr));
 		goto out;
 	}
 
@@ -107,14 +106,12 @@ int rds_tcp_conn_connect(struct rds_connection *conn)
 	rds_tcp_set_callbacks(sock, conn);
 	ret = sock->ops->connect(sock, (struct sockaddr *)&dest, sizeof(dest),
 				 O_NONBLOCK);
+	sock = NULL;
 
-	rdsdebug("connect to address %pI4 returned %d\n", &conn->c_faddr, ret);
+	rdsdebug("connect to address %u.%u.%u.%u returned %d\n",
+		 NIPQUAD(conn->c_faddr), ret);
 	if (ret == -EINPROGRESS)
 		ret = 0;
-	if (ret == 0)
-		sock = NULL;
-	else
-		rds_tcp_restore_callbacks(sock, conn->c_transport_data);
 
 out:
 	if (sock)
@@ -145,7 +142,7 @@ void rds_tcp_conn_shutdown(struct rds_connection *conn)
 
 		release_sock(sock->sk);
 		sock_release(sock);
-	}
+	};
 
 	if (tc->t_tinc) {
 		rds_inc_put(&tc->t_tinc->ti_inc);

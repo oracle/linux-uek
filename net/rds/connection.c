@@ -32,12 +32,11 @@
  */
 #include <linux/kernel.h>
 #include <linux/list.h>
-#include <linux/slab.h>
-#include <linux/export.h>
 #include <net/inet_hashtables.h>
 
 #include "rds.h"
 #include "loop.h"
+#include "tcp.h"
 
 #define RDS_CONNECTION_HASH_BITS 12
 #define RDS_CONNECTION_HASH_ENTRIES (1 << RDS_CONNECTION_HASH_BITS)
@@ -59,8 +58,8 @@ static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 
 	/* Pass NULL, don't need struct net for hash */
 	hash = __inet_ehashfn(be32_to_cpu(laddr), 0,
-			      be32_to_cpu(faddr), 0,
-			      rds_hash_secret);
+			be32_to_cpu(faddr), 0,
+			rds_hash_secret);
 	return &rds_conn_hash[hash & RDS_CONNECTION_HASH_MASK];
 }
 
@@ -72,12 +71,14 @@ static struct hlist_head *rds_conn_bucket(__be32 laddr, __be32 faddr)
 /* rcu read lock must be held or the connection spinlock */
 static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
 					      __be32 laddr, __be32 faddr,
-					      struct rds_transport *trans)
+					      struct rds_transport *trans,
+					      u8 tos)
 {
 	struct rds_connection *conn, *ret = NULL;
 
 	hlist_for_each_entry_rcu(conn, head, c_hash_node) {
 		if (conn->c_faddr == faddr && conn->c_laddr == laddr &&
+				conn->c_tos == tos &&
 				conn->c_trans == trans) {
 			ret = conn;
 			break;
@@ -94,7 +95,7 @@ static struct rds_connection *rds_conn_lookup(struct hlist_head *head,
  * and receiving over this connection again in the future.  It is up to
  * the transport to have serialized this call with its send and recv.
  */
-static void rds_conn_reset(struct rds_connection *conn)
+void rds_conn_reset(struct rds_connection *conn)
 {
 	rdsdebug("connection %pI4 to %pI4 reset\n",
 	  &conn->c_laddr, &conn->c_faddr);
@@ -119,6 +120,7 @@ static void rds_conn_reset(struct rds_connection *conn)
  */
 static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 				       struct rds_transport *trans, gfp_t gfp,
+				       u8 tos,
 				       int is_outgoing)
 {
 	struct rds_connection *conn, *parent = NULL;
@@ -126,14 +128,14 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	struct rds_transport *loop_trans;
 	unsigned long flags;
 	int ret;
-	struct rds_transport *otrans = trans;
 
-	if (!is_outgoing && otrans->t_type == RDS_TRANS_TCP)
-		goto new_conn;
 	rcu_read_lock();
-	conn = rds_conn_lookup(head, laddr, faddr, trans);
-	if (conn && conn->c_loopback && conn->c_trans != &rds_loop_transport &&
-	    laddr == faddr && !is_outgoing) {
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+	if (conn
+	 && conn->c_loopback
+	 && conn->c_trans != &rds_loop_transport
+	 && laddr == faddr
+	 && !is_outgoing) {
 		/* This is a looped back IB connection, and we're
 		 * called by the code handling the incoming connect.
 		 * We need a second connection object into which we
@@ -145,12 +147,13 @@ static struct rds_connection *__rds_conn_create(__be32 laddr, __be32 faddr,
 	if (conn)
 		goto out;
 
-new_conn:
-	conn = kmem_cache_zalloc(rds_conn_slab, gfp);
+	conn = kmem_cache_alloc(rds_conn_slab, gfp);
 	if (!conn) {
 		conn = ERR_PTR(-ENOMEM);
 		goto out;
 	}
+
+	memset(conn, 0, sizeof(*conn));
 
 	INIT_HLIST_NODE(&conn->c_hash_node);
 	conn->c_laddr = laddr;
@@ -161,6 +164,8 @@ new_conn:
 	init_waitqueue_head(&conn->c_waitq);
 	INIT_LIST_HEAD(&conn->c_send_queue);
 	INIT_LIST_HEAD(&conn->c_retrans);
+
+	conn->c_tos = tos;
 
 	ret = rds_cong_get_maps(conn);
 	if (ret) {
@@ -199,9 +204,15 @@ new_conn:
 	atomic_set(&conn->c_state, RDS_CONN_DOWN);
 	conn->c_send_gen = 0;
 	conn->c_reconnect_jiffies = 0;
+	conn->c_reconnect_start = get_seconds();
+	conn->c_reconnect_warn = 1;
+	conn->c_reconnect_drops = 0;
+	conn->c_reconnect_err = 0;
+
 	INIT_DELAYED_WORK(&conn->c_send_w, rds_send_worker);
 	INIT_DELAYED_WORK(&conn->c_recv_w, rds_recv_worker);
 	INIT_DELAYED_WORK(&conn->c_conn_w, rds_connect_worker);
+	INIT_DELAYED_WORK(&conn->c_hb_w, rds_hb_worker);
 	INIT_WORK(&conn->c_down_w, rds_shutdown_worker);
 	mutex_init(&conn->c_cm_lock);
 	conn->c_flags = 0;
@@ -234,22 +245,13 @@ new_conn:
 		/* Creating normal conn */
 		struct rds_connection *found;
 
-		if (!is_outgoing && otrans->t_type == RDS_TRANS_TCP)
-			found = NULL;
-		else
-			found = rds_conn_lookup(head, laddr, faddr, trans);
+		found = rds_conn_lookup(head, laddr, faddr, trans, tos);
 		if (found) {
 			trans->conn_free(conn->c_transport_data);
 			kmem_cache_free(rds_conn_slab, conn);
 			conn = found;
 		} else {
-			if ((is_outgoing && otrans->t_type == RDS_TRANS_TCP) ||
-			    (otrans->t_type != RDS_TRANS_TCP)) {
-				/* Only the active side should be added to
-				 * reconnect list for TCP.
-				 */
-				hlist_add_head_rcu(&conn->c_hash_node, head);
-			}
+			hlist_add_head_rcu(&conn->c_hash_node, head);
 			rds_cong_add_conn(conn);
 			rds_conn_count++;
 		}
@@ -261,18 +263,34 @@ out:
 }
 
 struct rds_connection *rds_conn_create(__be32 laddr, __be32 faddr,
-				       struct rds_transport *trans, gfp_t gfp)
+					struct rds_transport *trans,
+					u8 tos, gfp_t gfp)
 {
-	return __rds_conn_create(laddr, faddr, trans, gfp, 0);
+	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 0);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create);
 
 struct rds_connection *rds_conn_create_outgoing(__be32 laddr, __be32 faddr,
-				       struct rds_transport *trans, gfp_t gfp)
+					struct rds_transport *trans,
+					u8 tos, gfp_t gfp)
 {
-	return __rds_conn_create(laddr, faddr, trans, gfp, 1);
+	return __rds_conn_create(laddr, faddr, trans, gfp, tos, 1);
 }
 EXPORT_SYMBOL_GPL(rds_conn_create_outgoing);
+
+struct rds_connection *rds_conn_find(__be32 laddr, __be32 faddr,
+					struct rds_transport *trans, u8 tos)
+{
+	struct rds_connection *conn;
+	struct hlist_head *head = rds_conn_bucket(laddr, faddr);
+
+	rcu_read_lock();
+	conn = rds_conn_lookup(head, laddr, faddr, trans, tos);
+	rcu_read_unlock();
+
+	return conn;
+}
+EXPORT_SYMBOL_GPL(rds_conn_find);
 
 void rds_conn_shutdown(struct rds_connection *conn)
 {
@@ -297,6 +315,8 @@ void rds_conn_shutdown(struct rds_connection *conn)
 
 		wait_event(conn->c_waitq,
 			   !test_bit(RDS_IN_XMIT, &conn->c_flags));
+		wait_event(conn->c_waitq,
+			   !test_bit(RDS_RECV_REFILL, &conn->c_flags));
 
 		conn->c_trans->conn_shutdown(conn);
 		rds_conn_reset(conn);
@@ -496,6 +516,7 @@ static int rds_conn_info_visitor(struct rds_connection *conn,
 	cinfo->next_rx_seq = conn->c_next_rx_seq;
 	cinfo->laddr = conn->c_laddr;
 	cinfo->faddr = conn->c_faddr;
+	cinfo->tos = conn->c_tos;
 	strncpy(cinfo->transport, conn->c_trans->t_name,
 		sizeof(cinfo->transport));
 	cinfo->flags = 0;
@@ -509,6 +530,8 @@ static int rds_conn_info_visitor(struct rds_connection *conn,
 	rds_conn_info_set(cinfo->flags,
 			  atomic_read(&conn->c_state) == RDS_CONN_UP,
 			  CONNECTED);
+	rds_conn_info_set(cinfo->flags, conn->c_pending_flush,
+			  ERROR);
 	return 1;
 }
 
@@ -558,6 +581,23 @@ void rds_conn_exit(void)
  */
 void rds_conn_drop(struct rds_connection *conn)
 {
+	unsigned long now = get_seconds();
+
+	if (rds_conn_state(conn) == RDS_CONN_UP) {
+		conn->c_reconnect_start = now;
+		conn->c_reconnect_warn = 1;
+		conn->c_reconnect_drops = 0;
+		conn->c_reconnect_err = 0;
+	} else if ((conn->c_reconnect_warn) &&
+		   (now - conn->c_reconnect_start > 60)) {
+		printk(KERN_INFO "RDS/IB: re-connect to %u.%u.%u.%u is "
+			"stalling for more than 1 min...(drops=%u err=%d)\n",
+			NIPQUAD(conn->c_faddr), conn->c_reconnect_drops,
+			conn->c_reconnect_err);
+		conn->c_reconnect_warn = 0;
+	}
+	conn->c_reconnect_drops++;
+
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
 	queue_work(rds_wq, &conn->c_down_w);
 }

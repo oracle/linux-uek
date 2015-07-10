@@ -31,7 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/gfp.h>
 #include <linux/in.h>
 #include <net/tcp.h>
 
@@ -45,45 +44,12 @@ static void rds_tcp_accept_worker(struct work_struct *work);
 static DECLARE_WORK(rds_tcp_listen_work, rds_tcp_accept_worker);
 static struct socket *rds_tcp_listen_sock;
 
-static int rds_tcp_keepalive(struct socket *sock)
-{
-	/* values below based on xs_udp_default_timeout */
-	int keepidle = 5; /* send a probe 'keepidle' secs after last data */
-	int keepcnt = 5; /* number of unack'ed probes before declaring dead */
-	int keepalive = 1;
-	int ret = 0;
-
-	ret = kernel_setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE,
-				(char *)&keepalive, sizeof(keepalive));
-	if (ret < 0)
-		goto bail;
-
-	ret = kernel_setsockopt(sock, IPPROTO_TCP, TCP_KEEPCNT,
-				(char *)&keepcnt, sizeof(keepcnt));
-	if (ret < 0)
-		goto bail;
-
-	ret = kernel_setsockopt(sock, IPPROTO_TCP, TCP_KEEPIDLE,
-				(char *)&keepidle, sizeof(keepidle));
-	if (ret < 0)
-		goto bail;
-
-	/* KEEPINTVL is the interval between successive probes. We follow
-	 * the model in xs_tcp_finish_connecting() and re-use keepidle.
-	 */
-	ret = kernel_setsockopt(sock, IPPROTO_TCP, TCP_KEEPINTVL,
-				(char *)&keepidle, sizeof(keepidle));
-bail:
-	return ret;
-}
-
 static int rds_tcp_accept_one(struct socket *sock)
 {
 	struct socket *new_sock = NULL;
 	struct rds_connection *conn;
 	int ret;
 	struct inet_sock *inet;
-	struct rds_tcp_connection *rs_tcp;
 
 	ret = sock_create_lite(sock->sk->sk_family, sock->sk->sk_type,
 			       sock->sk->sk_protocol, &new_sock);
@@ -96,33 +62,20 @@ static int rds_tcp_accept_one(struct socket *sock)
 	if (ret < 0)
 		goto out;
 
-	ret = rds_tcp_keepalive(new_sock);
-	if (ret < 0)
-		goto out;
-
 	rds_tcp_tune(new_sock);
 
 	inet = inet_sk(new_sock->sk);
 
-	rdsdebug("accepted tcp %pI4:%u -> %pI4:%u\n",
-		 &inet->inet_saddr, ntohs(inet->inet_sport),
-		 &inet->inet_daddr, ntohs(inet->inet_dport));
+	rdsdebug("accepted tcp %u.%u.%u.%u:%u -> %u.%u.%u.%u:%u\n",
+		  NIPQUAD(inet->inet_saddr), ntohs(inet->inet_sport),
+		  NIPQUAD(inet->inet_daddr), ntohs(inet->inet_dport));
 
-	conn = rds_conn_create(inet->inet_saddr, inet->inet_daddr,
-			       &rds_tcp_transport, GFP_KERNEL);
+	conn = rds_conn_create(inet->inet_saddr, inet->inet_daddr, &rds_tcp_transport,
+			       0, GFP_KERNEL);
 	if (IS_ERR(conn)) {
 		ret = PTR_ERR(conn);
 		goto out;
 	}
-	/* An incoming SYN request came in, and TCP just accepted it.
-	 * We always create a new conn for listen side of TCP, and do not
-	 * add it to the c_hash_list.
-	 *
-	 * If the client reboots, this conn will need to be cleaned up.
-	 * rds_tcp_state_change() will do that cleanup
-	 */
-	rs_tcp = (struct rds_tcp_connection *)conn->c_transport_data;
-	WARN_ON(!rs_tcp || rs_tcp->t_sock);
 
 	/*
 	 * see the comment above rds_queue_delayed_reconnect()
@@ -191,7 +144,7 @@ int rds_tcp_listen_init(void)
 	if (ret < 0)
 		goto out;
 
-	sock->sk->sk_reuse = SK_CAN_REUSE;
+	sock->sk->sk_reuse = 1;
 	rds_tcp_nonagle(sock);
 
 	write_lock_bh(&sock->sk->sk_callback_lock);
@@ -199,7 +152,7 @@ int rds_tcp_listen_init(void)
 	sock->sk->sk_data_ready = rds_tcp_listen_data_ready;
 	write_unlock_bh(&sock->sk->sk_callback_lock);
 
-	sin.sin_family = PF_INET;
+	sin.sin_family = PF_INET,
 	sin.sin_addr.s_addr = (__force u32)htonl(INADDR_ANY);
 	sin.sin_port = (__force u16)htons(RDS_TCP_PORT);
 

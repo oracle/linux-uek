@@ -30,40 +30,17 @@
  * SOFTWARE.
  *
  */
-#include <linux/module.h>
 #include <rdma/rdma_cm.h>
 
 #include "rdma_transport.h"
+#include "ib.h"
+#include "net/arp.h"
+#include "tcp.h"
 
-static struct rdma_cm_id *rds_rdma_listen_id;
+#include <net/sock.h>
+#include <net/inet_common.h>
 
-static char *rds_cm_event_strings[] = {
-#define RDS_CM_EVENT_STRING(foo) \
-		[RDMA_CM_EVENT_##foo] = __stringify(RDMA_CM_EVENT_##foo)
-	RDS_CM_EVENT_STRING(ADDR_RESOLVED),
-	RDS_CM_EVENT_STRING(ADDR_ERROR),
-	RDS_CM_EVENT_STRING(ROUTE_RESOLVED),
-	RDS_CM_EVENT_STRING(ROUTE_ERROR),
-	RDS_CM_EVENT_STRING(CONNECT_REQUEST),
-	RDS_CM_EVENT_STRING(CONNECT_RESPONSE),
-	RDS_CM_EVENT_STRING(CONNECT_ERROR),
-	RDS_CM_EVENT_STRING(UNREACHABLE),
-	RDS_CM_EVENT_STRING(REJECTED),
-	RDS_CM_EVENT_STRING(ESTABLISHED),
-	RDS_CM_EVENT_STRING(DISCONNECTED),
-	RDS_CM_EVENT_STRING(DEVICE_REMOVAL),
-	RDS_CM_EVENT_STRING(MULTICAST_JOIN),
-	RDS_CM_EVENT_STRING(MULTICAST_ERROR),
-	RDS_CM_EVENT_STRING(ADDR_CHANGE),
-	RDS_CM_EVENT_STRING(TIMEWAIT_EXIT),
-#undef RDS_CM_EVENT_STRING
-};
-
-static char *rds_cm_event_str(enum rdma_cm_event_type type)
-{
-	return rds_str_array(rds_cm_event_strings,
-			     ARRAY_SIZE(rds_cm_event_strings), type);
-};
+static struct rdma_cm_id *rds_iw_listen_id;
 
 int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 			      struct rdma_cm_event *event)
@@ -71,10 +48,13 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 	/* this can be null in the listening path */
 	struct rds_connection *conn = cm_id->context;
 	struct rds_transport *trans;
+	struct page *page;
+	struct arpreq *r;
+	struct sockaddr_in *sin;
 	int ret = 0;
 
-	rdsdebug("conn %p id %p handling event %u (%s)\n", conn, cm_id,
-		 event->event, rds_cm_event_str(event->event));
+	rdsdebug("conn %p id %p handling event %u\n", conn, cm_id,
+		 event->event);
 
 	if (cm_id->device->node_type == RDMA_NODE_RNIC)
 		trans = &rds_iw_transport;
@@ -104,9 +84,32 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		break;
 
 	case RDMA_CM_EVENT_ADDR_RESOLVED:
+		rdma_set_service_type(cm_id, conn->c_tos);
+
+#if RDMA_RDS_APM_SUPPORTED
+		if (rds_ib_apm_enabled)
+			rdma_set_timeout(cm_id, rds_ib_apm_timeout);
+#endif
+
 		/* XXX do we need to clean up if this fails? */
 		ret = rdma_resolve_route(cm_id,
 					 RDS_RDMA_RESOLVE_TIMEOUT_MS);
+		if (ret) {
+			/*
+			 * The cm_id will get destroyed by addr_handler
+			 * in RDMA CM when we return from here.
+			 */
+			if (conn) {
+				struct rds_ib_connection *ibic;
+
+				printk(KERN_CRIT "rds dropping connection after rdma_resolve_route failure"
+				       "connection %u.%u.%u.%u->%u.%u.%u.%u\n", NIPQUAD(conn->c_laddr), NIPQUAD(conn->c_faddr));
+				ibic = conn->c_transport_data;
+				if (ibic && ibic->i_cm_id == cm_id)
+					ibic->i_cm_id = NULL;
+				rds_conn_drop(conn);
+			}
+		}
 		break;
 
 	case RDMA_CM_EVENT_ROUTE_RESOLVED:
@@ -114,19 +117,63 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 		ret = trans->cm_initiate_connect(cm_id);
 		break;
 
+#if RDMA_RDS_APM_SUPPORTED
+	case RDMA_CM_EVENT_ALT_PATH_LOADED:
+		rdsdebug("RDS: alt path loaded\n");
+		if (conn)
+			trans->check_migration(conn, event);
+		break;
+
+	case RDMA_CM_EVENT_ALT_ROUTE_RESOLVED:
+		rdsdebug("RDS: alt route resolved\n");
+		break;
+
+	case RDMA_CM_EVENT_ALT_ROUTE_ERROR:
+		rdsdebug("RDS: alt route resolve error\n");
+		break;
+#endif
+
+	case RDMA_CM_EVENT_ROUTE_ERROR:
+		/* IP might have been moved so flush the ARP entry and retry */
+		page = alloc_page(GFP_HIGHUSER);
+		if (!page) {
+			printk(KERN_ERR "alloc_page failed .. NO MEM\n");
+			ret = -ENOMEM;
+		} else {
+			r = (struct arpreq *)kmap(page);
+			memset(r, 0, sizeof(struct arpreq));
+			sin = (struct sockaddr_in *)&r->arp_pa;
+			sin->sin_family = AF_INET;
+			sin->sin_addr.s_addr = conn->c_faddr;
+			inet_ioctl(rds_ib_inet_socket, SIOCDARP, (unsigned long) r);
+			kunmap(page);
+			__free_page(page);
+		}
+
+		rds_conn_drop(conn);
+		break;
+
 	case RDMA_CM_EVENT_ESTABLISHED:
 		trans->cm_connect_complete(conn, event);
 		break;
 
 	case RDMA_CM_EVENT_ADDR_ERROR:
-	case RDMA_CM_EVENT_ROUTE_ERROR:
 	case RDMA_CM_EVENT_CONNECT_ERROR:
 	case RDMA_CM_EVENT_UNREACHABLE:
 	case RDMA_CM_EVENT_REJECTED:
 	case RDMA_CM_EVENT_DEVICE_REMOVAL:
-	case RDMA_CM_EVENT_ADDR_CHANGE:
 		if (conn)
 			rds_conn_drop(conn);
+		break;
+
+	case RDMA_CM_EVENT_ADDR_CHANGE:
+#if RDMA_RDS_APM_SUPPORTED
+		if (conn && !rds_ib_apm_enabled)
+			rds_conn_drop(conn);
+#else
+		if (conn)
+			rds_conn_drop(conn);
+#endif
 		break;
 
 	case RDMA_CM_EVENT_DISCONNECTED:
@@ -138,8 +185,7 @@ int rds_rdma_cm_event_handler(struct rdma_cm_id *cm_id,
 
 	default:
 		/* things like device disconnect? */
-		printk(KERN_ERR "RDS: unknown event %u (%s)!\n",
-		       event->event, rds_cm_event_str(event->event));
+		printk(KERN_ERR "RDS: unknown event %u!\n", event->event);
 		break;
 	}
 
@@ -147,8 +193,7 @@ out:
 	if (conn)
 		mutex_unlock(&conn->c_cm_lock);
 
-	rdsdebug("id %p event %u (%s) handling ret %d\n", cm_id, event->event,
-		 rds_cm_event_str(event->event), ret);
+	rdsdebug("id %p event %u handling ret %d\n", cm_id, event->event, ret);
 
 	return ret;
 }
@@ -168,7 +213,7 @@ static int rds_rdma_listen_init(void)
 		return ret;
 	}
 
-	sin.sin_family = AF_INET;
+	sin.sin_family = PF_INET,
 	sin.sin_addr.s_addr = (__force u32)htonl(INADDR_ANY);
 	sin.sin_port = (__force u16)htons(RDS_PORT);
 
@@ -192,7 +237,7 @@ static int rds_rdma_listen_init(void)
 
 	rdsdebug("cm %p listening on port %u\n", cm_id, RDS_PORT);
 
-	rds_rdma_listen_id = cm_id;
+	rds_iw_listen_id = cm_id;
 	cm_id = NULL;
 out:
 	if (cm_id)
@@ -202,14 +247,14 @@ out:
 
 static void rds_rdma_listen_stop(void)
 {
-	if (rds_rdma_listen_id) {
-		rdsdebug("cm %p\n", rds_rdma_listen_id);
-		rdma_destroy_id(rds_rdma_listen_id);
-		rds_rdma_listen_id = NULL;
+	if (rds_iw_listen_id) {
+		rdsdebug("cm %p\n", rds_iw_listen_id);
+		rdma_destroy_id(rds_iw_listen_id);
+		rds_iw_listen_id = NULL;
 	}
 }
 
-static int rds_rdma_init(void)
+int rds_rdma_init(void)
 {
 	int ret;
 
@@ -236,7 +281,7 @@ out:
 }
 module_init(rds_rdma_init);
 
-static void rds_rdma_exit(void)
+void rds_rdma_exit(void)
 {
 	/* stop listening first to ensure no new connections are attempted */
 	rds_rdma_listen_stop();
