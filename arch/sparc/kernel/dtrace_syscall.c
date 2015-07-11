@@ -11,6 +11,7 @@
 #include <linux/fs.h>
 #include <linux/kallsyms.h>
 #include <linux/module.h>
+#include <linux/namei.h>
 #include <linux/sched.h>
 #include <linux/syscalls.h>
 #include <asm/compat.h>
@@ -183,7 +184,37 @@ asmlinkage long dtrace_sys_execve(const char __user *name,
 
 	rc = do_execve(getname(name), argv, envp);
 
-out:
+	if ((id = sc->stsy_return) != DTRACE_IDNONE)
+		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
+				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
+
+	return rc;
+}
+
+asmlinkage long dtrace_sys_execveat(int fd, const char __user *name,
+				    const char __user *const __user *argv,
+				    const char __user *const __user *envp,
+				    int flags)
+{
+	long			rc = 0;
+	dtrace_id_t		id;
+	dtrace_syscalls_t	*sc;
+	int			lookup_flags =
+				(flags & AT_EMPTY_PATH) ? LOOKUP_EMPTY : 0;
+
+	sc = &systrace_info.sysent[__NR_execveat];
+
+	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
+		(*systrace_probe)(id, fd, (uintptr_t)name, (uintptr_t)argv,
+				  (uintptr_t)envp, flags, 0);
+
+	/*
+	 * FIXME: Add stop functionality for DTrace.
+	 */
+
+	rc = do_execveat(fd, getname_flags(name, lookup_flags, NULL), argv,
+			 envp, flags);
+
 	if ((id = sc->stsy_return) != DTRACE_IDNONE)
 		(*systrace_probe)(id, (uintptr_t)rc, (uintptr_t)rc,
 				  (uintptr_t)((uint64_t)rc >> 32), 0, 0, 0);
