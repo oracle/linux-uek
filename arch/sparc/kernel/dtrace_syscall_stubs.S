@@ -17,6 +17,12 @@
 	 flushw
 	ENDPROC(dtrace_stub_execve)
 
+	ENTRY(dtrace_stub_execveat)
+	set	dtrace_sys_execveat, %g1
+	jmpl	%g1, %g0
+	 flushw
+	ENDPROC(dtrace_stub_execveat)
+
 	ENTRY(dtrace_stub_pipe)
 	ba,pt	%xcc, dtrace_sys_pipe
 	 add	%sp, PTREGS_OFF, %o0
@@ -26,11 +32,6 @@
 	ba,pt	%xcc, dtrace_sys_memory_ordering
 	 add	%sp, PTREGS_OFF, %o1
 	ENDPROC(dtrace_stub_memory_ordering)
-
-	ENTRY(dtrace_stub_sigaltstack)
-	ba,pt	%xcc, dtrace_sys_sigaltstack
-	 add	%i6, STACK_BIAS, %o2
-	ENDPROC(dtrace_stub_sigaltstack)
 
 	ENTRY(dtrace_stub_rt_sigreturn)
 	add	%sp, PTREGS_OFF, %o0

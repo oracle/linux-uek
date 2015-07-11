@@ -230,8 +230,8 @@ long dtrace_sys_execveat(int fd, const char __user *name,
 	sc = &systrace_info.sysent[__NR_execveat];
 
 	if ((id = sc->stsy_entry) != DTRACE_IDNONE)
-		(*systrace_probe)(id, (uintptr_t)name, (uintptr_t)argv,
-				  (uintptr_t)envp, 0, 0, 0);
+		(*systrace_probe)(id, fd, (uintptr_t)name, (uintptr_t)argv,
+				  (uintptr_t)envp, flags, 0);
 
 	/*
 	 * FIXME: Add stop functionality for DTrace.
