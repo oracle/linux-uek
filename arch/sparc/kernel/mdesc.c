@@ -757,68 +757,6 @@ static void set_sock_ids(struct mdesc_handle *hp)
 		set_sock_ids_by_cache(hp, 2);
 }
 
-static void __cpuinit set_sock_ids(struct mdesc_handle *hp)
-{
-	u64 mp;
-	int idx = 1;
-	int fnd = 0;
-
-	/* Identify unique sockets by looking for cpus backpointed to by
-	 * shared level n caches.
-	 */
-	mdesc_for_each_node_by_name(hp, mp, "cache") {
-		const u64 *cur_lvl;
-
-		cur_lvl = mdesc_get_property(hp, mp, "level", NULL);
-		if (*cur_lvl != level)
-			continue;
-
-		mark_sock_ids(hp, mp, idx);
-		idx++;
-		fnd = 1;
-	}
-	return fnd;
-}
-
-static void set_sock_ids_by_socket(struct mdesc_handle *hp, u64 mp)
-{
-	int idx = 1;
-
-	mdesc_for_each_node_by_name(hp, mp, "socket") {
-		u64 a;
-
-		mdesc_for_each_arc(a, hp, mp, MDESC_ARC_TYPE_FWD) {
-			u64 t = mdesc_arc_target(hp, a);
-			const char *name;
-			const u64 *id;
-
-			name = mdesc_node_name(hp, t);
-			if (strcmp(name, "cpu"))
-				continue;
-
-			id = mdesc_get_property(hp, t, "id", NULL);
-			if (*id < num_possible_cpus())
-				cpu_data(*id).sock_id = idx;
-		}
-		idx++;
-	}
-}
-
-static void set_sock_ids(struct mdesc_handle *hp)
-{
-	u64 mp;
-
-	/* If machine description exposes sockets data use it.
-	 * Otherwise fallback to use shared L3 or L2 caches.
-	 */
-	mp = mdesc_node_by_name(hp, MDESC_NODE_NULL, "sockets");
-	if (mp != MDESC_NODE_NULL)
-		return set_sock_ids_by_socket(hp, mp);
-
-	if (!set_sock_ids_by_cache(hp, 3))
-		set_sock_ids_by_cache(hp, 2);
-}
-
 static void mark_proc_ids(struct mdesc_handle *hp, u64 mp, int proc_id)
 {
 	u64 a;
