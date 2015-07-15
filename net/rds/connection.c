@@ -317,6 +317,10 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 {
 	/* shut it down unless it's down already */
 	if (!rds_conn_transition(conn, RDS_CONN_DOWN, RDS_CONN_DOWN)) {
+		rds_rtd(RDS_RTD_CM_EXT,
+			"RDS/IB: shutdown init <%pI4,%pI4,%d>, cn %p, cn->c_p %p\n",
+			&conn->c_laddr, &conn->c_faddr,
+			conn->c_tos, conn, conn->c_passive);
 		/*
 		 * Quiesce the connection mgmt handlers before we start tearing
 		 * things down. We don't hold the mutex for the entire
@@ -365,6 +369,10 @@ void rds_conn_shutdown(struct rds_connection *conn, int restart)
 	rcu_read_lock();
 	if (!hlist_unhashed(&conn->c_hash_node) && restart) {
 		rcu_read_unlock();
+		rds_rtd(RDS_RTD_CM_EXT,
+			"queueing reconnect request... <%pI4,%pI4,%d>\n",
+			&conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
 		rds_queue_reconnect(conn);
 	} else {
 		rcu_read_unlock();
@@ -383,9 +391,9 @@ void rds_conn_destroy(struct rds_connection *conn)
 	struct rds_message *rm, *rtmp;
 	unsigned long flags;
 
-	rdsdebug("freeing conn %p for %pI4 -> "
-		 "%pI4\n", conn, &conn->c_laddr,
-		 &conn->c_faddr);
+	rds_rtd(RDS_RTD_CM, "freeing conn %p <%pI4,%pI4,%d>\n",
+		conn, &conn->c_laddr, &conn->c_faddr,
+		conn->c_tos);
 
 	/* Ensure conn will not be scheduled for reconnect */
 	spin_lock_irq(&rds_conn_lock);
@@ -676,6 +684,11 @@ void rds_conn_drop(struct rds_connection *conn)
 
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
 
+	rds_rtd(RDS_RTD_CM_EXT,
+		"RDS/IB: queueing shutdown work, conn %p, <%pI4,%pI4,%d>\n",
+		conn, &conn->c_laddr, &conn->c_faddr,
+		conn->c_tos);
+
 	if (conn->c_loopback)
 		queue_work(rds_local_wq, &conn->c_down_w);
 	else
@@ -692,6 +705,10 @@ void rds_conn_connect_if_down(struct rds_connection *conn)
 {
 	if (rds_conn_state(conn) == RDS_CONN_DOWN &&
 	    !test_and_set_bit(RDS_RECONNECT_PENDING, &conn->c_flags)) {
+		rds_rtd(RDS_RTD_CM_EXT,
+			"queueing connect work, conn %p, <%pI4,%pI4,%d>\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
 		if (conn->c_loopback)
 			queue_delayed_work(rds_local_wq, &conn->c_conn_w, 0);
 		else
