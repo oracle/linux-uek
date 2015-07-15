@@ -590,7 +590,9 @@ struct rq {
 	/* list of leaf cfs_rq on this cpu: */
 	struct list_head leaf_cfs_rq_list;
 
+#ifdef __GENKSYMS__
 	struct sched_avg avg;
+#endif
 #endif /* CONFIG_FAIR_GROUP_SCHED */
 
 	/*
