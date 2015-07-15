@@ -12,6 +12,7 @@
 #include <uapi/linux/rds.h>
 
 #include "info.h"
+#include "rds_rt_debug.h"
 
 /*
  * RDS Network protocol version
