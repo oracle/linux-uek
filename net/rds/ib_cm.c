@@ -165,7 +165,8 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	}
 
 	printk(KERN_NOTICE
-		"RDS/IB: connected <%pI4,%pI4,%d> version %u.%u%s\n",
+		"RDS/IB: conn %p i_cm_id %p connected <%pI4,%pI4,%d> version %u.%u%s\n",
+		conn, ic->i_cm_id,
 		&conn->c_laddr,
 		&conn->c_faddr,
 		conn->c_tos,
@@ -175,6 +176,9 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 
 	/* The connection might have been dropped under us*/
 	if (!ic->i_cm_id) {
+		rds_rtd(RDS_RTD_CM,
+			"ic->i_cm_id is NULL, ic: %p, calling rds_conn_drop\n",
+			ic);
 		rds_conn_drop(conn);
 		return;
 	}
@@ -182,6 +186,9 @@ void rds_ib_cm_connect_complete(struct rds_connection *conn, struct rdma_cm_even
 	/* Drop connection if connection state is not CONNECTING.
 	   Potentially connection drop from some other place like rds_conn_probe_lanes() */
 	if (!rds_conn_connecting(conn)) {
+		rds_rtd(RDS_RTD_CM,
+			"conn is in connecting state, conn: %p, calling rds_conn_drop\n",
+			conn);
 		rds_conn_drop(conn);
 		return;
 	}
@@ -518,13 +525,13 @@ static void rds_ib_qp_event_handler(struct ib_event *event, void *data)
 
 		break;
 	case IB_EVENT_PATH_MIG_ERR:
-		rdsdebug("RDS: Path migration error\n");
+		rds_rtd(RDS_RTD_ERR, "RDS: Path migration error\n");
 		break;
 	default:
-		rdsdebug("Fatal QP Event %u (%s) "
-			"- connection %pI4->%pI4, reconnecting\n",
+		rds_rtd(RDS_RTD_ERR,
+			"Fatal QP Event %u (%s) - connection %pI4->%pI4 tos %d, reconnecting\n",
 			event->event, rds_ib_event_str(event->event),
-			&conn->c_laddr, &conn->c_faddr);
+			&conn->c_laddr,	&conn->c_faddr, conn->c_tos);
 		rds_conn_drop(conn);
 		break;
 	}
@@ -666,7 +673,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 	 */
 	ret = rdma_create_qp(ic->i_cm_id, ic->i_pd, &qp_attr);
 	if (ret) {
-		rdsdebug("rdma_create_qp failed: %d\n", ret);
+		rds_rtd(RDS_RTD_ERR, "rdma_create_qp failed: %d\n", ret);
 		goto out;
 	}
 
@@ -676,7 +683,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 					   &ic->i_send_hdrs_dma, GFP_KERNEL);
 	if (!ic->i_send_hdrs) {
 		ret = -ENOMEM;
-		rdsdebug("ib_dma_alloc_coherent send failed\n");
+		rds_rtd(RDS_RTD_ERR, "ib_dma_alloc_coherent send failed\n");
 		goto out;
 	}
 
@@ -687,7 +694,8 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 					&ic->i_recv_hdrs_dma, GFP_KERNEL);
 		if (!ic->i_recv_hdrs) {
 			ret = -ENOMEM;
-			rdsdebug("ib_dma_alloc_coherent recv failed\n");
+			rds_rtd(RDS_RTD_ERR,
+				"ib_dma_alloc_coherent recv failed\n");
 			goto out;
 		}
 	}
@@ -696,7 +704,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				       &ic->i_ack_dma, GFP_KERNEL);
 	if (!ic->i_ack) {
 		ret = -ENOMEM;
-		rdsdebug("ib_dma_alloc_coherent ack failed\n");
+		rds_rtd(RDS_RTD_ERR, "ib_dma_alloc_coherent ack failed\n");
 		goto out;
 	}
 
@@ -704,7 +712,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				   ibdev_to_node(dev));
 	if (!ic->i_sends) {
 		ret = -ENOMEM;
-		rdsdebug("send allocation failed\n");
+		rds_rtd(RDS_RTD_ERR, "send allocation failed\n");
 		goto out;
 	}
 	memset(ic->i_sends, 0, ic->i_send_ring.w_nr * sizeof(struct rds_ib_send_work));
@@ -714,7 +722,7 @@ static int rds_ib_setup_qp(struct rds_connection *conn)
 				sizeof(struct rds_ib_recv_work));
 		if (!ic->i_recvs) {
 			ret = -ENOMEM;
-			rdsdebug("recv allocation failed\n");
+			rds_rtd(RDS_RTD_ERR, "recv allocation failed\n");
 			goto out;
 		}
 		memset(ic->i_recvs, 0, ic->i_recv_ring.w_nr * sizeof(struct rds_ib_recv_work));
@@ -794,17 +802,21 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 	if (!version)
 		goto out;
 
-	rdsdebug("saddr %pI4 daddr %pI4 RDSv%u.%u lguid 0x%llx fguid "
-		 "0x%llx\n", &dp->dp_saddr, &dp->dp_daddr,
-		 RDS_PROTOCOL_MAJOR(version), RDS_PROTOCOL_MINOR(version),
-		 (unsigned long long)be64_to_cpu(lguid),
-		 (unsigned long long)be64_to_cpu(fguid));
+	rds_rtd(RDS_RTD_CM,
+		"saddr %pI4 daddr %pI4 RDSv%u.%u lguid 0x%llx fguid 0x%llx tos %d\n",
+		&dp->dp_saddr, &dp->dp_daddr,
+		RDS_PROTOCOL_MAJOR(version),
+		RDS_PROTOCOL_MINOR(version),
+		(unsigned long long)be64_to_cpu(lguid),
+		(unsigned long long)be64_to_cpu(fguid),
+		dp->dp_tos);
 
 	/* RDS/IB is not currently netns aware, thus init_net */
 	conn = rds_conn_create(&init_net, dp->dp_daddr, dp->dp_saddr,
 			       &rds_ib_transport, dp->dp_tos, GFP_KERNEL);
 	if (IS_ERR(conn)) {
-		rdsdebug("rds_conn_create failed (%ld)\n", PTR_ERR(conn));
+		rds_rtd(RDS_RTD_ERR, "rds_conn_create failed (%ld)\n",
+			PTR_ERR(conn));
 		conn = NULL;
 		goto out;
 	}
@@ -836,7 +848,8 @@ int rds_ib_cm_handle_connect(struct rdma_cm_id *cm_id,
 		if (ic && ic->i_cm_id == cm_id)
 			destroy = 0;
 		if (rds_conn_state(conn) == RDS_CONN_UP) {
-			rdsdebug("incoming connect while connecting\n");
+			rds_rtd(RDS_RTD_CM_EXT_P,
+				"incoming connect while connecting\n");
 			rds_conn_drop(conn);
 			rds_ib_stats_inc(s_ib_listen_closed_stale);
 		} else if (rds_conn_state(conn) == RDS_CONN_CONNECTING) {
@@ -1092,11 +1105,14 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 	if (IS_ERR(ic->i_cm_id)) {
 		ret = PTR_ERR(ic->i_cm_id);
 		ic->i_cm_id = NULL;
-		rdsdebug("rdma_create_id() failed: %d\n", ret);
+		rds_rtd(RDS_RTD_ERR, "rdma_create_id() failed: %d\n", ret);
 		goto out;
 	}
 
-	rdsdebug("created cm id %p for conn %p\n", ic->i_cm_id, conn);
+	rds_rtd(RDS_RTD_CM_EXT,
+		"RDS/IB: conn init <%pI4,%pI4,%d> cm_id %p\n",
+		&conn->c_laddr, &conn->c_faddr,
+		conn->c_tos, ic->i_cm_id);
 
 	src.sin_family = AF_INET;
 	src.sin_addr.s_addr = (__force u32)conn->c_laddr;
@@ -1110,8 +1126,8 @@ int rds_ib_conn_connect(struct rds_connection *conn)
 				(struct sockaddr *)&dest,
 				RDS_RDMA_RESOLVE_TIMEOUT_MS);
 	if (ret) {
-		rdsdebug("addr resolve failed for cm id %p: %d\n", ic->i_cm_id,
-			 ret);
+		rds_rtd(RDS_RTD_ERR, "addr resolve failed for cm id %p: %d\n",
+			ic->i_cm_id, ret);
 		rdma_destroy_id(ic->i_cm_id);
 
 		ic->i_cm_id = NULL;
@@ -1143,7 +1159,8 @@ void rds_ib_conn_shutdown(struct rds_connection *conn)
 			/* Actually this may happen quite frequently, when
 			 * an outgoing connect raced with an incoming connect.
 			 */
-			rdsdebug("failed to disconnect, cm: %p err %d\n",
+			rds_rtd(RDS_RTD_CM_EXT_P,
+				"failed to disconnect, cm: %p err %d\n",
 				ic->i_cm_id, err);
 		} else if (rds_ib_srq_enabled && ic->rds_ibdev) {
 			/*
