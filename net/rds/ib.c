@@ -180,6 +180,8 @@ void rds_ib_nodev_connect(void)
 {
 	struct rds_ib_connection *ic;
 
+	rds_rtd(RDS_RTD_CM_EXT, "check & build all connections\n");
+
 	spin_lock(&ib_nodev_conns_lock);
 	list_for_each_entry(ic, &ib_nodev_conns, ib_node)
 		rds_conn_connect_if_down(ic->conn);
@@ -190,6 +192,9 @@ void rds_ib_dev_shutdown(struct rds_ib_device *rds_ibdev)
 {
 	struct rds_ib_connection *ic;
 	unsigned long flags;
+
+	rds_rtd(RDS_RTD_CM_EXT,
+		"calling rds_conn_drop to drop all connections.\n");
 
 	spin_lock_irqsave(&rds_ibdev->spinlock, flags);
 	list_for_each_entry(ic, &rds_ibdev->conn_list, ib_node)
@@ -296,8 +301,11 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 	int i;
 
 	rds_ibdev = ib_get_client_data(device, &rds_ib_client);
-	if (!rds_ibdev)
+	if (!rds_ibdev) {
+		rds_rtd(RDS_RTD_ACT_BND, "rds_ibdev is NULL, ib_device %p\n",
+			device);
 		return;
+	}
 
 	if (rds_ib_active_bonding_enabled) {
 		for (i = 1; i <= ip_port_cnt; i++) {
@@ -307,6 +315,9 @@ void rds_ib_remove_one(struct ib_device *device, void *client_data)
 		ib_unregister_event_handler(&rds_ibdev->event_handler);
 	}
 
+	rds_rtd(RDS_RTD_ACT_BND,
+		"calling rds_ib_dev_shutdown, ib_device %p, rds_ibdev %p\n",
+		device, rds_ibdev);
 	rds_ib_dev_shutdown(rds_ibdev);
 
 	/* stop connection attempts from getting a reference to this device. */
@@ -612,6 +623,9 @@ static void rds_ib_conn_drop(struct work_struct *_work)
 		container_of(_work, struct rds_ib_conn_drop_work, work.work);
 	struct rds_connection   *conn = (struct rds_connection *)work->conn;
 
+	rds_rtd(RDS_RTD_CM_EXT,
+		"conn: %p, calling rds_conn_drop\n", conn);
+
 	rds_conn_drop(conn);
 
 	kfree(work);
@@ -839,6 +853,10 @@ static int rds_ib_move_ip(char			*from_dev,
 							ic->conn->c_faddr &&
 							ic2->conn->c_faddr ==
 							ic->conn->c_laddr) {
+						    rds_rtd(RDS_RTD_CM_EXT_P,
+							    "conn:%p, tos %d, calling rds_conn_drop\n",
+							    ic2->conn,
+							    ic2->conn->c_tos);
 							rds_conn_drop(ic2->conn);
 						}
 					}
@@ -863,8 +881,12 @@ static int rds_ib_move_ip(char			*from_dev,
 					INIT_DELAYED_WORK(&work->work, rds_ib_conn_drop);
 					queue_delayed_work(rds_aux_wq, &work->work,
 						msecs_to_jiffies(1000 * rds_ib_active_bonding_reconnect_delay));
-				} else
+				} else {
+					rds_rtd(RDS_RTD_CM_EXT,
+						"conn: %p, tos %d, calling rds_conn_drop\n",
+						ic->conn, ic->conn->c_tos);
 					rds_conn_drop(ic->conn);
+				}
 			}
 		}
 		spin_unlock_bh(&rds_ibdev->spinlock);
@@ -1090,11 +1112,10 @@ static void rds_ib_do_failover(u8 from_port, u8 to_port, u8 arp_port,
 
 		if (!to_port) {
 			/* we tried, but did not get a failover port! */
-			rdsdebug("RDS/IB: IP %pI4 failed to "
-				 "migrate from %s: no matching "
-				 "destination port available!\n",
-				 &ip_config[from_port].ip_addr,
-				 ip_config[from_port].if_name);
+			rds_rtd(RDS_RTD_ERR,
+				"RDS/IB: IP %pI4 failed to migrate from %s: no matching dest port avail!\n",
+				&ip_config[from_port].ip_addr,
+				ip_config[from_port].if_name);
 			return;
 		}
 	} else {
@@ -1216,9 +1237,9 @@ static void rds_ib_do_failback(u8 port, int event_type)
 		/* Test IP addresses and set them if not already set */
 		ret = rds_ib_testset_ip(port);
 		if (ret) {
-			rdsdebug("RDS/IB: failed to ressurrect "
-				 "port index %u devname %s or one if its aliases\n",
-				 port, ip_config[port].dev->name);
+			rds_rtd(RDS_RTD_ACT_BND,
+				"RDS/IB: failed to ressrt port idx %u dev %s or one of its aliases\n",
+				port, ip_config[port].dev->name);
 		}
 	}
 }
@@ -1336,8 +1357,11 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 	u8	port;
 	struct rds_ib_port_ud_work	*work;
 
-	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt) {
+		rds_rtd(RDS_RTD_ACT_BND, "ip_port_cnt %d, event %d\n",
+			ip_port_cnt, event->event);
 		return;
+	}
 
 	if (event->event != IB_EVENT_PORT_ACTIVE &&
 		event->event != IB_EVENT_PORT_ERR)
@@ -1526,6 +1550,8 @@ static void rds_ib_event_handler(struct ib_event_handler *handler,
 
 		if (this_port_transition == RDSIBP_TRANSITION_UP) {
 			if (rds_ib_active_bonding_fallback) {
+				rds_rtd(RDS_RTD_ACT_BND,
+					"active bonding fallback enabled\n");
 				INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 				queue_delayed_work(rds_wq, &work->work, 0);
 			} else
@@ -1658,8 +1684,10 @@ static void rds_ib_dump_ip_config(void)
 {
 	int	i, j;
 
-	if (!rds_ib_active_bonding_enabled || !ip_port_cnt)
+	if (!rds_ib_active_bonding_enabled || !ip_port_cnt) {
+		rds_rtd(RDS_RTD_ACT_BND, "ip_port_cnt %d\n", ip_port_cnt);
 		return;
+	}
 
 	for (i = 1; i <= ip_port_cnt; i++) {
 		printk(KERN_INFO "RDS/IB: %s/port_%d/%s: "
@@ -1830,8 +1858,10 @@ static int rds_ib_ip_config_init(void)
 	unsigned int            tot_devs = 0;
 	unsigned int            tot_ibdevs = 0;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return 0;
+	}
 
 	ip_config = kzalloc(sizeof(struct rds_ib_port) *
 				(ip_port_max + 1), GFP_KERNEL);
@@ -2019,8 +2049,10 @@ void rds_ib_ip_failover_groups_init(void)
 	int i;
 	struct rds_ib_device *rds_ibdev;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return;
+	}
 
 	if (rds_ib_active_bonding_failover_groups == NULL) {
 		list_for_each_entry_rcu(rds_ibdev, &rds_ib_devices, list) {
@@ -2090,7 +2122,8 @@ void rds_ib_add_one(struct ib_device *device)
 		return;
 
 	if (ib_query_device(device, dev_attr)) {
-		rdsdebug("Query device failed for %s\n", device->name);
+		rds_rtd(RDS_RTD_ERR, "Query device failed for %s\n",
+			device->name);
 		goto free_attr;
 	}
 
@@ -2314,8 +2347,10 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	struct rds_ib_port_ud_work *work = NULL;
 	int port_transition = RDSIBP_TRANSITION_NOOP;
 
-	if (!rds_ib_active_bonding_enabled)
+	if (!rds_ib_active_bonding_enabled) {
+		rds_rtd(RDS_RTD_ACT_BND, "active bonding not enabled\n");
 		return NOTIFY_DONE;
+	}
 
 	if (event != NETDEV_UP &&
 	    event != NETDEV_DOWN &&
@@ -2562,6 +2597,8 @@ static int rds_ib_netdev_callback(struct notifier_block *self, unsigned long eve
 	switch (port_transition) {
 	case RDSIBP_TRANSITION_UP:
 		if (rds_ib_active_bonding_fallback) {
+			rds_rtd(RDS_RTD_ACT_BND,
+				"active bonding fallback enabled\n");
 			INIT_DELAYED_WORK(&work->work, rds_ib_failback);
 			queue_delayed_work(rds_wq, &work->work, 0);
 		} else
