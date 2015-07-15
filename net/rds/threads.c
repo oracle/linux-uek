@@ -92,8 +92,8 @@ void rds_connect_complete(struct rds_connection *conn)
 		return;
 	}
 
-	rdsdebug("conn %p for %pI4 to %pI4 complete\n",
-	  conn, &conn->c_laddr, &conn->c_faddr);
+	rds_rtd(RDS_RTD_CM_EXT, "conn %p for %pI4 to %pI4 tos %d complete\n",
+		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	conn->c_reconnect_jiffies = 0;
 	set_bit(0, &conn->c_map_queued);
@@ -131,9 +131,10 @@ void rds_queue_reconnect(struct rds_connection *conn)
 {
 	unsigned long rand;
 
-	rdsdebug("conn %p for %pI4 to %pI4 reconnect jiffies %lu\n",
-	  conn, &conn->c_laddr, &conn->c_faddr,
-	  conn->c_reconnect_jiffies);
+	rds_rtd(RDS_RTD_CM_EXT,
+		"conn %p for %pI4 to %pI4 tos %d reconnect jiffies %lu\n", conn,
+		&conn->c_laddr, &conn->c_faddr,	conn->c_tos,
+		conn->c_reconnect_jiffies);
 
 	set_bit(RDS_RECONNECT_PENDING, &conn->c_flags);
 	if (conn->c_reconnect_jiffies == 0) {
@@ -143,9 +144,10 @@ void rds_queue_reconnect(struct rds_connection *conn)
 	}
 
 	get_random_bytes(&rand, sizeof(rand));
-	rdsdebug("%lu delay %lu ceil conn %p for %pI4 -> %pI4\n",
-		 rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
-		 conn, &conn->c_laddr, &conn->c_faddr);
+	rds_rtd(RDS_RTD_CM_EXT,
+		"%lu delay %lu ceil conn %p for %pI4 -> %pI4 tos %d\n",
+		rand % conn->c_reconnect_jiffies, conn->c_reconnect_jiffies,
+		conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos);
 
 	if (conn->c_loopback) {
 		if (conn->c_laddr >= conn->c_faddr)
@@ -179,15 +181,22 @@ void rds_connect_worker(struct work_struct *work)
 		conn->c_connection_start = get_seconds();
 
 		ret = conn->c_trans->conn_connect(conn);
-		rdsdebug("conn %p for %pI4 to %pI4 dispatched, ret %d\n",
-			conn, &conn->c_laddr, &conn->c_faddr, ret);
+		rds_rtd(RDS_RTD_CM_EXT,
+			"conn %p for %pI4 to %pI4 tos %d dispatched, ret %d\n",
+			conn, &conn->c_laddr, &conn->c_faddr, conn->c_tos, ret);
 
 		if (ret) {
 			if (rds_conn_transition(conn, RDS_CONN_CONNECTING, RDS_CONN_DOWN)) {
+				rds_rtd(RDS_RTD_CM_EXT,
+					"reconnecting..., conn %p\n", conn);
 				rds_queue_reconnect(conn);
 			} else
 				rds_conn_error(conn, "RDS: connect failed\n");
 		}
+	} else {
+		rds_rtd(RDS_RTD_CM,
+			"conn %p cannot trans from DOWN to CONNECTING state.\n",
+			conn);
 	}
 }
 
@@ -200,7 +209,7 @@ void rds_send_worker(struct work_struct *work)
 		clear_bit(RDS_LL_SEND_FULL, &conn->c_flags);
 		ret = rds_send_xmit(conn);
 		cond_resched();
-		rdsdebug("conn %p ret %d\n", conn, ret);
+		rds_rtd(RDS_RTD_SND_EXT, "conn %p ret %d\n", conn, ret);
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_send_immediate_retry);
@@ -222,7 +231,7 @@ void rds_recv_worker(struct work_struct *work)
 
 	if (rds_conn_state(conn) == RDS_CONN_UP) {
 		ret = conn->c_trans->recv(conn);
-		rdsdebug("conn %p ret %d\n", conn, ret);
+		rds_rtd(RDS_RTD_RCV_EXT, "conn %p ret %d\n", conn, ret);
 		switch (ret) {
 		case -EAGAIN:
 			rds_stats_inc(s_recv_immediate_retry);
@@ -242,6 +251,7 @@ void rds_reject_worker(struct work_struct *work)
 	struct rds_connection *conn = container_of(work, struct rds_connection, c_reject_w.work);
 
 	atomic_set(&conn->c_state, RDS_CONN_ERROR);
+	rds_rtd(RDS_RTD_CM, "calling rds_conn_shutdown, conn %p:0\n", conn);
 	rds_conn_shutdown(conn, 0);
 	rds_route_to_base(conn);
 }
@@ -259,17 +269,17 @@ void rds_hb_worker(struct work_struct *work)
 		if (!conn->c_hb_start) {
 			ret = rds_send_hb(conn, 0);
 			if (ret) {
-				rdsdebug("RDS/IB: rds_hb_worker: failed %d\n", ret);
+				rds_rtd(RDS_RTD_ERR_EXT,
+					"RDS/IB: rds_hb_worker: failed %d\n",
+					ret);
 				return;
 			}
 			conn->c_hb_start = now;
 		} else if (now - conn->c_hb_start > rds_conn_hb_timeout) {
-			printk(KERN_NOTICE
-				"RDS/IB: connection <%pI4,%pI4,%d> "
-				"timed out (0x%lx,0x%lx)..disconnecting and reconnecting\n",
-				&conn->c_laddr,
-				&conn->c_faddr, conn->c_tos,
-				conn->c_hb_start, now);
+			rds_rtd(RDS_RTD_CM,
+				"RDS/IB: connection <%pI4,%pI4,%d> timed out (0x%lx,0x%lx)..discon and recon\n",
+				&conn->c_laddr, &conn->c_faddr,
+				conn->c_tos, conn->c_hb_start, now);
 				rds_conn_drop(conn);
 			return;
 		}
@@ -286,6 +296,10 @@ void rds_reconnect_timeout(struct work_struct *work)
 	 * reconnect.
 	 */
 	if (!rds_conn_up(conn)) {
+		rds_rtd(RDS_RTD_CM,
+			"conn not up, calling rds_conn_drop <%pI4,%pI4,%d>\n",
+			&conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
 		rds_conn_drop(conn);
 		conn->c_reconnect_racing = 0;
 	}
@@ -300,6 +314,10 @@ void rds_shutdown_worker(struct work_struct *work)
 	 * drives the reconnect (one-sided reconnect)
 	 */
 	if (conn->c_laddr < conn->c_faddr && conn->c_reconnect_racing) {
+		rds_rtd(RDS_RTD_CM,
+			"calling rds_conn_shutdown, conn %p:0 <%pI4,%pI4,%d>\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
 		rds_conn_shutdown(conn, 0);
 		if (conn->c_loopback)
 			queue_delayed_work(rds_local_wq, &conn->c_reconn_w,
@@ -307,8 +325,13 @@ void rds_shutdown_worker(struct work_struct *work)
 		else
 			queue_delayed_work(rds_wq, &conn->c_reconn_w,
 					   msecs_to_jiffies(5000));
-	} else
+	} else {
+		rds_rtd(RDS_RTD_CM,
+			"calling rds_conn_shutdown, conn %p:1 <%pI4,%pI4,%d>\n",
+			conn, &conn->c_laddr, &conn->c_faddr,
+			conn->c_tos);
 		rds_conn_shutdown(conn, 1);
+	}
 
 }
 
