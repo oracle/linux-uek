@@ -401,6 +401,9 @@ void idr_remove(struct idr *idp, int id)
 	struct idr_layer *p;
 	struct idr_layer *to_free;
 
+	if (id < 0)
+		return;
+
 	/* Mask off upper bits we don't use for the search. */
 	id &= MAX_IDR_MASK;
 
@@ -510,6 +513,9 @@ void *idr_find(struct idr *idp, int id)
 {
 	int n;
 	struct idr_layer *p;
+
+	if (id < 0)
+		return NULL;
 
 	p = rcu_dereference_raw(idp->top);
 	if (!p)
@@ -659,6 +665,9 @@ void *idr_replace(struct idr *idp, void *ptr, int id)
 {
 	int n;
 	struct idr_layer *p, *old_p;
+
+	if (id < 0)
+		return ERR_PTR(-EINVAL);
 
 	p = idp->top;
 	if (!p)
