@@ -1818,7 +1818,8 @@ bail:
  * This may be called from interrupt context.
  */
 static struct ib_ah *qib_create_ah(struct ib_pd *pd,
-				   struct ib_ah_attr *ah_attr)
+				   struct ib_ah_attr *ah_attr,
+				   struct ib_udata *udata)
 {
 	struct qib_ah *ah;
 	struct ib_ah *ret;

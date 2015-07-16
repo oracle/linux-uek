@@ -1,0 +1,15 @@
+digraph {
+	FIP_VNIC_CLOSED;
+	fip_vnic_alloc [shape=regular];
+	fip_vnic_alloc -> FIP_VNIC_HADMIN_IDLE [label="hadmin"];
+	fip_vnic_alloc -> FIP_VNIC_LOGIN [label="none hadmin"];
+	FIP_VNIC_WAIT_4_ACK;
+	FIP_VNIC_RINGS_INIT;
+	FIP_VNIC_MCAST_INIT;
+	FIP_VNIC_MCAST_INIT_DONE;
+	FIP_VNIC_VHUB_INIT;
+	FIP_VNIC_VHUB_INIT_DONE;
+	FIP_VNIC_VHUB_DONE;
+	FIP_VNIC_VHUB_WRITE;
+	FIP_VNIC_CONNECTED;
+}

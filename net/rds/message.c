@@ -31,8 +31,6 @@
  *
  */
 #include <linux/kernel.h>
-#include <linux/slab.h>
-#include <linux/export.h>
 
 #include "rds.h"
 
@@ -41,6 +39,7 @@ static unsigned int	rds_exthdr_size[__RDS_EXTHDR_MAX] = {
 [RDS_EXTHDR_VERSION]	= sizeof(struct rds_ext_header_version),
 [RDS_EXTHDR_RDMA]	= sizeof(struct rds_ext_header_rdma),
 [RDS_EXTHDR_RDMA_DEST]	= sizeof(struct rds_ext_header_rdma_dest),
+[RDS_EXTHDR_RDMA_BYTES] = sizeof(struct rds_ext_header_rdma_bytes),
 };
 
 
@@ -82,7 +81,10 @@ static void rds_message_purge(struct rds_message *rm)
 void rds_message_put(struct rds_message *rm)
 {
 	rdsdebug("put rm %p ref %d\n", rm, atomic_read(&rm->m_refcount));
-	WARN(!atomic_read(&rm->m_refcount), "danger refcount zero on %p\n", rm);
+	if (atomic_read(&rm->m_refcount) == 0) {
+		printk(KERN_CRIT "danger refcount zero on %p\n", rm);
+		WARN_ON(1);
+	}
 	if (atomic_dec_and_test(&rm->m_refcount)) {
 		BUG_ON(!list_empty(&rm->m_sock_item));
 		BUG_ON(!list_empty(&rm->m_conn_item));
@@ -100,26 +102,59 @@ void rds_message_populate_header(struct rds_header *hdr, __be16 sport,
 	hdr->h_sport = sport;
 	hdr->h_dport = dport;
 	hdr->h_sequence = cpu_to_be64(seq);
-	hdr->h_exthdr[0] = RDS_EXTHDR_NONE;
+	/* see rds_find_next_ext_space for reason why we memset the
+	 * ext header
+	 */
+	memset(hdr->h_exthdr, RDS_EXTHDR_NONE, RDS_HEADER_EXT_SPACE);
 }
 EXPORT_SYMBOL_GPL(rds_message_populate_header);
 
-int rds_message_add_extension(struct rds_header *hdr, unsigned int type,
-			      const void *data, unsigned int len)
+/*
+ * Find the next place we can add rds header extension with specific lenght.
+ * Extension headers are pushed one after the other as follow:
+ * [ [ ext #1 ] RDS_EXTHDR_NONE [ ext #2 ] RDS_EXTHDR_NONE ... ]
+ * Last extension is detected as follow:
+ * [ [ ext #n ] RDS_EXTHDR_NONE RDS_EXTHDR_NONE ]
+ * See Orabug: 18468180 - NEW EXTENSION HEADER TYPE RDSV3_EXTHDR_RDMA_BYTES
+ */
+static int rds_find_next_ext_space(struct rds_header *hdr, unsigned int len,
+	u8 **ext_start)
+{
+	int ind;
+
+	for (ind = 0; ind < RDS_HEADER_EXT_SPACE - 1; ind++) {
+		if (hdr->h_exthdr[ind] != RDS_EXTHDR_NONE ||
+			hdr->h_exthdr[ind + 1] != RDS_EXTHDR_NONE)
+			continue;
+		/* found free space in ext header  */
+		/* skip the RDS_EXTHDR_NONE only if not on first ext */
+		if (ind > 0)
+			ind++;
+		if (RDS_HEADER_EXT_SPACE - ind < len)
+			return 1;
+		/* extension can fit to header */
+		*ext_start = hdr->h_exthdr + ind;
+		return 0;
+	}
+	/* no room for extension */
+	return 1;
+}
+
+int rds_message_add_extension(struct rds_header *hdr,
+		unsigned int type, const void *data, unsigned int len)
 {
 	unsigned int ext_len = sizeof(u8) + len;
 	unsigned char *dst;
 
-	/* For now, refuse to add more than one extension header */
-	if (hdr->h_exthdr[0] != RDS_EXTHDR_NONE)
+	if (rds_find_next_ext_space(hdr, ext_len, &dst))
 		return 0;
 
-	if (type >= __RDS_EXTHDR_MAX || len != rds_exthdr_size[type])
+	if (type >= __RDS_EXTHDR_MAX
+	 || len != rds_exthdr_size[type])
 		return 0;
 
 	if (ext_len >= RDS_HEADER_EXT_SPACE)
 		return 0;
-	dst = hdr->h_exthdr;
 
 	*dst++ = type;
 	memcpy(dst, data, len);
@@ -175,6 +210,26 @@ none:
 	return RDS_EXTHDR_NONE;
 }
 
+int rds_message_add_version_extension(struct rds_header *hdr, unsigned int version)
+{
+	struct rds_ext_header_version ext_hdr;
+
+	ext_hdr.h_version = cpu_to_be32(version);
+	return rds_message_add_extension(hdr, RDS_EXTHDR_VERSION, &ext_hdr, sizeof(ext_hdr));
+}
+
+int rds_message_get_version_extension(struct rds_header *hdr, unsigned int *version)
+{
+	struct rds_ext_header_version ext_hdr;
+	unsigned int pos = 0, len = sizeof(ext_hdr);
+
+	/* We assume the version extension is the only one present */
+	if (rds_message_next_extension(hdr, &pos, &ext_hdr, &len) != RDS_EXTHDR_VERSION)
+		return 0;
+	*version = be32_to_cpu(ext_hdr.h_version);
+	return 1;
+}
+
 int rds_message_add_rdma_dest_extension(struct rds_header *hdr, u32 r_key, u32 offset)
 {
 	struct rds_ext_header_rdma_dest ext_hdr;
@@ -225,9 +280,6 @@ struct scatterlist *rds_message_alloc_sgs(struct rds_message *rm, int nents)
 	WARN_ON(rm->m_used_sgs + nents > rm->m_total_sgs);
 	WARN_ON(!nents);
 
-	if (rm->m_used_sgs + nents > rm->m_total_sgs)
-		return NULL;
-
 	sg_ret = &sg_first[rm->m_used_sgs];
 	sg_init_table(sg_ret, nents);
 	rm->m_used_sgs += nents;
@@ -250,10 +302,6 @@ struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned in
 	rm->m_inc.i_hdr.h_len = cpu_to_be32(total_len);
 	rm->data.op_nents = ceil(total_len, PAGE_SIZE);
 	rm->data.op_sg = rds_message_alloc_sgs(rm, num_sgs);
-	if (!rm->data.op_sg) {
-		rds_message_put(rm);
-		return ERR_PTR(-ENOMEM);
-	}
 
 	for (i = 0; i < rm->data.op_nents; ++i) {
 		sg_set_page(&rm->data.op_sg[i],
@@ -264,7 +312,8 @@ struct rds_message *rds_message_map_pages(unsigned long *page_addrs, unsigned in
 	return rm;
 }
 
-int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
+int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from,
+			       gfp_t gfp)
 {
 	unsigned long to_copy, nbytes;
 	unsigned long sg_off;
@@ -282,7 +331,9 @@ int rds_message_copy_from_user(struct rds_message *rm, struct iov_iter *from)
 	while (iov_iter_count(from)) {
 		if (!sg_page(sg)) {
 			ret = rds_page_remainder_alloc(sg, iov_iter_count(from),
-						       GFP_HIGHUSER);
+						       GFP_ATOMIC == gfp ?
+						       gfp : GFP_HIGHUSER);
+
 			if (ret)
 				return ret;
 			rm->data.op_nents++;
@@ -364,3 +415,50 @@ void rds_message_unmapped(struct rds_message *rm)
 }
 EXPORT_SYMBOL_GPL(rds_message_unmapped);
 
+int rds_message_inc_to_skb(struct rds_incoming *inc, struct sk_buff *skb)
+{
+	struct rds_message *rm;
+	struct scatterlist *sg;
+	skb_frag_t *frag;
+	int ret = 0;
+	u32 len;
+	int i;
+
+	rm  = container_of(inc, struct rds_message, m_inc);
+	len = be32_to_cpu(rm->m_inc.i_hdr.h_len);
+	i   = 0;
+
+	/* for now we will only have a single chain of fragments in the skb */
+	if (rm->data.op_nents >= MAX_SKB_FRAGS) {
+		rdsdebug("too many fragments in op %u > max %u, rm %p",
+			 rm->data.op_nents, (int)MAX_SKB_FRAGS, rm);
+		goto done;
+	}
+
+	/* run through the entire scatter gather list and save off the buffers */
+	for (i = 0; i < rm->data.op_nents; i++) {
+		/* one to one mapping of frags to sg structures */
+		frag = &skb_shinfo(skb)->frags[i];
+		sg   = &rm->data.op_sg[i];
+
+		/* save off all the sg pieces to the skb frags we are creating */
+		frag->size        = sg->length;
+		frag->page_offset = sg->offset;
+		frag->page.p      = sg_page(sg);
+
+		/* AA: do we need to bump up the page reference too */
+		/* get_page(frag->page); */
+	}
+
+	/* track the full message length too */
+	skb->len = len;
+
+	/* all good */
+	ret = 1;
+
+done:
+	/* track all the fragments we saved */
+	skb_shinfo(skb)->nr_frags = i;
+
+	return ret;
+}

@@ -57,6 +57,11 @@ MODULE_AUTHOR("Sean Hefty");
 MODULE_DESCRIPTION("InfiniBand CM");
 MODULE_LICENSE("Dual BSD/GPL");
 
+#ifdef pr_fmt
+#undef pr_fmt
+#endif
+#define pr_fmt(fmt) "%s:%s: " fmt, KBUILD_MODNAME, __func__
+
 static void cm_add_one(struct ib_device *device);
 static void cm_remove_one(struct ib_device *device);
 
@@ -876,8 +881,10 @@ retest:
 			spin_unlock_irq(&cm_id_priv->lock);
 		} else {
 			spin_unlock_irq(&cm_id_priv->lock);
+			if (!err)
+				err = -EINVAL;
 			ib_send_cm_rej(cm_id, IB_CM_REJ_CONSUMER_DEFINED,
-				       NULL, 0, NULL, 0);
+					NULL, 0, &err, sizeof(err));
 		}
 		break;
 	case IB_CM_REP_SENT:
@@ -888,8 +895,10 @@ retest:
 	case IB_CM_REP_RCVD:
 	case IB_CM_MRA_REP_SENT:
 		spin_unlock_irq(&cm_id_priv->lock);
+		if (!err)
+			err = -EINVAL;
 		ib_send_cm_rej(cm_id, IB_CM_REJ_CONSUMER_DEFINED,
-			       NULL, 0, NULL, 0);
+				NULL, 0, &err, sizeof(err));
 		break;
 	case IB_CM_ESTABLISHED:
 		spin_unlock_irq(&cm_id_priv->lock);
@@ -1548,8 +1557,7 @@ static int cm_req_handler(struct cm_work *work)
 	listen_cm_id_priv = cm_match_req(work, cm_id_priv);
 	if (!listen_cm_id_priv) {
 		ret = -EINVAL;
-		kfree(cm_id_priv->timewait_info);
-		goto destroy;
+		goto free_timeinfo;
 	}
 
 	cm_id_priv->id.cm_handler = listen_cm_id_priv->id.cm_handler;
@@ -1602,6 +1610,8 @@ static int cm_req_handler(struct cm_work *work)
 rejected:
 	atomic_dec(&cm_id_priv->refcount);
 	cm_deref_id(listen_cm_id_priv);
+free_timeinfo:
+	kfree(cm_id_priv->timewait_info);
 destroy:
 	ib_destroy_cm_id(cm_id);
 	return ret;
@@ -1654,6 +1664,7 @@ int ib_send_cm_rep(struct ib_cm_id *cm_id,
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_REQ_RCVD &&
 	    cm_id->state != IB_CM_MRA_REQ_SENT) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -1720,6 +1731,7 @@ int ib_send_cm_rtu(struct ib_cm_id *cm_id,
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_REP_RCVD &&
 	    cm_id->state != IB_CM_MRA_REP_SENT) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto error;
 	}
@@ -1824,6 +1836,7 @@ static int cm_rep_handler(struct cm_work *work)
 	cm_id_priv = cm_acquire_id(rep_msg->remote_comm_id, 0);
 	if (!cm_id_priv) {
 		cm_dup_rep_handler(work);
+		pr_debug("no cm_id_priv\n");
 		return -EINVAL;
 	}
 
@@ -1837,6 +1850,7 @@ static int cm_rep_handler(struct cm_work *work)
 	default:
 		spin_unlock_irq(&cm_id_priv->lock);
 		ret = -EINVAL;
+		pr_debug("cm_id_priv->id.state: %d\n", cm_id_priv->id.state);
 		goto error;
 	}
 
@@ -1850,6 +1864,7 @@ static int cm_rep_handler(struct cm_work *work)
 		spin_unlock(&cm.lock);
 		spin_unlock_irq(&cm_id_priv->lock);
 		ret = -EINVAL;
+		pr_debug("Failed to insert remote id\n");
 		goto error;
 	}
 	/* Check for a stale connection. */
@@ -1863,6 +1878,7 @@ static int cm_rep_handler(struct cm_work *work)
 			     IB_CM_REJ_STALE_CONN, CM_MSG_RESPONSE_REP,
 			     NULL, 0);
 		ret = -EINVAL;
+		pr_debug("Stale connection.\n");
 		goto error;
 	}
 	spin_unlock(&cm.lock);
@@ -2003,6 +2019,7 @@ int ib_send_cm_dreq(struct ib_cm_id *cm_id,
 	cm_id_priv = container_of(cm_id, struct cm_id_private, id);
 	spin_lock_irqsave(&cm_id_priv->lock, flags);
 	if (cm_id->state != IB_CM_ESTABLISHED) {
+		pr_debug("cm_id->state: %d\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2072,6 +2089,7 @@ int ib_send_cm_drep(struct ib_cm_id *cm_id,
 	if (cm_id->state != IB_CM_DREQ_RCVD) {
 		spin_unlock_irqrestore(&cm_id_priv->lock, flags);
 		kfree(data);
+		pr_debug("cm_id->state(%d) != IB_CM_DREQ_RCVD\n", cm_id->state);
 		return -EINVAL;
 	}
 
@@ -2137,6 +2155,7 @@ static int cm_dreq_handler(struct cm_work *work)
 		atomic_long_inc(&work->port->counter_group[CM_RECV_DUPLICATES].
 				counter[CM_DREQ_COUNTER]);
 		cm_issue_drep(work->port, work->mad_recv_wc);
+		pr_debug("no cm_id_priv\n");
 		return -EINVAL;
 	}
 
@@ -2177,6 +2196,7 @@ static int cm_dreq_handler(struct cm_work *work)
 				counter[CM_DREQ_COUNTER]);
 		goto unlock;
 	default:
+		pr_debug("cm_id_priv->id.state: %d\n", cm_id_priv->id.state);
 		goto unlock;
 	}
 	cm_id_priv->id.state = IB_CM_DREQ_RCVD;
@@ -2280,6 +2300,7 @@ int ib_send_cm_rej(struct ib_cm_id *cm_id,
 		cm_enter_timewait(cm_id_priv);
 		break;
 	default:
+		pr_debug("cm_id->state: 0x%x\n", cm_id->state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2390,6 +2411,7 @@ static int cm_rej_handler(struct cm_work *work)
 		/* fall through */
 	default:
 		spin_unlock_irq(&cm_id_priv->lock);
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		goto out;
 	}
@@ -2452,6 +2474,7 @@ int ib_send_cm_mra(struct ib_cm_id *cm_id,
 			break;
 		}
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		goto error1;
 	}
@@ -2553,6 +2576,7 @@ static int cm_mra_handler(struct cm_work *work)
 				counter[CM_MRA_COUNTER]);
 		/* fall through */
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		goto out;
 	}
 
@@ -3290,6 +3314,7 @@ static void cm_work_handler(struct work_struct *_work)
 		ret = cm_timewait_handler(work);
 		break;
 	default:
+		pr_debug("work->cm_event.event: 0x%x\n", work->cm_event.event);
 		ret = -EINVAL;
 		break;
 	}
@@ -3320,6 +3345,7 @@ static int cm_establish(struct ib_cm_id *cm_id)
 		ret = -EISCONN;
 		break;
 	default:
+		pr_debug("cm_id->state: 0x%x\n", cm_id->state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3482,6 +3508,7 @@ static int cm_init_qp_init_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3555,6 +3582,7 @@ static int cm_init_qp_rtr_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3614,6 +3642,7 @@ static int cm_init_qp_rts_attr(struct cm_id_private *cm_id_priv,
 		ret = 0;
 		break;
 	default:
+		pr_debug("cm_id_priv->id.state: 0x%x\n", cm_id_priv->id.state);
 		ret = -EINVAL;
 		break;
 	}
@@ -3640,6 +3669,7 @@ int ib_cm_init_qp_attr(struct ib_cm_id *cm_id,
 		ret = cm_init_qp_rts_attr(cm_id_priv, qp_attr, qp_attr_mask);
 		break;
 	default:
+		pr_debug("qp_attr->qp_state: 0x%x\n", qp_attr->qp_state);
 		ret = -EINVAL;
 		break;
 	}

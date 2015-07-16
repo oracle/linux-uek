@@ -619,18 +619,21 @@ int ib_unregister_mad_agent(struct ib_mad_agent *mad_agent)
 	struct ib_mad_agent_private *mad_agent_priv;
 	struct ib_mad_snoop_private *mad_snoop_priv;
 
-	/* If the TID is zero, the agent can only snoop. */
-	if (mad_agent->hi_tid) {
-		mad_agent_priv = container_of(mad_agent,
+	if (!IS_ERR(mad_agent)) {
+		/* If the TID is zero, the agent can only snoop. */
+		if (mad_agent->hi_tid) {
+			mad_agent_priv = container_of(mad_agent,
 					      struct ib_mad_agent_private,
 					      agent);
-		unregister_mad_agent(mad_agent_priv);
-	} else {
-		mad_snoop_priv = container_of(mad_agent,
+			unregister_mad_agent(mad_agent_priv);
+		} else {
+			mad_snoop_priv = container_of(mad_agent,
 					      struct ib_mad_snoop_private,
 					      agent);
-		unregister_mad_snoop(mad_snoop_priv);
+			unregister_mad_snoop(mad_snoop_priv);
+		}
 	}
+
 	return 0;
 }
 EXPORT_SYMBOL(ib_unregister_mad_agent);
@@ -749,14 +752,18 @@ static int handle_outgoing_dr_smp(struct ib_mad_agent_private *mad_agent_priv,
 	 * If we are at the start of the LID routed part, don't update the
 	 * hop_ptr or hop_cnt.  See section 14.2.2, Vol 1 IB spec.
 	 */
-	if ((ib_get_smp_direction(smp) ? smp->dr_dlid : smp->dr_slid) ==
-	     IB_LID_PERMISSIVE &&
-	     smi_handle_dr_smp_send(smp, device->node_type, port_num) ==
+	if ((ib_get_smp_direction(smp) ? smp->dr_dlid : smp->dr_slid) !=
+	     IB_LID_PERMISSIVE)
+		goto out;
+	if (smi_handle_dr_smp_send(smp, device->node_type, port_num) ==
 	     IB_SMI_DISCARD) {
 		ret = -EINVAL;
 		dev_err(&device->dev, "Invalid directed route\n");
 		goto out;
 	}
+
+	if (!device->process_mad)
+		goto out;
 
 	/* Check to post send on QP or process locally */
 	if (smi_check_local_smp(smp, device) == IB_SMI_DISCARD &&
