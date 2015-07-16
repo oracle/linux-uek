@@ -1137,12 +1137,18 @@ static void recv_handler(struct ib_mad_agent *mad_agent,
 	query = mad_buf->context[0];
 
 	if (query->callback) {
-		if (mad_recv_wc->wc->status == IB_WC_SUCCESS)
-			query->callback(query,
-					mad_recv_wc->recv_buf.mad->mad_hdr.status ?
-					-EINVAL : 0,
+		if (mad_recv_wc->wc->status == IB_WC_SUCCESS) {
+			int mad_status = mad_recv_wc->recv_buf.mad->mad_hdr.status;
+			int status = 0;
+
+			if ((mad_status & IB_MGMT_MAD_STATUS_BUSY) && (mad_status & \
+				~(IB_MGMT_MAD_STATUS_BUSY|IB_MGMT_MAD_STATUS_REDIRECT_REQD)) == 0)
+				status = -EBUSY;
+			else if (mad_status)
+				status = -EINVAL;
+			query->callback(query, status,
 					(struct ib_sa_mad *) mad_recv_wc->recv_buf.mad);
-		else
+		} else
 			query->callback(query, -EIO, NULL);
 	}
 
@@ -1202,7 +1208,7 @@ static void ib_sa_add_one(struct ib_device *device)
 
 	INIT_IB_EVENT_HANDLER(&sa_dev->event_handler, device, ib_sa_event);
 	if (ib_register_event_handler(&sa_dev->event_handler))
-		goto err;
+		goto reg_err;
 
 	for (i = 0; i <= e - s; ++i)
 		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND)
@@ -1210,9 +1216,13 @@ static void ib_sa_add_one(struct ib_device *device)
 
 	return;
 
+reg_err:
+	ib_set_client_data(device, &sa_client, NULL);
+	i = e - s;
 err:
-	while (--i >= 0)
-		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND)
+	for (; i >= 0; --i)
+		if (rdma_port_get_link_layer(device, i + 1) == IB_LINK_LAYER_INFINIBAND &&
+		    !IS_ERR(sa_dev->port[i].agent))
 			ib_unregister_mad_agent(sa_dev->port[i].agent);
 
 	kfree(sa_dev);

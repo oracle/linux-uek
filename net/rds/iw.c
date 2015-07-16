@@ -37,8 +37,6 @@
 #include <linux/inetdevice.h>
 #include <linux/if_arp.h>
 #include <linux/delay.h>
-#include <linux/slab.h>
-#include <linux/module.h>
 
 #include "rds.h"
 #include "iw.h"
@@ -57,7 +55,7 @@ struct list_head rds_iw_devices;
 DEFINE_SPINLOCK(iw_nodev_conns_lock);
 LIST_HEAD(iw_nodev_conns);
 
-static void rds_iw_add_one(struct ib_device *device)
+void rds_iw_add_one(struct ib_device *device)
 {
 	struct rds_iw_device *rds_iwdev;
 	struct ib_device_attr *dev_attr;
@@ -125,7 +123,7 @@ free_attr:
 	kfree(dev_attr);
 }
 
-static void rds_iw_remove_one(struct ib_device *device)
+void rds_iw_remove_one(struct ib_device *device)
 {
 	struct rds_iw_device *rds_iwdev;
 	struct rds_iw_cm_id *i_cm_id, *next;
@@ -229,7 +227,7 @@ static int rds_iw_laddr_check(__be32 addr)
 	 */
 	cm_id = rdma_create_id(NULL, NULL, RDMA_PS_TCP, IB_QPT_RC);
 	if (IS_ERR(cm_id))
-		return PTR_ERR(cm_id);
+		return -EADDRNOTAVAIL;
 
 	memset(&sin, 0, sizeof(sin));
 	sin.sin_family = AF_INET;
@@ -239,8 +237,7 @@ static int rds_iw_laddr_check(__be32 addr)
 	ret = rdma_bind_addr(cm_id, (struct sockaddr *)&sin);
 	/* due to this, we will claim to support IB devices unless we
 	   check node_type. */
-	if (ret || !cm_id->device ||
-	    cm_id->device->node_type != RDMA_NODE_RNIC)
+	if (ret || !cm_id->device || cm_id->device->node_type != RDMA_NODE_RNIC)
 		ret = -EADDRNOTAVAIL;
 
 	rdsdebug("addr %pI4 ret %d node type %d\n",
@@ -274,6 +271,7 @@ struct rds_transport rds_iw_transport = {
 	.conn_shutdown		= rds_iw_conn_shutdown,
 	.inc_copy_to_user	= rds_iw_inc_copy_to_user,
 	.inc_free		= rds_iw_inc_free,
+	.skb_local              = rds_skb_local,
 	.cm_initiate_connect	= rds_iw_cm_initiate_connect,
 	.cm_handle_connect	= rds_iw_cm_handle_connect,
 	.cm_connect_complete	= rds_iw_cm_connect_complete,

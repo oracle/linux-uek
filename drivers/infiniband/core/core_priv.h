@@ -51,4 +51,9 @@ void ib_cache_cleanup(void);
 
 int ib_resolve_eth_l2_attrs(struct ib_qp *qp,
 			    struct ib_qp_attr *qp_attr, int *qp_attr_mask);
+
+struct ib_qp *ib_create_qp_ex(struct ib_pd *pd,
+			struct ib_qp_init_attr *qp_init_attr,
+			struct ib_udata *udata);
+
 #endif /* _CORE_PRIV_H */

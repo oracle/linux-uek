@@ -117,7 +117,9 @@ err:
 	return result;
 }
 
-int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_add_common(struct net_device *pdev,
+			  unsigned short pkey,
+			  char *child_name_buf)
 {
 	struct ipoib_dev_priv *ppriv, *priv;
 	char intf_name[IFNAMSIZ];
@@ -129,8 +131,22 @@ int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
 
 	ppriv = netdev_priv(pdev);
 
-	snprintf(intf_name, sizeof intf_name, "%s.%04x",
-		 ppriv->dev->name, pkey);
+	if (child_name_buf == NULL) {
+		/*
+		 * If child name is not provided, we generated
+		 * one using name of parent and pkey.
+		 */
+		snprintf(intf_name, sizeof(intf_name), "%s.%04x",
+			 ppriv->dev->name, pkey);
+	} else {
+		/*
+		 * Note: Duplicate intf_name will be detected later in the code
+		 * by register_netdevice() (inside __ipoib_vlan_add() call
+		 * below) returning EEXIST!
+		 */
+		strncpy(intf_name, child_name_buf, IFNAMSIZ);
+	}
+
 	priv = ipoib_intf_alloc(intf_name);
 	if (!priv)
 		return -ENOMEM;
@@ -171,10 +187,27 @@ out:
 	return result;
 }
 
-int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+int ipoib_vlan_add(struct net_device *pdev, unsigned short pkey)
+{
+	return ipoib_vlan_add_common(pdev, pkey, NULL);
+}
+
+int ipoib_named_vlan_add(struct net_device *pdev,
+			 unsigned short pkey,
+			 char *child_name_buf)
+{
+	return ipoib_vlan_add_common(pdev, pkey, child_name_buf);
+}
+
+int ipoib_vlan_delete_common(struct net_device *pdev,
+			     unsigned short pkey,
+			     char *child_name_buf)
 {
 	struct ipoib_dev_priv *ppriv, *priv, *tpriv;
 	struct net_device *dev = NULL;
+	char gen_intf_name[IFNAMSIZ];
+
+	gen_intf_name[0] = '\0'; /* initialize - paranoia! */
 
 	if (!capable(CAP_NET_ADMIN))
 		return -EPERM;
@@ -185,9 +218,30 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 		return restart_syscall();
 
 	down_write(&ppriv->vlan_rwsem);
+	if (child_name_buf == NULL && ppriv->dev) {
+		/*
+		 * If child name is not provided, we generate the
+		 * expected one using name of parent and pkey
+		 * and use it in addition to pkey value
+		 * (other children with same pkey may exist that have
+		 * created by create_named_child() - we do not allow
+		 * delete_child() to delete them - delete_named_child()
+		 * has to be used!)
+		 */
+		snprintf(gen_intf_name, sizeof(gen_intf_name),
+			 "%s.%04x", ppriv->dev->name, pkey);
+	}
 	list_for_each_entry_safe(priv, tpriv, &ppriv->child_intfs, list) {
-		if (priv->pkey == pkey &&
-		    priv->child_type == IPOIB_LEGACY_CHILD) {
+		if ((priv->child_type == IPOIB_LEGACY_CHILD) &&
+		    /* user named child (match by name) OR */
+		    ((child_name_buf && priv->dev &&
+		      !strcmp(child_name_buf, priv->dev->name)) ||
+		     /*
+		      * OR classic (devname.hexpkey generated name) child
+		      * (match by pkey and generated name)
+		      */
+		     (!child_name_buf && priv->pkey == pkey &&
+		      priv->dev && !strcmp(gen_intf_name, priv->dev->name)))) {
 			unregister_netdevice(priv->dev);
 			list_del(&priv->list);
 			dev = priv->dev;
@@ -204,4 +258,15 @@ int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
 	}
 
 	return -ENODEV;
+}
+
+int ipoib_vlan_delete(struct net_device *pdev, unsigned short pkey)
+{
+
+	return ipoib_vlan_delete_common(pdev, pkey, NULL);
+}
+
+int ipoib_named_vlan_delete(struct net_device *pdev, char *child_name_buf)
+{
+	return ipoib_vlan_delete_common(pdev, 0, child_name_buf);
 }

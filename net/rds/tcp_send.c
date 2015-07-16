@@ -63,7 +63,7 @@ void rds_tcp_xmit_complete(struct rds_connection *conn)
 }
 
 /* the core send_sem serializes this with other xmit and shutdown */
-static int rds_tcp_sendmsg(struct socket *sock, void *data, unsigned int len)
+int rds_tcp_sendmsg(struct socket *sock, void *data, unsigned int len)
 {
 	struct kvec vec = {
                 .iov_base = data,
@@ -143,9 +143,9 @@ out:
 			rds_tcp_stats_inc(s_tcp_sndbuf_full);
 			ret = 0;
 		} else {
-			printk(KERN_WARNING "RDS/tcp: send to %pI4 "
+			printk(KERN_WARNING "RDS/tcp: send to %u.%u.%u.%u "
 			       "returned %d, disconnecting and reconnecting\n",
-			       &conn->c_faddr, ret);
+			       NIPQUAD(conn->c_faddr), ret);
 			rds_conn_drop(conn);
 		}
 	}

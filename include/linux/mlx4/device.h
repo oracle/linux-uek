@@ -172,6 +172,7 @@ enum {
 	MLX4_DEV_CAP_FLAG_VEP_UC_STEER	= 1LL << 41,
 	MLX4_DEV_CAP_FLAG_VEP_MC_STEER	= 1LL << 42,
 	MLX4_DEV_CAP_FLAG_COUNTERS	= 1LL << 48,
+	MLX4_DEV_CAP_FLAG_COUNTERS_EXT	= 1LL << 49,
 	MLX4_DEV_CAP_FLAG_RSS_IP_FRAG   = 1LL << 52,
 	MLX4_DEV_CAP_FLAG_SET_ETH_SCHED = 1LL << 53,
 	MLX4_DEV_CAP_FLAG_SENSE_SUPPORT	= 1LL << 55,
@@ -383,6 +384,10 @@ enum {
 	MLX4_MTT_FLAG_PRESENT		= 1
 };
 
+enum {
+	MLX4_MAX_MTT_SHIFT		= 31
+};
+
 enum mlx4_qp_region {
 	MLX4_QP_REGION_FW = 0,
 	MLX4_QP_REGION_RSS_RAW_ETH,
@@ -531,7 +536,7 @@ struct mlx4_caps {
 	int			comp_pool;
 	int			num_mpts;
 	int			max_fmr_maps;
-	int			num_mtts;
+	u64			num_mtts;
 	int			fmr_reserved_mtts;
 	int			reserved_mtts;
 	int			reserved_mrws;
