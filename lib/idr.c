@@ -391,6 +391,14 @@ static void sub_remove(struct idr *idp, int shift, int id)
 		idr_remove_warning(id);
 }
 
+/* the maximum ID which can be allocated given idr->layers */
+static int idr_max(int layers)
+{
+	int bits = min_t(int, layers * IDR_BITS, MAX_IDR_SHIFT);
+
+	return (1 << bits) - 1;
+}
+
 /**
  * idr_remove - remove the given id and free its slot
  * @idp: idr handle
@@ -406,6 +414,11 @@ void idr_remove(struct idr *idp, int id)
 
 	/* Mask off upper bits we don't use for the search. */
 	id &= MAX_IDR_MASK;
+
+	if (id > idr_max(idp->layers)) {
+		idr_remove_warning(id);
+		return;
+	}
 
 	sub_remove(idp, (idp->layers - 1) * IDR_BITS, id);
 	if (idp->top && idp->top->count == 1 && (idp->layers > 1) &&
@@ -899,6 +912,9 @@ void ida_remove(struct ida *ida, int id)
 	int offset = id % IDA_BITMAP_BITS;
 	int n;
 	struct ida_bitmap *bitmap;
+
+	if (idr_id > idr_max(ida->idr.layers))
+		goto err;
 
 	/* clear full bits while looking up the leaf idr_layer */
 	while ((shift > 0) && p) {
