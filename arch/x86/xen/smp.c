@@ -299,6 +299,10 @@ static void __init xen_smp_prepare_boot_cpu(void)
 
 		xen_filter_cpu_maps();
 		xen_setup_vcpu_info_placement();
+
+#ifdef CONFIG_X86_LOCAL_APIC
+		apic_pm_deactivate();
+#endif
 	}
 	/*
 	 * The alternative logic (which patches the unlock/lock) runs before
