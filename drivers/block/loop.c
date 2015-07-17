@@ -518,12 +518,14 @@ static void __loop_update_dio(struct loop_device *lo, bool dio)
 	 * the offset is aligned with 512.
 	 */
 	if (dio) {
-		if (inode->i_sb->s_bdev &&
-			bdev_io_min(inode->i_sb->s_bdev) == 512 &&
-			!(lo->lo_offset & 511))
+		if (inode->i_sb->s_bdev) {
+			if (bdev_io_min(inode->i_sb->s_bdev) == 512 &&
+			    !(lo->lo_offset & 511))
+				use_dio = true;
+			else
+				use_dio = false;
+		} else
 			use_dio = true;
-		else
-			use_dio = false;
 	} else {
 		use_dio = false;
 	}
@@ -541,13 +543,19 @@ static void __loop_update_dio(struct loop_device *lo, bool dio)
 	 */
 	blk_mq_freeze_queue(lo->lo_queue);
 	lo->use_dio = use_dio;
-	lo->lo_flags |= use_dio ? LO_FLAGS_DIRECT_IO : 0;
+	if (use_dio)
+		lo->lo_flags |= LO_FLAGS_DIRECT_IO;
+	else
+		lo->lo_flags &= ~LO_FLAGS_DIRECT_IO;
 	blk_mq_unfreeze_queue(lo->lo_queue);
 }
 
 static inline void loop_update_dio(struct loop_device *lo)
 {
-	__loop_update_dio(lo, io_is_direct(lo->lo_backing_file));
+	/*
+	 * UEK kernel will use direct-io whenever possible
+	 */
+	__loop_update_dio(lo, 1);
 }
 
 /*
@@ -893,6 +901,7 @@ static int loop_set_fd(struct loop_device *lo, fmode_t mode,
 	lo->lo_backing_file = file;
 	lo->transfer = NULL;
 	lo->ioctl = NULL;
+	lo->use_dio = 0;
 	lo->lo_sizelimit = 0;
 	lo->old_gfp_mask = mapping_gfp_mask(mapping);
 	mapping_set_gfp_mask(mapping, lo->old_gfp_mask & ~(__GFP_IO|__GFP_FS));
@@ -1007,6 +1016,7 @@ static int loop_clr_fd(struct loop_device *lo)
 	lo->lo_offset = 0;
 	lo->lo_sizelimit = 0;
 	lo->lo_encrypt_key_size = 0;
+	lo->use_dio = 0;
 	memset(lo->lo_encrypt_key, 0, LO_KEY_SIZE);
 	memset(lo->lo_crypt_name, 0, LO_NAME_SIZE);
 	memset(lo->lo_file_name, 0, LO_NAME_SIZE);
