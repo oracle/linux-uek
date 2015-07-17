@@ -518,12 +518,14 @@ static void __loop_update_dio(struct loop_device *lo, bool dio)
 	 * the offset is aligned with 512.
 	 */
 	if (dio) {
-		if (inode->i_sb->s_bdev &&
-			bdev_io_min(inode->i_sb->s_bdev) == 512 &&
-			!(lo->lo_offset & 511))
+		if (inode->i_sb->s_bdev) {
+			if (bdev_io_min(inode->i_sb->s_bdev) == 512 &&
+			    !(lo->lo_offset & 511))
+				use_dio = true;
+			else
+				use_dio = false;
+		} else
 			use_dio = true;
-		else
-			use_dio = false;
 	} else {
 		use_dio = false;
 	}
