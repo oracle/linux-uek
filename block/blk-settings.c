@@ -150,7 +150,7 @@ void blk_set_stacking_limits(struct queue_limits *lim)
 	lim->max_segments = USHRT_MAX;
 	lim->max_hw_sectors = UINT_MAX;
 
-	lim->max_sectors = BLK_DEF_MAX_SECTORS;
+	lim->max_sectors = UINT_MAX;
 }
 EXPORT_SYMBOL(blk_set_stacking_limits);
 
@@ -260,9 +260,7 @@ void blk_limits_max_hw_sectors(struct queue_limits *limits, unsigned int max_hw_
 		       __func__, max_hw_sectors);
 	}
 
-	limits->max_hw_sectors = max_hw_sectors;
-	limits->max_sectors = min_t(unsigned int, max_hw_sectors,
-				    BLK_DEF_MAX_SECTORS);
+	limits->max_sectors = limits->max_hw_sectors = max_hw_sectors;
 }
 EXPORT_SYMBOL(blk_limits_max_hw_sectors);
 
