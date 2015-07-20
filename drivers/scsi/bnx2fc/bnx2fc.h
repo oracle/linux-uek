@@ -129,7 +129,7 @@
 #define BNX2FC_MAX_FCP_TGT		256
 #define BNX2FC_MAX_CMD_LEN		16
 
-#define BNX2FC_TM_TIMEOUT		60	/* secs */
+#define BNX2FC_TM_TIMEOUT		(60 * HZ) /* seconds */
 #define BNX2FC_IO_TIMEOUT		20000UL	/* msecs */
 
 #define BNX2FC_WAIT_CNT			1200
