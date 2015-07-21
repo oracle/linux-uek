@@ -72,6 +72,7 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	int err = -ENOMEM;
 	int max_rq_sg;
 	int max_sq_sg;
+	u64 min_page_size = 1ull << MLX5_CAP_GEN(mdev, log_pg_sz);
 
 	in_mad  = kzalloc(sizeof(*in_mad), GFP_KERNEL);
 	out_mad = kmalloc(sizeof(*out_mad), GFP_KERNEL);
@@ -124,7 +125,7 @@ static int mlx5_ib_query_device(struct ib_device *ibdev,
 	memcpy(&props->sys_image_guid, out_mad->data +	4, 8);
 
 	props->max_mr_size	   = ~0ull;
-	props->page_size_cap	   = 1ull << MLX5_CAP_GEN(mdev, log_pg_sz);
+	props->page_size_cap	   = ~(min_page_size - 1);
 	props->max_qp		   = 1 << MLX5_CAP_GEN(mdev, log_max_qp);
 	props->max_qp_wr	   = 1 << MLX5_CAP_GEN(mdev, log_max_qp_sz);
 	max_rq_sg =  MLX5_CAP_GEN(mdev, max_wqe_sz_rq) /
