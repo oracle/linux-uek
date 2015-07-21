@@ -610,7 +610,7 @@ static void do_output(struct datapath *dp, struct sk_buff *skb, int out_port)
 static int output_userspace(struct datapath *dp, struct sk_buff *skb,
 			    struct sw_flow_key *key, const struct nlattr *attr)
 {
-	struct ovs_tunnel_info info;
+	struct ip_tunnel_info info;
 	struct dp_upcall_info upcall;
 	const struct nlattr *a;
 	int rem;
