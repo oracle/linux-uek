@@ -106,7 +106,7 @@ struct vport_portids {
  * @detach_list: list used for detaching vport in net-exit call.
  */
 struct vport {
-	struct rcu_head rcu;
+	struct net_device *dev;
 	struct datapath	*dp;
 	struct vport_portids __rcu *upcall_portids;
 	u16 port_no;
@@ -119,6 +119,7 @@ struct vport {
 
 	struct vport_err_stats err_stats;
 	struct list_head detach_list;
+	struct rcu_head rcu;
 };
 
 /**
