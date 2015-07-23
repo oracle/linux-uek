@@ -301,7 +301,7 @@ static int ip_frag_reinit(struct ipq *qp)
 		kfree_skb(fp);
 		fp = xp;
 	} while (fp);
-	sub_frag_mem_limit(&qp->q, sum_truesize);
+	sub_frag_mem_limit(qp->q.net, sum_truesize);
 
 	qp->q.flags = 0;
 	qp->q.len = 0;
@@ -446,7 +446,7 @@ found:
 				qp->q.fragments = next;
 
 			qp->q.meat -= free_it->len;
-			sub_frag_mem_limit(&qp->q, free_it->truesize);
+			sub_frag_mem_limit(qp->q.net, free_it->truesize);
 			kfree_skb(free_it);
 		}
 	}
@@ -470,7 +470,7 @@ found:
 	qp->q.stamp = skb->tstamp;
 	qp->q.meat += skb->len;
 	qp->ecn |= ecn;
-	add_frag_mem_limit(&qp->q, skb->truesize);
+	add_frag_mem_limit(qp->q.net, skb->truesize);
 	if (offset == 0)
 		qp->q.flags |= INET_FRAG_FIRST_IN;
 
@@ -573,7 +573,7 @@ static int ip_frag_reasm(struct ipq *qp, struct sk_buff *prev,
 		head->len -= clone->len;
 		clone->csum = 0;
 		clone->ip_summed = head->ip_summed;
-		add_frag_mem_limit(&qp->q, clone->truesize);
+		add_frag_mem_limit(qp->q.net, clone->truesize);
 	}
 
 	skb_push(head, head->data - skb_network_header(head));
@@ -601,7 +601,7 @@ static int ip_frag_reasm(struct ipq *qp, struct sk_buff *prev,
 		}
 		fp = next;
 	}
-	sub_frag_mem_limit(&qp->q, sum_truesize);
+	sub_frag_mem_limit(qp->q.net, sum_truesize);
 
 	head->next = NULL;
 	head->dev = dev;
