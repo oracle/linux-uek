@@ -192,12 +192,12 @@ struct ib_cm_id;
 
 static inline int ipoib_cm_check_proto_sig(u16 proto_sig)
 {
-	return proto_sig & IPOIB_CM_PROTO_SIG;
+	return (proto_sig == IPOIB_CM_PROTO_SIG);
 };
 
 static inline int ipoib_cm_check_proto_ver(u16 caps)
 {
-	return caps & IPOIB_CM_PROTO_VER;
+	return ((caps & 0xF000) == IPOIB_CM_PROTO_VER);
 };
 
 enum ipoib_cm_data_caps {
