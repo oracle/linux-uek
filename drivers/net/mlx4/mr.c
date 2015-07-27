@@ -202,6 +202,10 @@ u32 __mlx4_alloc_mtt_range(struct mlx4_dev *dev, int order,
 	seg = mlx4_buddy_alloc(buddy, order);
 	if (seg == 0xFFFFFFFF) {
 		mlx4_err(dev, "alloc mtt range failed in budddy alloc\n");
+		printk_once(KERN_NOTICE
+				"[%d]: Exhausted MTT entries, current size=%u. "
+				"Try updating log_num_mtt module parameter\n",
+				task_pid_nr(current), buddy->max_order);
 		return 0xFFFFFFFF;
 	}
 
@@ -368,8 +372,13 @@ int mlx4_mr_reserve_range(struct mlx4_dev *dev, int cnt, int align, u32 *base_mr
 	u32 mridx;
 
 	mridx = mlx4_bitmap_alloc_range(&priv->mr_table.mpt_bitmap, cnt, align);
-	if (mridx == -1)
+	if (mridx == -1) {
+		printk_once(KERN_NOTICE
+				"[%d]: mr_r: Exhausted MPT entries, current size=%u. "
+				"Try updating log_num_mpt module parameter\n",
+				task_pid_nr(current), priv->mr_table.mpt_bitmap.max);
 		return -ENOMEM;
+	}
 
 	*base_mridx = mridx;
 	return 0;
@@ -409,15 +418,29 @@ static int mlx4_WRITE_MTT(struct mlx4_dev *dev, struct mlx4_cmd_mailbox *mailbox
 int __mlx4_mr_reserve(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
+	int ret = mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);;
 
-	return mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);
+	if (ret == -1)
+		printk_once(KERN_NOTICE
+				"[%d]: MR: Exhausted MPT entries, current size=%u. "
+				"Try updating log_num_mpt module parameter\n",
+				task_pid_nr(current), priv->mr_table.mpt_bitmap.max);
+
+	return ret;
 }
 
 static int mlx4_fmr_reserve(struct mlx4_dev *dev)
 {
 	struct mlx4_priv *priv = mlx4_priv(dev);
+	int ret = mlx4_bitmap_alloc(&priv->mr_table.mpt_bitmap);;
 
-	return mlx4_bitmap_alloc(&priv->mr_table.fmr.mpt_bitmap);
+	if (ret == -1)
+		printk_once(KERN_NOTICE
+				"[%d]: FMR: Exhausted MPT entries, current size=%u. "
+				"Try updating log_num_mpt module parameter\n",
+				task_pid_nr(current), priv->mr_table.mpt_bitmap.max);
+
+	return ret;
 }
 
 static void mlx4_fmr_release(struct mlx4_dev *dev, u32 idx)
