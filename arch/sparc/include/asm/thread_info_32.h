@@ -68,8 +68,16 @@ struct thread_info {
 #ifndef BUILD_VDSO
 /* how to get the thread information struct from C */
 register struct thread_info *current_thread_info_reg asm("g6");
-#define current_thread_info()   (current_thread_info_reg)
+#else
+/*
+ * It doesn't matter if we genreate nonsense code, since the vDSO
+ * will never use anything that references this macro: but we must
+ * not do anything that produces a register relocation.
+ */
+static struct thread_info *current_thread_info_reg = 0;
 #endif
+
+#define current_thread_info()   (current_thread_info_reg)
 
 /*
  * thread information allocation
