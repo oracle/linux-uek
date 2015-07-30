@@ -1902,6 +1902,9 @@ enum {
 #define IXGBE_LED_IVRT(_i)	IXGBE_LED_OFFSET(IXGBE_LED_IVRT_BASE, _i)
 #define IXGBE_LED_BLINK(_i)	IXGBE_LED_OFFSET(IXGBE_LED_BLINK_BASE, _i)
 #define IXGBE_LED_MODE_MASK(_i)	IXGBE_LED_OFFSET(IXGBE_LED_MODE_MASK_BASE, _i)
+#define IXGBE_X557_LED_MANUAL_SET_MASK	(1 << 8)
+#define IXGBE_X557_MAX_LED_INDEX	3
+#define IXGBE_X557_LED_PROVISIONING	0xC430
 
 /* LED modes */
 #define IXGBE_LED_LINK_UP	0x0
@@ -3241,11 +3244,6 @@ enum ixgbe_mac_type {
 	ixgbe_mac_82598EB,
 	ixgbe_mac_82599EB,
 	ixgbe_mac_X540,
-	/*
-	 * X550EM MAC type decoder:
-	 * ixgbe_mac_X550EM_x: "x" = Xeon
-	 * ixgbe_mac_X550EM_a: "a" = Atom
-	 */
 	ixgbe_mac_X550,
 	ixgbe_mac_X550EM_x,
 	ixgbe_num_macs
@@ -3700,6 +3698,7 @@ struct ixgbe_phy_info {
 	bool multispeed_fiber;
 	bool reset_if_overtemp;
 	bool qsfp_shared_i2c_bus;
+	u32 nw_mng_if_sel;
 };
 
 #include "ixgbe_mbx.h"
@@ -3871,6 +3870,9 @@ struct ixgbe_hw {
 #define IXGBE_SB_IOSF_TARGET_KR_PHY	0
 #define IXGBE_SB_IOSF_TARGET_KX4_PHY	1
 #define IXGBE_SB_IOSF_TARGET_KX4_PCS	2
+
+#define IXGBE_NW_MNG_IF_SEL		0x00011178
+#define IXGBE_NW_MNG_IF_SEL_INT_PHY_MODE (1 << 24)
 
 #include "ixgbe_osdep2.h"
 

@@ -925,7 +925,6 @@ static int ixgbe_set_vf_vlan_msg(struct ixgbe_adapter *adapter,
 
 out:
 #endif
-
 	return err;
 }
 

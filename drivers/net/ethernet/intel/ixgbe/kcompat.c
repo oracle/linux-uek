@@ -954,8 +954,6 @@ int ixgbe_copy_dcb_cfg(struct ixgbe_adapter __always_unused *adapter, int __alwa
 /*****************************************************************************/
 #if ( LINUX_VERSION_CODE < KERNEL_VERSION(2,6,24) )
 #ifdef NAPI
-#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
-	defined(DRIVER_IXGBEVF)
 struct net_device *napi_to_poll_dev(const struct napi_struct *napi)
 {
 	struct adapter_q_vector *q_vector = container_of(napi,
@@ -963,20 +961,13 @@ struct net_device *napi_to_poll_dev(const struct napi_struct *napi)
 	                                                napi);
 	return &q_vector->poll_dev;
 }
-#endif
 
 int __kc_adapter_clean(struct net_device *netdev, int *budget)
 {
 	int work_done;
 	int work_to_do = min(*budget, netdev->quota);
-#if defined(DRIVER_IXGBE) || defined(DRIVER_IGB) || defined(DRIVER_I40E) || \
-	defined(E1000E_MQ) || defined(DRIVER_IXGBEVF)
 	/* kcompat.h netif_napi_add puts napi struct in "fake netdev->priv" */
 	struct napi_struct *napi = netdev->priv;
-#else
-	struct adapter_struct *adapter = netdev_priv(netdev);
-	struct napi_struct *napi = &adapter->rx_ring[0].napi;
-#endif
 	work_done = napi->poll(napi, work_to_do);
 	*budget -= work_done;
 	netdev->quota -= work_done;

@@ -417,11 +417,6 @@ struct ixgbe_ring {
 	};
 } ____cacheline_internodealigned_in_smp;
 
-static inline void ixgbe_write_tail(struct ixgbe_ring *ring, u32 value)
-{
-	writel(value, ring->tail);
-}
-
 enum ixgbe_ring_f_enum {
 	RING_F_NONE = 0,
 	RING_F_VMDQ,  /* SR-IOV uses the same ring feature */
@@ -1162,6 +1157,13 @@ void ixgbe_dbg_adapter_exit(struct ixgbe_adapter *adapter);
 void ixgbe_dbg_init(void);
 void ixgbe_dbg_exit(void);
 #endif /* HAVE_IXGBE_DEBUG_FS */
+
+#if IS_ENABLED(CONFIG_BQL) || defined(HAVE_SKB_XMIT_MORE)
+static inline struct netdev_queue *txring_txq(const struct ixgbe_ring *ring)
+{
+	return netdev_get_tx_queue(ring->netdev, ring->queue_index);
+}
+#endif
 
 #if IS_ENABLED(CONFIG_DCB)
 #ifdef HAVE_DCBNL_IEEE

@@ -150,6 +150,10 @@
  * into 2^-32 units, which is
  *
  *  12.5 * 2^32 = C80000000
+ *
+ * Some revisions of hardware have a faster base frequency than the registers
+ * were defined for. To fix this, we use a timecounter structure with the
+ * proper mult and shift to convert the cycles into nanoseconds of time.
  */
 #define IXGBE_X550_BASE_PERIOD 0xC80000000ULL
 #define INCVALUE_MASK	0x7FFFFFFF
@@ -231,152 +235,41 @@ static void ixgbe_ptp_setup_sdp_X540(struct ixgbe_adapter *adapter)
 }
 
 /**
- * ixgbe_ptp_normalize_systime_X550
- * @hw: private hw structure
- * @systime: un-adjusted raw systime timespec
+ * ixgbe_ptp_read_X550 - read cycle counter value
+ * @hw_cc: cyclecounter structure
  *
- * Some X550 hardware increased frequency on the clock driving SYSTIME value,
- * and thus SYSTIME no longer nominally represents seconds and nanoseconds.
- * This function takes a raw SYSTIME value and corrects it based on known
- * hardware frequency shifts.
- *
- * Upon return, the systime timespec will contain the normalized value after
- * known frequency change.
+ * This function reads SYSTIME registers. It is called by the cyclecounter
+ * structure to convert from internal representation into nanoseconds. We need
+ * this for X550 since some skews do not have expected clock frequency and
+ * result of SYSTIME is 32bits of "billions of cycles" and 32 bits of
+ * "cycles", rather than seconds and nanoseconds.
  */
-static void ixgbe_ptp_normalize_systime_X550(struct ixgbe_hw *hw,
-					     struct timespec *systime)
-{
-	u64 ns;
-
-	/* all other MAC types don't need to normalize values */
-	if (hw->mac.type != ixgbe_mac_X550EM_x)
-		return;
-
-	/* systime ostensibly uses the same format as a timespec (seconds and
-	 * nanoseconds). However, the raw values are uncorrected for hardware
-	 * frequency changes on some platforms. Thus, the "seconds" and
-	 * "nanoseconds" are incorrect and need to be adjusted to match real
-	 * time values.
-	 */
-	ns = timespec_to_ns((struct timespec *)systime);
-
-	/* The old frequency for the clock driving the SYSTIME was 300MHz. The
-	 * new frequency is 400Mhz. Thus, we simplify the fraction 300/400 to
-	 * 3/4. Thus we can use simple integer math on the nanosecond value.
-	 * Note that it is possible (though *highly* unlikely) for the ns
-	 * value to overflow during this operation.
-	 */
-	ns *= 3;
-	ns = div_u64(ns, 4ULL);
-
-	*systime = ns_to_timespec(ns);
-}
-
-/**
- * ixgbe_ptp_denormalize_ts_X550
- * @hw: private hw structure
- * @ts: kernel timespec value
- *
- * Some X550 hardware increased frequency on the clock driving SYSTIME value,
- * and thus SYSTIME no longer nominally represents seconds and nanoseconds.
- * This function takes a kernel timespec and de-normalizes it into raw SYSTIME
- * format according to hardware frequency shift.
- *
- * Upon return, ts will contain a value suitable for SYSTIME registers.
- */
-static void ixgbe_ptp_denormalize_ts_X550(struct ixgbe_hw *hw,
-					  struct timespec *ts)
-{
-	u64 ns;
-
-	/* all other MAC types don't need to normalize values */
-	if (hw->mac.type != ixgbe_mac_X550EM_x)
-		return;
-
-	/* systime ostensibly uses the same format as a timespec (seconds and
-	 * nanoseconds). However, the raw values are uncorrected for hardware
-	 * frequency changes on some platforms. Thus, the "seconds" and
-	 * "nanoseconds" are incorrect and need to be adjusted to match
-	 * systime register values.
-	 */
-	ns = timespec_to_ns(ts);
-
-	/* The old frequency for the clock driving the SYSTIME was 300MHz. The
-	 * new frequency is 400Mhz. Thus, we simplify the fraction 400/300 to
-	 * 4/3. Thus we can use simple integer math on the nanosecond value.
-	 * Note that it is possible (though *highly* unlikely) for the ns
-	 * value to overflow during this operation.
-	 */
-	ns *= 4;
-	ns = div_u64(ns, 3ULL);
-
-	*ts = ns_to_timespec(ns);
-}
-
-/**
- * ixgbe_ptp_read_X550 - read the SYSTIME register value
- * @adapter: private adapter structure
- * @ts: timespec to store value in
- *
- * this function reads the SYSTIME registers and stores them in a timespec, it
- * is not used with a cyclecounter wrapper because the SYSTIME registers for the
- * X550 are large enough to hold a full timespec
- */
-static void ixgbe_ptp_read_X550(struct ixgbe_adapter *adapter,
-				struct timespec *ts)
-{
+static cycle_t ixgbe_ptp_read_X550(const struct cyclecounter *hw_cc) {
+	struct ixgbe_adapter *adapter =
+		container_of(hw_cc, struct ixgbe_adapter, hw_cc);
 	struct ixgbe_hw *hw = &adapter->hw;
-	u32 sec, nsec;
+	struct timespec64 ts;
 
-	/* The timestamp latches on lowest register read. For the X550, the
-	 * lowest register is SYSTIMR. Since we don't need subnanosecond
-	 * resolution, we ignore the value. However, the read is necessary in
-	 * order to correctly latch the SYSTIML and SYTIMH register values.
+	/* storage is 32 bits of 'billions of cycles' and 32 bits of 'cycles'.
+	 * Some revisions of hardware run at a higher frequency and so the
+	 * cycles are not guaranteed to be nanoseconds. The timespec64 created
+	 * here is used for its math/conversions but does not necessarily
+	 * represent nominal time.
+	 *
+	 * It should be noted that this cyclecounter will overflow at a
+	 * non-bitmask field since we have to convert our billions of cycles
+	 * into an actual cycles count. This results in some possible weird
+	 * situations at high cycle counter stamps. However given that 32 bits
+	 * of "seconds" is ~138 years this isn't a problem. Even at the
+	 * increased frequency of some revisions, this is still ~103 years.
+	 * Since the SYSTIME values start at 0 and we never write them, it is
+	 * highly unlikely for the cyclecounter to overflow in practice.
 	 */
 	IXGBE_READ_REG(hw, IXGBE_SYSTIMR);
-	nsec = IXGBE_READ_REG(hw, IXGBE_SYSTIML);
-	sec = IXGBE_READ_REG(hw, IXGBE_SYSTIMH);
+	ts.tv_nsec = IXGBE_READ_REG(hw, IXGBE_SYSTIML);
+	ts.tv_sec = IXGBE_READ_REG(hw, IXGBE_SYSTIMH);
 
-	ts->tv_sec = sec;
-	ts->tv_nsec = nsec;
-
-	/* normalize value for stack consumption */
-	ixgbe_ptp_normalize_systime_X550(hw, ts);
-}
-
-/**
- * ixgbe_ptp_write_X550 - write the SYSTIME register value
- * @adapter: private adapter structure
- * @ts: timespec containing the current time to set
- *
- * This function writes the SYSTIME registers for the X550 controller. The X550
- * requires that the SYSTIME registers be disabled during this process through a
- * write to TSAUXC.
- */
-static void ixgbe_ptp_write_X550(struct ixgbe_adapter *adapter,
-				 const struct timespec *ts)
-{
-	struct ixgbe_hw *hw = &adapter->hw;
-	struct timespec systime;
-	u32 tsauxc;
-
-	/* denormalize for write to SYSTIME register */
-	systime = *ts;
-	ixgbe_ptp_denormalize_ts_X550(hw, &systime);
-
-	/* disable SYSTIME register */
-	tsauxc = IXGBE_READ_REG(hw, IXGBE_TSAUXC);
-	IXGBE_WRITE_REG(hw, IXGBE_TSAUXC,
-			tsauxc | IXGBE_TSAUXC_DISABLE_SYSTIME);
-	IXGBE_WRITE_FLUSH(hw);
-
-	IXGBE_WRITE_REG(hw, IXGBE_SYSTIMR, 0);
-	IXGBE_WRITE_REG(hw, IXGBE_SYSTIML, systime.tv_nsec);
-	IXGBE_WRITE_REG(hw, IXGBE_SYSTIMH, systime.tv_sec);
-
-	/* re-enable SYSTIME register */
-	IXGBE_WRITE_REG(hw, IXGBE_TSAUXC, tsauxc);
-	IXGBE_WRITE_FLUSH(hw);
+	return (u64)timespec64_to_ns(&ts);
 }
 
 /**
@@ -418,38 +311,45 @@ static cycle_t ixgbe_ptp_read_82599(const struct cyclecounter *hw_cc)
  * overflow cyclecounter, and this function takes this into account as well.
  **/
 static void ixgbe_ptp_convert_to_hwtstamp(struct ixgbe_adapter *adapter,
-				     struct skb_shared_hwtstamps *hwtstamp,
-				     u64 timestamp)
+					  struct skb_shared_hwtstamps *hwtstamp,
+					  u64 timestamp)
 {
 	unsigned long flags;
-	struct timespec systime;
+	struct timespec64 systime;
 	u64 ns;
 
 	memset(hwtstamp, 0, sizeof(*hwtstamp));
 
 	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_82599EB:
-	case ixgbe_mac_X540:
-		spin_lock_irqsave(&adapter->tmreg_lock, flags);
-		ns = timecounter_cyc2time(&adapter->hw_tc, timestamp);
-		spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
-
-		hwtstamp->hwtstamp = ns_to_ktime(ns);
-		break;
+	/* X550 and later hardware supposedly represent time using a seconds
+	 * and nanoseconds counter, instead of raw 64bits nanoseconds. We need
+	 * to convert the timestamp into cycles before it can be fed to the
+	 * cyclecounter. We need an actual cyclecounter because some revisions
+	 * of hardware run at a higher frequency and thus the counter does
+	 * not represent seconds/nanoseconds. Instead it can be thought of as
+	 * cycles and billions of cycles.
+	 */
 	case ixgbe_mac_X550:
 	case ixgbe_mac_X550EM_x:
-		/* Upper 32 bits contain 'seconds', lower 32 bits contain 'ns' */
+		/* Upper 32 bits represent billions of cycles, lower 32 bits
+		 * represent cycles. However, we use timespec64_to_ns for the
+		 * correct math even though the units haven't been corrected
+		 * yet.
+		 */
 		systime.tv_sec = timestamp >> 32;
 		systime.tv_nsec = timestamp & 0xFFFFFFFF;
 
-		/* Normalize time due to clock frequency change */
-		ixgbe_ptp_normalize_systime_X550(&adapter->hw, &systime);
-
-		hwtstamp->hwtstamp = timespec_to_ktime(systime);
+		timestamp = timespec64_to_ns(&systime);
 		break;
 	default:
 		break;
 	}
+
+	spin_lock_irqsave(&adapter->tmreg_lock, flags);
+	ns = timecounter_cyc2time(&adapter->hw_tc, timestamp);
+	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
+
+	hwtstamp->hwtstamp = ns_to_ktime(ns);
 }
 
 /**
@@ -527,16 +427,6 @@ static int ixgbe_ptp_adjfreq_X550(struct ptp_clock_info *ptp, s32 ppb)
 	rate *= ppb;
 	rate = div_u64(rate, 1000000000ULL);
 
-	if (hw->mac.type == ixgbe_mac_X550EM_x) {
-		/* some hardware requires adjustment of input ppb to normalize
-		 * it for the adjusted SYSTIME due to hardware clock
-		 * frequency. Note that maximum ppb is smaller for these
-		 * parts, so it won't overflow.
-		 */
-		rate *= 4;
-		rate = div_u64(rate, 3ULL);
-	}
-
 	/* warn if rate is too large */
 	if (rate >= INCVALUE_MASK)
 		e_dev_warn("PTP ppb adjusted SYSTIME rate overflowed!\n");
@@ -551,29 +441,21 @@ static int ixgbe_ptp_adjfreq_X550(struct ptp_clock_info *ptp, s32 ppb)
 }
 
 /**
- * ixgbe_ptp_adjtime_82599
+ * ixgbe_ptp_adjtime_timecounter
  * @ptp: the ptp clock structure
  * @delta: offset to adjust the cycle counter by
  *
  * adjust the timer by resetting the timecounter structure.
  */
-static int ixgbe_ptp_adjtime_82599(struct ptp_clock_info *ptp, s64 delta)
+static int ixgbe_ptp_adjtime_timecounter(struct ptp_clock_info *ptp,
+					 s64 delta)
 {
 	struct ixgbe_adapter *adapter =
 		container_of(ptp, struct ixgbe_adapter, ptp_caps);
 	unsigned long flags;
-	u64 now;
 
 	spin_lock_irqsave(&adapter->tmreg_lock, flags);
-
-	now = timecounter_read(&adapter->hw_tc);
-	now += delta;
-
-	/* reset the timecounter */
-	timecounter_init(&adapter->hw_tc,
-			 &adapter->hw_cc,
-			 now);
-
+	timecounter_adjtime(&adapter->hw_tc, delta);
 	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
 
 	if (adapter->ptp_setup_sdp)
@@ -583,95 +465,46 @@ static int ixgbe_ptp_adjtime_82599(struct ptp_clock_info *ptp, s64 delta)
 }
 
 /**
- * ixgbe_ptp_adjtime_X550
+ * ixgbe_ptp_gettime64_timecounter
  * @ptp: the ptp clock structure
- * @delta: offset in ns to adjust system time by
- *
- * Adjust the SYSTIME registers by the specified delta.
- */
-static int ixgbe_ptp_adjtime_X550(struct ptp_clock_info *ptp, s64 delta)
-{
-	struct ixgbe_adapter *adapter =
-		container_of(ptp, struct ixgbe_adapter, ptp_caps);
-	unsigned long flags;
-	struct timespec now, d = ns_to_timespec(delta);
-
-	spin_lock_irqsave(&adapter->tmreg_lock, flags);
-
-	ixgbe_ptp_read_X550(adapter, &now);
-	now = timespec_add(now, d);
-	ixgbe_ptp_write_X550(adapter, &now);
-
-	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
-
-	return 0;
-}
-
-/**
- * ixgbe_ptp_gettime_82599
- * @ptp: the ptp clock structure
- * @ts: timespec structure to hold the current time value
+ * @ts: timespec64 structure to hold the current time value
  *
  * read the timecounter and return the correct value on ns,
- * after converting it into a struct timespec.
+ * after converting it into a struct timespec64.
  */
-static int ixgbe_ptp_gettime_82599(struct ptp_clock_info *ptp, struct timespec *ts)
+static int ixgbe_ptp_gettime64_timecounter(struct ptp_clock_info *ptp, struct timespec64 *ts)
 {
 	struct ixgbe_adapter *adapter =
 		container_of(ptp, struct ixgbe_adapter, ptp_caps);
-	u64 ns;
-	u32 remainder;
 	unsigned long flags;
+	u64 ns;
 
 	spin_lock_irqsave(&adapter->tmreg_lock, flags);
 	ns = timecounter_read(&adapter->hw_tc);
 	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
 
-	ts->tv_sec = div_u64_rem(ns, 1000000000ULL, &remainder);
-	ts->tv_nsec = remainder;
+	*ts = ns_to_timespec64(ns);
 
 	return 0;
 }
 
 /**
- * ixgbe_ptp_gettime_X550
+ * ixgbe_ptp_settime64_timecounter
  * @ptp: the ptp clock structure
- * @ts: timespec structure to hold the current time value
- *
- * read the current SYSTIME register value and store it into the timespec
- */
-static int ixgbe_ptp_gettime_X550(struct ptp_clock_info *ptp,
-				  struct timespec *ts)
-{
-	struct ixgbe_adapter *adapter =
-		container_of(ptp, struct ixgbe_adapter, ptp_caps);
-	unsigned long flags;
-
-	spin_lock_irqsave(&adapter->tmreg_lock, flags);
-	ixgbe_ptp_read_X550(adapter, ts);
-	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
-
-	return 0;
-}
-
-/**
- * ixgbe_ptp_settime_82599
- * @ptp: the ptp clock structure
- * @ts: the timespec containing the new time for the cycle counter
+ * @ts: the timespec64 containing the new time for the cycle counter
  *
  * reset the timecounter to use a new base value instead of the kernel
  * wall timer value.
  */
-static int ixgbe_ptp_settime_82599(struct ptp_clock_info *ptp,
-			     const struct timespec *ts)
+static int ixgbe_ptp_settime64_timecounter(struct ptp_clock_info *ptp,
+					   const struct timespec64 *ts)
 {
 	struct ixgbe_adapter *adapter =
 		container_of(ptp, struct ixgbe_adapter, ptp_caps);
 	u64 ns;
 	unsigned long flags;
 
-	ns = ts->tv_sec * 1000000000ULL;
-	ns += ts->tv_nsec;
+	ns = timespec64_to_ns(ts);
 
 	/* reset the timecounter */
 	spin_lock_irqsave(&adapter->tmreg_lock, flags);
@@ -683,28 +516,30 @@ static int ixgbe_ptp_settime_82599(struct ptp_clock_info *ptp,
 	return 0;
 }
 
-/**
- * ixgbe_ptp_settime_X550
- * @ptp: the ptp clock structure
- * @ts: the timespec containing the new time for the X550 controller
- *
- * Reset the SYSTIME registers to the time stored in the timespec
- */
-static int ixgbe_ptp_settime_X550(struct ptp_clock_info *ptp,
-				  const struct timespec *ts)
+#ifndef HAVE_PTP_CLOCK_INFO_GETTIME64
+static int ixgbe_ptp_gettime_timecounter(struct ptp_clock_info *ptp, struct timespec *ts)
 {
-	struct ixgbe_adapter *adapter =
-		container_of(ptp, struct ixgbe_adapter, ptp_caps);
-	unsigned long flags;
+	struct timespec64 ts64;
+	int err;
 
-	spin_lock_irqsave(&adapter->tmreg_lock, flags);
-	ixgbe_ptp_write_X550(adapter, ts);
-	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
+	err = ixgbe_ptp_gettime64_timecounter(ptp, &ts64);
+	if (err)
+		return err;
 
-	if (adapter->ptp_setup_sdp)
-		adapter->ptp_setup_sdp(adapter);
+	*ts = timespec64_to_timespec(ts64);
+
 	return 0;
 }
+
+static int ixgbe_ptp_settime_timecounter(struct ptp_clock_info *ptp,
+					 const struct timespec *ts)
+{
+	struct timespec64 ts64;
+
+	ts64 = timespec_to_timespec64(*ts);
+	return ixgbe_ptp_settime64_timecounter(ptp, &ts64);
+}
+#endif
 
 /**
  * ixgbe_ptp_feature_enable
@@ -777,25 +612,18 @@ void ixgbe_ptp_check_pps_event(struct ixgbe_adapter *adapter)
  *
  * this watchdog task periodically reads the timecounter
  * in order to prevent missing when the system time registers wrap
- * around. This needs to be run approximately twice a minute.
+ * around. This needs to be run approximately twice a minute for the fastest
+ * overflowing hardware. We run it for all hardware since it shouldn't have a
+ * large impact.
  */
 void ixgbe_ptp_overflow_check(struct ixgbe_adapter *adapter)
 {
 	bool timeout = time_is_before_jiffies(adapter->last_overflow_check +
-					     IXGBE_OVERFLOW_PERIOD);
-	struct timespec ts;
-
-	/* The X550 controller doesn't need to check for overflow */
-	switch (adapter->hw.mac.type) {
-	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
-		return;
-	default:
-		break;
-	}
+					      IXGBE_OVERFLOW_PERIOD);
+	struct timespec64 ts;
 
 	if (timeout) {
-		ixgbe_ptp_gettime_82599(&adapter->ptp_caps, &ts);
+		ixgbe_ptp_gettime64_timecounter(&adapter->ptp_caps, &ts);
 		adapter->last_overflow_check = jiffies;
 	}
 }
@@ -944,7 +772,7 @@ void ixgbe_ptp_rx_pktstamp(struct ixgbe_q_vector *q_vector,
  * is passed up the network stack
  */
 void ixgbe_ptp_rx_rgtstamp(struct ixgbe_q_vector *q_vector,
-			     struct sk_buff *skb)
+			   struct sk_buff *skb)
 {
 	struct ixgbe_adapter *adapter;
 	struct ixgbe_hw *hw;
@@ -1189,32 +1017,9 @@ int ixgbe_ptp_set_ts_config(struct ixgbe_adapter *adapter, struct ifreq *ifr)
 		-EFAULT : 0;
 }
 
-/**
- * ixgbe_ptp_start_cyclecounter - create the cycle counter from hw
- * @adapter: pointer to the adapter structure
- *
- * This function should be called to set the proper values for the TIMINCA
- * register and tell the cyclecounter structure what the tick rate of SYSTIME
- * is. It does not directly modify SYSTIME registers or the timecounter
- * structure. It should be called whenever a new TIMINCA value is necessary,
- * such as during initialization or when the link speed changes.
- */
-void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
+static void ixgbe_ptp_link_speed_adjust(struct ixgbe_adapter *adapter,
+					u32 *shift, u32 *incval)
 {
-	struct ixgbe_hw *hw = &adapter->hw;
-	u32 incval = 0;
-	u32 shift = 0;
-	unsigned long flags;
-
-	/* The X550 Controller doesn't require the cyclecounter */
-	switch (hw->mac.type) {
-	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
-		return;
-	default:
-		break;
-	}
-
 	/**
 	 * Scale the NIC cycle counter by a large factor so that
 	 * relatively small corrections to the frequency can be added
@@ -1231,33 +1036,97 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 	 */
 	switch (adapter->link_speed) {
 	case IXGBE_LINK_SPEED_100_FULL:
-		incval = IXGBE_INCVAL_100;
-		shift = IXGBE_INCVAL_SHIFT_100;
+		*shift = IXGBE_INCVAL_SHIFT_100;
+		*incval = IXGBE_INCVAL_100;
 		break;
 	case IXGBE_LINK_SPEED_1GB_FULL:
-		incval = IXGBE_INCVAL_1GB;
-		shift = IXGBE_INCVAL_SHIFT_1GB;
+		*shift = IXGBE_INCVAL_SHIFT_1GB;
+		*incval = IXGBE_INCVAL_1GB;
 		break;
 	case IXGBE_LINK_SPEED_10GB_FULL:
 	default:
-		incval = IXGBE_INCVAL_10GB;
-		shift = IXGBE_INCVAL_SHIFT_10GB;
+		*shift = IXGBE_INCVAL_SHIFT_10GB;
+		*incval = IXGBE_INCVAL_10GB;
 		break;
 	}
 
-	/**
-	 * Modify the calculated values to fit within the correct
-	 * number of bits specified by the hardware. The 82599 doesn't
-	 * have the same space as the X540, so bitshift the calculated
-	 * values to fit.
+	return;
+}
+
+/**
+ * ixgbe_ptp_start_cyclecounter - create the cycle counter from hw
+ * @adapter: pointer to the adapter structure
+ *
+ * This function should be called to set the proper values for the TIMINCA
+ * register and tell the cyclecounter structure what the tick rate of SYSTIME
+ * is. It does not directly modify SYSTIME registers or the timecounter
+ * structure. It should be called whenever a new TIMINCA value is necessary,
+ * such as during initialization or when the link speed changes.
+ */
+void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
+{
+	struct ixgbe_hw *hw = &adapter->hw;
+	unsigned long flags;
+	struct cyclecounter cc;
+	u32 incval = 0;
+	u32 tsauxc = 0, fuse0 = 0;
+
+	/* For some of the boards below this mask is technically incorrect.
+	 * The timestamp mask overflows at approximately 61bits. However the
+	 * particular hardware does not overflow on an even bitmask value.
+	 * Instead, it overflows due to conversion of upper 32bits billions of
+	 * cycles. Timecounters are not really intended for this purpose so
+	 * they do not properly function if the overflow point isn't 2^N-1.
+	 * However, the actual SYSTIME values in question take ~138 years to
+	 * overflow. In practice this means they won't actually overflow. A
+	 * proper fix to this problem would require modification of the
+	 * timecounter delta calculations.
 	 */
+	cc.mask = CLOCKSOURCE_MASK(64);
+	cc.mult = 1;
+	cc.shift = 0;
+
 	switch (hw->mac.type) {
+	case ixgbe_mac_X550EM_x:
+		/* SYSTIME assumes X550EM_x board frequency is 300Mhz, and is
+		 * designed to represent seconds and nanoseconds when this is
+		 * the case. However, some revisions of hardware have a 400Mhz
+		 * clock and we have to compensate for this frequency
+		 * variation using corrected mult and shift values.
+		 */
+		fuse0 = IXGBE_READ_REG(hw, IXGBE_FUSES0_GROUP(0));
+		if (!(fuse0 & IXGBE_FUSES0_300MHZ)) {
+			cc.mult = 3;
+			cc.shift = 2;
+		}
+		/* fallthrough */
+	case ixgbe_mac_X550:
+		cc.read = ixgbe_ptp_read_X550;
+
+		/* enable SYSTIME counter */
+		IXGBE_WRITE_REG(hw, IXGBE_SYSTIMR, 0);
+		IXGBE_WRITE_REG(hw, IXGBE_SYSTIML, 0);
+		IXGBE_WRITE_REG(hw, IXGBE_SYSTIMH, 0);
+		tsauxc = IXGBE_READ_REG(hw, IXGBE_TSAUXC);
+		IXGBE_WRITE_REG(hw, IXGBE_TSAUXC,
+				tsauxc & ~IXGBE_TSAUXC_DISABLE_SYSTIME);
+		IXGBE_WRITE_REG(hw, IXGBE_TSIM, IXGBE_TSIM_TXTS);
+		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMS_TIMESYNC);
+
+		IXGBE_WRITE_FLUSH(hw);
+		break;
 	case ixgbe_mac_X540:
+		cc.read = ixgbe_ptp_read_82599;
+
+		ixgbe_ptp_link_speed_adjust(adapter, &cc.shift, &incval);
 		IXGBE_WRITE_REG(hw, IXGBE_TIMINCA, incval);
 		break;
 	case ixgbe_mac_82599EB:
+		cc.read = ixgbe_ptp_read_82599;
+
+		ixgbe_ptp_link_speed_adjust(adapter, &cc.shift, &incval);
 		incval >>= IXGBE_INCVAL_SHIFT_82599;
-		shift -= IXGBE_INCVAL_SHIFT_82599;
+		cc.shift -= IXGBE_INCVAL_SHIFT_82599;
 		IXGBE_WRITE_REG(hw, IXGBE_TIMINCA,
 				(1 << IXGBE_INCPER_SHIFT_82599) |
 				incval);
@@ -1273,13 +1142,7 @@ void ixgbe_ptp_start_cyclecounter(struct ixgbe_adapter *adapter)
 
 	/* need lock to prevent incorrect read while modifying cyclecounter */
 	spin_lock_irqsave(&adapter->tmreg_lock, flags);
-
-	memset(&adapter->hw_cc, 0, sizeof(adapter->hw_cc));
-	adapter->hw_cc.read = ixgbe_ptp_read_82599;
-	adapter->hw_cc.mask = CLOCKSOURCE_MASK(64);
-	adapter->hw_cc.shift = shift;
-	adapter->hw_cc.mult = 1;
-
+	memcpy(&adapter->hw_cc, &cc, sizeof(adapter->hw_cc));
 	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
 }
 
@@ -1299,41 +1162,22 @@ void ixgbe_ptp_reset(struct ixgbe_adapter *adapter)
 {
 	struct ixgbe_hw *hw = &adapter->hw;
 	unsigned long flags;
-	struct timespec ts;
-	u32 tsauxc;
 
 	/* reset the hardware timestamping mode */
 	ixgbe_ptp_set_timestamp_mode(adapter, &adapter->tstamp_config);
 
-	switch (hw->mac.type) {
-	case ixgbe_mac_X540:
-	case ixgbe_mac_82599EB:
-		ixgbe_ptp_start_cyclecounter(adapter);
-
-		spin_lock_irqsave(&adapter->tmreg_lock, flags);
-
-		timecounter_init(&adapter->hw_tc, &adapter->hw_cc,
-				 ktime_to_ns(ktime_get_real()));
-
-		spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
-
-		adapter->last_overflow_check = jiffies;
-		break;
-	case ixgbe_mac_X550:
-	case ixgbe_mac_X550EM_x:
-		tsauxc = IXGBE_READ_REG(hw, IXGBE_TSAUXC);
-		IXGBE_WRITE_REG(hw, IXGBE_TSAUXC, tsauxc & ~IXGBE_TSAUXC_DISABLE_SYSTIME);
-		IXGBE_WRITE_REG(hw, IXGBE_TSIM, IXGBE_TSIM_TXTS);
-		IXGBE_WRITE_REG(hw, IXGBE_EIMS, IXGBE_EIMS_TIMESYNC);
-
-		IXGBE_WRITE_FLUSH(hw);
-
-		ts = ktime_to_timespec(ktime_get_real());
-		ixgbe_ptp_settime_X550(&adapter->ptp_caps, &ts);
-		break;
-	default:
+	/* 82598 does not support PTP */
+	if (hw->mac.type == ixgbe_mac_82598EB)
 		return;
-	}
+
+	ixgbe_ptp_start_cyclecounter(adapter);
+
+	spin_lock_irqsave(&adapter->tmreg_lock, flags);
+	timecounter_init(&adapter->hw_tc, &adapter->hw_cc,
+			 ktime_to_ns(ktime_get_real()));
+	spin_unlock_irqrestore(&adapter->tmreg_lock, flags);
+
+	adapter->last_overflow_check = jiffies;
 
 	/*
 	 * Now that the shift has been calculated and the systime
@@ -1375,9 +1219,14 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 1;
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_82599;
-		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_82599;
-		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_82599;
-		adapter->ptp_caps.settime = ixgbe_ptp_settime_82599;
+		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_timecounter;
+#ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
+		adapter->ptp_caps.gettime64 = ixgbe_ptp_gettime64_timecounter;
+		adapter->ptp_caps.settime64 = ixgbe_ptp_settime64_timecounter;
+#else
+		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_timecounter;
+		adapter->ptp_caps.settime = ixgbe_ptp_settime_timecounter;
+#endif
 		adapter->ptp_caps.enable = ixgbe_ptp_feature_enable;
 		adapter->ptp_setup_sdp = ixgbe_ptp_setup_sdp_X540;
 		break;
@@ -1392,12 +1241,18 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 0;
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_82599;
-		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_82599;
-		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_82599;
-		adapter->ptp_caps.settime = ixgbe_ptp_settime_82599;
+		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_timecounter;
+#ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
+		adapter->ptp_caps.gettime64 = ixgbe_ptp_gettime64_timecounter;
+		adapter->ptp_caps.settime64 = ixgbe_ptp_settime64_timecounter;
+#else
+		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_timecounter;
+		adapter->ptp_caps.settime = ixgbe_ptp_settime_timecounter;
+#endif
 		adapter->ptp_caps.enable = ixgbe_ptp_feature_enable;
 		break;
 	case ixgbe_mac_X550:
+	case ixgbe_mac_X550EM_x:
 		snprintf(adapter->ptp_caps.name, 16, "%s", netdev->name);
 		adapter->ptp_caps.owner = THIS_MODULE;
 		adapter->ptp_caps.max_adj = 30000000;
@@ -1406,24 +1261,14 @@ static long ixgbe_ptp_create_clock(struct ixgbe_adapter *adapter)
 		adapter->ptp_caps.n_per_out = 0;
 		adapter->ptp_caps.pps = 0;
 		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_X550;
-		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_X550;
-		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_X550;
-		adapter->ptp_caps.settime = ixgbe_ptp_settime_X550;
-		adapter->ptp_caps.enable = ixgbe_ptp_feature_enable;
-		adapter->ptp_setup_sdp = NULL;
-		break;
-	case ixgbe_mac_X550EM_x:
-		snprintf(adapter->ptp_caps.name, 16, "%s", netdev->name);
-		adapter->ptp_caps.owner = THIS_MODULE;
-		adapter->ptp_caps.max_adj = 22500000;
-		adapter->ptp_caps.n_alarm = 0;
-		adapter->ptp_caps.n_ext_ts = 0;
-		adapter->ptp_caps.n_per_out = 0;
-		adapter->ptp_caps.pps = 0;
-		adapter->ptp_caps.adjfreq = ixgbe_ptp_adjfreq_X550;
-		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_X550;
-		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_X550;
-		adapter->ptp_caps.settime = ixgbe_ptp_settime_X550;
+		adapter->ptp_caps.adjtime = ixgbe_ptp_adjtime_timecounter;
+#ifdef HAVE_PTP_CLOCK_INFO_GETTIME64
+		adapter->ptp_caps.gettime64 = ixgbe_ptp_gettime64_timecounter;
+		adapter->ptp_caps.settime64 = ixgbe_ptp_settime64_timecounter;
+#else
+		adapter->ptp_caps.gettime = ixgbe_ptp_gettime_timecounter;
+		adapter->ptp_caps.settime = ixgbe_ptp_settime_timecounter;
+#endif
 		adapter->ptp_caps.enable = ixgbe_ptp_feature_enable;
 		adapter->ptp_setup_sdp = NULL;
 		break;

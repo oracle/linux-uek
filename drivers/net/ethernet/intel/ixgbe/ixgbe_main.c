@@ -44,20 +44,10 @@
 #endif
 #endif
 #ifdef SIOCETHTOOL
-#include <linux/etherdevice.h>
 #include <linux/ethtool.h>
 #endif
 
 #include <linux/if_bridge.h>
-#ifdef CONFIG_OF
-#include <linux/of_net.h>
-#endif
-
-#ifdef CONFIG_SPARC
-#include <asm/idprom.h>
-#include <asm/prom.h>
-#endif
-
 #include "ixgbe.h"
 #ifdef HAVE_VXLAN_CHECKS
 #include <net/vxlan.h>
@@ -79,7 +69,7 @@ static const char ixgbe_driver_string[] =
 
 #define RELEASE_TAG
 
-#define DRV_VERSION	__stringify(4.0.3) DRIVERIOV DRV_HW_PERF FPGA \
+#define DRV_VERSION	__stringify(4.1.2) DRIVERIOV DRV_HW_PERF FPGA \
 			BYPASS_TAG RELEASE_TAG
 const char ixgbe_driver_version[] = DRV_VERSION;
 static const char ixgbe_copyright[] =
@@ -128,7 +118,6 @@ static DEFINE_PCI_DEVICE_TABLE(ixgbe_pci_tbl) = {
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_SFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_82599_QSFP_SF_QP), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X540T1), 0},
-	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550T), 0},
 	{PCI_VDEVICE(INTEL, IXGBE_DEV_ID_X550EM_X_10G_T), 0},
 	/* required last entry */
 	{ .device = 0 }
@@ -831,8 +820,7 @@ static bool ixgbe_clean_tx_irq(struct ixgbe_q_vector *q_vector,
 		return true;
 	}
 
-	netdev_tx_completed_queue(netdev_get_tx_queue(tx_ring->netdev,
-						      tx_ring->queue_index),
+	netdev_tx_completed_queue(txring_txq(tx_ring),
 				  total_packets, total_bytes);
 
 #define TX_WAKE_THRESHOLD (DESC_NEEDED * 2)
@@ -1137,7 +1125,7 @@ static inline void ixgbe_release_rx_desc(struct ixgbe_ring *rx_ring, u32 val)
 	 * such as IA-64).
 	 */
 	wmb();
-	ixgbe_write_tail(rx_ring, val);
+	writel(val, rx_ring->tail);
 }
 
 #ifdef CONFIG_IXGBE_DISABLE_PACKET_SPLIT
@@ -6008,8 +5996,7 @@ static void ixgbe_clean_tx_ring(struct ixgbe_ring *tx_ring)
 		ixgbe_unmap_and_free_tx_resource(tx_ring, tx_buffer_info);
 	}
 
-	netdev_tx_reset_queue(netdev_get_tx_queue(tx_ring->netdev,
-						  tx_ring->queue_index));
+	netdev_tx_reset_queue(txring_txq(tx_ring));
 
 	size = sizeof(struct ixgbe_tx_buffer) * tx_ring->count;
 	memset(tx_ring->tx_buffer_info, 0, size);
@@ -8421,9 +8408,7 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 	cmd_type |= size | IXGBE_TXD_CMD;
 	tx_desc->read.cmd_type_len = cpu_to_le32(cmd_type);
 
-	netdev_tx_sent_queue(netdev_get_tx_queue(tx_ring->netdev,
-						 tx_ring->queue_index),
-			     first->bytecount);
+	netdev_tx_sent_queue(txring_txq(tx_ring), first->bytecount);
 
 	/* set the timestamp */
 	first->time_stamp = jiffies;
@@ -8449,10 +8434,8 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 #ifdef HAVE_SKB_XMIT_MORE
 	ixgbe_maybe_stop_tx(tx_ring, DESC_NEEDED);
 
-	if (netif_xmit_stopped(netdev_get_tx_queue(tx_ring->netdev,
-						   tx_ring->queue_index)) ||
-	    !skb->xmit_more) {
-		ixgbe_write_tail(tx_ring, i);
+	if (netif_xmit_stopped(txring_txq(tx_ring)) || !skb->xmit_more) {
+		writel(i, tx_ring->tail);
 
 		/* we need this if more than one processor can write to our tail
 		 * at a time, it synchronizes IO on IA64/Altix systems
@@ -8462,7 +8445,7 @@ static void ixgbe_tx_map(struct ixgbe_ring *tx_ring,
 #else
 
 	/* notify HW of packet */
-	ixgbe_write_tail(tx_ring, i);
+	writel(i, tx_ring->tail);
 
 	/* we need this if more than one processor can write to our tail
 	 * at a time, it synchronizes IO on IA64/Altix systems
@@ -8717,8 +8700,8 @@ netdev_tx_t ixgbe_xmit_frame_ring(struct sk_buff *skb,
 	first->gso_segs = 1;
 
 	/* if we have a HW VLAN tag being added default to the HW one */
-	if (vlan_tx_tag_present(skb)) {
-		tx_flags |= vlan_tx_tag_get(skb) << IXGBE_TX_FLAGS_VLAN_SHIFT;
+	if (skb_vlan_tag_present(skb)) {
+		tx_flags |= skb_vlan_tag_get(skb) << IXGBE_TX_FLAGS_VLAN_SHIFT;
 		tx_flags |= IXGBE_TX_FLAGS_HW_VLAN;
 	/* else if it is a SW VLAN check the next protocol and store the tag */
 	} else if (protocol == __constant_htons(ETH_P_8021Q)) {
@@ -9490,6 +9473,15 @@ static int ixgbe_ndo_bridge_getlink(struct sk_buff *skb, u32 pid, u32 seq,
 #endif /* HAVE_BRIDGE_ATTRIBS */
 #endif /* HAVE_FDB_OPS */
 
+#ifdef HAVE_NDO_FEATURES_CHECK
+static netdev_features_t
+ixgbe_features_check(struct sk_buff *skb, struct net_device *dev,
+		     netdev_features_t features)
+{
+	return vxlan_features_check(skb, features);
+}
+#endif /* HAVE_NDO_FEATURES_CHECK */
+
 #ifdef HAVE_NET_DEVICE_OPS
 static const struct net_device_ops ixgbe_netdev_ops = {
 	.ndo_open		= ixgbe_open,
@@ -9580,6 +9572,9 @@ static const struct net_device_ops ixgbe_netdev_ops = {
 #ifdef HAVE_NDO_GSO_CHECK
 	.ndo_gso_check		= ixgbe_gso_check,
 #endif /* HAVE_NDO_GSO_CHECK */
+#ifdef HAVE_NDO_FEATURES_CHECK
+	.ndo_features_check	= ixgbe_features_check,
+#endif /* HAVE_NDO_FEATURES_CHECK */
 };
 #endif /* HAVE_NET_DEVICE_OPS */
 
@@ -9663,6 +9658,7 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 		case IXGBE_SUBDEV_ID_82599_ECNA_DP:
 		case IXGBE_SUBDEV_ID_82599_LOM_SFP:
 		case IXGBE_SUBDEV_ID_82599_SFP_1OCP:
+		case IXGBE_SUBDEV_ID_82599_SFP_LOM:
 			is_wol_supported = 1;
 			break;
 		}
@@ -9700,29 +9696,6 @@ int ixgbe_wol_supported(struct ixgbe_adapter *adapter, u16 device_id,
 	}
 
 	return is_wol_supported;
-}
-
-/**
- * ixgbe_get_platform_mac_addr - Look up MAC address in Open Firmware / IDPROM
- * @adapter: Pointer to adapter struct
- */
-static void ixgbe_get_platform_mac_addr(struct ixgbe_adapter *adapter)
-{
-#ifdef CONFIG_OF
-	struct device_node *dp = pci_device_to_OF_node(adapter->pdev);
-	struct ixgbe_hw *hw = &adapter->hw;
-	const unsigned char *addr;
-
-	addr = of_get_mac_address(dp);
-	if (addr) {
-		ether_addr_copy(hw->mac.perm_addr, addr);
-		return;
-	}
-#endif /* CONFIG_OF */
-
-#ifdef CONFIG_SPARC
-	ether_addr_copy(hw->mac.perm_addr, idprom->id_ethaddr);
-#endif /* CONFIG_SPARC */
 }
 
 /**
@@ -9853,14 +9826,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 	hw->back = adapter;
 	adapter->msg_enable = (1 << DEFAULT_DEBUG_LEVEL_SHIFT) - 1;
 
-#ifdef HAVE_PCI_ERS
-	/*
-	 * call save state here in standalone driver because it relies on
-	 * adapter struct to exist, and needs to call netdev_priv
-	 */
-	pci_save_state(pdev);
-
-#endif
 	hw->hw_addr = ioremap(pci_resource_start(pdev, 0),
 			      pci_resource_len(pdev, 0));
 	adapter->io_addr = hw->hw_addr;
@@ -10116,8 +10081,6 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 		goto err_sw_init;
 	}
 
-	ixgbe_get_platform_mac_addr(adapter);
-
 	memcpy(netdev->dev_addr, hw->mac.perm_addr, netdev->addr_len);
 #ifdef ETHTOOL_GPERMADDR
 	memcpy(netdev->perm_addr, hw->mac.perm_addr, netdev->addr_len);
@@ -10218,6 +10181,14 @@ static int __devinit ixgbe_probe(struct pci_dev *pdev,
 
 	pci_set_drvdata(pdev, adapter);
 	adapter->netdev_registered = true;
+#ifdef HAVE_PCI_ERS
+	/*
+	 * call save state here in standalone driver because it relies on
+	 * adapter struct to exist, and needs to call netdev_priv
+	 */
+	pci_save_state(pdev);
+
+#endif
 
 	/* power down the optics for 82599 SFP+ fiber */
 	if (hw->mac.ops.disable_tx_laser)
