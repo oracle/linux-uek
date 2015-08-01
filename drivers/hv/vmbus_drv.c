@@ -1050,6 +1050,17 @@ static struct acpi_driver vmbus_acpi_driver = {
 	},
 };
 
+static void hv_kexec_handler(void)
+{
+	int cpu;
+
+	hv_synic_clockevents_cleanup();
+	vmbus_initiate_unload();
+	for_each_online_cpu(cpu)
+		smp_call_function_single(cpu, hv_synic_cleanup, NULL, 1);
+	hv_cleanup();
+};
+
 static int __init hv_acpi_init(void)
 {
 	int ret, t;
@@ -1082,6 +1093,8 @@ static int __init hv_acpi_init(void)
 	if (ret)
 		goto cleanup;
 
+	hv_setup_kexec_handler(hv_kexec_handler);
+
 	return 0;
 
 cleanup:
@@ -1094,6 +1107,7 @@ static void __exit vmbus_exit(void)
 {
 	int cpu;
 
+	hv_remove_kexec_handler();
 	vmbus_connection.conn_state = DISCONNECTED;
 	hv_synic_clockevents_cleanup();
 	vmbus_disconnect();
