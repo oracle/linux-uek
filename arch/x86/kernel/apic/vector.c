@@ -409,6 +409,9 @@ asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 	irq_enter();
 	exit_idle();
 
+	/* Prevent vectors vanishing under us */
+	raw_spin_lock(&vector_lock);
+
 	me = smp_processor_id();
 	for (vector = FIRST_EXTERNAL_VECTOR; vector < NR_VECTORS; vector++) {
 		int irq;
@@ -416,6 +419,7 @@ asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 		struct irq_desc *desc;
 		struct irq_cfg *cfg;
 
+	retry:
 		irq = __this_cpu_read(vector_irq[vector]);
 
 		if (irq <= VECTOR_UNDEFINED)
@@ -429,7 +433,12 @@ asmlinkage __visible void smp_irq_move_cleanup_interrupt(void)
 		if (!cfg)
 			continue;
 
-		raw_spin_lock(&desc->lock);
+		if (!raw_spin_trylock(&desc->lock)) {
+			raw_spin_unlock(&vector_lock);
+			cpu_relax();
+			raw_spin_lock(&vector_lock);
+			goto retry;
+		}
 
 		/*
 		 * Check if the irq migration is in progress. If so, we
@@ -458,7 +467,8 @@ unlock:
 		raw_spin_unlock(&desc->lock);
 	}
 
-	irq_exit();
+	raw_spin_unlock(&vector_lock);
+	exiting_irq();
 }
 
 static void __irq_complete_move(struct irq_cfg *cfg, unsigned vector)
