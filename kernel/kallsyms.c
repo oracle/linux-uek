@@ -527,9 +527,12 @@ static int get_ksymbol_bpf(struct kallsym_iter *iter)
 static unsigned long get_ksymbol_core(struct kallsym_iter *iter)
 {
 	unsigned off = iter->nameoff;
-	u32 mod_index = kallsyms_symbol_modules[iter->pos];
+	u32 mod_index = 0;
 
-	if (mod_index == 0) {
+	if (kallsyms_symbol_modules)
+		mod_index = kallsyms_symbol_modules[iter->pos];
+
+	if (mod_index == 0 || kallsyms_modules == NULL) {
 		iter->module_name[0] = '\0';
 		iter->builtin_module = 0;
 	} else {
@@ -648,11 +651,6 @@ static int s_show(struct seq_file *m, void *p)
 	return s_show_internal(m, p, 0);
 }
 
-static int s_mod_show(struct seq_file *m, void *p)
-{
-	return s_show_internal(m, p, 1);
-}
-
 static const struct seq_operations kallsyms_op = {
 	.start = s_start,
 	.next = s_next,
@@ -660,12 +658,19 @@ static const struct seq_operations kallsyms_op = {
 	.show = s_show
 };
 
+#ifdef CONFIG_KALLMODSYMS
+static int s_mod_show(struct seq_file *m, void *p)
+{
+	return s_show_internal(m, p, 1);
+}
+
 static const struct seq_operations kallmodsyms_op = {
 	.start = s_start,
 	.next = s_next,
 	.stop = s_stop,
 	.show = s_mod_show
 };
+#endif
 
 static int kallsyms_open_internal(struct inode *inode, struct file *file,
 	const struct seq_operations *ops)
@@ -689,10 +694,12 @@ static int kallsyms_open(struct inode *inode, struct file *file)
 	return kallsyms_open_internal(inode, file, &kallsyms_op);
 }
 
+#ifdef CONFIG_KALLMODSYMS
 static int kallmodsyms_open(struct inode *inode, struct file *file)
 {
 	return kallsyms_open_internal(inode, file, &kallmodsyms_op);
 }
+#endif
 
 #ifdef	CONFIG_KGDB_KDB
 const char *kdb_walk_kallsyms(loff_t *pos)
@@ -721,17 +728,21 @@ static const struct file_operations kallsyms_operations = {
 	.release = seq_release_private,
 };
 
+#ifdef CONFIG_KALLMODSYMS
 static const struct file_operations kallmodsyms_operations = {
 	.open = kallmodsyms_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
 	.release = seq_release_private,
 };
+#endif
 
 static int __init kallsyms_init(void)
 {
 	proc_create("kallsyms", 0444, NULL, &kallsyms_operations);
+#ifdef CONFIG_KALLMODSYMS
 	proc_create("kallmodsyms", 0444, NULL, &kallmodsyms_operations);
+#endif
 	return 0;
 }
 device_initcall(kallsyms_init);
