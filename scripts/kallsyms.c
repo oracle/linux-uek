@@ -28,6 +28,7 @@
 #include <errno.h>
 #include <unistd.h>
 
+#ifdef CONFIG_KALLMODSYMS
 #include <libelf.h>
 #include <dwarf.h>
 #include <elfutils/libdwfl.h>
@@ -35,6 +36,7 @@
 #include <glib.h>
 
 #include <eu_simple.h>
+#endif
 
 #ifndef ARRAY_SIZE
 #define ARRAY_SIZE(arr) (sizeof(arr) / sizeof(arr[0]))
@@ -82,17 +84,12 @@ int token_profit[0x10000];
 unsigned char best_table[256][2];
 unsigned char best_table_len[256];
 
+#ifdef CONFIG_KALLMODSYMS
 /*
  * The list of builtin module names.
  */
 static char **builtin_modules;
 static unsigned int builtin_module_size, builtin_module_len;
-
-/*
- * For each builtin module, its offset from the start of the builtin_module
- * list, assuming consecutive placement.
- */
-static unsigned int *builtin_module_offsets;
 
 /*
  * A mapping from symbol name to the index of the module it is part of in the
@@ -101,6 +98,13 @@ static unsigned int *builtin_module_offsets;
  * quite space-efficient).
  */
 static GHashTable *symbol_to_module;
+#endif
+
+/*
+ * For each builtin module, its offset from the start of the builtin_module
+ * list, assuming consecutive placement.
+ */
+static unsigned int *builtin_module_offsets;
 
 static void usage(void)
 {
@@ -194,8 +198,12 @@ static int read_symbol(FILE *in, struct sym_entry *s)
 	else if (stype == 'N')
 		return -1;
 
+#ifdef CONFIG_KALLMODSYMS
 	/* look up the builtin module this is part of (if any). */
 	module = g_hash_table_lookup(symbol_to_module, sym);
+#else
+        module = 0;
+#endif
 
 	if (module)
 		s->module = builtin_module_offsets[*module];
@@ -463,6 +471,7 @@ static void write_src(void)
 		printf("\t.short\t%d\n", best_idx[i]);
 	printf("\n");
 
+#ifdef CONFIG_KALLMODSYMS
 	output_label("kallsyms_modules");
 	for (i = 0; i < builtin_module_len; i++)
 		printf("\t.asciz\t\"%s\"\n", builtin_modules[i]);
@@ -472,6 +481,7 @@ static void write_src(void)
 	for (i = 0; i < table_cnt; i++)
 		printf("\t.int\t%d\n", table[i].module);
 	printf("\n");
+#endif
 }
 
 /* table lookup compression functions */
@@ -739,6 +749,7 @@ static void make_percpus_absolute(void)
 			table[i].sym[0] = 'A';
 }
 
+#ifdef CONFIG_KALLMODSYMS
 /* Built-in module list computation. */
 
 /*
@@ -979,6 +990,9 @@ static void read_modules(const char *modules_builtin)
 	fclose(f);
 	g_hash_table_destroy(module_symbol_seen);
 }
+#else
+static void read_modules(const char *unused) {}
+#endif /* CONFIG_KALLMODSYMS */
 
 int main(int argc, char **argv)
 {
