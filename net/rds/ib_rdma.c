@@ -341,7 +341,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 		 * We're fussy with enforcing the FMR limit, though. If the driver
 		 * tells us we can't use more than N fmrs, we shouldn't start
 		 * arguing with it */
-		if (atomic_inc_return(&pool->item_count) <= pool->max_items)
+		if (atomic_inc_return(&pool->item_count) <=
+					atomic_read(&pool->max_items_soft))
 			break;
 
 		atomic_dec(&pool->item_count);
@@ -431,9 +432,8 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 	else
 		rds_ib_stats_inc(s_ib_rdma_mr_1m_alloc);
 
-	if (atomic_read(&pool->item_count) >
-		atomic_read(&pool->max_items_soft))
-		atomic_set(&pool->max_items_soft, pool->max_items);
+	if (atomic_read(&pool->item_count) > atomic_read(&pool->max_items_soft))
+		atomic_inc(&pool->max_items_soft);
 
 	return ibmr;
 
