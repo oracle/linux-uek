@@ -379,41 +379,49 @@ static struct rds_ib_mr *rds_ib_alloc_fmr(struct rds_ib_device *rds_ibdev,
 			 IB_ACCESS_REMOTE_ATOMIC),
 			&pool->fmr_attr);
 	if (IS_ERR(ibmr->fmr)) {
+		int total_pool_size;
+		int prev_8k_max;
+		int prev_1m_max;
+
 		err = PTR_ERR(ibmr->fmr);
+		ibmr->fmr = NULL;
+		if (err != -ENOMEM)
+			goto out_no_cigar;
 
 		/* Re-balance the pool sizes to reflect the memory resources
 		 * available to the VM.
 		 */
-		if (err == -ENOMEM) {
-			int total_pool_size =
-				atomic_read(&rds_ibdev->mr_8k_pool->item_count)
-					* (RDS_FMR_8K_MSG_SIZE + 1) +
-				atomic_read(&rds_ibdev->mr_1m_pool->item_count)
-					* RDS_FMR_1M_MSG_SIZE;
+		total_pool_size =
+			atomic_read(&rds_ibdev->mr_8k_pool->item_count)
+				* (RDS_FMR_8K_MSG_SIZE + 1) +
+			atomic_read(&rds_ibdev->mr_1m_pool->item_count)
+				* RDS_FMR_1M_MSG_SIZE;
 
-			if (total_pool_size) {
-				int prev_8k_max = atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft);
-				int prev_1m_max = atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft);
-				atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft, (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
-				atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft, (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
-				printk(KERN_ERR "RDS/IB: "
-					"Adjusted 8K FMR pool (%d->%d)\n",
-					prev_8k_max,
-					atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
-				printk(KERN_ERR "RDS/IB: "
-					"Adjusted 1K FMR pool (%d->%d)\n",
-					prev_1m_max,
-					atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
-				rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1,
-							NULL);
+		if (!total_pool_size)
+			goto out_no_cigar;
 
-				rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1,
-							NULL);
-
-				err = -EAGAIN;
-			}
+		prev_8k_max = atomic_read(
+				&rds_ibdev->mr_8k_pool->max_items_soft);
+		prev_1m_max = atomic_read(
+				&rds_ibdev->mr_1m_pool->max_items_soft);
+		atomic_set(&rds_ibdev->mr_8k_pool->max_items_soft,
+			   (total_pool_size / 4) / (RDS_FMR_8K_MSG_SIZE + 1));
+		atomic_set(&rds_ibdev->mr_1m_pool->max_items_soft,
+			   (total_pool_size * 3 / 4) / RDS_FMR_1M_MSG_SIZE);
+		printk(KERN_ERR "RDS/IB: Adjusted 8K FMR pool (%d->%d)\n",
+		       prev_8k_max,
+		       atomic_read(&rds_ibdev->mr_8k_pool->max_items_soft));
+		printk(KERN_ERR "RDS/IB: Adjusted 1M FMR pool (%d->%d)\n",
+		       prev_1m_max,
+		       atomic_read(&rds_ibdev->mr_1m_pool->max_items_soft));
+		if (pool == rds_ibdev->mr_1m_pool) {
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 0, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 1, NULL);
+		} else {
+			rds_ib_flush_mr_pool(rds_ibdev->mr_1m_pool, 1, NULL);
+			rds_ib_flush_mr_pool(rds_ibdev->mr_8k_pool, 0, NULL);
 		}
-		ibmr->fmr = NULL;
+		err = -EAGAIN;
 		goto out_no_cigar;
 	}
 
